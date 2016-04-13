@@ -889,6 +889,39 @@ Proof.
 Qed.
 
 
+Lemma list2nmem_inj' : forall A (a b : list A) n,
+  list2nmem_off n a = list2nmem_off n b ->
+  a = b.
+Proof.
+  intros.
+  repeat rewrite list2nmem_fix_off_eq in H.
+  revert H. revert a b n.
+  induction a; destruct b; simpl; firstorder.
+  eapply equal_f with (x := n) in H; simpl in H.
+  destruct (Nat.eq_dec n n); congruence.
+  eapply equal_f with (x := n) in H.
+  destruct (Nat.eq_dec n n); congruence.
+  erewrite IHa with (b := b) (n := S n).
+  eapply equal_f with (x := n) in H.
+  destruct (Nat.eq_dec n n); try congruence.
+
+  apply functional_extensionality; intros.
+  destruct (Nat.eq_dec x n); subst.
+  repeat rewrite list2nmem_fix_below; auto.
+  eapply equal_f with (x0 := x) in H.
+  destruct (Nat.eq_dec x n); try congruence.
+Qed.
+
+
+Lemma list2nmem_inj : forall A (a b : list A),
+  list2nmem a = list2nmem b ->  a = b.
+Proof.
+  intros.
+  apply list2nmem_inj' with (n := 0).
+  repeat rewrite <- list2nmem_off_eq; auto.
+Qed.
+
+
 (* crashes *)
 
 Require Import PredCrash AsyncDisk.

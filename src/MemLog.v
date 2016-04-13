@@ -1343,13 +1343,17 @@ Module MLog.
   Qed.
 
 
+  Definition recover_either_pred xp d ents :=
+     (exists d' ms' na, rep xp (Synced na d') ms' *
+      ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
+       [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]))%pred.
+
+
   Lemma crash_xform_either : forall xp d ents,
     crash_xform (would_recover_either xp d ents) =p=>
-      exists d' ms' na, rep xp (Synced na d') ms' *
-      ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
-       [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]).
+                  recover_either_pred xp d ents.
   Proof.
-    unfold would_recover_either; intros.
+    unfold would_recover_either, recover_either_pred; intros.
     xform_norm.
     rewrite crash_xform_synced by eauto; cancel.
     rewrite sep_star_or_distr; or_l; cancel.
@@ -1359,12 +1363,6 @@ Module MLog.
     rewrite crash_xform_applying by eauto; cancel.
     rewrite sep_star_or_distr; or_l; cancel.
   Qed.
-
-
-  Definition recover_either_pred xp d ents :=
-     (exists d' ms' na, rep xp (Synced na d') ms' *
-      ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
-       [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]))%pred.
 
 
   Lemma recover_idem : forall xp d ents,

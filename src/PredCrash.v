@@ -382,6 +382,26 @@ Proof.
 Qed.
 
 
+Lemma crash_xform_diskIs_eq : forall F a b,
+  crash_xform F a ->
+  crash_xform (diskIs a) b ->
+  a = b.
+Proof.
+  unfold crash_xform, possible_crash; intuition.
+  apply functional_extensionality; intros.
+  repeat deex.
+  specialize (H2 x); specialize (H3 x).
+  intuition; repeat deex; try congruence.
+
+  substl (b x); substl (a x).
+  unfold vsmerge, diskIs in *; destruct vs, vs0.
+  simpl in *; intuition; subst; try congruence.
+  rewrite H2 in H4; inversion H4; subst.
+  inversion H5.
+  rewrite H2 in H4; inversion H4; subst.
+  inversion H5.
+Qed.
+
 
 Lemma crash_xform_ptsto_or : forall (a : addr) (vs : valuset),
   crash_xform (a |-> vs) <=p=> crash_xform (a |-> vs \/ a |=> (fst vs)).
