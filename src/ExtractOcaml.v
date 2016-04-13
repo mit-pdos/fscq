@@ -26,6 +26,10 @@ Extract Constant Nat.add => "Big.add".
 Extract Constant Nat.mul => "Big.mult".
 Extract Constant Nat.pred => "fun n -> Big.max Big.zero (Big.pred n)".
 Extract Constant Nat.sub => "fun n m -> Big.max Big.zero (Big.sub n m)".
+Extract Constant Nat.max => "Big.max".
+Extract Constant Nat.min => "Big.min".
+Extract Constant Nat.div => "fun n m -> if Big.eq m Big.zero then Big.zero else Big.div n m".
+Extract Constant Nat.modulo => "fun n m -> if Big.eq m Big.zero then Big.zero else Big.modulo n m".
 
 (* Hook up our untrusted replacement policy. *)
 Extract Inlined Constant Cache.eviction_state  => "unit".
