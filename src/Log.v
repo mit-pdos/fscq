@@ -30,6 +30,9 @@ Require Import ListPred.
 Require Import LogReplay.
 Require Import GroupLog.
 Require Import NEList.
+Require Import RelationClasses.
+Require Import Morphisms.
+
 
 Import ListNotations.
 
@@ -425,27 +428,27 @@ Module LOG.
   Qed.
 
 
-  Definition recover_any_pred xp ds :=
-    ( exists d n ms, [[ n <= length (snd ds) ]] *
-    rep_inner xp (NoTxn (d, nil)) ms *
-    [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]])%pred.
+  Definition after_crash xp F ds cs :=
+    (exists raw, BUFCACHE.rep cs raw *
+     [[ ( exists d n ms, [[ n <= length (snd ds) ]] *
+       F * rep_inner xp (NoTxn (d, nil)) ms *
+       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
+     )%pred raw ]])%pred.
 
 
   Theorem recover_ok: forall xp cs,
-    {< F ds raw,
+    {< F ds,
     PRE
-      BUFCACHE.rep cs raw *
-      [[ (F * recover_any_pred xp ds)%pred raw ]]
+      after_crash xp F ds cs
     POST RET:ms' 
       exists d n, [[ n <= length (snd ds) ]] *
       rep xp F (NoTxn (d, nil)) ms' *
       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
     CRASH exists cs',
-      BUFCACHE.rep cs' raw *
-      [[ (F * recover_any_pred xp ds)%pred raw ]]
+      after_crash xp F ds cs'
     >} recover xp cs.
   Proof.
-    unfold recover, recover_any_pred, rep, rep_inner.
+    unfold recover, after_crash, rep, rep_inner.
     safestep.
     unfold GLog.recover_any_pred. norm. cancel.
     intuition simpl; eauto.
@@ -463,10 +466,9 @@ Module LOG.
 
   Lemma crash_xform_any : forall xp F ds,
     crash_xform (recover_any xp F ds) =p=>
-      exists raw cs,  BUFCACHE.rep cs raw *
-      [[ (crash_xform F * recover_any_pred xp ds)%pred raw ]].
+      exists cs, after_crash xp (crash_xform F) ds cs.
   Proof.
-    unfold recover_any, recover_any_pred, rep, rep_inner; intros.
+    unfold recover_any, after_crash, rep, rep_inner; intros.
     xform_norm.
     rewrite BUFCACHE.crash_xform_rep_pred by eauto.
     xform_norm.
@@ -480,18 +482,125 @@ Module LOG.
   Qed.
 
 
-  Lemma any_pred_any : forall xp raw cs F ds,
-    BUFCACHE.rep cs raw *
-    [[ (F * recover_any_pred xp ds)%pred raw ]] =p=>
-    exists d, recover_any xp F (d, nil).
+  Lemma after_crash_notxn : forall xp cs F ds,
+    after_crash xp F ds cs =p=>
+      exists d n ms, [[ n <= length (snd ds) ]] *
+      rep xp F (NoTxn (d, nil)) ms *
+      [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]].
   Proof.
-    unfold recover_any_pred, recover_any, rep, rep_inner.
-    cancel.
-    rewrite GLog.cached_recover_any; eauto.
-    Unshelve. eauto.
+    unfold after_crash, recover_any, rep, rep_inner.
+    intros. norm. cancel.
+    intuition simpl. eassumption.
+    eassign (mk_mstate vmap0 (MSGLog dummy1)).
+    pred_apply; cancel.
+    auto.
   Qed.
 
 
+  Lemma after_crash_notxn_singular : forall xp cs F d,
+    after_crash xp F (d, nil) cs =p=>
+      exists d' ms, rep xp F (NoTxn (d', nil)) ms *
+      [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
+  Proof.
+    intros; rewrite after_crash_notxn; cancel.
+  Qed.
+
+
+  Lemma after_crash_idem : forall xp F ds cs,
+    crash_xform (after_crash xp F ds cs) =p=>
+     exists cs', after_crash xp (crash_xform F) ds cs'.
+  Proof.
+    unfold after_crash, rep_inner; intros.
+    xform_norm.
+    rewrite BUFCACHE.crash_xform_rep_pred by eauto.
+    xform_norm.
+    denote crash_xform as Hx.
+    apply crash_xform_sep_star_dist in Hx.
+    rewrite GLog.crash_xform_cached in Hx.
+    destruct_lift Hx.
+
+    norm. cancel. intuition; pred_apply.
+    norm. cancel.
+    eassign (mk_mstate vmap0 dummy3); cancel.
+    intuition simpl; eauto.
+    pred_apply.
+    eapply crash_xform_diskIs_trans; eauto.
+  Qed.
+
+  Hint Extern 0 (okToUnify (LOG.rep_inner _ _ _) (LOG.rep_inner _ _ _)) => constructor : okToUnify.
+
+  Instance after_crash_proper_iff :
+    Proper (eq ==> piff ==> eq ==> eq ==> pimpl) after_crash.
+  Proof.
+    unfold Proper, respectful; intros.
+    unfold after_crash.
+    subst. norm. cancel. intuition simpl.
+    pred_apply. norm. cancel.
+    rewrite H0; eauto. intuition simpl; eauto.
+  Qed.
+
+
+  (** idempred includes both before-crash cand after-crash cases *)
+  Definition idempred xp F ds :=
+    (recover_any xp F ds \/ exists cs, after_crash xp F ds cs)%pred.
+
+  Theorem idempred_idem : forall xp F ds,
+    crash_xform (idempred xp F ds) =p=>
+      exists cs, after_crash xp (crash_xform F) ds cs.
+  Proof.
+    unfold idempred; intros.
+    xform_norm.
+    rewrite crash_xform_any; cancel.
+    rewrite after_crash_idem; cancel.
+  Qed.
+
+  Theorem recover_any_idempred : forall xp F ds,
+    recover_any xp F ds =p=> idempred xp F ds.
+  Proof.
+    unfold idempred; cancel.
+  Qed.
+
+  Theorem intact_idempred : forall xp F ds,
+    intact xp F ds =p=> idempred xp F ds.
+  Proof.
+    intros.
+    rewrite intact_any.
+    apply recover_any_idempred.
+  Qed.
+
+  Theorem notxn_idempred : forall xp F ds ms,
+    rep xp F (NoTxn ds) ms =p=> idempred xp F ds.
+  Proof.
+    intros.
+    rewrite notxn_intact.
+    apply intact_idempred.
+  Qed.
+
+  Theorem active_idempred : forall xp F ds ms d,
+    rep xp F (ActiveTxn ds d) ms =p=> idempred xp F ds.
+  Proof.
+    intros.
+    rewrite active_intact.
+    apply intact_idempred.
+  Qed.
+
+  Theorem after_crash_idempred : forall xp F ds cs,
+    after_crash xp F ds cs =p=> idempred xp F ds.
+  Proof.
+    unfold idempred; intros.
+    or_r; cancel.
+  Qed.
+
+  Instance idempred_proper_iff :
+    Proper (eq ==> piff ==> eq ==> pimpl) idempred.
+  Proof.
+    unfold Proper, respectful; intros.
+    unfold idempred; cancel.
+    unfold recover_any, rep; or_l; cancel.
+    rewrite H0; auto.
+    or_r; cancel.
+    rewrite H0; eauto.
+  Qed.
 
   Hint Resolve active_intact flushing_any.
   Hint Extern 0 (okToUnify (intact _ _ _) (intact _ _ _)) => constructor : okToUnify.
@@ -553,23 +662,25 @@ Module LOG.
     >} write_array xp a i v ms.
   Proof.
     unfold write_array.
-    hoare.
-
+    prestep. norm. cancel.
+    unfold rep_inner; intuition.
+    pred_apply; cancel.
     subst; pred_apply.
     rewrite isolateN_fwd with (i:=i) by auto.
     rewrite surjective_pairing with (p := selN vs i ($0, nil)).
     cancel.
 
+    step.
     subst; pred_apply.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
+    step.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read_array _ _ _ _) _) => apply read_array_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_array _ _ _ _ _) _) => apply write_array_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _ ?a) (rep _ _ _ ?a)) => constructor : okToUnify.
-
 
   Definition read_range T A xp a nr (vfold : A -> valu -> A) v0 ms rx : prog T :=
     let^ (ms, r) <- ForN i < nr
@@ -618,8 +729,12 @@ Module LOG.
     >} read_range xp a nr vfold v0 ms.
   Proof.
     unfold read_range; intros.
-    hoare.
+    prestep. norm. cancel.
+    unfold rep_inner; intuition.
+    pred_apply; cancel.
+    subst; pred_apply; cancel.
 
+    prestep; norm. cancel. intuition simpl.
     subst; pred_apply; cancel.
     eapply lt_le_trans; eauto.
     subst; denote (Map.elements (MSTxn a0)) as Hx; rewrite <- Hx.
@@ -973,70 +1088,9 @@ End LOG.
 
 
 (* rewrite rules for recover_either_pred *)
-(*
-Require Import RelationClasses.
-Require Import Morphisms.
-
-Instance recover_any_pred_proper_iff :
-  Proper (eq ==> eq ==> piff ==> piff ==> piff ==> pimpl) LOG.recover_any_pred.
-Proof.
-  unfold Proper, respectful; intros.
-  unfold LOG.recover_any_pred, GLog.recover_any_pred, MemLog.MLog.recover_either_pred.
-  subst. cancel.
-  rewrite sep_star_or_distr; or_l.
-  cancel; eauto.
-  rewrite H1; eauto.
-  pred_apply; rewrite H2; eauto.
-
-  rewrite sep_star_or_distr; or_r.
-  cancel; eauto.
-  rewrite H1; eauto.
-  pred_apply; rewrite H3; eauto.
-
-  exists ds; exists n; intuition.
-  pred_apply; rewrite H2; auto.
-  pred_apply; rewrite H3; eauto.
-Qed.
 
 
-Instance recover_any_pred_proper_eq :
-  Proper (eq ==> eq ==> piff ==> eq ==> eq ==> pimpl) LOG.recover_any_pred.
-Proof.
-  unfold Proper, respectful; intros.
-  unfold LOG.recover_any_pred, GLog.recover_any_pred, MemLog.MLog.recover_either_pred.
-  subst. cancel.
-  rewrite sep_star_or_distr; or_l.
-  cancel; eauto.
-  rewrite H1; eauto.
 
-  rewrite sep_star_or_distr; or_r.
-  cancel; eauto.
-  rewrite H1; eauto.
-
-  exists ds; exists n; intuition.
-Qed.
-
-
-Instance recover_any_pred_proper_pimpl :
-  Proper (eq ==> eq ==> piff ==> pimpl ==> pimpl ==> pimpl) LOG.recover_any_pred.
-Proof.
-  unfold Proper, respectful; intros.
-  unfold LOG.recover_any_pred, GLog.recover_any_pred, MemLog.MLog.recover_either_pred.
-  subst. cancel.
-  rewrite sep_star_or_distr; or_l.
-  cancel; eauto.
-  rewrite H1; eauto.
-  pred_apply; rewrite H2; eauto.
-
-  rewrite sep_star_or_distr; or_r.
-  cancel; eauto.
-  rewrite H1; eauto.
-  pred_apply; rewrite H3; eauto.
-
-  exists ds; exists n; intuition.
-Qed.
-
-*)
 
 Global Opaque LOG.begin.
 Global Opaque LOG.abort.

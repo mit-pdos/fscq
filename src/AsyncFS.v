@@ -2,6 +2,7 @@ Require Import Prog.
 Require Import Log.
 Require Import BFile.
 Require Import Word.
+Require Import Omega.
 Require Import BasicProg.
 Require Import Bool.
 Require Import Pred PredCrash.
@@ -30,6 +31,52 @@ Require Import NEList.
 Set Implicit Arguments.
 Import ListNotations.
 
+Hint Extern 0 (okToUnify (LOG.rep_inner _ _ _) (LOG.rep_inner _ _ _)) => constructor : okToUnify.
+
+
+Definition recover {T} rx : prog T :=
+  cs <- BUFCACHE.init_recover 10;
+  let^ (cs, fsxp) <- SB.load cs;
+  mscs <- LOG.recover (FSXPLog fsxp) cs;
+  rx ^(mscs, fsxp).
+
+
+Theorem recover_ok :
+  {< fsxp cs ds,
+   PRE
+     LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs
+   POST RET:^(ms, fsxp')
+     [[ fsxp' = fsxp ]] * exists d n, [[ n <= length (snd ds) ]] *
+     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) ms *
+     [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
+   CRASH exists cs',
+     LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs'
+   >} recover.
+Proof.
+  unfold recover, LOG.after_crash; intros.
+  prestep. norm. cancel. intuition; eauto.
+  prestep. norm. cancel. intuition; eauto.
+  pred_apply; cancel.
+
+  prestep.
+  unfold LOG.after_crash; norm. cancel.
+  intuition simpl.
+  pred_apply; norm. cancel.
+  intuition simpl; eauto.
+
+  safestep; eauto.
+  subst; pimpl_crash; eauto.
+
+  subst; pimpl_crash. norm; try tauto. cancel.
+  intuition; pred_apply. norm. cancel.
+  intuition eauto.
+
+  subst; pimpl_crash. norm; try tauto. cancel.
+  intuition; pred_apply. norm. cancel.
+  intuition eauto.
+Qed.
+
+
 Definition update_block_d T lxp a v ms rx : prog T :=
   ms <- LOG.begin lxp ms;
   ms <- LOG.dwrite lxp a v ms;
@@ -46,10 +93,9 @@ Theorem update_block_d_ok : forall fsxp a v ms,
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms *
       [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
   CRASH
-      (exists n, LOG.recover_any (FSXPLog fsxp) (SB.rep fsxp) n (m, nil)) \/
-      exists ms' m',
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (m', nil)) ms' *
-      [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (m, nil) \/
+      exists m', [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]] *
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (m', nil)
   >} update_block_d (FSXPLog fsxp) a v ms.
 Proof.
   unfold update_block_d; intros.
@@ -60,62 +106,19 @@ Proof.
   eapply pimpl_ok2.
   apply LOG.commit_ro_ok.
   cancel.
-  instantiate (1 := (m0, nil)); simpl.
-  rewrite singular_latest by auto; cancel.
+  instantiate (1 := (m1, nil)); simpl.
+  rewrite singular_latest by auto; simpl; cancel.
 
   step.
   subst; pimpl_crash.
-  cancel. or_r; cancel.
-  or_l; cancel.
-  or_r. rewrite LOG.active_notxn; cancel.
-  or_l. rewrite LOG.notxn_intact, LOG.intact_any; cancel.
+  cancel. or_r; cancel; eauto.
+  rewrite LOG.notxn_idempred; auto.
+
+  or_l; rewrite LOG.recover_any_idempred; cancel.
+  or_r; rewrite LOG.active_idempred; cancel.
+  or_l; rewrite LOG.notxn_idempred; cancel.
 Qed.
 
-
-Definition recover {T} rx : prog T :=
-  cs <- BUFCACHE.init_recover 10;
-  let^ (cs, fsxp) <- SB.load cs;
-  mscs <- LOG.recover (FSXPLog fsxp) cs;
-  rx ^(mscs, fsxp).
-
-Definition mkms cs := (GLog.mk_memstate LogReplay.vmap0 nil (MemLog.MLog.mk_memstate LogReplay.vmap0 cs)).
-
-Theorem recover_ok :
-  {< fsxp cs ds n,
-   PRE
-     LOG.recover_any_pred (FSXPLog fsxp) (SB.rep fsxp) n ds (mkms cs)
-   POST RET:^(ms, fsxp')
-     [[ fsxp' = fsxp ]] * exists d n, [[ n <= length (snd ds) ]] *
-     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) ms *
-     [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-   CRASH
-     LOG.recover_any_pred (FSXPLog fsxp) (SB.rep fsxp) n ds (mkms cs)
-   >} recover.
-Proof.
-  unfold recover; intros.
-  unfold LOG.recover_any_pred, GLog.recover_any_pred, GLog.rep, MemLog.MLog.would_recover_either.
-  step.
-  unfold MemLog.MLog.rep, MemLog.MLog.rep_inner.
-  step.
-
-  prestep.
-  unfold LOG.recover_any_pred, GLog.recover_any_pred, MemLog.MLog.recover_either_pred.
-  cancel.
-  eauto.
-  rewrite sep_star_or_distr; or_l. cancel; eauto.
-  rewrite sep_star_or_distr; or_r. cancel; eauto.
-
-  prestep. norm. cancel. intuition idtac; eauto.
-  subst; pimpl_crash; eauto.
-  rewrite sep_star_or_distr; or_l. cancel; eauto.
-  rewrite sep_star_or_distr; or_r. cancel; eauto.
-  do 2 eexists; eauto.
-
-  rewrite sep_star_or_distr; or_l. cancel; eauto.
-  rewrite sep_star_or_distr; or_r. cancel; eauto.
-  rewrite sep_star_or_distr; or_l. cancel; eauto.
-  rewrite sep_star_or_distr; or_r. cancel; eauto.
-Admitted.
 
 
 Ltac recover_ro_ok := intros;
@@ -130,9 +133,8 @@ Ltac recover_ro_ok := intros;
   end.
 
 
-Hint Extern 0 (okToUnify (LOG.recover_any_pred _ _ _ _ _)
-                         (LOG.recover_any_pred _ _ _ _ _)) => constructor : okToUnify.
-
+Hint Extern 0 (okToUnify (LOG.idempred _ _ _) (LOG.idempred _ _ _)) => constructor : okToUnify.
+Hint Extern 0 (okToUnify (LOG.after_crash _ _ _ _) (LOG.after_crash _ _ _ _)) => constructor : okToUnify.
 
 Theorem update_block_d_recover_ok : forall fsxp a v ms,
   {<< m F v0,
@@ -160,48 +162,40 @@ Proof.
   cancel.
   subst.
   apply pimpl_refl.
+  cancel_exact.
   apply pimpl_refl.
   xform_norm.
 
-  - xform; norml; unfold stars; simpl.
-    rewrite LOG.recover_any_any_pred; eauto.
-    norml; unfold stars; simpl.
+  - rewrite LOG.idempred_idem.
+    xform_norml.
     rewrite SB.crash_xform_rep.
-    cancel.
-
-    step.
-    pred_apply; xform_dist.
-    rewrite crash_xform_ptsto; cancel.
-    pred_apply; xform_dist.
-    rewrite crash_xform_ptsto; cancel.
-
-    norml; unfold stars; simpl.
-    unfold LOG.recover_any_pred, GLog.recover_any_pred.
-    unfold MemLog.MLog.recover_either_pred.
-    unfold LOG.recover_any, LOG.rep, GLog.would_recover_any, GLog.rep, MemLog.MLog.would_recover_either.
-    unfold MemLog.MLog.rep.
-    (* weird goal: CRASH of recover =p=> CRASH of update_block_d?  *)
-    admit.
-
-  - repeat (rewrite crash_xform_exists_comm; norml; unfold stars; simpl).
-    xform_norm.
-    rewrite LOG.notxn_intact.
-    rewrite LOG.intact_recover_any_pred; eauto.
     recover_ro_ok.
-    xform_norm.
-    rewrite SB.crash_xform_rep.
     cancel.
 
     step.
-    pred_apply; xform_dist.
-    rewrite crash_xform_ptsto; cancel.
-    pred_apply; xform_dist.
-    rewrite crash_xform_ptsto; cancel.
+    pred_apply.
+    replace n with 0 by omega; rewrite nthd_0; simpl.
+    rewrite crash_xform_diskIs_pred by eauto.
+    xform_dist; rewrite crash_xform_ptsto; cancel.
 
-    norml; unfold stars; simpl.
-    (* weird goal: CRASH of recover =p=> CRASH of update_block_d?  *)
-    admit.
-Admitted.
+    cancel.
+    rewrite LOG.after_crash_idempred; cancel.
+
+  - rewrite LOG.idempred_idem.
+    xform_norml.
+    rewrite SB.crash_xform_rep.
+    recover_ro_ok.
+    cancel.
+
+    step.
+    pred_apply.
+    replace n with 0 by omega; rewrite nthd_0; simpl.
+    rewrite crash_xform_diskIs_pred by eauto.
+    xform_dist; rewrite crash_xform_ptsto; cancel.
+
+    cancel.
+    rewrite LOG.after_crash_idempred; cancel.
+Qed.
 
 
 

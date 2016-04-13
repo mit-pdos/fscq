@@ -120,13 +120,6 @@ Proof.
   inversion H1.
 Qed.
 
-Theorem crash_xform_idem : forall (p : rawpred), crash_xform (crash_xform p) =p=> crash_xform p.
-Proof.
-  unfold crash_xform, pimpl; intros.
-  repeat deex; eexists; intuition eauto.
-  eapply possible_crash_trans; eauto.
-Qed.
-
 Theorem crash_xform_sep_star_dist : forall (p q : rawpred),
   crash_xform (p * q) <=p=> crash_xform p * crash_xform q.
 Proof.
@@ -374,11 +367,17 @@ Proof.
   intros.
   apply crash_xform_diskIs in H.
   apply crash_xform_diskIs in H0.
-  destruct_lift H; destruct_lift H0.
+  destruct H; destruct H0.
+  apply sep_star_comm in H; apply sep_star_lift_apply in H.
+  apply sep_star_comm in H0; apply sep_star_lift_apply in H0.
+  destruct H; destruct H0.
   rewrite crash_xform_diskIs, <- crash_xform_diskIs_r by eauto.
-  unfold diskIs in *; subst; cancel.
+  unfold diskIs in *; subst.
   unfold pimpl; intros; subst.
   eapply possible_crash_eq; eauto.
+  destruct H.
+  apply sep_star_comm in H; apply sep_star_lift_apply in H; destruct H.
+  subst; auto.
 Qed.
 
 
@@ -393,7 +392,7 @@ Proof.
   specialize (H2 x); specialize (H3 x).
   intuition; repeat deex; try congruence.
 
-  substl (b x); substl (a x).
+  rewrite H, H2.
   unfold vsmerge, diskIs in *; destruct vs, vs0.
   simpl in *; intuition; subst; try congruence.
   rewrite H2 in H4; inversion H4; subst.
@@ -402,6 +401,15 @@ Proof.
   inversion H5.
 Qed.
 
+
+Lemma crash_xform_diskIs_pred : forall (F : pred) m,
+  F m -> crash_xform (diskIs m) =p=> crash_xform F.
+Proof.
+  unfold crash_xform, diskIs.
+  unfold pimpl; intros.
+  destruct H0; intuition subst.
+  eexists; eauto.
+Qed.
 
 Lemma crash_xform_ptsto_or : forall (a : addr) (vs : valuset),
   crash_xform (a |-> vs) <=p=> crash_xform (a |-> vs \/ a |=> (fst vs)).
@@ -432,6 +440,35 @@ Proof.
   apply sep_star_lift_l; intro.
   rewrite <- crash_xform_ptsto_r; eauto.
   unfold vsmerge; simpl; intuition.
+Qed.
+
+
+Theorem crash_xform_idem_l : forall (p : rawpred), 
+  crash_xform (crash_xform p) =p=> crash_xform p.
+Proof.
+  unfold crash_xform, pimpl; intros.
+  repeat deex; eexists; intuition eauto.
+  eapply possible_crash_trans; eauto.
+Qed.
+
+Theorem crash_xform_idem_r : forall (p : rawpred),
+  crash_xform p =p=> crash_xform (crash_xform p).
+Proof.
+  unfold crash_xform, pimpl, possible_crash; intros.
+  repeat deex; eexists; intuition eauto.
+  specialize (H1 a); intuition.
+  repeat destruct H; destruct H1.
+  right.
+  do 2 eexists; intuition eauto.
+  cbn; left; auto.
+Qed.
+
+Theorem crash_xform_idem : forall (p : rawpred),
+  crash_xform (crash_xform p) <=p=> crash_xform p.
+Proof.
+  split.
+  apply crash_xform_idem_l.
+  apply crash_xform_idem_r.
 Qed.
 
 

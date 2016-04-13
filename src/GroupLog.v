@@ -737,7 +737,6 @@ Module GLog.
       rep xp (Cached (d, nil)) ms *
       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]])%pred.
 
-
   Theorem crash_xform_any : forall xp ds,
     crash_xform (would_recover_any xp ds) =p=>
                  recover_any_pred  xp ds.
@@ -769,6 +768,18 @@ Module GLog.
       rewrite selR_inb by omega; auto.
   Qed.
 
+  Lemma crash_xform_cached : forall xp ds ms,
+    crash_xform (rep xp (Cached ds) ms) =p=>
+      exists d ms', rep xp (Cached (d, nil)) ms' *
+        [[[ d ::: (crash_xform (diskIs (list2nmem (fst ds)))) ]]].
+  Proof.
+    unfold rep; intros.
+    xform_norm.
+    rewrite MLog.crash_xform_synced; norm.
+    eassign (mk_mstate vmap0 nil ms'); simpl.
+    cancel.
+    intuition.
+  Qed.
 
   Lemma any_pred_any : forall xp ds,
     recover_any_pred xp ds =p=>
