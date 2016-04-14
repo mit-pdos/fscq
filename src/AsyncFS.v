@@ -327,13 +327,13 @@ Module AFS.
   Definition file_get_attr T fsxp inum mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
     let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
-      let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
+      mscs <- LOG.commit_ro (FSXPLog fsxp) mscs;
         rx ^(mscs, attr).
 
   Definition file_get_sz T fsxp inum mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
     let^ (mscs, attr) <- DIRTREE.getattr fsxp inum mscs;
-      let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
+      mscs <- LOG.commit_ro (FSXPLog fsxp) mscs;
         rx ^(mscs, INODE.ABytes attr).
 
   Definition file_set_sz T fsxp inum sz mscs rx : prog T :=
@@ -345,7 +345,7 @@ Module AFS.
   Definition read_block T fsxp inum off mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
     let^ (mscs, b) <- DIRTREE.read fsxp inum off mscs;
-      let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
+      mscs <- LOG.commit_ro (FSXPLog fsxp) mscs;
         rx ^(mscs, b).
 
   Definition truncate T fsxp inum sz mscs rx : prog T :=
@@ -360,13 +360,10 @@ Module AFS.
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) ms;
     rx ^(mscs, ok).
 
-(*
   (* sync only data blocks of a file. *)
-  Definition file_sync T fsxp inum ms rx : prog T :
+  Definition file_sync T fsxp inum ms rx : prog T :=
     ms <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum ms;
     rx ms.
-*)
-
 
 (*
 
@@ -399,7 +396,7 @@ Module AFS.
   Definition readdir T fsxp dnum mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
     let^ (mscs, files) <- SDIR.readdir (FSXPLog fsxp) (FSXPInode fsxp) dnum mscs;
-      let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
+      mscs <- LOG.commit_ro (FSXPLog fsxp) mscs;
         rx ^(mscs, files).
 
   Definition create T fsxp dnum name mscs rx : prog T :=
@@ -463,7 +460,7 @@ Module AFS.
   Definition lookup T fsxp dnum names mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
     let^ (mscs, r) <- DIRTREE.namei fsxp dnum names mscs;
-      let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
+      mscs <- LOG.commit_ro (FSXPLog fsxp) mscs;
         rx ^(mscs, r).
 
   Definition rename T fsxp dnum srcpath srcname dstpath dstname mscs rx : prog T :=
@@ -495,7 +492,7 @@ Module AFS.
 
   (* Recover theorems *)
 
-  (*
+(*
   Inductive tree_crash : tree -> tree -> Prop :=
     | TreeCrashFile : forall f1 f2,
       possible_crash (FData (list2nmem f1)) (FData (list2nmem f2)) ->
@@ -507,215 +504,36 @@ Module AFS.
   Lemma tree_crash_xform : forall t1 t2,
     tree_crash t1 t2 ->
     crash_xform (DIRTREE.rep t1) =p=> DIRTREE.rep t2.
-  *)
+*)
   
-  Definition recover {T} rx : prog T :=
-    cs <- BUFCACHE.init_recover (if eq_nat_dec cachesize 0 then 1 else cachesize);
-    let^ (cs, fsxp) <- sb_load cs;
-      mscs <- LOG.recover (FSXPLog fsxp) cs;
-      rx ^(mscs, fsxp).
-
-  Local Opaque BUFCACHE.rep.
-
-
-(*
-  Lemma crash_xform_log : m p,
-    p m ->
-    crash_xform (LOG.rep m) =p=>
-      LOG.rep m' * [[ crash_xform m' ]].
-
-*)
-
-
-Check LOG.recover_any.
-
-  Theorem recover_ok :
-    {< fsxp mset,
-     PRE
-       crash_xform (LOG.recover_any (FSXPLog fsxp) (sb_rep fsxp) mset)
-     POST RET:^(ms, fsxp')
-       [[ fsxp' = fsxp ]] *
-     (exists rec rec',
-      [[ possible_crash (list2nmem rec) (list2nmem rec') ]] *
-      LOG.rep (FSXPLog fsxp') (sb_rep fsxp) (LOG.NoTxn (rec', nil)) ms *
-      ([[ rec = fst mset ]] \/ [[ In rec (snd mset) ]]))
-     CRASH
-       crash_xform (LOG.recover_any (FSXPLog fsxp) (sb_rep fsxp) mset)
-     >} recover.
-  Admitted.
-
-
-
-  Hint Extern 1 ({{_}} progseq (recover) _) => apply recover_ok : prog.
-
-  Ltac recover_ro_ok := intros;
-    repeat match goal with 
-      | [ |- forall_helper _ ] => idtac "forall"; unfold forall_helper; intros; eexists; intros
-      | [ |- corr3 ?pre' _ _ ] => idtac "corr3 pre"; eapply corr3_from_corr2_rx; eauto with prog
-      | [ |- corr3 _ _ _ ] => idtac "corr3"; eapply pimpl_ok3; intros
-      | [ |- corr2 _ _ ] => idtac "corr2"; step
-      | [ |- pimpl (crash_xform _) _ ] => idtac "crash_xform"; autorewrite with crash_xform
-      | [ H: pimpl (crash_xform _) _ |- _ ] => idtac "crash_xform2"; rewrite H; cancel
-      | [ H: diskIs _ _ |- _ ] => idtac "unfold"; unfold diskIs in *
-    end.
-
-(*
-
-   Require Import Log.
-
-  Lemma either_pimpl_pred : forall xp F old (newpred: pred),
-   newpred (list2nmem old) ->
-      LOG.either xp F old old =p=> LOG.recover_either_pred xp F newpred newpred.
-  Proof.
-     intros.
-     unfold LOG.either, LOG.recover_either_pred.
-     eexists.
-     (* maybe follows from H0? *)
-  Admitted.
-
-  Theorem recover_ok :
-    {< fsxp Fold Fnew,
-     PRE
-       crash_xform (LOG.recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) Fold Fnew)
-       POST RET:^(mscs, fsxp')
-       [[ fsxp' = fsxp ]] *
-     (exists old, LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn old) mscs *
-                  [[[ old ::: crash_xform Fold ]]]  \/
-                  exists new, LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn new) mscs *
-                              [[[ new ::: crash_xform Fnew ]]])
-       CRASH
-       LOG.recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) Fold Fnew
-     >} recover.
-  Proof.
-    unfold recover, LOG.recover_either_pred; intros.
-
-    eapply pimpl_ok2; eauto with prog.
-    intros. norm'l. unfold stars; simpl.
-    repeat ( setoid_rewrite crash_xform_exists_comm ||
-                            setoid_rewrite crash_xform_sep_star_dist ||
-                            setoid_rewrite crash_xform_lift_empty ).
-    cancel.
-    apply sep_star_comm.
-    eauto.
-    destruct (eq_nat_dec cachesize 0); congruence.
-
-    step.
-    autorewrite with crash_xform. cancel.
-
-    eapply pimpl_ok2; eauto with prog.
-    unfold LOG.recover_either_pred.
-    cancel.
-
-    rewrite crash_xform_idem.
-    set_evars; rewrite crash_xform_sep_star_dist; subst_evars.
-    set_evars; rewrite crash_xform_sep_star_dist; subst_evars.
-    eauto.
-
-    step.
-    unfold LOG.rep, MemLog.MLog.rep; cancel.
-    or_l; cancel.
-    setoid_rewrite crash_xform_sb_rep; cancel. eauto.
-
-    unfold LOG.rep, MemLog.MLog.rep; cancel.
-    or_r; cancel.
-    setoid_rewrite crash_xform_sb_rep; cancel. eauto.
-
-    subst; pimpl_crash.
-    autorewrite with crash_xform; cancel.
-    rewrite crash_xform_idem; auto.
-    rewrite crash_xform_idem; auto.
-
-    pimpl_crash; norml; unfold stars; simpl.
-    autorewrite with crash_xform.
-    norm; [ cancel | intuition ].
-    eapply pred_apply_crash_xform_pimpl; eauto.
-    rewrite crash_xform_idem; auto.
-
-    Unshelve. eauto.
-  Qed.
-*)
 
 
   (* Specs and proofs *)
 
-(* XXX update to be file specific *)
-
- Theorem update_block_d_ok : forall fsxp inum off v ms,
-    {< m F v0,
-    PRE
-      LOG.rep (FSXPLog fsxp) emp (LOG.NoTxn (m, nil)) ms *
-      [[[ m ::: (F * a |-> v0) ]]] *
-      [[ a <> 0 ]]
-    POST RET:^(ms, r)
-      exists m',
-      LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn (m', nil)) ms *
-      [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
-    CRASH
-      LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn (m, nil)) ms \/
-      exists m',
-      LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn (m', nil)) ms *
-      [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
-    >} update_block_d fsxp inum off v ms.
-  Admitted.
-
-  Theorem update_block_d_recover_ok : forall lxp a v ms,
-    {<< m F v0,
-    PRE
-      LOG.rep lxp emp (LOG.NoTxn (m, nil)) ms *
-      [[[ m ::: (F * a |-> v0) ]]] *
-      [[ a <> 0 ]]
-    POST RET:^(ms, r)
-      exists m',
-      LOG.rep lxp emp (LOG.NoTxn (m', nil)) ms *
-      [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]]
-    REC RET:^(ms, lxp)
-      exists m',
-      LOG.rep lxp emp (LOG.NoTxn (m', nil)) ms *
-      [[[ m' ::: crash_xform (F * a |-> (v, vsmerge v0)) ]]]
-    >>} update_block_d lxp a v ms >> recover.
-  Proof.
-    recover_ro_ok.
-    eapply update_block_d_ok.
-    eapply recover_ok.
-
-    cancel.
-
-    step.
-    apply pimpl_refl.
-
-    norml; unfold stars; simpl.
-    xform.
-    cancel.
-
-    admit.
-    admit.
-    admit.
-
-
-    unfold LOG.recover_any.
-    instantiate (mset := (v0, [])).
-    admit.
-  Admitted.
-
-
 
   Theorem file_getattr_ok : forall fsxp inum mscs,
-  {< m pathname Fm Ftop tree f,
-  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn m) mscs  *
-         [[[ m ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
+  {< ds pathname Fm Ftop tree f,
+  PRE    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs  *
+         [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
   POST RET:^(mscs,r)
-         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn m) mscs *
+         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
          [[ r = BFILE.BFAttr f ]]
-  CRASH  LOG.either (FSXPLog fsxp) (sb_rep fsxp) m m
+  CRASH LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds
   >} file_get_attr fsxp inum mscs.
   Proof.
-    unfold file_get_attr.
-    hoare.
-    apply LOG.intact_either.
-    rewrite LOG.no_txn_intact, LOG.intact_either; auto.
-    rewrite LOG.active_txn_intact, LOG.intact_either; auto.
-  Qed.
+    unfold file_get_attr; intros.
+    step.
+    step.
+    eapply pimpl_ok2.
+    apply LOG.commit_ro_ok.
+    cancel.
+    step.
+    subst; pimpl_crash; cancel.
+    rewrite LOG.notxn_idempred; cancel.
+    rewrite LOG.intact_idempred; cancel.
+    rewrite LOG.notxn_idempred; cancel.
+ Qed.
 
 
   Theorem file_getattr_recover_ok : forall fsxp inum mscs,
