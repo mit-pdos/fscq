@@ -561,23 +561,18 @@ Module AFS.
     xform_norm.
     rewrite LOG.idempred_idem.
     xform_norm.
-    rewrite LOG.after_crash_idempred.
+    rewrite SB.crash_xform_rep.
+    recover_ro_ok.
     cancel.
-    admit.
+
     step.
-    unfold LOG.after_crash.
-    unfold LOG.rep.
-    instantiate (F_0 := F_).
-    instantiate (cs1 := (snd (a0, b0))).
-    instantiate (fsxp0 := fsxp).
-    subst; simpl.
-    admit.  (* seems true? *)
+    eapply LOG.notxn_after_crash_diskIs; eauto.
+
     cancel.
-    instantiate (anon := (fst v)).
-    instantiate (anon0 := (snd v)).
-    rewrite LOG.after_crash_idempred; cancel.
-    admit.  (* true *)
-  Admitted.
+    rewrite LOG.after_crash_idempred.
+    destruct v; auto.
+  Qed.
+
 
   Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
 

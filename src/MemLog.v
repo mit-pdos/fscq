@@ -558,23 +558,24 @@ Module MLog.
     apply map_valid_Forall_synced_map_fst; auto.
     step.
     step.
+    rewrite replay_disk_vssync_vsupd_vecs; auto.
+    rewrite replay_disk_length; auto.
 
     (* crash conditions *)
-    or_r; norm. cancel. intuition eauto.
+    or_r; safecancel; eauto.
 
     (* truncated *)
-    or_l; norm; unfold stars; simpl.
+    or_l; safecancel; eauto.
     rewrite apply_synced_data_ok; cancel.
-    intuition eauto.
 
     (* synced nil *)
-    or_r; cancel; eauto.
+    or_r; safecancel; eauto.
     apply MapFacts.Equal_refl.
+    rewrite replay_disk_vssync_vsupd_vecs; eauto.
 
     (* unsync_syncing *)
-    or_l; norm; unfold stars; simpl.
+    or_l; safecancel; eauto.
     rewrite apply_unsync_syncing_ok; cancel.
-    intuition; eauto.
 
     (* unsync_applying *)
     rewrite apply_unsync_applying_ok; cancel.

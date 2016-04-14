@@ -539,6 +539,14 @@ Module LOG.
     rewrite H0; eauto. intuition simpl; eauto.
   Qed.
 
+  Lemma notxn_after_crash_diskIs : forall xp F n ds d ms,
+    crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
+    n <= length (snd ds) ->
+    rep xp F (NoTxn (d, nil)) ms =p=> after_crash xp F ds (snd ms).
+  Proof.
+    unfold rep, after_crash, rep_inner; intros.
+    safecancel; auto.
+  Qed.
 
   (** idempred includes both before-crash cand after-crash cases *)
   Definition idempred xp F ds :=
@@ -729,21 +737,24 @@ Module LOG.
     >} read_range xp a nr vfold v0 ms.
   Proof.
     unfold read_range; intros.
-    prestep. norm. cancel.
-    unfold rep_inner; intuition.
-    pred_apply; cancel.
+    safestep. auto.
     subst; pred_apply; cancel.
 
-    prestep; norm. cancel. intuition simpl.
-    subst; pred_apply; cancel.
+    safestep.
+    unfold rep_inner; cancel.
     eapply lt_le_trans; eauto.
-    subst; denote (Map.elements (MSTxn a0)) as Hx; rewrite <- Hx.
+    subst; denote (Map.elements (MSTxn a1)) as Hx; rewrite <- Hx.
     pred_apply; cancel.
 
+    step.
     rewrite firstn_S_selN_expand with (def := $0).
     rewrite fold_left_app; simpl.
     erewrite selN_map by omega; subst; auto.
     rewrite map_length; omega.
+
+    unfold rep_inner; cancel.
+    step.
+    eauto.
     Unshelve. exact tt.
   Qed.
 

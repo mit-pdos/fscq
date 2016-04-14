@@ -653,9 +653,8 @@ Module PaddedLog.
     unfold read.
     step.
 
-    safestep; subst.
-    instantiate (1 := map ent_addr (padded_log l)).
-    rewrite map_length, padded_log_length.
+    safestep.
+    rewrite map_length. rewrite padded_log_length.
     all: auto.
     rewrite desc_padding_synced_piff; cancel.
 
@@ -1732,13 +1731,13 @@ Module DLog.
   Lemma extend_unsynced_synced : forall xp l,
     rep xp (ExtendedUnsync l) =p=> exists na, rep xp (Synced na l).
   Proof.
-    unfold rep, rep_common; cancel.
+    unfold rep, rep_common; cancel; eauto.
   Qed.
 
   Lemma synced_extend_unsynced : forall xp l na,
     rep xp (Synced na l) =p=> rep xp (ExtendedUnsync l).
   Proof.
-    unfold rep, rep_common; cancel.
+    unfold rep, rep_common; cancel; eauto.
   Qed.
 
 
