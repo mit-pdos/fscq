@@ -217,9 +217,10 @@ Theorem update_block_d2_ok : forall fsxp a v ms,
   \/  ([[ r = true  ]] * exists ds',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') ms *
         [[[ ds'!! ::: (F * a |-> (v, vsmerge v0)) ]]])
-  CRASH exists d',
-      (exists n, LOG.recover_any (FSXPLog fsxp) (SB.rep fsxp) n (pushd d' ds)) *
-      [[[ d' ::: (F * a |-> (v, vsmerge v0)) ]]]
+  CRASH
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds \/
+      exists m', [[[ m' ::: (F * a |-> (v, vsmerge v0)) ]]] *
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (m', nil)
   >} update_block_d2 (FSXPLog fsxp) a v ms.
 Proof.
   unfold update_block_d2; intros.
@@ -233,15 +234,13 @@ Proof.
   step.
 
   subst; pimpl_crash; cancel.
-  or_r; cancel.
-  or_l; cancel.
-  rewrite LOG.active_notxn.
-  or_r; cancel.
-  rewrite LOG.notxn_intact, LOG.intact_any.
-  or_l; cancel.
-Admitted.
+  or_r; rewrite LOG.notxn_idempred; cancel.
+  or_l; rewrite LOG.recover_any_idempred; cancel.
+  or_r; rewrite LOG.active_idempred; cancel.
+  or_l; rewrite LOG.notxn_idempred; cancel.
+Qed.
 
- 
+
 Theorem update_block_d2_recover_ok : forall fsxp a v ms,
   {<< ds F v0,
   PRE
@@ -274,31 +273,44 @@ Proof.
   subst.
   or_l. cancel. subst.
   apply pimpl_refl.
-  admit.
-  subst. apply pimpl_refl.
+  or_r. cancel. subst.
+  apply pimpl_refl.
   apply pimpl_refl.
 
   xform_norm.
-  xform. norml; unfold stars; simpl.
-    unfold  LOG.recover_any_pred, GLog.recover_any_pred, LOG.recover_any.
-    unfold LOG.rep, GLog.would_recover_any.
-    xform. norml; unfold stars; simpl.
-    xform. norml; unfold stars; simpl.
-    xform. norml; unfold stars; simpl.
 
-    cancel.
+  - rewrite LOG.idempred_idem.
+    xform_norml.
+    rewrite SB.crash_xform_rep.
     recover_ro_ok.
-    admit.
+    cancel.
 
     step.
-    eassign F_. cancel.
-    admit.
-    unfold LOG.recover_any.
-    admit.
-    
+    destruct v0; simpl in *.
+    or_l; norm. cancel.
+    eassign n; intuition.
 
+    cancel.
+    or_l; destruct v0.
+    rewrite LOG.after_crash_idempred; cancel.
 
-Admitted.
+  - rewrite LOG.idempred_idem.
+    xform_norml.
+    rewrite SB.crash_xform_rep.
+    recover_ro_ok.
+    cancel.
+
+    step.
+    destruct v0; simpl in *.
+    or_r; norm. cancel.
+    pred_apply.
+    replace n with 0 by omega; rewrite nthd_0; simpl.
+    rewrite crash_xform_diskIs_pred by eauto.
+    xform_dist; rewrite crash_xform_ptsto; cancel.
+
+    cancel.
+    rewrite LOG.after_crash_idempred; cancel.
+Qed.
 
 
 
