@@ -545,7 +545,7 @@ Module AFS.
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
          [[ r = BFILE.BFAttr f ]]
   REC RET:^(mscs, fsxp)
-        LOG.recover_any (FSXPLog fsxp) (SB.rep fsxp) ds
+        exists cs, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs
   >>} file_get_attr fsxp inum mscs >> recover.
   Proof.
     unfold forall_helper.
@@ -565,7 +565,18 @@ Module AFS.
     cancel.
     admit.
     step.
-    Search "notxn".
+    unfold LOG.after_crash.
+    unfold LOG.rep.
+    instantiate (F_0 := F_).
+    instantiate (cs1 := (snd (a0, b0))).
+    instantiate (fsxp0 := fsxp).
+    subst; simpl.
+    admit.  (* seems true? *)
+    cancel.
+    instantiate (anon := (fst v)).
+    instantiate (anon0 := (snd v)).
+    rewrite LOG.after_crash_idempred; cancel.
+    admit.  (* true *)
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
