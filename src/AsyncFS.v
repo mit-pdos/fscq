@@ -537,41 +537,35 @@ Module AFS.
 
 
   Theorem file_getattr_recover_ok : forall fsxp inum mscs,
-  {<< m pathname Fm Ftop tree f,
-  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn m) mscs  *
-         [[[ m ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
+  {<< ds pathname Fm Ftop tree f,
+  PRE    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs  *
+         [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
   POST RET:^(mscs,r)
-         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn m) mscs *
+         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
          [[ r = BFILE.BFAttr f ]]
   REC RET:^(mscs, fsxp)
-         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (LOG.NoTxn m) mscs 
+        LOG.recover_any (FSXPLog fsxp) (SB.rep fsxp) ds
   >>} file_get_attr fsxp inum mscs >> recover.
   Proof.
-    recover_ro_ok.
+    unfold forall_helper.
+    intros; eexists; intros.
+    eapply pimpl_ok3.
+    eapply corr3_from_corr2_rx.
+    eapply file_getattr_ok.
+    eapply recover_ok.
     cancel.
     eauto.
-    recover_ro_ok.
-    cancel.
-    exists fsxp.
-    eexists.
-    eexists.
-    exists F_.
-    pred_apply.
-    cancel.
-    erewrite crash_xform_sep_star_dist.
-    rewrite H3.
-    cancel.
-    instantiate (x := (v1 ✶ DIRTREE.rep fsxp v2 v3)%pred).
-    instantiate (x0 := (v1 ✶ DIRTREE.rep fsxp v2 v3)%pred).
-    eapply crash_xform_pimpl.
-    eapply either_pimpl_pred; eauto.
     step.
-    (* are old and v the same? *)
-    admit.
-    admit.
+    eapply pimpl_refl.
+    xform_norm.
+    rewrite LOG.idempred_idem.
+    xform_norm.
+    rewrite LOG.after_crash_idempred.
     cancel.
-    (* need either_pimpl_pred both ways? *)
+    admit.
+    step.
+    Search "notxn".
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
