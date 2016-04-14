@@ -563,28 +563,27 @@ Module GLog.
     cancel.
     rewrite nthd_0; cancel.
 
-    - safestep; eauto.
+    - safestep.
       eapply dset_match_log_valid_selN; eauto.
-      prestep; norm. cancel. intuition; pred_apply.
+      safestep.
 
       (* flush() returns true *)
       erewrite dset_match_nthd_S by eauto; cancel.
-      cancel.
 
       (* flush() returns false, this is impossible *)
       exfalso; eapply dset_match_ent_length_exfalso; eauto.
 
       (* crashes *)
-      subst; pimpl_crash; norm. cancel.
-      intuition; pred_apply. norm.
+      safecancel.
       eassign (mk_mstate vmap0 (MSTxns m) vmap0); simpl.
       rewrite selR_inb by eauto; cancel.
-      simpl; intuition; eauto.
+      all: simpl; auto; omega.
 
-    - prestep; norm. cancel. intuition; pred_apply.
+    - safestep.
       rewrite nthd_oob by (erewrite dset_match_length; eauto).
       cancel.
-    - pimpl_crash. cancel.
+
+    - safecancel.
       eassign raw; pred_apply.
       rewrite MLog.synced_recover_either.
       norm. rewrite nthd_0; cancel.
@@ -823,17 +822,11 @@ Module GLog.
     >} recover xp cs.
   Proof.
     unfold recover, recover_any_pred, rep.
-    step.
+    safestep.
     unfold MLog.recover_either_pred; cancel.
     rewrite sep_star_or_distr; or_l; cancel.
 
-    prestep. norm. cancel.
-    intuition simpl; auto; pred_apply.
-    xform_norm.
-
-    norm. cancel. intuition simpl; eauto.
-    norm. cancel. intuition simpl; eauto.
-    pred_apply.
+    safestep. eauto.
     instantiate (1 := nil); cancel.
   Qed.
 

@@ -661,6 +661,7 @@ Module BUFCACHE.
     step.
     cancel.
     eassign F; cancel.
+    apply pimpl_refl.
 
     prestep; cancel.
     cancel.

@@ -468,16 +468,17 @@ Proof.
   intuition; apply PickLater; auto.
 Qed.
 
-(*
 Lemma crash_xform_okToUnify : forall (P Q: rawpred),
   okToUnify P Q -> okToUnify (crash_xform P) (crash_xform Q).
 Proof.
   intros. unfold okToUnify in *. congruence.
 Qed.
-*)
 
-Ltac pick := solve [ repeat ((apply PickFirst; solve [ (*try apply crash_xform_okToUnify; *) trivial with okToUnify ])
-                               || apply PickLater) ].
+
+Ltac pick := solve [ repeat 
+          ((apply PickFirst;
+            solve [ try apply crash_xform_okToUnify; trivial with okToUnify ]
+           ) || apply PickLater) ].
 
 
 Theorem imply_one : forall AT AEQ V qs qs' (p : @pred AT AEQ V) q ps F,
@@ -549,7 +550,7 @@ Ltac cancel' := repeat (cancel_one || delay_one);
                     | context[sep_star] => match Q with context[sep_star] => fail 2 end
                     | _ => idtac
                     end;
-                    apply finish_frame
+                    simple apply finish_frame
                   end ].
 
 Theorem split_or_one : forall AT AEQ V (q : @pred AT AEQ V) pa pb ps F,
@@ -893,6 +894,25 @@ Tactic Notation "substl" constr(term) :=
   end.
 
 
+Ltac safecancel :=
+  intros;
+  unfold stars; simpl; try subst;
+  pimpl_crash;
+  norm;
+  try match goal with
+      | [ |- _ =p=> stars ((_ \/ _) :: nil) ] =>
+        solve [ apply stars_or_left; safecancel
+              | apply stars_or_right; safecancel ]
+      | [ |- _ =p=> _ ] => cancel'
+      end;
+  set_evars; intuition; subst_evars;
+  try ( pred_apply; safecancel );
+  try congruence;
+  unfold stars; simpl; inv_option_eq;
+  try match goal with
+  | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
+  end.
+
 Ltac cancel_with t :=
   intros;
   unfold stars; simpl; try subst;
@@ -995,11 +1015,8 @@ Ltac poststep t :=
   try t.
 
 Ltac safestep :=
-    prestep; norm; [ cancel | ];
-    repeat match goal with 
-    | [ |- _ /\ _ ] => split 
-    | [ |- True ] => auto
-    end; try pred_apply.
+    prestep; safecancel;
+    set_evars; poststep auto; subst_evars.
 
 Ltac or_r := apply pimpl_or_r; right.
 Ltac or_l := apply pimpl_or_r; left.
