@@ -577,6 +577,85 @@ Module AFS.
   Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
 
 
+  Theorem file_getattr_ok_strict : forall fsxp inum mscs,
+  {< ds pathname Fm Ftop tree f,
+  PRE    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs  *
+         [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+  POST RET:^(mscs,r)
+         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+         [[ r = BFILE.BFAttr f ]]
+  CRASH  LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds
+  >} file_get_attr fsxp inum mscs.
+  Proof.
+    unfold file_get_attr; intros.
+    step.
+    step.
+    eapply pimpl_ok2.
+    apply LOG.commit_ro_ok.
+    cancel.
+    step.
+    subst; pimpl_crash; cancel.
+    apply LOG.notxn_intact.
+    apply LOG.notxn_intact.
+ Qed.
+
+
+  Theorem file_getattr_recover_ok_strict : forall fsxp inum mscs,
+  {<< ds pathname Fm Ftop tree f,
+  PRE    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs  *
+         [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+  POST RET:^(mscs,r)
+         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+         [[ r = BFILE.BFAttr f ]]
+  REC RET:^(mscs, fsxp)
+         exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
+         [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
+  >>} file_get_attr fsxp inum mscs >> recover.
+  Proof.
+    unfold forall_helper.
+    intros; eexists; intros.
+    eapply pimpl_ok3.
+    eapply corr3_from_corr2_rx.
+    eapply file_getattr_ok_strict.
+    eapply recover_ok.
+    cancel.
+    eauto.
+    step.
+    eassign ( LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v \/
+      (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs))%pred.
+    cancel; cancel.
+
+    xform_norm.
+    recover_ro_ok.
+    rewrite LOG.crash_xform_intact.
+    xform_norm.
+    rewrite SB.crash_xform_rep.
+
+    cancel.
+    rewrite LOG.notxn_after_crash_diskIs. cancel.
+    rewrite nthd_0; eauto. omega.
+
+    safestep; subst.
+    eassign d0; eauto.
+    pred_apply; instantiate (1 := nil).
+    replace n with 0 in *.
+    rewrite nthd_0; simpl; auto.
+    simpl in *; omega.
+
+    cancel; cancel.
+    rewrite LOG.after_crash_idem.
+    xform_norm.
+    rewrite SB.crash_xform_rep.
+    recover_ro_ok.
+    cancel.
+
+    step.
+    cancel; cancel.
+  Qed.
+
+
   (*
 Theorem read_block_ok : forall fsxp inum off mscs,
   {< m F Fm Ftop tree pathname f B v,

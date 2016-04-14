@@ -529,6 +529,24 @@ Module LOG.
 
   Hint Extern 0 (okToUnify (LOG.rep_inner _ _ _) (LOG.rep_inner _ _ _)) => constructor : okToUnify.
 
+  Instance rep_proper_iff :
+    Proper (eq ==> piff ==> eq ==> eq ==> pimpl) rep.
+  Proof.
+    unfold Proper, respectful; intros.
+    unfold rep; cancel.
+    apply H0.
+  Qed.
+
+  Instance intact_proper_iff :
+    Proper (eq ==> piff ==> eq ==> pimpl) intact.
+  Proof.
+    unfold Proper, respectful; intros.
+    unfold intact; cancel; or_l.
+    rewrite H0; eauto.
+    rewrite active_notxn.
+    rewrite H0; eauto.
+  Qed.
+
   Instance after_crash_proper_iff :
     Proper (eq ==> piff ==> eq ==> eq ==> pimpl) after_crash.
   Proof.
@@ -537,6 +555,18 @@ Module LOG.
     subst. norm. cancel. intuition simpl.
     pred_apply. norm. cancel.
     rewrite H0; eauto. intuition simpl; eauto.
+  Qed.
+
+  Lemma crash_xform_diskIs_eq_trans : forall d d1 d2,
+    crash_xform (diskIs d) d1 ->
+    crash_xform (diskIs d) d2 ->
+    d1 = d2.
+  Proof.
+    intros.
+    eapply crash_xform_diskIs_eq; eauto.
+    replace d1 with d; auto.
+    eapply crash_xform_diskIs_eq; eauto.
+
   Qed.
 
   Lemma notxn_after_crash_diskIs : forall xp F n ds d ms,
@@ -609,6 +639,30 @@ Module LOG.
     or_r; cancel.
     rewrite H0; eauto.
   Qed.
+
+  Theorem crash_xform_intact : forall xp F ds,
+    crash_xform (intact xp F ds) =p=>
+      exists ms d, rep xp (crash_xform F) (NoTxn (d, nil)) ms *
+        [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]].
+  Proof.
+    unfold intact, rep, rep_inner; intros.
+    xform_norm;
+    rewrite BUFCACHE.crash_xform_rep_pred by eauto;
+    xform_norm;
+    denote crash_xform as Hx;
+    apply crash_xform_sep_star_dist in Hx;
+    rewrite GLog.crash_xform_cached in Hx;
+    destruct_lift Hx.
+
+    cancel.
+    eassign (mk_mstate (MSTxn m) dummy0).
+    cancel. auto. auto.
+
+    cancel.
+    eassign (mk_mstate vmap0 dummy0).
+    cancel. auto. auto.
+  Qed.
+
 
   Hint Resolve active_intact flushing_any.
   Hint Extern 0 (okToUnify (intact _ _ _) (intact _ _ _)) => constructor : okToUnify.
