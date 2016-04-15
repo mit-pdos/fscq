@@ -342,7 +342,7 @@ Module AFS.
     let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
       rx ^(mscs, ok).
 
-  Definition read_block T fsxp inum off mscs rx : prog T :=
+  Definition read_fblock T fsxp inum off mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
     let^ (mscs, b) <- DIRTREE.read fsxp inum off mscs;
       mscs <- LOG.commit_ro (FSXPLog fsxp) mscs;
@@ -354,11 +354,11 @@ Module AFS.
      rx ^(mscs, ok).
 
   (* update an existing block directly.  XXX dwrite happens to sync metadata. *)
-  Definition update_block_d T fsxp inum off v ms rx : prog T :=
+  Definition update_fblock_d T fsxp inum off v ms rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) ms;
     mscs <- BFILE.dwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v ms;
-    let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) ms;
-    rx ^(mscs, ok).
+    mscs <- LOG.commit_ro (FSXPLog fsxp) ms;
+    rx mscs.
 
   (* sync only data blocks of a file. *)
   Definition file_sync T fsxp inum ms rx : prog T :=
@@ -656,76 +656,138 @@ Module AFS.
   Qed.
 
 
-  (*
-Theorem read_block_ok : forall fsxp inum off mscs,
-  {< m F Fm Ftop tree pathname f B v,
-  PRE    LOG.rep (FSXPLog fsxp) F (NoTransaction m) mscs *
-         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-         [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
-  POST RET:^(mscs,r)
-         LOG.rep (FSXPLog fsxp) F (NoTransaction m) mscs *
-         [[ r = v ]]
-  CRASH  LOG.would_recover_either (FSXPLog fsxp) F m m
-  >} read_block fsxp inum off mscs.
-Proof.
-  unfold read_block.
-  hoare.
-  apply LOG.would_recover_old_either.
-  rewrite LOG.notxn_would_recover_old. apply LOG.would_recover_old_either.
-  rewrite LOG.activetxn_would_recover_old. apply LOG.would_recover_old_either.
-Qed.
 
-Hint Extern 1 ({{_}} progseq (read_block _ _ _ _) _) => apply read_block_ok : prog.
+  Theorem read_fblock_ok : forall fsxp inum off mscs,
+    {< ds Fm Ftop tree pathname f Fd vs,
+    PRE    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+           [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
+           [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
+           [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
+    POST RET:^(mscs,r)
+           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+           [[ r = fst vs ]]
+    CRASH  LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds
+    >} read_fblock fsxp inum off mscs.
+  Proof.
+      unfold read_fblock; intros.
+      step.
+      step.
+      eapply pimpl_ok2.
+      apply LOG.commit_ro_ok.
+      cancel.
+      step.
+      subst; pimpl_crash; cancel.
+      apply LOG.notxn_intact.
+      apply LOG.notxn_intact.
+  Qed.
 
-Theorem read_block_recover_ok : forall fsxp inum off mscs,
-  {<< m Fm Ftop tree pathname f B v,
-  PRE    LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-         [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
-         [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f)) ]]
-  POST RET:^(mscs,r)
-         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-         [[ r = v ]]
-  REC RET:^(mscs,fsxp)
-         LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs
-  >>} read_block fsxp inum off mscs >> recover.
-Proof.
-  recover_ro_ok.
-Qed.
 
-Theorem write_block_inbounds_ok : forall fsxp inum off v mscs,
-  {< m Fm flist A f B v0,
-  PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-          [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist)%pred (list2mem m) ]] *
-          [[ (A * #inum |-> f)%pred (list2nmem flist) ]] *
-          [[ (B * #off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]]
-  POST RET:^(mscs,ok)
-          [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
-          [[ ok = true ]] * exists m' flist' f',
-          LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-          [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
-          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]]
-  CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
-          exists flist' f',
-          (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred *
-          [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
-          [[ (B * #off |-> v)%pred (list2nmem (BFILE.BFData f')) ]])%pred
-  >} write_block_inbounds fsxp inum off v mscs.
-Proof.
-  unfold write_block_inbounds.
-  hoare.
-  rewrite <- LOG.would_recover_either_pred_pimpl. cancel.
-  rewrite <- LOG.would_recover_old_either_pred. cancel.
-  rewrite <- LOG.would_recover_old_either_pred.
-  unfold LOG.rep, LOG.would_recover_old, LOG.would_recover_old'. cancel. cancel.
-  rewrite <- LOG.would_recover_old_either_pred.
-  unfold LOG.rep, LOG.would_recover_old, LOG.would_recover_old'. cancel. cancel.
-Qed.
+  Hint Extern 1 ({{_}} progseq (read_fblock _ _ _ _) _) => apply read_fblock_ok : prog.
+
+  Theorem read_fblock_recover_ok : forall fsxp inum off mscs,
+    {<< ds Fm Ftop tree pathname f Fd vs,
+    PRE    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+           [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
+           [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
+           [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
+    POST RET:^(mscs,r)
+           LOG.rep (FSXPLog fsxp) (SB.rep  fsxp) (LOG.NoTxn ds) mscs *
+           [[ r = fst vs ]]
+    REC RET:^(mscs,fsxp)
+         exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
+         [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
+    >>} read_fblock fsxp inum off mscs >> recover.
+  Proof.
+    unfold forall_helper.
+    intros; eexists; intros.
+    eapply pimpl_ok3.
+    eapply corr3_from_corr2_rx.
+    eapply read_fblock_ok.
+    eapply recover_ok.
+    cancel.
+    eauto.
+    eauto.
+    step.
+    eassign ( LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v \/
+      (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs))%pred.
+    cancel; cancel.
+
+    xform_norm.
+    recover_ro_ok.
+    rewrite LOG.crash_xform_intact.
+    xform_norm.
+    rewrite SB.crash_xform_rep.
+
+    cancel.
+    rewrite LOG.notxn_after_crash_diskIs. cancel.
+    rewrite nthd_0; eauto. omega.
+
+    safestep; subst.
+    eassign d0; eauto.
+    pred_apply; instantiate (1 := nil).
+    replace n with 0 in *.
+    rewrite nthd_0; simpl; auto.
+    simpl in *; omega.
+
+    cancel; cancel.
+    rewrite LOG.after_crash_idem.
+    xform_norm.
+    rewrite SB.crash_xform_rep.
+    recover_ro_ok.
+    cancel.
+
+    step.
+    cancel; cancel.
+
+  Qed.
+
+
+  Theorem update_fblock_d_ok : forall fsxp inum off v mscs,
+    {< ds Fm flist A f Fd v0,
+    PRE     
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+      [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
+      [[[ flist ::: (A * inum |-> f) ]]] *
+      [[[ (BFILE.BFData f) ::: (Fd * off |-> v0) ]]]
+    POST RET:mscs
+      exists d flist' f',
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs *
+      [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
+      [[[ flist' ::: (A * inum |-> f') ]]] *
+      [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]]
+    CRASH   
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds \/
+      exists d, [[[ d  ::: (Fd * off |-> (v, vsmerge v0)) ]]] *
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds)
+   >} update_fblock_d fsxp inum off v mscs.
+  Proof.
+    unfold update_fblock_d; intros.
+    step.
+    step.
+
+    (* XXX: why eauto with prog pick the wrong spec? *)
+    eapply pimpl_ok2.
+    apply LOG.commit_ro_ok.
+    cancel.
+    instantiate (1 := (m1, nil)); simpl.
+    rewrite singular_latest by auto; simpl; cancel.
+
+    step.
+    subst; pimpl_crash.
+    cancel. or_r; cancel; eauto.
+    rewrite LOG.notxn_idempred; auto.
+
+    or_l; rewrite LOG.recover_any_idempred; cancel.
+    or_r; rewrite LOG.active_idempred; cancel.
+    or_l; rewrite LOG.notxn_idempred; cancel.
+
+
+  Qed.
 
 Hint Extern 1 ({{_}} progseq (write_block_inbounds _ _ _ _ _) _) => apply write_block_inbounds_ok : prog.
 
+
+(*
 Theorem write_block_inbounds_recover_ok : forall fsxp inum off v mscs cachesize,
   {<< flist A f B v0 Fm m,
   PRE     [[ cachesize <> 0 ]] *
