@@ -557,18 +557,6 @@ Module LOG.
     rewrite H0; eauto. intuition simpl; eauto.
   Qed.
 
-  Lemma crash_xform_diskIs_eq_trans : forall d d1 d2,
-    crash_xform (diskIs d) d1 ->
-    crash_xform (diskIs d) d2 ->
-    d1 = d2.
-  Proof.
-    intros.
-    eapply crash_xform_diskIs_eq; eauto.
-    replace d1 with d; auto.
-    eapply crash_xform_diskIs_eq; eauto.
-
-  Qed.
-
   Lemma notxn_after_crash_diskIs : forall xp F n ds d ms,
     crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
     n <= length (snd ds) ->
@@ -1159,6 +1147,8 @@ End LOG.
 
 Global Opaque LOG.begin.
 Global Opaque LOG.abort.
+Global Opaque LOG.commit.
+Global Opaque LOG.commit_ro.
 Global Opaque LOG.write.
 Global Opaque LOG.write_array.
 Arguments LOG.rep : simpl never.

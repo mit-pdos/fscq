@@ -355,10 +355,10 @@ Module AFS.
 
   (* update an existing block directly.  XXX dwrite happens to sync metadata. *)
   Definition update_fblock_d T fsxp inum off v ms rx : prog T :=
-    mscs <- LOG.begin (FSXPLog fsxp) ms;
-    mscs <- BFILE.dwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v ms;
-    mscs <- LOG.commit_ro (FSXPLog fsxp) ms;
-    rx mscs.
+    ms <- LOG.begin (FSXPLog fsxp) ms;
+    ms <- BFILE.dwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v ms;
+    ms <- LOG.commit_ro (FSXPLog fsxp) ms;
+    rx ms.
 
   (* sync only data blocks of a file. *)
   Definition file_sync T fsxp inum ms rx : prog T :=
@@ -751,37 +751,40 @@ Module AFS.
       [[[ (BFILE.BFData f) ::: (Fd * off |-> v0) ]]]
     POST RET:mscs
       exists d flist' f',
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs *
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
       [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
       [[[ flist' ::: (A * inum |-> f') ]]] *
       [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]]
     CRASH   
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds \/
-      exists d, [[[ d  ::: (Fd * off |-> (v, vsmerge v0)) ]]] *
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds)
+      exists d flist' f',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, nil) *
+      [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
+      [[[ flist' ::: (A * inum |-> f') ]]] *
+      [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]]
    >} update_fblock_d fsxp inum off v mscs.
   Proof.
     unfold update_fblock_d; intros.
     step.
     step.
+    eapply list2nmem_ptsto_bound; eauto.
 
     (* XXX: why eauto with prog pick the wrong spec? *)
-    eapply pimpl_ok2.
+    eapply pimpl_ok2. unfold LOG.commit_ro.
     apply LOG.commit_ro_ok.
     cancel.
-    instantiate (1 := (m1, nil)); simpl.
+    instantiate (1 := (m', nil)); simpl.
     rewrite singular_latest by auto; simpl; cancel.
 
     step.
     subst; pimpl_crash.
     cancel. or_r; cancel; eauto.
-    rewrite LOG.notxn_idempred; auto.
+    rewrite LOG.notxn_idempred; eauto.
 
     or_l; rewrite LOG.recover_any_idempred; cancel.
-    or_r; rewrite LOG.active_idempred; cancel.
+    or_r; cancel; eauto.
+    rewrite LOG.intact_idempred; cancel.
     or_l; rewrite LOG.notxn_idempred; cancel.
-
-
   Qed.
 
 Hint Extern 1 ({{_}} progseq (write_block_inbounds _ _ _ _ _) _) => apply write_block_inbounds_ok : prog.
