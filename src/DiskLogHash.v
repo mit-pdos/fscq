@@ -81,17 +81,20 @@ Module PaddedLog.
                                          ("previous_ndata", Rec.WordF addrlen);
                                          ("ndesc", Rec.WordF addrlen);
                                          ("ndata", Rec.WordF addrlen);
-                                         ("checksum", Rec.WordF hashlen)]).
+                                         ("addr_checksum", Rec.WordF hashlen);
+                                         ("valu_checksum", Rec.WordF hashlen)]).
     Definition header := Rec.data header_type.
-    Definition hdr := ((nat * nat) * (nat * nat) * word hashlen)%type.
+    Definition hdr := ((nat * nat) * (nat * nat) * (word hashlen * word hashlen))%type.
     Definition previous_length (header : hdr) := fst (fst header).
     Definition current_length (header : hdr) := snd (fst header).
+    Definition checksum (header : hdr) := snd header.
     Definition mk_header (len : hdr) : header :=
       ($ (fst (previous_length len)),
       ($ (snd (previous_length len)),
       ($ (fst (current_length len)),
       ($ (snd (current_length len)),
-      (snd len, tt))))).
+      (fst (checksum len),
+      (snd (checksum len), tt)))))).
 
     Theorem hdrsz_ok : Rec.len header_type <= valulen.
     Proof.
@@ -160,9 +163,7 @@ Module PaddedLog.
       | Synced n =>
          (LAHdr xp) |-> (hdr2val (mk_header n), nil)
       | Unsync n o =>
-         (LAHdr xp) |-> (hdr2val (mk_header n), [hdr2val (mk_header o)]%list) *
-          [[ previous_length n = current_length o \/
-              previous_length o = current_length n ]]
+         (LAHdr xp) |-> (hdr2val (mk_header n), [hdr2val (mk_header o)]%list)
       end)%pred.
 
     Definition xform_rep_synced : forall xp n,
@@ -178,8 +179,6 @@ Module PaddedLog.
       unfold rep; intros; simpl.
       xform; cancel.
       or_l; cancel.
-      or_l; cancel.
-      or_r; cancel.
       or_r; cancel.
     Qed.
 
@@ -188,7 +187,7 @@ Module PaddedLog.
       let header := (val2hdr v) in
       rx ^(cs, ((# (header :-> "previous_ndesc"), # (header :-> "previous_ndata")),
                 (# (header :-> "ndesc"), # (header :-> "ndata")),
-                header :-> "checksum")).
+                (header :-> "addr_checksum", header :-> "valu_checksum"))).
 
     Definition write T xp n cs rx : prog T :=
       cs <- BUFCACHE.write (LAHdr xp) (hdr2val (mk_header n)) cs;
@@ -235,7 +234,7 @@ Module PaddedLog.
       unfold hdr_goodSize in *; intuition.
       repeat rewrite wordToNat_natToWord_idempotent'; auto.
       destruct n; auto.
-      destruct p as (p1 , p2); destruct p1, p2; auto.
+      destruct p as (p1 , p2); destruct p1, p2, p0; auto.
     Qed.
 
     Theorem sync_ok : forall xp cs,
@@ -326,48 +325,83 @@ Module PaddedLog.
   Definition padded_log (log : contents) :=
     setlen log (roundup (length log) DescSig.items_per_val) (0, $0).
 
+  Definition rep_contents_unmatched xp (old new : contents) : rawpred :=
+    ( [[ Forall addr_valid old ]] *
+      [[ Forall addr_valid new ]] *
+     Desc.array_rep xp 0 (Desc.Synced (map ent_addr (padded_log old))) *
+     Desc.array_rep xp (ndesc_log old) (Desc.Synced (map ent_addr new)) *
+     Data.array_rep xp 0 (Data.Synced (vals_nonzero (padded_log old))) *
+     Data.array_rep xp (ndata_log old) (Data.Synced (map ent_valu new)) *
+     Desc.avail_rep xp (ndesc_log old + ndesc_log new) (LogDescLen xp - (ndesc_log old) - (ndesc_log new)) *
+     Data.avail_rep xp (ndata_log old + length new) (LogLen xp - (ndata_log old) - (length new))
+     )%pred.
+
+  Definition loglen_valid xp ndesc ndata :=
+    ndesc <= LogDescLen xp  /\ ndata <= LogLen xp.
+
+  Definition loglen_invalid xp ndesc ndata :=
+    ndesc > LogDescLen xp \/ ndata > LogLen xp.
+
+  Definition checksums_match (l : contents) h hm :=
+    hash_list_rep (rev (DescDefs.ipack (map ent_addr l))) (fst h) hm /\
+    hash_list_rep (rev (vals_nonzero l)) (snd h) hm.
+
   Definition rep_inner xp (st : state) hm : rawpred :=
   (match st with
   | Synced l =>
       exists prev_len h,
-       Hdr.rep xp (Hdr.Synced (prev_len, (ndesc_log l, ndata_log l), h)) *
+       Hdr.rep xp (Hdr.Synced (prev_len,
+                              (ndesc_log l, ndata_log l),
+                              h)) *
        rep_contents xp l *
-       [[ hash_list_rep (rev (log_nonzero l)) h hm ]]
+       [[ checksums_match l h hm ]]
 
   | Truncated old =>
       exists prev_len h h',
        Hdr.rep xp (Hdr.Unsync ((ndesc_log old, ndata_log old), (0, 0), h')
                               (prev_len, (ndesc_log old, ndata_log old), h)) *
        rep_contents xp old *
-       [[ hash_list_rep (rev (log_nonzero old)) h hm ]] *
-       [[ hash_list_rep (log_nonzero []) h' hm ]]
+       [[ checksums_match old h hm ]] *
+       [[ checksums_match [] h' hm ]]
 
   (* don't need this state *)
   | ExtendedUnsync old =>
       exists prev_len h,
        Hdr.rep xp (Hdr.Synced (prev_len, (ndesc_log old, ndata_log old), h)) *
        rep_contents xp old *
-       [[ hash_list_rep (rev (log_nonzero old)) h hm ]]
+       [[ checksums_match old h hm ]]
 
   | Extended old new =>
       exists prev_len h h',
-       Hdr.rep xp (Hdr.Unsync ((ndesc_log old, ndata_log old),
-                               (ndesc_log old + ndesc_log new,
-                                ndata_log old + ndata_log new), h')
-                              (prev_len, (ndesc_log old, ndata_log old), h)) *
+       (Hdr.rep xp (Hdr.Unsync ((ndesc_log old, ndata_log old),
+                                (ndesc_log old + ndesc_log new,
+                                 ndata_log old + ndata_log new), h')
+                               (prev_len, (ndesc_log old, ndata_log old), h)) \/
+         Hdr.rep xp (Hdr.Unsync (prev_len, (ndesc_log old, ndata_log old), h)
+                                ((ndesc_log old, ndata_log old),
+                                 (ndesc_log old + ndesc_log new,
+                                  ndata_log old + ndata_log new), h'))) *
        rep_contents xp old *
-       [[ hash_list_rep (rev (log_nonzero old)) h hm ]] *
-       [[ hash_list_rep (rev (log_nonzero (old ++ new))) h' hm ]] *
+       [[ loglen_valid xp (ndesc_log old + ndesc_log new)
+                          (ndata_log old + ndata_log new) ]] *
+       [[ checksums_match old h hm ]] *
+       [[ checksums_match (padded_log old ++ new) h' hm ]] *
        [[ Forall entry_valid new ]]
 
   | SyncedUnmatched old new =>
-      exists h,
+      exists h new_synced,
         Hdr.rep xp (Hdr.Synced ((ndesc_log old, ndata_log old),
                                 (ndesc_log old + ndesc_log new,
                                  ndata_log old + ndata_log new),
                                 h)) *
-        rep_contents xp old *
-        [[ hash_list_rep (rev (log_nonzero (old ++ new))) h hm ]] *
+        rep_contents_unmatched xp old new_synced *
+        [[ loglen_valid xp (ndesc_log old + ndesc_log new)
+                           (ndata_log old + ndata_log new) ]] *
+        (* Whatever got synced on disk takes up just as many desc blocks as new should've. *)
+        [[ ndesc_log new_synced = ndesc_log new ]] *
+        [[ length new_synced = ndata_log new ]] *
+        [[ checksums_match (padded_log old ++ new) h hm ]] *
+        [[ Forall entry_valid new_synced ]] *
         [[ Forall entry_valid new ]]
 
   end)%pred.
@@ -661,6 +695,52 @@ Module PaddedLog.
   Qed.
   Local Hint Resolve ndata_log_goodSize.
 
+  Lemma padded_log_idem : forall l,
+    padded_log (padded_log l) = padded_log l.
+  Proof.
+    intros.
+    unfold padded_log.
+    rewrite setlen_length.
+    rewrite roundup_roundup; auto.
+    rewrite setlen_exact; auto.
+    rewrite setlen_length; auto.
+  Qed.
+
+  Lemma padded_log_app : forall l1 l2,
+    padded_log (padded_log l1 ++ l2) = padded_log l1 ++ padded_log l2.
+  Proof.
+    intros.
+    unfold padded_log.
+    rewrite setlen_app_r.
+    f_equal.
+    rewrite app_length, setlen_length.
+    rewrite roundup_roundup_add; auto.
+    f_equal; omega.
+    rewrite app_length, setlen_length.
+    rewrite roundup_roundup_add; auto.
+    omega.
+  Qed.
+
+  Ltac solve_checksums :=
+  try (match goal with
+    | [ |- checksums_match _ _ _ ]
+      => unfold checksums_match in *
+    end; intuition;
+    [
+      try (rewrite map_app;
+      erewrite DescDefs.ipack_app;
+      try solve [ rewrite map_length, padded_log_length; unfold roundup; eauto  ];
+      rewrite rev_app_distr;
+      rewrite <- desc_ipack_padded;
+      rewrite desc_ipack_padded)
+      | try (rewrite padded_log_app, map_app, rev_app_distr)
+    ];
+    repeat match goal with
+    | [ H: context[hash_list_rep] |- _ ]
+      => rewrite app_nil_r in H;
+         rewrite <- desc_ipack_padded in H
+    end;
+    solve_hash_list_rep).
 
   Arguments Desc.array_rep : simpl never.
   Arguments Data.array_rep : simpl never.
@@ -690,8 +770,8 @@ Module PaddedLog.
     unfold avail.
     step.
     step.
-    solve_hash_list_rep.
-    solve_hash_list_rep.
+    solve_checksums.
+    solve_checksums.
   Qed.
 
   Definition read_ok : forall xp cs,
@@ -708,27 +788,31 @@ Module PaddedLog.
     >} read xp cs.
   Proof.
     unfold read.
-    step using solve_hash_list_rep.
+    step.
 
     safestep; subst.
     instantiate (1 := map ent_addr (padded_log l)).
     rewrite map_length, padded_log_length.
-    all: auto.
+    all: solve_checksums; auto.
     rewrite desc_padding_synced_piff; cancel.
 
-    step.
-    replace (map ent_valu (log_nonzero l)) with (vals_nonzero l); auto.
+    safestep; subst.
     rewrite vals_nonzero_addrs; unfold ndata_log.
-    replace DataSig.items_per_val with 1 by (cbv; auto); omega.
+    replace DataSig.items_per_val with 1 by (cbv; auto); try omega.
+    rewrite Nat.mul_1_r; eauto.
+    all: auto.
+    replace (map ent_valu (log_nonzero l)) with (vals_nonzero l); auto.
+    cancel.
 
     all: hoare using (subst; eauto).
-    all: try (cancel; rewrite desc_padding_synced_piff; cancel).
+    rewrite desc_padding_synced_piff; cancel.
 
-    solve_hash_list_rep.
-    replace (map ent_valu (log_nonzero l)) with (vals_nonzero l); auto.
-    solve_hash_list_rep.
+    solve_checksums.
     cancel.
-    solve_hash_list_rep.
+    rewrite desc_padding_synced_piff; cancel.
+    solve_checksums.
+    cancel.
+    solve_checksums.
   Qed.
 
   Lemma goodSize_0 : forall sz, goodSize sz 0.
@@ -752,11 +836,10 @@ Module PaddedLog.
 
 
   Definition trunc T xp cs rx : prog T :=
-    (* TODO: would be nice to get rid of this read. *)
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(_, current_length, _) := nr in
-    h <- Hash (combine_entry default_entry);
-    cs <- Hdr.write xp (current_length, (0, 0), h) cs;
+    h <- Hash default_valu;
+    cs <- Hdr.write xp (current_length, (0, 0), (h, h)) cs;
     cs <- Hdr.sync xp cs;
     rx cs.
 
@@ -834,35 +917,48 @@ Module PaddedLog.
     cancel_by helper_trunc_ok.
     solve_hash_list_rep.
     auto.
+    solve_checksums.
+    replace (DescDefs.ipack (map ent_addr [])) with (@nil valu).
+    solve_hash_list_rep; auto.
+    symmetry. apply DescDefs.ipack_nil.
+    auto.
 
     (* crash conditions *)
-    or_r. or_l; cancel_with solve_hash_list_rep.
+    or_r. or_l; cancel.
+    solve_checksums.
+    solve_checksums.
+    replace (DescDefs.ipack (map ent_addr [])) with (@nil valu).
+    solve_hash_list_rep; auto.
+    symmetry. apply DescDefs.ipack_nil.
     auto.
 
-    or_r. or_r; cancel_with solve_hash_list_rep.
-    instantiate (1:=hash_fwd (combine_entry default_entry)).
-    instantiate (1:=nonzero_addrs (map fst l)).
-    instantiate (1:=ndesc_log l).
+    or_r. or_r; cancel.
     cancel_by helper_trunc_ok.
+    solve_checksums.
+    replace (DescDefs.ipack (map ent_addr [])) with (@nil valu).
+    solve_hash_list_rep; auto.
+    symmetry. apply DescDefs.ipack_nil.
     auto.
 
-    or_l; cancel_with solve_hash_list_rep.
+    or_l; cancel.
+    solve_checksums.
 
-    or_r. or_l; cancel_with solve_hash_list_rep.
+    or_r. or_l; cancel.
+    solve_checksums.
+    solve_checksums.
+    replace (DescDefs.ipack (map ent_addr [])) with (@nil valu).
+    solve_hash_list_rep; auto.
+    symmetry. apply DescDefs.ipack_nil.
     auto.
 
-    or_l; cancel_with solve_hash_list_rep.
-    or_l; cancel_with solve_hash_list_rep.
+    or_l; cancel.
+    solve_checksums.
+    or_l; cancel.
+    solve_checksums.
 
     Unshelve.
     constructor.
   Qed.
-
-  Definition loglen_valid xp ndesc ndata :=
-    ndesc <= LogDescLen xp  /\ ndata <= LogLen xp.
-
-  Definition loglen_invalid xp ndesc ndata :=
-    ndesc > LogDescLen xp \/ ndata > LogLen xp.
 
   Theorem loglen_valid_dec xp ndesc ndata :
     {loglen_valid xp ndesc ndata} + {loglen_invalid xp ndesc ndata }.
@@ -1291,16 +1387,17 @@ Module PaddedLog.
   Definition extend T xp log cs rx : prog T :=
     (* Synced *)
     let^ (cs, nr) <- Hdr.read xp cs;
-    let '(_, (ndesc, ndata), h) := nr in
+    let '(_, (ndesc, ndata), (h_addr, h_valu)) := nr in
     let '(nndesc, nndata) := ((ndesc_log log), (ndata_log log)) in
     If (loglen_valid_dec xp (ndesc + nndesc) (ndata + nndata)) {
-      h <- hash_list h (log_nonzero log);
+      h_addr <- hash_list h_addr (DescDefs.ipack (map ent_addr log));
+      h_valu <- hash_list h_valu (vals_nonzero log);
       cs <- Desc.write_aligned xp ndesc (map ent_addr log) cs;
       cs <- Data.write_aligned xp ndata (map ent_valu log) cs;
       cs <- Hdr.write xp ((ndesc, ndata),
                           (ndesc + nndesc, ndata + nndata),
-                          h) cs;
-      (* ExtendedUnsync *)
+                          (h_addr, h_valu)) cs;
+      (* Extended *)
       cs <- Desc.sync_aligned xp ndesc nndesc cs;
       cs <- Data.sync_aligned xp ndata nndata cs;
       cs <- Hdr.sync xp cs;
@@ -1336,13 +1433,10 @@ Module PaddedLog.
     (* true case *)
     - (* write content *)
       step.
-      match goal with
-      | [ H: Forall entry_valid ?l |- Forall _ (log_nonzero ?l) ]
-        => let H' := fresh in apply entry_valid_vals_nonzero in H as H';
-           rewrite H';
-           let H'' := fresh in apply ent_valid_addr_valid in H as H'';
-           auto
-      end.
+      unfold checksums_match in *; intuition.
+      solve_hash_list_rep.
+      step.
+      unfold checksums_match in *; intuition.
       solve_hash_list_rep.
 
       safestep.
@@ -1359,12 +1453,15 @@ Module PaddedLog.
 
       (* write header *)
       safestep.
-      unfold Hdr.rep in H20.
-      destruct_lift H20.
+      unfold Hdr.rep in H22.
+      destruct_lift H22.
       unfold Hdr.hdr_goodSize in *; intuition.
       eapply loglen_valid_goodSize_l; eauto.
       eapply loglen_valid_goodSize_r; eauto.
-      instantiate (1:=(n, n0, (ndesc_log old, nonzero_addrs (map fst old)), dummy0)).
+      match goal with
+      | [ H: context[Hdr.Synced ?h] |- _ ]
+        => instantiate (old0:=h)
+      end.
       intuition.
       cancel.
 
@@ -1396,59 +1493,78 @@ Module PaddedLog.
       rewrite ndesc_log_padded_log, ndata_log_padded_log.
       eauto.
       rewrite padded_log_length, roundup_roundup; auto.
-      rewrite log_nonzero_app, rev_app_distr.
-      rewrite log_nonzero_padded_log.
+
+      unfold checksums_match; intuition.
+      rewrite map_app.
+      erewrite DescDefs.ipack_app.
+      rewrite rev_app_distr.
+      rewrite <- desc_ipack_padded.
+      solve_hash_list_rep.
+      rewrite map_length, padded_log_length; unfold roundup; eauto.
+
+      rewrite vals_nonzero_app, vals_nonzero_padded_log.
+      rewrite rev_app_distr.
       solve_hash_list_rep.
       solve_hashmap_subset.
       all: auto.
 
+  Ltac solve_checksums ::=
+  try match goal with
+  | [ |- checksums_match _ _ _ ]
+    => unfold checksums_match in *
+  end; intuition;
+  [
+    try (rewrite map_app;
+    erewrite DescDefs.ipack_app;
+    try solve [ rewrite map_length, padded_log_length; unfold roundup; eauto  ];
+    rewrite rev_app_distr;
+    rewrite <- desc_ipack_padded)
+    | try (rewrite vals_nonzero_app, vals_nonzero_padded_log, rev_app_distr)
+  ]; solve_hash_list_rep.
+
       (* crash conditons *)
-      (* after sync data : ExtendedUnsync *)
+      (* after sync data : Extended *)
       cancel.
       or_r; or_l. cancel.
       extend_crash.
-      solve_hash_list_rep.
-      rewrite log_nonzero_app, rev_app_distr.
-      solve_hash_list_rep.
+      solve_checksums.
+      solve_checksums.
 
       (* after header sync : Synced new *)
       or_r; or_r. cancel.
       cancel_by extend_ok_helper; auto.
       cancel_by extend_ok_synced_hdr_helper.
-      rewrite log_nonzero_app, rev_app_distr, log_nonzero_padded_log.
-      solve_hash_list_rep.
+      solve_checksums.
 
-      (* before sync data, after sync desc : ExtendedUnsync *)
+      (* before sync data, after sync desc : Extended *)
       cancel.
       or_r; or_l. cancel. extend_crash.
       solve_hash_list_rep.
-      rewrite log_nonzero_app, rev_app_distr;
-      solve_hash_list_rep.
+      solve_checksums.
+      solve_checksums.
 
-      (* before sync desc : ExtendedUnsync *)
+      (* before sync desc : Extended *)
       cancel.
       or_r; or_l. cancel. extend_crash.
-      solve_hash_list_rep.
-      rewrite log_nonzero_app, rev_app_distr;
-      solve_hash_list_rep.
+      solve_checksums.
+      solve_checksums.
 
       (* before header write : Synced old *)
       cancel.
       or_l. cancel.
       extend_crash.
-      solve_hash_list_rep.
+      solve_checksums.
 
-      (* after header write : ExtendedUnsync *)
+      (* after header write : Extended *)
       or_r; or_l. cancel. extend_crash.
-      solve_hash_list_rep.
-      rewrite log_nonzero_app, rev_app_distr;
-      solve_hash_list_rep.
+      solve_checksums.
+      solve_checksums.
 
       (* after desc write : Synced old *)
       cancel.
       or_l. cancel.
       extend_crash.
-      solve_hash_list_rep.
+      solve_checksums.
 
       (* before desc write : Synced old *)
       cancel.
@@ -1456,23 +1572,26 @@ Module PaddedLog.
       rewrite Desc.avail_rep_merge. cancel.
       rewrite map_length.
       apply helper_loglen_desc_valid_extend; auto.
-      solve_hash_list_rep.
+      solve_checksums.
 
       (* after hash_list : Synced old *)
       or_l. cancel.
-      solve_hash_list_rep.
+      solve_checksums.
+
+      or_l. cancel.
+      solve_checksums.
 
     (* false case *)
     - step.
       or_r; cancel.
       apply loglen_invalid_overflow; auto.
-      solve_hash_list_rep.
+      solve_checksums.
 
     (* crash for the false case *)
     - cancel; hoare.
       or_l.
       cancel.
-      solve_hash_list_rep.
+      solve_checksums.
   Qed.
 
 
@@ -1492,8 +1611,8 @@ Module PaddedLog.
     right; tauto.
   Qed.
 
-  Theorem rep_synced_length_ok : forall F xp l d,
-    (F * rep xp (Synced l))%pred d -> length l <= LogLen xp.
+  Theorem rep_synced_length_ok : forall F xp l d hm,
+    (F * rep xp (Synced l) hm)%pred d -> length l <= LogLen xp.
   Proof.
     unfold rep, rep_inner, rep_contents, xparams_ok.
     unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, Desc.items_valid.
@@ -1503,22 +1622,27 @@ Module PaddedLog.
     rewrite H5, Nat.mul_comm; auto.
   Qed.
 
-  Lemma xform_rep_synced : forall xp l,
-    crash_xform (rep xp (Synced l)) =p=> rep xp (Synced l).
+  Lemma xform_rep_synced : forall xp l hm,
+    crash_xform (rep xp (Synced l) hm) =p=> rep xp (Synced l) hm.
   Proof.
     unfold rep; simpl; unfold rep_contents; intros.
-    xform; cancel.
+    xform.
+    norm'l. unfold stars; cbn.
+    xform.
+    norm'l. unfold stars; cbn.
+    xform.
     rewrite Data.xform_avail_rep, Desc.xform_avail_rep.
     rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
     rewrite Hdr.xform_rep_synced.
     cancel.
   Qed.
 
-  Lemma xform_rep_truncated : forall xp l,
-    crash_xform (rep xp (Truncated l)) =p=>
-      rep xp (Synced l) \/ rep xp (Synced nil).
+  Lemma xform_rep_truncated : forall xp l hm,
+    crash_xform (rep xp (Truncated l) hm) =p=>
+      rep xp (Synced l) hm \/ rep xp (Synced nil) hm.
   Proof.
     unfold rep; simpl; unfold rep_contents; intros.
+    xform; cancel.
     xform; cancel.
     rewrite Data.xform_avail_rep, Desc.xform_avail_rep.
     rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
@@ -1527,9 +1651,11 @@ Module PaddedLog.
 
     or_r; cancel.
     cancel_by helper_trunc_ok.
+    auto.
     or_l; cancel.
   Qed.
 
+  (*
   Lemma xform_rep_extended_unsync : forall xp l,
     crash_xform (rep xp (ExtendedUnsync l)) =p=> rep xp (Synced l).
   Proof.
@@ -1541,41 +1667,25 @@ Module PaddedLog.
     rewrite Hdr.xform_rep_synced.
     cancel.
   Qed.
+  *)
 
 
-  Theorem rep_extended_facts' : forall xp d old new,
-    (rep xp (Extended old new))%pred d ->
+  Theorem rep_extended_facts' : forall xp d old new hm,
+    (rep xp (Extended old new) hm)%pred d ->
     Forall entry_valid new /\
     LogLen xp >= ndata_log old + ndata_log new /\ LogDescLen xp >= ndesc_log old + ndesc_log new.
   Proof.
     unfold rep, rep_inner, rep_contents, xparams_ok.
     unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, Desc.items_valid.
     intros; destruct_lifts.
-    denote DescSig.items_per_val as Hx.
-    rewrite map_length, Nat.sub_0_r in Hx.
-    unfold ndata_log, ndesc_log; split; auto; split.
-
-    rewrite H4, Nat.mul_comm.
-    eapply le_trans; [ | eauto ].
-    rewrite app_length, nonzero_addrs_entry_valid with (l := new) by auto.
-    apply plus_le_compat_r.
-    eapply le_trans.
-    apply nonzero_addrs_bound.
-    rewrite padded_log_length, map_length.
-    apply roundup_ge; auto.
-
-    eapply Nat.mul_le_mono_pos_r with (p := DescSig.items_per_val).
-    apply DescDefs.items_per_val_gt_0.
-    apply roundup_le in Hx.
-    rewrite app_length, padded_log_length in Hx.
-    rewrite roundup_roundup_add in Hx by auto.
-    rewrite Nat.mul_add_distr_r.
-    eapply le_trans; eauto.
+    intuition.
+    unfold loglen_valid in *; intuition.
+    unfold loglen_valid in *; intuition.
   Qed.
 
-  Theorem rep_extended_facts : forall xp old new,
-    rep xp (Extended old new) =p=>
-    (rep xp (Extended old new) *
+  Theorem rep_extended_facts : forall xp old new hm,
+    rep xp (Extended old new) hm =p=>
+    (rep xp (Extended old new) hm *
       [[ LogLen xp >= ndata_log old + ndata_log new ]] *
       [[ LogDescLen xp >= ndesc_log old + ndesc_log new ]] *
       [[ Forall entry_valid new ]] )%pred.
@@ -1637,33 +1747,29 @@ Module PaddedLog.
     unfold roundup; auto.
   Qed.
 
-  Lemma xform_rep_extended : forall xp old new,
-    crash_xform (rep xp (Extended old new)) =p=>
-       rep xp (Synced old) \/
-       rep xp (Synced ((padded_log old) ++ new)).
+  Lemma xform_rep_extended : forall xp old new hm,
+    crash_xform (rep xp (Extended old new) hm) =p=>
+       rep xp (Synced old) hm \/
+       rep xp (SyncedUnmatched old new) hm.
   Proof.
     intros; rewrite rep_extended_facts.
     unfold rep; simpl; unfold rep_contents; intros.
+    xform; cancel.
     xform; cancel.
 
     rewrite Data.xform_avail_rep, Desc.xform_avail_rep.
     rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
     rewrite Hdr.xform_rep_unsync.
     norm; auto.
-
+Admitted.
+(*  TODO: Need some lemma about xform of avail_rep being array_rep of some list.
     or_r; cancel.
-    rewrite extend_ok_synced_hdr_helper; auto.
-
     or_l; cancel.
-    apply xform_rep_extended_helper; auto.
+  Qed.*)
 
-    apply padded_addr_valid.
-    eapply forall_app_r; eauto.
-  Qed.
-
-  Lemma rep_synced_app_pimpl : forall xp old new,
-    rep xp (Synced (padded_log old ++ new)) =p=>
-    rep xp (Synced (padded_log old ++ padded_log new)).
+  Lemma rep_synced_app_pimpl : forall xp old new hm,
+    rep xp (Synced (padded_log old ++ new)) hm =p=>
+    rep xp (Synced (padded_log old ++ padded_log new)) hm.
   Proof.
     unfold rep; simpl; intros; unfold rep_contents; cancel.
     setoid_rewrite ndesc_log_padded_app.
@@ -1683,9 +1789,460 @@ Module PaddedLog.
     rewrite map_length, padded_log_length; unfold roundup; eauto.
     apply Forall_append.
     eapply forall_app_r; eauto.
-    eapply forall_app_l in H2.
     apply addr_valid_padded; auto.
+    eapply forall_app_l; eauto.
+    solve_checksums.
+    rewrite <- rev_app_distr.
+    erewrite <- DescDefs.ipack_app.
+    rewrite <- map_app.
+    solve_hash_list_rep.
+    rewrite map_length, padded_log_length; unfold roundup; eauto.
+    rewrite <- rev_app_distr.
+    rewrite vals_nonzero_padded_log.
+    rewrite <- vals_nonzero_padded_log.
+    rewrite <- vals_nonzero_app.
+    solve_hash_list_rep.
   Qed.
+
+  Lemma weq2 : forall sz (x y : word sz) (a b : word sz),
+    {x = y /\ a = b} + {(x = y /\ a <> b) \/
+                        (x <> y /\ a = b) \/
+                        (x <> y /\ a <> b)}.
+  Proof.
+    intros.
+    destruct (weq x y); destruct (weq a b); intuition.
+  Qed.
+
+
+  Lemma desc_ipack_padded_injective : forall xp l1 l2,
+    Desc.items_valid xp 0 (map ent_addr l1) ->
+    Desc.items_valid xp 0 (map ent_addr l2) ->
+    DescDefs.ipack (map ent_addr l1) = DescDefs.ipack (map ent_addr l2) ->
+    map ent_addr (padded_log l1) = map ent_addr (padded_log l2).
+  Proof.
+    intros.
+    erewrite <- DescDefs.iunpack_ipack.
+    erewrite <- DescDefs.iunpack_ipack at 1.
+    f_equal.
+    rewrite <- desc_ipack_padded.
+    rewrite <- desc_ipack_padded; auto.
+
+    unfold Desc.items_valid in *; intuition.
+    rewrite map_length, padded_log_length;
+    unfold roundup; eauto.
+    unfold Desc.items_valid in *; intuition.
+    rewrite map_length, padded_log_length;
+    unfold roundup; eauto.
+  Qed.
+
+  Definition recover T xp cs rx : prog T :=
+    let^ (cs, header) <- Hdr.read xp cs;
+    let '((prev_ndesc, prev_ndata),
+          (ndesc, ndata),
+          (addr_checksum, valu_checksum)) := header in
+    let^ (cs, wal) <- Desc.read_all xp ndesc cs;
+    let^ (cs, vl) <- Data.read_all xp ndata cs;
+    h_addr <- hash_list default_hash (DescDefs.ipack wal);
+    h_valu <- hash_list default_hash vl;
+    If (weq2 addr_checksum h_addr valu_checksum h_valu) {
+      rx cs
+    } else {
+      let^ (cs, wal) <- Desc.read_all xp prev_ndesc cs;
+      let^ (cs, vl) <- Data.read_all xp prev_ndata cs;
+      addr_checksum <- hash_list default_hash (DescDefs.ipack wal);
+      valu_checksum <- hash_list default_hash vl;
+      cs <- Hdr.write xp ((prev_ndesc, prev_ndata),
+                          (prev_ndesc, prev_ndata),
+                          (addr_checksum, valu_checksum)) cs;
+      cs <- Hdr.sync xp cs;
+      rx cs
+    }.
+
+
+  Lemma recover_read_ok_helper : forall xp old new,
+     Desc.array_rep xp 0 (Desc.Synced (map ent_addr (padded_log old ++ new))) =p=>
+      Desc.array_rep xp 0 (Desc.Synced (map ent_addr (padded_log old ++ padded_log new))).
+  Proof.
+    intros.
+    repeat rewrite map_app.
+    rewrite Desc.array_rep_synced_app_rev.
+    rewrite <- Desc.array_rep_synced_app.
+    cancel.
+    rewrite desc_padding_synced_piff.
+    cancel.
+    rewrite map_length, padded_log_length. unfold roundup; eauto.
+    rewrite map_length, padded_log_length. unfold roundup; eauto.
+  Qed.
+
+  Lemma recover_ok_addr_helper : forall xp old new,
+    Desc.array_rep xp 0
+        (Desc.Synced
+          (map ent_addr (padded_log old) ++ map ent_addr (padded_log new))) =p=>
+    Desc.array_rep xp 0
+      (Desc.Synced (map ent_addr (padded_log old ++ new))).
+  Proof.
+    intros.
+    rewrite map_app.
+    eapply pimpl_trans; [ | eapply Desc.array_rep_synced_app ].
+    rewrite Desc.array_rep_synced_app_rev.
+    cancel.
+    apply desc_padding_synced_piff.
+    rewrite map_length, padded_log_length; unfold roundup; eauto.
+    rewrite map_length, padded_log_length; unfold roundup; eauto.
+  Qed.
+
+  Lemma recover_desc_avail_helper : forall xp old new,
+    loglen_valid xp (ndesc_log old + ndesc_log new)
+                    (ndata_log old + length new) ->
+    (Desc.avail_rep xp (ndesc_log old)
+        (divup (length (map ent_addr new)) (fst (Nat.divmod valulen 63 0 63)))
+     * Desc.avail_rep xp (ndesc_log old + ndesc_log new)
+         (LogDescLen xp - ndesc_log old - ndesc_log new))
+    =p=> Desc.avail_rep xp (ndesc_log old) (LogDescLen xp - ndesc_log old).
+  Proof.
+    intros.
+    rewrite map_length.
+    rewrite Desc.avail_rep_merge;
+    eauto.
+    rewrite le_plus_minus_r;
+    auto.
+    unfold loglen_valid in *;
+    omega.
+  Qed.
+
+  Lemma recover_data_avail_helper : forall xp old new,
+    loglen_valid xp (ndesc_log old + ndesc_log new)
+                    (ndata_log old + length new) ->
+    Data.avail_rep xp (ndata_log old)
+          (divup (length (map ent_valu new)) DataSig.items_per_val)
+    * Data.avail_rep xp (ndata_log old + length new)
+        (LogLen xp - ndata_log old - length new)
+    =p=> Data.avail_rep xp (nonzero_addrs (map fst old))
+           (LogLen xp - nonzero_addrs (map fst old)).
+  Proof.
+    intros.
+    rewrite map_length.
+    replace DataSig.items_per_val with 1 by (cbv; auto); try omega.
+    rewrite divup_1, Data.avail_rep_merge;
+    eauto.
+    rewrite le_plus_minus_r;
+    auto.
+    unfold loglen_valid in *;
+    omega.
+  Qed.
+
+  Definition recover_ok : forall xp new cs,
+    {< F old d,
+    PRE:hm   BUFCACHE.rep cs d *
+          [[ Forall entry_valid new ]] *
+          [[ (F * rep xp (SyncedUnmatched old new) hm)%pred d ]]
+    POST:hm' RET:cs' exists d',
+          BUFCACHE.rep cs' d' * (
+          [[ (F * rep xp (Synced old) hm')%pred d' ]] \/
+          [[ (F * rep xp (Synced (padded_log old ++ new)) hm')%pred d' ]])
+    CRASH:hm_crash exists cs' d',
+          BUFCACHE.rep cs' d' * (
+          [[ (F * rep xp (SyncedUnmatched old new) hm)%pred d ]] \/
+          [[ (F * rep xp (Synced old) hm_crash)%pred d' ]] \/
+          [[ (F * rep xp (Extended old new) hm_crash)%pred d' ]] \/
+          [[ (F * rep xp (Synced (padded_log old ++ new)) hm_crash)%pred d' ]])
+    >} recover xp cs.
+  Proof.
+    unfold recover.
+    step.
+    safestep. subst.
+    instantiate (1:=map ent_addr (padded_log old ++ padded_log dummy0)).
+    rewrite map_length, app_length, Nat.mul_add_distr_r;
+    repeat rewrite padded_log_length.
+    match goal with
+    | [ H: ndesc_log _ = ndesc_log ?l |- context[ndesc_log ?l] ]
+      => rewrite <- H
+    end.
+    all: auto.
+    unfold rep_contents_unmatched.
+
+    rewrite map_app.
+    rewrite <- Desc.array_rep_synced_app.
+    repeat rewrite desc_padding_synced_piff.
+    rewrite map_length.
+    rewrite <- ndesc_log_padded_log.
+    unfold ndesc_log; cancel.
+    rewrite map_length, padded_log_length; unfold roundup; eauto.
+
+    safestep; subst.
+    instantiate (1:=vals_nonzero (padded_log old) ++ map ent_valu dummy0).
+    rewrite app_length, map_length.
+    rewrite vals_nonzero_addrs, nonzero_addrs_padded_log, Nat.mul_add_distr_r.
+    match goal with
+    | [ H: _ = ndata_log ?l |- context[ndata_log ?l] ]
+      => rewrite <- H
+    end.
+    unfold ndata_log.
+    replace DataSig.items_per_val with 1 by (cbv; auto); omega.
+    all: auto.
+    rewrite <- Data.array_rep_synced_app.
+    replace DataSig.items_per_val with 1 by (cbv; auto); try omega.
+    rewrite vals_nonzero_addrs, nonzero_addrs_padded_log, divup_1.
+    cancel.
+    replace DataSig.items_per_val with 1 by (cbv; auto); try omega.
+    rewrite Nat.mul_1_r; eauto.
+
+    step.
+    solve_hash_list_rep; auto.
+    intros.
+    eapply pimpl_ok2.
+    eapply hash_list_ok. cancel.
+    solve_hash_list_rep; auto.
+    step.
+
+    (* True case: the hash matched what was on disk. *)
+    - step.
+      or_r.
+      cancel.
+      unfold checksums_match in *; intuition.
+      assert (Hal: map ent_addr (padded_log (padded_log old ++ new)) = map ent_addr (padded_log (padded_log old ++ padded_log dummy0))).
+        cbn in *.
+
+        eapply desc_ipack_padded_injective.
+        admit. (* Desc.items_valid xp 0 (map ent_addr (padded_log old ++ new)) *)
+        admit. (* Desc.items_valid ?xp 0 (map ent_addr (padded_log old ++ padded_log dummy0)) *)
+        apply rev_injective.
+        rewrite app_nil_r in *.
+        eapply hash_list_injective;
+        solve_hash_list_rep.
+
+        match goal with
+        | [ H: context[Desc.array_rep] |- _ ]
+          => unfold Desc.array_rep, Desc.synced_array in H;
+            destruct_lift H
+        end.
+        unfold Desc.rep_common in *; intuition.
+        apply Desc.items_valid_app in H
+
+
+      repeat rewrite padded_log_app in Hal.
+      repeat rewrite map_app in Hal.
+      apply app_inv_head in Hal.
+      rewrite padded_log_idem in Hal.
+      rewrite map_app.
+      rewrite <- Hal.
+
+      rewrite recover_ok_addr_helper.
+      cancel.
+
+      assert (Hlength: length (padded_log new) = length (padded_log dummy0)).
+        erewrite <- map_length.
+        rewrite Hal.
+        rewrite map_length. auto.
+
+      assert (Hndesc_log: ndesc_log new = ndesc_log dummy0).
+        unfold ndesc_log.
+        repeat rewrite padded_log_length in Hlength.
+        unfold roundup in Hlength.
+        rewrite Nat.mul_cancel_r in Hlength; auto.
+
+      rewrite ndesc_log_padded_app, Hndesc_log.
+      replace (ndesc_log old) with (ndesc_log (padded_log old)) by (rewrite ndesc_log_padded_log; auto).
+      rewrite Nat.sub_add_distr.
+      cancel.
+
+      assert (Hvl: map ent_valu dummy0 = vals_nonzero new).
+        eapply app_inv_head.
+        erewrite <- vals_nonzero_app.
+        rewrite app_nil_r in *.
+        apply rev_injective.
+        eapply hash_list_injective;
+        solve_hash_list_rep.
+
+      rewrite Hvl.
+      rewrite vals_nonzero_app.
+      cancel.
+
+      replace (length dummy0) with (ndata_log new).
+      rewrite ndata_log_app.
+      rewrite Nat.sub_add_distr.
+      rewrite ndata_log_padded_log.
+      cancel.
+
+      rewrite <- Hndesc_log.
+      eauto.
+
+      match goal with
+      | [ H: context[rep_contents_unmatched] |- _ ]
+        => unfold rep_contents_unmatched in H; destruct_lift H
+      end.
+      apply Forall_append.
+      apply addr_valid_padded; auto.
+      auto.
+
+      solve_checksums.
+      rewrite <- rev_app_distr.
+      rewrite desc_ipack_padded.
+      erewrite <- DescDefs.ipack_app.
+      rewrite <- map_app.
+      solve_hash_list_rep.
+      rewrite map_length, padded_log_length; unfold padded_log, roundup; eauto.
+      rewrite vals_nonzero_app, vals_nonzero_padded_log, rev_app_distr in H21.
+      solve_hash_list_rep.
+
+    - clear H8 H17.
+      safestep.
+      instantiate (1:= map ent_addr (padded_log old)).
+      rewrite map_length, padded_log_length.
+      all: auto.
+      unfold rep_contents_unmatched.
+      cancel.
+
+      (* Remove the else condition. *)
+      clear H23.
+
+      safestep.
+      instantiate (1:= vals_nonzero old).
+      rewrite vals_nonzero_addrs.
+      replace DataSig.items_per_val with 1 by (cbv; auto); omega.
+      all: auto.
+      rewrite vals_nonzero_padded_log.
+      cancel.
+
+      step.
+      solve_hash_list_rep; eauto.
+      eapply pimpl_ok2; try apply hash_list_ok.
+      cancel.
+      solve_hash_list_rep; eauto.
+
+      step.
+      match goal with
+      | [ H: ( _ )%pred d |- _ ]
+        => unfold Hdr.rep in H; destruct_lift H
+      end.
+      unfold Hdr.hdr_goodSize in *; intuition.
+
+      clear H21 H17.
+      step.
+      step.
+
+      (* post condition: Synced old *)
+      or_l. cancel.
+      rewrite desc_padding_synced_piff.
+      rewrite Desc.array_rep_avail_synced, Data.array_rep_avail_synced.
+      cancel.
+      match goal with
+      | [ H1: length _ = _, H2: ndesc_log _ = ndesc_log _,
+          Hloglen: context[loglen_valid] |- _ ]
+        => rewrite <- H1 in Hloglen; rewrite <- H2 in Hloglen
+      end.
+      rewrite <- recover_desc_avail_helper; eauto.
+      rewrite <- recover_data_avail_helper; eauto.
+      cancel.
+      match goal with
+      | [ H: context[rep_contents_unmatched] |- _ ]
+        => unfold rep_contents_unmatched in H; destruct_lift H
+      end;
+      auto.
+
+      rewrite app_nil_r in *.
+      rewrite <- desc_ipack_padded in *.
+      solve_checksums.
+
+      (* Crash conditions. *)
+      (* Before header sync: Extended *)
+      or_r; or_r; or_l.
+      cancel.
+      rewrite desc_padding_synced_piff.
+      cancel.
+      rewrite Desc.array_rep_avail_synced, Data.array_rep_avail_synced.
+      match goal with
+      | [ H1: length _ = _, H2: ndesc_log _ = ndesc_log _,
+          Hloglen: context[loglen_valid] |- _ ]
+        => rewrite <- H1 in Hloglen; rewrite <- H2 in Hloglen
+      end.
+      rewrite <- recover_data_avail_helper; eauto.
+      rewrite <- recover_desc_avail_helper; eauto.
+      cancel.
+      or_r; cancel.
+      match goal with
+      | [ H: context[rep_contents_unmatched] |- _ ]
+        => unfold rep_contents_unmatched in H; destruct_lift H
+      end;
+      auto.
+      rewrite app_nil_r in *;
+      rewrite <- desc_ipack_padded in *;
+      solve_checksums.
+      unfold checksums_match in *; intuition; solve_hash_list_rep.
+
+      or_r; or_l.
+      cancel.
+      rewrite desc_padding_synced_piff.
+      cancel.
+      rewrite Desc.array_rep_avail_synced, Data.array_rep_avail_synced.
+      match goal with
+      | [ H1: length _ = _, H2: ndesc_log _ = ndesc_log _,
+          Hloglen: context[loglen_valid] |- _ ]
+        => rewrite <- H1 in Hloglen; rewrite <- H2 in Hloglen
+      end.
+      rewrite <- recover_data_avail_helper; eauto.
+      rewrite <- recover_desc_avail_helper; eauto.
+      cancel.
+      match goal with
+      | [ H: context[rep_contents_unmatched] |- _ ]
+        => unfold rep_contents_unmatched in H; destruct_lift H
+      end;
+      auto.
+      rewrite app_nil_r in *;
+      rewrite <- desc_ipack_padded in *;
+      solve_checksums.
+
+      or_l.
+      unfold rep_contents_unmatched.
+      cancel.
+      rewrite vals_nonzero_padded_log; auto.
+      match goal with
+      | [ H: context[rep_contents_unmatched] |- _ ]
+        => unfold rep_contents_unmatched in H; destruct_lift H
+      end;
+      auto.
+
+      (* Extended *)
+      admit.
+
+      cancel.
+      (* SyncedUnmatched old new *)
+      admit.
+
+      (* SyncedUnmatched old new *)
+      admit.
+
+      cancel.
+      (* SyncedUnmatched old new *)
+      admit.
+
+      clear H23.
+      cancel.
+      (* SyncedUnmatched old new *)
+      admit.
+
+  (* Crash: SyncedUnmatched old new *)
+  - cancel.
+    clear H8 H17.
+    or_l; cancel.
+
+  (* Crash: SyncedUnmatched old new *)
+  - clear H8 H17.
+    or_l; cancel.
+
+  (* Crash: SyncedUnmatched old new *)
+  - cancel.
+    clear H8.
+    or_l; cancel.
+
+  (* Crash: SyncedUnmatched old new *)
+  - cancel.
+    or_l; cancel.
+
+  (* Crash: SyncedUnmatched old new *)
+  - or_l; cancel.
+
+Admitted.
 
 End PaddedLog.
 
