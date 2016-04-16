@@ -1,5 +1,5 @@
 Require Import Mem.
-Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg Array ListUtils.
+Require Import List Omega Ring Word Pred PredCrash Prog Hoare SepAuto BasicProg Array ListUtils.
 Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
@@ -411,7 +411,6 @@ Section LISTMATCH.
 End LISTMATCH.
 
 
-
 Lemma listmatch_sym : forall AT AEQ V A B (al : list A) (bl : list B) f,
   (@listmatch _ _ AT AEQ V) f al bl <=p=>
   listmatch (fun b a => f a b) bl al.
@@ -471,5 +470,71 @@ Proof.
   unfold pimpl in *; intros.
   eapply IHal; eauto.
   pred_apply; cancel.
+Qed.
+
+
+Theorem xform_listpred_idem_l : forall V (l : list V) prd,
+  (forall e, crash_xform (prd e) =p=> prd e) ->
+  crash_xform (listpred prd l) =p=> listpred prd l.
+Proof.
+  induction l; simpl; intros; auto.
+  xform_dist.
+  rewrite H.
+  rewrite IHl; auto.
+Qed.
+
+
+Theorem xform_listpred_idem_r : forall V (l : list V) prd,
+  (forall e,  prd e =p=> crash_xform (prd e)) ->
+  listpred prd l =p=> crash_xform (listpred prd l).
+Proof.
+  induction l; simpl; intros; auto.
+  xform_dist; auto.
+  xform_dist.
+  rewrite <- H.
+  rewrite <- IHl; auto.
+Qed.
+
+Theorem xform_listpred_idem : forall V (l : list V) prd,
+  (forall e, crash_xform (prd e) <=p=> prd e) ->
+  crash_xform (listpred prd l) <=p=> listpred prd l.
+Proof.
+  split.
+  apply xform_listpred_idem_l; intros.
+  apply H.
+  apply xform_listpred_idem_r; intros.
+  apply H.
+Qed.
+
+Theorem xform_listmatch_idem_l : forall A B (a : list A) (b : list B) prd,
+  (forall a b, crash_xform (prd a b) =p=> prd a b) ->
+  crash_xform (listmatch prd a b) =p=> listmatch prd a b.
+Proof.
+  unfold listmatch; intros.
+  xform_norm; cancel.
+  apply xform_listpred_idem_l; intros.
+  destruct e; cbn; auto.
+Qed.
+
+Theorem xform_listmatch_idem_r : forall A B (a : list A) (b : list B) prd,
+  (forall a b,  prd a b =p=> crash_xform (prd a b)) ->
+  listmatch prd a b =p=> crash_xform (listmatch prd a b).
+Proof.
+  unfold listmatch; intros.
+  cancel.
+  xform_normr.
+  rewrite <- xform_listpred_idem_r; cancel.
+  auto.
+Qed.
+
+Theorem xform_listmatch_idem : forall A B (a : list A) (b : list B) prd,
+  (forall a b, crash_xform (prd a b) <=p=> prd a b) ->
+  crash_xform (listmatch prd a b) <=p=> listmatch prd a b.
+Proof.
+  split.
+  apply xform_listmatch_idem_l; auto.
+  apply H.
+  apply xform_listmatch_idem_r; auto.
+  apply H.
 Qed.
 

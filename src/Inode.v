@@ -1,5 +1,5 @@
 Require Import Arith.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import Word.
 Require Import Prog.
 Require Import Hoare.
@@ -626,6 +626,35 @@ Module INODE.
     apply in_selN; eauto.
   Qed.
 
+  Lemma crash_xform_inode_match : forall xp a b,
+    crash_xform (inode_match xp a b) <=p=> inode_match xp a b.
+  Proof.
+    unfold inode_match; split.
+    xform_norm.
+    rewrite Ind.xform_rep; cancel.
+    cancel.
+    xform_normr.
+    rewrite Ind.xform_rep; cancel.
+  Qed.
+
+
+  Theorem xform_rep : forall bxp xp l,
+    crash_xform (rep bxp xp l) <=p=> rep bxp xp l.
+  Proof.
+    unfold rep; intros; split.
+    xform_norm.
+    rewrite IRec.xform_rep.
+    rewrite xform_listmatch_idem.
+    cancel.
+    apply crash_xform_inode_match.
+
+    cancel.
+    xform_normr.
+    rewrite IRec.xform_rep.
+    rewrite xform_listmatch_idem.
+    cancel.
+    apply crash_xform_inode_match.
+  Qed.
 
 End INODE.
 

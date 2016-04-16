@@ -1,5 +1,5 @@
 Require Import Arith.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import Word.
 Require Import Prog.
 Require Import Hoare.
@@ -248,6 +248,18 @@ Module BmapAlloc (Sig : AllocSig).
   Hint Extern 1 ({{_}} progseq (free _ _ _ _) _) => apply free_ok : prog.
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 
+
+  Lemma xform_rep : forall V xp l p,
+    crash_xform (rep xp l p) <=p=> @rep V xp l p.
+  Proof.
+    unfold rep; intros; split.
+    xform_norm.
+    rewrite Bmp.xform_rep; cancel.
+    cancel.
+    xform_normr.
+    rewrite Bmp.xform_rep; cancel.
+  Qed.
+
 End BmapAlloc.
 
 
@@ -367,15 +379,16 @@ Module BALLOC.
     denote listpred as Hx.
 
     destruct l.
-    denote (m1 < _) as Hy; simpl in Hy; inversion Hy.
+    denote (_ < _) as Hy; simpl in Hy; inversion Hy.
     rewrite listpred_isolate with (i := 0) in Hx by (rewrite skipn_length; omega).
     rewrite skipn_selN, Nat.add_0_r in Hx.
 
     (*** extract the exis from |->? *)
     apply sep_star_reorder_helper in Hx.
     apply pimpl_exists_r_star_r in Hx; destruct Hx as [ [? ?] ?].
-    cancel; eauto.
+    safecancel.
     rewrite selN_cons_fold; apply Forall_selN; auto.
+    eauto.
 
     step.
     rewrite removeN_0_skipn; cancel.

@@ -959,3 +959,34 @@ Proof.
   inversion H; subst; simpl; auto.
 Qed.
 
+
+Lemma possible_crash_list_synced_list_eq : forall a b,
+  possible_crash_list (synced_list a) b -> a = b.
+Proof.
+  unfold possible_crash_list; intuition.
+  rewrite synced_list_length in *.
+  eapply list_selN_ext; auto; intros.
+  specialize (H1 _ H).
+  inversion H1.
+
+  generalize H2.
+  unfold synced_list; rewrite selN_combine; eauto.
+  rewrite repeat_length; auto.
+
+  generalize H2.
+  unfold synced_list; rewrite selN_combine; simpl.
+  rewrite repeat_selN by auto.
+  intro Hx; inversion Hx.
+  rewrite repeat_length; auto.
+Qed.
+
+Lemma possible_crash_list_synced_list : forall l,
+  possible_crash_list (synced_list l) l.
+Proof.
+  unfold possible_crash_list; intuition.
+  rewrite synced_list_length; auto.
+  unfold synced_list; constructor.
+  rewrite selN_combine; auto.
+  rewrite repeat_length; auto.
+Qed.
+

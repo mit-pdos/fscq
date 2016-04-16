@@ -1,5 +1,5 @@
 Require Import Arith.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import Word.
 Require Import Prog.
 Require Import Hoare.
@@ -518,6 +518,29 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 
+
+  Theorem xform_rep : forall xp ir l,
+    crash_xform (rep xp ir l) <=p=> rep xp ir l.
+  Proof.
+    unfold rep, indrep; intros; split.
+    xform_norm.
+    cancel; eauto.
+    rewrite IndRec.xform_rep; cancel.
+
+    cancel.
+    xform_normr.
+    rewrite crash_xform_exists_comm; cancel.
+    xform_normr.
+    cancel; eauto.
+
+    cancel.
+    xform_normr.
+    rewrite crash_xform_exists_comm; cancel.
+    xform_normr.
+    cancel; eauto.
+    or_r; cancel.
+    rewrite IndRec.xform_rep; auto.
+  Qed.
 
 End BlockPtr.
 
