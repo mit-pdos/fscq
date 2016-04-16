@@ -787,7 +787,66 @@ Module AFS.
     or_l; rewrite LOG.notxn_idempred; cancel.
   Qed.
 
-Hint Extern 1 ({{_}} progseq (write_block_inbounds _ _ _ _ _) _) => apply write_block_inbounds_ok : prog.
+
+  Theorem update_fblock_d_rec_ok : forall fsxp inum off v mscs,
+    {<< ds Fm flist A f Fd v0,
+    PRE
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+      [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
+      [[[ flist ::: (A * inum |-> f) ]]] *
+      [[[ (BFILE.BFData f) ::: (Fd * off |-> v0) ]]]
+    POST RET:mscs
+      exists d flist' f',
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
+      [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
+      [[[ flist' ::: (A * inum |-> f') ]]] *
+      [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]]
+    REC RET:^(mscs,fsxp)
+      exists d,
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
+      ((exists n, 
+        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] ) \/
+       (exists flist' f' v',
+        [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
+        [[[ flist' ::: (A * inum |-> f') ]]] *
+        [[[ (BFILE.BFData f') ::: (Fd * off |=> v') ]]] * [[ In v' (v :: vsmerge v0) ]]
+      ))
+   >>} update_fblock_d fsxp inum off v mscs >> recover.
+  Proof.
+    recover_ro_ok.
+    apply update_fblock_d_ok.
+    apply recover_ok.
+
+    cancel.
+    step.
+    apply pimpl_refl.
+
+    xform_norm;
+    recover_ro_ok;
+    rewrite LOG.idempred_idem; xform_deex_l;
+    rewrite SB.crash_xform_rep.
+
+    - cancel.
+      step.
+      or_l; cancel.
+      destruct v0; cancel.
+      rewrite LOG.after_crash_idempred; cancel.
+
+    - cancel.
+      step.
+      or_r; safecancel.
+      replace n with 0 by omega; rewrite nthd_0; simpl.
+      rewrite crash_xform_diskIs_pred by eauto.
+
+      (* need lemmas about moving crash_xform into BFILE.rep *)
+      admit. admit. admit. admit.
+
+      cancel; or_r; cancel; eauto.
+      apply LOG.after_crash_idempred.
+  Admitted.
+
+
+  Hint Extern 1 ({{_}} progseq (write_block_inbounds _ _ _ _ _) _) => apply write_block_inbounds_ok : prog.
 
 
 (*
