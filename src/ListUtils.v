@@ -1911,6 +1911,42 @@ Proof.
   apply Forall_cons; firstorder.
 Qed.
 
+Lemma forall2_length : forall A B (a : list A) (b : list B) P,
+  Forall2 P a b -> length a = length b.
+Proof.
+  induction 1; simpl; auto.
+Qed.
+
+Lemma forall2_forall : forall A B (a : list A) (b : list B) P,
+  Forall2 P a b -> Forall (fun x => P (fst x) (snd x)) (combine a b).
+Proof.
+  induction 1; simpl; auto.
+Qed.
+
+Lemma forall_forall2 : forall A B (a : list A) (b : list B) P,
+  Forall (fun x => P (fst x) (snd x)) (combine a b) ->
+  length a = length b ->
+  Forall2 P a b.
+Proof.
+  induction a; destruct b; firstorder.
+  inversion H0.
+  inversion H0.
+  inversion H; subst; simpl in *.
+  constructor; auto.
+Qed.
+
+Lemma forall2_selN : forall A B (a : list A) (b : list B) P n ad bd,
+  Forall2 P a b ->
+  n < length a ->
+  P (selN a n ad) (selN b n bd).
+Proof.
+  intros.
+  pose proof (forall2_length H).
+  apply forall2_forall in H.
+  eapply Forall_selN with (i := n) in H.
+  erewrite selN_combine in H; eauto.
+  rewrite combine_length_eq; auto.
+Qed.
 
 Definition cuttail A n (l : list A) := firstn (length l - n) l.
 

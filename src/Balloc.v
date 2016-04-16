@@ -94,7 +94,7 @@ Module BmapAlloc (Sig : AllocSig).
   Definition rep V xp (freelist : list addr) (freepred : @pred _ addr_eq_dec V) :=
     (exists bmap, Bmp.rep xp bmap *
      [[ freelist_bmap_equiv freelist bmap ]] *
-     [[ freepred = listpred (fun a => a |->?) freelist ]] )%pred.
+     [[ freepred =p=> listpred (fun a => a |->?) freelist ]] )%pred.
 
 
   Lemma freelist_bmap_equiv_remove_ok : forall bmap freelist a,
@@ -211,11 +211,16 @@ Module BmapAlloc (Sig : AllocSig).
     >} alloc lxp xp ms.
   Proof.
     unfold alloc, rep.
-    hoare.
+    step.
+    step.
+    step.
 
     or_r; cancel.
     eapply freelist_bmap_equiv_remove_ok; eauto.
-    rewrite listpred_remove; try cancel.
+    apply pimpl_refl.
+    denote freepred as Hp; rewrite Hp, listpred_remove.
+    eassign n0; cancel.
+
     intros; apply ptsto_conflict.
     eapply is_avail_in_freelist; eauto.
     eapply avail_nonzero_not_zero; eauto.
@@ -250,7 +255,7 @@ Module BmapAlloc (Sig : AllocSig).
 
 
   Lemma xform_rep : forall V xp l p,
-    crash_xform (rep xp l p) <=p=> @rep V xp l p.
+    crash_xform (@rep V xp l p) <=p=> @rep V xp l p.
   Proof.
     unfold rep; intros; split.
     xform_norm.
@@ -259,6 +264,17 @@ Module BmapAlloc (Sig : AllocSig).
     xform_normr.
     rewrite Bmp.xform_rep; cancel.
   Qed.
+
+  Lemma xform_rep_rawpred : forall xp l p,
+    crash_xform (rep xp l p) =p=> rep xp l (crash_xform p).
+  Proof.
+    unfold rep; intros.
+    xform_norm.
+    rewrite Bmp.xform_rep; cancel.
+    rewrite H1.
+    rewrite xform_listpred_ptsto; auto.
+  Qed.
+
 
 End BmapAlloc.
 
@@ -481,6 +497,16 @@ Module BALLOC.
 
   Definition items_per_val := Alloc.BmpSig.items_per_val.
 
+
+  Theorem xform_rep : forall xp l,
+    crash_xform (rep xp l) =p=> rep xp l.
+  Proof.
+    unfold rep; intros.
+    xform_norm.
+    rewrite Alloc.xform_rep_rawpred.
+    cancel.
+  Qed.
+
 End BALLOC.
 
 
@@ -519,6 +545,8 @@ Module IAlloc.
   Hint Extern 1 ({{_}} progseq (alloc _ _ _) _) => apply alloc_ok : prog.
   Hint Extern 1 ({{_}} progseq (free _ _ _ _) _) => apply free_ok : prog.
   Hint Extern 0 (okToUnify (rep ?xp _ _) (rep ?xp _ _)) => constructor : okToUnify.
+
+  Definition xform_rep := Alloc.xform_rep.
 
 End IAlloc.
 

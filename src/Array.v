@@ -959,6 +959,22 @@ Proof.
   inversion H; subst; simpl; auto.
 Qed.
 
+Lemma possible_crash_list_unique : forall a b,
+  (forall n, snd (selN a n ($0, nil)) = nil) ->
+  possible_crash_list a b ->
+  b = map fst a.
+Proof.
+  unfold possible_crash_list; intuition.
+  eapply list_selN_ext; auto; intros.
+  rewrite map_length; auto.
+  rewrite <- H1 in H0.
+  specialize (H2 _ H0).
+  inversion H2.
+
+  erewrite selN_map; eauto.
+  rewrite H in H3.
+  inversion H3.
+Qed.
 
 Lemma possible_crash_list_synced_list_eq : forall a b,
   possible_crash_list (synced_list a) b -> a = b.
@@ -988,5 +1004,15 @@ Proof.
   unfold synced_list; constructor.
   rewrite selN_combine; auto.
   rewrite repeat_length; auto.
+Qed.
+
+Lemma possible_crash_list_cons : forall vsl vl v vs,
+  possible_crash_list vsl vl ->
+  In v (vsmerge vs) ->
+  possible_crash_list (vs :: vsl) (v :: vl).
+Proof.
+  unfold possible_crash_list; intuition.
+  simpl; omega.
+  destruct i, vs, vsl; firstorder.
 Qed.
 

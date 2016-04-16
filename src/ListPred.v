@@ -411,6 +411,9 @@ Section LISTMATCH.
 End LISTMATCH.
 
 
+
+
+
 Lemma listmatch_sym : forall AT AEQ V A B (al : list A) (bl : list B) f,
   (@listmatch _ _ AT AEQ V) f al bl <=p=>
   listmatch (fun b a => f a b) bl al.
@@ -537,4 +540,43 @@ Proof.
   apply xform_listmatch_idem_r; auto.
   apply H.
 Qed.
+
+Lemma xform_listpred_ptsto : forall l,
+  crash_xform (listpred (fun a => a |->?) l) =p=>
+               listpred (fun a => a |->?) l.
+Proof.
+  induction l; simpl.
+  rewrite crash_invariant_emp; auto.
+  xform_dist.
+  rewrite crash_xform_ptsto_exis, IHl.
+  auto.
+Qed.
+
+Lemma xform_listmatch_ptsto : forall al vl,
+  crash_xform (listmatch (fun v a => a |-> v) vl al) =p=>
+    exists l, [[ possible_crash_list vl l ]] *
+    listmatch (fun v a => a |-> v) (synced_list l) al.
+Proof.
+  unfold listmatch; induction al; destruct vl; xform_norm.
+  - cancel. instantiate (1 := nil); simpl; auto.
+    unfold possible_crash_list; intuition; inversion H.
+    rewrite synced_list_length; auto.
+  - inversion H0.
+  - inversion H0.
+  - rewrite crash_xform_ptsto.
+    specialize (IHal vl).
+    rewrite crash_xform_sep_star_dist, crash_xform_lift_empty in IHal.
+    inversion H; subst.
+    setoid_rewrite lift_impl with (Q := length vl = length al) at 3; intros; eauto.
+    rewrite IHal; simpl.
+
+    cancel.
+    eassign (v' :: l); cancel.
+    simpl; cancel.
+    apply possible_crash_list_cons; simpl; auto.
+    rewrite synced_list_length in *; simpl; omega.
+    apply possible_crash_list_cons; simpl; auto.
+    rewrite synced_list_length in *; simpl; omega.
+Qed.
+
 

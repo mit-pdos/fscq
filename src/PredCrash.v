@@ -204,6 +204,22 @@ Proof.
   - left. rewrite upd_ne; auto.
 Qed.
 
+
+Theorem crash_xform_ptsto_exis : forall a,
+  crash_xform ( a |->? ) =p=> a |->?.
+Proof.
+  intros.
+  rewrite crash_xform_exists_comm.
+  apply pimpl_exists_l; intro.
+  rewrite crash_xform_ptsto.
+  apply pimpl_exists_l; intro.
+  apply pimpl_exists_r.
+  exists (x0, nil).
+  rewrite sep_star_comm.
+  apply sep_star_lift_l; intros; auto.
+Qed.
+
+
 Theorem crash_xform_pimpl : forall (p q : rawpred), p =p=>q
   -> crash_xform p =p=> crash_xform q.
 Proof.

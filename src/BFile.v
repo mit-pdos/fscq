@@ -1,5 +1,5 @@
 Require Import Arith.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import Word.
 Require Import Prog.
 Require Import Hoare.
@@ -128,6 +128,7 @@ Module BFILE.
      listmatch file_match flist ilist
     )%pred.
 
+  Definition synced_file f := mk_bfile (synced_list (map fst (BFData f))) (BFAttr f).
 
   (**** automation **)
 
@@ -494,15 +495,14 @@ Module BFILE.
     PRE    LOG.rep lxp F (LOG.ActiveTxn ds ds!!) ms *
            [[[ ds!!  ::: (Fm  * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST RET:ms  exists m' flist' f',
+    POST RET:ms  exists m' flist',
            LOG.rep lxp F (LOG.ActiveTxn (m', nil) m') ms *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
-           [[[ flist' ::: (Fi * inum |-> f') ]]] *
-           [[ f' = mk_bfile (synced_list (map fst (BFData f))) (BFAttr f) ]]
+           [[[ flist' ::: (Fi * inum |-> synced_file f) ]]]
     XCRASH LOG.recover_any lxp F ds
     >} datasync lxp ixp inum ms.
   Proof.
-    unfold datasync, rep.
+    unfold datasync, synced_file, rep.
     step.
     sepauto.
 
@@ -845,6 +845,140 @@ Module BFILE.
   Hint Extern 1 ({{_}} progseq (truncate _ _ _ _ _ _) _) => apply truncate_ok : prog.
   Hint Extern 1 ({{_}} progseq (reset _ _ _ _ _) _) => apply reset_ok : prog.
 
+
+
+  (** crash and recovery *)
+
+  Definition FSynced f : Prop :=
+     forall n, snd (selN (BFData f) n ($0, nil)) = nil.
+
+  Definition file_crash f f' : Prop :=
+    exists vs, possible_crash_list (BFData f) vs /\
+    f' = mk_bfile (synced_list vs) (BFAttr f).
+
+  Definition flist_crash fl fl' : Prop :=
+    Forall2 file_crash fl fl'.
+
+  Lemma flist_crash_length : forall a b,
+    flist_crash a b -> length a = length b.
+  Proof.
+    unfold flist_crash; intros.
+    eapply forall2_length; eauto.
+  Qed.
+
+  Lemma fsynced_synced_file : forall f,
+    FSynced (synced_file f).
+  Proof.
+    unfold FSynced, synced_file, synced_list; simpl; intros.
+    setoid_rewrite selN_combine; simpl.
+    destruct (lt_dec n (length (BFData f))).
+    rewrite repeat_selN; auto.
+    rewrite map_length; auto.
+    rewrite selN_oob; auto.
+    rewrite repeat_length, map_length.
+    apply not_lt; auto.
+    rewrite repeat_length, map_length; auto.
+  Qed.
+
+  Lemma file_crash_attr : forall f f',
+    file_crash f f' -> BFAttr f' = BFAttr f.
+  Proof.
+    unfold file_crash; intros.
+    destruct H; intuition; subst; auto.
+  Qed.
+
+  Lemma file_crash_possible_crash_list : forall f f',
+    file_crash f f' ->
+    possible_crash_list (BFData f) (map fst (BFData f')).
+  Proof.
+    unfold file_crash; intros; destruct H; intuition subst.
+    unfold synced_list; simpl.
+    rewrite map_fst_combine; auto.
+    rewrite repeat_length; auto.
+  Qed.
+
+  Lemma file_crash_data_length : forall f f',
+    file_crash f f' -> length (BFData f) = length (BFData f').
+  Proof.
+    unfold file_crash; intros.
+    destruct H; intuition subst; simpl.
+    rewrite synced_list_length.
+    apply possible_crash_list_length; auto.
+  Qed.
+
+  Lemma file_crash_synced : forall f f',
+    file_crash f f' ->
+    FSynced f ->
+    f = f'.
+  Proof.
+    unfold FSynced, file_crash; intuition.
+    destruct H; intuition subst; simpl.
+    destruct f; simpl in *.
+    f_equal.
+    eapply list_selN_ext.
+    rewrite synced_list_length.
+    apply possible_crash_list_length; auto.
+    intros.
+    setoid_rewrite synced_list_selN.
+    rewrite surjective_pairing at 1.
+    rewrite H0.
+    f_equal.
+    erewrite possible_crash_list_unique with (b := x); eauto.
+    erewrite selN_map; eauto.
+  Qed.
+
+  Lemma file_crash_fsynced : forall f f',
+    file_crash f f' ->
+    FSynced f'.
+  Proof.
+    unfold FSynced, file_crash; intuition.
+    destruct H; intuition subst; simpl.
+    rewrite synced_list_selN; auto.
+  Qed.
+
+  Lemma xform_file_match : forall f ino,
+    crash_xform (file_match f ino) =p=> 
+      exists f', [[ file_crash f f' ]] * file_match f' ino.
+  Proof.
+    unfold file_match, file_crash; intros.
+    xform_norm.
+    rewrite xform_listmatch_ptsto.
+    cancel; eauto; simpl; auto.
+  Qed.
+
+  Lemma xform_file_list : forall fs inos,
+    crash_xform (listmatch file_match fs inos) =p=>
+      exists fs', [[ flist_crash fs fs' ]] * listmatch file_match fs' inos.
+  Proof.
+    unfold listmatch, pprd.
+    induction fs; destruct inos; xform_norm.
+    cancel. instantiate(1 := nil); simpl; auto.
+    apply Forall2_nil. simpl; auto.
+    inversion H0.
+    inversion H0.
+
+    specialize (IHfs inos).
+    rewrite crash_xform_sep_star_dist, crash_xform_lift_empty in IHfs.
+    setoid_rewrite lift_impl with (Q := length fs = length inos) at 4; intros; eauto.
+    rewrite IHfs; simpl.
+
+    rewrite xform_file_match.
+    cancel.
+    eassign (f' :: fs'); cancel.
+    apply Forall2_cons; auto.
+    simpl; omega.
+  Qed.
+
+  Lemma xform_rep : forall bxp ixp flist,
+    crash_xform (rep bxp ixp flist) =p=> 
+      exists flist', [[ flist_crash flist flist' ]] * rep bxp ixp flist'.
+  Proof.
+    unfold rep; intros.
+    xform_norm.
+    rewrite INODE.xform_rep, BALLOC.xform_rep.
+    rewrite xform_file_list.
+    cancel.
+  Qed.
 
 End BFILE.
 
