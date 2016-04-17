@@ -769,10 +769,7 @@ Module AFS.
     step.
     eapply list2nmem_ptsto_bound; eauto.
 
-    (* XXX: why eauto with prog pick the wrong spec? *)
-    eapply pimpl_ok2. unfold LOG.commit_ro.
-    apply LOG.commit_ro_ok.
-    cancel.
+    safestep.
     instantiate (1 := (m', nil)); simpl.
     rewrite singular_latest by auto; simpl; cancel.
 
@@ -807,9 +804,9 @@ Module AFS.
       ((exists n, 
         [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] ) \/
        (exists flist' f' v',
-        [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
-        [[[ flist' ::: (A * inum |-> f') ]]] *
-        [[[ (BFILE.BFData f') ::: (Fd * off |=> v') ]]] * [[ In v' (v :: vsmerge v0) ]]
+        [[[ d ::: (crash_xform Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
+        [[[ flist' ::: (arrayN_ex flist' inum * inum |-> f') ]]] *
+        [[[ (BFILE.BFData f') ::: (crash_xform Fd * off |=> v') ]]] * [[ In v' (v :: vsmerge v0) ]]
       ))
    >>} update_fblock_d fsxp inum off v mscs >> recover.
   Proof.
@@ -834,16 +831,17 @@ Module AFS.
 
     - cancel.
       step.
-      or_r; safecancel.
-      replace n with 0 by omega; rewrite nthd_0; simpl.
-      rewrite crash_xform_diskIs_pred by eauto.
-
-      (* need lemmas about moving crash_xform into BFILE.rep *)
-      admit. admit. admit. admit.
+      denote crash_xform as Hx.
+      replace n with 0 in Hx by omega; rewrite nthd_0 in Hx; simpl in Hx.
+      apply (@crash_xform_diskIs_pred _ _ H0) in Hx.
+      apply crash_xform_sep_star_dist in Hx.
+      rewrite BFILE.xform_rep_off in Hx by eauto.
+      destruct_lift Hx.
+      or_r; safecancel; subst; intuition.
 
       cancel; or_r; cancel; eauto.
       apply LOG.after_crash_idempred.
-  Admitted.
+  Qed.
 
 
   Hint Extern 1 ({{_}} progseq (write_block_inbounds _ _ _ _ _) _) => apply write_block_inbounds_ok : prog.

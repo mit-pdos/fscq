@@ -848,6 +848,23 @@ Proof.
   autorewrite with lists in *; omega.
 Qed.
 
+Lemma list2nmem_sel_inb : forall A (l : list A) a def,
+  a < length l ->
+  list2nmem l a = Some (selN l a def).
+Proof.
+  induction l using rev_ind; intros.
+  inversion H.
+  rewrite listapp_memupd.
+
+  destruct (Nat.eq_dec a (length l)); subst.
+  rewrite upd_eq; auto.
+  rewrite selN_last; auto.
+  rewrite upd_ne; auto.
+  rewrite app_length in H; simpl in H.
+  erewrite IHl by omega.
+  rewrite selN_app1 by omega; auto.
+Qed.
+
 
 Lemma sep_star_reorder_helper1 : forall AT AEQ V (a b c d : @pred AT AEQ V),
   (a * ((b * c) * d)) <=p=> (a * b * d) * c.

@@ -475,6 +475,30 @@ Proof.
   pred_apply; cancel.
 Qed.
 
+Theorem xform_listpred : forall V (l : list V) prd,
+  crash_xform (listpred prd l) <=p=> listpred (fun x => crash_xform (prd x)) l.
+Proof.
+  induction l; simpl; intros; split; auto; xform_dist; auto.
+  rewrite IHl; auto.
+  rewrite IHl; auto.
+Qed.
+
+
+Lemma crash_xform_pprd : forall A B (prd : A -> B -> rawpred),
+  (fun p => crash_xform (pprd prd p)) =
+  (pprd (fun x y => crash_xform (prd x y))).
+Proof.
+  unfold pprd, prod_curry, crash_xform; intros.
+  apply functional_extensionality; intros; destruct x; auto.
+Qed.
+
+Theorem xform_listmatch : forall A B (a : list A) (b : list B) prd,
+  crash_xform (listmatch prd a b) <=p=> listmatch (fun x y => crash_xform (prd x y)) a b.
+Proof.
+  unfold listmatch; intros; split; xform_norm;
+  rewrite xform_listpred; cancel;
+  rewrite crash_xform_pprd; auto.
+Qed.
 
 Theorem xform_listpred_idem_l : forall V (l : list V) prd,
   (forall e, crash_xform (prd e) =p=> prd e) ->

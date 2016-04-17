@@ -220,7 +220,9 @@ Section MemPred.
     apply mem_pred_absorb_nop'.
   Qed.
 
+
 End MemPred.
+
 
 Theorem mem_pred_pimpl : forall LA LEQ LV HA HEQ HV hm p1 p2,
   (forall a v, p1 a v =p=> p2 a v) ->
@@ -250,3 +252,6 @@ Proof.
   inversion H0; eauto.
   destruct a; firstorder.
 Qed.
+
+
+

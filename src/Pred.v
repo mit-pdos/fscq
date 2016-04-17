@@ -1355,6 +1355,20 @@ Proof.
   exists (diskIs (mem_except m2 a')). firstorder.
 Qed.
 
+Theorem mem_except_comm : forall (m : @mem AT AEQ V) a a',
+  mem_except (mem_except m a) a' = mem_except (mem_except m a') a.
+Proof.
+  intros.
+  apply functional_extensionality; intros.
+  destruct (AEQ x a); destruct (AEQ x a'); subst; subst; auto.
+  rewrite mem_except_ne; auto.
+  repeat rewrite mem_except_eq; auto.
+  repeat rewrite mem_except_eq; auto.
+  rewrite mem_except_ne; auto.
+  rewrite mem_except_eq; auto.
+  repeat rewrite mem_except_ne; auto.
+Qed.
+
 Theorem exact_domain_disjoint_union : forall (p : @pred AT AEQ V) m1 m2 m1' m2',
   exact_domain p ->
   mem_union m1 m2 = mem_union m1' m2' ->
