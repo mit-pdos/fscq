@@ -881,6 +881,15 @@ Module BFILE.
     rewrite repeat_length, map_length; auto.
   Qed.
 
+  Lemma arrayN_synced_list_fsynced : forall f l,
+    arrayN 0 (synced_list l) (list2nmem (BFData f)) ->
+    FSynced f.
+  Proof.
+    unfold FSynced; intros.
+    erewrite list2nmem_array_eq with (l' := (BFData f)) by eauto.
+    rewrite synced_list_selN; simpl; auto.
+  Qed.
+
   Lemma file_crash_attr : forall f f',
     file_crash f f' -> BFAttr f' = BFAttr f.
   Proof.

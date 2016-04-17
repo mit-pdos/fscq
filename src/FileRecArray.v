@@ -1,5 +1,5 @@
 Require Import Eqdep_dec Arith Omega List ListUtils Rounding Psatz.
-Require Import Word WordAuto AsyncDisk Pred GenSepN Array SepAuto.
+Require Import Word WordAuto AsyncDisk Pred PredCrash GenSepN Array SepAuto.
 Require Import Rec Prog BasicProg Hoare RecArrayUtils Log.
 Require Import ProofIrrelevance.
 Require Import Inode BFile MemMatch.
@@ -584,6 +584,39 @@ Module FileRecArray (FRA : FileRASig).
     apply ipack_injective; unfold pack_unpack_cond; eauto.
     apply synced_list_injective; auto.
     eapply arrayN_list_eq; eauto.
+  Qed.
+
+  Lemma xform_rep : forall f vs,
+    crash_xform (rep f vs) =p=> rep f vs.
+  Proof.
+    unfold rep; intros.
+    xform_norm.
+    rewrite crash_xform_arrayN_synced.
+    cancel.
+  Qed.
+
+  Lemma file_crash_rep : forall f f' vs,
+    BFILE.file_crash f f' ->
+    rep f vs (list2nmem (BFILE.BFData f)) ->
+    rep f' vs (list2nmem (BFILE.BFData f')).
+  Proof.
+    unfold rep; intros.
+    destruct_lift H0; subst.
+    erewrite <- BFILE.file_crash_synced with (f' := f'); eauto.
+    pred_apply; cancel.
+    eapply BFILE.arrayN_synced_list_fsynced; eauto.
+  Qed.
+
+  Lemma file_crash_rep_eq : forall f f' vs1 vs2,
+    BFILE.file_crash f f' ->
+    rep f  vs1 (list2nmem (BFILE.BFData f)) ->
+    rep f' vs2 (list2nmem (BFILE.BFData f')) ->
+    vs1 = vs2.
+  Proof.
+    intros.
+    apply eq_sym.
+    eapply rep_items_eq; eauto.
+    eapply file_crash_rep; eauto.
   Qed.
 
 

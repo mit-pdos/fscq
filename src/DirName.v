@@ -6,7 +6,7 @@ Require Import Dir.
 Require Import Omega.
 Require Import Prog.
 Require Import BasicProg.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import Hoare.
 Require Import SepAuto.
 Require Import Log.
@@ -728,6 +728,25 @@ Module SDIR.
     inversion H; discriminate.
     inversion H; discriminate.
     firstorder.
+  Qed.
+
+
+  Theorem crash_eq : forall f f' m1 m2,
+    BFILE.file_crash f f' ->
+    rep f m1 ->
+    rep f' m2 ->
+    m1 = m2.
+  Proof.
+    intros.
+    apply eq_sym.
+    eapply rep_mem_eq; eauto.
+
+    unfold rep in *; intros.
+    repeat deex.
+    assert (dmap0 = dmap).
+    eapply DIR.crash_eq; eauto.
+    subst.
+    eexists; intuition; eauto.
   Qed.
 
 
