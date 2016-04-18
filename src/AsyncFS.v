@@ -521,7 +521,7 @@ Module AFS.
 
   Hint Extern 1 ({{_}} progseq (file_truncate _ _ _ _) _) => apply file_truncate_ok : prog.
 
-  Theorem c_reover_ok : forall fsxp inum sz mscs,
+  Theorem file_truncate_reover_ok : forall fsxp inum sz mscs,
     {<< ds Fm flist A f,
     PRE
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
