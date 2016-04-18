@@ -18,6 +18,8 @@ Require Import Arith.
 Require Import MapUtils.
 Require Import Cache.
 Require Import MemPred.
+Require Import ListPred.
+Require Import FunctionalExtensionality.
 
 Import AddrMap.
 Import ListNotations.
@@ -230,8 +232,9 @@ Module WBCACHE.
     POST RET:wcs
       exists d', rep wcs d' * [[ (F * a |-> (v, vsmerge v0))%pred d' ]]
     CRASH
-      exists wcs' d', rep wcs' d' *
-      [[ (F * a |-> v0)%pred d' \/ (F * a |-> (v, vsmerge v0))%pred d' ]]
+      exists wcs', rep wcs' d \/
+      exists d', rep wcs' d' *
+      [[ (F * a |-> (v, vsmerge v0))%pred d' ]]
     >} write a v wcs.
   Proof.
     unfold write, rep.
@@ -246,6 +249,7 @@ Module WBCACHE.
       apply mem_pred_pimpl_except. intros; apply cachepred_add_invariant; auto.
       eassign (w :: dummy); unfold vsmerge; simpl.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+      or_l; cancel.
 
     - step.
       eapply mem_pred_extract in H6; [ | eapply ptsto_valid'; eauto ].
@@ -259,12 +263,320 @@ Module WBCACHE.
 
       eassign (@nil valu); simpl.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+      or_l; cancel.
   Qed.
 
 
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
   Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
+
+
+  (** crashes and recovery *)
+
+  Lemma xform_cachepred_ptsto : forall m a vs,
+    crash_xform (cachepred m a vs) =p=> 
+      exists v, [[ In v (vsmerge vs) ]] * a |=> v.
+  Proof.
+    unfold cachepred; intros.
+    case_eq (Map.find a m); intros.
+    xform_norm; subst.
+    rewrite crash_xform_ptsto.
+    cancel; subst.
+    right; apply in_app_iff; right; simpl; intuition.
+    right; apply in_app_iff; right; simpl; intuition.
+    rewrite crash_xform_ptsto.
+    cancel.
+  Qed.
+
+  Lemma xform_cachepred : forall m a vs,
+    crash_xform (cachepred m a vs) =p=> 
+      exists v cached, [[ In v (vsmerge vs) ]] * cachepred m a (v, cached).
+  Proof.
+    unfold cachepred; intros.
+    case_eq (Map.find a m); intros.
+    xform_norm; subst.
+    rewrite crash_xform_ptsto.
+    cancel.
+    rewrite crash_xform_ptsto.
+    cancel.
+    Unshelve. eauto.
+  Qed.
+
+
+  Lemma xform_mem_pred_cachepred : forall wcs hm,
+    crash_xform (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred wcs) hm) =p=> 
+      exists m', [[ possible_crash hm m' ]] *
+      @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred (Map.empty _)) m'.
+  Proof.
+    intros.
+    rewrite xform_mem_pred.
+    unfold mem_pred at 1.
+    xform_norm; subst.
+
+    rename hm_avs into l.
+    revert H; revert l.
+    induction l; simpl; intros.
+    cancel.
+    apply mem_pred_empty_mem.
+    unfold possible_crash; intuition.
+
+    Opaque vsmerge.
+    inversion H; destruct a; subst; simpl in *.
+    unfold mem_pred_one; simpl.
+
+    rewrite IHl by auto.
+    xform_norm.
+    rewrite xform_cachepred_ptsto.
+    cancel.
+    instantiate (1 := upd m' n (v0, nil)).
+    rewrite <- mem_pred_absorb.
+    unfold cachepred at 3.
+    rewrite MapFacts.empty_o; cancel.
+    erewrite <- notindomain_mem_eq; auto.
+    eapply possible_crash_notindomain; eauto.
+    apply avs2mem_notindomain; auto.
+    apply possible_crash_upd; eauto.
+    Transparent vsmerge.
+  Qed.
+
+
+  Lemma crash_xform_rep: forall cs m,
+    crash_xform (rep cs m) =p=>
+       exists m' cs', [[ possible_crash m m' ]] * rep cs' m'.
+  Proof.
+    unfold rep; intros.
+    xform_norm.
+    rewrite BUFCACHE.crash_xform_rep_pred by eauto.
+    xform_norm.
+    apply xform_mem_pred_cachepred in H2.
+    destruct_lift H2.
+    cancel; eauto.
+    eassign (Build_wbcachestate cs' (Map.empty _)); cancel.
+    eauto.
+  Qed.
+
+
+  Lemma crash_xform_rep_pred : forall cs m (F : pred),
+    F%pred m ->
+    crash_xform (rep cs m) =p=>
+    exists m' cs', rep cs' m' * [[ (crash_xform F)%pred m' ]].
+  Proof.
+    intros.
+    rewrite crash_xform_rep.
+    norm. cancel. split; auto.
+    exists m; eauto.
+  Qed.
+
+
+
+  Lemma listpred_cachepred_notin : forall cs l m a,
+    ~ In a (map fst l) ->
+    listpred (mem_pred_one (cachepred cs)) l m ->
+    m a = None.
+  Proof.
+    induction l; intros; eauto.
+    destruct a; subst; simpl in *; intuition.
+    unfold mem_pred_one at 1, cachepred at 1 in H0; simpl in *.
+    destruct (Map.find n cs) eqn: Heq.
+
+    destruct_lift H0; subst.
+    eapply notindomain_mem_except with (a' := n); eauto.
+    apply IHl; eauto.
+    eapply ptsto_mem_except; eauto.
+
+    eapply notindomain_mem_except with (a' := n); eauto.
+    apply IHl; eauto.
+    eapply ptsto_mem_except; eauto.
+  Qed.
+
+
+  Lemma mem_pred_cachepred_none : forall (m1 m2 : mem) cs a,
+    @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred cs) m1 m2 ->
+    m1 a = None ->
+    m2 a = None.
+  Proof.
+    unfold mem_pred; intros.
+    destruct_lift H; subst.
+    rename dummy into l.
+    apply avs2mem_none_notin in H0 as Hx.
+    erewrite listpred_cachepred_notin with (m := m2); eauto.
+  Qed.
+
+
+  Lemma mem_pred_cachepred_some_notin : forall (m1 m2 : mem) cs a v,
+    @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred cs) m1 m2 ->
+    Map.find a cs = None ->
+    m1 a = Some v ->
+    m2 a = Some v.
+  Proof.
+    unfold mem_pred; intros.
+    destruct_lift H; subst.
+    pose proof (listpred_avs_except addr_eq_dec _ _ _ H3 H1 _ H) as Hx.
+    unfold mem_pred_one at 2, cachepred at 2 in Hx; simpl in Hx.
+    rewrite H0 in Hx.
+    erewrite ptsto_valid'; eauto.
+  Qed.
+
+  Lemma mem_pred_cachepred_some_in : forall (m1 m2 : mem) cs a v w,
+    @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred cs) m1 m2 ->
+    Map.find a cs = Some w ->
+    m1 a = Some v ->
+    exists v', m2 a = Some v' /\ postfix (vsmerge v') (snd v).
+  Proof.
+    unfold mem_pred; intros.
+    destruct_lift H; subst.
+
+    pose proof (listpred_avs_except addr_eq_dec _ _ _ H3 H1 _ H) as Hx.
+    unfold mem_pred_one at 2, cachepred at 2 in Hx; simpl in Hx.
+    rewrite H0 in Hx.
+    destruct_lift Hx.
+    destruct_pair_eq; subst.
+    eexists; split.
+    erewrite ptsto_valid'; eauto.
+    apply postfix_app.
+    apply postfix_refl.
+  Qed.
+
+  Lemma mem_pred_cachepred_some : forall (m1 m2 : mem) cs a v,
+    @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred cs) m1 m2 ->
+    m1 a = Some v ->
+    exists v', m2 a = Some v' /\ postfix (vsmerge v') (vsmerge v).
+  Proof.
+    intros.
+    destruct (Map.find a cs) eqn: Heq.
+    eapply mem_pred_cachepred_some_in in H; eauto.
+    repeat deex; eexists; split; eauto.
+    apply postfix_tl; auto.
+    eapply mem_pred_cachepred_some_notin in H; eauto.
+    eexists; split; eauto.
+    apply postfix_refl.
+  Qed.
+
+  Lemma synced_mem_sel_eq : forall m1 m2 v1 v2 a,
+    synced_mem m1 ->
+    m1 a = Some v1 ->
+    m2 a = Some v2 ->
+    postfix (vsmerge v2) (vsmerge v1) ->
+    v1 = v2.
+  Proof.
+    intros.
+    assert (snd v1 = nil).
+    eapply synced_mem_snd_nil; eauto.
+    destruct v1, v2; unfold vsmerge in *; simpl in *; subst.
+    apply postfix_singular in H2; try congruence.
+  Qed.
+
+
+  Lemma mem_pred_cachepred_eq : forall (m1 m2 : mem) cs,
+    @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred cs) m1 m2 ->
+    synced_mem m1 ->
+    m1 = m2.
+  Proof.
+    intros.
+    apply functional_extensionality; intros.
+    destruct (m1 x) eqn: Heq.
+    eapply mem_pred_cachepred_some in H; eauto.
+    repeat deex; substl (m2 x).
+    f_equal; eapply synced_mem_sel_eq; eauto.
+    eapply mem_pred_cachepred_none in H; eauto.
+  Qed.
+
+
+  Lemma mem_pred_possible_crash_trans : forall m m1 m2 cs,
+    possible_crash m m1 ->
+    @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred cs) m1 m2 ->
+    possible_crash m1 m2.
+  Proof.
+    intros.
+    replace m2 with m1.
+    apply possible_crash_refl.
+    eapply possible_crash_synced; eauto.
+    eapply mem_pred_cachepred_eq; eauto.
+    eapply possible_crash_synced; eauto.
+  Qed.
+
+
+  Lemma mem_pred_cachepred_refl : forall m,
+    @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred (Map.empty valu)) m m.
+  Proof.
+    unfold mem_pred; intros.
+    eexists.
+    apply sep_star_assoc.
+    apply lift_impl; intros.
+    (* need to construct an infinite a/v list to replicate m *)
+  Admitted.
+
+
+  Definition cache0cs cs := cache0 (CSMaxCount (WbCs cs)).
+
+  Lemma crash_xform_rep_r: forall m m' cs',
+    possible_crash m m' ->
+    rep cs' m' =p=> crash_xform (rep (cache0cs cs') m).
+  Proof.
+    unfold rep; intros.
+    cancel.
+    xform_normr.
+    rewrite <- BUFCACHE.crash_xform_rep_r.
+    cancel.
+    apply mem_pred_cachepred_refl.
+    eapply possible_crash_trans.
+    eauto.
+    eapply mem_pred_possible_crash_trans; eauto.
+  Qed.
+
+
+
+
+
+
+
+  Theorem sync_ok_xcrash : forall wcs a,
+    {< d (F : rawpred) v vold,
+    PRE
+      rep wcs d * [[ (F * a |-> (v, vold))%pred d ]]
+    POST RET:wcs
+      exists d',
+      rep wcs d' * [[ (F * a |=> v)%pred d' ]]
+    XCRASH
+      exists wcs' d' n, rep wcs' d' * [[ (F * a |-> (v, skipn n vold))%pred d' ]]
+    >} sync a wcs.
+  Proof.
+    unfold sync, rep.
+    intros.
+    case_eq (Map.find a (WbBuf wcs)); intros v Heq.
+    - prestep; norml.
+      denote! (mem_pred _ _ _) as Hx.
+      eapply mem_pred_extract in Hx; [ | eapply ptsto_valid'; eauto ].
+      unfold cachepred at 2 in Hx; rewrite Heq in Hx.
+      destruct_lift Hx; cancel.
+
+      step.
+      step.
+      rewrite <- mem_pred_absorb with (a := a).
+      unfold cachepred at 3.
+      rewrite MapFacts.remove_eq_o by auto.
+      cancel.
+
+      apply mem_pred_pimpl_except.
+      intros; apply cachepred_remove_invariant; auto.
+      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+
+      (* crashes *)
+      eapply pimpl_trans; [ | eapply H1 ]; cancel.
+      xform_normr; cancel. xform_normr; cancel.
+      eassign (Build_wbcachestate cs' (Map.remove a (WbBuf wcs))); cancel.
+      pred_apply; simpl.
+      rewrite <- mem_pred_absorb.
+      unfold cachepred at 3.
+      rewrite MapFacts.remove_eq_o by reflexivity.
+      rewrite mem_pred_pimpl_except; cancel.
+      apply cachepred_remove_invariant; auto.
+      rewrite skipn_app.
+      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+  Admitted.
+
+
 
 
   Definition read_array T a i cs rx : prog T :=
@@ -320,9 +632,10 @@ Module WBCACHE.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
     cancel.
+    or_l; cancel.
+
+    cancel.
     or_r; cancel.
-    rewrite <- isolateN_bwd_upd by auto. cancel.
-    apply pimpl_or_r; right; cancel; eauto.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
   Qed.
@@ -347,13 +660,18 @@ Module WBCACHE.
     unfold sync_array, vssync.
     hoare.
 
+    pred_apply.
     rewrite isolateN_fwd with (i:=i) by auto. cancel.
-    rewrite ptsto_tuple.
+    rewrite BUFCACHE.ptsto_tuple.
     cancel.
 
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
     cancel.
+    unfold hidden_pred; cancel.
+
+    or_r; cancel.
+
     apply pimpl_or_r; left; cancel; eauto.
     apply pimpl_or_r; right; cancel; eauto.
     rewrite <- isolateN_bwd_upd by auto.

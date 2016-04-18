@@ -88,6 +88,16 @@ Section MemPred.
 
   Hint Resolve avs_except_notin.
 
+  Lemma avs2mem_notindomain : forall l a,
+    ~ In a (map fst l) ->
+    notindomain a (avs2mem l).
+  Proof.
+    unfold avs2mem, notindomain; induction l; simpl; intros.
+    cbv; auto.
+    destruct a; simpl in *; intuition.
+    rewrite upd_ne; auto.
+  Qed.
+
   Theorem avs_except_nodup : forall avs a,
     NoDup (map fst avs) -> NoDup (map fst (avs_except avs a)).
   Proof.
@@ -220,9 +230,20 @@ Section MemPred.
     apply mem_pred_absorb_nop'.
   Qed.
 
+  Theorem mem_pred_empty_mem :
+    mem_pred empty_mem <=p=> emp.
+  Proof.
+    unfold mem_pred, mem_pred_one, avs2mem; split; norm; auto.
+    destruct hm_avs; try cancel.
+    eapply equal_f with (x := h) in H2.
+    rewrite upd_eq in H2 by auto.
+    unfold empty_mem in H2; congruence.
+    instantiate (1 := nil); cancel.
+    intuition; constructor.
+  Qed.
+
 
 End MemPred.
-
 
 Theorem mem_pred_pimpl : forall LA LEQ LV HA HEQ HV hm p1 p2,
   (forall a v, p1 a v =p=> p2 a v) ->
@@ -253,5 +274,19 @@ Proof.
   destruct a; firstorder.
 Qed.
 
+Require Import AsyncDisk PredCrash.
 
+Theorem xform_mem_pred : forall prd (hm : rawdisk),
+  crash_xform (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _ prd hm) <=p=>
+  @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (fun a v => crash_xform (prd a v)) hm.
+Proof.
+  unfold mem_pred; intros; split.
+  xform_norm; subst.
+  rewrite xform_listpred.
+  cancel.
 
+  cancel; subst.
+  xform_normr; cancel.
+  rewrite xform_listpred.
+  cancel.
+Qed.
