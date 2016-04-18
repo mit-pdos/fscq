@@ -497,14 +497,39 @@ Module WBCACHE.
   Qed.
 
 
-  Lemma mem_pred_cachepred_refl : forall m,
+  Lemma mem_pred_cachepred_refl : forall m m' m'' buf,
+    @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred buf) m' m'' ->
+    possible_crash m m' ->
     @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred (Map.empty valu)) m m.
   Proof.
     unfold mem_pred; intros.
-    eexists.
-    apply sep_star_assoc.
-    apply lift_impl; intros.
-    (* need to construct an infinite a/v list to replicate m *)
+    destruct H; destruct_lift H.
+    generalize dependent m''.
+    generalize dependent m'.
+    generalize dependent m.
+    induction x; intros.
+    - exists nil.
+      rewrite listpred_nil in *.
+      admit.
+    - destruct a.
+      edestruct IHx.
+      + inversion H2; eauto.
+      + eapply possible_crash_mem_except; eauto.
+      + subst.
+        rewrite mem_except_avs_except.
+        rewrite avs_except_cons; auto.
+      + instantiate (1 := mem_except m'' n).
+        admit.
+      + unfold possible_crash in H0.
+        specialize (H0 n). inversion H0.
+        * exists x0.
+          destruct H3.
+          rewrite mem_except_none in H1; eauto.
+        * destruct H3.
+          destruct H3.
+          destruct H3.
+          exists ((n, x1) :: x0).
+          admit.
   Admitted.
 
 
@@ -519,7 +544,7 @@ Module WBCACHE.
     xform_normr.
     rewrite <- BUFCACHE.crash_xform_rep_r.
     cancel.
-    apply mem_pred_cachepred_refl.
+    eapply mem_pred_cachepred_refl; eauto.
     eapply possible_crash_trans.
     eauto.
     eapply mem_pred_possible_crash_trans; eauto.

@@ -51,6 +51,16 @@ Section MemPred.
     f_equal; eauto.
   Qed.
 
+  Theorem avs_except_cons : forall avs a v,
+    NoDup (map fst ((a, v) :: avs)) ->
+    avs_except ((a, v) :: avs) a = avs.
+  Proof.
+    intros; simpl.
+    destruct (HighAEQ a a); try congruence.
+    apply avs_except_notin_eq.
+    inversion H; auto.
+  Qed.
+
   Theorem avs2mem_ne : forall avs a v a',
     a <> a' ->
     avs2mem ((a, v) :: avs) a' = avs2mem avs a'.
