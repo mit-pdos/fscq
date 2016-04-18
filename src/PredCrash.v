@@ -120,6 +120,65 @@ Proof.
   inversion H1.
 Qed.
 
+
+Lemma possible_crash_notindomain : forall AEQ (m m' : @mem _ AEQ _) a,
+  possible_crash m m' ->
+  notindomain a m ->
+  notindomain a m'.
+Proof.
+  unfold possible_crash; intuition.
+  specialize (H a); intuition; repeat deex; congruence.
+Qed.
+
+
+Lemma possible_crash_upd : forall m m' a v vs,
+  possible_crash m m' ->
+  In v (vsmerge vs) ->
+  possible_crash (upd m a vs) (upd m' a (v, nil)).
+Proof.
+  unfold possible_crash; intuition.
+  destruct (addr_eq_dec a a0); subst.
+  repeat rewrite upd_eq; auto.
+  specialize (H a0); intuition; right; eexists; eauto.
+  repeat rewrite upd_ne; auto.
+Qed.
+
+
+Definition synced_mem (m : rawdisk) :=
+  forall a, m a = None \/ exists v, m a = Some (v, nil).
+
+Lemma synced_mem_snd_nil : forall m a vs,
+  synced_mem m ->
+  m a = Some vs ->
+  snd vs = nil.
+Proof.
+  unfold synced_mem; intuition.
+  specialize (H a); intuition; try congruence.
+  destruct H1.
+  rewrite H in H0; inversion H0; auto.
+Qed.
+
+Theorem possible_crash_synced : forall m m',
+  possible_crash m m' ->
+  synced_mem m'.
+Proof.
+  unfold possible_crash, synced_mem; intuition.
+  specialize (H a); intuition.
+  right; repeat deex.
+  eexists; eauto.
+Qed.
+
+Theorem possible_crash_refl : forall m,
+  synced_mem m ->
+  possible_crash m m.
+Proof.
+  unfold synced_mem, possible_crash; intuition.
+  specialize (H a); intuition.
+  destruct H0; right.
+  do 2 eexists; simpl; intuition eauto.
+Qed.
+
+
 Theorem crash_xform_sep_star_dist : forall (p q : rawpred),
   crash_xform (p * q) <=p=> crash_xform p * crash_xform q.
 Proof.

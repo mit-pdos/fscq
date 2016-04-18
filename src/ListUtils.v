@@ -2015,3 +2015,42 @@ Proof.
   replace (length l + 1 - S n) with (length l - n) by omega.
   rewrite firstn_app_l; auto; omega.
 Qed.
+
+
+Definition postfix A (a b : list A) :=
+  exists n, a = skipn n b.
+
+Lemma postfix_refl : forall A (a : list A),
+  postfix a a.
+Proof.
+  unfold postfix; intros.
+  exists 0; auto.
+Qed.
+
+Lemma postfix_app : forall A (l a b: list A),
+  postfix l b ->
+  postfix l (a ++ b).
+Proof.
+  unfold postfix; intros.
+  destruct H. eexists; subst.
+  rewrite skipn_app_r; eauto.
+Qed.
+
+Lemma postfix_tl : forall A x (l a: list A),
+  postfix l a ->
+  postfix l (x :: a).
+Proof.
+  intros.
+  rewrite cons_app.
+  apply postfix_app; auto.
+Qed.
+
+Lemma postfix_singular : forall A (a : A) l,
+  postfix l [ a ] -> l <> nil -> l = [ a ].
+Proof.
+  unfold postfix; intros.
+  destruct H.
+  destruct l; try congruence.
+  destruct x; simpl in *; try congruence.
+  rewrite skipn_nil in H; congruence.
+Qed.
