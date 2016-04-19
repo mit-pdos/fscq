@@ -727,20 +727,23 @@ Module PaddedLog.
       => unfold checksums_match in *
     end; intuition;
     [
+      solve_hash_list_rep;
       try (rewrite map_app;
       erewrite DescDefs.ipack_app;
-      try solve [ rewrite map_length, padded_log_length; unfold roundup; eauto  ];
+      try solve [ rewrite map_length, padded_log_length; unfold roundup; eauto ];
       rewrite rev_app_distr;
       rewrite <- desc_ipack_padded;
       rewrite desc_ipack_padded)
-      | try (rewrite padded_log_app, map_app, rev_app_distr)
+      | solve_hash_list_rep;
+      try (rewrite padded_log_app, map_app, rev_app_distr)
     ];
     repeat match goal with
-    | [ H: context[hash_list_rep] |- _ ]
-      => rewrite app_nil_r in H;
-         rewrite <- desc_ipack_padded in H
+    | [ H: context[hash_list_rep (_ ++ [])] |- _ ]
+      => rewrite app_nil_r in H
     end;
+    rewrite <- desc_ipack_padded in *;
     solve_hash_list_rep).
+
 
   Arguments Desc.array_rep : simpl never.
   Arguments Data.array_rep : simpl never.
@@ -1508,20 +1511,6 @@ Module PaddedLog.
       solve_hashmap_subset.
       all: auto.
 
-  Ltac solve_checksums ::=
-  try match goal with
-  | [ |- checksums_match _ _ _ ]
-    => unfold checksums_match in *
-  end; intuition;
-  [
-    try (rewrite map_app;
-    erewrite DescDefs.ipack_app;
-    try solve [ rewrite map_length, padded_log_length; unfold roundup; eauto  ];
-    rewrite rev_app_distr;
-    rewrite <- desc_ipack_padded)
-    | try (rewrite vals_nonzero_app, vals_nonzero_padded_log, rev_app_distr)
-  ]; solve_hash_list_rep.
-
       (* crash conditons *)
       (* after sync data : Extended *)
       cancel.
@@ -2141,14 +2130,7 @@ Admitted.
       auto.
 
       solve_checksums.
-      rewrite <- rev_app_distr.
-      rewrite desc_ipack_padded.
-      erewrite <- DescDefs.ipack_app.
-      rewrite <- map_app.
-      solve_hash_list_rep.
-      rewrite map_length, padded_log_length; unfold padded_log, roundup; eauto.
-      rewrite vals_nonzero_app, vals_nonzero_padded_log, rev_app_distr in H21.
-      solve_hash_list_rep.
+    }
 
     (* False case: the hash did not match what was on disk and we need to recover. *)
     {
@@ -2207,8 +2189,6 @@ Admitted.
       end;
       auto.
 
-      rewrite app_nil_r in *.
-      rewrite <- desc_ipack_padded in *.
       solve_checksums.
 
       (* Crash conditions. *)
@@ -2232,8 +2212,6 @@ Admitted.
         => unfold rep_contents_unmatched in H; destruct_lift H
       end;
       auto.
-      rewrite app_nil_r in *;
-      rewrite <- desc_ipack_padded in *;
       solve_checksums.
       unfold checksums_match in *; intuition; solve_hash_list_rep.
 
@@ -2255,8 +2233,6 @@ Admitted.
         => unfold rep_contents_unmatched in H; destruct_lift H
       end;
       auto.
-      rewrite app_nil_r in *;
-      rewrite <- desc_ipack_padded in *;
       solve_checksums.
 
       or_l.
@@ -2268,6 +2244,7 @@ Admitted.
         => unfold rep_contents_unmatched in H; destruct_lift H
       end;
       auto.
+      solve_checksums.
 
       (* Extended *)
       admit.
@@ -2291,37 +2268,17 @@ Admitted.
       cancel.
       (* SyncedUnmatched old new *)
       admit.
-  }
+    }
 
-  all: intros;
-        try (erewrite <- H1; cancel);
-        try clear H8; try clear H17;
-        or_l; cancel.
+    all: intros;
+          try (erewrite <- H1; cancel);
+          try clear H8; try clear H17;
+          or_l; cancel_with solve_checksums.
 
-      solve_checksums.
+  Admitted.
 
-  (* Crash: SyncedUnmatched old new *)
-  - cancel.
-    clear H8 H17.
-    or_l; cancel.
 
-  (* Crash: SyncedUnmatched old new *)
-  - clear H8 H17.
-    or_l; cancel.
 
-  (* Crash: SyncedUnmatched old new *)
-  - cancel.
-    clear H8.
-    or_l; cancel.
-
-  (* Crash: SyncedUnmatched old new *)
-  - cancel.
-    or_l; cancel.
-
-  (* Crash: SyncedUnmatched old new *)
-  - or_l; cancel.
-
-Admitted.
 
 End PaddedLog.
 
