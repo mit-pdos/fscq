@@ -496,6 +496,17 @@ Module WBCACHE.
     eapply possible_crash_synced; eauto.
   Qed.
 
+  Lemma listpred_cachepred_mem_except : forall a v l m buf,
+    listpred (mem_pred_one (cachepred buf)) ((a, v) :: l) m ->
+    listpred (mem_pred_one (cachepred buf)) l (mem_except m a).
+  Proof.
+    unfold mem_pred_one; simpl; intros.
+    unfold cachepred at 1 in H.
+    destruct (Map.find a buf) eqn: Heq.
+    destruct_lift H.
+    eapply ptsto_mem_except; pred_apply; eauto.
+    eapply ptsto_mem_except; pred_apply; eauto.
+  Qed.
 
   Lemma mem_pred_cachepred_refl : forall m m' m'' buf,
     @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred buf) m' m'' ->
@@ -510,7 +521,16 @@ Module WBCACHE.
     induction x; intros.
     - exists nil.
       rewrite listpred_nil in *.
-      admit.
+      apply sep_star_assoc.
+      apply lift_impl; intros.
+      simpl; auto.
+      apply lift_impl; intros.
+      apply emp_empty_mem_only.
+      eapply possible_crash_emp_l; eauto; subst.
+      apply emp_empty_mem.
+      eapply possible_crash_emp_l; eauto; subst.
+      apply emp_empty_mem.
+
     - destruct a.
       edestruct IHx.
       + inversion H2; eauto.
@@ -519,7 +539,7 @@ Module WBCACHE.
         rewrite mem_except_avs_except.
         rewrite avs_except_cons; auto.
       + instantiate (1 := mem_except m'' n).
-        admit.
+        eapply listpred_cachepred_mem_except; eauto.
       + unfold possible_crash in H0.
         specialize (H0 n). inversion H0.
         * exists x0.
@@ -529,8 +549,21 @@ Module WBCACHE.
           destruct H3.
           destruct H3.
           exists ((n, x1) :: x0).
-          admit.
-  Admitted.
+
+          destruct_lift H1.
+          apply sep_star_assoc.
+          apply lift_impl; intros.
+          apply NoDup_cons; eauto.
+          eapply avs2mem_none_notin; eauto.
+          denote mem_except as Hx; rewrite <- Hx.
+          apply mem_except_eq.
+
+          apply lift_impl; intros.
+          cbn; denote mem_except as Hx; setoid_rewrite <- Hx.
+          rewrite upd_mem_except.
+          rewrite upd_nop; auto.
+          apply mem_except_ptsto; eauto.
+  Qed.
 
 
   Definition cache0cs cs := cache0 (CSMaxCount (WbCs cs)).
