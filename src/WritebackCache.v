@@ -751,10 +751,6 @@ Module WBCACHE.
   Qed.
 
 
-
-
-  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _) _) => apply write_array_ok : prog.
-
   Theorem sync_array_ok : forall a i cs,
     {< d F vs,
     PRE
@@ -762,9 +758,8 @@ Module WBCACHE.
     POST RET:cs
       exists d', rep cs d' *
       [[ (F * arrayN a (vssync vs i))%pred d' ]]
-    CRASH
-      exists cs', rep cs' d \/
-      exists d', rep cs' d' * [[ (F * arrayN a (vssync vs i))%pred d' ]]
+    XCRASH
+      exists cs' d', rep cs' d' * [[ (F * arrayN a vs)%pred d' ]]
     >} sync_array a i cs.
   Proof.
     unfold sync_array, vssync.
@@ -777,17 +772,18 @@ Module WBCACHE.
 
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
-    cancel.
-    unfold hidden_pred; cancel.
 
-    or_r; cancel.
-
-    apply pimpl_or_r; left; cancel; eauto.
-    apply pimpl_or_r; right; cancel; eauto.
-    rewrite <- isolateN_bwd_upd by auto.
-    cancel.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    rewrite H0.
+    do 3 (xform_norm; cancel).
+    setoid_rewrite arrayN_isolate at 3; eauto.
+    rewrite <- surjective_pairing; cancel.
   Qed.
 
+
+  Hint Extern 1 ({{_}} progseq (read_array _ _ _) _) => apply read_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _) _) => apply write_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (sync_array _ _ _) _) => apply sync_array_ok : prog.
 
 
   Definition read_range T A a nr (vfold : A -> valu -> A) a0 cs rx : prog T :=
@@ -835,6 +831,7 @@ Module WBCACHE.
       lrx ^(cs)
     Rof ^(cs);
     rx cs.
+
 
 
   Definition write_vecs T a l cs rx : prog T :=

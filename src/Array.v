@@ -220,6 +220,25 @@ Proof.
 Qed.
 
 
+Lemma arrayN_updN_memupd : forall V F l a i (v : V) m,
+  (F * arrayN a l)%pred m ->
+  i < length l ->
+  (F * arrayN a (updN l i v))%pred (Mem.upd m (a + i) v).
+Proof.
+  intros.
+  rewrite arrayN_isolate with (i := i).
+  eapply pimpl_trans; [ apply pimpl_refl | | eapply ptsto_upd ].
+  rewrite selN_updN_eq by auto.
+  cancel.
+  rewrite firstn_updN_oob by auto.
+  rewrite skipn_updN by auto.
+  pred_apply.
+  rewrite arrayN_isolate by eauto.
+  cancel.
+  rewrite length_updN; auto.
+  Grab Existential Variables. all: eauto.
+Qed.
+
 Lemma arrayN_app_memupd : forall V l (v : V) m,
   arrayN 0 l m
   -> arrayN 0 (l ++ v :: nil) (Mem.upd m (length l) v).
