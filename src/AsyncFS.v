@@ -88,7 +88,9 @@ Module AFS.
 
   (* sync only data blocks of a file. *)
   Definition file_sync T fsxp inum ms rx : prog T :=
+    ms <- LOG.begin (FSXPLog fsxp) ms;
     ms <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum ms;
+    ms <- LOG.commit_ro (FSXPLog fsxp) ms;
     rx ms.
 
   Definition readdir T fsxp dnum mscs rx : prog T :=
@@ -649,7 +651,6 @@ Module AFS.
    >>} update_fblock_d fsxp inum off v mscs >> recover.
   Proof.
     recover_ro_ok.
-    apply update_fblock_d_ok.
     apply recover_ok.
 
     cancel.
@@ -680,6 +681,58 @@ Module AFS.
       cancel; or_r; cancel; eauto.
       apply LOG.after_crash_idempred.
   Qed.
+
+ 
+  Theorem sync_file_ok: forall fsxp inum mscs,
+    {< ds Fm flist A f,
+    PRE
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+      [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
+      [[[ flist ::: (A * inum |-> f) ]]]
+    POST RET:mscs
+      exists d flist',
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
+         [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
+         [[[ flist' ::: (A * inum |-> BFILE.synced_file f) ]]]
+    XCRASH
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds \/
+      (exists d flist',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, nil) *
+      [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
+      [[[ flist' ::: (A * inum |-> BFILE.synced_file f) ]]])
+  
+   >} file_sync fsxp inum mscs.
+  Proof.
+    unfold file_sync; intros.
+    step.
+    step.
+    safestep.
+    instantiate (ds0 := (m', [])).
+    cancel.
+    step.
+    cancel.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    rewrite LOG.notxn_idempred; eauto.
+    xform_norm.
+    or_r.
+    cancel.
+    xform_norm.
+    cancel.
+    xform_norm.
+    cancel.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    rewrite H0.
+    xform_norm.
+    or_l.
+    rewrite LOG.recover_any_idempred.
+    cancel.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    rewrite LOG.notxn_idempred.
+    xform_norm.
+    or_l.
+    cancel.
+  Qed.
+
 
 (*
   Theorem create_ok : forall fsxp dnum name mscs,
