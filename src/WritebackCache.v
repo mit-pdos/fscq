@@ -538,8 +538,7 @@ Module WBCACHE.
       + subst.
         rewrite mem_except_avs_except.
         rewrite avs_except_cons; auto.
-      + instantiate (1 := mem_except m'' n).
-        eapply listpred_cachepred_mem_except; eauto.
+      + eapply listpred_cachepred_mem_except; eauto.
       + unfold possible_crash in H0.
         specialize (H0 n). inversion H0.
         * exists x0.
