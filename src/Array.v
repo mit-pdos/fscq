@@ -871,7 +871,7 @@ Proof.
   try ( left; intuition; apply listupd_sel_oob; auto ).
   right; intuition.
   apply listupd_sel_inb; omega.
-Qed.
+Defined.
 
 
 Lemma possible_crash_list_updN : forall l l' a v vs,

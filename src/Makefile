@@ -13,9 +13,9 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
-VS_HS      := codegen/FS.hs
-VS_ML      := codegen/FS.ml
-VS_JSON    := codegen/FS.json
+VS_HS      := codegen/AsyncFS.hs
+VS_ML      := codegen/AsyncFS.ml
+VS_JSON    := codegen/AsyncFS.json
 GHC 	   := ghc
 HSC2HS	   := hsc2hs
 ifeq (,$(shell $(GHC) --version | grep 'version 8.0' 2>/dev/null))
