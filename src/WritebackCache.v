@@ -596,8 +596,8 @@ Module WBCACHE.
       exists d',
       rep wcs d' * [[ (F * a |=> v)%pred d' ]]
     XCRASH
-      exists wcs' d' vold', rep wcs' d' * 
-      [[ (F * a |-> (v, vold'))%pred d' /\ postfix vold' vold ]]
+      exists wcs' d', rep wcs' d' * 
+      [[ (F * a |-> (v, vold))%pred d' ]]
     >} sync a wcs.
   Proof.
     unfold sync, rep.
@@ -622,9 +622,15 @@ Module WBCACHE.
 
       (* crashes *)
       eapply pimpl_trans; [ | eapply H1 ]; cancel.
+      rewrite BUFCACHE.crash_xform_rep. cancel.
       xform_normr; cancel. xform_normr; cancel.
-      eassign (Build_wbcachestate cs' (Map.remove a (WbBuf wcs))); cancel.
-      pred_apply; simpl.
+      instantiate (1 := upd d' a (w, dummy ++ vsmerge (dummy_cur, dummy_old))).
+      instantiate (1 := Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs'0)) (Map.remove a (WbBuf wcs))); simpl.
+      rewrite <- BUFCACHE.crash_xform_rep_r.
+      cancel.
+      admit.
+      eapply pimpl_trans; [ apply pimpl_refl | | eapply ptsto_upd; pred_apply; cancel ].
+      simpl.
       rewrite <- mem_pred_absorb.
       unfold cachepred at 3.
       rewrite MapFacts.remove_eq_o by reflexivity.
