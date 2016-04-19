@@ -2023,6 +2023,12 @@ Proof.
   firstorder.
 Qed.
 
+Lemma incl_nil : forall T (l : list T), 
+  incl nil l.
+Proof.
+  firstorder.
+Qed.
+
 
 Definition postfix A (a b : list A) :=
   exists n, a = skipn n b.
