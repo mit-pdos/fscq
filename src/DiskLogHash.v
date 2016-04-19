@@ -1931,8 +1931,71 @@ Admitted.
     omega.
   Qed.
 
-  Definition recover_ok : forall xp new cs,
-    {< F old d,
+  Definition recover_ok_Synced : forall xp cs,
+    {< F l d,
+    PRE:hm   BUFCACHE.rep cs d *
+          [[ (F * rep xp (Synced l) hm)%pred d ]]
+    POST:hm' RET:cs'
+          BUFCACHE.rep cs' d *
+          [[ (F * rep xp (Synced l) hm')%pred d ]]
+    CRASH:hm_crash exists cs',
+          BUFCACHE.rep cs' d *
+          [[ (F * rep xp (Synced l) hm_crash)%pred d ]]
+    >} recover xp cs.
+  Proof.
+    unfold recover.
+    step.
+    safestep; subst.
+    instantiate (1:=map ent_addr (padded_log l)).
+    rewrite map_length, padded_log_length.
+    all: auto.
+    rewrite desc_padding_synced_piff.
+    cancel.
+
+    safestep; subst.
+    instantiate (1:= vals_nonzero l).
+    rewrite vals_nonzero_addrs.
+    replace DataSig.items_per_val with 1 by (cbv; auto); omega.
+    all: auto.
+    cancel.
+
+    step.
+    solve_hash_list_rep; auto.
+    intros.
+    eapply pimpl_ok2.
+    eapply hash_list_ok. cancel.
+    solve_hash_list_rep; auto.
+    step.
+
+    {
+      step.
+      apply desc_padding_synced_piff.
+      solve_checksums.
+    }
+    {
+      eapply pimpl_ok2; eauto with prog.
+      intros.
+      unfold pimpl; intros.
+      unfold checksums_match in *; intuition.
+      rewrite app_nil_r, <- desc_ipack_padded in *.
+      destruct_lift H15; intuition.
+
+      contradict H24.
+      eapply hash_list_injective2; solve_hash_list_rep.
+
+      contradict H15.
+      eapply hash_list_injective2; solve_hash_list_rep.
+
+      contradict H15.
+      eapply hash_list_injective2; solve_hash_list_rep.
+    }
+
+    all: try cancel;
+          solve [ apply desc_padding_synced_piff | solve_checksums ].
+  Qed.
+
+  Definition recover_ok_SyncedUnmatched : forall xp cs,
+    {< F old new d,
     PRE:hm   BUFCACHE.rep cs d *
           [[ Forall entry_valid new ]] *
           [[ (F * rep xp (SyncedUnmatched old new) hm)%pred d ]]
@@ -1942,7 +2005,7 @@ Admitted.
           [[ (F * rep xp (Synced (padded_log old ++ new)) hm')%pred d' ]])
     CRASH:hm_crash exists cs' d',
           BUFCACHE.rep cs' d' * (
-          [[ (F * rep xp (SyncedUnmatched old new) hm)%pred d ]] \/
+          [[ (F * rep xp (SyncedUnmatched old new) hm_crash)%pred d ]] \/
           [[ (F * rep xp (Synced old) hm_crash)%pred d' ]] \/
           [[ (F * rep xp (Extended old new) hm_crash)%pred d' ]] \/
           [[ (F * rep xp (Synced (padded_log old ++ new)) hm_crash)%pred d' ]])
@@ -1974,10 +2037,9 @@ Admitted.
     rewrite app_length, map_length.
     rewrite vals_nonzero_addrs, nonzero_addrs_padded_log, Nat.mul_add_distr_r.
     match goal with
-    | [ H: _ = ndata_log ?l |- context[ndata_log ?l] ]
-      => rewrite <- H
+    | [ H: length ?l = _ |- context[length ?l] ]
+      => rewrite H
     end.
-    unfold ndata_log.
     replace DataSig.items_per_val with 1 by (cbv; auto); omega.
     all: auto.
     rewrite <- Data.array_rep_synced_app.
@@ -1996,7 +2058,8 @@ Admitted.
     step.
 
     (* True case: the hash matched what was on disk. *)
-    - step.
+    {
+      step.
       or_r.
       cancel.
       unfold checksums_match in *; intuition.
@@ -2087,7 +2150,9 @@ Admitted.
       rewrite vals_nonzero_app, vals_nonzero_padded_log, rev_app_distr in H21.
       solve_hash_list_rep.
 
-    - clear H8 H17.
+    (* False case: the hash did not match what was on disk and we need to recover. *)
+    {
+      clear H8 H17.
       safestep.
       instantiate (1:= map ent_addr (padded_log old)).
       rewrite map_length, padded_log_length.
@@ -2218,10 +2283,22 @@ Admitted.
       (* SyncedUnmatched old new *)
       admit.
 
+      cancel.
+      (* SyncedUnmatched old new *)
+      admit.
+
       clear H23.
       cancel.
       (* SyncedUnmatched old new *)
       admit.
+  }
+
+  all: intros;
+        try (erewrite <- H1; cancel);
+        try clear H8; try clear H17;
+        or_l; cancel.
+
+      solve_checksums.
 
   (* Crash: SyncedUnmatched old new *)
   - cancel.
