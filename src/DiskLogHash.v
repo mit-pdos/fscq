@@ -684,6 +684,49 @@ Module PaddedLog.
     autorewrite with lists in *; omega.
   Qed.
 
+  Lemma vals_nonzero_app : forall a b,
+    vals_nonzero (a ++ b) = vals_nonzero a ++ vals_nonzero b.
+  Proof.
+    unfold vals_nonzero; induction a; intros; simpl; auto.
+    destruct a, n; simpl; auto.
+    rewrite IHa; auto.
+  Qed.
+
+  Lemma log_nonzero_repeat_0 : forall n,
+    log_nonzero (repeat (0, $0) n) = nil.
+  Proof.
+    induction n; simpl; auto.
+  Qed.
+
+  Lemma log_nonzero_app : forall a b,
+    log_nonzero (a ++ b) = log_nonzero a ++ log_nonzero b.
+  Proof.
+    induction a; simpl; intros; auto.
+    destruct a, n; simpl; auto.
+    rewrite IHa; auto.
+  Qed.
+
+  Lemma vals_nonzero_padded_log : forall l,
+    vals_nonzero (padded_log l) = vals_nonzero l.
+  Proof.
+    unfold vals_nonzero, padded_log, setlen, roundup; simpl.
+    induction l; intros; simpl; auto.
+    rewrite firstn_oob; simpl; auto.
+    rewrite log_nonzero_repeat_0; auto.
+
+    destruct a, n.
+    rewrite <- IHl.
+    repeat rewrite firstn_oob; simpl; auto.
+    repeat rewrite log_nonzero_app, map_app.
+    repeat rewrite log_nonzero_repeat_0; auto.
+
+    repeat rewrite firstn_oob; simpl; auto.
+    f_equal.
+    repeat rewrite log_nonzero_app, map_app.
+    repeat rewrite log_nonzero_repeat_0; auto.
+    simpl; rewrite app_nil_r; auto.
+  Qed.
+
   Lemma ndata_log_goodSize : forall l,
     goodSize addrlen (length l) -> goodSize addrlen (ndata_log l).
   Proof.
@@ -731,17 +774,16 @@ Module PaddedLog.
       try (rewrite map_app;
       erewrite DescDefs.ipack_app;
       try solve [ rewrite map_length, padded_log_length; unfold roundup; eauto ];
-      rewrite rev_app_distr;
-      rewrite <- desc_ipack_padded;
-      rewrite desc_ipack_padded)
+      rewrite rev_app_distr)
       | solve_hash_list_rep;
-      try (rewrite padded_log_app, map_app, rev_app_distr)
+      try rewrite vals_nonzero_app, vals_nonzero_padded_log, rev_app_distr;
+      try rewrite padded_log_app, map_app, rev_app_distr
     ];
     repeat match goal with
     | [ H: context[hash_list_rep (_ ++ [])] |- _ ]
       => rewrite app_nil_r in H
     end;
-    rewrite <- desc_ipack_padded in *;
+    try rewrite <- desc_ipack_padded in *;
     solve_hash_list_rep).
 
 
@@ -1168,28 +1210,6 @@ Module PaddedLog.
     rewrite ndata_log_padded_log; auto.
   Qed.
 
-  Lemma vals_nonzero_app : forall a b,
-    vals_nonzero (a ++ b) = vals_nonzero a ++ vals_nonzero b.
-  Proof.
-    unfold vals_nonzero; induction a; intros; simpl; auto.
-    destruct a, n; simpl; auto.
-    rewrite IHa; auto.
-  Qed.
-
-  Lemma log_nonzero_repeat_0 : forall n,
-    log_nonzero (repeat (0, $0) n) = nil.
-  Proof.
-    induction n; simpl; auto.
-  Qed.
-
-  Lemma log_nonzero_app : forall a b,
-    log_nonzero (a ++ b) = log_nonzero a ++ log_nonzero b.
-  Proof.
-    induction a; simpl; intros; auto.
-    destruct a, n; simpl; auto.
-    rewrite IHa; auto.
-  Qed.
-
   Lemma log_nonzero_rev_comm : forall l,
     log_nonzero (rev l) = rev (log_nonzero l).
   Proof.
@@ -1198,27 +1218,6 @@ Module PaddedLog.
     rewrite log_nonzero_app; simpl.
     rewrite app_nil_r. congruence.
     congruence.
-  Qed.
-
-  Lemma vals_nonzero_padded_log : forall l,
-    vals_nonzero (padded_log l) = vals_nonzero l.
-  Proof.
-    unfold vals_nonzero, padded_log, setlen, roundup; simpl.
-    induction l; intros; simpl; auto.
-    rewrite firstn_oob; simpl; auto.
-    rewrite log_nonzero_repeat_0; auto.
-
-    destruct a, n.
-    rewrite <- IHl.
-    repeat rewrite firstn_oob; simpl; auto.
-    repeat rewrite log_nonzero_app, map_app.
-    repeat rewrite log_nonzero_repeat_0; auto.
-
-    repeat rewrite firstn_oob; simpl; auto.
-    f_equal.
-    repeat rewrite log_nonzero_app, map_app.
-    repeat rewrite log_nonzero_repeat_0; auto.
-    simpl; rewrite app_nil_r; auto.
   Qed.
 
   Lemma entry_valid_vals_nonzero : forall l,
@@ -1516,6 +1515,7 @@ Module PaddedLog.
       cancel.
       or_r; or_l. cancel.
       extend_crash.
+      or_l; cancel.
       solve_checksums.
       solve_checksums.
 
@@ -1528,13 +1528,14 @@ Module PaddedLog.
       (* before sync data, after sync desc : Extended *)
       cancel.
       or_r; or_l. cancel. extend_crash.
-      solve_hash_list_rep.
+      or_l; cancel.
       solve_checksums.
       solve_checksums.
 
       (* before sync desc : Extended *)
       cancel.
       or_r; or_l. cancel. extend_crash.
+      or_l; cancel.
       solve_checksums.
       solve_checksums.
 
@@ -1546,6 +1547,7 @@ Module PaddedLog.
 
       (* after header write : Extended *)
       or_r; or_l. cancel. extend_crash.
+      or_l; cancel.
       solve_checksums.
       solve_checksums.
 
