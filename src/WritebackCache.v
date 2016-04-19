@@ -583,11 +583,6 @@ Module WBCACHE.
   Qed.
 
 
-
-
-
-
-
   Theorem sync_ok_xcrash : forall wcs a,
     {< d (F : rawpred) v vold,
     PRE
@@ -596,8 +591,7 @@ Module WBCACHE.
       exists d',
       rep wcs d' * [[ (F * a |=> v)%pred d' ]]
     XCRASH
-      exists wcs' d', rep wcs' d' * 
-      [[ (F * a |-> (v, vold))%pred d' ]]
+      exists wcs' d', rep wcs' d' * [[ (F * a |-> (v, vold))%pred d' ]]
     >} sync a wcs.
   Proof.
     unfold sync, rep.
@@ -622,55 +616,73 @@ Module WBCACHE.
 
       (* crashes *)
       eapply pimpl_trans; [ | eapply H1 ]; cancel.
-      rewrite BUFCACHE.crash_xform_rep. cancel.
+      rewrite BUFCACHE.crash_xform_rep; cancel.
       xform_normr; cancel. xform_normr; cancel.
       instantiate (1 := upd d' a (w, dummy ++ vsmerge (dummy_cur, dummy_old))).
-      instantiate (1 := Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs'0)) (Map.remove a (WbBuf wcs))); simpl.
-      rewrite <- BUFCACHE.crash_xform_rep_r.
-      cancel.
-      admit.
-      eapply pimpl_trans; [ apply pimpl_refl | | eapply ptsto_upd; pred_apply; cancel ].
-      simpl.
-      rewrite <- mem_pred_absorb.
-      unfold cachepred at 3.
-      rewrite MapFacts.remove_eq_o by reflexivity.
-      rewrite mem_pred_pimpl_except; cancel.
-      apply cachepred_remove_invariant; auto.
-      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+      eassign (Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs'0))
+                                  (Map.remove a (WbBuf wcs))); simpl.
+      rewrite <- BUFCACHE.crash_xform_rep_r; eauto.
+      eapply possible_crash_ptsto_upd_postfix; eauto.
       apply postfix_app; apply postfix_refl.
 
-      eapply pimpl_trans; [ | eapply H1 ]; cancel.
-      xform_normr; cancel. xform_normr; cancel.
-      eassign (Build_wbcachestate cs' (Map.remove a (WbBuf wcs))); cancel.
-      pred_apply; simpl.
+      eapply pimpl_trans; [ apply pimpl_refl | simpl | eapply ptsto_upd; pred_apply; cancel ].
       rewrite <- mem_pred_absorb.
       unfold cachepred at 3.
       rewrite MapFacts.remove_eq_o by reflexivity.
       rewrite mem_pred_pimpl_except; cancel.
       apply cachepred_remove_invariant; auto.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+
+      eapply pimpl_trans; [ | eapply H1 ]; cancel.
+      rewrite BUFCACHE.crash_xform_rep; cancel.
+      xform_normr; cancel. xform_normr; cancel.
+      instantiate (1 := upd a0 a (w, dummy ++ vsmerge (dummy_cur, dummy_old))).
+      eassign (Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs'0))
+                                  (Map.remove a (WbBuf wcs))); simpl.
+      rewrite <- BUFCACHE.crash_xform_rep_r; eauto.
+      eapply possible_crash_ptsto_upd_postfix; eauto.
       apply postfix_nil.
-
-      eapply pimpl_trans; [ | eapply H1 ]; cancel.
-      xform_normr; cancel. xform_normr; cancel.
-      eassign (Build_wbcachestate cs' (WbBuf wcs)); cancel.
-      pred_apply; simpl.
-      rewrite <- mem_pred_absorb.
-      unfold cachepred at 3.
-      rewrite Heqo; cancel.
-      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
-      apply postfix_refl.
-
-      xform_normr; cancel.
-      eassign (Build_wbcachestate cs' (Map.remove a (WbBuf wcs))); cancel.
-      pred_apply; simpl.
+      eapply pimpl_trans; [ apply pimpl_refl | simpl | eapply ptsto_upd; pred_apply; cancel ].
       rewrite <- mem_pred_absorb.
       unfold cachepred at 3.
       rewrite MapFacts.remove_eq_o by reflexivity.
       rewrite mem_pred_pimpl_except; cancel.
       apply cachepred_remove_invariant; auto.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+
+      eapply pimpl_trans; [ | eapply H1 ]; eauto; xform_norm.
+      rewrite BUFCACHE.crash_xform_rep; cancel.
+      xform_normr; cancel. xform_normr; cancel.
+      instantiate (1 := upd cm a (w, dummy ++ vsmerge (dummy_cur, dummy_old))).
+      eassign (Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs'))
+                                  (Map.remove a (WbBuf wcs))); simpl.
+      rewrite <- BUFCACHE.crash_xform_rep_r; eauto.
+      eapply possible_crash_ptsto_upd_incl; eauto.
+      apply incl_tl; apply incl_appr; apply incl_refl.
+      eapply pimpl_trans; [ apply pimpl_refl | simpl | eapply ptsto_upd; pred_apply; cancel ].
+      rewrite <- mem_pred_absorb.
+      unfold cachepred at 3.
+      rewrite MapFacts.remove_eq_o by reflexivity.
+      rewrite mem_pred_pimpl_except; cancel.
+      apply cachepred_remove_invariant; auto.
+      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+
+      rewrite BUFCACHE.crash_xform_rep; cancel.
+      xform_normr; cancel. xform_normr; cancel.
+      instantiate (1 := upd x0 a (w, dummy ++ vsmerge (dummy_cur, dummy_old))).
+      eassign (Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs'))
+                                  (Map.remove a (WbBuf wcs))); simpl.
+      rewrite <- BUFCACHE.crash_xform_rep_r; eauto.
+      eapply possible_crash_ptsto_upd_postfix; eauto.
       apply postfix_app; apply postfix_refl.
+      eapply pimpl_trans; [ apply pimpl_refl | simpl | eapply ptsto_upd; pred_apply; cancel ].
+      rewrite <- mem_pred_absorb.
+      unfold cachepred at 3.
+      rewrite MapFacts.remove_eq_o by reflexivity.
+      rewrite mem_pred_pimpl_except; cancel.
+      apply cachepred_remove_invariant; auto.
+      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+
 
     - norml.
       denote! (mem_pred _ _ _) as Hx.
@@ -685,24 +697,27 @@ Module WBCACHE.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
 
       (* crashes *)
-      eapply pimpl_trans; [ | eapply H1 ]; cancel.
+      eapply pimpl_trans; [ | eapply H1 ]; eauto; xform_norm.
+      rewrite BUFCACHE.crash_xform_rep; cancel.
       xform_normr; cancel. xform_normr; cancel.
-      eassign (Build_wbcachestate cs' (WbBuf wcs)); cancel.
+      eassign (Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs')) (WbBuf wcs)); simpl.
+      rewrite <- BUFCACHE.crash_xform_rep_r; eauto.
       pred_apply; simpl.
       rewrite <- mem_pred_absorb.
-      unfold cachepred at 3.
-      rewrite Heqo; cancel.
+      unfold cachepred at 3; rewrite Heqo; cancel.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
-      apply postfix_refl.
 
+      rewrite BUFCACHE.crash_xform_rep; cancel.
       xform_normr; cancel. xform_normr; cancel.
-      eassign (Build_wbcachestate cs' (WbBuf wcs)); cancel.
-      pred_apply; simpl.
-      rewrite <- mem_pred_absorb.
-      unfold cachepred at 3.
-      rewrite Heqo; cancel.
-      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+      eassign (Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs')) (WbBuf wcs)); simpl.
+      instantiate (1 := upd x0 a (v2, vold)).
+      rewrite <- BUFCACHE.crash_xform_rep_r; eauto.
+      eapply possible_crash_ptsto_upd_postfix; eauto.
       apply postfix_nil.
+      eapply pimpl_trans; [ apply pimpl_refl | simpl | eapply ptsto_upd; pred_apply; cancel ].
+      rewrite <- mem_pred_absorb.
+      unfold cachepred at 3; rewrite Heqo; cancel.
+      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
 
       Unshelve.
       all: try exact addr; try exact addr_eq_dec; try exact empty_mem.

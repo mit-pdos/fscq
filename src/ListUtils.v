@@ -2016,6 +2016,13 @@ Proof.
   rewrite firstn_app_l; auto; omega.
 Qed.
 
+Lemma incl_cons2 : forall T (a b : list T) (v : T), 
+  incl a b
+  -> incl (v :: a) (v :: b).
+Proof.
+  firstorder.
+Qed.
+
 
 Definition postfix A (a b : list A) :=
   exists n, a = skipn n b.

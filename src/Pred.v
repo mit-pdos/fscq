@@ -726,12 +726,6 @@ Proof.
     congruence.
 Qed.
 
-Lemma incl_cons : forall T (a b : list T) (v : T), incl a b
-  -> incl (v :: a) (v :: b).
-Proof.
-  firstorder.
-Qed.
-
 Lemma ptsto_valid:
   forall a v F (m : @mem AT AEQ V),
   (a |-> v * F)%pred m
