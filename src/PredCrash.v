@@ -179,6 +179,27 @@ Proof.
 Qed.
 
 
+Lemma possible_crash_emp_l : forall (m m' : @mem _ addr_eq_dec _),
+  possible_crash m m' ->
+  emp m' ->
+  emp m.
+Proof.
+  unfold possible_crash, emp; intros.
+  specialize (H a); intuition; repeat deex.
+  congruence.
+Qed.
+
+Lemma possible_crash_emp_r : forall (m m' : @mem _ addr_eq_dec _),
+  possible_crash m m' ->
+  emp m ->
+  emp m'.
+Proof.
+  unfold possible_crash, emp; intros.
+  specialize (H a); intuition; repeat deex.
+  congruence.
+Qed.
+
+
 Theorem crash_xform_sep_star_dist : forall (p q : rawpred),
   crash_xform (p * q) <=p=> crash_xform p * crash_xform q.
 Proof.

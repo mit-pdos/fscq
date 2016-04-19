@@ -1160,6 +1160,16 @@ Proof.
   repeat rewrite upd_ne by auto; rewrite mem_except_ne; auto.
 Qed.
 
+Theorem mem_except_none : forall (m : @mem AT AEQ V) a,
+  m a = None ->
+  mem_except m a = m.
+Proof.
+  intros.
+  apply functional_extensionality; intros.
+  unfold mem_except.
+  destruct (AEQ x a); congruence.
+Qed.
+
 Lemma mem_except_union_comm: forall (m1 : @mem AT AEQ V) m2 a1 a2 v1,
   a1 <> a2
   -> (a1 |-> v1)%pred m1
