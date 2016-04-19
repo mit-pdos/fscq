@@ -295,10 +295,7 @@ Module AFS.
         exists cs, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs
   >>} file_get_attr fsxp inum mscs >> recover.
   Proof.
-    unfold forall_helper.
-    intros; eexists; intros.
-    eapply pimpl_ok3.
-    eapply corr3_from_corr2_rx.
+    recover_ro_ok.
     eapply file_getattr_ok.
     eapply recover_ok.
     cancel.
@@ -311,17 +308,18 @@ Module AFS.
     rewrite SB.crash_xform_rep.
     recover_ro_ok.
     cancel.
-
     step.
     eapply LOG.notxn_after_crash_diskIs; eauto.
-
     cancel.
     rewrite LOG.after_crash_idempred.
     destruct v; auto.
   Qed.
 
+(*
+  once we settle on strict or not strict.
 
   Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
+*)
 
 
   Theorem file_getattr_ok_strict : forall fsxp inum mscs,
@@ -361,10 +359,7 @@ Module AFS.
          [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
   >>} file_get_attr fsxp inum mscs >> recover.
   Proof.
-    unfold forall_helper.
-    intros; eexists; intros.
-    eapply pimpl_ok3.
-    eapply corr3_from_corr2_rx.
+    recover_ro_ok.
     eapply file_getattr_ok_strict.
     eapply recover_ok.
     cancel.
@@ -443,11 +438,7 @@ Module AFS.
          [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
     >>} read_fblock fsxp inum off mscs >> recover.
   Proof.
-    unfold forall_helper.
-    intros; eexists; intros.
-    eapply pimpl_ok3.
-    eapply corr3_from_corr2_rx.
-    eapply read_fblock_ok.
+    recover_ro_ok.
     eapply recover_ok.
     cancel.
     eauto.
@@ -539,11 +530,7 @@ Module AFS.
          [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
      >>} file_truncate fsxp inum sz mscs >> recover.
   Proof.
-    unfold forall_helper.
-    intros; eexists; intros.
-    eapply pimpl_ok3.
-    eapply corr3_from_corr2_rx.
-    eapply file_truncate_ok.
+    recover_ro_ok.
     eapply recover_ok.
     cancel.
     safestep.  (* crucial to use safe version *)
