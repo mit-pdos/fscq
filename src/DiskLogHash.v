@@ -2002,23 +2002,25 @@ Admitted.
       unfold checksums_match in *; intuition.
       assert (Hal: map ent_addr (padded_log (padded_log old ++ new)) = map ent_addr (padded_log (padded_log old ++ padded_log dummy0))).
         cbn in *.
-
-        eapply desc_ipack_padded_injective.
-        admit. (* Desc.items_valid xp 0 (map ent_addr (padded_log old ++ new)) *)
-        admit. (* Desc.items_valid ?xp 0 (map ent_addr (padded_log old ++ padded_log dummy0)) *)
-        apply rev_injective.
-        rewrite app_nil_r in *.
-        eapply hash_list_injective;
-        solve_hash_list_rep.
-
         match goal with
         | [ H: context[Desc.array_rep] |- _ ]
           => unfold Desc.array_rep, Desc.synced_array in H;
             destruct_lift H
         end.
         unfold Desc.rep_common in *; intuition.
-        apply Desc.items_valid_app in H
+        eapply desc_ipack_padded_injective; eauto.
 
+        rewrite map_app.
+        eapply Desc.items_valid_app4.
+        rewrite map_length, padded_log_length; unfold roundup; eauto.
+        rewrite map_app in H22.
+        apply Desc.items_valid_app in H22; intuition eauto.
+        apply loglen_valid_desc_valid; auto.
+
+        apply rev_injective.
+        rewrite app_nil_r in *.
+        eapply hash_list_injective;
+        solve_hash_list_rep.
 
       repeat rewrite padded_log_app in Hal.
       repeat rewrite map_app in Hal.

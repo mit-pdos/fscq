@@ -131,6 +131,21 @@ Module AsyncRecArray (RA : RASig).
     setoid_rewrite <- H; auto.
   Qed.
 
+  Lemma items_valid_app4 : forall xp st a b na,
+    length a = na * items_per_val ->
+    items_valid xp st a ->
+    items_valid xp (st + na) b ->
+    items_valid xp st (a ++ b).
+  Proof.
+    unfold items_valid, roundup; intuition.
+    apply well_formed_app_iff; intuition.
+    rewrite app_length.
+    rewrite Nat.sub_add_distr in H8.
+    rewrite Nat.mul_sub_distr_r in H8.
+    rewrite <- H in H8.
+    omega.
+  Qed.
+
   Lemma synced_array_is : forall xp start items,
     synced_array xp start items =p=>
     arrayN ((RAStart xp) + start) (combine (ipack items) (nils (length (ipack items)))).
