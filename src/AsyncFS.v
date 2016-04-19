@@ -490,7 +490,8 @@ Module AFS.
         [[[ flist' ::: (A * inum |-> f') ]]] *
         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]]
     CRASH
-      LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds   (* XXX should this include d? *)
+      (* interesting: no need to add d to ds, because when we crash we always recover with the first disk of ds *)
+      LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds
      >} file_truncate fsxp inum sz mscs.
   Proof.
     unfold file_truncate; intros.
