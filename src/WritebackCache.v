@@ -597,16 +597,17 @@ Module WBCACHE.
       exists d',
       rep wcs d' * [[ (F * a |=> v)%pred d' ]]
     XCRASH
-      exists wcs' d' n, rep wcs' d' * [[ (F * a |-> (v, skipn n vold))%pred d' ]]
+      exists wcs' d' vold', rep wcs' d' * 
+      [[ (F * a |-> (v, vold'))%pred d' /\ postfix vold' vold ]]
     >} sync a wcs.
   Proof.
     unfold sync, rep.
     intros.
-    case_eq (Map.find a (WbBuf wcs)); intros v Heq.
-    - prestep; norml.
+    prestep.
+    - norml.
       denote! (mem_pred _ _ _) as Hx.
       eapply mem_pred_extract in Hx; [ | eapply ptsto_valid'; eauto ].
-      unfold cachepred at 2 in Hx; rewrite Heq in Hx.
+      unfold cachepred at 2 in Hx; rewrite Heqo in Hx.
       destruct_lift Hx; cancel.
 
       step.
@@ -630,9 +631,78 @@ Module WBCACHE.
       rewrite MapFacts.remove_eq_o by reflexivity.
       rewrite mem_pred_pimpl_except; cancel.
       apply cachepred_remove_invariant; auto.
-      rewrite skipn_app.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
-  Admitted.
+      apply postfix_app; apply postfix_refl.
+
+      eapply pimpl_trans; [ | eapply H1 ]; cancel.
+      xform_normr; cancel. xform_normr; cancel.
+      eassign (Build_wbcachestate cs' (Map.remove a (WbBuf wcs))); cancel.
+      pred_apply; simpl.
+      rewrite <- mem_pred_absorb.
+      unfold cachepred at 3.
+      rewrite MapFacts.remove_eq_o by reflexivity.
+      rewrite mem_pred_pimpl_except; cancel.
+      apply cachepred_remove_invariant; auto.
+      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+      apply postfix_nil.
+
+      eapply pimpl_trans; [ | eapply H1 ]; cancel.
+      xform_normr; cancel. xform_normr; cancel.
+      eassign (Build_wbcachestate cs' (WbBuf wcs)); cancel.
+      pred_apply; simpl.
+      rewrite <- mem_pred_absorb.
+      unfold cachepred at 3.
+      rewrite Heqo; cancel.
+      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+      apply postfix_refl.
+
+      xform_normr; cancel.
+      eassign (Build_wbcachestate cs' (Map.remove a (WbBuf wcs))); cancel.
+      pred_apply; simpl.
+      rewrite <- mem_pred_absorb.
+      unfold cachepred at 3.
+      rewrite MapFacts.remove_eq_o by reflexivity.
+      rewrite mem_pred_pimpl_except; cancel.
+      apply cachepred_remove_invariant; auto.
+      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+      apply postfix_app; apply postfix_refl.
+
+    - norml.
+      denote! (mem_pred _ _ _) as Hx.
+      eapply mem_pred_extract in Hx; [ | eapply ptsto_valid'; eauto ].
+      unfold cachepred at 2 in Hx; rewrite Heqo in Hx.
+      destruct_lift Hx; cancel.
+
+      step.
+      rewrite <- mem_pred_absorb with (a := a).
+      unfold cachepred at 3.
+      rewrite Heqo; cancel.
+      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+
+      (* crashes *)
+      eapply pimpl_trans; [ | eapply H1 ]; cancel.
+      xform_normr; cancel. xform_normr; cancel.
+      eassign (Build_wbcachestate cs' (WbBuf wcs)); cancel.
+      pred_apply; simpl.
+      rewrite <- mem_pred_absorb.
+      unfold cachepred at 3.
+      rewrite Heqo; cancel.
+      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+      apply postfix_refl.
+
+      xform_normr; cancel. xform_normr; cancel.
+      eassign (Build_wbcachestate cs' (WbBuf wcs)); cancel.
+      pred_apply; simpl.
+      rewrite <- mem_pred_absorb.
+      unfold cachepred at 3.
+      rewrite Heqo; cancel.
+      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+      apply postfix_nil.
+
+      Unshelve.
+      all: try exact addr; try exact addr_eq_dec; try exact empty_mem.
+      all: exact (fun a b => emp).
+  Qed.
 
 
 

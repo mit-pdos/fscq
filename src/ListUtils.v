@@ -2020,6 +2020,14 @@ Qed.
 Definition postfix A (a b : list A) :=
   exists n, a = skipn n b.
 
+Lemma postfix_nil : forall A (l : list A),
+  postfix nil l.
+Proof.
+  unfold postfix; intros.
+  exists (length l).
+  rewrite skipn_oob; auto.
+Qed.
+
 Lemma postfix_refl : forall A (a : list A),
   postfix a a.
 Proof.
