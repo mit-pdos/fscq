@@ -473,8 +473,8 @@ Module AFS.
     replace n with 0 in *.
     rewrite nthd_0; simpl; auto.
     simpl in *; omega.
-
     cancel; cancel.
+
     rewrite LOG.after_crash_idem.
     xform_norm.
     rewrite SB.crash_xform_rep.
@@ -499,7 +499,7 @@ Module AFS.
         [[[ flist' ::: (A * inum |-> f') ]]] *
         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]]
     CRASH
-      LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds
+      LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds   (* XXX should this include d? *)
      >} file_truncate fsxp inum sz mscs.
   Proof.
     unfold file_truncate; intros.
@@ -521,7 +521,7 @@ Module AFS.
 
   Hint Extern 1 ({{_}} progseq (file_truncate _ _ _ _) _) => apply file_truncate_ok : prog.
 
-  Theorem file_truncate_reover_ok : forall fsxp inum sz mscs,
+  Theorem file_truncate_recover_ok : forall fsxp inum sz mscs,
     {<< ds Fm flist A f,
     PRE
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
@@ -546,15 +546,50 @@ Module AFS.
     eapply file_truncate_ok.
     eapply recover_ok.
     cancel.
-    step.
+    safestep.  (* crucial to use safe version *)
+    or_l.
+    cancel.
     eassign ( LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v \/
       (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs))%pred.
+    cancel; cancel.
+
+    or_r.
+    cancel.
+    subst; simpl.
+    cancel; cancel.
+    cancel; cancel.
+
     xform_norm.
     recover_ro_ok.
+    rewrite LOG.crash_xform_intact.
+    xform_norm.
+    rewrite SB.crash_xform_rep.
     cancel.
-    or_l.
-    (* rewrite LOG.crash_xform_intact. *)
-  Admitted.
+
+    rewrite LOG.notxn_after_crash_diskIs. cancel.
+    rewrite nthd_0; eauto. omega.
+    safestep; subst.
+    eassign d0; eauto.
+    pred_apply; instantiate (1 := nil).
+    replace n with 0 in *.
+    rewrite nthd_0; simpl; auto.
+    simpl in *; omega.
+    cancel; cancel.
+ 
+    rewrite LOG.after_crash_idem.
+    xform_norm.
+    rewrite SB.crash_xform_rep.
+    recover_ro_ok.
+    cancel.
+
+    safestep; subst.
+    eassign d; eauto.
+    pred_apply. 
+    replace n with 0 in *.
+    rewrite nthd_0; simpl; auto.
+    simpl in *; omega.
+    cancel; cancel.
+  Qed.
 
   Theorem update_fblock_d_ok : forall fsxp inum off v mscs,
     {< ds Fm flist A f Fd v0,
