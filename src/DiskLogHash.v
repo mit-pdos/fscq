@@ -1608,8 +1608,7 @@ Module PaddedLog.
     unfold rep, rep_inner, rep_contents, xparams_ok.
     unfold Desc.array_rep, Desc.synced_array, Desc.rep_common, Desc.items_valid.
     intros; destruct_lifts.
-    denote DescSig.items_per_val as Hx.
-    rewrite map_length, Nat.sub_0_r in Hx.
+    rewrite map_length, Nat.sub_0_r in H17.
     rewrite H5, Nat.mul_comm; auto.
   Qed.
 
