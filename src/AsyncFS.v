@@ -654,6 +654,7 @@ Module AFS.
     apply recover_ok.
 
     cancel.
+
     step.
     apply pimpl_refl.
 
@@ -683,7 +684,7 @@ Module AFS.
   Qed.
 
 
-  Theorem sync_file_ok: forall fsxp inum mscs,
+  Theorem file_sync_ok: forall fsxp inum mscs,
     {< ds Fm flist A f,
     PRE
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
@@ -732,7 +733,9 @@ Module AFS.
     cancel.
   Qed.
 
- Theorem file_sync_recover_ok : forall fsxp inum mscs,
+  Hint Extern 1 ({{_}} progseq (file_sync _ _ _) _) => apply file_sync_ok : prog.
+
+  Theorem file_sync_recover_ok : forall fsxp inum mscs,
     {<< ds Fm flist A f Fd,
     PRE
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
@@ -746,17 +749,127 @@ Module AFS.
          [[[ flist' ::: (A * inum |-> BFILE.synced_file f) ]]]
     REC RET:^(mscs,fsxp)
       exists d,
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
-      ((exists n, 
-        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] ) \/
-       (exists flist' f',
-        [[[ d ::: (crash_xform Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
-        [[[ flist' ::: (arrayN_ex flist' inum * inum |-> f') ]]] *
-        [[[ (BFILE.BFData f) ::: crash_xform Fd ]]]
-      ))
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
+       ((exists n, 
+          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]])  \/
+        (exists flist' f',
+          [[[ d ::: (crash_xform Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
+          [[[ flist' ::: (arrayN_ex flist' inum * inum |-> f') ]]] *
+          [[[ (BFILE.BFData f) ::: crash_xform Fd ]]] ))
    >>} file_sync fsxp inum mscs >> recover.
   Proof.
+    recover_ro_ok.
+    apply recover_ok.
+    cancel.
+    step.
+(*
+
+    xform_norm;
+    recover_ro_ok;
+    rewrite LOG.idempred_idem; xform_deex_l;
+    rewrite SB.crash_xform_rep.
+
+    - cancel.
+      step.
+      or_l; cancel.
+      destruct v0; cancel.
+      rewrite LOG.after_crash_idempred; cancel.
+
+    - cancel.
+      step.
+      denote crash_xform as Hx.
+      replace n with 0 in Hx by omega; rewrite nthd_0 in Hx; simpl in Hx.
+      apply (@crash_xform_diskIs_pred _ _ H0) in Hx.
+      apply crash_xform_sep_star_dist in Hx.
+      rewrite BFILE.xform_rep_off in Hx by eauto.
+      destruct_lift Hx.
+      or_r; safecancel; subst; intuition.
+
+      cancel; or_r; cancel; eauto.
+      apply LOG.after_crash_idempred.
+*)
   Admitted.
+
+  Theorem lookup_ok: forall fsxp dnum fnlist mscs,
+    {< ds Fm Ftop tree,
+    PRE    
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
+      [[ DIRTREE.dirtree_inum tree = dnum]] *
+      [[ DIRTREE.dirtree_isdir tree = true ]]
+    POST RET:^(mscs,r)
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+      [[ r = DIRTREE.find_name fnlist tree ]]
+    CRASH  LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds
+     >} lookup fsxp dnum fnlist mscs.
+  Proof.
+    unfold lookup; intros.
+    step.
+    step.
+    eapply pimpl_ok2.
+    apply LOG.commit_ro_ok.
+    cancel.
+    step.
+    subst; pimpl_crash; cancel.
+    apply LOG.notxn_intact.
+    apply LOG.notxn_intact.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (lookup _ _ _ _) _) => apply lookup_ok : prog.
+
+  Theorem lookup_recover_ok : forall fsxp dnum fnlist mscs,
+    {<< ds Fm Ftop tree,
+    PRE  
+     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
+      [[ DIRTREE.dirtree_inum tree = dnum]] *
+      [[ DIRTREE.dirtree_isdir tree = true ]]
+    POST RET:^(mscs,r)
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+      [[ r = DIRTREE.find_name fnlist tree ]]
+    REC RET:^(mscs, fsxp)
+      exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
+       [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
+    >>} lookup fsxp dnum fnlist mscs >> recover.
+  Proof.
+    recover_ro_ok.
+    eapply recover_ok.
+    cancel.
+    eauto.
+    step.
+    instantiate (1 := (LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v \/
+      (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs))%pred).
+    cancel; cancel.
+    cancel.
+    or_l.
+    cancel.
+    xform_norm.
+    recover_ro_ok.
+    rewrite LOG.crash_xform_intact.
+    xform_norm.
+    rewrite SB.crash_xform_rep.
+
+    cancel.
+    rewrite LOG.notxn_after_crash_diskIs. cancel.
+    rewrite nthd_0; eauto. omega.
+
+    safestep; subst.
+    eassign d0; eauto.
+    pred_apply; instantiate (1 := nil).
+    replace n with 0 in *.
+    rewrite nthd_0; simpl; auto.
+    simpl in *; omega.
+
+    cancel; cancel.
+    rewrite LOG.after_crash_idem.
+    xform_norm.
+    rewrite SB.crash_xform_rep.
+    recover_ro_ok.
+    cancel.
+
+    step.
+    cancel; cancel.
+  Qed.
 
 
 (*
@@ -822,43 +935,6 @@ Module AFS.
     recover_rw_ok.
   Qed.
 
-  Theorem lookup_ok: forall fsxp dnum fnlist mscs,
-    {< m Fm Ftop tree,
-    PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-             [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-             [[ dnum = DIRTREE.dirtree_inum tree ]] *
-             [[ DIRTREE.dirtree_isdir tree = true ]]
-    POST RET:^(mscs,r)
-             LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-             [[ r = DIRTREE.find_name fnlist tree ]]
-    CRASH   LOG.would_recover_either (FSXPLog fsxp) (sb_rep fsxp) m m
-    >} lookup fsxp dnum fnlist mscs.
-  Proof.
-    unfold lookup.
-    hoare.
-    apply LOG.would_recover_old_either.
-    rewrite LOG.notxn_would_recover_old. apply LOG.would_recover_old_either.
-    rewrite LOG.activetxn_would_recover_old. apply LOG.would_recover_old_either.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (lookup _ _ _ _) _) => apply lookup_ok : prog.
-
-
-  Theorem lookup_recover_ok : forall fsxp dnum fnlist mscs,
-    {<< m Fm Ftop tree,
-    PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-             [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-             [[ dnum = DIRTREE.dirtree_inum tree ]] *
-             [[ DIRTREE.dirtree_isdir tree = true ]]
-    POST RET:^(mscs,r)
-             LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-             [[ r = DIRTREE.find_name fnlist tree ]]
-    REC RET:^(mscs, fsxp)
-             LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs
-    >>} lookup fsxp dnum fnlist mscs >> recover.
-  Proof.
-    recover_ro_ok.
-  Qed.
 
   Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
     {< m Ftop tree cwd tree_elem,
