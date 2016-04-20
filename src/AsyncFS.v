@@ -735,13 +735,13 @@ Module AFS.
 
   Hint Extern 1 ({{_}} progseq (file_sync _ _ _) _) => apply file_sync_ok : prog.
 
+
   Theorem file_sync_recover_ok : forall fsxp inum mscs,
-    {<< ds Fm flist A f Fd,
+    {<< ds Fm flist A f,
     PRE
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
       [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
-      [[[ flist ::: (A * inum |-> f) ]]] *
-      [[[ (BFILE.BFData f) ::: Fd ]]]
+      [[[ flist ::: (A * inum |-> f) ]]]
     POST RET:mscs
      exists d flist',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
@@ -750,20 +750,34 @@ Module AFS.
     REC RET:^(mscs,fsxp)
       exists d,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
-       ((exists n, 
-          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]])  \/
-        (exists flist' f',
-          [[[ d ::: (crash_xform Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
-          [[[ flist' ::: (arrayN_ex flist' inum * inum |-> f') ]]] *
-          [[[ (BFILE.BFData f) ::: crash_xform Fd ]]] ))
+       ((exists n,  [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]) \/
+         exists flist',
+         [[[ d ::: (crash_xform Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
+         [[[ flist' ::: (arrayN_ex flist' inum * inum |-> BFILE.synced_file f) ]]]
+       )
    >>} file_sync fsxp inum mscs >> recover.
   Proof.
     recover_ro_ok.
     apply recover_ok.
     cancel.
     step.
-(*
 
+    (** XXX:
+      May be we need an XRET spec here that says
+      crash_xform crash =p=> crash_xform idemcrash
+    *)
+    instantiate (1 := (or (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) v)
+            (exis
+               (fun d : LogReplay.diskstate =>
+                exis
+                  (fun flist' : list BFILE.bfile =>
+                   sep_star
+                     (sep_star (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pair d nil))
+                        (lift_empty
+                           (sep_star v0 (BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') (list2nmem d))))
+                     (lift_empty (sep_star v2 (ptsto inum (BFILE.synced_file v3)) (list2nmem flist')))))))).
+
+    admit.
     xform_norm;
     recover_ro_ok;
     rewrite LOG.idempred_idem; xform_deex_l;
@@ -771,24 +785,29 @@ Module AFS.
 
     - cancel.
       step.
+      cancel.
+      cancel.
       or_l; cancel.
-      destruct v0; cancel.
+      destruct v.
       rewrite LOG.after_crash_idempred; cancel.
 
     - cancel.
       step.
       denote crash_xform as Hx.
       replace n with 0 in Hx by omega; rewrite nthd_0 in Hx; simpl in Hx.
-      apply (@crash_xform_diskIs_pred _ _ H0) in Hx.
+      apply (crash_xform_diskIs_pred _ H) in Hx.
       apply crash_xform_sep_star_dist in Hx.
-      rewrite BFILE.xform_rep_off in Hx by eauto.
+      rewrite BFILE.xform_rep_file in Hx by eauto.
       destruct_lift Hx.
-      or_r; safecancel; subst; intuition.
+      or_r; safecancel.
+      erewrite BFILE.file_crash_synced with (f := BFILE.synced_file v3); eauto.
+      apply BFILE.fsynced_synced_file.
 
-      cancel; or_r; cancel; eauto.
-      apply LOG.after_crash_idempred.
-*)
+      cancel.
+      rewrite LOG.after_crash_idempred.
+      or_r; safecancel.
   Admitted.
+
 
   Theorem lookup_ok: forall fsxp dnum fnlist mscs,
     {< ds Fm Ftop tree,
