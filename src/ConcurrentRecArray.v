@@ -92,17 +92,116 @@ Module RecArray (Params:RecArrayParams).
     apply wreclen_valu_id.
   Qed.
 
+  (* temporarily explicitly say readers are None *)
+  (* TODO: eventually cache should not expose readers anywhere *)
+  Definition rep_block' b : wr_set := (rep_block b, None).
+
   (* array_item_pairs *)
   Definition rep_blocks (vs : list block) : @pred addr _ (const wr_set) :=
     ([[ length vs = RALen ]] *
      [[ Forall Rec.well_formed vs ]] *
-     (* TODO: eventually cache should not expose readers anywhere *)
-     array ($ RAStart) (map (fun b => (rep_block b, None)) vs) $1)%pred.
+     array ($ RAStart) (map rep_block' vs) $1)%pred.
+
+  Section Nesting.
+
+    (* group l into a list k long in accum, recurse with k = k0 each time, concatenating all resulting values *)
+    Fixpoint nest_list_f A (l: list A) k0 k accum : list (list A) :=
+      match l with
+      | nil => [accum]
+      | a :: l' =>
+        match k with
+        | 0 => [accum] ++ nest_list_f l' k0 (k0-1) [a]
+        | Datatypes.S k' => nest_list_f l' k0 k' (accum ++ [a])
+        end
+      end.
+
+    Definition nest_list A (l: list A) k : list (list A) :=
+      nest_list_f l k k nil.
+
+    Theorem nest_list_f_concat : forall A (l: list A) k0 k accum,
+        concat (nest_list_f l k0 k accum) = accum ++ l.
+    Proof.
+      induction l; cbn; intros; auto.
+      destruct k; cbn.
+      rewrite IHl; auto.
+
+      rewrite IHl.
+      rewrite <- app_assoc; auto.
+    Qed.
+
+    Require Import Omega.
+
+    Ltac unify_in :=
+      try lazymatch goal with
+        | |- In _ _ => eassumption
+        end; cbn; try omega.
+
+    Theorem nest_list_f_length : forall k0 A (l: list A) k accum m,
+        k < k0 ->
+        length accum + k = k0 ->
+        length (accum ++ l) = m * k0 ->
+        0 < k0 ->
+        (forall x, In x (nest_list_f l k0 k accum) -> length x = k0).
+    Proof.
+      induction l; intros; cbn in *.
+      intuition subst.
+      destruct m; cbn in *; try omega;
+      rewrite app_nil_r in *.
+      rewrite H1 in *.
+      omega.
+      assert (m * (length x + k) >= 0).
+      apply Peano.le_0_n.
+      omega.
+
+      destruct k; cbn in *.
+      intuition subst;
+      rewrite plus_0_r in *; auto.
+      eapply IHl; unify_in;
+      rewrite app_length in *; cbn in *.
+      set (n := length accum) in *.
+      assert (n + Datatypes.S (length l) - n = m * n - n).
+      omega.
+
+      rewrite minus_plus in H0.
+      rewrite mult_comm in H0.
+      rewrite <- Nat.mul_pred_r in H0.
+      rewrite mult_comm in H0.
+      eauto.
+
+      eapply IHl; unify_in;
+      repeat rewrite app_length in *;
+      cbn in *; try omega.
+      rewrite <- plus_assoc.
+      eauto.
+    Qed.
+
+    Theorem nest_list_concat : forall A (l: list A) k,
+        concat (nest_list l k) = l.
+    Proof.
+      intros.
+      apply nest_list_f_concat.
+    Qed.
+
+    Theorem nest_list_length : forall A (l: list A) k m,
+        length l = m * k ->
+        0 < length l ->
+        0 < k ->
+        Forall (fun l => length l = k) (nest_list l k).
+    Proof.
+      unfold nest_list; intros.
+      destruct l, k; cbn in *; try omega.
+      rewrite Forall_forall; intros.
+      eapply nest_list_f_length;
+        unify_in;
+        eauto.
+    Qed.
+
+  End Nesting.
+
 
   (* array_item *)
   Definition rep_items (vs : list item) :=
-    (exists vs_nested, rep_blocks vs_nested *
-                  [[ vs = concat vs_nested ]])%pred.
+    rep_blocks (nest_list vs items_per_valu).
 
   Module Type RecArrayVars (SemVars:SemanticsVars).
     Import SemVars.
