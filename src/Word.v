@@ -593,22 +593,6 @@ Fixpoint split2 (sz1 sz2 : nat) : word (sz1 + sz2) -> word sz2 :=
     | S sz1' => fun w => split2 sz1' sz2 (wtl w)
   end.
 
-Definition splice {n m : nat} (w : word n) (idx : nat) (d : nat) (v : word m) 
-  : word (n - (Nat.min (n - idx) d) + m).
-  refine (if lt_dec (idx + d) n then _ else _).
-  replace (n - Nat.min (n - idx) d + m) with (idx + m + (n - idx - d)) by (abstract lia).
-  refine (combine (combine (split1 idx (n - idx) _) v) (split2 (idx + d) (n - idx - d) _)).
-  replace (idx + (n - idx)) with n by (abstract lia); exact w.
-  replace (idx + d + (n - idx - d)) with n by (abstract lia); exact w.
-
-  refine (if lt_dec idx n then _ else _).
-  replace (n - Nat.min (n - idx) d + m) with (idx + m) by (abstract lia).
-  refine (combine (split1 idx (n - idx) _) v).
-  replace (idx + (n - idx)) with n by (abstract lia); exact w.
-  replace (n - Nat.min (n - idx) d + m) with (n + m) by (abstract lia).
-  refine (combine w v).
-Defined.
-
 Ltac shatterer := simpl; intuition;
   match goal with
     | [ w : _ |- _ ] => rewrite (shatter_word w); simpl

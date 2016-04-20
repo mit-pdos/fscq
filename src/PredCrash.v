@@ -1,7 +1,7 @@
 Require Import Mem.
 Require Import Pred.
 Require Import Prog.
-Require Import List.
+Require Import List ListUtils.
 Require Import FunctionalExtensionality.
 Require Import Morphisms.
 Require Import AsyncDisk.
@@ -199,6 +199,41 @@ Proof.
   congruence.
 Qed.
 
+Lemma possible_crash_ptsto_upd_incl : forall F m m' a vs vs',
+  (F * a |-> vs)%pred m ->
+  possible_crash m m' ->
+  incl (vsmerge vs) (vsmerge vs') ->
+  possible_crash (upd m a vs') m'.
+Proof.
+  unfold possible_crash, vsmerge; simpl; intros.
+  apply ptsto_valid' in H.
+  destruct vs, vs'; simpl in *.
+  destruct (addr_eq_dec a0 a); subst.
+
+  - specialize (H0 a); intuition.
+    left; congruence.
+    right; rewrite upd_eq by auto; repeat deex; destruct vs; simpl in *.
+    rewrite H in H2; inversion H2; subst.
+    exists (w0, l0); exists w1; intuition.
+    rewrite H in H2; inversion H2; subst.
+    exists (w0, l0); exists v'; intuition.
+
+  - rewrite upd_ne by auto.
+    specialize (H0 a0); intuition.
+Qed.
+
+Lemma possible_crash_ptsto_upd_postfix : forall F m m' a v vs vs',
+  (F * a |-> (v, vs))%pred m ->
+  possible_crash m m' ->
+  postfix vs vs' ->
+  possible_crash (upd m a (v, vs')) m'.
+Proof.
+  intros.
+  eapply possible_crash_ptsto_upd_incl; eauto.
+  apply incl_cons2; simpl.
+  unfold incl, postfix in *; destruct H1; subst; intuition.
+  eapply in_skipn_in; eauto.
+Qed.
 
 Theorem crash_xform_sep_star_dist : forall (p q : rawpred),
   crash_xform (p * q) <=p=> crash_xform p * crash_xform q.

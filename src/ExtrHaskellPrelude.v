@@ -1,5 +1,5 @@
 Require Import ExtrHaskellBasic.
-Require Import ExtrHaskellNatInt.
+Require Import ExtrHaskellNatInteger.
 Require Import ExtrHaskellZInteger.
 Require Import ExtrHaskellString.
 
