@@ -757,27 +757,31 @@ Module AFS.
        )
    >>} file_sync fsxp inum mscs >> recover.
   Proof.
+    intros.
     recover_ro_ok.
     apply recover_ok.
     cancel.
     step.
 
-    (** XXX:
-      May be we need an XRET spec here that says
-      crash_xform crash =p=> crash_xform idemcrash
-    *)
-    instantiate (1 := (or (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) v)
-            (exis
-               (fun d : LogReplay.diskstate =>
-                exis
-                  (fun flist' : list BFILE.bfile =>
-                   sep_star
-                     (sep_star (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pair d nil))
-                        (lift_empty
-                           (sep_star v0 (BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') (list2nmem d))))
-                     (lift_empty (sep_star v2 (ptsto inum (BFILE.synced_file v3)) (list2nmem flist')))))))).
+    (* build a new idemcrash predicate that carries the XCRASH facts *)
+    match goal with
+    | [ H : crash_xform ?rc =p=> crash_xform ?crash
+         |-  ?F * ?rc =p=> ?F * ?idem ] => is_evar idem;
+        instantiate (1 := (exists p, p * [[ crash_xform p =p=> crash_xform crash ]])%pred);
+        cancel
+    end.
 
-    admit.
+    (* tough work to pull out the "exists p" inside crash_form *)
+    xform_dist.
+    rewrite crash_xform_exists_comm.
+    rewrite sep_star_comm.
+    rewrite pimpl_exists_r_star_r.
+    apply pimpl_exists_l; intro.
+    xform_dist.
+    rewrite crash_xform_lift_empty.
+    norml; unfold stars; simpl; clear_norm_goal.
+    denote (crash_xform _ =p=> crash_xform _) as Hc; rewrite Hc.
+
     xform_norm;
     recover_ro_ok;
     rewrite LOG.idempred_idem; xform_deex_l;
@@ -787,8 +791,9 @@ Module AFS.
       step.
       cancel.
       cancel.
-      or_l; cancel.
       destruct v.
+      xform_norm.
+      or_l; cancel.
       rewrite LOG.after_crash_idempred; cancel.
 
     - cancel.
@@ -804,9 +809,12 @@ Module AFS.
       apply BFILE.fsynced_synced_file.
 
       cancel.
+      apply crash_xform_pimpl.
       rewrite LOG.after_crash_idempred.
       or_r; safecancel.
-  Admitted.
+
+    Unshelve. all: eauto.
+  Qed.
 
 
   Theorem lookup_ok: forall fsxp dnum fnlist mscs,
