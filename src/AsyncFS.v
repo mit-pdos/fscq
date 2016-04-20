@@ -682,7 +682,7 @@ Module AFS.
       apply LOG.after_crash_idempred.
   Qed.
 
- 
+
   Theorem sync_file_ok: forall fsxp inum mscs,
     {< ds Fm flist A f,
     PRE
@@ -700,7 +700,6 @@ Module AFS.
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, nil) *
       [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
       [[[ flist' ::: (A * inum |-> BFILE.synced_file f) ]]])
-  
    >} file_sync fsxp inum mscs.
   Proof.
     unfold file_sync; intros.
@@ -732,6 +731,32 @@ Module AFS.
     or_l.
     cancel.
   Qed.
+
+ Theorem file_sync_recover_ok : forall fsxp inum off v mscs,
+    {<< ds Fm flist A f Fd,
+    PRE
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+      [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
+      [[[ flist ::: (A * inum |-> f) ]]]
+      [[[ (BFILE.BFData f) ::: Fd ]]]
+    POST RET:mscs
+     exists d flist',
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
+         [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
+         [[[ flist' ::: (A * inum |-> BFILE.synced_file f) ]]]
+    REC RET:^(mscs,fsxp)
+      exists d,
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
+      ((exists n, 
+        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] ) \/
+       (exists flist' f',
+        [[[ d ::: (crash_xform Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
+        [[[ flist' ::: (arrayN_ex flist' inum * inum |-> f') ]]]
+        [[[ (BFILE.BFData f) ::: crash_xform Fd ]]]
+      ))
+   >>} file_sync fsxp inum mscs >> recover.
+  Proof.
+  Admitted.
 
 
 (*
