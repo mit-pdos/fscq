@@ -102,6 +102,20 @@ Module RecArray (Params:RecArrayParams).
      [[ Forall Rec.well_formed vs ]] *
      array ($ RAStart) (map rep_block' vs) $1)%pred.
 
+  Definition rep_blocks_except (vs: list block) i : @pred addr _ (const wr_set) :=
+    ([[ length vs = RALen ]] *
+     [[ Forall Rec.well_formed vs ]] *
+     let blocks := map rep_block' vs in
+     array ($ RAStart) (firstn i blocks) $1 *
+     array ($ RAStart ^+ $1) (skipn (i+1) blocks) $1)%pred.
+
+  Polymorphic Theorem rep_blocks_split : forall vs i,
+      i < RALen ->
+      rep_blocks vs <=p=> rep_blocks_except vs i * ($ (RAStart) ^+ $(i)) |-> rep_block' (selN vs i block0).
+  Proof.
+    unfold rep_blocks, rep_blocks_except; split; intros; cancel.
+  Admitted.
+
   Section Nesting.
 
     (* group l into a list k long in accum, recurse with k = k0 each time, concatenating all resulting values *)
@@ -363,6 +377,47 @@ Module RecArray (Params:RecArrayParams).
 
     Hint Extern 0 (okToUnify (CacheM.rep _) (CacheM.rep _)) => constructor : okToUnify.
 
+    Require Import Morphisms.
+
+    Polymorphic Instance lin_point_pred_piff : forall A AEQ V,
+        Proper (piff ==> piff) (@lin_point_pred A AEQ V).
+    Proof.
+      firstorder.
+    Qed.
+
+    Polymorphic Instance lin_point_pred_special :
+      Proper (piff ==> piff) (@lin_latest_pred addr (@weq addrlen) (@const Set addr wr_set)).
+    Proof.
+      firstorder.
+    Qed.
+
+    Theorem lin_point_pred_respects_impl : forall A AEQ V (p q: @pred A AEQ V),
+        p =p=> q ->
+               lin_point_pred p =p=> lin_point_pred q.
+    Proof.
+      intros.
+      rewrite H.
+      auto.
+    Qed.
+
+    Goal forall A AEQ V F (p q: @pred A AEQ V),
+        p =p=> q ->
+               F * lin_point_pred p =p=> F * lin_point_pred q.
+    Proof.
+      intros.
+      rewrite H.
+      auto.
+    Qed.
+
+    Theorem rewrite_middle : forall A AEQ V (p q q' r: @pred A AEQ V),
+        q' =p=> q ->
+                p * q' * r =p=> p * q * r.
+    Proof.
+      intros.
+      rewrite H.
+      auto.
+    Qed.
+
     Polymorphic Theorem get_item_ok : forall i,
         stateS TID: tid |-
         {{ Fs Fs' F LF F' vs vd,
@@ -382,13 +437,13 @@ Module RecArray (Params:RecArrayParams).
                hlistmem s' |= Fs' s' * rep vs * CacheM.rep vd' /\
                Inv m' s' d' /\
                get GLock s' = Owned tid /\
-               vd' |= F' s' * lin_point_pred (rep_items vs) * lin_latest_pred (cache_locked tid s LF) /\
+               vd' |= F' s' * lin_point_pred (rep_items vs) * lin_latest_pred (cache_locked tid s' LF) /\
                r = selN vs i item0 /\
                R tid s0' s'
         }} get_item i.
     Proof.
-      time "hoare"
-           hoare pre simplify with try solve [ finish ].
+      intros.
+      step pre simplify with try solve [ finish ].
 
       unfold pred_in in *; pred_apply; cancel.
       assert (vs = get Items s) by admit.
@@ -396,12 +451,30 @@ Module RecArray (Params:RecArrayParams).
       instantiate (1 := fun s => (Fs s * rep (get Items s))%pred).
       cancel.
 
+      unfold rep_items in H5.
+      unfold pred_in in *; pred_apply.
+      eapply pimpl_trans.
+      apply rewrite_middle.
+      Check lin_point_pred_respects_impl.
+      assert (i / items_per_valu < RALen) by admit.
+      pose proof (rep_blocks_split (nest_list vs items_per_valu) H11).
+      destruct H12.
+      eapply (lin_point_pred_respects_impl H12).
+
+      unfold block_idx.
+      replace ($ (RAStart) ^+ $ (i / items_per_valu)) with (@natToWord addrlen (RAStart + i / items_per_valu)).
+      cancel.
+      (* need to move block_idx i |-> _ out of lin_point_pred, saying
+only block_idx i |-> _, ?; except that this needs to happen before the
+existential variable for |->? is created on the right hand side *)
+
       admit. (* need to move one item out of rep_items, which pretty
       much requires a new "punctured rep" predicate *)
 
       apply preserves'_star_general; eassumption.
-    Abort.
 
+      instantiate (2 := (fun s => F s * lin_point_pred (rep_items (get Items s)))%pred).
+    Abort.
 
   End RecArray.
 
