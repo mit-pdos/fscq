@@ -16,12 +16,10 @@ import Word
 import Disk
 import Prog
 import Fuse
-import qualified Errno
 import Data.IORef
 import Interpreter as I
-import qualified FS
+import qualified AsyncFS
 import qualified Log
-import FastByteFile
 import FSLayout
 import qualified DirName
 import System.Environment
