@@ -920,8 +920,6 @@ Module WBCACHE.
     Rof ^(cs);
     rx cs.
 
-
-
   Definition write_vecs T a l cs rx : prog T :=
     let^ (cs) <- ForN i < length l
     Ghost [ F crash vs ]
@@ -953,5 +951,241 @@ Module WBCACHE.
       lrx ^(cs)
     Rof ^(cs);
     rx cs.
+
+
+
+  Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
+
+  Theorem read_range_ok : forall A a nr vfold (a0 : A) cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ nr <= length vs ]]
+    POST RET:^(cs, r)
+      rep cs d * [[ r = fold_left vfold (firstn nr (map fst vs)) a0 ]]
+    CRASH
+      exists cs', rep cs' d
+    >} read_range a nr vfold a0 cs.
+  Proof.
+    unfold read_range; intros.
+    safestep.
+    safestep.
+    step; subst.
+
+    rewrite firstn_S_selN_expand with (def := $0).
+    rewrite fold_left_app; simpl.
+    erewrite selN_map by omega; auto.
+    rewrite map_length; omega.
+    all: step.
+
+    Unshelve. exact tt. eauto.
+  Qed.
+
+
+  Lemma mem_pred_cachepred_add_mem_except : forall i v mm (d : @Mem.mem _ addr_eq_dec _),
+    mem_pred (cachepred mm) (mem_except d i) =p=>
+    mem_pred (cachepred (Map.add i v mm)) (mem_except d i).
+  Proof.
+    unfold mem_pred; intros.
+    cancel; eauto.
+
+    revert mm i v d H H2.
+    generalize dependent hm_avs.
+    induction hm_avs; intros; auto.
+
+    inversion H; destruct a; subst; simpl in *.
+    destruct (addr_eq_dec n i); subst.
+    cbn in H2.
+    apply equal_f with (x := i) in H2.
+    rewrite mem_except_eq in H2.
+    rewrite upd_eq in H2; congruence.
+
+    unfold mem_pred_one at 1 3; simpl.
+    rewrite <- cachepred_add_invariant; eauto; cancel.
+    eapply IHhm_avs; eauto.
+    eassign (mem_except d n).
+    rewrite mem_except_comm.
+    rewrite H2; cbn.
+    rewrite <- mem_except_upd.
+    rewrite <- notindomain_mem_eq; auto.
+    apply avs2mem_notindomain; auto.
+  Qed.
+
+
+  Lemma mem_pred_cachepred_add : forall mm (d : @Mem.mem _ addr_eq_dec _) i v v0,
+    d i = Some v0 ->
+    mem_pred (cachepred mm) d =p=>
+    mem_pred (cachepred (Map.add i v mm)) (Mem.upd d i (v, vsmerge v0)).
+  Proof.
+    intros.
+    rewrite mem_pred_extract by eauto.
+    rewrite <- mem_pred_absorb.
+    unfold cachepred at 4.
+    rewrite MapFacts.add_eq_o by auto.
+
+    unfold cachepred at 2.
+    destruct (Map.find i mm) eqn: Heq.
+    cancel.
+    apply mem_pred_cachepred_add_mem_except.
+    unfold vsmerge at 1; simpl.
+    rewrite app_comm_cons; eauto.
+
+    cancel.
+    apply mem_pred_cachepred_add_mem_except.
+    rewrite app_nil_l; auto.
+  Qed.
+
+
+  Theorem write_range_ok : forall a l cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ length l <= length vs ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vsupd_range vs l))%pred d' ]]
+    XCRASH
+      exists cs' d', rep cs' d' *
+      [[ (F * arrayN a (vsupd_range vs l))%pred d' ]]
+    >} write_range a l cs.
+  Proof.
+    unfold write_range; intros.
+    safestep.
+    prestep; unfold rep; cancel.
+
+    apply mem_pred_cachepred_add.
+    eapply arrayN_selN; eauto; try omega.
+    rewrite vsupd_range_length; try omega.
+    rewrite firstn_length_l; omega.
+
+    erewrite firstn_S_selN_expand by omega.
+    rewrite <- vsupd_range_progress; auto.
+    replace (a + m - a) with m by omega.
+    apply arrayN_updN_memupd; eauto.
+    rewrite vsupd_range_length; try omega.
+    rewrite firstn_length_l; omega.
+
+    step.
+    rewrite firstn_oob; auto.
+
+    (* crashes *)
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    Unshelve. exact tt.
+  Qed.
+
+
+  Theorem sync_range_ok : forall a n cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ n <= length vs ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vssync_range vs n))%pred d' ]]
+    CRASH
+      exists cs' d' m, rep cs' d' * [[ m <= n ]] *
+      [[ (F * arrayN a (vssync_range vs m))%pred d' ]]
+    >} sync_range a n cs.
+  Proof.
+    unfold sync_range; intros.
+    step.
+
+    prestep; cancel.
+    cancel.
+    eassign F; cancel.
+    rewrite vssync_range_length; try omega.
+
+    step.
+    apply arrayN_unify.
+    apply vssync_range_progress; omega.
+
+    subst; pimpl_crash.
+    norm; [ cancel | | cancel | ]; intuition; eauto.
+    rewrite Nat.min_l; eauto; omega.
+    rewrite Nat.min_l; eauto.
+    pred_apply; cancel.
+    apply arrayN_unify.
+    apply vssync_range_progress; auto.
+    omega.
+
+    Unshelve. exact tt.
+  Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (sync_range _ _ _) _) => apply sync_range_ok : prog.
+  Hint Extern 0 (okToUnify (diskIs _) (diskIs _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (arrayN ?a _) (arrayN ?a _)) => constructor : okToUnify.
+
+  Local Hint Resolve vsupd_vecs_length_ok.
+  Local Hint Resolve vssync_vecs_length_ok.
+
+
+  Theorem write_vecs_ok : forall a l cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] *
+      [[ Forall (fun e => fst e < length vs) l ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vsupd_vecs vs l))%pred d' ]]
+    CRASH
+      exists cs' d' n, rep cs' d' * [[ n <= length l ]] *
+      [[ (F * arrayN a (vsupd_vecs vs (firstn n l)))%pred d' ]]
+    >} write_vecs a l cs.
+  Proof.
+    unfold write_vecs.
+    step.
+    prestep; cancel; auto.
+    step.
+
+    apply arrayN_unify.
+    apply vsupd_vecs_progress; auto.
+
+    subst; pimpl_crash.
+    norm; [ cancel | | cancel | ]; intuition; eauto.
+    rewrite Nat.min_l; eauto; omega.
+    rewrite Nat.min_l; eauto.
+    pred_apply; cancel.
+    apply arrayN_unify.
+    apply vsupd_vecs_progress; auto.
+
+    step.
+    apply arrayN_unify.
+    rewrite firstn_oob; auto.
+    Unshelve. exact tt.
+  Qed.
+
+
+  Theorem sync_vecs_ok : forall a l cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] *
+      [[ Forall (fun e => e < length vs) l ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vssync_vecs vs l))%pred d' ]]
+    CRASH
+      exists cs' d' n, rep cs' d' * [[ n <= length l ]] *
+      [[ (F * arrayN a (vssync_vecs vs (firstn n l)))%pred d' ]]
+    >} sync_vecs a l cs.
+  Proof.
+    unfold sync_vecs.
+    step.
+    prestep; cancel; auto.
+    step.
+
+    apply arrayN_unify.
+    apply vssync_vecs_progress; auto.
+
+    subst; pimpl_crash.
+    norm; [ cancel | | cancel | ]; intuition; eauto.
+    rewrite Nat.min_l; eauto; omega.
+    rewrite Nat.min_l; eauto.
+    pred_apply; cancel.
+    apply arrayN_unify.
+    apply vssync_vecs_progress; auto.
+
+    step.
+    apply arrayN_unify.
+    rewrite firstn_oob; auto.
+    Unshelve. exact tt.
+  Qed.
 
 End WBCACHE.
