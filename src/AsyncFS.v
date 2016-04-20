@@ -732,12 +732,12 @@ Module AFS.
     cancel.
   Qed.
 
- Theorem file_sync_recover_ok : forall fsxp inum off v mscs,
+ Theorem file_sync_recover_ok : forall fsxp inum mscs,
     {<< ds Fm flist A f Fd,
     PRE
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
       [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
-      [[[ flist ::: (A * inum |-> f) ]]]
+      [[[ flist ::: (A * inum |-> f) ]]] *
       [[[ (BFILE.BFData f) ::: Fd ]]]
     POST RET:mscs
      exists d flist',
@@ -751,7 +751,7 @@ Module AFS.
         [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] ) \/
        (exists flist' f',
         [[[ d ::: (crash_xform Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
-        [[[ flist' ::: (arrayN_ex flist' inum * inum |-> f') ]]]
+        [[[ flist' ::: (arrayN_ex flist' inum * inum |-> f') ]]] *
         [[[ (BFILE.BFData f) ::: crash_xform Fd ]]]
       ))
    >>} file_sync fsxp inum mscs >> recover.
