@@ -1047,6 +1047,22 @@ Module BFILE.
     Unshelve. all: eauto.
   Qed.
 
+ Lemma xform_rep_file_pred : forall (F Fd : pred) bxp ixp fs f i,
+    (F * i |-> f)%pred (list2nmem fs) ->
+    (Fd (list2nmem (BFData f))) ->
+    crash_xform (rep bxp ixp fs) =p=>
+      exists fs' f',  [[ flist_crash fs fs' ]] * [[ file_crash f f' ]] *
+      rep bxp ixp fs' *
+      [[ (arrayN_ex fs' i * i |-> f')%pred (list2nmem fs') ]] *
+      [[ (crash_xform Fd)%pred (list2nmem (BFData f')) ]].
+  Proof.
+    intros.
+    rewrite xform_rep_file by eauto.
+    cancel.
+    unfold file_crash in *.
+    repeat deex; simpl.
+    eapply list2nmem_crash_xform; eauto.
+  Qed.
 
   Lemma xform_rep_off : forall Fm Fd bxp ixp ino off f fs vs,
     (Fm * ino |-> f)%pred (list2nmem fs) ->

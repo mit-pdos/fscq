@@ -231,7 +231,7 @@ Module WBCACHE.
   Qed.
 
 
-  Theorem write_ok : forall wcs a v,
+  Theorem write_ok_strict : forall wcs a v,
     {< d (F : rawpred) v0,
     PRE
       rep wcs d * [[ (F * a |-> v0)%pred d ]]
@@ -585,6 +585,87 @@ Module WBCACHE.
   Qed.
 
 
+  Lemma write_ok_xcrash : forall (F : @pred _ addr_eq_dec _) a vold vraw mm cs d raw v,
+    (F * a |-> vold)%pred d ->
+    (mem_pred (cachepred mm) (mem_except d a) * a |-> vraw)%pred raw ->
+    incl (vsmerge vraw) (vsmerge vold) ->
+    crash_xform (BUFCACHE.rep cs raw) =p=>
+    crash_xform (exists wcs' d', rep wcs' d' * [[ (F * a |-> (v, vsmerge vold))%pred d' ]]).
+  Proof.
+    unfold rep; intros.
+    rewrite BUFCACHE.crash_xform_rep; cancel.
+    xform_normr; cancel. xform_normr; cancel.
+    instantiate (1 := upd raw a (v, vsmerge (vold_cur, vold_old))).
+    eassign (Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs'))
+                                (Map.remove a mm)); simpl.
+    rewrite <- BUFCACHE.crash_xform_rep_r; eauto.
+    eapply possible_crash_ptsto_upd_incl; eauto.
+    apply incl_tl; eauto.
+    eapply pimpl_trans; [ apply pimpl_refl | simpl | eapply ptsto_upd; pred_apply; cancel ].
+    rewrite <- mem_pred_absorb.
+    unfold cachepred at 3.
+    rewrite MapFacts.remove_eq_o by reflexivity.
+    rewrite mem_pred_pimpl_except; cancel.
+    apply cachepred_remove_invariant; auto.
+    apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+  Qed.
+
+
+  Theorem write_ok : forall wcs a v,
+    {< d (F : rawpred) v0,
+    PRE
+      rep wcs d * [[ (F * a |-> v0)%pred d ]]
+    POST RET:wcs
+      exists d', rep wcs d' * [[ (F * a |-> (v, vsmerge v0))%pred d' ]]
+    XCRASH
+      exists wcs' d', rep wcs' d' *
+      [[ (F * a |-> (v, vsmerge v0))%pred d' ]]
+    >} write a v wcs.
+  Proof.
+    unfold write, rep; intros.
+    destruct (Map.find a (WbBuf wcs)) eqn: Heq.
+    - prestep; norml.
+      denote! (mem_pred _ _ _) as Hx.
+      eapply mem_pred_extract in Hx; [ | eapply ptsto_valid'; eauto ].
+      unfold cachepred at 2 in Hx; rewrite Heq in Hx; destruct_lift Hx.
+      cancel; subst.
+
+      step.
+      pred_apply. rewrite <- mem_pred_absorb. subst; simpl.
+      unfold cachepred at 3. rewrite MapFacts.add_eq_o by reflexivity. cancel.
+      apply mem_pred_pimpl_except. intros; apply cachepred_add_invariant; auto.
+      eassign (w :: dummy); unfold vsmerge; simpl.
+      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+
+      (* crash *)
+      eapply pimpl_trans; [ | eapply H1 ]; cancel; subst.
+      eapply write_ok_xcrash; eauto.
+      apply incl_tl; apply incl_appr; apply incl_refl.
+
+    - prestep; norml.
+      denote! (mem_pred _ _ _) as Hx.
+      eapply mem_pred_extract in Hx; [ | eapply ptsto_valid'; eauto ].
+      unfold cachepred at 2 in Hx; rewrite Heq in Hx; destruct_lift Hx.
+      cancel; subst.
+
+      step.
+      subst; simpl.
+      pred_apply.
+      rewrite <- mem_pred_absorb with (a:=a). unfold cachepred at 3.
+        rewrite MapFacts.add_eq_o by auto. cancel.
+      apply mem_pred_pimpl_except. intros; apply cachepred_add_invariant; auto.
+      eassign (@nil valu); simpl.
+      apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+
+      eapply pimpl_trans; [ | eapply H1 ]; cancel; subst.
+      eapply write_ok_xcrash; eauto.
+      apply incl_refl. 
+
+      Unshelve.
+      all: try exact addr; try exact addr_eq_dec; try exact empty_mem.
+      all: exact (fun a b => emp).
+  Qed.
+
 
   Lemma sync_ok_xcrash : forall (F : @pred _ addr_eq_dec _) a vold vraw mm cs d raw,
     (F * a |-> vold)%pred d ->
@@ -726,9 +807,9 @@ Module WBCACHE.
     POST RET:cs
       exists d', rep cs d' *
       [[ (F * arrayN a (vsupd vs i v))%pred d' ]]
-    CRASH
-      exists cs', rep cs' d \/
-      exists d', rep cs' d' * [[ (F * arrayN a (vsupd vs i v))%pred d' ]]
+    XCRASH
+      exists cs' d', rep cs' d' *
+      [[ (F * arrayN a (vsupd vs i v))%pred d' ]]
     >} write_array a i v cs.
   Proof.
     unfold write_array, vsupd.
@@ -742,18 +823,19 @@ Module WBCACHE.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
     cancel.
-    or_l; cancel.
 
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    rewrite H0.
+    do 3 (xform_norm; cancel).
+    rewrite <- surjective_pairing.
+    setoid_rewrite arrayN_isolate with (i := i) (default := ($0, nil)) at 3.
+    rewrite selN_updN_eq by auto.
+    rewrite firstn_updN_oob by auto.
+    simpl; rewrite skipn_updN by auto.
     cancel.
-    or_r; cancel.
-    rewrite <- isolateN_bwd_upd by auto.
-    cancel.
+    rewrite length_updN; auto.
   Qed.
 
-
-
-
-  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _) _) => apply write_array_ok : prog.
 
   Theorem sync_array_ok : forall a i cs,
     {< d F vs,
@@ -762,9 +844,8 @@ Module WBCACHE.
     POST RET:cs
       exists d', rep cs d' *
       [[ (F * arrayN a (vssync vs i))%pred d' ]]
-    CRASH
-      exists cs', rep cs' d \/
-      exists d', rep cs' d' * [[ (F * arrayN a (vssync vs i))%pred d' ]]
+    XCRASH
+      exists cs' d', rep cs' d' * [[ (F * arrayN a vs)%pred d' ]]
     >} sync_array a i cs.
   Proof.
     unfold sync_array, vssync.
@@ -777,16 +858,19 @@ Module WBCACHE.
 
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
-    cancel.
-    unfold hidden_pred; cancel.
 
-    or_r; cancel.
-
-    apply pimpl_or_r; left; cancel; eauto.
-    apply pimpl_or_r; right; cancel; eauto.
-    rewrite <- isolateN_bwd_upd by auto.
-    cancel.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    rewrite H0.
+    do 3 (xform_norm; cancel).
+    setoid_rewrite arrayN_isolate at 3; eauto.
+    rewrite <- surjective_pairing; cancel.
   Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (read_array _ _ _) _) => apply read_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _) _) => apply write_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (sync_array _ _ _) _) => apply sync_array_ok : prog.
+
 
 
 
@@ -835,6 +919,7 @@ Module WBCACHE.
       lrx ^(cs)
     Rof ^(cs);
     rx cs.
+
 
 
   Definition write_vecs T a l cs rx : prog T :=
