@@ -16,7 +16,7 @@ Require Import AsyncDisk.
 Require Import OrderedTypeEx.
 Require Import Arith.
 Require Import MapUtils.
-Require Import Cache.
+Require Import ReadCache.
 Require Import MemPred.
 Require Import ListPred.
 Require Import FunctionalExtensionality.
@@ -32,7 +32,7 @@ Record wbcachestate := {
   WbBuf : Map.t valu
 }.
 
-Module WBCACHE.
+Module WBCache.
 
   Definition cachepred (cache : Map.t valu) (a : addr) (vs : valuset) : @pred _ addr_eq_dec valuset :=
     match Map.find a cache with
@@ -55,14 +55,14 @@ Module WBCACHE.
   Qed.
 
   Definition rep (wcs : wbcachestate) (m : rawdisk) : rawpred :=
-    (exists cm, BUFCACHE.rep (WbCs wcs) cm *
+    (exists cm, RCache.rep (WbCs wcs) cm *
      [[ @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred (WbBuf wcs)) m cm ]])%pred.
 
   Definition read T a (wcs : wbcachestate) rx : prog T :=
     match Map.find a (WbBuf wcs) with
     | Some v => rx ^(wcs, v)
     | None =>
-      let^ (new_cs, v) <- BUFCACHE.read a (WbCs wcs);
+      let^ (new_cs, v) <- RCache.read a (WbCs wcs);
       rx ^(Build_wbcachestate new_cs (WbBuf wcs), v)
     end.
 
@@ -72,18 +72,15 @@ Module WBCACHE.
   Definition sync T a (wcs : wbcachestate) rx : prog T :=
     match (Map.find a (WbBuf wcs)) with
     | Some v =>
-      new_cs <- BUFCACHE.write a v (WbCs wcs);
-      new_cs <- BUFCACHE.sync a new_cs;
+      new_cs <- RCache.write a v (WbCs wcs);
+      new_cs <- RCache.sync a new_cs;
       rx (Build_wbcachestate new_cs (Map.remove a (WbBuf wcs)))
     | None =>
-      new_cs <- BUFCACHE.sync a (WbCs wcs);
+      new_cs <- RCache.sync a (WbCs wcs);
       rx (Build_wbcachestate new_cs (WbBuf wcs))
     end.
 
-  Definition cache0 sz := Build_wbcachestate (BUFCACHE.cache0 sz) (Map.empty _).
-
-  Definition init T (cachesize : nat) (rx : wbcachestate -> prog T) : prog T :=
-    rx (cache0 cachesize).
+  Definition cache0 sz := Build_wbcachestate (RCache.cache0 sz) (Map.empty _).
 
   Theorem read_ok : forall wcs a,
     {< d (F : rawpred) v,
@@ -349,7 +346,7 @@ Module WBCACHE.
   Proof.
     unfold rep; intros.
     xform_norm.
-    rewrite BUFCACHE.crash_xform_rep_pred by eauto.
+    rewrite RCache.crash_xform_rep_pred by eauto.
     xform_norm.
     apply xform_mem_pred_cachepred in H2.
     destruct_lift H2.
@@ -677,7 +674,7 @@ Module WBCACHE.
     unfold rep; intros.
     cancel.
     xform_normr.
-    rewrite <- BUFCACHE.crash_xform_rep_r.
+    rewrite <- RCache.crash_xform_rep_r.
     cancel.
     eapply mem_pred_cachepred_refl; eauto.
     apply possible_crash_mem_match; auto.
@@ -691,16 +688,16 @@ Module WBCACHE.
     (F * a |-> vold)%pred d ->
     (mem_pred (cachepred mm) (mem_except d a) * a |-> vraw)%pred raw ->
     incl (vsmerge vraw) (vsmerge vold) ->
-    crash_xform (BUFCACHE.rep cs raw) =p=>
+    crash_xform (RCache.rep cs raw) =p=>
     crash_xform (exists wcs' d', rep wcs' d' * [[ (F * a |-> (v, vsmerge vold))%pred d' ]]).
   Proof.
     unfold rep; intros.
-    rewrite BUFCACHE.crash_xform_rep; cancel.
+    rewrite RCache.crash_xform_rep; cancel.
     xform_normr; cancel. xform_normr; cancel.
     instantiate (1 := upd raw a (v, vsmerge (vold_cur, vold_old))).
-    eassign (Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs'))
+    eassign (Build_wbcachestate (RCache.cache0 (CSMaxCount cs'))
                                 (Map.remove a mm)); simpl.
-    rewrite <- BUFCACHE.crash_xform_rep_r; eauto.
+    rewrite <- RCache.crash_xform_rep_r; eauto.
     eapply possible_crash_ptsto_upd_incl; eauto.
     apply incl_tl; eauto.
     eapply pimpl_trans; [ apply pimpl_refl | simpl | eapply ptsto_upd; pred_apply; cancel ].
@@ -773,16 +770,16 @@ Module WBCACHE.
     (F * a |-> vold)%pred d ->
     (mem_pred (cachepred mm) (mem_except d a) * a |-> vraw)%pred raw ->
     incl (vsmerge vraw) (vsmerge vold) ->
-    crash_xform (BUFCACHE.rep cs raw) =p=>
+    crash_xform (RCache.rep cs raw) =p=>
     crash_xform (exists wcs' d', rep wcs' d' * [[ (F * a |-> vold)%pred d' ]]).
   Proof.
     unfold rep; intros.
-    rewrite BUFCACHE.crash_xform_rep; cancel.
+    rewrite RCache.crash_xform_rep; cancel.
     xform_normr; cancel. xform_normr; cancel.
     instantiate (1 := upd raw a (vold_cur, vold_old)).
-    eassign (Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs'))
+    eassign (Build_wbcachestate (RCache.cache0 (CSMaxCount cs'))
                                 (Map.remove a mm)); simpl.
-    rewrite <- BUFCACHE.crash_xform_rep_r; eauto.
+    rewrite <- RCache.crash_xform_rep_r; eauto.
     eapply possible_crash_ptsto_upd_incl; eauto.
     eapply pimpl_trans; [ apply pimpl_refl | simpl | eapply ptsto_upd; pred_apply; cancel ].
     rewrite <- mem_pred_absorb.
@@ -955,7 +952,7 @@ Module WBCACHE.
 
     pred_apply.
     rewrite isolateN_fwd with (i:=i) by auto. cancel.
-    rewrite BUFCACHE.ptsto_tuple.
+    rewrite RCache.ptsto_tuple.
     cancel.
 
     rewrite <- isolateN_bwd_upd by auto.
@@ -1391,14 +1388,14 @@ Module WBCACHE.
     eapply pimpl_trans; [ | eapply H1 ]; cancel.
     denote crash_xform as Hx; rewrite Hx.
     unfold rep; xform_norm.
-    rewrite BUFCACHE.crash_xform_rep by eauto.
+    rewrite RCache.crash_xform_rep by eauto.
     cancel.
 
     edestruct (synced_range_ok_xcrash); eauto. omega.
     repeat deex.
     do 2 (xform_norm; cancel); xform_norm.
-    eassign (Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs')) (Map.empty _)); simpl.
-    rewrite <- BUFCACHE.crash_xform_rep_r.
+    eassign (Build_wbcachestate (RCache.cache0 (CSMaxCount cs')) (Map.empty _)); simpl.
+    rewrite <- RCache.crash_xform_rep_r.
     cancel.
     eauto. eauto.
     eapply arrayN_listupd; eauto.
@@ -1510,14 +1507,14 @@ Module WBCACHE.
     eapply pimpl_trans; [ | eapply H1 ]; cancel.
     denote crash_xform as Hx; rewrite Hx.
     unfold rep; xform_norm.
-    rewrite BUFCACHE.crash_xform_rep by eauto.
+    rewrite RCache.crash_xform_rep by eauto.
     cancel.
 
     edestruct (synced_vecs_ok_xcrash); eauto; intuition.
     apply forall_firstn; auto.
     do 2 (xform_norm; cancel); xform_norm.
-    eassign (Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs')) (Map.empty _)); simpl.
-    rewrite <- BUFCACHE.crash_xform_rep_r.
+    eassign (Build_wbcachestate (RCache.cache0 (CSMaxCount cs')) (Map.empty _)); simpl.
+    rewrite <- RCache.crash_xform_rep_r.
     cancel. eauto. eauto.
     eapply arrayN_listupd; eauto.
     rewrite vssync_vecs_length; omega.
@@ -1536,4 +1533,49 @@ Module WBCACHE.
   Hint Extern 1 ({{_}} progseq (sync_vecs _ _ _) _) => apply sync_vecs_ok : prog.
 
 
-End WBCACHE.
+  Definition init T (cachesize : nat) (rx : wbcachestate -> prog T) : prog T :=
+    cs <- RCache.init cachesize;
+    rx (Build_wbcachestate cs (Map.empty _)).
+
+  Definition init_load := init.
+  Definition init_recover := init.
+
+  Theorem init_recover_ok : forall cachesize,
+    {< d F,
+    PRE
+      exists cs, crash_xform (rep cs d) *
+      [[ F d ]] * [[ cachesize <> 0 ]]
+    POST RET:cs
+      exists d', rep cs d' * [[ (crash_xform F) d' ]]
+    CRASH
+      exists cs, crash_xform (rep cs d)
+    >} init_recover cachesize.
+  Proof.
+    unfold init_recover, init, rep.
+    intros; eapply pimpl_ok2.
+    apply RCache.init_recover_xform_ok.
+
+    intros; xform_norm.
+    cancel.
+    eauto.
+
+    prestep; xform_norm.
+    denote crash_xform as Hx.
+    apply xform_mem_pred_cachepred in Hx.
+    destruct_lift Hx.
+    cancel.
+    unfold pimpl; intros.
+    eapply crash_xform_apply; eauto.
+
+    pimpl_crash; xform_norm.
+    rewrite RCache.crash_xform_rep.
+    cancel.
+    eassign (Build_wbcachestate (RCache.cache0 (CSMaxCount cs')) (WbBuf cs)).
+    xform_normr; simpl.
+    rewrite <- RCache.crash_xform_rep_r.
+    cancel; eauto.
+    auto.
+  Qed.
+
+
+End WBCache.

@@ -446,7 +446,7 @@ Module AsyncRecArray (RA : RASig).
     POST RET: cs
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * array_rep xp start (Unsync new))%pred d' ]]
-    CRASH  exists cs' d',
+    XCRASH  exists cs' d',
                    BUFCACHE.rep cs' d' *
                    [[ (F * avail_rep xp start (divup (length new) items_per_val)) % pred d' ]]
     >} write_aligned xp start new cs.
@@ -458,7 +458,9 @@ Module AsyncRecArray (RA : RASig).
     setoid_rewrite vsupd_range_unsync_array; auto.
     simplen.
 
-    pimpl_crash.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    rewrite H0.
+    do 3 (xform_norm; cancel).
     rewrite vsupd_range_length; auto.
     simplen; rewrite Nat.min_l; eauto.
   Qed.
@@ -536,7 +538,7 @@ Module AsyncRecArray (RA : RASig).
     POST RET: cs
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * array_rep xp start (Synced items))%pred d' ]]
-    CRASH  exists cs' d', BUFCACHE.rep cs' d' *
+    XCRASH  exists cs' d', BUFCACHE.rep cs' d' *
                    [[ (F * array_rep xp start (Unsync items))%pred d' ]]
     >} sync_aligned xp start count cs.
   Proof.
@@ -549,10 +551,10 @@ Module AsyncRecArray (RA : RASig).
 
     step.
     apply vssync_range_sync_array; eauto.
-    cancel.
-    apply vssync_range_pimpl; simplen.
-    replace (length dummy0) with count by eauto; simplen.
-    simplen; replace (length dummy0) with count by eauto; omega.
+
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    rewrite H.
+    do 3 (xform_norm; cancel).
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read_all _ _ _) _) => apply read_all_ok : prog.
