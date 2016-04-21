@@ -1543,6 +1543,47 @@ Module WBCache.
   Theorem init_recover_ok : forall cachesize,
     {< d F,
     PRE
+      exists cs, rep cs d *
+      [[ F d ]] * [[ cachesize <> 0 ]]
+    POST RET:cs
+      exists d', rep cs d' * [[ (crash_xform F) d' ]]
+    CRASH
+      exists cs, rep cs d
+    >} init_recover cachesize.
+  Proof.
+    unfold init_recover, init, rep.
+    intros; eapply pimpl_ok2.
+    apply RCache.init_recover_ok.
+
+    intros; xform_norm.
+    cancel.
+    eauto.
+
+    prestep.  norm. cancel.
+    intuition.
+
+    (** XXX:
+        Cannot construct such a ?d'0.
+        crash_xform F ?d'0 requires ?d'0 to be fully-synced,
+        but d' might be unsynced.
+
+        maybe saying [[ (crash_xform F) ?d'0 ]] is too strong.
+        we can only say d' is a subset of d.
+     *)
+    admit.
+    admit.
+
+    pimpl_crash; xform_norm.
+    cancel.
+    eassign (Build_wbcachestate cs0 (WbBuf cs)).
+    cancel.
+    eauto.
+  Admitted.
+
+
+  Theorem init_recover_xform_ok : forall cachesize,
+    {< d F,
+    PRE
       exists cs, crash_xform (rep cs d) *
       [[ F d ]] * [[ cachesize <> 0 ]]
     POST RET:cs
