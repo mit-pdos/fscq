@@ -944,13 +944,7 @@ Module AFS.
     REC RET:^(mscs,fsxp)
       exists d,
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
-      ((exists n, 
-        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] ) \/
-       (exists inum tree',
-        [[[ d ::: (crash_xform Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
-        [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
-                            (DIRTREE.TreeFile inum BFILE.bfile0) tree ]]
-       ))
+      [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
     >>} create fsxp dnum name mscs >> recover.
   Proof.
     recover_ro_ok.
@@ -966,26 +960,34 @@ Module AFS.
     cancel.
     subst.
     apply pimpl_refl.
-    apply pimpl_refl.
-    xform_norm.
-    recover_ro_ok.
-    cancel.
-    admit.
-    safestep.
-    instantiate (d0 := d).
-    cancel.
-    instantiate (F_0 := F_).
-    cancel.
-    (* XXX something is not quite right with the REC RET spec, because we should prove both cases of the or.
-     * but we don't.  if not, we should delete the last case, but that seems weird, since ds doesn't include
-     * the last possible disk. should the spec say always the first disk?
-    *)
-    or_l.
-    apply pimpl_exists_r.
-    exists n.
-    cancel.
-    admit.
-  Admitted.
+
+    (* if CRASH is LOG.intact, we must manually instantiate idemcrash to include
+       the after_crash case *)
+    eassign ( LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v \/
+      (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs))%pred.
+    cancel; cancel.
+    xform_norm; recover_ro_ok.
+
+    - rewrite LOG.crash_xform_intact.
+      xform_norm.
+      rewrite SB.crash_xform_rep.
+      rewrite LOG.notxn_after_crash_diskIs with (n := 0) (ds := (fst v, nil)); auto.
+      cancel.
+      safestep.
+      cancel.
+      pred_apply; subst.
+      replace n with 0 by omega.
+      rewrite nthd_0; eauto.
+      cancel; cancel.
+
+    - rewrite LOG.after_crash_idem.
+      xform_norm.
+      rewrite SB.crash_xform_rep.
+      cancel.
+      step.
+      cancel; cancel.
+  Qed.
+
 
   Definition rename_rep ds mscs Fm fsxp Ftop tree cwd dnum srcpath srcname dstpath dstname :=
     (exists d tree' tree_elem srcnum srcents dstnum dstents subtree pruned renamed,
@@ -1042,8 +1044,7 @@ Module AFS.
     REC RET:^(mscs,fsxp)
       exists d,
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
-        ((exists n, 
-          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]))
+        [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
     >>} rename fsxp dnum srcpath srcname dstpath dstname mscs >> recover.
   Proof.
     recover_ro_ok.
@@ -1051,6 +1052,40 @@ Module AFS.
     cancel.
     eauto.
     safestep.
+    or_l.
+    cancel.
+    subst.
+    apply pimpl_refl.
+    or_r.
+    cancel.
+    subst.
+    apply pimpl_refl.
+
+    (* if CRASH is LOG.intact, we must manually instantiate idemcrash to include
+       the after_crash case *)
+    eassign ( LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v \/
+      (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs))%pred.
+    cancel; cancel.
+    xform_norm; recover_ro_ok.
+
+    - rewrite LOG.crash_xform_intact.
+      xform_norm.
+      rewrite SB.crash_xform_rep.
+      rewrite LOG.notxn_after_crash_diskIs with (n := 0) (ds := (fst v, nil)); auto.
+      cancel.
+      safestep.
+      cancel.
+      pred_apply; subst.
+      replace n with 0 by omega.
+      rewrite nthd_0; eauto.
+      cancel; cancel.
+
+    - rewrite LOG.after_crash_idem.
+      xform_norm.
+      rewrite SB.crash_xform_rep.
+      cancel.
+      step.
+      cancel; cancel.
   Qed.
 
 
