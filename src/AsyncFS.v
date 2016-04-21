@@ -890,143 +890,161 @@ Module AFS.
     cancel; cancel.
   Qed.
 
-
-(*
   Theorem create_ok : forall fsxp dnum name mscs,
-    {< m pathname Fm Ftop tree tree_elem,
-    PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-            [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-            [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
+    {< ds pathname Fm Ftop tree tree_elem,
+    PRE     
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
+      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
     POST RET:^(mscs,r)
-            [[ r = None ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
-             (exists m', LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-              exists inum tree', [[ r = Some inum ]] *
-              [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
-                           (DIRTREE.TreeFile inum BFILE.bfile0) tree ]] *
-              [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]])
-    CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
-              exists inum tree',
-              (Fm * DIRTREE.rep fsxp Ftop tree') *
-              [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
-                           (DIRTREE.TreeFile inum BFILE.bfile0) tree ]])
+      [[ r = None ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs \/
+      (exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs *
+       exists inum tree', [[ r = Some inum ]] *
+        [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
+                            (DIRTREE.TreeFile inum BFILE.bfile0) tree ]] *
+        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]])
+    CRASH
+      LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds
     >} create fsxp dnum name mscs.
   Proof.
-    unfold create.
-    hoare.
-    erewrite DIRTREE.find_subtree_tree_graft by eauto; reflexivity.
-    eapply pimpl_or_r; right; cancel.
-    erewrite DIRTREE.update_subtree_tree_graft by eauto; reflexivity.
-    all: try rewrite LOG.activetxn_would_recover_old.
-    all: try rewrite LOG.notxn_would_recover_old.
-    all: try apply LOG.would_recover_old_either_pred.
-    rewrite <- LOG.would_recover_either_pred_pimpl.
-    cancel.
-    erewrite DIRTREE.update_subtree_tree_graft by eauto; reflexivity.
-    Grab Existential Variables.
-    all: eauto.
-    exact BFILE.bfile0.
+    unfold create; intros.
+    step.
+    step.
+    step.
+    step.
+    apply LOG.notxn_intact.
+    step.
+    apply LOG.notxn_intact.
+    apply LOG.notxn_intact.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (create _ _ _ _ ) _) => apply create_ok : prog.
 
   Theorem create_recover_ok : forall fsxp dnum name mscs,
-    {<< m pathname Fm Ftop tree tree_elem,
-    PRE     [[ cachesize <> 0 ]] *
-            LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-            [[ (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2mem m) ]] *
-            [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
+    {<< ds pathname Fm Ftop tree tree_elem,
+    PRE
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
+      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
     POST RET:^(mscs,r)
-            [[ r = None ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
-            (exists m', LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-              exists inum tree', [[ r = Some inum ]] *
-              [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
-                           (DIRTREE.TreeFile inum BFILE.bfile0) tree  ]] *
-              [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]])
+      [[ r = None ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs \/
+      (exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs *
+       exists inum tree', [[ r = Some inum ]] *
+        [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
+                            (DIRTREE.TreeFile inum BFILE.bfile0) tree ]] *
+        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]])
     REC RET:^(mscs,fsxp)
-            LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/ exists m',
-            LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-             exists inum tree',
-              [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
-                           (DIRTREE.TreeFile inum BFILE.bfile0) tree  ]] *
-              [[ (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]]
+      exists d,
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
+      ((exists n, 
+        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] ) \/
+       (exists inum tree',
+        [[[ d ::: (crash_xform Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
+        [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
+                            (DIRTREE.TreeFile inum BFILE.bfile0) tree ]]
+       ))
     >>} create fsxp dnum name mscs >> recover.
   Proof.
-    recover_rw_ok.
-  Qed.
+    recover_ro_ok.
+    apply recover_ok.
+    cancel.
+    eauto.
+    safestep.
+    or_l.
+    cancel.
+    subst.
+    apply pimpl_refl.
+    or_r.
+    cancel.
+    subst.
+    apply pimpl_refl.
+    apply pimpl_refl.
+    xform_norm.
+    recover_ro_ok.
+    cancel.
+    admit.
+    safestep.
+    instantiate (d0 := d).
+    cancel.
+    instantiate (F_0 := F_).
+    cancel.
+    (* XXX something is not quite right with the REC RET spec, because we should prove both cases of the or.
+     * but we don't.  if not, we should delete the last case, but that seems weird, since ds doesn't include
+     * the last possible disk. should the spec say always the first disk?
+    *)
+    or_l.
+    apply pimpl_exists_r.
+    exists n.
+    cancel.
+    admit.
+  Admitted.
 
+  Definition rename_rep ds mscs Fm fsxp Ftop tree cwd dnum srcpath srcname dstpath dstname :=
+    (exists d tree' tree_elem srcnum srcents dstnum dstents subtree pruned renamed,
+    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs * 
+    [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
+    [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
+    [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
+    [[ pruned = DIRTREE.tree_prune srcnum srcents srcpath srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
+    [[ DIRTREE.find_subtree dstpath pruned = Some (DIRTREE.TreeDir dstnum dstents) ]] *
+    [[ renamed = DIRTREE.tree_graft dstnum dstents dstpath dstname subtree pruned ]] *
+    [[ tree' = DIRTREE.update_subtree cwd renamed tree ]]) %pred.
 
   Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
-    {< m Ftop tree cwd tree_elem,
-    PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-            [[ (DIRTREE.rep fsxp Ftop tree) (list2mem m) ]] *
-            [[ DIRTREE.find_subtree cwd tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
-    POST RET:^(mscs,ok)
-            [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
-            [[ ok = true ]] * exists m' srcnum srcents dstnum dstents subtree pruned renamed tree',
-            LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-            [[ (DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-            [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
-            [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
-            [[ pruned = DIRTREE.tree_prune srcnum srcents srcpath srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
-            [[ DIRTREE.find_subtree dstpath pruned = Some (DIRTREE.TreeDir dstnum dstents) ]] *
-            [[ renamed = DIRTREE.tree_graft dstnum dstents dstpath dstname subtree pruned ]] *
-            [[ tree' = DIRTREE.update_subtree cwd renamed tree ]]
-    CRASH   LOG.would_recover_either_pred (FSXPLog fsxp) (sb_rep fsxp) m (
-            exists srcnum srcents dstnum dstents subtree pruned renamed tree',
-            (DIRTREE.rep fsxp Ftop tree')%pred *
-            [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
-            [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
-            [[ pruned = DIRTREE.tree_prune srcnum srcents srcpath srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
-            [[ DIRTREE.find_subtree dstpath pruned = Some (DIRTREE.TreeDir dstnum dstents) ]] *
-            [[ renamed = DIRTREE.tree_graft dstnum dstents dstpath dstname subtree pruned ]] *
-            [[ tree' = DIRTREE.update_subtree cwd renamed tree ]])
+    {< ds Fm Ftop tree cwd tree_elem,
+    PRE     
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
+      [[ DIRTREE.find_subtree cwd tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
+    POST RET:^(mscs, ok)
+      [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs \/
+      [[ ok = true ]] * 
+        rename_rep ds mscs Fm fsxp Ftop tree cwd dnum srcpath srcname dstpath dstname
+    CRASH
+      LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds
     >} rename fsxp dnum srcpath srcname dstpath dstname mscs.
   Proof.
-    unfold rename.
-    hoare.
-    all: try rewrite LOG.activetxn_would_recover_old.
-    all: try rewrite LOG.notxn_would_recover_old.
-    all: try apply LOG.would_recover_old_either_pred.
-    rewrite <- LOG.would_recover_either_pred_pimpl.
-    cancel.
+    unfold rename, rename_rep; intros.
+    step.
+    step.
+    step.
+    step.
+    step.
+    step.
+    apply LOG.notxn_intact.
+    step.
+    step.
+    apply LOG.notxn_intact.
+    step.
+    apply LOG.notxn_intact.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
 
-  (* XXX Use rep_return spec in App.v? *)
   Theorem rename_recover_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
-    {<< m Ftop tree cwd tree_elem,
-    PRE     LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs *
-            [[ (DIRTREE.rep fsxp Ftop tree) (list2mem m) ]] *
-            [[ DIRTREE.find_subtree cwd tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
+    {<< ds Fm Ftop tree cwd tree_elem,
+    PRE  
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
+      [[ DIRTREE.find_subtree cwd tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
     POST RET:^(mscs,ok)
-            [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
-            [[ ok = true ]] * exists m' srcnum srcents dstnum dstents subtree pruned renamed tree',
-            LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-            [[ (DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-            [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
-            [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
-            [[ pruned = DIRTREE.tree_prune srcnum srcents srcpath srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
-            [[ DIRTREE.find_subtree dstpath pruned = Some (DIRTREE.TreeDir dstnum dstents) ]] *
-            [[ renamed = DIRTREE.tree_graft dstnum dstents dstpath dstname subtree pruned ]] *
-            [[ tree' = DIRTREE.update_subtree cwd renamed tree ]]
+      [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs \/
+      [[ ok = true ]] * 
+        rename_rep ds mscs Fm fsxp Ftop tree cwd dnum srcpath srcname dstpath dstname
     REC RET:^(mscs,fsxp)
-            LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m) mscs \/
-            exists m' srcnum srcents dstnum dstents subtree pruned renamed tree',
-            LOG.rep (FSXPLog fsxp) (sb_rep fsxp) (NoTransaction m') mscs *
-            [[ (DIRTREE.rep fsxp Ftop tree')%pred (list2mem m') ]] *
-            [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
-            [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
-            [[ pruned = DIRTREE.tree_prune srcnum srcents srcpath srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
-            [[ DIRTREE.find_subtree dstpath pruned = Some (DIRTREE.TreeDir dstnum dstents) ]] *
-            [[ renamed = DIRTREE.tree_graft dstnum dstents dstpath dstname subtree pruned ]] *
-            [[ tree' = DIRTREE.update_subtree cwd renamed tree ]]
+      exists d,
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
+        ((exists n, 
+          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]))
     >>} rename fsxp dnum srcpath srcname dstpath dstname mscs >> recover.
   Proof.
-    recover_rw_ok.
+    recover_ro_ok.
+    apply recover_ok.
+    cancel.
+    eauto.
+    safestep.
   Qed.
 
-  *)
 
 End AFS.
 
