@@ -510,9 +510,105 @@ Module WBCACHE.
     eapply ptsto_mem_except; pred_apply; eauto.
   Qed.
 
+
+  Section MEM_MATCH.
+
+    Variable AT V : Type.
+    Variable AEQ : EqDec AT.
+
+    Implicit Types m ma mb : @Mem.mem AT AEQ V.
+
+    Definition mem_match ma mb :=
+      forall a, ma a = None <-> mb a = None.
+
+    Lemma mem_match_refl : forall m,
+      mem_match m m.
+    Proof.
+      firstorder.
+    Qed.
+
+    Lemma mem_match_trans : forall m ma mb,
+      mem_match m ma ->
+      mem_match ma mb ->
+      mem_match m mb.
+    Proof.
+      firstorder.
+    Qed.
+
+    Lemma mem_match_sym : forall ma mb,
+      mem_match ma mb ->
+      mem_match mb ma.
+    Proof.
+      firstorder.
+    Qed.
+
+    Lemma mem_match_except : forall ma mb a,
+      mem_match ma mb ->
+      mem_match (mem_except ma a) (mem_except mb a).
+    Proof.
+      unfold mem_match; intros.
+      unfold mem_except.
+      destruct (AEQ a0 a); firstorder.
+    Qed.
+
+    Lemma mem_match_upd : forall ma mb a va vb,
+      mem_match ma mb ->
+      mem_match (upd ma a va) (upd mb a vb).
+    Proof.
+      unfold mem_match; intros.
+      destruct (AEQ a0 a); subst.
+      repeat rewrite upd_eq by auto.
+      split; congruence.
+      repeat rewrite upd_ne by auto.
+      firstorder.
+    Qed.
+
+    Lemma mem_match_upd_l : forall ma mb a va vb,
+      mem_match ma mb ->
+      mb a = Some vb ->
+      mem_match (upd ma a va) mb.
+    Proof.
+      unfold mem_match; intros.
+      destruct (AEQ a0 a); subst.
+      repeat rewrite upd_eq by auto.
+      split; congruence.
+      repeat rewrite upd_ne by auto.
+      firstorder.
+    Qed.
+
+    Lemma mem_match_upd_r : forall ma mb a va vb,
+      mem_match ma mb ->
+      ma a = Some va ->
+      mem_match ma (upd mb a vb).
+    Proof.
+      unfold mem_match; intros.
+      destruct (AEQ a0 a); subst.
+      repeat rewrite upd_eq by auto.
+      split; congruence.
+      repeat rewrite upd_ne by auto.
+      firstorder.
+    Qed.
+
+    Lemma mem_match_cases : forall ma mb a,
+      mem_match ma mb ->
+      (ma a = None /\ mb a = None) \/
+      exists va vb, (ma a = Some va /\ mb a = Some vb).
+    Proof.
+      intros.
+      specialize (H a); destruct H.
+      destruct (ma a); destruct (mb a).
+      right. eexists; eauto.
+      contradict H0; intuition; congruence.
+      contradict H; intuition; congruence.
+      intuition.
+    Qed.
+
+  End MEM_MATCH.
+
+
   Lemma mem_pred_cachepred_refl : forall m m' m'' buf,
     @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred buf) m' m'' ->
-    possible_crash m m' ->
+    mem_match m m' ->
     @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred (Map.empty valu)) m m.
   Proof.
     unfold mem_pred; intros.
@@ -526,29 +622,24 @@ Module WBCACHE.
       apply sep_star_assoc.
       apply lift_impl; intros.
       simpl; auto.
-      apply lift_impl; intros.
-      apply emp_empty_mem_only.
-      eapply possible_crash_emp_l; eauto; subst.
-      apply emp_empty_mem.
-      eapply possible_crash_emp_l; eauto; subst.
-      apply emp_empty_mem.
+      cbn in *; subst.
+      assert (@emp _ addr_eq_dec _ m) by firstorder.
+      apply lift_impl; intros; auto.
+      apply emp_empty_mem_only; auto.
 
     - destruct a.
       edestruct IHx.
       + inversion H2; eauto.
-      + eapply possible_crash_mem_except; eauto.
+      + eapply mem_match_except; eauto.
       + subst.
         rewrite mem_except_avs_except.
         rewrite avs_except_cons; auto.
       + eapply listpred_cachepred_mem_except; eauto.
-      + unfold possible_crash in H0.
-        specialize (H0 n). inversion H0.
+      + destruct (mem_match_cases n H0).
         * exists x0.
           destruct H3.
           rewrite mem_except_none in H1; eauto.
-        * destruct H3.
-          destruct H3.
-          destruct H3.
+        * do 3 destruct H3.
           exists ((n, x1) :: x0).
 
           destruct_lift H1.
@@ -566,6 +657,16 @@ Module WBCACHE.
           apply mem_except_ptsto; eauto.
   Qed.
 
+  Lemma possible_crash_mem_match : forall (m1 m2 : rawdisk),
+    possible_crash m1 m2 ->
+    @mem_match _ _ addr_eq_dec m1 m2.
+  Proof.
+    unfold possible_crash, mem_match; intuition.
+    specialize (H a); intuition.
+    repeat deex; congruence.
+    specialize (H a); intuition.
+    repeat deex; congruence.
+  Qed.
 
   Definition cache0cs cs := cache0 (CSMaxCount (WbCs cs)).
 
@@ -579,6 +680,7 @@ Module WBCACHE.
     rewrite <- BUFCACHE.crash_xform_rep_r.
     cancel.
     eapply mem_pred_cachepred_refl; eauto.
+    apply possible_crash_mem_match; auto.
     eapply possible_crash_trans.
     eauto.
     eapply mem_pred_possible_crash_trans; eauto.
@@ -1072,6 +1174,196 @@ Module WBCACHE.
   Qed.
 
 
+
+  Section MEM_REGION.
+
+    Variable V : Type.
+    Implicit Types m ma mb : @Mem.mem _ addr_eq_dec V.
+
+    Definition region_filled m st n :=
+      forall a, a >= st -> a < st + n -> m a <> None.
+
+    Lemma region_filled_sel : forall m st n a,
+      region_filled m st n ->
+      a >= st -> a < st + n ->
+      exists v, m a = Some v.
+    Proof.
+      intros.
+      specialize (H a H0 H1).
+      destruct (m a); try congruence.
+      eexists; eauto.
+    Qed.
+
+    Lemma listupd_region_filled : forall l m a,
+      region_filled (listupd m a l) a (length l).
+    Proof.
+      unfold region_filled; destruct l; simpl; intros.
+      omega.
+      destruct (addr_eq_dec a a0); subst.
+      rewrite listupd_sel_oob by omega.
+      rewrite upd_eq; congruence.
+      erewrite listupd_sel_inb with (def := v) by omega.
+      congruence.
+    Qed.
+
+    Lemma arrayN_region_filled : forall l m a F,
+      (F * arrayN a l)%pred m ->
+      region_filled m a (length l).
+    Proof.
+      unfold region_filled; induction l; simpl; intros.
+      omega.
+      destruct (addr_eq_dec a1 a0); subst.
+      apply sep_star_comm in H; apply sep_star_assoc in H.
+      apply ptsto_valid in H; congruence.
+      apply sep_star_assoc in H.
+      eapply IHl; eauto; omega.
+    Qed.
+
+    Lemma mem_match_listupd_l : forall l ma mb a,
+      mem_match ma mb ->
+      region_filled mb a (length l) ->
+      mem_match (listupd ma a l) mb.
+    Proof.
+      induction l; simpl; auto; intros.
+      apply IHl.
+      eapply region_filled_sel in H0; eauto.
+      destruct H0.
+      eapply mem_match_upd_l; eauto.
+      omega.
+      unfold region_filled in *; intuition.
+      eapply H0 with (a := a1); try omega; auto.
+    Qed.
+
+  End MEM_REGION.
+
+
+  Section MEM_INCL.
+
+    Implicit Types m ma mb : rawdisk.
+
+    Definition mem_incl ma mb := forall a,
+      (ma a = None /\ mb a = None) \/
+      exists va vb, ma a = Some va /\ mb a = Some vb /\
+      incl (vsmerge va) (vsmerge vb).
+
+    Lemma mem_incl_refl : forall m,
+      mem_incl m m.
+    Proof.
+      unfold mem_incl; intros.
+      destruct (m a) eqn: Heq; intuition.
+      right; do 2 eexists; intuition.
+    Qed.
+
+    Lemma mem_incl_trans : forall m ma mb,
+      mem_incl ma m ->
+      mem_incl m mb ->
+      mem_incl ma mb.
+    Proof.
+      unfold mem_incl; intuition.
+      specialize (H a); specialize (H0 a).
+      intuition; repeat deex; try congruence.
+      right.
+      rewrite H1 in H0; inversion H0; subst.
+      do 2 eexists; intuition eauto.
+      eapply incl_tran; eauto.
+    Qed.
+
+    Lemma mem_pred_cachepred_mem_incl : forall mm ma mb ,
+      @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred mm) mb ma ->
+      mem_incl ma mb.
+    Proof.
+      intros.
+      intro a.
+      destruct (mb a) eqn: ?.
+      eapply mem_pred_extract in H; eauto.
+      right.
+      unfold cachepred in H at 2.
+      destruct (Map.find a mm) eqn: Heq.
+      - destruct_lift H; destruct_pair_eq; subst.
+        do 2 eexists; split.
+        eapply ptsto_valid'; eauto.
+        split; eauto.
+        apply incl_tl; apply incl_appr; apply incl_refl.
+      - do 2 eexists; intuition.
+        eapply ptsto_valid'; eauto.
+      - left; intuition.
+        eapply mem_pred_cachepred_none; eauto.
+    Qed.
+
+    Lemma possible_crash_incl_trans : forall m ma mb,
+      possible_crash ma m ->
+      mem_incl ma mb ->
+      possible_crash mb m.
+    Proof.
+      unfold possible_crash, mem_incl; intros.
+      specialize (H a); specialize (H0 a).
+      intuition; repeat deex; try congruence.
+      right.
+      rewrite H2 in H0; inversion H0; subst.
+      do 2 eexists; intuition eauto.
+    Qed.
+
+    Lemma mem_incl_upd : forall a va vb ma mb,
+      mem_incl ma mb ->
+      incl (vsmerge va) (vsmerge vb) ->
+      mem_incl (upd ma a va) (upd mb a vb).
+    Proof.
+      unfold mem_incl; intros.
+      specialize (H a0).
+      destruct (addr_eq_dec a a0); subst.
+      repeat rewrite upd_eq by auto.
+      intuition; repeat deex; intuition.
+      right; do 2 eexists; eauto.
+      right; do 2 eexists; eauto.
+      repeat rewrite upd_ne by auto.
+      intuition.
+    Qed.
+
+    Lemma mem_incl_listupd : forall la lb,
+      Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) la lb ->
+      forall ma mb st,
+      mem_incl ma mb ->
+      mem_incl (listupd ma st la) (listupd mb st lb).
+    Proof.
+      induction 1; simpl; intros; auto.
+      apply IHForall2.
+      apply mem_incl_upd; auto.
+    Qed.
+
+  End MEM_INCL.
+
+
+
+  Lemma synced_range_ok_xcrash : forall vs n mm (d raw : @Mem.mem _ addr_eq_dec _) F st m,
+    mem_pred (cachepred mm) d raw ->
+    (F * arrayN st (vssync_range vs n))%pred d ->
+    possible_crash raw m ->
+    n < length vs ->
+    exists raw', 
+    mem_pred (cachepred (Map.empty _)) (listupd d st vs) raw' /\
+    possible_crash raw' m.
+  Proof.
+    intros.
+    exists (listupd d st vs); split.
+
+    eapply mem_pred_cachepred_refl.
+    eauto.
+    apply mem_match_listupd_l.
+    apply mem_match_refl.
+    erewrite <- vssync_range_length.
+    eapply arrayN_region_filled; eauto.
+    omega.
+
+    eapply possible_crash_incl_trans; eauto.
+    eapply mem_incl_trans.
+    eapply mem_pred_cachepred_mem_incl; eauto.
+    rewrite arrayN_listupd_eq at 1 by eauto.
+    apply mem_incl_listupd.
+    apply vssync_range_incl; auto.
+    apply mem_incl_refl.
+  Qed.
+
+
   Theorem sync_range_ok : forall a n cs,
     {< d F vs,
     PRE
@@ -1079,43 +1371,50 @@ Module WBCACHE.
     POST RET:cs
       exists d', rep cs d' *
       [[ (F * arrayN a (vssync_range vs n))%pred d' ]]
-    CRASH
-      exists cs' d' m, rep cs' d' * [[ m <= n ]] *
-      [[ (F * arrayN a (vssync_range vs m))%pred d' ]]
+    XCRASH
+      exists cs' d', rep cs' d' *
+      [[ (F * arrayN a vs)%pred d' ]]
     >} sync_range a n cs.
   Proof.
+
     unfold sync_range; intros.
-    step.
+    safestep.
+    prestep; unfold rep; cancel.
+    rewrite vssync_range_length; omega.
 
-    prestep; cancel.
-    cancel.
-    eassign F; cancel.
-    rewrite vssync_range_length; try omega.
-
-    step.
+    prestep; unfold rep; cancel.
     apply arrayN_unify.
     apply vssync_range_progress; omega.
 
-    subst; pimpl_crash.
-    norm; [ cancel | | cancel | ]; intuition; eauto.
-    rewrite Nat.min_l; eauto; omega.
-    rewrite Nat.min_l; eauto.
-    pred_apply; cancel.
-    apply arrayN_unify.
-    apply vssync_range_progress; auto.
-    omega.
+    (* crashes *)
+    subst.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    denote crash_xform as Hx; rewrite Hx.
+    unfold rep; xform_norm.
+    rewrite BUFCACHE.crash_xform_rep by eauto.
+    cancel.
 
+    edestruct (synced_range_ok_xcrash); eauto. omega.
+    repeat deex.
+    do 2 (xform_norm; cancel); xform_norm.
+    eassign (Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs')) (Map.empty _)); simpl.
+    rewrite <- BUFCACHE.crash_xform_rep_r.
+    cancel.
+    eauto. eauto.
+    eapply arrayN_listupd; eauto.
+    rewrite vssync_range_length; omega.
+
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
     Unshelve. exact tt.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (sync_range _ _ _) _) => apply sync_range_ok : prog.
+
   Hint Extern 0 (okToUnify (diskIs _) (diskIs _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (arrayN ?a _) (arrayN ?a _)) => constructor : okToUnify.
 
   Local Hint Resolve vsupd_vecs_length_ok.
   Local Hint Resolve vssync_vecs_length_ok.
-
 
   Theorem write_vecs_ok : forall a l cs,
     {< d F vs,
@@ -1125,31 +1424,63 @@ Module WBCACHE.
     POST RET:cs
       exists d', rep cs d' *
       [[ (F * arrayN a (vsupd_vecs vs l))%pred d' ]]
-    CRASH
-      exists cs' d' n, rep cs' d' * [[ n <= length l ]] *
-      [[ (F * arrayN a (vsupd_vecs vs (firstn n l)))%pred d' ]]
+    XCRASH
+      exists cs' d', rep cs' d' *
+      [[ (F * arrayN a (vsupd_vecs vs l))%pred d' ]]
     >} write_vecs a l cs.
   Proof.
     unfold write_vecs.
-    step.
-    prestep; cancel; auto.
-    step.
+    safestep.
+    prestep; unfold rep; cancel.
 
-    apply arrayN_unify.
-    apply vsupd_vecs_progress; auto.
+    apply mem_pred_cachepred_add.
+    eapply arrayN_selN; eauto; try omega.
+    rewrite vsupd_vecs_length; try omega.
+    apply Nat.add_lt_mono_l.
+    eapply lt_le_trans. apply vsupd_vecs_length_ok; eauto.
+    rewrite vsupd_vecs_length; auto.
 
-    subst; pimpl_crash.
-    norm; [ cancel | | cancel | ]; intuition; eauto.
-    rewrite Nat.min_l; eauto; omega.
-    rewrite Nat.min_l; eauto.
-    pred_apply; cancel.
-    apply arrayN_unify.
-    apply vsupd_vecs_progress; auto.
+    erewrite firstn_S_selN_expand by auto.
+    rewrite vsupd_vecs_app; simpl.
+    rewrite minus_plus.
+    apply arrayN_updN_memupd; auto.
 
     step.
-    apply arrayN_unify.
     rewrite firstn_oob; auto.
+
+    (* crashes *)
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
     Unshelve. exact tt.
+  Qed.
+
+
+
+  Lemma synced_vecs_ok_xcrash : forall vs l mm (d raw : @Mem.mem _ addr_eq_dec _) F st m,
+    mem_pred (cachepred mm) d raw ->
+    (F * arrayN st (vssync_vecs vs l))%pred d ->
+    possible_crash raw m ->
+    Forall (fun a => a < length vs) l ->
+    exists raw',
+    mem_pred (cachepred (Map.empty _)) (listupd d st vs) raw' /\
+    possible_crash raw' m.
+  Proof.
+    intros.
+    exists (listupd d st vs); split.
+
+    eapply mem_pred_cachepred_refl.
+    eauto.
+    apply mem_match_listupd_l.
+    apply mem_match_refl.
+    erewrite <- vssync_vecs_length.
+    eapply arrayN_region_filled; eauto.
+
+    eapply possible_crash_incl_trans; eauto.
+    eapply mem_incl_trans.
+    eapply mem_pred_cachepred_mem_incl; eauto.
+    rewrite arrayN_listupd_eq at 1 by eauto.
+    apply mem_incl_listupd.
+    apply vssync_vecs_incl; auto.
+    apply mem_incl_refl.
   Qed.
 
 
@@ -1161,31 +1492,48 @@ Module WBCACHE.
     POST RET:cs
       exists d', rep cs d' *
       [[ (F * arrayN a (vssync_vecs vs l))%pred d' ]]
-    CRASH
-      exists cs' d' n, rep cs' d' * [[ n <= length l ]] *
-      [[ (F * arrayN a (vssync_vecs vs (firstn n l)))%pred d' ]]
+    XCRASH
+      exists cs' d', rep cs' d' *
+      [[ (F * arrayN a vs)%pred d' ]]
     >} sync_vecs a l cs.
   Proof.
     unfold sync_vecs.
-    step.
-    prestep; cancel; auto.
-    step.
+    safestep.
+    prestep; unfold rep; cancel; auto.
 
+    prestep; unfold rep; cancel.
     apply arrayN_unify.
-    apply vssync_vecs_progress; auto.
+    apply vssync_vecs_progress; omega.
 
-    subst; pimpl_crash.
-    norm; [ cancel | | cancel | ]; intuition; eauto.
-    rewrite Nat.min_l; eauto; omega.
-    rewrite Nat.min_l; eauto.
-    pred_apply; cancel.
-    apply arrayN_unify.
-    apply vssync_vecs_progress; auto.
+    (* crashes *)
+    subst.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    denote crash_xform as Hx; rewrite Hx.
+    unfold rep; xform_norm.
+    rewrite BUFCACHE.crash_xform_rep by eauto.
+    cancel.
+
+    edestruct (synced_vecs_ok_xcrash); eauto; intuition.
+    apply forall_firstn; auto.
+    do 2 (xform_norm; cancel); xform_norm.
+    eassign (Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs')) (Map.empty _)); simpl.
+    rewrite <- BUFCACHE.crash_xform_rep_r.
+    cancel. eauto. eauto.
+    eapply arrayN_listupd; eauto.
+    rewrite vssync_vecs_length; omega.
 
     step.
-    apply arrayN_unify.
     rewrite firstn_oob; auto.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
     Unshelve. exact tt.
   Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (read_range _ _ _ _ _) _) => apply read_range_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_range _ _ _) _) => apply write_range_ok : prog.
+  Hint Extern 1 ({{_}} progseq (sync_range _ _ _) _) => apply sync_range_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_vecs _ _ _) _) => apply write_vecs_ok : prog.
+  Hint Extern 1 ({{_}} progseq (sync_vecs _ _ _) _) => apply sync_vecs_ok : prog.
+
 
 End WBCACHE.
