@@ -1410,6 +1410,17 @@ Module PaddedLog.
       rx ^(cs, false)
     }.
 
+  Definition would_recover_either' xp old new hm :=
+    (rep xp (Synced old) hm \/
+    rep xp (Extended old new) hm \/
+    rep xp (Synced ((padded_log old) ++ new)) hm \/
+    rep xp (SyncedUnmatched old new) hm)%pred.
+
+  Definition would_recover_either xp F old new hm :=
+    (exists cs d,
+      BUFCACHE.rep cs d *
+      [[ (F * would_recover_either' xp old new hm)%pred d ]])%pred.
+
 
   Definition extend_ok : forall xp new cs,
     {< F old d,
@@ -1422,14 +1433,11 @@ Module PaddedLog.
              (F * rep xp (Synced ((padded_log old) ++ new)) hm')%pred d' ]] \/
           [[ r = false /\ length ((padded_log old) ++ new) > LogLen xp /\
              (F * rep xp (Synced old) hm')%pred d' ]])
-    CRASH:hm_crash exists cs' d',
-          BUFCACHE.rep cs' d' * (
-          [[ (F * rep xp (Synced old) hm_crash)%pred d' ]] \/
-          [[ (F * rep xp (Extended old new) hm_crash)%pred d' ]] \/
-          [[ (F * rep xp (Synced ((padded_log old) ++ new)) hm_crash)%pred d' ]])
+    CRASH:hm_crash
+          would_recover_either xp F old new hm_crash
     >} extend xp new cs.
   Proof.
-    unfold extend.
+    unfold extend, would_recover_either, would_recover_either'.
     step.
     step.
 
@@ -1644,6 +1652,21 @@ Module PaddedLog.
     cancel_by helper_trunc_ok.
     auto.
     or_l; cancel.
+  Qed.
+
+  Lemma xform_rep_syncedunmatched : forall xp old new hm,
+    crash_xform (rep xp (SyncedUnmatched old new) hm) =p=> rep xp (SyncedUnmatched old new) hm.
+  Proof.
+    unfold rep; simpl; unfold rep_contents_unmatched; intros.
+    do 4 (xform;
+      norm'l; unfold stars; cbn).
+    xform.
+    rewrite Data.xform_avail_rep, Desc.xform_avail_rep.
+    rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
+    rewrite Data.xform_synced_rep, Desc.xform_synced_rep.
+    rewrite Hdr.xform_rep_synced.
+    cancel.
+    congruence.
   Qed.
 
   (*
@@ -2013,21 +2036,16 @@ Module PaddedLog.
   Definition recover_ok_SyncedUnmatched : forall xp cs,
     {< F old new d,
     PRE:hm   BUFCACHE.rep cs d *
-          [[ Forall entry_valid new ]] *
           [[ (F * rep xp (SyncedUnmatched old new) hm)%pred d ]]
     POST:hm' RET:cs' exists d',
           BUFCACHE.rep cs' d' * (
           [[ (F * rep xp (Synced old) hm')%pred d' ]] \/
           [[ (F * rep xp (Synced (padded_log old ++ new)) hm')%pred d' ]])
-    CRASH:hm_crash exists cs' d',
-          BUFCACHE.rep cs' d' * (
-          [[ (F * rep xp (SyncedUnmatched old new) hm_crash)%pred d ]] \/
-          [[ (F * rep xp (Synced old) hm_crash)%pred d' ]] \/
-          [[ (F * rep xp (Extended old new) hm_crash)%pred d' ]] \/
-          [[ (F * rep xp (Synced (padded_log old ++ new)) hm_crash)%pred d' ]])
+    CRASH:hm_crash
+          would_recover_either xp F old new hm_crash
     >} recover xp cs.
   Proof.
-    unfold recover.
+    unfold recover, would_recover_either, would_recover_either'.
     step.
     safestep. subst.
     instantiate (1:=(map ent_addr (padded_log old) ++ dummy0)).
@@ -2059,7 +2077,10 @@ Module PaddedLog.
     replace DataSig.items_per_val with 1 by (cbv; auto); try omega.
     rewrite Nat.mul_1_r; eauto.
 
-    step.
+    intros.
+    eapply pimpl_ok2.
+    eapply hash_list_ok.
+    cancel.
     solve_hash_list_rep; auto.
     intros.
     eapply pimpl_ok2.
@@ -2087,7 +2108,7 @@ Module PaddedLog.
         unfold roundup.
         rewrite <- Nat.mul_add_distr_r; eauto.
         autorewrite with lists.
-        rewrite padded_log_length, H15.
+        rewrite padded_log_length, H14.
         unfold roundup.
         rewrite <- Nat.mul_add_distr_r; eauto.
 
@@ -2143,7 +2164,7 @@ Module PaddedLog.
 
     (* False case: the hash did not match what was on disk and we need to recover. *)
     {
-      clear H8 H14.
+      clear H7 H13.
       safestep.
       instantiate (1:= map ent_addr (padded_log old)).
       rewrite map_length, padded_log_length.
@@ -2178,7 +2199,7 @@ Module PaddedLog.
       end.
       unfold Hdr.hdr_goodSize in *; intuition.
 
-      clear H20 H14.
+      clear H19 H13.
       step.
       step.
 
@@ -2209,12 +2230,13 @@ Module PaddedLog.
 
       (* Crash conditions. *)
       (* Before header sync: Extended *)
-      or_r; or_r; or_l.
+      or_r; or_l.
       cancel.
       rewrite desc_padding_synced_piff.
       cancel.
       rewrite Desc.array_rep_avail_synced, Data.array_rep_avail_synced.
       rewrite <- recover_desc_avail_helper with (new:=dummy0).
+      unfold ndata_log.
       rewrite <- recover_data_avail_helper with (new:=dummy1).
       cancel. or_r; cancel.
       replace (length dummy1) with (ndata_log new); eauto.
@@ -2234,7 +2256,8 @@ Module PaddedLog.
       solve_checksums.
       solve_checksums.
 
-      or_r; or_l.
+      (* After header sync: Synced old *)
+      or_l.
       cancel.
       rewrite desc_padding_synced_piff.
       cancel.
@@ -2258,15 +2281,16 @@ Module PaddedLog.
       auto.
       solve_checksums.
 
-      or_l.
+      (* Before header write: SyncedUnmatched old new *)
+      or_r; or_r; or_r.
       unfold rep_contents_unmatched.
-      cancel.
-      rewrite vals_nonzero_padded_log; auto.
       match goal with
       | [ H: context[rep_contents_unmatched] |- _ ]
         => unfold rep_contents_unmatched in H; destruct_lift H
-      end;
-      auto.
+      end.
+      cancel.
+      rewrite vals_nonzero_padded_log; auto.
+      congruence.
       solve_checksums.
 
       (* Extended *)
@@ -2293,12 +2317,102 @@ Module PaddedLog.
     }
 
     all: intros;
-          try (erewrite <- H1; cancel);
-          try clear H8; try clear H14;
-          or_l; cancel_with solve_checksums.
+      try clear H7; try clear H13;
+      try (erewrite <- H1; cancel);
+      or_r; or_r; or_r;
+      cancel_with solve_checksums;
+      auto.
 
   Admitted.
 
+
+  Definition recover_ok : forall xp cs,
+    {< F old new,
+    PRE:hm
+      exists d, BUFCACHE.rep cs d *
+      [[ crash_xform (F * would_recover_either' xp old new hm)%pred d ]]
+    POST:hm' RET:cs' exists d',
+          BUFCACHE.rep cs' d' * (
+          [[ (crash_xform F * rep xp (Synced old) hm')%pred d' ]] \/
+          [[ (crash_xform F * rep xp (Synced (padded_log old ++ new)) hm')%pred d' ]])
+    CRASH:hm_crash
+      would_recover_either xp (crash_xform F) old new hm_crash
+    >} recover xp cs.
+  Proof.
+    unfold would_recover_either, would_recover_either'.
+    intros.
+    eapply pimpl_ok2; try eapply nop_ok.
+    intros. norm'l. unfold stars; cbn.
+
+    apply crash_xform_sep_star_dist in H4.
+    autorewrite with crash_xform in H4.
+    destruct_lift H4.
+    repeat ( apply sep_star_or_distr in H; apply pimpl_or_apply in H; destruct H;
+      destruct_lift H ).
+
+    (* Synced old *)
+    - rewrite xform_rep_synced in H.
+      cancel.
+      eapply pimpl_ok2; try apply recover_ok_Synced.
+      cancel.
+      match goal with
+      | [ |- context[Synced ?list] ] => instantiate (l:=list)
+      end.
+      cancel.
+      hoare.
+      all: repeat cancel.
+
+    (* Extended old new *)
+    - rewrite xform_rep_extended in H.
+      cancel.
+      apply sep_star_or_distr in H; apply pimpl_or_apply in H; destruct H.
+
+      eapply pimpl_ok2; try apply recover_ok_Synced.
+      cancel.
+      match goal with
+      | [ |- context[Synced ?list] ] => instantiate (l:=list)
+      end.
+      cancel.
+      hoare.
+      repeat cancel.
+
+      eapply pimpl_ok2; try apply recover_ok_SyncedUnmatched.
+      cancel.
+      match goal with
+      | [ |- context[SyncedUnmatched ?old ?new] ]
+        => instantiate (1:=new); instantiate (1:=old)
+      end.
+      cancel.
+      hoare.
+      unfold would_recover_either, would_recover_either'.
+      all: repeat cancel.
+
+    (* Synced (old ++ new) *)
+    - rewrite xform_rep_synced in H.
+      cancel.
+      eapply pimpl_ok2; try apply recover_ok_Synced.
+      cancel.
+      match goal with
+      | [ |- context[Synced ?list] ] => instantiate (l:=list)
+      end.
+      cancel.
+      hoare.
+      all: repeat cancel.
+
+    (* SyncedUnmatched old new *)
+    - rewrite xform_rep_syncedunmatched in H.
+      cancel.
+      eapply pimpl_ok2; try apply recover_ok_SyncedUnmatched.
+      cancel.
+      match goal with
+      | [ |- context[SyncedUnmatched ?old ?new] ]
+        => instantiate (1:=new); instantiate (1:=old)
+      end.
+      cancel.
+      hoare.
+      unfold would_recover_either, would_recover_either'.
+      all: repeat cancel.
+  Qed.
 
 
 
