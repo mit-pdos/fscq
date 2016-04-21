@@ -649,6 +649,77 @@ Module RADefs (RA : RASig).
     apply mult_le_compat; omega.
   Qed.
 
+  Lemma ipack_iunpack_one : forall (a : valu),
+    [ a ] = ipack (iunpack [] a).
+  Proof.
+    intros.
+    unfold iunpack.
+    rewrite app_nil_l.
+    rewrite ipack_one, block2val2block_id; auto.
+    unfold val2block, blocktype.
+    rewrite Rec.array_of_word_length.
+    auto.
+  Qed.
+
+  Lemma iunpack_length : forall init nr a,
+    length init = nr ->
+    length (iunpack init a) = nr + items_per_val.
+  Proof.
+    intros.
+    unfold iunpack.
+    rewrite app_length, H.
+    f_equal.
+    unfold val2block, blocktype, item.
+    apply Rec.array_of_word_length.
+  Qed.
+
+  Lemma fold_left_iunpack_length' : forall l init nr,
+    length init = nr ->
+    length (fold_left iunpack l init) = nr + (length l) * items_per_val.
+  Proof.
+    induction l; simpl; intros.
+    omega.
+
+    erewrite IHl.
+    instantiate (1 := nr + items_per_val). omega.
+    apply iunpack_length; auto.
+  Qed.
+
+  Lemma fold_left_iunpack_length : forall l,
+    length (fold_left iunpack l []) = (length l) * items_per_val.
+  Proof.
+    intros.
+    erewrite fold_left_iunpack_length'; eauto.
+    omega.
+
+    Unshelve.
+    constructor.
+  Qed.
+
+  Lemma ipack_iunpack : forall l,
+    (forall l', Forall (@Rec.well_formed itemtype) l') ->
+    l = ipack (fold_left iunpack l []).
+  Proof.
+    induction l; intros; simpl.
+    rewrite <- ipack_nil.
+    auto.
+
+    rewrite IHl at 2.
+    erewrite iunpack_ipack'.
+    erewrite ipack_app.
+    rewrite <- ipack_iunpack_one.
+    rewrite cons_app.
+    f_equal; auto.
+    unfold iunpack.
+    rewrite app_nil_l.
+    unfold val2block, blocktype.
+    rewrite Rec.array_of_word_length.
+    instantiate (1:=1); omega.
+    auto.
+    instantiate (1:=length l).
+    apply fold_left_iunpack_length.
+    auto.
+  Qed.
 
   Lemma mod_lt_length_firstn_skipn : forall A ix (l : list A),
     ix < length l ->

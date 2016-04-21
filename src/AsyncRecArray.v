@@ -244,6 +244,38 @@ Module AsyncRecArray (RA : RASig).
     rewrite synced_list_length; auto.
   Qed.
 
+
+  Lemma xform_avail_rep_array_rep : forall xp st nr,
+    (forall l', Forall (@Rec.well_formed itemtype) l') ->
+    nr * items_per_val <= (RALen xp - st) * items_per_val ->
+    xparams_ok xp ->
+    st <= RALen xp ->
+    crash_xform (avail_rep xp st nr) =p=>
+      exists l, array_rep xp st (Synced l) *
+      [[ length l = (nr * items_per_val)%nat ]].
+  Proof.
+    unfold avail_rep; intros.
+    xform.
+    rewrite crash_xform_arrayN; cancel;
+    apply possible_crash_list_length in H3 as Hlength; subst.
+    unfold possible_crash_list in *; subst; intuition.
+    instantiate (l := fold_left iunpack l' []).
+    unfold synced_array.
+    cancel.
+    unfold rep_common; intuition.
+    unfold items_valid; intuition.
+    rewrite fold_left_iunpack_length.
+    congruence.
+
+    apply ipack_iunpack; auto.
+
+    unfold eqlen.
+    rewrite repeat_length; auto.
+
+    rewrite fold_left_iunpack_length.
+    congruence.
+  Qed.
+
   Lemma xform_unsync_array_avail : forall xp st l,
     crash_xform (unsync_array xp st l) =p=>
       avail_rep xp st (divup (length l) items_per_val).
