@@ -86,7 +86,7 @@ Module AFS.
     ms <- LOG.commit_ro (FSXPLog fsxp) ms;
     rx ms.
 
-  (* sync only data blocks of a file. *)
+  (* sync only data blocks of a file. XXX does a global flush too *)
   Definition file_sync T fsxp inum ms rx : prog T :=
     ms <- LOG.begin (FSXPLog fsxp) ms;
     ms <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum ms;
