@@ -1425,30 +1425,32 @@ Module WBCACHE.
     POST RET:cs
       exists d', rep cs d' *
       [[ (F * arrayN a (vsupd_vecs vs l))%pred d' ]]
-    CRASH
-      exists cs' d' n, rep cs' d' * [[ n <= length l ]] *
-      [[ (F * arrayN a (vsupd_vecs vs (firstn n l)))%pred d' ]]
+    XCRASH
+      exists cs' d', rep cs' d' *
+      [[ (F * arrayN a (vsupd_vecs vs l))%pred d' ]]
     >} write_vecs a l cs.
   Proof.
     unfold write_vecs.
-    step.
-    prestep; cancel; auto.
-    step.
+    safestep.
+    prestep; unfold rep; cancel.
 
-    apply arrayN_unify.
-    apply vsupd_vecs_progress; auto.
+    apply mem_pred_cachepred_add.
+    eapply arrayN_selN; eauto; try omega.
+    rewrite vsupd_vecs_length; try omega.
+    apply Nat.add_lt_mono_l.
+    eapply lt_le_trans. apply vsupd_vecs_length_ok; eauto.
+    rewrite vsupd_vecs_length; auto.
 
-    subst; pimpl_crash.
-    norm; [ cancel | | cancel | ]; intuition; eauto.
-    rewrite Nat.min_l; eauto; omega.
-    rewrite Nat.min_l; eauto.
-    pred_apply; cancel.
-    apply arrayN_unify.
-    apply vsupd_vecs_progress; auto.
+    erewrite firstn_S_selN_expand by auto.
+    rewrite vsupd_vecs_app; simpl.
+    rewrite minus_plus.
+    apply arrayN_updN_memupd; auto.
 
     step.
-    apply arrayN_unify.
     rewrite firstn_oob; auto.
+
+    (* crashes *)
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
     Unshelve. exact tt.
   Qed.
 
@@ -1461,9 +1463,9 @@ Module WBCACHE.
     POST RET:cs
       exists d', rep cs d' *
       [[ (F * arrayN a (vssync_vecs vs l))%pred d' ]]
-    CRASH
-      exists cs' d' n, rep cs' d' * [[ n <= length l ]] *
-      [[ (F * arrayN a (vssync_vecs vs (firstn n l)))%pred d' ]]
+    XCRASH
+      exists cs' d', rep cs' d' *
+      [[ (F * arrayN a vs)%pred d' ]]
     >} sync_vecs a l cs.
   Proof.
     unfold sync_vecs.
