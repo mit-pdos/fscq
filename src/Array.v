@@ -433,6 +433,42 @@ Proof.
     repeat rewrite firstn_length_l; omega.
 Qed.
 
+Lemma forall_incl_refl : forall vs,
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) vs vs.
+Proof.
+  induction vs; auto.
+  constructor; auto.
+  apply incl_refl.
+Qed.
+
+
+Lemma vssync_range_incl : forall n vs,
+  n < length vs ->
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) (vssync_range vs n) vs.
+Proof.
+  induction n; simpl; intros.
+  cbn.
+  apply forall_incl_refl.
+  apply forall_forall2.
+  rewrite <- vssync_range_progress by omega.
+  rewrite <- updN_selN_eq with (ix := n) (l := vs) (default := ($0, nil)) at 2.
+  unfold vssync; rewrite combine_updN.
+  apply Forall_updN.
+  specialize (IHn vs).
+  apply forall2_forall in IHn; auto; omega.
+  unfold vsmerge; simpl.
+  unfold vssync_range.
+  rewrite selN_app2, skipn_selN.
+  rewrite combine_length_eq, map_length, firstn_length_l.
+  rewrite Nat.sub_diag, Nat.add_0_r.
+  apply incl_cons2; apply incl_nil.
+  omega.
+  rewrite map_length, firstn_length_l, repeat_length; omega.
+  rewrite combine_length_eq, map_length, firstn_length_l; try omega.
+  rewrite map_length, firstn_length_l, repeat_length; omega.
+  rewrite vssync_range_length; omega.
+Qed.
+
 
 Definition vsupsyn_range (vsl : list valuset) (vl : list valu) :=
   let n := length vl in
@@ -853,6 +889,22 @@ Proof.
   eapply ptsto_upd.
   pred_apply; cancel.
 Qed.
+
+Lemma arrayN_listupd_eq : forall V (l : list V) F st d,
+  (F * arrayN st l)%pred d ->
+  d = listupd d st l.
+Proof.
+  induction l; simpl; intros; auto.
+  erewrite <- IHl.
+  rewrite upd_nop; auto.
+  eapply ptsto_valid.
+  pred_apply; cancel.
+  rewrite upd_nop; auto.
+  pred_apply; cancel.
+  eapply ptsto_valid.
+  pred_apply; cancel.
+Qed.
+
 
 Lemma listupd_sel_oob : forall V (l : list V) a off m,
   a < off \/ a >= off + (length l) ->
