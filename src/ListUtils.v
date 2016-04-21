@@ -1948,6 +1948,20 @@ Proof.
   rewrite combine_length_eq; auto.
 Qed.
 
+Lemma forall2_updN : forall A B P (a : list A) (b : list B) xa xb i,
+  Forall2 P a b ->
+  P xa xb ->
+  Forall2 P (updN a i xa) (updN b i xb).
+Proof.
+  intros.
+  apply forall_forall2.
+  rewrite combine_updN.
+  apply Forall_updN; auto.
+  apply forall2_forall; auto.
+  repeat rewrite length_updN.
+  eapply forall2_length; eauto.
+Qed.
+
 Definition cuttail A n (l : list A) := firstn (length l - n) l.
 
 Lemma cuttail_length : forall A (l : list A) n,

@@ -1416,7 +1416,6 @@ Module WBCACHE.
   Local Hint Resolve vsupd_vecs_length_ok.
   Local Hint Resolve vssync_vecs_length_ok.
 
-
   Theorem write_vecs_ok : forall a l cs,
     {< d F vs,
     PRE
@@ -1455,6 +1454,36 @@ Module WBCACHE.
   Qed.
 
 
+
+  Lemma synced_vecs_ok_xcrash : forall vs l mm (d raw : @Mem.mem _ addr_eq_dec _) F st m,
+    mem_pred (cachepred mm) d raw ->
+    (F * arrayN st (vssync_vecs vs l))%pred d ->
+    possible_crash raw m ->
+    Forall (fun a => a < length vs) l ->
+    exists raw',
+    mem_pred (cachepred (Map.empty _)) (listupd d st vs) raw' /\
+    possible_crash raw' m.
+  Proof.
+    intros.
+    exists (listupd d st vs); split.
+
+    eapply mem_pred_cachepred_refl.
+    eauto.
+    apply mem_match_listupd_l.
+    apply mem_match_refl.
+    erewrite <- vssync_vecs_length.
+    eapply arrayN_region_filled; eauto.
+
+    eapply possible_crash_incl_trans; eauto.
+    eapply mem_incl_trans.
+    eapply mem_pred_cachepred_mem_incl; eauto.
+    rewrite arrayN_listupd_eq at 1 by eauto.
+    apply mem_incl_listupd.
+    apply vssync_vecs_incl; auto.
+    apply mem_incl_refl.
+  Qed.
+
+
   Theorem sync_vecs_ok : forall a l cs,
     {< d F vs,
     PRE
@@ -1469,26 +1498,36 @@ Module WBCACHE.
     >} sync_vecs a l cs.
   Proof.
     unfold sync_vecs.
-    step.
-    prestep; cancel; auto.
-    step.
+    safestep.
+    prestep; unfold rep; cancel; auto.
 
+    prestep; unfold rep; cancel.
     apply arrayN_unify.
-    apply vssync_vecs_progress; auto.
+    apply vssync_vecs_progress; omega.
 
-    subst; pimpl_crash.
-    norm; [ cancel | | cancel | ]; intuition; eauto.
-    rewrite Nat.min_l; eauto; omega.
-    rewrite Nat.min_l; eauto.
-    pred_apply; cancel.
-    apply arrayN_unify.
-    apply vssync_vecs_progress; auto.
+    (* crashes *)
+    subst.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    denote crash_xform as Hx; rewrite Hx.
+    unfold rep; xform_norm.
+    rewrite BUFCACHE.crash_xform_rep by eauto.
+    cancel.
+
+    edestruct (synced_vecs_ok_xcrash); eauto; intuition.
+    apply forall_firstn; auto.
+    do 2 (xform_norm; cancel); xform_norm.
+    eassign (Build_wbcachestate (BUFCACHE.cache0 (CSMaxCount cs')) (Map.empty _)); simpl.
+    rewrite <- BUFCACHE.crash_xform_rep_r.
+    cancel. eauto. eauto.
+    eapply arrayN_listupd; eauto.
+    rewrite vssync_vecs_length; omega.
 
     step.
-    apply arrayN_unify.
     rewrite firstn_oob; auto.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
     Unshelve. exact tt.
   Qed.
+
 
   Hint Extern 1 ({{_}} progseq (read_range _ _ _ _ _) _) => apply read_range_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_range _ _ _) _) => apply write_range_ok : prog.

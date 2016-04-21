@@ -449,13 +449,11 @@ Proof.
   induction n; simpl; intros.
   cbn.
   apply forall_incl_refl.
-  apply forall_forall2.
   rewrite <- vssync_range_progress by omega.
   rewrite <- updN_selN_eq with (ix := n) (l := vs) (default := ($0, nil)) at 2.
-  unfold vssync; rewrite combine_updN.
-  apply Forall_updN.
-  specialize (IHn vs).
-  apply forall2_forall in IHn; auto; omega.
+  apply forall2_updN.
+  apply IHn; omega.
+
   unfold vsmerge; simpl.
   unfold vssync_range.
   rewrite selN_app2, skipn_selN.
@@ -466,7 +464,6 @@ Proof.
   rewrite map_length, firstn_length_l, repeat_length; omega.
   rewrite combine_length_eq, map_length, firstn_length_l; try omega.
   rewrite map_length, firstn_length_l, repeat_length; omega.
-  rewrite vssync_range_length; omega.
 Qed.
 
 
@@ -768,6 +765,30 @@ Proof.
   rewrite IHl; unfold vssync; auto.
   rewrite selN_updN_ne; auto.
   rewrite length_updN; auto.
+Qed.
+
+
+Lemma vssync_vecs_incl : forall l vs,
+  Forall (fun a => a < length vs) l ->
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) (vssync_vecs vs l) vs.
+Proof.
+  induction l; simpl; intros.
+  apply forall_incl_refl.
+  rewrite vssync_vecs_vssync_comm.
+  rewrite <- updN_selN_eq with (ix := a) (l := vs) (default := ($0, nil)) at 2.
+  apply forall2_updN.
+  apply IHl; auto.
+  eapply Forall_cons2; eauto.
+
+  destruct (In_dec addr_eq_dec a l).
+  rewrite vssync_vecs_selN_In; auto.
+  unfold vsmerge; simpl.
+  apply incl_cons2; apply incl_nil.
+  inversion H; eauto.
+
+  rewrite vssync_selN_not_in; auto.
+  unfold vsmerge; simpl.
+  apply incl_cons2; apply incl_nil.
 Qed.
 
 
