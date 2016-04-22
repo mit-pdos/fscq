@@ -264,73 +264,9 @@ Module AFS.
 *)
   
 
-
   (* Specs and proofs *)
 
   Theorem file_getattr_ok : forall fsxp inum mscs,
-  {< ds pathname Fm Ftop tree f,
-  PRE    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs  *
-         [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
-  POST RET:^(mscs,r)
-         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
-         [[ r = BFILE.BFAttr f ]]
-  CRASH LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds
-  >} file_get_attr fsxp inum mscs.
-  Proof.
-    unfold file_get_attr; intros.
-    step.
-    step.
-    eapply pimpl_ok2.
-    apply LOG.commit_ro_ok.
-    cancel.
-    step.
-    subst; pimpl_crash; cancel.
-    rewrite LOG.notxn_idempred; cancel.
-    rewrite LOG.intact_idempred; cancel.
-    rewrite LOG.notxn_idempred; cancel.
-  Qed.
-
-  Theorem file_getattr_recover_ok : forall fsxp inum mscs,
-  {<< ds pathname Fm Ftop tree f,
-  PRE    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs  *
-         [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
-  POST RET:^(mscs,r)
-         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
-         [[ r = BFILE.BFAttr f ]]
-  REC RET:^(mscs, fsxp)
-        exists cs, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs
-  >>} file_get_attr fsxp inum mscs >> recover.
-  Proof.
-    recover_ro_ok.
-    eapply file_getattr_ok.
-    eapply recover_ok.
-    cancel.
-    eauto.
-    step.
-    eapply pimpl_refl.
-    xform_norm.
-    rewrite LOG.idempred_idem.
-    xform_norm.
-    rewrite SB.crash_xform_rep.
-    recover_ro_ok.
-    cancel.
-    step.
-    eapply LOG.notxn_after_crash_diskIs; eauto.
-    cancel.
-    rewrite LOG.after_crash_idempred.
-    destruct v; auto.
-  Qed.
-
-(*
-  once we settle on strict or not strict.
-
-  Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
-*)
-
-
-  Theorem file_getattr_ok_strict : forall fsxp inum mscs,
   {< ds pathname Fm Ftop tree f,
   PRE    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs  *
          [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
@@ -353,8 +289,9 @@ Module AFS.
     apply LOG.notxn_intact.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
 
-  Theorem file_getattr_recover_ok_strict : forall fsxp inum mscs,
+  Theorem file_getattr_recover_ok : forall fsxp inum mscs,
   {<< ds pathname Fm Ftop tree f,
   PRE    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs  *
          [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
@@ -368,7 +305,6 @@ Module AFS.
   >>} file_get_attr fsxp inum mscs >> recover.
   Proof.
     recover_ro_ok.
-    eapply file_getattr_ok_strict.
     eapply recover_ok.
     cancel.
     eauto.
