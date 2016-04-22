@@ -56,6 +56,12 @@ Module AFS.
       mscs <- LOG.commit_ro (FSXPLog fsxp) mscs;
         rx ^(mscs, INODE.ABytes attr).
 
+  Definition file_set_attr T fsxp inum attr mscs rx : prog T :=
+    mscs <- LOG.begin (FSXPLog fsxp) mscs;
+    mscs <- DIRTREE.setattr fsxp inum attr mscs;
+    let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
+      rx ^(mscs, ok).
+
   Definition file_set_sz T fsxp inum sz mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
     mscs <- DIRTREE.updattr fsxp inum (INODE.UBytes sz) mscs;
