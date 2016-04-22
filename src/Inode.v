@@ -165,7 +165,6 @@ Module INODE.
   (* attribute getters *)
 
   Definition ABytes  (a : iattr) := Eval cbn in ( a :-> "bytes" ).
-  Definition ABlocks (a : iattr) := Eval cbn in ( a :-> "blocks" ).
   Definition AMTime  (a : iattr) := Eval cbn in ( a :-> "mtime" ).
   Definition AType   (a : iattr) := Eval cbn in ( a :-> "itype" ).
   Definition ADev    (a : iattr) := Eval cbn in ( a :-> "dev" ).

@@ -90,14 +90,14 @@ Module AFS.
     ms <- LOG.begin (FSXPLog fsxp) ms;
     ms <- BFILE.dwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v ms;
     ms <- LOG.commit_ro (FSXPLog fsxp) ms;
-    rx ms.
+    rx ^(ms, tt).
 
   (* sync only data blocks of a file. XXX does a global flush too *)
   Definition file_sync T fsxp inum ms rx : prog T :=
     ms <- LOG.begin (FSXPLog fsxp) ms;
     ms <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum ms;
     ms <- LOG.commit_ro (FSXPLog fsxp) ms;
-    rx ms.
+    rx ^(ms, tt).
 
   Definition readdir T fsxp dnum mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -594,7 +594,7 @@ Module AFS.
       [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
       [[[ flist ::: (A * inum |-> f) ]]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> v0) ]]]
-    POST RET:mscs
+    POST RET:^(mscs, _)
       exists d flist' f',
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
       [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
@@ -638,7 +638,7 @@ Module AFS.
       [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
       [[[ flist ::: (A * inum |-> f) ]]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> v0) ]]]
-    POST RET:mscs
+    POST RET:^(mscs, _)
       exists d flist' f',
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
       [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
@@ -696,7 +696,7 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
       [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
       [[[ flist ::: (A * inum |-> f) ]]]
-    POST RET:mscs
+    POST RET:^(mscs, _)
       exists d flist',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
          [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
@@ -748,7 +748,7 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
       [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
       [[[ flist ::: (A * inum |-> f) ]]]
-    POST RET:mscs
+    POST RET:^(mscs, _)
      exists d flist',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
          [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
