@@ -43,13 +43,12 @@ Module ATOMICCP.
   Definition copy2temp T fsxp src_inum dst_inum mscs rx : prog T :=
     let^ (mscs, attr) <-  AFS.file_get_attr fsxp src_inum mscs;
     let^ (mscs, ok) <- AFS.file_truncate fsxp dst_inum 1 mscs;  (* XXX type error when passing sz *)
-    (* XXX do we need a sync after the truncate to sync length attribute? *)
     If (bool_dec ok false) {
       rx ^(mscs, false)
     } else {
       let^ (mscs, b) <- AFS.read_fblock fsxp src_inum 0 mscs;
       mscs <- AFS.update_fblock_d fsxp dst_inum 0 b mscs;
-      mscs <- AFS.file_sync fsxp dst_inum mscs;    (* XXX do we want a datasync here? *)
+      mscs <- AFS.file_sync fsxp dst_inum mscs;    (* we want a metadata and data sync here *)
       rx ^(mscs, ok)
     }.
 
@@ -60,7 +59,7 @@ Module ATOMICCP.
           rx ^(mscs, false)
       | true =>
         let^ (mscs, ok1) <- AFS.rename fsxp the_dnum [] temp_fn [] dst_fn mscs;
-        (* XXX a sync here? *)
+        mscs <- AFS.tree_sync fsxp mscs;
         rx ^(mscs, ok1)
     end.
 
@@ -105,17 +104,6 @@ Module ATOMICCP.
 
   (** Specs and proofs **)
 
-  (*
-   * crash cases:
-   *    ds- = some disk in ds that doesn't have a temp file
-   *    ds = the last disk of disk with a temp file
-   *    ds1 = ds + a disk with a grown temp file
-   *    ds2 = ds1 + updated block
-   *    ds3 = (d, nil) where d is synced temp file  (maybe witout attr?)
-   * 
-   * How to write a concise spec for XCRASH?
-   *)
-
   Theorem copy2temp_ok : forall fsxp src_inum tinum mscs,
     {< ds Fm Ftop temp_tree src_fn tfn file tfile,
     PRE  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs * 
@@ -123,20 +111,18 @@ Module ATOMICCP.
       [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
       [[ DIRTREE.find_subtree [tfn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]]
     POST RET:^(mscs, r)
-      exists ds' tree',
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') mscs *
-        [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
-        (([[r = false ]] * ([[tree' = temp_tree]] \/
-          (exists f',  
-          [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum f') temp_tree ]]))) \/
-         ([[r = true ]] *
-          [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum  
-              (BFILE.mk_bfile (BFILE.BFData file) (BFILE.BFAttr file))) temp_tree ]]))
+      [[ r = false]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs \/
+      [[ r = true ]] * (exists d tree', LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs
+         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
+         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum file) temp_tree ]])
     XCRASH
-      exists ds' tree' tfile',
-        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds /\  (* maybe if len ds' >= ds, then ..., otherwise ... *)
-        [[[ ds'!! :::  (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
-        [[ DIRTREE.find_subtree [tfn] tree' = Some (DIRTREE.TreeFile tinum tfile') ]]
+      (exists d tree' tfile', LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs
+         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
+         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum tfile') temp_tree ]]) \/
+      (exists dlist, 
+         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (repeated_pushd dlist ds)) *
+         [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep Ftop tree')%pred (list2nmem d) /\
+             tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum tfile') temp_tree)) dlist ]])
     >} copy2temp fsxp src_inum tinum mscs.
   Proof.
     unfold copy2temp; intros.
