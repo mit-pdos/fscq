@@ -277,6 +277,10 @@ Module GLog.
     mm <- MLog.recover xp cs;
     rx (mk_memstate vmap0 nil mm).
 
+  Definition init T xp cs rx : prog T :=
+    mm <- MLog.init xp cs;
+    rx (mk_memstate vmap0 nil mm).
+
 
   Arguments MLog.rep: simpl never.
   Hint Extern 0 (okToUnify (MLog.rep _ _ _) (MLog.rep _ _ _)) => constructor : okToUnify.

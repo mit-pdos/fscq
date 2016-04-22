@@ -25,6 +25,7 @@ Require Import Cache.
 Require Import Errno.
 Require Import AsyncDisk.
 Require Import GroupLog.
+Require Import DiskLog.
 Require Import SuperBlock.
 Require Import NEList.
 
@@ -37,6 +38,72 @@ Module AFS.
   Parameter cachesize : nat.
 
   (* Programs *)
+
+  Definition compute_xparams (data_bitmaps inode_bitmaps log_descr_blocks : addr) :=
+    (**
+     * Block $0 stores the superblock (layout information).
+     * The other block numbers, except for Log, are relative to
+     * the Log data area, which starts at $1.
+     * To account for this, we bump [log_base] by $1, to ensure that
+     * the data area does not run into the logging structures.
+     *)
+
+    (**
+     * File system layout:
+     * +--------+--------+--------+-------+-------+--------+-------+------+
+     * | Super- |  Data  | Inode  | Inode | Data  |  Log   | Log   | Log  |
+     * | block  | blocks | blocks | alloc | alloc | header | descr | data |
+     * +--------+--------+--------+-------+-------+--------+-------+------+
+     **)
+
+    let data_blocks := data_bitmaps * BALLOC.items_per_val in
+    let inode_blocks := inode_bitmaps * BALLOC.items_per_val / INODE.IRecSig.items_per_val in
+    let inode_base := data_blocks in
+    let balloc_base := inode_base + inode_blocks + inode_bitmaps in
+    let log_hdr := 1 + balloc_base + data_bitmaps in
+    let log_descr := log_hdr + 1 in
+    let log_data := log_descr + log_descr_blocks in
+    let log_data_size := log_descr_blocks * PaddedLog.DescSig.items_per_val in
+    let max_addr := log_data + log_data_size in
+    (Build_fs_xparams
+     (Build_log_xparams 1 log_hdr log_descr log_descr_blocks log_data log_data_size)
+     (Build_inode_xparams inode_base inode_blocks)
+     (Build_balloc_xparams (inode_base + inode_blocks) inode_bitmaps)
+     (Build_balloc_xparams balloc_base data_bitmaps)
+     0
+     max_addr).
+
+  Definition mkfs {T} data_bitmaps inode_bitmaps log_descr_blocks rx : prog T :=
+    let fsxp := compute_xparams data_bitmaps inode_bitmaps log_descr_blocks in
+    cs <- BUFCACHE.init cachesize;
+    cs <- SB.init fsxp cs;
+    mscs <- LOG.init (FSXPLog fsxp) cs;
+    mscs <- LOG.begin (FSXPLog fsxp) mscs;
+    mscs <- BALLOC.init (FSXPLog fsxp) (FSXPBlockAlloc fsxp) mscs;
+    mscs <- BALLOC.init (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
+    mscs <- INODE.init (FSXPLog fsxp) (FSXPInode fsxp) mscs;
+    let^ (mscs, r) <- BALLOC.alloc (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
+    match r with
+    | None =>
+      mscs <- LOG.abort (FSXPLog fsxp) mscs;
+      rx None
+    | Some inum =>
+      (**
+       * We should write a new fsxp back to the superblock with the new root
+       * inode number.
+       * In practice, the root inode is zero anyway, so it doesn't matter.
+       *)
+      If (eq_nat_dec inum 0) {
+        let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
+        If (bool_dec ok true) {
+          rx (Some (mscs, fsxp))
+        } else {
+          rx None
+        }
+      } else {
+        rx None
+      }
+    end.
 
   Definition recover {T} rx : prog T :=
     cs <- BUFCACHE.init_recover 10;

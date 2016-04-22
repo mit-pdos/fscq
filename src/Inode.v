@@ -154,6 +154,10 @@ Module INODE.
   (************* program *)
 
 
+  Definition init T lxp xp ms rx : prog T :=
+    ms <- IRec.init lxp xp ms;
+    rx ms.
+
   Definition getlen T lxp xp inum ms rx : prog T := Eval compute_rec in
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     rx ^(ms, # (ir :-> "len" )).

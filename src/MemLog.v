@@ -195,6 +195,9 @@ Module MLog.
     let^ (cs, log) <- DLog.read xp cs;
     rx (mk_memstate (replay_mem log vmap0) cs).
 
+  Definition init T (xp : log_xparams) cs rx : prog T :=
+    rx (mk_memstate vmap0 cs).
+
 
   Arguments DLog.rep: simpl never.
   Hint Extern 0 (okToUnify (DLog.rep _ _) (DLog.rep _ _)) => constructor : okToUnify.
