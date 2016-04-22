@@ -2507,23 +2507,23 @@ Module PaddedLog.
   Qed.
 
 
-  Definition extend_recover_ok : forall xp new cs,
-    {<< F old d,
+  Definition extend_recover_ok : forall fsxp new cs,
+    {<< old d,
     PRE:hm   BUFCACHE.rep cs d *
           [[ Forall entry_valid new ]] *
-          [[ (F * rep xp (Synced old) hm)%pred d ]]
+          [[ (sb_rep fsxp * rep (FSXPLog fsxp) (Synced old) hm)%pred d ]]
     POST:hm' RET: ^(cs', r) exists d',
           BUFCACHE.rep cs' d' * (
           [[ r = true /\
-             (F * rep xp (Synced ((padded_log old) ++ new)) hm')%pred d' ]] \/
-          [[ r = false /\ length ((padded_log old) ++ new) > LogLen xp /\
-             (F * rep xp (Synced old) hm')%pred d' ]])
-    REC:hm' RET:^(xp', cs') exists d',
-          [[ xp = xp' ]] *
+             (sb_rep fsxp * rep (FSXPLog fsxp) (Synced ((padded_log old) ++ new)) hm')%pred d' ]] \/
+          [[ r = false /\ length ((padded_log old) ++ new) > LogLen (FSXPLog fsxp) /\
+             (sb_rep fsxp * rep (FSXPLog fsxp) (Synced old) hm')%pred d' ]])
+    REC:hm' RET:^(fsxp', cs') exists d',
+          [[ fsxp = fsxp' ]] *
           BUFCACHE.rep cs' d' * (
-          [[ (crash_xform F * rep xp (Synced old) hm')%pred d' ]] \/
-          [[ (crash_xform F * rep xp (Synced (padded_log old ++ new)) hm')%pred d' ]])
-    >>} extend xp new cs >> recover.
+          [[ (sb_rep fsxp * rep (FSXPLog fsxp) (Synced old) hm')%pred d' ]] \/
+          [[ (sb_rep fsxp * rep (FSXPLog fsxp) (Synced (padded_log old ++ new)) hm')%pred d' ]])
+    >>} extend (FSXPLog fsxp) new cs >> recover.
   Proof.
     unfold forall_helper; intros.
     eexists.
@@ -2539,34 +2539,17 @@ Module PaddedLog.
     cancel. eauto.
 
     step.
-    instantiate (1:=would_recover_either xp (v \/ crash_xform v) v0 new).
     cancel.
-    unfold would_recover_either.
-    cancel. cancel.
-
     xform.
+    norm'l; unfold stars; cbn.
     cancel.
     cancel. eauto.
 
     step.
-
     all: rewrite H3; cancel.
 
     or_l; cancel.
-    autorewrite with crash_xform.
-    rewrite crash_xform_idem.
-    cancel.
-
     or_r; cancel.
-    autorewrite with crash_xform.
-    rewrite crash_xform_idem.
-    cancel.
-
-    unfold would_recover_either.
-    cancel.
-    autorewrite with crash_xform.
-    rewrite crash_xform_idem.
-    cancel.
   Qed.
 
 End PaddedLog.
