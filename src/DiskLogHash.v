@@ -1542,7 +1542,7 @@ Module PaddedLog.
       solve_checksums.
 
       (* after header sync : Synced new *)
-      or_r; or_r. cancel.
+      or_r; or_r; or_l. cancel.
       cancel_by extend_ok_helper; auto.
       cancel_by extend_ok_synced_hdr_helper.
       solve_checksums.
@@ -1582,6 +1582,7 @@ Module PaddedLog.
       (* before desc write : Synced old *)
       cancel.
       or_l. cancel.
+      cancel.
       rewrite Desc.avail_rep_merge. cancel.
       rewrite map_length.
       apply helper_loglen_desc_valid_extend; auto.
@@ -1681,19 +1682,6 @@ Module PaddedLog.
     cancel.
     congruence.
   Qed.
-
-  Lemma xform_would_recover_either' : forall xp old new hm,
-    crash_xform (would_recover_either' xp old new hm) =p=>
-      would_recover_either' xp old new hm.
-  Proof.
-    unfold would_recover_either'.
-    intros.
-    xform.
-    cancel; (rewrite xform_rep_synced ||
-              rewrite xform_rep_extended ||
-              rewrite xform_rep_syncedunmatched); cancel.
-  Qed.
-
 
   Theorem rep_extended_facts' : forall xp d old new hm,
     (rep xp (Extended old new) hm)%pred d ->
@@ -1818,6 +1806,18 @@ Module PaddedLog.
       rewrite xform_rep_extended_helper; try eassumption.
       cancel.
       subst; auto.
+  Qed.
+
+  Lemma xform_would_recover_either' : forall xp old new hm,
+    crash_xform (would_recover_either' xp old new hm) =p=>
+      would_recover_either' xp old new hm.
+  Proof.
+    unfold would_recover_either'.
+    intros.
+    xform.
+    cancel; (rewrite xform_rep_synced ||
+              rewrite xform_rep_extended ||
+              rewrite xform_rep_syncedunmatched); cancel.
   Qed.
 
   Lemma rep_synced_app_pimpl : forall xp old new hm,
