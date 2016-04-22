@@ -112,17 +112,17 @@ Module ATOMICCP.
       [[ DIRTREE.find_subtree [tfn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]]
     POST RET:^(mscs, r)
       [[ r = false]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs \/
-      [[ r = true ]] * (exists d tree', LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs
+      [[ r = true ]] * (exists d tree', LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
          [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
          [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum file) temp_tree ]])
     XCRASH
-      (exists d tree' tfile', LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs
+      (exists d tree' tfile', LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
          [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
          [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum tfile') temp_tree ]]) \/
       (exists dlist, 
-         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (repeated_pushd dlist ds)) *
-         [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep Ftop tree')%pred (list2nmem d) /\
-             tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum tfile') temp_tree)) dlist ]])
+         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushdlist dlist ds)) mscs *
+         [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
+             tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]])
     >} copy2temp fsxp src_inum tinum mscs.
   Proof.
     unfold copy2temp; intros.
