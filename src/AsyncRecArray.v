@@ -241,6 +241,7 @@ Module AsyncRecArray (RA : RASig).
     rewrite crash_xform_arrayN; cancel.
     unfold possible_crash_list in *; subst; intuition.
     rewrite H0.
+    replace (combine l' (repeat [] (length l'))) with (synced_list l') by auto.
     rewrite synced_list_length; auto.
   Qed.
 
@@ -605,6 +606,8 @@ Module AsyncRecArray (RA : RASig).
   Hint Extern 1 ({{_}} progseq (read_all _ _ _) _) => apply read_all_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_aligned _ _ _ _) _) => apply write_aligned_ok : prog.
   Hint Extern 1 ({{_}} progseq (sync_aligned _ _ _ _) _) => apply sync_aligned_ok : prog.
+
+
 
 End AsyncRecArray.
 
