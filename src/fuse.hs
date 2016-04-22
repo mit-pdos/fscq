@@ -428,10 +428,27 @@ fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
   debugStart "WRITE" (path, inum)
   (wlen, ()) <- fr $ AsyncFS._AFS__file_get_sz fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
-  -- XXX grow file first if needed (and return error if can't grow)
+  endpos <- return $ (fromIntegral offset) + (fromIntegral (BS.length bs))
+  _ <- if len < endpos then do
+    (ok, _) <- fr $ AsyncFS._AFS__file_truncate fsxp inum ((endpos + 4095) `div` 4096)
+    if ok then
+      return ()
+    else
+      error "failed to grow file"
+  else
+    return ()
   r <- foldM (write_piece fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
   case r of
-    WriteOK c -> return $ Right c
+    WriteOK c -> do
+      _ <- if len < endpos then do
+        (ok, _) <- fr $ AsyncFS._AFS__file_set_sz fsxp inum (W endpos)
+        if ok then
+          return ()
+        else
+          error "failed to set file length"
+      else
+        return ()
+      return $ Right c
     WriteErr c ->
       if c == 0 then
         return $ Left eIO 
