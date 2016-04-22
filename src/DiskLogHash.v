@@ -1412,6 +1412,28 @@ Module PaddedLog.
       BUFCACHE.rep cs d *
       [[ (F * would_recover_either' xp old new hm)%pred d ]])%pred.
 
+  Lemma rep_hashmap_subset : forall xp hm hm',
+    (exists l, hashmap_subset l hm hm')
+    -> forall st, rep xp st hm
+        =p=> rep xp st hm'.
+  Proof.
+    intros.
+    destruct st; unfold rep, rep_inner; cancel; solve_checksums.
+    or_l; cancel.
+    or_r; cancel.
+    auto.
+  Qed.
+
+  Lemma would_recover_either'_hashmap_subset : forall xp old new hm hm',
+    (exists l, hashmap_subset l hm hm') ->
+    would_recover_either' xp old new hm
+    =p=> would_recover_either' xp old new hm'.
+  Proof.
+    unfold would_recover_either'.
+    intros.
+    cancel;
+    rewrite rep_hashmap_subset; auto; cancel.
+  Qed.
 
   Definition extend_ok : forall xp new cs,
     {< F old d,
@@ -1658,6 +1680,18 @@ Module PaddedLog.
     rewrite Hdr.xform_rep_synced.
     cancel.
     congruence.
+  Qed.
+
+  Lemma xform_would_recover_either' : forall xp old new hm,
+    crash_xform (would_recover_either' xp old new hm) =p=>
+      would_recover_either' xp old new hm.
+  Proof.
+    unfold would_recover_either'.
+    intros.
+    xform.
+    cancel; (rewrite xform_rep_synced ||
+              rewrite xform_rep_extended ||
+              rewrite xform_rep_syncedunmatched); cancel.
   Qed.
 
 
@@ -2393,47 +2427,84 @@ Module PaddedLog.
   Hint Extern 1 ({{_}} progseq (recover' _ _) _) => apply recover'_ok : prog.
 
 
+  (* This should probably in a different layer...? *)
   Definition recover {T} rx : prog T :=
     cs <- BUFCACHE.init_recover 1;
     let^ (cs, fsxp) <- sb_load cs;
-    let xp := fsxp.(FSXPLog) in
-    cs <- recover' xp cs;
-    rx ^(xp, cs).
+    cs <- recover' (FSXPLog fsxp) cs;
+    rx ^(fsxp, cs).
 
   Definition recover_ok :
-    {< F xp old new,
+    {< fsxp old new,
     PRE:hm
-      crash_xform (would_recover_either xp F old new hm)
-    POST:hm' RET:^(xp', cs') exists d',
-      [[ xp = xp' ]] *
+      crash_xform (would_recover_either (FSXPLog fsxp) (sb_rep fsxp) old new hm)
+    POST:hm' RET:^(fsxp', cs') exists d',
+      [[ fsxp = fsxp' ]] *
       BUFCACHE.rep cs' d' * (
-      [[ (crash_xform F * rep xp (Synced old) hm')%pred d' ]] \/
-      [[ (crash_xform F * rep xp (Synced (padded_log old ++ new)) hm')%pred d' ]])
+      [[ ((sb_rep fsxp) * rep (FSXPLog fsxp) (Synced old) hm')%pred d' ]] \/
+      [[ ((sb_rep fsxp) * rep (FSXPLog fsxp) (Synced (padded_log old ++ new)) hm')%pred d' ]])
     CRASH:hm_crash
-      would_recover_either xp (crash_xform F) old new hm_crash
+      would_recover_either (FSXPLog fsxp) (sb_rep fsxp) old new hm_crash
     >} recover.
   Proof.
-    unfold recover. (*
+    unfold recover, would_recover_either.
+    intros.
+    eapply pimpl_ok2; eauto with prog.
+    intros. norm'l. unfold stars; cbn.
+
+    rewrite crash_xform_exists_comm.
+    norm'l. unfold stars; cbn.
+    rewrite crash_xform_exists_comm.
+    norm'l. unfold stars; cbn.
+    rewrite crash_xform_sep_star_dist.
+    rewrite crash_xform_lift_empty.
+    norm'l. unfold stars; cbn.
+    cancel. cancel. eauto.
+    eauto.
+
     step.
+    autorewrite with crash_xform. cancel.
 
     eapply pimpl_ok2; eauto with prog.
-    intros. norm'l. unfold stars; simpl.
-    repeat ( setoid_rewrite crash_xform_exists_comm ||
-             setoid_rewrite crash_xform_sep_star_dist ||
-             setoid_rewrite crash_xform_lift_empty ).
+    intros. norm'l. unfold stars; cbn.
     cancel.
-    admit. (* crash_xform (would_recover_either' xp old new hm) =p=>
-              crash_xform (would_recover_either' xp old new hm0) *)
+    rewrite would_recover_either'_hashmap_subset; eauto.
 
     step.
-    erewrite <- H1.
-    unfold would_recover_either.
-    norm'l. unfold stars; cbn.
-    (* BUFCACHE.rep =p=> crash_xform (BUFCACHE.rep) ?
-    rewrite BUFCACHE.crash_xform_rep_r.
-    cancel.*)*)
+    or_l. cancel.
+    autorewrite with crash_xform. eauto.
 
-  Admitted.
+    or_r. cancel.
+    autorewrite with crash_xform. eauto.
+
+    unfold would_recover_either.
+    norm'l; unfold stars; cbn.
+    cancel.
+    autorewrite with crash_xform; eauto.
+
+    autorewrite with crash_xform; eauto.
+    cancel.
+    rewrite xform_would_recover_either'.
+    rewrite would_recover_either'_hashmap_subset; eauto.
+
+    norm'l; unfold stars; cbn.
+    autorewrite with crash_xform.
+    rewrite <- H1.
+    norm'l. unfold stars; cbn.
+    norm'r.
+    cancel.
+    intuition.
+
+
+    assert (Hxform: crash_xform (sb_rep fsxp * would_recover_either' (FSXPLog fsxp) old new hm)%pred m').
+    unfold crash_xform.
+    exists x0; intuition.
+
+    pred_apply.
+    autorewrite with crash_xform.
+    rewrite xform_would_recover_either'.
+    rewrite would_recover_either'_hashmap_subset; eauto.
+  Qed.
 
 
   Definition extend_recover_ok : forall xp new cs,
