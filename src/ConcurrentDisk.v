@@ -248,7 +248,7 @@ Ltac distinct_pf var1 var2 :=
     by vars_distinct;
   exact Hneq.
 
-Hint Immediate
+Hint Resolve
      (ltac:(distinct_pf GDisk GDisk0))
      (ltac:(distinct_pf GDisk GLocks))
      (ltac:(distinct_pf GDisk0 GLocks)).
@@ -633,5 +633,74 @@ Proof.
   auto.
   apply linear_rel_refl.
 Qed.
+
+(* write is actually uninteresting - the low-level Write doesn't yield *)
+
+Definition lock {T} (a:addr) rx : prog Mcontents Scontents T :=
+  tid <- GetTID;
+  wait_for MLocks (Locks.is_open a) a;;
+  l <- Get MLocks;
+  let l' := Locks.set_locked l a in
+  Assgn MLocks l';;
+  GhostUpdate (fun s =>
+    let l := get GLocks s in
+    let l' := Locks.add_lock l a tid in
+    set GLocks l' s);;
+  rx tt.
+
+Hint Extern 1 {{ wait_for _ _ _; _ }} => apply wait_for_ok : prog.
+
+Polymorphic Theorem lock_ok : forall a,
+  stateS TID: tid |-
+  {{ (_:unit),
+   | PRE d m s0 s:
+       Inv m s d /\
+       R tid s0 s
+   | POST d' m'' s0' s'' _:
+       (exists m' s',
+         Inv m' s' d' /\
+         (let locks := get GLocks s' in
+          let locks' := Locks.add_lock locks a tid in
+          s'' = set GLocks locks' s') /\
+       star (othersR R tid) s s') /\
+       Inv m'' s'' d' /\
+       Locks.get (get GLocks s'') a = Owned tid /\
+       (* invariant on shared (ie, unlocked) addresses: no reader;
+          higher-level caller may know something about v as well,
+          depending on the address *)
+       (exists v, view Latest (get GDisk s'') a = Some (v, None)) /\
+       R tid s0' s''
+  }} lock a.
+Proof.
+  intros.
+  step pre simplify with safe_finish.
+  (* XXX: step doesn't work here (even with simplify and finish as idtac) *)
+  eapply pimpl_ok; [
+      apply wait_for_ok | ];
+  simplify; safe_finish.
+  step pre simplify with safe_finish.
+  step pre simplify with safe_finish.
+  step pre simplify with safe_finish.
+  step pre simplify with idtac.
+  finish.
+  finish; simplify.
+  admit. (* ghost_lock_invariant stable under set/add lock *)
+
+  admit. (* linearized_consistent stable under adding a lock *)
+  rewrite get_add_lock; auto.
+
+  (* TODO: need hypothesis to show a is in domain *)
+  (* TODO: need to actually add the invariant about unlocked addresses *)
+  admit. (* use invariant to show property of unlocked address *)
+
+  eapply R_trans; eapply star_two_step; eauto.
+  solve_global_transitions; autorewrite with hlist.
+  finish.
+
+  intuition idtac.
+  apply same_domain_refl.
+
+  admit. (* linear_rel with increasing lockset *)
+Admitted.
 
 End LockedDisk.
