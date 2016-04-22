@@ -12,6 +12,7 @@ MODULES    := Nomega Word WordAuto WordZ Bytes Rounding \
 	      Locking Preservation Automation ForwardChaining \
 	      Bank MemCache ConcurrentCache ConcurrentInode TwoBlockExample \
 	      Linearizable Linearizable2 Locks MemCache2 ConcurrentCache2 \
+		  ConcurrentDisk \
 		  TwoBlockExample2 GenericArray ConcurrentRecArray \
 	      ExtrHaskellPrelude Extraction
 VS         := $(MODULES:%=%.v)
