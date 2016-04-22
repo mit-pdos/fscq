@@ -71,6 +71,12 @@ Section NonEmptyList.
   Definition pushd (d : T) (ds : nelist) : nelist :=
       (fst ds, d :: snd ds).
 
+  Fixpoint pushdlist (dlist : list T) (ds : nelist) : nelist :=
+      match dlist with
+      | nil => ds
+      | d :: dlist' => pushdlist dlist' (pushd d ds)
+      end.
+
   (* pop out n oldest disks for a diskset *)
   Definition popn (n : nat) (ds : nelist) : nelist :=
       (nthd n ds, cuttail n (snd ds)).
