@@ -368,6 +368,21 @@ bs2i (BSI.PS _ _ _) = error "Non-zero offset not implemented"
 i2bs :: Integer -> Int -> IO BS.ByteString
 i2bs i nbytes = BSI.create nbytes $ i2buf i $ fromIntegral nbytes
 
+data BlockRange =
+  BR !Int !Int !Int   -- blocknumber, offset-in-block, count-from-offset
+
+compute_ranges_int :: Int -> Int -> [BlockRange]
+compute_ranges_int off count = map mkrange $ zip3 blocknums startoffs endoffs
+  where
+    mkrange (blk, startoff, endoff) = BR blk startoff (endoff-startoff)
+    blocknums = [off `div` blocksize .. (off + count - 1) `div` blocksize]
+    startoffs = [off `mod` blocksize] ++ replicate (length blocknums - 1) 0
+    endoffs = replicate (length blocknums - 1) blocksize ++ [(off + count - 1) `mod` blocksize + 1]
+
+compute_ranges :: FileOffset -> ByteCount -> [BlockRange]
+compute_ranges off count =
+  compute_ranges_int (fromIntegral off) (fromIntegral count)
+
 fscqRead :: DiskState -> FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
 fscqRead ds fr m_fsxp (_:path) inum byteCount offset
   | path == "stats" = do
@@ -379,28 +394,65 @@ fscqRead ds fr m_fsxp (_:path) inum byteCount offset
       "Syncs:  " ++ (show s) ++ "\n"
     return $ Right statbuf
   | otherwise = withMVar m_fsxp $ \fsxp -> do
-  off <- return $ fromIntegral offset
-  len <- return $ fromIntegral byteCount
-  debugStart "READ" (path, inum, len)
-  (buf, ()) <- fr $ AsyncFS._AFS__read_bytes fsxp inum off len
-  FASTBYTEFILE__Coq_len_bytes readlen (W w) <- return buf
-  wdata <- i2bs w readlen
-  return $ Right wdata
+  (wlen, ()) <- fr $ AsyncFS._AFS__file_get_sz fsxp inum
+  len <- return $ fromIntegral $ wordToNat 64 wlen
+  offset' <- return $ min offset len
+  byteCount' <- return $ min byteCount $ (fromIntegral len) - (fromIntegral offset')
+  pieces <- mapM (read_piece fsxp) $ compute_ranges offset' byteCount'
+  return $ Right $ BS.concat pieces
+
+  where
+    read_piece fsxp (BR blk off count) = do
+      (W w, ()) <- fr $ AsyncFS._AFS__read_fblock fsxp inum (W64 $ fromIntegral blk)
+      bs <- i2bs w
+      return $ BS.take count $ BS.drop off bs
 
 fscqRead _ _ _ [] _ _ _ = do
   return $ Left $ eIO
 
+compute_range_pieces :: FileOffset -> BS.ByteString -> [(BlockRange, BS.ByteString)]
+compute_range_pieces off buf = zip ranges pieces
+  where
+    ranges = compute_ranges_int (fromIntegral off) (BS.length buf)
+    pieces = map getpiece ranges
+    getpiece (BR blk boff bcount) = BS.take bcount $ BS.drop bufoff buf
+      where bufoff = (blk * blocksize) + boff - (fromIntegral off)
+
+data WriteState =
+   WriteOK !ByteCount
+ | WriteErr !ByteCount
+
 fscqWrite :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
 fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
   debugStart "WRITE" (path, inum)
-  off <- return $ fromIntegral offset
-  len <- return $ BS.length bs
-  wnew <- bs2i bs
-  (ok, ()) <- fr $ AsyncFS._AFS__append fsxp inum off len (W wnew)
-  if ok then
-    return $ Right (fromIntegral len)
-  else
-    return $ Left eIO
+  (wlen, ()) <- fr $ AsyncFS._AFS__file_get_sz fsxp inum
+  len <- return $ fromIntegral $ wordToNat 64 wlen
+  r <- foldM (write_piece fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
+  case r of
+    WriteOK c -> return $ Right c
+    WriteErr c ->
+      if c == 0 then
+        return $ Left eIO 
+      else
+        return $ Right c
+  where
+    write_piece _ _ (WriteErr c) _ = return $ WriteErr c
+    write_piece fsxp init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
+      (W w, ()) <- if blk*blocksize < init_len then
+          fr $ AsyncFS._AFS__read_fblock fsxp inum (W64 $ fromIntegral blk)
+        else
+          return $ (W 0, ())
+      old_bs <- i2bs w
+      new_bs <- return $ BS.append (BS.take off old_bs)
+                       $ BS.append piece_bs
+                       $ BS.drop (off + cnt) old_bs
+      wnew <- bs2i new_bs
+      (ok, ()) <- fr $ AsyncFS._AFS__update_fblock_d fsxp inum (W64 $ fromIntegral blk) (W wnew)
+      -- also need to set length to (W64 $ fromIntegral $ blk*blocksize + off + cnt)
+      if ok then
+        return $ WriteOK (c + (fromIntegral cnt))
+      else
+        return $ WriteErr c
 
 fscqSetFileSize :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileOffset -> IO Errno
 fscqSetFileSize fr m_fsxp (_:path) size = withMVar m_fsxp $ \fsxp -> do
