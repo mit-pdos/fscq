@@ -143,7 +143,7 @@ Module AFS.
 
   Definition file_truncate T fsxp inum sz ms rx : prog T :=
     ms <- LOG.begin (FSXPLog fsxp) ms;
-    let^ (ms, ok) <- DIRTREE.truncate (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum sz ms;
+    let^ (ms, ok) <- DIRTREE.truncate fsxp inum sz ms;
     If (bool_dec ok false) {
       ms <- LOG.abort (FSXPLog fsxp) ms;
       rx ^(ms, false)
@@ -508,36 +508,34 @@ Module AFS.
     unfold file_truncate; intros.
     step.
     step.
-    destruct a0.
     step.
     step.
-    step.  (* commit *)
     step.
     apply LOG.notxn_intact.
     step.
-    step.  (* abort *)
+    step.
+    step.
     step.
     apply LOG.notxn_intact.
-    step.
     apply LOG.notxn_intact.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (file_truncate _ _ _ _) _) => apply file_truncate_ok : prog.
 
   Theorem file_truncate_recover_ok : forall fsxp inum sz mscs,
-    {<< ds Fm flist A f,
+    {<< ds Fm Ftop tree pathname f,
     PRE
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
-      [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
-      [[[ flist ::: (A * inum |-> f) ]]]
-    POST RET:^(mscs, r)
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
+      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+     POST RET:^(mscs, r)
       [[ r = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs \/
-      [[ r = true  ]] * exists d flist' f',
+      [[ r = true  ]] * exists d tree' f',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs *
-        [[[ d :::(Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
-        [[[ flist' ::: (A * inum |-> f') ]]] *
+        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
+        [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]]
-    REC RET:^(mscs,fsxp)
+     REC RET:^(mscs,fsxp)
       exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
          [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
      >>} file_truncate fsxp inum sz mscs >> recover.
@@ -545,6 +543,7 @@ Module AFS.
     recover_ro_ok.
     eapply recover_ok.
     cancel.
+    instantiate (pathname := v3); eauto.
     safestep.  (* crucial to use safe version *)
     or_l.
     cancel.
