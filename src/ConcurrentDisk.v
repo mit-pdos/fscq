@@ -286,11 +286,10 @@ Ltac simplify_reduce_step :=
           || destruct_ands
           || descend
           || subst
-          || (progress simpl_get_set)
-          (* likely a dangerous hint, partly because it applies to Learnt markers *)
-(*          || (time "autorewrite view upd *" autorewrite with view upd in * ) *)
-          || invariant_unfold
           || specific_owner
+          || (time "rew hlist" autorewrite with hlist)
+          || (time "trivial" progress trivial)
+          || invariant_unfold
           || disk_rep_unfold
           || unf.
 
@@ -599,16 +598,17 @@ Proof.
 
   step pre simplify with try solve [ finish ].
   step pre simplify with try solve [ finish ];
-    autorewrite with upd view in *;
+    autorewrite with view upd in *;
     simplify.
 
   finish.
-  unfold diskI; intuition;
-    repeat (autorewrite with upd view in * || simplify);
+  unfold diskI; intuition idtac;
+    repeat (autorewrite with view upd in * ||
+    simplify);
     eauto.
   eapply linearized_consistent_upd; eauto.
 
-  autorewrite with upd view; auto.
+  autorewrite with view upd; auto.
 
   match goal with
   | [ H: star (othersR R tid) _ _ |- _ ] =>
