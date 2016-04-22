@@ -309,9 +309,9 @@ Ltac solve_global_transitions :=
   (* match only these types of goals *)
   lazymatch goal with
   | [ |- R _ _ _ ] =>
-    eapply disk_relation_preserved
+    eapply disk_relation_preserved; unfold diskR
   | [ |- Inv _ _ _ ] =>
-    eapply disk_invariant_preserved
+    eapply disk_invariant_preserved; unfold diskI
   end.
 
 Hint Unfold GDisk GDisk0 : modified.
@@ -328,7 +328,9 @@ Ltac finish :=
   try time "finish eauto" solve [ eauto ];
   try time "solve_modified" solve_modified;
   try time "congruence" (unfold wr_set, const in *; congruence)
-  ).
+      ).
+
+Ltac safe_finish := try solve [ finish ].
 
 Polymorphic Theorem linear_rel_upd :
   forall tid A AEQ V
@@ -414,7 +416,7 @@ Polymorphic Theorem locked_yield_ok : forall a,
          R tid s0' s'
   }} locked_yield a.
 Proof.
-  hoare pre simplify with try solve [ finish ].
+  hoare pre simplify with safe_finish.
   eapply locked_addr_stable; eauto.
   eapply locked_addr_stable; eauto.
   apply R_trans; eauto.
@@ -570,18 +572,19 @@ Polymorphic Theorem locked_AsyncRead_ok : forall a,
          Inv m' s' d' /\
          view Latest ld' a = Some (v, None) /\
          star (othersR R tid) s s' /\
+         (* TODO: promise lockset increased: for good proof structure this
+         should be done via a general theorem about star (othersR R tid) *)
          r = v /\
          R tid s0' s'
   }} locked_AsyncRead a.
 Proof.
   intros.
-  step pre simplify with try solve [ finish ].
-  step pre simplify with try solve [ finish ].
-  step pre simplify with try solve [ finish ].
-  step pre simplify with try solve [ finish ].
+  step pre simplify with safe_finish.
+  step pre simplify with safe_finish.
+  step pre simplify with safe_finish.
+  step pre simplify with safe_finish.
 
-  finish.
-  unfold diskI; simplify; autorewrite with view; eauto.
+  finish; simplify; autorewrite with view; eauto.
   eapply linearized_consistent_upd; eauto.
 
   apply R_trans.
@@ -592,17 +595,16 @@ Proof.
   Univ.AlreadyDeclared *)
   eapply linear_rel_upd; eauto.
 
-  step pre simplify with try solve [ finish ].
+  step pre simplify with safe_finish.
   autorewrite with upd view in *.
   eauto.
 
-  step pre simplify with try solve [ finish ].
-  step pre simplify with try solve [ finish ];
-    autorewrite with view upd in *;
-    simplify.
+  step pre simplify with safe_finish.
+  step pre simplify with eauto;
+    autorewrite with view upd in *; simplify.
 
   finish.
-  unfold diskI; intuition idtac;
+  intuition idtac;
     repeat (autorewrite with view upd in * ||
     simplify);
     eauto.
@@ -620,10 +622,11 @@ Proof.
 
   eapply R_trans.
   eapply star_two_step; eauto.
-  finish.
+  solve_global_transitions; autorewrite with hlist.
+
   (* BUG: can't use eauto on any generated goals due to
   Univ.AlreadyDeclared *)
-  unfold diskR; simpl_get_set.
+  finish.
   split.
   apply same_domain_refl.
   eapply linear_rel_upd.
