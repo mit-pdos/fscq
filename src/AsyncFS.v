@@ -143,7 +143,7 @@ Module AFS.
 
   Definition file_truncate T fsxp inum sz ms rx : prog T :=
     ms <- LOG.begin (FSXPLog fsxp) ms;
-    let^ (ms, ok) <- BFILE.truncate (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum sz ms;
+    let^ (ms, ok) <- DIRTREE.truncate (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp) inum sz ms;
     If (bool_dec ok false) {
       ms <- LOG.abort (FSXPLog fsxp) ms;
       rx ^(ms, false)
@@ -488,17 +488,17 @@ Module AFS.
   Qed.
 
   Theorem file_truncate_ok : forall fsxp inum sz mscs,
-    {< ds Fm flist A f,
+    {< ds Fm Ftop tree pathname f,
     PRE
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
-      [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
-      [[[ flist ::: (A * inum |-> f) ]]]
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
+      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
     POST RET:^(mscs, r)
       [[ r = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs \/
-      [[ r = true  ]] * exists d flist' f',
+      [[ r = true  ]] * exists d tree' f',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs *
-        [[[ d :::(Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
-        [[[ flist' ::: (A * inum |-> f') ]]] *
+        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
+        [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]]
     CRASH
       (* interesting: no need to add d to ds, because when we crash we always recover with the first disk of ds *)

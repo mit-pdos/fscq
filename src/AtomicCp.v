@@ -1,24 +1,35 @@
 Require Import Prog.
-Require Import AsyncFS.
-Require Import List.
-Require Import String.
-Require Import Word.
-Require Import Hoare.
 Require Import Log.
-Require Import FSLayout.
-Require Import Pred.
-Require Import Inode.
-Require Import DirTree.
-Require Import SepAuto.
-Require Import Bool.
-Require Import BasicProg.
-Require Import Omega.
-Require Import GenSepN.
-Require Import AsyncDisk.
-Require Import NEList.
-Require Import SuperBlock.
 Require Import BFile.
+Require Import Word.
+Require Import Omega.
+Require Import BasicProg.
+Require Import Bool.
+Require Import Pred PredCrash.
+Require Import DirName.
+Require Import Hoare.
+Require Import GenSepN.
+Require Import ListPred.
+Require Import SepAuto.
+Require Import Idempotent.
+Require Import Inode.
+Require Import List ListUtils.
+Require Import Balloc.
+Require Import Bytes.
+Require Import DirTree.
+Require Import Rec.
+Require Import Arith.
+Require Import Array.
+Require Import FSLayout.
+Require Import Cache.
+Require Import Errno.
+Require Import AsyncDisk.
+Require Import GroupLog.
+Require Import SuperBlock.
+Require Import NEList.
+Require Import AsyncFS.
 Require Import DirUtil.
+Require Import String.
 
 
 Import ListNotations.
@@ -120,12 +131,16 @@ Module ATOMICCP.
          [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
          [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum tfile') temp_tree ]]) \/
       (exists dlist, 
-         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushdlist dlist ds)) mscs *
+         LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) *  
          [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
              tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]])
     >} copy2temp fsxp src_inum tinum mscs.
   Proof.
     unfold copy2temp; intros.
+    step.
+    instantiate (pathname := [src_fn]).
+    eauto.
+    step.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (copy2temp _ _ _ _) _) => apply copy2temp_ok : prog.
