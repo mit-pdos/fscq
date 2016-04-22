@@ -50,12 +50,14 @@ debugMore :: Show a => a -> IO ()
 debugMore msg = debug $ " .. " ++ (show msg)
 
 -- File system configuration
-nDataBitmaps :: Coq_word
-nDataBitmaps = W64 1
-nInodeBitmaps :: Coq_word
-nInodeBitmaps = W64 1
+nDataBitmaps :: Integer
+nDataBitmaps = 1
+nInodeBitmaps :: Integer
+nInodeBitmaps = 1
+nDescrBlocks :: Integer
+nDescrBlocks = 64
 
-type MSCS = Log.Coq_memstate_cachestate
+type MSCS = Log.LOG__Coq_memstate
 type FSprog a = (MSCS -> ((MSCS, a) -> Prog.Coq_prog (MSCS, a)) -> Prog.Coq_prog (MSCS, a))
 type FSrunner = forall a. FSprog a -> IO a
 doFScall :: DiskState -> IORef MSCS -> FSrunner
@@ -82,15 +84,15 @@ run_fuse disk_fn fuse_args = do
   then
     do
       putStrLn $ "Recovering file system"
-      (s, (fsxp, ())) <- I.run ds $ FS.recover
+      (s, (fsxp, ())) <- I.run ds $ AsyncFS._AFS__recover
       return (s, fsxp)
   else
     do
       putStrLn $ "Initializing file system"
-      res <- I.run ds $ FS.mkfs nDataBitmaps nInodeBitmaps
+      res <- I.run ds $ AsyncFS._AFS__mkfs nDataBitmaps nInodeBitmaps nDescrBlocks
       case res of
-        Errno.Err _ -> error $ "mkfs failed"
-        Errno.OK (s, (fsxp, ())) -> do
+        Nothing -> error $ "mkfs failed"
+        Just (s, fsxp) -> do
           set_nblocks_disk ds $ wordToNat 64 $ coq_FSXPMaxBlock fsxp
           return (s, fsxp)
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
@@ -222,7 +224,7 @@ fscqGetFileStat fr m_fsxp (_:path)
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "STAT" path
   nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) nameparts
+  (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   debugMore r
   case r of
     Nothing -> return $ Left eNOENT
@@ -231,7 +233,7 @@ fscqGetFileStat fr m_fsxp (_:path)
         ctx <- getFuseContext
         return $ Right $ dirStat ctx
       | otherwise -> do
-        (attr, ()) <- fr $ FS.file_get_attr fsxp inum
+        (attr, ()) <- fr $ AsyncFS._AFS__file_get_attr fsxp inum
         ctx <- getFuseContext
         return $ Right $ fileStat ctx attr
 fscqGetFileStat _ _ _ = return $ Left eNOENT
@@ -240,7 +242,7 @@ fscqOpenDirectory :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO Errno
 fscqOpenDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
   debugStart "OPENDIR" path
   nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) nameparts
+  (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   debugMore r
   case r of
     Nothing -> return eNOENT
@@ -254,13 +256,13 @@ fscqReadDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
   debugStart "READDIR" path
   ctx <- getFuseContext
   nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) nameparts
+  (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   debugMore r
   case r of
     Nothing -> return $ Left $ eNOENT
     Just (dnum, isdir)
       | isdir -> do
-        (files, ()) <- fr $ FS.readdir fsxp dnum
+        (files, ()) <- fr $ AsyncFS._AFS__readdir fsxp dnum
         files_stat <- mapM (mkstat fsxp ctx) files
         return $ Right $ [(".",          dirStat ctx)
                          ,("..",         dirStat ctx)
@@ -270,7 +272,7 @@ fscqReadDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
     mkstat fsxp ctx (fn, (inum, isdir))
       | isdir = return $ (fn, dirStat ctx)
       | otherwise = do
-        (attr, ()) <- fr $ FS.file_get_attr fsxp inum
+        (attr, ()) <- fr $ AsyncFS._AFS__file_get_attr fsxp inum
         return $ (fn, fileStat ctx attr)
 
 fscqReadDirectory _ _ _ = return (Left (eNOENT))
@@ -281,7 +283,7 @@ fscqOpen fr m_fsxp (_:path) _ _
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "OPEN" path
   nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) nameparts
+  (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   debugMore r
   case r of
     Nothing -> return $ Left eNOENT
@@ -298,15 +300,15 @@ fscqCreate :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> EntryType -> FileMo
 fscqCreate fr m_fsxp (_:path) entrytype _ _ = withMVar m_fsxp $ \fsxp -> do
   debugStart "CREATE" path
   (dirparts, filename) <- return $ splitDirsFile path
-  (rd, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dirparts
+  (rd, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) dirparts
   debugMore rd
   case rd of
     Nothing -> return eNOENT
     Just (dnum, isdir)
       | isdir -> do
         (r, ()) <- case entrytype of
-          RegularFile -> fr $ FS.create fsxp dnum filename
-          Socket -> fr $ FS.mksock fsxp dnum filename
+          RegularFile -> fr $ AsyncFS._AFS__create fsxp dnum filename
+          Socket -> fr $ AsyncFS._AFS__mksock fsxp dnum filename
           _ -> return (Nothing, ())
         debugMore r
         case r of
@@ -319,13 +321,13 @@ fscqCreateDir :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileMode -> IO E
 fscqCreateDir fr m_fsxp (_:path) _ = withMVar m_fsxp $ \fsxp -> do
   debugStart "MKDIR" path
   (dirparts, filename) <- return $ splitDirsFile path
-  (rd, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dirparts
+  (rd, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) dirparts
   debugMore rd
   case rd of
     Nothing -> return eNOENT
     Just (dnum, isdir)
       | isdir -> do
-        (r, ()) <- fr $ FS.mkdir fsxp dnum filename
+        (r, ()) <- fr $ AsyncFS._AFS__mkdir fsxp dnum filename
         debugMore r
         case r of
           Nothing -> return eNOSPC
@@ -337,13 +339,13 @@ fscqUnlink :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO Errno
 fscqUnlink fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
   debugStart "UNLINK" path
   (dirparts, filename) <- return $ splitDirsFile path
-  (rd, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) dirparts
+  (rd, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) dirparts
   debugMore rd
   case rd of
     Nothing -> return eNOENT
     Just (dnum, isdir)
       | isdir -> do
-        (r, ()) <- fr $ FS.delete fsxp dnum filename
+        (r, ()) <- fr $ AsyncFS._AFS__delete fsxp dnum filename
         debugMore r
         case r of
           True -> return eOK
@@ -380,7 +382,7 @@ fscqRead ds fr m_fsxp (_:path) inum byteCount offset
   off <- return $ fromIntegral offset
   len <- return $ fromIntegral byteCount
   debugStart "READ" (path, inum, len)
-  (buf, ()) <- fr $ FS.read_bytes fsxp inum off len
+  (buf, ()) <- fr $ AsyncFS._AFS__read_bytes fsxp inum off len
   FASTBYTEFILE__Coq_len_bytes readlen (W w) <- return buf
   wdata <- i2bs w readlen
   return $ Right wdata
@@ -394,7 +396,7 @@ fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
   off <- return $ fromIntegral offset
   len <- return $ BS.length bs
   wnew <- bs2i bs
-  (ok, ()) <- fr $ FS.append fsxp inum off len (W wnew)
+  (ok, ()) <- fr $ AsyncFS._AFS__append fsxp inum off len (W wnew)
   if ok then
     return $ Right (fromIntegral len)
   else
@@ -404,14 +406,14 @@ fscqSetFileSize :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileOffset -> 
 fscqSetFileSize fr m_fsxp (_:path) size = withMVar m_fsxp $ \fsxp -> do
   debugStart "SETSIZE" (path, size)
   nameparts <- return $ splitDirectories path
-  (r, ()) <- fr $ FS.lookup fsxp (coq_FSXPRootInum fsxp) nameparts
+  (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   debugMore r
   case r of
     Nothing -> return eNOENT
     Just (inum, isdir)
       | isdir -> return eISDIR
       | otherwise -> do
-        (ok, ()) <- fr $ FS.file_set_sz fsxp inum (W64 $ fromIntegral size)
+        (ok, ()) <- fr $ AsyncFS._AFS__file_set_sz fsxp inum (W64 $ fromIntegral size)
         if ok then
           return eOK
         else
@@ -420,7 +422,7 @@ fscqSetFileSize _ _ _ _ = return eIO
 
 fscqGetFileSystemStats :: FSrunner -> MVar Coq_fs_xparams -> String -> IO (Either Errno FileSystemStats)
 fscqGetFileSystemStats fr m_fsxp _ = withMVar m_fsxp $ \fsxp -> do
-  (freeblocks, (freeinodes, ())) <- fr $ FS.statfs fsxp
+  (freeblocks, (freeinodes, ())) <- fr $ AsyncFS._AFS__statfs fsxp
   block_bitmaps <- return $ coq_BmapNBlocks $ coq_FSXPBlockAlloc fsxp
   inode_bitmaps <- return $ coq_BmapNBlocks $ coq_FSXPInodeAlloc fsxp
   return $ Right $ FileSystemStats
@@ -442,7 +444,7 @@ fscqRename fr m_fsxp (_:src) (_:dst) = withMVar m_fsxp $ \fsxp -> do
   debugStart "RENAME" (src, dst)
   (srcparts, srcname) <- return $ splitDirsFile src
   (dstparts, dstname) <- return $ splitDirsFile dst
-  (r, ()) <- fr $ FS.rename fsxp (coq_FSXPRootInum fsxp) srcparts srcname dstparts dstname
+  (r, ()) <- fr $ AsyncFS._AFS__rename fsxp (coq_FSXPRootInum fsxp) srcparts srcname dstparts dstname
   debugMore r
   case r of
     True -> return eOK

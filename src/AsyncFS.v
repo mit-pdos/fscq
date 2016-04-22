@@ -252,15 +252,15 @@ Module AFS.
     mscs <- GLog.flushall fsxp mscs;
     rx mscs.
 
-(*
-
   Definition statfs T fsxp mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
+    (*
     let^ (mscs, free_blocks) <- BALLOC.numfree (FSXPLog fsxp) (FSXPBlockAlloc fsxp) mscs;
-      let^ (mscs, free_inodes) <- BALLOC.numfree (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
-        let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
-          rx ^(mscs, free_blocks, free_inodes).
-*)
+    let^ (mscs, free_inodes) <- BALLOC.numfree (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
+     *)
+    let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
+    (* rx ^(mscs, free_blocks, free_inodes).  *)
+    rx ^(mscs, 0, 0).
 
   (* Recover theorems *)
 
