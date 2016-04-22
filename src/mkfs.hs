@@ -2,10 +2,9 @@ module Main where
 
 import Word
 import qualified Interpreter as I
-import qualified FS
+import qualified AsyncFS
 import FSLayout
 import Disk
-import Errno
 import System.Environment
 
 main :: IO ()
@@ -16,7 +15,7 @@ main = do
     [fn] -> do
       ds <- init_disk fn
       putStrLn $ "Initializing file system"
-      res <- I.run ds $ FS.mkfs (W 1) (W 1)
+      res <- I.run ds $ AsyncFS.mkfs (W 1) (W 1)
       case res of
         Err _ -> error $ "mkfs failed"
         OK (_, (fsxp, ())) ->

@@ -130,6 +130,9 @@ Module LOG.
     unfold rep, rep_inner; cancel.
   Qed.
 
+  Definition init T xp cs rx : prog T :=
+    mm <- GLog.init xp cs;
+    rx (mk_memstate vmap0 mm).
 
   Definition begin T (xp : log_xparams) ms rx : prog T :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in

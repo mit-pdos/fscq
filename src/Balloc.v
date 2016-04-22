@@ -88,6 +88,10 @@ Module BmapAlloc (Sig : AllocSig).
         rx ^(ms, Some bn)
     end.
 
+  Definition init T lxp xp ms rx : prog T :=
+    ms <- Bmp.init lxp xp ms;
+    rx ms.
+
   Definition freelist_bmap_equiv freelist bmap :=
     forall a, a < length bmap -> (In a freelist <-> Avail (selN bmap a $0)).
 
@@ -303,6 +307,10 @@ Module BALLOC.
 
   Definition free T lxp xp bn ms rx : prog T :=
     r <- Alloc.free lxp xp bn ms;
+    rx r.
+
+  Definition init T lxp xp ms rx : prog T :=
+    r <- Alloc.init lxp xp ms;
     rx r.
 
   Definition bn_valid xp bn := bn <> 0 /\ bn < (BmapNBlocks xp) * valulen.
