@@ -1096,4 +1096,13 @@ Ltac xform_normr :=
 Ltac xform_norm :=
   xform_norml; xform_normr.
 
+Ltac xcrash_rewrite :=
+  match goal with
+  | [ H : forall rc, (crash_xform rc =p=> crash_xform ?x) -> _ =p=> ?c |- _ =p=> ?c] =>
+      eapply pimpl_trans; [ | eapply H ]; cancel; subst
+  | [ H : crash_xform ?rc =p=> _ |- crash_xform ?rc =p=> _ ] => rewrite H
+  end.
+
+Ltac xcrash := subst; repeat xcrash_rewrite;
+               xform_norm; cancel; xform_normr; cancel.
 
