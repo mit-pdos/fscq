@@ -744,16 +744,16 @@ Module AFS.
 
 
   Theorem file_sync_recover_ok : forall fsxp inum mscs,
-    {<< ds Fm flist A f,
+    {<< ds Fm Ftop tree pathname f,
     PRE
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
-      [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
-      [[[ flist ::: (A * inum |-> f) ]]]
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
+      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
     POST RET:^(mscs, _)
-     exists d flist',
+      exists d tree',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
-         [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
-         [[[ flist' ::: (A * inum |-> BFILE.synced_file f) ]]]
+        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
+        [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum  (BFILE.synced_file f)) tree ]]
     REC RET:^(mscs,fsxp)
       exists d,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
