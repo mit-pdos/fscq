@@ -2012,9 +2012,12 @@ Module DIRTREE.
     >} read fsxp inum off mscs.
   Proof.
     unfold read, rep.
-    step.
+    safestep.
+    eapply list2nmem_inbound; eauto.
     rewrite subtree_extract; eauto. cancel.
+    eauto.
     step.
+    cancel; eauto.
   Qed.
 
 (*
