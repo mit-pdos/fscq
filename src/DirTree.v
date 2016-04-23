@@ -1952,6 +1952,11 @@ Module DIRTREE.
     mscs <- BFILE.dwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
     rx mscs.
 
+
+  Definition datasync T fsxp inum mscs rx : prog T :=
+    mscs <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
+    rx mscs.
+
 (*
   Definition update_bytes T fsxp inum off len (data: bytes len) mscs rx : prog T :=
     mscs <- FASTBYTEFILE.update_bytes fsxp inum off data mscs;
@@ -2062,6 +2067,24 @@ Module DIRTREE.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
   Qed.
+
+ Theorem datasync_ok : forall fsxp inum mscs,
+    {< F mbase m pathname Fm Ftop tree f,
+    PRE    LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2nmem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST RET:mscs
+           exists m' tree',
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') mscs *
+           [[ (Fm * rep fsxp Ftop tree')%pred (list2nmem m') ]] *
+           [[ tree' = update_subtree pathname (TreeFile inum (BFILE.synced_file f)) tree ]]
+    CRASH  LOG.intact fsxp.(FSXPLog) F mbase
+    >} datasync fsxp inum mscs.
+  Proof.
+    unfold datasync, rep.
+    step.
+  Admitted.
+
 
 (*
   Theorem update_bytes_ok : forall fsxp inum off len (newbytes: bytes len) mscs,
@@ -2214,6 +2237,7 @@ Module DIRTREE.
 
   Hint Extern 1 ({{_}} progseq (read _ _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _ _) _) => apply dwrite_ok : prog.
+  Hint Extern 1 ({{_}} progseq (datasync _ _ _) _) => apply datasync_ok : prog.
   Hint Extern 1 ({{_}} progseq (truncate _ _ _ _) _) => apply truncate_ok : prog.
   Hint Extern 1 ({{_}} progseq (getlen _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_}} progseq (getattr _ _ _) _) => apply getattr_ok : prog.

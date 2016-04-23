@@ -590,11 +590,11 @@ Module AFS.
   Qed.
 
   Theorem update_fblock_d_ok : forall fsxp inum off v mscs,
-    {< ds Fm Ftop tree f Fd v0,
+    {< ds Fm Ftop tree pathname f Fd v0,
     PRE     
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
-      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> v0) ]]]
     POST RET:^(mscs, _)
       exists d tree' f',
@@ -634,11 +634,11 @@ Module AFS.
   Hint Extern 1 ({{_}} progseq (update_fblock_d _ _ _ _ _) _) => apply update_fblock_d_ok : prog.
 
   Theorem update_fblock_d_recover_ok : forall fsxp inum off v mscs,
-    {<< ds Fm flist A f Fd v0,
+    {<< ds Fm Ftop tree pathname f Fd v0,
     PRE
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
-      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> v0) ]]]
     POST RET:^(mscs, _)
       exists d tree' f',
@@ -691,24 +691,23 @@ Module AFS.
       apply LOG.after_crash_idempred.
   Qed.
 
-
   Theorem file_sync_ok: forall fsxp inum mscs,
-    {< ds Fm flist A f,
+    {< ds Fm Ftop tree pathname f,
     PRE
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
-      [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
-      [[[ flist ::: (A * inum |-> f) ]]]
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
+      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
     POST RET:^(mscs, _)
-      exists d flist',
+      exists d tree',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
-         [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
-         [[[ flist' ::: (A * inum |-> BFILE.synced_file f) ]]]
+        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
+        [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum  (BFILE.synced_file f)) tree ]]
     XCRASH
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds \/
-      (exists d flist',
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, nil) *
-      [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
-      [[[ flist' ::: (A * inum |-> BFILE.synced_file f) ]]])
+      exists d tree',
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
+        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
+        [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum  (BFILE.synced_file f)) tree ]]
    >} file_sync fsxp inum mscs.
   Proof.
     unfold file_sync; intros.
