@@ -2213,7 +2213,7 @@ Module DIRTREE.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _ _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write _ _ _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _ _) _) => apply dwrite_ok : prog.
   Hint Extern 1 ({{_}} progseq (truncate _ _ _ _) _) => apply truncate_ok : prog.
   Hint Extern 1 ({{_}} progseq (getlen _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_}} progseq (getattr _ _ _) _) => apply getattr_ok : prog.
