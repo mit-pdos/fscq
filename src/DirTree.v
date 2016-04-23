@@ -1948,8 +1948,8 @@ Module DIRTREE.
   Implicit Arguments read_bytes [T].
 *)
 
-  Definition write T fsxp inum off v mscs rx : prog T :=
-    mscs <- BFILE.write (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
+  Definition dwrite T fsxp inum off v mscs rx : prog T :=
+    mscs <- BFILE.dwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
     rx mscs.
 
 (*
@@ -2039,7 +2039,7 @@ Module DIRTREE.
   Qed.
 *)
 
-  Theorem write_ok : forall fsxp inum off v mscs,
+  Theorem dwrite_ok : forall fsxp inum off v mscs,
     {< F mbase m pathname Fm Ftop tree f B v0,
     PRE    LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) mscs *
            [[ (Fm * rep fsxp Ftop tree)%pred (list2nmem m) ]] *
@@ -2050,12 +2050,12 @@ Module DIRTREE.
            LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') mscs *
            [[ (Fm * rep fsxp Ftop tree')%pred (list2nmem m') ]] *
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-           [[ (B * off |-> (v, nil))%pred (list2nmem (BFILE.BFData f')) ]] *
-           [[ f' = BFILE.mk_bfile (updN (BFILE.BFData f) off (v, nil)) (BFILE.BFAttr f) ]]
+           [[ (B * off |-> (v, vsmerge v0))%pred (list2nmem (BFILE.BFData f')) ]] *
+           [[ f' = BFILE.mk_bfile (updN (BFILE.BFData f) off (v, vsmerge v0)) (BFILE.BFAttr f) ]]
     CRASH  LOG.intact fsxp.(FSXPLog) F mbase
-    >} write fsxp inum off v mscs.
+    >} dwrite fsxp inum off v mscs.
   Proof.
-    unfold write, rep.
+    unfold dwrite, rep.
     step.
     rewrite subtree_extract; eauto. cancel.
     step.

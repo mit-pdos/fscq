@@ -155,14 +155,14 @@ Module AFS.
   (* update an existing block directly.  XXX dwrite happens to sync metadata. *)
   Definition update_fblock_d T fsxp inum off v ms rx : prog T :=
     ms <- LOG.begin (FSXPLog fsxp) ms;
-    ms <- BFILE.dwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v ms;
+    ms <- DIRTREE.dwrite fsxp inum off v ms;
     ms <- LOG.commit_ro (FSXPLog fsxp) ms;
     rx ^(ms, tt).
 
   (* sync only data blocks of a file. XXX does a global flush too *)
   Definition file_sync T fsxp inum ms rx : prog T :=
     ms <- LOG.begin (FSXPLog fsxp) ms;
-    ms <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum ms;
+    ms <- DIRTREE.datasync fsxp inum ms;
     ms <- LOG.commit_ro (FSXPLog fsxp) ms;
     rx ^(ms, tt).
 
@@ -590,24 +590,24 @@ Module AFS.
   Qed.
 
   Theorem update_fblock_d_ok : forall fsxp inum off v mscs,
-    {< ds Fm flist A f Fd v0,
+    {< ds Fm Ftop tree f Fd v0,
     PRE     
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
-      [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
-      [[[ flist ::: (A * inum |-> f) ]]] *
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
+      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
       [[[ (BFILE.BFData f) ::: (Fd * off |-> v0) ]]]
     POST RET:^(mscs, _)
-      exists d flist' f',
+      exists d tree' f',
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
-      [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
-      [[[ flist' ::: (A * inum |-> f') ]]] *
+      [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
+      [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
       [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]]
     CRASH   
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds \/
-      exists d flist' f',
+      exists d tree' f',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, nil) *
-      [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
-      [[[ flist' ::: (A * inum |-> f') ]]] *
+      [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
+      [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
       [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]]
    >} update_fblock_d fsxp inum off v mscs.
   Proof.
@@ -637,14 +637,14 @@ Module AFS.
     {<< ds Fm flist A f Fd v0,
     PRE
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
-      [[[ ds!! ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist) ]]] *
-      [[[ flist ::: (A * inum |-> f) ]]] *
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
+      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
       [[[ (BFILE.BFData f) ::: (Fd * off |-> v0) ]]]
     POST RET:^(mscs, _)
-      exists d flist' f',
+      exists d tree' f',
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
-      [[[ d ::: (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
-      [[[ flist' ::: (A * inum |-> f') ]]] *
+      [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
+      [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
       [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]]
     REC RET:^(mscs,fsxp)
       exists d,
