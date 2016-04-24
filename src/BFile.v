@@ -1,5 +1,5 @@
 Require Import Arith.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import Word.
 Require Import Prog.
 Require Import Hoare.
@@ -24,6 +24,8 @@ Require Import FSLayout.
 Require Import AsyncDisk.
 Require Import Inode.
 Require Import GenSepAuto.
+Require Import NEList.
+
 
 Import ListNotations.
 
@@ -126,6 +128,7 @@ Module BFILE.
      listmatch file_match flist ilist
     )%pred.
 
+  Definition synced_file f := mk_bfile (synced_list (map fst (BFData f))) (BFAttr f).
 
   (**** automation **)
 
@@ -307,6 +310,7 @@ Module BFILE.
     setoid_rewrite surjective_pairing at 2; cancel.
 
     step; [ | sepauto .. ].
+    rename dummy0 into ilist.
     setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 4.
     rewrite listmatch_updN_removeN by omega.
     unfold file_match at 3; cancel; eauto.
@@ -421,20 +425,20 @@ Module BFILE.
 
 
   Theorem dwrite_ok : forall lxp bxp ixp inum off v ms,
-    {< F Fm Fi Fd m flist f vs,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m m) ms *
+    {< F Fm Fi Fd ds flist f vs,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn ds ds!!) ms *
            [[ off < length (BFData f) ]] *
-           [[[ m  ::: (Fm  * rep bxp ixp flist) ]]] *
+           [[[ ds!! ::: (Fm  * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: (Fd * off |-> vs) ]]]
     POST RET:ms  exists m' flist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m' m') ms *
+           LOG.rep lxp F (LOG.ActiveTxn (m', nil) m') ms *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) off (v, vsmerge vs)) (BFAttr f) ]]
-    CRASH  LOG.intact lxp F m \/
-           exists m' flist' f', LOG.intact lxp F m' *
+    CRASH  LOG.recover_any lxp F ds \/
+           exists m' flist' f', LOG.intact lxp F (m', nil) *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
@@ -459,6 +463,8 @@ Module BFILE.
 
     safestep; auto; sepauto.
     cancel.
+    rename dummy0 into ilist.
+
     abstract (
       setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 4;
       rewrite listmatch_updN_removeN by omega;
@@ -473,8 +479,8 @@ Module BFILE.
     or_r; cancel; sepauto.
     pred_apply; cancel.
     eapply dwrite_ok_helper; eauto.
-    or_l; cancel; eauto.
-    cancel; or_l; eauto.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    or_l; rewrite LOG.active_intact, LOG.intact_any; auto.
     Unshelve. all: easy.
   Qed.
 
@@ -486,20 +492,18 @@ Module BFILE.
   Qed.
 
   Theorem datasync_ok : forall lxp bxp ixp inum ms,
-    {< F Fm Fi m flist f,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m m) ms *
-           [[[ m  ::: (Fm  * rep bxp ixp flist) ]]] *
+    {< F Fm Fi ds flist f,
+    PRE    LOG.rep lxp F (LOG.ActiveTxn ds ds!!) ms *
+           [[[ ds!!  ::: (Fm  * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST RET:ms  exists m' flist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m' m') ms *
+    POST RET:ms  exists m' flist',
+           LOG.rep lxp F (LOG.ActiveTxn (m', nil) m') ms *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
-           [[[ flist' ::: (Fi * inum |-> f') ]]] *
-           [[ f' = mk_bfile (synced_list (map fst (BFData f))) (BFAttr f) ]]
-    XCRASH exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m m) ms'
+           [[[ flist' ::: (Fi * inum |-> synced_file f) ]]]
+    XCRASH LOG.recover_any lxp F ds
     >} datasync lxp ixp inum ms.
   Proof.
-    unfold datasync, rep.
+    unfold datasync, synced_file, rep.
     step.
     sepauto.
 
@@ -508,6 +512,7 @@ Module BFILE.
     safestep; auto; seprewrite.
     2: sepauto.
     cancel.
+    rename dummy0 into ilist.
     setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 3.
     rewrite listmatch_updN_removeN by omega.
     unfold file_match; cancel; eauto.
@@ -516,6 +521,8 @@ Module BFILE.
 
     (* crashes *)
     eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    rewrite LOG.active_intact, LOG.intact_any; auto.
   Qed.
 
 
@@ -838,6 +845,337 @@ Module BFILE.
 
   Hint Extern 1 ({{_}} progseq (truncate _ _ _ _ _ _) _) => apply truncate_ok : prog.
   Hint Extern 1 ({{_}} progseq (reset _ _ _ _ _) _) => apply reset_ok : prog.
+
+
+
+  (** crash and recovery *)
+
+  Definition FSynced f : Prop :=
+     forall n, snd (selN (BFData f) n ($0, nil)) = nil.
+
+  Definition file_crash f f' : Prop :=
+    exists vs, possible_crash_list (BFData f) vs /\
+    f' = mk_bfile (synced_list vs) (BFAttr f).
+
+  Definition flist_crash fl fl' : Prop :=
+    Forall2 file_crash fl fl'.
+
+  Lemma flist_crash_length : forall a b,
+    flist_crash a b -> length a = length b.
+  Proof.
+    unfold flist_crash; intros.
+    eapply forall2_length; eauto.
+  Qed.
+
+  Lemma fsynced_synced_file : forall f,
+    FSynced (synced_file f).
+  Proof.
+    unfold FSynced, synced_file, synced_list; simpl; intros.
+    setoid_rewrite selN_combine; simpl.
+    destruct (lt_dec n (length (BFData f))).
+    rewrite repeat_selN; auto.
+    rewrite map_length; auto.
+    rewrite selN_oob; auto.
+    rewrite repeat_length, map_length.
+    apply not_lt; auto.
+    rewrite repeat_length, map_length; auto.
+  Qed.
+
+  Lemma arrayN_synced_list_fsynced : forall f l,
+    arrayN 0 (synced_list l) (list2nmem (BFData f)) ->
+    FSynced f.
+  Proof.
+    unfold FSynced; intros.
+    erewrite list2nmem_array_eq with (l' := (BFData f)) by eauto.
+    rewrite synced_list_selN; simpl; auto.
+  Qed.
+
+  Lemma file_crash_attr : forall f f',
+    file_crash f f' -> BFAttr f' = BFAttr f.
+  Proof.
+    unfold file_crash; intros.
+    destruct H; intuition; subst; auto.
+  Qed.
+
+  Lemma file_crash_possible_crash_list : forall f f',
+    file_crash f f' ->
+    possible_crash_list (BFData f) (map fst (BFData f')).
+  Proof.
+    unfold file_crash; intros; destruct H; intuition subst.
+    unfold synced_list; simpl.
+    rewrite map_fst_combine; auto.
+    rewrite repeat_length; auto.
+  Qed.
+
+  Lemma file_crash_data_length : forall f f',
+    file_crash f f' -> length (BFData f) = length (BFData f').
+  Proof.
+    unfold file_crash; intros.
+    destruct H; intuition subst; simpl.
+    rewrite synced_list_length.
+    apply possible_crash_list_length; auto.
+  Qed.
+
+  Lemma file_crash_synced : forall f f',
+    file_crash f f' ->
+    FSynced f ->
+    f = f'.
+  Proof.
+    unfold FSynced, file_crash; intuition.
+    destruct H; intuition subst; simpl.
+    destruct f; simpl in *.
+    f_equal.
+    eapply list_selN_ext.
+    rewrite synced_list_length.
+    apply possible_crash_list_length; auto.
+    intros.
+    setoid_rewrite synced_list_selN.
+    rewrite surjective_pairing at 1.
+    rewrite H0.
+    f_equal.
+    erewrite possible_crash_list_unique with (b := x); eauto.
+    erewrite selN_map; eauto.
+  Qed.
+
+  Lemma file_crash_fsynced : forall f f',
+    file_crash f f' ->
+    FSynced f'.
+  Proof.
+    unfold FSynced, file_crash; intuition.
+    destruct H; intuition subst; simpl.
+    rewrite synced_list_selN; auto.
+  Qed.
+
+  Lemma file_crash_ptsto : forall f f' vs F a,
+    file_crash f f' ->
+    (F * a |-> vs)%pred (list2nmem (BFData f)) ->
+    (exists v, [[ In v (vsmerge vs) ]]  *
+       crash_xform F * a |=> v)%pred (list2nmem (BFData f')).
+  Proof.
+    unfold file_crash; intros.
+    repeat deex.
+    eapply list2nmem_crash_xform in H0; eauto.
+    pred_apply.
+    xform_norm.
+    rewrite crash_xform_ptsto.
+    cancel.
+  Qed.
+
+  Lemma xform_file_match : forall f ino,
+    crash_xform (file_match f ino) =p=> 
+      exists f', [[ file_crash f f' ]] * file_match f' ino.
+  Proof.
+    unfold file_match, file_crash; intros.
+    xform_norm.
+    rewrite xform_listmatch_ptsto.
+    cancel; eauto; simpl; auto.
+  Qed.
+
+  Lemma xform_file_list : forall fs inos,
+    crash_xform (listmatch file_match fs inos) =p=>
+      exists fs', [[ flist_crash fs fs' ]] * listmatch file_match fs' inos.
+  Proof.
+    unfold listmatch, pprd.
+    induction fs; destruct inos; xform_norm.
+    cancel. instantiate(1 := nil); simpl; auto.
+    apply Forall2_nil. simpl; auto.
+    inversion H0.
+    inversion H0.
+
+    specialize (IHfs inos).
+    rewrite crash_xform_sep_star_dist, crash_xform_lift_empty in IHfs.
+    setoid_rewrite lift_impl with (Q := length fs = length inos) at 4; intros; eauto.
+    rewrite IHfs; simpl.
+
+    rewrite xform_file_match.
+    cancel.
+    eassign (f' :: fs'); cancel.
+    apply Forall2_cons; auto.
+    simpl; omega.
+  Qed.
+
+  Lemma xform_rep : forall bxp ixp flist,
+    crash_xform (rep bxp ixp flist) =p=> 
+      exists flist', [[ flist_crash flist flist' ]] * rep bxp ixp flist'.
+  Proof.
+    unfold rep; intros.
+    xform_norm.
+    rewrite INODE.xform_rep, BALLOC.xform_rep.
+    rewrite xform_file_list.
+    cancel.
+  Qed.
+
+  Lemma xform_file_match_ptsto : forall F a vs f ino,
+    (F * a |-> vs)%pred (list2nmem (BFData f)) ->
+    crash_xform (file_match f ino) =p=>
+      exists f' v, file_match f' ino * 
+      [[ In v (vsmerge vs) ]] *
+      [[ (crash_xform F * a |=> v)%pred (list2nmem (BFData f')) ]].
+  Proof.
+    unfold file_crash, file_match; intros.
+    xform_norm.
+    rewrite xform_listmatch_ptsto.
+    xform_norm.
+    pose proof (list2nmem_crash_xform _ H1 H) as Hx.
+    apply crash_xform_sep_star_dist in Hx.
+    rewrite crash_xform_ptsto in Hx; destruct_lift Hx.
+
+    norm.
+    eassign (mk_bfile (synced_list l) (BFAttr f)); cancel.
+    eassign (dummy).
+    intuition subst; eauto.
+  Qed.
+
+ Lemma xform_rep_file : forall F bxp ixp fs f i,
+    (F * i |-> f)%pred (list2nmem fs) ->
+    crash_xform (rep bxp ixp fs) =p=> 
+      exists fs' f',  [[ flist_crash fs fs' ]] * [[ file_crash f f' ]] *
+      rep bxp ixp fs' *
+      [[ (arrayN_ex fs' i * i |-> f')%pred (list2nmem fs') ]].
+  Proof.
+    unfold rep; intros.
+    xform_norm.
+    rewrite INODE.xform_rep, BALLOC.xform_rep.
+    rewrite xform_file_list.
+    cancel.
+    erewrite list2nmem_sel with (x := f) by eauto.
+    apply forall2_selN; eauto.
+    eapply list2nmem_inbound; eauto.
+    apply list2nmem_ptsto_cancel.
+    erewrite <- flist_crash_length; eauto.
+    eapply list2nmem_inbound; eauto.
+    Unshelve. all: eauto.
+  Qed.
+
+ Lemma xform_rep_file_pred : forall (F Fd : pred) bxp ixp fs f i,
+    (F * i |-> f)%pred (list2nmem fs) ->
+    (Fd (list2nmem (BFData f))) ->
+    crash_xform (rep bxp ixp fs) =p=>
+      exists fs' f',  [[ flist_crash fs fs' ]] * [[ file_crash f f' ]] *
+      rep bxp ixp fs' *
+      [[ (arrayN_ex fs' i * i |-> f')%pred (list2nmem fs') ]] *
+      [[ (crash_xform Fd)%pred (list2nmem (BFData f')) ]].
+  Proof.
+    intros.
+    rewrite xform_rep_file by eauto.
+    cancel.
+    unfold file_crash in *.
+    repeat deex; simpl.
+    eapply list2nmem_crash_xform; eauto.
+  Qed.
+
+  Lemma xform_rep_off : forall Fm Fd bxp ixp ino off f fs vs,
+    (Fm * ino |-> f)%pred (list2nmem fs) ->
+    (Fd * off |-> vs)%pred (list2nmem (BFData f)) ->
+    crash_xform (rep bxp ixp fs) =p=> 
+      exists fs' f' v, [[ flist_crash fs fs' ]] * [[ file_crash f f' ]] *
+      rep bxp ixp fs' * [[ In v (vsmerge vs) ]] *
+      [[ (arrayN_ex fs' ino * ino |-> f')%pred (list2nmem fs') ]] *
+      [[ (crash_xform Fd * off |=> v)%pred (list2nmem (BFData f')) ]].
+  Proof.
+    Opaque vsmerge.
+    intros.
+    rewrite xform_rep_file by eauto.
+    xform_norm.
+    eapply file_crash_ptsto in H0; eauto.
+    destruct_lift H0.
+    cancel; eauto.
+  Qed.
+
+
+
+  (** XXX: attempt to use mem_pred to relate the file list before and after crash *)
+
+  Require Import MemPred.
+
+  Definition crash_pred a f : (@pred _ addr_eq_dec _) :=
+    (exists f', a |-> f' * [[ file_crash f f' ]])%pred.
+
+  Definition files_xform (p : pred) (m : @Mem.mem _ addr_eq_dec _) :=
+    exists m', p m' /\ mem_pred crash_pred m m'.
+
+  Theorem crash_pred_mem_except : forall i (hm m : @Mem.mem _ addr_eq_dec _),
+    mem_pred crash_pred hm m ->
+    mem_pred crash_pred (mem_except hm i) (mem_except m i).
+  Proof.
+    unfold mem_pred; intros.
+    destruct_lift H.
+    rename dummy into l; subst.
+    exists (avs_except addr_eq_dec l i).
+    rewrite mem_except_avs_except.
+    apply sep_star_assoc.
+    apply lift_impl; intros.
+    apply avs_except_nodup; auto.
+    apply lift_impl; auto.
+
+    generalize dependent m.
+    generalize dependent l.
+    induction l; simpl; intros.
+    apply emp_mem_except; auto.
+
+    inversion H1; subst; simpl in *.
+    unfold mem_pred_one at 1, crash_pred at 1 in H.
+    destruct_lift H.
+    apply ptsto_mem_except in H as Hx; auto.
+
+    destruct (addr_eq_dec n i); subst.
+    rewrite avs_except_notin_eq; auto.
+
+    cbn; simpl in *.
+    apply IHl in Hx; auto.
+    unfold mem_pred_one at 1, crash_pred at 1.
+    apply pimpl_exists_r_star; simpl.
+    exists dummy.
+    apply sep_star_assoc.
+    apply mem_except_ptsto.
+    rewrite mem_except_ne; auto.
+    eapply ptsto_valid; eauto.
+    rewrite mem_except_comm.
+    pred_apply; cancel.
+  Qed.
+
+
+  Lemma file_crash_mem_pred : forall fs fs',
+    Forall2 file_crash fs fs' ->
+    mem_pred crash_pred (list2nmem fs') (list2nmem fs).
+  Proof.
+    induction 1; simpl.
+    unfold mem_pred; exists nil.
+    apply sep_star_assoc.
+    apply lift_impl; intros.
+    constructor.
+    apply lift_impl; auto.
+    cbv; auto.
+  Admitted.
+
+
+  Lemma xform_file_list_ptsto : forall F i f fs inos,
+    (F * i |-> f)%pred (list2nmem fs) ->
+    crash_xform (listmatch file_match fs inos) =p=>
+      exists fs' f', listmatch file_match fs' inos *
+      [[ file_crash f f' ]] *
+      [[ ((files_xform F) * i |-> f')%pred (list2nmem fs') ]].
+  Proof.
+    unfold files_xform; intros.
+    rewrite xform_file_list.
+    unfold flist_crash; cancel.
+    erewrite list2nmem_sel with (x := f) by eauto.
+    apply forall2_selN; eauto.
+    eapply list2nmem_inbound; eauto.
+
+    apply sep_star_comm.
+    apply mem_except_ptsto.
+    apply list2nmem_sel_inb.
+    erewrite <- forall2_length; eauto.
+    eapply list2nmem_inbound; eauto.
+
+    apply sep_star_comm in H.
+    apply ptsto_mem_except in H.
+    eexists; split; eauto.
+    apply crash_pred_mem_except.
+    apply file_crash_mem_pred; auto.
+    Unshelve. all: eauto.
+  Qed.
 
 
 End BFILE.

@@ -1,5 +1,5 @@
 Require Import Mem.
-Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg Array ListUtils.
+Require Import List Omega Ring Word Pred PredCrash Prog Hoare SepAuto BasicProg Array ListUtils.
 Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
@@ -412,6 +412,8 @@ End LISTMATCH.
 
 
 
+
+
 Lemma listmatch_sym : forall AT AEQ V A B (al : list A) (bl : list B) f,
   (@listmatch _ _ AT AEQ V) f al bl <=p=>
   listmatch (fun b a => f a b) bl al.
@@ -472,4 +474,133 @@ Proof.
   eapply IHal; eauto.
   pred_apply; cancel.
 Qed.
+
+Theorem xform_listpred : forall V (l : list V) prd,
+  crash_xform (listpred prd l) <=p=> listpred (fun x => crash_xform (prd x)) l.
+Proof.
+  induction l; simpl; intros; split; auto; xform_dist; auto.
+  rewrite IHl; auto.
+  rewrite IHl; auto.
+Qed.
+
+
+Lemma crash_xform_pprd : forall A B (prd : A -> B -> rawpred),
+  (fun p => crash_xform (pprd prd p)) =
+  (pprd (fun x y => crash_xform (prd x y))).
+Proof.
+  unfold pprd, prod_curry, crash_xform; intros.
+  apply functional_extensionality; intros; destruct x; auto.
+Qed.
+
+Theorem xform_listmatch : forall A B (a : list A) (b : list B) prd,
+  crash_xform (listmatch prd a b) <=p=> listmatch (fun x y => crash_xform (prd x y)) a b.
+Proof.
+  unfold listmatch; intros; split; xform_norm;
+  rewrite xform_listpred; cancel;
+  rewrite crash_xform_pprd; auto.
+Qed.
+
+Theorem xform_listpred_idem_l : forall V (l : list V) prd,
+  (forall e, crash_xform (prd e) =p=> prd e) ->
+  crash_xform (listpred prd l) =p=> listpred prd l.
+Proof.
+  induction l; simpl; intros; auto.
+  xform_dist.
+  rewrite H.
+  rewrite IHl; auto.
+Qed.
+
+
+Theorem xform_listpred_idem_r : forall V (l : list V) prd,
+  (forall e,  prd e =p=> crash_xform (prd e)) ->
+  listpred prd l =p=> crash_xform (listpred prd l).
+Proof.
+  induction l; simpl; intros; auto.
+  xform_dist; auto.
+  xform_dist.
+  rewrite <- H.
+  rewrite <- IHl; auto.
+Qed.
+
+Theorem xform_listpred_idem : forall V (l : list V) prd,
+  (forall e, crash_xform (prd e) <=p=> prd e) ->
+  crash_xform (listpred prd l) <=p=> listpred prd l.
+Proof.
+  split.
+  apply xform_listpred_idem_l; intros.
+  apply H.
+  apply xform_listpred_idem_r; intros.
+  apply H.
+Qed.
+
+Theorem xform_listmatch_idem_l : forall A B (a : list A) (b : list B) prd,
+  (forall a b, crash_xform (prd a b) =p=> prd a b) ->
+  crash_xform (listmatch prd a b) =p=> listmatch prd a b.
+Proof.
+  unfold listmatch; intros.
+  xform_norm; cancel.
+  apply xform_listpred_idem_l; intros.
+  destruct e; cbn; auto.
+Qed.
+
+Theorem xform_listmatch_idem_r : forall A B (a : list A) (b : list B) prd,
+  (forall a b,  prd a b =p=> crash_xform (prd a b)) ->
+  listmatch prd a b =p=> crash_xform (listmatch prd a b).
+Proof.
+  unfold listmatch; intros.
+  cancel.
+  xform_normr.
+  rewrite <- xform_listpred_idem_r; cancel.
+  auto.
+Qed.
+
+Theorem xform_listmatch_idem : forall A B (a : list A) (b : list B) prd,
+  (forall a b, crash_xform (prd a b) <=p=> prd a b) ->
+  crash_xform (listmatch prd a b) <=p=> listmatch prd a b.
+Proof.
+  split.
+  apply xform_listmatch_idem_l; auto.
+  apply H.
+  apply xform_listmatch_idem_r; auto.
+  apply H.
+Qed.
+
+Lemma xform_listpred_ptsto : forall l,
+  crash_xform (listpred (fun a => a |->?) l) =p=>
+               listpred (fun a => a |->?) l.
+Proof.
+  induction l; simpl.
+  rewrite crash_invariant_emp; auto.
+  xform_dist.
+  rewrite crash_xform_ptsto_exis, IHl.
+  auto.
+Qed.
+
+Lemma xform_listmatch_ptsto : forall al vl,
+  crash_xform (listmatch (fun v a => a |-> v) vl al) =p=>
+    exists l, [[ possible_crash_list vl l ]] *
+    listmatch (fun v a => a |-> v) (synced_list l) al.
+Proof.
+  unfold listmatch; induction al; destruct vl; xform_norm.
+  - cancel. instantiate (1 := nil); simpl; auto.
+    unfold possible_crash_list; intuition; inversion H.
+    rewrite synced_list_length; auto.
+  - inversion H0.
+  - inversion H0.
+  - rewrite crash_xform_ptsto.
+    specialize (IHal vl).
+    rewrite crash_xform_sep_star_dist, crash_xform_lift_empty in IHal.
+    inversion H; subst.
+    setoid_rewrite lift_impl with (Q := length vl = length al) at 3; intros; eauto.
+    rewrite IHal; simpl.
+
+    cancel.
+    eassign (v' :: l); cancel.
+    simpl; cancel.
+    apply possible_crash_list_cons; simpl; auto.
+    rewrite synced_list_length in *; simpl; omega.
+    apply possible_crash_list_cons; simpl; auto.
+    rewrite synced_list_length in *; simpl; omega.
+Qed.
+
 

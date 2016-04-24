@@ -4,17 +4,18 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Mem AsyncDisk Pred Prog PredCrash Hoare \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
-	      Cache WritebackCache FSLayout AsyncRecArray DiskLog \
-	      LogReplay MemLog ListPred MemPred GenSepN Log LogRecArray \
+	      ReadCache WritebackCache Cache FSLayout AsyncRecArray DiskLog \
+	      LogReplay MemLog ListPred MemPred GenSepN \
+		  NEList GroupLog Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
-	      Dir DirName StringUtils TreeUtils DirTree FS Testprog \
-	      ExtrHaskellPrelude
+	      Dir DirName StringUtils TreeUtils DirTree \
+		  SuperBlock AsyncFS DirUtil Testprog ExtrHaskellPrelude
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
-VS_HS      := codegen/FS.hs
-VS_ML      := codegen/FS.ml
-VS_JSON    := codegen/FS.json
+VS_HS      := codegen/AsyncFS.hs
+VS_ML      := codegen/AsyncFS.ml
+VS_JSON    := codegen/AsyncFS.json
 GHC 	   := ghc
 HSC2HS	   := hsc2hs
 ifeq (,$(shell $(GHC) --version | grep 'version 8.0' 2>/dev/null))

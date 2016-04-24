@@ -35,7 +35,7 @@ data DiskStats =
 
 -- FlushLog is used to track writes for empirical crash recovery testing
 data FlushLog =
-  FL ![(Word64, Coq_word)] ![[(Word64, Coq_word)]]
+  FL ![(Integer, Coq_word)] ![[(Integer, Coq_word)]]
   -- The first list is the list of writes since the last flush
   -- The second list is the list of previous flushed write groups
 
@@ -57,7 +57,7 @@ bumpSync sr = do
   Stats r w s <- readIORef sr
   writeIORef sr $ Stats r w (s+1)
 
-logWrite :: Maybe (IORef FlushLog) -> Word64 -> Coq_word -> IO ()
+logWrite :: Maybe (IORef FlushLog) -> Integer -> Coq_word -> IO ()
 logWrite Nothing _ _ = return ()
 logWrite (Just fl) a v = do
   FL writes flushed <- readIORef fl
@@ -88,9 +88,8 @@ i2buf i nbytes (GHC.Exts.Ptr a) = do
   _ <- GMPI.exportIntegerToAddr i a 0#
   return ()
 
-read_disk :: DiskState -> Coq_word -> IO Coq_word
-read_disk ds (W a) = read_disk ds (W64 $ fromIntegral a)
-read_disk (S fd sr _ _) (W64 a) = do
+read_disk :: DiskState -> Integer -> IO Coq_word
+read_disk (S fd sr _ _) a = do
   debugmsg $ "read(" ++ (show a) ++ ")"
   bumpRead sr
   allocaBytes 4096 $ \buf -> do
@@ -104,10 +103,9 @@ read_disk (S fd sr _ _) (W64 a) = do
       do
         error $ "read_disk: short read: " ++ (show cc) ++ " @ " ++ (show a)
 
-write_disk :: DiskState -> Coq_word -> Coq_word -> IO ()
-write_disk ds (W a) v = write_disk ds (W64 $ fromIntegral a) v
-write_disk _ (W64 _) (W64 _) = error "write_disk: short value"
-write_disk (S fd sr dirty fl) (W64 a) (W v) = do
+write_disk :: DiskState -> Integer -> Coq_word -> IO ()
+write_disk _ _ (W64 _) = error "write_disk: short value"
+write_disk (S fd sr dirty fl) a (W v) = do
   -- maybeCrash
   debugmsg $ "write(" ++ (show a) ++ ")"
   bumpWrite sr
@@ -123,7 +121,7 @@ write_disk (S fd sr dirty fl) (W64 a) (W v) = do
       do
         error $ "write_disk: short write: " ++ (show cc) ++ " @ " ++ (show a)
 
-sync_disk :: DiskState -> Coq_word -> IO ()
+sync_disk :: DiskState -> Integer -> IO ()
 sync_disk (S fd sr dirty fl) a = do
   debugmsg $ "sync(" ++ (show a) ++ ")"
   isdirty <- readIORef dirty
@@ -138,7 +136,7 @@ sync_disk (S fd sr dirty fl) a = do
   else
     return ()
 
-trim_disk :: DiskState -> Coq_word -> IO ()
+trim_disk :: DiskState -> Integer -> IO ()
 trim_disk _ a = do
   debugmsg $ "trim(" ++ (show a) ++ ")"
   return ()
@@ -178,13 +176,13 @@ close_disk (S fd sr _ _) = do
   s <- readIORef sr
   return s
 
-get_flush_log :: DiskState -> IO [[(Word64, Coq_word)]]
+get_flush_log :: DiskState -> IO [[(Integer, Coq_word)]]
 get_flush_log (S _ _ _ Nothing) = return []
 get_flush_log (S _ _ _ (Just fl)) = do
   FL writes flushes <- readIORef fl
   return (writes : flushes)
 
-clear_flush_log :: DiskState -> IO [[(Word64, Coq_word)]]
+clear_flush_log :: DiskState -> IO [[(Integer, Coq_word)]]
 clear_flush_log (S _ _ _ Nothing) = return []
 clear_flush_log (S _ _ _ (Just fl)) = do
   FL writes flushes <- readIORef fl

@@ -220,6 +220,25 @@ Proof.
 Qed.
 
 
+Lemma arrayN_updN_memupd : forall V F l a i (v : V) m,
+  (F * arrayN a l)%pred m ->
+  i < length l ->
+  (F * arrayN a (updN l i v))%pred (Mem.upd m (a + i) v).
+Proof.
+  intros.
+  rewrite arrayN_isolate with (i := i).
+  eapply pimpl_trans; [ apply pimpl_refl | | eapply ptsto_upd ].
+  rewrite selN_updN_eq by auto.
+  cancel.
+  rewrite firstn_updN_oob by auto.
+  rewrite skipn_updN by auto.
+  pred_apply.
+  rewrite arrayN_isolate by eauto.
+  cancel.
+  rewrite length_updN; auto.
+  Grab Existential Variables. all: eauto.
+Qed.
+
 Lemma arrayN_app_memupd : forall V l (v : V) m,
   arrayN 0 l m
   -> arrayN 0 (l ++ v :: nil) (Mem.upd m (length l) v).
@@ -414,6 +433,39 @@ Proof.
     repeat rewrite firstn_length_l; omega.
 Qed.
 
+Lemma forall_incl_refl : forall vs,
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) vs vs.
+Proof.
+  induction vs; auto.
+  constructor; auto.
+  apply incl_refl.
+Qed.
+
+
+Lemma vssync_range_incl : forall n vs,
+  n < length vs ->
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) (vssync_range vs n) vs.
+Proof.
+  induction n; simpl; intros.
+  cbn.
+  apply forall_incl_refl.
+  rewrite <- vssync_range_progress by omega.
+  rewrite <- updN_selN_eq with (ix := n) (l := vs) (default := ($0, nil)) at 2.
+  apply forall2_updN.
+  apply IHn; omega.
+
+  unfold vsmerge; simpl.
+  unfold vssync_range.
+  rewrite selN_app2, skipn_selN.
+  rewrite combine_length_eq, map_length, firstn_length_l.
+  rewrite Nat.sub_diag, Nat.add_0_r.
+  apply incl_cons2; apply incl_nil.
+  omega.
+  rewrite map_length, firstn_length_l, repeat_length; omega.
+  rewrite combine_length_eq, map_length, firstn_length_l; try omega.
+  rewrite map_length, firstn_length_l, repeat_length; omega.
+Qed.
+
 
 Definition vsupsyn_range (vsl : list valuset) (vl : list valu) :=
   let n := length vl in
@@ -520,18 +572,76 @@ Proof.
   rewrite vsupd_comm; auto.
 Qed.
 
-
-Lemma vsupd_selN_not_in : forall l a d,
-  NoDup (map fst l) ->
+Lemma vsupd_vecs_selN_not_in : forall l a d,
   ~ In a (map fst l) ->
   selN (vsupd_vecs d l) a ($0, nil) = selN d a ($0, nil).
 Proof.
   induction l; intros; destruct a; simpl in *; auto; intuition.
-  inversion H; subst.
-  rewrite vsupd_vecs_vsupd_notin by auto.
+  rewrite IHl by auto.
   unfold vsupd.
-  rewrite selN_updN_ne; eauto.
+  rewrite selN_updN_ne; auto.
 Qed.
+
+
+Lemma vsupd_vecs_app : forall d a b,
+  vsupd_vecs d (a ++ b) = vsupd_vecs (vsupd_vecs d a) b.
+Proof.
+  unfold vsupd_vecs; intros.
+  rewrite fold_left_app; auto.
+Qed.
+
+Lemma vsupd_vecs_cons : forall l a v avl,
+  vsupd_vecs l ((a, v) :: avl) = vsupd_vecs (vsupd l a v) avl.
+Proof.
+  auto.
+Qed.
+
+
+Lemma vsupd_vecs_selN_vsmerge_in' : forall a v avl l,
+  In v (vsmerge (selN l a ($0, nil))) ->
+  a < length l ->
+  In v (vsmerge (selN (vsupd_vecs l avl) a ($0, nil))).
+Proof.
+  intros.
+  destruct (In_dec addr_eq_dec a (map fst avl)).
+  - revert H H0 i; revert avl l a v.
+    induction avl; auto; intros; destruct a.
+    destruct i; simpl in H0; subst.
+
+    destruct (In_dec addr_eq_dec n (map fst avl)).
+    apply IHavl; auto.
+    right; unfold vsupd; simpl.
+    rewrite selN_updN_eq; auto.
+    unfold vsupd; rewrite length_updN; simpl in *; auto.
+
+    rewrite vsupd_vecs_cons, vsupd_vecs_vsupd_notin by auto.
+    unfold vsupd; rewrite selN_updN_eq.
+    rewrite vsupd_vecs_selN_not_in; auto.
+    right; auto.
+    rewrite vsupd_vecs_length; auto.
+
+    rewrite vsupd_vecs_cons.
+    apply IHavl; auto; unfold vsupd.
+    destruct (addr_eq_dec a0 n); subst.
+    rewrite selN_updN_eq; auto.
+    right; auto.
+    rewrite selN_updN_ne; auto.
+    rewrite length_updN; auto.
+  - rewrite vsupd_vecs_selN_not_in; auto.
+Qed.
+
+
+Lemma vsupd_vecs_selN_vsmerge_in : forall a v avl l,
+  In v (vsmerge (selN l a ($0, nil))) ->
+  In v (vsmerge (selN (vsupd_vecs l avl) a ($0, nil))).
+Proof.
+  intros.
+  destruct (lt_dec a (length l)).
+  apply vsupd_vecs_selN_vsmerge_in'; auto.
+  rewrite selN_oob in *; auto; try omega.
+  rewrite vsupd_vecs_length; omega.
+Qed.
+
 
 
 (** sync vsl for all addresses in l. *)
@@ -658,6 +768,30 @@ Proof.
 Qed.
 
 
+Lemma vssync_vecs_incl : forall l vs,
+  Forall (fun a => a < length vs) l ->
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) (vssync_vecs vs l) vs.
+Proof.
+  induction l; simpl; intros.
+  apply forall_incl_refl.
+  rewrite vssync_vecs_vssync_comm.
+  rewrite <- updN_selN_eq with (ix := a) (l := vs) (default := ($0, nil)) at 2.
+  apply forall2_updN.
+  apply IHl; auto.
+  eapply Forall_cons2; eauto.
+
+  destruct (In_dec addr_eq_dec a l).
+  rewrite vssync_vecs_selN_In; auto.
+  unfold vsmerge; simpl.
+  apply incl_cons2; apply incl_nil.
+  inversion H; eauto.
+
+  rewrite vssync_selN_not_in; auto.
+  unfold vsmerge; simpl.
+  apply incl_cons2; apply incl_nil.
+Qed.
+
+
 
 (* crash prediate over arrays *)
 Definition synced_list m: list valuset := List.combine m (repeat nil (length m)).
@@ -777,6 +911,22 @@ Proof.
   pred_apply; cancel.
 Qed.
 
+Lemma arrayN_listupd_eq : forall V (l : list V) F st d,
+  (F * arrayN st l)%pred d ->
+  d = listupd d st l.
+Proof.
+  induction l; simpl; intros; auto.
+  erewrite <- IHl.
+  rewrite upd_nop; auto.
+  eapply ptsto_valid.
+  pred_apply; cancel.
+  rewrite upd_nop; auto.
+  pred_apply; cancel.
+  eapply ptsto_valid.
+  pred_apply; cancel.
+Qed.
+
+
 Lemma listupd_sel_oob : forall V (l : list V) a off m,
   a < off \/ a >= off + (length l) ->
   listupd m off l a = m a.
@@ -813,7 +963,7 @@ Proof.
   try ( left; intuition; apply listupd_sel_oob; auto ).
   right; intuition.
   apply listupd_sel_inb; omega.
-Qed.
+Defined.
 
 
 Lemma possible_crash_list_updN : forall l l' a v vs,
@@ -899,5 +1049,62 @@ Proof.
   induction l; simpl in *.
   inversion H.
   inversion H; subst; simpl; auto.
+Qed.
+
+Lemma possible_crash_list_unique : forall a b,
+  (forall n, snd (selN a n ($0, nil)) = nil) ->
+  possible_crash_list a b ->
+  b = map fst a.
+Proof.
+  unfold possible_crash_list; intuition.
+  eapply list_selN_ext; auto; intros.
+  rewrite map_length; auto.
+  rewrite <- H1 in H0.
+  specialize (H2 _ H0).
+  inversion H2.
+
+  erewrite selN_map; eauto.
+  rewrite H in H3.
+  inversion H3.
+Qed.
+
+Lemma possible_crash_list_synced_list_eq : forall a b,
+  possible_crash_list (synced_list a) b -> a = b.
+Proof.
+  unfold possible_crash_list; intuition.
+  rewrite synced_list_length in *.
+  eapply list_selN_ext; auto; intros.
+  specialize (H1 _ H).
+  inversion H1.
+
+  generalize H2.
+  unfold synced_list; rewrite selN_combine; eauto.
+  rewrite repeat_length; auto.
+
+  generalize H2.
+  unfold synced_list; rewrite selN_combine; simpl.
+  rewrite repeat_selN by auto.
+  intro Hx; inversion Hx.
+  rewrite repeat_length; auto.
+Qed.
+
+Lemma possible_crash_list_synced_list : forall l,
+  possible_crash_list (synced_list l) l.
+Proof.
+  unfold possible_crash_list; intuition.
+  rewrite synced_list_length; auto.
+  unfold synced_list; constructor.
+  rewrite selN_combine; auto.
+  rewrite repeat_length; auto.
+Qed.
+
+Lemma possible_crash_list_cons : forall vsl vl v vs,
+  possible_crash_list vsl vl ->
+  In v (vsmerge vs) ->
+  possible_crash_list (vs :: vsl) (v :: vl).
+Proof.
+  unfold possible_crash_list; intuition.
+  simpl; omega.
+  destruct i, vs, vsl; firstorder.
 Qed.
 

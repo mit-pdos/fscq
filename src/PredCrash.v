@@ -1,7 +1,7 @@
 Require Import Mem.
 Require Import Pred.
 Require Import Prog.
-Require Import List.
+Require Import List ListUtils.
 Require Import FunctionalExtensionality.
 Require Import Morphisms.
 Require Import AsyncDisk.
@@ -120,11 +120,119 @@ Proof.
   inversion H1.
 Qed.
 
-Theorem crash_xform_idem : forall (p : rawpred), crash_xform (crash_xform p) =p=> crash_xform p.
+
+Lemma possible_crash_notindomain : forall AEQ (m m' : @mem _ AEQ _) a,
+  possible_crash m m' ->
+  notindomain a m ->
+  notindomain a m'.
 Proof.
-  unfold crash_xform, pimpl; intros.
-  repeat deex; eexists; intuition eauto.
-  eapply possible_crash_trans; eauto.
+  unfold possible_crash; intuition.
+  specialize (H a); intuition; repeat deex; congruence.
+Qed.
+
+
+Lemma possible_crash_upd : forall m m' a v vs,
+  possible_crash m m' ->
+  In v (vsmerge vs) ->
+  possible_crash (upd m a vs) (upd m' a (v, nil)).
+Proof.
+  unfold possible_crash; intuition.
+  destruct (addr_eq_dec a a0); subst.
+  repeat rewrite upd_eq; auto.
+  specialize (H a0); intuition; right; eexists; eauto.
+  repeat rewrite upd_ne; auto.
+Qed.
+
+
+Definition synced_mem (m : rawdisk) :=
+  forall a, m a = None \/ exists v, m a = Some (v, nil).
+
+Lemma synced_mem_snd_nil : forall m a vs,
+  synced_mem m ->
+  m a = Some vs ->
+  snd vs = nil.
+Proof.
+  unfold synced_mem; intuition.
+  specialize (H a); intuition; try congruence.
+  destruct H1.
+  rewrite H in H0; inversion H0; auto.
+Qed.
+
+Theorem possible_crash_synced : forall m m',
+  possible_crash m m' ->
+  synced_mem m'.
+Proof.
+  unfold possible_crash, synced_mem; intuition.
+  specialize (H a); intuition.
+  right; repeat deex.
+  eexists; eauto.
+Qed.
+
+Theorem possible_crash_refl : forall m,
+  synced_mem m ->
+  possible_crash m m.
+Proof.
+  unfold synced_mem, possible_crash; intuition.
+  specialize (H a); intuition.
+  destruct H0; right.
+  do 2 eexists; simpl; intuition eauto.
+Qed.
+
+
+Lemma possible_crash_emp_l : forall (m m' : @mem _ addr_eq_dec _),
+  possible_crash m m' ->
+  emp m' ->
+  emp m.
+Proof.
+  unfold possible_crash, emp; intros.
+  specialize (H a); intuition; repeat deex.
+  congruence.
+Qed.
+
+Lemma possible_crash_emp_r : forall (m m' : @mem _ addr_eq_dec _),
+  possible_crash m m' ->
+  emp m ->
+  emp m'.
+Proof.
+  unfold possible_crash, emp; intros.
+  specialize (H a); intuition; repeat deex.
+  congruence.
+Qed.
+
+Lemma possible_crash_ptsto_upd_incl : forall F m m' a vs vs',
+  (F * a |-> vs)%pred m ->
+  possible_crash m m' ->
+  incl (vsmerge vs) (vsmerge vs') ->
+  possible_crash (upd m a vs') m'.
+Proof.
+  unfold possible_crash, vsmerge; simpl; intros.
+  apply ptsto_valid' in H.
+  destruct vs, vs'; simpl in *.
+  destruct (addr_eq_dec a0 a); subst.
+
+  - specialize (H0 a); intuition.
+    left; congruence.
+    right; rewrite upd_eq by auto; repeat deex; destruct vs; simpl in *.
+    rewrite H in H2; inversion H2; subst.
+    exists (w0, l0); exists w1; intuition.
+    rewrite H in H2; inversion H2; subst.
+    exists (w0, l0); exists v'; intuition.
+
+  - rewrite upd_ne by auto.
+    specialize (H0 a0); intuition.
+Qed.
+
+Lemma possible_crash_ptsto_upd_postfix : forall F m m' a v vs vs',
+  (F * a |-> (v, vs))%pred m ->
+  possible_crash m m' ->
+  postfix vs vs' ->
+  possible_crash (upd m a (v, vs')) m'.
+Proof.
+  intros.
+  eapply possible_crash_ptsto_upd_incl; eauto.
+  apply incl_cons2; simpl.
+  unfold incl, postfix in *; destruct H1; subst; intuition.
+  eapply in_skipn_in; eauto.
 Qed.
 
 Theorem crash_xform_sep_star_dist : forall (p q : rawpred),
@@ -210,6 +318,22 @@ Proof.
   - right. rewrite upd_eq; auto. exists vs. exists v. intuition.
   - left. rewrite upd_ne; auto.
 Qed.
+
+
+Theorem crash_xform_ptsto_exis : forall a,
+  crash_xform ( a |->? ) =p=> a |->?.
+Proof.
+  intros.
+  rewrite crash_xform_exists_comm.
+  apply pimpl_exists_l; intro.
+  rewrite crash_xform_ptsto.
+  apply pimpl_exists_l; intro.
+  apply pimpl_exists_r.
+  exists (x0, nil).
+  rewrite sep_star_comm.
+  apply sep_star_lift_l; intros; auto.
+Qed.
+
 
 Theorem crash_xform_pimpl : forall (p q : rawpred), p =p=>q
   -> crash_xform p =p=> crash_xform q.
@@ -350,6 +474,74 @@ Proof.
 Qed.
 
 
+Lemma possible_crash_eq : forall a b c,
+  possible_crash a b ->
+  possible_crash b c ->
+  b = c.
+Proof.
+  unfold possible_crash; intuition.
+  apply functional_extensionality; intros.
+  specialize (H x); specialize (H0 x).
+  intuition; repeat deex; try congruence.
+
+  destruct vs, vs0; subst.
+  rewrite H1 in H0; inversion H0; subst.
+  unfold vsmerge in *; simpl in *.
+  intuition; subst; congruence.
+Qed.
+
+Lemma crash_xform_diskIs_trans : forall d x d',
+  crash_xform (diskIs d) x ->
+  crash_xform (diskIs x) d' ->
+  crash_xform (diskIs x) =p=> crash_xform (diskIs d).
+Proof.
+  intros.
+  apply crash_xform_diskIs in H.
+  apply crash_xform_diskIs in H0.
+  destruct H; destruct H0.
+  apply sep_star_comm in H; apply sep_star_lift_apply in H.
+  apply sep_star_comm in H0; apply sep_star_lift_apply in H0.
+  destruct H; destruct H0.
+  rewrite crash_xform_diskIs, <- crash_xform_diskIs_r by eauto.
+  unfold diskIs in *; subst.
+  unfold pimpl; intros; subst.
+  eapply possible_crash_eq; eauto.
+  destruct H.
+  apply sep_star_comm in H; apply sep_star_lift_apply in H; destruct H.
+  subst; auto.
+Qed.
+
+
+Lemma crash_xform_diskIs_eq : forall F a b,
+  crash_xform F a ->
+  crash_xform (diskIs a) b ->
+  a = b.
+Proof.
+  unfold crash_xform, possible_crash; intuition.
+  apply functional_extensionality; intros.
+  repeat deex.
+  specialize (H2 x); specialize (H3 x).
+  intuition; repeat deex; try congruence.
+
+  rewrite H, H2.
+  unfold vsmerge, diskIs in *; destruct vs, vs0.
+  simpl in *; intuition; subst; try congruence.
+  rewrite H2 in H4; inversion H4; subst.
+  inversion H5.
+  rewrite H2 in H4; inversion H4; subst.
+  inversion H5.
+Qed.
+
+
+Lemma crash_xform_diskIs_pred : forall (F : pred) m,
+  F m -> crash_xform (diskIs m) =p=> crash_xform F.
+Proof.
+  unfold crash_xform, diskIs.
+  unfold pimpl; intros.
+  destruct H0; intuition subst.
+  eexists; eauto.
+Qed.
+
 Lemma crash_xform_ptsto_or : forall (a : addr) (vs : valuset),
   crash_xform (a |-> vs) <=p=> crash_xform (a |-> vs \/ a |=> (fst vs)).
 Proof.
@@ -379,6 +571,35 @@ Proof.
   apply sep_star_lift_l; intro.
   rewrite <- crash_xform_ptsto_r; eauto.
   unfold vsmerge; simpl; intuition.
+Qed.
+
+
+Theorem crash_xform_idem_l : forall (p : rawpred), 
+  crash_xform (crash_xform p) =p=> crash_xform p.
+Proof.
+  unfold crash_xform, pimpl; intros.
+  repeat deex; eexists; intuition eauto.
+  eapply possible_crash_trans; eauto.
+Qed.
+
+Theorem crash_xform_idem_r : forall (p : rawpred),
+  crash_xform p =p=> crash_xform (crash_xform p).
+Proof.
+  unfold crash_xform, pimpl, possible_crash; intros.
+  repeat deex; eexists; intuition eauto.
+  specialize (H1 a); intuition.
+  repeat destruct H; destruct H1.
+  right.
+  do 2 eexists; intuition eauto.
+  cbn; left; auto.
+Qed.
+
+Theorem crash_xform_idem : forall (p : rawpred),
+  crash_xform (crash_xform p) <=p=> crash_xform p.
+Proof.
+  split.
+  apply crash_xform_idem_l.
+  apply crash_xform_idem_r.
 Qed.
 
 

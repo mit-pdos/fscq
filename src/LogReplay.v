@@ -736,6 +736,14 @@ Module LogReplay.
     apply MapFacts.empty_mapsto_iff in H; auto.
   Qed.
 
+  Lemma map_valid_empty : forall l m,
+    Map.Empty m -> map_valid m l.
+  Proof.
+    unfold map_valid; intros.
+    exfalso; eapply map_empty_find_exfalso; eauto.
+    apply Map.find_1; eauto.
+  Qed.
+
   Lemma map_valid_add : forall d a v ms,
     map_valid ms d ->
     a < length d -> a <> 0 ->

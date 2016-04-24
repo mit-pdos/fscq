@@ -726,12 +726,6 @@ Proof.
     congruence.
 Qed.
 
-Lemma incl_cons : forall T (a b : list T) (v : T), incl a b
-  -> incl (v :: a) (v :: b).
-Proof.
-  firstorder.
-Qed.
-
 Lemma ptsto_valid:
   forall a v F (m : @mem AT AEQ V),
   (a |-> v * F)%pred m
@@ -1160,6 +1154,16 @@ Proof.
   repeat rewrite upd_ne by auto; rewrite mem_except_ne; auto.
 Qed.
 
+Theorem mem_except_none : forall (m : @mem AT AEQ V) a,
+  m a = None ->
+  mem_except m a = m.
+Proof.
+  intros.
+  apply functional_extensionality; intros.
+  unfold mem_except.
+  destruct (AEQ x a); congruence.
+Qed.
+
 Lemma mem_except_union_comm: forall (m1 : @mem AT AEQ V) m2 a1 a2 v1,
   a1 <> a2
   -> (a1 |-> v1)%pred m1
@@ -1353,6 +1357,20 @@ Proof.
   eapply mem_except_union_comm; eauto.
   apply mem_disjoint_mem_except; auto.
   exists (diskIs (mem_except m2 a')). firstorder.
+Qed.
+
+Theorem mem_except_comm : forall (m : @mem AT AEQ V) a a',
+  mem_except (mem_except m a) a' = mem_except (mem_except m a') a.
+Proof.
+  intros.
+  apply functional_extensionality; intros.
+  destruct (AEQ x a); destruct (AEQ x a'); subst; subst; auto.
+  rewrite mem_except_ne; auto.
+  repeat rewrite mem_except_eq; auto.
+  repeat rewrite mem_except_eq; auto.
+  rewrite mem_except_ne; auto.
+  rewrite mem_except_eq; auto.
+  repeat rewrite mem_except_ne; auto.
 Qed.
 
 Theorem exact_domain_disjoint_union : forall (p : @pred AT AEQ V) m1 m2 m1' m2',

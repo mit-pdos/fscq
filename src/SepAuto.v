@@ -468,16 +468,17 @@ Proof.
   intuition; apply PickLater; auto.
 Qed.
 
-(*
 Lemma crash_xform_okToUnify : forall (P Q: rawpred),
   okToUnify P Q -> okToUnify (crash_xform P) (crash_xform Q).
 Proof.
   intros. unfold okToUnify in *. congruence.
 Qed.
-*)
 
-Ltac pick := solve [ repeat ((apply PickFirst; solve [ (*try apply crash_xform_okToUnify; *) trivial with okToUnify ])
-                               || apply PickLater) ].
+
+Ltac pick := solve [ repeat 
+          ((apply PickFirst;
+            solve [ try apply crash_xform_okToUnify; trivial with okToUnify ]
+           ) || apply PickLater) ].
 
 
 Theorem imply_one : forall AT AEQ V qs qs' (p : @pred AT AEQ V) q ps F,
@@ -549,7 +550,7 @@ Ltac cancel' := repeat (cancel_one || delay_one);
                     | context[sep_star] => match Q with context[sep_star] => fail 2 end
                     | _ => idtac
                     end;
-                    apply finish_frame
+                    simple apply finish_frame
                   end ].
 
 Theorem split_or_one : forall AT AEQ V (q : @pred AT AEQ V) pa pb ps F,
@@ -868,6 +869,9 @@ Ltac inv_option_eq := try ((progress inv_option_eq'); subst; eauto).
 Tactic Notation "denote" open_constr(pattern) "as" ident(n) :=
   match goal with | [ H: context [ pattern ] |- _ ] => rename H into n end.
 
+Tactic Notation "denote!" open_constr(pattern) "as" ident(n) :=
+  match goal with | [ H: pattern |- _ ] => rename H into n end.
+
 Tactic Notation "substl" :=
   subst; repeat match goal with
   | [ H : ?l = ?r |- _ ] => is_var l;
@@ -889,6 +893,25 @@ Tactic Notation "substl" constr(term) :=
   | [ H : _ = term  |- _ ] => setoid_rewrite <- H
   end.
 
+
+Ltac safecancel :=
+  intros;
+  unfold stars; simpl; try subst;
+  pimpl_crash;
+  norm;
+  try match goal with
+      | [ |- _ =p=> stars ((_ \/ _) :: nil) ] =>
+        solve [ apply stars_or_left; safecancel
+              | apply stars_or_right; safecancel ]
+      | [ |- _ =p=> _ ] => cancel'
+      end;
+  set_evars; intuition; subst_evars;
+  try ( pred_apply; safecancel );
+  try congruence;
+  unfold stars; simpl; inv_option_eq;
+  try match goal with
+  | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
+  end.
 
 Ltac cancel_with t :=
   intros;
@@ -992,11 +1015,8 @@ Ltac poststep t :=
   try t.
 
 Ltac safestep :=
-    prestep; norm; [ cancel | ];
-    repeat match goal with 
-    | [ |- _ /\ _ ] => split 
-    | [ |- True ] => auto
-    end; try pred_apply.
+    prestep; safecancel;
+    set_evars; poststep auto; subst_evars.
 
 Ltac or_r := apply pimpl_or_r; right.
 Ltac or_l := apply pimpl_or_r; left.
@@ -1054,11 +1074,10 @@ Ltac xform_deex_r :=
 
 Ltac xform_deex_l :=
     norml; unfold stars; simpl; clear_norm_goal;
+    try rewrite -> crash_xform_exists_comm;
     try (rewrite sep_star_comm, star_emp_pimpl);
     try match goal with
-    | [ |- pimpl (crash_xform (exis _)) _ ] =>
-             rewrite crash_xform_exists_comm;
-             apply pimpl_exists_l; intro
+    | [ |- pimpl (exis _) _ ] => apply pimpl_exists_l; intro
     end.
 
 Ltac xform_dist :=
@@ -1077,4 +1096,13 @@ Ltac xform_normr :=
 Ltac xform_norm :=
   xform_norml; xform_normr.
 
+Ltac xcrash_rewrite :=
+  match goal with
+  | [ H : forall rc, (crash_xform rc =p=> crash_xform ?x) -> _ =p=> ?c |- _ =p=> ?c] =>
+      eapply pimpl_trans; [ | eapply H ]; cancel; subst
+  | [ H : crash_xform ?rc =p=> _ |- crash_xform ?rc =p=> _ ] => rewrite H
+  end.
+
+Ltac xcrash := subst; repeat xcrash_rewrite;
+               xform_norm; cancel; xform_normr; cancel.
 

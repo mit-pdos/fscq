@@ -184,12 +184,12 @@ Module PaddedLog.
     POST RET: cs
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * rep xp (Unsync n old))%pred d' ]]
-    CRASH  exists cs', BUFCACHE.rep cs' d
-           \/ exists d', BUFCACHE.rep cs' d' * [[ (F * rep xp (Unsync n old))%pred d' ]]
+    XCRASH  exists cs' d', BUFCACHE.rep cs' d' * [[ (F * rep xp (Unsync n old))%pred d' ]]
     >} write xp n cs.
     Proof.
       unfold write.
       hoare.
+      xcrash.
     Qed.
 
     Theorem read_ok : forall xp cs,
@@ -212,19 +212,20 @@ Module PaddedLog.
     Qed.
 
     Theorem sync_ok : forall xp cs,
-    {< F d n,
-    PRE            BUFCACHE.rep cs d * exists old,
+    {< F d n old,
+    PRE            BUFCACHE.rep cs d *
                    [[ (F * rep xp (Unsync n old))%pred d ]]
     POST RET: cs
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * rep xp (Synced n))%pred d' ]]
-    CRASH  exists cs', BUFCACHE.rep cs' d
-           \/ exists d', BUFCACHE.rep cs' d' * [[ (F * rep xp (Synced n))%pred d' ]]
+    XCRASH  exists cs' d', BUFCACHE.rep cs' d' *
+                   [[ (F * rep xp (Unsync n old))%pred d' ]]
     >} sync xp cs.
     Proof.
       unfold sync.
       hoare.
-    Qed.
+      xcrash.
+   Qed.
 
     Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
     Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
@@ -633,8 +634,9 @@ Module PaddedLog.
     >} avail xp cs.
   Proof.
     unfold avail.
-    step.
-    step.
+    safestep.
+    safestep.
+    cancel.
   Qed.
 
   Definition read_ok : forall xp cs,
@@ -651,21 +653,26 @@ Module PaddedLog.
     >} read xp cs.
   Proof.
     unfold read.
-    step.
-
-    safestep; subst.
-    instantiate (1 := map ent_addr (padded_log l)).
+    safestep.
+    prestep. norm. cancel. intuition simpl.
+    eassign (map ent_addr (padded_log l)).
     rewrite map_length, padded_log_length.
-    all: auto.
+    auto. auto.
+    pred_apply.
     rewrite desc_padding_synced_piff; cancel.
 
-    step.
+    safestep.
     rewrite vals_nonzero_addrs; unfold ndata_log.
     replace DataSig.items_per_val with 1 by (cbv; auto); omega.
 
-    all: hoare using (subst; eauto).
-    all: cancel; rewrite desc_padding_synced_piff; cancel.
+    safestep.
+    rewrite desc_padding_synced_piff; cancel.
+    subst; eauto.
+
+    all: cancel.
+    rewrite desc_padding_synced_piff; cancel.
   Qed.
+
 
   Lemma goodSize_0 : forall sz, goodSize sz 0.
   Proof.
@@ -743,11 +750,8 @@ Module PaddedLog.
     POST RET: cs  exists d',
           BUFCACHE.rep cs d' *
           [[ (F * rep xp (Synced nil))%pred d' ]]
-    CRASH exists cs' d', 
-          BUFCACHE.rep cs' d' * (
-          [[ (F * (rep xp (Synced l)))%pred d' ]] \/
-          [[ (F * (rep xp (Truncated l)))%pred d' ]] \/
-          [[ (F * (rep xp (Synced nil)))%pred d' ]])
+    XCRASH exists cs' d', 
+          BUFCACHE.rep cs' d' * [[ (F * (rep xp (Truncated l)))%pred d' ]]
     >} trunc xp cs.
   Proof.
     unfold trunc.
@@ -757,13 +761,8 @@ Module PaddedLog.
     cancel_by helper_trunc_ok.
 
     (* crash conditions *)
-    cancel.
-    or_r; cancel.
-    or_r; cancel.
-    cancel_by helper_trunc_ok.
-
-    or_l; cancel.
-    or_r; cancel.
+    xcrash.
+    xcrash.
   Qed.
 
   Definition loglen_valid xp ndesc ndata :=
@@ -1180,12 +1179,10 @@ Module PaddedLog.
              (F * rep xp (Synced ((padded_log old) ++ new)))%pred d' ]] \/
           [[ r = false /\ length ((padded_log old) ++ new) > LogLen xp /\
              (F * rep xp (Synced old))%pred d' ]])
-    CRASH exists cs' d',
+    XCRASH exists cs' d',
           BUFCACHE.rep cs' d' * (
           [[ (F * rep xp (Synced old))%pred d' ]] \/
-          [[ (F * rep xp (ExtendedUnsync old))%pred d' ]] \/
-          [[ (F * rep xp (Extended old new))%pred d' ]] \/
-          [[ (F * rep xp (Synced ((padded_log old) ++ new)))%pred d' ]])
+          [[  (F * rep xp (Extended old new))%pred d' ]])
     >} extend xp new cs.
   Proof.
     unfold extend.
@@ -1194,69 +1191,69 @@ Module PaddedLog.
 
     (* true case *)
     - (* write content *)
-      step.
+      safestep.
       rewrite Desc.avail_rep_split. cancel.
       autorewrite with lists; apply helper_loglen_desc_valid_extend; auto.
 
-      step.
+      safestep.
       rewrite Data.avail_rep_split. cancel.
       autorewrite with lists.
       rewrite divup_1; rewrite <- entry_valid_ndata by auto.
       apply helper_loglen_data_valid_extend; auto.
 
       (* sync content *)
-      safestep.
+      prestep. norm. cancel. intuition simpl.
       instantiate ( 1 := map ent_addr (padded_log new) ).
       rewrite map_length, padded_log_length; auto.
       apply padded_desc_valid.
       apply loglen_valid_desc_valid; auto.
       rewrite desc_padding_unsync_piff.
-      cancel.
+      pred_apply; cancel.
 
-      step.
+      safestep.
       autorewrite with lists.
       rewrite entry_valid_ndata, Nat.mul_1_r; auto.
 
       (* write header *)
-      step.
+      safestep.
       eapply loglen_valid_goodSize_l; eauto.
       eapply loglen_valid_goodSize_r; eauto.
 
       (* sync header *)
-      step.
+      safestep.
 
       (* post condition *)
-      step.
+      safestep.
       or_l; cancel.
       cancel_by extend_ok_helper; auto.
 
-      (* crash conditons *)
+      (* crashes *)
       (* after header write : Extended *)
-      cancel. or_r; or_r; or_l.  cancel.
+      xcrash.
+      or_r; cancel.
       cancel_by extend_ok_helper; auto.
 
       (* after header sync : Synced new *)
-      or_r; or_r; or_r.  cancel.
+      xcrash.
+      or_r; cancel.
       cancel_by extend_ok_helper; auto.
 
       (* before header write : ExtendedUnsync *)
-      cancel. or_r; or_l. cancel. extend_crash.
+      xcrash.
+      or_l; cancel.
+      extend_crash.
 
-      (* after sync data : Extended *)
-      or_r; or_r; or_l.    cancel.
-      cancel_by extend_ok_helper; auto.
+      xcrash.
+      or_l; cancel.
+      extend_crash.
 
-      (* after sync desc : ExtendedUnsync *)
-      cancel. or_r; or_l.  cancel. extend_crash.
-
-      (* after write data : ExtendedUnsync *)
-      cancel. or_r; or_l.  cancel. extend_crash.
-
-      (* after write desc : ExtendedUnsync *)
-      cancel. or_r; or_l.  cancel. extend_crash.
+      xcrash.
+      or_l; cancel.
+      extend_crash.
 
       (* before write desc : Synced old *)
-      cancel. or_l. cancel.
+      xcrash.
+      or_l; cancel.
       rewrite Desc.avail_rep_merge. cancel.
       rewrite map_length.
       apply helper_loglen_desc_valid_extend; auto.
@@ -1267,7 +1264,9 @@ Module PaddedLog.
       apply loglen_invalid_overflow; auto.
 
     (* crash for the false case *)
-    - cancel; hoare.
+    - cancel.
+      xcrash.
+      or_l; cancel.
   Qed.
 
 
@@ -1576,11 +1575,9 @@ Module DLog.
     POST RET: cs exists d',
               BUFCACHE.rep cs d' *
               [[ (F * rep xp (Synced (LogLen xp) nil))%pred d' ]]
-    CRASH exists cs d',
-              BUFCACHE.rep cs d' * (
-              [[ (F * rep xp (Synced nr l))%pred d' ]] \/
-              [[ (F * rep xp (Truncated l))%pred d' ]] \/
-              [[ (F * rep xp (Synced (LogLen xp) nil))%pred d' ]])
+    XCRASH exists cs d',
+              BUFCACHE.rep cs d' *
+              [[ (F * rep xp (Truncated l))%pred d' ]]
     >} trunc xp cs.
   Proof.
     unfold trunc.
@@ -1588,9 +1585,7 @@ Module DLog.
     unfold roundup; rewrite divup_0; omega.
 
     (* crashes *)
-    or_r; cancel.
-    or_r; cancel.
-    unfold roundup; rewrite divup_0; omega.
+    xcrash.
   Qed.
 
 
@@ -1695,37 +1690,48 @@ Module DLog.
                 (F * rep xp (Synced (nr - (rounded (length new))) (old ++ new)))%pred d' ]] \/
               [[ r = false /\ length new > nr /\
                 (F * rep xp (Synced nr old))%pred d' ]])
-    CRASH exists cs' d',
+    XCRASH exists cs' d',
           BUFCACHE.rep cs' d' * (
           [[ (F * rep xp (Synced nr old))%pred d' ]] \/
-          [[ (F * rep xp (ExtendedUnsync old))%pred d' ]] \/
-          [[ (F * rep xp (Extended old new))%pred d' ]] \/
-          [[ (F * rep xp (Synced (nr - (rounded (length new))) (old ++ new)))%pred d' ]])
+          [[ (F * rep xp (Extended old new))%pred d' ]])
     >} extend xp new cs.
   Proof.
     unfold extend.
 
-    step.
-    step.
+    safestep.
+    eassign dummy; cancel.
+    safestep.
 
-    or_l. norm; [ cancel | intuition; pred_apply; norm ].
+    or_l; norm; [ cancel | intuition; pred_apply; norm ].
     eassign (PaddedLog.padded_log dummy ++ PaddedLog.padded_log new).
     cancel; auto.
     intuition.
+    or_r; cancel; eauto.
 
+    xcrash.
     or_l; cancel.
-    cancel.
-    cancel.
-    or_r; or_r; or_r; norm; [ cancel | intuition; pred_apply; norm ].
-    eassign (PaddedLog.padded_log dummy ++ PaddedLog.padded_log new).
-    cancel; auto.
-    intuition.
+    or_r; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (avail _ _) _) => apply avail_ok : prog.
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (trunc _ _) _) => apply trunc_ok : prog.
   Hint Extern 1 ({{_}} progseq (extend _ _ _) _) => apply extend_ok : prog.
+
+
+  (* ExtendedUnsync is actually a redundent state, it is equivalent to Synced *)
+  Lemma extend_unsynced_synced : forall xp l,
+    rep xp (ExtendedUnsync l) =p=> exists na, rep xp (Synced na l).
+  Proof.
+    unfold rep, rep_common; cancel; eauto.
+  Qed.
+
+  Lemma synced_extend_unsynced : forall xp l na,
+    rep xp (Synced na l) =p=> rep xp (ExtendedUnsync l).
+  Proof.
+    unfold rep, rep_common; cancel; eauto.
+  Qed.
+
 
   Lemma xform_rep_synced : forall xp na l,
     crash_xform (rep xp (Synced na l)) =p=> rep xp (Synced na l).

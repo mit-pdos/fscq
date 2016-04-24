@@ -7,7 +7,7 @@ Require Import BFile.
 Require Import BasicProg.
 Require Import Log.
 Require Import Hoare.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import Omega.
 Require Import Rec.
 Require Import Array.
@@ -577,6 +577,23 @@ Module DIR.
     apply Forall_nil.
   Qed.
 
+  Theorem crash_eq : forall f f' m1 m2,
+    BFILE.file_crash f f' ->
+    rep f m1 ->
+    rep f' m2 ->
+    m1 = m2.
+  Proof.
+    intros.
+    apply eq_sym.
+    eapply rep_mem_eq; eauto.
+
+    unfold rep in *.
+    repeat deex.
+    eexists; intuition eauto.
+    assert (delist0 = delist).
+    eapply Dent.file_crash_rep_eq; eauto.
+    subst; eauto.
+  Qed.
 
 End DIR.
 

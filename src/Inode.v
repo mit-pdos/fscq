@@ -1,5 +1,5 @@
 Require Import Arith.
-Require Import Pred.
+Require Import Pred PredCrash.
 Require Import Word.
 Require Import Prog.
 Require Import Hoare.
@@ -154,6 +154,10 @@ Module INODE.
   (************* program *)
 
 
+  Definition init T lxp xp ms rx : prog T :=
+    ms <- IRec.init lxp xp ms;
+    rx ms.
+
   Definition getlen T lxp xp inum ms rx : prog T := Eval compute_rec in
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     rx ^(ms, # (ir :-> "len" )).
@@ -161,7 +165,6 @@ Module INODE.
   (* attribute getters *)
 
   Definition ABytes  (a : iattr) := Eval cbn in ( a :-> "bytes" ).
-  Definition ABlocks (a : iattr) := Eval cbn in ( a :-> "blocks" ).
   Definition AMTime  (a : iattr) := Eval cbn in ( a :-> "mtime" ).
   Definition AType   (a : iattr) := Eval cbn in ( a :-> "itype" ).
   Definition ADev    (a : iattr) := Eval cbn in ( a :-> "dev" ).
@@ -626,6 +629,35 @@ Module INODE.
     apply in_selN; eauto.
   Qed.
 
+  Lemma crash_xform_inode_match : forall xp a b,
+    crash_xform (inode_match xp a b) <=p=> inode_match xp a b.
+  Proof.
+    unfold inode_match; split.
+    xform_norm.
+    rewrite Ind.xform_rep; cancel.
+    cancel.
+    xform_normr.
+    rewrite Ind.xform_rep; cancel.
+  Qed.
+
+
+  Theorem xform_rep : forall bxp xp l,
+    crash_xform (rep bxp xp l) <=p=> rep bxp xp l.
+  Proof.
+    unfold rep; intros; split.
+    xform_norm.
+    rewrite IRec.xform_rep.
+    rewrite xform_listmatch_idem.
+    cancel.
+    apply crash_xform_inode_match.
+
+    cancel.
+    xform_normr.
+    rewrite IRec.xform_rep.
+    rewrite xform_listmatch_idem.
+    cancel.
+    apply crash_xform_inode_match.
+  Qed.
 
 End INODE.
 

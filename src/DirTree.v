@@ -1948,8 +1948,13 @@ Module DIRTREE.
   Implicit Arguments read_bytes [T].
 *)
 
-  Definition write T fsxp inum off v mscs rx : prog T :=
-    mscs <- BFILE.write (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
+  Definition dwrite T fsxp inum off v mscs rx : prog T :=
+    mscs <- BFILE.dwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
+    rx mscs.
+
+
+  Definition datasync T fsxp inum mscs rx : prog T :=
+    mscs <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
     rx mscs.
 
 (*
@@ -2007,9 +2012,12 @@ Module DIRTREE.
     >} read fsxp inum off mscs.
   Proof.
     unfold read, rep.
-    step.
+    safestep.
+    eapply list2nmem_inbound; eauto.
     rewrite subtree_extract; eauto. cancel.
+    eauto.
     step.
+    cancel; eauto.
   Qed.
 
 (*
@@ -2039,29 +2047,53 @@ Module DIRTREE.
   Qed.
 *)
 
-  Theorem write_ok : forall fsxp inum off v mscs,
-    {< F mbase m pathname Fm Ftop tree f B v0,
-    PRE    LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) mscs *
-           [[ (Fm * rep fsxp Ftop tree)%pred (list2nmem m) ]] *
+
+Require Import NEList.
+
+  Theorem dwrite_ok : forall fsxp inum off v mscs,
+    {< F ds pathname Fm Ftop tree f B v0,
+    PRE    LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds ds!!) mscs *
+           [[[ ds!! ::: Fm * rep fsxp Ftop tree ]]] *
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-           [[ (B * off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]]
+           [[[ (BFILE.BFData f) ::: (B * off |-> v0) ]]]
     POST RET:mscs
-           exists m' tree' f',
-           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') mscs *
-           [[ (Fm * rep fsxp Ftop tree')%pred (list2nmem m') ]] *
+           exists d tree' f',
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn (d, nil) d) mscs *
+           [[[ d ::: Fm * rep fsxp Ftop tree' ]]] *
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-           [[ (B * off |-> (v, nil))%pred (list2nmem (BFILE.BFData f')) ]] *
-           [[ f' = BFILE.mk_bfile (updN (BFILE.BFData f) off (v, nil)) (BFILE.BFAttr f) ]]
-    CRASH  LOG.intact fsxp.(FSXPLog) F mbase
-    >} write fsxp inum off v mscs.
+           [[[ (BFILE.BFData f') ::: (B * off |-> (v, vsmerge v0)) ]]] *
+           [[ f' = BFILE.mk_bfile (updN (BFILE.BFData f) off (v, vsmerge v0)) (BFILE.BFAttr f) ]]
+    CRASH  LOG.intact fsxp.(FSXPLog) F ds
+    >} dwrite fsxp inum off v mscs.
   Proof.
-    unfold write, rep.
-    step.
+    unfold dwrite, rep.
+    safestep.
+    eapply list2nmem_inbound; eauto.
     rewrite subtree_extract; eauto. cancel.
-    step.
+    eauto.
+    safestep.
     rewrite <- subtree_absorb; eauto. cancel.
+
     eapply find_subtree_inum_valid; eauto.
   Qed.
+
+ Theorem datasync_ok : forall fsxp inum mscs,
+    {< F mbase m pathname Fm Ftop tree f,
+    PRE    LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) mscs *
+           [[ (Fm * rep fsxp Ftop tree)%pred (list2nmem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST RET:mscs
+           exists m' tree',
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') mscs *
+           [[ (Fm * rep fsxp Ftop tree')%pred (list2nmem m') ]] *
+           [[ tree' = update_subtree pathname (TreeFile inum (BFILE.synced_file f)) tree ]]
+    CRASH  LOG.intact fsxp.(FSXPLog) F mbase
+    >} datasync fsxp inum mscs.
+  Proof.
+    unfold datasync, rep.
+    step.
+  Admitted.
+
 
 (*
   Theorem update_bytes_ok : forall fsxp inum off len (newbytes: bytes len) mscs,
@@ -2213,7 +2245,8 @@ Module DIRTREE.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _ _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write _ _ _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _ _) _) => apply dwrite_ok : prog.
+  Hint Extern 1 ({{_}} progseq (datasync _ _ _) _) => apply datasync_ok : prog.
   Hint Extern 1 ({{_}} progseq (truncate _ _ _ _) _) => apply truncate_ok : prog.
   Hint Extern 1 ({{_}} progseq (getlen _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_}} progseq (getattr _ _ _) _) => apply getattr_ok : prog.

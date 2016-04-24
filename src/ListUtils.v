@@ -1911,6 +1911,56 @@ Proof.
   apply Forall_cons; firstorder.
 Qed.
 
+Lemma forall2_length : forall A B (a : list A) (b : list B) P,
+  Forall2 P a b -> length a = length b.
+Proof.
+  induction 1; simpl; auto.
+Qed.
+
+Lemma forall2_forall : forall A B (a : list A) (b : list B) P,
+  Forall2 P a b -> Forall (fun x => P (fst x) (snd x)) (combine a b).
+Proof.
+  induction 1; simpl; auto.
+Qed.
+
+Lemma forall_forall2 : forall A B (a : list A) (b : list B) P,
+  Forall (fun x => P (fst x) (snd x)) (combine a b) ->
+  length a = length b ->
+  Forall2 P a b.
+Proof.
+  induction a; destruct b; firstorder.
+  inversion H0.
+  inversion H0.
+  inversion H; subst; simpl in *.
+  constructor; auto.
+Qed.
+
+Lemma forall2_selN : forall A B (a : list A) (b : list B) P n ad bd,
+  Forall2 P a b ->
+  n < length a ->
+  P (selN a n ad) (selN b n bd).
+Proof.
+  intros.
+  pose proof (forall2_length H).
+  apply forall2_forall in H.
+  eapply Forall_selN with (i := n) in H.
+  erewrite selN_combine in H; eauto.
+  rewrite combine_length_eq; auto.
+Qed.
+
+Lemma forall2_updN : forall A B P (a : list A) (b : list B) xa xb i,
+  Forall2 P a b ->
+  P xa xb ->
+  Forall2 P (updN a i xa) (updN b i xb).
+Proof.
+  intros.
+  apply forall_forall2.
+  rewrite combine_updN.
+  apply Forall_updN; auto.
+  apply forall2_forall; auto.
+  repeat rewrite length_updN.
+  eapply forall2_length; eauto.
+Qed.
 
 Definition cuttail A n (l : list A) := firstn (length l - n) l.
 
@@ -1978,4 +2028,64 @@ Proof.
   rewrite app_length; simpl.
   replace (length l + 1 - S n) with (length l - n) by omega.
   rewrite firstn_app_l; auto; omega.
+Qed.
+
+Lemma incl_cons2 : forall T (a b : list T) (v : T), 
+  incl a b
+  -> incl (v :: a) (v :: b).
+Proof.
+  firstorder.
+Qed.
+
+Lemma incl_nil : forall T (l : list T), 
+  incl nil l.
+Proof.
+  firstorder.
+Qed.
+
+
+Definition postfix A (a b : list A) :=
+  exists n, a = skipn n b.
+
+Lemma postfix_nil : forall A (l : list A),
+  postfix nil l.
+Proof.
+  unfold postfix; intros.
+  exists (length l).
+  rewrite skipn_oob; auto.
+Qed.
+
+Lemma postfix_refl : forall A (a : list A),
+  postfix a a.
+Proof.
+  unfold postfix; intros.
+  exists 0; auto.
+Qed.
+
+Lemma postfix_app : forall A (l a b: list A),
+  postfix l b ->
+  postfix l (a ++ b).
+Proof.
+  unfold postfix; intros.
+  destruct H. eexists; subst.
+  rewrite skipn_app_r; eauto.
+Qed.
+
+Lemma postfix_tl : forall A x (l a: list A),
+  postfix l a ->
+  postfix l (x :: a).
+Proof.
+  intros.
+  rewrite cons_app.
+  apply postfix_app; auto.
+Qed.
+
+Lemma postfix_singular : forall A (a : A) l,
+  postfix l [ a ] -> l <> nil -> l = [ a ].
+Proof.
+  unfold postfix; intros.
+  destruct H.
+  destruct l; try congruence.
+  destruct x; simpl in *; try congruence.
+  rewrite skipn_nil in H; congruence.
 Qed.

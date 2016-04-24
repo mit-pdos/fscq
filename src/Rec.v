@@ -781,23 +781,6 @@ Module Rec.
   abstract nia.
   Defined.
 
-  Definition word_splice {ft : type} {l : nat} (w : word (len (ArrayF ft l))) (idx : nat)
-                         (items : list (word (len ft))) : word (len (ArrayF ft l)).
-    destruct (lt_dec idx l).
-    remember ( word_concat (firstn (l - idx) items) ) as v.
-    replace (len (ArrayF ft l)) with 
-     (len (ArrayF ft l) - Nat.min (len (ArrayF ft l) - idx * len ft) (len ft * List.length items)
-     + len ft * List.length (firstn (l - idx) items)).
-    refine (splice w (idx * len ft) (len ft * List.length items) v).
-    abstract (
-      destruct (lt_dec (l - idx) (List.length items)); 
-        [ rewrite firstn_length_l by lia; simpl; rewrite Nat.min_l; nia
-        | rewrite firstn_length_r by lia; simpl; rewrite Nat.min_r; nia 
-      ]).
-    exact w.
-  Defined.
-
-
   Theorem of_word_zero_list : forall ft n,
     @Rec.of_word (ArrayF ft n) $0 = repeat (Rec.of_word $0) n.
   Proof.

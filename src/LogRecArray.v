@@ -1,5 +1,5 @@
 Require Import Eqdep_dec Arith Omega List ListUtils Rounding Psatz.
-Require Import Word WordAuto AsyncDisk Pred GenSepN Array SepAuto.
+Require Import Word WordAuto AsyncDisk Pred PredCrash GenSepN Array SepAuto.
 Require Import Rec Prog BasicProg Hoare RecArrayUtils Log.
 Import ListNotations.
 
@@ -433,6 +433,18 @@ Module LogRecArray (RA : RASig).
     rep xp l =p=> [[ length l = ((RALen xp) * items_per_val)%nat ]] * rep xp l.
   Proof.
     unfold rep, items_valid; cancel.
+  Qed.
+
+  Theorem xform_rep : forall xp l,
+    crash_xform (rep xp l) <=p=> rep xp l.
+  Proof.
+    unfold rep; intros; split.
+    xform_norm.
+    rewrite crash_xform_arrayN_synced; cancel.
+    cancel.
+    xform_normr; cancel.
+    rewrite <- crash_xform_arrayN_r; eauto.
+    apply possible_crash_list_synced_list.
   Qed.
 
 End LogRecArray.
