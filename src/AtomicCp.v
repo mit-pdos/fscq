@@ -55,7 +55,7 @@ Module ATOMICCP.
     let^ (mscs, attr) <-  AFS.file_get_attr fsxp src_inum mscs;
     let^ (mscs, ok) <- AFS.file_truncate fsxp dst_inum 1 mscs;  (* XXX type error when passing sz *)
     If (bool_dec ok false) {
-      rx ^(mscs, false)
+      rx ^(mscs, ok)
     } else {
       let^ (mscs, b) <- AFS.read_fblock fsxp src_inum 0 mscs;
       mscs <- AFS.update_fblock_d fsxp dst_inum 0 b mscs;

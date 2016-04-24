@@ -157,14 +157,14 @@ Module AFS.
     ms <- LOG.begin (FSXPLog fsxp) ms;
     ms <- DIRTREE.dwrite fsxp inum off v ms;
     ms <- LOG.commit_ro (FSXPLog fsxp) ms;
-    rx ^(ms, tt).
+    rx ms.
 
   (* sync only data blocks of a file. XXX does a global flush too *)
   Definition file_sync T fsxp inum ms rx : prog T :=
     ms <- LOG.begin (FSXPLog fsxp) ms;
     ms <- DIRTREE.datasync fsxp inum ms;
     ms <- LOG.commit_ro (FSXPLog fsxp) ms;
-    rx ^(ms, tt).
+    rx ms.
 
   Definition readdir T fsxp dnum mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -596,7 +596,7 @@ Module AFS.
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> v0) ]]]
-    POST RET:^(mscs, _)
+    POST RET:mscs
       exists d tree' f',
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
@@ -637,7 +637,7 @@ Module AFS.
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> v0) ]]]
-    POST RET:^(mscs, _)
+    POST RET:mscs
       exists d tree' f',
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
@@ -697,7 +697,7 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
-    POST RET:^(mscs, _)
+    POST RET:mscs
       exists d tree',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
@@ -749,7 +749,7 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
-    POST RET:^(mscs, _)
+    POST RET:mscs
       exists d tree',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
