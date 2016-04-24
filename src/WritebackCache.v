@@ -1620,3 +1620,8 @@ Module WBCache.
 
 
 End WBCache.
+
+Global Opaque WBCache.write_array.
+Global Opaque WBCache.read_array.
+Global Opaque WBCache.sync_array.
+
