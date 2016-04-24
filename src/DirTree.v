@@ -17,6 +17,7 @@ Require Import SepAuto.
 Require Import Array.
 Require Import FunctionalExtensionality.
 Require Import AsyncDisk.
+Require Import NEList.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -1940,32 +1941,13 @@ Module DIRTREE.
     let^ (mscs, v) <- BFILE.read (FSXPLog fsxp) (FSXPInode fsxp) inum off mscs;
     rx ^(mscs, v).
 
-(*
-  Definition read_bytes T fsxp inum off len mscs rx : prog T :=
-    let^ (mscs, data) <- FASTBYTEFILE.read_bytes fsxp inum off len mscs;
-    rx ^(mscs, data).
-
-  Implicit Arguments read_bytes [T].
-*)
-
   Definition dwrite T fsxp inum off v mscs rx : prog T :=
     mscs <- BFILE.dwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
     rx mscs.
 
-
   Definition datasync T fsxp inum mscs rx : prog T :=
     mscs <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
     rx mscs.
-
-(*
-  Definition update_bytes T fsxp inum off len (data: bytes len) mscs rx : prog T :=
-    mscs <- FASTBYTEFILE.update_bytes fsxp inum off data mscs;
-    rx mscs.
-
-  Definition append T fsxp inum off len (data: bytes len) mscs rx : prog T :=
-    mscs <- FASTBYTEFILE.append fsxp inum off data mscs;
-    rx mscs.
-*)
 
   Definition truncate T fsxp inum nblocks mscs rx : prog T :=
     let^ (mscs, ok) <- BFILE.truncate (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
@@ -2020,36 +2002,6 @@ Module DIRTREE.
     cancel; eauto.
   Qed.
 
-(*
-  Theorem read_bytes_ok : forall fsxp inum off len mscs,
-    {< F mbase m pathname Fm Ftop tree f bytes,
-    PRE    LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
-           [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
-           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-           [[ FASTBYTEFILE.rep bytes f ]]
-    POST RET:^(mscs,b)
-           exists Fx v,
-           LOG.rep fsxp.(FSXPLog) F (ActiveTxn mbase m) mscs *
-           [[ (Fx * arrayN off v)%pred (list2nmem bytes) ]] *
-           [[ @Rec.of_word (Rec.ArrayF FASTBYTEFILE.byte_type (FASTBYTEFILE.buf_len b))
-             (FASTBYTEFILE.buf_data b) = v ]] *
-           (* non-error guarantee *)
-           [[ 0 < len -> off < # (INODE.ISize (BFILE.BFAttr f)) ->
-              0 < FASTBYTEFILE.buf_len b ]]
-    CRASH  LOG.would_recover_old fsxp.(FSXPLog) F mbase
-    >} read_bytes fsxp inum off len mscs.
-  Proof.
-    unfold read_bytes, rep.
-    time step. (* 35s *)
-
-    rewrite subtree_extract; eauto. cancel.
-    step.
-  Qed.
-*)
-
-
-Require Import NEList.
-
   Theorem dwrite_ok : forall fsxp inum off v mscs,
     {< F ds pathname Fm Ftop tree f B v0,
     PRE    LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds ds!!) mscs *
@@ -2089,112 +2041,49 @@ Require Import NEList.
   Qed.
 
  Theorem datasync_ok : forall fsxp inum mscs,
-    {< F mbase m pathname Fm Ftop tree f,
-    PRE    LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) mscs *
-           [[ (Fm * rep fsxp Ftop tree)%pred (list2nmem m) ]] *
+    {< F ds pathname Fm Ftop tree f,
+    PRE    LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds ds!!) mscs *
+           [[[ ds!! ::: Fm * rep fsxp Ftop tree ]]] *
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST RET:mscs
-           exists m' tree',
-           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') mscs *
-           [[ (Fm * rep fsxp Ftop tree')%pred (list2nmem m') ]] *
+           exists d tree',
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn (d,nil) d) mscs *
+           [[[ d ::: Fm * rep fsxp Ftop tree' ]]] *
            [[ tree' = update_subtree pathname (TreeFile inum (BFILE.synced_file f)) tree ]]
-    CRASH  LOG.intact fsxp.(FSXPLog) F mbase
+    XCRASH  LOG.recover_any fsxp.(FSXPLog) F ds
     >} datasync fsxp inum mscs.
   Proof.
     unfold datasync, rep.
-    step.
-  Admitted.
-
-
-(*
-  Theorem update_bytes_ok : forall fsxp inum off len (newbytes: bytes len) mscs,
-    {< F mbase m pathname Fm Ftop tree f bytes olddata Fx,
-     PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-         [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-         [[ FASTBYTEFILE.rep bytes f ]] *
-         [[ (Fx * arrayN off olddata)%pred (list2nmem bytes) ]] *
-         [[ length olddata = len ]]
-    POST RET: ^(mscs)
-         exists m' tree' f' bytes',
-         LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
-         [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]] *
-         [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-         [[ FASTBYTEFILE.rep bytes' f' ]] *
-         [[ let newdata := @Rec.of_word
-              (Rec.ArrayF FASTBYTEFILE.byte_type len) newbytes in
-            (Fx * arrayN off newdata)%pred (list2nmem bytes') ]] *
-         [[ FASTBYTEFILE.hidden (BFILE.BFAttr f = BFILE.BFAttr f') ]]
-     CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
-    >} update_bytes fsxp inum off newbytes mscs.
-  Proof.
-    unfold update_bytes, rep.
-    time step. (* 80s *)
+    safestep.
     rewrite subtree_extract; eauto. cancel.
-
     step.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
   Qed.
-
-  Theorem append_ok: forall fsxp inum (off:nat) len (newbytes: bytes len) mscs,
-    {< F mbase m pathname Fm Ftop tree Fi f bytes,
-      PRE LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m) mscs *
-         [[ (Fm * rep fsxp Ftop tree)%pred (list2mem m) ]] *
-         [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-         [[ FASTBYTEFILE.rep bytes f ]] *
-         [[ Fi (list2nmem bytes) ]] *
-         [[ goodSize addrlen (off + len) ]] *
-         (* makes this an append *)
-         [[ FASTBYTEFILE.filelen f <= off ]]
-      POST RET:^(mscs, ok)
-         exists m', LOG.rep (FSXPLog fsxp) F (ActiveTxn mbase m') mscs *
-         ([[ ok = false ]] \/
-         [[ ok = true ]] * exists tree' f' bytes' zeros,
-         [[ (Fm * rep fsxp Ftop tree')%pred (list2mem m') ]] *
-         [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-         [[ FASTBYTEFILE.rep bytes' f' ]] *
-         [[ let newdata := @Rec.of_word
-              (Rec.ArrayF FASTBYTEFILE.byte_type len) newbytes in
-            (Fi * zeros * arrayN off newdata)%pred (list2nmem bytes')]] *
-         [[ zeros = arrayN (FASTBYTEFILE.filelen f)
-              (repeat $0 (off - (FASTBYTEFILE.filelen f))) ]])
-      CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
-    >} append fsxp inum off newbytes mscs.
-  Proof.
-    unfold append, rep.
-    time step. (* 40s *)
-    rewrite subtree_extract; eauto. cancel.
-
-    step.
-    eapply pimpl_or_r; right; cancel; eauto.
-    rewrite <- subtree_absorb; eauto. cancel.
-    eapply find_subtree_inum_valid; eauto.
-  Qed.
-*)
 
   Theorem truncate_ok : forall fsxp inum nblocks mscs,
-    {< F mbase m pathname Fm Ftop tree f,
-    PRE    LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) mscs *
-           [[ (Fm * rep fsxp Ftop tree)%pred (list2nmem m) ]] *
+    {< F ds d pathname Fm Ftop tree f,
+    PRE    LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) mscs *
+           [[[ d ::: Fm * rep fsxp Ftop tree ]]] *
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST RET:^(mscs, ok)
-           exists m',
-           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') mscs *
+           exists d',
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d') mscs *
           ([[ ok = false ]] \/
            [[ ok = true ]] *
            exists tree' f',
-           [[ (Fm * rep fsxp Ftop tree')%pred (list2nmem m') ]] *
+           [[[ d' ::: Fm * rep fsxp Ftop tree' ]]] *
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
            [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) nblocks ($0, nil)) (BFILE.BFAttr f) ]])
-    CRASH  LOG.intact fsxp.(FSXPLog) F mbase
+    CRASH  LOG.intact fsxp.(FSXPLog) F ds
     >} truncate fsxp inum nblocks mscs.
   Proof.
     unfold truncate, rep.
-    step.
+    safestep.
     rewrite subtree_extract; eauto. cancel.
     step.
-    apply pimpl_or_r; right. cancel.
+    or_r.
+    cancel.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
   Qed.
