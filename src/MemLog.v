@@ -757,9 +757,8 @@ Module MLog.
       [[[ d' ::: (Fd * a |-> (fst vs, nil)) ]]] *
       [[  d' = vssync d a ]]
     XCRASH
-      exists ms' na' d',
-      << F, rep: xp (Synced na' d') ms' >> *
-      [[[ d' ::: (Fd * a |-> vs) ]]]
+      exists ms' na',
+      << F, rep: xp (Synced na' d) ms' >>
     >} dsync xp a ms.
   Proof.
     unfold dsync.
@@ -776,8 +775,7 @@ Module MLog.
 
     (* crashes *)
     xcrash.
-    xform_normr; cancel; eauto.
-    auto.
+    eapply length_eq_map_valid; eauto.
   Qed.
 
   End UnfoldProof4.

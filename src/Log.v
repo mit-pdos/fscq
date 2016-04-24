@@ -305,7 +305,7 @@ Module LOG.
     POST RET:ms' exists m,
       rep xp F (ActiveTxn (m, nil) m) ms' *
       [[[ m ::: (Fm * a |-> (v, vsmerge vs)) ]]]
-    CRASH
+    XCRASH
       recover_any xp F ds \/
       exists ms' m',
       rep xp F (ActiveTxn (m', nil) m') ms' *
@@ -323,15 +323,17 @@ Module LOG.
     apply updN_replay_disk_remove_eq; eauto.
 
     (* crash conditions *)
-    or_l; cancel.
-
-    or_r; cancel.
+    xcrash.
+    or_l; cancel; xform_normr; cancel.
+    or_r; cancel; xform_normr; cancel.
+    xform_normr; cancel.
     eassign (mk_mstate (Map.remove a (MSTxn m)) m0); eauto.
     eapply map_valid_remove; autorewrite with lists; eauto.
     setoid_rewrite singular_latest at 2; simpl; auto.
     rewrite length_updN; auto.
     apply updN_replay_disk_remove_eq; eauto.
     eauto.
+
     Unshelve. eauto.
   Qed.
 
@@ -344,11 +346,8 @@ Module LOG.
     POST RET:ms' exists m,
       rep xp F (ActiveTxn (m, nil) m) ms' *
       [[[ m ::: (Fm * a |-> (fst vs, nil)) ]]]
-    CRASH
-      recover_any xp F ds \/
-      exists m' ms',
-      rep xp F (ActiveTxn (m', nil) m') ms' *
-        [[[ m' ::: (Fm * a |-> (fst vs, nil)) ]]]
+    XCRASH
+      recover_any xp F ds
     >} dsync xp a ms.
   Proof.
     unfold dsync, recover_any.
@@ -360,14 +359,7 @@ Module LOG.
     substl ds!! at 1; auto.
 
     (* crashes *)
-    or_l; cancel.
-    or_r; cancel.
-    eassign (mk_mstate (MSTxn m) m0); simpl; eauto.
-    apply map_valid_updN; auto.
-    setoid_rewrite singular_latest at 2; simpl; auto.
-    rewrite <- replay_disk_vssync_comm.
-    substl ds!! at 1; auto.
-    eauto.
+    xcrash.
     Unshelve. eauto.
   Qed.
 
@@ -1088,18 +1080,18 @@ Module LOG.
     apply dwrite_vsupd_vecs_ok; auto.
 
     (* crash conditions *)
-    eapply pimpl_trans; [ | eapply H1 ]; cancel.
-    rewrite H; xform_norm.
-    or_l; apply crash_xform_pimpl.
-    unfold recover_any, rep; cancel.
+    xcrash.
+    or_l; unfold recover_any, rep; cancel.
+    xform_normr; cancel.
+    eassign x; eassign (mk_mstate vmap0 (MSGLog m), x0); simpl; eauto.
+    pred_apply; cancel.
 
-    or_r; xform_norm; cancel.
-    eassign (mk_mstate vmap0 m0); simpl; eauto.
-    xform_normr. cancel. xform_normr. cancel.
-    simpl; apply map_valid_map0.
+    or_r; cancel.
+    xform_normr; cancel.
+    xform_normr; cancel.
+    eassign (mk_mstate vmap0 m0); eauto.
+    simpl; apply map_valid_map0. eauto.
     apply dwrite_vsupd_vecs_ok; eauto.
-
-    Unshelve. all: eauto.
   Qed.
 
 
@@ -1128,10 +1120,7 @@ Module LOG.
     apply dsync_vssync_vecs_ok; auto.
 
     (* crashes *)
-    eapply pimpl_trans; [ | eapply H1 ]; cancel.
-    rewrite H0.
-    xform_norm; cancel.
-    xform_normr; cancel.
+    xcrash.
     Unshelve. eauto.
   Qed.
 

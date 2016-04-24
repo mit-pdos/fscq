@@ -558,7 +558,7 @@ Module GLog.
     POST RET:ms'
       << F, rep: xp (Cached (ds!!, nil)) ms' >> *
       [[ MSTxns (fst ms') = nil /\ MSVMap (fst ms') = vmap0 ]]
-    CRASH
+    XCRASH
       << F, would_recover_any: xp ds -- >>
     >} flushall xp ms.
   Proof.
@@ -578,7 +578,9 @@ Module GLog.
       exfalso; eapply dset_match_ent_length_exfalso; eauto.
 
       (* crashes *)
-      safecancel.
+      subst; repeat xcrash_rewrite.
+      xform_norm; cancel.
+      xform_normr. safecancel.
       eassign (mk_mstate vmap0 (MSTxns m) vmap0); simpl.
       rewrite selR_inb by eauto; cancel.
       all: simpl; auto; omega.
@@ -587,11 +589,7 @@ Module GLog.
       rewrite nthd_oob by (erewrite dset_match_length; eauto).
       cancel.
 
-    - safecancel.
-      eassign raw; pred_apply.
-      rewrite MLog.synced_recover_either.
-      norm. rewrite nthd_0; cancel.
-      intuition eauto; omega.
+    - xcrash.
 
     Unshelve. all: easy.
   Qed.
@@ -612,7 +610,7 @@ Module GLog.
       << F, rep: xp (Cached (d', nil)) ms' >> *
       [[  d' = updN ds!! a (v, vsmerge vs) ]] *
       [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
-    CRASH
+    XCRASH
       << F, would_recover_any: xp ds -- >>
       \/ exists ms' d',
       << F, rep: xp (Cached (d', nil)) ms' >> *
@@ -628,13 +626,21 @@ Module GLog.
     subst; substl (MSTxns a0); eauto.
 
     (* crashes *)
-    cancel.
+    subst; repeat xcrash_rewrite.
+    xform_norm.
     or_l; cancel.
+    xform_normr; cancel.
     rewrite recover_before_any by eauto; cancel.
-    unfold rep; or_r; cancel.
+
+    or_r; cancel.
+    xform_normr; cancel.
+    xform_normr; cancel.
     eassign (mk_mstate vmap0 nil t); simpl; cancel.
     all: simpl; eauto.
-    cancel; or_l; cancel.
+
+    xcrash.
+    or_l; cancel.
+    xform_normr; cancel.
   Qed.
 
 
@@ -647,12 +653,8 @@ Module GLog.
       << F, rep: xp (Cached (d', nil)) ms' >> *
       [[[ d' ::: (Fd * a |-> (fst vs, nil)) ]]] *
       [[  d' = vssync ds!! a ]]
-    CRASH
-      << F, would_recover_any: xp ds -- >> \/
-      exists ms' d',
-      << F, rep: xp (Cached (d', nil)) ms' >> *
-      [[[ d' ::: (Fd * a |-> (fst vs, nil)) ]]] *
-      [[ d' = vssync ds!! a ]]
+    XCRASH
+      << F, would_recover_any: xp ds -- >>
     >} dsync xp a ms.
   Proof.
     unfold dsync.
@@ -662,13 +664,8 @@ Module GLog.
     subst; substl (MSTxns a0); eauto.
 
     (* crashes *)
-    cancel.
-    or_l; cancel.
-    rewrite synced_recover_any by eauto; cancel.
-    unfold rep; or_r; cancel.
-    eassign (mk_mstate vmap0 nil t); simpl; cancel.
-    all: simpl; eauto.
-    cancel; or_l; cancel.
+    xcrash.
+    eapply synced_recover_any; eauto.
   Qed.
 
 
@@ -691,21 +688,19 @@ Module GLog.
     prestep; unfold rep; cancel.
     subst; substl (MSTxns a); eauto.
 
-    subst; apply H1; rewrite H3.
-    xform_norm.
+    xcrash.
     or_l; xform_norm; cancel.
     xform_normr; cancel.
     eapply recover_before_any; eauto.
 
-    or_r; unfold rep; xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    eassign (mk_mstate vmap0 nil t); simpl.
-    xform_normr; eauto.
-    all: simpl; auto.
+    or_r; xform_norm; cancel.
+    xform_normr; cancel.
+    eassign (mk_mstate vmap0 nil t); simpl; cancel.
+    all: simpl; eauto.
 
-    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    xcrash.
     or_l; cancel.
+    xform_normr; cancel.
   Qed.
 
 
@@ -726,12 +721,8 @@ Module GLog.
     prestep; unfold rep; cancel.
     subst; substl (MSTxns a); eauto.
 
-    subst; apply H1; rewrite H3.
-    do 3 (xform_norm; cancel).
+    xcrash.
     eapply synced_recover_any; eauto.
-
-    eapply pimpl_trans; [ | eapply H1 ]; cancel.
-    cancel.
   Qed.
 
 
