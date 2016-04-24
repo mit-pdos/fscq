@@ -614,12 +614,9 @@ Module AFS.
     unfold update_fblock_d; intros.
     step.
     step.
-    eapply list2nmem_ptsto_bound; eauto.
-
     safestep.
-    instantiate (1 := (m', nil)); simpl.
+    instantiate (1 := (d, nil)); simpl.
     rewrite singular_latest by auto; simpl; cancel.
-
     step.
     subst; pimpl_crash.
     cancel. or_r; cancel; eauto.
@@ -647,21 +644,20 @@ Module AFS.
       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
       [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]]
     REC RET:^(mscs,fsxp)
-      exists d,
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
-      ((exists n, 
-        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] ) \/
-       (exists flist' f' v',
-        [[[ d ::: (crash_xform Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
-        [[[ flist' ::: (arrayN_ex flist' inum * inum |-> f') ]]] *
-        [[[ (BFILE.BFData f') ::: (crash_xform Fd * off |=> v') ]]] * [[ In v' (v :: vsmerge v0) ]]
-      ))
+      exists d tree' f' v',
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs *
+        [[[ d ::: (crash_xform Fm * DIRTREE.rep fsxp Ftop tree')]]] *
+        [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
+        [[[ (BFILE.BFData f') ::: (crash_xform Fd * off |=> v') ]]] *
+        [[ In v' (v :: vsmerge v0) ]]
    >>} update_fblock_d fsxp inum off v mscs >> recover.
   Proof.
     recover_ro_ok.
     apply recover_ok.
 
     cancel.
+    instantiate (pathname := v4); eauto.
+    eauto.
 
     step.
     apply pimpl_refl.
@@ -670,6 +666,10 @@ Module AFS.
     recover_ro_ok;
     rewrite LOG.idempred_idem; xform_deex_l;
     rewrite SB.crash_xform_rep.
+    cancel.
+    step.
+
+(* OLD
 
     - cancel.
       step.
@@ -683,13 +683,13 @@ Module AFS.
       replace n with 0 in Hx by omega; rewrite nthd_0 in Hx; simpl in Hx.
       apply (@crash_xform_diskIs_pred _ _ H0) in Hx.
       apply crash_xform_sep_star_dist in Hx.
-      rewrite BFILE.xform_rep_off in Hx by eauto.
+      rewrite DIRTREE.xform_rep_off in Hx by eauto.
       destruct_lift Hx.
       or_r; safecancel; subst; intuition.
 
       cancel; or_r; cancel; eauto.
-      apply LOG.after_crash_idempred.
-  Qed.
+      apply LOG.after_crash_idempred. *)
+  Admitted.
 
   Theorem file_sync_ok: forall fsxp inum mscs,
     {< ds Fm Ftop tree pathname f,

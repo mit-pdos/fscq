@@ -2106,20 +2106,21 @@ Module DIRTREE.
   Qed.
 
   Theorem getattr_ok : forall fsxp inum mscs,
-    {< F mbase m pathname Fm Ftop tree f,
-    PRE    LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) mscs *
-           [[ (Fm * rep fsxp Ftop tree)%pred (list2nmem m) ]] *
+    {< F ds d pathname Fm Ftop tree f,
+    PRE    LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) mscs *
+           [[[ d ::: Fm * rep fsxp Ftop tree ]]] *
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST RET:^(mscs,r)
-           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) mscs *
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) mscs *
            [[ r = BFILE.BFAttr f ]]
-    CRASH  LOG.intact fsxp.(FSXPLog) F mbase
+    CRASH  LOG.intact fsxp.(FSXPLog) F ds
     >} getattr fsxp inum mscs.
   Proof.
     unfold getattr, rep.
-    step.
+    safestep.
     rewrite subtree_extract; eauto. cancel.
     step.
+    cancel; eauto.
   Qed.
 
   Theorem setattr_ok : forall fsxp inum attr mscs,
