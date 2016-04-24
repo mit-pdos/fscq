@@ -676,9 +676,8 @@ Module AFS.
       replace n with 0 in Hx by omega; rewrite nthd_0 in Hx; simpl in Hx.
       apply (@crash_xform_diskIs_pred _ _ H0) in Hx.
       apply crash_xform_sep_star_dist in Hx.
-      Check BFILE.xform_rep_off.
-      (* need a DIRTREE variant of BFILE.xform_rep *)
-      rewrite DIRTREE.xform_rep_off in Hx by eauto.
+      or_r; cancel.
+
 
 (* OLD
 
