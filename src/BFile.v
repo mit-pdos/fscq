@@ -437,7 +437,7 @@ Module BFILE.
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) off (v, vsmerge vs)) (BFAttr f) ]]
-    CRASH  LOG.recover_any lxp F ds \/
+    XCRASH  LOG.recover_any lxp F ds \/
            exists m' flist' f', LOG.intact lxp F (m', nil) *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
@@ -461,26 +461,38 @@ Module BFILE.
     erewrite selN_map by omega; filldef.
     setoid_rewrite surjective_pairing at 2; cancel.
 
-    safestep; auto; sepauto.
+    prestep. norm. cancel.
+    intuition simpl. pred_apply.
+    3: sepauto. 2: sepauto.
+    rename dummy0 into ilist; cancel.
+    setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 4.
+    rewrite listmatch_updN_removeN by omega.
+    unfold file_match at 3; cancel; eauto.
+    setoid_rewrite <- updN_selN_eq with (l := INODE.IBlocks _) (ix := off) at 3.
+    erewrite map_updN by omega; filldef.
+    rewrite listmatch_updN_removeN by omega.
     cancel.
-    rename dummy0 into ilist.
 
-    abstract (
-      setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 4;
-      rewrite listmatch_updN_removeN by omega;
-      unfold file_match at 3; cancel; eauto;
-      setoid_rewrite <- updN_selN_eq with (l := INODE.IBlocks _) (ix := off) at 3;
-      erewrite map_updN by omega; filldef;
-      rewrite listmatch_updN_removeN by omega;
-      cancel
-    ) using dwrite_ok_helper.
+    xcrash.
+    or_r; cancel.
+    xform_normr.
+    rewrite LOG.active_intact.
+    norm. cancel.
+    intuition simpl. pred_apply.
+    3: sepauto. 2: sepauto.
 
-    or_l; cancel; eauto.
-    or_r; cancel; sepauto.
-    pred_apply; cancel.
-    eapply dwrite_ok_helper; eauto.
-    eapply pimpl_trans; [ | eapply H1 ]; cancel.
-    or_l; rewrite LOG.active_intact, LOG.intact_any; auto.
+    rename dummy0 into ilist; cancel.
+    setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 4.
+    rewrite listmatch_updN_removeN by omega.
+    unfold file_match at 3; cancel; eauto.
+    setoid_rewrite <- updN_selN_eq with (l := INODE.IBlocks _) (ix := off) at 3.
+    erewrite map_updN by omega; filldef.
+    rewrite listmatch_updN_removeN by omega.
+    cancel.
+
+    xcrash.
+    or_l; cancel.
+    rewrite LOG.active_intact, LOG.intact_any; auto.
     Unshelve. all: easy.
   Qed.
 
@@ -509,19 +521,22 @@ Module BFILE.
 
     extract.
     step.
-    safestep; auto; seprewrite.
+    prestep. norm. cancel.
+    intuition simpl. pred_apply.
     2: sepauto.
+
     cancel.
     rename dummy0 into ilist.
     setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 3.
-    rewrite listmatch_updN_removeN by omega.
+    rewrite listmatch_updN_removeN by simplen.
     unfold file_match; cancel; eauto.
     rewrite synced_list_map_fst_map.
-    rewrite listmatch_map_l; auto.
+    rewrite listmatch_map_l; sepauto.
+    sepauto.
 
     (* crashes *)
-    eapply pimpl_trans; [ | eapply H1 ]; cancel.
-    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    xcrash.
+    xcrash.
     rewrite LOG.active_intact, LOG.intact_any; auto.
   Qed.
 
@@ -1080,101 +1095,6 @@ Module BFILE.
     eapply file_crash_ptsto in H0; eauto.
     destruct_lift H0.
     cancel; eauto.
-  Qed.
-
-
-
-  (** XXX: attempt to use mem_pred to relate the file list before and after crash *)
-
-  Require Import MemPred.
-
-  Definition crash_pred a f : (@pred _ addr_eq_dec _) :=
-    (exists f', a |-> f' * [[ file_crash f f' ]])%pred.
-
-  Definition files_xform (p : pred) (m : @Mem.mem _ addr_eq_dec _) :=
-    exists m', p m' /\ mem_pred crash_pred m m'.
-
-  Theorem crash_pred_mem_except : forall i (hm m : @Mem.mem _ addr_eq_dec _),
-    mem_pred crash_pred hm m ->
-    mem_pred crash_pred (mem_except hm i) (mem_except m i).
-  Proof.
-    unfold mem_pred; intros.
-    destruct_lift H.
-    rename dummy into l; subst.
-    exists (avs_except addr_eq_dec l i).
-    rewrite mem_except_avs_except.
-    apply sep_star_assoc.
-    apply lift_impl; intros.
-    apply avs_except_nodup; auto.
-    apply lift_impl; auto.
-
-    generalize dependent m.
-    generalize dependent l.
-    induction l; simpl; intros.
-    apply emp_mem_except; auto.
-
-    inversion H1; subst; simpl in *.
-    unfold mem_pred_one at 1, crash_pred at 1 in H.
-    destruct_lift H.
-    apply ptsto_mem_except in H as Hx; auto.
-
-    destruct (addr_eq_dec n i); subst.
-    rewrite avs_except_notin_eq; auto.
-
-    cbn; simpl in *.
-    apply IHl in Hx; auto.
-    unfold mem_pred_one at 1, crash_pred at 1.
-    apply pimpl_exists_r_star; simpl.
-    exists dummy.
-    apply sep_star_assoc.
-    apply mem_except_ptsto.
-    rewrite mem_except_ne; auto.
-    eapply ptsto_valid; eauto.
-    rewrite mem_except_comm.
-    pred_apply; cancel.
-  Qed.
-
-
-  Lemma file_crash_mem_pred : forall fs fs',
-    Forall2 file_crash fs fs' ->
-    mem_pred crash_pred (list2nmem fs') (list2nmem fs).
-  Proof.
-    induction 1; simpl.
-    unfold mem_pred; exists nil.
-    apply sep_star_assoc.
-    apply lift_impl; intros.
-    constructor.
-    apply lift_impl; auto.
-    cbv; auto.
-  Admitted.
-
-
-  Lemma xform_file_list_ptsto : forall F i f fs inos,
-    (F * i |-> f)%pred (list2nmem fs) ->
-    crash_xform (listmatch file_match fs inos) =p=>
-      exists fs' f', listmatch file_match fs' inos *
-      [[ file_crash f f' ]] *
-      [[ ((files_xform F) * i |-> f')%pred (list2nmem fs') ]].
-  Proof.
-    unfold files_xform; intros.
-    rewrite xform_file_list.
-    unfold flist_crash; cancel.
-    erewrite list2nmem_sel with (x := f) by eauto.
-    apply forall2_selN; eauto.
-    eapply list2nmem_inbound; eauto.
-
-    apply sep_star_comm.
-    apply mem_except_ptsto.
-    apply list2nmem_sel_inb.
-    erewrite <- forall2_length; eauto.
-    eapply list2nmem_inbound; eauto.
-
-    apply sep_star_comm in H.
-    apply ptsto_mem_except in H.
-    eexists; split; eauto.
-    apply crash_pred_mem_except.
-    apply file_crash_mem_pred; auto.
-    Unshelve. all: eauto.
   Qed.
 
 
