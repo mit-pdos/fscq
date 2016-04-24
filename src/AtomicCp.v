@@ -58,8 +58,8 @@ Module ATOMICCP.
       rx ^(mscs, ok)
     } else {
       let^ (mscs, b) <- AFS.read_fblock fsxp src_inum 0 mscs;
-      mscs <- AFS.update_fblock_d fsxp dst_inum 0 b mscs;
-      mscs <- AFS.file_sync fsxp dst_inum mscs;    (* we want a metadata and data sync here *)
+      let^ (mscs) <- AFS.update_fblock_d fsxp dst_inum 0 b mscs;
+      let^ (mscs) <- AFS.file_sync fsxp dst_inum mscs;    (* we want a metadata and data sync here *)
       rx ^(mscs, ok)
     }.
 
