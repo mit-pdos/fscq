@@ -2047,27 +2047,33 @@ Module DIRTREE.
   Qed.
 *)
 
+
+Require Import NEList.
+
   Theorem dwrite_ok : forall fsxp inum off v mscs,
-    {< F mbase m pathname Fm Ftop tree f B v0,
-    PRE    LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) mscs *
-           [[ (Fm * rep fsxp Ftop tree)%pred (list2nmem m) ]] *
+    {< F ds pathname Fm Ftop tree f B v0,
+    PRE    LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds ds!!) mscs *
+           [[[ ds!! ::: Fm * rep fsxp Ftop tree ]]] *
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-           [[ (B * off |-> v0)%pred (list2nmem (BFILE.BFData f)) ]]
+           [[[ (BFILE.BFData f) ::: (B * off |-> v0) ]]]
     POST RET:mscs
-           exists m' tree' f',
-           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') mscs *
-           [[ (Fm * rep fsxp Ftop tree')%pred (list2nmem m') ]] *
+           exists d tree' f',
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn (d, nil) d) mscs *
+           [[[ d ::: Fm * rep fsxp Ftop tree' ]]] *
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-           [[ (B * off |-> (v, vsmerge v0))%pred (list2nmem (BFILE.BFData f')) ]] *
+           [[[ (BFILE.BFData f') ::: (B * off |-> (v, vsmerge v0)) ]]] *
            [[ f' = BFILE.mk_bfile (updN (BFILE.BFData f) off (v, vsmerge v0)) (BFILE.BFAttr f) ]]
-    CRASH  LOG.intact fsxp.(FSXPLog) F mbase
+    CRASH  LOG.intact fsxp.(FSXPLog) F ds
     >} dwrite fsxp inum off v mscs.
   Proof.
     unfold dwrite, rep.
-    step.
+    safestep.
+    eapply list2nmem_inbound; eauto.
     rewrite subtree_extract; eauto. cancel.
-    step.
+    eauto.
+    safestep.
     rewrite <- subtree_absorb; eauto. cancel.
+
     eapply find_subtree_inum_valid; eauto.
   Qed.
 
