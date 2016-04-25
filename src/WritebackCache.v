@@ -154,7 +154,8 @@ Module WBCache.
       unfold cachepred at 2; simpl.
       rewrite MapFacts.remove_eq_o by reflexivity.
       pred_apply; cancel.
-      rewrite mem_pred_pimpl_except; cancel.
+      rewrite mem_pred_pimpl_except. cancel.
+      intros.
       apply cachepred_remove_invariant; auto.
       exists (length dummy); rewrite skipn_app.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
@@ -165,12 +166,13 @@ Module WBCache.
       apply mem_pred_absorb; unfold cachepred at 2.
       rewrite MapFacts.remove_eq_o by reflexivity.
       pred_apply; cancel.
-      rewrite mem_pred_pimpl_except; cancel.
+      rewrite mem_pred_pimpl_except. cancel.
+      intros.
       apply cachepred_remove_invariant; auto.
       eexists; rewrite skipn_oob by eauto.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
 
-      pimpl_crash; norm; unfold stars; simpl.
+      pimpl_crash. cancel.
       eassign (Build_wbcachestate cs' (WbBuf wcs)).
       cancel.
       simpl; intuition subst.
@@ -186,7 +188,8 @@ Module WBCache.
       apply mem_pred_absorb; unfold cachepred at 2.
       rewrite MapFacts.remove_eq_o by reflexivity.
       pred_apply; cancel.
-      rewrite mem_pred_pimpl_except; cancel.
+      rewrite mem_pred_pimpl_except. cancel.
+      intros.
       apply cachepred_remove_invariant; auto.
       exists (length dummy); subst; rewrite skipn_app.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
@@ -203,7 +206,7 @@ Module WBCache.
       cancel.
       apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
 
-      pimpl_crash; norm; unfold stars; simpl.
+      pimpl_crash. cancel.
       eassign (Build_wbcachestate cs' (WbBuf wcs)).
       cancel.
       simpl; intuition.
@@ -893,6 +896,7 @@ Module WBCache.
   Proof.
     unfold read_array.
     hoare.
+    pred_apply; cancel.
     rewrite isolateN_fwd with (i:=i) by auto.
     rewrite <- surjective_pairing.
     cancel.
@@ -1066,7 +1070,7 @@ Module WBCache.
     >} read_range a nr vfold a0 cs.
   Proof.
     unfold read_range; intros.
-    safestep.
+    safestep. auto.
     safestep.
     step; subst.
 
@@ -1147,7 +1151,7 @@ Module WBCache.
     >} write_range a l cs.
   Proof.
     unfold write_range; intros.
-    safestep.
+    safestep. auto.
     prestep; unfold rep; cancel.
 
     apply mem_pred_cachepred_add.
@@ -1156,7 +1160,7 @@ Module WBCache.
     rewrite firstn_length_l; omega.
 
     erewrite firstn_S_selN_expand by omega.
-    rewrite <- vsupd_range_progress; auto.
+    setoid_rewrite <- vsupd_range_progress; auto.
     replace (a + m - a) with m by omega.
     apply arrayN_updN_memupd; eauto.
     rewrite vsupd_range_length; try omega.
@@ -1375,7 +1379,7 @@ Module WBCache.
   Proof.
 
     unfold sync_range; intros.
-    safestep.
+    safestep. auto.
     prestep; unfold rep; cancel.
     rewrite vssync_range_length; omega.
 
@@ -1401,6 +1405,7 @@ Module WBCache.
     eapply arrayN_listupd; eauto.
     rewrite vssync_range_length; omega.
 
+    step.
     eapply pimpl_trans; [ | eapply H1 ]; cancel.
     Unshelve. exact tt.
   Qed.
@@ -1427,7 +1432,7 @@ Module WBCache.
     >} write_vecs a l cs.
   Proof.
     unfold write_vecs.
-    safestep.
+    safestep. auto.
     prestep; unfold rep; cancel.
 
     apply mem_pred_cachepred_add.
@@ -1438,7 +1443,7 @@ Module WBCache.
     rewrite vsupd_vecs_length; auto.
 
     erewrite firstn_S_selN_expand by auto.
-    rewrite vsupd_vecs_app; simpl.
+    setoid_rewrite vsupd_vecs_app; simpl.
     rewrite minus_plus.
     apply arrayN_updN_memupd; auto.
 
@@ -1495,7 +1500,7 @@ Module WBCache.
     >} sync_vecs a l cs.
   Proof.
     unfold sync_vecs.
-    safestep.
+    safestep. auto.
     prestep; unfold rep; cancel; auto.
 
     prestep; unfold rep; cancel.

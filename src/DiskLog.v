@@ -1156,12 +1156,15 @@ Module PaddedLog.
     let '(ndesc, ndata) := nr in
     let '(nndesc, nndata) := ((ndesc_log log), (ndata_log log)) in
     If (loglen_valid_dec xp (ndesc + nndesc) (ndata + nndata)) {
+        (* synced *)
       cs <- Desc.write_aligned xp ndesc (map ent_addr log) cs;
+       (* extended unsync *)
       cs <- Data.write_aligned xp ndata (map ent_valu log) cs;
       cs <- Desc.sync_aligned xp ndesc nndesc cs;
       cs <- Data.sync_aligned xp ndata nndata cs;
       cs <- Hdr.write xp (ndesc + nndesc, ndata + nndata) cs;
       cs <- Hdr.sync xp cs;
+       (* synced*)
       rx ^(cs, true)
     } else {
       rx ^(cs, false)

@@ -6,8 +6,12 @@ Require Import Pred PredCrash.
 Require Import Hoare.
 Require Import Word.
 Require Import AsyncDisk.
+Require Import Hashmap.
 
 Set Implicit Arguments.
+
+
+Hint Extern 1 (exists _, hashmap_subset _ _ _) => try solve_hashmap_subset.
 
 (* Helpers for existential variables *)
 
@@ -123,6 +127,7 @@ Ltac pimpl_crash :=
   set_evars;
   try match goal with
   | [ H: _ =p=> _ |- _ =p=> ?crash ] => eapply pimpl_trans; [| solve [ eapply H ] ]
+  | [ H: forall _, _ =p=> _ |- _ =p=> ?crash ] => eapply pimpl_trans; [| solve [ eapply H ] ]
   end;
   subst_evars.
 
@@ -664,7 +669,7 @@ Ltac destruct_lift H :=
   repeat destruct_prod;
   repeat destruct_type True;
   repeat destruct_type unit;
-  simpl in *;
+  cbn in *;
   repeat clear_varname.
 
 Ltac destruct_lifts := try progress match goal with 
@@ -830,7 +835,7 @@ Ltac norm'l := eapply start_normalizing_left; [ flatten | ];
 Ltac norm'r := eapply start_normalizing_right; [ flatten | ];
                eapply pimpl_exists_r; repeat eexists_one;
                apply sep_star_lift_r; apply pimpl_and_lift;
-               simpl in *.
+               cbn in *.
 
 Create HintDb false_precondition_hint.
 
@@ -913,26 +918,27 @@ Ltac safecancel :=
   | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
   end.
 
-Ltac cancel_with t :=
+Ltac cancel_with' t intuition_t :=
   intros;
-  unfold stars; simpl; try subst;
+  unfold stars; cbn; try subst;
   pimpl_crash;
   norm;
   try match goal with
       | [ |- _ =p=> stars ((_ \/ _) :: nil) ] =>
-        solve [ apply stars_or_left; cancel_with t
-              | apply stars_or_right; cancel_with t ]
+        solve [ apply stars_or_left; cancel_with' t intuition_t
+              | apply stars_or_right; cancel_with' t intuition_t ]
       | [ |- _ =p=> _ ] => cancel'
       end;
-  intuition;
-  try ( pred_apply; cancel_with t );
+  intuition intuition_t;
+  try ( pred_apply; cancel_with' t intuition_t);
   try congruence;
   try t;
-  unfold stars; simpl; inv_option_eq;
+  unfold stars; cbn; inv_option_eq;
   try match goal with
   | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
   end.
 
+Ltac cancel_with t := cancel_with' t auto.
 Ltac cancel := cancel_with idtac.
 
 (* fastest version of cancel, should always try this first *)
@@ -956,10 +962,11 @@ Ltac cancel_by H :=
 
 Theorem nop_ok :
   forall T A v (rx : A -> prog T),
-  {{ fun done_ crash_ => exists F, F * [[ forall r_,
-    {{ fun done' crash' => (fun r => F * [[ r = v ]]) r_ *
+  {{ fun hm done_ crash_ => exists F, F * [[ forall r_,
+    {{ fun hm' done' crash' => (fun r => F * [[ r = v ]]) r_ *
+                           [[ hm = hm' ]] *
                            [[ done' = done_ ]] * [[ crash' = crash_ ]]}}
-     rx r_ ]] * [[ F =p=> crash_]] }} rx v.
+     rx r_ ]] * [[ F =p=> crash_ hm]] }} rx v.
 Proof.
   unfold corr2, pimpl.
   intros.
@@ -1032,10 +1039,16 @@ Tactic Notation "step" "using" tactic(t) "with" ident(db) :=
   try ( cancel_with t ; try ( autorewrite with db; cancel_with t ) );
   poststep t.
 
+Tactic Notation "step" "using" tactic(t) "with" "intuition" tactic(intuition_t) :=
+  prestep;
+  try (cancel_with' t intuition_t; try cancel_with' t intuition_t);
+  poststep t.
+
 Tactic Notation "step" "using" tactic(t) :=
   prestep;
   try (cancel_with t; try cancel_with t);
   poststep t.
+
 
 (*
 Ltac step_with t :=
@@ -1050,6 +1063,7 @@ Ltac step_with t :=
 *)
 
 Ltac step := step using eauto.
+Ltac step_idtac := step using idtac with intuition idtac.
 
 Tactic Notation "hoare" "using" tactic(t) "with" ident(db) "in" "*" :=
   repeat (step using t with db in *).

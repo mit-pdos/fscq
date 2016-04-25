@@ -5,6 +5,7 @@ Require Import Omega.
 Require Import List.
 Require Import Mem.
 Require Import AsyncDisk.
+Require Import Word.
 
 Import ListNotations.
 
@@ -18,39 +19,47 @@ Inductive prog (T : Type):=
   | Read (a: addr) (rx: valu -> prog T)
   | Write (a: addr) (v: valu) (rx: unit -> prog T)
   | Sync (a: addr) (rx: unit -> prog T)
-  | Trim (a: addr) (rx: unit -> prog T).
+  | Trim (a: addr) (rx: unit -> prog T)
+  | Hash (sz: nat) (buf: word sz) (rx: word hashlen -> prog T).
 
 Inductive outcome (T : Type) :=
   | Failed
-  | Finished (m: rawdisk) (v: T)
-  | Crashed (m: rawdisk).
+  | Finished (m: rawdisk) (hm: hashmap) (v: T)
+  | Crashed (m: rawdisk) (hm: hashmap).
 
-Inductive step (T : Type) : rawdisk -> prog T ->
-                           rawdisk -> prog T -> Prop :=
-  | StepRead : forall m a rx v x, m a = Some (v, x) ->
-    step m (Read a rx) m (rx v)
-  | StepWrite : forall m a rx v v0 x, m a = Some (v0, x) ->
-    step m (Write a v rx) (upd m a (v, v0 :: x)) (rx tt)
-  | StepSync : forall m a rx v l, m a = Some (v, l) ->
-    step m (Sync a rx) (upd m a (v, nil)) (rx tt)
-  | StepTrim : forall m a rx vs vs', m a = Some vs ->
-    step m (Trim a rx) (upd m a vs') (rx tt).
+Inductive step (T : Type) : rawdisk -> hashmap -> prog T ->
+                           rawdisk -> hashmap -> prog T -> Prop :=
+  | StepRead : forall m a rx v x hm, m a = Some (v, x) ->
+    step m hm (Read a rx) m hm (rx v)
+  | StepWrite : forall m a rx v v0 x hm, m a = Some (v0, x) ->
+    step m hm (Write a v rx) (upd m a (v, v0 :: x)) hm (rx tt)
+  | StepSync : forall m a rx v l hm, m a = Some (v, l) ->
+    step m hm (Sync a rx) (upd m a (v, nil)) hm (rx tt)
+  | StepTrim : forall m a rx vs vs' hm, m a = Some vs ->
+    step m hm (Trim a rx) (upd m a vs') hm (rx tt)
+  | StepHash : forall m sz (buf : word sz) rx h hm,
+    hash_safe hm h buf ->
+    hash_fwd buf = h ->
+    step m hm (Hash buf rx) m (upd_hashmap' hm h buf) (rx h).
 
-Inductive exec (T : Type) : rawdisk -> prog T -> outcome T -> Prop :=
-  | XStep : forall m m' p p' out, step m p m' p' ->
-    exec m' p' out ->
-    exec m p out
-  | XFail : forall m p, (~exists m' p', step m p m' p') -> (~exists r, p = Done r) ->
-    exec m p (Failed T)
-  | XCrash : forall m p, exec m p (Crashed T m)
-  | XDone : forall m v, exec m (Done v) (Finished m v).
+
+Inductive exec (T : Type) : rawdisk -> hashmap -> prog T -> outcome T -> Prop :=
+  | XStep : forall m m' hm hm' p p' out, step m hm p m' hm' p' ->
+    exec m' hm' p' out ->
+    exec m hm p out
+  | XFail : forall m hm p, (~exists m' hm' p', step m hm p m' hm' p') ->
+    (~exists r, p = Done r) ->
+    (~exists sz (buf : word sz) rx, p = Hash buf rx) ->
+    exec m hm p (Failed T)
+  | XCrash : forall m hm p, exec m hm p (Crashed T m hm)
+  | XDone : forall m hm v, exec m hm (Done v) (Finished m hm v).
 
 
 (** program with recovery *)
 Inductive recover_outcome (TF TR: Type) :=
   | RFailed
-  | RFinished (m: rawdisk) (v: TF)
-  | RRecovered (m: rawdisk) (v: TR).
+  | RFinished (m: rawdisk) (hm: hashmap) (v: TF)
+  | RRecovered (m: rawdisk) (hm: hashmap) (v: TR).
 
 Definition possible_crash (m m' : rawdisk) : Prop :=
   forall a,
@@ -58,23 +67,23 @@ Definition possible_crash (m m' : rawdisk) : Prop :=
   (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (vsmerge vs)).
 
 Inductive exec_recover (TF TR: Type)
-    : rawdisk -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
-  | XRFail : forall m p1 p2, exec m p1 (Failed TF)
-    -> exec_recover m p1 p2 (RFailed TF TR)
-  | XRFinished : forall m p1 p2 m' (v: TF), exec m p1 (Finished m' v)
-    -> exec_recover m p1 p2 (RFinished TR m' v)
-  | XRCrashedFailed : forall m p1 p2 m' m'r, exec m p1 (Crashed TF m')
+    : rawdisk -> hashmap -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
+  | XRFail : forall m hm p1 p2, exec m hm p1 (Failed TF)
+    -> exec_recover m hm p1 p2 (RFailed TF TR)
+  | XRFinished : forall m hm p1 p2 m' hm' (v: TF), exec m hm p1 (Finished m' hm' v)
+    -> exec_recover m hm p1 p2 (RFinished TR m' hm' v)
+  | XRCrashedFailed : forall m hm p1 p2 m' hm' m'r, exec m hm p1 (Crashed TF m' hm')
     -> possible_crash m' m'r
-    -> @exec_recover TR TR m'r p2 p2 (RFailed TR TR)
-    -> exec_recover m p1 p2 (RFailed TF TR)
-  | XRCrashedFinished : forall m p1 p2 m' m'r m'' (v: TR), exec m p1 (Crashed TF m')
+    -> @exec_recover TR TR m'r hm' p2 p2 (RFailed TR TR)
+    -> exec_recover m hm p1 p2 (RFailed TF TR)
+  | XRCrashedFinished : forall m hm p1 p2 m' hm' m'r m'' hm'' (v: TR), exec m hm p1 (Crashed TF m' hm')
     -> possible_crash m' m'r
-    -> @exec_recover TR TR m'r p2 p2 (RFinished TR m'' v)
-    -> exec_recover m p1 p2 (RRecovered TF m'' v)
-  | XRCrashedRecovered : forall m p1 p2 m' m'r m'' (v: TR), exec m p1 (Crashed TF m')
+    -> @exec_recover TR TR m'r hm' p2 p2 (RFinished TR m'' hm'' v)
+    -> exec_recover m hm p1 p2 (RRecovered TF m'' hm'' v)
+  | XRCrashedRecovered : forall m hm p1 p2 m' hm' m'r m'' hm'' (v: TR), exec m hm p1 (Crashed TF m' hm')
     -> possible_crash m' m'r
-    -> @exec_recover TR TR m'r p2 p2 (RRecovered TR m'' v)
-    -> exec_recover m p1 p2 (RRecovered TF m'' v).
+    -> @exec_recover TR TR m'r hm' p2 p2 (RRecovered TR m'' hm'' v)
+    -> exec_recover m hm p1 p2 (RRecovered TF m'' hm'' v).
 
 Hint Constructors exec.
 Hint Constructors step.

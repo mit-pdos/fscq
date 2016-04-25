@@ -2089,3 +2089,11 @@ Proof.
   destruct x; simpl in *; try congruence.
   rewrite skipn_nil in H; congruence.
 Qed.
+
+Theorem rev_injective :
+  forall A (l1 l2 : list A), rev l1 = rev l2 -> l1 = l2.
+Proof.
+  intros.
+  rewrite <- rev_involutive. rewrite <- H. rewrite -> rev_involutive.
+  reflexivity.
+Qed.

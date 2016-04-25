@@ -131,6 +131,21 @@ Module AsyncRecArray (RA : RASig).
     setoid_rewrite <- H; auto.
   Qed.
 
+  Lemma items_valid_app4 : forall xp st a b na,
+    length a = na * items_per_val ->
+    items_valid xp st a ->
+    items_valid xp (st + na) b ->
+    items_valid xp st (a ++ b).
+  Proof.
+    unfold items_valid, roundup; intuition.
+    apply well_formed_app_iff; intuition.
+    rewrite app_length.
+    rewrite Nat.sub_add_distr in H8.
+    rewrite Nat.mul_sub_distr_r in H8.
+    rewrite <- H in H8.
+    omega.
+  Qed.
+
   Lemma synced_array_is : forall xp start items,
     synced_array xp start items =p=>
     arrayN ((RAStart xp) + start) (combine (ipack items) (nils (length (ipack items)))).
@@ -226,7 +241,40 @@ Module AsyncRecArray (RA : RASig).
     rewrite crash_xform_arrayN; cancel.
     unfold possible_crash_list in *; subst; intuition.
     rewrite H0.
+    replace (combine l' (repeat [] (length l'))) with (synced_list l') by auto.
     rewrite synced_list_length; auto.
+  Qed.
+
+
+  Lemma xform_avail_rep_array_rep : forall xp st nr,
+    (forall l', Forall (@Rec.well_formed itemtype) l') ->
+    nr * items_per_val <= (RALen xp - st) * items_per_val ->
+    xparams_ok xp ->
+    st <= RALen xp ->
+    crash_xform (avail_rep xp st nr) =p=>
+      exists l, array_rep xp st (Synced l) *
+      [[ length l = (nr * items_per_val)%nat ]].
+  Proof.
+    unfold avail_rep; intros.
+    xform.
+    rewrite crash_xform_arrayN; cancel;
+    apply possible_crash_list_length in H3 as Hlength; subst.
+    unfold possible_crash_list in *; subst; intuition.
+    instantiate (l := fold_left iunpack l' []).
+    unfold synced_array.
+    cancel.
+    unfold rep_common; intuition.
+    unfold items_valid; intuition.
+    rewrite fold_left_iunpack_length.
+    congruence.
+
+    apply ipack_iunpack; auto.
+
+    unfold eqlen.
+    rewrite repeat_length; auto.
+
+    rewrite fold_left_iunpack_length.
+    congruence.
   Qed.
 
   Lemma xform_unsync_array_avail : forall xp st l,
@@ -560,6 +608,8 @@ Module AsyncRecArray (RA : RASig).
   Hint Extern 1 ({{_}} progseq (read_all _ _ _) _) => apply read_all_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_aligned _ _ _ _) _) => apply write_aligned_ok : prog.
   Hint Extern 1 ({{_}} progseq (sync_aligned _ _ _ _) _) => apply sync_aligned_ok : prog.
+
+
 
 End AsyncRecArray.
 

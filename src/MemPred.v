@@ -186,7 +186,8 @@ Section MemPred.
     cancel.
     eapply listpred_avs_except; subst; eauto.
     eauto.
-    subst; eauto.
+    subst.
+    setoid_rewrite mem_except_avs_except; auto.
   Qed.
 
   Theorem mem_pred_extract : forall hm a v,
@@ -204,7 +205,7 @@ Section MemPred.
     eassign ((a, v) :: hm_avs).
     cancel.
     simpl; constructor; auto.
-    apply avs2mem_none_notin. rewrite <- H3. apply mem_except_eq.
+    apply avs2mem_none_notin. unfold avs2mem. rewrite <- H3. apply mem_except_eq.
     unfold avs2mem in *; simpl.
     rewrite <- H3.
     rewrite upd_mem_except.
@@ -226,7 +227,7 @@ Section MemPred.
     eassign ( (a, v) :: hm_avs).
     cancel.
     simpl; constructor; auto.
-    apply avs2mem_none_notin. rewrite <- H4. apply mem_except_eq.
+    apply avs2mem_none_notin. unfold avs2mem. rewrite <- H4. apply mem_except_eq.
     unfold avs2mem in *; simpl.
     rewrite <- H4.
     rewrite upd_mem_except.

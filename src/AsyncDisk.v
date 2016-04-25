@@ -2,6 +2,8 @@ Require Import Arith.
 Require Import Word.
 Require Import List.
 Require Import Mem.
+Require Import Eqdep_dec.
+
 
 Set Implicit Arguments.
 
@@ -66,3 +68,80 @@ Notation "'valuset'" := (valu * list valu)%type.
 (* Async-disk *)
 Definition rawdisk := @mem addr addr_eq_dec valuset.
 Definition vsmerge (vs : valuset) : list valu := fst vs :: snd vs.
+
+
+(* Hashing *)
+Definition hashlen := 256.
+Parameter hash_fwd : forall sz, word sz -> word hashlen.
+Definition default_valu : valu := $0.
+Definition default_hash := hash_fwd default_valu.
+
+(* A hashmap holds all keys that Hash has been called on, maps hash values to keys. *)
+Inductive hashmap : Type :=
+  | empty_hashmap : hashmap
+  | upd_hashmap : hashmap -> word hashlen -> { sz : nat & word sz } -> hashmap.
+
+Definition upd_hashmap' hm h sz k : hashmap :=
+  upd_hashmap hm h (existT _ sz k).
+
+Fixpoint hashmap_get hm h : option {sz : nat & word sz} :=
+  if (weq h default_hash)
+    then Some (existT _ _ default_valu) else
+    (match hm with
+    | empty_hashmap => None
+    | upd_hashmap hm' h' k' =>  if (weq h' h)
+                                then Some k'
+                                else hashmap_get hm' h
+    end).
+
+
+Lemma upd_hashmap_eq : forall hm h k,
+  h <> default_hash ->
+  hashmap_get (upd_hashmap hm h k) h = Some k.
+Proof.
+  intros.
+  unfold hashmap_get.
+  destruct (weq h default_hash);
+  destruct (weq h h); intuition.
+Qed.
+
+Lemma upd_hashmap'_eq : forall hm h sz k,
+  h <> default_hash ->
+  hashmap_get (upd_hashmap' hm h k) h = Some (existT _ sz k).
+Proof.
+  intros.
+  unfold upd_hashmap'.
+  apply upd_hashmap_eq; auto.
+Qed.
+
+Hint Rewrite upd_hashmap_eq.
+
+
+Definition hash_safe hm h sz (k : word sz) :=
+  hashmap_get hm h = None \/ hashmap_get hm h = Some (existT _ _ k).
+
+(* Converting between hash and valu.*)
+Lemma hashlen_valulen: hashlen + (valulen - hashlen) = valulen.
+Proof.
+  rewrite valulen_is; auto.
+Qed.
+
+Definition hash_to_valu (h: word hashlen) : valu.
+  set (zext h (valulen-hashlen)) as r.
+  rewrite hashlen_valulen in r.
+  apply r.
+Defined.
+
+Lemma hash_to_valu_inj : forall a b,
+  hash_to_valu a = hash_to_valu b ->
+  a = b.
+  unfold hash_to_valu.
+  unfold eq_rec_r, eq_rec.
+  rewrite <- hashlen_valulen.
+  intros.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec) in H.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec) in H.
+  unfold zext in *.
+  apply combine_inj in H.
+  intuition.
+Qed.
