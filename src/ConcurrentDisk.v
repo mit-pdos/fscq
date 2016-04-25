@@ -794,4 +794,79 @@ Proof.
   admit. (* linear_rel with increasing lockset *)
 Admitted.
 
+Definition unlock {T} a rx : prog Mcontents Scontents T :=
+  m <- Get MLocks;
+  Assgn MLocks (Locks.set_open m a);;
+        GhostUpdate (fun s =>
+                       let locks := get GLocks s in
+                       set GLocks (Locks.free_lock locks a) s);;
+        GhostUpdate (fun s =>
+                       let ld := get GDisk s in
+                       set GDisk (lin_release ld a) s);;
+        GhostUpdate (fun s =>
+                       let ld := get GDisk s in
+                       let ld0 := hide_readers (view LinPoint ld) in
+                       set GDisk0 ld0 s);;
+        rx tt.
+
+Polymorphic Theorem unlock_ok : forall a,
+  stateS TID: tid |-
+  {{ v,
+   | PRE d m s0 s:
+       diskI m s d /\
+       Locks.get (get GLocks s) a = Owned tid /\
+       view Latest (get GDisk s) a = Some (v, None)
+   | POST d' m' s0' s' _:
+       diskI m' s' d' /\
+       Locks.get (get GLocks s') a = NoOwner /\
+       d = d' /\
+       modified [(MLocks)] m m' /\
+       modified [(GDisk0; GDisk; GLocks)] s s' /\
+       view LinPoint (get GDisk s') a = Some (v, None) /\
+       (forall a', a <> a' ->
+              Locks.get (get GLocks s) a' = Owned tid ->
+              Locks.get (get GLocks s') a' = Owned tid) /\
+       s0' = s0
+  }} unlock a.
+Proof.
+  hoare pre simplify with safe_finish.
+
+  unfold diskI; intuition idtac; simpl_get_set.
+  admit. (* ghost_lock_invariant on free *)
+
+  admit. (* linearized_consistent on release/free *)
+
+  simpl_get_set in *.
+  destruct (weq a a0); subst.
+  admit. (* need to do some rewriting in the style of upd *)
+  admit. (* need to do some rewriting in the style of upd *)
+
+  unfold lin_release.
+  unfold view, proj; extensionality a'; destruct (weq a a'); subst;
+  destruct matches; subst;
+  autorewrite with upd in *;
+  repeat match goal with
+              | [ v: V' _ _ |- _ ] => destruct v
+         end;
+  (* congruence is screwed up here - it should do most of this on its own *)
+  repeat inv_opt;
+  try simpl_match;
+  cbn;
+  try congruence.
+  rewrite H6 in H9; inv_opt; auto.
+  rewrite H6 in H9; inv_opt; auto.
+  rewrite H6 in H9; inv_opt; auto.
+
+  rewrite get_free_lock; auto.
+
+  eauto 10 with modified.
+
+  unfold view, proj, lin_release in *.
+  destruct (get GDisk s a); try congruence.
+  destruct v0.
+  autorewrite with upd; cbn in *; auto.
+
+  rewrite get_free_lock_other by auto; auto.
+Admitted.
+
 End LockedDisk.
