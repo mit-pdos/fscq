@@ -107,6 +107,32 @@ Module DTCrash.
     apply IHents.
   Qed.
 
+  Lemma Forall_combine_same : forall T T1 T2 (l : list T) P (f1 : T -> T1) (f2 : T -> T2),
+    Forall (fun x => P (f1 x, f2 x)) l ->
+    Forall P (combine (map f1 l) (map f2 l)).
+  Proof.
+    induction l; simpl; intros.
+    - constructor.
+    - inversion H; subst.
+      constructor; auto.
+  Qed.
+
+  Lemma tree_dir_names_pred_extract :
+    forall xp tree_ents s d,
+    In (s, d) tree_ents ->
+    exists F,
+    dirlist_pred (tree_pred xp) tree_ents =p=> F * tree_pred xp d.
+  Proof.
+    induction tree_ents; simpl; intros.
+    - exfalso; auto.
+    - destruct a.
+      inversion H; subst.
+      + eexists; cancel.
+      + edestruct IHtree_ents; eauto.
+        eexists.
+        rewrite H1. cancel.
+  Qed.
+
 
   Lemma flist_crash_remap_tree_crash : forall xp fs fs' t F,
     (F * tree_pred xp t)%pred (list2nmem fs) ->
@@ -114,25 +140,33 @@ Module DTCrash.
     tree_crash t (remap_tree fs' t).
   Proof.
     induction t using dirtree_ind2; simpl; intros.
-    destruct_lift H.
-    constructor.
-    seprewrite.
-    eapply forall2_selN with (n := inum); eauto.
+    - constructor.
+      destruct_lift H.
+      eapply forall2_selN in H0.
+      erewrite <- list2nmem_sel with (l := fs) in H0.
+      eauto.
+      pred_apply; cancel.
+      eapply list2nmem_inbound; pred_apply; cancel.
+    - constructor; [ apply map_fst_map_eq | ].
+      rewrite map_snd_map_eq.
+      apply forall_forall2.
+      2: repeat rewrite map_length; auto.
+      rewrite map_map.
+      apply Forall_map in H.
+      rewrite Forall_forall in H.
+      apply Forall_combine_same.
+      apply Forall_forall; intros.
+      simpl.
+      destruct x; simpl in *.
+      edestruct tree_dir_names_pred_extract; eauto.
+      specialize (H (s, d) H2); simpl in H.
+      eapply H; eauto.
+      pred_apply.
+      rewrite H3. cancel.
 
-    constructor.
-    apply map_fst_map_eq.
-    rewrite map_snd_map_eq.
-
-    destruct tree_ents; simpl in *.
-    apply Forall2_nil.
-    destruct p; simpl in *.
-    constructor.
-    apply Forall_inv in H.
-    eapply H; eauto.
-    pred_apply; cancel.
-
-    admit.
-  Admitted.
+    Grab Existential Variables.
+    apply BFILE.bfile0.
+  Qed.
 
 
   Lemma flist_crash_remap_tree_pred : forall xp fs fs' t F,
