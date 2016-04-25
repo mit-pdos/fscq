@@ -54,8 +54,8 @@ Module DiskTransitionSystem (SemVars:SemanticsVars) (DVars : DiskVars SemVars).
 
   Definition diskR (tid:ID) : Relation Scontents :=
     fun s s' =>
-      let ld := get GDisk0 s in
-      let ld' := get GDisk0 s' in
+      let ld := get GDisk s in
+      let ld' := get GDisk s' in
       let locks := get GLocks s in
       let locks' := get GLocks s' in
       same_domain ld ld' /\
@@ -70,6 +70,12 @@ Module DiskTransitionSystem (SemVars:SemanticsVars) (DVars : DiskVars SemVars).
       let ld := get GDisk s in
       (forall a, ghost_lock_invariant (Locks.mem mlocks a) (Locks.get locks a)) /\
       linearized_consistent ld (Locks.get locks) /\
+      (* unlocked address resource invariant *)
+      (forall a, Locks.get locks a = NoOwner ->
+            (* no reader: stated in terms of latest value, but
+            linearized_consistent guarantees v = v' *)
+            forall v v', ld a = Some (v, v') ->
+                 snd v' = None) /\
       ld0 = hide_readers (view LinPoint ld) /\
       d = view Latest ld.
 
@@ -160,53 +166,6 @@ Import Transitions.
 Definition M := EventCSL.M Mcontents.
 Definition S := EventCSL.S Scontents.
 
-Definition rep ld : type_pred Scontents :=
-  (exists locks, haddr GLocks |-> locks *
-            haddr GDisk |-> ld)%pred.
-
-Lemma disk_rep_unfold : forall s Fs (ld: linearized DISK),
-    (s |= Fs * rep ld ->
-     exists (locks: Locks.S),
-       s |= Fs *
-       haddr GLocks |-> locks *
-       haddr GDisk |-> ld)%judgement.
-Proof.
-  unfold pred_in, rep; intros.
-  apply sep_star_comm in H.
-  apply pimpl_exists_r_star' in H.
-  apply exis_to_exists in H; deex.
-  exists x.
-  pred_apply; cancel.
-Qed.
-
-Lemma disk_rep_refold : forall s Fs (ld: linearized DISK) (locks: Locks.S),
-    (s |= Fs *
-    haddr GLocks |-> locks
-    * haddr GDisk |-> ld ->
-     s |= Fs * rep ld)%judgement.
-Proof.
-  unfold pred_in, rep; intros.
-  apply sep_star_comm.
-  apply pimpl_exists_r_star.
-  exists locks.
-  pred_apply; cancel.
-Qed.
-
-Ltac no_pred_in thm :=
-  let t := type of thm in
-  let t' := eval unfold pred_in in t in
-  exact (thm:t').
-
-Hint Resolve disk_rep_refold.
-Hint Resolve ltac:(no_pred_in disk_rep_refold).
-
-Ltac disk_rep_unfold :=
-    idtac;
-    match goal with
-    | [ H: (hlistmem _ |= _ * rep _)%judgement |- _ ] =>
-      apply disk_rep_unfold in H; repeat deex
-    end.
-
 Lemma others_disk_relation_holds : forall tid,
     rimpl (othersR R tid) (othersR diskR tid).
 Proof.
@@ -290,7 +249,6 @@ Ltac simplify_reduce_step :=
           || (time "rew hlist" autorewrite with hlist)
           || (time "trivial" progress trivial)
           || invariant_unfold
-          || disk_rep_unfold
           || unf.
 
 Ltac simplify_step :=
@@ -346,11 +304,34 @@ Proof.
   destruct matches; autorewrite with upd; eauto.
 Qed.
 
+Lemma linear_upd_same_domain : forall A AEQ V (m: @linear_mem A AEQ V) a v',
+    same_domain m (linear_upd m a v').
+Proof.
+  unfold same_domain, subset, linear_upd; intuition.
+  destruct (AEQ a a0); subst; intros;
+  destruct matches;
+  autorewrite with upd;
+  eauto.
+
+  destruct (AEQ a a0); subst; intros;
+  destruct matches in *;
+  autorewrite with upd in *;
+  eauto.
+Qed.
+
 (* sanity check respects_lock idea; also hides a more general proof
 that linear_rel respects the lock/resource pair it is about. *)
 Polymorphic Theorem diskR_respects_lock : respects_lock diskR GLocks GDisk.
 Proof.
-  unfold respects_lock, diskR, linear_rel, linear_upd; intuition; simpl_get_set.
+  unfold respects_lock, diskR, linear_rel; intuition; simpl_get_set.
+  eapply same_domain_trans.
+  apply same_domain_sym.
+  apply linear_upd_same_domain.
+  eapply same_domain_trans.
+  eauto.
+  apply linear_upd_same_domain.
+
+  unfold linear_upd in *.
   simpl_get_set in H3.
   destruct (weq a a0); subst; try congruence.
   assert (tid' = tid'0) by congruence; subst; cleanup.
@@ -396,6 +377,65 @@ Proof.
     intuition (eauto || congruence).
 Qed.
 
+Definition locks_increasing tid (s s':S) :=
+  forall a,
+    Locks.get (get GLocks s) a = Owned tid ->
+    Locks.get (get GLocks s') a = Owned tid.
+
+Lemma locks_increase_over_R' : forall tid s s',
+    star (othersR R tid) s s' ->
+    locks_increasing tid s s'.
+Proof.
+  unfold locks_increasing; intros.
+  eapply locked_addr_stable; eauto.
+Qed.
+
+Lemma locks_increasing_GLocks : forall tid s1 s1' s2 s2',
+    locks_increasing tid s1 s1' ->
+    get GLocks s2 = get GLocks s1 ->
+    get GLocks s2' = get GLocks s1' ->
+    locks_increasing tid s2 s2'.
+Proof.
+  unfold locks_increasing; intros.
+  rewrite H0, H1 in *.
+  eauto.
+Qed.
+
+Lemma locks_increasing_trans : forall tid s s' s'',
+    locks_increasing tid s s' ->
+    locks_increasing tid s' s'' ->
+    locks_increasing tid s s''.
+Proof.
+  unfold locks_increasing; intuition.
+Qed.
+
+Lemma locks_increasing_add_lock : forall tid s a,
+    locks_increasing tid s (set GLocks (add_lock (get GLocks s) a tid) s).
+Proof.
+  unfold locks_increasing; intros.
+  simpl_get_set.
+  destruct (weq a a0); subst; intros.
+  rewrite get_add_lock; eauto.
+  rewrite get_add_lock_other; eauto.
+Qed.
+
+Hint Resolve locks_increase_over_R'.
+Hint Resolve locks_increasing_GLocks.
+Hint Extern 5 (get GLocks _ = get GLocks _) => simpl_get_set.
+Hint Resolve locks_increasing_add_lock.
+
+Lemma same_domain_stable : forall tid s s',
+    star (othersR R tid) s s' ->
+    same_domain (get GDisk s) (get GDisk s').
+Proof.
+  intros.
+  rewrite others_disk_relation_holds in H.
+  induction H; eauto.
+  apply same_domain_refl.
+  unfold othersR, diskR in H; deex.
+  eapply same_domain_trans; eauto.
+Qed.
+
 Definition locked_yield {T} a rx : prog Mcontents Scontents T :=
   Yield a;;
         rx tt.
@@ -411,6 +451,7 @@ Polymorphic Theorem locked_yield_ok : forall a,
    | POST d' m' s0' s' _:
          Inv m' s' d' /\
          star (othersR R tid) s s' /\
+         locks_increasing tid s s' /\
          Locks.get (get GLocks s') a = Owned tid /\
          view Latest (get GDisk s') a = v /\
          R tid s0' s'
@@ -490,13 +531,6 @@ Qed.
 Polymorphic Hint Rewrite view_hide_upd : view.
 Polymorphic Hint Rewrite view_lift_upd_hint using (now eauto) : view.
 
-(*
-(* the above hints don't fire when the below does, for some reason
-(probably related to universes) *)
-Hint Rewrite (@view_hide_upd addr _ (const wr_set)) : view.
-Hint Rewrite (@view_lift_upd_hint addr _ (const wr_set)) using (now eauto) : view.
-*)
-
 Polymorphic Theorem respects_lock_others' : forall tid s s' a,
     Locks.get (get GLocks s) a = Owned tid ->
     othersR R tid s s' ->
@@ -553,8 +587,17 @@ Proof.
   try congruence.
 Qed.
 
+Polymorphic Lemma linear_upd_ne : forall A AEQ V (m: @linear_mem A AEQ V) a a' v,
+    a <> a' ->
+    linear_upd m a v a' = m a'.
+Proof.
+  unfold linear_upd; intros.
+  destruct matches. autorewrite with upd; auto.
+Qed.
+
 Polymorphic Hint Rewrite linear_upd_repeat : linear_upd.
 Polymorphic Hint Rewrite linear_upd_same using (solve [ auto ]) : linear_upd.
+Polymorphic Hint Rewrite linear_upd_ne using (solve [ auto ]) : linear_upd.
 
 Hint Resolve linear_rel_refl.
 
@@ -572,8 +615,7 @@ Polymorphic Theorem locked_AsyncRead_ok : forall a,
          Inv m' s' d' /\
          view Latest ld' a = Some (v, None) /\
          star (othersR R tid) s s' /\
-         (* TODO: promise lockset increased: for good proof structure this
-         should be done via a general theorem about star (othersR R tid) *)
+         locks_increasing tid s s' /\
          r = v /\
          R tid s0' s'
   }} locked_AsyncRead a.
@@ -587,10 +629,23 @@ Proof.
   finish; simplify; autorewrite with view; eauto.
   eapply linearized_consistent_upd; eauto.
 
+  (* TODO: need some definitions so this proof can be factored out
+  into a lemma *)
+  simpl_get_set in *.
+  destruct (weq a a0); subst; try congruence.
+  assert (NoOwner = Owned tid).
+  rewrite <- H9.
+  rewrite <- H2.
+  auto.
+  congruence.
+  autorewrite with linear_upd in *.
+  eauto.
+
   apply R_trans.
   eapply star_two_step; eauto.
   finish.
   unfold diskR; simplify.
+  eapply linear_upd_same_domain.
   (* BUG: eauto using linear_rel_upd gives exception
   Univ.AlreadyDeclared *)
   eapply linear_rel_upd; eauto.
@@ -610,6 +665,9 @@ Proof.
     eauto.
   eapply linearized_consistent_upd; eauto.
 
+  admit. (* same thing with no reader invariant: only affected locked
+  addresses *)
+
   autorewrite with view upd; auto.
 
   match goal with
@@ -628,11 +686,11 @@ Proof.
   Univ.AlreadyDeclared *)
   finish.
   split.
-  apply same_domain_refl.
+  eapply linear_upd_same_domain.
   eapply linear_rel_upd.
   auto.
   apply linear_rel_refl.
-Qed.
+Admitted.
 
 (* write is actually uninteresting - the low-level Write doesn't yield *)
 
@@ -650,12 +708,21 @@ Definition lock {T} (a:addr) rx : prog Mcontents Scontents T :=
 
 Hint Extern 1 {{ wait_for _ _ _; _ }} => apply wait_for_ok : prog.
 
+Lemma same_domain_exists_val : forall AT AEQ V (m m': @mem AT AEQ V) a v,
+    same_domain m m' ->
+    m a = Some v ->
+    exists v', m' a = Some v'.
+Proof.
+  unfold same_domain, subset; intuition eauto.
+Qed.
+
 Polymorphic Theorem lock_ok : forall a,
   stateS TID: tid |-
-  {{ (_:unit),
+  {{ v,
    | PRE d m s0 s:
        Inv m s d /\
-       R tid s0 s
+       R tid s0 s /\
+       get GDisk s a = Some v
    | POST d' m'' s0' s'' _:
        (exists m' s',
          Inv m' s' d' /\
@@ -665,6 +732,7 @@ Polymorphic Theorem lock_ok : forall a,
        star (othersR R tid) s s') /\
        Inv m'' s'' d' /\
        Locks.get (get GLocks s'') a = Owned tid /\
+       locks_increasing tid s s'' /\
        (* invariant on shared (ie, unlocked) addresses: no reader;
           higher-level caller may know something about v as well,
           depending on the address *)
@@ -679,6 +747,17 @@ Proof.
       apply wait_for_ok | ];
   simplify; safe_finish.
   step pre simplify with safe_finish.
+  assert (exists v, get GDisk s2 a = Some v).
+  match goal with
+    | [ H: star (othersR R tid) _ _ |- _ ] =>
+      eapply same_domain_stable in H;
+        eapply H;
+        eauto
+  end.
+  deex.
+  destruct v0.
+  destruct c0.
+
   step pre simplify with safe_finish.
   step pre simplify with safe_finish.
   step pre simplify with idtac.
@@ -687,11 +766,23 @@ Proof.
   admit. (* ghost_lock_invariant stable under set/add lock *)
 
   admit. (* linearized_consistent stable under adding a lock *)
+
+  admit. (* no reader invariant after locking an address *)
+
   rewrite get_add_lock; auto.
 
-  (* TODO: need hypothesis to show a is in domain *)
-  (* TODO: need to actually add the invariant about unlocked addresses *)
-  admit. (* use invariant to show property of unlocked address *)
+  eapply locks_increasing_trans; eauto.
+
+  assert (Locks.get (get GLocks s2) a = NoOwner).
+  specialize (H9 a).
+  inversion H9; eauto.
+  rewrite H13 in H19.
+  congruence.
+  specialize (H16 _ H19).
+  assert (view Latest (get GDisk s2) a = Some (w, o)).
+  unfold view, proj; cbn; simpl_match; cbn; auto.
+  eapply H16 in H18; cbn in H18; subst.
+  eauto.
 
   eapply R_trans; eapply star_two_step; eauto.
   solve_global_transitions; autorewrite with hlist.
