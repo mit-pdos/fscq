@@ -716,6 +716,50 @@ Proof.
   unfold same_domain, subset; intuition eauto.
 Qed.
 
+Hint Constructors ghost_lock_invariant.
+
+Lemma ghost_lock_invariant_acquire : forall mlocks locks tid a0,
+    (forall a, ghost_lock_invariant (Locks.mem mlocks a) (Locks.get locks a)) ->
+    (forall a, ghost_lock_invariant
+            (Locks.mem (set_locked mlocks a0) a)
+            (Locks.get (add_lock locks a0 tid) a )).
+Proof.
+  intros.
+  specialize (H a).
+  destruct (weq a a0); subst;
+  autorewrite with locks;
+  eauto.
+Qed.
+
+Polymorphic Lemma linearized_consistent_acquire : forall V (m: @linear_mem addr (@weq _) V) locks a tid,
+    linearized_consistent m (Locks.get locks) ->
+    linearized_consistent m (Locks.get (add_lock locks a tid)).
+Proof.
+  unfold linearized_consistent, lin_release; intros.
+  specialize (H a0).
+  destruct (weq a a0); subst;
+  destruct matches; subst;
+  autorewrite with locks upd in *;
+  repeat simpl_match;
+  congruence.
+Qed.
+
+Polymorphic Hint Resolve ghost_lock_invariant_acquire linearized_consistent_acquire.
+
+Lemma linear_rel_add_lock : forall V locks (m: @linear_mem addr (@weq _) V) a tid,
+    Locks.get locks a = NoOwner ->
+    linear_rel tid
+               (Locks.get locks)
+               (Locks.get (add_lock locks a tid))
+               m m.
+Proof.
+  unfold linear_rel; intuition.
+  destruct (weq a a0); subst;
+  autorewrite with locks; eauto.
+Qed.
+
+Hint Resolve linear_rel_add_lock.
+
 Polymorphic Theorem lock_ok : forall a,
   stateS TID: tid |-
   {{ v,
@@ -762,11 +806,9 @@ Proof.
   step pre simplify with safe_finish.
   step pre simplify with idtac.
   finish.
-  finish; simplify.
-  admit. (* ghost_lock_invariant stable under set/add lock *)
+  finish; simplify; eauto.
 
-  admit. (* linearized_consistent stable under adding a lock *)
-
+  simpl_get_set in *.
   admit. (* no reader invariant after locking an address *)
 
   rewrite get_add_lock; auto.
@@ -790,8 +832,11 @@ Proof.
 
   intuition idtac.
   apply same_domain_refl.
+  eapply linear_rel_add_lock; eauto.
+  specialize (H9 a).
+  inversion H9; eauto.
 
-  admit. (* linear_rel with increasing lockset *)
+  rewrite H13 in H19; congruence.
 Admitted.
 
 Definition unlock {T} a rx : prog Mcontents Scontents T :=
@@ -820,7 +865,6 @@ Proof.
   destruct (weq a a0); subst;
   autorewrite with locks;
   eauto.
-  constructor; auto.
 Qed.
 
 Polymorphic Lemma linearized_consistent_free : forall V (m: @linear_mem addr (@weq _) V) locks a,

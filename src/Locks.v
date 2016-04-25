@@ -107,6 +107,20 @@ Proof.
   t.
 Qed.
 
+Theorem mem_set_locked : forall m a a',
+    AOT.eq a a' ->
+    mem (set_locked m a) a' = Locked.
+Proof.
+  t.
+Qed.
+
+Theorem mem_set_locked_other : forall m a a',
+    ~AOT.eq a a' ->
+    mem (set_locked m a) a' = mem m a'.
+Proof.
+  t.
+Qed.
+
 Theorem mem_set_open : forall m a a',
     AOT.eq a a' ->
     mem (set_open m a) a' = Open.
@@ -127,6 +141,8 @@ Hint Rewrite get_add_lock
      get_add_lock_other
      get_free_lock
      get_free_lock_other
+     mem_set_locked
+     mem_set_locked_other
      mem_set_open
      mem_set_open_other using (solve [ auto ] ) : locks.
 
