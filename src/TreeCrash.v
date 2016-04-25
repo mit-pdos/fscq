@@ -45,6 +45,52 @@ Module DTCrash.
          TreeDir inum st'
     end.
 
+  Theorem tree_crash_find_name :
+    forall fnlist t t' subtree,
+    tree_crash t t' ->
+    find_subtree fnlist t = Some subtree ->
+    exists subtree',
+    find_subtree fnlist t' = Some subtree' /\
+    tree_crash subtree subtree'.
+  Proof.
+    induction fnlist.
+    - simpl; intros.
+      eexists; intuition eauto.
+      inversion H0; subst; auto.
+    - intros.
+      inversion H0.
+      destruct t; try congruence.
+      inversion H; subst.
+      generalize dependent st'.
+      induction l; intros.
+      + simpl in *. congruence.
+      + destruct st'; try solve [ simpl in *; congruence ].
+        destruct p.
+        unfold find_subtree_helper in H2 at 1.
+        destruct a0.
+        simpl in H2.
+        destruct (string_dec s0 a).
+        * subst.
+          edestruct IHfnlist.
+          2: apply H2.
+          inversion H6; eauto.
+          eexists.
+          intuition eauto.
+          inversion H4; subst.
+          simpl; destruct (string_dec s s); try congruence.
+        * edestruct IHl.
+          eauto.
+          eauto.
+          inversion H4. apply H5.
+          inversion H6; eauto.
+          constructor. inversion H4; eauto.
+          inversion H. inversion H8; eauto.
+          exists x. intuition.
+          simpl.
+          inversion H4; subst. destruct (string_dec s a); try congruence.
+          apply H3.
+  Qed.
+
   Lemma map_fst_map_eq : forall A B (ents : list (A * B)) C (f : B -> C),
     map fst ents = map fst (map (fun e => (fst e, f (snd e))) ents).
   Proof.
