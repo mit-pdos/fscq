@@ -652,16 +652,22 @@ Module BFILE.
     >} read_range lxp ixp inum a nr vfold v0 ms.
   Proof.
     unfold read_range.
-    hoare.
+    safestep.
+    safestep.
 
-    assert (m1 < length vsl).
+    assert (m2 < length vsl).
     denote (arrayN a vsl) as Hx.
     destruct (list2nmem_arrayN_bound vsl _ Hx); subst; simpl in *; omega.
+    safestep.
 
     rewrite firstn_S_selN_expand with (def := $0) by (rewrite map_length; auto).
     rewrite fold_left_app; simpl.
     erewrite selN_map; subst; auto.
-    Unshelve. exact tt.
+    cancel.
+
+    safestep.
+    cancel.
+    Unshelve. all: eauto; exact tt.
   Qed.
 
 
@@ -709,18 +715,28 @@ Module BFILE.
     >} read_cond lxp ixp inum vfold v0 cond ms.
   Proof.
     unfold read_cond.
-    hoare.
-
+    safestep.
+    safestep.
+    safestep.
     sepauto.
+
+    safestep.
+    safestep.
     or_l; cancel; filldef; eauto.
+
+    safestep.
     rewrite firstn_S_selN_expand with (def := $0) by (rewrite map_length; auto).
     rewrite fold_left_app; simpl.
     erewrite selN_map; subst; auto.
     apply not_true_is_false; auto.
 
+    cancel.
+    safestep.
     or_r; cancel.
     denote cond as Hx; rewrite firstn_oob in Hx; auto.
     rewrite map_length; auto.
+    cancel.
+
     Unshelve. all: easy.
   Qed.
 
@@ -790,21 +806,21 @@ Module BFILE.
     >} grown lxp bxp ixp inum l ms.
   Proof.
     unfold grown; intros.
-    step.
-
+    safestep.
     unfold synced_list; simpl; rewrite app_nil_r.
-    replace f with ({| BFData := BFData f; BFAttr := BFAttr f|}) at 1; try cancel.
-    destruct f; simpl; auto.
+    eassign f; destruct f; auto.
 
-    step.
+    safestep.
     subst; simpl; apply list2nmem_arrayN_app; eauto.
-    hoare.
 
+    safestep; safestep.
+    or_l; cancel.
     erewrite firstn_S_selN_expand by omega.
     rewrite synced_list_app, <- app_assoc.
     unfold synced_list at 3; simpl; eauto.
 
     step.
+    safestep.
     or_r; cancel.
     rewrite firstn_oob; auto.
     apply list2nmem_arrayN_app; auto.
