@@ -809,6 +809,35 @@ Definition unlock {T} a rx : prog Mcontents Scontents T :=
                        set GDisk0 ld0 s);;
         rx tt.
 
+Lemma ghost_lock_invariant_free : forall mlocks locks a0,
+    (forall a, ghost_lock_invariant (Locks.mem mlocks a) (Locks.get locks a)) ->
+    (forall a, ghost_lock_invariant
+            (Locks.mem (Locks.set_open mlocks a0) a)
+            (Locks.get (Locks.free_lock locks a0) a )).
+Proof.
+  intros.
+  specialize (H a).
+  destruct (weq a a0); subst;
+  autorewrite with locks;
+  eauto.
+  constructor; auto.
+Qed.
+
+Polymorphic Lemma linearized_consistent_free : forall V (m: @linear_mem addr (@weq _) V) locks a,
+    linearized_consistent m (Locks.get locks) ->
+    linearized_consistent (lin_release m a) (Locks.get (free_lock locks a)).
+Proof.
+  unfold linearized_consistent, lin_release; intros.
+  specialize (H a0).
+  destruct (weq a a0); subst;
+  destruct matches; subst;
+  autorewrite with locks upd in *;
+  repeat simpl_match;
+  congruence.
+Qed.
+
+Polymorphic Hint Resolve ghost_lock_invariant_free linearized_consistent_free.
+
 Polymorphic Theorem unlock_ok : forall a,
   stateS TID: tid |-
   {{ v,
@@ -822,7 +851,7 @@ Polymorphic Theorem unlock_ok : forall a,
        d = d' /\
        modified [(MLocks)] m m' /\
        modified [(GDisk0; GDisk; GLocks)] s s' /\
-       view LinPoint (get GDisk s') a = Some (v, None) /\
+       get GDisk0 s' = upd (get GDisk0 s) a v /\
        (forall a', a <> a' ->
               Locks.get (get GLocks s) a' = Owned tid ->
               Locks.get (get GLocks s') a' = Owned tid) /\
@@ -831,15 +860,12 @@ Polymorphic Theorem unlock_ok : forall a,
 Proof.
   hoare pre simplify with safe_finish.
 
-  unfold diskI; intuition idtac; simpl_get_set.
-  admit. (* ghost_lock_invariant on free *)
-
-  admit. (* linearized_consistent on release/free *)
+  unfold diskI; intuition idtac; simpl_get_set; eauto.
 
   simpl_get_set in *.
-  destruct (weq a a0); subst.
-  admit. (* need to do some rewriting in the style of upd *)
-  admit. (* need to do some rewriting in the style of upd *)
+  destruct (weq a a0); subst;
+  autorewrite with lin_upd locks in *; eauto.
+  erewrite lin_release_view_eq in H7 by eauto; inv_opt; auto.
 
   unfold lin_release.
   unfold view, proj; extensionality a'; destruct (weq a a'); subst;
@@ -857,9 +883,18 @@ Proof.
   rewrite H6 in H9; inv_opt; auto.
   rewrite H6 in H9; inv_opt; auto.
 
-  rewrite get_free_lock; auto.
+  autorewrite with locks; auto.
 
   eauto 10 with modified.
+
+  extensionality a'.
+  unfold hide_readers, view.
+  destruct (weq a a'); subst;
+  autorewrite with upd lin_upd.
+  erewrite lin_release_view_eq by eauto.
+  auto.
+  rewrite H5.
+  auto.
 
   unfold view, proj, lin_release in *.
   destruct (get GDisk s a); try congruence.
@@ -867,6 +902,6 @@ Proof.
   autorewrite with upd; cbn in *; auto.
 
   rewrite get_free_lock_other by auto; auto.
-Admitted.
+Qed.
 
 End LockedDisk.

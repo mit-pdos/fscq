@@ -226,6 +226,35 @@ Arguments linear_mem {A AEQ V}.
       | _ => idtac "linearized" mt "failed; not a mem"
       end) (at level 50, only parsing).
 
+
+  Theorem lin_release_eq : forall A AEQ V (m: @linear_mem A AEQ V) a v v',
+      m a = Some (v, v') ->
+      lin_release m a a = Some (v', v').
+  Proof.
+    unfold lin_release; intros; simpl_match;
+    autorewrite with upd; auto.
+  Qed.
+
+  Theorem lin_release_view_eq : forall A AEQ V (m: @linear_mem A AEQ V) a v',
+      view Latest m a = Some v' ->
+      lin_release m a a = Some (v', v').
+  Proof.
+    unfold view, proj, lin_release; intros.
+    destruct matches; subst; cbn in *;
+    autorewrite with upd.
+    inversion H; auto.
+    simpl_match; congruence.
+  Qed.
+
+  Theorem lin_release_neq : forall A AEQ V (m: @linear_mem A AEQ V) a a',
+      a <> a' ->
+      lin_release m a a' = m a'.
+  Proof.
+    unfold lin_release; intros;
+    destruct matches;
+    autorewrite with upd; auto.
+  Qed.
+
 Definition linearized_consistent A AEQ V (m: @linear_mem A AEQ V) (locks: _ -> BusyFlagOwner) : Prop :=
 forall a, match m a with
           | Some (v, v') =>
@@ -272,6 +301,36 @@ Definition linear_upd A AEQ V (m: @linear_mem A AEQ V) a v :=
   | None => m
   end.
 
+Theorem linear_upd_eq : forall A AEQ V (m: @linear_mem A AEQ V) a v0 v0' v,
+    m a = Some (v0, v0') ->
+    linear_upd m a v a = Some (v0, v).
+Proof.
+  unfold linear_upd; intros; simpl_match;
+  autorewrite with upd; auto.
+Qed.
+
+Theorem linear_upd_view_eq : forall A AEQ V (m: @linear_mem A AEQ V) a v0 v,
+    view LinPoint m a = Some v0 ->
+    linear_upd m a v a = Some (v0, v).
+Proof.
+  unfold view, proj, linear_upd; intros;
+  destruct matches; subst;
+  cbn in *;
+  autorewrite with upd;
+  repeat simpl_match;
+  try congruence.
+  inversion H; auto.
+Qed.
+
+Theorem linear_upd_neq : forall A AEQ V (m: @linear_mem A AEQ V) a a' v,
+    a <> a' ->
+    linear_upd m a v a' = m a'.
+Proof.
+  unfold linear_upd; intros;
+  destruct matches;
+  autorewrite with upd; auto.
+Qed.
+
 Theorem linearized_consistent_upd : forall A AEQ V (m: @linear_mem A AEQ V)
   locks a tid v,
   locks a = Owned tid ->
@@ -298,4 +357,8 @@ Proof.
   destruct (AEQ a a0); subst;
   autorewrite with upd in *;
   cleanup.
-Defined.
+Qed.
+
+Hint Rewrite lin_release_eq linear_upd_eq using (solve [ auto ] ) : lin_upd.
+Hint Rewrite lin_release_view_eq linear_upd_view_eq using (solve [ auto ] ) : lin_upd.
+Hint Rewrite lin_release_neq linear_upd_neq using (solve [ auto ] ) : lin_upd.

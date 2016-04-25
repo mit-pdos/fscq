@@ -75,39 +75,60 @@ Proof.
   destruct (AOT.eq_dec a a0); autorewrite with map in *; eauto.
 Qed.
 
+Ltac t :=
+  repeat autounfold with locks; intros; subst;
+  autorewrite with map; auto.
+
 Theorem get_add_lock : forall s a a' tid,
   a = a' ->
   get (add_lock s a tid) a' = Owned tid.
 Proof.
-  repeat autounfold with locks; intros; subst;
-  autorewrite with map; auto.
+  t.
 Qed.
 
 Theorem get_add_lock_other : forall s a a' tid,
   ~AOT.eq a a' ->
   get (add_lock s a tid) a' = get s a'.
 Proof.
-  repeat autounfold with locks; intros;
-  autorewrite with map; auto.
+  t.
 Qed.
 
 Theorem get_free_lock : forall s a a',
   AOT.eq a a' ->
   get (free_lock s a) a' = NoOwner.
 Proof.
-  repeat autounfold with locks; intros;
-  autorewrite with map; auto.
+  t.
 Qed.
 
 Theorem get_free_lock_other : forall s a a',
   ~AOT.eq a a' ->
   get (free_lock s a) a' = get s a'.
 Proof.
-  repeat autounfold with locks; intros;
-  autorewrite with map; auto.
+  t.
+Qed.
+
+Theorem mem_set_open : forall m a a',
+    AOT.eq a a' ->
+    mem (set_open m a) a' = Open.
+Proof.
+  t.
+Qed.
+
+Theorem mem_set_open_other : forall m a a',
+    ~AOT.eq a a' ->
+    mem (set_open m a) a' = mem m a'.
+Proof.
+  t.
 Qed.
 
 End Updates.
+
+Hint Rewrite get_add_lock
+     get_add_lock_other
+     get_free_lock
+     get_free_lock_other
+     mem_set_open
+     mem_set_open_other using (solve [ auto ] ) : locks.
 
 Definition is_open a m : {mem m a = Open} + {mem m a <> Open}.
 Proof.
