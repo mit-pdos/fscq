@@ -2427,8 +2427,14 @@ Module PaddedLog.
   Hint Extern 1 ({{_}} progseq (recover' _ _) _) => apply recover'_ok : prog.
 
 
-  (* This should probably in a different layer...? *)
-  Definition recover {T} rx : prog T :=
+  (**
+   * It seems like [recover'] is the important thing here, and the [recover] below
+   * is actually not needed; higher layers already take care of first calling
+   * BUFCACHE.init_recover, then sb_load, and finally calling the log's [recover]
+   **)
+
+  (*
+  Definition recover {T} cs lxp rx : prog T :=
     cs <- BUFCACHE.init_recover 1;
     let^ (cs, fsxp) <- sb_load cs;
     cs <- recover' (FSXPLog fsxp) cs;
@@ -2505,8 +2511,15 @@ Module PaddedLog.
     rewrite xform_would_recover_either'.
     rewrite would_recover_either'_hashmap_subset; eauto.
   Qed.
+  *)
 
 
+  (**
+   * The below proofs are not actually necessary, though they are useful as a
+   * sanity check.  The [corr3] statements should probably show up in AsyncFS.v.
+   *)
+
+  (*
   Definition extend_recover_ok : forall fsxp new cs,
     {<< old d,
     PRE:hm   BUFCACHE.rep cs d *
@@ -2551,6 +2564,7 @@ Module PaddedLog.
     or_l; cancel.
     or_r; cancel.
   Qed.
+  *)
 
 End PaddedLog.
 
