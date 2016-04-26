@@ -162,17 +162,20 @@ Module MLog.
 
   Definition flush T xp ents ms rx : prog T :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
-    let^ (cs, na) <- DLog.avail xp cs;
-    let ms := (mk_memstate oms cs) in
-    ms' <- IfRx irx (lt_dec na (length ents)) {
-      ms <- apply xp ms;
-      irx ms
+    If (addr_eq_dec (length ents) 0) {
+      rx ^(ms, true)
     } else {
-      irx ms
-    };
-    r <- flush_noapply xp ents ms';
-    rx r.
-
+      let^ (cs, na) <- DLog.avail xp cs;
+      let ms := (mk_memstate oms cs) in
+      ms' <- IfRx irx (lt_dec na (length ents)) {
+        ms <- apply xp ms;
+        irx ms
+      } else {
+        irx ms
+      };
+      r <- flush_noapply xp ents ms';
+      rx r
+   }.
 
   Definition dwrite T xp a v ms rx : prog T :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
