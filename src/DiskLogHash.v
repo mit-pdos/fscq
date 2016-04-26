@@ -1005,7 +1005,7 @@ Module PaddedLog.
     destruct (lt_dec (LogDescLen xp) ndesc);
     destruct (lt_dec (LogLen xp) ndata); simpl; auto.
     left; intuition.
-  Qed.
+  Defined.
 
   Remove Hints goodSize_0.
 
@@ -1623,7 +1623,7 @@ Module PaddedLog.
     right; tauto.
     left; tauto.
     right; tauto.
-  Qed.
+  Defined.
 
   Theorem rep_synced_length_ok : forall F xp l d hm,
     (F * rep xp (Synced l) hm)%pred d -> length l <= LogLen xp.
