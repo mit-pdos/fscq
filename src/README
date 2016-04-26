@@ -17,6 +17,8 @@ means running this as root:
   apt-get update
   apt-get install ghc-8.0.1-prof
 
+  echo 'library-profiling: True' >> ~/.cabal/config
+  cabal user-config update
   PATH=/opt/ghc/8.0.1/bin:$PATH cabal install cryptohash
 
 You also need to install headers for FUSE:
