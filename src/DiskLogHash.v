@@ -1864,7 +1864,7 @@ Module PaddedLog.
   Proof.
     intros.
     destruct (weq x y); destruct (weq a b); intuition.
-  Qed.
+  Defined.
 
   Lemma desc_ipack_injective : forall l1 l2 n1 n2,
     length l1 = n1 * DescSig.items_per_val ->
