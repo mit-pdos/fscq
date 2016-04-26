@@ -69,6 +69,15 @@ Module WBCache.
   Definition write T a v (wcs : wbcachestate) rx : prog T :=
     rx (Build_wbcachestate (WbCs wcs) (Map.add a v (WbBuf wcs))).
 
+  Definition evict T a (wcs : wbcachestate) rx : prog T :=
+    match (Map.find a (WbBuf wcs)) with
+    | Some v =>
+      new_cs <- RCache.write a v (WbCs wcs);
+      rx (Build_wbcachestate new_cs (Map.remove a (WbBuf wcs)))
+    | None =>
+      rx wcs
+    end.
+
   Definition sync T a (wcs : wbcachestate) rx : prog T :=
     match (Map.find a (WbBuf wcs)) with
     | Some v =>
@@ -880,6 +889,10 @@ Module WBCache.
     cs <- write (a + i) v cs;
     rx cs.
 
+  Definition evict_array T a i cs rx : prog T :=
+    cs <- evict (a + i) cs;
+    rx cs.
+
   Definition sync_array T a i cs rx : prog T :=
     cs <- sync (a + i) cs;
     rx cs.
@@ -1008,6 +1021,21 @@ Module WBCache.
     Rof ^(cs);
     rx cs.
 
+  Definition evict_range T a nr cs rx : prog T :=
+    let^ (cs) <- ForN i < nr
+    Ghost [ F crash vs ]
+    Loopvar [ cs ]
+    Continuation lrx
+    Invariant
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vssync_range vs i))%pred d' ]]
+    OnCrash crash
+    Begin
+      cs <- evict_array a i cs;
+      lrx ^(cs)
+    Rof ^(cs);
+    rx cs.
+
   Definition sync_range T a nr cs rx : prog T :=
     let^ (cs) <- ForN i < nr
     Ghost [ F crash vs ]
@@ -1040,6 +1068,22 @@ Module WBCache.
     rx cs.
 
 
+  Definition evict_vecs T a l cs rx : prog T :=
+    let^ (cs) <- ForN i < length l
+    Ghost [ F crash vs ]
+    Loopvar [ cs ]
+    Continuation lrx
+    Invariant
+      exists d', rep cs d' *
+      [[ (F * arrayN a (vssync_vecs vs (firstn i l)))%pred d' ]]
+    OnCrash crash
+    Begin
+      cs <- evict_array a (selN l i 0) cs;
+      lrx ^(cs)
+    Rof ^(cs);
+    rx cs.
+
+
   Definition sync_vecs T a l cs rx : prog T :=
     let^ (cs) <- ForN i < length l
     Ghost [ F crash vs ]
@@ -1050,14 +1094,6 @@ Module WBCache.
       [[ (F * arrayN a (vssync_vecs vs (firstn i l)))%pred d' ]]
     OnCrash crash
     Begin
-
-      (**
-       * XXX for performance, we should first do all of the [RCache.write]s,
-       * and then all of the [RCache.sync]s, so that the Haskell interpreter
-       * can coalesce the [Sync] opcodes.  currently, writes and syncs are
-       * interleaved, which makes it impossible to coalesce the [Sync]s.
-       *)
-
       cs <- sync_array a (selN l i 0) cs;
       lrx ^(cs)
     Rof ^(cs);

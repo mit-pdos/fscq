@@ -194,6 +194,10 @@ Module PaddedLog.
       cs <- BUFCACHE.write (LAHdr xp) (hdr2val (mk_header n)) cs;
       rx cs.
 
+    Definition evict T xp cs rx : prog T :=
+      cs <- BUFCACHE.evict (LAHdr xp) cs;
+      rx cs.
+
     Definition sync T xp cs rx : prog T :=
       cs <- BUFCACHE.sync (LAHdr xp) cs;
       rx cs.
@@ -1394,13 +1398,9 @@ Module PaddedLog.
                           (h_addr, h_valu)) cs;
       (* Extended *)
 
-      (**
-       * XXX for performance, we should do all of these syncs together
-       * in one call to [sync_vecs].  however, this may be a little
-       * tricky, since they might not be part of the same [arrayN]
-       * predicate.  so perhaps we need a variant of [sync_vecs] that
-       * works well for this situation?
-       *)
+      cs <- Desc.evict_aligned xp ndesc nndesc cs;
+      cs <- Data.evict_aligned xp ndata nndata cs;
+      cs <- Hdr.evict xp cs;
 
       cs <- Desc.sync_aligned xp ndesc nndesc cs;
       cs <- Data.sync_aligned xp ndata nndata cs;

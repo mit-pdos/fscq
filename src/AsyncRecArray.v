@@ -572,6 +572,12 @@ Module AsyncRecArray (RA : RASig).
   Qed.
 
 
+  (** evict count blocks starting from start *)
+  Definition evict_aligned T xp start count cs rx : prog T :=
+    cs <- BUFCACHE.evict_range ((RAStart xp) + start) count cs;
+    rx cs.
+
+
   (** sync count blocks starting from start *)
   Definition sync_aligned T xp start count cs rx : prog T :=
     cs <- BUFCACHE.sync_range ((RAStart xp) + start) count cs;
