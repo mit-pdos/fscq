@@ -2024,7 +2024,7 @@ Module DIRTREE.
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
            [[[ (BFILE.BFData f') ::: (B * off |-> (v, vsmerge v0)) ]]] *
            [[ f' = BFILE.mk_bfile (updN (BFILE.BFData f) off (v, vsmerge v0)) (BFILE.BFAttr f) ]]
-    CRASH:hm
+    XCRASH:hm
            LOG.recover_any fsxp.(FSXPLog) F ds hm \/
            exists d tree' f', LOG.intact fsxp.(FSXPLog) F (d, nil) hm *
            [[[ d ::: Fm * rep fsxp Ftop tree' ]]] *
@@ -2043,7 +2043,6 @@ Module DIRTREE.
     eapply find_subtree_inum_valid; eauto.
     cancel.
     or_l.
-
     cancel.
     or_r.
     cancel.
