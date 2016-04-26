@@ -1037,7 +1037,28 @@ Module RADefs (RA : RASig).
   Qed.
 
 
+  Definition selN_val2block v idx :=
+    Rec.of_word (@Rec.word_selN itemtype items_per_val idx (val2word v)).
+  Definition block2val_updN_val2block v idx item :=
+    word2val (@Rec.word_updN itemtype items_per_val idx (val2word v) (Rec.to_word item)).
+
+  Theorem selN_val2block_equiv : forall v idx item0,
+    idx < items_per_val ->
+    selN_val2block v idx = selN (val2block v) idx item0.
+  Proof.
+    unfold selN_val2block; intros.
+    erewrite Rec.word_selN_equiv by auto.
+    reflexivity.
+  Qed.
+
+  Theorem block2val_updN_val2block_equiv : forall v idx item,
+    idx < items_per_val ->
+    block2val_updN_val2block v idx item =
+    block2val (updN (val2block v) idx item).
+  Proof.
+    unfold block2val_updN_val2block; intros.
+    erewrite Rec.word_updN_equiv by auto.
+    reflexivity.
+  Qed.
+
 End RADefs.
-
-
-

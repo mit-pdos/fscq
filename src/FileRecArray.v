@@ -54,12 +54,12 @@ Module FileRecArray (FRA : FileRASig).
   Definition get T lxp ixp inum ix ms rx : prog T :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
     let^ (ms, v) <- BFILE.read_array lxp ixp inum 0 bn ms;
-    rx ^(ms, selN (val2block v) off item0).
+    rx ^(ms, selN_val2block v off).
 
   Definition put T lxp ixp inum ix item ms rx : prog T :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
     let^ (ms, v) <- BFILE.read_array lxp ixp inum 0 bn ms;
-    let v' := block2val (updN (val2block v) off item) in
+    let v' := block2val_updN_val2block v off item in
     ms <- BFILE.write_array lxp ixp inum 0 bn v' ms;
     rx ms.
 
@@ -156,6 +156,8 @@ Module FileRecArray (FRA : FileRASig).
     unfold get, rep.
     hoare.
 
+    (* [rewrite selN_val2block_equiv] somewhere *)
+
     rewrite synced_list_length, ipack_length.
     apply div_lt_divup; auto.
     subst; rewrite synced_list_selN; simpl.
@@ -183,6 +185,8 @@ Module FileRecArray (FRA : FileRASig).
   Proof.
     unfold put, rep.
     hoare; subst.
+
+    (* [rewrite block2val_updN_val2block_equiv] somewhere *)
 
     rewrite synced_list_length, ipack_length; apply div_lt_divup; auto.
     rewrite synced_list_length, ipack_length; apply div_lt_divup; auto.

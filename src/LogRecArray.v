@@ -25,12 +25,12 @@ Module LogRecArray (RA : RASig).
   Definition get T lxp xp ix ms rx : prog T :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
     let^ (ms, v) <- LOG.read_array lxp (RAStart xp) bn ms;
-    rx ^(ms, selN (val2block v) off item0).
+    rx ^(ms, selN_val2block v off).
 
   Definition put T lxp xp ix item ms rx : prog T :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
     let^ (ms, v) <- LOG.read_array lxp (RAStart xp) bn ms;
-    let v' := block2val (updN (val2block v) off item) in
+    let v' := block2val_updN_val2block v off item in
     ms <- LOG.write_array lxp (RAStart xp) bn v' ms;
     rx ms.
 
@@ -116,6 +116,8 @@ Module LogRecArray (RA : RASig).
     unfold get, rep.
     hoare.
 
+    (* [rewrite selN_val2block_equiv] somewhere *)
+
     rewrite synced_list_length, ipack_length.
     apply div_lt_divup; auto.
     subst; rewrite synced_list_selN; simpl.
@@ -139,6 +141,8 @@ Module LogRecArray (RA : RASig).
   Proof.
     unfold put, rep.
     hoare; subst.
+
+    (* [rewrite block2val_updN_val2block_equiv] somewhere *)
 
     rewrite synced_list_length, ipack_length; apply div_lt_divup; auto.
     rewrite synced_list_length, ipack_length; apply div_lt_divup; auto.
