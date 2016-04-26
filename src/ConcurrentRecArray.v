@@ -2,19 +2,19 @@ Require Import EventCSL.
 Require Import EventCSLauto.
 Require Import Automation.
 Require Import Locking.
-Require Import MemCache2.
-Require Import ConcurrentCache2.
 Require Import Star.
 Import List.
 Import List.ListNotations.
-Require Import HlistMem.
-Require Import Preservation.
+Require Import ConcurrentDisk.
 Require Import Linearizable2.
 Require Import Rec.
 Require Import Arith.
 Require Import GenericArray.
+Import ConcurrentDisk.
 
 Import EqNotations.
+
+Module Locks := ConcurrentDisk.Locks.
 
 Module Type RecArrayParams.
 
@@ -23,6 +23,7 @@ Parameter RALen: nat.
 Parameter itemtype : Rec.type.
 Parameter items_per_valu : nat.
 Axiom items_per_valu_ok : Rec.len itemtype * items_per_valu = valulen.
+Axiom ra_params_bounded : RAStart + RALen < pow2 addrlen.
 
 End RecArrayParams.
 
@@ -59,8 +60,8 @@ Module RecArray (Params:RecArrayParams).
     exact blocksz_ok'.
   Defined.
 
-  Definition rep_block (b : block) : valu := wreclen_to_valu (Rec.to_word b).
-  Definition valu_to_block (v : valu) : block := Rec.of_word (valu_to_wreclen v).
+  Definition block_valu (b : block) : valu := wreclen_to_valu (Rec.to_word b).
+  Definition valu_block (v : valu) : block := Rec.of_word (valu_to_wreclen v).
 
   Lemma valu_wreclen_id : forall w, valu_to_wreclen (wreclen_to_valu w) = w.
   Proof.
@@ -68,10 +69,9 @@ Module RecArray (Params:RecArrayParams).
     now eq_rect_simpl.
   Qed.
 
-  Lemma rep_valu_id : forall b, Rec.well_formed b -> valu_to_block (rep_block b) = b.
+  Lemma block_valu_id : forall b, Rec.well_formed b -> valu_block (block_valu b) = b.
   Proof.
-    unfold valu_to_block, rep_block.
-    intros.
+    unfold valu_block, block_valu; intros.
     rewrite valu_wreclen_id.
     apply Rec.of_to_id; assumption.
   Qed.
@@ -84,34 +84,39 @@ Module RecArray (Params:RecArrayParams).
     now eq_rect_simpl.
   Qed.
 
-  Lemma valu_rep_id : forall v,
-    rep_block (valu_to_block v) = v.
+  Lemma valu_block_id : forall v,
+    block_valu (valu_block v) = v.
   Proof.
-    unfold rep_block, valu_to_block; intros.
+    unfold valu_block, block_valu; intros.
     rewrite Rec.to_of_id.
     apply wreclen_valu_id.
   Qed.
 
-  (* temporarily explicitly say readers are None *)
-  (* TODO: eventually cache should not expose readers anywhere *)
-  Definition rep_block' b : wr_set := (rep_block b, None).
+  Lemma items_per_valu_not_0 : items_per_valu <> 0.
+  Proof.
+    intro.
+    pose proof items_per_valu_ok.
+    rewrite H in H0.
+    rewrite <- mult_n_O in H0.
+    inversion H0.
+  Qed.
 
   (* array_item_pairs *)
-  Definition rep_blocks (vs : list block) : @pred addr _ (const wr_set) :=
+  Definition rep_blocks (vs : list block) : @pred addr _ (const valu) :=
     ([[ length vs = RALen ]] *
      [[ Forall Rec.well_formed vs ]] *
-     array ($ RAStart) (map rep_block' vs) $1)%pred.
+     array ($ RAStart) (map block_valu vs) $1)%pred.
 
-  Definition rep_blocks_except (vs: list block) i : @pred addr _ (const wr_set) :=
+  Definition rep_blocks_except (vs: list block) i : @pred addr _ (const valu) :=
     ([[ length vs = RALen ]] *
      [[ Forall Rec.well_formed vs ]] *
-     let blocks := map rep_block' vs in
+     let blocks := map block_valu vs in
      array ($ RAStart) (firstn i blocks) $1 *
      array ($ RAStart ^+ $1) (skipn (i+1) blocks) $1)%pred.
 
   Polymorphic Theorem rep_blocks_split : forall vs i,
       i < RALen ->
-      rep_blocks vs <=p=> rep_blocks_except vs i * ($ (RAStart) ^+ $(i)) |-> rep_block' (selN vs i block0).
+      rep_blocks vs <=p=> rep_blocks_except vs i * ($ (RAStart) ^+ $(i)) |-> block_valu (selN vs i block0).
   Proof.
     unfold rep_blocks, rep_blocks_except; split; intros; cancel.
   Admitted.
@@ -217,61 +222,63 @@ Module RecArray (Params:RecArrayParams).
   Definition rep_items (vs : list item) :=
     rep_blocks (nest_list vs items_per_valu).
 
+  Definition rep_blocks' vs_nested (vd: Disk) :=
+    length vs_nested = RALen /\
+    forall (a:addr), ($ RAStart <= a)%word ->
+         (a < $ (RAStart + RALen))%word ->
+         vd a = Some (block_valu (sel vs_nested a block0)).
+
+  Definition rep_items' (vs: list item) :=
+    rep_blocks' (nest_list vs items_per_valu).
+
   Module Type RecArrayVars (SemVars:SemanticsVars).
     Import SemVars.
-    Parameter memVars : variables Mcontents [BusyFlag:Type].
-    Parameter stateVars : variables Scontents [BusyFlagOwner:Type;
-                                                list item;
-                                                list item].
+    Parameter stateVars : variables Scontents [list item; list item].
 
     Axiom stateVars_no_confusion : NoDup (hmap var_index stateVars).
   End RecArrayVars.
 
   Module RecArrayTransitions (SemVars:SemanticsVars)
-         (CVars:CacheVars SemVars)
+         (DVars:DiskVars SemVars)
          (RAVars: RecArrayVars SemVars).
 
-    Module CacheTransitions := CacheTransitionSystem SemVars CVars.
-    Import CacheTransitions.
+    Module DiskTransitions := DiskTransitionSystem SemVars DVars.
+    Import DiskTransitions.
 
     Import SemVars RAVars.
 
-    Definition Lock := ltac:(hget 0 memVars).
-    Definition GLock := ltac:(hget 0 stateVars).
-    Definition Items0 := ltac:(hget 1 stateVars).
-    Definition Items := ltac:(hget 2 stateVars).
+    Definition Items0 := ltac:(hget 0 stateVars).
+    Definition Items := ltac:(hget 1 stateVars).
 
     Definition recarrayR (tid:ID) : Relation Scontents :=
-      fun s s' =>
-        lock_protocol (get GLock) tid s s' /\
-        lock_protects (get GLock) (get Items) tid s s'.
+      fun s s' => True.
 
     Definition recarrayI : Invariant Mcontents Scontents :=
       fun m s d =>
-        ghost_lock_invariant (get Lock m) (get GLock s) /\
-        (get GLock s = NoOwner -> get Items0 s = get Items s) /\
-        exists F, (get GDisk s |= F * lin_point_pred (rep_items (get Items0 s)))%judgement.
+        rep_items' (get Items0 s) (get GDisk0 s) /\
+        (* this is awkward *)
+        rep_items' (get Items s) (hide_readers (view Latest (get GDisk s))).
 
   End RecArrayTransitions.
 
   Module Type RecArraySemantics
          (SemVars:SemanticsVars)
          (Sem:Semantics SemVars)
-         (CVars:CacheVars SemVars)
-         (CSem: CacheSemantics SemVars Sem CVars)
+         (DVars:DiskVars SemVars)
+         (DSem: DiskSemantics SemVars Sem DVars)
          (RAVars:RecArrayVars SemVars).
 
     Import HlistNotations.
 
-    Import Sem CSem.
-    Module RATransitions := RecArrayTransitions SemVars CVars RAVars.
+    Import Sem DSem.
+    Module RATransitions := RecArrayTransitions SemVars DVars RAVars.
     Import RATransitions.
 
     Axiom recarray_relation_holds : forall tid,
         rimpl (R tid) (recarrayR tid).
 
     Axiom recarray_relation_preserved : forall tid s s',
-        modified [( GLock; Items )] s s' ->
+        modified [( Items )] s s' ->
         recarrayR tid s s' ->
         R tid s s'.
 
@@ -281,10 +288,11 @@ Module RecArray (Params:RecArrayParams).
 
     Axiom recarray_invariant_preserved : forall m s d m' s' d',
         Inv m s d ->
-        modified [( Lock )] m m' ->
-        modified [( GLock; Items )] s s' ->
+        (* m = m' *)
+        modified [( )] m m' ->
+        modified [( Items )] s s' ->
         recarrayI m' s' d' ->
-        cacheI m' s' d' ->
+        diskI m' s' d' ->
         Inv m' s' d'.
 
   End RecArraySemantics.
@@ -292,19 +300,16 @@ Module RecArray (Params:RecArrayParams).
   Module RecArray
          (SemVars:SemanticsVars)
          (Sem:Semantics SemVars)
-         (CVars:CacheVars SemVars)
-         (CSem: CacheSemantics SemVars Sem CVars)
+         (DVars:DiskVars SemVars)
+         (DSem: DiskSemantics SemVars Sem DVars)
          (RAVars:RecArrayVars SemVars)
-         (RASem: RecArraySemantics SemVars Sem CVars CSem RAVars).
+         (RASem: RecArraySemantics SemVars Sem DVars DSem RAVars).
     Import Sem.
-    Module CacheM := Cache SemVars Sem CVars CSem.
-    Import CacheM.
-    Import CSem.Transitions.
+    Module LockedDiskM := LockedDisk SemVars Sem DVars DSem.
+    Import LockedDiskM.
+    Import DSem.Transitions.
     Import RASem.
     Import RATransitions.
-
-    Definition rep (vs: list item) : type_pred Scontents :=
-      (exists l, haddr GLock |-> l * haddr Items |-> vs)%pred.
 
     Ltac derive_local :=
       match goal with
@@ -342,138 +347,95 @@ Module RecArray (Params:RecArrayParams).
     Definition get_block_offset (b: block) (off: nat) : item :=
       selN b off item0.
 
-    Definition get_item {T} i rx : prog Mcontents Scontents T :=
+    Definition locked_get_item {T} i rx : prog Mcontents Scontents T :=
       let idx := $ (block_idx i) in
       let off := off_idx i in
-      lock idx;;
-           v <- read idx;
-        unlock idx;;
-               let b := valu_to_block v in
+           v <- locked_read idx;
+               let b := valu_block v in
                rx (get_block_offset b off).
 
-    Theorem preserves'_star : forall AT AEQ V S
-                                 (f: S -> @mem AT AEQ V) R F Q F' P,
-        preserves' f R F F' (fun s => Q * P s)%pred ->
-        preserves' f R (fun s => F s * Q)%pred (fun s => F' s * Q)%pred P.
+    Hint Resolve items_per_valu_not_0.
+
+    Lemma ra_end_goodSize : goodSize addrlen (RAStart + RALen).
     Proof.
-      unfold preserves'; intros.
-      eapply pimpl_apply;
-        [ | eapply H; eauto ].
-      cancel.
-      pred_apply; cancel.
+      apply ra_params_bounded.
     Qed.
 
-    Theorem preserves'_star_general : forall AT AEQ V S
-                                 (f: S -> @mem AT AEQ V) R F Q F' P,
-        preserves' f R F F' (fun s => Q s * P s)%pred ->
-        preserves' f R (fun s => F s * Q s)%pred (fun s => F' s * Q s)%pred P.
-    Proof.
-      unfold preserves'; intros.
-      eapply pimpl_apply;
-        [ | eapply H; eauto ].
-      cancel.
-      pred_apply; cancel.
-    Qed.
-
-    Hint Extern 0 (okToUnify (CacheM.rep _) (CacheM.rep _)) => constructor : okToUnify.
-
-    Require Import Morphisms.
-
-    Polymorphic Instance lin_point_pred_piff : forall A AEQ V,
-        Proper (piff ==> piff) (@lin_point_pred A AEQ V).
-    Proof.
-      firstorder.
-    Qed.
-
-    Polymorphic Instance lin_point_pred_special :
-      Proper (piff ==> piff) (@lin_latest_pred addr (@weq addrlen) (@const Set addr wr_set)).
-    Proof.
-      firstorder.
-    Qed.
-
-    Theorem lin_point_pred_respects_impl : forall A AEQ V (p q: @pred A AEQ V),
-        p =p=> q ->
-               lin_point_pred p =p=> lin_point_pred q.
+    Lemma wlt_lt'' : forall sz a b,
+        goodSize sz b ->
+        a < b ->
+        ((@natToWord sz a) < ($ b))%word.
     Proof.
       intros.
-      rewrite H.
-      auto.
+      apply lt_wlt.
+      eapply le_lt_trans.
+      apply wordToNat_natToWord_le.
+      rewrite wordToNat_natToWord_idempotent'; auto.
     Qed.
 
-    Goal forall A AEQ V F (p q: @pred A AEQ V),
-        p =p=> q ->
-               F * lin_point_pred p =p=> F * lin_point_pred q.
+    Lemma wle_le'' : forall sz a b,
+        goodSize sz b ->
+        a <= b ->
+        ((@natToWord sz a) <= ($ b))%word.
     Proof.
       intros.
-      rewrite H.
-      auto.
+      apply le_wle.
+      eapply le_trans.
+      apply wordToNat_natToWord_le.
+      rewrite wordToNat_natToWord_idempotent'; auto.
     Qed.
 
-    Theorem rewrite_middle : forall A AEQ V (p q q' r: @pred A AEQ V),
-        q' =p=> q ->
-                p * q' * r =p=> p * q * r.
+    Require Import Omega.
+
+    Hint Resolve ra_end_goodSize.
+
+    Hint Extern 5 (_ <= _) => omega.
+
+    Lemma block_idx_valid : forall i,
+        i < RALen * items_per_valu ->
+        let bidx := @natToWord addrlen (block_idx i) in
+        ($ RAStart <= bidx /\
+         bidx < $ (RAStart + RALen))%word.
     Proof.
-      intros.
-      rewrite H.
-      auto.
+      unfold block_idx; cbn; intros.
+      assert (i / items_per_valu < RALen).
+      apply Nat.div_lt_upper_bound; auto.
+      rewrite mult_comm; auto.
+      split.
+      - apply wle_le''; auto.
+        eapply goodSize_trans with (n2 := RAStart + RALen); auto.
+      - apply wlt_lt''; auto.
     Qed.
 
-    Polymorphic Theorem get_item_ok : forall i,
+    Polymorphic Theorem locked_get_item_ok : forall i,
         stateS TID: tid |-
-        {{ Fs Fs' F LF F' vs vd,
+        {{ (_:unit),
          | PRE d m s0 s:
-             hlistmem s |= Fs s * rep vs * CacheM.rep vd /\
              Inv m s d /\
-             get GLock s = Owned tid /\
-             preserves' (fun s:S => hlistmem s) (star (othersR R tid)) Fs Fs'
-                        (fun s => rep (get Items s) * CacheM.rep (get GDisk s))%pred /\
-             (forall P, preserves' (get GDisk) (star (othersR R tid))
-                              F F'
-                              (fun s => lin_latest_pred (cache_locked tid s P))) /\
-             vd |= F s * lin_point_pred (rep_items vs) * lin_latest_pred (cache_locked tid s LF) /\
+             Locks.get (get GLocks s) ($ (block_idx i)) = Owned tid /\
+             i < RALen * items_per_valu /\
              R tid s0 s
          | POST d' m' s0' s' r:
-             exists vd',
-               hlistmem s' |= Fs' s' * rep vs * CacheM.rep vd' /\
                Inv m' s' d' /\
-               get GLock s' = Owned tid /\
-               vd' |= F' s' * lin_point_pred (rep_items vs) * lin_latest_pred (cache_locked tid s' LF) /\
-               r = selN vs i item0 /\
+               locks_increasing tid s s' /\
+               r = selN (get Items s') i item0 /\
                R tid s0' s'
-        }} get_item i.
+        }} locked_get_item i.
     Proof.
       intros.
       step pre simplify with try solve [ finish ].
+      intuition.
+      unfold recarrayI, rep_items', rep_blocks' in *; intuition.
+      specialize (H11 ($ (block_idx i))).
+      let H := fresh in
+      pose proof (@block_idx_valid i) as H; cbn in H.
+      intuition idtac.
+      (* need a way for all specs to say we're not reading our locked
+      block, but we can't actually put that in the invariant
 
-      unfold pred_in in *; pred_apply; cancel.
-      assert (vs = get Items s) by admit.
-      rewrite H11.
-      instantiate (1 := fun s => (Fs s * rep (get Items s))%pred).
-      cancel.
-
-      unfold rep_items in H5.
-      unfold pred_in in *; pred_apply.
-      eapply pimpl_trans.
-      apply rewrite_middle.
-      Check lin_point_pred_respects_impl.
-      assert (i / items_per_valu < RALen) by admit.
-      pose proof (rep_blocks_split (nest_list vs items_per_valu) H11).
-      destruct H12.
-      eapply (lin_point_pred_respects_impl H12).
-
-      unfold block_idx.
-      replace ($ (RAStart) ^+ $ (i / items_per_valu)) with (@natToWord addrlen (RAStart + i / items_per_valu)).
-      cancel.
-      (* need to move block_idx i |-> _ out of lin_point_pred, saying
-only block_idx i |-> _, ?; except that this needs to happen before the
-existential variable for |->? is created on the right hand side *)
-
-      admit. (* need to move one item out of rep_items, which pretty
-      much requires a new "punctured rep" predicate *)
-
-      apply preserves'_star_general; eassumption.
-
-      instantiate (2 := (fun s => F s * lin_point_pred (rep_items (get Items s)))%pred).
+       interesting point: concretely, what breaks down if the
+       invariant says nobody is reading anything? the LockedDisk read
+       spec certainly won't be provable, but what axiom isn't true? *)
     Abort.
 
   End RecArray.

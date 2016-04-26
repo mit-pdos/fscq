@@ -472,7 +472,7 @@ Qed.
 
 Hint Extern 1 {{ locked_yield _; _ }} => apply locked_yield_ok : prog.
 
-Definition locked_AsyncRead {T} a rx : prog Mcontents Scontents T :=
+Definition locked_read {T} a rx : prog Mcontents Scontents T :=
   tid <- GetTID;
   GhostUpdate (fun s =>
                  let vd := get GDisk s in
@@ -608,7 +608,7 @@ Polymorphic Hint Rewrite linear_upd_ne using (solve [ auto ]) : linear_upd.
 
 Hint Resolve linear_rel_refl.
 
-Polymorphic Theorem locked_AsyncRead_ok : forall a,
+Polymorphic Theorem locked_read_ok : forall a,
   stateS TID: tid |-
   {{ v,
    | PRE d m s0 s:
@@ -625,7 +625,7 @@ Polymorphic Theorem locked_AsyncRead_ok : forall a,
          locks_increasing tid s s' /\
          r = v /\
          R tid s0' s'
-  }} locked_AsyncRead a.
+  }} locked_read a.
 Proof.
   intros.
   step pre simplify with safe_finish.
@@ -698,6 +698,8 @@ Proof.
   auto.
   apply linear_rel_refl.
 Admitted.
+
+Hint Extern 0 {{ locked_read _; _ }} => apply locked_read_ok : prog.
 
 (* write is actually uninteresting - the low-level Write doesn't yield *)
 
@@ -782,6 +784,9 @@ Polymorphic Theorem lock_ok : forall a,
           s'' = set GLocks locks' s') /\
        star (othersR R tid) s s') /\
        Inv m'' s'' d' /\
+       (* these are all derivable facts from
+          s --R--> s' --add lock--> s'',
+          already stated above *)
        Locks.get (get GLocks s'') a = Owned tid /\
        locks_increasing tid s s'' /\
        (* invariant on shared (ie, unlocked) addresses: no reader;
@@ -845,6 +850,8 @@ Proof.
 
   rewrite H13 in H19; congruence.
 Admitted.
+
+Hint Extern 0 {{lock _; _}} => apply lock_ok : prog.
 
 Definition unlock {T} a rx : prog Mcontents Scontents T :=
   m <- Get MLocks;
@@ -973,5 +980,7 @@ Proof.
   rewrite get_free_lock_other by auto; auto.
   autorewrite with locks; auto.
 Qed.
+
+Hint Extern 0 {{unlock _; _}} => apply unlock_ok : prog.
 
 End LockedDisk.
