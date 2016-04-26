@@ -290,14 +290,15 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Theorem get_ok : forall lxp bxp ir off ms,
     {< F Fm m0 m l,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: Fm * rep bxp ir l ]]] *
            [[ off < length l ]]
-    POST RET:^(ms, r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    POST:hm RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[ r = selN l off $0 ]]
-    CRASH  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
+    CRASH:hm  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
     >} get lxp ir off ms.
   Proof.
     unfold get.
@@ -317,13 +318,14 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Theorem read_ok : forall lxp bxp ir ms,
     {< F Fm m0 m l,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: Fm * rep bxp ir l ]]]
-    POST RET:^(ms, r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    POST:hm RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[ r = l ]]
-    CRASH  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
+    CRASH:hm  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
     >} read lxp ir ms.
   Proof.
     unfold read.
@@ -371,13 +373,14 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Theorem shrink_ok : forall lxp bxp ir nr ms,
     {< F Fm m0 m l freelist,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp ir l * BALLOC.rep bxp freelist) ]]]
-    POST RET:^(ms, r)  exists m' freelist',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+    POST:hm RET:^(ms, r)  exists m' freelist',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
            [[[ m' ::: (Fm * rep bxp r (cuttail nr l) * BALLOC.rep bxp freelist') ]]] *
            [[ r = upd_len ir ((IRLen ir) - nr) ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH:hm  LOG.intact lxp F m0 hm
     >} shrink lxp bxp ir nr ms.
   Proof.
     unfold shrink.
@@ -430,16 +433,17 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Theorem grow_ok : forall lxp bxp ir bn ms,
     {< F Fm m0 m l freelist,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[ length l < NBlocks ]] *
            [[[ m ::: (Fm * rep bxp ir l * BALLOC.rep bxp freelist) ]]]
-    POST RET:^(ms, r)
-           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms \/
+    POST:hm RET:^(ms, r)
+           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm \/
            exists m' freelist' ir',
-           [[ r = Some ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           [[ r = Some ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
            [[[ m' ::: (Fm * rep bxp ir' (l ++ [bn]) * BALLOC.rep bxp freelist') ]]] *
            [[ IRAttrs ir' = IRAttrs ir /\ length (IRBlocks ir') = length (IRBlocks ir) ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH:hm  LOG.intact lxp F m0 hm
     >} grow lxp bxp ir bn ms.
   Proof.
     unfold grow.

@@ -151,14 +151,15 @@ Module BFILE.
 
   Theorem getlen_ok : forall lxp bxp ixp inum ms,
     {< F Fm Fi m0 m flist f,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST RET:^(ms,r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    POST:hm RET:^(ms,r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[ r = length (BFData f) ]]
-    CRASH  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
+    CRASH:hm  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
     >} getlen lxp ixp inum ms.
   Proof.
     unfold getlen, rep.
@@ -174,14 +175,15 @@ Module BFILE.
 
   Theorem getattrs_ok : forall lxp bxp ixp inum ms,
     {< F Fm Fi m0 m flist f,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST RET:^(ms,r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    POST:hm RET:^(ms,r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[ r = BFAttr f ]]
-    CRASH  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
+    CRASH:hm  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
     >} getattrs lxp ixp inum ms.
   Proof.
     unfold getattrs, rep.
@@ -195,15 +197,16 @@ Module BFILE.
 
   Theorem setattrs_ok : forall lxp bxp ixp inum a ms,
     {< F Fm Fi m0 m flist f,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST RET:ms  exists m' flist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+    POST:hm RET:ms  exists m' flist' f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) a ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH:hm  LOG.intact lxp F m0 hm
     >} setattrs lxp ixp inum a ms.
   Proof.
     unfold setattrs, rep.
@@ -220,15 +223,16 @@ Module BFILE.
 
   Theorem updattr_ok : forall lxp bxp ixp inum kv ms,
     {< F Fm Fi m0 m flist f,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST RET:ms  exists m' flist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+    POST:hm RET:ms  exists m' flist' f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) (INODE.iattr_upd (BFAttr f) kv) ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH:hm  LOG.intact lxp F m0 hm
     >} updattr lxp ixp inum kv ms.
   Proof.
     unfold updattr, rep.
@@ -245,16 +249,17 @@ Module BFILE.
 
   Theorem read_ok : forall lxp bxp ixp inum off ms,
     {< F Fm Fi Fd m0 m flist f vs,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[ off < length (BFData f) ]] *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: (Fd * off |-> vs) ]]]
-    POST RET:^(ms, r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    POST:hm RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[ r = fst vs ]]
-    CRASH  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
+    CRASH:hm  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
     >} read lxp ixp inum off ms.
   Proof.
     unfold read, rep.
@@ -277,18 +282,19 @@ Module BFILE.
 
   Theorem write_ok : forall lxp bxp ixp inum off v ms,
     {< F Fm Fi Fd m0 m flist f vs0,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[ off < length (BFData f) ]] *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: (Fd * off |-> vs0) ]]]
-    POST RET:ms  exists m' flist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+    POST:hm RET:ms  exists m' flist' f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, nil)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) off (v, nil)) (BFAttr f) ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH:hm  LOG.intact lxp F m0 hm
     >} write lxp ixp inum off v ms.
   Proof.
     unfold write, rep.
@@ -326,19 +332,20 @@ Module BFILE.
 
   Theorem grow_ok : forall lxp bxp ixp inum v ms,
     {< F Fm Fi Fd m0 m flist f,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: Fd ]]]
-    POST RET:^(ms, r) exists m',
-           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms  \/
+    POST:hm RET:^(ms, r) exists m',
+           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm \/
            [[ r = true  ]] * exists flist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * (length (BFData f)) |-> (v, nil)) ]]] *
            [[ f' = mk_bfile ((BFData f) ++ [(v, nil)]) (BFAttr f) ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH:hm  LOG.intact lxp F m0 hm
     >} grow lxp bxp ixp inum v ms.
   Proof.
     unfold grow, rep.
@@ -382,15 +389,16 @@ Module BFILE.
 
   Theorem shrink_ok : forall lxp bxp ixp inum nr ms,
     {< F Fm Fi m0 m flist f,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST RET:ms  exists m' flist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+    POST:hm RET:ms  exists m' flist' f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (firstn ((length (BFData f)) - nr) (BFData f)) (BFAttr f) ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH:hm  LOG.intact lxp F m0 hm
     >} shrink lxp bxp ixp inum nr ms.
   Proof.
     unfold shrink, rep.
@@ -426,19 +434,20 @@ Module BFILE.
 
   Theorem dwrite_ok : forall lxp bxp ixp inum off v ms,
     {< F Fm Fi Fd ds flist f vs,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn ds ds!!) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn ds ds!!) ms hm *
            [[ off < length (BFData f) ]] *
            [[[ ds!! ::: (Fm  * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: (Fd * off |-> vs) ]]]
-    POST RET:ms  exists m' flist' f',
-           LOG.rep lxp F (LOG.ActiveTxn (m', nil) m') ms *
+    POST:hm RET:ms  exists m' flist' f',
+           LOG.rep lxp F (LOG.ActiveTxn (m', nil) m') ms hm *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) off (v, vsmerge vs)) (BFAttr f) ]]
-    XCRASH  LOG.recover_any lxp F ds \/
-           exists m' flist' f', LOG.intact lxp F (m', nil) *
+    XCRASH:hm  LOG.recover_any lxp F ds hm \/
+           exists m' flist' f', LOG.intact lxp F (m', nil) hm *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
@@ -505,14 +514,15 @@ Module BFILE.
 
   Theorem datasync_ok : forall lxp bxp ixp inum ms,
     {< F Fm Fi ds flist f,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn ds ds!!) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn ds ds!!) ms hm *
            [[[ ds!!  ::: (Fm  * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST RET:ms  exists m' flist',
-           LOG.rep lxp F (LOG.ActiveTxn (m', nil) m') ms *
+    POST:hm RET:ms  exists m' flist',
+           LOG.rep lxp F (LOG.ActiveTxn (m', nil) m') ms hm *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> synced_file f) ]]]
-    XCRASH LOG.recover_any lxp F ds
+    XCRASH:hm LOG.recover_any lxp F ds hm
     >} datasync lxp ixp inum ms.
   Proof.
     unfold datasync, synced_file, rep.
@@ -566,16 +576,17 @@ Module BFILE.
 
   Theorem read_array_ok : forall lxp bxp ixp inum a i ms,
     {< F Fm Fi Fd m0 m flist f vsl,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: Fd * arrayN a vsl ]]] *
            [[ i < length vsl]]
-    POST RET:^(ms', r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
+    POST:hm RET:^(ms', r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm *
            [[ r = fst (selN vsl i ($0, nil)) ]]
-    CRASH  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
+    CRASH:hm  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
     >} read_array lxp ixp inum a i ms.
   Proof.
     unfold read_array.
@@ -590,18 +601,19 @@ Module BFILE.
 
   Theorem write_array_ok : forall lxp bxp ixp inum a i v ms,
     {< F Fm Fi Fd m0 m flist f vsl,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: Fd * arrayN a vsl ]]] *
            [[ i < length vsl]]
-    POST RET:ms' exists m' flist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' *
+    POST:hm RET:ms' exists m' flist' f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: Fd * arrayN a (updN vsl i (v, nil)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) (a + i) (v, nil)) (BFAttr f) ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH:hm  LOG.intact lxp F m0 hm
     >} write_array lxp ixp inum a i v ms.
   Proof.
     unfold write_array.
@@ -620,11 +632,12 @@ Module BFILE.
 
   Definition read_range T A lxp ixp inum a nr (vfold : A -> valu -> A) v0 ms rx : prog T :=
     let^ (ms, r) <- ForN i < nr
+    Hashmap hm
     Ghost [ bxp F Fm Fi Fd crash m0 m flist f vsl ]
     Loopvar [ ms pf ]
     Continuation lrx
     Invariant
-      LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+      LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
       [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
       [[[ flist ::: (Fi * inum |-> f) ]]] *
       [[[ (BFData f) ::: Fd * arrayN a vsl ]]] *
@@ -639,16 +652,17 @@ Module BFILE.
 
   Theorem read_range_ok : forall A lxp bxp ixp inum a nr (vfold : A -> valu -> A) v0 ms,
     {< F Fm Fi Fd m0 m flist f vsl,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: Fd * arrayN a vsl ]]] *
            [[ nr <= length vsl]]
-    POST RET:^(ms', r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
+    POST:hm RET:^(ms', r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm *
            [[ r = fold_left vfold (firstn nr (map fst vsl)) v0 ]]
-    CRASH  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
+    CRASH:hm  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
     >} read_range lxp ixp inum a nr vfold v0 ms.
   Proof.
     unfold read_range.
@@ -676,11 +690,12 @@ Module BFILE.
                        v0 (cond : A -> bool) ms rx : prog T :=
     let^ (ms, nr) <- getlen lxp ixp inum ms;
     let^ (ms, r) <- ForN i < nr
+    Hashmap hm
     Ghost [ bxp F Fm Fi crash m0 m flist f ]
     Loopvar [ ms pf ]
     Continuation lrx
     Invariant
-      LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+      LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
       [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
       [[[ flist ::: (Fi * inum |-> f) ]]] *
       [[ pf = fold_left vfold (firstn i (map fst (BFData f))) v0 ]] *
@@ -701,17 +716,18 @@ Module BFILE.
   Theorem read_cond_ok : forall A lxp bxp ixp inum (vfold : A -> valu -> A)
                                 v0 (cond : A -> bool) ms,
     {< F Fm Fi m0 m flist f,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[ cond v0 = false ]]
-    POST RET:^(ms', r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' *
+    POST:hm RET:^(ms', r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm *
            ( exists v, 
              [[ r = Some v /\ cond v = true ]] \/
              [[ r = None /\ cond (fold_left vfold (map fst (BFData f)) v0) = false ]])
-    CRASH  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms'
+    CRASH:hm  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
     >} read_cond lxp ixp inum vfold v0 cond ms.
   Proof.
     unfold read_cond.
@@ -747,17 +763,18 @@ Module BFILE.
 
   Definition grown T lxp bxp ixp inum l ms rx : prog T :=
     let^ (ms) <- ForN i < length l
+      Hashmap hm
       Ghost [ F Fm Fi m0 f ]
       Loopvar [ ms ]
       Continuation lrx
       Invariant
         exists m' flist' f',
-        LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+        LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
         [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
         [[[ flist' ::: (Fi * inum |-> f') ]]] *
         [[ f' = mk_bfile ((BFData f) ++ synced_list (firstn i l)) (BFAttr f) ]]
       OnCrash
-        LOG.intact lxp F m0
+        LOG.intact lxp F m0 hm
       Begin
         let^ (ms, ok) <- grow lxp bxp ixp inum (selN l i $0) ms;
         If (bool_dec ok true) {
@@ -790,19 +807,20 @@ Module BFILE.
 
   Theorem grown_ok : forall lxp bxp ixp inum l ms,
     {< F Fm Fi Fd m0 m flist f,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: Fd ]]]
-    POST RET:^(ms, r) exists m',
-           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms  \/
+    POST:hm RET:^(ms, r) exists m',
+           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm \/
            [[ r = true  ]] * exists flist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * arrayN (length (BFData f)) (synced_list l)) ]]] *
            [[ f' = mk_bfile ((BFData f) ++ (synced_list l)) (BFAttr f) ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH:hm  LOG.intact lxp F m0 hm
     >} grown lxp bxp ixp inum l ms.
   Proof.
     unfold grown; intros.
@@ -832,17 +850,18 @@ Module BFILE.
 
   Theorem truncate_ok : forall lxp bxp ixp inum sz ms,
     {< F Fm Fi m0 m flist f,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST RET:^(ms, r) exists m',
-           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms  \/
+    POST:hm RET:^(ms, r) exists m',
+           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm \/
            [[ r = true  ]] * exists flist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (setlen (BFData f) sz ($0, nil)) (BFAttr f) ]]
-    CRASH  LOG.intact lxp F m0
+    CRASH:hm  LOG.intact lxp F m0 hm
     >} truncate lxp bxp ixp inum sz ms.
   Proof.
     unfold truncate; intros.
@@ -859,14 +878,15 @@ Module BFILE.
 
   Theorem reset_ok : forall lxp bxp ixp inum ms,
     {< F Fm Fi m0 m flist f,
-    PRE    LOG.rep lxp F (LOG.ActiveTxn m0 m) ms *
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST RET:ms exists m' flist',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms *
+    POST:hm RET:ms exists m' flist',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
            [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
            [[[ flist' ::: (Fi * inum |-> bfile0) ]]]
-    CRASH  LOG.intact lxp F m0
+    CRASH:hm  LOG.intact lxp F m0 hm
     >} reset lxp bxp ixp inum ms.
   Proof.
     unfold reset; intros.
