@@ -382,6 +382,13 @@ Definition locks_increasing tid (s s':S) :=
     Locks.get (get GLocks s) a = Owned tid ->
     Locks.get (get GLocks s') a = Owned tid.
 
+Definition lock_released tid (s s':S) a :=
+  (forall a',
+    a <> a' ->
+    Locks.get (get GLocks s) a' = Owned tid ->
+    Locks.get (get GLocks s') a' = Owned tid) /\
+  Locks.get (get GLocks s') a = NoOwner.
+
 Lemma locks_increase_over_R' : forall tid s s',
     star (othersR R tid) s s' ->
     locks_increasing tid s s'.
@@ -882,6 +889,32 @@ Qed.
 
 Polymorphic Hint Resolve ghost_lock_invariant_free linearized_consistent_free.
 
+Polymorphic Lemma lin_release_as_upd :
+  forall A AEQ V (m : @linear_mem A AEQ V) a v',
+    view Latest m a = Some v' ->
+    lin_release m a = upd m a (v', v').
+Proof.
+  intros.
+  extensionality a'.
+  destruct (AEQ a a'); subst; autorewrite with lin_upd upd; auto.
+  erewrite lin_release_view_eq; eauto.
+Qed.
+
+Polymorphic Lemma view_upd : forall A AEQ V (m: @linear_mem A AEQ V) p a v,
+    view p (upd m a v) = upd (view p m) a (proj p v).
+Proof.
+  unfold view, proj; intros; extensionality a';
+  destruct (AEQ a a'); subst; autorewrite with upd; auto.
+Qed.
+
+Polymorphic Lemma hide_readers_upd : forall m a v,
+    hide_readers (upd m a v) = upd (hide_readers m) a (fst v).
+Proof.
+  unfold hide_readers, proj; intros; extensionality a';
+  destruct (weq a a'); subst; autorewrite with upd; auto.
+  destruct v; auto.
+Qed.
+
 Polymorphic Theorem unlock_ok : forall a,
   stateS TID: tid |-
   {{ v,
@@ -891,14 +924,11 @@ Polymorphic Theorem unlock_ok : forall a,
        view Latest (get GDisk s) a = Some (v, None)
    | POST d' m' s0' s' _:
        diskI m' s' d' /\
-       Locks.get (get GLocks s') a = NoOwner /\
        d = d' /\
        modified [(MLocks)] m m' /\
        modified [(GDisk0; GDisk; GLocks)] s s' /\
        get GDisk0 s' = upd (get GDisk0 s) a v /\
-       (forall a', a <> a' ->
-              Locks.get (get GLocks s) a' = Owned tid ->
-              Locks.get (get GLocks s') a' = Owned tid) /\
+       lock_released tid s s' a /\
        s0' = s0
   }} unlock a.
 Proof.
@@ -927,25 +957,21 @@ Proof.
   rewrite H6 in H9; inv_opt; auto.
   rewrite H6 in H9; inv_opt; auto.
 
-  autorewrite with locks; auto.
-
   eauto 10 with modified.
 
-  extensionality a'.
-  unfold hide_readers, view.
-  destruct (weq a a'); subst;
-  autorewrite with upd lin_upd.
-  erewrite lin_release_view_eq by eauto.
-  auto.
+  erewrite lin_release_as_upd by eauto.
+  rewrite view_upd; cbn.
+  rewrite hide_readers_upd; cbn.
   rewrite H5.
   auto.
 
-  unfold view, proj, lin_release in *.
+  unfold lock_released, view, proj, lin_release in *; intuition; simpl_get_set.
   destruct (get GDisk s a); try congruence.
   destruct v0.
   autorewrite with upd; cbn in *; auto.
 
   rewrite get_free_lock_other by auto; auto.
+  autorewrite with locks; auto.
 Qed.
 
 End LockedDisk.
