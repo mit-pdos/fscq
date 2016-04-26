@@ -33,25 +33,25 @@ Set Implicit Arguments.
 
 Module LogNotations.
 
-  Notation "'<<' F ',' func ':' a1 a2 ms '>>'" :=
+  Notation "'<<' F ',' func ':' a1 a2 ms hm '>>'" :=
     (exists raw, BUFCACHE.rep (snd ms%pred) raw *
-     lift_empty ((F * (func a1 a2 (fst ms)))%pred raw))%pred
-    (at level 100, func, F, a1, a2, ms at level 0, only parsing) : pred_scope.
+     lift_empty ((F * (func a1 a2 (fst ms) hm))%pred raw))%pred
+    (at level 100, func, F, a1, a2, ms, hm at level 0, only parsing) : pred_scope.
 
-  Notation "'<<' F ',' func ':' a1 a2 a3 ms '>>'" :=
+  Notation "'<<' F ',' func ':' a1 a2 a3 ms hm '>>'" :=
     (exists raw, BUFCACHE.rep (snd ms%pred) raw *
-     lift_empty ((F * (func a1 a2 a3 (fst ms)))%pred raw))%pred
-    (at level 100, func, F, a1, a2, a3, ms at level 0, only parsing) : pred_scope.
+     lift_empty ((F * (func a1 a2 a3 (fst ms) hm))%pred raw))%pred
+    (at level 100, func, F, a1, a2, a3, ms, hm at level 0, only parsing) : pred_scope.
 
-  Notation "'<<' F ',' func ':' a1 a2 '--' '>>'" :=
+  Notation "'<<' F ',' func ':' a1 a2 hm '--' '>>'" :=
     (exists raw cs, BUFCACHE.rep cs raw *
-     lift_empty ((F * (func a1 a2))%pred raw))%pred
-    (at level 100, func, F, a1, a2 at level 0, only parsing) : pred_scope.
+     lift_empty ((F * (func a1 a2 hm))%pred raw))%pred
+    (at level 100, func, F, a1, a2, hm at level 0, only parsing) : pred_scope.
 
-  Notation "'<<' F ',' func ':' a1 a2 a3 '--' '>>'" :=
+  Notation "'<<' F ',' func ':' a1 a2 a3 hm '--' '>>'" :=
     (exists raw cs, BUFCACHE.rep cs raw *
-     lift_empty ((F * (func a1 a2 a3))%pred raw))%pred
-    (at level 100, func, F, a1, a2, a3 at level 0, only parsing) : pred_scope.
+     lift_empty ((F * (func a1 a2 a3 hm))%pred raw))%pred
+    (at level 100, func, F, a1, a2, a3, hm at level 0, only parsing) : pred_scope.
 
 End LogNotations.
 
@@ -95,7 +95,7 @@ Module MLog.
     )%pred.
 
 
-  Definition rep xp st mm :=
+  Definition rep xp st mm hm :=
     ( exists log d0,
       [[ Map.Equal mm (replay_mem log vmap0) ]] *
       [[ goodSize addrlen (length d0) /\ map_valid mm d0 ]] *
@@ -103,33 +103,33 @@ Module MLog.
     | Synced na d =>
         [[ map_replay mm d0 d ]] *
         synced_rep xp d0 *
-        DLog.rep xp (DLog.Synced na log)
+        DLog.rep xp (DLog.Synced na log) hm
     | Flushing d ents =>
         [[ log_valid ents d /\ map_replay mm d0 d ]] *
         synced_rep xp d0 *
-        (DLog.rep xp (DLog.ExtendedUnsync log)
-      \/ DLog.rep xp (DLog.Extended log ents))
+        (DLog.rep xp (DLog.ExtendedUnsync log) hm
+      \/ DLog.rep xp (DLog.Extended log ents) hm)
     | Applying d => exists na,
         [[ map_replay mm d0 d ]] *
-        (((DLog.rep xp (DLog.Synced na log)) *
+        (((DLog.rep xp (DLog.Synced na log) hm) *
           (unsync_rep xp mm d0))
-      \/ ((DLog.rep xp (DLog.Truncated log)) *
+      \/ ((DLog.rep xp (DLog.Truncated log) hm) *
           (synced_rep xp d)))
     end)%pred.
 
 
   (* some handy state wrappers used in crash conditons *)
 
-  Definition would_recover_before xp d :=
-    (exists mm, rep xp (Applying d) mm \/
-     exists mm na', rep xp (Synced na' d) mm)%pred.
+  Definition would_recover_before xp d hm :=
+    (exists mm, rep xp (Applying d) mm hm \/
+     exists mm na', rep xp (Synced na' d) mm hm)%pred.
 
-  Definition would_recover_either xp d ents :=
+  Definition would_recover_either xp d ents hm :=
      (exists mm,
-      (exists na', rep xp (Synced na' d) mm) \/
-      (exists na', rep xp (Synced na' (replay_disk ents d)) mm) \/
-      rep xp (Flushing d ents) mm \/
-      rep xp (Applying d) mm)%pred.
+      (exists na', rep xp (Synced na' d) mm hm) \/
+      (exists na', rep xp (Synced na' (replay_disk ents d)) mm hm) \/
+      rep xp (Flushing d ents) mm hm \/
+      rep xp (Applying d) mm hm)%pred.
 
 
   (******************  Program *)
@@ -200,16 +200,16 @@ Module MLog.
 
 
   Arguments DLog.rep: simpl never.
-  Hint Extern 0 (okToUnify (DLog.rep _ _) (DLog.rep _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (DLog.rep _ _ _) (DLog.rep _ _ _)) => constructor : okToUnify.
 
 
 
   (****** auxiliary lemmas *)
 
 
-  Lemma synced_applying : forall xp na d ms,
-    rep xp (Synced na d) ms =p=>
-    exists ms', rep xp (Applying d) ms'.
+  Lemma synced_applying : forall xp na d ms hm,
+    rep xp (Synced na d) ms hm =p=>
+    exists ms', rep xp (Applying d) ms' hm.
   Proof.
     unfold rep, map_replay, unsync_rep, synced_rep in *.
     cancel; eauto.
@@ -217,9 +217,9 @@ Module MLog.
     unfold equal_unless_in; intuition.
   Qed.
 
-  Lemma synced_flushing : forall xp na d ms,
-    rep xp (Synced na d) ms =p=>
-    exists ms' ents, rep xp (Flushing d ents) ms'.
+  Lemma synced_flushing : forall xp na d ms hm,
+    rep xp (Synced na d) ms hm =p=>
+    exists ms' ents, rep xp (Flushing d ents) ms' hm.
   Proof.
     unfold rep, map_replay, unsync_rep, synced_rep in *.
     cancel; eauto.
@@ -335,38 +335,38 @@ Module MLog.
 
 
 
-  Theorem recover_before_either : forall xp d ents,
-    would_recover_before xp d =p=>
-    would_recover_either xp d ents.
+  Theorem recover_before_either : forall xp d ents hm,
+    would_recover_before xp d hm =p=>
+    would_recover_either xp d ents hm.
   Proof.
     unfold would_recover_before, would_recover_either; cancel.
   Qed.
 
-  Theorem synced_recover_before : forall xp na d ms,
-    rep xp (Synced na d) ms =p=>
-    would_recover_before xp d.
+  Theorem synced_recover_before : forall xp na d ms hm,
+    rep xp (Synced na d) ms hm =p=>
+    would_recover_before xp d hm.
   Proof.
     unfold would_recover_before; cancel.
     Unshelve. eauto.
   Qed.
 
-  Theorem synced_recover_either : forall xp na d ms ents,
-    rep xp (Synced na d) ms =p=>
-    would_recover_either xp d ents.
+  Theorem synced_recover_either : forall xp na d ms ents hm,
+    rep xp (Synced na d) ms hm =p=>
+    would_recover_either xp d ents hm.
   Proof.
     unfold would_recover_either; cancel.
   Qed.
 
-  Theorem applying_recover_before : forall xp d ms,
-    rep xp (Applying d) ms =p=>
-    would_recover_before xp d.
+  Theorem applying_recover_before : forall xp d ms hm,
+    rep xp (Applying d) ms hm =p=>
+    would_recover_before xp d hm.
   Proof.
     unfold would_recover_before; cancel.
   Qed.
 
-  Theorem synced_recover_after : forall xp na d ms ents,
-    rep xp (Synced na (replay_disk ents d)) ms =p=>
-    would_recover_either xp d ents.
+  Theorem synced_recover_after : forall xp na d ms ents hm,
+    rep xp (Synced na (replay_disk ents d)) ms hm =p=>
+    would_recover_either xp d ents hm.
   Proof.
     unfold would_recover_either; intros.
     (** FIXME:
@@ -377,16 +377,16 @@ Module MLog.
     or_r; or_l; cancel.
   Qed.
 
-  Theorem applying_recover_after : forall xp d ms ents,
-    rep xp (Applying d) ms =p=>
-    would_recover_either xp d ents.
+  Theorem applying_recover_after : forall xp d ms ents hm,
+    rep xp (Applying d) ms hm =p=>
+    would_recover_either xp d ents hm.
   Proof.
     unfold would_recover_either; cancel.
   Qed.
 
-  Theorem flushing_recover_after : forall xp d ms ents,
-    rep xp (Flushing d ents) ms =p=>
-    would_recover_either xp d ents.
+  Theorem flushing_recover_after : forall xp d ms ents hm,
+    rep xp (Flushing d ents) ms hm =p=>
+    would_recover_either xp d ents hm.
   Proof.
     unfold would_recover_either; intros.
     norm; unfold stars; simpl; auto.
@@ -405,13 +405,13 @@ Module MLog.
 
   Theorem read_ok: forall xp ms a,
     {< F d na vs,
-    PRE
-      << F, rep: xp (Synced na d) ms >> *
+    PRE:hm
+      << F, rep: xp (Synced na d) ms hm >> *
       [[[ d ::: exists F', (F' * a |-> vs) ]]]
-    POST RET:^(ms', r)
-      << F, rep: xp (Synced na d) ms' >> * [[ r = fst vs ]]
-    CRASH
-      exists ms', << F, rep: xp (Synced na d) ms' >>
+    POST:hm RET:^(ms', r)
+      << F, rep: xp (Synced na d) ms' hm >> * [[ r = fst vs ]]
+    CRASH:hm
+      exists ms', << F, rep: xp (Synced na d) ms' hm >>
     >} read xp a ms.
   Proof.
     unfold read.
@@ -424,7 +424,6 @@ Module MLog.
     eassign dummy1; pred_apply; cancel.
     pimpl_crash; cancel; auto. cancel.
 
-    unfold synced_rep; cancel.
     subst; eapply synced_data_replay_inb; eauto.
     eassign ((Map.elements t)); pred_apply; cancel.
 
@@ -451,15 +450,15 @@ Module MLog.
 
   Theorem flush_noapply_ok: forall xp ents ms,
     {< F d na,
-     PRE  << F, rep: xp (Synced na d) ms >> *
+     PRE:hm  << F, rep: xp (Synced na d) ms hm >> *
           [[ log_valid ents d ]]
-     POST RET:^(ms',r)
+     POST:hm RET:^(ms',r)
           ([[ r = true ]]  * exists na',
-            << F, rep: xp (Synced na' (replay_disk ents d)) ms' >>) \/
+            << F, rep: xp (Synced na' (replay_disk ents d)) ms' hm >>) \/
           ([[ r = false /\ length ents > na ]] *
-            << F, rep: xp (Synced na d) ms' >>)
-     XCRASH  exists ms',
-            << F, rep: xp (Flushing d ents) ms' >>
+            << F, rep: xp (Synced na d) ms' hm >>)
+     XCRASH:hm  exists ms',
+            << F, rep: xp (Flushing d ents) ms' hm >>
     >} flush_noapply xp ents ms.
   Proof.
     unfold flush_noapply.
@@ -556,25 +555,22 @@ Module MLog.
 
   Theorem apply_ok: forall xp ms,
     {< F d na,
-    PRE
-      << F, rep: xp (Synced na d) ms >>
-    POST RET:ms'
-      << F, rep: xp (Synced (LogLen xp) d) ms' >> *
+    PRE:hm
+      << F, rep: xp (Synced na d) ms hm >>
+    POST:hm RET:ms'
+      << F, rep: xp (Synced (LogLen xp) d) ms' hm >> *
       [[ Map.Empty (MSInLog ms') ]]
-    XCRASH
-      << F, would_recover_before: xp d -- >>
+    XCRASH:hm
+      << F, would_recover_before: xp d hm -- >>
     >} apply xp ms.
   Proof.
     unfold apply; intros.
     step.
-    unfold synced_rep; cancel.
     step.
     rewrite vsupd_vecs_length.
     apply map_valid_Forall_synced_map_fst; auto.
     step.
     step.
-    rewrite replay_disk_vssync_vsupd_vecs; auto.
-    rewrite replay_disk_length; auto.
 
     (* crash conditions *)
     xcrash.
@@ -605,19 +601,20 @@ Module MLog.
 
   Theorem flush_ok: forall xp ents ms,
     {< F d na,
-     PRE  << F, rep: xp (Synced na d) ms >> *
+     PRE:hm  << F, rep: xp (Synced na d) ms hm >> *
           [[ log_valid ents d ]]
-     POST RET:^(ms',r) exists na',
+     POST:hm RET:^(ms',r) exists na',
           ([[ r = true ]] *
-           << F, rep: xp (Synced na' (replay_disk ents d)) ms' >>)
+           << F, rep: xp (Synced na' (replay_disk ents d)) ms' hm >>)
       \/  ([[ r = false /\ length ents > (LogLen xp) ]] *
-           << F, rep: xp (Synced na' d) ms'>>)
-     XCRASH
-          << F, would_recover_either: xp d ents -- >>
+           << F, rep: xp (Synced na' d) ms' hm >>)
+     XCRASH:hm
+          << F, would_recover_either: xp d ents hm -- >>
     >} flush xp ents ms.
   Proof.
     unfold flush; intros.
 
+    (* TODO: Proof broken. Not sure why apply keeps getting unfolded. *)
     (* Be careful: only unfold rep in the preconditon,
        otherwise the goal will get messy as there are too many
        disjuctions in post/crash conditons *)
@@ -628,7 +625,6 @@ Module MLog.
 
     (* case 1: apply happens *)
     prestep.
-    unfold rep at 1.
     cancel; auto.
     step.
     step.
@@ -661,35 +657,36 @@ Module MLog.
 
   Theorem dwrite_ok: forall xp a v ms,
     {< F Fd d na vs,
-    PRE
-      << F, rep: xp (Synced na d) ms >> *
+    PRE:hm
+      << F, rep: xp (Synced na d) ms hm >> *
       [[[ d ::: (Fd * a |-> vs) ]]]
-    POST RET:ms' exists d' na',
-      << F, rep: xp (Synced na' d') ms' >> *
+    POST:hm RET:ms' exists d' na',
+      << F, rep: xp (Synced na' d') ms' hm >> *
       [[ d' = updN d a (v, vsmerge vs) ]] *
       [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
-    XCRASH
-      << F, would_recover_before: xp d -- >> \/
+    XCRASH:hm
+      << F, would_recover_before: xp d hm -- >> \/
       exists ms' na' d',
-      << F, rep: xp (Synced na' d') ms' >> *
+      << F, rep: xp (Synced na' d') ms' hm >> *
       [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]] *
       [[ d' = updN d a (v, vsmerge vs) ]]
     >} dwrite xp a v ms.
   Proof.
     unfold dwrite, would_recover_before.
+    (* TODO: Proof broken. Not sure why apply keeps getting unfolded. *)
     step.
 
     (* case 1: apply happens *)
-    step.
     prestep.
-    unfold rep at 1; unfold synced_rep, map_replay in *.
-    cancel; auto.
-    replace (length _) with (length d).
+    unfold rep, synced_rep in H.
+    destruct_lift H.
+    cancel.
+    step.
+    replace (length _) with (length dummy0).
     eapply list2nmem_inbound; eauto.
     subst; erewrite replay_disk_length; eauto.
 
     step.
-    unfold rep, synced_rep, map_replay; cancel.
     unfold vsupd; autorewrite with lists; auto.
     apply map_valid_updN; auto.
     eapply replay_disk_updN_eq_empty; eauto.
@@ -749,16 +746,16 @@ Module MLog.
 
   Theorem dsync_ok: forall xp a ms,
     {< F Fd d na vs,
-    PRE
-      << F, rep: xp (Synced na d) ms >> *
+    PRE:hm
+      << F, rep: xp (Synced na d) ms hm >> *
       [[[ d ::: (Fd * a |-> vs) ]]]
-    POST RET:ms' exists d' na',
-      << F, rep: xp (Synced na' d') ms' >> *
+    POST:hm RET:ms' exists d' na',
+      << F, rep: xp (Synced na' d') ms' hm >> *
       [[[ d' ::: (Fd * a |-> (fst vs, nil)) ]]] *
       [[  d' = vssync d a ]]
-    XCRASH
+    XCRASH:hm
       exists ms' na',
-      << F, rep: xp (Synced na' d) ms' >>
+      << F, rep: xp (Synced na' d) ms' hm >>
     >} dsync xp a ms.
   Proof.
     unfold dsync.
@@ -769,9 +766,12 @@ Module MLog.
     step.
     unfold vssync; autorewrite with lists; auto.
     apply map_valid_updN; auto.
-    apply replay_disk_vssync_comm.
-    unfold vssync; erewrite <- list2nmem_sel; eauto; simpl.
+    setoid_rewrite <- replay_disk_vssync_comm.
+    unfold vssync.
+    erewrite <- list2nmem_sel; eauto; simpl.
     eapply list2nmem_updN; eauto.
+    setoid_rewrite replay_disk_vssync_comm.
+    auto.
 
     (* crashes *)
     xcrash.
@@ -1091,16 +1091,16 @@ Module MLog.
   Qed.
 
 
-  Lemma dwrite_vecs_xcrash_ok : forall cs d raw xp F avl m n n' log,
+  Lemma dwrite_vecs_xcrash_ok : forall cs d raw xp F avl m n n' log hm,
     overlap (map fst avl) m <> true ->
     map_valid m d ->
     Map.Equal m (replay_mem log vmap0) ->
     goodSize addrlen (length d) ->
-    ((DLog.rep xp (DLog.Synced n' log) * F) * 
+    ((DLog.rep xp (DLog.Synced n' log) hm * F) * 
       arrayN (DataStart xp) (vsupd_vecs d (firstn n avl)))%pred raw ->
     crash_xform (BUFCACHE.rep cs raw) =p=> 
       crash_xform (exists ms na, 
-      << F, rep: xp (Synced na (vsupd_vecs (replay_disk (Map.elements m) d) avl)) ms >>).
+      << F, rep: xp (Synced na (vsupd_vecs (replay_disk (Map.elements m) d) avl)) ms hm >>).
   Proof.
     intros.
     rewrite BUFCACHE.crash_xform_rep.
@@ -1127,15 +1127,15 @@ Module MLog.
   Qed.
 
 
-  Lemma dwrite_vecs_xcrash_ok_empty : forall cs d raw xp F avl m n n' log,
+  Lemma dwrite_vecs_xcrash_ok_empty : forall cs d raw xp F avl m n n' log hm,
     Map.Empty m ->
     Map.Equal m (replay_mem log vmap0) ->
     goodSize addrlen (length d) ->
-    ((DLog.rep xp (DLog.Synced n' log) * F) * 
+    ((DLog.rep xp (DLog.Synced n' log) hm * F) * 
       arrayN (DataStart xp) (vsupd_vecs d (firstn n avl)))%pred raw ->
     crash_xform (BUFCACHE.rep cs raw) =p=> 
         crash_xform (exists ms na, 
-        << F, rep: xp (Synced na (vsupd_vecs (replay_disk (Map.elements m) d) avl)) ms >>).
+        << F, rep: xp (Synced na (vsupd_vecs (replay_disk (Map.elements m) d) avl)) ms hm >>).
   Proof.
     intros.
     eapply dwrite_vecs_xcrash_ok; eauto.
@@ -1144,9 +1144,9 @@ Module MLog.
   Qed.
 
 
-  Lemma crash_xform_applying : forall xp d mm,
-    crash_xform (rep xp (Applying d) mm) =p=>
-      exists na d' mm', (rep xp (Synced na d') mm') *
+  Lemma crash_xform_applying : forall xp d mm hm,
+    crash_xform (rep xp (Applying d) mm hm) =p=>
+      exists na d' mm', (rep xp (Synced na d') mm' hm) *
       [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
   Proof.
     unfold rep, synced_rep, unsync_rep, map_replay; intros.
@@ -1176,9 +1176,9 @@ Module MLog.
   Qed.
 
 
-  Lemma crash_xform_synced : forall xp nr d ms,
-    crash_xform (rep xp (Synced nr d) ms) =p=>
-      exists d' ms' nr', rep xp (Synced nr' d') ms' *
+  Lemma crash_xform_synced : forall xp nr d ms hm,
+    crash_xform (rep xp (Synced nr d) ms hm) =p=>
+      exists d' ms' nr', rep xp (Synced nr' d') ms' hm *
       [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
   Proof.
     intros.
@@ -1188,9 +1188,9 @@ Module MLog.
   Qed.
 
 
-  Lemma crash_xform_applying_applying : forall xp d ms,
-    crash_xform (rep xp (Applying d) ms) =p=>
-      exists d' ms', rep xp (Applying d') ms' *
+  Lemma crash_xform_applying_applying : forall xp d ms hm,
+    crash_xform (rep xp (Applying d) ms hm) =p=>
+      exists d' ms', rep xp (Applying d') ms' hm *
       [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
   Proof.
     intros.
@@ -1200,9 +1200,9 @@ Module MLog.
   Qed.
 
 
-  Lemma crash_xform_flushing : forall xp d ents ms,
-    crash_xform (rep xp (Flushing d ents) ms) =p=>
-      exists d' ms' na, rep xp (Synced na d') ms' *
+  Lemma crash_xform_flushing : forall xp d ents ms hm,
+    crash_xform (rep xp (Flushing d ents) ms hm) =p=>
+      exists d' ms' na, rep xp (Synced na d') ms' hm *
       ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
        [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]).
   Proof.
@@ -1233,9 +1233,9 @@ Module MLog.
   Qed.
 
 
-  Lemma crash_xform_before : forall xp d,
-    crash_xform (would_recover_before xp d) =p=>
-      exists d' ms' na, rep xp (Synced na d') ms' *
+  Lemma crash_xform_before : forall xp d hm,
+    crash_xform (would_recover_before xp d hm) =p=>
+      exists d' ms' na, rep xp (Synced na d') ms' hm *
       [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
   Proof.
     unfold would_recover_before; intros.
@@ -1245,65 +1245,65 @@ Module MLog.
   Qed.
 
 
-  Definition recover_either_pred xp d ents :=
-     (exists d' ms' na, rep xp (Synced na d') ms' *
+  Definition recover_either_pred xp d ents hm :=
+     (exists d' ms' na, rep xp (Synced na d') ms' hm *
       ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
        [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]))%pred.
 
 
-  Lemma crash_xform_either : forall xp d ents,
-    crash_xform (would_recover_either xp d ents) =p=>
-                  recover_either_pred xp d ents.
+  Lemma crash_xform_either : forall xp d ents hm,
+    crash_xform (would_recover_either xp d ents hm) =p=>
+                  recover_either_pred xp d ents hm.
   Proof.
     unfold would_recover_either, recover_either_pred; intros.
     xform_norm.
     rewrite crash_xform_synced by eauto; cancel.
-    rewrite sep_star_or_distr; or_l; cancel.
+    or_l; cancel.
     rewrite crash_xform_synced by eauto; cancel.
-    rewrite sep_star_or_distr; or_r; cancel.
+    or_r; cancel.
     apply crash_xform_flushing; auto.
     rewrite crash_xform_applying by eauto; cancel.
-    rewrite sep_star_or_distr; or_l; cancel.
+    or_l; cancel.
   Qed.
 
-  Lemma either_pred_either : forall xp d ents,
-    recover_either_pred xp d ents =p=>
-    exists d', would_recover_either xp d' ents.
+  Lemma either_pred_either : forall xp d hm ents,
+    recover_either_pred xp d ents hm =p=>
+    exists d', would_recover_either xp d' ents hm.
   Proof.
     unfold recover_either_pred, would_recover_either.
     intros; xform_norm; cancel.
   Qed.
 
-  Lemma recover_idem : forall xp d ents,
-    crash_xform (recover_either_pred xp d ents) =p=>
-                 recover_either_pred xp d ents.
+  Lemma recover_idem : forall xp d ents hm,
+    crash_xform (recover_either_pred xp d ents hm) =p=>
+                 recover_either_pred xp d ents hm.
   Proof.
     intros.
     unfold recover_either_pred.
     xform_norm.
 
     rewrite crash_xform_synced; cancel.
-    rewrite sep_star_or_distr; or_l; cancel.
+    or_l; cancel.
     eapply crash_xform_diskIs_trans; eauto.
 
     rewrite crash_xform_synced; cancel.
-    rewrite sep_star_or_distr; or_r; cancel.
+    or_r; cancel.
     eapply crash_xform_diskIs_trans; eauto.
   Qed.
 
 
   Theorem recover_ok: forall xp cs,
     {< F raw d ents,
-    PRE
+    PRE:hm
       BUFCACHE.rep cs raw *
-      [[ (F * recover_either_pred xp d ents)%pred raw ]]
-    POST RET:ms'
+      [[ (F * recover_either_pred xp d ents hm)%pred raw ]]
+    POST:hm RET:ms'
       BUFCACHE.rep (MSCache ms') raw *
-      [[(exists d' na, F * rep xp (Synced na d') (MSInLog ms') *
+      [[(exists d' na, F * rep xp (Synced na d') (MSInLog ms') hm *
         ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
          [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]
       ))%pred raw ]]
-    CRASH
+    CRASH:hm
       exists cs', BUFCACHE.rep cs' raw
     >} recover xp cs.
   Proof.
@@ -1314,14 +1314,16 @@ Module MLog.
     intuition simpl; auto; pred_apply.
     denote or as Hx; apply sep_star_or_distr in Hx.
     denote (Map.Equal _ _) as Heq.
-    destruct Hx; destruct_lift H.
+    destruct Hx; destruct_lift H0.
 
     cancel. or_l; cancel.
     rewrite <- Heq; auto.
+    unfold replay_mem; congruence.
     rewrite <- Heq; auto.
 
     cancel. or_r; cancel.
     rewrite <- Heq; auto.
+    unfold replay_mem; congruence.
     rewrite <- Heq; auto.
 
     (* crash *)
@@ -1332,22 +1334,23 @@ Module MLog.
 
   Theorem dwrite_vecs_ok : forall xp avl ms,
     {< F d na,
-    PRE
-      << F, rep: xp (Synced na d) ms >> *
+    PRE:hm
+      << F, rep: xp (Synced na d) ms hm >> *
       [[ Forall (fun e => fst e < length d) avl ]]
-    POST RET:ms' exists na',
-      << F, rep: xp (Synced na' (vsupd_vecs d avl)) ms' >>
-    XCRASH
-      << F, would_recover_before: xp d -- >> \/
+    POST:hm RET:ms' exists na',
+      << F, rep: xp (Synced na' (vsupd_vecs d avl)) ms' hm >>
+    XCRASH:hm
+      << F, would_recover_before: xp d hm -- >> \/
       exists na' ms',
-      << F, rep: xp (Synced na' (vsupd_vecs d avl)) ms' >>
+      << F, rep: xp (Synced na' (vsupd_vecs d avl)) ms' hm >>
     >} dwrite_vecs xp avl ms.
   Proof.
     unfold dwrite_vecs, would_recover_before.
+    (* TODO: Proof broken. Not sure why apply keeps getting unfolded. *)
     step.
 
     (* case 1: apply happens *)
-    step.
+    step 
     prestep.
     unfold rep at 1.
     unfold synced_rep, map_replay in *.
@@ -1403,13 +1406,13 @@ Module MLog.
 
   Theorem dsync_vecs_ok: forall xp al ms,
     {< F d na,
-    PRE
-      << F, rep: xp (Synced na d) ms >> *
+    PRE:hm
+      << F, rep: xp (Synced na d) ms hm >> *
       [[ Forall (fun e => e < length d) al ]]
-    POST RET:ms' exists na',
-      << F, rep: xp (Synced na' (vssync_vecs d al)) ms' >>
-    XCRASH exists na' ms',
-      << F, rep: xp (Synced na' d) ms' >>
+    POST:hm RET:ms' exists na',
+      << F, rep: xp (Synced na' (vssync_vecs d al)) ms' hm >>
+    XCRASH:hm exists na' ms',
+      << F, rep: xp (Synced na' d) ms' hm >>
     >} dsync_vecs xp al ms.
   Proof.
     unfold dsync_vecs, rep, synced_rep, map_replay.

@@ -1112,7 +1112,7 @@ Ltac xform_norm :=
 
 Ltac xcrash_rewrite :=
   match goal with
-  | [ H : forall rc, (crash_xform rc =p=> crash_xform ?x) -> _ =p=> ?c |- _ =p=> ?c] =>
+  | [ H : forall rc hm, (crash_xform rc =p=> crash_xform ?x) -> _ =p=> ?c hm |- _ =p=> ?c ?hm] =>
       eapply pimpl_trans; [ | eapply H ]; cancel; subst
   | [ H : crash_xform ?rc =p=> _ |- crash_xform ?rc =p=> _ ] => rewrite H
   end.
