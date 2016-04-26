@@ -1949,6 +1949,10 @@ Module DIRTREE.
     let^ (mscs, v) <- BFILE.read (FSXPLog fsxp) (FSXPInode fsxp) inum off mscs;
     rx ^(mscs, v).
 
+  Definition write T fsxp inum off v mscs rx : prog T :=
+    mscs <- BFILE.write (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
+    rx mscs.
+
   Definition dwrite T fsxp inum off v mscs rx : prog T :=
     mscs <- BFILE.dwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
     rx mscs.

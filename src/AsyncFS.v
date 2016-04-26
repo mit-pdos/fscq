@@ -160,6 +160,12 @@ Module AFS.
     ms <- LOG.commit_ro (FSXPLog fsxp) ms;
     rx ^(ms).
 
+  Definition update_fblock T fsxp inum off v ms rx : prog T :=
+    ms <- LOG.begin (FSXPLog fsxp) ms;
+    ms <- DIRTREE.write fsxp inum off v ms;
+    let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) ms;
+    rx ^(ms, ok).
+
   (* sync only data blocks of a file. XXX does a global flush too *)
   Definition file_sync T fsxp inum ms rx : prog T :=
     ms <- LOG.begin (FSXPLog fsxp) ms;
