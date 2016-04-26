@@ -251,7 +251,7 @@ Module AFS.
   (* sync directory tree; will flush all outstanding changes to tree (but not dupdates to files) *)
   Definition tree_sync T fsxp mscs rx : prog T :=
     mscs <- LOG.sync (FSXPLog fsxp) mscs;
-    rx mscs.
+    rx ^(mscs).
 
   Definition statfs T fsxp mscs rx : prog T :=
     mscs <- LOG.begin (FSXPLog fsxp) mscs;

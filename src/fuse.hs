@@ -115,7 +115,7 @@ fscqFSOps fn ds fr m_fsxp = defaultFuseOps
   , fuseOpenDirectory = fscqOpenDirectory fr m_fsxp
   , fuseReadDirectory = fscqReadDirectory fr m_fsxp
   , fuseGetFileSystemStats = fscqGetFileSystemStats fr m_fsxp
-  , fuseDestroy = fscqDestroy ds fn
+  , fuseDestroy = fscqDestroy ds fn fr m_fsxp
   , fuseSetFileTimes = fscqSetFileTimes
   , fuseRename = fscqRename fr m_fsxp
   , fuseSetFileMode = fscqChmod
@@ -160,8 +160,10 @@ materializeCrashes idxref (lastgroup : othergroups) = do
   materializeCrashes idxref othergroups
   mapM_ (\lastsubset -> materializeFlushgroups idxref (lastsubset : othergroups)) $ writeSubsets lastgroup
 
-fscqDestroy :: DiskState -> String -> IO ()
-fscqDestroy ds disk_fn = do
+fscqDestroy :: DiskState -> String -> FSrunner -> MVar Coq_fs_xparams -> IO ()
+fscqDestroy ds disk_fn fr m_fsxp  = withMVar m_fsxp $ \fsxp -> do
+  -- XXX need to also sync all file data (from WritebackCache)
+  _ <- fr $ AsyncFS._AFS__tree_sync fsxp
   stats <- close_disk ds
   print_stats stats
   case disk_fn of

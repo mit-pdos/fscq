@@ -70,7 +70,7 @@ Module ATOMICCP.
           rx ^(mscs, false)
       | true =>
         let^ (mscs, ok1) <- AFS.rename fsxp the_dnum [] temp_fn [] dst_fn mscs;
-        mscs <- AFS.tree_sync fsxp mscs;
+        let^ (mscs) <- AFS.tree_sync fsxp mscs;
         rx ^(mscs, ok1)
     end.
 
