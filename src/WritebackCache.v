@@ -1050,6 +1050,14 @@ Module WBCache.
       [[ (F * arrayN a (vssync_vecs vs (firstn i l)))%pred d' ]]
     OnCrash crash
     Begin
+
+      (**
+       * XXX for performance, we should first do all of the [RCache.write]s,
+       * and then all of the [RCache.sync]s, so that the Haskell interpreter
+       * can coalesce the [Sync] opcodes.  currently, writes and syncs are
+       * interleaved, which makes it impossible to coalesce the [Sync]s.
+       *)
+
       cs <- sync_array a (selN l i 0) cs;
       lrx ^(cs)
     Rof ^(cs);
