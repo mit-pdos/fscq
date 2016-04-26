@@ -232,7 +232,7 @@ Module GLog.
       rx ^(ms, false)
     }.
 
-  Definition flushall T xp ms rx : prog T :=
+  Definition flushall_nomerge T xp ms rx : prog T :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     let^ (mm) <- ForN i < length ts
     Hashmap hm
@@ -249,6 +249,16 @@ Module GLog.
       lrx ^(mm)
     Rof ^(mm);
     rx (mk_memstate vmap0 nil mm).
+
+  Definition flushall T xp ms rx : prog T :=
+    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
+    If (le_dec (Map.cardinal vm) (LogLen xp)) {
+      let^ (mm, r) <- MLog.flush xp (Map.elements vm) mm;
+      rx (mk_memstate vmap0 nil mm)
+    } else {
+      ms <- flushall_nomerge xp ms;
+      rx ms
+    }.
 
   Definition dwrite T (xp : log_xparams) a v ms rx : prog T :=
     ms <- flushall xp ms;
