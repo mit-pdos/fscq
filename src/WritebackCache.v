@@ -875,9 +875,27 @@ Module WBCache.
       all: exact (fun a b => emp).
   Qed.
 
+  Theorem evict_ok : forall wcs a,
+    {< d (F : rawpred),
+    PRE
+      rep wcs d * [[ (F * a |->?)%pred d ]]
+    POST RET:wcs
+      rep wcs d
+    XCRASH
+      exists wcs',
+      rep wcs' d
+    >} evict a wcs.
+  Proof.
+    unfold evict, rep.
+    intros.
+    prestep.
+    - admit.
+    - admit.
+  Admitted.
 
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} progseq (evict _ _) _) => apply evict_ok : prog.
   Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
 
 
@@ -953,6 +971,28 @@ Module WBCache.
   Qed.
 
 
+  Theorem evict_array_ok : forall a i cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ i < length vs ]]
+    POST RET:cs
+      rep cs d
+    XCRASH
+      exists cs', rep cs' d
+    >} evict_array a i cs.
+  Proof.
+    unfold evict_array.
+    hoare.
+    pred_apply; cancel.
+    rewrite isolateN_fwd with (i:=i) by auto.
+    rewrite <- surjective_pairing.
+    cancel.
+
+  Grab Existential Variables.
+    exact ($0, nil).
+  Qed.
+
+
   Theorem sync_array_ok : forall a i cs,
     {< d F vs,
     PRE
@@ -985,6 +1025,7 @@ Module WBCache.
 
   Hint Extern 1 ({{_}} progseq (read_array _ _ _) _) => apply read_array_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_array _ _ _ _) _) => apply write_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (evict_array _ _ _) _) => apply evict_array_ok : prog.
   Hint Extern 1 ({{_}} progseq (sync_array _ _ _) _) => apply sync_array_ok : prog.
 
 
@@ -1023,12 +1064,10 @@ Module WBCache.
 
   Definition evict_range T a nr cs rx : prog T :=
     let^ (cs) <- ForN i < nr
-    Ghost [ F crash vs ]
+    Ghost [ crash d ]
     Loopvar [ cs ]
     Continuation lrx
-    Invariant
-      exists d', rep cs d' *
-      [[ (F * arrayN a (vssync_range vs i))%pred d' ]]
+    Invariant rep cs d
     OnCrash crash
     Begin
       cs <- evict_array a i cs;
@@ -1070,12 +1109,10 @@ Module WBCache.
 
   Definition evict_vecs T a l cs rx : prog T :=
     let^ (cs) <- ForN i < length l
-    Ghost [ F crash vs ]
+    Ghost [ crash d ]
     Loopvar [ cs ]
     Continuation lrx
-    Invariant
-      exists d', rep cs d' *
-      [[ (F * arrayN a (vssync_vecs vs (firstn i l)))%pred d' ]]
+    Invariant rep cs d
     OnCrash crash
     Begin
       cs <- evict_array a (selN l i 0) cs;
@@ -1217,6 +1254,30 @@ Module WBCache.
     eapply pimpl_trans; [ | eapply H1 ]; cancel.
     Unshelve. exact tt.
   Qed.
+
+  Theorem evict_range_ok : forall a nr cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ nr <= length vs ]]
+    POST RET:cs
+      rep cs d
+    XCRASH
+      exists cs', rep cs' d
+    >} evict_range a nr cs.
+  Proof.
+    unfold evict_range; intros.
+    safestep. auto.
+    safestep.
+    step; subst.
+
+    (* XXX need an XCRASH version of the loop crash invariant? *)
+    admit.
+
+    step.
+
+    (* XXX need an XCRASH version of the loop crash invariant? *)
+    admit.
+  Admitted.
 
 
 
@@ -1574,11 +1635,32 @@ Module WBCache.
     Unshelve. exact tt.
   Qed.
 
+  Theorem evict_vecs_ok : forall a l cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] *
+      [[ Forall (fun e => e < length vs) l ]]
+    POST RET:cs
+      rep cs d
+    XCRASH
+      exists cs', rep cs' d
+    >} evict_vecs a l cs.
+  Proof.
+    unfold evict_vecs.
+    safestep. auto.
+    admit.
+    step.
+    (* XXX need an XCRASH version of the For loop? *)
+    admit.
+  Admitted.
+
 
   Hint Extern 1 ({{_}} progseq (read_range _ _ _ _ _) _) => apply read_range_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_range _ _ _) _) => apply write_range_ok : prog.
+  Hint Extern 1 ({{_}} progseq (evict_range _ _ _) _) => apply evict_range_ok : prog.
   Hint Extern 1 ({{_}} progseq (sync_range _ _ _) _) => apply sync_range_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_vecs _ _ _) _) => apply write_vecs_ok : prog.
+  Hint Extern 1 ({{_}} progseq (evict_vecs _ _ _) _) => apply evict_vecs_ok : prog.
   Hint Extern 1 ({{_}} progseq (sync_vecs _ _ _) _) => apply sync_vecs_ok : prog.
 
 
