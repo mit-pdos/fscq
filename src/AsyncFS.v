@@ -25,7 +25,7 @@ Require Import Cache.
 Require Import Errno.
 Require Import AsyncDisk.
 Require Import GroupLog.
-Require Import DiskLog.
+Require Import DiskLogHash.
 Require Import SuperBlock.
 Require Import NEList.
 

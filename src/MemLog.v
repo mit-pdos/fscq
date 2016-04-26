@@ -17,7 +17,7 @@ Require Import Cache.
 Require Import Idempotent.
 Require Import ListUtils.
 Require Import FSLayout.
-Require Import DiskLog.
+Require Import DiskLogHash.
 Require Import AsyncDisk.
 Require Import SepAuto.
 Require Import GenSepN.

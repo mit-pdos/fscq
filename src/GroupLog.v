@@ -25,7 +25,7 @@ Require Import AsyncDisk.
 Require Import SepAuto.
 Require Import GenSepN.
 Require Import MemLog.
-Require Import DiskLog.
+Require Import DiskLogHash.
 Require Import MapUtils.
 Require Import ListPred.
 Require Import LogReplay.

@@ -15,7 +15,7 @@ Require Import FMapFacts.
 Require Import RelationClasses.
 Require Import Morphisms.
 Require Import Array.
-Require Import DiskLog.
+Require Import DiskLogHash.
 Require Import Word.
 
 Import AddrMap.
