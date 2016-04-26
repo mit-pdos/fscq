@@ -1,6 +1,7 @@
 Require Import Arith.
 Require Import Bool.
 Require Import List.
+Require Import Hashmap.
 Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import Classes.SetoidTactics.
@@ -561,8 +562,9 @@ Module GLog.
 
 
   Local Hint Resolve vmap_match_nil dset_match_nil.
+  Opaque MLog.flush.
 
-  Theorem flushall_ok: forall xp ms,
+  Theorem flushall_nomerge_ok: forall xp ms,
     {< F ds,
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >>
@@ -571,13 +573,12 @@ Module GLog.
       [[ MSTxns (fst ms') = nil /\ MSVMap (fst ms') = vmap0 ]]
     XCRASH:hm
       << F, would_recover_any: xp ds hm -- >>
-    >} flushall xp ms.
+    >} flushall_nomerge xp ms.
   Proof.
-    unfold flushall, would_recover_any, rep.
+    unfold flushall_nomerge, would_recover_any, rep.
     prestep.
     cancel.
     rewrite nthd_0; cancel.
-    (* TODO: Proof broken. MLog.flush is getting unfolded. *)
 
     - safestep.
       eapply dset_match_log_valid_selN; eauto.
@@ -585,8 +586,11 @@ Module GLog.
 
       (* flush() returns true *)
       erewrite dset_match_nthd_S by eauto; cancel.
+      eexists.
+      admit. (* XXX: hasmap_subset: maybe missing some loop invariant? *)
 
       (* flush() returns false, this is impossible *)
+      exfalso; eapply dset_match_ent_length_exfalso; eauto.
       exfalso; eapply dset_match_ent_length_exfalso; eauto.
 
       (* crashes *)
@@ -601,11 +605,42 @@ Module GLog.
       rewrite nthd_oob by (erewrite dset_match_length; eauto).
       cancel.
 
-    - xcrash.
+    - admit. (* XXX: xcrash for hashmap *)
 
     Unshelve. all: easy.
-  Qed.
+  Admitted.
 
+  Hint Extern 1 ({{_}} progseq (flushall_nomerge _ _) _) => apply flushall_nomerge_ok : prog.
+
+  Opaque flushall_nomerge.
+
+  Theorem flushall_ok: forall xp ms,
+    {< F ds,
+    PRE:hm
+      << F, rep: xp (Cached ds) ms hm >>
+    POST:hm RET:ms'
+      << F, rep: xp (Cached (ds!!, nil)) ms' hm >> *
+      [[ MSTxns (fst ms') = nil /\ MSVMap (fst ms') = vmap0 ]]
+    XCRASH:hm
+      << F, would_recover_any: xp ds hm -- >>
+    >} flushall xp ms.
+  Proof.
+    unfold flushall, rep.
+    step.
+
+    step.
+    admit.
+    step.
+    admit.
+    admit.
+
+    xcrash.
+    admit.
+
+    safestep.
+    step.
+    admit.
+  Admitted.
 
 
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
