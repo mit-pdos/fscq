@@ -125,6 +125,10 @@ combine sz1 (W w1) sz2 (W64 w2) = combine sz1 (W w1) sz2 (W $ fromIntegral w2)
 combine sz1 (W64 w1) sz2 (W w2) = combine sz1 (W $ fromIntegral w1) sz2 (W w2)
 combine sz1 (W64 w1) sz2 (W64 w2) = combine sz1 (W $ fromIntegral w1) sz2 (W $ fromIntegral w2)
 
+-- Why is this in Word.v to begin with?
+pow2 :: Integer -> Integer
+pow2 i = 2^i
+
 instance Show Coq_word where
   show (W x) = show x
   show (W64 x) = show x
