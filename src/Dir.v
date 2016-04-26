@@ -405,14 +405,14 @@ Module DIR.
     {< F Fm Fi m0 m dmap,
     PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            rep_macro Fm Fi m bxp ixp dnum dmap
-    POST:hm RET:^(ms,r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+    POST:hm' RET:^(ms,r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
          ( [[ r = None /\ notindomain name dmap ]] \/
            exists inum isdir Fd,
            [[ r = Some (inum, isdir) /\
                    (Fd * name |-> (inum, isdir))%pred dmap ]])
-    CRASH:hm  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
     >} lookup lxp ixp dnum name ms.
   Proof.
     unfold lookup, rep_macro, rep.
@@ -429,11 +429,11 @@ Module DIR.
     {< F Fm Fi m0 m dmap,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
              rep_macro Fm Fi m bxp ixp dnum dmap
-    POST:hm RET:^(ms,r)
-             LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+    POST:hm' RET:^(ms,r)
+             LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
              [[ listpred readmatch r dmap ]]
-    CRASH:hm  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
     >} readdir lxp ixp dnum ms.
   Proof.
     unfold readdir, rep_macro, rep.
@@ -447,13 +447,13 @@ Module DIR.
     {< F Fm Fi m0 m dmap,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
              rep_macro Fm Fi m bxp ixp dnum dmap
-    POST:hm RET:^(ms,r) exists m' dmap',
-             LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+    POST:hm' RET:^(ms,r) exists m' dmap',
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
              rep_macro Fm Fi m' bxp ixp dnum dmap' *
              [[ dmap' = mem_except dmap name ]] *
              [[ notindomain name dmap' ]] *
              [[ r = true -> indomain name dmap ]]
-    CRASH:hm LOG.intact lxp F m0 hm
+    CRASH:hm' LOG.intact lxp F m0 hm'
     >} unlink lxp ixp dnum name ms.
   Proof.
     unfold unlink, rep_macro, rep.
@@ -484,15 +484,15 @@ Module DIR.
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
              rep_macro Fm Fi m bxp ixp dnum dmap *
              [[ goodSize addrlen inum ]]
-    POST:hm RET:^(ms,r) exists m',
-            ([[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm)
+    POST:hm' RET:^(ms,r) exists m',
+            ([[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm')
         \/  ([[ r = true ]] * exists dmap' Fd,
-             LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
              rep_macro Fm Fi m' bxp ixp dnum dmap' *
              [[ dmap' = Mem.upd dmap name (inum, isdir) ]] *
              [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (Fd dmap /\ notindomain name dmap) ]])
-    CRASH:hm LOG.intact lxp F m0 hm
+    CRASH:hm' LOG.intact lxp F m0 hm'
     >} link lxp bxp ixp dnum name inum isdir ms.
   Proof.
     unfold link, rep_macro, rep.

@@ -360,11 +360,11 @@ Module INODE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
            [[[ ilist ::: Fi * inum |-> ino ]]]
-    POST:hm RET:^(ms,r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+    POST:hm' RET:^(ms,r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
            [[ r = length (IBlocks ino) ]]
-    CRASH:hm  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
     >} getlen lxp xp inum ms.
   Proof.
     unfold getlen, rep; pose proof irec0.
@@ -383,11 +383,11 @@ Module INODE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm RET:^(ms,r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+    POST:hm' RET:^(ms,r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
            [[ r = IAttr ino ]]
-    CRASH:hm  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
     >} getattrs lxp xp inum ms.
   Proof.
     unfold getattrs, rep.
@@ -405,12 +405,12 @@ Module INODE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm RET:ms exists m' ilist' ino',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+    POST:hm' RET:ms exists m' ilist' ino',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp xp ilist') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ ino' = mk_inode (IBlocks ino) attr ]]
-    CRASH:hm  LOG.intact lxp F m0 hm
+    CRASH:hm'  LOG.intact lxp F m0 hm'
     >} setattrs lxp xp inum attr ms.
   Proof.
     unfold setattrs, rep.
@@ -434,12 +434,12 @@ Module INODE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm RET:ms exists m' ilist' ino',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+    POST:hm' RET:ms exists m' ilist' ino',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp xp ilist') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ ino' = mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv) ]]
-    CRASH:hm  LOG.intact lxp F m0 hm
+    CRASH:hm'  LOG.intact lxp F m0 hm'
     >} updattr lxp xp inum kv ms.
   Proof.
     unfold updattr, rep.
@@ -463,11 +463,11 @@ Module INODE.
            [[ off < length (IBlocks ino) ]] *
            [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm RET:^(ms, r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+    POST:hm' RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
            [[ r = selN (IBlocks ino) off $0 ]]
-    CRASH:hm  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
     >} getbnum lxp xp inum off ms.
   Proof.
     unfold getbnum, rep.
@@ -486,11 +486,11 @@ Module INODE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm RET:^(ms, r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+    POST:hm' RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
            [[ r = (IBlocks ino) ]]
-    CRASH:hm  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
     >} getallbnum lxp xp inum ms.
   Proof.
     unfold getallbnum, rep.
@@ -509,12 +509,12 @@ Module INODE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp xp ilist * BALLOC.rep bxp freelist) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm RET:ms exists m' ilist' ino' freelist',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+    POST:hm' RET:ms exists m' ilist' ino' freelist',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOC.rep bxp freelist') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ ino' = mk_inode (cuttail nr (IBlocks ino)) (IAttr ino) ]]
-    CRASH:hm  LOG.intact lxp F m0 hm
+    CRASH:hm'  LOG.intact lxp F m0 hm'
     >} shrink lxp bxp xp inum nr ms.
   Proof.
     unfold shrink, rep.
@@ -565,14 +565,14 @@ Module INODE.
            [[ BALLOC.bn_valid bxp bn ]] *
            [[[ m ::: (Fm * rep bxp xp ilist * BALLOC.rep bxp freelist) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm RET:^(ms, r)
-           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm \/
+    POST:hm' RET:^(ms, r)
+           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' \/
            [[ r = true ]] * exists m' ilist' ino' freelist',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOC.rep bxp freelist') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino) ]]
-    CRASH:hm  LOG.intact lxp F m0 hm
+    CRASH:hm'  LOG.intact lxp F m0 hm'
     >} grow lxp bxp xp inum bn ms.
   Proof.
     unfold grow, rep.

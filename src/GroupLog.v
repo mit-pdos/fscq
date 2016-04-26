@@ -504,10 +504,10 @@ Module GLog.
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
       [[[ ds!! ::: exists F', (F' * a |-> vs) ]]]
-    POST:hm RET:^(ms', r)
-      << F, rep: xp (Cached ds) ms' hm >> * [[ r = fst vs ]]
-    CRASH:hm
-      exists ms', << F, rep: xp (Cached ds) ms' hm >>
+    POST:hm' RET:^(ms', r)
+      << F, rep: xp (Cached ds) ms' hm' >> * [[ r = fst vs ]]
+    CRASH:hm'
+      exists ms', << F, rep: xp (Cached ds) ms' hm' >>
     >} read xp a ms.
   Proof.
     unfold read, rep.
@@ -537,13 +537,13 @@ Module GLog.
     PRE:hm
         << F, rep: xp (Cached ds) ms hm >> *
         [[ log_valid ents ds!! ]]
-    POST:hm RET:^(ms', r)
+    POST:hm' RET:^(ms', r)
         ([[ r = false /\ length ents > LogLen xp ]] *
-          << F, rep: xp (Cached ds) ms' hm >>)
+          << F, rep: xp (Cached ds) ms' hm' >>)
      \/ ([[ r = true  ]] *
-          << F, rep: xp (Cached (pushd (replay_disk ents (latest ds)) ds)) ms' hm >>)
-    CRASH:hm
-      exists ms', << F, rep: xp (Cached ds) ms' hm >>
+          << F, rep: xp (Cached (pushd (replay_disk ents (latest ds)) ds)) ms' hm' >>)
+    CRASH:hm'
+      exists ms', << F, rep: xp (Cached ds) ms' hm' >>
     >} submit xp ents ms.
   Proof.
     unfold submit, rep.
@@ -568,11 +568,11 @@ Module GLog.
     {< F ds,
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >>
-    POST:hm RET:ms'
-      << F, rep: xp (Cached (ds!!, nil)) ms' hm >> *
+    POST:hm' RET:ms'
+      << F, rep: xp (Cached (ds!!, nil)) ms' hm' >> *
       [[ MSTxns (fst ms') = nil /\ MSVMap (fst ms') = vmap0 ]]
-    XCRASH:hm
-      << F, would_recover_any: xp ds hm -- >>
+    XCRASH:hm'
+      << F, would_recover_any: xp ds hm' -- >>
     >} flushall_nomerge xp ms.
   Proof.
     unfold flushall_nomerge, would_recover_any, rep.
@@ -587,10 +587,8 @@ Module GLog.
       (* flush() returns true *)
       erewrite dset_match_nthd_S by eauto; cancel.
       eexists.
-      admit. (* XXX: hasmap_subset: maybe missing some loop invariant? *)
 
       (* flush() returns false, this is impossible *)
-      exfalso; eapply dset_match_ent_length_exfalso; eauto.
       exfalso; eapply dset_match_ent_length_exfalso; eauto.
 
       (* crashes *)
@@ -605,10 +603,15 @@ Module GLog.
       rewrite nthd_oob by (erewrite dset_match_length; eauto).
       cancel.
 
-    - admit. (* XXX: xcrash for hashmap *)
+    - xcrash_rewrite.
+      match goal with
+      | [ |- _ =p=> crash_xform ?p ] => instantiate (1:=p)
+      end.
+      cancel.
 
-    Unshelve. all: easy.
-  Admitted.
+    Unshelve. all: constructor.
+    (* XXX: Goals solved, but getting Error: No such section variable or assumption: hm''. *)
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (flushall_nomerge _ _) _) => apply flushall_nomerge_ok : prog.
 
@@ -618,11 +621,11 @@ Module GLog.
     {< F ds,
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >>
-    POST:hm RET:ms'
-      << F, rep: xp (Cached (ds!!, nil)) ms' hm >> *
+    POST:hm' RET:ms'
+      << F, rep: xp (Cached (ds!!, nil)) ms' hm' >> *
       [[ MSTxns (fst ms') = nil /\ MSVMap (fst ms') = vmap0 ]]
-    XCRASH:hm
-      << F, would_recover_any: xp ds hm -- >>
+    XCRASH:hm'
+      << F, would_recover_any: xp ds hm' -- >>
     >} flushall xp ms.
   Proof.
     unfold flushall, rep.
@@ -653,14 +656,14 @@ Module GLog.
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
       [[[ ds!! ::: (Fd * a |-> vs) ]]]
-    POST:hm RET:ms' exists d',
-      << F, rep: xp (Cached (d', nil)) ms' hm >> *
+    POST:hm' RET:ms' exists d',
+      << F, rep: xp (Cached (d', nil)) ms' hm' >> *
       [[  d' = updN ds!! a (v, vsmerge vs) ]] *
       [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
-    XCRASH:hm
-      << F, would_recover_any: xp ds hm -- >>
+    XCRASH:hm'
+      << F, would_recover_any: xp ds hm' -- >>
       \/ exists ms' d',
-      << F, rep: xp (Cached (d', nil)) ms' hm >> *
+      << F, rep: xp (Cached (d', nil)) ms' hm' >> *
       [[  d' = updN ds!! a (v, vsmerge vs) ]] *
       [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
     >} dwrite xp a v ms.
@@ -696,12 +699,12 @@ Module GLog.
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
       [[[ ds!! ::: (Fd * a |-> vs) ]]]
-    POST:hm RET:ms' exists d',
-      << F, rep: xp (Cached (d', nil)) ms' hm >> *
+    POST:hm' RET:ms' exists d',
+      << F, rep: xp (Cached (d', nil)) ms' hm' >> *
       [[[ d' ::: (Fd * a |-> (fst vs, nil)) ]]] *
       [[  d' = vssync ds!! a ]]
-    XCRASH:hm
-      << F, would_recover_any: xp ds hm -- >>
+    XCRASH:hm'
+      << F, would_recover_any: xp ds hm' -- >>
     >} dsync xp a ms.
   Proof.
     unfold dsync.
@@ -721,12 +724,12 @@ Module GLog.
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
       [[ Forall (fun e => fst e < length ds!!) avl ]]
-    POST:hm RET:ms'
-      << F, rep: xp (Cached (vsupd_vecs ds!! avl, nil)) ms' hm >>
-    XCRASH:hm
-      << F, would_recover_any: xp ds hm -- >> \/
+    POST:hm' RET:ms'
+      << F, rep: xp (Cached (vsupd_vecs ds!! avl, nil)) ms' hm' >>
+    XCRASH:hm'
+      << F, would_recover_any: xp ds hm' -- >> \/
       exists ms', 
-      << F, rep: xp (Cached (vsupd_vecs ds!! avl, nil)) ms' hm >>
+      << F, rep: xp (Cached (vsupd_vecs ds!! avl, nil)) ms' hm' >>
     >} dwrite_vecs xp avl ms.
   Proof.
     unfold dwrite_vecs.
@@ -756,10 +759,10 @@ Module GLog.
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
       [[ Forall (fun e => e < length ds!!) al ]]
-    POST:hm RET:ms'
-      << F, rep: xp (Cached (vssync_vecs ds!! al, nil)) ms' hm >>
-    XCRASH:hm
-      << F, would_recover_any: xp ds hm -- >>
+    POST:hm' RET:ms'
+      << F, rep: xp (Cached (vssync_vecs ds!! al, nil)) ms' hm' >>
+    XCRASH:hm'
+      << F, would_recover_any: xp ds hm' -- >>
     >} dsync_vecs xp al ms.
   Proof.
     unfold dsync_vecs.
@@ -853,13 +856,13 @@ Module GLog.
     PRE:hm
       BUFCACHE.rep cs raw *
       [[ (F * recover_any_pred xp ds hm)%pred raw ]]
-    POST:hm RET:ms'
+    POST:hm' RET:ms'
       BUFCACHE.rep (MSCache ms') raw *
       [[ (exists d n, [[ n <= length (snd ds) ]] *
-          F * rep xp (Cached (d, nil)) (fst ms') hm *
+          F * rep xp (Cached (d, nil)) (fst ms') hm' *
           [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
       )%pred raw ]]
-    CRASH:hm
+    CRASH:hm'
       exists cs', BUFCACHE.rep cs' raw
     >} recover xp cs.
   Proof.

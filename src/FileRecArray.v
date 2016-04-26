@@ -146,11 +146,11 @@ Module FileRecArray (FRA : FileRASig).
           [[[ m ::: (Fm * BFILE.rep bxp ixp flist) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
-    POST:hm RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm *
+    POST:hm' RET:^(ms', r)
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm' *
           [[ r = selN items ix item0 ]]
-    CRASH:hm  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
     >} get lxp ixp inum ix ms.
   Proof.
     unfold get, rep.
@@ -175,12 +175,12 @@ Module FileRecArray (FRA : FileRASig).
           [[[ m ::: (Fm * BFILE.rep bxp ixp flist) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
-    POST:hm RET:ms' exists m' flist' f',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm *
+    POST:hm' RET:ms' exists m' flist' f',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp ixp flist') ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' (updN items ix e) ]]]
-    CRASH:hm LOG.intact lxp F m0 hm
+    CRASH:hm' LOG.intact lxp F m0 hm'
     >} put lxp ixp inum ix e ms.
   Proof.
     unfold put, rep.
@@ -255,14 +255,14 @@ Module FileRecArray (FRA : FileRASig).
           [[[ m ::: (Fm * BFILE.rep bxp ixp flist) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
-    POST:hm RET: ^(ms', r) exists m',
-          [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm \/
+    POST:hm' RET: ^(ms', r) exists m',
+          [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' \/
           [[ r = true  ]] * exists flist' f',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp ixp flist') ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' (items ++ (updN block0 0 e)) ]]]
-    CRASH:hm LOG.intact lxp F m0 hm
+    CRASH:hm' LOG.intact lxp F m0 hm'
     >} extend lxp bxp ixp inum e ms.
   Proof.
     unfold extend, rep.
@@ -282,11 +282,11 @@ Module FileRecArray (FRA : FileRASig).
           [[[ m ::: (Fm * BFILE.rep bxp ixp flist) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
-    POST:hm RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm *
+    POST:hm' RET:^(ms', r)
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm' *
           [[ r = items ]]
-    CRASH:hm  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
     >} readall lxp ixp inum ms.
   Proof.
     unfold readall, rep.
@@ -310,12 +310,12 @@ Module FileRecArray (FRA : FileRASig).
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
           [[[ m ::: (Fm * BFILE.rep bxp ixp flist) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST:hm RET:ms' exists m' flist' f',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm *
+    POST:hm' RET:ms' exists m' flist' f',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp ixp flist') ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: emp ]]]
-    CRASH:hm LOG.intact lxp F m0 hm
+    CRASH:hm' LOG.intact lxp F m0 hm'
     >} init lxp bxp ixp inum ms.
   Proof.
     unfold init, rep.
@@ -334,16 +334,16 @@ Module FileRecArray (FRA : FileRASig).
           [[[ m ::: (Fm * BFILE.rep bxp ixp flist) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
-    POST:hm RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm *
+    POST:hm' RET:^(ms', r)
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm' *
         ( [[ r = None /\ forall i, i < length items ->
                          cond (selN items i item0) i = false  ]]
           \/ exists st,
           [[ r = Some st /\ cond (snd st) (fst st) = true
                          /\ (fst st) < length items
                          /\ snd st = selN items (fst st) item0 ]])
-    CRASH:hm  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
     >} ifind lxp ixp inum cond ms.
   Proof.
     unfold ifind, rep.
@@ -406,11 +406,11 @@ Module FileRecArray (FRA : FileRASig).
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]] *
           [[[ items ::: Fe * ix |-> e ]]]
-    POST:hm RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm *
+    POST:hm' RET:^(ms', r)
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm' *
           [[ r = e ]]
-    CRASH:hm  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
     >} get_array lxp ixp inum ix ms.
   Proof.
     unfold get_array.
@@ -430,14 +430,14 @@ Module FileRecArray (FRA : FileRASig).
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]] *
           [[[ items ::: Fe * ix |-> e0 ]]]
-    POST:hm RET:ms' exists m' flist' f' items',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm *
+    POST:hm' RET:ms' exists m' flist' f' items',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp ixp flist') ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' items' ]]] *
           [[[ items' ::: Fe * ix |-> e ]]] *
           [[ items' = updN items ix e ]]
-    CRASH:hm LOG.intact lxp F m0 hm
+    CRASH:hm' LOG.intact lxp F m0 hm'
     >} put_array lxp ixp inum ix e ms.
   Proof.
     unfold put_array.
@@ -455,17 +455,17 @@ Module FileRecArray (FRA : FileRASig).
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]] *
           [[[ items ::: Fe ]]]
-    POST:hm RET:^(ms', r) exists m',
-          [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm \/
+    POST:hm' RET:^(ms', r) exists m',
+          [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' \/
           [[ r = true  ]] * exists flist' f' items',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp ixp flist') ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' items' ]]] *
           [[[ items' ::: Fe * (length items) |-> e *
                 arrayN (length items + 1) (repeat item0 (items_per_val - 1)) ]]] *
           [[ items' = items ++ (updN block0 0 e)  ]]
-    CRASH:hm LOG.intact lxp F m0 hm
+    CRASH:hm' LOG.intact lxp F m0 hm'
     >} extend_array lxp bxp ixp inum e ms.
   Proof.
     unfold extend_array.
@@ -492,15 +492,15 @@ Module FileRecArray (FRA : FileRASig).
           [[[ m ::: (Fm * BFILE.rep bxp ixp flist) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
-    POST:hm RET:^(ms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm *
+    POST:hm' RET:^(ms', r)
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm' *
         ( [[ r = None    /\ forall i, i < length items ->
                             cond (selN items i item0) i = false ]] \/
           exists st,
           [[ r = Some st /\ cond (snd st) (fst st) = true ]] *
           [[[ items ::: arrayN_ex items (fst st) * (fst st) |-> (snd st) ]]] )
-    CRASH:hm  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
     >} ifind_array lxp ixp inum cond ms.
   Proof.
     unfold ifind_array; intros.

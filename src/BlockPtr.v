@@ -294,11 +294,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: Fm * rep bxp ir l ]]] *
            [[ off < length l ]]
-    POST:hm RET:^(ms, r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+    POST:hm' RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
            [[ r = selN l off $0 ]]
-    CRASH:hm  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
     >} get lxp ir off ms.
   Proof.
     unfold get.
@@ -321,11 +321,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: Fm * rep bxp ir l ]]]
-    POST:hm RET:^(ms, r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+    POST:hm' RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
            [[ r = l ]]
-    CRASH:hm  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
     >} read lxp ir ms.
   Proof.
     unfold read.
@@ -376,11 +376,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep bxp ir l * BALLOC.rep bxp freelist) ]]]
-    POST:hm RET:^(ms, r)  exists m' freelist',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+    POST:hm' RET:^(ms, r)  exists m' freelist',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp r (cuttail nr l) * BALLOC.rep bxp freelist') ]]] *
            [[ r = upd_len ir ((IRLen ir) - nr) ]]
-    CRASH:hm  LOG.intact lxp F m0 hm
+    CRASH:hm'  LOG.intact lxp F m0 hm'
     >} shrink lxp bxp ir nr ms.
   Proof.
     unfold shrink.
@@ -437,13 +437,13 @@ Module BlockPtr (BPtr : BlockPtrSig).
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[ length l < NBlocks ]] *
            [[[ m ::: (Fm * rep bxp ir l * BALLOC.rep bxp freelist) ]]]
-    POST:hm RET:^(ms, r)
-           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm \/
+    POST:hm' RET:^(ms, r)
+           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' \/
            exists m' freelist' ir',
-           [[ r = Some ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+           [[ r = Some ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp ir' (l ++ [bn]) * BALLOC.rep bxp freelist') ]]] *
            [[ IRAttrs ir' = IRAttrs ir /\ length (IRBlocks ir') = length (IRBlocks ir) ]]
-    CRASH:hm  LOG.intact lxp F m0 hm
+    CRASH:hm'  LOG.intact lxp F m0 hm'
     >} grow lxp bxp ir bn ms.
   Proof.
     unfold grow.

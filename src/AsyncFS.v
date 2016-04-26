@@ -271,12 +271,12 @@ Module AFS.
     {< fsxp cs ds,
      PRE:hm
        LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm
-     POST:hm RET:^(ms, fsxp')
+     POST:hm' RET:^(ms, fsxp')
        [[ fsxp' = fsxp ]] * exists d n, [[ n <= length (snd ds) ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) ms hm *
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) ms hm' *
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-     CRASH:hm exists cs',
-       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs' hm
+     CRASH:hm' exists cs',
+       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs' hm'
      >} recover.
   Proof.
     unfold recover, LOG.after_crash; intros.
@@ -339,11 +339,11 @@ Module AFS.
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
          [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
-  POST:hm RET:^(mscs,r)
-         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
+  POST:hm' RET:^(mscs,r)
+         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm' *
          [[ r = BFILE.BFAttr f ]]
-  CRASH:hm
-         LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm
+  CRASH:hm'
+         LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm'
   >} file_get_attr fsxp inum mscs.
   Proof.
     unfold file_get_attr; intros.
@@ -365,11 +365,11 @@ Module AFS.
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
          [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
-  POST:hm RET:^(mscs,r)
-         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
+  POST:hm' RET:^(mscs,r)
+         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm' *
          [[ r = BFILE.BFAttr f ]]
-  REC:hm RET:^(mscs, fsxp)
-         exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm *
+  REC:hm' RET:^(mscs, fsxp)
+         exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
          [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
   >>} file_get_attr fsxp inum mscs >> recover.
   Proof.
@@ -416,11 +416,11 @@ Module AFS.
            [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
            [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
            [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
-    POST:hm RET:^(mscs,r)
-           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
+    POST:hm' RET:^(mscs,r)
+           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm' *
            [[ r = fst vs ]]
-    CRASH:hm
-           LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm
+    CRASH:hm'
+           LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} read_fblock fsxp inum off mscs.
   Proof.
     unfold read_fblock; intros.
@@ -444,11 +444,11 @@ Module AFS.
            [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
            [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
            [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
-    POST:hm RET:^(mscs,r)
-           LOG.rep (FSXPLog fsxp) (SB.rep  fsxp) (LOG.NoTxn ds) mscs hm *
+    POST:hm' RET:^(mscs,r)
+           LOG.rep (FSXPLog fsxp) (SB.rep  fsxp) (LOG.NoTxn ds) mscs hm' *
            [[ r = fst vs ]]
-    REC:hm RET:^(mscs,fsxp)
-         exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm *
+    REC:hm' RET:^(mscs,fsxp)
+         exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
          [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
     >>} read_fblock fsxp inum off mscs >> recover.
   Proof.
@@ -496,16 +496,16 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
-    POST:hm RET:^(mscs, r)
-      [[ r = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm \/
+    POST:hm' RET:^(mscs, r)
+      [[ r = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm' \/
       [[ r = true  ]] * exists d tree' f',
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs hm *
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs hm' *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]]
-    CRASH:hm
+    CRASH:hm'
       (* interesting: no need to add d to ds, because when we crash we always recover with the first disk of ds *)
-      LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm
+      LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm'
      >} file_truncate fsxp inum sz mscs.
   Proof.
     unfold file_truncate; intros.
@@ -531,15 +531,15 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
-     POST:hm RET:^(mscs, r)
-      [[ r = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm \/
+     POST:hm' RET:^(mscs, r)
+      [[ r = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm' \/
       [[ r = true  ]] * exists d tree' f',
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs hm *
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs hm' *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]]
-     REC:hm RET:^(mscs,fsxp)
-      exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm *
+     REC:hm' RET:^(mscs,fsxp)
+      exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
          [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
      >>} file_truncate fsxp inum sz mscs >> recover.
   Proof.
@@ -599,16 +599,16 @@ Module AFS.
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> v0) ]]]
-    POST:hm RET:^(mscs)
+    POST:hm' RET:^(mscs)
       exists d tree' f',
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm *
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
       [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]]
-    CRASH:hm
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm \/
+    CRASH:hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists d tree' f',
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, nil) hm *
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, nil) hm' *
       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
       [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]]
@@ -640,14 +640,14 @@ Module AFS.
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> v0) ]]]
-    POST:hm RET:^(mscs)
+    POST:hm' RET:^(mscs)
       exists d tree' f',
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm *
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
       [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]]
-    REC:hm RET:^(mscs,fsxp)
-      exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm *
+    REC:hm' RET:^(mscs,fsxp)
+      exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
       ((exists n, 
         [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] ) \/
        (exists tree' f' v',
@@ -710,15 +710,15 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
-    POST:hm RET:^(mscs)
+    POST:hm' RET:^(mscs)
       exists d tree',
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm *
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum  (BFILE.synced_file f)) tree ]]
-    XCRASH:hm
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm \/
+    XCRASH:hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists d tree',
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm *
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum  (BFILE.synced_file f)) tree ]]
    >} file_sync fsxp inum mscs.
@@ -762,14 +762,14 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
-    POST:hm RET:^(mscs)
+    POST:hm' RET:^(mscs)
       exists d tree',
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm *
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum  (BFILE.synced_file f)) tree ]]
-    REC:hm RET:^(mscs,fsxp)
+    REC:hm' RET:^(mscs,fsxp)
       exists d,
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm *
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
        ((exists n,  [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]) \/
          exists flist',
          [[[ d ::: (crash_xform Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
@@ -844,10 +844,10 @@ Module AFS.
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
       [[ DIRTREE.dirtree_inum tree = dnum]] *
       [[ DIRTREE.dirtree_isdir tree = true ]]
-    POST:hm RET:^(mscs,r)
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
+    POST:hm' RET:^(mscs,r)
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm' *
       [[ r = DIRTREE.find_name fnlist tree ]]
-    CRASH:hm  LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm
+    CRASH:hm'  LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm'
      >} lookup fsxp dnum fnlist mscs.
   Proof.
     unfold lookup; intros.
@@ -871,11 +871,11 @@ Module AFS.
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
       [[ DIRTREE.dirtree_inum tree = dnum]] *
       [[ DIRTREE.dirtree_isdir tree = true ]]
-    POST:hm RET:^(mscs,r)
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
+    POST:hm' RET:^(mscs,r)
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm' *
       [[ r = DIRTREE.find_name fnlist tree ]]
-    REC:hm RET:^(mscs, fsxp)
-      exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm *
+    REC:hm' RET:^(mscs, fsxp)
+      exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
        [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
     >>} lookup fsxp dnum fnlist mscs >> recover.
   Proof.
@@ -924,15 +924,15 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
-    POST:hm RET:^(mscs,r)
-      [[ r = None ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm \/
-      (exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs hm *
+    POST:hm' RET:^(mscs,r)
+      [[ r = None ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm' \/
+      (exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs hm' *
        exists inum tree', [[ r = Some inum ]] *
         [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
                             (DIRTREE.TreeFile inum BFILE.bfile0) tree ]] *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]])
-    CRASH:hm
-      LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm
+    CRASH:hm'
+      LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} create fsxp dnum name mscs.
   Proof.
     unfold create; intros.
@@ -954,16 +954,16 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
-    POST:hm RET:^(mscs,r)
-      [[ r = None ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm \/
-      (exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs hm *
+    POST:hm' RET:^(mscs,r)
+      [[ r = None ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm' \/
+      (exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs hm' *
        exists inum tree', [[ r = Some inum ]] *
         [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
                             (DIRTREE.TreeFile inum BFILE.bfile0) tree ]] *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]])
-    REC:hm RET:^(mscs,fsxp)
+    REC:hm' RET:^(mscs,fsxp)
       exists d,
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm *
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
       [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
     >>} create fsxp dnum name mscs >> recover.
   Proof.
@@ -1026,12 +1026,12 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
       [[ DIRTREE.find_subtree cwd tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
-    POST:hm RET:^(mscs, ok)
-      [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm \/
+    POST:hm' RET:^(mscs, ok)
+      [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm' \/
       [[ ok = true ]] * 
-        rename_rep ds mscs Fm fsxp Ftop tree cwd dnum srcpath srcname dstpath dstname hm
-    CRASH:hm
-      LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm
+        rename_rep ds mscs Fm fsxp Ftop tree cwd dnum srcpath srcname dstpath dstname hm'
+    CRASH:hm'
+      LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} rename fsxp dnum srcpath srcname dstpath dstname mscs.
   Proof.
     unfold rename, rename_rep; intros.
@@ -1057,13 +1057,13 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
       [[ DIRTREE.find_subtree cwd tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
-    POST:hm RET:^(mscs,ok)
-      [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm \/
+    POST:hm' RET:^(mscs,ok)
+      [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm' \/
       [[ ok = true ]] * 
-        rename_rep ds mscs Fm fsxp Ftop tree cwd dnum srcpath srcname dstpath dstname hm
-    REC:hm RET:^(mscs,fsxp)
+        rename_rep ds mscs Fm fsxp Ftop tree cwd dnum srcpath srcname dstpath dstname hm'
+    REC:hm' RET:^(mscs,fsxp)
       exists d,
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm *
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
         [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
     >>} rename fsxp dnum srcpath srcname dstpath dstname mscs >> recover.
   Proof.

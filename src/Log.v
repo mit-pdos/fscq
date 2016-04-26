@@ -206,10 +206,10 @@ Module LOG.
     {< F ds,
     PRE:hm
       rep xp F (NoTxn ds) ms hm
-    POST:hm RET:r
-      rep xp F (ActiveTxn ds ds!!) r hm
-    CRASH:hm
-      exists ms', rep xp F (NoTxn ds) ms' hm
+    POST:hm' RET:r
+      rep xp F (ActiveTxn ds ds!!) r hm'
+    CRASH:hm'
+      exists ms', rep xp F (NoTxn ds) ms' hm'
     >} begin xp ms.
   Proof.
     unfold begin.
@@ -222,10 +222,10 @@ Module LOG.
     {< F ds m,
     PRE:hm
       rep xp F (ActiveTxn ds m) ms hm
-    POST:hm RET:r
-      rep xp F (NoTxn ds) r hm
-    CRASH:hm
-      exists ms', rep xp F (NoTxn ds) ms' hm
+    POST:hm' RET:r
+      rep xp F (NoTxn ds) r hm'
+    CRASH:hm'
+      exists ms', rep xp F (NoTxn ds) ms' hm'
     >} abort xp ms.
   Proof.
     unfold abort.
@@ -243,10 +243,10 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds m) ms hm *
       [[[ m ::: Fm * a |-> v ]]]
-    POST:hm RET:^(ms', r)
-      rep xp F (ActiveTxn ds m) ms' hm * [[ r = fst v ]]
-    CRASH:hm
-      exists ms', rep xp F (ActiveTxn ds m) ms' hm
+    POST:hm' RET:^(ms', r)
+      rep xp F (ActiveTxn ds m) ms' hm' * [[ r = fst v ]]
+    CRASH:hm'
+      exists ms', rep xp F (ActiveTxn ds m) ms' hm'
     >} read xp a ms.
   Proof.
     unfold read.
@@ -275,11 +275,11 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds m) ms hm * [[ a <> 0 ]] *
       [[[ m ::: (Fm * a |-> vs) ]]]
-    POST:hm RET:ms'
-      exists m', rep xp F (ActiveTxn ds m') ms' hm *
+    POST:hm' RET:ms'
+      exists m', rep xp F (ActiveTxn ds m') ms' hm' *
       [[[ m' ::: (Fm * a |-> (v, nil)) ]]]
-    CRASH:hm
-      exists m' ms', rep xp F (ActiveTxn ds m') ms' hm
+    CRASH:hm'
+      exists m' ms', rep xp F (ActiveTxn ds m') ms' hm'
     >} write xp a v ms.
   Proof.
     unfold write.
@@ -302,13 +302,13 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
       [[[ ds!! ::: (Fm * a |-> vs) ]]]
-    POST:hm RET:ms' exists m,
-      rep xp F (ActiveTxn (m, nil) m) ms' hm *
+    POST:hm' RET:ms' exists m,
+      rep xp F (ActiveTxn (m, nil) m) ms' hm' *
       [[[ m ::: (Fm * a |-> (v, vsmerge vs)) ]]]
-    XCRASH:hm
-      recover_any xp F ds hm \/
+    XCRASH:hm'
+      recover_any xp F ds hm' \/
       exists ms' m',
-      rep xp F (ActiveTxn (m', nil) m') ms' hm *
+      rep xp F (ActiveTxn (m', nil) m') ms' hm' *
           [[[ m' ::: (Fm * a |-> (v, vsmerge vs)) ]]]
     >} dwrite xp a v ms.
   Proof.
@@ -343,11 +343,11 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
       [[[ ds!! ::: (Fm * a |-> vs) ]]]
-    POST:hm RET:ms' exists m,
-      rep xp F (ActiveTxn (m, nil) m) ms' hm *
+    POST:hm' RET:ms' exists m,
+      rep xp F (ActiveTxn (m, nil) m) ms' hm' *
       [[[ m ::: (Fm * a |-> (fst vs, nil)) ]]]
-    XCRASH:hm
-      recover_any xp F ds hm
+    XCRASH:hm'
+      recover_any xp F ds hm'
     >} dsync xp a ms.
   Proof.
     unfold dsync, recover_any.
@@ -368,10 +368,10 @@ Module LOG.
     {< F ds,
     PRE:hm
       rep xp F (NoTxn ds) ms hm
-    POST:hm RET:ms'
-      rep xp F (NoTxn (ds!!, nil)) ms' hm
-    CRASH:hm
-      recover_any xp F ds hm
+    POST:hm' RET:ms'
+      rep xp F (NoTxn (ds!!, nil)) ms' hm'
+    CRASH:hm'
+      recover_any xp F ds hm'
     >} sync xp ms.
   Proof.
     unfold sync, recover_any.
@@ -385,13 +385,13 @@ Module LOG.
   Theorem commit_ok : forall xp ms,
     {< F ds m,
      PRE:hm  rep xp F (ActiveTxn ds m) ms hm
-     POST:hm RET:^(ms',r)
+     POST:hm' RET:^(ms',r)
           ([[ r = true ]] *
-            rep xp F (NoTxn (pushd m ds)) ms' hm) \/
+            rep xp F (NoTxn (pushd m ds)) ms' hm') \/
           ([[ r = false ]] *
             [[ Map.cardinal (MSTxn (fst ms)) > (LogLen xp) ]] *
-            rep xp F (NoTxn ds) ms' hm)
-     CRASH:hm exists ms', rep xp F (NoTxn ds) ms' hm
+            rep xp F (NoTxn ds) ms' hm')
+     CRASH:hm' exists ms', rep xp F (NoTxn ds) ms' hm'
     >} commit xp ms.
   Proof.
     unfold commit.
@@ -409,10 +409,10 @@ Module LOG.
     {< F ds,
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm
-    POST:hm RET:r
-      rep xp F (NoTxn ds) r hm
-    CRASH:hm
-      exists ms', rep xp F (NoTxn ds) ms' hm
+    POST:hm' RET:r
+      rep xp F (NoTxn ds) r hm'
+    CRASH:hm'
+      exists ms', rep xp F (NoTxn ds) ms' hm'
     >} commit_ro xp ms.
   Proof.
     intros.
@@ -435,12 +435,12 @@ Module LOG.
     {< F ds,
     PRE:hm
       after_crash xp F ds cs hm
-    POST:hm RET:ms' 
+    POST:hm' RET:ms' 
       exists d n, [[ n <= length (snd ds) ]] *
-      rep xp F (NoTxn (d, nil)) ms' hm *
+      rep xp F (NoTxn (d, nil)) ms' hm' *
       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-    CRASH:hm exists cs',
-      after_crash xp F ds cs' hm
+    CRASH:hm' exists cs',
+      after_crash xp F ds cs' hm'
     >} recover xp cs.
   Proof.
     unfold recover, after_crash, rep, rep_inner.
@@ -678,11 +678,11 @@ Module LOG.
     PRE:hm   rep xp F (ActiveTxn ds m) ms hm *
           [[ i < length vs]] *
           [[[ m ::: Fm * arrayN a vs ]]]
-    POST:hm RET:^(ms', r)
-          rep xp F (ActiveTxn ds m) ms' hm *
+    POST:hm' RET:^(ms', r)
+          rep xp F (ActiveTxn ds m) ms' hm' *
           [[ r = fst (selN vs i ($0, nil)) ]]
-    CRASH:hm exists ms',
-          rep xp F (ActiveTxn ds m) ms' hm
+    CRASH:hm' exists ms',
+          rep xp F (ActiveTxn ds m) ms' hm'
     >} read_array xp a i ms.
   Proof.
     unfold read_array.
@@ -700,11 +700,11 @@ Module LOG.
     PRE:hm   rep xp F (ActiveTxn ds m) ms hm *
           [[ i < length vs /\ a <> 0 ]] *
           [[[ m ::: Fm * arrayN a vs ]]]
-    POST:hm RET:ms' exists m',
-          rep xp F (ActiveTxn ds m') ms' hm *
+    POST:hm' RET:ms' exists m',
+          rep xp F (ActiveTxn ds m') ms' hm' *
           [[[ m' ::: Fm * arrayN a (updN vs i (v, nil)) ]]]
-    CRASH:hm exists m' ms',
-          rep xp F (ActiveTxn ds m') ms' hm
+    CRASH:hm' exists m' ms',
+          rep xp F (ActiveTxn ds m') ms' hm'
     >} write_array xp a i v ms.
   Proof.
     unfold write_array.
@@ -769,11 +769,11 @@ Module LOG.
       rep xp F (ActiveTxn ds m) ms hm *
       [[ nr <= length vs ]] *
       [[[ m ::: (Fm * arrayN a vs) ]]]
-    POST:hm RET:^(ms', r)
-      rep xp F (ActiveTxn ds m) ms' hm *
+    POST:hm' RET:^(ms', r)
+      rep xp F (ActiveTxn ds m) ms' hm' *
       [[ r = fold_left vfold (firstn nr (map fst vs)) v0 ]]
-    CRASH:hm
-      exists ms', rep xp F (ActiveTxn ds m) ms' hm
+    CRASH:hm'
+      exists ms', rep xp F (ActiveTxn ds m) ms' hm'
     >} read_range xp a nr vfold v0 ms.
   Proof.
     unfold read_range; intros.
@@ -872,11 +872,11 @@ Module LOG.
       rep xp F (ActiveTxn ds m) ms hm *
       [[ a <> 0 /\ length l <= length vs ]] *
       [[[ m ::: (Fm * arrayN a vs) ]]]
-    POST:hm RET:ms'
-      exists m', rep xp F (ActiveTxn ds m') ms' hm *
+    POST:hm' RET:ms'
+      exists m', rep xp F (ActiveTxn ds m') ms' hm' *
       [[[ m' ::: (Fm * arrayN a (vsupsyn_range vs l)) ]]]
-    CRASH:hm exists ms' m',
-      rep xp F (ActiveTxn ds m') ms' hm
+    CRASH:hm' exists ms' m',
+      rep xp F (ActiveTxn ds m') ms' hm'
     >} write_range xp a l ms.
   Proof.
     unfold write_range; intros.
@@ -927,12 +927,12 @@ Module LOG.
       rep xp F (ActiveTxn ds m) ms hm *
       [[ nr <= length vs /\ cond v0 = false ]] *
       [[[ m ::: (Fm * arrayN a vs) ]]]
-    POST:hm RET:^(ms', r)
-      rep xp F (ActiveTxn ds m) ms' hm *
+    POST:hm' RET:^(ms', r)
+      rep xp F (ActiveTxn ds m) ms' hm' *
       ( exists v, [[ r = Some v /\ cond v = true ]] \/
       [[ r = None /\ cond (fold_left vfold (firstn nr (map fst vs)) v0) = false ]])
-    CRASH:hm
-      exists ms', rep xp F (ActiveTxn ds m) ms' hm
+    CRASH:hm'
+      exists ms', rep xp F (ActiveTxn ds m) ms' hm'
     >} read_cond xp a nr vfold v0 cond ms.
   Proof.
     unfold read_cond; intros.
@@ -1065,13 +1065,13 @@ Module LOG.
       rep xp F (ActiveTxn ds ds!!) ms hm *
       [[ NoDup (map fst avl) ]] *
       [[[ ds!! ::: Fm * listmatch (fun v e => (fst e) |-> v) ovl avl ]]]
-    POST:hm RET:ms' exists m',
-      rep xp F (ActiveTxn (m', nil) m') ms' hm *
+    POST:hm' RET:ms' exists m',
+      rep xp F (ActiveTxn (m', nil) m') ms' hm' *
       [[[ m' ::: Fm * listmatch (fun v e => (fst e) |-> (snd e, vsmerge v)) ovl avl ]]]
-    XCRASH:hm
-      recover_any xp F ds hm \/
+    XCRASH:hm'
+      recover_any xp F ds hm' \/
       exists ms' m',
-      rep xp F (ActiveTxn (m', nil) m') ms' hm *
+      rep xp F (ActiveTxn (m', nil) m') ms' hm' *
       [[[ m' ::: Fm * listmatch (fun v e => (fst e) |-> (snd e, vsmerge v)) ovl avl ]]]
     >} dwrite_vecs xp avl ms.
   Proof.
@@ -1104,11 +1104,11 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
       [[[ ds!! ::: Fm * listmatch (fun vs a => a |-> vs) vsl al ]]]
-    POST:hm RET:ms' exists m',
-      rep xp F (ActiveTxn (m', nil) m') ms' hm *
+    POST:hm' RET:ms' exists m',
+      rep xp F (ActiveTxn (m', nil) m') ms' hm' *
       [[[ m' ::: Fm * listmatch (fun vs a => a |=> fst vs) vsl al ]]]
-    XCRASH:hm
-      recover_any xp F ds hm
+    XCRASH:hm'
+      recover_any xp F ds hm'
     >} dsync_vecs xp al ms.
   Proof.
     unfold dsync_vecs, recover_any.

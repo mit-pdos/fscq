@@ -228,7 +228,8 @@ Module MLog.
     unfold rep, map_replay, unsync_rep, synced_rep in *.
     cancel; eauto.
     or_l.
-    apply DLog.synced_extend_unsynced.
+    unfold DLog.rep. cancel.
+    eassign padded. cancel.
     instantiate (1 := nil).
     unfold log_valid; intuition.
     unfold KNoDup; auto.
@@ -607,13 +608,13 @@ Module MLog.
     {< F d na,
      PRE:hm  << F, rep: xp (Synced na d) ms hm >> *
           [[ log_valid ents d ]]
-     POST:hm RET:^(ms',r) exists na',
+     POST:hm' RET:^(ms',r) exists na',
           ([[ r = true ]] *
-           << F, rep: xp (Synced na' (replay_disk ents d)) ms' hm >>)
+           << F, rep: xp (Synced na' (replay_disk ents d)) ms' hm' >>)
       \/  ([[ r = false /\ length ents > (LogLen xp) ]] *
-           << F, rep: xp (Synced na' d) ms' hm >>)
-     XCRASH:hm
-          << F, would_recover_either: xp d ents hm -- >>
+           << F, rep: xp (Synced na' d) ms' hm' >>)
+     XCRASH:hm'
+          << F, would_recover_either: xp d ents hm' -- >>
     >} flush xp ents ms.
   Proof.
     unfold flush; intros.

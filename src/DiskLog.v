@@ -625,13 +625,13 @@ Module PaddedLog.
     PRE:hm
           BUFCACHE.rep cs d *
           [[ (F * rep xp (Synced l) hm)%pred d ]]
-    POST:hm RET: ^(cs, r)
+    POST:hm' RET: ^(cs, r)
           BUFCACHE.rep cs d *
-          [[ (F * rep xp (Synced l) hm)%pred d ]] *
+          [[ (F * rep xp (Synced l) hm')%pred d ]] *
           [[ r = (LogLen xp) - roundup (length l) DescSig.items_per_val ]]
-    CRASH:hm exists cs',
+    CRASH:hm' exists cs',
           BUFCACHE.rep cs' d *
-          [[ (F * rep xp (Synced l) hm)%pred d ]]
+          [[ (F * rep xp (Synced l) hm')%pred d ]]
     >} avail xp cs.
   Proof.
     unfold avail.
@@ -645,13 +645,13 @@ Module PaddedLog.
     PRE:hm
           BUFCACHE.rep cs d *
           [[ (F * rep xp (Synced l) hm)%pred d ]]
-    POST:hm RET: ^(cs, r)
+    POST:hm' RET: ^(cs, r)
           BUFCACHE.rep cs d *
-          [[ (F * rep xp (Synced l) hm)%pred d ]] *
+          [[ (F * rep xp (Synced l) hm')%pred d ]] *
           [[ r = log_nonzero l ]]
-    CRASH:hm exists cs',
+    CRASH:hm' exists cs',
           BUFCACHE.rep cs' d *
-          [[ (F * rep xp (Synced l) hm)%pred d ]]
+          [[ (F * rep xp (Synced l) hm')%pred d ]]
     >} read xp cs.
   Proof.
     unfold read.
@@ -750,11 +750,11 @@ Module PaddedLog.
     PRE:hm
           BUFCACHE.rep cs d *
           [[ (F * rep xp (Synced l) hm)%pred d ]]
-    POST:hm RET: cs  exists d',
+    POST:hm' RET: cs  exists d',
           BUFCACHE.rep cs d' *
-          [[ (F * rep xp (Synced nil) hm)%pred d' ]]
-    XCRASH:hm exists cs' d',
-          BUFCACHE.rep cs' d' * [[ (F * (rep xp (Truncated l) hm))%pred d' ]]
+          [[ (F * rep xp (Synced nil) hm')%pred d' ]]
+    XCRASH:hm' exists cs' d',
+          BUFCACHE.rep cs' d' * [[ (F * (rep xp (Truncated l) hm'))%pred d' ]]
     >} trunc xp cs.
   Proof.
     unfold trunc.
@@ -1180,16 +1180,16 @@ Module PaddedLog.
           BUFCACHE.rep cs d *
           [[ Forall entry_valid new ]] *
           [[ (F * rep xp (Synced old) hm)%pred d ]]
-    POST:hm RET: ^(cs, r) exists d',
+    POST:hm' RET: ^(cs, r) exists d',
           BUFCACHE.rep cs d' * (
           [[ r = true /\
-             (F * rep xp (Synced ((padded_log old) ++ new)) hm)%pred d' ]] \/
+             (F * rep xp (Synced ((padded_log old) ++ new)) hm')%pred d' ]] \/
           [[ r = false /\ length ((padded_log old) ++ new) > LogLen xp /\
-             (F * rep xp (Synced old) hm)%pred d' ]])
-    XCRASH:hm exists cs' d',
+             (F * rep xp (Synced old) hm')%pred d' ]])
+    XCRASH:hm' exists cs' d',
           BUFCACHE.rep cs' d' * (
-          [[ (F * rep xp (Synced old) hm)%pred d' ]] \/
-          [[  (F * rep xp (Extended old new) hm)%pred d' ]])
+          [[ (F * rep xp (Synced old) hm')%pred d' ]] \/
+          [[  (F * rep xp (Extended old new) hm')%pred d' ]])
     >} extend xp new cs.
   Proof.
     unfold extend.
@@ -1573,12 +1573,12 @@ Module DLog.
     {< F l d nr,
     PRE:hm    BUFCACHE.rep cs d *
               [[ (F * rep xp (Synced nr l) hm)%pred d ]]
-    POST:hm RET: ^(cs, r)
+    POST:hm' RET: ^(cs, r)
               BUFCACHE.rep cs d *
-              [[ r = l /\ (F * rep xp (Synced nr l) hm)%pred d ]]
-    CRASH:hm exists cs',
+              [[ r = l /\ (F * rep xp (Synced nr l) hm')%pred d ]]
+    CRASH:hm' exists cs',
               BUFCACHE.rep cs' d *
-              [[ (F * rep xp (Synced nr l) hm)%pred d ]]
+              [[ (F * rep xp (Synced nr l) hm')%pred d ]]
     >} read xp cs.
   Proof.
     unfold read.
@@ -1593,12 +1593,12 @@ Module DLog.
     {< F l d nr,
     PRE:hm    BUFCACHE.rep cs d *
               [[ (F * rep xp (Synced nr l) hm)%pred d ]]
-    POST:hm RET: cs exists d',
+    POST:hm' RET: cs exists d',
               BUFCACHE.rep cs d' *
-              [[ (F * rep xp (Synced (LogLen xp) nil) hm)%pred d' ]]
-    XCRASH:hm exists cs d',
+              [[ (F * rep xp (Synced (LogLen xp) nil) hm')%pred d' ]]
+    XCRASH:hm' exists cs d',
               BUFCACHE.rep cs d' *
-              [[ (F * rep xp (Truncated l) hm)%pred d' ]]
+              [[ (F * rep xp (Truncated l) hm')%pred d' ]]
     >} trunc xp cs.
   Proof.
     unfold trunc.
@@ -1619,13 +1619,13 @@ Module DLog.
     PRE:hm
           BUFCACHE.rep cs d *
           [[ (F * rep xp (Synced nr l) hm)%pred d ]]
-    POST:hm RET: ^(cs, r)
+    POST:hm' RET: ^(cs, r)
           BUFCACHE.rep cs d *
-          [[ (F * rep xp (Synced nr l) hm)%pred d ]] *
+          [[ (F * rep xp (Synced nr l) hm')%pred d ]] *
           [[ r = nr ]]
-    CRASH:hm exists cs',
+    CRASH:hm' exists cs',
           BUFCACHE.rep cs' d *
-          [[ (F * rep xp (Synced nr l) hm)%pred d ]]
+          [[ (F * rep xp (Synced nr l) hm')%pred d ]]
     >} avail xp cs.
   Proof.
     unfold avail.
@@ -1707,16 +1707,16 @@ Module DLog.
     PRE:hm
           BUFCACHE.rep cs d * [[ entries_valid new ]] *
           [[ (F * rep xp (Synced nr old) hm)%pred d ]]
-    POST:hm RET: ^(cs, r) exists d',
+    POST:hm' RET: ^(cs, r) exists d',
           BUFCACHE.rep cs d' * (
           [[ r = true /\
-            (F * rep xp (Synced (nr - (rounded (length new))) (old ++ new)) hm)%pred d' ]] \/
+            (F * rep xp (Synced (nr - (rounded (length new))) (old ++ new)) hm')%pred d' ]] \/
           [[ r = false /\ length new > nr /\
-            (F * rep xp (Synced nr old) hm)%pred d' ]])
-    XCRASH:hm exists cs' d',
+            (F * rep xp (Synced nr old) hm')%pred d' ]])
+    XCRASH:hm' exists cs' d',
           BUFCACHE.rep cs' d' * (
-          [[ (F * rep xp (Synced nr old) hm)%pred d' ]] \/
-          [[ (F * rep xp (Extended old new) hm)%pred d' ]])
+          [[ (F * rep xp (Synced nr old) hm')%pred d' ]] \/
+          [[ (F * rep xp (Extended old new) hm')%pred d' ]])
     >} extend xp new cs.
   Proof.
     unfold extend.

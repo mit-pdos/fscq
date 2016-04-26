@@ -205,14 +205,14 @@ Module BmapAlloc (Sig : AllocSig).
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
           [[[ m ::: (Fm * @rep V xp freelist freepred) ]]]
-    POST:hm RET:^(ms,r)
-          [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm
+    POST:hm' RET:^(ms,r)
+          [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm'
        \/ exists bn m' freepred',
-          [[ r = Some bn ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+          [[ r = Some bn ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
           [[[ m' ::: (Fm * @rep V xp (remove addr_eq_dec bn freelist) freepred') ]]] *
           [[ freepred =p=> freepred' * bn |->? ]] *
           [[ bn <> 0 /\ bn < (BMPLen xp) * valulen ]]
-    CRASH:hm LOG.intact lxp F m0 hm
+    CRASH:hm' LOG.intact lxp F m0 hm'
     >} alloc lxp xp ms.
   Proof.
     unfold alloc, rep.
@@ -239,11 +239,11 @@ Module BmapAlloc (Sig : AllocSig).
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
           [[ bn < (BMPLen xp) * valulen ]] *
           [[[ m ::: (Fm * @rep V xp freelist freepred) ]]]
-    POST:hm RET:ms exists m' freepred',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+    POST:hm' RET:ms exists m' freepred',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
           [[[ m' ::: (Fm * @rep V xp (bn :: freelist) freepred') ]]] *
           [[ bn |->? * freepred =p=> freepred' ]]
-    CRASH:hm LOG.intact lxp F m0 hm
+    CRASH:hm' LOG.intact lxp F m0 hm'
     >} free lxp xp bn ms.
   Proof.
     unfold free, rep.
@@ -325,13 +325,13 @@ Module BALLOC.
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * rep xp freeblocks) ]]]
-    POST:hm RET:^(ms, r)
-           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm
+    POST:hm' RET:^(ms, r)
+           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm'
         \/ exists bn m',
            [[ r = Some bn ]] * [[ bn_valid xp bn ]] *
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * bn |->? * rep xp (remove addr_eq_dec bn freeblocks)) ]]]
-    CRASH:hm  LOG.intact lxp F m0 hm
+    CRASH:hm'  LOG.intact lxp F m0 hm'
     >} alloc lxp xp ms.
   Proof.
     unfold alloc, rep, bn_valid.
@@ -348,10 +348,10 @@ Module BALLOC.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[ bn_valid xp bn ]] *
            [[[ m ::: (Fm * rep xp freeblocks * bn |->?) ]]]
-    POST:hm RET:ms exists m',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+    POST:hm' RET:ms exists m',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep xp (bn :: freeblocks)) ]]]
-    CRASH:hm  LOG.intact lxp F m0 hm
+    CRASH:hm'  LOG.intact lxp F m0 hm'
     >} free lxp xp bn ms.
   Proof.
     unfold free, rep, bn_valid.
@@ -396,10 +396,10 @@ Module BALLOC.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[ Forall (bn_valid xp) l ]] *
            [[[ m ::: (Fm * rep xp freeblocks * listpred (fun a => a |->?) l ) ]]]
-    POST:hm RET:ms exists m',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+    POST:hm' RET:ms exists m',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep xp (rev l ++ freeblocks)) ]]]
-    CRASH:hm  LOG.intact lxp F m0 hm
+    CRASH:hm'  LOG.intact lxp F m0 hm'
     >} freevec lxp xp l ms.
   Proof.
     unfold freevec.
