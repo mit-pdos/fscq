@@ -835,7 +835,7 @@ Module PaddedLog.
     rewrite desc_padding_synced_piff; cancel.
 
     safestep; subst.
-    rewrite vals_nonzero_addrs; unfold ndata_log.
+    setoid_rewrite vals_nonzero_addrs; unfold ndata_log.
     replace DataSig.items_per_val with 1 by (cbv; auto); try omega.
     rewrite Nat.mul_1_r; eauto.
     all: auto.
@@ -1465,7 +1465,6 @@ Module PaddedLog.
       solve_hash_list_rep.
 
       safestep.
-      eapply loglen_valid_desc_valid; eauto.
       rewrite Desc.avail_rep_split. cancel.
       autorewrite with lists; apply helper_loglen_desc_valid_extend; auto.
 
@@ -1995,8 +1994,8 @@ Module PaddedLog.
   Proof.
     unfold recover'.
     step.
-    safestep; subst.
-    instantiate (1:=map ent_addr (padded_log l)).
+    prestep. norm. cancel. intuition simpl.
+    eassign (map ent_addr (padded_log l)).
     rewrite map_length, padded_log_length.
     all: auto.
     rewrite desc_padding_synced_piff.
@@ -2074,8 +2073,8 @@ Module PaddedLog.
     autorewrite with lists.
     rewrite padded_log_length; unfold roundup; eauto.
 
-    safestep; subst.
-    instantiate (1:=vals_nonzero (padded_log old) ++ dummy1).
+    prestep. norm. cancel. intuition simpl.
+    eassign (vals_nonzero (padded_log old) ++ dummy1).
     autorewrite with lists.
     rewrite vals_nonzero_addrs, nonzero_addrs_padded_log, Nat.mul_add_distr_r.
     replace DataSig.items_per_val with 1 by (cbv; auto); omega.
