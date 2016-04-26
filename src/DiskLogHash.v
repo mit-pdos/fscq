@@ -2427,8 +2427,14 @@ Module PaddedLog.
   Hint Extern 1 ({{_}} progseq (recover' _ _) _) => apply recover'_ok : prog.
 
 
-  (* This should probably in a different layer...? *)
-  Definition recover {T} rx : prog T :=
+  (**
+   * It seems like [recover'] is the important thing here, and the [recover] below
+   * is actually not needed; higher layers already take care of first calling
+   * BUFCACHE.init_recover, then sb_load, and finally calling the log's [recover]
+   **)
+
+  (*
+  Definition recover {T} cs lxp rx : prog T :=
     cs <- BUFCACHE.init_recover 1;
     let^ (cs, fsxp) <- sb_load cs;
     cs <- recover' (FSXPLog fsxp) cs;
@@ -2505,8 +2511,15 @@ Module PaddedLog.
     rewrite xform_would_recover_either'.
     rewrite would_recover_either'_hashmap_subset; eauto.
   Qed.
+  *)
 
 
+  (**
+   * The below proofs are not actually necessary, though they are useful as a
+   * sanity check.  The [corr3] statements should probably show up in AsyncFS.v.
+   *)
+
+  (*
   Definition extend_recover_ok : forall fsxp new cs,
     {<< old d,
     PRE:hm   BUFCACHE.rep cs d *
@@ -2551,6 +2564,7 @@ Module PaddedLog.
     or_l; cancel.
     or_r; cancel.
   Qed.
+  *)
 
 End PaddedLog.
 
@@ -2574,21 +2588,21 @@ Module DLog.
       ([[ l = PaddedLog.log_nonzero padded /\
          length padded = roundup (length padded) PaddedLog.DescSig.items_per_val ]])%pred.
 
-  Definition rep xp st :=
+  Definition rep xp st hm :=
     (match st with
     | Synced navail l =>
           exists padded, rep_common l padded *
           [[ navail = (LogLen xp) - (length padded) ]] *
-          PaddedLog.rep xp (PaddedLog.Synced padded)
+          PaddedLog.rep xp (PaddedLog.Synced padded) hm
     | Truncated l =>
           exists padded, rep_common l padded *
-          PaddedLog.rep xp (PaddedLog.Truncated padded)
+          PaddedLog.rep xp (PaddedLog.Truncated padded) hm
     | ExtendedUnsync l =>
-          exists padded, rep_common l padded *
-          PaddedLog.rep xp (PaddedLog.ExtendedUnsync padded)
+          exists padded new, rep_common l padded *
+          PaddedLog.rep xp (PaddedLog.Extended padded new) hm
     | Extended l new =>
           exists padded, rep_common l padded *
-          PaddedLog.rep xp (PaddedLog.Extended padded new)
+          PaddedLog.rep xp (PaddedLog.SyncedUnmatched padded new) hm
     end)%pred.
 
   Local Hint Unfold rep rep_common : hoare_unfold.
@@ -2602,14 +2616,14 @@ Module DLog.
 
   Definition read_ok : forall xp cs,
     {< F l d nr,
-    PRE       BUFCACHE.rep cs d * 
-              [[ (F * rep xp (Synced nr l))%pred d ]]
-    POST RET: ^(cs, r)
+    PRE:hm    BUFCACHE.rep cs d * 
+              [[ (F * rep xp (Synced nr l) hm)%pred d ]]
+    POST:hm   RET: ^(cs, r)
               BUFCACHE.rep cs d *
-              [[ r = l /\ (F * rep xp (Synced nr l))%pred d ]]
-    CRASH exists cs',
+              [[ r = l /\ (F * rep xp (Synced nr l) hm)%pred d ]]
+    CRASH:hm exists cs',
               BUFCACHE.rep cs' d *
-              [[ (F * rep xp (Synced nr l))%pred d ]]
+              [[ (F * rep xp (Synced nr l) hm)%pred d ]]
     >} read xp cs.
   Proof.
     unfold read.
@@ -2622,16 +2636,16 @@ Module DLog.
 
   Definition trunc_ok : forall xp cs,
     {< F l d nr,
-    PRE       BUFCACHE.rep cs d *
-              [[ (F * rep xp (Synced nr l))%pred d ]]
-    POST RET: cs exists d',
+    PRE:hm    BUFCACHE.rep cs d *
+              [[ (F * rep xp (Synced nr l) hm)%pred d ]]
+    POST:hm RET: cs exists d',
               BUFCACHE.rep cs d' *
-              [[ (F * rep xp (Synced (LogLen xp) nil))%pred d' ]]
-    CRASH exists cs d',
+              [[ (F * rep xp (Synced (LogLen xp) nil) hm)%pred d' ]]
+    CRASH:hm exists cs d',
               BUFCACHE.rep cs d' * (
-              [[ (F * rep xp (Synced nr l))%pred d' ]] \/
-              [[ (F * rep xp (Truncated l))%pred d' ]] \/
-              [[ (F * rep xp (Synced (LogLen xp) nil))%pred d' ]])
+              [[ (F * rep xp (Synced nr l) hm)%pred d' ]] \/
+              [[ (F * rep xp (Truncated l) hm)%pred d' ]] \/
+              [[ (F * rep xp (Synced (LogLen xp) nil) hm)%pred d' ]])
     >} trunc xp cs.
   Proof.
     unfold trunc.
@@ -2651,15 +2665,15 @@ Module DLog.
 
   Definition avail_ok : forall xp cs,
     {< F l d nr,
-    PRE   BUFCACHE.rep cs d *
-          [[ (F * rep xp (Synced nr l))%pred d ]]
-    POST RET: ^(cs, r)
+    PRE:hm BUFCACHE.rep cs d *
+          [[ (F * rep xp (Synced nr l) hm)%pred d ]]
+    POST:hm RET: ^(cs, r)
           BUFCACHE.rep cs d *
-          [[ (F * rep xp (Synced nr l))%pred d ]] *
+          [[ (F * rep xp (Synced nr l) hm)%pred d ]] *
           [[ r = nr ]]
-    CRASH exists cs',
+    CRASH:hm exists cs',
           BUFCACHE.rep cs' d *
-          [[ (F * rep xp (Synced nr l))%pred d ]]
+          [[ (F * rep xp (Synced nr l) hm)%pred d ]]
     >} avail xp cs.
   Proof.
     unfold avail.
@@ -2694,10 +2708,10 @@ Module DLog.
     rewrite roundup_roundup; auto.
   Qed.
 
-  Lemma helper_extend_length_ok : forall xp padded new F d,
+  Lemma helper_extend_length_ok : forall xp padded new F d hm,
     length padded = roundup (length padded) PaddedLog.DescSig.items_per_val
     -> length (PaddedLog.padded_log padded ++ new) > LogLen xp
-    -> (F * PaddedLog.rep xp (PaddedLog.Synced padded))%pred d
+    -> (F * PaddedLog.rep xp (PaddedLog.Synced padded) hm)%pred d
     -> length new > LogLen xp - length padded.
   Proof.
     intros.
@@ -2738,20 +2752,20 @@ Module DLog.
 
   Definition extend_ok : forall xp new cs,
     {< F old d nr,
-    PRE       BUFCACHE.rep cs d * [[ entries_valid new ]] *
-              [[ (F * rep xp (Synced nr old))%pred d ]]
-    POST RET: ^(cs, r) exists d',
+    PRE:hm    BUFCACHE.rep cs d * [[ entries_valid new ]] *
+              [[ (F * rep xp (Synced nr old) hm)%pred d ]]
+    POST:hm RET: ^(cs, r) exists d',
               BUFCACHE.rep cs d' * (
               [[ r = true /\
-                (F * rep xp (Synced (nr - (rounded (length new))) (old ++ new)))%pred d' ]] \/
+                (F * rep xp (Synced (nr - (rounded (length new))) (old ++ new)) hm)%pred d' ]] \/
               [[ r = false /\ length new > nr /\
-                (F * rep xp (Synced nr old))%pred d' ]])
-    CRASH exists cs' d',
+                (F * rep xp (Synced nr old) hm)%pred d' ]])
+    CRASH:hm exists cs' d',
           BUFCACHE.rep cs' d' * (
-          [[ (F * rep xp (Synced nr old))%pred d' ]] \/
-          [[ (F * rep xp (ExtendedUnsync old))%pred d' ]] \/
-          [[ (F * rep xp (Extended old new))%pred d' ]] \/
-          [[ (F * rep xp (Synced (nr - (rounded (length new))) (old ++ new)))%pred d' ]])
+          [[ (F * rep xp (Synced nr old) hm)%pred d' ]] \/
+          [[ (F * rep xp (ExtendedUnsync old) hm)%pred d' ]] \/
+          [[ (F * rep xp (Extended old new) hm)%pred d' ]] \/
+          [[ (F * rep xp (Synced (nr - (rounded (length new))) (old ++ new)) hm)%pred d' ]])
     >} extend xp new cs.
   Proof.
     unfold extend.
@@ -2778,8 +2792,8 @@ Module DLog.
   Hint Extern 1 ({{_}} progseq (trunc _ _) _) => apply trunc_ok : prog.
   Hint Extern 1 ({{_}} progseq (extend _ _ _) _) => apply extend_ok : prog.
 
-  Lemma xform_rep_synced : forall xp na l,
-    crash_xform (rep xp (Synced na l)) =p=> rep xp (Synced na l).
+  Lemma xform_rep_synced : forall xp na l hm,
+    crash_xform (rep xp (Synced na l) hm) =p=> rep xp (Synced na l) hm.
   Proof.
     unfold rep, rep_common; intros.
     xform; cancel.
@@ -2787,9 +2801,9 @@ Module DLog.
     all: auto.
   Qed.
 
-  Lemma xform_rep_truncated : forall xp l,
-    crash_xform (rep xp (Truncated l)) =p=> exists na,
-      rep xp (Synced na l) \/ rep xp (Synced (LogLen xp) nil).
+  Lemma xform_rep_truncated : forall xp l hm,
+    crash_xform (rep xp (Truncated l) hm) =p=> exists na,
+      rep xp (Synced na l) hm \/ rep xp (Synced (LogLen xp) nil) hm.
   Proof.
     unfold rep, rep_common; intros.
     xform; cancel.
@@ -2799,8 +2813,8 @@ Module DLog.
     rewrite roundup_0; auto.
   Qed.
 
-  Lemma xform_rep_extended_unsync : forall xp l,
-    crash_xform (rep xp (ExtendedUnsync l)) =p=> exists na, rep xp (Synced na l).
+  Lemma xform_rep_extended_unsync : forall xp l hm,
+    crash_xform (rep xp (ExtendedUnsync l) hm) =p=> exists na, rep xp (Synced na l) hm.
   Proof.
     unfold rep, rep_common; intros.
     xform; cancel.
@@ -2808,10 +2822,10 @@ Module DLog.
     all: auto.
   Qed.
 
-  Lemma xform_rep_extended : forall xp old new,
-    crash_xform (rep xp (Extended old new)) =p=>
-       (exists na, rep xp (Synced na old)) \/
-       (exists na, rep xp (Synced na (old ++ new))).
+  Lemma xform_rep_extended : forall xp old new hm,
+    crash_xform (rep xp (Extended old new) hm) =p=>
+       (exists na, rep xp (Synced na old) hm) \/
+       (exists na, rep xp (Synced na (old ++ new)) hm).
   Proof.
     unfold rep, rep_common; intros.
     xform.

@@ -4,10 +4,8 @@ module Main where
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC8
-import qualified Data.ByteString.Internal as BSI
 import qualified System.Directory
 import Foreign.C.Error
-import Foreign.ForeignPtr
 import System.Posix.Types
 import System.Posix.Files
 import System.Posix.IO
@@ -358,16 +356,6 @@ fscqUnlink _ _ _ = return eOPNOTSUPP
 -- the help of i2buf and buf2i from hslib/Disk.
 blocksize :: Integer
 blocksize = _Valulen__valulen `div` 8
-
-bs2i :: BS.ByteString -> IO Integer
-bs2i (BSI.PS fp 0 len) = withForeignPtr fp $ buf2i $ fromIntegral len
-bs2i (BSI.PS _ _ _) = error "Non-zero offset not implemented"
-
--- We should audit our use of [Int] vs [Word] vs [Foreign.C.Types.CSize]
--- for possible overflows, etc..  These are possibly hiding in our uses
--- of [fromIntegral].
-i2bs :: Integer -> Int -> IO BS.ByteString
-i2bs i nbytes = BSI.create nbytes $ i2buf i $ fromIntegral nbytes
 
 data BlockRange =
   BR !Integer !Integer !Integer   -- blocknumber, offset-in-block, count-from-offset

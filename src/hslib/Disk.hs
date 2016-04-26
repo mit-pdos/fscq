@@ -8,10 +8,12 @@ import System.Posix.IO
 import System.Posix.Unistd
 import System.Posix.Files
 import Word
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Internal as BSI
 import qualified GHC.Integer.GMP.Internals as GMPI
 import qualified Foreign.C.Types
 import GHC.Exts
+import Foreign.ForeignPtr
 import Foreign.Marshal.Alloc
 import Data.Word
 import Data.IORef
@@ -87,6 +89,13 @@ i2buf i nbytes (GHC.Exts.Ptr a) = do
   _ <- BSI.memset (GHC.Exts.Ptr a) 0 nbytes
   _ <- GMPI.exportIntegerToAddr i a 0#
   return ()
+
+bs2i :: BS.ByteString -> IO Integer
+bs2i (BSI.PS fp 0 len) = withForeignPtr fp $ buf2i $ fromIntegral len
+bs2i (BSI.PS _ _ _) = error "Non-zero offset not implemented"
+
+i2bs :: Integer -> Int -> IO BS.ByteString
+i2bs i nbytes = BSI.create nbytes $ i2buf i $ fromIntegral nbytes
 
 read_disk :: DiskState -> Integer -> IO Coq_word
 read_disk (S fd sr _ _) a = do
