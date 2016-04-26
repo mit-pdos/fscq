@@ -155,6 +155,7 @@ Module MLog.
   Definition apply T xp ms rx : prog T :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     cs <- BUFCACHE.write_vecs (DataStart xp) (Map.elements oms) cs;
+    cs <- BUFCACHE.evict_vecs (DataStart xp) (map_keys oms) cs;
     cs <- BUFCACHE.sync_vecs (DataStart xp) (map_keys oms) cs;
     cs <- DLog.trunc xp cs;
     rx (mk_memstate vmap0 cs).
