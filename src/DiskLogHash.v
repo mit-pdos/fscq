@@ -844,19 +844,17 @@ Module PaddedLog.
     safestep; subst.
     setoid_rewrite vals_nonzero_addrs; unfold ndata_log.
     replace DataSig.items_per_val with 1 by (cbv; auto); try omega.
-    rewrite Nat.mul_1_r; eauto.
-    all: auto.
     replace (map ent_valu (log_nonzero l)) with (vals_nonzero l); auto.
-    cancel.
-
-    all: hoare using (subst; eauto).
-    rewrite desc_padding_synced_piff; cancel.
-
-    solve_checksums.
-    cancel.
+    safestep.
     rewrite desc_padding_synced_piff; cancel.
     solve_checksums.
+
+    pimpl_crash; cancel.
+    rewrite desc_padding_synced_piff; cancel.
+    solve_checksums.
+
     cancel.
+    solve_checksums.
     solve_checksums.
   Qed.
 
