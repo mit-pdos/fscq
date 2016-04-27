@@ -2833,12 +2833,21 @@ Module DLog.
     cancel.
   Qed.
 
+  Lemma xform_rep_syncedunmatched : forall xp old new hm,
+    crash_xform (rep xp (SyncedUnmatched old new) hm) =p=>
+      rep xp (SyncedUnmatched old new) hm.
+  Proof.
+    unfold rep, rep_common; intros.
+    xform.
+    rewrite PaddedLog.xform_rep_syncedunmatched.
+    cancel.
+  Qed.
+
   Lemma rep_hashmap_subset : forall xp hm hm',
     (exists l, hashmap_subset l hm hm')
     -> forall st, rep xp st hm
         =p=> rep xp st hm'.
   Proof. Admitted.
-
 
 End DLog.
 
