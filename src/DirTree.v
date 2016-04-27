@@ -2046,12 +2046,19 @@ Module DIRTREE.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
     cancel.
-    or_l.
+    eapply pimpl_trans.
+    2: eapply H1.
+    cancel.
+    eapply pimpl_trans.
+    eapply H.
+    apply PredCrash.crash_xform_pimpl.
     cancel.
     or_r.
     cancel.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
+    simpl.
+    eauto.
   Qed.
 
  Theorem datasync_ok : forall fsxp inum mscs,
