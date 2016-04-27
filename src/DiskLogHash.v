@@ -932,6 +932,13 @@ Module PaddedLog.
     cancel.
   Qed.
 
+
+  (* XXX:
+    Ideally XCRASH can contain only Truncated state, whose crash_xform 
+    covers the Synced state's crash_xform. However, to prove that, we need 
+    to construct a raw disk that satisifies the Truncated state given a raw
+    disk of Synced state.  This involves reverse engineering Hdr.rep.
+  *)
   Definition trunc_ok : forall xp cs,
     {< F l d,
     PRE:hm   BUFCACHE.rep cs d *
@@ -940,8 +947,9 @@ Module PaddedLog.
           BUFCACHE.rep cs d' *
           [[ (F * rep xp (Synced nil) hm')%pred d' ]]
     XCRASH:hm_crash exists cs' d',
-          BUFCACHE.rep cs' d' *
-          [[ (F * (rep xp (Truncated l) hm_crash))%pred d' ]]
+          BUFCACHE.rep cs' d' * (
+          [[ (F * (rep xp (Synced l) hm_crash))%pred d' ]] \/
+          [[ (F * (rep xp (Truncated l) hm_crash))%pred d' ]] )
     >} trunc xp cs.
   Proof.
     unfold trunc.
@@ -967,52 +975,35 @@ Module PaddedLog.
     auto.
 
     (* crash conditions *)
-    xcrash.
-    admit.
-    admit.
-
-    xcrash.
-    admit.
-    admit.
-    admit.
-    admit.
-
-(*
-    or_r. or_l; cancel.
+    repeat xcrash_rewrite.
+    xform_norm. cancel. xform_normr; cancel.
+    or_r; cancel.
     solve_checksums.
-    solve_checksums.
-    replace (DescDefs.ipack (map ent_addr [])) with (@nil valu).
+    solve_checksums; auto.
+    setoid_rewrite DescDefs.ipack_nil; simpl.
     solve_hash_list_rep; auto.
-    symmetry. apply DescDefs.ipack_nil.
-    auto.
 
-    or_r. or_r; cancel.
-    cancel_by helper_trunc_ok.
+    repeat xcrash_rewrite.
+    xform_norm; cancel. xform_normr; cancel.
+    or_r; cancel.
     solve_checksums.
-    replace (DescDefs.ipack (map ent_addr [])) with (@nil valu).
+    solve_checksums; auto.
+    setoid_rewrite DescDefs.ipack_nil; simpl.
     solve_hash_list_rep; auto.
-    symmetry. apply DescDefs.ipack_nil.
-    auto.
 
+    xcrash_rewrite.
+    xform_normr; cancel.
     or_l; cancel.
     solve_checksums.
 
-    or_r. or_l; cancel.
+    xcrash_rewrite.
+    xform_normr; cancel.
+    or_l; cancel.
     solve_checksums.
-    solve_checksums.
-    replace (DescDefs.ipack (map ent_addr [])) with (@nil valu).
-    solve_hash_list_rep; auto.
-    symmetry. apply DescDefs.ipack_nil.
-    auto.
 
-    or_l; cancel.
-    solve_checksums.
-    or_l; cancel.
-    solve_checksums.
-*)
     Unshelve.
     constructor.
-  Admitted.
+  Qed.
 
   Theorem loglen_valid_dec xp ndesc ndata :
     {loglen_valid xp ndesc ndata} + {loglen_invalid xp ndesc ndata }.

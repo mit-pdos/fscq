@@ -602,6 +602,25 @@ Proof.
   apply crash_xform_idem_r.
 Qed.
 
+Theorem crash_xform_synced : forall p m,
+  crash_xform p m ->
+  synced_mem m.
+Proof.
+  unfold crash_xform; intros.
+  repeat deex.
+  eapply possible_crash_synced; eauto.
+Qed.
+
+Theorem crash_xform_possible_crash_refl : forall p m,
+  crash_xform p m ->
+  possible_crash m m.
+Proof.
+  intros.
+  apply possible_crash_refl.
+  eapply crash_xform_synced; eauto.
+Qed.
+
+
 
 Hint Rewrite crash_xform_sep_star_dist : crash_xform.
 Hint Rewrite crash_xform_or_dist : crash_xform.
