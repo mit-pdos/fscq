@@ -423,26 +423,6 @@ Module PaddedLog.
       BUFCACHE.rep cs d *
       [[ (F * would_recover_either' xp old new hm)%pred d ]])%pred.
 
-  Definition rep_recovers_to xp (st : state) hm : rawpred :=
-  (match st with
-    | Synced l =>
-        rep xp (Synced l) hm
-    | SyncedUnmatched old new =>
-        rep xp (Synced old) hm \/
-        rep xp (Synced (padded_log old ++ new)) hm
-    | _ => any
-  end)%pred.
-
-  Definition rep_crashes_to xp (st : state) hm : rawpred :=
-  (match st with
-    | Synced l =>
-        rep xp (Synced l) hm
-    | SyncedUnmatched old new =>
-        would_recover_either' xp old new hm
-    | _ => any
-  end)%pred.
-
-
   Local Hint Unfold rep rep_inner rep_contents xparams_ok: hoare_unfold.
 
   Definition avail T xp cs rx : prog T :=
@@ -1919,7 +1899,7 @@ Module PaddedLog.
     rewrite divup_divup; auto.
   Qed.
 
-  Definition recover' T xp cs rx : prog T :=
+  Definition recover T xp cs rx : prog T :=
     let^ (cs, header) <- Hdr.read xp cs;
     let '((prev_ndesc, prev_ndata),
           (ndesc, ndata),
@@ -2367,60 +2347,57 @@ Module PaddedLog.
 
 
   Definition recover_ok : forall xp cs,
-    {< F st,
+    {< F old new,
     PRE:hm
-      exists d, BUFCACHE.rep cs d *
-          [[ (F * rep xp st hm)%pred d ]] *
-          [[ (exists l, st = Synced l) \/
-              (exists old new, st = SyncedUnmatched old new) ]]
+      exists d, BUFCACHE.rep cs d * (
+          [[ (F * rep xp (Synced old) hm)%pred d ]] \/
+          [[ (F * rep xp (SyncedUnmatched old new) hm)%pred d ]])
     POST:hm' RET:cs' exists d',
-          BUFCACHE.rep cs' d' *
-          [[ (F * rep_recovers_to xp st hm')%pred d' ]]
+          BUFCACHE.rep cs' d' * (
+          [[ (F * rep xp (Synced old) hm')%pred d' ]] \/
+          [[ (F * rep xp (Synced (padded_log old ++ new)) hm')%pred d' ]])
     CRASH:hm' exists cs' d',
-          BUFCACHE.rep cs' d' *
-          [[ (F * rep_crashes_to xp st hm')%pred d' ]]
+          BUFCACHE.rep cs' d' * (
+          [[ (F * rep xp (Synced old) hm')%pred d' ]] \/
+          [[ (F * would_recover_either' xp old new hm')%pred d' ]])
     >} recover xp cs.
   Proof.
     intros.
     eapply pimpl_ok2; try eapply nop_ok.
     intros. norm'l. unfold stars; cbn.
 
-    destruct st.
+    cancel.
 
     (* Synced *)
-    - cancel.
-      eapply pimpl_ok2; try apply recover_ok_Synced.
+    - eapply pimpl_ok2; try apply recover_ok_Synced.
       cancel.
-      eassign l.
+      eassign old.
       cancel.
       hoare.
-      all: repeat cancel.
-      repeat deex.
-      inversion H0.
+      cancel.
+      cancel.
 
-    (* Truncated: false case *)
-    - contradict H4.
-      intuition; repeat deex; inversion H0.
-
-    (* Extended: false case *)
-    - contradict H4.
-      intuition; repeat deex; inversion H0.
-
-    (* SyncedUnmatched *)
     - cancel.
-      repeat deex; inversion H0.
-      repeat deex; inversion H0.
+      cancel.
 
-      eapply pimpl_ok2; try apply recover_ok_SyncedUnmatched.
+    - eapply pimpl_ok2; try apply recover_ok_SyncedUnmatched.
       cancel.
       eassign old.
       eassign new.
       cancel.
       hoare.
-      unfold would_recover_either.
-      all: repeat cancel.
-      unfold would_recover_either'.
+      or_r.
       cancel.
+      unfold would_recover_either'.
+      or_r; or_r; or_l.
+      unfold rep, rep_inner, rep_contents; cancel.
+      unfold would_recover_either; cancel.
+      or_r; cancel.
+
+    - cancel.
+      or_r.
+      unfold would_recover_either';
+      cancel. cancel.
   Qed.
 
 
