@@ -1115,6 +1115,28 @@ Module AFS.
   Qed.
 
 
+
+  Theorem delete_ok : forall fsxp dnum name mscs,
+    {< ds pathname Fm Ftop tree tree_elem,
+    PRE:hm
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
+      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
+    POST:hm RET:^(mscs, ok)
+      [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm \/
+      (exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs hm *
+       exists tree', [[ ok = true ]] *
+        [[ tree' = DIRTREE.update_subtree pathname
+                      (DIRTREE.delete_from_dir name (DIRTREE.TreeDir dnum tree_elem)) tree ]] *
+        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]])
+    CRASH:hm
+      LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm
+    >} delete fsxp dnum name mscs.
+  Proof.
+  Admitted.
+
+
+
 End AFS.
 
 
