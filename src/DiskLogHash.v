@@ -412,6 +412,37 @@ Module PaddedLog.
   Definition rep xp st hm:=
     ([[ xparams_ok xp ]] * rep_inner xp st hm)%pred.
 
+  Definition would_recover_either' xp old new hm :=
+    (rep xp (Synced old) hm \/
+    rep xp (Extended old new) hm \/
+    rep xp (Synced ((padded_log old) ++ new)) hm \/
+    rep xp (SyncedUnmatched old new) hm)%pred.
+
+  Definition would_recover_either xp F old new hm :=
+    (exists cs d,
+      BUFCACHE.rep cs d *
+      [[ (F * would_recover_either' xp old new hm)%pred d ]])%pred.
+
+  Definition rep_recovers_to xp (st : state) hm : rawpred :=
+  (match st with
+    | Synced l =>
+        rep xp (Synced l) hm
+    | SyncedUnmatched old new =>
+        rep xp (Synced old) hm \/
+        rep xp (Synced (padded_log old ++ new)) hm
+    | _ => any
+  end)%pred.
+
+  Definition rep_crashes_to xp (st : state) hm : rawpred :=
+  (match st with
+    | Synced l =>
+        rep xp (Synced l) hm
+    | SyncedUnmatched old new =>
+        would_recover_either' xp old new hm
+    | _ => any
+  end)%pred.
+
+
   Local Hint Unfold rep rep_inner rep_contents xparams_ok: hoare_unfold.
 
   Definition avail T xp cs rx : prog T :=
@@ -1412,17 +1443,6 @@ Module PaddedLog.
       rx ^(cs, false)
     }.
 
-  Definition would_recover_either' xp old new hm :=
-    (rep xp (Synced old) hm \/
-    rep xp (Extended old new) hm \/
-    rep xp (Synced ((padded_log old) ++ new)) hm \/
-    rep xp (SyncedUnmatched old new) hm)%pred.
-
-  Definition would_recover_either xp F old new hm :=
-    (exists cs d,
-      BUFCACHE.rep cs d *
-      [[ (F * would_recover_either' xp old new hm)%pred d ]])%pred.
-
   Lemma rep_hashmap_subset : forall xp hm hm',
     (exists l, hashmap_subset l hm hm')
     -> forall st, rep xp st hm
@@ -1492,12 +1512,8 @@ Module PaddedLog.
       unfold Hdr.hdr_goodSize in *; intuition.
       eapply loglen_valid_goodSize_l; eauto.
       eapply loglen_valid_goodSize_r; eauto.
-      match goal with
-      | [ H: context[Hdr.Synced ?h] |- _ ]
-        => instantiate (old0:=h)
-      end.
-      intuition.
-      cancel.
+
+      (* XXX: need evict_aligned_ok *)
 
       (* sync content *)
       safestep.
@@ -1899,7 +1915,7 @@ Module PaddedLog.
     rewrite divup_divup; auto.
   Qed.
 
-  Definition recover' T xp cs rx : prog T :=
+  Definition recover T xp cs rx : prog T :=
     let^ (cs, header) <- Hdr.read xp cs;
     let '((prev_ndesc, prev_ndata),
           (ndesc, ndata),
@@ -1990,7 +2006,7 @@ Module PaddedLog.
   Qed.
 
 
-  Definition recover'_ok_Synced : forall xp cs,
+  Definition recover_ok_Synced : forall xp cs,
     {< F l d,
     PRE:hm   BUFCACHE.rep cs d *
           [[ (F * rep xp (Synced l) hm)%pred d ]]
@@ -2000,9 +2016,9 @@ Module PaddedLog.
     CRASH:hm_crash exists cs',
           BUFCACHE.rep cs' d *
           [[ (F * rep xp (Synced l) hm_crash)%pred d ]]
-    >} recover' xp cs.
+    >} recover xp cs.
   Proof.
-    unfold recover'.
+    unfold recover.
     step.
     prestep. norm. cancel. intuition simpl.
     eassign (map ent_addr (padded_log l)).
@@ -2053,7 +2069,7 @@ Module PaddedLog.
           solve [ apply desc_padding_synced_piff | solve_checksums ].
   Qed.
 
-  Definition recover'_ok_SyncedUnmatched : forall xp cs,
+  Definition recover_ok_SyncedUnmatched : forall xp cs,
     {< F old new d,
     PRE:hm   BUFCACHE.rep cs d *
           [[ (F * rep xp (SyncedUnmatched old new) hm)%pred d ]]
@@ -2063,9 +2079,9 @@ Module PaddedLog.
           [[ (F * rep xp (Synced (padded_log old ++ new)) hm')%pred d' ]])
     CRASH:hm_crash
           would_recover_either xp F old new hm_crash
-    >} recover' xp cs.
+    >} recover xp cs.
   Proof.
-    unfold recover', would_recover_either, would_recover_either'.
+    unfold recover, would_recover_either, would_recover_either'.
     step.
     safestep. subst.
     instantiate (1:=(map ent_addr (padded_log old) ++ dummy0)).
@@ -2346,95 +2362,65 @@ Module PaddedLog.
   Admitted.
 
 
-  Definition recover'_ok : forall xp cs,
-    {< F old new,
+  Definition recover_ok : forall xp cs,
+    {< F st,
     PRE:hm
       exists d, BUFCACHE.rep cs d *
-      [[ crash_xform (F * would_recover_either' xp old new hm)%pred d ]]
+          [[ (F * rep xp st hm)%pred d ]] *
+          [[ (exists l, st = Synced l) \/
+              (exists old new, st = SyncedUnmatched old new) ]]
     POST:hm' RET:cs' exists d',
-          BUFCACHE.rep cs' d' * (
-          [[ (crash_xform F * rep xp (Synced old) hm')%pred d' ]] \/
-          [[ (crash_xform F * rep xp (Synced (padded_log old ++ new)) hm')%pred d' ]])
-    CRASH:hm_crash
-      would_recover_either xp (crash_xform F) old new hm_crash
-    >} recover' xp cs.
+          BUFCACHE.rep cs' d' *
+          [[ (F * rep_recovers_to xp st hm')%pred d' ]]
+    CRASH:hm' exists cs' d',
+          BUFCACHE.rep cs' d' *
+          [[ (F * rep_crashes_to xp st hm')%pred d' ]]
+    >} recover xp cs.
   Proof.
-    unfold would_recover_either, would_recover_either'.
     intros.
     eapply pimpl_ok2; try eapply nop_ok.
     intros. norm'l. unfold stars; cbn.
 
-    apply crash_xform_sep_star_dist in H4.
-    autorewrite with crash_xform in H4.
-    destruct_lift H4.
-    repeat ( apply sep_star_or_distr in H; apply pimpl_or_apply in H; destruct H;
-      destruct_lift H ).
+    destruct st.
 
-    (* Synced old *)
-    - rewrite xform_rep_synced in H.
+    (* Synced *)
+    - cancel.
+      eapply pimpl_ok2; try apply recover_ok_Synced.
       cancel.
-      eapply pimpl_ok2; try apply recover'_ok_Synced.
-      cancel.
-      match goal with
-      | [ |- context[Synced ?list] ] => instantiate (l:=list)
-      end.
+      eassign l.
       cancel.
       hoare.
       all: repeat cancel.
+      repeat deex.
+      inversion H0.
 
-    (* Extended old new *)
-    - rewrite xform_rep_extended in H.
-      cancel.
-      apply sep_star_or_distr in H; apply pimpl_or_apply in H; destruct H.
+    (* Truncated: false case *)
+    - contradict H4.
+      intuition; repeat deex; inversion H0.
 
-      eapply pimpl_ok2; try apply recover'_ok_Synced.
+    (* Extended: false case *)
+    - contradict H4.
+      intuition; repeat deex; inversion H0.
+
+    (* SyncedUnmatched *)
+    - cancel.
+      repeat deex; inversion H0.
+      repeat deex; inversion H0.
+
+      eapply pimpl_ok2; try apply recover_ok_SyncedUnmatched.
       cancel.
-      match goal with
-      | [ |- context[Synced ?list] ] => instantiate (l:=list)
-      end.
+      eassign old.
+      eassign new.
       cancel.
       hoare.
-      repeat cancel.
-
-      eapply pimpl_ok2; try apply recover'_ok_SyncedUnmatched.
-      cancel.
-      match goal with
-      | [ |- context[SyncedUnmatched ?old ?new] ]
-        => instantiate (1:=new); instantiate (1:=old)
-      end.
-      cancel.
-      hoare.
-      unfold would_recover_either, would_recover_either'.
+      unfold would_recover_either.
       all: repeat cancel.
-
-    (* Synced (old ++ new) *)
-    - rewrite xform_rep_synced in H.
+      unfold would_recover_either'.
       cancel.
-      eapply pimpl_ok2; try apply recover'_ok_Synced.
-      cancel.
-      match goal with
-      | [ |- context[Synced ?list] ] => instantiate (l:=list)
-      end.
-      cancel.
-      hoare.
-      all: repeat cancel.
-
-    (* SyncedUnmatched old new *)
-    - rewrite xform_rep_syncedunmatched in H.
-      cancel.
-      eapply pimpl_ok2; try apply recover'_ok_SyncedUnmatched.
-      cancel.
-      match goal with
-      | [ |- context[SyncedUnmatched ?old ?new] ]
-        => instantiate (1:=new); instantiate (1:=old)
-      end.
-      cancel.
-      hoare.
-      unfold would_recover_either, would_recover_either'.
-      all: repeat cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (recover' _ _) _) => apply recover'_ok : prog.
+
+  Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
 
 
   (**
@@ -2632,12 +2618,12 @@ Module DLog.
     {< F l d nr,
     PRE:hm    BUFCACHE.rep cs d * 
               [[ (F * rep xp (Synced nr l) hm)%pred d ]]
-    POST:hm   RET: ^(cs, r)
+    POST:hm'   RET: ^(cs, r)
               BUFCACHE.rep cs d *
-              [[ r = l /\ (F * rep xp (Synced nr l) hm)%pred d ]]
-    CRASH:hm exists cs',
+              [[ r = l /\ (F * rep xp (Synced nr l) hm')%pred d ]]
+    CRASH:hm' exists cs',
               BUFCACHE.rep cs' d *
-              [[ (F * rep xp (Synced nr l) hm)%pred d ]]
+              [[ (F * rep xp (Synced nr l) hm')%pred d ]]
     >} read xp cs.
   Proof.
     unfold read.
@@ -2652,14 +2638,14 @@ Module DLog.
     {< F l d nr,
     PRE:hm    BUFCACHE.rep cs d *
               [[ (F * rep xp (Synced nr l) hm)%pred d ]]
-    POST:hm RET: cs exists d',
+    POST:hm' RET: cs exists d',
               BUFCACHE.rep cs d' *
-              [[ (F * rep xp (Synced (LogLen xp) nil) hm)%pred d' ]]
-    CRASH:hm exists cs d',
+              [[ (F * rep xp (Synced (LogLen xp) nil) hm')%pred d' ]]
+    CRASH:hm' exists cs d',
               BUFCACHE.rep cs d' * (
-              [[ (F * rep xp (Synced nr l) hm)%pred d' ]] \/
-              [[ (F * rep xp (Truncated l) hm)%pred d' ]] \/
-              [[ (F * rep xp (Synced (LogLen xp) nil) hm)%pred d' ]])
+              [[ (F * rep xp (Synced nr l) hm')%pred d' ]] \/
+              [[ (F * rep xp (Truncated l) hm')%pred d' ]] \/
+              [[ (F * rep xp (Synced (LogLen xp) nil) hm')%pred d' ]])
     >} trunc xp cs.
   Proof.
     unfold trunc.
@@ -2681,13 +2667,13 @@ Module DLog.
     {< F l d nr,
     PRE:hm BUFCACHE.rep cs d *
           [[ (F * rep xp (Synced nr l) hm)%pred d ]]
-    POST:hm RET: ^(cs, r)
+    POST:hm' RET: ^(cs, r)
           BUFCACHE.rep cs d *
-          [[ (F * rep xp (Synced nr l) hm)%pred d ]] *
+          [[ (F * rep xp (Synced nr l) hm')%pred d ]] *
           [[ r = nr ]]
-    CRASH:hm exists cs',
+    CRASH:hm' exists cs',
           BUFCACHE.rep cs' d *
-          [[ (F * rep xp (Synced nr l) hm)%pred d ]]
+          [[ (F * rep xp (Synced nr l) hm')%pred d ]]
     >} avail xp cs.
   Proof.
     unfold avail.
@@ -2764,30 +2750,30 @@ Module DLog.
 
   Local Hint Resolve extend_navail_ok PaddedLog.rep_synced_app_pimpl.
 
-  Definition would_recover_either' xp nr old new hm :=
-    (rep xp (Synced nr old) hm \/
+  Definition would_recover_either' xp old new hm :=
+    ((exists nr, rep xp (Synced nr old) hm) \/
     rep xp (Extended old new) hm \/
-    rep xp (Synced (nr - (rounded (length new))) (old ++ new)) hm \/
+    (exists nr, rep xp (Synced nr (old ++ new)) hm) \/
     rep xp (SyncedUnmatched old new) hm)%pred.
 
-  Definition would_recover_either xp F nr old new hm :=
+  Definition would_recover_either xp F old new hm :=
     (exists cs d,
       BUFCACHE.rep cs d *
-      [[ (F * would_recover_either' xp nr old new hm)%pred d ]])%pred.
+      [[ (F * would_recover_either' xp old new hm)%pred d ]])%pred.
 
 
   Definition extend_ok : forall xp new cs,
     {< F old d nr,
     PRE:hm    BUFCACHE.rep cs d * [[ entries_valid new ]] *
               [[ (F * rep xp (Synced nr old) hm)%pred d ]]
-    POST:hm RET: ^(cs, r) exists d',
+    POST:hm' RET: ^(cs, r) exists d',
               BUFCACHE.rep cs d' * (
               [[ r = true /\
-                (F * rep xp (Synced (nr - (rounded (length new))) (old ++ new)) hm)%pred d' ]] \/
+                (F * rep xp (Synced (nr - (rounded (length new))) (old ++ new)) hm')%pred d' ]] \/
               [[ r = false /\ length new > nr /\
-                (F * rep xp (Synced nr old) hm)%pred d' ]])
-    CRASH:hm
-              would_recover_either xp F nr old new hm
+                (F * rep xp (Synced nr old) hm')%pred d' ]])
+    CRASH:hm'
+              would_recover_either xp F old new hm'
     >} extend xp new cs.
   Proof.
     unfold extend.
@@ -2822,6 +2808,86 @@ Module DLog.
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (trunc _ _) _) => apply trunc_ok : prog.
   Hint Extern 1 ({{_}} progseq (extend _ _ _) _) => apply extend_ok : prog.
+
+  Definition recover T xp cs rx : prog T :=
+    cs <- PaddedLog.recover xp cs;
+    rx cs.
+
+  Definition recover_ok : forall xp cs,
+    {< F nr old new,
+    PRE:hm
+      exists d, BUFCACHE.rep cs d * (
+          [[ (F * rep xp (Synced nr old) hm)%pred d ]] \/
+          [[ (F * rep xp (SyncedUnmatched old new) hm)%pred d ]])
+    POST:hm' RET:cs' exists d',
+          BUFCACHE.rep cs' d' * (
+          [[ (F * exists nr', rep xp (Synced nr' old) hm')%pred d' ]] \/
+          [[ (F * exists nr', rep xp (Synced nr' (old ++ new)) hm')%pred d' ]])
+    CRASH:hm' exists cs' d',
+          BUFCACHE.rep cs' d' * (
+          [[ (F * would_recover_either' xp old new hm')%pred d' ]])
+    >} recover xp cs.
+  Proof.
+    unfold recover.
+    prestep. norm. cancel.
+    intuition.
+    pred_apply; cancel.
+    eassign F; cancel.
+    left; eauto.
+
+    step.
+    cancel.
+
+    unfold would_recover_either'.
+    or_l; cancel.
+    unfold rep_common; cancel.
+    cancel.
+
+    intuition.
+    pred_apply; cancel.
+    eassign F; cancel.
+    right; eauto.
+
+    step.
+    denote or as Hx. apply sep_star_or_distr in Hx.
+    destruct Hx; destruct_lift H.
+    or_l; cancel.
+    or_r. norm'r. cancel.
+    apply sep_star_comm1.
+    apply pimpl_exists_r_star; eexists.
+    apply pimpl_exists_r_star;
+    exists (PaddedLog.padded_log dummy ++ PaddedLog.padded_log new).
+    pred_apply; cancel.
+    apply PaddedLog.rep_synced_app_pimpl.
+    unfold PaddedLog.rep, PaddedLog.rep_inner in H;
+    destruct_lift H.
+    rewrite PaddedLog.log_nonzero_app.
+    f_equal;
+    rewrite PaddedLog.log_nonzero_padded_log; auto.
+    rewrite PaddedLog.entry_valid_vals_nonzero; auto.
+
+    cancel.
+    unfold PaddedLog.would_recover_either', would_recover_either'.
+    cancel; unfold rep_common.
+    or_l; cancel.
+    or_r; or_l; cancel.
+    or_r; or_r; or_l.
+    apply pimpl_exists_r; eexists.
+    apply pimpl_exists_r;
+    exists (PaddedLog.padded_log dummy ++ PaddedLog.padded_log new).
+    cancel.
+    apply PaddedLog.rep_synced_app_pimpl.
+    unfold PaddedLog.rep, PaddedLog.rep_inner in H;
+    destruct_lift H.
+    rewrite PaddedLog.log_nonzero_app.
+    f_equal;
+    rewrite PaddedLog.log_nonzero_padded_log; auto.
+    rewrite PaddedLog.entry_valid_vals_nonzero; auto.
+    or_r; or_r; or_r.
+    cancel.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
 
   Lemma xform_rep_synced : forall xp na l hm,
     crash_xform (rep xp (Synced na l) hm) =p=> rep xp (Synced na l) hm.
@@ -2866,12 +2932,21 @@ Module DLog.
     cancel.
   Qed.
 
+  Lemma xform_rep_syncedunmatched : forall xp old new hm,
+    crash_xform (rep xp (SyncedUnmatched old new) hm) =p=>
+      rep xp (SyncedUnmatched old new) hm.
+  Proof.
+    unfold rep, rep_common; intros.
+    xform.
+    rewrite PaddedLog.xform_rep_syncedunmatched.
+    cancel.
+  Qed.
+
   Lemma rep_hashmap_subset : forall xp hm hm',
     (exists l, hashmap_subset l hm hm')
     -> forall st, rep xp st hm
         =p=> rep xp st hm'.
   Proof. Admitted.
-
 
 End DLog.
 

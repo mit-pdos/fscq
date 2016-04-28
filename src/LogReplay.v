@@ -45,6 +45,8 @@ Module LogReplay.
   Definition map_replay ms old cur : Prop :=
     cur = replay_disk (Map.elements ms) old.
 
+  Global Arguments replay_mem : simpl never.
+  Global Arguments replay_disk : simpl never.
   Hint Resolve MapProperties.eqke_equiv.
   Hint Resolve KNoDup_map_elements.
 

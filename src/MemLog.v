@@ -81,6 +81,8 @@ Module MLog.
      Log might be truncated but not yet synced.
      e.g. DiskLog.Synced or DiskLog.Truncated
    *)
+
+  | Recovering (d : diskstate) (ents : DLog.contents)
   .
 
   Definition equal_unless_in (keys: list addr) (l1 l2: list valuset) :=
@@ -116,6 +118,10 @@ Module MLog.
           (unsync_rep xp mm d0))
       \/ ((DLog.rep xp (DLog.Truncated log) hm) *
           (synced_rep xp d)))
+    | Recovering d ents =>
+        [[ log_valid ents d /\ map_replay mm d0 d ]] *
+        synced_rep xp d0 *
+        DLog.rep xp (DLog.SyncedUnmatched log ents) hm
     end)%pred.
 
 
@@ -130,7 +136,8 @@ Module MLog.
       (exists na', rep xp (Synced na' d) mm hm) \/
       (exists na', rep xp (Synced na' (replay_disk ents d)) mm hm) \/
       rep xp (Flushing d ents) mm hm \/
-      rep xp (Applying d) mm hm)%pred.
+      rep xp (Applying d) mm hm \/
+      rep xp (Recovering d ents) mm hm)%pred.
 
 
   (******************  Program *)
@@ -197,6 +204,7 @@ Module MLog.
 
 
   Definition recover T xp cs rx : prog T :=
+    cs <- DLog.recover xp cs;
     let^ (cs, log) <- DLog.read xp cs;
     rx (mk_memstate (replay_mem log vmap0) cs).
 
@@ -1215,9 +1223,10 @@ Module MLog.
 
   Lemma crash_xform_flushing : forall xp d ents ms hm,
     crash_xform (rep xp (Flushing d ents) ms hm) =p=>
-      exists d' ms' na, rep xp (Synced na d') ms' hm *
-      ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
-       [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]).
+      exists d' ms',
+      ((exists na, rep xp (Synced na d') ms' hm) \/
+      rep xp (Recovering d' ents) ms' hm) *
+      [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
   Proof.
     unfold rep, synced_rep, unsync_rep, map_replay; intros.
     xform_norml.
@@ -1226,23 +1235,45 @@ Module MLog.
       rewrite DLog.xform_rep_extended_unsync.
       cancel; eauto; try solve [simplen].
       or_l; cancel.
-      eapply list2nmem_replay_disk_crash_xform; eauto; easy.
+      eauto.
+      autorewrite with lists.
+      erewrite <- possible_crash_list_length; eauto.
       eapply length_eq_map_valid; eauto; simplen.
+      eapply list2nmem_replay_disk_crash_xform; eauto; easy.
 
     - rewrite crash_xform_arrayN.
       rewrite DLog.xform_rep_extended.
       cancel; eauto; try solve [simplen].
 
       or_l; cancel.
-      eapply list2nmem_replay_disk_crash_xform; eauto; easy.
+      eauto.
+      autorewrite with lists.
+      erewrite <- possible_crash_list_length; eauto.
       eapply length_eq_map_valid; eauto; simplen.
+      eapply list2nmem_replay_disk_crash_xform; eauto; easy.
 
       or_r; cancel.
-      2: apply  MapFacts.Equal_refl.
-      eapply list2nmem_replay_disk_crash_xform; eauto.
-      erewrite replay_mem_app; eauto.
-      rewrite <- replay_disk_replay_mem; auto; easy.
-      eapply map_valid_replay_mem_app; eauto.
+      eassign ms; eauto.
+      autorewrite with lists.
+      erewrite <- possible_crash_list_length; eauto.
+      eapply length_eq_map_valid; eauto; simplen.
+      eapply list2nmem_replay_disk_crash_xform; eauto; easy.
+  Qed.
+
+  Lemma crash_xform_recovering : forall xp d ents ms hm,
+    crash_xform (rep xp (Recovering d ents) ms hm) =p=>
+      exists d' ms', rep xp (Recovering d' ents) ms' hm *
+      [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
+  Proof.
+    unfold rep, synced_rep, map_replay; intros.
+    xform_norml.
+    rewrite DLog.xform_rep_syncedunmatched, crash_xform_arrayN.
+    cancel.
+    eapply H.
+    autorewrite with lists.
+    erewrite <- possible_crash_list_length; eauto.
+    eapply length_eq_map_valid; eauto; simplen.
+    eapply list2nmem_replay_disk_crash_xform; eauto; easy.
   Qed.
 
 
@@ -1259,9 +1290,12 @@ Module MLog.
 
 
   Definition recover_either_pred xp d ents hm :=
-     (exists d' ms' na, rep xp (Synced na d') ms' hm *
+     (exists d' ms',
+      (exists na, rep xp (Synced na d') ms' hm *
       ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
-       [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]))%pred.
+       [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]])) \/
+      rep xp (Recovering d' ents) ms' hm *
+      [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]])%pred.
 
 
   Lemma crash_xform_either : forall xp d ents hm,
@@ -1272,11 +1306,17 @@ Module MLog.
     xform_norm.
     rewrite crash_xform_synced by eauto; cancel.
     or_l; cancel.
+    or_l; cancel.
     rewrite crash_xform_synced by eauto; cancel.
+    or_l; cancel.
     or_r; cancel.
-    apply crash_xform_flushing; auto.
+    rewrite crash_xform_flushing by eauto; cancel.
+    or_l; cancel.
+    or_l; cancel.
     rewrite crash_xform_applying by eauto; cancel.
     or_l; cancel.
+    or_l; cancel.
+    rewrite crash_xform_recovering by eauto; cancel.
   Qed.
 
   Lemma either_pred_either : forall xp d hm ents,
@@ -1297,9 +1337,15 @@ Module MLog.
 
     rewrite crash_xform_synced; cancel.
     or_l; cancel.
+    or_l; cancel.
     eapply crash_xform_diskIs_trans; eauto.
 
     rewrite crash_xform_synced; cancel.
+    or_l; cancel.
+    or_r; cancel.
+    eapply crash_xform_diskIs_trans; eauto.
+
+    rewrite crash_xform_recovering; cancel.
     or_r; cancel.
     eapply crash_xform_diskIs_trans; eauto.
   Qed.
@@ -1310,34 +1356,106 @@ Module MLog.
     PRE:hm
       BUFCACHE.rep cs raw *
       [[ (F * recover_either_pred xp d ents hm)%pred raw ]]
-    POST:hm RET:ms'
-      BUFCACHE.rep (MSCache ms') raw *
+    POST:hm RET:ms' exists raw',
+      BUFCACHE.rep (MSCache ms') raw' *
       [[(exists d' na, F * rep xp (Synced na d') (MSInLog ms') hm *
         ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
          [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]
-      ))%pred raw ]]
+      ))%pred raw' ]]
     CRASH:hm
-      exists cs', BUFCACHE.rep cs' raw
+      exists cs' raw', BUFCACHE.rep cs' raw'
     >} recover xp cs.
   Proof.
     unfold recover, recover_either_pred, rep.
-    safestep.
+    prestep. norm'l. unfold stars; cbn.
+    denote or as Hx. apply sep_star_or_distr in Hx.
+    destruct Hx; destruct_lift H;
+    denote (Map.Equal _ _) as Heq.
+    cancel. eassign F_. cancel. or_l; cancel.
+
+    denote or as Hx. apply sep_star_or_distr in Hx.
+    destruct Hx; destruct_lift H.
 
     prestep. norm. cancel.
-    intuition simpl; auto; pred_apply.
-    denote or as Hx; apply sep_star_or_distr in Hx.
+    intuition simpl; auto. pred_apply; cancel.
+    prestep. norm. cancel.
+    intuition simpl; auto.
+    pred_apply. cancel.
+    or_l; cancel.
+    rewrite <- Heq; auto.
+    rewrite <- Heq; auto.
+    cancel.
+    cancel.
+    intuition simpl; auto.
+    pred_apply; cancel.
+
+    prestep. norm. cancel.
+    instantiate (new := nil).
+    rewrite app_nil_r in *.
+    intuition simpl; auto. pred_apply; cancel.
+    or_l; cancel.
+    rewrite <- Heq; auto.
+    rewrite <- Heq; auto.
+    cancel.
+
+    prestep. norm. cancel.
+    intuition simpl; auto. pred_apply; cancel.
+
+    prestep. norm. cancel.
+    intuition simpl; auto. pred_apply; cancel.
+    or_r; cancel.
+    rewrite <- Heq; auto.
+    rewrite <- Heq; auto.
+    cancel.
+    cancel.
+    intuition simpl; auto. pred_apply; cancel.
+
     denote (Map.Equal _ _) as Heq.
-    destruct Hx; destruct_lift H0.
+    rewrite app_nil_r in *.
+    prestep. norm. cancel.
+    intuition simpl; auto. pred_apply; cancel.
+    or_r; cancel.
+    rewrite <- Heq; auto.
+    rewrite <- Heq; auto.
+    cancel.
+    cancel.
 
-    cancel. or_l; cancel.
+    destruct_lift H.
+    denote (Map.Equal _ _) as Heq.
+    cancel. eassign F_. cancel. or_r; cancel.
+    step.
+    step.
+    or_l; cancel.
     rewrite <- Heq; auto.
-    unfold replay_mem; congruence.
     rewrite <- Heq; auto.
 
-    cancel. or_r; cancel.
-    rewrite <- Heq; auto.
-    unfold replay_mem; congruence.
-    rewrite <- Heq; auto.
+    step.
+    or_r; cancel.
+    eapply replay_mem_app in Heq.
+    erewrite Heq.
+    erewrite <- replay_disk_replay_mem.
+
+    Lemma crash_xform_replay_disk : forall d ents dummy0 dummy2,
+      crash_xform (diskIs (list2nmem d))
+       (list2nmem (replay_disk (Map.elements dummy0) dummy2))
+      -> crash_xform (diskIs (list2nmem (replay_disk ents d)))
+       (list2nmem (replay_disk ents (replay_disk (Map.elements dummy0) dummy2))).
+    Proof.
+      intros.
+      apply crash_xform_diskIs in H.
+      destruct_lift H.
+      unfold diskIs in *; subst.
+      eapply crash_xform_diskIs_r; unfold diskIs; eauto.
+    Admitted.
+
+    apply crash_xform_replay_disk; auto.
+    auto.
+    assert (Hsynced: dummy2 = synced_list (map fst dummy2)).
+      admit.
+    rewrite Hsynced.
+    eapply map_valid_replay_mem_app; eauto.
+    rewrite Hsynced at 1.
+    apply possible_crash_list_synced_list.
 
     (* crash *)
     cancel.
