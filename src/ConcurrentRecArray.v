@@ -10,6 +10,7 @@ Require Import Linearizable2.
 Require Import Rec.
 Require Import Arith.
 Require Import GenericArray.
+Require Import Omega.
 Import ConcurrentDisk.
 
 Import EqNotations.
@@ -101,6 +102,12 @@ Module RecArray (Params:RecArrayParams).
     inversion H0.
   Qed.
 
+  Corollary items_per_valu_gt_0 : 0 < items_per_valu.
+  Proof.
+    pose proof items_per_valu_not_0.
+    omega.
+  Qed.
+
   (* array_item_pairs *)
   Definition rep_blocks (vs : list block) : @pred addr _ (const valu) :=
     ([[ length vs = RALen ]] *
@@ -147,8 +154,6 @@ Module RecArray (Params:RecArrayParams).
       rewrite IHl.
       rewrite <- app_assoc; auto.
     Qed.
-
-    Require Import Omega.
 
     Ltac unify_in :=
       try lazymatch goal with
@@ -343,13 +348,16 @@ Module RecArray (Params:RecArrayParams).
     rep_blocks (nest_list vs items_per_valu).
 
   Definition rep_blocks' vs_nested (vd: Disk) :=
-    length vs_nested = RALen /\
     forall (a:addr), ($ RAStart <= a)%word ->
          (a < $ (RAStart + RALen))%word ->
+         (* TODO: selecting a is wrong here; this rep should really
+         quantify over a nat offset *)
          vd a = Some (block_valu (sel vs_nested a block0)).
 
-  Definition rep_items' (vs: list item) :=
-    rep_blocks' (nest_list vs items_per_valu).
+  Definition rep_items' (vs: list item) vd :=
+    rep_blocks' (nest_list vs items_per_valu) vd /\
+    length vs = RALen * items_per_valu /\
+    Forall Rec.well_formed vs.
 
   Module Type RecArrayVars (SemVars:SemanticsVars).
     Import SemVars.
@@ -474,7 +482,7 @@ Module RecArray (Params:RecArrayParams).
                let b := valu_block v in
                rx (get_block_offset b off).
 
-    Hint Resolve items_per_valu_not_0.
+    Hint Resolve items_per_valu_not_0 items_per_valu_gt_0.
 
     Lemma ra_end_goodSize : goodSize addrlen (RAStart + RALen).
     Proof.
@@ -505,11 +513,18 @@ Module RecArray (Params:RecArrayParams).
       rewrite wordToNat_natToWord_idempotent'; auto.
     Qed.
 
-    Require Import Omega.
-
     Hint Resolve ra_end_goodSize.
 
     Hint Extern 5 (_ <= _) => omega.
+
+    Lemma valid_block_offset : forall i,
+        i < RALen * items_per_valu ->
+        i / items_per_valu < RALen.
+    Proof.
+      intros.
+      apply Nat.div_lt_upper_bound; auto.
+      rewrite mult_comm; auto.
+    Qed.
 
     Lemma block_idx_valid : forall i,
         i < RALen * items_per_valu ->
@@ -518,14 +533,113 @@ Module RecArray (Params:RecArrayParams).
          bidx < $ (RAStart + RALen))%word.
     Proof.
       unfold block_idx; cbn; intros.
-      assert (i / items_per_valu < RALen).
-      apply Nat.div_lt_upper_bound; auto.
-      rewrite mult_comm; auto.
+      apply valid_block_offset in H.
       split.
       - apply wle_le''; auto.
-        eapply goodSize_trans with (n2 := RAStart + RALen); auto.
+        eapply goodSize_trans with (RAStart + RALen); auto.
       - apply wlt_lt''; auto.
     Qed.
+
+    Lemma block_idx_goodSize : forall i,
+        i < RALen * items_per_valu ->
+        # (@natToWord addrlen (block_idx i)) = block_idx i.
+    Proof.
+      unfold block_idx; intros.
+      apply valid_block_offset in H.
+      rewrite wordToNat_natToWord_idempotent'; auto.
+      eapply goodSize_trans with (RAStart + RALen); auto.
+    Qed.
+
+    Definition not_reading (vd: DISK) a :=
+      forall v, vd a = Some v -> snd v = None.
+
+    Definition not_reading' (vd: DISK) a :=
+      forall v, hide_readers vd a = Some v ->
+           vd a = Some (v, None).
+
+    Theorem not_reading_hide (vd: DISK) a :
+      not_reading vd a <->
+      not_reading' vd a.
+    Proof.
+      unfold not_reading, not_reading', hide_readers.
+      split; intros.
+      - destruct matches in *; try congruence.
+        inv_opt.
+        pose proof (H _ H1).
+        cbn in *; subst; auto.
+      - destruct v.
+        rewrite H0 in *.
+        specialize (H w); intuition idtac.
+        inv_opt; auto.
+    Qed.
+
+    Theorem not_reading_pair (vd: DISK) a :
+      not_reading vd a <->
+      forall v r, vd a = Some (v, r) -> r = None.
+    Proof.
+      unfold not_reading; split; intros.
+      apply (H _ H0).
+      destruct v; eauto.
+    Qed.
+
+    Theorem subslice_hom_selN : forall A (l: list (list A)) k i def,
+        i < length l ->
+        Forall (fun l => length l = k) l ->
+        skipn (i * k) (firstn (i * k + k) (concat l)) =
+        selN l i def.
+    Proof.
+      intros.
+      generalize dependent i.
+      induction l; cbn; intros.
+      inversion H.
+
+      inversion H0; subst; intuition.
+      destruct i; cbn.
+      replace (length a) with (length a + 0) by omega.
+      rewrite firstn_app_r; cbn.
+      rewrite app_nil_r; auto.
+      rewrite <- plus_assoc.
+      rewrite firstn_app_r; cbn.
+      rewrite skipn_app_r; cbn.
+      eauto.
+    Qed.
+
+    Theorem selN_nested : forall A (l: list A) k m i def,
+        0 < k ->
+        i < m ->
+        length l = m * k ->
+        selN (nest_list l k) i def =
+        skipn (i*k) (firstn (i*k+k) l).
+    Proof.
+      intros.
+      assert (0 < length l).
+      destruct m; cbn in *; try omega.
+      pose proof (le_0_n (m * k)).
+      omega.
+      rewrite <- nest_list_concat with (k := k) (l := l) at 2.
+      erewrite subslice_hom_selN; eauto.
+      erewrite length_nest_list_exact; eauto; try omega.
+      eapply nest_list_length; eauto.
+    Qed.
+
+    Theorem selN_subslice : forall A (l: list A) n m i def,
+        n + i < m ->
+        selN (skipn n (firstn m l)) i def =
+        selN l (n+i) def.
+    Proof.
+      intros.
+      rewrite skipn_selN.
+      rewrite selN_firstn; auto.
+    Qed.
+
+    Lemma off_idx_bound : forall i,
+        off_idx i < items_per_valu.
+    Proof.
+      intros.
+      apply Nat.mod_upper_bound; auto.
+    Qed.
+
+    Hint Resolve off_idx_bound.
 
     Polymorphic Theorem locked_get_item_ok : forall i,
         stateS TID: tid |-
@@ -534,11 +648,13 @@ Module RecArray (Params:RecArrayParams).
              Inv m s d /\
              Locks.get (get GLocks s) ($ (block_idx i)) = Owned tid /\
              i < RALen * items_per_valu /\
+             not_reading (view Latest (get GDisk s)) ($ (block_idx i)) /\
              R tid s0 s
          | POST d' m' s0' s' r:
                Inv m' s' d' /\
                locks_increasing tid s s' /\
                r = selN (get Items s') i item0 /\
+               not_reading (view Latest (get GDisk s')) ($ (block_idx i)) /\
                R tid s0' s'
         }} locked_get_item i.
     Proof.
@@ -546,16 +662,31 @@ Module RecArray (Params:RecArrayParams).
       step pre simplify with try solve [ finish ].
       intuition.
       unfold recarrayI, rep_items', rep_blocks' in *; intuition.
-      specialize (H11 ($ (block_idx i))).
+      specialize (H9 ($ (block_idx i))).
       let H := fresh in
       pose proof (@block_idx_valid i) as H; cbn in H.
       intuition idtac.
-      (* need a way for all specs to say we're not reading our locked
-      block, but we can't actually put that in the invariant
+      apply not_reading_hide in H3; unfold not_reading' in H3.
+      eauto.
 
-       interesting point: concretely, what breaks down if the
-       invariant says nobody is reading anything? the LockedDisk read
-       spec certainly won't be provable, but what axiom isn't true? *)
+      step pre simplify with try solve [ finish ].
+      unfold get_block_offset.
+      rewrite block_valu_id.
+      unfold recarrayI, rep_items', rep_blocks' in *; intuition.
+
+      unfold sel.
+      rewrite block_idx_goodSize by auto.
+
+      erewrite selN_nested; try omega.
+      rewrite selN_subslice; try omega.
+      (* TODO: not actually true, due to bug in rep; RAStart shouldn't
+      be part of these offsets *)
+      admit.
+
+      pose proof (off_idx_bound i); omega.
+      auto.
+      2: eauto.
+      (* this is wrong again due to the incorrect rep; it should be i, not block_idx i *)
     Abort.
 
   End RecArray.
