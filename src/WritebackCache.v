@@ -1020,21 +1020,30 @@ Module WBCache.
     {< d F vs,
     PRE
       rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ i < length vs ]]
-    POST RET:cs
-      rep cs d
+    POST RET:cs exists d' v',
+      let v0 := (selN vs i ($0, nil)) in [[ incl v' (snd v0) ]] *
+      rep cs d' * [[ (F * arrayN a (updN vs i (fst v0, v')))%pred d' ]]
     XCRASH
-      exists cs', rep cs' d
+      exists cs' d', rep cs' d' * [[ (F * arrayN a vs)%pred d' ]]
     >} evict_array a i cs.
   Proof.
     unfold evict_array.
-    hoare.
-    pred_apply; cancel.
-    rewrite isolateN_fwd with (i:=i) by auto.
+    step.
+
+    pred_apply.
+    rewrite isolateN_fwd with (i:=i) (default:=($0, nil)) by auto.
     rewrite <- surjective_pairing.
     cancel.
 
-  Grab Existential Variables.
-    exact ($0, nil).
+    safestep. eauto.
+    rewrite <- isolateN_bwd_upd by auto.
+    cancel.
+
+    xcrash.
+    eapply pimpl_trans2.
+    apply isolateN_bwd with (i:=i) (default:=($0, nil)); auto.
+    rewrite <- surjective_pairing.
+    cancel.
   Qed.
 
 
@@ -1300,30 +1309,6 @@ Module WBCache.
     Unshelve. exact tt.
   Qed.
 
-  Theorem evict_range_ok : forall a nr cs,
-    {< d F vs,
-    PRE
-      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ nr <= length vs ]]
-    POST RET:cs
-      rep cs d
-    XCRASH
-      exists cs', rep cs' d
-    >} evict_range a nr cs.
-  Proof.
-    unfold evict_range; intros.
-    safestep. auto.
-    safestep.
-    step; subst.
-
-    (* XXX need an XCRASH version of the loop crash invariant? *)
-    admit.
-
-    step.
-
-    (* XXX need an XCRASH version of the loop crash invariant? *)
-    admit.
-  Admitted.
-
 
 
   Section MEM_REGION.
@@ -1559,6 +1544,35 @@ Module WBCache.
     eapply pimpl_trans; [ | eapply H1 ]; cancel.
     Unshelve. exact tt.
   Qed.
+
+
+  Theorem evict_range_ok : forall a nr cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN a vs)%pred d ]] * [[ nr <= length vs ]]
+    POST RET:cs exists d' vl',
+      [[ Forall2 (@incl _) vl' (map snd vs) ]] *
+      rep cs d' * [[ (F * arrayN a (List.combine (map fst vs) vl'))%pred d' ]]
+    XCRASH
+      exists cs' d', rep cs' d' *
+      [[ (F * arrayN a vs)%pred d' ]]
+    >} evict_range a nr cs.
+  Proof.
+    unfold evict_range; intros.
+    safestep. auto.
+    safestep.
+    step; subst.
+
+    (* XXX need an XCRASH version of the loop crash invariant? *)
+    admit.
+
+    step.
+
+    (* XXX need an XCRASH version of the loop crash invariant? *)
+    admit.
+  Admitted.
+
+
 
 
 
