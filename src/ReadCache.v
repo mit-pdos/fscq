@@ -140,11 +140,16 @@ Module RCache.
       exists cs', rep cs' d
     >} maybe_evict cs.
   Proof.
-    unfold maybe_evict, rep; hoare.
+    unfold maybe_evict, rep.
+    step.
+    step.
+    safestep.
     rewrite map_remove_cardinal; eauto.
+    eauto.
     replace (CSCount cs) with (CSMaxCount cs) in * by omega.
     rewrite Map.cardinal_1 in *. rewrite Heql in *; simpl in *; omega.
     rewrite map_remove_cardinal by (eapply map_elements_hd_in; eauto); eauto.
+    eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (maybe_evict _) _) => apply maybe_evict_ok : prog.
@@ -161,22 +166,36 @@ Module RCache.
     >} read a cs.
   Proof.
     unfold read.
-    hoare.
+    safestep.
+    cancel; eauto.
+    eauto.
 
-    apply ptsto_valid' in H3 as H'.
-    apply Map.find_2 in Heqo. apply H12 in Heqo. rewrite H' in Heqo. deex; congruence.
-
+    safestep.
+    denote ptsto as Hx; apply ptsto_valid' in Hx as Hy.
+    apply Map.find_2 in Heqo.
+    denote (Map.MapsTo) as Hz; apply Hz in Heqo.
+    rewrite Hy in Heqo; deex; congruence.
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel; cancel.
-    rewrite <- diskIs_combine_same with (m:=d) (a:=a); try pred_apply; cancel.
 
+    safestep.
+    rewrite <- diskIs_combine_same with (m:=d) (a:=a); try pred_apply; cancel.
     rewrite map_add_cardinal; auto.
-    intro Hm; destruct Hm as [? Hm]. apply Map.find_1 in Hm. congruence.
+    intro Hm; destruct Hm as [? Hm].
+    apply Map.find_1 in Hm. congruence.
 
-    apply ptsto_valid' in H3 as H'.
+    denote ptsto as Hx; apply ptsto_valid' in Hx as Hy.
     destruct (addr_eq_dec a a0); subst.
-    apply mapsto_add in H; subst; eauto.
-    edestruct H12. eauto. eexists; eauto.
+    denote Map.add as Hz; apply mapsto_add in Hz; subst; eauto.
+    denote (_ = Some _) as Hz; edestruct Hz.
+    eapply Map.add_3; eauto.
+    eexists; eauto.
+
+    cancel; eauto.
     rewrite <- diskIs_combine_same with (m:=d) (a:=a); try pred_apply; cancel.
+    cancel; eauto.
+
+    Unshelve.
+    all: eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
@@ -191,45 +210,51 @@ Module RCache.
       exists d',
       rep cs d' * [[ (F * a |-> (v, vsmerge v0))%pred d' ]]
     CRASH
-      exists cs', rep cs' d \/
-      exists d', rep cs' d' * [[ (F * a |-> (v, vsmerge v0))%pred d' ]]
+      exists cs', rep cs' d
     >} write a v cs.
   Proof.
     unfold write.
-    hoare.
+    safestep.
+    cancel; eauto.
+    eauto.
 
+    safestep.
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
-    destruct (Map.find a (CSMap r_)) eqn:Hfind; hoare.
 
+    safestep.
     rewrite <- diskIs_combine_upd with (m:=d) (a:=a); try pred_apply; cancel.
     rewrite map_add_dup_cardinal; eauto.
     destruct (addr_eq_dec a a0); subst.
-    apply mapsto_add in H; subst.
-    rewrite upd_eq by auto. eauto.
-    apply Map.add_3 in H; auto.
-    rewrite upd_ne by auto. auto.
 
-    apply sep_star_comm; apply sep_star_comm in H3.
+    erewrite <- mapsto_add with (v := v0) by eauto.
+    rewrite upd_eq; eauto.
+    rewrite upd_ne by auto.
+    denote Map.MapsTo as Hx; apply Map.add_3 in Hx; eauto.
+
+    denote ptsto as Hx.
+    apply sep_star_comm; apply sep_star_comm in Hx.
     eapply ptsto_upd; pred_apply; cancel.
 
     rewrite <- diskIs_combine_upd with (m:=d) (a:=a); cancel.
     rewrite map_add_cardinal; eauto.
-    intro Hm; destruct Hm as [? Hm]. apply Map.find_1 in Hm. congruence.
+    intro Hm; destruct Hm as [? Hm].
+    apply Map.find_1 in Hm. congruence.
 
     destruct (addr_eq_dec a a0); subst.
-    apply mapsto_add in H; subst.
+    denote Map.MapsTo as Hx.
+    apply mapsto_add in Hx; subst.
     rewrite upd_eq by auto. eauto.
-    apply Map.add_3 in H; auto.
+    denote Map.MapsTo as Hx.
+    apply Map.add_3 in Hx; auto.
     rewrite upd_ne by auto. auto.
 
-    apply sep_star_comm; apply sep_star_comm in H3.
+    denote ptsto as Hx.
+    apply sep_star_comm; apply sep_star_comm in Hx.
     eapply ptsto_upd; pred_apply; cancel.
 
-    cancel.
-    eassign r_.
-    apply pimpl_or_r. left. cancel.
+    cancel; eauto.
     rewrite <- diskIs_combine_same with (m:=d) (a:=a); try pred_apply; cancel.
-    apply pimpl_or_r. left. cancel; eauto.
+    cancel; eauto. 
   Qed.
 
   Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
@@ -241,36 +266,37 @@ Module RCache.
     POST RET:cs
       exists d', rep cs d' * [[ (F * a |-> (fst v, nil))%pred d' ]]
     CRASH
-      exists cs', rep cs' d \/
-      exists d', rep cs' d' * [[ (F * a |-> (fst v, nil))%pred d' ]]
+      exists cs', rep cs' d
     >} sync a cs.
   Proof.
     unfold sync, rep.
-    step.
+    safestep.
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
-    eapply pimpl_ok2; eauto with prog.
-    intros; norm.
+
+    safestep.
     eassign (@Mem.upd _ _ addr_eq_dec d a (v2_cur, [])); unfold stars; simpl.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
-    intuition.
-    apply H5 in H; deex.
+    denote! (forall _ _, Map.MapsTo _ _ _ -> _) as Hx.
+    denote Map.MapsTo as Hy; denote ptsto as Hz.
+    apply Hx in Hy; deex; denote (_ = Some _) as Hy.
     destruct (addr_eq_dec a a0); subst.
-    apply sep_star_comm in H3; apply ptsto_valid in H3.
-    rewrite H3 in H. inversion H. subst.
+    apply sep_star_comm in Hz; apply ptsto_valid in Hz.
+    rewrite Hz in Hy. inversion Hy. subst.
     rewrite upd_eq by auto. eexists. eauto.
     rewrite upd_ne by auto. eexists. eauto.
-    apply sep_star_comm. eapply ptsto_upd. apply sep_star_comm. eauto.
+    apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+
     cancel.
-    apply pimpl_or_r; left.
     rewrite <- diskIs_combine_same with (m:=d) (a:=a); try pred_apply; cancel.
-    eauto.
-    eauto.
-    eauto.
-    eauto.
+    all: eauto.
+    Unshelve.
+    5: exact v2_cur.  all: eauto.
+    destruct cs; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
 
+(*
   Theorem trim_ok : forall a cs,
     {< d (F : rawpred) vs,
     PRE
@@ -332,6 +358,7 @@ Module RCache.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (trim _ _) _) => apply trim_ok : prog.
+*)
 
   (**
    * We have two versions of [init].  [init_load] will have a theorem that
@@ -373,16 +400,16 @@ Module RCache.
     | [ |- _ =p=> _ * ?E * [[ _ = _ ]] * [[ _ = _ ]] ] =>
       remember (E)
     end.
-    norm; cancel'; intuition.
-    unfold stars; subst; simpl; rewrite star_emp_pimpl.
-    unfold pimpl; intros; exists m.
-    apply sep_star_lift_apply'; eauto.
-    apply sep_star_lift_apply'; eauto.
-    apply sep_star_lift_apply'; eauto.
-    apply sep_star_lift_apply'; eauto.
-    apply sep_star_lift_apply'; eauto.
+
+    unfold pimpl; intros.
+    destruct_lift H; subst.
+
+    repeat (apply sep_star_lift_apply'; eauto).
+    apply sep_star_comm; apply emp_star_r.
+    exists m.
+    repeat (apply sep_star_lift_apply'; eauto).
     congruence.
-    omega.
+    cbn; omega.
     intros.
     contradict H0; apply Map.empty_1.
   Qed.
@@ -415,66 +442,15 @@ Module RCache.
     | [ |- _ =p=> _ * ?E * [[ _ = _ ]] * [[ _ = _ ]] ] =>
       remember (E)
     end.
-    norm; cancel'; intuition.
-    unfold stars; subst; simpl; rewrite star_emp_pimpl.
-    unfold crash_xform. unfold pimpl; intros; repeat deex. exists m.
-    apply sep_star_lift_apply'; eauto.
-    apply sep_star_lift_apply'; eauto.
-    apply sep_star_lift_apply'; eauto.
-    apply sep_star_lift_apply'; eauto.
-    apply sep_star_lift_apply'; eauto.
-    congruence.
-    omega.
-    intros.
-    contradict H0; apply Map.empty_1.
-    unfold diskIs in *; subst; auto.
+
+    cancel; subst.
+    cbn; auto.
+    cbn; omega.
+    eauto.
+    contradict H; apply Map.empty_1.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (init_recover _) _) => apply init_recover_ok : prog.
-
-
-  Theorem init_recover_xform_ok : forall cachesize,
-    {< d F,
-    PRE
-      exists cs, crash_xform (rep cs d) *
-      [[ F d ]] * [[ cachesize <> 0 ]]
-    POST RET:cs
-      exists d', rep cs d' * [[ (crash_xform F) d' ]]
-    CRASH
-      exists cs, crash_xform (rep cs d)
-    >} init_recover cachesize.
-  Proof.
-    unfold init_recover, init, rep.
-    step.
-
-    eapply pimpl_ok2; eauto.
-    simpl; intros.
-
-    (**
-     * Special-case for initialization, because we are moving a predicate [F]
-     * from the base memory to a virtual memory.
-     *)
-    match goal with
-    | [ |- _ =p=> _ * ?E * [[ _ = _ ]] * [[ _ = _ ]] ] =>
-      remember (E)
-    end.
-    norm; cancel'; intuition.
-    unfold stars; subst; simpl; rewrite star_emp_pimpl.
-    unfold crash_xform. unfold pimpl; intros; repeat deex. exists m.
-    apply sep_star_lift_apply'; eauto.
-    apply sep_star_lift_apply'; eauto.
-    apply sep_star_lift_apply'; eauto.
-    apply sep_star_lift_apply'; eauto.
-    apply sep_star_lift_apply'; eauto.
-    congruence.
-    omega.
-    intros.
-    contradict H; apply Map.empty_1.
-    destruct_lift H0.
-    unfold diskIs in *; subst.
-    exists m'.
-    intuition.
-  Qed.
 
 
   Theorem read_array_ok : forall a i cs,
@@ -508,8 +484,7 @@ Module RCache.
       exists d', rep cs d' *
       [[ (F * arrayN a (vsupd vs i v))%pred d' ]]
     CRASH
-      exists cs', rep cs' d \/
-      exists d', rep cs' d' * [[ (F * arrayN a (vsupd vs i v))%pred d' ]]
+      exists cs', rep cs' d
     >} write_array a i v cs.
   Proof.
     unfold write_array, vsupd.
@@ -519,11 +494,6 @@ Module RCache.
     rewrite ptsto_tuple.
     cancel.
 
-    rewrite <- isolateN_bwd_upd by auto.
-    cancel.
-    cancel.
-    apply pimpl_or_r; left; cancel; eauto.
-    apply pimpl_or_r; right; cancel; eauto.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
   Qed.
@@ -538,8 +508,7 @@ Module RCache.
       exists d', rep cs d' *
       [[ (F * arrayN a (vssync vs i))%pred d' ]]
     CRASH
-      exists cs', rep cs' d \/
-      exists d', rep cs' d' * [[ (F * arrayN a (vssync vs i))%pred d' ]]
+      exists cs', rep cs' d
     >} sync_array a i cs.
   Proof.
     unfold sync_array, vssync.
@@ -551,15 +520,11 @@ Module RCache.
 
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
-    cancel.
-    apply pimpl_or_r; left; cancel; eauto.
-    apply pimpl_or_r; right; cancel; eauto.
-    rewrite <- isolateN_bwd_upd by auto.
-    cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (sync_array _ _ _) _) => apply sync_array_ok : prog.
 
+(*
   Theorem trim_array_ok : forall a i cs,
     {< d (F : rawpred) vs,
     PRE
@@ -590,7 +555,7 @@ Module RCache.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (trim_array _ _ _) _) => apply trim_array_ok : prog.
-
+*)
 
   Definition read_range T A a nr (vfold : A -> valu -> A) a0 cs rx : prog T :=
     let^ (cs, r) <- ForN i < nr
@@ -619,12 +584,20 @@ Module RCache.
     >} read_range a nr vfold a0 cs.
   Proof.
     unfold read_range; intros.
-    hoare.
-    subst.
+    safestep.
+    eauto. cancel; eauto. eauto. eauto. eauto.
+    safestep.
+    cancel; eauto. eauto. eauto. omega.
+
+    safestep.
     rewrite firstn_S_selN_expand with (def := $0).
     rewrite fold_left_app; simpl.
     erewrite selN_map by omega; auto.
     rewrite map_length; omega.
+
+    cancel; eauto.
+    safestep.
+    cancel; eauto.
     Unshelve. exact tt.
   Qed.
 
@@ -658,14 +631,14 @@ Module RCache.
     >} write_range a l cs.
   Proof.
     unfold write_range; intros.
-    step.
-    cancel.
-    eassign F; cancel.
-    apply pimpl_refl.
+    safestep.
+    cancel; eauto. eauto.
+    pred_apply; rewrite vsupd_range_nil; eauto.
+    eauto.
 
-    prestep; cancel.
-    cancel.
-    eassign F; cancel.
+    safestep.
+    cancel; eauto. eauto.
+    pred_apply; eauto.
     rewrite vsupd_range_length; try omega.
     rewrite firstn_length_l; omega.
 
@@ -675,18 +648,15 @@ Module RCache.
     apply vsupd_range_progress; auto.
     omega.
 
-    subst; pimpl_crash.
-    norm; [ cancel | | cancel | ]; intuition; eauto.
-    rewrite Nat.min_l; eauto; omega.
-    rewrite Nat.min_l; eauto.
-    pred_apply; cancel.
-    apply arrayN_unify.
-    erewrite firstn_S_selN_expand.
-    apply vsupd_range_progress; auto.
-    omega.
+    safecancel; eauto; omega.
 
     step.
     rewrite firstn_oob by omega; auto.
+
+    safecancel.
+    eauto. eauto. eauto. eauto.
+    eassign 0; omega.
+    pred_apply; rewrite vsupd_range_nil; eauto.
     Unshelve. exact tt.
   Qed.
 
@@ -720,26 +690,28 @@ Module RCache.
     >} sync_range a n cs.
   Proof.
     unfold sync_range; intros.
-    step.
+    safestep.
+    cancel; eauto. eauto.
+    pred_apply; cbn; eauto.
+    eauto.
 
-    prestep; cancel.
-    cancel.
-    eassign F; cancel.
+    safestep.
+    cancel; eauto. eauto.
+    pred_apply; eauto.
     rewrite vssync_range_length; try omega.
 
     step.
     apply arrayN_unify.
-    apply vssync_range_progress; omega.
-
-    subst; pimpl_crash.
-    norm; [ cancel | | cancel | ]; intuition; eauto.
-    rewrite Nat.min_l; eauto; omega.
-    rewrite Nat.min_l; eauto.
-    pred_apply; cancel.
-    apply arrayN_unify.
     apply vssync_range_progress; auto.
     omega.
 
+    safecancel; eauto; omega.
+
+    step.
+    safecancel.
+    eauto. eauto. eauto. eauto.
+    eassign 0; omega.
+    pred_apply; cbn; eauto.
     Unshelve. exact tt.
   Qed.
 
@@ -780,24 +752,23 @@ Module RCache.
     >} write_vecs a l cs.
   Proof.
     unfold write_vecs.
-    step.
-    prestep; cancel; auto.
-    step.
+    safestep.
+    eauto.
 
+    safestep.
+    safestep.
     apply arrayN_unify.
     apply vsupd_vecs_progress; auto.
 
-    subst; pimpl_crash.
-    norm; [ cancel | | cancel | ]; intuition; eauto.
-    rewrite Nat.min_l; eauto; omega.
-    rewrite Nat.min_l; eauto.
-    pred_apply; cancel.
-    apply arrayN_unify.
-    apply vsupd_vecs_progress; auto.
-
+    safecancel; eauto; omega.
     step.
     apply arrayN_unify.
     rewrite firstn_oob; auto.
+
+    safecancel.
+    eauto. eauto. eauto. eauto.
+    eassign 0; omega.
+    pred_apply; cbn; eauto.
     Unshelve. exact tt.
   Qed.
 
@@ -832,24 +803,23 @@ Module RCache.
     >} sync_vecs a l cs.
   Proof.
     unfold sync_vecs.
-    step.
-    prestep; cancel; auto.
-    step.
+    safestep.
+    eauto.
 
+    safestep.
+    safestep.
     apply arrayN_unify.
     apply vssync_vecs_progress; auto.
 
-    subst; pimpl_crash.
-    norm; [ cancel | | cancel | ]; intuition; eauto.
-    rewrite Nat.min_l; eauto; omega.
-    rewrite Nat.min_l; eauto.
-    pred_apply; cancel.
-    apply arrayN_unify.
-    apply vssync_vecs_progress; auto.
-
+    safecancel; eauto; omega.
     step.
     apply arrayN_unify.
     rewrite firstn_oob; auto.
+
+    safecancel.
+    eauto. eauto. eauto. eauto.
+    eassign 0; omega.
+    pred_apply; cbn; eauto.
     Unshelve. exact tt.
   Qed.
 
