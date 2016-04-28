@@ -349,11 +349,8 @@ Module RecArray (Params:RecArrayParams).
     rep_blocks (nest_list vs items_per_valu).
 
   Definition rep_blocks' vs_nested (vd: Disk) :=
-    forall (a:addr), ($ RAStart <= a)%word ->
-         (a < $ (RAStart + RALen))%word ->
-         (* TODO: selecting a is wrong here; this rep should really
-         quantify over a nat offset *)
-         vd a = Some (block_valu (sel vs_nested a block0)).
+    forall off, off < RALen ->
+           vd ($ (RAStart + off)) = Some (block_valu (selN vs_nested off block0)).
 
   Definition rep_items' (vs: list item) vd :=
     rep_blocks' (nest_list vs items_per_valu) vd /\
@@ -517,8 +514,9 @@ Module RecArray (Params:RecArrayParams).
            eapply recarray_invariant_preserved
          end.
 
-    Definition block_idx i :=
-      RAStart + (i / items_per_valu).
+    Definition block_off i := i / items_per_valu.
+
+    Definition block_idx i := RAStart + block_off i.
 
     Definition off_idx i :=
       i mod items_per_valu.
@@ -583,7 +581,7 @@ Module RecArray (Params:RecArrayParams).
         ($ RAStart <= bidx /\
          bidx < $ (RAStart + RALen))%word.
     Proof.
-      unfold block_idx; cbn; intros.
+      unfold block_idx, block_off; cbn; intros.
       apply valid_block_offset in H.
       split.
       - apply wle_le''; auto.
@@ -595,7 +593,7 @@ Module RecArray (Params:RecArrayParams).
         i < RALen * items_per_valu ->
         # (@natToWord addrlen (block_idx i)) = block_idx i.
     Proof.
-      unfold block_idx; intros.
+      unfold block_idx, block_off; intros.
       apply valid_block_offset in H.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply goodSize_trans with (RAStart + RALen); auto.
@@ -692,6 +690,27 @@ Module RecArray (Params:RecArrayParams).
 
     Hint Resolve off_idx_bound.
 
+    Lemma block_off_bound : forall i,
+        i < RALen * items_per_valu ->
+        block_off i < RALen.
+    Proof.
+      unfold block_off; intros.
+      eapply Nat.div_lt_upper_bound; auto.
+      rewrite mult_comm; auto.
+    Qed.
+
+    Hint Resolve block_off_bound.
+
+    (* combining the block offset and block index reconstructs the
+      item index *)
+    Lemma item_block_index : forall i,
+        block_off i * items_per_valu + off_idx i = i.
+    Proof.
+      unfold block_off, off_idx; intros.
+      rewrite mult_comm.
+      rewrite <- Nat.div_mod; auto.
+    Qed.
+
     Polymorphic Theorem locked_get_item_ok : forall i,
         stateS TID: tid |-
         {{ (_:unit),
@@ -713,10 +732,10 @@ Module RecArray (Params:RecArrayParams).
       step pre simplify with try solve [ finish ].
       intuition.
       unfold recarrayI, rep_items', rep_blocks' in *; intuition.
-      specialize (H9 ($ (block_idx i))).
+      specialize (H9 (block_off i)).
       let H := fresh in
       pose proof (@block_idx_valid i) as H; cbn in H.
-      intuition idtac.
+      intuition.
       apply not_reading_hide in H3; unfold not_reading' in H3.
       eauto.
 
@@ -725,20 +744,34 @@ Module RecArray (Params:RecArrayParams).
       rewrite block_valu_id.
       unfold recarrayI, rep_items', rep_blocks' in *; intuition.
 
-      unfold sel.
-      rewrite block_idx_goodSize by auto.
+      erewrite selN_nested; try omega; eauto.
+      rewrite selN_subslice; try omega; eauto.
 
-      erewrite selN_nested; try omega.
-      rewrite selN_subslice; try omega.
-      (* TODO: not actually true, due to bug in rep; RAStart shouldn't
-      be part of these offsets *)
+      rewrite item_block_index.
+      (* TODO: item i was locked from s to s2 *)
       admit.
 
       pose proof (off_idx_bound i); omega.
-      auto.
-      2: eauto.
-      (* this is wrong again due to the incorrect rep; it should be i, not block_idx i *)
-    Abort.
+      unfold recarrayI in *; destruct_ands.
+      eapply Forall_forall.
+      eapply nested_blocks_well_formed.
+      eassumption.
+      (* carry forward the locked item from s to s2 *)
+      match goal with
+        | [ |- In ?item _ ] =>
+          replace item with (selN (nest_list (get Items s2) items_per_valu) (block_off i) block0)
+      end.
+      eapply in_selN.
+      unfold rep_items', rep_blocks' in *; intuition.
+      erewrite length_nest_list_exact by eauto; eauto.
+      admit. (* same locked goal *)
+
+      (* not sure why this ends up being true - adding another layer
+      of disk locks completely internal to the disk would solve this
+      by hiding readers better (at the expensive of having another set
+      of locks in the cache or directly at this level) *)
+      admit.
+    Admitted.
 
   End RecArray.
 
