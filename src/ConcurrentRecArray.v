@@ -215,6 +215,126 @@ Module RecArray (Params:RecArrayParams).
         eauto.
     Qed.
 
+    Require Import Rounding.
+
+    Import Nat.
+    Import Peano.
+    (* restore S for successor *)
+    Import Datatypes.
+
+    Lemma mul_pos_incr : forall n k,
+        0 < n ->
+        n * k <= n ->
+        k = 0 \/ k = 1.
+    Proof.
+      intros.
+      destruct k; try omega.
+      destruct k; try omega.
+      rewrite mult_comm in *; cbn in *.
+      pose proof (le_0_n (k * n)).
+      omega.
+    Qed.
+
+    Lemma div_by_larger : forall n m,
+        n <= m ->
+        n / m = 0 \/ n = m.
+    Proof.
+      intros.
+      destruct (le_lt_eq_dec _ _ H); auto using div_small.
+    Qed.
+
+    Lemma divup_lt_divisor : forall n m,
+        0 < n ->
+        0 < m ->
+        n <= m ->
+        divup n m = 1.
+    Proof.
+      intros.
+      rewrite divup_eq_divup'.
+      unfold divup'.
+      case_eq (n mod m); intros.
+      apply mod_divides in H2; try omega; deex.
+      apply mul_pos_incr in H1; intuition subst; try omega.
+      rewrite mult_1_r.
+      rewrite div_same by omega; auto.
+      destruct (div_by_larger H1); try omega.
+      subst.
+      rewrite mod_same in *; omega.
+    Qed.
+
+    Theorem divup_plus_divisor : forall n k,
+        0 < k ->
+        divup (k + n) k = 1 + divup n k.
+    Proof.
+      intros.
+      rewrite ?divup_eq_divup'; unfold divup'.
+      assert ((k + n) mod k = n mod k).
+      rewrite plus_comm.
+      replace k with (1 * k) at 1 by omega.
+      rewrite mod_add by omega; auto.
+      rewrite H0.
+      replace (k + n) with (n + 1 * k) by omega.
+      rewrite div_add by omega.
+      destruct (n mod k); omega.
+    Qed.
+
+    Theorem length_nest_list_f_general : forall k0 A (l: list A) k accum,
+        0 < k0 ->
+        k < k0 ->
+        length accum + k = k0 ->
+        length (nest_list_f l k0 k accum) = divup (length (accum ++ l)) k0.
+    Proof.
+      induction l; cbn; intros.
+      - rewrite app_nil_r in *.
+        rewrite divup_lt_divisor; auto; try omega.
+      - destruct k;
+        rewrite ?app_length, ?plus_0_r in *; cbn in *.
+
+        erewrite IHl; cbn; eauto; try omega.
+        replace (length accum).
+        rewrite divup_plus_divisor by omega.
+        omega.
+
+        rewrite IHl; auto; rewrite ?app_length;
+        cbn; try omega.
+        f_equal; omega.
+    Qed.
+
+    Corollary length_nest_list_f_exact : forall k0 A (l: list A) k accum m,
+        0 < k0 ->
+        k < k0 ->
+        length accum + k = k0 ->
+        (* this guarantees length will be exactly length (accum ++ l) / k0 = m *)
+        length (accum ++ l) = m * k0 ->
+        length (nest_list_f l k0 k accum) = m.
+    Proof.
+      intros.
+      rewrite length_nest_list_f_general by auto.
+      rewrite H2.
+      rewrite divup_mul by omega; auto.
+    Qed.
+
+    Theorem length_nest_list : forall A (l: list A) k,
+        0 < length l ->
+        0 < k ->
+        length (nest_list l k) = divup (length l) k.
+    Proof.
+      unfold nest_list; intros.
+      destruct l, k; cbn in *; try omega.
+      erewrite length_nest_list_f_general; eauto; omega.
+    Qed.
+
+    Theorem length_nest_list_exact : forall A (l: list A) k m,
+        0 < length l ->
+        0 < k ->
+        length l = m * k ->
+        length (nest_list l k) = m.
+    Proof.
+      unfold nest_list; intros.
+      destruct l, k; cbn in *; try omega.
+      erewrite length_nest_list_f_exact; eauto; omega.
+    Qed.
+
   End Nesting.
 
 
