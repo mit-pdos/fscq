@@ -875,36 +875,6 @@ Module WBCache.
       all: exact (fun a b => emp).
   Qed.
 
-
-  Lemma mem_pred_cachepred_remove_mem_except : forall i mm (d : @Mem.mem _ addr_eq_dec _),
-    mem_pred (cachepred mm) (mem_except d i) =p=>
-    mem_pred (cachepred (Map.remove i mm)) (mem_except d i).
-  Proof.
-    unfold mem_pred; intros.
-    cancel; eauto.
-
-    revert mm i d H H2.
-    generalize dependent hm_avs.
-    induction hm_avs; intros; auto.
-
-    inversion H; destruct a; subst; simpl in *.
-    destruct (addr_eq_dec n i); subst.
-    cbn in H2.
-    apply equal_f with (x := i) in H2.
-    rewrite mem_except_eq in H2.
-    rewrite upd_eq in H2; congruence.
-
-    unfold mem_pred_one at 1 3; simpl.
-    rewrite <- cachepred_remove_invariant; eauto; cancel.
-    eapply IHhm_avs; eauto.
-    eassign (mem_except d n).
-    rewrite mem_except_comm.
-    rewrite H2; cbn.
-    rewrite <- mem_except_upd.
-    rewrite <- notindomain_mem_eq; auto.
-    apply avs2mem_notindomain; auto.
-  Qed.
-
   Theorem evict_ok : forall wcs a,
     {< d (F : rawpred) v vs,
     PRE
@@ -931,7 +901,8 @@ Module WBCache.
       3: apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
       unfold cachepred at 3.
       rewrite MapFacts.remove_eq_o by auto; cancel.
-      apply mem_pred_cachepred_remove_mem_except.
+      apply mem_pred_pimpl_except.
+      intros; apply cachepred_remove_invariant; auto.
       apply incl_appr; apply incl_refl.
 
       cancel.
