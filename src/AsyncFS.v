@@ -321,22 +321,7 @@ Module AFS.
 
   Hint Extern 0 (okToUnify (LOG.idempred _ _ _ _) (LOG.idempred _ _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (LOG.after_crash _ _ _ _ _) (LOG.after_crash _ _ _ _ _)) => constructor : okToUnify.
-
-
-(*
-  Inductive tree_crash : tree -> tree -> Prop :=
-    | TreeCrashFile : forall f1 f2,
-      possible_crash (FData (list2nmem f1)) (FData (list2nmem f2)) ->
-      tree_crash (TFile f1) (TFile f2)
-    | TreeCrashDir : forall d1 d2,
-      (forall name, tree_crash (Map.find name d1) (Map.find name d2)) ->
-      tree_crash (TDir d1) (TDir d2).
-
-  Lemma tree_crash_xform : forall t1 t2,
-    tree_crash t1 t2 ->
-    crash_xform (DIRTREE.rep t1) =p=> DIRTREE.rep t2.
-*)
-  
+ 
 
   (* Specs and proofs *)
 
