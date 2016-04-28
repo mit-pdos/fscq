@@ -286,16 +286,29 @@ Module AFS.
      >} recover.
   Proof.
     unfold recover, LOG.after_crash; intros.
-    prestep. norm. cancel. intuition; eauto.
+    eapply pimpl_ok2.
+    eapply BUFCACHE.init_recover_ok.
+    cancel.
+    eauto.
     prestep. norm. cancel. intuition; eauto.
     pred_apply; cancel.
+    xform_norm.
+    rewrite SB.crash_xform_rep.
+    cancel.
 
     prestep.
     unfold LOG.after_crash; norm. cancel.
     intuition simpl.
-    pred_apply; norm. cancel.
-    intuition simpl; eauto.
-
+    pred_apply; norml. 
+    unfold stars; simpl.
+    xform_norm.
+    rewrite SB.crash_xform_rep.
+    rewrite GLog.crash_xform_cached.
+    norm. safecancel.
+    rewrite GLog.rep_hashmap_subset.
+    admit. (* (LOG.MSGLog ?ms) = ms' *)
+    eauto.
+    eauto.
     safestep; eauto.
     subst; pimpl_crash; eauto.
 
@@ -306,6 +319,22 @@ Module AFS.
     subst; pimpl_crash. norm; try tauto. cancel.
     intuition; pred_apply. norm. cancel.
     intuition eauto.
+
+    xform_norm.
+    rewrite SB.crash_xform_rep.
+    rewrite GLog.crash_xform_cached.
+    norm. safecancel.
+    admit. (* (LOG.MSGLog ?ms) = ms' *)
+    eauto.
+    eauto.
+    safecancel.
+    rewrite GLog.rep_hashmap_subset.
+    instantiate (3 := hm_crash).
+    cancel.
+    eauto.
+    eauto.
+    eauto.
+    eauto.
   Qed.
 
   Ltac recover_ro_ok := intros;
