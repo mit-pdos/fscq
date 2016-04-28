@@ -1,3 +1,4 @@
+Require Import Hashmap.
 Require Import Arith.
 Require Import Bool.
 Require Import List.
@@ -129,6 +130,12 @@ Module LOG.
   Proof.
     unfold rep, rep_inner; cancel.
   Qed.
+
+  Lemma rep_hashmap_subset : forall xp F ms hm hm',
+    (exists l, hashmap_subset l hm hm')
+    -> forall st, rep xp F st ms hm
+        =p=> rep xp F st ms hm'.
+  Proof. Admitted.
 
   Definition init T xp cs rx : prog T :=
     mm <- GLog.init xp cs;

@@ -2866,5 +2866,12 @@ Module DLog.
     cancel.
   Qed.
 
+  Lemma rep_hashmap_subset : forall xp hm hm',
+    (exists l, hashmap_subset l hm hm')
+    -> forall st, rep xp st hm
+        =p=> rep xp st hm'.
+  Proof. Admitted.
+
+
 End DLog.
 

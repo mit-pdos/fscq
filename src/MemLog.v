@@ -1,3 +1,4 @@
+Require Import Hashmap.
 Require Import Arith.
 Require Import Bool.
 Require Import List.
@@ -210,6 +211,13 @@ Module MLog.
 
   (****** auxiliary lemmas *)
 
+
+
+  Lemma rep_hashmap_subset : forall xp mm hm hm',
+    (exists l, hashmap_subset l hm hm')
+    -> forall st, rep xp st mm hm
+        =p=> rep xp st mm hm'.
+  Proof. Admitted.
 
   Lemma synced_applying : forall xp na d ms hm,
     rep xp (Synced na d) ms hm =p=>

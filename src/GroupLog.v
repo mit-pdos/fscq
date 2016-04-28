@@ -206,6 +206,12 @@ Module GLog.
     unfold would_recover_any, rep; intros; cancel.
   Qed.
 
+  Lemma rep_hashmap_subset : forall xp ms hm hm',
+    (exists l, hashmap_subset l hm hm')
+    -> forall st, rep xp st ms hm
+        =p=> rep xp st ms hm'.
+  Proof. Admitted.
+
 
   (************* program *)
 
