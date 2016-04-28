@@ -875,23 +875,97 @@ Module WBCache.
       all: exact (fun a b => emp).
   Qed.
 
+
+  Lemma mem_pred_cachepred_remove_mem_except : forall i mm (d : @Mem.mem _ addr_eq_dec _),
+    mem_pred (cachepred mm) (mem_except d i) =p=>
+    mem_pred (cachepred (Map.remove i mm)) (mem_except d i).
+  Proof.
+    unfold mem_pred; intros.
+    cancel; eauto.
+
+    revert mm i d H H2.
+    generalize dependent hm_avs.
+    induction hm_avs; intros; auto.
+
+    inversion H; destruct a; subst; simpl in *.
+    destruct (addr_eq_dec n i); subst.
+    cbn in H2.
+    apply equal_f with (x := i) in H2.
+    rewrite mem_except_eq in H2.
+    rewrite upd_eq in H2; congruence.
+
+    unfold mem_pred_one at 1 3; simpl.
+    rewrite <- cachepred_remove_invariant; eauto; cancel.
+    eapply IHhm_avs; eauto.
+    eassign (mem_except d n).
+    rewrite mem_except_comm.
+    rewrite H2; cbn.
+    rewrite <- mem_except_upd.
+    rewrite <- notindomain_mem_eq; auto.
+    apply avs2mem_notindomain; auto.
+  Qed.
+
   Theorem evict_ok : forall wcs a,
-    {< d (F : rawpred),
+    {< d (F : rawpred) v vs,
     PRE
-      rep wcs d * [[ (F * a |->?)%pred d ]]
-    POST RET:wcs
-      rep wcs d
+      rep wcs d * [[ (F * a |-> (v, vs))%pred d ]]
+    POST RET:wcs exists d' vs',
+      rep wcs d' * [[ incl vs' vs ]] *
+      [[ (F * a |-> (v, vs'))%pred d' ]]
     XCRASH
-      exists wcs',
-      rep wcs' d
+      exists wcs' d', rep wcs' d' *
+      [[ (F * a |-> (v, vs))%pred d' ]]
     >} evict a wcs.
   Proof.
     unfold evict, rep.
     intros.
     prestep.
-    - admit.
-    - admit.
-  Admitted.
+    - norml.
+      denote! (mem_pred _ _ _) as Hx.
+      eapply mem_pred_extract in Hx; [ | eapply ptsto_valid'; eauto ].
+      unfold cachepred at 2 in Hx; rewrite Heqo in Hx.
+      destruct_lift Hx; cancel.
+
+      safestep.
+      rewrite <- mem_pred_absorb with (a := a).
+      3: apply sep_star_comm; eapply ptsto_upd; apply sep_star_comm; eauto.
+      unfold cachepred at 3.
+      rewrite MapFacts.remove_eq_o by auto; cancel.
+      apply mem_pred_cachepred_remove_mem_except.
+      apply incl_appr; apply incl_refl.
+
+      cancel.
+      xcrash_rewrite.
+      eapply sync_ok_xcrash; eauto.
+      apply incl_tl; apply incl_appr; apply incl_refl.
+
+      xcrash_rewrite.
+      eapply sync_ok_xcrash; eauto.
+      apply incl_cons2; apply incl_appr; apply incl_refl.
+
+    - norml.
+      denote! (mem_pred _ _ _) as Hx.
+      eapply mem_pred_extract in Hx; [ | eapply ptsto_valid'; eauto ].
+      unfold cachepred at 2 in Hx; rewrite Heqo in Hx.
+      destruct_lift Hx; cancel.
+
+      step.
+      pred_apply; subst.
+      eapply pimpl_trans2.
+      apply mem_pred_absorb_nop with (a := a).
+      eapply ptsto_valid'; eauto.
+      unfold cachepred at 3.
+      rewrite Heqo; cancel.
+
+      xcrash_rewrite.
+      eapply sync_ok_xcrash; eauto.
+      apply incl_refl.
+
+    Unshelve.
+    all: try exact addr; try exact addr_eq_dec; try exact empty_mem.
+    all: exact (fun a b => emp).
+  Qed.
+
 
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
