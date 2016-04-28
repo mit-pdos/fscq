@@ -25,6 +25,7 @@ Parameter itemtype : Rec.type.
 Parameter items_per_valu : nat.
 Axiom items_per_valu_ok : Rec.len itemtype * items_per_valu = valulen.
 Axiom ra_params_bounded : RAStart + RALen < pow2 addrlen.
+Axiom ra_non_trivial: 0 < RALen.
 
 End RecArrayParams.
 
@@ -358,6 +359,56 @@ Module RecArray (Params:RecArrayParams).
     rep_blocks' (nest_list vs items_per_valu) vd /\
     length vs = RALen * items_per_valu /\
     Forall Rec.well_formed vs.
+
+  Theorem items_length_gt_0 : 0 < RALen * items_per_valu.
+  Proof.
+    pose proof ra_non_trivial.
+    pose proof items_per_valu_gt_0.
+    apply Nat.mul_pos_pos; auto.
+  Qed.
+
+  Hint Resolve items_length_gt_0.
+
+  Lemma in_concat : forall A (l: list (list A)) sublist a,
+      In a sublist ->
+      In sublist l ->
+      In a (concat l).
+  Proof.
+    induction l; cbn; auto; intros.
+    intuition subst.
+    apply in_or_app; eauto.
+    apply in_or_app; eauto.
+  Qed.
+
+  Theorem in_nest_list : forall A (l: list A) sublist k a,
+      In a sublist ->
+      In sublist (nest_list l k) ->
+      In a l.
+  Proof.
+    intros.
+    rewrite <- nest_list_concat with (k := k).
+    eapply in_concat; eauto.
+  Qed.
+
+  Theorem nested_blocks_well_formed : forall vs vd,
+      rep_items' vs vd ->
+      Forall (@Rec.well_formed blocktype) (nest_list vs items_per_valu).
+  Proof.
+    unfold rep_items'; intuition; cbn.
+    rewrite Forall_forall in *; intros.
+    pose proof (nest_list_length vs).
+    specialize (H3 items_per_valu RALen).
+    assert (0 < length vs).
+    rewrite H; auto.
+    pose proof items_per_valu_gt_0.
+    intuition.
+    rewrite Forall_forall in H6.
+    eauto.
+
+    rewrite Forall_forall; intros.
+    apply H2.
+    eapply in_nest_list; eauto.
+  Qed.
 
   Module Type RecArrayVars (SemVars:SemanticsVars).
     Import SemVars.
