@@ -36,7 +36,7 @@ Module WBCache.
 
   Definition cachepred (cache : Map.t valu) (a : addr) (vs : valuset) : @pred _ addr_eq_dec valuset :=
     match Map.find a cache with
-    | None => (exists old_cache_writes, a |-> (fst vs, old_cache_writes ++ snd vs))%pred
+    | None => a |-> vs
     | Some v => (exists vsdisk old_cache_writes, a |-> vsdisk * [[ vs = (v, old_cache_writes ++ vsmerge vsdisk) ]])%pred
     end.
 
@@ -114,21 +114,13 @@ Module WBCache.
       unfold cachepred at 2 in H6. rewrite H in H6.
       destruct_lift H6; congruence.
       unfold rep; cancel.
-    - prestep.
-      norml.
-      eapply mem_pred_extract in H6; [ | eapply ptsto_valid'; eauto ].
-      unfold cachepred at 2 in H6. rewrite H in H6. destruct_lift H6.
+    - step.
+      rewrite mem_pred_extract; [ | eapply ptsto_valid'; eauto ].
+      unfold cachepred at 2; rewrite H.
       cancel.
       step.
-      eapply pimpl_trans; [ | eapply mem_pred_absorb_nop ].
-      unfold cachepred at 3. rewrite H. instantiate (1 := (v3, dummy)). cancel.
-      eapply ptsto_valid'; eauto.
-      cancel.
       eassign (Build_wbcachestate cs' (WbBuf wcs)).
       unfold rep; cancel.
-      eapply pimpl_trans; [ | eapply mem_pred_absorb_nop ].
-      unfold cachepred at 3. rewrite H. instantiate (1 := (v3, dummy)). cancel.
-      eapply ptsto_valid'; eauto.
   Qed.
 
 
