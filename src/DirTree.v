@@ -2102,7 +2102,11 @@ Module DIRTREE.
     >} truncate fsxp inum nblocks mscs.
   Proof.
     unfold truncate, rep.
-    safestep.  (* infinite loop? *)
+    intros.
+    (* step seems to go in an infinite loop *)
+    eapply pimpl_ok2.
+    eauto with prog.
+    cancel.
     rewrite subtree_extract; eauto. cancel.
     step.
     or_r.
