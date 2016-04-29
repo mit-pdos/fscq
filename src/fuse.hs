@@ -119,6 +119,8 @@ fscqFSOps fn ds fr m_fsxp = defaultFuseOps
   , fuseSetFileTimes = fscqSetFileTimes
   , fuseRename = fscqRename fr m_fsxp
   , fuseSetFileMode = fscqChmod
+  , fuseSynchronizeFile = fscqSyncFile fr m_fsxp
+  , fuseSynchronizeDirectory = fscqSyncDir fr m_fsxp
   }
 
 applyFlushgroup :: DiskState -> [(Integer, Coq_word)] -> IO ()
@@ -512,3 +514,24 @@ fscqRename _ _ _ _ = return eIO
 fscqChmod :: FilePath -> FileMode -> IO Errno
 fscqChmod _ _ = do
   return eOK
+
+fscqSyncFile :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> SyncType -> IO Errno
+fscqSyncFile fr m_fsxp (_:path) _ = withMVar m_fsxp $ \fsxp -> do
+  debugStart "SYNC FILE" path
+  nameparts <- return $ splitDirectories path
+  (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
+  debugMore r
+  case r of
+    Nothing -> return eNOENT
+    Just (inum, _) -> do
+      -- if synctype is DataSync, then we should fdatasync
+      _ <- fr $ AsyncFS._AFS__file_sync fsxp inum
+      return eOK
+fscqSyncFile _ _ _ _ = return eIO
+
+fscqSyncDir :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> SyncType -> IO Errno
+fscqSyncDir fr m_fsxp (_:path) _ = withMVar m_fsxp $ \fsxp -> do
+  debugStart "SYNC DIR" path
+  _ <- fr $ AsyncFS._AFS__tree_sync fsxp
+  return eOK
+fscqSyncDir _ _ _ _ = return eIO
