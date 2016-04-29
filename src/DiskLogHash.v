@@ -1888,6 +1888,7 @@ Module PaddedLog.
           (addr_checksum, valu_checksum)) := header in
     let^ (cs, wal) <- Desc.read_all xp ndesc cs;
     let^ (cs, vl) <- Data.read_all xp ndata cs;
+    default_hash <- Hash default_valu;
     h_addr <- hash_list default_hash (DescDefs.ipack wal);
     h_valu <- hash_list default_hash vl;
     If (weq2 addr_checksum h_addr valu_checksum h_valu) {
