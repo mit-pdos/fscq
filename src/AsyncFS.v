@@ -524,6 +524,27 @@ Module AFS.
     cancel; cancel.
  Qed.
 
+  Theorem file_set_attr_ok : forall fsxp inum attr mscs,
+  {< ds pathname Fm Ftop tree f,
+  PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
+         [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+  POST:hm' RET:^(mscs, ok)
+      [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm' \/
+      [[ ok = true  ]] * exists d tree' f',
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) mscs hm' *
+        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
+        [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
+        [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]]
+  CRASH:hm'
+         LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+  >} file_set_attr fsxp inum attr mscs.
+  Proof.
+  Admitted.
+
+  Hint Extern 1 ({{_}} progseq (file_set_attr _ _ _ _) _) => apply file_set_attr_ok : prog.
+
+
   Theorem file_truncate_ok : forall fsxp inum sz mscs,
     {< ds Fm Ftop tree pathname f,
     PRE:hm
@@ -641,14 +662,16 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-      [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]]
+      [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]] *
+      [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
     XCRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists d tree' f',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, nil) hm' *
       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-      [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]]
+      [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]] *
+      [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
    >} update_fblock_d fsxp inum off v mscs.
   Proof.
     unfold update_fblock_d; intros.
@@ -704,7 +727,8 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-      [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]]
+      [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]] *
+      [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
     REC:hm' RET:^(mscs,fsxp)
       exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
       ((exists n, 
@@ -713,6 +737,7 @@ Module AFS.
         [[[ d ::: (crash_xform Fm * DIRTREE.rep fsxp Ftop tree')]]] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
         [[[ (BFILE.BFData f') ::: (crash_xform Fd * off |=> v') ]]] *
+        [[ BFILE.BFAttr f' = BFILE.BFAttr f ]] *
         [[ In v' (v :: vsmerge v0) ]]))
    >>} update_fblock_d fsxp inum off v mscs >> recover.
   Proof.
