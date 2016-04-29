@@ -2103,10 +2103,7 @@ Module DIRTREE.
   Proof.
     unfold truncate, rep.
     intros.
-    (* step seems to go in an infinite loop *)
-    eapply pimpl_ok2.
-    eauto with prog.
-    cancel.
+    step.
     rewrite subtree_extract; eauto. cancel.
     step.
     or_r.
