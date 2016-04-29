@@ -75,7 +75,7 @@ Module AFS.
 
   Definition mkfs {T} data_bitmaps inode_bitmaps log_descr_blocks rx : prog T :=
     let fsxp := compute_xparams data_bitmaps inode_bitmaps log_descr_blocks in
-    cs <- BUFCACHE.init cachesize;
+    cs <- BUFCACHE.init_recover cachesize;
     cs <- SB.init fsxp cs;
     mscs <- LOG.init (FSXPLog fsxp) cs;
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -289,52 +289,56 @@ Module AFS.
     eapply pimpl_ok2.
     eapply BUFCACHE.init_recover_ok.
     cancel.
+    unfold BUFCACHE.rep; cancel.
     eauto.
     prestep. norm. cancel. intuition; eauto.
+    unfold BUFCACHE.rep; cancel.
+    intuition.
     pred_apply; cancel.
-    xform_norm.
-    rewrite SB.crash_xform_rep.
-    cancel.
-
-    prestep.
+    prestep. norm. cancel. 
     unfold LOG.after_crash; norm. cancel.
     intuition simpl.
     pred_apply; norml. 
     unfold stars; simpl.
-    xform_norm.
-    rewrite SB.crash_xform_rep.
-    rewrite GLog.crash_xform_cached.
-    norm. safecancel.
-    rewrite GLog.rep_hashmap_subset.
-    admit. (* (LOG.MSGLog ?ms) = ms' *)
-    eauto.
-    eauto.
-    safestep; eauto.
-    subst; pimpl_crash; eauto.
 
-    subst; pimpl_crash. norm; try tauto. cancel.
-    intuition; pred_apply. norm. cancel.
-    intuition eauto.
-
-    subst; pimpl_crash. norm; try tauto. cancel.
-    intuition; pred_apply. norm. cancel.
-    intuition eauto.
-
-    xform_norm.
-    rewrite SB.crash_xform_rep.
-    rewrite GLog.crash_xform_cached.
-    norm. safecancel.
-    admit. (* (LOG.MSGLog ?ms) = ms' *)
-    eauto.
-    eauto.
-    safecancel.
-    rewrite GLog.rep_hashmap_subset.
-    instantiate (3 := hm_crash).
+    norm. cancel.
+    rewrite LOG.rep_inner_hashmap_subset.
+    instantiate (4 := hm1).
     cancel.
     eauto.
     eauto.
+    intuition.
+    prestep. norm. cancel.
+    intuition.
+    pred_apply; norm; eauto. cancel.
+    rewrite min_l.
+    cancel.
+    auto.
+    unfold LOG.after_crash. norm; eauto.
+    unfold stars; simpl.
+    pimpl_crash. norm. cancel.
+    intuition; pred_apply. norm. cancel.
+    intuition eauto.
+
+    unfold LOG.after_crash. norm; eauto.
+    unfold stars; simpl.
+    pimpl_crash. norm. cancel.
+    intuition; pred_apply. norm. cancel.
+    rewrite LOG.rep_inner_hashmap_subset.
+    instantiate (3 := hm_crash).
+    cancel; eauto.
     eauto.
+    intuition eauto.
+
+    unfold LOG.after_crash. norm; eauto.
+    unfold stars; simpl.
+    pimpl_crash. norm. cancel.
+    intuition; pred_apply. norm. cancel.
+    rewrite LOG.rep_inner_hashmap_subset.
+    instantiate (3 := hm_crash).
+    cancel; eauto.
     eauto.
+    intuition eauto.
   Qed.
 
   Ltac recover_ro_ok := intros;

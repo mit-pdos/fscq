@@ -137,6 +137,12 @@ Module LOG.
         =p=> rep xp F st ms hm'.
   Proof. Admitted.
 
+  Lemma rep_inner_hashmap_subset : forall xp ms hm hm',
+    (exists l, hashmap_subset l hm hm')
+    -> forall st, rep_inner xp st ms hm
+        =p=> rep_inner xp st ms hm'.
+  Proof. Admitted.
+
   Definition init T xp cs rx : prog T :=
     mm <- GLog.init xp cs;
     rx (mk_memstate vmap0 mm).
