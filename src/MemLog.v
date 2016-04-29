@@ -163,7 +163,6 @@ Module MLog.
   Definition apply T xp ms rx : prog T :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     cs <- BUFCACHE.write_vecs (DataStart xp) (Map.elements oms) cs;
-    cs <- BUFCACHE.evict_vecs (DataStart xp) (map_keys oms) cs;
     cs <- BUFCACHE.sync_vecs (DataStart xp) (map_keys oms) cs;
     cs <- DLog.trunc xp cs;
     rx (mk_memstate vmap0 cs).
@@ -1220,7 +1219,6 @@ Module MLog.
     rewrite synced_applying; cancel.
   Qed.
 
-
   Lemma crash_xform_flushing : forall xp d ents ms hm,
     crash_xform (rep xp (Flushing d ents) ms hm) =p=>
       exists d' ms',
@@ -1319,6 +1317,7 @@ Module MLog.
     rewrite crash_xform_recovering by eauto; cancel.
   Qed.
 
+
   Lemma either_pred_either : forall xp d hm ents,
     recover_either_pred xp d ents hm =p=>
     exists d', would_recover_either xp d' ents hm.
@@ -1349,6 +1348,20 @@ Module MLog.
     or_r; cancel.
     eapply crash_xform_diskIs_trans; eauto.
   Qed.
+
+
+  Lemma crash_xform_replay_disk : forall d ents dummy0 dummy2,
+    crash_xform (diskIs (list2nmem d))
+     (list2nmem (replay_disk (Map.elements dummy0) dummy2))
+    -> crash_xform (diskIs (list2nmem (replay_disk ents d)))
+     (list2nmem (replay_disk ents (replay_disk (Map.elements dummy0) dummy2))).
+  Proof.
+    intros.
+    apply crash_xform_diskIs in H.
+    destruct_lift H.
+    unfold diskIs in *; subst.
+    eapply crash_xform_diskIs_r; unfold diskIs; eauto.
+  Admitted.
 
 
   Theorem recover_ok: forall xp cs,
@@ -1435,19 +1448,6 @@ Module MLog.
     erewrite Heq.
     erewrite <- replay_disk_replay_mem.
 
-    Lemma crash_xform_replay_disk : forall d ents dummy0 dummy2,
-      crash_xform (diskIs (list2nmem d))
-       (list2nmem (replay_disk (Map.elements dummy0) dummy2))
-      -> crash_xform (diskIs (list2nmem (replay_disk ents d)))
-       (list2nmem (replay_disk ents (replay_disk (Map.elements dummy0) dummy2))).
-    Proof.
-      intros.
-      apply crash_xform_diskIs in H.
-      destruct_lift H.
-      unfold diskIs in *; subst.
-      eapply crash_xform_diskIs_r; unfold diskIs; eauto.
-    Admitted.
-
     apply crash_xform_replay_disk; auto.
     auto.
     assert (Hsynced: dummy2 = synced_list (map fst dummy2)).
@@ -1461,7 +1461,6 @@ Module MLog.
     cancel.
     Unshelve. exact valu. all: eauto.
   Qed.
-
 
   Theorem dwrite_vecs_ok : forall xp avl ms,
     {< F d na,
