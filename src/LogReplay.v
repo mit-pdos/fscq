@@ -17,6 +17,8 @@ Require Import Morphisms.
 Require Import Array.
 Require Import DiskLogHash.
 Require Import Word.
+Require Import PredCrash.
+Require Import Prog.
 
 Import AddrMap.
 Import ListNotations.
@@ -45,8 +47,6 @@ Module LogReplay.
   Definition map_replay ms old cur : Prop :=
     cur = replay_disk (Map.elements ms) old.
 
-  Global Arguments replay_mem : simpl never.
-  Global Arguments replay_disk : simpl never.
   Hint Resolve MapProperties.eqke_equiv.
   Hint Resolve KNoDup_map_elements.
 
@@ -1011,6 +1011,71 @@ Module LogReplay.
     eapply map_valid_equal; eauto.
   Qed.
 
+  Lemma possible_crash_log_valid : forall l l' ents,
+    possible_crash (list2nmem l) (list2nmem l')
+    -> log_valid ents l'
+    -> log_valid ents l.
+  Proof.
+    intros.
+    eapply log_valid_length_eq; eauto.
+    erewrite <- possible_crash_list2nmem_length; eauto.
+  Qed.
+
+  Lemma possible_crash_replay_disk : forall ents d d',
+    log_valid ents d'
+    -> possible_crash (list2nmem d)
+           (list2nmem d')
+    -> possible_crash (list2nmem (replay_disk ents d))
+      (list2nmem (replay_disk ents d')).
+  Proof.
+    induction ents; intros; simpl.
+    unfold replay_disk; simpl; auto.
+    eapply possible_crash_log_valid in H as H'; eauto.
+
+    apply IHents.
+    unfold log_valid in *.
+    split.
+    unfold KNoDup in *.
+    rewrite <- app_nil_l.
+    eapply NoDupA_split.
+    rewrite app_nil_l. intuition eauto.
+    intros.
+    rewrite length_updN.
+    eapply H.
+    unfold KIn in *.
+    eapply InA_cons_tl; eauto.
+
+    repeat erewrite listupd_memupd; eauto.
+    eapply possible_crash_upd; auto.
+    destruct a; simpl; auto.
+
+    unfold log_valid in *; intuition.
+    eapply H2 with (v:=snd a).
+    unfold KIn.
+    eapply InA_cons_hd.
+    unfold Map.eq_key; eauto.
+
+    unfold log_valid in *; intuition.
+    eapply H3 with (v:=snd a).
+    unfold KIn.
+    eapply InA_cons_hd.
+    unfold Map.eq_key; eauto.
+  Qed.
+
+  Lemma crash_xform_replay_disk : forall ents d d',
+    log_valid ents d'
+    -> crash_xform (diskIs (list2nmem d))
+     (list2nmem d')
+    -> crash_xform (diskIs (list2nmem (replay_disk ents d)))
+     (list2nmem (replay_disk ents d')).
+  Proof.
+    intros.
+    eapply crash_xform_diskIs in H0.
+    destruct_lift H0.
+    unfold diskIs in *; subst.
+    eapply crash_xform_diskIs_r; unfold diskIs; eauto.
+    eapply possible_crash_replay_disk; auto.
+  Qed.
 
 
 End LogReplay.

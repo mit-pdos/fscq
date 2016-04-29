@@ -1350,20 +1350,6 @@ Module MLog.
   Qed.
 
 
-  Lemma crash_xform_replay_disk : forall d ents dummy0 dummy2,
-    crash_xform (diskIs (list2nmem d))
-     (list2nmem (replay_disk (Map.elements dummy0) dummy2))
-    -> crash_xform (diskIs (list2nmem (replay_disk ents d)))
-     (list2nmem (replay_disk ents (replay_disk (Map.elements dummy0) dummy2))).
-  Proof.
-    intros.
-    apply crash_xform_diskIs in H.
-    destruct_lift H.
-    unfold diskIs in *; subst.
-    eapply crash_xform_diskIs_r; unfold diskIs; eauto.
-  Admitted.
-
-
   Theorem recover_ok: forall xp cs,
     {< F raw d ents,
     PRE:hm
@@ -1446,20 +1432,23 @@ Module MLog.
     or_r; cancel.
     eapply replay_mem_app in Heq.
     erewrite Heq.
-    erewrite <- replay_disk_replay_mem.
-
+    erewrite <- replay_disk_replay_mem; auto.
     apply crash_xform_replay_disk; auto.
-    auto.
-    assert (Hsynced: dummy2 = synced_list (map fst dummy2)).
-      admit.
-    rewrite Hsynced.
-    eapply map_valid_replay_mem_app; eauto.
-    rewrite Hsynced at 1.
-    apply possible_crash_list_synced_list.
+    eapply map_valid_replay_mem_app in H8; eauto.
+    eapply length_eq_map_valid; eauto.
+    unfold synced_list.
+    eassign (map fst dummy2).
+    autorewrite with lists; auto.
+    unfold possible_crash_list.
+    split.
+    autorewrite with lists; auto.
+    intros.
+    unfold vsmerge.
+    erewrite selN_map; simpl; auto.
 
     (* crash *)
     cancel.
-    Unshelve. exact valu. all: eauto.
+    Unshelve. exact valu. all: eauto. all: econstructor; eauto.
   Qed.
 
   Theorem dwrite_vecs_ok : forall xp avl ms,

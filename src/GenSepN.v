@@ -1112,3 +1112,46 @@ Proof.
   Unshelve. all: eauto.
 Qed.
 
+Lemma possible_crash_list2nmem_cons : forall l l' x y,
+  possible_crash (list2nmem (x :: l)) (list2nmem (y :: l'))
+  -> possible_crash (list2nmem l) (list2nmem l').
+Proof.
+  intros.
+  unfold possible_crash; intros.
+  destruct (le_dec (length l) a);
+  destruct (le_dec (length l') a).
+  left.
+  split;
+  apply list2nmem_oob; omega.
+
+  unfold possible_crash in H;
+  specialize (H (S a)); intuition.
+  unfold possible_crash in H;
+  specialize (H (S a)); intuition.
+
+  unfold possible_crash in H;
+  specialize (H (S a)); intuition.
+Qed.
+
+Lemma possible_crash_list2nmem_length : forall l l',
+  possible_crash (list2nmem l) (list2nmem l')
+  -> length l = length l'.
+Proof.
+  induction l; destruct l'; intros; simpl; auto.
+
+  unfold possible_crash in H.
+  specialize (H 0); intuition.
+  inversion H1.
+  repeat deex.
+  inversion H0.
+
+  unfold possible_crash in H.
+  specialize (H 0); intuition.
+  inversion H.
+  repeat deex.
+  inversion H.
+
+  erewrite IHl; eauto.
+  eapply possible_crash_list2nmem_cons; eauto.
+Qed.
+
