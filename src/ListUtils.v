@@ -1962,6 +1962,25 @@ Proof.
   eapply forall2_length; eauto.
 Qed.
 
+Lemma selN_Forall2 : forall A B (a : list A) (b : list B) (P : A -> B -> Prop) da db,
+  length a = length b ->
+  (forall i, i < length a -> P (selN a i da) (selN b i db)) ->
+  Forall2 P a b.
+Proof.
+  induction a; destruct b; intros; eauto.
+  inversion H.
+  inversion H.
+  constructor.
+  specialize (H0 0); simpl in *.
+  apply H0; omega.
+  eapply IHa.
+  inversion H; auto.
+  intros.
+  specialize (H0 (S i)); simpl in *.
+  apply H0.
+  omega.
+Qed.
+
 Definition cuttail A n (l : list A) := firstn (length l - n) l.
 
 Lemma cuttail_length : forall A (l : list A) n,

@@ -386,6 +386,88 @@ Proof.
     repeat rewrite firstn_length_l; omega.
 Qed.
 
+Lemma forall_incl_refl : forall vs,
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) vs vs.
+Proof.
+  induction vs; auto.
+  constructor; auto.
+  apply incl_refl.
+Qed.
+
+
+Lemma vsupd_range_incl : forall l vs,
+  length l <= length vs ->
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) vs (vsupd_range vs l).
+Proof.
+  induction l; intros; simpl.
+  rewrite vsupd_range_nil.
+  apply forall_incl_refl.
+
+  destruct vs.
+  inversion H.
+  cbn.
+  constructor.
+  apply incl_tl; apply incl_refl.
+  apply IHl.
+  simpl in *; omega.
+Qed.
+
+
+Lemma vsupd_range_selN_oob : forall vs n l,
+  n >= length l ->
+  length l <= length vs ->
+  selN (vsupd_range vs l) n ($0, nil) = selN vs n ($0, nil).
+Proof.
+  unfold vsupd_range; intros.
+  rewrite selN_app2.
+  rewrite combine_length_eq.
+  rewrite skipn_selN.
+  f_equal; omega.
+  rewrite map_length, firstn_length_l; omega.
+  rewrite combine_length_eq; auto.
+  rewrite map_length, firstn_length_l; omega.
+Qed.
+
+Lemma vsupd_range_selN_inb : forall vs n l,
+  n < length l ->
+  length l <= length vs ->
+  selN (vsupd_range vs l) n ($0, nil) = (selN l n $0, vsmerge (selN vs n ($0, nil))).
+Proof.
+  unfold vsupd_range; intros.
+  rewrite selN_app1.
+  rewrite selN_combine.
+  erewrite selN_map.
+  rewrite selN_firstn; auto.
+  rewrite firstn_length_l; omega.
+  rewrite map_length, firstn_length_l; omega.
+  rewrite combine_length_eq; auto.
+  rewrite map_length, firstn_length_l; omega.
+Qed.
+
+
+Lemma vsupd_range_firstn_incl : forall n l vs,
+  length l <= length vs ->
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) 
+            (vsupd_range vs (firstn n l)) (vsupd_range vs l).
+Proof.
+  induction n; intros.
+  apply vsupd_range_incl; auto.
+  destruct (lt_dec n (length l)).
+
+  erewrite firstn_S_selN by auto.
+  rewrite <- vsupd_range_progress by omega.
+  erewrite <- updN_selN_eq with (l := (vsupd_range vs l)) (ix := n).
+  apply forall2_updN; eauto.
+  rewrite vsupd_range_selN_oob.
+  rewrite vsupd_range_selN_inb; auto; try omega.
+  apply incl_refl.
+  rewrite firstn_length_l; omega.
+  rewrite firstn_length_l; omega.
+
+  rewrite firstn_oob by omega.
+  apply forall_incl_refl.
+Qed.
+
 
 
 Definition vssync_range (vsl : list valuset) n :=
@@ -433,17 +515,9 @@ Proof.
     repeat rewrite firstn_length_l; omega.
 Qed.
 
-Lemma forall_incl_refl : forall vs,
-  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) vs vs.
-Proof.
-  induction vs; auto.
-  constructor; auto.
-  apply incl_refl.
-Qed.
-
 
 Lemma vssync_range_incl : forall n vs,
-  n < length vs ->
+  n <= length vs ->
   Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) (vssync_range vs n) vs.
 Proof.
   induction n; simpl; intros.
@@ -642,6 +716,48 @@ Proof.
   rewrite vsupd_vecs_length; omega.
 Qed.
 
+Lemma vsupd_vecs_incl : forall l vs,
+  Forall (fun e => fst e < length vs) l ->
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) vs (vsupd_vecs vs l).
+Proof.
+  intros.
+  eapply selN_Forall2.
+  rewrite vsupd_vecs_length; auto.
+  intros.
+  unfold incl; intros.
+  apply vsupd_vecs_selN_vsmerge_in; eauto.
+Qed.
+
+Lemma vsupd_vecs_firstn_incl : forall n l vs,
+  Forall (fun e => fst e < length vs) l ->
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) 
+            (vsupd_vecs vs (firstn n l)) (vsupd_vecs vs l).
+Proof.
+  intros.
+  eapply selN_Forall2 with (da := ($0, nil)) (db := ($0, nil)).
+  repeat rewrite vsupd_vecs_length; auto.
+  repeat rewrite vsupd_vecs_length; auto.
+  intros.
+
+  generalize dependent vs.
+  generalize dependent n.
+  induction l; intros.
+  rewrite firstn_nil; cbn.
+  apply incl_refl.
+  destruct n; simpl.
+  unfold incl; intros.
+  apply vsupd_vecs_selN_vsmerge_in; eauto.
+  cbn.
+  unfold vsupd; destruct a; simpl.
+  destruct (addr_eq_dec n i); subst.
+  rewrite selN_updN_eq; eauto.
+  rewrite selN_updN_ne; eauto.
+
+  apply IHl.
+  rewrite vsupd_length.
+  eapply Forall_cons2; eauto.
+  rewrite vsupd_length; auto.
+Qed.
 
 
 (** sync vsl for all addresses in l. *)

@@ -1,6 +1,7 @@
 Require Import ReadCache.
+Require Import ReadCacheX.
 Require Import WritebackCache.
 
-Module BUFCACHE := WritebackCache.WBCache.
+Module BUFCACHE := ReadCacheX.RCacheX.
 
-Definition cachestate := WritebackCache.wbcachestate.
+Definition cachestate := ReadCache.cachestate.

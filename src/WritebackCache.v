@@ -520,101 +520,6 @@ Module WBCache.
   Qed.
 
 
-  Section MEM_MATCH.
-
-    Variable AT V : Type.
-    Variable AEQ : EqDec AT.
-
-    Implicit Types m ma mb : @Mem.mem AT AEQ V.
-
-    Definition mem_match ma mb :=
-      forall a, ma a = None <-> mb a = None.
-
-    Lemma mem_match_refl : forall m,
-      mem_match m m.
-    Proof.
-      firstorder.
-    Qed.
-
-    Lemma mem_match_trans : forall m ma mb,
-      mem_match m ma ->
-      mem_match ma mb ->
-      mem_match m mb.
-    Proof.
-      firstorder.
-    Qed.
-
-    Lemma mem_match_sym : forall ma mb,
-      mem_match ma mb ->
-      mem_match mb ma.
-    Proof.
-      firstorder.
-    Qed.
-
-    Lemma mem_match_except : forall ma mb a,
-      mem_match ma mb ->
-      mem_match (mem_except ma a) (mem_except mb a).
-    Proof.
-      unfold mem_match; intros.
-      unfold mem_except.
-      destruct (AEQ a0 a); firstorder.
-    Qed.
-
-    Lemma mem_match_upd : forall ma mb a va vb,
-      mem_match ma mb ->
-      mem_match (upd ma a va) (upd mb a vb).
-    Proof.
-      unfold mem_match; intros.
-      destruct (AEQ a0 a); subst.
-      repeat rewrite upd_eq by auto.
-      split; congruence.
-      repeat rewrite upd_ne by auto.
-      firstorder.
-    Qed.
-
-    Lemma mem_match_upd_l : forall ma mb a va vb,
-      mem_match ma mb ->
-      mb a = Some vb ->
-      mem_match (upd ma a va) mb.
-    Proof.
-      unfold mem_match; intros.
-      destruct (AEQ a0 a); subst.
-      repeat rewrite upd_eq by auto.
-      split; congruence.
-      repeat rewrite upd_ne by auto.
-      firstorder.
-    Qed.
-
-    Lemma mem_match_upd_r : forall ma mb a va vb,
-      mem_match ma mb ->
-      ma a = Some va ->
-      mem_match ma (upd mb a vb).
-    Proof.
-      unfold mem_match; intros.
-      destruct (AEQ a0 a); subst.
-      repeat rewrite upd_eq by auto.
-      split; congruence.
-      repeat rewrite upd_ne by auto.
-      firstorder.
-    Qed.
-
-    Lemma mem_match_cases : forall ma mb a,
-      mem_match ma mb ->
-      (ma a = None /\ mb a = None) \/
-      exists va vb, (ma a = Some va /\ mb a = Some vb).
-    Proof.
-      intros.
-      specialize (H a); destruct H.
-      destruct (ma a); destruct (mb a).
-      right. eexists; eauto.
-      contradict H0; intuition; congruence.
-      contradict H; intuition; congruence.
-      intuition.
-    Qed.
-
-  End MEM_MATCH.
-
-
   Lemma mem_pred_cachepred_refl : forall m m' m'' buf,
     @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred buf) m' m'' ->
     mem_match m m' ->
@@ -1248,6 +1153,27 @@ Module WBCache.
     apply avs2mem_notindomain; auto.
   Qed.
 
+  Lemma mem_pred_cachepred_mem_incl : forall mm ma mb ,
+    @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred mm) mb ma ->
+    mem_incl ma mb.
+  Proof.
+    intros.
+    intro a.
+    destruct (mb a) eqn: ?.
+    eapply mem_pred_extract in H; eauto.
+    right.
+    unfold cachepred in H at 2.
+    destruct (Map.find a mm) eqn: Heq.
+    - destruct_lift H; destruct_pair_eq; subst.
+      do 2 eexists; split.
+      eapply ptsto_valid'; eauto.
+      split; eauto.
+      apply incl_tl; apply incl_appr; apply incl_refl.
+    - do 2 eexists; intuition.
+      eapply ptsto_valid'; eauto.
+    - left; intuition.
+      eapply mem_pred_cachepred_none; eauto.
+  Qed.
 
   Lemma mem_pred_cachepred_add : forall mm (d : @Mem.mem _ addr_eq_dec _) i v v0,
     d i = Some v0 ->
@@ -1308,166 +1234,6 @@ Module WBCache.
     eapply pimpl_trans; [ | eapply H1 ]; cancel.
     Unshelve. exact tt.
   Qed.
-
-
-
-  Section MEM_REGION.
-
-    Variable V : Type.
-    Implicit Types m ma mb : @Mem.mem _ addr_eq_dec V.
-
-    Definition region_filled m st n :=
-      forall a, a >= st -> a < st + n -> m a <> None.
-
-    Lemma region_filled_sel : forall m st n a,
-      region_filled m st n ->
-      a >= st -> a < st + n ->
-      exists v, m a = Some v.
-    Proof.
-      intros.
-      specialize (H a H0 H1).
-      destruct (m a); try congruence.
-      eexists; eauto.
-    Qed.
-
-    Lemma listupd_region_filled : forall l m a,
-      region_filled (listupd m a l) a (length l).
-    Proof.
-      unfold region_filled; destruct l; simpl; intros.
-      omega.
-      destruct (addr_eq_dec a a0); subst.
-      rewrite listupd_sel_oob by omega.
-      rewrite upd_eq; congruence.
-      erewrite listupd_sel_inb with (def := v) by omega.
-      congruence.
-    Qed.
-
-    Lemma arrayN_region_filled : forall l m a F,
-      (F * arrayN a l)%pred m ->
-      region_filled m a (length l).
-    Proof.
-      unfold region_filled; induction l; simpl; intros.
-      omega.
-      destruct (addr_eq_dec a1 a0); subst.
-      apply sep_star_comm in H; apply sep_star_assoc in H.
-      apply ptsto_valid in H; congruence.
-      apply sep_star_assoc in H.
-      eapply IHl; eauto; omega.
-    Qed.
-
-    Lemma mem_match_listupd_l : forall l ma mb a,
-      mem_match ma mb ->
-      region_filled mb a (length l) ->
-      mem_match (listupd ma a l) mb.
-    Proof.
-      induction l; simpl; auto; intros.
-      apply IHl.
-      eapply region_filled_sel in H0; eauto.
-      destruct H0.
-      eapply mem_match_upd_l; eauto.
-      omega.
-      unfold region_filled in *; intuition.
-      eapply H0 with (a := a1); try omega; auto.
-    Qed.
-
-  End MEM_REGION.
-
-
-  Section MEM_INCL.
-
-    Implicit Types m ma mb : rawdisk.
-
-    Definition mem_incl ma mb := forall a,
-      (ma a = None /\ mb a = None) \/
-      exists va vb, ma a = Some va /\ mb a = Some vb /\
-      incl (vsmerge va) (vsmerge vb).
-
-    Lemma mem_incl_refl : forall m,
-      mem_incl m m.
-    Proof.
-      unfold mem_incl; intros.
-      destruct (m a) eqn: Heq; intuition.
-      right; do 2 eexists; intuition.
-    Qed.
-
-    Lemma mem_incl_trans : forall m ma mb,
-      mem_incl ma m ->
-      mem_incl m mb ->
-      mem_incl ma mb.
-    Proof.
-      unfold mem_incl; intuition.
-      specialize (H a); specialize (H0 a).
-      intuition; repeat deex; try congruence.
-      right.
-      rewrite H1 in H0; inversion H0; subst.
-      do 2 eexists; intuition eauto.
-      eapply incl_tran; eauto.
-    Qed.
-
-    Lemma mem_pred_cachepred_mem_incl : forall mm ma mb ,
-      @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred mm) mb ma ->
-      mem_incl ma mb.
-    Proof.
-      intros.
-      intro a.
-      destruct (mb a) eqn: ?.
-      eapply mem_pred_extract in H; eauto.
-      right.
-      unfold cachepred in H at 2.
-      destruct (Map.find a mm) eqn: Heq.
-      - destruct_lift H; destruct_pair_eq; subst.
-        do 2 eexists; split.
-        eapply ptsto_valid'; eauto.
-        split; eauto.
-        apply incl_tl; apply incl_appr; apply incl_refl.
-      - do 2 eexists; intuition.
-        eapply ptsto_valid'; eauto.
-      - left; intuition.
-        eapply mem_pred_cachepred_none; eauto.
-    Qed.
-
-    Lemma possible_crash_incl_trans : forall m ma mb,
-      possible_crash ma m ->
-      mem_incl ma mb ->
-      possible_crash mb m.
-    Proof.
-      unfold possible_crash, mem_incl; intros.
-      specialize (H a); specialize (H0 a).
-      intuition; repeat deex; try congruence.
-      right.
-      rewrite H2 in H0; inversion H0; subst.
-      do 2 eexists; intuition eauto.
-    Qed.
-
-    Lemma mem_incl_upd : forall a va vb ma mb,
-      mem_incl ma mb ->
-      incl (vsmerge va) (vsmerge vb) ->
-      mem_incl (upd ma a va) (upd mb a vb).
-    Proof.
-      unfold mem_incl; intros.
-      specialize (H a0).
-      destruct (addr_eq_dec a a0); subst.
-      repeat rewrite upd_eq by auto.
-      intuition; repeat deex; intuition.
-      right; do 2 eexists; eauto.
-      right; do 2 eexists; eauto.
-      repeat rewrite upd_ne by auto.
-      intuition.
-    Qed.
-
-    Lemma mem_incl_listupd : forall la lb,
-      Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) la lb ->
-      forall ma mb st,
-      mem_incl ma mb ->
-      mem_incl (listupd ma st la) (listupd mb st lb).
-    Proof.
-      induction 1; simpl; intros; auto.
-      apply IHForall2.
-      apply mem_incl_upd; auto.
-    Qed.
-
-  End MEM_INCL.
-
 
 
   Lemma synced_range_ok_xcrash : forall vs n mm (d raw : @Mem.mem _ addr_eq_dec _) F st m,
@@ -1571,8 +1337,6 @@ Module WBCache.
     (* XXX need an XCRASH version of the loop crash invariant? *)
     admit.
   Admitted.
-
-
 
 
 
