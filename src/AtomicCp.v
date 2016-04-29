@@ -154,7 +154,7 @@ Module ATOMICCP.
     simpl.
     pred_apply; cancel.
     eauto.
-    step.git
+    step.
     admit.
     step.
     prestep. norm. safecancel.
