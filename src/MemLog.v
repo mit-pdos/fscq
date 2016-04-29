@@ -444,6 +444,9 @@ Module MLog.
     eassign dummy1; pred_apply; cancel.
     pimpl_crash; cancel; auto. cancel.
 
+    unfold BUFCACHE.rep; cancel.
+    pred_apply.
+    unfold synced_rep; cancel.
     subst; eapply synced_data_replay_inb; eauto.
     eassign ((Map.elements t)); pred_apply; cancel.
 
@@ -455,7 +458,14 @@ Module MLog.
     pred_apply; cancel.
     destruct (selN _ a _); inversion Hx; auto.
 
+    erewrite DLog.rep_hashmap_subset; eauto.
+    eauto.
+    erewrite replay_disk_none_selN; try eassumption.
+    eassign (vs_cur, vs_old); eauto.
+    eexists. pred_apply; cancel.
+
     pimpl_crash; cancel; eauto.
+    erewrite DLog.rep_hashmap_subset; eauto.
   Qed.
 
   End UnfoldProof1.
@@ -494,8 +504,15 @@ Module MLog.
     eapply log_valid_replay; eauto.
     apply replay_disk_replay_mem; auto.
 
-    xcrash; eauto.
-    or_l; apply DLog.synced_extend_unsynced.
+    repeat xcrash_rewrite.
+    (* XXX: goal is would_recover_either' =p=> ExtendedUnsync \/ Extended,
+        but this should be crash_xform (would_recover_either')
+                            =p=> crash_xform (ExtendedUnsync \/ Extended) *)
+    unfold DLog.would_recover_either.
+    xcrash.
+    unfold DLog.would_recover_either'.
+    cancel.
+    apply DLog.synced_extend_unsynced.
     or_r; auto.
   Qed.
 
