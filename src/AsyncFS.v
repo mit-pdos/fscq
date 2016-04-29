@@ -522,7 +522,7 @@ Module AFS.
     cancel; cancel.
     cancel; cancel.
     cancel; cancel.
- Qed.
+  Qed.
 
   Theorem file_set_attr_ok : forall fsxp inum attr mscs,
   {< ds pathname Fm Ftop tree f,
@@ -536,10 +536,13 @@ Module AFS.
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
         [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]]
-  CRASH:hm'
+  XCRASH:hm'
          LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm'
   >} file_set_attr fsxp inum attr mscs.
   Proof.
+    unfold file_set_attr; intros.
+    step.
+    
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (file_set_attr _ _ _ _) _) => apply file_set_attr_ok : prog.
@@ -558,7 +561,7 @@ Module AFS.
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]]
-    CRASH:hm'
+    XCRASH:hm'
       (* interesting: no need to add d to ds, because when we crash we always recover with the first disk of ds *)
       LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds hm'
      >} file_truncate fsxp inum sz mscs.

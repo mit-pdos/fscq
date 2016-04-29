@@ -500,6 +500,13 @@ Lemma find_subtree_update_subtree: forall fn tree elem0 elem1,
 Proof.
 Admitted.
 
+Lemma find_subtree_update_subtree_ne: forall fn1 fn2 tree elem,
+  fn1 <> fn2 ->
+  DIRTREE.find_subtree [fn1] (DIRTREE.update_subtree [fn2] elem tree) = 
+    DIRTREE.find_subtree [fn1] tree.
+Proof.
+Admitted.
+
 
 Lemma update_update_subtree_eq: forall fn elem0 elem1 tree,
   DIRTREE.update_subtree [fn] elem1 (DIRTREE.update_subtree [fn] elem0 tree) =
@@ -688,9 +695,9 @@ Proof.
   unfold DIRTREE.update_subtree; eauto.
 Qed.
 
-Opaque DIRTREE.tree_graft.
-Opaque DIRTREE.update_subtree.
-Opaque DIRTREE.find_subtree.
-Opaque DIRTREE.find_name.
-Opaque DIRTREE.add_to_dir.
-Opaque DIRTREE.delete_from_dir.
+Global Opaque DIRTREE.tree_graft.
+Global Opaque DIRTREE.update_subtree.
+Global Opaque DIRTREE.find_subtree.
+Global Opaque DIRTREE.find_name.
+Global Opaque DIRTREE.add_to_dir.
+Global Opaque DIRTREE.delete_from_dir.
