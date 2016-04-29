@@ -584,33 +584,39 @@ Module AFS.
     instantiate (pathname := v3); eauto.
     safestep.  (* crucial to use safe version *)
     or_l.
-    cancel.
-    eassign ( LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v \/
-      (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs))%pred.
+    cancel. cancel.
+    instantiate (1 := (fun hm => (LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v hm \/
+      (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs hm)))%pred).
+    instantiate (1 := (fun hm => F_ * (LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v hm \/
+      (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs hm)))%pred).
+    reflexivity.
     cancel; cancel.
-
+    cancel.
+    cancel.
     or_r.
     cancel.
     subst; simpl.
     cancel; cancel.
-    cancel; cancel.
-
     xform_norm.
     recover_ro_ok.
     rewrite LOG.crash_xform_intact.
     xform_norm.
     rewrite SB.crash_xform_rep.
+    recover_ro_ok.
     cancel.
-
     rewrite LOG.notxn_after_crash_diskIs. cancel.
-    rewrite nthd_0; eauto. omega.
-    safestep; subst.
-    eassign d0; eauto.
+
     pred_apply; instantiate (1 := nil).
-    replace n with 0 in *.
     rewrite nthd_0; simpl; auto.
-    simpl in *; omega.
     cancel; cancel.
+    omega.
+
+    safestep; subst.
+    cancel.
+    cancel.
+    cancel.
+    cancel.
+    cancel.
  
     rewrite LOG.after_crash_idem.
     xform_norm.
@@ -619,11 +625,7 @@ Module AFS.
     cancel.
 
     safestep; subst.
-    eassign d; eauto.
-    pred_apply. 
-    replace n with 0 in *.
-    rewrite nthd_0; simpl; auto.
-    simpl in *; omega.
+    cancel; cancel.
     cancel; cancel.
   Qed.
 
