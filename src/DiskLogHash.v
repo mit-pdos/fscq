@@ -194,10 +194,6 @@ Module PaddedLog.
       cs <- BUFCACHE.write (LAHdr xp) (hdr2val (mk_header n)) cs;
       rx cs.
 
-    Definition evict T xp cs rx : prog T :=
-      cs <- BUFCACHE.evict (LAHdr xp) cs;
-      rx cs.
-
     Definition sync T xp cs rx : prog T :=
       cs <- BUFCACHE.sync (LAHdr xp) cs;
       rx cs.
@@ -237,6 +233,7 @@ Module PaddedLog.
     Proof.
       unfold read.
       hoare.
+      pred_apply; cancel.
       subst; rewrite val2hdr2val; simpl.
       unfold hdr_goodSize in *; intuition.
       repeat rewrite wordToNat_natToWord_idempotent'; auto.
@@ -843,9 +840,10 @@ Module PaddedLog.
     >} avail xp cs.
   Proof.
     unfold avail.
-    step.
-    step.
+    safestep.
+    safestep.
     solve_checksums.
+    cancel.
     solve_checksums.
   Qed.
 
@@ -863,7 +861,7 @@ Module PaddedLog.
     >} read xp cs.
   Proof.
     unfold read.
-    step.
+    safestep.
 
     prestep. norm. cancel. intuition simpl.
     eassign (map ent_addr (padded_log l)).
@@ -886,6 +884,7 @@ Module PaddedLog.
 
     cancel.
     solve_checksums.
+    cancel.
     solve_checksums.
   Qed.
 
@@ -1429,11 +1428,6 @@ Module PaddedLog.
                           (ndesc + nndesc, ndata + nndata),
                           (h_addr, h_valu)) cs;
       (* Extended *)
-
-      cs <- Desc.evict_aligned xp ndesc nndesc cs;
-      cs <- Data.evict_aligned xp ndata nndata cs;
-      cs <- Hdr.evict xp cs;
-
       cs <- Desc.sync_aligned xp ndesc nndesc cs;
       cs <- Data.sync_aligned xp ndata nndata cs;
       cs <- Hdr.sync xp cs;
@@ -1512,8 +1506,6 @@ Module PaddedLog.
       unfold Hdr.hdr_goodSize in *; intuition.
       eapply loglen_valid_goodSize_l; eauto.
       eapply loglen_valid_goodSize_r; eauto.
-
-      (* XXX: need evict_aligned_ok *)
 
       (* sync content *)
       safestep.
