@@ -1,7 +1,9 @@
 #!/bin/sh
 
-DEV=/dev/sda3
-FSCQBLOCKS=34310
+DEV=/dev/sda1
+OLDFSCQBLOCKS=34310
+NEWFSCQBLOCKS=66628
+ORIGFSCQ=/tmp/fscq-master
 MOUNT="/tmp/ft"
 TRACE="/tmp/blktrace.out"
 
@@ -16,19 +18,25 @@ fi
 ## Just in case..
 fusermount -u $MOUNT
 mkdir -p $MOUNT
-mkdir -p $MOUNT.real
 
 ## Ensure sudo works first
 ( sudo true ) || exit 1
 
+## ramdisk
+DEV=$(losetup -f)
+dd if=/dev/zero of=/dev/shm/fscq.img bs=1G count=1
+sudo losetup $DEV /dev/shm/fscq.img
+sudo chmod 777 $DEV
+
 ## Do a priming run on whatever the native /tmp file system is..
+rm -rf $MOUNT
 mkdir -p $MOUNT
 $CMD
 rm -rf $MOUNT
 mkdir -p $MOUNT
 
 ## fscq
-dd if=/dev/zero of=$DEV bs=4096 count=$FSCQBLOCKS
+dd if=/dev/zero of=$DEV bs=4096 count=$NEWFSCQBLOCKS
 ../src/mkfs $DEV
 ../src/fuse $DEV -s -f $MOUNT &
 sudo blktrace -d $DEV -o - > $TRACE &
@@ -44,52 +52,38 @@ wait $TRACEPID
 mv $TRACE $SCRIPTPREFIX-fscq.blktrace
 ./blkstats.sh $SCRIPTPREFIX-fscq.blktrace >> $SCRIPTPREFIX-fscq.out
 
-## xv6
-../xv6/mkfs $DEV
-../xv6/xv6fs $DEV -s -f $MOUNT &
+## origfscq
+dd if=/dev/zero of=$DEV bs=4096 count=$OLDFSCQBLOCKS
+$ORIGFSCQ/src/mkfs $DEV
+$ORIGFSCQ/src/fuse $DEV -s -f $MOUNT &
 sudo blktrace -d $DEV -o - > $TRACE &
 TRACEPID=$!
 sleep 1
 
-script $SCRIPTPREFIX-xv6.out -c "$CMD"
+script $SCRIPTPREFIX-origfscq.out -c "$CMD"
 
 fusermount -u $MOUNT
 sudo killall blktrace
 sleep 1
 wait $TRACEPID
-mv $TRACE $SCRIPTPREFIX-xv6.blktrace
-./blkstats.sh $SCRIPTPREFIX-xv6.blktrace >> $SCRIPTPREFIX-xv6.out
+mv $TRACE $SCRIPTPREFIX-origfscq.blktrace
+./blkstats.sh $SCRIPTPREFIX-origfscq.blktrace >> $SCRIPTPREFIX-origfscq.out
 
-## ext3
-yes | mke2fs -j $DEV
-sudo mount $DEV $MOUNT -o data=journal,sync
+## ext4
+yes | mke2fs -t ext4 $DEV
+sudo mount $DEV $MOUNT -o journal_async_commit
 sudo chmod 777 $MOUNT
 sudo blktrace -d $DEV -o - > $TRACE &
 TRACEPID=$!
 sleep 1
 
-script $SCRIPTPREFIX-ext3.out -c "$CMD"
+script $SCRIPTPREFIX-ext4.out -c "$CMD"
 
 sudo killall blktrace
 sudo umount $MOUNT
 wait $TRACEPID
-mv $TRACE $SCRIPTPREFIX-ext3.blktrace
-./blkstats.sh $SCRIPTPREFIX-ext3.blktrace >> $SCRIPTPREFIX-ext3.out
+mv $TRACE $SCRIPTPREFIX-ext4.blktrace
+./blkstats.sh $SCRIPTPREFIX-ext4.blktrace >> $SCRIPTPREFIX-ext4.out
 
-## ext3fuse
-yes | mke2fs -j $DEV
-sudo mount $DEV $MOUNT.real -o data=journal,sync
-sudo chmod 777 $MOUNT.real
-fusexmp $MOUNT -o modules=subdir,subdir=$MOUNT.real
-sudo blktrace -d $DEV -o - > $TRACE &
-TRACEPID=$!
-sleep 1
-
-script $SCRIPTPREFIX-ext3fuse.out -c "$CMD"
-
-sudo killall blktrace
-fusermount -u $MOUNT
-sudo umount $MOUNT.real
-wait $TRACEPID
-mv $TRACE $SCRIPTPREFIX-ext3fuse.blktrace
-./blkstats.sh $SCRIPTPREFIX-ext3fuse.blktrace >> $SCRIPTPREFIX-ext3fuse.out
+## Just in case this was a ramdisk...
+sudo losetup -d $DEV

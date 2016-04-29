@@ -908,6 +908,12 @@ Module PaddedLog.
   Local Hint Resolve goodSize_0.
 
 
+  Definition init T xp cs rx : prog T :=
+    h <- Hash default_valu;
+    cs <- Hdr.write xp ((0, 0), (0, 0), (h, h)) cs;
+    cs <- Hdr.sync xp cs;
+    rx cs.
+
   Definition trunc T xp cs rx : prog T :=
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(_, current_length, _) := nr in
@@ -2596,6 +2602,10 @@ Module DLog.
     unfold read.
     hoare.
   Qed.
+
+  Definition init T xp cs rx : prog T :=
+    cs <- PaddedLog.init xp cs;
+    rx cs.
 
   Definition trunc T xp cs rx : prog T :=
     cs <- PaddedLog.trunc xp cs;

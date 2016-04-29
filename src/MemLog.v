@@ -208,6 +208,7 @@ Module MLog.
     rx (mk_memstate (replay_mem log vmap0) cs).
 
   Definition init T (xp : log_xparams) cs rx : prog T :=
+    cs <- DLog.init xp cs;
     rx (mk_memstate vmap0 cs).
 
 
