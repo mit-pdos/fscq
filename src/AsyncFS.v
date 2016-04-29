@@ -487,10 +487,13 @@ Module AFS.
     eauto.
     eauto.
     step.
-    eassign ( LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v \/
-      (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs))%pred.
-    cancel; cancel.
 
+   instantiate (1 := (fun hm => LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v hm\/
+      (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs hm))%pred).
+    instantiate (1 := (fun hm => F_ * (LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v hm\/
+      (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs hm)))%pred).
+    reflexivity.
+    cancel. cancel.
     xform_norm.
     recover_ro_ok.
     rewrite LOG.crash_xform_intact.
@@ -502,13 +505,13 @@ Module AFS.
     rewrite nthd_0; eauto. omega.
 
     safestep; subst.
-    eassign d0; eauto.
-    pred_apply; instantiate (1 := nil).
+    instantiate (1 := nil).
     replace n with 0 in *.
     rewrite nthd_0; simpl; auto.
     simpl in *; omega.
-    cancel; cancel.
 
+    cancel; cancel. cancel.
+    cancel.
     rewrite LOG.after_crash_idem.
     xform_norm.
     rewrite SB.crash_xform_rep.
@@ -517,7 +520,9 @@ Module AFS.
 
     step.
     cancel; cancel.
-  Qed.
+    cancel; cancel.
+    cancel; cancel.
+ Qed.
 
   Theorem file_truncate_ok : forall fsxp inum sz mscs,
     {< ds Fm Ftop tree pathname f,
@@ -550,6 +555,7 @@ Module AFS.
     step.
     apply LOG.notxn_intact.
     apply LOG.notxn_intact.
+    Unshelve.  all: eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (file_truncate _ _ _ _) _) => apply file_truncate_ok : prog.
