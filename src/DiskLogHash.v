@@ -1477,8 +1477,10 @@ Module PaddedLog.
              (F * rep xp (Synced ((padded_log old) ++ new)) hm')%pred d' ]] \/
           [[ r = false /\ length ((padded_log old) ++ new) > LogLen xp /\
              (F * rep xp (Synced old) hm')%pred d' ]])
-    XCRASH:hm_crash
-          would_recover_either xp F old new hm_crash
+    XCRASH:hm_crash exists cs' d',
+          BUFCACHE.rep cs' d' * (
+          [[ (F * rep xp (Synced old) hm_crash)%pred d' ]] \/
+          [[ (F * rep xp (Extended old new) hm_crash)%pred d' ]])
     >} extend xp new cs.
   Proof.
     unfold extend, would_recover_either, would_recover_either'.
@@ -1539,7 +1541,7 @@ Module PaddedLog.
       cancel.
       repeat xcrash_rewrite.
       xform_norm. cancel. xform_normr. cancel.
-      or_r; or_l. cancel.
+      or_r. cancel.
       extend_crash.
       or_l; cancel.
       solve_checksums.
@@ -1549,7 +1551,7 @@ Module PaddedLog.
       cancel.
       repeat xcrash_rewrite.
       xform_norm; cancel. xform_normr; cancel.
-      or_r; or_l. cancel. extend_crash.
+      or_r. cancel. extend_crash.
       or_l; cancel.
       solve_checksums.
       solve_checksums.
@@ -1557,7 +1559,7 @@ Module PaddedLog.
       cancel.
       repeat xcrash_rewrite.
       xform_norm; cancel. xform_normr; cancel.
-      or_r; or_l. cancel. extend_crash.
+      or_r. cancel. extend_crash.
       or_l; cancel.
       solve_checksums.
       solve_checksums.
@@ -1565,7 +1567,7 @@ Module PaddedLog.
       cancel.
       repeat xcrash_rewrite.
       xform_norm; cancel. xform_normr; cancel.
-      or_r; or_l. cancel. extend_crash.
+      or_r. cancel. extend_crash.
       or_l; cancel.
       solve_checksums.
       solve_checksums.
@@ -1580,7 +1582,6 @@ Module PaddedLog.
       repeat xcrash_rewrite.
       xform_norm; cancel. xform_normr; cancel.
       or_l; cancel.
-      rewrite sep_star_comm.
       rewrite Desc.avail_rep_merge. cancel.
       rewrite map_length.
       apply helper_loglen_desc_valid_extend; auto.
@@ -1748,8 +1749,8 @@ Module PaddedLog.
     unfold rep_contents_unmatched.
     rewrite vals_nonzero_padded_log, desc_padding_synced_piff.
     cancel.
-    replace (@ndesc_list waddr l) with (ndesc_log new).
-    replace (@length valu l0) with (ndata_log new).
+    replace (ndesc_list _) with (ndesc_log new).
+    replace (length l0) with (ndata_log new).
     cancel.
 
     replace DataSig.items_per_val with 1 in * by (cbv; auto); try omega.
@@ -1998,7 +1999,7 @@ Module PaddedLog.
     rewrite map_length, padded_log_length.
     all: auto.
     rewrite desc_padding_synced_piff.
-    cancel.
+    pred_apply; cancel.
 
     safestep; subst.
     instantiate (1:= vals_nonzero l).
@@ -2749,8 +2750,10 @@ Module DLog.
                 (F * rep xp (Synced (nr - (rounded (length new))) (old ++ new)) hm')%pred d' ]] \/
               [[ r = false /\ length new > nr /\
                 (F * rep xp (Synced nr old) hm')%pred d' ]])
-    CRASH:hm'
-              would_recover_either xp F old new hm'
+    XCRASH:hm' exists cs' d',
+              BUFCACHE.rep cs' d' * (
+              [[ (F * rep xp (Synced nr old) hm')%pred d' ]] \/
+              [[ (F * rep xp (Extended old new) hm')%pred d' ]])
     >} extend xp new cs.
   Proof.
     unfold extend.
@@ -2760,25 +2763,13 @@ Module DLog.
     step.
 
     or_l. norm; [ cancel | intuition; pred_apply; norm ].
-    instantiate (1 := (PaddedLog.padded_log dummy ++ PaddedLog.padded_log new)).
+    eassign (PaddedLog.padded_log dummy ++ PaddedLog.padded_log new).
     cancel; auto.
     intuition.
 
-    cancel.
-    unfold PaddedLog.would_recover_either, PaddedLog.would_recover_either'.
-    unfold would_recover_either, would_recover_either'.
-    unfold rep, rep_common.
-    cancel.
-
+    xcrash.
     or_l; cancel.
-    or_r; or_l; cancel.
-    or_r; or_r; or_l. norm.
-    eassign (PaddedLog.padded_log dummy ++ PaddedLog.padded_log new).
-    unfold stars; simpl.
-    rewrite <- PaddedLog.rep_synced_app_pimpl.
-    cancel.
-    intuition.
-    or_r; or_r; or_r; cancel.
+    or_r; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (avail _ _) _) => apply avail_ok : prog.

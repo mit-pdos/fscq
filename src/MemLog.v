@@ -107,10 +107,10 @@ Module MLog.
         [[ map_replay mm d0 d ]] *
         synced_rep xp d0 *
         DLog.rep xp (DLog.Synced na log) hm
-    | Flushing d ents =>
+    | Flushing d ents => exists na,
         [[ log_valid ents d /\ map_replay mm d0 d ]] *
         synced_rep xp d0 *
-        (DLog.rep xp (DLog.ExtendedUnsync log) hm
+        (DLog.rep xp (DLog.Synced na log) hm
       \/ DLog.rep xp (DLog.Extended log ents) hm)
     | Applying d => exists na,
         [[ map_replay mm d0 d ]] *
@@ -244,9 +244,9 @@ Module MLog.
     unfold rep, map_replay, unsync_rep, synced_rep in *.
     cancel; eauto.
     or_l.
-    unfold DLog.rep. cancel.
-    eassign padded. cancel.
-    instantiate (1 := nil).
+    eassign na.
+    unfold DLog.rep. cancel; eauto.
+    cancel.
     unfold log_valid; intuition.
     unfold KNoDup; auto.
     inversion H2.
@@ -506,15 +506,16 @@ Module MLog.
     apply replay_disk_replay_mem; auto.
 
     repeat xcrash_rewrite.
-    (* XXX: goal is would_recover_either' =p=> ExtendedUnsync \/ Extended,
-        but this should be crash_xform (would_recover_either')
-                            =p=> crash_xform (ExtendedUnsync \/ Extended) *)
-    unfold DLog.would_recover_either.
-    xcrash.
-    unfold DLog.would_recover_either'.
-    cancel.
-    apply DLog.synced_extend_unsynced.
-    or_r; auto.
+    xform. cancel.
+    xform_normr; cancel.
+    erewrite <- BUFCACHE.crash_xform_rep_r; eauto.
+    pred_apply; cancel; eauto.
+    or_l; cancel.
+    xform_normr; cancel.
+    erewrite <- BUFCACHE.crash_xform_rep_r; eauto.
+    pred_apply; cancel; eauto.
+    or_r; cancel.
+    Unshelve. auto.
   Qed.
 
   End UnfoldProof2.
@@ -604,6 +605,7 @@ Module MLog.
   Proof.
     unfold apply; intros.
     step.
+    unfold synced_rep; cancel.
     step.
     rewrite vsupd_vecs_length.
     apply map_valid_Forall_synced_map_fst; auto.
@@ -660,6 +662,11 @@ Module MLog.
     unfold rep at 1.
     cancel.
     step.
+    cancel.
+    or_l; cancel.
+    unfold rep; cancel.
+    unfold map_replay.
+    rewrite length_nil with (l:=ents); eauto.
 
     (* case 1: apply happens *)
     prestep.
@@ -1273,6 +1280,9 @@ Module MLog.
       autorewrite with lists.
       erewrite <- possible_crash_list_length; eauto.
       eapply length_eq_map_valid; eauto; simplen.
+      eapply log_valid_length_eq; eauto.
+      autorewrite with lists.
+      erewrite <- possible_crash_list_length; eauto.
       eapply list2nmem_replay_disk_crash_xform; eauto; easy.
   Qed.
 
@@ -1289,6 +1299,9 @@ Module MLog.
     autorewrite with lists.
     erewrite <- possible_crash_list_length; eauto.
     eapply length_eq_map_valid; eauto; simplen.
+    eapply log_valid_length_eq; eauto.
+    autorewrite with lists.
+    erewrite <- possible_crash_list_length; eauto.
     eapply list2nmem_replay_disk_crash_xform; eauto; easy.
   Qed.
 
