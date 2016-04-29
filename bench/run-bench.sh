@@ -1,6 +1,9 @@
 #!/bin/sh
 
 DEV=/dev/sda1
+OLDFSCQBLOCKS=34310
+NEWFSCQBLOCKS=66628
+ORIGFSCQ=/tmp/fscq-master
 MOUNT="/tmp/ft"
 TRACE="/tmp/blktrace.out"
 
@@ -19,13 +22,21 @@ mkdir -p $MOUNT
 ## Ensure sudo works first
 ( sudo true ) || exit 1
 
+## ramdisk
+DEV=$(losetup -f)
+dd if=/dev/zero of=/dev/shm/fscq.img bs=1G count=1
+sudo losetup $DEV /dev/shm/fscq.img
+sudo chmod 777 $DEV
+
 ## Do a priming run on whatever the native /tmp file system is..
+rm -rf $MOUNT
 mkdir -p $MOUNT
 $CMD
 rm -rf $MOUNT
 mkdir -p $MOUNT
 
 ## fscq
+dd if=/dev/zero of=$DEV bs=4096 count=$NEWFSCQBLOCKS
 ../src/mkfs $DEV
 ../src/fuse $DEV -s -f $MOUNT &
 sudo blktrace -d $DEV -o - > $TRACE &
@@ -40,6 +51,23 @@ sleep 1
 wait $TRACEPID
 mv $TRACE $SCRIPTPREFIX-fscq.blktrace
 ./blkstats.sh $SCRIPTPREFIX-fscq.blktrace >> $SCRIPTPREFIX-fscq.out
+
+## origfscq
+dd if=/dev/zero of=$DEV bs=4096 count=$OLDFSCQBLOCKS
+$ORIGFSCQ/src/mkfs $DEV
+$ORIGFSCQ/src/fuse $DEV -s -f $MOUNT &
+sudo blktrace -d $DEV -o - > $TRACE &
+TRACEPID=$!
+sleep 1
+
+script $SCRIPTPREFIX-origfscq.out -c "$CMD"
+
+fusermount -u $MOUNT
+sudo killall blktrace
+sleep 1
+wait $TRACEPID
+mv $TRACE $SCRIPTPREFIX-origfscq.blktrace
+./blkstats.sh $SCRIPTPREFIX-origfscq.blktrace >> $SCRIPTPREFIX-origfscq.out
 
 ## ext4
 yes | mke2fs -t ext4 $DEV
@@ -56,3 +84,6 @@ sudo umount $MOUNT
 wait $TRACEPID
 mv $TRACE $SCRIPTPREFIX-ext4.blktrace
 ./blkstats.sh $SCRIPTPREFIX-ext4.blktrace >> $SCRIPTPREFIX-ext4.out
+
+## Just in case this was a ramdisk...
+sudo losetup -d $DEV
