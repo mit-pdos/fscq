@@ -642,7 +642,7 @@ Module AFS.
       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
       [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge v0)) ]]]
-    CRASH:hm'
+    XCRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists d tree' f',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, nil) hm' *
@@ -658,13 +658,35 @@ Module AFS.
     instantiate (1 := (d, nil)); simpl.
     rewrite singular_latest by auto; simpl; cancel.
     step.
-    subst; pimpl_crash.
-    cancel. or_r; cancel; eauto.
+    cancel.
+    eapply pimpl_trans.
+    2: eapply H1.
+    cancel.
     rewrite LOG.notxn_idempred; eauto.
-
-    or_l; rewrite LOG.recover_any_idempred; cancel.
-    or_r; cancel; eauto.
+    xform_norm. or_r. cancel.
+    xform_norm. cancel.
+    xform_norm. cancel.
+    xform_norm. cancel.
+    eapply pimpl_trans.
+    2: eapply H1.
+    cancel.
+    eapply pimpl_trans.
+    eapply H0.
+    xform_norm. cancel.
+    or_l. rewrite LOG.recover_any_idempred; cancel.
+    or_r.
+    xform_norm. cancel.
+    xform_norm. cancel.
+    xform_norm. cancel.
+    xform_norm. cancel.
     rewrite LOG.intact_idempred; cancel.
+    pred_apply.
+    cancel.
+    eauto.
+    eapply pimpl_trans.
+    2: eapply H1.
+    xform_norm. cancel.
+    xform_norm. cancel.
     or_l; rewrite LOG.notxn_idempred; cancel.
   Qed.
 
