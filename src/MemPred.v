@@ -190,8 +190,6 @@ Section MemPred.
     cancel.
     eapply listpred_avs_except; subst; eauto.
     eauto.
-    subst.
-    setoid_rewrite mem_except_avs_except; auto.
   Qed.
 
   Theorem mem_pred_extract : forall hm a v,
@@ -252,7 +250,7 @@ Section MemPred.
   Proof.
     unfold mem_pred, mem_pred_one, avs2mem; split; norm; auto.
     destruct hm_avs; try cancel.
-    eapply equal_f with (x := h) in H2.
+    eapply equal_f with (x := p_1) in H2.
     rewrite upd_eq in H2 by auto.
     unfold empty_mem in H2; congruence.
     instantiate (1 := nil); cancel.

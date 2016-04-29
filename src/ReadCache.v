@@ -166,6 +166,7 @@ Module RCache.
     >} read a cs.
   Proof.
     unfold read.
+
     safestep.
     cancel; eauto.
     eauto.
@@ -274,7 +275,7 @@ Module RCache.
     rewrite diskIs_extract with (a:=a); try pred_apply; cancel.
 
     safestep.
-    eassign (@Mem.upd _ _ addr_eq_dec d a (v2_cur, [])); unfold stars; simpl.
+    eassign (@Mem.upd _ _ addr_eq_dec d a (v_cur, [])); unfold stars; simpl.
     rewrite <- diskIs_combine_upd with (m:=d); cancel.
     denote! (forall _ _, Map.MapsTo _ _ _ -> _) as Hx.
     denote Map.MapsTo as Hy; denote ptsto as Hz.
@@ -290,7 +291,7 @@ Module RCache.
     rewrite <- diskIs_combine_same with (m:=d) (a:=a); try pred_apply; cancel.
     all: eauto.
     Unshelve.
-    5: exact v2_cur.  all: eauto.
+    5: exact v_cur.  all: eauto.
     destruct cs; eauto.
   Qed.
 
@@ -445,8 +446,6 @@ Module RCache.
 
     cancel; subst.
     cbn; auto.
-    cbn; omega.
-    eauto.
     contradict H; apply Map.empty_1.
   Qed.
 

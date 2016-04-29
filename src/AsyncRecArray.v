@@ -350,7 +350,7 @@ Module AsyncRecArray (RA : RASig).
     avail_rep xp start n1 * avail_rep xp (start + n1) n2 =p=> avail_rep xp start nr.
   Proof.
     unfold avail_rep; intros; norm.
-    instantiate (1 := vsl0 ++ vsl).
+    instantiate (1 := vsl ++ vsl0).
     setoid_rewrite arrayN_app.
     rewrite Nat.add_assoc.
     cancel.

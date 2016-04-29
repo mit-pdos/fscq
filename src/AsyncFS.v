@@ -372,13 +372,14 @@ Module AFS.
   Proof.
     unfold file_get_attr; intros.
     step.
-    step.
+    safestep. eauto.
     eapply pimpl_ok2.
     apply LOG.commit_ro_ok.
     cancel.
     step.
     subst; pimpl_crash; cancel.
     apply LOG.notxn_intact.
+    cancel.
     apply LOG.notxn_intact.
   Qed.
 
