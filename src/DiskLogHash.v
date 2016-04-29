@@ -1471,7 +1471,7 @@ Module PaddedLog.
              (F * rep xp (Synced ((padded_log old) ++ new)) hm')%pred d' ]] \/
           [[ r = false /\ length ((padded_log old) ++ new) > LogLen xp /\
              (F * rep xp (Synced old) hm')%pred d' ]])
-    CRASH:hm_crash
+    XCRASH:hm_crash
           would_recover_either xp F old new hm_crash
     >} extend xp new cs.
   Proof.
@@ -1493,7 +1493,6 @@ Module PaddedLog.
       autorewrite with lists; apply helper_loglen_desc_valid_extend; auto.
 
       safestep.
-      eapply loglen_valid_data_valid; eauto.
       rewrite Data.avail_rep_split. cancel.
       autorewrite with lists.
       rewrite divup_1; rewrite <- entry_valid_ndata by auto.
@@ -1501,128 +1500,103 @@ Module PaddedLog.
 
       (* write header *)
       safestep.
-      unfold Hdr.rep in H22.
-      destruct_lift H22.
+      denote Hdr.rep as Hx; unfold Hdr.rep in Hx.
+      destruct_lift Hx.
       unfold Hdr.hdr_goodSize in *; intuition.
       eapply loglen_valid_goodSize_l; eauto.
       eapply loglen_valid_goodSize_r; eauto.
 
       (* sync content *)
-      safestep.
+      prestep. norm. cancel. intuition simpl.
       instantiate ( 1 := map ent_addr (padded_log new) ).
       rewrite map_length, padded_log_length; auto.
       apply padded_desc_valid.
       apply loglen_valid_desc_valid; auto.
       rewrite desc_padding_unsync_piff.
-      cancel.
+      pred_apply; cancel.
 
       safestep.
-      instantiate (1 := map ent_valu new).
       autorewrite with lists.
       rewrite entry_valid_ndata, Nat.mul_1_r; auto.
-      apply loglen_valid_data_valid; auto.
-      cancel.
 
       (* sync header *)
       safestep.
-      cancel.
 
       (* post condition *)
       safestep.
       or_l; cancel.
       cancel_by extend_ok_helper; auto.
-      rewrite ndesc_log_app, ndata_log_app.
-      rewrite ndesc_log_padded_log, ndata_log_padded_log.
-      eauto.
-      rewrite padded_log_length, roundup_roundup; auto.
-
-      unfold checksums_match; intuition.
-      rewrite map_app.
-      erewrite DescDefs.ipack_app.
-      rewrite rev_app_distr.
-      rewrite <- desc_ipack_padded.
-      solve_hash_list_rep.
-      rewrite map_length, padded_log_length; unfold roundup; eauto.
-
-      rewrite vals_nonzero_app, vals_nonzero_padded_log.
-      rewrite rev_app_distr.
-      solve_hash_list_rep.
-      solve_hashmap_subset.
-      all: auto.
+      solve_checksums.
 
       (* crash conditons *)
       (* after sync data : Extended *)
       cancel.
+      repeat xcrash_rewrite.
+      xform_norm. cancel. xform_normr. cancel.
       or_r; or_l. cancel.
       extend_crash.
       or_l; cancel.
       solve_checksums.
       solve_checksums.
 
-      (* after header sync : Synced new *)
-      or_r; or_r; or_l. cancel.
-      cancel_by extend_ok_helper; auto.
-      cancel_by extend_ok_synced_hdr_helper.
-      solve_checksums.
-
       (* before sync data, after sync desc : Extended *)
       cancel.
+      repeat xcrash_rewrite.
+      xform_norm; cancel. xform_normr; cancel.
       or_r; or_l. cancel. extend_crash.
       or_l; cancel.
       solve_checksums.
       solve_checksums.
 
-      (* before sync desc : Extended *)
       cancel.
+      repeat xcrash_rewrite.
+      xform_norm; cancel. xform_normr; cancel.
       or_r; or_l. cancel. extend_crash.
       or_l; cancel.
       solve_checksums.
       solve_checksums.
 
-      (* before header write : Synced old *)
       cancel.
-      or_l. cancel.
-      extend_crash.
-      solve_checksums.
-
-      (* after header write : Extended *)
+      repeat xcrash_rewrite.
+      xform_norm; cancel. xform_normr; cancel.
       or_r; or_l. cancel. extend_crash.
       or_l; cancel.
       solve_checksums.
       solve_checksums.
 
-      (* after desc write : Synced old *)
       cancel.
-      or_l. cancel.
-      extend_crash.
+      repeat xcrash_rewrite.
+      xform_norm; cancel. xform_normr; cancel.
+      or_l; cancel. extend_crash.
       solve_checksums.
 
-      (* before desc write : Synced old *)
       cancel.
-      or_l. cancel.
-      cancel.
+      repeat xcrash_rewrite.
+      xform_norm; cancel. xform_normr; cancel.
+      or_l; cancel.
+      rewrite sep_star_comm.
       rewrite Desc.avail_rep_merge. cancel.
       rewrite map_length.
       apply helper_loglen_desc_valid_extend; auto.
       solve_checksums.
 
-      (* after hash_list : Synced old *)
-      or_l. cancel.
+      xcrash.
+      or_l; cancel.
       solve_checksums.
 
-      or_l. cancel.
+      xcrash.
+      or_l; cancel.
       solve_checksums.
 
     (* false case *)
-    - step.
+    - safestep.
       or_r; cancel.
       apply loglen_invalid_overflow; auto.
       solve_checksums.
 
     (* crash for the false case *)
-    - cancel; hoare.
-      or_l.
-      cancel.
+    - xcrash.
+      or_l; cancel.
       solve_checksums.
   Qed.
 
