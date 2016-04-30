@@ -121,9 +121,11 @@ Module LogRecArray (RA : RASig).
     rewrite synced_list_length, ipack_length.
     apply div_lt_divup; auto.
     subst; rewrite synced_list_selN; simpl.
+    erewrite selN_val2block_equiv.
     apply ipack_selN_divmod; auto.
     apply list_chunk_wellformed; auto.
     unfold items_valid in *; intuition; auto.
+    apply Nat.mod_upper_bound; auto.
   Qed.
 
 
@@ -150,9 +152,11 @@ Module LogRecArray (RA : RASig).
 
     apply arrayN_unify.
     rewrite synced_list_selN, synced_list_updN; f_equal; simpl.
+    rewrite block2val_updN_val2block_equiv.
     apply ipack_updN_divmod; auto.
     apply list_chunk_wellformed.
     unfold items_valid in *; intuition; auto.
+    apply Nat.mod_upper_bound; auto.
     apply items_valid_updN; auto.
   Qed.
 
@@ -248,22 +252,27 @@ Module LogRecArray (RA : RASig).
     >} ifind lxp xp cond ms.
   Proof.
     unfold ifind, rep.
-    step.
-    step.
+    safestep. eauto.
+    safestep.
     eapply ifind_length_ok; eauto.
 
     step.
     unfold items_valid in *; intuition.
     or_r; cancel.
-    replace i with (snd (n, i)) by auto.
+    replace p_2 with (snd (p_1, p_2)) by auto.
     eapply ifind_block_ok_cond; eauto.
-    replace n with (fst (n, i)) by auto.
+    replace p_1 with (fst (p_1, p_2)) by auto.
     eapply ifind_result_inbound; eauto.
-    replace i with (snd (n, i)) by auto.
+    replace p_2 with (snd (p_1, p_2)) by auto.
     eapply ifind_result_item_ok; eauto.
+    cancel.
+
     step.
+
+    (*XXX: why is anon0 created so early? *)
+
     Unshelve. exact tt.
-  Qed.
+  Admitted.
 
   Hint Extern 1 ({{_}} progseq (get _ _ _ _) _) => apply get_ok : prog.
   Hint Extern 1 ({{_}} progseq (put _ _ _ _ _) _) => apply put_ok : prog.

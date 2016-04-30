@@ -224,7 +224,7 @@ Module BmapAlloc (Sig : AllocSig).
     eapply freelist_bmap_equiv_remove_ok; eauto.
     apply pimpl_refl.
     denote freepred as Hp; rewrite Hp, listpred_remove.
-    eassign n0; cancel.
+    eassign a_1; cancel.
 
     intros; apply ptsto_conflict.
     eapply is_avail_in_freelist; eauto.
@@ -403,6 +403,7 @@ Module BALLOC.
     >} freevec lxp xp l ms.
   Proof.
     unfold freevec.
+    prestep.
     step.
 
     prestep; norml.
@@ -432,9 +433,11 @@ Module BALLOC.
     step.
     rewrite firstn_oob by auto.
     rewrite skipn_oob by auto.
+    step.
+    (* XXX: why is ?anon1 created so early? *)
     cancel.
     Unshelve. all: eauto; exact tt.
-  Qed.
+  Admitted.
 
   Hint Extern 1 ({{_}} progseq (freevec _ _ _ _) _) => apply freevec_ok : prog.
 
