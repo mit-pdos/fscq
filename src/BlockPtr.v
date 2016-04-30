@@ -351,11 +351,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
     IndRec.rep ibn indrec =p=> exists v, ibn |-> (v, nil).
   Proof.
     unfold IndRec.rep; cancel.
-    assert (length (synced_list vl) = 1).
+    assert (length (synced_list (IndRec.Defs.ipack indrec)) = 1).
     unfold IndRec.items_valid in H2; intuition.
     rewrite synced_list_length; subst.
     rewrite IndRec.Defs.ipack_length.
-    setoid_rewrite H1.
+    setoid_rewrite H0.
     rewrite Rounding.divup_mul; auto.
     apply IndRec.Defs.items_per_val_not_0.
 
