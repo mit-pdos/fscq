@@ -429,10 +429,10 @@ Module MLog.
     PRE:hm
       << F, rep: xp (Synced na d) ms hm >> *
       [[[ d ::: exists F', (F' * a |-> vs) ]]]
-    POST:hm RET:^(ms', r)
-      << F, rep: xp (Synced na d) ms' hm >> * [[ r = fst vs ]]
-    CRASH:hm
-      exists ms', << F, rep: xp (Synced na d) ms' hm >>
+    POST:hm' RET:^(ms', r)
+      << F, rep: xp (Synced na d) ms' hm' >> * [[ r = fst vs ]]
+    CRASH:hm'
+      exists ms', << F, rep: xp (Synced na d) ms' hm' >>
     >} read xp a ms.
   Proof.
     unfold read.
@@ -483,13 +483,13 @@ Module MLog.
     {< F d na,
      PRE:hm  << F, rep: xp (Synced na d) ms hm >> *
           [[ log_valid ents d ]]
-     POST:hm RET:^(ms',r)
+     POST:hm' RET:^(ms',r)
           ([[ r = true ]]  * exists na',
-            << F, rep: xp (Synced na' (replay_disk ents d)) ms' hm >>) \/
+            << F, rep: xp (Synced na' (replay_disk ents d)) ms' hm' >>) \/
           ([[ r = false /\ length ents > na ]] *
-            << F, rep: xp (Synced na d) ms' hm >>)
-     XCRASH:hm  exists ms',
-            << F, rep: xp (Flushing d ents) ms' hm >>
+            << F, rep: xp (Synced na d) ms' hm' >>)
+     XCRASH:hm'  exists ms',
+            << F, rep: xp (Flushing d ents) ms' hm' >>
     >} flush_noapply xp ents ms.
   Proof.
     unfold flush_noapply.
@@ -596,11 +596,11 @@ Module MLog.
     {< F d na,
     PRE:hm
       << F, rep: xp (Synced na d) ms hm >>
-    POST:hm RET:ms'
-      << F, rep: xp (Synced (LogLen xp) d) ms' hm >> *
+    POST:hm' RET:ms'
+      << F, rep: xp (Synced (LogLen xp) d) ms' hm' >> *
       [[ Map.Empty (MSInLog ms') ]]
-    XCRASH:hm
-      << F, would_recover_before: xp d hm -- >>
+    XCRASH:hm'
+      << F, would_recover_before: xp d hm' -- >>
     >} apply xp ms.
   Proof.
     unfold apply; intros.
@@ -610,9 +610,18 @@ Module MLog.
     rewrite vsupd_vecs_length.
     apply map_valid_Forall_synced_map_fst; auto.
     step.
-    step.
+    erewrite DLog.rep_hashmap_subset.
+    cancel.
+    auto.
+    safestep.
+    unfold synced_rep; eauto.
+    rewrite vssync_vecs_length, vsupd_vecs_length; eauto.
+    rewrite replay_disk_vssync_vsupd_vecs; auto.
 
     (* crash conditions *)
+    xcrash.
+    or_r; safecancel; eauto.
+
     xcrash.
     or_l; safecancel; eauto.
     rewrite replay_disk_vssync_vsupd_vecs.
@@ -620,13 +629,28 @@ Module MLog.
 
     xcrash.
     or_r; safecancel; eauto.
-    rewrite vsupd_vecs_length; eauto.
-    apply map_valid_vsupd_vecs; auto.
+    congruence.
+    rewrite replay_disk_vssync_vsupd_vecs; auto.
 
     xcrash.
-    or_r; safecancel; eauto.
+    or_r; safecancel.
+    rewrite DLog.rep_hashmap_subset.
+    unfold synced_rep; cancel.
+    auto.
+    eassumption.
     rewrite vsupd_vecs_length; eauto.
-    apply map_valid_vsupd_vecs; auto.
+    apply map_valid_vsupd_vecs; eauto.
+    erewrite replay_disk_vsupd_vecs; eauto.
+
+    xcrash.
+    or_r; safecancel.
+    rewrite DLog.rep_hashmap_subset.
+    unfold synced_rep; cancel.
+    auto.
+    eassumption.
+    rewrite vsupd_vecs_length; eauto.
+    apply map_valid_vsupd_vecs; eauto.
+    erewrite replay_disk_vsupd_vecs; eauto.
 
     Unshelve. all: eauto.
   Qed.
@@ -673,6 +697,9 @@ Module MLog.
     cancel; auto.
     step.
     step.
+    unfold rep; cancel.
+    step.
+    step.
 
     (* crashes *)
     xcrash.
@@ -705,14 +732,14 @@ Module MLog.
     PRE:hm
       << F, rep: xp (Synced na d) ms hm >> *
       [[[ d ::: (Fd * a |-> vs) ]]]
-    POST:hm RET:ms' exists d' na',
-      << F, rep: xp (Synced na' d') ms' hm >> *
+    POST:hm' RET:ms' exists d' na',
+      << F, rep: xp (Synced na' d') ms' hm' >> *
       [[ d' = updN d a (v, vsmerge vs) ]] *
       [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
-    XCRASH:hm
-      << F, would_recover_before: xp d hm -- >> \/
+    XCRASH:hm'
+      << F, would_recover_before: xp d hm' -- >> \/
       exists ms' na' d',
-      << F, rep: xp (Synced na' d') ms' hm >> *
+      << F, rep: xp (Synced na' d') ms' hm' >> *
       [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]] *
       [[ d' = updN d a (v, vsmerge vs) ]]
     >} dwrite xp a v ms.
@@ -726,35 +753,85 @@ Module MLog.
     unfold rep, synced_rep in H.
     destruct_lift H.
     cancel.
-    step.
-    replace (length _) with (length dummy0).
+    unfold rep, synced_rep; cancel.
+
+    unfold rep, synced_rep.
+    safestep.
+    replace (length _) with (length (replay_disk (Map.elements t) dummy0)).
     eapply list2nmem_inbound; eauto.
-    subst; erewrite replay_disk_length; eauto.
+    erewrite replay_disk_length.
+    erewrite replay_disk_eq_length_eq; eauto.
 
     step.
+    unfold rep, synced_rep; cancel.
+    rewrite DLog.rep_hashmap_subset; eauto.
+    eauto.
     unfold vsupd; autorewrite with lists; auto.
     apply map_valid_updN; auto.
-    eapply replay_disk_updN_eq_empty; eauto.
+    unfold vsupd, map_replay.
+    rewrite replay_disk_updN_comm.
+    denote (replay_disk _ _ = replay_disk _ _) as Hreplay.
+    rewrite Hreplay.
+    f_equal. f_equal. f_equal.
+    erewrite <- replay_disk_selN_other at 1.
+    erewrite list2nmem_sel with (x := (vs_cur, vs_old)).
+    erewrite <- Hreplay; eauto.
+    eauto.
+    intuition. denote In as HIn.
+    apply In_map_fst_MapIn in HIn.
+    eapply map_empty_not_In; eauto.
+    replace (Map.elements _) with (@nil (addr * valu)).
+    simpl; apply NoDup_nil.
+    symmetry; apply MapProperties.elements_Empty; auto.
+    intuition. denote In as HIn.
+    apply In_map_fst_MapIn in HIn.
+    eapply map_empty_not_In; eauto.
     eapply list2nmem_updN; eauto.
 
-
     (* crashes for case 1 *)
+    norm'l.
     xcrash.
     or_r; cancel.
     xform_normr; cancel.
     unfold rep, synced_rep, unsync_rep, map_replay.
     xform_normr; cancel; eauto.
+    erewrite DLog.rep_hashmap_subset; eauto.
     rewrite vsupd_length; eauto.
     eapply length_eq_map_valid; eauto.
     apply vsupd_length.
-    eapply replay_disk_updN_eq_empty; eauto.
+    unfold vsupd, map_replay.
+    rewrite replay_disk_updN_comm.
+    denote (replay_disk _ _ = replay_disk _ _) as Hreplay.
+    rewrite Hreplay.
+    f_equal. f_equal. f_equal.
+    erewrite <- replay_disk_selN_other at 1.
+    erewrite list2nmem_sel with (x := (vs_cur, vs_old)).
+    erewrite <- Hreplay; eauto.
+    eauto.
+    intuition. denote In as HIn.
+    apply In_map_fst_MapIn in HIn.
+    eapply map_empty_not_In; eauto.
+    replace (Map.elements _) with (@nil (addr * valu)).
+    simpl; apply NoDup_nil.
+    symmetry; apply MapProperties.elements_Empty; auto.
+    intuition. denote In as HIn.
+    apply In_map_fst_MapIn in HIn.
+    eapply map_empty_not_In; eauto.
     eapply list2nmem_updN; eauto.
 
     xcrash.
     or_l; cancel.
+    xform; cancel.
     xform_normr; cancel.
+    erewrite <- BUFCACHE.crash_xform_rep_r; eauto.
 
     (* case 2: no apply *)
+    pred_apply.
+    unfold would_recover_before.
+    denote map_replay as Hd. rewrite <- Hd; cancel.
+    or_l; cancel.
+    or_r; cancel.
+
     denote (rep _ _ _) as Hx.
     unfold rep, synced_rep, map_replay in Hx; destruct_lift Hx.
     step.
@@ -763,6 +840,8 @@ Module MLog.
 
     step.
     unfold rep, synced_rep, map_replay; cancel.
+    erewrite DLog.rep_hashmap_subset; eauto.
+    eauto.
     unfold vsupd; autorewrite with lists; auto.
     apply map_valid_updN; auto.
     unfold eqlen, vsupd; autorewrite with lists; auto.
@@ -775,6 +854,7 @@ Module MLog.
     xform_normr; cancel.
     unfold rep, synced_rep, unsync_rep, map_replay.
     xform_normr; cancel; eauto.
+    erewrite DLog.rep_hashmap_subset; eauto.
     rewrite vsupd_length; eauto.
     eapply length_eq_map_valid; eauto.
     apply vsupd_length.
@@ -794,13 +874,13 @@ Module MLog.
     PRE:hm
       << F, rep: xp (Synced na d) ms hm >> *
       [[[ d ::: (Fd * a |-> vs) ]]]
-    POST:hm RET:ms' exists d' na',
-      << F, rep: xp (Synced na' d') ms' hm >> *
+    POST:hm' RET:ms' exists d' na',
+      << F, rep: xp (Synced na' d') ms' hm' >> *
       [[[ d' ::: (Fd * a |-> (fst vs, nil)) ]]] *
       [[  d' = vssync d a ]]
-    XCRASH:hm
+    XCRASH:hm'
       exists ms' na',
-      << F, rep: xp (Synced na' d) ms' hm >>
+      << F, rep: xp (Synced na' d) ms' hm' >>
     >} dsync xp a ms.
   Proof.
     unfold dsync.
@@ -809,6 +889,7 @@ Module MLog.
     eapply list2nmem_inbound; eauto.
 
     step.
+    rewrite DLog.rep_hashmap_subset; eauto.
     unfold vssync; autorewrite with lists; auto.
     apply map_valid_updN; auto.
     setoid_rewrite <- replay_disk_vssync_comm.
@@ -820,6 +901,8 @@ Module MLog.
 
     (* crashes *)
     xcrash.
+    rewrite DLog.rep_hashmap_subset; eauto.
+    eauto.
     eapply length_eq_map_valid; eauto.
   Qed.
 
@@ -1255,7 +1338,7 @@ Module MLog.
     xform_norml.
 
     - rewrite crash_xform_arrayN.
-      rewrite DLog.xform_rep_extended_unsync.
+      rewrite DLog.xform_rep_synced.
       cancel; eauto; try solve [simplen].
       or_l; cancel.
       eauto.
@@ -1386,13 +1469,13 @@ Module MLog.
     PRE:hm
       BUFCACHE.rep cs raw *
       [[ (F * recover_either_pred xp d ents hm)%pred raw ]]
-    POST:hm RET:ms' exists raw',
+    POST:hm' RET:ms' exists raw',
       BUFCACHE.rep (MSCache ms') raw' *
-      [[(exists d' na, F * rep xp (Synced na d') (MSInLog ms') hm *
+      [[(exists d' na, F * rep xp (Synced na d') (MSInLog ms') hm' *
         ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
          [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]
       ))%pred raw' ]]
-    CRASH:hm
+    CRASH:hm'
       exists cs' raw', BUFCACHE.rep cs' raw'
     >} recover xp cs.
   Proof.
@@ -1487,42 +1570,45 @@ Module MLog.
     PRE:hm
       << F, rep: xp (Synced na d) ms hm >> *
       [[ Forall (fun e => fst e < length d) avl ]]
-    POST:hm RET:ms' exists na',
-      << F, rep: xp (Synced na' (vsupd_vecs d avl)) ms' hm >>
-    XCRASH:hm
-      << F, would_recover_before: xp d hm -- >> \/
+    POST:hm' RET:ms' exists na',
+      << F, rep: xp (Synced na' (vsupd_vecs d avl)) ms' hm' >>
+    XCRASH:hm'
+      << F, would_recover_before: xp d hm' -- >> \/
       exists na' ms',
-      << F, rep: xp (Synced na' (vsupd_vecs d avl)) ms' hm >>
+      << F, rep: xp (Synced na' (vsupd_vecs d avl)) ms' hm' >>
     >} dwrite_vecs xp avl ms.
   Proof.
     unfold dwrite_vecs, would_recover_before.
-    (* TODO: Proof broken. Not sure why apply keeps getting unfolded. *)
     step.
 
     (* case 1: apply happens *)
-    step 
+    step.
     prestep.
     unfold rep at 1.
     unfold synced_rep, map_replay in *.
     cancel; auto.
     erewrite <- replay_disk_length.
-    denote replay_disk as Hx; rewrite <- Hx; auto.
+    eauto.
 
     step.
     unfold rep, synced_rep, map_replay; cancel.
+    rewrite DLog.rep_hashmap_subset; eauto.
+    eauto.
     rewrite vsupd_vecs_length; auto.
     apply map_valid_vsupd_vecs; auto.
     repeat rewrite replay_disk_empty; auto.
 
     (* crashes for case 1 *)
+    norm'l. unfold stars; cbn.
     xcrash.
     or_r.
     rewrite dwrite_vecs_xcrash_ok_empty; eauto.
     xform_norm; cancel.
     xform_normr; cancel.
-    eassign x2; eassign (t0, w0); eauto.
+    eassign x2; eassign (t0, c0); eauto.
     pred_apply; eauto.
     pred_apply; rewrite firstn_oob; eauto.
+    erewrite DLog.rep_hashmap_subset; eauto.
 
     xcrash.
     or_l; cancel.
@@ -1536,6 +1622,8 @@ Module MLog.
 
     step.
     unfold rep, synced_rep, map_replay; cancel.
+    erewrite DLog.rep_hashmap_subset; eauto.
+    eauto.
     rewrite vsupd_vecs_length; auto.
     apply map_valid_vsupd_vecs; auto.
     apply replay_disk_vsupd_vecs_nonoverlap; auto.
@@ -1547,9 +1635,10 @@ Module MLog.
     rewrite dwrite_vecs_xcrash_ok; eauto.
     xform_norm; cancel.
     xform_normr; cancel.
-    eassign x2; eassign (t0, w0); eauto.
+    eassign x2; eassign (t0, c0); eauto.
     pred_apply; eauto.
     pred_apply; rewrite firstn_oob; eauto.
+    erewrite DLog.rep_hashmap_subset; eauto.
   Qed.
 
 
@@ -1559,10 +1648,10 @@ Module MLog.
     PRE:hm
       << F, rep: xp (Synced na d) ms hm >> *
       [[ Forall (fun e => e < length d) al ]]
-    POST:hm RET:ms' exists na',
-      << F, rep: xp (Synced na' (vssync_vecs d al)) ms' hm >>
-    XCRASH:hm exists na' ms',
-      << F, rep: xp (Synced na' d) ms' hm >>
+    POST:hm' RET:ms' exists na',
+      << F, rep: xp (Synced na' (vssync_vecs d al)) ms' hm' >>
+    XCRASH:hm' exists na' ms',
+      << F, rep: xp (Synced na' d) ms' hm' >>
     >} dsync_vecs xp al ms.
   Proof.
     unfold dsync_vecs, rep, synced_rep, map_replay.
@@ -1570,6 +1659,7 @@ Module MLog.
     subst; erewrite <- replay_disk_length; eauto.
 
     step.
+    erewrite DLog.rep_hashmap_subset; eauto.
     rewrite vssync_vecs_length; auto.
     apply map_valid_vssync_vecs; auto.
     apply replay_disk_vssync_vecs_comm.
@@ -1577,6 +1667,8 @@ Module MLog.
     xcrash.
     eassign x0; eassign (t, x); eauto.
     pred_apply; cancel.
+    erewrite DLog.rep_hashmap_subset; eauto.
+    eauto.
   Qed.
 
 

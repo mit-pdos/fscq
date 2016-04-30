@@ -145,6 +145,22 @@ Module MapDefs (OT : UsualOrderedType) (M : S with Module E := OT).
     apply IHl; auto.
   Qed.
 
+  Lemma NoDupA_cons_inv : forall T (l : list T) m a,
+    NoDupA m (a :: l) -> NoDupA m l.
+  Proof.
+    intros.
+    rewrite <- app_nil_l.
+    eapply NoDupA_split.
+    rewrite app_nil_l. intuition eauto.
+  Qed.
+
+  Lemma KNoDup_cons_inv : forall l k,
+    KNoDup (k :: l) -> KNoDup l.
+  Proof.
+    unfold KNoDup; intros.
+    eapply NoDupA_cons_inv; eauto.
+  Qed.
+
   Lemma map_fst_nodup: forall (ms : Map.t V),
     NoDup (map fst (Map.elements ms)).
   Proof.

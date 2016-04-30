@@ -1035,10 +1035,8 @@ Module LogReplay.
     apply IHents.
     unfold log_valid in *.
     split.
-    unfold KNoDup in *.
-    rewrite <- app_nil_l.
-    eapply NoDupA_split.
-    rewrite app_nil_l. intuition eauto.
+    unfold KNoDup.
+    eapply KNoDup_cons_inv; intuition eauto.
     intros.
     rewrite length_updN.
     eapply H.
@@ -1075,6 +1073,28 @@ Module LogReplay.
     unfold diskIs in *; subst.
     eapply crash_xform_diskIs_r; unfold diskIs; eauto.
     eapply possible_crash_replay_disk; auto.
+  Qed.
+
+  Lemma replay_disk_vsupd_vecs : forall l d,
+    KNoDup l
+    -> replay_disk l d = replay_disk l (vsupd_vecs d l).
+  Proof.
+    induction l; intros; simpl; auto.
+
+    destruct (in_dec eq_nat_dec (fst a) (map fst l));
+    denote KNoDup as HKNoDup;
+    apply KNoDup_cons_inv in HKNoDup.
+    rewrite replay_disk_updN_absorb; auto.
+    rewrite replay_disk_updN_absorb; auto.
+    rewrite <- IHl; auto.
+    unfold vsupd.
+    rewrite replay_disk_updN_absorb; auto.
+
+    rewrite vsupd_vecs_vsupd_notin; auto.
+    unfold vsupd.
+    rewrite updN_twice.
+    repeat rewrite replay_disk_updN_comm; auto.
+    rewrite IHl; auto.
   Qed.
 
 
