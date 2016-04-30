@@ -372,14 +372,13 @@ Module AFS.
   Proof.
     unfold file_get_attr; intros.
     step.
-    safestep. eauto.
+    step.
     eapply pimpl_ok2.
     apply LOG.commit_ro_ok.
     cancel.
     step.
     subst; pimpl_crash; cancel.
     apply LOG.notxn_intact.
-    cancel.
     apply LOG.notxn_intact.
   Qed.
 
@@ -456,9 +455,11 @@ Module AFS.
     unfold read_fblock; intros.
     step.
     step.
-
+    eapply pimpl_ok2.
+    apply LOG.commit_ro_ok.
+    cancel.
     step.
-    step.
+    subst; pimpl_crash; cancel.
     apply LOG.notxn_intact.
     apply LOG.notxn_intact.
   Qed.
@@ -523,6 +524,12 @@ Module AFS.
     cancel; cancel.
   Qed.
 
+  Ltac xcrash_solve := 
+    repeat match goal with 
+      | [ H: forall _ _ _,  _ =p=> (?crash _) |- _ =p=> (?crash _) ] => idtac H; eapply pimpl_trans; try apply H; cancel
+      | [ |- crash_xform (LOG.rep _ _ _ _ _) =p=> _ ] => idtac "crash_xform"; rewrite LOG.notxn_intact; cancel
+    end.
+
   Theorem file_set_attr_ok : forall fsxp inum attr mscs,
   {< ds pathname Fm Ftop tree f,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
@@ -541,11 +548,15 @@ Module AFS.
   Proof.
     unfold file_set_attr; intros.
     step.
-    
-  Admitted.
+    step.
+    step.
+    step.
+    xcrash_solve.
+    xcrash_solve.
+    xcrash_solve.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (file_set_attr _ _ _ _) _) => apply file_set_attr_ok : prog.
-
 
   Theorem file_truncate_ok : forall fsxp inum sz mscs,
     {< ds Fm Ftop tree pathname f,
@@ -571,14 +582,14 @@ Module AFS.
     step.
     step.
     step.
-    apply LOG.notxn_intact.
+    xcrash_solve.
     step.
     step.
     step.
     step.
-    apply LOG.notxn_intact.
-    apply LOG.notxn_intact.
-    Unshelve.  all: eauto.
+    xcrash_solve.
+    xcrash_solve.
+    xcrash_solve.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (file_truncate _ _ _ _) _) => apply file_truncate_ok : prog.
@@ -608,20 +619,35 @@ Module AFS.
     safestep.  (* crucial to use safe version *)
     or_l.
     cancel. cancel.
-    instantiate (1 := (fun hm => (LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v hm \/
-      (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs hm)))%pred).
-    instantiate (1 := (fun hm => F_ * (LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v hm \/
-      (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs hm)))%pred).
+
+   instantiate (1 :=  (fun hm => (exists p, p * [[ crash_xform p =p=> crash_xform
+       (LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v hm \/
+         (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs hm)) ]]))%pred).
+   instantiate (1 :=  (fun hm => F_ * (exists p, p * [[ crash_xform p =p=> crash_xform
+       (LOG.intact (FSXPLog fsxp) (SB.rep fsxp) v hm \/
+         (exists cs : cachestate, LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) (fst v, []) cs hm)) ]]))%pred).
     reflexivity.
     cancel; cancel.
     cancel.
     cancel.
-    or_r.
-    cancel.
-    subst; simpl.
-    cancel; cancel.
+    xcrash.
+    or_l.
+    eauto.
+
+    xform_dist.
+    repeat xform_dist.
+    apply sep_star_lift_l.
+    intros.
+    rewrite crash_xform_exists_comm.
+    rewrite sep_star_comm.
+    rewrite pimpl_exists_r_star_r.
+    apply pimpl_exists_l; intro.
+    xform_dist.
+    rewrite crash_xform_lift_empty.
+    norml; unfold stars; simpl; clear_norm_goal.
+    denote (crash_xform _ =p=> crash_xform _) as Hc; rewrite Hc.
     xform_norm.
-    recover_ro_ok.
+
     rewrite LOG.crash_xform_intact.
     xform_norm.
     rewrite SB.crash_xform_rep.
@@ -638,18 +664,26 @@ Module AFS.
     cancel.
     cancel.
     cancel.
+    xform_normr.
+    or_r.
+    xform_normr.
     cancel.
-    cancel.
- 
+
     rewrite LOG.after_crash_idem.
     xform_norm.
     rewrite SB.crash_xform_rep.
     recover_ro_ok.
+    
     cancel.
 
     safestep; subst.
     cancel; cancel.
     cancel; cancel.
+   xform_normr.
+    or_r.
+    xform_normr.
+    cancel.
+   Unshelve. all: eauto.
   Qed.
 
   Theorem update_fblock_d_ok : forall fsxp inum off v mscs,
@@ -678,7 +712,14 @@ Module AFS.
   Proof.
     unfold update_fblock_d; intros.
     step.
-    step.
+    prestep. norm. cancel.
+    intuition.
+    unfold latest.
+    unfold pushd.
+    simpl.
+    pred_apply; cancel.
+    eauto.
+    eauto.
     safestep.
     instantiate (1 := (d, nil)); simpl.
     rewrite singular_latest by auto; simpl; cancel.
