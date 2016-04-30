@@ -456,11 +456,9 @@ Module AFS.
     unfold read_fblock; intros.
     step.
     step.
-    eapply pimpl_ok2.
-    apply LOG.commit_ro_ok.
-    cancel.
+
     step.
-    subst; pimpl_crash; cancel.
+    step.
     apply LOG.notxn_intact.
     apply LOG.notxn_intact.
   Qed.

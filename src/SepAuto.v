@@ -1216,10 +1216,14 @@ Ltac prestep :=
   try autounfold with hoare_unfold in *; eauto.
 
 Ltac poststep t :=
-  intuition t;
+  let tac := match goal with
+  | [ |- corr2 _ _ ] => idtac
+  | _ => t
+  end in
+  intuition tac;
   try omega;
   try congruence;
-  try t.
+  try tac.
 
 Ltac safestep :=
     prestep; safecancel;
