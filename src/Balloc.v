@@ -403,7 +403,6 @@ Module BALLOC.
     >} freevec lxp xp l ms.
   Proof.
     unfold freevec.
-    prestep.
     step.
 
     prestep; norml.
@@ -434,10 +433,9 @@ Module BALLOC.
     rewrite firstn_oob by auto.
     rewrite skipn_oob by auto.
     step.
-    (* XXX: why is ?anon1 created so early? *)
-    cancel.
+    erewrite <- LOG.intact_hashmap_subset; eauto.
     Unshelve. all: eauto; exact tt.
-  Admitted.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (freevec _ _ _ _) _) => apply freevec_ok : prog.
 

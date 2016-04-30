@@ -131,17 +131,38 @@ Module LOG.
     unfold rep, rep_inner; cancel.
   Qed.
 
-  Lemma rep_hashmap_subset : forall xp F ms hm hm',
-    (exists l, hashmap_subset l hm hm')
-    -> forall st, rep xp F st ms hm
-        =p=> rep xp F st ms hm'.
-  Proof. Admitted.
-
   Lemma rep_inner_hashmap_subset : forall xp ms hm hm',
     (exists l, hashmap_subset l hm hm')
     -> forall st, rep_inner xp st ms hm
         =p=> rep_inner xp st ms hm'.
-  Proof. Admitted.
+  Proof.
+    intros.
+    destruct st; unfold rep_inner, GLog.would_recover_any.
+    erewrite GLog.rep_hashmap_subset; eauto.
+    erewrite GLog.rep_hashmap_subset; eauto.
+    cancel.
+    erewrite GLog.rep_hashmap_subset; eauto.
+  Qed.
+
+  Lemma rep_hashmap_subset : forall xp F ms hm hm',
+    (exists l, hashmap_subset l hm hm')
+    -> forall st, rep xp F st ms hm
+        =p=> rep xp F st ms hm'.
+  Proof.
+    unfold rep; intros; cancel.
+    erewrite rep_inner_hashmap_subset; eauto.
+  Qed.
+
+  Lemma intact_hashmap_subset : forall xp F ds hm hm',
+    (exists l, hashmap_subset l hm hm')
+    -> intact xp F ds hm
+        =p=> intact xp F ds hm'.
+  Proof.
+    unfold intact; intros; cancel;
+    erewrite rep_hashmap_subset; eauto.
+    all: cancel.
+  Qed.
+
 
   Definition init T xp cs rx : prog T :=
     mm <- GLog.init xp cs;

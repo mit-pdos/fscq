@@ -225,7 +225,24 @@ Module MLog.
     (exists l, hashmap_subset l hm hm')
     -> forall st, rep xp st mm hm
         =p=> rep xp st mm hm'.
-  Proof. Admitted.
+  Proof.
+    unfold rep; intros.
+    destruct st; cancel.
+    all: eauto.
+    all: erewrite DLog.rep_hashmap_subset; eauto; cancel.
+    or_l; cancel.
+    or_r; cancel.
+    Unshelve. all: easy.
+  Qed.
+
+  Lemma would_recover_either_hashmap_subset : forall xp d ents hm hm',
+    (exists l, hashmap_subset l hm hm')
+    -> would_recover_either xp d ents hm
+        =p=> would_recover_either xp d ents hm'.
+  Proof.
+    unfold would_recover_either; intros; cancel.
+    all: erewrite rep_hashmap_subset; eauto; cancel.
+  Qed.
 
   Lemma synced_applying : forall xp na d ms hm,
     rep xp (Synced na d) ms hm =p=>

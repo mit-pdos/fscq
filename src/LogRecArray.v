@@ -268,11 +268,13 @@ Module LogRecArray (RA : RASig).
     cancel.
 
     step.
-
-    (*XXX: why is anon0 created so early? *)
+    pimpl_crash.
+    eassign (exists ms', LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm)%pred.
+    cancel.
+    erewrite LOG.rep_hashmap_subset; eauto.
 
     Unshelve. exact tt.
-  Admitted.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (get _ _ _ _) _) => apply get_ok : prog.
   Hint Extern 1 ({{_}} progseq (put _ _ _ _ _) _) => apply put_ok : prog.

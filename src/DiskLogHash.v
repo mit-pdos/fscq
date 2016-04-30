@@ -2917,7 +2917,12 @@ Module DLog.
     (exists l, hashmap_subset l hm hm')
     -> forall st, rep xp st hm
         =p=> rep xp st hm'.
-  Proof. Admitted.
+  Proof.
+    unfold rep; intros.
+    destruct st; cancel;
+    erewrite PaddedLog.rep_hashmap_subset; eauto.
+    all: cancel; eauto.
+  Qed.
 
 End DLog.
 

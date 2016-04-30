@@ -210,7 +210,12 @@ Module GLog.
     (exists l, hashmap_subset l hm hm')
     -> forall st, rep xp st ms hm
         =p=> rep xp st ms hm'.
-  Proof. Admitted.
+  Proof.
+    unfold rep; intros.
+    destruct st; cancel.
+    erewrite MLog.rep_hashmap_subset; eauto.
+    erewrite MLog.would_recover_either_hashmap_subset; eauto.
+  Qed.
 
 
   (************* program *)
