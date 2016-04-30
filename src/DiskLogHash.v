@@ -215,8 +215,10 @@ Module PaddedLog.
     >} write xp n cs.
     Proof.
       unfold write.
-      hoare.
+      step.
+      step.
       xcrash.
+      step.
       xcrash.
     Qed.
 
@@ -1547,7 +1549,6 @@ Module PaddedLog.
       solve_checksums.
       solve_checksums.
 
-      (* before sync data, after sync desc : Extended *)
       cancel.
       repeat xcrash_rewrite.
       xform_norm; cancel. xform_normr; cancel.
@@ -1572,6 +1573,7 @@ Module PaddedLog.
       solve_checksums.
       solve_checksums.
 
+      (* before writes *)
       cancel.
       repeat xcrash_rewrite.
       xform_norm; cancel. xform_normr; cancel.
@@ -1750,12 +1752,12 @@ Module PaddedLog.
     rewrite vals_nonzero_padded_log, desc_padding_synced_piff.
     cancel.
     replace (ndesc_list _) with (ndesc_log new).
-    replace (length l0) with (ndata_log new).
+    replace (length l) with (ndata_log new).
     cancel.
 
     replace DataSig.items_per_val with 1 in * by (cbv; auto); try omega.
     unfold ndesc_list.
-    rewrite H12.
+    substl (length l0).
     unfold ndesc_log.
     rewrite divup_divup; auto.
 
@@ -2001,25 +2003,26 @@ Module PaddedLog.
     rewrite desc_padding_synced_piff.
     pred_apply; cancel.
 
-    safestep; subst.
-    instantiate (1:= vals_nonzero l).
+    safestep.
     rewrite vals_nonzero_addrs.
-    replace DataSig.items_per_val with 1 by (cbv; auto); omega.
-    all: auto.
-    cancel.
-
+    replace DataSig.items_per_val with 1 by (cbv; auto).
+    unfold ndata_log; omega.
     step.
-    solve_hash_list_rep; auto.
+
     intros.
     eapply pimpl_ok2.
     eapply hash_list_ok. cancel.
     solve_hash_list_rep; auto.
     step.
+    solve_hash_list_rep; auto.
 
     {
       step.
+      step.
       apply desc_padding_synced_piff.
       solve_checksums.
+
+      admit.
     }
     {
       eapply pimpl_ok2; eauto with prog.
@@ -2041,7 +2044,7 @@ Module PaddedLog.
 
     all: try cancel;
           solve [ apply desc_padding_synced_piff | solve_checksums ].
-  Qed.
+  Admitted.
 
   Definition recover_ok_SyncedUnmatched : forall xp cs,
     {< F old new d,

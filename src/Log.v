@@ -246,7 +246,7 @@ Module LOG.
     step using dems; subst; simpl.
     pred_apply; cancel.
     pimpl_crash; norm. cancel.
-    eassign (mk_mstate vmap0 (MSGLog m0)).
+    eassign (mk_mstate vmap0 (MSGLog ms_1)).
     intuition; pred_apply; cancel.
   Qed.
 
@@ -278,7 +278,7 @@ Module LOG.
     apply MapFacts.not_find_in_iff; eauto.
 
     pimpl_crash; norm. cancel.
-    eassign (mk_mstate (MSTxn m0) m1).
+    eassign (mk_mstate (MSTxn ms_1) ms'_1).
     intuition; pred_apply; cancel.
   Qed.
 
@@ -340,7 +340,7 @@ Module LOG.
     or_l; cancel; xform_normr; cancel.
     or_r; cancel; xform_normr; cancel.
     xform_normr; cancel.
-    eassign (mk_mstate (Map.remove a (MSTxn m)) m0); eauto.
+    eassign (mk_mstate (Map.remove a (MSTxn ms_1)) x_1); eauto.
     eapply map_valid_remove; autorewrite with lists; eauto.
     setoid_rewrite singular_latest at 2; simpl; auto.
     rewrite length_updN; auto.
@@ -383,12 +383,13 @@ Module LOG.
       rep xp F (NoTxn ds) ms hm
     POST:hm' RET:ms'
       rep xp F (NoTxn (ds!!, nil)) ms' hm'
-    CRASH:hm'
+    XCRASH:hm'
       recover_any xp F ds hm'
     >} sync xp ms.
   Proof.
     unfold sync, recover_any.
     hoare.
+    xcrash.
     Unshelve. eauto.
   Qed.
 
@@ -411,7 +412,7 @@ Module LOG.
     step.
     step.
 
-    eassign (mk_mstate vmap0 m).
+    eassign (mk_mstate vmap0 ms'_1).
     step.
     auto.
   Qed.
@@ -469,7 +470,8 @@ Module LOG.
     intuition simpl; eauto; pred_apply.
     norm. cancel.
     intuition simpl; eauto.
-  Qed.
+    (* XXX: hashmap doesn't matchup *)
+  Admitted.
 
 
   Lemma crash_xform_any : forall xp F ds hm,
@@ -563,7 +565,8 @@ Module LOG.
     unfold after_crash.
     subst. norm. cancel. intuition simpl.
     pred_apply. norm. cancel.
-    rewrite H0; eauto. intuition simpl; eauto.
+    rewrite H0; eauto. cancel.
+    intuition simpl; eauto.
   Qed.
 
   Lemma notxn_after_crash_diskIs : forall xp F n ds d ms hm,
@@ -632,7 +635,7 @@ Module LOG.
     unfold Proper, respectful; intros.
     unfold idempred; cancel.
     unfold recover_any, rep; or_l; cancel.
-    rewrite H0; auto.
+    rewrite H0; cancel.
     or_r; cancel.
     rewrite H0; eauto.
   Qed.
@@ -652,7 +655,7 @@ Module LOG.
     destruct_lift Hx.
 
     cancel.
-    eassign (mk_mstate (MSTxn m) dummy0).
+    eassign (mk_mstate (MSTxn x_1) dummy0).
     cancel. auto. auto.
 
     cancel.
@@ -730,7 +733,6 @@ Module LOG.
     cancel.
 
     step.
-    subst; pred_apply.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
     step.
@@ -793,6 +795,7 @@ Module LOG.
     safestep. auto.
     subst; pred_apply; cancel.
 
+    admit. (* XXX: hashmap_subset *)
     safestep.
     unfold rep_inner; cancel.
     eapply lt_le_trans; eauto.
@@ -806,10 +809,15 @@ Module LOG.
     rewrite map_length; omega.
 
     unfold rep_inner; cancel.
+    admit. (* XXX: hashmap_subset *)
+
     step.
-    eauto.
-    Unshelve. exact tt.
-  Qed.
+    cancel.
+    eassign raw; pred_apply.
+    cancel; eauto.
+    apply GLog.rep_hashmap_subset; eauto.
+    Unshelve. exact tt. auto.
+  Admitted.
 
 
   Lemma firstn_vsupsyn_range_firstn_S : forall i vs l,
@@ -894,19 +902,23 @@ Module LOG.
   Proof.
     unfold write_range; intros.
     step.
-    subst; pred_apply; cancel.
 
     step.
     apply map_valid_add; auto; try omega.
-    eapply write_range_length_ok; eauto; omega.
+    eapply write_range_length_ok; eauto.
+    rewrite vsupsyn_range_length. omega.
+    rewrite firstn_length_l; omega.
 
     subst; rewrite replay_disk_add.
     apply vsupsyn_range_progress; auto.
 
     step.
-    subst; pred_apply.
     erewrite firstn_oob; eauto.
-    Unshelve. exact tt.
+    eassign raw.
+    pred_apply; cancel.
+    apply GLog.rep_hashmap_subset; eauto.
+    eauto.
+    Unshelve. exact tt. eauto.
   Qed.
 
 
@@ -949,21 +961,33 @@ Module LOG.
     >} read_cond xp a nr vfold v0 cond ms.
   Proof.
     unfold read_cond; intros.
-    hoare.
+    step.
 
-    subst; pred_apply; cancel.
+    safestep.
+    unfold rep_inner; cancel.
     eapply lt_le_trans; eauto.
-    subst; denote (Map.elements (MSTxn a0)) as Hx; rewrite <- Hx.
-    pred_apply; cancel.
-    cancel.
-    apply not_true_is_false; auto.
+    denote (replay_disk _ _ = replay_disk _ _) as Heq; rewrite <- Heq.
+    subst; pred_apply; cancel.
 
+    step; step.
+    apply not_true_is_false; auto.
     rewrite firstn_S_selN_expand with (def := $0).
     rewrite fold_left_app; simpl.
     erewrite selN_map by omega; subst; auto.
     rewrite map_length; omega.
 
-    Unshelve. exact tt. eauto.
+    pimpl_crash. unfold rep_inner; norm. cancel. intuition simpl. pred_apply.
+    eassign (mk_mstate (MSTxn a1) (MSGLog ms'_1)); cancel.
+    eexists.
+    eapply hashmap_subset_trans; eauto.
+
+    safestep.
+    or_r; cancel.
+    eassign raw; pred_apply; cancel.
+    apply GLog.rep_hashmap_subset; eauto.
+    eauto.
+
+    Unshelve. all: eauto; try exact tt; try exact nil.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read_cond _ _ _ _ _ _ _) _) => apply read_cond_ok : prog.
@@ -1020,7 +1044,7 @@ Module LOG.
     rewrite vsupd_vecs_vsupd_notin by auto.
     denote NoDup as Hx.
     refine (_ (IHavl ovl m _ _ Hx)); [ intro | pred_apply; cancel ].
-    erewrite (@list2nmem_sel _ _ m n (p_cur, _)) by (pred_apply; cancel).
+    erewrite (@list2nmem_sel _ _ m a_1 (p_cur, _)) by (pred_apply; cancel).
     erewrite <- vsupd_vecs_selN_not_in; eauto.
     apply sep_star_reorder_helper2.
     eapply list2nmem_updN.
@@ -1100,13 +1124,13 @@ Module LOG.
     xcrash.
     or_l; unfold recover_any, rep; cancel.
     xform_normr; cancel.
-    eassign x; eassign (mk_mstate vmap0 (MSGLog m), x0); simpl; eauto.
+    eassign x; eassign (mk_mstate vmap0 (MSGLog ms_1), x0); simpl; eauto.
     pred_apply; cancel.
 
     or_r; cancel.
     xform_normr; cancel.
     xform_normr; cancel.
-    eassign (mk_mstate vmap0 m0); eauto.
+    eassign (mk_mstate vmap0 x_1); eauto.
     simpl; apply map_valid_map0. eauto.
     apply dwrite_vsupd_vecs_ok; eauto.
   Qed.

@@ -249,8 +249,8 @@ Module MLog.
     cancel.
     unfold log_valid; intuition.
     unfold KNoDup; auto.
-    inversion H2.
-    inversion H2.
+    inversion H1.
+    inversion H1.
   Qed.
 
 
@@ -449,7 +449,7 @@ Module MLog.
     pred_apply.
     unfold synced_rep; cancel.
     subst; eapply synced_data_replay_inb; eauto.
-    eassign ((Map.elements t)); pred_apply; cancel.
+    eassign ((Map.elements ms_1)); pred_apply; cancel.
 
     prestep.
     cancel; subst; auto.
@@ -757,7 +757,7 @@ Module MLog.
 
     unfold rep, synced_rep.
     safestep.
-    replace (length _) with (length (replay_disk (Map.elements t) dummy0)).
+    replace (length _) with (length (replay_disk (Map.elements ms_1) dummy0)).
     eapply list2nmem_inbound; eauto.
     erewrite replay_disk_length.
     erewrite replay_disk_eq_length_eq; eauto.
@@ -1551,7 +1551,7 @@ Module MLog.
     eapply map_valid_replay_mem_app in H8; eauto.
     eapply length_eq_map_valid; eauto.
     unfold synced_list.
-    eassign (map fst dummy2).
+    eassign (map fst dummy1).
     autorewrite with lists; auto.
     unfold possible_crash_list.
     split.
@@ -1605,7 +1605,7 @@ Module MLog.
     rewrite dwrite_vecs_xcrash_ok_empty; eauto.
     xform_norm; cancel.
     xform_normr; cancel.
-    eassign x2; eassign (t0, c0); eauto.
+    eassign x2; eassign (x1_1, x1_2); eauto.
     pred_apply; eauto.
     pred_apply; rewrite firstn_oob; eauto.
     erewrite DLog.rep_hashmap_subset; eauto.
@@ -1635,7 +1635,7 @@ Module MLog.
     rewrite dwrite_vecs_xcrash_ok; eauto.
     xform_norm; cancel.
     xform_normr; cancel.
-    eassign x2; eassign (t0, c0); eauto.
+    eassign x2; eassign (x1_1, x1_2); eauto.
     pred_apply; eauto.
     pred_apply; rewrite firstn_oob; eauto.
     erewrite DLog.rep_hashmap_subset; eauto.
@@ -1665,7 +1665,7 @@ Module MLog.
     apply replay_disk_vssync_vecs_comm.
 
     xcrash.
-    eassign x0; eassign (t, x); eauto.
+    eassign x0; eassign (ms_1, x); eauto.
     pred_apply; cancel.
     erewrite DLog.rep_hashmap_subset; eauto.
     eauto.

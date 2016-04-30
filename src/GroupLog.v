@@ -533,7 +533,7 @@ Module GLog.
     step; subst.
     eapply diskset_vmap_find_none; eauto.
     pimpl_crash; cancel.
-    eassign (mk_mstate (MSVMap m) (MSTxns m) t); cancel.
+    eassign (mk_mstate (MSVMap ms_1) (MSTxns ms_1) ms'_1); cancel.
     all: auto.
   Qed.
 
@@ -558,11 +558,11 @@ Module GLog.
     or_r; cancel.
 
     unfold vmap_match in *; simpl.
-    denote Map.Equal as Heq.
+    denote! (Map.Equal _ _) as Heq.
     rewrite Heq; apply MapFacts.Equal_refl.
     apply dset_match_ext; auto.
     step.
-    Unshelve. auto.
+    Unshelve.  exact valu. all: exact vmap0.
   Qed.
 
 
@@ -601,7 +601,7 @@ Module GLog.
       subst; repeat xcrash_rewrite.
       xform_norm; cancel.
       xform_normr. safecancel.
-      eassign (mk_mstate vmap0 (MSTxns m) vmap0); simpl.
+      eassign (mk_mstate vmap0 (MSTxns ms_1) vmap0); simpl.
       rewrite selR_inb by eauto; cancel.
       all: simpl; auto; omega.
 
@@ -616,7 +616,6 @@ Module GLog.
       cancel.
 
     Unshelve. all: constructor.
-    (* XXX: Goals solved, but getting Error: No such section variable or assumption: hm''. *)
   Qed.
 
   Hint Extern 1 ({{_}} progseq (flushall_nomerge _ _) _) => apply flushall_nomerge_ok : prog.
@@ -647,8 +646,8 @@ Module GLog.
     admit.
 
     safestep.
-    step.
     admit.
+    step.
   Admitted.
 
 
@@ -691,7 +690,7 @@ Module GLog.
     or_r; cancel.
     xform_normr; cancel.
     xform_normr; cancel.
-    eassign (mk_mstate vmap0 nil t); simpl; cancel.
+    eassign (mk_mstate vmap0 nil x_1); simpl; cancel.
     all: simpl; eauto.
 
     xcrash.
@@ -751,7 +750,7 @@ Module GLog.
 
     or_r; xform_norm; cancel.
     xform_normr; cancel.
-    eassign (mk_mstate vmap0 nil t); simpl; cancel.
+    eassign (mk_mstate vmap0 nil x0_1); simpl; cancel.
     all: simpl; eauto.
 
     xcrash.
@@ -816,7 +815,10 @@ Module GLog.
       erewrite <- dset_match_nthd_S by (eauto; omega).
       pred_apply.
       rewrite selR_inb by omega; auto.
-  Qed.
+
+   - (* XXX: recovering *)
+      admit.
+  Admitted.
 
   Lemma crash_xform_cached : forall xp ds ms hm,
     crash_xform (rep xp (Cached ds) ms hm) =p=>
@@ -876,10 +878,11 @@ Module GLog.
     safestep.
     unfold MLog.recover_either_pred; cancel.
     rewrite sep_star_or_distr; or_l; cancel.
+    (* XXX: broken given the new recover_ok spec in MemLog *)
 
     safestep. eauto.
     instantiate (1 := nil); cancel.
-  Qed.
+  Admitted.
 
 
   Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.

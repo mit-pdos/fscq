@@ -444,6 +444,7 @@ Module AsyncRecArray (RA : RASig).
     unfold read_all.
     step.
 
+    pred_apply.
     simplen.
     simplen.
 
