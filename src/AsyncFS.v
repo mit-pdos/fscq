@@ -686,6 +686,8 @@ Module AFS.
    Unshelve. all: eauto.
   Qed.
 
+  Ltac latest_rewrite := unfold latest, pushd; simpl.
+
   Theorem update_fblock_d_ok : forall fsxp inum off v mscs,
     {< ds Fm Ftop tree pathname f Fd v0,
     PRE:hm
@@ -713,47 +715,58 @@ Module AFS.
     unfold update_fblock_d; intros.
     step.
     prestep. norm. cancel.
+    xcrash_solve.
     intuition.
-    unfold latest.
-    unfold pushd.
-    simpl.
+    latest_rewrite.
     pred_apply; cancel.
     eauto.
     eauto.
     safestep.
+
     instantiate (1 := (d, nil)); simpl.
     rewrite singular_latest by auto; simpl; cancel.
     step.
     cancel.
-    eapply pimpl_trans.
-    2: eapply H1.
-    cancel.
-    rewrite LOG.notxn_idempred; eauto.
-    xform_norm. or_r. cancel.
-    xform_norm. cancel.
-    xform_norm. cancel.
-    xform_norm. cancel.
-    eapply pimpl_trans.
-    2: eapply H1.
-    cancel.
-    eapply pimpl_trans.
-    eapply H0.
-    xform_norm. cancel.
-    or_l. rewrite LOG.recover_any_idempred; cancel.
-    or_r.
-    xform_norm. cancel.
-    xform_norm. cancel.
-    xform_norm. cancel.
-    xform_norm. cancel.
-    rewrite LOG.intact_idempred; cancel.
-    pred_apply.
-    cancel.
-    eauto.
-    eapply pimpl_trans.
-    2: eapply H1.
-    xform_norm. cancel.
-    xform_norm. cancel.
-    or_l; rewrite LOG.notxn_idempred; cancel.
+    xcrash_solve.
+
+    - xform_norm. or_r. cancel.
+      xform_norm. cancel.
+      xform_norm. cancel.
+      xform_norm. safecancel.
+      instantiate (1 := d); simpl.
+      rewrite LOG.intact_idempred; cancel.
+      pred_apply.
+      eauto.
+      f_equal.
+      pred_apply.
+      cancel.
+      simpl; reflexivity.
+
+    - eapply pimpl_trans.
+      2: eapply H1.
+      cancel.
+      eapply pimpl_trans.
+      eapply H0.
+      xform_norm. cancel.
+      or_l. rewrite LOG.recover_any_idempred; cancel.
+      or_r.
+      xform_norm. cancel.
+      xform_norm. cancel.
+      xform_norm. cancel.
+      xform_norm. safecancel.
+      instantiate (1 := x); simpl.
+      rewrite LOG.intact_idempred; cancel.
+      pred_apply.
+      cancel.
+      f_equal.
+      pred_apply.
+      cancel.
+      simpl; reflexivity.
+
+    - xcrash_solve.
+     xform_norm.
+     or_l. rewrite LOG.intact_idempred.
+     eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (update_fblock_d _ _ _ _ _) _) => apply update_fblock_d_ok : prog.
@@ -909,7 +922,6 @@ Module AFS.
     apply recover_ok.
     cancel.
     step.
-
     (* build a new idemcrash predicate that carries the XCRASH facts *)
     match goal with
     | [ H : crash_xform ?rc =p=> crash_xform ?crash
