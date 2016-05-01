@@ -516,7 +516,7 @@ Module DIRTREE.
     - destruct a. destruct d. simpl in *.
       + apply ptsto_mem_except in H0 as H0'.
         rewrite IHl. cancel.
-        instantiate (s1 := s0); instantiate (n := inum); cancel.
+        eassign s0; eassign inum; cancel.
         2: eauto.
         apply sep_star_comm in H.
         pose proof (ptsto_diff_ne H0 H).
@@ -530,7 +530,7 @@ Module DIRTREE.
           cancel. instantiate (s0 := l0). cancel.
         * apply ptsto_mem_except in H0. simpl.
           rewrite IHl. cancel.
-          instantiate (s1 := s0); instantiate (n := inum); cancel.
+          eassign s0; eassign inum; cancel.
           2: eauto.
           apply sep_star_comm. eapply ptsto_mem_except_exF; eauto.
           pred_apply; cancel.
@@ -627,7 +627,8 @@ Module DIRTREE.
           pred_apply. cancel.
       + apply ptsto_mem_except in H0.
         edestruct IHl with (m:=m) (rec:=rec) (name:=name); eauto.
-        pred_apply. cancel. instantiate (F := F'). cancel.
+        pred_apply. cancel.
+        eassign F'. cancel.
         * left. intuition. unfold mem_except in *. destruct (string_dec name s); congruence.
         * right. unfold mem_except in *. destruct (string_dec name s); congruence.
   Qed.
@@ -783,31 +784,28 @@ Module DIRTREE.
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
     step.
 
-    do 2 eexists; intuition; eauto.
-    pred_apply; cancel.
-    pred_apply' H0; cancel.
-    destruct a0.
+    denote (dirlist_pred) as Hx; assert (Horig := Hx).
+    destruct_branch.
 
     (* dslookup = Some _: extract subtree before [cancel] *)
-    denote (dirlist_pred) as Hx; assert (Horig := Hx).
-    destruct_branch; eapply pimpl_ok2; eauto with prog; intros.
-    norm'l; split_or_l; unfold stars; simpl;
-    norm'l; unfold stars; inv_option_eq; simpl.
+    prestep.
+    norml; unfold stars; simpl; clear_norm_goal; inv_option_eq.
     destruct a2.
 
     (* subtree is a directory *)
     rewrite tree_dir_extract_subdir in Hx by eauto; destruct_lift Hx.
-    cancel; try instantiate (1 := (TreeDir a0 s)); eauto; try cancel.
+    cancel. eassign (TreeDir a dummy6). auto. auto.
     erewrite <- find_name_subdir with (xp := fsxp); eauto.
     pred_apply' Horig; cancel.
-    denote s as Hx; pred_apply' Hx; cancel.
+    pred_apply; cancel.
+    cancel.
 
     (* subtree is a file *)
     rewrite tree_dir_extract_file in Hx by eauto. destruct_lift Hx.
-    cancel; try instantiate (1 := (TreeFile a0 bfile)); eauto; try cancel.
-    erewrite <- find_name_file with (xp := (FSXPInodeAlloc fsxp)); eauto.
+    cancel. eassign (TreeFile a dummy6). auto. auto.
+    erewrite <- find_name_file with (xp := fsxp); eauto.
     pred_apply' Horig; cancel.
-    denote bfile as Hx; pred_apply' Hx; cancel.
+    pred_apply; cancel.
 
     (* dslookup = None *)
     step.
@@ -824,7 +822,7 @@ Module DIRTREE.
     unfold find_name; destruct tree0; simpl in *; subst; auto.
 
     Grab Existential Variables.
-    all: try exact emp; try exact empty_mem; try exact tt.
+    all: eauto; try exact Mem.empty_mem; try exact tt.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (namei _ _ _ _) _) => apply namei_ok : prog.
@@ -883,20 +881,16 @@ Module DIRTREE.
     denote tree_dir_names_pred as Hx;
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
     step.
-    do 2 eexists. intuition.
-    pred_apply. cancel.
-    pred_apply. cancel.
-    eauto.
+    admit. (* goodSize *)
     step.
     step.
     step.
 
-    repeat deex.
-    denote dirlist_pred as Hx; denote (pimpl freeinode_pred) as Hy;
+    denote dirlist_pred as Hx; denote (pimpl dummy1) as Hy;
     rewrite Hy in Hx; destruct_lift Hx.
     step.
     step.
-    apply pimpl_or_r; right. cancel.
+    or_r; cancel.
 
     unfold tree_dir_names_pred at 1. cancel; eauto.
     unfold tree_dir_names_pred; cancel.
@@ -905,9 +899,9 @@ Module DIRTREE.
     apply sep_star_comm. apply ptsto_upd_disjoint. auto. auto.
 
     step.
-    Grab Existential Variables.
-    all: try exact emp; try exact nil; try exact empty_mem; try exact BFILE.bfile0.
-  Qed.
+    Unshelve.
+    all: try eauto; exact emp; try exact nil; try exact empty_mem; try exact BFILE.bfile0.
+  Admitted.
 
 
   Theorem mkdir_ok : forall fsxp dnum name mscs,
@@ -1150,7 +1144,7 @@ Module DIRTREE.
 
     inversion H; inversion H0; subst.
     erewrite dirlist_pred_except_notfound with (name := name); eauto.
-    instantiate (l0 := nil); cancel.
+    instantiate (1 := nil); cancel.
 
     inversion H0; subst; clear H0.
     rewrite <- sep_star_assoc.
@@ -1185,9 +1179,9 @@ Module DIRTREE.
     unfold pimpl; intros.
     pose proof (dirlist_extract xp l H H0 m0 H1).
     destruct_lift H2.
-    destruct sub; simpl in *; subst; try congruence.
+    destruct dummy; simpl in *; subst; try congruence.
     pred_apply; cancel.
-    instantiate (s := l0); cancel.
+    eassign l0; cancel.
   Qed.
 
 
@@ -1212,70 +1206,58 @@ Module DIRTREE.
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
     cancel.
     unfold SDIR.rep_macro.
-    do 2 eexists. intuition.
-    pred_apply. cancel.
-    pred_apply. cancel.
-    eauto.
-
-    step.
-    step.
-    do 2 eexists. intuition.
-    pred_apply. cancel.
-    pred_apply. cancel.
-    eauto.
+    cancel. eauto.
 
     step.
     step.
 
-    denote freeinode_pred as Hx.
+    denote dirlist_pred as Hx.
     erewrite dirlist_extract with (inum := a) in Hx; eauto.
     destruct_lift Hx.
-    destruct sub; simpl in *; try congruence; subst.
+    destruct dummy4; simpl in *; try congruence; subst.
     denote dirlist_pred_except as Hx; destruct_lift Hx; auto.
 
     step.
-    apply pimpl_or_r; right; cancel.
-    denote freeinode_pred as Hx; rewrite <- Hx.
-
+    step.
+    step.
+    or_r; safecancel.
+    denote (pimpl _ freepred') as Hx; rewrite <- Hx.
     rewrite dir_names_delete; eauto.
-    rewrite dirlist_delete_file; eauto.
-    instantiate (w := a); cancel.
-    denote (a, false) as Hc.
+    rewrite dirlist_delete_file.
+    eassign n; cancel.
+    eauto.
+    denote ( _ |-> (_, false))%pred as Hc.
     pred_apply' Hc; cancel.
+
     step.
 
-    eapply pimpl_ok2.
-    (* XXX: [eauto], or even [apply SDIR.dslist_ok] without explicitly
-       specifying at least one of [lxp], [bxp] and [ixp]. *)
-    apply SDIR.dslist_ok with
-      (lxp:=FSXPLog fsxp) (bxp:=FSXPBlockAlloc fsxp) (ixp:=FSXPInode fsxp).
+    prestep.
     intros; norm'l.
     denote dirlist_pred as Hx; subst_bool.
     rewrite dirlist_extract_subdir in Hx; eauto; simpl in Hx.
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
-    cancel.
-    do 2 eexists. intuition.
-    pred_apply; cancel.
-    pred_apply; cancel.
-    eauto.
-
-    step.
-    do 2 eexists. intuition.
-    pred_apply; cancel.
-    pred_apply; cancel.
-    eauto.
+    cancel. eauto.
 
     step.
     step.
     step.
+    step.
 
-    apply pimpl_or_r; right; cancel.
-    denote freeinode_pred as Hx; rewrite <- Hx.
-    erewrite dlist_is_nil with (l := s) (m := dsmap0); eauto.
-    rewrite dir_names_delete with (dmap := dsmap); eauto.
+    or_r; cancel.
+    denote (pimpl _ freepred') as Hx; rewrite <- Hx.
+    denote (tree_dir_names_pred' _ _) as Hz.
+    erewrite (@dlist_is_nil _ _ _ _ _ Hz); eauto.
+    denote (tree_dir_names_pred' tree_elem _) as Hy.
+    erewrite (@dir_names_delete _ _ _ _ _ _ Hy); eauto.
     rewrite dirlist_pred_except_delete; eauto.
     cancel.
+
     step.
+    cancel; auto.
+    cancel; auto.
+
+    Unshelve.
+    all: try exact addr_eq_dec.  7: eauto. all: eauto.
   Qed.
 
   Theorem delete_ok : forall fsxp dnum name mscs,
@@ -1802,21 +1784,15 @@ Module DIRTREE.
     denote (n |-> _)%pred as Hsub.
 
     cancel.
-    do 2 eexists; intuition.
-    pred_apply; cancel.
-    pred_apply' Hsub; cancel.
-    eauto.
+    unfold SDIR.rep_macro.
+    cancel; eauto.
 
     (* unlink src *)
     step.
-    do 2 eexists; intuition.
-    pred_apply; cancel.
-    pred_apply' Hsub; cancel.
-    eauto.
 
     (* namei for dstpath, find out pruning subtree before step *)
-    denote (tree_dir_names_pred' l dsmap0) as Hx1.
-    denote ((a, a4)) as Hx2.
+    denote (tree_dir_names_pred' l _) as Hx1.
+    denote (_ |-> (_, _))%pred as Hx2.
     pose proof (ptsto_subtree_exists _ Hx1 Hx2) as Hx.
     destruct Hx; intuition.
 
@@ -1845,27 +1821,24 @@ Module DIRTREE.
     destruct Hpruned. intuition.
 
     denote find_subtree as Hpruned; assert (Hx := Hpruned).
-    apply subtree_extract with (xp := (FSXPInodeAlloc fsxp)) in Hx.
+    apply subtree_extract with (xp := fsxp) in Hx.
     assert (Hdst := Hinterm); rewrite Hx in Hdst; clear Hx.
     destruct x; simpl in *; subst; try congruence; inv_option_eq.
     unfold tree_dir_names_pred in Hdst.
     destruct_lift Hdst.
-    denote (# w0)%pred as Hdst.
 
     cancel.
-    do 2 eexists; intuition.
-    pred_apply; cancel.
-    pred_apply' Hdst; cancel.
-    eauto.
+    unfold SDIR.rep_macro; cancel. eauto.
 
     (* grafting back *)
     destruct_branch.
 
     (* case 1: dst exists, try delete *)
-    eapply pimpl_ok2. apply delete_ok. intros; norm'l.
-    split_or_l; [ unfold stars; simpl; norm'l; inv_option_eq | step ].
-    denote (tree_dir_names_pred' l0 dsmap1) as Hx3.
-    denote ((a12, a13)) as Hx4.
+    prestep.
+    norml.
+    unfold stars; simpl; clear_norm_goal; inv_option_eq.
+    denote (tree_dir_names_pred' _ _) as Hx3.
+    denote (_ |-> (_, _))%pred as Hx4.
     pose proof (ptsto_subtree_exists _ Hx3 Hx4) as Hx.
     destruct Hx; intuition.
 
@@ -1873,41 +1846,44 @@ Module DIRTREE.
        the root tree node.  have to do this manually *)
     unfold rep; norm. cancel. intuition.
     pred_apply; norm. cancel. intuition.
-    instantiate (tree0 := (tree_prune w l srcpath srcname (TreeDir dnum tree_elem))).
+    eassign (tree_prune n l srcpath srcname (TreeDir dnum tree_elem)).
     pred_apply' Hinterm; cancel. eauto.
 
     (* now, get ready for link *)
     step; try solve [ step ].
-    denote tree' as Hx. assert (Hdel := Hx).
-    erewrite subtree_extract with (tree := tree') in Hx; eauto.
+    denote mvtree as Hx. assert (Hdel := Hx).
+    setoid_rewrite subtree_extract in Hx at 2.
     2: subst; eapply find_update_subtree; eauto.
     simpl in Hx; unfold tree_dir_names_pred in Hx; destruct_lift Hx.
-    denote (# w0) as Hx.
-
     step.
-    do 2 eexists; intuition.
-    pred_apply; cancel.
-    pred_apply' Hx; cancel.
-    eauto.
 
-    step.
-    apply pimpl_or_r; right; cancel; eauto.
+    admit. (* goodSize *)
+
+    safestep.
+    or_l; cancel.
+    or_r; cancel; eauto.
     eapply subtree_graft_absorb_delete; eauto.
 
-    (* dst is None *)
-    step.
-    do 2 eexists; intuition.
-    pred_apply; cancel.
-    pred_apply' Hdst; cancel.
-    eauto.
+    cancel.
 
-    step.
-    apply pimpl_or_r; right; cancel; eauto.
+    (* dst is None *)
+    safestep.
+    admit. (* goodSize *)
+
+    safestep.
+    or_l; cancel.
+    or_r; cancel; eauto.
     eapply subtree_graft_absorb; eauto.
 
-    Grab Existential Variables.
-    all: try exact emp; try exact empty_mem; try exact nil; try exact mvtree.
-  Qed.
+    cancel.
+    cancel; auto.
+
+    cancel.
+    cancel; auto.
+
+    Unshelve.
+    all: try exact addr; try exact addr_eq_dec; eauto.
+  Admitted.
 
 
   Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
@@ -2212,31 +2188,25 @@ Module DIRTREE.
     denote tree_dir_names_pred as Hx;
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
     step.
-    unfold SDIR.rep_macro. do 2 eexists. intuition.
-    pred_apply. cancel.
-    pred_apply. cancel.
-    eauto.
+    unfold SDIR.rep_macro.
+    admit. (* goodSize *)
+
     step.
     step.
     step.
 
-    repeat deex.
-    denote dirlist_pred as Hx; denote (pimpl freeinode_pred) as Hy;
+    denote dirlist_pred as Hx; denote (pimpl dummy1) as Hy.
     rewrite Hy in Hx; destruct_lift Hx.
     step.
     step.
 
-    apply pimpl_or_r; right. cancel.
-
+    or_r; cancel.
     rewrite <- subtree_graft_absorb; eauto. cancel.
-   
     step.
-    Grab Existential Variables.
-    all: try exact emp.
-    all: try exact BFILE.bfile0.
-    all: try exact nil.
-    all: try exact empty_mem.
-  Qed.
+
+    Unshelve.
+    all: eauto.
+  Admitted.
 
   Hint Extern 1 ({{_}} progseq (mkfile _ _ _ _) _) => apply mkfile_ok : prog.
 
@@ -2318,8 +2288,7 @@ Module DIRTREE.
       erewrite lookup_firstelem_path_r.
       eauto.
       intuition.
-      instantiate (childdir :=x). 
-      assumption.
+      eauto.
       erewrite IHprefix by eauto.
       reflexivity.
   Qed.
