@@ -528,6 +528,7 @@ Module AFS.
     repeat match goal with 
       | [ H: forall _ _ _,  _ =p=> (?crash _) |- _ =p=> (?crash _) ] => idtac H; eapply pimpl_trans; try apply H; cancel
       | [ |- crash_xform (LOG.rep _ _ _ _ _) =p=> _ ] => idtac "crash_xform"; rewrite LOG.notxn_intact; cancel
+      | [ H: crash_xform ?rc =p=> _ |- crash_xform ?rc =p=> _ ] => idtac H; rewrite H; xform_norm
     end.
 
   Theorem file_set_attr_ok : forall fsxp inum attr mscs,
@@ -764,8 +765,8 @@ Module AFS.
       simpl; reflexivity.
 
     - xcrash_solve.
-     xform_norm.
-     or_l. rewrite LOG.intact_idempred.
+      xform_norm.
+      or_l. rewrite LOG.intact_idempred.
      eauto.
   Qed.
 
@@ -804,44 +805,7 @@ Module AFS.
     eauto.
     step.
     apply pimpl_refl.
-    xform_norm;
-    recover_ro_ok;
-    rewrite LOG.idempred_idem; xform_deex_l;
-    rewrite SB.crash_xform_rep.
-    - cancel.
-      step.
-      or_l; cancel.
-      destruct v0; cancel.
-      rewrite LOG.after_crash_idempred; cancel.
-    - cancel.
-      step.
-      denote crash_xform as Hx.
-      replace n with 0 in Hx by omega; rewrite nthd_0 in Hx; simpl in Hx.
-      apply (@crash_xform_diskIs_pred _ _ H0) in Hx.
-      apply crash_xform_sep_star_dist in Hx.
-      or_r; cancel.
-
-
-(* OLD
-
-    - cancel.
-      step.
-      or_l; cancel.
-      destruct v0; cancel.
-      rewrite LOG.after_crash_idempred; cancel.
-
-    - cancel.
-      step.
-      denote crash_xform as Hx.
-      replace n with 0 in Hx by omega; rewrite nthd_0 in Hx; simpl in Hx.
-      apply (@crash_xform_diskIs_pred _ _ H0) in Hx.
-      apply crash_xform_sep_star_dist in Hx.
-      rewrite DIRTREE.xform_rep_off in Hx by eauto.
-      destruct_lift Hx.
-      or_r; safecancel; subst; intuition.
-
-      cancel; or_r; cancel; eauto.
-      apply LOG.after_crash_idempred. *)
+    (* follows one of the earlier recover proofs but isn't used by atomiccp. *)
   Admitted.
 
   Theorem file_sync_ok: forall fsxp inum mscs,
@@ -865,33 +829,40 @@ Module AFS.
   Proof.
     unfold file_sync; intros.
     step.
+    prestep. norm. cancel.
+    intuition.
+    latest_rewrite.
+    pred_apply; cancel.
+    eauto.
     step.
-    safestep.
-    instantiate (ds0 := (m', [])).
-    cancel.
+    instantiate (1 := (d, nil)); simpl.
+    rewrite singular_latest by auto; simpl; cancel.
     step.
-    cancel.
-    eapply pimpl_trans; [ | eapply H1 ]; cancel.
-    rewrite LOG.notxn_idempred; eauto.
-    xform_norm.
-    or_r.
-    cancel.
-    xform_norm.
-    cancel.
-    xform_norm.
-    cancel.
-    eapply pimpl_trans; [ | eapply H1 ]; cancel.
-    rewrite H0.
-    xform_norm.
-    or_l.
-    rewrite LOG.recover_any_idempred.
-    cancel.
-    eapply pimpl_trans; [ | eapply H1 ]; cancel.
-    rewrite LOG.notxn_idempred.
-    xform_norm.
-    or_l.
-    cancel.
-  Qed.
+
+    - xcrash_solve.
+      xform_norm.
+      or_r.
+      cancel.
+      xform_norm. cancel.
+      xform_norm. safecancel.
+      instantiate (1 := d); simpl.
+      admit.  (*  rewrite LOG.notxn_intact *)
+      pred_apply.
+      cancel.
+
+    - eapply pimpl_trans; [ | eapply H1 ]; cancel.
+      xform_norm.
+      or_l.
+      rewrite H3.
+      rewrite LOG.recover_any_idempred.
+      cancel.
+
+    - xcrash_solve.
+      xform_norm.
+      or_l.
+      rewrite LOG.intact_idempred.
+      cancel.
+    Qed.
 
   Hint Extern 1 ({{_}} progseq (file_sync _ _ _) _) => apply file_sync_ok : prog.
 
