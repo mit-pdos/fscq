@@ -81,23 +81,12 @@ Module ATOMICCP.
         rx ^(mscs, ok1)
     end.
 
-  Definition copy_and_rename_cleanup T fsxp src_inum dst_inum dst_fn mscs rx : prog T :=
-    let^ (mscs, ok) <- copy_and_rename fsxp src_inum dst_inum dst_fn mscs;
-    match ok with
-      | false =>
-        let^ (mscs, ok) <- AFS.delete fsxp the_dnum temp_fn mscs;
-        (* What if FS.delete fails?? *)
-        rx ^(mscs, false)
-      | true =>
-        rx ^(mscs, true)
-    end.
-
   Definition atomic_cp T fsxp src_inum dst_fn mscs rx : prog T :=
     let^ (mscs, maybe_dst_inum) <- AFS.create fsxp the_dnum temp_fn mscs;
     match maybe_dst_inum with
       | None => rx ^(mscs, false)
       | Some dst_inum =>
-        let^ (mscs, ok) <- copy_and_rename_cleanup fsxp src_inum dst_inum dst_fn mscs;
+        let^ (mscs, ok) <- copy_and_rename fsxp src_inum dst_inum dst_fn mscs;
         rx ^(mscs, ok)
     end.
 
@@ -326,10 +315,12 @@ Module ATOMICCP.
           [[ subtree = DIRTREE.TreeFile tinum (BFILE.synced_file file) ]] *
           LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (d, dlist) hm')
       )
-     >} copy_and_rename  fsxp src_inum tinum dst_fn mscs.
+     >} copy_and_rename fsxp src_inum tinum dst_fn mscs.
   Proof.
     unfold copy_and_rename; intros.
   Admitted.
+
+  Hint Extern 1 ({{_}} progseq (copy_and_rename _ _ _ _ _) _) => apply copy_rename_ok : prog.
 
   (* XXX specs for copy_and_rename_cleanup and atomic_cp *)
 
@@ -349,7 +340,11 @@ Module ATOMICCP.
       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm'
      >} recover.
   Proof.
+    unfold recover; intros.
+    step.
   Admitted.
+
+  Hint Extern 1 ({{_}} progseq (recover) _) => apply atomic_cp_recover_ok : prog.
 
   Theorem atomic_cp_with_recover_ok : forall fsxp src_inum dst_fn mscs,
     {<< ds Fm Ftop temp_tree src_fn file tinum tfile,
@@ -386,8 +381,15 @@ Module ATOMICCP.
         [[ tree' = DIRTREE.tree_graft the_dnum dstents [] dst_fn subtree pruned ]] *
         [[ pruned = DIRTREE.TreeDir the_dnum dstents ]] *
         [[ subtree = DIRTREE.TreeFile tinum (BFILE.synced_file file) ]])
-    >>} atomic_cp fsxp src_inum dst_fn mscs >> recover.
+    >>} copy_and_rename fsxp src_inum tinum dst_fn mscs >> recover.
   Proof.
-  Admitted.
+    AFS.recover_ro_ok.
+    cancel.
+    eauto.
+    eauto.
+    congruence.
+    congruence.
+    step.
+   Admitted.
 
 End ATOMICCP.

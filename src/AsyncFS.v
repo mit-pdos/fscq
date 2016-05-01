@@ -341,6 +341,8 @@ Module AFS.
     intuition eauto.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (recover) _) => apply recover_ok : prog.
+
   Ltac recover_ro_ok := intros;
     repeat match goal with
       | [ |- forall_helper _ ] => idtac "forall"; unfold forall_helper; intros; eexists; intros
