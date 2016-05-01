@@ -51,17 +51,22 @@ Module ATOMICCP.
   (** Programs **)
 
   (* copy an existing src into an existing, empty dst. *)
-  Definition copy2temp T fsxp src_inum dst_inum mscs rx : prog T :=
+
+  Definition copydata T fsxp src_inum dst_inum mscs rx : prog T :=
     let^ (mscs, attr) <-  AFS.file_get_attr fsxp src_inum mscs;
+    let^ (mscs, b) <- AFS.read_fblock fsxp src_inum 0 mscs;
+    let^ (mscs) <- AFS.update_fblock_d fsxp dst_inum 0 b mscs;
+    let^ (mscs, ok) <- AFS.file_set_attr fsxp dst_inum attr mscs;
+    let^ (mscs) <- AFS.file_sync fsxp dst_inum mscs;    (* we want a metadata and data sync here *)
+    rx ^(mscs, ok).
+
+  Definition copy2temp T fsxp src_inum dst_inum mscs rx : prog T :=
     let^ (mscs, ok) <- AFS.file_truncate fsxp dst_inum 1 mscs;  (* XXX type error when passing sz *)
-    If (bool_dec ok false) {
-      let^ (mscs) <- AFS.file_sync fsxp dst_inum mscs;
+    If (bool_dec ok true) {
+      let^ (mscs, ok) <- copydata fsxp src_inum dst_inum mscs;
       rx ^(mscs, ok)
     } else {
-      let^ (mscs, b) <- AFS.read_fblock fsxp src_inum 0 mscs;
-      let^ (mscs) <- AFS.update_fblock_d fsxp dst_inum 0 b mscs;
-      let^ (mscs, ok) <- AFS.file_set_attr fsxp dst_inum attr mscs;
-      let^ (mscs) <- AFS.file_sync fsxp dst_inum mscs;    (* we want a metadata and data sync here *)
+      let^ (mscs) <- AFS.file_sync fsxp dst_inum mscs;    (* do a sync to simplify spec *)
       rx ^(mscs, ok)
     }.
 
@@ -117,6 +122,125 @@ Module ATOMICCP.
 
   (** Specs and proofs **)
 
+  Lemma arrayN_one: forall V (v:V),
+      0 |-> v <=p=> arrayN 0 [v].
+  Proof.
+    split; cancel.
+  Qed.
+
+  Lemma arrayN_ex_one: forall V (l : list V),
+      List.length l = 1 ->
+      arrayN_ex l 0 <=p=> emp.
+  Proof.
+    destruct l.
+    simpl; intros.
+    congruence.
+    destruct l.
+    simpl. intros.
+    unfold arrayN_ex.
+    simpl.
+    split; cancel.
+    simpl. intros.
+    congruence.
+  Qed.
+
+  Theorem copydata_ok : forall fsxp src_inum tinum mscs,
+    {< ds Fm Ftop temp_tree src_fn tfn file tfile v0 t0,
+    PRE:hm  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm * 
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree) ]]] *
+      [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
+      [[ DIRTREE.find_subtree [tfn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
+      [[ src_fn <> tfn ]] *
+      [[[ BFILE.BFData file ::: (0 |-> v0) ]]] *
+      [[[ BFILE.BFData tfile ::: (0 |-> t0) ]]]
+    POST:hm' RET:^(mscs, r)
+      exists d tree' f', 
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
+        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
+        ([[ r = false]] * 
+         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum (BFILE.synced_file f')) temp_tree ]]
+        \/ 
+         [[ r = true ]] *
+         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree ]])
+    XCRASH:hm'
+      (exists d tree' f', LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
+         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
+         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum f') temp_tree ]]) \/
+      (exists dlist, 
+         LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) hm' *  
+         [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
+             tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]])
+    >} copydata fsxp src_inum tinum mscs.
+  Proof.
+    unfold copydata; intros.
+    step.
+    step.
+    step.
+    step.
+    step.
+    prestep. safecancel.
+    or_l.
+    cancel.
+    erewrite update_update_subtree_eq.
+    f_equal.
+    AFS.xcrash_solve.
+    or_l.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm; safecancel.
+    xform_norm; safecancel.
+    admit. (* rewrite LOG.notxn_idempred. *)
+    instantiate (1 := d).
+    pred_apply; cancel.
+    f_equal.
+    AFS.xcrash_solve.
+    or_l.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm; safecancel.
+    xform_norm; safecancel.
+    admit. (* rewrite LOG.notxn_idempred. *)
+    instantiate (1 := x).
+    pred_apply; cancel.
+    erewrite update_update_subtree_eq.
+    f_equal.
+    step.
+    (* success return *)
+    or_r.
+    cancel.
+    erewrite update_update_subtree_eq.
+    erewrite update_update_subtree_eq.
+    f_equal.
+    f_equal.
+    f_equal.
+    apply arrayN_one in H5.
+    apply list2nmem_array_eq in H5.
+    (*
+    rewrite arrayN_ex_one in H18.
+    rewrite arrayN_one in H18.
+    apply emp_star in H18.
+    apply list2nmem_array_eq in H18.
+    destruct f'.
+    destruct file.
+    simpl in *.
+    rewrite H18.
+    rewrite H4.
+    f_equal. *)
+    admit.
+    AFS.xcrash_solve.
+    or_r.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    admit.
+    admit.
+    or_r.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    (* other crash cases *)
+  Admitted.
+
+  Hint Extern 1 ({{_}} progseq (copydata _ _ _ _) _) => apply copydata_ok : prog.
+
   Theorem copy2temp_ok : forall fsxp src_inum tinum mscs,
     {< ds Fm Ftop temp_tree src_fn tfn file tfile v0,
     PRE:hm  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm * 
@@ -126,12 +250,13 @@ Module ATOMICCP.
       [[ src_fn <> tfn ]] *
       [[[ BFILE.BFData file ::: (0 |-> v0) ]]]
     POST:hm' RET:^(mscs, r)
-      [[ r = false]] * (exists d tree' f, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
-         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
-         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum f) temp_tree ]])
-      \/
-      [[ r = true ]] * (exists d tree', LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
-         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
+      exists d tree' f', 
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
+        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
+        ([[ r = false]] * 
+         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum (BFILE.synced_file f')) temp_tree ]]
+        \/ 
+         [[ r = true ]] *
          [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree ]])
     XCRASH:hm'
       (exists d tree' tfile', LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
@@ -147,107 +272,14 @@ Module ATOMICCP.
     step.
     step.
     step.
-    prestep. norm. safecancel.
-    intuition.
-    unfold latest.
-    unfold pushd.
-    simpl.
-    pred_apply; cancel.
-    eauto.
-    step.
-    admit.
-    step.
-    prestep. norm. safecancel.
-    intuition.
-    unfold latest.
-    unfold pushd.
-    simpl.
-    pred_apply; cancel.
-    erewrite find_subtree_update_subtree.
-    eauto.
-    eauto.
-    step.
-    cancel.
-    prestep. norm. safecancel.
-    intuition.
-    unfold latest.
-    unfold pushd.
-    simpl.
-    pred_apply; cancel.
-    erewrite find_subtree_update_subtree_ne.
-    eauto.
-    eauto.
-    eauto.
-    pred_apply; cancel.
-    step.
-    eapply list2nmem_ptsto_cancel.
-    rewrite setlen_length.
-    omega.
-    prestep. norm. safecancel.
-    intuition.
-    unfold latest.
-    unfold pushd.
-    simpl.
-    pred_apply; cancel.
-    eauto.
     step.
     step.
+    AFS.xcrash_solve.
     or_l.
-    cancel.
-    erewrite update_update_subtree_eq.
-    erewrite update_update_subtree_eq.
-    eauto.
-    admit.
-    step.
-    or_r.
-    cancel.
-    erewrite update_update_subtree_eq.
-    erewrite update_update_subtree_eq.
-    erewrite update_update_subtree_eq.
-    (* show that block 0 in f' is equal to block 0 in file *)
-   
-
-    Lemma arrayN_one: forall V (v:V),
-      0 |-> v <=p=> arrayN 0 [v].
-    Proof.
-      split; cancel.
-    Qed.
-
-    apply arrayN_one in H4.
-    apply list2nmem_array_eq in H4.
-    
-    Lemma arrayN_ex_one: forall V (l : list V),
-      List.length l = 1 ->
-      arrayN_ex l 0 <=p=> emp.
-    Proof.
-      destruct l.
-      simpl; intros.
-      congruence.
-      destruct l.
-      simpl. intros.
-      unfold arrayN_ex.
-      simpl.
-      split; cancel.
-      simpl. intros.
-      congruence.
-    Qed.
-
-    rewrite arrayN_ex_one in H18.
-    rewrite arrayN_one in H18.
-    apply emp_star in H18.
-    apply list2nmem_array_eq in H18.
-    destruct f'.
-    destruct file.
-    simpl in *.
-    rewrite H18.
-    rewrite H4.
-    f_equal.
-    admit. (* H18? *)
-
-    eapply pimpl_trans.
-    2: eapply H1.
-    cancel.
     xform_norm. cancel.
+    xform_norm. cancel.
+    xform_norm. cancel.
+    xform_norm. safecancel.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (copy2temp _ _ _ _) _) => apply copy2temp_ok : prog.
