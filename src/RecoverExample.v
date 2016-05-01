@@ -40,12 +40,6 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma instantiate_or_branch : forall (p : rawpred) idemcrash_other (hm_crash : hashmap),
-  p =p=> (fun hm => p \/ idemcrash_other hm) hm_crash.
-Proof.
-  cancel.
-Qed.
-
 Theorem work_recover_ok :
   {<< v,
   PRE         rep true v
