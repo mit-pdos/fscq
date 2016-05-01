@@ -30,6 +30,7 @@ Module DIRTREE.
   | TreeFile : addr -> BFILE.bfile -> dirtree
   | TreeDir  : addr -> list (string * dirtree) -> dirtree.
 
+
   (**
    * Helpers for looking up names in a tree, and for updating trees.
    *)
@@ -77,6 +78,8 @@ Module DIRTREE.
                                    (dirent : string * dirtree) :=
     let (ent_name, ent_tree) := dirent in
     if string_dec ent_name name then (ent_name, rec ent_tree) else dirent.
+
+
 
   Fixpoint update_subtree (fnlist : list string) (subtree : dirtree) (tree : dirtree) :=
     match fnlist with
@@ -143,7 +146,16 @@ Module DIRTREE.
       end
     end)%pred.
 
+(*
 
+  Fixpoint dirtree_update_inode t inum off v :=
+    match t with
+    | TreeFile inum' f => if (addr_eq_dec inum inum') then
+          let f' := BFILE.mk_bfile (updN (BFData f) off v) (BFAttr f) in (TreeFile inum f')
+          else (TreeFile inum' f)
+    | TreeDir inum' ents => 
+
+*)
 
   (**
    * [F] represents the other parts of the file system above [tree],

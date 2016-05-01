@@ -77,7 +77,8 @@ Module BFILE.
     ms <- LOG.dsync_vecs lxp (map (@wordToNat _) bns) ms;
     rx ms.
 
-  Definition grow T lxp bxp ixp inum v ms rx : prog T :=
+(*
+  Definition grow T lxp bxp1 bxp2 ixp inum v ms rx : prog T :=
     let^ (ms, len) <- INODE.getlen lxp ixp inum ms;
     If (lt_dec len INODE.NBlocks) {
       let^ (ms, r) <- BALLOC.alloc lxp bxp ms;
@@ -103,7 +104,7 @@ Module BFILE.
     ms <- INODE.shrink lxp bxp ixp inum nr ms;
     rx ms.
 
-
+*)
   (* rep invariants *)
 
   Definition attr := INODE.iattr.
@@ -122,11 +123,45 @@ Module BFILE.
     (listmatch (fun v a => a |-> v ) (BFData f) (map (@wordToNat _) (INODE.IBlocks i)) *
      [[ BFAttr f = INODE.IAttr i ]])%pred.
 
-  Definition rep bxp ixp (flist : list bfile) :=
-    (exists freeblocks ilist,
-     BALLOC.rep bxp freeblocks * INODE.rep bxp ixp ilist *
-     listmatch file_match flist ilist
+  Definition rep bxp1 bxp2 ixp (flist : list bfile) ilist freeblocks :=
+    (exists freeblocks1 freeblocks2,
+     BALLOC.rep bxp1 freeblocks1 * BALLOC.rep bxp2 freeblocks2 * INODE.rep bxp1 ixp ilist *
+     listmatch file_match flist ilist *
+     [[ freeblocks = freeblocks1 ++ freeblocks2 ]] (* select based on memstate *)
     )%pred.
+
+  Definition block_belong_to_file ilist bn inum off :=
+    bn = selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0.
+
+  Definition block_is_unused freeblocks (bn : addr) := In bn freeblocks.
+
+  Definition ilist_safe ilist1 free1 ilist2 free2 :=
+    incl free2 free1 /\
+    forall inum off bn,
+        block_belong_to_file ilist2 bn inum off ->
+        (block_belong_to_file ilist1 bn inum off \/
+         block_is_unused free1 # bn).
+
+  Theorem ilist_safe_trans : forall i1 f1 i2 f2 i3 f3,
+    ilist_safe i1 f1 i2 f2 ->
+    ilist_safe i2 f2 i3 f3 ->
+    ilist_safe i1 f1 i3 f3.
+  Admitted.
+
+  Theorem rep_safe_used: forall bxp1 bxp2 ixp flist ilist m bn inum off free v,
+    rep bxp1 bxp2 ixp flist ilist free (list2nmem m) ->
+    block_belong_to_file ilist bn inum off ->
+    let f := selN flist inum bfile0 in
+    let f' := mk_bfile (updN (BFData f) off v) (BFAttr f) in
+    let flist' := updN flist inum f' in
+    rep bxp1 bxp2 ixp flist' ilist free (list2nmem (updN m #bn v)).
+  Admitted.
+
+  Theorem rep_safe_unused: forall bxp1 bxp2 ixp flist ilist m free bn v,
+    rep bxp1 bxp2 ixp flist ilist free (list2nmem m) ->
+    block_is_unused free bn ->
+    rep bxp1 bxp2 ixp flist ilist free (list2nmem (updN m bn v)).
+  Admitted.
 
   Definition synced_file f := mk_bfile (synced_list (map fst (BFData f))) (BFAttr f).
 
@@ -149,11 +184,11 @@ Module BFILE.
 
   (*** specification *)
 
-  Theorem getlen_ok : forall lxp bxp ixp inum ms,
-    {< F Fm Fi m0 m flist f,
+  Theorem getlen_ok : forall lxp bxp1 bxp2 ixp inum ms,
+    {< F Fm Fi m0 m f flist ilist free,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ m ::: (Fm * rep bxp1 bxp2 ixp flist ilist free) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:^(ms,r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
@@ -173,6 +208,7 @@ Module BFILE.
   Qed.
 
 
+(*
   Theorem getattrs_ok : forall lxp bxp ixp inum ms,
     {< F Fm Fi m0 m flist f,
     PRE:hm
@@ -193,19 +229,21 @@ Module BFILE.
     extract; seprewrite.
     subst; eauto.
   Qed.
+*)
 
 
-  Theorem setattrs_ok : forall lxp bxp ixp inum a ms,
-    {< F Fm Fi m0 m flist f,
+  Theorem setattrs_ok : forall lxp bxp1 bxp2 ixp inum a ms,
+    {< F Fm Fi m0 m flist ilist free f,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * rep bxp ixp flist) ]]] *
+           [[[ m ::: (Fm * rep bxp1 bxp2 ixp flist ilist free) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST:hm' RET:ms  exists m' flist' f',
+    POST:hm' RET:ms  exists m' flist' f' ilist' free',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * rep bxp ixp flist') ]]] *
+           [[[ m' ::: (Fm * rep bxp1 bxp2 ixp flist' ilist' free') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
-           [[ f' = mk_bfile (BFData f) a ]]
+           [[ f' = mk_bfile (BFData f) a ]] *
+           [[ ilist_safe ilist free ilist' free' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} setattrs lxp ixp inum a ms.
   Proof.
@@ -215,12 +253,13 @@ Module BFILE.
 
     safestep.
     repeat extract. seprewrite.
-    2: sepauto.
-    2: eauto.
+    3: sepauto.
+    3: eauto.
     eapply listmatch_updN_selN; try omega.
     unfold file_match; cancel.
+    reflexivity.
     Unshelve. exact INODE.inode0.
-  Qed.
+  Admitted.
 
 
   Theorem updattr_ok : forall lxp bxp ixp inum kv ms,
