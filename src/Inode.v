@@ -368,10 +368,11 @@ Module INODE.
     >} getlen lxp xp inum ms.
   Proof.
     unfold getlen, rep; pose proof irec0.
-    hoare.
-
+    safestep.
     sepauto.
-    extract. 
+    safestep.
+
+    extract.
     denote Ind.rep as Hx; unfold Ind.rep in Hx; destruct_lift Hx.
     seprewrite; subst; eauto.
   Qed.
@@ -391,9 +392,10 @@ Module INODE.
     >} getattrs lxp xp inum ms.
   Proof.
     unfold getattrs, rep.
-    hoare.
-
+    safestep.
     sepauto.
+
+    safestep.
     extract.
     seprewrite; subst; eauto.
   Qed.
@@ -414,16 +416,22 @@ Module INODE.
     >} setattrs lxp xp inum attr ms.
   Proof.
     unfold setattrs, rep.
-    hoare.
-
+    safestep.
     sepauto.
+
+    safestep.
     irec_wf.
-
     sepauto.
+
+    safestep.
     eapply listmatch_updN_selN; simplen.
     instantiate (1 := mk_inode (IBlocks ino) attr).
     unfold inode_match; cancel; sepauto.
     sepauto.
+
+    eauto.
+    cancel.
+    cancel; eauto.
     Unshelve. exact irec0.
   Qed.
 
@@ -443,15 +451,22 @@ Module INODE.
     >} updattr lxp xp inum kv ms.
   Proof.
     unfold updattr, rep.
-    hoare.
-
+    safestep.
     sepauto.
+
+    safestep.
     filldef; abstract (destruct kv; simpl; subst; irec_wf).
     sepauto.
+
+    safestep.
     eapply listmatch_updN_selN; simplen.
-    eassign ( mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv)).
+    instantiate (1 := mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv)).
     unfold inode_match; cancel; sepauto.
+
     sepauto.
+    auto.
+    cancel.
+    cancel; eauto.
     Unshelve. exact irec0.
   Qed.
 
@@ -471,11 +486,13 @@ Module INODE.
     >} getbnum lxp xp inum off ms.
   Proof.
     unfold getbnum, rep.
-    step.
+    safestep.
     sepauto.
 
     prestep; norml.
     extract; seprewrite.
+    cancel.
+    step.
     cancel.
   Qed.
 
@@ -494,11 +511,13 @@ Module INODE.
     >} getallbnum lxp xp inum ms.
   Proof.
     unfold getallbnum, rep.
-    step.
+    safestep.
     sepauto.
 
     prestep; norml.
     extract; seprewrite.
+    cancel.
+    step.
     cancel.
   Qed.
 
@@ -518,7 +537,7 @@ Module INODE.
     >} shrink lxp bxp xp inum nr ms.
   Proof.
     unfold shrink, rep.
-    step.
+    safestep.
     sepauto.
 
     extract; seprewrite.
@@ -528,14 +547,16 @@ Module INODE.
     irec_wf.
     sepauto.
 
-    step.
+    safestep.
     2: sepauto.
     rewrite listmatch_updN_removeN by omega.
     cancel.
     unfold inode_match, BPtrSig.upd_len, BPtrSig.IRLen; simpl.
+    2: eauto.
     cancel.
     apply forall_firstn; auto.
-    Unshelve. eauto.
+    cancel; auto.
+    Unshelve. exact IRec.Defs.item0.
   Qed.
 
 
@@ -576,7 +597,7 @@ Module INODE.
     >} grow lxp bxp xp inum bn ms.
   Proof.
     unfold grow, rep.
-    step.
+    safestep.
     sepauto.
 
     extract; seprewrite.
@@ -595,6 +616,7 @@ Module INODE.
     substl (IAttr (selN ilist inum inode0)); eauto.
     apply Forall_app; auto.
     eapply BALLOC.bn_valid_roundtrip; eauto.
+    cancel; auto.
 
     Unshelve. all: eauto; exact emp.
   Qed.

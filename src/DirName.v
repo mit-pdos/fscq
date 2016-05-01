@@ -638,7 +638,8 @@ Module SDIR.
     >} readdir lxp ixp dnum ms.
   Proof.
     unfold readdir.
-    hoare.
+    safestep. eauto.
+    safestep.
     eapply readdir_trans_addr_ok; eauto.
   Qed.
 
@@ -669,9 +670,8 @@ Module SDIR.
 
     rewrite <- notindomain_mem_eq.
     subst; eexists.
-    split; [ eauto | split ]; eauto; split; intros.
     apply notindomain_not_indomain; eauto.
-    apply mem_except_notindomain.
+    apply notindomain_not_indomain; eauto.
   Qed.
 
 

@@ -416,8 +416,8 @@ Module DIR.
     >} lookup lxp ixp dnum name ms.
   Proof.
     unfold lookup, rep_macro, rep.
-    step.
-    step.
+    safestep.
+    safestep.
     or_r; cancel.
     apply lookup_ptsto; auto.
     or_l; cancel.
@@ -437,7 +437,8 @@ Module DIR.
     >} readdir lxp ixp dnum ms.
   Proof.
     unfold readdir, rep_macro, rep.
-    hoare.
+    safestep.
+    safestep.
     apply readmatch_ok.
   Qed.
 
@@ -473,8 +474,8 @@ Module DIR.
     eapply sep_star_ptsto_indomain.
     pred_apply; cancel.
 
-    eexists; split; eauto.
     rewrite <- notindomain_mem_eq; auto.
+    eapply lookup_notindomain; eauto.
     eapply lookup_notindomain; eauto.
   Qed.
 

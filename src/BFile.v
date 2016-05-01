@@ -210,11 +210,13 @@ Module BFILE.
     >} setattrs lxp ixp inum a ms.
   Proof.
     unfold setattrs, rep.
-    hoare.
-
+    safestep.
     sepauto.
+
+    safestep.
     repeat extract. seprewrite.
     2: sepauto.
+    2: eauto.
     eapply listmatch_updN_selN; try omega.
     unfold file_match; cancel.
     Unshelve. exact INODE.inode0.
@@ -236,12 +238,14 @@ Module BFILE.
     >} updattr lxp ixp inum kv ms.
   Proof.
     unfold updattr, rep.
-    hoare.
-
+    step.
     sepauto.
+
+    safestep.
     repeat extract. seprewrite.
     2: sepauto.
     eapply listmatch_updN_selN; try omega.
+    2: eauto.
     unfold file_match; cancel.
     Unshelve. exact INODE.inode0.
   Qed.
@@ -267,7 +271,9 @@ Module BFILE.
     extract; seprewrite; subst.
     setoid_rewrite listmatch_length_pimpl in H at 2.
     rewrite map_length in *.
-    destruct_lift H; cancel; eauto.
+    destruct_lift H.
+    safecancel.
+    eauto.
 
     sepauto.
     setoid_rewrite listmatch_extract with (i := off) in H at 2; try omega.
@@ -302,9 +308,10 @@ Module BFILE.
     extract; seprewrite; subst.
     setoid_rewrite listmatch_length_pimpl in H at 2.
     rewrite map_length in *.
-    destruct_lift H; cancel; eauto.
-
+    destruct_lift H; safecancel.
+    eauto.
     sepauto.
+
     setoid_rewrite listmatch_extract with (i := off) in H at 2; try omega.
     destruct_lift H; filldef.
     step.
@@ -315,7 +322,7 @@ Module BFILE.
     erewrite selN_map by omega; filldef.
     setoid_rewrite surjective_pairing at 2; cancel.
 
-    step; [ | sepauto .. ].
+    safestep; [ | sepauto .. ].
     rename dummy0 into ilist.
     setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 4.
     rewrite listmatch_updN_removeN by omega.
@@ -324,6 +331,7 @@ Module BFILE.
     rewrite listmatch_updN_removeN by omega.
     erewrite selN_map by omega; filldef.
     cancel.
+    sepauto.
 
     pimpl_crash; cancel; auto.
     Grab Existential Variables. all: eauto.
@@ -354,18 +362,20 @@ Module BFILE.
     denote removeN as Hx.
     setoid_rewrite listmatch_length_pimpl in Hx at 2.
     rewrite map_length in *.
-    destruct_lift Hx; cancel; eauto.
+    destruct_lift Hx; safecancel.
+    eauto.
 
     sepauto.
     step.
 
     (* file size ok, do allocation *)
     step.
-    step.
+    safestep.
     sepauto.
 
-    hoare.
+    step; step.
     eapply BALLOC.bn_valid_facts; eauto.
+    step.
 
     or_r; cancel.
     2: sepauto.
@@ -379,9 +389,11 @@ Module BFILE.
     rewrite wordToNat_natToWord_idempotent'; auto.
     eapply BALLOC.bn_valid_goodSize; eauto.
     apply list2nmem_app; eauto.
+    cancel.
+    or_l; cancel.
 
     step.
-    pimpl_crash; cancel; eauto.
+    cancel; eauto.
     Unshelve. all: easy.
   Qed.
 
@@ -420,7 +432,8 @@ Module BFILE.
 
     step.
     sepauto.
-    setoid_rewrite listmatch_length_pimpl in H at 2.
+    denote listmatch as Hx.
+    setoid_rewrite listmatch_length_pimpl in Hx at 2.
     prestep; norm; [ cancel | intuition ]; [ | sepauto ].
     pred_apply; cancel.
     seprewrite.
@@ -482,6 +495,7 @@ Module BFILE.
     rewrite listmatch_updN_removeN by omega.
     cancel.
 
+    eauto.
     xcrash.
     or_r; cancel.
     xform_normr.
@@ -543,6 +557,7 @@ Module BFILE.
     rewrite synced_list_map_fst_map.
     rewrite listmatch_map_l; sepauto.
     sepauto.
+    eauto.
 
     (* crashes *)
     xcrash.
@@ -617,12 +632,13 @@ Module BFILE.
     >} write_array lxp ixp inum a i v ms.
   Proof.
     unfold write_array.
-    hoare.
-
+    safestep.
     denote (arrayN a vsl) as Hx.
     destruct (list2nmem_arrayN_bound vsl _ Hx); subst; simpl in *; omega.
     rewrite isolateN_fwd with (i:=i) by auto; filldef; cancel.
-    apply list2nmem_arrayN_updN; auto.
+
+    step.
+    rewrite <- isolateN_bwd_upd by auto; cancel.
   Qed.
 
 
@@ -666,10 +682,10 @@ Module BFILE.
     >} read_range lxp ixp inum a nr vfold v0 ms.
   Proof.
     unfold read_range.
-    safestep.
+    safestep. eauto.
     safestep.
 
-    assert (m2 < length vsl).
+    assert (m1 < length vsl).
     denote (arrayN a vsl) as Hx.
     destruct (list2nmem_arrayN_bound vsl _ Hx); subst; simpl in *; omega.
     safestep.
@@ -681,6 +697,7 @@ Module BFILE.
 
     safestep.
     cancel.
+    erewrite <- LOG.rep_hashmap_subset; eauto.
     Unshelve. all: eauto; exact tt.
   Qed.
 
@@ -732,7 +749,7 @@ Module BFILE.
   Proof.
     unfold read_cond.
     safestep.
-    safestep.
+    safestep. eauto.
     safestep.
     sepauto.
 
@@ -752,8 +769,9 @@ Module BFILE.
     denote cond as Hx; rewrite firstn_oob in Hx; auto.
     rewrite map_length; auto.
     cancel.
+    apply LOG.rep_hashmap_subset; eauto.
 
-    Unshelve. all: easy.
+    Unshelve. all: try easy. exact ($0, nil).
   Qed.
 
 
@@ -827,6 +845,7 @@ Module BFILE.
     safestep.
     unfold synced_list; simpl; rewrite app_nil_r.
     eassign f; destruct f; auto.
+    eauto.
 
     safestep.
     subst; simpl; apply list2nmem_arrayN_app; eauto.
@@ -842,6 +861,9 @@ Module BFILE.
     or_r; cancel.
     rewrite firstn_oob; auto.
     apply list2nmem_arrayN_app; auto.
+    rewrite firstn_oob; auto.
+
+    cancel.
     Unshelve. all: easy.
   Qed.
 
@@ -1109,7 +1131,7 @@ Module BFILE.
   Proof.
     intros.
     rewrite xform_rep_file by eauto.
-    cancel.
+    cancel. eauto.
     unfold file_crash in *.
     repeat deex; simpl.
     eapply list2nmem_crash_xform; eauto.
@@ -1131,6 +1153,7 @@ Module BFILE.
     eapply file_crash_ptsto in H0; eauto.
     destruct_lift H0.
     cancel; eauto.
+    Transparent vsmerge.
   Qed.
 
 

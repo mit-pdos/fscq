@@ -154,16 +154,19 @@ Module FileRecArray (FRA : FileRASig).
     >} get lxp ixp inum ix ms.
   Proof.
     unfold get, rep.
-    hoare.
+    safestep.
 
     (* [rewrite selN_val2block_equiv] somewhere *)
-
     rewrite synced_list_length, ipack_length.
     apply div_lt_divup; auto.
     subst; rewrite synced_list_selN; simpl.
+
+    safestep.
+    erewrite selN_val2block_equiv.
     apply ipack_selN_divmod; auto.
     apply list_chunk_wellformed; auto.
     unfold items_valid in *; intuition; auto.
+    apply Nat.mod_upper_bound; auto.
   Qed.
 
 
@@ -194,9 +197,11 @@ Module FileRecArray (FRA : FileRASig).
 
     apply arrayN_unify.
     rewrite synced_list_selN, synced_list_updN; f_equal; simpl.
+    rewrite block2val_updN_val2block_equiv.
     apply ipack_updN_divmod; auto.
     apply list_chunk_wellformed.
     unfold items_valid in *; intuition; auto.
+    apply Nat.mod_upper_bound; auto.
 
     apply items_valid_updN; auto.
     unfold items_valid, RALen in *; simpl; intuition.
@@ -266,8 +271,10 @@ Module FileRecArray (FRA : FileRASig).
     >} extend lxp bxp ixp inum e ms.
   Proof.
     unfold extend, rep.
-    hoare.
+    prestep. norm. cancel. intuition. eauto. eauto. eauto.
+    safestep.
 
+    or_l; safecancel.
     or_r; norm; [ cancel | intuition; eauto ].
     simpl; pred_apply; norm; [ | intuition ].
     cancel; apply extend_ok_helper; auto.
@@ -347,29 +354,31 @@ Module FileRecArray (FRA : FileRASig).
     >} ifind lxp ixp inum cond ms.
   Proof.
     unfold ifind, rep.
-    step.
-    step.
-    step.
+    safestep.
+    safestep. auto. auto. eauto.
+    safestep.
     eapply ifind_length_ok; eauto.
-    step.
+    safestep.
 
     unfold items_valid in *; intuition.
     or_r; cancel.
-    replace i with (snd (n, i)) by auto.
+    replace p_2 with (snd (p_1, p_2)) by auto.
     eapply ifind_block_ok_cond; eauto.
-    replace n with (fst (n, i)) by auto.
+    replace p_1 with (fst (p_1, p_2)) by auto.
     eapply ifind_result_inbound; eauto.
-    replace i with (snd (n, i)) by auto.
+    replace p_2 with (snd (p_1, p_2)) by auto.
     eapply ifind_result_item_ok; eauto.
 
     unfold items_valid, RALen in *; intuition.
     eapply ifind_block_none_progress; eauto.
+    cancel.
 
-    step.
+    safestep.
     or_l; cancel.
     unfold items_valid, RALen in *; intuition.
-
-    Unshelve.  exact tt. eauto.
+    cancel.
+    apply LOG.rep_hashmap_subset; auto.
+    Unshelve.  all: try exact tt; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (get _ _ _ _ _) _) => apply get_ok : prog.
