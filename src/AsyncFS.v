@@ -822,7 +822,7 @@ Module AFS.
     XCRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists d tree',
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
+        LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (d, nil) hm' *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum  (BFILE.synced_file f)) tree ]]
    >} file_sync fsxp inum mscs.
@@ -845,10 +845,6 @@ Module AFS.
       cancel.
       xform_norm. cancel.
       xform_norm. safecancel.
-      instantiate (1 := d); simpl.
-      admit.  (*  rewrite LOG.notxn_intact *)
-      pred_apply.
-      cancel.
 
     - eapply pimpl_trans; [ | eapply H1 ]; cancel.
       xform_norm.
@@ -882,8 +878,8 @@ Module AFS.
       exists d,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
        ((exists n,  [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]) \/
-         exists flist',
-         [[[ d ::: (crash_xform Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
+         exists flist' F',
+         [[[ d ::: (F' * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist') ]]] *
          [[[ flist' ::: (arrayN_ex flist' inum * inum |-> BFILE.synced_file f) ]]]
        )
    >>} file_sync fsxp inum mscs >> recover.
@@ -891,18 +887,28 @@ Module AFS.
     intros.
     recover_ro_ok.
     apply recover_ok.
-    cancel.
+    cancel. eauto.
     step.
+
     (* build a new idemcrash predicate that carries the XCRASH facts *)
-    match goal with
-    | [ H : crash_xform ?rc =p=> crash_xform ?crash
-         |-  ?F * ?rc =p=> ?F * ?idem ] => is_evar idem;
-        instantiate (1 := (exists p, p * [[ crash_xform p =p=> crash_xform crash ]])%pred);
-        cancel
-    end.
+    instantiate (1 :=  (fun hm => (exists p, p * [[ crash_xform p =p=> crash_xform
+         (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) v hm
+      \/ (exists d tree',
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, []) hm *
+           [[[ d ::: v0 ✶ DIRTREE.rep fsxp v1 tree' ]]] *
+           [[ tree' = DIRTREE.update_subtree v3 (DIRTREE.TreeFile inum (BFILE.synced_file v4)) v2 ]])) ]]))%pred).
+    apply pimpl_refl.
+    cancel.
+    rewrite H.
+    xform_norm.
+    or_l; cancel.
+    or_r; cancel. xform_normr.
+    rewrite LOG.intact_idempred. cancel.
 
     (* tough work to pull out the "exists p" inside crash_form *)
-    xform_dist.
+    repeat xform_dist.
+    apply sep_star_lift_l.
+    intros.
     rewrite crash_xform_exists_comm.
     rewrite sep_star_comm.
     rewrite pimpl_exists_r_star_r.
@@ -913,38 +919,51 @@ Module AFS.
     denote (crash_xform _ =p=> crash_xform _) as Hc; rewrite Hc.
 
     xform_norm;
-    recover_ro_ok;
-    rewrite LOG.idempred_idem; xform_deex_l;
-    rewrite SB.crash_xform_rep.
+    recover_ro_ok.
 
-    - cancel.
-      step.
+    - rewrite LOG.idempred_idem; xform_deex_l;
+      rewrite SB.crash_xform_rep.
       cancel.
+      step.
       cancel.
       destruct v.
       xform_norm.
       or_l; cancel.
       rewrite LOG.after_crash_idempred; cancel.
 
-    - cancel.
+    - rewrite LOG.idempred_idem; xform_deex_l;
+      rewrite SB.crash_xform_rep.
+      cancel.
+
       step.
       denote crash_xform as Hx.
       replace n with 0 in Hx by omega; rewrite nthd_0 in Hx; simpl in Hx.
-      apply (crash_xform_diskIs_pred _ H) in Hx.
+      denote! (_ (list2nmem x2)) as Hy.
+      apply (crash_xform_diskIs_pred _ Hy) in Hx.
       apply crash_xform_sep_star_dist in Hx.
-      rewrite BFILE.xform_rep_file in Hx by eauto.
-      destruct_lift Hx.
-      or_r; safecancel.
-      erewrite BFILE.file_crash_synced with (f := BFILE.synced_file v3); eauto.
-      apply BFILE.fsynced_synced_file.
 
-      cancel.
+      (* unfold DIRTREE.rep in Hx to extract the file list *)
+      unfold DIRTREE.rep in Hx; apply sep_star_comm in Hx.
+      repeat (rewrite crash_xform_exists_comm in Hx;
+        apply pimpl_exists_r_star_r in Hx;
+        destruct Hx as [ ? Hx ]).
+      repeat rewrite crash_xform_sep_star_dist in Hx.
+      repeat rewrite crash_xform_lift_empty in Hx.
+      rewrite BFILE.xform_rep, IAlloc.xform_rep in Hx.
+      destruct_lift Hx.
+      or_r; cancel.
+
+      (* XXX: should be able to tell from H8 and H7, though not very interesting.
+         Need to prove (BFILE.synced_file v4) = selN dummy inum _ *)
+      admit.
+
+      safecancel.
       apply crash_xform_pimpl.
       rewrite LOG.after_crash_idempred.
       or_r; safecancel.
 
     Unshelve. all: eauto.
-  Qed.
+  Admitted.
 
 
   Theorem lookup_ok: forall fsxp dnum fnlist mscs,
