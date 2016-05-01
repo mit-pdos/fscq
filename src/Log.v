@@ -491,8 +491,10 @@ Module LOG.
     intuition simpl; eauto; pred_apply.
     norm. cancel.
     intuition simpl; eauto.
-    (* XXX: hashmap doesn't matchup *)
-  Admitted.
+    apply GLog.rep_hashmap_subset; eauto.
+    intuition.
+    rewrite Nat.min_l; eauto.
+  Qed.
 
 
   Lemma crash_xform_any : forall xp F ds hm,
@@ -816,7 +818,7 @@ Module LOG.
     safestep. auto.
     subst; pred_apply; cancel.
 
-    admit. (* XXX: hashmap_subset *)
+    eauto.
     safestep.
     unfold rep_inner; cancel.
     eapply lt_le_trans; eauto.
@@ -830,15 +832,13 @@ Module LOG.
     rewrite map_length; omega.
 
     unfold rep_inner; cancel.
-    admit. (* XXX: hashmap_subset *)
-
     step.
     cancel.
     eassign raw; pred_apply.
     cancel; eauto.
     apply GLog.rep_hashmap_subset; eauto.
     Unshelve. exact tt. auto.
-  Admitted.
+  Qed.
 
 
   Lemma firstn_vsupsyn_range_firstn_S : forall i vs l,
