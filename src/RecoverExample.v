@@ -6,31 +6,32 @@ Require Import Hoare.
 Require Import Word.
 Require Import Idempotent.
 Require Import SepAuto.
+Require Import Lock.
 
 Set Implicit Arguments.
 
 Parameter work : forall {T} (rx : unit -> prog T), prog T.
 Parameter recover : forall {T} (rx : unit -> prog T), prog T.
-Parameter rep : bool -> nat -> rawpred.
-Axiom rep_xform : forall b n, crash_xform (rep b n) =p=> rep b n.
+Parameter rep : bool -> nat -> hashmap -> rawpred.
+Axiom rep_xform : forall b n hm, crash_xform (rep b n hm) =p=> rep b n hm.
 
 Theorem work_ok :
   {< v,
-  PRE         rep true v
-  POST RET:r  rep true (v+1)
-  CRASH       rep true v \/ rep false (v+1) \/ rep true (v+1)
+  PRE:hm          rep true v hm
+  POST:hm' RET:r  rep true (v+1) hm'
+  CRASH:hm'       rep true v hm' \/ rep false (v+1) hm' \/ rep true (v+1) hm'
   >} work.
 Admitted.
 
 Theorem recover_ok :
   {< v x,
-  PRE         rep x v
-  POST RET:r  rep true v
-  CRASH       rep x v
+  PRE:hm          rep x v hm
+  POST:hm' RET:r  rep true v hm'
+  CRASH:hm'       rep x v hm'
   >} recover.
 Admitted.
 
-Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
+Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 Hint Extern 1 ({{_}} progseq work _) => apply work_ok : prog.
 Hint Extern 1 ({{_}} progseq recover _) => apply recover_ok : prog.
 
@@ -42,9 +43,9 @@ Qed.
 
 Theorem work_recover_ok :
   {<< v,
-  PRE         rep true v
-  POST RET:r  rep true (v+1)
-  REC RET:r   rep true v \/ rep true (v+1)
+  PRE:hm          rep true v hm
+  POST:hm' RET:r  rep true (v+1) hm'
+  REC:hm' RET:r   rep true v hm' \/ rep true (v+1) hm'
   >>} work >> recover.
 Proof.
   unfold forall_helper; intros.
@@ -64,12 +65,29 @@ Proof.
   (* [crash] should be basically the same as [idemcrash], modulo the frame *)
   apply instantiate_crash.
 
-  (* Try to cancel out the idemcrash implication; breaks up the 3 ORs from [work]'s crash condition *)
+  (**
+   * Try to cancel out the idemcrash implication.
+   * This breaks up the 3 ORs from [work]'s crash condition.
+   * Note that [cancel] tries to unify the first OR branch with [idemcrash], which is wrong;
+   * to avoid this, hide the fact that [idemcrash] is an evar using [set_evars].
+   *)
+  set_evars.
+  assert (exists idemcrash', idemcrash' = H) as Hidem by eauto.
+  destruct Hidem as [idemcrash' Hidem]. rewrite <- Hidem. subst H.
+  rewrite <- locked_eq in Hidem.
   cancel.
 
-  (* Now we have a bunch of subgoals about idemcrash; re-combine the ORs back together.. *)
+  (**
+   * Now we have a bunch of subgoals about idemcrash; re-combine the ORs back together..
+   * Need to first unlock the idemcrash evar to make progress.
+   *)
+  rewrite locked_eq.
   apply pimpl_or_r. left. reflexivity.
+
+  rewrite locked_eq.
   simpl. or_r. apply pimpl_or_r. left. reflexivity.
+
+  rewrite locked_eq.
   simpl. or_r. or_r. reflexivity.
 
   (* Now we need to prove idempotence..  [xform_norm] breaks up the 3 ORs from idemcrash *)
