@@ -24,6 +24,9 @@ verbose = False
 reallySync :: Bool
 reallySync = True
 
+debugSyncs :: Bool
+debugSyncs = False
+
 debugmsg :: String -> IO ()
 debugmsg s =
   if verbose then
@@ -135,6 +138,14 @@ sync_disk (S fd sr dirty fl) a = do
   debugmsg $ "sync(" ++ (show a) ++ ")"
   isdirty <- readIORef dirty
   if isdirty then do
+    if debugSyncs then do
+      callstack <- currentCallStack
+      putStrLn $ "Sync call stack:"
+      _ <- mapM (\loc -> putStrLn $ "  " ++ loc) callstack
+      return ()
+    else
+      return ()
+
     bumpSync sr
     logFlush fl
     if reallySync then

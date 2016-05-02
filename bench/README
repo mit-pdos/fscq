@@ -14,3 +14,7 @@ Build sv6's mailbench:
 For crash testing:
 
   ./crashtest.sh ./crash-setup.sh ./crash-check.sh
+
+To run the sync microbenchmark:
+
+  ./run-bench.sh testsync './testsync.sh /tmp/ft'
