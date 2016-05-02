@@ -42,14 +42,13 @@ Proof.
 Qed.
 
 Theorem work_recover_ok :
-  {<< v,
+  {X<< v,
   PRE:hm          rep true v hm
   POST:hm' RET:r  rep true (v+1) hm'
   REC:hm' RET:r   rep true v hm' \/ rep true (v+1) hm'
-  >>} work >> recover.
+  >>X} work >> recover.
 Proof.
   unfold forall_helper; intros.
-  eexists; intros.
 
   (* Idempotence theorem *)
   eapply pimpl_ok3.
@@ -61,9 +60,6 @@ Proof.
 
   (* Post condition *)
   step.
-
-  (* [crash] should be basically the same as [idemcrash], modulo the frame *)
-  apply instantiate_crash.
 
   (**
    * Try to cancel out the idemcrash implication.
@@ -85,10 +81,10 @@ Proof.
   apply pimpl_or_r. left. reflexivity.
 
   rewrite locked_eq.
-  simpl. or_r. apply pimpl_or_r. left. reflexivity.
+  or_r. apply pimpl_or_r. left. reflexivity.
 
   rewrite locked_eq.
-  simpl. or_r. or_r. reflexivity.
+  or_r. or_r. reflexivity.
 
   (* Now we need to prove idempotence..  [xform_norm] breaks up the 3 ORs from idemcrash *)
   simpl.
