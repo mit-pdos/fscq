@@ -254,18 +254,19 @@ Module ATOMICCP.
     (* postcondition, success *)
     step.
     or_r.
-    cancel.
+    safecancel.
     erewrite update_update_subtree_eq.
     erewrite update_update_subtree_eq.
-    f_equal.
-    f_equal.
     f_equal.
     apply arrayN_one in H5.
     apply list2nmem_array_eq in H5.
     apply arrayN_one in H16.
     apply list2nmem_array_eq in H16.
+    destruct file.
     rewrite H16.
-    admit.  (* should be synced? *)
+    simpl in H5.
+    rewrite H5.
+    f_equal.
 
     AFS.xcrash_solve.  (* crash condition file_sync *)
     xcrash_norm.
