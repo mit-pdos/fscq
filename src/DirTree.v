@@ -127,6 +127,15 @@ Module DIRTREE.
         (if string_dec ename name then Fexcept e else F e) * dirlist_pred_except name dirlist'
       end)%pred.
 
+
+    Variable UpdateF : dirtree -> dirtree.
+
+    Fixpoint dirlist_update (dirlist : list (string * dirtree)) : list (string * dirtree) :=
+      match dirlist with
+      | nil => nil
+      | (name, subtree) :: dirlist' => (name, UpdateF subtree) :: (dirlist_update dirlist')
+      end.
+
   End DIRITEM.
 
   Fixpoint tree_pred ibxp e := (
@@ -146,27 +155,37 @@ Module DIRTREE.
       end
     end)%pred.
 
-(*
 
   Fixpoint dirtree_update_inode t inum off v :=
     match t with
     | TreeFile inum' f => if (addr_eq_dec inum inum') then
-          let f' := BFILE.mk_bfile (updN (BFData f) off v) (BFAttr f) in (TreeFile inum f')
+          let f' := BFILE.mk_bfile (updN (BFILE.BFData f) off v) (BFILE.BFAttr f) in (TreeFile inum f')
           else (TreeFile inum' f)
-    | TreeDir inum' ents => 
-
-*)
+    | TreeDir inum' ents =>
+      TreeDir inum' (dirlist_update (fun t' => dirtree_update_inode t' inum off v) ents)
+    end.
 
   (**
    * [F] represents the other parts of the file system above [tree],
    * in cases where [tree] is a subdirectory somewhere in the tree.
    *)
-  Definition rep fsxp F tree :=
+  Definition rep fsxp F tree ilist freeblocks :=
     (exists bflist freeinodes freeinode_pred,
-     BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist *
+     BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist ilist freeblocks *
      IAlloc.rep fsxp freeinodes freeinode_pred *
      [[ (F * tree_pred fsxp tree * freeinode_pred)%pred (list2nmem bflist) ]]
     )%pred.
+
+  Definition dirtree_safe i1 f1 i2 f2 :=
+    BFILE.list_safe i1 f1 i2 f2.
+
+  Theorem dirtree_update_block : forall tree fsxp F ilist freeblocks inum off v bn m,
+    rep fsxp F tree ilist freeblocks (list2nmem m) ->
+    BFILE.block_belong_to_file ilist bn inum off ->
+    rep fsxp F (dirtree_update_inode tree inum off v) (list2nmem (updN m bn v)).
+  Admitted.
+
+  
 
   (**
    * Theorems about extracting and folding back subtrees from a tree.
