@@ -157,12 +157,15 @@ Module ATOMICCP.
         [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
              tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]] *
       (
-       (* crashed before any changes *)
+       (* crashed during flush but nothing changed *)
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+       (* crash during a real-only transaction but nothing changed *)
+       LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) hm' \/
        (exists d dlist',
-         (* dlist' = nil: crashed immediately after file_sync; must use idempred *)
          ([[dlist = d :: dlist' ]] * 
+          (* crash after update_fblock_d, which flushes, but doesn't modify tree *)
           (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, dlist') hm') \/
+          (* crash after file_sync, which may updates the tree *)
           (LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (d, dlist') hm'))))
     >} copydata fsxp src_inum tinum mscs.
   Proof.
@@ -170,7 +173,7 @@ Module ATOMICCP.
     step.
     step.
 
-    (* use update_fblock_d_ok' spec *)
+    (* use update_fblock_d_ok' spec? *)
     step.
     Ltac xcrash_norm :=  repeat (xform_norm; cancel).
 
@@ -180,6 +183,7 @@ Module ATOMICCP.
     instantiate (x := nil).
     apply Forall_nil.
     xcrash_norm.  (* right branch of or *)
+    or_r.
     or_r.
     xcrash_norm.
     eapply Forall_cons.
@@ -195,6 +199,7 @@ Module ATOMICCP.
     Focus 2.  (* setattr failed crash condition*)
     AFS.xcrash_solve.
     xcrash_norm.
+    or_r.
     or_r.
     xcrash_norm.
     instantiate ( x := [d]).
@@ -221,6 +226,7 @@ Module ATOMICCP.
     AFS.xcrash_solve.
     xcrash_norm.
     or_r.
+    or_r.
     xcrash_norm.
     apply Forall_cons.
     eexists.
@@ -232,6 +238,7 @@ Module ATOMICCP.
     (* right or case *)
     AFS.xcrash_solve.
     xcrash_norm.
+    or_r.
     or_r.
     xcrash_norm.
     instantiate ( x0 := [x]).
@@ -263,6 +270,7 @@ Module ATOMICCP.
     AFS.xcrash_solve.  (* crash condition file_sync *)
     xcrash_norm.
     or_r.
+    or_r.
     xcrash_norm.
     apply Forall_cons.
     eexists.
@@ -284,6 +292,7 @@ Module ATOMICCP.
     AFS.xcrash_solve. (* crash condition file_sync or right *)
     xcrash_norm.
     or_r.
+    or_r.
     xcrash_norm.
     apply Forall_cons.
     eexists.
@@ -301,8 +310,8 @@ Module ATOMICCP.
     AFS.xcrash_solve.  (* crash condition read_fblock *)
     repeat (xform_norm; cancel).
     or_r.
-    xcrash_norm.
-    instantiate (x := ds); simpl.
+    or_l.
+    instantiate (x := []); simpl.
     cancel.
     apply Forall_nil.
 
@@ -312,6 +321,8 @@ Module ATOMICCP.
     instantiate (x := nil); simpl.
     cancel.
     apply Forall_nil.
+    
+    Unshelve. all: eauto.
 
   Admitted.
 
