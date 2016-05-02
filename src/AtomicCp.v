@@ -135,12 +135,12 @@ Module ATOMICCP.
   Qed.
 
   Theorem copydata_ok : forall fsxp src_inum tinum mscs,
-    {< ds Fm Ftop temp_tree src_fn tfn file tfile v0 t0,
+    {< ds Fm Ftop temp_tree src_fn file tfile v0 t0,
     PRE:hm  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm * 
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree) ]]] *
       [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
-      [[ DIRTREE.find_subtree [tfn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
-      [[ src_fn <> tfn ]] *
+      [[ DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
+      [[ src_fn <> temp_fn ]] *
       [[[ BFILE.BFData file ::: (0 |-> v0) ]]] *
       [[[ BFILE.BFData tfile ::: (0 |-> t0) ]]]
     POST:hm' RET:^(mscs, r)
@@ -148,54 +148,104 @@ Module ATOMICCP.
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
         ([[ r = false]] * 
-         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum (BFILE.synced_file f')) temp_tree ]]
+         [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file f')) temp_tree ]]
         \/ 
          [[ r = true ]] *
-         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree ]])
+         [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree ]])
     XCRASH:hm'
-      (exists d tree' f', LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (d, nil) hm' *
-         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
-         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum f') temp_tree ]]) \/
-      (exists dlist, 
-         LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) hm' *  
-         [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
-             tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]])
+      exists dlist,
+        [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
+             tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]] *
+      (
+       (* crashed before any changes *)
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+       (exists d dlist',
+         (* dlist' = nil: crashed immediately after file_sync; must use idempred *)
+         ([[dlist = d :: dlist' ]] * 
+          (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, dlist') hm') \/
+          (LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (d, dlist') hm'))))
     >} copydata fsxp src_inum tinum mscs.
   Proof.
     unfold copydata; intros.
     step.
     step.
+
+    (* use update_fblock_d_ok' spec *)
     step.
-    step.
-    step.
-    prestep. safecancel.
+    Ltac xcrash_norm :=  repeat (xform_norm; cancel).
+
+    Focus 2.  (* update_fblock_d crash condition *)
+    AFS.xcrash_solve.
+    xcrash_norm.
+    instantiate (x := nil).
+    apply Forall_nil.
+    xcrash_norm.  (* right branch of or *)
+    or_r.
+    xcrash_norm.
+    eapply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply.
+    cancel.
+    apply Forall_nil.
+
+    step.  (* setattr *)
+
+    Focus 2.  (* setattr failed crash condition*)
+    AFS.xcrash_solve.
+    xcrash_norm.
+    or_r.
+    xcrash_norm.
+    instantiate ( x := [d]).
+    xcrash_norm.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply.
+    cancel.
+    apply Forall_nil.
+   
+    step. (* file_sync *)
+    step. (* return *)
+    
+    (* postcondition, setattr failed *)
     or_l.
     cancel.
     erewrite update_update_subtree_eq.
     f_equal.
+
+    (* setattr success crash condition: two cases *)
+    (* left or case *)
     AFS.xcrash_solve.
-    or_l.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; safecancel.
-    xform_norm; safecancel.
-    admit. (* rewrite LOG.notxn_idempred. *)
-    instantiate (1 := d).
-    pred_apply; cancel.
-    f_equal.
+    xcrash_norm.
+    or_r.
+    xcrash_norm.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply.
+    cancel.
+    apply Forall_nil.
+    (* right or case *)
     AFS.xcrash_solve.
-    or_l.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; safecancel.
-    xform_norm; safecancel.
-    admit. (* rewrite LOG.notxn_idempred. *)
-    instantiate (1 := x).
-    pred_apply; cancel.
+    xcrash_norm.
+    or_r.
+    xcrash_norm.
+    instantiate ( x0 := [x]).
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply.
     erewrite update_update_subtree_eq.
-    f_equal.
+    cancel.
+    apply Forall_nil.
+
+    (* postcondition, success *)
     step.
-    (* success return *)
     or_r.
     cancel.
     erewrite update_update_subtree_eq.
@@ -205,28 +255,64 @@ Module ATOMICCP.
     f_equal.
     apply arrayN_one in H5.
     apply list2nmem_array_eq in H5.
-    (*
-    rewrite arrayN_ex_one in H18.
-    rewrite arrayN_one in H18.
-    apply emp_star in H18.
-    apply list2nmem_array_eq in H18.
-    destruct f'.
-    destruct file.
-    simpl in *.
-    rewrite H18.
-    rewrite H4.
-    f_equal. *)
-    admit.
-    AFS.xcrash_solve.
+    apply arrayN_one in H16.
+    apply list2nmem_array_eq in H16.
+    rewrite H16.
+    admit.  (* should be synced? *)
+
+    AFS.xcrash_solve.  (* crash condition file_sync *)
+    xcrash_norm.
     or_r.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    admit.
-    admit.
+    xcrash_norm.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    simpl.
+    pred_apply.
+    cancel.
+    simpl.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply.
+    erewrite update_update_subtree_eq.
+    cancel.
+    apply Forall_nil.
+
+    AFS.xcrash_solve. (* crash condition file_sync or right *)
+    xcrash_norm.
     or_r.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    (* other crash cases *)
+    xcrash_norm.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    instantiate (1:=x).
+    pred_apply.
+    cancel.
+    erewrite update_update_subtree_eq.
+    erewrite update_update_subtree_eq.
+    cancel.
+    instantiate (1 := nil).
+    apply Forall_nil.
+    
+    AFS.xcrash_solve.  (* crash condition read_fblock *)
+    repeat (xform_norm; cancel).
+    or_r.
+    xcrash_norm.
+    instantiate (x := ds); simpl.
+    cancel.
+    apply Forall_nil.
+
+    AFS.xcrash_solve.  (* crash condition file_get_attr *)
+    repeat (xform_norm; cancel).
+    or_r. or_l.
+    instantiate (x := nil); simpl.
+    cancel.
+    apply Forall_nil.
+
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (copydata _ _ _ _) _) => apply copydata_ok : prog.
@@ -322,7 +408,7 @@ Module ATOMICCP.
 
   Hint Extern 1 ({{_}} progseq (copy_and_rename _ _ _ _ _) _) => apply copy_rename_ok : prog.
 
-  (* XXX specs for copy_and_rename_cleanup and atomic_cp *)
+  (* specs for copy_and_rename_cleanup and atomic_cp *)
 
   Theorem atomic_cp_recover_ok :
     {< fsxp cs ds,
