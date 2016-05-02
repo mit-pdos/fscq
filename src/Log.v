@@ -686,6 +686,39 @@ Module LOG.
     cancel. auto. auto.
   Qed.
 
+  Theorem crash_xform_idempred : forall xp F ds hm,
+    crash_xform (idempred xp F ds hm) =p=>
+      exists ms d n, rep xp (crash_xform F) (NoTxn (d, nil)) ms hm *
+        [[ n <= length (snd ds) ]] *
+        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]].
+  Proof.
+    unfold idempred, recover_any, after_crash, rep, rep_inner; intros.
+    xform_norm;
+    rewrite BUFCACHE.crash_xform_rep_pred by eauto;
+    xform_norm;
+    denote crash_xform as Hx.
+
+    - apply crash_xform_sep_star_dist in Hx;
+      rewrite GLog.crash_xform_any in Hx;
+      unfold GLog.recover_any_pred in Hx;
+      destruct_lift Hx.
+
+      safecancel.
+      eassign (mk_mstate (Map.empty valu) dummy1).
+      cancel. auto. eassumption. auto.
+
+    - apply crash_xform_sep_star_dist in Hx;
+      rewrite GLog.crash_xform_cached in Hx;
+      unfold GLog.recover_any_pred in Hx;
+      destruct_lift Hx.
+
+      safecancel.
+      eassign (mk_mstate (Map.empty valu) dummy3).
+      cancel. auto. eassumption.
+
+      eapply crash_xform_diskIs_trans; eauto.
+  Qed.
+
 
   Hint Resolve active_intact flushing_any.
   Hint Extern 0 (okToUnify (intact _ _ _ _) (intact _ _ _ _)) => constructor : okToUnify.
