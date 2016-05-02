@@ -325,7 +325,7 @@ Module ATOMICCP.
     
     Unshelve. all: eauto.
 
-  Admitted.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (copydata _ _ _ _) _) => apply copydata_ok : prog.
 
