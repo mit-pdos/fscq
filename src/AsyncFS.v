@@ -400,7 +400,6 @@ Module AFS.
   >>} file_get_attr fsxp inum mscs >> recover.
   Proof.
     recover_ro_ok.
-    eapply recover_ok.
     cancel.
     eauto.
     step.
@@ -484,7 +483,6 @@ Module AFS.
     >>} read_fblock fsxp inum off mscs >> recover.
   Proof.
     recover_ro_ok.
-    eapply recover_ok.
     cancel.
     eauto.
     eauto.
@@ -616,7 +614,6 @@ Module AFS.
      >>} file_truncate fsxp inum sz mscs >> recover.
   Proof.
     recover_ro_ok.
-    eapply recover_ok.
     cancel.
     instantiate (pathname := v3); eauto.
     safestep.  (* crucial to use safe version *)
@@ -801,7 +798,6 @@ Module AFS.
    >>} update_fblock_d fsxp inum off v mscs >> recover.
   Proof.
     recover_ro_ok.
-    apply recover_ok.
     cancel.
     instantiate (pathname := v4); eauto.
     eauto.
@@ -888,7 +884,6 @@ Module AFS.
   Proof.
     intros.
     recover_ro_ok.
-    apply recover_ok.
     cancel. eauto.
     step.
 
@@ -1011,7 +1006,6 @@ Module AFS.
     >>} lookup fsxp dnum fnlist mscs >> recover.
   Proof.
     recover_ro_ok.
-    eapply recover_ok.
     cancel.
     eauto.
     step.
@@ -1099,7 +1093,6 @@ Module AFS.
     >>} create fsxp dnum name mscs >> recover.
   Proof.
     recover_ro_ok.
-    apply recover_ok.
     cancel.
     eauto.
     safestep.
@@ -1199,7 +1192,6 @@ Module AFS.
     >>} rename fsxp dnum srcpath srcname dstpath dstname mscs >> recover.
   Proof.
     recover_ro_ok.
-    apply recover_ok.
     cancel.
     eauto.
     safestep.
