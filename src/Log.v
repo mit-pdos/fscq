@@ -1224,6 +1224,16 @@ Module LOG.
   Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
 
+  Lemma idempred_hashmap_subset : forall xp F ds hm hm',
+    (exists l, hashmap_subset l hm hm')
+    -> idempred xp F ds hm
+       =p=> idempred xp F ds hm'.
+  Proof.
+    unfold idempred, recover_any, after_crash; cancel.
+    rewrite rep_hashmap_subset by eauto. cancel.
+    rewrite rep_inner_hashmap_subset in * by eauto. or_r. safecancel.
+  Qed.
+
 End LOG.
 
 
