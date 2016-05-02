@@ -211,6 +211,31 @@ Notation "{<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_rec crash >
    hm at level 0, hm' at level 0, hm_rec at level 0,
    post at level 1, crash at level 1).
 
+Notation "{X<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_rec crash >>X} p1 >> p2" :=
+  (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
+   forall TF TR (rxOK: _ -> prog TF) (rxREC: _ -> prog TR),
+   corr3
+   (fun hm done_ crashdone_ =>
+     exists F_,
+     F_ * pre *
+     [[ crash_xform F_ =p=> F_ ]] *
+     [[ forall r_,
+        {{ fun hm' done'_ crash'_ => post F_ r_ *
+          [[ exists l, hashmap_subset l hm hm' ]] *
+          [[ done'_ = done_ ]]
+        }} rxOK r_ ]] *
+     [[ forall r_,
+        {{ fun hm_rec done'_ crash'_ => crash F_ r_ *
+          [[ exists l, hashmap_subset l hm hm_rec ]] *
+          [[ done'_ = crashdone_ ]]
+        }} rxREC r_ ]]
+   )%pred
+   (p1 rxOK)%pred
+   (p2 rxREC)%pred)) .. ))
+  (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
+   hm at level 0, hm' at level 0, hm_rec at level 0,
+   post at level 1, crash at level 1).
+
 
 Notation "{<< e1 .. e2 , 'PRE' pre 'POST' post 'REC' crash >>} p1 >> p2" :=
   (forall_helper (fun e1 => .. (forall_helper (fun e2 =>
