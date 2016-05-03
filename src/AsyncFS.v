@@ -256,7 +256,7 @@ Module AFS.
 
   (* sync directory tree; will flush all outstanding changes to tree (but not dupdates to files) *)
   Definition tree_sync T fsxp mscs rx : prog T :=
-    mscs <- LOG.sync (FSXPLog fsxp) mscs;
+    mscs <- DIRTREE.sync fsxp mscs;
     rx ^(mscs).
 
   Definition statfs T fsxp mscs rx : prog T :=
@@ -966,6 +966,38 @@ Module AFS.
     Unshelve. all: eauto.
   Admitted.
 
+ Theorem tree_sync_ok: forall fsxp  mscs,
+    {< ds Fm Ftop tree,
+    PRE:hm
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] 
+    POST:hm' RET:^(mscs)
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (ds!!, nil)) mscs hm'
+    XCRASH:hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+      exists d tree',
+        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, nil) hm' *
+        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]]
+   >} tree_sync fsxp mscs.
+  Proof.
+    unfold tree_sync; intros.
+    step.
+    step.
+    xcrash_solve.
+    or_l.
+    rewrite LOG.recover_any_idempred.
+    cancel.
+    or_r.
+    xform_norm. cancel.
+    xform_norm. cancel.
+    xform_norm. cancel.
+    rewrite LOG.intact_idempred.
+    cancel.
+    pred_apply.
+    cancel.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (tree_sync _ _) _) => apply tree_sync_ok : prog.
 
   Theorem lookup_ok: forall fsxp dnum fnlist mscs,
     {< ds Fm Ftop tree,
