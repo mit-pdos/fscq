@@ -447,13 +447,13 @@ Module ATOMICCP.
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
         (([[r = false ]] *
           (exists f',  
-          [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum f') temp_tree ]]))) \/
+          [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum f') temp_tree ]])) \/
          ([[r = true ]] *
           [[ temp_tree = DIRTREE.TreeDir the_dnum temp_dents ]] *
           [[ pruned = DIRTREE.tree_prune the_dnum temp_dents [] temp_fn temp_tree ]] *
           [[ pruned = DIRTREE.TreeDir the_dnum dstents ]] *
           [[ tree' = DIRTREE.tree_graft the_dnum dstents [] dst_fn subtree pruned ]] *
-          [[ subtree = DIRTREE.TreeFile tinum (BFILE.synced_file file) ]])
+          [[ subtree = DIRTREE.TreeFile tinum (BFILE.synced_file file) ]]))
     XCRASH:hm'
       exists dlist,
         [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
@@ -481,7 +481,8 @@ Module ATOMICCP.
     step.
     instantiate (cwd0 := []).
     admit.  (* boring *)
-    step.
+    unfold AFS.rename_rep.
+    safestep.
     step.
     AFS.xcrash_solve.
     xcrash_norm.
@@ -493,23 +494,7 @@ Module ATOMICCP.
     intuition.
     pred_apply. cancel.
     apply Forall_nil.
-
-    xcrash_norm.
-    or_r.
-    xcrash_norm.
-    apply Forall_cons.
-    eexists. eexists. intuition.
-    pred_apply; cancel.
-    admit. (* what do i know about x0? *)
-    apply Forall_nil.
-  
-    unfold AFS.rename_rep.
-    cancel.
-    admit. (* something slightly wrong *)
-
     step.
-    instantiate (F_1 := F_).
-    cancel.
     or_r.
     cancel.
     admit.
@@ -518,14 +503,17 @@ Module ATOMICCP.
     
     AFS.xcrash_solve.
     xcrash_norm.
-    or_l.
-    instantiate (x := nil); simpl; cancel.
-    apply Forall_nil.
-
-    xcrash_norm.
     or_r.
     xcrash_norm.
-    admit.  (* same problem with x0 *)
+    simpl.
+    constructor.
+    eexists. eexists. intuition.
+    eassumption.
+    constructor.
+    eexists. eexists. intuition.
+    pred_apply. cancel.
+    admit.
+    apply Forall_nil.
     
     AFS.xcrash_solve.
     xcrash_norm.
