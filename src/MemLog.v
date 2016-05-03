@@ -381,6 +381,15 @@ Module MLog.
   Qed.
 
 
+  Lemma rep_rollback_pimpl : forall xp d ms hm,
+    rep xp (Rollback d) ms hm =p=>
+      rep xp (Recovering d) ms hm.
+  Proof.
+    unfold rep; intros.
+    cancel; eauto.
+    rewrite DLog.rep_rollback_pimpl; eauto.
+    cancel.
+  Qed.
 
   Theorem recover_before_either : forall xp d ents hm,
     would_recover_before xp d hm =p=>
@@ -402,6 +411,15 @@ Module MLog.
     would_recover_either xp d ents hm.
   Proof.
     unfold would_recover_either; cancel.
+  Qed.
+
+  Theorem rollback_recover_either : forall xp d ms ents hm,
+    rep xp (Rollback d) ms hm =p=>
+    would_recover_either xp d ents hm.
+  Proof.
+    unfold would_recover_either; cancel.
+    rewrite rep_rollback_pimpl.
+    or_r; or_r; or_r; cancel.
   Qed.
 
   Theorem applying_recover_before : forall xp d ms hm,
@@ -1476,16 +1494,6 @@ Module MLog.
     rewrite crash_xform_recovering by eauto; cancel.
     or_l; cancel.
     or_l; cancel.
-  Qed.
-
-  Lemma rep_rollback_pimpl : forall xp d ms hm,
-    rep xp (Rollback d) ms hm =p=>
-      rep xp (Recovering d) ms hm.
-  Proof.
-    unfold rep; intros.
-    cancel.
-    rewrite DLog.rep_rollback_pimpl; eauto.
-    auto.
   Qed.
 
   Lemma either_pred_either : forall xp d hm ents,

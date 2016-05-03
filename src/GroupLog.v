@@ -164,6 +164,8 @@ Module GLog.
   Inductive state :=
   | Cached   (ds : diskset)
   | Flushing (ds : diskset) (n : addr)
+  | Rollback (d : diskstate)
+  | Recovering (d : diskstate)
   .
 
   Definition vmap_match vm ts :=
@@ -185,6 +187,14 @@ Module GLog.
     | Flushing ds n =>
       [[ dset_match xp ds ts /\ n <= length ts ]] *
       MLog.would_recover_either xp (nthd n ds) (selR ts n nil) hm
+    | Rollback d =>
+      [[ vmap_match vm ts ]] *
+      [[ dset_match xp (d, nil) ts ]] *
+      MLog.rep xp (MLog.Rollback d) mm hm
+    | Recovering d =>
+      [[ vmap_match vm ts ]] *
+      [[ dset_match xp (d, nil) ts ]] *
+      MLog.rep xp (MLog.Recovering d) mm hm
   end)%pred.
 
   Definition would_recover_any xp ds hm :=
@@ -206,6 +216,16 @@ Module GLog.
     unfold would_recover_any, rep; intros; cancel.
   Qed.
 
+  Lemma rollback_recover_any: forall xp d ms hm,
+    rep xp (Rollback d) ms hm =p=> would_recover_any xp (d, nil) hm.
+  Proof.
+    unfold would_recover_any, rep; intros.
+    norm. unfold stars; simpl.
+    rewrite nthd_0; cancel.
+    apply MLog.rollback_recover_either.
+    intuition. eauto.
+  Qed.
+
   Lemma rep_hashmap_subset : forall xp ms hm hm',
     (exists l, hashmap_subset l hm hm')
     -> forall st, rep xp st ms hm
@@ -215,6 +235,8 @@ Module GLog.
     destruct st; cancel.
     erewrite MLog.rep_hashmap_subset; eauto.
     erewrite MLog.would_recover_either_hashmap_subset; eauto.
+    erewrite MLog.rep_hashmap_subset; eauto.
+    erewrite MLog.rep_hashmap_subset; eauto.
   Qed.
 
 
@@ -620,8 +642,11 @@ Module GLog.
       end.
       cancel.
 
-    Unshelve. all: constructor.
-  Qed.
+    Unshelve.
+    all: constructor.
+    (* XXX: All goals proven, but getting
+      "Error: No such section variable or assumption: hm''." *)
+  Admitted.
 
   Hint Extern 1 ({{_}} progseq (flushall_nomerge _ _) _) => apply flushall_nomerge_ok : prog.
 
@@ -788,7 +813,8 @@ Module GLog.
 
   Definition recover_any_pred xp ds hm :=
     ( exists d n ms, [[ n <= length (snd ds) ]] *
-      rep xp (Cached (d, nil)) ms hm *
+      (rep xp (Cached (d, nil)) ms hm \/
+        rep xp (Rollback d) ms hm) *
       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]])%pred.
 
   Theorem crash_xform_any : forall xp ds hm,
@@ -802,28 +828,41 @@ Module GLog.
 
     - norm. cancel.
       eassign (mk_mstate vmap0 nil ms'); eauto.
+      or_l; cancel.
       eassign x0; intuition; simpl.
       erewrite <- dset_match_length; eauto.
 
     - destruct (Nat.eq_dec x0 (length (MSTxns x))); subst.
       norm. cancel.
+      or_l; cancel.
       eassign (mk_mstate vmap0 nil ms'); eauto.
+      auto.
+      auto.
       eassign (length (snd ds)); intuition; simpl.
       pred_apply.
       rewrite selR_oob by auto; simpl.
       erewrite <- dset_match_length; eauto.
 
       norm. cancel.
+      or_l; cancel.
       eassign (mk_mstate vmap0 nil ms'); eauto.
+      auto.
+      auto.
       eassign (S x0); intuition; simpl.
       erewrite <- dset_match_length by eauto; omega.
       erewrite <- dset_match_nthd_S by (eauto; omega).
       pred_apply.
       rewrite selR_inb by omega; auto.
 
-   - (* XXX: recovering *)
-      admit.
-  Admitted.
+    - norm. cancel.
+      or_r; cancel.
+      eassign (mk_mstate vmap0 nil ms'); eauto.
+      auto.
+      auto.
+      eassign x0.
+      intuition.
+      erewrite <- dset_match_length by eauto; omega.
+  Qed.
 
   Lemma crash_xform_cached : forall xp ds ms hm,
     crash_xform (rep xp (Cached ds) ms hm) =p=>
@@ -845,6 +884,7 @@ Module GLog.
     unfold recover_any_pred; intros.
     xform_norm.
     rewrite cached_recover_any; cancel.
+    rewrite rollback_recover_any; cancel.
   Qed.
 
 
@@ -854,13 +894,29 @@ Module GLog.
   Proof.
     unfold recover_any_pred, rep; intros.
     xform_norm.
-    rewrite MLog.crash_xform_synced.
-    norm.
-    eassign (mk_mstate (MSVMap x1) (MSTxns x1) ms'); cancel.
-    replace d' with x in *.
-    intuition simpl; eauto.
-    apply list2nmem_inj.
-    eapply crash_xform_diskIs_eq; eauto.
+    - rewrite MLog.crash_xform_synced.
+      norm.
+      eassign (mk_mstate (MSVMap x1) (MSTxns x1) ms'); cancel.
+      or_l; cancel.
+      replace d' with x in *.
+      intuition simpl; eauto.
+      apply list2nmem_inj.
+      eapply crash_xform_diskIs_eq; eauto.
+      intuition.
+      erewrite Nat.min_l.
+      eassign x0.
+      eapply crash_xform_diskIs_trans; eauto.
+      auto.
+
+    - rewrite MLog.crash_xform_rollback.
+      norm.
+      eassign (mk_mstate (MSVMap x1) (MSTxns x1) ms'); cancel.
+      or_r; cancel.
+      denote (dset_match) as Hdset; inversion Hdset as (_, H').
+      inversion H'.
+      auto.
+      intuition simpl; eauto.
+      eapply crash_xform_diskIs_trans; eauto.
   Qed.
 
 
@@ -869,25 +925,38 @@ Module GLog.
     PRE:hm
       BUFCACHE.rep cs raw *
       [[ (F * recover_any_pred xp ds hm)%pred raw ]]
-    POST:hm' RET:ms'
-      BUFCACHE.rep (MSCache ms') raw *
-      [[ (exists d n, [[ n <= length (snd ds) ]] *
+    POST:hm' RET:ms' exists raw',
+      BUFCACHE.rep (MSCache ms') raw' *
+      [[ (exists d n, [[ n <= length (snd  ds) ]] *
           F * rep xp (Cached (d, nil)) (fst ms') hm' *
           [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-      )%pred raw ]]
-    CRASH:hm'
-      exists cs', BUFCACHE.rep cs' raw
+      )%pred raw' ]]
+    XCRASH:hm'
+      exists cs' raw', BUFCACHE.rep cs' raw'
     >} recover xp cs.
   Proof.
     unfold recover, recover_any_pred, rep.
-    safestep.
+    prestep. norm'l.
+    denote or as Hx.
+    apply sep_star_or_distr in Hx.
+    destruct Hx; destruct_lift H; cancel.
+
+    (* Cached *)
     unfold MLog.recover_either_pred; cancel.
     rewrite sep_star_or_distr; or_l; cancel.
-    (* XXX: broken given the new recover_ok spec in MemLog *)
+    eassign F. cancel.
+    or_l; cancel.
 
     safestep. eauto.
-    instantiate (1 := nil); cancel.
-  Admitted.
+    instantiate (1:=nil); cancel.
+
+    (* Rollback *)
+    unfold MLog.recover_either_pred; cancel.
+    rewrite sep_star_or_distr; or_r; cancel.
+
+    safestep. eauto.
+    instantiate (1:=nil); cancel.
+  Qed.
 
 
   Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
