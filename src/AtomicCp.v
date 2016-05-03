@@ -369,6 +369,7 @@ Module ATOMICCP.
     step.  (* copydata *)
     rewrite find_subtree_update_subtree_ne. eauto.
     eauto.
+    eapply arrayN_one.
     admit. (* xxx push some symbols. *)
     step.
     or_l.
@@ -386,14 +387,21 @@ Module ATOMICCP.
     xcrash_norm.  (* case 1: crashed before a sync op *)
     or_l.
     instantiate (x0 := d :: x).  (* the other way around? *)
-    admit.
+    simpl.
+    cancel.
     apply Forall_cons.
     eexists.
     eexists.
     intuition.
     pred_apply.
     cancel.
-    admit. (* update_update_subtree_eq in forall in H10 *)
+    eapply Forall_impl; try eassumption.
+    simpl.
+    intros.
+    repeat deex.
+    rewrite update_update_subtree_eq in *.
+    eexists. eexists. intuition.
+    eassumption. 
 
     xcrash_norm.  (* case 2: crashed after a sync operation *)
     or_r.
