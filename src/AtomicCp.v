@@ -112,6 +112,9 @@ Module ATOMICCP.
 
   (** Specs and proofs **)
 
+  Opaque LOG.idempred.
+  Opaque crash_xform.
+
   Lemma arrayN_one: forall V (v:V),
       0 |-> v <=p=> arrayN 0 [v].
   Proof.
@@ -133,6 +136,8 @@ Module ATOMICCP.
     simpl. intros.
     congruence.
   Qed.
+
+  Ltac xcrash_norm :=  repeat (xform_norm; cancel).
 
   Theorem copydata_ok : forall fsxp src_inum tinum mscs,
     {< ds Fm Ftop temp_tree src_fn file tfile v0 t0,
@@ -166,18 +171,19 @@ Module ATOMICCP.
     unfold copydata; intros.
     step.
     step.
-
-    (* use update_fblock_d_ok' spec? *)
     step.
-    Ltac xcrash_norm :=  repeat (xform_norm; cancel).
 
     Focus 2.  (* update_fblock_d crash condition *)
     AFS.xcrash_solve.
+    xform_norm; cancel.
+    xform_norm. safecancel.
     xcrash_norm.
     instantiate (x := nil).
+    or_l.
+    simpl.
+    cancel.
     apply Forall_nil.
     xcrash_norm.  (* right branch of or *)
-    or_r.
     or_r.
     xcrash_norm.
     eapply Forall_cons.
@@ -194,9 +200,6 @@ Module ATOMICCP.
     AFS.xcrash_solve.
     xcrash_norm.
     or_r.
-    or_r.
-    xcrash_norm.
-    instantiate ( x := [d]).
     xcrash_norm.
     apply Forall_cons.
     eexists.
@@ -220,7 +223,6 @@ Module ATOMICCP.
     AFS.xcrash_solve.
     xcrash_norm.
     or_r.
-    or_r.
     xcrash_norm.
     apply Forall_cons.
     eexists.
@@ -233,9 +235,7 @@ Module ATOMICCP.
     AFS.xcrash_solve.
     xcrash_norm.
     or_r.
-    or_r.
     xcrash_norm.
-    instantiate ( x0 := [x]).
     apply Forall_cons.
     eexists.
     eexists.
@@ -265,7 +265,6 @@ Module ATOMICCP.
     AFS.xcrash_solve.  (* crash condition file_sync *)
     xcrash_norm.
     or_r.
-    or_r.
     xcrash_norm.
     apply Forall_cons.
     eexists.
@@ -287,24 +286,20 @@ Module ATOMICCP.
     AFS.xcrash_solve. (* crash condition file_sync or right *)
     xcrash_norm.
     or_r.
-    or_r.
     xcrash_norm.
     apply Forall_cons.
     eexists.
     eexists.
     intuition.
-    instantiate (1:=x).
     pred_apply.
     cancel.
     erewrite update_update_subtree_eq.
     erewrite update_update_subtree_eq.
     cancel.
-    instantiate (1 := nil).
     apply Forall_nil.
     
     AFS.xcrash_solve.  (* crash condition read_fblock *)
     repeat (xform_norm; cancel).
-    or_r.
     or_l.
     instantiate (x := []); simpl.
     cancel.
@@ -312,13 +307,12 @@ Module ATOMICCP.
 
     AFS.xcrash_solve.  (* crash condition file_get_attr *)
     repeat (xform_norm; cancel).
-    or_r. or_l.
+    or_l.
     instantiate (x := nil); simpl.
     cancel.
     apply Forall_nil.
     
     Unshelve. all: eauto.
-
   Qed.
 
   Hint Extern 1 ({{_}} progseq (copydata _ _ _ _) _) => apply copydata_ok : prog.
