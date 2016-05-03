@@ -2987,6 +2987,26 @@ Module DLog.
     cancel.
   Qed.
 
+  Lemma rep_synced_pimpl : forall xp nr l hm,
+    rep xp (Synced nr l) hm =p=>
+    rep xp (Recovering l) hm.
+  Proof.
+    unfold rep, PaddedLog.would_recover'; intros.
+    cancel.
+    eassign padded; cancel.
+    or_l; cancel.
+  Qed.
+
+  Lemma rep_rollback_pimpl : forall xp l hm,
+    rep xp (Rollback l) hm =p=>
+      rep xp (Recovering l) hm.
+  Proof.
+    unfold rep, PaddedLog.would_recover'; intros.
+    cancel.
+    eassign padded; cancel.
+    or_r; or_l; cancel.
+  Qed.
+
   Lemma rep_hashmap_subset : forall xp hm hm',
     (exists l, hashmap_subset l hm hm')
     -> forall st, rep xp st hm
