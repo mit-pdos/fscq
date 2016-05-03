@@ -974,26 +974,14 @@ Module AFS.
     POST:hm' RET:^(mscs)
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (ds!!, nil)) mscs hm'
     XCRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-      exists d tree',
-        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, nil) hm' *
-        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree')]]]
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
    >} tree_sync fsxp mscs.
   Proof.
     unfold tree_sync; intros.
     step.
     step.
     xcrash_solve.
-    or_l.
     rewrite LOG.recover_any_idempred.
-    cancel.
-    or_r.
-    xform_norm. cancel.
-    xform_norm. cancel.
-    xform_norm. cancel.
-    rewrite LOG.intact_idempred.
-    cancel.
-    pred_apply.
     cancel.
   Qed.
 

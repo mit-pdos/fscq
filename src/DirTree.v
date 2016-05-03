@@ -2068,20 +2068,13 @@ Module DIRTREE.
     PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.NoTxn ds) mscs hm *
            [[[ ds!! ::: Fm * rep fsxp Ftop tree ]]]
     POST:hm' RET:mscs
-           LOG.rep fsxp.(FSXPLog) F (LOG.NoTxn (ds!!, nil)) mscs hm' *
-           [[[ ds!! ::: Fm * rep fsxp Ftop tree ]]]
+           LOG.rep fsxp.(FSXPLog) F (LOG.NoTxn (ds!!, nil)) mscs hm'
      XCRASH:hm'
-           LOG.recover_any fsxp.(FSXPLog) F ds hm' \/
-           exists d, LOG.intact fsxp.(FSXPLog) F (d, nil) hm' *
-           [[[ d ::: Fm * rep fsxp Ftop tree ]]]
+           LOG.recover_any fsxp.(FSXPLog) F ds hm'
      >} sync fsxp mscs.
   Proof.
     unfold sync, rep.
     hoare.
-    xcrash.
-    or_l.
-    apply PredCrash.crash_xform_pimpl.
-    cancel.
   Qed.
 
   Theorem truncate_ok : forall fsxp inum nblocks mscs,
