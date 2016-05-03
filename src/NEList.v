@@ -158,6 +158,31 @@ Section NonEmptyList.
     replace (length ds + 1 - 1 - length ds) with 0 by omega; simpl; auto.
   Qed.
 
+  Lemma pushdlist_app : forall d l' l,
+    pushdlist l' (d, l) = (d, (rev l') ++ l)%list.
+  Proof.
+    induction l'; simpl; unfold pushd; simpl; intros; auto.
+    rewrite IHl'.
+    rewrite <- app_assoc.
+    reflexivity.
+  Qed.
+
+  Definition d_in d (l : nelist) := d = fst l \/ In d (snd l).
+
+  Theorem d_in_pushdlist : forall dlist ds d,
+    d_in d (pushdlist dlist ds) ->
+    In d dlist \/ d_in d ds.
+  Proof.
+    induction dlist; simpl; intros; auto.
+    edestruct (IHdlist _ _ H).
+    intuition.
+    destruct ds.
+    inversion H0; simpl in *.
+    right. left. eauto.
+    intuition.
+    right. right. eauto.
+  Qed.
+
 End NonEmptyList.
 
 
