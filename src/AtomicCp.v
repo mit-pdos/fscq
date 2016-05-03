@@ -156,18 +156,12 @@ Module ATOMICCP.
       exists dlist,
         [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
              tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]] *
-      (
-       (* crashed during flush but nothing changed *)
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-       (* crash during a real-only transaction but nothing changed *)
-       LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) hm' \/
-       (exists d dlist',
-         ([[dlist = d :: dlist' ]] * 
-          (* crash after update_fblock_d, which flushes, but doesn't modify tree *)
-          (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, dlist') hm') \/
-          (* crash after file_sync, which may updates the tree *)
-          (LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (d, dlist') hm'))))
-    >} copydata fsxp src_inum tinum mscs.
+        ( (* crashed before flushing *)
+          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) hm' \/
+          (exists d dlist', [[dlist = d :: dlist' ]] * 
+            (* crashed after a flush operation  *)
+            (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, dlist') hm')))
+     >} copydata fsxp src_inum tinum mscs.
   Proof.
     unfold copydata; intros.
     step.
@@ -347,14 +341,15 @@ Module ATOMICCP.
          [[ r = true ]] *
          [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree ]])
     XCRASH:hm'
-      (exists d tree' tfile', LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (d, nil) hm' *
-         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
-         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum tfile') temp_tree ]]) \/
-      (exists dlist, 
-         LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) hm' *  
-         [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
-             tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]])
-    >} copy2temp fsxp src_inum tinum mscs.
+     exists dlist,
+        [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
+             tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]] *
+        ( (* crashed before flushing *)
+          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) hm' \/
+          (exists d dlist', [[dlist = d :: dlist' ]] * 
+            (* crashed after a flush operation  *)
+            (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, dlist') hm')))
+     >} copy2temp fsxp src_inum tinum mscs.
   Proof.
     unfold copy2temp; intros.
     step.
@@ -400,9 +395,9 @@ Module ATOMICCP.
              tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]] *
       (
        (* crashed while modifying temp file *)
-       LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) hm' \/
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) hm' \/
        (* crashed after modifying temp file and tree_sync and then maybe modifying it again *)
-       (exists d dlist', [[dlist = d :: dlist']] * LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (d, dlist') hm') \/
+       (exists d dlist', [[dlist = d :: dlist']] * LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, dlist') hm') \/
        (* crashed after renaming temp file, might have synced (dlist = nil) or not (dlist != nil) *)
        (exists d tree' pruned subtree temp_dents dstents,
           [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
