@@ -865,6 +865,8 @@ Module AFS.
 
     - xcrash_solve.
       xform_norm.
+      or_l.
+      rewrite LOG.intact_idempred.
       or_r.
       cancel.
       xform_norm. cancel.

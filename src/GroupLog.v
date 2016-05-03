@@ -690,20 +690,21 @@ Module GLog.
       << F, would_recover_any: xp ds hm' -- >>
     >} flushall xp ms.
   Proof.
-    unfold flushall, rep.
-    step.
+    unfold flushall.
+    safestep.
 
-    step.
+    prestep; denote rep as Hx; unfold rep in Hx; destruct_lift Hx.
+    cancel.
     admit.
-    step.
+    prestep; unfold rep; safecancel.
     admit.
-    admit.
+    denote (length _) as Hf; contradict Hf.
+    setoid_rewrite <- Map.cardinal_1; omega.
 
     xcrash.
+    unfold would_recover_any, rep.
     admit.
 
-    safestep.
-    admit.
     step.
   Admitted.
 
