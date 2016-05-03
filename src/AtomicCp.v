@@ -318,22 +318,22 @@ Module ATOMICCP.
   Hint Extern 1 ({{_}} progseq (copydata _ _ _ _) _) => apply copydata_ok : prog.
 
   Theorem copy2temp_ok : forall fsxp src_inum tinum mscs,
-    {< ds Fm Ftop temp_tree src_fn tfn file tfile v0,
+    {< ds Fm Ftop temp_tree src_fn file tfile v0,
     PRE:hm  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm * 
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree) ]]] *
       [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
-      [[ DIRTREE.find_subtree [tfn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
-      [[ src_fn <> tfn ]] *
+      [[ DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
+      [[ src_fn <> temp_fn ]] *
       [[[ BFILE.BFData file ::: (0 |-> v0) ]]]
     POST:hm' RET:^(mscs, r)
       exists d tree' f', 
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
         ([[ r = false]] * 
-         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum (BFILE.synced_file f')) temp_tree ]]
+         [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file f')) temp_tree ]]
         \/ 
          [[ r = true ]] *
-         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree ]])
+         [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree ]])
     XCRASH:hm'
      exists dlist,
         [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
@@ -352,11 +352,73 @@ Module ATOMICCP.
     step.
     step.
     AFS.xcrash_solve.
+    xcrash_norm.
     or_l.
-    xform_norm. cancel.
-    xform_norm. cancel.
-    xform_norm. cancel.
-    xform_norm. safecancel.
+    instantiate (x := nil). simpl. cancel.
+    apply Forall_nil.
+    xcrash_norm.
+    or_r.
+    xcrash_norm.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply. cancel.
+    apply Forall_nil.
+
+    step.  (* copydata *)
+    rewrite find_subtree_update_subtree_ne. eauto.
+    eauto.
+    admit. (* xxx push some symbols. *)
+    step.
+    or_l.
+    cancel.
+    rewrite update_update_subtree_eq. eauto.
+    or_r.
+    cancel.
+    rewrite update_update_subtree_eq. eauto.
+
+    (* crash condition copydata implies our crash condition.
+     * we pushed d on ds before calling copydata 
+     * two cases: copydata's crash condition. no sync and sync.
+     * but copydata may have synced (d :: ds)  *)
+    AFS.xcrash_solve.
+    xcrash_norm.  (* case 1: crashed before a sync op *)
+    or_l.
+    instantiate (x0 := d :: x).  (* the other way around? *)
+    admit.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply.
+    cancel.
+    admit. (* update_update_subtree_eq in forall in H10 *)
+
+    xcrash_norm.  (* case 2: crashed after a sync operation *)
+    or_r.
+    xcrash_norm.
+    admit. (* update_update in H9. *)
+    
+    step.
+    AFS.xcrash_solve.
+    xcrash_norm.
+    or_l.
+    instantiate (x := nil). simpl. cancel.
+    apply Forall_nil.
+    xcrash_norm.
+    or_l.
+    instantiate (x0 := [x]).
+    cancel.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply.
+    cancel.
+    apply Forall_nil.
+
+    Unshelve. all:eauto.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (copy2temp _ _ _ _) _) => apply copy2temp_ok : prog.
