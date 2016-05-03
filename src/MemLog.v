@@ -1417,7 +1417,7 @@ Module MLog.
       eapply list2nmem_replay_disk_crash_xform; eauto; easy.
   Qed.
 
-  Lemma crash_xform_recovering : forall xp d ms hm,
+  Lemma crash_xform_recovering' : forall xp d ms hm,
     crash_xform (rep xp (Recovering d) ms hm) =p=>
       exists d' ms',
         ((exists nr, rep xp (Synced nr d') ms' hm) \/
@@ -1491,7 +1491,18 @@ Module MLog.
     rewrite crash_xform_applying by eauto; cancel.
     or_l; cancel.
     or_l; cancel.
-    rewrite crash_xform_recovering by eauto; cancel.
+    rewrite crash_xform_recovering' by eauto; cancel.
+    or_l; cancel.
+    or_l; cancel.
+  Qed.
+
+  Lemma crash_xform_recovering : forall xp d ms ents hm,
+    crash_xform (rep xp (Recovering d) ms hm) =p=>
+      recover_either_pred xp d ents hm.
+  Proof.
+    unfold recover_either_pred; intros.
+    rewrite crash_xform_recovering'.
+    cancel.
     or_l; cancel.
     or_l; cancel.
   Qed.
@@ -1541,7 +1552,11 @@ Module MLog.
          [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]
       ))%pred raw' ]]
     XCRASH:hm'
-      exists cs' raw', BUFCACHE.rep cs' raw'
+      exists cs' raw' ms', BUFCACHE.rep cs' raw' *
+      [[ (exists d', F * rep xp (Recovering d') ms' hm' *
+         ([[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]] \/
+         [[[ d' ::: crash_xform (diskIs (list2nmem (replay_disk ents d))) ]]]
+        ))%pred raw' ]]
     >} recover xp cs.
   Proof.
     unfold recover, recover_either_pred, rep.
@@ -1564,7 +1579,9 @@ Module MLog.
     rewrite <- Heq; auto.
     rewrite <- Heq; auto.
     cancel.
-    xcrash.
+    xcrash; eauto.
+    rewrite DLog.rep_synced_pimpl; cancel.
+    or_l; cancel.
 
     (* Synced, case 2: We crashed to the new disk. *)
     prestep. norm. cancel.
@@ -1575,9 +1592,15 @@ Module MLog.
     rewrite <- Heq; auto.
     rewrite <- Heq; auto.
     norm'l.
-    xcrash.
-    norm'l.
-    xcrash.
+    xcrash; eauto.
+    rewrite DLog.rep_synced_pimpl; cancel.
+    or_r; cancel.
+    denote or as Hx. apply sep_star_or_distr in Hx.
+    destruct Hx; destruct_lift H.
+    xcrash; eauto.
+    or_l; cancel.
+    xcrash; eauto.
+    or_r; cancel.
 
     (* Rollback *)
     cancel.
@@ -1591,8 +1614,12 @@ Module MLog.
     or_l; cancel.
     rewrite <- Heq; auto.
     rewrite <- Heq; auto.
-    xcrash.
-    xcrash.
+    norm'l.
+    xcrash; eauto.
+    rewrite DLog.rep_synced_pimpl; cancel.
+    or_l; cancel.
+    xcrash; eauto.
+    or_l; cancel.
 
     Unshelve. exact valu. all: eauto. all: econstructor; eauto.
   Qed.
