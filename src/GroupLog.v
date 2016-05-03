@@ -864,6 +864,34 @@ Module GLog.
       erewrite <- dset_match_length by eauto; omega.
   Qed.
 
+  Lemma crash_xform_recovering : forall xp d mm hm,
+    crash_xform (rep xp (Recovering d) mm hm) =p=>
+                 recover_any_pred xp (d, nil) hm.
+  Proof.
+    unfold recover_any_pred, rep; intros.
+    xform_norm.
+    rewrite MLog.crash_xform_recovering.
+    instantiate (1:=nil).
+    unfold MLog.recover_either_pred.
+    norm.
+    unfold stars; simpl.
+    or_l; cancel.
+    eassign (mk_mstate vmap0 nil ms'); cancel.
+    auto.
+    auto.
+    intuition simpl; eauto.
+    or_l; cancel.
+    eassign (mk_mstate vmap0 nil ms'); cancel.
+    auto.
+    auto.
+    intuition simpl; eauto.
+    or_r; cancel.
+    eassign (mk_mstate vmap0 nil ms'); cancel.
+    auto.
+    auto.
+    intuition simpl; eauto.
+  Qed.
+
   Lemma crash_xform_cached : forall xp ds ms hm,
     crash_xform (rep xp (Cached ds) ms hm) =p=>
       exists d ms', rep xp (Cached (d, nil)) ms' hm *
@@ -932,7 +960,11 @@ Module GLog.
           [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
       )%pred raw' ]]
     XCRASH:hm'
-      exists cs' raw', BUFCACHE.rep cs' raw'
+      exists raw' cs' mm', BUFCACHE.rep cs' raw' *
+      [[ (exists d n, [[ n <= length (snd  ds) ]] *
+          F * rep xp (Recovering d) mm' hm' *
+          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
+          )%pred raw' ]]
     >} recover xp cs.
   Proof.
     unfold recover, recover_any_pred, rep.
@@ -950,12 +982,45 @@ Module GLog.
     safestep. eauto.
     instantiate (1:=nil); cancel.
 
+    (* Getting Anomaly when xcrash is used here for some reason...*)
+    repeat xcrash_rewrite.
+    xform_norm.
+    cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    rewrite crash_xform_sep_star_dist; cancel.
+    xform_norm.
+    norm. cancel.
+    pred_apply.
+    norm. cancel.
+
+    eassign (mk_mstate vmap0 nil x1); eauto.
+    intuition simpl; eauto.
+    cancel.
+    intuition simpl; eauto.
+
     (* Rollback *)
     unfold MLog.recover_either_pred; cancel.
     rewrite sep_star_or_distr; or_r; cancel.
 
     safestep. eauto.
     instantiate (1:=nil); cancel.
+
+    repeat xcrash_rewrite.
+    xform_norm.
+    cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    rewrite crash_xform_sep_star_dist; cancel.
+    xform_norm.
+    norm. cancel.
+    pred_apply.
+    norm. cancel.
+
+    eassign (mk_mstate vmap0 nil x1); eauto.
+    intuition simpl; eauto.
+    cancel.
+    intuition simpl; eauto.
   Qed.
 
 
