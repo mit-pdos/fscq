@@ -538,20 +538,23 @@ Module ATOMICCP.
   (* specs for copy_and_rename_cleanup and atomic_cp *)
 
   Theorem atomic_cp_recover_ok :
-    {< fsxp cs ds,
+    {< fsxp ms ds,
     PRE:hm
-      LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm (* every ds must have a tree *)
+      LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds ms hm
     POST:hm' RET:^(ms, fsxp')
-      [[ fsxp' = fsxp ]] * exists d n tree tree' Fm' Fm'' Ftop' Ftop'' temp_dents, 
-       [[ n <= List.length (snd ds) ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) ms hm' *
-       [[[ d ::: Fm'' * DIRTREE.rep fsxp Ftop'' tree' ]]] *
-       [[[ nthd n ds ::: (Fm' * DIRTREE.rep fsxp Ftop' tree) ]]] *
-       [[ tree = DIRTREE.TreeDir the_dnum temp_dents ]] *
-       [[ tree' = DIRTREE.tree_prune the_dnum temp_dents [] temp_fn tree ]]
+      [[ fsxp' = fsxp ]] *
+      exists d d_from_ds,
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) ms hm' *
+      [[ d_in d_from_ds ds ]] *
+      [[ forall Fm Ftop tree the_dnum temp_dents,
+         (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2nmem d_from_ds) ->
+         tree = DIRTREE.TreeDir the_dnum temp_dents ->
+         let tree' := DIRTREE.tree_prune the_dnum temp_dents [] temp_fn tree in
+         exists Fm' Ftop',
+         (Fm' * DIRTREE.rep fsxp Ftop' tree') (list2nmem d) ]]
     CRASH:hm'
-      LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm'
-     >} recover.
+      LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds ms hm'
+    >} recover.
   Proof.
     unfold recover; intros.
     step.
