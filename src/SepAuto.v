@@ -1200,6 +1200,7 @@ Ltac destruct_branch :=
 Ltac prestep :=
   intros;
   try autounfold with hoare_unfold in *;
+  repeat destruct_pair_once;
   try cancel;
   repeat destruct_branch;
 (*   remember_xform; *)
