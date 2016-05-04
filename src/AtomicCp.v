@@ -831,7 +831,65 @@ Module ATOMICCP.
     - (* This is the third [or] from [copy_and_rename]'s crash condition,
        * where we actually wrote the destination file (but maybe didn't sync yet).
        *)
-      admit.
+      AFS.recover_ro_ok.
+      rewrite LOG.intact_idempred.
+      rewrite LOG.idempred_idem.
+      norml; unfold stars; simpl.
+      rewrite SB.crash_xform_rep.
+      cancel.
+
+      prestep.
+      norml; unfold stars; simpl.
+
+      (**
+       * We have to consider two cases.  Either we crashed in the final disk,
+       * where the [rename] succeeded, or we crashed before that, where we're
+       * still in the [dlist] portion.
+       *)
+      apply d_in_In in H22.
+      destruct H22; subst.
+
+      + (* This is the case where [rename] succeeded. *)
+        edestruct H21; repeat deex.
+        eassumption.
+
+        (*
+          DIRTREE.tree_graft the_dnum x8 [] dst_fn (DIRTREE.TreeFile v5 (BFILE.synced_file v4))
+            (DIRTREE.tree_prune the_dnum x7 [] temp_fn (DIRTREE.TreeDir the_dnum x7)) =
+          DIRTREE.TreeDir ?the_dnum1 ?temp_dents3
+         *)
+        admit.
+
+        cancel.
+        or_r. cancel.
+
+        (*
+          DIRTREE.tree_prune ?the_dnum1 ?temp_dents3 [] temp_fn
+            (DIRTREE.tree_graft the_dnum x8 [] dst_fn (DIRTREE.TreeFile v5 (BFILE.synced_file v4))
+               (DIRTREE.tree_prune the_dnum x7 [] temp_fn (DIRTREE.TreeDir the_dnum x7))) =
+          DIRTREE.tree_graft the_dnum ?dstents [] dst_fn (DIRTREE.TreeFile v5 (BFILE.synced_file v4))
+            (DIRTREE.tree_prune the_dnum ?temp_dents2 [] temp_fn (DIRTREE.TreeDir the_dnum ?temp_dents2))
+         *)
+        admit.
+
+        (*
+          DIRTREE.tree_prune the_dnum ?temp_dents2 [] temp_fn (DIRTREE.TreeDir the_dnum ?temp_dents2) =
+          DIRTREE.TreeDir the_dnum ?dstents
+         *)
+        admit.
+
+        apply latest_in_ds.
+
+        pred_apply. cancel.
+
+        norml; unfold stars; simpl.
+        safecancel.
+
+      + (* This is the case where [rename] did not succeed. *)
+        admit.
+
+      + (* idempotence *)
+        admit.
 
   Admitted.
 
