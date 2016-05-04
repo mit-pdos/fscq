@@ -223,3 +223,9 @@ End NonEmptyList.
 
 Notation " ds '!!'" := (latest ds) (at level 1).
 
+Definition d_map A B (f : A -> B) (ds : nelist A) :=
+  (f (fst ds), map f (snd ds)).
+
+
+
+

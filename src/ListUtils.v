@@ -46,6 +46,18 @@ Definition eqlen A B (a : list A) (b : list B) := length a = length b.
 Definition removeN {V} (l : list V) i :=
    (firstn i l) ++ (skipn (S i) l).
 
+Lemma fst_pair : forall T1 T2 (a : T1) (b : T2) c, 
+  c = (a, b) -> fst c = a.
+Proof.
+ intros; subst; firstorder.
+Qed.
+
+Lemma snd_pair : forall T1 T2 (a : T1) (b : T2) c, 
+  c = (a, b) -> snd c = b.
+Proof.
+ intros; subst; firstorder.
+Qed.
+
 Lemma repeat_selN : forall T i n (v def : T),
   i < n -> selN (repeat v n) i def = v.
 Proof.

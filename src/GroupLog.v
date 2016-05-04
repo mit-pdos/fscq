@@ -42,7 +42,6 @@ Module GLog.
 
   Import AddrMap LogReplay LogNotations.
 
-
   (**
     diskset, like valuset, represents a non-empty sequence of disk states.
     the fst part is the oldest disk, and the snd part is a list of subsequent disks.
@@ -52,6 +51,9 @@ Module GLog.
   *)
 
   Definition diskset  := nelist diskstate.
+
+  Definition dsupd (ds : diskset) a v := 
+    d_map (fun x => updN x a v) ds.
 
   (* list of transactions *)
   Definition txnlist  := list DLog.contents.
@@ -321,9 +323,6 @@ Module GLog.
       rx ms
     }.
 
-  Definition dsupd (ds : diskset) a v :=
-    (updN (fst ds) a v, map (fun d => updN d a v) (snd ds)).
-
   Definition dwrite' T (xp : log_xparams) a v ms rx : prog T :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dwrite xp a v mm;
@@ -420,7 +419,7 @@ Module GLog.
     vmap_match vm ts ->
     Map.find a vm = None ->
     (F * a |-> (v, vs))%pred (list2nmem ds !!) ->
-    fst (selN (fst ds) a ($0, nil)) = v.
+    selN (fst ds) a ($0, nil) = (v, vs).
   Proof.
     unfold vmap_match, dset_match.
     intros ds ts; destruct ds; revert l.
@@ -442,7 +441,6 @@ Module GLog.
     eapply map_find_replay_mem_not_in; eauto.
     denote Forall as Hx; apply Forall_inv in Hx; apply Hx.
   Qed.
-
 
   Lemma replay_seq_replay_mem : forall ds ts xp,
     ReplaySeq ds ts ->
@@ -601,6 +599,26 @@ Module GLog.
     eapply recover_before_any; eauto.
   Qed.
 
+  Lemma recover_latest_any : forall xp ds hm ts,
+    dset_match xp ds ts ->
+    would_recover_any xp (ds!!, nil) hm =p=> would_recover_any xp ds hm.
+  Proof.
+    unfold would_recover_any, rep.
+    safecancel.
+    apply dset_match_length in H0; simpl in *.
+    eassign (mk_mstate vmap0 ts (MSMLog ms)).
+    rewrite nthd_oob by (simpl; omega); simpl.
+    rewrite nthd_oob; simpl.
+    rewrite singular_latest by auto; simpl.
+    rewrite length_nil with (l := (MSTxns ms)); auto.
+    rewrite selR_oob by (simpl; omega).
+    rewrite selR_oob; eauto.
+    erewrite dset_match_length; eauto.
+    simpl; auto.
+    auto.
+    auto.
+  Qed.
+
   Lemma nthd_cons_inb : forall T d0 ds (d : T) n,
     n <= length ds ->
     nthd n (d0, d :: ds) = nthd n (d0, ds).
@@ -642,6 +660,7 @@ Module GLog.
     eapply diskset_ptsto_bound_latest; eauto.
 
     step; subst.
+    erewrite fst_pair; eauto.
     eapply diskset_vmap_find_none; eauto.
     pimpl_crash; cancel.
     eassign (mk_mstate (MSVMap ms_1) (MSTxns ms_1) ms'_1); cancel.
@@ -774,6 +793,64 @@ Module GLog.
   Hint Extern 1 ({{_}} progseq (flushall _ _) _) => apply flushall_ok : prog.
 
 
+  Lemma forall_ents_valid_updN : forall xp d ts a v,
+    Forall (ents_valid xp d) ts ->
+    Forall (ents_valid xp (updN d a v)) ts.
+  Proof.
+    unfold ents_valid; intros.
+    rewrite Forall_forall in *.
+    intros.
+    specialize (H _ H0); intuition.
+    eapply log_valid_length_eq; eauto.
+    rewrite length_updN; auto.
+  Qed.
+
+
+  Lemma vmap_match_notin : forall ts vm a,
+    Map.find a vm = None ->
+    vmap_match vm ts ->
+    Forall (fun e => ~ In a (map fst e)) ts.
+  Proof.
+    unfold vmap_match; induction ts; intros.
+    apply Forall_nil.
+    constructor; simpl in *.
+    eapply map_find_replay_mem_not_in.
+    rewrite <- H0; auto.
+
+    eapply IHts.
+    2: apply MapFacts.Equal_refl.
+    eapply replay_mem_find_none_mono.
+    rewrite <- H0; auto.
+  Qed.
+
+  Lemma replay_seq_dsupd_notin : forall ds ts a v,
+    ReplaySeq ds ts ->
+    Forall (fun e => ~ In a (map fst e)) ts ->
+    ReplaySeq (dsupd ds a v) ts.
+  Proof.
+    induction 1; intros.
+    constructor.
+    inversion H1; subst.
+    unfold dsupd, d_map; simpl.
+    constructor.
+    rewrite <- replay_disk_updN_comm by auto.
+    destruct ds; auto.
+    apply IHReplaySeq; auto.
+  Qed.
+
+  Lemma dset_match_dsupd_notin : forall xp ds a v ts vm,
+    Map.find a vm = None ->
+    vmap_match vm ts ->
+    dset_match xp ds ts ->
+    dset_match xp (dsupd ds a v) ts.
+  Proof.
+    unfold dset_match; intuition; simpl in *.
+    apply forall_ents_valid_updN; auto.
+    apply replay_seq_dsupd_notin; auto.
+    eapply vmap_match_notin; eauto.
+  Qed.
+
+
   Theorem dwrite'_ok: forall xp a v ms,
     {< F Fd ds vs,
     PRE:hm
@@ -796,7 +873,7 @@ Module GLog.
     safestep.
     3: eauto.
     cancel.
-    admit.
+    eapply dset_match_dsupd_notin; eauto.
 
     (* crashes *)
     subst; repeat xcrash_rewrite.
@@ -810,9 +887,10 @@ Module GLog.
     xform_normr; cancel.
     eassign (mk_mstate vmap0 nil x_1); simpl; cancel.
     all: simpl; eauto.
-  Admitted.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (dwrite' _ _ _ _) _) => apply dwrite'_ok : prog.
+
 
   Theorem dwrite_ok: forall xp a v ms,
     {< F Fd ds vs,
@@ -827,8 +905,8 @@ Module GLog.
       << F, would_recover_any: xp ds hm' -- >>
       \/ exists ms' d',
       << F, rep: xp (Cached (d', nil)) ms' hm' >> *
-      ([[ d' = updN (ds !!) a (v, vsmerge vs) \/
-          d' = updN (fst ds) a (v, vsmerge vs) ]])
+      ( [[[ d' ::: (Fd * a |-> (v, vsmerge vs)) ]]] \/
+        [[[ d' ::: (arrayN_ex (fst ds) a * a |-> (v, vsmerge vs)) ]]])
     >} dwrite xp a v ms.
   Proof.
     unfold dwrite, rep.
@@ -836,37 +914,48 @@ Module GLog.
     prestep; unfold rep; cancel.
     prestep; unfold rep; cancel.
 
-Lemma fst_of_pair : forall T1 T2 (a : T1) (b : T2) c, c = (a, b) -> fst c = a.
-Proof. intros; subst; firstorder. Qed.
-
-    erewrite fst_of_pair by reflexivity.
+    erewrite fst_pair by reflexivity.
     cancel.
     eauto.
-    substl (MSVMap a0). eauto.
+    substl (MSVMap a0); eauto.
     simpl; pred_apply; cancel.
     step.
 
-    cancel. repeat xcrash_rewrite. xform_norm.
-    admit.
+    cancel.
+    repeat xcrash_rewrite; xform_norm.
 
-    or_r. xform_normr. cancel. xform_normr. xform_norm. cancel.
-    xform_normr. cancel.
+    or_l; cancel.
+    xform_normr; cancel.
+    eapply recover_latest_any; eauto.
 
-    cancel. repeat xcrash_rewrite. xform_norm.
-    or_l. cancel. xform_normr. cancel.
+    or_r; cancel.
+    do 3 (xform_norm; cancel).
+    or_l; cancel.
+
+    repeat xcrash_rewrite; xform_norm.
+    or_l; cancel.
+    xform_normr; cancel.
 
     prestep; unfold rep; cancel.
-    admit.
-
+    apply MapFacts.not_find_in_iff; auto.
     eapply list2nmem_ptsto_cancel_pair.
-    admit.
+    eapply diskset_ptsto_bound_latest; eauto.
 
     step.
-    admit.
+    erewrite diskset_vmap_find_none; eauto; auto.
+    apply MapFacts.not_find_in_iff; auto.
 
-    admit.
+    cancel.
+    repeat xcrash_rewrite; xform_norm.
+    or_l; cancel.
+    xform_normr; cancel.
 
-  Admitted.
+    or_r; cancel.
+    do 3 (xform_norm; cancel).
+    or_r; cancel.
+    erewrite diskset_vmap_find_none; eauto; auto.
+    apply MapFacts.not_find_in_iff; auto.
+  Qed.
 
 
   Theorem dsync'_ok: forall xp a ms,
