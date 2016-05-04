@@ -1968,6 +1968,10 @@ Module DIRTREE.
     mscs <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
     rx mscs.
 
+  Definition sync T fsxp mscs rx : prog T :=
+    mscs <- LOG.sync (FSXPLog fsxp) mscs;
+    rx mscs.
+
   Definition truncate T fsxp inum nblocks mscs rx : prog T :=
     let^ (mscs, ok) <- BFILE.truncate (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
                                      inum nblocks mscs;
@@ -2090,6 +2094,20 @@ Module DIRTREE.
     eapply find_subtree_inum_valid; eauto.
   Qed.
 
+  Theorem sync_ok : forall fsxp mscs,
+    {< F ds Fm Ftop tree,
+    PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.NoTxn ds) mscs hm *
+           [[[ ds!! ::: Fm * rep fsxp Ftop tree ]]]
+    POST:hm' RET:mscs
+           LOG.rep fsxp.(FSXPLog) F (LOG.NoTxn (ds!!, nil)) mscs hm'
+     XCRASH:hm'
+           LOG.recover_any fsxp.(FSXPLog) F ds hm'
+     >} sync fsxp mscs.
+  Proof.
+    unfold sync, rep.
+    hoare.
+  Qed.
+
   Theorem truncate_ok : forall fsxp inum nblocks mscs,
     {< F ds d pathname Fm Ftop tree f,
     PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) mscs hm *
@@ -2182,6 +2200,7 @@ Module DIRTREE.
   Hint Extern 1 ({{_}} progseq (read _ _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _ _) _) => apply dwrite_ok : prog.
   Hint Extern 1 ({{_}} progseq (datasync _ _ _) _) => apply datasync_ok : prog.
+  Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
   Hint Extern 1 ({{_}} progseq (truncate _ _ _ _) _) => apply truncate_ok : prog.
   Hint Extern 1 ({{_}} progseq (getlen _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_}} progseq (getattr _ _ _) _) => apply getattr_ok : prog.

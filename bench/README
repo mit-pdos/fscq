@@ -14,3 +14,16 @@ Build sv6's mailbench:
 For crash testing:
 
   ./crashtest.sh ./crash-setup.sh ./crash-check.sh
+
+To run the sync microbenchmark:
+
+  ./run-bench.sh testsync './testsync.sh /tmp/ft'
+
+fsstress:
+
+  git clone https://github.com/linux-test-project/ltp.git
+  cd ltp
+  make autotools
+  ./configure
+  make
+  ./testcases/kernel/fs/fsstress/fsstress -d /mnt/fscq -n 1000 -p 2 -l 2

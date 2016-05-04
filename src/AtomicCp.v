@@ -81,23 +81,12 @@ Module ATOMICCP.
         rx ^(mscs, ok1)
     end.
 
-  Definition copy_and_rename_cleanup T fsxp src_inum dst_inum dst_fn mscs rx : prog T :=
-    let^ (mscs, ok) <- copy_and_rename fsxp src_inum dst_inum dst_fn mscs;
-    match ok with
-      | false =>
-        let^ (mscs, ok) <- AFS.delete fsxp the_dnum temp_fn mscs;
-        (* What if FS.delete fails?? *)
-        rx ^(mscs, false)
-      | true =>
-        rx ^(mscs, true)
-    end.
-
   Definition atomic_cp T fsxp src_inum dst_fn mscs rx : prog T :=
     let^ (mscs, maybe_dst_inum) <- AFS.create fsxp the_dnum temp_fn mscs;
     match maybe_dst_inum with
       | None => rx ^(mscs, false)
       | Some dst_inum =>
-        let^ (mscs, ok) <- copy_and_rename_cleanup fsxp src_inum dst_inum dst_fn mscs;
+        let^ (mscs, ok) <- copy_and_rename fsxp src_inum dst_inum dst_fn mscs;
         rx ^(mscs, ok)
     end.
 
@@ -110,6 +99,7 @@ Module ATOMICCP.
     | None => rx mscs
     | Some (src_inum, isdir) =>
       let^ (mscs, ok) <- AFS.delete fsxp the_dnum temp_fn mscs;
+      let^ (mscs) <- AFS.tree_sync fsxp mscs;
       rx mscs
     end.
 
@@ -121,6 +111,9 @@ Module ATOMICCP.
 
 
   (** Specs and proofs **)
+
+  Opaque LOG.idempred.
+  Opaque crash_xform.
 
   Lemma arrayN_one: forall V (v:V),
       0 |-> v <=p=> arrayN 0 [v].
@@ -144,13 +137,15 @@ Module ATOMICCP.
     congruence.
   Qed.
 
+  Ltac xcrash_norm :=  repeat (xform_norm; cancel).
+
   Theorem copydata_ok : forall fsxp src_inum tinum mscs,
-    {< ds Fm Ftop temp_tree src_fn tfn file tfile v0 t0,
+    {< ds Fm Ftop temp_tree src_fn file tfile v0 t0,
     PRE:hm  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm * 
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree) ]]] *
       [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
-      [[ DIRTREE.find_subtree [tfn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
-      [[ src_fn <> tfn ]] *
+      [[ DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
+      [[ src_fn <> temp_fn ]] *
       [[[ BFILE.BFData file ::: (0 |-> v0) ]]] *
       [[[ BFILE.BFData tfile ::: (0 |-> t0) ]]]
     POST:hm' RET:^(mscs, r)
@@ -158,115 +153,197 @@ Module ATOMICCP.
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
         ([[ r = false]] * 
-         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum (BFILE.synced_file f')) temp_tree ]]
+         [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file f')) temp_tree ]]
         \/ 
          [[ r = true ]] *
-         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree ]])
+         [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree ]])
     XCRASH:hm'
-      (exists d tree' f', LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
-         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
-         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum f') temp_tree ]]) \/
-      (exists dlist, 
-         LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) hm' *  
-         [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
-             tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]])
-    >} copydata fsxp src_inum tinum mscs.
+      exists dlist,
+        [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
+             tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]] *
+        ( (* crashed before flushing *)
+          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) hm' \/
+          (exists d dlist', [[dlist = d :: dlist' ]] * 
+            (* crashed after a flush operation  *)
+            (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, dlist') hm')))
+     >} copydata fsxp src_inum tinum mscs.
   Proof.
     unfold copydata; intros.
     step.
     step.
     step.
-    step.
-    step.
-    prestep. safecancel.
+
+    Focus 2.  (* update_fblock_d crash condition *)
+    AFS.xcrash_solve.
+    xform_norm; cancel.
+    xform_norm. safecancel.
+    xcrash_norm.
+    instantiate (x := nil).
     or_l.
+    simpl.
     cancel.
-    erewrite update_update_subtree_eq.
-    f_equal.
-    AFS.xcrash_solve.
-    or_l.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; safecancel.
-    xform_norm; safecancel.
-    admit. (* rewrite LOG.notxn_idempred. *)
-    instantiate (1 := d).
-    pred_apply; cancel.
-    f_equal.
-    AFS.xcrash_solve.
-    or_l.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; safecancel.
-    xform_norm; safecancel.
-    admit. (* rewrite LOG.notxn_idempred. *)
-    instantiate (1 := x).
-    pred_apply; cancel.
-    erewrite update_update_subtree_eq.
-    f_equal.
-    step.
-    (* success return *)
+    apply Forall_nil.
+    xcrash_norm.  (* right branch of or *)
     or_r.
+    xcrash_norm.
+    eapply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply.
+    cancel.
+    apply Forall_nil.
+
+    step.  (* setattr *)
+
+    Focus 2.  (* setattr failed crash condition*)
+    AFS.xcrash_solve.
+    xcrash_norm.
+    or_r.
+    xcrash_norm.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply.
+    cancel.
+    apply Forall_nil.
+   
+    step. (* file_sync *)
+    step. (* return *)
+    
+    (* postcondition, setattr failed *)
+    or_l.
     cancel.
     erewrite update_update_subtree_eq.
+    f_equal.
+
+    (* setattr success crash condition: two cases *)
+    (* left or case *)
+    AFS.xcrash_solve.
+    xcrash_norm.
+    or_r.
+    xcrash_norm.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply.
+    cancel.
+    apply Forall_nil.
+    (* right or case *)
+    AFS.xcrash_solve.
+    xcrash_norm.
+    or_r.
+    xcrash_norm.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply.
     erewrite update_update_subtree_eq.
-    f_equal.
-    f_equal.
+    cancel.
+    apply Forall_nil.
+
+    (* postcondition, success *)
+    step.
+    or_r.
+    safecancel.
+    erewrite update_update_subtree_eq.
+    erewrite update_update_subtree_eq.
     f_equal.
     apply arrayN_one in H5.
     apply list2nmem_array_eq in H5.
-    (*
-    rewrite arrayN_ex_one in H18.
-    rewrite arrayN_one in H18.
-    apply emp_star in H18.
-    apply list2nmem_array_eq in H18.
-    destruct f'.
+    apply arrayN_one in H16.
+    apply list2nmem_array_eq in H16.
     destruct file.
-    simpl in *.
-    rewrite H18.
-    rewrite H4.
-    f_equal. *)
-    admit.
-    AFS.xcrash_solve.
+    rewrite H16.
+    simpl in H5.
+    rewrite H5.
+    f_equal.
+
+    AFS.xcrash_solve.  (* crash condition file_sync *)
+    xcrash_norm.
     or_r.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    admit.
-    admit.
+    xcrash_norm.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    simpl.
+    pred_apply.
+    cancel.
+    simpl.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply.
+    erewrite update_update_subtree_eq.
+    cancel.
+    apply Forall_nil.
+
+    AFS.xcrash_solve. (* crash condition file_sync or right *)
+    xcrash_norm.
     or_r.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    (* other crash cases *)
-  Admitted.
+    xcrash_norm.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply.
+    cancel.
+    erewrite update_update_subtree_eq.
+    erewrite update_update_subtree_eq.
+    cancel.
+    apply Forall_nil.
+    
+    AFS.xcrash_solve.  (* crash condition read_fblock *)
+    repeat (xform_norm; cancel).
+    or_l.
+    instantiate (x := []); simpl.
+    cancel.
+    apply Forall_nil.
+
+    AFS.xcrash_solve.  (* crash condition file_get_attr *)
+    repeat (xform_norm; cancel).
+    or_l.
+    instantiate (x := nil); simpl.
+    cancel.
+    apply Forall_nil.
+    
+    Unshelve. all: eauto.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (copydata _ _ _ _) _) => apply copydata_ok : prog.
 
   Theorem copy2temp_ok : forall fsxp src_inum tinum mscs,
-    {< ds Fm Ftop temp_tree src_fn tfn file tfile v0,
+    {< ds Fm Ftop temp_tree src_fn file tfile v0,
     PRE:hm  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm * 
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree) ]]] *
       [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
-      [[ DIRTREE.find_subtree [tfn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
-      [[ src_fn <> tfn ]] *
+      [[ DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
+      [[ src_fn <> temp_fn ]] *
       [[[ BFILE.BFData file ::: (0 |-> v0) ]]]
     POST:hm' RET:^(mscs, r)
       exists d tree' f', 
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
         ([[ r = false]] * 
-         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum (BFILE.synced_file f')) temp_tree ]]
+         [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file f')) temp_tree ]]
         \/ 
          [[ r = true ]] *
-         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree ]])
+         [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree ]])
     XCRASH:hm'
-      (exists d tree' tfile', LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
-         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
-         [[ tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum tfile') temp_tree ]]) \/
-      (exists dlist, 
-         LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) hm' *  
-         [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
-             tree' = DIRTREE.update_subtree [tfn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]])
-    >} copy2temp fsxp src_inum tinum mscs.
+     exists dlist,
+        [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
+             tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]] *
+        ( (* crashed before flushing *)
+          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) hm' \/
+          (exists d dlist', [[dlist = d :: dlist' ]] * 
+            (* crashed after a flush operation  *)
+            (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, dlist') hm')))
+     >} copy2temp fsxp src_inum tinum mscs.
   Proof.
     unfold copy2temp; intros.
     step.
@@ -275,98 +352,421 @@ Module ATOMICCP.
     step.
     step.
     AFS.xcrash_solve.
+    xcrash_norm.
     or_l.
-    xform_norm. cancel.
-    xform_norm. cancel.
-    xform_norm. cancel.
-    xform_norm. safecancel.
+    instantiate (x := nil). simpl. cancel.
+    apply Forall_nil.
+    xcrash_norm.
+    or_r.
+    xcrash_norm.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply. cancel.
+    apply Forall_nil.
+
+    step.  (* copydata *)
+    rewrite find_subtree_update_subtree_ne. eauto.
+    eauto.
+    eapply arrayN_one.
+    admit. (* xxx push some symbols. *)
+    step.
+    or_l.
+    cancel.
+    rewrite update_update_subtree_eq. eauto.
+    or_r.
+    cancel.
+    rewrite update_update_subtree_eq. eauto.
+
+    (* crash condition copydata implies our crash condition.
+     * we pushed d on ds before calling copydata 
+     * two cases: copydata's crash condition. no sync and sync.
+     * but copydata may have synced (d :: ds)  *)
+    AFS.xcrash_solve.
+    xcrash_norm.  (* case 1: crashed before a sync op *)
+    or_l.
+    instantiate (x0 := d :: x).  (* the other way around? *)
+    simpl.
+    cancel.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply.
+    cancel.
+    eapply Forall_impl; try eassumption.
+    simpl.
+    intros.
+    repeat deex.
+    rewrite update_update_subtree_eq in *.
+    eexists. eexists. intuition.
+    eassumption. 
+
+    xcrash_norm.  (* case 2: crashed after a sync operation *)
+    or_r.
+    xcrash_norm.
+    admit. (* update_update in H9. *)
+    
+    step.
+    AFS.xcrash_solve.
+    xcrash_norm.
+    or_l.
+    instantiate (x := nil). simpl. cancel.
+    apply Forall_nil.
+    xcrash_norm.
+    or_l.
+    instantiate (x0 := [x]).
+    cancel.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply.
+    cancel.
+    apply Forall_nil.
+
+    Unshelve. all:eauto.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (copy2temp _ _ _ _) _) => apply copy2temp_ok : prog.
 
   Theorem copy_rename_ok : forall  fsxp src_inum tinum dst_fn mscs,
-    {< ds Fm Ftop temp_tree src_fn file tfile temp_dents dstents,
+    {< ds Fm Ftop temp_tree src_fn file tfile v0,
     PRE:hm  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm * 
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree) ]]] *
       [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
       [[ DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
-      [[ src_fn <> temp_fn ]]
-    POST:hm' RET:^(mscs, r)
-      exists ds' tree' pruned subtree,
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') mscs hm' *
-        [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
-        (([[r = false ]] * ([[tree' = temp_tree]] \/
-          (exists f',  
-          [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum f') temp_tree ]]))) \/
-         ([[r = true ]] *
-          [[ DIRTREE.find_subtree [] temp_tree = Some (DIRTREE.TreeDir the_dnum temp_dents)]] *
-          [[ pruned = DIRTREE.tree_prune the_dnum temp_dents [] temp_fn temp_tree ]] *
-          [[ DIRTREE.find_subtree [] pruned = Some (DIRTREE.TreeDir the_dnum dstents) ]] *
-          [[ tree' = DIRTREE.tree_graft the_dnum dstents [] dst_fn subtree pruned ]] *
-          [[ subtree = (DIRTREE.TreeFile tinum  (BFILE.mk_bfile (BFILE.BFData file) 
-                            (BFILE.BFAttr file))) ]]))
-    XCRASH:hm'
-       LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds   (* XXX fix *)
-     >} copy_and_rename  fsxp src_inum tinum dst_fn mscs.
-  Proof.
-    unfold copy_and_rename; intros.
-  Admitted.
-
-  (* XXX specs for copy_and_rename_cleanup and atomic_cp *)
-
-  (* for each recovery state we prove cleanup. one state below.  other states
-   * include no temp file, no temp file and dst file, etc. *)
-  Theorem cleanup_temp_exists_ok : forall  fsxp src_inum tinum dst_fn mscs,
-    {< d Fm Ftop temp_tree src_fn file tfile temp_dents dstents,
-    PRE  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil) mscs * 
-      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree) ]]] *
-      [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
-      [[ DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]]
-    POST RET:^(mscs, r)
-      exists ds' tree' pruned subtree,
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') mscs *
-        [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
-        (([[r = false ]] * ([[tree' = temp_tree]] \/
-          ([[r = true ]] *
-          [[ DIRTREE.find_subtree [] temp_tree = Some (DIRTREE.TreeDir the_dnum temp_dents)]] *
-          [[ tree' = DIRTREE.tree_prune the_dnum temp_dents [] temp_fn temp_tree ]] *
-    XCRASH
-       LOG.intact (FSXPLog fsxp) (SB.rep fsxp) ds   (* XXX fix *)
-     >} cleanup  fsxp src_inum tinum dst_fn mscs.
-  Proof.
-    unfold cleanup; intros.
-  Admitted.
-
-  (* XXX no spec yet *)
-
-  Theorem atomic_cp_recover_ok :
-    {< fsxp Fm Ftop src_tree src_dents dst_fn src_fn,
-    PRE
-      crash_xform "crash states"
-    POST RET:^(mscs, fsxp')
-      [[ fsxp' = fsxp ]] * temp_file doesn't exist
-    CRASH
-      crash states
-      >} atomic_cp_recover.
-  Proof.
-  Admitted.
-
-  Theorem atomic_cp_with_recover_ok : forall fsxp src_fn dst_fn mscs,
-    {<< ds Fm Ftop src_tree src_dents,
-    PRE
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs *
-      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] * 
-      [[ src_tree = DIRTREE.TreeDir the_dnum src_dents ]] *
-      [[ DIRTREE.find_name [src_fn] src_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
+      [[[ BFILE.BFData file ::: (0 |-> v0) ]]] *
       [[ src_fn <> temp_fn ]] *
       [[ dst_fn <> temp_fn ]] *
-      [[ src_fn <> dst_fn ]]
-    POST RET:^(mscs, r)
-      No temp file.  If dst file exists, it is equal to src
-    REC RET:^(mscs,fsxp)
-      No temp file.  If dst file exists, it is equal to src
-    >>} atomic_cp fsxp src_fn dst_fn mscs >> recover.
+      [[ dst_fn <> src_fn ]]
+    POST:hm' RET:^(mscs, r)
+      exists d tree' pruned subtree temp_dents dstents,
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
+        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
+        (([[r = false ]] *
+          (exists f',  
+          [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum f') temp_tree ]])) \/
+         ([[r = true ]] *
+          [[ temp_tree = DIRTREE.TreeDir the_dnum temp_dents ]] *
+          [[ pruned = DIRTREE.tree_prune the_dnum temp_dents [] temp_fn temp_tree ]] *
+          [[ pruned = DIRTREE.TreeDir the_dnum dstents ]] *
+          [[ tree' = DIRTREE.tree_graft the_dnum dstents [] dst_fn subtree pruned ]] *
+          [[ subtree = DIRTREE.TreeFile tinum (BFILE.synced_file file) ]]))
+    XCRASH:hm'
+      exists dlist,
+        [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
+             tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]] *
+      (
+          (* crashed before flushing *)
+          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) hm' \/
+          (exists d dlist', [[dlist = d :: dlist' ]] * 
+            (* crashed after a flush operation  *)
+            (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, dlist') hm') \/
+            (* crashed after renaming temp file, might have synced (dlist = nil) or not (dlist != nil) *)
+            (exists tree' pruned subtree temp_dents dstents,
+              [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
+              [[ temp_tree = DIRTREE.TreeDir the_dnum temp_dents ]] *
+              [[ pruned = DIRTREE.tree_prune the_dnum temp_dents [] temp_fn temp_tree ]] *
+              [[ pruned = DIRTREE.TreeDir the_dnum dstents ]] *
+              [[ tree' = DIRTREE.tree_graft the_dnum dstents [] dst_fn subtree pruned ]] *
+              [[ subtree = DIRTREE.TreeFile tinum (BFILE.synced_file file) ]] *
+              LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (d, dlist) hm'))
+      )
+     >} copy_and_rename fsxp src_inum tinum dst_fn mscs.
   Proof.
+    unfold copy_and_rename, AFS.rename_rep; intros.
+    step.
+    step.
+    instantiate (cwd0 := []).
+    admit.  (* boring *)
+    unfold AFS.rename_rep.
+    safestep.
+    step.
+    AFS.xcrash_solve.
+    xcrash_norm.
+    or_r.
+    xcrash_norm.
+    apply Forall_cons.
+    eexists.
+    eexists.
+    intuition.
+    pred_apply. cancel.
+    apply Forall_nil.
+    step.
+    or_r.
+    cancel.
+    admit.
+    admit.
+    admit.
+    
+    AFS.xcrash_solve.
+    xcrash_norm.
+    or_r.
+    xcrash_norm.
+    simpl.
+    constructor.
+    eexists. eexists. intuition.
+    eassumption.
+    constructor.
+    eexists. eexists. intuition.
+    pred_apply. cancel.
+    admit.
+    apply Forall_nil.
+    
+    AFS.xcrash_solve.
+    xcrash_norm.
+    or_r.
+    xcrash_norm.
+    apply Forall_cons.
+    eexists. eexists. intuition.
+    pred_apply. cancel.
+    apply Forall_nil.
+
+    AFS.xcrash_solve.
+    xcrash_norm.
+    xcrash_norm.
+    or_r.
+    xcrash_norm.
+    eauto.
+    Unshelve. all: eauto.
+  Admitted.
+
+  Hint Extern 1 ({{_}} progseq (copy_and_rename _ _ _ _ _) _) => apply copy_rename_ok : prog.
+
+  (* specs for copy_and_rename_cleanup and atomic_cp *)
+
+  Theorem atomic_cp_recover_ok :
+    {< fsxp ms ds,
+    PRE:hm
+      LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds ms hm
+    POST:hm' RET:^(ms, fsxp')
+      [[ fsxp' = fsxp ]] *
+      exists d d_from_ds,
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) ms hm' *
+      [[ d_in d_from_ds ds ]] *
+      [[ forall Fm Ftop tree the_dnum temp_dents,
+         (Fm * DIRTREE.rep fsxp Ftop tree)%pred (list2nmem d_from_ds) ->
+         tree = DIRTREE.TreeDir the_dnum temp_dents ->
+         let tree' := DIRTREE.tree_prune the_dnum temp_dents [] temp_fn tree in
+         exists Fm' Ftop',
+         (Fm' * DIRTREE.rep fsxp Ftop' tree') (list2nmem d) ]]
+    CRASH:hm'
+      LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds ms hm'
+    >} recover.
+  Proof.
+    unfold recover; intros.
+    step.
+  Admitted.
+
+  Hint Extern 1 ({{_}} progseq (recover) _) => apply atomic_cp_recover_ok : prog.
+
+  Theorem atomic_cp_with_recover_ok : forall fsxp src_inum dst_fn mscs,
+    {<< ds Fm Ftop temp_tree src_fn file tinum tfile v0,
+    PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm * 
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree) ]]] *
+      [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
+      [[ DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
+      [[[ BFILE.BFData file ::: (0 |-> v0) ]]] *
+      [[ src_fn <> temp_fn ]] *
+      [[ dst_fn <> temp_fn ]] *
+      [[ dst_fn <> src_fn ]]
+    POST:hm' RET:^(mscs, r)
+      exists d tree' pruned subtree temp_dents dstents,
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
+        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
+        (([[r = false ]] *
+          (exists f',  
+          [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum f') temp_tree ]])) \/
+         ([[r = true ]] *
+          [[ temp_tree = DIRTREE.TreeDir the_dnum temp_dents ]] *
+          [[ pruned = DIRTREE.tree_prune the_dnum temp_dents [] temp_fn temp_tree ]] *
+          [[ pruned = DIRTREE.TreeDir the_dnum dstents ]] *
+          [[ tree' = DIRTREE.tree_graft the_dnum dstents [] dst_fn subtree pruned ]] *
+          [[ subtree = DIRTREE.TreeFile tinum (BFILE.synced_file file) ]]))
+    REC:hm' RET:^(mscs,fsxp')
+     [[ fsxp' = fsxp ]] * exists d d_from_ds tree tree' Fm' Fm'' Ftop' Ftop'' temp_dents pruned, 
+       [[ d_in d_from_ds ds ]] *
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
+       [[[ d ::: Fm'' * DIRTREE.rep fsxp Ftop'' tree' ]]] *
+       [[[ d_from_ds ::: (Fm' * DIRTREE.rep fsxp Ftop' tree) ]]] *
+       [[ tree = DIRTREE.TreeDir the_dnum temp_dents ]] *
+       [[ pruned = DIRTREE.tree_prune the_dnum temp_dents [] temp_fn tree ]] *
+       ([[ tree' = pruned ]] \/
+        exists subtree dstents,
+        [[ tree' = DIRTREE.tree_graft the_dnum dstents [] dst_fn subtree pruned ]] *
+        [[ pruned = DIRTREE.TreeDir the_dnum dstents ]] *
+        [[ subtree = DIRTREE.TreeFile tinum (BFILE.synced_file file) ]])
+    >>} copy_and_rename fsxp src_inum tinum dst_fn mscs >> recover.
+  Proof.
+    AFS.recover_ro_ok.
+    cancel.
+    eauto.
+    eauto.
+    eauto.
+    congruence.
+    congruence.
+    step.
+    apply AFS.instantiate_crash.
+    reflexivity.
+
+    cancel.
+    match goal with
+    | [ H : crash_xform ?realcrash =p=> crash_xform ?body |- ?realcrash =p=> (_ hm') ] =>
+      let t := eval pattern hm' in body in
+      match eval pattern hm' in body with
+      | ?bodyf hm' =>
+        instantiate (1 := (fun hm' => (exists p, p * [[ crash_xform p =p=> crash_xform (bodyf hm') ]])%pred))
+      end
+    end.
+    cancel.
+
+    (**
+     * Need to fish out the [p] which is really [realcrash] from above.
+     *)
+    simpl.
+    repeat xform_dist.
+    xform_deex_l.
+    norml. unfold stars; simpl.
+    repeat xform_dist.
+    norml. unfold stars; simpl.
+    rewrite H15.
+
+    (**
+     * We now have 3 OR cases on the left-hand side.  We need to break them up into
+     * separate subgoals before instantiating the evars for the right-hand side, because
+     * the evars will be different in each OR case.
+     *)
+    xform_deex_l.
+    norml; unfold stars; simpl.
+    repeat xform_dist.
+    norml; unfold stars; simpl.
+    2: xform_deex_l.
+    2: norml; unfold stars; simpl.
+    2: xform_deex_l.
+    2: norml; unfold stars; simpl.
+    2: repeat xform_dist.
+    2: norml; unfold stars; simpl.
+    3: xform_deex_l.
+    3: norml; unfold stars; simpl.
+    3: xform_deex_l.
+    3: norml; unfold stars; simpl.
+    3: xform_deex_l.
+    3: norml; unfold stars; simpl.
+    3: xform_deex_l.
+    3: norml; unfold stars; simpl.
+    3: xform_deex_l.
+    3: norml; unfold stars; simpl.
+    3: repeat xform_dist.
+    3: norml; unfold stars; simpl.
+
+    - AFS.recover_ro_ok.
+      rewrite LOG.idempred_idem.
+      norml; unfold stars; simpl.
+      rewrite SB.crash_xform_rep.
+      cancel.
+
+      destruct v.
+      prestep.
+      norml; unfold stars; simpl.
+
+      (**
+       * We need to consider two cases: that [d_from_ds] from [atomic_cp_recover_ok]'s crash condition
+       * (as instantiated based on the first OR of [copy_rename_ok]'s crash condition) falls in the
+       * [dlist] portion, or if it falls in the [ds] portion..
+       *)
+      rewrite pushdlist_app in *.
+      edestruct d_in_app.
+      eassumption.
+
+      + (**
+         * This is the case when the post-crash disk state fell in the [dlist] portion of
+         * [copy_rename_ok]'s crash condition.
+         *)
+
+        (**
+         * First, we need to destruct the [exists] from the postcondition of [recover],
+         * which is hidden under a [forall].  But to satisfy the premise of the [forall],
+         * we need to destruct some more existentials under the [Forall] about the [dlist]
+         * from [atomic_cp_recover_ok]'s crash condition..
+         *)
+        rewrite Forall_forall in *.
+        rewrite <- in_rev in *.
+        specialize (H12 _ H13).
+        repeat deex.
+
+        edestruct H19; repeat deex.
+        eauto.
+
+        (*
+          DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile v5 tfile') v2 =
+          DIRTREE.TreeDir ?the_dnum ?temp_dents
+         *)
+        admit.
+
+        safecancel.
+        or_l. cancel.
+        apply latest_in_ds.
+        eauto.
+
+        (* v2 = DIRTREE.TreeDir the_dnum ?temp_dents *)
+        admit.
+
+        (*
+          DIRTREE.tree_prune ?the_dnum ?temp_dents [] temp_fn
+            (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile v5 tfile') v2) =
+          DIRTREE.tree_prune the_dnum ?temp_dents [] temp_fn v2
+         *)
+        admit.
+
+        norml; unfold stars; simpl.
+        safecancel.
+
+      + (**
+         * This is the case when the post-crash disk state fell in the [ds] portion of
+         * [copy_rename_ok]'s crash condition.
+         *)
+
+        (**
+         * First, we need to destruct the [exists] from the postcondition of [recover],
+         * which is hidden under a [forall].
+         *)
+        edestruct H19; repeat deex.
+
+        (* XXX need a precondition that all disks in [ds] look like a tree! *)
+        (* (?Fm ✶ DIRTREE.rep fsxp ?Ftop ?tree)%pred (list2nmem d_from_ds) *)
+        admit.
+
+        reflexivity.
+
+        safecancel.
+        or_l. cancel.
+        eauto.
+
+        (* XXX again, [ds] disks must look like a tree *)
+        (* (?Fm ✶ DIRTREE.rep fsxp ?Ftop ?tree)%pred (list2nmem d_from_ds) *)
+        admit.
+
+        reflexivity.
+        reflexivity.
+
+        norml; unfold stars; simpl.
+        safecancel.
+
+      + (* what is this subgoal? *)
+        admit.
+
+    - (* This is the second [or] from [copy_and_rename]'s crash condition,
+       * where we crashed after a flush and possibly more temp file writes.
+       *)
+      admit.
+
+    - (* This is the third [or] from [copy_and_rename]'s crash condition,
+       * where we actually wrote the destination file (but maybe didn't sync yet).
+       *)
+      admit.
+
   Admitted.
 
 End ATOMICCP.

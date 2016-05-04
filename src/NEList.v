@@ -158,6 +158,66 @@ Section NonEmptyList.
     replace (length ds + 1 - 1 - length ds) with 0 by omega; simpl; auto.
   Qed.
 
+  Lemma pushdlist_app : forall d l' l,
+    pushdlist l' (d, l) = (d, (rev l') ++ l)%list.
+  Proof.
+    induction l'; simpl; unfold pushd; simpl; intros; auto.
+    rewrite IHl'.
+    rewrite <- app_assoc.
+    reflexivity.
+  Qed.
+
+  Definition d_in d (l : nelist) := d = fst l \/ In d (snd l).
+
+  Theorem d_in_pushdlist : forall dlist ds d,
+    d_in d (pushdlist dlist ds) ->
+    In d dlist \/ d_in d ds.
+  Proof.
+    induction dlist; simpl; intros; auto.
+    edestruct (IHdlist _ _ H).
+    intuition.
+    destruct ds.
+    inversion H0; simpl in *.
+    right. left. eauto.
+    intuition.
+    right. right. eauto.
+  Qed.
+
+  Theorem d_in_app : forall d a l1 l2,
+    d_in d (a, (l1 ++ l2)) ->
+    In d l1 \/ d_in d (a, l2).
+  Proof.
+    intros.
+    assert (In d (rev l1) \/ d_in d (a, l2)).
+    apply d_in_pushdlist.
+    rewrite pushdlist_app. rewrite rev_involutive. eauto.
+    intuition.
+    left. apply in_rev. eauto.
+  Qed.
+
+  Theorem nthd_in_ds : forall ds n,
+    d_in (nthd n ds) ds.
+  Proof.
+    unfold nthd, d_in.
+    destruct ds.
+    destruct n.
+    - left.
+      apply selN_oob. omega.
+    - destruct l; simpl snd.
+      + eauto.
+      + right.
+        apply in_selN.
+        simpl; omega.
+  Qed.
+
+  Theorem latest_in_ds : forall ds,
+    d_in (latest ds) ds.
+  Proof.
+    unfold d_in, latest.
+    destruct ds; simpl.
+    destruct l; simpl; intuition.
+  Qed.
+
 End NonEmptyList.
 
 

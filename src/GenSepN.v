@@ -252,6 +252,13 @@ Proof.
   eauto.
 Qed.
 
+Theorem list2nmem_array': forall  A (l l' : list A),
+  l = l' ->
+  arrayN 0 l' (list2nmem l).
+Proof.
+  intros; subst; apply list2nmem_array.
+Qed.
+
 Theorem list2nmem_arrayN_firstn_skipn: forall A (l:list A) n,
   (arrayN 0 (firstn n l) * arrayN n (skipn n l))%pred (list2nmem l).
 Proof.

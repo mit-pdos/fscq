@@ -14,7 +14,7 @@ main = do
     [fn] -> do
       ds <- init_disk fn
       putStrLn $ "Initializing file system"
-      res <- I.run ds $ AsyncFS._AFS__mkfs 1 1 64
+      res <- I.run ds $ AsyncFS._AFS__mkfs 1 1 256
       case res of
         Nothing -> error $ "mkfs failed"
         Just (_, fsxp) ->
