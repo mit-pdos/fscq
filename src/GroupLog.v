@@ -210,6 +210,24 @@ Module GLog.
     intuition. eauto.
   Qed.
 
+  Lemma cached_recovering: forall xp ds ms hm,
+    rep xp (Cached ds) ms hm =p=>
+      exists n ms', rep xp (Recovering (nthd n ds)) ms' hm.
+  Proof.
+    unfold rep.
+    intros. norm.
+    rewrite nthd_0; cancel.
+    rewrite MLog.rep_synced_pimpl.
+    eassign (mk_mstate vmap0 nil (MSMLog ms)).
+    auto.
+    intuition simpl; auto.
+    unfold vmap_match; simpl; congruence.
+    rewrite nthd_0.
+    unfold dset_match; intuition.
+    apply Forall_nil.
+    constructor.
+  Qed.
+
   Lemma flushing_recover_any: forall xp n ds ms hm,
     rep xp (Flushing ds n) ms hm =p=> would_recover_any xp ds hm.
   Proof.
@@ -224,6 +242,15 @@ Module GLog.
     rewrite nthd_0; cancel.
     apply MLog.rollback_recover_either.
     intuition. eauto.
+  Qed.
+
+  Lemma rollback_recovering: forall xp d ms hm,
+    rep xp (Rollback d) ms hm =p=> rep xp (Recovering d) ms hm.
+  Proof.
+    unfold rep; intros.
+    cancel.
+    rewrite MLog.rep_rollback_pimpl.
+    auto.
   Qed.
 
   Lemma rep_hashmap_subset : forall xp ms hm hm',
@@ -905,6 +932,20 @@ Module GLog.
     intuition.
   Qed.
 
+  Lemma crash_xform_rollback : forall xp d ms hm,
+    crash_xform (rep xp (Rollback d) ms hm) =p=>
+      exists d' ms', rep xp (Rollback d') ms' hm *
+        [[[ d' ::: (crash_xform (diskIs (list2nmem d))) ]]].
+  Proof.
+    unfold rep; intros.
+    xform_norm.
+    rewrite MLog.crash_xform_rollback.
+    cancel.
+    eassign (mk_mstate vmap0 nil ms'); eauto.
+    all: auto.
+  Qed.
+
+
   Lemma any_pred_any : forall xp ds hm,
     recover_any_pred xp ds hm =p=>
     exists d, would_recover_any xp (d, nil) hm.
@@ -982,7 +1023,6 @@ Module GLog.
     safestep. eauto.
     instantiate (1:=nil); cancel.
 
-    (* Getting Anomaly when xcrash is used here for some reason...*)
     repeat xcrash_rewrite.
     xform_norm.
     cancel.

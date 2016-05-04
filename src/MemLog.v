@@ -391,6 +391,17 @@ Module MLog.
     cancel.
   Qed.
 
+  Lemma rep_synced_pimpl : forall xp nr d ms hm,
+    rep xp (Synced nr d) ms hm =p=>
+      rep xp (Recovering d) ms hm.
+  Proof.
+    unfold rep; intros.
+    cancel; eauto.
+    rewrite DLog.rep_synced_pimpl; eauto.
+    cancel.
+  Qed.
+
+
   Theorem recover_before_either : forall xp d ents hm,
     would_recover_before xp d hm =p=>
     would_recover_either xp d ents hm.

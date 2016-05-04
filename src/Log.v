@@ -69,6 +69,9 @@ Module LOG.
   | FlushingTxn (new : GLog.diskset)
   (* A flushing is in progress
    *)
+
+  | RollbackTxn (old : diskstate)
+  | RecoveringTxn (old : diskstate)
   .
 
   Definition rep_inner xp st ms hm :=
@@ -83,6 +86,12 @@ Module LOG.
       GLog.rep xp (GLog.Cached ds) mm hm
     | FlushingTxn ds =>
       GLog.would_recover_any xp ds hm
+    | RollbackTxn d =>
+      [[ Map.Empty cm ]] *
+      GLog.rep xp (GLog.Rollback d) mm hm
+    | RecoveringTxn d =>
+      [[ Map.Empty cm ]] *
+      GLog.rep xp (GLog.Recovering d) mm hm
   end)%pred.
 
   Definition rep xp F st ms hm :=
@@ -138,8 +147,7 @@ Module LOG.
   Proof.
     intros.
     destruct st; unfold rep_inner, GLog.would_recover_any.
-    erewrite GLog.rep_hashmap_subset; eauto.
-    erewrite GLog.rep_hashmap_subset; eauto.
+    all: try erewrite GLog.rep_hashmap_subset; eauto.
     cancel.
     erewrite GLog.rep_hashmap_subset; eauto.
   Qed.
@@ -161,6 +169,26 @@ Module LOG.
     unfold intact; intros; cancel;
     erewrite rep_hashmap_subset; eauto.
     all: cancel.
+  Qed.
+
+  Lemma rep_inner_notxn_pimpl : forall xp d ms hm,
+    rep_inner xp (NoTxn (d, nil)) ms hm
+    =p=> exists ms', rep_inner xp (RecoveringTxn d) ms' hm.
+  Proof.
+    unfold rep_inner; intros.
+    rewrite GLog.cached_recovering.
+    norm'l. cancel.
+    eassign (mk_mstate vmap0 ms'); auto.
+    apply map_empty_vmap0.
+  Qed.
+
+  Lemma rep_inner_rollbacktxn_pimpl : forall xp d ms hm,
+    rep_inner xp (RollbackTxn d) ms hm
+    =p=> rep_inner xp (RecoveringTxn d) ms hm.
+  Proof.
+    unfold rep_inner; intros.
+    rewrite GLog.rollback_recovering.
+    cancel.
   Qed.
 
 
@@ -461,7 +489,15 @@ Module LOG.
   Definition after_crash xp F ds cs hm :=
     (exists raw, BUFCACHE.rep cs raw *
      [[ ( exists d n ms, [[ n <= length (snd ds) ]] *
-       F * rep_inner xp (NoTxn (d, nil)) ms hm *
+       F * (rep_inner xp (NoTxn (d, nil)) ms hm \/
+            rep_inner xp (RollbackTxn d) ms hm) *
+       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
+     )%pred raw ]])%pred.
+
+  Definition before_crash xp F ds hm :=
+    (exists cs raw, BUFCACHE.rep cs raw *
+     [[ ( exists d n ms, [[ n <= length (snd ds) ]] *
+       F * (rep_inner xp (RecoveringTxn d) ms hm) *
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
      )%pred raw ]])%pred.
 
@@ -474,26 +510,71 @@ Module LOG.
       exists d n, [[ n <= length (snd ds) ]] *
       rep xp F (NoTxn (d, nil)) ms' hm' *
       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-    CRASH:hm' exists cs',
-      after_crash xp F ds cs' hm'
+    XCRASH:hm'
+      before_crash xp F ds hm'
     >} recover xp cs.
   Proof.
-    unfold recover, after_crash, rep, rep_inner.
+    unfold recover, after_crash, before_crash, rep, rep_inner.
     safestep.
-    unfold GLog.recover_any_pred. norm. cancel.
+    unfold GLog.recover_any_pred. norm.
+    eassign F; cancel.
+    or_l; cancel.
+    intuition simpl; eauto.
+    unfold GLog.recover_any_pred. norm.
+    cancel.
+    or_r; cancel.
     intuition simpl; eauto.
 
     prestep. norm. cancel.
     intuition simpl; eauto.
     pred_apply; cancel.
 
-    pimpl_crash. norm. cancel.
-    intuition simpl; eauto; pred_apply.
-    norm. cancel.
+    norm'l.
+    repeat xcrash_rewrite.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm.
+    norm.
+    cancel.
     intuition simpl; eauto.
-    apply GLog.rep_hashmap_subset; eauto.
+    pred_apply.
+    norm.
+    cancel.
+    eassign (mk_mstate vmap0 x1); eauto.
+    intuition simpl; eauto.
+  Qed.
+
+
+  Lemma crash_xform_before_crash : forall xp F ds hm,
+    crash_xform (before_crash xp F ds hm) =p=>
+      exists cs, after_crash xp (crash_xform F) ds cs hm.
+  Proof.
+    unfold before_crash, after_crash, rep_inner; intros.
+    xform_norm.
+    rewrite BUFCACHE.crash_xform_rep_pred by eauto.
+    norm.
+    cancel.
     intuition.
-    rewrite Nat.min_l; eauto.
+    pred_apply.
+    xform_norm.
+    rewrite GLog.crash_xform_recovering.
+    unfold GLog.recover_any_pred.
+    norm. unfold stars; simpl.
+    cancel.
+    unfold GLog.recover_any_pred; cancel.
+    or_l; cancel.
+    eassign (mk_mstate vmap0 ms); eauto.
+    auto.
+    intuition simpl; eauto.
+    eapply crash_xform_diskIs_trans; eauto.
+
+    unfold stars; simpl.
+    cancel.
+    or_r; cancel.
+    eassign (mk_mstate vmap0 ms); eauto.
+    auto.
+    intuition simpl; eauto.
+    eapply crash_xform_diskIs_trans; eauto.
   Qed.
 
 
@@ -512,27 +593,39 @@ Module LOG.
     norm. cancel.
     eassign (mk_mstate vmap0 ms); eauto.
     intuition simpl; eauto.
+
+    or_l; cancel.
+    intuition simpl; eauto.
+    cancel.
+    or_r; cancel.
+    eassign (mk_mstate vmap0 ms); eauto.
+    eauto.
+    intuition simpl; eauto.
   Qed.
 
 
   Lemma after_crash_notxn : forall xp cs F ds hm,
     after_crash xp F ds cs hm =p=>
       exists d n ms, [[ n <= length (snd ds) ]] *
-      rep xp F (NoTxn (d, nil)) ms hm *
+      (rep xp F (NoTxn (d, nil)) ms hm \/
+        rep xp F (RollbackTxn d) ms hm) *
       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]].
   Proof.
     unfold after_crash, recover_any, rep, rep_inner.
     intros. norm. cancel.
+    denote or as Hor; apply sep_star_or_distr in Hor.
+    destruct Hor; destruct_lift H.
+    or_l; cancel.
+    or_r; cancel.
     intuition simpl. eassumption.
-    eassign (mk_mstate vmap0 (MSGLog dummy1)).
-    pred_apply; cancel.
     auto.
   Qed.
 
 
   Lemma after_crash_notxn_singular : forall xp cs F d hm,
     after_crash xp F (d, nil) cs hm =p=>
-      exists d' ms, rep xp F (NoTxn (d', nil)) ms hm *
+      exists d' ms, (rep xp F (NoTxn (d', nil)) ms hm \/
+                      rep xp F (RollbackTxn d') ms hm) *
       [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
   Proof.
     intros; rewrite after_crash_notxn; cancel.
@@ -549,14 +642,29 @@ Module LOG.
     xform_norm.
     denote crash_xform as Hx.
     apply crash_xform_sep_star_dist in Hx.
-    rewrite GLog.crash_xform_cached in Hx.
-    destruct_lift Hx.
-
-    norm. cancel. intuition; pred_apply.
-    norm. cancel.
-    eassign (mk_mstate vmap0 dummy3); cancel.
+    rewrite crash_xform_or_dist in Hx.
+    apply sep_star_or_distr in Hx.
+    norm. unfold stars; simpl. cancel.
     intuition simpl; eauto.
-    pred_apply.
+
+    destruct Hx as [Hx | Hx];
+    autorewrite with crash_xform in Hx;
+    destruct_lift Hx; pred_apply.
+
+    rewrite GLog.crash_xform_cached.
+    norm. cancel.
+    or_l; cancel.
+    eassign (mk_mstate vmap0 ms'); cancel.
+    auto.
+    intuition simpl; eauto.
+    eapply crash_xform_diskIs_trans; eauto.
+
+    rewrite GLog.crash_xform_rollback.
+    norm. cancel.
+    or_r; cancel.
+    eassign (mk_mstate vmap0 ms'); cancel.
+    auto.
+    intuition simpl; eauto.
     eapply crash_xform_diskIs_trans; eauto.
   Qed.
 
@@ -587,8 +695,18 @@ Module LOG.
     unfold Proper, respectful; intros.
     unfold after_crash.
     subst. norm. cancel. intuition simpl.
-    pred_apply. norm. cancel.
-    rewrite H0; eauto. cancel.
+    pred_apply. norm.
+
+    cancel.
+    rewrite sep_star_or_distr.
+    or_l; cancel.
+    rewrite H0; eauto.
+    intuition simpl; eauto.
+
+    cancel.
+    rewrite sep_star_or_distr.
+    or_r; cancel.
+    rewrite H0; eauto.
     intuition simpl; eauto.
   Qed.
 
@@ -598,12 +716,29 @@ Module LOG.
     rep xp F (NoTxn (d, nil)) ms hm =p=> after_crash xp F ds (snd ms) hm.
   Proof.
     unfold rep, after_crash, rep_inner; intros.
-    safecancel; auto.
+    safecancel.
+    or_l; cancel.
+    eauto.
+    auto.
+  Qed.
+
+  Lemma rollbacktxn_after_crash_diskIs : forall xp F n d ds ms hm,
+    crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
+    n <= length (snd ds) ->
+    rep xp F (RollbackTxn d) ms hm =p=> after_crash xp F ds (snd ms) hm.
+  Proof.
+    unfold rep, after_crash, rep_inner; intros.
+    safecancel.
+    or_r; cancel.
+    eauto.
+    auto.
   Qed.
 
   (** idempred includes both before-crash cand after-crash cases *)
   Definition idempred xp F ds hm :=
-    (recover_any xp F ds hm \/ exists cs, after_crash xp F ds cs hm)%pred.
+    (recover_any xp F ds hm \/
+      before_crash xp F ds hm \/
+      exists cs, after_crash xp F ds cs hm)%pred.
 
   Theorem idempred_idem : forall xp F ds hm,
     crash_xform (idempred xp F ds hm) =p=>
@@ -612,6 +747,7 @@ Module LOG.
     unfold idempred; intros.
     xform_norm.
     rewrite crash_xform_any; cancel.
+    rewrite crash_xform_before_crash; cancel.
     rewrite after_crash_idem; cancel.
   Qed.
 
@@ -652,15 +788,44 @@ Module LOG.
     or_r; cancel.
   Qed.
 
+  Theorem before_crash_idempred : forall xp F ds hm,
+    before_crash xp F ds hm =p=> idempred xp F ds hm.
+  Proof.
+    unfold idempred; intros.
+    or_r; or_l; cancel.
+  Qed.
+
   Instance idempred_proper_iff :
     Proper (eq ==> piff ==> eq ==> eq ==> pimpl) idempred.
   Proof.
     unfold Proper, respectful; intros.
     unfold idempred; cancel.
-    unfold recover_any, rep; or_l; cancel.
+    unfold recover_any, rep. or_l; cancel.
     rewrite H0; cancel.
+
+    unfold before_crash, rep.
+    or_r; or_l.
+    norm. cancel.
+    intuition. pred_apply.
+    norm. cancel.
+    rewrite H0; cancel.
+    intuition simpl; eauto.
+
+    unfold after_crash, rep.
+    or_r; or_r.
+    norm. cancel.
+    intuition. pred_apply.
+    norm. cancel.
+    rewrite sep_star_or_distr.
+    or_l; cancel.
+    rewrite H0; cancel.
+    intuition simpl; eauto.
+
+    norm; auto. cancel.
+    rewrite sep_star_or_distr.
     or_r; cancel.
-    rewrite H0; eauto.
+    rewrite H0; cancel.
+    intuition simpl; eauto.
   Qed.
 
   Theorem crash_xform_intact : forall xp F ds hm,
@@ -688,11 +853,13 @@ Module LOG.
 
   Theorem crash_xform_idempred : forall xp F ds hm,
     crash_xform (idempred xp F ds hm) =p=>
-      exists ms d n, rep xp (crash_xform F) (NoTxn (d, nil)) ms hm *
+      exists ms d n,
+        (rep xp (crash_xform F) (NoTxn (d, nil)) ms hm \/
+          rep xp (crash_xform F) (RollbackTxn d) ms hm) *
         [[ n <= length (snd ds) ]] *
         [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]].
   Proof.
-    unfold idempred, recover_any, after_crash, rep, rep_inner; intros.
+    unfold idempred, recover_any, after_crash, before_crash, rep, rep_inner; intros.
     xform_norm;
     rewrite BUFCACHE.crash_xform_rep_pred by eauto;
     xform_norm;
@@ -703,19 +870,60 @@ Module LOG.
       unfold GLog.recover_any_pred in Hx;
       destruct_lift Hx.
 
+      denote or as Hor.
+      apply sep_star_or_distr in Hor.
+      destruct Hor.
+
       safecancel.
+      or_l; cancel.
+      eassign (mk_mstate (Map.empty valu) dummy1).
+      cancel. auto. eassumption. auto.
+
+      safecancel.
+      or_r; cancel.
       eassign (mk_mstate (Map.empty valu) dummy1).
       cancel. auto. eassumption. auto.
 
     - apply crash_xform_sep_star_dist in Hx;
-      rewrite GLog.crash_xform_cached in Hx;
+      rewrite GLog.crash_xform_recovering in Hx;
       unfold GLog.recover_any_pred in Hx;
       destruct_lift Hx.
 
+      denote or as Hor.
+      apply sep_star_or_distr in Hor.
+      destruct Hor.
+
       safecancel.
+      or_l; cancel.
+      eassign (mk_mstate (Map.empty valu) dummy4).
+      cancel. auto. eassumption.
+      eapply crash_xform_diskIs_trans; eauto.
+
+      safecancel.
+      or_r; cancel.
+      eassign (mk_mstate (Map.empty valu) dummy4).
+      cancel. auto. eassumption.
+      eapply crash_xform_diskIs_trans; eauto.
+
+    - apply crash_xform_sep_star_dist in Hx.
+      rewrite crash_xform_or_dist in Hx.
+      apply sep_star_or_distr in Hx;
+      destruct Hx; autorewrite with crash_xform in H0.
+
+      rewrite GLog.crash_xform_cached in H0.
+      destruct_lift H0.
+      safecancel.
+      or_l; cancel.
       eassign (mk_mstate (Map.empty valu) dummy3).
       cancel. auto. eassumption.
+      eapply crash_xform_diskIs_trans; eauto.
 
+      rewrite GLog.crash_xform_rollback in H0.
+      destruct_lift H0.
+      safecancel.
+      or_r; cancel.
+      eassign (mk_mstate (Map.empty valu) dummy3).
+      cancel. auto. eassumption.
       eapply crash_xform_diskIs_trans; eauto.
   Qed.
 
@@ -1229,9 +1437,27 @@ Module LOG.
     -> idempred xp F ds hm
        =p=> idempred xp F ds hm'.
   Proof.
-    unfold idempred, recover_any, after_crash; cancel.
-    rewrite rep_hashmap_subset by eauto. cancel.
-    rewrite rep_inner_hashmap_subset in * by eauto. or_r. safecancel.
+    unfold idempred, recover_any, after_crash, before_crash; cancel.
+    rewrite rep_hashmap_subset by eauto.
+    or_l; cancel.
+    rewrite rep_inner_hashmap_subset in * by eauto.
+    or_r. safecancel.
+    rewrite rep_inner_hashmap_subset in * by eauto.
+    denote or as Hor; apply sep_star_or_distr in Hor.
+    destruct Hor.
+    or_r; or_r.
+    norm. cancel.
+    intuition.
+    pred_apply. norm. cancel.
+    or_l; cancel.
+    intuition simpl; eauto.
+    or_r; or_r.
+    norm. cancel.
+    intuition.
+    pred_apply. norm. cancel.
+    rewrite rep_inner_hashmap_subset by eauto.
+    or_r; cancel.
+    intuition simpl; eauto.
   Qed.
 
 End LOG.
