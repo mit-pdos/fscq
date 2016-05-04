@@ -563,7 +563,7 @@ Module ATOMICCP.
   Hint Extern 1 ({{_}} progseq (recover) _) => apply atomic_cp_recover_ok : prog.
 
   Theorem atomic_cp_with_recover_ok : forall fsxp src_inum dst_fn mscs,
-    {<< ds Fm Ftop temp_tree src_fn file tinum tfile,
+    {<< ds Fm Ftop temp_tree src_fn file tinum tfile v0,
     PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm * 
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree) ]]] *
       [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
@@ -578,19 +578,19 @@ Module ATOMICCP.
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
         (([[r = false ]] *
           (exists f',  
-          [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum f') temp_tree ]]))) \/
+          [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum f') temp_tree ]])) \/
          ([[r = true ]] *
           [[ temp_tree = DIRTREE.TreeDir the_dnum temp_dents ]] *
           [[ pruned = DIRTREE.tree_prune the_dnum temp_dents [] temp_fn temp_tree ]] *
           [[ pruned = DIRTREE.TreeDir the_dnum dstents ]] *
           [[ tree' = DIRTREE.tree_graft the_dnum dstents [] dst_fn subtree pruned ]] *
-          [[ subtree = DIRTREE.TreeFile tinum (BFILE.synced_file file) ]])
+          [[ subtree = DIRTREE.TreeFile tinum (BFILE.synced_file file) ]]))
     REC:hm' RET:^(mscs,fsxp')
-     [[ fsxp' = fsxp ]] * exists d n tree tree' Fm' Fm'' Ftop' Ftop'' temp_dents pruned, 
-       [[ n <= List.length (snd ds) ]] *
+     [[ fsxp' = fsxp ]] * exists d d_from_ds tree tree' Fm' Fm'' Ftop' Ftop'' temp_dents pruned, 
+       [[ d_in d_from_ds ds ]] *
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
        [[[ d ::: Fm'' * DIRTREE.rep fsxp Ftop'' tree' ]]] *
-       [[[ nthd n ds ::: (Fm' * DIRTREE.rep fsxp Ftop' tree) ]]] *
+       [[[ d_from_ds ::: (Fm' * DIRTREE.rep fsxp Ftop' tree) ]]] *
        [[ tree = DIRTREE.TreeDir the_dnum temp_dents ]] *
        [[ pruned = DIRTREE.tree_prune the_dnum temp_dents [] temp_fn tree ]] *
        ([[ tree' = pruned ]] \/
@@ -604,9 +604,169 @@ Module ATOMICCP.
     cancel.
     eauto.
     eauto.
+    eauto.
     congruence.
     congruence.
     step.
-   Admitted.
+    apply AFS.instantiate_crash.
+    reflexivity.
+
+    cancel.
+    match goal with
+    | [ H : crash_xform ?realcrash =p=> crash_xform ?body |- ?realcrash =p=> (_ hm') ] =>
+      let t := eval pattern hm' in body in
+      match eval pattern hm' in body with
+      | ?bodyf hm' =>
+        instantiate (1 := (fun hm' => (exists p, p * [[ crash_xform p =p=> crash_xform (bodyf hm') ]])%pred))
+      end
+    end.
+    cancel.
+
+    (**
+     * Need to fish out the [p] which is really [realcrash] from above.
+     *)
+    simpl.
+    repeat xform_dist.
+    xform_deex_l.
+    norml. unfold stars; simpl.
+    repeat xform_dist.
+    norml. unfold stars; simpl.
+    rewrite H15.
+
+    (**
+     * We now have 3 OR cases on the left-hand side.  We need to break them up into
+     * separate subgoals before instantiating the evars for the right-hand side, because
+     * the evars will be different in each OR case.
+     *)
+    xform_deex_l.
+    norml; unfold stars; simpl.
+    repeat xform_dist.
+    norml; unfold stars; simpl.
+    2: xform_deex_l.
+    2: norml; unfold stars; simpl.
+    2: xform_deex_l.
+    2: norml; unfold stars; simpl.
+    2: repeat xform_dist.
+    2: norml; unfold stars; simpl.
+    3: xform_deex_l.
+    3: norml; unfold stars; simpl.
+    3: xform_deex_l.
+    3: norml; unfold stars; simpl.
+    3: xform_deex_l.
+    3: norml; unfold stars; simpl.
+    3: xform_deex_l.
+    3: norml; unfold stars; simpl.
+    3: xform_deex_l.
+    3: norml; unfold stars; simpl.
+    3: repeat xform_dist.
+    3: norml; unfold stars; simpl.
+
+    - AFS.recover_ro_ok.
+      rewrite LOG.idempred_idem.
+      norml; unfold stars; simpl.
+      rewrite SB.crash_xform_rep.
+      cancel.
+
+      destruct v.
+      prestep.
+      norml; unfold stars; simpl.
+
+      (**
+       * We need to consider two cases: that [d_from_ds] from [atomic_cp_recover_ok]'s crash condition
+       * (as instantiated based on the first OR of [copy_rename_ok]'s crash condition) falls in the
+       * [dlist] portion, or if it falls in the [ds] portion..
+       *)
+      rewrite pushdlist_app in *.
+      edestruct d_in_app.
+      eassumption.
+
+      + (**
+         * This is the case when the post-crash disk state fell in the [dlist] portion of
+         * [copy_rename_ok]'s crash condition.
+         *)
+
+        (**
+         * First, we need to destruct the [exists] from the postcondition of [recover],
+         * which is hidden under a [forall].  But to satisfy the premise of the [forall],
+         * we need to destruct some more existentials under the [Forall] about the [dlist]
+         * from [atomic_cp_recover_ok]'s crash condition..
+         *)
+        rewrite Forall_forall in *.
+        rewrite <- in_rev in *.
+        specialize (H12 _ H13).
+        repeat deex.
+
+        edestruct H19; repeat deex.
+        eauto.
+
+        (*
+          DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile v5 tfile') v2 =
+          DIRTREE.TreeDir ?the_dnum ?temp_dents
+         *)
+        admit.
+
+        safecancel.
+        or_l. cancel.
+        apply latest_in_ds.
+        eauto.
+
+        (* v2 = DIRTREE.TreeDir the_dnum ?temp_dents *)
+        admit.
+
+        (*
+          DIRTREE.tree_prune ?the_dnum ?temp_dents [] temp_fn
+            (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile v5 tfile') v2) =
+          DIRTREE.tree_prune the_dnum ?temp_dents [] temp_fn v2
+         *)
+        admit.
+
+        norml; unfold stars; simpl.
+        safecancel.
+
+      + (**
+         * This is the case when the post-crash disk state fell in the [ds] portion of
+         * [copy_rename_ok]'s crash condition.
+         *)
+
+        (**
+         * First, we need to destruct the [exists] from the postcondition of [recover],
+         * which is hidden under a [forall].
+         *)
+        edestruct H19; repeat deex.
+
+        (* XXX need a precondition that all disks in [ds] look like a tree! *)
+        (* (?Fm ✶ DIRTREE.rep fsxp ?Ftop ?tree)%pred (list2nmem d_from_ds) *)
+        admit.
+
+        reflexivity.
+
+        safecancel.
+        or_l. cancel.
+        eauto.
+
+        (* XXX again, [ds] disks must look like a tree *)
+        (* (?Fm ✶ DIRTREE.rep fsxp ?Ftop ?tree)%pred (list2nmem d_from_ds) *)
+        admit.
+
+        reflexivity.
+        reflexivity.
+
+        norml; unfold stars; simpl.
+        safecancel.
+
+      + (* what is this subgoal? *)
+        admit.
+
+    - (* This is the second [or] from [copy_and_rename]'s crash condition,
+       * where we crashed after a flush and possibly more temp file writes.
+       *)
+      admit.
+
+    - (* This is the third [or] from [copy_and_rename]'s crash condition,
+       * where we actually wrote the destination file (but maybe didn't sync yet).
+       *)
+      admit.
+
+  Admitted.
 
 End ATOMICCP.
