@@ -1275,6 +1275,8 @@ Proof.
   replace (get GDisk0 s5).
   autorewrite with upd; auto.
 
+  eapply star_trans; eauto.
+
   (* The most important postcondition, promising that all the
   internals of read can be abstracted into a single yield to other
   threads. This should exploit the isolation axiom above that lets us
@@ -1299,5 +1301,129 @@ Proof.
   apply lin_release_same_domain.
 Admitted.
 
+Hint Extern 0 {{read _; _}} => apply read_ok : prog.
+
+Definition locked_write {T} a v rx : prog Mcontents Scontents T :=
+  Write_upd a v;;
+        GhostUpdate (fun s =>
+                       let ld := get GDisk s in
+                       let ld' := linear_upd ld a (v, None) in
+                       set GDisk ld' s);;
+        rx tt.
+
+Theorem locked_write_ok : forall a v,
+  stateS TID: tid |-
+  {{ v0,
+   | PRE d m s0 s:
+       let ld := get GDisk s in
+       Inv m s d /\
+       view Latest ld a = Some (v0, None) /\
+       Locks.get (get GLocks s) a = Owned tid /\
+       R tid s0 s
+   | POST d' m' s0' s' r:
+       let ld := get GDisk s in
+       let ld' := get GDisk s' in
+       Inv m' s' d' /\
+       s' = set GDisk (linear_upd ld a (v, None)) s /\
+       R tid s0' s'
+  }} locked_write a v.
+Proof.
+  hoare pre simplify with safe_finish.
+  finish; simplify; simpl_get_set in *;
+  try erewrite view_lift_upd by eauto;
+  try erewrite view_hide_upd by eauto;
+  eauto.
+  eauto using linearized_consistent_upd.
+
+  eapply R_trans; eapply star_two_step; eauto.
+  finish; simplify; eauto.
+Qed.
+
+Hint Extern 0 {{locked_write _ _; _}} => apply locked_write_ok : prog.
+
+Definition write {T} a v rx : prog Mcontents Scontents T :=
+  lock a;;
+       locked_write a v;;
+       unlock a;;
+       rx tt.
+
+Lemma view_latest_is : forall A AEQ V (m: @linear_mem A AEQ V) a v v',
+    m a = Some (v, v') ->
+    view Latest m a = Some v'.
+Proof.
+  unfold view; intros; simpl_match;
+  auto.
+Qed.
+
+Lemma view_linpoint_is : forall A AEQ V (m: @linear_mem A AEQ V) a v v',
+    m a = Some (v, v') ->
+    view LinPoint m a = Some v.
+Proof.
+  unfold view; intros; simpl_match;
+  auto.
+Qed.
+
+Hint Resolve view_latest_is view_linpoint_is.
+
+Theorem write_ok : forall a v,
+  stateS TID: tid |-
+  {{ v0,
+   | PRE d m s0 s:
+       let ld0 := get GDisk0 s in
+       Inv m s d /\
+       ld0 a = Some v0 /\
+       R tid s0 s
+   | POST d'' m'' s0' s'' r:
+       let ld0' := get GDisk0 s'' in
+       (exists m' d' s',
+           Inv m' s' d' /\
+           star (othersR R tid) s s' /\
+           get GDisk0 s'' = upd (get GDisk0 s') a v) /\
+         Inv m'' s'' d'' /\
+         ld0' a = Some v /\
+         locks_increasing tid s s'' /\
+         R tid s0' s''
+  }} write a v.
+Proof.
+  intros.
+  step pre simplify with safe_finish.
+
+  step pre (repeat simplify_step) with safe_finish.
+  repeat match goal with
+         | [ H: star (othersR R _) _ _ |- _ ] =>
+           learn that (same_domain_stable H)
+         end.
+  assert (exists v, get GDisk s a = Some v).
+  eapply same_domain_lin; eauto.
+  deex.
+  assert (exists v, get GDisk s' a = Some v).
+  match goal with
+  | [ H: same_domain _ _ |- _ ] =>
+    eapply H; eauto
+  end.
+  deex.
+  destruct v2, c0.
+  simplify; finish.
+  simpl_get_set in *.
+
+  assert (view Latest (get GDisk s') a = Some (w, o)).
+  unfold view; simpl_match; eauto.
+  lazymatch goal with
+  | [ H: not_reading ?m ?a, H': ?m ?a = Some _ |- _ ] =>
+    pose proof (simplified (H _ H'))
+  end; subst.
+  eauto.
+
+  autorewrite with locks; eauto.
+
+  step pre simplify with safe_finish;
+    simpl_get_set in *.
+  erewrite view_lift_upd by eauto;
+    autorewrite with upd;
+    eauto.
+
+  step pre (repeat simplify_step) with idtac.
+  do 3 eexists; repeat split; [ apply H17 | .. ]; eauto.
+Abort.
 
 End LockedDisk.

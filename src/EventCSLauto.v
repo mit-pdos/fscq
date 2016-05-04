@@ -118,7 +118,7 @@ Definition Read {Mcontents} {Scontents} {T} a rx : prog Mcontents Scontents T :=
             v <- FinishRead a;
   rx v.
 
-Section ReadTheorems.
+Section ReadWriteTheorems.
 
   Lemma diskIs_combine_same'_applied
      : forall AT AEQ V a v (m d : @mem AT AEQ V),
@@ -220,11 +220,36 @@ Proof.
   eauto.
 Qed.
 
-End ReadTheorems.
+Definition Write_upd {Mcontents Scontents T} a v rx : prog Mcontents Scontents T :=
+  Write a v;;
+        rx tt.
+
+Theorem Write_upd_ok : forall Mcontents Scontents Inv R a v,
+    (@Build_transitions Mcontents Scontents Inv R) TID: tid |-
+    {{ v0,
+     | PRE d m s0 s: d a = Some (v0, None)
+     | POST d' m' s0' s' r: d' = upd d a (v, None) /\
+                            s0' = s0 /\
+                            s' = s /\
+                            m' = m
+    }} Write_upd a v.
+Proof.
+  intros.
+  step.
+  exists (diskIs (mem_except d a)).
+  eexists; intuition eauto.
+
+  step.
+  eapply diskIs_combine_upd in H; unfold diskIs in H.
+  eauto.
+Qed.
+
+End ReadWriteTheorems.
 
 Hint Extern 1 {{Read _; _}} => apply Read_ok : prog.
 Hint Extern 1 {{StartRead_upd _; _}} => apply StartRead_upd_ok : prog.
 Hint Extern 1 {{FinishRead_upd _; _}} => apply FinishRead_upd_ok : prog.
+Hint Extern 1 {{Write_upd _ _; _}} => apply Write_upd_ok : prog.
 
 Section WaitForCombinator.
 
