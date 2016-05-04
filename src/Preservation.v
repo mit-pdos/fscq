@@ -7,7 +7,6 @@ Import List.
 Import List.ListNotations.
 
 Set Implicit Arguments.
-Set Universe Polymorphism.
 
 (* TODO: this file is organized terribly, combining the very general pred_domain
 with the state/locking-specific preservation concept *)

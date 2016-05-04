@@ -4,8 +4,6 @@ Require Import Pred PredCrash.
 Require Import SepAuto.
 Require Import Word.
 
-Set Universe Polymorphism.
-
 Lemma corr3_from_corr2_failed:
   forall (TF TR: Type) m mr (p: prog TF) (r: prog TR) out
          (crash: @pred addr (@weq addrlen) _) ppre rpre crashdone_p crashdone_r,

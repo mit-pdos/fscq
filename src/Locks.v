@@ -30,7 +30,7 @@ Local Definition get s a :=
   | None => NoOwner
   end.
 
-Definition rep m s :=
+Local Definition rep m s :=
   forall a, ghost_lock_invariant (mem m a) (get s a).
 
 Section Updates.

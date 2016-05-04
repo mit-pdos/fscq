@@ -3,14 +3,13 @@ Require Import Word.
 Require Import Basics.
 
 Set Implicit Arguments.
-Set Universe Polymorphism.
 
 Existing Class DecEq.
 
-Instance word_dec@{i} : forall n, DecEq@{i} (word n) := weq.
-Instance nat_dec@{i} : DecEq@{i} nat := PeanoNat.Nat.eq_dec.
+Instance word_dec : forall n, DecEq (word n) := weq.
+Instance nat_dec : DecEq nat := PeanoNat.Nat.eq_dec.
 
-Instance unit_dec@{i} : DecEq@{i} unit.
+Instance unit_dec : DecEq unit.
 Proof.
   left.
   destruct a, b; auto.

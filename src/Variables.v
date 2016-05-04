@@ -148,4 +148,58 @@ Section Modification.
     rewrite <- Eq_rect_eq.eq_rect_eq; auto.
   Qed.
 
+  Lemma modified_permute :
+    forall contents vartypes
+      (vars vars': variables contents vartypes)
+      (m m': hlist (fun T:Type => T) contents),
+      (forall t (v: var contents t), HIn v vars <-> HIn v vars') ->
+      modified vars m m' ->
+      modified vars' m m'.
+  Proof.
+    firstorder.
+  Qed.
+
+  Lemma modified_increase :
+    forall contents vartypes
+      (vars vars': variables contents vartypes)
+      (m m': hlist (fun T:Type => T) contents),
+      (forall t (v: var contents t), HIn v vars -> HIn v vars') ->
+      modified vars m m' ->
+      modified vars' m m'.
+  Proof.
+    firstorder.
+  Qed.
+
+  Definition hin_vars_dec contents vartypes
+             (l: hlist (fun T:Type => T) contents)
+             (vars: variables contents vartypes)
+             t (v: var contents t) :
+    {HIn v vars} + {~HIn v vars}.
+  Proof.
+    set (indices := hmap (fun t0 (m0 : member t0 contents) => member_index m0) vars).
+
+    destruct (in_dec Nat.eq_dec (member_index v) indices);
+      [ left | right ];
+      auto.
+    contradict n.
+    apply hin_iff_index_in.
+    auto.
+  Defined.
+
+  Lemma modified_reduce :
+    forall contents vartypes vartypes'
+      (vars: variables contents vartypes)
+      (vars': variables contents vartypes')
+      (m m': hlist (fun T:Type => T) contents),
+      (forall t (v: var contents t), (HIn v vars -> HIn v vars' \/
+                                              get v m = get v m')) ->
+      modified vars m m' ->
+      modified vars' m m'.
+  Proof.
+    unfold modified; intros.
+    specialize (H t m0).
+    specialize (H0 t m0).
+    destruct (hin_vars_dec m vars m0); intuition.
+  Qed.
+
 End Modification.

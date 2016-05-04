@@ -17,7 +17,6 @@ Notation addr := (word addrlen).
 Notation valu := (word valulen).
 
 Global Set Implicit Arguments.
-Set Universe Polymorphism.
 
 Definition pred_in AT AEQ V (F: @pred AT AEQ V) m := F m.
 
@@ -887,13 +886,11 @@ Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog.
 
 (* Wrap up the parameters that the semantics takes in a module. *)
 Module Type SemanticsVars.
-  Unset Universe Polymorphism.
   Parameter Mcontents : list Type.
   Parameter Scontents : list Type.
 End SemanticsVars.
 
 Module Type Semantics (SVars:SemanticsVars).
-  Unset Universe Polymorphism.
   Export SVars.
   Parameter Inv : Invariant Mcontents Scontents.
   Parameter R : ID -> Relation Scontents.

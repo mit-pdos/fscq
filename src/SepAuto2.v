@@ -7,7 +7,6 @@ Require Import Hoare.
 Require Import Word.
 
 Set Implicit Arguments.
-Set Universe Polymorphism.
 
 (* Helpers for existential variables *)
 

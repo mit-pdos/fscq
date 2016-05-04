@@ -2,7 +2,6 @@ Require Import FunctionalExtensionality.
 Import EqNotations.
 Require Import Eqdep_dec.
 
-Set Universe Polymorphism.
 Set Implicit Arguments.
 
 Definition DecEq (T : Type) := forall (a b : T), {a=b}+{a<>b}.

@@ -5,7 +5,6 @@ Require Import FunctionalExtensionality.
 Require Import WordAuto.
 
 Set Implicit Arguments.
-Set Universe Polymorphism.
 
 Section Array.
 

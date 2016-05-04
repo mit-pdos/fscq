@@ -8,8 +8,6 @@ Require Import Word.
 
 Set Implicit Arguments.
 
-Set Universe Polymorphism.
-
 (* Helpers for existential variables *)
 
 Ltac set_evars :=

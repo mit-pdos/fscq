@@ -76,6 +76,22 @@ Arguments HNil [A] [B].
 Arguments HFirst [A] [elm] [types].
 Arguments HNext [A] [elm] [a] [types] mem.
 
+(* since get is opaque, need lemmas for its computational behavior -
+we give the recursive equations it would be defined by *)
+Definition get_first : forall A (B: A -> Type) types elm
+                         (l: hlist B types) (v: B elm),
+    get HFirst (HCons v l) = v.
+Proof.
+  cbn; auto.
+Qed.
+
+Definition get_next : forall A (B: A -> Type) types elm
+                        (m: member elm types) (l: hlist B types) (v: B elm),
+    get (HNext m) (HCons v l) = get m l.
+Proof.
+  cbn; auto.
+Qed.
+
 Delimit Scope hlist_scope with hlist.
 
 Open Scope hlist_scope.
