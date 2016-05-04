@@ -364,14 +364,16 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
       [[[ ds!! ::: (Fm * a |-> vs) ]]]
-    POST:hm' RET:ms' exists m,
-      rep xp F (ActiveTxn (m, nil) m) ms' hm' *
-      [[[ m ::: (Fm * a |-> (v, vsmerge vs)) ]]]
+    POST:hm' RET:ms' exists ds' ds'',
+      rep xp F (ActiveTxn ds'' ds''!!) ms' hm' *
+      [[ ds'' = GLog.dsupd ds' a (v, vsmerge vs) ]] *
+      [[ ds' = ds \/ ds' = (ds!!, nil) ]]
     XCRASH:hm'
       recover_any xp F ds hm' \/
       exists ms' m',
       rep xp F (ActiveTxn (m', nil) m') ms' hm' *
-          [[[ m' ::: (Fm * a |-> (v, vsmerge vs)) ]]]
+      ([[ m' = updN (ds !!) a (v, vsmerge vs) \/
+          m' = updN (fst ds) a (v, vsmerge vs) ]])
     >} dwrite xp a v ms.
   Proof.
     unfold dwrite, recover_any.

@@ -80,7 +80,7 @@ Module BFILE.
 
   Definition dwrite T lxp ixp inum off v fms rx : prog T :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
-    let^ (ms, bn) <-INODE.getbnum lxp ixp inum off ms;
+    let^ (ms, bn) <- INODE.getbnum lxp ixp inum off ms;
     ms <- LOG.dwrite lxp (# bn) v ms;
     rx (mk_memstate al ms).
 
@@ -595,14 +595,15 @@ Module BFILE.
            [[[ ds!! ::: (Fm  * rep bxp ixp flist ilist frees (MSAlloc ms)) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: (Fd * off |-> vs) ]]]
-    POST:hm' RET:ms'  exists m' flist' f',
-           LOG.rep lxp F (LOG.ActiveTxn (m', nil) m') (MSLL ms') hm' *
-           [[[ m' ::: (Fm * rep bxp ixp flist' ilist frees (MSAlloc ms)) ]]] *
-           [[[ flist' ::: (Fi * inum |-> f') ]]] *
-           [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
-           [[ f' = mk_bfile (updN (BFData f) off (v, vsmerge vs)) (BFAttr f) ]] *
+    POST:hm' RET:ms'  exists m' flist' f' bn,
+           LOG.rep lxp F (LOG.ActiveTxn ds'' ds''!!) (MSLL ms') hm' *
+           [[ block_belong_to_file ilist bn inum off ]] *
+           [[ ds'' = GLog.dsupd ds' a (v, vsmerge vs) ]] *
+           [[ ds' = ds \/ ds' = (ds!!, nil) ]] *
            [[ MSAlloc ms = MSAlloc ms' ]]
-    XCRASH:hm'  LOG.recover_any lxp F ds hm' \/
+    XCRASH:hm'
+           (* XXX fix up *)
+           LOG.recover_any lxp F ds hm' \/
            exists m' flist' f', LOG.intact lxp F (m', nil) hm' *
            [[[ m' ::: (Fm * rep bxp ixp flist' ilist frees (MSAlloc ms)) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
