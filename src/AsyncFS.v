@@ -281,8 +281,8 @@ Module AFS.
        [[ fsxp' = fsxp ]] * exists d n, [[ n <= length (snd ds) ]] *
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) ms hm' *
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-     CRASH:hm' exists cs',
-       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs' hm'
+     XCRASH:hm'
+       LOG.before_crash (FSXPLog fsxp) (SB.rep fsxp) ds hm'
      >} recover.
   Proof.
     unfold recover, LOG.after_crash; intros.
@@ -291,54 +291,76 @@ Module AFS.
     cancel.
     unfold BUFCACHE.rep; cancel.
     eauto.
-    prestep. norm. cancel. intuition; eauto.
+
+    prestep. norm. cancel.
     unfold BUFCACHE.rep; cancel.
     intuition.
-    pred_apply; cancel.
-    prestep. norm. cancel. 
+    pred_apply.
+    rewrite sep_star_comm.
+    eauto.
+
+    prestep. norm. cancel.
     unfold LOG.after_crash; norm. cancel.
     intuition simpl.
-    pred_apply; norml. 
+    pred_apply; norml.
     unfold stars; simpl.
 
     norm. cancel.
     rewrite LOG.rep_inner_hashmap_subset.
-    instantiate (4 := hm1).
+    eassign (SB.rep fsxp).
     cancel.
-    eauto.
-    eauto.
-    intuition.
-    prestep. norm. cancel.
-    intuition.
-    pred_apply; norm; eauto. cancel.
-    rewrite min_l.
-    cancel.
+    or_l; cancel.
     auto.
-    unfold LOG.after_crash. norm; eauto.
-    unfold stars; simpl.
-    pimpl_crash. norm. cancel.
-    intuition; pred_apply. norm. cancel.
-    intuition eauto.
-
-    unfold LOG.after_crash. norm; eauto.
-    unfold stars; simpl.
-    pimpl_crash. norm. cancel.
-    intuition; pred_apply. norm. cancel.
+    intuition simpl; eauto.
+    safecancel.
     rewrite LOG.rep_inner_hashmap_subset.
-    instantiate (3 := hm_crash).
-    cancel; eauto.
+    or_r; cancel.
+    auto.
     eauto.
-    intuition eauto.
+    auto.
+    intuition.
 
-    unfold LOG.after_crash. norm; eauto.
-    unfold stars; simpl.
-    pimpl_crash. norm. cancel.
-    intuition; pred_apply. norm. cancel.
-    rewrite LOG.rep_inner_hashmap_subset.
-    instantiate (3 := hm_crash).
-    cancel; eauto.
-    eauto.
-    intuition eauto.
+    prestep. norm. cancel.
+    intuition simpl; eauto.
+
+    xcrash.
+    xcrash.
+    unfold LOG.before_crash.
+    denote or as Hor; apply sep_star_or_distr in Hor.
+    destruct Hor as [ Hor | Hor ];
+    rewrite LOG.rep_inner_hashmap_subset in Hor; eauto.
+
+    rewrite LOG.rep_inner_notxn_pimpl in Hor.
+    destruct_lift Hor.
+    norm. cancel.
+    intuition.
+    pred_apply.
+    safecancel.
+
+    rewrite LOG.rep_inner_rollbacktxn_pimpl in Hor.
+    norm. cancel.
+    intuition.
+    pred_apply.
+    safecancel.
+
+    xcrash.
+    unfold LOG.before_crash.
+    denote or as Hor; apply sep_star_or_distr in Hor.
+    destruct Hor as [ Hor | Hor ];
+    rewrite LOG.rep_inner_hashmap_subset in Hor; eauto.
+
+    rewrite LOG.rep_inner_notxn_pimpl in Hor.
+    destruct_lift Hor.
+    norm. cancel.
+    intuition.
+    pred_apply.
+    safecancel.
+
+    rewrite LOG.rep_inner_rollbacktxn_pimpl in Hor.
+    norm. cancel.
+    intuition.
+    pred_apply.
+    safecancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (recover) _) => apply recover_ok : prog.
