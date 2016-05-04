@@ -321,11 +321,16 @@ Module GLog.
       rx ms
     }.
 
+  Definition ts_remove a (ts : txnlist) :=
+    map (fun l => filter (fun e => if addr_eq_dec (fst e) a then false else true ) l) ts.
+
+  Definition dsupd (ds : diskset) a v :=
+    (updN (fst ds) a v, map (fun d => updN d a v) (snd ds)).
+
   Definition dwrite T (xp : log_xparams) a v ms rx : prog T :=
-    ms <- flushall xp ms;
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dwrite xp a v mm;
-    rx (mk_memstate vm ts mm').
+    rx (mk_memstate (Map.remove a vm) (ts_remove a ts) mm').
 
   Definition dsync T xp a ms rx : prog T :=
     ms <- flushall xp ms;
@@ -334,10 +339,11 @@ Module GLog.
     rx (mk_memstate vm ts mm').
 
   Definition dwrite_vecs T (xp : log_xparams) avs ms rx : prog T :=
-    ms <- flushall xp ms;
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dwrite_vecs xp avs mm;
-    rx (mk_memstate vm ts mm').
+    let addrs := map fst avs in
+    rx (mk_memstate (fold_right (@Map.remove valu) vm addrs)
+                    (fold_right ts_remove          ts addrs) mm').
 
   Definition dsync_vecs T xp al ms rx : prog T :=
     ms <- flushall xp ms;
@@ -534,6 +540,20 @@ Module GLog.
     simpl; erewrite dset_match_length; eauto; simpl; auto.
   Qed.
 
+  Lemma recover_before_any_fst : forall xp ds ts hm,
+    dset_match xp ds ts ->
+    MLog.would_recover_before xp (fst ds) hm =p=>
+    would_recover_any xp ds hm.
+  Proof. 
+    unfold would_recover_any, rep.
+    intros; norm'r.
+    rewrite nthd_0.
+    eassign (mk_mstate vmap0 ts vmap0); simpl.
+    rewrite MLog.recover_before_either.
+    cancel.
+    intuition.
+  Qed.
+
   Lemma synced_recover_any : forall xp ds nr ms ts hm,
     dset_match xp ds ts ->
     MLog.rep xp (MLog.Synced nr ds!!) ms hm =p=>
@@ -721,43 +741,37 @@ Module GLog.
     {< F Fd ds vs,
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
-      [[[ ds!! ::: (Fd * a |-> vs) ]]]
-    POST:hm' RET:ms' exists d',
-      << F, rep: xp (Cached (d', nil)) ms' hm' >> *
-      [[  d' = updN ds!! a (v, vsmerge vs) ]] *
-      [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
+      [[[ fst ds ::: (Fd * a |-> vs) ]]]
+    POST:hm' RET:ms' exists ds',
+      << F, rep: xp (Cached ds') ms' hm' >> *
+      [[  ds' = dsupd ds a (v, vsmerge vs) ]]
     XCRASH:hm'
       << F, would_recover_any: xp ds hm' -- >>
       \/ exists ms' d',
       << F, rep: xp (Cached (d', nil)) ms' hm' >> *
-      [[  d' = updN ds!! a (v, vsmerge vs) ]] *
-      [[[ d' ::: (Fd * a |-> (v, vsmerge(vs))) ]]]
+      [[  d' = updN (fst ds) a (v, vsmerge vs) ]] *
+      [[[ d' ::: (Fd * a |-> (v, vsmerge vs)) ]]]
     >} dwrite xp a v ms.
   Proof.
     unfold dwrite, rep.
     step.
-    unfold rep; cancel.
-    prestep; unfold rep; cancel.
-    prestep; unfold rep; cancel.
-    subst; substl (MSTxns a0); eauto.
+    step.
+    admit.
+    admit.
 
     (* crashes *)
     subst; repeat xcrash_rewrite.
     xform_norm.
     or_l; cancel.
     xform_normr; cancel.
-    rewrite recover_before_any by eauto; cancel.
+    rewrite recover_before_any_fst by eauto; cancel.
 
     or_r; cancel.
     xform_normr; cancel.
     xform_normr; cancel.
     eassign (mk_mstate vmap0 nil x_1); simpl; cancel.
     all: simpl; eauto.
-
-    xcrash.
-    or_l; cancel.
-    xform_normr; cancel.
-  Qed.
+  Admitted.
 
 
   Theorem dsync_ok: forall xp a ms,
