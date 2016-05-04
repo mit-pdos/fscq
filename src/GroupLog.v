@@ -321,35 +321,72 @@ Module GLog.
       rx ms
     }.
 
-  Definition ts_remove a (ts : txnlist) :=
-    map (fun l => filter (fun e => if addr_eq_dec (fst e) a then false else true ) l) ts.
-
   Definition dsupd (ds : diskset) a v :=
     (updN (fst ds) a v, map (fun d => updN d a v) (snd ds)).
 
-  Definition dwrite T (xp : log_xparams) a v ms rx : prog T :=
+  Definition dwrite' T (xp : log_xparams) a v ms rx : prog T :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dwrite xp a v mm;
-    rx (mk_memstate (Map.remove a vm) (ts_remove a ts) mm').
+    rx (mk_memstate vm ts mm').
 
-  Definition dsync T xp a ms rx : prog T :=
-    ms <- flushall xp ms;
+  Definition dsync' T xp a ms rx : prog T :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dsync xp a mm;
     rx (mk_memstate vm ts mm').
 
-  Definition dwrite_vecs T (xp : log_xparams) avs ms rx : prog T :=
+  Definition dwrite T (xp : log_xparams) a v ms rx : prog T :=
+    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
+    If (MapFacts.In_dec vm a) {
+      ms <- flushall xp ms;
+      ms <- dwrite' xp a v ms;
+      rx ms
+    } else {
+      ms <- dwrite' xp a v ms;
+      rx ms
+    }.
+
+  Definition dsync T (xp : log_xparams) a ms rx : prog T :=
+    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
+    If (MapFacts.In_dec vm a) {
+      ms <- flushall xp ms;
+      ms <- dsync' xp a ms;
+      rx ms
+    } else {
+      ms <- dsync' xp a ms;
+      rx ms
+    }.
+
+  Definition dwrite_vecs' T (xp : log_xparams) avs ms rx : prog T :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dwrite_vecs xp avs mm;
-    let addrs := map fst avs in
-    rx (mk_memstate (fold_right (@Map.remove valu) vm addrs)
-                    (fold_right ts_remove          ts addrs) mm').
+    rx (mk_memstate vm ts mm').
 
-  Definition dsync_vecs T xp al ms rx : prog T :=
-    ms <- flushall xp ms;
+  Definition dsync_vecs' T xp al ms rx : prog T :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dsync_vecs xp al mm;
     rx (mk_memstate vm ts mm').
+
+  Definition dwrite_vecs T (xp : log_xparams) avs ms rx : prog T :=
+    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
+    If (bool_dec (MLog.overlap (map fst avs) vm) true) {
+      ms <- flushall xp ms;
+      ms <- dwrite_vecs' xp avs ms;
+      rx ms
+    } else {
+      ms <- dwrite_vecs' xp avs ms;
+      rx ms
+    }.
+
+  Definition dsync_vecs T (xp : log_xparams) al ms rx : prog T :=
+    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
+    If (bool_dec (MLog.overlap al vm) true) {
+      ms <- flushall xp ms;
+      ms <- dsync_vecs' xp al ms;
+      rx ms
+    } else {
+      ms <- dsync_vecs' xp al ms;
+      rx ms
+    }.
 
   Definition recover T xp cs rx : prog T :=
     mm <- MLog.recover xp cs;
@@ -737,10 +774,11 @@ Module GLog.
   Hint Extern 1 ({{_}} progseq (flushall _ _) _) => apply flushall_ok : prog.
 
 
-  Theorem dwrite_ok: forall xp a v ms,
+  Theorem dwrite'_ok: forall xp a v ms,
     {< F Fd ds vs,
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
+      [[ Map.find a (MSVMap (fst ms)) = None ]] *
       [[[ fst ds ::: (Fd * a |-> vs) ]]]
     POST:hm' RET:ms' exists ds',
       << F, rep: xp (Cached ds') ms' hm' >> *
@@ -751,12 +789,13 @@ Module GLog.
       << F, rep: xp (Cached (d', nil)) ms' hm' >> *
       [[  d' = updN (fst ds) a (v, vsmerge vs) ]] *
       [[[ d' ::: (Fd * a |-> (v, vsmerge vs)) ]]]
-    >} dwrite xp a v ms.
+    >} dwrite' xp a v ms.
   Proof.
-    unfold dwrite, rep.
+    unfold dwrite', rep.
     step.
-    step.
-    admit.
+    safestep.
+    3: eauto.
+    cancel.
     admit.
 
     (* crashes *)
@@ -773,19 +812,75 @@ Module GLog.
     all: simpl; eauto.
   Admitted.
 
+  Hint Extern 1 ({{_}} progseq (dwrite' _ _ _ _) _) => apply dwrite'_ok : prog.
 
-  Theorem dsync_ok: forall xp a ms,
+  Theorem dwrite_ok: forall xp a v ms,
     {< F Fd ds vs,
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
-      [[[ ds!! ::: (Fd * a |-> vs) ]]]
-    POST:hm' RET:ms' exists d',
-      << F, rep: xp (Cached (d', nil)) ms' hm' >> *
-      [[[ d' ::: (Fd * a |-> (fst vs, nil)) ]]] *
-      [[  d' = vssync ds!! a ]]
+      [[[ ds !! ::: (Fd * a |-> vs) ]]]
+    POST:hm' RET:ms' exists ds' ds'',
+      << F, rep: xp (Cached ds'') ms' hm' >> *
+      [[  ds'' = dsupd ds' a (v, vsmerge vs) ]] *
+      [[ ds' = ds \/ ds' = (ds!!, nil) ]]
     XCRASH:hm'
       << F, would_recover_any: xp ds hm' -- >>
-    >} dsync xp a ms.
+      \/ exists ms' d',
+      << F, rep: xp (Cached (d', nil)) ms' hm' >> *
+      ([[ d' = updN (ds !!) a (v, vsmerge vs) \/
+          d' = updN (fst ds) a (v, vsmerge vs) ]])
+    >} dwrite xp a v ms.
+  Proof.
+    unfold dwrite, rep.
+    step.
+    prestep; unfold rep; cancel.
+    prestep; unfold rep; cancel.
+
+Lemma fst_of_pair : forall T1 T2 (a : T1) (b : T2) c, c = (a, b) -> fst c = a.
+Proof. intros; subst; firstorder. Qed.
+
+    erewrite fst_of_pair by reflexivity.
+    cancel.
+    eauto.
+    substl (MSVMap a0). eauto.
+    simpl; pred_apply; cancel.
+    step.
+
+    cancel. repeat xcrash_rewrite. xform_norm.
+    admit.
+
+    or_r. xform_normr. cancel. xform_normr. xform_norm. cancel.
+    xform_normr. cancel.
+
+    cancel. repeat xcrash_rewrite. xform_norm.
+    or_l. cancel. xform_normr. cancel.
+
+    prestep; unfold rep; cancel.
+    admit.
+
+    eapply list2nmem_ptsto_cancel_pair.
+    admit.
+
+    step.
+    admit.
+
+    admit.
+
+  Admitted.
+
+
+  Theorem dsync'_ok: forall xp a ms,
+    {< F Fd ds vs,
+    PRE:hm
+      << F, rep: xp (Cached ds) ms hm >> *
+      [[ Map.find a (MSVMap (fst ms)) = None ]] *
+      [[[ fst ds ::: (Fd * a |-> vs) ]]]
+    POST:hm' RET:ms' exists d',
+      << F, rep: xp (Cached (d', nil)) ms' hm' >> *
+      [[  ds' = dsupd ds a (fst vs, nil) ]]
+    XCRASH:hm'
+      << F, would_recover_any: xp ds hm' -- >>
+    >} dsync' xp a ms.
   Proof.
     unfold dsync.
     prestep; unfold rep; cancel.
