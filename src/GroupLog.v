@@ -663,17 +663,20 @@ Module GLog.
       rewrite nthd_oob by (erewrite dset_match_length; eauto).
       cancel.
 
-    - xcrash_rewrite.
-      match goal with
-      | [ |- _ =p=> crash_xform ?p ] => instantiate (1:=p)
-      end.
-      cancel.
+    - cancel.
+      xcrash_rewrite.
+      (* manually construct an RHS-like pred, but replace hm'' with hm *)
+      instantiate (1 := (exists raw cs, BUFCACHE.rep cs raw *
+        [[ (F * exists ms n, [[ dset_match xp ds (MSTxns ms) /\ n <= length (MSTxns ms) ]] *
+             MLog.would_recover_either xp (nthd n ds) (selR (MSTxns ms) n nil) hm)%pred raw ]])%pred ).
+      xform_norm; cancel.
+      xform_normr; safecancel.
+      apply MLog.would_recover_either_hashmap_subset.
+      all: eauto.
 
-    Unshelve.
-    all: constructor.
-    (* XXX: All goals proven, but getting
-      "Error: No such section variable or assumption: hm''." *)
-  Admitted.
+    Unshelve. all: constructor.
+  Qed.
+
 
   Hint Extern 1 ({{_}} progseq (flushall_nomerge _ _) _) => apply flushall_nomerge_ok : prog.
 
