@@ -406,8 +406,13 @@ Module ATOMICCP.
     xcrash_norm.  (* case 2: crashed after a sync operation *)
     or_r.
     xcrash_norm.
-    admit. (* update_update in H9. *)
-    
+    eapply Forall_impl; try eassumption.
+    simpl.
+    intros.
+    repeat deex.
+    rewrite update_update_subtree_eq in *.
+    eexists. eexists. intuition.
+    eauto.
     step.
     AFS.xcrash_solve.
     xcrash_norm.
