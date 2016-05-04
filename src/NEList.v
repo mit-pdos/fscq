@@ -218,6 +218,12 @@ Section NonEmptyList.
     destruct l; simpl; intuition.
   Qed.
 
+  Theorem d_in_In : forall d d' l,
+    d_in d (d', l) -> In d (d' :: l).
+  Proof.
+    unfold d_in; simpl; intuition.
+  Qed.
+
 End NonEmptyList.
 
 

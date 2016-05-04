@@ -769,7 +769,64 @@ Module ATOMICCP.
     - (* This is the second [or] from [copy_and_rename]'s crash condition,
        * where we crashed after a flush and possibly more temp file writes.
        *)
+      AFS.recover_ro_ok.
+      rewrite LOG.idempred_idem.
+      norml; unfold stars; simpl.
+      rewrite SB.crash_xform_rep.
+      cancel.
+
+      prestep.
+      norml; unfold stars; simpl.
+
+      (* To prove our recovery condition is satisfies, we must construct a tree.
+       * This comes from the [forall] that came out of [recover]'s postcondition.
+       * And for that, we need to show that the disk we got from [copy_and_rename]'s
+       * crash condition also looked like a tree.  That disk was part of [dlist],
+       * and that fact is inside a [Forall] from [copy_and_rename]'s crash condition.
+       * Fish them out in the reverse order, to properly instantiate evars later..
+       *)
+      rewrite Forall_forall in *.
+      edestruct H12; repeat deex.
+      apply d_in_In; eassumption.
+
+      edestruct H19; repeat deex.
+      eassumption.
+
+      (*
+        DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile v5 tfile') v2 =
+        DIRTREE.TreeDir ?the_dnum0 ?temp_dents2
+       *)
       admit.
+
+      cancel.
+      or_l. cancel.
+
+      (*
+        DIRTREE.tree_prune ?the_dnum0 ?temp_dents2 [] temp_fn
+          (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile v5 tfile') v2) =
+        DIRTREE.tree_prune the_dnum ?temp_dents1 [] temp_fn (DIRTREE.TreeDir the_dnum ?temp_dents1)
+       *)
+      admit.
+
+      apply latest_in_ds.
+      pred_apply.
+
+      (*
+        v0 ✶ DIRTREE.rep fsxp v1 v2 ⇨⇨
+        ?Fm'0 ✶ DIRTREE.rep fsxp ?Ftop'1 (DIRTREE.TreeDir the_dnum ?temp_dents1)
+       *)
+      admit.
+
+      norml; unfold stars; simpl.
+      safecancel.
+
+      (* idempotence *)
+      norm.
+      cancel.
+      intuition idtac.
+      apply crash_xform_pimpl.
+      rewrite LOG.after_crash_idempred.
+      cancel.
 
     - (* This is the third [or] from [copy_and_rename]'s crash condition,
        * where we actually wrote the destination file (but maybe didn't sync yet).
