@@ -754,8 +754,17 @@ Module ATOMICCP.
         norml; unfold stars; simpl.
         safecancel.
 
-      + (* what is this subgoal? *)
-        admit.
+      + (* idempotence *)
+        destruct v. rewrite pushdlist_app.
+        norm.
+        cancel.
+        intuition idtac.
+        apply crash_xform_pimpl.
+        rewrite LOG.after_crash_idempred.
+        norm; unfold stars; simpl.
+        rewrite pushdlist_app.
+        cancel.
+        eauto.
 
     - (* This is the second [or] from [copy_and_rename]'s crash condition,
        * where we crashed after a flush and possibly more temp file writes.
