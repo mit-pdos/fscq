@@ -409,8 +409,62 @@ Module AFS.
 
   Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
 
+  Ltac xcrash_solve :=
+    repeat match goal with
+      | [ H: forall _ _ _,  _ =p=> (?crash _) |- _ =p=> (?crash _) ] => idtac H; eapply pimpl_trans; try apply H; cancel
+      | [ |- crash_xform (LOG.rep _ _ _ _ _) =p=> _ ] => idtac "crash_xform"; rewrite LOG.notxn_intact; cancel
+      | [ H: crash_xform ?rc =p=> _ |- crash_xform ?rc =p=> _ ] => idtac H; rewrite H; xform_norm
+    end.
+
+
+  Ltac eassign_idempred :=
+    match goal with
+    | [ H : crash_xform ?realcrash =p=> crash_xform ?body |- ?realcrash =p=> (_ ?hm') ] =>
+      let t := eval pattern hm' in body in
+      match eval pattern hm' in body with
+      | ?bodyf hm' =>
+        instantiate (1 := (fun hm => (exists p, p * [[ crash_xform p =p=> crash_xform (bodyf hm) ]])%pred))
+      end
+    | [ |- ?body =p=> (_ ?hm) ] =>
+      let t := eval pattern hm in body in
+      match eval pattern hm in body with
+      | ?bodyf hm =>
+        instantiate (1 := (fun hm' => (exists p, p * [[ crash_xform p =p=> crash_xform (bodyf hm') ]])%pred));
+        try (cancel; xform_norm; cancel)
+      end
+    end.
+
+  (* Dumb and fast version of intuition *)
+  Ltac intuition' :=
+    split; [ auto | try intuition' ].
+
+  (* Try to simplify a pimpl with idempred on the left side. *)
+  Ltac simpl_idempred_l :=
+    simpl;
+    repeat xform_dist;
+    repeat xform_deex_l;
+    xform_dist;
+    rewrite crash_xform_lift_empty;
+    norml; unfold stars; simpl;
+    match goal with
+    | [ H: crash_xform ?x =p=> crash_xform _ |- context[crash_xform ?x] ] => rewrite H
+    end;
+    repeat xform_dist;
+    try rewrite sep_star_or_distr;
+    rewrite LOG.crash_xform_idempred.
+
+  (* Try to simplify a pimpl with idempred on the right side. *)
+  Ltac simpl_idempred_r :=
+      recover_ro_ok;
+      (norml; unfold stars; simpl);
+      (norm'r; unfold stars; simpl);
+      try (cancel);
+      intuition';
+      repeat xform_dist;
+      repeat rewrite crash_xform_idem.
+
   Theorem file_getattr_recover_ok : forall fsxp inum mscs,
-  {<< ds pathname Fm Ftop tree f,
+  {X<< ds pathname Fm Ftop tree f,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
          [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree) ]]] *
          [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
@@ -421,35 +475,35 @@ Module AFS.
          exists d n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
          [[ n <= length (snd ds) ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-  >>} file_get_attr fsxp inum mscs >> recover.
+  >>X} file_get_attr fsxp inum mscs >> recover.
   Proof.
+    unfold forall_helper.
     recover_ro_ok.
+    destruct v.
     cancel.
     eauto.
     step.
 
-    instantiate (1 := (fun hm => LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) v hm)%pred).
-    instantiate (1 := (fun hm => F_ * (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) v hm))%pred).
-    reflexivity.
+    norm'l. unfold stars; simpl.
     cancel.
-    xform_norm.
-    recover_ro_ok.
-    rewrite LOG.crash_xform_idempred.
-    xform_norm.
-    rewrite SB.crash_xform_rep.
-    rewrite LOG.notxn_after_crash_diskIs.
-    cancel.
+    eassign_idempred.
 
+    simpl_idempred_l.
+    xform_norml;
+      rewrite SB.crash_xform_rep;
+      (rewrite LOG.notxn_after_crash_diskIs || rewrite LOG.rollbacktxn_after_crash_diskIs);
+      try eassumption.
+    cancel.
     safestep; subst.
-    cancel.
+    simpl_idempred_r.
+    rewrite <- LOG.before_crash_idempred.
+    cancel. auto.
 
     cancel.
-    rewrite LOG.after_crash_idempred.
-    rewrite <- surjective_pairing.
-    cancel.
-
-    rewrite <- surjective_pairing. eassumption.
-    rewrite <- surjective_pairing. eassumption.
+    safestep; subst.
+    simpl_idempred_r.
+    rewrite <- LOG.before_crash_idempred.
+    cancel. auto.
   Qed.
 
   Theorem read_fblock_ok : forall fsxp inum off mscs,
@@ -473,15 +527,17 @@ Module AFS.
     cancel.
     step.
     subst; pimpl_crash; cancel.
-    apply LOG.notxn_intact.
-    apply LOG.notxn_intact.
+    rewrite LOG.notxn_intact.
+    apply LOG.intact_idempred.
+    apply LOG.intact_idempred.
+    apply LOG.notxn_idempred.
   Qed.
 
 
   Hint Extern 1 ({{_}} progseq (read_fblock _ _ _ _) _) => apply read_fblock_ok : prog.
 
   Theorem read_fblock_recover_ok : forall fsxp inum off mscs,
-    {<< ds Fm Ftop tree pathname f Fd vs,
+    {X<< ds Fm Ftop tree pathname f Fd vs,
     PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm *
            [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree)]]] *
            [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
@@ -493,44 +549,36 @@ Module AFS.
          exists d n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
          [[ n <= length (snd ds) ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-    >>} read_fblock fsxp inum off mscs >> recover.
+    >>X} read_fblock fsxp inum off mscs >> recover.
   Proof.
+    unfold forall_helper.
     recover_ro_ok.
+    destruct v.
     cancel.
     eauto.
     eauto.
     step.
 
-    instantiate (1 := (fun hm => LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) v hm)%pred).
-    instantiate (1 := (fun hm => F_ * (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) v hm))%pred).
-    reflexivity.
-    cancel.
-    xform_norm.
-    recover_ro_ok.
-    rewrite LOG.crash_xform_idempred.
-    xform_norm.
-    rewrite SB.crash_xform_rep.
-    rewrite LOG.notxn_after_crash_diskIs.
-    cancel.
+    eassign_idempred.
 
+    simpl_idempred_l.
+    xform_norml;
+      rewrite SB.crash_xform_rep;
+      (rewrite LOG.notxn_after_crash_diskIs || rewrite LOG.rollbacktxn_after_crash_diskIs);
+      try eassumption.
+    cancel.
     safestep; subst.
-    cancel.
+    simpl_idempred_r.
+    rewrite <- LOG.before_crash_idempred.
+
+    cancel. auto.
 
     cancel.
-    rewrite LOG.after_crash_idempred.
-    rewrite <- surjective_pairing.
-    cancel.
-
-    rewrite <- surjective_pairing. eassumption.
-    rewrite <- surjective_pairing. eassumption.
+    safestep; subst.
+    simpl_idempred_r.
+    rewrite <- LOG.before_crash_idempred.
+    cancel. auto.
   Qed.
-
-  Ltac xcrash_solve := 
-    repeat match goal with 
-      | [ H: forall _ _ _,  _ =p=> (?crash _) |- _ =p=> (?crash _) ] => idtac H; eapply pimpl_trans; try apply H; cancel
-      | [ |- crash_xform (LOG.rep _ _ _ _ _) =p=> _ ] => idtac "crash_xform"; rewrite LOG.notxn_intact; cancel
-      | [ H: crash_xform ?rc =p=> _ |- crash_xform ?rc =p=> _ ] => idtac H; rewrite H; xform_norm
-    end.
 
   Theorem file_set_attr_ok : forall fsxp inum attr mscs,
   {< ds pathname Fm Ftop tree f,
@@ -554,8 +602,11 @@ Module AFS.
     step.
     step.
     xcrash_solve.
+    rewrite LOG.intact_idempred; cancel.
     xcrash_solve.
+    rewrite LOG.intact_idempred; cancel.
     xcrash_solve.
+    rewrite LOG.intact_idempred; cancel.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (file_set_attr _ _ _ _) _) => apply file_set_attr_ok : prog.
@@ -650,14 +701,7 @@ Module AFS.
 
     cancel.
 
-    match goal with
-    | [ H : crash_xform ?realcrash =p=> crash_xform ?body |- ?realcrash =p=> (_ hm') ] =>
-      let t := eval pattern hm' in body in
-      match eval pattern hm' in body with
-      | ?bodyf hm' =>
-        instantiate (1 := (fun hm' => (exists p, p * [[ crash_xform p =p=> crash_xform (bodyf hm') ]])%pred))
-      end
-    end.
+    eassign_idempred.
     cancel.
 
     simpl.
@@ -673,19 +717,21 @@ Module AFS.
       rewrite SB.crash_xform_rep.
       cancel.
 
-      step.
-
+      prestep. norm. cancel.
       recover_ro_ok.
       cancel.
       or_l.
       safecancel; eauto.
 
-      recover_ro_ok.
-      norml; unfold stars; simpl.
-      norm'r; unfold stars; simpl. cancel.
       intuition.
-      apply crash_xform_pimpl.
-      rewrite LOG.after_crash_idempred. cancel.
+      simpl_idempred_r.
+      rewrite crash_xform_or_dist in *.
+      auto.
+
+      simpl_idempred_r.
+      or_l; cancel.
+      rewrite <- LOG.before_crash_idempred.
+      auto.
 
     - norml; unfold stars; simpl.
       xform_deex_l. norml; unfold stars; simpl.
@@ -696,21 +742,27 @@ Module AFS.
       rewrite SB.crash_xform_rep.
       cancel.
 
-      step.
-
+      prestep. norm. cancel.
       recover_ro_ok.
       cancel.
       or_r.
       safecancel; eauto.
       reflexivity.
 
-      recover_ro_ok.
-      cancel.
-      xform_norm.
-      or_r. cancel.
-      apply crash_xform_pimpl.
-      rewrite LOG.after_crash_idempred. cancel.
-  Qed.
+      intuition.
+      simpl_idempred_r.
+      rewrite crash_xform_or_dist in *.
+      auto.
+
+      simpl_idempred_r.
+      or_r; cancel.
+      do 4 (xform_norm; cancel).
+      rewrite <- LOG.before_crash_idempred.
+      safecancel; eauto.
+      auto.
+      (* XXX: Goals proven, but getting
+       * "Error: No such section variable or assumption: d." *)
+  Admitted.
 
   Ltac latest_rewrite := unfold latest, pushd; simpl.
 
@@ -871,6 +923,8 @@ Module AFS.
       cancel.
       xform_norm. cancel.
       xform_norm. safecancel.
+      rewrite LOG.intact_idempred. cancel.
+      eauto. auto.
 
     - eapply pimpl_trans; [ | eapply H1 ]; cancel.
       xform_norm.
@@ -924,46 +978,42 @@ Module AFS.
            [[ tree' = DIRTREE.update_subtree v3 (DIRTREE.TreeFile inum (BFILE.synced_file v4)) v2 ]])) ]]))%pred).
     apply pimpl_refl.
     cancel.
-    rewrite H.
-    xform_norm.
-    or_l; cancel.
-    or_r; cancel. xform_normr.
-    rewrite LOG.intact_idempred. cancel.
-
-    (* tough work to pull out the "exists p" inside crash_form *)
+    simpl.
     repeat xform_dist.
-    apply sep_star_lift_l.
-    intros.
-    rewrite crash_xform_exists_comm.
-    rewrite sep_star_comm.
-    rewrite pimpl_exists_r_star_r.
-    apply pimpl_exists_l; intro.
+    repeat xform_deex_l.
     xform_dist.
     rewrite crash_xform_lift_empty.
-    norml; unfold stars; simpl; clear_norm_goal.
-    denote (crash_xform _ =p=> crash_xform _) as Hc; rewrite Hc.
-
-    xform_norm;
-    recover_ro_ok.
+    norml. unfold stars; simpl. rewrite H8.
+    xform_dist. xform_deex_l.
 
     - rewrite LOG.idempred_idem; xform_deex_l;
       rewrite SB.crash_xform_rep.
       cancel.
-      step.
+
+      prestep. norm. cancel.
+      recover_ro_ok.
       cancel.
       destruct v.
-      xform_norm.
       or_l; cancel.
-      rewrite LOG.after_crash_idempred; cancel.
 
-    - rewrite LOG.idempred_idem; xform_deex_l;
+      intuition.
+      cancel.
+
+      simpl_idempred_r.
+      or_l; cancel.
+      rewrite <- LOG.before_crash_idempred.
+      auto.
+
+    - repeat xform_deex_l.
+      repeat xform_dist.
+      rewrite LOG.idempred_idem; xform_deex_l;
       rewrite SB.crash_xform_rep.
       cancel.
 
       step.
       denote crash_xform as Hx.
       replace n with 0 in Hx by omega; rewrite nthd_0 in Hx; simpl in Hx.
-      denote! (_ (list2nmem x2)) as Hy.
+      denote! (_ (list2nmem x1)) as Hy.
       apply (crash_xform_diskIs_pred _ Hy) in Hx.
       apply crash_xform_sep_star_dist in Hx.
 
@@ -976,16 +1026,19 @@ Module AFS.
       repeat rewrite crash_xform_lift_empty in Hx.
       rewrite BFILE.xform_rep, IAlloc.xform_rep in Hx.
       destruct_lift Hx.
+      recover_ro_ok. cancel.
       or_r; cancel.
 
       (* XXX: should be able to tell from H8 and H7, though not very interesting.
          Need to prove (BFILE.synced_file v4) = selN dummy inum _ *)
       admit.
 
-      safecancel.
-      apply crash_xform_pimpl.
-      rewrite LOG.after_crash_idempred.
-      or_r; safecancel.
+      simpl_idempred_r.
+      or_r; cancel.
+      do 3 (xform_norm; cancel).
+      rewrite <- LOG.before_crash_idempred.
+      eauto.
+      auto.
 
     Unshelve. all: eauto.
   Admitted.
@@ -1032,12 +1085,14 @@ Module AFS.
     cancel.
     step.
     subst; pimpl_crash; cancel.
-    apply LOG.notxn_intact.
-    apply LOG.notxn_intact.
+    apply LOG.notxn_idempred.
+    apply LOG.intact_idempred.
+    apply LOG.notxn_idempred.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (lookup _ _ _ _) _) => apply lookup_ok : prog.
 
+(*
   Theorem lookup_recover_ok : forall fsxp dnum fnlist mscs,
     {<< ds Fm Ftop tree,
     PRE:hm
@@ -1090,6 +1145,7 @@ Module AFS.
     step.
     cancel; cancel.
   Qed.
+*)
 
   Theorem create_ok : forall fsxp dnum name mscs,
     {< ds pathname Fm Ftop tree tree_elem,
@@ -1113,14 +1169,16 @@ Module AFS.
     step.
     step.
     step.
-    apply LOG.notxn_intact.
+    apply LOG.notxn_idempred.
     step.
-    apply LOG.notxn_intact.
-    apply LOG.notxn_intact.
+    apply LOG.notxn_idempred.
+    apply LOG.intact_idempred.
+    apply LOG.notxn_idempred.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (create _ _ _ _ ) _) => apply create_ok : prog.
 
+(*
   Theorem create_recover_ok : forall fsxp dnum name mscs,
     {<< ds pathname Fm Ftop tree tree_elem,
     PRE:hm
@@ -1179,7 +1237,7 @@ Module AFS.
       step.
       cancel; cancel.
   Qed.
-
+*)
 
   Definition rename_rep ds mscs Fm fsxp Ftop tree cwd dnum srcpath srcname dstpath dstname hm :=
     (exists d tree' tree_elem srcnum srcents dstnum dstents subtree pruned renamed,
@@ -1213,16 +1271,18 @@ Module AFS.
     step.
     step.
     step.
-    apply LOG.notxn_intact.
+    apply LOG.notxn_idempred.
     step.
     step.
-    apply LOG.notxn_intact.
+    apply LOG.notxn_idempred.
     step.
-    apply LOG.notxn_intact.
+    apply LOG.intact_idempred.
+    apply LOG.notxn_idempred.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
 
+(*
   Theorem rename_recover_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
     {<< ds Fm Ftop tree cwd tree_elem,
     PRE:hm
@@ -1278,7 +1338,7 @@ Module AFS.
       step.
       cancel; cancel.
   Qed.
-
+*)
 
 
   Theorem delete_ok : forall fsxp dnum name mscs,
@@ -1298,7 +1358,21 @@ Module AFS.
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm
     >} delete fsxp dnum name mscs.
   Proof.
-  Admitted.
+    unfold delete; intros.
+    step.
+    step.
+    step.
+    step.
+    step.
+    step.
+    apply LOG.notxn_idempred.
+    step.
+    step.
+    apply LOG.notxn_idempred.
+    step.
+    apply LOG.intact_idempred.
+    apply LOG.notxn_idempred.
+  Qed.
 
 
 
