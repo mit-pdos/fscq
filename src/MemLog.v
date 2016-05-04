@@ -695,7 +695,6 @@ Module MLog.
   Proof.
     unfold flush; intros.
 
-    (* TODO: Proof broken. Not sure why apply keeps getting unfolded. *)
     (* Be careful: only unfold rep in the preconditon,
        otherwise the goal will get messy as there are too many
        disjuctions in post/crash conditons *)
@@ -762,7 +761,6 @@ Module MLog.
     >} dwrite xp a v ms.
   Proof.
     unfold dwrite, would_recover_before.
-    (* TODO: Proof broken. Not sure why apply keeps getting unfolded. *)
     step.
 
     (* case 1: apply happens *)
