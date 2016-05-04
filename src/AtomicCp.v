@@ -473,6 +473,7 @@ Module ATOMICCP.
               [[ tree' = DIRTREE.tree_graft the_dnum dstents [] dst_fn subtree pruned ]] *
               [[ subtree = DIRTREE.TreeFile tinum (BFILE.synced_file file) ]] *
               LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (d, dlist) hm'))
+              (* XXX this should be idempred, not intact.. *)
       )
      >} copy_and_rename fsxp src_inum tinum dst_fn mscs.
   Proof.
@@ -879,17 +880,66 @@ Module ATOMICCP.
         admit.
 
         apply latest_in_ds.
-
         pred_apply. cancel.
 
         norml; unfold stars; simpl.
         safecancel.
 
       + (* This is the case where [rename] did not succeed. *)
+        rewrite Forall_forall in H12.
+        specialize (H12 _ H14).
+        repeat deex.
+
+        edestruct H21; repeat deex.
+        eauto.
+
+        (*
+          DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile v5 tfile') (DIRTREE.TreeDir the_dnum x7) =
+          DIRTREE.TreeDir ?the_dnum2 ?temp_dents4
+         *)
         admit.
 
-      + (* idempotence *)
+        cancel.
+        or_l. cancel.
+
+        (*
+          DIRTREE.tree_prune ?the_dnum2 ?temp_dents4 [] temp_fn
+            (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile v5 tfile') (DIRTREE.TreeDir the_dnum x7)) =
+          DIRTREE.tree_prune the_dnum ?temp_dents2 [] temp_fn (DIRTREE.TreeDir the_dnum ?temp_dents2)
+         *)
+        f_equal.
+        (*
+          DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile v5 tfile') (DIRTREE.TreeDir the_dnum x7) =
+          DIRTREE.TreeDir the_dnum ?temp_dents4
+         *)
         admit.
+
+        apply latest_in_ds.
+        pred_apply. cancel.
+
+        norml; unfold stars; simpl.
+        safecancel.
+
+      + (* idempotence *)
+        norm.
+        cancel.
+        intuition idtac.
+        rewrite LOG.after_crash_idempred.
+        xform_deex_r.
+        repeat xform_dist.
+        norm; unfold stars; simpl.
+        2: intuition eauto.
+        or_r.
+        xform_deex_r.
+        norm; unfold stars; simpl.
+        xform_deex_r.
+        xform_dist.
+        or_r.
+        repeat xform_deex_r.
+        repeat xform_dist.
+        cancel.
+
+        all: admit.
 
   Admitted.
 
