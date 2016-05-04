@@ -1365,6 +1365,15 @@ Qed.
 
 Hint Resolve view_latest_is view_linpoint_is.
 
+Lemma lin_release_upd : forall A AEQ V (m: @linear_mem A AEQ V) a v0 v,
+    m a = Some v0 ->
+    lin_release (linear_upd m a v) a = upd m a (v, v).
+Proof.
+  unfold linear_upd, lin_release; intros.
+  destruct matches; autorewrite with upd in *;
+  congruence.
+Qed.
+
 Theorem write_ok : forall a v,
   stateS TID: tid |-
   {{ v0,
@@ -1378,11 +1387,13 @@ Theorem write_ok : forall a v,
        (exists m' d' s',
            Inv m' s' d' /\
            star (othersR R tid) s s' /\
+           (* linear_rel tid (Locks.get (get GLocks s')) (Locks.get (get GLocks s''))
+                      (get GDisk s) (get GDisk s'') /\ *)
            get GDisk0 s'' = upd (get GDisk0 s') a v) /\
-         Inv m'' s'' d'' /\
-         ld0' a = Some v /\
-         locks_increasing tid s s'' /\
-         R tid s0' s''
+       diskI m'' s'' d'' /\
+       ld0' a = Some v /\
+       lock_released tid s s'' a /\
+       diskR tid s0' s''
   }} write a v.
 Proof.
   intros.
@@ -1424,6 +1435,23 @@ Proof.
 
   step pre (repeat simplify_step) with idtac.
   do 3 eexists; repeat split; [ apply H17 | .. ]; eauto.
+
+  replace (get GDisk0 s4).
+  autorewrite with upd; auto.
+
+  replace (get GDisk s4).
+  erewrite lin_release_upd by eauto.
+  rewrite view_upd, hide_readers_upd.
+  autorewrite with upd; auto.
+
+  admit. (* lockset evolution *)
+
+  eapply diskR_trans.
+  eapply disk_relation_holds.
+  eauto.
+  admit. (* hopefully at least diskR holds after the lock acquisition,
+  although for some reason the evolution to s4 isn't completely
+  precisely stated *)
 Abort.
 
 End LockedDisk.
