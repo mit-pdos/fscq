@@ -90,6 +90,11 @@ Module BFILE.
     ms <- LOG.dsync_vecs lxp (map (@wordToNat _) bns) ms;
     rx (mk_memstate al ms).
 
+  Definition sync T lxp (ixp : INODE.IRecSig.xparams) fms rx : prog T :=
+    let '(al, ms) := (MSAlloc fms, MSLL fms) in
+    ms <- LOG.sync lxp ms;
+    rx (mk_memstate (negb al) ms).
+
   Definition pick_balloc A (a : A * A) (flag : bool) :=
     if flag then fst a else snd a.
 
@@ -799,6 +804,21 @@ Module BFILE.
         all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
 
     Unshelve. easy. all: try exact bfile0.
+  Qed.
+
+  Theorem sync_ok : forall lxp ixp ms,
+    {< F ds,
+    PRE:hm
+      LOG.rep lxp F (LOG.NoTxn ds) (MSLL ms) hm
+    POST:hm' RET:ms'
+      LOG.rep lxp F (LOG.NoTxn (ds!!, nil)) (MSLL ms') hm'
+    XCRASH:hm'
+      LOG.recover_any lxp F ds hm'
+    >} sync lxp ixp ms.
+  Proof.
+    unfold sync, rep.
+    step.
+    step.
   Qed.
 
 
