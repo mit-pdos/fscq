@@ -179,13 +179,13 @@ Module DIRTREE.
   Definition dirtree_safe i1 f1 i2 f2 :=
     BFILE.list_safe i1 f1 i2 f2.
 
-  Theorem dirtree_update_block : forall tree fsxp F ilist freeblocks inum off v bn m,
+  Theorem dirtree_update_block : forall tree fsxp F ilist freeblocks inum off v bn m pathname f,
     rep fsxp F tree ilist freeblocks (list2nmem m) ->
+    find_subtree pathname tree = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist bn inum off ->
     rep fsxp F (dirtree_update_inode tree inum off v) (list2nmem (updN m bn v)).
   Admitted.
 
-  
 
   (**
    * Theorems about extracting and folding back subtrees from a tree.
