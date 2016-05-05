@@ -381,6 +381,128 @@ Hint Rewrite set_get using (cbn; solve [ auto 3 ]) : hlist.
 Hint Rewrite set_get_eq using (cbn; solve [ auto 3 ]) : hlist.
 Hint Rewrite set_set using (cbn; solve [ auto 3 ]) : hlist.
 
+Definition happ A (types1 types2:list A) (B: A -> Type)
+           (l1: hlist B types1) (l2: hlist B types2) :
+  hlist B (types1 ++ types2).
+Proof.
+  induction types1; cbn.
+  exact l2.
+  inversion l1; subst.
+  eapply HCons.
+  exact X.
+  apply (IHtypes1 X0).
+Defined.
+
+(* upgrade a member index in [l1] to one for [happ l1 l2]. *)
+Definition app_member_l A (types1 types2:list A)
+           elt (m: member elt types1) : member elt (types1 ++ types2).
+Proof.
+  induction m; cbn; auto using HFirst, HNext.
+Defined.
+
+Import EqNotations.
+
+Require Import Program.
+Require Import Word.
+
+Ltac eq_t t :=
+  eq_rect_simpl;
+  repeat generalize_proof;
+  t;
+  intros;
+  eq_rect_simpl.
+
+Tactic Notation "dep" "eq" tactic1(t) :=
+  eq_t ltac:(try t).
+
+Lemma cons_inj : forall A (a:A) l l',
+    a :: l = a :: l' ->
+    l = l'.
+Proof.
+  intros.
+  inversion H; auto.
+Qed.
+
+Lemma rew_hnext : forall A (types types': list A)
+                    (a:A) elt (m: member elt types) (H: a :: types = a :: types'),
+    rew H in (HNext m) = HNext (rew (cons_inj H) in m).
+Proof.
+  intros.
+  inversion H.
+  dep eq rewrite <- H1 in *; auto.
+Qed.
+
+Theorem app_member_l_nil : forall A (types1: list A)
+                             elt (m: member elt types1),
+    app_member_l [] m = rew <- (app_nil_r types1) in m.
+Proof.
+  intros.
+  dep eq idtac.
+  generalize dependent types1.
+  induction types1; cbn; intros.
+  inversion m.
+  dependent destruction m; subst; cbn in *;
+  dep eq rewrite app_nil_r in *; auto.
+  rewrite rew_hnext.
+  f_equal; eauto.
+Qed.
+
+(* upgrade a member index in [l2] to one for [happ l1 l2]. *)
+Definition app_member_r A (types1 types2:list A)
+           elt (m: member elt types2) : member elt (types1 ++ types2).
+Proof.
+  induction types1; cbn; auto using HFirst, HNext.
+Defined.
+
+Lemma rew_hcons : forall A (types types': list A) (B: A -> Type)
+                    (a:A) (b: B a) (H: a :: types = a :: types')
+                    (l: hlist B types),
+    rew H in (HCons b l) = HCons b (rew (cons_inj H) in l).
+Proof.
+  intros.
+  inversion H.
+  dep eq rewrite <- H1 in *; auto.
+Qed.
+
+Theorem happ_nil_r : forall A (types1: list A) (B: A -> Type)
+                       (l1: hlist B types1),
+    happ l1 HNil = rew <- [hlist B] (app_nil_r types1) in l1.
+Proof.
+  intros.
+  dep eq idtac.
+  generalize dependent l1.
+  induction types1; cbn; intros; eauto.
+  dependent destruction l1.
+  dep eq idtac; auto.
+
+  dependent destruction l1.
+  rewrite rew_hcons.
+  dep eq rewrite app_nil_r in *; auto.
+  f_equal; eauto.
+Qed.
+
+Lemma happ_cons : forall A (types1 types2: list A) (B: A -> Type)
+                    a (b: B a)
+                    (l1: hlist B types1) (l2: hlist B types2),
+    happ (HCons b l1) l2 = HCons b (happ l1 l2).
+Proof.
+  reflexivity.
+Qed.
+
+Theorem get_app_l : forall A (types1 types2:list A) (B: A -> Type)
+        (l1: hlist B types1) (l2: hlist B types2)
+        elt (m: member elt types1),
+    get m l1 = get (app_member_l types2 m) (happ l1 l2).
+Proof.
+  unfold get.
+  induction types1; intros.
+  inversion m.
+  dependent destruction l1.
+  rewrite happ_cons.
+  dependent destruction m; cbn; auto.
+  apply IHtypes1.
+Qed.
+
 (* this is the best way to use get_set without getting into trouble *)
 Ltac simpl_get_set_goal :=
   autorewrite with hlist; trivial.

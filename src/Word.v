@@ -496,6 +496,7 @@ Hint Rewrite eq_rect_double.
 Hint Rewrite <- (eq_rect_eq_dec eq_nat_dec).
 Hint Rewrite eq_rect_double : eq.
 Hint Rewrite <- (eq_rect_eq_dec eq_nat_dec) : eq.
+Hint Rewrite <- eq_rect_eq : eq.
 
 Ltac generalize_proof :=
     match goal with
@@ -503,7 +504,7 @@ Ltac generalize_proof :=
     end.
 
 Ltac eq_rect_simpl :=
-  unfold eq_rec_r, eq_rec;
+  unfold eq_rec_r, eq_rec, eq_rect_r;
   repeat autorewrite with eq.
 
 Lemma eq_rect_word_offset_helper : forall a b c,
