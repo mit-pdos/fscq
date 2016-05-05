@@ -146,7 +146,8 @@ Module BFILE.
      BALLOC.rep (snd bxps) free_2 *
      INODE.rep (pick_balloc bxps flag) ixp ilist *
      listmatch file_match flist ilist *
-     [[ frees = pick_balloc (free_1, free_2) flag ]]
+     [[ frees = pick_balloc (free_1, free_2) flag ]] *
+     [[ BmapNBlocks (fst bxps) = BmapNBlocks (snd bxps) ]]
     )%pred.
 
   Definition block_belong_to_file ilist bn inum off :=
