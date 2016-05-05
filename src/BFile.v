@@ -631,7 +631,8 @@ Module BFILE.
         destruct (addr_eq_dec off (length (INODE.IBlocks (selN ilist inum0 INODE.inode0)))).
         * right.
           rewrite selN_last in * by auto.
-          admit.
+          subst. rewrite wordToNat_natToWord_idempotent'. eauto.
+          eapply BALLOC.bn_valid_goodSize; eauto.
         * left.
           rewrite app_length in *; simpl in *.
           split. omega.
@@ -677,7 +678,8 @@ Module BFILE.
         destruct (addr_eq_dec off (length (INODE.IBlocks (selN ilist inum0 INODE.inode0)))).
         * right.
           rewrite selN_last in * by auto.
-          admit.
+          subst. rewrite wordToNat_natToWord_idempotent'. eauto.
+          eapply BALLOC.bn_valid_goodSize; eauto.
         * left.
           rewrite app_length in *; simpl in *.
           split. omega.
@@ -687,8 +689,9 @@ Module BFILE.
 
     - step.
     - cancel; eauto.
+
     Unshelve. all: easy.
-  Admitted.
+  Qed.
 
   Local Hint Extern 0 (okToUnify (listmatch _ _ _) (listmatch _ _ _)) => constructor : okToUnify.
 
