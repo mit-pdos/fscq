@@ -532,7 +532,8 @@ Module INODE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOC.rep bxp freelist') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
-           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) (IAttr ino) ]]
+           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) (IAttr ino) ]] *
+           [[ incl freelist freelist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} shrink lxp bxp xp inum nr ms.
   Proof.
