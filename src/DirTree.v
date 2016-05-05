@@ -17,7 +17,7 @@ Require Import SepAuto.
 Require Import Array.
 Require Import FunctionalExtensionality.
 Require Import AsyncDisk.
-Require Import NEList.
+Require Import DiskSet.
 Import ListNotations.
 
 Set Implicit Arguments.

@@ -30,7 +30,7 @@ Require Import MapUtils.
 Require Import ListPred.
 Require Import LogReplay.
 Require Import GroupLog.
-Require Import NEList.
+Require Import DiskSet.
 Require Import RelationClasses.
 Require Import Morphisms.
 
@@ -58,15 +58,15 @@ Module LOG.
 
 
   Inductive state :=
-  | NoTxn (cur : GLog.diskset)
+  | NoTxn (cur : diskset)
   (* No active transaction, MemLog.Synced or MemLog.Applying *)
 
-  | ActiveTxn (old : GLog.diskset) (cur : diskstate)
+  | ActiveTxn (old : diskset) (cur : diskstate)
   (* A transaction is in progress.
    * It started from the first memory and has evolved into the second.
    *)
 
-  | FlushingTxn (new : GLog.diskset)
+  | FlushingTxn (new : diskset)
   (* A flushing is in progress
    *)
 
@@ -366,7 +366,7 @@ Module LOG.
       [[[ ds!! ::: (Fm * a |-> vs) ]]]
     POST:hm' RET:ms' exists ds' ds'',
       rep xp F (ActiveTxn ds'' ds''!!) ms' hm' *
-      [[ ds'' = GLog.dsupd ds' a (v, vsmerge vs) ]] *
+      [[ ds'' = dsupd ds' a (v, vsmerge vs) ]] *
       [[ ds' = ds \/ ds' = (ds!!, nil) ]]
     XCRASH:hm'
       recover_any xp F ds hm' \/

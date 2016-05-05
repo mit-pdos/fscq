@@ -15,7 +15,7 @@ Require Import BasicProg.
 Require Import Omega.
 Require Import GenSepN.
 Require Import AsyncDisk.
-Require Import NEList.
+Require Import DiskSet.
 Require Import SuperBlock.
 Require Import BFile.
 

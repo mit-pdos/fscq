@@ -8,7 +8,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      ReadCache ReadCacheX WritebackCache Cache \
 		  FSLayout AsyncRecArray DiskLog DiskLogHash \
 	      LogReplay MemLog ListPred MemPred GenSepN \
-	      NEList GroupLog Log LogRecArray \
+	      NEList DiskSet GroupLog Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
 	      Dir DirName StringUtils TreeUtils DirTree \
 	      SuperBlock AsyncFS DirUtil Testprog ExtrHaskellPrelude

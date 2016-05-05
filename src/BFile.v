@@ -24,7 +24,7 @@ Require Import FSLayout.
 Require Import AsyncDisk.
 Require Import Inode.
 Require Import GenSepAuto.
-Require Import NEList.
+Require Import DiskSet.
 
 
 Import ListNotations.
@@ -595,10 +595,10 @@ Module BFILE.
            [[[ ds!! ::: (Fm  * rep bxp ixp flist ilist frees (MSAlloc ms)) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: (Fd * off |-> vs) ]]]
-    POST:hm' RET:ms'  exists m' flist' f' bn,
+    POST:hm' RET:ms'  exists m' flist' f' bn ds'' ds',
            LOG.rep lxp F (LOG.ActiveTxn ds'' ds''!!) (MSLL ms') hm' *
            [[ block_belong_to_file ilist bn inum off ]] *
-           [[ ds'' = GLog.dsupd ds' a (v, vsmerge vs) ]] *
+           [[ ds'' = dsupd ds' a (v, vsmerge vs) ]] *
            [[ ds' = ds \/ ds' = (ds!!, nil) ]] *
            [[ MSAlloc ms = MSAlloc ms' ]]
     XCRASH:hm'

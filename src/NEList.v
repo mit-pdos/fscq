@@ -226,6 +226,18 @@ Notation " ds '!!'" := (latest ds) (at level 1).
 Definition d_map A B (f : A -> B) (ds : nelist A) :=
   (f (fst ds), map f (snd ds)).
 
+Lemma nthd_cons_inb : forall T d0 ds (d : T) n,
+  n <= length ds ->
+  nthd n (d0, d :: ds) = nthd n (d0, ds).
+Proof.
+  unfold nthd; intuition; simpl.
+  destruct n.
+  rewrite Nat.sub_0_r; auto.
+  destruct (length ds - n) eqn:?.
+  omega.
+  replace (length ds - S n) with n0 by omega; auto.
+Qed.
+
 
 
 

@@ -30,7 +30,7 @@ Require Import DiskLogHash.
 Require Import MapUtils.
 Require Import ListPred.
 Require Import LogReplay.
-Require Import NEList.
+Require Import DiskSet.
 
 Import ListNotations.
 
@@ -40,110 +40,7 @@ Set Implicit Arguments.
 
 Module GLog.
 
-  Import AddrMap LogReplay LogNotations.
-
-  (**
-    diskset, like valuset, represents a non-empty sequence of disk states.
-    the fst part is the oldest disk, and the snd part is a list of subsequent disks.
-    Unlike valuset, the snd list should be ordered, and a new diskstate is always
-    prepended to the head of the list.
-      (disk_0, dist_n :: [... ; disk 1] )
-  *)
-
-  Definition diskset  := nelist diskstate.
-
-  Definition dsupd (ds : diskset) a v := 
-    d_map (fun x => updN x a v) ds.
-
-  Definition dsupd_vecs (ds : diskset) av := 
-    d_map (fun x => vsupd_vecs x av) ds.
-
-  Definition dssync_vecs (ds : diskset) al := 
-    d_map (fun x => vssync_vecs x al) ds.
-
-  (* list of transactions *)
-  Definition txnlist  := list DLog.contents.
-
-  (** ReplaySeq: any prefix of a diskset is the result of replaying 
-   *  the corresponding prefix of transactions
-   *)
-  Inductive ReplaySeq : diskset -> txnlist -> Prop :=
-    | RSeqNil  : forall d0, ReplaySeq (d0, nil) nil
-    | RSeqCons : forall d0 d t ds ts,
-          d = replay_disk t (hd d0 ds) ->
-          ReplaySeq (d0, ds) ts -> 
-          ReplaySeq (d0, (d :: ds)) (t :: ts).
-
-  Lemma replay_seq_length : forall ds ts,
-    ReplaySeq ds ts -> length (snd ds) = length ts.
-  Proof.
-    induction 1; simpl; firstorder.
-  Qed.
-
-  Lemma repaly_seq_latest : forall ds ts,
-    ReplaySeq ds ts ->
-    latest ds = fold_right replay_disk (fst ds) ts.
-  Proof.
-    induction 1; simpl in *; intros; firstorder.
-    rewrite <- IHReplaySeq; firstorder.
-  Qed.
-
-  Lemma replay_seq_selN : forall n ds ts,
-    ReplaySeq ds ts ->
-    n < length (snd ds) ->
-    selN (snd ds) n (fst ds) = fold_right replay_disk (fst ds) (skipn n ts).
-  Proof.
-    induction n; simpl; intros; auto.
-    destruct ds.
-    apply repaly_seq_latest in H; rewrite <- H.
-    destruct l; intuition.
-    pose proof (replay_seq_length H).
-    inversion H; auto; subst; simpl in *.
-    specialize (IHn (d0, ds0)).
-    apply IHn; simpl; auto; omega.
-  Qed.
-
-  Lemma replay_seq_nthd : forall n ds ts,
-    ReplaySeq ds ts ->
-    nthd n ds = fold_right replay_disk (fst ds) (skipn (length ts - n) ts).
-  Proof.
-    unfold nthd; intros.
-    destruct n; simpl.
-    rewrite selN_oob, skipn_oob by omega; auto.
-    erewrite <- replay_seq_length by eauto.
-    destruct (lt_dec (length (snd ds)) (S n)).
-    replace (length (snd ds) - S n) with 0 by omega; simpl.
-    rewrite <- repaly_seq_latest by auto.
-    unfold latest; destruct ds; simpl.
-    destruct l0; firstorder.
-    apply replay_seq_selN; auto; omega.
-  Qed.
-
-  Lemma fold_right_replay_disk_length : forall l d,
-    length (fold_right replay_disk d l) = length d.
-  Proof.
-    induction l; simpl; auto; intros.
-    rewrite replay_disk_length; auto.
-  Qed.
-
-  Lemma replay_seq_latest_length : forall ds ts,
-    ReplaySeq ds ts ->
-    length (latest ds) = length (fst ds).
-  Proof.
-    intros.
-    erewrite repaly_seq_latest; eauto.
-    rewrite fold_right_replay_disk_length; auto.
-  Qed.
-
-  Lemma replay_seq_nthd_length : forall ds ts n,
-    ReplaySeq ds ts ->
-    length (nthd n ds) = length (fst ds).
-  Proof.
-    intros.
-    erewrite replay_seq_nthd; eauto.
-    rewrite fold_right_replay_disk_length; auto.
-  Qed.
-
+  Import AddrMap LogReplay ReplaySeq LogNotations.
 
 
   (************* state and rep invariant *)
@@ -546,17 +443,6 @@ Module GLog.
     apply H; auto.
   Qed.
 
-
-  Lemma skipn_sub_S_selN_cons : forall A (l : list A) n def,
-    n < length l ->
-    skipn (length l - S n) l = selN l (length l - n - 1) def :: (skipn (length l - n) l).
-  Proof.
-    intros.
-    replace (length l - n) with (S (length l - n - 1)) at 2 by omega.
-    rewrite <- skipn_selN_skipn by omega.
-    f_equal; omega.
-  Qed.
-
   Lemma dset_match_nthd_S : forall xp ds ts n,
     dset_match xp ds ts ->
     n < length ts ->
@@ -623,18 +509,6 @@ Module GLog.
     simpl; auto.
     auto.
     auto.
-  Qed.
-
-  Lemma nthd_cons_inb : forall T d0 ds (d : T) n,
-    n <= length ds ->
-    nthd n (d0, d :: ds) = nthd n (d0, ds).
-  Proof.
-    unfold nthd; intuition; simpl.
-    destruct n.
-    rewrite Nat.sub_0_r; auto.
-    destruct (length ds - n) eqn:?.
-    omega.
-    replace (length ds - S n) with n0 by omega; auto.
   Qed.
 
 
@@ -826,21 +700,6 @@ Module GLog.
     2: apply MapFacts.Equal_refl.
     eapply replay_mem_find_none_mono.
     rewrite <- H0; auto.
-  Qed.
-
-  Lemma replay_seq_dsupd_notin : forall ds ts a v,
-    ReplaySeq ds ts ->
-    Forall (fun e => ~ In a (map fst e)) ts ->
-    ReplaySeq (dsupd ds a v) ts.
-  Proof.
-    induction 1; intros.
-    constructor.
-    inversion H1; subst.
-    unfold dsupd, d_map; simpl.
-    constructor.
-    rewrite <- replay_disk_updN_comm by auto.
-    destruct ds; auto.
-    apply IHReplaySeq; auto.
   Qed.
 
   Lemma dset_match_dsupd_notin : forall xp ds a v ts vm,
@@ -1051,20 +910,6 @@ Module GLog.
     eapply replay_mem_nonoverlap_mono; eauto.
   Qed.
 
-  Lemma replay_seq_dsupd_vecs_disjoint : forall ds ts avl,
-    ReplaySeq ds ts ->
-    Forall (fun e => disjoint (map fst avl) (map fst e)) ts ->
-    ReplaySeq (dsupd_vecs ds avl) ts.
-  Proof.
-    induction 1; intros.
-    constructor.
-    inversion H1; subst.
-    unfold dsupd_vecs, d_map; simpl.
-    constructor; auto.
-    rewrite replay_disk_vsupd_vecs_disjoint by auto.
-    destruct ds; auto.
-  Qed.
-
   Lemma dset_match_dsupd_vecs_nonoverlap : forall xp avl vm ds ts,
     overlap (map fst avl) vm = false ->
     vmap_match vm ts ->
@@ -1076,20 +921,6 @@ Module GLog.
     apply vsupd_vecs_length.
     apply replay_seq_dsupd_vecs_disjoint; auto.
     eapply vmap_match_nonoverlap; eauto.
-  Qed.
-
-  Lemma replay_seq_dssync_vecs_disjoint : forall ds ts al,
-    ReplaySeq ds ts ->
-    Forall (fun e => disjoint al (map fst e)) ts ->
-    ReplaySeq (dssync_vecs ds al) ts.
-  Proof.
-    induction 1; intros.
-    constructor.
-    inversion H1; subst.
-    unfold dssync_vecs, d_map; simpl.
-    constructor; auto.
-    rewrite replay_disk_vssync_vecs_disjoint by auto.
-    destruct ds; auto.
   Qed.
 
   Lemma dset_match_dssync_vecs_nonoverlap : forall xp al vm ds ts,

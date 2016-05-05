@@ -283,6 +283,28 @@ Proof.
   destruct vs, j; simpl; eauto using skipN_updN'.
 Qed.
 
+
+Lemma skipn_selN_skipn : forall off A (l : list A) def,
+  off < length l ->
+  skipn off l = selN l off def :: skipn (S off) l.
+Proof.
+  induction off; simpl; intros.
+  destruct l; simpl in *; try omega; auto.
+  destruct l; simpl in *; try omega.
+  apply IHoff.
+  omega.
+Qed.
+
+Lemma skipn_sub_S_selN_cons : forall A (l : list A) n def,
+  n < length l ->
+  skipn (length l - S n) l = selN l (length l - n - 1) def :: (skipn (length l - n) l).
+Proof.
+  intros.
+  replace (length l - n) with (S (length l - n - 1)) at 2 by omega.
+  rewrite <- skipn_selN_skipn by omega.
+  f_equal; omega.
+Qed.
+
 Hint Rewrite skipn_updN using omega : lists.
 
 Lemma updN_twice : forall T (l : list T) a v v',
