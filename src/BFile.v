@@ -150,6 +150,7 @@ Module BFILE.
     )%pred.
 
   Definition block_belong_to_file ilist bn inum off :=
+    off < length (INODE.IBlocks (selN ilist inum INODE.inode0)) /\
     bn = # (selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0).
 
   Definition block_is_unused freeblocks (bn : addr) := In bn freeblocks.
@@ -186,6 +187,18 @@ Module BFILE.
       eauto.
   Qed.
 
+  Lemma block_belong_to_file_inum_ok : forall ilist bn inum off,
+    block_belong_to_file ilist bn inum off ->
+    inum < length ilist.
+  Proof.
+    intros.
+    destruct (lt_dec inum (length ilist)); eauto.
+    unfold block_belong_to_file in *.
+    rewrite selN_oob in H by omega.
+    simpl in H.
+    omega.
+  Qed.
+
   Theorem rep_safe_used: forall bxps ixp flist ilist m bn inum off frees v ms,
     rep bxps ixp flist ilist frees ms (list2nmem m) ->
     block_belong_to_file ilist bn inum off ->
@@ -193,7 +206,58 @@ Module BFILE.
     let f' := mk_bfile (updN (BFData f) off v) (BFAttr f) in
     let flist' := updN flist inum f' in
     rep bxps ixp flist' ilist frees ms (list2nmem (updN m bn v)).
-  Admitted.
+  Proof.
+    unfold rep; intros.
+    destruct_lift H.
+    rewrite listmatch_length_pimpl in H; destruct_lift H.
+    rewrite listmatch_extract with (i := inum) in H.
+    2: rewrite H6; eapply block_belong_to_file_inum_ok; eauto.
+
+    assert (inum < length ilist) by ( eapply block_belong_to_file_inum_ok; eauto ).
+    assert (inum < length flist) by ( rewrite H6; eauto ).
+
+    remember H0 as H0'; clear HeqH0'.
+    unfold block_belong_to_file in H0'; intuition.
+    unfold file_match at 2 in H.
+    rewrite listmatch_length_pimpl with (a := BFData _) in H; destruct_lift H.
+    rewrite listmatch_extract with (i := off) (a := BFData _) in H.
+    2: rewrite H14; rewrite map_length; eauto.
+
+    erewrite selN_map in H; eauto.
+
+    eapply pimpl_trans; [ apply pimpl_refl | | eapply list2nmem_updN; pred_apply ].
+    2: eassign (natToWord addrlen 0).
+    2: cancel.
+
+    cancel.
+
+    eapply pimpl_trans.
+    2: eapply listmatch_isolate with (i := inum); eauto.
+    2: rewrite length_updN; eauto.
+
+    rewrite removeN_updN. cancel.
+    unfold file_match; cancel.
+    2: rewrite selN_updN_eq by ( rewrite H6; eauto ).
+    2: simpl; eauto.
+
+    eapply pimpl_trans.
+    2: eapply listmatch_isolate with (i := off).
+    2: rewrite selN_updN_eq by ( rewrite H6; eauto ).
+    2: simpl.
+    2: rewrite length_updN.
+    2: rewrite H14; rewrite map_length; eauto.
+    2: rewrite map_length; eauto.
+
+    rewrite selN_updN_eq; eauto; simpl.
+    erewrite selN_map by eauto.
+    rewrite removeN_updN.
+    rewrite selN_updN_eq by ( rewrite H14; rewrite map_length; eauto ).
+    cancel.
+
+  Grab Existential Variables.
+  all: eauto.
+  exact BFILE.bfile0.
+  Qed.
 
   Theorem rep_safe_unused: forall bxps ixp flist ilist m frees bn v ms,
     rep bxps ixp flist ilist frees ms (list2nmem m) ->
