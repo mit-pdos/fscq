@@ -620,11 +620,22 @@ Module BFILE.
       2: cancel.
       2: or_l; cancel.
 
-      admit.
+      assert (inum < length ilist) by eauto.
+      denote (list2nmem ilist') as Hilist'.
+      apply arrayN_except_upd in Hilist'; eauto.
+      apply list2nmem_array_eq in Hilist'; subst.
+      unfold ilist_safe; intuition.
+      destruct (addr_eq_dec inum inum0); subst.
+      + unfold block_belong_to_file in *; intuition.
+        erewrite selN_updN_eq in * by eauto; simpl in *; eauto.
+        Search selN app.
+    - unfold block_belong_to_file in *; intuition.
+      all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
+
 
     - step.
       safestep.
-      erewrite INODE.rep_bxp_switch by eassumption. cancel.
+      erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ). cancel.
       sepauto.
 
       step; step.
@@ -632,7 +643,7 @@ Module BFILE.
       step.
 
       or_r; cancel.
-      erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ). cancel.
+      erewrite INODE.rep_bxp_switch by eassumption. cancel.
       2: eauto.
       4: eauto.
       2: sepauto.
@@ -708,7 +719,19 @@ Module BFILE.
       unfold file_match, cuttail; cancel; eauto.
       2: eauto.
 
-      admit.
+      denote (list2nmem ilist') as Hilist'.
+      assert (inum < length ilist) by
+        ( replace (length ilist) with (length flist) by auto; eapply list2nmem_inbound; eauto ).
+      apply arrayN_except_upd in Hilist'; eauto.
+      apply list2nmem_array_eq in Hilist'; subst.
+      unfold ilist_safe; intuition. left.
+      destruct (addr_eq_dec inum inum0); subst.
+      + unfold block_belong_to_file in *; intuition.
+        all: erewrite selN_updN_eq in * by eauto; simpl in *; eauto.
+        rewrite cuttail_length in *. omega.
+        rewrite selN_cuttail in *; auto.
+      + unfold block_belong_to_file in *; intuition.
+        all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
 
     - step.
       erewrite INODE.rep_bxp_switch in Hx by ( apply eq_sym; eassumption ).
@@ -736,10 +759,22 @@ Module BFILE.
       unfold file_match, cuttail; cancel; eauto.
       2: eauto.
 
-      admit.
+      denote (list2nmem ilist') as Hilist'.
+      assert (inum < length ilist) by
+        ( replace (length ilist) with (length flist) by auto; eapply list2nmem_inbound; eauto ).
+      apply arrayN_except_upd in Hilist'; eauto.
+      apply list2nmem_array_eq in Hilist'; subst.
+      unfold ilist_safe; intuition. left.
+      destruct (addr_eq_dec inum inum0); subst.
+      + unfold block_belong_to_file in *; intuition.
+        all: erewrite selN_updN_eq in * by eauto; simpl in *; eauto.
+        rewrite cuttail_length in *. omega.
+        rewrite selN_cuttail in *; auto.
+      + unfold block_belong_to_file in *; intuition.
+        all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
 
-    Unshelve. easy. exact bfile0.
-  Admitted.
+    Unshelve. easy. all: try exact bfile0.
+  Qed.
 
 
   Theorem dwrite_ok : forall lxp bxp ixp inum off v ms,
