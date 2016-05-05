@@ -436,7 +436,11 @@ Module AFS.
 
   (* Dumb and fast version of intuition *)
   Ltac intuition' :=
-    split; [ auto | try intuition' ].
+    match goal with
+    | [|- _ /\ _]  => split; intuition'
+    | [|- True] => auto
+    | _ => idtac
+  end.
 
   (* Try to simplify a pimpl with idempred on the left side. *)
   Ltac simpl_idempred_l :=
