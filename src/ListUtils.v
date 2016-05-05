@@ -2128,3 +2128,29 @@ Proof.
   rewrite <- rev_involutive. rewrite <- H. rewrite -> rev_involutive.
   reflexivity.
 Qed.
+
+Definition disjoint A (a b : list A) :=
+  forall x, (In x a -> ~ In x b) /\ (In x b -> ~ In x a).
+
+Lemma disjoint_sym : forall A (a b : list A),
+  disjoint a b -> disjoint b a.
+Proof.
+  unfold disjoint; firstorder.
+Qed.
+
+Lemma disjoint_nil_l : forall A (a : list A),
+  disjoint nil a.
+Proof.
+  unfold disjoint; firstorder.
+Qed.
+
+Lemma disjoint_cons_l : forall A (a b : list A) x,
+  disjoint a b ->
+  ~ In x b ->
+  disjoint (x :: a) b.
+Proof.
+  unfold disjoint; firstorder; subst.
+  specialize (H x0); intuition.
+  pose proof (H x); pose proof (H x0); intuition.
+  firstorder; subst; intuition.
+Qed.

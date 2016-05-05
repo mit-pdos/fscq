@@ -1170,6 +1170,64 @@ Module LogReplay.
     apply overlap_equal; auto.
   Qed.
 
+  Lemma nonoverlap_replay_mem_disjoint : forall al ents d,
+    overlap al (replay_mem ents d) = false ->
+    disjoint al (map fst ents).
+  Proof.
+    induction al; intuition; simpl in *.
+    apply disjoint_nil_l.
+    destruct (Map.mem a (replay_mem ents d)) eqn:?; try congruence.
+    apply disjoint_cons_l.
+    eapply IHal; eauto.
+    eapply map_find_replay_mem_not_in.
+    rewrite MapFacts.mem_find_b in Heqb.
+    destruct (Map.find a (replay_mem ents d)) eqn:?; try congruence.
+    eauto.
+  Qed.
+
+  Lemma replay_mem_nonoverlap_mono : forall al ents m,
+    overlap al (replay_mem ents m) = false ->
+    overlap al m = false.
+  Proof.
+    induction al; simpl; intros; auto.
+    destruct (Map.mem a m) eqn:?; 
+    destruct (Map.mem a (replay_mem ents m)) eqn:?; try congruence.
+    rewrite MapFacts.mem_find_b in *.
+    destruct (Map.find a m) eqn:?; try congruence.
+    destruct (Map.find a (replay_mem ents m)) eqn:?; try congruence.
+    apply replay_mem_find_none_mono in Heqo0; congruence.
+    eapply IHal; eauto.
+  Qed.
+
+  Lemma replay_disk_vsupd_vecs_disjoint : forall l ents d,
+    disjoint (map fst l) (map fst ents) ->
+    vsupd_vecs (replay_disk ents d) l =
+    replay_disk ents (vsupd_vecs d l).
+  Proof.
+    induction l; simpl; intros; auto.
+    destruct (In_dec addr_eq_dec (fst a) (map fst ents)); simpl in *.
+    specialize (H (fst a)); simpl in H; intuition.
+    rewrite <- IHl.
+    unfold vsupd, vsmerge.
+    rewrite replay_disk_updN_comm by auto.
+    erewrite replay_disk_selN_other; auto.
+    unfold disjoint in *; firstorder.
+  Qed.
+
+  Lemma replay_disk_vssync_vecs_disjoint : forall l ents d,
+    disjoint l (map fst ents) ->
+    vssync_vecs (replay_disk ents d) l =
+    replay_disk ents (vssync_vecs d l).
+  Proof.
+    induction l; simpl; intros; auto.
+    destruct (In_dec addr_eq_dec a (map fst ents)); simpl in *.
+    specialize (H a); simpl in H; intuition.
+    rewrite <- IHl.
+    unfold vssync, vsmerge.
+    rewrite replay_disk_updN_comm by auto.
+    erewrite replay_disk_selN_other; auto.
+    unfold disjoint in *; firstorder.
+  Qed.
 
 End LogReplay.
 
