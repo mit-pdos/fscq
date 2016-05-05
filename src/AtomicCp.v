@@ -477,8 +477,7 @@ Module ATOMICCP.
               [[ pruned = DIRTREE.TreeDir the_dnum dstents ]] *
               [[ tree' = DIRTREE.tree_graft the_dnum dstents [] dst_fn subtree pruned ]] *
               [[ subtree = DIRTREE.TreeFile tinum (BFILE.synced_file file) ]] *
-              LOG.intact (FSXPLog fsxp) (SB.rep fsxp) (d, dlist) hm'))
-              (* XXX this should be idempred, not intact.. *)
+              LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, dlist) hm'))
       )
      >} copy_and_rename fsxp src_inum tinum dst_fn mscs.
   Proof.
