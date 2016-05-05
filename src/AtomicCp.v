@@ -440,6 +440,7 @@ Module ATOMICCP.
     {< ds Fm Ftop temp_tree src_fn file tfile v0,
     PRE:hm  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm * 
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree) ]]] *
+      [[ DIRTREE.dirtree_inum temp_tree = the_dnum ]] *
       [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
       [[ DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
       [[[ BFILE.BFData file ::: (0 |-> v0) ]]] *
@@ -484,8 +485,11 @@ Module ATOMICCP.
     unfold copy_and_rename, AFS.rename_rep; intros.
     step.
     step.
-    instantiate (cwd0 := []).
-    admit.  (* boring *)
+
+    rewrite find_subtree_nil.
+    rewrite (DIRTREE.dirtree_dir_parts (DIRTREE.update_subtree _ _ _)).
+    f_equal. f_equal. eauto. eauto.
+
     unfold AFS.rename_rep.
     safestep.
     step.

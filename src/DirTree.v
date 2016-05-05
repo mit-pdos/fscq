@@ -45,6 +45,19 @@ Module DIRTREE.
     | TreeDir  _ _ => true
     end.
 
+  Definition dirtree_dirents (dt : dirtree) :=
+    match dt with
+    | TreeFile _ _ => nil
+    | TreeDir  _ ents => ents
+    end.
+
+  Definition dirtree_file (dt : dirtree) :=
+    match dt with
+    | TreeFile _ f => f
+    | TreeDir  _ _ => BFILE.bfile0
+    end.
+
+
   Definition find_subtree_helper {T} (rec : dirtree -> option T) name
                                  (dirent : string * dirtree)
                                  (accum : option T) :=
@@ -2488,5 +2501,19 @@ Module DIRTREE.
     eauto.
   Qed.
 
+
+  Theorem dirtree_dir_parts : forall t,
+    dirtree_isdir t = true ->
+    t = TreeDir (dirtree_inum t) (dirtree_dirents t).
+  Proof.
+    destruct t; simpl; intros; congruence.
+  Qed.
+
+  Theorem dirtree_file_parts : forall t,
+    dirtree_isdir t = false ->
+    t = TreeFile (dirtree_inum t) (dirtree_file t).
+  Proof.
+    destruct t; simpl; intros; congruence.
+  Qed.
 
 End DIRTREE.

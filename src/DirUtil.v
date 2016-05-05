@@ -520,6 +520,11 @@ Lemma find_name_not_present: forall fn tree_elem dnum,
 Proof.
 Admitted.
 
+Lemma find_subtree_nil : forall t,
+  DIRTREE.find_subtree [] t = Some t.
+Proof.
+  reflexivity.
+Qed.
 
 Lemma find_root_finds_root: forall dents dnum,
   DIRTREE.find_subtree [] (DIRTREE.TreeDir dnum dents) = Some (DIRTREE.TreeDir dnum dents).
@@ -694,6 +699,45 @@ Proof.
   intros.
   unfold DIRTREE.update_subtree; eauto.
 Qed.
+
+Lemma dirtree_inum_update_subtree : forall t fn rest sub,
+  DIRTREE.dirtree_inum (DIRTREE.update_subtree (fn::rest) sub t) = DIRTREE.dirtree_inum t.
+Proof.
+  destruct t; simpl; auto.
+Qed.
+
+Lemma dirtree_inum_update_subtree' : forall t fn rest sub inum,
+  DIRTREE.dirtree_inum t = inum ->
+  DIRTREE.dirtree_inum (DIRTREE.update_subtree (fn::rest) sub t) = inum.
+Proof.
+  intros; rewrite dirtree_inum_update_subtree; auto.
+Qed.
+
+Hint Resolve dirtree_inum_update_subtree'.
+
+Lemma dirtree_isdir_update_subtree : forall t fn rest sub,
+  DIRTREE.dirtree_isdir (DIRTREE.update_subtree (fn::rest) sub t) = DIRTREE.dirtree_isdir t.
+Proof.
+  destruct t; simpl; auto.
+Qed.
+
+Lemma dirtree_isdir_update_subtree' : forall t fn rest sub r,
+  DIRTREE.dirtree_isdir t = r ->
+  DIRTREE.dirtree_isdir (DIRTREE.update_subtree (fn::rest) sub t) = r.
+Proof.
+  intros; rewrite dirtree_isdir_update_subtree; auto.
+Qed.
+
+Hint Resolve dirtree_isdir_update_subtree'.
+
+Lemma dirtree_isdir_true_find_subtree : forall t fn rest sub,
+  DIRTREE.find_subtree (fn::rest) t = Some sub ->
+  DIRTREE.dirtree_isdir t = true.
+Proof.
+  destruct t; simpl; intros; congruence.
+Qed.
+
+Hint Resolve dirtree_isdir_true_find_subtree.
 
 Global Opaque DIRTREE.tree_graft.
 Global Opaque DIRTREE.update_subtree.
