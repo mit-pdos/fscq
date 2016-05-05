@@ -598,8 +598,12 @@ Module BFILE.
       eapply BALLOC.bn_valid_facts; eauto.
       step.
 
-      or_r; cancel.
+      or_r; safecancel.
+      erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ). cancel.
+      2: eauto.
+      4: eauto.
       2: sepauto.
+
       seprewrite.
       rewrite listmatch_updN_removeN by simplen.
       unfold file_match; cancel.
@@ -614,8 +618,6 @@ Module BFILE.
       2: cancel.
       2: or_l; cancel.
 
-      assert (inum < length ilist) by eauto.
-      apply arrayN_except_upd in H20; eauto.
       admit.
 
     - step.
@@ -628,6 +630,9 @@ Module BFILE.
       step.
 
       or_r; cancel.
+      erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ). cancel.
+      2: eauto.
+      4: eauto.
       2: sepauto.
       seprewrite.
       rewrite listmatch_updN_removeN by simplen.
@@ -643,8 +648,6 @@ Module BFILE.
       2: cancel.
       2: or_l; cancel.
 
-      assert (inum < length ilist) by eauto.
-      apply arrayN_except_upd in H20; eauto.
       admit.
 
     - step.
