@@ -30,6 +30,9 @@ Definition diskset  := nelist diskstate.
 Definition dsupd (ds : diskset) a v := 
   d_map (fun x => updN x a v) ds.
 
+Definition dssync (ds : diskset) a := 
+  d_map (fun x => vssync x a) ds.
+
 Definition dsupd_vecs (ds : diskset) av := 
   d_map (fun x => vsupd_vecs x av) ds.
 
@@ -40,6 +43,13 @@ Lemma dsupd_latest : forall ds a v,
   latest (dsupd ds a v) = updN (latest ds) a v.
 Proof.
   unfold dsupd; intros.
+  rewrite d_map_latest; auto.
+Qed.
+
+Lemma dssync_latest : forall ds a,
+  latest (dssync ds a) = vssync (latest ds) a.
+Proof.
+  unfold dssync; intros.
   rewrite d_map_latest; auto.
 Qed.
 
@@ -55,6 +65,13 @@ Lemma dssync_vecs_latest : forall ds al,
 Proof.
   unfold dssync_vecs; intros.
   rewrite d_map_latest; auto.
+Qed.
+
+Lemma dssync_latest_length : forall ds a,
+  length (latest (dssync ds a)) = length (latest ds).
+Proof.
+  intros; rewrite dssync_latest.
+  unfold vssync; rewrite length_updN; auto.
 Qed.
 
 Lemma dsupd_latest_length : forall ds a v,
@@ -191,6 +208,20 @@ Module ReplaySeq.
     apply IHReplaySeq; auto.
   Qed.
 
+  Lemma replay_seq_dssync_notin : forall ds ts a,
+    ReplaySeq ds ts ->
+    Forall (fun e => ~ In a (map fst e)) ts ->
+    ReplaySeq (dssync ds a) ts.
+  Proof.
+    induction 1; intros.
+    constructor.
+    inversion H1; subst.
+    unfold dssync, d_map, vssync; simpl.
+    constructor.
+    rewrite <- replay_disk_updN_comm by auto.
+    destruct ds; rewrite replay_disk_selN_other; auto.
+    apply IHReplaySeq; auto.
+  Qed.
 
   Lemma replay_seq_dsupd_vecs_disjoint : forall ds ts avl,
     ReplaySeq ds ts ->

@@ -723,6 +723,18 @@ Module GLog.
     eapply vmap_match_notin; eauto.
   Qed.
 
+  Lemma dset_match_dssync_notin : forall xp ds a ts vm,
+    Map.find a vm = None ->
+    vmap_match vm ts ->
+    dset_match xp ds ts ->
+    dset_match xp (dssync ds a) ts.
+  Proof.
+    unfold dset_match; intuition; simpl in *.
+    eapply forall_ents_valid_length_eq; try eassumption.
+    apply length_updN.
+    apply replay_seq_dssync_notin; auto.
+    eapply vmap_match_notin; eauto.
+  Qed.
 
   Theorem dwrite'_ok: forall xp a v ms,
     {< F Fd ds vs,
@@ -769,9 +781,8 @@ Module GLog.
       << F, rep: xp (Cached ds) ms hm >> *
       [[ Map.find a (MSVMap (fst ms)) = None ]] *
       [[[ fst ds ::: (Fd * a |-> vs) ]]]
-    POST:hm' RET:ms' exists ds',
-      << F, rep: xp (Cached ds') ms' hm' >> *
-      [[  ds' = dsupd ds a (fst vs, nil) ]]
+    POST:hm' RET:ms'
+      << F, rep: xp (Cached (dssync ds a)) ms' hm' >>
     XCRASH:hm'
       << F, would_recover_any: xp ds hm' -- >>
     >} dsync' xp a ms.
@@ -779,9 +790,7 @@ Module GLog.
     unfold dsync'; intros.
     prestep; unfold rep; cancel.
     prestep; unfold rep; cancel.
-    unfold vssync; simpl.
-    erewrite <- list2nmem_sel; eauto; eauto.
-    eapply dset_match_dsupd_notin; eauto.
+    eapply dset_match_dssync_notin; eauto.
 
     (* crashes *)
     xcrash.
@@ -866,7 +875,7 @@ Module GLog.
       << F, rep: xp (Cached ds) ms hm >> *
       [[[ ds !! ::: (Fd * a |-> vs) ]]]
     POST:hm' RET:ms' exists ds',
-      << F, rep: xp (Cached (dsupd ds' a (fst vs, nil))) ms' hm' >> *
+      << F, rep: xp (Cached (dssync ds' a)) ms' hm' >> *
       [[ ds' = ds \/ ds' = (ds!!, nil) ]]
     XCRASH:hm'
       << F, would_recover_any: xp ds hm' -- >>
@@ -895,11 +904,7 @@ Module GLog.
     eapply diskset_ptsto_bound_latest; eauto.
 
     step.
-    erewrite diskset_vmap_find_none; eauto; auto.
-    apply MapFacts.not_find_in_iff; auto.
-    denote dset_match as Hx.
-    erewrite diskset_vmap_find_none in Hx; eauto.
-    apply MapFacts.not_find_in_iff; auto.
+    Unshelve. eauto.
   Qed.
 
 

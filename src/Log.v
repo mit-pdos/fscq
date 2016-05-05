@@ -416,9 +416,10 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
       [[[ ds!! ::: (Fm * a |-> vs) ]]]
-    POST:hm' RET:ms' exists m,
-      rep xp F (ActiveTxn (m, nil) m) ms' hm' *
-      [[[ m ::: (Fm * a |-> (fst vs, nil)) ]]]
+    POST:hm' RET:ms' exists ds' ds0,
+      rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
+      [[ ds' = dssync ds0 a ]] *
+      [[ ds0 = ds \/ ds0 = (ds!!, nil) ]]
     XCRASH:hm'
       recover_any xp F ds hm'
     >} dsync xp a ms.
@@ -426,10 +427,12 @@ Module LOG.
     unfold dsync, recover_any.
     step.
     step; subst.
-    apply map_valid_updN; auto.
-    setoid_rewrite singular_latest at 2; simpl; auto.
-    rewrite <- replay_disk_vssync_comm.
-    substl ds!! at 1; auto.
+    rewrite dssync_latest; unfold vssync; apply map_valid_updN; auto.
+    rewrite dssync_latest; substl (ds!!) at 1.
+    apply replay_disk_vssync_comm.
+    rewrite dssync_latest; unfold vssync; apply map_valid_updN; auto.
+    setoid_rewrite singular_latest at 1 2; simpl; auto.
+    substl (ds!!) at 1; apply replay_disk_vssync_comm.
 
     (* crashes *)
     xcrash.
