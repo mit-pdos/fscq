@@ -15,7 +15,10 @@ Import ConcurrentDisk.
 
 Import EqNotations.
 
-Module Locks := ConcurrentDisk.Locks.
+Require Locks.
+Require Import OrderedTypeEx.
+Module Locks := Locks.Make(Nat_as_OT).
+Import Locks.
 
 Module Type RecArrayParams.
 
@@ -122,7 +125,7 @@ Module RecArray (Params:RecArrayParams).
      array ($ RAStart) (firstn i blocks) $1 *
      array ($ RAStart ^+ $1) (skipn (i+1) blocks) $1)%pred.
 
-  Polymorphic Theorem rep_blocks_split : forall vs i,
+  Theorem rep_blocks_split : forall vs i,
       i < RALen ->
       rep_blocks vs <=p=> rep_blocks_except vs i * ($ (RAStart) ^+ $(i)) |-> block_valu (selN vs i block0).
   Proof.
@@ -409,7 +412,8 @@ Module RecArray (Params:RecArrayParams).
 
   Module Type RecArrayVars (SemVars:SemanticsVars).
     Import SemVars.
-    Parameter stateVars : variables Scontents [list item; list item].
+    Parameter memVars : variables Mcontents [Locks.M].
+    Parameter stateVars : variables Scontents [list item; list item; Locks.S].
 
     Axiom stateVars_no_confusion : NoDup (hmap var_index stateVars).
   End RecArrayVars.
@@ -423,17 +427,32 @@ Module RecArray (Params:RecArrayParams).
 
     Import SemVars RAVars.
 
+    Definition MLocks := ltac:(hget 0 memVars).
     Definition Items0 := ltac:(hget 0 stateVars).
     Definition Items := ltac:(hget 1 stateVars).
+    Definition GLocks := ltac:(hget 2 stateVars).
+
+    Definition lists_lin_mem (V:Type) (l_lin l_latest: list V) : @linear_mem nat _ (const V) :=
+      fun n => match nth_error l_lin n, nth_error l_latest n with
+             | Some v, Some v' => Some (v, v')
+             | _, _ => None
+             end.
+
+    Definition item_mem (s:S Scontents) :=
+      lists_lin_mem (get Items0 s) (get Items s).
 
     Definition recarrayR (tid:ID) : Relation Scontents :=
-      fun s s' => True.
+      fun s s' => linear_rel tid (Locks.get (get GLocks s))
+                           (Locks.get (get GLocks s'))
+                           (item_mem s) (item_mem s').
 
     Definition recarrayI : Invariant Mcontents Scontents :=
       fun m s d =>
-        rep_items' (get Items0 s) (get GDisk0 s) /\
-        (* this is awkward *)
-        rep_items' (get Items s) (hide_readers (view Latest (get GDisk s))).
+        let mlocks := get MLocks m in
+        let glocks := get GLocks s in
+        (forall i, ghost_lock_invariant (Locks.mem mlocks i) (Locks.get glocks i)) /\
+        linearized_consistent (item_mem s) (Locks.get glocks) /\
+        rep_items' (get Items0 s) (get GDisk0 s).
 
   End RecArrayTransitions.
 
@@ -454,7 +473,7 @@ Module RecArray (Params:RecArrayParams).
         rimpl (R tid) (recarrayR tid).
 
     Axiom recarray_relation_preserved : forall tid s s',
-        modified [( Items )] s s' ->
+        modified [( Items; GLocks )] s s' ->
         recarrayR tid s s' ->
         R tid s s'.
 
@@ -465,8 +484,8 @@ Module RecArray (Params:RecArrayParams).
     Axiom recarray_invariant_preserved : forall m s d m' s' d',
         Inv m s d ->
         (* m = m' *)
-        modified [( )] m m' ->
-        modified [( Items )] s s' ->
+        modified [( MLocks )] m m' ->
+        modified [( Items; GLocks )] s s' ->
         recarrayI m' s' d' ->
         diskI m' s' d' ->
         Inv m' s' d'.
@@ -597,38 +616,6 @@ Module RecArray (Params:RecArrayParams).
       apply valid_block_offset in H.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply goodSize_trans with (RAStart + RALen); auto.
-    Qed.
-
-    Definition not_reading (vd: DISK) a :=
-      forall v, vd a = Some v -> snd v = None.
-
-    Definition not_reading' (vd: DISK) a :=
-      forall v, hide_readers vd a = Some v ->
-           vd a = Some (v, None).
-
-    Theorem not_reading_hide (vd: DISK) a :
-      not_reading vd a <->
-      not_reading' vd a.
-    Proof.
-      unfold not_reading, not_reading', hide_readers.
-      split; intros.
-      - destruct matches in *; try congruence.
-        inv_opt.
-        pose proof (H _ H1).
-        cbn in *; subst; auto.
-      - destruct v.
-        rewrite H0 in *.
-        specialize (H w); intuition idtac.
-        inv_opt; auto.
-    Qed.
-
-    Theorem not_reading_pair (vd: DISK) a :
-      not_reading vd a <->
-      forall v r, vd a = Some (v, r) -> r = None.
-    Proof.
-      unfold not_reading; split; intros.
-      apply (H _ H0).
-      destruct v; eauto.
     Qed.
 
     Theorem subslice_hom_selN : forall A (l: list (list A)) k i def,
