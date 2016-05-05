@@ -97,11 +97,11 @@ Module BFILE.
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, len) <- INODE.getlen lxp ixp inum ms;
     If (lt_dec len INODE.NBlocks) {
-      let^ (ms, r) <- BALLOC.alloc lxp (pick_balloc bxps al) ms;
+      let^ (ms, r) <- BALLOC.alloc lxp (pick_balloc bxps (negb al)) ms;
       match r with
       | None => rx ^(mk_memstate al ms, false)
       | Some bn =>
-           let^ (ms, succ) <- INODE.grow lxp (pick_balloc bxps al) ixp inum bn ms;
+           let^ (ms, succ) <- INODE.grow lxp (pick_balloc bxps (negb al)) ixp inum bn ms;
            If (bool_dec succ true) {
               ms <- LOG.write lxp bn v ms;
               rx ^(mk_memstate al ms, true)
@@ -608,10 +608,13 @@ Module BFILE.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOC.bn_valid_goodSize; eauto.
       apply list2nmem_app; eauto.
-      admit.
 
-      cancel.
-      or_l; cancel.
+      2: cancel.
+      2: or_l; cancel.
+
+      assert (inum < length ilist) by eauto.
+      apply arrayN_except_upd in H20; eauto.
+      admit.
 
     - step.
       safestep.
@@ -633,10 +636,13 @@ Module BFILE.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOC.bn_valid_goodSize; eauto.
       apply list2nmem_app; eauto.
-      admit.
 
-      cancel.
-      or_l; cancel.
+      2: cancel.
+      2: or_l; cancel.
+
+      assert (inum < length ilist) by eauto.
+      apply arrayN_except_upd in H20; eauto.
+      admit.
 
     - step.
     - cancel; eauto.
