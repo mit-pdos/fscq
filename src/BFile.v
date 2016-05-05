@@ -603,17 +603,8 @@ Module BFILE.
       eapply BALLOC.bn_valid_facts; eauto.
       step.
 
-      or_r; safecancel.
-<<<<<<< HEAD
-      erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ). cancel.
-      2: eauto.
-      4: eauto.
+      or_r; cancel.
       2: sepauto.
-
-=======
-      setoid_rewrite INODE.rep_bxp_switch at 2; eauto.
-      2: sepauto. 3: eauto. eassign (ilist').
->>>>>>> 8d44dc9a9d55f71a142d3b19e0699e06aa3ae768
       seprewrite.
       rewrite listmatch_updN_removeN by simplen.
       unfold file_match; cancel.
@@ -628,51 +619,20 @@ Module BFILE.
       2: cancel.
       2: or_l; cancel.
 
-      assert (inum < length ilist) by eauto.
-<<<<<<< HEAD
-      denote (list2nmem ilist') as Hilist'.
-      apply arrayN_except_upd in Hilist'; eauto.
-      apply list2nmem_array_eq in Hilist'; subst.
-      unfold ilist_safe; intuition.
-      destruct (addr_eq_dec inum inum0); subst.
-      + unfold block_belong_to_file in *; intuition.
-        erewrite selN_updN_eq in * by eauto; simpl in *; eauto.
-        Search selN app.
-    - unfold block_belong_to_file in *; intuition.
-      all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
-
-=======
       admit.
->>>>>>> 8d44dc9a9d55f71a142d3b19e0699e06aa3ae768
 
     - step.
       safestep.
-<<<<<<< HEAD
-      erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ). cancel.
-=======
->>>>>>> eae006b32d32b678d4722e112caed9ba01825a97
+      erewrite INODE.rep_bxp_switch by eassumption. cancel.
       sepauto.
 
       step; step.
       eapply BALLOC.bn_valid_facts; eauto.
       step.
 
-<<<<<<< HEAD
-<<<<<<< HEAD
       or_r; cancel.
-      erewrite INODE.rep_bxp_switch by eassumption. cancel.
-      2: eauto.
-      4: eauto.
+      erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ). cancel.
       2: sepauto.
-=======
-      or_r; safecancel.
-      setoid_rewrite INODE.rep_bxp_switch at 2; eauto.
-      2: sepauto. 3: eauto. eassign (ilist').
->>>>>>> 8d44dc9a9d55f71a142d3b19e0699e06aa3ae768
-=======
-      or_r; cancel.
-      2: sepauto.
->>>>>>> eae006b32d32b678d4722e112caed9ba01825a97
       seprewrite.
       rewrite listmatch_updN_removeN by simplen.
       unfold file_match; cancel.
@@ -683,21 +643,11 @@ Module BFILE.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOC.bn_valid_goodSize; eauto.
       apply list2nmem_app; eauto.
-<<<<<<< HEAD
 
       2: cancel.
       2: or_l; cancel.
 
-<<<<<<< HEAD
-=======
-      assert (inum < length ilist) by eauto.
->>>>>>> 8d44dc9a9d55f71a142d3b19e0699e06aa3ae768
-=======
->>>>>>> eae006b32d32b678d4722e112caed9ba01825a97
       admit.
-
-      cancel.
-      or_l; cancel.
 
     - step.
     - cancel; eauto.
