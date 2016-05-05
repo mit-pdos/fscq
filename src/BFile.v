@@ -172,7 +172,19 @@ Module BFILE.
     ilist_safe i1 f1 i2 f2 ->
     ilist_safe i2 f2 i3 f3 ->
     ilist_safe i1 f1 i3 f3.
-  Admitted.
+  Proof.
+    unfold ilist_safe; intros.
+    destruct H.
+    destruct H0.
+    split.
+    - eapply incl_tran; eauto.
+    - intros.
+      specialize (H2 _ _ _ H3).
+      destruct H2; eauto.
+      right.
+      unfold block_is_unused in *.
+      eauto.
+  Qed.
 
   Theorem rep_safe_used: forall bxps ixp flist ilist m bn inum off frees v ms,
     rep bxps ixp flist ilist frees ms (list2nmem m) ->
@@ -187,7 +199,42 @@ Module BFILE.
     rep bxps ixp flist ilist frees ms (list2nmem m) ->
     block_is_unused frees bn ->
     rep bxps ixp flist ilist frees ms (list2nmem (updN m bn v)).
-  Admitted.
+  Proof.
+    unfold rep, pick_balloc, block_is_unused; intros.
+    destruct_lift H.
+    destruct ms.
+    - unfold BALLOC.rep at 1 in H.
+      unfold BALLOC.Alloc.rep in H.
+      destruct_lift H.
+
+      remember H7 as H7'; clear HeqH7'.
+      rewrite listpred_nodup_piff in H7'; [ | apply addr_eq_dec | apply ptsto_conflict ].
+      rewrite listpred_remove in H7'; [ | apply ptsto_conflict | eauto ].
+      rewrite H7' in H.
+      destruct_lift H.
+      eapply pimpl_trans; [ apply pimpl_refl | | eapply list2nmem_updN; pred_apply; cancel ].
+      unfold BALLOC.rep at 2. unfold BALLOC.Alloc.rep.
+      cancel; eauto.
+      eapply pimpl_trans; [ | eapply listpred_remove'; eauto; apply ptsto_conflict ].
+      cancel.
+    - unfold BALLOC.rep at 2 in H.
+      unfold BALLOC.Alloc.rep in H.
+      destruct_lift H.
+
+      remember H7 as H7'; clear HeqH7'.
+      rewrite listpred_nodup_piff in H7'; [ | apply addr_eq_dec | apply ptsto_conflict ].
+      rewrite listpred_remove in H7'; [ | apply ptsto_conflict | eauto ].
+      rewrite H7' in H.
+      destruct_lift H.
+      eapply pimpl_trans; [ apply pimpl_refl | | eapply list2nmem_updN; pred_apply; cancel ].
+      unfold BALLOC.rep at 3. unfold BALLOC.Alloc.rep.
+      cancel; eauto.
+      eapply pimpl_trans; [ | eapply listpred_remove'; eauto; apply ptsto_conflict ].
+      cancel.
+
+    Unshelve.
+    all: apply addr_eq_dec.
+  Qed.
 
   Definition synced_file f := mk_bfile (synced_list (map fst (BFData f))) (BFAttr f).
 
