@@ -150,7 +150,7 @@ Module BFILE.
     )%pred.
 
   Definition block_belong_to_file ilist bn inum off :=
-    bn = selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0.
+    bn = # (selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0).
 
   Definition block_is_unused freeblocks (bn : addr) := In bn freeblocks.
 
@@ -159,7 +159,7 @@ Module BFILE.
     forall inum off bn,
         block_belong_to_file ilist2 bn inum off ->
         (block_belong_to_file ilist1 bn inum off \/
-         block_is_unused free1 # bn).
+         block_is_unused free1 bn).
 
   Theorem ilist_safe_refl : forall i f,
     ilist_safe i f i f.
@@ -180,7 +180,7 @@ Module BFILE.
     let f := selN flist inum bfile0 in
     let f' := mk_bfile (updN (BFData f) off v) (BFAttr f) in
     let flist' := updN flist inum f' in
-    rep bxps ixp flist' ilist frees ms (list2nmem (updN m #bn v)).
+    rep bxps ixp flist' ilist frees ms (list2nmem (updN m bn v)).
   Admitted.
 
   Theorem rep_safe_unused: forall bxps ixp flist ilist m frees bn v ms,
@@ -595,20 +595,20 @@ Module BFILE.
            [[[ ds!! ::: (Fm  * rep bxp ixp flist ilist frees (MSAlloc ms)) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: (Fd * off |-> vs) ]]]
-    POST:hm' RET:ms'  exists m' flist' f' bn ds'' ds',
-           LOG.rep lxp F (LOG.ActiveTxn ds'' ds''!!) (MSLL ms') hm' *
+    POST:hm' RET:ms'  exists flist' f' bn ds0 ds',
+           LOG.rep lxp F (LOG.ActiveTxn ds' ds'!!) (MSLL ms') hm' *
+           [[ ds' = dsupd ds0 bn (v, vsmerge vs) ]] *
+           [[ ds0 = ds \/ ds0 = (ds!!, nil) ]] *
            [[ block_belong_to_file ilist bn inum off ]] *
-           [[ ds'' = dsupd ds' a (v, vsmerge vs) ]] *
-           [[ ds' = ds \/ ds' = (ds!!, nil) ]] *
-           [[ MSAlloc ms = MSAlloc ms' ]]
-    XCRASH:hm'
-           (* XXX fix up *)
-           LOG.recover_any lxp F ds hm' \/
-           exists m' flist' f', LOG.intact lxp F (m', nil) hm' *
-           [[[ m' ::: (Fm * rep bxp ixp flist' ilist frees (MSAlloc ms)) ]]] *
+           [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[[ ds'!! ::: (Fm  * rep bxp ixp flist ilist frees (MSAlloc ms)) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
-           [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
-           [[ f' = mk_bfile (updN (BFData f) off (v, vsmerge vs)) (BFAttr f) ]]
+           [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]]
+    XCRASH:hm' exists bn,
+           [[ block_belong_to_file ilist bn inum off ]] *
+          (LOG.recover_any lxp F ds hm' \/
+           LOG.intact lxp F (updN (ds !!) bn (v, vsmerge vs), nil) hm' \/
+           LOG.intact lxp F (updN (fst ds) bn (v, vsmerge vs), nil) hm')
     >} dwrite lxp ixp inum off v ms.
   Proof.
     unfold dwrite, rep.
