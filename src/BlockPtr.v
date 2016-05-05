@@ -379,7 +379,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
     POST:hm' RET:^(ms, r)  exists m' freelist',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp r (cuttail nr l) * BALLOC.rep bxp freelist') ]]] *
-           [[ r = upd_len ir ((IRLen ir) - nr) ]]
+           [[ r = upd_len ir ((IRLen ir) - nr) ]] *
+           [[ incl freelist freelist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} shrink lxp bxp ir nr ms.
   Proof.
