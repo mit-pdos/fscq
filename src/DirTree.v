@@ -169,9 +169,10 @@ Module DIRTREE.
    * [F] represents the other parts of the file system above [tree],
    * in cases where [tree] is a subdirectory somewhere in the tree.
    *)
-  Definition rep fsxp F tree ilist freeblocks :=
+
+  Definition rep fsxp F tree ilist frees :=
     (exists bflist freeinodes freeinode_pred,
-     BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist ilist freeblocks *
+     BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist ilist frees *
      IAlloc.rep fsxp freeinodes freeinode_pred *
      [[ (F * tree_pred fsxp tree * freeinode_pred)%pred (list2nmem bflist) ]]
     )%pred.
