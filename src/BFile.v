@@ -619,7 +619,25 @@ Module BFILE.
       2: cancel.
       2: or_l; cancel.
 
-      admit.
+      denote (list2nmem ilist') as Hilist'.
+      assert (inum < length ilist) by simplen'.
+      apply arrayN_except_upd in Hilist'; eauto.
+      apply list2nmem_array_eq in Hilist'; subst.
+      unfold ilist_safe; intuition.
+      eapply incl_tran; eauto. eapply incl_remove.
+      destruct (addr_eq_dec inum inum0); subst.
+      + unfold block_belong_to_file in *; intuition.
+        all: erewrite selN_updN_eq in * by eauto; simpl in *; eauto.
+        destruct (addr_eq_dec off (length (INODE.IBlocks (selN ilist inum0 INODE.inode0)))).
+        * right.
+          rewrite selN_last in * by auto.
+          admit.
+        * left.
+          rewrite app_length in *; simpl in *.
+          split. omega.
+          subst. rewrite selN_app1 by omega. auto.
+      + unfold block_belong_to_file in *; intuition.
+        all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
 
     - step.
       safestep.
@@ -647,7 +665,25 @@ Module BFILE.
       2: cancel.
       2: or_l; cancel.
 
-      admit.
+      denote (list2nmem ilist') as Hilist'.
+      assert (inum < length ilist) by simplen'.
+      apply arrayN_except_upd in Hilist'; eauto.
+      apply list2nmem_array_eq in Hilist'; subst.
+      unfold ilist_safe; intuition.
+      eapply incl_tran; eauto. eapply incl_remove.
+      destruct (addr_eq_dec inum inum0); subst.
+      + unfold block_belong_to_file in *; intuition.
+        all: erewrite selN_updN_eq in * by eauto; simpl in *; eauto.
+        destruct (addr_eq_dec off (length (INODE.IBlocks (selN ilist inum0 INODE.inode0)))).
+        * right.
+          rewrite selN_last in * by auto.
+          admit.
+        * left.
+          rewrite app_length in *; simpl in *.
+          split. omega.
+          subst. rewrite selN_app1 by omega. auto.
+      + unfold block_belong_to_file in *; intuition.
+        all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
 
     - step.
     - cancel; eauto.
