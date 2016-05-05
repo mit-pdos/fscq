@@ -211,7 +211,8 @@ Module BmapAlloc (Sig : AllocSig).
           [[ r = Some bn ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
           [[[ m' ::: (Fm * @rep V xp (remove addr_eq_dec bn freelist) freepred') ]]] *
           [[ freepred =p=> freepred' * bn |->? ]] *
-          [[ bn <> 0 /\ bn < (BMPLen xp) * valulen ]]
+          [[ bn <> 0 /\ bn < (BMPLen xp) * valulen ]] *
+          [[ In bn freelist ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} alloc lxp xp ms.
   Proof.
@@ -230,6 +231,7 @@ Module BmapAlloc (Sig : AllocSig).
     eapply is_avail_in_freelist; eauto.
     eapply avail_nonzero_not_zero; eauto.
     eapply bmap_rep_length_ok1; eauto.
+    eapply is_avail_in_freelist; eauto.
   Qed.
 
 
@@ -330,7 +332,8 @@ Module BALLOC.
         \/ exists bn m',
            [[ r = Some bn ]] * [[ bn_valid xp bn ]] *
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * bn |->? * rep xp (remove addr_eq_dec bn freeblocks)) ]]]
+           [[[ m' ::: (Fm * bn |->? * rep xp (remove addr_eq_dec bn freeblocks)) ]]] *
+           [[ In bn freeblocks ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} alloc lxp xp ms.
   Proof.
