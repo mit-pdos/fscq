@@ -683,6 +683,7 @@ Module BFILE.
 
     destruct (MSAlloc ms); simpl.
     - step.
+      erewrite INODE.rep_bxp_switch in Hx by eassumption.
       rewrite INODE.inode_rep_bn_valid_piff in Hx; destruct_lift Hx.
       denote Forall as Hv; specialize (Hv inum); subst.
       rewrite <- Forall_map.
@@ -693,20 +694,24 @@ Module BFILE.
       destruct_lift Hx; denote (length (BFData _)) as Heq.
 
       step.
+      erewrite INODE.rep_bxp_switch by eassumption. cancel.
       sepauto.
       denote listmatch as Hx.
       setoid_rewrite listmatch_length_pimpl in Hx at 2.
       prestep; norm. cancel. intuition simpl.
       2: sepauto.
       pred_apply; cancel.
+      erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ). cancel.
       seprewrite.
       rewrite listmatch_updN_removeN by omega.
       rewrite firstn_map_comm, Heq.
       unfold file_match, cuttail; cancel; eauto.
+      2: eauto.
+
       admit.
-      eauto.
 
     - step.
+      erewrite INODE.rep_bxp_switch in Hx by ( apply eq_sym; eassumption ).
       rewrite INODE.inode_rep_bn_valid_piff in Hx; destruct_lift Hx.
       denote Forall as Hv; specialize (Hv inum); subst.
       rewrite <- Forall_map.
@@ -717,18 +722,21 @@ Module BFILE.
       destruct_lift Hx; denote (length (BFData _)) as Heq.
 
       step.
+      erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ). cancel.
       sepauto.
       denote listmatch as Hx.
       setoid_rewrite listmatch_length_pimpl in Hx at 2.
       prestep; norm. cancel. intuition simpl.
       2: sepauto.
       pred_apply; cancel.
+      erewrite INODE.rep_bxp_switch by eassumption. cancel.
       seprewrite.
       rewrite listmatch_updN_removeN by omega.
       rewrite firstn_map_comm, Heq.
       unfold file_match, cuttail; cancel; eauto.
+      2: eauto.
+
       admit.
-      eauto.
 
     Unshelve. easy. exact bfile0.
   Admitted.
