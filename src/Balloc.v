@@ -489,7 +489,6 @@ Module BALLOC.
     unfold bn_valid; auto.
   Qed.
 
-
   Theorem bn_valid_roundtrip' : forall xp a,
     Sig.xparams_ok xp ->
     bn_valid xp a ->
@@ -511,6 +510,14 @@ Module BALLOC.
        Alloc.BmpSig.xparams_ok; intuition.
     destruct_lift H.
     apply bn_valid_roundtrip'; auto.
+  Qed.
+
+  Lemma bn_valid_switch : forall xp1 xp2,
+    BmapNBlocks xp1 = BmapNBlocks xp2 ->
+    bn_valid xp1 = bn_valid xp2.
+  Proof.
+    unfold bn_valid; intuition; auto.
+    rewrite H; auto.
   Qed.
 
   Definition items_per_val := Alloc.BmpSig.items_per_val.

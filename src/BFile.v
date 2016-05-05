@@ -747,39 +747,38 @@ Module BFILE.
       2: eauto.
 
       denote (list2nmem ilist') as Hilist'.
-      assert (inum < length ilist) by
-        ( replace (length ilist) with (length flist) by auto; eapply list2nmem_inbound; eauto ).
+      assert (inum < length ilist) by simplen.
       apply arrayN_except_upd in Hilist'; eauto.
       apply list2nmem_array_eq in Hilist'; subst.
       unfold ilist_safe; intuition. left.
       destruct (addr_eq_dec inum inum0); subst.
-      + unfold block_belong_to_file in *; intuition.
+      + unfold block_belong_to_file in *; intuition simpl.
         all: erewrite selN_updN_eq in * by eauto; simpl in *; eauto.
         rewrite cuttail_length in *. omega.
         rewrite selN_cuttail in *; auto.
-      + unfold block_belong_to_file in *; intuition.
+      + unfold block_belong_to_file in *; intuition simpl.
         all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
 
     - step.
-      erewrite INODE.rep_bxp_switch in Hx by ( apply eq_sym; eassumption ).
+      erewrite <- BALLOC.bn_valid_switch; eauto.
       rewrite INODE.inode_rep_bn_valid_piff in Hx; destruct_lift Hx.
       denote Forall as Hv; specialize (Hv inum); subst.
       rewrite <- Forall_map.
       apply forall_skipn; apply Hv; eauto.
+
       erewrite <- listmatch_ptsto_listpred.
       setoid_rewrite listmatch_split at 2.
       rewrite skipn_map_comm; cancel.
       destruct_lift Hx; denote (length (BFData _)) as Heq.
 
       step.
-      erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ). cancel.
       sepauto.
       denote listmatch as Hx.
       setoid_rewrite listmatch_length_pimpl in Hx at 2.
       prestep; norm. cancel. intuition simpl.
       2: sepauto.
       pred_apply; cancel.
-      erewrite INODE.rep_bxp_switch by eassumption. cancel.
+      cancel.
       seprewrite.
       rewrite listmatch_updN_removeN by omega.
       rewrite firstn_map_comm, Heq.
@@ -787,17 +786,16 @@ Module BFILE.
       2: eauto.
 
       denote (list2nmem ilist') as Hilist'.
-      assert (inum < length ilist) by
-        ( replace (length ilist) with (length flist) by auto; eapply list2nmem_inbound; eauto ).
+      assert (inum < length ilist) by simplen.
       apply arrayN_except_upd in Hilist'; eauto.
       apply list2nmem_array_eq in Hilist'; subst.
       unfold ilist_safe; intuition. left.
       destruct (addr_eq_dec inum inum0); subst.
-      + unfold block_belong_to_file in *; intuition.
+      + unfold block_belong_to_file in *; intuition simpl.
         all: erewrite selN_updN_eq in * by eauto; simpl in *; eauto.
         rewrite cuttail_length in *. omega.
         rewrite selN_cuttail in *; auto.
-      + unfold block_belong_to_file in *; intuition.
+      + unfold block_belong_to_file in *; intuition simpl.
         all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
 
     Unshelve. easy. all: try exact bfile0.
@@ -828,7 +826,7 @@ Module BFILE.
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn ds ds!!) (MSLL ms) hm *
            [[ off < length (BFData f) ]] *
-           [[[ ds!! ::: (Fm  * rep bxp ixp flist ilist frees (MSAlloc ms)) ]]] *
+           [[[ ds!! ::: (Fm  * rep bxp ixp flist ilist frees) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:ms'  exists flist' f' bn ds0 ds',
@@ -837,7 +835,7 @@ Module BFILE.
            [[ ds0 = ds \/ ds0 = (ds!!, nil) ]] *
            [[ block_belong_to_file ilist bn inum off ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
-           [[[ ds'!! ::: (Fm  * rep bxp ixp flist' ilist frees (MSAlloc ms)) ]]] *
+           [[[ ds'!! ::: (Fm  * rep bxp ixp flist' ilist frees) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) off (v, vsmerge vs)) (BFAttr f) ]]
@@ -865,7 +863,7 @@ Module BFILE.
 
     step.
     erewrite selN_map by omega; filldef.
-    setoid_rewrite surjective_pairing at 4. cancel.
+    setoid_rewrite surjective_pairing at 2. cancel.
 
     prestep. norm. cancel.
     intuition simpl.
@@ -922,12 +920,12 @@ Module BFILE.
     {< F Fm Fi ds flist ilist free f,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn ds ds!!) (MSLL ms) hm *
-           [[[ ds!!  ::: (Fm  * rep bxp ixp flist ilist free (MSAlloc ms)) ]]] *
+           [[[ ds!!  ::: (Fm  * rep bxp ixp flist ilist free) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:ms'  exists ds' flist' al,
            LOG.rep lxp F (LOG.ActiveTxn ds' ds'!!) (MSLL ms') hm' *
            [[ ds' = (dssync_vecs ds al) \/ ds' = dssync_vecs (ds!!, nil) al ]] *
-           [[[ ds'!! ::: (Fm * rep bxp ixp flist' ilist free (MSAlloc ms)) ]]] *
+           [[[ ds'!! ::: (Fm * rep bxp ixp flist' ilist free) ]]] *
            [[[ flist' ::: (Fi * inum |-> synced_file f) ]]] *
            [[ MSAlloc ms = MSAlloc ms' ]]
     XCRASH:hm' LOG.recover_any lxp F ds hm'
@@ -999,7 +997,7 @@ Module BFILE.
     {< F Fm Fi Fd m0 m flist ilist free f vsl,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-           [[[ m ::: (Fm * rep bxp ixp flist ilist free (MSAlloc ms)) ]]] *
+           [[[ m ::: (Fm * rep bxp ixp flist ilist free) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: Fd * arrayN a vsl ]]] *
            [[ i < length vsl]]
