@@ -591,6 +591,7 @@ Module BFILE.
     destruct (MSAlloc ms); simpl.
     - step.
       safestep.
+      erewrite INODE.rep_bxp_switch by eassumption. cancel.
       sepauto.
 
       step; step.
@@ -619,6 +620,7 @@ Module BFILE.
 
     - step.
       safestep.
+      erewrite INODE.rep_bxp_switch by eassumption. cancel.
       sepauto.
 
       step; step.

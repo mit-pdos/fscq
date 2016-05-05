@@ -290,6 +290,14 @@ Module INODE.
     unfold Rec.well_formed in H; simpl in H; intuition.
   Qed.
 
+  Theorem rep_bxp_switch : forall bxp bxp' xp ilist,
+    BmapNBlocks bxp = BmapNBlocks bxp' ->
+    rep bxp xp ilist =p=> rep bxp' xp ilist.
+  Proof.
+    unfold rep, inode_match, Ind.rep, Ind.indrep, BALLOC.bn_valid; intros.
+    rewrite H.
+    reflexivity.
+  Qed.
 
   (**************  Automation *)
 
