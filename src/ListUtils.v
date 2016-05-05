@@ -2083,6 +2083,19 @@ Proof.
   rewrite firstn_app_l; auto; omega.
 Qed.
 
+Lemma selN_cuttail : forall A n (l : list A) idx def,
+  idx < length (cuttail n l) ->
+  selN (cuttail n l) idx def = selN l idx def.
+Proof.
+  induction n; simpl; intros.
+  rewrite cuttail_0. auto.
+  destruct l using rev_ind; simpl; auto.
+  rewrite cuttail_tail in *.
+  rewrite IHn by auto.
+  rewrite selN_app; auto.
+  rewrite cuttail_length in *; omega.
+Qed.
+
 Lemma incl_cons2 : forall T (a b : list T) (v : T), 
   incl a b
   -> incl (v :: a) (v :: b).
