@@ -396,7 +396,7 @@ Module BFILE.
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) a ]] *
            [[ MSAlloc ms = MSAlloc ms' /\
-              let free := pick_balloc frees (MSAlloc ms) in
+              let free := pick_balloc frees (MSAlloc ms') in
               ilist_safe ilist free ilist' free ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} setattrs lxp ixp inum a ms.
@@ -439,7 +439,7 @@ Module BFILE.
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) (INODE.iattr_upd (BFAttr f) kv) ]] *
            [[ MSAlloc ms = MSAlloc ms' /\
-              let free := pick_balloc frees (MSAlloc ms) in
+              let free := pick_balloc frees (MSAlloc ms') in
               ilist_safe ilist free ilist' free ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} updattr lxp ixp inum kv ms.
@@ -576,8 +576,8 @@ Module BFILE.
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * (length (BFData f)) |-> (v, nil)) ]]] *
            [[ f' = mk_bfile ((BFData f) ++ [(v, nil)]) (BFAttr f) ]] *
-           [[ ilist_safe ilist  (pick_balloc frees  (MSAlloc ms))
-                         ilist' (pick_balloc frees' (MSAlloc ms)) ]]
+           [[ ilist_safe ilist  (pick_balloc frees  (MSAlloc ms'))
+                         ilist' (pick_balloc frees' (MSAlloc ms')) ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} grow lxp bxp ixp inum v ms.
   Proof.
@@ -647,13 +647,17 @@ Module BFILE.
 
     - step.
       safestep.
+<<<<<<< HEAD
       erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ). cancel.
+=======
+>>>>>>> eae006b32d32b678d4722e112caed9ba01825a97
       sepauto.
 
       step; step.
       eapply BALLOC.bn_valid_facts; eauto.
       step.
 
+<<<<<<< HEAD
 <<<<<<< HEAD
       or_r; cancel.
       erewrite INODE.rep_bxp_switch by eassumption. cancel.
@@ -665,6 +669,10 @@ Module BFILE.
       setoid_rewrite INODE.rep_bxp_switch at 2; eauto.
       2: sepauto. 3: eauto. eassign (ilist').
 >>>>>>> 8d44dc9a9d55f71a142d3b19e0699e06aa3ae768
+=======
+      or_r; cancel.
+      2: sepauto.
+>>>>>>> eae006b32d32b678d4722e112caed9ba01825a97
       seprewrite.
       rewrite listmatch_updN_removeN by simplen.
       unfold file_match; cancel.
@@ -675,6 +683,7 @@ Module BFILE.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOC.bn_valid_goodSize; eauto.
       apply list2nmem_app; eauto.
+<<<<<<< HEAD
 
       2: cancel.
       2: or_l; cancel.
@@ -683,7 +692,12 @@ Module BFILE.
 =======
       assert (inum < length ilist) by eauto.
 >>>>>>> 8d44dc9a9d55f71a142d3b19e0699e06aa3ae768
+=======
+>>>>>>> eae006b32d32b678d4722e112caed9ba01825a97
       admit.
+
+      cancel.
+      or_l; cancel.
 
     - step.
     - cancel; eauto.
@@ -704,8 +718,8 @@ Module BFILE.
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (firstn ((length (BFData f)) - nr) (BFData f)) (BFAttr f) ]] *
            [[ MSAlloc ms = MSAlloc ms' /\
-              ilist_safe ilist  (pick_balloc frees  (MSAlloc ms))
-                         ilist' (pick_balloc frees' (MSAlloc ms)) ]]
+              ilist_safe ilist  (pick_balloc frees  (MSAlloc ms'))
+                         ilist' (pick_balloc frees' (MSAlloc ms')) ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} shrink lxp bxp ixp inum nr ms.
   Proof.
