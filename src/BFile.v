@@ -849,9 +849,10 @@ Module BFILE.
            LOG.rep lxp F (LOG.ActiveTxn ds ds!!) (MSLL ms) hm *
            [[[ ds!!  ::: (Fm  * rep bxp ixp flist ilist free (MSAlloc ms)) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST:hm' RET:ms'  exists m' flist',
-           LOG.rep lxp F (LOG.ActiveTxn (m', nil) m') (MSLL ms') hm' *
-           [[[ m' ::: (Fm * rep bxp ixp flist' ilist free (MSAlloc ms)) ]]] *
+    POST:hm' RET:ms'  exists ds' flist' al,
+           LOG.rep lxp F (LOG.ActiveTxn ds' ds'!!) (MSLL ms') hm' *
+           [[ ds' = (dssync_vecs ds al) \/ ds' = dssync_vecs (ds!!, nil) al ]] *
+           [[[ ds'!! ::: (Fm * rep bxp ixp flist' ilist free (MSAlloc ms)) ]]] *
            [[[ flist' ::: (Fi * inum |-> synced_file f) ]]] *
            [[ MSAlloc ms = MSAlloc ms' ]]
     XCRASH:hm' LOG.recover_any lxp F ds hm'
@@ -864,6 +865,19 @@ Module BFILE.
     extract.
     step.
     prestep. norm. cancel.
+    intuition simpl. pred_apply.
+    2: sepauto.
+
+    cancel.
+    setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 3.
+    rewrite listmatch_updN_removeN by simplen.
+    unfold file_match; cancel; eauto.
+    rewrite synced_list_map_fst_map.
+    rewrite listmatch_map_l; sepauto.
+    sepauto.
+    eauto.
+
+    cancel.
     intuition simpl. pred_apply.
     2: sepauto.
 
