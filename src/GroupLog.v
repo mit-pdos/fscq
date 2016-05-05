@@ -897,9 +897,8 @@ Module GLog.
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
       [[[ ds !! ::: (Fd * a |-> vs) ]]]
-    POST:hm' RET:ms' exists ds' ds'',
-      << F, rep: xp (Cached ds'') ms' hm' >> *
-      [[  ds'' = dsupd ds' a (v, vsmerge vs) ]] *
+    POST:hm' RET:ms' exists ds',
+      << F, rep: xp (Cached (dsupd ds' a (v, vsmerge vs))) ms' hm' >> *
       [[ ds' = ds \/ ds' = (ds!!, nil) ]]
     XCRASH:hm'
       << F, would_recover_any: xp ds hm' -- >>
@@ -964,22 +963,65 @@ Module GLog.
       << F, rep: xp (Cached ds) ms hm >> *
       [[ Map.find a (MSVMap (fst ms)) = None ]] *
       [[[ fst ds ::: (Fd * a |-> vs) ]]]
-    POST:hm' RET:ms' exists d',
-      << F, rep: xp (Cached (d', nil)) ms' hm' >> *
+    POST:hm' RET:ms' exists ds',
+      << F, rep: xp (Cached ds') ms' hm' >> *
       [[  ds' = dsupd ds a (fst vs, nil) ]]
     XCRASH:hm'
       << F, would_recover_any: xp ds hm' -- >>
     >} dsync' xp a ms.
   Proof.
-    unfold dsync.
+    unfold dsync'; intros.
     prestep; unfold rep; cancel.
     prestep; unfold rep; cancel.
-    prestep; unfold rep; cancel.
-    subst; substl (MSTxns a0); eauto.
+    unfold vssync; simpl.
+    erewrite <- list2nmem_sel; eauto; eauto.
+    eapply dset_match_dsupd_notin; eauto.
 
     (* crashes *)
     xcrash.
-    eapply synced_recover_any; eauto.
+    rewrite MLog.synced_recover_before.
+    rewrite recover_before_any_fst; eauto.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (dsync' _ _ _) _) => apply dsync'_ok : prog.
+
+  Theorem dsync_ok: forall xp a ms,
+    {< F Fd ds vs,
+    PRE:hm
+      << F, rep: xp (Cached ds) ms hm >> *
+      [[[ ds !! ::: (Fd * a |-> vs) ]]]
+    POST:hm' RET:ms' exists ds',
+      << F, rep: xp (Cached (dsupd ds' a (fst vs, nil))) ms' hm' >> *
+      [[ ds' = ds \/ ds' = (ds!!, nil) ]]
+    XCRASH:hm'
+      << F, would_recover_any: xp ds hm' -- >>
+    >} dsync xp a ms.
+  Proof.
+    unfold dsync, rep.
+    step.
+    prestep; unfold rep; cancel.
+    prestep; unfold rep; cancel.
+
+    erewrite fst_pair by reflexivity.
+    cancel.
+    eauto.
+    substl (MSVMap a0); eauto.
+    simpl; pred_apply; cancel.
+    step.
+
+    cancel.
+    repeat xcrash_rewrite; xform_norm.
+    cancel; xform_normr; cancel.
+    eapply recover_latest_any; eauto.
+
+    prestep; unfold rep; cancel.
+    apply MapFacts.not_find_in_iff; auto.
+    eapply list2nmem_ptsto_cancel_pair.
+    eapply diskset_ptsto_bound_latest; eauto.
+
+    step.
+    erewrite diskset_vmap_find_none; eauto; auto.
+    apply MapFacts.not_find_in_iff; auto.
   Qed.
 
 
