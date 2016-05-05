@@ -97,11 +97,11 @@ Module BFILE.
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, len) <- INODE.getlen lxp ixp inum ms;
     If (lt_dec len INODE.NBlocks) {
-      let^ (ms, r) <- BALLOC.alloc lxp (pick_balloc bxps (negb al)) ms;
+      let^ (ms, r) <- BALLOC.alloc lxp (pick_balloc bxps al) ms;
       match r with
       | None => rx ^(mk_memstate al ms, false)
       | Some bn =>
-           let^ (ms, succ) <- INODE.grow lxp (pick_balloc bxps (negb al)) ixp inum bn ms;
+           let^ (ms, succ) <- INODE.grow lxp (pick_balloc bxps al) ixp inum bn ms;
            If (bool_dec succ true) {
               ms <- LOG.write lxp bn v ms;
               rx ^(mk_memstate al ms, true)
@@ -117,8 +117,8 @@ Module BFILE.
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
     let l := map (@wordToNat _) (skipn ((length bns) - nr) bns) in
-    ms <- BALLOC.freevec lxp (pick_balloc bxps al) l ms;
-    ms <- INODE.shrink lxp (pick_balloc bxps al) ixp inum nr ms;
+    ms <- BALLOC.freevec lxp (pick_balloc bxps (negb al)) l ms;
+    ms <- INODE.shrink lxp (pick_balloc bxps (negb al)) ixp inum nr ms;
     rx (mk_memstate al ms).
 
 
