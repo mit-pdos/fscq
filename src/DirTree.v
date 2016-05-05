@@ -1969,7 +1969,7 @@ Module DIRTREE.
     rx mscs.
 
   Definition sync T fsxp mscs rx : prog T :=
-    mscs <- LOG.sync (FSXPLog fsxp) mscs;
+    mscs <- BFILE.sync (FSXPLog fsxp) (FSXPInode fsxp) mscs;
     rx mscs.
 
   Definition truncate T fsxp inum nblocks mscs rx : prog T :=
