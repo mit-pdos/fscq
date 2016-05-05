@@ -829,11 +829,8 @@ Module MLog.
     apply In_map_fst_MapIn in HIn.
     eapply map_empty_not_In; eauto.
     replace (Map.elements _) with (@nil (addr * valu)).
-    simpl; apply NoDup_nil.
+    auto.
     symmetry; apply MapProperties.elements_Empty; auto.
-    intuition. denote In as HIn.
-    apply In_map_fst_MapIn in HIn.
-    eapply map_empty_not_In; eauto.
     eapply list2nmem_updN; eauto.
 
     (* crashes for case 1 *)
@@ -860,11 +857,8 @@ Module MLog.
     apply In_map_fst_MapIn in HIn.
     eapply map_empty_not_In; eauto.
     replace (Map.elements _) with (@nil (addr * valu)).
-    simpl; apply NoDup_nil.
+    auto.
     symmetry; apply MapProperties.elements_Empty; auto.
-    intuition. denote In as HIn.
-    apply In_map_fst_MapIn in HIn.
-    eapply map_empty_not_In; eauto.
     eapply list2nmem_updN; eauto.
 
     xcrash.
@@ -961,13 +955,6 @@ Module MLog.
 
   (********* dwrite/dsync for a list of address/value pairs *)
 
-  Fixpoint overlap V (l : list addr) (m : Map.t V) : bool :=
-  match l with
-  | nil => false
-  | a :: rest => if (Map.mem a m) then true else overlap rest m
-  end.
-
-
   Definition dwrite_vecs T xp avl ms rx : prog T :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     ms' <- IfRx irx (bool_dec (overlap (map fst avl) oms) true) {
@@ -984,60 +971,6 @@ Module MLog.
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     cs' <- BUFCACHE.sync_vecs (DataStart xp) al cs;
     rx (mk_memstate oms cs').
-
-
-
-  Lemma overlap_firstn_overlap : forall V n l (m : Map.t V),
-    overlap (firstn n l) m = true ->
-    overlap l m = true.
-  Proof.
-    induction n; destruct l; simpl; firstorder.
-    destruct (MapFacts.In_dec m n0); auto.
-    rewrite Map.mem_1; auto.
-    apply MapFacts.not_mem_in_iff in n1; rewrite n1 in *; auto.
-  Qed.
-
-  Lemma In_MapIn_overlap : forall V l a (ms : Map.t V),
-    In a l ->
-    Map.In a ms ->
-    overlap l ms = true.
-  Proof.
-    induction l; intros; simpl.
-    inversion H.
-    destruct (MapFacts.In_dec ms a); auto.
-    rewrite Map.mem_1; auto.
-    apply MapFacts.not_mem_in_iff in n as Hx; rewrite Hx in *; auto.
-    inversion H; destruct (addr_eq_dec a a0); subst; firstorder.
-  Qed.
-
-  Lemma overlap_empty : forall V al (m : Map.t V),
-    Map.Empty m ->
-    overlap al m = false.
-  Proof.
-    induction al; simpl; auto; intros.
-    replace (Map.mem a m) with false; eauto.
-    symmetry.
-    eapply MapFacts.not_mem_in_iff.
-    apply map_empty_not_In; auto.
-  Qed.
-
-
-  Lemma replay_disk_vsupd_vecs_nonoverlap : forall l m d,
-    overlap (map fst l) m = false ->
-    vsupd_vecs (replay_disk (Map.elements m) d) l =
-    replay_disk (Map.elements m) (vsupd_vecs d l).
-  Proof.
-    induction l; simpl; intros; auto.
-    destruct (MapFacts.In_dec m (fst a)); simpl in *.
-    rewrite Map.mem_1 in H; congruence.
-    apply MapFacts.not_mem_in_iff in n as Hx; rewrite Hx in *; auto.
-    rewrite <- IHl by auto.
-    unfold vsupd, vsmerge.
-    rewrite replay_disk_updN_comm.
-    erewrite replay_disk_selN_not_In; eauto.
-    contradict n.
-    apply In_map_fst_MapIn; eauto.
-  Qed.
 
 
   (****************** crash and recovery *)

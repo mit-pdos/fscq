@@ -69,14 +69,11 @@ Module LogReplay.
 
   Lemma replay_disk_selN_other : forall l d a def,
     ~ In a (map fst l)
-    -> NoDup (map fst l)
     -> selN (replay_disk l d) a def = selN d a def.
   Proof.
     induction l; simpl; intuition; simpl in *.
-    inversion H0; subst; auto.
-    rewrite replay_disk_updN_comm by auto.
-    rewrite selN_updN_ne by auto.
-    apply IHl; auto.
+    rewrite IHl; auto.
+    rewrite selN_updN_ne; auto.
   Qed.
 
   Lemma replay_disk_selN_In : forall l m a v def,
@@ -125,7 +122,6 @@ Module LogReplay.
     erewrite MapFacts.elements_in_iff.
     apply in_map_fst_exists_snd in H; destruct H.
     eexists. apply In_InA; eauto.
-    apply KNoDup_NoDup; auto.
   Qed.
 
   Hint Rewrite replay_disk_length : lists.
@@ -1095,6 +1091,83 @@ Module LogReplay.
     rewrite updN_twice.
     repeat rewrite replay_disk_updN_comm; auto.
     rewrite IHl; auto.
+  Qed.
+
+  Set Implicit Arguments.
+
+  Fixpoint overlap V (l : list addr) (m : Map.t V) : bool :=
+  match l with
+  | nil => false
+  | a :: rest => if (Map.mem a m) then true else overlap rest m
+  end.
+
+  Lemma overlap_firstn_overlap : forall V n l (m : Map.t V),
+    overlap (firstn n l) m = true ->
+    overlap l m = true.
+  Proof.
+    induction n; destruct l; simpl; firstorder.
+    destruct (MapFacts.In_dec m n0); auto.
+    rewrite Map.mem_1; auto.
+    apply MapFacts.not_mem_in_iff in n1; rewrite n1 in *; auto.
+  Qed.
+
+  Lemma In_MapIn_overlap : forall V l a (ms : Map.t V),
+    In a l ->
+    Map.In a ms ->
+    overlap l ms = true.
+  Proof.
+    induction l; intros; simpl.
+    inversion H.
+    destruct (MapFacts.In_dec ms a); auto.
+    rewrite Map.mem_1; auto.
+    apply MapFacts.not_mem_in_iff in n as Hx; rewrite Hx in *; auto.
+    inversion H; destruct (addr_eq_dec a a0); subst; firstorder.
+  Qed.
+
+  Lemma overlap_empty : forall V al (m : Map.t V),
+    Map.Empty m ->
+    overlap al m = false.
+  Proof.
+    induction al; simpl; auto; intros.
+    replace (Map.mem a m) with false; eauto.
+    symmetry.
+    eapply MapFacts.not_mem_in_iff.
+    apply map_empty_not_In; auto.
+  Qed.
+
+
+  Lemma replay_disk_vsupd_vecs_nonoverlap : forall l m d,
+    overlap (map fst l) m = false ->
+    vsupd_vecs (replay_disk (Map.elements m) d) l =
+    replay_disk (Map.elements m) (vsupd_vecs d l).
+  Proof.
+    induction l; simpl; intros; auto.
+    destruct (MapFacts.In_dec m (fst a)); simpl in *.
+    rewrite Map.mem_1 in H; congruence.
+    apply MapFacts.not_mem_in_iff in n as Hx; rewrite Hx in *; auto.
+    rewrite <- IHl by auto.
+    unfold vsupd, vsmerge.
+    rewrite replay_disk_updN_comm.
+    erewrite replay_disk_selN_not_In; eauto.
+    contradict n.
+    apply In_map_fst_MapIn; eauto.
+  Qed.
+
+  Lemma overlap_equal : forall T l (m1 m2 : Map.t T),
+    Map.Equal m1 m2 ->
+    overlap l m1 = overlap l m2.
+  Proof.
+    induction l; intros; auto; simpl.
+    destruct (Map.mem a m1) eqn:?; destruct (Map.mem a m2) eqn:?; auto.
+    rewrite H in Heqb; congruence.
+    rewrite H in Heqb; congruence.
+  Qed.
+
+  Instance overlap_proper : forall T,
+    Proper (eq ==> Map.Equal ==> eq) (@overlap T).
+  Proof.
+    unfold Proper, respectful, impl; intros; subst.
+    apply overlap_equal; auto.
   Qed.
 
 
