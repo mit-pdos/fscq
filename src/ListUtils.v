@@ -2096,6 +2096,14 @@ Proof.
   firstorder.
 Qed.
 
+Lemma incl_remove : forall T dec (a : T) (l : list T),
+  incl (remove dec a l) l.
+Proof.
+  induction l; unfold incl; simpl; auto; intros.
+  destruct (dec a a0); subst; eauto.
+  inversion H; subst; eauto.
+Qed.
+
 
 Definition postfix A (a b : list A) :=
   exists n, a = skipn n b.
