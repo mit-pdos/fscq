@@ -511,6 +511,14 @@ Module GLog.
     auto.
   Qed.
 
+  Lemma cached_length_latest : forall F xp ds ms hm m,
+    (F * rep xp (Cached ds) ms hm)%pred m ->
+    length ds!! = length (fst ds).
+  Proof.
+    unfold rep, dset_match; intuition.
+    destruct_lift H.
+    eapply replay_seq_latest_length; eauto.
+  Qed.
 
   (************* correctness theorems *)
 

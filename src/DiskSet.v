@@ -36,6 +36,59 @@ Definition dsupd_vecs (ds : diskset) av :=
 Definition dssync_vecs (ds : diskset) al := 
   d_map (fun x => vssync_vecs x al) ds.
 
+Lemma dsupd_latest : forall ds a v,
+  latest (dsupd ds a v) = updN (latest ds) a v.
+Proof.
+  unfold dsupd; intros.
+  rewrite d_map_latest; auto.
+Qed.
+
+Lemma dsupd_vecs_latest : forall ds avl,
+  latest (dsupd_vecs ds avl) = vsupd_vecs (latest ds) avl.
+Proof.
+  unfold dsupd_vecs; intros.
+  rewrite d_map_latest; auto.
+Qed.
+
+Lemma dssync_vecs_latest : forall ds al,
+  latest (dssync_vecs ds al) = vssync_vecs (latest ds) al.
+Proof.
+  unfold dssync_vecs; intros.
+  rewrite d_map_latest; auto.
+Qed.
+
+Lemma dsupd_latest_length : forall ds a v,
+  length (latest (dsupd ds a v)) = length (latest ds).
+Proof.
+  intros; rewrite dsupd_latest.
+  rewrite length_updN; auto.
+Qed.
+
+Lemma dsupd_vecs_latest_length : forall ds avl,
+  length (latest (dsupd_vecs ds avl)) = length (latest ds).
+Proof.
+  intros; rewrite dsupd_vecs_latest.
+  rewrite vsupd_vecs_length; auto.
+Qed.
+
+Lemma dssync_vecs_latest_length : forall ds al,
+  length (latest (dssync_vecs ds al)) = length (latest ds).
+Proof.
+  intros; rewrite dssync_vecs_latest.
+  rewrite vssync_vecs_length; auto.
+Qed.
+
+Lemma nthd_cons_inb : forall T d0 ds (d : T) n,
+  n <= length ds ->
+  nthd n (d0, d :: ds) = nthd n (d0, ds).
+Proof.
+  unfold nthd; intuition; simpl.
+  destruct n.
+  rewrite Nat.sub_0_r; auto.
+  destruct (length ds - n) eqn:?.
+  omega.
+  replace (length ds - S n) with n0 by omega; auto.
+Qed.
 
 
 (* list of transactions *)

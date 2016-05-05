@@ -364,16 +364,14 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
       [[[ ds!! ::: (Fm * a |-> vs) ]]]
-    POST:hm' RET:ms' exists ds' ds'',
-      rep xp F (ActiveTxn ds'' ds''!!) ms' hm' *
-      [[ ds'' = dsupd ds' a (v, vsmerge vs) ]] *
-      [[ ds' = ds \/ ds' = (ds!!, nil) ]]
+    POST:hm' RET:ms' exists ds' ds0,
+      rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
+      [[ ds' = dsupd ds0 a (v, vsmerge vs) ]] *
+      [[ ds0 = ds \/ ds0 = (ds!!, nil) ]]
     XCRASH:hm'
       recover_any xp F ds hm' \/
-      exists ms' m',
-      rep xp F (ActiveTxn (m', nil) m') ms' hm' *
-      ([[ m' = updN (ds !!) a (v, vsmerge vs) \/
-          m' = updN (fst ds) a (v, vsmerge vs) ]])
+      intact xp F (updN (ds !!) a (v, vsmerge vs), nil) hm' \/
+      intact xp F (updN (fst ds) a (v, vsmerge vs), nil) hm'
     >} dwrite xp a v ms.
   Proof.
     unfold dwrite, recover_any.
@@ -381,22 +379,33 @@ Module LOG.
     step; subst.
 
     eapply map_valid_remove; autorewrite with lists; eauto.
-    setoid_rewrite singular_latest at 2; simpl; auto.
-    rewrite length_updN; auto.
-
+    rewrite dsupd_latest_length; auto.
+    rewrite dsupd_latest.
+    apply updN_replay_disk_remove_eq; eauto.
+    setoid_rewrite singular_latest at 1; simpl; auto.
+    eapply map_valid_remove; autorewrite with lists; eauto.
     apply updN_replay_disk_remove_eq; eauto.
 
     (* crash conditions *)
     xcrash.
     or_l; cancel; xform_normr; cancel.
-    or_r; cancel; xform_normr; cancel.
-    xform_normr; cancel.
+
+    or_r; or_l; cancel.
+    unfold intact; xform_normr.
+    or_r; unfold rep, rep_inner.
+    xform_normr; erewrite snd_pair; eauto; cancel.
+    eassign (mk_mstate (Map.remove a (MSTxn ms_1)) x_1); eauto.
+    eapply map_valid_remove; autorewrite with lists; eauto.
+    unfold latest; destruct ds; simpl; rewrite length_updN; auto.
+
+    or_r; or_r; cancel.
+    unfold intact; xform_normr.
+    or_r; unfold rep, rep_inner.
+    xform_normr; erewrite snd_pair; eauto; cancel.
     eassign (mk_mstate (Map.remove a (MSTxn ms_1)) x_1); eauto.
     eapply map_valid_remove; autorewrite with lists; eauto.
     setoid_rewrite singular_latest at 2; simpl; auto.
-    rewrite length_updN; auto.
-    apply updN_replay_disk_remove_eq; eauto.
-    eauto.
+    erewrite GLog.cached_length_latest, length_updN; eauto.
 
     Unshelve. eauto.
   Qed.
