@@ -366,6 +366,7 @@ Module LOG.
       [[[ ds!! ::: (Fm * a |-> vs) ]]]
     POST:hm' RET:ms' exists ds' ds0,
       rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
+      [[[ ds'!! ::: (Fm * a |-> (v, vsmerge vs)) ]]] *
       [[ ds' = dsupd ds0 a (v, vsmerge vs) ]] *
       [[ ds0 = ds \/ ds0 = (ds!!, nil) ]]
     XCRASH:hm'
@@ -382,9 +383,13 @@ Module LOG.
     rewrite dsupd_latest_length; auto.
     rewrite dsupd_latest.
     apply updN_replay_disk_remove_eq; eauto.
+    rewrite dsupd_latest.
+    eapply list2nmem_updN; eauto.
     setoid_rewrite singular_latest at 1; simpl; auto.
     eapply map_valid_remove; autorewrite with lists; eauto.
     apply updN_replay_disk_remove_eq; eauto.
+    rewrite dsupd_latest.
+    eapply list2nmem_updN; eauto.
 
     (* crash conditions *)
     xcrash.
