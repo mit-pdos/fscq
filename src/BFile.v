@@ -407,9 +407,20 @@ Module BFILE.
     2: eauto.
     eapply listmatch_updN_selN; try omega.
     unfold file_match; cancel.
-    admit.
-    Unshelve. exact INODE.inode0.
-  Admitted.
+
+    rewrite listmatch_length_pimpl in H8; destruct_lift H8.
+    assert (inum < length ilist) by ( rewrite <- H12; eapply list2nmem_inbound; eauto ).
+    apply arrayN_except_upd in H10; eauto.
+    apply list2nmem_array_eq in H10; subst.
+    unfold ilist_safe; intuition. left.
+    destruct (addr_eq_dec inum inum0); subst.
+    - unfold block_belong_to_file in *; intuition.
+      erewrite selN_updN_eq in H7 by eauto. simpl in H7. eauto.
+      erewrite selN_updN_eq in H8 by eauto. simpl in H8. eauto.
+    - unfold block_belong_to_file in *; intuition.
+      erewrite selN_updN_ne in H7 by eauto. simpl in H7. eauto.
+      erewrite selN_updN_ne in H8 by eauto. simpl in H8. eauto.
+  Qed.
 
 
   Theorem updattr_ok : forall lxp bxps ixp inum kv ms,
@@ -437,9 +448,20 @@ Module BFILE.
     2: eauto.
     eapply listmatch_updN_selN; try omega.
     unfold file_match; cancel.
-    admit.
-    Unshelve. exact INODE.inode0.
-  Admitted.
+
+    rewrite listmatch_length_pimpl in H8; destruct_lift H8.
+    assert (inum < length ilist) by ( rewrite <- H12; eapply list2nmem_inbound; eauto ).
+    apply arrayN_except_upd in H10; eauto.
+    apply list2nmem_array_eq in H10; subst.
+    unfold ilist_safe; intuition. left.
+    destruct (addr_eq_dec inum inum0); subst.
+    - unfold block_belong_to_file in *; intuition.
+      erewrite selN_updN_eq in H7 by eauto. simpl in H7. eauto.
+      erewrite selN_updN_eq in H8 by eauto. simpl in H8. eauto.
+    - unfold block_belong_to_file in *; intuition.
+      erewrite selN_updN_ne in H7 by eauto. simpl in H7. eauto.
+      erewrite selN_updN_ne in H8 by eauto. simpl in H8. eauto.
+  Qed.
 
 
   Theorem read_ok : forall lxp bxp ixp inum off ms,
