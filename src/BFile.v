@@ -409,10 +409,13 @@ Module BFILE.
     eapply listmatch_updN_selN; try omega.
     unfold file_match; cancel.
 
-    rewrite listmatch_length_pimpl in H9; destruct_lift H9.
-    assert (inum < length ilist) by ( rewrite <- H13; eapply list2nmem_inbound; eauto ).
-    apply arrayN_except_upd in H11; eauto.
-    apply list2nmem_array_eq in H11; subst.
+    denote (list2nmem m') as Hm'.
+    rewrite listmatch_length_pimpl in Hm'; destruct_lift Hm'.
+    denote (list2nmem ilist') as Hilist'.
+    assert (inum < length ilist) by
+      ( replace (length ilist) with (length flist) by auto; eapply list2nmem_inbound; eauto ).
+    apply arrayN_except_upd in Hilist'; eauto.
+    apply list2nmem_array_eq in Hilist'; subst.
     unfold ilist_safe; intuition. left.
     destruct (addr_eq_dec inum inum0); subst.
     - unfold block_belong_to_file in *; intuition.
@@ -448,10 +451,13 @@ Module BFILE.
     eapply listmatch_updN_selN; try omega.
     unfold file_match; cancel.
 
-    rewrite listmatch_length_pimpl in H9; destruct_lift H9.
-    assert (inum < length ilist) by ( rewrite <- H13; eapply list2nmem_inbound; eauto ).
-    apply arrayN_except_upd in H11; eauto.
-    apply list2nmem_array_eq in H11; subst.
+    denote (list2nmem m') as Hm'.
+    rewrite listmatch_length_pimpl in Hm'; destruct_lift Hm'.
+    denote (list2nmem ilist') as Hilist'.
+    assert (inum < length ilist) by
+      ( replace (length ilist) with (length flist) by auto; eapply list2nmem_inbound; eauto ).
+    apply arrayN_except_upd in Hilist'; eauto.
+    apply list2nmem_array_eq in Hilist'; subst.
     unfold ilist_safe; intuition. left.
     destruct (addr_eq_dec inum inum0); subst.
     - unfold block_belong_to_file in *; intuition.
