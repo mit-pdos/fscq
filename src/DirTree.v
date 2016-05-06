@@ -828,49 +828,33 @@ Module DIRTREE.
         intro; apply H5. subst; eauto.
   Qed.
 
-  Theorem dirtree_update_safe : forall ilist_newest free_newest tree fsxp F F0 ilist freeblocks v bn inum off m flag,
+  Theorem dirtree_update_safe : forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks v bn inum off m flag,
+    find_subtree pathname tree_newest = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist_newest bn inum off ->
-    dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) ilist_newest free_newest ->
+    dirtree_safe2 ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
     (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
     exists tree',
     (F0 * rep fsxp F tree' ilist freeblocks)%pred (list2nmem (updN m bn v)) /\
     (tree' = tree \/ tree' = dirtree_update_inode tree inum off v).
   Proof.
     intros.
-    unfold dirtree_safe, BFILE.ilist_safe in H0.
+    unfold dirtree_safe2, BFILE.ilist_safe in H1.
     intuition.
-    specialize (H3 _ _ _ H).
-    destruct H3.
+    specialize (H4 _ _ _ _ _ H H0).
+    intuition; repeat deex.
     - (**
        * The block still belongs to the same inode in this earlier disk.
        *)
-
-      destruct (In_dec addr_eq_dec inum (tree_inodes tree)).
-      + eexists; split.
-        2: right; reflexivity.
-        eapply dirtree_update_block; eauto.
-        (**
-         * What if, in an old disk, the inode number isn't a file but
-         * rather a directory?
-         *)
-        admit.
-
-      + eexists; split.
-        2: left; reflexivity.
-        (**
-         * What if, in an old disk, the block belongs to the same inode
-         * number, but that inode isn't in the tree?
-         *)
-        admit.
-
+      eexists; split.
+      2: right; reflexivity.
+      eapply dirtree_update_block; eauto.
     - (**
        * The block is now in the free list.
        *)
-
       eexists; split.
       2: left; reflexivity.
       eapply dirtree_update_free; eauto.
-  Admitted.
+  Qed.
 
 
   (**
