@@ -891,12 +891,11 @@ Module DIRTREE.
   (**
    * Helpers for proving [dirlist_safe] in postconditions.
    *)
-  Theorem dirlist_safe_mkdir : forall ilist freeblocks ilist' freeblocks' flag
+  Theorem dirlist_safe_mkdir : forall ilist freeblocks ilist' freeblocks'
                                       dnum tree_elem name inum,
-    BFILE.ilist_safe ilist  (BFILE.pick_balloc freeblocks  flag)
-                     ilist' (BFILE.pick_balloc freeblocks' flag) ->
-    dirtree_safe ilist  (BFILE.pick_balloc freeblocks  flag) (TreeDir dnum tree_elem)
-                 ilist' (BFILE.pick_balloc freeblocks' flag) (TreeDir dnum ((name, TreeDir inum []) :: tree_elem)).
+    BFILE.ilist_safe ilist freeblocks ilist' freeblocks' ->
+    dirtree_safe ilist freeblocks (TreeDir dnum tree_elem)
+                 ilist' freeblocks' (TreeDir dnum ((name, TreeDir inum []) :: tree_elem)).
   Proof.
     unfold dirtree_safe, BFILE.ilist_safe; intuition.
     specialize (H1 _ _ _ H2); destruct H1.
@@ -914,13 +913,12 @@ Module DIRTREE.
     exists (s :: pathname). eexists. eauto.
   Qed.
 
-  Theorem dirlist_safe_mkfile : forall ilist freeblocks ilist' freeblocks' flag
+  Theorem dirlist_safe_mkfile : forall ilist freeblocks ilist' freeblocks'
                                       dnum tree_elem name inum,
-    BFILE.ilist_safe ilist  (BFILE.pick_balloc freeblocks  flag)
-                     ilist' (BFILE.pick_balloc freeblocks' flag) ->
+    BFILE.ilist_safe ilist  freeblocks ilist' freeblocks' ->
     tree_names_distinct (TreeDir dnum ((name, TreeFile inum BFILE.bfile0) :: tree_elem)) ->
-    dirtree_safe ilist  (BFILE.pick_balloc freeblocks  flag) (TreeDir dnum tree_elem)
-                 ilist' (BFILE.pick_balloc freeblocks' flag) (TreeDir dnum ((name, TreeFile inum BFILE.bfile0) :: tree_elem)).
+    dirtree_safe ilist  freeblocks (TreeDir dnum tree_elem)
+                 ilist' freeblocks' (TreeDir dnum ((name, TreeFile inum BFILE.bfile0) :: tree_elem)).
   Proof.
     unfold dirtree_safe, BFILE.ilist_safe; intuition.
     specialize (H2 _ _ _ H3); destruct H2.
@@ -934,6 +932,7 @@ Module DIRTREE.
 
     - (* Same filename; contradiction because the file is empty *)
       exfalso.
+      destruct pathname; simpl in *; try congruence.
 
       (* Need a contradiction from
          [BFILE.block_belong_to_file ilist' bn inum0 off]
@@ -1545,6 +1544,7 @@ Module DIRTREE.
     apply pimpl_or_r; right. cancel.
     rewrite <- subtree_absorb; eauto.
     cancel.
+    
     admit. (* dirtree_safe update subtree *)
   Admitted.
 
