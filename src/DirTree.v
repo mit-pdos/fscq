@@ -1334,16 +1334,20 @@ Module DIRTREE.
     end.
 
   Theorem mkdir_ok' : forall fsxp dnum name mscs,
-    {< F mbase m Fm Ftop tree tree_elem,
-    PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) mscs hm *
-           [[ (Fm * rep fsxp Ftop tree)%pred (list2nmem m) ]] *
+    {< F mbase m Fm Ftop tree tree_elem ilist freeblocks,
+    PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) hm *
+           [[ (Fm * rep fsxp Ftop tree ilist freeblocks)%pred (list2nmem m) ]] *
            [[ tree = TreeDir dnum tree_elem ]]
-    POST:hm' RET:^(mscs,r)
-           exists m', LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') mscs hm' *
+    POST:hm' RET:^(mscs',r)
+           exists m', LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') hm' *
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
            ([[ r = None ]] \/
-            exists inum, [[ r = Some inum ]] *
-            [[ (Fm * rep fsxp Ftop (TreeDir dnum 
-                     ((name, TreeDir inum nil) :: tree_elem)))%pred (list2nmem m') ]])
+            exists inum ilist' freeblocks',
+            let tree' := TreeDir dnum ((name, TreeDir inum nil) :: tree_elem) in
+            [[ r = Some inum ]] *
+            [[ (Fm * rep fsxp Ftop tree' ilist' freeblocks')%pred (list2nmem m') ]] *
+            [[ dirtree_safe ilist  (BFILE.pick_balloc freeblocks  (MSAlloc mscs)) tree
+                            ilist' (BFILE.pick_balloc freeblocks' (MSAlloc mscs)) tree' ]] )
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
     >} mkdir fsxp dnum name mscs.
@@ -1371,10 +1375,15 @@ Module DIRTREE.
     apply emp_empty_mem.
     apply sep_star_comm. apply ptsto_upd_disjoint. auto. auto.
 
+    eapply dirlist_safe_mkdir.
+    denote (MSAlloc _ = MSAlloc _) as He; rewrite He in *; clear He.
+    denote (MSAlloc _ = MSAlloc _) as He; rewrite He in *; clear He.
+    eapply BFILE.ilist_safe_trans; eauto.
+
     step.
     Unshelve.
     all: try eauto; exact emp; try exact nil; try exact empty_mem; try exact BFILE.bfile0.
-  Admitted.
+  Qed.
 
 
   Theorem mkdir_ok : forall fsxp dnum name mscs,
