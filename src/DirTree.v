@@ -201,7 +201,7 @@ Module DIRTREE.
     )%pred.
 
   Definition dirtree_safe ilist1 free1 tree1 ilist2 free2 tree2 :=
-    incl free2 free1 /\
+    BFILE.ilist_safe ilist1 free1 ilist2 free2 /\
     forall inum off bn pathname f,
       find_subtree pathname tree2 = Some (TreeFile inum f) ->
       BFILE.block_belong_to_file ilist2 bn inum off ->
@@ -213,7 +213,7 @@ Module DIRTREE.
     dirtree_safe i f t i f t.
   Proof.
     unfold dirtree_safe; intuition eauto.
-    unfold incl; eauto.
+    apply BFILE.ilist_safe_refl.
   Qed.
 
   Theorem dirtree_safe_trans : forall i1 f1 t1 i2 t2 f2 i3 t3 f3,
@@ -223,12 +223,14 @@ Module DIRTREE.
   Proof.
     unfold dirtree_safe; intros.
     intuition.
-    eapply incl_tran; eauto.
+    eapply BFILE.ilist_safe_trans; eauto.
     edestruct H3; eauto.
     - intuition; repeat deex.
       edestruct H2; eauto.
     - right.
+      unfold BFILE.ilist_safe in *.
       unfold BFILE.block_is_unused in *; eauto.
+      intuition.
   Qed.
 
 
@@ -1041,7 +1043,6 @@ Module DIRTREE.
                                         ilist  freeblocks  subtree
                                         ilist' freeblocks' subtree',
     find_subtree pathname tree = Some subtree ->
-    BFILE.ilist_safe ilist freeblocks ilist' freeblocks' ->
     dirtree_safe ilist  freeblocks  subtree
                  ilist' freeblocks' subtree' ->
     dirtree_safe ilist  freeblocks  tree
@@ -1049,15 +1050,15 @@ Module DIRTREE.
   Proof.
     unfold dirtree_safe; intuition.
     destruct (pathname_decide_prefix pathname pathname0); repeat deex.
-    - edestruct H3; eauto.
+    - edestruct H2; eauto.
       eapply find_subtree_helper1. 2: eauto. eauto.
       left; intuition. repeat deex.
       do 2 eexists.
       erewrite find_subtree_app; eauto.
-    - clear H3.
+    - clear H2.
       unfold BFILE.ilist_safe in H0.
-      destruct H0.
-      specialize (H3 _ _ _ H4).
+      destruct H1.
+      specialize (H2 _ _ _ H3).
       intuition.
       left.
       intuition.
@@ -1544,9 +1545,8 @@ Module DIRTREE.
     apply pimpl_or_r; right. cancel.
     rewrite <- subtree_absorb; eauto.
     cancel.
-    
-    admit. (* dirtree_safe update subtree *)
-  Admitted.
+    eapply dirlist_safe_subtree; eauto.
+  Qed.
 
 
   Hint Extern 1 ({{_}} progseq (mkdir _ _ _ _) _) => apply mkdir_ok : prog.
