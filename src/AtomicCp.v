@@ -46,6 +46,8 @@ Set Implicit Arguments.
 
 Module ATOMICCP.
 
+  Parameter the_dnum : addr.
+
   Definition temp_fn := ".temp"%string.
   
   (** Programs **)
