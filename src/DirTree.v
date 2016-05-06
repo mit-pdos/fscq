@@ -180,13 +180,11 @@ Module DIRTREE.
    * in cases where [tree] is a subdirectory somewhere in the tree.
    *)
 
-  Definition rep fsxp F tree ilist frees ifrees :=
-    (exists bflist ipred1 ipred2,
+  Definition rep fsxp F tree ilist frees :=
+    (exists bflist freeinodes freeinode_pred,
      BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist ilist frees *
-     IAlloc.rep fsxp.(FSXPInodeAlloc1) (fst ifrees) ipred1 *
-     IAlloc.rep fsxp.(FSXPInodeAlloc2) (snd ifrees) ipred2 *
-     [[ (F * tree_pred fsxp.(FSXPInodeAlloc1) tree * ipred1 * ipred2)%pred (list2nmem bflist) ]] *
-     [[ BmapNBlocks fsxp.(FSXPInodeAlloc1) = BmapNBlocks fsxp.(FSXPInodeAlloc2) ]]
+     IAlloc.rep fsxp freeinodes freeinode_pred *
+     [[ (F * tree_pred fsxp tree * freeinode_pred)%pred (list2nmem bflist) ]]
     )%pred.
 
   Definition dirtree_safe i1 f1 i2 f2 :=
@@ -340,13 +338,13 @@ Module DIRTREE.
       cancel.
   Qed.
 
-  Lemma rep_tree_names_distinct : forall tree F fsxp Ftop m ilist frees ifrees,
-    (F * rep fsxp Ftop tree ilist frees ifrees)%pred m ->
+  Lemma rep_tree_names_distinct : forall tree F fsxp Ftop m ilist frees,
+    (F * rep fsxp Ftop tree ilist frees)%pred m ->
     tree_names_distinct tree.
   Proof.
     unfold rep; intros.
     destruct_lift H.
-    eapply rep_tree_names_distinct' with (xp := fsxp.(FSXPInodeAlloc1)).
+    eapply rep_tree_names_distinct' with (xp := fsxp).
     pred_apply' H1.
     cancel.
   Qed.
@@ -697,8 +695,8 @@ Module DIRTREE.
         eauto.
   Qed.
 
-  Lemma rep_tree_inodes_distinct : forall tree F fsxp Ftop m ilist frees ifrees,
-    (F * rep fsxp Ftop tree ilist frees ifrees)%pred m ->
+  Lemma rep_tree_inodes_distinct : forall tree F fsxp Ftop m ilist frees,
+    (F * rep fsxp Ftop tree ilist frees)%pred m ->
     tree_inodes_distinct tree.
   Proof.
     unfold rep, tree_inodes_distinct; intros.
@@ -708,27 +706,25 @@ Module DIRTREE.
     apply ptsto_conflict.
     eapply pimpl_apply. 2: apply H1.
 
-    cancel. instantiate (F0 := (dummy1 * dummy0 * Ftop)%pred). cancel.
+    cancel. instantiate (F0 := (dummy1 * Ftop)%pred). cancel.
     clear H1.
     induction tree using dirtree_ind2; simpl.
     cancel.
-    unfold tree_dir_names_pred. cancel. 
-    denote tree_dir_names_pred' as Hx; clear Hx.
+    unfold tree_dir_names_pred. cancel. clear H4.
     induction tree_ents; simpl.
     - cancel.
     - inversion H0.
       destruct a.
-      denote! (tree_pred _ _ =p=> _) as Hx; repeat rewrite Hx; simpl.
+      rewrite H3; simpl.
       rewrite ListPred.listpred_app.
       rewrite IHtree_ents; eauto.
-    Unshelve. all: auto; easy.
   Qed.
 
-  Theorem dirtree_update_block : forall pathname F0 tree fsxp F ilist freeblocks ifrees inum off v bn m f,
-    (F0 * rep fsxp F tree ilist freeblocks ifrees)%pred (list2nmem m) ->
+  Theorem dirtree_update_block : forall pathname F0 tree fsxp F ilist freeblocks inum off v bn m f,
+    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist bn inum off ->
-    (F0 * rep fsxp F (dirtree_update_inode tree inum off v) ilist freeblocks ifrees)%pred (list2nmem (updN m bn v)).
+    (F0 * rep fsxp F (dirtree_update_inode tree inum off v) ilist freeblocks)%pred (list2nmem (updN m bn v)).
   Proof.
     intros.
     apply rep_tree_names_distinct in H as Hnames.
@@ -760,10 +756,10 @@ Module DIRTREE.
     eapply pimpl_apply; [ | apply H ]. cancel.
   Qed.
 
-  Theorem dirtree_update_free : forall tree fsxp F F0 ilist freeblocks v bn m flag ifrees,
-    (F0 * rep fsxp F tree ilist freeblocks ifrees)%pred (list2nmem m) ->
+  Theorem dirtree_update_free : forall tree fsxp F F0 ilist freeblocks v bn m flag,
+    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
     BFILE.block_is_unused (BFILE.pick_balloc freeblocks flag) bn ->
-    (F0 * rep fsxp F tree ilist freeblocks ifrees)%pred (list2nmem (updN m bn v)).
+    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem (updN m bn v)).
   Proof.
     intros.
     unfold rep in *.
@@ -832,13 +828,13 @@ Module DIRTREE.
         intro; apply H5. subst; eauto.
   Qed.
 
-  Theorem dirtree_update_safe : forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks v bn inum off m flag ifrees,
+  Theorem dirtree_update_safe : forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks v bn inum off m flag,
     find_subtree pathname tree_newest = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist_newest bn inum off ->
     dirtree_safe2 ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
-    (F0 * rep fsxp F tree ilist freeblocks ifrees)%pred (list2nmem m) ->
+    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
     exists tree',
-    (F0 * rep fsxp F tree' ilist freeblocks ifrees)%pred (list2nmem (updN m bn v)) /\
+    (F0 * rep fsxp F tree' ilist freeblocks)%pred (list2nmem (updN m bn v)) /\
     (tree' = tree \/ tree' = dirtree_update_inode tree inum off v).
   Proof.
     intros.

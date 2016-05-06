@@ -541,9 +541,9 @@ End BALLOC.
 Module IAlloc.
 
   Module Sig <: AllocSig.
-    Definition xparams     := balloc_xparams.
-    Definition BMPStart xp := BmapStart xp.
-    Definition BMPLen   xp := BmapNBlocks xp.
+    Definition xparams     := fs_xparams.
+    Definition BMPStart xp := BmapStart (FSXPInodeAlloc xp).
+    Definition BMPLen   xp := BmapNBlocks (FSXPInodeAlloc xp).
 
     (* should return an address that fits in addrlen (goodSize addrlen _).
        valulen * valulen supports about 2^48 inodes *)
@@ -632,14 +632,6 @@ Module IAlloc.
        Alloc.BmpSig.xparams_ok; intuition.
     destruct_lift H.
     apply ino_valid_roundtrip'; auto.
-  Qed.
-
-  Lemma ino_valid_switch : forall xp1 xp2,
-    BmapNBlocks xp1 = BmapNBlocks xp2 ->
-    ino_valid xp1 = ino_valid xp2.
-  Proof.
-    unfold ino_valid, Sig.BMPLen; intuition; auto.
-    rewrite H; auto.
   Qed.
 
 End IAlloc.
