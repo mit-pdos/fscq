@@ -131,7 +131,7 @@ Module AFS.
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, attr) <- DIRTREE.getattr fsxp inum (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), attr).
+    rx ^((MSAlloc ams, ms), INODE.ABytes attr).
 
   Definition file_set_attr T fsxp inum attr ams rx : prog T :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
