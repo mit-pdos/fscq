@@ -759,6 +759,66 @@ Module DIRTREE.
     cancel.
   Qed.
 
+  Lemma tree_names_distinct_head_not_rest : forall inum e ents name path subtree,
+    tree_names_distinct (TreeDir inum (e :: ents)) ->
+    find_subtree (name::path) (TreeDir inum ents) = Some subtree ->
+    find_subtree (name::path) (TreeDir inum (e :: ents)) = Some subtree.
+  Proof.
+    destruct e; simpl; intros.
+    destruct (string_dec s name); eauto; subst.
+    inversion H.
+    inversion H4; subst.
+    clear H H3 H4 H8.
+    exfalso.
+    induction ents; simpl in *; try congruence.
+    destruct a; simpl in *; intuition.
+    destruct (string_dec s name); simpl in *; try congruence.
+    eapply IHents; eauto.
+  Qed.
+
+  Theorem tree_inodes_pathname_exists : forall tree inum,
+    tree_names_distinct tree ->
+    tree_inodes_distinct tree ->
+    In inum (tree_inodes tree) ->
+    exists pathname subtree,
+    find_subtree pathname tree = Some subtree /\ dirtree_inum subtree = inum.
+  Proof.
+    induction tree using dirtree_ind2.
+    - simpl; intros.
+      intuition; subst.
+      exists nil; eexists.
+      simpl; intuition eauto.
+    - simpl; intros.
+      intuition; subst.
+
+      exists nil; eexists.
+      simpl; intuition eauto.
+
+      cut (inum0 <> inum).
+      induction tree_ents; simpl in *; try solve [ exfalso; eauto ].
+      destruct a; simpl in *.
+      apply in_app_or in H3.
+      intuition.
+
+      * inversion H; subst. edestruct H6; repeat deex; eauto.
+        exists (s :: x). eexists. intuition eauto.
+        simpl. destruct (string_dec s s); congruence.
+
+      * inversion H; subst.
+        edestruct IHtree_ents; eauto.
+        destruct H3. destruct H3.
+        exists x; eexists.
+        intuition eauto.
+        destruct x.
+
+        simpl in *.
+        inversion H3. rewrite <- H10 in H5. simpl in *. congruence.
+        erewrite tree_names_distinct_head_not_rest; eauto.
+
+      * inversion H1.
+        intro; apply H5. subst; eauto.
+  Qed.
+
   Theorem dirtree_update_safe : forall ilist_newest free_newest tree fsxp F F0 ilist freeblocks v bn inum off m flag,
     BFILE.block_belong_to_file ilist_newest bn inum off ->
     dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) ilist_newest free_newest ->
