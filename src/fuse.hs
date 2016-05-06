@@ -56,7 +56,7 @@ nInodeBitmaps = 1
 nDescrBlocks :: Integer
 nDescrBlocks = 64
 
-type MSCS = Log.LOG__Coq_memstate
+type MSCS = (Bool, Log.LOG__Coq_memstate)
 type FSprog a = (MSCS -> ((MSCS, a) -> Prog.Coq_prog (MSCS, a)) -> Prog.Coq_prog (MSCS, a))
 type FSrunner = forall a. FSprog a -> IO a
 doFScall :: DiskState -> IORef MSCS -> FSrunner
@@ -485,7 +485,7 @@ fscqSetFileSize _ _ _ _ = return eIO
 fscqGetFileSystemStats :: FSrunner -> MVar Coq_fs_xparams -> String -> IO (Either Errno FileSystemStats)
 fscqGetFileSystemStats fr m_fsxp _ = withMVar m_fsxp $ \fsxp -> do
   (freeblocks, (freeinodes, ())) <- fr $ AsyncFS._AFS__statfs fsxp
-  block_bitmaps <- return $ coq_BmapNBlocks $ coq_FSXPBlockAlloc fsxp
+  block_bitmaps <- return $ coq_BmapNBlocks $ coq_FSXPBlockAlloc1 fsxp
   inode_bitmaps <- return $ coq_BmapNBlocks $ coq_FSXPInodeAlloc fsxp
   return $ Right $ FileSystemStats
     { fsStatBlockSize = 4096

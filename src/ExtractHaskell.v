@@ -1,6 +1,5 @@
 Require Import ExtrHaskellPrelude.
 Require Import AsyncFS.
-Require Import Testprog.
 
 Extraction Language Haskell.
 
@@ -20,4 +19,3 @@ Extract Constant AsyncFS.AFS.cachesize => "10000".
 
 Cd "../codegen".
 Recursive Extraction Library AsyncFS.
-Recursive Extraction Library Testprog.

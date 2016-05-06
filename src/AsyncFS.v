@@ -101,7 +101,7 @@ Module AFS.
         let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
         If (bool_dec ok true) {
           mscs <- LOG.sync (FSXPLog fsxp) mscs;
-          rx (Some (mscs, fsxp))
+          rx (Some ((BFILE.mk_memstate true mscs), fsxp))
         } else {
           rx None
         }
@@ -119,7 +119,7 @@ Module AFS.
     cs <- BUFCACHE.init_recover 10;
     let^ (cs, fsxp) <- SB.load cs;
     mscs <- LOG.recover (FSXPLog fsxp) cs;
-    rx ^(mscs, fsxp).
+    rx ^(BFILE.mk_memstate true mscs, fsxp).
 
   Definition file_get_attr T fsxp inum ams rx : prog T :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
@@ -287,7 +287,7 @@ Module AFS.
        LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm
      POST:hm' RET:^(ms, fsxp')
        [[ fsxp' = fsxp ]] * exists d n, [[ n <= length (snd ds) ]] *
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) ms hm' *
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
      XCRASH:hm'
        LOG.before_crash (FSXPLog fsxp) (SB.rep fsxp) ds hm'
@@ -484,7 +484,7 @@ Module AFS.
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
          [[ r = BFILE.BFAttr f ]]
   REC:hm' RET:^(mscs, fsxp)
-         exists d n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
+         exists d n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm' *
          [[ n <= length (snd ds) ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
   >>X} file_get_attr fsxp inum mscs >> recover.
@@ -558,7 +558,7 @@ Module AFS.
            LOG.rep (FSXPLog fsxp) (SB.rep  fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
            [[ r = fst vs ]]
     REC:hm' RET:^(mscs,fsxp)
-         exists d n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
+         exists d n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm' *
          [[ n <= length (snd ds) ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
     >>X} read_fblock fsxp inum off mscs >> recover.
@@ -693,11 +693,11 @@ Module AFS.
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]]
     REC:hm' RET:^(mscs,fsxp)
-      (exists d n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
+      (exists d n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm' *
          [[ n <= length (snd ds) ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]) \/
       (exists d dnew n ds' tree' f' ilist' frees',
-         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
+         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm' *
          [[ n <= length (snd ds') ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds'))) ]]] *
          [[ ds' = pushd dnew ds ]] *
@@ -884,7 +884,7 @@ Module AFS.
        [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
        [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
     REC:hm' RET:^(mscs,fsxp)
-      exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
+      exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm' *
       ((exists n, 
         [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] ) \/
        (exists tree' f' v' ilist' frees',
@@ -979,7 +979,7 @@ Module AFS.
         [[ tree' = update_subtree pathname (TreeFile inum  (BFILE.synced_file f)) tree ]]
     REC:hm' RET:^(mscs,fsxp)
       exists d,
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm' *
        ((exists n,  [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]) \/
          exists flist' F',
          [[[ d ::: (F' * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' ilist frees) ]]] *
