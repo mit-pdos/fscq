@@ -83,8 +83,8 @@ Module FileRecArray (FRA : FileRASig).
   Notation MSAlloc := BFILE.MSAlloc.
 
   (* find the first item that satisfies cond *)
-  Definition ifind T lxp ixp inum (cond : item -> addr -> bool) ms rx : prog T :=
-    let^ (ms, nr) <- BFILE.getlen lxp ixp inum ms;
+  Definition ifind T lxp ixp inum (cond : item -> addr -> bool) ms0 rx : prog T :=
+    let^ (ms, nr) <- BFILE.getlen lxp ixp inum ms0;
     let^ (ms) <- ForN i < nr
     Hashmap hm
     Ghost [ bxp F Fm Fi crash m0 m flist f items ilist frees ]
@@ -96,7 +96,8 @@ Module FileRecArray (FRA : FileRASig).
       [[[ flist ::: (Fi * inum |-> f) ]]] *
       [[[ RAData f ::: rep f items ]]] *
       [[ forall ix, ix < i * items_per_val ->
-                    cond (selN items ix item0) ix = false ]]
+                    cond (selN items ix item0) ix = false ]] *
+      [[ MSAlloc ms = MSAlloc ms0 ]]
     OnCrash  crash
     Begin
       let^ (ms, v) <- BFILE.read_array lxp ixp inum 0 i ms;
@@ -150,7 +151,7 @@ Module FileRecArray (FRA : FileRASig).
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-          [[ r = selN items ix item0 ]]
+          [[ r = selN items ix item0 /\ MSAlloc ms' = MSAlloc ms ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} get lxp ixp inum ix ms.
@@ -184,7 +185,8 @@ Module FileRecArray (FRA : FileRASig).
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist frees) ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
-          [[[ RAData f' ::: rep f' (updN items ix e) ]]]
+          [[[ RAData f' ::: rep f' (updN items ix e) ]]] *
+          [[ MSAlloc ms' = MSAlloc ms ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} put lxp ixp inum ix e ms.
   Proof.
@@ -262,13 +264,18 @@ Module FileRecArray (FRA : FileRASig).
           [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
-    POST:hm' RET: ^(ms', r) exists m',
-          [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
-          [[ r = true  ]] * exists flist' f' ilist' frees',
+    POST:hm' RET: ^(ms', r) exists m', [[ MSAlloc ms' = MSAlloc ms ]] *
+         ([[ r = false ]] * 
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
+          [[ r = true  ]] *
+          exists flist' f' ilist' frees',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist' frees') ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
-          [[[ RAData f' ::: rep f' (items ++ (updN block0 0 e)) ]]]
+          [[[ RAData f' ::: rep f' (items ++ (updN block0 0 e)) ]]] *
+          [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
+                              ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]])
+
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} extend lxp bxp ixp inum e ms.
   Proof.
@@ -293,7 +300,7 @@ Module FileRecArray (FRA : FileRASig).
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-          [[ r = items ]]
+          [[ r = items /\ MSAlloc ms' = MSAlloc ms ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} readall lxp ixp inum ms.
@@ -325,7 +332,10 @@ Module FileRecArray (FRA : FileRASig).
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist' frees') ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
-          [[[ RAData f' ::: emp ]]]
+          [[[ RAData f' ::: emp ]]] *
+          [[ MSAlloc ms' = MSAlloc ms ]] *
+          [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
+                              ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} init lxp bxp ixp inum ms.
   Proof.
@@ -347,6 +357,7 @@ Module FileRecArray (FRA : FileRASig).
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
+          [[ MSAlloc ms' = MSAlloc ms ]] *
         ( [[ r = None /\ forall i, i < length items ->
                          cond (selN items i item0) i = false  ]]
           \/ exists st,
@@ -421,7 +432,7 @@ Module FileRecArray (FRA : FileRASig).
           [[[ items ::: Fe * ix |-> e ]]]
     POST:hm' RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-          [[ r = e ]]
+          [[ r = e /\ MSAlloc ms' = MSAlloc ms ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} get_array lxp ixp inum ix ms.
@@ -449,7 +460,8 @@ Module FileRecArray (FRA : FileRASig).
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' items' ]]] *
           [[[ items' ::: Fe * ix |-> e ]]] *
-          [[ items' = updN items ix e ]]
+          [[ items' = updN items ix e ]] *
+          [[ MSAlloc ms' = MSAlloc ms ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} put_array lxp ixp inum ix e ms.
   Proof.
@@ -468,16 +480,20 @@ Module FileRecArray (FRA : FileRASig).
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]] *
           [[[ items ::: Fe ]]]
-    POST:hm' RET:^(ms', r) exists m',
-          [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
-          [[ r = true  ]] * exists flist' f' items' ilist' frees',
+    POST:hm' RET:^(ms', r) exists m', [[ MSAlloc ms' = MSAlloc ms ]] *
+         ([[ r = false ]] * 
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
+          [[ r = true  ]] *
+          exists flist' f' items' ilist' frees',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist' frees') ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' items' ]]] *
           [[[ items' ::: Fe * (length items) |-> e *
                 arrayN (length items + 1) (repeat item0 (items_per_val - 1)) ]]] *
-          [[ items' = items ++ (updN block0 0 e)  ]]
+          [[ items' = items ++ (updN block0 0 e)  ]] *
+          [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
+                              ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]])
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} extend_array lxp bxp ixp inum e ms.
   Proof.
@@ -507,6 +523,7 @@ Module FileRecArray (FRA : FileRASig).
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
+          [[ MSAlloc ms' = MSAlloc ms ]] *
         ( [[ r = None    /\ forall i, i < length items ->
                             cond (selN items i item0) i = false ]] \/
           exists st,

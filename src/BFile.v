@@ -831,7 +831,8 @@ Module BFILE.
     PRE:hm
       LOG.rep lxp F (LOG.NoTxn ds) (MSLL ms) hm
     POST:hm' RET:ms'
-      LOG.rep lxp F (LOG.NoTxn (ds!!, nil)) (MSLL ms') hm'
+      LOG.rep lxp F (LOG.NoTxn (ds!!, nil)) (MSLL ms') hm' *
+      [[ MSAlloc ms' = negb (MSAlloc ms) ]]
     XCRASH:hm'
       LOG.recover_any lxp F ds hm'
     >} sync lxp ixp ms.
