@@ -487,7 +487,18 @@ Proof.
     destruct (string_dec s fn1).
     congruence.
     simpl.
-Admitted.
+    congruence.
+    destruct (string_dec s fn1).
+    simpl.
+    destruct (string_dec s fn1).
+    reflexivity.
+    congruence.
+    simpl.
+    destruct (string_dec s fn1).
+    congruence.
+    rewrite IHents.
+    reflexivity.
+Qed.
 
 
 Lemma find_subtree_update_subtree_ne: forall fn1 fn2 tree elem,
