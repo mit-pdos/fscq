@@ -100,6 +100,19 @@ Proof.
   assumption.
 Qed.
 
+Lemma dirent_distinct_single: forall inum fn elem,
+  DIRTREE.tree_names_distinct elem ->
+  DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum [(fn, elem)]).
+Proof.
+    intros.
+    constructor.
+    simpl.
+    constructor.
+    eassumption.
+    apply Forall_nil.
+    constructor; eauto.
+    constructor.
+Qed.
 
 Lemma dirent_head_eq: forall (dents: list (string*DIRTREE.dirtree)) name inum s d,
   DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum ((s,d) :: dents)) ->
@@ -210,7 +223,7 @@ Proof.
   intros.
   induction ents.
   - unfold dirent_names; simpl.
-    admit.
+    intuition; eauto.
   - destruct a.
     destruct (string_dec fn s).
     rewrite dirent_add_app_eq.
@@ -223,7 +236,7 @@ Proof.
     simpl in *.
     intuition.
     eauto.
-Admitted.
+Qed.
 
 Lemma tree_names_distinct_map: forall (tree_elem: list (string*DIRTREE.dirtree)) inum s d,
    ~In s (dirent_names tree_elem) /\ DIRTREE.tree_names_distinct d
@@ -254,7 +267,7 @@ Proof.
   intros.
   induction ents.
   - simpl.
-    admit.
+    apply dirent_distinct_single; eauto.
   - destruct a.
     destruct (string_dec fn s).
     rewrite dirent_add_app_eq.
@@ -283,7 +296,7 @@ Proof.
     unfold dirent_names.
     simpl.
     left; auto.
- Admitted.
+ Qed.
 
 (* dirtree lemmas *)
 
@@ -395,8 +408,10 @@ Proof.
   intros.
   unfold DIRTREE.update_subtree.
   f_equal.
-  induction ents; subst; simpl.
-  - admit.
+  induction ents.
+  - simpl.
+    simpl in H.
+    intuition.
   - destruct a.
     simpl.
     destruct (string_dec s fn).
@@ -417,7 +432,7 @@ Proof.
     congruence.
     eauto.
     eapply DIRTREE.tree_name_distinct_rest; eauto.
-Admitted.
+Qed.
 
 Lemma update_update_subtree_eq: forall fn elem0 elem1 tree sub,
   DIRTREE.tree_names_distinct tree ->
