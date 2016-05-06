@@ -727,6 +727,7 @@ Module DIRTREE.
     cancel.
 
     rewrite subtree_extract in H3; eauto.
+    remember H3 as H3'; clear HeqH3'.
     erewrite dirtree_update_inode_update_subtree; eauto.
     rewrite <- subtree_absorb; eauto; simpl in *.
     eapply pimpl_apply. 2: eapply list2nmem_updN; pred_apply; cancel.
@@ -734,12 +735,17 @@ Module DIRTREE.
     rewrite <- H3.
     cancel.
 
-    (* IAlloc.ino_valid fsxp inum *)
-    admit.
+    destruct_lift H3'; eauto.
 
-    (* off < Datatypes.length (BFILE.BFData f) *)
-    admit.
-  Admitted.
+    simpl in *.
+    eapply pimpl_apply in H3'.
+    eapply list2nmem_sel with (i := inum) in H3'.
+    2: cancel.
+    rewrite H3'.
+
+    eapply BFILE.block_belong_to_file_bfdata_length; eauto.
+    eapply pimpl_apply; [ | apply H ]. cancel.
+  Qed.
 
   Theorem dirtree_update_free : forall tree fsxp F F0 ilist freeblocks v bn m flag,
     (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
