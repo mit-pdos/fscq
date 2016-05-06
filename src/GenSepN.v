@@ -767,17 +767,6 @@ Proof.
 Qed.
 
 
-Lemma skipn_selN_skipn : forall off A (l : list A) def,
-  off < length l ->
-  skipn off l = selN l off def :: skipn (S off) l.
-Proof.
-  induction off; simpl; intros.
-  destruct l; simpl in *; try omega; auto.
-  destruct l; simpl in *; try omega.
-  apply IHoff.
-  omega.
-Qed.
-
 Lemma arrayN_list2nmem : forall A (def : A) (a b : list A) F off,
   (F * arrayN off a)%pred (list2nmem b) ->
   a = firstn (length a) (skipn off b).

@@ -37,11 +37,15 @@ Record inode_xparams := {
 Record fs_xparams := {
   FSXPLog : log_xparams;
   FSXPInode : inode_xparams;
+  FSXPBlockAlloc1 : balloc_xparams;
+  FSXPBlockAlloc2 : balloc_xparams;
   FSXPInodeAlloc : balloc_xparams;
-  FSXPBlockAlloc : balloc_xparams;
   FSXPRootInum : addr;
   FSXPMaxBlock : addr
 }.
+
+Definition FSXPBlockAlloc fsxp :=
+  (FSXPBlockAlloc1 fsxp, FSXPBlockAlloc2 fsxp).
 
 Definition log_xparams_ok xp :=
   goodSize addrlen (DataStart xp) /\
@@ -58,7 +62,8 @@ Definition inode_xparams_ok xp :=
 Definition fs_xparams_ok xp :=
   log_xparams_ok (FSXPLog xp) /\
   inode_xparams_ok (FSXPInode xp) /\
-  balloc_xparams_ok (FSXPBlockAlloc xp) /\
+  balloc_xparams_ok (FSXPBlockAlloc1 xp) /\
+  balloc_xparams_ok (FSXPBlockAlloc2 xp) /\
   balloc_xparams_ok (FSXPInodeAlloc xp) /\
   goodSize addrlen (FSXPRootInum xp) /\
   goodSize addrlen (FSXPMaxBlock xp).

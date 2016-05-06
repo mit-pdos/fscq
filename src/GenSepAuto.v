@@ -82,12 +82,13 @@ Ltac simplen_rewrite := repeat match goal with
 
 Ltac genseplen_rewrite := repeat match goal with
   | [H : ( _ * ?a |-> ?v)%pred (list2nmem ?l) |- _ ] =>
-          apply list2nmem_inbound in H
+          first [rewrite_ignore H | apply list2nmem_inbound in H ]
   | [H : context [ listmatch ?a ?b ] |- _ ] =>
           match goal with
           | [ H' : length ?a = length ?b |- _ ] => idtac
           | [ H' : length ?b = length ?a |- _ ] => idtac
-          | _ => setoid_rewrite listmatch_length_pimpl in H; destruct_lift H
+          | _ => first [rewrite_ignore H |
+                        setoid_rewrite listmatch_length_pimpl in H; destruct_lift H ]
           end
 end.
 

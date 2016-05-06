@@ -26,7 +26,7 @@ Require Import Errno.
 Require Import AsyncDisk.
 Require Import GroupLog.
 Require Import SuperBlock.
-Require Import NEList.
+Require Import DiskSet.
 
 Set Implicit Arguments.
 Import ListNotations.

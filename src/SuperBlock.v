@@ -30,8 +30,10 @@ Module SB.
       ("ixstart",     Rec.WordF addrlen);
       ("ixlen",       Rec.WordF addrlen);
 
-      ("bastart",     Rec.WordF addrlen);
-      ("banblocks",   Rec.WordF addrlen);
+      ("bastart1",    Rec.WordF addrlen);
+      ("banblocks1",  Rec.WordF addrlen);
+      ("bastart2",    Rec.WordF addrlen);
+      ("banblocks2",  Rec.WordF addrlen);
 
       ("iastart",     Rec.WordF addrlen);
       ("ianblocks",   Rec.WordF addrlen);
@@ -55,7 +57,7 @@ Module SB.
   Definition superblock_pad0 := @Rec.of_word superblock_padded (wzero _).
 
   Definition pickle_superblock (fsxp : fs_xparams) : word (Rec.len superblock_padded) :=
-    let (lxp, ixp, ibxp, dbxp, rootinum, maxblock) := fsxp in
+    let (lxp, ixp, dbxp1, dbxp2, ibxp, rootinum, maxblock) := fsxp in
     let sb := superblock0
       :=> "data_start"  := addr2w (DataStart lxp)
       :=> "log_header"  := addr2w (LogHeader lxp)
@@ -65,8 +67,10 @@ Module SB.
       :=> "log_len"     := addr2w (LogLen lxp)
       :=> "ixstart"     := addr2w (IXStart ixp)
       :=> "ixlen"       := addr2w (IXLen ixp)
-      :=> "bastart"     := addr2w (BmapStart dbxp)
-      :=> "banblocks"   := addr2w (BmapNBlocks dbxp)
+      :=> "bastart1"    := addr2w (BmapStart dbxp1)
+      :=> "banblocks1"  := addr2w (BmapNBlocks dbxp1)
+      :=> "bastart2"    := addr2w (BmapStart dbxp2)
+      :=> "banblocks2"  := addr2w (BmapNBlocks dbxp2)
       :=> "iastart"     := addr2w (BmapStart ibxp)
       :=> "ianblocks"   := addr2w (BmapNBlocks ibxp)
       :=> "root_inum"   := addr2w rootinum
@@ -81,13 +85,15 @@ Module SB.
       # (sb :-> "log_data") # (sb :-> "log_len") in
     let ixp := Build_inode_xparams
       # (sb :-> "ixstart") # (sb :-> "ixlen") in
-    let dbxp := Build_balloc_xparams
-      # (sb :-> "bastart") # (sb :-> "banblocks") in
+    let dbxp1 := Build_balloc_xparams
+      # (sb :-> "bastart1") # (sb :-> "banblocks1") in
+    let dbxp2 := Build_balloc_xparams
+      # (sb :-> "bastart2") # (sb :-> "banblocks2") in
     let ibxp := Build_balloc_xparams
       # (sb :-> "iastart") # (sb :-> "ianblocks") in
     let rootinum := # (sb :-> "root_inum") in
     let maxblock := # (sb :-> "maxblock") in
-    Build_fs_xparams lxp ixp ibxp dbxp rootinum maxblock.
+    Build_fs_xparams lxp ixp dbxp1 dbxp2 ibxp rootinum maxblock.
 
 
   Theorem pickle_unpickle_superblock : forall fsxp,
@@ -100,7 +106,8 @@ Module SB.
     destruct FSXPLog.
     destruct FSXPInode.
     destruct FSXPInodeAlloc.
-    destruct FSXPBlockAlloc.
+    destruct FSXPBlockAlloc1.
+    destruct FSXPBlockAlloc2.
     unfold Rec.recget', Rec.recset'.
     unfold addr2w; simpl; intros.
     repeat rewrite wordToNat_natToWord_idempotent' by xparams_ok.
@@ -153,6 +160,7 @@ Module SB.
   Proof.
     unfold load, rep.
     hoare.
+    pred_apply; cancel.
     subst; apply v_pickle_unpickle_superblock; auto.
   Qed.
 

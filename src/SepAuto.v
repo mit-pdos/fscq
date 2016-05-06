@@ -17,7 +17,11 @@ Hint Extern 1 (exists _, hashmap_subset _ _ _) => try solve_hashmap_subset.
 
 Ltac set_evars :=
   repeat match goal with
-              | [ |- context[?e] ] => is_evar e; let H := fresh in set (H := e)
+              | [ |- context[?e] ] => is_evar e; 
+                 match type of e with
+                 | prod _ _ => idtac
+                 | _ => let H := fresh in set (H := e)
+                 end
             end.
 
 Ltac subst_evars :=
@@ -1200,6 +1204,7 @@ Ltac destruct_branch :=
 Ltac prestep :=
   intros;
   try autounfold with hoare_unfold in *;
+  repeat destruct_pair_once;
   try cancel;
   repeat destruct_branch;
 (*   remember_xform; *)

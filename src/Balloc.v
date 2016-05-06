@@ -211,7 +211,8 @@ Module BmapAlloc (Sig : AllocSig).
           [[ r = Some bn ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
           [[[ m' ::: (Fm * @rep V xp (remove addr_eq_dec bn freelist) freepred') ]]] *
           [[ freepred =p=> freepred' * bn |->? ]] *
-          [[ bn <> 0 /\ bn < (BMPLen xp) * valulen ]]
+          [[ bn <> 0 /\ bn < (BMPLen xp) * valulen ]] *
+          [[ In bn freelist ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} alloc lxp xp ms.
   Proof.
@@ -230,6 +231,7 @@ Module BmapAlloc (Sig : AllocSig).
     eapply is_avail_in_freelist; eauto.
     eapply avail_nonzero_not_zero; eauto.
     eapply bmap_rep_length_ok1; eauto.
+    eapply is_avail_in_freelist; eauto.
   Qed.
 
 
@@ -330,7 +332,8 @@ Module BALLOC.
         \/ exists bn m',
            [[ r = Some bn ]] * [[ bn_valid xp bn ]] *
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * bn |->? * rep xp (remove addr_eq_dec bn freeblocks)) ]]]
+           [[[ m' ::: (Fm * bn |->? * rep xp (remove addr_eq_dec bn freeblocks)) ]]] *
+           [[ In bn freeblocks ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} alloc lxp xp ms.
   Proof.
@@ -486,7 +489,6 @@ Module BALLOC.
     unfold bn_valid; auto.
   Qed.
 
-
   Theorem bn_valid_roundtrip' : forall xp a,
     Sig.xparams_ok xp ->
     bn_valid xp a ->
@@ -508,6 +510,14 @@ Module BALLOC.
        Alloc.BmpSig.xparams_ok; intuition.
     destruct_lift H.
     apply bn_valid_roundtrip'; auto.
+  Qed.
+
+  Lemma bn_valid_switch : forall xp1 xp2,
+    BmapNBlocks xp1 = BmapNBlocks xp2 ->
+    bn_valid xp1 = bn_valid xp2.
+  Proof.
+    unfold bn_valid; intuition; auto.
+    rewrite H; auto.
   Qed.
 
   Definition items_per_val := Alloc.BmpSig.items_per_val.
@@ -562,6 +572,67 @@ Module IAlloc.
   Hint Extern 0 (okToUnify (rep ?xp _ _) (rep ?xp _ _)) => constructor : okToUnify.
 
   Definition xform_rep := Alloc.xform_rep.
+
+  Lemma xparams_ok_goodSize : forall xp ino,
+    Sig.xparams_ok xp ->
+    ino_valid xp ino ->
+    goodSize addrlen ino.
+  Proof.
+    unfold Sig.xparams_ok, ino_valid; intuition.
+    eapply goodSize_trans.
+    eapply Nat.lt_le_incl; eauto.
+    eapply goodSize_trans.
+    eapply mult_le_compat_r; eauto.
+    unfold goodSize.
+    replace addrlen with (16 + 16 + 16 + 16) by (compute; auto).
+    rewrite <- Nat.mul_1_r at 1.
+    repeat apply mult_pow2_bound; try apply valulen_bound.
+    apply one_lt_pow2.
+  Qed.
+
+  Lemma ino_valid_goodSize : forall V F l m xp a prd,
+    (F * @rep V xp l prd)%pred m ->
+    ino_valid xp a ->
+    goodSize addrlen a.
+  Proof.
+    unfold rep, ino_valid.
+    unfold Alloc.rep, Alloc.Bmp.rep, Alloc.Bmp.items_valid,
+       Alloc.BmpSig.xparams_ok; intuition.
+    destruct_lift H.
+    eapply xparams_ok_goodSize; eauto.
+  Qed.
+
+  Lemma ino_valid_goodSize_pimpl : forall V l xp p,
+    @rep V xp l p <=p=> [[ forall a, ino_valid xp a -> goodSize addrlen a ]] * rep xp l p.
+  Proof.
+    intros; split.
+    unfold pimpl; intros.
+    pred_apply; cancel.
+    apply emp_star in H.
+    eapply ino_valid_goodSize; eauto.
+    cancel.
+  Qed.
+
+  Theorem ino_valid_roundtrip' : forall xp a,
+    Sig.xparams_ok xp ->
+    ino_valid xp a ->
+    ino_valid xp (# (natToWord addrlen a)).
+  Proof.
+    unfold ino_valid; intuition.
+    rewrite wordToNat_natToWord_idempotent'; auto.
+    eapply xparams_ok_goodSize; eauto.
+  Qed.
+
+  Theorem ino_valid_roundtrip : forall V xp a F l m p,
+    (F * @rep V xp l p)%pred m ->
+    ino_valid xp a ->
+    ino_valid xp (# (natToWord addrlen a)).
+  Proof.
+    unfold rep, Alloc.rep, Alloc.Bmp.rep, Alloc.Bmp.items_valid,
+       Alloc.BmpSig.xparams_ok; intuition.
+    destruct_lift H.
+    apply ino_valid_roundtrip'; auto.
+  Qed.
 
 End IAlloc.
 

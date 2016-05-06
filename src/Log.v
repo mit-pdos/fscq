@@ -30,7 +30,7 @@ Require Import MapUtils.
 Require Import ListPred.
 Require Import LogReplay.
 Require Import GroupLog.
-Require Import NEList.
+Require Import DiskSet.
 Require Import RelationClasses.
 Require Import Morphisms.
 
@@ -58,15 +58,15 @@ Module LOG.
 
 
   Inductive state :=
-  | NoTxn (cur : GLog.diskset)
+  | NoTxn (cur : diskset)
   (* No active transaction, MemLog.Synced or MemLog.Applying *)
 
-  | ActiveTxn (old : GLog.diskset) (cur : diskstate)
+  | ActiveTxn (old : diskset) (cur : diskstate)
   (* A transaction is in progress.
    * It started from the first memory and has evolved into the second.
    *)
 
-  | FlushingTxn (new : GLog.diskset)
+  | FlushingTxn (new : diskset)
   (* A flushing is in progress
    *)
 
@@ -364,14 +364,15 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
       [[[ ds!! ::: (Fm * a |-> vs) ]]]
-    POST:hm' RET:ms' exists m,
-      rep xp F (ActiveTxn (m, nil) m) ms' hm' *
-      [[[ m ::: (Fm * a |-> (v, vsmerge vs)) ]]]
+    POST:hm' RET:ms' exists ds' ds0,
+      rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
+      [[[ ds'!! ::: (Fm * a |-> (v, vsmerge vs)) ]]] *
+      [[ ds' = dsupd ds0 a (v, vsmerge vs) ]] *
+      [[ ds0 = ds \/ ds0 = (ds!!, nil) ]]
     XCRASH:hm'
       recover_any xp F ds hm' \/
-      exists ms' m',
-      rep xp F (ActiveTxn (m', nil) m') ms' hm' *
-          [[[ m' ::: (Fm * a |-> (v, vsmerge vs)) ]]]
+      intact xp F (updN (ds !!) a (v, vsmerge vs), nil) hm' \/
+      intact xp F (updN (fst ds) a (v, vsmerge vs), nil) hm'
     >} dwrite xp a v ms.
   Proof.
     unfold dwrite, recover_any.
@@ -379,22 +380,37 @@ Module LOG.
     step; subst.
 
     eapply map_valid_remove; autorewrite with lists; eauto.
-    setoid_rewrite singular_latest at 2; simpl; auto.
-    rewrite length_updN; auto.
-
+    rewrite dsupd_latest_length; auto.
+    rewrite dsupd_latest.
     apply updN_replay_disk_remove_eq; eauto.
+    rewrite dsupd_latest.
+    eapply list2nmem_updN; eauto.
+    setoid_rewrite singular_latest at 1; simpl; auto.
+    eapply map_valid_remove; autorewrite with lists; eauto.
+    apply updN_replay_disk_remove_eq; eauto.
+    rewrite dsupd_latest.
+    eapply list2nmem_updN; eauto.
 
     (* crash conditions *)
     xcrash.
     or_l; cancel; xform_normr; cancel.
-    or_r; cancel; xform_normr; cancel.
-    xform_normr; cancel.
+
+    or_r; or_l; cancel.
+    unfold intact; xform_normr.
+    or_r; unfold rep, rep_inner.
+    xform_normr; erewrite snd_pair; eauto; cancel.
+    eassign (mk_mstate (Map.remove a (MSTxn ms_1)) x_1); eauto.
+    eapply map_valid_remove; autorewrite with lists; eauto.
+    unfold latest; destruct ds; simpl; rewrite length_updN; auto.
+
+    or_r; or_r; cancel.
+    unfold intact; xform_normr.
+    or_r; unfold rep, rep_inner.
+    xform_normr; erewrite snd_pair; eauto; cancel.
     eassign (mk_mstate (Map.remove a (MSTxn ms_1)) x_1); eauto.
     eapply map_valid_remove; autorewrite with lists; eauto.
     setoid_rewrite singular_latest at 2; simpl; auto.
-    rewrite length_updN; auto.
-    apply updN_replay_disk_remove_eq; eauto.
-    eauto.
+    erewrite GLog.cached_length_latest, length_updN; eauto.
 
     Unshelve. eauto.
   Qed.
@@ -405,9 +421,10 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
       [[[ ds!! ::: (Fm * a |-> vs) ]]]
-    POST:hm' RET:ms' exists m,
-      rep xp F (ActiveTxn (m, nil) m) ms' hm' *
-      [[[ m ::: (Fm * a |-> (fst vs, nil)) ]]]
+    POST:hm' RET:ms' exists ds' ds0,
+      rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
+      [[ ds' = dssync ds0 a ]] *
+      [[ ds0 = ds \/ ds0 = (ds!!, nil) ]]
     XCRASH:hm'
       recover_any xp F ds hm'
     >} dsync xp a ms.
@@ -415,10 +432,12 @@ Module LOG.
     unfold dsync, recover_any.
     step.
     step; subst.
-    apply map_valid_updN; auto.
-    setoid_rewrite singular_latest at 2; simpl; auto.
-    rewrite <- replay_disk_vssync_comm.
-    substl ds!! at 1; auto.
+    rewrite dssync_latest; unfold vssync; apply map_valid_updN; auto.
+    rewrite dssync_latest; substl (ds!!) at 1.
+    apply replay_disk_vssync_comm.
+    rewrite dssync_latest; unfold vssync; apply map_valid_updN; auto.
+    setoid_rewrite singular_latest at 1 2; simpl; auto.
+    substl (ds!!) at 1; apply replay_disk_vssync_comm.
 
     (* crashes *)
     xcrash.
@@ -1364,14 +1383,14 @@ Module LOG.
       rep xp F (ActiveTxn ds ds!!) ms hm *
       [[ NoDup (map fst avl) ]] *
       [[[ ds!! ::: Fm * listmatch (fun v e => (fst e) |-> v) ovl avl ]]]
-    POST:hm' RET:ms' exists m',
-      rep xp F (ActiveTxn (m', nil) m') ms' hm' *
-      [[[ m' ::: Fm * listmatch (fun v e => (fst e) |-> (snd e, vsmerge v)) ovl avl ]]]
+    POST:hm' RET:ms' exists ds',
+      rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
+      [[[ ds'!! ::: Fm * listmatch (fun v e => (fst e) |-> (snd e, vsmerge v)) ovl avl ]]] *
+      [[ ds' = (dsupd_vecs ds avl) \/ ds' = dsupd_vecs (ds!!, nil) avl ]]
     XCRASH:hm'
       recover_any xp F ds hm' \/
-      exists ms' m',
-      rep xp F (ActiveTxn (m', nil) m') ms' hm' *
-      [[[ m' ::: Fm * listmatch (fun v e => (fst e) |-> (snd e, vsmerge v)) ovl avl ]]]
+      intact xp F (vsupd_vecs (ds !!) avl, nil) hm' \/
+      intact xp F (vsupd_vecs (fst ds) avl, nil) hm'
     >} dwrite_vecs xp avl ms.
   Proof.
     unfold dwrite_vecs.
@@ -1380,7 +1399,9 @@ Module LOG.
 
     step; subst.
     apply map_valid_map0.
-    apply dwrite_vsupd_vecs_ok; auto.
+    rewrite dsupd_vecs_latest; apply dwrite_vsupd_vecs_ok; auto.
+    apply map_valid_map0.
+    rewrite dsupd_vecs_latest; apply dwrite_vsupd_vecs_ok; auto.
 
     (* crash conditions *)
     xcrash.
@@ -1389,12 +1410,19 @@ Module LOG.
     eassign x; eassign (mk_mstate vmap0 (MSGLog ms_1), x0); simpl; eauto.
     pred_apply; cancel.
 
-    or_r; cancel.
-    xform_normr; cancel.
-    xform_normr; cancel.
+    or_r; or_l; cancel.
+    unfold intact; xform_normr.
+    or_l; unfold rep, rep_inner; xform_normr; cancel.
+    erewrite snd_pair; eauto.
     eassign (mk_mstate vmap0 x_1); eauto.
-    simpl; apply map_valid_map0. eauto.
-    apply dwrite_vsupd_vecs_ok; eauto.
+    pred_apply; cancel.
+
+    or_r; or_r; cancel.
+    unfold intact; xform_normr.
+    or_l; unfold rep, rep_inner; xform_normr; cancel.
+    erewrite snd_pair; eauto.
+    eassign (mk_mstate vmap0 x_1); eauto.
+    pred_apply; cancel.
   Qed.
 
 
@@ -1403,9 +1431,10 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
       [[[ ds!! ::: Fm * listmatch (fun vs a => a |-> vs) vsl al ]]]
-    POST:hm' RET:ms' exists m',
-      rep xp F (ActiveTxn (m', nil) m') ms' hm' *
-      [[[ m' ::: Fm * listmatch (fun vs a => a |=> fst vs) vsl al ]]]
+    POST:hm' RET:ms' exists ds',
+      rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
+      [[[ ds'!! ::: Fm * listmatch (fun vs a => a |=> fst vs) vsl al ]]] *
+      [[ ds' = (dssync_vecs ds al) \/ ds' = dssync_vecs (ds!!, nil) al ]]
     XCRASH:hm'
       recover_any xp F ds hm'
     >} dsync_vecs xp al ms.
@@ -1415,9 +1444,13 @@ Module LOG.
     eapply listmatch_ptsto_list2nmem_inbound.
     pred_apply; rewrite listmatch_sym; eauto.
 
-    step; subst.
+    step; subst; try rewrite dssync_vecs_latest.
     apply map_valid_vssync_vecs; auto.
-    setoid_rewrite singular_latest at 2; simpl; auto.
+    rewrite <- replay_disk_vssync_vecs_comm.
+    f_equal; auto.
+    apply dsync_vssync_vecs_ok; auto.
+
+    apply map_valid_vssync_vecs; auto.
     rewrite <- replay_disk_vssync_vecs_comm.
     f_equal; auto.
     apply dsync_vssync_vecs_ok; auto.

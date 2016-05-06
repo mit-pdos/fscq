@@ -229,3 +229,36 @@ End NonEmptyList.
 
 Notation " ds '!!'" := (latest ds) (at level 1).
 
+Definition d_map A B (f : A -> B) (ds : nelist A) :=
+  (f (fst ds), map f (snd ds)).
+
+Lemma d_map_latest : forall A B (f : A -> B) ds,
+  latest (d_map f ds) = f (latest ds).
+Proof.
+  unfold latest, d_map; intros.
+  destruct ds, l; simpl; auto.
+Qed.
+
+Lemma d_map_fst : forall A B (f : A -> B) ds,
+  fst (d_map f ds) = f (fst ds).
+Proof.
+  unfold d_map; intros; auto.
+Qed.
+
+Lemma d_map_nthd : forall A B (f : A -> B) ds n,
+  nthd n (d_map f ds) = f (nthd n ds).
+Proof.
+  unfold d_map; intros; simpl.
+  destruct n.
+  repeat rewrite nthd_0; auto.
+  unfold nthd; destruct (lt_dec n (length (snd ds))); simpl.
+  erewrite selN_map, map_length; auto.
+  rewrite map_length; omega.
+  rewrite map_length.
+  replace (length (snd ds) - S n) with 0 by omega.
+  destruct ds, l; simpl; auto.
+Qed.
+
+
+
+

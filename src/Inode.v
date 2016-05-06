@@ -290,6 +290,13 @@ Module INODE.
     unfold Rec.well_formed in H; simpl in H; intuition.
   Qed.
 
+  Theorem rep_bxp_switch : forall bxp bxp' xp ilist,
+    BmapNBlocks bxp = BmapNBlocks bxp' ->
+    rep bxp xp ilist <=p=> rep bxp' xp ilist.
+  Proof.
+    unfold rep, inode_match, Ind.rep, Ind.indrep, BALLOC.bn_valid; intros.
+    split; rewrite H; reflexivity.
+  Qed.
 
   (**************  Automation *)
 
@@ -532,7 +539,8 @@ Module INODE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOC.rep bxp freelist') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
-           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) (IAttr ino) ]]
+           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) (IAttr ino) ]] *
+           [[ incl freelist freelist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} shrink lxp bxp xp inum nr ms.
   Proof.
@@ -592,7 +600,8 @@ Module INODE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOC.rep bxp freelist') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
-           [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino) ]]
+           [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino) ]] *
+           [[ incl freelist' freelist ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} grow lxp bxp xp inum bn ms.
   Proof.
