@@ -1142,10 +1142,12 @@ Module GLog.
       auto.
       auto.
       eassign (S x0); intuition; simpl.
-      erewrite <- dset_match_length by eauto; omega.
-      erewrite <- dset_match_nthd_S by (eauto; omega).
+      erewrite <- dset_match_length by eauto.
+      apply lt_le_S; apply Nat.le_neq; eauto.
+      erewrite <- dset_match_nthd_S; eauto.
       pred_apply.
       rewrite selR_inb by omega; auto.
+      apply lt_le_S; apply Nat.le_neq; eauto.
 
     - norm. cancel.
       or_r; cancel.
@@ -1154,7 +1156,7 @@ Module GLog.
       auto.
       eassign x0.
       intuition.
-      erewrite <- dset_match_length by eauto; omega.
+      erewrite <- dset_match_length; eauto.
   Qed.
 
   Lemma crash_xform_recovering : forall xp d mm hm,
