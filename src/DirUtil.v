@@ -436,7 +436,7 @@ Qed.
 
 Lemma update_update_subtree_eq: forall fn elem0 elem1 tree sub,
   DIRTREE.tree_names_distinct tree ->
-  DIRTREE.find_subtree [fn] tree = Some sub ->
+  DIRTREE.find_subtree [fn] tree = Some sub ->   (* xxx change to same as next lemma *)
   DIRTREE.tree_names_distinct elem0 ->
   DIRTREE.update_subtree [fn] elem1 (DIRTREE.update_subtree [fn] elem0 tree) =
   DIRTREE.update_subtree [fn] elem1 tree.
@@ -456,12 +456,53 @@ Proof.
   eapply dent_in_add_to_distinct; eauto.
 Qed.
 
+Lemma dent_find_update_ne: forall fn1 fn2 ents elem,
+  fn1 <> fn2 ->
+  fold_right (DIRTREE.find_subtree_helper (fun tree0 : DIRTREE.dirtree => Some tree0) fn1) None 
+    (map (DIRTREE.update_subtree_helper (fun _ : DIRTREE.dirtree => elem) fn2) ents) =
+  fold_right (DIRTREE.find_subtree_helper (fun tree0 : DIRTREE.dirtree => Some tree0) fn1) None ents.
+Proof.
+  intros.
+  induction ents.
+  - simpl; eauto.
+  - destruct a.
+    rewrite map_cons.
+    erewrite cons_app at 1.
+    destruct (string_dec s fn2).
+    simpl. subst.
+    destruct (string_dec fn2 fn2).
+    destruct (string_dec fn2 fn1).
+    congruence.
+    simpl.
+    destruct (string_dec fn2 fn1).
+    congruence.
+    erewrite IHents; auto.
+    simpl.
+    destruct (string_dec fn2 fn1).
+    reflexivity.
+    congruence.
+    simpl.
+    destruct (string_dec s fn2).
+    simpl.
+    destruct (string_dec s fn1).
+    congruence.
+    simpl.
+Admitted.
+
+
 Lemma find_subtree_update_subtree_ne: forall fn1 fn2 tree elem,
   fn1 <> fn2 ->
+  DIRTREE.dirtree_isdir tree = true ->   
   DIRTREE.find_subtree [fn1] (DIRTREE.update_subtree [fn2] elem tree) = 
     DIRTREE.find_subtree [fn1] tree.
 Proof.
-Admitted.
+  intros.
+  eapply DIRTREE.dirtree_dir_parts in H0.
+  unfold DIRTREE.update_subtree.
+  rewrite H0.
+  unfold DIRTREE.find_subtree.
+  rewrite dent_find_update_ne; auto.
+Qed.
 
 
 Global Opaque DIRTREE.tree_graft.
