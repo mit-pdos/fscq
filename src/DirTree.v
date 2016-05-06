@@ -1129,19 +1129,21 @@ Module DIRTREE.
     erewrite find_subtree_none; eauto.
   Qed.
 
+  Notation MSLL := BFILE.MSLL.
+  Notation MSAlloc := BFILE.MSAlloc.
 
   Definition namei T fsxp dnum (fnlist : list string) mscs rx : prog T :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
     let^ (mscs, inum, isdir) <- ForEach fn fnrest fnlist
       Hashmap hm
-      Ghost [ mbase m F Fm Ftop treetop bflist freeinodes freeinode_pred ]
+      Ghost [ mbase m F Fm Ftop treetop bflist freeinodes freeinode_pred ilist freeblocks mscs0 ]
       Loopvar [ mscs inum isdir ]
       Continuation lrx
       Invariant
-        LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) mscs hm *
+        LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) hm *
         exists tree,
-        [[ (Fm * BFILE.rep bxp ixp bflist *
+        [[ (Fm * BFILE.rep bxp ixp bflist ilist freeblocks *
             IAlloc.rep ibxp freeinodes freeinode_pred)%pred
            (list2nmem m) ]] *
         [[ (Ftop * tree_pred ibxp treetop * freeinode_pred)%pred (list2nmem bflist) ]] *
@@ -1150,7 +1152,8 @@ Module DIRTREE.
         [[ isdir = dirtree_isdir tree ]] *
         [[ find_name fnlist treetop = find_name fnrest tree ]] *
         [[ isdir = true -> (exists Fsub, 
-                   Fsub * tree_pred ibxp tree * freeinode_pred)%pred (list2nmem bflist) ]]
+                   Fsub * tree_pred ibxp tree * freeinode_pred)%pred (list2nmem bflist) ]] *
+        [[ MSAlloc mscs = MSAlloc mscs0 ]]
       OnCrash
         LOG.intact fsxp.(FSXPLog) F mbase hm
       Begin
@@ -1169,14 +1172,15 @@ Module DIRTREE.
    Local Hint Unfold SDIR.rep_macro rep : hoare_unfold.
 
   Theorem namei_ok : forall fsxp dnum fnlist mscs,
-    {< F mbase m Fm Ftop tree,
-    PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) mscs hm *
-           [[ (Fm * rep fsxp Ftop tree)%pred (list2nmem m) ]] *
+    {< F mbase m Fm Ftop tree ilist freeblocks,
+    PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) hm *
+           [[ (Fm * rep fsxp Ftop tree ilist freeblocks)%pred (list2nmem m) ]] *
            [[ dnum = dirtree_inum tree ]] *
            [[ dirtree_isdir tree = true ]]
-    POST:hm' RET:^(mscs,r)
-           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) mscs hm' *
-           [[ r = find_name fnlist tree ]]
+    POST:hm' RET:^(mscs',r)
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs') hm' *
+           [[ r = find_name fnlist tree ]] *
+           [[ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
     >} namei fsxp dnum fnlist mscs.
@@ -1235,36 +1239,40 @@ Module DIRTREE.
 
   Hint Extern 1 ({{_}} progseq (namei _ _ _ _) _) => apply namei_ok : prog.
 
-  Definition mkfile T fsxp dnum name mscs rx : prog T :=
+  Definition mkfile T fsxp dnum name fms rx : prog T :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
-    let^ (mscs, oi) <- IAlloc.alloc lxp ibxp mscs;
+    let '(al, ms) := (MSAlloc fms, MSLL fms) in
+    let^ (ms, oi) <- IAlloc.alloc lxp ibxp ms;
+    let fms := BFILE.mk_memstate al ms in
     match oi with
-    | None => rx ^(mscs, None)
+    | None => rx ^(fms, None)
     | Some inum =>
-      let^ (mscs, ok) <- SDIR.link lxp bxp ixp dnum name inum false mscs;
+      let^ (fms, ok) <- SDIR.link lxp bxp ixp dnum name inum false fms;
       If (bool_dec ok true) {
-        mscs <- BFILE.reset lxp bxp ixp inum mscs;
-        rx ^(mscs, Some (inum : addr))
+        fms <- BFILE.reset lxp bxp ixp inum fms;
+        rx ^(fms, Some (inum : addr))
       } else {
-        rx ^(mscs, None)
+        rx ^(fms, None)
       }
     end.
 
 
-  Definition mkdir T fsxp dnum name mscs rx : prog T :=
+  Definition mkdir T fsxp dnum name fms rx : prog T :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
-    let^ (mscs, oi) <- IAlloc.alloc lxp ibxp mscs;
+    let '(al, ms) := (MSAlloc fms, MSLL fms) in
+    let^ (ms, oi) <- IAlloc.alloc lxp ibxp ms;
+    let fms := BFILE.mk_memstate al ms in
     match oi with
-    | None => rx ^(mscs, None)
+    | None => rx ^(fms, None)
     | Some inum =>
-      let^ (mscs, ok) <- SDIR.link lxp bxp ixp dnum name inum true mscs;
+      let^ (fms, ok) <- SDIR.link lxp bxp ixp dnum name inum true fms;
       If (bool_dec ok true) {
-        mscs <- BFILE.reset lxp bxp ixp inum mscs;
-        rx ^(mscs, Some (inum : addr))
+        fms <- BFILE.reset lxp bxp ixp inum fms;
+        rx ^(fms, Some (inum : addr))
       } else {
-        rx ^(mscs, None)
+        rx ^(fms, None)
       }
     end.
 
@@ -1289,7 +1297,7 @@ Module DIRTREE.
     denote tree_dir_names_pred as Hx;
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
     step.
-    admit. (* goodSize *)
+    admit. (* goodSize, probably should use an IAlloc equivalent of [BALLOC.bn_valid_goodSize] *)
     step.
     step.
     step.
@@ -1394,6 +1402,7 @@ Module DIRTREE.
         | _ => rx ^(mscs, false)
         end
       };
+      mscs <- BFILE.reset lxp bxp ixp inum mscs;
       let^ (mscs, ok) <- SDIR.unlink lxp ixp dnum name mscs;
       If (bool_dec ok true) {
         mscs <- IAlloc.free lxp ibxp inum mscs;
@@ -1707,6 +1716,9 @@ Module DIRTREE.
       match osrc with
       | None => rx ^(mscs, false)
       | Some (inum, inum_isdir) =>
+        (* XXX need to look up dst_inum first.. *)
+        mscs <- BFILE.reset lxp bxp ixp dst_inum mscs;
+
         let^ (mscs, _) <- SDIR.unlink lxp ixp dsrc srcname mscs;
         let^ (mscs, odstdir) <- namei fsxp dnum dstpath mscs;
         match odstdir with
