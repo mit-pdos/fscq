@@ -187,10 +187,7 @@ Module DIRTREE.
      [[ (F * tree_pred fsxp tree * freeinode_pred)%pred (list2nmem bflist) ]]
     )%pred.
 
-  Definition dirtree_safe i1 f1 i2 f2 :=
-    BFILE.ilist_safe i1 f1 i2 f2.
-
-  Definition dirtree_safe2 ilist1 free1 tree1 ilist2 free2 tree2 :=
+  Definition dirtree_safe ilist1 free1 tree1 ilist2 free2 tree2 :=
     incl free2 free1 /\
     forall inum off bn pathname f,
       find_subtree pathname tree2 = Some (TreeFile inum f) ->
@@ -198,6 +195,28 @@ Module DIRTREE.
       ((BFILE.block_belong_to_file ilist1 bn inum off /\
         exists pathname' f', find_subtree pathname' tree1 = Some (TreeFile inum f')) \/
        BFILE.block_is_unused free1 bn).
+
+  Theorem dirtree_safe_refl : forall i f t,
+    dirtree_safe i f t i f t.
+  Proof.
+    unfold dirtree_safe; intuition eauto.
+    unfold incl; eauto.
+  Qed.
+
+  Theorem dirtree_safe_trans : forall i1 f1 t1 i2 t2 f2 i3 t3 f3,
+    dirtree_safe i1 f1 t1 i2 f2 t2 ->
+    dirtree_safe i2 f2 t2 i3 f3 t3 ->
+    dirtree_safe i1 f1 t1 i3 f3 t3.
+  Proof.
+    unfold dirtree_safe; intros.
+    intuition.
+    eapply incl_tran; eauto.
+    edestruct H3; eauto.
+    - intuition; repeat deex.
+      edestruct H2; eauto.
+    - right.
+      unfold BFILE.block_is_unused in *; eauto.
+  Qed.
 
 
   (**
@@ -831,14 +850,14 @@ Module DIRTREE.
   Theorem dirtree_update_safe : forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks v bn inum off m flag,
     find_subtree pathname tree_newest = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist_newest bn inum off ->
-    dirtree_safe2 ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
+    dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
     (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
     exists tree',
     (F0 * rep fsxp F tree' ilist freeblocks)%pred (list2nmem (updN m bn v)) /\
     (tree' = tree \/ tree' = dirtree_update_inode tree inum off v).
   Proof.
     intros.
-    unfold dirtree_safe2, BFILE.ilist_safe in H1.
+    unfold dirtree_safe, BFILE.ilist_safe in H1.
     intuition.
     specialize (H4 _ _ _ _ _ H H0).
     intuition; repeat deex.
