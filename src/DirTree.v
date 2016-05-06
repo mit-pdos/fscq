@@ -946,6 +946,131 @@ Module DIRTREE.
       exists (s :: pathname); eexists; simpl in *; eauto.
   Admitted.
 
+  Theorem find_subtree_app : forall p0 p1 tree subtree,
+    find_subtree p0 tree = Some subtree ->
+    find_subtree (p0 ++ p1) tree = find_subtree p1 subtree.
+  Proof.
+    induction p0; simpl; intros.
+    inversion H; eauto.
+    destruct tree; try congruence.
+    induction l; simpl in *; intros; try congruence.
+    destruct a0; simpl in *.
+    destruct (string_dec s a); eauto.
+  Qed.
+
+  Theorem pathname_decide_prefix : forall (base pn : list string),
+    (exists suffix, pn = base ++ suffix) \/
+    (~ exists suffix, pn = base ++ suffix).
+  Proof.
+    induction base; simpl. eauto.
+    destruct pn.
+    right. intro H'; destruct H'. congruence.
+    destruct (string_dec s a); subst.
+    - destruct (IHbase pn); repeat deex.
+      left; eauto.
+      right. intro H'; apply H. deex. inversion H0; eauto.
+    - right. intro H. deex. inversion H. eauto.
+  Qed.
+
+  Theorem find_subtree_update_subtree_oob : forall base pn tree subtree inum f,
+    (~ exists suffix, pn = base ++ suffix) ->
+    find_subtree pn tree = Some (TreeFile inum f) ->
+    find_subtree pn (update_subtree base subtree tree) = Some (TreeFile inum f).
+  Proof.
+    induction base; intros.
+    simpl in *.
+    contradict H. eauto.
+
+    destruct pn.
+    simpl in *. inversion H0; subst. eauto.
+    destruct tree; simpl in *; try congruence.
+    induction l; simpl in *; try congruence.
+    destruct a0; simpl in *.
+    destruct (string_dec s0 s); destruct (string_dec s0 a); subst; subst; simpl in *.
+    - destruct (string_dec a a); try congruence.
+      eapply IHbase; eauto.
+      intro H'; apply H. deex. exists suffix. eauto.
+    - destruct (string_dec s s); try congruence.
+    - destruct (string_dec a s); try congruence.
+      eauto.
+    - destruct (string_dec s0 s); try congruence.
+      eauto.
+  Qed.
+
+  Theorem find_subtree_update_subtree_oob' : forall base pn tree subtree inum f,
+    (~ exists suffix, pn = base ++ suffix) ->
+    find_subtree pn (update_subtree base subtree tree) = Some (TreeFile inum f) ->
+    find_subtree pn tree = Some (TreeFile inum f).
+  Proof.
+    induction base; intros.
+    simpl in *.
+    contradict H. eauto.
+
+    destruct pn.
+    simpl in *. inversion H0; subst. eauto.
+    destruct tree; simpl in *; try congruence.
+(*
+    induction l; simpl in *; try congruence.
+    destruct a0; simpl in *.
+    destruct (string_dec s0 s); destruct (string_dec s0 a); subst; subst; simpl in *.
+    - destruct (string_dec a a); try congruence.
+      eapply IHbase; eauto.
+      intro H'; apply H. deex. exists suffix. eauto.
+    - destruct (string_dec s s); try congruence.
+    - destruct (string_dec a s); try congruence.
+      eauto.
+    - destruct (string_dec s0 s); try congruence.
+      eauto.
+*)
+  Admitted.
+
+  Theorem find_subtree_helper1 : forall pathname suffix tree subtree subtree' r,
+    find_subtree pathname tree = Some subtree ->
+    find_subtree (pathname ++ suffix) (update_subtree pathname subtree' tree) = Some r ->
+    find_subtree suffix subtree' = Some r.
+  Proof.
+    induction pathname; simpl in *; intros; eauto.
+    destruct tree; try congruence.
+    induction l; simpl in *; try congruence.
+    destruct a0; simpl in *.
+    destruct (string_dec s a); subst; simpl in *.
+    - destruct (string_dec a a); try congruence.
+      eauto.
+    - destruct (string_dec s a); try congruence.
+      apply IHl; eauto.
+  Qed.
+
+  Theorem dirlist_safe_subtree : forall pathname tree
+                                        ilist  freeblocks  subtree
+                                        ilist' freeblocks' subtree',
+    find_subtree pathname tree = Some subtree ->
+    BFILE.ilist_safe ilist freeblocks ilist' freeblocks' ->
+    dirtree_safe ilist  freeblocks  subtree
+                 ilist' freeblocks' subtree' ->
+    dirtree_safe ilist  freeblocks  tree
+                 ilist' freeblocks' (update_subtree pathname subtree' tree).
+  Proof.
+    unfold dirtree_safe; intuition.
+    destruct (pathname_decide_prefix pathname pathname0); repeat deex.
+    - edestruct H3; eauto.
+      eapply find_subtree_helper1. 2: eauto. eauto.
+      left; intuition. repeat deex.
+      do 2 eexists.
+      erewrite find_subtree_app; eauto.
+    - clear H3.
+      unfold BFILE.ilist_safe in H0.
+      destruct H0.
+      specialize (H3 _ _ _ H4).
+      intuition.
+      left.
+      intuition.
+      exists pathname0; eexists.
+      erewrite <- find_subtree_update_subtree_oob'.
+      2: eauto.
+      2: eauto.
+      eauto.
+  Qed.
+
   (**
    * Helpers for higher levels that need to reason about updated trees.
    *)
