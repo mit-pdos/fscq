@@ -674,40 +674,6 @@ Module LogReplay.
     apply Map.remove_1; auto.
   Qed.
 
-  Lemma replay_disk_updN_nil_eq : forall m d a v,
-    d = replay_disk (Map.elements m) d ->
-    updN d a v = replay_disk (Map.elements m) (updN d a v).
-  Proof.
-    intros.
-    eapply list_selN_ext with (default := ($0, nil)); intros.
-    repeat rewrite replay_disk_length; rewrite length_updN; auto.
-    destruct (In_dec addr_eq_dec a (map fst (Map.elements m))).
-    - rewrite H at 1.
-    case_eq (Map.find pos m); intros.
-    apply Map.find_2 in H1.
-    repeat erewrite replay_disk_selN_MapsTo; eauto.
-
-    - rewrite replay_disk_updN_comm by auto.
-      rewrite length_updN in H0.
-      destruct (Nat.eq_dec pos a); subst.
-      repeat rewrite selN_updN_eq; auto.
-      rewrite replay_disk_length in *; eauto.
-      repeat rewrite selN_updN_ne by auto.
-      rewrite H at 1; auto.
-
-    case_eq (Map.find pos m); intros.
-    apply Map.find_2 in H1.
-    repeat erewrite replay_disk_selN_MapsTo; eauto.
-    apply Map.remove_2; eauto.
-
-    apply MapFacts.not_find_in_iff in H1.
-    setoid_rewrite replay_disk_selN_not_In; auto.
-    apply not_in_remove_not_in; auto.
-
-    rewrite In_map_fst_MapIn.
-    apply Map.remove_1; auto.
-  Qed.
-
 
   Lemma replay_mem_add_find_none : forall l a v m,
     ~ Map.find a (replay_mem l (Map.add a v m)) = None.
