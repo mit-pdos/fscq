@@ -541,9 +541,9 @@ End BALLOC.
 Module IAlloc.
 
   Module Sig <: AllocSig.
-    Definition xparams     := fs_xparams.
-    Definition BMPStart xp := BmapStart (FSXPInodeAlloc xp).
-    Definition BMPLen   xp := BmapNBlocks (FSXPInodeAlloc xp).
+    Definition xparams     := balloc_xparams.
+    Definition BMPStart xp := BmapStart xp.
+    Definition BMPLen   xp := BmapNBlocks xp.
 
     (* should return an address that fits in addrlen (goodSize addrlen _).
        valulen * valulen supports about 2^48 inodes *)
@@ -572,6 +572,75 @@ Module IAlloc.
   Hint Extern 0 (okToUnify (rep ?xp _ _) (rep ?xp _ _)) => constructor : okToUnify.
 
   Definition xform_rep := Alloc.xform_rep.
+
+  Lemma xparams_ok_goodSize : forall xp ino,
+    Sig.xparams_ok xp ->
+    ino_valid xp ino ->
+    goodSize addrlen ino.
+  Proof.
+    unfold Sig.xparams_ok, ino_valid; intuition.
+    eapply goodSize_trans.
+    eapply Nat.lt_le_incl; eauto.
+    eapply goodSize_trans.
+    eapply mult_le_compat_r; eauto.
+    unfold goodSize.
+    replace addrlen with (16 + 16 + 16 + 16) by (compute; auto).
+    rewrite <- Nat.mul_1_r at 1.
+    repeat apply mult_pow2_bound; try apply valulen_bound.
+    apply one_lt_pow2.
+  Qed.
+
+  Lemma ino_valid_goodSize : forall V F l m xp a prd,
+    (F * @rep V xp l prd)%pred m ->
+    ino_valid xp a ->
+    goodSize addrlen a.
+  Proof.
+    unfold rep, ino_valid.
+    unfold Alloc.rep, Alloc.Bmp.rep, Alloc.Bmp.items_valid,
+       Alloc.BmpSig.xparams_ok; intuition.
+    destruct_lift H.
+    eapply xparams_ok_goodSize; eauto.
+  Qed.
+
+  Lemma ino_valid_goodSize_pimpl : forall V l xp p,
+    @rep V xp l p <=p=> [[ forall a, ino_valid xp a -> goodSize addrlen a ]] * rep xp l p.
+  Proof.
+    intros; split.
+    unfold pimpl; intros.
+    pred_apply; cancel.
+    apply emp_star in H.
+    eapply ino_valid_goodSize; eauto.
+    cancel.
+  Qed.
+
+  Theorem ino_valid_roundtrip' : forall xp a,
+    Sig.xparams_ok xp ->
+    ino_valid xp a ->
+    ino_valid xp (# (natToWord addrlen a)).
+  Proof.
+    unfold ino_valid; intuition.
+    rewrite wordToNat_natToWord_idempotent'; auto.
+    eapply xparams_ok_goodSize; eauto.
+  Qed.
+
+  Theorem ino_valid_roundtrip : forall V xp a F l m p,
+    (F * @rep V xp l p)%pred m ->
+    ino_valid xp a ->
+    ino_valid xp (# (natToWord addrlen a)).
+  Proof.
+    unfold rep, Alloc.rep, Alloc.Bmp.rep, Alloc.Bmp.items_valid,
+       Alloc.BmpSig.xparams_ok; intuition.
+    destruct_lift H.
+    apply ino_valid_roundtrip'; auto.
+  Qed.
+
+  Lemma ino_valid_switch : forall xp1 xp2,
+    BmapNBlocks xp1 = BmapNBlocks xp2 ->
+    ino_valid xp1 = ino_valid xp2.
+  Proof.
+    unfold ino_valid, Sig.BMPLen; intuition; auto.
+    rewrite H; auto.
+  Qed.
 
 End IAlloc.
 
