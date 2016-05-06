@@ -37,9 +37,9 @@ Record inode_xparams := {
 Record fs_xparams := {
   FSXPLog : log_xparams;
   FSXPInode : inode_xparams;
-  FSXPInodeAlloc : balloc_xparams;
   FSXPBlockAlloc1 : balloc_xparams;
   FSXPBlockAlloc2 : balloc_xparams;
+  FSXPInodeAlloc : balloc_xparams;
   FSXPRootInum : addr;
   FSXPMaxBlock : addr
 }.
