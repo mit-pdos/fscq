@@ -474,6 +474,91 @@ Module GLog.
     unfold log_valid, KNoDup; intuition; inversion H.
   Qed.
 
+  Lemma vmap_match_find : forall ts vmap,
+    vmap_match vmap ts
+    -> forall a v, KIn (a, v) (Map.elements vmap)
+    -> Forall (@KNoDup valu) ts
+    -> exists t, In t ts /\ In a (map fst t).
+  Proof.
+    induction ts; intros; simpl.
+    unfold vmap_match in *; simpl in *.
+    rewrite H in H0.
+    unfold KIn in H0.
+    apply InA_nil in H0; intuition.
+
+    destruct (in_dec Nat_as_OT.eq_dec a0 (map fst a)).
+    (* The address was written by the newest transaction. *)
+    exists a; intuition.
+
+    unfold vmap_match in *; simpl in *.
+    remember (fold_right replay_mem vmap0 ts) as vmap_ts.
+    destruct (in_dec Nat_as_OT.eq_dec a0 (map fst (Map.elements vmap_ts))).
+    (* The address was written by an older transaction. *)
+    replace a0 with (fst (a0, v)) in * by auto.
+    apply In_fst_KIn in i.
+    eapply IHts in i.
+    deex.
+    exists t; intuition.
+    congruence.
+    eapply Forall_cons2; eauto.
+    rewrite Forall_forall in H1.
+    specialize (H1 a).
+    simpl in *; intuition.
+
+    (* The address wasn't written by an older transaction. *)
+    denote KIn as HKIn.
+    apply KIn_fst_In in HKIn.
+    apply In_map_fst_MapIn in HKIn.
+    apply In_MapsTo in HKIn.
+    deex.
+    eapply replay_mem_not_in' in H1.
+    denote (Map.MapsTo) as Hmap.
+    eapply MapsTo_In in Hmap.
+    eapply In_map_fst_MapIn in Hmap.
+    apply n0 in Hmap; intuition.
+    auto.
+    rewrite <- H.
+    eauto.
+  Qed.
+
+  Lemma dset_match_log_valid : forall ts vmap ds xp,
+    vmap_match vmap ts
+    -> dset_match xp ds ts
+    -> log_valid (Map.elements vmap) (fst ds).
+  Proof.
+    intros.
+
+    assert (HNoDup: Forall (@KNoDup valu) ts).
+      unfold dset_match in *; simpl in *; intuition.
+      unfold ents_valid, log_valid in *.
+      eapply Forall_impl; try eassumption.
+      intros; simpl; intuition.
+      intuition.
+
+    unfold log_valid; intuition;
+    eapply vmap_match_find in H; eauto.
+    deex.
+    denote In as HIn.
+    unfold dset_match in *; intuition.
+    rewrite Forall_forall in H.
+    eapply H in H3.
+    unfold ents_valid, log_valid in *; intuition.
+    replace 0 with (fst (0, v)) in * by auto.
+    apply In_fst_KIn in HIn.
+    apply H5 in HIn; intuition.
+
+    deex.
+    denote In as HIn.
+    unfold dset_match in *; intuition.
+    rewrite Forall_forall in H.
+    eapply H in H2.
+    unfold ents_valid, log_valid in *; intuition.
+    replace a with (fst (a, v)) in * by auto.
+    apply In_fst_KIn in HIn.
+    apply H5 in HIn; intuition.
+  Qed.
+
+
   Lemma dset_match_ent_length_exfalso : forall xp ds ts i,
     length (selN ts i nil) > LogLen xp ->
     dset_match xp ds ts ->
@@ -698,7 +783,7 @@ Module GLog.
 
     prestep; denote rep as Hx; unfold rep in Hx; destruct_lift Hx.
     cancel.
-    admit.
+    eapply dset_match_log_valid; eauto.
     prestep; unfold rep; safecancel.
     admit.
     denote (length _) as Hf; contradict Hf.

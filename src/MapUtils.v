@@ -221,6 +221,21 @@ Module MapDefs (OT : UsualOrderedType) (M : S with Module E := OT).
     all : eauto.
   Qed.
 
+  Lemma KIn_fst_In : forall a (l : list (Map.key * V)),
+    KIn a l -> In (fst a) (map fst l).
+  Proof.
+    intros; destruct a; simpl in *.
+    unfold KIn in *.
+    apply InA_alt in H.
+    inversion H.
+    destruct x.
+    intuition.
+    unfold Map.eq_key in H1; simpl in *.
+    rewrite H1.
+    replace k0 with (fst (k0, v0)) by auto.
+    eapply in_map; eauto.
+  Qed.
+
 
   Lemma In_map_fst_MapIn : forall elt k m,
     In k (map fst (Map.elements (elt:=elt) m)) <-> Map.In k m.
