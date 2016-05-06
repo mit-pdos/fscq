@@ -1009,20 +1009,18 @@ Module DIRTREE.
     destruct pn.
     simpl in *. inversion H0; subst. eauto.
     destruct tree; simpl in *; try congruence.
-(*
+    destruct tree; simpl in *; try congruence.
+
     induction l; simpl in *; try congruence.
     destruct a0; simpl in *.
     destruct (string_dec s0 s); destruct (string_dec s0 a); subst; subst; simpl in *.
-    - destruct (string_dec a a); try congruence.
+    - destruct (string_dec s s); try congruence.
       eapply IHbase; eauto.
       intro H'; apply H. deex. exists suffix. eauto.
     - destruct (string_dec s s); try congruence.
-    - destruct (string_dec a s); try congruence.
-      eauto.
-    - destruct (string_dec s0 s); try congruence.
-      eauto.
-*)
-  Admitted.
+    - destruct (string_dec a s); try congruence; eauto.
+    - destruct (string_dec s0 s); try congruence; eauto.
+  Qed.
 
   Theorem find_subtree_helper1 : forall pathname suffix tree subtree subtree' r,
     find_subtree pathname tree = Some subtree ->
@@ -1065,10 +1063,7 @@ Module DIRTREE.
       left.
       intuition.
       exists pathname0; eexists.
-      erewrite <- find_subtree_update_subtree_oob'.
-      2: eauto.
-      2: eauto.
-      eauto.
+      erewrite <- find_subtree_update_subtree_oob'; eauto.
   Qed.
 
   (**
