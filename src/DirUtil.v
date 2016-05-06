@@ -18,6 +18,8 @@ Require Import AsyncDisk.
 Require Import NEList.
 Require Import SuperBlock.
 Require Import BFile.
+Require Import Decidable.
+
 
 Import ListNotations.
 
@@ -36,9 +38,94 @@ Proof.
 Qed.
 
 
+
 (* dirent lemmas *)
 
 Definition dirent_names (ents : list (string * DIRTREE.dirtree)) := map fst ents.
+
+Lemma dirent_notin_app: forall (tree_elem: list (string*DIRTREE.dirtree)) name s d,
+   ~In name (dirent_names ((s, d) :: tree_elem)) <-> s <> name /\ ~In name (dirent_names tree_elem).
+Proof.
+  induction tree_elem.
+  - subst; simpl.
+    intros. intuition.
+  - intros.    
+    split.
+    * intros.
+      split.
+      apply (IHtree_elem name s d).
+      contradict H.
+      destruct a. simpl in *.  intuition.
+      contradict H.
+      destruct a. simpl in *.  intuition.
+    * intros.
+      destruct a. simpl.
+      simpl in H.
+      intuition.
+Qed.
+
+Lemma dirent_nodup_app_unique: forall name d (dents : list (string *DIRTREE.dirtree)), 
+  NoDup (dirent_names ((name, d) :: dents)) ->  ~ In name (dirent_names dents).
+Proof.
+  intros.
+  induction dents.
+  - subst; simpl.
+    auto.
+  - destruct a.
+    destruct (string_dec name s).
+    rewrite e in H.
+    simpl in *.
+    inversion H.
+    contradict H2.
+    simpl.
+    left.
+    auto.
+    apply dirent_notin_app.
+    split.
+    auto.
+    apply IHdents.
+    unfold dirent_names in H.
+    rewrite cons_app in H.
+    rewrite map_app in H.
+    apply NoDup_remove_1 in H.
+    auto.
+Qed.
+
+
+Lemma dent_distinct_impl_nodup: forall inum tree_elem,
+  DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum tree_elem) -> NoDup (dirent_names tree_elem).
+Proof.
+  intros.
+  inversion H.
+  assumption.
+Qed.
+
+
+Lemma dirent_head_eq: forall (dents: list (string*DIRTREE.dirtree)) name inum s d,
+  DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum ((s,d) :: dents)) ->
+  In name (dirent_names ((s, d) :: dents)) /\ s = name -> ~In name (dirent_names dents).
+Proof.
+  intros.
+  inversion H.
+  eapply dirent_nodup_app_unique.
+  unfold dirent_names.
+  destruct H0.
+  subst; eauto.
+Qed.
+
+Lemma dirent_distinct_rest: forall ents inum s d,
+  DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum ((s, d) :: ents)) ->
+  DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum ents).
+Proof.
+  intros.
+  inversion H.
+  constructor.
+  simpl in *.
+  inversion H2.
+  assumption.
+  inversion H3.
+  eauto.
+Qed.
 
 Lemma dirent_add_app_ne: forall dents s d name elem',
   s <> name
@@ -63,47 +150,6 @@ Proof.
   reflexivity.
   fold DIRTREE.add_to_list. 
   intuition.
-Qed.
-
-Lemma dirent_head_eq: forall (dents: list (string*DIRTREE.dirtree)) name s d,
-  In name (dirent_names ((s, d) :: dents)) /\ s = name -> ~In name (dirent_names dents).
-Proof.
-  induction dents.
-  - subst; simpl.
-    intros. intuition.
-  - intros.
-Admitted.
-
-Lemma dirtree_name_in_dents: forall name tree_elem elem,
-  fold_right
-    (DIRTREE.find_subtree_helper
-       (fun tree : DIRTREE.dirtree => Some tree) name) None tree_elem = Some elem
-  -> In name (dirent_names tree_elem).
-Proof.
-  intros.
-  induction tree_elem.
-  - intros. simpl in H. congruence.
-  - destruct a.
-    destruct (string_dec s name).
-    unfold dirent_names.
-    rewrite cons_app.
-    rewrite map_app.
-    apply in_app_iff.
-    simpl.
-    left.
-    auto.
-    unfold dirent_names.
-    rewrite cons_app.
-    rewrite map_app.
-    apply in_or_app.
-    right.
-    apply IHtree_elem.
-    rewrite cons_app in H.
-    rewrite fold_right_app in H.
-    simpl in H.
-    destruct (string_dec s name).
-    congruence.
-    assumption.
 Qed.
 
 Lemma dent_add_to_twice: forall fn elem0 elem1 ents,
@@ -156,30 +202,52 @@ Proof.
     assumption.
 Qed.
 
-Lemma tree_name_distinct_map: forall (tree_elem: list (string*DIRTREE.dirtree)) inum s d,
-   DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum ((s, d) :: tree_elem)) <-> 
-    ~In s (dirent_names tree_elem)
-      /\ DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum tree_elem).
+Lemma dent_add_notpresent: forall name fn elem ents,
+  ~In name (dirent_names ents) ->
+  name <> fn ->
+  ~ In name (dirent_names (DIRTREE.add_to_list fn elem ents)).
 Proof.
-  split.
-  - induction tree_elem.
-    * simpl.
-      intuition.
-      admit.
-    * intros.
-      split.
-      eapply DIRTREE.tree_names_distinct_head_name.
-      instantiate (2 := inum).
-      instantiate (1 := d).
-      assumption.
-      eapply DIRTREE.tree_name_distinct_rest.
-      instantiate (1 := (s, d)). auto.
-  - intros.
-    destruct H.
-    constructor.
+  intros.
+  induction ents.
+  - unfold dirent_names; simpl.
+    admit.
+  - destruct a.
+    destruct (string_dec fn s).
+    rewrite dirent_add_app_eq.
+    unfold dirent_names in *.
+    simpl in *.
+    eauto.
+    eauto.
+    rewrite dirent_add_app_ne.
+    unfold dirent_names in *.
+    simpl in *.
+    intuition.
+    eauto.
 Admitted.
 
+Lemma tree_names_distinct_map: forall (tree_elem: list (string*DIRTREE.dirtree)) inum s d,
+   ~In s (dirent_names tree_elem) /\ DIRTREE.tree_names_distinct d
+      /\ DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum tree_elem) ->
+   DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum ((s, d) :: tree_elem)).
+Proof.
+  intros.
+  constructor.
+  intuition.
+  simpl.
+  apply Forall_cons.
+  assumption.
+  inversion H2.
+  assumption.
+  intuition.
+  simpl.
+  apply NoDup_cons.
+  eauto.
+  inversion H2.
+  eauto.
+Qed.
+
 Lemma dent_in_add_to_distinct: forall fn elem inum ents,
+  DIRTREE.tree_names_distinct elem ->
   DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum ents) ->
   DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum (DIRTREE.add_to_list fn elem ents)).
 Proof.
@@ -189,11 +257,67 @@ Proof.
     admit.
   - destruct a.
     destruct (string_dec fn s).
-    erewrite dirent_add_app_eq; eauto.  (* s must not be in ents; how to prove? *)
-Admitted.
-
+    rewrite dirent_add_app_eq.
+    eapply tree_names_distinct_map.
+    intuition.
+    eapply dirent_head_eq with (name := s) in H0 as Himpl.
+    congruence.
+    intuition.
+    apply in_inv.
+    simpl.
+    left; eauto.
+    eapply dirent_distinct_rest in H0; eauto.
+    eauto.
+    eapply dirent_head_eq with (name := s) in H0 as Hnotin.
+    eapply dirent_distinct_rest in H0 as Hrest.
+    rewrite dirent_add_app_ne.
+    eapply tree_names_distinct_map.
+    split.
+    apply dent_add_notpresent; eauto.
+    split.
+    eapply DIRTREE.tree_name_distinct_head in H0.
+    assumption.
+    eapply IHents; eauto.
+    eauto.
+    intuition.
+    unfold dirent_names.
+    simpl.
+    left; auto.
+ Admitted.
 
 (* dirtree lemmas *)
+
+Lemma dirtree_name_in_dents: forall name tree_elem elem,
+  fold_right
+    (DIRTREE.find_subtree_helper
+       (fun tree : DIRTREE.dirtree => Some tree) name) None tree_elem = Some elem
+  -> In name (dirent_names tree_elem).
+Proof.
+  intros.
+  induction tree_elem.
+  - intros. simpl in H. congruence.
+  - destruct a.
+    destruct (string_dec s name).
+    unfold dirent_names.
+    rewrite cons_app.
+    rewrite map_app.
+    apply in_app_iff.
+    simpl.
+    left.
+    auto.
+    unfold dirent_names.
+    rewrite cons_app.
+    rewrite map_app.
+    apply in_or_app.
+    right.
+    apply IHtree_elem.
+    rewrite cons_app in H.
+    rewrite fold_right_app in H.
+    simpl in H.
+    destruct (string_dec s name).
+    congruence.
+    assumption.
+Qed.
 
 Lemma  update_subtree_root: forall root_new root_old,
   DIRTREE.update_subtree [] root_new root_old = root_new.
@@ -248,14 +372,6 @@ Proof.
   destruct t; simpl; intros; congruence.
 Qed.
 
-Lemma tree_names_distinct_nodup: forall inum tree_elem,
-  DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum tree_elem) -> NoDup (map fst tree_elem).
-Proof.
-  intros.
-  inversion H.
-  assumption.
-Qed.
-
 Lemma find_subtree_impl_adirent: forall fn tree sub,
   DIRTREE.find_subtree [fn] tree = Some sub ->
   In fn (dirent_names (DIRTREE.dirtree_dirents tree)).
@@ -290,6 +406,8 @@ Proof.
     intuition.
     subst; eauto.
     f_equal.
+    intuition.
+    subst; auto.
     rewrite IHents.
     reflexivity.
     unfold dirent_names in *.
@@ -304,6 +422,7 @@ Admitted.
 Lemma update_update_subtree_eq: forall fn elem0 elem1 tree sub,
   DIRTREE.tree_names_distinct tree ->
   DIRTREE.find_subtree [fn] tree = Some sub ->
+  DIRTREE.tree_names_distinct elem0 ->
   DIRTREE.update_subtree [fn] elem1 (DIRTREE.update_subtree [fn] elem0 tree) =
   DIRTREE.update_subtree [fn] elem1 tree.
 Proof.
