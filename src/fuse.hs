@@ -142,6 +142,8 @@ materializeFlushgroups idxref groups = do
   _ <- System.Process.system $ printf "cp --sparse=always /tmp/crashlog.img /tmp/crashlog-%06d.img" idx
   ds <- init_disk $ printf "/tmp/crashlog-%06d.img" idx
   applyFlushgroups ds groups
+  _ <- close_disk ds
+  return ()
 
 writeSubsets' :: [[(Integer, a)]] -> [[(Integer, a)]]
 writeSubsets' [] = [[]]
