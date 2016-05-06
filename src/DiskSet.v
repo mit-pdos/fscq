@@ -9,7 +9,7 @@ Require Import LogReplay.
 Require Import NEList.
 Require Import AsyncDisk.
 Require Import LogReplay.
-Require Import DiskLog.
+Require Import DiskLogHash.
 
 Import ListNotations.
 Import LogReplay.
