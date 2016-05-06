@@ -114,12 +114,11 @@ Module LogRecArray (RA : RASig).
     >} get lxp xp ix ms.
   Proof.
     unfold get, rep.
-    hoare.
-
-    (* [rewrite selN_val2block_equiv] somewhere *)
-
+    safestep.
     rewrite synced_list_length, ipack_length.
     apply div_lt_divup; auto.
+
+    safestep.
     subst; rewrite synced_list_selN; simpl.
     erewrite selN_val2block_equiv.
     apply ipack_selN_divmod; auto.

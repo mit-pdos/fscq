@@ -46,6 +46,18 @@ Definition eqlen A B (a : list A) (b : list B) := length a = length b.
 Definition removeN {V} (l : list V) i :=
    (firstn i l) ++ (skipn (S i) l).
 
+Lemma fst_pair : forall T1 T2 (a : T1) (b : T2) c, 
+  c = (a, b) -> fst c = a.
+Proof.
+ intros; subst; firstorder.
+Qed.
+
+Lemma snd_pair : forall T1 T2 (a : T1) (b : T2) c, 
+  c = (a, b) -> snd c = b.
+Proof.
+ intros; subst; firstorder.
+Qed.
+
 Lemma repeat_selN : forall T i n (v def : T),
   i < n -> selN (repeat v n) i def = v.
 Proof.
@@ -269,6 +281,28 @@ Lemma skipn_updN : forall T (v : T) vs i j,
        end.
 Proof.
   destruct vs, j; simpl; eauto using skipN_updN'.
+Qed.
+
+
+Lemma skipn_selN_skipn : forall off A (l : list A) def,
+  off < length l ->
+  skipn off l = selN l off def :: skipn (S off) l.
+Proof.
+  induction off; simpl; intros.
+  destruct l; simpl in *; try omega; auto.
+  destruct l; simpl in *; try omega.
+  apply IHoff.
+  omega.
+Qed.
+
+Lemma skipn_sub_S_selN_cons : forall A (l : list A) n def,
+  n < length l ->
+  skipn (length l - S n) l = selN l (length l - n - 1) def :: (skipn (length l - n) l).
+Proof.
+  intros.
+  replace (length l - n) with (S (length l - n - 1)) at 2 by omega.
+  rewrite <- skipn_selN_skipn by omega.
+  f_equal; omega.
 Qed.
 
 Hint Rewrite skipn_updN using omega : lists.
@@ -1690,6 +1724,47 @@ Proof.
   destruct n; simpl; auto.
 Qed.
 
+Lemma NoDup_app_l : forall A (a b : list A),
+  NoDup (a ++ b) -> NoDup a.
+Proof.
+  induction a; simpl; intros.
+  constructor.
+  inversion H; constructor; eauto.
+  intro; apply H2.
+  apply in_or_app; eauto.
+Qed.
+
+Lemma NoDup_app_r : forall A (a b : list A),
+  NoDup (a ++ b) -> NoDup b.
+Proof.
+  induction a; simpl; intros; eauto.
+  inversion H; eauto.
+Qed.
+
+Hint Resolve in_app_or.
+Hint Resolve in_or_app.
+
+Lemma not_In_NoDup_app : forall T (a : T) l1 l2,
+  In a l1 -> NoDup (l1 ++ l2) -> ~ In a l2.
+Proof.
+  induction l1; simpl; intros; eauto.
+  intuition; subst.
+  inversion H0; subst; eauto.
+  inversion H0; subst; eauto.
+Qed.
+
+Lemma NoDup_app_comm : forall T (l1 l2 : list T),
+  NoDup (l1 ++ l2) ->
+  NoDup (l2 ++ l1).
+Proof.
+  induction l2; simpl; intros; try rewrite app_nil_r in *; eauto.
+  constructor.
+  intro H'. apply in_app_or in H'.
+  eapply NoDup_remove_2; eauto.
+  apply in_or_app; intuition.
+  eapply IHl2; eapply NoDup_remove_1; eauto.
+Qed.
+
 Lemma in_map_fst_exists_snd : forall A B (l : list (A * B)) a,
   In a (map fst l) -> exists b, In (a, b) l.
 Proof.
@@ -2049,6 +2124,19 @@ Proof.
   rewrite firstn_app_l; auto; omega.
 Qed.
 
+Lemma selN_cuttail : forall A n (l : list A) idx def,
+  idx < length (cuttail n l) ->
+  selN (cuttail n l) idx def = selN l idx def.
+Proof.
+  induction n; simpl; intros.
+  rewrite cuttail_0. auto.
+  destruct l using rev_ind; simpl; auto.
+  rewrite cuttail_tail in *.
+  rewrite IHn by auto.
+  rewrite selN_app; auto.
+  rewrite cuttail_length in *; omega.
+Qed.
+
 Lemma incl_cons2 : forall T (a b : list T) (v : T), 
   incl a b
   -> incl (v :: a) (v :: b).
@@ -2060,6 +2148,14 @@ Lemma incl_nil : forall T (l : list T),
   incl nil l.
 Proof.
   firstorder.
+Qed.
+
+Lemma incl_remove : forall T dec (a : T) (l : list T),
+  incl (remove dec a l) l.
+Proof.
+  induction l; unfold incl; simpl; auto; intros.
+  destruct (dec a a0); subst; eauto.
+  inversion H; subst; eauto.
 Qed.
 
 
@@ -2115,4 +2211,30 @@ Proof.
   intros.
   rewrite <- rev_involutive. rewrite <- H. rewrite -> rev_involutive.
   reflexivity.
+Qed.
+
+Definition disjoint A (a b : list A) :=
+  forall x, (In x a -> ~ In x b) /\ (In x b -> ~ In x a).
+
+Lemma disjoint_sym : forall A (a b : list A),
+  disjoint a b -> disjoint b a.
+Proof.
+  unfold disjoint; firstorder.
+Qed.
+
+Lemma disjoint_nil_l : forall A (a : list A),
+  disjoint nil a.
+Proof.
+  unfold disjoint; firstorder.
+Qed.
+
+Lemma disjoint_cons_l : forall A (a b : list A) x,
+  disjoint a b ->
+  ~ In x b ->
+  disjoint (x :: a) b.
+Proof.
+  unfold disjoint; firstorder; subst.
+  specialize (H x0); intuition.
+  pose proof (H x); pose proof (H x0); intuition.
+  firstorder; subst; intuition.
 Qed.

@@ -199,6 +199,18 @@ Section LISTPRED.
     cancel.
   Qed.
 
+  Theorem listpred_nodup_F : forall l m,
+    (forall x y : T, {x = y} + {x <> y}) ->
+    (forall (y : T) m', ~ (prd y * prd y)%pred m') ->
+    (exists F, F * listpred l)%pred m -> NoDup l.
+  Proof.
+    intros.
+    destruct_lift H0.
+    rewrite listpred_nodup_piff in H0 by eauto.
+    destruct_lift H0.
+    eauto.
+  Qed.
+
   Theorem listpred_remove :
     forall (dec : forall x y : T, {x = y} + {x <> y}) x l,
     (forall (y : T) m', ~ (prd y * prd y)%pred m') ->
@@ -212,6 +224,22 @@ Section LISTPRED.
     simpl; destruct (dec x a).
     cancel; inversion H2; rewrite remove_not_In; eauto.
     rewrite IHl; [ cancel | destruct H0; subst; tauto ].
+  Qed.
+
+  Theorem listpred_remove' :
+    forall (dec : forall x y : T, {x = y} + {x <> y}) x l,
+    (forall (y : T) m', ~ (prd y * prd y)%pred m') ->
+    NoDup l ->
+    In x l ->
+    prd x * listpred (remove dec x l) =p=> listpred l.
+  Proof.
+    intros.
+    induction l.
+    cancel.
+    simpl; destruct (dec x a); subst.
+    - inversion H0. rewrite remove_not_In; eauto.
+    - simpl; cancel.
+      rewrite <- IHl. cancel. inversion H0. eauto. eauto.
   Qed.
 
   (**

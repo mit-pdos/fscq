@@ -379,7 +379,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
     POST:hm' RET:^(ms, r)  exists m' freelist',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp r (cuttail nr l) * BALLOC.rep bxp freelist') ]]] *
-           [[ r = upd_len ir ((IRLen ir) - nr) ]]
+           [[ r = upd_len ir ((IRLen ir) - nr) ]] *
+           [[ incl freelist freelist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} shrink lxp bxp ir nr ms.
   Proof.
@@ -442,7 +443,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
            exists m' freelist' ir',
            [[ r = Some ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp ir' (l ++ [bn]) * BALLOC.rep bxp freelist') ]]] *
-           [[ IRAttrs ir' = IRAttrs ir /\ length (IRBlocks ir') = length (IRBlocks ir) ]]
+           [[ IRAttrs ir' = IRAttrs ir /\ length (IRBlocks ir') = length (IRBlocks ir) ]] *
+           [[ incl freelist' freelist ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} grow lxp bxp ir bn ms.
   Proof.
@@ -492,6 +494,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
     erewrite firstn_S_selN, selN_updN_eq by (autorewrite with lists; omega).
     simpl; auto.
     autorewrite with core lists; auto.
+
+    apply incl_remove.
 
     (* case 2 : just update the indirect block *)
     prestep; norml.

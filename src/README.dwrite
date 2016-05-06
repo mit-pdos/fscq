@@ -1,0 +1,14 @@
+Tricky cases for handling direct writes
+  - invariant: a block owned by offset O in file F must be still owned by that same
+    file and offset in all previous disksets, or it must be not in use (free).
+  - need to relate the effects of modifying a disk block to how that changes the
+    DirTree rep in all of the disksets.  using the above invariant, we should be
+    able to prove that the effect of modifying a disk block amounts to modifying
+    that same offset O in the same file F (located by inode number), or noop if
+    the file isn't that large in that disk set.
+  - need to prevent inode number reuse so that we can unambiguously identify a
+    file using its inode number.
+  - what if the file shrunk and re-grew in a diskset sequence?  XCRASH might help
+    us there (even though we aren't going to be modifying the blocks in a file
+    before it was shrunk).
+
