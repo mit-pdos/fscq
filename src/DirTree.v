@@ -136,6 +136,16 @@ Module DIRTREE.
       | (name, subtree) :: dirlist' => (name, UpdateF subtree) :: (dirlist_update dirlist')
       end.
 
+
+    Variable T : Type.
+    Variable CombineF : dirtree -> list T.
+
+    Fixpoint dirlist_combine (dirlist : list (string * dirtree)) : list T :=
+      match dirlist with
+      | nil => nil
+      | (name, subtree) :: dirlist' => (CombineF subtree) ++ (dirlist_combine dirlist')
+      end.
+
   End DIRITEM.
 
   Fixpoint tree_pred ibxp e := (
@@ -178,14 +188,7 @@ Module DIRTREE.
     )%pred.
 
   Definition dirtree_safe i1 f1 i2 f2 :=
-    BFILE.list_safe i1 f1 i2 f2.
-
-  Theorem dirtree_update_block : forall tree fsxp F ilist freeblocks inum off v bn m pathname f,
-    rep fsxp F tree ilist freeblocks (list2nmem m) ->
-    find_subtree pathname tree = Some (TreeFile inum f) ->
-    BFILE.block_belong_to_file ilist bn inum off ->
-    rep fsxp F (dirtree_update_inode tree inum off v) (list2nmem (updN m bn v)).
-  Admitted.
+    BFILE.ilist_safe i1 f1 i2 f2.
 
 
   (**
@@ -326,8 +329,8 @@ Module DIRTREE.
       cancel.
   Qed.
 
-  Lemma rep_tree_names_distinct : forall tree F fsxp Ftop m,
-    (F * rep fsxp Ftop tree)%pred m ->
+  Lemma rep_tree_names_distinct : forall tree F fsxp Ftop m ilist frees,
+    (F * rep fsxp Ftop tree ilist frees)%pred m ->
     tree_names_distinct tree.
   Proof.
     unfold rep; intros.
@@ -498,6 +501,256 @@ Module DIRTREE.
         inversion H6.
         rewrite <- H2; eauto.
         cancel.
+  Qed.
+
+  (**
+   * Theorems about how [dwrite]'s [updN]s affect the tree state.
+   *)
+  Fixpoint tree_inodes t :=
+    match t with
+    | TreeFile inum f => [inum]
+    | TreeDir inum ents => [inum] ++ (dirlist_combine tree_inodes ents)
+    end.
+
+  Definition tree_inodes_distinct t := NoDup (tree_inodes t).
+
+  Hint Resolve in_or_app.
+  Hint Resolve in_app_or.
+  Hint Resolve NoDup_app_l.
+  Hint Resolve NoDup_app_r.
+
+  Theorem tree_inodes_distinct_child : forall n a d l,
+    tree_inodes_distinct (TreeDir n ((a, d) :: l)) ->
+    tree_inodes_distinct d.
+  Proof.
+    unfold tree_inodes_distinct; simpl; intros.
+    rewrite cons_app in *.
+    eauto.
+  Qed.
+
+  Theorem tree_names_distinct_child : forall n a d l,
+    tree_names_distinct (TreeDir n ((a, d) :: l)) ->
+    tree_names_distinct d.
+  Proof.
+    intros.
+    inversion H; simpl in *.
+    inversion H2; eauto.
+  Qed.
+
+  Theorem dirtree_update_inode_absent : forall tree inum off v,
+    ~ In inum (tree_inodes tree) ->
+    dirtree_update_inode tree inum off v = tree.
+  Proof.
+    induction tree using dirtree_ind2; simpl in *; intros; intuition.
+    - destruct (addr_eq_dec inum0 inum); congruence.
+    - f_equal.
+      induction tree_ents; simpl; auto.
+      destruct a; simpl in *.
+      inversion H.
+      rewrite H4 by eauto.
+      rewrite IHtree_ents; eauto.
+  Qed.
+
+  Theorem find_subtree_inum_present : forall pathname tree sub,
+    find_subtree pathname tree = Some sub ->
+    In (dirtree_inum sub) (tree_inodes tree).
+  Proof.
+    induction pathname; simpl; intros.
+    - inversion H; subst.
+      destruct sub; simpl; eauto.
+    - destruct tree; try congruence.
+      induction l; simpl in *; try congruence.
+      destruct a0; simpl in *.
+      destruct (string_dec s a); subst; eauto.
+      edestruct IHl; eauto.
+  Qed.
+
+  Hint Resolve tree_inodes_distinct_child.
+  Hint Resolve tree_names_distinct_child.
+  Hint Resolve find_subtree_inum_present.
+
+  Lemma update_subtree_notfound : forall name l fnlist subtree,
+    ~ In name (map fst l) ->
+    map (update_subtree_helper (update_subtree fnlist subtree) name) l = l.
+  Proof.
+    induction l; simpl; intros; eauto.
+    destruct a; simpl in *.
+    destruct (string_dec s name); intuition.
+    rewrite IHl; eauto.
+  Qed.
+
+  Lemma dirtree_update_inode_absent' : forall l inum off v,
+    ~ In inum (concat (map (fun e => tree_inodes (snd e)) l)) ->
+    dirlist_update (fun t' : dirtree => dirtree_update_inode t' inum off v) l = l.
+  Proof.
+    induction l; simpl; intros; eauto.
+    destruct a; simpl in *.
+    rewrite dirtree_update_inode_absent; eauto.
+    rewrite IHl; eauto.
+  Qed.
+
+  Lemma tree_inodes_distinct_not_in_tail : forall l d n inum a,
+    In inum (tree_inodes d) ->
+    tree_inodes_distinct (TreeDir n ((a, d) :: l)) ->
+    ~ In inum (concat (map (fun e : string * dirtree => tree_inodes (snd e)) l)).
+  Proof.
+    induction l; simpl; eauto.
+    intros. destruct a; simpl in *.
+    inversion H0; subst.
+
+    intro H'; apply in_app_or in H'; destruct H'.
+    rewrite app_assoc in H4. apply NoDup_app_l in H4.
+    eapply not_In_NoDup_app. 2: eauto. all: eauto.
+    eapply IHl; eauto.
+    unfold tree_inodes_distinct; simpl.
+    constructor.
+    intro; apply H3.
+    apply in_app_or in H2. intuition eauto.
+
+    apply NoDup_app_comm in H4. rewrite <- app_assoc in H4.
+    apply NoDup_app_comm in H4. apply NoDup_app_l in H4.
+    apply NoDup_app_comm in H4. eauto.
+
+    Unshelve. eauto.
+  Qed.
+
+  Lemma tree_inodes_distinct_not_this_child : forall n s d l pathname inum f,
+    tree_inodes_distinct (TreeDir n ((s, d) :: l)) ->
+    find_subtree pathname (TreeDir n l) = Some (TreeFile inum f) ->
+    ~ In inum (tree_inodes d).
+  Proof.
+    intros.
+    apply find_subtree_inum_present in H0; simpl in *.
+    inversion H; subst.
+    intuition; subst; eauto.
+    eapply not_In_NoDup_app. 2: eauto. all: eauto.
+  Qed.
+
+  Hint Resolve tree_inodes_distinct_not_in_tail.
+  Hint Resolve tree_inodes_distinct_not_this_child.
+
+  Lemma tree_inodes_distinct_next : forall n s d l,
+    tree_inodes_distinct (TreeDir n ((s, d) :: l)) ->
+    tree_inodes_distinct (TreeDir n l).
+  Proof.
+    unfold tree_inodes_distinct; simpl; intros.
+    rewrite cons_app in *.
+    apply NoDup_app_comm in H. rewrite <- app_assoc in H.
+    apply NoDup_app_comm in H. apply NoDup_app_l in H.
+    apply NoDup_app_comm in H; eauto.
+  Qed.
+
+  Lemma tree_names_distinct_next : forall n s d l,
+    tree_names_distinct (TreeDir n ((s, d) :: l)) ->
+    tree_names_distinct (TreeDir n l).
+  Proof.
+    intros.
+    inversion H.
+    constructor.
+    inversion H2; eauto.
+    inversion H3; eauto.
+  Qed.
+
+  Hint Resolve tree_inodes_distinct_next.
+  Hint Resolve tree_names_distinct_next.
+
+  Theorem dirtree_update_inode_update_subtree : forall pathname tree inum off f v,
+    tree_inodes_distinct tree ->
+    tree_names_distinct tree ->
+    find_subtree pathname tree = Some (TreeFile inum f) ->
+    off < length (BFILE.BFData f) ->
+    let f' := BFILE.mk_bfile (updN (BFILE.BFData f) off v) (BFILE.BFAttr f) in
+    dirtree_update_inode tree inum off v =
+    update_subtree pathname (TreeFile inum f') tree.
+  Proof.
+    induction pathname; simpl; intros.
+    - inversion H1; subst; simpl.
+      destruct (addr_eq_dec inum inum); congruence.
+    - destruct tree; simpl in *; try congruence.
+      f_equal.
+      induction l; simpl in *; try congruence.
+      destruct a0; simpl in *.
+      destruct (string_dec s a); subst; eauto.
+      + erewrite IHpathname; eauto.
+        f_equal.
+        inversion H0. inversion H6.
+        rewrite update_subtree_notfound by eauto.
+        inversion H.
+        rewrite dirtree_update_inode_absent'; eauto.
+        apply find_subtree_inum_present in H1; simpl in *.
+        eapply tree_inodes_distinct_not_in_tail; eauto.
+      + rewrite dirtree_update_inode_absent.
+        rewrite IHl; eauto.
+        eapply tree_inodes_distinct_not_this_child with (pathname := a :: pathname).
+        2: apply H1.
+        eauto.
+  Qed.
+
+  Lemma rep_tree_inodes_distinct : forall tree F fsxp Ftop m ilist frees,
+    (F * rep fsxp Ftop tree ilist frees)%pred m ->
+    tree_inodes_distinct tree.
+  Proof.
+    unfold rep, tree_inodes_distinct; intros.
+    destruct_lift H.
+    eapply ListPred.listpred_nodup_F.
+    apply addr_eq_dec.
+    apply ptsto_conflict.
+    eapply pimpl_apply. 2: apply H1.
+
+    cancel. instantiate (F0 := (dummy1 * Ftop)%pred). cancel.
+    clear H1.
+    induction tree using dirtree_ind2; simpl.
+    cancel.
+    unfold tree_dir_names_pred. cancel. clear H4.
+    induction tree_ents; simpl.
+    - cancel.
+    - inversion H0.
+      destruct a.
+      rewrite H3; simpl.
+      rewrite ListPred.listpred_app.
+      rewrite IHtree_ents; eauto.
+  Qed.
+
+  Theorem dirtree_update_block : forall pathname F0 tree fsxp F ilist freeblocks inum off v bn m f,
+    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
+    find_subtree pathname tree = Some (TreeFile inum f) ->
+    BFILE.block_belong_to_file ilist bn inum off ->
+    (F0 * rep fsxp F (dirtree_update_inode tree inum off v) ilist freeblocks)%pred (list2nmem (updN m bn v)).
+  Proof.
+    intros.
+    apply rep_tree_names_distinct in H as Hnames.
+    apply rep_tree_inodes_distinct in H as Hinodes.
+
+    unfold rep in *.
+    destruct_lift H.
+    eapply pimpl_apply; [ | eapply BFILE.rep_safe_used; eauto; pred_apply; cancel ].
+    cancel.
+
+    rewrite subtree_extract in H3; eauto.
+    erewrite dirtree_update_inode_update_subtree; eauto.
+    rewrite <- subtree_absorb; eauto; simpl in *.
+    eapply pimpl_apply. 2: eapply list2nmem_updN; pred_apply; cancel.
+    eapply pimpl_apply in H3. eapply list2nmem_sel with (i := inum) in H3. 2: cancel.
+    rewrite <- H3.
+    cancel.
+
+    (* IAlloc.ino_valid fsxp inum *)
+    admit.
+
+    (* off < Datatypes.length (BFILE.BFData f) *)
+    admit.
+  Admitted.
+
+  Theorem dirtree_update_free : forall tree fsxp F F0 ilist freeblocks v bn m flag,
+    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
+    BFILE.block_is_unused (BFILE.pick_balloc freeblocks flag) bn ->
+    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem (updN m bn v)).
+  Proof.
+    intros.
+    unfold rep in *.
+    destruct_lift H.
+    eapply pimpl_apply; [ | eapply BFILE.rep_safe_unused; eauto; pred_apply; cancel ].
+    cancel.
   Qed.
 
   (**

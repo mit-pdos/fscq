@@ -1724,6 +1724,47 @@ Proof.
   destruct n; simpl; auto.
 Qed.
 
+Lemma NoDup_app_l : forall A (a b : list A),
+  NoDup (a ++ b) -> NoDup a.
+Proof.
+  induction a; simpl; intros.
+  constructor.
+  inversion H; constructor; eauto.
+  intro; apply H2.
+  apply in_or_app; eauto.
+Qed.
+
+Lemma NoDup_app_r : forall A (a b : list A),
+  NoDup (a ++ b) -> NoDup b.
+Proof.
+  induction a; simpl; intros; eauto.
+  inversion H; eauto.
+Qed.
+
+Hint Resolve in_app_or.
+Hint Resolve in_or_app.
+
+Lemma not_In_NoDup_app : forall T (a : T) l1 l2,
+  In a l1 -> NoDup (l1 ++ l2) -> ~ In a l2.
+Proof.
+  induction l1; simpl; intros; eauto.
+  intuition; subst.
+  inversion H0; subst; eauto.
+  inversion H0; subst; eauto.
+Qed.
+
+Lemma NoDup_app_comm : forall T (l1 l2 : list T),
+  NoDup (l1 ++ l2) ->
+  NoDup (l2 ++ l1).
+Proof.
+  induction l2; simpl; intros; try rewrite app_nil_r in *; eauto.
+  constructor.
+  intro H'. apply in_app_or in H'.
+  eapply NoDup_remove_2; eauto.
+  apply in_or_app; intuition.
+  eapply IHl2; eapply NoDup_remove_1; eauto.
+Qed.
+
 Lemma in_map_fst_exists_snd : forall A B (l : list (A * B)) a,
   In a (map fst l) -> exists b, In (a, b) l.
 Proof.

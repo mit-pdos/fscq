@@ -203,13 +203,13 @@ Module BFILE.
     omega.
   Qed.
 
-  Theorem rep_safe_used: forall bxps ixp flist ilist m bn inum off frees v,
-    rep bxps ixp flist ilist frees (list2nmem m) ->
+  Theorem rep_safe_used: forall F bxps ixp flist ilist m bn inum off frees v,
+    (F * rep bxps ixp flist ilist frees)%pred (list2nmem m) ->
     block_belong_to_file ilist bn inum off ->
     let f := selN flist inum bfile0 in
     let f' := mk_bfile (updN (BFData f) off v) (BFAttr f) in
     let flist' := updN flist inum f' in
-    rep bxps ixp flist' ilist frees (list2nmem (updN m bn v)).
+    (F * rep bxps ixp flist' ilist frees)%pred (list2nmem (updN m bn v)).
   Proof.
     unfold rep; intros.
     destruct_lift H.
@@ -264,10 +264,10 @@ Module BFILE.
     exact BFILE.bfile0.
   Qed.
 
-  Theorem rep_safe_unused: forall bxps ixp flist ilist m frees bn v flag,
-    rep bxps ixp flist ilist frees (list2nmem m) ->
+  Theorem rep_safe_unused: forall F bxps ixp flist ilist m frees bn v flag,
+    (F * rep bxps ixp flist ilist frees)%pred (list2nmem m) ->
     block_is_unused (pick_balloc frees flag) bn ->
-    rep bxps ixp flist ilist frees (list2nmem (updN m bn v)).
+    (F * rep bxps ixp flist ilist frees)%pred (list2nmem (updN m bn v)).
   Proof.
     unfold rep, pick_balloc, block_is_unused; intros.
     destruct_lift H.

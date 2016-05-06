@@ -199,6 +199,18 @@ Section LISTPRED.
     cancel.
   Qed.
 
+  Theorem listpred_nodup_F : forall l m,
+    (forall x y : T, {x = y} + {x <> y}) ->
+    (forall (y : T) m', ~ (prd y * prd y)%pred m') ->
+    (exists F, F * listpred l)%pred m -> NoDup l.
+  Proof.
+    intros.
+    destruct_lift H0.
+    rewrite listpred_nodup_piff in H0 by eauto.
+    destruct_lift H0.
+    eauto.
+  Qed.
+
   Theorem listpred_remove :
     forall (dec : forall x y : T, {x = y} + {x <> y}) x l,
     (forall (y : T) m', ~ (prd y * prd y)%pred m') ->
