@@ -190,6 +190,15 @@ Module DIRTREE.
   Definition dirtree_safe i1 f1 i2 f2 :=
     BFILE.ilist_safe i1 f1 i2 f2.
 
+  Definition dirtree_safe2 ilist1 free1 tree1 ilist2 free2 tree2 :=
+    incl free2 free1 /\
+    forall inum off bn pathname f,
+      find_subtree pathname tree2 = Some (TreeFile inum f) ->
+      BFILE.block_belong_to_file ilist2 bn inum off ->
+      ((BFILE.block_belong_to_file ilist1 bn inum off /\
+        exists pathname' f', find_subtree pathname' tree1 = Some (TreeFile inum f')) \/
+       BFILE.block_is_unused free1 bn).
+
 
   (**
    * Theorems about extracting and folding back subtrees from a tree.
