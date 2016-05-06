@@ -861,6 +861,7 @@ Module BFILE.
     Unshelve. eauto.
   Qed.
 
+  Definition diskset_was (ds0 ds : diskset) := ds0 = ds \/ ds0 = (ds!!, nil).
 
   Theorem dwrite_ok : forall lxp bxp ixp inum off v ms,
     {< F Fm Fi Fd ds flist ilist frees f vs,
@@ -872,10 +873,10 @@ Module BFILE.
            [[[ (BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:ms'  exists flist' f' bn ds0 ds',
            LOG.rep lxp F (LOG.ActiveTxn ds' ds'!!) (MSLL ms') hm' *
-           [[ ds' = dsupd ds0 bn (v, vsmerge vs) ]] *
-           [[ ds0 = ds \/ ds0 = (ds!!, nil) ]] *
+           [[ ds' = dsupd ds0 bn (v, vsmerge vs) /\ diskset_was ds0 ds ]] *
            [[ block_belong_to_file ilist bn inum off ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
+           (* spec about files on the latest diskset *)
            [[[ ds'!! ::: (Fm  * rep bxp ixp flist' ilist frees) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
@@ -887,7 +888,7 @@ Module BFILE.
            LOG.intact lxp F (updN (fst ds) bn (v, vsmerge vs), nil) hm')
     >} dwrite lxp ixp inum off v ms.
   Proof.
-    unfold dwrite.
+    unfold dwrite, diskset_was.
     prestep; norml.
     pose proof (block_belong_to_file_ok H H5 H4).
     unfold rep in *; destruct_lift H.
@@ -963,16 +964,16 @@ Module BFILE.
            LOG.rep lxp F (LOG.ActiveTxn ds ds!!) (MSLL ms) hm *
            [[[ ds!!  ::: (Fm  * rep bxp ixp flist ilist free) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST:hm' RET:ms'  exists ds' flist' al,
+    POST:hm' RET:ms'  exists ds' ds0 flist' al,
            LOG.rep lxp F (LOG.ActiveTxn ds' ds'!!) (MSLL ms') hm' *
-           [[ ds' = (dssync_vecs ds al) \/ ds' = dssync_vecs (ds!!, nil) al ]] *
+           [[ ds' = dssync_vecs ds0 al /\ diskset_was ds0 ds ]] *
            [[[ ds'!! ::: (Fm * rep bxp ixp flist' ilist free) ]]] *
            [[[ flist' ::: (Fi * inum |-> synced_file f) ]]] *
            [[ MSAlloc ms = MSAlloc ms' ]]
     XCRASH:hm' LOG.recover_any lxp F ds hm'
     >} datasync lxp ixp inum ms.
   Proof.
-    unfold datasync, synced_file, rep.
+    unfold datasync, synced_file, rep, diskset_was.
     step.
     sepauto.
 
