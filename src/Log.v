@@ -150,6 +150,7 @@ Module LOG.
     all: try erewrite GLog.rep_hashmap_subset; eauto.
     cancel.
     erewrite GLog.rep_hashmap_subset; eauto.
+    auto.
   Qed.
 
   Lemma rep_hashmap_subset : forall xp F ms hm hm',

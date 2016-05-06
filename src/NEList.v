@@ -224,6 +224,152 @@ Section NonEmptyList.
     unfold d_in; simpl; intuition.
   Qed.
 
+  (** The second non-empty list's is a subset, in
+    * the same order, of the first non-empty list
+    *)
+  Inductive NEListSubset : nelist -> nelist -> Prop :=
+  | NESubsetNil : forall d, NEListSubset (d, nil) (d, nil)
+  | NESubsetHead : forall ds d d',
+      NEListSubset ds (d, nil)
+      -> NEListSubset (pushd d' ds) (d', nil)
+  | NESubsetIn : forall ds ds' d,
+      NEListSubset ds ds'
+      -> NEListSubset (pushd d ds) (pushd d ds')
+  | NESubsetNotIn : forall ds ds' d,
+      NEListSubset ds ds'
+      -> NEListSubset (pushd d ds) ds'.
+
+  Lemma nelist_subset_equal : forall ds,
+    NEListSubset ds ds.
+  Proof.
+    destruct ds.
+    induction l.
+    constructor.
+    eapply NESubsetIn in IHl.
+    eauto.
+  Qed.
+
+  Lemma nelist_subset_oldest : forall l t,
+    NEListSubset (t, l) (t, nil).
+  Proof.
+    induction l; intros; simpl.
+    constructor.
+
+    replace t with (fst (t, l)) at 1 by auto.
+    econstructor.
+    eauto.
+  Qed.
+
+  Lemma nelist_subset_latest : forall ds,
+    NEListSubset ds (latest ds, nil).
+  Proof.
+    unfold latest.
+    destruct ds, l; simpl.
+    constructor.
+    replace (_, _) with (pushd t0 (t, l)) by auto.
+    eapply NESubsetHead; eauto.
+    eapply nelist_subset_oldest.
+  Qed.
+
+  Lemma nelist_subset_oldest_latest' : forall l t,
+    length l > 0
+    -> NEListSubset (t, l) (t, hd t l :: nil).
+  Proof.
+    destruct l; intros; simpl.
+    inversion H.
+
+    replace t0 with (fst (t0, l)) at 1 by auto.
+    replace t0 with (fst (t0, @nil T)) at 2 by auto.
+    replace l with (snd (t0, l)) by auto.
+    replace nil with (snd (t0, @nil T)) by auto.
+    econstructor.
+    apply nelist_subset_oldest.
+  Qed.
+
+  Lemma nelist_subset_oldest_latest : forall ds,
+    length (snd ds) > 0
+    -> NEListSubset ds (fst ds, latest ds :: nil).
+  Proof.
+    destruct ds; simpl.
+    eapply nelist_subset_oldest_latest'.
+  Qed.
+
+  Lemma pushd_length : forall ds d,
+    length (snd (pushd d ds)) = S (length (snd ds)).
+  Proof.
+    intros; unfold pushd; simpl; auto.
+  Qed.
+
+  Lemma nthd_pushd : forall l t n d,
+    n <= length l
+    -> nthd n (pushd d (t, l)) = nthd n (t, l).
+  Proof.
+    unfold nthd, pushd; intros.
+    destruct (Nat.eq_dec n 0).
+
+    subst; simpl.
+    f_equal; omega.
+
+    replace (snd (_)) with ([d] ++ l) by auto.
+    rewrite selN_app2; simpl.
+    destruct n; intuition.
+    f_equal; omega.
+    destruct n; intuition.
+  Qed.
+
+  Lemma nthd_pushd_latest : forall l t d n,
+    n = S (length l)
+    -> nthd n (pushd d (t, l)) = d.
+  Proof.
+    unfold nthd, pushd; intros.
+    simpl; subst.
+    rewrite minus_diag; auto.
+  Qed.
+
+  Lemma nelist_subset_nthd : forall ds ds',
+    NEListSubset ds ds'
+    -> forall n' d,
+        n' <= length (snd ds')
+        -> nthd n' ds' = d
+        -> exists n, n <= length (snd ds) /\ nthd n ds = d.
+  Proof.
+    induction 1; intros; simpl.
+
+    exists 0.
+    rewrite nthd_0; eauto.
+
+    simpl in *.
+    inversion H0; subst.
+    exists (S (length (snd ds))); intuition.
+    rewrite nthd_0.
+    setoid_rewrite nthd_pushd_latest; eauto.
+
+    destruct (lt_dec n' (length (snd (pushd d ds'))));
+    destruct ds, ds'.
+    rewrite nthd_pushd in H1.
+    apply IHNEListSubset in H1.
+    inversion H1.
+    exists x; intuition.
+    rewrite nthd_pushd; auto.
+    rewrite pushd_length in l; omega.
+    rewrite pushd_length in l; simpl in *; omega.
+
+    rewrite nthd_pushd_latest in H1; subst.
+    exists (S (length l)); intuition.
+    rewrite nthd_pushd_latest; auto.
+    replace l0 with (snd (t0, l0)) by auto.
+    rewrite <- pushd_length with (d:=d).
+    omega.
+
+    apply IHNEListSubset in H1; auto.
+    inversion H1.
+    intuition.
+    exists x; intuition.
+    setoid_rewrite nthd_pushd; auto.
+  Qed.
+
+
+
 End NonEmptyList.
 
 

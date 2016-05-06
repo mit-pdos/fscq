@@ -103,7 +103,11 @@ Module GLog.
   end)%pred.
 
   Definition would_recover_any xp ds hm :=
-    (exists ms n, rep xp (Flushing ds n) ms hm)%pred.
+    (exists ms n ds',
+      [[ NEListSubset ds ds' ]] *
+      rep xp (Flushing ds' n) ms hm)%pred.
+
+  Local Hint Resolve nelist_subset_equal.
 
   Lemma cached_recover_any: forall xp ds ms hm,
     rep xp (Cached ds) ms hm =p=> would_recover_any xp ds hm.
@@ -145,8 +149,10 @@ Module GLog.
     unfold would_recover_any, rep; intros.
     norm. unfold stars; simpl.
     rewrite nthd_0; cancel.
-    apply MLog.rollback_recover_either.
-    intuition. eauto.
+    rewrite MLog.rollback_recover_either.
+    2: intuition.
+    eauto.
+    eauto.
   Qed.
 
   Lemma rollback_recovering: forall xp d ms hm,
@@ -465,7 +471,7 @@ Module GLog.
     eauto.
   Qed.
 
-  Lemma dset_match_log_valid : forall ts vmap ds xp,
+  Lemma dset_match_log_valid_grouped : forall ts vmap ds xp,
     vmap_match vmap ts
     -> dset_match xp ds ts
     -> log_valid (Map.elements vmap) (fst ds).
@@ -538,6 +544,51 @@ Module GLog.
     erewrite skipn_sub_S_selN_cons; simpl; eauto.
   Qed.
 
+  Lemma dset_match_replay_disk_grouped : forall ts vmap ds xp,
+    vmap_match vmap ts
+    -> dset_match xp ds ts
+    -> replay_disk (Map.elements vmap) (fst ds) = nthd (length ts) ds.
+  Proof.
+    intros; simpl in *.
+    denote dset_match as Hdset.
+    apply dset_match_length in Hdset as Hlength.
+    unfold dset_match in *.
+    intuition.
+
+    unfold vmap_match in *.
+    rewrite H.
+    erewrite replay_seq_replay_mem; eauto.
+    erewrite nthd_oob; eauto.
+    omega.
+  Qed.
+
+  Lemma dset_match_grouped : forall ts vmap ds xp,
+    length (snd ds) > 0
+    -> Map.cardinal vmap <= LogLen xp
+    -> vmap_match vmap ts
+    -> dset_match xp ds ts
+    -> dset_match xp (fst ds, [ds !!]) [Map.elements vmap].
+  Proof.
+    intros.
+    unfold dset_match; intuition simpl.
+    unfold ents_valid.
+    apply Forall_forall; intros.
+    inversion H3; subst; clear H3.
+    split.
+    eapply dset_match_log_valid_grouped; eauto.
+    setoid_rewrite <- Map.cardinal_1; eauto.
+
+    inversion H4.
+
+    econstructor.
+    simpl.
+    erewrite dset_match_replay_disk_grouped; eauto.
+    erewrite dset_match_length; eauto.
+    rewrite nthd_oob; auto.
+    constructor.
+  Qed.
+
+
   Lemma recover_before_any : forall xp ds ts hm,
     dset_match xp ds ts ->
     MLog.would_recover_before xp ds!! hm =p=>
@@ -562,8 +613,8 @@ Module GLog.
     rewrite nthd_0.
     eassign (mk_mstate vmap0 ts vmap0); simpl.
     rewrite MLog.recover_before_either.
+    2: intuition.
     cancel.
-    intuition.
   Qed.
 
   Lemma synced_recover_any : forall xp ds nr ms ts hm,
@@ -582,18 +633,8 @@ Module GLog.
   Proof.
     unfold would_recover_any, rep.
     safecancel.
-    apply dset_match_length in H0; simpl in *.
-    eassign (mk_mstate vmap0 ts (MSMLog ms)).
-    rewrite nthd_oob by (simpl; omega); simpl.
-    rewrite nthd_oob; simpl.
-    rewrite singular_latest by auto; simpl.
-    rewrite length_nil with (l := (MSTxns ms)); auto.
-    rewrite selR_oob by (simpl; omega).
-    rewrite selR_oob; eauto.
-    erewrite dset_match_length; eauto.
-    simpl; auto.
-    auto.
-    auto.
+    inversion H1.
+    apply nelist_subset_latest.
   Qed.
 
   Lemma cached_length_latest : forall F xp ds ms hm m,
@@ -747,18 +788,51 @@ Module GLog.
 
     prestep; denote rep as Hx; unfold rep in Hx; destruct_lift Hx.
     cancel.
-    eapply dset_match_log_valid; eauto.
+    eapply dset_match_log_valid_grouped; eauto.
     prestep; unfold rep; safecancel.
-    admit.
+    erewrite dset_match_replay_disk_grouped; eauto.
+    erewrite nthd_oob; eauto.
+    erewrite dset_match_length; eauto.
+
     denote (length _) as Hf; contradict Hf.
     setoid_rewrite <- Map.cardinal_1; omega.
 
     xcrash.
     unfold would_recover_any, rep.
-    admit.
+    destruct (MSTxns ms_1);
+    norm; unfold stars; simpl.
+
+    unfold vmap_match in *; simpl in *.
+    rewrite H4.
+    replace (Map.elements _) with (@nil (Map.key * valu)) by auto.
+    eassign 0.
+    eassign (mk_mstate vmap0 nil (MSMLog ms_1)).
+    instantiate (1:=(fst ds, nil)).
+    rewrite nthd_0.
+    simpl.
+    rewrite selR_oob by auto.
+    cancel.
+    intuition.
+    destruct ds;
+    apply nelist_subset_oldest.
+
+    eassign (fst ds, latest ds :: nil).
+    eassign (mk_mstate vmap0 (Map.elements (MSVMap ms_1) :: nil) (MSMLog ms_1)).
+    rewrite nthd_0.
+    unfold selR; simpl.
+    cancel.
+    intuition.
+    apply nelist_subset_oldest_latest; auto.
+    erewrite <- dset_match_length; eauto.
+    simpl; omega.
+    eapply dset_match_grouped; eauto.
+    erewrite <- dset_match_length; eauto.
+    simpl; omega.
 
     step.
-  Admitted.
+
+    Unshelve. all: eauto; econstructor.
+  Qed.
 
 
   Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
@@ -1202,46 +1276,58 @@ Module GLog.
     unfold would_recover_any, recover_any_pred, rep; intros.
     xform_norm.
     rewrite MLog.crash_xform_either.
+    erewrite dset_match_length in H3; eauto.
+    denote NEListSubset as Hds.
+    eapply nelist_subset_nthd in Hds as Hds'; eauto.
+    deex.
+    denote nthd as Hnthd.
     unfold MLog.recover_either_pred; xform_norm.
 
     - norm. cancel.
       eassign (mk_mstate vmap0 nil ms'); eauto.
       or_l; cancel.
-      eassign x0; intuition; simpl.
-      erewrite <- dset_match_length; eauto.
+      eassign n; intuition; simpl.
+      setoid_rewrite Hnthd. auto.
 
-    - destruct (Nat.eq_dec x0 (length (MSTxns x))); subst.
+    - destruct (Nat.eq_dec x0 (length (MSTxns x))) eqn:Hlength; subst.
       norm. cancel.
       or_l; cancel.
       eassign (mk_mstate vmap0 nil ms'); eauto.
       auto.
       auto.
-      eassign (length (snd ds)); intuition; simpl.
+      eassign n; intuition; simpl.
+      setoid_rewrite Hnthd.
       pred_apply.
-      rewrite selR_oob by auto; simpl.
-      erewrite <- dset_match_length; eauto.
+      rewrite selR_oob by auto; simpl; auto.
 
+      denote (length (snd x1)) as Hlen.
+      eapply nelist_subset_nthd with (n':=S x0) in Hds; eauto.
+      deex.
+      clear Hnthd.
+      denote nthd as Hnthd.
       norm. cancel.
       or_l; cancel.
       eassign (mk_mstate vmap0 nil ms'); eauto.
       auto.
       auto.
-      eassign (S x0); intuition; simpl.
-      erewrite <- dset_match_length by eauto.
-      apply lt_le_S; apply Nat.le_neq; eauto.
-      erewrite <- dset_match_nthd_S; eauto.
-      pred_apply.
-      rewrite selR_inb by omega; auto.
-      apply lt_le_S; apply Nat.le_neq; eauto.
+      eassign n1.
+      unfold selR in *.
+      destruct (lt_dec x0 (length (MSTxns x))); intuition.
+      erewrite dset_match_nthd_S in *; eauto.
+      setoid_rewrite Hnthd. auto.
+      erewrite <- dset_match_length in Hlen; eauto. omega.
+      erewrite <- dset_match_length in Hlen; eauto.
+      erewrite <- dset_match_length; eauto. omega.
 
     - norm. cancel.
       or_r; cancel.
       eassign (mk_mstate vmap0 nil ms'); eauto.
       auto.
       auto.
-      eassign x0.
+      eassign n.
       intuition.
-      erewrite <- dset_match_length; eauto.
+      setoid_rewrite Hnthd.
+      auto.
   Qed.
 
   Lemma crash_xform_recovering : forall xp d mm hm,
