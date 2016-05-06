@@ -1354,7 +1354,7 @@ Module DIRTREE.
     denote tree_dir_names_pred as Hx;
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
     step.
-    admit. (* goodSize, probably should use an IAlloc equivalent of [BALLOC.bn_valid_goodSize] *)
+    eapply IAlloc.ino_valid_goodSize; eauto.
     step.
     step.
     step.
@@ -2685,7 +2685,7 @@ Module DIRTREE.
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
     step.
     unfold SDIR.rep_macro.
-    admit. (* goodSize *)
+    eapply IAlloc.ino_valid_goodSize; eauto.
 
     step.
     step.
