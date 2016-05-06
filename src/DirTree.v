@@ -875,6 +875,63 @@ Module DIRTREE.
       eapply dirtree_update_free; eauto.
   Qed.
 
+  (**
+   * Helpers for proving [dirlist_safe] in postconditions.
+   *)
+  Theorem dirlist_safe_mkdir : forall ilist freeblocks ilist' freeblocks' flag
+                                      dnum tree_elem name inum,
+    BFILE.ilist_safe ilist  (BFILE.pick_balloc freeblocks  flag)
+                     ilist' (BFILE.pick_balloc freeblocks' flag) ->
+    dirtree_safe ilist  (BFILE.pick_balloc freeblocks  flag) (TreeDir dnum tree_elem)
+                 ilist' (BFILE.pick_balloc freeblocks' flag) (TreeDir dnum ((name, TreeDir inum []) :: tree_elem)).
+  Proof.
+    unfold dirtree_safe, BFILE.ilist_safe; intuition.
+    specialize (H1 _ _ _ H2); destruct H1.
+    2: right; intuition.
+    left; intuition.
+
+    (**
+     * Need to prove that the new directory's filename didn't change the existing
+     * pathname for [inum0].  This should follow from the fact that the new inode
+     * corresponds to a directory, not a file.
+     **)
+    destruct pathname; simpl in *; try congruence.
+    destruct (string_dec name s); subst; eauto.
+    destruct pathname; simpl in *; try congruence.
+    exists (s :: pathname). eexists. eauto.
+  Qed.
+
+  Theorem dirlist_safe_mkfile : forall ilist freeblocks ilist' freeblocks' flag
+                                      dnum tree_elem name inum,
+    BFILE.ilist_safe ilist  (BFILE.pick_balloc freeblocks  flag)
+                     ilist' (BFILE.pick_balloc freeblocks' flag) ->
+    tree_names_distinct (TreeDir dnum ((name, TreeFile inum BFILE.bfile0) :: tree_elem)) ->
+    dirtree_safe ilist  (BFILE.pick_balloc freeblocks  flag) (TreeDir dnum tree_elem)
+                 ilist' (BFILE.pick_balloc freeblocks' flag) (TreeDir dnum ((name, TreeFile inum BFILE.bfile0) :: tree_elem)).
+  Proof.
+    unfold dirtree_safe, BFILE.ilist_safe; intuition.
+    specialize (H2 _ _ _ H3); destruct H2.
+    2: right; intuition.  (* Unused block. *)
+
+    (**
+     * Need to determine whether the new file's filename infact corresponds to [inum0].
+     **)
+    destruct pathname; simpl in *; try congruence.
+    destruct (string_dec name s); subst; eauto.
+
+    - (* Same filename; contradiction because the file is empty *)
+      exfalso.
+
+      (* Need a contradiction from
+         [BFILE.block_belong_to_file ilist' bn inum0 off]
+         and some premise saying the file is actually empty..
+       *)
+      admit.
+
+    - (* Different filename *)
+      left; intuition.
+      exists (s :: pathname); eexists; simpl in *; eauto.
+  Admitted.
 
   (**
    * Helpers for higher levels that need to reason about updated trees.
