@@ -55,11 +55,11 @@ Module ATOMICCP.
   (* copy an existing src into an existing, empty dst. *)
 
   Definition copydata T fsxp src_inum dst_inum mscs rx : prog T :=
-    let^ (mscs, attr) <-  AFS.file_get_attr fsxp src_inum mscs;
+    let^ (mscs, attr) <- AFS.file_get_attr fsxp src_inum mscs;
     let^ (mscs, b) <- AFS.read_fblock fsxp src_inum 0 mscs;
     let^ (mscs) <- AFS.update_fblock_d fsxp dst_inum 0 b mscs;
     let^ (mscs, ok) <- AFS.file_set_attr fsxp dst_inum attr mscs;
-    let^ (mscs) <- AFS.file_sync fsxp dst_inum mscs;    (* we want a metadata and data sync here *)
+    let^ (mscs) <- AFS.file_sync fsxp dst_inum mscs;
     rx ^(mscs, ok).
 
   Definition copy2temp T fsxp src_inum dst_inum mscs rx : prog T :=
@@ -68,7 +68,6 @@ Module ATOMICCP.
       let^ (mscs, ok) <- copydata fsxp src_inum dst_inum mscs;
       rx ^(mscs, ok)
     } else {
-      let^ (mscs) <- AFS.file_sync fsxp dst_inum mscs;    (* do a sync to simplify spec *)
       rx ^(mscs, ok)
     }.
 
@@ -140,45 +139,115 @@ Module ATOMICCP.
   Qed.
 
   Ltac xcrash_norm :=  repeat (xform_norm; cancel).
+  Notation MSLL := BFILE.MSLL.
+  Notation MSAlloc := BFILE.MSAlloc.
 
   Theorem copydata_ok : forall fsxp src_inum tinum mscs,
-    {< ds Fm Ftop temp_tree src_fn file tfile v0 t0,
-    PRE:hm  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) mscs hm * 
-      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree) ]]] *
+    {< ds Fm Ftop temp_tree src_fn file tfile v0 t0 ilist freelist,
+    PRE:hm
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree ilist freelist) ]]] *
+      [[ forall d, d_in d ds -> exists tfile' ilist' freelist',
+         let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree in
+         (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist')%pred (list2nmem d) ]] *
       [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
       [[ DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
       [[ src_fn <> temp_fn ]] *
       [[[ BFILE.BFData file ::: (0 |-> v0) ]]] *
       [[[ BFILE.BFData tfile ::: (0 |-> t0) ]]]
-    POST:hm' RET:^(mscs, r)
-      exists d tree' f', 
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
-        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree') ]]] *
-        ([[ r = false]] * 
-         [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file f')) temp_tree ]]
-        \/ 
-         [[ r = true ]] *
-         [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree ]])
+    POST:hm' RET:^(mscs', r)
+      exists ds',
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' \/
+      [[ forall d, d_in d ds' -> exists tfile' ilist' freelist',
+         let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree in
+         (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist')%pred (list2nmem d) ]] *
+      ([[ r = false ]] \/
+       [[ r = true ]] *
+       exists ilist' freelist',
+       let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree in
+       [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist') ]]])
     XCRASH:hm'
-      exists dlist,
-        [[ Forall (fun d => (exists tree' tfile', (Fm * DIRTREE.rep fsxp Ftop tree')%pred (list2nmem d) /\
-             tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree)) %type dlist ]] *
-        ( (* crashed before flushing *)
-          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushdlist dlist ds) hm' \/
-          (exists d dlist', [[dlist = d :: dlist' ]] * 
-            (* crashed after a flush operation  *)
-            (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, dlist') hm')))
+      exists ds',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+      [[ forall d, d_in d ds' -> exists tfile' ilist' freelist',
+         let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree in
+         (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist')%pred (list2nmem d) ]]
      >} copydata fsxp src_inum tinum mscs.
   Proof.
     unfold copydata; intros.
     step.
+    2: AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
     step.
+    2: AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
     step.
 
     Focus 2.  (* update_fblock_d crash condition *)
     AFS.xcrash_solve.
-    xform_norm; cancel.
-    xform_norm. safecancel.
+    xform_norm; cancel; xform_norm; safecancel.
+    xform_norm; cancel; xform_norm; safecancel.
+
+    inversion H12; subst; simpl in *; try intuition.
+    edestruct DIRTREE.dirtree_update_safe.
+    2: eauto.
+    4: intuition; subst.
+    4: repeat eexists; eauto.
+    4: repeat eexists.
+    4: erewrite DIRTREE.dirtree_update_inode_update_subtree in H16.
+    4: erewrite update_update_subtree_eq in H16.
+    4: eauto.
+    4: admit.
+    4: eauto.
+    4: constructor.
+    4: admit.
+    4: admit.
+    4: erewrite DIRTREE.find_update_subtree; eauto.
+    4: admit.
+    3: admit.  (* update_subtree putting back what was already there.. *)
+    2: apply DIRTREE.dirtree_safe_refl.
+    erewrite DIRTREE.find_update_subtree; eauto.
+
+    (* XXX crash_xform oldest *)
+    xform_norm; cancel; xform_norm; safecancel.
+    inversion H12; subst; simpl in *; try intuition.
+    edestruct DIRTREE.dirtree_update_safe.
+    2: eauto.
+    4: intuition; subst.
+    4: repeat eexists; eauto.
+    4: repeat eexists.
+    4: erewrite DIRTREE.dirtree_update_inode_update_subtree in H16.
+    4: erewrite update_update_subtree_eq in H16.
+    4: eauto.
+    4: admit.
+    4: eauto.
+    4: constructor.
+    4: admit.
+    4: admit.
+    4: erewrite DIRTREE.find_update_subtree; eauto.
+    4: admit.
+    (* XXX 3 is broken!  we need a different file in (fst ds)... *)
+    3: admit.
+    2: apply DIRTREE.dirtree_safe_refl.
+    erewrite DIRTREE.find_update_subtree; eauto.
+
+    step.
+    2: AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
+    2: admit.   (* we can't reuse the big [forall], because instead of [ds], we have [dsupd ... ds] *)
+
+    step.
+    step.
+
+    admit. (* crash condition *)
+
+    step.
+
+    admit. (* crash condition *)
+  Admitted.
+
+(*
+    simpl; eauto.
+    admit.
+
+    intuition.
     xcrash_norm.
     instantiate (x := nil).
     or_l.
@@ -316,6 +385,7 @@ Module ATOMICCP.
     
     Unshelve. all: eauto.
   Qed.
+*)
 
   Hint Extern 1 ({{_}} progseq (copydata _ _ _ _) _) => apply copydata_ok : prog.
 
