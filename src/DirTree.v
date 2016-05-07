@@ -233,6 +233,36 @@ Module DIRTREE.
       intuition.
   Qed.
 
+  Lemma dirtree_safe_file : forall ilist frees inum f f',
+    dirtree_safe ilist frees (TreeFile inum f) ilist frees (TreeFile inum f').
+  Proof.
+    unfold dirtree_safe; intuition.
+    apply BFILE.ilist_safe_refl.
+    left; split; auto.
+    exists pathname. eexists.
+    destruct pathname; simpl in *; try congruence.
+    inversion H.
+    subst; eauto.
+  Qed.
+
+  Lemma dirtree_safe_ilist_trans : forall ilist frees ilist' frees' tree tree',
+    dirtree_safe ilist frees tree ilist frees tree' ->
+    BFILE.ilist_safe ilist frees ilist' frees' ->
+    dirtree_safe ilist frees tree ilist' frees' tree'.
+  Proof.
+    unfold dirtree_safe, BFILE.ilist_safe; intuition.
+    specialize (H3 _ _ _ H5); intuition.
+    specialize (H4 _ _ _ H6); intuition.
+    eapply H2; eauto.
+  Qed.
+
+  Lemma dirtree_safe_file_trans : forall ilist frees ilist' frees' inum f f',
+    BFILE.ilist_safe ilist frees ilist' frees' ->
+    dirtree_safe ilist frees (TreeFile inum f) ilist' frees' (TreeFile inum f').
+  Proof.
+    intros; apply dirtree_safe_ilist_trans; auto.
+    apply dirtree_safe_file.
+  Qed.
 
   (**
    * Theorems about extracting and folding back subtrees from a tree.
@@ -2767,13 +2797,8 @@ Module DIRTREE.
     eapply find_subtree_inum_valid; eauto.
 
     eapply dirlist_safe_subtree; eauto.
-    unfold dirtree_safe; intuition.
-    apply BFILE.ilist_safe_refl.
-    left; split; auto.
-    destruct pathname0; simpl in *; try congruence.
-    (* How to connect to rep? *)
-    admit.
-  Admitted.
+    apply dirtree_safe_file.
+  Qed.
 
  Theorem datasync_ok : forall fsxp inum mscs,
     {< F ds pathname Fm Ftop tree f ilist frees,
@@ -2801,13 +2826,8 @@ Module DIRTREE.
     eapply find_subtree_inum_valid; eauto.
 
     eapply dirlist_safe_subtree; eauto.
-    unfold dirtree_safe; intuition.
-    apply BFILE.ilist_safe_refl.
-    left; split; auto.
-    destruct pathname0; simpl in *; try congruence.
-    (* How to connect to rep? *)
-    admit.
-  Admitted.
+    apply dirtree_safe_file.
+  Qed.
 
 
   Theorem sync_ok : forall fsxp mscs,
@@ -2857,9 +2877,8 @@ Module DIRTREE.
     eapply find_subtree_inum_valid; eauto.
 
     eapply dirlist_safe_subtree; eauto.
-    unfold dirtree_safe; intuition.
-    admit.  (* XXX *)
-  Admitted.
+    apply dirtree_safe_file_trans; auto.
+  Qed.
 
 
   Theorem getlen_ok : forall fsxp inum mscs,
@@ -2926,10 +2945,8 @@ Module DIRTREE.
     eapply find_subtree_inum_valid; eauto.
 
     eapply dirlist_safe_subtree; eauto.
-    unfold dirtree_safe; intuition.
-    (* XXX ??? *)
-    admit.
-  Admitted.
+    apply dirtree_safe_file_trans; auto.
+  Qed.
 
 
   Hint Extern 1 ({{_}} progseq (read _ _ _ _) _) => apply read_ok : prog.
