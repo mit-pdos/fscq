@@ -339,6 +339,12 @@ Proof.
   unfold DIRTREE.update_subtree; eauto.
 Qed.
 
+Lemma find_subtree_root : forall tree,
+  DIRTREE.find_subtree [] tree = Some tree.
+Proof.
+  reflexivity.
+Qed.
+
 Lemma dirtree_inum_update_subtree : forall t fn rest sub,
   DIRTREE.dirtree_inum (DIRTREE.update_subtree (fn::rest) sub t) = DIRTREE.dirtree_inum t.
 Proof.
