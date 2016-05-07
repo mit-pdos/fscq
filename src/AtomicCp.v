@@ -951,12 +951,10 @@ DIRTREE.delete_from_dir temp_fn (DIRTREE.TreeDir the_dnum st')
     step.
 *)
 
-  Admitted.
-
   Hint Extern 1 ({{_}} progseq (recover) _) => apply atomic_cp_recover_ok : prog.
 
-  Theorem atomic_cp_with_recover_ok : forall fsxp src_inum dst_fn mscs,
-    {<< d Fm Ftop temp_tree src_fn file tfile v0 ilist freeblocks tinum,
+  Theorem atomic_cp_with_recover_ok : forall fsxp src_inum tinum dst_fn mscs,
+    {<< d Fm Ftop temp_tree src_fn file tfile v0 ilist freeblocks,
     PRE:hm  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm * 
       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree ilist freeblocks) ]]] *
       [[ DIRTREE.dirtree_inum temp_tree = the_dnum ]] *
@@ -970,10 +968,10 @@ DIRTREE.delete_from_dir temp_fn (DIRTREE.TreeDir the_dnum st')
       exists d tree' ilist' freeblocks' temp_dents dstents,
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs') hm' *
       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freeblocks') ]]] *
-      (([[ r = false ]] *
+      (([[r = false ]] *
         (exists f',
         [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum f') temp_tree ]])) \/
-       ([[ r = true ]] *
+       ([[r = true ]] *
         [[ temp_tree = DIRTREE.TreeDir the_dnum temp_dents ]] *
         let subtree := DIRTREE.TreeFile tinum (BFILE.synced_file file) in
         let pruned := DIRTREE.tree_prune the_dnum temp_dents [] temp_fn temp_tree in
@@ -981,12 +979,13 @@ DIRTREE.delete_from_dir temp_fn (DIRTREE.TreeDir the_dnum st')
         [[ tree' = DIRTREE.tree_graft the_dnum dstents [] dst_fn subtree pruned ]]))
     REC:hm' RET:^(mscs',fsxp')
       [[ fsxp' = fsxp ]] *
-      exists d Fm' Ftop' tree' ilist' freeblocks' temp_dents dstents,
+      exists d Fm' Ftop' tree' ilist' freeblocks' temp_tree_crash temp_dents dstents,
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs') hm' *
       [[[ d ::: (Fm' * DIRTREE.rep fsxp Ftop' tree' ilist' freeblocks') ]]] *
-      [[ temp_tree = DIRTREE.TreeDir the_dnum temp_dents ]] *
+      [[ DTCrash.tree_crash temp_tree temp_tree_crash ]] *
+      [[ temp_tree_crash = DIRTREE.TreeDir the_dnum temp_dents ]] *
       let subtree := DIRTREE.TreeFile tinum (BFILE.synced_file file) in
-      let pruned := DIRTREE.tree_prune the_dnum temp_dents [] temp_fn temp_tree in
+      let pruned := DIRTREE.tree_prune the_dnum temp_dents [] temp_fn temp_tree_crash in
       ([[ tree' = pruned ]] \/
        [[ pruned = DIRTREE.TreeDir the_dnum dstents ]] *
        [[ tree' = DIRTREE.tree_graft the_dnum dstents [] dst_fn subtree pruned ]])
