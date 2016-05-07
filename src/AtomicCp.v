@@ -619,8 +619,8 @@ Module ATOMICCP.
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
       [[ forall d, d_in d ds' ->
          exists Fm Ftop ilist frees tree dstents subtree dst_inum base_tree' temp_dents',
-         (base_tree' = DIRTREE.TreeDir the_dnum temp_dents') *
-         (base_tree' = base_tree \/ DTCrash.tree_crash base_tree base_tree') *
+         (base_tree' = DIRTREE.TreeDir the_dnum temp_dents') /\
+         (base_tree' = base_tree \/ DTCrash.tree_crash base_tree base_tree') /\
          let dst_subtree := DIRTREE.TreeFile dst_inum (BFILE.synced_file file) in
          let tree_temp  := DIRTREE.update_subtree [temp_fn] subtree base_tree' in
          let tree_prune := DIRTREE.tree_prune the_dnum temp_dents' [] temp_fn base_tree' in
@@ -802,6 +802,122 @@ Admitted.
           erewrite DIRTREE.dirtree_dir_parts with (t := t') by ( apply dirtree_isdir_update_subtree; auto );
           reflexivity
         end.
+
+        (* our [delete_ok] should never fail.. *)
+        destruct a2.
+        2: admit.  (* need to eventually fix [delete_ok].. *)
+        step.
+        safestep.
+        eapply DTCrash.tree_crash_trans; eauto.
+        reflexivity.
+
+        match goal with
+        | [ |- ?t' = _ ] =>
+          erewrite DIRTREE.dirtree_dir_parts with (t := t')
+        end.
+        rewrite DIRTREE.tree_prune_preserve_inum by reflexivity. reflexivity.
+        rewrite DIRTREE.tree_prune_preserve_isdir by reflexivity. reflexivity.
+        rewrite update_subtree_root.
+        left.   (* dst not created yet *)
+        unfold DIRTREE.tree_prune. rewrite update_subtree_root.
+
+      (*
+DIRTREE.delete_from_dir temp_fn
+  (DIRTREE.TreeDir the_dnum
+     (DIRTREE.dirtree_dirents
+        (DIRTREE.update_subtree [temp_fn] subtree_crashed (DIRTREE.TreeDir the_dnum st')))) =
+DIRTREE.delete_from_dir temp_fn (DIRTREE.TreeDir the_dnum st')
+      *)
+        admit.
+
+        admit.
+
+        AFS.xcrash_solve.
+        admit. (* hash subset *)
+        cancel. repeat xform_dist. cancel.
+
+        denote! (d_in d1 _) as Hdin'. inversion Hdin'; subst; simpl in *.
+        repeat eexists. 3: pred_apply; cancel.
+        3: left; reflexivity.  (* temp file still exists. *)
+        right.
+        eapply DTCrash.tree_crash_trans; eauto.
+        admit.  (* prune ents *)
+
+        intuition; subst.
+        repeat eexists. 3: pred_apply; cancel.
+        3: right; left.  (* temp file is gone *)
+        3: rewrite update_subtree_root.
+        right.
+        eapply DTCrash.tree_crash_trans; eauto.
+        admit.  (* prune ents *)
+        admit.  (* prune is delete *)
+
+        AFS.xcrash_solve.
+        admit.  (* hash subset *)
+        xform_deex_r. repeat xform_dist. cancel.
+        denote! (d_in d0 _) as Hdin'. inversion Hdin'; subst; simpl in *; intuition.
+        repeat eexists. 3: pred_apply; cancel.
+        3: left; reflexivity.  (* temp file still exists. *)
+        right.
+        eapply DTCrash.tree_crash_trans; eauto.
+        admit.  (* prune ents *)
+
+        exfalso.
+        edestruct DTCrash.tree_crash_find_name as [sub1 ?]; intuition.
+        3: edestruct DTCrash.tree_crash_find_name as [sub2 ?]; intuition.
+        5: eapply find_name_update_subtree_impossible with (sub0 := sub2); eassumption.
+        3: eauto.
+        3: eassign sub1; eauto.
+        eauto. eauto.
+
+        exfalso.
+        edestruct DTCrash.tree_crash_find_name as [sub1 ?]; intuition.
+        3: edestruct DTCrash.tree_crash_find_name as [sub2 ?]; intuition.
+        5: eapply find_name_update_subtree_impossible with (sub0 := sub2); eassumption.
+        3: eauto.
+        3: eassign sub1; eauto.
+        eauto. eauto.
+
+        exfalso.
+        edestruct DTCrash.tree_crash_find_name as [sub1 ?]; intuition.
+        3: edestruct DTCrash.tree_crash_find_name as [sub2 ?]; intuition.
+        5: eapply find_name_update_subtree_impossible with (sub0 := sub2); eassumption.
+        3: eauto.
+        3: eassign sub1; eauto.
+        eauto. eauto.
+
+        exfalso.
+        edestruct DTCrash.tree_crash_find_name as [sub1 ?]; intuition.
+        3: edestruct DTCrash.tree_crash_find_name as [sub2 ?]; intuition.
+        5: eapply find_name_update_subtree_impossible with (sub0 := sub2); eassumption.
+        3: eauto.
+        3: eassign sub1; eauto.
+        eauto. eauto.
+
+        AFS.xcrash_solve.
+        xform_deex_r. repeat xform_dist. cancel.
+        denote! (d_in _ _) as Hdin''. inversion Hdin''; simpl in *; subst; intuition.
+        repeat eexists. 3: pred_apply; cancel.
+        3: left; reflexivity.  (* temp file still exists. *)
+        right.
+        eapply DTCrash.tree_crash_trans; eauto.
+        admit.  (* prune ents *)
+      + admit.
+      + admit.
+    - AFS.xcrash_solve.
+      cancel. repeat xform_dist. cancel.
+      apply crash_xform_pimpl.
+      apply LOG.before_crash_idempred.
+      eauto.
+  Admitted.
+
+
+
+ (* USELESS STUFF...
+
+        safestep.
+        safestep.
+
         erewrite update_update_subtree_eq; eauto. admit. constructor.
 
         xform_deex_r.
@@ -833,7 +949,7 @@ Admitted.
     instantiate (2 := nil). simpl.
 
     step.
-
+*)
 
   Admitted.
 
