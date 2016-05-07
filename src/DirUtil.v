@@ -516,6 +516,14 @@ Proof.
 Qed.
 
 
+Lemma update_subtree_same : forall fn tree subtree,
+  DIRTREE.tree_names_distinct tree ->
+  DIRTREE.find_subtree [fn] tree = Some subtree ->
+  DIRTREE.update_subtree [fn] subtree tree = tree.
+Proof.
+Admitted.
+
+
 Global Opaque DIRTREE.tree_graft.
 Global Opaque DIRTREE.update_subtree.
 Global Opaque DIRTREE.find_subtree.

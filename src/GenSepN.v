@@ -1151,3 +1151,20 @@ Proof.
   eapply possible_crash_list2nmem_cons; eauto.
 Qed.
 
+Lemma setlen_singleton : forall T l (v : T),
+  setlen l 1 v = [ selN (setlen l 1 v) 0 v ].
+Proof.
+  unfold setlen.
+  destruct l; simpl in *; congruence.
+Qed.
+
+Lemma setlen_singleton_ptsto : forall (l : list valuset),
+  let l' := setlen l 1 ($0, nil) in
+  (0 |-> selN l' 0 ($0, nil))%pred (list2nmem l').
+Proof.
+  intros; subst l'.
+  eapply arrayN_one.
+  rewrite <- setlen_singleton.
+  apply list2nmem_array.
+Qed.
+
