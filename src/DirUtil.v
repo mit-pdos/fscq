@@ -339,6 +339,12 @@ Proof.
   unfold DIRTREE.update_subtree; eauto.
 Qed.
 
+Lemma find_subtree_root : forall tree,
+  DIRTREE.find_subtree [] tree = Some tree.
+Proof.
+  reflexivity.
+Qed.
+
 Lemma dirtree_inum_update_subtree : forall t fn rest sub,
   DIRTREE.dirtree_inum (DIRTREE.update_subtree (fn::rest) sub t) = DIRTREE.dirtree_inum t.
 Proof.
@@ -515,6 +521,25 @@ Proof.
   rewrite dent_find_update_ne; auto.
 Qed.
 
+
+Lemma update_subtree_same : forall fn tree subtree,
+  DIRTREE.tree_names_distinct tree ->
+  DIRTREE.find_subtree [fn] tree = Some subtree ->
+  DIRTREE.update_subtree [fn] subtree tree = tree.
+Proof.
+Admitted.
+
+Lemma find_name_update_subtree_impossible : forall fn sub inum ents sub0,
+  None = DIRTREE.find_name [fn] (DIRTREE.update_subtree [fn] sub (DIRTREE.TreeDir inum ents)) ->
+  DIRTREE.find_subtree [fn] (DIRTREE.TreeDir inum ents) = Some sub0 ->
+  False.
+Proof.
+  unfold DIRTREE.find_name; intros.
+  erewrite DIRTREE.find_update_subtree in *.
+  destruct sub; congruence.
+  eauto.
+  admit.  (* unnecessary premise, see [find_update_subtree] *)
+Admitted.
 
 Global Opaque DIRTREE.tree_graft.
 Global Opaque DIRTREE.update_subtree.
