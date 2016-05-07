@@ -201,6 +201,21 @@ Module DTCrash.
     pred_apply; cancel.
   Qed.
 
+  Theorem file_crash_exists : forall file, exists file',
+    file_crash file file'.
+  Proof.
+    unfold file_crash; intros.
+    eexists.
+    exists (map fst (BFData file)).
+  Admitted.
+
+  Theorem tree_crash_exists : forall tree, exists tree',
+    tree_crash tree tree'.
+  Proof.
+    induction tree using dirtree_ind2; intros.
+    eexists; constructor.
+  Admitted.
+
   Theorem tree_crash_update_subtree :
     forall tree subtree filename updated_tree_crashed,
     tree_crash (update_subtree [filename] subtree tree) updated_tree_crashed ->
@@ -208,6 +223,32 @@ Module DTCrash.
     tree_crash tree tree_crashed /\
     tree_crash subtree subtree_crashed /\
     updated_tree_crashed = update_subtree [filename] subtree_crashed tree_crashed.
+  Proof.
+    destruct tree; simpl; intros.
+    - inversion H.
   Admitted.
+
+  Theorem file_crash_trans : forall f1 f2 f3,
+    file_crash f1 f2 ->
+    file_crash f2 f3 ->
+    file_crash f1 f3.
+  Proof.
+    unfold file_crash; intros; repeat deex; simpl in *.
+    apply possible_crash_list_synced_list_eq in H1; subst.
+    eauto.
+  Qed.
+
+  Theorem tree_crash_trans : forall t1 t2 t3,
+    tree_crash t1 t2 ->
+    tree_crash t2 t3 ->
+    tree_crash t1 t3.
+  Proof.
+    intros.
+    induction H.
+    inversion H0; constructor; eauto. eapply file_crash_trans; eauto.
+    inversion H0; constructor; try congruence.
+    (* Need a [dirtree_ind2]-like induction principle for [tree_crash] *)
+  Admitted.
+
 
 End DTCrash.

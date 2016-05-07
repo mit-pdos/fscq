@@ -585,19 +585,22 @@ Module ATOMICCP.
   (* specs for copy_and_rename_cleanup and atomic_cp *)
 
   Theorem atomic_cp_recover_ok :
-    {< fsxp cs ds base_tree temp_dents src_fn src_inum dst_fn file,
+    {< fsxp cs ds base_tree temp_dents src_fn src_inum dst_fn file old_temp,
     PRE:hm
       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm *
       [[ base_tree = DIRTREE.TreeDir the_dnum temp_dents ]] *
+      [[ DIRTREE.find_subtree [temp_fn] base_tree = Some old_temp ]] *
       [[ DIRTREE.find_subtree [src_fn] base_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
       [[ forall d, d_in d ds ->
-         exists Fm Ftop ilist frees tree dstents subtree dst_inum,
+         exists Fm Ftop ilist frees tree dstents subtree dst_inum base_tree' temp_dents',
+         (base_tree' = DIRTREE.TreeDir the_dnum temp_dents') /\
+         (base_tree' = base_tree \/ DTCrash.tree_crash base_tree base_tree') /\
          let dst_subtree := DIRTREE.TreeFile dst_inum (BFILE.synced_file file) in
-         let tree_temp  := DIRTREE.update_subtree [temp_fn] subtree base_tree in
-         let tree_prune := DIRTREE.tree_prune the_dnum temp_dents [] temp_fn base_tree in
+         let tree_temp  := DIRTREE.update_subtree [temp_fn] subtree base_tree' in
+         let tree_prune := DIRTREE.tree_prune the_dnum temp_dents' [] temp_fn base_tree' in
          let tree_dst   := DIRTREE.tree_graft the_dnum dstents [] dst_fn dst_subtree tree_prune in
-         (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)%pred (list2nmem d) /\
          tree_prune = DIRTREE.TreeDir the_dnum dstents /\
+         (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)%pred (list2nmem d) /\
          (tree = tree_temp \/ tree = tree_prune \/ tree = tree_dst) ]]%type
     POST:hm' RET:^(ms, fsxp')
       [[ fsxp' = fsxp ]] *
@@ -614,14 +617,16 @@ Module ATOMICCP.
     XCRASH:hm'
       exists ds',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-      [[ forall d, d_in d ds ->
-         exists Fm Ftop ilist frees tree dstents subtree dst_inum,
+      [[ forall d, d_in d ds' ->
+         exists Fm Ftop ilist frees tree dstents subtree dst_inum base_tree' temp_dents',
+         (base_tree' = DIRTREE.TreeDir the_dnum temp_dents') *
+         (base_tree' = base_tree \/ DTCrash.tree_crash base_tree base_tree') *
          let dst_subtree := DIRTREE.TreeFile dst_inum (BFILE.synced_file file) in
-         let tree_temp  := DIRTREE.update_subtree [temp_fn] subtree base_tree in
-         let tree_prune := DIRTREE.tree_prune the_dnum temp_dents [] temp_fn base_tree in
+         let tree_temp  := DIRTREE.update_subtree [temp_fn] subtree base_tree' in
+         let tree_prune := DIRTREE.tree_prune the_dnum temp_dents' [] temp_fn base_tree' in
          let tree_dst   := DIRTREE.tree_graft the_dnum dstents [] dst_fn dst_subtree tree_prune in
-         (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)%pred (list2nmem d) /\
          tree_prune = DIRTREE.TreeDir the_dnum dstents /\
+         (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)%pred (list2nmem d) /\
          (tree = tree_temp \/ tree = tree_prune \/ tree = tree_dst) ]]%type
     >} recover.
   Proof.
@@ -631,41 +636,47 @@ Module ATOMICCP.
     denote! (forall _, d_in _ _ -> _) as Hdin.
     edestruct Hdin as [? Hdin'].
     eapply nthd_in_ds.
-    do 9 destruct Hdin' as [? Hdin'].
+    do 13 destruct Hdin' as [? Hdin'].
     denote! (crash_xform _ _) as Hcrashd.
-    (* why is [setoid_rewrite] not doing the right thing? *)
-    eapply crash_xform_pimpl_proper in Hcrashd; [ | apply diskIs_pred; eassumption ].
-    apply crash_xform_sep_star_dist in Hcrashd.
-    rewrite DTCrash.xform_tree_rep in Hcrashd.
-    destruct_lift Hcrashd.
-    denote DTCrash.tree_crash as Htc.
-    intuition; subst.  (* 3 cases from the precondition.. *)
-    - (* temp file is there *)
-      apply DTCrash.tree_crash_update_subtree in Htc as Htc'; repeat deex; intuition.
-      denote (DTCrash.tree_crash _ tree_crashed) as Htc_base; inversion Htc_base; subst.
-      cancel.
-      step.
-      rewrite find_subtree_root.
-      match goal with
-      | [ |- Some ?t' = _ ] =>
-        erewrite DIRTREE.dirtree_dir_parts with (t := t') by ( apply dirtree_isdir_update_subtree; auto );
-        reflexivity
-      end.
+    denote! (_ \/ DTCrash.tree_crash _ _) as Hcrash_or_not.
+    destruct Hcrash_or_not.   (* the two-way or in the precondition. *)
+    - (* why is [setoid_rewrite] not doing the right thing? *)
+      eapply crash_xform_pimpl_proper in Hcrashd; [ | apply diskIs_pred; eassumption ].
+      apply crash_xform_sep_star_dist in Hcrashd.
+      rewrite DTCrash.xform_tree_rep in Hcrashd.
+      destruct_lift Hcrashd.
+      denote DTCrash.tree_crash as Htc.
+      intuition; subst.  (* 3 cases from the precondition.. *)
+      + (* temp file is there *)
+        apply DTCrash.tree_crash_update_subtree in Htc as Htc'; repeat deex; intuition.
+        denote (DTCrash.tree_crash _ tree_crashed) as Htc_base; inversion Htc_base; subst.
+        cancel.
+        safestep.
+        rewrite find_subtree_root.
+        match goal with
+        | [ |- Some ?t' = _ ] =>
+          erewrite DIRTREE.dirtree_dir_parts with (t := t') by ( apply dirtree_isdir_update_subtree; auto );
+          reflexivity
+        end.
 
-      (* our [delete_ok] should never fail.. *)
-      destruct a2.
-      2: admit.  (* need to eventually fix [delete_ok].. *)
-      step.
-      step.
-      match goal with
-      | [ |- ?t' = _ ] =>
-        erewrite DIRTREE.dirtree_dir_parts with (t := t')
-      end.
-      rewrite DIRTREE.tree_prune_preserve_inum by reflexivity. reflexivity.
-      rewrite DIRTREE.tree_prune_preserve_isdir by reflexivity. reflexivity.
-      rewrite update_subtree_root.
-      left.   (* dst not created yet *)
-      unfold DIRTREE.tree_prune. rewrite update_subtree_root.
+        (* our [delete_ok] should never fail.. *)
+        destruct a2.
+        2: admit.  (* need to eventually fix [delete_ok].. *)
+        step.
+        safestep.
+        denote (DIRTREE.TreeDir _ _ = DIRTREE.TreeDir _ temp_dents) as H'; inversion H'; subst.
+        eassumption.
+        reflexivity.
+
+        match goal with
+        | [ |- ?t' = _ ] =>
+          erewrite DIRTREE.dirtree_dir_parts with (t := t')
+        end.
+        rewrite DIRTREE.tree_prune_preserve_inum by reflexivity. reflexivity.
+        rewrite DIRTREE.tree_prune_preserve_isdir by reflexivity. reflexivity.
+        rewrite update_subtree_root.
+        left.   (* dst not created yet *)
+        unfold DIRTREE.tree_prune. rewrite update_subtree_root.
 
       (*
 DIRTREE.delete_from_dir temp_fn
@@ -674,9 +685,136 @@ DIRTREE.delete_from_dir temp_fn
         (DIRTREE.update_subtree [temp_fn] subtree_crashed (DIRTREE.TreeDir the_dnum st')))) =
 DIRTREE.delete_from_dir temp_fn (DIRTREE.TreeDir the_dnum st')
       *)
-      admit.
+        admit.
 
-      admit.
+        admit.
+
+        AFS.xcrash_solve.
+        admit. (* hash subset *)
+        cancel. repeat xform_dist. cancel.
+
+        denote! (d_in d1 _) as Hdin'. inversion Hdin'; subst; simpl in *.
+        repeat eexists. 3: pred_apply; cancel.
+        3: left; reflexivity.  (* temp file still exists. *)
+        right.
+        repeat match goal with
+        | [ H: DIRTREE.TreeDir _ _ = DIRTREE.TreeDir _ _ |- _ ] => inversion H; clear H; subst
+        end. eauto.
+        admit.  (* prune ents *)
+
+        intuition; subst.
+        repeat eexists. 3: pred_apply; cancel.
+        3: right; left.  (* temp file is gone *)
+        3: rewrite update_subtree_root.
+        right.
+        repeat match goal with
+        | [ H: DIRTREE.TreeDir _ _ = DIRTREE.TreeDir _ _ |- _ ] => inversion H; clear H; subst
+        end. eauto.
+        admit.  (* prune ents *)
+        admit.  (* prune is delete *)
+
+        AFS.xcrash_solve.
+        admit.  (* hash subset *)
+        xform_deex_r. repeat xform_dist. cancel.
+        denote! (d_in d0 _) as Hdin'. inversion Hdin'; subst; simpl in *; intuition.
+        repeat eexists. 3: pred_apply; cancel.
+        3: left; reflexivity.  (* temp file still exists. *)
+        right.
+        repeat match goal with
+        | [ H: DIRTREE.TreeDir _ _ = DIRTREE.TreeDir _ _ |- _ ] => inversion H; clear H; subst
+        end. eauto.
+        admit.  (* prune ents *)
+
+Transparent DIRTREE.find_name.
+Lemma find_name_update_subtree_impossible : forall fn sub inum ents sub0,
+  None = DIRTREE.find_name [fn] (DIRTREE.update_subtree [fn] sub (DIRTREE.TreeDir inum ents)) ->
+  DIRTREE.find_subtree [fn] (DIRTREE.TreeDir inum ents) = Some sub0 ->
+  False.
+Proof.
+  unfold DIRTREE.find_name; intros.
+  erewrite DIRTREE.find_update_subtree in *.
+  destruct sub; congruence.
+  eauto.
+  admit.  (* unnecessary premise, see [find_update_subtree] *)
+Admitted.
+
+        exfalso.
+        edestruct DTCrash.tree_crash_find_name; intuition.
+        3: eapply find_name_update_subtree_impossible; eassumption.
+        repeat match goal with
+        | [ H: DIRTREE.TreeDir _ _ = DIRTREE.TreeDir _ _ |- _ ] => inversion H; clear H; subst
+        end. eauto.
+        eauto.
+
+        exfalso.
+        edestruct DTCrash.tree_crash_find_name; intuition.
+        3: eapply find_name_update_subtree_impossible; eassumption.
+        repeat match goal with
+        | [ H: DIRTREE.TreeDir _ _ = DIRTREE.TreeDir _ _ |- _ ] => inversion H; clear H; subst
+        end. eauto.
+        eauto.
+
+        exfalso.
+        edestruct DTCrash.tree_crash_find_name; intuition.
+        3: eapply find_name_update_subtree_impossible; eassumption.
+        repeat match goal with
+        | [ H: DIRTREE.TreeDir _ _ = DIRTREE.TreeDir _ _ |- _ ] => inversion H; clear H; subst
+        end. eauto.
+        eauto.
+
+        exfalso.
+        edestruct DTCrash.tree_crash_find_name; intuition.
+        3: eapply find_name_update_subtree_impossible; eassumption.
+        repeat match goal with
+        | [ H: DIRTREE.TreeDir _ _ = DIRTREE.TreeDir _ _ |- _ ] => inversion H; clear H; subst
+        end. eauto.
+        eauto.
+
+        AFS.xcrash_solve.
+        xform_deex_r. repeat xform_dist. cancel.
+        denote! (d_in _ _) as Hdin''. inversion Hdin''; simpl in *; subst; intuition.
+        repeat eexists. 3: pred_apply; cancel.
+        3: left; reflexivity.  (* temp file still exists. *)
+        right.
+        repeat match goal with
+        | [ H: DIRTREE.TreeDir _ _ = DIRTREE.TreeDir _ _ |- _ ] => inversion H; clear H; subst
+        end. eauto.
+        admit.  (* prune ents *)
+
+      + admit.
+      + admit.
+
+    - (* why is [setoid_rewrite] not doing the right thing? *)
+      eapply crash_xform_pimpl_proper in Hcrashd; [ | apply diskIs_pred; eassumption ].
+      apply crash_xform_sep_star_dist in Hcrashd.
+      rewrite DTCrash.xform_tree_rep in Hcrashd.
+      destruct_lift Hcrashd.
+      denote DTCrash.tree_crash as Htc.
+      intuition; subst.  (* 3 cases from the precondition.. *)
+      + (* temp file is there *)
+        apply DTCrash.tree_crash_update_subtree in Htc as Htc'; repeat deex; intuition.
+        denote (DTCrash.tree_crash _ tree_crashed) as Htc_base; inversion Htc_base; subst.
+        cancel.
+        safestep.
+        rewrite find_subtree_root.
+        match goal with
+        | [ |- Some ?t' = _ ] =>
+          erewrite DIRTREE.dirtree_dir_parts with (t := t') by ( apply dirtree_isdir_update_subtree; auto );
+          reflexivity
+        end.
+        erewrite update_update_subtree_eq; eauto. admit. constructor.
+
+        xform_deex_r.
+        rewrite LOG.idempred_idem.
+        norml; unfold stars; simpl.
+        rewrite SB.crash_xform_rep.
+
+
+
+      unfold LOG.after_crash.
+      cancel.
+
+
 
       rewrite dirtree_inum_update_subtree.
       apply DTCrash.tree_crash_update_subtree in Htc; repeat deex; intuition.
