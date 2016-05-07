@@ -2747,7 +2747,9 @@ Module DIRTREE.
            [[[ ds'!! ::: (Fm  * rep fsxp Ftop tree' ilist frees) ]]] *
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
            [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
-           [[ f' = BFILE.mk_bfile (updN (BFILE.BFData f) off (v, vsmerge vs)) (BFILE.BFAttr f) ]]
+           [[ f' = BFILE.mk_bfile (updN (BFILE.BFData f) off (v, vsmerge vs)) (BFILE.BFAttr f) ]] *
+           [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
+                           ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
     XCRASH:hm' exists bn,
            [[ BFILE.block_belong_to_file ilist bn inum off ]] *
           (LOG.recover_any fsxp.(FSXPLog) F ds hm' \/
@@ -2763,20 +2765,14 @@ Module DIRTREE.
     step.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
-    cancel.
-    eapply pimpl_trans.
-    2: eapply H1.
-    cancel.
-    eapply pimpl_trans.
-    eapply H.
-    apply PredCrash.crash_xform_pimpl.
-    cancel.
-    or_r.
-    cancel.
-    rewrite <- subtree_absorb; eauto. cancel.
-    eapply find_subtree_inum_valid; eauto.
-    simpl.
-    eauto.
+
+    eapply dirlist_safe_subtree; eauto.
+    unfold dirtree_safe; intuition.
+    apply BFILE.ilist_safe_refl.
+    left; split; auto.
+    destruct pathname0; simpl in *; try congruence.
+    (* How to connect to rep? *)
+    admit.
   Admitted.
 
  Theorem datasync_ok : forall fsxp inum mscs,
@@ -2790,7 +2786,9 @@ Module DIRTREE.
            [[ tree' = update_subtree pathname (TreeFile inum (BFILE.synced_file f)) tree ]] *
            [[ ds' = dssync_vecs ds0 al /\ BFILE.diskset_was ds0 ds ]] *
            [[[ ds'!! ::: (Fm * rep fsxp Ftop tree' ilist frees) ]]] *
-           [[ MSAlloc mscs' = MSAlloc mscs ]]
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
+                           ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
     XCRASH:hm'
            LOG.recover_any fsxp.(FSXPLog) F ds hm'
     >} datasync fsxp inum mscs.
@@ -2801,7 +2799,16 @@ Module DIRTREE.
     step.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
-  Qed.
+
+    eapply dirlist_safe_subtree; eauto.
+    unfold dirtree_safe; intuition.
+    apply BFILE.ilist_safe_refl.
+    left; split; auto.
+    destruct pathname0; simpl in *; try congruence.
+    (* How to connect to rep? *)
+    admit.
+  Admitted.
+
 
   Theorem sync_ok : forall fsxp mscs,
     {< F ds Fm Ftop tree ilist frees,
@@ -2848,7 +2855,11 @@ Module DIRTREE.
     cancel.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
-  Qed.
+
+    eapply dirlist_safe_subtree; eauto.
+    unfold dirtree_safe; intuition.
+    admit.  (* XXX *)
+  Admitted.
 
 
   Theorem getlen_ok : forall fsxp inum mscs,
@@ -2913,7 +2924,13 @@ Module DIRTREE.
     step.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
-  Qed.
+
+    eapply dirlist_safe_subtree; eauto.
+    unfold dirtree_safe; intuition.
+    (* XXX ??? *)
+    admit.
+  Admitted.
+
 
   Hint Extern 1 ({{_}} progseq (read _ _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _ _) _) => apply dwrite_ok : prog.
@@ -2974,8 +2991,12 @@ Module DIRTREE.
 
     or_r; cancel.
     rewrite <- subtree_graft_absorb; eauto. cancel.
-    step.
 
+    eapply dirlist_safe_subtree; eauto.
+    (* XXX safe *)
+    admit.
+
+    step.
     Unshelve.
     all: eauto.
   Admitted.
