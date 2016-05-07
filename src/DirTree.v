@@ -2979,7 +2979,7 @@ Module DIRTREE.
             [[ tree' = tree_graft dnum tree_elem pathname name (TreeFile inum BFILE.bfile0) tree ]] *
             [[ (Fm * rep fsxp Ftop tree' ilist' frees' )%pred (list2nmem m') ]] *
             [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                            ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]])
+                            ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]])
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
     >} mkfile fsxp dnum name mscs.

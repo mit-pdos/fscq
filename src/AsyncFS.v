@@ -1188,7 +1188,7 @@ Module AFS.
                            (DIRTREE.TreeFile inum BFILE.bfile0) tree ]] *
        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
        [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                       ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]])
+                       ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]])
     CRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} create fsxp dnum name mscs.
