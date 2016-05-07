@@ -529,6 +529,17 @@ Lemma update_subtree_same : forall fn tree subtree,
 Proof.
 Admitted.
 
+Lemma find_name_update_subtree_impossible : forall fn sub inum ents sub0,
+  None = DIRTREE.find_name [fn] (DIRTREE.update_subtree [fn] sub (DIRTREE.TreeDir inum ents)) ->
+  DIRTREE.find_subtree [fn] (DIRTREE.TreeDir inum ents) = Some sub0 ->
+  False.
+Proof.
+  unfold DIRTREE.find_name; intros.
+  erewrite DIRTREE.find_update_subtree in *.
+  destruct sub; congruence.
+  eauto.
+  admit.  (* unnecessary premise, see [find_update_subtree] *)
+Admitted.
 
 Global Opaque DIRTREE.tree_graft.
 Global Opaque DIRTREE.update_subtree.

@@ -224,6 +224,13 @@ Section NonEmptyList.
     unfold d_in; simpl; intuition.
   Qed.
 
+  Lemma d_in_pushd : forall ds d d',
+    d_in d (pushd d' ds) ->
+    d = d' \/ d_in d ds.
+  Proof.
+    destruct ds; unfold d_in; simpl; intuition.
+  Qed.
+
   (** The second non-empty list's is a subset, in
     * the same order, of the first non-empty list
     *)
