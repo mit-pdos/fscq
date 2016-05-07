@@ -32,7 +32,6 @@ Require Import DiskSet.
 Set Implicit Arguments.
 Import ListNotations.
 
-
 Module AFS.
 
   Parameter cachesize : nat.

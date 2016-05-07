@@ -1605,11 +1605,11 @@ Module DIRTREE.
         | _ => rx ^(mscs, false)
         end
       };
-      mscs <- BFILE.reset lxp bxp ixp inum mscs;
       let^ (mscs, ok) <- SDIR.unlink lxp ixp dnum name mscs;
       If (bool_dec ok true) {
         mscs' <- IAlloc.free lxp ibxp inum (MSLL mscs);
-        rx ^(BFILE.mk_memstate (MSAlloc mscs) mscs', true)
+        mscs <- BFILE.reset lxp bxp ixp inum (MSAlloc mscs, mscs');
+        rx ^(mscs, true)
       } else {
         rx ^(mscs, false)
       }
@@ -1804,6 +1804,23 @@ Module DIRTREE.
     eassign l0; cancel.
   Qed.
 
+  Lemma dirlist_safe_delete : forall ilist frees ilist' frees' dnum name ents,
+    BFILE.ilist_safe ilist frees ilist' frees' ->
+    tree_names_distinct (TreeDir dnum ents) ->
+    dirtree_safe ilist frees (TreeDir dnum ents)
+                 ilist' frees' (TreeDir dnum (delete_from_list name ents)).
+  Proof.
+    unfold dirtree_safe; intuition.
+    unfold BFILE.ilist_safe in H; intuition.
+    specialize (H4 _ _ _ H2); intuition.
+    left; split; auto.
+    do 2 eexists.
+    (* if pathname resolves to f in the pruned tree, it must also resolve to the original tree *)
+    admit.
+  Admitted.
+
+
+  Hint Extern 0 (okToUnify (tree_dir_names_pred _ _ _) (tree_dir_names_pred _ _ _)) => constructor : okToUnify.
 
   Theorem delete_ok' : forall fsxp dnum name mscs,
     {< F mbase m Fm Ftop tree tree_elem frees ilist,
@@ -1824,37 +1841,52 @@ Module DIRTREE.
     >} delete fsxp dnum name mscs.
   Proof.
     unfold delete, rep.
+
     intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
+    assert (tree_names_distinct (TreeDir dnum tree_elem)) as Hdist.
+    eapply rep_tree_names_distinct' with (m := (list2nmem dummy)).
+    pred_apply; cancel.
+
+    (* lookup *)
     subst; simpl in *.
     denote tree_dir_names_pred as Hx;
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
     cancel.
     unfold SDIR.rep_macro.
-    cancel. eauto.
-
-    step.
+    cancel; eauto.
     step.
 
+    (* unlink *)
+    step.
+
+    (* is_file: prepare for free *)
     denote dirlist_pred as Hx.
     erewrite dirlist_extract with (inum := a0) in Hx; eauto.
     destruct_lift Hx.
     destruct dummy4; simpl in *; try congruence; subst.
     denote dirlist_pred_except as Hx; destruct_lift Hx; auto.
+    step.
+    step.
 
+    (* prepare for reset *)
+    denote dirlist_pred as Hx.
+    erewrite dirlist_extract with (inum := n) in Hx; eauto.
+    destruct_lift Hx.
+    destruct dummy4; simpl in *; try congruence; subst.
+    denote dirlist_pred_except as Hx; destruct_lift Hx; auto.
     step.
-    step.
+
+    (* post conditions *)
     step.
     or_r; safecancel.
     denote (pimpl _ freepred') as Hx; rewrite <- Hx.
-    rewrite dir_names_delete; eauto.
-    rewrite dirlist_delete_file.
-    eassign n; cancel.
-    eauto.
-    denote ( _ |-> (_, false))%pred as Hc.
-    pred_apply' Hc; cancel.
-
+    rewrite dir_names_delete with (dnum := dnum); eauto.
+    rewrite dirlist_pred_except_delete; eauto.
+    cancel.
+    apply dirlist_safe_delete; auto.
     step.
 
+    (* case 2: is_dir: check empty *)
     prestep.
     intros; norm'l.
     denote dirlist_pred as Hx; subst_bool.
@@ -1866,23 +1898,26 @@ Module DIRTREE.
     step.
     step.
     step.
+    step.
 
+    (* post conditions *)
     or_r; cancel.
     denote (pimpl _ freepred') as Hx; rewrite <- Hx.
     denote (tree_dir_names_pred' _ _) as Hz.
     erewrite (@dlist_is_nil _ _ _ _ _ Hz); eauto.
-    denote (tree_dir_names_pred' tree_elem _) as Hy.
-    erewrite (@dir_names_delete _ _ _ _ _ _ Hy); eauto.
     rewrite dirlist_pred_except_delete; eauto.
-    cancel.
+    rewrite dir_names_delete with (dnum := dnum).
+    cancel. eauto. eauto. eauto.
+    apply dirlist_safe_delete; auto.
 
     step.
     cancel; auto.
     cancel; auto.
 
     Unshelve.
-    all: try exact addr_eq_dec.  7: eauto. all: eauto.
-  Admitted.
+    all: try exact addr_eq_dec.  6: eauto. all: eauto.
+  Qed.
+
 
   Theorem delete_ok : forall fsxp dnum name mscs,
     {< F mbase m pathname Fm Ftop tree tree_elem ilist frees,
@@ -1910,8 +1945,8 @@ Module DIRTREE.
     apply pimpl_or_r; right. cancel.
     rewrite <- subtree_absorb; eauto.
     cancel.
-    admit.
-  Admitted.
+    eapply dirlist_safe_subtree; eauto.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (delete _ _ _ _) _) => apply delete_ok : prog.
 
