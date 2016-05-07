@@ -200,5 +200,14 @@ Module DTCrash.
     cancel.
     pred_apply; cancel.
   Qed.
-  
+
+  Theorem tree_crash_update_subtree :
+    forall tree subtree filename updated_tree_crashed,
+    tree_crash (update_subtree [filename] subtree tree) updated_tree_crashed ->
+    exists tree_crashed subtree_crashed,
+    tree_crash tree tree_crashed /\
+    tree_crash subtree subtree_crashed /\
+    updated_tree_crashed = update_subtree [filename] subtree_crashed tree_crashed.
+  Admitted.
+
 End DTCrash.

@@ -30,6 +30,7 @@ Require Import DiskSet.
 Require Import AsyncFS.
 Require Import DirUtil.
 Require Import String.
+Require Import TreeCrash.
 
 
 Import ListNotations.
@@ -109,9 +110,14 @@ Module ATOMICCP.
   (* top-level recovery function: call AFS recover and then atomic_cp's recovery *)
   Definition recover {T} rx : prog T :=
     let^ (mscs, fsxp) <- AFS.recover;
-    mscs <- cleanup fsxp mscs;
-    rx ^(mscs, fsxp).
-
+    let^ (mscs, maybe_src_inum) <- AFS.lookup fsxp the_dnum [temp_fn] mscs;
+    match maybe_src_inum with
+    | None => rx ^(mscs, fsxp)
+    | Some (src_inum, isdir) =>
+      let^ (mscs, ok) <- AFS.delete fsxp the_dnum temp_fn mscs;
+      let^ (mscs) <- AFS.tree_sync fsxp mscs;
+      rx ^(mscs, fsxp)
+    end.
 
   (** Specs and proofs **)
 
@@ -579,40 +585,118 @@ Module ATOMICCP.
   (* specs for copy_and_rename_cleanup and atomic_cp *)
 
   Theorem atomic_cp_recover_ok :
-    {< fsxp cs ds,
+    {< fsxp cs ds base_tree temp_dents src_fn src_inum dst_fn file,
     PRE:hm
       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm *
+      [[ base_tree = DIRTREE.TreeDir the_dnum temp_dents ]] *
+      [[ DIRTREE.find_subtree [src_fn] base_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
       [[ forall d, d_in d ds ->
-         exists Fm Ftop tree ilist frees temp_dents,
-         tree = DIRTREE.TreeDir the_dnum temp_dents /\
-         (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)%pred (list2nmem d) ]]%type
+         exists Fm Ftop ilist frees tree dstents subtree dst_inum,
+         let dst_subtree := DIRTREE.TreeFile dst_inum (BFILE.synced_file file) in
+         let tree_temp  := DIRTREE.update_subtree [temp_fn] subtree base_tree in
+         let tree_prune := DIRTREE.tree_prune the_dnum temp_dents [] temp_fn base_tree in
+         let tree_dst   := DIRTREE.tree_graft the_dnum dstents [] dst_fn dst_subtree tree_prune in
+         (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)%pred (list2nmem d) /\
+         tree_prune = DIRTREE.TreeDir the_dnum dstents /\
+         (tree = tree_temp \/ tree = tree_prune \/ tree = tree_dst) ]]%type
     POST:hm' RET:^(ms, fsxp')
       [[ fsxp' = fsxp ]] *
-      exists d d_from_ds,
+      exists d tree_after_crash temp_dents_after_crash dstents tree' Fm' Ftop' ilist' frees' dst_inum,
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
-      [[ d_in d_from_ds ds ]] *
-      [[ forall Fm Ftop tree ilist frees the_dnum temp_dents,
-         tree = DIRTREE.TreeDir the_dnum temp_dents ->
-         (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)%pred (list2nmem d_from_ds) ->
-         let tree' := DIRTREE.tree_prune the_dnum temp_dents [] temp_fn tree in
-         exists Fm' Ftop' ilist' frees',
-         (Fm' * DIRTREE.rep fsxp Ftop' tree' ilist' frees') (list2nmem d) ]]
-    CRASH:hm'
+      [[ DTCrash.tree_crash base_tree tree_after_crash ]] *
+      [[ tree_after_crash = DIRTREE.TreeDir the_dnum temp_dents_after_crash ]] *
+      let tree'prune := DIRTREE.tree_prune the_dnum temp_dents_after_crash [] temp_fn tree_after_crash in
+      let dst_subtree := DIRTREE.TreeFile dst_inum (BFILE.synced_file file) in
+      let tree'dst := DIRTREE.tree_graft the_dnum dstents [] dst_fn dst_subtree tree' in
+      [[ tree'prune = DIRTREE.TreeDir the_dnum dstents ]] *
+      [[[ d ::: Fm' * DIRTREE.rep fsxp Ftop' tree' ilist' frees' ]]] *
+      [[ tree' = tree'prune \/ tree' = tree'dst ]]
+    XCRASH:hm'
       exists ds',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-      [[ forall d', d_in d' ds' ->
-         exists d, d_in d ds /\
-         forall Fm Ftop tree ilist frees the_dnum temp_dents,
-         tree = DIRTREE.TreeDir the_dnum temp_dents ->
-         (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)%pred (list2nmem d) ->
-         exists Fm' Ftop' ilist' frees',
-         (Fm' * DIRTREE.rep fsxp Ftop' tree ilist' frees')%pred (list2nmem d') \/
-         let tree' := DIRTREE.tree_prune the_dnum temp_dents [] temp_fn tree in
-         (Fm' * DIRTREE.rep fsxp Ftop' tree' ilist' frees')%pred (list2nmem d') ]]%type
+      [[ forall d, d_in d ds ->
+         exists Fm Ftop ilist frees tree dstents subtree dst_inum,
+         let dst_subtree := DIRTREE.TreeFile dst_inum (BFILE.synced_file file) in
+         let tree_temp  := DIRTREE.update_subtree [temp_fn] subtree base_tree in
+         let tree_prune := DIRTREE.tree_prune the_dnum temp_dents [] temp_fn base_tree in
+         let tree_dst   := DIRTREE.tree_graft the_dnum dstents [] dst_fn dst_subtree tree_prune in
+         (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)%pred (list2nmem d) /\
+         tree_prune = DIRTREE.TreeDir the_dnum dstents /\
+         (tree = tree_temp \/ tree = tree_prune \/ tree = tree_dst) ]]%type
     >} recover.
   Proof.
     unfold recover; intros.
     step.
+    prestep. norml; unfold stars; simpl.
+    denote! (forall _, d_in _ _ -> _) as Hdin.
+    edestruct Hdin as [? Hdin'].
+    eapply nthd_in_ds.
+    do 9 destruct Hdin' as [? Hdin'].
+    denote! (crash_xform _ _) as Hcrashd.
+    (* why is [setoid_rewrite] not doing the right thing? *)
+    eapply crash_xform_pimpl_proper in Hcrashd; [ | apply diskIs_pred; eassumption ].
+    apply crash_xform_sep_star_dist in Hcrashd.
+    rewrite DTCrash.xform_tree_rep in Hcrashd.
+    destruct_lift Hcrashd.
+    denote DTCrash.tree_crash as Htc.
+    intuition; subst.  (* 3 cases from the precondition.. *)
+    - (* temp file is there *)
+      apply DTCrash.tree_crash_update_subtree in Htc as Htc'; repeat deex; intuition.
+      denote (DTCrash.tree_crash _ tree_crashed) as Htc_base; inversion Htc_base; subst.
+      cancel.
+      step.
+      rewrite find_subtree_root.
+      match goal with
+      | [ |- Some ?t' = _ ] =>
+        erewrite DIRTREE.dirtree_dir_parts with (t := t') by ( apply dirtree_isdir_update_subtree; auto );
+        reflexivity
+      end.
+
+      (* our [delete_ok] should never fail.. *)
+      destruct a2.
+      2: admit.  (* need to eventually fix [delete_ok].. *)
+      step.
+      step.
+      match goal with
+      | [ |- ?t' = _ ] =>
+        erewrite DIRTREE.dirtree_dir_parts with (t := t')
+      end.
+      rewrite DIRTREE.tree_prune_preserve_inum by reflexivity. reflexivity.
+      rewrite DIRTREE.tree_prune_preserve_isdir by reflexivity. reflexivity.
+      rewrite update_subtree_root.
+      left.   (* dst not created yet *)
+      unfold DIRTREE.tree_prune. rewrite update_subtree_root.
+
+      (*
+DIRTREE.delete_from_dir temp_fn
+  (DIRTREE.TreeDir the_dnum
+     (DIRTREE.dirtree_dirents
+        (DIRTREE.update_subtree [temp_fn] subtree_crashed (DIRTREE.TreeDir the_dnum st')))) =
+DIRTREE.delete_from_dir temp_fn (DIRTREE.TreeDir the_dnum st')
+      *)
+      admit.
+
+      admit.
+
+      rewrite dirtree_inum_update_subtree.
+      apply DTCrash.tree_crash_update_subtree in Htc; repeat deex; intuition.
+      rewrite dirtree_isdir_update_subtree. denote (DTCrash.tree_crash _ tree_crashed) as H'; inversion H'; auto.
+      
+
+
+    cancel.
+    step.
+    rewrite find_subtree_root. eauto.
+    step.
+    prestep. safecancel.
+
+    
+
+    instantiate (2 := nil). simpl.
+
+    step.
+
+
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (recover) _) => apply atomic_cp_recover_ok : prog.
