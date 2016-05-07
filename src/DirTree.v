@@ -2463,6 +2463,7 @@ Module DIRTREE.
     BFILE.ilist_safe ilist2 frees2 ilist3 frees3 ->
     dirtree_safe ilist1 frees1 (TreeDir dnum ents) ilist3 frees3 grafted.
   Proof.
+    cbn; intros.
   Admitted.
 
 
@@ -2476,6 +2477,13 @@ Module DIRTREE.
     BFILE.ilist_safe ilist1 frees1 ilist2 frees2 ->
     dirtree_safe ilist1 frees1 (TreeDir dnum ents) ilist2 frees2 grafted.
   Proof.
+    cbn; intros.
+    eapply dirtree_safe_ilist_trans; eauto.
+    unfold dirtree_safe; intuition.
+    apply BFILE.ilist_safe_refl.
+    left; split; auto.
+    repeat eexists; eauto.
+    admit.
   Admitted.
 
 
@@ -3010,6 +3018,10 @@ Module DIRTREE.
     rewrite <- subtree_graft_absorb; eauto. cancel.
 
     eapply dirlist_safe_subtree; eauto.
+    msalloc_eq.
+    apply dirtree_safe_ilist_trans.
+    2: eapply BFILE.ilist_safe_trans; eauto.
+
     (* XXX safe *)
     admit.
 
