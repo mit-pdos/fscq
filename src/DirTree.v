@@ -1805,14 +1805,15 @@ Module DIRTREE.
   Qed.
 
   Lemma dirlist_safe_delete : forall ilist frees ilist' frees' dnum name ents,
-    BFILE.ilist_safe ilist frees ilist' frees' ->
     tree_names_distinct (TreeDir dnum ents) ->
+    tree_inodes_distinct (TreeDir dnum ents) ->
+    BFILE.ilist_safe ilist frees ilist' frees' ->
     dirtree_safe ilist frees (TreeDir dnum ents)
                  ilist' frees' (TreeDir dnum (delete_from_list name ents)).
   Proof.
     unfold dirtree_safe; intuition.
-    unfold BFILE.ilist_safe in H; intuition.
-    specialize (H4 _ _ _ H2); intuition.
+    unfold BFILE.ilist_safe in *; intuition.
+    specialize (H5 _ _ _ H3); intuition.
     left; split; auto.
     do 2 eexists.
     (* if pathname resolves to f in the pruned tree, it must also resolve to the original tree *)
@@ -1842,10 +1843,14 @@ Module DIRTREE.
   Proof.
     unfold delete, rep.
 
+    (* extract some basic facts from rep *)
     intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
-    assert (tree_names_distinct (TreeDir dnum tree_elem)) as Hdist.
-    eapply rep_tree_names_distinct' with (m := (list2nmem dummy)).
-    pred_apply; cancel.
+    assert (tree_inodes_distinct (TreeDir dnum tree_elem)) as HiID.
+    eapply rep_tree_inodes_distinct with (m := list2nmem m).
+    pred_apply; unfold rep; cancel.
+    assert (tree_names_distinct (TreeDir dnum tree_elem)) as HdID.
+    eapply rep_tree_names_distinct with (m := list2nmem m).
+    pred_apply; unfold rep; cancel.
 
     (* lookup *)
     subst; simpl in *.
@@ -2397,6 +2402,53 @@ Module DIRTREE.
   Qed.
 
 
+  Ltac msalloc_eq :=
+    repeat match goal with
+    | [ H: MSAlloc _ = MSAlloc _ |- _ ] => rewrite H in *; clear H
+    end.
+
+  Lemma tree_pred_ino_goodSize : forall V F Fm xp tree m d frees prd,
+    (Fm * (@IAlloc.rep V xp frees prd))%pred m ->
+    (F * tree_pred xp tree)%pred d ->
+    goodSize addrlen (dirtree_inum tree).
+  Proof.
+    induction tree using dirtree_ind2; simpl; intros.
+    destruct_lift H0.
+    eapply IAlloc.ino_valid_goodSize; eauto.
+    unfold tree_dir_names_pred in H1; destruct_lift H1.
+    eapply IAlloc.ino_valid_goodSize; eauto.
+  Qed.
+
+  Lemma rename_safe_dest_exists : 
+    forall ilist1 ilist2 ilist3 frees1 frees2 frees3
+           srcpath srcname dstpath dstname dnum ents n l n' l' mvtree,
+    let pruned  := tree_prune n l srcpath srcname (TreeDir dnum ents) in
+    let deleted := update_subtree dstpath (TreeDir n' (delete_from_list dstname l')) pruned in
+    let grafted := tree_graft n' l' dstpath dstname mvtree pruned in
+    tree_names_distinct (TreeDir dnum ents) ->
+    tree_inodes_distinct (TreeDir dnum ents) ->
+    find_subtree srcpath (TreeDir dnum ents) = Some (TreeDir n l) ->
+    find_subtree dstpath pruned = Some (TreeDir n' l') ->
+    dirtree_safe ilist1 frees1 pruned ilist2 frees2 deleted ->
+    BFILE.ilist_safe ilist2 frees2 ilist3 frees3 ->
+    dirtree_safe ilist1 frees1 (TreeDir dnum ents) ilist3 frees3 grafted.
+  Proof.
+  Admitted.
+
+
+  Lemma rename_safe_dest_none : 
+    forall ilist1 ilist2 frees1 frees2 srcpath srcname dstpath dstname dnum ents n l n' l' mvtree,
+    let pruned  := tree_prune n l srcpath srcname (TreeDir dnum ents) in
+    let grafted := tree_graft n' l' dstpath dstname mvtree pruned in
+    tree_names_distinct (TreeDir dnum ents) ->
+    tree_inodes_distinct (TreeDir dnum ents) ->
+    find_subtree dstpath pruned = Some (TreeDir n' l') ->
+    BFILE.ilist_safe ilist1 frees1 ilist2 frees2 ->
+    dirtree_safe ilist1 frees1 (TreeDir dnum ents) ilist2 frees2 grafted.
+  Proof.
+  Admitted.
+
+
   Theorem rename_ok' : forall fsxp dnum srcpath srcname dstpath dstname mscs,
     {< F mbase m Fm Ftop tree tree_elem ilist frees,
     PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) hm *
@@ -2421,8 +2473,16 @@ Module DIRTREE.
   Proof.
     unfold rename, rep.
 
-    (* namei srcpath, isolate root tree file before cancel *)
+    (* extract some basic facts *)
     intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
+    assert (tree_inodes_distinct (TreeDir dnum tree_elem)) as HnID.
+    eapply rep_tree_inodes_distinct with (m := list2nmem m).
+    pred_apply; unfold rep; cancel.
+    assert (tree_names_distinct (TreeDir dnum tree_elem)) as HiID.
+    eapply rep_tree_names_distinct with (m := list2nmem m).
+    pred_apply; unfold rep; cancel.
+
+    (* namei srcpath, isolate root tree file before cancel *)
     subst; simpl in *.
     denote tree_dir_names_pred as Hx; assert (Horig := Hx).
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
@@ -2523,23 +2583,28 @@ Module DIRTREE.
     simpl in Hx; unfold tree_dir_names_pred in Hx; destruct_lift Hx.
     step.
 
-    admit. (* goodSize *)
+    eapply tree_pred_ino_goodSize; eauto.
+    pred_apply' Hdel; cancel.
 
     safestep.
     or_l; cancel.
     or_r; cancel; eauto.
     eapply subtree_graft_absorb_delete; eauto.
-
+    msalloc_eq.
+    eapply rename_safe_dest_exists; eauto.
     cancel.
 
     (* dst is None *)
     safestep.
-    admit. (* goodSize *)
+    eapply tree_pred_ino_goodSize; eauto.
+    pred_apply' Hinterm; cancel.
 
     safestep.
     or_l; cancel.
     or_r; cancel; eauto.
     eapply subtree_graft_absorb; eauto.
+    msalloc_eq.
+    eapply rename_safe_dest_none; eauto.
 
     cancel.
     cancel; auto.
@@ -2549,7 +2614,7 @@ Module DIRTREE.
 
     Unshelve.
     all: try exact addr; try exact addr_eq_dec; eauto.
-  Admitted.
+  Qed.
 
 
   Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
@@ -2587,8 +2652,8 @@ Module DIRTREE.
     rewrite tree_prune_preserve_inum; auto.
     rewrite tree_graft_preserve_isdir; auto.
     rewrite tree_prune_preserve_isdir; auto.
-    admit.
-  Admitted.
+    eapply dirlist_safe_subtree; eauto.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
 
