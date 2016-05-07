@@ -6,11 +6,11 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
 	      ReadCache ReadCacheX WritebackCache Cache \
-		  FSLayout AsyncRecArray DiskLogHash \
+	      FSLayout AsyncRecArray DiskLogHash \
 	      LogReplay MemLog ListPred MemPred GenSepN \
 	      NEList DiskSet GroupLog Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
-	      Dir DirName StringUtils TreeUtils DirTree \
+	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \
 	      SuperBlock AsyncFS DirUtil ExtrHaskellPrelude
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))

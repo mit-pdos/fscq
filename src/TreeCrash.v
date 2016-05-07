@@ -184,9 +184,9 @@ Module DTCrash.
 
   Local Hint Extern 0 (okToUnify (tree_pred _ _) (tree_pred _ _)) => constructor : okToUnify.
 
-  Lemma xform_tree_rep : forall xp F t,
-    crash_xform (rep xp F t) =p=> exists t',
-      [[ tree_crash t t' ]] * rep xp F t'.
+  Lemma xform_tree_rep : forall xp F t ilist frees,
+    crash_xform (rep xp F t ilist frees) =p=> exists t',
+      [[ tree_crash t t' ]] * rep xp F t' ilist frees.
   Proof.
     unfold rep; intros.
     xform_norm.
