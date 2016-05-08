@@ -19,9 +19,13 @@ Require Import DiskSet.
 Require Import SuperBlock.
 Require Import BFile.
 Require Import Decidable.
+Require Import Array.
+Require Import ListUtils.
+Require Import Lock.
 
 
 Import ListNotations.
+Import DIRTREE.
 
 Set Implicit Arguments.
 
@@ -468,6 +472,17 @@ Proof.
   eapply dent_in_add_to_distinct; eauto.
 Qed.
 
+Lemma update_update_subtree_eq' : forall pn elem0 elem1 tree,
+  update_subtree pn elem1 (update_subtree pn elem0 tree) = update_subtree pn elem1 tree.
+Proof.
+  induction tree using DIRTREE.dirtree_ind2; simpl.
+  - destruct pn; simpl; eauto.
+  - destruct pn; simpl; eauto.
+    f_equal.
+    rewrite map_map.
+    admit.
+Admitted.
+
 Lemma dent_find_update_ne: forall fn1 fn2 ents elem,
   fn1 <> fn2 ->
   fold_right (DIRTREE.find_subtree_helper (fun tree0 : DIRTREE.dirtree => Some tree0) fn1) None 
@@ -527,6 +542,17 @@ Proof.
   rewrite dent_find_update_ne; auto.
 Qed.
 
+Lemma find_subtree_update_subtree_ne_filename : forall fn1 fn2 tree elem,
+  fn1 <> fn2 ->
+  DIRTREE.find_subtree [fn1] (DIRTREE.update_subtree [fn2] elem tree) =
+    DIRTREE.find_subtree [fn1] tree.
+Proof.
+  intros; destruct tree.
+  simpl; congruence.
+  unfold DIRTREE.update_subtree, DIRTREE.find_subtree.
+  rewrite dent_find_update_ne; eauto.
+Qed.
+
 
 Lemma update_subtree_same : forall fn tree subtree,
   DIRTREE.tree_names_distinct tree ->
@@ -546,6 +572,83 @@ Proof.
   eauto.
   admit.  (* unnecessary premise, see [find_update_subtree] *)
 Admitted.
+
+
+Theorem find_subtree_inode_pathname_unique : forall tree path1 path2 f1 f2,
+  tree_inodes_distinct tree ->
+  tree_names_distinct tree ->
+  find_subtree path1 tree = Some f1 ->
+  find_subtree path2 tree = Some f2 ->
+  dirtree_inum f1 = dirtree_inum f2 ->
+  path1 = path2.
+Proof.
+Admitted.
+
+Lemma find_subtree_update_subtree_same_inum : forall path1 path2 inum f f' tree,
+  tree_inodes_distinct tree ->
+  tree_names_distinct tree ->
+  find_subtree path1 (update_subtree path2 (TreeFile inum f) tree) = Some (TreeFile inum f') ->
+  path1 = path2.
+Proof.
+Admitted.
+
+Theorem dirtree_update_safe_pathname_vssync_vecs :
+  forall bns ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks inum off m flag,
+  find_subtree pathname tree_newest = Some (TreeFile inum f) ->
+  Forall (fun bn => BFILE.block_belong_to_file ilist_newest bn inum off) bns ->
+  dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
+  (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
+  exists tree',
+  (F0 * rep fsxp F tree' ilist freeblocks)%pred (list2nmem (vssync_vecs m bns)) /\
+  (tree' = tree \/
+   exists pathname' f' data, find_subtree pathname' tree = Some (TreeFile inum f') /\
+   let f'new := BFILE.mk_bfile data (BFILE.BFAttr f') in
+   tree' = update_subtree pathname' (TreeFile inum f'new) tree).
+Proof.
+  induction bns using rev_ind; simpl; intros.
+  - eexists; intuition eauto.
+  - edestruct IHbns; eauto.
+    eapply forall_app_r; eauto.
+    denote! (_ (list2nmem m)) as Hm; rewrite <- locked_eq in Hm.
+    rewrite vssync_vecs_app; unfold vssync.
+    intuition; subst.
+    + (* case 1: previous syncs did nothing *)
+      edestruct dirtree_update_safe_pathname; eauto.
+      apply forall_app_l in H0. inversion H0; eauto.
+      intuition eauto; repeat deex.
+      eexists.
+      split. eassumption.
+      right; eauto.
+    + (* case 2: previous syncs changed something *)
+      repeat deex.
+      edestruct dirtree_update_safe_pathname.
+      3: eapply dirtree_safe_update_subtree.
+      3: eassumption.
+      2: apply forall_app_l in H0; inversion H0; eauto.
+      3: eauto.
+      all: eauto.
+      intuition.
+      * (* this sync did nothing *)
+        eexists; split. eassumption.
+        right. eauto.
+      * (* this sync also changed something *)
+        repeat deex.
+        eexists; split. eassumption.
+        right. repeat eexists; eauto.
+        assert (pathname'0 = pathname'); subst.
+        eapply find_subtree_update_subtree_same_inum; eauto.
+        eapply rep_tree_inodes_distinct; eauto.
+        eapply rep_tree_names_distinct; eauto.
+        rewrite update_update_subtree_eq'.
+        erewrite find_update_subtree in *; eauto.
+        inversion H6; simpl.
+        reflexivity.
+
+  Unshelve.
+  2: exact unit.
+  intros; exact tt.
+Qed.
+
 
 Global Opaque DIRTREE.tree_graft.
 Global Opaque DIRTREE.update_subtree.
