@@ -370,6 +370,27 @@ Qed.
 
 Hint Resolve dirtree_inum_update_subtree'.
 
+Lemma dirtree_inum_prune_dinum_idem: forall fn dnum tree_elem,
+  DIRTREE.dirtree_inum (DIRTREE.tree_prune dnum tree_elem [] fn (DIRTREE.TreeDir dnum tree_elem)) = dnum.
+Proof.
+  intros. 
+  unfold DIRTREE.tree_prune.
+  rewrite update_subtree_root.
+  unfold DIRTREE.delete_from_dir.
+  simpl; reflexivity.
+Qed.
+
+Lemma dirtree_isdir_prune: forall fn dnum tree_elem,
+  DIRTREE.dirtree_isdir (DIRTREE.tree_prune dnum tree_elem [] fn 
+                        (DIRTREE.TreeDir dnum tree_elem)) = true.
+Proof.
+  intros.
+  unfold DIRTREE.tree_prune.
+  rewrite update_subtree_root.
+  unfold DIRTREE.delete_from_dir.
+  simpl; reflexivity.
+Qed.
+
 Lemma dirtree_isdir_update_subtree : forall t fn rest sub,
   DIRTREE.dirtree_isdir (DIRTREE.update_subtree (fn::rest) sub t) = DIRTREE.dirtree_isdir t.
 Proof.
