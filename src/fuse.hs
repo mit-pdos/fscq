@@ -423,31 +423,37 @@ fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
   (wlen, ()) <- fr $ AsyncFS._AFS__file_get_sz fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
   endpos <- return $ (fromIntegral offset) + (fromIntegral (BS.length bs))
-  _ <- if len < endpos then do
+  okspc <- if len < endpos then do
     (ok, _) <- fr $ AsyncFS._AFS__file_truncate fsxp inum ((endpos + 4095) `div` 4096)
     if ok then
-      return ()
+      return True
     else
-      error "failed to grow file"
+      return False
   else
-    return ()
-  r <- foldM (write_piece fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
-  case r of
-    WriteOK c -> do
-      _ <- if len < endpos then do
-        (ok, _) <- fr $ AsyncFS._AFS__file_set_sz fsxp inum (W endpos)
-        if ok then
-          return ()
+    return True
+  if okspc then do
+    r <- foldM (write_piece fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
+    case r of
+      WriteOK c -> do
+        okspc2 <- if len < endpos then do
+          (ok, _) <- fr $ AsyncFS._AFS__file_set_sz fsxp inum (W endpos)
+          if ok then
+            return True
+          else
+            return False
         else
-          error "failed to set file length"
-      else
-        return ()
-      return $ Right c
-    WriteErr c ->
-      if c == 0 then
-        return $ Left eIO 
-      else
-        return $ Right c
+          return True
+        if okspc2 then
+          return $ Right c
+        else
+          return $ Left eNOSPC
+      WriteErr c ->
+        if c == 0 then
+          return $ Left eIO 
+        else
+          return $ Right c
+  else
+    return $ Left eNOSPC
   where
     write_piece _ _ (WriteErr c) _ = return $ WriteErr c
     write_piece fsxp init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
