@@ -712,6 +712,32 @@ Module LogReplay.
     erewrite <- MapFacts.add_neq_o; eauto.
   Qed.
 
+  Definition ents_remove a (ents : DLog.contents) := 
+    filter (fun e => if (addr_eq_dec (fst e) a) then false else true) ents.
+
+
+  Lemma ents_remove_not_in : forall ents a,
+    ~ In a (map fst (ents_remove a ents)).
+  Proof.
+    induction ents; auto; intros; simpl.
+    destruct a; simpl.
+    destruct (addr_eq_dec n a0); subst; auto.
+    simpl; intuition.
+    eapply IHents; eauto.
+  Qed.
+
+  Local Hint Resolve ents_remove_not_in.
+  Lemma replay_disk_ents_remove_updN : forall ents d a v,
+    updN (replay_disk (ents_remove a ents) d) a v =  updN (replay_disk ents d) a v.
+  Proof.
+    induction ents; intros; simpl; auto.
+    destruct a; simpl.
+    destruct (addr_eq_dec n a0); subst; simpl; auto.
+    rewrite <- replay_disk_updN_comm by auto.
+    rewrite <- IHents.
+    rewrite <- replay_disk_updN_comm by auto.
+    rewrite updN_twice; auto.
+  Qed.
 
 
   (**********************
@@ -923,6 +949,18 @@ Module LogReplay.
     eapply H3.
     apply In_fst_KIn.
     eapply in_map; eauto.
+  Qed.
+
+  Lemma log_vaild_filter : forall ents d f,
+    log_valid ents d ->
+    log_valid (filter f ents) d.
+  Proof.
+    unfold log_valid; intuition.
+    apply KNoDup_filter; eauto.
+    edestruct H1; eauto.
+    eapply InA_filter; eauto.
+    edestruct H1; eauto.
+    eapply InA_filter; eauto.
   Qed.
 
   Local Hint Resolve Map.is_empty_1 Map.is_empty_2.

@@ -164,6 +164,7 @@ Module GLog.
     auto.
   Qed.
 
+
   Lemma rep_hashmap_subset : forall xp ms hm hm',
     (exists l, hashmap_subset l hm hm')
     -> forall st, rep xp st ms hm
@@ -646,6 +647,7 @@ Module GLog.
     eapply replay_seq_latest_length; eauto.
   Qed.
 
+
   (************* correctness theorems *)
 
   Theorem read_ok: forall xp ms a,
@@ -882,6 +884,31 @@ Module GLog.
     eapply vmap_match_notin; eauto.
   Qed.
 
+  Lemma forall_ents_valid_ents_remove : forall ts xp d a,
+    Forall (ents_valid xp d) ts ->
+    Forall (ents_valid xp d) (map (ents_remove a) ts).
+  Proof.
+    induction ts; simpl; auto; intros.
+    inversion H; subst.
+    constructor; auto.
+    split; destruct H2.
+    apply log_vaild_filter; eauto.
+    eapply le_trans.
+    apply filter_length. auto.
+  Qed.
+
+  Lemma dset_match_dsupd : forall xp ts ds a v,
+    dset_match xp ds ts ->
+    dset_match xp (dsupd ds a v) (map (ents_remove a) ts).
+  Proof.
+    unfold dset_match; intuition; simpl in *.
+    eapply ents_valid_length_eq.
+    2: rewrite length_updN; auto.
+    apply forall_ents_valid_ents_remove; auto.
+    apply replay_seq_dsupd_ents_remove; auto.
+  Qed.
+
+
   Lemma dset_match_dssync_notin : forall xp ds a ts vm,
     Map.find a vm = None ->
     vmap_match vm ts ->
@@ -893,6 +920,17 @@ Module GLog.
     apply length_updN.
     apply replay_seq_dssync_notin; auto.
     eapply vmap_match_notin; eauto.
+  Qed.
+
+  Lemma cached_dsupd_latest_recover_any : forall xp ds a v ms hm ms0,
+    dset_match xp ds ms0 ->
+    rep xp (Cached ((dsupd ds a v) !!, nil)) ms hm =p=>
+    would_recover_any xp (dsupd ds a v) hm.
+  Proof.
+    unfold rep; cancel.
+    unfold would_recover_any, rep.
+    rewrite synced_recover_any; auto.
+    eapply dset_match_dsupd; eauto.
   Qed.
 
   Theorem dwrite'_ok: forall xp a v ms,
@@ -969,11 +1007,8 @@ Module GLog.
       << F, rep: xp (Cached (dsupd ds' a (v, vsmerge vs))) ms' hm' >> *
       [[ ds' = ds \/ ds' = (ds!!, nil) ]]
     XCRASH:hm'
-      << F, would_recover_any: xp ds hm' -- >>
-      \/ (exists ms', 
-      << F, rep: xp (Cached (updN ds!! a (v, vsmerge vs), nil)) ms' hm' >>)
-      \/ (exists ms', 
-      << F, rep: xp (Cached (updN (fst ds) a (v, vsmerge vs), nil)) ms' hm' >>)
+      << F, would_recover_any: xp ds hm' -- >> \/
+      << F, would_recover_any: xp (dsupd ds a (v, vsmerge vs)) hm' -- >>
     >} dwrite xp a v ms.
   Proof.
     unfold dwrite, rep.
@@ -995,9 +1030,12 @@ Module GLog.
     xform_normr; cancel.
     eapply recover_latest_any; eauto.
 
-    or_r; or_l; cancel.
+    or_r; cancel.
     do 2 (xform_norm; cancel).
+    rewrite <- dsupd_latest.
+    rewrite synced_recover_any; eauto.
 
+    eapply dset_match_dsupd; eauto.
     cancel.
     repeat xcrash_rewrite; xform_norm.
     or_l; cancel.
@@ -1019,14 +1057,18 @@ Module GLog.
     or_l; cancel.
     xform_normr; cancel.
 
-    or_r; or_r; cancel.
+    or_r; cancel.
     do 2 (xform_norm; cancel).
+
+    rewrite <- dsupd_fst.
+    rewrite MLog.synced_recover_before.
+    rewrite recover_before_any_fst.
+    rewrite <- surjective_pairing in *.
     erewrite diskset_vmap_find_none; eauto.
     apply MapFacts.not_find_in_iff; auto.
-    auto.
-    erewrite <- diskset_vmap_find_none with (v := vs_cur); eauto.
-    apply MapFacts.not_find_in_iff; auto.
+    eapply dset_match_dsupd; eauto.
   Qed.
+
 
   Theorem dsync_ok: forall xp a ms,
     {< F Fd ds vs,
@@ -1173,6 +1215,7 @@ Module GLog.
       [[ ds' = ds \/ ds' = (ds!!, nil) ]]
     XCRASH:hm'
       << F, would_recover_any: xp ds hm' -- >>
+      (* TODO: use would_recover_any and dsupd_vecs, this spec is not currently used *)
       \/ (exists ms', 
       << F, rep: xp (Cached (vsupd_vecs ds!! avl, nil)) ms' hm' >>)
       \/ (exists ms', 

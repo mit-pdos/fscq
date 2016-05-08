@@ -624,16 +624,18 @@ Module AFS.
        [[ BFILE.BFAttr f' = BFILE.BFAttr f ]] *
        [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
                        ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
-    XCRASH:hm' exists bn,
-       [[ BFILE.block_belong_to_file ilist bn inum off ]] *
-      (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (updN (ds !!) bn (v, vsmerge vs), nil) hm' \/
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (updN (fst ds) bn (v, vsmerge vs), nil) hm')
+    XCRASH:hm'
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+       exists bn, [[ BFILE.block_belong_to_file ilist bn inum off ]] *
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (dsupd ds bn (v, vsmerge vs)) hm'
    >} update_fblock_d fsxp inum off v mscs.
   Proof.
     unfold update_fblock_d; intros.
     step.
-    prestep. norm. cancel.
+    prestep.
+    (* extract dset_match from (rep ds), this is useful for proving crash condition *)
+    rewrite LOG.active_dset_match_pimpl at 1.
+    norm. cancel.
     xcrash_solve.
     intuition.
     latest_rewrite.
@@ -646,35 +648,28 @@ Module AFS.
     xcrash_solve.
 
     - xform_normr; cancel.
+      or_r; xform_normr; cancel.
+
       unfold BFILE.diskset_was in *; intuition subst.
-      (* XXX: need to show that (LOG.intact dsupd ...) =p=> LOG.idempred (updN (fst ds)) ... *)
-      admit.
-      admit.
+      rewrite LOG.intact_idempred; cancel.
+      rewrite LOG.intact_dsupd_latest by eauto.
+      rewrite LOG.recover_any_idempred; auto.
       eauto.
 
     - cancel.
       repeat xcrash_rewrite.
-      xform_norm; cancel; xform_normr; cancel.
+      xform_norm.
       rewrite LOG.recover_any_idempred.
-      or_l; cancel. eauto.
-      rewrite LOG.intact_idempred.
-      or_r; or_l; cancel. eauto.
-      rewrite LOG.intact_idempred.
-      or_r; or_r; cancel. eauto.
+      or_l; cancel.
+      rewrite LOG.recover_any_idempred.
+      or_r; cancel; xform_normr; cancel.
 
     - cancel.
       repeat xcrash_rewrite.
       xform_norm; cancel.
       rewrite LOG.notxn_intact, LOG.intact_idempred.
       xform_normr; cancel.
-
-      (* XXX: should get this from rep and H4, H5, but we don't really care about
-         this fact in the first case.  Maybe we can move BFILE.block_belong_to_file into
-         case 2 and 3 only *)
-      admit.
-
-    Unshelve. eauto.
-  Admitted.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (update_fblock_d _ _ _ _ _) _) => apply update_fblock_d_ok : prog.
 
@@ -709,7 +704,7 @@ Module AFS.
     eauto.
     step.
     step.
-
+    admit. admit.
     - xcrash_solve.
       (* XXX: need to show that we can ignore dssync_vecs inside crash_xform *)
       admit.

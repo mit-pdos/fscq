@@ -442,6 +442,31 @@ Module MapDefs (OT : UsualOrderedType) (M : S with Module E := OT).
     intros; rewrite Map.cardinal_1; auto.
   Qed.
 
+  Lemma InA_filter : forall ents a f,
+    InA (@Map.eq_key V) a (filter f ents) ->
+    InA (@Map.eq_key V) a ents.
+  Proof.
+    induction ents; simpl; auto; intros.
+    apply InA_cons.
+    destruct (eq_key_dec a0 a); intuition.
+    right; eapply IHents.
+    destruct (f a); eauto.
+    inversion H; subst; try congruence.
+  Qed.
+
+  Lemma KNoDup_filter : forall ents f,
+    KNoDup ents ->
+    KNoDup (filter f ents).
+  Proof.
+    induction ents; simpl; auto; intros.
+    inversion H; subst.
+    destruct (f a); intros; eauto.
+    constructor.
+    contradict H2.
+    eapply InA_filter; eauto.
+    apply IHents; eauto.
+  Qed.
+
 
   End MapUtilsFacts.
 

@@ -140,6 +140,36 @@ Module LOG.
     unfold rep, rep_inner; cancel.
   Qed.
 
+  Lemma intact_dsupd_latest : forall xp F ds a v hm gms,
+    GLog.dset_match xp ds gms ->
+    intact xp F (dsupd (ds!!, nil) a v) hm =p=>
+    recover_any xp F (dsupd ds a v) hm.
+  Proof.
+    unfold dsupd at 1, d_map at 1; simpl; intros.
+    rewrite <- dsupd_latest.
+    unfold intact, rep, rep_inner.
+    unfold recover_any, rep, rep_inner; cancel.
+    rewrite GLog.cached_dsupd_latest_recover_any; eauto.
+    rewrite GLog.cached_dsupd_latest_recover_any; eauto.
+    Unshelve. all: eauto.
+  Qed.
+
+  Lemma active_dset_match_pimpl : forall xp F ds d hm ms,
+    rep xp F (ActiveTxn ds d) ms hm <=p=>
+    rep xp F (ActiveTxn ds d) ms hm * [[ exists gms, GLog.dset_match xp ds gms ]].
+  Proof.
+    unfold rep, rep_inner, GLog.rep; intros; split; cancel.
+    eexists; eauto.
+  Qed.
+
+  Lemma notxn_dset_match_pimpl : forall xp F ds hm ms,
+    rep xp F (NoTxn ds) ms hm <=p=>
+    rep xp F (NoTxn ds) ms hm * [[ exists gms, GLog.dset_match xp ds gms ]].
+  Proof.
+    unfold rep, rep_inner, GLog.rep; intros; split; cancel.
+    eexists; eauto.
+  Qed.
+
   Lemma rep_inner_hashmap_subset : forall xp ms hm hm',
     (exists l, hashmap_subset l hm hm')
     -> forall st, rep_inner xp st ms hm
@@ -372,8 +402,7 @@ Module LOG.
       [[ ds0 = ds \/ ds0 = (ds!!, nil) ]]
     XCRASH:hm'
       recover_any xp F ds hm' \/
-      intact xp F (updN (ds !!) a (v, vsmerge vs), nil) hm' \/
-      intact xp F (updN (fst ds) a (v, vsmerge vs), nil) hm'
+      recover_any xp F (dsupd ds a (v, vsmerge vs)) hm'
     >} dwrite xp a v ms.
   Proof.
     unfold dwrite, recover_any.
@@ -396,24 +425,10 @@ Module LOG.
     xcrash.
     or_l; cancel; xform_normr; cancel.
 
-    or_r; or_l; cancel.
-    unfold intact; xform_normr.
-    or_r; unfold rep, rep_inner.
-    xform_normr; erewrite snd_pair; eauto; cancel.
-    eassign (mk_mstate (Map.remove a (MSTxn ms_1)) x_1); eauto.
-    eapply map_valid_remove; autorewrite with lists; eauto.
-    unfold latest; destruct ds; simpl; rewrite length_updN; auto.
+    or_r; cancel.
+    xform_normr; cancel.
 
-    or_r; or_r; cancel.
-    unfold intact; xform_normr.
-    or_r; unfold rep, rep_inner.
-    xform_normr; erewrite snd_pair; eauto; cancel.
-    eassign (mk_mstate (Map.remove a (MSTxn ms_1)) x_1); eauto.
-    eapply map_valid_remove; autorewrite with lists; eauto.
-    setoid_rewrite singular_latest at 2; simpl; auto.
-    erewrite GLog.cached_length_latest, length_updN; eauto.
-
-    Unshelve. eauto.
+    Unshelve. all: eauto.
   Qed.
 
 

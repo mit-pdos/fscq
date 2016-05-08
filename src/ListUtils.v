@@ -2255,6 +2255,12 @@ Proof.
   apply NoDup_rev_2.
 Qed.
 
+Lemma filter_length : forall A f (l : list A),
+  length (filter f l) <= length l.
+Proof.
+  induction l; simpl; auto.
+  destruct (f a); simpl; auto; omega.
+Qed.
 
 Definition disjoint A (a b : list A) :=
   forall x, (In x a -> ~ In x b) /\ (In x b -> ~ In x a).

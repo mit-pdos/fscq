@@ -46,6 +46,13 @@ Proof.
   rewrite d_map_latest; auto.
 Qed.
 
+Lemma dsupd_fst : forall ds a v,
+  fst (dsupd ds a v) = updN (fst ds) a v.
+Proof.
+  unfold dsupd; intros.
+  rewrite d_map_fst; auto.
+Qed.
+
 Lemma dssync_latest : forall ds a,
   latest (dssync ds a) = vssync (latest ds) a.
 Proof.
@@ -206,6 +213,21 @@ Module ReplaySeq.
     rewrite <- replay_disk_updN_comm by auto.
     destruct ds; auto.
     apply IHReplaySeq; auto.
+  Qed.
+
+  Local Hint Resolve ents_remove_not_in.
+  Lemma replay_seq_dsupd_ents_remove : forall ds ts a v,
+    ReplaySeq ds ts ->
+    ReplaySeq (dsupd ds a v) (map (ents_remove a) ts).
+  Proof.
+    induction 1; simpl; subst.
+    constructor.
+    unfold dsupd, d_map; simpl.
+    constructor.
+    2: apply IHReplaySeq; auto.
+    destruct ds; simpl;
+    rewrite replay_disk_updN_comm by auto;
+    rewrite replay_disk_ents_remove_updN; auto.
   Qed.
 
   Lemma replay_seq_dssync_notin : forall ds ts a,

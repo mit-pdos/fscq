@@ -892,11 +892,10 @@ Module BFILE.
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) off (v, vsmerge vs)) (BFAttr f) ]]
-    XCRASH:hm' exists bn,
-           [[ block_belong_to_file ilist bn inum off ]] *
-          (LOG.recover_any lxp F ds hm' \/
-           LOG.intact lxp F (updN (ds !!) bn (v, vsmerge vs), nil) hm' \/
-           LOG.intact lxp F (updN (fst ds) bn (v, vsmerge vs), nil) hm')
+    XCRASH:hm'
+           LOG.recover_any lxp F ds hm' \/
+           exists bn, [[ block_belong_to_file ilist bn inum off ]] *
+           LOG.recover_any lxp F (dsupd ds bn (v, vsmerge vs)) hm'
     >} dwrite lxp ixp inum off v ms.
   Proof.
     unfold dwrite, diskset_was.
@@ -945,18 +944,15 @@ Module BFILE.
     eauto.
 
     repeat xcrash_rewrite.
-    xform_norm; apply pimpl_exists_r; eexists; xform_normr.
+    xform_norm; xform_normr.
     cancel.
-    eauto.
-    cancel.
-    norm; unfold stars; simpl; intuition.
-    or_r; or_r; cancel.
-    eauto.
+
+    or_r; cancel.
+    xform_norm; cancel.
 
     cancel.
     xcrash.
     or_l; rewrite LOG.active_intact, LOG.intact_any; auto.
-    eauto.
 
     Unshelve. all: easy.
   Qed.

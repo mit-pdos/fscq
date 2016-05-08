@@ -3338,11 +3338,10 @@ Module DIRTREE.
            [[ f' = BFILE.mk_bfile (updN (BFILE.BFData f) off (v, vsmerge vs)) (BFILE.BFAttr f) ]] *
            [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
                            ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
-    XCRASH:hm' exists bn,
-           [[ BFILE.block_belong_to_file ilist bn inum off ]] *
-          (LOG.recover_any fsxp.(FSXPLog) F ds hm' \/
-           LOG.intact fsxp.(FSXPLog) F (updN (ds !!) bn (v, vsmerge vs), nil) hm' \/
-           LOG.intact fsxp.(FSXPLog) F (updN (fst ds) bn (v, vsmerge vs), nil) hm')
+    XCRASH:hm'
+           LOG.recover_any fsxp.(FSXPLog) F ds hm' \/
+           exists bn, [[ BFILE.block_belong_to_file ilist bn inum off ]] *
+           LOG.recover_any fsxp.(FSXPLog) F (dsupd ds bn (v, vsmerge vs)) hm'
     >} dwrite fsxp inum off v mscs.
   Proof.
     unfold dwrite, rep.
