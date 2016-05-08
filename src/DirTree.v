@@ -813,6 +813,37 @@ Module DIRTREE.
         eauto.
   Qed.
 
+  Theorem dirtree_update_inode_oob : forall pathname tree inum off f v,
+    tree_inodes_distinct tree ->
+    tree_names_distinct tree ->
+    find_subtree pathname tree = Some (TreeFile inum f) ->
+    ~ off < length (BFILE.BFData f) ->
+    dirtree_update_inode tree inum off v = tree.
+  Proof.
+    induction pathname; simpl; intros.
+    - inversion H1; subst; simpl.
+      destruct (addr_eq_dec inum inum); try congruence.
+      rewrite updN_oob by ( apply not_lt; auto ).
+      destruct f; auto.
+    - destruct tree; simpl in *; try congruence.
+      f_equal.
+      induction l; simpl in *; try congruence.
+      destruct a0; simpl in *.
+      destruct (string_dec s a); subst; eauto.
+      + erewrite IHpathname; eauto.
+        f_equal.
+        inversion H0. inversion H6.
+        inversion H.
+        rewrite dirtree_update_inode_absent'; eauto.
+        apply find_subtree_inum_present in H1; simpl in *.
+        eapply tree_inodes_distinct_not_in_tail; eauto.
+      + rewrite dirtree_update_inode_absent.
+        rewrite IHl; eauto.
+        eapply tree_inodes_distinct_not_this_child with (pathname := a :: pathname).
+        2: apply H1.
+        eauto.
+  Qed.
+
   Lemma rep_tree_inodes_distinct : forall tree F fsxp Ftop m ilist frees,
     (F * rep fsxp Ftop tree ilist frees)%pred m ->
     tree_inodes_distinct tree.
@@ -946,14 +977,16 @@ Module DIRTREE.
         intro; apply H5. subst; eauto.
   Qed.
 
-  Theorem dirtree_update_safe : forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks v bn inum off m flag,
+  Theorem dirtree_update_safe_inum : forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks v bn inum off m flag,
     find_subtree pathname tree_newest = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist_newest bn inum off ->
     dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
     (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
     exists tree',
     (F0 * rep fsxp F tree' ilist freeblocks)%pred (list2nmem (updN m bn v)) /\
-    (tree' = tree \/ tree' = dirtree_update_inode tree inum off v).
+    (tree' = tree \/
+     exists pathname' f', find_subtree pathname' tree = Some (TreeFile inum f') /\
+     tree' = dirtree_update_inode tree inum off v).
   Proof.
     intros.
     unfold dirtree_safe, BFILE.ilist_safe in H1.
@@ -964,8 +997,9 @@ Module DIRTREE.
        * The block still belongs to the same inode in this earlier disk.
        *)
       eexists; split.
-      2: right; reflexivity.
+      2: right; intuition.
       eapply dirtree_update_block; eauto.
+      eauto.
     - (**
        * The block is now in the free list.
        *)
@@ -974,6 +1008,59 @@ Module DIRTREE.
       eapply dirtree_update_free; eauto.
   Qed.
 
+  (* This lemma is just for compatibility with old proofs.. *)
+  Theorem dirtree_update_safe : forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks v bn inum off m flag,
+    find_subtree pathname tree_newest = Some (TreeFile inum f) ->
+    BFILE.block_belong_to_file ilist_newest bn inum off ->
+    dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
+    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
+    exists tree',
+    (F0 * rep fsxp F tree' ilist freeblocks)%pred (list2nmem (updN m bn v)) /\
+    (tree' = tree \/ tree' = dirtree_update_inode tree inum off v).
+  Proof.
+    intros; destruct v.
+    edestruct dirtree_update_safe_inum; intuition eauto.
+    repeat deex; intuition eauto.
+  Qed.
+
+  Theorem dirtree_update_safe_pathname :
+    forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks v bn inum off m flag,
+    find_subtree pathname tree_newest = Some (TreeFile inum f) ->
+    BFILE.block_belong_to_file ilist_newest bn inum off ->
+    dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
+    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
+    exists tree',
+    (F0 * rep fsxp F tree' ilist freeblocks)%pred (list2nmem (updN m bn v)) /\
+    (tree' = tree \/
+     exists pathname' f', find_subtree pathname' tree = Some (TreeFile inum f') /\
+     let f'new := BFILE.mk_bfile (updN (BFILE.BFData f') off v) (BFILE.BFAttr f') in
+     tree' = update_subtree pathname' (TreeFile inum f'new) tree).
+  Proof.
+    intros; destruct v.
+    edestruct dirtree_update_safe_inum; eauto.
+    intuition; subst; eauto.
+    destruct (in_dec addr_eq_dec inum (tree_inodes tree)).
+    - (* inum is in the tree.. *)
+      edestruct tree_inodes_pathname_exists; eauto; repeat deex.
+      eapply rep_tree_names_distinct; eauto.
+      eapply rep_tree_inodes_distinct; eauto.
+      destruct (lt_dec off (length (BFILE.BFData f'))).
+      + (* in-bounds write *)
+        erewrite dirtree_update_inode_update_subtree in H4; eauto.
+        eexists; split.
+        eauto.
+        right; eauto.
+        eapply rep_tree_inodes_distinct; eauto.
+        eapply rep_tree_names_distinct; eauto.
+      + (* out-of-bounds write *)
+        erewrite dirtree_update_inode_oob in H4; eauto.
+        eapply rep_tree_inodes_distinct; eauto.
+        eapply rep_tree_names_distinct; eauto.
+    - (* inum is not in the tree *)
+      repeat deex.
+      erewrite dirtree_update_inode_absent in H4 by eauto.
+      eauto.
+  Qed.
 
   Lemma find_subtree_ents_not_in : forall T ents name acc (rec : _ -> option T),
     ~ In name (map fst ents) ->
