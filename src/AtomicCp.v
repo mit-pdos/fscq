@@ -567,7 +567,9 @@ Module ATOMICCP.
     step.
     instantiate (cwd0 := []).
     rewrite find_subtree_root.
-    admit.  (* some tree_elem *)
+    f_equal.
+    rewrite (DIRTREE.dirtree_dir_parts (DIRTREE.update_subtree _ _ _)).
+    f_equal. eauto. eauto.
     unfold AFS.rename_rep.
     step. (* tree_sync *)
     step. (* return false, rename failed? *)
@@ -581,19 +583,26 @@ Module ATOMICCP.
     eapply dirtree_isdir_true_find_subtree in H9 as Hdir.
     eapply DIRTREE.dirtree_dir_parts in Hdir. rewrite H10 in Hdir.
     eauto.
-    admit. (* prune *)
-    rewrite update_subtree_root.
-    admit. 
-(*
-DIRTREE.tree_graft dstnum dstents [] dst_fn subtree
-  (DIRTREE.tree_prune srcnum srcents [] temp_fn
-     (DIRTREE.TreeDir the_dnum tree_elem)) =
-DIRTREE.tree_graft the_dnum ?dstents0 [] dst_fn
-  (DIRTREE.TreeFile tinum (BFILE.synced_file file))
-  (DIRTREE.tree_prune the_dnum (DIRTREE.dirtree_dirents temp_tree) [] temp_fn
-     temp_tree)
+    rewrite (DIRTREE.dirtree_dir_parts (DIRTREE.tree_prune _ _ _ _ _)).
+    f_equal. f_equal. eauto.
 
-*)
+    rewrite update_subtree_root.
+    rewrite find_subtree_root in H26.
+    inversion H26.
+    subst srcnum.
+    subst srcents.
+    rewrite find_subtree_root in H23.
+    rewrite (DIRTREE.dirtree_dir_parts (DIRTREE.tree_prune _ _ _ _ _)) in H23.
+    inversion H23.
+    f_equal; eauto.
+    f_equal.
+    f_equal.
+
+    Search tree_elem.
+    eapply dirtree_isdir_true_find_subtree in H9 as Hdir.
+    eapply DIRTREE.dirtree_dir_parts in Hdir. rewrite H10 in Hdir.
+    rewrite Hdir.
+
 
     AFS.xcrash_solve.
     (* crashed with completing rename, but not sync *)
