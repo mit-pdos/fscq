@@ -3,7 +3,7 @@ Require Import Log.
 Require Import BFile.
 Require Import Word.
 Require Import Omega.
-Require Import Hashmap.
+Require Import Hashmap.   (* must go before basicprog, because notation using hashmap *)
 Require Import BasicProg.
 Require Import Bool.
 Require Import Pred PredCrash.
