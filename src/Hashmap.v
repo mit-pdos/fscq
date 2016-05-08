@@ -342,6 +342,12 @@ Ltac solve_hashmap_subset :=
     => subst; solve [ solve_hashmap_subset_trans | repeat (eauto; econstructor) ]
   end.
 
+Ltac solve_hashmap_subset' :=
+  repeat match goal with
+  | [ H: exists _, hashmap_subset _ _ _ |- _ ]
+    => destruct H
+  end; eauto.
+
 Ltac solve_hash_list_rep :=
   try match goal with
   | [ H: hash_list_rep _ ?h ?hm, Htrans: hashmap_subset _ ?hm _ |-
