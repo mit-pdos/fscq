@@ -113,6 +113,7 @@ Module AFS.
   Notation MSAlloc := BFILE.MSAlloc.
   Import DIRTREE.
 
+      Search find_subtree tree_graft.
 
   Definition recover {T} rx : prog T :=
     cs <- BUFCACHE.init_recover 10;
