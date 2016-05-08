@@ -570,12 +570,12 @@ Module ATOMICCP.
     admit.  (* some tree_elem *)
     unfold AFS.rename_rep.
     step. (* tree_sync *)
-    step. (* return false *)
+    step. (* return false, rename failed? *)
     AFS.xcrash_solve.
     cancel.
     repeat xform_dist.
     cancel.
-    step. (* return true *)
+    step. (* return true, rename succeeded *)
     or_r.
     cancel.
     eapply dirtree_isdir_true_find_subtree in H9 as Hdir.
@@ -596,24 +596,28 @@ DIRTREE.tree_graft the_dnum ?dstents0 [] dst_fn
 *)
 
     AFS.xcrash_solve.
+    (* crashed with completing rename, but not sync *)
     cancel.
-    repeat xform_dist.
-    cancel.
-    denote d_in as Hdin.
-    destruct (d_in_pushd Hdin).
-    subst.
-    (* crashed with completing rename *)
-    pred_apply.
-    cancel.
-    (* something is wrong here .... *)
-    admit.
-    (* the other case *)
-    admit.
+    repeat xform_dist.  (* do manually so that we can do or_r *)
+    norm.
+    or_r.
+    safecancel.
+    xcrash_norm.
 
+    eapply dirtree_isdir_true_find_subtree in H9 as Hdir.
+    eapply DIRTREE.dirtree_dir_parts in Hdir. rewrite H10 in Hdir.
+    rewrite Hdir. f_equal.
+    admit.  (* some dents *)
+    admit. (* prune *)
+    rewrite update_subtree_root.
+    admit. (* graft as above *)
+    intuition.
+    
     AFS.xcrash_solve.
     xcrash_norm.
     
-    step.  (* sync in false *)
+    step.  (* sync in copy false branch *)
+    
     admit. (* use h16 *)
     step.  (* return in false case *)
     admit. (* use h16 *)
