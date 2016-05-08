@@ -2213,6 +2213,49 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma NoDup_app_not_In : forall A (l : list A) (a : A),
+  NoDup (l ++ [a]) -> ~ In a l.
+Proof.
+  induction l; simpl; auto; intros.
+  inversion H; subst; auto.
+  intro; intuition; subst.
+  rewrite in_app_iff in H2; intuition.
+  eapply IHl; eauto.
+Qed.
+
+
+Lemma NoDup_rev_1 : forall A (l : list A),
+  NoDup l -> NoDup (rev l).
+Proof.
+  induction l using rev_ind; simpl; intros; auto.
+  rewrite rev_app_distr; simpl.
+  apply NoDup_app_l in H as H1.
+  apply NoDup_app_not_In in H as H2.
+  constructor; eauto.
+  contradict H2.
+  apply in_rev; auto.
+Qed.
+
+Lemma NoDup_rev_2 : forall A (l : list A),
+  NoDup (rev l) -> NoDup l.
+Proof.
+  induction l; simpl; intros; auto.
+  apply NoDup_app_l in H as H1.
+  apply NoDup_app_not_In in H as H2.
+  constructor; eauto.
+  contradict H2.
+  apply in_rev in H2; auto.
+Qed.
+
+Lemma NoDup_rev : forall A (l : list A),
+  NoDup l <-> NoDup (rev l).
+Proof.
+  split.
+  apply NoDup_rev_1.
+  apply NoDup_rev_2.
+Qed.
+
+
 Definition disjoint A (a b : list A) :=
   forall x, (In x a -> ~ In x b) /\ (In x b -> ~ In x a).
 

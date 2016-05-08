@@ -774,8 +774,7 @@ Module AFS.
       \/ exists inum,
        [[ r = Some inum ]] * exists d tree' ilist' frees',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
-       [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
-                           (DIRTREE.TreeFile inum BFILE.bfile0) tree ]] *
+       [[ tree' = tree_graft dnum tree_elem pathname name (TreeFile inum BFILE.bfile0) tree ]] *
        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
        [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                        ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]])
@@ -788,8 +787,6 @@ Module AFS.
     step.
     step.
     step.
-    or_r; cancel.
-    Search tree_graft update_subtree.
     apply LOG.notxn_idempred.
     step.
     apply LOG.notxn_idempred.
