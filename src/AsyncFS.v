@@ -75,6 +75,20 @@ Module AFS.
      1
      max_addr).
 
+  Definition mkfs_alternate_allocators {T} lxp bxp1 bxp2 mscs rx : prog T :=
+    let^ (mscs, bxp1, bxp2) <- ForN i < (BmapNBlocks bxp1 * valulen)
+    Hashmap hm
+    Ghost [ F ]
+    Loopvar [ mscs bxp1 bxp2 ]
+    Continuation lrx
+    Invariant F
+    OnCrash F
+    Begin
+      mscs <- BALLOC.steal lxp bxp1 i mscs;
+      lrx ^(mscs, bxp2, bxp1)
+    Rof ^(mscs, bxp1, bxp2);
+    rx mscs.
+
   Definition mkfs {T} data_bitmaps inode_bitmaps log_descr_blocks rx : prog T :=
     let fsxp := compute_xparams data_bitmaps inode_bitmaps log_descr_blocks in
     cs <- BUFCACHE.init_recover cachesize;
@@ -85,6 +99,7 @@ Module AFS.
     mscs <- BALLOC.init (FSXPLog fsxp) (FSXPBlockAlloc2 fsxp) mscs;
     mscs <- BALLOC.init (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
     mscs <- INODE.init (FSXPLog fsxp) (FSXPInode fsxp) mscs;
+    mscs <- mkfs_alternate_allocators (FSXPLog fsxp) (FSXPBlockAlloc1 fsxp) (FSXPBlockAlloc2 fsxp) mscs;
     let^ (mscs, r) <- BALLOC.alloc (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
     match r with
     | None =>
