@@ -764,6 +764,24 @@ Qed.
 Definition vssync_vecs (vsl : list valuset) (l : list addr) : list valuset :=
   fold_left vssync l vsl.
 
+Definition vssync_vecs_rev (vsl : list valuset) (l : list addr) : list valuset :=
+  fold_right (fun a m => vssync m a) vsl (rev l).
+
+Theorem vssync_vecs_rev_eq : forall l vsl,
+  vssync_vecs vsl l = vssync_vecs_rev vsl l.
+Proof.
+  intros; unfold vssync_vecs, vssync_vecs_rev.
+  rewrite fold_left_rev_right; auto.
+Qed.
+
+Lemma vssync_vecs_app : forall m l a,
+  vssync_vecs m (l ++ [a]) = vssync (vssync_vecs m l) a.
+Proof.
+  intros.
+  repeat rewrite vssync_vecs_rev_eq.
+  unfold vssync_vecs_rev.
+  rewrite rev_unit; reflexivity.
+Qed.
 
 Lemma vssync_vecs_length : forall l vs,
   length (vssync_vecs vs l) = length vs.

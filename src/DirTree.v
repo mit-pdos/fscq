@@ -19,6 +19,7 @@ Require Import FunctionalExtensionality.
 Require Import AsyncDisk.
 Require Import DiskSet.
 Require Import GenSepAuto.
+Require Import Lock.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -1309,6 +1310,34 @@ Module DIRTREE.
   Qed.
 
   Hint Resolve find_update_subtree.
+
+  Lemma find_subtree_update_subtree_ne_file :
+    forall tree p1 p2 inum1 inum2 f1 f1' f2,
+    find_subtree p1 tree = Some (TreeFile inum1 f1) ->
+    find_subtree p2 tree = Some (TreeFile inum2 f2) ->
+    p1 <> p2 ->
+    find_subtree p2 (update_subtree p1 (TreeFile inum1 f1') tree) =
+    find_subtree p2 tree.
+  Proof.
+  Admitted.
+
+  Lemma dirtree_safe_update_subtree : forall ilist frees tree ilist' frees' tree' inum pathname f f',
+    dirtree_safe ilist frees tree ilist' frees' tree' ->
+    find_subtree pathname tree = Some (TreeFile inum f) ->
+    dirtree_safe ilist frees (update_subtree pathname (TreeFile inum f') tree) ilist' frees' tree'.
+  Proof.
+    unfold dirtree_safe; intros.
+    intuition.
+    specialize (H2 _ _ _ _ _ H H3).
+    intuition; repeat deex.
+    left; intuition.
+    destruct (list_eq_dec string_dec pathname pathname'); subst.
+    - rewrite H4 in H0. inversion H0.
+      repeat eexists.
+      erewrite find_update_subtree; eauto.
+    - repeat eexists.
+      erewrite find_subtree_update_subtree_ne_file; eauto.
+  Qed.
 
   (**
    * XXX
