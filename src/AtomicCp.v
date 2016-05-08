@@ -615,12 +615,15 @@ DIRTREE.tree_graft the_dnum ?dstents0 [] dst_fn
     
     AFS.xcrash_solve.
     xcrash_norm.
-    
-    step.  (* sync in copy false branch *)
-    
-    admit. (* use h16 *)
+
+    (* step manually to get evars *)
+    prestep. norm'l.
+    edestruct H16.
+    eapply latest_in_ds.
+    repeat deex.
+    cancel.
+
     step.  (* return in false case *)
-    admit. (* use h16 *)
 
     AFS.xcrash_solve.
     xcrash_norm.
