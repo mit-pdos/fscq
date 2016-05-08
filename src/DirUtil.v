@@ -593,9 +593,9 @@ Proof.
 Admitted.
 
 Theorem dirtree_update_safe_pathname_vssync_vecs :
-  forall bns ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks inum off m flag,
+  forall bns ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks inum m flag,
   find_subtree pathname tree_newest = Some (TreeFile inum f) ->
-  Forall (fun bn => BFILE.block_belong_to_file ilist_newest bn inum off) bns ->
+  Forall (fun bn => exists off, BFILE.block_belong_to_file ilist_newest bn inum off) bns ->
   dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
   (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
   exists tree',
@@ -613,18 +613,19 @@ Proof.
     rewrite vssync_vecs_app; unfold vssync.
     intuition; subst.
     + (* case 1: previous syncs did nothing *)
+      apply forall_app_l in H0; inversion H0; eauto; repeat deex.
       edestruct dirtree_update_safe_pathname; eauto.
-      apply forall_app_l in H0. inversion H0; eauto.
       intuition eauto; repeat deex.
       eexists.
       split. eassumption.
       right; eauto.
     + (* case 2: previous syncs changed something *)
       repeat deex.
+      apply forall_app_l in H0; inversion H0; eauto; repeat deex.
       edestruct dirtree_update_safe_pathname.
       3: eapply dirtree_safe_update_subtree.
       3: eassumption.
-      2: apply forall_app_l in H0; inversion H0; eauto.
+      2: eauto.
       3: eauto.
       all: eauto.
       intuition.
@@ -641,7 +642,7 @@ Proof.
         eapply rep_tree_names_distinct; eauto.
         rewrite update_update_subtree_eq'.
         erewrite find_update_subtree in *; eauto.
-        inversion H6; simpl.
+        inversion H8; simpl.
         reflexivity.
 
   Unshelve.
