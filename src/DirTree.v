@@ -2696,13 +2696,161 @@ Module DIRTREE.
   Admitted.
 
 
+  Lemma find_dirlist_in : forall name ents tree,
+     find_dirlist name ents = Some tree ->
+     In name (map fst ents).
+  Proof.
+    induction ents; simpl; intros; try congruence.
+    destruct a.
+    destruct (string_dec s name); subst.
+    left; auto.
+    right; simpl in *.
+    eapply IHents.
+    destruct (string_dec s name); try congruence; eauto.
+  Qed.
+
+
+  Lemma find_dirlist_find_subtree_helper : forall ents tree name,
+    find_dirlist name ents = Some tree ->
+    NoDup (map fst ents) ->
+    fold_right (find_subtree_helper (fun x => Some x) name) None ents = Some tree.
+  Proof.
+    induction ents; simpl; intros; auto.
+    destruct a; destruct (string_dec s name); subst.
+    - inversion H; inversion H0; subst; simpl in *.
+      destruct (string_dec name name); congruence.
+    - inversion H0; subst; simpl in *.
+      destruct (string_dec s name); subst.
+      contradict H3; eapply find_dirlist_in; eauto.
+      apply IHents; eauto.
+  Qed.
+
+  Lemma find_subtree_leaf_in : forall ents name tree dnum,
+    In (name, tree) ents ->
+    NoDup (map fst ents) ->
+    find_subtree [ name ] (TreeDir dnum ents) = Some tree.
+  Proof.
+    induction ents; simpl; intuition.
+    - inversion H0; inversion H1; subst; simpl in *.
+      destruct (string_dec name name); congruence.
+    - inversion H0; subst; simpl in *.
+      destruct (string_dec a0 name); subst.
+      contradict H3.
+      apply in_map_iff; eexists; split; eauto; simpl; auto.
+      apply IHents; auto.
+  Qed.
+
+
+  Lemma tree_names_distinct_subtree : forall path tree subtree,
+    tree_names_distinct tree ->
+    find_subtree path tree = Some subtree ->
+    tree_names_distinct subtree.
+  Proof.
+    induction path.
+    intros; inversion H0; subst; auto.
+    induction tree; simpl; try congruence; intros.
+    inversion H0; subst.
+
+    induction l; simpl in *; try congruence.
+    destruct a0; simpl in *.
+    destruct (string_dec s a); subst; simpl in *.
+    - inversion H; inversion H4; subst; simpl in *.
+      eapply IHpath; eauto.
+    - inversion H; inversion H4; subst; simpl in *.
+      apply IHl; eauto.
+  Qed.
+
+
+  Lemma tree_names_distinct_nodup : forall dnum ents,
+    tree_names_distinct (TreeDir dnum ents) ->
+    NoDup (map fst ents).
+  Proof.
+    intros; inversion H; auto.
+  Qed.
+
+
+  Lemma In_delete_from_list_snd : forall l x name,
+    In x (map snd (delete_from_list name l)) ->
+    In x (map snd l).
+  Proof.
+    induction l; simpl; auto; intros.
+    destruct a.
+    destruct (string_dec s name); simpl in *; intuition.
+    right; eapply IHl; eauto.
+  Qed.
+
+  Lemma In_delete_from_list_fst : forall l x name,
+    In x (map fst (delete_from_list name l)) ->
+    In x (map fst l).
+  Proof.
+    induction l; simpl; auto; intros.
+    destruct a.
+    destruct (string_dec s name); simpl in *; intuition.
+    right; eapply IHl; eauto.
+  Qed.
+
+  Lemma NoDup_delete_from_list : forall l name,
+    NoDup (map fst l) ->
+    NoDup (map fst (delete_from_list name l)).
+  Proof.
+    induction l; simpl; auto; intros.
+    inversion H; destruct a; subst; simpl in *.
+    destruct (string_dec s name); try congruence.
+    simpl; constructor.
+    contradict H2.
+    eapply In_delete_from_list_fst; eauto.
+    apply IHl; auto.
+  Qed.
+
+  Lemma tree_names_distinct_delete_from_list : forall l n name,
+    tree_names_distinct (TreeDir n l) ->
+    tree_names_distinct (TreeDir n (delete_from_list name l)).
+  Proof.
+    induction l; simpl; intros; auto.
+    destruct a; simpl in *.
+    inversion H; subst; simpl in *.
+    inversion H2; inversion H3; subst.
+    destruct (string_dec s name); subst; auto.
+    constructor; auto.
+    constructor.
+    rewrite Forall_forall in *; simpl in *; intuition.
+    apply H5.
+    eapply In_delete_from_list_snd; eauto.
+    simpl; constructor.
+    contradict H8.
+    eapply In_delete_from_list_fst; eauto.
+    apply NoDup_delete_from_list; auto.
+  Qed.
+
+  Lemma tree_names_distinct_prune_subtree : forall path tree path' name subtree n l,
+    tree_names_distinct tree ->
+    find_subtree path' tree = Some (TreeDir n l) ->
+    find_subtree path (tree_prune n l path' name tree) = Some subtree ->
+    tree_names_distinct subtree.
+  Proof.
+    induction path; intuition; simpl in *.
+    - inversion H1; subst.
+      induction path'; simpl in *.
+      + inversion H0; subst.
+        unfold tree_prune; simpl in *.
+        apply tree_names_distinct_delete_from_list; auto.
+      + destruct tree; try congruence.
+        admit.
+    - eapply IHpath; eauto.
+      admit.
+  Admitted.
+
+
   Lemma rename_safe_dest_none : 
     forall ilist1 ilist2 frees1 frees2 srcpath srcname dstpath dstname dnum ents n l n' l' mvtree,
     let pruned  := tree_prune n l srcpath srcname (TreeDir dnum ents) in
     let grafted := tree_graft n' l' dstpath dstname mvtree pruned in
     tree_names_distinct (TreeDir dnum ents) ->
     tree_inodes_distinct (TreeDir dnum ents) ->
+    find_subtree srcpath (TreeDir dnum ents) = Some (TreeDir n l) ->
     find_subtree dstpath pruned = Some (TreeDir n' l') ->
+    ~ In dstname (map fst l') ->
+    find_dirlist srcname l = Some mvtree ->
     BFILE.ilist_safe ilist1 frees1 ilist2 frees2 ->
     dirtree_safe ilist1 frees1 (TreeDir dnum ents) ilist2 frees2 grafted.
   Proof.
@@ -2711,8 +2859,34 @@ Module DIRTREE.
     unfold dirtree_safe; intuition.
     apply BFILE.ilist_safe_refl.
     left; split; auto.
-    repeat eexists; eauto.
-    admit.
+
+    destruct (pathname_decide_prefix (dstpath ++ [dstname]) pathname).
+    - repeat deex.
+      exists (srcpath ++ [srcname] ++ suffix); exists f.
+      denote tree_graft as Hx.
+      rewrite <- app_assoc in Hx.
+      erewrite find_subtree_app in Hx by (
+        erewrite <- tree_graft_not_in_dirents by auto;
+        eapply find_update_subtree; eauto).
+
+      erewrite find_subtree_app by eauto.
+      erewrite find_subtree_app.
+
+      2: apply find_dirlist_find_subtree_helper; eauto.
+      erewrite find_subtree_app in Hx; eauto.
+      apply find_subtree_leaf_in.
+      apply in_app_iff.
+      right; simpl; auto.
+      rewrite map_app; apply NoDup_app_comm; simpl.
+      constructor; auto.
+
+      eapply tree_names_distinct_nodup.
+      eapply tree_names_distinct_prune_subtree; eauto.
+      eapply tree_names_distinct_nodup.
+      eapply tree_names_distinct_subtree; eauto.
+
+    - exists pathname, f.
+      admit.
   Admitted.
 
 
