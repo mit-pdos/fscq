@@ -675,6 +675,8 @@ Module AFS.
         [[ MSAlloc mscs' = MSAlloc mscs ]] *
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
         [[ ds' = dssync_vecs ds0 al /\ BFILE.diskset_was ds0 ds ]] *
+        [[ length al = length (BFILE.BFData f) ]] *
+        [[ forall i, i < length al -> BFILE.block_belong_to_file ilist (selN al i 0) inum i ]] *
         [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist frees)]]] *
         [[ tree' = update_subtree pathname (TreeFile inum  (BFILE.synced_file f)) tree ]] *
         [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
