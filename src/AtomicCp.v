@@ -159,7 +159,9 @@ Module ATOMICCP.
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree ilist freelist) ]]] *
       [[ forall d, d_in d ds -> exists tfile' ilist' freelist',
          let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree in
-         (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist')%pred (list2nmem d) ]] *
+         DIRTREE.dirtree_safe ilist' (BFILE.pick_balloc freelist' (MSAlloc mscs)) tree'
+                              ilist  (BFILE.pick_balloc freelist  (MSAlloc mscs)) temp_tree /\
+         (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist')%pred (list2nmem d) ]]%type *
       [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
       [[ DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
       [[ src_fn <> temp_fn ]] *
