@@ -788,6 +788,8 @@ Module AFS.
     step.
     step.
     step.
+    or_r; cancel.
+    Search tree_graft update_subtree.
     apply LOG.notxn_idempred.
     step.
     apply LOG.notxn_idempred.

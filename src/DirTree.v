@@ -18,6 +18,7 @@ Require Import Array.
 Require Import FunctionalExtensionality.
 Require Import AsyncDisk.
 Require Import DiskSet.
+Require Import GenSepAuto.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -945,20 +946,20 @@ Module DIRTREE.
     exists (s :: pathname). eexists. eauto.
   Qed.
 
-  Theorem dirlist_safe_mkfile : forall ilist freeblocks ilist' freeblocks'
-                                      dnum tree_elem name inum,
+
+  Theorem dirlist_safe_mkfile : forall ilist freeblocks ilist' freeblocks' frees
+                                      dnum tree_elem name inum m flist' bxp ixp F Fm,
+   (Fm * BFILE.rep bxp ixp flist' ilist' frees)%pred m ->
+   (F * inum |-> BFILE.bfile0 )%pred (list2nmem flist') ->
     BFILE.ilist_safe ilist  freeblocks ilist' freeblocks' ->
-    tree_names_distinct (TreeDir dnum ((name, TreeFile inum BFILE.bfile0) :: tree_elem)) ->
     dirtree_safe ilist  freeblocks (TreeDir dnum tree_elem)
                  ilist' freeblocks' (TreeDir dnum ((name, TreeFile inum BFILE.bfile0) :: tree_elem)).
   Proof.
     unfold dirtree_safe, BFILE.ilist_safe; intuition.
-    specialize (H2 _ _ _ H3); destruct H2.
+    denote (forall _, _ ) as Hx; denote (BFILE.block_belong_to_file) as Hy.
+    specialize (Hx _ _ _ Hy); destruct Hx.
     2: right; intuition.  (* Unused block. *)
 
-    (**
-     * Need to determine whether the new file's filename infact corresponds to [inum0].
-     **)
     destruct pathname; simpl in *; try congruence.
     destruct (string_dec name s); subst; eauto.
 
@@ -966,16 +967,23 @@ Module DIRTREE.
       exfalso.
       destruct pathname; simpl in *; try congruence.
 
-      (* Need a contradiction from
-         [BFILE.block_belong_to_file ilist' bn inum0 off]
-         and some premise saying the file is actually empty..
-       *)
-      admit.
+      inversion H1; subst.
+      unfold BFILE.rep in H; destruct_lift H.
 
+      unfold BFILE.block_belong_to_file in Hy; intuition subst.
+      extract.
+      eapply list2nmem_sel in H0; rewrite <- H0 in *.
+      setoid_rewrite ListPred.listmatch_length_pimpl in H at 2.
+      destruct_lift H; rewrite map_length in *.
+      denote (0 = _) as Heq; rewrite <- Heq in *.
+      denote (off < _) as Hlt; inversion Hlt.
     - (* Different filename *)
       left; intuition.
       exists (s :: pathname); eexists; simpl in *; eauto.
-  Admitted.
+
+    Unshelve. all: eauto; exact unit.
+  Qed.
+
 
   Theorem find_subtree_app : forall p0 p1 tree subtree,
     find_subtree p0 tree = Some subtree ->
@@ -1352,6 +1360,11 @@ Module DIRTREE.
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
 
+  Ltac msalloc_eq :=
+    repeat match goal with
+    | [ H: MSAlloc _ = MSAlloc _ |- _ ] => rewrite H in *; clear H
+    end.
+
   Definition namei T fsxp dnum (fnlist : list string) mscs rx : prog T :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
@@ -1538,9 +1551,8 @@ Module DIRTREE.
     apply emp_empty_mem.
     apply sep_star_comm. apply ptsto_upd_disjoint. auto. auto.
 
-    eapply dirlist_safe_mkdir.
-    denote (MSAlloc _ = MSAlloc _) as He; rewrite He in *; clear He.
-    denote (MSAlloc _ = MSAlloc _) as He; rewrite He in *; clear He.
+    msalloc_eq.
+    eapply dirlist_safe_mkdir; auto.
     eapply BFILE.ilist_safe_trans; eauto.
 
     step.
@@ -1579,7 +1591,66 @@ Module DIRTREE.
   Qed.
 
 
+  Theorem mkfile_ok : forall fsxp dnum name mscs,
+    {< F mbase m pathname Fm Ftop tree tree_elem ilist frees,
+    PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) hm *
+           [[ (Fm * rep fsxp Ftop tree ilist frees)%pred (list2nmem m) ]] *
+           [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
+    POST:hm' RET:^(mscs',r) exists m',
+           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') hm' *
+           [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           ([[ r = None ]] \/
+            exists inum ilist' tree' frees',
+            [[ r = Some inum ]] *
+            [[ tree' = update_subtree pathname (TreeDir dnum
+                        ((name, (TreeFile inum BFILE.bfile0)) :: tree_elem)) tree ]] *
+            [[ (Fm * rep fsxp Ftop tree' ilist' frees' )%pred (list2nmem m') ]] *
+            [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
+                            ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]])
+    CRASH:hm'
+           LOG.intact fsxp.(FSXPLog) F mbase hm'
+    >} mkfile fsxp dnum name mscs.
+  Proof.
+    unfold mkfile, rep.
+    step. 
+    subst; simpl in *.
+
+    rewrite subtree_extract in H6; eauto.
+    simpl in *.
+
+    denote tree_dir_names_pred as Hx;
+    unfold tree_dir_names_pred in Hx; destruct_lift Hx.
+    step.
+    unfold SDIR.rep_macro.
+    eapply IAlloc.ino_valid_goodSize; eauto.
+
+    step.
+    step.
+    step.
+
+    denote dirlist_pred as Hx; denote (pimpl dummy1) as Hy.
+    rewrite Hy in Hx; destruct_lift Hx.
+    step.
+    step.
+
+    or_r; cancel.
+    rewrite <- subtree_absorb; eauto. 
+    cancel.
+    unfold tree_dir_names_pred. cancel; eauto.
+    apply sep_star_comm. apply ptsto_upd_disjoint. auto. auto.
+
+    eapply dirlist_safe_subtree; eauto.
+    msalloc_eq.
+    eapply dirlist_safe_mkfile; eauto.
+    eapply BFILE.ilist_safe_trans; eauto.
+
+    step.
+    Unshelve.
+    all: eauto.
+  Qed.
+
   Hint Extern 1 ({{_}} progseq (mkdir _ _ _ _) _) => apply mkdir_ok : prog.
+  Hint Extern 1 ({{_}} progseq (mkfile _ _ _ _) _) => apply mkfile_ok : prog.
 
   Lemma false_False_true : forall x,
     (x = false -> False) -> x = true.
@@ -1834,22 +1905,51 @@ Module DIRTREE.
     eassign l0; cancel.
   Qed.
 
+  Lemma find_subtree_helper_in : forall T (rec : _ -> option T) ents name node,
+    fold_right (find_subtree_helper rec name) None ents = Some node ->
+    In name (map fst ents).
+  Proof.
+    induction ents; simpl; intros; try congruence.
+    destruct a.
+    destruct (string_dec s name); subst.
+    left; auto.
+    right; simpl in *.
+    eapply IHents.
+    destruct (string_dec s name); try congruence; eauto.
+  Qed.
+
+  Lemma find_subtree_delete' : forall pathname name ents inum dnum f,
+    NoDup (map fst ents) ->
+    find_subtree pathname (TreeDir dnum (delete_from_list name ents)) = Some (TreeFile inum f) ->
+    find_subtree pathname (TreeDir dnum ents) = Some (TreeFile inum f).
+  Proof.
+    induction pathname; simpl in *; intuition.
+    inversion H0.
+    induction ents; simpl in *; try congruence.
+    destruct a0 as [ename subtree]; simpl in *.
+    destruct (string_dec ename name); subst.
+    - inversion H; subst; destruct (string_dec name a); subst; auto.
+      contradict H3.
+      eapply find_subtree_helper_in; eauto.
+    - inversion H; subst; simpl in *.
+      destruct (string_dec ename a); destruct (string_dec a a); subst; try congruence.
+      apply IHents; auto.
+  Qed.
+
   Lemma dirlist_safe_delete : forall ilist frees ilist' frees' dnum name ents,
     tree_names_distinct (TreeDir dnum ents) ->
-    tree_inodes_distinct (TreeDir dnum ents) ->
     BFILE.ilist_safe ilist frees ilist' frees' ->
     dirtree_safe ilist frees (TreeDir dnum ents)
                  ilist' frees' (TreeDir dnum (delete_from_list name ents)).
   Proof.
     unfold dirtree_safe; intuition.
     unfold BFILE.ilist_safe in *; intuition.
-    specialize (H5 _ _ _ H3); intuition.
+    specialize (H4 _ _ _ H2); intuition.
     left; split; auto.
-    do 2 eexists.
-    (* if pathname resolves to f in the pruned tree, it must also resolve to the original tree *)
-    admit.
-  Admitted.
-
+    repeat eexists.
+    eapply find_subtree_delete'; eauto.
+    inversion H; auto.
+  Qed.
 
   Hint Extern 0 (okToUnify (tree_dir_names_pred _ _ _) (tree_dir_names_pred _ _ _)) => constructor : okToUnify.
 
@@ -2432,11 +2532,6 @@ Module DIRTREE.
   Qed.
 
 
-  Ltac msalloc_eq :=
-    repeat match goal with
-    | [ H: MSAlloc _ = MSAlloc _ |- _ ] => rewrite H in *; clear H
-    end.
-
   Lemma tree_pred_ino_goodSize : forall V F Fm xp tree m d frees prd,
     (Fm * (@IAlloc.rep V xp frees prd))%pred m ->
     (F * tree_pred xp tree)%pred d ->
@@ -2968,69 +3063,6 @@ Module DIRTREE.
 
   Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
 
-
-  Theorem mkfile_ok : forall fsxp dnum name mscs,
-    {< F mbase m pathname Fm Ftop tree tree_elem ilist frees,
-    PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) hm *
-           [[ (Fm * rep fsxp Ftop tree ilist frees)%pred (list2nmem m) ]] *
-           [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
-    POST:hm' RET:^(mscs',r) exists m',
-           (* We always modify the memory, because we might allocate the file,
-            * but then fail to link it into the directory..  When we return
-            * None, the overall transaction should be aborted.
-            *)
-           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') hm' *
-           [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           ([[ r = None ]] \/
-            exists inum ilist' tree' frees',
-            [[ r = Some inum ]] *
-            [[ tree' = tree_graft dnum tree_elem pathname name (TreeFile inum BFILE.bfile0) tree ]] *
-            [[ (Fm * rep fsxp Ftop tree' ilist' frees' )%pred (list2nmem m') ]] *
-            [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                            ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]])
-    CRASH:hm'
-           LOG.intact fsxp.(FSXPLog) F mbase hm'
-    >} mkfile fsxp dnum name mscs.
-  Proof.
-    unfold mkfile, rep.
-    step. 
-    subst; simpl in *.
-
-    rewrite subtree_extract in H6; eauto.
-    simpl in *.
-
-    denote tree_dir_names_pred as Hx;
-    unfold tree_dir_names_pred in Hx; destruct_lift Hx.
-    step.
-    unfold SDIR.rep_macro.
-    eapply IAlloc.ino_valid_goodSize; eauto.
-
-    step.
-    step.
-    step.
-
-    denote dirlist_pred as Hx; denote (pimpl dummy1) as Hy.
-    rewrite Hy in Hx; destruct_lift Hx.
-    step.
-    step.
-
-    or_r; cancel.
-    rewrite <- subtree_graft_absorb; eauto. cancel.
-
-    eapply dirlist_safe_subtree; eauto.
-    msalloc_eq.
-    apply dirtree_safe_ilist_trans.
-    2: eapply BFILE.ilist_safe_trans; eauto.
-
-    (* XXX safe *)
-    admit.
-
-    step.
-    Unshelve.
-    all: eauto.
-  Admitted.
-
-  Hint Extern 1 ({{_}} progseq (mkfile _ _ _ _) _) => apply mkfile_ok : prog.
 
   Lemma lookup_name: forall tree_elem name subtree dnum tree,
     find_subtree [name] (update_subtree [] (add_to_dir name subtree (TreeDir dnum tree_elem)) tree) = Some subtree.
