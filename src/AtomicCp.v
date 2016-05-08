@@ -3,6 +3,7 @@ Require Import Log.
 Require Import BFile.
 Require Import Word.
 Require Import Omega.
+Require Import Hashmap.
 Require Import BasicProg.
 Require Import Bool.
 Require Import Pred PredCrash.
@@ -33,6 +34,7 @@ Require Import String.
 Require Import TreeCrash.
 
 
+
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -59,8 +61,8 @@ Module ATOMICCP.
     let^ (mscs, attr) <- AFS.file_get_attr fsxp src_inum mscs;
     let^ (mscs, b) <- AFS.read_fblock fsxp src_inum 0 mscs;
     let^ (mscs) <- AFS.update_fblock_d fsxp dst_inum 0 b mscs;
+    let^ (mscs) <- AFS.file_sync fsxp dst_inum mscs;   (* sync blocks *)
     let^ (mscs, ok) <- AFS.file_set_attr fsxp dst_inum attr mscs;
-    let^ (mscs) <- AFS.file_sync fsxp dst_inum mscs;
     rx ^(mscs, ok).
 
   Definition copy2temp T fsxp src_inum dst_inum mscs rx : prog T :=
@@ -184,6 +186,25 @@ Module ATOMICCP.
   Proof.
     unfold copydata; intros.
     step.
+    step.
+    step.
+    step.
+    step.
+    step.
+    
+
+    repeat eexists.
+    inversion H16; subst; simpl in *; try intuition.
+
+
+    erewrite update_update_subtree_eq in H30.
+    erewrite update_update_subtree_eq in H28.
+
+
+
+
+
+
     2: AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
     step.
     2: AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
@@ -397,6 +418,12 @@ Module ATOMICCP.
 
   Hint Extern 1 ({{_}} progseq (copydata _ _ _ _) _) => apply copydata_ok : prog.
 
+  Ltac distinct_names :=
+    match goal with
+      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_names_distinct ?tree ] => 
+        eapply DIRTREE.rep_tree_names_distinct; eapply H
+    end.
+
   Theorem copy2temp_ok : forall fsxp src_inum tinum mscs,
     {< d Fm Ftop temp_tree src_fn file tfile v0 ilist freeblocks,
     PRE:hm  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm * 
@@ -430,17 +457,27 @@ Module ATOMICCP.
     step.
     step.
     denote d_in as Hdin. inversion Hdin; simpl in *; subst; [ | exfalso; eauto ].
-    repeat eexists. pred_apply. cancel.
-    rewrite update_subtree_same. cancel. admit. eauto.
+    repeat eexists. pred_apply. 
+    rewrite update_subtree_same.
+    cancel.
+    distinct_names.
+    eauto.
     step.
     denote d_in as Hdin. inversion Hdin; clear Hdin; simpl in *; subst.
     repeat eexists. pred_apply. cancel.
     erewrite update_update_subtree_eq; eauto.
-    erewrite update_subtree_same. cancel. admit. eauto. admit. constructor.
+    erewrite update_subtree_same. cancel.
+
+    eapply dirtree_isdir_true_find_subtree in H6 as Hdir.
+    distinct_names.
+    eauto.
+    distinct_names.
+    constructor.
     intuition; subst. (* the other part of [d_in] *)
     repeat eexists. pred_apply. cancel.
     erewrite update_update_subtree_eq; eauto.
-    admit. constructor.
+    distinct_names.
+    constructor.
     rewrite find_subtree_update_subtree_ne. eauto. eauto. eauto.
 
     apply setlen_singleton_ptsto.
@@ -448,35 +485,37 @@ Module ATOMICCP.
     denote (d_in _ _ -> _) as Hdpred.
     edestruct Hdpred; eauto. repeat deex.
     repeat eexists. pred_apply.
-    erewrite update_update_subtree_eq; eauto. admit. constructor.
+    erewrite update_update_subtree_eq; eauto. distinct_names. constructor.
     or_r. cancel.
-    erewrite update_update_subtree_eq; eauto. admit. constructor.
+    erewrite update_update_subtree_eq; eauto. distinct_names. constructor.
     denote (d_in _ _ -> _) as Hdpred.
-    edestruct Hdpred; eauto. repeat deex.
+    edestruct Hdpred. eauto. repeat deex.
     repeat eexists. pred_apply.
-    erewrite update_update_subtree_eq; eauto. admit. constructor.
+    erewrite update_update_subtree_eq; eauto. distinct_names. constructor.
 
     AFS.xcrash_solve. xform_norm; cancel. xform_norm; safecancel.
     denote (d_in _ _ -> _) as Hdpred.
     edestruct Hdpred; eauto. repeat deex.
     repeat eexists. pred_apply.
-    erewrite update_update_subtree_eq; eauto. admit. constructor.
+    erewrite update_update_subtree_eq; eauto. distinct_names. constructor.
 
     step.
 
     AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
     denote d_in as Hdin. inversion Hdin; simpl in *; subst; [ | exfalso; eauto ].
     repeat eexists. pred_apply.
-    erewrite update_subtree_same. cancel. admit. eauto.
+    erewrite update_subtree_same. cancel. distinct_names. eauto.
 
     denote d_in as Hdin. inversion Hdin; simpl in *; subst.
     repeat eexists. pred_apply.
-    erewrite update_subtree_same. cancel. admit. eauto.
+    erewrite update_subtree_same. cancel. distinct_names. eauto.
 
     intuition; subst.
     repeat eexists. pred_apply.
     cancel.
-  Admitted.
+    Unshelve. all: try exact unit.  all:eauto.  all: try exact tt.  all: try exact (tt, nil).
+  Qed.
+
 
   Hint Extern 1 ({{_}} progseq (copy2temp _ _ _ _) _) => apply copy2temp_ok : prog.
 
@@ -522,6 +561,10 @@ Module ATOMICCP.
   Proof.
     unfold copy_and_rename, AFS.rename_rep; intros.
     step.
+
+    eapply dirtree_isdir_true_find_subtree in H9 as Hdir.
+    eapply DIRTREE.dirtree_dir_parts in Hdir. rewrite H10 in Hdir.
+
     step.
 
     rewrite find_subtree_nil.
@@ -533,18 +576,14 @@ Module ATOMICCP.
     step.
     AFS.xcrash_solve.
     xcrash_norm.
-    or_r.
-    xcrash_norm.
-    apply Forall_cons.
-    eexists.
-    eexists.
-    intuition.
-    pred_apply. cancel.
-    apply Forall_nil.
-    step.
+
+
+
+
     or_r.
     cancel.
-    admit.
+
+     admit.
     admit.
     admit.
     

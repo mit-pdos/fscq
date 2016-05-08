@@ -332,6 +332,12 @@ Proof.
     assumption.
 Qed.
 
+Lemma find_subtree_nil : forall t,
+  DIRTREE.find_subtree [] t = Some t.
+Proof.
+  reflexivity.
+Qed.
+
 Lemma  update_subtree_root: forall root_new root_old,
   DIRTREE.update_subtree [] root_new root_old = root_new.
 Proof.
