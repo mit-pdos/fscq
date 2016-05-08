@@ -561,62 +561,69 @@ Module ATOMICCP.
   Proof.
     unfold copy_and_rename, AFS.rename_rep; intros.
     step.
+    destruct a0.
 
-    eapply dirtree_isdir_true_find_subtree in H9 as Hdir.
-    eapply DIRTREE.dirtree_dir_parts in Hdir. rewrite H10 in Hdir.
-
+    (* copy succeeded *)
     step.
-
-    rewrite find_subtree_nil.
-    rewrite (DIRTREE.dirtree_dir_parts (DIRTREE.update_subtree _ _ _)).
-    f_equal. f_equal. eauto. eauto.
-
+    instantiate (cwd0 := []).
+    rewrite find_subtree_root.
+    admit.  (* some tree_elem *)
     unfold AFS.rename_rep.
-    safestep.
-    step.
+    step. (* tree_sync *)
+    step. (* return false *)
     AFS.xcrash_solve.
-    xcrash_norm.
-
-
-
-
+    cancel.
+    repeat xform_dist.
+    cancel.
+    step. (* return true *)
     or_r.
     cancel.
-
-     admit.
-    admit.
-    admit.
-    
-    AFS.xcrash_solve.
-    xcrash_norm.
-    or_r.
-    xcrash_norm.
-    simpl.
-    constructor.
-    eexists. eexists. intuition.
-    eassumption.
-    constructor.
-    eexists. eexists. intuition.
-    pred_apply. cancel.
-    admit.
-    apply Forall_nil.
-    
-    AFS.xcrash_solve.
-    xcrash_norm.
-    or_r.
-    xcrash_norm.
-    apply Forall_cons.
-    eexists. eexists. intuition.
-    pred_apply. cancel.
-    apply Forall_nil.
-
-    AFS.xcrash_solve.
-    xcrash_norm.
-    xcrash_norm.
-    or_r.
-    xcrash_norm.
+    eapply dirtree_isdir_true_find_subtree in H9 as Hdir.
+    eapply DIRTREE.dirtree_dir_parts in Hdir. rewrite H10 in Hdir.
     eauto.
-    Unshelve. all: eauto.
+    admit. (* prune *)
+    rewrite update_subtree_root.
+    admit. 
+(*
+DIRTREE.tree_graft dstnum dstents [] dst_fn subtree
+  (DIRTREE.tree_prune srcnum srcents [] temp_fn
+     (DIRTREE.TreeDir the_dnum tree_elem)) =
+DIRTREE.tree_graft the_dnum ?dstents0 [] dst_fn
+  (DIRTREE.TreeFile tinum (BFILE.synced_file file))
+  (DIRTREE.tree_prune the_dnum (DIRTREE.dirtree_dirents temp_tree) [] temp_fn
+     temp_tree)
+
+*)
+
+    AFS.xcrash_solve.
+    cancel.
+    repeat xform_dist.
+    cancel.
+    denote d_in as Hdin.
+    destruct (d_in_pushd Hdin).
+    subst.
+    (* crashed with completing rename *)
+    pred_apply.
+    cancel.
+    (* something is wrong here .... *)
+    admit.
+    (* the other case *)
+    admit.
+
+    AFS.xcrash_solve.
+    xcrash_norm.
+    
+    step.  (* sync in false *)
+    admit. (* use h16 *)
+    step.  (* return in false case *)
+    admit. (* use h16 *)
+
+    AFS.xcrash_solve.
+    xcrash_norm.
+    AFS.xcrash_solve.
+    xcrash_norm.
+
+    Unshelve. all: eauto.  all: try exact [].
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (copy_and_rename _ _ _ _ _) _) => apply copy_rename_ok : prog.
