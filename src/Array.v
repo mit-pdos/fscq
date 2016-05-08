@@ -1242,3 +1242,13 @@ Proof.
   destruct i, vs, vsl; firstorder.
 Qed.
 
+Theorem possible_crash_list_vssync : forall l l' a,
+  possible_crash_list (vssync l a) l' ->
+  possible_crash_list l l'.
+Proof.
+  unfold possible_crash_list, vssync; intuition; rewrite length_updN in *; auto.
+  specialize (H1 _ H).
+  destruct (addr_eq_dec i a); subst.
+  erewrite selN_updN_eq in H1 by auto; simpl in *. intuition.
+  erewrite selN_updN_ne in H1 by auto; eauto.
+Qed.
