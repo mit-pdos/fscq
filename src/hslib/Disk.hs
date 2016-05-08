@@ -83,9 +83,9 @@ logFlush (Just fl) = do
 -- Snippets of ByteArray# manipulation code from GHC's
 -- testsuite/tests/lib/integer/integerGmpInternals.hs
 
-buf2i :: Word -> Ptr Word8 -> IO Integer
-buf2i (W# nbytes) (GHC.Exts.Ptr a) = do
-  GMPI.importIntegerFromAddr a nbytes 0#
+buf2i :: Int -> Word -> Ptr Word8 -> IO Integer
+buf2i (I# offset) (W# nbytes) (GHC.Exts.Ptr a) = do
+  GMPI.importIntegerFromAddr (plusAddr# a offset) nbytes 0#
 
 i2buf :: Integer -> Foreign.C.Types.CSize -> Ptr Word8 -> IO ()
 i2buf i nbytes (GHC.Exts.Ptr a) = do
@@ -94,8 +94,7 @@ i2buf i nbytes (GHC.Exts.Ptr a) = do
   return ()
 
 bs2i :: BS.ByteString -> IO Integer
-bs2i (BSI.PS fp 0 len) = withForeignPtr fp $ buf2i $ fromIntegral len
-bs2i (BSI.PS _ _ _) = error "Non-zero offset not implemented"
+bs2i (BSI.PS fp offset len) = withForeignPtr fp $ buf2i offset $ fromIntegral len
 
 i2bs :: Integer -> Int -> IO BS.ByteString
 i2bs i nbytes = BSI.create nbytes $ i2buf i $ fromIntegral nbytes
@@ -109,7 +108,7 @@ read_disk (S fd sr _ _) a = do
     cc <- fdReadBuf fd buf 4096
     if cc == 4096 then
       do
-        i <- buf2i 4096 buf
+        i <- buf2i 0 4096 buf
         return $ W i
     else
       do
