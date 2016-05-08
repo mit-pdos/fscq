@@ -224,6 +224,12 @@ Section NonEmptyList.
     unfold d_in; simpl; intuition.
   Qed.
 
+  Theorem d_in_In' : forall d d' l,
+    In d (d' :: l) -> d_in d (d', l).
+  Proof.
+    unfold d_in; simpl; intuition.
+  Qed.
+
   Lemma d_in_pushd : forall ds d d',
     d_in d (pushd d' ds) ->
     d = d' \/ d_in d ds.
@@ -412,6 +418,15 @@ Proof.
   destruct ds, l; simpl; auto.
 Qed.
 
-
-
-
+Lemma d_in_d_map : forall A B ds (f : A -> B) d,
+  d_in d (d_map f ds) ->
+  exists d', d_in d' ds /\ d = f d'.
+Proof.
+  intros.
+  apply d_in_In in H.
+  replace (f (fst ds) :: map f (snd ds)) with (map f ((fst ds) :: (snd ds))) in H by reflexivity.
+  apply in_map_iff in H.
+  destruct H.
+  eexists; intuition eauto.
+  apply d_in_In'; eauto.
+Qed.
