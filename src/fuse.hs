@@ -518,7 +518,7 @@ fscqChmod _ _ = do
   return eOK
 
 fscqSyncFile :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> SyncType -> IO Errno
-fscqSyncFile fr m_fsxp (_:path) _ = withMVar m_fsxp $ \fsxp -> do
+fscqSyncFile fr m_fsxp (_:path) syncType = withMVar m_fsxp $ \fsxp -> do
   debugStart "SYNC FILE" path
   nameparts <- return $ splitDirectories path
   (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
@@ -526,9 +526,12 @@ fscqSyncFile fr m_fsxp (_:path) _ = withMVar m_fsxp $ \fsxp -> do
   case r of
     Nothing -> return eNOENT
     Just (inum, _) -> do
-      -- if synctype is DataSync, then we should fdatasync
       _ <- fr $ AsyncFS._AFS__file_sync fsxp inum
-      return eOK
+      case syncType of
+        DataSync -> return eOK
+        FullSync -> do
+          _ <- fr $ AsyncFS._AFS__tree_sync fsxp
+          return eOK
 fscqSyncFile _ _ _ _ = return eIO
 
 fscqSyncDir :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> SyncType -> IO Errno
