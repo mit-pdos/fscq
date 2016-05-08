@@ -863,6 +863,17 @@ Module BFILE.
 
   Definition diskset_was (ds0 ds : diskset) := ds0 = ds \/ ds0 = (ds!!, nil).
 
+  Theorem d_in_diskset_was : forall d ds ds',
+    d_in d ds ->
+    diskset_was ds ds' ->
+    d_in d ds'.
+  Proof.
+    intros.
+    inversion H0; subst; eauto.
+    inversion H; simpl in *; intuition; subst.
+    apply latest_in_ds.
+  Qed.
+
   Theorem dwrite_ok : forall lxp bxp ixp inum off v ms,
     {< F Fm Fi Fd ds flist ilist frees f vs,
     PRE:hm

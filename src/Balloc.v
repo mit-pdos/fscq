@@ -88,6 +88,10 @@ Module BmapAlloc (Sig : AllocSig).
         rx ^(ms, Some bn)
     end.
 
+  Definition steal T lxp xp bn ms rx : prog T :=
+    ms <- Bmp.put lxp xp bn $1 ms;
+    rx ms.
+
   Definition init T lxp xp ms rx : prog T :=
     ms <- Bmp.init lxp xp ms;
     rx ms.
@@ -311,6 +315,10 @@ Module BALLOC.
 
   Definition free T lxp xp bn ms rx : prog T :=
     r <- Alloc.free lxp xp bn ms;
+    rx r.
+
+  Definition steal T lxp xp bn ms rx : prog T :=
+    r <- Alloc.steal lxp xp bn ms;
     rx r.
 
   Definition init T lxp xp ms rx : prog T :=
