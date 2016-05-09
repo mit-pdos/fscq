@@ -256,12 +256,18 @@ Module DTCrash.
     tree_crash t2 t3 ->
     tree_crash t1 t3.
   Proof.
-    intros.
-    induction H.
-    inversion H0; constructor; eauto. eapply file_crash_trans; eauto.
-    inversion H0; constructor; try congruence.
-    (* Need a [dirtree_ind2]-like induction principle for [tree_crash] *)
-  Admitted.
-
+    induction t1 using dirtree_ind2; simpl; intros.
+    inversion H; subst. inversion H0; subst. constructor. eapply file_crash_trans; eauto.
+    inversion H0; subst. inversion H1; subst. constructor. congruence.
+    generalize dependent st'. generalize dependent st'0.
+    induction tree_ents; simpl; intros.
+    - destruct st'; simpl in *; try congruence.
+    - destruct st'; destruct st'0; simpl in *; try congruence.
+      inversion H6. inversion H8. inversion H. inversion H4. inversion H5. subst; simpl in *.
+      constructor; eauto.
+      eapply IHtree_ents. eauto. 2: eauto. congruence. 2: congruence. 2: eauto.
+      constructor; eauto.
+      constructor; eauto.
+  Qed.
 
 End DTCrash.
