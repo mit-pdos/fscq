@@ -451,6 +451,8 @@ int ioSize;				/* # of bytes per I/O operation */
 	    fprintf ( stderr, "Short write in rand_write().  %d bytes\n", rval );
 	}
 	ioCount += rval;
+
+        fdatasync(fd);
     }
     fsync ( fd );
     gettimeofday ( &after, NULL );
