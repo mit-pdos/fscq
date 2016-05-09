@@ -810,8 +810,8 @@ Module AFS.
 
   Hint Extern 1 ({{_}} progseq (create _ _ _ _ ) _) => apply create_ok : prog.
 
-  Definition rename_rep ds mscs' Fm fsxp Ftop tree ilist frees cwd dnum srcpath srcname dstpath dstname hm :=
-    (exists d tree' tree_elem srcnum srcents dstnum dstents subtree pruned renamed ilist' frees',
+  Definition rename_rep ds mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname hm :=
+    (exists d tree' srcnum srcents dstnum dstents subtree pruned renamed ilist' frees',
     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm *
     [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
     [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
@@ -834,7 +834,7 @@ Module AFS.
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
      ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
       [[ ok = true ]] * 
-        rename_rep ds mscs' Fm fsxp Ftop tree ilist frees cwd dnum srcpath srcname dstpath dstname hm')
+        rename_rep ds mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname hm')
     CRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} rename fsxp dnum srcpath srcname dstpath dstname mscs.

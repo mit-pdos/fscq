@@ -919,10 +919,10 @@ Focus 5.
   Hint Extern 1 ({{_}} progseq (copy2temp _ _ _ _) _) => apply copy2temp_ok : prog.
 
   Theorem copy_rename_ok : forall  fsxp src_inum tinum dst_fn mscs,
-    {< d Fm Ftop temp_tree src_fn file tfile v0 ilist freeblocks,
+    {< d Fm Ftop temp_tree tree_elem src_fn file tfile v0 ilist freeblocks,
     PRE:hm  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm * 
       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree ilist freeblocks) ]]] *
-      [[ DIRTREE.dirtree_inum temp_tree = the_dnum ]] *
+      [[ temp_tree = DIRTREE.TreeDir the_dnum tree_elem ]] *
       [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
       [[ DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
       [[ src_fn <> temp_fn ]] *
@@ -930,16 +930,15 @@ Focus 5.
       [[ dst_fn <> src_fn ]] *
       [[[ BFILE.BFData file ::: (0 |-> v0) ]]]
     POST:hm' RET:^(mscs', r)
-      exists d tree' ilist' freeblocks' temp_dents dstents,
+      exists d tree' ilist' freeblocks' dstents,
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs') hm' *
       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freeblocks') ]]] *
       (([[r = false ]] *
         (exists f',
         [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum f') temp_tree ]])) \/
        ([[r = true ]] *
-        [[ temp_tree = DIRTREE.TreeDir the_dnum temp_dents ]] *
         let subtree := DIRTREE.TreeFile tinum (BFILE.synced_file file) in
-        let pruned := DIRTREE.tree_prune the_dnum temp_dents [] temp_fn temp_tree in
+        let pruned := DIRTREE.tree_prune the_dnum tree_elem [] temp_fn temp_tree in
         [[ pruned = DIRTREE.TreeDir the_dnum dstents ]] *
         [[ tree' = DIRTREE.tree_graft the_dnum dstents [] dst_fn subtree pruned ]]))
     XCRASH:hm'
@@ -948,12 +947,11 @@ Focus 5.
          let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree in
          (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist')%pred (list2nmem d) ]] *
      (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds_temps hm' \/
-      exists d' tree' ilist' frees' temp_dents dstents,
+      exists d' tree' ilist' frees' dstents,
       [[[ d' ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d' ds_temps) hm' *
-      [[ temp_tree = DIRTREE.TreeDir the_dnum temp_dents ]] *
       let subtree := DIRTREE.TreeFile tinum (BFILE.synced_file file) in
-      let pruned := DIRTREE.tree_prune the_dnum temp_dents [] temp_fn temp_tree in
+      let pruned := DIRTREE.tree_prune the_dnum tree_elem [] temp_fn temp_tree in
       [[ pruned = DIRTREE.TreeDir the_dnum dstents ]] *
       [[ tree' = DIRTREE.tree_graft the_dnum dstents [] dst_fn subtree pruned ]])
      >} copy_and_rename fsxp src_inum tinum dst_fn mscs.
@@ -965,10 +963,10 @@ Focus 5.
     (* copy succeeded *)
     step.
     instantiate (cwd0 := []).
-    rewrite find_subtree_root.
     f_equal.
+    rewrite find_subtree_root.
     rewrite (DIRTREE.dirtree_dir_parts (DIRTREE.update_subtree _ _ _)).
-    f_equal. eauto. eauto.
+    f_equal. f_equal. eauto. 
     unfold AFS.rename_rep.
     step. (* tree_sync *)
     step. (* return false, rename failed? *)
@@ -976,31 +974,25 @@ Focus 5.
     cancel.
     repeat xform_dist.
     cancel.
+
     step. (* return true, rename succeeded *)
     or_r.
     cancel.
-    eapply dirtree_isdir_true_find_subtree in H9 as Hdir.
-    eapply DIRTREE.dirtree_dir_parts in Hdir. rewrite H10 in Hdir.
-    eauto.
     rewrite (DIRTREE.dirtree_dir_parts (DIRTREE.tree_prune _ _ _ _ _)).
-    f_equal. f_equal. eauto.
-
+    f_equal.
+    rewrite find_subtree_root in H25.
+    inversion H25.
+    rewrite <- H16 in *.
+    rewrite dirtree_isdir_prune; auto.
     rewrite update_subtree_root.
-    rewrite find_subtree_root in H26.
-    inversion H26.
-    subst srcnum.
-    subst srcents.
-    rewrite find_subtree_root in H23.
-    rewrite (DIRTREE.dirtree_dir_parts (DIRTREE.tree_prune _ _ _ _ _)) in H23.
-    inversion H23.
-    f_equal; eauto.
+    rewrite find_subtree_root in H25.
+    inversion H25.
+    rewrite <- H16 in *.
+    rewrite find_subtree_root in H22.
+    rewrite (DIRTREE.dirtree_dir_parts (DIRTREE.tree_prune _ _ _ _ _)) in H22.
+    inversion H22.
+    rewrite <- H20 in *.
     f_equal.
-    f_equal.
-
-    Search tree_elem.
-    eapply dirtree_isdir_true_find_subtree in H9 as Hdir.
-    eapply DIRTREE.dirtree_dir_parts in Hdir. rewrite H10 in Hdir.
-    rewrite Hdir.
 
 
     AFS.xcrash_solve.
