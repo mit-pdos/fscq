@@ -207,16 +207,16 @@ Module ATOMICCP.
     eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
     eapply find_subtree_inode_pathname_unique. 4: eassumption.
       3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
+      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
+      eapply DIRTREE.rep_tree_names_distinct; eauto.
     reflexivity.
 
     (* second case from [dirtree_update_safe_pathname] *)
     assert (pathname' = [temp_fn]) as Hpn'.
     eapply find_subtree_inode_pathname_unique. 3: eassumption.
       3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
+      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
+      eapply DIRTREE.rep_tree_names_distinct; eauto.
     reflexivity.
 
     edestruct dirtree_update_safe_pathname_vssync_vecs; repeat deex.
@@ -242,16 +242,17 @@ Module ATOMICCP.
       eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
     eapply find_subtree_inode_pathname_unique. 4: eassumption.
       3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
+      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
+      eapply DIRTREE.rep_tree_names_distinct; eauto.
     reflexivity.
 
     or_r. cancel.
       erewrite update_update_subtree_eq; eauto.
       erewrite update_update_subtree_eq; eauto.
       unfold BFILE.synced_file.
-      (* use arrayN_ex_one ... *)
-      admit.
+      erewrite ptsto_0_list2nmem_mem_eq with (d := (BFILE.BFData file)) by eauto.
+      erewrite ptsto_0_list2nmem_mem_eq with (d := (BFILE.BFData f')) by eauto.
+      eauto.
       eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
       eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
 
@@ -300,16 +301,16 @@ Module ATOMICCP.
     eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
     eapply find_subtree_inode_pathname_unique. 4: eassumption.
       3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
+      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
+      eapply DIRTREE.rep_tree_names_distinct; eauto.
     reflexivity.
 
     (* second case from [dirtree_update_safe_pathname] *)
     assert (pathname' = [temp_fn]) as Hpn'.
     eapply find_subtree_inode_pathname_unique. 3: eassumption.
       3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
+      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
+      eapply DIRTREE.rep_tree_names_distinct; eauto.
     reflexivity.
 
     edestruct dirtree_update_safe_pathname_vssync_vecs; repeat deex.
@@ -335,8 +336,8 @@ Module ATOMICCP.
       eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
     eapply find_subtree_inode_pathname_unique. 4: eassumption.
       3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
+      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
+      eapply DIRTREE.rep_tree_names_distinct; eauto.
     reflexivity.
 
     (* CRASH CONDITIONS *)
@@ -376,16 +377,16 @@ Module ATOMICCP.
     eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
     eapply find_subtree_inode_pathname_unique. 4: eassumption.
       3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
+      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
+      eapply DIRTREE.rep_tree_names_distinct; eauto.
     reflexivity.
 
     (* second case from [dirtree_update_safe_pathname] *)
     assert (pathname' = [temp_fn]) as Hpn'.
     eapply find_subtree_inode_pathname_unique. 3: eassumption.
       3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
+      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
+      eapply DIRTREE.rep_tree_names_distinct; eauto.
     reflexivity.
 
     edestruct dirtree_update_safe_pathname_vssync_vecs; repeat deex.
@@ -411,11 +412,9 @@ Module ATOMICCP.
       eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
     eapply find_subtree_inode_pathname_unique. 4: eassumption.
       3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
+      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
+      eapply DIRTREE.rep_tree_names_distinct; eauto.
     reflexivity.
-
-
 
 
     (* CRASH after dwrite, so no fsync to contend with.. *)
@@ -441,8 +440,8 @@ Module ATOMICCP.
     eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
     eapply find_subtree_inode_pathname_unique. 4: eassumption.
       3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
+      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
+      eapply DIRTREE.rep_tree_names_distinct; eauto.
     reflexivity.
 
 
@@ -473,11 +472,9 @@ Module ATOMICCP.
     eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
     eapply find_subtree_inode_pathname_unique. 4: eassumption.
       3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
+      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
+      eapply DIRTREE.rep_tree_names_distinct; eauto.
     reflexivity.
-
-
 
     AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
     denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
@@ -486,338 +483,8 @@ Module ATOMICCP.
     AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
     denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
     repeat eexists. eauto.
-  Admitted.
-
-(*
-    AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
-
-    (* second case from [dirtree_update_safe_pathname] *)
-    assert (pathname' = [temp_fn]) as Hpn'.
-    eapply find_subtree_inode_pathname_unique. 3: eassumption.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    reflexivity.
-
-    edestruct dirtree_update_safe_pathname_vssync_vecs; repeat deex.
-    4: denote! (_ (list2nmem (updN _ bn _))) as Hd; exact Hd.
-    3: eapply DIRTREE.dirtree_safe_update_subtree; eauto.
-    2: apply Forall_forall; intros ? Hin.
-    2: eapply in_selN_exists in Hin; destruct Hin as [? Hin]; destruct Hin as [? Hin].
-    2: rewrite <- Hin; eauto.
-    eauto.
-
-    (* creates two more cases, from the result of [dirtree_update_safe_pathname_vssync_vecs] *)
-    intuition; repeat deex; subst.
-
-    repeat eexists. pred_apply.
-      erewrite update_update_subtree_eq; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-
-    repeat eexists. pred_apply.
-      replace pathname'0 with ([temp_fn]).
-      erewrite update_update_subtree_eq; eauto.
-      erewrite update_update_subtree_eq; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-    eapply find_subtree_inode_pathname_unique. 4: eassumption.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    reflexivity.
-
-
-
-
-    repeat eexists.
-    eapply pimpl_apply; [ | apply Hd' ]. replace pathname' with ([temp_fn]).
-    erewrite update_update_subtree_eq; eauto.
-    eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-    eapply find_subtree_inode_pathname_unique. 4: eassumption.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    reflexivity.
-
-    repeat eexists.
-    eapply pimpl_apply; [ | apply Hd' ].
-      replace pathname' with ([temp_fn]).
-      replace pathname'0 with ([temp_fn]).
-    erewrite update_update_subtree_eq; eauto.
-    erewrite update_update_subtree_eq; eauto.
-    eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    constructor.
-    eapply find_subtree_inode_pathname_unique. 4: eassumption.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
-    reflexivity.
-    eapply find_subtree_inode_pathname_unique. 4: eassumption.
-      3: replace pathname'0 with ([temp_fn]) by admit.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.
-    admit.
-    admit.
-    admit.
-
-
-
-    2: apply Forall_forall; intros ? Hin.
-    2: eapply in_selN_exists in Hin; destruct Hin as [? Hin]; destruct Hin as [? Hin].
-    2: rewrite <- Hin; eauto.
-    erewrite DIRTREE.find_update_subtree with (fnlist := [temp_fn]). reflexivity.
-    eauto. simpl; eauto.
-    eauto.
-    
-
-    intuition.
-    
- denote! (_ (list2nmem (vssync_vecs _ _))) as Hvss.
-    repeat eexists; ( eapply pimpl_apply; [ | exact Hvss ] ).
-    4: subst x. 4: reflexivity.
-    Focus 4.
-subst x.
-    4: reflexivity.
-
-    5: cancel.
-    5: 
-Focus 5.
-    
-
-
-(*
-    destruct a4; simpl.
-    (* r=true *)
-    prestep; simpl.
-    norm.
-    cancel.
-*)
-    
-
-    repeat eexists.
-    inversion H16; subst; simpl in *; try intuition.
-
-
-    erewrite update_update_subtree_eq in H30.
-    erewrite update_update_subtree_eq in H28.
-
-
-
-
-
-
-    2: AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
-    step.
-    2: AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
-    step.
-
-    Focus 2.  (* update_fblock_d crash condition *)
-    AFS.xcrash_solve.
-    xform_norm; cancel; xform_norm; safecancel.
-    xform_norm; cancel; xform_norm; safecancel.
-
-    inversion H12; subst; simpl in *; try intuition.
-    edestruct DIRTREE.dirtree_update_safe.
-    2: eauto.
-    4: intuition; subst.
-    4: repeat eexists; eauto.
-    4: repeat eexists.
-    4: erewrite DIRTREE.dirtree_update_inode_update_subtree in H16.
-    4: erewrite update_update_subtree_eq in H16.
-    4: eauto.
-    4: admit.
-    4: eauto.
-    4: constructor.
-    4: admit.
-    4: admit.
-    4: erewrite DIRTREE.find_update_subtree; eauto.
-    4: admit.
-    3: admit.  (* update_subtree putting back what was already there.. *)
-    2: apply DIRTREE.dirtree_safe_refl.
-    erewrite DIRTREE.find_update_subtree; eauto.
-
-    (* XXX crash_xform oldest *)
-    xform_norm; cancel; xform_norm; safecancel.
-    inversion H12; subst; simpl in *; try intuition.
-    edestruct DIRTREE.dirtree_update_safe.
-    2: eauto.
-    4: intuition; subst.
-    4: repeat eexists; eauto.
-    4: repeat eexists.
-    4: erewrite DIRTREE.dirtree_update_inode_update_subtree in H16.
-    4: erewrite update_update_subtree_eq in H16.
-    4: eauto.
-    4: admit.
-    4: eauto.
-    4: constructor.
-    4: admit.
-    4: admit.
-    4: erewrite DIRTREE.find_update_subtree; eauto.
-    4: admit.
-    (* XXX 3 is broken!  we need a different file in (fst ds)... *)
-    3: admit.
-    2: apply DIRTREE.dirtree_safe_refl.
-    erewrite DIRTREE.find_update_subtree; eauto.
-
-    step.
-    2: AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
-    2: admit.   (* we can't reuse the big [forall], because instead of [ds], we have [dsupd ... ds] *)
-
-    step.
-    step.
-
-    admit. (* crash condition *)
-
-    step.
-
-    admit. (* crash condition *)
-  Admitted.
-*)
-
-(*
-    simpl; eauto.
-    admit.
-
-    intuition.
-    xcrash_norm.
-    instantiate (x := nil).
-    or_l.
-    simpl.
-    cancel.
-    apply Forall_nil.
-    xcrash_norm.  (* right branch of or *)
-    or_r.
-    xcrash_norm.
-    eapply Forall_cons.
-    eexists.
-    eexists.
-    intuition.
-    pred_apply.
-    cancel.
-    apply Forall_nil.
-
-    step.  (* setattr *)
-
-    Focus 2.  (* setattr failed crash condition*)
-    AFS.xcrash_solve.
-    xcrash_norm.
-    or_r.
-    xcrash_norm.
-    apply Forall_cons.
-    eexists.
-    eexists.
-    intuition.
-    pred_apply.
-    cancel.
-    apply Forall_nil.
-   
-    step. (* file_sync *)
-    step. (* return *)
-    
-    (* postcondition, setattr failed *)
-    or_l.
-    cancel.
-    erewrite update_update_subtree_eq.
-    f_equal.
-
-    (* setattr success crash condition: two cases *)
-    (* left or case *)
-    AFS.xcrash_solve.
-    xcrash_norm.
-    or_r.
-    xcrash_norm.
-    apply Forall_cons.
-    eexists.
-    eexists.
-    intuition.
-    pred_apply.
-    cancel.
-    apply Forall_nil.
-    (* right or case *)
-    AFS.xcrash_solve.
-    xcrash_norm.
-    or_r.
-    xcrash_norm.
-    apply Forall_cons.
-    eexists.
-    eexists.
-    intuition.
-    pred_apply.
-    erewrite update_update_subtree_eq.
-    cancel.
-    apply Forall_nil.
-
-    (* postcondition, success *)
-    step.
-    or_r.
-    safecancel.
-    erewrite update_update_subtree_eq.
-    erewrite update_update_subtree_eq.
-    f_equal.
-    apply arrayN_one in H5.
-    apply list2nmem_array_eq in H5.
-    apply arrayN_one in H16.
-    apply list2nmem_array_eq in H16.
-    destruct file.
-    rewrite H16.
-    simpl in H5.
-    rewrite H5.
-    f_equal.
-
-    AFS.xcrash_solve.  (* crash condition file_sync *)
-    xcrash_norm.
-    or_r.
-    xcrash_norm.
-    apply Forall_cons.
-    eexists.
-    eexists.
-    intuition.
-    simpl.
-    pred_apply.
-    cancel.
-    simpl.
-    apply Forall_cons.
-    eexists.
-    eexists.
-    intuition.
-    pred_apply.
-    erewrite update_update_subtree_eq.
-    cancel.
-    apply Forall_nil.
-
-    AFS.xcrash_solve. (* crash condition file_sync or right *)
-    xcrash_norm.
-    or_r.
-    xcrash_norm.
-    apply Forall_cons.
-    eexists.
-    eexists.
-    intuition.
-    pred_apply.
-    cancel.
-    erewrite update_update_subtree_eq.
-    erewrite update_update_subtree_eq.
-    cancel.
-    apply Forall_nil.
-    
-    AFS.xcrash_solve.  (* crash condition read_fblock *)
-    repeat (xform_norm; cancel).
-    or_l.
-    instantiate (x := []); simpl.
-    cancel.
-    apply Forall_nil.
-
-    AFS.xcrash_solve.  (* crash condition file_get_attr *)
-    repeat (xform_norm; cancel).
-    or_l.
-    instantiate (x := nil); simpl.
-    cancel.
-    apply Forall_nil.
-    
-    Unshelve. all: eauto.
   Qed.
-*)
+
 
   Hint Extern 1 ({{_}} progseq (copydata _ _ _ _) _) => apply copydata_ok : prog.
 

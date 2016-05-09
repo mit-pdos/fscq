@@ -1216,3 +1216,12 @@ Proof.
   apply list2nmem_array.
 Qed.
 
+Lemma ptsto_0_list2nmem_mem_eq : forall V v (d : list V),
+  (0 |-> v)%pred (list2nmem d) -> d = [v].
+Proof.
+  intros.
+  apply list2nmem_inj.
+  eapply ptsto_complete. eauto.
+  unfold ptsto, list2nmem; simpl; intuition.
+  destruct a'; try congruence.
+Qed.
