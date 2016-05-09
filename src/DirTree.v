@@ -1312,14 +1312,38 @@ Module DIRTREE.
   Hint Resolve find_update_subtree.
 
   Lemma find_subtree_update_subtree_ne_file :
-    forall tree p1 p2 inum1 inum2 f1 f1' f2,
+    forall p2 p1 tree inum1 inum2 f1 f1' f2,
     find_subtree p1 tree = Some (TreeFile inum1 f1) ->
     find_subtree p2 tree = Some (TreeFile inum2 f2) ->
     p1 <> p2 ->
     find_subtree p2 (update_subtree p1 (TreeFile inum1 f1') tree) =
     find_subtree p2 tree.
   Proof.
-  Admitted.
+    induction p2.
+    - simpl; intros. inversion H0; simpl. destruct p1; try congruence. simpl; congruence.
+    - intros.
+      destruct tree; try solve [ simpl in *; congruence ].
+      destruct p1; try solve [ inversion H ].
+      destruct (string_dec s a); subst; simpl in *.
+      + induction l; try solve [ simpl in *; congruence ].
+        destruct a0. simpl in *.
+        destruct (string_dec s a); subst; simpl.
+        * destruct (string_dec a a); try congruence.
+          eapply IHp2; eauto.
+          intro; apply H1; congruence.
+        * destruct (string_dec s a); try congruence.
+          eauto.
+      + clear IHp2.
+        clear H.
+        induction l; try solve [ simpl in *; congruence ].
+        destruct a0. simpl in *.
+        destruct (string_dec s0 a); subst; simpl.
+        * destruct (string_dec a s); try congruence.
+          simpl. destruct (string_dec a a); try congruence.
+        * destruct (string_dec s0 s); subst; simpl in *.
+          destruct (string_dec s a); try congruence. eauto.
+          destruct (string_dec s0 a); try congruence; eauto.
+  Qed.
 
   Lemma dirtree_safe_update_subtree : forall ilist frees tree ilist' frees' tree' inum pathname f f',
     dirtree_safe ilist frees tree ilist' frees' tree' ->
