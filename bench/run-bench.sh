@@ -70,7 +70,7 @@ mv $TRACE $SCRIPTPREFIX-origfscq.blktrace
 ./blkstats.sh $SCRIPTPREFIX-origfscq.blktrace >> $SCRIPTPREFIX-origfscq.out
 
 ## ext4async
-yes | mke2fs -t ext4 $DEV
+yes | mke2fs -t ext4 -J size=4 $DEV
 sudo mount $DEV $MOUNT -o journal_async_commit,data=journal
 sudo chmod 777 $MOUNT
 sudo blktrace -d $DEV -o - > $TRACE &
@@ -86,7 +86,7 @@ mv $TRACE $SCRIPTPREFIX-ext4async.blktrace
 ./blkstats.sh $SCRIPTPREFIX-ext4async.blktrace >> $SCRIPTPREFIX-ext4async.out
 
 ## ext4ordered
-yes | mke2fs -t ext4 $DEV
+yes | mke2fs -t ext4 -J size=4 $DEV
 sudo mount $DEV $MOUNT -o data=ordered
 sudo chmod 777 $MOUNT
 sudo blktrace -d $DEV -o - > $TRACE &
