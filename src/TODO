@@ -30,3 +30,22 @@
 - add security to fscq specs (something better than ACLs; maybe capsicum?)
 - provably secure sandbox on top of fscq
 - concurrent transactions
+
+===
+
+- clean up DirTree (no lists, update_subtree_helper, etc)
+- writeback cache (integrate ReadCache and WritebackCache)
+- eviction from GroupLog
+- do we need to change our valuset handling to always use subsets rather than exact equality?
+  this would enable us to get rid of the per-address Sync, and instead switch to a global
+  Sync opcode in the lowest level.
+
+- bring back ByteFile
+- high-performance extraction
+- simplify AtomicCp proofs
+- more applications
+- security specs: need to deal with non-determinism, and at the lowest level,
+  need to change the semantics to show that the disk independently chooses
+  which valu to preserve from a valuset (i.e., non-interference between sector
+  crashes)
+
