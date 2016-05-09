@@ -33,6 +33,7 @@
 
 ===
 
+- prove mkfs
 - clean up DirTree (no lists, update_subtree_helper, etc)
 - writeback cache (integrate ReadCache and WritebackCache)
 - eviction from GroupLog
