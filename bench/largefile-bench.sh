@@ -4,4 +4,4 @@ DIR="$1"
 
 cd LFStest
 make
-./largefile -f 1 -i 1 $DIR
+./largefile -f 1 -i 4 $DIR
