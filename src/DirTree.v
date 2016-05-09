@@ -3387,10 +3387,10 @@ Module DIRTREE.
            [[[ ds!! ::: Fm * rep fsxp Ftop tree ilist frees ]]] *
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST:hm' RET:mscs'
-           exists ds' tree' al ds0,
+           exists ds' tree' al,
            LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds' ds'!!) (MSLL mscs') hm' *
            [[ tree' = update_subtree pathname (TreeFile inum (BFILE.synced_file f)) tree ]] *
-           [[ ds' = dssync_vecs ds0 al /\ BFILE.diskset_was ds0 ds ]] *
+           [[ ds' = dssync_vecs ds al ]] *
            [[[ ds'!! ::: (Fm * rep fsxp Ftop tree' ilist frees) ]]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
            [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->

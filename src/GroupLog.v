@@ -238,11 +238,6 @@ Module GLog.
     mm' <- MLog.dwrite xp a v mm;
     rx (mk_memstate vm ts mm').
 
-  Definition dsync' T xp a ms rx : prog T :=
-    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
-    mm' <- MLog.dsync xp a mm;
-    rx (mk_memstate vm ts mm').
-
   Definition dwrite T (xp : log_xparams) a v ms rx : prog T :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     If (MapFacts.In_dec vm a) {
@@ -254,25 +249,9 @@ Module GLog.
       rx ms
     }.
 
-  Definition dsync T (xp : log_xparams) a ms rx : prog T :=
-    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
-    If (MapFacts.In_dec vm a) {
-      ms <- flushall xp ms;
-      ms <- dsync' xp a ms;
-      rx ms
-    } else {
-      ms <- dsync' xp a ms;
-      rx ms
-    }.
-
   Definition dwrite_vecs' T (xp : log_xparams) avs ms rx : prog T :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dwrite_vecs xp avs mm;
-    rx (mk_memstate vm ts mm').
-
-  Definition dsync_vecs' T xp al ms rx : prog T :=
-    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
-    mm' <- MLog.dsync_vecs xp al mm;
     rx (mk_memstate vm ts mm').
 
   Definition dwrite_vecs T (xp : log_xparams) avs ms rx : prog T :=
@@ -286,16 +265,15 @@ Module GLog.
       rx ms
     }.
 
-  Definition dsync_vecs T (xp : log_xparams) al ms rx : prog T :=
+  Definition dsync T xp a ms rx : prog T :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
-    If (bool_dec (overlap al vm) true) {
-      ms <- flushall xp ms;
-      ms <- dsync_vecs' xp al ms;
-      rx ms
-    } else {
-      ms <- dsync_vecs' xp al ms;
-      rx ms
-    }.
+    mm' <- MLog.dsync xp a mm;
+    rx (mk_memstate vm ts mm').
+
+  Definition dsync_vecs T xp al ms rx : prog T :=
+    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
+    mm' <- MLog.dsync_vecs xp al mm;
+    rx (mk_memstate vm ts mm').
 
   Definition recover T xp cs rx : prog T :=
     mm <- MLog.recover xp cs;
@@ -933,9 +911,7 @@ Module GLog.
     apply replay_seq_dssync_vecs_ents; auto.
   Qed.
 
-  Lemma dset_match_dssync_notin : forall xp ds a ts vm,
-    Map.find a vm = None ->
-    vmap_match vm ts ->
+  Lemma dset_match_dssync : forall xp ds a ts,
     dset_match xp ds ts ->
     dset_match xp (dssync ds a) ts.
   Proof.
@@ -943,7 +919,6 @@ Module GLog.
     eapply forall_ents_valid_length_eq; try eassumption.
     apply length_updN.
     apply replay_seq_dssync_notin; auto.
-    eapply vmap_match_notin; eauto.
   Qed.
 
   Lemma cached_dsupd_latest_recover_any : forall xp ds a v ms hm ms0,
@@ -1018,30 +993,6 @@ Module GLog.
   Qed.
 
 
-  Theorem dsync'_ok: forall xp a ms,
-    {< F Fd ds vs,
-    PRE:hm
-      << F, rep: xp (Cached ds) ms hm >> *
-      [[ Map.find a (MSVMap (fst ms)) = None ]] *
-      [[[ fst ds ::: (Fd * a |-> vs) ]]]
-    POST:hm' RET:ms'
-      << F, rep: xp (Cached (dssync ds a)) ms' hm' >>
-    XCRASH:hm'
-      << F, would_recover_any: xp ds hm' -- >>
-    >} dsync' xp a ms.
-  Proof.
-    unfold dsync'; intros.
-    prestep; unfold rep; cancel.
-    prestep; unfold rep; cancel.
-    eapply dset_match_dssync_notin; eauto.
-
-    (* crashes *)
-    xcrash.
-    rewrite MLog.synced_recover_before.
-    rewrite recover_before_any_fst; eauto.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (dsync' _ _ _) _) => apply dsync'_ok : prog.
   Hint Extern 1 ({{_}} progseq (dwrite' _ _ _ _) _) => apply dwrite'_ok : prog.
 
   Theorem dwrite_ok: forall xp a v ms,
@@ -1121,36 +1072,25 @@ Module GLog.
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
       [[[ ds !! ::: (Fd * a |-> vs) ]]]
-    POST:hm' RET:ms' exists ds',
-      << F, rep: xp (Cached (dssync ds' a)) ms' hm' >> *
-      [[ ds' = ds \/ ds' = (ds!!, nil) ]]
+    POST:hm' RET:ms'
+      << F, rep: xp (Cached (dssync ds a)) ms' hm' >>
     XCRASH:hm'
       << F, would_recover_any: xp ds hm' -- >>
     >} dsync xp a ms.
   Proof.
-    unfold dsync, rep.
-    step.
+    unfold dsync.
     prestep; unfold rep; cancel.
-    prestep; unfold rep; cancel.
+    eapply list2nmem_ptsto_cancel_pair.
+    eapply diskset_ptsto_bound_latest; eauto.
 
-    erewrite fst_pair by reflexivity.
-    cancel.
-    eauto.
-    substl (MSVMap a0); eauto.
-    simpl; pred_apply; cancel.
-    step.
+    prestep; unfold rep; cancel.
+    eapply dset_match_dssync; eauto.
 
     cancel.
     repeat xcrash_rewrite; xform_norm.
     cancel; xform_normr; cancel.
-    eapply recover_latest_any; eauto.
-
-    prestep; unfold rep; cancel.
-    apply MapFacts.not_find_in_iff; auto.
-    eapply list2nmem_ptsto_cancel_pair.
-    eapply diskset_ptsto_bound_latest; eauto.
-
-    step.
+    rewrite MLog.synced_recover_before.
+    rewrite recover_before_any_fst; eauto.
     Unshelve. eauto.
   Qed.
 
@@ -1180,19 +1120,6 @@ Module GLog.
     eapply forall_ents_valid_length_eq; try eassumption.
     apply vsupd_vecs_length.
     apply replay_seq_dsupd_vecs_disjoint; auto.
-    eapply vmap_match_nonoverlap; eauto.
-  Qed.
-
-  Lemma dset_match_dssync_vecs_nonoverlap : forall xp al vm ds ts,
-    overlap al vm = false ->
-    vmap_match vm ts ->
-    dset_match xp ds ts ->
-    dset_match xp (dssync_vecs ds al) ts.
-  Proof.
-    unfold dset_match; intuition; simpl in *.
-    eapply forall_ents_valid_length_eq; try eassumption.
-    apply vssync_vecs_length.
-    apply replay_seq_dssync_vecs_disjoint; auto.
     eapply vmap_match_nonoverlap; eauto.
   Qed.
 
@@ -1226,30 +1153,7 @@ Module GLog.
     all: simpl; eauto.
   Qed.
 
-  Theorem dsync_vecs'_ok: forall xp al ms,
-    {< F ds,
-    PRE:hm
-      << F, rep: xp (Cached ds) ms hm >> *
-      [[ overlap al (MSVMap (fst ms)) = false ]] *
-      [[ Forall (fun e => e < length (fst ds)) al ]]
-    POST:hm' RET:ms'
-      << F, rep: xp (Cached (dssync_vecs ds al)) ms' hm' >>
-    XCRASH:hm'
-      << F, would_recover_any: xp ds hm' -- >>
-    >} dsync_vecs' xp al ms.
-  Proof.
-    unfold dsync_vecs'.
-    prestep; unfold rep; cancel.
-    prestep; unfold rep; cancel.
-    eapply dset_match_dssync_vecs_nonoverlap; eauto.
-
-    xcrash.
-    rewrite MLog.synced_recover_before.
-    eapply recover_before_any_fst; eauto.
-  Qed.
-
   Hint Extern 1 ({{_}} progseq (dwrite_vecs' _ _ _) _) => apply dwrite_vecs'_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dsync_vecs' _ _ _) _) => apply dsync_vecs'_ok : prog.
 
   Theorem dwrite_vecs_ok: forall xp avl ms,
     {< F ds,
@@ -1318,39 +1222,27 @@ Module GLog.
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
       [[ Forall (fun e => e < length (ds!!)) al ]]
-    POST:hm' RET:ms' exists ds',
-      << F, rep: xp (Cached (dssync_vecs ds' al)) ms' hm' >> *
-      [[ ds' = ds \/ ds' = (ds!!, nil) ]]
+    POST:hm' RET:ms'
+      << F, rep: xp (Cached (dssync_vecs ds al)) ms' hm' >>
     XCRASH:hm'
       << F, would_recover_any: xp ds hm' -- >>
     >} dsync_vecs xp al ms.
   Proof.
-    unfold dsync_vecs, rep.
-    step.
+    unfold dsync_vecs.
     prestep; unfold rep; cancel.
-    prestep; unfold rep; cancel.
-
-    erewrite fst_pair by reflexivity.
-    cancel.
-    eauto.
-    substl (MSVMap a).
-    apply overlap_empty; apply map_empty_vmap0.
-    eauto.
-
-    step.
-    cancel.
-    repeat xcrash_rewrite; xform_norm.
-    cancel; xform_normr; cancel.
-    eapply recover_latest_any; eauto.
-
-    prestep; unfold rep; cancel.
-    apply not_true_is_false; auto.
     rewrite Forall_forall in *; intros.
     erewrite <- replay_seq_latest_length; eauto.
     unfold dset_match in *; intuition eauto.
-    step.
-  Qed.
 
+    prestep; unfold rep; cancel.
+    eapply dset_match_dssync_vecs; eauto.
+
+    cancel.
+    repeat xcrash_rewrite; xform_norm.
+    cancel; xform_normr; cancel.
+    rewrite MLog.synced_recover_before.
+    rewrite recover_before_any_fst; eauto.
+  Qed.
 
   Definition recover_any_pred xp ds hm :=
     ( exists d n ms, [[ n <= length (snd ds) ]] *

@@ -459,10 +459,9 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
       [[[ ds!! ::: (Fm * a |-> vs) ]]]
-    POST:hm' RET:ms' exists ds' ds0,
+    POST:hm' RET:ms' exists ds',
       rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
-      [[ ds' = dssync ds0 a ]] *
-      [[ ds0 = ds \/ ds0 = (ds!!, nil) ]]
+      [[ ds' = dssync ds a ]]
     XCRASH:hm'
       recover_any xp F ds hm'
     >} dsync xp a ms.
@@ -473,9 +472,6 @@ Module LOG.
     rewrite dssync_latest; unfold vssync; apply map_valid_updN; auto.
     rewrite dssync_latest; substl (ds!!) at 1.
     apply replay_disk_vssync_comm.
-    rewrite dssync_latest; unfold vssync; apply map_valid_updN; auto.
-    setoid_rewrite singular_latest at 1 2; simpl; auto.
-    substl (ds!!) at 1; apply replay_disk_vssync_comm.
 
     (* crashes *)
     xcrash.
@@ -1472,7 +1468,7 @@ Module LOG.
     POST:hm' RET:ms' exists ds',
       rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
       [[[ ds'!! ::: Fm * listmatch (fun vs a => a |=> fst vs) vsl al ]]] *
-      [[ ds' = (dssync_vecs ds al) \/ ds' = dssync_vecs (ds!!, nil) al ]]
+      [[ ds' = dssync_vecs ds al ]]
     XCRASH:hm'
       recover_any xp F ds hm'
     >} dsync_vecs xp al ms.
@@ -1483,11 +1479,6 @@ Module LOG.
     pred_apply; rewrite listmatch_sym; eauto.
 
     step; subst; try rewrite dssync_vecs_latest.
-    apply map_valid_vssync_vecs; auto.
-    rewrite <- replay_disk_vssync_vecs_comm.
-    f_equal; auto.
-    apply dsync_vssync_vecs_ok; auto.
-
     apply map_valid_vssync_vecs; auto.
     rewrite <- replay_disk_vssync_vecs_comm.
     f_equal; auto.

@@ -189,7 +189,7 @@ Module AFS.
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
     rx ^((MSAlloc ams, ms), ok).
 
-  (* sync only data blocks of a file. XXX does a global flush too *)
+  (* sync only data blocks of a file. *)
   Definition file_sync T fsxp inum ams rx : prog T :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.datasync fsxp inum (MSAlloc ams, ms);
@@ -681,10 +681,10 @@ Module AFS.
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)]]] *
       [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST:hm' RET:^(mscs')
-      exists ds' tree' ds0 al,
+      exists ds' tree' al,
         [[ MSAlloc mscs' = MSAlloc mscs ]] *
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
-        [[ ds' = dssync_vecs ds0 al /\ BFILE.diskset_was ds0 ds ]] *
+        [[ ds' = dssync_vecs ds al]] *
         [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
               BFILE.block_belong_to_file ilist (selN al i 0) inum i ]] *
         [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist frees)]]] *
@@ -697,11 +697,7 @@ Module AFS.
   Proof.
     unfold file_sync; intros.
     step.
-    prestep.
-    (* extract dset_match from (rep ds), this is useful for proving crash condition *)
-    rewrite LOG.active_dset_match_pimpl at 1.
-    norm. cancel.
-    intuition.
+    prestep; norm. cancel. intuition.
     latest_rewrite.
     pred_apply; cancel.
     eauto.
@@ -709,15 +705,9 @@ Module AFS.
     step.
 
     - xcrash_solve.
-      unfold BFILE.diskset_was in *; intuition subst.
       rewrite <- crash_xform_idem.
       rewrite LOG.crash_xform_intact_dssync_vecs_idempred.
       rewrite SB.crash_xform_rep; auto.
-
-      rewrite <- crash_xform_idem.
-      rewrite LOG.crash_xform_intact_dssync_vecs_latest_idempred.
-      rewrite SB.crash_xform_rep; auto.
-      eauto.
 
     - cancel.
       xcrash_solve.
