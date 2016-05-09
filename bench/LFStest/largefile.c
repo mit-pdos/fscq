@@ -400,7 +400,7 @@ int ioSize;				/* # of bytes per I/O operation */
      * read/write.  Then we randomly choose one of the unused elements of
      * seekArray as the second I/O location, etc.
      */
-    nLocs = fileSize / ioSize;
+    nLocs = 64 * fileSize / ioSize;
     seekArray = calloc ( nLocs, sizeof ( char ) );
     seekOrder = malloc ( nLocs * sizeof ( int ) );
     for ( i = nLocs;  i > 0;  i-- ) {
@@ -411,7 +411,7 @@ int ioSize;				/* # of bytes per I/O operation */
 	    }
 	}
 	seekArray[j] = 1;
-	seekOrder[nLocs - i] = j;
+	seekOrder[nLocs - i] = j % (fileSize / ioSize);
     }
 
     /*
@@ -423,7 +423,7 @@ int ioSize;				/* # of bytes per I/O operation */
     ioCount = 0;
     seekLocation = 0;
     gettimeofday ( &before, NULL );
-    while ( ioCount < fileSize ) {
+    while ( ioCount < 64 * fileSize ) {
 
 	/*
 	 * Go to a random point in the file. 
