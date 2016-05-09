@@ -233,6 +233,12 @@ Module GLog.
       rx ms
     }.
 
+  Definition flushsync T xp ms rx : prog T :=
+    ms <- flushall xp ms;
+    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
+    mm' <- MLog.apply xp mm;
+    rx (mk_memstate vm ts mm').
+
   Definition dwrite' T (xp : log_xparams) a v ms rx : prog T :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dwrite xp a v mm;

@@ -114,7 +114,7 @@ Module AFS.
       If (eq_nat_dec inum (FSXPRootInum fsxp)) {
         let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
         If (bool_dec ok true) {
-          mscs <- LOG.sync (FSXPLog fsxp) mscs;
+          mscs <- LOG.flushsync (FSXPLog fsxp) mscs;
           rx (Some ((BFILE.mk_memstate true mscs), fsxp))
         } else {
           rx None

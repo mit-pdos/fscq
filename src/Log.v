@@ -291,6 +291,11 @@ Module LOG.
     mm' <- GLog.dsync xp a mm;
     rx (mk_memstate cm mm').
 
+  Definition flushsync T xp ms rx : prog T :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    mm' <- GLog.flushsync xp mm;
+    rx (mk_memstate cm mm').
+
   Definition sync T xp ms rx : prog T :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.flushall xp mm;
