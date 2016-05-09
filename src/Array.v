@@ -25,6 +25,12 @@ Proof.
   intros; subst; auto.
 Qed.
 
+Lemma arrayN_one: forall V (v:V),
+    0 |-> v <=p=> arrayN 0 [v].
+Proof.
+  split; cancel.
+Qed.
+
 Lemma isolateN_fwd' : forall V vs i a (default : V),
   i < length vs
   -> arrayN a vs =p=> arrayN a (firstn i vs)

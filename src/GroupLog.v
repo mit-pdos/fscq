@@ -884,9 +884,9 @@ Module GLog.
     eapply vmap_match_notin; eauto.
   Qed.
 
-  Lemma forall_ents_valid_ents_remove : forall ts xp d a,
+  Lemma forall_ents_valid_ents_filter : forall ts xp d f,
     Forall (ents_valid xp d) ts ->
-    Forall (ents_valid xp d) (map (ents_remove a) ts).
+    Forall (ents_valid xp d) (map (fun x => filter f x) ts).
   Proof.
     induction ts; simpl; auto; intros.
     inversion H; subst.
@@ -895,6 +895,20 @@ Module GLog.
     apply log_vaild_filter; eauto.
     eapply le_trans.
     apply filter_length. auto.
+  Qed.
+
+  Lemma forall_ents_valid_ents_remove : forall ts xp d a,
+    Forall (ents_valid xp d) ts ->
+    Forall (ents_valid xp d) (map (ents_remove a) ts).
+  Proof.
+    intros; apply forall_ents_valid_ents_filter; auto.
+  Qed.
+
+  Lemma forall_ents_valid_ents_remove_list : forall ts xp d al,
+    Forall (ents_valid xp d) ts ->
+    Forall (ents_valid xp d) (map (ents_remove_list al) ts).
+  Proof.
+    intros; apply forall_ents_valid_ents_filter; auto.
   Qed.
 
   Lemma dset_match_dsupd : forall xp ts ds a v,
@@ -908,6 +922,16 @@ Module GLog.
     apply replay_seq_dsupd_ents_remove; auto.
   Qed.
 
+  Lemma dset_match_dssync_vecs : forall xp ts ds al,
+    dset_match xp ds ts ->
+    dset_match xp (dssync_vecs ds al) ts.
+  Proof.
+    unfold dset_match; intuition; simpl in *; auto.
+    eapply ents_valid_length_eq.
+    2: apply eq_sym; apply vssync_vecs_length.
+    auto.
+    apply replay_seq_dssync_vecs_ents; auto.
+  Qed.
 
   Lemma dset_match_dssync_notin : forall xp ds a ts vm,
     Map.find a vm = None ->
@@ -932,6 +956,28 @@ Module GLog.
     rewrite synced_recover_any; auto.
     eapply dset_match_dsupd; eauto.
   Qed.
+
+  Lemma cached_dssync_vecs_latest_recover_any : forall xp ds al ms hm ms0,
+    dset_match xp ds ms0 ->
+    rep xp (Cached ((dssync_vecs ds al) !!, nil)) ms hm =p=>
+    would_recover_any xp (dssync_vecs ds al) hm.
+  Proof.
+    unfold rep; cancel.
+    unfold would_recover_any, rep.
+    rewrite synced_recover_any; auto.
+    eapply dset_match_dssync_vecs; eauto.
+  Qed.
+
+  Lemma cached_latest_recover_any : forall xp ds ms hm ms0,
+    dset_match xp ds ms0 ->
+    rep xp (Cached (ds !!, nil)) ms hm =p=>
+    would_recover_any xp ds hm.
+  Proof.
+    unfold rep; cancel.
+    unfold would_recover_any, rep.
+    rewrite synced_recover_any; eauto.
+  Qed.
+
 
   Theorem dwrite'_ok: forall xp a v ms,
     {< F Fd ds vs,

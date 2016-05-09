@@ -697,7 +697,10 @@ Module AFS.
   Proof.
     unfold file_sync; intros.
     step.
-    prestep. norm. cancel.
+    prestep.
+    (* extract dset_match from (rep ds), this is useful for proving crash condition *)
+    rewrite LOG.active_dset_match_pimpl at 1.
+    norm. cancel.
     intuition.
     latest_rewrite.
     pred_apply; cancel.
@@ -707,9 +710,14 @@ Module AFS.
 
     - xcrash_solve.
       unfold BFILE.diskset_was in *; intuition subst.
-      (* XXX: need to show that we can ignore dssync_vecs inside crash_xform *)
-      admit.
-      admit.
+      rewrite <- crash_xform_idem.
+      rewrite LOG.crash_xform_intact_dssync_vecs_idempred.
+      rewrite SB.crash_xform_rep; auto.
+
+      rewrite <- crash_xform_idem.
+      rewrite LOG.crash_xform_intact_dssync_vecs_latest_idempred.
+      rewrite SB.crash_xform_rep; auto.
+      eauto.
 
     - cancel.
       xcrash_solve.
@@ -719,7 +727,7 @@ Module AFS.
     - xcrash_solve.
       rewrite LOG.intact_idempred.
       cancel.
-  Admitted.
+  Qed.
 
   Hint Extern 1 ({{_}} progseq (file_sync _ _ _) _) => apply file_sync_ok : prog.
 

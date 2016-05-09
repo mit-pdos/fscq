@@ -143,7 +143,6 @@ Proof.
   repeat rewrite upd_ne; auto.
 Qed.
 
-
 Definition synced_mem (m : rawdisk) :=
   forall a, m a = None \/ exists v, m a = Some (v, nil).
 
@@ -221,6 +220,36 @@ Proof.
   - rewrite upd_ne by auto.
     specialize (H0 a0); intuition.
 Qed.
+
+Lemma possible_crash_upd_incl : forall m m' a v v0,
+  possible_crash (upd m a v) m' ->
+  m a = Some v0 ->
+  incl (vsmerge v) (vsmerge v0) ->
+  possible_crash m m'.
+Proof.
+  unfold possible_crash, vsmerge; intuition.
+  destruct (addr_eq_dec a a1); subst; simpl in *.
+  - specialize (H a1); intuition; right;
+    rewrite upd_eq in *; try congruence.
+    repeat deex.
+    destruct vs, v0; inversion H2; subst; simpl in *.
+    exists (w0, l0), w; intuition.
+    destruct vs, v0; inversion H2; subst; simpl in *.
+    exists (w0, l0), v'; intuition.
+  - specialize (H a1); intuition; rewrite upd_ne in *; auto.
+Qed.
+
+Lemma possible_crash_upd_nil : forall m m' a v0,
+  possible_crash (upd m a (fst v0, nil)) m' ->
+  m a = Some v0 ->
+  possible_crash m m'.
+Proof.
+  intros.
+  eapply possible_crash_upd_incl; eauto.
+  unfold vsmerge; simpl.
+  apply incl_cons2, incl_nil.
+Qed.
+
 
 Lemma possible_crash_ptsto_upd_postfix : forall F m m' a v vs vs',
   (F * a |-> (v, vs))%pred m ->

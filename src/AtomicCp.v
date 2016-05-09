@@ -126,28 +126,6 @@ Module ATOMICCP.
   Opaque LOG.idempred.
   Opaque crash_xform.
 
-  Lemma arrayN_one: forall V (v:V),
-      0 |-> v <=p=> arrayN 0 [v].
-  Proof.
-    split; cancel.
-  Qed.
-
-  Lemma arrayN_ex_one: forall V (l : list V),
-      List.length l = 1 ->
-      arrayN_ex l 0 <=p=> emp.
-  Proof.
-    destruct l.
-    simpl; intros.
-    congruence.
-    destruct l.
-    simpl. intros.
-    unfold arrayN_ex.
-    simpl.
-    split; cancel.
-    simpl. intros.
-    congruence.
-  Qed.
-
   Ltac xcrash_norm :=  repeat (xform_norm; cancel).
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.

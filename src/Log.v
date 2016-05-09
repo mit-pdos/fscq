@@ -133,6 +133,14 @@ Module LOG.
     Unshelve. all: eauto.
   Qed.
 
+  Lemma notxn_any : forall xp F ds ms hm,
+    rep xp F (NoTxn ds) ms hm =p=> recover_any xp F ds hm.
+  Proof.
+    unfold intact, recover_any, rep, rep_inner; cancel.
+    apply GLog.cached_recover_any.
+    Unshelve. all: eauto.
+  Qed.
+
   Lemma active_notxn : forall xp F old new ms hm,
     rep xp F (ActiveTxn old new) ms hm =p=>
     rep xp F (NoTxn old) (mk_mstate vmap0 (MSGLog (fst ms)), (snd ms)) hm.
@@ -151,6 +159,20 @@ Module LOG.
     unfold recover_any, rep, rep_inner; cancel.
     rewrite GLog.cached_dsupd_latest_recover_any; eauto.
     rewrite GLog.cached_dsupd_latest_recover_any; eauto.
+    Unshelve. all: eauto.
+  Qed.
+
+  Lemma intact_dssync_vecs_latest : forall xp F ds al hm gms,
+    GLog.dset_match xp ds gms ->
+    intact xp F (dssync_vecs (ds!!, nil) al) hm =p=>
+    recover_any xp F (dssync_vecs ds al) hm.
+  Proof.
+    unfold dssync_vecs at 1, d_map at 1; simpl; intros.
+    rewrite <- dssync_vecs_latest.
+    unfold intact, rep, rep_inner.
+    unfold recover_any, rep, rep_inner; cancel.
+    rewrite GLog.cached_dssync_vecs_latest_recover_any; eauto.
+    rewrite GLog.cached_dssync_vecs_latest_recover_any; eauto.
     Unshelve. all: eauto.
   Qed.
 
@@ -1508,6 +1530,52 @@ Module LOG.
     or_r; cancel.
     intuition simpl; eauto.
   Qed.
+
+  Lemma crash_xform_intact_dssync_vecs_idempred : forall xp F ds al hm,
+    crash_xform (LOG.intact xp F (dssync_vecs ds al) hm) =p=>
+    LOG.idempred xp (crash_xform F) ds hm.
+  Proof.
+    intros.
+    rewrite crash_xform_intact.
+    xform_norm.
+    rewrite notxn_after_crash_diskIs.
+    rewrite after_crash_idempred.
+    cancel.
+    rewrite nthd_0.
+    pred_apply.
+    rewrite crash_xform_diskIs_vssync_vecs; auto.
+    omega.
+  Qed.
+
+  Lemma notxn_latest_any : forall xp F ds ms gms hm,
+    GLog.dset_match xp ds gms ->
+    rep xp F (NoTxn (ds!!, nil)) ms hm =p=> recover_any xp F ds hm.
+  Proof.
+    unfold intact, recover_any, rep, rep_inner; cancel.
+    eapply GLog.cached_latest_recover_any; eauto.
+    Unshelve. all: eauto.
+  Qed.
+
+  Lemma crash_xform_intact_dssync_vecs_latest_idempred : forall xp F ds al hm gms,
+    GLog.dset_match xp ds gms ->
+    crash_xform (intact xp F (dssync_vecs (ds!!, nil) al) hm) =p=>
+    LOG.idempred xp (crash_xform F) ds hm.
+  Proof.
+    intros.
+    rewrite crash_xform_intact.
+    xform_norm.
+    apply crash_xform_diskIs_vssync_vecs in H2.
+    rewrite notxn_after_crash_diskIs.
+    simpl.
+    rewrite after_crash_idempred.
+    cancel.
+    eassign (length ds_2).
+    pred_apply.
+    repeat rewrite nthd_oob.
+    auto.
+    all: simpl; auto.
+  Qed.
+
 
 End LOG.
 

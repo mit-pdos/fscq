@@ -273,6 +273,20 @@ Module ReplaySeq.
     destruct ds; auto.
   Qed.
 
+  Lemma replay_seq_dssync_vecs_ents : forall ds ts al,
+    ReplaySeq ds ts ->
+    ReplaySeq (dssync_vecs ds al) ts.
+  Proof.
+    induction 1; simpl; subst.
+    constructor.
+    unfold dssync_vecs, d_map; simpl.
+    constructor.
+    2: apply IHReplaySeq; auto.
+    destruct ds; simpl;
+    rewrite <- replay_disk_vssync_vecs_comm_list; auto.
+  Qed.
+
+
 End ReplaySeq.
 
 
