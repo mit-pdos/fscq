@@ -43,6 +43,7 @@
 - bring back ByteFile
 - high-performance extraction
 - simplify AtomicCp proofs
+  apply pred to diskset
 - more applications
 - security specs: need to deal with non-determinism, and at the lowest level,
   need to change the semantics to show that the disk independently chooses
