@@ -232,17 +232,15 @@ Module ReplaySeq.
 
   Lemma replay_seq_dssync_notin : forall ds ts a,
     ReplaySeq ds ts ->
-    Forall (fun e => ~ In a (map fst e)) ts ->
     ReplaySeq (dssync ds a) ts.
   Proof.
     induction 1; intros.
     constructor.
-    inversion H1; subst.
-    unfold dssync, d_map, vssync; simpl.
+    unfold dssync, d_map; simpl.
     constructor.
-    rewrite <- replay_disk_updN_comm by auto.
-    destruct ds; rewrite replay_disk_selN_other; auto.
-    apply IHReplaySeq; auto.
+    2: apply IHReplaySeq; auto.
+    destruct ds; subst; simpl;
+    rewrite replay_disk_vssync_comm_list; auto.
   Qed.
 
   Lemma replay_seq_dsupd_vecs_disjoint : forall ds ts avl,
@@ -272,6 +270,20 @@ Module ReplaySeq.
     rewrite replay_disk_vssync_vecs_disjoint by auto.
     destruct ds; auto.
   Qed.
+
+  Lemma replay_seq_dssync_vecs_ents : forall ds ts al,
+    ReplaySeq ds ts ->
+    ReplaySeq (dssync_vecs ds al) ts.
+  Proof.
+    induction 1; simpl; subst.
+    constructor.
+    unfold dssync_vecs, d_map; simpl.
+    constructor.
+    2: apply IHReplaySeq; auto.
+    destruct ds; simpl;
+    rewrite <- replay_disk_vssync_vecs_comm_list; auto.
+  Qed.
+
 
 End ReplaySeq.
 

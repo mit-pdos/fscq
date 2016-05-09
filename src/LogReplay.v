@@ -556,23 +556,36 @@ Module LogReplay.
     rewrite length_updN, replay_disk_length; omega.
   Qed.
 
+  Lemma replay_disk_vssync_comm_list : forall l d a,
+    vssync (replay_disk l d) a =
+    replay_disk l (vssync d a).
+  Proof.
+    induction l; simpl; auto; intros.
+    rewrite IHl; unfold vssync; destruct a; simpl in *.
+    destruct (addr_eq_dec a0 n); subst.
+    - repeat rewrite updN_twice.
+      destruct (lt_dec n (length d)).
+      repeat rewrite selN_updN_eq; auto.
+      rewrite selN_oob; repeat rewrite updN_oob; auto; try omega.
+    - repeat rewrite selN_updN_ne by auto.
+      rewrite updN_comm; auto.
+  Qed.
+
+  Lemma replay_disk_vssync_vecs_comm_list : forall l ents d,
+    vssync_vecs (replay_disk ents d) l =
+    replay_disk ents (vssync_vecs d l).
+  Proof.
+    induction l; simpl; intros; auto.
+    rewrite <- IHl by auto.
+    rewrite replay_disk_vssync_comm_list; auto.
+  Qed.
+
   Lemma replay_disk_vssync_comm : forall m d a,
     vssync (replay_disk (Map.elements m) d) a =
     replay_disk (Map.elements m) (vssync d a).
   Proof.
-    unfold vssync; intros.
-    destruct (MapFacts.In_dec m a).
-    rewrite replay_disk_updN_absorb; auto.
-    erewrite selN_eq_updN_eq; eauto.
-    rewrite surjective_pairing.
-    rewrite replay_disk_selN_snd_nil; auto.
-    apply In_map_fst_MapIn; auto.
-    apply In_map_fst_MapIn; auto.
-    rewrite replay_disk_updN_comm.
-    rewrite replay_disk_selN_not_In; auto.
-    contradict n; apply In_map_fst_MapIn; auto.
+    intros; apply replay_disk_vssync_comm_list.
   Qed.
-
 
   Lemma replay_disk_vssync_vecs_comm : forall l m d,
     vssync_vecs (replay_disk (Map.elements m) d) l =
@@ -738,6 +751,9 @@ Module LogReplay.
     rewrite <- replay_disk_updN_comm by auto.
     rewrite updN_twice; auto.
   Qed.
+
+  Definition ents_remove_list (al : list addr) (ents: DLog.contents) := 
+    filter (fun e => if (In_dec addr_eq_dec (fst e) al) then false else true) ents.
 
 
   (**********************

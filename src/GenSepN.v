@@ -623,6 +623,21 @@ Qed.
 Definition arrayN_ex A (vs : list A) i :=
   (arrayN 0 (firstn i vs) * arrayN (i + 1) (skipn (S i) vs))%pred.
 
+Lemma arrayN_ex_one: forall V (l : list V),
+    List.length l = 1 ->
+    arrayN_ex l 0 <=p=> emp.
+Proof.
+  destruct l.
+  simpl; intros.
+  congruence.
+  destruct l.
+  simpl. intros.
+  unfold arrayN_ex.
+  simpl.
+  split; cancel.
+  simpl. intros.
+  congruence.
+Qed.
 
 Theorem arrayN_except : forall V vs (def : V) i,
   i < length vs
@@ -1149,6 +1164,39 @@ Proof.
 
   erewrite IHl; eauto.
   eapply possible_crash_list2nmem_cons; eauto.
+Qed.
+
+
+Lemma possible_crash_list2nmem_vssync : forall a d m,
+  possible_crash (list2nmem (vssync d a)) m ->
+  possible_crash (list2nmem d) m.
+Proof.
+  unfold vssync; intros.
+  destruct (lt_dec a (length d)).
+  rewrite listupd_memupd in H by auto.
+  eapply possible_crash_upd_nil; eauto.
+  apply list2nmem_sel_inb; auto.
+  rewrite updN_oob in H; auto; omega.
+Qed.
+
+Lemma possible_crash_list2nmem_vssync_vecs : forall al d m,
+  possible_crash (list2nmem (vssync_vecs d al)) m ->
+  possible_crash (list2nmem d) m.
+Proof.
+  induction al using rev_ind; simpl; auto; intros.
+  rewrite vssync_vecs_app in H.
+  apply IHal.
+  eapply possible_crash_list2nmem_vssync; eauto.
+Qed.
+
+Lemma crash_xform_diskIs_vssync_vecs : forall al d,
+  crash_xform (diskIs (list2nmem (vssync_vecs d al))) =p=>
+  crash_xform (diskIs (list2nmem d)).
+Proof.
+  intros.
+  rewrite crash_xform_diskIs; cancel.
+  rewrite <- crash_xform_diskIs_r; eauto.
+  eapply possible_crash_list2nmem_vssync_vecs; eauto.
 Qed.
 
 Lemma setlen_singleton : forall T l (v : T),
