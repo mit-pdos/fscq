@@ -69,7 +69,7 @@ wait $TRACEPID
 mv $TRACE $SCRIPTPREFIX-origfscq.blktrace
 ./blkstats.sh $SCRIPTPREFIX-origfscq.blktrace >> $SCRIPTPREFIX-origfscq.out
 
-## ext4
+## ext4async
 yes | mke2fs -t ext4 $DEV
 sudo mount $DEV $MOUNT -o journal_async_commit
 sudo chmod 777 $MOUNT
@@ -77,13 +77,29 @@ sudo blktrace -d $DEV -o - > $TRACE &
 TRACEPID=$!
 sleep 1
 
-script $SCRIPTPREFIX-ext4.out -c "$CMD"
+script $SCRIPTPREFIX-ext4async.out -c "$CMD"
 
 sudo killall blktrace
 sudo umount $MOUNT
 wait $TRACEPID
-mv $TRACE $SCRIPTPREFIX-ext4.blktrace
-./blkstats.sh $SCRIPTPREFIX-ext4.blktrace >> $SCRIPTPREFIX-ext4.out
+mv $TRACE $SCRIPTPREFIX-ext4async.blktrace
+./blkstats.sh $SCRIPTPREFIX-ext4async.blktrace >> $SCRIPTPREFIX-ext4async.out
+
+## ext4ordered
+yes | mke2fs -t ext4 $DEV
+sudo mount $DEV $MOUNT -o data=ordered
+sudo chmod 777 $MOUNT
+sudo blktrace -d $DEV -o - > $TRACE &
+TRACEPID=$!
+sleep 1
+
+script $SCRIPTPREFIX-ext4ordered.out -c "$CMD"
+
+sudo killall blktrace
+sudo umount $MOUNT
+wait $TRACEPID
+mv $TRACE $SCRIPTPREFIX-ext4ordered.blktrace
+./blkstats.sh $SCRIPTPREFIX-ext4ordered.blktrace >> $SCRIPTPREFIX-ext4ordered.out
 
 ## Just in case this was a ramdisk...
 sudo losetup -d $DEV
