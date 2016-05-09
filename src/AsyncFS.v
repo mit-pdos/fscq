@@ -893,6 +893,8 @@ Module AFS.
     apply LOG.notxn_idempred.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (delete _ _ _ _) _) => apply delete_ok : prog.
+
 End AFS.
 
 

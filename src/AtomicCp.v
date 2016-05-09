@@ -173,7 +173,7 @@ Module ATOMICCP.
     step.
 
     denote! (d_in _ _) as Hdin. apply d_in_d_map in Hdin. repeat deex.
-    denote! (d_in _ _) as Hdin. eapply BFILE.d_in_diskset_was in Hdin; eauto.
+    denote! (d_in _ _) as Hdin.
       apply d_in_d_map in Hdin. repeat deex.
     denote! (d_in _ _) as Hdin. eapply BFILE.d_in_diskset_was in Hdin; eauto.
     denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
@@ -267,8 +267,7 @@ Module ATOMICCP.
 
     (* this d from ds is from before setattr *)
     denote! (d_in _ _) as Hdin. apply d_in_d_map in Hdin. repeat deex.
-    denote! (d_in _ _) as Hdin. eapply BFILE.d_in_diskset_was in Hdin; eauto.
-      apply d_in_d_map in Hdin. repeat deex.
+    denote! (d_in _ _) as Hdin. apply d_in_d_map in Hdin. repeat deex.
     denote! (d_in _ _) as Hdin. eapply BFILE.d_in_diskset_was in Hdin; eauto.
     denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
 
@@ -344,8 +343,7 @@ Module ATOMICCP.
 
     AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
     denote! (d_in _ _) as Hdin. apply d_in_d_map in Hdin. repeat deex.
-    denote! (d_in _ _) as Hdin. eapply BFILE.d_in_diskset_was in Hdin; eauto.
-      apply d_in_d_map in Hdin. repeat deex.
+    denote! (d_in _ _) as Hdin. apply d_in_d_map in Hdin. repeat deex.
     denote! (d_in _ _) as Hdin. eapply BFILE.d_in_diskset_was in Hdin; eauto.
     denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
 
@@ -451,7 +449,35 @@ Module ATOMICCP.
 
     (* CRASHES from before dwrite *)
     (* haogang just changed dwrite's crash condition, so no reason to prove the old one here.. *)
-    admit.
+    AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
+    denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
+    repeat eexists. eauto.
+
+    denote! (d_in _ _) as Hdin. apply d_in_d_map in Hdin. repeat deex.
+    denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
+
+    (* get a tree representation of the disk after the dwrite *)
+    edestruct DIRTREE.dirtree_update_safe_pathname with (m := d'); repeat deex.
+    4: eauto.
+    3: eauto.
+    2: eassumption.  (* the one about offset zero, not the one about forall offsets *)
+    eauto.
+
+    intuition; repeat deex; subst.
+    (* creates two cases, from the result of [dirtree_update_safe_pathname] *)
+
+    repeat eexists. eauto.
+    repeat eexists. pred_apply.
+    replace pathname' with ([temp_fn]).
+    erewrite update_update_subtree_eq; eauto.
+    eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
+    eapply find_subtree_inode_pathname_unique. 4: eassumption.
+      3: erewrite DIRTREE.find_update_subtree; eauto.
+    admit.  (* DIRTREE.tree_inodes_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
+    admit.  (* DIRTREE.tree_names_distinct (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum x) temp_tree) *)
+    reflexivity.
+
+
 
     AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
     denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
@@ -841,8 +867,11 @@ Focus 5.
     eauto.
     step.
     denote d_in as Hdin. inversion Hdin; clear Hdin; simpl in *; subst.
-    repeat eexists. pred_apply. cancel.
-    erewrite update_update_subtree_eq; eauto.
+    do 3 eexists.
+    repeat erewrite update_update_subtree_eq; eauto.
+    split.
+    eapply DIRTREE.dirtree_safe_update_subtree; eauto.
+    pred_apply. cancel.
     erewrite update_subtree_same. cancel.
 
     eapply dirtree_isdir_true_find_subtree in H6 as Hdir.
@@ -850,9 +879,13 @@ Focus 5.
     eauto.
     distinct_names.
     constructor.
+
     intuition; subst. (* the other part of [d_in] *)
-    repeat eexists. pred_apply. cancel.
-    erewrite update_update_subtree_eq; eauto.
+    do 3 eexists.
+    repeat erewrite update_update_subtree_eq; eauto.
+    split.
+    apply DIRTREE.dirtree_safe_refl.
+    pred_apply. cancel.
     distinct_names.
     constructor.
     rewrite find_subtree_update_subtree_ne. eauto. eauto. eauto.
@@ -1049,11 +1082,11 @@ Focus 5.
       exists ds',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
       [[ forall d, d_in d ds' ->
-         exists Fm Ftop ilist frees tree dstents subtree dst_inum base_tree' temp_dents',
+         exists Fm Ftop ilist frees tree dstents f' dst_inum base_tree' temp_dents',
          (base_tree' = DIRTREE.TreeDir the_dnum temp_dents') /\
          (base_tree' = base_tree \/ DTCrash.tree_crash base_tree base_tree') /\
          let dst_subtree := DIRTREE.TreeFile dst_inum (BFILE.synced_file file) in
-         let tree_temp  := DIRTREE.update_subtree [temp_fn] subtree base_tree' in
+         let tree_temp  := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum f') base_tree' in
          let tree_prune := DIRTREE.tree_prune the_dnum temp_dents' [] temp_fn base_tree' in
          let tree_dst   := DIRTREE.tree_graft the_dnum dstents [] dst_fn dst_subtree tree_prune in
          tree_prune = DIRTREE.TreeDir the_dnum dstents /\
@@ -1371,10 +1404,19 @@ DIRTREE.delete_from_dir temp_fn (DIRTREE.TreeDir the_dnum st')
 
   Hint Extern 1 ({{_}} progseq (recover) _) => apply atomic_cp_recover_ok : prog.
 
+
+  Lemma instantiate_crash : forall idemcrash (F_ : rawpred) (hm_crash : hashmap),
+    (fun hm => F_ * idemcrash hm) hm_crash =p=> F_ * idemcrash hm_crash.
+  Proof.
+    reflexivity.
+  Qed.
+
+
   Theorem atomic_cp_with_recover_ok : forall fsxp src_inum tinum dst_fn mscs,
-    {<< d Fm Ftop temp_tree src_fn file tfile v0 ilist freeblocks,
+    {<< d Fm Ftop temp_tree src_fn file tfile v0 ilist freeblocks tree_elem,
     PRE:hm  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm * 
       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree ilist freeblocks) ]]] *
+      [[ temp_tree = DIRTREE.TreeDir the_dnum tree_elem ]] *
       [[ DIRTREE.dirtree_inum temp_tree = the_dnum ]] *
       [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
       [[ DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
@@ -1383,16 +1425,15 @@ DIRTREE.delete_from_dir temp_fn (DIRTREE.TreeDir the_dnum st')
       [[ dst_fn <> src_fn ]] *
       [[[ BFILE.BFData file ::: (0 |-> v0) ]]]
     POST:hm' RET:^(mscs', r)
-      exists d tree' ilist' freeblocks' temp_dents dstents,
+      exists d tree' ilist' freeblocks' dstents,
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs') hm' *
       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freeblocks') ]]] *
       (([[r = false ]] *
         (exists f',
         [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum f') temp_tree ]])) \/
        ([[r = true ]] *
-        [[ temp_tree = DIRTREE.TreeDir the_dnum temp_dents ]] *
         let subtree := DIRTREE.TreeFile tinum (BFILE.synced_file file) in
-        let pruned := DIRTREE.tree_prune the_dnum temp_dents [] temp_fn temp_tree in
+        let pruned := DIRTREE.tree_prune the_dnum tree_elem [] temp_fn temp_tree in
         [[ pruned = DIRTREE.TreeDir the_dnum dstents ]] *
         [[ tree' = DIRTREE.tree_graft the_dnum dstents [] dst_fn subtree pruned ]]))
     REC:hm' RET:^(mscs',fsxp')
@@ -1411,14 +1452,14 @@ DIRTREE.delete_from_dir temp_fn (DIRTREE.TreeDir the_dnum st')
   Proof.
     AFS.recover_ro_ok.
     cancel.
-    eauto.
+    eauto. 
     eauto.
     eauto.
     congruence.
     eauto.
 
     step.
-    apply AFS.instantiate_crash.
+    apply instantiate_crash.
     reflexivity.
 
     cancel.
@@ -1472,9 +1513,6 @@ DIRTREE.delete_from_dir temp_fn (DIRTREE.TreeDir the_dnum st')
       norml; unfold stars; simpl.
       rewrite SB.crash_xform_rep.
 
-      (* Break up the tree into parts *)
-      destruct v2.
-      admit.  (* contradiction: find_subtree in TreeFile returns Some *)
       cancel.
       eauto.
       eassign (v3); eauto.  (* src_fn *)
@@ -1505,7 +1543,7 @@ DIRTREE.delete_from_dir temp_fn (DIRTREE.TreeDir the_dnum st')
 
         norm; unfold stars; simpl.
         cancel.
-        (* [intuition] should solve, but it's too slow *)  admit.
+        auto.
 
       + norm; unfold stars; simpl.
         cancel.
@@ -1517,7 +1555,7 @@ DIRTREE.delete_from_dir temp_fn (DIRTREE.TreeDir the_dnum st')
 
         norm; unfold stars; simpl.
         cancel.
-        (* [intuition] should solve, but it's too slow *)  admit.
+        auto.
 
       + norm; unfold stars; simpl.
         cancel.
@@ -1571,7 +1609,7 @@ DIRTREE.delete_from_dir temp_fn (DIRTREE.TreeDir the_dnum st')
 
         norm; unfold stars; simpl.
         cancel.
-        (* [intuition] should solve, but it's too slow *)  admit.
+        auto.
 
       + norm; unfold stars; simpl.
         cancel.
@@ -1583,11 +1621,25 @@ DIRTREE.delete_from_dir temp_fn (DIRTREE.TreeDir the_dnum st')
 
         norm; unfold stars; simpl.
         cancel.
-        (* [intuition] should solve, but it's too slow *)  admit.
+        auto.
 
       + norm; unfold stars; simpl.
         cancel.
-        (* [intuition] should solve, but it's too slow *)  admit.
+        split. auto. split. auto.
+        rewrite H0.
+        xform_norm. xform_normr. cancel.
+        xform_normr. cancel.
+
+        denote! (forall _, d_in _ x -> _) as Hds; edestruct Hds; eauto; repeat deex.
+        all: try match goal with 
+              | [ H : DIRTREE.TreeDir _ _ = DIRTREE.TreeDir _ _  |- _ ] => inversion H; subst
+             end.
+        all: repeat eexists.
+        all: pred_apply; cancel.
+
+        Search subtree.
+
+        
   Admitted.
 
 (*
