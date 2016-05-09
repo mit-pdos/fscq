@@ -207,14 +207,29 @@ Module DTCrash.
     unfold file_crash; intros.
     eexists.
     exists (map fst (BFData file)).
-  Admitted.
+    intuition.
+    split; intros.
+    rewrite map_length; eauto.
+    unfold vsmerge. constructor.
+    erewrite selN_map; eauto.
+  Qed.
 
   Theorem tree_crash_exists : forall tree, exists tree',
     tree_crash tree tree'.
   Proof.
     induction tree using dirtree_ind2; intros.
-    eexists; constructor.
-  Admitted.
+    edestruct file_crash_exists; eexists; constructor; eauto.
+    induction tree_ents.
+    eexists; constructor; eauto. constructor.
+    destruct a; simpl in *.
+    inversion H.
+    edestruct IHtree_ents; eauto.
+    inversion H4.
+    repeat deex.
+    exists (TreeDir inum ((s, tree') :: st')).
+    constructor. simpl; f_equal; auto.
+    constructor; auto.
+  Qed.
 
   Theorem tree_crash_update_subtree :
     forall tree subtree filename updated_tree_crashed,
@@ -224,8 +239,6 @@ Module DTCrash.
     tree_crash subtree subtree_crashed /\
     updated_tree_crashed = update_subtree [filename] subtree_crashed tree_crashed.
   Proof.
-    destruct tree; simpl; intros.
-    - inversion H.
   Admitted.
 
   Theorem file_crash_trans : forall f1 f2 f3,
