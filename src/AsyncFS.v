@@ -226,7 +226,7 @@ Module AFS.
         rx ^((MSAlloc ams, ms), None)
       | Some inum =>
         ams <- BFILE.updattr (FSXPLog fsxp) (FSXPInode fsxp) inum (INODE.UType $1) ams;
-        let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
+        let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
           | true => rx ^((MSAlloc ams, ms), Some inum)
           | false => rx ^((MSAlloc ams, ms), None)
