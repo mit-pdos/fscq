@@ -976,7 +976,9 @@ Module BFILE.
            [[ ds' = dssync_vecs ds0 al /\ diskset_was ds0 ds ]] *
            [[[ ds'!! ::: (Fm * rep bxp ixp flist' ilist free) ]]] *
            [[[ flist' ::: (Fi * inum |-> synced_file f) ]]] *
-           [[ MSAlloc ms = MSAlloc ms' ]]
+           [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
+              BFILE.block_belong_to_file ilist (selN al i 0) inum i ]]
     XCRASH:hm' LOG.recover_any lxp F ds hm'
     >} datasync lxp ixp inum ms.
   Proof.
@@ -997,7 +999,20 @@ Module BFILE.
     rewrite synced_list_map_fst_map.
     rewrite listmatch_map_l; sepauto.
     sepauto.
-    eauto.
+
+    seprewrite; apply eq_sym.
+    eapply listmatch_length_r with (m := list2nmem ds!!).
+    pred_apply; cancel.
+    erewrite selN_map by simplen.
+    eapply block_belong_to_file_ok with (m := list2nmem ds!!); eauto.
+    eassign (bxp_1, bxp_2); pred_apply; unfold rep, file_match.
+    setoid_rewrite listmatch_isolate with (i := inum) at 3.
+    repeat erewrite fst_pair by eauto.
+    cancel. simplen. simplen.
+    apply list2nmem_ptsto_cancel.
+    seprewrite.
+    erewrite listmatch_length_r with (m := list2nmem ds!!); eauto.
+    auto.
 
     cancel.
     intuition simpl. pred_apply.
@@ -1012,10 +1027,25 @@ Module BFILE.
     sepauto.
     eauto.
 
+    seprewrite; apply eq_sym.
+    eapply listmatch_length_r with (m := list2nmem ds!!).
+    pred_apply; cancel.
+    erewrite selN_map by simplen.
+    eapply block_belong_to_file_ok with (m := list2nmem ds!!); eauto.
+    eassign (bxp_1, bxp_2); pred_apply; unfold rep, file_match.
+    setoid_rewrite listmatch_isolate with (i := inum) at 3.
+    repeat erewrite fst_pair by eauto.
+    cancel. simplen. simplen.
+    apply list2nmem_ptsto_cancel.
+    seprewrite.
+    erewrite listmatch_length_r with (m := list2nmem ds!!); eauto.
+    auto.
+
     (* crashes *)
     xcrash.
     xcrash.
     rewrite LOG.active_intact, LOG.intact_any; auto.
+    Unshelve. all: exact ($0, nil).
   Qed.
 
 

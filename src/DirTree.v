@@ -3369,6 +3369,8 @@ Module DIRTREE.
            [[ ds' = dssync_vecs ds0 al /\ BFILE.diskset_was ds0 ds ]] *
            [[[ ds'!! ::: (Fm * rep fsxp Ftop tree' ilist frees) ]]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
+              BFILE.block_belong_to_file ilist (selN al i 0) inum i ]] *
            [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
                            ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
     XCRASH:hm'

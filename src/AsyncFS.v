@@ -685,8 +685,8 @@ Module AFS.
         [[ MSAlloc mscs' = MSAlloc mscs ]] *
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
         [[ ds' = dssync_vecs ds0 al /\ BFILE.diskset_was ds0 ds ]] *
-        [[ length al = length (BFILE.BFData f) ]] *
-        [[ forall i, i < length al -> BFILE.block_belong_to_file ilist (selN al i 0) inum i ]] *
+        [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
+              BFILE.block_belong_to_file ilist (selN al i 0) inum i ]] *
         [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist frees)]]] *
         [[ tree' = update_subtree pathname (TreeFile inum  (BFILE.synced_file f)) tree ]] *
         [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
@@ -704,9 +704,11 @@ Module AFS.
     eauto.
     step.
     step.
-    admit. admit.
+
     - xcrash_solve.
+      unfold BFILE.diskset_was in *; intuition subst.
       (* XXX: need to show that we can ignore dssync_vecs inside crash_xform *)
+      admit.
       admit.
 
     - cancel.
@@ -717,12 +719,12 @@ Module AFS.
     - xcrash_solve.
       rewrite LOG.intact_idempred.
       cancel.
-    Admitted.
+  Admitted.
 
   Hint Extern 1 ({{_}} progseq (file_sync _ _ _) _) => apply file_sync_ok : prog.
 
 
- Theorem tree_sync_ok: forall fsxp  mscs,
+  Theorem tree_sync_ok: forall fsxp  mscs,
     {< ds Fm Ftop tree ilist frees,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
