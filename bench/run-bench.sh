@@ -71,7 +71,7 @@ mv $TRACE $SCRIPTPREFIX-origfscq.blktrace
 
 ## ext4async
 yes | mke2fs -t ext4 $DEV
-sudo mount $DEV $MOUNT -o journal_async_commit
+sudo mount $DEV $MOUNT -o journal_async_commit,data=journal
 sudo chmod 777 $MOUNT
 sudo blktrace -d $DEV -o - > $TRACE &
 TRACEPID=$!
