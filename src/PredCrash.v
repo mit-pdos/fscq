@@ -10,8 +10,13 @@ Require Import Arith.
 Set Implicit Arguments.
 
 
+Definition ptsto_subset {AT AEQ} (a : AT) (vs : valuset) : @pred AT AEQ valuset :=
+  (exists old, a |-> (fst vs, old) /\ [ forall v, In v old -> In v (snd vs) ])%pred.
+
 Notation "a |=> v" := (a |-> ((v, nil) : valuset))%pred (at level 35) : pred_scope.
 Notation "a |~> v" := (exists old, a |-> ((v, old) : valuset))%pred (at level 35) : pred_scope.
+Notation "a |+> v" := (ptsto_subset a v) (at level 35) : pred_scope.
+
 
 Definition rawpred := @pred addr addr_eq_dec valuset.
 
@@ -19,6 +24,16 @@ Definition rawpred := @pred addr addr_eq_dec valuset.
 (* if [p] was true before a crash, then [crash_xform p] is true after a crash *)
 Definition crash_xform (p : rawpred) : rawpred :=
   fun m => exists m', p m' /\ possible_crash m' m.
+
+Definition sync_mem AT AEQ (m : @mem AT AEQ valuset) : @mem AT AEQ valuset :=
+  fun a => match m a with
+    | None => None
+    | Some (v, _) => Some (v, nil)
+    end.
+
+(* if [p] was true before a sync, then [sync_xform p] is true after a sync *)
+Definition sync_xform (p : rawpred) : rawpred :=
+  fun m => exists m', p m' /\ m = sync_mem m'.
 
 
 (* Specialized relations for [@pred valuset], to deal with async IO *)
@@ -685,3 +700,105 @@ Ltac xform' := autorewrite with crash_xform; repeat xform_simpl.
 Ltac xform := repeat xform'.
 
 
+Definition sync_invariant p : Prop := sync_xform p =p=> p.
+
+Theorem ptsto_pimpl_ptsto_subset : forall AT AEQ (a : AT) vs,
+  ((a |-> vs) : @pred AT AEQ _) =p=> a |+> vs.
+Proof.
+  unfold pimpl, ptsto_subset; intros.
+  exists (snd vs).
+  split.
+  destruct vs; exact H.
+  firstorder.
+Qed.
+
+Theorem ptsto_sync_mem : forall (a : addr) (vs : valuset) v m,
+  (a |-> vs)%pred m ->
+  v = fst vs ->
+  (a |-> (v, nil) : @pred _ addr_eq_dec _)%pred (sync_mem m).
+Proof.
+  unfold sync_mem, ptsto; destruct vs; intuition; subst.
+  rewrite H1; simpl; auto.
+  rewrite H2 by eauto; auto.
+Qed.
+
+Theorem sync_xform_ptsto_subset_preserve : forall a vs,
+  sync_invariant (a |+> vs)%pred.
+Proof.
+  unfold sync_invariant, pimpl, sync_xform, ptsto_subset; intros.
+  deex. destruct H0. destruct H.
+  exists nil.
+  split.
+  eapply ptsto_sync_mem; eauto.
+  intro; intros.
+  inversion H1.
+Qed.
+
+Theorem sync_xform_ptsto_subset_precise : forall a vs,
+  sync_xform (a |+> vs) =p=> a |=> (fst vs).
+Proof.
+  unfold sync_xform, ptsto_subset, pimpl; intros.
+  deex. destruct H0. destruct H.
+  eapply ptsto_sync_mem; eauto.
+Qed.
+
+Theorem sync_xform_or_dist : forall p q,
+  sync_xform (p \/ q) <=p=> sync_xform p \/ sync_xform q.
+Proof.
+  firstorder.
+Qed.
+
+Theorem sync_xform_lift_empty : forall (P : Prop),
+  @sync_xform [[ P ]] <=p=> [[ P ]].
+Proof.
+  unfold sync_xform, sync_mem, lift_empty, possible_crash; intros; split;
+    intros m H; repeat deex.
+  rewrite H2; eauto.
+  exists m; intuition.
+  apply functional_extensionality; intros.
+  rewrite H1; auto.
+Qed.
+
+Lemma sync_mem_union : forall AT AEQ (m1 m2 : @mem AT AEQ _),
+  sync_mem (mem_union m1 m2) = mem_union (sync_mem m1) (sync_mem m2).
+Proof.
+  unfold mem_union, sync_mem; intros.
+  apply functional_extensionality; intros.
+  destruct (m1 x); auto.
+  destruct p; auto.
+Qed.
+
+Lemma sync_mem_disjoint1 : forall AT AEQ (m1 m2 : @mem AT AEQ _),
+  mem_disjoint m1 m2 -> mem_disjoint (sync_mem m1) (sync_mem m2).
+Proof.
+  unfold mem_disjoint, sync_mem; intuition.
+  apply H.
+  repeat deex.
+  exists a.
+  destruct (m1 a); try congruence.
+  destruct (m2 a); try congruence.
+  eauto.
+Qed.
+
+Lemma sync_mem_disjoint2 : forall AT AEQ (m1 m2 : @mem AT AEQ _),
+  mem_disjoint (sync_mem m1) (sync_mem m2) -> mem_disjoint m1 m2.
+Proof.
+  unfold mem_disjoint, sync_mem; intuition.
+  apply H.
+  repeat deex.
+  exists a. destruct v1. destruct v2.
+  rewrite H1. rewrite H2. eauto.
+Qed.
+
+Hint Resolve sync_mem_disjoint1.
+Hint Resolve sync_mem_disjoint2.
+Hint Resolve sync_mem_union.
+
+Theorem sync_xform_sep_star_dist : forall (p q : rawpred),
+  sync_xform (p * q) <=p=> sync_xform p * sync_xform q.
+Proof.
+  unfold_sep_star; unfold sync_xform, piff, pimpl; split; intros; repeat deex.
+  - exists (sync_mem m1). exists (sync_mem m2). intuition eauto.
+  - exists (mem_union m'0 m'); intuition.
+    do 2 eexists; intuition.
+Qed.
