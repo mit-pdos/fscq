@@ -734,12 +734,34 @@ Proof.
   inversion H1.
 Qed.
 
+Theorem sync_xform_ptsto_any : forall a,
+  sync_invariant (a |->?)%pred.
+Proof.
+  unfold sync_invariant, pimpl, sync_xform; intros; deex.
+  destruct H0. eexists.
+  eapply ptsto_sync_mem; eauto.
+Qed.
+
 Theorem sync_xform_ptsto_subset_precise : forall a vs,
   sync_xform (a |+> vs) =p=> a |=> (fst vs).
 Proof.
   unfold sync_xform, ptsto_subset, pimpl; intros.
   deex. destruct H0. destruct H.
   eapply ptsto_sync_mem; eauto.
+Qed.
+
+Theorem sync_xform_ptsto_nil : forall a v,
+  sync_invariant (a |=> v)%pred.
+Proof.
+  unfold sync_invariant, sync_xform, pimpl; intros; deex.
+  eapply ptsto_sync_mem; eauto.
+Qed.
+
+Theorem sync_xform_emp :
+  sync_invariant emp.
+Proof.
+  unfold sync_invariant, sync_xform, sync_mem, emp, pimpl; intros; deex.
+  rewrite H0; auto.
 Qed.
 
 Theorem sync_xform_or_dist : forall p q,
@@ -801,4 +823,76 @@ Proof.
   - exists (sync_mem m1). exists (sync_mem m2). intuition eauto.
   - exists (mem_union m'0 m'); intuition.
     do 2 eexists; intuition.
+Qed.
+
+Theorem sync_xform_exists_comm : forall T (p : T -> rawpred),
+  sync_xform (exists x, p x) <=p=> exists x, sync_xform (p x).
+Proof.
+  split; unfold sync_xform, exis, pimpl; intros;
+  repeat deex; repeat eexists; intuition eauto.
+Qed.
+
+Theorem sync_xform_forall_comm : forall T (p : T -> rawpred),
+  sync_xform (foral x, p x) =p=> foral x, sync_xform (p x).
+Proof.
+  unfold sync_xform, foral_, pimpl; intros.
+  repeat deex; repeat eexists; intuition eauto.
+Qed.
+
+Theorem sync_xform_pimpl : forall p q,
+  p =p=> q ->
+  sync_xform p =p=> sync_xform q.
+Proof.
+  unfold sync_xform, pimpl; intros.
+  deex; eauto.
+Qed.
+
+Instance sync_xform_pimpl_proper:
+  Proper (pimpl ==> pimpl) sync_xform.
+Proof.
+  firstorder.
+Qed.
+
+Instance sync_xform_flip_pimpl_proper:
+  Proper (Basics.flip pimpl ==> Basics.flip pimpl) sync_xform.
+Proof.
+  firstorder.
+Qed.
+
+Instance sync_xform_piff_proper:
+  Proper (piff ==> piff) sync_xform.
+Proof.
+  firstorder.
+Qed.
+
+Theorem sync_xform_diskIs: forall m,
+  sync_xform (diskIs m) =p=> diskIs (sync_mem m).
+Proof.
+  unfold sync_xform, diskIs, pimpl; intros.
+  deex; auto.
+Qed.
+
+Theorem sync_xform_pred_apply : forall (p : rawpred) m,
+  p m -> (sync_xform p) (sync_mem m).
+Proof.
+  firstorder.
+Qed.
+
+Theorem sync_mem_idem : forall AT AEQ (m : @mem AT AEQ _),
+  sync_mem (sync_mem m) = sync_mem m.
+Proof.
+  unfold sync_mem; intros.
+  apply functional_extensionality; intros.
+  destruct (m x); auto.
+  destruct p; auto.
+Qed.
+
+Theorem sync_xform_idem : forall p,
+  sync_xform (sync_xform p) <=p=> sync_xform p.
+Proof.
+  unfold sync_xform, piff, pimpl; split; intros; repeat deex.
+  - exists m'0; intuition. apply sync_mem_idem.
+  - eexists; split.
+    exists m'; intuition.
+    rewrite sync_mem_idem; auto.
 Qed.
