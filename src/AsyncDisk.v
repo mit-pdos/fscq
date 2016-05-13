@@ -145,3 +145,10 @@ Lemma hash_to_valu_inj : forall a b,
   apply combine_inj in H.
   intuition.
 Qed.
+
+
+Definition sync_mem AT AEQ (m : @mem AT AEQ valuset) : @mem AT AEQ valuset :=
+  fun a => match m a with
+    | None => None
+    | Some (v, _) => Some (v, nil)
+    end.

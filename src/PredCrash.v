@@ -25,12 +25,6 @@ Definition rawpred := @pred addr addr_eq_dec valuset.
 Definition crash_xform (p : rawpred) : rawpred :=
   fun m => exists m', p m' /\ possible_crash m' m.
 
-Definition sync_mem AT AEQ (m : @mem AT AEQ valuset) : @mem AT AEQ valuset :=
-  fun a => match m a with
-    | None => None
-    | Some (v, _) => Some (v, nil)
-    end.
-
 (* if [p] was true before a sync, then [sync_xform p] is true after a sync *)
 Definition sync_xform (p : rawpred) : rawpred :=
   fun m => exists m', p m' /\ m = sync_mem m'.

@@ -18,7 +18,8 @@ Inductive prog (T : Type):=
   | Done (v: T)
   | Read (a: addr) (rx: valu -> prog T)
   | Write (a: addr) (v: valu) (rx: unit -> prog T)
-  | Sync (a: addr) (rx: unit -> prog T)
+  | SyncAddr (a: addr) (rx: unit -> prog T)
+  | Sync (rx: unit -> prog T)
   | Trim (a: addr) (rx: unit -> prog T)
   | Hash (sz: nat) (buf: word sz) (rx: word hashlen -> prog T).
 
@@ -33,8 +34,10 @@ Inductive step (T : Type) : rawdisk -> hashmap -> prog T ->
     step m hm (Read a rx) m hm (rx v)
   | StepWrite : forall m a rx v v0 x hm, m a = Some (v0, x) ->
     step m hm (Write a v rx) (upd m a (v, v0 :: x)) hm (rx tt)
-  | StepSync : forall m a rx v l hm, m a = Some (v, l) ->
-    step m hm (Sync a rx) (upd m a (v, nil)) hm (rx tt)
+  | StepSyncAddr : forall m a rx v l hm, m a = Some (v, l) ->
+    step m hm (SyncAddr a rx) (upd m a (v, nil)) hm (rx tt)
+  | StepSync : forall m rx hm,
+    step m hm (Sync rx) (sync_mem m) hm (rx tt)
   | StepTrim : forall m a rx vs vs' hm, m a = Some vs ->
     step m hm (Trim a rx) (upd m a vs') hm (rx tt)
   | StepHash : forall m sz (buf : word sz) rx h hm,

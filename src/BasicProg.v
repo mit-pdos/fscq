@@ -86,13 +86,13 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (Write _ _) _) => apply write_ok : prog.
 
-Theorem sync_ok:
+Theorem sync_addr_ok:
   forall (a:addr),
   {< v,
   PRE        a |-> v
   POST RET:r a |-> (fst v, nil)
   CRASH      a |-> v
-  >} Sync a.
+  >} SyncAddr a.
 Proof.
   unfold corr2; intros.
   destruct_lift H.
@@ -114,7 +114,32 @@ Proof.
     pred_apply; cancel.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (Sync _) _) => apply sync_ok : prog.
+Hint Extern 1 ({{_}} progseq (SyncAddr _) _) => apply sync_addr_ok : prog.
+
+Theorem sync_ok:
+  {!< F,
+  PRE        F
+  POST RET:r sync_xform F
+  CRASH      F
+  >!} @Sync _.
+Proof.
+  unfold corr2; intros.
+  destruct_lift H.
+  inv_exec.
+  - inv_step.
+    eapply H4; eauto.
+    eapply pimpl_trans; [ | | eapply sync_xform_pred_apply; pred_apply; reflexivity ].
+    eauto.
+    cancel.
+  - exfalso.
+    apply H1. repeat eexists.
+    econstructor.
+  - right. repeat eexists; intuition eauto.
+    eapply H3.
+    pred_apply; cancel.
+Qed.
+
+Hint Extern 1 ({{_}} progseq Sync _) => apply sync_ok : prog.
 
 Theorem trim_ok:
   forall (a:addr),

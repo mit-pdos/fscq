@@ -87,7 +87,7 @@ Module RCache.
     end.
 
   Definition sync T a (cs : cachestate) rx : prog T :=
-    Sync a;;
+    SyncAddr a;;
     rx cs.
 
   Definition trim T a (cs : cachestate) rx : prog T :=
