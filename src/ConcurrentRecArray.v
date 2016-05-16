@@ -533,6 +533,18 @@ Module RecArray (Params:RecArrayParams).
            eapply recarray_invariant_preserved
          end.
 
+    Definition lock {T} i rx : prog Mcontents Scontents T :=
+      tid <- GetTID;
+      wait_for MLocks (Locks.is_open i) ($ i);;
+               l <- Get MLocks;
+      let l' := Locks.set_locked l i in
+      Assgn MLocks l';;
+            GhostUpdate (fun s =>
+                           let l := get GLocks s in
+                           let l' := Locks.add_lock l i tid in
+                           set GLocks l' s);;
+            rx tt.
+
     Definition block_off i := i / items_per_valu.
 
     Definition block_idx i := RAStart + block_off i.
@@ -546,7 +558,7 @@ Module RecArray (Params:RecArrayParams).
     Definition locked_get_item {T} i rx : prog Mcontents Scontents T :=
       let idx := $ (block_idx i) in
       let off := off_idx i in
-           v <- locked_read idx;
+           v <- read idx;
                let b := valu_block v in
                rx (get_block_offset b off).
 
@@ -698,21 +710,19 @@ Module RecArray (Params:RecArrayParams).
       rewrite <- Nat.div_mod; auto.
     Qed.
 
-    Polymorphic Theorem locked_get_item_ok : forall i,
+    Theorem locked_get_item_ok : forall i,
         stateS TID: tid |-
         {{ (_:unit),
          | PRE d m s0 s:
              Inv m s d /\
-             Locks.get (get GLocks s) ($ (block_idx i)) = Owned tid /\
+             Locks.get (get GLocks s) i = Owned tid /\
              i < RALen * items_per_valu /\
-             not_reading (view Latest (get GDisk s)) ($ (block_idx i)) /\
              R tid s0 s
          | POST d' m' s0' s' r:
-               Inv m' s' d' /\
-               locks_increasing tid s s' /\
-               r = selN (get Items s') i item0 /\
-               not_reading (view Latest (get GDisk s')) ($ (block_idx i)) /\
-               R tid s0' s'
+             Inv m' s' d' /\
+             star (othersR R tid) s s' /\
+             r = selN (get Items s') i item0 /\
+             R tid s0' s'
         }} locked_get_item i.
     Proof.
       intros.
@@ -723,41 +733,38 @@ Module RecArray (Params:RecArrayParams).
       let H := fresh in
       pose proof (@block_idx_valid i) as H; cbn in H.
       intuition.
-      apply not_reading_hide in H3; unfold not_reading' in H3.
-      eauto.
 
       step pre simplify with try solve [ finish ].
       unfold get_block_offset.
+      unfold recarrayI, rep_items', rep_blocks' in *; intuition auto.
+      specialize (H20 (block_off i)).
+      pose proof (off_idx_bound i).
+      fold (block_idx i) in *.
+      replace DiskTransitions.GDisk0 with GDisk0 in * by reflexivity.
+      erewrite H20 in * by auto.
+      inv_opt.
       rewrite block_valu_id.
-      unfold recarrayI, rep_items', rep_blocks' in *; intuition.
-
       erewrite selN_nested; try omega; eauto.
       rewrite selN_subslice; try omega; eauto.
-
       rewrite item_block_index.
       (* TODO: item i was locked from s to s2 *)
       admit.
 
-      pose proof (off_idx_bound i); omega.
-      unfold recarrayI in *; destruct_ands.
       eapply Forall_forall.
       eapply nested_blocks_well_formed.
-      eassumption.
+      admit.
       (* carry forward the locked item from s to s2 *)
       match goal with
         | [ |- In ?item _ ] =>
           replace item with (selN (nest_list (get Items s2) items_per_valu) (block_off i) block0)
       end.
       eapply in_selN.
-      unfold rep_items', rep_blocks' in *; intuition.
-      erewrite length_nest_list_exact by eauto; eauto.
-      admit. (* same locked goal *)
-
-      (* not sure why this ends up being true - adding another layer
-      of disk locks completely internal to the disk would solve this
-      by hiding readers better (at the expensive of having another set
-      of locks in the cache or directly at this level) *)
+      unfold rep_items', rep_blocks' in *; intuition auto.
+      (* length_nest_list_exact assumptions should be dispatched easily *)
+      erewrite length_nest_list_exact; eauto.
       admit.
+      admit.
+      admit. (* same locked goal *)
     Admitted.
 
   End RecArray.
