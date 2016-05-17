@@ -665,6 +665,16 @@ Proof.
   intros; split; [ apply pimpl_star_emp | apply star_emp_pimpl ].
 Qed.
 
+
+Lemma emp_star_r: forall (F:@pred AT AEQ V),
+  F =p=> (F * emp)%pred.
+Proof.
+  intros.
+  eapply pimpl_trans.
+  2: apply sep_star_comm.
+  apply emp_star.
+Qed.
+
 Lemma piff_star_r: forall (a b c : @pred AT AEQ V),
   (a <=p=> b) ->
   (a * c <=p=> b * c).
