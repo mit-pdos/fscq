@@ -11,7 +11,7 @@ Set Implicit Arguments.
 
 
 Definition ptsto_subset {AT AEQ} (a : AT) (vs : valuset) : @pred AT AEQ valuset :=
-  (exists old, a |-> (fst vs, old) /\ [ forall v, In v old -> In v (snd vs) ])%pred.
+  (exists old, a |-> (fst vs, old) /\ [ incl old (snd vs) ])%pred.
 
 Notation "a |=> v" := (a |-> ((v, nil) : valuset))%pred (at level 35) : pred_scope.
 Notation "a |~> v" := (exists old, a |-> ((v, old) : valuset))%pred (at level 35) : pred_scope.
