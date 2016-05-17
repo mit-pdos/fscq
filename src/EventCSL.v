@@ -797,7 +797,7 @@ End EventCSL.
 * add delta, tid |- in front to specify the transition system and thread TID
 * quantify over T and tid and change prog to prog _ _ T (the state/mem types should be inferred)
 * add delta as an argument to valid *)
-Notation "delta  '[' tid ']' |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post }} p" :=
+Notation "'SPEC' delta , tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post }} p" :=
   (forall T (rx: _ -> prog _ T) (tid:TID),
       valid delta tid
             (fun done d m s0 s =>

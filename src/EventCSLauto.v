@@ -128,7 +128,7 @@ Section ReadWriteTheorems.
   Hint Resolve ptsto_valid ptsto_valid'.
 
   Theorem Read_ok : forall Sigma (delta: Protocol Sigma) a,
-      delta [tid] |-
+      SPEC delta, tid |-
       {{ F v,
        | PRE d m s0 s: d |= F * a |-> (v, None)
        | POST d' m' s0' s' r: d' = d /\
@@ -160,7 +160,7 @@ Definition StartRead_upd {Sigma} {T} a rx : prog Sigma T :=
             rx tt.
 
 Theorem StartRead_upd_ok : forall Sigma (delta:Protocol Sigma) a,
-    delta [tid] |-
+    SPEC delta, tid |-
     {{ v0,
      | PRE d m s0 s: d a = Some (v0, None)
      | POST d' m' s0' s' _: d' = upd d a (v0, Some tid) /\
@@ -184,7 +184,7 @@ Definition FinishRead_upd {Sigma T} a rx : prog Sigma T :=
             rx v.
 
 Theorem FinishRead_upd_ok : forall Sigma (delta:Protocol Sigma) a,
-    delta [tid] |-
+    SPEC delta, tid |-
     {{ v,
      | PRE d m s0 s: d a = Some (v, Some tid)
      | POST d' m' s0' s' r: d' = upd d a (v, None) /\
@@ -209,7 +209,7 @@ Definition Write_upd {Sigma T} a v rx : prog Sigma T :=
         rx tt.
 
 Theorem Write_upd_ok : forall Sigma (delta: Protocol Sigma) a v,
-    delta [tid] |-
+    SPEC delta, tid |-
     {{ v0,
      | PRE d m s0 s: d a = Some (v0, None)
      | POST d' m' s0' s' r: d' = upd d a (v, None) /\
@@ -360,7 +360,7 @@ Hint Resolve rely_stutter.
 Theorem wait_for_ok : forall Sigma (delta: Protocol Sigma)
                         tv (v: var (mem_types Sigma) tv) P (test: forall v, {P v} + {~ P v}) wchan
                         (R_stutter: forall tid s, guar delta tid s s),
-  delta [tid] |-
+  SPEC delta, tid |-
     {{ (_:unit),
      | PRE d m s0 s:
        invariant delta d m s /\
@@ -459,19 +459,19 @@ Definition AcquireLock {Sigma T}
 Theorem AcquireLock_ok : forall Sigma (delta: Protocol Sigma)
                         (R_trans : forall tid s1 s2, star (guar delta tid) s1 s2 -> guar delta tid s1 s2)
                         l up wchan,
- delta [tid] |-
+    SPEC delta, tid |-
     {{ (_:unit),
      | PRE d m s0 s:
-       invariant delta d m s /\
-       guar delta tid s0 s
+         invariant delta d m s /\
+         guar delta tid s0 s
      | POST d' m'' s0' s'' _:
-       exists m' s',
-         rely delta tid s s' /\
-       invariant delta d' m' s' /\
-       m'' = set l Locked m' /\
-       s'' = up tid s' /\
-       guar delta tid s0' s' /\
-       get l m'' = Locked
+         exists m' s',
+           rely delta tid s s' /\
+           invariant delta d' m' s' /\
+           m'' = set l Locked m' /\
+           s'' = up tid s' /\
+           guar delta tid s0' s' /\
+           get l m'' = Locked
     }} AcquireLock l up wchan.
 Proof.
   hoare.
