@@ -46,12 +46,9 @@ Section AsyncDiskWrites.
 
 End AsyncDiskWrites.
 
-Hint Immediate (Valuset $0 nil).
-Hint Immediate (Valuset $0 nil, @None ID).
+Definition TID := nat.
 
-Definition ID := nat.
-
-Definition wr_set : Type := valu * option ID.
+Definition wr_set : Type := valu * option TID.
 
 (* a disk state *)
 Notation DISK := (@mem addr (@weq addrlen) (const wr_set)).
@@ -59,42 +56,76 @@ Notation DISK := (@mem addr (@weq addrlen) (const wr_set)).
 (* a disk predicate *)
 Notation DISK_PRED := (@pred addr (@weq addrlen) (const wr_set)).
 
+Section LogicDefinition.
+
+  Definition Hmem (types: list Type) := @hlist Type id types.
+
+  (** State is the kind of all state types.
+
+    A member Sigma:State is given the metavariable Sigma since it is
+    conceptually the type of states:
+
+    sigma: (memory Sigma, abstraction Sigma)
+
+    The projections mem_types and abstraction_types are not used above
+    since they don't literally return the type of memory/ghost state -
+    they only give the expected types on those heterogeneous memories.
+   *)
+
+  Record State:Type :=
+    stateTypes
+      { mem_types: list Type;
+        abstraction_types: list Type }.
+
+  Definition memory (Sigma:State) := Hmem (mem_types Sigma).
+  Definition abstraction (Sigma:State) := Hmem (abstraction_types Sigma).
+
+  (** Protocol Sigma is the kind of all protocols over the state type
+  Sigma.
+
+    A given protocol delta:Protocol Sigma defines a transition system
+    for programs that use the memory/abstraction representation Sigma.
+
+   *)
+
+  Record Protocol (Sigma:State) : Type :=
+    mkProtocol
+      { invariant: DISK -> memory Sigma -> abstraction Sigma -> Prop;
+        guar: TID -> abstraction Sigma -> abstraction Sigma -> Prop }.
+
+  Definition others A (r: TID -> A -> A -> Prop) tid :=
+    fun a a' => exists tid', tid <> tid' /\
+                      r tid' a a'.
+
+  Definition rely Sigma (delta:Protocol Sigma) :
+    TID -> abstraction Sigma -> abstraction Sigma -> Prop :=
+    fun tid => star (others (guar delta) tid).
+
+End LogicDefinition.
+
 Section EventCSL.
   Set Default Proof Using "Type".
 
-  (** The memory is a heterogenously typed list where element types
-      are given by Mcontents. *)
-  Variable Mcontents:list Type.
-  (** The type of the program's memory. *)
-  Definition M := @hlist Type (fun T:Type => T) Mcontents.
+  Variable Sigma:State.
+  Variable delta:Protocol Sigma.
 
-
-  (** Programs can manipulate ghost state of an hlist where element types
-      are given by Scontents *)
-  Variable Scontents:list Type.
-  Definition S := @hlist Type (fun T:Type => T) Scontents.
+  (* TODO: consider getting rid of return values (Done would take no
+  arguments and terminate the program, leaving only state) *)
 
   (** Our programs will return values of type T *)
   Variable T:Type.
-
-  (** Define the transition system for the semantics.
-      The semantics will reject transitions that do not obey these rules. *)
-  Definition Relation := S -> S -> Prop.
-  Variable StateR : ID -> Relation.
-  Definition Invariant := M -> S -> DISK_PRED.
-  Variable StateI : Invariant.
 
   CoInductive prog :=
   | StartRead (a: addr) (rx: unit -> prog)
   | FinishRead (a: addr) (rx: valu -> prog)
   | Write (a: addr) (v: valu) (rx: unit -> prog)
   | Sync (a: addr) (rx: unit -> prog)
-  | Get t (v: var Mcontents t) (rx: t -> prog)
-  | Assgn t (v: var Mcontents t) (val:t) (rx: unit -> prog)
-  | GetTID (rx: ID -> prog)
+  | Get t (v: var (mem_types Sigma) t) (rx: t -> prog)
+  | Assgn t (v: var (mem_types Sigma) t) (val:t) (rx: unit -> prog)
+  | GetTID (rx: TID -> prog)
   | Yield (wchan: addr) (rx: unit -> prog)
   | Wakeup (wchan: addr) (rx: unit -> prog)
-  | GhostUpdate (up: S -> S) (rx: unit -> prog)
+  | GhostUpdate (up: abstraction Sigma -> abstraction Sigma) (rx: unit -> prog)
   | Done (v: T).
 
   Ltac inv_prog :=
@@ -104,36 +135,16 @@ Section EventCSL.
     end.
 
   Implicit Type d : DISK.
-  Implicit Type m : M.
-  Implicit Type s : S.
+  Implicit Type m : memory Sigma.
+  Implicit Type s : abstraction Sigma.
   Implicit Type p : prog.
 
-  Definition state := (DISK * M * S * S)%type.
+  Definition state := (DISK * memory Sigma * abstraction Sigma * abstraction Sigma)%type.
 
   Reserved Notation "tid ':-' p '/' st '==>' p' '/' st'"
            (at level 40, p at next level, p' at next level).
 
-  Definition othersR (stateR:ID -> Relation) tid : Relation :=
-    fun s s' =>
-      exists tid', tid <> tid' /\
-              stateR tid' s s'.
-
-  Definition anyR (stateR : ID -> Relation) : Relation :=
-    fun s s' => exists tid, stateR tid s s'.
-
-  (* StateR' tid is a valid transition for someone other than tid *)
-  Definition StateR' : ID -> Relation := othersR StateR.
-
-  (* StateRany is a valid transition for any tid *)
-  Definition StateRany : Relation := anyR StateR.
-
-  Lemma StateR'_any : forall tid s1 s2,
-    StateR' tid s1 s2 -> StateRany s1 s2.
-  Proof.
-    unfold StateR', StateRany, othersR, anyR. intuition deex. eauto.
-  Qed.
-
-  Inductive step (tid:ID) : forall st p st' p', Prop :=
+  Inductive step (tid:TID) : forall p st p' st', Prop :=
   | StepStartRead : forall d m s0 s v
                       a rx,
       d a = Some (v, None) ->
@@ -151,10 +162,10 @@ Section EventCSL.
       tid :- Write a v' rx / (d, m, s0, s) ==>
           rx tt / (d', m, s0, s)
   | StepYield : forall d m s0 s s' m' d' wchan rx,
-      StateI m s d ->
-      StateI m' s' d' ->
-      StateR tid s0 s ->
-      star (StateR' tid) s s' ->
+      invariant delta d m s ->
+      invariant delta d' m' s' ->
+      guar delta tid s0 s ->
+      rely delta tid s s' ->
       tid :- Yield wchan rx / (d, m, s0, s) ==>
           rx tt / (d', m', s', s')
   | StepWakeup : forall d m s0 s wchan rx,
@@ -166,14 +177,14 @@ Section EventCSL.
           rx tt / (d, m, s0, s')
   | StepGetTID : forall st rx,
       tid :- GetTID rx / st ==> rx tid / st
-  | StepGet : forall d m s s0 t (v: var Mcontents t) rx,
+  | StepGet : forall d m s s0 t (v: var (mem_types Sigma) t) rx,
       tid :- Get v rx / (d, m, s0, s) ==> rx (get v m) / (d, m, s0, s)
-  | StepAssgn : forall d m s s0 t (v: var Mcontents t) val rx,
+  | StepAssgn : forall d m s s0 t (v: var (mem_types Sigma) t) val rx,
       let m' := set v val m in
       tid :- Assgn v val rx / (d, m, s0, s) ==> rx tt / (d, m', s0, s)
-  where "tid ':-' p '/' st '==>' p' '/' st'" := (step tid st p st' p').
+  where "tid ':-' p '/' st '==>' p' '/' st'" := (step tid p st p' st').
 
-  Inductive fail_step (tid:ID) : prog -> state -> Prop :=
+  Inductive fail_step (tid:TID) : prog -> state -> Prop :=
   | FailStepStartRead : forall a d m s0 s rx,
       d a = None ->
       fail_step tid (StartRead a rx) (d, m, s0, s)
@@ -192,15 +203,14 @@ Section EventCSL.
       d a = None ->
       fail_step tid (Write a v rx) (d, m, s0, s)
   | FailStepYield : forall d m s0 s wchan rx,
-      (~StateI m s d) ->
+      (~invariant delta d m s) ->
       fail_step tid (Yield wchan rx) (d, m, s0, s).
 
   Hint Constructors step fail_step.
 
-  Theorem fail_step_consistent : forall tid p d m s0 s
-                                   p' st',
-      step tid (d, m, s0, s) p st' p' ->
-      fail_step tid p (d, m, s0, s) ->
+  Theorem fail_step_consistent : forall tid p st p' st',
+      step tid p st p' st' ->
+      fail_step tid p st ->
       False.
   Proof.
     inversion 1; inversion 1; congruence.
@@ -227,57 +237,57 @@ Section EventCSL.
   | YieldProgYield : forall wchan rx,
     yieldProg (Yield wchan rx).
 
-  Inductive exec tid : forall st p (out:outcome), Prop :=
-  | ExecStep : forall st p st' p' out,
+  Inductive exec tid : forall p st (out:outcome), Prop :=
+  | ExecStep : forall p st p' st' out,
       tid :- p / st ==> p' / st' ->
-      exec tid st' p' out ->
-      exec tid st p out
-  | ExecFail : forall st p,
+      exec tid p' st' out ->
+      exec tid p st out
+  | ExecFail : forall p st,
       fail_step tid p st ->
-      exec tid st p Failed
+      exec tid p st Failed
   | ExecDone : forall d m s0 s v,
-      exec tid (d, m, s0, s) (Done v) (Finished d v).
+      exec tid (Done v) (d, m, s0, s) (Finished d v).
 
   Hint Constructors exec.
 
   Section TwoStepExecution.
 
   Definition exec_ind2
-                     (tid : ID)
-                     (P : DISK * M * S * S -> prog -> outcome -> Prop)
-                     (f : forall (st  : DISK * M * S * S) (p  : prog)
-                                 (st' : DISK * M * S * S) (p' : prog)
+                     (tid : TID)
+                     (P : prog -> state -> outcome -> Prop)
+                     (f : forall (st : state) (p  : prog)
+                                 (st' : state) (p' : prog)
                                  (out : outcome),
                           tid :- p / st ==> p' / st' ->
-                          exec tid st' p' out ->
+                          exec tid p' st' out ->
                           ((exists v, p' = Done v) \/
                            fail_step tid p' st') ->
-                          P st' p' out ->
-                          P st p out)
-                     (g : forall (st   : DISK * M * S * S) (p   : prog)
-                                 (st'  : DISK * M * S * S) (p'  : prog)
-                                 (st'' : DISK * M * S * S) (p'' : prog)
+                          P p' st' out ->
+                          P p st out)
+                     (g : forall (st : state) (p   : prog)
+                                 (st' : state) (p'  : prog)
+                                 (st'' : state) (p'' : prog)
                                  (out : outcome),
                           tid :- p / st ==> p' / st' ->
                           tid :- p' / st' ==> p'' / st'' ->
-                          exec tid st'' p'' out ->
-                          P st'' p'' out ->
-                          P st p out)
+                          exec tid p'' st'' out ->
+                          P p'' st'' out ->
+                          P p st out)
                      (f0 : forall (st : state) (p : prog),
                            fail_step tid p st ->
-                           P st p Failed)
-                     (f1 : forall (d : DISK) (m : M) (s0 s : S) (v : T),
-                           P (d, m, s0, s) (Done v) (Finished d v))
-                     (st : DISK * M * S * S)
+                           P p st Failed)
+                     (f1 : forall (d : DISK) m s0 s (v : T),
+                           P (Done v) (d, m, s0, s) (Finished d v))
+                     (st : state)
                      (p : prog)
                      (out : outcome)
-                     (e : exec tid st p out) : (P st p out).
+                     (e : exec tid p st out) : (P p st out).
 
     refine ((fix exec_ind2
-                     (st : DISK * M * S * S)
+                     (st : state)
                      (p : prog)
                      (out : outcome)
-                     (e : exec tid st p out) {struct e} : (P st p out) := _) st p out e).
+                     (e : exec tid p st out) {struct e} : (P p st out) := _) st p out e).
     destruct e.
 
     - destruct e.
@@ -288,45 +298,45 @@ Section EventCSL.
     - eauto.
   Defined.
 
-  Inductive exec2 tid : forall st p (out:outcome), Prop :=
-  | Exec2Step : forall st p st' p' st'' p'' out,
+  Inductive exec2 tid : forall p st (out:outcome), Prop :=
+  | Exec2Step : forall p st p' st' p'' st'' out,
       tid :- p / st ==> p' / st' ->
       tid :- p' / st' ==> p'' / st'' ->
-      exec2 tid st'' p'' out ->
-      exec2 tid st p out
-  | Exec2Fail : forall st p,
+      exec2 tid p'' st'' out ->
+      exec2 tid p st out
+  | Exec2Fail : forall p st,
       fail_step tid p st ->
-      exec2 tid st p Failed
-  | Exec2StepFail : forall st p st' p',
+      exec2 tid p st Failed
+  | Exec2StepFail : forall p st p' st',
       tid :- p / st ==> p' / st' ->
       fail_step tid p' st' ->
-      exec2 tid st p Failed
+      exec2 tid p st Failed
   | Exec2Done : forall d m s0 s v,
-      exec2 tid (d, m, s0, s) (Done v) (Finished d v)
-  | Exec2StepDone : forall st p d' m' s0' s' v,
+      exec2 tid (Done v) (d, m, s0, s) (Finished d v)
+  | Exec2StepDone : forall p st d' m' s0' s' v,
       tid :- p / st ==> Done v / (d', m', s0', s') ->
-      exec2 tid st p (Finished d' v).
+      exec2 tid p st (Finished d' v).
 
   Hint Constructors exec2.
 
-  Theorem exec2_imp_exec : forall tid st p out,
-      exec2 tid st p out ->
-      exec tid st p out.
+  Theorem exec2_imp_exec : forall tid p st out,
+      exec2 tid p st out ->
+      exec tid p st out.
   Proof.
     induction 1; eauto.
   Qed.
 
-  Theorem exec_imp_exec2 : forall tid st p out,
-      exec tid st p out ->
-      exec2 tid st p out.
+  Theorem exec_imp_exec2 : forall tid p st out,
+      exec tid p st out ->
+      exec2 tid p st out.
   Proof.
     induction 1; subst; eauto.
     inversion H0; subst; eauto.
   Admitted.
 
-  Theorem exec_equiv_exec2 : forall tid st p out,
-      exec tid st p out <->
-      exec2 tid st p out.
+  Theorem exec_equiv_exec2 : forall tid p st out,
+      exec tid p st out <->
+      exec2 tid p st out.
   Proof.
     split; auto using exec2_imp_exec, exec_imp_exec2.
   Qed.
@@ -390,10 +400,10 @@ Section EventCSL.
   conditions. *)
   Definition valid tid (pre: donecond ->
         (* state: d, m, s0, s *)
-        DISK -> M -> S -> S -> Prop) p : Prop :=
+        DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop) p : Prop :=
     forall d m s0 s done out,
       pre done d m s0 s ->
-      exec tid (d, m, s0, s) p out ->
+      exec tid p (d, m, s0, s) out ->
       (exists d' v,
         out = Finished d' v /\ done v d').
 
@@ -434,7 +444,7 @@ Section EventCSL.
     end.
 
   Notation "tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post }} p" :=
-    (forall (rx: _ -> prog) (tid:ID),
+    (forall (rx: _ -> prog) (tid:TID),
         valid tid (fun done d m s0 s =>
                      (ex (fun e1 => .. (ex (fun e2 =>
                                            pre%judgement /\
@@ -598,11 +608,11 @@ Section EventCSL.
 
   Theorem Yield_ok : forall wchan,
     tid |- {{ (_:unit),
-           | PRE d m s0 s: d |= StateI m s /\
-                           StateR tid s0 s
-           | POST d' m' s0' s' _: d' |= StateI m' s' /\
+           | PRE d m s0 s: invariant delta d m s /\
+                           guar delta tid s0 s
+           | POST d' m' s0' s' _: invariant delta d' m' s' /\
                                   s0' = s' /\
-                                  star (StateR' tid) s s'
+                                  rely delta tid s s'
     }} Yield wchan.
   Proof.
     opcode_ok.
@@ -649,7 +659,7 @@ Section EventCSL.
 
   Fixpoint For_ (L : Type) (G : Type) (f : nat -> L -> (L -> prog) -> prog)
              (i n : nat)
-             (nocrash : G -> nat -> L -> DISK -> M -> S -> S -> Prop)
+             (nocrash : G -> nat -> L -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop)
              (l : L)
              (rx: L -> prog) : prog :=
     match n with
@@ -781,34 +791,20 @@ Section EventCSL.
 
 End EventCSL.
 
-(** transitions defines a transition system, grouping the StateR and StateI
-variables above.
-
-This makes the notation more convenient, since R and I can be specified in one
-ident.
-*)
-Record transitions Mcontents S := {
-      (* StateR s s' holds when s -> s' is a valid transition *)
-      StateR: ID -> Relation S;
-      (* StateI m s d holds when the ghost state s matches the memory m and disk d,
-        and any important invariants across them hold in all three *)
-      StateI: Invariant Mcontents S;
-      }.
-
 (** Copy-paste metaprogramming:
 
 * Copy the above notation
-* add sigma, tid |- in front to specify the transition system and thread ID
+* add delta, tid |- in front to specify the transition system and thread TID
 * quantify over T and tid and change prog to prog _ _ T (the state/mem types should be inferred)
-* add (StateR sigma) (StateI sigma) as arguments to valid *)
-Notation "sigma 'TID' ':' tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post }} p" :=
-  (forall T (rx: _ -> prog _ _ T) (tid:ID),
-      valid (StateR sigma) (StateI sigma) tid
+* add delta as an argument to valid *)
+Notation "delta  '[' tid ']' |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post }} p" :=
+  (forall T (rx: _ -> prog _ _ T) (tid:TID),
+      valid delta tid
             (fun done d m s0 s =>
                (ex (fun e1 => .. (ex (fun e2 =>
                                      pre%judgement /\
                                      (forall ret_,
-                                       valid (StateR sigma) (StateI sigma) tid
+                                       valid delta tid
                                              (fun done_rx d' m' s0' s' =>
                                                 (fun r => post%judgement) ret_ /\
                                                 done_rx = done)
@@ -835,7 +831,7 @@ Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2))
 
 (* maximally insert the return/state types for GetTID, which is always called
    without applying them to any arguments *)
-Arguments GetTID {Mcontents} {Scontents} {T} rx.
+Arguments GetTID {Sigma} {T} rx.
 
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
 
@@ -883,18 +879,3 @@ Hint Extern 1 {{ Yield _; _ }} => apply Yield_ok : prog.
 Hint Extern 1 {{ GhostUpdate _; _ }} => apply GhostUpdate_ok : prog.
 Hint Extern 1 {{ Wakeup _; _ }} => apply Wakeup_ok : prog.
 Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog.
-
-(* Wrap up the parameters that the semantics takes in a module. *)
-Module Type SemanticsVars.
-  Parameter Mcontents : list Type.
-  Parameter Scontents : list Type.
-End SemanticsVars.
-
-Module Type Semantics (SVars:SemanticsVars).
-  Export SVars.
-  Parameter Inv : Invariant Mcontents Scontents.
-  Parameter R : ID -> Relation Scontents.
-
-  Axiom R_trans : forall tid s1 s2,
-    star (R tid) s1 s2 -> R tid s1 s2.
-End Semantics.
