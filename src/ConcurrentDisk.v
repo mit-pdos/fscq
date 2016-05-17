@@ -34,28 +34,65 @@ Section HideReaders.
 
 End HideReaders.
 
-Module Type DiskVars (SemVars:SemanticsVars).
-  Export SemVars.
-  Parameter memVars : variables Mcontents [Locks.M].
-  Parameter stateVars : variables Scontents [linearized DISK; Disk; Locks.S].
+(** Generic structure defining a way to project some smaller set of
+state (memory and abstractions) Sigma' out of the global state Sigma.
 
-  Axiom no_confusion_memVars : NoDup (hmap var_index memVars).
-  Axiom no_confusion_stateVars : NoDup (hmap var_index stateVars).
-End DiskVars.
+The no_confusion well-formedness proofs guarantee Sigma' is actually
+less than or equal to Sigma. *)
+Record StateProj (Sigma:State) (Sigma': State) :=
+  defStateProj { memVars: variables (mem_types Sigma) (mem_types Sigma');
+                 abstractionVars: variables (abstraction_types Sigma) (abstraction_types Sigma');
+                 no_confusion_memVars : NoDup (hmap var_index memVars);
+                 no_confusion_stateVars : NoDup (hmap var_index abstractionVars) }.
 
-Module DiskTransitionSystem (SemVars:SemanticsVars) (DVars : DiskVars SemVars).
-  Import DVars.
+(** Generic proof that delta is a subprotocol of delta', both over the
+same global state.
 
-  Definition MLocks := ltac:(hget 0 memVars).
+The subprotocol comes from the fact that valid states and transitions
+in delta are all valid in delta', so the state machine for delta is a
+subset of that for delta'. *)
+Definition SubProtocol (Sigma:State) (delta:Protocol Sigma) (delta':Protocol Sigma) :=
+  (forall d m s, invariant delta d m s -> invariant delta' d m s) /\
+  (forall tid s s', guar delta tid s s' -> guar delta' tid s s').
 
-  Definition GDisk := ltac:(hget 0 stateVars).
-  Definition GDisk0 := ltac:(hget 1 stateVars).
-  Definition GLocks := ltac:(hget 2 stateVars).
+Record PrivateChanges Sigma PrivateSigma :=
+  { privateMemVars :
+      variables (mem_types Sigma) (mem_types PrivateSigma);
+    privateAbstractionVars :
+      variables (abstraction_types Sigma) (abstraction_types PrivateSigma) }.
+
+Definition privateVars {mtypes abstypes} Sigma (memVars: variables (mem_types Sigma) mtypes)
+           (abstractionVars: variables (abstraction_types Sigma) abstypes) :=
+  Build_PrivateChanges Sigma (defState _ _) memVars abstractionVars.
+
+Definition SubProtocolUnder Sigma PrivateSigma (private:PrivateChanges Sigma PrivateSigma)
+           (delta':Protocol Sigma) (delta:Protocol Sigma) :=
+  (forall d m s d' m' s',
+      invariant delta d m s ->
+      modified (privateMemVars private) m m' ->
+      modified (privateAbstractionVars private) s s' ->
+      invariant delta d' m' s').
+
+Section LockedDisk.
+
+  (* all the state used by the disk *)
+  Definition DiskSigma := defState [Locks.M] [linearized DISK; Disk; Locks.S].
+
+  Variable Sigma:State.
+  (* first component for defining the disk's part of the global state:
+  defining where the disk's state is located *)
+  Variable diskProj: StateProj Sigma DiskSigma.
+
+  Definition MLocks := ltac:(hget 0 (memVars diskProj)).
+
+  Definition GDisk := ltac:(hget 0 (abstractionVars diskProj)).
+  Definition GDisk0 := ltac:(hget 1 (abstractionVars diskProj)).
+  Definition GLocks := ltac:(hget 2 (abstractionVars diskProj)).
 
   Definition not_reading (vd: DISK) a :=
     forall v, vd a = Some v -> snd v = None.
 
-  Definition diskR (tid:ID) : Relation Scontents :=
+  Definition diskR (tid:TID) : Relation Sigma :=
     fun s s' =>
       let ld := get GDisk s in
       let ld' := get GDisk s' in
@@ -65,8 +102,8 @@ Module DiskTransitionSystem (SemVars:SemanticsVars) (DVars : DiskVars SemVars).
       linear_rel tid (Locks.get locks) (Locks.get locks')
         (get GDisk s) (get GDisk s').
 
-  Definition diskI : Invariant Mcontents Scontents :=
-    fun m s d =>
+  Definition diskI : Invariant Sigma  :=
+    fun d m s =>
       let mlocks := get MLocks m in
       let locks := get GLocks s in
       let ld0 := get GDisk0 s in
@@ -79,25 +116,22 @@ Module DiskTransitionSystem (SemVars:SemanticsVars) (DVars : DiskVars SemVars).
       ld0 = hide_readers (view LinPoint ld) /\
       d = view Latest ld.
 
-  Theorem diskR_refl : forall tid s,
-    diskR tid s s.
-  Proof.
-    unfold diskR; intuition.
-    apply same_domain_refl.
-    apply linear_rel_refl.
-  Qed.
+  Variable delta:Protocol Sigma.
 
-  Theorem diskR_trans : forall tid s s' s'',
-    diskR tid s s' ->
-    diskR tid s' s'' ->
-    diskR tid s s''.
+  Definition DiskProtocol : Protocol Sigma.
   Proof.
-    unfold diskR; intuition.
-    eapply same_domain_trans; eauto.
-    eapply linear_rel_trans; eauto.
-  Qed.
+    refine (defProtocol diskI diskR _).
+    intros.
+    apply trans_closed; auto; unfold diskR; intuition;
+    eauto using same_domain_refl, same_domain_trans,
+    linear_rel_refl, linear_rel_trans.
+  Defined.
 
-End DiskTransitionSystem.
+  Hypothesis diskProtocolDerive : SubProtocol delta DiskProtocol.
+
+  Variable diskProtocolRespected : SubProtocolUnder
+                                     (privateVars Sigma [( MLocks )] [( GDisk; GLocks )])
+                                     delta DiskProtocol.
 
 Module Type DiskSemantics (SemVars: SemanticsVars) (Sem:Semantics SemVars) (DVars:DiskVars SemVars).
 
@@ -113,7 +147,7 @@ Module Type DiskSemantics (SemVars: SemanticsVars) (Sem:Semantics SemVars) (DVar
   (** Predicate asserting the relation R ignores changes to locked
   addresses in the resource r_var (a linear_mem) protected by the set
   of locks in lock_var *)
-  Definition respects_lock contents (R: ID -> Relation contents)
+  Definition respects_lock contents (R: TID -> Relation contents)
              (lock_var: member Locks.S contents) V
              (r_var: member (@linear_mem addr (@weq _) V) contents) :=
     forall tid s s',
@@ -124,30 +158,6 @@ Module Type DiskSemantics (SemVars: SemanticsVars) (Sem:Semantics SemVars) (DVar
         R tid s s' ->
         R tid (set r_var (linear_upd (get r_var s) a v') s)
           (set r_var (linear_upd (get r_var s') a v') s').
-
-  Axiom disk_invariant_holds : forall m s d,
-    Inv m s d ->
-    diskI m s d.
-
-  Axiom disk_relation_holds : forall tid,
-      rimpl (R tid) (diskR tid).
-
-  Axiom disk_invariant_preserved : forall m s d m' s' d',
-      Inv m s d ->
-      diskI m' s' d' ->
-      modified [( MLocks )] m m' ->
-      (* GDisk0 may not be modified, so the global invariant can state
-    interactions between the linearized disk and the rest of the ghost
-    state, which must be proven after unlocking. *)
-      modified [( GDisk; GLocks )] s s' ->
-      Inv m' s' d'.
-
-  Axiom disk_relation_preserved : forall tid s s',
-      (* can actually also assume anything about s that Inv m s d
-      implies (forall m and d) *)
-      modified [( GDisk; GLocks )] s s' ->
-      diskR tid s s' ->
-      R tid s s'.
 
   Axiom relation_respects_lock : respects_lock R GLocks GDisk.
 
@@ -234,7 +244,7 @@ Ltac specific_owner :=
   match goal with
   | [ H: forall (_:BusyFlagOwner), _ |- _ ] =>
     learn that (H NoOwner)
-  | [ H: forall (_:BusyFlagOwner), _, tid: ID |- _ ] =>
+  | [ H: forall (_:BusyFlagOwner), _, tid: TID |- _ ] =>
     learn that (H (Owned tid))
   end.
 

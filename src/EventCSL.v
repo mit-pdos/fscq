@@ -73,12 +73,15 @@ Section LogicDefinition.
    *)
 
   Record State:Type :=
-    stateTypes
+    defState
       { mem_types: list Type;
         abstraction_types: list Type }.
 
   Definition memory (Sigma:State) := Hmem (mem_types Sigma).
   Definition abstraction (Sigma:State) := Hmem (abstraction_types Sigma).
+
+  Definition Invariant (Sigma:State) := DISK -> memory Sigma -> abstraction Sigma -> Prop.
+  Definition Relation (Sigma:State) := abstraction Sigma -> abstraction Sigma -> Prop.
 
   (** Protocol Sigma is the kind of all protocols over the state type
   Sigma.
@@ -89,17 +92,18 @@ Section LogicDefinition.
    *)
 
   Record Protocol (Sigma:State) : Type :=
-    mkProtocol
-      { invariant: DISK -> memory Sigma -> abstraction Sigma -> Prop;
-        guar: TID -> abstraction Sigma -> abstraction Sigma -> Prop }.
+    defProtocol
+      { invariant: Invariant Sigma;
+        guar: TID -> Relation Sigma;
+        guar_refl_trans : forall tid s s',
+            star (guar tid) s s' -> guar tid s s'; }.
 
   Definition others A (r: TID -> A -> A -> Prop) tid :=
     fun a a' => exists tid', tid <> tid' /\
                       r tid' a a'.
 
-  Definition rely Sigma (delta:Protocol Sigma) :
-    TID -> abstraction Sigma -> abstraction Sigma -> Prop :=
-    fun tid => star (others (guar delta) tid).
+  Definition rely Sigma (delta:Protocol Sigma) tid : Relation Sigma :=
+    star (others (guar delta) tid).
 
 End LogicDefinition.
 
