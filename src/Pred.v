@@ -2072,6 +2072,22 @@ Proof.
   repeat deex; destruct matches in *; now simpl_upd in *.
 Qed.
 
+Lemma diskIs_combine_same'_applied
+  : forall AT AEQ V a v (m d : @mem AT AEQ V),
+    m a = Some v ->
+    diskIs m d ->
+    (diskIs (mem_except m a) * a |-> v)%pred d.
+Proof.
+  intros.
+  apply diskIs_combine_same'; auto.
+Qed.
+
+Lemma diskIs_same : forall AT AEQ V (d: @mem AT AEQ V),
+    diskIs d d.
+Proof.
+  unfold diskIs; auto.
+Qed.
+
 Lemma diskIs_split_upd : forall AT AEQ V a v (m: @mem AT AEQ V),
   diskIs (upd m a v) =p=>
   diskIs (mem_except m a) * a |-> v.

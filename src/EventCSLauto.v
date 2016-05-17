@@ -38,8 +38,8 @@ Ltac simpl_post :=
 
 (* Captures a program in a type so the hypotheses can give the program that
   produced each proof obligation. *)
-Inductive CurrentProg {Mcontents} {Scontents} {T}
-  (p: prog Mcontents Scontents T) :=
+Inductive CurrentProg {Sigma} {T}
+  (p: prog Sigma T) :=
 | SomeProg.
 
 Local Ltac set_prog p :=
@@ -57,20 +57,20 @@ Tactic Notation "current" "prog" :=
 
 Ltac next_control_step :=
     match goal with
-    | [ |- valid _ _ _ _ ?p ] =>
+    | [ |- valid _ _ _ ?p ] =>
       eapply pimpl_ok; [ now (auto with prog) | set_prog p  ]
     end.
 
 Ltac unfold_prog :=
   lazymatch goal with
-  | [ |- valid _ _ _ _ ?p ] =>
+  | [ |- valid _ _ _ ?p ] =>
     let program := head_symbol p in
     unfold program
   end.
 
 Ltac valid_match_ok :=
   match goal with
-  | [ |- valid _ _ _ _ (match ?d with | _ => _ end) ] =>
+  | [ |- valid _ _ _ (match ?d with | _ => _ end) ] =>
     case_eq d; intros
   end.
 
@@ -113,28 +113,12 @@ Tactic Notation "hoare" "pre" tactic(simplifier) := hoare' simplifier step_finis
 Tactic Notation "hoare" "pre" tactic(simplifier) "with" tactic(finisher) := hoare' simplifier finisher.
 Tactic Notation "hoare" "with" tactic(finisher) := hoare' step_simplifier finisher.
 
-Definition Read {Mcontents} {Scontents} {T} a rx : prog Mcontents Scontents T :=
+Definition Read {Sigma} {T} a rx : prog Sigma T :=
   StartRead a;;
             v <- FinishRead a;
   rx v.
 
 Section ReadWriteTheorems.
-
-  Lemma diskIs_combine_same'_applied
-     : forall AT AEQ V a v (m d : @mem AT AEQ V),
-      m a = Some v ->
-      diskIs m d ->
-      (diskIs (mem_except m a) * a |-> v)%pred d.
-  Proof.
-    intros.
-    apply diskIs_combine_same'; auto.
-  Qed.
-
-  Lemma diskIs_same : forall AT AEQ V (d: @mem AT AEQ V),
-      diskIs d d.
-  Proof.
-    unfold diskIs; auto.
-  Qed.
 
   Hint Resolve
        diskIs_combine_same'_applied
@@ -143,8 +127,8 @@ Section ReadWriteTheorems.
 
   Hint Resolve ptsto_valid ptsto_valid'.
 
-  Theorem Read_ok : forall Mcontents Scontents Inv R a,
-      (@Build_transitions Mcontents Scontents Inv R) TID: tid |-
+  Theorem Read_ok : forall Sigma (delta: Protocol Sigma) a,
+      delta [tid] |-
       {{ F v,
        | PRE d m s0 s: d |= F * a |-> (v, None)
        | POST d' m' s0' s' r: d' = d /\
@@ -171,12 +155,12 @@ Section ReadWriteTheorems.
     pred_apply; cancel.
   Qed.
 
-Definition StartRead_upd {Mcontents} {Scontents} {T} a rx : prog Mcontents Scontents T :=
+Definition StartRead_upd {Sigma} {T} a rx : prog Sigma T :=
   StartRead a;;
             rx tt.
 
-Theorem StartRead_upd_ok : forall Mcontents Scontents Inv R a,
-    (@Build_transitions Mcontents Scontents Inv R) TID: tid |-
+Theorem StartRead_upd_ok : forall Sigma (delta:Protocol Sigma) a,
+    delta [tid] |-
     {{ v0,
      | PRE d m s0 s: d a = Some (v0, None)
      | POST d' m' s0' s' _: d' = upd d a (v0, Some tid) /\
@@ -195,12 +179,12 @@ Proof.
   auto.
 Qed.
 
-Definition FinishRead_upd {Mcontents} {Scontents} {T} a rx : prog Mcontents Scontents T :=
+Definition FinishRead_upd {Sigma T} a rx : prog Sigma T :=
   v <- FinishRead a;
             rx v.
 
-Theorem FinishRead_upd_ok : forall Mcontents Scontents Inv R a,
-    (@Build_transitions Mcontents Scontents Inv R) TID: tid |-
+Theorem FinishRead_upd_ok : forall Sigma (delta:Protocol Sigma) a,
+    delta [tid] |-
     {{ v,
      | PRE d m s0 s: d a = Some (v, Some tid)
      | POST d' m' s0' s' r: d' = upd d a (v, None) /\
@@ -220,12 +204,12 @@ Proof.
   eauto.
 Qed.
 
-Definition Write_upd {Mcontents Scontents T} a v rx : prog Mcontents Scontents T :=
+Definition Write_upd {Sigma T} a v rx : prog Sigma T :=
   Write a v;;
         rx tt.
 
-Theorem Write_upd_ok : forall Mcontents Scontents Inv R a v,
-    (@Build_transitions Mcontents Scontents Inv R) TID: tid |-
+Theorem Write_upd_ok : forall Sigma (delta: Protocol Sigma) a v,
+    delta [tid] |-
     {{ v0,
      | PRE d m s0 s: d a = Some (v0, None)
      | POST d' m' s0' s' r: d' = upd d a (v, None) /\
@@ -253,11 +237,9 @@ Hint Extern 1 {{Write_upd _ _; _}} => apply Write_upd_ok : prog.
 
 Section WaitForCombinator.
 
-  (* TODO: change test to forall v, {P v} + {~ P v} *)
-
-CoFixpoint wait_for {T} {Mcontents} {Scontents}
-           tv (v: var Mcontents tv) {P} (test: forall val, {P val} + {~P val}) (wchan: addr)
-  rx : prog Mcontents Scontents T :=
+CoFixpoint wait_for {Sigma} {T}
+           tv (v: var (mem_types Sigma) tv) {P} (test: forall val, {P val} + {~P val}) (wchan: addr)
+  rx : prog Sigma T :=
   val <- Get v;
   if (test val) then (
     rx tt
@@ -267,7 +249,7 @@ CoFixpoint wait_for {T} {Mcontents} {Scontents}
     ).
 
 (* dummy function that will trigger computation of cofix *)
-Definition prog_frob Mcontents Scontents T (p: prog Mcontents Scontents T) :=
+Definition prog_frob Sigma T (p: prog Sigma T) :=
   match p with
   | StartRead a rx => StartRead a rx
   | FinishRead a rx => FinishRead a rx
@@ -279,18 +261,18 @@ Definition prog_frob Mcontents Scontents T (p: prog Mcontents Scontents T) :=
   | Yield wchan rx => Yield wchan rx
   | Wakeup wchan rx => Wakeup wchan rx
   | GhostUpdate update rx => GhostUpdate update rx
-  | Done _ _ v => Done _ _ v
+  | Done _ v => Done _ v
   end.
 
-Theorem prog_frob_eq : forall Mcontents Scontents T (p: prog Mcontents Scontents T),
+Theorem prog_frob_eq : forall Sigma T (p: prog Sigma T),
     p = prog_frob p.
 Proof.
   destruct p; reflexivity.
 Qed.
 
-Theorem wait_for_expand : forall Mcontents Scontents T
-                            tv (v: var Mcontents tv) P (test: forall val, {P val} + {~ P val})
-                            wchan (rx : _ -> prog Mcontents Scontents T),
+Theorem wait_for_expand : forall Sigma T
+                            tv (v: var (mem_types Sigma) tv) P (test: forall val, {P val} + {~ P val})
+                            wchan (rx : _ -> prog Sigma T),
     wait_for v test wchan rx =
     val <- Get v;
     if (test val) then (
@@ -318,7 +300,7 @@ Ltac sigT_eq :=
 
 Ltac inv_step :=
   match goal with
-  | [ H: step _ _ _ _ _ _ _ |- _ ] =>
+  | [ H: step _ _ _ _ _ _ |- _ ] =>
     inversion H; subst; repeat sigT_eq
   end.
 
@@ -336,7 +318,7 @@ Ltac inv_tuple :=
 
 Ltac inv_prog :=
   match goal with
-  | [ H: @eq (prog _ _ _) _ _ |- _ ] =>
+  | [ H: @eq (prog _ _) _ _ |- _ ] =>
     inversion H
   end.
 
@@ -355,7 +337,7 @@ Ltac inv_fail_step :=
 
 Ltac ind_exec :=
   match goal with
-  | [ H : exec _ _ _ ?st ?p _ |- _ ] =>
+  | [ H : exec _ _ _ ?p ?st _ |- _ ] =>
     remember st; remember p;
     induction H; subst;
     try (destruct st; inv_st);
@@ -367,21 +349,27 @@ Ltac ind_exec :=
 
 Hint Constructors exec.
 
-Theorem wait_for_ok : forall Mcontents Scontents
-                        (R: ID -> Relation Scontents)
-                        (Inv: Invariant Mcontents Scontents)
-                        tv (v: var Mcontents tv) P (test: forall v, {P v} + {~ P v}) wchan
-                        (R_stutter: forall tid s, R tid s s),
-  (Build_transitions R Inv) TID: tid |-
+Lemma rely_stutter : forall Sigma (delta: Protocol Sigma) tid s,
+    rely delta tid s s.
+Proof.
+  unfold rely; eauto.
+Qed.
+
+Hint Resolve rely_stutter.
+
+Theorem wait_for_ok : forall Sigma (delta: Protocol Sigma)
+                        tv (v: var (mem_types Sigma) tv) P (test: forall v, {P v} + {~ P v}) wchan
+                        (R_stutter: forall tid s, guar delta tid s s),
+  delta [tid] |-
     {{ (_:unit),
      | PRE d m s0 s:
-       Inv m s d /\
-       R tid s0 s
+       invariant delta d m s /\
+       guar delta tid s0 s
      | POST d' m' s0' s' r:
-       Inv m' s' d' /\
+       invariant delta d' m' s' /\
        (exists H, test (get v m') = left H) /\
-       star (othersR R tid) s s' /\
-       R tid s0' s'
+       rely delta tid s s' /\
+       guar delta tid s0' s'
     }} wait_for v test wchan.
 Proof.
   intros; cbn.
@@ -391,7 +379,7 @@ Proof.
   repeat deex; intuition.
 
   match goal with
-  | [ H: exec _ _ _ ?st ?p _ |- _ ] =>
+  | [ H: exec _ _ ?p ?st _ |- _ ] =>
     remember p
   end.
 
@@ -410,8 +398,9 @@ Proof.
     case_eq (test (get v m)); intros p Htest;
     rewrite Htest in *; try solve [ inv_prog ].
     eapply H2; [| eauto ]. intuition eauto.
+    unfold rely; eauto.
 
-    case_eq (test (get v m)); intros p Htest;
+    case_eq (test (get v m)); intros ? Htest;
     rewrite Htest in *; try solve [ inv_prog ].
     eapply H2; [| eauto ]. intuition eauto.
 
@@ -419,7 +408,7 @@ Proof.
 
   - inv_step.
     match goal with
-    | [ H: step _ _ _ _ (if ?d then _ else _) _ _ |- _ ] =>
+    | [ H: step _ _ (if ?d then _ else _) _ _ _ |- _ ] =>
       destruct d
     end.
     eapply H2; [| eauto ]. intuition.
@@ -434,9 +423,7 @@ Proof.
     eapply H2; [| eauto ]. subst. intuition.
 
     econstructor. eexists; eauto.
-    eapply star_trans; [| eauto ].
-    eapply star_impl; [| eauto ].
-    unfold StateR'; auto.
+    all: eauto using star_trans, star_impl.
 
   - inv_fail_step.
   - inv_prog.
@@ -458,34 +445,32 @@ Proof.
   right; intro H; inversion H.
 Defined.
 
-Definition AcquireLock (Mcontents Scontents : list Type) (T : Type)
-                       (l : var Mcontents BusyFlag)
-                       (lock_ghost : ID -> S Scontents -> S Scontents)
+Definition AcquireLock {Sigma T}
+                       (l : var (mem_types Sigma) BusyFlag)
+                       (lock_ghost : TID -> abstraction Sigma -> abstraction Sigma)
                        (wchan : addr)
-                       (rx : unit -> prog Mcontents Scontents T) :=
+                       (rx : unit -> prog Sigma T) :=
   wait_for l is_unlocked wchan;;
   tid <- GetTID;
   GhostUpdate (lock_ghost tid);;
   Assgn l Locked;;
   rx tt.
 
-Theorem AcquireLock_ok : forall Mcontents Scontents
-                        (R: ID -> Relation Scontents)
-                        (Inv: Invariant Mcontents Scontents)
-                        (R_trans : forall tid s1 s2, star (R tid) s1 s2 -> R tid s1 s2)
+Theorem AcquireLock_ok : forall Sigma (delta: Protocol Sigma)
+                        (R_trans : forall tid s1 s2, star (guar delta tid) s1 s2 -> guar delta tid s1 s2)
                         l up wchan,
-  (Build_transitions R Inv) TID: tid |-
+ delta [tid] |-
     {{ (_:unit),
      | PRE d m s0 s:
-       d |= Inv m s /\
-       R tid s0 s
+       invariant delta d m s /\
+       guar delta tid s0 s
      | POST d' m'' s0' s'' _:
        exists m' s',
-       star (othersR R tid) s s' /\
-       d' |= Inv m' s' /\
+         rely delta tid s s' /\
+       invariant delta d' m' s' /\
        m'' = set l Locked m' /\
        s'' = up tid s' /\
-       R tid s0' s' /\
+       guar delta tid s0' s' /\
        get l m'' = Locked
     }} AcquireLock l up wchan.
 Proof.

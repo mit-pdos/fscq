@@ -4,8 +4,8 @@ Set Implicit Arguments.
 
 Section Locking.
 
-Variable Mcontents : list Type.
-Variable Scontents : list Type.
+Variable Sigma:State.
+Variable delta : Protocol Sigma.
 
 Inductive BusyFlag := Open | Locked.
 
@@ -17,7 +17,7 @@ Defined.
 
 Inductive BusyFlagOwner : Set :=
 | NoOwner
-| Owned (id:ID).
+| Owned (id:TID).
 
 Definition BusyFlag_dec : forall x y:BusyFlag, {x = y} + {x <> y}.
 Proof.
@@ -32,34 +32,12 @@ Defined.
 
 (** given a lock variable and some other variable v, generate a
 relation for tid that makes the variable read-only for non-owners. *)
-Definition lock_protects (lvar : S Scontents -> BusyFlagOwner)
-           {tv} (v : S Scontents -> tv) tid (s s': S Scontents) :=
+Definition lock_protects (lvar : abstraction Sigma -> BusyFlagOwner)
+           {tv} (v : abstraction Sigma -> tv) tid (s s': abstraction Sigma) :=
   forall owner_tid,
     lvar s = Owned owner_tid ->
     tid <> owner_tid ->
     v s' = v s.
-
-(** Alternate definition of lock_protects written directly in terms of
-v and v' *)
-Definition lock_protects' tid (l : BusyFlagOwner)
-           {tv} (v v' : tv) :=
-  forall owner_tid,
-    l = Owned owner_tid ->
-    tid <> owner_tid ->
-    v = v'.
-
-Inductive lock_protocol (lvar : S Scontents -> BusyFlagOwner) (tid : ID) :
-  S Scontents -> S Scontents -> Prop :=
-| NoChange : forall s s', lvar s  = lvar s' ->
-                     lock_protocol lvar tid s s'
-| OwnerRelease : forall s s', lvar s = Owned tid ->
-                         lvar s' = NoOwner ->
-                         lock_protocol lvar tid s s'
-| OwnerAcquire : forall s s', lvar s = NoOwner ->
-                         lvar s' = Owned tid ->
-                         lock_protocol lvar tid s s'.
-
-Hint Constructors lock_protocol.
 
 Inductive lock_transition tid : BusyFlagOwner -> BusyFlagOwner -> Prop :=
 | Transition_NoChange : forall o o', o = o' -> lock_transition tid o o'
@@ -72,17 +50,9 @@ Inductive lock_transition tid : BusyFlagOwner -> BusyFlagOwner -> Prop :=
 
 Hint Constructors lock_transition.
 
-Theorem lock_protocol_transition : forall tid lvar s s',
-    lock_transition tid (lvar s) (lvar s') <->
-    lock_protocol lvar tid s s'.
-Proof.
-  split; inversion 1; subst; eauto;
-  match goal with
-  | [ |- lock_transition _ ?v ?v' ] =>
-    try replace v;
-      try replace v'
-  end; eauto.
-Qed.
+Definition lock_protocol (lvar : abstraction Sigma -> BusyFlagOwner) (tid : TID) :
+  abstraction Sigma -> abstraction Sigma -> Prop :=
+  fun s s' => lock_transition tid (lvar s) (lvar s').
 
 Theorem lock_protects_trans : forall lvar tv (v: _ -> tv) tid s s' s'',
   lock_protects lvar v tid s s' ->
@@ -131,18 +101,6 @@ Qed.
 
 Hint Extern 1 (_ = _) => congruence.
 
-Theorem lock_protocol_trans : forall lvar tid s s' s'',
-  lock_protocol lvar tid s s' ->
-  lock_protocol lvar tid s' s'' ->
-  lock_protocol lvar tid s s''.
-Proof.
-  intros.
-  repeat match goal with
-    | [ H: lock_protocol _ _ _ _ |- _ ] =>
-      inversion H; subst; clear H
-    end; eauto.
-Qed.
-
 Theorem lock_transition_trans : forall tid o o' o'',
   lock_transition tid o o' ->
   lock_transition tid o' o'' ->
@@ -155,22 +113,28 @@ Proof.
   end; eauto.
 Qed.
 
+Corollary lock_protocol_trans : forall lvar tid s s' s'',
+  lock_protocol lvar tid s s' ->
+  lock_protocol lvar tid s' s'' ->
+  lock_protocol lvar tid s s''.
+Proof.
+  unfold lock_protocol; eauto using lock_transition_trans.
+Qed.
+
 Theorem lock_protocol_indifference : forall lvar tid s0 s1 s0' s1',
     lock_protocol lvar tid s0 s1 ->
     lvar s0 = lvar s0' ->
     lvar s1 = lvar s1' ->
     lock_protocol lvar tid s0' s1'.
 Proof.
-  intros.
+  unfold lock_protocol; intros.
   inversion H; subst; eauto.
 Qed.
 
-Inductive ghost_lock_invariant
-  (lvar: BusyFlag) (glvar: BusyFlagOwner) : Prop :=
-| LockOpen : lvar = Open -> glvar = NoOwner ->
-             ghost_lock_invariant lvar glvar
-| LockOwned : forall tid, lvar = Locked -> glvar = Owned tid ->
-                     ghost_lock_invariant lvar glvar.
+Inductive ghost_lock_invariant :
+  BusyFlag -> BusyFlagOwner -> Prop :=
+| LockOpen : ghost_lock_invariant Open NoOwner
+| LockOwned : forall tid, ghost_lock_invariant Locked (Owned tid).
 
 Lemma ghost_lock_owned : forall lvar glvar tid,
     ghost_lock_invariant lvar glvar ->
@@ -217,5 +181,4 @@ End Locking.
 
 Hint Resolve ghost_lock_owned
              lock_inv_still_held.
-Hint Resolve lock_protocol_transition.
 Hint Constructors lock_transition.

@@ -278,16 +278,16 @@ Section EventCSL.
                            P p st Failed)
                      (f1 : forall (d : DISK) m s0 s (v : T),
                            P (Done v) (d, m, s0, s) (Finished d v))
-                     (st : state)
                      (p : prog)
+                     (st : state)
                      (out : outcome)
                      (e : exec tid p st out) : (P p st out).
 
     refine ((fix exec_ind2
-                     (st : state)
                      (p : prog)
+                     (st : state)
                      (out : outcome)
-                     (e : exec tid p st out) {struct e} : (P p st out) := _) st p out e).
+                     (e : exec tid p st out) {struct e} : (P p st out) := _) p st out e).
     destruct e.
 
     - destruct e.
@@ -798,7 +798,7 @@ End EventCSL.
 * quantify over T and tid and change prog to prog _ _ T (the state/mem types should be inferred)
 * add delta as an argument to valid *)
 Notation "delta  '[' tid ']' |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post }} p" :=
-  (forall T (rx: _ -> prog _ _ T) (tid:TID),
+  (forall T (rx: _ -> prog _ T) (tid:TID),
       valid delta tid
             (fun done d m s0 s =>
                (ex (fun e1 => .. (ex (fun e2 =>
@@ -839,7 +839,7 @@ Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 
 
 The ; _ is merely a visual indicator that the pattern applies to any Hoare
 statement beginning with f and followed by anything else. *)
-Notation "{{ f ; '_' }}" := (valid _ _ _ _ (progseq f _)).
+Notation "{{ f ; '_' }}" := (valid _ _ _ (progseq f _)).
 
 (* copy of pair_args_helper from Prog *)
 Definition tuple_args (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
