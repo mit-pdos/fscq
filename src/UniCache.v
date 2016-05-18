@@ -42,20 +42,6 @@ Module UCache.
     CSEvict : eviction_state
   }.
 
-  Definition size_valid cs :=
-     Map.cardinal (CSMap cs) <= CSMaxCount cs /\ CSMaxCount cs <> 0.
-
-  Definition cachepred (cache : cachemap) (a : addr) (vs : valuset) : @pred _ addr_eq_dec valuset :=
-    (match Map.find a cache with
-    | None => a |+> vs
-    | Some (v, false) => a |+> vs
-    | Some (v, true)  => exists v0, a |+> (v0, snd vs) * [[ In v0 (snd vs) ]]
-    end)%pred.
-
-  Definition rep (cs : cachestate) (m : rawdisk) : rawpred :=
-    ([[ size_valid cs ]] *
-     @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred (CSMap cs)) m)%pred.
-
   Definition evict T a (cs : cachestate) rx : prog T :=
     match (Map.find a (CSMap cs)) with
     | Some (v, false) =>
@@ -134,6 +120,25 @@ Module UCache.
 
 
 
+  (** rep invariant *)
+
+  Definition size_valid cs :=
+     Map.cardinal (CSMap cs) <= CSMaxCount cs /\ CSMaxCount cs <> 0.
+
+  Definition cachepred (cache : cachemap) (a : addr) (vs : valuset) : @pred _ addr_eq_dec valuset :=
+    (match Map.find a cache with
+    | None => a |+> vs
+    | Some (v, false) => a |+> vs * [[ v = fst vs ]]
+    | Some (v, true)  => exists v0, a |+> (v0, snd vs) * [[ v = fst vs /\ In v0 (snd vs) ]]
+    end)%pred.
+
+  Definition rep (cs : cachestate) (m : rawdisk) : rawpred :=
+    ([[ size_valid cs ]] *
+     @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred (CSMap cs)) m)%pred.
+
+
+
+
   Lemma cachepred_remove_invariant : forall a a' v cache,
     a <> a' -> cachepred cache a v =p=> cachepred (Map.remove a' cache) a v.
   Proof.
@@ -147,6 +152,28 @@ Module UCache.
     unfold cachepred; intros.
     rewrite MapFacts.add_neq_o; auto.
   Qed.
+
+
+  Theorem evict_ok : forall a cs,
+    {< d,
+    PRE
+      rep cs d
+    POST RET:cs
+      rep cs d
+    CRASH
+      exists cs', rep cs' d
+    >} evict a cs.
+  Proof.
+    unfold evict, rep; intros.
+
+    prestep; norml; unfold stars; simpl.
+    rewrite mem_pred_extract with (a := a).
+    unfold cachepred at 2.
+    destruct (Map.find a (CSMap cs)) eqn:Heq.
+    destruct p; destruct b.
+    cancel.
+
+  Admitted.
 
 End UCache.
 
