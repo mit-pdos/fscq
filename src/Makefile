@@ -5,9 +5,9 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Hashmap HashmapProg \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
-	      ReadCache ReadCacheX WritebackCache Cache \
+	      MemPred UniCache ReadCache ReadCacheX Cache \
 	      FSLayout AsyncRecArray DiskLogHash \
-	      LogReplay MemLog ListPred MemPred GenSepN \
+	      LogReplay MemLog ListPred GenSepN \
 	      NEList DiskSet GroupLog Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
 	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \

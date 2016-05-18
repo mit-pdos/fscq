@@ -1,6 +1,4 @@
-Require Import ReadCache.
-Require Import ReadCacheX.
-Require Import WritebackCache.
+Require Import UniCache.
 
 Module BUFCACHE := ReadCacheX.RCacheX.
 

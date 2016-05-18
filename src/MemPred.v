@@ -434,6 +434,7 @@ Section MEM_REGION.
     congruence.
   Qed.
 
+(*
   Lemma arrayN_region_filled : forall l m a F,
     (F * arrayN a l)%pred m ->
     region_filled m a (length l).
@@ -446,6 +447,7 @@ Section MEM_REGION.
     apply sep_star_assoc in H.
     eapply IHl; eauto; omega.
   Qed.
+*)
 
   Lemma mem_match_listupd_l : forall l ma mb a,
     mem_match ma mb ->
