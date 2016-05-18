@@ -18,7 +18,6 @@ Inductive prog (T : Type):=
   | Done (v: T)
   | Read (a: addr) (rx: valu -> prog T)
   | Write (a: addr) (v: valu) (rx: unit -> prog T)
-  | SyncAddr (a: addr) (rx: unit -> prog T)
   | Sync (rx: unit -> prog T)
   | Trim (a: addr) (rx: unit -> prog T)
   | Hash (sz: nat) (buf: word sz) (rx: word hashlen -> prog T).
@@ -29,13 +28,11 @@ Inductive outcome (T : Type) :=
   | Crashed (m: rawdisk) (hm: hashmap).
 
 Inductive step (T : Type) : rawdisk -> hashmap -> prog T ->
-                           rawdisk -> hashmap -> prog T -> Prop :=
+                            rawdisk -> hashmap -> prog T -> Prop :=
   | StepRead : forall m a rx v x hm, m a = Some (v, x) ->
     step m hm (Read a rx) m hm (rx v)
   | StepWrite : forall m a rx v v0 x hm, m a = Some (v0, x) ->
     step m hm (Write a v rx) (upd m a (v, v0 :: x)) hm (rx tt)
-  | StepSyncAddr : forall m a rx v l hm, m a = Some (v, l) ->
-    step m hm (SyncAddr a rx) (upd m a (v, nil)) hm (rx tt)
   | StepSync : forall m rx hm,
     step m hm (Sync rx) (sync_mem m) hm (rx tt)
   | StepTrim : forall m a rx vs vs' hm, m a = Some vs ->
@@ -43,7 +40,10 @@ Inductive step (T : Type) : rawdisk -> hashmap -> prog T ->
   | StepHash : forall m sz (buf : word sz) rx h hm,
     hash_safe hm h buf ->
     hash_fwd buf = h ->
-    step m hm (Hash buf rx) m (upd_hashmap' hm h buf) (rx h).
+    step m hm (Hash buf rx) m (upd_hashmap' hm h buf) (rx h)
+  | StepSyncAddr : forall m a v l l' hm p, m a = Some (v, l) ->
+    incl l' l ->
+    step m hm p (upd m a (v, l')) hm p.
 
 
 Inductive exec (T : Type) : rawdisk -> hashmap -> prog T -> outcome T -> Prop :=

@@ -59,6 +59,7 @@ Notation "{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash cras
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ forall r_ ,
         {{ fun hm' done'_ crash'_ =>
            post F_ r_ * [[ exists l, hashmap_subset l hm hm' ]] *
@@ -88,6 +89,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >} p1" :=
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ forall r_ ,
         {{ fun hm' done'_ crash'_ =>
            post F_ r_ * [[ exists l, hashmap_subset l hm hm' ]] *
@@ -136,6 +138,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'XCRASH' crash >} p1" :=
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ forall r_,
         {{ fun hm' done'_ crash'_ =>
            post F_ r_ * [[ exists l, hashmap_subset l hm hm' ]] *
@@ -157,6 +160,7 @@ Notation "{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'XCRASH' : hm_crash cra
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ forall r_,
         {{ fun hm' done'_ crash'_ =>
            post F_ r_ * [[ exists l, hashmap_subset l hm hm' ]] *
@@ -185,6 +189,7 @@ Notation "{<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_rec crash >
    (fun hm done_ crashdone_ =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
         {{ fun hm' done'_ crash'_ => post F_ r_ *
@@ -218,6 +223,7 @@ Notation "{X<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_rec crash 
    (fun hm done_ crashdone_ =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
         {{ fun hm' done'_ crash'_ => post F_ r_ *
@@ -245,6 +251,7 @@ Notation "{<< e1 .. e2 , 'PRE' pre 'POST' post 'REC' crash >>} p1 >> p2" :=
    (fun hm done_ crashdone_ =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
         {{ fun hm' done'_ crash'_ => post F_ r_ *
@@ -283,6 +290,7 @@ Notation "{<<< e1 .. e2 , 'PRE' pre 'POST' post >>>} p1 >> p2" :=
    (fun done_ crashdone_ =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
         {{ fun done'_ crash'_ => post F_ (Complete r_) *
