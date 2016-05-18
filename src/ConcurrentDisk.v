@@ -61,7 +61,7 @@ Record PrivateChanges Sigma PrivateSigma :=
     privateAbstractionVars :
       variables (abstraction_types Sigma) (abstraction_types PrivateSigma) }.
 
-Definition privateVars {mtypes abstypes} Sigma (memVars: variables (mem_types Sigma) mtypes)
+Definition privateVars {Sigma} {mtypes abstypes} (memVars: variables (mem_types Sigma) mtypes)
            (abstractionVars: variables (abstraction_types Sigma) abstypes) :=
   Build_PrivateChanges Sigma (defState _ _) memVars abstractionVars.
 
@@ -69,9 +69,14 @@ Definition SubProtocolUnder Sigma PrivateSigma (private:PrivateChanges Sigma Pri
            (delta':Protocol Sigma) (delta:Protocol Sigma) :=
   (forall d m s d' m' s',
       invariant delta d m s ->
+      invariant delta' d m s ->
       modified (privateMemVars private) m m' ->
       modified (privateAbstractionVars private) s s' ->
-      invariant delta d' m' s').
+      invariant delta d' m' s') /\
+  (forall tid s s',
+      modified (privateAbstractionVars private) s s' ->
+      guar delta' tid s s' ->
+      guar delta tid s s').
 
 Section LockedDisk.
 
@@ -129,9 +134,9 @@ Section LockedDisk.
 
   Hypothesis diskProtocolDerive : SubProtocol delta DiskProtocol.
 
-  Variable diskProtocolRespected : SubProtocolUnder
-                                     (privateVars Sigma [( MLocks )] [( GDisk; GLocks )])
-                                     delta DiskProtocol.
+  Hypothesis diskProtocolRespected : SubProtocolUnder
+                                       (privateVars [( MLocks )] [( GDisk; GLocks )])
+                                       DiskProtocol delta.
 
 Module Type DiskSemantics (SemVars: SemanticsVars) (Sem:Semantics SemVars) (DVars:DiskVars SemVars).
 
