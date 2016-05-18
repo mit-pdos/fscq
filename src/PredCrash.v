@@ -921,3 +921,11 @@ Proof.
   rewrite sync_xform_lift_empty.
   auto.
 Qed.
+
+Hint Resolve sync_xform_ptsto_subset_preserve.
+Hint Resolve sync_xform_ptsto_any.
+Hint Resolve sync_xform_ptsto_nil.
+Hint Resolve sync_xform_emp.
+Hint Resolve sync_invariant_exists.
+Hint Resolve sync_invariant_sep_star.
+Hint Resolve sync_invariant_lift_empty.

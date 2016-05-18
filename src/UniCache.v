@@ -141,27 +141,19 @@ Module UCache.
     sync_invariant (cachepred cache a vs).
   Proof.
     unfold cachepred; intros.
-    destruct (Map.find a cache).
-    destruct p; destruct b.
-    - apply sync_invariant_exists; intros.
-      apply sync_invariant_sep_star.
-      apply sync_xform_ptsto_subset_preserve.
-      apply sync_invariant_lift_empty.
-    - apply sync_invariant_sep_star.
-      apply sync_xform_ptsto_subset_preserve.
-      apply sync_invariant_lift_empty.
-    - apply sync_xform_ptsto_subset_preserve.
+    destruct (Map.find a cache); eauto.
+    destruct p; destruct b; eauto.
   Qed.
+
+  Hint Resolve sync_invariant_cachepred.
 
   Theorem sync_invariant_rep : forall cs m,
     sync_invariant (rep cs m).
   Proof.
-    unfold rep; intros.
-    apply sync_invariant_sep_star.
-    apply sync_invariant_lift_empty.
-    apply sync_invariant_mem_pred.
-    apply sync_invariant_cachepred.
+    unfold rep; eauto.
   Qed.
+
+  Hint Resolve sync_invariant_rep.
 
 
   Lemma cachepred_remove_invariant : forall a a' v cache,

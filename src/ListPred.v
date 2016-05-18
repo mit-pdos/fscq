@@ -635,7 +635,7 @@ Theorem sync_invariant_listpred : forall T prd (l : list T),
   (forall x, sync_invariant (prd x)) ->
   sync_invariant (listpred prd l).
 Proof.
-  induction l; simpl; intros.
-  apply sync_xform_emp.
-  apply sync_invariant_sep_star; eauto.
+  induction l; simpl; eauto.
 Qed.
+
+Hint Resolve sync_invariant_listpred.
