@@ -228,7 +228,7 @@ Proof.
     let H := fresh in
     destruct (locks' a) eqn:H; intros.
     intuition (try congruence).
-    learn_all_t ID;
+    learn_all_t TID;
     repeat match goal with
     | [ H: (?a = ?a -> False) -> _ |- _ ] => clear H
     end.
@@ -236,14 +236,14 @@ Proof.
       subst; intuition congruence.
   - replace (locks a) in *.
     replace (locks' a) in *.
-    learn_all_t ID;
+    learn_all_t TID;
     repeat match goal with
     | [ H: (?a = ?a -> False) -> _ |- _ ] => clear H
     end.
     intuition congruence.
   - replace (locks a) in *.
     replace (locks' a) in *.
-    learn_all_t ID;
+    learn_all_t TID;
     repeat match goal with
     | [ H: (?a = ?a -> False) -> _ |- _ ] => clear H
     end.
