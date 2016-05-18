@@ -890,3 +890,34 @@ Proof.
     exists m'; intuition.
     rewrite sync_mem_idem; auto.
 Qed.
+
+Theorem sync_invariant_exists : forall T (p : T -> rawpred),
+  (forall v, sync_invariant (p v)) ->
+  sync_invariant (exists v, p v)%pred.
+Proof.
+  unfold sync_invariant; intros.
+  rewrite sync_xform_exists_comm.
+  apply pimpl_exists_l; intros.
+  rewrite H.
+  exists x; eauto.
+Qed.
+
+Theorem sync_invariant_sep_star : forall p q,
+  sync_invariant p ->
+  sync_invariant q ->
+  sync_invariant (p * q)%pred.
+Proof.
+  unfold sync_invariant; intros.
+  rewrite sync_xform_sep_star_dist.
+  rewrite H.
+  rewrite H0.
+  auto.
+Qed.
+
+Theorem sync_invariant_lift_empty : forall P,
+  sync_invariant [[ P ]]%pred.
+Proof.
+  unfold sync_invariant; intros.
+  rewrite sync_xform_lift_empty.
+  auto.
+Qed.

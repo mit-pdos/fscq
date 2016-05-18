@@ -137,6 +137,26 @@ Module UCache.
      @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred (CSMap cs)) m)%pred.
 
 
+  Theorem sync_invariant_cachepred : forall cache a vs,
+    sync_invariant (cachepred cache a vs).
+  Proof.
+    unfold cachepred; intros.
+    destruct (Map.find a cache).
+    destruct p; destruct b.
+    - apply sync_invariant_exists; intros.
+      apply sync_invariant_sep_star.
+      apply sync_xform_ptsto_subset_preserve.
+      apply sync_invariant_lift_empty.
+    - apply sync_invariant_sep_star.
+      apply sync_xform_ptsto_subset_preserve.
+      apply sync_invariant_lift_empty.
+    - apply sync_xform_ptsto_subset_preserve.
+  Qed.
+
+  Theorem sync_invariant_rep : forall cs m,
+    sync_invariant (rep cs m).
+  Proof.
+
 
 
   Lemma cachepred_remove_invariant : forall a a' v cache,
