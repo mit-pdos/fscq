@@ -1136,3 +1136,12 @@ Proof.
   apply mem_union_addr; eauto.
   apply H5.
 Qed.
+
+Theorem ptsto_subset_valid' : forall AT AEQ a vs F (m : @mem AT AEQ _),
+  (F * a |+> vs)%pred m ->
+  exists l, m a = Some (fst vs, l) /\ incl l (snd vs).
+Proof.
+  intros.
+  apply sep_star_comm in H.
+  eapply ptsto_subset_valid; eauto.
+Qed.

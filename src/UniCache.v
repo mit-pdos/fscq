@@ -251,10 +251,8 @@ Module UCache.
   Proof.
     unfold evict, rep; intros.
 
-    prestep; norml; unfold stars; simpl;
-    denote ptsto_subset as Hx; unfold ptsto_subset in Hx; destruct_lift Hx;
-    denote ptsto as Hx; rewrite sep_star_and2lift in Hx; destruct_lift Hx;
-    assert (d a = Some (vs_cur, dummy)) by (eapply ptsto_valid'; eauto).
+    prestep; norml; unfold stars; simpl; clear_norm_goal;
+    denote ptsto_subset as Hx; apply ptsto_subset_valid' in Hx; repeat deex.
 
     (* cached, dirty *)
     - rewrite mem_pred_extract with (a := a) by eauto.
@@ -264,11 +262,10 @@ Module UCache.
 
       unfold ptsto_subset.
       norml; unfold stars; simpl.
-      rewrite sep_star_and2lift.
       cancel.
       step.
       eapply mem_pred_cachepred_remove_absorb; eauto.
-      apply incl_cons; auto.
+      eapply incl_tran; eauto; apply incl_cons; auto.
       apply size_valid_remove; auto.
       apply addr_valid_remove; auto.
       denote Map.In as Hx; apply MapFacts.remove_in_iff in Hx; intuition.
@@ -276,6 +273,7 @@ Module UCache.
       cancel; eauto.
       rewrite sep_star_comm.
       eapply mem_pred_cachepred_absorb_dirty; eauto.
+      eapply incl_tran; eauto; apply incl_cons; auto.
 
     (* cached, non-dirty *)
     - cancel.
@@ -285,8 +283,7 @@ Module UCache.
       destruct (Map.find a (CSMap cs)) eqn:Hm; try congruence.
       destruct p; destruct b; try congruence.
 
-      unfold ptsto_subset; norml; unfold stars; simpl.
-      rewrite sep_star_and2lift; cancel.
+      unfold ptsto_subset; cancel.
       rewrite sep_star_comm.
       eapply mem_pred_cachepred_remove_absorb; eauto.
       apply size_valid_remove; auto.
