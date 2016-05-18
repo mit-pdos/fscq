@@ -132,10 +132,10 @@ Module UCache.
     | Some (v, true)  => exists v0, a |+> (v0, snd vs) * [[ v = fst vs /\ In v0 (snd vs) ]]
     end)%pred.
 
-  Definition rep (cs : cachestate) (m : rawdisk) : rawpred :=
-    ([[ size_valid cs ]] *
-     @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (cachepred (CSMap cs)) m)%pred.
+  Notation mem_pred := (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _).
 
+  Definition rep (cs : cachestate) (m : rawdisk) : rawpred :=
+    ([[ size_valid cs ]] * mem_pred (cachepred (CSMap cs)) m)%pred.
 
   Theorem sync_invariant_cachepred : forall cache a vs,
     sync_invariant (cachepred cache a vs).
@@ -170,27 +170,158 @@ Module UCache.
     rewrite MapFacts.add_neq_o; auto.
   Qed.
 
+  Lemma mem_pred_cachepred_remove_absorb : forall csmap d a w vs p_old,
+    d a = Some (w, p_old) ->
+    incl vs p_old ->
+    mem_pred (cachepred csmap) (mem_except d a) * a |-> (w, vs) =p=>
+    mem_pred (cachepred (Map.remove a csmap)) d.
+  Proof.
+    intros.
+    eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
+    unfold cachepred at 3.
+    rewrite MapFacts.remove_eq_o by auto.
+    unfold ptsto_subset; cancel; eauto.
+    rewrite <- sep_star_lift2and; cancel.
+    rewrite mem_pred_pimpl_except; eauto.
+    intros; apply cachepred_remove_invariant; eauto.
+  Qed.
+
+  Lemma mem_pred_cachepred_absorb_dirty : forall csmap d a v0 old p_old w,
+    Map.find a csmap = Some (w, true) ->
+    d a = Some (w, p_old) ->
+    In v0 p_old ->
+    incl old p_old ->
+    mem_pred (cachepred csmap) (mem_except d a) * a |-> (v0, old) =p=>
+    mem_pred (cachepred csmap) d.
+  Proof.
+    intros.
+    eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
+    unfold cachepred at 3.
+    rewrite H.
+    unfold ptsto_subset; cancel; eauto.
+    rewrite <- sep_star_lift2and; cancel.
+  Qed.
+
+  Lemma size_valid_remove : forall cs a,
+    size_valid cs ->
+    size_valid (mk_cs (Map.remove a (CSMap cs)) (CSMaxCount cs) (CSEvict cs)).
+  Proof.
+    unfold size_valid in *; intuition simpl.
+    eapply le_trans.
+    apply map_cardinal_remove_le; auto.
+    auto.
+  Qed.
+
+  Lemma size_valid_remove_cardinal_ok : forall cs a v,
+    size_valid cs ->
+    Map.find a (CSMap cs) = Some v ->
+    Map.cardinal (Map.remove a (CSMap cs)) < CSMaxCount cs.
+  Proof.
+    unfold size_valid; intros.
+    rewrite map_remove_cardinal.
+    omega.
+    eexists; eapply MapFacts.find_mapsto_iff; eauto.
+  Qed.
 
   Theorem evict_ok : forall a cs,
-    {< d,
+    {< d vs (F : rawpred),
     PRE
-      rep cs d
-    POST RET:cs
-      rep cs d
+      rep cs d * [[ (F * a |+> vs)%pred d ]]
+    POST RET:cs'
+      rep cs' d *
+      [[ ~ Map.In a (CSMap cs') ]] *
+      [[ Map.In a (CSMap cs) -> Map.cardinal (CSMap cs') < CSMaxCount cs' ]]
     CRASH
       exists cs', rep cs' d
     >} evict a cs.
   Proof.
     unfold evict, rep; intros.
 
-    prestep; norml; unfold stars; simpl.
-    rewrite mem_pred_extract with (a := a).
-    unfold cachepred at 2.
-    destruct (Map.find a (CSMap cs)) eqn:Heq.
-    destruct p; destruct b.
-    cancel.
+    prestep; norml; unfold stars; simpl;
+    denote ptsto_subset as Hx; unfold ptsto_subset in Hx; destruct_lift Hx;
+    denote ptsto as Hx; rewrite sep_star_and2lift in Hx; destruct_lift Hx;
+    assert (d a = Some (vs_cur, dummy)) by (eapply ptsto_valid'; eauto).
+
+    (* cached, dirty *)
+    - rewrite mem_pred_extract with (a := a) by eauto.
+      unfold cachepred at 2.
+      destruct (Map.find a (CSMap cs)) eqn:Hm; try congruence.
+      destruct p; destruct b; try congruence.
+
+      unfold ptsto_subset.
+      norml; unfold stars; simpl.
+      rewrite sep_star_and2lift.
+      cancel.
+      step.
+      eapply mem_pred_cachepred_remove_absorb; eauto.
+      apply incl_cons; auto.
+      apply size_valid_remove; auto.
+      denote Map.In as Hx; apply MapFacts.remove_in_iff in Hx; intuition.
+      eapply size_valid_remove_cardinal_ok; eauto.
+      cancel; eauto.
+      rewrite sep_star_comm.
+      eapply mem_pred_cachepred_absorb_dirty; eauto.
+
+    (* cached, non-dirty *)
+    - cancel.
+      step.
+      rewrite mem_pred_extract with (a := a) by eauto.
+      unfold cachepred at 2.
+      destruct (Map.find a (CSMap cs)) eqn:Hm; try congruence.
+      destruct p; destruct b; try congruence.
+
+      unfold ptsto_subset; norml; unfold stars; simpl.
+      rewrite sep_star_and2lift; cancel.
+      rewrite sep_star_comm.
+      eapply mem_pred_cachepred_remove_absorb; eauto.
+      apply size_valid_remove; auto.
+      denote Map.In as Hx; apply MapFacts.remove_in_iff in Hx; intuition.
+      eapply size_valid_remove_cardinal_ok; eauto.
+      cancel.
+
+    (* not cached *)
+    - cancel.
+      step.
+      eapply MapFacts.in_find_iff; eauto.
+      denote Map.In as Hx; apply MapFacts.in_find_iff in Hx; intuition.
+      cancel.
+
+    Unshelve. all: try exact addr_eq_dec.
+  Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (evict _ _) _) => apply evict_ok : prog.
+
+
+  Theorem maybe_evict_ok : forall cs,
+    {< d,
+    PRE
+      rep cs d
+    POST RET:cs
+      rep cs d * [[ Map.cardinal (CSMap cs) < CSMaxCount cs ]]
+    CRASH
+      exists cs', rep cs' d
+    >} maybe_evict cs.
+  Proof.
+    unfold maybe_evict; intros.
+    step.
+    step.
+
+    prestep; unfold rep; norml; unfold stars; simpl; clear_norm_goal.
+
+    (* found victim  *)
+    - admit.
+
+    (* victim not found, cache is empty *)
+    - unfold size_valid in *; cancel.
+      rewrite Map.cardinal_1, Heql; simpl; omega.
+
+    (* victim not found, cache is non-empty *)
+    - admit.
 
   Admitted.
+
+
 
 End UCache.
 
