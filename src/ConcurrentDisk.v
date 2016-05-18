@@ -43,7 +43,7 @@ Record StateProj (Sigma:State) (Sigma': State) :=
   defStateProj { memVars: variables (mem_types Sigma) (mem_types Sigma');
                  abstractionVars: variables (abstraction_types Sigma) (abstraction_types Sigma');
                  no_confusion_memVars : NoDup (hmap var_index memVars);
-                 no_confusion_stateVars : NoDup (hmap var_index abstractionVars) }.
+                 no_confusion_abstractionVars : NoDup (hmap var_index abstractionVars) }.
 
 (** Generic proof that delta is a subprotocol of delta', both over the
 same global state.
@@ -77,6 +77,34 @@ Definition SubProtocolUnder Sigma PrivateSigma (private:PrivateChanges Sigma Pri
       modified (privateAbstractionVars private) s s' ->
       guar delta' tid s s' ->
       guar delta tid s s').
+
+(* This constraint on R seems to be part of a general family of
+protocols associated with a lock. Eventually would like the whole set
+of locking definitions to be re-designed in light of how it is
+actually used, but the changes are likely to be sweeping and some
+things about lock usage remain unclear (eg, it would be nice to commit
+to all locks being part of nat -> lock families, but this precludes,
+eg, addr -> lock, string -> lock and singleton unit -> lock
+families). *)
+
+(* unfortunately this definition is dependent on an instantiation of
+  Locks - it could be defined by the Lock functor, but then Locks.v
+  would have to import linearizability *)
+
+(** Predicate asserting the relation R ignores changes to locked
+  addresses in the resource r_var (a linear_mem) protected by the set
+  of locks in lock_var *)
+Definition respects_lock Sigma (R: TID -> Relation Sigma)
+           (lock_var: member Locks.S (abstraction_types Sigma)) V
+           (r_var: member (@linear_mem addr (@weq _) V) (abstraction_types Sigma)) :=
+  forall tid s s',
+  forall a tid',
+    Locks.get (get lock_var s) a = Owned tid' ->
+    tid <> tid' ->
+    forall (v': V a),
+      R tid s s' ->
+      R tid (set r_var (linear_upd (get r_var s) a v') s)
+        (set r_var (linear_upd (get r_var s') a v') s').
 
 Section LockedDisk.
 
@@ -138,239 +166,117 @@ Section LockedDisk.
                                        (privateVars [( MLocks )] [( GDisk; GLocks )])
                                        DiskProtocol delta.
 
-Module Type DiskSemantics (SemVars: SemanticsVars) (Sem:Semantics SemVars) (DVars:DiskVars SemVars).
+  Hypothesis diskLockRespected : respects_lock (guar delta) GLocks GDisk.
 
-  Module Transitions := DiskTransitionSystem SemVars DVars.
-
-  Import Sem.
-  Export Transitions.
-
-  (* unfortunately this definition is dependent on an instantiation of
-  Locks - it could be defined by the Lock functor, but then Locks.v
-  would have to import linearizability *)
-
-  (** Predicate asserting the relation R ignores changes to locked
-  addresses in the resource r_var (a linear_mem) protected by the set
-  of locks in lock_var *)
-  Definition respects_lock contents (R: TID -> Relation contents)
-             (lock_var: member Locks.S contents) V
-             (r_var: member (@linear_mem addr (@weq _) V) contents) :=
-    forall tid s s',
-    forall a tid',
-      Locks.get (get lock_var s) a = Owned tid' ->
-      tid <> tid' ->
-      forall (v': V a),
-        R tid s s' ->
-        R tid (set r_var (linear_upd (get r_var s) a v') s)
-          (set r_var (linear_upd (get r_var s') a v') s').
-
-  Axiom relation_respects_lock : respects_lock R GLocks GDisk.
-
-End DiskSemantics.
-
-Module LockedDisk (SemVars:SemanticsVars)
-  (Sem:Semantics SemVars)
-  (DVars:DiskVars SemVars)
-  (DSem:DiskSemantics SemVars Sem DVars).
-
-Import DSem.
-Import Sem.
-Import DVars.
-Import Transitions.
-
-Definition M := EventCSL.M Mcontents.
-Definition S := EventCSL.S Scontents.
-
-Lemma others_disk_relation_holds : forall tid,
-    rimpl (othersR R tid) (othersR diskR tid).
-Proof.
-  unfold rimpl, othersR; intros.
-  deex.
-  eexists; intuition eauto.
-  apply disk_relation_holds; auto.
-Qed.
-
-Ltac derive_local_relations :=
-  repeat match goal with
-         | [ H: star R _ _ |- _ ] =>
-            learn H (rewrite disk_relation_holds in H)
-         | [ H: star (othersR R _) _ _ |- _ ] =>
-            learn H (rewrite others_disk_relation_holds in H)
-         end.
-
-Definition stateS : transitions Mcontents Scontents :=
-  Build_transitions R Inv.
-
-Ltac vars_distinct :=
-  repeat rewrite member_index_eq_var_index;
-  repeat match goal with
-  | [ |- context[var_index ?v] ] => unfold v
-  end;
-  repeat erewrite get_hmap; cbn;
-  apply NoDup_get_neq with (def := 0); eauto;
+  Ltac vars_distinct :=
+    repeat rewrite member_index_eq_var_index;
+    repeat match goal with
+           | [ |- context[var_index ?v] ] => unfold v
+           end;
+    repeat erewrite get_hmap; cbn;
+    apply NoDup_get_neq with (def := 0); eauto;
     autorewrite with hlist;
     cbn;
     match goal with
     | [ |- _ < _ ] => omega
     | [ |- NoDup _ ] =>
-      apply no_confusion_memVars ||
-            apply no_confusion_stateVars
+      apply (no_confusion_memVars diskProj) ||
+            apply (no_confusion_abstractionVars diskProj)
     end.
 
-Ltac distinct_pf var1 var2 :=
-  assert (member_index var1 <> member_index var2) as Hneq
-    by vars_distinct;
-  exact Hneq.
+  Ltac distinct_pf var1 var2 :=
+    assert (member_index var1 <> member_index var2) as Hneq
+      by vars_distinct;
+    exact Hneq.
 
-Hint Resolve
-     (ltac:(distinct_pf GDisk GDisk0))
-     (ltac:(distinct_pf GDisk GLocks))
-     (ltac:(distinct_pf GDisk0 GLocks)).
+  Hint Resolve
+       (ltac:(distinct_pf GDisk GDisk0))
+       (ltac:(distinct_pf GDisk GLocks))
+       (ltac:(distinct_pf GDisk0 GLocks)).
 
-Hint Immediate not_eq_sym.
+  Hint Immediate not_eq_sym.
 
-Lemma diskI_unfold : forall m s d,
-    diskI m s d ->
-    ltac:(let P := eval unfold diskI in (diskI m s d) in
-              exact P).
-Proof. auto. Qed.
+  Lemma diskI_unfold : forall m s d,
+      diskI m s d ->
+      ltac:(let P := eval unfold diskI in (diskI m s d) in
+                exact P).
+  Proof. auto. Qed.
 
-Ltac invariant_unfold :=
-  match goal with
-  | [ H: Inv _ _ _ |- _ ] =>
-    learn that (disk_invariant_holds H)
-  end ||
-  match goal with
-  | [ H: diskI _ _ _ |- _ ] =>
-    learn that (diskI_unfold H)
-  end.
+  Ltac descend :=
+    match goal with
+    | [ |- forall _, _ ] => intros
+    | [ |- _ /\ _ ] => split
+    end.
 
-Ltac specific_owner :=
-  match goal with
-  | [ H: forall (_:BusyFlagOwner), _ |- _ ] =>
-    learn that (H NoOwner)
-  | [ H: forall (_:BusyFlagOwner), _, tid: TID |- _ ] =>
-    learn that (H (Owned tid))
-  end.
+  Ltac simplify_reduce_step :=
+    deex_local
+    || destruct_ands
+    || descend
+    || subst
+    || (time "rew hlist" autorewrite with hlist)
+    || (time "trivial" progress trivial)
+    || autounfold with prog in *.
 
-Ltac descend :=
-  match goal with
-  | [ |- forall _, _ ] => intros
-  | [ |- _ /\ _ ] => split
-  end.
-
-Ltac simplify_reduce_step :=
-  (* this binding just fixes PG indentation *)
-  let unf := autounfold with prog in * in
-          deex_local
-          || destruct_ands
-          || descend
-          || subst
-          || specific_owner
-          || (time "rew hlist" autorewrite with hlist)
-          || (time "trivial" progress trivial)
-          || invariant_unfold
-          || unf.
-
-Ltac simplify_step :=
+  Ltac simplify_step :=
     (time "simplify_reduce" simplify_reduce_step).
 
-Ltac simplify' t :=
-  repeat (repeat t;
-    repeat lazymatch goal with
-    | [ |- exists _, _ ] => eexists
-    end);
-  cleanup.
+  Ltac simplify' t :=
+    repeat (repeat t;
+             repeat lazymatch goal with
+               | [ |- exists _, _ ] => eexists
+               end);
+    cleanup.
 
-Ltac simplify := simplify' simplify_step.
+  Ltac simplify := simplify' simplify_step.
 
-Ltac solve_global_transitions :=
-  (* match only these types of goals *)
-  lazymatch goal with
-  | [ |- R _ _ _ ] =>
-    eapply disk_relation_preserved; unfold diskR
-  | [ |- Inv _ _ _ ] =>
-    eapply disk_invariant_preserved; unfold diskI
-  end.
+  Hint Unfold GDisk GDisk0 : modified.
+  Hint Resolve modified_nothing one_more_modified
+       one_more_modified_in modified_single_var : modified.
+  Hint Constructors HIn : modified.
 
-Hint Unfold GDisk GDisk0 : modified.
-Hint Resolve modified_nothing one_more_modified
-  one_more_modified_in modified_single_var : modified.
-Hint Constructors HIn : modified.
+  Ltac solve_modified :=
+    solve [ autounfold with modified; eauto with modified ].
 
-Ltac solve_modified :=
-  solve [ autounfold with modified; eauto with modified ].
+  Ltac finish :=
+    try time "finisher" progress (
+          try time "finish eauto" solve [ eauto ];
+          try time "solve_modified" solve_modified;
+          try time "congruence" (unfold wr_set, const in *; congruence)
+        ).
 
-Ltac finish :=
-  try time "finisher" progress (
-  try time "solve_global_transitions" solve_global_transitions;
-  try time "finish eauto" solve [ eauto ];
-  try time "solve_modified" solve_modified;
-  try time "congruence" (unfold wr_set, const in *; congruence)
-      ).
+  Ltac safe_finish := try solve [ finish ].
 
-Ltac safe_finish := try solve [ finish ].
+  (* sanity check respects_lock idea; also hides a more general proof
+  that linear_rel respects the lock/resource pair it is about. *)
+  Theorem diskR_respects_lock : respects_lock diskR GLocks GDisk.
+  Proof.
+    unfold respects_lock, diskR, linear_rel; intuition; simpl_get_set.
+    eapply same_domain_trans.
+    apply same_domain_sym.
+    apply linear_upd_same_domain.
+    eapply same_domain_trans.
+    eauto.
+    apply linear_upd_same_domain.
 
-Theorem linear_rel_upd :
-  forall tid A AEQ V
-    locks locks' (m m': @linear_mem A AEQ V)
-    a v,
-    locks a = Owned tid ->
-    linear_rel tid locks locks' m m' ->
-    linear_rel tid locks locks'
-               m (linear_upd m' a v).
-Proof.
-  unfold linear_rel, linear_upd; intuition.
-  destruct (AEQ a a0); try congruence.
-  destruct matches; autorewrite with upd; eauto.
-Qed.
+    unfold linear_upd in *.
+    simpl_get_set in *.
+    destruct (weq a a0); subst; try congruence.
+    assert (tid' = tid'0).
+    generalize dependent (get GLocks s); intros.
+    congruence.
+    subst; cleanup.
 
-Lemma linear_upd_same_domain : forall A AEQ V (m: @linear_mem A AEQ V) a v',
-    same_domain m (linear_upd m a v').
-Proof.
-  unfold same_domain, subset, linear_upd; intuition.
-  destruct (AEQ a a0); subst; intros;
-  destruct matches;
-  autorewrite with upd;
-  eauto.
+    erewrite H4 by eauto.
+    destruct matches;
+    autorewrite with upd; eauto;
+    repeat match goal with
+           | [ v: V' _ _ |- _ ] => destruct v
+           end;
+    repeat inv_prod;
+    try congruence.
 
-  destruct (AEQ a a0); subst; intros;
-  destruct matches in *;
-  autorewrite with upd in *;
-  eauto.
-Qed.
-
-(* sanity check respects_lock idea; also hides a more general proof
-that linear_rel respects the lock/resource pair it is about. *)
-Theorem diskR_respects_lock : respects_lock diskR GLocks GDisk.
-Proof.
-  unfold respects_lock, diskR, linear_rel; intuition; simpl_get_set.
-  eapply same_domain_trans.
-  apply same_domain_sym.
-  apply linear_upd_same_domain.
-  eapply same_domain_trans.
-  eauto.
-  apply linear_upd_same_domain.
-
-  unfold linear_upd in *.
-  simpl_get_set in *.
-  destruct (weq a a0); subst; try congruence.
-  assert (tid' = tid'0).
-  generalize dependent (get GLocks s); intros.
-  congruence.
-  subst; cleanup.
-
-  erewrite H4 by eauto.
-  destruct matches;
-  autorewrite with upd; eauto;
-  repeat match goal with
-         | [ v: V' _ _ |- _ ] => destruct v
-         end;
-  repeat inv_prod;
-  try congruence.
-
-  destruct matches; autorewrite with upd; eauto.
-Qed.
+    destruct matches; autorewrite with upd; eauto.
+  Qed.
 
 (* prove for one step first *)
 Lemma locked_addr_stable' : forall tid a s s',

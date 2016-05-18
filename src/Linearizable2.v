@@ -360,3 +360,32 @@ Qed.
 Hint Rewrite lin_release_eq linear_upd_eq using (solve [ auto ] ) : lin_upd.
 Hint Rewrite lin_release_view_eq linear_upd_view_eq using (solve [ auto ] ) : lin_upd.
 Hint Rewrite lin_release_neq linear_upd_neq using (solve [ auto ] ) : lin_upd.
+
+Theorem linear_rel_upd :
+  forall tid A AEQ V
+    locks locks' (m m': @linear_mem A AEQ V)
+    a v,
+    locks a = Owned tid ->
+    linear_rel tid locks locks' m m' ->
+    linear_rel tid locks locks'
+               m (linear_upd m' a v).
+Proof.
+  unfold linear_rel, linear_upd; intuition.
+  destruct (AEQ a a0); try congruence.
+  destruct matches; autorewrite with upd; eauto.
+Qed.
+
+Lemma linear_upd_same_domain : forall A AEQ V (m: @linear_mem A AEQ V) a v',
+    same_domain m (linear_upd m a v').
+Proof.
+  unfold same_domain, subset, linear_upd; intuition.
+  destruct (AEQ a a0); subst; intros;
+  destruct matches;
+  autorewrite with upd;
+  eauto.
+
+  destruct (AEQ a a0); subst; intros;
+  destruct matches in *;
+  autorewrite with upd in *;
+  eauto.
+Qed.
