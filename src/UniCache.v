@@ -156,7 +156,12 @@ Module UCache.
   Theorem sync_invariant_rep : forall cs m,
     sync_invariant (rep cs m).
   Proof.
-
+    unfold rep; intros.
+    apply sync_invariant_sep_star.
+    apply sync_invariant_lift_empty.
+    apply sync_invariant_mem_pred.
+    apply sync_invariant_cachepred.
+  Qed.
 
 
   Lemma cachepred_remove_invariant : forall a a' v cache,

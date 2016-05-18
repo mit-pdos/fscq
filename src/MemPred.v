@@ -308,6 +308,21 @@ Proof.
 Qed.
 
 
+Theorem sync_invariant_mem_pred : forall HighAT HighAEQ HighV (prd : HighAT -> HighV -> _) hm,
+  (forall a v, sync_invariant (prd a v)) ->
+  sync_invariant (@mem_pred _ _ _ _ HighAEQ _ prd hm).
+Proof.
+  unfold mem_pred; intros.
+  apply sync_invariant_exists; intros.
+  apply sync_invariant_sep_star.
+  apply sync_invariant_sep_star.
+  apply sync_invariant_lift_empty.
+  apply sync_invariant_lift_empty.
+  apply sync_invariant_listpred; intros.
+  eauto.
+Qed.
+
+
 Section MEM_MATCH.
 
   Variable AT V : Type.
