@@ -123,7 +123,10 @@ Module UCache.
   (** rep invariant *)
 
   Definition size_valid cs :=
-     Map.cardinal (CSMap cs) <= CSMaxCount cs /\ CSMaxCount cs <> 0.
+    Map.cardinal (CSMap cs) <= CSMaxCount cs /\ CSMaxCount cs <> 0.
+
+  Definition addr_valid (d : rawdisk) (cm : cachemap) :=
+    forall a, Map.In a cm -> d a <> None.
 
   Definition cachepred (cache : cachemap) (a : addr) (vs : valuset) : @pred _ addr_eq_dec valuset :=
     (match Map.find a cache with
@@ -135,7 +138,8 @@ Module UCache.
   Notation mem_pred := (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _).
 
   Definition rep (cs : cachestate) (m : rawdisk) : rawpred :=
-    ([[ size_valid cs ]] * mem_pred (cachepred (CSMap cs)) m)%pred.
+    ([[ size_valid cs /\ addr_valid m (CSMap cs) ]] *
+     mem_pred (cachepred (CSMap cs)) m)%pred.
 
   Theorem sync_invariant_cachepred : forall cache a vs,
     sync_invariant (cachepred cache a vs).
@@ -223,6 +227,16 @@ Module UCache.
     eexists; eapply MapFacts.find_mapsto_iff; eauto.
   Qed.
 
+  Lemma addr_valid_remove : forall d a cm,
+    addr_valid d cm ->
+    addr_valid d (Map.remove a cm).
+  Proof.
+    unfold addr_valid; intros.
+    apply H.
+    eapply MapFacts.remove_in_iff; eauto.
+  Qed.
+
+
   Theorem evict_ok : forall a cs,
     {< d vs (F : rawpred),
     PRE
@@ -256,6 +270,7 @@ Module UCache.
       eapply mem_pred_cachepred_remove_absorb; eauto.
       apply incl_cons; auto.
       apply size_valid_remove; auto.
+      apply addr_valid_remove; auto.
       denote Map.In as Hx; apply MapFacts.remove_in_iff in Hx; intuition.
       eapply size_valid_remove_cardinal_ok; eauto.
       cancel; eauto.
@@ -275,6 +290,7 @@ Module UCache.
       rewrite sep_star_comm.
       eapply mem_pred_cachepred_remove_absorb; eauto.
       apply size_valid_remove; auto.
+      apply addr_valid_remove; auto.
       denote Map.In as Hx; apply MapFacts.remove_in_iff in Hx; intuition.
       eapply size_valid_remove_cardinal_ok; eauto.
       cancel.
