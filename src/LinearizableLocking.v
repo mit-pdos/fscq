@@ -1,7 +1,7 @@
 Require Import EventCSL.
 Require Import Automation.
-Require Import Locking.
-Require Import Linearizable2.
+Require Export Locking.
+Require Export Linearizable2.
 
 Definition linearized_consistent A (AEQ: DecEq A) V (locks: Locks A)
            (m: @linear_mem A AEQ V) : Prop :=

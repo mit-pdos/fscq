@@ -1,10 +1,8 @@
 Require Import EventCSL.
 Require Import EventCSLauto.
-Require Import Locking.
 Require Import HlistMem.
 Require Import Automation.
-Require Import Locks.
-Require Import Linearizable2.
+Require Import LinearizableLocking.
 Require Import RelationCombinators.
 Require Import Omega.
 Require Import FunctionalExtensionality.
@@ -12,16 +10,6 @@ Import HlistNotations.
 
 Import List.
 Import List.ListNotations.
-
-Module AddrM
-<: Word.WordSize.
-    Definition sz := addrlen.
-End AddrM.
-
-Module Addr_as_OT := Word_as_OT AddrM.
-
-Module Locks := Locks.Make(Addr_as_OT).
-Import Locks.
 
 Section HideReaders.
 
@@ -55,15 +43,22 @@ Definition SubProtocol (Sigma:State) (delta:Protocol Sigma) (delta':Protocol Sig
   (forall d m s, invariant delta d m s -> invariant delta' d m s) /\
   (forall tid s s', guar delta tid s s' -> guar delta' tid s s').
 
+Theorem rely_subprotocol : forall Sigma (delta delta': Protocol Sigma),
+    SubProtocol delta delta' ->
+    (forall tid s s', rely delta tid s s' -> rely delta' tid s s').
+Proof.
+  unfold rely, others, SubProtocol; intuition.
+  induction H; try deex; eauto.
+Qed.
+
 Record PrivateChanges Sigma PrivateSigma :=
   { privateMemVars :
       variables (mem_types Sigma) (mem_types PrivateSigma);
     privateAbstractionVars :
       variables (abstraction_types Sigma) (abstraction_types PrivateSigma) }.
 
-Definition privateVars {Sigma} {mtypes abstypes} (memVars: variables (mem_types Sigma) mtypes)
-           (abstractionVars: variables (abstraction_types Sigma) abstypes) :=
-  Build_PrivateChanges Sigma (defState _ _) memVars abstractionVars.
+Definition privateVars {Sigma} {mtypes abstypes} memVars abstractionVars :=
+  Build_PrivateChanges Sigma (defState mtypes abstypes) memVars abstractionVars.
 
 Definition SubProtocolUnder Sigma PrivateSigma (private:PrivateChanges Sigma PrivateSigma)
            (delta':Protocol Sigma) (delta:Protocol Sigma) :=
@@ -94,12 +89,13 @@ families). *)
 (** Predicate asserting the relation R ignores changes to locked
   addresses in the resource r_var (a linear_mem) protected by the set
   of locks in lock_var *)
+
 Definition respects_lock Sigma (R: TID -> Relation Sigma)
-           (lock_var: member Locks.S (abstraction_types Sigma)) V
+           (lock_var: member (Locks addr) (abstraction_types Sigma)) V
            (r_var: member (@linear_mem addr (@weq _) V) (abstraction_types Sigma)) :=
-  forall tid s s',
+  forall tid (s s': abstraction Sigma),
   forall a tid',
-    Locks.get (get lock_var s) a = Owned tid' ->
+    get lock_var s a = Owned tid' ->
     tid <> tid' ->
     forall (v': V a),
       R tid s s' ->
@@ -109,7 +105,7 @@ Definition respects_lock Sigma (R: TID -> Relation Sigma)
 Section LockedDisk.
 
   (* all the state used by the disk *)
-  Definition DiskSigma := defState [Locks.M] [linearized DISK; Disk; Locks.S].
+  Definition DiskSigma := defState [Flags] [linearized DISK; Disk; Locks addr].
 
   Variable Sigma:State.
   (* first component for defining the disk's part of the global state:
@@ -129,11 +125,8 @@ Section LockedDisk.
     fun s s' =>
       let ld := get GDisk s in
       let ld' := get GDisk s' in
-      let locks := get GLocks s in
-      let locks' := get GLocks s' in
       same_domain ld ld' /\
-      linear_rel tid (Locks.get locks) (Locks.get locks')
-        (get GDisk s) (get GDisk s').
+      linear_rel tid (get GLocks s) (get GLocks s') ld ld'.
 
   Definition diskI : Invariant Sigma  :=
     fun d m s =>
@@ -141,10 +134,10 @@ Section LockedDisk.
       let locks := get GLocks s in
       let ld0 := get GDisk0 s in
       let ld := get GDisk s in
-      (forall a, ghost_lock_invariant (Locks.mem mlocks a) (Locks.get locks a)) /\
-      linearized_consistent ld (Locks.get locks) /\
+      locks_rep (fun a => get_lock mlocks #a) locks /\
+      linearized_consistent locks ld /\
       (* unlocked address resource invariant *)
-      (forall a, Locks.get locks a = NoOwner ->
+      (forall a, locks a = NoOwner ->
             not_reading (view Latest ld) a) /\
       ld0 = hide_readers (view LinPoint ld) /\
       d = view Latest ld.
@@ -154,10 +147,11 @@ Section LockedDisk.
   Definition DiskProtocol : Protocol Sigma.
   Proof.
     refine (defProtocol diskI diskR _).
-    intros.
-    apply trans_closed; auto; unfold diskR; intuition;
-    eauto using same_domain_refl, same_domain_trans,
-    linear_rel_refl, linear_rel_trans.
+    abstract
+      (intros;
+        apply trans_closed; auto; unfold diskR; intuition;
+        eauto using same_domain_refl, same_domain_trans,
+        linear_rel_refl, linear_rel_trans).
   Defined.
 
   Hypothesis diskProtocolDerive : SubProtocol delta DiskProtocol.
@@ -279,18 +273,19 @@ Section LockedDisk.
   Qed.
 
 (* prove for one step first *)
-Lemma locked_addr_stable' : forall tid a s s',
+Lemma locked_addr_stable' : forall tid a (s s': abstraction Sigma),
     (view Latest (get GDisk s) a = view Latest (get GDisk s) a /\
-     Locks.get (get GLocks s) a = Owned tid) ->
-    othersR R tid s s' ->
+     get GLocks s a = Owned tid) ->
+    rely delta tid s s' ->
     view Latest (get GDisk s') a =
     view Latest (get GDisk s) a /\
-    Locks.get (get GLocks s') a = Owned tid.
+    get GLocks s' a = Owned tid.
 Proof.
   intros; destruct_ands.
-  apply others_disk_relation_holds in H0.
-  unfold othersR, diskR, view, linear_rel in *; deex;
-  specialize_all Locks.A.
+  eapply rely_subprotocol in H0; eauto.
+  unfold rely in *; cbn in *.
+  (* need to turn star (others diskR tid) into something equivalent
+  and simpler *)
   - erewrite H5; eauto.
   - inversion H3; subst; congruence.
 Qed.
