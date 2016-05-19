@@ -8,13 +8,9 @@ MODULES    := Nomega Word WordAuto WordZ Bytes Rounding \
 	      Log Balloc Inode BFile BFileRec Dir \
 	      MemMatch DirName DirTree ByteFile FS Testprog \
 	      Hlist HlistMem Star RelationCombinators Variables MemClass \
-		  EventCSL EventCSLauto \
-	      Locking Preservation Automation ForwardChaining \
-	      Bank MemCache ConcurrentCache ConcurrentInode TwoBlockExample \
-	      Linearizable Linearizable2 Locks LinearizableLocking MemCache2 ConcurrentCache2 \
-		  ConcurrentDisk \
-		  TwoBlockExample2 GenericArray ConcurrentRecArray \
-	      ExtrHaskellPrelude Extraction
+		  Locking Automation ForwardChaining \
+		  EventCSL EventCSLauto MemCache \
+		  ExtrHaskellPrelude Extraction
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 GHC 	   := ghc
