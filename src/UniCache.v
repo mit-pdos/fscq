@@ -82,21 +82,13 @@ Module UCache.
                  (CSMaxCount cs) (eviction_update (CSEvict cs) a), v)
     end.
 
-  (* write through *)
   Definition write T a v (cs : cachestate) rx : prog T :=
-    cs <- maybe_evict cs;
-    Write a v;;
-    rx (mk_cs (Map.add a (v, false) (CSMap cs))
-              (CSMaxCount cs) (eviction_update (CSEvict cs) a)).
-
-  (* write buffered *)
-  Definition dwrite T a v (cs : cachestate) rx : prog T :=
     cs <- maybe_evict cs;
     rx (mk_cs (Map.add a (v, true) (CSMap cs))
               (CSMaxCount cs) (eviction_update (CSEvict cs) a)).
 
-  (* XXX should sync call evict for all dirty blocks ? *)
-  Definition sync T (cs : cachestate) rx : prog T :=
+  Definition sync T a (cs : cachestate) rx : prog T :=
+    cs <- evict a cs;
     @Sync T;;
     rx cs.
 
@@ -113,11 +105,9 @@ Module UCache.
     cs <- write (a + i) v cs;
     rx cs.
 
-  Definition evict_array T a i cs rx : prog T :=
-    cs <- evict (a + i) cs;
+  Definition sync_array T a i cs rx : prog T :=
+    cs <- sync (a + i) cs;
     rx cs.
-
-
 
 
   (** rep invariant *)
@@ -346,7 +336,7 @@ Module UCache.
 
     prestep; unfold rep; norml; unfold stars; simpl; clear_norm_goal.
 
-    (* found victim  *)
+    (* found the victim  *)
     - edestruct addr_valid_ptsto_subset; eauto.
       norm. 2: intuition eauto. cancel.
       step.
@@ -378,10 +368,12 @@ Module UCache.
   Qed.
 
 
+  Hint Extern 1 ({{_}} progseq (maybe_evict _) _) => apply maybe_evict_ok : prog.
+
 
 End UCache.
 
 Global Opaque UCache.write_array.
 Global Opaque UCache.read_array.
-Global Opaque UCache.evict_array.
+Global Opaque UCache.sync_array.
 
