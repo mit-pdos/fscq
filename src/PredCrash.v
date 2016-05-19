@@ -1144,3 +1144,26 @@ Proof.
   apply sep_star_comm in H.
   eapply ptsto_subset_valid; eauto.
 Qed.
+
+Lemma ptsto_subset_upd : forall v0 v a m vs vs' vs0 (F : rawpred),
+  (F * a |+> (v0, vs0))%pred m ->
+  incl vs' vs ->
+  (F * a |+> (v, vs))%pred (upd m a (v, vs')).
+Proof.
+  unfold ptsto_subset; simpl in *; intros.
+  apply sep_star_comm in H.
+  apply pimpl_exists_r_star_r in H.
+  destruct H.
+  apply sep_star_assoc in H.
+  eapply ptsto_upd with (v := (v, vs')) in H.
+  setoid_rewrite sep_star_comm in H.
+  apply sep_star_assoc in H.
+  apply sep_star_lift_apply in H; destruct H.
+
+  apply sep_star_comm.
+  apply pimpl_exists_r_star.
+  eapply pimpl_exists_r; eauto.
+  setoid_rewrite sep_star_comm.
+  apply sep_star_assoc; apply sep_star_comm.
+  apply sep_star_lift_apply'; eauto.
+Qed.
