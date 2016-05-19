@@ -170,7 +170,7 @@ Module UCache.
 
   Lemma mem_pred_cachepred_remove_absorb : forall csmap d a w vs p_old,
     d a = Some (w, p_old) ->
-    incl vs p_old ->
+    incl vs (vsmerge (w, p_old)) ->
     mem_pred (cachepred csmap) (mem_except d a) * a |-> (w, vs) =p=>
     mem_pred (cachepred (Map.remove a csmap)) d.
   Proof.
@@ -196,6 +196,7 @@ Module UCache.
     unfold cachepred at 3.
     rewrite H.
     unfold ptsto_subset; cancel; eauto.
+    apply incl_tl; auto.
   Qed.
 
   Lemma size_valid_remove : forall cs a,
@@ -253,6 +254,7 @@ Module UCache.
     eapply diskIs_extract' in H1.
     specialize (H1 d eq_refl).
     pred_apply; unfold ptsto_subset; cancel.
+    apply incl_tl; apply incl_refl.
   Qed.
 
 
@@ -351,7 +353,9 @@ Module UCache.
       cancel.
       step.
       eapply mem_pred_cachepred_remove_absorb; eauto.
-      eapply incl_tran; eauto; apply incl_cons; auto.
+      eapply incl_tran; eauto.
+      do 2 (apply incl_cons; simpl; intuition).
+      apply incl_tl; apply incl_refl.
       apply size_valid_remove; auto.
       apply addr_valid_remove; auto.
       denote Map.In as Hx; apply MapFacts.remove_in_iff in Hx; intuition.
@@ -359,7 +363,7 @@ Module UCache.
       cancel; eauto.
       rewrite sep_star_comm.
       eapply mem_pred_cachepred_absorb_dirty; eauto.
-      eapply incl_tran; eauto; apply incl_cons; auto.
+      eapply incl_tran; eauto; apply incl_cons; apply incl_refl; auto.
 
     (* cached, non-dirty *)
     - cancel.
@@ -467,6 +471,7 @@ Module UCache.
       unfold ptsto_subset; cancel.
       rewrite sep_star_comm.
       eapply mem_pred_cachepred_absorb_dirty; eauto.
+      eapply incl_tran; eauto; apply incl_cons; intuition.
 
       cancel.
       eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
@@ -568,6 +573,7 @@ Module UCache.
       exists cs', rep cs' d
     >} sync a cs.
   Proof.
+    unfold sync; step.
     
   Admitted.
 
