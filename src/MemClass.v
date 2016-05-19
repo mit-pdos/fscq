@@ -28,3 +28,12 @@ Module Example.
   Definition addr_mem := @mem addr _ (fun _ => unit).
   Definition nat_mem := @mem nat _ (fun _ => unit).
 End Example.
+
+Instance pair_dec : forall A B, DecEq A -> DecEq B -> DecEq (A*B).
+Proof.
+  unfold DecEq; intros A B AEQ BEQ.
+  destruct a as [a0 b0], b as [a1 b1].
+  destruct (AEQ a0 a1), (BEQ b0 b1);
+    left + right;
+    congruence.
+Defined.
