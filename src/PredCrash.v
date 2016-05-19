@@ -11,7 +11,7 @@ Set Implicit Arguments.
 
 
 Definition ptsto_subset {AT AEQ} (a : AT) (vs : valuset) : @pred AT AEQ valuset :=
-  (exists old, a |-> (fst vs, old) * [[ incl old (snd vs) ]])%pred.
+  (exists old, a |-> (fst vs, old) * [[ incl old (vsmerge vs) ]])%pred.
 
 Notation "a |=> v" := (a |-> ((v, nil) : valuset))%pred (at level 35) : pred_scope.
 Notation "a |~> v" := (exists old, a |-> ((v, old) : valuset))%pred (at level 35) : pred_scope.
@@ -781,6 +781,9 @@ Proof.
   apply sep_star_lift_apply in H0; intuition.
   eexists. apply sep_star_lift_apply'; eauto.
   eapply incl_tran; eauto.
+  unfold vsmerge; simpl.
+  apply incl_cons2.
+  eauto.
 Qed.
 
 Theorem ptsto_sync_mem : forall (a : addr) (vs : valuset) v m,
@@ -1125,7 +1128,7 @@ Qed.
 
 Theorem ptsto_subset_valid : forall AT AEQ a vs F (m : @mem AT AEQ _),
   (a |+> vs * F)%pred m ->
-  exists l, m a = Some (fst vs, l) /\ incl l (snd vs).
+  exists l, m a = Some (fst vs, l) /\ incl l (vsmerge vs).
 Proof.
   unfold ptsto_subset, ptsto; unfold_sep_star.
   intros; repeat deex.
@@ -1166,4 +1169,7 @@ Proof.
   setoid_rewrite sep_star_comm.
   apply sep_star_assoc; apply sep_star_comm.
   apply sep_star_lift_apply'; eauto.
+
+  unfold vsmerge; simpl.
+  apply incl_tl; eauto.
 Qed.
