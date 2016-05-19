@@ -5,7 +5,7 @@ module Main where
 import Word
 import qualified ConcurInterp as I
 import qualified TwoBlockExample
-import qualified EventCSL
+import qualified CoopConcur
 import qualified MemCache
 import Disk
 import Control.Concurrent
@@ -38,16 +38,16 @@ forkChild children io = do
 initmem :: Disk.DiskState -> Int -> IO ()
 initmem ds tid = do
   I.run ds tid $ \done ->
-    EventCSL.Assgn TwoBlockExample._MyCacheSemantics__Transitions__coq_Cache (unsafeCoerce (MemCache._Map__empty :: MemCache.Map__Coq_t (MemCache.Coq_cache_entry EventCSL.BusyFlag))) $ \_ ->
+    CoopConcur.Assgn TwoBlockExample._MyCacheSemantics__Transitions__coq_Cache (unsafeCoerce (MemCache._Map__empty :: MemCache.Map__Coq_t (MemCache.Coq_cache_entry CoopConcur.BusyFlag))) $ \_ ->
     done ()
 
 testprog :: Disk.DiskState -> Int -> IO ()
 testprog ds tid = do
   _ <- I.run ds tid $
-    \done -> EventCSL.StartRead (natToWord 64 tid) $
-    \_ -> EventCSL.Yield (natToWord 64 123) $
-    \_ -> EventCSL.FinishRead (natToWord 64 tid) $
-    \val -> EventCSL.Write (natToWord 64 (tid+1)) val $
+    \done -> CoopConcur.StartRead (natToWord 64 tid) $
+    \_ -> CoopConcur.Yield (natToWord 64 123) $
+    \_ -> CoopConcur.FinishRead (natToWord 64 tid) $
+    \val -> CoopConcur.Write (natToWord 64 (tid+1)) val $
     done
   return ()
 

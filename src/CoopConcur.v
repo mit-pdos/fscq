@@ -107,7 +107,7 @@ Section LogicDefinition.
 
 End LogicDefinition.
 
-Section EventCSL.
+Section CoopConcur.
   Set Default Proof Using "Type".
 
   Variable Sigma:State.
@@ -793,7 +793,7 @@ Section EventCSL.
     end; intuition eauto.
   Qed.
 
-End EventCSL.
+End CoopConcur.
 
 (** Copy-paste metaprogramming:
 

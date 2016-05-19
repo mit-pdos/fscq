@@ -1,4 +1,4 @@
-Require Import EventCSL.
+Require Import CoopConcur.
 Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import FunctionalExtensionality.

@@ -1,4 +1,4 @@
-Require Import EventCSL.
+Require Import CoopConcur.
 Require Export Locking.
 Require Export Automation.
 Require Import FunctionalExtensionality.

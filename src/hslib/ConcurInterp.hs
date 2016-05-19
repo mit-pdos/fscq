@@ -1,6 +1,6 @@
 module ConcurInterp where
 
-import EventCSL
+import CoopConcur
 import Hlist
 import qualified Disk
 import Control.Exception as E
@@ -20,7 +20,7 @@ hmember_to_int :: Hlist.Coq_member a -> Int
 hmember_to_int (HFirst _) = 0
 hmember_to_int (HNext _ _ x) = 1 + (hmember_to_int x)
 
-run_dcode :: Disk.DiskState -> Int -> EventCSL.Coq_prog a -> IO a
+run_dcode :: Disk.DiskState -> Int -> CoopConcur.Coq_prog a -> IO a
 run_dcode _ tid (Done r) = do
   debugmsg tid $ "Done"
   return r
@@ -70,10 +70,10 @@ run_dcode ds tid (GhostUpdate _ rx) = do
   debugmsg tid $ "GhostUpdate"
   run_dcode ds tid $ rx ()
 
-run_e :: Disk.DiskState -> Int -> ((a -> EventCSL.Coq_prog a) -> EventCSL.Coq_prog a) -> IO a
+run_e :: Disk.DiskState -> Int -> ((a -> CoopConcur.Coq_prog a) -> CoopConcur.Coq_prog a) -> IO a
 run_e ds tid p = do
   Disk.acquire_global_lock ds
-  ret <- run_dcode ds tid $ p (\x -> EventCSL.Done x)
+  ret <- run_dcode ds tid $ p (\x -> CoopConcur.Done x)
   Disk.release_global_lock ds
   return ret
 
@@ -86,5 +86,5 @@ print_exception tid e = do
   putStrLn $ "[" ++ (show tid) ++ "] Exception: " ++ (show e)
   spin_forever
 
-run :: Disk.DiskState -> Int -> ((a -> EventCSL.Coq_prog a) -> EventCSL.Coq_prog a) -> IO a
+run :: Disk.DiskState -> Int -> ((a -> CoopConcur.Coq_prog a) -> CoopConcur.Coq_prog a) -> IO a
 run ds tid p = E.catch (run_e ds tid p) (print_exception tid)
