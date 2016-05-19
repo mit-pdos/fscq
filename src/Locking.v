@@ -1,23 +1,25 @@
 Require Import EventCSL.
+Require Import OrderedTypeEx.
+Require Import FMapAVL.
+Require Import FMapFacts.
+Require Import PeanoNat.
+
+Module Map := FMapAVL.Make(Nat_as_OT).
+Module MapFacts := WFacts_fun Nat_as_OT Map.
 
 Set Implicit Arguments.
 
 Section Locking.
 
-Variable Sigma:State.
-Variable delta : Protocol Sigma.
-
-Inductive BusyFlag := Open | Locked.
+Inductive BusyFlag : Set := Open | Locked.
 
 Definition is_locked l :
   {l = Locked} + {l = Open}.
 Proof.
-  destruct l; intuition eauto.
+  destruct l; intuition.
 Defined.
 
-Inductive BusyFlagOwner : Set :=
-| NoOwner
-| Owned (id:TID).
+Inductive BusyFlagOwner : Set := NoOwner | Owned (id:TID).
 
 Definition BusyFlag_dec : forall x y:BusyFlag, {x = y} + {x <> y}.
 Proof.
@@ -30,76 +32,117 @@ Proof.
   decide equality.
 Defined.
 
-(** given a lock variable and some other variable v, generate a
-relation for tid that makes the variable read-only for non-owners. *)
-Definition lock_protects (lvar : abstraction Sigma -> BusyFlagOwner)
-           {tv} (v : abstraction Sigma -> tv) tid (s s': abstraction Sigma) :=
-  forall owner_tid,
-    lvar s = Owned owner_tid ->
-    tid <> owner_tid ->
-    v s' = v s.
+Definition Flags := Map.t BusyFlag.
+
+Definition get_lock (l:Flags) (a:nat) :=
+  match Map.find a l with
+  | Some o => o
+  | None => Open
+  end.
+
+Definition free_lock (l:Flags) (a:nat) : Flags :=
+  Map.remove a l.
+
+Definition set_locked (l:Flags) (a:nat) : Flags :=
+  Map.add a Locked l.
+
+Definition is_open (a:nat) (l:Flags) :
+  {get_lock l a = Open} + {get_lock l a = Locked}.
+Proof.
+  destruct (get_lock l a); auto.
+Defined.
+
+Section FreeSetTheorems.
+
+  Hint Unfold get_lock set_locked free_lock : locks.
+  Hint Rewrite MapFacts.add_eq_o using (solve [ auto ]) : locks.
+  Hint Rewrite MapFacts.add_neq_o using (solve [ auto ]) : locks.
+  Hint Rewrite MapFacts.remove_eq_o using (solve [ auto ]) : locks.
+  Hint Rewrite MapFacts.remove_neq_o using (solve [ auto ]) : locks.
+
+  Ltac t := autounfold with locks;
+      intros;
+      subst;
+      autorewrite with locks;
+      auto.
+
+  Notation proof := ltac:(t) (only parsing).
+
+  Definition free_lock_eq : forall l a a',
+      a = a' ->
+      get_lock (free_lock l a) a' = _ := proof.
+
+  Definition free_lock_neq : forall l a a',
+      a <> a' ->
+      get_lock (free_lock l a) a' = get_lock l a' := proof.
+
+  Definition set_locked_eq : forall l a a',
+      a = a' ->
+      get_lock (set_locked l a) a' = _ := proof.
+
+  Definition set_locked_neq : forall l a a',
+      a <> a' ->
+      get_lock (set_locked l a) a' = get_lock l a' := proof.
+
+End FreeSetTheorems.
+
+Definition Locks AT (AEQ: DecEq AT) := AT -> BusyFlagOwner.
+
+Arguments Locks AT {AEQ}.
+
+Section AbstractLocks.
+
+  Variable AT:Type.
+  Variable AEQ: DecEq AT.
+
+  Definition upd_lock (l: @Locks AT AEQ) a0 o' :=
+    fun a => if AEQ a0 a then o' else l a.
+
+  Ltac t :=
+    unfold upd_lock; intros;
+    match goal with
+    | [ a: AT, a': AT |- _ ] =>
+      destruct (AEQ a a');
+        try congruence
+    end;
+    auto.
+
+  Theorem upd_lock_eq : forall l a a' o',
+      a = a' ->
+      upd_lock l a o' a' = o'.
+  Proof. t. Qed.
+
+  Theorem upd_lock_neq : forall l a a' o',
+      a <> a' ->
+      upd_lock l a o' a' = l a'.
+  Proof. t. Qed.
+
+End AbstractLocks.
+
+Inductive lock_rep : BusyFlag -> BusyFlagOwner -> Prop :=
+| LockOpen : lock_rep Open NoOwner
+| LockOwned : forall tid, lock_rep Locked (Owned tid).
+
+Theorem lock_rep_open : forall o,
+    lock_rep Open o ->
+    o = NoOwner.
+Proof.
+  inversion 1; auto.
+Qed.
+
+Definition locks_rep AT (AEQ: DecEq AT) (flags: AT -> BusyFlag) (locks: Locks AT) :=
+  forall a, lock_rep (flags a) (locks a).
 
 Inductive lock_transition tid : BusyFlagOwner -> BusyFlagOwner -> Prop :=
 | Transition_NoChange : forall o o', o = o' -> lock_transition tid o o'
-| Transition_OwnerAcquire : forall o o', o = NoOwner ->
-                                o' = Owned tid ->
-                                lock_transition tid o o'
-| Transition_OwnerRelease : forall o o', o = Owned tid ->
-                                o' = NoOwner ->
-                                lock_transition tid o o'.
+| Transition_OwnerAcquire : lock_transition tid NoOwner (Owned tid)
+| Transition_OwnerRelease : lock_transition tid (Owned tid) NoOwner.
 
 Hint Constructors lock_transition.
 
-Definition lock_protocol (lvar : abstraction Sigma -> BusyFlagOwner) (tid : TID) :
-  abstraction Sigma -> abstraction Sigma -> Prop :=
-  fun s s' => lock_transition tid (lvar s) (lvar s').
-
-Theorem lock_protects_trans : forall lvar tv (v: _ -> tv) tid s s' s'',
-  lock_protects lvar v tid s s' ->
-  lock_protects lvar v tid s' s'' ->
-  lock_protocol lvar tid s s' ->
-  lock_protects lvar v tid s s''.
-Proof.
-  unfold lock_protects; intros.
-  eapply eq_trans with (y := v s'); eauto.
-  specialize (H owner_tid); intuition.
-  eapply H0; eauto.
-  inversion H1; subst; congruence.
-Qed.
-
-Lemma lock_protects_locked : forall lvar tv (v: _ -> tv) tid s s',
-    lvar s = Owned tid ->
-    lock_protects lvar v tid s s'.
-Proof.
-  unfold lock_protects.
-  congruence.
-Qed.
-
-Lemma lock_protects_unchanged : forall lvar tv (v: _ -> tv) tid s s',
-    v s = v s' ->
-    lock_protects lvar v tid s s'.
-Proof.
-  unfold lock_protects.
-  eauto.
-Qed.
-
-Lemma lock_protects_indifference : forall lvar tv (v: _ -> tv) tid
-  s0 s0' s1 s1',
-    lock_protects lvar v tid s0 s1 ->
-    lvar s0 = lvar s0' ->
-    v s0 = v s0' ->
-    v s1 = v s1' ->
-    lock_protects lvar v tid s0' s1'.
-Proof.
-  unfold lock_protects.
-  intros.
-  rewrite H0 in *.
-  rewrite H1 in *.
-  rewrite H2 in *.
-  eauto.
-Qed.
-
-Hint Extern 1 (_ = _) => congruence.
+Theorem lock_transition_refl : forall tid o,
+    lock_transition tid o o.
+Proof. auto. Qed.
 
 Theorem lock_transition_trans : forall tid o o' o'',
   lock_transition tid o o' ->
@@ -113,72 +156,8 @@ Proof.
   end; eauto.
 Qed.
 
-Corollary lock_protocol_trans : forall lvar tid s s' s'',
-  lock_protocol lvar tid s s' ->
-  lock_protocol lvar tid s' s'' ->
-  lock_protocol lvar tid s s''.
-Proof.
-  unfold lock_protocol; eauto using lock_transition_trans.
-Qed.
-
-Theorem lock_protocol_indifference : forall lvar tid s0 s1 s0' s1',
-    lock_protocol lvar tid s0 s1 ->
-    lvar s0 = lvar s0' ->
-    lvar s1 = lvar s1' ->
-    lock_protocol lvar tid s0' s1'.
-Proof.
-  unfold lock_protocol; intros.
-  inversion H; subst; eauto.
-Qed.
-
-Inductive ghost_lock_invariant :
-  BusyFlag -> BusyFlagOwner -> Prop :=
-| LockOpen : ghost_lock_invariant Open NoOwner
-| LockOwned : forall tid, ghost_lock_invariant Locked (Owned tid).
-
-Lemma ghost_lock_owned : forall lvar glvar tid,
-    ghost_lock_invariant lvar glvar ->
-    glvar = Owned tid ->
-    lvar = Locked.
-Proof.
-  inversion 1; congruence.
-Qed.
-
-Lemma ghost_lock_free : forall lvar glvar,
-    ghost_lock_invariant lvar glvar ->
-    glvar = NoOwner ->
-    lvar = Open.
-Proof.
-  inversion 1; congruence.
-Qed.
-
-Lemma mem_lock_owned : forall lvar glvar,
-    ghost_lock_invariant lvar glvar ->
-    lvar = Locked ->
-    exists tid, glvar = Owned tid.
-Proof.
-  inversion 1; try congruence; eauto.
-Qed.
-
-Lemma mem_lock_free : forall lvar glvar,
-    ghost_lock_invariant lvar glvar ->
-    lvar = Open ->
-    glvar = NoOwner.
-Proof.
-  inversion 1; congruence.
-Qed.
-
-Theorem lock_inv_still_held : forall lvar tid tid' s s',
-  lock_protocol lvar tid' s s' ->
-  tid <> tid' ->
-  lvar s = Owned tid ->
-  lvar s' = Owned tid.
-Proof.
-  inversion 1; congruence.
-Qed.
-
 End Locking.
 
-Hint Resolve ghost_lock_owned
-             lock_inv_still_held.
 Hint Constructors lock_transition.
+
+Arguments Locks AT {AEQ}.
