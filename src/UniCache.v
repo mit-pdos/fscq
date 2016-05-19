@@ -66,7 +66,7 @@ Module UCache.
         match (Map.elements (CSMap cs)) with
         | nil => rx cs
         | (a, v) :: tl =>
-          cs <- evict victim cs;
+          cs <- evict a cs;
           rx cs
         end
       end
@@ -185,7 +185,6 @@ Module UCache.
     unfold cachepred at 3.
     rewrite MapFacts.remove_eq_o by auto.
     unfold ptsto_subset; cancel; eauto.
-    rewrite <- sep_star_lift2and; cancel.
     rewrite mem_pred_pimpl_except; eauto.
     intros; apply cachepred_remove_invariant; eauto.
   Qed.
@@ -203,7 +202,6 @@ Module UCache.
     unfold cachepred at 3.
     rewrite H.
     unfold ptsto_subset; cancel; eauto.
-    rewrite <- sep_star_lift2and; cancel.
   Qed.
 
   Lemma size_valid_remove : forall cs a,
@@ -306,6 +304,32 @@ Module UCache.
   Hint Extern 1 ({{_}} progseq (evict _ _) _) => apply evict_ok : prog.
 
 
+  Lemma addr_valid_mem_valid : forall a cm c d,
+    Map.find a cm = Some c ->
+    addr_valid d cm ->
+    exists vs, d a = Some vs.
+  Proof.
+    intros.
+    assert (Map.In a cm).
+    apply MapFacts.in_find_iff.
+    destruct (Map.find a cm); try congruence.
+    specialize (H0 _ H1).
+    destruct (d a); try congruence; eauto.
+  Qed.
+
+  Lemma addr_valid_ptsto_subset : forall a cm c d,
+    Map.find a cm = Some c ->
+    addr_valid d cm ->
+    exists (F : rawpred) vs, (F * a |+> vs)%pred d.
+  Proof.
+    intros.
+    edestruct addr_valid_mem_valid; eauto.
+    exists (diskIs (mem_except d a)), x.
+    eapply diskIs_extract' in H1.
+    specialize (H1 d eq_refl).
+    pred_apply; unfold ptsto_subset; cancel.
+  Qed.
+
   Theorem maybe_evict_ok : forall cs,
     {< d,
     PRE
@@ -323,16 +347,35 @@ Module UCache.
     prestep; unfold rep; norml; unfold stars; simpl; clear_norm_goal.
 
     (* found victim  *)
-    - admit.
+    - edestruct addr_valid_ptsto_subset; eauto.
+      norm. 2: intuition eauto. cancel.
+      step.
+      unfold rep; cancel.
+      denote ( _ -> _ < _) as Hx; apply Hx.
+      apply MapFacts.in_find_iff; congruence.
 
     (* victim not found, cache is empty *)
     - unfold size_valid in *; cancel.
       rewrite Map.cardinal_1, Heql; simpl; omega.
 
     (* victim not found, cache is non-empty *)
-    - admit.
+    - clear Heqo.
+      assert (Map.find k (CSMap cs) = Some (p0_1, p0_2)).
+      rewrite MapFacts.elements_o, Heql; simpl.
+      destruct (MapFacts.eqb k k) eqn:?; auto.
+      contradict Heqb.
+      unfold MapFacts.eqb, MapOrdProperties.P.F.eq_dec.
+      destruct (Nat.eq_dec k k); congruence.
 
-  Admitted.
+      edestruct addr_valid_ptsto_subset; eauto; repeat deex.
+      norm. 2: intuition eauto. cancel.
+      step.
+      unfold rep; cancel.
+      denote ( _ -> _ < _) as Hx; apply Hx.
+      apply MapFacts.in_find_iff; congruence.
+
+    Unshelve. all: eauto; exact 0.
+  Qed.
 
 
 
