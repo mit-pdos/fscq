@@ -367,8 +367,95 @@ Module UCache.
     Unshelve. all: eauto; exact 0.
   Qed.
 
-
   Hint Extern 1 ({{_}} progseq (maybe_evict _) _) => apply maybe_evict_ok : prog.
+
+  Lemma mem_pred_cachepred_add_absorb_clean : forall csmap d a v vs,
+    d a = Some (v, vs) ->
+    mem_pred (cachepred csmap) (mem_except d a) ✶ a |+> (v, vs) =p=>
+    mem_pred (cachepred (Map.add a (v, false) csmap)) d.
+  Proof.
+    intros.
+    eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
+    unfold cachepred at 3.
+    rewrite MapFacts.add_eq_o by auto.
+    unfold ptsto_subset; cancel; eauto.
+    rewrite mem_pred_pimpl_except; eauto.
+    intros; apply cachepred_add_invariant; eauto.
+  Qed.
+
+
+  Lemma size_valid_add : forall cs evictor vv a,
+    Map.cardinal (CSMap cs) < CSMaxCount cs ->
+    size_valid cs ->
+    size_valid (mk_cs (Map.add a vv (CSMap cs)) (CSMaxCount cs) evictor).
+  Proof.
+    unfold size_valid; intuition; simpl.
+    destruct (Map.find a0 (CSMap cs)) eqn:?.
+    rewrite map_add_dup_cardinal; auto.
+    eexists; eapply MapFacts.find_mapsto_iff; eauto.
+    rewrite map_add_cardinal. omega.
+    intuition deex.
+    apply MapFacts.find_mapsto_iff in H0; congruence.
+  Qed.
+
+  Lemma addr_valid_add : forall d cm a vv v,
+    d a = Some v ->
+    addr_valid d cm ->
+    addr_valid d (Map.add a vv cm).
+  Proof.
+    unfold addr_valid; intros.
+    destruct (addr_eq_dec a a0); subst; try congruence.
+    apply H0.
+    eapply MapFacts.add_in_iff in H1; intuition.
+  Qed.
+
+
+  Theorem read_ok : forall cs a,
+    {< d (F : rawpred) v vs,
+    PRE
+      rep cs d * [[ (F * a |+> (v, vs))%pred d ]]
+    POST RET:^(cs, r)
+      rep cs d * [[ r = v ]]
+    CRASH
+      exists cs', rep cs' d
+    >} read a cs.
+  Proof.
+    unfold read, rep; intros.
+    safestep; eauto.
+    unfold rep; cancel.
+
+    prestep; unfold rep; norml; unfold stars; simpl; clear_norm_goal.
+
+    (* found in cache *)
+    - edestruct ptsto_subset_valid'; eauto; intuition simpl in *.
+      erewrite mem_pred_extract with (a := a) at 1 by eauto.
+      unfold cachepred at 2; rewrite Heqo; destruct b; simpl.
+      unfold ptsto_subset; cancel.
+      rewrite sep_star_comm.
+      eapply mem_pred_cachepred_absorb_dirty; eauto.
+
+      cancel.
+      eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
+      unfold cachepred at 3.
+      rewrite Heqo.
+      unfold ptsto_subset; cancel; eauto.
+
+    (* not found *)
+    - edestruct ptsto_subset_valid'; eauto; intuition simpl in *.
+      rewrite mem_pred_extract with (a := a) by eauto.
+      unfold cachepred at 2; rewrite Heqo; cancel.
+      step.
+      eapply mem_pred_cachepred_add_absorb_clean; eauto.
+      apply size_valid_add; auto.
+      eapply addr_valid_add; eauto.
+
+      cancel; eauto.
+      eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
+      unfold cachepred at 3.
+      rewrite Heqo.
+      unfold ptsto_subset; cancel; eauto.
+  Qed.
+
 
 
 End UCache.

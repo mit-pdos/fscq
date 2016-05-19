@@ -18,7 +18,6 @@ Notation "a |~> v" := (exists old, a |-> ((v, old) : valuset))%pred (at level 35
 Notation "a |+> v" := (ptsto_subset a v) (at level 35) : pred_scope.
 Notation "a |+>?" := (exists v, a |+> v)%pred (at level 35) : pred_scope.
 
-
 Definition rawpred := @pred addr addr_eq_dec valuset.
 
 
