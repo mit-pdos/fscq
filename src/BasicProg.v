@@ -115,6 +115,7 @@ Proof.
 Qed.
 
 Hint Extern 1 ({{_}} progseq Sync _) => apply sync_ok : prog.
+Hint Extern 1 ({{_}} progseq (@Sync _) _) => apply sync_ok : prog.
 
 Theorem trim_ok:
   forall (a:addr),

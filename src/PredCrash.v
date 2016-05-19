@@ -881,6 +881,16 @@ Proof.
   rewrite H1; auto.
 Qed.
 
+Theorem sync_xform_emp :
+  sync_xform emp <=p=> emp.
+Proof.
+  unfold sync_xform, sync_mem, emp; split; intro; intros; repeat deex.
+  destruct (m' a) eqn:?; congruence.
+  eexists; split; eauto.
+  apply functional_extensionality; intros.
+  destruct (m x) eqn:?; congruence.
+Qed.
+
 Lemma sync_mem_union : forall AT AEQ (m1 m2 : @mem AT AEQ _),
   sync_mem (mem_union m1 m2) = mem_union (sync_mem m1) (sync_mem m2).
 Proof.

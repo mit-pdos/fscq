@@ -562,21 +562,161 @@ Module UCache.
   Qed.
 
 
+  Hint Extern 0 (okToUnify (mem_pred ?p _) (mem_pred ?p _)) => constructor : okToUnify.
+
+  Fixpoint avl_sync_addr (a : addr) (l : list (addr * valuset)) : list (addr * valuset) :=
+    match l with
+    | nil => nil
+    | (a', vs) :: rest =>
+      let rest' := avl_sync_addr a rest in
+      if addr_eq_dec a' a then (a, (fst vs, nil)) :: rest' else (a', vs) :: rest'
+    end.
+
+  Lemma sync_xform_listpred_cachepred_notin : forall l a cm,
+    Map.find a cm = None ->
+    NoDup (map fst l) ->
+    sync_xform (listpred (fun av => cachepred cm (fst av) (snd av)) l) =p=>
+    (listpred (fun av => cachepred cm (fst av) (snd av)) (avl_sync_addr a l)).
+  Proof.
+    induction l; simpl; intros.
+    apply sync_xform_emp.
+    destruct a as [a vs]; simpl in *.
+    inversion H0; subst.
+    rewrite sync_xform_sep_star_dist.
+    destruct (addr_eq_dec a a0); subst; simpl.
+    - unfold cachepred at 1 3.
+      rewrite H; rewrite IHl; eauto; cancel.
+      rewrite sync_xform_ptsto_subset_precise.
+      rewrite ptsto_pimpl_ptsto_subset; auto.
+    - rewrite IHl; eauto; cancel.
+      rewrite sync_xform_sync_invariant; eauto.
+  Qed.
+
+  Lemma avl_sync_addr_map_fst : forall l a,
+    map fst (avl_sync_addr a l) = map fst l.
+  Proof.
+    induction l; simpl; auto; intros.
+    destruct a; simpl.
+    destruct (addr_eq_dec n a0); subst; simpl; rewrite IHl; auto.
+  Qed.
+
+  Lemma sync_addr_avs2mem_avl_sync_addr : forall l a,
+    NoDup (map fst l) ->
+    sync_addr (avs2mem addr_eq_dec l) a = avs2mem addr_eq_dec (avl_sync_addr a l).
+  Proof.
+    unfold avs2mem, sync_addr.
+    induction l; simpl; intros; apply functional_extensionality; intros.
+    destruct (addr_eq_dec a x); auto.
+
+    inversion H; subst.
+    destruct a; destruct (addr_eq_dec a0 x); subst; simpl in *.
+    - destruct (addr_eq_dec n x); subst; simpl.
+      repeat rewrite upd_eq; auto; subst.
+      destruct p; auto.
+      repeat rewrite upd_ne; auto; subst.
+      rewrite <- IHl; auto.
+      destruct (addr_eq_dec x x); try congruence.
+    - destruct (addr_eq_dec n a0); subst; simpl.
+      repeat rewrite upd_ne; auto.
+      rewrite <- IHl; auto.
+      destruct (addr_eq_dec a0 x); try congruence.
+      destruct (addr_eq_dec x n); subst; try congruence.
+      repeat rewrite upd_eq; auto.
+      repeat rewrite upd_ne; auto.
+      rewrite <- IHl; auto.
+      destruct (addr_eq_dec a0 x); try congruence.
+  Qed.
+
+  Lemma sync_xform_mem_pred_cache_notin : forall cm d a,
+    ~ Map.In a cm ->
+    sync_xform (mem_pred (cachepred cm) d) =p=> mem_pred (cachepred cm) (sync_addr d a).
+  Proof.
+    unfold mem_pred, mem_pred_one; intros.
+    rewrite sync_xform_exists_comm.
+    apply pimpl_exists_l; intro l.
+    repeat rewrite sync_xform_sep_star_dist.
+    repeat rewrite sync_xform_lift_empty.
+    cancel.
+    apply sync_xform_listpred_cachepred_notin; eauto.
+    apply MapFacts.not_find_in_iff; eauto.
+    rewrite avl_sync_addr_map_fst; auto.
+    apply sync_addr_avs2mem_avl_sync_addr; auto.
+  Qed.
+
+  Lemma addr_valid_sync_addr : forall d a cm,
+    addr_valid d cm ->
+    addr_valid (sync_addr d a) cm.
+  Proof.
+    unfold addr_valid, sync_addr; intros.
+    destruct (addr_eq_dec a a0); subst; auto.
+    destruct (d a0) eqn:?; auto.
+    destruct p; congruence.
+    specialize (H _ H0); congruence.
+  Qed.
+
+  Lemma sync_addr_ptsto_subset : forall AT AEQ (m : @mem AT AEQ valuset) F a v vs,
+    (F * a |+> (v, vs))%pred m ->
+    (F * a |+> (v, nil))%pred (sync_addr m a).
+  Proof.
+    unfold sync_addr; unfold_sep_star; intros; repeat deex.
+    exists m1.
+    exists (fun a' => if AEQ a' a then Some (v, nil) else None).
+    split; [|split].
+    - apply functional_extensionality; intro.
+      destruct (AEQ a x); subst.
+      unfold mem_union; destruct (AEQ x x); try congruence.
+      unfold ptsto_subset in H3; destruct_lift H3.
+      destruct (m1 x) eqn:?.
+      destruct H.
+      repeat eexists; eauto.
+      eapply ptsto_valid.
+      pred_apply; cancel.
+      erewrite ptsto_valid.
+      2: pred_apply; cancel.
+      auto.
+      unfold mem_union.
+      destruct (m1 x); auto.
+      destruct (AEQ x a); subst; try congruence.
+      unfold ptsto_subset, ptsto in H3; destruct_lift H3; intuition.
+    - unfold mem_disjoint in *. intuition. repeat deex.
+      apply H.
+      unfold ptsto_subset, ptsto in H3; destruct_lift H3; intuition.
+      destruct (AEQ a0 a); subst; eauto; congruence.
+    - intuition.
+      unfold ptsto_subset in *.
+      destruct_lift H3; intuition.
+      eexists.
+      apply sep_star_lift_apply'.
+      unfold ptsto; intuition.
+      destruct (AEQ a a); eauto; intuition.
+      destruct (AEQ a' a); eauto; congruence.
+      apply incl_nil.
+  Qed.
+
   Theorem sync_ok : forall cs a,
     {< d (F : rawpred) v0,
     PRE
       rep cs d * [[ (F * a |+> v0)%pred d ]]
     POST RET:cs
       exists d',
-      rep cs d' * [[ (sync_xform F * a |+> (fst v0, nil))%pred d' ]]
+      rep cs d' * [[ (F * a |+> (fst v0, nil))%pred d' ]]
     CRASH
       exists cs', rep cs' d
     >} sync a cs.
   Proof.
-    unfold sync; step.
-    
-  Admitted.
+    unfold sync, rep; intros.
+    prestep; unfold rep; safecancel.
 
+    safestep.
+    safestep.
+    rewrite sync_xform_sep_star_dist.
+    setoid_rewrite sync_xform_sync_invariant at 2; auto.
+    rewrite sync_xform_mem_pred_cache_notin by eauto.
+    cancel.
+    apply addr_valid_sync_addr; auto.
+    eapply sync_addr_ptsto_subset; eauto.
+    cancel.
+  Qed.
 
 
 End UCache.
