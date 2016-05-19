@@ -557,6 +557,22 @@ Module UCache.
   Qed.
 
 
+  Theorem sync_ok : forall cs a,
+    {< d (F : rawpred) v0,
+    PRE
+      rep cs d * [[ (F * a |+> v0)%pred d ]]
+    POST RET:cs
+      exists d',
+      rep cs d' * [[ (sync_xform F * a |+> (fst v0, nil))%pred d' ]]
+    CRASH
+      exists cs', rep cs' d
+    >} sync a cs.
+  Proof.
+    
+  Admitted.
+
+
+
 End UCache.
 
 Global Opaque UCache.write_array.
