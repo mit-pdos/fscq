@@ -20,6 +20,8 @@ Module MapProperties := WProperties_fun Addr_as_OT Map.
 
 Section MemCache.
 
+  Implicit Type a:addr.
+
   Inductive cache_entry : Type :=
   | Clean (v:valu)
   | Dirty (v:valu)
@@ -29,7 +31,7 @@ Section MemCache.
 
   Variable (c:Cache).
 
-  Definition cache_get (a:addr) : cache_entry :=
+  Definition cache_get a : cache_entry :=
     match Map.find a c with
     | Some ce => ce
     | None => Invalid
@@ -39,7 +41,7 @@ Section MemCache.
     Map.add a v c.
 
   (** Evict an entry (should be cleaned) *)
-  Definition cache_evict (a:addr) :=
+  Definition cache_evict a :=
     Map.remove a c.
 
   (** Change a dirty mapping to a clean one, keeping the same
@@ -50,7 +52,7 @@ Section MemCache.
     | _ => c
     end.
 
-  Definition cache_val (a:addr) : option valu :=
+  Definition cache_val a : option valu :=
     match cache_get a with
     | Clean v => Some v
     | Dirty v => Some v
@@ -70,4 +72,4 @@ Definition cache_rep (d:DISK) (c: Cache) (vd:DISK) :=
       | Invalid => vd a = d a
       end.
 
-Hint Opaque cache_pred.
+Hint Opaque cache_rep.

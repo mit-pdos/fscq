@@ -47,9 +47,10 @@ Definition set_locked (l:Flags) (a:nat) : Flags :=
   Map.add a Locked l.
 
 Definition is_open (a:nat) (l:Flags) :
-  {get_lock l a = Open} + {get_lock l a = Locked}.
+  {get_lock l a = Open} + {get_lock l a <> Open}.
 Proof.
   destruct (get_lock l a); auto.
+  right; inversion 1.
 Defined.
 
 Section FreeSetTheorems.
@@ -154,6 +155,16 @@ Proof.
   | [ H: lock_transition _ _ _ |- _ ] =>
     inversion H; subst; clear H
   end; eauto.
+Qed.
+
+Definition lock_protocol AT (AEQ: DecEq AT) tid (locks locks': Locks AT) :=
+  forall a, lock_transition tid (locks a) (locks' a).
+
+Theorem lock_protocol_refl : forall AT (AEQ: DecEq AT) tid (locks: Locks AT),
+    lock_protocol tid locks locks.
+Proof.
+  unfold lock_protocol;
+    eauto using lock_transition_refl.
 Qed.
 
 End Locking.
