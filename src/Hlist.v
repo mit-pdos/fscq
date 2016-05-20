@@ -131,7 +131,7 @@ Section hget_nth.
   Hint Constructors member.
   Hint Resolve tt.
 
-  Definition hmember A :
+  Definition hmember_n A :
     forall n (types: list A),
       match nth_error types n with
       | Some a => member a types
@@ -153,12 +153,21 @@ Section hget_nth.
     end.
   Proof.
     case_eq (nth_error types n); intros; auto.
-    pose (hmember n types) as m.
+    pose (hmember_n n types) as m.
     rewrite H in m.
     apply (get m l).
   Defined.
 
 End hget_nth.
+
+Tactic Notation "hmember" constr(n) constr(types) :=
+  let m := constr:(hmember_n n types) in
+  let t := type of m in
+  let t' := eval cbn in t in
+      match t' with
+      | unit => fail 1 "index" n "out of bounds in" types
+      | _ => exact (m:t')
+      end.
 
 Module Examples.
   Import HlistNotations.
@@ -172,6 +181,11 @@ Module Examples.
   Example get_0' : hget_n 0 someValues = 5
     := eq_refl.
 
+  Example get_0'' : get ltac:(hmember 0 types) someValues = 5
+    := eq_refl.
+
+  Fail Check ltac:(hmember 5 types).
+
   Example get_1 : ltac:(hget 1 someValues) = true
     := eq_refl.
 
@@ -179,7 +193,7 @@ Module Examples.
     := eq_refl.
 
   Example get_2 : set (HNext HFirst) false someValues = [( 5; false; 3 )]
-                                                          := eq_refl.
+    := eq_refl.
 
 End Examples.
 

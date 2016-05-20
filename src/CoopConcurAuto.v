@@ -433,6 +433,35 @@ End WaitForCombinator.
 
 Hint Extern 1 {{ wait_for _ _ _; _ }} => apply wait_for_ok : prog.
 
+Section GhostVarUpdate.
+
+Definition var_update {Sigma} {T}
+  tv (v: var (abstraction_types Sigma) tv)
+  (up: tv -> tv)
+  rx : prog Sigma T :=
+  GhostUpdate (fun s =>
+    set v (up (get v s)) s);;
+    rx tt.
+
+Theorem var_update_ok : forall Sigma (delta: Protocol Sigma)
+                        tv (v: var (abstraction_types Sigma) tv) up,
+  SPEC delta, tid |-
+  {{ (_:unit),
+   | PRE d m s0 s: True
+   | POST d' m' s0' s' r:
+     m' = m /\
+     d' = d /\
+     s0' = s0 /\
+     s' = set v (up (get v s)) s
+  }} var_update v up.
+Proof.
+  hoare.
+Qed.
+
+End GhostVarUpdate.
+
+Hint Extern 1 {{ var_update _ _; _ }} => apply var_update_ok : prog.
+
 Lemma flag_not_open : forall flag, flag <> Open ->
                               flag = Locked.
 Proof.
