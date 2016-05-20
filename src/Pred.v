@@ -341,6 +341,7 @@ Proof.
   case_eq (m1 a); case_eq (m2 a); intros; eauto; destruct H; eauto.
 Qed.
 
+
 Theorem mem_disjoint_union_cancel:
   forall m1 m2 m2',
   mem_disjoint m1 m2 ->
@@ -400,6 +401,20 @@ Theorem mem_union_addr:
   mem_union m1 m2 a = Some v.
 Proof.
   unfold mem_disjoint, mem_union; intros; rewrite H0; auto.
+Qed.
+
+Lemma mem_union_ptsto_to_upd : forall (m1 m2: @mem AT AEQ V) a v,
+    mem_disjoint m1 m2 ->
+    (a |-> v)%pred m2 ->
+    mem_union m1 m2 = upd m1 a v.
+Proof.
+  unfold ptsto, mem_disjoint, mem_union; intuition.
+  extensionality a'; destruct (AEQ a a'); subst;
+  autorewrite with upd.
+  case_eq (m1 a'); intros; auto.
+  exfalso; eapply H; eauto.
+  erewrite H2; eauto.
+  destruct (m1 a'); auto.
 Qed.
 
 Require Import Eqdep_dec.
