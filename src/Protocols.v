@@ -1,6 +1,5 @@
 Require Import CoopConcur.
 Require Import Automation.
-Require Import LinearizableLocking.
 Import List.
 
 (** Generic structure defining a way to project some smaller set of
@@ -53,32 +52,3 @@ Definition SubProtocolUnder Sigma PrivateSigma (private:PrivateChanges Sigma Pri
       modified (privateAbstractionVars private) s s' ->
       guar delta' tid s s' ->
       guar delta tid s s').
-
-(* This constraint on R seems to be part of a general family of
-protocols associated with a lock. Eventually would like the whole set
-of locking definitions to be re-designed in light of how it is
-actually used, but the changes are likely to be sweeping and some
-things about lock usage remain unclear (eg, it would be nice to commit
-to all locks being part of nat -> lock families, but this precludes,
-eg, addr -> lock, string -> lock and singleton unit -> lock
-families). *)
-
-(* unfortunately this definition is dependent on an instantiation of
-  Locks - it could be defined by the Lock functor, but then Locks.v
-  would have to import linearizability *)
-
-(** Predicate asserting the relation R ignores changes to locked
-  addresses in the resource r_var (a linear_mem) protected by the set
-  of locks in lock_var *)
-
-Definition respects_lock Sigma (R: TID -> Relation Sigma)
-           (lock_var: member (Locks addr) (abstraction_types Sigma)) V
-           (r_var: member (@linear_mem addr (@weq _) V) (abstraction_types Sigma)) :=
-  forall tid (s s': abstraction Sigma),
-  forall a tid',
-    get lock_var s a = Owned tid' ->
-    tid <> tid' ->
-    forall (v': V a),
-      R tid s s' ->
-      R tid (set r_var (linear_upd (get r_var s) a v') s)
-        (set r_var (linear_upd (get r_var s') a v') s').
