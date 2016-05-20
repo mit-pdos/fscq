@@ -99,13 +99,22 @@ Section ConcurrentCache.
         (fun l => upd_lock l a (Owned tid));
       rx tt.
 
+  Definition unlock {T} (a: addr) rx : prog Sigma T :=
+    l <- Get mLocks;
+      _ <- Assgn mLocks (free_lock l #a);
+      _ <- var_update vLocks
+        (fun l => upd_lock l a NoOwner);
+      rx tt.
+
   Definition cache_fill {T} a rx : prog Sigma T :=
-    v <- AsyncRead a;
+    _ <- lock a;
+      v <- AsyncRead a;
       c <- Get mCache;
       let c' := cache_add c a (Clean v) in
       _ <- Assgn mCache c';
         _ <- var_update vCache
           (fun c => cache_add c a (Clean v));
+        _ <- unlock a;
         rx tt.
 
 End ConcurrentCache.
