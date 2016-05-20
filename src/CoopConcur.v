@@ -113,12 +113,6 @@ Section CoopConcur.
   Variable Sigma:State.
   Variable delta:Protocol Sigma.
 
-  (* TODO: consider getting rid of return values (Done would take no
-  arguments and terminate the program, leaving only state) *)
-
-  (** Our programs will return values of type T *)
-  Variable T:Type.
-
   CoInductive prog :=
   | StartRead (a: addr) (rx: unit -> prog)
   | FinishRead (a: addr) (rx: valu -> prog)
@@ -130,7 +124,7 @@ Section CoopConcur.
   | Yield (wchan: addr) (rx: unit -> prog)
   | Wakeup (wchan: addr) (rx: unit -> prog)
   | GhostUpdate (up: abstraction Sigma -> abstraction Sigma) (rx: unit -> prog)
-  | Done (v: T).
+  | Done.
 
   Ltac inv_prog :=
     match goal with
@@ -229,7 +223,7 @@ Section CoopConcur.
   Inductive outcome :=
   | Failed
   | Crashed d
-  | Finished d (v:T).
+  | Finished d.
 
   (** yieldProg p holds when p begins by yielding to the scheduler.
 
@@ -249,8 +243,8 @@ Section CoopConcur.
   | ExecFail : forall p st,
       fail_step tid p st ->
       exec tid p st Failed
-  | ExecDone : forall d m s0 s v,
-      exec tid (Done v) (d, m, s0, s) (Finished d v).
+  | ExecDone : forall d m s0 s,
+      exec tid Done (d, m, s0, s) (Finished d).
 
   Hint Constructors exec.
 
@@ -264,7 +258,7 @@ Section CoopConcur.
                                  (out : outcome),
                           tid :- p / st ==> p' / st' ->
                           exec tid p' st' out ->
-                          ((exists v, p' = Done v) \/
+                          ((p' = Done) \/
                            fail_step tid p' st') ->
                           P p' st' out ->
                           P p st out)
@@ -280,8 +274,8 @@ Section CoopConcur.
                      (f0 : forall (st : state) (p : prog),
                            fail_step tid p st ->
                            P p st Failed)
-                     (f1 : forall (d : DISK) m s0 s (v : T),
-                           P (Done v) (d, m, s0, s) (Finished d v))
+                     (f1 : forall (d : DISK) m s0 s,
+                           P Done (d, m, s0, s) (Finished d))
                      (p : prog)
                      (st : state)
                      (out : outcome)
@@ -315,11 +309,11 @@ Section CoopConcur.
       tid :- p / st ==> p' / st' ->
       fail_step tid p' st' ->
       exec2 tid p st Failed
-  | Exec2Done : forall d m s0 s v,
-      exec2 tid (Done v) (d, m, s0, s) (Finished d v)
-  | Exec2StepDone : forall p st d' m' s0' s' v,
-      tid :- p / st ==> Done v / (d', m', s0', s') ->
-      exec2 tid p st (Finished d' v).
+  | Exec2Done : forall d m s0 s,
+      exec2 tid (Done) (d, m, s0, s) (Finished d)
+  | Exec2StepDone : forall p st d' m' s0' s',
+      tid :- p / st ==> Done / (d', m', s0', s') ->
+      exec2 tid p st (Finished d').
 
   Hint Constructors exec2.
 
@@ -397,7 +391,7 @@ Section CoopConcur.
 
   Hint Resolve start_read_failure finish_read_failure write_failure.
 
-  Definition donecond := T -> DISK_PRED.
+  Definition donecond := DISK_PRED.
 
   (** A Hoare double judgement: encodes a Crash Hoare Logic tuple via
   a precondition that accepts appropriate postconditions (donecond) and crash
@@ -408,8 +402,8 @@ Section CoopConcur.
     forall d m s0 s done out,
       pre done d m s0 s ->
       exec tid p (d, m, s0, s) out ->
-      (exists d' v,
-        out = Finished d' v /\ done v d').
+      (exists d',
+        out = Finished d' /\ done d').
 
   (** Programs are written in continuation-passing style, where sequencing
   is simply function application. We wrap this sequencing in a function for
@@ -802,7 +796,7 @@ End CoopConcur.
 * quantify over T and tid and change prog to prog _ _ T (the state/mem types should be inferred)
 * add delta as an argument to valid *)
 Notation "'SPEC' delta , tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post }} p" :=
-  (forall T (rx: _ -> prog _ T) (tid:TID),
+  (forall (rx: _ -> prog _) (tid:TID),
       valid delta tid
             (fun done d m s0 s =>
                (ex (fun e1 => .. (ex (fun e2 =>
@@ -828,14 +822,26 @@ Notation "'SPEC' delta , tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d'
      r at level 0,
      only parsing).
 
+Check valid.
+
+Lemma valid_unfold : forall Sigma (delta: Protocol Sigma) tid pre p,
+    ltac:(let def := eval unfold valid in (valid delta tid pre p) in
+              exact def) ->
+    valid delta tid pre p.
+Proof.
+  auto.
+Qed.
+
+Global Opaque valid.
+
 Notation "p1 ;; p2" := (progseq p1 (fun _:unit => p2))
                          (at level 60, right associativity).
 Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2))
                               (at level 60, right associativity).
 
-(* maximally insert the return/state types for GetTID, which is always called
-   without applying them to any arguments *)
-Arguments GetTID {Sigma} {T} rx.
+(* maximally insert the state types for GetTID, which is always called
+   without applying it to any arguments *)
+Arguments GetTID {Sigma} rx.
 
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
 

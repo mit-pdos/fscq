@@ -55,17 +55,17 @@ Section ConcurrentCache.
   Definition delta : Protocol Sigma :=
     defProtocol cacheI cacheR cacheR_trans_closed.
 
-  Definition cache_maybe_read {T} a rx : prog Sigma T :=
+  Definition cache_maybe_read a rx : prog Sigma :=
     c <- Get mCache;
       rx (cache_val c a).
 
-  Definition modify_cache {T} (up: Cache -> Cache) rx : prog Sigma T :=
+  Definition modify_cache (up: Cache -> Cache) rx : prog Sigma :=
     c <- Get mCache;
       _ <- Assgn mCache (up c);
       _ <- var_update vCache up;
       rx tt.
 
-  Definition cache_write {T} a v rx : prog Sigma T :=
+  Definition cache_write a v rx : prog Sigma :=
     tid <- GetTID;
       (* may fill an invalid entry - filling thread will notice this
       and keep the new value *)
@@ -75,7 +75,7 @@ Section ConcurrentCache.
         (fun vd => upd vd a (v, Some tid));
       rx tt.
 
-  Definition AsyncRead {T} a rx : prog Sigma T :=
+  Definition AsyncRead a rx : prog Sigma :=
     tid <- GetTID;
       _ <- StartRead_upd a;
       _ <- var_update vDisk
@@ -86,7 +86,7 @@ Section ConcurrentCache.
         (fun vd => remove_reader vd a);
       rx v.
 
-  Definition cache_fill {T} a rx : prog Sigma T :=
+  Definition cache_fill a rx : prog Sigma :=
     _ <- modify_cache (fun c => cache_invalidate c a);
       v <- AsyncRead a;
       _ <- modify_cache (fun c => cache_add c a (Clean v));

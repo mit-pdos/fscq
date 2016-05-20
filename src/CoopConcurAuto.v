@@ -22,9 +22,10 @@ Ltac inv_opt :=
 Ltac econtradiction H :=
   exfalso; eapply H.
 
+
 (* extract the precondition of a valid statement into the hypotheses *)
 Ltac intros_pre :=
-  unfold valid at 1; unfold pred_in; intros;
+  apply valid_unfold; unfold pred_in; intros;
   repeat deex.
 
 Ltac split_ands :=
@@ -38,8 +39,8 @@ Ltac simpl_post :=
 
 (* Captures a program in a type so the hypotheses can give the program that
   produced each proof obligation. *)
-Inductive CurrentProg {Sigma} {T}
-  (p: prog Sigma T) :=
+Inductive CurrentProg {Sigma}
+  (p: prog Sigma) :=
 | SomeProg.
 
 Local Ltac set_prog p :=
@@ -113,7 +114,7 @@ Tactic Notation "hoare" "pre" tactic(simplifier) := hoare' simplifier step_finis
 Tactic Notation "hoare" "pre" tactic(simplifier) "with" tactic(finisher) := hoare' simplifier finisher.
 Tactic Notation "hoare" "with" tactic(finisher) := hoare' step_simplifier finisher.
 
-Definition Read {Sigma} {T} a rx : prog Sigma T :=
+Definition Read {Sigma} a rx : prog Sigma :=
   StartRead a;;
             v <- FinishRead a;
   rx v.
@@ -141,7 +142,7 @@ Section ReadWriteTheorems.
     intros.
     step.
     exists (diskIs (mem_except d a)).
-    eexists; intuition; subst; eauto.
+    eexists; intuition eauto.
 
     step.
     repeat match goal with
@@ -155,7 +156,7 @@ Section ReadWriteTheorems.
     pred_apply; cancel.
   Qed.
 
-Definition StartRead_upd {Sigma} {T} a rx : prog Sigma T :=
+Definition StartRead_upd {Sigma} a rx : prog Sigma :=
   StartRead a;;
             rx tt.
 
@@ -179,7 +180,7 @@ Proof.
   auto.
 Qed.
 
-Definition FinishRead_upd {Sigma T} a rx : prog Sigma T :=
+Definition FinishRead_upd {Sigma} a rx : prog Sigma :=
   v <- FinishRead a;
             rx v.
 
@@ -204,7 +205,7 @@ Proof.
   eauto.
 Qed.
 
-Definition Write_upd {Sigma T} a v rx : prog Sigma T :=
+Definition Write_upd {Sigma} a v rx : prog Sigma :=
   Write a v;;
         rx tt.
 
@@ -237,9 +238,9 @@ Hint Extern 1 {{Write_upd _ _; _}} => apply Write_upd_ok : prog.
 
 Section WaitForCombinator.
 
-CoFixpoint wait_for {Sigma} {T}
+CoFixpoint wait_for {Sigma}
            tv (v: var (mem_types Sigma) tv) {P} (test: forall val, {P val} + {~P val}) (wchan: addr)
-  rx : prog Sigma T :=
+  rx : prog Sigma :=
   val <- Get v;
   if (test val) then (
     rx tt
@@ -249,7 +250,7 @@ CoFixpoint wait_for {Sigma} {T}
     ).
 
 (* dummy function that will trigger computation of cofix *)
-Definition prog_frob Sigma T (p: prog Sigma T) :=
+Definition prog_frob Sigma (p: prog Sigma) :=
   match p with
   | StartRead a rx => StartRead a rx
   | FinishRead a rx => FinishRead a rx
@@ -261,18 +262,18 @@ Definition prog_frob Sigma T (p: prog Sigma T) :=
   | Yield wchan rx => Yield wchan rx
   | Wakeup wchan rx => Wakeup wchan rx
   | GhostUpdate update rx => GhostUpdate update rx
-  | Done _ v => Done _ v
+  | Done _ => Done _
   end.
 
-Theorem prog_frob_eq : forall Sigma T (p: prog Sigma T),
+Theorem prog_frob_eq : forall Sigma (p: prog Sigma),
     p = prog_frob p.
 Proof.
   destruct p; reflexivity.
 Qed.
 
-Theorem wait_for_expand : forall Sigma T
-                            tv (v: var (mem_types Sigma) tv) P (test: forall val, {P val} + {~ P val})
-                            wchan (rx : _ -> prog Sigma T),
+Theorem wait_for_expand : forall Sigma tv (v: var (mem_types Sigma) tv)
+                            P (test: forall val, {P val} + {~ P val})
+                            wchan (rx : _ -> prog Sigma),
     wait_for v test wchan rx =
     val <- Get v;
     if (test val) then (
@@ -435,10 +436,10 @@ Hint Extern 1 {{ wait_for _ _ _; _ }} => apply wait_for_ok : prog.
 
 Section GhostVarUpdate.
 
-Definition var_update {Sigma} {T}
+Definition var_update {Sigma}
   tv (v: var (abstraction_types Sigma) tv)
   (up: tv -> tv)
-  rx : prog Sigma T :=
+  rx : prog Sigma :=
   GhostUpdate (fun s =>
     set v (up (get v s)) s);;
     rx tt.
@@ -474,11 +475,11 @@ Proof.
   right; intro H; inversion H.
 Defined.
 
-Definition AcquireLock {Sigma T}
+Definition AcquireLock {Sigma}
                        (l : var (mem_types Sigma) BusyFlag)
                        (lock_ghost : TID -> abstraction Sigma -> abstraction Sigma)
                        (wchan : addr)
-                       (rx : unit -> prog Sigma T) :=
+                       (rx : unit -> prog Sigma) :=
   wait_for l is_unlocked wchan;;
   tid <- GetTID;
   GhostUpdate (lock_ghost tid);;
