@@ -25,7 +25,8 @@ Section MemCache.
   Inductive cache_entry : Type :=
   | Clean (v:valu)
   | Dirty (v:valu)
-  | Invalid.
+  | Invalid  (* entry is in the process of being filled *)
+  | Missing (* never stored in cache - represents completely missing entries *).
 
   Definition Cache : Type := Map.t cache_entry.
 
@@ -34,11 +35,14 @@ Section MemCache.
   Definition cache_get a : cache_entry :=
     match Map.find a c with
     | Some ce => ce
-    | None => Invalid
+    | None => Missing
     end.
 
   Definition cache_add a v :=
     Map.add a v c.
+
+  Definition cache_invalidate a :=
+    Map.add a Invalid c.
 
   (** Evict an entry (should be cleaned) *)
   Definition cache_evict a :=
@@ -53,23 +57,27 @@ Section MemCache.
     end.
 
   Definition cache_val a : option valu :=
-    match cache_get a with
-    | Clean v => Some v
-    | Dirty v => Some v
-    | Invalid => None
+    match Map.find a c with
+    | Some (Clean v) => Some v
+    | Some (Dirty v) => Some v
+    | _ => None
     end.
 
 End MemCache.
 
 Definition cache_rep (d:DISK) (c: Cache) (vd:DISK) :=
    forall a, match cache_get c a with
-      | Clean v => exists reader,
-                        vd a = Some (v, reader) /\
-                        d a = Some (v, reader)
-      | Dirty v' => exists v reader,
-                           vd a = Some (v', reader) /\
-                           d a = Some (v, reader)
-      | Invalid => vd a = d a
+      | Clean v => vd a = Some (v, None) /\
+                  d a = Some (v, None)
+      | Dirty v' => exists v,
+                           vd a = Some (v', None) /\
+                           d a = Some (v, None)
+      | Invalid => exists v tid,
+                  vd a = Some (v, Some tid) /\
+                  d a = Some (v, Some tid)
+      | Missing => exists v,
+                  vd a = Some (v, None) /\
+                  d a = Some (v, None)
       end.
 
 Hint Opaque cache_rep.
