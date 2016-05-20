@@ -12,6 +12,7 @@ Require Import LogReplay.
 Require Import DiskLogHash.
 Require Import Pred.
 Require Import Morphisms.
+Require Import GenSepN.
 
 Import ListNotations.
 Import LogReplay.
@@ -290,35 +291,35 @@ Module ReplaySeq.
 End ReplaySeq.
 
 
-Definition diskset_pred AT AEQ V (p : @pred AT AEQ V) ds :=
-  forall d, d_in d ds -> p d.
+Definition diskset_pred  V (p : @pred _ _ V) ds :=
+  forall d, d_in d ds -> p (list2nmem d).
 
 
-Instance diskset_pred_pimpl_eq_impl {AT AEQ V} :
-  Proper (pimpl ==> eq ==> Basics.impl) (@diskset_pred AT AEQ V).
+Instance diskset_pred_pimpl_eq_impl {V} :
+  Proper (pimpl ==> eq ==> Basics.impl) (@diskset_pred V).
 Proof.
   intros p p' Hp ds ds' Hds Hpd.
   unfold diskset_pred in *; subst; eauto.
 Qed.
 
-Instance diskset_pred_flip_pimpl_eq_flip_impl {AT AEQ V} :
-  Proper (Basics.flip pimpl ==> eq ==> Basics.flip Basics.impl) (@diskset_pred AT AEQ V).
+Instance diskset_pred_flip_pimpl_eq_flip_impl {V} :
+  Proper (Basics.flip pimpl ==> eq ==> Basics.flip Basics.impl) (@diskset_pred V).
 Proof.
   intros p p' Hp ds ds' Hds Hpd.
   unfold diskset_pred in *; subst; eauto.
 Qed.
 
 
-Instance diskset_pred_piff_eq_impl {AT AEQ V} :
-  Proper (piff ==> eq ==> Basics.impl) (@diskset_pred AT AEQ V).
+Instance diskset_pred_piff_eq_impl {V} :
+  Proper (piff ==> eq ==> Basics.impl) (@diskset_pred V).
 Proof.
   intros p p' Hp ds ds' Hds Hpd.
   inversion Hp.
   unfold diskset_pred in *; subst; eauto.
 Qed.
 
-Instance diskset_pred_piff_eq_flip_impl {AT AEQ V} :
-  Proper (piff ==> eq ==> Basics.flip Basics.impl) (@diskset_pred AT AEQ V).
+Instance diskset_pred_piff_eq_flip_impl {V} :
+  Proper (piff ==> eq ==> Basics.flip Basics.impl) (@diskset_pred V).
 Proof.
   intros p p' Hp ds ds' Hds Hpd.
   inversion Hp.
