@@ -25,7 +25,7 @@ Fixpoint compiler {T} (p: Prog.prog T) : prog Sigma :=
                        | None => v <- cache_fill a;
                                   compiler (rx (valu_conv v))
                        end
-  | Prog.Write a v rx => _ <- cache_write a (valu_conv' v);
+  | Prog.Write a v rx => _ <- cache_maybe_write a (valu_conv' v);
                            compiler (rx tt)
   | Prog.Sync a rx => _ <- cache_writeback a;
                        (* current concurrent disk model has no

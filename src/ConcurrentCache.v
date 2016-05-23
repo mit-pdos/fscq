@@ -67,17 +67,20 @@ Section ConcurrentCache.
       _ <- var_update vCache up;
       rx tt.
 
-  Definition cache_write a v rx : prog Sigma :=
+  Definition cache_maybe_write a v rx : prog Sigma :=
     tid <- GetTID;
-      (* may fill an invalid entry - filling thread will notice this
-      and keep the new value *)
-      _ <- modify_cache (fun c => cache_add c a (Dirty v));
-      _ <- var_update vDISK
-        (* update virtual disk *)
-        (fun vd => upd vd a (v, None));
-      _ <- var_update vDisk
-        (fun vd => upd vd a v);
-      rx tt.
+      c <- Get mCache;
+      match cache_get c a with
+      | Invalid => rx false
+      | _ =>
+        _ <- modify_cache (fun c => cache_add c a (Dirty v));
+          _ <- var_update vDISK
+            (* update virtual disk *)
+            (fun vd => upd vd a (v, None));
+          _ <- var_update vDisk
+            (fun vd => upd vd a v);
+          rx true
+      end.
 
   Definition AsyncRead a rx : prog Sigma :=
     tid <- GetTID;
@@ -95,25 +98,8 @@ Section ConcurrentCache.
   Definition cache_fill a rx : prog Sigma :=
     _ <- modify_cache (fun c => cache_invalidate c a);
       v <- AsyncRead a;
-      c <- Get mCache;
-      match cache_get c a with
-      | Invalid =>
-        (* note that the memory cache has been updated so its
-      abstraction must be updated, but the external disk abstractions
-      are unaffected by another cache entry *)
-        _ <- modify_cache (fun c => cache_add c a (Clean v));
-          rx v
-             (* concurrent thread wrote to a; the disk read was
-             useless, but no point in disallowing the write *)
-      | Dirty v => rx v
-      (* these should never happen: concurrent thread can write to the
-      cache, but shouldn't be doing a read fill (Invalid -> Clean v)
-      or deleting entries (Invalid -> Missing);
-
-        TODO: disallow these changes in the protocol *)
-      | Clean v => rx v
-      | Missing => rx v
-      end.
+      _ <- modify_cache (fun c => cache_add c a (Clean v));
+      rx v.
 
   Definition cache_writeback a rx : prog Sigma :=
     c <- Get mCache;
