@@ -11,12 +11,15 @@ Require Export Prog.
 Require Import BasicProg.
 Require Export List.
 
+Set Implicit Arguments.
+
+
 Definition modulo (n m: nat) : nat := n - ((n / m) * m)%nat.
 
 Definition valu_to_list: valu -> list byte.
 Proof. Admitted.
 
-Definition get_block_size: (valu * unit) -> nat.
+Definition get_block_size: valu -> nat.
 Proof. Admitted.
 
 
@@ -37,7 +40,7 @@ Fixpoint read_from_block (l: list byte) (off len: nat) : list byte :=
 
 
 (* It says syntax error for some reason. I couldn't find why *)
-Fixpoint read_bytes T lxp ixp inum (off:nat) len fms rx : prog T :=
+Fixpoint read_bytes {T} lxp ixp inum (off:nat) len fms rx : prog T :=
 If (lt_dec 0 len) {                                           (* if read length > 0 *)
   let^ (fms, flen) <- BFILE.getlen lxp ixp inum fms;          (* get file length *)
   If (lt_dec off flen) {                                      (* if offset is inside file *)
@@ -47,11 +50,11 @@ If (lt_dec 0 len) {                                           (* if read length 
       let relative_off := (modulo off block_size) in          (* calculate block offset *)
       If(le_dec (relative_off + len) block_size) {            (* if whole data is in this block *)
         let data := (read_from_block                          (* read the data and return as list byte *)
-        (valu_to_list (fst block)) relative_off len) in
-        rx ^(fms, data)
+        (valu_to_list block) relative_off len) in
+        rx ^(fms, data::nil)
       } else {                                                (* If data is in more tahn one block *)
         let data:= (read_from_block                           (* read as much as you can from this block *)
-        (valu_to_list (fst block)) relative_off  
+        (valu_to_list block) relative_off  
          (block_size - relative_off)) in
         let^ (fms, data_remaining) <- read_bytes lxp ixp inum (* read remainder from next blocks *)
           (off + (block_size - relative_off)) 
