@@ -11,6 +11,7 @@ MODULES    := Nomega Word WordAuto WordZ Bytes Rounding \
 	      Locking Automation ForwardChaining \
 	      CoopConcur CoopConcurAuto MemCache Protocols \
 		  DiskReaders ConcurrentCache \
+		  ConcurrentBridge \
 	      ExtrHaskellPrelude Extraction
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
