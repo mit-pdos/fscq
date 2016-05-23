@@ -262,7 +262,7 @@ Definition prog_frob Sigma (p: prog Sigma) :=
   | Yield wchan rx => Yield wchan rx
   | Wakeup wchan rx => Wakeup wchan rx
   | GhostUpdate update rx => GhostUpdate update rx
-  | Done _ => Done _
+  | Done => Done
   end.
 
 Theorem prog_frob_eq : forall Sigma (p: prog Sigma),

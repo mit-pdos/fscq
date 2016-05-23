@@ -837,8 +837,9 @@ Notation "p1 ;; p2" := (progseq p1 (fun _:unit => p2))
 Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2))
                               (at level 60, right associativity).
 
-(* maximally insert the state types for GetTID, which is always called
-   without applying it to any arguments *)
+(* maximally insert the state types for GetTID and Done, which are
+   always called without applying to any arguments *)
+Arguments Done {Sigma}.
 Arguments GetTID {Sigma} rx.
 
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
