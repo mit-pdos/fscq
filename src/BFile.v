@@ -585,7 +585,6 @@ Module BFILE.
     Grab Existential Variables. all: eauto.
   Qed.
 
-
   Theorem grow_ok : forall lxp bxp ixp inum v ms,
     {< F Fm Fi Fd m0 m flist ilist frees f,
     PRE:hm
@@ -719,6 +718,7 @@ Module BFILE.
   Qed.
 
   Local Hint Extern 0 (okToUnify (listmatch _ _ _) (listmatch _ _ _)) => constructor : okToUnify.
+
 
   Theorem shrink_ok : forall lxp bxp ixp inum nr ms,
     {< F Fm Fi m0 m flist ilist frees f,

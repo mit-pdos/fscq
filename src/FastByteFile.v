@@ -7,7 +7,6 @@ Require Import BasicProg.
 Require Import Bool.
 Require Import Pred.
 Require Import Hoare.
-Require Import GenSep.
 Require Import GenSepN.
 Require Import SepAuto.
 Require Import Idempotent.
@@ -19,12 +18,14 @@ Require Import Array.
 Require Import FSLayout.
 Require Import Cache.
 Require Import Rec.
-Require Import RecArray.
+Require Import FileRecArray RecArrayUtils LogRecArray.
 Require Import Omega.
 Require Import Eqdep_dec.
 Require Import Bytes.
 Require Import ProofIrrelevance.
-Require Import BFileRec Rounding.
+Require Import Rounding.
+
+
 
 Set Implicit Arguments.
 Import ListNotations.
