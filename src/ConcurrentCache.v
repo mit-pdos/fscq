@@ -10,8 +10,7 @@ Require Import MemCache.
 
 Section ConcurrentCache.
 
-  (* TODO: expose Disk with readers hidden, the base of the sequential FSCQ code *)
-  Definition Sigma := defState [Cache] [Cache; DISK].
+  Definition Sigma := defState [Cache] [Cache; DISK; Disk].
 
   (* memory variables *)
   Definition mCache : var (mem_types Sigma) _ := ltac:(hmember 0 (mem_types Sigma)).
@@ -19,13 +18,15 @@ Section ConcurrentCache.
   (* abstraction ("virtual") variables *)
   Definition vCache : var (abstraction_types Sigma) _
     := ltac:(hmember 0 (abstraction_types Sigma)).
-  Definition vDisk : var (abstraction_types Sigma) _
+  Definition vDISK : var (abstraction_types Sigma) _
     := ltac:(hmember 1 (abstraction_types Sigma)).
+  Definition vDisk : var (abstraction_types Sigma) _
+    := ltac:(hmember 2 (abstraction_types Sigma)).
 
   Definition cacheR (tid:TID) : Relation Sigma :=
     fun s s' =>
-      let ld := get vDisk s in
-      let ld' := get vDisk s' in
+      let ld := get vDISK s in
+      let ld' := get vDISK s' in
       same_domain ld ld' /\
       (* a locking-like protocol, but true for any provable program
       due to the program semantics themselves *)
@@ -39,7 +40,8 @@ Section ConcurrentCache.
   Definition cacheI : Invariant Sigma :=
     fun d m s =>
       get mCache m = get vCache s /\
-      cache_rep d (get vCache s) (get vDisk s).
+      cache_rep d (get vCache s) (get vDISK s) /\
+      get vDisk s = hide_readers (get vDISK s).
 
   Hint Resolve same_domain_refl same_domain_trans.
   Hint Resolve lock_protocol_refl.
@@ -70,19 +72,23 @@ Section ConcurrentCache.
       (* may fill an invalid entry - filling thread will notice this
       and keep the new value *)
       _ <- modify_cache (fun c => cache_add c a (Dirty v));
-      _ <- var_update vDisk
+      _ <- var_update vDISK
         (* update virtual disk *)
-        (fun vd => upd vd a (v, Some tid));
+        (fun vd => upd vd a (v, None));
+      _ <- var_update vDisk
+        (fun vd => upd vd a v);
       rx tt.
 
   Definition AsyncRead a rx : prog Sigma :=
     tid <- GetTID;
       _ <- StartRead_upd a;
-      _ <- var_update vDisk
+      (* note that no updates to Disk are needed since the readers are
+    hidden *)
+      _ <- var_update vDISK
         (fun vd => add_reader vd a tid);
       _ <- Yield a;
       v <- FinishRead_upd a;
-      _ <- var_update vDisk
+      _ <- var_update vDISK
         (fun vd => remove_reader vd a);
       rx v.
 
@@ -90,6 +96,9 @@ Section ConcurrentCache.
     _ <- modify_cache (fun c => cache_invalidate c a);
       v <- AsyncRead a;
       _ <- modify_cache (fun c => cache_add c a (Clean v));
+      (* note that the memory cache has been updated so its
+      abstraction must be updated, but the external disk abstractions
+      are unaffected by another cache entry *)
       _ <- var_update vCache
         (fun c => cache_add c a (Clean v));
       rx tt.
