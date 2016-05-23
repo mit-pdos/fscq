@@ -1,0 +1,168 @@
+(* Finite maps from strings to things. Cobbled together from various Bedrock files. *)
+
+Require Import Coq.Strings.Ascii Coq.NArith.NArith Coq.Strings.String Coq.Structures.OrderedType Coq.FSets.FSetAVL.
+
+Local Open Scope string_scope.
+Local Open Scope N_scope.
+
+Fixpoint string_lt (s1 s2 : string) : bool :=
+  match s1, s2 with
+    | "", String _ _ => true
+    | String _ _, "" => false
+    | String a1 s1', String a2 s2' => match (N_of_ascii a1) ?= (N_of_ascii a2) with
+                                        | Datatypes.Lt => true
+                                        | Gt => false
+                                        | Datatypes.Eq => string_lt s1' s2'
+                                      end
+    | _, _ => false
+  end.
+
+
+Section CompSpec.
+  Variables (A : Type) (eq lt : A -> A -> Prop)
+    (x y : A) (c : comparison).
+
+  Hypothesis H : CompSpec eq lt x y c.
+
+  Theorem Comp_eq : (forall z, lt z z -> False)
+    -> x = y -> c = Datatypes.Eq.
+    inversion H; intros; subst; auto; elimtype False; eauto.
+  Qed.
+
+  Theorem Comp_lt : (forall z z', lt z z' -> eq z z' -> False)
+    -> (forall z z', lt z z' -> lt z' z -> False)
+    -> lt x y -> c = Datatypes.Lt.
+    inversion H; intros; subst; auto; elimtype False; eauto.
+  Qed.
+
+  Theorem Comp_gt : (forall z z', lt z' z -> eq z z' -> False)
+    -> (forall z z', lt z z' -> lt z' z -> False)
+    -> lt y x -> c = Datatypes.Gt.
+    inversion H; intros; subst; auto; elimtype False; eauto.
+  Qed.
+End CompSpec.
+
+Implicit Arguments Comp_eq [A eq0 lt x y c].
+Implicit Arguments Comp_lt [A eq0 lt x y c].
+Implicit Arguments Comp_gt [A eq0 lt x y c].
+
+Theorem Nlt_irrefl' : forall n : N, n < n -> False.
+  exact Nlt_irrefl.
+Qed.
+
+Theorem Nlt_irrefl'' : forall n n' : N, n = n' -> n < n' -> False.
+  intros; subst; eapply Nlt_irrefl'; eauto.
+Qed.
+
+Theorem Nlt_notboth : forall x y, x < y -> y < x -> False.
+  intros; eapply Nlt_irrefl'; eapply Nlt_trans; eauto.
+Qed.
+
+Hint Immediate Nlt_irrefl' Nlt_irrefl'' Nlt_notboth.
+
+Ltac rewr' := eauto; congruence || eapply Nlt_trans; eassumption.
+
+Ltac rewr := repeat match goal with
+                      | [ _ : context[?X ?= ?Y] |- _ ] => specialize (Ncompare_spec X Y); destruct (X ?= Y); inversion 1
+                    end; simpl in *; (rewrite (Comp_eq (@Ncompare_spec _ _)); rewr')
+  || (rewrite (Comp_lt (@Ncompare_spec _ _)); rewr')
+    || (rewrite (Comp_gt (@Ncompare_spec _ _)); rewr').
+
+Theorem string_lt_trans : forall s1 s2 s3, string_lt s1 s2 = true
+  -> string_lt s2 s3 = true
+  -> string_lt s1 s3 = true.
+  induction s1; simpl; intuition; destruct s2; destruct s3; simpl in *; try congruence; rewr.
+Qed.
+
+
+Module StringKey.
+  Definition t := string.
+
+  Definition eq := @eq t.
+  Definition lt (s1 s2 : t) := string_lt s1 s2 = true.
+
+  Theorem eq_refl : forall x : t, eq x x.
+    congruence.
+  Qed.
+
+  Theorem eq_sym : forall x y : t, eq x y -> eq y x.
+    congruence.
+  Qed.
+
+  Theorem eq_trans : forall x y z : t, eq x y -> eq y z -> eq x z.
+    congruence.
+  Qed.
+
+  Section hide_hints.
+    Hint Resolve string_lt_trans.
+
+    Theorem string_lt_irrel : forall s, string_lt s s = false.
+      induction s; simpl; intuition rewr.
+    Qed.
+
+    Hint Rewrite string_lt_irrel : StringMap.
+
+    Lemma string_tail_neq : forall a1 a2 s1 s2,
+      N_of_ascii a1 = N_of_ascii a2
+      -> (String a1 s1 = String a2 s2 -> False)
+      -> (s1 = s2 -> False).
+      intros.
+      apply (f_equal ascii_of_N) in H.
+      repeat rewrite ascii_N_embedding in H.
+      congruence.
+    Qed.
+    Hint Immediate string_tail_neq.
+
+
+    Theorem string_lt_sym : forall s1 s2, s1 <> s2
+      -> string_lt s1 s2 = false
+      -> string_lt s2 s1 = true.
+      induction s1; destruct s2; simpl; intuition; rewr.
+    Qed.
+
+    Hint Resolve string_lt_sym.
+
+    Theorem lt_trans : forall x y z : t, lt x y -> lt y z -> lt x z.
+      unfold lt; intuition (congruence || eauto).
+    Qed.
+
+    Theorem lt_not_eq : forall x y : t, lt x y -> ~ eq x y.
+      unfold lt, eq; intuition; subst; autorewrite with StringMap in *; discriminate.
+    Qed.
+
+    Definition compare' (x y : t) : comparison :=
+      if string_lt x y
+        then Datatypes.Lt
+        else if string_dec x y
+          then Datatypes.Eq
+          else Gt.
+
+    Definition compare (x y : t) : Structures.OrderedType.Compare lt eq x y.
+      refine (match compare' x y as c return c = compare' x y -> Structures.OrderedType.Compare lt eq x y with
+                | Datatypes.Lt => fun _ => Structures.OrderedType.LT _
+                | Datatypes.Eq => fun _ => Structures.OrderedType.EQ _
+                | Gt => fun _ => Structures.OrderedType.GT _
+              end (refl_equal _)); abstract (unfold compare', eq, lt in *;
+                repeat match goal with
+                         | [ H : context[if ?E then _ else _] |- _ ] => let Heq := fresh "Heq" in case_eq E; (intros ? Heq || intro Heq);
+                           rewrite Heq in H; try discriminate
+                       end; intuition).
+    Defined.
+
+    Definition eq_dec x y : { eq x y } + { ~ eq x y }.
+      refine (if string_dec x y then left _ _ else right _ _);
+        abstract (unfold eq in *; destruct x; destruct y; simpl in *; congruence).
+    Defined.
+  End hide_hints.
+End StringKey.
+
+
+(*
+Module StringSet := FSetAVL.Make(StringKey).
+
+Remove Hints StringSet.MSet.Raw.L.eq_cons StringSet.E.lt_trans
+  StringSet.E.lt_not_eq StringSet.E.eq_trans StringSet.X'.eq_trans.
+
+Require Coq.FSets.FSetFacts.
+Module StringFacts := FSetFacts.WFacts_fun(StringKey)(StringSet).
+*)
