@@ -95,12 +95,36 @@ Section ConcurrentCache.
   Definition cache_fill a rx : prog Sigma :=
     _ <- modify_cache (fun c => cache_invalidate c a);
       v <- AsyncRead a;
-      _ <- modify_cache (fun c => cache_add c a (Clean v));
-      (* note that the memory cache has been updated so its
+      c <- Get mCache;
+      match cache_get c a with
+      | Invalid =>
+        (* note that the memory cache has been updated so its
       abstraction must be updated, but the external disk abstractions
       are unaffected by another cache entry *)
-      _ <- var_update vCache
-        (fun c => cache_add c a (Clean v));
-      rx tt.
+        _ <- modify_cache (fun c => cache_add c a (Clean v));
+          rx v
+             (* concurrent thread wrote to a; the disk read was
+             useless, but no point in disallowing the write *)
+      | Dirty v => rx v
+      (* these should never happen: concurrent thread can write to the
+      cache, but shouldn't be doing a read fill (Invalid -> Clean v)
+      or deleting entries (Invalid -> Missing);
+
+        TODO: disallow these changes in the protocol *)
+      | Clean v => rx v
+      | Missing => rx v
+      end.
+
+  Definition cache_writeback a rx : prog Sigma :=
+    c <- Get mCache;
+      match cache_get c a with
+      | Dirty v =>
+        _ <- Write a v;
+          _ <- Assgn mCache (cache_add c a (Clean v));
+          _ <- var_update vCache
+            (fun c => cache_add c a (Clean v));
+          rx tt
+      | _ => rx tt
+      end.
 
 End ConcurrentCache.
