@@ -42,16 +42,19 @@ Module UCache.
     CSEvict : eviction_state
   }.
 
-  Definition evict T a (cs : cachestate) rx : prog T :=
+  (* write-back if a block is dirty, but do not evict from cache *)
+  Definition writeback T a (cs : cachestate) rx : prog T :=
     match (Map.find a (CSMap cs)) with
-    | Some (v, false) =>
-      rx (mk_cs (Map.remove a (CSMap cs)) (CSMaxCount cs) (CSEvict cs))
     | Some (v, true) =>
       Write a v ;;
-      rx (mk_cs (Map.remove a (CSMap cs)) (CSMaxCount cs) (CSEvict cs))
-    | None =>
+      rx (mk_cs (Map.add a (v, false) (CSMap cs)) (CSMaxCount cs) (CSEvict cs))
+    | _ =>
       rx cs
     end.
+
+  Definition evict T a (cs : cachestate) rx : prog T :=
+    cs <- writeback a cs;
+    rx (mk_cs (Map.remove a (CSMap cs)) (CSMaxCount cs) (CSEvict cs)).
 
   Definition maybe_evict T (cs : cachestate) rx : prog T :=
     If (lt_dec (Map.cardinal (CSMap cs)) (CSMaxCount cs)) {
@@ -87,7 +90,7 @@ Module UCache.
     rx (mk_cs (Map.add a (v, true) (CSMap cs))
               (CSMaxCount cs) (eviction_update (CSEvict cs) a)).
 
-  Definition sync T a (cs : cachestate) rx : prog T :=
+  Definition evict_sync T a (cs : cachestate) rx : prog T :=
     cs <- evict a cs;
     @Sync T;;
     rx cs.
@@ -105,10 +108,6 @@ Module UCache.
     cs <- write (a + i) v cs;
     rx cs.
 
-  Definition sync_array T a i cs rx : prog T :=
-    cs <- sync (a + i) cs;
-    rx cs.
-
 
   (** rep invariant *)
 
@@ -118,11 +117,17 @@ Module UCache.
   Definition addr_valid (d : rawdisk) (cm : cachemap) :=
     forall a, Map.In a cm -> d a <> None.
 
+  Definition addr_clean cs a :=
+    Map.find a (CSMap cs) = None \/ exists v, Map.find a (CSMap cs) = Some (v, false).
+
+  Definition addrs_clean cs al :=
+    Forall (addr_clean cs) al.
+
   Definition cachepred (cache : cachemap) (a : addr) (vs : valuset) : @pred _ addr_eq_dec valuset :=
     (match Map.find a cache with
     | None => a |+> vs
     | Some (v, false) => a |+> vs * [[ v = fst vs ]]
-    | Some (v, true)  => exists v0, a |+> (v0, snd vs) * [[ v = fst vs /\ In v0 (snd vs) ]]
+    | Some (v, true)  => exists v0, a |+> (v0, snd vs) * [[ v = fst vs /\ In v0 (vsmerge vs) ]]
     end)%pred.
 
   Notation mem_pred := (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _).
@@ -183,22 +188,6 @@ Module UCache.
     intros; apply cachepred_remove_invariant; eauto.
   Qed.
 
-  Lemma mem_pred_cachepred_absorb_dirty : forall csmap d a v0 old p_old w,
-    Map.find a csmap = Some (w, true) ->
-    d a = Some (w, p_old) ->
-    In v0 p_old ->
-    incl old p_old ->
-    mem_pred (cachepred csmap) (mem_except d a) * a |-> (v0, old) =p=>
-    mem_pred (cachepred csmap) d.
-  Proof.
-    intros.
-    eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
-    unfold cachepred at 3.
-    rewrite H.
-    unfold ptsto_subset; cancel; eauto.
-    apply incl_tl; auto.
-  Qed.
-
   Lemma size_valid_remove : forall cs a,
     size_valid cs ->
     size_valid (mk_cs (Map.remove a (CSMap cs)) (CSMaxCount cs) (CSEvict cs)).
@@ -209,15 +198,15 @@ Module UCache.
     auto.
   Qed.
 
-  Lemma size_valid_remove_cardinal_ok : forall cs a v,
+  Lemma size_valid_remove_cardinal_ok : forall cs a,
     size_valid cs ->
-    Map.find a (CSMap cs) = Some v ->
+    Map.In a (CSMap cs) ->
     Map.cardinal (Map.remove a (CSMap cs)) < CSMaxCount cs.
   Proof.
     unfold size_valid; intros.
     rewrite map_remove_cardinal.
     omega.
-    eexists; eapply MapFacts.find_mapsto_iff; eauto.
+    apply In_MapsTo; auto.
   Qed.
 
   Lemma addr_valid_remove : forall d a cm,
@@ -272,6 +261,34 @@ Module UCache.
     intros; apply cachepred_add_invariant; eauto.
   Qed.
 
+  Lemma addr_clean_cachepred_remove : forall cs a d F vs,
+    addr_clean cs a ->
+    (F * a |+> vs)%pred d ->
+    mem_pred (cachepred (CSMap cs)) d =p=> mem_pred (cachepred (Map.remove a (CSMap cs))) d.
+  Proof.
+    unfold addr_clean; intros.
+    apply ptsto_subset_valid' in H0; repeat deex.
+    - rewrite mem_pred_extract with (a := a) by eauto.
+      unfold cachepred at 2; rewrite H0.
+      unfold ptsto_subset; cancel.
+      rewrite sep_star_comm.
+      eapply mem_pred_cachepred_remove_absorb; eauto.
+    - rewrite mem_pred_extract with (a := a) by eauto.
+      unfold cachepred at 2; rewrite H.
+      unfold ptsto_subset; cancel.
+      rewrite sep_star_comm.
+      eapply mem_pred_cachepred_remove_absorb; eauto.
+  Qed.
+
+  Lemma size_valid_add_in : forall cs evictor vv v a,
+    Map.find a (CSMap cs) = Some v ->
+    size_valid cs ->
+    size_valid (mk_cs (Map.add a vv (CSMap cs)) (CSMaxCount cs) evictor).
+  Proof.
+    unfold size_valid; intuition; simpl.
+    rewrite map_add_dup_cardinal; auto.
+    eexists; eapply MapFacts.find_mapsto_iff; eauto.
+  Qed.
 
   Lemma size_valid_add : forall cs evictor vv a,
     Map.cardinal (CSMap cs) < CSMaxCount cs ->
@@ -320,10 +337,90 @@ Module UCache.
   Qed.
 
 
+  Lemma incl_vsmerge_in : forall w v0 l l',
+    incl l (vsmerge (w, (vsmerge (v0, l')))) ->
+    In v0 (vsmerge (w, l')) ->
+    incl l (vsmerge (w, l')).
+  Proof.
+    unfold vsmerge, incl; simpl; intuition subst.
+    specialize (H _ H0); intuition.
+    specialize (H _ H0); intuition subst; auto.
+  Qed.
+  Local Hint Resolve incl_vsmerge_in.
 
+  Lemma in_vsmerge_hd : forall w l,
+    In w (vsmerge (w, l)).
+  Proof.
+    unfold vsmerge; intuition.
+  Qed.
+  Local Hint Resolve in_vsmerge_hd.
 
 
   (** specs *)
+  Opaque vsmerge.
+
+  Theorem writeback_ok : forall a cs,
+    {< d vs (F : rawpred),
+    PRE
+      rep cs d * [[ (F * a |+> vs)%pred d ]]
+    POST RET:cs'
+      rep cs' d * [[ addr_clean cs' a ]] * 
+      [[ Map.In a (CSMap cs) -> Map.In a (CSMap cs') ]]
+    CRASH
+      exists cs', rep cs' d
+    >} writeback a cs.
+  Proof.
+    unfold writeback, rep; intros.
+
+    prestep; norml; unfold stars; simpl; clear_norm_goal;
+    denote ptsto_subset as Hx; apply ptsto_subset_valid' in Hx; repeat deex.
+
+    (* cached, dirty *)
+    - rewrite mem_pred_extract with (a := a) by eauto.
+      unfold cachepred at 2.
+      destruct (Map.find a (CSMap cs)) eqn:Hm; try congruence.
+      destruct p; destruct b; try congruence.
+      cancel.
+      step.
+      erewrite <- upd_nop with (m := d) at 2 by eauto.
+      rewrite <- mem_pred_absorb with (hm := d) (a := a).
+      unfold cachepred at 3.
+      rewrite MapFacts.add_eq_o by reflexivity.
+      unfold ptsto_subset; cancel; eauto.
+      rewrite mem_pred_pimpl_except.
+      2: intros; apply cachepred_add_invariant; eassumption.
+      cancel.
+      eapply size_valid_add_in; eauto.
+      eapply addr_valid_add; eauto.
+      unfold addr_clean; right; eexists; simpl.
+      apply MapFacts.add_eq_o; auto.
+      eapply MapFacts.add_in_iff; eauto.
+
+      (* crash *)
+      unfold ptsto_subset; cancel; eauto.
+      eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
+      unfold cachepred at 3; rewrite Hm.
+      unfold ptsto_subset; cancel; eauto.
+
+    (* cached, non-dirty *)
+    - cancel.
+      step.
+      unfold addr_clean; right; eexists; eauto.
+      cancel.
+
+    (* not cached *)
+    - cancel.
+      step.
+      unfold addr_clean; left; auto.
+      cancel.
+
+    Unshelve. all: try exact addr_eq_dec.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (writeback _ _) _) => apply writeback_ok : prog.
+
+  Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (mem_pred ?p _) (mem_pred ?p _)) => constructor : okToUnify.
 
   Theorem evict_ok : forall a cs,
     {< d vs (F : rawpred),
@@ -337,61 +434,16 @@ Module UCache.
       exists cs', rep cs' d
     >} evict a cs.
   Proof.
-    unfold evict, rep; intros.
+    unfold evict; intros.
+    step.
+    prestep; unfold rep; cancel.
 
-    prestep; norml; unfold stars; simpl; clear_norm_goal;
-    denote ptsto_subset as Hx; apply ptsto_subset_valid' in Hx; repeat deex.
-
-    (* cached, dirty *)
-    - rewrite mem_pred_extract with (a := a) by eauto.
-      unfold cachepred at 2.
-      destruct (Map.find a (CSMap cs)) eqn:Hm; try congruence.
-      destruct p; destruct b; try congruence.
-
-      unfold ptsto_subset.
-      norml; unfold stars; simpl.
-      cancel.
-      step.
-      eapply mem_pred_cachepred_remove_absorb; eauto.
-      eapply incl_tran; eauto.
-      do 2 (apply incl_cons; simpl; intuition).
-      apply incl_tl; apply incl_refl.
-      apply size_valid_remove; auto.
-      apply addr_valid_remove; auto.
-      denote Map.In as Hx; apply MapFacts.remove_in_iff in Hx; intuition.
-      eapply size_valid_remove_cardinal_ok; eauto.
-      cancel; eauto.
-      rewrite sep_star_comm.
-      eapply mem_pred_cachepred_absorb_dirty; eauto.
-      eapply incl_tran; eauto; apply incl_cons; apply incl_refl; auto.
-
-    (* cached, non-dirty *)
-    - cancel.
-      step.
-      rewrite mem_pred_extract with (a := a) by eauto.
-      unfold cachepred at 2.
-      destruct (Map.find a (CSMap cs)) eqn:Hm; try congruence.
-      destruct p; destruct b; try congruence.
-
-      unfold ptsto_subset; cancel.
-      rewrite sep_star_comm.
-      eapply mem_pred_cachepred_remove_absorb; eauto.
-      apply size_valid_remove; auto.
-      apply addr_valid_remove; auto.
-      denote Map.In as Hx; apply MapFacts.remove_in_iff in Hx; intuition.
-      eapply size_valid_remove_cardinal_ok; eauto.
-      cancel.
-
-    (* not cached *)
-    - cancel.
-      step.
-      eapply MapFacts.in_find_iff; eauto.
-      denote Map.In as Hx; apply MapFacts.in_find_iff in Hx; intuition.
-      cancel.
-
-    Unshelve. all: try exact addr_eq_dec.
+    eapply addr_clean_cachepred_remove; eauto.
+    apply size_valid_remove; auto.
+    apply addr_valid_remove; auto.
+    eapply Map.remove_1; eauto.
+    eapply size_valid_remove_cardinal_ok; eauto.
   Qed.
-
 
   Hint Extern 1 ({{_}} progseq (evict _ _) _) => apply evict_ok : prog.
 
@@ -470,8 +522,9 @@ Module UCache.
     - destruct b; simpl.
       unfold ptsto_subset; cancel.
       rewrite sep_star_comm.
-      eapply mem_pred_cachepred_absorb_dirty; eauto.
-      eapply incl_tran; eauto; apply incl_cons; intuition.
+      eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
+      unfold cachepred at 3; rewrite Heqo.
+      unfold ptsto_subset; cancel; eauto.
 
       cancel.
       eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
@@ -521,12 +574,17 @@ Module UCache.
       2: apply size_valid_add; eauto.
       rewrite mem_pred_pimpl_except.
       2: intros; apply cachepred_add_invariant; eassumption.
-      rewrite <- mem_pred_absorb with (hm := d) (a := a) (v := (v, x)).
+      rewrite <- mem_pred_absorb with (hm := d) (a := a) (v := (v, v0_cur :: x)).
       unfold cachepred at 3.
-      rewrite MapFacts.add_eq_o by reflexivity; cancel.
+      rewrite MapFacts.add_eq_o by reflexivity; safecancel.
+      eassign v0; rewrite ptsto_subset_pimpl.
+      cancel.
+      apply incl_tl; apply incl_refl.
+      apply in_cons; auto.
+
       apply addr_valid_upd_add; auto.
       eapply ptsto_subset_upd; eauto.
-      eapply incl_tran; eauto; apply incl_tl; apply incl_refl.
+      apply incl_cons2; auto.
 
     (* found in cache, was clean *)
     - cancel.
@@ -535,10 +593,11 @@ Module UCache.
       2: intros; apply cachepred_add_invariant; eassumption.
       rewrite <- mem_pred_absorb with (hm := d) (a := a) (v := (v, v0_cur :: x)).
       unfold cachepred at 3.
-      rewrite MapFacts.add_eq_o by reflexivity; cancel.
+      rewrite MapFacts.add_eq_o by reflexivity; safecancel.
       rewrite ptsto_subset_pimpl.
       cancel.
       apply incl_tl; apply incl_refl.
+      apply in_cons; simpl; auto.
       apply addr_valid_upd_add; auto.
       eapply ptsto_subset_upd; eauto.
       apply incl_cons; simpl; auto.
@@ -551,18 +610,17 @@ Module UCache.
       2: intros; apply cachepred_add_invariant; eassumption.
       rewrite <- mem_pred_absorb with (hm := d) (a := a) (v := (v, v0_cur :: x)).
       unfold cachepred at 3.
-      rewrite MapFacts.add_eq_o by reflexivity; cancel.
+      rewrite MapFacts.add_eq_o by reflexivity; safecancel.
       rewrite ptsto_subset_pimpl.
       cancel.
       apply incl_tl; apply incl_refl.
+      apply in_cons; simpl; auto.
       apply addr_valid_upd_add; auto.
       eapply ptsto_subset_upd; eauto.
       apply incl_cons; simpl; auto.
       eapply incl_tran; eauto; apply incl_tl; apply incl_refl.
   Qed.
 
-
-  Hint Extern 0 (okToUnify (mem_pred ?p _) (mem_pred ?p _)) => constructor : okToUnify.
 
   Fixpoint avl_sync_addr (a : addr) (l : list (addr * valuset)) : list (addr * valuset) :=
     match l with
@@ -693,7 +751,7 @@ Module UCache.
       apply incl_nil.
   Qed.
 
-  Theorem sync_ok : forall cs a,
+  Theorem evict_sync_ok : forall cs a,
     {< d (F : rawpred) v0,
     PRE
       rep cs d * [[ (F * a |+> v0)%pred d ]]
@@ -702,9 +760,9 @@ Module UCache.
       rep cs d' * [[ (F * a |+> (fst v0, nil))%pred d' ]]
     CRASH
       exists cs', rep cs' d
-    >} sync a cs.
+    >} evict_sync a cs.
   Proof.
-    unfold sync, rep; intros.
+    unfold evict_sync, rep; intros.
     prestep; unfold rep; safecancel.
 
     safestep.
@@ -723,5 +781,4 @@ End UCache.
 
 Global Opaque UCache.write_array.
 Global Opaque UCache.read_array.
-Global Opaque UCache.sync_array.
 
