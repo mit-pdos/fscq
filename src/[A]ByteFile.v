@@ -8,6 +8,7 @@ Require Export Rec.
 Require Export Log.
 Require Export Arith.
 Require Export Prog.
+Require Import BasicProg.
 Require Export List.
 
 Definition modulo (n m: nat) : nat := n - ((n / m) * m)%nat.
@@ -58,7 +59,7 @@ If (lt_dec 0 len) {                                           (* if read length 
         rx ^(fms, (data::data_remaining))                     (* concatenate the lists and return *)
       }
     } else {                                                  (* If you cannot read the whole length *)
-        let ^(fms, data) <- read_bytes lxp ixp inum           (* read as much as you can and return it *)
+        let^ (fms, data) <- read_bytes lxp ixp inum           (* read as much as you can and return it *)
             off (flen - off) fms;
         rx ^(fms, data)
     }
