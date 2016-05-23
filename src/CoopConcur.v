@@ -822,8 +822,6 @@ Notation "'SPEC' delta , tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d'
      r at level 0,
      only parsing).
 
-Check valid.
-
 Lemma valid_unfold : forall Sigma (delta: Protocol Sigma) tid pre p,
     ltac:(let def := eval unfold valid in (valid delta tid pre p) in
               exact def) ->
