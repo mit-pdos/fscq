@@ -10,11 +10,62 @@ Require Export Arith.
 Require Export Prog.
 Require Import BasicProg.
 Require Export List.
-Require Export Pred PredCrash.
+Require Export Pred PredCrash ListPred.
 Require Export Mem.
+Require Export Hoare.
+Require Export SepAuto.
+
+
+Require Import Arith.
+Require Import Pred PredCrash.
+Require Import Word.
+Require Import Prog.
+Require Import Hoare.
+Require Import SepAuto.
+Require Import BasicProg.
+Require Import Omega.
+Require Import Log.
+Require Import Array.
+Require Import List ListUtils.
+Require Import Bool.
+Require Import Eqdep_dec.
+Require Import Setoid.
+Require Import Rec.
+Require Import FunctionalExtensionality.
+Require Import NArith.
+Require Import WordAuto.
+Require Import RecArrayUtils LogRecArray.
+Require Import GenSepN.
+Require Import Balloc.
+Require Import ListPred.
+Require Import FSLayout.
+Require Import AsyncDisk.
+Require Import Inode.
+Require Import GenSepAuto.
+Require Import DiskSet.
+
+
+
+
+
 
 Set Implicit Arguments.
 
+Module ABYTEFILE.
+
+Check BFILE.rep.
+
+Variable AT : Type.
+Variable AEQ : EqDec AT.
+Variable V : Type.
+Variable block_size : addr.
+
+
+
+Record byte_file := mk_byte_file {
+  BFData : list valuset;
+  BFAttr : INODE.iattr
+}.
 
 Definition modulo (n m: nat) : nat := n - ((n / m) * m)%nat.
 
@@ -81,7 +132,7 @@ If (lt_dec 0 len) {                                           (* if read length 
           (pair_args_helper (fun data (_:unit) => (fun lrx => 
           
           let^ (fms, block) <- BFILE.read lxp ixp inum (off_remain + i*block_size) fms; (* get i'th block *)
-          lrx ^(data++(read_from_block (valu_to_list block) 0 block_size)) (* append its contents *)
+          lrx ^(data++(read_from_block (valu_to_list block) 0 block_size))%list (* append its contents *)
           
           )))) 0 num_of_full_blocks
         (fun _:nat => (fun _ => (fun _ => (fun _ => (fun _ => True)%pred)))) (* trivial invariant *)
@@ -91,7 +142,7 @@ If (lt_dec 0 len) {                                           (* if read length 
         let len_final := (len_remain - num_of_full_blocks * block_size) in (* final remaining length *)
         let^ (fms, last_block) <- BFILE.read lxp ixp inum off_remain fms;   (* get final block *)
         let data_final := (read_from_block (valu_to_list last_block) 0 len_final) in (* get final block data *)
-        rx ^(fms, data_init++data++data_final)                  (* append everything and return *)
+        rx ^(fms, data_init++data++data_final)%list                  (* append everything and return *)
         }
       } else {                                                  (* If you cannot read the whole length *)
         let len:= (flen - off) in                               (* set length to remaining length of file *)
@@ -129,7 +180,7 @@ If (lt_dec 0 len) {                                           (* if read length 
               (pair_args_helper (fun data (_:unit) => (fun lrx => 
               
               let^ (fms, block) <- BFILE.read lxp ixp inum (off_remain + i*block_size) fms; (* get i'th block *)
-              lrx ^(data++(read_from_block (valu_to_list block) 0 block_size)) (* append its contents *)
+              lrx ^(data++(read_from_block (valu_to_list block) 0 block_size))%list (* append its contents *)
               
               )))) 0 num_of_full_blocks
             (fun _:nat => (fun _ => (fun _ => (fun _ => (fun _ => True)%pred)))) (* trivial invariant *)
@@ -139,7 +190,7 @@ If (lt_dec 0 len) {                                           (* if read length 
             let len_final := (len_remain - num_of_full_blocks * block_size) in (* final remaining length *)
             let^ (fms, last_block) <- BFILE.read lxp ixp inum off_remain fms;   (* get final block *)
             let data_final := (read_from_block (valu_to_list last_block) 0 len_final) in (* get final block data *)
-            rx ^(fms, data_init++data++data_final)                  (* append everything and return *)
+            rx ^(fms, data_init++data++data_final)%list                  (* append everything and return *)
             }
        }
   } else {                                                    (* if offset is not valid, return nil *)
@@ -150,7 +201,26 @@ If (lt_dec 0 len) {                                           (* if read length 
 }.
 
 
+Notation "begin_addr  block_count |-->  x y" := 
+(begin_addr |-> x * (forall i, (block_count <= i) \/ (begin_addr + i |-> _ )) * (begin_addr+block_count-1) |-> v_e)%pred (at level 100).
 
+
+Theorem read_bytes_ok : forall lxp bxp ixp inum off len ms,
+    {< F Fm Fi Fd m0 m flist ilist frees f vs,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms) hm *
+           [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]] *
+           [[[ (BFILE.BFData f) ::: (Fd * (off - (modulo off (block_size))) |-> vs )]]]*
+           [[ off < length (BFILE.BFData f) ]]
+    POST:hm' RET:^(ms', r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm' *
+           [[ ((off + len <= (length (BFILE.BFData f)) /\ length r = len) 
+           \/ ( length (BFILE.BFData f) < off + len /\ length r = (length (BFILE.BFData f) - off)))
+           /\ BFILE.MSAlloc ms = BFILE.MSAlloc ms' ]]
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm'
+    >} read_bytes lxp ixp inum off len ms.
 
 (**
 (* It says syntax error for some reason. I couldn't find why *)
@@ -187,3 +257,5 @@ If (lt_dec 0 len) {                                           (* if read length 
   rx ^(fms, nil)
 }.
 **)
+
+End ABYTEFILE.
