@@ -58,18 +58,46 @@ Section MemCache.
 End MemCache.
 
 Definition cache_rep (d:DISK) (c: Cache) (vd:DISK) :=
-   forall a, match cache_get c a with
-      | Clean v => vd a = Some (v, None) /\
-                  d a = Some (v, None)
-      | Dirty v' => exists v,
-                           vd a = Some (v', None) /\
-                           d a = Some (v, None)
-      | Invalid => exists v tid,
-                  vd a = Some (v, Some tid) /\
-                  d a = Some (v, Some tid)
-      | Missing => exists v,
-                  vd a = Some (v, None) /\
-                  d a = Some (v, None)
-      end.
+  forall a, match cache_get c a with
+       | Clean v => vd a = Some (v, None) /\
+                   d a = Some (v, None)
+       | Dirty v' => exists v,
+                    vd a = Some (v', None) /\
+                    d a = Some (v, None)
+       | Invalid => exists v tid,
+                   vd a = Some (v, Some tid) /\
+                   d a = Some (v, Some tid)
+       | Missing =>
+         d a = vd a
+       end.
+
+Ltac t :=
+  repeat match goal with
+         | [ H: cache_rep _ _ _, a: addr |- _ ] =>
+           lazymatch goal with
+           | [ a: addr, a': addr |- _ ] => fail
+           | _ => learn that (H a)
+           end
+         end;
+  repeat match goal with
+         | [ H: context[match cache_get ?c ?a with _ => _ end] |- _ ] =>
+           let Hc := fresh "Hc" in
+           destruct (cache_get c a) eqn:Hc
+         end;
+  repeat deex; destruct_ands.
+
+Theorem cache_rep_same_domain : forall d c vd,
+    cache_rep d c vd ->
+    same_domain d vd.
+Proof.
+  unfold same_domain, subset; split; intros;
+    match goal with
+    | [ v: const wr_set _ |- _ ] => destruct v
+    end;
+    t; eauto.
+  destruct (vd a); (eauto || congruence).
+  destruct (vd a); (eauto || congruence).
+Qed.
+
 
 Hint Opaque cache_rep.
