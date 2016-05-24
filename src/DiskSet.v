@@ -327,4 +327,15 @@ Proof.
 Qed.
 
 
+Lemma diskset_pred_d_map : forall V (p1 p2 : @pred _ _ V) f ds,
+  diskset_pred p1 ds ->
+  (forall d, p1 (list2nmem d) -> p2 (list2nmem (f d))) ->
+  diskset_pred p2 (d_map f ds).
+Proof.
+  unfold diskset_pred; intros.
+  apply d_in_d_map in H1; deex.
+  eauto.
+Qed.
+
+
 Export NEList.

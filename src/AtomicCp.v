@@ -184,6 +184,23 @@ Module ATOMICCP.
     unfold BFILE.diskset_was in H26.
     intuition; subst.
 
+    eapply diskset_pred_d_map.
+    eapply diskset_pred_d_map.
+    eauto.
+
+    intros.
+    eapply pimpl_apply; [ | eapply DIRTREE.dirtree_update_safe_pathname_pred ].
+    apply pimpl_refl.
+    pred_apply.  (* XXX evar ordering *)
+    admit.
+    admit.
+    admit.
+    admit.
+
+    intros.
+    eapply pimpl_apply; [ | eapply dirtree_update_safe_pathname_vssync_vecs_pred ].
+    unfold temp_tree_pred. cancel. (* XXX *)
+
     (* prove that diskset_pred still holds for ds with a datablock (the first block of temp_fn) updated and synced,
       which should true indeed, given that disk_pred held for ds *)
 

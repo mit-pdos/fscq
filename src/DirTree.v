@@ -1063,6 +1063,27 @@ Module DIRTREE.
       eauto.
   Qed.
 
+  Theorem dirtree_update_safe_pathname_pred :
+    forall ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks v bn inum off m flag,
+    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
+    dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
+    BFILE.block_belong_to_file ilist_newest bn inum off ->
+    find_subtree pathname tree_newest = Some (TreeFile inum f) ->
+    (F0 * rep fsxp F tree ilist freeblocks \/
+     exists pathname' f',
+     [[ find_subtree pathname' tree = Some (TreeFile inum f') ]] *
+     let f'new := BFILE.mk_bfile (updN (BFILE.BFData f') off v) (BFILE.BFAttr f') in
+     let tree' := update_subtree pathname' (TreeFile inum f'new) tree in
+     F0 * rep fsxp F tree' ilist freeblocks)%pred (list2nmem (updN m bn v)).
+  Proof.
+    intros.
+    edestruct dirtree_update_safe_pathname; eauto.
+    intuition.
+    eapply pimpl_apply; try eassumption. cancel.
+    eapply pimpl_apply; try eassumption. cancel.
+  Qed.
+
+
   Lemma find_subtree_ents_not_in : forall T ents name acc (rec : _ -> option T),
     ~ In name (map fst ents) ->
     fold_right (find_subtree_helper rec name) acc ents = acc.

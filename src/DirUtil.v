@@ -671,6 +671,26 @@ Proof.
   intros; exact tt.
 Qed.
 
+Theorem dirtree_update_safe_pathname_vssync_vecs_pred :
+  forall bns ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks inum m flag,
+  (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
+  dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
+  Forall (fun bn => exists off, BFILE.block_belong_to_file ilist_newest bn inum off) bns ->
+  find_subtree pathname tree_newest = Some (TreeFile inum f) ->
+  (F0 * rep fsxp F tree ilist freeblocks \/
+   exists pathname' f' data,
+   [[ find_subtree pathname' tree = Some (TreeFile inum f') ]] *
+   let f'new := BFILE.mk_bfile data (BFILE.BFAttr f') in
+   let tree' := update_subtree pathname' (TreeFile inum f'new) tree in
+   F0 * rep fsxp F tree' ilist freeblocks)%pred (list2nmem (vssync_vecs m bns)).
+Proof.
+  intros.
+  edestruct dirtree_update_safe_pathname_vssync_vecs; eauto.
+  intuition.
+  eapply pimpl_apply; try eassumption. cancel.
+  eapply pimpl_apply; try eassumption. cancel.
+Qed.
+
 
 Global Opaque DIRTREE.tree_graft.
 Global Opaque DIRTREE.update_subtree.
