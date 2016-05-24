@@ -3,14 +3,16 @@ Require Import CoopConcurAuto.
 Require Import Protocols.
 Require Import Star.
 Require Import DiskReaders.
+Import List.
 Import List.ListNotations.
 Import Hlist.HlistNotations.
 
 Require Import MemCache.
+Require Import WriteBuffer.
 
 Section ConcurrentCache.
 
-  Definition Sigma := defState [Cache; Cache] [Cache; Cache; DISK; DISK; Disk].
+  Definition Sigma := defState [Cache; WriteBuffer] [Cache; WriteBuffer; DISK; Disk].
 
   Section Variables.
 
@@ -32,19 +34,21 @@ Section ConcurrentCache.
     (* the linearized disk, which evolves at each syscall *)
     Definition vDisk0 := ltac:(absvar 2).
     (* the disk from the perspective of the current syscall *)
-    Definition vDisk := ltac:(absvar 3).
-    (* the public, linearized disk, which hides readers from vDisk0 *)
-    Definition vdisk0 := ltac:(absvar 4).
+    Definition vdisk := ltac:(absvar 3).
 
   End Variables.
+
+  Definition no_wb_reader_conflict c wb :=
+    forall a, cache_get c a = Invalid ->
+         wb_get wb a = WbMissing.
 
   Definition cacheI : Invariant Sigma :=
     fun d m s =>
       get mCache m = get vCache s /\
       get mWriteBuffer m = get vWriteBuffer s /\
       cache_rep d (get vCache s) (get vDisk0 s) /\
-      cache_rep (get vDisk0 s) (get vWriteBuffer s) (get vDisk s) /\
-      get vdisk0 s = hide_readers (get vDisk0 s).
+      wb_rep (get vDisk0 s) (get vWriteBuffer s) (get vdisk s) /\
+      no_wb_reader_conflict (get vCache s) (get vWriteBuffer s).
 
   (* not sure whether to say this about vDisk0, vDisk, or both *)
   Definition cacheR (tid:TID) : Relation Sigma :=
@@ -72,9 +76,7 @@ Section ConcurrentCache.
   Definition delta : Protocol Sigma :=
     defProtocol cacheI cacheR cacheR_trans_closed.
 
-  Definition cache_maybe_read a rx : prog Sigma :=
-    c <- Get mCache;
-      rx (cache_val c a).
+  (* abstraction helpers *)
 
   Definition modify_cache (up: Cache -> Cache) rx : prog Sigma :=
     c <- Get mCache;
@@ -82,19 +84,20 @@ Section ConcurrentCache.
       _ <- var_update vCache up;
       rx tt.
 
-  Definition cache_maybe_write a v rx : prog Sigma :=
-    tid <- GetTID;
-      c <- Get mCache;
-      match cache_get c a with
-      | Invalid => rx false
-      | _ =>
-        _ <- modify_cache (fun c => cache_add c a (Dirty v));
-          _ <- var_update vDisk0
-            (* update virtual disk *)
-            (fun vd => upd vd a (v, None));
-          _ <- var_update vdisk0
-            (fun vd => upd vd a v);
-          rx true
+  Definition modify_wb (up: WriteBuffer -> WriteBuffer) rx : prog Sigma :=
+    wb <- Get mWriteBuffer;
+      _ <- Assgn mWriteBuffer (up wb);
+      _ <- var_update vWriteBuffer up;
+      rx tt.
+
+  (** safe read: returns None upon cache miss  *)
+  Definition cache_maybe_read a rx : prog Sigma :=
+    c <- Get mWriteBuffer;
+      match wb_val c a with
+      | Some v => rx (Some v)
+      | None =>
+        c <- Get mCache;
+          rx (cache_val c a)
       end.
 
   Definition AsyncRead a rx : prog Sigma :=
@@ -111,21 +114,53 @@ Section ConcurrentCache.
       rx v.
 
   Definition cache_fill a rx : prog Sigma :=
+      (* invalidating + adding a reader makes the address locked,
+      expressed via a reader locking protocol and restrictions on
+      readers in cache_rep *)
     _ <- modify_cache (fun c => cache_invalidate c a);
       v <- AsyncRead a;
       _ <- modify_cache (fun c => cache_add c a (Clean v));
       rx v.
 
-  Definition cache_writeback a rx : prog Sigma :=
+  (** buffer a new write: fails (returns false) if the write overlaps
+  with the address being read filled *)
+  Definition cache_write a v rx : prog Sigma :=
     c <- Get mCache;
       match cache_get c a with
-      | Dirty v =>
-        _ <- Write a v;
-          _ <- Assgn mCache (cache_add c a (Clean v));
-          _ <- var_update vCache
-            (fun c => cache_add c a (Clean v));
-          rx tt
-      | _ => rx tt
+      | Invalid => rx false
+      | _ =>
+        _ <- modify_wb (fun wb => wb_write wb a v);
+          _ <- var_update vdisk
+            (fun vd => upd vd a v);
+          rx true
       end.
+
+  (** low level operation to move one value to the mCache *)
+  Definition wb_evict a v rx : prog Sigma :=
+    _ <- modify_cache (fun c => cache_add c a (Dirty v));
+      _ <- var_update vDisk0
+        (fun vd => upd vd a (v, None));
+      rx tt.
+
+  (** commit all the buffered writes into the global cache
+
+    safety is provided by the invariant no_wb_reader_conflict enforced
+    by cache_write's checks *)
+  Definition cache_commit rx : prog Sigma :=
+    c <- Get mCache;
+      wb <- Get mWriteBuffer;
+      (* need to wb_evict everything in wb_entries wb; requires list
+      For loop *)
+      _ <- Assgn mWriteBuffer emptyWriteBuffer;
+      rx tt.
+
+  (** abort all buffered writes, restoring vDisk0 *)
+  Definition cache_abort rx : prog Sigma :=
+    _ <- Assgn mWriteBuffer emptyWriteBuffer;
+      _ <- GhostUpdate (fun s =>
+                         let vd' := hide_readers (get vDisk0 s) in
+                         set vdisk vd' s);
+      rx tt.
+
 
 End ConcurrentCache.

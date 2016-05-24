@@ -9,8 +9,8 @@ MODULES    := Nomega Word WordAuto WordZ Bytes Rounding \
 	      MemMatch DirName DirTree ByteFile FS Testprog \
 	      Hlist HlistMem Star RelationCombinators Variables MemClass \
 	      Locking Automation ForwardChaining \
-	      CoopConcur CoopConcurAuto MemCache Protocols \
-		  DiskReaders ConcurrentCache \
+	      CoopConcur CoopConcurAuto Protocols \
+		  DiskReaders MemCache WriteBuffer ConcurrentCache \
 		  ConcurrentBridge \
 	      ExtrHaskellPrelude Extraction
 VS         := $(MODULES:%=%.v)

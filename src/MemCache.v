@@ -40,14 +40,6 @@ Section MemCache.
   Definition cache_evict a :=
     Map.remove a c.
 
-  (** Change a dirty mapping to a clean one, keeping the same
-  value. Intended for use after writeback. *)
-  Definition cache_clean a :=
-    match cache_get a with
-    | Clean v as ce => cache_add a ce
-    | _ => c
-    end.
-
   Definition cache_val a : option valu :=
     match Map.find a c with
     | Some (Clean v) => Some v
