@@ -16,6 +16,12 @@ Definition valulen := 4096*8.
 Notation addr := (word addrlen).
 Notation valu := (word valulen).
 
+Module AddrM <: Word.WordSize.
+  Definition sz := addrlen.
+End AddrM.
+
+Module Addr_as_OT := Word_as_OT AddrM.
+
 Global Set Implicit Arguments.
 
 Definition pred_in AT AEQ V (F: @pred AT AEQ V) m := F m.

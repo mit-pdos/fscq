@@ -6,14 +6,6 @@ Require Import Eqdep_dec.
 Require Import Automation.
 Require Import Locking.
 
-Set Implicit Arguments.
-
-Module AddrM <: Word.WordSize.
-  Definition sz := addrlen.
-End AddrM.
-
-Module Addr_as_OT := Word_as_OT AddrM.
-
 Module Map := FMapAVL.Make(Addr_as_OT).
 Module MapFacts := WFacts_fun Addr_as_OT Map.
 Module MapProperties := WProperties_fun Addr_as_OT Map.
