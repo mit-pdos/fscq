@@ -3,11 +3,14 @@ Require Import Word StringMap.
 
 Import ListNotations.
 
-Local Open Scope string_scope.
-
 (* TODO: Call something other than "Facade?" *)
 
 Set Implicit Arguments.
+
+(* Don't print (elt:=...) everywhere *)
+Unset Printing Implicit Defensive.
+
+Local Open Scope string_scope.
 
 Definition label := string.
 Definition var := string.
@@ -41,6 +44,8 @@ Inductive Stmt :=
 | While : Expr -> Stmt -> Stmt
 (* | Call : var -> label -> list var -> Stmt (* TODO *) *)
 | Assign : var -> Expr -> Stmt.
+
+Arguments Assign v val%facade.
 
 Inductive Value :=
 | SCA : W -> Value.
@@ -127,6 +132,7 @@ Inductive RunsTo (* TODO env *) : Stmt -> State -> State -> Prop :=
     st' = add x (SCA w) st ->
     RunsTo (Assign x e) st st'.
 
+Arguments RunsTo prog%facade st st'.
 
 Notation "A ; B" := (Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : facade_scope.
 Notation "x <- y" := (Assign x y) (at level 90) : facade_scope.
@@ -167,9 +173,9 @@ Fixpoint SameValues st (tenv : Telescope) :=
     match key with
     | NTSome k =>
       match StringMap.find k st with
-      | Some v => wrap val = v /\ SameValues (StringMap.remove k st) tail
+      | Some v => wrap val = v
       | None => False
-      end
+      end /\ SameValues (StringMap.remove k st) tail
     | NTNone => SameValues st tail
     end
   end.
@@ -225,4 +231,21 @@ Proof.
   intros.
   instantiate (1 := Assign "out" (Binop Plus (Var "x") (Var "y"))).
   (* TODO! *)
+  intro.
+  intros.
+  simpl in H.
+  inversion H0.
+  simpl.
+  subst.
+  rewrite StringMapFacts.add_eq_o; intuition.
+  simpl in H3.
+  destruct (find "x" initial_state); intuition.
+  SearchAbout find remove.
+  rewrite StringMapFacts.remove_neq_o in H; intuition. 2: inversion H2.
+  destruct (find "y" initial_state); intuition.
+  destruct v, v0.
+  simpl in H3.
+  inversion H1; inversion H; inversion H3; subst.
+  trivial.
+  (* Whoops! False. We weren't allowed to just forget about the scalars. *)
 Abort.
