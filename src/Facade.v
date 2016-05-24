@@ -3,6 +3,8 @@ Require Import Word StringMap.
 
 Import ListNotations.
 
+Local Open Scope string_scope.
+
 (* TODO: Call something other than "Facade?" *)
 
 Set Implicit Arguments.
@@ -149,6 +151,8 @@ Arguments NTSome {T} key {H}.
 Inductive ScopeItem :=
 | SItem T (key : NameTag T) (val : T).
 
+Notation "` k ->> v" := (SItem (NTSome k) v) (at level 50).
+
 (* Not really a telescope; should maybe just be called Scope *)
 Definition Telescope := list ScopeItem.
 
@@ -179,4 +183,46 @@ Definition ProgOk (* env *) prog (initial_tstate final_tstate : Telescope) :=
     forall final_state : State,
       RunsTo (* env *) prog initial_state final_state ->
       (final_state ≲ final_tstate).
+Arguments ProgOk prog%facade_scope initial_tstate final_tstate.
 
+Notation "{{ A }} P {{ B }}" :=
+  (ProgOk (* EV *) P A B)
+    (at level 60, format "'[v' '{{'  A  '}}' '/'    P '/' '{{'  B  '}}' ']'").
+
+Ltac FacadeWrapper_t :=
+  abstract (repeat match goal with
+                   | _ => progress intros
+                   | [ H : _ = _ |- _ ] => inversion H; solve [eauto]
+                   | _ => solve [eauto]
+                   end).
+
+Instance FacadeWrapper_SCA : FacadeWrapper Value W.
+Proof.
+  refine {| wrap := SCA;
+            wrap_inj := _ |}; FacadeWrapper_t.
+Defined.
+
+Instance FacadeWrapper_Self {A: Type} : FacadeWrapper A A.
+Proof.
+  refine {| wrap := id;
+            wrap_inj := _ |}; FacadeWrapper_t.
+Defined.
+
+Notation "'ParametricExtraction' '#vars' x .. y '#program' post '#arguments' pre" :=
+  (sigT (fun prog => (forall x, .. (forall y, {{ pre }} prog {{ [ `"out" ->> post ] }}) ..)))
+    (at level 200,
+     x binder,
+     y binder,
+     format "'ParametricExtraction' '//'    '#vars'       x .. y '//'    '#program'     post '//'    '#arguments'  pre '//'     ").
+
+Example micro_plus :
+  ParametricExtraction
+    #vars      x y
+    #program   x + y
+    #arguments [`"x" ->> x ; `"y" ->> y].
+Proof.
+  eexists.
+  intros.
+  instantiate (1 := Assign "out" (Binop Plus (Var "x") (Var "y"))).
+  (* TODO! *)
+Abort.
