@@ -1,6 +1,6 @@
 (* Finite maps from strings to things. Cobbled together from various Bedrock files. *)
 
-Require Import Coq.Strings.Ascii Coq.NArith.NArith Coq.Strings.String Coq.Structures.OrderedType Coq.FSets.FSetAVL.
+Require Import Coq.Strings.Ascii Coq.NArith.NArith Coq.Strings.String Coq.Structures.OrderedType Coq.FSets.FMapAVL.
 
 Local Open Scope string_scope.
 Local Open Scope N_scope.
@@ -157,12 +157,60 @@ Module StringKey.
 End StringKey.
 
 
-(*
-Module StringSet := FSetAVL.Make(StringKey).
+Module StringMap := FMapAVL.Make(StringKey).
 
-Remove Hints StringSet.MSet.Raw.L.eq_cons StringSet.E.lt_trans
-  StringSet.E.lt_not_eq StringSet.E.eq_trans StringSet.X'.eq_trans.
+Remove Hints StringMap.E.eq_sym StringMap.E.eq_refl StringMap.E.eq_trans StringMap.E.lt_not_eq StringMap.E.lt_trans
+  StringMap.Raw.Proofs.L.PX.eqk_refl StringMap.Raw.Proofs.L.PX.eqk_sym
+  StringMap.Raw.Proofs.L.PX.eqk_trans
+  StringMap.Raw.Proofs.PX.eqk_refl StringMap.Raw.Proofs.PX.eqk_sym StringMap.Raw.Proofs.PX.eqk_trans
+  StringMap.Raw.Proofs.L.PX.eqke_refl StringMap.Raw.Proofs.L.PX.eqke_sym StringMap.Raw.Proofs.L.PX.eqke_trans
+  StringMap.Raw.Proofs.PX.eqke_refl StringMap.Raw.Proofs.PX.eqke_sym StringMap.Raw.Proofs.PX.eqke_trans
+  StringMap.Raw.Proofs.L.PX.MO.lt_eq StringMap.Raw.Proofs.L.PX.MO.eq_lt StringMap.Raw.Proofs.L.MX.lt_eq
+  StringMap.Raw.Proofs.L.MX.eq_lt StringMap.Raw.Proofs.PX.MO.lt_eq StringMap.Raw.Proofs.PX.MO.eq_lt
+  StringMap.Raw.Proofs.MX.lt_eq StringMap.Raw.Proofs.MX.eq_lt
+  StringMap.Raw.Proofs.L.PX.eqk_ltk StringMap.Raw.Proofs.L.PX.ltk_eqk StringMap.Raw.Proofs.L.PX.ltk_trans
+  StringMap.Raw.Proofs.PX.eqk_ltk StringMap.Raw.Proofs.PX.ltk_eqk StringMap.Raw.Proofs.PX.ltk_trans
+  StringMap.Raw.Proofs.L.PX.MO.lt_antirefl
+  StringMap.Raw.Proofs.L.MX.lt_antirefl StringMap.Raw.Proofs.PX.MO.lt_antirefl StringMap.Raw.Proofs.MX.lt_antirefl
+  StringMap.Raw.Proofs.L.PX.eqk_not_ltk StringMap.Raw.Proofs.L.PX.ltk_not_eqke
+  StringMap.Raw.Proofs.L.PX.ltk_not_eqk StringMap.Raw.Proofs.L.PX.MO.lt_not_gt
+  StringMap.Raw.Proofs.L.PX.MO.eq_not_gt StringMap.Raw.Proofs.L.PX.MO.eq_neq
+  StringMap.Raw.Proofs.L.PX.MO.neq_eq StringMap.Raw.Proofs.L.PX.MO.eq_le
+  StringMap.Raw.Proofs.L.PX.MO.le_eq StringMap.Raw.Proofs.L.PX.MO.eq_not_lt
+  StringMap.Raw.Proofs.L.PX.MO.gt_not_eq StringMap.Raw.Proofs.L.MX.lt_not_gt
+  StringMap.Raw.Proofs.L.MX.eq_not_gt StringMap.Raw.Proofs.L.MX.eq_neq
+  StringMap.Raw.Proofs.L.MX.neq_eq StringMap.Raw.Proofs.L.MX.eq_le
+  StringMap.Raw.Proofs.L.MX.le_eq StringMap.Raw.Proofs.L.MX.eq_not_lt
+  StringMap.Raw.Proofs.L.MX.gt_not_eq StringMap.Raw.Proofs.PX.eqk_not_ltk
+  StringMap.Raw.Proofs.PX.ltk_not_eqke StringMap.Raw.Proofs.PX.ltk_not_eqk
+  StringMap.Raw.Proofs.PX.MO.lt_not_gt StringMap.Raw.Proofs.PX.MO.eq_not_gt
+  StringMap.Raw.Proofs.PX.MO.eq_neq StringMap.Raw.Proofs.PX.MO.neq_eq
+  StringMap.Raw.Proofs.PX.MO.eq_le StringMap.Raw.Proofs.PX.MO.le_eq
+  StringMap.Raw.Proofs.PX.MO.eq_not_lt StringMap.Raw.Proofs.PX.MO.gt_not_eq
+  StringMap.Raw.Proofs.MX.lt_not_gt StringMap.Raw.Proofs.MX.eq_not_gt
+  StringMap.Raw.Proofs.MX.eq_neq StringMap.Raw.Proofs.MX.neq_eq
+  StringMap.Raw.Proofs.MX.eq_le StringMap.Raw.Proofs.MX.le_eq
+  StringMap.Raw.Proofs.MX.eq_not_lt StringMap.Raw.Proofs.MX.gt_not_eq
+  StringMap.Raw.Proofs.L.PX.Sort_Inf_NotIn StringMap.Raw.Proofs.PX.Sort_Inf_NotIn
+  StringMap.Raw.Proofs.L.PX.Inf_eq StringMap.Raw.Proofs.L.PX.MO.Inf_lt
+  StringMap.Raw.Proofs.L.MX.Inf_lt StringMap.Raw.Proofs.PX.Inf_eq
+  StringMap.Raw.Proofs.PX.MO.Inf_lt StringMap.Raw.Proofs.MX.Inf_lt
+  StringMap.Raw.Proofs.L.PX.Inf_lt StringMap.Raw.Proofs.L.PX.MO.Inf_lt
+  StringMap.Raw.Proofs.L.MX.Inf_lt StringMap.Raw.Proofs.PX.Inf_lt
+  StringMap.Raw.Proofs.PX.MO.Inf_lt StringMap.Raw.Proofs.MX.Inf_lt
+  StringMap.Raw.InRight StringMap.Raw.InLeft StringMap.Raw.InRoot
+  StringMap.Raw.Proofs.L.PX.InA_eqke_eqk StringMap.Raw.Proofs.L.PX.MO.In_eq
+  StringMap.Raw.Proofs.L.PX.MO.ListIn_In StringMap.Raw.Proofs.L.MX.In_eq
+  StringMap.Raw.Proofs.L.MX.ListIn_In StringMap.Raw.Proofs.PX.InA_eqke_eqk
+  StringMap.Raw.Proofs.PX.MO.In_eq StringMap.Raw.Proofs.PX.MO.ListIn_In
+  StringMap.Raw.Proofs.MX.In_eq StringMap.Raw.Proofs.MX.ListIn_In
+  StringMap.Raw.Proofs.L.PX.In_inv_3 StringMap.Raw.Proofs.PX.In_inv_3
+  StringMap.Raw.Proofs.L.PX.In_inv_2 StringMap.Raw.Proofs.PX.In_inv_2
+  StringMap.Raw.MapsRight StringMap.Raw.MapsLeft
+  StringMap.Raw.MapsRoot StringMap.Raw.Proofs.L.PX.MO.Sort_NoDup
+  StringMap.Raw.Proofs.L.MX.Sort_NoDup StringMap.Raw.Proofs.PX.MO.Sort_NoDup
+  StringMap.Raw.Proofs.MX.Sort_NoDup
+  StringMap.Raw.BSLeaf StringMap.Raw.BSNode StringMap.Raw.Leaf StringMap.Raw.Node.
 
-Require Coq.FSets.FSetFacts.
-Module StringFacts := FSetFacts.WFacts_fun(StringKey)(StringSet).
-*)
+Require Coq.FSets.FMapFacts.
+Module StringFacts := FMapFacts.WFacts_fun(StringKey)(StringMap).
