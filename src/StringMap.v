@@ -213,4 +213,4 @@ Remove Hints StringMap.E.eq_sym StringMap.E.eq_refl StringMap.E.eq_trans StringM
   StringMap.Raw.BSLeaf StringMap.Raw.BSNode StringMap.Raw.Leaf StringMap.Raw.Node.
 
 Require Coq.FSets.FMapFacts.
-Module StringFacts := FMapFacts.WFacts_fun(StringKey)(StringMap).
+Module StringMapFacts := FMapFacts.WFacts_fun(StringKey)(StringMap).

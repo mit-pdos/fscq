@@ -1,7 +1,11 @@
-Require Import PeanoNat String FMapAVL.
+Require Import PeanoNat String List FMapAVL.
 Require Import Word StringMap.
 
+Import ListNotations.
+
 (* TODO: Call something other than "Facade?" *)
+
+Set Implicit Arguments.
 
 Definition label := string.
 Definition var := string.
@@ -86,6 +90,8 @@ Definition not_mapsto_adt x st :=
   | None => true
   end.
 
+(* Definition Env := StringMap.t _. *)
+
 Inductive RunsTo (* TODO env *) : Stmt -> State -> State -> Prop :=
 | RunsToSkip : forall st,
     RunsTo Skip st st
@@ -125,3 +131,52 @@ Notation "x <- y" := (Assign x y) (at level 90) : facade_scope.
 Notation "'__'" := (Skip) : facade_scope.
 Notation "'While' A B" := (While A B) (at level 200, A at level 0, B at level 1000, format "'[v    ' 'While'  A '/' B ']'") : facade_scope.
 Notation "'If' a 'Then' b 'Else' c 'EndIf'" := (If a b c) (at level 200, a at level 1000, b at level 1000, c at level 1000) : facade_scope.
+
+
+(* TODO What here is actually necessary? *)
+
+Class FacadeWrapper (WrappingType WrappedType: Type) :=
+  { wrap:        WrappedType -> WrappingType;
+    wrap_inj: forall v v', wrap v = wrap v' -> v = v' }.
+
+Inductive NameTag T :=
+| NTNone : NameTag T
+| NTSome (key: string) (H: FacadeWrapper Value T) : NameTag T.
+
+Arguments NTNone {T}.
+Arguments NTSome {T} key {H}.
+
+Inductive ScopeItem :=
+| SItem T (key : NameTag T) (val : T).
+
+(* Not really a telescope; should maybe just be called Scope *)
+Definition Telescope := list ScopeItem.
+
+(* TODO: allow forgetting values? maybe just allow forgetting anything, including ADTs, if we're assuming GC *)
+Definition StatesEqual (m1 m2: State) := forall k v, StringMap.MapsTo k v m1 <-> StringMap.MapsTo k v m2.
+
+(* TODO: doesn't need to be a fixpoint *)
+Fixpoint SameValues st (tenv : Telescope) :=
+  match tenv with
+  | [] => StringMap.Empty st
+  | SItem key val :: tail =>
+    match key with
+    | NTSome k =>
+      match StringMap.find k st with
+      | Some v => wrap val = v /\ SameValues (StringMap.remove k st) tail
+      | None => False
+      end
+    | NTNone => SameValues st tail
+    end
+  end.
+
+Notation "ENV ≲ TENV" := (SameValues ENV TENV) (at level 50).
+
+Definition ProgOk (* env *) prog (initial_tstate final_tstate : Telescope) :=
+  forall initial_state : State,
+    initial_state ≲ initial_tstate ->
+    (* Safe ... /\ *)
+    forall final_state : State,
+      RunsTo (* env *) prog initial_state final_state ->
+      (final_state ≲ final_tstate).
+
