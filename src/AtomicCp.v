@@ -152,9 +152,12 @@ Module ATOMICCP.
     POST:hm' RET:^(mscs', r)
       exists ds',
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
+(*
       [[ forall d, d_in d ds' -> exists tfile' ilist' freelist',
          let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree in
          (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist')%pred (list2nmem d) ]] *
+*)
+      [[ diskset_pred (temp_tree_pred Fm Ftop fsxp temp_fn tinum temp_tree ilist freelist mscs)  ds' ]] *
       ([[ r = false ]] \/
        [[ r = true ]] *
        exists ilist' freelist',
@@ -163,9 +166,11 @@ Module ATOMICCP.
     XCRASH:hm'
       exists ds',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+      [[ diskset_pred (temp_tree_pred Fm Ftop fsxp temp_fn tinum temp_tree ilist freelist mscs)  ds' ]]
+(*
       [[ forall d, d_in d ds' -> exists tfile' ilist' freelist',
          let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree in
-         (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist')%pred (list2nmem d) ]]
+         (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist')%pred (list2nmem d) ]] *)
      >} copydata fsxp src_inum tinum mscs.
   Proof.
     unfold copydata; intros.
@@ -176,10 +181,23 @@ Module ATOMICCP.
     step.
     step.
 
+    unfold BFILE.diskset_was in H26.
+    intuition; subst.
+
+    (* prove that diskset_pred still holds for ds with a datablock (the first block of temp_fn) updated and synced,
+      which should true indeed, given that disk_pred held for ds *)
+
+ 
+    (* 
+
     denote! (d_in _ _) as Hdin. apply d_in_d_map in Hdin. repeat deex.
     denote! (d_in _ _) as Hdin.
       apply d_in_d_map in Hdin. repeat deex.
     denote! (d_in _ _) as Hdin. eapply BFILE.d_in_diskset_was in Hdin; eauto.
+
+    repeat (eexists).
+     ---
+
     denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
 
     (* first, get a tree representation of the disk after the dwrite *)
