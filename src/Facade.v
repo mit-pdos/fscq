@@ -51,6 +51,11 @@ Inductive Value :=
 | SCA : W -> Value.
 (* TODO ADT *)
 
+Definition is_mutable v :=
+  match v with
+  | SCA _ => false
+  end.
+
 
 Definition State := StringMap.t Value.
 
@@ -90,10 +95,9 @@ Definition eval_bool st e : option bool :=
 Definition is_true st e := eval_bool st e = Some true.
 Definition is_false st e := eval_bool st e = Some false.
 
-Definition not_mapsto_adt x st :=
+Definition mapsto_mutable x st :=
   match find x st with
-  | Some (SCA _) => true
-  (* | Some _ => false *) (* TODO *)
+  | Some v => is_mutable v
   | None => true
   end.
 
@@ -124,12 +128,11 @@ Inductive RunsTo (* TODO env *) : Stmt -> State -> State -> Prop :=
     let loop := While cond body in
     is_false st cond ->
     RunsTo loop st st'
-| RunsToAssign : forall x e st st' w,
-    (* rhs can't be an ADT object, to prevent aliasing *)
-    eval st e = Some (SCA w) ->
-    (* lhs can't be already referring to an ADT object, to prevent memory leak *)
-    not_mapsto_adt x st = true ->
-    st' = add x (SCA w) st ->
+| RunsToAssign : forall x e st st' v,
+    (* rhs can't be a mutable object, to prevent aliasing *)
+    eval st e = Some v ->
+    is_mutable v = false ->
+    st' = add x v st ->
     RunsTo (Assign x e) st st'.
 
 Arguments RunsTo prog%facade st st'.
@@ -162,13 +165,10 @@ Notation "` k ->> v" := (SItem (NTSome k) v) (at level 50).
 (* Not really a telescope; should maybe just be called Scope *)
 Definition Telescope := list ScopeItem.
 
-(* TODO: allow forgetting values? maybe just allow forgetting anything, including ADTs, if we're assuming GC *)
-Definition StatesEqual (m1 m2: State) := forall k v, StringMap.MapsTo k v m1 <-> StringMap.MapsTo k v m2.
-
 (* TODO: doesn't need to be a fixpoint *)
 Fixpoint SameValues st (tenv : Telescope) :=
   match tenv with
-  | [] => StringMap.Empty st
+  | [] => True
   | SItem key val :: tail =>
     match key with
     | NTSome k =>
@@ -240,12 +240,10 @@ Proof.
   rewrite StringMapFacts.add_eq_o; intuition.
   simpl in H3.
   destruct (find "x" initial_state); intuition.
-  SearchAbout find remove.
   rewrite StringMapFacts.remove_neq_o in H; intuition. 2: inversion H2.
   destruct (find "y" initial_state); intuition.
-  destruct v, v0.
+  destruct v0, v1.
   simpl in H3.
   inversion H1; inversion H; inversion H3; subst.
   trivial.
-  (* Whoops! False. We weren't allowed to just forget about the scalars. *)
-Abort.
+Defined.
