@@ -183,6 +183,8 @@ Section ConcurrentCache.
     match goal with
     | [ |- guar delta ?tid _ _ ] =>
       cbn; unfold cacheR
+    | [ |- invariant delta _ _ _ ] =>
+      cbn; unfold cacheI
     end.
 
   Ltac descend :=
@@ -239,7 +241,13 @@ Section ConcurrentCache.
     end.
 
   Ltac finish := time "finish"
-                      try solve [ eauto; congruence ].
+                      lazymatch goal with
+                      | [ |- valid _ _ _ _ ] => idtac
+                      | _ => eauto;
+                            try solve [simpl (mem_types _) in *;
+                                       simpl (abstraction_types _) in *;
+                                       congruence]
+                      end.
 
   Ltac simplify :=
     repeat (time "simplify_step" simplify_step).
@@ -250,10 +258,11 @@ Section ConcurrentCache.
       SPEC delta, tid |-
               {{ (_:unit),
                | PRE d m s0 s: invariant delta d m s
-               | POST d' m' s0' s' r: invariant delta d m s /\
-                                      s' = set vCache (up (get vCache s)) s /\
-                                      guar delta tid s s' /\
-                                      s0' = s0
+               | POST d' m' s0' s' r:
+                   s' = set vCache (up (get vCache s)) s /\
+                   m' = set mCache (up (get mCache m)) m /\
+                   d' = d /\
+                   s0' = s0
               }} modify_cache up.
   Proof.
     hoare pre simplify with finish.
@@ -265,10 +274,11 @@ Section ConcurrentCache.
       SPEC delta, tid |-
               {{ (_:unit),
                | PRE d m s0 s: invariant delta d m s
-               | POST d' m' s0' s' r: invariant delta d m s /\
-                                      s' = set vWriteBuffer (up (get vWriteBuffer s)) s /\
-                                      guar delta tid s s' /\
-                                      s0' = s0
+               | POST d' m' s0' s' r:
+                   s' = set vWriteBuffer (up (get vWriteBuffer s)) s /\
+                   m' = set mWriteBuffer (up (get mWriteBuffer m)) m /\
+                   d' = d /\
+                   s0' = s0
               }} modify_wb up.
   Proof.
     hoare pre simplify with finish.
@@ -291,7 +301,8 @@ Section ConcurrentCache.
               }} cache_maybe_read a.
   Proof.
     hoare pre simplify with finish.
-    (* for some reason, wb_val_none has a Hint doesn't work, but this
+
+    (* for some reason, wb_val_none as a Hint doesn't work, but this
     does *)
     eauto using wb_val_none.
   Qed.
