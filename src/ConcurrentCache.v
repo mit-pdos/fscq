@@ -276,57 +276,7 @@ Section ConcurrentCache.
 
   Hint Extern 1 {{ modify_wb _; _ }} => apply modify_wb_ok : prog.
 
-  Lemma wb_val_some {d wb vd a v} :
-      wb_rep d wb vd ->
-      wb_val wb a = Some v ->
-      vd a = Some v.
-  Proof.
-    unfold wb_val, wb_rep; intros.
-    specialize (H a).
-    destruct matches in *.
-    deex.
-    congruence.
-  Qed.
-
-  Lemma cache_val_some {d c vd a v} :
-      cache_rep d c vd ->
-      cache_val c a = Some v ->
-      vd a = Some (v, None).
-  Proof.
-    unfold cache_val, cache_rep; intros.
-    specialize (H a).
-    destruct matches in *;
-      destruct_ands;
-      try deex;
-      inv_opt;
-      congruence.
-  Qed.
-
-  Lemma wb_val_none {d wb vd a} :
-    wb_rep d wb vd ->
-    wb_val wb a = None ->
-    vd a = match d a with
-           | Some (v, _) => Some v
-           | None => None
-           end.
-  Proof.
-    unfold wb_rep, wb_val; intros.
-    specialize (H a).
-    destruct matches in *.
-  Qed.
-
-  Ltac simp_hook ::=
-       match goal with
-       | [ H: wb_rep _ ?wb _,
-              H': wb_val ?wb _ = Some _ |- _ ] =>
-         learn that (wb_val_some H H')
-       | [ H: cache_rep _ ?c _,
-              H': cache_val ?c _ = Some _ |- _ ] =>
-         learn that (cache_val_some H H')
-       | [ H: wb_rep _ ?wb _,
-              H': wb_val ?wb _ = None |- _ ] =>
-         learn that (wb_val_none H H')
-       end.
+  Hint Resolve wb_val_vd cache_val_vd wb_val_none.
 
   Theorem cache_maybe_read_ok : forall a,
       SPEC delta, tid |-
@@ -341,9 +291,9 @@ Section ConcurrentCache.
               }} cache_maybe_read a.
   Proof.
     hoare pre simplify with finish.
-    repeat simpl_match.
-    congruence.
+    (* for some reason, wb_val_none has a Hint doesn't work, but this
+    does *)
+    eauto using wb_val_none.
   Qed.
-
 
 End ConcurrentCache.

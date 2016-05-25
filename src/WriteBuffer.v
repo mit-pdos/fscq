@@ -55,21 +55,44 @@ Definition wb_rep (d:DISK) (wb: WriteBuffer) (vd:Disk) :=
          end
        end.
 
-Ltac t :=
-  repeat match goal with
-         | [ H: wb_rep _ _ _, a: addr |- _ ] =>
-           learn that (H a)
-         end;
-  destruct matches in *;
-  repeat deex; destruct_ands.
+Section RepTheorems.
 
-Theorem wb_rep_same_domain : forall d wb vd,
+  Ltac t :=
+    unfold wb_val; intros;
+    repeat match goal with
+           | [ H: wb_rep _ _ _, a: addr |- _ ] =>
+             learn that (H a)
+           end;
+    destruct matches in *;
+    repeat deex; destruct_ands;
+    try (eauto; congruence).
+
+  Theorem wb_rep_same_domain : forall d wb vd,
+      wb_rep d wb vd ->
+      same_domain (hide_readers d) vd.
+  Proof.
+    unfold hide_readers, same_domain, subset;
+      split; t.
+  Qed.
+
+  Theorem wb_val_vd : forall d wb vd a v v',
+      wb_rep d wb vd ->
+      vd a = Some v ->
+      wb_val wb a = Some v' ->
+      v' = v.
+  Proof.
+    t.
+  Qed.
+
+ Theorem wb_val_none : forall d wb vd a v,
     wb_rep d wb vd ->
-    same_domain (hide_readers d) vd.
-Proof.
-  unfold hide_readers, same_domain, subset;
-    split; intros;
-    t; (eauto || congruence).
-Qed.
+    wb_val wb a = None ->
+    vd a = Some v ->
+    exists rdr, d a = Some (v, rdr).
+ Proof.
+   t.
+   assert (w = v) by congruence; subst.
+   eauto.
+ Qed.
 
-Hint Opaque wb_rep.
+End RepTheorems.

@@ -63,33 +63,44 @@ Definition cache_rep (d:DISK) (c: Cache) (vd:DISK) :=
          d a = vd a
        end.
 
-Ltac t :=
-  repeat match goal with
-         | [ H: cache_rep _ _ _, a: addr |- _ ] =>
-           lazymatch goal with
-           | [ a: addr, a': addr |- _ ] => fail
-           | _ => learn that (H a)
-           end
-         end;
-  repeat match goal with
-         | [ H: context[match cache_get ?c ?a with _ => _ end] |- _ ] =>
-           let Hc := fresh "Hc" in
-           destruct (cache_get c a) eqn:Hc
-         end;
-  repeat deex; destruct_ands.
+Section RepTheorems.
 
-Theorem cache_rep_same_domain : forall d c vd,
-    cache_rep d c vd ->
-    same_domain d vd.
-Proof.
-  unfold same_domain, subset; split; intros;
-    match goal with
-    | [ v: const wr_set _ |- _ ] => destruct v
-    end;
-    t; eauto.
-  destruct (vd a); (eauto || congruence).
-  destruct (vd a); (eauto || congruence).
-Qed.
+  Ltac t :=
+    unfold cache_val; intros;
+    repeat match goal with
+           | [ H: cache_rep _ _ _, a: addr |- _ ] =>
+             lazymatch goal with
+             | [ a: addr, a': addr |- _ ] => fail
+             | _ => learn that (H a)
+             end
+           end;
+    repeat match goal with
+           | [ H: context[match cache_get ?c ?a with _ => _ end] |- _ ] =>
+             let Hc := fresh "Hc" in
+             destruct (cache_get c a) eqn:Hc
+           end;
+    repeat deex; destruct_ands;
+    try (eauto; congruence).
 
+  Theorem cache_rep_same_domain : forall d c vd,
+      cache_rep d c vd ->
+      same_domain d vd.
+  Proof.
+    unfold same_domain, subset; split; intros;
+      match goal with
+      | [ v: const wr_set _ |- _ ] => destruct v
+      end; t.
+    destruct (vd a); (eauto || congruence).
+    destruct (vd a); (eauto || congruence).
+  Qed.
 
-Hint Opaque cache_rep.
+  Theorem cache_val_vd : forall d c vd a v v',
+      cache_rep d c vd ->
+      (exists rdr, vd a = Some (v, rdr)) ->
+      cache_val c a = Some v' ->
+      v' = v.
+  Proof.
+    t.
+  Qed.
+
+End RepTheorems.
