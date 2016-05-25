@@ -162,5 +162,74 @@ Section ConcurrentCache.
                          set vdisk vd' s);
       rx tt.
 
+  (* start of automation *)
+
+  Lemma unfold_invariant : forall d m s,
+      invariant delta d m s ->
+      ltac:(let t := eval cbn in (invariant delta d m s) in
+                let t := eval unfold cacheI in t in
+                    exact t).
+  Proof.
+    auto.
+  Qed.
+
+  Ltac learn_invariant :=
+    match goal with
+    | [ H: invariant delta _ _ _ |- _ ] =>
+      learn that (unfold_invariant H)
+    end.
+
+  Ltac prove_protocol :=
+    match goal with
+    | [ |- guar delta ?tid _ _ ] =>
+      cbn; unfold cacheR
+    end.
+
+  Ltac descend :=
+    match goal with
+    | [ |- _ /\ _ ] => split
+    | [ |- exists (_:unit), _ ] => exists tt
+    end.
+
+  Ltac reduce_hlist :=
+    match goal with
+    | [ |- context[get _ (set _ _ _) ] ] =>
+      autorewrite with hlist
+    end.
+
+  Ltac simplify_step :=
+    match goal with
+    | [ |- forall _, _ ] => intros
+    | _ => learn_invariant
+    | _ => deex
+    | _ => progress destruct_ands
+    | _ => progress subst
+    | _ => reduce_hlist
+    | _ => descend
+    | _ => prove_protocol
+    end.
+
+  Ltac finish :=
+    eauto.
+
+  Ltac simplify :=
+    repeat simplify_step.
+
+  (* prove hoare specs *)
+
+  Theorem modify_cache_ok : forall up,
+      SPEC delta, tid |-
+              {{ (_:unit),
+               | PRE d m s0 s: invariant delta d m s
+               | POST d' m' s0' s' r: invariant delta d m s /\
+                                      s' = set vCache (up (get vCache s)) s /\
+                                      guar delta tid s s' /\
+                                      s0' = s0
+              }} modify_cache up.
+  Proof.
+    hoare pre simplify with finish.
+  Qed.
+
+  Hint Extern 1 {{ modify_cache _; _ }} => apply modify_cache_ok : prog.
 
 End ConcurrentCache.
