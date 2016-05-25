@@ -214,6 +214,17 @@ Proof.
             wrap_inj := _ |}; FacadeWrapper_t.
 Defined.
 
+Instance FacadeWrapper_Bool : FacadeWrapper Value bool.
+Proof.
+  refine {| wrap := fun v => if (Bool.bool_dec v true) then (SCA 1) else (SCA 0);
+            wrap_inj := _ |}.
+  intros; destruct (Bool.bool_dec v true);
+          destruct (Bool.bool_dec v' true);
+          destruct v;
+          destruct v';
+          congruence.
+Defined.
+
 Notation "'ParametricExtraction' '#vars' x .. y '#program' post '#arguments' pre" :=
   (sigT (fun prog => (forall x, .. (forall y, {{ pre }} prog {{ [ `"out" ->> post ] }}) ..)))
     (at level 200,
@@ -246,4 +257,36 @@ Proof.
   simpl in H3.
   inversion H1; inversion H; inversion H3; subst.
   trivial.
+Defined.
+
+Example micro_if :
+  ParametricExtraction
+    #vars      flag (x y : nat)
+    #program   if (Bool.bool_dec flag true) then x else y
+    #arguments [`"flag" ->> flag ; `"x" ->> x ; `"y" ->> y].
+Proof.
+  eexists.
+  intros.
+  instantiate (1 := (If (Var "flag") Then (Assign "out" (Var "x")) Else (Assign "out" (Var "y")) EndIf)%facade).
+  (* TODO! *)
+  intro.
+  intros.
+  simpl in H.
+  inversion H0.
+  - inversion H7. simpl; subst; intuition.
+    repeat rewrite StringMapFacts.add_eq_o in * by congruence.
+    repeat rewrite StringMapFacts.remove_neq_o in * by congruence.
+    unfold is_true, is_false, eval_bool, eval in *.
+    destruct (find "flag" initial_state); intuition; subst.
+    destruct (find "x" initial_state); intuition; subst.
+    destruct (find "y" initial_state); intuition; subst.
+    destruct (Bool.bool_dec flag true); try solve [ destruct (Nat.eq_dec 0 0); congruence ].
+  - inversion H7. simpl; subst; intuition.
+    repeat rewrite StringMapFacts.add_eq_o in * by congruence.
+    repeat rewrite StringMapFacts.remove_neq_o in * by congruence.
+    unfold is_true, is_false, eval_bool, eval in *.
+    destruct (find "flag" initial_state); intuition; subst.
+    destruct (find "x" initial_state); intuition; subst.
+    destruct (find "y" initial_state); intuition; subst.
+    destruct (Bool.bool_dec flag true); try solve [ destruct (Nat.eq_dec 1 0); congruence ].
 Defined.
