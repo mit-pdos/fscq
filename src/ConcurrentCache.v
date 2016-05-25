@@ -232,4 +232,19 @@ Section ConcurrentCache.
 
   Hint Extern 1 {{ modify_cache _; _ }} => apply modify_cache_ok : prog.
 
+  Theorem modify_wb_ok : forall up,
+      SPEC delta, tid |-
+              {{ (_:unit),
+               | PRE d m s0 s: invariant delta d m s
+               | POST d' m' s0' s' r: invariant delta d m s /\
+                                      s' = set vWriteBuffer (up (get vWriteBuffer s)) s /\
+                                      guar delta tid s s' /\
+                                      s0' = s0
+              }} modify_wb up.
+  Proof.
+    hoare pre simplify with finish.
+  Qed.
+
+  Hint Extern 1 {{ modify_wb _; _ }} => apply modify_wb_ok : prog.
+
 End ConcurrentCache.
