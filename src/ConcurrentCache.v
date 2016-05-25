@@ -50,20 +50,37 @@ Section ConcurrentCache.
       wb_rep (get vDisk0 s) (get vWriteBuffer s) (get vdisk s) /\
       no_wb_reader_conflict (get vCache s) (get vWriteBuffer s).
 
+  (** a locking-like protocol, but true for any provable program
+      due to the program semantics themselves *)
+  Definition readers_locked tid (vd vd': DISK) :=
+      (forall a v tid', vd a = Some (v, Some tid') ->
+                   tid <> tid' ->
+                   vd' a = Some (v, Some tid')).
+
+  Lemma readers_locked_refl : forall tid vd,
+      readers_locked tid vd vd.
+  Proof.
+    unfold readers_locked; eauto.
+  Qed.
+
+  Lemma readers_locked_trans : forall tid vd vd' vd'',
+      readers_locked tid vd vd' ->
+      readers_locked tid vd' vd'' ->
+      readers_locked tid vd vd''.
+  Proof.
+    unfold readers_locked; eauto.
+  Qed.
+
   (* not sure whether to say this about vDisk0, vDisk, or both *)
   Definition cacheR (tid:TID) : Relation Sigma :=
     fun s s' =>
       let vd := get vDisk0 s in
       let vd' := get vDisk0 s' in
       same_domain vd vd' /\
-      (* a locking-like protocol, but true for any provable program
-      due to the program semantics themselves *)
-      (forall a v tid', vd a = Some (v, Some tid') ->
-                   tid <> tid' ->
-                   vd' a = Some (v, Some tid')).
+      readers_locked tid vd vd'.
 
   Hint Resolve same_domain_refl same_domain_trans.
-  Hint Resolve lock_protocol_refl.
+  Hint Resolve readers_locked_refl readers_locked_trans.
 
   Theorem cacheR_trans_closed : forall tid s s',
       star (cacheR tid) s s' ->
@@ -100,25 +117,24 @@ Section ConcurrentCache.
           rx (cache_val c a)
       end.
 
-  Definition AsyncRead a rx : prog Sigma :=
+  (** Prepare to fill address a, locking the address and marking it
+  invalid in the cache to signal the lock to concurrent threads. *)
+  Definition prepare_fill a rx : prog Sigma :=
     tid <- GetTID;
       _ <- StartRead_upd a;
       (* note that no updates to Disk are needed since the readers are
     hidden *)
       _ <- var_update vDisk0
         (fun vd => add_reader vd a tid);
+      _ <- modify_cache (fun c => cache_add c a Invalid);
+      rx tt.
+
+  Definition cache_fill a rx : prog Sigma :=
+    _ <- prepare_fill a;
       _ <- Yield a;
       v <- FinishRead_upd a;
       _ <- var_update vDisk0
         (fun vd => remove_reader vd a);
-      rx v.
-
-  Definition cache_fill a rx : prog Sigma :=
-      (* invalidating + adding a reader makes the address locked,
-      expressed via a reader locking protocol and restrictions on
-      readers in cache_rep *)
-    _ <- modify_cache (fun c => cache_invalidate c a);
-      v <- AsyncRead a;
       _ <- modify_cache (fun c => cache_add c a (Clean v));
       rx v.
 
@@ -173,18 +189,29 @@ Section ConcurrentCache.
     auto.
   Qed.
 
-  Ltac learn_invariant :=
+  Lemma unfold_protocol : forall tid s s',
+      guar delta tid s s' ->
+      ltac:(let t := eval cbn in (guar delta tid s s') in
+                let t := eval unfold cacheR in t in
+                    exact t).
+  Proof.
+    eauto.
+  Qed.
+
+  Ltac learn_protocol :=
     match goal with
     | [ H: invariant delta _ _ _ |- _ ] =>
       learn that (unfold_invariant H)
+    | [ H: guar delta _ _ _ |- _ ] =>
+      learn that (unfold_protocol H)
     end.
 
   Ltac prove_protocol :=
     match goal with
     | [ |- guar delta ?tid _ _ ] =>
-      cbn; unfold cacheR
+      simpl; unfold cacheR
     | [ |- invariant delta _ _ _ ] =>
-      cbn; unfold cacheI
+      simpl; unfold cacheI
     end.
 
   Ltac descend :=
@@ -228,7 +255,7 @@ Section ConcurrentCache.
   Ltac simplify_step :=
     match goal with
     | [ |- forall _, _ ] => intros
-    | _ => learn_invariant
+    | _ => learn_protocol
     | _ => deex
     | _ => progress destruct_ands
     | _ => inv_opt
@@ -252,12 +279,18 @@ Section ConcurrentCache.
   Ltac simplify :=
     repeat (time "simplify_step" simplify_step).
 
+  (* hook up new finish and simplify to existing hoare tactic; this
+    isn't clean, need better extensibility *)
+
+  Ltac step_simplifier ::= simplify.
+  Ltac step_finisher ::= finish.
+
   (* prove hoare specs *)
 
   Theorem modify_cache_ok : forall up,
       SPEC delta, tid |-
               {{ (_:unit),
-               | PRE d m s0 s: invariant delta d m s
+               | PRE d m s0 s: get mCache m = get vCache s
                | POST d' m' s0' s' r:
                    s' = set vCache (up (get vCache s)) s /\
                    m' = set mCache (up (get mCache m)) m /\
@@ -265,7 +298,7 @@ Section ConcurrentCache.
                    s0' = s0
               }} modify_cache up.
   Proof.
-    hoare pre simplify with finish.
+    hoare.
   Qed.
 
   Hint Extern 1 {{ modify_cache _; _ }} => apply modify_cache_ok : prog.
@@ -273,7 +306,7 @@ Section ConcurrentCache.
   Theorem modify_wb_ok : forall up,
       SPEC delta, tid |-
               {{ (_:unit),
-               | PRE d m s0 s: invariant delta d m s
+               | PRE d m s0 s: get mWriteBuffer m = get vWriteBuffer s
                | POST d' m' s0' s' r:
                    s' = set vWriteBuffer (up (get vWriteBuffer s)) s /\
                    m' = set mWriteBuffer (up (get mWriteBuffer m)) m /\
@@ -281,7 +314,7 @@ Section ConcurrentCache.
                    s0' = s0
               }} modify_wb up.
   Proof.
-    hoare pre simplify with finish.
+    hoare.
   Qed.
 
   Hint Extern 1 {{ modify_wb _; _ }} => apply modify_wb_ok : prog.
@@ -296,15 +329,95 @@ Section ConcurrentCache.
                | POST d' m' s0' s' r:
                    invariant delta d m s /\
                    s0' = s0 /\
-                   forall v, r = Some v ->
-                        v = v0
+                   (forall v, r = Some v ->
+                         v = v0) /\
+                   (r = None ->
+                    cache_val (get vCache s') a = None)
               }} cache_maybe_read a.
   Proof.
-    hoare pre simplify with finish.
-
-    (* for some reason, wb_val_none as a Hint doesn't work, but this
-    does *)
+    hoare.
     eauto using wb_val_none.
   Qed.
+
+  Theorem disk_no_reader : forall d c vd0 wb vd a v,
+      cache_get c a = Missing ->
+      cache_rep d c vd0 ->
+      wb_rep vd0 wb vd ->
+      vd a = Some v ->
+      d a = Some (v, None).
+  Proof.
+    unfold const; intros.
+    specialize (H0 a).
+    specialize (H1 a).
+    simpl_match.
+    destruct matches in *;
+      intuition auto;
+      repeat deex;
+      eauto || congruence.
+  Qed.
+
+  Hint Resolve disk_no_reader.
+
+  Lemma no_wb_reader_conflict_stable_invalidate : forall c wb a,
+      no_wb_reader_conflict c wb ->
+      wb_get wb a = WbMissing ->
+      no_wb_reader_conflict (cache_add c a Invalid) wb.
+  Proof.
+    unfold no_wb_reader_conflict; intros.
+    destruct (weq a a0); subst;
+      autorewrite with cache in *;
+      eauto.
+  Qed.
+
+  Hint Resolve no_wb_reader_conflict_stable_invalidate.
+
+  Lemma same_domain_add_reader : forall d a tid,
+      same_domain d (add_reader d a tid).
+  Proof.
+    unfold same_domain, subset, add_reader; split;
+      intros;
+      destruct (weq a a0); subst;
+        destruct matches in *;
+        autorewrite with upd in *;
+        eauto.
+  Qed.
+
+  Hint Resolve same_domain_add_reader.
+
+  Theorem prepare_fill_ok : forall a,
+      SPEC delta, tid |-
+              {{ v0,
+               | PRE d m s0 s:
+                   invariant delta d m s /\
+                   cache_get (get vCache s) a = Missing /\
+                   (* XXX: not sure exactly why this is a requirement,
+                   but it comes from no_wb_reader_conflict *)
+                   wb_get (get vWriteBuffer s) a = WbMissing /\
+                   get vdisk s a = Some v0 /\
+                   guar delta tid s0 s
+               | POST d' m' s0' s' _:
+                   invariant delta d' m' s' /\
+                   get vDisk0 s' a = Some (v0, Some tid) /\
+                   guar delta tid s0' s'
+              }} prepare_fill a.
+  Proof.
+    hoare.
+    eexists; simplify; finish.
+    eauto using disk_no_reader.
+
+    hoare;
+      match goal with
+      (* cache_rep stable when adding reader *)
+      | [ |- cache_rep (upd _ _ _)
+                      (cache_add _ _ _)
+                      (add_reader _ _ _) ] => admit
+      (* wb_rep insensitive to readers *)
+      | [ |- wb_rep (add_reader _ _ _) _ _ ] => admit
+      (* add_reader -> upd *)
+      | [ |- add_reader _ ?a _ ?a = _ ] => admit
+      (* readers only increased *)
+      | [ |- readers_locked _ _ (add_reader _ _ _) ] => admit
+      end.
+  Admitted.
 
 End ConcurrentCache.

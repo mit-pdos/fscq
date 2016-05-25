@@ -33,9 +33,6 @@ Section MemCache.
   Definition cache_add a v :=
     Map.add a v c.
 
-  Definition cache_invalidate a :=
-    Map.add a Invalid c.
-
   (** Evict an entry (should be cleaned) *)
   Definition cache_evict a :=
     Map.remove a c.
@@ -49,6 +46,25 @@ Section MemCache.
 
 End MemCache.
 
+Section GetModify.
+
+  Theorem cache_add_get_eq : forall c a a' v,
+    a = a' ->
+    cache_get (cache_add c a v) a' = v.
+  Proof.
+  Admitted.
+
+  Theorem cache_add_get_neq : forall c a a' v,
+      a <> a' ->
+      cache_get (cache_add c a v) a' = cache_get c a'.
+  Proof.
+  Admitted.
+
+End GetModify.
+
+Hint Rewrite cache_add_get_eq using (now auto) : cache.
+Hint Rewrite cache_add_get_neq using (now auto) : cache.
+
 Definition cache_rep (d:DISK) (c: Cache) (vd:DISK) :=
   forall a, match cache_get c a with
        | Clean v => vd a = Some (v, None) /\
@@ -60,7 +76,9 @@ Definition cache_rep (d:DISK) (c: Cache) (vd:DISK) :=
                    vd a = Some (v, Some tid) /\
                    d a = Some (v, Some tid)
        | Missing =>
-         d a = vd a
+         (exists v, vd a = Some (v, None) /\
+               d a = Some (v, None)) \/
+         (vd a = None /\ d a = None)
        end.
 
 Section RepTheorems.
@@ -89,7 +107,7 @@ Section RepTheorems.
     unfold same_domain, subset; split; intros;
       match goal with
       | [ v: const wr_set _ |- _ ] => destruct v
-      end; t.
+      end; t; intuition; try deex; eauto.
     destruct (vd a); (eauto || congruence).
     destruct (vd a); (eauto || congruence).
   Qed.

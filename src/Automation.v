@@ -140,7 +140,7 @@ Ltac cleanup :=
           || same_opt_val
           || simpl_match
           || mem_contents_eq);
-  cbn;
+  simpl;
   try congruence.
 
 Module Dbg.
