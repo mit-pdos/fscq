@@ -90,6 +90,17 @@ Module UCache.
     rx (mk_cs (Map.add a (v, true) (CSMap cs))
               (CSMaxCount cs) (eviction_update (CSEvict cs) a)).
 
+  Definition begin_sync T (cs : cachestate) rx : prog T :=
+    rx cs.
+
+  Definition sync T a (cs : cachestate) rx : prog T :=
+    cs <- writeback a cs;
+    rx cs.
+
+  Definition end_sync T (cs : cachestate) rx : prog T :=
+    @Sync T;;
+    rx cs.
+
   Definition evict_sync T a (cs : cachestate) rx : prog T :=
     cs <- evict a cs;
     @Sync T;;
@@ -127,7 +138,7 @@ Module UCache.
     (match Map.find a cache with
     | None => a |+> vs
     | Some (v, false) => a |+> vs * [[ v = fst vs ]]
-    | Some (v, true)  => exists v0, a |+> (v0, snd vs) * [[ v = fst vs /\ In v0 (vsmerge vs) ]]
+    | Some (v, true)  => exists v0, a |+> (v0, snd vs) * [[ v = fst vs /\ In v0 (snd vs) ]]
     end)%pred.
 
   Notation mem_pred := (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _).
@@ -136,7 +147,17 @@ Module UCache.
     ([[ size_valid cs /\ addr_valid m (CSMap cs) ]] *
      mem_pred (cachepred (CSMap cs)) m)%pred.
 
+  Definition synpred (cache : cachemap) (a : addr) (vs : valuset) : @pred _ addr_eq_dec valuset :=
+    (exists vsd, a |+> vsd *
+    match Map.find a cache with
+    | None =>  [[ vs = (fst vsd, nil) ]]
+    | Some (v, false) => [[ vs = (fst vsd, nil) /\ v = fst vsd ]]
+    | Some (v, true)  => [[ vs = (v, (fst vsd) :: nil) ]]
+    end)%pred.
 
+  Definition synrep (cs : cachestate) (m : rawdisk) : rawpred :=
+    ([[ size_valid cs /\ addr_valid m (CSMap cs) ]] *
+     mem_pred (synpred (CSMap cs)) m)%pred.
 
 
   (** helper lemmas *)
@@ -346,7 +367,19 @@ Module UCache.
     specialize (H _ H0); intuition.
     specialize (H _ H0); intuition subst; auto.
   Qed.
-  Local Hint Resolve incl_vsmerge_in.
+
+  Lemma incl_vsmerge_in' : forall w v0 l l',
+    incl l (vsmerge (w, (vsmerge (v0, l')))) ->
+    In v0 l' ->
+    incl l (vsmerge (w, l')).
+  Proof.
+    unfold vsmerge, incl; simpl; intuition subst.
+    specialize (H _ H1); intuition subst.
+    right; auto.
+  Qed.
+  Local Hint Resolve incl_vsmerge_in incl_vsmerge_in'.
+
+
 
   Lemma in_vsmerge_hd : forall w l,
     In w (vsmerge (w, l)).
@@ -597,7 +630,7 @@ Module UCache.
       rewrite ptsto_subset_pimpl.
       cancel.
       apply incl_tl; apply incl_refl.
-      apply in_cons; simpl; auto.
+      left; auto.
       apply addr_valid_upd_add; auto.
       eapply ptsto_subset_upd; eauto.
       apply incl_cons; simpl; auto.
@@ -614,12 +647,141 @@ Module UCache.
       rewrite ptsto_subset_pimpl.
       cancel.
       apply incl_tl; apply incl_refl.
-      apply in_cons; simpl; auto.
+      left; auto.
       apply addr_valid_upd_add; auto.
       eapply ptsto_subset_upd; eauto.
       apply incl_cons; simpl; auto.
       eapply incl_tran; eauto; apply incl_tl; apply incl_refl.
   Qed.
+
+
+  Lemma cachepred_synpred : forall cm a vs,
+    cachepred cm a vs =p=> exists vs', synpred cm a vs' *
+      [[ fst vs' = fst vs /\ incl (snd vs') (snd vs) ]].
+  Proof.
+    unfold cachepred, synpred; intros.
+    destruct (Map.find a cm) eqn:?.
+    destruct p, b; cancel.
+    apply incl_cons; auto; apply incl_nil.
+    apply incl_nil.
+    cancel; apply incl_nil.
+  Qed.
+
+  Definition avs_match (avs1 avs2 : addr * valuset)  : Prop :=
+    let '(a1, vs1) := avs1 in let '(a2, vs2) := avs2 in
+    a2 = a1 /\ (fst vs2 = fst vs1) /\ incl (snd vs2) (snd vs1).
+
+  Lemma listpred_cachepred_synpred : forall l cm,
+    listpred (fun av => cachepred cm (fst av) (snd av)) l =p=> exists l',
+    listpred (fun av => synpred cm (fst av) (snd av)) l' *
+    [[ Forall2 avs_match l l' ]].
+  Proof.
+    induction l; simpl; intros.
+    cancel; simpl; auto.
+    rewrite cachepred_synpred, IHl.
+    cancel.
+    eassign ((a_1, (a_2_cur, vs'_old)) :: l'); simpl.
+    cancel.
+    constructor; auto.
+    unfold avs_match; simpl; intuition.
+  Qed.
+
+  Lemma avs_match_map_fst_eq : forall l l',
+    Forall2 avs_match l l' ->
+    map fst l' = map fst l.
+  Proof.
+    unfold avs_match; induction 1; simpl; auto.
+    f_equal; auto.
+    destruct x, y; intuition.
+  Qed.
+
+  Lemma avs2mem_mem_match : forall V l l',
+    map fst l' = map fst l ->
+    @mem_match _ V _ (avs2mem addr_eq_dec l) (avs2mem addr_eq_dec l').
+  Proof.
+    induction l; destruct l'; simpl; try congruence; intros; cbn.
+    cbv; intuition.
+    destruct a, p; simpl in *.
+    inversion H; subst.
+    apply mem_match_upd.
+    apply IHl; auto.
+  Qed.
+
+  Lemma addr_valid_mem_match : forall d d' cm,
+    mem_match d d' ->
+    addr_valid d cm ->
+    addr_valid d' cm.
+  Proof.
+    unfold addr_valid; intros.
+    specialize (H0 _ H1).
+    edestruct mem_match_cases with (a := a); eauto; intuition.
+    repeat deex; congruence.
+  Qed.
+
+  Lemma avs_match_addr_valid : forall l l' cm,
+    Forall2 avs_match l l' ->
+    addr_valid (avs2mem addr_eq_dec l) cm ->
+    addr_valid (avs2mem addr_eq_dec l') cm.
+  Proof.
+    intros.
+    eapply addr_valid_mem_match; eauto.
+    apply avs2mem_mem_match.
+    apply avs_match_map_fst_eq; auto.
+  Qed.
+
+  Lemma avs_match_possible_sync : forall l l',
+    Forall2 avs_match l l' ->
+    possible_sync (avs2mem addr_eq_dec l) (avs2mem addr_eq_dec l').
+  Proof.
+    unfold possible_sync; induction 1; intuition.
+    unfold avs_match in H.
+    specialize (IHForall2 a); destruct x, y; cbn.
+    destruct p, p0; intuition; simpl in *; subst; repeat deex.
+    - destruct (addr_eq_dec a n); subst.
+      repeat rewrite upd_eq; auto.
+      right; do 3 eexists; intuition.
+      repeat rewrite upd_ne; auto.
+    - destruct (addr_eq_dec a n); subst.
+      repeat rewrite upd_eq; auto.
+      right; do 3 eexists; intuition.
+      repeat rewrite upd_ne; auto.
+      right; do 3 eexists; intuition eauto.
+  Qed.
+
+  Lemma avs_match_sync_invariant : forall l l' F,
+    Forall2 avs_match l l' ->
+    sync_invariant F ->
+    F (avs2mem addr_eq_dec l) ->
+    F (avs2mem addr_eq_dec l').
+  Proof.
+    unfold sync_invariant; intros.
+    eapply H0; eauto.
+    apply avs_match_possible_sync; auto.
+  Qed.
+
+
+  Theorem begin_sync_ok : forall cs,
+    {< d F,
+    PRE
+      rep cs d * [[ sync_invariant F /\ F d ]]
+    POST RET:cs exists d',
+      synrep cs d' * [[ F d' ]]
+    CRASH
+      exists cs', rep cs' d
+    >} begin_sync cs.
+  Proof.
+    unfold begin_sync, rep, synrep.
+    step.
+    prestep; unfold mem_pred.
+    norml; unfold stars, mem_pred_one; simpl; clear_norm_goal.
+    rewrite listpred_cachepred_synpred; cancel.
+    eapply avs_match_addr_valid; eauto.
+    erewrite avs_match_map_fst_eq; eauto.
+    eapply avs_match_sync_invariant; eauto.
+  Qed.
+
+
+
 
 
   Fixpoint avl_sync_addr (a : addr) (l : list (addr * valuset)) : list (addr * valuset) :=
