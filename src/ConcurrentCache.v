@@ -287,6 +287,49 @@ Section ConcurrentCache.
 
   (* prove hoare specs *)
 
+  Section SpecLemmas.
+
+    Lemma disk_no_reader : forall d c vd0 wb vd a v,
+      cache_get c a = Missing ->
+      cache_rep d c vd0 ->
+      wb_rep vd0 wb vd ->
+      vd a = Some v ->
+      d a = Some (v, None).
+    Proof.
+      unfold const; intros.
+      specialize (H0 a).
+      specialize (H1 a).
+      simpl_match.
+      destruct matches in *;
+        intuition auto;
+        repeat deex;
+        eauto || congruence.
+    Qed.
+
+    Lemma no_wb_reader_conflict_stable_invalidate : forall c wb a,
+        no_wb_reader_conflict c wb ->
+        wb_get wb a = WbMissing ->
+        no_wb_reader_conflict (cache_add c a Invalid) wb.
+    Proof.
+      unfold no_wb_reader_conflict; intros.
+      destruct (weq a a0); subst;
+        autorewrite with cache in *;
+        eauto.
+    Qed.
+
+    Lemma same_domain_add_reader : forall d a tid,
+        same_domain d (add_reader d a tid).
+    Proof.
+      unfold same_domain, subset, add_reader; split;
+        intros;
+        destruct (weq a a0); subst;
+          destruct matches in *;
+          autorewrite with upd in *;
+          eauto.
+    Qed.
+
+  End SpecLemmas.
+
   Theorem modify_cache_ok : forall up,
       SPEC delta, tid |-
               {{ (_:unit),
@@ -339,50 +382,10 @@ Section ConcurrentCache.
     eauto using wb_val_none.
   Qed.
 
-  Theorem disk_no_reader : forall d c vd0 wb vd a v,
-      cache_get c a = Missing ->
-      cache_rep d c vd0 ->
-      wb_rep vd0 wb vd ->
-      vd a = Some v ->
-      d a = Some (v, None).
-  Proof.
-    unfold const; intros.
-    specialize (H0 a).
-    specialize (H1 a).
-    simpl_match.
-    destruct matches in *;
-      intuition auto;
-      repeat deex;
-      eauto || congruence.
-  Qed.
-
-  Hint Resolve disk_no_reader.
-
-  Lemma no_wb_reader_conflict_stable_invalidate : forall c wb a,
-      no_wb_reader_conflict c wb ->
-      wb_get wb a = WbMissing ->
-      no_wb_reader_conflict (cache_add c a Invalid) wb.
-  Proof.
-    unfold no_wb_reader_conflict; intros.
-    destruct (weq a a0); subst;
-      autorewrite with cache in *;
-      eauto.
-  Qed.
-
-  Hint Resolve no_wb_reader_conflict_stable_invalidate.
-
-  Lemma same_domain_add_reader : forall d a tid,
-      same_domain d (add_reader d a tid).
-  Proof.
-    unfold same_domain, subset, add_reader; split;
-      intros;
-      destruct (weq a a0); subst;
-        destruct matches in *;
-        autorewrite with upd in *;
-        eauto.
-  Qed.
-
-  Hint Resolve same_domain_add_reader.
+  Hint Resolve
+       disk_no_reader
+       no_wb_reader_conflict_stable_invalidate
+       same_domain_add_reader.
 
   Theorem prepare_fill_ok : forall a,
       SPEC delta, tid |-
