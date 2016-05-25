@@ -41,9 +41,9 @@ Section MemCache.
     Map.remove a c.
 
   Definition cache_val a : option valu :=
-    match Map.find a c with
-    | Some (Clean v) => Some v
-    | Some (Dirty v) => Some v
+    match cache_get a with
+    | Clean v => Some v
+    | Dirty v => Some v
     | _ => None
     end.
 

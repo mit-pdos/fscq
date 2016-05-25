@@ -33,8 +33,8 @@ Section WriteBuffer.
     Map.add a (Written v) wb.
 
   Definition wb_val a : option valu :=
-    match Map.find a wb with
-    | Some (Written v) => Some v
+    match wb_get a with
+    | Written v => Some v
     | _ => None
     end.
 

@@ -197,23 +197,52 @@ Section ConcurrentCache.
       autorewrite with hlist
     end.
 
+  Lemma wb_val_mem {m: memory Sigma} {s: abstraction Sigma} :
+      get mWriteBuffer m = get vWriteBuffer s ->
+      wb_val (get mWriteBuffer m) = wb_val (get vWriteBuffer s).
+  Proof.
+    congruence.
+  Qed.
+
+  Lemma cache_val_mem {m: memory Sigma} {s: abstraction Sigma} :
+      get mCache m = get vCache s ->
+      cache_val (get mCache m) = cache_val (get vCache s).
+  Proof.
+    congruence.
+  Qed.
+
+  Ltac replace_mem_val :=
+    match goal with
+    | [ H: get mWriteBuffer ?m = get vWriteBuffer _,
+           H': context[ wb_val (get mWriteBuffer ?m) ] |- _ ] =>
+      rewrite (wb_val_mem H) in H'
+    | [ H: get mCache ?m = get vCache _,
+           H': context[ cache_val (get mCache ?m) ] |- _ ] =>
+      rewrite (cache_val_mem H) in H'
+    end.
+
+  Ltac simp_hook := fail.
+
   Ltac simplify_step :=
     match goal with
     | [ |- forall _, _ ] => intros
     | _ => learn_invariant
     | _ => deex
     | _ => progress destruct_ands
+    | _ => inv_opt
     | _ => progress subst
+    | _ => replace_mem_val
     | _ => reduce_hlist
+    | _ => simp_hook
     | _ => descend
     | _ => prove_protocol
     end.
 
-  Ltac finish :=
-    eauto.
+  Ltac finish := time "finish"
+                      try solve [ eauto; congruence ].
 
   Ltac simplify :=
-    repeat simplify_step.
+    repeat (time "simplify_step" simplify_step).
 
   (* prove hoare specs *)
 
@@ -246,5 +275,75 @@ Section ConcurrentCache.
   Qed.
 
   Hint Extern 1 {{ modify_wb _; _ }} => apply modify_wb_ok : prog.
+
+  Lemma wb_val_some {d wb vd a v} :
+      wb_rep d wb vd ->
+      wb_val wb a = Some v ->
+      vd a = Some v.
+  Proof.
+    unfold wb_val, wb_rep; intros.
+    specialize (H a).
+    destruct matches in *.
+    deex.
+    congruence.
+  Qed.
+
+  Lemma cache_val_some {d c vd a v} :
+      cache_rep d c vd ->
+      cache_val c a = Some v ->
+      vd a = Some (v, None).
+  Proof.
+    unfold cache_val, cache_rep; intros.
+    specialize (H a).
+    destruct matches in *;
+      destruct_ands;
+      try deex;
+      inv_opt;
+      congruence.
+  Qed.
+
+  Lemma wb_val_none {d wb vd a} :
+    wb_rep d wb vd ->
+    wb_val wb a = None ->
+    vd a = match d a with
+           | Some (v, _) => Some v
+           | None => None
+           end.
+  Proof.
+    unfold wb_rep, wb_val; intros.
+    specialize (H a).
+    destruct matches in *.
+  Qed.
+
+  Ltac simp_hook ::=
+       match goal with
+       | [ H: wb_rep _ ?wb _,
+              H': wb_val ?wb _ = Some _ |- _ ] =>
+         learn that (wb_val_some H H')
+       | [ H: cache_rep _ ?c _,
+              H': cache_val ?c _ = Some _ |- _ ] =>
+         learn that (cache_val_some H H')
+       | [ H: wb_rep _ ?wb _,
+              H': wb_val ?wb _ = None |- _ ] =>
+         learn that (wb_val_none H H')
+       end.
+
+  Theorem cache_maybe_read_ok : forall a,
+      SPEC delta, tid |-
+              {{ v0,
+               | PRE d m s0 s: invariant delta d m s /\
+                               get vdisk s a = Some v0
+               | POST d' m' s0' s' r:
+                   invariant delta d m s /\
+                   s0' = s0 /\
+                   forall v, r = Some v ->
+                        v = v0
+              }} cache_maybe_read a.
+  Proof.
+    hoare pre simplify with finish.
+    repeat simpl_match.
+    congruence.
+  Qed.
+
 
 End ConcurrentCache.
