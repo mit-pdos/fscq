@@ -151,10 +151,8 @@ Class FacadeWrapper (WrappingType WrappedType: Type) :=
     wrap_inj: forall v v', wrap v = wrap v' -> v = v' }.
 
 Inductive NameTag T :=
-| NTNone : NameTag T
 | NTSome (key: string) (H: FacadeWrapper Value T) : NameTag T.
 
-Arguments NTNone {T}.
 Arguments NTSome {T} key {H}.
 
 Inductive ScopeItem :=
@@ -163,6 +161,7 @@ Inductive ScopeItem :=
 Notation "` k ->> v" := (SItem (NTSome k) v) (at level 50).
 
 (* Not really a telescope; should maybe just be called Scope *)
+(* TODO: use fmap *)
 Definition Telescope := list ScopeItem.
 
 (* TODO: doesn't need to be a fixpoint *)
@@ -176,7 +175,6 @@ Fixpoint SameValues st (tenv : Telescope) :=
       | Some v => wrap val = v
       | None => False
       end /\ SameValues (StringMap.remove k st) tail
-    | NTNone => SameValues st tail
     end
   end.
 
@@ -242,7 +240,7 @@ Example micro_plus :
 Proof.
   eexists.
   intros.
-  instantiate (1 := Assign "out" (Binop Plus (Var "x") (Var "y"))).
+  instantiate (1 := ("out" <- Var "x" + Var "y")%facade).
   (* TODO! *)
   intro.
   intros.
