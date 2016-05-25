@@ -232,6 +232,8 @@ Notation "'ParametricExtraction' '#vars' x .. y '#program' post '#arguments' pre
      y binder,
      format "'ParametricExtraction' '//'    '#vars'       x .. y '//'    '#program'     post '//'    '#arguments'  pre '//'     ").
 
+Definition extract_code := projT1.
+
 Example micro_plus :
   ParametricExtraction
     #vars      x y
@@ -290,3 +292,6 @@ Proof.
     destruct (find "y" initial_state); intuition; subst.
     destruct (Bool.bool_dec flag true); try solve [ destruct (Nat.eq_dec 1 0); congruence ].
 Defined.
+
+Definition micro_if_code := Eval lazy in (extract_code micro_if).
+Print micro_if_code.
