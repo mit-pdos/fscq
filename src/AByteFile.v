@@ -99,7 +99,6 @@ forall (i:nat), ((num_of_full_reads < i) \/ (*[1]i is out of range OR*)
       = valu_to_list (fst bl))))).
 
 
-  
 (*Ugly but at least compiling*)
 
 Definition read_bytes {T} lxp ixp inum (off len:nat) fms rx : prog T :=
@@ -210,7 +209,7 @@ Theorem read_bytes_ok : forall lxp bxp ixp inum off len ms,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms) hm *
            [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
-           [[[ (BFILE.BFData f) ::: (Fd * block_off |-> vs * ((block_off + num_of_full_reads)|-> ve \/ [[file_length < off + len]]) )]]]*
+           [[[ (BFILE.BFData f) ::: (Fd * block_off |-> vs * (((off+len)/block_size)|-> ve \/ [[file_length < off + len]]) )]]]*
            [[ off < file_length ]]*
            [[ 0 < len ]]
     POST:hm' RET:^(ms', r)
