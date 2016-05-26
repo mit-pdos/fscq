@@ -240,6 +240,13 @@ Section ConcurrentCache.
     congruence.
   Qed.
 
+  Lemma cache_get_mem {m: memory Sigma} {s: abstraction Sigma} :
+      get mCache m = get vCache s ->
+      cache_get (get mCache m) = cache_get (get vCache s).
+  Proof.
+    congruence.
+  Qed.
+
   Ltac replace_mem_val :=
     match goal with
     | [ H: get mWriteBuffer ?m = get vWriteBuffer _,
@@ -248,6 +255,9 @@ Section ConcurrentCache.
     | [ H: get mCache ?m = get vCache _,
            H': context[ cache_val (get mCache ?m) ] |- _ ] =>
       rewrite (cache_val_mem H) in H'
+    | [ H: get mCache ?m = get vCache _,
+           H': context[ cache_get (get mCache ?m) ] |- _ ] =>
+      rewrite (cache_get_mem H) in H'
     end.
 
   Ltac simp_hook := fail.
@@ -290,15 +300,16 @@ Section ConcurrentCache.
   Section SpecLemmas.
 
     Lemma disk_no_reader : forall d c vd0 wb vd a v,
-      cache_get c a = Missing ->
       cache_rep d c vd0 ->
       wb_rep vd0 wb vd ->
+      cache_get c a = Missing ->
+      wb_get wb a = WbMissing ->
       vd a = Some v ->
       d a = Some (v, None).
     Proof.
       unfold const; intros.
+      specialize (H a).
       specialize (H0 a).
-      specialize (H1 a).
       simpl_match.
       destruct matches in *;
         intuition auto;
@@ -315,6 +326,18 @@ Section ConcurrentCache.
       destruct (weq a a0); subst;
         autorewrite with cache in *;
         eauto.
+    Qed.
+
+    Lemma no_wb_reader_conflict_stable_write : forall c wb a v,
+        cache_get c a <> Invalid ->
+        no_wb_reader_conflict c wb ->
+        no_wb_reader_conflict c (wb_write wb a v).
+    Proof.
+      unfold no_wb_reader_conflict; intros.
+      destruct (weq a a0); subst;
+        rewrite ?wb_get_write_eq, ?wb_get_write_neq
+        in * by auto;
+        eauto || congruence.
     Qed.
 
     Lemma same_domain_add_reader : forall d a tid,
@@ -359,6 +382,23 @@ Section ConcurrentCache.
         simpl_match;
         autorewrite with upd;
         eauto || congruence.
+    Qed.
+
+    Theorem wb_rep_stable_write : forall d wb vd a v0 v,
+        wb_rep d wb vd ->
+        (* a is in domain *)
+        vd a = Some v0 ->
+        wb_rep d (wb_write wb a v) (upd vd a v).
+    Proof.
+      unfold wb_rep; intros.
+      specialize (H a0).
+      destruct (weq a a0); subst;
+        rewrite ?wb_get_write_eq, ?wb_get_write_neq by auto;
+        autorewrite with upd;
+        eauto.
+
+      destruct matches in *|- ;
+        intuition eauto.
     Qed.
 
   End SpecLemmas.
@@ -589,6 +629,30 @@ Section ConcurrentCache.
       end.
   Admitted.
 
+  Hint Resolve upd_eq.
+  Hint Resolve wb_rep_stable_write.
+
+  Lemma cache_not_invalid_1 : forall c a v,
+      cache_get c a = Clean v ->
+      cache_get c a <> Invalid.
+  Proof. congruence. Qed.
+
+  Lemma cache_not_invalid_2 : forall c a v,
+      cache_get c a = Dirty v ->
+      cache_get c a <> Invalid.
+  Proof. congruence. Qed.
+
+  Lemma cache_not_invalid_3 : forall c a,
+      cache_get c a = Missing ->
+      cache_get c a <> Invalid.
+  Proof. congruence. Qed.
+
+  Hint Resolve no_wb_reader_conflict_stable_write.
+  Hint Resolve
+       cache_not_invalid_1
+       cache_not_invalid_2
+       cache_not_invalid_3.
+
   Theorem cache_write_ok : forall a v,
       SPEC delta, tid |-
               {{ v0,
@@ -596,15 +660,15 @@ Section ConcurrentCache.
                    invariant delta d m s /\
                    get vdisk s a = Some v0 /\
                    guar delta tid s0 s
-               | POST d' m' s0' s' _:
+               | POST d' m' s0' s' r:
                    invariant delta d' m' s' /\
-                   get vdisk s' a = Some v /\
+                   (r = true -> get vdisk s' a = Some v) /\
                    get vDisk0 s' = get vDisk0 s /\
-                   rely delta tid s s' /\
+                   guar delta tid s s' /\
                    guar delta tid s0' s'
               }} cache_write a v.
   Proof.
     hoare.
-  Admitted.
+  Qed.
 
 End ConcurrentCache.

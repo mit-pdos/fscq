@@ -43,11 +43,31 @@ Section WriteBuffer.
 
 End WriteBuffer.
 
+Section GetModify.
+
+  Theorem wb_get_write_eq : forall wb a a' v,
+    a = a' ->
+    wb_get (wb_write wb a v) a' = Written v.
+  Proof.
+  Admitted.
+
+  Theorem wb_get_write_neq : forall wb a a' v,
+      a <> a' ->
+      wb_get (wb_write wb a v) a' = wb_get wb a'.
+  Proof.
+  Admitted.
+
+End GetModify.
+
+Hint Rewrite wb_get_write_eq using (now auto) : cache.
+Hint Rewrite wb_get_write_neq using (now auto) : cache.
+
 Definition wb_rep (d:DISK) (wb: WriteBuffer) (vd:Disk) :=
   forall a, match wb_get wb a with
-       | Written v => exists rdr,
-                     vd a = Some v /\
-                     d a = Some (v, rdr)
+       | Written v =>
+         vd a = Some v /\
+         (* only requirement to impose is that a is in the domain of d *)
+         (exists v0_rdr, d a = Some v0_rdr)
        | Missing =>
          match d a with
          | None => vd a = None
@@ -64,7 +84,7 @@ Section RepTheorems.
              learn that (H a)
            end;
     destruct matches in *;
-    repeat deex; destruct_ands;
+    destruct_ands; repeat deex;
     try (eauto; congruence).
 
   Theorem wb_rep_same_domain : forall d wb vd,

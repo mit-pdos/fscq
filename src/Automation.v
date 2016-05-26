@@ -106,6 +106,16 @@ Ltac destruct_all_matches :=
   try congruence;
   auto.
 
+Ltac destruct_nongoal_matches :=
+  repeat (try simpl_match;
+           try match goal with
+           | [ H: context[match ?d with | _ => _ end] |- _ ] =>
+             destruct_matches_in d
+               end);
+  subst;
+  try congruence;
+  auto.
+
 Ltac destruct_goal_matches :=
   repeat (try simpl_match;
            match goal with
@@ -116,6 +126,7 @@ Ltac destruct_goal_matches :=
   auto.
 
 Tactic Notation "destruct" "matches" "in" "*" := destruct_all_matches.
+Tactic Notation "destruct" "matches" "in" "*|-" := destruct_nongoal_matches.
 Tactic Notation "destruct" "matches" := destruct_goal_matches.
 
 Ltac same_opt_val :=
