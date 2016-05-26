@@ -759,6 +759,18 @@ Module UCache.
     apply avs_match_map_fst_eq; auto.
   Qed.
 
+  Lemma avs_match_addr_valid' : forall l l' cm,
+    Forall2 avs_match l' l ->
+    addr_valid (avs2mem addr_eq_dec l) cm ->
+    addr_valid (avs2mem addr_eq_dec l') cm.
+  Proof.
+    intros.
+    eapply addr_valid_mem_match; eauto.
+    apply avs2mem_mem_match.
+    apply eq_sym.
+    apply avs_match_map_fst_eq; auto.
+  Qed.
+
   Lemma avs_match_possible_sync : forall l l',
     Forall2 avs_match l l' ->
     possible_sync (avs2mem addr_eq_dec l) (avs2mem addr_eq_dec l').
@@ -812,7 +824,7 @@ Module UCache.
 
   Lemma synpred_cachepred_nosync : forall cm a vs,
     synpred cm a vs =p=> exists vs', cachepred cm a vs' *
-      [[ fst vs' = fst vs /\ incl (snd vs) (vsmerge vs') ]].
+      [[ fst vs' = fst vs /\ incl (snd vs) (snd vs') ]].
   Proof.
     unfold cachepred, synpred; intros.
     destruct (Map.find a cm) eqn:?.
@@ -826,12 +838,33 @@ Module UCache.
     cancel. firstorder.
   Qed.
 
+  Lemma listpred_synpred_cachepred : forall l' cm,
+    listpred (fun av => synpred cm (fst av) (snd av)) l' =p=> exists l,
+    listpred (fun av => cachepred cm (fst av) (snd av)) l *
+    [[ Forall2 avs_match l l' ]].
+  Proof.
+    induction l'; simpl; intros.
+    cancel; simpl; auto.
+    rewrite synpred_cachepred_nosync, IHl'.
+    cancel.
+    eassign ((a_1, (a_2_cur, vs'_old)) :: l); simpl.
+    cancel.
+    constructor; auto.
+    unfold avs_match; simpl; intuition.
+  Qed.
+
+
   Theorem synrep_rep : forall cs (F : @pred _ _ _) d,
     F d ->
     sync_invariant F ->
     synrep cs d =p=> exists d', rep cs d' * [[ F d' ]].
   Proof.
-    unfold rep, synrep.
+    unfold rep, synrep, mem_pred, mem_pred_one; intros.
+    norml; unfold stars; simpl; clear_norm_goal.
+    rewrite listpred_synpred_cachepred; cancel.
+    eapply avs_match_addr_valid'; eauto.
+    erewrite <- avs_match_map_fst_eq; eauto.
+    (* XXX: possible_sync doesn't go the other way around *)
   Admitted.
 
 
