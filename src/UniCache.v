@@ -495,7 +495,7 @@ Module UCache.
   Hint Extern 1 ({{_}} progseq (writeback _ _) _) => apply writeback_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
-  Hint Extern 0 (okToUnify (synrep _ _) (synrep _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (synrep _ _ _) (synrep _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (mem_pred ?p _) (mem_pred ?p _)) => constructor : okToUnify.
 
   Theorem evict_ok : forall a cs,
@@ -918,7 +918,7 @@ Module UCache.
       exists cs', rep cs' d0
     >} writeback a cs.
   Proof.
-    unfold writeback, synrep.
+    unfold writeback, synrep, synrep'.
     prestep; unfold synrep; norml; unfold stars; simpl; clear_norm_goal;
     denote ptsto_subset as Hx; apply ptsto_subset_valid' in Hx as Hy; repeat deex.
 
@@ -1043,12 +1043,8 @@ Module UCache.
     safestep.
     2: step.
     cancel.
-
-    norml; unfold stars; simpl. rewrite synrep_rep by eauto. cancel.
-    apply ptsto_subset_pimpl. firstorder.
-
-    norml; unfold stars; simpl. rewrite synrep_rep by eauto. cancel.
-
+    cancel.
+    cancel.
     cancel.
   Qed.
 
