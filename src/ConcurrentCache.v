@@ -182,7 +182,7 @@ Section ConcurrentCache.
 
   Lemma unfold_invariant : forall d m s,
       invariant delta d m s ->
-      ltac:(let t := eval cbn in (invariant delta d m s) in
+      ltac:(let t := eval simpl in (invariant delta d m s) in
                 let t := eval unfold cacheI in t in
                     exact t).
   Proof.
@@ -191,7 +191,7 @@ Section ConcurrentCache.
 
   Lemma unfold_protocol : forall tid s s',
       guar delta tid s s' ->
-      ltac:(let t := eval cbn in (guar delta tid s s') in
+      ltac:(let t := eval simpl in (guar delta tid s s') in
                 let t := eval unfold cacheR in t in
                     exact t).
   Proof.
@@ -223,7 +223,7 @@ Section ConcurrentCache.
   Ltac reduce_hlist :=
     match goal with
     | [ |- context[get _ (set _ _ _) ] ] =>
-      autorewrite with hlist
+      progress repeat rewrite ?get_set, ?get_set_other by auto
     end.
 
   Lemma wb_val_mem {m: memory Sigma} {s: abstraction Sigma} :
@@ -395,6 +395,22 @@ Section ConcurrentCache.
 
   Hint Extern 1 {{ modify_wb _; _ }} => apply modify_wb_ok : prog.
 
+  Definition sumboolProof P Q (p: {P} + {Q}) :
+    match p with
+    | left _ => P
+    | right _ => Q
+    end.
+    destruct p; auto.
+  Defined.
+
+  Ltac prove_nat_neq :=
+    match goal with
+    | |- ?n <> ?m =>
+      exact (sumboolProof (PeanoNat.Nat.eq_dec n m))
+    end.
+
+  Hint Extern 2 (member_index _ <> member_index _) => simpl; prove_nat_neq.
+
   Hint Resolve wb_val_vd cache_val_vd cache_val_no_reader wb_val_none.
 
   Theorem cache_maybe_read_ok : forall a,
@@ -460,6 +476,9 @@ Section ConcurrentCache.
     eauto using disk_no_reader.
 
     hoare;
+      (* make sure that all these goals are still around until we
+      specifically solve them *)
+      let n := numgoals in guard n = 4;
       match goal with
       (* cache_rep stable when adding reader *)
       | [ |- cache_rep (upd _ _ _)
@@ -552,6 +571,7 @@ Section ConcurrentCache.
     admit.
 
     hoare;
+      let n := numgoals in guard n = 4;
       match goal with
       (* cache_rep stable when adding reader *)
       | [ |- cache_rep (upd _ _ _)
@@ -559,8 +579,6 @@ Section ConcurrentCache.
                       (remove_reader _ _) ] => admit
       (* wb_rep insensitive to readers *)
       | [ |- wb_rep (remove_reader _ _) _ _ ] => admit
-      (* add_reader -> upd *)
-      | [ |- remove_reader _ ?a _ ?a = _ ] => admit
       (* clean addresses irrelevant *)
       | [ |- no_wb_reader_conflict (cache_add _ _ _) _ ] => admit
       (* XXX: not provable. Problematic step introduced by
@@ -569,6 +587,24 @@ Section ConcurrentCache.
             effect is the same as a rely *)
       | [ |- rely delta _ _ _ ] => admit
       end.
+  Admitted.
+
+  Theorem cache_write_ok : forall a v,
+      SPEC delta, tid |-
+              {{ v0,
+               | PRE d m s0 s:
+                   invariant delta d m s /\
+                   get vdisk s a = Some v0 /\
+                   guar delta tid s0 s
+               | POST d' m' s0' s' _:
+                   invariant delta d' m' s' /\
+                   get vdisk s' a = Some v /\
+                   get vDisk0 s' = get vDisk0 s /\
+                   rely delta tid s s' /\
+                   guar delta tid s0' s'
+              }} cache_write a v.
+  Proof.
+    hoare.
   Admitted.
 
 End ConcurrentCache.
