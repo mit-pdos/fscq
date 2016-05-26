@@ -79,8 +79,8 @@ Section ConcurrentCache.
       same_domain vd vd' /\
       readers_locked tid vd vd'.
 
-  Hint Resolve same_domain_refl same_domain_trans.
-  Hint Resolve readers_locked_refl readers_locked_trans.
+  Hint Immediate same_domain_refl same_domain_trans.
+  Hint Immediate readers_locked_refl readers_locked_trans.
 
   Theorem cacheR_trans_closed : forall tid s s',
       star (cacheR tid) s s' ->
@@ -670,5 +670,43 @@ Section ConcurrentCache.
   Proof.
     hoare.
   Qed.
+
+  Theorem wb_evict_ok : forall a v,
+      SPEC delta, tid |-
+              {{ (_:unit),
+               | PRE d m s0 s:
+                   invariant delta d m s /\
+                   (* insufficient to have get vdisk s a = Some v0:
+                    need to know that a buffered write is being
+                    written so no_wb_reader_conflict ensures reader
+                    safety
+
+                    somewhat oddly for a spec, v passed to the
+                    function must match state - this is since the
+                    buffered value is known to the loop and doesn't
+                    need to be fetched each time *)
+                   wb_get (get vWriteBuffer s) a = Written v /\
+                   guar delta tid s0 s
+               | POST d' m' s0' s' r:
+                   invariant delta d' m' s' /\
+                   get vDisk0 s' = upd (get vDisk0 s) a (v, None) /\
+                   guar delta tid s s' /\
+                   guar delta tid s0' s'
+              }} wb_evict a v.
+  Proof.
+    hoare;
+      match goal with
+      | [ |- cache_rep _ (cache_add _ _ (Dirty _)) (upd _ _ _) ] => admit
+      (* ok because new value is already in write buffer *)
+      | [ |- wb_rep (upd _ _ _) _ _ ] => admit
+      (* no_wb_reader_conflict is unaffected by adding a Dirty
+            mapping (only cares about WbMissing and Invalid) *)
+      | [ |- no_wb_reader_conflict (cache_add _ _ (Dirty _)) _ ] => admit
+      (* None reader is correct due to no_wb_reader_conflict *)
+      | [ |- same_domain _ (upd _ _ (_, None)) ] => admit
+      (* safe to modify due to no_wb_reader_conflict *)
+      | [ |- readers_locked _ _ (upd _ _ (_, None)) ] => admit
+      end.
+  Admitted.
 
 End ConcurrentCache.
