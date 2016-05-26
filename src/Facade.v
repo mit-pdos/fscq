@@ -12,6 +12,37 @@ Unset Printing Implicit Defensive.
 
 Local Open Scope string_scope.
 
+
+Inductive prog T :=
+| Done (v: T)
+| Double (n: nat) (rx: nat -> prog T).
+
+Example times20 T n rx : prog T :=
+  Double (5*n) (fun n2 => Double n2 rx).
+
+Inductive step T : prog T -> prog T -> Prop :=
+| StepDouble : forall n rx, step (Double n rx) (rx (n + n)).
+
+Inductive outcome (T : Type) :=
+| Finished (v: T).
+
+Inductive exec T : prog T -> outcome T -> Prop :=
+| XStep : forall p p' out,
+  step p p' ->
+  exec p' out ->
+  exec p out
+| XDone : forall v,
+  exec (Done v) (Finished v).
+
+Definition computes_to T p (x : T) := exec (p (@Done T)) (Finished x).
+
+Infix "↝" := computes_to (at level 70).
+
+Lemma twotimes20 : times20 2 ↝ 40.
+Proof.
+  do 4 econstructor.
+Qed.
+
 Definition label := string.
 Definition var := string.
 
@@ -156,7 +187,7 @@ Inductive NameTag T :=
 Arguments NTSome {T} key {H}.
 
 Inductive ScopeItem :=
-| SItem T (key : NameTag T) (val : T).
+| SItem T (key : NameTag T) (val : (T -> prog T) -> prog T).
 
 Notation "` k ->> v" := (SItem (NTSome k) v) (at level 50).
 
@@ -164,7 +195,6 @@ Notation "` k ->> v" := (SItem (NTSome k) v) (at level 50).
 (* TODO: use fmap *)
 Definition Telescope := list ScopeItem.
 
-(* TODO: doesn't need to be a fixpoint *)
 Fixpoint SameValues st (tenv : Telescope) :=
   match tenv with
   | [] => True
@@ -172,7 +202,7 @@ Fixpoint SameValues st (tenv : Telescope) :=
     match key with
     | NTSome k =>
       match StringMap.find k st with
-      | Some v => wrap val = v
+      | Some v => exists v', val ↝ v' /\ v = wrap v'
       | None => False
       end /\ SameValues (StringMap.remove k st) tail
     end
@@ -187,6 +217,7 @@ Definition ProgOk (* env *) prog (initial_tstate final_tstate : Telescope) :=
     forall final_state : State,
       RunsTo (* env *) prog initial_state final_state ->
       (final_state ≲ final_tstate).
+
 Arguments ProgOk prog%facade_scope initial_tstate final_tstate.
 
 Notation "{{ A }} P {{ B }}" :=
@@ -230,17 +261,42 @@ Notation "'ParametricExtraction' '#vars' x .. y '#program' post '#arguments' pre
      y binder,
      format "'ParametricExtraction' '//'    '#vars'       x .. y '//'    '#program'     post '//'    '#arguments'  pre '//'     ").
 
+Definition ret A T (x : A) : (A -> prog T) -> prog T := fun rx => rx x.
+
 Definition extract_code := projT1.
 
-Example micro_plus :
+Lemma ret_computes_to : forall A (x x' : A), ret x ↝ x' -> x = x'.
+Proof.
+  intros.
+  inversion H.
+  inversion H0.
+  subst. trivial.
+Qed.
+
+Lemma ret_computes_to_refl : forall A (x : A), ret x ↝ x.
+Proof.
+  do 3 econstructor.
+Qed.
+
+Hint Resolve ret_computes_to_refl.
+
+(* TODO: use Pred.v's *)
+Ltac deex :=
+  match goal with
+  | [ H : exists (varname : _), _ |- _ ] =>
+    let newvar := fresh varname in
+    destruct H as [newvar ?]; intuition subst
+  end.
+
+Example micro_double :
   ParametricExtraction
-    #vars      x y
-    #program   x + y
-    #arguments [`"x" ->> x ; `"y" ->> y].
+    #vars        x
+    #program     Double x
+    #arguments [`"x" ->> ret x ].
 Proof.
   eexists.
   intros.
-  instantiate (1 := ("out" <- Var "x" + Var "y")%facade).
+  instantiate (1 := ("out" <- Var "x" + Var "x")%facade).
   (* TODO! *)
   intro.
   intros.
@@ -251,19 +307,24 @@ Proof.
   rewrite StringMapFacts.add_eq_o; intuition.
   simpl in H3.
   destruct (find "x" initial_state); intuition.
-  rewrite StringMapFacts.remove_neq_o in H; intuition. 2: inversion H2.
-  destruct (find "y" initial_state); intuition.
-  destruct v0, v1.
+  destruct v, v0.
   simpl in H3.
-  inversion H1; inversion H; inversion H3; subst.
-  trivial.
+  deex.
+  inversion H3; inversion H5; subst.
+  apply ret_computes_to in H1; subst.
+  eexists.
+  split; [ | trivial ].
+  econstructor.
+  econstructor.
+  econstructor 2.
 Defined.
+
 
 Example micro_if :
   ParametricExtraction
     #vars      flag (x y : nat)
-    #program   if (Bool.bool_dec flag true) then x else y
-    #arguments [`"flag" ->> flag ; `"x" ->> x ; `"y" ->> y].
+    #program   ret (if (Bool.bool_dec flag true) then x else y)
+    #arguments [`"flag" ->> ret flag ; `"x" ->> ret x ; `"y" ->> ret y].
 Proof.
   eexists.
   intros.
@@ -280,7 +341,11 @@ Proof.
     destruct (find "flag" initial_state); intuition; subst.
     destruct (find "x" initial_state); intuition; subst.
     destruct (find "y" initial_state); intuition; subst.
-    destruct (Bool.bool_dec flag true); try solve [ destruct (Nat.eq_dec 0 0); congruence ].
+    repeat deex.
+    apply ret_computes_to in H3; apply ret_computes_to in H2; apply ret_computes_to in H1; subst.
+    inversion H10; subst.
+    eexists; intuition eauto.
+    destruct (Bool.bool_dec v'1 true); try solve [ destruct (Nat.eq_dec 0 0); congruence ].
   - inversion H7. simpl; subst; intuition.
     repeat rewrite StringMapFacts.add_eq_o in * by congruence.
     repeat rewrite StringMapFacts.remove_neq_o in * by congruence.
@@ -288,7 +353,11 @@ Proof.
     destruct (find "flag" initial_state); intuition; subst.
     destruct (find "x" initial_state); intuition; subst.
     destruct (find "y" initial_state); intuition; subst.
-    destruct (Bool.bool_dec flag true); try solve [ destruct (Nat.eq_dec 1 0); congruence ].
+    repeat deex.
+    apply ret_computes_to in H3; apply ret_computes_to in H2; apply ret_computes_to in H1; subst.
+    inversion H10; subst.
+    eexists; intuition eauto.
+    destruct (Bool.bool_dec v'1 true); try solve [ destruct (Nat.eq_dec 1 0); congruence ].
 Defined.
 
 Definition micro_if_code := Eval lazy in (extract_code micro_if).
