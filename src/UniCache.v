@@ -170,7 +170,15 @@ Module UCache.
     destruct p; destruct b; eauto.
   Qed.
 
-  Hint Resolve sync_invariant_cachepred.
+  Theorem sync_invariant_synpred : forall cache a vs,
+    sync_invariant (synpred cache a vs).
+  Proof.
+    unfold synpred; intros.
+    destruct (Map.find a cache); eauto.
+    destruct p; destruct b; eauto.
+  Qed.
+
+  Hint Resolve sync_invariant_cachepred sync_invariant_synpred.
 
   Theorem sync_invariant_rep : forall cs m,
     sync_invariant (rep cs m).
@@ -178,7 +186,13 @@ Module UCache.
     unfold rep; eauto.
   Qed.
 
-  Hint Resolve sync_invariant_rep.
+  Theorem sync_invariant_synrep : forall cs m,
+    sync_invariant (synrep cs m).
+  Proof.
+    unfold synrep; eauto.
+  Qed.
+
+  Hint Resolve sync_invariant_rep sync_invariant_synrep.
 
   Lemma cachepred_remove_invariant : forall a a' v cache,
     a <> a' -> cachepred cache a v =p=> cachepred (Map.remove a' cache) a v.
@@ -759,6 +773,28 @@ Module UCache.
     apply avs_match_possible_sync; auto.
   Qed.
 
+  Lemma synpred_cachepred : forall vs cm a,
+    sync_xform (synpred cm a vs) =p=> cachepred cm a vs.
+  Proof.
+    unfold cachepred, synpred; intros.
+    rewrite sync_xform_exists_comm.
+    apply pimpl_exists_l; intro vs0.
+    rewrite sync_xform_sep_star_dist.
+    destruct vs0 as [v0 l0].
+    destruct (Map.find a cm) eqn:?; try destruct p, b;
+    rewrite sync_xform_lift_empty, sync_xform_ptsto_subset_precise;
+    unfold ptsto_subset; cancel; apply incl_nil.
+  Qed.
+
+  Lemma sync_xform_listpred_synpred_cachepred : forall l cm,
+    sync_xform (listpred (fun x => synpred cm (fst x) (snd x)) l) =p=>
+    listpred (fun x => cachepred cm (fst x) (snd x)) l.
+  Proof.
+    intros; rewrite sync_xform_listpred; eauto.
+    intros; eapply synpred_cachepred.
+  Qed.
+
+
 
   Theorem begin_sync_ok : forall cs,
     {< d F,
@@ -780,6 +816,28 @@ Module UCache.
     eapply avs_match_sync_invariant; eauto.
   Qed.
 
+  Theorem end_sync_ok : forall cs,
+    {< d F,
+    PRE
+      synrep cs d * [[ F d ]]
+    POST RET:cs exists d',
+      rep cs d' * [[ F d' ]]
+    CRASH
+      exists cs', synrep cs' d
+    >} end_sync cs.
+  Proof.
+    unfold end_sync, rep, synrep.
+    step.
+    prestep; unfold mem_pred.
+    norml; unfold stars, mem_pred_one; simpl; clear_norm_goal.
+    rewrite pimpl_exists_r_star_r, sync_xform_exists_comm, pimpl_exists_r_star_r.
+    apply pimpl_exists_l; intros.
+    repeat (rewrite sync_xform_sep_star_dist || rewrite sync_xform_lift_empty).
+    rewrite sync_xform_listpred_synpred_cachepred.
+    rewrite sync_xform_sync_invariant by auto.
+    cancel.
+    auto.
+  Qed.
 
 
 

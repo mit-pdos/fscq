@@ -639,3 +639,16 @@ Proof.
 Qed.
 
 Hint Resolve sync_invariant_listpred.
+
+Lemma sync_xform_listpred : forall T (l : list T) p q,
+  (forall x, sync_xform (p x) =p=> q x) ->
+  sync_xform (listpred p l) =p=> listpred q l.
+Proof.
+  induction l; simpl; intros; auto.
+  apply sync_xform_emp.
+  repeat rewrite sync_xform_sep_star_dist.
+  rewrite IHl by eauto.
+  rewrite H; auto.
+Qed.
+
+
