@@ -197,15 +197,6 @@ else                                                   (* if read length is not 
   rx ^(fms, nil)
 }.
 
-SearchAbout BFILE.memstate.
-SearchAbout GroupLog.GLog.memstate.
-SearchAbout MemLog.MLog.memstate.
-SearchAbout MemLog.MLog.mstate.
-SearchAbout mem.
-Locate "[[[".
-Print list2nmem.
-Locate "exists".
-
 Theorem read_bytes_ok : forall lxp bxp ixp inum off len ms,
     {< F Fm Fi Fd m0 m flist ilist frees f vs ve,
     PRE:hm
