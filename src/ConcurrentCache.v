@@ -395,7 +395,7 @@ Section ConcurrentCache.
 
   Hint Extern 1 {{ modify_wb _; _ }} => apply modify_wb_ok : prog.
 
-  Hint Resolve wb_val_vd cache_val_vd cache_val_none wb_val_none.
+  Hint Resolve wb_val_vd cache_val_vd cache_val_no_reader wb_val_none.
 
   Theorem cache_maybe_read_ok : forall a,
       SPEC delta, tid |-
@@ -421,6 +421,23 @@ Section ConcurrentCache.
        same_domain_add_reader
        readers_locked_add_reader.
 
+  Hint Resolve wb_get_val_missing.
+
+  Theorem wb_cache_val_none_vd0 : forall d vd0 vd c wb a v,
+      cache_rep d c vd0 ->
+      wb_rep vd0 wb vd ->
+      vd a = Some v ->
+      cache_get c a = Missing ->
+      wb_get wb a = WbMissing ->
+      vd0 a = Some (v, None).
+  Proof.
+    intros.
+    pose proof (wb_val_none ltac:(eauto) ltac:(eauto) ltac:(eauto)).
+    deex.
+    pose proof (cache_val_no_reader ltac:(eauto) ltac:(eauto) ltac:(eauto)).
+    congruence.
+  Qed.
+
   Theorem prepare_fill_ok : forall a,
       SPEC delta, tid |-
               {{ v0,
@@ -443,7 +460,7 @@ Section ConcurrentCache.
     eauto using disk_no_reader.
 
     hoare;
-      try match goal with
+      match goal with
       (* cache_rep stable when adding reader *)
       | [ |- cache_rep (upd _ _ _)
                       (cache_add _ _ _)
@@ -452,9 +469,13 @@ Section ConcurrentCache.
       | [ |- wb_rep (add_reader _ _ _) _ _ ] => admit
       (* add_reader -> upd *)
       | [ |- add_reader _ ?a _ ?a = _ ] => admit
-          end.
-    eapply readers_locked_trans; eauto.
-    eapply readers_locked_add_reader.
+      | [ |- readers_locked _ _ _ ] =>
+        (* TODO: debug eauto not being able to follow this chain of
+        reasoning *)
+        eapply readers_locked_trans; eauto;
+          eapply readers_locked_add_reader;
+          eapply wb_cache_val_none_vd0; eauto
+      end.
   Admitted.
 
   Hint Extern 1 {{ prepare_fill _; _ }} => apply prepare_fill_ok : prog.

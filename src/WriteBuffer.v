@@ -84,6 +84,13 @@ Section RepTheorems.
     t.
   Qed.
 
+  Lemma wb_get_val_missing : forall wb a,
+      wb_get wb a = WbMissing ->
+      wb_val wb a = None.
+  Proof.
+    unfold wb_val; intros; simpl_match; auto.
+  Qed.
+
  Theorem wb_val_none : forall d wb vd a v,
     wb_rep d wb vd ->
     wb_val wb a = None ->
