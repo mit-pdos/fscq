@@ -155,9 +155,12 @@ Module UCache.
     | Some (v, true)  => [[ vs = (v, (fst vsd) :: nil) ]]
     end)%pred.
 
-  Definition synrep (cs : cachestate) (m : rawdisk) : rawpred :=
+  Definition synrep' (cs : cachestate) (m : rawdisk) : rawpred :=
     ([[ size_valid cs /\ addr_valid m (CSMap cs) ]] *
      mem_pred (synpred (CSMap cs)) m)%pred.
+
+  Definition synrep (cs : cachestate) (mbase m : rawdisk) : rawpred :=
+    (rep cs mbase /\ synrep' cs m)%pred.
 
 
   (** helper lemmas *)
@@ -186,13 +189,23 @@ Module UCache.
     unfold rep; eauto.
   Qed.
 
-  Theorem sync_invariant_synrep : forall cs m,
-    sync_invariant (synrep cs m).
+  Hint Resolve sync_invariant_rep.
+
+  Theorem sync_invariant_synrep' : forall cs m,
+    sync_invariant (synrep' cs m).
+  Proof.
+    unfold synrep'; eauto.
+  Qed.
+
+  Hint Resolve sync_invariant_synrep'.
+
+  Theorem sync_invariant_synrep : forall cs mbase m,
+    sync_invariant (synrep cs mbase m).
   Proof.
     unfold synrep; eauto.
   Qed.
 
-  Hint Resolve sync_invariant_rep sync_invariant_synrep.
+  Hint Resolve sync_invariant_synrep.
 
   Lemma cachepred_remove_invariant : forall a a' v cache,
     a <> a' -> cachepred cache a v =p=> cachepred (Map.remove a' cache) a v.
@@ -822,65 +835,43 @@ Module UCache.
     intros; eapply synpred_cachepred_sync.
   Qed.
 
-  Lemma synpred_cachepred_nosync : forall cm a vs,
-    synpred cm a vs =p=> exists vs', cachepred cm a vs' *
-      [[ fst vs' = fst vs /\ incl (snd vs) (snd vs') ]].
+
+  Lemma rep_synrep_split : forall cs d F,
+    rep cs d /\ (exists d', synrep' cs d' * [[ F d' ]]) =p=>
+    (exists d', (rep cs d ⋀ synrep' cs d') * [[ F d' ]]).
   Proof.
-    unfold cachepred, synpred; intros.
-    destruct (Map.find a cm) eqn:?.
-    destruct p, b.
-
-    norm. eassign vsd_cur. eassign (vsd_cur :: vsd_old). cancel.
-    rewrite ptsto_subset_pimpl. cancel. apply incl_tl. apply incl_refl.
-    intuition. firstorder.
-
-    cancel. firstorder.
-    cancel. firstorder.
+    intros.
+    rewrite pimpl_and_r_exists.
+    unfold pimpl; intros. destruct H. destruct H. destruct_lift H0.
+    exists x.
+    eapply sep_star_lift_apply'; eauto.
+    split; eauto.
   Qed.
 
-  Lemma listpred_synpred_cachepred : forall l' cm,
-    listpred (fun av => synpred cm (fst av) (snd av)) l' =p=> exists l,
-    listpred (fun av => cachepred cm (fst av) (snd av)) l *
-    [[ Forall2 avs_match l l' ]].
+  Lemma synrep_rep : forall cs d0 d,
+    synrep cs d0 d =p=> rep cs d0.
   Proof.
-    induction l'; simpl; intros.
-    cancel; simpl; auto.
-    rewrite synpred_cachepred_nosync, IHl'.
-    cancel.
-    eassign ((a_1, (a_2_cur, vs'_old)) :: l); simpl.
-    cancel.
-    constructor; auto.
-    unfold avs_match; simpl; intuition.
+    unfold synrep; intros.
+    apply pimpl_l_and; eauto.
   Qed.
-
-
-  Theorem synrep_rep : forall cs (F : @pred _ _ _) d,
-    F d ->
-    sync_invariant F ->
-    synrep cs d =p=> exists d', rep cs d' * [[ F d' ]].
-  Proof.
-    unfold rep, synrep, mem_pred, mem_pred_one; intros.
-    norml; unfold stars; simpl; clear_norm_goal.
-    rewrite listpred_synpred_cachepred; cancel.
-    eapply avs_match_addr_valid'; eauto.
-    erewrite <- avs_match_map_fst_eq; eauto.
-    (* XXX: possible_sync doesn't go the other way around *)
-  Admitted.
-
 
   Theorem begin_sync_ok : forall cs,
     {< d F,
     PRE
       rep cs d * [[ sync_invariant F /\ F d ]]
     POST RET:cs exists d',
-      synrep cs d' * [[ F d' ]]
+      synrep cs d d' * [[ F d' ]]
     CRASH
       exists cs', rep cs' d
     >} begin_sync cs.
   Proof.
-    unfold begin_sync, rep, synrep.
+    unfold begin_sync, synrep.
     step.
-    prestep; unfold mem_pred.
+    prestep.
+    norml; unfold stars; simpl.
+    rewrite <- rep_synrep_split. cancel.
+    apply pimpl_and_split; try apply pimpl_refl.
+    unfold rep, synrep', mem_pred.
     norml; unfold stars, mem_pred_one; simpl; clear_norm_goal.
     rewrite listpred_cachepred_synpred; cancel.
     eapply avs_match_addr_valid; eauto.
@@ -889,36 +880,42 @@ Module UCache.
   Qed.
 
   Theorem end_sync_ok : forall cs,
-    {< d F,
+    {< d0 d F,
     PRE
-      synrep cs d * [[ F d ]]
+      synrep cs d0 d * [[ F d ]]
     POST RET:cs exists d',
       rep cs d' * [[ F d' ]]
     CRASH
-      exists cs', synrep cs' d
+      exists cs', rep cs' d0
     >} end_sync cs.
   Proof.
-    unfold end_sync, rep, synrep.
+    unfold end_sync, synrep, synrep'.
     step.
     prestep; unfold mem_pred.
     norml; unfold stars, mem_pred_one; simpl; clear_norm_goal.
-    rewrite pimpl_exists_r_star_r, sync_xform_exists_comm, pimpl_exists_r_star_r.
-    apply pimpl_exists_l; intros.
-    repeat (rewrite sync_xform_sep_star_dist || rewrite sync_xform_lift_empty).
+    rewrite sync_xform_sep_star_dist. rewrite sync_xform_and_dist.
+    rewrite sep_star_and_distr'. rewrite pimpl_r_and.
+    unfold rep, mem_pred, mem_pred_one.
+    repeat (rewrite sync_xform_sep_star_dist || rewrite sync_xform_lift_empty || rewrite sync_xform_exists_comm).
+    norml; unfold stars; simpl.
+    repeat (rewrite sync_xform_sep_star_dist || rewrite sync_xform_lift_empty || rewrite sync_xform_exists_comm).
+    cancel.
     rewrite sync_xform_listpred_synpred_cachepred.
     rewrite sync_xform_sync_invariant by auto.
     cancel.
-    auto.
+    all: auto.
+    rewrite pimpl_l_and.
+    cancel.
   Qed.
 
   Theorem writeback_ok' : forall cs a,
-    {< d (F : rawpred) v0,
+    {< d0 d (F : rawpred) v0,
     PRE
-      synrep cs d * [[ (F * a |+> v0)%pred d ]]
+      synrep cs d0 d * [[ (F * a |+> v0)%pred d ]]
     POST RET:cs exists d',
-      synrep cs d' * [[ (F * a |+> (fst v0, nil))%pred d' ]]
+      synrep cs d0 d' * [[ (F * a |+> (fst v0, nil))%pred d' ]]
     CRASH
-      exists cs', synrep cs' d
+      exists cs', rep cs' d0
     >} writeback a cs.
   Proof.
     unfold writeback, synrep.
@@ -1000,13 +997,13 @@ Module UCache.
   Qed.
 
   Theorem sync_ok : forall cs a,
-    {< d (F : rawpred) v0,
+    {< d0 d (F : rawpred) v0,
     PRE
-      synrep cs d * [[ (F * a |+> v0)%pred d ]]
+      synrep cs d0 d * [[ (F * a |+> v0)%pred d ]]
     POST RET:cs exists d',
-      synrep cs d' * [[ (F * a |+> (fst v0, nil))%pred d' ]]
+      synrep cs d0 d' * [[ (F * a |+> (fst v0, nil))%pred d' ]]
     CRASH
-      exists cs', synrep cs' d
+      exists cs', rep cs' d0
     >} sync a cs.
   Proof.
     unfold sync; intros.

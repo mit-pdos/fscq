@@ -462,10 +462,42 @@ Proof.
   intuition eauto.
 Qed.
 
-Lemma pimpl_exists_l_and:
-  forall T p (q : @pred AT AEQ V) r,
-  ((exists x:T, p x /\ r) =p=> q) ->
-  (exists x:T, p x) /\ r =p=> q.
+Lemma pimpl_exists_and_l:
+  forall T p (r : @pred AT AEQ V),
+  (exists x:T, p x /\ r) =p=> ((exists x:T, p x) /\ r).
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_exists_and_r:
+  forall T p (r : @pred AT AEQ V),
+  (exists x:T, r /\ p x) =p=> (r /\ (exists x:T, p x)).
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_and_l_exists:
+  forall T p (r : @pred AT AEQ V),
+  ((exists x:T, p x) /\ r) =p=> (exists x:T, p x /\ r).
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_and_r_exists:
+  forall T p (r : @pred AT AEQ V),
+  (r /\ (exists x:T, p x)) =p=> (exists x:T, r /\ p x).
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_l_and : forall (p q : @pred AT AEQ V),
+  p /\ q =p=> p.
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_r_and : forall (p q : @pred AT AEQ V),
+  p /\ q =p=> q.
 Proof.
   firstorder.
 Qed.
@@ -1012,6 +1044,20 @@ Proof.
       apply pimpl_or_r; left; apply pimpl_refl.
     + apply pimpl_sep_star; [apply pimpl_refl|].
       apply pimpl_or_r; right; apply pimpl_refl.
+Qed.
+
+Theorem sep_star_and_distr : forall (a b c : @pred AT AEQ V),
+  (a * (b /\ c))%pred =p=> (a * b /\ a * c)%pred.
+Proof.
+  unfold_sep_star; unfold pimpl, and.
+  intros; repeat deex; do 2 eexists; eauto.
+Qed.
+
+Theorem sep_star_and_distr' : forall (a b c : @pred AT AEQ V),
+  ((b /\ c) * a)%pred =p=> (b * a /\ c * a)%pred.
+Proof.
+  unfold_sep_star; unfold pimpl, and.
+  intros; repeat deex; do 2 eexists; eauto.
 Qed.
 
 Theorem lift_impl : forall (P : @pred AT AEQ V) (Q : Prop), (forall m, P m -> Q) -> P =p=> [[ Q ]] * P.

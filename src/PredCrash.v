@@ -871,6 +871,12 @@ Proof.
   firstorder.
 Qed.
 
+Theorem sync_xform_and_dist : forall p q,
+  sync_xform (p /\ q) =p=> sync_xform p /\ sync_xform q.
+Proof.
+  firstorder.
+Qed.
+
 Theorem sync_xform_lift_empty : forall (P : Prop),
   @sync_xform [[ P ]] <=p=> [[ P ]].
 Proof.
@@ -1116,6 +1122,14 @@ Proof.
   eapply sync_invariant_emp; eauto.
 Qed.
 
+Theorem sync_invariant_and : forall p q,
+  sync_invariant p ->
+  sync_invariant q ->
+  sync_invariant (p /\ q)%pred.
+Proof.
+  firstorder.
+Qed.
+
 Hint Resolve sync_invariant_ptsto_subset.
 Hint Resolve sync_invariant_ptsto_any.
 Hint Resolve sync_invariant_ptsto_nil.
@@ -1123,6 +1137,7 @@ Hint Resolve sync_invariant_emp.
 Hint Resolve sync_invariant_exists.
 Hint Resolve sync_invariant_sep_star.
 Hint Resolve sync_invariant_lift_empty.
+Hint Resolve sync_invariant_and.
 
 
 Theorem upd_sync_invariant : forall (p : @pred _ _ _) m a v l l',
