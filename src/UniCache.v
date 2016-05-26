@@ -789,7 +789,7 @@ Module UCache.
     apply avs_match_possible_sync; auto.
   Qed.
 
-  Lemma synpred_cachepred : forall vs cm a,
+  Lemma synpred_cachepred_sync : forall vs cm a,
     sync_xform (synpred cm a vs) =p=> cachepred cm a vs.
   Proof.
     unfold cachepred, synpred; intros.
@@ -807,9 +807,32 @@ Module UCache.
     listpred (fun x => cachepred cm (fst x) (snd x)) l.
   Proof.
     intros; rewrite sync_xform_listpred; eauto.
-    intros; eapply synpred_cachepred.
+    intros; eapply synpred_cachepred_sync.
   Qed.
 
+  Lemma synpred_cachepred_nosync : forall cm a vs,
+    synpred cm a vs =p=> exists vs', cachepred cm a vs' *
+      [[ fst vs' = fst vs /\ incl (snd vs) (vsmerge vs') ]].
+  Proof.
+    unfold cachepred, synpred; intros.
+    destruct (Map.find a cm) eqn:?.
+    destruct p, b.
+
+    norm. eassign vsd_cur. eassign (vsd_cur :: vsd_old). cancel.
+    rewrite ptsto_subset_pimpl. cancel. apply incl_tl. apply incl_refl.
+    intuition. firstorder.
+
+    cancel. firstorder.
+    cancel. firstorder.
+  Qed.
+
+  Theorem synrep_rep : forall cs (F : @pred _ _ _) d,
+    F d ->
+    sync_invariant F ->
+    synrep cs d =p=> exists d', rep cs d' * [[ F d' ]].
+  Proof.
+    unfold rep, synrep.
+  Admitted.
 
 
   Theorem begin_sync_ok : forall cs,
@@ -979,19 +1002,25 @@ Module UCache.
       exists d',
       rep cs d' * [[ (F * a |+> (fst v0, nil))%pred d' ]]
     CRASH
-      exists cs', rep cs' d
+      exists cs' d',
+      rep cs' d' * [[ (F * a |+> v0)%pred d' ]]
     >} sync_one a cs.
   Proof.
     unfold sync_one.
     prestep; norm. cancel. intuition simpl.
     2: eauto. eauto.
     safestep.
-    step.
-    step.
-    2: cancel.
-    (* XXX: synrep =p=> rep  *)
-  Admitted.
+    safestep.
+    2: step.
+    cancel.
 
+    norml; unfold stars; simpl. rewrite synrep_rep by eauto. cancel.
+    apply ptsto_subset_pimpl. firstorder.
+
+    norml; unfold stars; simpl. rewrite synrep_rep by eauto. cancel.
+
+    cancel.
+  Qed.
 
 
 
