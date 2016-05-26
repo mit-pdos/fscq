@@ -91,6 +91,14 @@ Fixpoint get_sublist {A:Type}(l: list A) (off len: nat) : list A :=
               end
   end.
 
+Definition full_read_ok r block_size block_off first_read_length num_of_full_reads m : Prop :=
+forall (i:nat), ((num_of_full_reads < i) \/ (*[1]i is out of range OR*)
+  (*[2]i+1'th block you read matches its contents*)
+   (exists bl:valuset, (( exists F',(F' * (block_off +1 + i)|-> bl)%pred (list2nmem m)) /\ (*[2.1]Block bl is in the address (block_off +1 + i) AND*)
+  (get_sublist r (first_read_length + i*block_size) block_size (*[2.2]Block bl is in the address (block_off +1 + i)*)
+      = valu_to_list (fst bl))))).
+
+
   
 (*Ugly but at least compiling*)
 
@@ -196,6 +204,7 @@ SearchAbout MemLog.MLog.mstate.
 SearchAbout mem.
 Locate "[[[".
 Print list2nmem.
+Locate "exists".
 
 Theorem read_bytes_ok : forall lxp bxp ixp inum off len ms,
     {< F Fm Fi Fd m0 m flist ilist frees f vs ve,
@@ -230,11 +239,7 @@ Theorem read_bytes_ok : forall lxp bxp ixp inum off len ms,
                (get_sublist r 0 first_read_length = get_sublist (valu_to_list (fst vs)) byte_off first_read_length ) /\ 
                
                (*[1.1.2]You read all middle blocks correctly AND*)
-               (forall (i:nat) bl, (num_of_full_reads < i) \/ (*[1.1.2.1]i is out of range OR*)
-                  (*[1.1.2.2]i+1'th block you read matches its contents*)
-                  ((exists F', (F' * (block_off +1 + i)|-> bl) (list2nmem m)) /\ (*[1.1.2.2.1]Block bl is in the address (block_off +1 + i) AND*)
-                  (get_sublist r (first_read_length + i*block_size) block_size (*[1.1.2.2.2]Block bl is in the address (block_off +1 + i)*)
-                      = valu_to_list (fst bl)))) /\
+              full_read_ok r block_size block_off first_read_length num_of_full_reads m /\
                
                (*[1.1.3]You read the last block correctly*)
                (get_sublist r (len - last_read_length) last_read_length 
@@ -247,11 +252,8 @@ Theorem read_bytes_ok : forall lxp bxp ixp inum off len ms,
                 (get_sublist r 0 first_read_length = get_sublist (valu_to_list (fst vs)) byte_off first_read_length ) /\
                 
                 (*[1.2.2]You read remaining blocks correctly*)
-                (forall (i:nat) bl, ((file_length - off - first_read_length)/block_size < i) \/ (*[1.2.2.1]i is out of range OR*)
-                  (*[1.2.2.2]i+1'th block you read matches its contents*)
-                  ((exists F', (F' * (block_off +1 + i)|-> bl) (list2nmem m)) /\ (*[1.2.2.2.1]Block bl is in the address (block_off +1 + i) AND*)
-                  (get_sublist r (first_read_length + i*block_size) block_size  (*[1.2.2.2.2]Block bl is in the address (block_off +1 + i)*)
-                      = valu_to_list (fst bl))))))
+                full_read_ok r block_size block_off first_read_length ((file_length - off - first_read_length)/block_size) m))
+
               (*[2]Memory contents didn't change*)
               /\ BFILE.MSAlloc ms = BFILE.MSAlloc ms' ]]
     CRASH:hm'  exists ms',
