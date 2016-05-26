@@ -10,7 +10,6 @@ Require Import Log.
 Require Import Array.
 Require Import List ListUtils.
 Require Import Bool.
-Require Import Eqdep_dec.
 Require Import Setoid.
 Require Import Rec.
 Require Import FunctionalExtensionality.
@@ -68,93 +67,40 @@ forall (i:nat), ((num_of_full_reads < i + 1) \/ (*[1]i is out of range OR*)
   (get_sublist r (first_read_length + (i-1)*block_size) block_size (*[2.2]What is read matches the content*)
       = valu_to_list (fst bl))))).
 
-
-(*Ugly but at least compiling*)
-
 Definition read_bytes {T} lxp ixp inum (off len:nat) fms rx : prog T :=
 If (lt_dec 0 len)                        (* if read length > 0 *)
 {                    
   let^ (fms, flen) <- BFILE.getlen lxp ixp inum fms;          (* get file length *)
   If (lt_dec off flen)                   (* if offset is inside file *)
   {                    
-    If(le_dec (off+len) flen)     (* if you can read the whole length *)
-    {                           
       let^ (fms, block0) <- BFILE.read lxp ixp inum 0 fms;        (* get block 0*)
-      let block_size := (get_block_size block0) in            (* get block size *)
-      let block_off := (off / block_size) in              (* calculate block offset *)
-      let byte_off := (modulo off block_size) in          (* calculate byte offset *)
+      let len := min len (flen - off) in
+      let block_size := get_block_size block0 in            (* get block size *)
+      let block_off := off / block_size in              (* calculate block offset *)
+      let byte_off := modulo off block_size in          (* calculate byte offset *)
+      let first_read_length := min (block_size - byte_off) len in (*# of bytes that will be read from first block*)
       let^ (fms, first_block) <- BFILE.read lxp ixp inum block_off fms;   (* get first block *)
-      If(le_dec (byte_off + len) block_size)             (* if whole data is in this block *)
-      {
-        let data := (get_sublist                          (* read the data and return as list byte *)
-        (valu_to_list first_block) byte_off len) in
-        rx ^(fms, data)
-      } 
-      else                                            (* If data is in more than one block *)
-      {     
-        let data_init := (get_sublist                     (* read as much as you can from this block *)
-        (valu_to_list first_block) byte_off         
-         (block_size - byte_off)) in
-        let block_off := (block_off +1) in                      (* offset of remaining part *)
-        let len_remain := (len - (block_size - byte_off)) in  (* length of remaining part *)
-        let num_of_full_blocks := (len_remain / block_size) in (* number of full blocks in length *)
+      let data_init := (get_sublist                     (* read as much as you can from this block *)
+      (valu_to_list first_block) byte_off (block_size - byte_off)) in
+      let len_remain := (len - first_read_length) in  (* length of remaining part *)
+      let num_of_full_blocks := (len_remain / block_size) in (* number of full blocks in length *)
         
-        (*for loop for reading those full blocks *)
-        let^ (data) <- (ForN_ (fun i =>
-          (pair_args_helper (fun data (_:unit) => (fun lrx => 
-          
-          let^ (fms, block) <- BFILE.read lxp ixp inum (block_off + i) fms; (* get i'th block *)
-          lrx ^(data++(get_sublist (valu_to_list block) 0 block_size))%list (* append its contents *)
-          
-          )))) 0 num_of_full_blocks
-        (fun _:nat => (fun _ => (fun _ => (fun _ => (fun _ => True)%pred)))) (* trivial invariant *)
-        (fun _:nat => (fun _ => (fun _ => True)%pred))) ^(nil);             (* trivial crashpred *)
+      (*for loop for reading those full blocks *)
+      let^ (data) <- (ForN_ (fun i =>
+        (pair_args_helper (fun data (_:unit) => (fun lrx => 
         
-        let off_final := (block_off + num_of_full_blocks * block_size) in (* offset of final block *)
-        let len_final := (len_remain - num_of_full_blocks * block_size) in (* final remaining length *)
-        let^ (fms, last_block) <- BFILE.read lxp ixp inum off_final fms;   (* get final block *)
-        let data_final := (get_sublist (valu_to_list last_block) 0 len_final) in (* get final block data *)
-        rx ^(fms, data_init++data++data_final)%list                  (* append everything and return *)
-      }
-    } 
-    else                                              (* If you cannot read the whole length *)
-    {    
-      let len:= (flen - off) in                               (* set length to remaining length of file *)
-      let^ (fms, block0) <- BFILE.read lxp ixp inum 0 fms;    (* get block 0 *)
-      let block_size := (get_block_size block0) in (* get block size *)
-      let block_off := (off / block_size) in              (* calculate block offset *)
-      let byte_off := (modulo off block_size) in          (* calculate byte offset *)
-      let^ (fms, first_block) <- BFILE.read lxp ixp inum off fms;   (* get first block *)
-      If(le_dec (byte_off + len) block_size)             (* if whole data is in this block *)
-      {
-        let data := (get_sublist                          (* read the data and return as list byte *)
-        (valu_to_list first_block) byte_off len) in
-        rx ^(fms, data)
-      } 
-      else                                              (* If data is in more than one block *)
-      {   
-        let data_init := (get_sublist                     (* read as much as you can from this block *)
-        (valu_to_list first_block) byte_off  
-         (block_size - byte_off)) in
-        let block_off := (block_off +1) in  (* offset of remaining part *)
-        let len_remain := (len - (block_size - byte_off)) in  (* length of remaining part *)
-        let num_of_full_blocks := (len_remain / block_size) in (* number of full blocks in length *)
+        let^ (fms, block) <- BFILE.read lxp ixp inum (block_off + i) fms; (* get i'th block *)
+        lrx ^(data++(valu_to_list block))%list (* append its contents *)
         
-        
-        (*for loop for reading those full blocks *)
-        let^ (data) <- (ForN_ (fun i =>
-          (pair_args_helper (fun data (_:unit) => (fun lrx => 
-          
-          let^ (fms, block) <- BFILE.read lxp ixp inum (block_off + i) fms; (* get i'th block *)
-          lrx ^(data++(get_sublist (valu_to_list block) 0 block_size))%list (* append its contents *)
-          
-          )))) 0 num_of_full_blocks
-        (fun _:nat => (fun _ => (fun _ => (fun _ => (fun _ => True)%pred)))) (* trivial invariant *)
-        (fun _:nat => (fun _ => (fun _ => True)%pred))) ^(nil);             (* trivial crashpred *)
-
-        rx ^(fms, data_init++data)%list                  (* append everything and return *)
-      }
-     }
+        )))) 1 num_of_full_blocks
+      (fun _:nat => (fun _ => (fun _ => (fun _ => (fun _ => True)%pred)))) (* trivial invariant *)
+      (fun _:nat => (fun _ => (fun _ => True)%pred))) ^(nil);             (* trivial crashpred *)
+      
+      let off_final := (block_off + num_of_full_blocks) in (* offset of final block *)
+      let len_final := (len_remain - num_of_full_blocks * block_size) in (* final remaining length *)
+      let^ (fms, last_block) <- BFILE.read lxp ixp inum off_final fms;   (* get final block *)
+      let data_final := (get_sublist (valu_to_list last_block) 0 len_final) in (* get final block data *)
+      rx ^(fms, data_init++data++data_final)%list                  (* append everything and return *)
   } 
   else                                                 (* if offset is not valid, return nil *)
   {    
@@ -204,9 +150,8 @@ Theorem read_bytes_ok : forall lxp bxp ixp inum off len ms,
                (*[1.1.3]You read the last block correctly*)
                (get_sublist r (len - last_read_length) last_read_length 
                   = get_sublist (valu_to_list (fst ve)) 0 last_read_length))
-             \/
-             
-             (file_length < off + len /\ (*[1.2]You read as much as possible*)
+                  
+             \/ (file_length < off + len /\ (*[1.2]You read as much as possible*)
              
                 (*[1.2.1]You read the first block correctly AND*)
                 (get_sublist r 0 first_read_length = get_sublist (valu_to_list (fst vs)) byte_off first_read_length ) /\
