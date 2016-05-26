@@ -328,6 +328,39 @@ Section ConcurrentCache.
           eauto.
     Qed.
 
+    Lemma same_domain_remove_reader : forall d a,
+        same_domain d (remove_reader d a).
+    Proof.
+      unfold same_domain, subset, remove_reader; split;
+        intros;
+        destruct (weq a a0); subst;
+          destruct matches in *;
+          autorewrite with upd in *;
+          eauto.
+    Qed.
+
+    Lemma readers_locked_add_reader : forall tid tid' vd a v,
+        vd a = Some (v, None) ->
+        readers_locked tid vd (add_reader vd a tid').
+    Proof.
+      unfold readers_locked, add_reader; intros.
+      destruct (weq a a0); subst;
+        simpl_match;
+        autorewrite with upd;
+        congruence.
+    Qed.
+
+    Lemma readers_locked_remove_reading : forall tid vd a v,
+        vd a = Some (v, Some tid) ->
+        readers_locked tid vd (remove_reader vd a).
+    Proof.
+      unfold readers_locked, remove_reader; intros.
+      destruct (weq a a0); subst;
+        simpl_match;
+        autorewrite with upd;
+        eauto || congruence.
+    Qed.
+
   End SpecLemmas.
 
   Theorem modify_cache_ok : forall up,
@@ -362,7 +395,7 @@ Section ConcurrentCache.
 
   Hint Extern 1 {{ modify_wb _; _ }} => apply modify_wb_ok : prog.
 
-  Hint Resolve wb_val_vd cache_val_vd wb_val_none.
+  Hint Resolve wb_val_vd cache_val_vd cache_val_none wb_val_none.
 
   Theorem cache_maybe_read_ok : forall a,
       SPEC delta, tid |-
@@ -385,7 +418,8 @@ Section ConcurrentCache.
   Hint Resolve
        disk_no_reader
        no_wb_reader_conflict_stable_invalidate
-       same_domain_add_reader.
+       same_domain_add_reader
+       readers_locked_add_reader.
 
   Theorem prepare_fill_ok : forall a,
       SPEC delta, tid |-
@@ -409,7 +443,7 @@ Section ConcurrentCache.
     eauto using disk_no_reader.
 
     hoare;
-      match goal with
+      try match goal with
       (* cache_rep stable when adding reader *)
       | [ |- cache_rep (upd _ _ _)
                       (cache_add _ _ _)
@@ -418,8 +452,101 @@ Section ConcurrentCache.
       | [ |- wb_rep (add_reader _ _ _) _ _ ] => admit
       (* add_reader -> upd *)
       | [ |- add_reader _ ?a _ ?a = _ ] => admit
-      (* readers only increased *)
-      | [ |- readers_locked _ _ (add_reader _ _ _) ] => admit
+          end.
+    eapply readers_locked_trans; eauto.
+    eapply readers_locked_add_reader.
+  Admitted.
+
+  Hint Extern 1 {{ prepare_fill _; _ }} => apply prepare_fill_ok : prog.
+
+  Lemma others_readers_locked_reading : forall tid vd vd' a v,
+      others readers_locked tid vd vd' ->
+      vd a = Some (v, Some tid) ->
+      vd' a = Some (v, Some tid).
+  Proof.
+    unfold others, readers_locked; intros; deex.
+    eauto.
+  Qed.
+
+  Lemma others_rely_readers_locked : forall tid s s',
+      others (guar delta) tid s s' ->
+      others readers_locked tid (get vDisk0 s) (get vDisk0 s').
+  Proof.
+    simpl; unfold cacheR, others; intros; deex; eauto.
+  Qed.
+
+  Lemma rely_read_lock : forall tid (s s': abstraction Sigma) a v,
+      get vDisk0 s a = Some (v, Some tid) ->
+      rely delta tid s s' ->
+      get vDisk0 s' a = Some (v, Some tid).
+  Proof.
+    unfold rely; intros.
+    induction H0; eauto.
+    eauto using others_readers_locked_reading,
+    others_rely_readers_locked.
+  Qed.
+
+  Ltac simp_hook ::=
+       match goal with
+       | [ Hrely: rely delta ?tid ?s _,
+              H: get vDisk0 ?s _ = Some (_, Some ?tid) |- _ ] =>
+         learn that (rely_read_lock H Hrely)
+       end.
+
+  Hint Resolve
+       same_domain_remove_reader
+       readers_locked_remove_reading.
+
+  Theorem cache_fill_ok : forall a,
+      SPEC delta, tid |-
+              {{ v0,
+               | PRE d m s0 s:
+                   invariant delta d m s /\
+                   cache_get (get vCache s) a = Missing /\
+                   (* XXX: not sure exactly why this is a requirement,
+                   but it comes from no_wb_reader_conflict *)
+                   wb_get (get vWriteBuffer s) a = WbMissing /\
+                   get vdisk s a = Some v0 /\
+                   guar delta tid s0 s
+               | POST d' m' s0' s' _:
+                   invariant delta d' m' s' /\
+                   (* no promise about actually filling the cache -
+                   shouldn't affect anybody *)
+                   rely delta tid s s' /\
+                   guar delta tid s0' s'
+              }} cache_fill a.
+  Proof.
+    hoare.
+    eexists; simplify; finish.
+    hoare.
+    exists v0; simplify; finish.
+    (* to guarantee this, need to know that a is still not cached -
+    protocol should say if cache has invalid, then someone must be
+    reading it (this is in the invariant via cache_rep already) AND
+    reader is only thread that can add a value (or write - WriteBuffer
+    must also remain empty)
+
+    XXX: make changes to protocol to make this admit provable
+    *)
+    admit.
+
+    hoare;
+      match goal with
+      (* cache_rep stable when adding reader *)
+      | [ |- cache_rep (upd _ _ _)
+                      (cache_add _ _ _)
+                      (remove_reader _ _) ] => admit
+      (* wb_rep insensitive to readers *)
+      | [ |- wb_rep (remove_reader _ _) _ _ ] => admit
+      (* add_reader -> upd *)
+      | [ |- remove_reader _ ?a _ ?a = _ ] => admit
+      (* clean addresses irrelevant *)
+      | [ |- no_wb_reader_conflict (cache_add _ _ _) _ ] => admit
+      (* XXX: not provable. Problematic step introduced by
+            prepare_fill, which should precisely specify everything it
+            did to s so we can prove together with FinishRead the
+            effect is the same as a rely *)
+      | [ |- rely delta _ _ _ ] => admit
       end.
   Admitted.
 

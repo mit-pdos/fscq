@@ -121,4 +121,14 @@ Section RepTheorems.
     t.
   Qed.
 
+  Theorem cache_val_none : forall d c vd a v_rdr,
+      cache_rep d c vd ->
+      vd a = Some v_rdr ->
+      cache_get c a = Missing ->
+      d a = Some v_rdr.
+  Proof.
+    t.
+    intuition; try deex; congruence.
+  Qed.
+
 End RepTheorems.
