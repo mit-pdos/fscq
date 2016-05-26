@@ -1,21 +1,3 @@
-Require Export BFile.
-Require Export Bytes.
-Require Export Inode.
-Require Export Word.
-Require Export AsyncDisk.
-Require Export String.
-Require Export Rec.
-Require Export Log.
-Require Export Arith.
-Require Export Prog.
-Require Import BasicProg.
-Require Export List.
-Require Export Pred PredCrash ListPred.
-Require Export Mem.
-Require Export Hoare.
-Require Export SepAuto.
-
-
 Require Import Arith.
 Require Import Pred PredCrash.
 Require Import Word.
@@ -43,28 +25,16 @@ Require Import AsyncDisk.
 Require Import Inode.
 Require Import GenSepAuto.
 Require Import DiskSet.
-
-
-
-
-
+Require Import BFile.
+Require Import Bytes.
 
 Set Implicit Arguments.
 
 Module ABYTEFILE.
 
-Check BFILE.rep.
-
-Variable AT : Type.
-Variable AEQ : EqDec AT.
-Variable V : Type.
-Variable block_size : addr.
-
-
-
 Record byte_file := mk_byte_file {
-  BFData : list valuset;
-  BFAttr : INODE.iattr
+  ByFData : list valuset;
+  ByFAttr : INODE.iattr
 }.
 
 Definition modulo (n m: nat) : nat := n - ((n / m) * m)%nat.
@@ -92,10 +62,10 @@ Fixpoint get_sublist {A:Type}(l: list A) (off len: nat) : list A :=
   end.
 
 Definition full_read_ok r block_size block_off first_read_length num_of_full_reads m : Prop :=
-forall (i:nat), ((num_of_full_reads < i) \/ (*[1]i is out of range OR*)
-  (*[2]i+1'th block you read matches its contents*)
-   (exists bl:valuset, (( exists F',(F' * (block_off +1 + i)|-> bl)%pred (list2nmem m)) /\ (*[2.1]Block bl is in the address (block_off +1 + i) AND*)
-  (get_sublist r (first_read_length + i*block_size) block_size (*[2.2]Block bl is in the address (block_off +1 + i)*)
+forall (i:nat), ((num_of_full_reads < i + 1) \/ (*[1]i is out of range OR*)
+  (*[2]i'th block you read matches its contents*)
+   (exists bl:valuset, (( exists F',(F' * (block_off +i)|-> bl)%pred (list2nmem m)) /\ (*[2.1]Block bl is in the address (block_off +1 + i) AND*)
+  (get_sublist r (first_read_length + (i-1)*block_size) block_size (*[2.2]What is read matches the content*)
       = valu_to_list (fst bl))))).
 
 
@@ -202,7 +172,7 @@ Theorem read_bytes_ok : forall lxp bxp ixp inum off len ms,
         let block_size := (get_block_size (fst vs)) in
         let block_off := off / block_size in
         let byte_off := modulo off block_size in
-        let first_read_length := (block_size - byte_off) in
+        let first_read_length := min (block_size - byte_off) len in
         let num_of_full_reads := (len - first_read_length) / block_size in
         let last_read_length := len - first_read_length - num_of_full_reads * block_size in
         let file_length := length (BFILE.BFData f) in
@@ -216,7 +186,7 @@ Theorem read_bytes_ok : forall lxp bxp ixp inum off len ms,
           let block_size := (get_block_size (fst vs)) in
           let block_off := off / block_size in
           let byte_off := modulo off block_size in
-          let first_read_length := (block_size - byte_off) in
+          let first_read_length := min (block_size - byte_off) len in
           let num_of_full_reads := (len - first_read_length) / block_size in
           let last_read_length := len - first_read_length - num_of_full_reads * block_size in
           let file_length := length (BFILE.BFData f) in
