@@ -208,6 +208,21 @@ Module UCache.
     rewrite MapFacts.add_neq_o; auto.
   Qed.
 
+  Lemma synpred_remove_invariant : forall a a' v cache,
+    a <> a' -> synpred cache a v =p=> synpred (Map.remove a' cache) a v.
+  Proof.
+    unfold synpred; intros.
+    rewrite MapFacts.remove_neq_o; auto.
+  Qed.
+
+  Lemma synpred_add_invariant : forall a a' v v' cache,
+    a <> a' -> synpred cache a v =p=> synpred (Map.add a' v' cache) a v.
+  Proof.
+    unfold synpred; intros.
+    rewrite MapFacts.add_neq_o; auto.
+  Qed.
+
+
   Lemma mem_pred_cachepred_remove_absorb : forall csmap d a w vs p_old,
     d a = Some (w, p_old) ->
     incl vs (vsmerge (w, p_old)) ->
@@ -467,6 +482,7 @@ Module UCache.
   Hint Extern 1 ({{_}} progseq (writeback _ _) _) => apply writeback_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (synrep _ _) (synrep _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (mem_pred ?p _) (mem_pred ?p _)) => constructor : okToUnify.
 
   Theorem evict_ok : forall a cs,
@@ -838,6 +854,143 @@ Module UCache.
     cancel.
     auto.
   Qed.
+
+  Theorem writeback_ok' : forall cs a,
+    {< d (F : rawpred) v0,
+    PRE
+      synrep cs d * [[ (F * a |+> v0)%pred d ]]
+    POST RET:cs exists d',
+      synrep cs d' * [[ (F * a |+> (fst v0, nil))%pred d' ]]
+    CRASH
+      exists cs', synrep cs' d
+    >} writeback a cs.
+  Proof.
+    unfold writeback, synrep.
+    prestep; unfold synrep; norml; unfold stars; simpl; clear_norm_goal;
+    denote ptsto_subset as Hx; apply ptsto_subset_valid' in Hx as Hy; repeat deex.
+
+    (* cached, dirty *)
+    - rewrite mem_pred_extract with (a := a) by eauto.
+      unfold synpred at 2.
+      destruct (Map.find a (CSMap cs)) eqn:Hm; try congruence.
+      destruct p; destruct b; try congruence.
+      cancel.
+      step.
+      rewrite <- mem_pred_absorb with (hm := d) (a := a).
+      unfold synpred at 3.
+      rewrite MapFacts.add_eq_o by reflexivity.
+      unfold ptsto_subset; cancel; eauto.
+      rewrite mem_pred_pimpl_except.
+      2: intros; apply synpred_add_invariant; eassumption.
+      cancel.
+      eapply size_valid_add_in; eauto.
+      eapply addr_valid_add; eauto.
+      apply upd_eq; auto.
+      apply addr_valid_upd; auto.
+      eapply ptsto_subset_upd; eauto.
+      apply incl_refl.
+
+      (* crash *)
+      unfold ptsto_subset; cancel; eauto.
+      eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
+      unfold synpred at 3; rewrite Hm.
+      unfold ptsto_subset; cancel; eauto.
+
+    (* cached, non-dirty *)
+    - rewrite mem_pred_extract with (a := a) by eauto.
+      unfold synpred at 2.
+      destruct (Map.find a (CSMap cs)) eqn:Hm; try congruence.
+      destruct p; destruct b; try congruence.
+      cancel.
+      prestep. norm. unfold stars; simpl.
+      rewrite <- mem_pred_absorb with (hm := d) (a := a).
+      unfold synpred at 3.
+      rewrite Hm.
+      cancel.
+      intuition.
+      apply addr_valid_upd; auto.
+      eapply ptsto_subset_upd; eauto.
+      apply incl_refl.
+
+      (* crash *)
+      cancel.
+      erewrite <- upd_nop with (m := d) at 2 by eauto.
+      rewrite <- mem_pred_absorb with (hm := d) (a := a).
+      unfold synpred at 3; rewrite Hm; cancel.
+      auto. auto.
+
+    (* not cached *)
+    - rewrite mem_pred_extract with (a := a) by eauto.
+      unfold synpred at 2.
+      destruct (Map.find a (CSMap cs)) eqn:Hm; try congruence.
+      cancel.
+      prestep. norm. unfold stars; simpl.
+      rewrite <- mem_pred_absorb with (hm := d) (a := a).
+      unfold synpred at 3.
+      rewrite Hm.
+      cancel.
+      intuition.
+      apply addr_valid_upd; auto.
+      eapply ptsto_subset_upd; eauto.
+      apply incl_refl.
+
+      (* crash *)
+      cancel.
+      erewrite <- upd_nop with (m := d) at 2 by eauto.
+      rewrite <- mem_pred_absorb with (hm := d) (a := a).
+      unfold synpred at 3; rewrite Hm; cancel.
+      auto. auto.
+    Unshelve. all: try exact addr_eq_dec.
+  Qed.
+
+  Theorem sync_ok : forall cs a,
+    {< d (F : rawpred) v0,
+    PRE
+      synrep cs d * [[ (F * a |+> v0)%pred d ]]
+    POST RET:cs exists d',
+      synrep cs d' * [[ (F * a |+> (fst v0, nil))%pred d' ]]
+    CRASH
+      exists cs', synrep cs' d
+    >} sync a cs.
+  Proof.
+    unfold sync; intros.
+    eapply pimpl_ok2.
+    apply writeback_ok'.
+    cancel.
+  Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (begin_sync _) _) => apply begin_sync_ok : prog.
+  Hint Extern 1 ({{_}} progseq (end_sync _) _) => apply end_sync_ok : prog.
+  Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
+
+
+  Definition sync_one T a (cs : cachestate) rx : prog T :=
+    cs <- begin_sync cs;
+    cs <- sync a cs;
+    cs <- end_sync cs;
+    rx cs.
+
+  Theorem sync_one_ok : forall cs a,
+    {< d (F : rawpred) v0,
+    PRE
+      rep cs d * [[ sync_invariant F /\ (F * a |+> v0)%pred d ]]
+    POST RET:cs
+      exists d',
+      rep cs d' * [[ (F * a |+> (fst v0, nil))%pred d' ]]
+    CRASH
+      exists cs', rep cs' d
+    >} sync_one a cs.
+  Proof.
+    unfold sync_one.
+    prestep; norm. cancel. intuition simpl.
+    2: eauto. eauto.
+    safestep.
+    step.
+    step.
+    2: cancel.
+    (* XXX: synrep =p=> rep  *)
+  Admitted.
 
 
 
