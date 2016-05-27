@@ -151,12 +151,31 @@ Section ConcurrentCache.
           rx true
       end.
 
-  (** low level operation to move one value to the mCache *)
-  Definition wb_evict a v rx : prog Sigma :=
-    _ <- modify_cache (fun c => cache_add c a (Dirty v));
-      _ <- var_update vDisk0
-        (fun vd => upd vd a (v, None));
-      rx tt.
+  Definition wb_writes wb : list (addr * valu) :=
+    fold_right (fun e acc =>
+                 match e with
+                 | (a, Written v) => (a, v) :: acc
+                 | (_, WbMissing) => acc
+                 end) nil (wb_entries wb).
+
+  Fixpoint cache_add_all (c: Cache) (entries: list (addr * valu)) : Cache :=
+    match entries with
+    | nil => c
+    | (a, v) :: es => cache_add_all (cache_add c a (Dirty v)) es
+    end.
+
+  Definition upd_all A AEQ V (m: @mem A AEQ (const V)) (entries: list (A * V)) :=
+    fold_right (fun (e:A * V) acc =>
+                  let (a, v) := e in
+                  upd acc a v) m entries.
+
+  (* TODO; replace with a more efficient direct recursive
+  implementation and prove equivalent to this *)
+  Definition upd_buffered_writes (d: DISK) (entries: list (addr * valu)) :=
+    upd_all d (map (fun (ae: addr * valu) =>
+                      let (a, e) := ae in
+                      (a, (e, None)))
+                   entries).
 
   (** commit all the buffered writes into the global cache
 
@@ -165,9 +184,9 @@ Section ConcurrentCache.
   Definition cache_commit rx : prog Sigma :=
     c <- Get mCache;
       wb <- Get mWriteBuffer;
-      (* need to wb_evict everything in wb_entries wb; requires list
-      For loop *)
-      _ <- Assgn mWriteBuffer emptyWriteBuffer;
+      _ <- modify_cache (fun c => cache_add_all c (wb_writes wb));
+      _ <- var_update vDisk0 (fun d => upd_buffered_writes d (wb_writes wb));
+      _ <- modify_wb (fun _ => emptyWriteBuffer);
       rx tt.
 
   (** abort all buffered writes, restoring vDisk0 *)
@@ -226,13 +245,6 @@ Section ConcurrentCache.
       progress repeat rewrite ?get_set, ?get_set_other by auto
     end.
 
-  Lemma wb_val_mem {m: memory Sigma} {s: abstraction Sigma} :
-      get mWriteBuffer m = get vWriteBuffer s ->
-      wb_val (get mWriteBuffer m) = wb_val (get vWriteBuffer s).
-  Proof.
-    congruence.
-  Qed.
-
   Lemma cache_val_mem {m: memory Sigma} {s: abstraction Sigma} :
       get mCache m = get vCache s ->
       cache_val (get mCache m) = cache_val (get vCache s).
@@ -250,8 +262,14 @@ Section ConcurrentCache.
   Ltac replace_mem_val :=
     match goal with
     | [ H: get mWriteBuffer ?m = get vWriteBuffer _,
-           H': context[ wb_val (get mWriteBuffer ?m) ] |- _ ] =>
-      rewrite (wb_val_mem H) in H'
+           H': context[ get mWriteBuffer ?m ] |- _ ] =>
+      lazymatch type of H' with
+      | Learnt => fail
+      | _ => rewrite H in H'
+      end
+    | [ H: get mWriteBuffer ?m = get vWriteBuffer _
+        |- context[ get mWriteBuffer ?m ] ] =>
+      rewrite H
     | [ H: get mCache ?m = get vCache _,
            H': context[ cache_val (get mCache ?m) ] |- _ ] =>
       rewrite (cache_val_mem H) in H'
@@ -435,11 +453,8 @@ Section ConcurrentCache.
 
   Hint Extern 1 {{ modify_wb _; _ }} => apply modify_wb_ok : prog.
 
-  Definition sumboolProof P Q (p: {P} + {Q}) :
-    match p with
-    | left _ => P
-    | right _ => Q
-    end.
+  Definition sumboolProof P Q (p: {P} + {Q}) : if p then P else Q.
+  Proof.
     destruct p; auto.
   Defined.
 
@@ -452,6 +467,8 @@ Section ConcurrentCache.
   Hint Extern 2 (member_index _ <> member_index _) => simpl; prove_nat_neq.
 
   Hint Resolve wb_val_vd cache_val_vd cache_val_no_reader wb_val_none.
+
+  Opaque mem_types abstraction_types.
 
   Theorem cache_maybe_read_ok : forall a,
       SPEC delta, tid |-
@@ -653,6 +670,7 @@ Section ConcurrentCache.
        cache_not_invalid_2
        cache_not_invalid_3.
 
+
   Theorem cache_write_ok : forall a v,
       SPEC delta, tid |-
               {{ v0,
@@ -671,42 +689,264 @@ Section ConcurrentCache.
     hoare.
   Qed.
 
-  Theorem wb_evict_ok : forall a v,
+  Theorem wb_writes_complete : forall wb a v,
+      wb_get wb a = Written v ->
+      In (a, v) (wb_writes wb).
+  Proof.
+    intros.
+    unfold wb_writes, wb_get, wb_entries in *.
+    pose proof (MapFacts.elements_mapsto_iff wb a (Written v)).
+    let H := fresh in
+    destruct (Map.find a wb) eqn:H; subst; try congruence.
+    assert (Map.MapsTo a (Written v) wb).
+    apply MapFacts.find_mapsto_iff; congruence.
+    intuition.
+
+    induction (Map.elements wb); intros.
+
+    inversion H0.
+
+    inversion H0; subst.
+    inversion H4; destruct a0.
+    simpl in *; subst.
+    simpl; auto.
+
+    intuition.
+    destruct a0 as [ ? [] ]; simpl; auto.
+  Qed.
+
+  Lemma wb_get_empty : forall a,
+      wb_get emptyWriteBuffer a = WbMissing.
+  Proof.
+    auto.
+  Qed.
+
+  Hint Constructors NoDup.
+
+  Lemma NoDup_entries : forall wb,
+      NoDup (map fst (wb_entries wb)).
+  Proof.
+    intros.
+    pose proof (Map.elements_3w wb).
+    unfold wb_entries.
+    generalize dependent (Map.elements wb); intros.
+    induction H; cbn; auto.
+    constructor; auto.
+    intro.
+    apply H.
+
+    destruct x; simpl in *.
+    clear H H0.
+    induction l; simpl in *; intuition.
+    destruct a; simpl in *; subst.
+    constructor.
+    reflexivity.
+
+    inversion IHNoDupA; subst; auto.
+  Qed.
+
+  Lemma wb_entries_writes_subset : forall wb,
+      incl (map fst (wb_writes wb))
+           (map fst (wb_entries wb)).
+  Proof.
+    unfold incl, wb_writes; intros.
+    generalize dependent (wb_entries wb); intros.
+    induction l; simpl in *; eauto.
+    destruct a0.
+    destruct w0; simpl in *; intuition.
+  Qed.
+
+  Hint Resolve in_eq in_cons.
+
+  Lemma incl_nil : forall A (l: list A),
+      incl l nil ->
+      l = nil.
+  Proof.
+    unfold incl; destruct l; intros; auto.
+    assert (In a []) by eauto.
+    inversion H0.
+  Qed.
+
+  Lemma incl_not_in : forall A (l l': list A) a,
+      incl l l' ->
+      ~In a l' ->
+      ~In a l.
+  Proof.
+    unfold incl; intros.
+    intuition.
+  Qed.
+
+  Lemma NoDup_filter : forall A (l l': list A),
+      incl l l' ->
+      NoDup l' ->
+      NoDup l.
+  Proof.
+    induction l; intros; eauto.
+    assert (incl l l').
+    unfold incl in *; intuition eauto.
+  Admitted.
+
+  Lemma NoDup_writes : forall wb,
+      NoDup (map fst (wb_writes wb)).
+  Proof.
+    intros.
+    eapply NoDup_filter.
+    apply wb_entries_writes_subset.
+    apply NoDup_entries.
+  Qed.
+
+  Theorem in_nodup_split : forall A l (a:A),
+      NoDup l ->
+      In a l ->
+      exists l1 l2,
+        l = l1 ++ a :: l2 /\
+        ~In a l1 /\
+        ~In a l2.
+  Proof.
+    intros.
+    induction l.
+    inversion H0.
+    destruct H0; subst.
+    - exists nil, l; intuition.
+      inversion H; intuition.
+    - inversion H; subst; intuition.
+      repeat deex.
+      exists (a0 :: l1), l2; intuition.
+      inversion H2; subst; eauto.
+  Qed.
+
+  Theorem in_nodup_map_split : forall A B (f: A -> B) l (a:A),
+      NoDup (map f l) ->
+      In a l ->
+      exists l1 l2,
+        l = l1 ++ a :: l2 /\
+        ~In (f a) (map f l1) /\
+        ~In (f a) (map f l2).
+  Proof.
+    intros.
+    induction l.
+    inversion H0.
+    destruct H0; subst.
+    - exists nil, l; intuition.
+      inversion H; subst; intuition.
+    - inversion H; subst; intuition.
+      repeat deex.
+      exists (a0 :: l1), l2; intuition.
+      destruct H2; subst; eauto.
+      rewrite ?map_cons, ?map_app, ?map_cons in *.
+      rewrite H2 in *.
+      apply H3.
+      apply in_app_iff; eauto.
+  Qed.
+
+  Theorem upd_all_app_ignore : forall A AEQ V l1 l2
+                                 (d: @mem A AEQ (const V)) (a:A),
+      ~In a (map fst l2) ->
+      upd_all d (l1 ++ l2) a = upd_all d l1 a.
+  Proof.
+    unfold upd_all.
+    induction l1; cbn; intros.
+    induction l2; cbn; auto.
+    destruct a0.
+    apply not_in_cons in H; intuition.
+    autorewrite with upd; auto.
+    destruct a.
+    destruct (AEQ a a0); subst;
+      autorewrite with upd;
+      auto.
+  Qed.
+
+  Theorem upd_all_app_last : forall A AEQ V l
+                               (d: @mem A AEQ (const V))
+                               a v,
+      ~In a (map fst l) ->
+      upd_all d (l ++ [ (a, v) ]) a = Some v.
+  Proof.
+    unfold upd_all.
+    induction l; cbn; intros.
+    autorewrite with upd; auto.
+
+    destruct a.
+    destruct (AEQ a a0); subst.
+
+    autorewrite with upd; auto.
+    apply not_in_cons in H; intuition.
+    autorewrite with upd; auto.
+  Qed.
+
+  Lemma app_cons_to_app : forall A (l l': list A) a,
+      l ++ a :: l' = l ++ [a] ++ l'.
+  Proof.
+    auto.
+  Qed.
+
+  Hint Resolve in_map.
+
+  Lemma not_in_map : forall A B (f: A -> B)
+                       (finj: forall a a', f a = f a' -> a = a')
+                       l a,
+      ~In a l ->
+      ~In (f a) (map f l).
+  Proof.
+    intros.
+    contradict H.
+    induction l.
+    inversion H.
+    inversion H.
+    apply finj in H0; subst; auto.
+    eauto.
+  Qed.
+
+  Lemma nodup_map : forall A B (f: A -> B) l,
+      (forall a a', f a = f a' -> a = a') ->
+      NoDup l ->
+      NoDup (map f l).
+  Proof.
+    intros.
+    induction l; intros; cbn; auto.
+    inversion H0; subst.
+    constructor; auto.
+    apply not_in_map; auto.
+  Qed.
+
+  Theorem upd_all_in : forall A AEQ V (d: @mem A AEQ (const V)) l a v,
+      NoDup (map fst l) ->
+      In (a, v) l ->
+      upd_all d l a = Some v.
+  Proof.
+    intros.
+
+    pose proof (in_nodup_map_split _ _ _ H H0); repeat deex.
+    rewrite app_cons_to_app in *.
+    rewrite app_assoc.
+    rewrite upd_all_app_ignore; auto.
+    rewrite upd_all_app_last; auto.
+  Qed.
+
+  Theorem wb_rep_empty : forall d wb vd,
+      wb_rep d wb vd ->
+      wb_rep (upd_buffered_writes d (wb_writes wb)) emptyWriteBuffer vd.
+  Proof.
+    unfold wb_rep; intros.
+    rewrite wb_get_empty.
+  Admitted.
+
+  Hint Resolve wb_rep_empty.
+
+  Theorem cache_commit_ok :
       SPEC delta, tid |-
               {{ (_:unit),
                | PRE d m s0 s:
-                   invariant delta d m s /\
-                   (* insufficient to have get vdisk s a = Some v0:
-                    need to know that a buffered write is being
-                    written so no_wb_reader_conflict ensures reader
-                    safety
-
-                    somewhat oddly for a spec, v passed to the
-                    function must match state - this is since the
-                    buffered value is known to the loop and doesn't
-                    need to be fetched each time *)
-                   wb_get (get vWriteBuffer s) a = Written v /\
-                   guar delta tid s0 s
+                   invariant delta d m s
                | POST d' m' s0' s' r:
                    invariant delta d' m' s' /\
-                   get vDisk0 s' = upd (get vDisk0 s) a (v, None) /\
+                   hide_readers (get vDisk0 s') = get vdisk s /\
+                   get vdisk s' = get vdisk s /\
                    guar delta tid s s' /\
-                   guar delta tid s0' s'
-              }} wb_evict a v.
+                   s0' = s0
+              }} cache_commit.
   Proof.
-    hoare;
-      match goal with
-      | [ |- cache_rep _ (cache_add _ _ (Dirty _)) (upd _ _ _) ] => admit
-      (* ok because new value is already in write buffer *)
-      | [ |- wb_rep (upd _ _ _) _ _ ] => admit
-      (* no_wb_reader_conflict is unaffected by adding a Dirty
-            mapping (only cares about WbMissing and Invalid) *)
-      | [ |- no_wb_reader_conflict (cache_add _ _ (Dirty _)) _ ] => admit
-      (* None reader is correct due to no_wb_reader_conflict *)
-      | [ |- same_domain _ (upd _ _ (_, None)) ] => admit
-      (* safe to modify due to no_wb_reader_conflict *)
-      | [ |- readers_locked _ _ (upd _ _ (_, None)) ] => admit
-      end.
+    hoare.
   Admitted.
 
 End ConcurrentCache.
