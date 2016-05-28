@@ -1011,12 +1011,38 @@ Section ConcurrentCache.
 
   Hint Resolve In_add_empty_rdr.
 
+  Lemma wb_get_missing' : forall wb a,
+      wb_get wb a = WbMissing ->
+      (forall v, ~In (a, v) (wb_writes wb)).
+  Proof.
+    intros.
+    intro.
+    apply wb_writes_complete' in H0.
+    congruence.
+  Qed.
+
+  Lemma in_map : forall A (l: list A) B (f: A -> B) b,
+      In b (map f l) ->
+      exists a, b = f a /\
+           In a l.
+  Proof.
+    induction l; simpl; intros.
+    inversion H.
+    intuition eauto.
+    edestruct IHl; eauto.
+    intuition eauto.
+  Qed.
+
   Lemma wb_get_missing : forall wb a,
       wb_get wb a = WbMissing ->
       ~In a (map fst (wb_writes wb)).
   Proof.
     intros; intro.
-  Admitted.
+    apply in_map in H0; deex.
+    destruct a0; simpl in *.
+    pose proof (wb_get_missing' _ _ H).
+    intuition eauto.
+  Qed.
 
   Theorem wb_rep_empty : forall d wb vd,
       wb_rep d wb vd ->
