@@ -169,13 +169,14 @@ Section ConcurrentCache.
                   let (a, v) := e in
                   upd acc a v) m entries.
 
+  Definition add_empty_rdr (ae: addr * valu) : addr * wr_set :=
+    let (a, v) := ae in
+    (a, (v, None)).
+
   (* TODO; replace with a more efficient direct recursive
   implementation and prove equivalent to this *)
   Definition upd_buffered_writes (d: DISK) (entries: list (addr * valu)) :=
-    upd_all d (map (fun (ae: addr * valu) =>
-                      let (a, e) := ae in
-                      (a, (e, None)))
-                   entries).
+    upd_all d (map add_empty_rdr entries).
 
   (** commit all the buffered writes into the global cache
 
@@ -689,6 +690,20 @@ Section ConcurrentCache.
     hoare.
   Qed.
 
+  Hint Resolve in_eq in_cons.
+  Hint Resolve SetoidList.InA_cons_hd SetoidList.InA_cons_tl.
+
+  Lemma eq_key_elt_eq : forall elt a a',
+      a = a' ->
+      @Map.eq_key_elt elt a a'.
+  Proof.
+    intros.
+    subst.
+    reflexivity.
+  Qed.
+
+  Hint Resolve eq_key_elt_eq.
+
   Theorem wb_writes_complete : forall wb a v,
       wb_get wb a = Written v ->
       In (a, v) (wb_writes wb).
@@ -713,6 +728,48 @@ Section ConcurrentCache.
 
     intuition.
     destruct a0 as [ ? [] ]; simpl; auto.
+  Qed.
+
+  Lemma setoid_ina : forall a l,
+      SetoidList.InA (Map.eq_key_elt (elt:=wb_entry)) a l <->
+      In a l.
+  Proof.
+    induction l.
+    split; inversion 1.
+
+    split; intuition.
+    inversion H; subst; eauto.
+    destruct a, a0.
+    inversion H3; simpl in *; subst; eauto.
+
+    inversion H; subst; eauto.
+  Qed.
+
+  Lemma in_wb_writes_elements : forall wb a v,
+      In (a, v) (wb_writes wb) ->
+      In (a, Written v) (Map.elements wb).
+  Proof.
+    unfold wb_writes, wb_entries; intros.
+    induction (Map.elements wb); simpl in *; auto.
+    destruct a0 as [ ? [] ]; simpl in *.
+    intuition.
+    inversion H0; subst; auto.
+    intuition.
+  Qed.
+
+  Theorem wb_writes_complete' : forall wb a v,
+      In (a, v) (wb_writes wb) ->
+      wb_get wb a = Written v.
+  Proof.
+    intros.
+
+    apply in_wb_writes_elements in H.
+    assert (Map.MapsTo a (Written v) wb).
+    apply MapFacts.elements_mapsto_iff.
+    apply setoid_ina.
+    auto.
+    unfold wb_get.
+    erewrite Map.find_1; eauto.
   Qed.
 
   Lemma wb_get_empty : forall a,
@@ -756,7 +813,6 @@ Section ConcurrentCache.
     destruct w0; simpl in *; intuition.
   Qed.
 
-  Hint Resolve in_eq in_cons.
 
   Lemma incl_nil : forall A (l: list A),
       incl l nil ->
@@ -856,6 +912,16 @@ Section ConcurrentCache.
       auto.
   Qed.
 
+  Corollary upd_all_not_in : forall A AEQ V l
+                               (d: @mem A AEQ (const V)) (a:A),
+      ~In a (map fst l) ->
+      upd_all d l a = d a.
+  Proof.
+    intros.
+    replace l with (nil ++ l) by reflexivity.
+    rewrite upd_all_app_ignore; auto.
+  Qed.
+
   Theorem upd_all_app_last : forall A AEQ V l
                                (d: @mem A AEQ (const V))
                                a v,
@@ -923,13 +989,56 @@ Section ConcurrentCache.
     rewrite upd_all_app_last; auto.
   Qed.
 
+  Lemma In_add_empty_rdr : forall a v wb,
+      In (a, v) (wb_writes wb) ->
+      In (a, (v, None)) (map add_empty_rdr (wb_writes wb)).
+  Proof.
+    intros.
+    replace (a, (v, None)) with (add_empty_rdr (a, v)) by reflexivity.
+    apply in_map; auto.
+  Qed.
+
+  Lemma addrs_add_empty_rdr : forall wb,
+      map fst (map add_empty_rdr (wb_writes wb)) =
+      map fst (wb_writes wb).
+  Proof.
+    intros.
+    rewrite map_map.
+    unfold add_empty_rdr.
+    induction (wb_writes wb); simpl; eauto.
+    destruct a; simpl; congruence.
+  Qed.
+
+  Hint Resolve In_add_empty_rdr.
+
+  Lemma wb_get_missing : forall wb a,
+      wb_get wb a = WbMissing ->
+      ~In a (map fst (wb_writes wb)).
+  Proof.
+    intros; intro.
+  Admitted.
+
   Theorem wb_rep_empty : forall d wb vd,
       wb_rep d wb vd ->
       wb_rep (upd_buffered_writes d (wb_writes wb)) emptyWriteBuffer vd.
   Proof.
     unfold wb_rep; intros.
+    specialize (H a).
     rewrite wb_get_empty.
-  Admitted.
+    unfold upd_buffered_writes.
+    let H := fresh in
+    destruct (wb_get wb a) eqn:H; intuition.
+    apply wb_writes_complete in H0.
+    pose proof (NoDup_writes wb).
+    erewrite upd_all_in; eauto.
+    2: rewrite addrs_add_empty_rdr; auto.
+    2: apply In_add_empty_rdr; eauto.
+    auto.
+
+    apply wb_get_missing in H0.
+    rewrite upd_all_not_in; auto.
+    rewrite addrs_add_empty_rdr; auto.
+  Qed.
 
   Hint Resolve wb_rep_empty.
 
