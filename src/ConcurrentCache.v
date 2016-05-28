@@ -832,14 +832,280 @@ Section ConcurrentCache.
     intuition.
   Qed.
 
+  Ltac assume P := assert P by admit.
+
+  Theorem incl_trans : forall A (l l' l'' : list A),
+      incl l l' ->
+      incl l' l'' ->
+      incl l l''.
+  Proof.
+    firstorder.
+  Qed.
+
+  Lemma incl_cons : forall A l l' (a:A),
+      incl (a::l) l' ->
+      incl l l'.
+  Proof.
+    unfold incl; simpl; intuition eauto.
+  Qed.
+
+  Hint Resolve incl_cons.
+
+  Lemma incl_converse : forall A (l l': list A),
+      incl l l' ->
+      (forall a, ~In a l' -> ~In a l).
+  Proof.
+    firstorder.
+  Qed.
+
+  Lemma incl_remove : forall A l l' (a:A),
+      incl (a::l) (a::l') ->
+      incl l l'.
+  Proof.
+    induction l; intros; eauto.
+    unfold incl; simpl; intuition.
+  Abort.
+
+  Fixpoint remove_first A (decA: DecEq A) (a:A) l :=
+    match l with
+    | nil => nil
+    | a'::l' => if decA a a' then l' else a' :: remove_first decA a l'
+    end.
+
+  Lemma in_split_first : forall A (decA: DecEq A) l (a:A),
+      In a l ->
+      exists l1 l2, l = l1 ++ a :: l2 /\
+               ~In a l1.
+  Proof.
+    induction l.
+    inversion 1.
+    inversion 1; subst.
+    exists nil, l.
+    intuition eauto.
+
+    pose proof (IHl _ H0).
+    repeat deex.
+    destruct (decA a a0); subst.
+    exists nil, (l1 ++ a0 :: l2).
+    intuition.
+    exists (a :: l1), l2.
+    rewrite <- app_comm_cons; intuition.
+    inversion H1; subst; intuition eauto.
+  Qed.
+
+  Lemma remove_first_app : forall A (decA: DecEq A) l l' (a: A),
+      ~In a l ->
+      remove_first decA a (l ++ l') = l ++ remove_first decA a l'.
+  Proof.
+    induction l; intros; eauto.
+    rewrite <- app_comm_cons.
+    simpl.
+    destruct (decA a0 a); subst.
+    exfalso; eauto.
+    rewrite IHl; eauto.
+  Qed.
+
+  Lemma remove_first_eq : forall A (decA: DecEq A) l (a:A),
+      remove_first decA a (a::l) = l.
+  Proof.
+    intros; simpl.
+    destruct (decA a a); congruence.
+  Qed.
+
+  Lemma incl_in_cons : forall A l l' (a:A),
+      incl l l' ->
+      In a l' ->
+      incl (a::l) l'.
+  Proof.
+    unfold incl; intros.
+    destruct H1; subst; eauto.
+  Qed.
+
+  Hint Resolve incl_in_cons.
+
+  Lemma incl_app_comm_r : forall A (l l' l'': list A),
+      incl l (l' ++ l'') ->
+      incl l (l'' ++ l').
+  Proof.
+    unfold incl; intros.
+    apply H in H0.
+    apply in_app_or in H0.
+    intuition auto using in_or_app.
+  Qed.
+
+  Lemma incl_app_single : forall A (l l' l'': list A) a,
+      incl l (l' ++ a :: l'') ->
+      incl l (a :: l' ++ l'').
+  Proof.
+    unfold incl; intros.
+    apply H in H0.
+    apply in_app_or in H0.
+    intuition.
+    rewrite app_comm_cons.
+    destruct H1; subst;
+      intuition auto using in_or_app.
+  Qed.
+
+  Lemma incl_remove' : forall A (decA: DecEq A) l l' (a:A),
+      ~In a l ->
+      incl (a::l) l' ->
+      incl l (remove_first decA a l').
+  Proof.
+    induction l; intros; eauto.
+    unfold incl; inversion 1.
+    assert (In a0 l') as Ina0 by eauto.
+    pose proof (in_split_first decA _ _ Ina0); repeat deex.
+    rewrite remove_first_app by eauto.
+    rewrite remove_first_eq.
+    clear Ina0.
+    apply incl_app_single in H0.
+    assert (incl (a0 :: l) (a0 :: l1 ++ l2)) as Hincl by eauto.
+    apply IHl in Hincl.
+    rewrite remove_first_eq in Hincl.
+    apply incl_in_cons; eauto.
+    destruct (decA a a0); subst.
+    exfalso; eauto.
+
+    assert (In a (a0 :: l1 ++ l2)) as Hin by eauto.
+    destruct Hin; congruence.
+    intuition eauto.
+  Qed.
+
+  Lemma count_occ_app : forall A (decA: DecEq A) l l' (a:A),
+      count_occ decA (l ++ l') a =
+      count_occ decA l a + count_occ decA l' a.
+  Proof.
+    induction l; cbn; intros; eauto.
+    destruct (decA a a0); subst; eauto.
+    rewrite IHl; auto.
+  Qed.
+
+  Require Import Arith.
+
+  Lemma count_occ_remove_first : forall A (decA: DecEq A) (l: list A) a,
+      In a l ->
+      count_occ decA (remove_first decA a l) a < count_occ decA l a.
+  Proof.
+    intros.
+    apply in_split_first in H; auto.
+    repeat deex.
+    rewrite remove_first_app; auto.
+    rewrite remove_first_eq.
+    rewrite ?count_occ_app, ?count_occ_cons_eq by auto.
+    apply plus_lt_compat_l.
+    auto.
+  Qed.
+
+  Require Import Omega.
+
+  Lemma count_occ_in : forall A (decA : DecEq A) l (a:A),
+      In a l ->
+      1 <= count_occ decA l a.
+  Proof.
+    intros.
+    apply in_split_first in H; auto.
+    repeat deex.
+    rewrite count_occ_app.
+    rewrite count_occ_cons_eq by auto.
+    omega.
+  Qed.
+
+  Lemma count_occ_not_in : forall A (decA : DecEq A) l (a:A),
+      ~In a l ->
+       count_occ decA l a = 0.
+  Proof.
+    intros.
+    induction l; eauto.
+    simpl; destruct (decA a0 a); subst; eauto.
+    exfalso; eauto.
+  Qed.
+
+  Lemma incl_nodup_count_occ : forall A (decA: DecEq A) (l l': list A),
+      NoDup l ->
+      incl l l' ->
+      (forall a, count_occ decA l a <= count_occ decA l' a).
+  Proof.
+    induction l; intros; simpl.
+    apply le_0_n.
+    destruct (decA a a0); subst; eauto.
+    assert (In a0 l') by eauto.
+    inversion H; subst; eauto.
+    pose proof (incl_remove' decA ltac:(eassumption) ltac:(eassumption)).
+    apply IHl with (a := a0) in H2; auto.
+    rewrite count_occ_not_in in * by eauto.
+    pose proof (count_occ_in decA _ _ H1).
+    omega.
+
+    inversion H; subst; eauto.
+  Qed.
+
   Lemma NoDup_filter : forall A (l l': list A),
       incl l l' ->
       NoDup l' ->
       NoDup l.
   Proof.
+    (* direct induction on l *)
     induction l; intros; eauto.
     assert (incl l l').
     unfold incl in *; intuition eauto.
+    assert (~In a l).
+    intro.
+    assert (In a (a :: l)) by auto.
+    apply H in H3.
+
+    Restart.
+    (* induction in NoDup l' (should be same as induction l') *)
+    induction 2.
+    apply incl_nil in H; subst; auto.
+    (* exists a, In a l /\ ~In a l0 *)
+    assert ({incl l l0} + {~incl l l0}).
+    admit.
+    destruct H2; eauto.
+
+    Restart.
+    (* direct induction on l' *)
+    intros.
+    generalize dependent l.
+    induction l'; intros; eauto.
+    apply incl_nil in H; subst; auto.
+    inversion H0; subst; intuition.
+
+    Restart.
+
+    (* brute force attempt to do induction on l and l' *)
+    induction l; intros; eauto.
+    induction l'; intros; eauto.
+    assert (In a []).
+    apply H; auto.
+    inversion H1.
+    inversion H0; subst; eauto.
+    apply IHl'; eauto.
+    assert ({a = a0} + {a <> a0}).
+    admit.
+    destruct H1; subst; eauto.
+    intros a' ?.
+    apply H in H1.
+    destruct H1; subst; eauto.
+    admit.
+
+    intros a' ?.
+    inversion H1; subst; eauto.
+    admit.
+    apply H in H1.
+    destruct H1; subst; eauto.
+
+    Restart.
+
+    (* more careful induction on l, l' *)
+    induction l, l'; intros; eauto.
+    assert (In a []) by eauto.
+    inversion H1.
+    rename a0 into a'.
+    inversion H0; subst.
+    assume ({a' = a} + {a <> a'}).
+    destruct H1; subst.
+    constructor; eauto.
+    intuition.
   Admitted.
 
   Lemma NoDup_writes : forall wb,
