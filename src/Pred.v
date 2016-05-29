@@ -502,6 +502,15 @@ Proof.
   firstorder.
 Qed.
 
+Lemma pimpl_and : forall (p : @pred AT AEQ V),
+  p <=p=> p /\ p.
+Proof.
+  firstorder.
+Qed.
+
+Lemma pimpl_and_split
+
+
 Lemma pimpl_trans:
   forall (a b c : @pred AT AEQ V),
   (a =p=> b) ->
