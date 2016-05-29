@@ -1039,87 +1039,57 @@ Section ConcurrentCache.
     inversion H; subst; eauto.
   Qed.
 
-  (** Oops, this isn't true: incl l l' only gives a subset relation
-  for l and l' treated as sets, so (incl [a; a] [a; b]) holds for
-  example, but l has duplicates. Instead of incl we need a injective
-  mapping from the indices of l to indices in l' where corresponding
-  elements match, a much more complicated permutation-like notion *)
-  Lemma NoDup_filter : forall A (l l': list A),
-      incl l l' ->
-      NoDup l' ->
-      NoDup l.
+  Lemma ina_key : forall a l v,
+      (SetoidList.InA (Map.eq_key (elt:=wb_entry)) (a, v) l) <->
+      (In a (map fst l)).
   Proof.
-    (* direct induction on l *)
-    induction l; intros; eauto.
-    assert (incl l l').
-    unfold incl in *; intuition eauto.
-    assert (~In a l).
-    intro.
-    assert (In a (a :: l)) by auto.
-    apply H in H3.
+    induction l; simpl.
+    split; inversion 1.
 
-    Restart.
-    (* induction in NoDup l' (should be same as induction l') *)
-    induction 2.
-    apply incl_nil in H; subst; auto.
-    (* exists a, In a l /\ ~In a l0 *)
-    assert ({incl l l0} + {~incl l l0}).
-    admit.
-    destruct H2; eauto.
-
-    Restart.
-    (* direct induction on l' *)
-    intros.
-    generalize dependent l.
-    induction l'; intros; eauto.
-    apply incl_nil in H; subst; auto.
-    inversion H0; subst; intuition.
-
-    Restart.
-
-    (* brute force attempt to do induction on l and l' *)
-    induction l; intros; eauto.
-    induction l'; intros; eauto.
-    assert (In a []).
-    apply H; auto.
-    inversion H1.
-    inversion H0; subst; eauto.
-    apply IHl'; eauto.
-    assert ({a = a0} + {a <> a0}).
-    admit.
-    destruct H1; subst; eauto.
-    intros a' ?.
-    apply H in H1.
-    destruct H1; subst; eauto.
-    admit.
-
-    intros a' ?.
+    split; inversion 1; subst.
+    destruct a0; simpl in *.
     inversion H1; subst; eauto.
-    admit.
-    apply H in H1.
-    destruct H1; subst; eauto.
+    right; eapply IHl; eauto.
 
-    Restart.
+    constructor.
+    reflexivity.
+    constructor 2.
+    apply IHl; auto.
+  Qed.
 
-    (* more careful induction on l, l' *)
-    induction l, l'; intros; eauto.
-    assert (In a []) by eauto.
-    inversion H1.
-    rename a0 into a'.
-    inversion H0; subst.
-    assume ({a' = a} + {a <> a'}).
-    destruct H1; subst.
+  Lemma nodup_keys : forall l,
+      SetoidList.NoDupA (Map.eq_key (elt:=wb_entry)) l ->
+      NoDup (map fst l).
+  Proof.
+    induction l; simpl; intros; eauto.
+    destruct a; simpl.
+    inversion H; subst.
     constructor; eauto.
-    intuition.
-  Admitted.
+    intro.
+    eapply ina_key in H0; eauto.
+  Qed.
 
   Lemma NoDup_writes : forall wb,
       NoDup (map fst (wb_writes wb)).
   Proof.
     intros.
-    eapply NoDup_filter.
-    apply wb_entries_writes_subset.
-    apply NoDup_entries.
+    pose proof (Map.elements_3w wb).
+    apply nodup_keys in H.
+
+    (* generalize inductive hypothesis *)
+    assert (NoDup (map fst (wb_writes wb)) /\
+            (forall a, In a (map fst (wb_writes wb)) ->
+                  In a (map fst (wb_entries wb)))).
+
+    unfold wb_writes, wb_entries.
+    generalize dependent (Map.elements wb).
+
+    induction l; simpl; auto; intros.
+    inversion H; subst.
+    destruct a as [ ? [] ]; simpl in *;
+      intuition auto.
+
+    intuition.
   Qed.
 
   Theorem in_nodup_split : forall A l (a:A),
