@@ -430,6 +430,34 @@ Module UCache.
   (** specs *)
   Opaque vsmerge.
 
+  Theorem writeback_ok' : forall a cs,
+    {< d vs,
+    PRE
+      diskIs d * [[ exists F, (F * a |-> vs)%pred d ]]
+    POST RET:cs' exists v,
+      ( [[ Map.find a (CSMap cs) = Some (v, true) /\
+         cs' = mk_cs (Map.add a (v, false) (CSMap cs)) (CSMaxCount cs) (CSEvict cs) ]] *
+         diskIs (upd d a (v, vsmerge vs))) \/
+      ( [[ (Map.find a (CSMap cs) = None \/
+          exists v, Map.find a (CSMap cs) = Some (v, false)) /\ cs' = cs ]] * diskIs d )
+    CRASH
+      diskIs d
+    >} writeback a cs.
+  Proof.
+    unfold writeback; intros.
+    prestep. norm. cancel.
+    rewrite diskIs_pred by eauto.
+    rewrite ptsto_pimpl_ptsto_subset; cancel.
+    intuition.
+    (* XXX: must state F is sync_invariant everywhere? *)
+    admit.
+    step.
+    or_l; cancel.
+    (* XXX: not true, diskIs is too strong *)
+    admit.
+  Admitted.
+
+
   Theorem writeback_ok : forall a cs,
     {< d vs (F : rawpred),
     PRE
@@ -976,26 +1004,6 @@ Module UCache.
     Unshelve. all: try exact addr_eq_dec; eauto; try exact unit.
   Qed.
 
-  Theorem sync_ok' : forall cs a,
-    {< d0 (F : rawpred) v0,
-    PRE
-      rep cs d0 * [[ sync_invariant F ]] *
-      [[ (F * a |+> v0)%pred d0 ]]
-    POST RET:cs exists d,
-      synrep cs d0 d *
-      [[ (F * a |+> (fst v0, nil))%pred d ]]
-    CRASH
-      exists cs', rep cs' d0
-    >} sync a cs.
-  Proof.
-    unfold sync; intros.
-    step.
-    prestep; norml; unfold stars; simpl.
-    rewrite rep_synrep_addr_clean by eauto.
-    cancel.
-    apply ptsto_pimpl_ptsto_subset.
-  Qed.
-
   Theorem sync_ok : forall cs a,
     {< d0 d (F : rawpred) v0,
     PRE
@@ -1008,15 +1016,14 @@ Module UCache.
       exists cs', rep cs' d0
     >} sync a cs.
   Proof.
-    intros; eapply pimpl_ok2.
-    apply sync_ok'.
-    intros.
-    norml; unfold stars; simpl.
+    unfold sync; intros.
+    prestep; norml; unfold stars; simpl.
     rewrite synrep_rep.
-    norm. cancel.
-    intuition simpl.
-    2: eauto. auto.
-    step.
+    cancel.
+    prestep; norml; unfold stars; simpl.
+    rewrite rep_synrep_addr_clean by eauto.
+    cancel.
+    apply ptsto_pimpl_ptsto_subset.
   Qed.
 
 
@@ -1039,8 +1046,7 @@ Module UCache.
       exists d',
       rep cs d' * [[ (F * a |+> (fst v0, nil))%pred d' ]]
     CRASH
-      exists cs' d',
-      rep cs' d' * [[ (F * a |+> v0)%pred d' ]]
+      exists cs', rep cs' d
     >} sync_one a cs.
   Proof.
     unfold sync_one.
@@ -1052,8 +1058,41 @@ Module UCache.
     cancel.
     cancel.
     cancel.
-    cancel.
   Qed.
+
+
+  Definition sync_two T a1 a2 (cs : cachestate) rx : prog T :=
+    cs <- begin_sync cs;
+    cs <- sync a1 cs;
+    cs <- sync a2 cs;
+    cs <- end_sync cs;
+    rx cs.
+
+  Theorem sync_two_ok : forall cs a1 a2,
+    {< d (F : rawpred) v1 v2,
+    PRE
+      rep cs d * [[ sync_invariant F /\ (F * a1 |+> v1 * a2 |+> v2)%pred d ]]
+    POST RET:cs
+      exists d',
+      rep cs d' * [[ (F * a1 |+> (fst v1, nil) * a2 |+> (fst v2, nil))%pred d' ]]
+    CRASH
+      exists cs' d, rep cs' d
+    >} sync_two a1 a2 cs.
+  Proof.
+    unfold sync_two.
+    prestep; norm. cancel. intuition simpl.
+    2: eauto. eauto.
+    safestep.
+    safestep.
+    safestep.
+    2: step.
+    admit. (* XXX: cannot chain syncs because sync_ok's PRE refers to d0 instead of d *)
+    cancel.
+    cancel.
+    cancel.
+    cancel.
+  Admitted.
+
 
 
 
