@@ -1039,6 +1039,11 @@ Section ConcurrentCache.
     inversion H; subst; eauto.
   Qed.
 
+  (** Oops, this isn't true: incl l l' only gives a subset relation
+  for l and l' treated as sets, so (incl [a; a] [a; b]) holds for
+  example, but l has duplicates. Instead of incl we need a injective
+  mapping from the indices of l to indices in l' where corresponding
+  elements match, a much more complicated permutation-like notion *)
   Lemma NoDup_filter : forall A (l l': list A),
       incl l l' ->
       NoDup l' ->
