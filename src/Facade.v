@@ -17,11 +17,13 @@ Inductive prog T :=
 | Done (v: T)
 | Double (n: nat) (rx: nat -> prog T).
 
-Example times20 T n rx : prog T :=
+Example times20 n T rx : prog T :=
   Double (5*n) (fun n2 => Double n2 rx).
 
 Inductive step T : prog T -> prog T -> Prop :=
 | StepDouble : forall n rx, step (Double n rx) (rx (n + n)).
+
+Hint Constructors step.
 
 Inductive outcome (T : Type) :=
 | Finished (v: T).
@@ -34,13 +36,58 @@ Inductive exec T : prog T -> outcome T -> Prop :=
 | XDone : forall v,
   exec (Done v) (Finished v).
 
-Definition computes_to T p (x : T) := exec (p (@Done T)) (Finished x).
+Hint Constructors exec.
+
+
+Definition bad_computes_to A p (x : A) := exec (p (@Done A)) (Finished x).
+
+Example bad_times20 T n rx : prog T :=
+  match rx 5 with
+  | Done _ => Double (5*n) (fun n2 => Double n2 rx)
+  | Double _ _ => rx 2
+  end.
+
+Lemma bad_twotimes20 : bad_computes_to (bad_times20 2) 40.
+Proof.
+  do 4 econstructor.
+Qed.
+
+Definition computes_to A (p : forall T, (A -> prog T) -> prog T) (x : A) :=
+  forall T (rx : A -> prog T) (y : T),
+    exec (rx x) (Finished y) <-> exec (p T rx) (Finished y).
 
 Infix "↝" := computes_to (at level 70).
 
 Lemma twotimes20 : times20 2 ↝ 40.
 Proof.
-  do 4 econstructor.
+  intros T rx y.
+  split; intro.
+  + econstructor.
+    econstructor.
+    econstructor.
+    econstructor.
+    trivial.
+  + inversion H; subst; clear H.
+    inversion H0; subst; clear H0.
+    inversion H1; subst; clear H1.
+    inversion H; subst; clear H.
+    trivial.
+Qed.
+
+Definition bad_times20' n T rx := @bad_times20 T n rx.
+
+Lemma bad_twotimes20_fails : ~ bad_times20' 2 ↝ 40.
+Proof.
+  unfold computes_to.
+  intro.
+  specialize (H nat (fun n => match n with
+    | 5 => Double 2 (@Done nat)
+    | n => Done n
+    end) 40).
+  destruct H as [H _].
+  specialize (H ltac:(do 2 econstructor)).
+  inversion H; subst; clear H.
+  inversion H0; subst; clear H0.
 Qed.
 
 Definition label := string.
@@ -187,7 +234,7 @@ Inductive NameTag T :=
 Arguments NTSome {T} key {H}.
 
 Inductive ScopeItem :=
-| SItem T (key : NameTag T) (val : (T -> prog T) -> prog T).
+| SItem A (key : NameTag A) (val : forall T, (A -> prog T) -> prog T).
 
 Notation "` k ->> v" := (SItem (NTSome k) v) (at level 50).
 
@@ -261,21 +308,25 @@ Notation "'ParametricExtraction' '#vars' x .. y '#program' post '#arguments' pre
      y binder,
      format "'ParametricExtraction' '//'    '#vars'       x .. y '//'    '#program'     post '//'    '#arguments'  pre '//'     ").
 
-Definition ret A T (x : A) : (A -> prog T) -> prog T := fun rx => rx x.
+Definition ret A (x : A) : forall T, (A -> prog T) -> prog T := fun T rx => rx x.
 
 Definition extract_code := projT1.
 
 Lemma ret_computes_to : forall A (x x' : A), ret x ↝ x' -> x = x'.
 Proof.
+  unfold ret, computes_to.
   intros.
-  inversion H.
-  inversion H0.
-  subst. trivial.
+  specialize (H A (@Done A) x).
+  destruct H as [_ H].
+  specialize (H ltac:(do 2 econstructor)).
+  inversion H; subst; clear H.
+  inversion H0; subst; clear H0.
+  trivial.
 Qed.
 
 Lemma ret_computes_to_refl : forall A (x : A), ret x ↝ x.
 Proof.
-  do 3 econstructor.
+  split; eauto.
 Qed.
 
 Hint Resolve ret_computes_to_refl.
@@ -291,7 +342,7 @@ Ltac deex :=
 Example micro_double :
   ParametricExtraction
     #vars        x
-    #program     Double x
+    #program     (fun T => @Double T x)
     #arguments [`"x" ->> ret x ].
 Proof.
   eexists.
@@ -314,9 +365,11 @@ Proof.
   apply ret_computes_to in H1; subst.
   eexists.
   split; [ | trivial ].
-  econstructor.
-  econstructor.
-  econstructor 2.
+  split; eauto.
+  intros.
+  inversion H; subst; clear H.
+  inversion H1; subst; clear H1.
+  trivial.
 Defined.
 
 
