@@ -12,83 +12,36 @@ Unset Printing Implicit Defensive.
 
 Local Open Scope string_scope.
 
+Definition state := nat.
 
 Inductive prog T :=
 | Done (v: T)
-| Double (n: nat) (rx: nat -> prog T).
+| SetState (s: state) (rx: unit -> prog T)
+| GetState (rx: state -> prog T).
 
-Example times20 n T rx : prog T :=
-  Double (5*n) (fun n2 => Double n2 rx).
-
-Inductive step T : prog T -> prog T -> Prop :=
-| StepDouble : forall n rx, step (Double n rx) (rx (n + n)).
+Inductive step T : state -> prog T -> state -> prog T -> Prop :=
+| StepSet : forall s s' rx, step s (SetState s' rx) s' (rx tt)
+| StepGet : forall s rx, step s (GetState rx) s (rx s).
 
 Hint Constructors step.
 
 Inductive outcome (T : Type) :=
-| Finished (v: T).
+| Finished (s: state) (v: T).
 
-Inductive exec T : prog T -> outcome T -> Prop :=
-| XStep : forall p p' out,
-  step p p' ->
-  exec p' out ->
-  exec p out
-| XDone : forall v,
-  exec (Done v) (Finished v).
+Inductive exec T : state -> prog T -> outcome T -> Prop :=
+| XStep : forall s p s' p' out,
+  step s p s' p' ->
+  exec s' p' out ->
+  exec s p out
+| XDone : forall s v,
+  exec s (Done v) (Finished s v).
 
 Hint Constructors exec.
 
 
-Definition bad_computes_to A p (x : A) := exec (p (@Done A)) (Finished x).
-
-Example bad_times20 T n rx : prog T :=
-  match rx 5 with
-  | Done _ => Double (5*n) (fun n2 => Double n2 rx)
-  | Double _ _ => rx 2
-  end.
-
-Lemma bad_twotimes20 : bad_computes_to (bad_times20 2) 40.
-Proof.
-  do 4 econstructor.
-Qed.
-
-Definition computes_to A (p : forall T, (A -> prog T) -> prog T) (x : A) :=
-  forall T (rx : A -> prog T) (y : T),
-    exec (rx x) (Finished y) <-> exec (p T rx) (Finished y).
-
-Infix "↝" := computes_to (at level 70).
-
-Lemma twotimes20 : times20 2 ↝ 40.
-Proof.
-  intros T rx y.
-  split; intro.
-  + econstructor.
-    econstructor.
-    econstructor.
-    econstructor.
-    trivial.
-  + inversion H; subst; clear H.
-    inversion H0; subst; clear H0.
-    inversion H1; subst; clear H1.
-    inversion H; subst; clear H.
-    trivial.
-Qed.
-
-Definition bad_times20' n T rx := @bad_times20 T n rx.
-
-Lemma bad_twotimes20_fails : ~ bad_times20' 2 ↝ 40.
-Proof.
-  unfold computes_to.
-  intro.
-  specialize (H nat (fun n => match n with
-    | 5 => Double 2 (@Done nat)
-    | n => Done n
-    end) 40).
-  destruct H as [H _].
-  specialize (H ltac:(do 2 econstructor)).
-  inversion H; subst; clear H.
-  inversion H0; subst; clear H0.
-Qed.
+Definition computes_to A (p : forall T, (A -> prog T) -> prog T) (s s' : state) (x : A) :=
+  forall T (rx : A -> prog T) s'' (y : T),
+    exec s' (rx x) (Finished s'' y) <-> exec s (p T rx) (Finished s'' y).
 
 Definition label := string.
 Definition var := string.
@@ -125,13 +78,18 @@ Inductive Stmt :=
 
 Arguments Assign v val%facade.
 
+Definition diskstate := nat.
+
+Definition dummy_diskstate : diskstate := 0. (* :/ *)
+
 Inductive Value :=
-| SCA : W -> Value.
-(* TODO ADT *)
+| SCA : W -> Value
+| Disk : diskstate -> Value.
 
 Definition is_mutable v :=
   match v with
   | SCA _ => false
+  | Disk _ => true
   end.
 
 
@@ -233,23 +191,51 @@ Inductive NameTag T :=
 
 Arguments NTSome {T} key {H}.
 
-Inductive ScopeItem :=
-| SItem A (key : NameTag A) (val : forall T, (A -> prog T) -> prog T).
+(*
+Inductive ScopeValue A :=
+| ProgRet (start : diskstate) (p : forall T, (A -> prog T) -> prog T)
+| ProgDisk (start : diskstate) (p : forall T, (A -> prog T) -> prog T).
 
-Notation "` k ->> v" := (SItem (NTSome k) v) (at level 50).
+Definition ScopeValueIs A (val : ScopeValue A) :=
+  match val return (match val with
+                    | ProgRet _ _ => A
+                    | ProgDisk _ _ => diskstate
+                    end) -> Prop with
+  | ProgRet d p => fun r => exists d', computes_to p d d' r
+  | ProgDisk d p => fun d' => exists r, computes_to p d d' r
+  end.
+
+Infix "↝" := ScopeValueIs (at level 60).
+*)
+
+Inductive ScopeItem :=
+| SItemRet A (key : NameTag A) (start : diskstate) (p : forall T, (A -> prog T) -> prog T)
+| SItemDisk A (key : NameTag diskstate) (start : diskstate) (p : forall T, (A -> prog T) -> prog T).
+
+(*
+Notation "` k ->> v" := (SItemRet (NTSome k) v) (at level 50).
+*)
 
 (* Not really a telescope; should maybe just be called Scope *)
 (* TODO: use fmap *)
 Definition Telescope := list ScopeItem.
 
-Fixpoint SameValues st (tenv : Telescope) :=
+Fixpoint SameValues (st : State) (tenv : Telescope) :=
   match tenv with
   | [] => True
-  | SItem key val :: tail =>
+  | SItemRet key d0 p :: tail =>
     match key with
     | NTSome k =>
       match StringMap.find k st with
-      | Some v => exists v', val ↝ v' /\ v = wrap v'
+      | Some v => exists v' d, computes_to p d0 d v' /\ v = wrap v'
+      | None => False
+      end /\ SameValues (StringMap.remove k st) tail
+    end
+  | SItemDisk key d0 p :: tail =>
+    match key with
+    | NTSome k =>
+      match StringMap.find k st with
+      | Some d => exists d' r, computes_to p d0 d' r /\ d = wrap d'
       | None => False
       end /\ SameValues (StringMap.remove k st) tail
     end
@@ -301,35 +287,20 @@ Proof.
           congruence.
 Defined.
 
+(*
 Notation "'ParametricExtraction' '#vars' x .. y '#program' post '#arguments' pre" :=
   (sigT (fun prog => (forall x, .. (forall y, {{ pre }} prog {{ [ `"out" ->> post ] }}) ..)))
     (at level 200,
      x binder,
      y binder,
      format "'ParametricExtraction' '//'    '#vars'       x .. y '//'    '#program'     post '//'    '#arguments'  pre '//'     ").
+*)
 
 Definition ret A (x : A) : forall T, (A -> prog T) -> prog T := fun T rx => rx x.
 
 Definition extract_code := projT1.
 
-Lemma ret_computes_to : forall A (x x' : A), ret x ↝ x' -> x = x'.
-Proof.
-  unfold ret, computes_to.
-  intros.
-  specialize (H A (@Done A) x).
-  destruct H as [_ H].
-  specialize (H ltac:(do 2 econstructor)).
-  inversion H; subst; clear H.
-  inversion H0; subst; clear H0.
-  trivial.
-Qed.
-
-Lemma ret_computes_to_refl : forall A (x : A), ret x ↝ x.
-Proof.
-  split; eauto.
-Qed.
-
-Hint Resolve ret_computes_to_refl.
+Ltac invert H := inversion H; subst; clear H.
 
 (* TODO: use Pred.v's *)
 Ltac deex :=
@@ -339,6 +310,87 @@ Ltac deex :=
     destruct H as [newvar ?]; intuition subst
   end.
 
+
+Lemma ret_computes_to : forall A (x x' : A) d d', computes_to (ret x) d d' x' -> x = x'.
+Proof.
+  unfold ret, computes_to.
+  intros.
+  specialize (H A (@Done A) d x).
+  destruct H as [_ H].
+  specialize (H ltac:(do 2 econstructor)).
+  invert H.
+  invert H0.
+  trivial.
+Qed.
+
+Lemma ret_computes_to_disk : forall A (x x' : A) d d', computes_to (ret x) d d' x' -> d = d'.
+Proof.
+  unfold ret, computes_to.
+  intros.
+  specialize (H A (@Done A) d x).
+  destruct H as [_ H].
+  specialize (H ltac:(do 2 econstructor)).
+  invert H.
+  invert H0.
+  trivial.
+Qed.
+
+Lemma ret_computes_to_refl : forall A (x : A) d, computes_to (ret x) d d x.
+Proof.
+  split; eauto.
+Qed.
+
+Hint Resolve ret_computes_to_refl.
+
+
+Example micro_noop : sigT (fun p => forall d0,
+  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }} p {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }}).
+Proof.
+  eexists.
+  intros.
+  instantiate (1 := Skip).
+  intro. intros.
+  invert H0. eauto.
+Defined.
+
+
+Example micro_write5 : sigT (fun p => forall d0,
+  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }} p {{ [ SItemDisk (NTSome "disk") d0 (fun T => @SetState T 5) ] }}).
+Proof.
+  (* Can't instantiate this yet -- need a way to write in the extraction. *)
+Abort.
+
+Ltac maps := rewrite ?StringMapFacts.remove_neq_o, ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o in * by congruence.
+
+Example micro_plus : sigT (fun p => forall d0 x y,
+  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "x") d0 (ret x) ; SItemRet (NTSome "y") d0 (ret y) ] }}
+    p
+  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "out") d0 (ret (x + y)) ] }}).
+Proof.
+  eexists.
+  intros.
+  instantiate (1 := ("out" <- (Var "x" + Var "y"))%facade).
+  intro. intros.
+  invert H0.
+  simpl in *.
+  maps.
+  destruct (find "disk" initial_state); [ | exfalso; solve [ intuition idtac ] ].
+  destruct (find "x" initial_state); [ | exfalso; solve [ intuition idtac ] ].
+  destruct (find "y" initial_state); [ | exfalso; solve [ intuition idtac ] ].
+  intuition idtac.
+  repeat deex.
+  simpl in *.
+  invert H3.
+  eexists. exists d0. intuition.
+  apply ret_computes_to in H2.
+  apply ret_computes_to in H1.
+  apply ret_computes_to_disk in H0.
+  subst.
+  trivial.
+Defined.
+
+
+(*
 Example micro_double :
   ParametricExtraction
     #vars        x
@@ -414,4 +466,4 @@ Proof.
 Defined.
 
 Definition micro_if_code := Eval lazy in (extract_code micro_if).
-Print micro_if_code.
+Print micro_if_code.*)
