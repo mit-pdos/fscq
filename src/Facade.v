@@ -459,6 +459,76 @@ Proof.
   trivial.
 Defined.
 
+Example micro_write_and_ret : sigT (fun p => forall d0 a v,
+  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "a") d0 (ret a) ; SItemRet (NTSome "v") d0 (ret v) ] }}
+    p
+  {{ [ SItemDisk (NTSome "disk") d0 (fun T rx => @Write T a v (fun _ => rx (a + v))) ;
+       SItemRet (NTSome "out") d0 (fun T rx => @Write T a v (fun _ => rx (a + v))) ] }} // disk_env).
+Proof.
+  eexists.
+  intros.
+  instantiate (1 := (Call "_" "write" ["disk"; "a"; "v"]; "out" <- Var "a" + Var "v")%facade).
+  intro. intros.
+  invert H0.
+  invert H3.
+  invert H6.
+  simpl in *.
+  maps.
+  compute in H4.
+  invert H4.
+  simpl in *.
+  repeat match goal with
+  | [ H : exists (varname : _), _ |- _ ] =>
+    let newvar := fresh varname in
+    destruct H as [newvar ?]; subst
+  end.
+  do 3 (destruct output; try discriminate).
+  invert H0.
+  simpl in *.
+  subst st'0.
+  maps.
+  destruct (find "disk" initial_state); [ | exfalso; solve [ intuition idtac ] ].
+  destruct (find "a" initial_state); [ | exfalso; solve [ intuition idtac ] ].
+  destruct (find "v" initial_state); [ | exfalso; solve [ intuition idtac ] ].
+  destruct H. destruct H0. destruct H1. repeat match goal with
+  | [ H : exists (varname : _), _ |- _ ] =>
+    let newvar := fresh varname in
+    destruct H as [newvar ?]; subst
+  end.
+  repeat match goal with
+  | [ H : _ /\ _ |- _ ] => destruct H
+  end.
+  assert (H' := H).
+  repeat match goal with
+  | [ H : computes_to _ _ _ _ |- _ ] =>
+      let H' := fresh H in
+      assert (H' := H); apply ret_computes_to in H; apply ret_computes_to_disk in H'; subst
+  end.
+  invert H5.
+  simpl in *.
+  invert H6.
+  do 2 eexists; intuition.
+  econstructor.
+  econstructor.
+  econstructor.
+  eauto.
+  intro.
+  invert H1.
+  invert H5.
+  eauto.
+  trivial.
+  do 2 eexists; intuition.
+  econstructor.
+  econstructor.
+  econstructor.
+  eauto.
+  intro.
+  invert H1.
+  invert H5.
+  eauto.
+  congruence.
+Defined.
+
 (*
 Example micro_double :
   ParametricExtraction
