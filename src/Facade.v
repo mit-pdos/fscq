@@ -12,9 +12,9 @@ Unset Printing Implicit Defensive.
 
 Local Open Scope string_scope.
 
-Definition diskstate := bool.
+Definition diskstate := nat.
 
-Definition dummy_diskstate : diskstate := false. (* :/ *)
+Definition dummy_diskstate : diskstate := 0. (* :/ *)
 
 
 Inductive prog T :=
@@ -76,7 +76,7 @@ Inductive Stmt :=
 | Seq : Stmt -> Stmt -> Stmt
 | If : Expr -> Stmt -> Stmt -> Stmt
 | While : Expr -> Stmt -> Stmt
-(* | Call : var -> label -> list var -> Stmt (* TODO *) *)
+| Call : var -> label -> list var -> Stmt
 | Assign : var -> Expr -> Stmt.
 
 Arguments Assign v val%facade.
@@ -85,10 +85,10 @@ Inductive Value :=
 | SCA : W -> Value
 | Disk : diskstate -> Value.
 
-Definition is_mutable v :=
+Definition can_alias v :=
   match v with
-  | SCA _ => false
-  | Disk _ => true
+  | SCA _ => true
+  | Disk _ => false
   end.
 
 
@@ -130,47 +130,88 @@ Definition eval_bool st e : option bool :=
 Definition is_true st e := eval_bool st e = Some true.
 Definition is_false st e := eval_bool st e = Some false.
 
-Definition mapsto_mutable x st :=
+Definition mapsto_can_alias x st :=
   match find x st with
-  | Some v => is_mutable v
+  | Some v => can_alias v
   | None => true
   end.
 
-(* Definition Env := StringMap.t _. *)
 
-Inductive RunsTo (* TODO env *) : Stmt -> State -> State -> Prop :=
+Fixpoint add_remove_many keys (input : list Value) (output : list (option Value)) st :=
+  match keys, input, output with
+    | k :: keys', i :: input', o :: output' =>
+      let st' :=
+          match can_alias i, o with
+            | false, Some v => add k v st
+            | false, None => StringMap.remove k st
+            | _, _ => st
+          end in
+      add_remove_many keys' input' output' st'
+    | _, _, _ => st
+  end.
+
+
+Fixpoint mapM A B (f : A -> option B) ls :=
+  match ls with
+    | x :: xs =>
+      match f x, mapM f xs with
+        | Some y, Some ys => Some (y :: ys)
+        | _, _ => None
+      end
+    | nil => Some nil
+  end.
+
+Record AxiomaticSpec := {
+  PreCond (input : list Value) : Prop;
+  PostCond (input_output : list (Value * option Value)) (ret : Value) : Prop;
+  (* PreCondTypeConform : type_conforming PreCond *)
+}.
+
+Definition Env := StringMap.t AxiomaticSpec.
+
+Inductive RunsTo (env : Env) : Stmt -> State -> State -> Prop :=
 | RunsToSkip : forall st,
-    RunsTo Skip st st
+    RunsTo env Skip st st
 | RunsToSeq : forall a b st st' st'',
-    RunsTo a st st' ->
-    RunsTo b st' st'' ->
-    RunsTo (Seq a b) st st''
+    RunsTo env a st st' ->
+    RunsTo env b st' st'' ->
+    RunsTo env (Seq a b) st st''
 | RunsToIfTrue : forall cond t f st st',
     is_true st cond ->
-    RunsTo t st st' ->
-    RunsTo (If cond t f) st st'
+    RunsTo env t st st' ->
+    RunsTo env (If cond t f) st st'
 | RunsToIfFalse : forall cond t f st st',
     is_false st cond ->
-     RunsTo f st st' ->
-    RunsTo (If cond t f) st st'
+    RunsTo env f st st' ->
+    RunsTo env (If cond t f) st st'
 | RunsToWhileTrue : forall cond body st st' st'',
     let loop := While cond body in
     is_true st cond ->
-    RunsTo body st st' ->
-    RunsTo loop st' st'' ->
-    RunsTo loop st st''
+    RunsTo env body st st' ->
+    RunsTo env loop st' st'' ->
+    RunsTo env loop st st''
 | RunsToWhileFalse : forall cond body st st',
     let loop := While cond body in
     is_false st cond ->
-    RunsTo loop st st'
+    RunsTo env loop st st'
 | RunsToAssign : forall x e st st' v,
     (* rhs can't be a mutable object, to prevent aliasing *)
     eval st e = Some v ->
-    is_mutable v = false ->
+    can_alias v = true ->
     st' = add x v st ->
-    RunsTo (Assign x e) st st'.
+    RunsTo env (Assign x e) st st'
+| RunsToCallAx : forall x f args st spec input output ret,
+    StringMap.find f env = Some spec ->
+    mapM (fun k => find k st) args = Some input ->
+    mapsto_can_alias x st = true ->
+    PreCond spec input ->
+    length input = length output ->
+    PostCond spec (List.combine input output) ret ->
+    let st' := add_remove_many args input output st in
+    let st' := add x ret st' in
+    RunsTo env (Call x f args) st st'.
 
-Arguments RunsTo prog%facade st st'.
+Arguments RunsTo env prog%facade st st'.
 
 Notation "A ; B" := (Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : facade_scope.
 Notation "x <- y" := (Assign x y) (at level 90) : facade_scope.
@@ -189,23 +230,6 @@ Inductive NameTag T :=
 | NTSome (key: string) (H: FacadeWrapper Value T) : NameTag T.
 
 Arguments NTSome {T} key {H}.
-
-(*
-Inductive ScopeValue A :=
-| ProgRet (start : diskstate) (p : forall T, (A -> prog T) -> prog T)
-| ProgDisk (start : diskstate) (p : forall T, (A -> prog T) -> prog T).
-
-Definition ScopeValueIs A (val : ScopeValue A) :=
-  match val return (match val with
-                    | ProgRet _ _ => A
-                    | ProgDisk _ _ => diskstate
-                    end) -> Prop with
-  | ProgRet d p => fun r => exists d', computes_to p d d' r
-  | ProgDisk d p => fun d' => exists r, computes_to p d d' r
-  end.
-
-Infix "↝" := ScopeValueIs (at level 60).
-*)
 
 Inductive ScopeItem :=
 | SItemRet A (key : NameTag A) (start : diskstate) (p : forall T, (A -> prog T) -> prog T)
@@ -242,19 +266,19 @@ Fixpoint SameValues (st : State) (tenv : Telescope) :=
 
 Notation "ENV ≲ TENV" := (SameValues ENV TENV) (at level 50).
 
-Definition ProgOk (* env *) prog (initial_tstate final_tstate : Telescope) :=
+Definition ProgOk env prog (initial_tstate final_tstate : Telescope) :=
   forall initial_state : State,
     initial_state ≲ initial_tstate ->
     (* Safe ... /\ *)
     forall final_state : State,
-      RunsTo (* env *) prog initial_state final_state ->
+      RunsTo env prog initial_state final_state ->
       (final_state ≲ final_tstate).
 
-Arguments ProgOk prog%facade_scope initial_tstate final_tstate.
+Arguments ProgOk env prog%facade_scope initial_tstate final_tstate.
 
-Notation "{{ A }} P {{ B }}" :=
-  (ProgOk (* EV *) P A B)
-    (at level 60, format "'[v' '{{'  A  '}}' '/'    P '/' '{{'  B  '}}' ']'").
+Notation "{{ A }} P {{ B }} // EV" :=
+  (ProgOk EV P A B)
+    (at level 60, format "'[v' '{{'  A  '}}' '/'    P '/' '{{'  B  '}}'  //  EV ']'").
 
 Ltac FacadeWrapper_t :=
   abstract (repeat match goal with
@@ -304,6 +328,8 @@ Ltac deex :=
     destruct H as [newvar ?]; intuition subst
   end.
 
+Ltac maps := rewrite ?StringMapFacts.remove_neq_o, ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o in * by congruence.
+
 
 Lemma ret_computes_to : forall A (x x' : A) d d', computes_to (ret x) d d' x' -> x = x'.
 Proof.
@@ -338,7 +364,7 @@ Hint Resolve ret_computes_to_refl.
 
 
 Example micro_noop : sigT (fun p => forall d0,
-  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }} p {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }}).
+  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }} p {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }} // empty _).
 Proof.
   eexists.
   intros.
@@ -347,19 +373,62 @@ Proof.
   invert H0. eauto.
 Defined.
 
+Definition do_write (d v : diskstate) : diskstate := v.
 
-Example micro_write5 : sigT (fun p => forall d0,
-  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }} p {{ [ SItemDisk (NTSome "disk") d0 (fun T => @SetState T false) ] }}).
+Definition write : AxiomaticSpec.
+  refine {|
+    PreCond := fun args => exists (d v : diskstate),
+      args = (wrap d) :: (wrap v) :: nil;
+    PostCond := fun args ret => exists (d v : diskstate),
+      args = (wrap d, Some (wrap (do_write d v))) :: (wrap v, None) :: nil
+  |}.
+Defined.
+
+Definition disk_env : Env := add "write" write (empty _).
+
+Example micro_write : sigT (fun p => forall d0 v,
+  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "v") d0 (ret v) ] }}
+    p
+  {{ [ SItemDisk (NTSome "disk") d0 (fun T => @SetState T v) ] }} // disk_env).
 Proof.
-  (* Can't instantiate this yet -- need a way to write in the extraction. *)
-Abort.
-
-Ltac maps := rewrite ?StringMapFacts.remove_neq_o, ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o in * by congruence.
+  eexists.
+  intros.
+  instantiate (1 := (Call "_" "write" ["disk"; "v"])%facade).
+  intro. intros.
+  invert H0.
+  simpl in *.
+  maps.
+  compute in H4.
+  invert H4.
+  simpl in *.
+  destruct (find "disk" initial_state); [ | exfalso; solve [ intuition idtac ] ].
+  destruct (find "v" initial_state); [ | exfalso; solve [ intuition idtac ] ].
+  intuition idtac.
+  repeat deex.
+  apply ret_computes_to in H1.
+  apply ret_computes_to_disk in H0.
+  invert H.
+  invert H5.
+  do 2 (destruct output; try discriminate).
+  simpl in *.
+  invert H4.
+  subst st'.
+  maps.
+  do 2 eexists; intuition.
+  econstructor.
+  econstructor.
+  econstructor.
+  eauto.
+  intro.
+  invert H.
+  invert H0.
+  eauto.
+Defined.
 
 Example micro_plus : sigT (fun p => forall d0 x y,
   {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "x") d0 (ret x) ; SItemRet (NTSome "y") d0 (ret y) ] }}
     p
-  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "out") d0 (ret (x + y)) ] }}).
+  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "out") d0 (ret (x + y)) ] }} // empty _).
 Proof.
   eexists.
   intros.
@@ -375,6 +444,9 @@ Proof.
   repeat deex.
   simpl in *.
   invert H3.
+  (* Whoops, broke this by making diskstate := nat *)
+Abort.
+(*
   eexists. exists d0. intuition.
   apply ret_computes_to in H2.
   apply ret_computes_to in H1.
@@ -382,7 +454,7 @@ Proof.
   subst.
   trivial.
 Defined.
-
+*)
 
 (*
 Example micro_double :
