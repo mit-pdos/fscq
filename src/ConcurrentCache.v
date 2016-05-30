@@ -1103,13 +1103,12 @@ Section ConcurrentCache.
     intros.
     induction l.
     inversion H0.
+    inversion H; subst; clear H.
     destruct H0; subst.
     - exists nil, l; intuition.
-      inversion H; intuition.
-    - inversion H; subst; intuition.
-      repeat deex.
+    - intuition; repeat deex.
       exists (a0 :: l1), l2; intuition.
-      inversion H2; subst; eauto.
+      inversion H1; subst; eauto.
   Qed.
 
   Theorem in_nodup_map_split : forall A B (f: A -> B) l (a:A),
