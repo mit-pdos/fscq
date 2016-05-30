@@ -275,7 +275,7 @@ Notation "ENV ≲ TENV" := (SameValues ENV TENV) (at level 50).
 Definition ProgOk env prog (initial_tstate final_tstate : Telescope) :=
   forall initial_state : State,
     initial_state ≲ initial_tstate ->
-    (* Safe ... /\ *)
+    (* Safe ... /\ *) (* TODO this is important! *)
     forall final_state : State,
       RunsTo env prog initial_state final_state ->
       (final_state ≲ final_tstate).
@@ -397,7 +397,7 @@ Example micro_write : sigT (fun p => forall d0 a v,
 Proof.
   eexists.
   intros.
-  (* TODO: when I pass wrong # of arguments, this just becomes trivially provable..... *)
+  (* TODO: when I pass wrong # of arguments, this just becomes trivially provable. Need to prove Safe too! *)
   instantiate (1 := (Call "_" "write" ["disk"; "a"; "v"])%facade).
   intro. intros.
   invert H0.
