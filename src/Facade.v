@@ -12,19 +12,25 @@ Unset Printing Implicit Defensive.
 
 Local Open Scope string_scope.
 
-Definition diskstate := nat.
+Definition addr := nat.
+Definition valu := nat.
 
-Definition dummy_diskstate : diskstate := 0. (* :/ *)
+Definition diskstate := addr -> valu.
 
+Definition upd (a : addr) (v : valu) (d : diskstate) :=
+  fun a0 =>
+    if Nat.eq_dec a a0 then v else d a0.
+
+Opaque upd.
 
 Inductive prog T :=
 | Done (v: T)
-| SetState (s: diskstate) (rx: unit -> prog T)
-| GetState (rx: diskstate -> prog T).
+| Read (a: addr) (rx: valu -> prog T)
+| Write (a: addr) (v: valu) (rx: unit -> prog T).
 
 Inductive step T : diskstate -> prog T -> diskstate -> prog T -> Prop :=
-| StepSet : forall s s' rx, step s (SetState s' rx) s' (rx tt)
-| StepGet : forall s rx, step s (GetState rx) s (rx s).
+| StepRead : forall d a rx, step d (Read a rx) d (rx (d a))
+| StepWrite : forall d a v rx, step d (Write a v rx) (upd a v d) (rx tt).
 
 Hint Constructors step.
 
@@ -373,27 +379,26 @@ Proof.
   invert H0. eauto.
 Defined.
 
-Definition do_write (d v : diskstate) : diskstate := v.
-
 Definition write : AxiomaticSpec.
   refine {|
-    PreCond := fun args => exists (d v : diskstate),
-      args = (wrap d) :: (wrap v) :: nil;
-    PostCond := fun args ret => exists (d v : diskstate),
-      args = (wrap d, Some (wrap (do_write d v))) :: (wrap v, None) :: nil
+    PreCond := fun args => exists (d : diskstate) (a : addr) (v : valu),
+      args = (wrap d) :: (wrap a) :: (wrap v) :: nil;
+    PostCond := fun args ret => exists (d : diskstate) (a : addr) (v : valu),
+      args = (wrap d, Some (wrap (upd a v d))) :: (wrap a, None) :: (wrap v, None) :: nil
   |}.
 Defined.
 
 Definition disk_env : Env := add "write" write (empty _).
 
-Example micro_write : sigT (fun p => forall d0 v,
-  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "v") d0 (ret v) ] }}
+Example micro_write : sigT (fun p => forall d0 a v,
+  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "a") d0 (ret a) ; SItemRet (NTSome "v") d0 (ret v) ] }}
     p
-  {{ [ SItemDisk (NTSome "disk") d0 (fun T => @SetState T v) ] }} // disk_env).
+  {{ [ SItemDisk (NTSome "disk") d0 (fun T => @Write T a v) ] }} // disk_env).
 Proof.
   eexists.
   intros.
-  instantiate (1 := (Call "_" "write" ["disk"; "v"])%facade).
+  (* TODO: when I pass wrong # of arguments, this just becomes trivially provable..... *)
+  instantiate (1 := (Call "_" "write" ["disk"; "a"; "v"])%facade).
   intro. intros.
   invert H0.
   simpl in *.
@@ -402,16 +407,18 @@ Proof.
   invert H4.
   simpl in *.
   destruct (find "disk" initial_state); [ | exfalso; solve [ intuition idtac ] ].
+  destruct (find "a" initial_state); [ | exfalso; solve [ intuition idtac ] ].
   destruct (find "v" initial_state); [ | exfalso; solve [ intuition idtac ] ].
   intuition idtac.
   repeat deex.
   apply ret_computes_to in H1.
+  apply ret_computes_to in H2.
   apply ret_computes_to_disk in H0.
   invert H.
   invert H5.
-  do 2 (destruct output; try discriminate).
+  do 3 (destruct output; try discriminate).
   simpl in *.
-  invert H4.
+  invert H7.
   subst st'.
   maps.
   do 2 eexists; intuition.
@@ -444,9 +451,6 @@ Proof.
   repeat deex.
   simpl in *.
   invert H3.
-  (* Whoops, broke this by making diskstate := nat *)
-Abort.
-(*
   eexists. exists d0. intuition.
   apply ret_computes_to in H2.
   apply ret_computes_to in H1.
@@ -454,7 +458,6 @@ Abort.
   subst.
   trivial.
 Defined.
-*)
 
 (*
 Example micro_double :
