@@ -12,36 +12,39 @@ Unset Printing Implicit Defensive.
 
 Local Open Scope string_scope.
 
-Definition state := nat.
+Definition diskstate := bool.
+
+Definition dummy_diskstate : diskstate := false. (* :/ *)
+
 
 Inductive prog T :=
 | Done (v: T)
-| SetState (s: state) (rx: unit -> prog T)
-| GetState (rx: state -> prog T).
+| SetState (s: diskstate) (rx: unit -> prog T)
+| GetState (rx: diskstate -> prog T).
 
-Inductive step T : state -> prog T -> state -> prog T -> Prop :=
+Inductive step T : diskstate -> prog T -> diskstate -> prog T -> Prop :=
 | StepSet : forall s s' rx, step s (SetState s' rx) s' (rx tt)
 | StepGet : forall s rx, step s (GetState rx) s (rx s).
 
 Hint Constructors step.
 
 Inductive outcome (T : Type) :=
-| Finished (s: state) (v: T).
+| Finished (d: diskstate) (v: T).
 
-Inductive exec T : state -> prog T -> outcome T -> Prop :=
-| XStep : forall s p s' p' out,
-  step s p s' p' ->
-  exec s' p' out ->
-  exec s p out
-| XDone : forall s v,
-  exec s (Done v) (Finished s v).
+Inductive exec T : diskstate -> prog T -> outcome T -> Prop :=
+| XStep : forall d p d' p' out,
+  step d p d' p' ->
+  exec d' p' out ->
+  exec d p out
+| XDone : forall d v,
+  exec d (Done v) (Finished d v).
 
 Hint Constructors exec.
 
 
-Definition computes_to A (p : forall T, (A -> prog T) -> prog T) (s s' : state) (x : A) :=
-  forall T (rx : A -> prog T) s'' (y : T),
-    exec s' (rx x) (Finished s'' y) <-> exec s (p T rx) (Finished s'' y).
+Definition computes_to A (p : forall T, (A -> prog T) -> prog T) (d d' : diskstate) (x : A) :=
+  forall T (rx : A -> prog T) d'' (y : T),
+    exec d' (rx x) (Finished d'' y) <-> exec d (p T rx) (Finished d'' y).
 
 Definition label := string.
 Definition var := string.
@@ -77,10 +80,6 @@ Inductive Stmt :=
 | Assign : var -> Expr -> Stmt.
 
 Arguments Assign v val%facade.
-
-Definition diskstate := nat.
-
-Definition dummy_diskstate : diskstate := 0. (* :/ *)
 
 Inductive Value :=
 | SCA : W -> Value
@@ -276,15 +275,10 @@ Proof.
             wrap_inj := _ |}; FacadeWrapper_t.
 Defined.
 
-Instance FacadeWrapper_Bool : FacadeWrapper Value bool.
+Instance FacadeWrapper_Disk : FacadeWrapper Value diskstate.
 Proof.
-  refine {| wrap := fun v => if (Bool.bool_dec v true) then (SCA 1) else (SCA 0);
-            wrap_inj := _ |}.
-  intros; destruct (Bool.bool_dec v true);
-          destruct (Bool.bool_dec v' true);
-          destruct v;
-          destruct v';
-          congruence.
+  refine {| wrap := Disk;
+            wrap_inj := _ |}; FacadeWrapper_t.
 Defined.
 
 (*
@@ -355,7 +349,7 @@ Defined.
 
 
 Example micro_write5 : sigT (fun p => forall d0,
-  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }} p {{ [ SItemDisk (NTSome "disk") d0 (fun T => @SetState T 5) ] }}).
+  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }} p {{ [ SItemDisk (NTSome "disk") d0 (fun T => @SetState T false) ] }}).
 Proof.
   (* Can't instantiate this yet -- need a way to write in the extraction. *)
 Abort.
