@@ -431,31 +431,23 @@ Module UCache.
   Opaque vsmerge.
 
   Theorem writeback_ok' : forall a cs,
-    {< d vs,
+    {< vs0,
     PRE
-      diskIs d * [[ exists F, (F * a |-> vs)%pred d ]]
+      a |+> vs0
     POST RET:cs' exists v,
       ( [[ Map.find a (CSMap cs) = Some (v, true) /\
          cs' = mk_cs (Map.add a (v, false) (CSMap cs)) (CSMaxCount cs) (CSEvict cs) ]] *
-         diskIs (upd d a (v, vsmerge vs))) \/
+         a |+> (v, vsmerge vs0)) \/
       ( [[ (Map.find a (CSMap cs) = None \/
-          exists v, Map.find a (CSMap cs) = Some (v, false)) /\ cs' = cs ]] * diskIs d )
+          exists v, Map.find a (CSMap cs) = Some (v, false)) /\ cs' = cs ]] * a |+> vs0 )
     CRASH
-      diskIs d
+      a |+> vs0
     >} writeback a cs.
   Proof.
     unfold writeback; intros.
-    prestep. norm. cancel.
-    rewrite diskIs_pred by eauto.
-    rewrite ptsto_pimpl_ptsto_subset; cancel.
-    intuition.
-    (* XXX: must state F is sync_invariant everywhere? *)
-    admit.
-    step.
-    or_l; cancel.
-    (* XXX: not true, diskIs is too strong *)
-    admit.
-  Admitted.
+    hoare.
+    Unshelve. all: eauto.
+  Qed.
 
 
   Theorem writeback_ok : forall a cs,
@@ -1004,11 +996,14 @@ Module UCache.
     Unshelve. all: try exact addr_eq_dec; eauto; try exact unit.
   Qed.
 
+
+
   Theorem sync_ok : forall cs a,
-    {< d0 d (F : rawpred) v0,
+    {< d0 d (F F' : rawpred) v0 v',
     PRE
       synrep cs d0 d * [[ sync_invariant F ]] *
-      [[ (F * a |+> v0)%pred d0 ]]
+      [[ (F * a |+> v0)%pred d ]] *
+      [[ (F' * a |+> v')%pred d0 ]]
     POST RET:cs exists d,
       synrep cs d0 d *
       [[ (F * a |+> (fst v0, nil))%pred d ]]
@@ -1017,13 +1012,154 @@ Module UCache.
     >} sync a cs.
   Proof.
     unfold sync; intros.
-    prestep; norml; unfold stars; simpl.
-    rewrite synrep_rep.
-    cancel.
-    prestep; norml; unfold stars; simpl.
-    rewrite rep_synrep_addr_clean by eauto.
-    cancel.
-    apply ptsto_pimpl_ptsto_subset.
+    eapply pimpl_ok2. apply writeback_ok'.
+    intros.
+    norml; unfold stars; simpl; clear_norm_goal.
+    denote (_ d) as Hx; apply ptsto_subset_valid' in Hx as Hy; repeat deex.
+    denote (_ d0) as Hz; apply ptsto_subset_valid' in Hz as Hy; repeat deex.
+    unfold synrep, rep, synrep'.
+    rewrite lift_empty_and_distr_l; norml; unfold stars; simpl; clear_norm_goal.
+    rewrite mem_pred_extract with (a := a) (hm := d) by eauto.
+    rewrite mem_pred_extract with (a := a) (hm := d0) by eauto.
+    unfold cachepred at 2; unfold synpred at 2; simpl in *.
+    destruct (Map.find a (CSMap cs)) eqn:?; try destruct p, b.
+    - unfold ptsto_subset.
+      repeat (rewrite pimpl_exists_l_star_r ||
+              rewrite pimpl_exists_r_star_r ||
+              rewrite pimpl_and_l_exists ||
+              rewrite pimpl_and_r_exists ||
+              apply pimpl_exists_l; intros ).
+      setoid_rewrite sep_star_assoc at 2.
+      rewrite sep_star_lift_empty.
+      setoid_rewrite sep_star_assoc at 2.
+      rewrite sep_star_lift_empty.
+      setoid_rewrite <- sep_star_assoc at 1 2.
+      rewrite lift_empty_and_distr_r.
+      norml; unfold stars; simpl; clear_norm_goal; subst.
+      rewrite sep_star_ptsto_and_eq.
+      cancel; subst; eauto.
+
+      prestep; norml; unfold stars; simpl; clear_norm_goal.
+      2: intuition; repeat deex; congruence.
+      inv_option_eq.
+      cancel.
+      2: eapply ptsto_subset_upd with (vs' := nil); eauto; apply incl_refl.
+      rewrite sep_star_and_distr; unfold synrep.
+      apply pimpl_and_split.
+      + rewrite pimpl_l_and; unfold rep; cancel.
+        erewrite <- upd_nop with (m := d0) at 2 by eauto.
+        rewrite <- mem_pred_absorb with (hm := d0) (a := a).
+        unfold cachepred at 3.
+        rewrite MapFacts.add_eq_o by reflexivity.
+        unfold ptsto_subset; cancel; eauto.
+        rewrite mem_pred_pimpl_except.
+        2: intros; apply cachepred_add_invariant; eassumption.
+        cancel.
+        eapply size_valid_add_in; eauto.
+        eapply addr_valid_add; eauto.
+      + rewrite pimpl_r_and; unfold synrep'; cancel.
+        rewrite <- mem_pred_absorb with (hm := d) (a := a).
+        unfold synpred at 3.
+        rewrite MapFacts.add_eq_o by reflexivity.
+        unfold ptsto_subset; cancel; eauto.
+        rewrite mem_pred_pimpl_except.
+        2: intros; apply synpred_add_invariant; eassumption.
+        cancel.
+        eapply size_valid_add_in; eauto.
+        eapply addr_valid_add; eauto.
+        rewrite upd_eq; auto.
+        apply addr_valid_upd; auto.
+      + (* crash *)
+        cancel.
+        rewrite sep_star_and_distr, pimpl_l_and.
+        unfold rep; cancel; eauto.
+        eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
+        unfold cachepred at 3; rewrite Heqo.
+        unfold ptsto_subset; cancel; eauto.
+
+    - unfold ptsto_subset.
+      repeat (rewrite pimpl_exists_l_star_r ||
+              rewrite pimpl_exists_r_star_r ||
+              rewrite pimpl_and_l_exists ||
+              rewrite pimpl_and_r_exists ||
+              apply pimpl_exists_l; intros ).
+      setoid_rewrite sep_star_assoc at 2.
+      rewrite sep_star_lift_empty.
+      setoid_rewrite sep_star_assoc at 2.
+      rewrite sep_star_lift_empty.
+      setoid_rewrite <- sep_star_assoc at 1 2.
+      rewrite lift_empty_and_distr_r.
+      norml; unfold stars; simpl; clear_norm_goal; subst.
+      rewrite sep_star_ptsto_and_eq.
+      cancel; subst; eauto.
+
+      prestep; norml; unfold stars; simpl; clear_norm_goal;
+      intuition; repeat deex; try congruence; inv_option_eq.
+      cancel.
+      2: eapply ptsto_subset_upd with (vs' := nil); eauto; apply incl_refl.
+      rewrite sep_star_and_distr; unfold synrep.
+      apply pimpl_and_split.
+      + rewrite pimpl_l_and; unfold rep; cancel.
+        erewrite <- upd_nop with (m := d0) at 2 by eauto.
+        rewrite <- mem_pred_absorb with (hm := d0) (a := a).
+        unfold cachepred at 3.
+        rewrite Heqo.
+        unfold ptsto_subset; cancel.
+      + rewrite pimpl_r_and; unfold synrep'; cancel.
+        rewrite <- mem_pred_absorb with (hm := d) (a := a).
+        unfold synpred at 3.
+        rewrite Heqo.
+        unfold ptsto_subset; cancel; eauto.
+        apply addr_valid_upd; auto.
+      + (* crash *)
+        cancel.
+        rewrite sep_star_and_distr, pimpl_l_and.
+        unfold rep; cancel; eauto.
+        eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
+        unfold cachepred at 3; rewrite Heqo.
+        unfold ptsto_subset; cancel; eauto.
+
+    - unfold ptsto_subset.
+      repeat (rewrite pimpl_exists_l_star_r ||
+              rewrite pimpl_exists_r_star_r ||
+              rewrite pimpl_and_l_exists ||
+              rewrite pimpl_and_r_exists ||
+              apply pimpl_exists_l; intros ).
+      setoid_rewrite sep_star_assoc at 2.
+      rewrite sep_star_lift_empty.
+      setoid_rewrite <- sep_star_assoc at 1 2.
+      rewrite lift_empty_and_distr_r.
+      norml; unfold stars; simpl; clear_norm_goal; subst.
+      rewrite sep_star_ptsto_and_eq.
+      cancel; subst; eauto.
+
+      prestep; norml; unfold stars; simpl; clear_norm_goal;
+      intuition; repeat deex; try congruence; inv_option_eq.
+      cancel.
+      2: eapply ptsto_subset_upd with (vs' := nil); eauto; apply incl_refl.
+      rewrite sep_star_and_distr; unfold synrep.
+      apply pimpl_and_split.
+      + rewrite pimpl_l_and; unfold rep; cancel.
+        erewrite <- upd_nop with (m := d0) at 2 by eauto.
+        rewrite <- mem_pred_absorb with (hm := d0) (a := a).
+        unfold cachepred at 3.
+        rewrite Heqo.
+        unfold ptsto_subset; cancel.
+      + rewrite pimpl_r_and; unfold synrep'; cancel.
+        rewrite <- mem_pred_absorb with (hm := d) (a := a).
+        unfold synpred at 3.
+        rewrite Heqo.
+        unfold ptsto_subset; cancel; eauto.
+        apply addr_valid_upd; auto.
+      + (* crash *)
+        cancel.
+        rewrite sep_star_and_distr, pimpl_l_and.
+        unfold rep; cancel; eauto.
+        eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
+        unfold cachepred at 3; rewrite Heqo.
+        unfold ptsto_subset; cancel; eauto.
+
+    Unshelve. all: eauto.
   Qed.
 
 
@@ -1084,14 +1220,15 @@ Module UCache.
     2: eauto. eauto.
     safestep.
     safestep.
+    prestep.
+    cancel.
+    eauto.
     safestep.
-    2: step.
-    admit. (* XXX: cannot chain syncs because sync_ok's PRE refers to d0 instead of d *)
     cancel.
     cancel.
     cancel.
     cancel.
-  Admitted.
+  Qed.
 
 
 

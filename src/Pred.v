@@ -454,13 +454,24 @@ Qed.
 
 Lemma pimpl_exists_r_star_r:
   forall T (p : T -> pred) (q : @pred AT AEQ V),
-  (exists x : T, p x) * q =p=>  (exists x : T, p x ✶ q).
+  (exists x : T, p x) * q =p=>  (exists x : T, p x * q).
 Proof.
   unfold pimpl, exis; unfold_sep_star; intros.
   repeat deex.
   do 3 eexists.
   intuition eauto.
 Qed.
+
+Lemma pimpl_exists_l_star_r:
+  forall T (p : T -> pred) (q : @pred AT AEQ V),
+  q * (exists x : T, p x) =p=>  (exists x : T, q * p x).
+Proof.
+  unfold pimpl, exis; unfold_sep_star; intros.
+  repeat deex.
+  do 3 eexists.
+  intuition eauto.
+Qed.
+
 
 Lemma pimpl_exists_and_l:
   forall T p (r : @pred AT AEQ V),
@@ -502,14 +513,11 @@ Proof.
   firstorder.
 Qed.
 
-Lemma pimpl_and : forall (p : @pred AT AEQ V),
+Lemma pimpl_and_dup : forall (p : @pred AT AEQ V),
   p <=p=> p /\ p.
 Proof.
   firstorder.
 Qed.
-
-Lemma pimpl_and_split
-
 
 Lemma pimpl_trans:
   forall (a b c : @pred AT AEQ V),
@@ -1069,6 +1077,38 @@ Proof.
   intros; repeat deex; do 2 eexists; eauto.
 Qed.
 
+Lemma sep_star_lift_empty : forall AT AEQ V P Q,
+  @pimpl AT AEQ V ([[ P ]] * [[ Q ]]) ([[ P /\ Q ]]).
+Proof.
+  unfold_sep_star; unfold pimpl, lift_empty, mem_union.
+  firstorder; rewrite H.
+  destruct (x a) eqn:?; try congruence.
+Qed.
+
+Lemma lift_empty_and_distr_l : forall AT AEQ V P Q (p q : @pred AT AEQ V),
+  ([[ P ]] * p) /\ ([[ Q ]] * q) =p=> [[ P /\ Q ]] * (p /\ q).
+Proof.
+  unfold_sep_star; unfold pimpl, and, lift_empty, mem_union.
+  intros; intuition; repeat deex.
+  assert (m2 = m3).
+  apply functional_extensionality; intros.
+  apply equal_f with (x0 := x) in H1.
+  rewrite H5, H8 in H1; auto.
+  subst; do 2 eexists; intuition.
+Qed.
+
+Lemma lift_empty_and_distr_r : forall AT AEQ V P Q (p q : @pred AT AEQ V),
+  (p * [[ P ]]) /\ (q * [[ Q ]]) =p=> (p /\ q) * [[ P /\ Q ]].
+Proof.
+  unfold_sep_star; unfold pimpl, and, lift_empty, mem_union.
+  intros; intuition; repeat deex.
+  assert (m0 = m1).
+  apply functional_extensionality; intros.
+  apply equal_f with (x0 := x) in H1.
+  destruct (m1 x); destruct (m0 x); try congruence.
+  subst; do 2 eexists; intuition.
+Qed.
+
 Theorem lift_impl : forall (P : @pred AT AEQ V) (Q : Prop), (forall m, P m -> Q) -> P =p=> [[ Q ]] * P.
 Proof.
   intros. unfold_sep_star.
@@ -1166,6 +1206,13 @@ Lemma mem_union_empty_mem : forall (m : @mem AT AEQ V),
 Proof.
   unfold mem_union; intros; apply functional_extensionality; intros.
   firstorder.
+Qed.
+
+Lemma mem_union_empty_mem' : forall (m : @mem AT AEQ V),
+  mem_union m empty_mem = m.
+Proof.
+  unfold mem_union; intros; apply functional_extensionality; intros.
+  destruct (m x); auto.
 Qed.
 
 Lemma mem_disjoint_empty_mem : forall (m : @mem AT AEQ V),
@@ -1613,6 +1660,38 @@ Proof.
   apply emp_empty_mem.
   destruct H.
   unfold empty_mem in H; congruence.
+Qed.
+
+Lemma sep_star_ptsto_and_eq : forall (p q : @pred AT AEQ V) a v1 v2,
+  (p * a |-> v1) /\ (q * a |-> v2) =p=> (p /\ q) * (a |-> v1) * [[ v1 = v2 ]].
+Proof.
+  unfold_sep_star; unfold pimpl, and, lift_empty.
+  intuition; repeat deex.
+  assert (m2 = m3); subst.
+  - apply functional_extensionality; intros.
+    unfold mem_union in *.
+    destruct (AEQ x a); subst.
+    + eapply equal_f with (x := a) in H1.
+      unfold ptsto in *; intuition.
+      erewrite mem_disjoint_either with (m2 := m1) (m1 := m2) in H1; eauto.
+      erewrite mem_disjoint_either with (m2 := m0) (m1 := m3) in H1; eauto.
+      apply mem_disjoint_comm; eauto.
+      apply mem_disjoint_comm; eauto.
+    + unfold ptsto in *; intuition.
+      rewrite H7; auto. rewrite H8; auto.
+  - assert (m0 = m1); subst.
+    apply mem_disjoint_comm in H0; apply mem_disjoint_comm in H.
+    eapply mem_disjoint_union_cancel; eauto.
+    rewrite mem_union_comm by eauto.
+    setoid_rewrite mem_union_comm at 2; auto.
+    exists (mem_union m1 m3), empty_mem; intuition.
+    rewrite mem_union_empty_mem'; intuition.
+    apply mem_disjoint_comm; apply mem_disjoint_empty_mem.
+    do 2 eexists; intuition.
+    eapply ptsto_eq with (a := a) (m := m3).
+    exact H6. exact H4.
+    exists emp; apply emp_star_r.
+    exists emp; apply emp_star_r.
 Qed.
 
 
