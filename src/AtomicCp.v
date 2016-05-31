@@ -130,18 +130,6 @@ Module ATOMICCP.
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
 
-  (* XXX if we prove, move to DiskSet.v *)
-  Lemma diskset_pred_exists_comm: forall T (p : T -> rawpred) ds,
-      diskset_pred (exists x, p x) ds <-> exists x, diskset_pred (p x) ds.
-  Proof.
-    intros.
-    split.
-    unfold diskset_pred.
-    intros.
-    eexists.
-    eapply pimpl_refl.
-  Admitted.
-
   Definition temp_tree_pred Fm Ftop fsxp temp_fn tinum temp_tree ilist freelist mscs :=
     (exists tfile' ilist' freelist',
      let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree in
