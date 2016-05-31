@@ -26,28 +26,28 @@ Require Import GenSepAuto.
 Require Import DiskSet.
 Require Import BFile.
 Require Import Bytes.
+Require Import NEList.
 
 Set Implicit Arguments.
 
 Module ABYTEFILE.
 
-Definition memstate := (bool * LOG.memstate)%type.
-Definition mk_memstate a b : memstate := (a, b).
-Definition MSAlloc (ms : memstate) := fst ms.   (* which block allocator to use? *)
-Definition MSLL (ms : memstate) := snd ms.      (* lower-level state *)
 
 Definition attr := INODE.iattr.
 Definition attr0 := INODE.iattr0.
 
-Definition datatype := valuset.
+Definition byteset := nelist byte.
 
 Record bytefile := mk_bytefile {
-  ByFData : list datatype;
+  ByFData : list byteset;
   ByFAttr : INODE.iattr
 }.
 
 Definition bytefile0 := mk_bytefile nil attr0.
 
+     
+Definition rep byte_file block_file :=
+  ( listmatch (snd (ByFData byte_file)) (concat (map valu2bytes (BFILE.BFData block_file)))  )%pred.
 
 
 Definition modulo (n m: nat) : nat := n - ((n / m) * m)%nat.
@@ -77,10 +77,10 @@ Fixpoint get_sublist {A:Type}(l: list A) (off len: nat) : list A :=
               end
   end.
 
-Definition full_read_ok r block_size block_off first_read_length num_of_full_reads m : Prop :=
+Definition full_read_ok r block_size block_off first_read_length num_of_full_reads f : Prop :=
 forall (i:nat), ((num_of_full_reads < i + 1) \/ (*[1]i is out of range OR*)
   (*[2]i'th block you read matches its contents*)
-   (exists bl:valuset, (( exists F',(F' * (block_off +i)|-> bl)%pred (list2nmem m)) /\ (*[2.1]Block bl is in the address (block_off +1 + i) AND*)
+   (exists bl:valuset, (( exists F',(F' * (block_off +i)|-> bl)%pred (list2nmem f)) /\ (*[2.1]Block bl is in the address (block_off +1 + i) AND*)
   (get_sublist r (first_read_length + (i-1)*block_size) block_size (*[2.2]What is read matches the content*)
       = valu_to_list (fst bl))))).
 
@@ -136,8 +136,11 @@ else                                                   (* if read length is not 
   rx ^(fms, nil)
 }.
 
+
+
+
 Definition write T lxp ixp inum off data fms rx : prog T :=
-    let '(al, ms) := (MSAlloc fms, MSLL fms) in
+    let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     let^ (fms, flen) <- BFILE.getlen lxp ixp inum fms;          (* get file length *)
     let len := min (length data) (flen - off) in
     let^ (fms, block0) <- BFILE.read lxp ixp inum 0 fms;        (* get block 0*)
@@ -180,13 +183,13 @@ Definition write T lxp ixp inum off data fms rx : prog T :=
     let^ (ms, bn) <- INODE.getbnum lxp ixp inum (off_final) ms;(* get final block number *)
     ms <- LOG.write lxp (# bn) last_block_write ms;
   
-    rx ^(mk_memstate al ms).
+    rx ^(BFILE.mk_memstate al ms).
     
   
   
 (* same as write except uses LOG.dwrite *)
 Definition dwrite T lxp ixp inum off data fms rx : prog T :=
-    let '(al, ms) := (MSAlloc fms, MSLL fms) in
+    let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     let^ (fms, flen) <- BFILE.getlen lxp ixp inum fms;          (* get file length *)
     let len := min (length data) (flen - off) in
     let^ (fms, block0) <- BFILE.read lxp ixp inum 0 fms;        (* get block 0*)
@@ -228,29 +231,29 @@ Definition dwrite T lxp ixp inum off data fms rx : prog T :=
     let^ (ms, bn) <- INODE.getbnum lxp ixp inum (off_final) ms;(* get final block number *)
     ms <- LOG.dwrite lxp (# bn) last_block_write ms;
   
-    rx ^(mk_memstate al ms).
+    rx ^(BFILE.mk_memstate al ms).
 
 
 (*Same as BFile*)
  Definition getlen T lxp ixp inum fms rx : prog T :=
-    let '(al, ms) := (MSAlloc fms, MSLL fms) in
+    let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     let^ (ms, n) <- INODE.getlen lxp ixp inum ms;
-    rx ^(mk_memstate al ms, n).
+    rx ^(BFILE.mk_memstate al ms, n).
 
   Definition getattrs T lxp ixp inum fms rx : prog T :=
-    let '(al, ms) := (MSAlloc fms, MSLL fms) in
+    let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     let^ (ms, n) <- INODE.getattrs lxp ixp inum ms;
-    rx ^(mk_memstate al ms, n).
+    rx ^(BFILE.mk_memstate al ms, n).
 
   Definition setattrs T lxp ixp inum a fms rx : prog T :=
-    let '(al, ms) := (MSAlloc fms, MSLL fms) in
+    let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     ms <- INODE.setattrs lxp ixp inum a ms;
-    rx (mk_memstate al ms).
+    rx (BFILE.mk_memstate al ms).
 
   Definition updattr T lxp ixp inum kv fms rx : prog T :=
-    let '(al, ms) := (MSAlloc fms, MSLL fms) in
+    let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     ms <- INODE.updattr lxp ixp inum kv ms;
-    rx (mk_memstate al ms).
+    rx (BFILE.mk_memstate al ms).
 
 
 
@@ -270,7 +273,8 @@ Theorem read_ok : forall lxp bxp ixp inum off len ms,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms) hm *
            [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
-           [[[ (BFILE.BFData f) ::: (Fd * block_off |-> vs * (((off+len)/block_size)|-> ve \/ [[file_length < off + len]]) )]]]*
+           [[[ (BFILE.BFData f) ::: (Fd * block_off |-> vs * ([[0 = (off+len)/block_size]] \/ 
+                ((off+len)/block_size)|-> ve \/ [[file_length < off + len]]))]]]*
            [[ off < file_length ]]*
            [[ 0 < len ]]
     POST:hm' RET:^(ms', r)
@@ -290,7 +294,7 @@ Theorem read_ok : forall lxp bxp ixp inum off len ms,
                (get_sublist r 0 first_read_length = get_sublist (valu_to_list (fst vs)) byte_off first_read_length ) /\ 
                
                (*[1.1.2]You read all middle blocks correctly AND*)
-              full_read_ok r block_size block_off first_read_length num_of_full_reads m /\
+              full_read_ok r block_size block_off first_read_length num_of_full_reads (BFILE.BFData f) /\
                
                (*[1.1.3]You read the last block correctly*)
                (get_sublist r (len - last_read_length) last_read_length 
@@ -311,17 +315,28 @@ Theorem read_ok : forall lxp bxp ixp inum off len ms,
     >} read lxp ixp inum off len ms.
     Proof. Admitted.
     
+   
+
+
+  Ltac assignms :=
+    match goal with
+    [ fms : BFILE.memstate |- LOG.rep _ _ _ ?ms _ =p=> LOG.rep _ _ _ (BFILE.MSLL ?e) _ ] =>
+      is_evar e; eassign (BFILE.mk_memstate (BFILE.MSAlloc fms) ms); simpl; eauto
+    end.
+
+  Local Hint Extern 1 (LOG.rep _ _ _ ?ms _ =p=> LOG.rep _ _ _ (BFILE.MSLL ?e) _) => assignms.
+    
     Theorem getlen_ok : forall lxp bxps ixp inum ms,
     {< F Fm Fi m0 m f flist ilist frees,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms) hm *
            [[[ m ::: (Fm * BFILE.rep bxps ixp flist ilist frees) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:^(ms',r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-           [[ r = length (BFILE.BFData f) /\ MSAlloc ms = MSAlloc ms' ]]
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm' *
+           [[ r = length (BFILE.BFData f) /\ BFILE.MSAlloc ms = BFILE.MSAlloc ms' ]]
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm'
     >} getlen lxp ixp inum ms.
   Proof.
     unfold getlen, BFILE.rep.
@@ -336,19 +351,20 @@ Theorem read_ok : forall lxp bxp ixp inum off len ms,
 
     cancel.
     eauto.
-  Admitted.
+  Qed.
+
 
   Theorem getattrs_ok : forall lxp bxp ixp inum ms,
     {< F Fm Fi m0 m flist ilist frees f,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms) hm *
            [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:^(ms',r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-           [[ r = BFILE.BFAttr f /\ MSAlloc ms = MSAlloc ms' ]]
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm' *
+           [[ r = BFILE.BFAttr f /\ BFILE.MSAlloc ms = BFILE.MSAlloc ms' ]]
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm'
     >} getattrs lxp ixp inum ms.
   Proof.
     unfold getattrs, BFILE.rep.
@@ -361,22 +377,23 @@ Theorem read_ok : forall lxp bxp ixp inum off len ms,
 
     cancel.
     eauto.
-  Admitted.
+  Qed.
+
 
 
   Theorem setattrs_ok : forall lxp bxps ixp inum a ms,
     {< F Fm Fi m0 m flist ilist frees f,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms) hm *
            [[[ m ::: (Fm * BFILE.rep bxps ixp flist ilist frees) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:ms'  exists m' flist' f' ilist',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BFILE.MSLL ms') hm' *
            [[[ m' ::: (Fm * BFILE.rep bxps ixp flist' ilist' frees) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = BFILE.mk_bfile (BFILE.BFData f) a ]] *
-           [[ MSAlloc ms = MSAlloc ms' /\
-              let free := BFILE.pick_balloc frees (MSAlloc ms') in
+           [[ BFILE.MSAlloc ms = BFILE.MSAlloc ms' /\
+              let free := BFILE.pick_balloc frees (BFILE.MSAlloc ms') in
               BFILE.ilist_safe ilist free ilist' free ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} setattrs lxp ixp inum a ms.
@@ -410,16 +427,16 @@ Theorem read_ok : forall lxp bxp ixp inum off len ms,
   Theorem updattr_ok : forall lxp bxps ixp inum kv ms,
     {< F Fm Fi m0 m flist ilist frees f,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms) hm *
            [[[ m ::: (Fm * BFILE.rep bxps ixp flist ilist frees) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:ms'  exists m' flist' ilist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BFILE.MSLL ms') hm' *
            [[[ m' ::: (Fm * BFILE.rep bxps ixp flist' ilist' frees) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = BFILE.mk_bfile (BFILE.BFData f) (INODE.iattr_upd (BFILE.BFAttr f) kv) ]] *
-           [[ MSAlloc ms = MSAlloc ms' /\
-              let free := BFILE.pick_balloc frees (MSAlloc ms') in
+           [[ BFILE.MSAlloc ms = BFILE.MSAlloc ms' /\
+              let free := BFILE.pick_balloc frees (BFILE.MSAlloc ms') in
               BFILE.ilist_safe ilist free ilist' free ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} updattr lxp ixp inum kv ms.
