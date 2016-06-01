@@ -297,49 +297,152 @@ Record AxiomaticSpec := {
 
 Definition Env := StringMap.t AxiomaticSpec.
 
-Inductive RunsTo (env : Env) : Stmt -> State -> State -> Prop :=
-| RunsToSkip : forall st,
-    RunsTo env Skip st st
-| RunsToSeq : forall a b st st' st'',
-    RunsTo env a st st' ->
-    RunsTo env b st' st'' ->
-    RunsTo env (Seq a b) st st''
-| RunsToIfTrue : forall cond t f st st',
-    is_true st cond ->
-    RunsTo env t st st' ->
-    RunsTo env (If cond t f) st st'
-| RunsToIfFalse : forall cond t f st st',
-    is_false st cond ->
-    RunsTo env f st st' ->
-    RunsTo env (If cond t f) st st'
-| RunsToWhileTrue : forall cond body st st' st'',
-    let loop := While cond body in
-    is_true st cond ->
-    RunsTo env body st st' ->
-    RunsTo env loop st' st'' ->
-    RunsTo env loop st st''
-| RunsToWhileFalse : forall cond body st st',
-    let loop := While cond body in
-    is_false st cond ->
-    RunsTo env loop st st'
-| RunsToAssign : forall x e st st' v,
-    (* rhs can't be a mutable object, to prevent aliasing *)
-    eval st e = Some v ->
-    can_alias v = true ->
-    st' = add x v st ->
-    RunsTo env (Assign x e) st st'
-| RunsToCallAx : forall x f args st spec input output ret,
-    StringMap.find f env = Some spec ->
-    mapM (fun k => find k st) args = Some input ->
-    mapsto_can_alias x st = true ->
-    PreCond spec input ->
-    length input = length output ->
-    PostCond spec (List.combine input output) ret ->
-    let st' := add_remove_many args input output st in
-    let st' := add x ret st' in
-    RunsTo env (Call x f args) st st'.
+Definition sel T m := fun k => find k m : option T.
 
-Arguments RunsTo env prog%facade st st'.
+Section EnvSection.
+
+  Variable env : Env.
+
+  Inductive RunsTo : Stmt -> State -> State -> Prop :=
+  | RunsToSkip : forall st,
+      RunsTo Skip st st
+  | RunsToSeq : forall a b st st' st'',
+      RunsTo a st st' ->
+      RunsTo b st' st'' ->
+      RunsTo (Seq a b) st st''
+  | RunsToIfTrue : forall cond t f st st',
+      is_true st cond ->
+      RunsTo t st st' ->
+      RunsTo (If cond t f) st st'
+  | RunsToIfFalse : forall cond t f st st',
+      is_false st cond ->
+      RunsTo f st st' ->
+      RunsTo (If cond t f) st st'
+  | RunsToWhileTrue : forall cond body st st' st'',
+      let loop := While cond body in
+      is_true st cond ->
+      RunsTo body st st' ->
+      RunsTo loop st' st'' ->
+      RunsTo loop st st''
+  | RunsToWhileFalse : forall cond body st st',
+      let loop := While cond body in
+      is_false st cond ->
+      RunsTo loop st st'
+  | RunsToAssign : forall x e st st' v,
+      (* rhs can't be a mutable object, to prevent aliasing *)
+      eval st e = Some v ->
+      can_alias v = true ->
+      st' = add x v st ->
+      RunsTo (Assign x e) st st'
+  | RunsToCallAx : forall x f args st spec input output ret,
+      StringMap.find f env = Some spec ->
+      mapM (sel st) args = Some input ->
+      mapsto_can_alias x st = true ->
+      PreCond spec input ->
+      length input = length output ->
+      PostCond spec (List.combine input output) ret ->
+      let st' := add_remove_many args input output st in
+      let st' := add x ret st' in
+      RunsTo (Call x f args) st st'.
+
+  CoInductive Safe : Stmt -> State -> Prop :=
+  | SafeSkip : forall st, Safe Skip st
+  | SafeSeq :
+      forall a b st,
+        Safe a st /\
+        (forall st',
+           RunsTo a st st' -> Safe b st') ->
+        Safe (Seq a b) st
+  | SafeIfTrue :
+      forall cond t f st,
+        is_true st cond ->
+        Safe t st ->
+        Safe (If cond t f) st
+  | SafeIfFalse :
+      forall cond t f st,
+        is_false st cond ->
+        Safe f st ->
+        Safe (If cond t f) st
+  | SafeWhileTrue :
+      forall cond body st,
+        let loop := While cond body in
+        is_true st cond ->
+        Safe body st ->
+        (forall st',
+           RunsTo body st st' -> Safe loop st') ->
+        Safe loop st
+  | SafeWhileFalse :
+      forall cond body st,
+        let loop := While cond body in
+        is_false st cond ->
+        Safe loop st
+  | SafeAssign :
+      forall x e st w,
+        eval st e = Some (SCA w) ->
+        mapsto_can_alias x st = true ->
+        Safe (Assign x e) st
+  | SafeCallAx :
+      forall x f args st spec input,
+        StringMap.find f env = Some spec ->
+        mapM (sel st) args = Some input ->
+        mapsto_can_alias x st = true ->
+        PreCond spec input ->
+        Safe (Call x f args) st.
+
+  Section Safe_coind.
+
+    Variable R : Stmt -> State -> Prop.
+
+    Hypothesis SeqCase : forall a b st, R (Seq a b) st -> R a st /\ forall st', RunsTo a st st' -> R b st'.
+
+    Hypothesis IfCase : forall cond t f st, R (If cond t f) st -> (is_true st cond /\ R t st) \/ (is_false st cond /\ R f st).
+
+    Hypothesis WhileCase :
+      forall cond body st,
+        let loop := While cond body in
+        R loop st ->
+        (is_true st cond /\ R body st /\ (forall st', RunsTo body st st' -> R loop st')) \/
+        (is_false st cond).
+
+    Hypothesis AssignCase :
+      forall x e st,
+        R (Assign x e) st ->
+        mapsto_can_alias x st = true /\
+        exists w, eval st e = Some (SCA w).
+
+    Hypothesis CallCase :
+      forall x f args st,
+        R (Call x f args) st ->
+        mapsto_can_alias x st = true /\
+        exists input,
+          mapM (sel st) args = Some input /\
+          ((exists spec,
+              StringMap.find f env = Some spec /\
+              PreCond spec input)).
+
+    Hint Constructors Safe.
+
+    Ltac openhyp :=
+      repeat match goal with
+               | H : _ /\ _ |- _  => destruct H
+               | H : _ \/ _ |- _ => destruct H
+               | H : exists x, _ |- _ => destruct H
+             end.
+
+
+    Theorem Safe_coind : forall c st, R c st -> Safe c st.
+      cofix; intros; destruct c.
+      - eauto.
+      - eapply SeqCase in H; openhyp; eapply SafeSeq; eauto.
+      - eapply IfCase in H; openhyp; eauto.
+      - eapply WhileCase in H; openhyp; eauto.
+      - eapply CallCase in H; openhyp; simpl in *; intuition eauto.
+      - eapply AssignCase in H; openhyp; eauto.
+    Qed.
+
+  End Safe_coind.
+
+End EnvSection.
 
 Notation "A ; B" := (Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : facade_scope.
 Notation "x <- y" := (Assign x y) (at level 90) : facade_scope.
@@ -541,6 +644,7 @@ Proof.
   maps.
   compute in H4.
   invert H4.
+  unfold sel in *.
   simpl in *.
   destruct (find "disk" initial_state); [ | exfalso; solve [ intuition idtac ] ].
   destruct (find "a" initial_state); [ | exfalso; solve [ intuition idtac ] ].
@@ -613,6 +717,7 @@ Proof.
   maps.
   compute in H4.
   invert H4.
+  unfold sel in *.
   simpl in *.
   repeat match goal with
   | [ H : exists (varname : _), _ |- _ ] =>
