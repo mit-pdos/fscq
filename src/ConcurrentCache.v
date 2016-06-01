@@ -177,6 +177,13 @@ Section ConcurrentCache.
                          set vdisk vd' s);
       rx tt.
 
+  (** TODO: need to write a into cache from WriteBuffer, evict from
+  cache (writing if necessary), and then note in place of the
+  writebuffer that rollback is no longer possible *)
+  Definition cache_writeback (a: addr) rx : prog Sigma :=
+    wb <- Get mWriteBuffer;
+      rx tt.
+
   (* start of automation *)
 
   Lemma unfold_invariant : forall d m s,
