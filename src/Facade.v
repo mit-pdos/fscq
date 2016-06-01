@@ -500,7 +500,7 @@ Notation "ENV ≲ TENV" := (SameValues ENV TENV) (at level 50).
 Definition ProgOk env prog (initial_tstate final_tstate : Telescope) :=
   forall initial_state : State,
     initial_state ≲ initial_tstate ->
-    (* Safe ... /\ *) (* TODO this is important! *)
+    Safe env prog initial_state /\
     forall final_state : State,
       RunsTo env prog initial_state final_state ->
       (final_state ≲ final_tstate).
@@ -601,8 +601,14 @@ Lemma CompileSeq :
 Proof.
   unfold ProgOk.
   intros.
-  invert H2.
-  eauto.
+  split.
+  + econstructor. split.
+    - eapply H; eauto.
+    - intros. eapply H0. eapply H; eauto.
+  + intros.
+    invert H2.
+    eapply H0; eauto.
+    eapply H; eauto.
 Qed.
 
 Local Open Scope string_scope.
@@ -615,6 +621,9 @@ Proof.
   intros.
   instantiate (1 := Skip).
   intro. intros.
+  split.
+  econstructor.
+  intros.
   invert H0. eauto.
 Defined.
 
@@ -639,9 +648,27 @@ Proof.
   (* TODO: when I pass wrong # of arguments, this just becomes trivially provable. Need to prove Safe too! *)
   instantiate (1 := (Call "_" "write" ["disk"; "a"; "v"])%facade).
   intro. intros.
-  invert H0.
   simpl in *.
   maps.
+  intuition idtac.
+  Ltac find_cases var st := case_eq (find var st); [
+    let v := fresh "v" in
+    let He := fresh "He" in
+    intros v He; rewrite ?He in *
+  | let Hne := fresh "Hne" in
+    intro Hne; rewrite Hne in *; exfalso; solve [ intuition idtac ] ].
+  find_cases "disk" initial_state.
+  find_cases "a" initial_state.
+  find_cases "v" initial_state.
+  econstructor.
+  unfold disk_env.
+  maps. trivial.
+  simpl. unfold sel. rewrite He, He0, He1. trivial.
+  unfold mapsto_can_alias.
+  (* Oops! We don't actually know that initial_state doesn't contain "_".
+     In the real Facade, I think we know this because SameValues will ensure that "_" in initial_state is either a scalar or not present. *)
+Abort.
+(*
   compute in H4.
   invert H4.
   unfold sel in *.
@@ -773,80 +800,4 @@ Proof.
   eauto.
 Defined.
 
-(*
-Example micro_double :
-  ParametricExtraction
-    #vars        x
-    #program     (fun T => @Double T x)
-    #arguments [`"x" ->> ret x ].
-Proof.
-  eexists.
-  intros.
-  instantiate (1 := ("out" <- Var "x" + Var "x")%facade).
-  (* TODO! *)
-  intro.
-  intros.
-  simpl in H.
-  inversion H0.
-  simpl.
-  subst.
-  rewrite StringMapFacts.add_eq_o; intuition.
-  simpl in H3.
-  destruct (find "x" initial_state); intuition.
-  destruct v, v0.
-  simpl in H3.
-  deex.
-  inversion H3; inversion H5; subst.
-  apply ret_computes_to in H1; subst.
-  eexists.
-  split; [ | trivial ].
-  split; eauto.
-  intros.
-  inversion H; subst; clear H.
-  inversion H1; subst; clear H1.
-  trivial.
-Defined.
-
-
-Example micro_if :
-  ParametricExtraction
-    #vars      flag (x y : nat)
-    #program   ret (if (Bool.bool_dec flag true) then x else y)
-    #arguments [`"flag" ->> ret flag ; `"x" ->> ret x ; `"y" ->> ret y].
-Proof.
-  eexists.
-  intros.
-  instantiate (1 := (If (Var "flag") Then (Assign "out" (Var "x")) Else (Assign "out" (Var "y")) EndIf)%facade).
-  (* TODO! *)
-  intro.
-  intros.
-  simpl in H.
-  inversion H0.
-  - inversion H7. simpl; subst; intuition.
-    repeat rewrite StringMapFacts.add_eq_o in * by congruence.
-    repeat rewrite StringMapFacts.remove_neq_o in * by congruence.
-    unfold is_true, is_false, eval_bool, eval in *.
-    destruct (find "flag" initial_state); intuition; subst.
-    destruct (find "x" initial_state); intuition; subst.
-    destruct (find "y" initial_state); intuition; subst.
-    repeat deex.
-    apply ret_computes_to in H3; apply ret_computes_to in H2; apply ret_computes_to in H1; subst.
-    inversion H10; subst.
-    eexists; intuition eauto.
-    destruct (Bool.bool_dec v'1 true); try solve [ destruct (Nat.eq_dec 0 0); congruence ].
-  - inversion H7. simpl; subst; intuition.
-    repeat rewrite StringMapFacts.add_eq_o in * by congruence.
-    repeat rewrite StringMapFacts.remove_neq_o in * by congruence.
-    unfold is_true, is_false, eval_bool, eval in *.
-    destruct (find "flag" initial_state); intuition; subst.
-    destruct (find "x" initial_state); intuition; subst.
-    destruct (find "y" initial_state); intuition; subst.
-    repeat deex.
-    apply ret_computes_to in H3; apply ret_computes_to in H2; apply ret_computes_to in H1; subst.
-    inversion H10; subst.
-    eexists; intuition eauto.
-    destruct (Bool.bool_dec v'1 true); try solve [ destruct (Nat.eq_dec 1 0); congruence ].
-Defined.
-
-Definition micro_if_code := Eval lazy in (extract_code micro_if).
-Print micro_if_code.*)
+*)
