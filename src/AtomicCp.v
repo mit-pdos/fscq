@@ -138,8 +138,10 @@ Module ATOMICCP.
     unfold diskset_pred in *.
     intros.
     apply H.
-    (* d in (ds!!, []), so certainly in ds *)
-  Admitted.
+    apply d_in_In in H0; inversion H0; subst.
+    apply latest_in_ds.
+    inversion H1.
+  Qed.
 
   Lemma diskset_pred_pushd: forall V (p: @pred _ _ V) ds d,
     diskset_pred p ds ->
@@ -168,7 +170,7 @@ Module ATOMICCP.
     DIRTREE.tree_names_distinct temp_tree ->
     DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum f) ->
     temp_tree_pred Fm Ftop fsxp temp_fn tinum temp_tree ilist freelist mscs (list2nmem d) ->
-    temp_tree_pred Fm Ftop fsxp temp_fn tinum temp_tree ilist freelist mscs (list2nmem d ⟦ bn :=  v ⟧).
+    temp_tree_pred Fm Ftop fsxp temp_fn tinum temp_tree ilist freelist mscs (list2nmem d ⟦ bn := v ⟧).
   Proof.
     intros.
     unfold temp_tree_pred in *.
@@ -212,9 +214,15 @@ Module ATOMICCP.
     constructor.
     eapply sep_star_lift_apply in H3.
     intuition.
-    (* no blocks allocated, so maybe true *)
-    admit.
-  Admitted.
+
+    erewrite <- update_update_subtree_eq.
+    eapply DIRTREE.dirtree_safe_update_subtree.
+    eassumption.
+    eapply DIRTREE.find_update_subtree; eauto.
+    eauto.
+    eauto.
+    constructor.
+  Qed.
 
   Lemma temp_tree_pred_vssync_eq: forall Fm Ftop fsxp tinum temp_tree ilist freelist_1 freelist_2 mscs d f off bn al,
     DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum f) ->
@@ -257,8 +265,15 @@ Module ATOMICCP.
     constructor.
     eapply sep_star_lift_apply in H4.
     intuition.
-    (* xxx true because we didn't allocate? *)
-  Admitted.
+
+    erewrite <- update_update_subtree_eq.
+    eapply DIRTREE.dirtree_safe_update_subtree.
+    eassumption.
+    eapply DIRTREE.find_update_subtree; eauto.
+    eauto.
+    eauto.
+    constructor.
+  Qed.
 
   Ltac diskset_pred_solve:= 
     repeat match goal with
