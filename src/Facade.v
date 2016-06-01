@@ -484,6 +484,24 @@ Qed.
 
 Hint Resolve ret_computes_to_refl.
 
+Lemma CompileSeq :
+  forall (tenv1 tenv1' tenv2: Telescope) env p1 p2,
+    {{ tenv1 }}
+      p1
+    {{ tenv1' }} // env ->
+    {{ tenv1' }}
+      p2
+    {{ tenv2 }} // env ->
+    {{ tenv1 }}
+      (Seq p1 p2)
+    {{ tenv2 }} // env.
+Proof.
+  unfold ProgOk.
+  intros.
+  invert H2.
+  eauto.
+Qed.
+
 Local Open Scope string_scope.
 
 
