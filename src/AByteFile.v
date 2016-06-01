@@ -36,15 +36,15 @@ Module ABYTEFILE.
 Definition attr := INODE.iattr.
 Definition attr0 := INODE.iattr0.
 
-Notation "'byteset'" := (nelist (list byte)).
+Notation "'byteset'" := (nelist byte%type).
 
 Print nelist.
 Check byteset.
 
-Definition datatype := byteset.
+Definition byteset0 := byteset.
 
 Record bytefile := mk_bytefile {
-  ByFData : list datatype;
+  ByFData : list byteset;
   ByFAttr : INODE.iattr
 }.
 
@@ -53,6 +53,7 @@ Definition bytefile0 := mk_bytefile nil attr0.
 Locate "valuset".
 Locate "valu".
 Locate "byteset".
+Print bytefile.
 Print bsplit_list.
 
 (* Definition mk_byteset (l: list byte): byteset := ((list byte) * l)%type. *)
@@ -73,10 +74,10 @@ Fixpoint bytelist_equal_prop (b1 b2: list byte) : Prop :=
                       end
 end).
 
-(* Definition bytelist_equal (b1 b2: list byte) : pred :=
-[[bytelist_equal_prop b1 b2]]. *)
+Definition bytelist_equal (b1 b2: list byte) : @pred addr addr_eq_dec byte :=
+[[bytelist_equal_prop b1 b2]].
 
-Fixpoint byteset_list_equal_prop l1 l2 : Prop :=
+Fixpoint byteset_list_equal_prop (l1 l2: list byteset) : Prop :=
 match l1 with
   | nil => match l2 with
             | nil => True
@@ -84,15 +85,15 @@ match l1 with
             end
   | h1::l1' => match l2 with
                 | nil => False
-                | h2::l2' => ((bytelist_equal_prop h1 h2) /\ (byteset_list_equal_prop l1' l2'))
+                | h2::l2' => ((bytelist_equal_prop (snd h1) (snd h2)) /\ (byteset_list_equal_prop l1' l2'))
                 end
 end.
 
-(* Definition byteset_list_equal (l1 l2: list byteset) : pred :=
-[[byteset_list_equal_prop l1 l2]]. *)
+Definition byteset_list_equal (l1 l2: list byteset) : @pred addr addr_eq_dec byteset :=
+[[byteset_list_equal_prop l1 l2]].
 
-(* Definition rep byte_file block_file :=
-  byteset_list_equal (ByFData byte_file) (map valuset2byteset (BFILE.BFData block_file)). *)
+Definition rep byte_file block_file :=
+  byteset_list_equal (ByFData byte_file) (map valuset2byteset (BFILE.BFData block_file)).
 
 
 Definition modulo (n m: nat) : nat := n - ((n / m) * m)%nat.
@@ -133,9 +134,11 @@ forall (i:nat), ((num_of_full_reads < i + 1) \/ (*[1]i is out of range OR*)
 
 (* Definition ith_read_ok r f off len i : Prop :=
 exists F, exists (by: byteset), ((len < i) \/ (((F * (off +i)|-> by)%pred (list2nmem (ByFData f))) /\ (selN r i) = (latest by))).
+*)
 
-Definition full_read_ok r f off len : pred :=
-[[ forall i, (ith_read_ok r f off len i)]]%pred. *)
+
+(* Definition full_read_ok r f off len : pred :=
+[[ forall i, ((len < i) \/ ( (selN r i byte) = latest (selN (ByFData f) (off + i) ((word 8), nil))))]]. *)
 
 (*Interface*)
 Definition read T lxp ixp inum (off len:nat) fms rx : prog T :=
