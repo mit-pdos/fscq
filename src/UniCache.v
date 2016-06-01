@@ -938,11 +938,11 @@ Module UCache.
   Qed.
 
   Theorem end_sync_ok : forall cs,
-    {< d0 d F,
+    {< d0 d,
     PRE
-      synrep cs d0 d * [[ F d ]]
-    POST RET:cs exists d',
-      rep cs d' * [[ F d' ]]
+      synrep cs d0 d
+    POST RET:cs
+      rep cs d
     CRASH
       exists cs', rep cs' d0
     >} end_sync cs.
@@ -1256,8 +1256,7 @@ Module UCache.
     2: eauto. eauto.
     safestep.
     safestep.
-    2: step.
-    cancel.
+    step.
     cancel.
     cancel.
   Qed.
@@ -1288,8 +1287,7 @@ Module UCache.
     safestep.
     prestep.
     cancel.
-    eauto.
-    safestep.
+    step.
     cancel.
     cancel.
     cancel.
