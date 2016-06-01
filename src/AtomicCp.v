@@ -212,7 +212,8 @@ Module ATOMICCP.
     constructor.
     eapply sep_star_lift_apply in H3.
     intuition.
-    (* no blocks allocated, so maybe true *)
+    eapply DIRTREE.dirtree_safe_update_subtree; eauto.
+    (* h7? *)
     admit.
   Admitted.
 
@@ -278,6 +279,12 @@ Module ATOMICCP.
         => idtac "Hin1"; rewrite <- Hin1; clear Hin1; eauto 
     end.
 
+  Ltac distinct_names :=
+    match goal with
+      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_names_distinct ?tree ] => 
+        eapply DIRTREE.rep_tree_names_distinct; eapply H
+    end.
+
   Theorem copydata_ok : forall fsxp src_inum tinum mscs,
     {< ds Fm Ftop temp_tree src_fn file tfile v0 t0 ilist freelist,
     PRE:hm
@@ -319,6 +326,8 @@ Module ATOMICCP.
     unfold BFILE.diskset_was in H26.
     intuition; subst.
 
+    Search DIRTREE.rep.
+
     diskset_pred_solve.
     diskset_pred_solve.
 
@@ -330,16 +339,24 @@ Module ATOMICCP.
     erewrite ptsto_0_list2nmem_mem_eq with (d := (BFILE.BFData f')) by eauto.
     eauto.
     constructor.
-    admit.
+    distinct_names.
     constructor.
 
     unfold BFILE.diskset_was in H26.
     intuition; subst.
 
     diskset_pred_solve.
+
     pred_apply.
     unfold temp_tree_pred.
-    admit.
+    erewrite update_update_subtree_eq; eauto.
+    erewrite update_update_subtree_eq; eauto.
+    cancel.
+    eapply DIRTREE.dirtree_safe_update_subtree; eauto.
+    admit. (* H18/H33 seems almost what we want *)
+    constructor.
+    distinct_names.
+    constructor. 
 
     diskset_pred_solve.
 
@@ -347,14 +364,12 @@ Module ATOMICCP.
     erewrite update_update_subtree_eq; eauto.
     erewrite update_update_subtree_eq; eauto.
     unfold temp_tree_pred.
-    eapply pimpl_exists_r; eexists.
-    eapply pimpl_exists_r; eexists.
-    eapply pimpl_exists_r; eexists.
     cancel.
-    admit.
-    admit.
-    admit.
-    admit.
+    eapply DIRTREE.dirtree_safe_update_subtree; eauto.
+    admit. (* H18/H33 seems almost what we want *)
+    constructor.
+    distinct_names.
+    constructor.
 
     AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
     unfold BFILE.diskset_was in H26.
@@ -376,12 +391,6 @@ Module ATOMICCP.
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (copydata _ _ _ _) _) => apply copydata_ok : prog.
-
-  Ltac distinct_names :=
-    match goal with
-      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_names_distinct ?tree ] => 
-        eapply DIRTREE.rep_tree_names_distinct; eapply H
-    end.
 
   Theorem copy2temp_ok : forall fsxp src_inum tinum mscs,
     {< d Fm Ftop temp_tree src_fn file tfile v0 ilist freeblocks,
