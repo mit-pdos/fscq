@@ -998,7 +998,7 @@ Module UCache.
 
 
 
-  Theorem sync_ok : forall cs a,
+  Theorem sync_ok' : forall cs a,
     {< d0 d (F F' : rawpred) v0 v',
     PRE
       synrep cs d0 d * [[ sync_invariant F ]] *
@@ -1160,6 +1160,72 @@ Module UCache.
         unfold ptsto_subset; cancel; eauto.
 
     Unshelve. all: eauto.
+  Qed.
+
+
+  Theorem sync_synrep_helper_1 : forall m cs d0 d a (F : @pred _ addr_eq_dec _) v,
+    synrep cs d0 d m ->
+    (F * a |+> v)%pred d ->
+    exists (F0 : @pred _ addr_eq_dec _) v0,
+    (F0 * a |+> v0)%pred d0.
+  Proof.
+    unfold synrep, rep, synrep', ptsto_subset; intros.
+    case_eq (d0 a); intros.
+    - destruct p.
+      eapply any_sep_star_ptsto in H1.
+      pred_apply.
+      safecancel.
+      eassign (w, l).
+      eassign l.
+      cancel.
+      firstorder.
+    - destruct H.
+      destruct_lift H.
+      destruct_lift H2.
+      destruct_lift H0.
+      apply ptsto_valid' in H0.
+      eapply mem_pred_absent_lm in H; eauto.
+      eapply mem_pred_absent_hm in H2; eauto.
+      congruence.
+
+      unfold synpred, ptsto_subset; intros.
+      destruct (Map.find a0 (CSMap cs)); try destruct p; try destruct b; cancel.
+
+      unfold cachepred, ptsto_subset; intros.
+      destruct (Map.find a0 (CSMap cs)); try destruct p; try destruct b; cancel.
+  Qed.
+
+  Theorem sync_synrep_helper_2 : forall cs d0 d a (F : @pred _ addr_eq_dec _) v,
+    (F * a |+> v)%pred d ->
+    synrep cs d0 d =p=> synrep cs d0 d * exists (F0 : @pred _ addr_eq_dec _) v0,
+    [[ (F0 * a |+> v0)%pred d0 ]].
+  Proof.
+    unfold pimpl; intros.
+    eapply sync_synrep_helper_1 in H; eauto; repeat deex.
+    pred_apply; cancel.
+  Qed.
+
+
+  Theorem sync_ok : forall cs a,
+    {< d0 d (F : rawpred) v0,
+    PRE
+      synrep cs d0 d * [[ sync_invariant F ]] *
+      [[ (F * a |+> v0)%pred d ]]
+    POST RET:cs exists d,
+      synrep cs d0 d *
+      [[ (F * a |+> (fst v0, nil))%pred d ]]
+    CRASH
+      exists cs', rep cs' d0
+    >} sync a cs.
+  Proof.
+    intros.
+    eapply pimpl_ok2.
+    apply sync_ok'.
+    intros; norml; unfold stars; simpl.
+    rewrite sync_synrep_helper_2 by eauto.
+    safecancel.
+    eauto.
+    step.
   Qed.
 
 

@@ -257,7 +257,6 @@ Section MemPred.
     intuition; constructor.
   Qed.
 
-
 End MemPred.
 
 Theorem mem_pred_pimpl : forall LA LEQ LV HA HEQ HV hm p1 p2,
@@ -289,6 +288,47 @@ Proof.
   destruct a; firstorder.
 Qed.
 
+
+Theorem mem_pred_absent_hm :
+  forall A AEQ LV HV p hm m a,
+  m a = None ->
+  (forall a v, p a v =p=> exists v', a |-> v') ->
+  @mem_pred A AEQ LV A AEQ HV p hm m ->
+  hm a = None.
+Proof.
+  intros.
+  case_eq (hm a); intros; auto.
+  eapply mem_pred_extract in H1; eauto.
+  rewrite H0 in H1; destruct_lift H1.
+  apply ptsto_valid' in H1; congruence.
+Qed.
+
+Theorem mem_pred_absent_lm :
+  forall A AEQ LV HV p hm m a,
+  hm a = None ->
+  (forall a v, p a v =p=> exists v', a |-> v') ->
+  @mem_pred A AEQ LV A AEQ HV p hm m ->
+  m a = None.
+Proof.
+  intros.
+  unfold mem_pred, mem_pred_one in H1. destruct_lift H1.
+  apply avs2mem_none_notin in H.
+  generalize dependent m.
+  induction dummy; simpl in *; intros.
+  - apply emp_empty_mem_only in H1; subst.
+    firstorder.
+  - destruct a0; simpl in *.
+    rewrite H0 in H1.
+    destruct (AEQ a0 a); try solve [ exfalso; eauto ].
+    destruct_lift H1.
+    generalize dependent H1.
+    unfold_sep_star; intros. repeat deex.
+    inversion H3.
+    eapply IHdummy in H7; eauto.
+    unfold ptsto in H5; destruct H5.
+    unfold mem_union.
+    rewrite H10; eauto.
+Qed.
 
 
 Theorem xform_mem_pred : forall prd (hm : rawdisk),
