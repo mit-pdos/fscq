@@ -337,7 +337,6 @@ Section EnvSection.
   | RunsToCallAx : forall x f args st spec input output ret,
       StringMap.find f env = Some spec ->
       mapM (sel st) args = Some input ->
-      mapsto_can_alias x st = true ->
       PreCond spec input ->
       length input = length output ->
       PostCond spec (List.combine input output) ret ->
@@ -377,15 +376,14 @@ Section EnvSection.
         is_false st cond ->
         Safe loop st
   | SafeAssign :
-      forall x e st w,
-        eval st e = Some (SCA w) ->
-        mapsto_can_alias x st = true ->
+      forall x e st v,
+        eval st e = Some v ->
+        can_alias v = true ->
         Safe (Assign x e) st
   | SafeCallAx :
       forall x f args st spec input,
         StringMap.find f env = Some spec ->
         mapM (sel st) args = Some input ->
-        mapsto_can_alias x st = true ->
         PreCond spec input ->
         Safe (Call x f args) st.
 
@@ -407,13 +405,12 @@ Section EnvSection.
     Hypothesis AssignCase :
       forall x e st,
         R (Assign x e) st ->
-        mapsto_can_alias x st = true /\
-        exists w, eval st e = Some (SCA w).
+        exists v, eval st e = Some v /\
+                  can_alias v = true.
 
     Hypothesis CallCase :
       forall x f args st,
         R (Call x f args) st ->
-        mapsto_can_alias x st = true /\
         exists input,
           mapM (sel st) args = Some input /\
           ((exists spec,
@@ -645,7 +642,6 @@ Example micro_write : sigT (fun p => forall d0 a v,
 Proof.
   eexists.
   intros.
-  (* TODO: when I pass wrong # of arguments, this just becomes trivially provable. Need to prove Safe too! *)
   instantiate (1 := (Call "_" "write" ["disk"; "a"; "v"])%facade).
   intro. intros.
   simpl in *.
@@ -664,13 +660,11 @@ Proof.
   unfold disk_env.
   maps. trivial.
   simpl. unfold sel. rewrite He, He0, He1. trivial.
-  unfold mapsto_can_alias.
-  (* Oops! We don't actually know that initial_state doesn't contain "_".
-     In the real Facade, I think we know this because SameValues will ensure that "_" in initial_state is either a scalar or not present. *)
-Abort.
-(*
-  compute in H4.
-  invert H4.
+  simpl. repeat deex. repeat eexists. trivial.
+  inversion H2.
+  unfold disk_env in H7.
+  maps.
+  invert H7.
   unfold sel in *.
   simpl in *.
   destruct (find "disk" initial_state); [ | exfalso; solve [ intuition idtac ] ].
@@ -678,15 +672,16 @@ Abort.
   destruct (find "v" initial_state); [ | exfalso; solve [ intuition idtac ] ].
   intuition idtac.
   repeat deex.
-  apply ret_computes_to in H1.
-  apply ret_computes_to in H2.
-  apply ret_computes_to_disk in H0.
-  invert H.
-  invert H5.
+  repeat match goal with
+  | [ H : computes_to _ _ _ _ |- _ ] =>
+      let H' := fresh H in
+      assert (H' := H); apply ret_computes_to in H; apply ret_computes_to_disk in H'; subst
+  end.
+  invert H2.
+  invert H8.
   do 3 (destruct output; try discriminate).
-  destruct d3, d2.
   simpl in *.
-  invert H7.
+  invert H4.
   subst st'.
   maps.
   do 2 eexists; intuition.
@@ -700,6 +695,7 @@ Abort.
   eauto.
 Defined.
 
+(*
 Example micro_plus : sigT (fun p => forall d0 x y,
   {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "x") d0 (ret x) ; SItemRet (NTSome "y") d0 (ret y) ] }}
     p
