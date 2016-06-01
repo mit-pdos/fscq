@@ -10,6 +10,22 @@ Set Implicit Arguments.
 (* Don't print (elt:=...) everywhere *)
 Unset Printing Implicit Defensive.
 
+
+Ltac invert H := inversion H; subst; clear H.
+
+(* TODO: use Pred.v's *)
+Ltac deex :=
+  match goal with
+  | [ H : exists (varname : _), _ |- _ ] =>
+    let newvar := fresh varname in
+    destruct H as [newvar ?]; intuition subst
+  end.
+
+Ltac apply_in_hyp lem :=
+  match goal with
+  | [ H : _ |- _ ] => eapply lem in H
+  end.
+
 Local Open Scope string_scope.
 
 Definition addr := nat.
@@ -35,22 +51,99 @@ Inductive step T : diskstate -> prog T -> diskstate -> prog T -> Prop :=
 Hint Constructors step.
 
 Inductive outcome (T : Type) :=
-| Finished (d: diskstate) (v: T).
+| Failed
+| Finished (d: diskstate) (v: T)
+| Crashed (d: diskstate).
 
 Inductive exec T : diskstate -> prog T -> outcome T -> Prop :=
 | XStep : forall d p d' p' out,
   step d p d' p' ->
   exec d' p' out ->
   exec d p out
+| XFail : forall d p, (~exists d' p', step d p d' p') ->
+  (~exists r, p = Done r) ->
+  exec d p (Failed T)
+| XCrash : forall d p, exec d p (Crashed T d)
 | XDone : forall d v,
   exec d (Done v) (Finished d v).
 
 Hint Constructors exec.
 
+Definition trace := list (addr * valu).
+
+Inductive step_trace T : diskstate -> prog T -> diskstate -> prog T -> trace -> Prop :=
+| StepTRead : forall d a rx, step_trace d (Read a rx) d (rx (d a)) []
+| StepTWrite : forall d a v rx, step_trace d (Write a v rx) (upd a v d) (rx tt) [(a, v)].
+
+Hint Constructors step_trace.
+
+Inductive exec_trace T : diskstate -> prog T -> outcome T -> trace -> Prop :=
+| XTStep : forall d p d' p' out t1 t2 t,
+  t = (t1 ++ t2)%list -> (* TODO: which order? *)
+  step_trace d p d' p' t1 ->
+  exec_trace d' p' out t2 ->
+  exec_trace d p out t
+| XTFail : forall d p, (~exists d' p', step d p d' p') ->
+  (~exists r, p = Done r) ->
+  exec_trace d p (Failed T) []
+| XTCrash : forall d p, exec_trace d p (Crashed T d) []
+| XTDone : forall d v,
+  exec_trace d (Done v) (Finished d v) [].
+
+Hint Constructors exec_trace.
+
+Definition computes_to_trace A (p : forall T, (A -> prog T) -> prog T) (d d' : diskstate) (tr : trace) (x : A) :=
+  forall T (rx : A -> prog T) d'' tr' (y : T),
+    exec_trace d' (rx x) (Finished d'' y) tr' <-> exec_trace d (p T rx) (Finished d'' y) (tr ++ tr')%list.
 
 Definition computes_to A (p : forall T, (A -> prog T) -> prog T) (d d' : diskstate) (x : A) :=
   forall T (rx : A -> prog T) d'' (y : T),
     exec d' (rx x) (Finished d'' y) <-> exec d (p T rx) (Finished d'' y).
+
+Lemma step_trace_equiv : forall T d p d' p',
+  @step T d p d' p' <-> exists tr, step_trace d p d' p' tr.
+Proof.
+  intros.
+  split; intro.
+  + destruct H; eauto.
+  + destruct H. destruct H; eauto.
+Qed.
+
+Lemma exec_trace_equiv : forall T d p out,
+  @exec T d p out <-> exists tr, exec_trace d p out tr.
+Proof.
+  intros.
+  split; intro.
+  + induction H; eauto.
+    apply_in_hyp step_trace_equiv.
+    repeat deex. eauto.
+  + deex.
+    induction H; eauto.
+    econstructor; eauto.
+    eapply step_trace_equiv; eauto.
+Qed.
+
+Lemma computes_to_trace_prefix : forall A p d d' tr x,
+  @computes_to_trace A p d d' tr x ->
+  forall T rx d'' y tr0,
+  exec_trace d (p T rx) (Finished d'' y) tr0 ->
+  exists tr', tr0 = (tr ++ tr')%list.
+Proof.
+  intros.
+  unfold computes_to in *.
+  (* I suspect this is true but unprovable, because it relies on "Theorems for Free"-style parametricity. *)
+Abort.
+
+Lemma computes_to_equiv : forall A p d d' x,
+  @computes_to A p d d' x <-> exists tr, computes_to_trace p d d' tr x.
+Proof.
+  split; intro.
+  admit.
+  intros.
+  unfold computes_to.
+  deex; eapply exec_trace_equiv; apply_in_hyp exec_trace_equiv; deex.
+  eexists. eapply H. eauto.
+Abort.
 
 Definition label := string.
 Definition var := string.
@@ -96,7 +189,6 @@ Definition can_alias v :=
   | SCA _ => true
   | Disk _ => false
   end.
-
 
 Definition State := StringMap.t Value.
 
@@ -324,15 +416,6 @@ Definition ret A (x : A) : forall T, (A -> prog T) -> prog T := fun T rx => rx x
 
 Definition extract_code := projT1.
 
-Ltac invert H := inversion H; subst; clear H.
-
-(* TODO: use Pred.v's *)
-Ltac deex :=
-  match goal with
-  | [ H : exists (varname : _), _ |- _ ] =>
-    let newvar := fresh varname in
-    destruct H as [newvar ?]; intuition subst
-  end.
 
 Ltac maps := rewrite ?StringMapFacts.remove_neq_o, ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o in * by congruence.
 
