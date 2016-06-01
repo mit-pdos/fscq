@@ -372,6 +372,41 @@ Proof.
   apply sep_star_lift_l; intros; auto.
 Qed.
 
+Theorem crash_xform_ptsto_subset : forall a v,
+  crash_xform (a |+> v) =p=> exists v', [[ In v' (vsmerge v) ]] * a |=> v'.
+Proof.
+  unfold ptsto_subset; intros.
+  rewrite crash_xform_exists_comm.
+  apply pimpl_exists_l; intros.
+  rewrite crash_xform_sep_star_dist, crash_xform_lift_empty.
+  rewrite crash_xform_ptsto.
+  apply sep_star_lift_l; intro.
+  apply pimpl_exists_l; intros.
+  rewrite sep_star_comm.
+  apply sep_star_lift_l; intro.
+  apply pimpl_exists_r; exists x0.
+  apply sep_star_lift_r'.
+  apply pimpl_and_split; auto.
+  unfold lift, pimpl; intros.
+  cbn in *; intuition.
+Qed.
+
+Theorem crash_xform_ptsto_subset_r: forall a v vs,
+  In v (vsmerge vs) ->
+  a |=> v =p=> crash_xform (a |+> vs).
+Proof.
+  unfold ptsto_subset; intros.
+  rewrite crash_xform_exists_comm.
+  apply pimpl_exists_r; eexists.
+  rewrite crash_xform_sep_star_dist, crash_xform_lift_empty.
+  rewrite <- crash_xform_ptsto_r.
+  apply sep_star_lift_r.
+  apply pimpl_and_split; eauto.
+  unfold lift, pimpl; intros.
+  cbn in *; intuition.
+  apply in_cons; auto.
+Qed.
+
 
 Theorem crash_xform_pimpl : forall (p q : rawpred), p =p=>q
   -> crash_xform p =p=> crash_xform q.

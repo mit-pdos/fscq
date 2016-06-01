@@ -1297,6 +1297,92 @@ Module UCache.
   Qed.
 
 
+  (** crashes and recovery *)
+
+  Lemma xform_cachepred_ptsto : forall m a vs,
+    crash_xform (cachepred m a vs) =p=> 
+      exists v, [[ In v (vsmerge vs) ]] * a |=> v.
+  Proof.
+    unfold cachepred; intros.
+    case_eq (Map.find a m); intros; try destruct p, b.
+    - xform_norm; subst.
+      rewrite crash_xform_ptsto_subset.
+      cancel; subst.
+      apply in_inv in H1; simpl in *; intuition subst;
+      apply in_cons; auto.
+    - xform_norm; subst.
+      rewrite crash_xform_ptsto_subset.
+      cancel.
+    - xform_norm; subst.
+      rewrite crash_xform_ptsto_subset.
+      cancel.
+  Qed.
+
+  Lemma xform_mem_pred_cachepred : forall cs hm,
+    crash_xform (mem_pred (cachepred cs) hm) =p=> 
+      exists m', [[ possible_crash hm m' ]] *
+      mem_pred (cachepred (Map.empty _)) m'.
+  Proof.
+    intros.
+    rewrite xform_mem_pred.
+    unfold mem_pred at 1.
+    xform_norm; subst.
+
+    rename hm_avs into l.
+    revert H; revert l.
+    induction l; simpl; intros.
+    cancel.
+    apply mem_pred_empty_mem.
+    unfold possible_crash; intuition.
+
+    inversion H; destruct a; subst; simpl in *.
+    unfold mem_pred_one; simpl.
+
+    rewrite IHl by auto.
+    xform_norm.
+    rewrite xform_cachepred_ptsto.
+    norml; unfold stars; simpl; clear_norm_goal.
+    apply pimpl_exists_r.
+    exists (upd m' n (v, nil)).
+    rewrite <- mem_pred_absorb.
+    unfold cachepred at 3; unfold ptsto_subset.
+    rewrite MapFacts.empty_o; cancel.
+    erewrite <- notindomain_mem_eq; auto.
+    eapply possible_crash_notindomain; eauto.
+    apply avs2mem_notindomain; auto.
+    apply possible_crash_upd; eauto.
+    apply incl_nil.
+  Qed.
+
+
+  Lemma crash_xform_rep: forall cs m,
+    crash_xform (rep cs m) =p=>
+       exists m' cs', [[ possible_crash m m' ]] * rep cs' m'.
+  Proof.
+    unfold rep; intros.
+    xform_norm.
+    rewrite xform_mem_pred_cachepred.
+    cancel.
+    eassign (cache0 (CSMaxCount cs)); cancel.
+    all: unfold cache0; simpl; eauto.
+    unfold size_valid in *; intuition.
+    unfold addr_valid in *; intuition.
+    eapply MapFacts.empty_in_iff; eauto.
+  Qed.
+
+
+  Lemma crash_xform_rep_pred : forall cs m (F : pred),
+    F%pred m ->
+    crash_xform (rep cs m) =p=>
+    exists m' cs', rep cs' m' * [[ (crash_xform F)%pred m' ]].
+  Proof.
+    intros.
+    rewrite crash_xform_rep.
+    norm. cancel. split; auto.
+    exists m; eauto.
+  Qed.
+
+
 
 
 
