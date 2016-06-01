@@ -104,8 +104,8 @@ Proof.
   destruct H; eexists; try solve [instantiate (1 := []); eauto]; try solve [instantiate (1 := [_]); simpl; eauto].
 Qed.
 
-Lemma step_trace_equiv_2 : forall T d p d' p',
-  (exists tr tr', step_trace d tr p d' (tr' ++ tr) p') -> @step T d p d' p'.
+Lemma step_trace_equiv_2 : forall T d p d' p' tr tr',
+  step_trace d tr p d' (tr' ++ tr) p' -> @step T d p d' p'.
 Proof.
   intros.
   repeat deex. destruct H; eauto.
@@ -161,8 +161,8 @@ Proof.
   deex. specialize (IHexec tr'). deex. eauto.
 Qed.
 
-Lemma exec_trace_equiv_2 : forall T d p out,
-  (exists tr tr', exec_trace d tr p out (tr' ++ tr)) -> @exec T d p out.
+Lemma exec_trace_equiv_2 : forall T d p out tr tr',
+  exec_trace d tr p out (tr' ++ tr) -> @exec T d p out.
 Proof.
   intros.
   repeat deex.
