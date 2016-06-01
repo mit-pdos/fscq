@@ -29,9 +29,9 @@ Ltac apply_in_hyp lem :=
 Definition addr := nat.
 Definition valu := nat.
 
-Definition diskstate := addr -> valu.
+Definition memory := addr -> valu.
 
-Definition upd (a : addr) (v : valu) (d : diskstate) :=
+Definition upd (a : addr) (v : valu) (d : memory) :=
   fun a0 =>
     if Nat.eq_dec a a0 then v else d a0.
 
@@ -42,7 +42,7 @@ Inductive prog T :=
 | Read (a: addr) (rx: valu -> prog T)
 | Write (a: addr) (v: valu) (rx: unit -> prog T).
 
-Inductive step T : diskstate -> prog T -> diskstate -> prog T -> Prop :=
+Inductive step T : memory -> prog T -> memory -> prog T -> Prop :=
 | StepRead : forall d a rx, step d (Read a rx) d (rx (d a))
 | StepWrite : forall d a v rx, step d (Write a v rx) (upd a v d) (rx tt).
 
@@ -50,10 +50,10 @@ Hint Constructors step.
 
 Inductive outcome (T : Type) :=
 | Failed
-| Finished (d: diskstate) (v: T)
-| Crashed (d: diskstate).
+| Finished (d: memory) (v: T)
+| Crashed (d: memory).
 
-Inductive exec T : diskstate -> prog T -> outcome T -> Prop :=
+Inductive exec T : memory -> prog T -> outcome T -> Prop :=
 | XStep : forall d p d' p' out,
   step d p d' p' ->
   exec d' p' out ->
@@ -69,13 +69,13 @@ Hint Constructors exec.
 
 Definition trace := list (addr * valu).
 
-Inductive step_trace T : diskstate -> trace -> prog T -> diskstate -> trace -> prog T -> Prop :=
+Inductive step_trace T : memory -> trace -> prog T -> memory -> trace -> prog T -> Prop :=
 | StepTRead : forall d tr a rx , step_trace d tr (Read a rx) d tr (rx (d a))
 | StepTWrite : forall d tr a v rx, step_trace d tr (Write a v rx) (upd a v d) ((a, v) :: tr) (rx tt).
 
 Hint Constructors step_trace.
 
-Inductive exec_trace T : diskstate -> trace -> prog T -> outcome T -> trace -> Prop :=
+Inductive exec_trace T : memory -> trace -> prog T -> outcome T -> trace -> Prop :=
 | XTStep : forall d p d' p' out tr tr' tr'',
   step_trace d tr p d' tr' p' ->
   exec_trace d' tr' p' out tr'' ->
@@ -89,11 +89,13 @@ Inductive exec_trace T : diskstate -> trace -> prog T -> outcome T -> trace -> P
 
 Hint Constructors exec_trace.
 
-Definition computes_to_trace A (p : forall T, (A -> prog T) -> prog T) (d d' : diskstate) (tr tr' : trace) (x : A) :=
-  forall T (rx : A -> prog T) d'' tr'' (y : T),
-    exec_trace d' tr' (rx x) (Finished d'' y) tr'' <-> exec_trace d tr (p T rx) (Finished d'' y) tr''.
+Notation diskstate := (memory * trace)%type.
 
 Definition computes_to A (p : forall T, (A -> prog T) -> prog T) (d d' : diskstate) (x : A) :=
+  forall T (rx : A -> prog T) d'' (y : T),
+    exec_trace (fst d') (snd d') (rx x) (Finished (fst d'') y) (snd d'') <-> exec_trace (fst d) (snd d) (p T rx) (Finished (fst d'') y) (snd d'').
+
+Definition computes_to_notrace A (p : forall T, (A -> prog T) -> prog T) (d d' : memory) (x : A) :=
   forall T (rx : A -> prog T) d'' (y : T),
     exec d' (rx x) (Finished d'' y) <-> exec d (p T rx) (Finished d'' y).
 
@@ -409,6 +411,7 @@ Notation "{{ A }} P {{ B }} // EV" :=
 Ltac FacadeWrapper_t :=
   abstract (repeat match goal with
                    | _ => progress intros
+                   | [ H : _ * _ |- _ ] => destruct H
                    | [ H : _ = _ |- _ ] => inversion H; solve [eauto]
                    | _ => solve [eauto]
                    end).
@@ -469,7 +472,9 @@ Proof.
   specialize (H ltac:(do 2 econstructor)).
   invert H.
   invert H0.
-  trivial.
+  destruct d, d'.
+  simpl in *.
+  congruence.
 Qed.
 
 Lemma ret_computes_to_refl : forall A (x : A) d, computes_to (ret x) d d x.
@@ -497,7 +502,7 @@ Definition write : AxiomaticSpec.
     PreCond := fun args => exists (d : diskstate) (a : addr) (v : valu),
       args = (wrap d) :: (wrap a) :: (wrap v) :: nil;
     PostCond := fun args ret => exists (d : diskstate) (a : addr) (v : valu),
-      args = (wrap d, Some (wrap (upd a v d))) :: (wrap a, None) :: (wrap v, None) :: nil
+      args = (wrap d, Some (wrap (upd a v (fst d), (a, v) :: snd d))) :: (wrap a, None) :: (wrap v, None) :: nil
   |}.
 Defined.
 
@@ -530,12 +535,13 @@ Proof.
   invert H.
   invert H5.
   do 3 (destruct output; try discriminate).
+  destruct d3, d2.
   simpl in *.
   invert H7.
   subst st'.
   maps.
   do 2 eexists; intuition.
-  econstructor.
+  econstructor; simpl.
   econstructor.
   econstructor.
   eauto.
@@ -611,7 +617,6 @@ Proof.
   repeat match goal with
   | [ H : _ /\ _ |- _ ] => destruct H
   end.
-  assert (H' := H).
   repeat match goal with
   | [ H : computes_to _ _ _ _ |- _ ] =>
       let H' := fresh H in
@@ -619,27 +624,30 @@ Proof.
   end.
   invert H5.
   simpl in *.
-  invert H6.
+  invert H2.
+  intuition idtac.
   do 2 eexists; intuition.
+  destruct d.
   econstructor.
   econstructor.
   econstructor.
   eauto.
   intro.
-  invert H1.
-  invert H5.
+  invert H.
+  invert H0.
   eauto.
-  trivial.
   do 2 eexists; intuition.
+  destruct d.
   econstructor.
   econstructor.
   econstructor.
+  simpl.
+  instantiate (d := (upd a0 v1 (fst d), (a0, v1) :: (snd d))).
   eauto.
   intro.
-  invert H1.
-  invert H5.
+  invert H.
+  invert H0.
   eauto.
-  congruence.
 Defined.
 
 (*
