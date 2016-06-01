@@ -36,7 +36,12 @@ Module ABYTEFILE.
 Definition attr := INODE.iattr.
 Definition attr0 := INODE.iattr0.
 
-Definition byteset := nelist byte.
+Notation "'byteset'" := (nelist byte%type).
+
+Print nelist.
+Check byteset.
+
+Definition byteset0 := byteset.
 
 Record bytefile := mk_bytefile {
   ByFData : list byteset;
@@ -45,9 +50,50 @@ Record bytefile := mk_bytefile {
 
 Definition bytefile0 := mk_bytefile nil attr0.
 
-     
+Locate "valuset".
+Locate "valu".
+Locate "byteset".
+Print bytefile.
+Print bsplit_list.
+
+(* Definition mk_byteset (l: list byte): byteset := ((list byte) * l)%type. *)
+
+Definition valuset2byteset:  valuset -> byteset. 
+Proof. Admitted.
+
+
+Fixpoint bytelist_equal_prop (b1 b2: list byte) : Prop :=
+(match b1 with
+  | nil => match b2 with
+            | nil => True
+            | _ => False
+            end
+  | h1::b1' => match b2 with
+                      | nil => False
+                      | h2::b2' => (h1 = h2 /\ (bytelist_equal_prop b1' b2'))
+                      end
+end).
+
+Definition bytelist_equal (b1 b2: list byte) : @pred addr addr_eq_dec byte :=
+[[bytelist_equal_prop b1 b2]].
+
+Fixpoint byteset_list_equal_prop (l1 l2: list byteset) : Prop :=
+match l1 with
+  | nil => match l2 with
+            | nil => True
+            | _ => False
+            end
+  | h1::l1' => match l2 with
+                | nil => False
+                | h2::l2' => ((bytelist_equal_prop (snd h1) (snd h2)) /\ (byteset_list_equal_prop l1' l2'))
+                end
+end.
+
+Definition byteset_list_equal (l1 l2: list byteset) : @pred addr addr_eq_dec byteset :=
+[[byteset_list_equal_prop l1 l2]].
+
 Definition rep byte_file block_file :=
-  ( listmatch (snd (ByFData byte_file)) (concat (map valu2bytes (BFILE.BFData block_file)))  )%pred.
+  byteset_list_equal (ByFData byte_file) (map valuset2byteset (BFILE.BFData block_file)).
 
 
 Definition modulo (n m: nat) : nat := n - ((n / m) * m)%nat.
@@ -77,16 +123,25 @@ Fixpoint get_sublist {A:Type}(l: list A) (off len: nat) : list A :=
               end
   end.
 
-Definition full_read_ok r block_size block_off first_read_length num_of_full_reads f : Prop :=
+(* This is for block based read *)
+(* Definition full_read_ok r block_size block_off first_read_length num_of_full_reads f : Prop :=
 forall (i:nat), ((num_of_full_reads < i + 1) \/ (*[1]i is out of range OR*)
   (*[2]i'th block you read matches its contents*)
    (exists bl:valuset, (( exists F',(F' * (block_off +i)|-> bl)%pred (list2nmem f)) /\ (*[2.1]Block bl is in the address (block_off +1 + i) AND*)
   (get_sublist r (first_read_length + (i-1)*block_size) block_size (*[2.2]What is read matches the content*)
-      = valu_to_list (fst bl))))).
+      = valu_to_list (fst bl))))). *)
 
+
+(* Definition ith_read_ok r f off len i : Prop :=
+exists F, exists (by: byteset), ((len < i) \/ (((F * (off +i)|-> by)%pred (list2nmem (ByFData f))) /\ (selN r i) = (latest by))).
+*)
+
+
+(* Definition full_read_ok r f off len : pred :=
+[[ forall i, ((len < i) \/ ( (selN r i byte) = latest (selN (ByFData f) (off + i) ((word 8), nil))))]]. *)
 
 (*Interface*)
-Definition read {T} lxp ixp inum (off len:nat) fms rx : prog T :=
+Definition read T lxp ixp inum (off len:nat) fms rx : prog T :=
 If (lt_dec 0 len)                        (* if read length > 0 *)
 {                    
   let^ (fms, flen) <- BFILE.getlen lxp ixp inum fms;          (* get file length *)
@@ -254,62 +309,26 @@ Definition dwrite T lxp ixp inum off data fms rx : prog T :=
     let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     ms <- INODE.updattr lxp ixp inum kv ms;
     rx (BFILE.mk_memstate al ms).
-
-
-
-
+    
 
 (*Specs*)
 Theorem read_ok : forall lxp bxp ixp inum off len ms,
-    {< F Fm Fi Fd m0 m flist ilist frees f vs ve,
+    {< F Fm Fi Fd m0 m flist ilist frees f fy bs be,
     PRE:hm
-        let block_size := (get_block_size (fst vs)) in
-        let block_off := off / block_size in
-        let byte_off := modulo off block_size in
-        let first_read_length := min (block_size - byte_off) len in
-        let num_of_full_reads := (len - first_read_length) / block_size in
-        let last_read_length := len - first_read_length - num_of_full_reads * block_size in
-        let file_length := length (BFILE.BFData f) in
+        let file_length := length (ByFData fy) in
+        let len := min len (file_length - off) in
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms) hm *
            [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
-           [[[ (BFILE.BFData f) ::: (Fd * block_off |-> vs * ([[0 = (off+len)/block_size]] \/ 
-                ((off+len)/block_size)|-> ve \/ [[file_length < off + len]]))]]]*
+           rep fy f *
            [[ off < file_length ]]*
            [[ 0 < len ]]
     POST:hm' RET:^(ms', r)
-          let block_size := (get_block_size (fst vs)) in
-          let block_off := off / block_size in
-          let byte_off := modulo off block_size in
-          let first_read_length := min (block_size - byte_off) len in
-          let num_of_full_reads := (len - first_read_length) / block_size in
-          let last_read_length := len - first_read_length - num_of_full_reads * block_size in
-          let file_length := length (BFILE.BFData f) in
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm' *
-           [[  
-           (*[1]You read correctly*)
-           ((off + len <= file_length /\        (*[1.1]You read the full length OR*)
-               
-               (*[1.1.1]You read the first block correctly AND*)
-               (get_sublist r 0 first_read_length = get_sublist (valu_to_list (fst vs)) byte_off first_read_length ) /\ 
-               
-               (*[1.1.2]You read all middle blocks correctly AND*)
-              full_read_ok r block_size block_off first_read_length num_of_full_reads (BFILE.BFData f) /\
-               
-               (*[1.1.3]You read the last block correctly*)
-               (get_sublist r (len - last_read_length) last_read_length 
-                  = get_sublist (valu_to_list (fst ve)) 0 last_read_length))
-                  
-             \/ (file_length < off + len /\ (*[1.2]You read as much as possible*)
-             
-                (*[1.2.1]You read the first block correctly AND*)
-                (get_sublist r 0 first_read_length = get_sublist (valu_to_list (fst vs)) byte_off first_read_length ) /\
-                
-                (*[1.2.2]You read remaining blocks correctly*)
-                full_read_ok r block_size block_off first_read_length ((file_length - off - first_read_length)/block_size) m))
-
-              (*[2]Memory contents didn't change*)
-              /\ BFILE.MSAlloc ms = BFILE.MSAlloc ms' ]]
+          let file_length := length (ByFData fy) in
+          let len := min len (file_length - off) in
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm' *
+          full_read_ok r fy off len *
+          [[BFILE.MSAlloc ms = BFILE.MSAlloc ms' ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm'
     >} read lxp ixp inum off len ms.
