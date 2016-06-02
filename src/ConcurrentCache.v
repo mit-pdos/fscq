@@ -599,6 +599,22 @@ Section ConcurrentCache.
        same_domain_remove_reader
        readers_locked_remove_reading.
 
+  Lemma cache_rep_disk_val : forall d c vd v rdr a,
+      cache_rep d c vd ->
+      vd a = Some (v, rdr) ->
+      (exists v', d a = Some (v', rdr)).
+  Proof.
+    intros.
+    specialize (H a).
+    destruct matches in *; intuition auto; repeat deex;
+      try match goal with
+          | [ H: ?v = Some (_, ?rdr), H': ?v = Some (_, ?rdr') |- _ ] =>
+            assert (rdr = rdr') by congruence
+          end; subst;
+        eauto.
+    congruence.
+  Qed.
+
   Theorem cache_fill_ok : forall a,
       SPEC delta, tid |-
               {{ v0,
@@ -621,16 +637,10 @@ Section ConcurrentCache.
     hoare.
     eexists; simplify; finish.
     hoare.
-    exists v0; simplify; finish.
-    (* to guarantee this, need to know that a is still not cached -
-    protocol should say if cache has invalid, then someone must be
-    reading it (this is in the invariant via cache_rep already) AND
-    reader is only thread that can add a value (or write - WriteBuffer
-    must also remain empty)
-
-    XXX: make changes to protocol to make this admit provable
-    *)
-    admit.
+    assert (exists v, d1 a = Some (v, Some tid)).
+    eauto using cache_rep_disk_val.
+    deex.
+    eexists; simplify; finish.
 
     hoare;
       let n := numgoals in guard n = 4;
