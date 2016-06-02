@@ -19,20 +19,10 @@ Defined.
 Fixpoint compiler {T} (error_rx: prog Sigma) (p: Prog.prog T) : prog Sigma :=
   match p with
   | Prog.Done v => Done
-  | Prog.Read a rx => opt_v <- cache_maybe_read a;
-                       match opt_v with
-                       | Some v => compiler error_rx (rx (valu_conv v))
-                       | None => _ <- cache_abort;
-                                  v <- cache_fill a;
-                                  error_rx
-                       end
-  | Prog.Write a v rx => ok <- cache_write a (valu_conv' v);
-                          if ok then
-                            compiler error_rx (rx tt)
-                          else
-                            _ <- cache_abort;
-                          _ <- Yield a;
-                          error_rx
+  | Prog.Read a rx => v <- cache_read a error_rx;
+                       compiler error_rx (rx (valu_conv v))
+  | Prog.Write a v rx => _ <- cache_write a (valu_conv' v) error_rx;
+                          compiler error_rx (rx tt)
   | Prog.Sync a rx => _ <- cache_writeback a;
                        (* current concurrent disk model has no
                        asynchrony, but otherwise would need to issue
@@ -65,8 +55,6 @@ CoFixpoint cseq (p1: prog Sigma) (p2: prog Sigma) : prog Sigma :=
   | Done => p2
   end.
 
-Require Import FunctionalExtensionality.
-
 Theorem compiler_seq : forall T error_rx (p1 p2: Prog.prog T),
     compiler error_rx (seq p1 p2) = cseq (compiler error_rx p1) (compiler error_rx p2).
 Proof.
@@ -77,22 +65,6 @@ Proof.
   though it's a cofix, it should be able to reduce when its matching
   on a constructor *)
   admit.
-
-  simpl.
-  unfold progseq.
-  assert ((fun opt_v : option valu =>
-     match opt_v with
-     | Some v => compiler error_rx (seq (rx (valu_conv v)) p2)
-     | None => cache_abort (fun _ : unit => cache_fill a (fun _ : valu => error_rx))
-     end) = (fun opt_v : option valu =>
-     match opt_v with
-     | Some v => cseq (compiler error_rx (rx (valu_conv v))) (compiler error_rx p2)
-     | None => cache_abort (fun _ : unit => cache_fill a (fun _ : valu => error_rx))
-     end)).
-  extensionality opt_v.
-  destruct opt_v; auto.
-  rewrite H0.
-  (* need to move each constructor in cache_maybe_read outside cseq by reducing more *)
 Abort.
 
 Notation prog_valuset := (word Prog.Valulen.valulen * list (word Prog.Valulen.valulen))%type.

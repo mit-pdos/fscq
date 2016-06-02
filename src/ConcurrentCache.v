@@ -140,7 +140,7 @@ Section ConcurrentCache.
 
   (** buffer a new write: fails (returns false) if the write overlaps
   with the address being read filled *)
-  Definition cache_write a v rx : prog Sigma :=
+  Definition cache_try_write a v rx : prog Sigma :=
     c <- Get mCache;
       match cache_get c a with
       | Invalid => rx false
@@ -176,6 +176,24 @@ Section ConcurrentCache.
                          let vd' := hide_readers (get vDisk0 s) in
                          set vdisk vd' s);
       rx tt.
+
+  Definition cache_read a erx rx : prog Sigma :=
+    opt_v <- cache_maybe_read a;
+      match opt_v with
+      | Some v => rx v
+      | None => _ <- cache_abort;
+                 v <- cache_fill a;
+                 erx
+      end.
+
+  Definition cache_write a v erx rx : prog Sigma :=
+    ok <- cache_try_write a v;
+      if ok then
+        rx tt
+      else
+        _ <- cache_abort;
+      _ <- Yield a;
+      erx.
 
   (** TODO: need to write a into cache from WriteBuffer, evict from
   cache (writing if necessary), and then note in place of the
@@ -658,7 +676,7 @@ Section ConcurrentCache.
        cache_not_invalid_3.
 
 
-  Theorem cache_write_ok : forall a v,
+  Theorem cache_try_write_ok : forall a v,
       SPEC delta, tid |-
               {{ v0,
                | PRE d m s0 s:
@@ -671,7 +689,7 @@ Section ConcurrentCache.
                    get vDisk0 s' = get vDisk0 s /\
                    guar delta tid s s' /\
                    guar delta tid s0' s'
-              }} cache_write a v.
+              }} cache_try_write a v.
   Proof.
     hoare.
   Qed.
