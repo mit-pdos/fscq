@@ -41,6 +41,60 @@ Fixpoint compiler {T} (error_rx: prog Sigma) (p: Prog.prog T) : prog Sigma :=
   | Prog.Trim a rx => compiler error_rx (rx tt)
   end.
 
+Fixpoint seq {T} (p1: Prog.prog T) (p2: Prog.prog T) : Prog.prog T :=
+  match p1 with
+  | Prog.Read a rx => Prog.Read a (fun v => seq (rx v) p2)
+  | Prog.Write a v rx => Prog.Write a v (fun v => seq (rx v) p2)
+  | Prog.Sync a rx => Prog.Sync a (fun v => seq (rx v) p2)
+  | Prog.Trim a rx => Prog.Trim a (fun v => seq (rx v) p2)
+  | Prog.Done t => p2
+  end.
+
+CoFixpoint cseq (p1: prog Sigma) (p2: prog Sigma) : prog Sigma :=
+  match p1 with
+  | StartRead a rx => StartRead a (fun v => cseq (rx v) p2)
+  | FinishRead a rx => FinishRead a (fun v => cseq (rx v) p2)
+  | Write a v rx => Write a v (fun v => cseq (rx v) p2)
+  | Sync a rx => Sync a (fun v => cseq (rx v) p2)
+  | Get v rx => Get v (fun t => cseq (rx t) p2)
+  | Assgn v val rx => Assgn v val (fun v => cseq (rx v) p2)
+  | GetTID rx => GetTID (fun tid => cseq (rx tid) p2)
+  | Yield a rx => Yield a (fun v => cseq (rx v) p2)
+  | Wakeup a rx => Wakeup a (fun v => cseq (rx v) p2)
+  | GhostUpdate up rx => GhostUpdate up (fun v => cseq (rx v) p2)
+  | Done => p2
+  end.
+
+Require Import FunctionalExtensionality.
+
+Theorem compiler_seq : forall T error_rx (p1 p2: Prog.prog T),
+    compiler error_rx (seq p1 p2) = cseq (compiler error_rx p1) (compiler error_rx p2).
+Proof.
+  intros.
+  induction p1.
+  simpl.
+  (* not sure why an iota reduction isn't possible on cseq: even
+  though it's a cofix, it should be able to reduce when its matching
+  on a constructor *)
+  admit.
+
+  simpl.
+  unfold progseq.
+  assert ((fun opt_v : option valu =>
+     match opt_v with
+     | Some v => compiler error_rx (seq (rx (valu_conv v)) p2)
+     | None => cache_abort (fun _ : unit => cache_fill a (fun _ : valu => error_rx))
+     end) = (fun opt_v : option valu =>
+     match opt_v with
+     | Some v => cseq (compiler error_rx (rx (valu_conv v))) (compiler error_rx p2)
+     | None => cache_abort (fun _ : unit => cache_fill a (fun _ : valu => error_rx))
+     end)).
+  extensionality opt_v.
+  destruct opt_v; auto.
+  rewrite H0.
+  (* need to move each constructor in cache_maybe_read outside cseq by reducing more *)
+Abort.
+
 Notation prog_valuset := (word Prog.Valulen.valulen * list (word Prog.Valulen.valulen))%type.
 
 (* [lift_disk] and [project_disk] convert between the view of the disk
