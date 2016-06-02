@@ -175,6 +175,53 @@ Proof.
   repeat deex. eauto.
 Qed.
 
+Theorem exec_trace_det_ret : forall A (x1 x2 : A) d1 d2,
+  exec_trace (fst d1) (snd d1) (Done x1) (Finished (fst d2) x2) (snd d2) ->
+  x1 = x2.
+Proof.
+  intros.
+  invert H; eauto.
+  invert H0.
+Qed.
+
+Theorem exec_trace_det_disk : forall A (x1 x2 : A) d1 d2,
+  exec_trace (fst d1) (snd d1) (Done x1) (Finished (fst d2) x2) (snd d2) ->
+  d1 = d2.
+Proof.
+  intros.
+  destruct d1, d2.
+  invert H; eauto.
+  invert H0. simpl in *. congruence.
+Qed.
+
+Theorem computes_to_det_ret : forall A p d d'1 d'2 x1 x2,
+  @computes_to A p d d'1 x1 ->
+  computes_to p d d'2 x2 ->
+  x1 = x2.
+Proof.
+  unfold computes_to.
+  intros.
+  specialize (H _ (@Done A) d'1 x1).
+  specialize (H0 _ (@Done A) d'1 x1).
+  destruct H, H0.
+  symmetry.
+  eauto using exec_trace_det_ret.
+Qed.
+
+Theorem computes_to_det_disk : forall A p d d'1 d'2 x1 x2,
+  @computes_to A p d d'1 x1 ->
+  computes_to p d d'2 x2 ->
+  d'1 = d'2.
+Proof.
+  unfold computes_to.
+  intros.
+  specialize (H _ (@Done A) d'1 x1).
+  specialize (H0 _ (@Done A) d'1 x1).
+  destruct H, H0.
+  symmetry.
+  eauto using exec_trace_det_disk.
+Qed.
+
 Definition label := string.
 Definition var := string.
 
@@ -623,6 +670,16 @@ Proof.
   invert H0. eauto.
 Defined.
 
+Definition read : AxiomaticSpec.
+  refine {|
+    PreCond := fun args => exists (d : diskstate) (a : addr),
+      args = (wrap d) :: (wrap a) ::  nil;
+    PostCond := fun args ret => exists (d : diskstate) (a : addr),
+      args = (wrap d, Some (wrap d)) :: (wrap a, None) :: nil /\
+      ret = wrap (fst d a)
+  |}.
+Defined.
+
 Definition write : AxiomaticSpec.
   refine {|
     PreCond := fun args => exists (d : diskstate) (a : addr) (v : valu),
@@ -632,7 +689,7 @@ Definition write : AxiomaticSpec.
   |}.
 Defined.
 
-Definition disk_env : Env := add "write" write (empty _).
+Definition disk_env : Env := add "write" write (add "read" read (empty _)).
 
 Example micro_write : sigT (fun p => forall d0 a v,
   {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "a") d0 (ret a) ; SItemRet (NTSome "v") d0 (ret v) ] }}
@@ -671,11 +728,13 @@ Proof.
   destruct (find "v" initial_state); [ | exfalso; solve [ intuition idtac ] ].
   intuition idtac.
   repeat deex.
-  repeat match goal with
-  | [ H : computes_to _ _ _ _ |- _ ] =>
-      let H' := fresh H in
-      assert (H' := H); apply ret_computes_to in H; apply ret_computes_to_disk in H'; subst
-  end.
+  Ltac invert_ret_computes_to :=
+    repeat match goal with
+    | [ H : computes_to _ _ _ _ |- _ ] =>
+        let H' := fresh H in
+        assert (H' := H); apply ret_computes_to in H; apply ret_computes_to_disk in H'; subst
+    end.
+  invert_ret_computes_to.
   invert H2.
   invert H8.
   do 3 (destruct output; try discriminate).
@@ -754,7 +813,110 @@ Proof.
   eapply CompileCompose; eapply (projT2 micro_inc).
 Qed.
 
+Lemma CompileRead : forall avar vvar pr d0,
+  avar <> "disk" ->
+  vvar <> "disk" ->
+  {{ [ SItemDisk (NTSome "disk") d0 pr; SItemRet (NTSome avar) d0 pr ] }}
+    Call vvar "read" ["disk"; avar]
+  {{ [ SItemDisk (NTSome "disk") d0 (fun T rx => pr T (fun a => @Read T a rx));
+       SItemRet (NTSome vvar) d0 (fun T rx => pr T (fun a => @Read T a rx)) ] }} // disk_env.
+Proof.
+  unfold ProgOk.
+  intros.
+  intuition.
+  simpl in *.
+  maps.
+  find_cases "disk" initial_state.
+  find_cases avar initial_state.
+  econstructor.
+  unfold disk_env. maps. trivial.
+  unfold sel. simpl. rewrite He. rewrite He0. trivial.
+  intuition. repeat deex. repeat invert_ret_computes_to.
+  simpl. eauto.
+  Ltac invert_runsto :=
+    match goal with
+    | [ H : RunsTo _ _ _ _ |- _ ] => invert H
+    end.
+  invert_runsto.
+  simpl in *.
+  unfold sel in *.
+  maps.
+  find_cases "disk" initial_state.
+  find_cases avar initial_state.
+  Ltac find_inversion :=
+    match goal with
+    | [ H : ?a _ = ?a _ |- _ ] => invert H
+    | [ H : ?a _ _ = ?a _ _ |- _ ] => invert H
+    | [ H : ?a _ _ _ = ?a _ _ _ |- _ ] => invert H
+    end.
+  find_inversion.
+  do 2 (destruct output; try discriminate).
+  simpl in *.
+  destruct H1 as [? [? _]].
+  subst st'.
+  unfold disk_env in *.
+  maps.
+  repeat find_inversion.
+  repeat deex.
+  unfold computes_to in *.
+  repeat deex.
+  simpl in *.
+  repeat deex.
+  repeat find_inversion.
+  maps.
+  repeat eexists; intros. eauto.
+  simpl in *.
+  repeat deex.
+  repeat find_inversion.
+  repeat eexists; intros. eapply H2.
+  econstructor. econstructor. eapply H1.
+  eauto.
+  eapply H2 in H1.
+  invert H1.
+  invert H5.
+  eauto.
+  simpl in *.
+  pose proof (computes_to_det_ret H3 H2); subst.
+  pose proof (computes_to_det_disk H3 H2); subst.
+  unfold computes_to in *.
+  repeat deex.
+  repeat find_inversion.
+  repeat eexists; intro.
+  eapply H2.
+  econstructor. econstructor.
+  eauto.
+  eapply H3 in H1.
+  invert H1. invert H5. eauto.
+Qed.
+
+
 (*
+Definition inc_disk_prog T rx : prog T := Read 0 (fun x => Write 0 (1 + x) (fun _ => rx x)).
+
+Example micro_inc_disk : sigT (fun p => forall d0,
+  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }}
+    p
+  {{ [ SItemDisk (NTSome "disk") d0 inc_disk_prog ; SItemRet (NTSome "out") d0 inc_disk_prog ] }} // disk_env).
+Proof.
+  eexists; intro.
+  eapply CompileSeq.
+  instantiate (Goal := ("a" <- Const 0; _)%facade).
+  eapply CompileSeq.
+  instantiate (tenv1'0 := [SItemDisk (NTSome "disk") d0 (ret tt); SItemRet (NTSome "a") d0 (ret 0)]).
+  admit.
+  eapply CompileRead. congruence. instantiate (Goal2 := "v"). congruence.
+  unfold inc_disk_prog.
+
+Lemma CompileBind : forall env (pr1 : forall T, (nat -> prog T) -> prog T) (pr2 : nat -> forall T, (nat -> prog T) -> prog T) v1 v2 p1 p2,
+  (forall d0,
+    {{ [SItemDisk (NTSome "disk") d0 pr1; SItemRet (N
+  forall d0,
+    {{ [SItemDisk (NTSome "disk") d0 pr1; SItemRet (NTSome v1) d0 pr1] }}
+      (Seq p1 p2)
+    {{ [SItemDisk (NTSome "disk") d0 (fun T rx => pr1 T (fun x => pr2 x T rx));
+      SItemRet (NTSome v2) d0 (fun T rx => pr1 T (fun x => pr2 x T rx))] }} // env.
+  Check CompileRead.
+
 Example micro_plus : sigT (fun p => forall d0 x y,
   {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "x") d0 (ret x) ; SItemRet (NTSome "y") d0 (ret y) ] }}
     p
