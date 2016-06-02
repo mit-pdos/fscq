@@ -1546,11 +1546,10 @@ Module UCache.
     destruct (Map.find a cs) eqn:?; try destruct p, b;
     unfold ptsto_subset in H; destruct_lift H;
     denote incl as Hx; apply incl_in_nil in Hx; subst.
-
-    (** XXX: [incl] is too weak: we want to prove the tail is nil,
-        but ptsto_subset only says the tail can by any repetition of the head. *)
-    admit. admit. admit.
-  Admitted.
+    intuition.
+    eapply ptsto_valid'; eauto.
+    eapply ptsto_valid'; eauto.
+  Qed.
 
   Lemma mem_pred_cachepred_eq : forall (m1 m2 : mem) cs,
     mem_pred (cachepred cs) m1 m2 ->
@@ -1563,7 +1562,6 @@ Module UCache.
     erewrite mem_pred_cachepred_some; eauto.
     eapply mem_pred_cachepred_none in H; eauto.
   Qed.
-
 
   Lemma mem_pred_possible_crash_trans : forall m m1 m2 cs,
     possible_crash m m1 ->
@@ -1598,7 +1596,6 @@ Module UCache.
     unfold addr_valid in *; intuition.
     eapply MapFacts.empty_in_iff; eauto.
   Qed.
-
 
 
 End UCache.
