@@ -1380,7 +1380,182 @@ Module UCache.
     exists m; eauto.
   Qed.
 
+  Lemma listpred_cachepred_mem_except : forall a v l m buf,
+    listpred (mem_pred_one (cachepred buf)) ((a, v) :: l) m ->
+    listpred (mem_pred_one (cachepred buf)) l (mem_except m a).
+  Proof.
+    unfold mem_pred_one; simpl; intros.
+    unfold cachepred at 1 in H.
+    destruct (Map.find a buf) eqn: Heq; try destruct p, b;
+    unfold ptsto_subset in H; destruct_lift H;
+    eapply ptsto_mem_except; pred_apply; eauto.
+  Qed.
 
+
+  Lemma mem_pred_cachepred_refl : forall m m' m'' cm,
+    mem_pred (cachepred cm) m' m'' ->
+    mem_match m m' ->
+    mem_pred (cachepred (Map.empty (valu * bool))) m m.
+  Proof.
+    unfold mem_pred; intros.
+    destruct H; destruct_lift H.
+    generalize dependent m''.
+    generalize dependent m.
+    generalize dependent x.
+    induction x; intros.
+    - exists nil.
+      rewrite listpred_nil in *.
+      apply sep_star_assoc.
+      apply lift_impl; intros.
+      simpl; auto.
+      cbn in *; subst.
+      assert (@emp _ addr_eq_dec _ m) by firstorder.
+      apply lift_impl; intros; auto.
+      apply emp_empty_mem_only; auto.
+
+    - destruct a.
+      inversion H2; subst.
+      edestruct IHx; eauto.
+      + rewrite notindomain_mem_eq with (a := n).
+        erewrite mem_except_upd.
+        apply mem_match_except; eauto.
+        apply avs2mem_notindomain; eauto.
+      + eapply listpred_cachepred_mem_except; eauto.
+      + destruct (mem_match_cases n H0).
+        exists x0.
+        destruct H3.
+        rewrite mem_except_none in H1; eauto.
+
+        do 3 destruct H3.
+        exists ((n, x1) :: x0).
+        destruct_lift H1.
+        apply sep_star_assoc.
+        apply lift_impl; intros.
+        apply NoDup_cons; eauto.
+        eapply avs2mem_none_notin; eauto.
+        denote mem_except as Hx; rewrite <- Hx.
+        apply mem_except_eq.
+
+        apply lift_impl; intros.
+        cbn; denote mem_except as Hx; setoid_rewrite <- Hx.
+        rewrite upd_mem_except.
+        rewrite upd_nop; auto.
+
+        unfold mem_pred_one, cachepred at 1; simpl.
+        unfold ptsto_subset; simpl.
+        apply pimpl_exists_r_star.
+        exists x1_old.
+        apply sep_star_assoc.
+        apply mem_except_ptsto; eauto.
+        eapply sep_star_lift_r'; eauto.
+        split; unfold lift; eauto.
+        apply incl_tl; apply incl_refl.
+  Qed.
+
+
+  Lemma possible_crash_mem_match : forall (m1 m2 : rawdisk),
+    possible_crash m1 m2 ->
+    @mem_match _ _ addr_eq_dec m1 m2.
+  Proof.
+    unfold possible_crash, mem_match; intuition.
+    specialize (H a); intuition.
+    repeat deex; congruence.
+    specialize (H a); intuition.
+    repeat deex; congruence.
+  Qed.
+
+  Lemma listpred_cachepred_notin : forall cs l m a,
+    ~ In a (map fst l) ->
+    listpred (mem_pred_one (cachepred cs)) l m ->
+    m a = None.
+  Proof.
+    induction l; intros; eauto.
+    destruct a; subst; simpl in *; intuition.
+    unfold mem_pred_one at 1, cachepred at 1 in H0; simpl in *.
+    destruct (Map.find n cs) eqn: Heq; try destruct p0, b;
+    unfold ptsto_subset in *; destruct_lifts;
+    eapply notindomain_mem_except with (a' := n); eauto;
+    apply IHl; eauto;
+    eapply ptsto_mem_except; eauto.
+  Qed.
+
+  Lemma mem_pred_cachepred_none : forall (m1 m2 : mem) cs a,
+    mem_pred (cachepred cs) m1 m2 ->
+    m1 a = None ->
+    m2 a = None.
+  Proof.
+    unfold mem_pred; intros.
+    destruct_lift H; subst.
+    rename dummy into l.
+    apply avs2mem_none_notin in H0 as Hx.
+    erewrite listpred_cachepred_notin with (m := m2); eauto.
+  Qed.
+
+  Lemma mem_pred_cachepred_some : forall (m1 m2 : mem) cs a v,
+    mem_pred (cachepred cs) m1 m2 ->
+    synced_mem m1 ->
+    m1 a = Some v ->
+    m2 a = Some v.
+  Proof.
+    intros.
+    specialize (H0 a); intuition try congruence; repeat deex.
+    rewrite H0 in H1; inversion_clear H1; subst.
+    eapply mem_pred_extract in H; eauto.
+    unfold cachepred in H at 2.
+    destruct (Map.find a cs) eqn:?; try destruct p, b;
+    unfold ptsto_subset in H; destruct_lift H.
+
+    (** XXX: [incl] is too weak: we want to prove the tail is nil,
+        but ptsto_subset only says the tail can by any repetition of the head. *)
+    admit. admit. admit.
+  Admitted.
+
+  Lemma mem_pred_cachepred_eq : forall (m1 m2 : mem) cs,
+    mem_pred (cachepred cs) m1 m2 ->
+    synced_mem m1 ->
+    m1 = m2.
+  Proof.
+    intros.
+    apply functional_extensionality; intros.
+    destruct (m1 x) eqn: Heq.
+    erewrite mem_pred_cachepred_some; eauto.
+    eapply mem_pred_cachepred_none in H; eauto.
+  Qed.
+
+
+  Lemma mem_pred_possible_crash_trans : forall m m1 m2 cs,
+    possible_crash m m1 ->
+    mem_pred (cachepred cs) m1 m2 ->
+    possible_crash m1 m2.
+  Proof.
+    intros.
+    replace m2 with m1.
+    apply possible_crash_refl.
+    eapply possible_crash_synced; eauto.
+    eapply mem_pred_cachepred_eq; eauto.
+    eapply possible_crash_synced; eauto.
+  Qed.
+
+
+  Lemma crash_xform_rep_r: forall m m' cs',
+    possible_crash m m' ->
+    rep cs' m' =p=> crash_xform (rep (cache0 (CSMaxCount cs')) m).
+  Proof.
+    unfold rep; intros.
+    cancel.
+    xform_normr.
+    cancel.
+    unfold pimpl, crash_xform; intros.
+    eexists; split.
+    eapply mem_pred_cachepred_refl; eauto.
+    apply possible_crash_mem_match; auto.
+    eapply possible_crash_trans.
+    eauto.
+    eapply mem_pred_possible_crash_trans; eauto.
+    unfold size_valid in *; intuition.
+    unfold addr_valid in *; intuition.
+    eapply MapFacts.empty_in_iff; eauto.
+  Qed.
 
 
 
