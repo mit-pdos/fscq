@@ -105,6 +105,7 @@ Module UCache.
   Definition cache0 sz := mk_cs (Map.empty _) sz eviction_init.
 
   Definition init T (cachesize : nat) (rx : cachestate -> prog T) : prog T :=
+    @Sync T;;
     rx (cache0 cachesize).
 
   Definition read_array T a i cs rx : prog T :=
@@ -895,7 +896,7 @@ Module UCache.
     sync_xform (listpred (fun x => synpred cm (fst x) (snd x)) l) =p=>
     listpred (fun x => cachepred cm (fst x) (snd x)) l.
   Proof.
-    intros; rewrite sync_xform_listpred; eauto.
+    intros; rewrite sync_xform_listpred'; eauto.
     intros; eapply synpred_cachepred_sync.
   Qed.
 
@@ -1670,6 +1671,92 @@ Module UCache.
     unfold addr_valid in *; intuition.
     eapply MapFacts.empty_in_iff; eauto.
   Qed.
+
+
+  (** initialization *)
+
+  Definition init_load := init.
+  Definition init_recover := init.
+
+  Lemma sync_xform_cachepred : forall m a vs,
+    sync_xform (cachepred m a vs) =p=> 
+      exists v, [[ In v (vsmerge vs) ]] * a |=> v.
+  Proof.
+    unfold cachepred; intros.
+    case_eq (Map.find a m); intros; try destruct p, b.
+    - rewrite sync_xform_exists_comm.
+      apply pimpl_exists_l; intro.
+      rewrite sync_xform_sep_star_dist, sync_xform_lift_empty.
+      rewrite sync_xform_ptsto_subset_precise; simpl.
+      cancel.
+      apply in_cons; auto.
+    - rewrite sync_xform_sep_star_dist, sync_xform_lift_empty.
+      rewrite sync_xform_ptsto_subset_precise; simpl.
+      cancel.
+    - rewrite sync_xform_ptsto_subset_precise; cancel.
+  Qed.
+
+  Lemma sync_xform_mem_pred_cachepred : forall cm m,
+    sync_xform (mem_pred (cachepred cm) m) =p=> exists m',
+      mem_pred (cachepred (Map.empty (valu * bool))) m' * [[ possible_crash m m' ]].
+  Proof.
+    intros.
+    rewrite sync_xform_mem_pred.
+    unfold mem_pred at 1.
+    xform_norm; subst.
+
+    rename hm_avs into l.
+    revert H; revert l.
+    induction l; simpl; intros.
+    cancel.
+    apply mem_pred_empty_mem.
+    unfold possible_crash; intuition.
+
+    inversion H; destruct a; subst; simpl in *.
+    unfold mem_pred_one; simpl.
+
+    rewrite IHl by auto.
+    xform_norm.
+    rewrite sync_xform_cachepred.
+    norml; unfold stars; simpl; clear_norm_goal.
+    apply pimpl_exists_r.
+    exists (upd m' n (v, nil)).
+    rewrite <- mem_pred_absorb.
+    unfold cachepred at 3; unfold ptsto_subset.
+    rewrite MapFacts.empty_o; cancel.
+    erewrite <- notindomain_mem_eq; auto.
+    eapply possible_crash_notindomain; eauto.
+    apply avs2mem_notindomain; auto.
+    apply possible_crash_upd; eauto.
+  Qed.
+
+
+  Theorem init_recover_ok : forall cachesize,
+    {< d F,
+    PRE
+      exists cs, rep cs d *
+      [[ F d ]] * [[ cachesize <> 0 ]]
+    POST RET:cs
+      exists d', rep cs d' * [[ (crash_xform F) d' ]]
+    CRASH
+      exists cs, rep cs d
+    >} init_recover cachesize.
+  Proof.
+    unfold init_recover, init, rep.
+    step.
+    prestep; norml; unfold stars; simpl.
+    rewrite sync_xform_sep_star_dist.
+    rewrite sync_xform_mem_pred_cachepred; norm.
+    cancel.
+    rewrite sync_xform_sync_invariant; auto.
+    intuition eauto.
+    unfold size_valid in *; intuition.
+    unfold addr_valid in *; intuition.
+    eapply MapFacts.empty_in_iff; eauto.
+    unfold crash_xform; eexists; eauto.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (init_recover _) _) => apply init_recover_ok : prog.
 
 
 

@@ -348,6 +348,22 @@ Proof.
 Qed.
 
 
+Theorem sync_xform_mem_pred : forall prd (hm : rawdisk),
+  sync_xform (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _ prd hm) <=p=>
+  @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (fun a v => sync_xform (prd a v)) hm.
+Proof.
+  unfold mem_pred; intros; split.
+  rewrite sync_xform_exists_comm; apply pimpl_exists_l; intros.
+  repeat (rewrite sync_xform_sep_star_dist || rewrite sync_xform_lift_empty).
+  rewrite sync_xform_listpred; cancel.
+
+  rewrite sync_xform_exists_comm; apply pimpl_exists_l; intros.
+  apply pimpl_exists_r; eexists.
+  repeat (rewrite sync_xform_sep_star_dist || rewrite sync_xform_lift_empty).
+  rewrite sync_xform_listpred; cancel.
+Qed.
+
+
 Theorem sync_invariant_mem_pred : forall HighAT HighAEQ HighV (prd : HighAT -> HighV -> _) hm,
   (forall a v, sync_invariant (prd a v)) ->
   sync_invariant (@mem_pred _ _ _ _ HighAEQ _ prd hm).

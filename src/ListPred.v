@@ -640,7 +640,20 @@ Qed.
 
 Hint Resolve sync_invariant_listpred.
 
-Lemma sync_xform_listpred : forall T (l : list T) p q,
+Theorem sync_xform_listpred : forall V (l : list V) prd,
+  sync_xform (listpred prd l) <=p=> listpred (fun x => sync_xform (prd x)) l.
+Proof.
+  induction l; simpl; intros; split; auto.
+  apply sync_xform_emp.
+  apply sync_xform_emp.
+  rewrite sync_xform_sep_star_dist.
+  rewrite IHl; auto.
+  rewrite sync_xform_sep_star_dist.
+  rewrite IHl; auto.
+Qed.
+
+
+Lemma sync_xform_listpred' : forall T (l : list T) p q,
   (forall x, sync_xform (p x) =p=> q x) ->
   sync_xform (listpred p l) =p=> listpred q l.
 Proof.
