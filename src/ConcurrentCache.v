@@ -695,7 +695,7 @@ Section ConcurrentCache.
                    guar delta tid s0 s
                | POST d' m' s0' s' r:
                    invariant delta d' m' s' /\
-                   (r = true -> get vdisk s' a = Some v) /\
+                   (r = true -> get vdisk s' = upd (get vdisk s) a v) /\
                    get vDisk0 s' = get vDisk0 s /\
                    guar delta tid s s' /\
                    guar delta tid s0' s'
