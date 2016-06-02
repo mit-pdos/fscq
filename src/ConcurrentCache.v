@@ -171,7 +171,7 @@ Section ConcurrentCache.
 
   (** abort all buffered writes, restoring vDisk0 *)
   Definition cache_abort rx : prog Sigma :=
-    _ <- Assgn mWriteBuffer emptyWriteBuffer;
+    _ <- modify_wb (fun _ => emptyWriteBuffer);
       _ <- GhostUpdate (fun s =>
                          let vd' := hide_readers (get vDisk0 s) in
                          set vdisk vd' s);
@@ -693,5 +693,39 @@ Section ConcurrentCache.
   Proof.
     hoare.
   Admitted.
+
+  Lemma wb_rep_id : forall vd,
+      wb_rep vd emptyWriteBuffer (hide_readers vd).
+  Proof.
+    unfold wb_rep, hide_readers; intros.
+    rewrite wb_get_empty.
+    destruct matches.
+  Qed.
+
+  Lemma no_wb_reader_conflict_empty : forall c,
+      no_wb_reader_conflict c emptyWriteBuffer.
+  Proof.
+    unfold no_wb_reader_conflict; intros;
+      rewrite wb_get_empty;
+      auto.
+  Qed.
+
+  Hint Resolve wb_rep_id no_wb_reader_conflict_empty.
+
+  Theorem cache_abort_ok :
+    SPEC delta, tid |-
+  {{ (_:unit),
+   | PRE d m s0 s:
+       invariant delta d m s
+   | POST d' m' s0' s' _:
+       invariant delta d' m' s' /\
+       get vdisk s' = hide_readers (get vDisk0 s) /\
+       get vDisk0 s' = get vDisk0 s /\
+       guar delta tid s s' /\
+       s0' = s0
+  }} cache_abort.
+  Proof.
+    hoare.
+  Qed.
 
 End ConcurrentCache.
