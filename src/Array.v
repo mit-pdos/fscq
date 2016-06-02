@@ -1209,6 +1209,19 @@ Section ArrayCrashXform.
 End ArrayCrashXform.
 
 
+Section SubsetArray.
+
+  Theorem sync_invariant_arrayN_subset : forall vs a,
+    sync_invariant (arrayN ptsto_subset a vs).
+  Proof.
+    induction vs; simpl; auto.
+  Qed.
+
+End SubsetArray.
+
+Hint Resolve sync_invariant_arrayN_subset.
+Notation arrayS := (arrayN ptsto_subset).
+
 
 Section ListUpd.
 
