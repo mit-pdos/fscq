@@ -234,7 +234,7 @@ Module UCache.
 
   Lemma mem_pred_cachepred_remove_absorb : forall csmap d a w vs p_old,
     d a = Some (w, p_old) ->
-    incl vs (vsmerge (w, p_old)) ->
+    incl vs p_old ->
     mem_pred (cachepred csmap) (mem_except d a) * a |-> (w, vs) =p=>
     mem_pred (cachepred (Map.remove a csmap)) d.
   Proof.
@@ -302,7 +302,6 @@ Module UCache.
     eapply diskIs_extract' in H1.
     specialize (H1 d eq_refl).
     pred_apply; unfold ptsto_subset; cancel.
-    apply incl_tl; apply incl_refl.
   Qed.
 
 
@@ -415,16 +414,54 @@ Module UCache.
     specialize (H _ H1); intuition subst.
     right; auto.
   Qed.
-  Local Hint Resolve incl_vsmerge_in incl_vsmerge_in'.
 
+  Lemma incl_vsmerge_in'' : forall a v l,
+    In v l ->
+    incl a (vsmerge (v, l)) ->
+    incl a l.
+  Proof.
+    unfold vsmerge, incl; intuition simpl in *.
+    specialize (H0 _ H1); intuition subst; auto.
+  Qed.
 
+  Local Hint Resolve incl_vsmerge_in incl_vsmerge_in' incl_vsmerge_in''.
 
   Lemma in_vsmerge_hd : forall w l,
     In w (vsmerge (w, l)).
   Proof.
     unfold vsmerge; intuition.
   Qed.
-  Local Hint Resolve in_vsmerge_hd.
+
+  Lemma in_incl_trans: forall A (a b : list A) x,
+    incl a b ->
+    In x a ->
+    In x b.
+  Proof.
+    unfold incl; intros.
+    specialize (H _ H0); auto.
+  Qed.
+
+  Lemma incl_vsmerge_trans: forall a v l l',
+    incl a (vsmerge (v, l')) ->
+    incl l' l ->
+    incl a (vsmerge (v, l)).
+  Proof.
+    unfold incl, vsmerge; simpl; intros.
+    specialize (H _ H1); intuition.
+  Qed.
+
+  Lemma incl_vsmerge_in_trans : forall a v l l',
+    In v l ->
+    incl l' l ->
+    incl a (vsmerge (v, l')) ->
+    incl a l.
+  Proof.
+    intros.
+    eapply incl_vsmerge_in''; eauto.
+    eapply incl_vsmerge_trans; eauto.
+  Qed.
+
+  Local Hint Resolve in_vsmerge_hd incl_vsmerge_trans incl_vsmerge_in_trans.
 
 
   (** specs *)
@@ -997,7 +1034,6 @@ Module UCache.
   Qed.
 
 
-
   Theorem sync_ok' : forall cs a,
     {< d0 d (F F' : rawpred) v0 v',
     PRE
@@ -1076,6 +1112,7 @@ Module UCache.
         eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
         unfold cachepred at 3; rewrite Heqo.
         unfold ptsto_subset; cancel; eauto.
+        eapply incl_tran; eauto.
 
     - unfold ptsto_subset.
       repeat (rewrite pimpl_exists_l_star_r ||
@@ -1105,6 +1142,7 @@ Module UCache.
         unfold cachepred at 3.
         rewrite Heqo.
         unfold ptsto_subset; cancel.
+        eapply incl_tran; eauto.
       + rewrite pimpl_r_and; unfold synrep'; cancel.
         rewrite <- mem_pred_absorb with (hm := d) (a := a).
         unfold synpred at 3.
@@ -1118,6 +1156,7 @@ Module UCache.
         eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
         unfold cachepred at 3; rewrite Heqo.
         unfold ptsto_subset; cancel; eauto.
+        eapply incl_tran; eauto.
 
     - unfold ptsto_subset.
       repeat (rewrite pimpl_exists_l_star_r ||
@@ -1145,6 +1184,7 @@ Module UCache.
         unfold cachepred at 3.
         rewrite Heqo.
         unfold ptsto_subset; cancel.
+        eapply incl_tran; eauto.
       + rewrite pimpl_r_and; unfold synrep'; cancel.
         rewrite <- mem_pred_absorb with (hm := d) (a := a).
         unfold synpred at 3.
@@ -1158,6 +1198,7 @@ Module UCache.
         eapply pimpl_trans; [ | apply mem_pred_absorb_nop; eauto ].
         unfold cachepred at 3; rewrite Heqo.
         unfold ptsto_subset; cancel; eauto.
+        eapply incl_tran; eauto.
 
     Unshelve. all: eauto.
   Qed.
@@ -1287,7 +1328,8 @@ Module UCache.
     safestep.
     prestep.
     cancel.
-    step.
+    eauto.
+    safestep.
     cancel.
     cancel.
     cancel.
@@ -1349,7 +1391,6 @@ Module UCache.
     eapply possible_crash_notindomain; eauto.
     apply avs2mem_notindomain; auto.
     apply possible_crash_upd; eauto.
-    apply incl_nil.
   Qed.
 
 
@@ -1449,7 +1490,7 @@ Module UCache.
         apply mem_except_ptsto; eauto.
         eapply sep_star_lift_r'; eauto.
         split; unfold lift; eauto.
-        apply incl_tl; apply incl_refl.
+        apply incl_refl.
   Qed.
 
 
@@ -1503,7 +1544,8 @@ Module UCache.
     eapply mem_pred_extract in H; eauto.
     unfold cachepred in H at 2.
     destruct (Map.find a cs) eqn:?; try destruct p, b;
-    unfold ptsto_subset in H; destruct_lift H.
+    unfold ptsto_subset in H; destruct_lift H;
+    denote incl as Hx; apply incl_in_nil in Hx; subst.
 
     (** XXX: [incl] is too weak: we want to prove the tail is nil,
         but ptsto_subset only says the tail can by any repetition of the head. *)
