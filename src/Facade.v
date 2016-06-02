@@ -610,7 +610,6 @@ Qed.
 
 Local Open Scope string_scope.
 
-
 Example micro_noop : sigT (fun p => forall d0,
   {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }} p {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }} // empty _).
 Proof.
@@ -694,6 +693,66 @@ Proof.
   invert H0.
   eauto.
 Defined.
+
+Example micro_inc : sigT (fun p => forall d0 x,
+  {{ [ SItemRet (NTSome "x") d0 (ret x) ] }}
+    p
+  {{ [ SItemRet (NTSome "x") d0 (ret (1 + x)) ] }} // empty _).
+Proof.
+  eexists.
+  intros.
+  instantiate (1 := ("x" <- Const 1 + Var "x")%facade).
+  intro. intros.
+  intuition. admit.
+  simpl in *.
+  invert H0.
+  maps.
+  simpl in *.
+  find_cases "x" initial_state.
+  intuition.
+  simpl in *.
+  repeat deex.
+  invert H3.
+  apply_in_hyp ret_computes_to; subst.
+  eauto.
+Admitted.
+
+Lemma CompileCompose :
+  forall env var (f g : nat -> nat) p1 p2,
+    (forall d0 x,
+      {{ [ SItemRet (NTSome var) d0 (ret x) ] }}
+        p1
+      {{ [ SItemRet (NTSome var) d0 (ret (f x)) ] }} // env) ->
+    (forall d0 y,
+      {{ [ SItemRet (NTSome var) d0 (ret y) ] }}
+        p2
+      {{ [ SItemRet (NTSome var) d0 (ret (g y)) ] }} // env) ->
+    forall d0 x,
+      {{ [ SItemRet (NTSome var) d0 (ret x) ] }}
+        (Seq p1 p2)
+      {{ [ SItemRet (NTSome var) d0 (ret (g (f x))) ] }} // env.
+Proof.
+  intros.
+  unfold ProgOk in *.
+  intros.
+  specialize (H d0 x initial_state H1).
+  intuition.
+  + econstructor. intuition. eapply H0. eauto.
+  + invert H. eapply H0; eauto.
+Qed.
+
+
+Example micro_inc_two : sigT (fun p => forall d0 x,
+  {{ [ SItemRet (NTSome "x") d0 (ret x) ] }}
+    p
+  {{ [ SItemRet (NTSome "x") d0 (ret (2 + x)) ] }} // empty _).
+Proof.
+  eexists.
+  intros.
+  set (f := fun x => 1 + x).
+  change (2 + x) with (f (f x)).
+  eapply CompileCompose; eapply (projT2 micro_inc).
+Qed.
 
 (*
 Example micro_plus : sigT (fun p => forall d0 x y,
