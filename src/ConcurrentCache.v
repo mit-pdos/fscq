@@ -517,6 +517,7 @@ Section ConcurrentCache.
                | POST d' m' s_i' s' r:
                    invariant delta d' m' s' /\
                    get vdisk s' = get vdisk s /\
+                   get vDisk0 s' = get vDisk0 s /\
                    s_i' = s_i /\
                    (r = Some v0 \/
                     r = None /\
@@ -857,8 +858,10 @@ Section ConcurrentCache.
                    guar delta tid s_i s
                | POST d' m' s_i' s' r:
                    invariant delta d' m' s' /\
-                   (r = None /\
-                    get vdisk s' = hide_readers (get vDisk0 s) \/
+                   (r = None
+                    (* not sure what we can guarantee here - perhaps
+                    that only a rely step occurred, but even that is
+                    difficult *) \/
                     r = Some v /\
                     get vdisk s' = get vdisk s) /\
                    guar delta tid s_i' s'
@@ -876,12 +879,8 @@ Section ConcurrentCache.
     admit. (* needed to find get vdisk s1 a first *)
 
     transitivity (get vDisk0 s); eauto.
-    transitivity (get vDisk0 s0); eauto.
 
     step.
-    left; intuition auto.
-    admit. (* not sure how to prove this, given so many opaque
-    transitions; probably some spec is too weak *)
   Admitted.
 
 End ConcurrentCache.
