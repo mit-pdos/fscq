@@ -41,6 +41,8 @@ Inductive prog T :=
 | Read (a: addr) (rx: valu -> prog T)
 | Write (a: addr) (v: valu) (rx: unit -> prog T).
 
+Arguments Done {T} v.
+
 Inductive step T : memory -> prog T -> memory -> prog T -> Prop :=
 | StepRead : forall d a rx, step d (Read a rx) d (rx (d a))
 | StepWrite : forall d a v rx, step d (Write a v rx) (upd a v d) (rx tt).
@@ -90,6 +92,7 @@ Hint Constructors exec_trace.
 
 Notation diskstate := (memory * trace)%type.
 
+(** [p] calls its continuation with value [x] after evolving disk [d] to disk [d'] *)
 Definition computes_to A (p : forall T, (A -> prog T) -> prog T) (d d' : diskstate) (x : A) :=
   forall T (rx : A -> prog T) d'' (y : T),
     exec_trace (fst d') (snd d') (rx x) (Finished (fst d'') y) (snd d'') <-> exec_trace (fst d) (snd d) (p T rx) (Finished (fst d'') y) (snd d'').
@@ -97,6 +100,11 @@ Definition computes_to A (p : forall T, (A -> prog T) -> prog T) (d d' : disksta
 Definition computes_to_notrace A (p : forall T, (A -> prog T) -> prog T) (d d' : memory) (x : A) :=
   forall T (rx : A -> prog T) d'' (y : T),
     exec d' (rx x) (Finished d'' y) <-> exec d (p T rx) (Finished d'' y).
+
+(** [p] may crash after evolving disk [d] to disk [d'] *)
+Definition computes_to_crash A (p : forall T, (A -> prog T) -> prog T) (d d' : diskstate) :=
+  forall T (rx : A -> prog T),
+    exec_trace (fst d) (snd d) (p T rx) (Crashed T (fst d')) (snd d').
 
 Lemma step_trace_equiv_1 : forall T d p d' p',
   @step T d p d' p' -> forall tr, exists tr', step_trace d tr p d' (tr' ++ tr) p'.
@@ -200,8 +208,8 @@ Theorem computes_to_det_ret : forall A p d d'1 d'2 (x1 x2 : A),
 Proof.
   unfold computes_to.
   intros.
-  specialize (H _ (@Done A) d'1 x1).
-  specialize (H0 _ (@Done A) d'1 x1).
+  specialize (H _ Done d'1 x1).
+  specialize (H0 _ Done d'1 x1).
   destruct H, H0.
   symmetry.
   eauto using exec_trace_det_ret.
@@ -214,8 +222,8 @@ Theorem computes_to_det_disk : forall A p d d'1 d'2 (x1 x2 : A),
 Proof.
   unfold computes_to.
   intros.
-  specialize (H _ (@Done A) d'1 x1).
-  specialize (H0 _ (@Done A) d'1 x1).
+  specialize (H _ Done d'1 x1).
+  specialize (H0 _ Done d'1 x1).
   destruct H, H0.
   symmetry.
   eauto using exec_trace_det_disk.
@@ -359,6 +367,8 @@ Definition Env := StringMap.t AxiomaticSpec.
 
 Definition sel T m := fun k => find k m : option T.
 
+Notation "R ^*" := (clos_refl_trans_1n _ R) (at level 0).
+
 Section EnvSection.
 
   Variable env : Env.
@@ -441,8 +451,6 @@ Section EnvSection.
       Step (Call x f args, st) (Skip, st').
 
   Hint Constructors RunsTo Step : steps.
-
-  Notation "R ^*" := (clos_refl_trans_1n _ R) (at level 0).
 
   Hint Constructors clos_refl_trans_1n : steps.
 
@@ -720,7 +728,7 @@ Lemma ret_computes_to : forall A (x x' : A) d d', computes_to (ret x) d d' x' ->
 Proof.
   unfold ret, computes_to.
   intros.
-  specialize (H A (@Done A) d x).
+  specialize (H A Done d x).
   destruct H as [_ H].
   specialize (H ltac:(do 2 econstructor)).
   invc H.
@@ -732,7 +740,7 @@ Lemma ret_computes_to_disk : forall A (x x' : A) d d', computes_to (ret x) d d' 
 Proof.
   unfold ret, computes_to.
   intros.
-  specialize (H A (@Done A) d x).
+  specialize (H A Done d x).
   destruct H as [_ H].
   specialize (H ltac:(do 2 econstructor)).
   invc H.
@@ -746,12 +754,10 @@ Lemma ret_computes_to_refl : forall A (x : A) d, computes_to (ret x) d d x.
 Proof.
   split; eauto.
 Qed.
-
 Hint Resolve ret_computes_to_refl.
+Check exec_trace.
 
-
-
-
+Local Open Scope string_scope.
 
 
 Lemma CompileSeq :
@@ -777,8 +783,6 @@ Proof.
     eapply H0; eauto.
     eapply H; eauto.
 Qed.
-
-Local Open Scope string_scope.
 
 Example micro_noop : sigT (fun p => forall d0,
   {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }} p {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }} // empty _).
@@ -813,6 +817,34 @@ Definition write : AxiomaticSpec.
 Defined.
 
 Definition disk_env : Env := add "write" write (add "read" read (empty _)).
+
+Definition disks_match (d : diskstate) (st : State) :=
+  find "disk" st = Some (Disk d).
+
+Theorem extract_finish_equiv : forall A pr (inp : nat) p,
+  (forall d0,
+    {{ [ SItemDisk (NTSome "disk") d0 (ret tt); SItemRet (NTSome "input") d0 (ret inp) ] }}
+      p
+    {{ [ SItemDisk (NTSome "disk") d0 pr ] }} // disk_env) ->
+  forall st st' d0,
+    st \u2272 [ SItemDisk (NTSome "disk") d0 (ret tt); SItemRet (NTSome "input") d0 (ret inp) ] ->
+    RunsTo disk_env p st st' ->
+    exists d', disks_match d' st' /\ exists r, @computes_to A pr d0 d' r.
+Proof.
+Abort.
+
+Theorem extract_crash_equiv : forall A pr (inp : nat) p,
+  (forall d0,
+    {{ [ SItemDisk (NTSome "disk") d0 (ret tt); SItemRet (NTSome "input") d0 (ret inp) ] }}
+      p
+    {{ [ SItemDisk (NTSome "disk") d0 pr ] }} // disk_env) ->
+  forall st p' st' d0,
+    st \u2272 [ SItemDisk (NTSome "disk") d0 (ret tt); SItemRet (NTSome "input") d0 (ret inp) ] ->
+    (Step disk_env)^* (p, st) (p', st') ->
+    exists d', disks_match d' st' /\ (
+      computes_to_crash pr d0 d' \/
+      (exists r, @computes_to A pr d0 d' r)).
+Abort.
 
 Example micro_write : sigT (fun p => forall d0 a v,
   {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "a") d0 (ret a) ; SItemRet (NTSome "v") d0 (ret v) ] }}
