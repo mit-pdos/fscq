@@ -177,23 +177,23 @@ Section ConcurrentCache.
                          set vdisk vd' s);
       rx tt.
 
-  Definition cache_read a erx rx : prog Sigma :=
+  Definition cache_read a rx : prog Sigma :=
     opt_v <- cache_maybe_read a;
       match opt_v with
-      | Some v => rx v
+      | Some v => rx (Some v)
       | None => _ <- cache_abort;
                  v <- cache_fill a;
-                 erx
+                 rx None
       end.
 
-  Definition cache_write a v erx rx : prog Sigma :=
+  Definition cache_write a v rx : prog Sigma :=
     ok <- cache_try_write a v;
       if ok then
-        rx tt
+        rx true
       else
         _ <- cache_abort;
       _ <- Yield a;
-      erx.
+      rx false.
 
   (** TODO: need to write a into cache from WriteBuffer, evict from
   cache (writing if necessary), and then note in place of the
@@ -475,23 +475,33 @@ Section ConcurrentCache.
 
   Opaque mem_types abstraction_types.
 
+  Lemma Some_inv : forall A (v v': A),
+      v = v' ->
+      Some v = Some v'.
+  Proof.
+    congruence.
+  Qed.
+
+  Hint Resolve Some_inv.
+
   Theorem cache_maybe_read_ok : forall a,
       SPEC delta, tid |-
               {{ v0,
                | PRE d m s0 s: invariant delta d m s /\
                                get vdisk s a = Some v0
                | POST d' m' s0' s' r:
-                   invariant delta d m s /\
+                   invariant delta d' m' s' /\
+                   get vdisk s' = get vdisk s /\
                    s0' = s0 /\
-                   (forall v, r = Some v ->
-                         v = v0) /\
-                   (r = None ->
-                    cache_val (get vCache s') a = None)
+                   (r = Some v0 \/
+                    r = None /\ cache_val (get vCache s') a = None)
               }} cache_maybe_read a.
   Proof.
     hoare.
-    eauto using wb_val_none.
-  Qed.
+    admit.
+  Admitted.
+
+  Hint Extern 1 {{cache_maybe_read _; _}} => apply cache_maybe_read_ok : prog.
 
   Hint Resolve
        disk_no_reader
@@ -661,6 +671,8 @@ Section ConcurrentCache.
       end.
   Admitted.
 
+  Hint Extern 1 {{cache_fill _; _}} => apply cache_fill_ok.
+
   Hint Resolve upd_eq.
   Hint Resolve wb_rep_stable_write.
 
@@ -755,5 +767,30 @@ Section ConcurrentCache.
   Proof.
     hoare.
   Qed.
+
+  Hint Extern 1 {{cache_abort; _}} => apply cache_abort_ok : prog.
+
+  Theorem cache_read_ok : forall a,
+      SPEC delta, tid |-
+              {{ v,
+               | PRE d m s0 s:
+                   invariant delta d m s /\
+                   get vdisk s a = Some v /\
+                   guar delta tid s0 s
+               | POST d' m' s0' s' r:
+                   invariant delta d' m' s' /\
+                   (r = None /\
+                    get vdisk s' = hide_readers (get vDisk0 s) \/
+                    r = Some v /\
+                    get vdisk s' = get vdisk s) /\
+                   guar delta tid s0' s'
+              }} cache_read a.
+  Proof.
+    hoare.
+    eexists; simplify; finish.
+    hoare.
+    intuition (auto; try congruence).
+  Admitted.
+
 
 End ConcurrentCache.
