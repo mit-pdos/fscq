@@ -494,10 +494,12 @@ Section ConcurrentCache.
                    get vdisk s' = get vdisk s /\
                    s0' = s0 /\
                    (r = Some v0 \/
-                    r = None /\ cache_val (get vCache s') a = None)
+                    r = None /\
+                    cache_get (get vCache s') a = Missing)
               }} cache_maybe_read a.
   Proof.
     hoare.
+    (* requires case analysis on cache_val at a *)
     admit.
   Admitted.
 
@@ -761,6 +763,8 @@ Section ConcurrentCache.
        invariant delta d' m' s' /\
        get vdisk s' = hide_readers (get vDisk0 s) /\
        get vDisk0 s' = get vDisk0 s /\
+       get vCache s' = get vCache s /\
+       get vWriteBuffer s' = emptyWriteBuffer /\
        guar delta tid s s' /\
        s0' = s0
   }} cache_abort.
@@ -769,6 +773,38 @@ Section ConcurrentCache.
   Qed.
 
   Hint Extern 1 {{cache_abort; _}} => apply cache_abort_ok : prog.
+
+  Lemma hide_readers_eq : forall (d: DISK) a v,
+      d a = Some v ->
+      hide_readers d a = Some (fst v).
+  Proof.
+    unfold hide_readers; intros; simpl_match.
+    destruct v; auto.
+  Qed.
+
+  Lemma hide_readers_eq' : forall (d: DISK) a v,
+      hide_readers d a = Some v ->
+      (exists v0, d a = Some v0).
+  Proof.
+    unfold hide_readers; intros;
+      destruct (d a).
+    eauto.
+    congruence.
+  Qed.
+
+  Lemma same_domain_hide_readers : forall d d',
+      same_domain (hide_readers d) (hide_readers d') ->
+      same_domain d d'.
+  Proof.
+    unfold same_domain, subset; intuition eauto.
+    specialize (H0 _ _ (hide_readers_eq _ H)); deex.
+    eapply hide_readers_eq'; eauto.
+
+    specialize (H1 _ _ (hide_readers_eq _ H)); deex.
+    eapply hide_readers_eq'; eauto.
+  Qed.
+
+  Hint Resolve wb_rep_same_domain.
 
   Theorem cache_read_ok : forall a,
       SPEC delta, tid |-
@@ -790,7 +826,33 @@ Section ConcurrentCache.
     eexists; simplify; finish.
     hoare.
     intuition (auto; try congruence).
-  Admitted.
 
+    transitivity (get vDisk0 s); eauto.
+    apply same_domain_hide_readers.
+    transitivity (get vdisk s); eauto.
+    transitivity (get vdisk s2); eauto.
+    replace (get vdisk s2).
+    reflexivity.
+    symmetry; eauto.
+
+    admit. (* probably need this from some other spec; knowing vdisk
+    didn't change is likely insufficient *)
+
+    intuition (try congruence).
+    (* TODO: need to produce value in disk using same_domain or
+    something *)
+    eexists; simplify; finish.
+    replace (get vWriteBuffer s3) with emptyWriteBuffer by auto.
+    apply wb_get_empty.
+    admit. (* needed to find get vdisk s3 a first *)
+
+    admit. (* same as above, should move to lemma *)
+    admit. (* same as above *)
+
+    step.
+    left; intuition auto.
+    admit. (* not sure how to prove this, given so many opaque
+    transitions; probably some spec is too weak *)
+  Admitted.
 
 End ConcurrentCache.

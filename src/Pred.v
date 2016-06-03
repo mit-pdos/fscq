@@ -2214,4 +2214,12 @@ Qed.
 
 End MemDomains.
 
+Instance same_domain_equiv AT AEQ V : Equivalence (@same_domain AT AEQ V).
+Proof.
+  constructor; hnf; intros;
+    eauto using same_domain_refl,
+    same_domain_sym,
+    same_domain_trans.
+Qed.
+
 Global Opaque pred.
