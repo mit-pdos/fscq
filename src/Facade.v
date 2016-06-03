@@ -194,8 +194,8 @@ Proof.
   invert H0. simpl in *. congruence.
 Qed.
 
-Theorem computes_to_det_ret : forall A p d d'1 d'2 x1 x2,
-  @computes_to A p d d'1 x1 ->
+Theorem computes_to_det_ret : forall A p d d'1 d'2 (x1 x2 : A),
+  computes_to p d d'1 x1 ->
   computes_to p d d'2 x2 ->
   x1 = x2.
 Proof.
@@ -208,8 +208,8 @@ Proof.
   eauto using exec_trace_det_ret.
 Qed.
 
-Theorem computes_to_det_disk : forall A p d d'1 d'2 x1 x2,
-  @computes_to A p d d'1 x1 ->
+Theorem computes_to_det_disk : forall A p d d'1 d'2 (x1 x2 : A),
+  computes_to p d d'1 x1 ->
   computes_to p d d'2 x2 ->
   d'1 = d'2.
 Proof.
@@ -220,6 +220,20 @@ Proof.
   destruct H, H0.
   symmetry.
   eauto using exec_trace_det_disk.
+Qed.
+
+
+Notation "pr '|>' f" :=
+  (fun T rx => pr T (fun a => rx (f a))) (at level 40).
+
+Theorem computes_to_after : forall A B p (f : A -> B) d d' a,
+  computes_to p d d' a ->
+  computes_to (p |> f) d d' (f a).
+Proof.
+  unfold computes_to.
+  intros.
+  specialize (H _ (fun a => rx (f a)) d'' y).
+  eauto.
 Qed.
 
 Definition label := string.
@@ -813,13 +827,14 @@ Proof.
   eapply CompileCompose; eapply (projT2 micro_inc).
 Qed.
 
-Lemma CompileRead : forall avar vvar pr d0,
+
+Lemma CompileRead : forall A avar vvar pr (f : A -> nat) d0,
   avar <> "disk" ->
   vvar <> "disk" ->
-  {{ [ SItemDisk (NTSome "disk") d0 pr; SItemRet (NTSome avar) d0 pr ] }}
+  {{ [ SItemDisk (NTSome "disk") d0 pr; SItemRet (NTSome avar) d0 (pr |> f) ] }}
     Call vvar "read" ["disk"; avar]
-  {{ [ SItemDisk (NTSome "disk") d0 (fun T rx => pr T (fun a => @Read T a rx));
-       SItemRet (NTSome vvar) d0 (fun T rx => pr T (fun a => @Read T a rx)) ] }} // disk_env.
+  {{ [ SItemDisk (NTSome "disk") d0 (fun T rx => pr T (fun a => @Read T (f a) rx));
+       SItemRet (NTSome vvar) d0 (fun T rx => pr T (fun a => @Read T (f a) rx)) ] }} // disk_env.
 Proof.
   unfold ProgOk.
   intros.
@@ -831,7 +846,7 @@ Proof.
   econstructor.
   unfold disk_env. maps. trivial.
   unfold sel. simpl. rewrite He. rewrite He0. trivial.
-  intuition. repeat deex. repeat invert_ret_computes_to.
+  intuition. repeat deex.
   simpl. eauto.
   Ltac invert_runsto :=
     match goal with
@@ -876,37 +891,135 @@ Proof.
   invert H5.
   eauto.
   simpl in *.
+  assert (Hc := H2).
+  eapply computes_to_after in H2.
   pose proof (computes_to_det_ret H3 H2); subst.
   pose proof (computes_to_det_disk H3 H2); subst.
   unfold computes_to in *.
   repeat deex.
   repeat find_inversion.
   repeat eexists; intro.
-  eapply H2.
+  eapply Hc.
   econstructor. econstructor.
   eauto.
-  eapply H3 in H1.
+  eapply Hc in H1.
   invert H1. invert H5. eauto.
 Qed.
 
+Lemma CompileWrite : forall A avar vvar (af vf : A -> nat) pr d0,
+  avar <> "disk" ->
+  vvar <> "disk" ->
+  avar <> vvar ->
+  {{ [ SItemDisk (NTSome "disk") d0 pr; SItemRet (NTSome avar) d0 (pr |> af); SItemRet (NTSome vvar) d0 (pr |> vf)] }}
+    Call "_" "write" ["disk"; avar; vvar]
+  {{ [ SItemDisk (NTSome "disk") d0 (fun T rx => pr T (fun x => @Write T (af x) (vf x) rx))] }} // disk_env.
+Proof.
+  unfold ProgOk.
+  intros.
+  intuition.
+  simpl in *.
+  maps.
+  find_cases "disk" initial_state.
+  find_cases avar initial_state.
+  find_cases vvar initial_state.
+  econstructor.
+  unfold disk_env. maps. trivial.
+  unfold sel. simpl. rewrite He. rewrite He0. rewrite He1. trivial.
+  intuition. repeat deex.
+  simpl. eauto.
+  invert_runsto.
+  simpl in *.
+  unfold sel in *.
+  maps.
+  find_cases "disk" initial_state.
+  find_cases avar initial_state.
+  find_cases vvar initial_state.
+  find_inversion.
+  do 3 (destruct output; try discriminate).
+  simpl in *.
+  destruct H2 as [? [? [? _]]].
+  subst st'.
+  unfold disk_env in *.
+  maps.
+  repeat find_inversion.
+  repeat deex.
+  assert (Hc := H3).
+  eapply computes_to_after in Hc.
+  pose proof (computes_to_det_disk Hc H5); subst.
+  pose proof (computes_to_det_ret Hc H5); subst.
+  assert (Hc' := H3).
+  eapply computes_to_after in Hc'.
+  pose proof (computes_to_det_disk Hc' H4); subst.
+  pose proof (computes_to_det_ret Hc' H4); subst.
+  unfold computes_to in *.
+  repeat deex.
+  simpl in *.
+  repeat deex.
+  repeat find_inversion.
+  maps.
+  repeat eexists; intros. simpl in *. eauto.
+  eapply H3. eauto.
+  eapply H3 in H2. invert H2. invert H7. eauto.
+Qed.
 
-(*
-Definition inc_disk_prog T rx : prog T := Read 0 (fun x => Write 0 (1 + x) (fun _ => rx x)).
+Definition inc_disk_prog T rx : prog T := Read 0 (fun x => Write 0 x rx).
 
 Example micro_inc_disk : sigT (fun p => forall d0,
   {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }}
     p
-  {{ [ SItemDisk (NTSome "disk") d0 inc_disk_prog ; SItemRet (NTSome "out") d0 inc_disk_prog ] }} // disk_env).
+  {{ [ SItemDisk (NTSome "disk") d0 inc_disk_prog ] }} // disk_env).
 Proof.
+  unfold inc_disk_prog.
   eexists; intro.
   eapply CompileSeq.
   instantiate (Goal := ("a" <- Const 0; _)%facade).
   eapply CompileSeq.
   instantiate (tenv1'0 := [SItemDisk (NTSome "disk") d0 (ret tt); SItemRet (NTSome "a") d0 (ret 0)]).
-  admit.
-  eapply CompileRead. congruence. instantiate (Goal2 := "v"). congruence.
-  unfold inc_disk_prog.
+  {
+  intro. intros.
+  simpl in *.
+  find_cases "disk" initial_state.
+  intuition; repeat deex.
+  econstructor. simpl. trivial. trivial.
+  invert_runsto.
+  simpl in *. find_inversion.
+  maps. rewrite He.
+  invert_ret_computes_to.
+  do 2 eexists. intuition.
+  invert_runsto.
+  simpl in *. find_inversion.
+  maps.
+  do 2 eexists. intuition.
+  }
+  change (ret 0) with (ret tt |> (fun x => 0)).
+  eapply CompileRead. congruence. instantiate (1 := "v"). congruence.
+  unfold inc_disk_prog. unfold ret.
+  instantiate (Goal1 := ("a" <- Const 0; _)%facade).
+  eapply CompileSeq.
+  instantiate (tenv1' := [SItemDisk (NTSome "disk") d0 (fun T rx => Read 0 rx);
+                          SItemRet (NTSome "a") d0 (fun T rx => Read 0 (fun _ => rx 0));
+                          SItemRet (NTSome "v") d0 (fun T rx => Read 0 rx)]).
+  {
+  intro. intros.
+  simpl in *. maps.
+  find_cases "disk" initial_state.
+  find_cases "v" initial_state.
+  destruct H as [[? [? [? ?]]] [[? [? [? ?]]] _]]; subst.
+  split.
+  econstructor.
+  simpl. trivial. trivial.
+  intros. invert_runsto. maps. maps. rewrite He. rewrite He0.
+  pose proof (computes_to_det_disk H H1); subst.
+  pose proof (computes_to_det_ret H H1); subst.
+  intuition; do 2 eexists; intuition eauto.
+  eapply computes_to_after in H. eapply H. invert H4. trivial.
+  }
+  change (fun T rx => Read 0 (fun _ : valu => rx 0)) with ((fun T => @Read T 0) |> (fun _ => 0)).
+  change (SItemRet (NTSome "v") d0 (fun T rx => Read 0 rx)) with (SItemRet (NTSome "v") d0 ((fun T => @Read T 0) |> (fun x => x))).
+  eapply CompileWrite; congruence.
+Qed.
 
+(*
 Lemma CompileBind : forall env (pr1 : forall T, (nat -> prog T) -> prog T) (pr2 : nat -> forall T, (nat -> prog T) -> prog T) v1 v2 p1 p2,
   (forall d0,
     {{ [SItemDisk (NTSome "disk") d0 pr1; SItemRet (N
