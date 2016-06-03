@@ -1,5 +1,6 @@
 Require Import CoopConcur.
 Require Import CoopConcurAuto.
+Import RelationClasses.
 Require Import Protocols.
 Require Import Star.
 Require Import DiskReaders.
@@ -69,6 +70,13 @@ Section ConcurrentCache.
       readers_locked tid vd vd''.
   Proof.
     unfold readers_locked; eauto.
+  Qed.
+
+  Instance readers_locked_preorder tid : PreOrder (readers_locked tid).
+  Proof.
+    constructor; hnf; intros;
+      eauto using readers_locked_refl,
+      readers_locked_trans.
   Qed.
 
   (* not sure whether to say this about vDisk0, vDisk, or both *)
@@ -283,6 +291,22 @@ Section ConcurrentCache.
       rewrite (cache_get_mem H) in H'
     end.
 
+  Ltac pick_opt_condition :=
+    let break H :=
+      destruct H; destruct_ands; try congruence;
+      let n := numgoals in guard n <= 1 in
+    match goal with
+    | [ H: (@eq (option _) _ _ /\ _) \/
+           (@eq (option _) _ _ /\ _) |- _ ] =>
+      break H
+    | [ H: (@eq (option _) _ _) \/
+           (@eq (option _) _ _ /\ _) |- _ ] =>
+      break H
+    | [ H: (@eq (option _) _ _ /\ _) \/
+           (@eq (option _) _ _) |- _ ] =>
+      break H
+    end.
+
   Ltac simp_hook := fail.
 
   Ltac simplify_step :=
@@ -292,6 +316,7 @@ Section ConcurrentCache.
     | _ => deex
     | _ => progress destruct_ands
     | _ => inv_opt
+    | _ => pick_opt_condition
     | _ => progress subst
     | _ => replace_mem_val
     | _ => reduce_hlist
@@ -495,7 +520,8 @@ Section ConcurrentCache.
                    s_i' = s_i /\
                    (r = Some v0 \/
                     r = None /\
-                    cache_get (get vCache s') a = Missing)
+                    cache_get (get vCache s') a = Missing) /\
+                   guar delta tid s s'
               }} cache_maybe_read a.
   Proof.
     hoare.
@@ -841,14 +867,7 @@ Section ConcurrentCache.
     hoare.
     eexists; simplify; finish.
     hoare.
-    intuition (auto; try congruence).
 
-    transitivity (get vDisk0 s); eauto.
-
-    admit. (* probably need this from some other spec; knowing vdisk
-    didn't change is likely insufficient *)
-
-    intuition (try congruence).
     (* TODO: need to produce value in disk using same_domain or
     something *)
     eexists; simplify; finish.
@@ -858,8 +877,6 @@ Section ConcurrentCache.
 
     transitivity (get vDisk0 s); eauto.
     transitivity (get vDisk0 s0); eauto.
-
-    admit. (* same as above *)
 
     step.
     left; intuition auto.

@@ -39,18 +39,27 @@ Ltac simpl_post :=
 
 (* Captures a program in a type so the hypotheses can give the program that
   produced each proof obligation. *)
-Inductive CurrentProg {Sigma}
-  (p: prog Sigma) :=
+Inductive CurrentProg {Sigma} (p: prog Sigma) :=
 | SomeProg.
 
+Inductive PrevProg {Sigma} (p: prog Sigma) :=
+| SomePrevProg.
+
 Local Ltac set_prog p :=
-  repeat match goal with
-  | [ H: CurrentProg _ |- _ ] => clear H
+  try match goal with
+  | [ H: CurrentProg ?p |- _ ] =>
+    let Hprev := fresh "PrevCommand" in
+    pose proof (SomePrevProg p) as Hprev;
+    clear H
   end;
   let H := fresh "PreOf" in
   pose proof (SomeProg p) as H.
 
 Tactic Notation "current" "prog" :=
+  try match goal with
+      | [ H: PrevProg ?p |- _ ] =>
+        idtac "ran"; idtac p
+      end;
   idtac "precondition for";
   match goal with
   | [ H: CurrentProg ?p |- _ ] => idtac p
