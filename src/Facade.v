@@ -1,17 +1,16 @@
 Require Import PeanoNat String List FMapAVL.
+Require Import Relation_Operators Operators_Properties.
+Require Import VerdiTactics.
 Require Import Word StringMap.
 
 Import ListNotations.
 
-(* TODO: Call something other than "Facade?" *)
+(* TODO: Split into more files *)
 
 Set Implicit Arguments.
 
 (* Don't print (elt:=...) everywhere *)
 Unset Printing Implicit Defensive.
-
-
-Ltac invert H := inversion H; subst; clear H.
 
 (* TODO: use Pred.v's *)
 Ltac deex :=
@@ -180,8 +179,8 @@ Theorem exec_trace_det_ret : forall A (x1 x2 : A) d1 d2,
   x1 = x2.
 Proof.
   intros.
-  invert H; eauto.
-  invert H0.
+  invc H; eauto.
+  invc H0.
 Qed.
 
 Theorem exec_trace_det_disk : forall A (x1 x2 : A) d1 d2,
@@ -190,8 +189,8 @@ Theorem exec_trace_det_disk : forall A (x1 x2 : A) d1 d2,
 Proof.
   intros.
   destruct d1, d2.
-  invert H; eauto.
-  invert H0. simpl in *. congruence.
+  invc H; eauto.
+  invc H0. simpl in *. congruence.
 Qed.
 
 Theorem computes_to_det_ret : forall A p d d'1 d'2 (x1 x2 : A),
@@ -385,10 +384,10 @@ Section EnvSection.
       RunsTo body st st' ->
       RunsTo loop st' st'' ->
       RunsTo loop st st''
-  | RunsToWhileFalse : forall cond body st st',
+  | RunsToWhileFalse : forall cond body st,
       let loop := While cond body in
       is_false st cond ->
-      RunsTo loop st st'
+      RunsTo loop st st
   | RunsToAssign : forall x e st st' v,
       (* rhs can't be a mutable object, to prevent aliasing *)
       eval st e = Some v ->
@@ -404,6 +403,111 @@ Section EnvSection.
       let st' := add_remove_many args input output st in
       let st' := add x ret st' in
       RunsTo (Call x f args) st st'.
+
+  Inductive Step : Stmt * State -> Stmt * State -> Prop :=
+  | StepSeq1 : forall a a' b st st',
+      Step (a, st) (a', st') ->
+      Step (Seq a b, st) (Seq a' b, st')
+  | StepSeq2 : forall a st,
+      Step (Seq Skip a, st) (a, st)
+  | StepIfTrue : forall cond t f st,
+      is_true st cond ->
+      Step (If cond t f, st) (t, st)
+  | StepIfFalse : forall cond t f st,
+      is_false st cond ->
+      Step (If cond t f, st) (f, st)
+  | StepWhileTrue : forall cond body st,
+      let loop := While cond body in
+      is_true st cond ->
+      Step (loop, st) (Seq body loop, st)
+  | StepWhileFalse : forall cond body st,
+      let loop := While cond body in
+      is_false st cond ->
+      Step (loop, st) (Skip, st)
+  | StepAssign : forall x e st st' v,
+      (* rhs can't be a mutable object, to prevent aliasing *)
+      eval st e = Some v ->
+      can_alias v = true ->
+      st' = add x v st ->
+      Step (Assign x e, st) (Skip, st')
+  | StepCallAx : forall x f args st spec input output ret,
+      StringMap.find f env = Some spec ->
+      mapM (sel st) args = Some input ->
+      PreCond spec input ->
+      length input = length output ->
+      PostCond spec (List.combine input output) ret ->
+      let st' := add_remove_many args input output st in
+      let st' := add x ret st' in
+      Step (Call x f args, st) (Skip, st').
+
+  Hint Constructors RunsTo Step : steps.
+
+  Notation "R ^*" := (clos_refl_trans_1n _ R) (at level 0).
+
+  Hint Constructors clos_refl_trans_1n : steps.
+
+  Lemma Step_Sequence : forall a b a' st st',
+    Step^* (a, st) (a', st') ->
+    Step^* (Seq a b, st) (Seq a' b, st').
+  Proof.
+    intros.
+    prep_induction H; induction H; intros; subst.
+    + find_inversion; eauto with steps.
+    + destruct y. econstructor; try eapply StepSeq1; eauto.
+  Qed.
+  Hint Resolve Step_Sequence : steps.
+
+  Hint Resolve clos_rt_rt1n clos_rt1n_rt : steps.
+  Hint Extern 1 (clos_refl_trans _ _ ?x ?y) =>
+    match goal with
+    | _ => is_evar x; fail 1
+    | _ => is_evar y; fail 1
+    | _ => eapply rt_trans
+    end : steps.
+
+  Ltac subst_definitions :=
+    repeat match goal with
+    | [ H := _ |- _ ] => subst H
+    end.
+
+  Theorem RunsTo_Step : forall st p st',
+    RunsTo p st st' ->
+    Step^* (p, st) (Skip, st').
+  Proof.
+    intros.
+    induction H; intros; subst_definitions; eauto 9 with steps.
+    econstructor; do 2 eauto with steps.
+  Qed.
+
+  Ltac do_inv := match goal with
+  | [ H : Step _ _ |- _ ] => invc H; eauto with steps
+  | [ H : clos_refl_trans_1n _ _ _ _ |- _ ] => invc H; eauto with steps
+  end.
+
+  Lemma Step_RunsTo_Seq : forall a b st st',
+    Step^* (Seq a b, st) (Skip, st')
+    -> exists st0, Step^* (a, st) (Skip, st0) /\ Step^* (b, st0) (Skip, st').
+  Proof.
+    intros.
+    prep_induction H; induction H; intros; subst; try discriminate.
+    destruct y. do_inv.
+    destruct (IHclos_refl_trans_1n _ _ _ _ eq_refl eq_refl eq_refl).
+    intuition eauto with steps.
+  Qed.
+  Hint Resolve Step_RunsTo_Seq : steps.
+
+  Theorem Step_RunsTo : forall p st st',
+    Step^* (p, st) (Skip, st') ->
+    RunsTo p st st'.
+  Proof.
+    induction p; intros; subst.
+    + repeat do_inv.
+    + destruct (Step_RunsTo_Seq H); intuition eauto with steps.
+    + repeat do_inv.
+    + admit.
+    + repeat do_inv. subst_definitions. eauto with steps.
+    + repeat do_inv.
+  Admitted.
 
   CoInductive Safe : Stmt -> State -> Prop :=
   | SafeSkip : forall st, Safe Skip st
@@ -553,15 +657,15 @@ Fixpoint SameValues (st : State) (tenv : Telescope) :=
     end
   end.
 
-Notation "ENV ≲ TENV" := (SameValues ENV TENV) (at level 50).
+Notation "ENV \u2272 TENV" := (SameValues ENV TENV) (at level 50).
 
 Definition ProgOk env prog (initial_tstate final_tstate : Telescope) :=
   forall initial_state : State,
-    initial_state ≲ initial_tstate ->
+    initial_state \u2272 initial_tstate ->
     Safe env prog initial_state /\
     forall final_state : State,
       RunsTo env prog initial_state final_state ->
-      (final_state ≲ final_tstate).
+      (final_state \u2272 final_tstate).
 
 Arguments ProgOk env prog%facade_scope initial_tstate final_tstate.
 
@@ -619,8 +723,8 @@ Proof.
   specialize (H A (@Done A) d x).
   destruct H as [_ H].
   specialize (H ltac:(do 2 econstructor)).
-  invert H.
-  invert H0.
+  invc H.
+  invc H0.
   trivial.
 Qed.
 
@@ -631,8 +735,8 @@ Proof.
   specialize (H A (@Done A) d x).
   destruct H as [_ H].
   specialize (H ltac:(do 2 econstructor)).
-  invert H.
-  invert H0.
+  invc H.
+  invc H0.
   destruct d, d'.
   simpl in *.
   congruence.
@@ -644,6 +748,11 @@ Proof.
 Qed.
 
 Hint Resolve ret_computes_to_refl.
+
+
+
+
+
 
 Lemma CompileSeq :
   forall (tenv1 tenv1' tenv2: Telescope) env p1 p2,
@@ -664,7 +773,7 @@ Proof.
     - eapply H; eauto.
     - intros. eapply H0. eapply H; eauto.
   + intros.
-    invert H2.
+    invc H2.
     eapply H0; eauto.
     eapply H; eauto.
 Qed.
@@ -681,7 +790,7 @@ Proof.
   split.
   econstructor.
   intros.
-  invert H0. eauto.
+  invc H0. eauto.
 Defined.
 
 Definition read : AxiomaticSpec.
@@ -734,7 +843,7 @@ Proof.
   inversion H2.
   unfold disk_env in H7.
   maps.
-  invert H7.
+  invc H7.
   unfold sel in *.
   simpl in *.
   destruct (find "disk" initial_state); [ | exfalso; solve [ intuition idtac ] ].
@@ -742,18 +851,18 @@ Proof.
   destruct (find "v" initial_state); [ | exfalso; solve [ intuition idtac ] ].
   intuition idtac.
   repeat deex.
-  Ltac invert_ret_computes_to :=
+  Ltac invc_ret_computes_to :=
     repeat match goal with
     | [ H : computes_to _ _ _ _ |- _ ] =>
         let H' := fresh H in
         assert (H' := H); apply ret_computes_to in H; apply ret_computes_to_disk in H'; subst
     end.
-  invert_ret_computes_to.
-  invert H2.
-  invert H8.
+  invc_ret_computes_to.
+  invc H2.
+  invc H8.
   do 3 (destruct output; try discriminate).
   simpl in *.
-  invert H4.
+  invc H4.
   subst st'.
   maps.
   do 2 eexists; intuition.
@@ -762,8 +871,8 @@ Proof.
   econstructor.
   eauto.
   intro.
-  invert H.
-  invert H0.
+  invc H.
+  invc H0.
   eauto.
 Defined.
 
@@ -778,14 +887,14 @@ Proof.
   intro. intros.
   intuition. admit.
   simpl in *.
-  invert H0.
+  invc H0.
   maps.
   simpl in *.
   find_cases "x" initial_state.
   intuition.
   simpl in *.
   repeat deex.
-  invert H3.
+  invc H3.
   apply_in_hyp ret_computes_to; subst.
   eauto.
 Admitted.
@@ -811,7 +920,7 @@ Proof.
   specialize (H d0 x initial_state H1).
   intuition.
   + econstructor. intuition. eapply H0. eauto.
-  + invert H. eapply H0; eauto.
+  + invc H. eapply H0; eauto.
 Qed.
 
 
@@ -848,11 +957,11 @@ Proof.
   unfold sel. simpl. rewrite He. rewrite He0. trivial.
   intuition. repeat deex.
   simpl. eauto.
-  Ltac invert_runsto :=
+  Ltac invc_runsto :=
     match goal with
-    | [ H : RunsTo _ _ _ _ |- _ ] => invert H
+    | [ H : RunsTo _ _ _ _ |- _ ] => invc H
     end.
-  invert_runsto.
+  invc_runsto.
   simpl in *.
   unfold sel in *.
   maps.
@@ -860,9 +969,9 @@ Proof.
   find_cases avar initial_state.
   Ltac find_inversion :=
     match goal with
-    | [ H : ?a _ = ?a _ |- _ ] => invert H
-    | [ H : ?a _ _ = ?a _ _ |- _ ] => invert H
-    | [ H : ?a _ _ _ = ?a _ _ _ |- _ ] => invert H
+    | [ H : ?a _ = ?a _ |- _ ] => invc H
+    | [ H : ?a _ _ = ?a _ _ |- _ ] => invc H
+    | [ H : ?a _ _ _ = ?a _ _ _ |- _ ] => invc H
     end.
   find_inversion.
   do 2 (destruct output; try discriminate).
@@ -887,8 +996,8 @@ Proof.
   econstructor. econstructor. eapply H1.
   eauto.
   eapply H2 in H1.
-  invert H1.
-  invert H5.
+  invc H1.
+  invc H5.
   eauto.
   simpl in *.
   assert (Hc := H2).
@@ -903,7 +1012,7 @@ Proof.
   econstructor. econstructor.
   eauto.
   eapply Hc in H1.
-  invert H1. invert H5. eauto.
+  invc H1. invc H5. eauto.
 Qed.
 
 Lemma CompileWrite : forall A avar vvar (af vf : A -> nat) pr d0,
@@ -927,7 +1036,7 @@ Proof.
   unfold sel. simpl. rewrite He. rewrite He0. rewrite He1. trivial.
   intuition. repeat deex.
   simpl. eauto.
-  invert_runsto.
+  invc_runsto.
   simpl in *.
   unfold sel in *.
   maps.
@@ -959,7 +1068,7 @@ Proof.
   maps.
   repeat eexists; intros. simpl in *. eauto.
   eapply H3. eauto.
-  eapply H3 in H2. invert H2. invert H7. eauto.
+  eapply H3 in H2. invc H2. invc H7. eauto.
 Qed.
 
 Definition inc_disk_prog T rx : prog T := Read 0 (fun x => Write 0 x rx).
@@ -981,12 +1090,12 @@ Proof.
   find_cases "disk" initial_state.
   intuition; repeat deex.
   econstructor. simpl. trivial. trivial.
-  invert_runsto.
+  invc_runsto.
   simpl in *. find_inversion.
   maps. rewrite He.
-  invert_ret_computes_to.
+  invc_ret_computes_to.
   do 2 eexists. intuition.
-  invert_runsto.
+  invc_runsto.
   simpl in *. find_inversion.
   maps.
   do 2 eexists. intuition.
@@ -1008,11 +1117,11 @@ Proof.
   split.
   econstructor.
   simpl. trivial. trivial.
-  intros. invert_runsto. maps. maps. rewrite He. rewrite He0.
+  intros. invc_runsto. maps. maps. rewrite He. rewrite He0.
   pose proof (computes_to_det_disk H H1); subst.
   pose proof (computes_to_det_ret H H1); subst.
   intuition; do 2 eexists; intuition eauto.
-  eapply computes_to_after in H. eapply H. invert H4. trivial.
+  eapply computes_to_after in H. eapply H. invc H4. trivial.
   }
   change (fun T rx => Read 0 (fun _ : valu => rx 0)) with ((fun T => @Read T 0) |> (fun _ => 0)).
   change (SItemRet (NTSome "v") d0 (fun T rx => Read 0 rx)) with (SItemRet (NTSome "v") d0 ((fun T => @Read T 0) |> (fun x => x))).
@@ -1039,7 +1148,7 @@ Proof.
   intros.
   instantiate (1 := ("out" <- (Var "x" + Var "y"))%facade).
   intro. intros.
-  invert H0.
+  invc H0.
   simpl in *.
   maps.
   destruct (find "disk" initial_state); [ | exfalso; solve [ intuition idtac ] ].
@@ -1048,7 +1157,7 @@ Proof.
   intuition idtac.
   repeat deex.
   simpl in *.
-  invert H3.
+  invc H3.
   eexists. exists d0. intuition.
   apply ret_computes_to in H2.
   apply ret_computes_to in H1.
@@ -1067,13 +1176,13 @@ Proof.
   intros.
   instantiate (1 := (Call "_" "write" ["disk"; "a"; "v"]; "out" <- Var "a" + Var "v")%facade).
   intro. intros.
-  invert H0.
-  invert H3.
-  invert H6.
+  invc H0.
+  invc H3.
+  invc H6.
   simpl in *.
   maps.
   compute in H4.
-  invert H4.
+  invc H4.
   unfold sel in *.
   simpl in *.
   repeat match goal with
@@ -1082,7 +1191,7 @@ Proof.
     destruct H as [newvar ?]; subst
   end.
   do 3 (destruct output; try discriminate).
-  invert H0.
+  invc H0.
   simpl in *.
   subst st'0.
   maps.
@@ -1102,9 +1211,9 @@ Proof.
       let H' := fresh H in
       assert (H' := H); apply ret_computes_to in H; apply ret_computes_to_disk in H'; subst
   end.
-  invert H5.
+  invc H5.
   simpl in *.
-  invert H2.
+  invc H2.
   intuition idtac.
   do 2 eexists; intuition.
   destruct d.
@@ -1113,8 +1222,8 @@ Proof.
   econstructor.
   eauto.
   intro.
-  invert H.
-  invert H0.
+  invc H.
+  invc H0.
   eauto.
   do 2 eexists; intuition.
   destruct d.
@@ -1125,8 +1234,8 @@ Proof.
   instantiate (d := (upd a0 v1 (fst d), (a0, v1) :: (snd d))).
   eauto.
   intro.
-  invert H.
-  invert H0.
+  invc H.
+  invc H0.
   eauto.
 Defined.
 
