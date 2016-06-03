@@ -745,6 +745,8 @@ Section ConcurrentCache.
     hoare.
   Qed.
 
+  Hint Extern 1 {{cache_try_write _ _; _}} => apply cache_try_write_ok : prog.
+
   Hint Resolve wb_rep_empty.
 
   Theorem cache_commit_ok :
@@ -882,5 +884,26 @@ Section ConcurrentCache.
 
     step.
   Admitted.
+
+  Theorem cache_write_ok : forall a v,
+      SPEC delta, tid |-
+              {{ v0,
+               | PRE d m s_i s:
+                   invariant delta d m s /\
+                   get vdisk s a = Some v0 /\
+                   guar delta tid s_i s
+               | POST d' m' s_i' s' r:
+                   invariant delta d' m' s' /\
+                   (r = false
+                    (* same as read - what to guarantee here? *) \/
+                    (r = true /\
+                     get vdisk s' = upd (get vdisk s) a v)) /\
+                   guar delta tid s_i' s'
+              }} cache_write a v.
+  Proof.
+    hoare.
+    eexists; simplify; finish.
+    hoare.
+  Qed.
 
 End ConcurrentCache.
