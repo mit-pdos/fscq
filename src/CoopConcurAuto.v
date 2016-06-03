@@ -48,7 +48,12 @@ Inductive PrevProg {Sigma} (p: prog Sigma) :=
 Local Ltac set_prog p :=
   try match goal with
   | [ H: CurrentProg ?p |- _ ] =>
-    let Hprev := fresh "PrevCommand" in
+    match goal with
+    | [ H: PrevProg _ |- _ ] =>
+      clear H
+    | _ => idtac
+    end;
+    let Hprev := fresh "PostOf" in
     pose proof (SomePrevProg p) as Hprev;
     clear H
   end;
