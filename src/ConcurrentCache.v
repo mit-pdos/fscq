@@ -429,12 +429,12 @@ Section ConcurrentCache.
   Theorem modify_cache_ok : forall up,
       SPEC delta, tid |-
               {{ (_:unit),
-               | PRE d m s0 s: get mCache m = get vCache s
-               | POST d' m' s0' s' r:
+               | PRE d m s_i s: get mCache m = get vCache s
+               | POST d' m' s_i' s' r:
                    s' = set vCache (up (get vCache s)) s /\
                    m' = set mCache (up (get mCache m)) m /\
                    d' = d /\
-                   s0' = s0
+                   s_i' = s_i
               }} modify_cache up.
   Proof.
     hoare.
@@ -445,12 +445,12 @@ Section ConcurrentCache.
   Theorem modify_wb_ok : forall up,
       SPEC delta, tid |-
               {{ (_:unit),
-               | PRE d m s0 s: get mWriteBuffer m = get vWriteBuffer s
-               | POST d' m' s0' s' r:
+               | PRE d m s_i s: get mWriteBuffer m = get vWriteBuffer s
+               | POST d' m' s_i' s' r:
                    s' = set vWriteBuffer (up (get vWriteBuffer s)) s /\
                    m' = set mWriteBuffer (up (get mWriteBuffer m)) m /\
                    d' = d /\
-                   s0' = s0
+                   s_i' = s_i
               }} modify_wb up.
   Proof.
     hoare.
@@ -487,12 +487,12 @@ Section ConcurrentCache.
   Theorem cache_maybe_read_ok : forall a,
       SPEC delta, tid |-
               {{ v0,
-               | PRE d m s0 s: invariant delta d m s /\
+               | PRE d m s_i s: invariant delta d m s /\
                                get vdisk s a = Some v0
-               | POST d' m' s0' s' r:
+               | POST d' m' s_i' s' r:
                    invariant delta d' m' s' /\
                    get vdisk s' = get vdisk s /\
-                   s0' = s0 /\
+                   s_i' = s_i /\
                    (r = Some v0 \/
                     r = None /\
                     cache_get (get vCache s') a = Missing)
@@ -531,18 +531,18 @@ Section ConcurrentCache.
   Theorem prepare_fill_ok : forall a,
       SPEC delta, tid |-
               {{ v0,
-               | PRE d m s0 s:
+               | PRE d m s_i s:
                    invariant delta d m s /\
                    cache_get (get vCache s) a = Missing /\
                    (* XXX: not sure exactly why this is a requirement,
                    but it comes from no_wb_reader_conflict *)
                    wb_get (get vWriteBuffer s) a = WbMissing /\
                    get vdisk s a = Some v0 /\
-                   guar delta tid s0 s
-               | POST d' m' s0' s' _:
+                   guar delta tid s_i s
+               | POST d' m' s_i' s' _:
                    invariant delta d' m' s' /\
                    get vDisk0 s' a = Some (v0, Some tid) /\
-                   guar delta tid s0' s'
+                   guar delta tid s_i' s'
               }} prepare_fill a.
   Proof.
     hoare.
@@ -630,20 +630,20 @@ Section ConcurrentCache.
   Theorem cache_fill_ok : forall a,
       SPEC delta, tid |-
               {{ v0,
-               | PRE d m s0 s:
+               | PRE d m s_i s:
                    invariant delta d m s /\
                    cache_get (get vCache s) a = Missing /\
                    (* XXX: not sure exactly why this is a requirement,
                    but it comes from no_wb_reader_conflict *)
                    wb_get (get vWriteBuffer s) a = WbMissing /\
                    get vdisk s a = Some v0 /\
-                   guar delta tid s0 s
-               | POST d' m' s0' s' _:
+                   guar delta tid s_i s
+               | POST d' m' s_i' s' _:
                    invariant delta d' m' s' /\
                    (* no promise about actually filling the cache -
                    shouldn't affect anybody *)
                    rely delta tid s s' /\
-                   guar delta tid s0' s'
+                   guar delta tid s_i' s'
               }} cache_fill a.
   Proof.
     hoare.
@@ -703,16 +703,16 @@ Section ConcurrentCache.
   Theorem cache_try_write_ok : forall a v,
       SPEC delta, tid |-
               {{ v0,
-               | PRE d m s0 s:
+               | PRE d m s_i s:
                    invariant delta d m s /\
                    get vdisk s a = Some v0 /\
-                   guar delta tid s0 s
-               | POST d' m' s0' s' r:
+                   guar delta tid s_i s
+               | POST d' m' s_i' s' r:
                    invariant delta d' m' s' /\
                    (r = true -> get vdisk s' = upd (get vdisk s) a v) /\
                    get vDisk0 s' = get vDisk0 s /\
                    guar delta tid s s' /\
-                   guar delta tid s0' s'
+                   guar delta tid s_i' s'
               }} cache_try_write a v.
   Proof.
     hoare.
@@ -723,14 +723,14 @@ Section ConcurrentCache.
   Theorem cache_commit_ok :
       SPEC delta, tid |-
               {{ (_:unit),
-               | PRE d m s0 s:
+               | PRE d m s_i s:
                    invariant delta d m s
-               | POST d' m' s0' s' r:
+               | POST d' m' s_i' s' r:
                    invariant delta d' m' s' /\
                    hide_readers (get vDisk0 s') = get vdisk s /\
                    get vdisk s' = get vdisk s /\
                    guar delta tid s s' /\
-                   s0' = s0
+                   s_i' = s_i
               }} cache_commit.
   Proof.
     hoare.
@@ -757,16 +757,16 @@ Section ConcurrentCache.
   Theorem cache_abort_ok :
     SPEC delta, tid |-
   {{ (_:unit),
-   | PRE d m s0 s:
+   | PRE d m s_i s:
        invariant delta d m s
-   | POST d' m' s0' s' _:
+   | POST d' m' s_i' s' _:
        invariant delta d' m' s' /\
        get vdisk s' = hide_readers (get vDisk0 s) /\
        get vDisk0 s' = get vDisk0 s /\
        get vCache s' = get vCache s /\
        get vWriteBuffer s' = emptyWriteBuffer /\
        guar delta tid s s' /\
-       s0' = s0
+       s_i' = s_i
   }} cache_abort.
   Proof.
     hoare.
@@ -809,17 +809,17 @@ Section ConcurrentCache.
   Theorem cache_read_ok : forall a,
       SPEC delta, tid |-
               {{ v,
-               | PRE d m s0 s:
+               | PRE d m s_i s:
                    invariant delta d m s /\
                    get vdisk s a = Some v /\
-                   guar delta tid s0 s
-               | POST d' m' s0' s' r:
+                   guar delta tid s_i s
+               | POST d' m' s_i' s' r:
                    invariant delta d' m' s' /\
                    (r = None /\
                     get vdisk s' = hide_readers (get vDisk0 s) \/
                     r = Some v /\
                     get vdisk s' = get vdisk s) /\
-                   guar delta tid s0' s'
+                   guar delta tid s_i' s'
               }} cache_read a.
   Proof.
     hoare.
@@ -830,8 +830,8 @@ Section ConcurrentCache.
     transitivity (get vDisk0 s); eauto.
     apply same_domain_hide_readers.
     transitivity (get vdisk s); eauto.
-    transitivity (get vdisk s2); eauto.
-    replace (get vdisk s2).
+    transitivity (get vdisk s0); eauto.
+    replace (get vdisk s0).
     reflexivity.
     symmetry; eauto.
 
@@ -842,9 +842,9 @@ Section ConcurrentCache.
     (* TODO: need to produce value in disk using same_domain or
     something *)
     eexists; simplify; finish.
-    replace (get vWriteBuffer s3) with emptyWriteBuffer by auto.
+    replace (get vWriteBuffer s1) with emptyWriteBuffer by auto.
     apply wb_get_empty.
-    admit. (* needed to find get vdisk s3 a first *)
+    admit. (* needed to find get vdisk s1 a first *)
 
     admit. (* same as above, should move to lemma *)
     admit. (* same as above *)

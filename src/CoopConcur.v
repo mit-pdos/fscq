@@ -447,13 +447,13 @@ Section CoopConcur.
       edestruct H; eauto
     end.
 
-  Notation "tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post }} p" :=
+  Notation "tid |- {{ e1 .. e2 , | 'PRE' d m s_i s : pre | 'POST' d' m' s_i' s' r : post }} p" :=
     (forall (rx: _ -> prog) (tid:TID),
-        valid tid (fun done d m s0 s =>
+        valid tid (fun done d m s_i s =>
                      (ex (fun e1 => .. (ex (fun e2 =>
                                            pre%judgement /\
                                            (forall ret_,
-                                             valid tid (fun done_rx d' m' s0' s' =>
+                                             valid tid (fun done_rx d' m' s_i' s' =>
                                                       (fun r => post%judgement) ret_ /\
                                                       done_rx = done)
                                                    (rx ret_))
@@ -465,8 +465,8 @@ Section CoopConcur.
        d' at level 0,
        m at level 0,
        m' at level 0,
-       s0 at level 0,
-       s0' at level 0,
+       s_i at level 0,
+       s_i' at level 0,
        s at level 0,
        s' at level 0,
        r at level 0,
@@ -527,9 +527,9 @@ Section CoopConcur.
 
   Theorem Write_ok : forall a v,
       tid |- {{ F v0,
-             | PRE d m s0 s: d |= F * a |-> (v0, None)
-             | POST d' m' s0' s' _: d' |= F * a |-> (v, None) /\
-                                s0' = s0 /\
+             | PRE d m s_i s: d |= F * a |-> (v0, None)
+             | POST d' m' s_i' s' _: d' |= F * a |-> (v, None) /\
+                                s_i' = s_i /\
                                 s' = s /\
                                 m' = m
             }} Write a v.
@@ -539,9 +539,9 @@ Section CoopConcur.
 
   Theorem StartRead_ok : forall a,
     tid |- {{ F v0,
-           | PRE d m s0 s: d |= F * a |-> (v0, None)
-           | POST d' m' s0' s' _: d' |= F * a |-> (v0, Some tid) /\
-                                  s0' = s0 /\
+           | PRE d m s_i s: d |= F * a |-> (v0, None)
+           | POST d' m' s_i' s' _: d' |= F * a |-> (v0, Some tid) /\
+                                  s_i' = s_i /\
                                   s' = s /\
                                   m' = m
           }} StartRead a.
@@ -555,9 +555,9 @@ Section CoopConcur.
 
   Theorem FinishRead_ok : forall a,
       tid |- {{ F v,
-             | PRE d m s0 s: d |= F * a |-> (v, Some tid)
-             | POST d' m' s0' s' r: d' |= F * a |-> (v, None) /\
-                                    s0' = s0 /\
+             | PRE d m s_i s: d |= F * a |-> (v, Some tid)
+             | POST d' m' s_i' s' r: d' |= F * a |-> (v, None) /\
+                                    s_i' = s_i /\
                                     s' = s /\
                                     m' = m /\
                                     r = v
@@ -574,11 +574,11 @@ Section CoopConcur.
 
   Theorem Get_ok : forall t (v: var _ t),
       tid |- {{ (_:unit),
-             | PRE d m s0 s: True
-             | POST d' m' s0' s' r: d' = d /\
+             | PRE d m s_i s: True
+             | POST d' m' s_i' s' r: d' = d /\
                                     r = get v m /\
                                     m' = m /\
-                                    s0' = s0 /\
+                                    s_i' = s_i /\
                                     s' = s
             }} Get v.
   Proof.
@@ -587,10 +587,10 @@ Section CoopConcur.
 
   Theorem Assgn_ok : forall t (v: var _ t) val,
       tid |- {{ (_:unit),
-             | PRE d m s0 s: True
-             | POST d' m' s0' s' _: d' = d /\
+             | PRE d m s_i s: True
+             | POST d' m' s_i' s' _: d' = d /\
                                     m' = set v val m /\
-                                    s0' = s0 /\
+                                    s_i' = s_i /\
                                     s' = s
             }} Assgn v val.
   Proof.
@@ -599,10 +599,10 @@ Section CoopConcur.
 
   Theorem GetTID_ok :
     tid |- {{ (_:unit),
-           | PRE d m s0 s: True
-           | POST d' m' s0' s' r: d' = d /\
+           | PRE d m s_i s: True
+           | POST d' m' s_i' s' r: d' = d /\
                                   m' = m /\
-                                  s0' = s0 /\
+                                  s_i' = s_i /\
                                   s' = s /\
                                   r = tid
           }} GetTID.
@@ -612,10 +612,10 @@ Section CoopConcur.
 
   Theorem Yield_ok : forall wchan,
     tid |- {{ (_:unit),
-           | PRE d m s0 s: invariant delta d m s /\
-                           guar delta tid s0 s
-           | POST d' m' s0' s' _: invariant delta d' m' s' /\
-                                  s0' = s' /\
+           | PRE d m s_i s: invariant delta d m s /\
+                           guar delta tid s_i s
+           | POST d' m' s_i' s' _: invariant delta d' m' s' /\
+                                  s_i' = s' /\
                                   rely delta tid s s'
     }} Yield wchan.
   Proof.
@@ -624,9 +624,9 @@ Section CoopConcur.
 
   Theorem GhostUpdate_ok : forall up,
     tid |- {{ (_:unit),
-           | PRE d m s0 s: True
-           | POST d' m' s0' s' _: d' = d /\
-                                  s0' = s0 /\
+           | PRE d m s_i s: True
+           | POST d' m' s_i' s' _: d' = d /\
+                                  s_i' = s_i /\
                                   s' = up s /\
                                   m' = m
           }} GhostUpdate up.
@@ -636,9 +636,9 @@ Section CoopConcur.
 
   Theorem Wakeup_ok : forall a,
     tid |- {{ (_:unit),
-           | PRE d m s0 s: True
-           | POST d' m' s0' s' _: d' = d /\
-                                  s0' = s0 /\
+           | PRE d m s_i s: True
+           | POST d' m' s_i' s' _: d' = d /\
+                                  s_i' = s_i /\
                                   s' = s /\
                                   m' = m
           }} Wakeup a.
@@ -648,8 +648,8 @@ Section CoopConcur.
 
   Theorem pimpl_ok : forall tid (pre pre': _ -> _ -> _ ->  _ -> _ -> Prop) p,
       valid tid pre p ->
-      (forall done d m s0 s, pre' done d m s0 s ->
-        pre done d m s0 s) ->
+      (forall done d m s_i s, pre' done d m s_i s ->
+        pre done d m s_i s) ->
       valid tid pre' p.
   Proof.
     unfold valid.
@@ -672,10 +672,10 @@ Section CoopConcur.
     end.
 
   Lemma valid_exists_to_forall : forall A tid pre p,
-      (forall a:A, valid tid (fun done d m s0 s =>
-                           pre done d m s0 s a) p) ->
-      (valid tid (fun done d m s0 s =>
-                    exists a, pre done d m s0 s a) p).
+      (forall a:A, valid tid (fun done d m s_i s =>
+                           pre done d m s_i s a) p) ->
+      (valid tid (fun done d m s_i s =>
+                    exists a, pre done d m s_i s a) p).
   Proof.
     unfold valid; intros; deex; eauto.
   Qed.
@@ -691,10 +691,10 @@ Section CoopConcur.
 
   Lemma pimpl_pre_valid : forall tid (pre: donecond -> _ -> _ -> _ -> _ -> Prop)
                             pre' p,
-      (forall done d m s0 s, pre done d m s0 s ->
+      (forall done d m s_i s, pre done d m s_i s ->
                               valid tid (pre' done) p) ->
-      (forall done d m s0 s, pre done d m s0 s ->
-                              pre' done done d m s0 s) ->
+      (forall done d m s_i s, pre done d m s_i s ->
+                              pre' done done d m s_i s) ->
       valid tid pre p.
   Proof.
     unfold valid; eauto.
@@ -708,22 +708,22 @@ Section CoopConcur.
                      nocrash
                      n i f (li:L),
       valid tid (fun done =>
-                   fun d m s0 s =>
+                   fun d m s_i s =>
                      exists (g:G),
-                       nocrash g i li d m s0 s /\
+                       nocrash g i li d m s_i s /\
                        (forall n' ln' rxm,
                            i <= n' ->
                            n' < n + i ->
                            (forall lSm,
-                               valid tid (fun done' d' m' s0' s' =>
-                                            nocrash g (1+n') lSm d' m' s0' s' /\
+                               valid tid (fun done' d' m' s_i' s' =>
+                                            nocrash g (1+n') lSm d' m' s_i' s' /\
                                             done' = done) (rxm lSm)) ->
-                           valid tid (fun done' d' m' s0' s' =>
-                                        nocrash g n' ln' d' m' s0' s' /\
+                           valid tid (fun done' d' m' s_i' s' =>
+                                        nocrash g n' ln' d' m' s_i' s' /\
                                         done' = done) (f n' ln' rxm)) /\
                        (forall lfinal,
-                           valid tid (fun done' d' m' s0' s' =>
-                                        nocrash g (i+n) lfinal d' m' s0' s' /\
+                           valid tid (fun done' d' m' s_i' s' =>
+                                        nocrash g (i+n) lfinal d' m' s_i' s' /\
                                         done' = done) (rx lfinal)))
             (For_ f i n nocrash li rx).
   Proof.
@@ -765,21 +765,21 @@ Section CoopConcur.
                      nocrash
                      n f (li:L),
       valid tid (fun done =>
-                   fun d m s0 s =>
+                   fun d m s_i s =>
                      exists (g:G),
-                       nocrash g 0 li d m s0 s /\
+                       nocrash g 0 li d m s_i s /\
                        (forall n' ln' rxm,
                            n' < n ->
                            (forall lSm,
-                               valid tid (fun done' d' m' s0' s' =>
-                                            nocrash g (1+n') lSm d' m' s0' s' /\
+                               valid tid (fun done' d' m' s_i' s' =>
+                                            nocrash g (1+n') lSm d' m' s_i' s' /\
                                             done' = done) (rxm lSm)) ->
-                           valid tid (fun done' d' m' s0' s' =>
-                                        nocrash g n' ln' d' m' s0' s' /\
+                           valid tid (fun done' d' m' s_i' s' =>
+                                        nocrash g n' ln' d' m' s_i' s' /\
                                         done' = done) (f n' ln' rxm)) /\
                        (forall lfinal,
-                           valid tid (fun done' d' m' s0' s' =>
-                                        nocrash g n lfinal d' m' s0' s' /\
+                           valid tid (fun done' d' m' s_i' s' =>
+                                        nocrash g n lfinal d' m' s_i' s' /\
                                         done' = done) (rx lfinal)))
             (For_ f 0 n nocrash li rx).
   Proof.
@@ -801,15 +801,15 @@ End CoopConcur.
 * add delta, tid |- in front to specify the transition system and thread TID
 * quantify over T and tid and change prog to prog _ _ T (the state/mem types should be inferred)
 * add delta as an argument to valid *)
-Notation "'SPEC' delta , tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d' m' s0' s' r : post }} p" :=
+Notation "'SPEC' delta , tid |- {{ e1 .. e2 , | 'PRE' d m s_i s : pre | 'POST' d' m' s_i' s' r : post }} p" :=
   (forall (rx: _ -> prog _) (tid:TID),
       valid delta tid
-            (fun done d m s0 s =>
+            (fun done d m s_i s =>
                (ex (fun e1 => .. (ex (fun e2 =>
                                      pre%judgement /\
                                      (forall ret_,
                                        valid delta tid
-                                             (fun done_rx d' m' s0' s' =>
+                                             (fun done_rx d' m' s_i' s' =>
                                                 (fun r => post%judgement) ret_ /\
                                                 done_rx = done)
                                              (rx ret_))
@@ -821,8 +821,8 @@ Notation "'SPEC' delta , tid |- {{ e1 .. e2 , | 'PRE' d m s0 s : pre | 'POST' d'
      d' at level 0,
      m at level 0,
      m' at level 0,
-     s0 at level 0,
-     s0' at level 0,
+     s_i at level 0,
+     s_i' at level 0,
      s at level 0,
      s' at level 0,
      r at level 0,

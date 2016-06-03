@@ -131,9 +131,9 @@ Section ReadWriteTheorems.
   Theorem Read_ok : forall Sigma (delta: Protocol Sigma) a,
       SPEC delta, tid |-
       {{ F v,
-       | PRE d m s0 s: d |= F * a |-> (v, None)
-       | POST d' m' s0' s' r: d' = d /\
-                              s0' = s0 /\
+       | PRE d m s_i s: d |= F * a |-> (v, None)
+       | POST d' m' s_i' s' r: d' = d /\
+                              s_i' = s_i /\
                               s' = s /\
                               m' = m /\
                               r = v
@@ -163,9 +163,9 @@ Definition StartRead_upd {Sigma} a rx : prog Sigma :=
 Theorem StartRead_upd_ok : forall Sigma (delta:Protocol Sigma) a,
     SPEC delta, tid |-
     {{ v0,
-     | PRE d m s0 s: d a = Some (v0, None)
-     | POST d' m' s0' s' _: d' = upd d a (v0, Some tid) /\
-                            s0' = s0 /\
+     | PRE d m s_i s: d a = Some (v0, None)
+     | POST d' m' s_i' s' _: d' = upd d a (v0, Some tid) /\
+                            s_i' = s_i /\
                             s' = s /\
                             m' = m
     }} StartRead_upd a.
@@ -187,9 +187,9 @@ Definition FinishRead_upd {Sigma} a rx : prog Sigma :=
 Theorem FinishRead_upd_ok : forall Sigma (delta:Protocol Sigma) a,
     SPEC delta, tid |-
     {{ v,
-     | PRE d m s0 s: d a = Some (v, Some tid)
-     | POST d' m' s0' s' r: d' = upd d a (v, None) /\
-                            s0' = s0 /\
+     | PRE d m s_i s: d a = Some (v, Some tid)
+     | POST d' m' s_i' s' r: d' = upd d a (v, None) /\
+                            s_i' = s_i /\
                             s' = s /\
                             m' = m /\
                             r = v
@@ -212,9 +212,9 @@ Definition Write_upd {Sigma} a v rx : prog Sigma :=
 Theorem Write_upd_ok : forall Sigma (delta: Protocol Sigma) a v,
     SPEC delta, tid |-
     {{ v0,
-     | PRE d m s0 s: d a = Some (v0, None)
-     | POST d' m' s0' s' r: d' = upd d a (v, None) /\
-                            s0' = s0 /\
+     | PRE d m s_i s: d a = Some (v0, None)
+     | POST d' m' s_i' s' r: d' = upd d a (v, None) /\
+                            s_i' = s_i /\
                             s' = s /\
                             m' = m
     }} Write_upd a v.
@@ -363,14 +363,14 @@ Theorem wait_for_ok : forall Sigma (delta: Protocol Sigma)
                         (R_stutter: forall tid s, guar delta tid s s),
   SPEC delta, tid |-
     {{ (_:unit),
-     | PRE d m s0 s:
+     | PRE d m s_i s:
        invariant delta d m s /\
-       guar delta tid s0 s
-     | POST d' m' s0' s' r:
+       guar delta tid s_i s
+     | POST d' m' s_i' s' r:
        invariant delta d' m' s' /\
        (exists H, test (get v m') = left H) /\
        rely delta tid s s' /\
-       guar delta tid s0' s'
+       guar delta tid s_i' s'
     }} wait_for v test wchan.
 Proof.
   intros; cbn.
@@ -384,10 +384,10 @@ Proof.
     remember p
   end.
 
-  remember (d, m, s0, s) as st.
+  remember (d, m, s_i, s) as st.
   generalize dependent d.
   generalize dependent m.
-  generalize dependent s0.
+  generalize dependent s_i.
   generalize dependent s.
   generalize dependent st.
   induction 1 using exec_ind2; intros; subst.
@@ -448,11 +448,11 @@ Theorem var_update_ok : forall Sigma (delta: Protocol Sigma)
                         tv (v: var (abstraction_types Sigma) tv) up,
   SPEC delta, tid |-
   {{ (_:unit),
-   | PRE d m s0 s: True
-   | POST d' m' s0' s' r:
+   | PRE d m s_i s: True
+   | POST d' m' s_i' s' r:
      m' = m /\
      d' = d /\
-     s0' = s0 /\
+     s_i' = s_i /\
      s' = set v (up (get v s)) s
   }} var_update v up.
 Proof.
@@ -491,16 +491,16 @@ Theorem AcquireLock_ok : forall Sigma (delta: Protocol Sigma)
                         l up wchan,
     SPEC delta, tid |-
     {{ (_:unit),
-     | PRE d m s0 s:
+     | PRE d m s_i s:
          invariant delta d m s /\
-         guar delta tid s0 s
-     | POST d' m'' s0' s'' _:
+         guar delta tid s_i s
+     | POST d' m'' s_i' s'' _:
          exists m' s',
            rely delta tid s s' /\
            invariant delta d' m' s' /\
            m'' = set l Locked m' /\
            s'' = up tid s' /\
-           guar delta tid s0' s' /\
+           guar delta tid s_i' s' /\
            get l m'' = Locked
     }} AcquireLock l up wchan.
 Proof.
