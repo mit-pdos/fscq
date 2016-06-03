@@ -98,14 +98,14 @@ Module UCache.
     rx cs.
 
   Definition end_sync T (cs : cachestate) rx : prog T :=
-    @Sync T;;
+    Sync;;
     rx cs.
 
 
   Definition cache0 sz := mk_cs (Map.empty _) sz eviction_init.
 
   Definition init T (cachesize : nat) (rx : cachestate -> prog T) : prog T :=
-    @Sync T;;
+    Sync;;
     rx (cache0 cachesize).
 
   Definition read_array T a i cs rx : prog T :=

@@ -22,6 +22,8 @@ Inductive prog (T : Type):=
   | Trim (a: addr) (rx: unit -> prog T)
   | Hash (sz: nat) (buf: word sz) (rx: word hashlen -> prog T).
 
+Arguments Sync {T} _.
+
 Inductive outcome (T : Type) :=
   | Failed
   | Finished (m: rawdisk) (hm: hashmap) (v: T)

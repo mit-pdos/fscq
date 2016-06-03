@@ -95,7 +95,7 @@ Theorem sync_ok:
   PRE        F * [[ sync_invariant F ]]
   POST RET:r sync_xform F
   CRASH      F
-  >!} @Sync _.
+  >!} Sync.
 Proof.
   unfold corr2; intros.
   destruct_lift H.
