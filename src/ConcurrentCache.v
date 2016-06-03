@@ -806,6 +806,22 @@ Section ConcurrentCache.
 
   Hint Resolve wb_rep_same_domain.
 
+  Lemma same_domain_same_vdisk : forall vd0 wb vd vd0' wb' vd',
+      wb_rep vd0 wb vd ->
+      wb_rep vd0' wb' vd' ->
+      vd = vd' ->
+      same_domain vd0 vd0'.
+  Proof.
+    intros.
+    subst vd'.
+    apply same_domain_hide_readers.
+    transitivity vd; eauto.
+    symmetry.
+    eauto.
+  Qed.
+
+  Hint Resolve same_domain_same_vdisk.
+
   Theorem cache_read_ok : forall a,
       SPEC delta, tid |-
               {{ v,
@@ -828,12 +844,6 @@ Section ConcurrentCache.
     intuition (auto; try congruence).
 
     transitivity (get vDisk0 s); eauto.
-    apply same_domain_hide_readers.
-    transitivity (get vdisk s); eauto.
-    transitivity (get vdisk s0); eauto.
-    replace (get vdisk s0).
-    reflexivity.
-    symmetry; eauto.
 
     admit. (* probably need this from some other spec; knowing vdisk
     didn't change is likely insufficient *)
@@ -846,7 +856,9 @@ Section ConcurrentCache.
     apply wb_get_empty.
     admit. (* needed to find get vdisk s1 a first *)
 
-    admit. (* same as above, should move to lemma *)
+    transitivity (get vDisk0 s); eauto.
+    transitivity (get vDisk0 s0); eauto.
+
     admit. (* same as above *)
 
     step.
