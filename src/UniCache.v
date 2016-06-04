@@ -1281,71 +1281,7 @@ Module UCache.
   Hint Extern 1 ({{_}} progseq (begin_sync _) _) => apply begin_sync_ok : prog.
   Hint Extern 1 ({{_}} progseq (end_sync _) _) => apply end_sync_ok : prog.
 
-  Theorem read_array_ok : forall a i cs,
-    {< d F vs,
-    PRE
-      rep cs d * [[ (F * arrayN ptsto_subset a vs)%pred d ]] * [[ i < length vs ]]
-    POST RET:^(cs, v)
-      rep cs d * [[ v = fst (selN vs i ($0, nil)) ]]
-    CRASH
-      exists cs', rep cs' d
-    >} read_array a i cs.
-  Proof.
-    unfold read_array.
-    hoare.
-    rewrite isolateN_fwd with (i:=i) by auto.
-    rewrite <- surjective_pairing.
-    cancel.
-  Qed.
 
-
-  Theorem write_array_ok : forall a i v cs,
-    {< d F vs,
-    PRE
-      rep cs d * [[ (F * arrayN ptsto_subset a vs)%pred d ]] * [[ i < length vs ]]
-    POST RET:cs
-      exists d', rep cs d' *
-      [[ (F * arrayN ptsto_subset a (vsupd vs i v))%pred d' ]]
-    CRASH exists cs',
-      rep cs' d
-    >} write_array a i v cs.
-  Proof.
-    unfold write_array, vsupd.
-    hoare.
-
-    rewrite isolateN_fwd with (i:=i) by auto.
-    rewrite surjective_pairing with (p := selN vs i ($0, nil)).
-    cancel.
-
-    rewrite <- isolateN_bwd_upd by auto.
-    cancel.
-  Qed.
-
-
-  Theorem sync_array_ok : forall a i cs,
-    {< d0 d (F : rawpred) vs,
-    PRE
-      synrep cs d0 d * [[ sync_invariant F ]] *
-      [[ (F * arrayN ptsto_subset a vs)%pred d ]] * [[ i < length vs ]]
-    POST RET:cs exists d',
-      synrep cs d0 d' *
-      [[ (F * arrayN ptsto_subset a (vssync vs i))%pred d' ]]
-    CRASH
-      exists cs', rep cs' d0
-    >} sync_array a i cs.
-  Proof.
-    unfold sync_array, vssync.
-    safestep.
-    2: rewrite isolateN_fwd with (i:=i) by auto; cancel.
-    eauto.
-    step.
-    rewrite <- isolateN_bwd_upd by auto.
-    cancel.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (read_array _ _ _) _) => apply read_array_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _) _) => apply write_array_ok : prog.
-  Hint Extern 1 ({{_}} progseq (sync_array _ _ _) _) => apply sync_array_ok : prog.
 
 
   (* examples of using begin_sync/end_sync *)
@@ -1760,6 +1696,98 @@ Module UCache.
 
 
 
+  (** array operations *)
+
+  Theorem read_array_ok : forall a i cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN ptsto_subset a vs)%pred d ]] * [[ i < length vs ]]
+    POST RET:^(cs, v)
+      rep cs d * [[ v = fst (selN vs i ($0, nil)) ]]
+    CRASH
+      exists cs', rep cs' d
+    >} read_array a i cs.
+  Proof.
+    unfold read_array.
+    hoare.
+    rewrite isolateN_fwd with (i:=i) by auto.
+    rewrite <- surjective_pairing.
+    cancel.
+  Qed.
+
+
+  Theorem write_array_ok : forall a i v cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayN ptsto_subset a vs)%pred d ]] * [[ i < length vs ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * arrayN ptsto_subset a (vsupd vs i v))%pred d' ]]
+    XCRASH exists cs' d',
+      rep cs' d' *
+      [[ (F * arrayN ptsto_subset a (vsupd vs i v))%pred d' ]]
+    >} write_array a i v cs.
+  Proof.
+    unfold write_array, vsupd.
+    hoare.
+
+    rewrite isolateN_fwd with (i:=i) by auto.
+    rewrite surjective_pairing with (p := selN vs i ($0, nil)).
+    cancel.
+    rewrite <- isolateN_bwd_upd by auto.
+    cancel.
+
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    rewrite crash_xform_rep.
+    unfold rep at 1; xform_norm.
+    edestruct arrayN_selN_subset with (a := a + i); eauto; try omega; intuition.
+    replace (a + i - a) with i in * by omega.
+    edestruct possible_crash_sel_exis; eauto; intuition.
+    rewrite mem_pred_extract with (a := a + i) by eauto.
+
+    cancel; xform_normr.
+    rewrite <- crash_xform_rep_r.
+    unfold rep; cancel.
+    eapply pimpl_trans2.
+    eapply mem_pred_absorb_nop with (a := a + i).
+    2: apply pimpl_refl.
+    eauto.
+    eauto.
+    eauto.
+    apply arrayN_subset_memupd; eauto.
+    2: eapply possible_crash_ptsto_upd_incl' with (m := d); eauto.
+    2: apply incl_tl; apply incl_refl.
+    apply incl_cons2; auto.
+  Qed.
+
+
+  Theorem sync_array_ok : forall a i cs,
+    {< d0 d (F : rawpred) vs,
+    PRE
+      synrep cs d0 d * [[ sync_invariant F ]] *
+      [[ (F * arrayN ptsto_subset a vs)%pred d ]] * [[ i < length vs ]]
+    POST RET:cs exists d',
+      synrep cs d0 d' *
+      [[ (F * arrayN ptsto_subset a (vssync vs i))%pred d' ]]
+    CRASH
+      exists cs', rep cs' d0
+    >} sync_array a i cs.
+  Proof.
+    unfold sync_array, vssync.
+    safestep.
+    2: rewrite isolateN_fwd with (i:=i) by auto; cancel.
+    eauto.
+    step.
+    rewrite <- isolateN_bwd_upd by auto.
+    cancel.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (read_array _ _ _) _) => apply read_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _) _) => apply write_array_ok : prog.
+  Hint Extern 1 ({{_}} progseq (sync_array _ _ _) _) => apply sync_array_ok : prog.
+
+
+
   (** batch operations *)
 
   Definition read_range T A a nr (vfold : A -> valu -> A) a0 cs rx : prog T :=
@@ -1838,6 +1866,75 @@ Module UCache.
       lrx ^(cs)
     Rof ^(cs);
     rx cs.
+
+
+  Hint Extern 0 (okToUnify (arrayN ?pts ?a _) (arrayN ?pts ?a _)) => constructor : okToUnify.
+
+  Theorem read_range_ok : forall A a nr vfold (a0 : A) cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayS a vs)%pred d ]] * [[ nr <= length vs ]]
+    POST RET:^(cs, r)
+      rep cs d * [[ r = fold_left vfold (firstn nr (map fst vs)) a0 ]]
+    CRASH
+      exists cs', rep cs' d
+    >} read_range a nr vfold a0 cs.
+  Proof.
+    unfold read_range; intros.
+    safestep. auto.
+    safestep.
+    step; subst.
+
+    rewrite firstn_S_selN_expand with (def := $0).
+    rewrite fold_left_app; simpl.
+    erewrite selN_map by omega; auto.
+    rewrite map_length; omega.
+    all: step.
+
+    Unshelve. exact tt. eauto.
+  Qed.
+
+
+  Theorem write_range_ok : forall a l cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayS a vs)%pred d ]] * [[ length l <= length vs ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * arrayS a (vsupd_range vs l))%pred d' ]]
+    XCRASH
+      exists cs' d', rep cs' d' *
+      [[ (F * arrayS a (vsupd_range vs l))%pred d' ]]
+    >} write_range a l cs.
+  Proof.
+    unfold write_range; intros.
+    safestep. auto.
+    prestep; unfold rep; cancel.
+
+    rewrite vsupd_range_length; try omega.
+    rewrite firstn_length_l; omega.
+    prestep; unfold rep; cancel.
+    erewrite firstn_S_selN_expand by omega.
+    setoid_rewrite <- vsupd_range_progress; auto.
+
+    cancel.
+    unfold rep in *.
+    xcrash.
+
+    replace (a + m - a) with m by omega.
+    apply arrayN_updN_memupd; eauto.
+    rewrite vsupd_range_length; try omega.
+    rewrite firstn_length_l; omega.
+
+    step.
+    rewrite firstn_oob; auto.
+
+    (* crashes *)
+    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    Unshelve. exact tt.
+  Qed.
+
+
 
 
 End UCache.

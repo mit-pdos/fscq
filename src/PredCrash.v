@@ -207,14 +207,13 @@ Proof.
   congruence.
 Qed.
 
-Lemma possible_crash_ptsto_upd_incl : forall F m m' a vs vs',
-  (F * a |-> vs)%pred m ->
+Lemma possible_crash_ptsto_upd_incl' : forall m m' a vs vs',
+  m a = Some vs ->
   possible_crash m m' ->
   incl (vsmerge vs) (vsmerge vs') ->
   possible_crash (upd m a vs') m'.
 Proof.
   unfold possible_crash, vsmerge; simpl; intros.
-  apply ptsto_valid' in H.
   destruct vs, vs'; simpl in *.
   destruct (addr_eq_dec a0 a); subst.
 
@@ -228,6 +227,18 @@ Proof.
 
   - rewrite upd_ne by auto.
     specialize (H0 a0); intuition.
+Qed.
+
+
+Lemma possible_crash_ptsto_upd_incl : forall F m m' a vs vs',
+  (F * a |-> vs)%pred m ->
+  possible_crash m m' ->
+  incl (vsmerge vs) (vsmerge vs') ->
+  possible_crash (upd m a vs') m'.
+Proof.
+  intros.
+  eapply possible_crash_ptsto_upd_incl'; eauto.
+  eapply ptsto_valid'; eauto.
 Qed.
 
 Lemma possible_crash_upd_incl : forall m m' a v v0,
@@ -272,6 +283,18 @@ Proof.
   unfold incl, postfix in *; destruct H1; subst; intuition.
   eapply in_skipn_in; eauto.
 Qed.
+
+Lemma possible_crash_sel_exis : forall m m' a vs,
+  possible_crash m m' ->
+  m a = Some vs ->
+  exists v, m' a = Some (v, nil) /\ In v (vsmerge vs).
+Proof.
+  unfold possible_crash; intuition.
+  specialize (H a); intuition; try congruence.
+  repeat deex; eexists; split; eauto.
+  rewrite H0 in H1; inversion H1; subst; auto.
+Qed.
+
 
 Theorem crash_xform_sep_star_dist : forall (p q : rawpred),
   crash_xform (p * q) <=p=> crash_xform p * crash_xform q.

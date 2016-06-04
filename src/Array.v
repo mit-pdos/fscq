@@ -1217,6 +1217,48 @@ Section SubsetArray.
     induction vs; simpl; auto.
   Qed.
 
+  Lemma arrayN_selN_subset : forall F a st l m def,
+    (F * arrayN ptsto_subset st l)%pred m ->
+    a >= st ->
+    a < st + length l ->
+    let vs0 := (selN l (a - st) def) in
+    exists vs, m a = Some vs /\ fst vs = fst vs0 /\ incl (snd vs) (snd vs0).
+  Proof.
+    cbn; intros.
+    rewrite arrayN_isolate with (i := a - st) in H by omega.
+    unfold ptsto_subset at 2 in H; destruct_lift H; simpl in *.
+    eexists; split; try split.
+    eapply ptsto_valid.
+    pred_apply; replace (st + (a - st)) with a by omega; cancel.
+    simpl; auto.
+    auto.
+  Qed.
+
+  Lemma arrayN_subset_memupd : forall F l a i v vs vs' m,
+    (F * arrayN ptsto_subset a l)%pred m ->
+    incl vs' vs ->
+    i < length l ->
+    (F * arrayN ptsto_subset a (updN l i (v, vs)))%pred (Mem.upd m (a + i) (v, vs')).
+  Proof.
+    intros.
+    rewrite arrayN_isolate with (i := i) in H by auto.
+    unfold ptsto_subset at 2 in H; destruct_lift H.
+    setoid_rewrite sep_star_comm in H.
+    apply sep_star_assoc in H.
+    apply ptsto_upd with (v := (v, vs')) in H.
+    pred_apply.
+    setoid_rewrite arrayN_isolate with (i := i) at 3.
+    unfold ptsto_subset at 4.
+    rewrite selN_updN_eq by auto.
+    cancel.
+    rewrite firstn_updN_oob by auto.
+    rewrite skipn_updN by auto.
+    cancel.
+    rewrite length_updN; auto.
+    Grab Existential Variables. all: eauto.
+  Qed.
+
+
 End SubsetArray.
 
 Hint Resolve sync_invariant_arrayN_subset.
