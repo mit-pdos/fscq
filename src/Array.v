@@ -605,6 +605,21 @@ Proof.
   rewrite repeat_length; auto.
 Qed.
 
+Lemma vsupd_range_app_tl : forall l vs v,
+  length l + 1 <= length vs ->
+  vsupd_range vs (l ++ [v]) = vsupd (vsupd_range vs l) (length l) v.
+Proof.
+  unfold vsupd_range, vsupd; intros.
+  rewrite updN_app2, selN_app2; rewrite combine_length, map_length, firstn_length, Nat.min_l; auto;
+  try apply Nat.min_case_strong; intros; try omega.
+  rewrite Nat.sub_diag, app_length; simpl.
+  erewrite firstn_plusone_selN, map_app by omega.
+  rewrite combine_app by (rewrite map_length, firstn_length_l by omega; auto); simpl.
+  rewrite app_assoc_reverse, updN_0_skip_1, <- cons_app by (rewrite skipn_length; omega).
+  rewrite skipn_skipn', skipn_selN, Nat.add_0_r.
+  reflexivity.
+Qed.
+
 
 (** update vsl according to (addr, valu) pairs in l. *)
 Definition vsupd_vecs (vsl : list valuset) (l : list (addr * valu)) : list valuset :=

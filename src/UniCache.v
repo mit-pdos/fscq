@@ -1715,6 +1715,35 @@ Module UCache.
     cancel.
   Qed.
 
+  Lemma write_array_xcrash_ok : forall cs d F a i v vs,
+    (F * arrayN ptsto_subset a vs)%pred d ->
+    i < length vs ->
+    crash_xform (rep cs d) =p=>
+    crash_xform (exists cs' d', rep cs' d' *
+      [[ (F * arrayN ptsto_subset a (vsupd vs i v))%pred d' ]]).
+  Proof.
+    intros.
+    rewrite crash_xform_rep.
+    unfold rep at 1; xform_norm.
+    edestruct arrayN_selN_subset with (a := a + i); eauto; try omega; intuition.
+    replace (a + i - a) with i in * by omega.
+    edestruct possible_crash_sel_exis; eauto; intuition.
+    rewrite mem_pred_extract with (a := a + i) by eauto.
+
+    cancel; xform_normr.
+    rewrite <- crash_xform_rep_r.
+    unfold rep; cancel.
+    eapply pimpl_trans2.
+    eapply mem_pred_absorb_nop with (a := a + i).
+    2: apply pimpl_refl.
+    eauto.
+    eauto.
+    eauto.
+    apply arrayN_subset_memupd; eauto.
+    2: eapply possible_crash_ptsto_upd_incl' with (m := d); eauto.
+    2: apply incl_tl; apply incl_refl.
+    apply incl_cons2; auto.
+  Qed.
 
   Theorem write_array_ok : forall a i v cs,
     {< d F vs,
@@ -1737,27 +1766,8 @@ Module UCache.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
 
-    eapply pimpl_trans; [ | eapply H1 ]; cancel.
-    rewrite crash_xform_rep.
-    unfold rep at 1; xform_norm.
-    edestruct arrayN_selN_subset with (a := a + i); eauto; try omega; intuition.
-    replace (a + i - a) with i in * by omega.
-    edestruct possible_crash_sel_exis; eauto; intuition.
-    rewrite mem_pred_extract with (a := a + i) by eauto.
-
-    cancel; xform_normr.
-    rewrite <- crash_xform_rep_r.
-    unfold rep; cancel.
-    eapply pimpl_trans2.
-    eapply mem_pred_absorb_nop with (a := a + i).
-    2: apply pimpl_refl.
-    eauto.
-    eauto.
-    eauto.
-    apply arrayN_subset_memupd; eauto.
-    2: eapply possible_crash_ptsto_upd_incl' with (m := d); eauto.
-    2: apply incl_tl; apply incl_refl.
-    apply incl_cons2; auto.
+    xcrash_rewrite.
+    apply write_array_xcrash_ok; auto.
   Qed.
 
 
@@ -1823,11 +1833,11 @@ Module UCache.
 
   Definition sync_range T a nr cs rx : prog T :=
     let^ (cs) <- ForN i < nr
-    Ghost [ F crash vs ]
+    Ghost [ F crash vs d0 ]
     Loopvar [ cs ]
     Continuation lrx
     Invariant
-      exists d', rep cs d' *
+      exists d', synrep cs d0 d' *
       [[ (F * arrayN ptsto_subset a (vssync_range vs i))%pred d' ]]
     OnCrash crash
     Begin
@@ -1854,11 +1864,11 @@ Module UCache.
 
   Definition sync_vecs T a l cs rx : prog T :=
     let^ (cs) <- ForN i < length l
-    Ghost [ F crash vs ]
+    Ghost [ F crash vs d0 ]
     Loopvar [ cs ]
     Continuation lrx
     Invariant
-      exists d', rep cs d' *
+      exists d', synrep cs d0 d' *
       [[ (F * arrayN ptsto_subset a (vssync_vecs vs (firstn i l)))%pred d' ]]
     OnCrash crash
     Begin
@@ -1895,6 +1905,54 @@ Module UCache.
   Qed.
 
 
+
+  Lemma vsupd_range_xcrash_firstn' : forall l F a n vs cs' d',
+    (F * arrayN ptsto_subset a (vsupd_range vs (firstn n l)))%pred d' ->
+    length l <= length vs ->
+    crash_xform (rep cs' d') =p=>
+    crash_xform (exists cs d, rep cs d * 
+      [[ (F * arrayN ptsto_subset a (vsupd_range vs l))%pred d ]]).
+  Proof.
+    induction l using rev_ind; simpl; intros.
+    rewrite firstn_nil in H; cbn in *.
+    apply crash_xform_pimpl; cancel.
+    destruct (le_dec n (S (length l))).
+    destruct (le_dec n (length l)).
+    - rewrite app_length in *; simpl in *.
+      rewrite firstn_app_l in H by auto.
+      rewrite IHl; eauto; try omega.
+      rewrite vsupd_range_app_tl; eauto.
+      xform_norm.
+      rewrite write_array_xcrash_ok with (i := length l); eauto.
+      2: rewrite vsupd_range_length; try omega; rewrite firstn_length, app_length, Nat.min_l; simpl; omega.
+      xform_norm; cancel.
+      apply crash_xform_pimpl.
+      cancel.
+    - assert (n = length l + 1) by omega; subst.
+      rewrite app_length in *; simpl in *.
+      rewrite firstn_oob in H by (rewrite app_length; simpl; omega).
+      apply crash_xform_pimpl.
+      cancel.
+    - rewrite firstn_oob in H.
+      apply crash_xform_pimpl; cancel.
+      rewrite app_length; simpl; omega.
+  Qed.
+
+  Lemma vsupd_range_xcrash_firstn : forall F a n l vs,
+    length l <= length vs ->
+    crash_xform (exists cs' d', rep cs' d' *
+      [[ (F * arrayN ptsto_subset a (vsupd_range vs (firstn n l)))%pred d' ]]) =p=>
+    crash_xform (exists cs d, rep cs d * 
+      [[ (F * arrayN ptsto_subset a (vsupd_range vs l))%pred d ]]).
+  Proof.
+    intros.
+    xform_norm.
+    erewrite vsupd_range_xcrash_firstn'; eauto.
+    xform_norm.
+    do 2 (xform_normr; cancel).
+  Qed.
+
+
   Theorem write_range_ok : forall a l cs,
     {< d F vs,
     PRE
@@ -1918,23 +1976,46 @@ Module UCache.
     setoid_rewrite <- vsupd_range_progress; auto.
 
     cancel.
-    unfold rep in *.
-    xcrash.
+    repeat xcrash_rewrite.
+    setoid_rewrite vsupd_range_progress; auto.
+    rewrite <- firstn_plusone_selN by auto.
 
-    replace (a + m - a) with m by omega.
-    apply arrayN_updN_memupd; eauto.
-    rewrite vsupd_range_length; try omega.
-    rewrite firstn_length_l; omega.
-
+    apply vsupd_range_xcrash_firstn; auto.
     step.
     rewrite firstn_oob; auto.
-
-    (* crashes *)
-    eapply pimpl_trans; [ | eapply H1 ]; cancel.
+    xcrash.
     Unshelve. exact tt.
   Qed.
 
 
+  Theorem sync_range_ok : forall a n cs,
+    {< d d0 F vs,
+    PRE
+      synrep cs d0 d * [[ sync_invariant F /\ n <= length vs ]] *
+      [[ (F * arrayS a vs)%pred d ]]
+    POST RET:cs
+      exists d', synrep cs d0 d' *
+      [[ (F * arrayS a (vssync_range vs n))%pred d' ]]
+    CRASH
+      exists cs', rep cs' d0
+    >} sync_range a n cs.
+  Proof.
+    unfold sync_range; intros.
+    safestep. auto.
+    prestep. norm. cancel.
+    intuition subst.
+    2: eauto. auto.
+    rewrite vssync_range_length; omega.
+
+    step.
+    apply arrayN_unify.
+    apply vssync_range_progress; omega.
+    cancel.
+    step.
+    cancel.
+
+    Unshelve. all: eauto; try exact tt.
+  Qed.
 
 
 End UCache.
