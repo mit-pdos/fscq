@@ -831,6 +831,15 @@ Proof.
   eexists; eauto.
 Qed.
 
+Theorem ptsto_subset_pimpl_ptsto : forall AT AEQ (a : AT) v,
+  ((a |+> (v, nil)) : @pred AT AEQ _) =p=> a |=> v.
+Proof.
+  unfold ptsto_subset; intros.
+  apply pimpl_exists_l; intros; simpl.
+  apply sep_star_lift_l; intros.
+  erewrite incl_in_nil with (l := x); auto.
+Qed.
+
 Theorem ptsto_subset_pimpl : forall AT AEQ (a : AT) v l l',
   incl l l' ->
   ((a |+> (v, l)) : @pred AT AEQ _) =p=> a |+> (v, l').

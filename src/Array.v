@@ -1232,6 +1232,42 @@ Section SubsetArray.
     induction vs; simpl; auto.
   Qed.
 
+  Lemma arrayN_subset_oob': forall l a i m,
+    i >= length l
+    -> arrayN ptsto_subset a l m
+    -> m (a + i) = None.
+  Proof.
+    induction l; intros; auto; simpl in *.
+    destruct (eq_nat_dec i 0); auto.
+    subst; simpl in *; omega.
+
+    unfold sep_star in H0; rewrite sep_star_is in H0; unfold sep_star_impl in H0.
+    repeat deex.
+    unfold mem_union.
+    unfold ptsto_subset in H2.
+    destruct_lift H2.
+    unfold ptsto in H1; destruct H1.
+    pose proof (IHl (S a0) (i - 1)).
+    replace (S a0 + (i - 1)) with (a0 + i) in H3 by omega.
+    destruct (m1 (a0 + i)) eqn:?.
+    contradict Heqo.
+    rewrite H2; try congruence.
+    omega.
+    apply H3.
+    omega.
+    auto.
+  Qed.
+
+  Lemma arrayN_subset_oob: forall l i m,
+    i >= length l
+    -> arrayN ptsto_subset 0 l m
+    -> m i = None.
+  Proof.
+    intros.
+    replace i with (0 + i) by omega.
+    eapply arrayN_subset_oob'; eauto.
+  Qed.
+
   Lemma arrayN_selN_subset : forall F a st l m def,
     (F * arrayN ptsto_subset st l)%pred m ->
     a >= st ->
@@ -1273,8 +1309,87 @@ Section SubsetArray.
     Grab Existential Variables. all: eauto.
   Qed.
 
+  Lemma crash_xform_arrayN_subset: forall l st,
+    crash_xform (arrayN ptsto_subset st l) =p=>
+      exists l', [[ possible_crash_list l l' ]] *
+      arrayN ptsto_subset st (synced_list l').
+  Proof.
+    unfold possible_crash_list.
+    induction l; simpl; intros.
+    cancel.
+    instantiate (1 := nil).
+    simpl; auto. auto.
+
+    xform.
+    rewrite IHl.
+    rewrite crash_xform_ptsto_subset; unfold ptsto_subset, synced_list.
+    cancel; [ instantiate (1 := v' :: l') | .. ]; simpl; auto; try cancel;
+    destruct i; simpl; auto;
+    destruct (H4 i); try omega; simpl; auto.
+  Qed.
+
+  Lemma crash_xform_arrayN_subset_r: forall l l' st,
+    possible_crash_list l' l ->
+    arrayN ptsto_subset st (synced_list l) =p=>
+     crash_xform (arrayN ptsto_subset st l').
+  Proof.
+    unfold possible_crash_list.
+    induction l; simpl; intros; auto.
+    - intuition; destruct l'; simpl in *; try congruence.
+      apply crash_invariant_emp_r.
+    - intuition; destruct l'; simpl in *; try congruence.
+      pose proof (H1 0) as H1'. simpl in H1'.
+      rewrite IHl.
+      rewrite crash_xform_sep_star_dist.
+      rewrite <- crash_xform_ptsto_subset_r with (v := a) by (apply H1'; omega).
+      rewrite ptsto_subset_pimpl_ptsto.
+      apply pimpl_refl.
+      intuition.
+      specialize (H1 (S i)). simpl in H1. apply H1. omega.
+  Qed.
+
+  Lemma crash_xform_synced_arrayN_subset: forall l st,
+    Forall (fun x => snd x = nil) l ->
+    crash_xform (arrayN ptsto_subset st l) =p=> arrayN ptsto_subset st l.
+  Proof.
+    induction l; simpl; auto; intros.
+    xform.
+    rewrite IHl.
+    cancel; subst.
+    rewrite crash_xform_ptsto_subset; unfold ptsto_subset.
+    cancel.
+    inversion H; simpl in *; subst; auto.
+    inversion H; simpl in *; subst.
+    inversion H0.
+    eapply Forall_cons2; eauto.
+  Qed.
+
+  Lemma crash_xform_arrayN_subset_combine_nils: forall (l : list valu) st,
+    crash_xform (arrayN ptsto_subset st (List.combine l (repeat nil (length l)))) =p=>
+    arrayN ptsto_subset st (List.combine l (repeat nil (length l))).
+  Proof.
+    intros.
+    apply crash_xform_synced_arrayN_subset.
+    rewrite Forall_forall; intros.
+    induction l; simpl in *.
+    inversion H.
+    inversion H; subst; simpl; auto.
+  Qed.
+
+  Lemma crash_xform_arrayN_subset_synced: forall (l : list valu) st,
+    crash_xform (arrayN ptsto_subset st (synced_list l)) =p=>
+    arrayN ptsto_subset st (List.combine l (repeat nil (length l))).
+  Proof.
+    intros.
+    apply crash_xform_synced_arrayN_subset.
+    rewrite Forall_forall; intros.
+    induction l; simpl in *.
+    inversion H.
+    inversion H; subst; simpl; auto.
+  Qed.
 
 End SubsetArray.
+
 
 Hint Resolve sync_invariant_arrayN_subset.
 Notation arrayS := (arrayN ptsto_subset).
