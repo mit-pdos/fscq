@@ -5,7 +5,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Hashmap HashmapProg \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
-	      MemPred UniCache ReadCache ReadCacheX Cache \
+	      MemPred UniCache Cache \
 	      FSLayout AsyncRecArray DiskLogHash \
 	      LogReplay MemLog ListPred GenSepN \
 	      NEList DiskSet GroupLog Log LogRecArray \

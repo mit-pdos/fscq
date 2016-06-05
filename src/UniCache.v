@@ -1008,36 +1008,6 @@ Module UCache.
     cancel.
   Qed.
 
-  Lemma rep_synrep_addr_clean : forall (F : rawpred) d0 cs a vs,
-    (F * a |+> vs)%pred d0 ->
-    addr_clean (CSMap cs) a ->
-    sync_invariant F ->
-    rep cs d0 =p=> exists d, synrep cs d0 d *
-      [[ (F * a |=> fst vs)%pred d ]].
-  Proof.
-    intros.
-    rewrite rep_synrep by eauto.
-    norml; unfold stars; simpl; clear_norm_goal.
-    apply pimpl_exists_r; exists d.
-    cancel_exact; norm. cancel.
-
-    denote (forall _ _, _) as Hx; denote ptsto_subset as Hz.
-    eapply ptsto_subset_valid' in Hz as Hy; repeat deex; simpl in *.
-    assert (snd (vs_cur, l) = nil) by (eapply Hx; eauto); clear Hx.
-    simpl in *; subst.
-    generalize Hz; unfold_sep_star; unfold ptsto_subset.
-    intros; repeat deex.
-    denote! (_ m2) as Hx; denote mem_union as Hy.
-    destruct_lift Hx; do 2 eexists; intuition eauto.
-    assert (dummy = nil); subst; auto.
-    unfold ptsto in *; intuition.
-    rewrite mem_union_comm in Hy; auto.
-    erewrite mem_union_addr in Hy; eauto.
-    inversion Hy; auto.
-    apply mem_disjoint_comm; auto.
-    Unshelve. all: try exact addr_eq_dec; eauto; try exact unit.
-  Qed.
-
 
   Theorem sync_ok' : forall cs a,
     {< d0 d (F F' : rawpred) v0 v',
@@ -2018,8 +1988,176 @@ Module UCache.
   Qed.
 
 
+  Local Hint Resolve vsupd_vecs_length_ok.
+  Local Hint Resolve vssync_vecs_length_ok.
+
+
+  Lemma vsupd_vecs_mem_exis : forall F a l vs d,
+    (F * arrayN ptsto_subset a vs)%pred d ->
+    Forall (fun e => fst e < length vs) l ->
+    exists d', (F * arrayN ptsto_subset a (vsupd_vecs vs l))%pred d' /\ mem_incl d d'.
+  Proof.
+    induction l using rev_ind; simpl; intros.
+    exists d; split; auto.
+    apply mem_incl_refl.
+    rewrite vsupd_vecs_app; simpl.
+    destruct x as [k v].
+    apply forall_app_l in H0 as Hx; apply forall_app_r in H0 as Hy.
+    apply Forall_inv in Hx; simpl in Hx.
+    edestruct IHl; eauto; intuition.
+    eexists; split; simpl in *.
+    apply arrayN_subset_memupd; eauto.
+    apply incl_refl.
+    rewrite vsupd_vecs_length; auto.
+    edestruct arrayN_selN_subset with (m := d) (a := a + k); eauto; try omega.
+    intuition; replace (a + k - a) with k in * by omega.
+    erewrite <- upd_nop with (m := d); eauto.
+    apply mem_incl_upd; auto.
+
+    destruct x0; simpl in *; subst.
+    apply incl_cons; simpl.
+    - apply in_cons.
+      apply vsupd_vecs_selN_vsmerge_in.
+      constructor; auto.
+    - eapply incl_tran; eauto.
+      apply vsupd_vecs_incl in H0.
+      eapply forall2_selN in H0; eauto.
+      rewrite vsupd_vecs_app in H0; simpl in H0; unfold vsupd in H0.
+      rewrite selN_updN_eq in H0 by (rewrite vsupd_vecs_length; auto).
+      eapply incl_tran; try eassumption.
+      apply incl_tl; apply incl_refl.
+    Unshelve. eauto.
+  Qed.
+
+
+  Lemma vsupd_vecs_xcrash_firstn' : forall F a l n vs cs' d',
+    (F * arrayN ptsto_subset a (vsupd_vecs vs (firstn n l)))%pred d' ->
+    Forall (fun e => fst e < length vs) l ->
+    crash_xform (rep cs' d') =p=>
+    crash_xform (exists cs d, rep cs d * 
+      [[ (F * arrayN ptsto_subset a (vsupd_vecs vs l))%pred d ]]).
+  Proof.
+    induction l; simpl; intros.
+    rewrite firstn_nil in H; cbn in *.
+    apply crash_xform_pimpl; cancel.
+
+    destruct n; simpl in *.
+    - inversion H0; subst; simpl in *.
+      rewrite crash_xform_rep.
+      unfold rep at 1; xform_norm.
+      edestruct arrayN_selN_subset with (a := a + a0_1); eauto; try omega; intuition.
+
+      edestruct possible_crash_sel_exis; eauto; intuition.
+      rewrite mem_pred_extract with (a := a + a0_1) by eauto.
+      rewrite <- vsupd_vecs_cons.
+      edestruct vsupd_vecs_mem_exis with (l := (a0_1, a0_2) :: l); eauto; intuition.
+      cancel; xform_normr.
+      rewrite <- crash_xform_rep_r.
+      unfold rep; cancel.
+      eapply pimpl_trans2.
+      eapply mem_pred_absorb_nop with (a := a + a0_1).
+      2: apply pimpl_refl.
+      eauto.
+      eauto.
+      eauto.
+      eauto.
+      eapply possible_crash_incl_trans; eauto.
+    - rewrite IHl; eauto.
+      inversion H0; subst.
+      rewrite vsupd_length; auto.
+    Unshelve. exact ($0, nil).
+  Qed.
+
+  Lemma vsupd_vecs_xcrash_firstn : forall F a n l vs,
+    Forall (fun e => fst e < length vs) l ->
+    crash_xform (exists cs' d', rep cs' d' *
+      [[ (F * arrayN ptsto_subset a (vsupd_vecs vs (firstn n l)))%pred d' ]]) =p=>
+    crash_xform (exists cs d, rep cs d * 
+      [[ (F * arrayN ptsto_subset a (vsupd_vecs vs l))%pred d ]]).
+  Proof.
+    intros.
+    xform_norm.
+    erewrite vsupd_vecs_xcrash_firstn'; eauto.
+    xform_norm.
+    do 2 (xform_normr; cancel).
+  Qed.
+
+
+  Theorem write_vecs_ok : forall a l cs,
+    {< d F vs,
+    PRE
+      rep cs d * [[ (F * arrayS a vs)%pred d ]] *
+      [[ Forall (fun e => fst e < length vs) l ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * arrayS a (vsupd_vecs vs l))%pred d' ]]
+    XCRASH
+      exists cs' d', rep cs' d' *
+      [[ (F * arrayS a (vsupd_vecs vs l))%pred d' ]]
+    >} write_vecs a l cs.
+  Proof.
+    unfold write_vecs.
+    safestep. auto.
+    step.
+    prestep; unfold rep; cancel.
+
+    erewrite firstn_S_selN_expand by auto.
+    setoid_rewrite vsupd_vecs_app; simpl.
+    cancel.
+
+    repeat xcrash_rewrite.
+    setoid_rewrite vsupd_vecs_progress; auto.
+    apply vsupd_vecs_xcrash_firstn; auto.
+
+    step.
+    rewrite firstn_oob; auto.
+    xcrash.
+    Unshelve. exact tt.
+  Qed.
+
+
+  Theorem sync_vecs_ok : forall a l cs,
+    {< d d0 F vs,
+    PRE
+      synrep cs d0 d * [[ sync_invariant F ]] *
+      [[ Forall (fun e => e < length vs) l ]] *
+      [[ (F * arrayS a vs)%pred d ]]
+    POST RET:cs
+      exists d', synrep cs d0 d' *
+      [[ (F * arrayS a (vssync_vecs vs l))%pred d' ]]
+    CRASH
+      exists cs', rep cs' d0
+    >} sync_vecs a l cs.
+  Proof.
+    unfold sync_vecs; intros.
+    safestep. auto.
+    prestep. norm. cancel.
+    intuition subst.
+    2: eauto. auto.
+    rewrite vssync_vecs_length.
+    apply Forall_selN; auto.
+
+    step.
+    apply arrayN_unify.
+    apply vssync_vecs_progress; omega.
+    cancel.
+    step.
+    rewrite firstn_oob; auto.
+    cancel.
+
+    Unshelve. all: eauto; try exact tt.
+  Qed.
+
+
+  Hint Extern 1 ({{_}} progseq (read_range _ _ _ _ _) _) => apply read_range_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_range _ _ _) _) => apply write_range_ok : prog.
+  Hint Extern 1 ({{_}} progseq (sync_range _ _ _) _) => apply sync_range_ok : prog.
+  Hint Extern 1 ({{_}} progseq (write_vecs _ _ _) _) => apply write_vecs_ok : prog.
+  Hint Extern 1 ({{_}} progseq (sync_vecs _ _ _) _) => apply sync_vecs_ok : prog.
+
+
 End UCache.
 
 Global Opaque UCache.write_array.
 Global Opaque UCache.read_array.
-
+Global Opaque UCache.sync_array.

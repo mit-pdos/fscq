@@ -1,5 +1,5 @@
 Require Import UniCache.
 
-Module BUFCACHE := ReadCacheX.RCacheX.
+Module BUFCACHE := UniCache.UCache.
 
-Definition cachestate := ReadCache.cachestate.
+Definition cachestate := UCache.cachestate.
