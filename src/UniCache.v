@@ -681,7 +681,7 @@ Module UCache.
   Qed.
 
 
-  Theorem write_ok : forall cs a v,
+  Theorem write_ok' : forall cs a v,
     {< d (F : rawpred) v0,
     PRE
       rep cs d * [[ (F * a |+> v0)%pred d ]]
@@ -1246,7 +1246,6 @@ Module UCache.
 
 
   Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
   Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
   Hint Extern 1 ({{_}} progseq (begin_sync _) _) => apply begin_sync_ok : prog.
   Hint Extern 1 ({{_}} progseq (end_sync _) _) => apply end_sync_ok : prog.
@@ -1578,7 +1577,6 @@ Module UCache.
     eapply MapFacts.empty_in_iff; eauto.
   Qed.
 
-
   (** initialization *)
 
   Definition init_load := init.
@@ -1668,6 +1666,47 @@ Module UCache.
 
   (** array operations *)
 
+  Theorem write_ok : forall cs a v,
+    {< d (F : rawpred) v0,
+    PRE
+      rep cs d * [[ (F * a |+> v0)%pred d ]]
+    POST RET:cs
+      exists d',
+      rep cs d' * [[ (F * a |+> (v, vsmerge v0))%pred d' ]]
+    XCRASH
+      exists cs' d', rep cs' d' *
+      [[  (F * a |+> (v, vsmerge v0))%pred d' ]]
+    >} write a v cs.
+  Proof.
+    intros.
+    eapply pimpl_ok2.
+    apply write_ok'.
+    cancel.
+    cancel.
+    xcrash_rewrite.
+
+    rewrite crash_xform_rep.
+    unfold rep at 1; xform_norm.
+    edestruct ptsto_subset_valid' with (a := a); eauto; intuition.
+    edestruct possible_crash_sel_exis; eauto; intuition.
+    rewrite mem_pred_extract with (a := a) by eauto.
+
+    cancel; xform_normr.
+    rewrite <- crash_xform_rep_r.
+    unfold rep; cancel.
+    eapply pimpl_trans2.
+    eapply mem_pred_absorb_nop with (a := a).
+    2: apply pimpl_refl.
+    eauto.
+    eauto.
+    eauto.
+    eapply ptsto_subset_upd; eauto.
+    2: eapply possible_crash_ptsto_upd_incl' with (m := d); eauto.
+    2: apply incl_tl; apply incl_refl.
+    apply incl_cons2; auto.
+  Qed.
+
+
   Theorem read_array_ok : forall a i cs,
     {< d F vs,
     PRE
@@ -1728,14 +1767,20 @@ Module UCache.
     >} write_array a i v cs.
   Proof.
     unfold write_array, vsupd.
-    hoare.
+    intros.
+    eapply pimpl_ok2.
+    apply write_ok'.
+    cancel.
 
     rewrite isolateN_fwd with (i:=i) by auto.
     rewrite surjective_pairing with (p := selN vs i ($0, nil)).
     cancel.
+
+    step.
     rewrite <- isolateN_bwd_upd by auto.
     cancel.
 
+    cancel.
     xcrash_rewrite.
     apply write_array_xcrash_ok; auto.
   Qed.
@@ -1762,6 +1807,7 @@ Module UCache.
     cancel.
   Qed.
 
+  Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
   Hint Extern 1 ({{_}} progseq (read_array _ _ _) _) => apply read_array_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_array _ _ _ _) _) => apply write_array_ok : prog.
   Hint Extern 1 ({{_}} progseq (sync_array _ _ _) _) => apply sync_array_ok : prog.
@@ -2158,6 +2204,24 @@ Module UCache.
 
 End UCache.
 
-Global Opaque UCache.write_array.
+
+Global Opaque UCache.init_load.
+Global Opaque UCache.init_recover.
+
+Global Opaque UCache.read.
+Global Opaque UCache.write.
+Global Opaque UCache.sync.
+Global Opaque UCache.begin_sync.
+Global Opaque UCache.end_sync.
+
 Global Opaque UCache.read_array.
+Global Opaque UCache.write_array.
 Global Opaque UCache.sync_array.
+
+Global Opaque UCache.read_range.
+Global Opaque UCache.write_range.
+Global Opaque UCache.sync_range.
+
+Global Opaque UCache.write_vecs.
+Global Opaque UCache.sync_vecs.
+
