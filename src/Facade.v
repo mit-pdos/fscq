@@ -357,6 +357,11 @@ Fixpoint mapM A B (f : A -> option B) ls :=
     | nil => Some nil
   end.
 
+Ltac subst_definitions :=
+  repeat match goal with
+  | [ H := _ |- _ ] => subst H
+  end.
+
 Record AxiomaticSpec := {
   PreCond (input : list Value) : Prop;
   PostCond (input_output : list (Value * option Value)) (ret : Value) : Prop;
@@ -473,10 +478,6 @@ Section EnvSection.
     | _ => eapply rt_trans
     end : steps.
 
-  Ltac subst_definitions :=
-    repeat match goal with
-    | [ H := _ |- _ ] => subst H
-    end.
 
   Theorem RunsTo_Step : forall st p st',
     RunsTo p st st' ->
@@ -818,20 +819,45 @@ Defined.
 
 Definition disk_env : Env := add "write" write (add "read" read (empty _)).
 
+Ltac find_cases var st := case_eq (find var st); [
+  let v := fresh "v" in
+  let He := fresh "He" in
+  intros v He; rewrite ?He in *
+| let Hne := fresh "Hne" in
+  intro Hne; rewrite Hne in *; exfalso; solve [ intuition idtac ] ].
+
 Definition disks_match (d : diskstate) (st : State) :=
   find "disk" st = Some (Disk d).
 
-Theorem extract_finish_equiv : forall A pr (inp : nat) p,
+Ltac invert_ret_computes_to :=
+  repeat match goal with
+  | [ H : computes_to _ _ _ _ |- _ ] =>
+      let H' := fresh H in
+      assert (H' := H); apply ret_computes_to in H; apply ret_computes_to_disk in H'; subst
+  end.
+
+Theorem extract_finish_equiv : forall A pr p,
   (forall d0,
-    {{ [ SItemDisk (NTSome "disk") d0 (ret tt); SItemRet (NTSome "input") d0 (ret inp) ] }}
+    {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }}
       p
     {{ [ SItemDisk (NTSome "disk") d0 pr ] }} // disk_env) ->
   forall st st' d0,
-    st \u2272 [ SItemDisk (NTSome "disk") d0 (ret tt); SItemRet (NTSome "input") d0 (ret inp) ] ->
+    st \u2272 [ SItemDisk (NTSome "disk") d0 (ret tt)] ->
     RunsTo disk_env p st st' ->
     exists d', disks_match d' st' /\ exists r, @computes_to A pr d0 d' r.
 Proof.
-Abort.
+  unfold ProgOk, disks_match.
+  intros.
+  specialize (H d0 st ltac:(auto)).
+  destruct H.
+  specialize (H2 st' ltac:(auto)).
+  simpl in *.
+  find_cases "disk" st.
+  find_cases "disk" st'.
+  intuition.
+  repeat deex.
+  intuition eauto.
+Qed.
 
 Theorem extract_crash_equiv : forall A pr (inp : nat) p,
   (forall d0,
@@ -844,6 +870,7 @@ Theorem extract_crash_equiv : forall A pr (inp : nat) p,
     exists d', disks_match d' st' /\ (
       computes_to_crash pr d0 d' \/
       (exists r, @computes_to A pr d0 d' r)).
+Proof.
 Abort.
 
 Example micro_write : sigT (fun p => forall d0 a v,
@@ -858,12 +885,7 @@ Proof.
   simpl in *.
   maps.
   intuition idtac.
-  Ltac find_cases var st := case_eq (find var st); [
-    let v := fresh "v" in
-    let He := fresh "He" in
-    intros v He; rewrite ?He in *
-  | let Hne := fresh "Hne" in
-    intro Hne; rewrite Hne in *; exfalso; solve [ intuition idtac ] ].
+
   find_cases "disk" initial_state.
   find_cases "a" initial_state.
   find_cases "v" initial_state.
@@ -883,13 +905,8 @@ Proof.
   destruct (find "v" initial_state); [ | exfalso; solve [ intuition idtac ] ].
   intuition idtac.
   repeat deex.
-  Ltac invc_ret_computes_to :=
-    repeat match goal with
-    | [ H : computes_to _ _ _ _ |- _ ] =>
-        let H' := fresh H in
-        assert (H' := H); apply ret_computes_to in H; apply ret_computes_to_disk in H'; subst
-    end.
-  invc_ret_computes_to.
+
+  invert_ret_computes_to.
   invc H2.
   invc H8.
   do 3 (destruct output; try discriminate).
@@ -989,11 +1006,11 @@ Proof.
   unfold sel. simpl. rewrite He. rewrite He0. trivial.
   intuition. repeat deex.
   simpl. eauto.
-  Ltac invc_runsto :=
+  Ltac invert_runsto :=
     match goal with
     | [ H : RunsTo _ _ _ _ |- _ ] => invc H
     end.
-  invc_runsto.
+  invert_runsto.
   simpl in *.
   unfold sel in *.
   maps.
@@ -1068,7 +1085,7 @@ Proof.
   unfold sel. simpl. rewrite He. rewrite He0. rewrite He1. trivial.
   intuition. repeat deex.
   simpl. eauto.
-  invc_runsto.
+  invert_runsto.
   simpl in *.
   unfold sel in *.
   maps.
@@ -1122,12 +1139,12 @@ Proof.
   find_cases "disk" initial_state.
   intuition; repeat deex.
   econstructor. simpl. trivial. trivial.
-  invc_runsto.
+  invert_runsto.
   simpl in *. find_inversion.
   maps. rewrite He.
-  invc_ret_computes_to.
+  invert_ret_computes_to.
   do 2 eexists. intuition.
-  invc_runsto.
+  invert_runsto.
   simpl in *. find_inversion.
   maps.
   do 2 eexists. intuition.
@@ -1149,7 +1166,7 @@ Proof.
   split.
   econstructor.
   simpl. trivial. trivial.
-  intros. invc_runsto. maps. maps. rewrite He. rewrite He0.
+  intros. invert_runsto. maps. maps. rewrite He. rewrite He0.
   pose proof (computes_to_det_disk H H1); subst.
   pose proof (computes_to_det_ret H H1); subst.
   intuition; do 2 eexists; intuition eauto.
