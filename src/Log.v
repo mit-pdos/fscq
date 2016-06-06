@@ -1015,7 +1015,7 @@ Module LOG.
     {< F Fm ds m vs,
     PRE:hm   rep xp F (ActiveTxn ds m) ms hm *
           [[ i < length vs]] *
-          [[[ m ::: Fm * arrayN a vs ]]]
+          [[[ m ::: Fm * arrayS a vs ]]]
     POST:hm' RET:^(ms', r)
           rep xp F (ActiveTxn ds m) ms' hm' *
           [[ r = fst (selN vs i ($0, nil)) ]]
@@ -1037,10 +1037,10 @@ Module LOG.
     {< F Fm ds m vs,
     PRE:hm   rep xp F (ActiveTxn ds m) ms hm *
           [[ i < length vs /\ a <> 0 ]] *
-          [[[ m ::: Fm * arrayN a vs ]]]
+          [[[ m ::: Fm * arrayS a vs ]]]
     POST:hm' RET:ms' exists m',
           rep xp F (ActiveTxn ds m') ms' hm' *
-          [[[ m' ::: Fm * arrayN a (updN vs i (v, nil)) ]]]
+          [[[ m' ::: Fm * arrayS a (updN vs i (v, nil)) ]]]
     CRASH:hm' exists m' ms',
           rep xp F (ActiveTxn ds m') ms' hm'
     >} write_array xp a i v ms.
@@ -1073,7 +1073,7 @@ Module LOG.
     Continuation lrx
     Invariant
       rep xp F (ActiveTxn ds m) ms hm *
-      [[[ m ::: (Fm * arrayN a vs) ]]] *
+      [[[ m ::: (Fm * arrayS a vs) ]]] *
       [[ pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
     OnCrash  crash
     Begin
@@ -1091,7 +1091,7 @@ Module LOG.
     Continuation lrx
     Invariant
       exists m, rep xp F (ActiveTxn ds m) ms hm *
-      [[[ m ::: (Fm * arrayN a (vsupsyn_range vs (firstn i l))) ]]]
+      [[[ m ::: (Fm * arrayS a (vsupsyn_range vs (firstn i l))) ]]]
     OnCrash crash
     Begin
       ms <- write_array xp a i (selN l i $0) ms;
@@ -1105,7 +1105,7 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds m) ms hm *
       [[ nr <= length vs ]] *
-      [[[ m ::: (Fm * arrayN a vs) ]]]
+      [[[ m ::: (Fm * arrayS a vs) ]]]
     POST:hm' RET:^(ms', r)
       rep xp F (ActiveTxn ds m) ms' hm' *
       [[ r = fold_left vfold (firstn nr (map fst vs)) v0 ]]
@@ -1177,8 +1177,8 @@ Module LOG.
 
   Lemma vsupsyn_range_progress : forall F l a m vs d,
     m < length l -> length l <= length vs ->
-    (F ✶ arrayN a (vsupsyn_range vs (firstn m l)))%pred (list2nmem d) ->
-    (F ✶ arrayN a (vsupsyn_range vs (firstn (S m) l)))%pred 
+    (F ✶ arrayS a (vsupsyn_range vs (firstn m l)))%pred (list2nmem d) ->
+    (F ✶ arrayS a (vsupsyn_range vs (firstn (S m) l)))%pred 
         (list2nmem (updN d (a + m) (selN l m $0, nil))).
   Proof.
     intros.
@@ -1197,7 +1197,7 @@ Module LOG.
 
   Lemma write_range_length_ok : forall F a i ms d vs,
     i < length vs ->
-    (F ✶ arrayN a vs)%pred (list2nmem (replay_disk (Map.elements ms) d)) ->
+    (F ✶ arrayS a vs)%pred (list2nmem (replay_disk (Map.elements ms) d)) ->
     a + i < length d.
   Proof.
     intros.
@@ -1212,10 +1212,10 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds m) ms hm *
       [[ a <> 0 /\ length l <= length vs ]] *
-      [[[ m ::: (Fm * arrayN a vs) ]]]
+      [[[ m ::: (Fm * arrayS a vs) ]]]
     POST:hm' RET:ms'
       exists m', rep xp F (ActiveTxn ds m') ms' hm' *
-      [[[ m' ::: (Fm * arrayN a (vsupsyn_range vs l)) ]]]
+      [[[ m' ::: (Fm * arrayS a (vsupsyn_range vs l)) ]]]
     CRASH:hm' exists ms' m',
       rep xp F (ActiveTxn ds m') ms' hm'
     >} write_range xp a l ms.
@@ -1251,7 +1251,7 @@ Module LOG.
     Continuation lrx
     Invariant
       rep xp F (ActiveTxn ds m) ms hm *
-      [[[ m ::: (Fm * arrayN a vs) ]]] * [[ cond pf = false ]] *
+      [[[ m ::: (Fm * arrayS a vs) ]]] * [[ cond pf = false ]] *
       [[ pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
     OnCrash  crash
     Begin
@@ -1271,7 +1271,7 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds m) ms hm *
       [[ nr <= length vs /\ cond v0 = false ]] *
-      [[[ m ::: (Fm * arrayN a vs) ]]]
+      [[[ m ::: (Fm * arrayS a vs) ]]]
     POST:hm' RET:^(ms', r)
       rep xp F (ActiveTxn ds m) ms' hm' *
       ( exists v, [[ r = Some v /\ cond v = true ]] \/

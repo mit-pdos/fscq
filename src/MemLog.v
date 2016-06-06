@@ -95,11 +95,11 @@ Module MLog.
     forall a,  ~ In a keys -> selN l1 a ($0, nil) = selN l2 a ($0, nil).
 
   Definition synced_rep xp (d : diskstate) : rawpred :=
-    arrayN (DataStart xp) d.
+    arrayS (DataStart xp) d.
 
   Definition unsync_rep xp (ms : valumap) (old : diskstate) : rawpred :=
     (exists vs, [[ equal_unless_in (map_keys ms) old vs ]] *
-     arrayN (DataStart xp) vs
+     arrayS (DataStart xp) vs
     )%pred.
 
 
@@ -301,7 +301,7 @@ Module MLog.
   Qed.
 
   Lemma apply_synced_data_ok : forall xp m d,
-    arrayN (DataStart xp) (vssync_vecs (vsupd_vecs d (Map.elements m)) (map_keys m))
+    arrayS (DataStart xp) (vssync_vecs (vsupd_vecs d (Map.elements m)) (map_keys m))
     =p=> synced_rep xp (replay_disk (Map.elements m) d).
   Proof.
     unfold synced_rep; intros.
@@ -338,7 +338,7 @@ Module MLog.
 
 
   Lemma apply_unsync_applying_ok : forall xp m d n,
-    arrayN (DataStart xp) (vsupd_vecs d (firstn n (Map.elements m)))
+    arrayS (DataStart xp) (vsupd_vecs d (firstn n (Map.elements m)))
        =p=> unsync_rep xp m d.
   Proof.
     unfold unsync_rep, map_replay; cancel.
@@ -370,7 +370,7 @@ Module MLog.
   Qed.
 
   Lemma apply_unsync_syncing_ok : forall xp m d n,
-    arrayN (DataStart xp) (vssync_vecs (vsupd_vecs d (Map.elements m)) (firstn n (map_keys m)))
+    arrayS (DataStart xp) (vssync_vecs (vsupd_vecs d (Map.elements m)) (firstn n (map_keys m)))
        =p=> unsync_rep xp m d.
   Proof.
     unfold unsync_rep, equal_unless_in; cancel.
@@ -1156,7 +1156,7 @@ Module MLog.
 
 
   Lemma possible_crash_vssync_vecs_listupd : forall F st d l m x,
-    (F * arrayN st (vssync_vecs d l))%pred m ->
+    (F * arrayS st (vssync_vecs d l))%pred m ->
     possible_crash m x ->
     possible_crash (listupd m st d)  x.
   Proof.
@@ -1180,7 +1180,7 @@ Module MLog.
 
 
   Lemma possible_crash_vsupd_vecs_listupd : forall F m x st l avl,
-    (F * arrayN st l)%pred m ->
+    (F * arrayS st l)%pred m ->
     possible_crash m x ->
     possible_crash (listupd m st (vsupd_vecs l avl)) x.
   Proof.
@@ -1206,7 +1206,7 @@ Module MLog.
     Map.Equal m (replay_mem log vmap0) ->
     goodSize addrlen (length d) ->
     ((DLog.rep xp (DLog.Synced n' log) hm * F) * 
-      arrayN (DataStart xp) (vsupd_vecs d (firstn n avl)))%pred raw ->
+      arrayS (DataStart xp) (vsupd_vecs d (firstn n avl)))%pred raw ->
     crash_xform (BUFCACHE.rep cs raw) =p=> 
       crash_xform (exists ms na, 
       << F, rep: xp (Synced na (vsupd_vecs (replay_disk (Map.elements m) d) avl)) ms hm >>).
@@ -1241,7 +1241,7 @@ Module MLog.
     Map.Equal m (replay_mem log vmap0) ->
     goodSize addrlen (length d) ->
     ((DLog.rep xp (DLog.Synced n' log) hm * F) * 
-      arrayN (DataStart xp) (vsupd_vecs d (firstn n avl)))%pred raw ->
+      arrayS (DataStart xp) (vsupd_vecs d (firstn n avl)))%pred raw ->
     crash_xform (BUFCACHE.rep cs raw) =p=> 
         crash_xform (exists ms na, 
         << F, rep: xp (Synced na (vsupd_vecs (replay_disk (Map.elements m) d) avl)) ms hm >>).
