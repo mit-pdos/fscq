@@ -75,6 +75,48 @@ Abort.
 
 Notation prog_valuset := (word Prog.Valulen.valulen * list (word Prog.Valulen.valulen))%type.
 
+Inductive SeqHoareSpec A R :=
+| Spec (pre: A -> @pred (word Prog.addrlen) _ (const prog_valuset))
+       (post: A -> R -> @pred (word Prog.addrlen) _ (const prog_valuset))
+       (crash: A -> @pred (word Prog.addrlen) _ (const prog_valuset)).
+
+Definition seq_hoare_double A R (spec: SeqHoareSpec A R)
+           (p: forall T, (R -> Prog.prog T) -> Prog.prog T) :=
+  let '(Spec pre post crash) := spec in
+  forall T (rx : _ -> Prog.prog T),
+    Hoare.corr2
+      (fun done_ crash_ =>
+         exists (a:A) F_,
+           F_ * pre a *
+           [[ forall r:R, Hoare.corr2
+                       (fun done'_ crash'_ =>
+                          F_ * post a r  *
+                          [[ done'_ = done_ ]] *
+                          [[ crash'_ = crash_ ]]
+                       ) (rx r) ]] *
+           [[ (F_ * crash a)%pred =p=> crash_ ]])%pred
+      (p T rx).
+
+Section ExampleSeqSpec.
+  Import Hoare.
+
+  (* these are the sorts of theorems needed to go from the notation to
+  the more structured SeqHoareSpec. *)
+  Theorem seq_read_spec : forall a,
+      {< v,
+       PRE        a |-> v
+       POST RET:r a |-> v * [[ r = (fst v) ]]
+       CRASH      a |-> v
+      >} Prog.Read a <->
+      seq_hoare_double
+        (Spec (fun v => a |-> v)%pred
+              (fun v r => a |-> v * [[ r = (fst v) ]])%pred
+              (fun v => a |-> v)%pred) (fun T => @Prog.Read T a).
+  Proof.
+    split; eauto using pimpl_ok2.
+  Qed.
+End ExampleSeqSpec.
+
 (* [lift_disk] and [project_disk] convert between the view of the disk
 from sequential programs [Prog.prog] and concurrent programs [prog]:
 the differences are in the extra state (buffered writes vs race
