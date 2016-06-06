@@ -836,13 +836,13 @@ Ltac invert_ret_computes_to :=
       assert (H' := H); apply ret_computes_to in H; apply ret_computes_to_disk in H'; subst
   end.
 
-Theorem extract_finish_equiv : forall A pr p,
+Theorem extract_finish_equiv : forall A scope pr p,
   (forall d0,
-    {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }}
+    {{ SItemDisk (NTSome "disk") d0 (ret tt) :: scope }}
       p
     {{ [ SItemDisk (NTSome "disk") d0 pr ] }} // disk_env) ->
   forall st st' d0,
-    st \u2272 [ SItemDisk (NTSome "disk") d0 (ret tt)] ->
+    st \u2272 ( SItemDisk (NTSome "disk") d0 (ret tt) :: scope) ->
     RunsTo disk_env p st st' ->
     exists d', disks_match d' st' /\ exists r, @computes_to A pr d0 d' r.
 Proof.
