@@ -76,13 +76,13 @@ Abort.
 Notation prog_valuset := (word Prog.Valulen.valulen * list (word Prog.Valulen.valulen))%type.
 
 Inductive SeqHoareSpec A R :=
-| Spec (pre: A -> @pred (word Prog.addrlen) _ (const prog_valuset))
-       (post: A -> R -> @pred (word Prog.addrlen) _ (const prog_valuset))
-       (crash: A -> @pred (word Prog.addrlen) _ (const prog_valuset)).
+| SeqSpec (pre: A -> @pred (word Prog.addrlen) _ (const prog_valuset))
+          (post: A -> R -> @pred (word Prog.addrlen) _ (const prog_valuset))
+          (crash: A -> @pred (word Prog.addrlen) _ (const prog_valuset)).
 
 Definition seq_hoare_double A R (spec: SeqHoareSpec A R)
            (p: forall T, (R -> Prog.prog T) -> Prog.prog T) :=
-  let '(Spec pre post crash) := spec in
+  let '(SeqSpec pre post crash) := spec in
   forall T (rx : _ -> Prog.prog T),
     Hoare.corr2
       (fun done_ crash_ =>
@@ -109,13 +109,33 @@ Section ExampleSeqSpec.
        CRASH      a |-> v
       >} Prog.Read a <->
       seq_hoare_double
-        (Spec (fun v => a |-> v)%pred
+        (SeqSpec (fun v => a |-> v)%pred
               (fun v r => a |-> v * [[ r = (fst v) ]])%pred
               (fun v => a |-> v)%pred) (fun T => @Prog.Read T a).
   Proof.
     split; eauto using pimpl_ok2.
   Qed.
 End ExampleSeqSpec.
+
+Inductive ConcurHoareSpec A R :=
+| ConcurSpec (pre: TID -> A -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop)
+             (post: TID -> A -> R -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop).
+
+Definition concur_hoare_double A R (spec: ConcurHoareSpec A R)
+           (p: (R -> prog Sigma) -> prog Sigma) :=
+  let '(ConcurSpec pre post) := spec in
+  forall (rx: _ -> prog Sigma) (tid:TID),
+    valid delta tid
+          (fun done d m s_i s =>
+             exists (a:A),
+               pre tid a d m s_i s /\
+               (forall ret_,
+                   valid delta tid
+                         (fun done_rx d' m' s_i' s' =>
+                            post tid a ret_ d' m' s_i' s' /\
+                            done_rx = done)
+                         (rx ret_))
+          ) (p rx).
 
 (* [lift_disk] and [project_disk] convert between the view of the disk
 from sequential programs [Prog.prog] and concurrent programs [prog]:
