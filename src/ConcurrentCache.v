@@ -906,4 +906,50 @@ Section ConcurrentCache.
     hoare.
   Qed.
 
+  Section ExampleProgram.
+
+    Definition copy a a' rx : prog Sigma :=
+      opt_v <- cache_read a;
+        match opt_v with
+        | None => rx false
+        | Some v => ok <- cache_write a' v;
+                     rx ok
+        end.
+
+    Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
+    Hint Extern 1 {{cache_write _ _; _}} => apply cache_write_ok : prog.
+
+    Theorem copy_ok : forall a a',
+        SPEC delta, tid |-
+                {{ v v0,
+                 | PRE d m s_i s:
+                     invariant delta d m s /\
+                     get vdisk s a = Some v /\
+                     get vdisk s a' = Some v0 /\
+                     guar delta tid s_i s
+                 | POST d' m' s_i' s' r:
+                     invariant delta d' m' s' /\
+                     (r = false \/
+                      r = true /\
+                      get vdisk s' = upd (get vdisk s) a' v) /\
+                     guar delta tid s_i' s'
+                }} copy a a'.
+    Proof.
+      hoare.
+      eexists; simplify; finish.
+
+      hoare.
+      eexists; simplify; finish.
+      (* need an econgruence *)
+      replace (get vdisk s0); eauto.
+
+      hoare.
+    Qed.
+
+  End ExampleProgram.
+
 End ConcurrentCache.
+
+(* note that this is, in theory, the entire public cache API *)
+Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
+Hint Extern 1 {{cache_write _ _; _}} => apply cache_write_ok : prog.
