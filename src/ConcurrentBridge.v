@@ -68,7 +68,7 @@ Proof.
   induction p1.
   simpl.
   (* not sure why an iota reduction isn't possible on cseq: even
-  though it's a cofix, it should be able to reduce when its matching
+  though it's a cofix, it should be able to reduce when it's matching
   on a constructor *)
   admit.
 Abort.
@@ -192,7 +192,7 @@ program via [compiler], convert its spec to a concurrent spec via
 [valid_for_corr2], and prove the resulting concurrent Hoare double.
 
 Note that a correct [valid_for_corr2] is crucial for starting this
-proof: one nice property is that valid_for_corr2 can separately by
+proof: one nice property is that valid_for_corr2 can separately be
 validated by proving compiler_correct for some specific example
 programs p manually.
 *)
