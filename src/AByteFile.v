@@ -43,6 +43,7 @@ Record bytefile := mk_bytefile {
   ByFAttr : INODE.iattr
 }.
 Definition bytefile0 := mk_bytefile nil attr0.
+Definition byteset0 := singular byte0.
 
 (* Helper Functions *)
 Fixpoint cons_ind_list (n: addr): list addr :=
@@ -55,17 +56,10 @@ Fixpoint reverse_map {A B: Type} (l: list(A->B)) (a: A): list B :=
 match l with
 | nil => nil
 | h::t => (h a)::(reverse_map t a)
-end.
+end. 
 
-Definition list2byteset {A: Type} (l: list A): (nelist A).
-Proof. Admitted.
-
-Definition byteset0 := @list2byteset byte nil.
-
-
-(* Definition matrix_tran {T: Type} (mat: list (list T)) (def: T): list (list T) :=
-map (reverse_map (map (@selN_def T def) mat)) (cons_ind_list (length(hd nil mat))). *)
-
+Definition list2byteset (l: list byte): byteset :=
+pushdlist l byteset0.
 
 Definition bytes2valubytes sz (b: bytes sz) : bytes valubytes :=
 if beq_nat sz valubytes then
@@ -170,10 +164,9 @@ Fixpoint get_sublist {A:Type}(l: list A) (off len: nat) : list A :=
   end.
   
 
-(* Definition rep byte_file block_file :=
-(ByFData byte_file) = firstn (BFILE.BFAttr block_file "bytes")
+Definition rep byte_file block_file :=
+(ByFData byte_file) = firstn (wordToNat (INODE.ABytes (BFILE.BFAttr block_file)))
      (concat(map valuset2bytesets (BFILE.BFData block_file))).
- *)
 
 Definition read_first_block T lxp ixp inum fms block_off byte_off read_length rx: prog T :=
       let^ (fms, first_block) <- BFILE.read lxp ixp inum block_off fms;   (* get first block *)
@@ -393,7 +386,7 @@ Theorem read_first_block_ok: forall lxp bxp ixp inum fms block_off byte_off read
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms) hm *
            [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
-           (* [[ rep fy f ]] * *)
+           [[ rep fy f ]] *
            [[ block_off*block_size + byte_off + read_length <= file_length ]]*
            [[ byte_off + read_length <= block_size]]
     POST:hm' RET:^(fms', r)
@@ -416,7 +409,7 @@ Theorem read_middle_blocks_ok: forall lxp bxp ixp inum fms block_off num_of_full
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms) hm *
            [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
-           (* [[ rep fy f ]] * *)
+           [[ rep fy f ]] *
            [[ block_off + num_of_full_blocks*block_size < file_length]]
     POST:hm' RET:^(fms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm' *
@@ -435,7 +428,7 @@ Theorem read_last_block_ok: forall lxp bxp ixp inum fms block_off read_length,
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms) hm *
            [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
-           (* [[ rep fy f ]] * *)
+           [[ rep fy f ]] *
            [[ block_off*block_size + read_length <= file_length ]]
     POST:hm' RET:^(fms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm' *
@@ -457,7 +450,7 @@ Theorem read_ok : forall lxp bxp ixp inum off len fms block_off byte_off
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms) hm *
            [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
-           (* [[ rep fy f ]] * *)
+           [[ rep fy f ]] *
            [[ first_read_length + num_of_full_blocks*block_size + last_read_length = len]] *
            [[ byte_off + first_read_length <= block_size ]] *
            [[ off + len <= file_length ]]
