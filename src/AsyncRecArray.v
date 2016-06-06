@@ -183,6 +183,20 @@ Module AsyncRecArray (RA : RASig).
     rewrite nils_length; auto.
   Qed.
 
+  Theorem sync_invariant_array_rep : forall xp a st,
+    sync_invariant (array_rep xp a st).
+  Proof.
+    unfold array_rep, synced_array, unsync_array; destruct st; eauto.
+  Qed.
+
+  Theorem sync_invariant_avail_rep : forall xp a n,
+    sync_invariant (avail_rep xp a n).
+  Proof.
+    unfold avail_rep; eauto.
+  Qed.
+
+  Hint Resolve sync_invariant_array_rep sync_invariant_avail_rep.
+
   Hint Rewrite list_chunk_nil ipack_nil.
   Hint Rewrite Nat.add_0_r Nat.add_0_l.
   Hint Rewrite synced_array_is.
@@ -577,9 +591,9 @@ Module AsyncRecArray (RA : RASig).
   Theorem sync_aligned_ok : forall xp start count cs,
     {< F d0 d items,
     PRE            BUFCACHE.synrep cs d0 d * 
+                   [[ (F * array_rep xp start (Unsync items))%pred d ]] *
                    [[ length items = (count * items_per_val)%nat ]] *
-                   [[ items_valid xp start items /\ sync_invariant F ]] *
-                   [[ (F * array_rep xp start (Unsync items))%pred d ]]
+                   [[ items_valid xp start items /\ sync_invariant F ]]
     POST RET: cs
                    exists d', BUFCACHE.synrep cs d0 d' *
                    [[ (F * array_rep xp start (Synced items))%pred d' ]]
@@ -590,10 +604,7 @@ Module AsyncRecArray (RA : RASig).
     prestep. norml.
     unfold unsync_array, rep_common in *; destruct_lifts.
 
-    norm. cancel.
-    intuition simpl.
-    3: eauto.
-    auto.
+    cancel.
     rewrite combine_length_eq by simplen.
     rewrite ipack_length; simplen.
 

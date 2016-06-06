@@ -832,12 +832,17 @@ Proof.
 Qed.
 
 Theorem ptsto_subset_pimpl_ptsto : forall AT AEQ (a : AT) v,
-  ((a |+> (v, nil)) : @pred AT AEQ _) =p=> a |=> v.
+  ((a |+> (v, nil)) : @pred AT AEQ _) <=p=> a |=> v.
 Proof.
-  unfold ptsto_subset; intros.
+  unfold ptsto_subset; intros; split.
   apply pimpl_exists_l; intros; simpl.
   apply sep_star_lift_l; intros.
   erewrite incl_in_nil with (l := x); auto.
+  apply pimpl_exists_r; intros; simpl.
+  exists nil.
+  apply sep_star_lift_r.
+  apply pimpl_and_lift; auto.
+  apply incl_nil.
 Qed.
 
 Theorem ptsto_subset_pimpl : forall AT AEQ (a : AT) v l l',
@@ -849,6 +854,15 @@ Proof.
   apply sep_star_lift_apply in H0; intuition.
   eexists. apply sep_star_lift_apply'; eauto.
   eapply incl_tran; eauto.
+Qed.
+
+Theorem crash_xform_ptsto_subset' : forall a v,
+  crash_xform (a |+> v) =p=> exists v', [[ In v' (vsmerge v) ]] * a |+> (v', nil).
+Proof.
+  intros; rewrite crash_xform_ptsto_subset.
+  apply pimpl_exists_l; intros.
+  rewrite ptsto_pimpl_ptsto_subset.
+  apply pimpl_exists_r; exists x; auto.
 Qed.
 
 Theorem ptsto_sync_mem : forall (a : addr) (vs : valuset) v m,

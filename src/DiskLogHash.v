@@ -162,9 +162,9 @@ Module PaddedLog.
       ([[ state_goodSize state ]] *
       match state with
       | Synced n =>
-         (LAHdr xp) |-> (hdr2val (mk_header n), nil)
+         (LAHdr xp) |+> (hdr2val (mk_header n), nil)
       | Unsync n o =>
-         (LAHdr xp) |-> (hdr2val (mk_header n), [hdr2val (mk_header o)]%list)
+         (LAHdr xp) |+> (hdr2val (mk_header n), [hdr2val (mk_header o)]%list)
       end)%pred.
 
     Definition xform_rep_synced : forall xp n,
@@ -172,15 +172,20 @@ Module PaddedLog.
     Proof.
       unfold rep; intros; simpl.
       xform; auto.
+      rewrite crash_xform_ptsto_subset'.
+      cancel.
+      rewrite H1; auto.
     Qed.
 
     Definition xform_rep_unsync : forall xp n o,
       crash_xform (rep xp (Unsync n o)) =p=> rep xp (Synced n) \/ rep xp (Synced o).
     Proof.
       unfold rep; intros; simpl.
-      xform; cancel.
+      xform.
+      rewrite crash_xform_ptsto_subset; unfold ptsto_subset.
+      cancel.
       or_l; cancel.
-      or_r; cancel.
+      cancel.
     Qed.
 
     Definition read T xp cs rx : prog T := Eval compute_rec in
@@ -196,6 +201,12 @@ Module PaddedLog.
 
     Definition sync T xp cs rx : prog T :=
       cs <- BUFCACHE.sync (LAHdr xp) cs;
+      rx cs.
+
+    Definition sync_now T xp cs rx : prog T :=
+      cs <- BUFCACHE.begin_sync cs;
+      cs <- BUFCACHE.sync (LAHdr xp) cs;
+      cs <- BUFCACHE.end_sync cs;
       rx cs.
 
     Local Hint Unfold rep state_goodSize : hoare_unfold.
@@ -235,7 +246,6 @@ Module PaddedLog.
     Proof.
       unfold read.
       hoare.
-      pred_apply; cancel.
       subst; rewrite val2hdr2val; simpl.
       unfold hdr_goodSize in *; intuition.
       repeat rewrite wordToNat_natToWord_idempotent'; auto.
@@ -244,24 +254,47 @@ Module PaddedLog.
     Qed.
 
     Theorem sync_ok : forall xp cs,
-    {< F d n old,
-    PRE            BUFCACHE.rep cs d *
-                   [[ (F * rep xp (Unsync n old))%pred d ]]
+    {< F d0 d n old,
+    PRE            BUFCACHE.synrep cs d0 d *
+                   [[ (F * rep xp (Unsync n old))%pred d ]] *
+                   [[ sync_invariant F ]]
     POST RET: cs
-                   exists d', BUFCACHE.rep cs d' *
+                   exists d', BUFCACHE.synrep cs d0 d' *
                    [[ (F * rep xp (Synced n))%pred d' ]]
-    XCRASH  exists cs' d', BUFCACHE.rep cs' d' *
-                   [[ (F * rep xp (Unsync n old))%pred d' ]]
+    CRASH  exists cs', BUFCACHE.rep cs' d0
     >} sync xp cs.
     Proof.
       unfold sync.
-      hoare.
-      xcrash.
+      step.
+      step.
     Qed.
 
+    Theorem sync_now_ok : forall xp cs,
+    {< F d n old,
+    PRE            BUFCACHE.rep cs d *
+                   [[ (F * rep xp (Unsync n old))%pred d ]] *
+                   [[ sync_invariant F ]]
+    POST RET: cs
+                   exists d', BUFCACHE.rep cs d' *
+                   [[ (F * rep xp (Synced n))%pred d' ]]
+    CRASH  exists cs', BUFCACHE.rep cs' d
+    >} sync_now xp cs.
+    Proof.
+      unfold sync_now; intros.
+      hoare.
+    Qed.
+
+    Theorem sync_invariant_rep : forall xp st,
+      sync_invariant (rep xp st).
+    Proof.
+      unfold rep; destruct st; eauto.
+    Qed.
+
+    Hint Resolve sync_invariant_rep.
     Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
     Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
     Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
+    Hint Extern 1 ({{_}} progseq (sync_now _ _) _) => apply sync_now_ok : prog.
 
   End Hdr.
 
@@ -943,7 +976,7 @@ Module PaddedLog.
   Definition init T xp cs rx : prog T :=
     h <- Hash default_valu;
     cs <- Hdr.write xp ((0, 0), (0, 0), (h, h)) cs;
-    cs <- Hdr.sync xp cs;
+    cs <- Hdr.sync_now xp cs;
     rx cs.
 
   Definition trunc T xp cs rx : prog T :=
@@ -951,7 +984,7 @@ Module PaddedLog.
     let '(_, current_length, _) := nr in
     h <- Hash default_valu;
     cs <- Hdr.write xp (current_length, (0, 0), (h, h)) cs;
-    cs <- Hdr.sync xp cs;
+    cs <- Hdr.sync_now xp cs;
     rx cs.
 
   Local Hint Resolve Forall_nil.
@@ -1008,7 +1041,8 @@ Module PaddedLog.
   Definition trunc_ok : forall xp cs,
     {< F l d,
     PRE:hm   BUFCACHE.rep cs d *
-          [[ (F * rep xp (Synced l) hm)%pred d ]]
+          [[ (F * rep xp (Synced l) hm)%pred d ]] *
+          [[ sync_invariant F ]]
     POST:hm' RET: cs  exists d',
           BUFCACHE.rep cs d' *
           [[ (F * rep xp (Synced nil) hm')%pred d' ]]
@@ -1032,8 +1066,6 @@ Module PaddedLog.
 
     (* post condition *)
     cancel_by helper_trunc_ok.
-    solve_hash_list_rep.
-    auto.
     solve_checksums.
     replace (DescDefs.ipack (map ent_addr [])) with (@nil valu).
     solve_hash_list_rep; auto.
@@ -1490,9 +1522,11 @@ Module PaddedLog.
                           (ndesc + nndesc, ndata + nndata),
                           (h_addr, h_valu)) cs;
       (* Extended *)
+      cs <- BUFCACHE.begin_sync cs;
       cs <- Desc.sync_aligned xp ndesc nndesc cs;
       cs <- Data.sync_aligned xp ndata nndata cs;
       cs <- Hdr.sync xp cs;
+      cs <- BUFCACHE.end_sync cs;
       (* Synced *)
       rx ^(cs, true)
     } else {
@@ -1523,8 +1557,8 @@ Module PaddedLog.
   Definition extend_ok : forall xp new cs,
     {< F old d,
     PRE:hm   BUFCACHE.rep cs d *
-          [[ Forall entry_valid new ]] *
-          [[ (F * rep xp (Synced old) hm)%pred d ]]
+          [[ (F * rep xp (Synced old) hm)%pred d ]] *
+          [[ Forall entry_valid new /\ sync_invariant F ]]
     POST:hm' RET: ^(cs, r) exists d',
           BUFCACHE.rep cs d' * (
           [[ r = true /\
@@ -1569,20 +1603,26 @@ Module PaddedLog.
       eapply loglen_valid_goodSize_r; eauto.
 
       (* sync content *)
+      step.
+      eauto 10.
       prestep. norm. cancel. intuition simpl.
       instantiate ( 1 := map ent_addr (padded_log new) ).
+      rewrite desc_padding_unsync_piff.
+      pred_apply; cancel.
       rewrite map_length, padded_log_length; auto.
       apply padded_desc_valid.
       apply loglen_valid_desc_valid; auto.
-      rewrite desc_padding_unsync_piff.
-      pred_apply; cancel.
+      eauto 10.
 
       safestep.
       autorewrite with lists.
       rewrite entry_valid_ndata, Nat.mul_1_r; auto.
+      eauto 10.
 
       (* sync header *)
       safestep.
+      eauto 10.
+      step.
 
       (* post condition *)
       safestep.
@@ -1620,6 +1660,20 @@ Module PaddedLog.
       or_r. cancel. extend_crash.
       solve_checksums.
       solve_checksums.
+
+      repeat xcrash_rewrite.
+      xform_norm; cancel. xform_normr; cancel.
+      or_r. cancel. extend_crash.
+      solve_checksums.
+      solve_checksums.
+
+      cancel.
+      repeat xcrash_rewrite.
+      xform_norm; cancel. xform_normr; cancel.
+      or_r. cancel. extend_crash.
+      solve_checksums.
+      solve_checksums.
+
 
       (* before writes *)
       cancel.
@@ -1819,6 +1873,15 @@ Module PaddedLog.
     replace DataSig.items_per_val with 1 in * by (cbv; auto); try omega.
   Qed.
 
+  Lemma sep_star_pimpl_trans : forall AT AEQ V (F p q r: @pred AT AEQ V),
+    p =p=> q ->
+    F * q =p=> r ->
+    F * p =p=> r.
+  Proof.
+    intros.
+    cancel; auto.
+  Qed.
+
   Lemma xform_rep_extended' : forall xp old new hm,
     crash_xform (rep xp (Extended old new) hm) =p=>
        rep xp (Synced old) hm \/
@@ -1827,13 +1890,15 @@ Module PaddedLog.
     intros; rewrite rep_extended_facts.
     unfold rep; simpl; unfold rep_contents; intros.
     xform; cancel.
-    unfold Hdr.rep.
     xform; cancel.
+    rewrite Hdr.xform_rep_unsync; cancel.
 
-    - subst.
-      or_r.
-
-      rewrite xform_rep_extended_helper; try eassumption.
+    - or_r.
+      repeat rewrite sep_star_assoc.
+      eapply sep_star_pimpl_trans.
+      eapply pimpl_trans.
+      2: apply xform_rep_extended_helper; try eassumption.
+      cancel.
       cancel.
       subst; auto.
 
@@ -2080,7 +2145,7 @@ Module PaddedLog.
       cs <- Hdr.write xp ((prev_ndesc, prev_ndata),
                           (prev_ndesc, prev_ndata),
                           (addr_checksum, valu_checksum)) cs;
-      cs <- Hdr.sync xp cs;
+      cs <- Hdr.sync_now xp cs;
       rx cs
     }.
 
@@ -2163,28 +2228,22 @@ Module PaddedLog.
       unfold pimpl; intros.
       unfold checksums_match in *; intuition.
       rewrite app_nil_r, <- desc_ipack_padded in *.
-      destruct_lift H16; intuition.
-
-      contradict H20.
-      eapply hash_list_injective2; solve_hash_list_rep.
-
-      contradict H16.
-      eapply hash_list_injective2; solve_hash_list_rep.
-
-      contradict H16.
-      eapply hash_list_injective2; solve_hash_list_rep.
+      denote (_ m) as Hx; destruct_lift Hx; intuition.
+      all: denote (_ -> False) as Hx; contradict Hx;
+          eapply hash_list_injective2; solve_hash_list_rep.
     }
 
     all: try cancel;
           solve [ apply desc_padding_synced_piff | solve_checksums ].
 
-    Unshelve. easy.
+    Unshelve. all: eauto; easy.
   Qed.
 
   Definition recover_ok_Rollback : forall xp cs,
     {< F old d,
     PRE:hm   BUFCACHE.rep cs d *
-          [[ (F * rep xp (Rollback old) hm)%pred d ]]
+          [[ (F * rep xp (Rollback old) hm)%pred d ]] *
+          [[ sync_invariant F ]]
     POST:hm' RET:cs' exists d',
           BUFCACHE.rep cs' d' *
           [[ (F * rep xp (Synced old) hm')%pred d' ]]
@@ -2326,6 +2385,7 @@ Module PaddedLog.
       denote (Data.avail_rep) as Hx; clear Hx.
       denote (Data.avail_rep) as Hx; clear Hx.
       step.
+      eauto 10.
       step.
 
       (* post condition: Synced old *)
@@ -2460,7 +2520,8 @@ Module PaddedLog.
     PRE:hm
       exists d, BUFCACHE.rep cs d *
           [[ (F * rep xp st hm)%pred d ]] *
-          [[ st = Synced l \/ st = Rollback l ]]
+          [[ st = Synced l \/ st = Rollback l ]] *
+          [[ sync_invariant F ]]
     POST:hm' RET:cs' exists d',
           BUFCACHE.rep cs' d' *
           [[ (F * rep xp (Synced l) hm')%pred d' ]]
@@ -2488,9 +2549,10 @@ Module PaddedLog.
     (* Rollback *)
     - cancel.
       eapply pimpl_ok2; try apply recover_ok_Rollback.
+      intros; norm. cancel. intuition simpl. eauto. auto.
+      step.
       cancel.
-      cancel.
-      norm'l. xcrash.
+      xcrash.
       or_r; or_l; cancel.
       or_r; or_r; cancel.
       xcrash.
@@ -2726,7 +2788,8 @@ Module DLog.
   Definition trunc_ok : forall xp cs,
     {< F l d nr,
     PRE:hm    BUFCACHE.rep cs d *
-              [[ (F * rep xp (Synced nr l) hm)%pred d ]]
+              [[ (F * rep xp (Synced nr l) hm)%pred d ]] * 
+              [[  sync_invariant F ]]
     POST:hm' RET: cs exists d',
               BUFCACHE.rep cs d' *
               [[ (F * rep xp (Synced (LogLen xp) nil) hm')%pred d' ]]
@@ -2737,7 +2800,10 @@ Module DLog.
     >} trunc xp cs.
   Proof.
     unfold trunc.
-    hoare.
+    safestep.
+    eassign F; cancel.
+    eauto.
+    step.
     unfold roundup; rewrite divup_0; omega.
 
     (* crashes *)
@@ -2842,8 +2908,9 @@ Module DLog.
 
   Definition extend_ok : forall xp new cs,
     {< F old d nr,
-    PRE:hm    BUFCACHE.rep cs d * [[ entries_valid new ]] *
-              [[ (F * rep xp (Synced nr old) hm)%pred d ]]
+    PRE:hm    BUFCACHE.rep cs d *
+              [[ (F * rep xp (Synced nr old) hm)%pred d ]] *
+              [[ entries_valid new /\ sync_invariant F ]]
     POST:hm' RET: ^(cs, r) exists d',
               BUFCACHE.rep cs d' * (
               [[ r = true /\
@@ -2859,7 +2926,8 @@ Module DLog.
     unfold extend.
 
     prestep.
-    cancel. cancel. eauto.
+    safecancel.
+    eassign F; cancel. auto.
     step.
 
     or_l. norm; [ cancel | intuition; pred_apply; norm ].
@@ -2886,7 +2954,8 @@ Module DLog.
     PRE:hm
       exists d, BUFCACHE.rep cs d * (
           [[ (F * rep xp (Synced nr l) hm)%pred d ]] \/
-          [[ (F * rep xp (Rollback l) hm)%pred d ]])
+          [[ (F * rep xp (Rollback l) hm)%pred d ]]) *
+          [[ sync_invariant F ]]
     POST:hm' RET:cs' exists d',
           BUFCACHE.rep cs' d' *
           [[ (F * exists nr', rep xp (Synced nr' l) hm')%pred d' ]]
@@ -2897,9 +2966,10 @@ Module DLog.
   Proof.
     unfold recover.
     prestep. norm. cancel.
-    intuition.
-    pred_apply; cancel.
+    intuition simpl.
+    pred_apply.
     eassign F; cancel.
+    eauto.
 
     step.
     norm'l.
@@ -2909,8 +2979,9 @@ Module DLog.
     cancel.
 
     eassign (PaddedLog.Rollback dummy).
-    intuition.
+    intuition simpl.
     pred_apply; cancel.
+    auto.
 
     step.
     norm'l.

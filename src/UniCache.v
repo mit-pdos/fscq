@@ -964,7 +964,7 @@ Module UCache.
   Theorem begin_sync_ok : forall cs,
     {< d F,
     PRE
-      rep cs d * [[ sync_invariant F /\ F d ]]
+      rep cs d * [[ F d /\ sync_invariant F ]]
     POST RET:cs exists d',
       synrep cs d d' * [[ F d' ]]
     CRASH
@@ -1225,8 +1225,9 @@ Module UCache.
   Theorem sync_ok : forall cs a,
     {< d0 d (F : rawpred) v0,
     PRE
-      synrep cs d0 d * [[ sync_invariant F ]] *
-      [[ (F * a |+> v0)%pred d ]]
+      synrep cs d0 d *
+      [[ (F * a |+> v0)%pred d ]] *
+      [[ sync_invariant F ]]
     POST RET:cs exists d,
       synrep cs d0 d *
       [[ (F * a |+> (fst v0, nil))%pred d ]]
@@ -1273,13 +1274,7 @@ Module UCache.
     >} sync_one a cs.
   Proof.
     unfold sync_one.
-    prestep; norm. cancel. intuition simpl.
-    2: eauto. eauto.
-    safestep.
-    safestep.
-    step.
-    cancel.
-    cancel.
+    hoare.
   Qed.
 
 
@@ -1302,18 +1297,7 @@ Module UCache.
     >} sync_two a1 a2 cs.
   Proof.
     unfold sync_two.
-    prestep; norm. cancel. intuition simpl.
-    2: eauto. eauto.
-    safestep.
-    safestep.
-    prestep.
-    cancel.
-    eauto.
-    safestep.
-    cancel.
-    cancel.
-    cancel.
-    cancel.
+    hoare.
   Qed.
 
 
@@ -1789,8 +1773,9 @@ Module UCache.
   Theorem sync_array_ok : forall a i cs,
     {< d0 d (F : rawpred) vs,
     PRE
-      synrep cs d0 d * [[ sync_invariant F ]] *
-      [[ (F * arrayN ptsto_subset a vs)%pred d ]] * [[ i < length vs ]]
+      synrep cs d0 d *
+      [[ (F * arrayN ptsto_subset a vs)%pred d ]] * 
+      [[ i < length vs /\ sync_invariant F ]]
     POST RET:cs exists d',
       synrep cs d0 d' *
       [[ (F * arrayN ptsto_subset a (vssync vs i))%pred d' ]]
@@ -1800,7 +1785,7 @@ Module UCache.
   Proof.
     unfold sync_array, vssync.
     safestep.
-    2: rewrite isolateN_fwd with (i:=i) by auto; cancel.
+    rewrite isolateN_fwd with (i:=i) by auto; cancel.
     eauto.
     step.
     rewrite <- isolateN_bwd_upd by auto.
@@ -2007,8 +1992,9 @@ Module UCache.
   Theorem sync_range_ok : forall a n cs,
     {< d d0 F vs,
     PRE
-      synrep cs d0 d * [[ sync_invariant F /\ n <= length vs ]] *
-      [[ (F * arrayS a vs)%pred d ]]
+      synrep cs d0 d *
+      [[ (F * arrayS a vs)%pred d ]] *
+      [[ n <= length vs /\ sync_invariant F ]]
     POST RET:cs
       exists d', synrep cs d0 d' *
       [[ (F * arrayS a (vssync_range vs n))%pred d' ]]
@@ -2017,20 +2003,15 @@ Module UCache.
     >} sync_range a n cs.
   Proof.
     unfold sync_range; intros.
-    safestep. auto.
-    prestep. norm. cancel.
-    intuition subst.
-    2: eauto. auto.
+    step.
+    step.
     rewrite vssync_range_length; omega.
 
     step.
     apply arrayN_unify.
     apply vssync_range_progress; omega.
-    cancel.
-    step.
-    cancel.
 
-    Unshelve. all: eauto; try exact tt.
+    Unshelve. all: try exact tt.
   Qed.
 
 
@@ -2165,9 +2146,9 @@ Module UCache.
   Theorem sync_vecs_ok : forall a l cs,
     {< d d0 F vs,
     PRE
-      synrep cs d0 d * [[ sync_invariant F ]] *
-      [[ Forall (fun e => e < length vs) l ]] *
-      [[ (F * arrayS a vs)%pred d ]]
+      synrep cs d0 d *
+      [[ (F * arrayS a vs)%pred d ]] *
+      [[ Forall (fun e => e < length vs) l /\ sync_invariant F ]]
     POST RET:cs
       exists d', synrep cs d0 d' *
       [[ (F * arrayS a (vssync_vecs vs l))%pred d' ]]
@@ -2177,20 +2158,13 @@ Module UCache.
   Proof.
     unfold sync_vecs; intros.
     safestep. auto.
-    prestep. norm. cancel.
-    intuition subst.
-    2: eauto. auto.
-    rewrite vssync_vecs_length.
-    apply Forall_selN; auto.
-
+    step.
     step.
     apply arrayN_unify.
     apply vssync_vecs_progress; omega.
-    cancel.
     step.
     rewrite firstn_oob; auto.
     cancel.
-
     Unshelve. all: eauto; try exact tt.
   Qed.
 
