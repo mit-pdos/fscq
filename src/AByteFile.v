@@ -77,8 +77,8 @@ bytes2valu (bytes2valubytes (bcombine_list l)).
 Definition get_block_size v: nat :=
 length (valu2list v).
 
-Definition valuset2byteset (vs: valuset): byteset :=
-concat (matrix_tran (map valu2list (snd vs)) byte0).
+Definition valuset2byteset (vs: valuset): byteset. Proof. Admitted.
+(* concat (matrix_tran (map valu2list (snd vs)) byte0). *)
 
 Fixpoint bytelist_equal_prop (b1 b2: list byte) : Prop :=
 (match b1 with
@@ -134,6 +134,39 @@ byteset_list_equal (ByFData byte_file) (map valuset2byteset (BFILE.BFData block_
  Definition full_read_ok r f off len : @pred addr addr_eq_dec valuset :=
 lift_empty(forall i, ((len < i) \/ ( (selN r i byte0) = hd byte0 (selN (ByFData f) (off + i) nil)) )).
 
+
+Definition read_first_block T lxp ixp inum fms block_off block_size byte_off rx: prog T :=
+      let^ (fms, first_block) <- BFILE.read lxp ixp inum block_off fms;   (* get first block *)
+      let data_init := (get_sublist                     (* read as much as you can from this block *)
+      (valu2list first_block) byte_off (block_size - byte_off)) in
+      rx ^(fms, data_init).
+      
+      
+Definition first_block_match v r block_size byte_off: Prop :=
+get_sublist (valu2list v) byte_off (block_size - byte_off) = r.
+
+Theorem read_first_block_ok: forall lxp bxp ixp inum ms block_off block_size byte_off file_length,
+ {< F Fm Fi Fd m0 m flist ilist frees (f:BFILE.bfile) v,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms) hm *
+           [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]] *
+           [[[ (BFILE.BFData f) ::: (Fd * block_off |-> v) ]]] *
+           [[ 0 < file_length ]] *
+           [[ block_off*block_size + byte_off < file_length ]]*
+           [[ byte_off < block_size]]
+    POST:hm' RET:^(ms', r)
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm' *
+          [[ first_block_match (selN (snd v) 0 (fst v))%list r block_size byte_off ]] *
+          [[BFILE.MSAlloc ms = BFILE.MSAlloc ms' ]]
+    CRASH:hm'  exists (ms':BFILE.memstate),
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm'
+    >} read_first_block lxp ixp inum ms block_off block_size byte_off.
+Proof.
+  intros.
+  unfold read_first_block, rep, BFILE.rep, first_block_match.
+  step.
+Admitted.
 
 (*Interface*)
 Definition read T lxp ixp inum (off len:nat) fms rx : prog T :=
