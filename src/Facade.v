@@ -836,11 +836,11 @@ Ltac invert_ret_computes_to :=
       assert (H' := H); apply ret_computes_to in H; apply ret_computes_to_disk in H'; subst
   end.
 
-Theorem extract_finish_equiv : forall A scope pr p,
+Theorem extract_finish_equiv : forall A {H: FacadeWrapper Value A} scope pr p,
   (forall d0,
     {{ SItemDisk (NTSome "disk") d0 (ret tt) :: scope }}
       p
-    {{ [ SItemDisk (NTSome "disk") d0 pr ] }} // disk_env) ->
+    {{ [ SItemDisk (NTSome "disk") d0 pr; SItemRet (NTSome "out") d0 pr ] }} // disk_env) ->
   forall st st' d0,
     st \u2272 ( SItemDisk (NTSome "disk") d0 (ret tt) :: scope) ->
     RunsTo disk_env p st st' ->
@@ -848,9 +848,9 @@ Theorem extract_finish_equiv : forall A scope pr p,
 Proof.
   unfold ProgOk, disks_match.
   intros.
-  specialize (H d0 st ltac:(auto)).
-  destruct H.
-  specialize (H2 st' ltac:(auto)).
+  specialize (H0 d0 st ltac:(auto)).
+  destruct H0.
+  specialize (H3 st' ltac:(auto)).
   simpl in *.
   find_cases "disk" st.
   find_cases "disk" st'.
@@ -859,13 +859,13 @@ Proof.
   intuition eauto.
 Qed.
 
-Theorem extract_crash_equiv : forall A pr (inp : nat) p,
+Theorem extract_crash_equiv : forall A scope pr p,
   (forall d0,
-    {{ [ SItemDisk (NTSome "disk") d0 (ret tt); SItemRet (NTSome "input") d0 (ret inp) ] }}
+    {{ SItemDisk (NTSome "disk") d0 (ret tt) :: scope }}
       p
     {{ [ SItemDisk (NTSome "disk") d0 pr ] }} // disk_env) ->
   forall st p' st' d0,
-    st \u2272 [ SItemDisk (NTSome "disk") d0 (ret tt); SItemRet (NTSome "input") d0 (ret inp) ] ->
+    st \u2272 (SItemDisk (NTSome "disk") d0 (ret tt) :: scope) ->
     (Step disk_env)^* (p, st) (p', st') ->
     exists d', disks_match d' st' /\ (
       computes_to_crash pr d0 d' \/
