@@ -171,8 +171,8 @@ Module AFS.
     all: try solve [ xcrash; apply pimpl_any ].
   Admitted.
 
-  Definition recover {T} rx : prog T :=
-    cs <- BUFCACHE.init_recover 10;
+  Definition recover {T} cachesize rx : prog T :=
+    cs <- BUFCACHE.init_recover cachesize;
     let^ (cs, fsxp) <- SB.load cs;
     mscs <- LOG.recover (FSXPLog fsxp) cs;
     rx ^(BFILE.mk_memstate true mscs, fsxp).
@@ -337,17 +337,18 @@ Module AFS.
 
   Hint Extern 0 (okToUnify (LOG.rep_inner _ _ _ _) (LOG.rep_inner _ _ _ _)) => constructor : okToUnify.
 
-  Theorem recover_ok :
+  Theorem recover_ok : forall cachesize,
     {< fsxp cs ds,
      PRE:hm
-       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm
+       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm *
+       [[ cachesize <> 0 ]]
      POST:hm' RET:^(ms, fsxp')
        [[ fsxp' = fsxp ]] * exists d n, [[ n <= length (snd ds) ]] *
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
      XCRASH:hm'
        LOG.before_crash (FSXPLog fsxp) (SB.rep fsxp) ds hm'
-     >} recover.
+     >} recover cachesize.
   Proof.
     unfold recover, LOG.after_crash; intros.
     eapply pimpl_ok2.

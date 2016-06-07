@@ -39,6 +39,8 @@ Module AFS_RECOVER.
   Import AFS.
   Import DIRTREE.
 
+  Parameter cachesize : nat.
+  Axiom cachesize_ok : cachesize <> 0.
 
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
@@ -56,7 +58,7 @@ Module AFS_RECOVER.
          exists d n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm' *
          [[ n <= length (snd ds) ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-  >>X} file_get_attr fsxp inum mscs >> recover.
+  >>X} file_get_attr fsxp inum mscs >> recover cachesize.
   Proof.
     unfold forall_helper.
     recover_ro_ok.
@@ -101,7 +103,7 @@ Module AFS_RECOVER.
          exists d n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm' *
          [[ n <= length (snd ds) ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
-    >>X} read_fblock fsxp inum off mscs >> recover.
+    >>X} read_fblock fsxp inum off mscs >> recover cachesize.
   Proof.
     unfold forall_helper.
     recover_ro_ok.
@@ -164,7 +166,7 @@ Module AFS_RECOVER.
          [[[ dnew ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees')]]] *
          [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
          [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]])
-     >>} file_truncate fsxp inum sz mscs >> recover.
+     >>} file_truncate fsxp inum sz mscs >> recover cachesize.
   Proof.
     recover_ro_ok.
     destruct v.
@@ -268,7 +270,7 @@ Module AFS_RECOVER.
         [[[ (BFILE.BFData f') ::: (crash_xform Fd * off |=> v') ]]] *
         [[ BFILE.BFAttr f' = BFILE.BFAttr f ]] *
         [[ In v' (v :: vsmerge vs) ]]))
-   >>} update_fblock_d fsxp inum off v mscs >> recover.
+   >>} update_fblock_d fsxp inum off v mscs >> recover cachesize.
   Proof.
     recover_ro_ok.
     cancel.
@@ -301,7 +303,7 @@ Module AFS_RECOVER.
          [[[ d ::: (F' * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' ilist frees) ]]] *
          [[[ flist' ::: (arrayN_ex (@ptsto _ addr_eq_dec _) flist' inum * inum |-> BFILE.synced_file f) ]]]
        )
-   >>} file_sync fsxp inum mscs >> recover.
+   >>} file_sync fsxp inum mscs >> recover cachesize.
   Proof.
     intros.
     recover_ro_ok.
@@ -396,7 +398,7 @@ Module AFS_RECOVER.
     REC:hm' RET:^(mscs, fsxp)
       exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
        [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
-    >>} lookup fsxp dnum fnlist mscs >> recover.
+    >>} lookup fsxp dnum fnlist mscs >> recover cachesize.
   Proof.
     recover_ro_ok.
     cancel.
@@ -457,7 +459,7 @@ Module AFS_RECOVER.
       exists d,
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
       [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
-    >>} create fsxp dnum name mscs >> recover.
+    >>} create fsxp dnum name mscs >> recover cachesize.
   Proof.
     recover_ro_ok.
     cancel.
@@ -515,7 +517,7 @@ Module AFS_RECOVER.
       exists d,
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
         [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]]
-    >>} rename fsxp dnum srcpath srcname dstpath dstname mscs >> recover.
+    >>} rename fsxp dnum srcpath srcname dstpath dstname mscs >> recover cachesize.
   Proof.
     recover_ro_ok.
     cancel.
