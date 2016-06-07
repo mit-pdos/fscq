@@ -20,7 +20,7 @@ Module LogRecArray (RA : RASig).
   Definition rep xp (items : itemlist) :=
     ( exists vl, [[ vl = ipack items ]] *
       [[ items_valid xp items ]] *
-      arrayN (RAStart xp) (synced_list vl))%pred.
+      arrayN (@ptsto _ addr_eq_dec valuset) (RAStart xp) (synced_list vl))%pred.
 
   Definition get T lxp xp ix ms rx : prog T :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
@@ -178,7 +178,7 @@ Module LogRecArray (RA : RASig).
 
     rewrite synced_list_length, ipack_length.
     unfold items_valid in *; intuition.
-    setoid_rewrite H3; rewrite divup_mul; auto.
+    substl (length items); rewrite divup_mul; auto.
 
     subst; rewrite synced_list_map_fst.
     unfold items_valid in *; intuition.
@@ -213,7 +213,7 @@ Module LogRecArray (RA : RASig).
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
           [[ xparams_ok xp /\ RAStart xp <> 0 /\ length vsl = RALen xp ]] *
-          [[[ m ::: Fm * arrayN (RAStart xp) vsl ]]]
+          [[[ m ::: Fm * arrayN (@ptsto _ addr_eq_dec _) (RAStart xp) vsl ]]]
     POST:hm' RET:ms' exists m',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' *
           [[[ m' ::: Fm * rep xp (repeat item0 ((RALen xp) * items_per_val) ) ]]]
@@ -346,7 +346,7 @@ Module LogRecArray (RA : RASig).
   Lemma read_array_length_ok : forall l xp Fm Fi m items nblocks,
     length l = nblocks * items_per_val ->
     (Fm * rep xp items)%pred (list2nmem m) ->
-    (Fi * arrayN 0 l)%pred (list2nmem items) ->
+    (Fi * arrayN (@ptsto _ addr_eq_dec _) 0 l)%pred (list2nmem items) ->
     nblocks <= RALen xp.
   Proof.
     unfold rep; intuition.
@@ -361,7 +361,7 @@ Module LogRecArray (RA : RASig).
 
   Lemma read_array_list_ok : forall (l : list item) nblocks items Fi,
     length l = nblocks * items_per_val ->
-    (Fi ✶ arrayN 0 l)%pred (list2nmem items) ->
+    (Fi ✶ arrayN (@ptsto _ addr_eq_dec _) 0 l)%pred (list2nmem items) ->
     firstn (nblocks * items_per_val) items = l.
   Proof.
     intros.
@@ -377,7 +377,7 @@ Module LogRecArray (RA : RASig).
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
           [[ length l = (nblocks * items_per_val)%nat ]] *
           [[[ m ::: Fm * rep xp items ]]] *
-          [[[ items ::: Fi * arrayN 0 l ]]]
+          [[[ items ::: Fi * arrayN (@ptsto _ addr_eq_dec _) 0 l ]]]
     POST:hm' RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm' *
           [[ r = l ]]
@@ -401,7 +401,7 @@ Module LogRecArray (RA : RASig).
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm' *
         ( [[ r = None ]] \/ exists st,
           [[ r = Some st /\ cond (snd st) (fst st) = true ]] *
-          [[[ items ::: arrayN_ex items (fst st) * (fst st) |-> (snd st) ]]] )
+          [[[ items ::: arrayN_ex (@ptsto _ addr_eq_dec _) items (fst st) * (fst st) |-> (snd st) ]]] )
     CRASH:hm' exists ms',
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
     >} ifind_array lxp xp cond ms.
