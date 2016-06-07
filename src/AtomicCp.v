@@ -297,15 +297,16 @@ Module ATOMICCP.
     eapply DIRTREE.dirtree_safe_trans; eauto.
   Qed.
 
-
-  (* unused *)
-  Lemma block_belong_to_file_bn_eq: forall ilist bn0 bn1 inum off,
-    BFILE.block_belong_to_file ilist bn0 inum off /\
-    BFILE.block_belong_to_file ilist bn1 inum off -> bn0 = bn1.
+  Lemma dirtree_safe_idem: forall ilist free tree,
+    DIRTREE.dirtree_safe ilist free tree ilist free tree.
   Proof.
     intros.
-    unfold BFILE.block_belong_to_file in *.
+    unfold DIRTREE.dirtree_safe.
     intuition.
+    unfold BFILE.ilist_safe.
+    intuition.
+    left.
+    split; eauto.
   Qed.
 
   Ltac diskset_pred_solve := 
@@ -420,7 +421,8 @@ Module ATOMICCP.
     eapply H18.
     eassumption.
 
-    admit.  (* identical *)
+
+    eapply dirtree_safe_idem.
 
     diskset_pred_solve.
     rewrite H21 in *.
@@ -435,12 +437,17 @@ Module ATOMICCP.
     eapply H18.
     3: eapply H33.
     2: eapply H25.
-    admit.  (* identical *)
-    admit.  (* identical *)
+    eapply dirtree_safe_idem.
+    eapply dirtree_safe_idem.
 
     (* XXX handle crash cases *)
 
     AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
+    cancel.
+    repeat (erewrite crash_xform_exists_comm; eapply pimpl_exists_r; eexists).
+    cancel.
+    erewrite crash_xform_sep_star_dist.
+    
     unfold BFILE.diskset_was in H26.
     intuition; subst.
     diskset_pred_solve.
