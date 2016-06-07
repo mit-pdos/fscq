@@ -1878,6 +1878,11 @@ Module UCache.
     Rof ^(cs);
     rx cs.
 
+  Definition sync_vecs_now T a l cs rx : prog T :=
+    cs <- begin_sync cs;
+    cs <- sync_vecs a l cs;
+    cs <- end_sync cs;
+    rx cs.
 
   Hint Extern 0 (okToUnify (arrayN ?pts ?a _) (arrayN ?pts ?a _)) => constructor : okToUnify.
 
@@ -2169,12 +2174,34 @@ Module UCache.
   Qed.
 
 
+  Theorem sync_vecs_now_ok : forall a l cs,
+    {< d F vs,
+    PRE
+      rep cs d *
+      [[ (F * arrayS a vs)%pred d ]] *
+      [[ Forall (fun e => e < length vs) l /\ sync_invariant F ]]
+    POST RET:cs
+      exists d', rep cs d' *
+      [[ (F * arrayS a (vssync_vecs vs l))%pred d' ]]
+    CRASH
+      exists cs', rep cs' d
+    >} sync_vecs_now a l cs.
+  Proof.
+    unfold sync_vecs_now; intros.
+    step.
+    eapply pimpl_ok2. apply sync_vecs_ok.
+    cancel.
+    step.
+    step.
+    cancel.
+  Qed.
+
   Hint Extern 1 ({{_}} progseq (read_range _ _ _ _ _) _) => apply read_range_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_range _ _ _) _) => apply write_range_ok : prog.
   Hint Extern 1 ({{_}} progseq (sync_range _ _ _) _) => apply sync_range_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_vecs _ _ _) _) => apply write_vecs_ok : prog.
   Hint Extern 1 ({{_}} progseq (sync_vecs _ _ _) _) => apply sync_vecs_ok : prog.
-
+  Hint Extern 1 ({{_}} progseq (sync_vecs_now _ _ _) _) => apply sync_vecs_now_ok : prog.
 
 End UCache.
 

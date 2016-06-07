@@ -505,6 +505,29 @@ Module PaddedLog.
       [[ (F * would_recover' xp l hm)%pred d ]])%pred.
 
 
+  Theorem sync_invariant_rep : forall xp st hm,
+    sync_invariant (rep xp st hm).
+  Proof.
+    unfold rep, rep_inner, rep_contents, rep_contents_unmatched.
+    destruct st; intros; eauto 50.
+  Qed.
+
+  Hint Resolve sync_invariant_rep.
+
+  Theorem sync_invariant_would_recover' : forall xp l hm,
+    sync_invariant (would_recover' xp l hm).
+  Proof.
+    unfold would_recover'; intros; eauto.
+  Qed.
+
+  Theorem sync_invariant_would_recover : forall xp F l hm,
+    sync_invariant (would_recover xp F l hm).
+  Proof.
+    unfold would_recover; intros; eauto.
+  Qed.
+
+  Hint Resolve sync_invariant_would_recover sync_invariant_would_recover'.
+
   Local Hint Unfold rep rep_inner rep_contents xparams_ok: hoare_unfold.
 
   Definition avail T xp cs rx : prog T :=
@@ -2752,6 +2775,13 @@ Module DLog.
           PaddedLog.would_recover' xp padded hm
     end)%pred.
 
+  Theorem sync_invariant_rep : forall xp st hm,
+    sync_invariant (rep xp st hm).
+  Proof.
+    unfold rep, rep_common; destruct st; intros; eauto.
+  Qed.
+
+  Hint Resolve sync_invariant_rep.
   Local Hint Unfold rep rep_common : hoare_unfold.
 
   Section UnifyProof.

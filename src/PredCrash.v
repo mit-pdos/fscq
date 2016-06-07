@@ -1208,6 +1208,14 @@ Proof.
   firstorder.
 Qed.
 
+Theorem sync_invariant_or : forall p q,
+  sync_invariant p ->
+  sync_invariant q ->
+  sync_invariant (p \/ q)%pred.
+Proof.
+  firstorder.
+Qed.
+
 Hint Resolve sync_invariant_ptsto_subset.
 Hint Resolve sync_invariant_ptsto_any.
 Hint Resolve sync_invariant_ptsto_nil.
@@ -1216,6 +1224,7 @@ Hint Resolve sync_invariant_exists.
 Hint Resolve sync_invariant_sep_star.
 Hint Resolve sync_invariant_lift_empty.
 Hint Resolve sync_invariant_and.
+Hint Resolve sync_invariant_or.
 
 
 Theorem upd_sync_invariant : forall (p : @pred _ _ _) m a v l l',
