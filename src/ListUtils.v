@@ -1375,6 +1375,54 @@ Lemma concat_hom_subselect_skipn : forall A n off k (l: list (list A)) (def: lis
   eapply Forall_cons2; eassumption.
 Qed.
 
+Fact div_ge_subt : forall a b, b <= a -> b <> 0 -> (a - b) / b = a / b - 1.
+Proof.
+  intros.
+  apply plus_minus.
+  rewrite plus_comm.
+  eapply Nat.div_add in H0.
+  rewrite Nat.mul_1_l in *.
+  erewrite Nat.sub_add in * by eassumption.
+  eassumption.
+Qed.
+
+Fact mod_subt : forall a b, b >= a -> (b - a) mod a = b mod a.
+Proof.
+  intros.
+  destruct (le_lt_dec a 0). intuition.
+  rewrite <- Nat.mod_add with (b := 1) by omega.
+  rewrite Nat.mul_1_l.
+  rewrite Nat.sub_add by omega.
+  auto.
+Qed.
+
+Lemma selN_selN_homogenous : forall T (l : list (list T)) k off def,
+  Forall (fun sublist => length sublist = k) l ->
+  off < k * length l ->
+  selN (selN l (off / k) nil) (Nat.modulo off k) def = selN (concat l) off def.
+Proof.
+  intros.
+  assert (k > 0) by (destruct (Nat.eq_dec k 0); intuition; subst; intuition).
+  generalize dependent k.
+  generalize dependent off.
+  induction l; auto.
+  intros.
+  inversion H; subst.
+  destruct (lt_dec off (length a)).
+  simpl.
+  rewrite selN_app, Nat.div_small, Nat.mod_small; auto.
+  apply not_lt in n.
+  rewrite selN_cons.
+  simpl; rewrite selN_app2 by auto.
+  erewrite <- IHl; eauto.
+  rewrite mod_subt; auto.
+  rewrite <- div_ge_subt; auto. omega.
+  simpl in H0. rewrite mult_comm in H0. simpl in H0.
+  apply Nat.le_lt_add_lt with (m := length a) (n := length a); auto.
+  rewrite Nat.sub_add, mult_comm; omega.
+  apply Nat.div_str_pos; omega.
+Qed.
+
 Definition combine_updN : forall A B i a b (va:A) (vb:B),
   List.combine (updN a i va) (updN b i vb) = updN (List.combine a b) i (va, vb).
 Proof.
