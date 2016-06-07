@@ -109,6 +109,22 @@ Module GLog.
 
   Local Hint Resolve nelist_subset_equal.
 
+  Lemma sync_invariant_rep : forall xp st ms hm,
+    sync_invariant (rep xp st ms hm).
+  Proof.
+    unfold rep; destruct st; intros; eauto.
+  Qed.
+
+  Hint Resolve sync_invariant_rep.
+
+  Lemma sync_invariant_would_recover_any : forall xp ds hm,
+    sync_invariant (would_recover_any xp ds hm).
+  Proof.
+    unfold would_recover_any; intros; auto.
+  Qed.
+
+  Hint Resolve sync_invariant_would_recover_any.
+
   Lemma cached_recover_any: forall xp ds ms hm,
     rep xp (Cached ds) ms hm =p=> would_recover_any xp ds hm.
   Proof.
@@ -703,7 +719,8 @@ Module GLog.
   Theorem flushall_nomerge_ok: forall xp ms,
     {< F ds,
     PRE:hm
-      << F, rep: xp (Cached ds) ms hm >>
+      << F, rep: xp (Cached ds) ms hm >> *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms'
       << F, rep: xp (Cached (ds!!, nil)) ms' hm' >> *
       [[ MSTxns (fst ms') = nil /\ MSVMap (fst ms') = vmap0 ]]
@@ -761,7 +778,8 @@ Module GLog.
   Theorem flushall_ok: forall xp ms,
     {< F ds,
     PRE:hm
-      << F, rep: xp (Cached ds) ms hm >>
+      << F, rep: xp (Cached ds) ms hm >> *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms'
       << F, rep: xp (Cached (ds!!, nil)) ms' hm' >> *
       [[ MSTxns (fst ms') = nil /\ MSVMap (fst ms') = vmap0 ]]
@@ -789,7 +807,8 @@ Module GLog.
     norm; unfold stars; simpl.
 
     unfold vmap_match in *; simpl in *.
-    rewrite H4.
+    denote (Map.Equal _ vmap0) as Heq.
+    rewrite Heq.
     replace (Map.elements _) with (@nil (Map.key * valu)) by auto.
     eassign 0.
     eassign (mk_mstate vmap0 nil (MSMLog ms_1)).
@@ -815,9 +834,13 @@ Module GLog.
     erewrite <- dset_match_length; eauto.
     simpl; omega.
 
+    safestep.
+    repeat match goal with
+              | [ H := ?e |- _ ] => subst H
+            end; cancel.
     step.
 
-    Unshelve. all: eauto; econstructor.
+    Unshelve. all: try exact nil; eauto; try exact vmap0.
   Qed.
 
 
@@ -965,7 +988,8 @@ Module GLog.
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
       [[ Map.find a (MSVMap (fst ms)) = None ]] *
-      [[[ fst ds ::: (Fd * a |-> vs) ]]]
+      [[[ fst ds ::: (Fd * a |-> vs) ]]] *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms' exists ds',
       << F, rep: xp (Cached ds') ms' hm' >> *
       [[  ds' = dsupd ds a (v, vsmerge vs) ]]
@@ -1005,7 +1029,8 @@ Module GLog.
     {< F Fd ds vs,
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
-      [[[ ds !! ::: (Fd * a |-> vs) ]]]
+      [[[ ds !! ::: (Fd * a |-> vs) ]]] *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms' exists ds',
       << F, rep: xp (Cached (dsupd ds' a (v, vsmerge vs))) ms' hm' >> *
       [[ ds' = ds \/ ds' = (ds!!, nil) ]]
@@ -1017,13 +1042,14 @@ Module GLog.
     unfold dwrite, rep.
     step.
     prestep; unfold rep; cancel.
-    prestep; unfold rep; cancel.
+    prestep; unfold rep; safecancel.
 
     erewrite fst_pair by reflexivity.
     cancel.
     eauto.
     substl (MSVMap a0); eauto.
     simpl; pred_apply; cancel.
+    auto.
     step.
 
     cancel.
@@ -1077,10 +1103,11 @@ Module GLog.
     {< F Fd ds vs,
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
-      [[[ ds !! ::: (Fd * a |-> vs) ]]]
+      [[[ ds !! ::: (Fd * a |-> vs) ]]] *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms'
       << F, rep: xp (Cached (dssync ds a)) ms' hm' >>
-    XCRASH:hm'
+    CRASH:hm'
       << F, would_recover_any: xp ds hm' -- >>
     >} dsync xp a ms.
   Proof.
@@ -1093,8 +1120,6 @@ Module GLog.
     eapply dset_match_dssync; eauto.
 
     cancel.
-    repeat xcrash_rewrite; xform_norm.
-    cancel; xform_normr; cancel.
     rewrite MLog.synced_recover_before.
     rewrite recover_before_any_fst; eauto.
     Unshelve. eauto.
@@ -1134,7 +1159,7 @@ Module GLog.
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
       [[ overlap (map fst avl) (MSVMap (fst ms)) = false ]] *
-      [[ Forall (fun e => fst e < length (fst ds)) avl ]]
+      [[ Forall (fun e => fst e < length (fst ds)) avl /\ sync_invariant F ]]
     POST:hm' RET:ms'
       << F, rep: xp (Cached (dsupd_vecs ds avl)) ms' hm' >>
     XCRASH:hm'
@@ -1165,7 +1190,7 @@ Module GLog.
     {< F ds,
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
-      [[ Forall (fun e => fst e < length (ds!!)) avl ]]
+      [[ Forall (fun e => fst e < length (ds!!)) avl /\ sync_invariant F ]]
     POST:hm' RET:ms' exists ds',
       << F, rep: xp (Cached (dsupd_vecs ds' avl)) ms' hm' >> *
       [[ ds' = ds \/ ds' = (ds!!, nil) ]]
@@ -1181,14 +1206,14 @@ Module GLog.
     unfold dwrite_vecs, rep.
     step.
     prestep; unfold rep; cancel.
-    prestep; unfold rep; cancel.
-
+    prestep; unfold rep; safecancel.
     erewrite fst_pair by reflexivity.
     cancel.
     eauto.
     substl (MSVMap a).
     apply overlap_empty; apply map_empty_vmap0.
     eauto.
+    auto.
     step.
 
     cancel.
@@ -1227,10 +1252,10 @@ Module GLog.
     {< F ds,
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
-      [[ Forall (fun e => e < length (ds!!)) al ]]
+      [[ Forall (fun e => e < length (ds!!)) al /\ sync_invariant F ]]
     POST:hm' RET:ms'
       << F, rep: xp (Cached (dssync_vecs ds al)) ms' hm' >>
-    XCRASH:hm'
+    CRASH:hm'
       << F, would_recover_any: xp ds hm' -- >>
     >} dsync_vecs xp al ms.
   Proof.
@@ -1244,8 +1269,6 @@ Module GLog.
     eapply dset_match_dssync_vecs; eauto.
 
     cancel.
-    repeat xcrash_rewrite; xform_norm.
-    cancel; xform_normr; cancel.
     rewrite MLog.synced_recover_before.
     rewrite recover_before_any_fst; eauto.
   Qed.
@@ -1255,6 +1278,13 @@ Module GLog.
       (rep xp (Cached (d, nil)) ms hm \/
         rep xp (Rollback d) ms hm) *
       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]])%pred.
+
+  Theorem sync_invariant_recover_any_pred : forall xp ds hm,
+    sync_invariant (recover_any_pred xp ds hm).
+  Proof.
+    unfold recover_any_pred; intros; auto 10.
+  Qed.
+  Hint Resolve sync_invariant_recover_any_pred.
 
   Theorem crash_xform_any : forall xp ds hm,
     crash_xform (would_recover_any xp ds hm) =p=>
@@ -1419,7 +1449,8 @@ Module GLog.
     {< F raw ds,
     PRE:hm
       BUFCACHE.rep cs raw *
-      [[ (F * recover_any_pred xp ds hm)%pred raw ]]
+      [[ (F * recover_any_pred xp ds hm)%pred raw ]] *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms' exists raw',
       BUFCACHE.rep (MSCache ms') raw' *
       [[ (exists d n, [[ n <= length (snd  ds) ]] *
@@ -1438,13 +1469,13 @@ Module GLog.
     prestep. norm'l.
     denote or as Hx.
     apply sep_star_or_distr in Hx.
-    destruct Hx; destruct_lift H; cancel.
+    destruct Hx; destruct_lift H; safecancel.
 
     (* Cached *)
     unfold MLog.recover_either_pred; cancel.
     rewrite sep_star_or_distr; or_l; cancel.
     eassign F. cancel.
-    or_l; cancel.
+    or_l; cancel. auto.
 
     safestep. eauto.
     instantiate (1:=nil); cancel.
@@ -1468,6 +1499,7 @@ Module GLog.
     (* Rollback *)
     unfold MLog.recover_either_pred; cancel.
     rewrite sep_star_or_distr; or_r; cancel.
+    auto.
 
     safestep. eauto.
     instantiate (1:=nil); cancel.

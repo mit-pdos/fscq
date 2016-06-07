@@ -940,7 +940,7 @@ Module MLog.
       << F, rep: xp (Synced na' d') ms' hm' >> *
       [[[ d' ::: (Fd * a |-> (fst vs, nil)) ]]] *
       [[  d' = vssync d a ]]
-    XCRASH:hm'
+    CRASH:hm'
       exists ms' na',
       << F, rep: xp (Synced na' d) ms' hm' >>
     >} dsync xp a ms.
@@ -964,18 +964,7 @@ Module MLog.
     auto.
 
     (* crashes *)
-    xcrash.
-    rewrite DLog.rep_hashmap_subset; eauto.
-    eauto.
-    eapply length_eq_map_valid; eauto.
-    xcrash.
-    rewrite DLog.rep_hashmap_subset; eauto.
-    eauto.
-    eapply length_eq_map_valid; eauto.
-    xcrash.
-    rewrite DLog.rep_hashmap_subset; eauto.
-    eauto.
-    eapply length_eq_map_valid; eauto.
+    all: rewrite DLog.rep_hashmap_subset; eauto.
   Qed.
 
   End UnfoldProof4.
