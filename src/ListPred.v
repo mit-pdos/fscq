@@ -436,8 +436,25 @@ Section LISTMATCH.
     eapply skipn_firstn_length_eq; eauto.
   Qed.
 
-End LISTMATCH.
+  Theorem listmatch_lift_l : forall l1 l2 F G P m,
+    (forall x y, prd x y <=p=> ([[ P x ]] * F x y)%pred) ->
+    (G * listmatch l1 l2)%pred m -> Forall P l1.
+  Proof.
+    unfold listmatch.
+    intros.
+    generalize dependent G. generalize dependent l2.
+    induction l1; auto.
+    intros.
+    destruct l2; simpl in *.
+    destruct_lift H0; inversion H2.
+    rewrite H in H0. destruct_lift H0.
+    inversion H2.
+    apply Forall_cons; auto.
+    eapply IHl1 with (l2 := l2).
+    pred_apply. cancel.
+  Qed.
 
+End LISTMATCH.
 
 
 
@@ -501,6 +518,17 @@ Proof.
   unfold pimpl in *; intros.
   eapply IHal; eauto.
   pred_apply; cancel.
+Qed.
+
+Theorem listmatch_lift_r : forall AT AEQ V A C l1 l2 f F G P m,
+  (forall x y, f x y <=p=> ([[ P y ]] * F x y)%pred) ->
+  (G * (@listmatch A C AT AEQ V) f l1 l2)%pred m -> Forall P l2.
+Proof.
+  intros.
+  rewrite listmatch_sym in *.
+  eapply listmatch_lift_l.
+  intros; eapply H.
+  eapply H0.
 Qed.
 
 Theorem xform_listpred : forall V (l : list V) prd,
