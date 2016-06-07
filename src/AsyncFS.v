@@ -1,4 +1,5 @@
 Require Import Prog.
+Require Import Hashmap.
 Require Import Log.
 Require Import BFile.
 Require Import Word.
@@ -33,8 +34,6 @@ Set Implicit Arguments.
 Import ListNotations.
 
 Module AFS.
-
-  Parameter cachesize : nat.
 
   (* Programs *)
 
@@ -75,6 +74,16 @@ Module AFS.
      1
      max_addr).
 
+  Lemma compute_xparams_ok : forall data_bitmaps inode_bitmaps log_descr_blocks,
+    fs_xparams_ok (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks).
+  Proof.
+    unfold fs_xparams_ok.
+    unfold log_xparams_ok, inode_xparams_ok, balloc_xparams_ok.
+    unfold compute_xparams; simpl.
+    intuition.
+    (* XXX *)
+  Admitted.
+
   Definition mkfs_alternate_allocators {T} lxp bxp1 bxp2 mscs rx : prog T :=
     let^ (mscs, bxp1, bxp2) <- ForN i < (BmapNBlocks bxp1 * valulen)
     Hashmap hm
@@ -89,9 +98,9 @@ Module AFS.
     Rof ^(mscs, bxp1, bxp2);
     rx mscs.
 
-  Definition mkfs {T} data_bitmaps inode_bitmaps log_descr_blocks rx : prog T :=
+  Definition mkfs {T} cachesize data_bitmaps inode_bitmaps log_descr_blocks rx : prog T :=
     let fsxp := compute_xparams data_bitmaps inode_bitmaps log_descr_blocks in
-    cs <- BUFCACHE.init_recover cachesize;
+    cs <- BUFCACHE.init_load cachesize;
     cs <- SB.init fsxp cs;
     mscs <- LOG.init (FSXPLog fsxp) cs;
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -128,10 +137,11 @@ Module AFS.
   Notation MSAlloc := BFILE.MSAlloc.
   Import DIRTREE.
 
-  Theorem mkfs_ok : forall data_bitmaps inode_bitmaps log_descr_blocks,
-    {< disk,
+  Theorem mkfs_ok : forall cachesize data_bitmaps inode_bitmaps log_descr_blocks,
+    {!!< disk,
      PRE:hm
-       arrayN (@ptsto _ addr_eq_dec _) 0 disk *
+       arrayS 0 disk *
+       [[ cachesize <> 0 ]] *
        [[ length disk = 1 +
           data_bitmaps * BALLOC.items_per_val +
           inode_bitmaps * BALLOC.items_per_val / INODE.IRecSig.items_per_val +
@@ -143,12 +153,22 @@ Module AFS.
        [[ r = Some (ms, fsxp) ]] *
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
        [[[ d ::: rep fsxp emp (TreeDir (FSXPRootInum fsxp) nil) ilist frees ]]]
-     XCRASH:hm'
+     CRASH:hm'
        any
-     >} mkfs data_bitmaps inode_bitmaps log_descr_blocks.
+     >!!} mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks.
   Proof.
     unfold mkfs.
     safestep.
+
+    prestep.
+    norml; unfold stars; simpl.
+    denote! (arrayS _ _ _) as HarrayS.
+    eapply arrayN_isolate with (i := 0) in HarrayS; unfold ptsto_subset in HarrayS; simpl in *.
+    cancel.
+    (* XXX need some more preconditions.. *)
+    apply compute_xparams_ok.
+
+    all: try solve [ xcrash; apply pimpl_any ].
   Admitted.
 
   Definition recover {T} rx : prog T :=
