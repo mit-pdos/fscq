@@ -1184,28 +1184,17 @@ Module MLog.
       destruct (H0 _ _ H3); simplen.
   Qed.
 
-(*
-  Lemma possible_crash_vssync_vecs_listupd : forall F st d l m x,
-    (F * arrayS st (vssync_vecs d l))%pred m ->
-    possible_crash m x ->
-    possible_crash (listupd m st d)  x.
+  Lemma in_vsmerge_incl_trans : forall v vs vs',
+    In v (vsmerge vs) ->
+    fst vs = fst vs' ->
+    incl (snd vs) (snd vs') ->
+    In v (vsmerge vs').
   Proof.
-    unfold possible_crash; intuition.
-    specialize (H0 a).
-    destruct (listupd_sel_cases d a st m ($0, nil)).
-    destruct a0; denote listupd as Hx; rewrite Hx; intuition.
-
-    intuition; denote listupd as Hx; rewrite Hx.
-    eapply arrayN_selN with (a := a) (def := ($0, nil)) in H; try congruence.
-    rewrite vssync_vecs_length; auto.
-    eapply arrayN_selN with (a := a) (def := ($0, nil)) in H; auto.
-    right; repeat deex; repeat eexists; eauto.
-    rewrite H in H2; inversion H2; clear H2; subst.
-    denote vsmerge as Hy.
-    destruct (In_dec addr_eq_dec (a - st) l).
-    rewrite vssync_vecs_selN_In in Hy; simpl in *; intuition.
-    rewrite vssync_selN_not_in in Hy; auto.
-    rewrite vssync_vecs_length; auto.
+    unfold vsmerge; simpl in *; intuition simpl in *; subst.
+    left; auto.
+    right.
+    eapply incl_tran; eauto.
+    apply incl_refl.
   Qed.
 
   Lemma possible_crash_vsupd_vecs_listupd : forall F m x st l avl,
@@ -1216,19 +1205,20 @@ Module MLog.
     unfold possible_crash; intuition.
     specialize (H0 a).
     destruct (listupd_sel_cases (vsupd_vecs l avl) a st m ($0, nil)).
-    destruct a0; denote listupd as Hx; rewrite Hx; intuition.
+    denote listupd as Hx; destruct Hx as [Hx Heq]; rewrite Heq; intuition.
 
     intuition; denote listupd as Hx; rewrite Hx.
-    eapply arrayN_selN with (a := a) (def := ($0, nil)) in H; try congruence.
+    eapply arrayN_selN_subset with (a := a) (def := ($0, nil)) in H;
+    repeat deex; try congruence.
     erewrite <- vsupd_vecs_length; eauto.
-    eapply arrayN_selN with (a := a) (def := ($0, nil)) in H; auto.
+
+    eapply arrayN_selN_subset with (a := a) (def := ($0, nil)) in H; auto.
     right; repeat deex; repeat eexists; eauto.
-    rewrite H in H2; inversion H2; clear H2; subst.
+    replace vs0 with vs in * by congruence.
     apply vsupd_vecs_selN_vsmerge_in; auto.
+    eapply in_vsmerge_incl_trans; eauto.
     erewrite <- vsupd_vecs_length; eauto.
   Qed.
-*)
-
 
   Lemma dwrite_vecs_xcrash_ok : forall cs d raw xp F avl m n n' log hm,
     overlap (map fst avl) m <> true ->
@@ -1249,7 +1239,7 @@ Module MLog.
     cancel.
 
     eassign (listupd raw (DataStart xp) (vsupd_vecs d avl)).
-    denote arrayN as Ha; eapply arrayN_listupd with (l := (vsupd_vecs d avl)) in Ha.
+    denote arrayN as Ha; eapply arrayN_listupd_subset with (l := (vsupd_vecs d avl)) in Ha.
 
     pred_apply; cancel.
     eauto.
@@ -1262,7 +1252,6 @@ Module MLog.
     erewrite <- firstn_skipn with (l := avl) (n := n).
     rewrite vsupd_vecs_app.
     eapply possible_crash_vsupd_vecs_listupd; eauto.
-    Unshelve. exact unit.
   Qed.
 
 

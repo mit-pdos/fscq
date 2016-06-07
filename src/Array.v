@@ -1224,6 +1224,7 @@ Section ArrayCrashXform.
 End ArrayCrashXform.
 
 
+
 Section SubsetArray.
 
   Theorem sync_invariant_arrayN_subset : forall vs a,
@@ -1473,5 +1474,25 @@ Section ListUpd.
     apply listupd_sel_inb; omega.
   Qed.
 
-
 End ListUpd.
+
+
+Section ListUpdSubset.
+
+  Lemma arrayN_listupd_subset : forall l m l0 base F,
+    (F * arrayN ptsto_subset base l0 )%pred m ->
+    length l0 = length l ->
+    (F * arrayN ptsto_subset base l)%pred (listupd m base l).
+  Proof.
+    induction l; intros; destruct l0; simpl in *; auto; try omega.
+    apply sep_star_assoc.
+    eapply IHl with (l0 := l0); eauto.
+    setoid_rewrite sep_star_comm at 1.
+    apply sep_star_assoc.
+    apply sep_star_comm; destruct a, p.
+    eapply ptsto_subset_upd.
+    pred_apply; cancel.
+    apply incl_refl.
+  Qed.
+
+End ListUpdSubset.
