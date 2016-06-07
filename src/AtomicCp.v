@@ -284,7 +284,9 @@ Module ATOMICCP.
     eassumption.
     eauto.
   Qed.
-  
+
+  Hint Resolve DIRTREE.dirtree_safe_trans : dirtree_safe.
+  Hint Resolve DIRTREE.dirtree_safe_refl : dirtree_safe.
 
   Lemma temp_tree_pred_safe_trans: forall Fm Ftop fsxp ilist free tree ilist' free' tree' mscs tinum,
     DIRTREE.dirtree_safe ilist (BFILE.pick_balloc free (MSAlloc mscs)) tree ilist' (BFILE.pick_balloc free' (MSAlloc mscs)) tree' ->
@@ -294,7 +296,7 @@ Module ATOMICCP.
     unfold temp_tree_pred in *.
     cancel.
     eauto.
-    eapply DIRTREE.dirtree_safe_trans; eauto.
+    eauto with dirtree_safe.
   Qed.
 
   Ltac diskset_pred_solve := 
@@ -364,23 +366,9 @@ Module ATOMICCP.
     unfold BFILE.diskset_was in H26.
     intuition; subst.
     diskset_pred_solve.
-
-   (* d is dirtree_safe to temp_tree.  temp_tree is dirtree_safe to dirtree_update through H19. 
-      dirtree_update is dirtree_safe to dirtree_2update through H26.  =>  d is dirtree_safe to double update. *)
-    eapply DIRTREE.dirtree_safe_trans.
-    eapply DIRTREE.dirtree_safe_trans.
-    eapply H29.
-    eapply H18.
-    eassumption.
-
+    eauto with dirtree_safe.
     diskset_pred_solve.
-
-    eapply DIRTREE.dirtree_safe_trans.
-    eapply DIRTREE.dirtree_safe_trans.
-    eapply H29.
-    eapply H18.
-    eassumption.
-
+    eauto with dirtree_safe.
     or_r. cancel.
     erewrite update_update_subtree_eq; eauto.
     erewrite update_update_subtree_eq; eauto.
@@ -402,15 +390,7 @@ Module ATOMICCP.
     rewrite H14 in *.
 
     diskset_pred_solve.
-
-    eapply DIRTREE.dirtree_safe_trans.
-    eapply DIRTREE.dirtree_safe_trans.
-    eapply H29.
-    eapply H18.
-    eassumption.
-
-
-    eapply DIRTREE.dirtree_safe_refl.
+    eauto with dirtree_safe.
 
     diskset_pred_solve.
     rewrite H21 in *.
@@ -419,14 +399,7 @@ Module ATOMICCP.
     rewrite H15 in *.
     rewrite H14 in *.
 
-    eapply DIRTREE.dirtree_safe_trans.
-    eapply DIRTREE.dirtree_safe_trans.
-    eapply DIRTREE.dirtree_safe_trans.
-    eapply H18.
-    3: eapply H33.
-    2: eapply H25.
-    eapply DIRTREE.dirtree_safe_refl.
-    eapply DIRTREE.dirtree_safe_refl.
+    eauto with dirtree_safe.
 
     (* Handle crash cases *)
     xcrash.
@@ -441,22 +414,14 @@ Module ATOMICCP.
     rewrite H23 in *.
     rewrite H17 in *.
     rewrite H15 in *.
-    eapply DIRTREE.dirtree_safe_trans.
-    eapply H29.
-    eapply DIRTREE.dirtree_safe_trans.
-    eapply H18.
-    eassumption.
+    eauto with dirtree_safe.
 
     diskset_pred_solve.
     rewrite H21 in *.
     rewrite H23 in *.
     rewrite H17 in *.
     rewrite H15 in *.
-    eapply DIRTREE.dirtree_safe_trans.
-    eapply H29.
-    eapply DIRTREE.dirtree_safe_trans.
-    eapply H18.
-    eassumption.
+    eauto with dirtree_safe.
 
     xcrash.
     repeat (xform_deex_r).
@@ -469,17 +434,13 @@ Module ATOMICCP.
     rewrite H23 in *.
     rewrite H17 in *.
     rewrite H15 in *.
-    eapply DIRTREE.dirtree_safe_trans.
-    eapply H21.
-    eassumption.
+    eauto with dirtree_safe.
 
     diskset_pred_solve.
     rewrite H23 in *.
     rewrite H17 in *.
     rewrite H15 in *.
-    eapply DIRTREE.dirtree_safe_trans.
-    eapply H21.
-    eassumption.
+    eauto with dirtree_safe.
 
     xcrash.
     repeat (xform_deex_r).
