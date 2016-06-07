@@ -428,30 +428,77 @@ Module ATOMICCP.
     eapply DIRTREE.dirtree_safe_refl.
     eapply DIRTREE.dirtree_safe_refl.
 
-    (* XXX handle crash cases *)
+    (* Handle crash cases *)
+    xcrash.
+    repeat (xform_deex_r).
+    xform_norm; cancel. 
 
-    AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
-    cancel.
-    repeat (erewrite crash_xform_exists_comm; eapply pimpl_exists_r; eexists).
-    cancel.
-    erewrite crash_xform_sep_star_dist.
-    
     unfold BFILE.diskset_was in H26.
     intuition; subst.
-    diskset_pred_solve.
-    diskset_pred_solve.
 
-    AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
+    diskset_pred_solve.
+    rewrite H21 in *.
+    rewrite H23 in *.
+    rewrite H17 in *.
+    rewrite H15 in *.
+    eapply DIRTREE.dirtree_safe_trans.
+    eapply H29.
+    eapply DIRTREE.dirtree_safe_trans.
+    eapply H18.
+    eassumption.
+
+    diskset_pred_solve.
+    rewrite H21 in *.
+    rewrite H23 in *.
+    rewrite H17 in *.
+    rewrite H15 in *.
+    eapply DIRTREE.dirtree_safe_trans.
+    eapply H29.
+    eapply DIRTREE.dirtree_safe_trans.
+    eapply H18.
+    eassumption.
+
+    xcrash.
+    repeat (xform_deex_r).
+    xform_norm; cancel.
+
     unfold BFILE.diskset_was in H26.
     intuition; subst.
+
     diskset_pred_solve.
+    rewrite H23 in *.
+    rewrite H17 in *.
+    rewrite H15 in *.
+    eapply DIRTREE.dirtree_safe_trans.
+    eapply H21.
+    eassumption.
+
+    diskset_pred_solve.
+    rewrite H23 in *.
+    rewrite H17 in *.
+    rewrite H15 in *.
+    eapply DIRTREE.dirtree_safe_trans.
+    eapply H21.
+    eassumption.
+
+    xcrash.
+    repeat (xform_deex_r).
+    xform_norm; cancel.
+
+    repeat (xform_deex_r).
+    xform_norm; cancel.
+
+    admit.  (* use H3 *)
     diskset_pred_solve.
 
-    AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
-    diskset_pred_solve.
+    xcrash.
+    repeat (xform_deex_r).
+    xform_norm; cancel.
 
-    AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
-    AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
+    xcrash.
+    repeat (xform_deex_r).
+    xform_norm; cancel.
+
   Admitted.
 
   Hint Extern 1 ({{_}} progseq (copydata _ _ _ _) _) => apply copydata_ok : prog.
