@@ -460,12 +460,9 @@ Module ATOMICCP.
     instantiate (1 := ds!!).
     eassumption.
     2: eassumption.
-    instantiate (1 := (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum {|
-        BFILE.BFData := (BFILE.BFData tfile) ⟦ 0 := (fst v0, vsmerge t0) ⟧;
-        BFILE.BFAttr := BFILE.BFAttr tfile|}) temp_tree)).
-    2: instantiate (2 := [temp_fn]).
-    2: erewrite DIRTREE.find_update_subtree; eauto.
-    admit.
+    eauto with dirtree_safe.
+    eauto.
+
     exfalso. (* contradiction between H12 and H3?*)
     admit.
     repeat (destruct H12).
@@ -484,7 +481,8 @@ Module ATOMICCP.
     inversion H14.
     rewrite <- H18 in H12.
     rewrite <- H18.
-    admit.  (* use H12 *)
+    rewrite dsupd_latest. eauto.
+
     diskset_pred_solve.
 
     xcrash.
