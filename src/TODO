@@ -33,10 +33,10 @@
 
 ===
 
-- do we need to change our valuset handling to always use subsets rather than exact equality?
-  this would enable us to get rid of the per-address Sync, and instead switch to a global
-  Sync opcode in the lowest level.
-- writeback cache (integrate ReadCache and WritebackCache)
+//- do we need to change our valuset handling to always use subsets rather than exact equality?
+//  this would enable us to get rid of the per-address Sync, and instead switch to a global
+//  Sync opcode in the lowest level.
+//- writeback cache (integrate ReadCache and WritebackCache)
 - eviction from GroupLog
 - prove AtomicCp
 - prove mkfs
