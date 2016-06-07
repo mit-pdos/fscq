@@ -128,6 +128,28 @@ Module AFS.
   Notation MSAlloc := BFILE.MSAlloc.
   Import DIRTREE.
 
+  Theorem mkfs_ok : forall data_bitmaps inode_bitmaps log_descr_blocks,
+    {< disk,
+     PRE:hm
+       arrayN (@ptsto _ addr_eq_dec _) 0 disk *
+       [[ length disk = 1 +
+          data_bitmaps * BALLOC.items_per_val +
+          inode_bitmaps * BALLOC.items_per_val / INODE.IRecSig.items_per_val +
+          inode_bitmaps + data_bitmaps + data_bitmaps +
+          1 + log_descr_blocks + log_descr_blocks * PaddedLog.DescSig.items_per_val ]]
+     POST:hm' RET:r
+       [[ r = None ]] \/
+       exists ms fsxp d ilist frees,
+       [[ r = Some (ms, fsxp) ]] *
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
+       [[[ d ::: rep fsxp emp (TreeDir (FSXPRootInum fsxp) nil) ilist frees ]]]
+     XCRASH:hm'
+       any
+     >} mkfs data_bitmaps inode_bitmaps log_descr_blocks.
+  Proof.
+    unfold mkfs.
+    safestep.
+  Admitted.
 
   Definition recover {T} rx : prog T :=
     cs <- BUFCACHE.init_recover 10;
