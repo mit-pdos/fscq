@@ -284,6 +284,19 @@ Module ATOMICCP.
     eassumption.
     eauto.
   Qed.
+  
+
+  Lemma temp_tree_pred_safe_trans: forall Fm Ftop fsxp ilist free tree ilist' free' tree' mscs tinum,
+    DIRTREE.dirtree_safe ilist (BFILE.pick_balloc free (MSAlloc mscs)) tree ilist' (BFILE.pick_balloc free' (MSAlloc mscs)) tree' ->
+    temp_tree_pred Fm Ftop fsxp ilist free tree mscs tinum =p=> temp_tree_pred Fm Ftop fsxp ilist' free' tree' mscs tinum.
+  Proof.
+    intros.
+    unfold temp_tree_pred in *.
+    cancel.
+    eauto.
+    eapply DIRTREE.dirtree_safe_trans; eauto.
+  Qed.
+
 
   (* unused *)
   Lemma block_belong_to_file_bn_eq: forall ilist bn0 bn1 inum off,
@@ -295,7 +308,7 @@ Module ATOMICCP.
     intuition.
   Qed.
 
-  Ltac diskset_pred_solve':= 
+  Ltac diskset_pred_solve := 
     repeat match goal with
       | [ |- diskset_pred _ (dssync_vecs (dsupd _ _ _) _) ] 
           => idtac "diskset_pred dssync";  eapply diskset_pred_d_map
@@ -303,10 +316,16 @@ Module ATOMICCP.
           => idtac "diskset_pred"; eapply diskset_pred_d_map; eauto
       | [ |- diskset_pred _ (_ !!, []) ] => idtac "sync"; eapply diskset_pred_sync; eauto
       | [ |- diskset_pred _ (pushd _ _)] => idtac "pushd"; eapply diskset_pred_pushd
+      | [ |- temp_tree_pred _ _ _ _ _ _ _ _ (list2nmem ?d) ]
+          => idtac "temp_tree_pred apply"; pred_apply; unfold temp_tree_pred; cancel; eauto
+      | [ |- temp_tree_pred _ _ _ _ _ _ _ _ (list2nmem (vssync_vecs _ _)) ]
+          => idtac "temp_tree_pred_vssync"; eapply temp_tree_pred_vssync_eq; eauto
       | [ |- forall _ : _, temp_tree_pred _ _ _ _ _ _ _ _ _ -> _ (list2nmem _ ⟦ _ := _ ⟧)] 
           => idtac "forall"; intros; eapply temp_tree_pred_dupdate_eq; eauto
-      | [ |- forall _ : _, temp_tree_pred _ _ _ _ _ _ _ _ _ -> temp_tree_pred _ _ _ _ _ _ _ _ _ ] 
+      | [ |- forall _ : _, temp_tree_pred _ _ _ ?ilist _ _ _ _ _ -> temp_tree_pred _ _ _ ?ilist _ _ _ _ _ ] 
           => idtac "forall2"; intros; eapply temp_tree_pred_vssync_eq; eauto
+      | [ |- forall _ : _, temp_tree_pred _ _ _ ?ilist _ _ _ _ _ -> temp_tree_pred _ _ _ ?ilist' _ _ _ _ _ ] 
+          => idtac "forall3"; intros; eapply temp_tree_pred_safe_trans; eauto
       | [ |- Forall _ _ ] => eapply Forall_forall; intros ? Hin
       | [ Hin: In _ _ |- _ ] => idtac "Hin";  eapply in_selN_exists in Hin; destruct Hin as [? Hin]; destruct Hin as [? Hin1]
       | [ Hin1: _ |- exists _: _, BFILE.block_belong_to_file _ _ _ _] 
@@ -328,10 +347,9 @@ Module ATOMICCP.
       exists ds',
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
       exists tree' ilist' freelist',
-        [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist') ]]] *
         [[ diskset_pred (temp_tree_pred Fm Ftop fsxp ilist' freelist' tree' mscs tinum) ds' ]] *
-        ([[ r = false ]] \/
-         ([[ r = true ]] * 
+        [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist') ]]] *
+        ([[ r = false ]] \/ ([[ r = true ]] * 
           [[tree' = (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree)]]))
     XCRASH:hm'
       exists ds',
@@ -356,15 +374,7 @@ Module ATOMICCP.
 
     unfold BFILE.diskset_was in H26.
     intuition; subst.
-    diskset_pred_solve'.
-
-    (* return case setattr failed; need to prove temp_tree_pred wrt. latest d in ds. 
-      disks in ds include disks w. unmodified temp_tree *)
-
-    pred_apply.
-    unfold temp_tree_pred.
-    cancel.
-    eassumption.
+    diskset_pred_solve.
 
    (* d is dirtree_safe to temp_tree.  temp_tree is dirtree_safe to dirtree_update through H19. 
       dirtree_update is dirtree_safe to dirtree_2update through H26.  =>  d is dirtree_safe to double update. *)
@@ -374,12 +384,8 @@ Module ATOMICCP.
     eapply H18.
     eassumption.
 
-    diskset_pred_solve'.
+    diskset_pred_solve.
 
-    pred_apply.
-    unfold temp_tree_pred.
-    cancel.
-    eassumption.
     eapply DIRTREE.dirtree_safe_trans.
     eapply DIRTREE.dirtree_safe_trans.
     eapply H29.
@@ -406,47 +412,31 @@ Module ATOMICCP.
     rewrite H15 in *.
     rewrite H14 in *.
 
-    diskset_pred_solve'.
+    diskset_pred_solve.
 
-    erewrite update_update_subtree_eq in H33.
-    erewrite update_update_subtree_eq in H33.
-
-    (* we know: 
-        - BFILE.block_belong_to_file ilist al ⟦ i ⟧ tinum i
-        - dirtree_safe ilist _ _ ilist' _ _
-      we updated ilist into ilist' because we updated attr, but that doesn't change block_belongs_to_file ...
-    *)
-    admit.
-
-    pred_apply.
-    unfold temp_tree_pred.
-    cancel.
-    eassumption.
-    eapply DIRTREE.dirtree_safe_trans.
     eapply DIRTREE.dirtree_safe_trans.
     eapply DIRTREE.dirtree_safe_trans.
     eapply H29.
     eapply H18.
-    eapply H25.
     eassumption.
 
-    pred_apply.
-    unfold temp_tree_pred.
-    cancel.
-    erewrite update_update_subtree_eq; eauto.
-    distinct_names.
-    constructor.
-    admit.  (* dirtree_safe with respect itself. *)
-    
-    diskset_pred_solve'.
-    admit.
-    pred_apply.
-    unfold temp_tree_pred.
-    cancel.
-    eassumption.
+    admit.  (* identical *)
 
-    admit.  (* same as above? *)
-    admit.  (* same as above? *)
+    diskset_pred_solve.
+    rewrite H21 in *.
+    rewrite H23 in *.
+    rewrite H17 in *.
+    rewrite H15 in *.
+    rewrite H14 in *.
+
+    eapply DIRTREE.dirtree_safe_trans.
+    eapply DIRTREE.dirtree_safe_trans.
+    eapply DIRTREE.dirtree_safe_trans.
+    eapply H18.
+    3: eapply H33.
+    2: eapply H25.
+    admit.  (* identical *)
+    admit.  (* identical *)
 
     (* XXX handle crash cases *)
 
