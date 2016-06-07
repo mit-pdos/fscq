@@ -4,8 +4,11 @@ Require Import Eqdep_dec.
 Require Import AsyncDisk.
 Require Import List ListUtils.
 Require Import Omega.
+Import EqNotations.
 
 Set Implicit Arguments.
+
+
 
 Definition byte := word 8.
 Definition bytes n := word (n * 8).
@@ -82,10 +85,10 @@ Program Fixpoint bsplit_list sz (w: bytes sz) : list byte :=
     end.
 
 Program Fixpoint bcombine_list (l: list byte): bytes (length l) :=
-    match l with
-     | nil => bytes0
-     | h::l' => bcombine (byte2bytes h) (bcombine_list l')
-    end.
+match l with
+ | nil => bytes0
+ | h::l' => bcombine (byte2bytes h) (bcombine_list l')
+end.
 
 Theorem list2bytes2list: forall (l: list byte), bsplit_list (bcombine_list l) = l.
 Proof.
@@ -100,17 +103,27 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma split_len_eq: forall sz (b: bytes sz), length (bsplit_list b) = sz.
+Lemma len_eq: forall sz (b: bytes sz), sz = length (bsplit_list b).
 Proof.
   intros; unfold bsplit_list.
   induction sz. 
   reflexivity. 
-  simpl; rewrite IHsz. 
+  simpl; rewrite <- IHsz. 
   reflexivity.
 Qed.
 
-Theorem bytes2list2bytes2list: forall sz (b: bytes sz), bsplit_list (bcombine_list (bsplit_list b)) = bsplit_list b.
-Proof. intros; rewrite list2bytes2list. reflexivity. Qed.
+Theorem bytes2list2bytes: forall sz (b: bytes sz), exists H, 
+bcombine_list (bsplit_list b) = rew H in b.
+Proof. intros. exists (len_eq b).
+induction sz; simpl.
+unfold bytes0.
+unfold word2bytes.
+eq_rect_simpl.
+rewrite word0; auto.
+
+rewrite IHsz.
+repeat generalize_proof.
+Admitted.
 
 Notation "'valubytes'" := (Valulen.valubytes).
 Notation "'valubytes_is'" := (Valulen.valubytes_is).
