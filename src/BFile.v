@@ -1051,7 +1051,7 @@ Module BFILE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
            [[[ m ::: (Fm * rep bxp ixp flist ilist free) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
-           [[[ (BFData f) ::: Fd * arrayN a vsl ]]] *
+           [[[ (BFData f) ::: Fd * arrayN (@ptsto _ addr_eq_dec _) a vsl ]]] *
            [[ i < length vsl]]
     POST:hm' RET:^(ms', r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
@@ -1063,7 +1063,7 @@ Module BFILE.
     unfold read_array.
     hoare.
 
-    denote (arrayN a vsl) as Hx.
+    denote (arrayN _ a vsl) as Hx.
     destruct (list2nmem_arrayN_bound vsl _ Hx); subst; simpl in *; omega.
     rewrite isolateN_fwd with (i:=i) by auto.
     cancel.
@@ -1076,13 +1076,13 @@ Module BFILE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
            [[[ m ::: (Fm * rep bxp ixp flist ilist free) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
-           [[[ (BFData f) ::: Fd * arrayN a vsl ]]] *
+           [[[ (BFData f) ::: Fd * arrayN (@ptsto _ addr_eq_dec _) a vsl ]]] *
            [[ i < length vsl]]
     POST:hm' RET:ms' exists m' flist' f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
            [[[ m' ::: (Fm * rep bxp ixp flist' ilist free) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
-           [[[ (BFData f') ::: Fd * arrayN a (updN vsl i (v, nil)) ]]] *
+           [[[ (BFData f') ::: Fd * arrayN (@ptsto _ addr_eq_dec _) a (updN vsl i (v, nil)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) (a + i) (v, nil)) (BFAttr f) ]] *
            [[ MSAlloc ms = MSAlloc ms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
@@ -1090,7 +1090,7 @@ Module BFILE.
   Proof.
     unfold write_array.
     prestep. cancel.
-    denote (arrayN a vsl) as Hx.
+    denote (arrayN _ a vsl) as Hx.
     destruct (list2nmem_arrayN_bound vsl _ Hx); subst; simpl in *; try omega.
     rewrite isolateN_fwd with (i:=i) by auto; filldef; cancel.
 
@@ -1113,7 +1113,7 @@ Module BFILE.
       LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
       [[[ m ::: (Fm * rep bxp ixp flist ilist frees) ]]] *
       [[[ flist ::: (Fi * inum |-> f) ]]] *
-      [[[ (BFData f) ::: Fd * arrayN a vsl ]]] *
+      [[[ (BFData f) ::: Fd * arrayN (@ptsto _ addr_eq_dec _) a vsl ]]] *
       [[ pf = fold_left vfold (firstn i (map fst vsl)) v0 ]] *
       [[ MSAlloc ms = MSAlloc ms0 ]]
     OnCrash  crash
@@ -1130,7 +1130,7 @@ Module BFILE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
            [[[ m ::: (Fm * rep bxp ixp flist ilist frees) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
-           [[[ (BFData f) ::: Fd * arrayN a vsl ]]] *
+           [[[ (BFData f) ::: Fd * arrayN (@ptsto _ addr_eq_dec _) a vsl ]]] *
            [[ nr <= length vsl]]
     POST:hm' RET:^(ms', r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
@@ -1145,7 +1145,7 @@ Module BFILE.
     step.
 
     assert (m1 < length vsl).
-    denote (arrayN a vsl) as Hx.
+    denote (arrayN _ a vsl) as Hx.
     destruct (list2nmem_arrayN_bound vsl _ Hx); subst; simpl in *; omega.
     safestep.
 
@@ -1299,7 +1299,7 @@ Module BFILE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
            [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
-           [[[ (BFData f') ::: (Fd * arrayN (length (BFData f)) (synced_list l)) ]]] *
+           [[[ (BFData f') ::: (Fd * arrayN (@ptsto _ addr_eq_dec _) (length (BFData f)) (synced_list l)) ]]] *
            [[ f' = mk_bfile ((BFData f) ++ (synced_list l)) (BFAttr f) ]] *
            [[ ilist_safe ilist (pick_balloc frees (MSAlloc ms')) 
                       ilist' (pick_balloc frees' (MSAlloc ms'))  ]]
@@ -1443,7 +1443,7 @@ Module BFILE.
   Qed.
 
   Lemma arrayN_synced_list_fsynced : forall f l,
-    arrayN 0 (synced_list l) (list2nmem (BFData f)) ->
+    arrayN (@ptsto _ addr_eq_dec _) 0 (synced_list l) (list2nmem (BFData f)) ->
     FSynced f.
   Proof.
     unfold FSynced; intros.
@@ -1593,7 +1593,7 @@ Module BFILE.
     crash_xform (rep bxp ixp fs ilist frees) =p=> 
       exists fs' f',  [[ flist_crash fs fs' ]] * [[ file_crash f f' ]] *
       rep bxp ixp fs' ilist frees *
-      [[ (arrayN_ex fs' i * i |-> f')%pred (list2nmem fs') ]].
+      [[ (arrayN_ex (@ptsto _ addr_eq_dec _) fs' i * i |-> f')%pred (list2nmem fs') ]].
   Proof.
     unfold rep; intros.
     xform_norm.
@@ -1615,7 +1615,7 @@ Module BFILE.
     crash_xform (rep bxp ixp fs ilist frees) =p=>
       exists fs' f',  [[ flist_crash fs fs' ]] * [[ file_crash f f' ]] *
       rep bxp ixp fs' ilist frees *
-      [[ (arrayN_ex fs' i * i |-> f')%pred (list2nmem fs') ]] *
+      [[ (arrayN_ex (@ptsto _ addr_eq_dec _) fs' i * i |-> f')%pred (list2nmem fs') ]] *
       [[ (crash_xform Fd)%pred (list2nmem (BFData f')) ]].
   Proof.
     intros.
@@ -1632,7 +1632,7 @@ Module BFILE.
     crash_xform (rep bxp ixp fs ilist frees) =p=> 
       exists fs' f' v, [[ flist_crash fs fs' ]] * [[ file_crash f f' ]] *
       rep bxp ixp fs' ilist frees * [[ In v (vsmerge vs) ]] *
-      [[ (arrayN_ex fs' ino * ino |-> f')%pred (list2nmem fs') ]] *
+      [[ (arrayN_ex (@ptsto _ addr_eq_dec _) fs' ino * ino |-> f')%pred (list2nmem fs') ]] *
       [[ (crash_xform Fd * off |=> v)%pred (list2nmem (BFData f')) ]].
   Proof.
     Opaque vsmerge.
