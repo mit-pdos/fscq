@@ -446,10 +446,45 @@ Module ATOMICCP.
     repeat (xform_deex_r).
     xform_norm; cancel.
 
+    remember (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum {|
+        BFILE.BFData := (BFILE.BFData tfile) ⟦ 0 := (fst v0, vsmerge t0) ⟧;
+        BFILE.BFAttr := BFILE.BFAttr tfile|}) temp_tree) as Htree.
+
     repeat (xform_deex_r).
     xform_norm; cancel.
+    instantiate (3 := Htree).
+    instantiate (2 := ilist).
+    instantiate (1 := (freelist_1, freelist_2)).
 
-    admit.  (* use H3 *)
+    edestruct DIRTREE.dirtree_update_safe_pathname_pred with (v := (fst v0, vsmerge t0)).
+    instantiate (1 := ds!!).
+    eassumption.
+    2: eassumption.
+    instantiate (1 := (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum {|
+        BFILE.BFData := (BFILE.BFData tfile) ⟦ 0 := (fst v0, vsmerge t0) ⟧;
+        BFILE.BFAttr := BFILE.BFAttr tfile|}) temp_tree)).
+    2: instantiate (2 := [temp_fn]).
+    2: erewrite DIRTREE.find_update_subtree; eauto.
+    admit.
+    exfalso. (* contradiction between H12 and H3?*)
+    admit.
+    repeat (destruct H12).
+    destruct_lift H12.
+    assert (x0 = [temp_fn]) as Hpn.
+    eapply find_subtree_inode_pathname_unique.
+    instantiate (1:= temp_tree).
+    distinct_inodes.
+    distinct_names.
+    eauto.
+    eassumption.
+    eauto.
+    rewrite Hpn in H12.
+    rewrite Hpn in H14.
+    rewrite H7 in H14.
+    inversion H14.
+    rewrite <- H18 in H12.
+    rewrite <- H18.
+    admit.  (* use H12 *)
     diskset_pred_solve.
 
     xcrash.
