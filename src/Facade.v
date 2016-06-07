@@ -679,7 +679,7 @@ Definition ProgOk env prog (initial_tstate final_tstate : Telescope) :=
 Arguments ProgOk env prog%facade_scope initial_tstate final_tstate.
 
 Notation "{{ A }} P {{ B }} // EV" :=
-  (ProgOk EV P A B)
+  (ProgOk EV P%facade A B)
     (at level 60, format "'[v' '{{'  A  '}}' '/'    P '/' '{{'  B  '}}'  //  EV ']'").
 
 Ltac FacadeWrapper_t :=
@@ -760,6 +760,24 @@ Check exec_trace.
 
 Local Open Scope string_scope.
 
+Lemma CompileAnything :
+  forall (tenv1 tenv2: Telescope) env,
+    {{ tenv1 }}
+      While (Const 1) __
+    {{ tenv2 }} // env.
+Proof.
+  unfold ProgOk. intros.
+  intuition.
+  clear H. revert initial_state.
+  cofix.
+  econstructor.
+  reflexivity.
+  econstructor.
+  intros. auto.
+  prep_induction H0. induction H0; intros; subst_definitions; subst; try discriminate.
+  invc H2. invc H0_. eapply IHRunsTo2; eauto.
+  invc H2. discriminate.
+Qed.
 
 Lemma CompileSeq :
   forall (tenv1 tenv1' tenv2: Telescope) env p1 p2,
@@ -826,9 +844,6 @@ Ltac find_cases var st := case_eq (find var st); [
 | let Hne := fresh "Hne" in
   intro Hne; rewrite Hne in *; exfalso; solve [ intuition idtac ] ].
 
-Definition disks_match (d : diskstate) (st : State) :=
-  find "disk" st = Some (Disk d).
-
 Ltac invert_ret_computes_to :=
   repeat match goal with
   | [ H : computes_to _ _ _ _ |- _ ] =>
@@ -844,9 +859,9 @@ Theorem extract_finish_equiv : forall A {H: FacadeWrapper Value A} scope pr p,
   forall st st' d0,
     st \u2272 ( SItemDisk (NTSome "disk") d0 (ret tt) :: scope) ->
     RunsTo disk_env p st st' ->
-    exists d', disks_match d' st' /\ exists r, @computes_to A pr d0 d' r.
+    exists d', find "disk" st' = Some (Disk d') /\ exists r, @computes_to A pr d0 d' r.
 Proof.
-  unfold ProgOk, disks_match.
+  unfold ProgOk.
   intros.
   specialize (H0 d0 st ltac:(auto)).
   destruct H0.
@@ -867,10 +882,11 @@ Theorem extract_crash_equiv : forall A scope pr p,
   forall st p' st' d0,
     st \u2272 (SItemDisk (NTSome "disk") d0 (ret tt) :: scope) ->
     (Step disk_env)^* (p, st) (p', st') ->
-    exists d', disks_match d' st' /\ (
-      computes_to_crash pr d0 d' \/
-      (exists r, @computes_to A pr d0 d' r)).
+    exists d', find "disk" st' = Some (Disk d') /\ @computes_to_crash A pr d0 d'.
 Proof.
+  (* Untrue! ProgOk only guarantees partial correctness of the extracted program, so even though [p] satisfies
+     the postcondition, it's possible that it does a write that [pr] wouldn't have done and then loops forever.
+     If [p] then crashes, the state won't correspond to a possible crash state of [pr]. *)
 Abort.
 
 Example micro_write : sigT (fun p => forall d0 a v,
