@@ -76,7 +76,6 @@ Section NonEmptyList.
       | nil => ds
       | d :: dlist' => pushdlist dlist' (pushd d ds)
       end.
-  
 
   (* pop out n oldest disks for a diskset *)
   Definition popn (n : nat) (ds : nelist) : nelist :=
@@ -313,19 +312,20 @@ Section NonEmptyList.
   Proof.
     intros; unfold pushd; simpl; auto.
   Qed.
-  
-  Lemma pushdlist_length: forall dlist ds, length(snd(pushdlist dlist ds)) =
-           length(dlist) + length(snd ds).
+
+  Lemma pushdlist_length: forall dlist ds,
+    length (snd (pushdlist dlist ds)) =
+    length dlist + length (snd ds).
   Proof.
-  induction dlist.
-  reflexivity.
-  simpl.
-  intros.
-  rewrite IHdlist.
-  rewrite pushd_length.
-  omega.
+    induction dlist.
+    reflexivity.
+    simpl.
+    intros.
+    rewrite IHdlist.
+    rewrite pushd_length.
+    omega.
   Qed.
-  
+
   Lemma nthd_pushd : forall l t n d,
     n <= length l
     -> nthd n (pushd d (t, l)) = nthd n (t, l).
