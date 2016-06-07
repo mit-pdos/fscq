@@ -484,6 +484,18 @@ Module ATOMICCP.
     rewrite dsupd_latest. eauto.
 
     diskset_pred_solve.
+    eapply DIRTREE.dirtree_safe_trans.
+    eapply H18.
+    unfold DIRTREE.dirtree_safe.
+    split.
+    eapply BFILE.ilist_safe_refl.
+    intros.
+    left.
+    split; eauto.
+    eexists [temp_fn].
+    eexists.
+    (* two cases: pathname = [temp_fn], or not. in the first case, inum = tinum; the second case is trivially trye *)
+    admit.
 
     xcrash.
     repeat (xform_deex_r).
