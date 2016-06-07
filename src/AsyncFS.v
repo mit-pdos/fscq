@@ -1,5 +1,4 @@
 Require Import Prog.
-Require Import Hashmap.
 Require Import Log.
 Require Import BFile.
 Require Import Word.
