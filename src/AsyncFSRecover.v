@@ -299,7 +299,7 @@ Module AFS_RECOVER.
        ((exists n,  [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]) \/
          exists flist' F',
          [[[ d ::: (F' * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' ilist frees) ]]] *
-         [[[ flist' ::: (arrayN_ex flist' inum * inum |-> BFILE.synced_file f) ]]]
+         [[[ flist' ::: (arrayN_ex (@ptsto _ addr_eq_dec _) flist' inum * inum |-> BFILE.synced_file f) ]]]
        )
    >>} file_sync fsxp inum mscs >> recover.
   Proof.

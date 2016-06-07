@@ -49,7 +49,7 @@ Module FileRecArray (FRA : FileRASig).
   Definition rep f (items : itemlist) :=
     ( exists vl, [[ vl = ipack items ]] *
       [[ items_valid f items ]] *
-      arrayN 0 (synced_list vl))%pred.
+      arrayN (@ptsto _ addr_eq_dec _) 0 (synced_list vl))%pred.
 
   Definition get T lxp ixp inum ix ms rx : prog T :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
@@ -216,8 +216,8 @@ Module FileRecArray (FRA : FileRASig).
   Lemma extend_ok_helper : forall f e items,
     items_valid f items ->
     length (BFILE.BFData f) |-> (block2val (updN block0 0 e), []) *
-    arrayN 0 (synced_list (ipack items)) =p=>
-    arrayN 0 (synced_list (ipack (items ++ (updN block0 0 e)))).
+    arrayN (@ptsto _ addr_eq_dec _) 0 (synced_list (ipack items)) =p=>
+    arrayN (@ptsto _ addr_eq_dec _) 0 (synced_list (ipack (items ++ (updN block0 0 e)))).
   Proof.
     intros.
     unfold items_valid, RALen in *; intuition.
@@ -490,7 +490,7 @@ Module FileRecArray (FRA : FileRASig).
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' items' ]]] *
           [[[ items' ::: Fe * (length items) |-> e *
-                arrayN (length items + 1) (repeat item0 (items_per_val - 1)) ]]] *
+                arrayN (@ptsto _ addr_eq_dec _) (length items + 1) (repeat item0 (items_per_val - 1)) ]]] *
           [[ items' = items ++ (updN block0 0 e)  ]] *
           [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
                               ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]])
@@ -528,7 +528,7 @@ Module FileRecArray (FRA : FileRASig).
                             cond (selN items i item0) i = false ]] \/
           exists st,
           [[ r = Some st /\ cond (snd st) (fst st) = true ]] *
-          [[[ items ::: arrayN_ex items (fst st) * (fst st) |-> (snd st) ]]] )
+          [[[ items ::: arrayN_ex (@ptsto _ addr_eq_dec _) items (fst st) * (fst st) |-> (snd st) ]]] )
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} ifind_array lxp ixp inum cond ms.
