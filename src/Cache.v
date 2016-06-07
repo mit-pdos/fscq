@@ -273,6 +273,16 @@ Module BUFCACHE.
     apply In_MapsTo; auto.
   Qed.
 
+  Lemma size_valid_cache0 : forall cachesize,
+    cachesize <> 0 ->
+    size_valid (cache0 cachesize).
+  Proof.
+    unfold size_valid, cache0; simpl; intros.
+    rewrite Map.cardinal_1.
+    rewrite MapProperties.elements_empty.
+    intuition.
+  Qed.
+
   Lemma addr_valid_remove : forall d a cm,
     addr_valid d cm ->
     addr_valid d (Map.remove a cm).
@@ -282,6 +292,13 @@ Module BUFCACHE.
     eapply MapFacts.remove_in_iff; eauto.
   Qed.
 
+  Lemma addr_valid_empty : forall m,
+    addr_valid m (Map.empty (valu * bool)).
+  Proof.
+    unfold addr_valid; intros.
+    apply MapFacts.empty_in_iff in H.
+    exfalso; auto.
+  Qed.
 
   Lemma addr_valid_mem_valid : forall a cm c d,
     Map.find a cm = Some c ->
@@ -1457,6 +1474,58 @@ Module BUFCACHE.
         apply incl_refl.
   Qed.
 
+  Lemma mem_pred_cachepred_refl_arrayN : forall l start m,
+    arrayN (@ptsto _ _ _) start l m ->
+    mem_pred (cachepred (Map.empty (valu * bool))) m m.
+  Proof.
+    induction l; simpl; intros.
+    - apply emp_empty_mem_only in H; subst.
+      unfold mem_pred. exists nil; simpl.
+      eapply pimpl_apply; [ | apply emp_empty_mem ].
+      cancel.
+      constructor.
+    - unfold mem_pred in *.
+      apply ptsto_mem_except in H as H'.
+      specialize (IHl _ _ H').
+      destruct IHl.
+      destruct_lift H0.
+      exists ((start, (a_cur, a_old)) :: x).
+      simpl.
+      unfold mem_pred_one at 1. unfold cachepred at 1.
+      rewrite MapFacts.empty_o; simpl.
+
+      eapply pimpl_apply.
+      2: eapply mem_except_ptsto.
+      3: eassumption.
+      2: apply ptsto_valid in H; eauto.
+      rewrite ptsto_pimpl_ptsto_subset.
+      cancel.
+
+      admit.
+      admit.
+  Admitted.
+
+  Lemma arrayS_arrayN : forall l start,
+    arrayS start l =p=> exists l', arrayN (@ptsto _ _ _) start l'.
+  Proof.
+    induction l; simpl; intros.
+    exists nil; simpl; eauto.
+    rewrite IHl.
+    unfold ptsto_subset.
+    norml; unfold stars; simpl.
+    exists ((a_cur, old) :: l'); simpl.
+    pred_apply; cancel.
+  Qed.
+
+  Lemma mem_pred_cachepred_refl_arrayS : forall l start m,
+    arrayS start l m ->
+    mem_pred (cachepred (Map.empty (valu * bool))) m m.
+  Proof.
+    intros.
+    apply arrayS_arrayN in H.
+    destruct_lift H.
+    eapply mem_pred_cachepred_refl_arrayN; eauto.
+  Qed.
 
   Lemma possible_crash_mem_match : forall (m1 m2 : rawdisk),
     possible_crash m1 m2 ->
@@ -1646,6 +1715,67 @@ Module BUFCACHE.
 
   Hint Extern 1 ({{_}} progseq (init_recover _) _) => apply init_recover_ok : prog.
 
+
+  Lemma sync_xform_arrayS : forall l start,
+    sync_xform (arrayS start l) =p=> arrayS start l.
+  Proof.
+    induction l; simpl; intros.
+    rewrite sync_xform_emp; cancel.
+    rewrite sync_xform_sep_star_dist.
+    rewrite sync_xform_ptsto_subset_preserve.
+    rewrite IHl.
+    cancel.
+  Qed.
+
+
+  (**
+   * [init_load_ok] uses the {!< .. >!} variant of the Hoare statement, as
+   * we need it to be "frameless"; otherwise the {< .. >} notation adds an
+   * extra frame around the whole thing, which looks exactly like our own
+   * frame [F], and makes it difficult to use automation.
+   *)
+  Theorem init_load_ok : forall cachesize,
+    {!< disk,
+    PRE
+      arrayS 0 disk *
+      [[ cachesize <> 0 ]]
+    POST RET:cs
+      exists d,
+      rep cs d *
+      [[ arrayS 0 disk d ]]
+    CRASH
+      arrayS 0 disk
+    >!} init_load cachesize.
+  Proof.
+    unfold init_load, init, rep.
+    step.
+
+    eapply pimpl_ok2; eauto.
+    simpl; intros.
+
+    (**
+     * Special-case for initialization, because we are moving a predicate [F]
+     * from the base memory to a virtual memory.
+     *)
+    unfold pimpl; intros.
+    destruct_lift H; subst.
+
+    repeat (apply sep_star_lift_apply'; eauto).
+    apply sep_star_comm; apply emp_star_r.
+    exists m.
+    repeat (apply sep_star_lift_apply'; eauto).
+    apply sep_star_comm.
+    repeat (apply sep_star_lift_apply'; eauto).
+    apply sync_xform_arrayS in H.
+
+    eapply mem_pred_cachepred_refl_arrayS; eauto.
+    intuition.
+    apply size_valid_cache0; eauto.
+    apply addr_valid_empty.
+    apply sync_xform_arrayS in H; eauto.
+  Qed.
+
+  Hint Extern 1 ({{_}} progseq (init_load _) _) => apply init_load_ok : prog.
 
 
   (** array operations *)

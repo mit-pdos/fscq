@@ -924,6 +924,17 @@ Proof.
   eapply ptsto_sync_mem; eauto.
 Qed.
 
+Theorem sync_xform_ptsto_subset_preserve : forall a vs,
+  sync_xform (a |+> vs) =p=> a |+> vs.
+Proof.
+  intros.
+  rewrite sync_xform_ptsto_subset_precise.
+  unfold ptsto_subset, pimpl; intros.
+  exists nil.
+  apply sep_star_lift_apply'; eauto.
+  apply incl_nil.
+Qed.
+
 Theorem sync_invariant_ptsto_nil : forall a v,
   sync_invariant (a |=> v)%pred.
 Proof.
