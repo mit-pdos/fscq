@@ -297,18 +297,6 @@ Module ATOMICCP.
     eapply DIRTREE.dirtree_safe_trans; eauto.
   Qed.
 
-  Lemma dirtree_safe_idem: forall ilist free tree,
-    DIRTREE.dirtree_safe ilist free tree ilist free tree.
-  Proof.
-    intros.
-    unfold DIRTREE.dirtree_safe.
-    intuition.
-    unfold BFILE.ilist_safe.
-    intuition.
-    left.
-    split; eauto.
-  Qed.
-
   Ltac diskset_pred_solve := 
     repeat match goal with
       | [ |- diskset_pred _ (dssync_vecs (dsupd _ _ _) _) ] 
@@ -422,7 +410,7 @@ Module ATOMICCP.
     eassumption.
 
 
-    eapply dirtree_safe_idem.
+    eapply DIRTREE.dirtree_safe_refl.
 
     diskset_pred_solve.
     rewrite H21 in *.
@@ -437,8 +425,8 @@ Module ATOMICCP.
     eapply H18.
     3: eapply H33.
     2: eapply H25.
-    eapply dirtree_safe_idem.
-    eapply dirtree_safe_idem.
+    eapply DIRTREE.dirtree_safe_refl.
+    eapply DIRTREE.dirtree_safe_refl.
 
     (* XXX handle crash cases *)
 
