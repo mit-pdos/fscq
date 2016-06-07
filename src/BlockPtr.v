@@ -159,11 +159,19 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   (************* program *)
 
+  Fixpoint indget T (indlvl : nat) lxp (bn : addr) off ms rx : prog T :=
+    let divisor := NIndirect ^ indlvl in
+    let^ (ms, v) <- IndRec.get lxp bn (off / divisor) ms;
+    match indlvl with
+    | 0 =>  rx ^(ms, v)
+    | S indlvl' => indget T indlvl' lxp (# (Rec.to_word v)) (off mod divisor) ms rx
+    end.
+
   Definition get T lxp (ir : irec) off ms rx : prog T :=
     If (lt_dec off NDirect) {
       rx ^(ms, selN (IRBlocks ir) off $0)
     } else {
-      let^ (ms, v) <- IndRec.get lxp (IRIndPtr ir) (off - NDirect) ms;
+      let^ (ms, v) <- indget 0 lxp (IRIndPtr ir) (off - NDirect) ms;
       rx ^(ms, v)
     }.
 
@@ -221,14 +229,22 @@ Module BlockPtr (BPtr : BlockPtrSig).
       rx ^(ms, Some (upd_irec ir (S len) ibn (IRBlocks ir)))
     }.
 
-
   (************** rep invariant *)
+  Fixpoint indrep_ind bxp (indlvl : nat) (ibn : addr) (l : list waddr):=
+    ([[ length l = NIndirect ^ (S indlvl) ]] * [[ BALLOC.bn_valid bxp ibn ]] *
+    match indlvl with
+    | 0 => IndRec.rep ibn l
+    | S indlvl' => exists iblocks l_part, 
+      IndRec.rep ibn iblocks *
+      [[ length iblocks = NIndirect ]] *
+      [[ l = concat l_part ]] *
+      listmatch (fun ibn' l' => indrep_ind bxp indlvl' (# ibn') l') iblocks l_part
+    end)%pred.
+  Hint Extern 0 (okToUnify (indrep_ind _ _ _ _) (indrep_ind _ _ _ _)) => constructor : okToUnify.
 
   Definition indrep bxp (l : list waddr) ibn indlist :=
     ( [[ length l <= NDirect ]] \/
-      [[ length l > NDirect /\ length indlist = NIndirect /\ BALLOC.bn_valid bxp ibn ]] *
-      IndRec.rep ibn indlist )%pred.
-
+      [[ length l > NDirect ]] * indrep_ind bxp 0 ibn indlist )%pred.
 
   Definition rep bxp (ir : irec) (l : list waddr) :=
     ( [[ length l = (IRLen ir) /\ length l <= NBlocks ]] *
@@ -244,8 +260,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Definition rep_indirect bxp (ir : irec) (l : list waddr) :=
     ( [[ length l = (IRLen ir) /\ length l <= NBlocks /\ length l > NDirect ]] *
       [[ length (IRBlocks ir) = NDirect ]] *
-      exists indlist, IndRec.rep (IRIndPtr ir) indlist *
-      [[ length indlist = NIndirect /\ BALLOC.bn_valid bxp (IRIndPtr ir) ]] *
+      exists indlist, indrep_ind bxp 0 (IRIndPtr ir) indlist *
+      [[ length indlist = NIndirect ]] *
       [[ l = (IRBlocks ir) ++ firstn (length l - NDirect) indlist ]] )%pred.
 
   (* Necessary to make subst work when there's a recursive term like:
@@ -287,6 +303,134 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite selN_app1 by omega; auto.
   Qed.
 
+  Lemma off_mod_len_l : forall T off (l : list T), length l = NIndirect -> off mod NIndirect < length l.
+  Proof.
+    intros. rewrite H; apply Nat.mod_upper_bound; apply IndRec.Defs.items_per_val_not_0.
+  Qed.
+
+  Lemma mult_neq_0 : forall m n, m <> 0 -> n <> 0 -> m * n <> 0.
+  Proof.
+    intros. intuition.
+    apply mult_is_O in H1.
+    destruct H1; auto.
+  Qed.
+
+  Hint Resolve off_mod_len_l.
+  Hint Resolve IndRec.Defs.items_per_val_not_0.
+  Hint Resolve IndRec.Defs.items_per_val_gt_0'.
+  Hint Resolve mult_neq_0.
+
+  Lemma indrep_ind_lift : forall bxp indlvl bn l,
+    indrep_ind bxp indlvl bn l <=p=>
+    ([[ length l = NIndirect ^ S indlvl ]] * [[ BALLOC.bn_valid bxp bn ]] * indrep_ind bxp indlvl bn l)%pred.
+  Proof.
+    unfold indrep_ind.
+    split; induction indlvl; cancel.
+    auto.
+    auto.
+  Qed.
+
+  Fact divmod_n_zeros : forall n, fst (Nat.divmod n 0 0 0) = n.
+  Proof.
+    intros.
+    pose proof Nat.div_1_r n.
+    unfold Nat.div in H.
+    assumption.
+  Qed.
+
+  Hint Rewrite divmod_n_zeros using auto.
+
+  Local Hint Resolve Nat.pow_nonzero.
+
+  Ltac mult_nonzero := 
+    repeat (match goal with 
+    | [ |- mult _ _ <> 0 ] => apply mult_neq_0
+    | [ |- mult _ _ > 0 ] => apply lt_mul_mono
+    end; auto).
+
+  Fact listmatch_indrep_off : forall F T bxp indlvl (l1 : list T) l2 g off m,
+    length l1 = NIndirect -> off < length (concat l2) ->
+    (F * listmatch (fun a b => indrep_ind bxp indlvl (g a) b) l1 l2)%pred m
+    -> off / (NIndirect * NIndirect ^ indlvl) < length l1.
+  Proof.
+    intros.
+    apply listmatch_length_r in H1 as HH.
+    eapply listmatch_lift_r in H1.
+    apply concat_hom_length with (k := NIndirect ^ S indlvl) in H1.
+    rewrite HH in *.
+    apply Nat.div_lt_upper_bound.
+    mult_nonzero.
+    rewrite H1 in H0.
+    rewrite H in *.
+    simpl in *.
+    rewrite mult_comm; auto.
+    intros; rewrite indrep_ind_lift; split; cancel.
+  Qed.
+
+  Lemma listmatch_indrep_ind_length : forall F T bxp indlvl g (l1 : list T) l2 m,
+    (F * listmatch (fun a b => indrep_ind bxp indlvl (g a) b) l1 l2)%pred m ->
+    length l1 = NIndirect ->
+    length (concat l2) = NIndirect ^ S (S indlvl).
+  Proof.
+    intros.
+    apply listmatch_length_r in H as HH; rewrite HH in H0.
+    eapply listmatch_lift_r in H.
+    apply concat_hom_length in H.
+    rewrite H0 in H.
+    eassumption.
+    intros.
+    rewrite indrep_ind_lift.
+    split; cancel.
+  Qed.
+
+  Theorem indget_ok : forall indlvl lxp bxp bn off ms,
+    {< F Fm m0 m l,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           [[[ m ::: Fm * indrep_ind bxp indlvl bn l ]]] *
+           [[ off < length l ]]
+    POST:hm' RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
+           [[ r = selN l off $0 ]]
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
+    >} indget indlvl lxp bn off ms.
+  Proof.
+    induction indlvl.
+    unfold indget; hoare; autorewrite with core; auto.
+    unfold indget; hoare.
+    apply Nat.div_lt_upper_bound.
+    mult_nonzero.
+    rewrite H12.
+    rewrite Nat.mul_shuffle0, mult_assoc_reverse; omega.
+    erewrite listmatch_isolate. cancel.
+    eapply listmatch_indrep_off; eauto.
+    apply listmatch_length_r in H as HH; rewrite <- HH in *; auto.
+    eapply listmatch_indrep_off in H; eauto.
+    erewrite listmatch_isolate in H.
+    rewrite indrep_ind_lift in H.
+    destruct_lift H.
+    rewrite H10.
+    apply Nat.mod_upper_bound.
+    mult_nonzero.
+    eapply listmatch_indrep_off; eauto.
+    apply listmatch_length_r in H as HH.
+    eapply listmatch_indrep_off in H; eauto.
+    apply selN_selN_homogenous.
+    eapply listmatch_lift_r in H.
+    eassumption.
+    intros; rewrite indrep_ind_lift; split; cancel.
+    apply listmatch_length_r in H as HH; rewrite <- HH in *.
+    eapply listmatch_indrep_off in H; eauto.
+    apply Rounding.div_lt_mul_lt in H.
+    rewrite Nat.mul_comm; auto.
+    mult_nonzero.
+    Grab Existential Variables.
+    exact ($ off).
+  Qed.
+
+  Opaque indget.
+  Hint Extern 1 ({{_}} progseq (indget _ _ _ _ _) _) => apply indget_ok : prog.
 
   Theorem get_ok : forall lxp bxp ir off ms,
     {< F Fm m0 m l,
@@ -309,6 +453,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     prestep; norml.
     rewrite rep_piff_indirect in H by omega.
     unfold rep_indirect in H; destruct_lift H; cancel; try omega.
+    eassumption.
     step; substl.
     substl NDirect; rewrite selN_app2.
     rewrite selN_firstn by omega; auto.
