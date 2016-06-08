@@ -466,23 +466,25 @@ Module ATOMICCP.
     pred_apply.
     cancel.
 
-Lemma dirtree_rep_dupdate: forall fsxp Ftop tree ilist freelist inum f p t0 (v0: BFILE.datatype),
+Lemma dirtree_rep_dupdate: forall fsxp Ftop tree ilist freelist inum f p bn off v,
     DIRTREE.find_subtree p tree = Some (DIRTREE.TreeFile inum f) ->
-    (0 |-> t0)%pred (list2nmem (BFILE.BFData f)) ->
+    BFILE.block_belong_to_file ilist bn inum off ->
     DIRTREE.rep fsxp Ftop tree ilist freelist =p=>
     DIRTREE.rep fsxp Ftop (DIRTREE.update_subtree p
         (DIRTREE.TreeFile inum
            {|
-           BFILE.BFData := (BFILE.BFData f) ⟦ 0 := (fst v0, vsmerge t0) ⟧;
+           BFILE.BFData := (BFILE.BFData f) ⟦ off := v ⟧;
            BFILE.BFAttr := BFILE.BFAttr f |}) tree) ilist freelist.
 Proof.
 Admitted.
 
     eapply dirtree_rep_dupdate; eauto.
-
+    rewrite dsupd_latest. eauto.
+    pred_apply.
+    cancel.
     repeat (destruct H12).
     destruct_lift H12.
-    assert (x0 = [temp_fn]) as Hpn.
+    assert (pathname' = [temp_fn]) as Hpn.
     eapply find_subtree_inode_pathname_unique.
     instantiate (1:= temp_tree).
     distinct_inodes.
@@ -490,46 +492,29 @@ Admitted.
     eauto.
     eassumption.
     eauto.
-    rewrite Hpn in H12.
-    rewrite Hpn in H14.
-    rewrite H7 in H14.
-    inversion H14.
-    rewrite <- H18 in H12.
-    rewrite <- H18.
-    rewrite dsupd_latest. eauto.
+    rewrite Hpn.
+    rewrite Hpn in H16.
+    rewrite H7 in H16.
+    inversion H16.
+    subst; eauto.
 
     diskset_pred_solve.
     eapply DIRTREE.dirtree_safe_trans.
     eapply H18.
-    unfold DIRTREE.dirtree_safe.
-    split.
-    eapply BFILE.ilist_safe_refl.
-    intros.
-    left.
-    split; eauto.
-    eexists [temp_fn].
-    eexists.
 
-    destruct (list_eq_dec string_dec pathname [temp_fn]).
-    rewrite e in H14.
-    erewrite DIRTREE.find_update_subtree in H14.
-    inversion H14.
-    rewrite <- H21.
-    eauto.
-    eauto.
-    eauto.
-
-Lemma find_subtree_update_subtree_ne_path : forall p fn tree elem,
-  p <> [fn] ->
-  DIRTREE.find_subtree p (DIRTREE.update_subtree [fn] elem tree) =
-    DIRTREE.find_subtree p tree.
+Lemma dirtree_safe_dupdate: forall tree ilist freelist inum f p bn off v,
+    DIRTREE.find_subtree p tree = Some (DIRTREE.TreeFile inum f) ->
+    BFILE.block_belong_to_file ilist bn inum off ->
+     DIRTREE.dirtree_safe ilist freelist tree ilist freelist 
+      (DIRTREE.update_subtree p
+        (DIRTREE.TreeFile inum
+           {|
+           BFILE.BFData := (BFILE.BFData f) ⟦ off := v ⟧;
+           BFILE.BFAttr := BFILE.BFAttr f |}) tree).
 Proof.
 Admitted.
 
-    erewrite find_subtree_update_subtree_ne_path in H14.
-    rewrite H7.
-    (* for the goal to be true, tinum = inum, but that means pathname = [temp_fn], which is a contradiction *)
-    admit.
+    eapply dirtree_safe_dupdate; eauto.
 
     xcrash.
     repeat (xform_deex_r).
