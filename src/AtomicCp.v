@@ -466,15 +466,15 @@ Module ATOMICCP.
     pred_apply.
     cancel.
 
-Lemma dirtree_rep_dupdate: forall fsxp Ftop tree ilist freelist inum f p bn off v,
+Lemma dirtree_rep_dupdate: forall fsxp Ftop tree ilist freelist d inum f p bn off v,
     DIRTREE.find_subtree p tree = Some (DIRTREE.TreeFile inum f) ->
     BFILE.block_belong_to_file ilist bn inum off ->
-    DIRTREE.rep fsxp Ftop tree ilist freelist =p=>
+    DIRTREE.rep fsxp Ftop tree ilist freelist (list2nmem d) ->
     DIRTREE.rep fsxp Ftop (DIRTREE.update_subtree p
         (DIRTREE.TreeFile inum
            {|
            BFILE.BFData := (BFILE.BFData f) ⟦ off := v ⟧;
-           BFILE.BFAttr := BFILE.BFAttr f |}) tree) ilist freelist.
+           BFILE.BFAttr := BFILE.BFAttr f |}) tree) ilist freelist (list2nmem d ⟦ bn:= v ⟧).
 Proof.
   intros.
   unfold DIRTREE.rep.
