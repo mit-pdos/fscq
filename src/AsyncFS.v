@@ -28,6 +28,7 @@ Require Import GroupLog.
 Require Import DiskLogHash.
 Require Import SuperBlock.
 Require Import DiskSet.
+Require Import Lia.
 
 Set Implicit Arguments.
 Import ListNotations.
@@ -74,14 +75,20 @@ Module AFS.
      max_addr).
 
   Lemma compute_xparams_ok : forall data_bitmaps inode_bitmaps log_descr_blocks,
+    goodSize addrlen (1 +
+          data_bitmaps * BALLOC.items_per_val +
+          inode_bitmaps * BALLOC.items_per_val / INODE.IRecSig.items_per_val +
+          inode_bitmaps + data_bitmaps + data_bitmaps +
+          1 + log_descr_blocks + log_descr_blocks * PaddedLog.DescSig.items_per_val) ->
     fs_xparams_ok (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks).
   Proof.
     unfold fs_xparams_ok.
     unfold log_xparams_ok, inode_xparams_ok, balloc_xparams_ok.
     unfold compute_xparams; simpl.
     intuition.
-    (* XXX *)
-  Admitted.
+    all: eapply goodSize_trans; try eassumption.
+    all: lia.
+  Qed.
 
   Definition mkfs_alternate_allocators {T} lxp bxp1 bxp2 mscs rx : prog T :=
     let^ (mscs, bxp1, bxp2) <- ForN i < (BmapNBlocks bxp1 * valulen)
@@ -145,7 +152,8 @@ Module AFS.
           data_bitmaps * BALLOC.items_per_val +
           inode_bitmaps * BALLOC.items_per_val / INODE.IRecSig.items_per_val +
           inode_bitmaps + data_bitmaps + data_bitmaps +
-          1 + log_descr_blocks + log_descr_blocks * PaddedLog.DescSig.items_per_val ]]
+          1 + log_descr_blocks + log_descr_blocks * PaddedLog.DescSig.items_per_val ]] *
+       [[ goodSize addrlen (length disk) ]]
      POST:hm' RET:r
        [[ r = None ]] \/
        exists ms fsxp d ilist frees,
@@ -164,8 +172,8 @@ Module AFS.
     denote! (arrayS _ _ _) as HarrayS.
     eapply arrayN_isolate with (i := 0) in HarrayS; unfold ptsto_subset in HarrayS; simpl in *.
     cancel.
-    (* XXX need some more preconditions.. *)
     apply compute_xparams_ok.
+    rewrite H4 in *; eauto.
 
     all: try solve [ xcrash; apply pimpl_any ].
   Admitted.
