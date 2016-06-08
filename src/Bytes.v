@@ -103,18 +103,18 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma len_eq: forall sz (b: bytes sz), sz = length (bsplit_list b).
+Lemma bsplit_list_len: forall sz (b: bytes sz), length (bsplit_list b) = sz.
 Proof.
   intros; unfold bsplit_list.
   induction sz. 
   reflexivity. 
-  simpl; rewrite <- IHsz. 
+  simpl; rewrite IHsz. 
   reflexivity.
 Qed.
 
 Theorem bytes2list2bytes: forall sz (b: bytes sz), exists H, 
 bcombine_list (bsplit_list b) = rew H in b.
-Proof. intros. exists (len_eq b).
+Proof. Admitted. (*  intros. exists (bsplit_list_len b).
 induction sz; simpl.
 unfold bytes0.
 unfold word2bytes.
@@ -123,7 +123,7 @@ rewrite word0; auto.
 
 rewrite IHsz.
 repeat generalize_proof.
-Admitted.
+Admitted. *)
 
 Notation "'valubytes'" := (Valulen.valubytes).
 Notation "'valubytes_is'" := (Valulen.valubytes_is).
