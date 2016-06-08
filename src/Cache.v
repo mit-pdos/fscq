@@ -1501,9 +1501,16 @@ Module BUFCACHE.
       rewrite ptsto_pimpl_ptsto_subset.
       cancel.
 
-      admit.
-      admit.
-  Admitted.
+      constructor; auto.
+      eapply avs2mem_none_notin; eauto.
+      denote avs2mem as Heq; rewrite <- Heq.
+      apply mem_except_eq.
+      cbn.
+      denote avs2mem as Heq; setoid_rewrite <- Heq.
+      rewrite upd_mem_except.
+      rewrite upd_nop; eauto.
+      eapply ptsto_valid; eauto.
+  Qed.
 
   Lemma arrayS_arrayN : forall l start,
     arrayS start l =p=> exists l', arrayN (@ptsto _ _ _) start l'.
