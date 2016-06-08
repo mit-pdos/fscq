@@ -142,7 +142,7 @@ Module SB.
 
 
   Definition rep (fsxp : fs_xparams) : rawpred :=
-    ([[ fs_xparams_ok fsxp ]] * 0 |=> v_pickle_superblock fsxp)%pred.
+    ([[ fs_xparams_ok fsxp ]] * 0 |+> (v_pickle_superblock fsxp, nil))%pred.
 
   Definition load T cs rx : prog T :=
     let^ (cs, v) <- BUFCACHE.read 0 cs;
@@ -160,30 +160,38 @@ Module SB.
   Proof.
     unfold load, rep.
     hoare.
-    pred_apply; cancel.
-    subst; apply v_pickle_unpickle_superblock; auto.
+    apply v_pickle_unpickle_superblock; auto.
   Qed.
 
   Definition init T fsxp cs rx : prog T :=
     cs <- BUFCACHE.write 0 (v_pickle_superblock fsxp) cs;
+    cs <- BUFCACHE.begin_sync cs;
     cs <- BUFCACHE.sync 0 cs;
+    cs <- BUFCACHE.end_sync cs;
     rx cs.
 
   Theorem init_ok : forall fsxp cs,
     {< m F,
     PRE
       BUFCACHE.rep cs m * 
-      [[ fs_xparams_ok fsxp /\ (F * 0 |->?)%pred m ]]
+      [[ fs_xparams_ok fsxp /\ (F * 0 |->?)%pred m ]] *
+      [[ sync_invariant F ]]
     POST RET:cs
       exists m',
       BUFCACHE.rep cs m' * [[ (F * rep fsxp)%pred m' ]]
-    CRASH
-      exists cs' m', BUFCACHE.rep cs' m' * 
-      [[ (F * 0 |->?)%pred m' ]]
+    XCRASH
+      exists cs' m' vs, BUFCACHE.rep cs' m' * 
+      [[ (F * 0 |+> vs)%pred m' ]]
     >} init fsxp cs.
   Proof.
     unfold rep, init.
+    step.
+    rewrite ptsto_pimpl_ptsto_subset; cancel.
     hoare.
+    xcrash.
+    xcrash.
+    xcrash.
+    xcrash.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (load _) _) => apply load_ok : prog.
@@ -196,16 +204,25 @@ Module SB.
     rewrite crash_xform_sep_star_dist;
     rewrite crash_xform_lift_empty.
 
-    rewrite crash_xform_ptsto; cancel.
+    rewrite crash_xform_ptsto_subset; cancel.
+    rewrite ptsto_pimpl_ptsto_subset.
     subst; auto.
 
-    rewrite <- crash_xform_ptsto_r.
+    rewrite <- crash_xform_ptsto_subset_r.
     cancel.
+    rewrite ptsto_subset_pimpl_ptsto; eauto.
     unfold vsmerge; simpl; auto.
   Qed.
 
   Hint Rewrite crash_xform_rep : crash_xform.
 
+  Theorem sync_invariant_rep : forall xp,
+    sync_invariant (rep xp).
+  Proof.
+    unfold rep; eauto.
+  Qed.
+
+  Hint Resolve sync_invariant_rep.
   Hint Extern 0 (okToUnify (rep _) (rep _)) => constructor : okToUnify.
 
 End SB.
