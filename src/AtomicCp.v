@@ -462,9 +462,24 @@ Module ATOMICCP.
     2: eassumption.
     eauto with dirtree_safe.
     eauto.
+    rewrite dsupd_latest. eauto.
+    pred_apply.
+    cancel.
 
-    exfalso. (* contradiction between H12 and H3?*)
-    admit.
+Lemma dirtree_rep_dupdate: forall fsxp Ftop tree ilist freelist inum f p t0 (v0: BFILE.datatype),
+    DIRTREE.find_subtree p tree = Some (DIRTREE.TreeFile inum f) ->
+    (0 |-> t0)%pred (list2nmem (BFILE.BFData f)) ->
+    DIRTREE.rep fsxp Ftop tree ilist freelist =p=>
+    DIRTREE.rep fsxp Ftop (DIRTREE.update_subtree p
+        (DIRTREE.TreeFile inum
+           {|
+           BFILE.BFData := (BFILE.BFData f) ⟦ 0 := (fst v0, vsmerge t0) ⟧;
+           BFILE.BFAttr := BFILE.BFAttr f |}) tree) ilist freelist.
+Proof.
+Admitted.
+
+    eapply dirtree_rep_dupdate; eauto.
+
     repeat (destruct H12).
     destruct_lift H12.
     assert (x0 = [temp_fn]) as Hpn.
@@ -494,7 +509,26 @@ Module ATOMICCP.
     split; eauto.
     eexists [temp_fn].
     eexists.
-    (* two cases: pathname = [temp_fn], or not. in the first case, inum = tinum; the second case is trivially trye *)
+
+    destruct (list_eq_dec string_dec pathname [temp_fn]).
+    rewrite e in H14.
+    erewrite DIRTREE.find_update_subtree in H14.
+    inversion H14.
+    rewrite <- H21.
+    eauto.
+    eauto.
+    eauto.
+
+Lemma find_subtree_update_subtree_ne_path : forall p fn tree elem,
+  p <> [fn] ->
+  DIRTREE.find_subtree p (DIRTREE.update_subtree [fn] elem tree) =
+    DIRTREE.find_subtree p tree.
+Proof.
+Admitted.
+
+    erewrite find_subtree_update_subtree_ne_path in H14.
+    rewrite H7.
+    (* for the goal to be true, tinum = inum, but that means pathname = [temp_fn], which is a contradiction *)
     admit.
 
     xcrash.
