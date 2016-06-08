@@ -158,6 +158,7 @@ Module FileRecArray (FRA : FileRASig).
   Proof.
     unfold get, rep.
     safestep.
+    cbv [BFILE.datatype]; cancel.
 
     (* [rewrite selN_val2block_equiv] somewhere *)
     rewrite synced_list_length, ipack_length.
@@ -372,6 +373,8 @@ Module FileRecArray (FRA : FileRASig).
     safestep.
     safestep. auto. auto. eauto.
     safestep.
+    cbv [BFILE.datatype]; cancel.
+
     eapply ifind_length_ok; eauto.
     safestep.
 
