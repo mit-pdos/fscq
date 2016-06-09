@@ -6,6 +6,11 @@ Require Import BFile.
 Require Import Inode.
 Require Import GenSepN.
 Require Import AsyncDisk.
+Require Import Array.
+Require Import ListUtils.
+Require Import DirUtil.
+
+Import DIRTREE.
 
 Record treeseq_one := mk_tree {
   TStree  : DIRTREE.dirtree;
@@ -49,3 +54,22 @@ Proof.
   eapply DIRTREE.dirtree_safe_trans; eauto.
   eapply DIRTREE.dirtree_safe_refl.
 Qed.
+
+Theorem treeseq_dssync_vecs : forall F Ftop fsxp mscs ts ds al inum,
+  treeseq_in_ds F Ftop fsxp mscs ts ds ->
+  (forall i, i < length al -> BFILE.block_belong_to_file (TSilist (latest ts)) (selN al i 0) inum i) ->
+  exists ts',
+  treeseq_in_ds F Ftop fsxp mscs ts' (dssync_vecs ds al) /\
+  NEforall2
+    (fun t t' => t' = t \/
+                 exists pathname' f',
+                 find_subtree pathname' (TStree t) = Some (TreeFile inum f') /\
+                 t' = mk_tree (update_subtree pathname' (TreeFile inum (BFILE.synced_file f')) (TStree t))
+                              (TSilist t) (TSfree t))
+    ts ts'.
+Proof.
+  unfold treeseq_in_ds, tree_rep; intuition.
+  edestruct NEforall2_exists.
+
+  edestruct dirtree_update_safe_pathname_vssync_vecs.
+Admitted.
