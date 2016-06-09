@@ -1,5 +1,4 @@
 Require Import FunctionalExtensionality.
-Require Import Relations.Relation_Operators.
 Require Import Structures.OrderedType.
 Require Import Structures.OrderedTypeEx.
 Require Import Omega.
@@ -50,14 +49,6 @@ Inductive step : forall T,
     hash_safe hm h buf ->
     hash_fwd buf = h ->
     step m hm (Hash buf) m (upd_hashmap' hm h buf) h.
-
-Definition sync_addrs : rawdisk -> rawdisk -> Prop :=
-  clos_refl_trans rawdisk
-                  (fun m m' =>
-                     forall a v l l',
-                       m a = Some (v, l) ->
-                       incl l' l ->
-                       m' = upd m a (v, l')).
 
 Inductive fail_step : forall T,
     rawdisk -> prog T -> Prop :=
