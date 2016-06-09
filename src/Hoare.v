@@ -70,7 +70,7 @@ Notation "{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash cras
           =p=> crash_ hm_crash ]]
      )) .. ))
    )%pred
-   (p1 rx)%pred)
+   (Bind p1 rx)%pred)
   (at level 0, p1 at level 60,
     hm at level 0, hm' at level 0, hm_crash at level 0,
     e1 closed binder, e2 closed binder).
@@ -100,7 +100,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >} p1" :=
           =p=> crash_ hm_crash ]]
      )) .. ))
    )%pred
-   (p1 rx)%pred)
+   (Bind p1 rx)%pred)
   (at level 0, p1 at level 60,
     e1 closed binder, e2 closed binder).
 
@@ -124,7 +124,7 @@ Notation "{!!< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash cr
           =p=> crash_ hm_crash ]]
      )) .. ))
    )%pred
-   (p1 rx)%pred)
+   (Bind p1 rx)%pred)
   (at level 0, p1 at level 60,
     hm at level 0, hm' at level 0, hm_crash at level 0,
     e1 closed binder, e2 closed binder).
@@ -144,7 +144,7 @@ Notation "{!< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >!} p1" :=
           =p=> crash_ hm_crash ]]
      )) .. ))
    )%pred
-   (p1 rx)%pred)
+   (Bind p1 rx)%pred)
   (at level 0, p1 at level 60, e1 binder, e2 binder).
 
 
@@ -170,7 +170,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'XCRASH' crash >} p1" :=
           crash_ hm_crash)%pred ]]
      )) .. ))
    )%pred
-   (p1 rx)%pred)
+   (Bind p1 rx)%pred)
   (at level 0, p1 at level 60,
     e1 closed binder, e2 closed binder).
 
@@ -192,7 +192,7 @@ Notation "{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'XCRASH' : hm_crash cra
           crash_ hm_crash)%pred ]]
      )) .. ))
    )%pred
-   (p1 rx)%pred)
+   (Bind p1 rx)%pred)
   (at level 0, p1 at level 60,
     hm at level 0, hm' at level 0, hm_crash at level 0,
     e1 closed binder, e2 closed binder).
@@ -230,8 +230,8 @@ Notation "{<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_rec crash >
             =p=> F_ * idemcrash hm_crash ]]
         }} rxREC r_ ]]
    )%pred
-   (p1 rxOK)%pred
-   (p2 rxREC)%pred)) .. ))
+   (Bind p1 rxOK)%pred
+   (Bind p2 rxREC)%pred)) .. ))
   (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
    hm at level 0, hm' at level 0, hm_rec at level 0,
    post at level 1, crash at level 1).
@@ -256,8 +256,8 @@ Notation "{X<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_rec crash 
           [[ done'_ = crashdone_ ]]
         }} rxREC r_ ]]
    )%pred
-   (p1 rxOK)%pred
-   (p2 rxREC)%pred)) .. ))
+   (Bind p1 rxOK)%pred
+   (Bind p2 rxREC)%pred)) .. ))
   (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
    hm at level 0, hm' at level 0, hm_rec at level 0,
    post at level 1, crash at level 1).
@@ -292,8 +292,8 @@ Notation "{<< e1 .. e2 , 'PRE' pre 'POST' post 'REC' crash >>} p1 >> p2" :=
             =p=> F_ * idemcrash hm_crash ]]
         }} rxREC r_ ]]
    )%pred
-   (p1 rxOK)%pred
-   (p2 rxREC)%pred)) .. ))
+   (Bind p1 rxOK)%pred
+   (Bind p2 rxREC)%pred)) .. ))
   (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
    post at level 1, crash at level 1).
 
@@ -321,8 +321,8 @@ Notation "{<<< e1 .. e2 , 'PRE' pre 'POST' post >>>} p1 >> p2" :=
                                  [[ done'_ = crashdone_ ]] * [[ crash'_ =p=> F_ * idemcrash ]]
         }} rxREC r_ ]]
    )%pred
-   (p1 rxOK)%pred
-   (p2 rxREC)%pred)) .. ))
+   (Bind p1 rxOK)%pred
+   (Bind p2 rxREC)%pred)) .. ))
   (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
    post at level 1).
 
