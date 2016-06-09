@@ -1,7 +1,7 @@
 Require Import Arith.
 Require Import Omega.
 Require Import List.
-Require Import Prog.
+Require Import Prog ProgMonad.
 Require Import Pred PredCrash.
 Require Import Hoare.
 Require Import Word.
@@ -1208,7 +1208,8 @@ Ltac prestep :=
   repeat destruct_pair_once;
   try cancel;
   repeat destruct_branch;
-(*   remember_xform; *)
+  (*   remember_xform; *)
+  monad_simpl;
   ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])
    || (eapply pimpl_ok3; [ solve [ eauto with prog ] | ])
