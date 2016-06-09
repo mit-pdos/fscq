@@ -6,6 +6,9 @@ import FSLayout
 import Disk
 import System.Environment
 
+cachesize :: Integer
+cachesize = 100000
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -14,7 +17,7 @@ main = do
     [fn] -> do
       ds <- init_disk fn
       putStrLn $ "Initializing file system"
-      res <- I.run ds $ AsyncFS._AFS__mkfs 1 1 256
+      res <- I.run ds $ AsyncFS._AFS__mkfs cachesize 1 1 256
       case res of
         Nothing -> error $ "mkfs failed"
         Just (_, fsxp) ->

@@ -106,6 +106,29 @@ Module LOG.
   Definition recover_any xp F ds hm :=
     (exists ms, rep xp F (FlushingTxn ds) ms hm)%pred.
 
+  Theorem sync_invariant_rep : forall xp F st ms hm,
+    sync_invariant F ->
+    sync_invariant (rep xp F st ms hm).
+  Proof.
+    unfold rep; destruct st; intros; eauto.
+  Qed.
+  Hint Resolve sync_invariant_rep.
+
+  Theorem sync_invariant_intact : forall xp F ds hm,
+    sync_invariant F ->
+    sync_invariant (intact xp F ds hm).
+  Proof.
+    unfold intact; auto.
+  Qed.
+
+  Theorem sync_invariant_recover_any : forall xp F ds hm,
+    sync_invariant F ->
+    sync_invariant (recover_any xp F ds hm).
+  Proof.
+    unfold recover_any; auto.
+  Qed.
+  Hint Resolve sync_invariant_intact sync_invariant_recover_any.
+
   Lemma active_intact : forall xp F old new ms hm,
     rep xp F (ActiveTxn old new) ms hm =p=> intact xp F old hm.
   Proof.
@@ -421,7 +444,8 @@ Module LOG.
     {< F Fm ds vs,
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
-      [[[ ds!! ::: (Fm * a |-> vs) ]]]
+      [[[ ds!! ::: (Fm * a |-> vs) ]]] *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms' exists ds' ds0,
       rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
       [[[ ds'!! ::: (Fm * a |-> (v, vsmerge vs)) ]]] *
@@ -463,11 +487,12 @@ Module LOG.
     {< F Fm ds vs,
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
-      [[[ ds!! ::: (Fm * a |-> vs) ]]]
+      [[[ ds!! ::: (Fm * a |-> vs) ]]] *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms' exists ds',
       rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
       [[ ds' = dssync ds a ]]
-    XCRASH:hm'
+    CRASH:hm'
       recover_any xp F ds hm'
     >} dsync xp a ms.
   Proof.
@@ -477,9 +502,6 @@ Module LOG.
     rewrite dssync_latest; unfold vssync; apply map_valid_updN; auto.
     rewrite dssync_latest; substl (ds!!) at 1.
     apply replay_disk_vssync_comm.
-
-    (* crashes *)
-    xcrash.
     Unshelve. eauto.
   Qed.
 
@@ -487,7 +509,8 @@ Module LOG.
   Theorem sync_ok : forall xp ms,
     {< F ds,
     PRE:hm
-      rep xp F (NoTxn ds) ms hm
+      rep xp F (NoTxn ds) ms hm *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms'
       rep xp F (NoTxn (ds!!, nil)) ms' hm'
     XCRASH:hm'
@@ -539,8 +562,11 @@ Module LOG.
     intros.
     eapply pimpl_ok2.
     apply abort_ok.
-    cancel.
+    safecancel.
     apply sep_star_comm.
+    auto.
+    step.
+    cancel.
   Qed.
 
 
@@ -559,11 +585,27 @@ Module LOG.
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
      )%pred raw ]])%pred.
 
+  Theorem sync_invariant_after_crash : forall xp F ds cs hm,
+    sync_invariant F ->
+    sync_invariant (after_crash xp F ds cs hm).
+  Proof.
+    unfold after_crash; eauto.
+  Qed.
+
+  Theorem sync_invariant_before_crash : forall xp F ds hm,
+    sync_invariant F ->
+    sync_invariant (before_crash xp F ds hm).
+  Proof.
+    unfold before_crash; eauto.
+  Qed.
+
+  Hint Resolve sync_invariant_after_crash sync_invariant_before_crash.
 
   Theorem recover_ok: forall xp cs,
     {< F ds,
     PRE:hm
-      after_crash xp F ds cs hm
+      after_crash xp F ds cs hm *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms' 
       exists d n, [[ n <= length (snd ds) ]] *
       rep xp F (NoTxn (d, nil)) ms' hm' *
@@ -582,6 +624,7 @@ Module LOG.
     cancel.
     or_r; cancel.
     intuition simpl; eauto.
+    eauto.
 
     prestep. norm. cancel.
     intuition simpl; eauto.
@@ -726,6 +769,27 @@ Module LOG.
     eapply crash_xform_diskIs_trans; eauto.
   Qed.
 
+  Lemma after_crash_idem' : forall xp d ms hm (F : rawpred),
+    F (list2nmem d) ->
+    crash_xform (rep_inner xp (NoTxn (d, nil)) ms hm
+              \/ rep_inner xp (RollbackTxn d) ms hm) =p=>
+    exists d' ms',(rep_inner xp (NoTxn (d', nil)) ms' hm \/
+                   rep_inner xp (RollbackTxn d') ms' hm) *
+                   [[ (crash_xform F) (list2nmem d') ]].
+  Proof.
+    unfold rep_inner; intros.
+    xform_norml.
+    rewrite GLog.crash_xform_cached; cancel.
+    eassign (mk_mstate vmap0 ms').
+    or_l; cancel.
+    eapply crash_xform_diskIs_pred; eauto.
+
+    rewrite GLog.crash_xform_rollback; cancel.
+    eassign (mk_mstate vmap0 ms').
+    or_r; cancel.
+    eapply crash_xform_diskIs_pred; eauto.
+  Qed.
+
   Hint Extern 0 (okToUnify (LOG.rep_inner  _ _ _) (LOG.rep_inner _ _ _ _)) => constructor : okToUnify.
 
   (* TODO: Would be better to rewrite using hashmap_subset. *)
@@ -797,6 +861,14 @@ Module LOG.
     (recover_any xp F ds hm \/
       before_crash xp F ds hm \/
       exists cs, after_crash xp F ds cs hm)%pred.
+
+  Theorem sync_invariant_idempred : forall xp F ds hm,
+    sync_invariant F ->
+    sync_invariant (idempred xp F ds hm).
+  Proof.
+    unfold idempred; auto.
+  Qed.
+  Hint Resolve sync_invariant_idempred.
 
   Theorem idempred_idem : forall xp F ds hm,
     crash_xform (idempred xp F ds hm) =p=>
@@ -1010,12 +1082,13 @@ Module LOG.
     ms <- write xp (a + i) v ms;
     rx ms.
 
+  Notation arrayP := (arrayN (@ptsto _ addr_eq_dec valuset)).
 
   Theorem read_array_ok : forall xp ms a i,
     {< F Fm ds m vs,
     PRE:hm   rep xp F (ActiveTxn ds m) ms hm *
           [[ i < length vs]] *
-          [[[ m ::: Fm * arrayN a vs ]]]
+          [[[ m ::: Fm * arrayP a vs ]]]
     POST:hm' RET:^(ms', r)
           rep xp F (ActiveTxn ds m) ms' hm' *
           [[ r = fst (selN vs i ($0, nil)) ]]
@@ -1036,11 +1109,11 @@ Module LOG.
   Theorem write_array_ok : forall xp a i v ms,
     {< F Fm ds m vs,
     PRE:hm   rep xp F (ActiveTxn ds m) ms hm *
-          [[ i < length vs /\ a <> 0 ]] *
-          [[[ m ::: Fm * arrayN a vs ]]]
+          [[[ m ::: Fm * arrayP a vs ]]] *
+          [[ i < length vs /\ a <> 0 ]]
     POST:hm' RET:ms' exists m',
           rep xp F (ActiveTxn ds m') ms' hm' *
-          [[[ m' ::: Fm * arrayN a (updN vs i (v, nil)) ]]]
+          [[[ m' ::: Fm * arrayP a (updN vs i (v, nil)) ]]]
     CRASH:hm' exists m' ms',
           rep xp F (ActiveTxn ds m') ms' hm'
     >} write_array xp a i v ms.
@@ -1073,7 +1146,7 @@ Module LOG.
     Continuation lrx
     Invariant
       rep xp F (ActiveTxn ds m) ms hm *
-      [[[ m ::: (Fm * arrayN a vs) ]]] *
+      [[[ m ::: (Fm * arrayP a vs) ]]] *
       [[ pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
     OnCrash  crash
     Begin
@@ -1091,7 +1164,7 @@ Module LOG.
     Continuation lrx
     Invariant
       exists m, rep xp F (ActiveTxn ds m) ms hm *
-      [[[ m ::: (Fm * arrayN a (vsupsyn_range vs (firstn i l))) ]]]
+      [[[ m ::: (Fm * arrayP a (vsupsyn_range vs (firstn i l))) ]]]
     OnCrash crash
     Begin
       ms <- write_array xp a i (selN l i $0) ms;
@@ -1105,7 +1178,7 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds m) ms hm *
       [[ nr <= length vs ]] *
-      [[[ m ::: (Fm * arrayN a vs) ]]]
+      [[[ m ::: (Fm * arrayP a vs) ]]]
     POST:hm' RET:^(ms', r)
       rep xp F (ActiveTxn ds m) ms' hm' *
       [[ r = fold_left vfold (firstn nr (map fst vs)) v0 ]]
@@ -1177,8 +1250,8 @@ Module LOG.
 
   Lemma vsupsyn_range_progress : forall F l a m vs d,
     m < length l -> length l <= length vs ->
-    (F ✶ arrayN a (vsupsyn_range vs (firstn m l)))%pred (list2nmem d) ->
-    (F ✶ arrayN a (vsupsyn_range vs (firstn (S m) l)))%pred 
+    (F ✶ arrayP a (vsupsyn_range vs (firstn m l)))%pred (list2nmem d) ->
+    (F ✶ arrayP a (vsupsyn_range vs (firstn (S m) l)))%pred 
         (list2nmem (updN d (a + m) (selN l m $0, nil))).
   Proof.
     intros.
@@ -1197,7 +1270,7 @@ Module LOG.
 
   Lemma write_range_length_ok : forall F a i ms d vs,
     i < length vs ->
-    (F ✶ arrayN a vs)%pred (list2nmem (replay_disk (Map.elements ms) d)) ->
+    (F ✶ arrayP a vs)%pred (list2nmem (replay_disk (Map.elements ms) d)) ->
     a + i < length d.
   Proof.
     intros.
@@ -1211,11 +1284,11 @@ Module LOG.
     {< F Fm ds m vs,
     PRE:hm
       rep xp F (ActiveTxn ds m) ms hm *
-      [[ a <> 0 /\ length l <= length vs ]] *
-      [[[ m ::: (Fm * arrayN a vs) ]]]
+      [[[ m ::: (Fm * arrayP a vs) ]]] *
+      [[ a <> 0 /\ length l <= length vs ]]
     POST:hm' RET:ms'
       exists m', rep xp F (ActiveTxn ds m') ms' hm' *
-      [[[ m' ::: (Fm * arrayN a (vsupsyn_range vs l)) ]]]
+      [[[ m' ::: (Fm * arrayP a (vsupsyn_range vs l)) ]]]
     CRASH:hm' exists ms' m',
       rep xp F (ActiveTxn ds m') ms' hm'
     >} write_range xp a l ms.
@@ -1251,7 +1324,7 @@ Module LOG.
     Continuation lrx
     Invariant
       rep xp F (ActiveTxn ds m) ms hm *
-      [[[ m ::: (Fm * arrayN a vs) ]]] * [[ cond pf = false ]] *
+      [[[ m ::: (Fm * arrayP a vs) ]]] * [[ cond pf = false ]] *
       [[ pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
     OnCrash  crash
     Begin
@@ -1271,7 +1344,7 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds m) ms hm *
       [[ nr <= length vs /\ cond v0 = false ]] *
-      [[[ m ::: (Fm * arrayN a vs) ]]]
+      [[[ m ::: (Fm * arrayP a vs) ]]]
     POST:hm' RET:^(ms', r)
       rep xp F (ActiveTxn ds m) ms' hm' *
       ( exists v, [[ r = Some v /\ cond v = true ]] \/
@@ -1420,8 +1493,8 @@ Module LOG.
     {< F Fm ds ovl,
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
-      [[ NoDup (map fst avl) ]] *
-      [[[ ds!! ::: Fm * listmatch (fun v e => (fst e) |-> v) ovl avl ]]]
+      [[[ ds!! ::: Fm * listmatch (fun v e => (fst e) |-> v) ovl avl ]]] *
+      [[ NoDup (map fst avl) /\ sync_invariant F ]]
     POST:hm' RET:ms' exists ds',
       rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
       [[[ ds'!! ::: Fm * listmatch (fun v e => (fst e) |-> (snd e, vsmerge v)) ovl avl ]]] *
@@ -1469,12 +1542,13 @@ Module LOG.
     {< F Fm ds vsl,
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
-      [[[ ds!! ::: Fm * listmatch (fun vs a => a |-> vs) vsl al ]]]
+      [[[ ds!! ::: Fm * listmatch (fun vs a => a |-> vs) vsl al ]]] *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms' exists ds',
       rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
       [[[ ds'!! ::: Fm * listmatch (fun vs a => a |=> fst vs) vsl al ]]] *
       [[ ds' = dssync_vecs ds al ]]
-    XCRASH:hm'
+    CRASH:hm'
       recover_any xp F ds hm'
     >} dsync_vecs xp al ms.
   Proof.
@@ -1489,8 +1563,6 @@ Module LOG.
     f_equal; auto.
     apply dsync_vssync_vecs_ok; auto.
 
-    (* crashes *)
-    xcrash.
     Unshelve. eauto.
   Qed.
 

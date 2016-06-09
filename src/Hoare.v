@@ -109,6 +109,26 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >} p1" :=
  * The {!< .. >!} notation is the same as above, except it lacks a frame
  * predicate.  This is useful for bootstrapping-style programs.
  *)
+Notation "{!!< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash crash >!!} p1" :=
+  (forall T (rx: _ -> prog T), corr2
+   (fun hm done_ crash_ =>
+    (exis (fun e1 => .. (exis (fun e2 =>
+     pre *
+     [[ forall r_,
+        {{ fun hm' done'_ crash'_ =>
+           post emp r_ * [[ exists l, hashmap_subset l hm hm' ]] *
+           [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
+        }} rx r_ ]] *
+     [[ forall (hm_crash : hashmap),
+        crash * [[ exists l, hashmap_subset l hm hm_crash ]]
+          =p=> crash_ hm_crash ]]
+     )) .. ))
+   )%pred
+   (p1 rx)%pred)
+  (at level 0, p1 at level 60,
+    hm at level 0, hm' at level 0, hm_crash at level 0,
+    e1 closed binder, e2 closed binder).
+
 Notation "{!< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >!} p1" :=
   (forall T (rx: _ -> prog T), corr2
    (fun hm done_ crash_ =>

@@ -28,13 +28,12 @@ Require Import GroupLog.
 Require Import DiskLogHash.
 Require Import SuperBlock.
 Require Import DiskSet.
+Require Import Lia.
 
 Set Implicit Arguments.
 Import ListNotations.
 
 Module AFS.
-
-  Parameter cachesize : nat.
 
   (* Programs *)
 
@@ -75,6 +74,22 @@ Module AFS.
      1
      max_addr).
 
+  Lemma compute_xparams_ok : forall data_bitmaps inode_bitmaps log_descr_blocks,
+    goodSize addrlen (1 +
+          data_bitmaps * BALLOC.items_per_val +
+          inode_bitmaps * BALLOC.items_per_val / INODE.IRecSig.items_per_val +
+          inode_bitmaps + data_bitmaps + data_bitmaps +
+          1 + log_descr_blocks + log_descr_blocks * PaddedLog.DescSig.items_per_val) ->
+    fs_xparams_ok (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks).
+  Proof.
+    unfold fs_xparams_ok.
+    unfold log_xparams_ok, inode_xparams_ok, balloc_xparams_ok.
+    unfold compute_xparams; simpl.
+    intuition.
+    all: eapply goodSize_trans; try eassumption.
+    all: lia.
+  Qed.
+
   Definition mkfs_alternate_allocators {T} lxp bxp1 bxp2 mscs rx : prog T :=
     let^ (mscs, bxp1, bxp2) <- ForN i < (BmapNBlocks bxp1 * valulen)
     Hashmap hm
@@ -89,9 +104,9 @@ Module AFS.
     Rof ^(mscs, bxp1, bxp2);
     rx mscs.
 
-  Definition mkfs {T} data_bitmaps inode_bitmaps log_descr_blocks rx : prog T :=
+  Definition mkfs {T} cachesize data_bitmaps inode_bitmaps log_descr_blocks rx : prog T :=
     let fsxp := compute_xparams data_bitmaps inode_bitmaps log_descr_blocks in
-    cs <- BUFCACHE.init_recover cachesize;
+    cs <- BUFCACHE.init_load cachesize;
     cs <- SB.init fsxp cs;
     mscs <- LOG.init (FSXPLog fsxp) cs;
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
@@ -128,9 +143,43 @@ Module AFS.
   Notation MSAlloc := BFILE.MSAlloc.
   Import DIRTREE.
 
+  Theorem mkfs_ok : forall cachesize data_bitmaps inode_bitmaps log_descr_blocks,
+    {!!< disk,
+     PRE:hm
+       arrayS 0 disk *
+       [[ cachesize <> 0 ]] *
+       [[ length disk = 1 +
+          data_bitmaps * BALLOC.items_per_val +
+          inode_bitmaps * BALLOC.items_per_val / INODE.IRecSig.items_per_val +
+          inode_bitmaps + data_bitmaps + data_bitmaps +
+          1 + log_descr_blocks + log_descr_blocks * PaddedLog.DescSig.items_per_val ]] *
+       [[ goodSize addrlen (length disk) ]]
+     POST:hm' RET:r
+       [[ r = None ]] \/
+       exists ms fsxp d ilist frees,
+       [[ r = Some (ms, fsxp) ]] *
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
+       [[[ d ::: rep fsxp emp (TreeDir (FSXPRootInum fsxp) nil) ilist frees ]]]
+     CRASH:hm'
+       any
+     >!!} mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks.
+  Proof.
+    unfold mkfs.
+    safestep.
 
-  Definition recover {T} rx : prog T :=
-    cs <- BUFCACHE.init_recover 10;
+    prestep.
+    norml; unfold stars; simpl.
+    denote! (arrayS _ _ _) as HarrayS.
+    eapply arrayN_isolate with (i := 0) in HarrayS; unfold ptsto_subset in HarrayS; simpl in *.
+    cancel.
+    apply compute_xparams_ok.
+    rewrite H4 in *; eauto.
+
+    all: try solve [ xcrash; apply pimpl_any ].
+  Admitted.
+
+  Definition recover {T} cachesize rx : prog T :=
+    cs <- BUFCACHE.init_recover cachesize;
     let^ (cs, fsxp) <- SB.load cs;
     mscs <- LOG.recover (FSXPLog fsxp) cs;
     rx ^(BFILE.mk_memstate true mscs, fsxp).
@@ -295,31 +344,37 @@ Module AFS.
 
   Hint Extern 0 (okToUnify (LOG.rep_inner _ _ _ _) (LOG.rep_inner _ _ _ _)) => constructor : okToUnify.
 
-  Theorem recover_ok :
+  Theorem recover_ok : forall cachesize,
     {< fsxp cs ds,
      PRE:hm
-       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm
+       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm *
+       [[ cachesize <> 0 ]]
      POST:hm' RET:^(ms, fsxp')
        [[ fsxp' = fsxp ]] * exists d n, [[ n <= length (snd ds) ]] *
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
      XCRASH:hm'
        LOG.before_crash (FSXPLog fsxp) (SB.rep fsxp) ds hm'
-     >} recover.
+     >} recover cachesize.
   Proof.
     unfold recover, LOG.after_crash; intros.
     eapply pimpl_ok2.
     eapply BUFCACHE.init_recover_ok.
-    cancel.
-    unfold BUFCACHE.rep; cancel.
-    eauto.
+    intros; norm. cancel.
+    intuition simpl. eauto.
 
-    prestep. norm. cancel.
-    unfold BUFCACHE.rep; cancel.
+    prestep. norml.
+    denote ((crash_xform _) d') as Hx.
+    apply crash_xform_sep_star_dist in Hx.
+    rewrite SB.crash_xform_rep in Hx.
+    rewrite LOG.after_crash_idem' in Hx; eauto.
+    destruct_lift Hx; denote (crash_xform (crash_xform _)) as Hx.
+    apply crash_xform_idem_l in Hx.
+
+    norm. cancel.
     intuition.
     pred_apply.
-    rewrite sep_star_comm.
-    eauto.
+    apply sep_star_comm; eauto.
 
     prestep. norm. cancel.
     unfold LOG.after_crash; norm. cancel.
@@ -383,9 +438,10 @@ Module AFS.
     intuition.
     pred_apply.
     safecancel.
+    Unshelve. all: eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (recover) _) => apply recover_ok : prog.
+  Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
 
   Ltac recover_ro_ok := intros;
     repeat match goal with

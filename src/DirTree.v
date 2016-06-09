@@ -1899,7 +1899,8 @@ Module DIRTREE.
     step. 
     subst; simpl in *.
 
-    rewrite subtree_extract in H6; eauto.
+    denote tree_pred as Ht;
+    rewrite subtree_extract in Ht; eauto.
     assert (tree_names_distinct (TreeDir dnum tree_elem)).
     eapply rep_tree_names_distinct with (m := list2nmem m).
     pred_apply; unfold rep, IAlloc.rep; cancel.
@@ -2316,7 +2317,7 @@ Module DIRTREE.
     subst; simpl in *.
     denote tree_dir_names_pred as Hx;
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
-    cancel.
+    safecancel. 2: eauto.
     unfold SDIR.rep_macro.
     cancel; eauto.
     step.
@@ -3142,7 +3143,7 @@ Module DIRTREE.
     destruct_lift Hsub.
     denote (n |-> _)%pred as Hsub.
 
-    cancel.
+    safecancel. 2: eauto.
     unfold SDIR.rep_macro.
     cancel; eauto.
 
@@ -3186,7 +3187,7 @@ Module DIRTREE.
     unfold tree_dir_names_pred in Hdst.
     destruct_lift Hdst.
 
-    cancel.
+    safecancel. 2: eauto.
     unfold SDIR.rep_macro; cancel. eauto.
 
     (* grafting back *)
@@ -3369,7 +3370,8 @@ Module DIRTREE.
     PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds ds!!) (MSLL mscs) hm *
            [[[ ds!! ::: Fm * rep fsxp Ftop tree ilist frees ]]] *
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-           [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
+           [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]] *
+           [[ PredCrash.sync_invariant F ]]
     POST:hm' RET:mscs'
            exists ds' tree' f' bn ds0,
            LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds' ds'!!) (MSLL mscs') hm' *
@@ -3406,7 +3408,8 @@ Module DIRTREE.
     {< F ds pathname Fm Ftop tree f ilist frees,
     PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds ds!!) (MSLL mscs) hm *
            [[[ ds!! ::: Fm * rep fsxp Ftop tree ilist frees ]]] *
-           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+           [[ PredCrash.sync_invariant F ]]
     POST:hm' RET:mscs'
            exists ds' tree' al,
            LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds' ds'!!) (MSLL mscs') hm' *
@@ -3418,7 +3421,7 @@ Module DIRTREE.
               BFILE.block_belong_to_file ilist (selN al i 0) inum i ]] *
            [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
                            ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
-    XCRASH:hm'
+    CRASH:hm'
            LOG.recover_any fsxp.(FSXPLog) F ds hm'
     >} datasync fsxp inum mscs.
   Proof.
@@ -3437,11 +3440,12 @@ Module DIRTREE.
   Theorem sync_ok : forall fsxp mscs,
     {< F ds Fm Ftop tree ilist frees,
     PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.NoTxn ds) (MSLL mscs) hm *
-           [[[ ds!! ::: Fm * rep fsxp Ftop tree ilist frees ]]]
+           [[[ ds!! ::: Fm * rep fsxp Ftop tree ilist frees ]]] *
+           [[ PredCrash.sync_invariant F ]]
     POST:hm' RET:mscs'
            LOG.rep fsxp.(FSXPLog) F (LOG.NoTxn (ds!!, nil)) (MSLL mscs') hm' *
            [[ MSAlloc mscs' = negb (MSAlloc mscs) ]]
-     XCRASH:hm'
+    XCRASH:hm'
            LOG.recover_any fsxp.(FSXPLog) F ds hm'
      >} sync fsxp mscs.
   Proof.
