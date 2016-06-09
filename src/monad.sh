@@ -17,7 +17,7 @@ fi
 #
 # where the return type is now inferred, the same way that R is inferred in (rx
 # : R -> prog T).
-defsearch='Definition (\w*) T (.*) (rx|\(rx ?:[^)]*\)) : prog T'
+defsearch='Definition ([^ ]*) T (.*) (rx|\(rx ?:[^)]*\)) : prog T'
 defrepl='Definition \1 \2 : prog _'
 gsed -r -i "s/$defsearch/$defrepl/" "$file"
 
