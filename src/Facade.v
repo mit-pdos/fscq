@@ -1,7 +1,7 @@
 Require Import PeanoNat String List FMapAVL.
 Require Import Relation_Operators Operators_Properties.
 Require Import VerdiTactics.
-Require Import Word StringMap.
+Require Import StringMap.
 
 Import ListNotations.
 
@@ -505,6 +505,28 @@ Section EnvSection.
   Qed.
   Hint Resolve Step_RunsTo_Seq : steps.
 
+  (* Steps will look like: (StepWhileTrue StepSeq1* StepSeq2)* StepWhileFalse *)
+  Lemma Step_RunsTo_While : forall cond body,
+    (forall st st', Step^* (body, st) (Skip, st') -> RunsTo body st st')
+    -> forall st st' p1, Step^* (p1, st) (Skip, st')
+      -> (p1 = While cond body -> RunsTo (While cond body) st st')
+      /\ (forall p', p1 = Seq p' (While cond body) -> exists st1, Step^* (p', st) (Skip, st1) /\ RunsTo (While cond body) st1 st').
+  Proof.
+    intros.
+    prep_induction H0; induction H0; intuition; subst; repeat find_inversion.
+    + do 3 do_inv.
+      - destruct (IHclos_refl_trans_1n cond body ltac:(auto) _ _ _ eq_refl eq_refl eq_refl).
+        destruct (H0 _ eq_refl). intuition eauto with steps.
+      - destruct (IHclos_refl_trans_1n cond Skip ltac:(auto) _ _ _ eq_refl eq_refl eq_refl).
+        destruct (H0 _ eq_refl). intuition eauto with steps.
+    + do_inv.
+      - destruct (IHclos_refl_trans_1n cond body ltac:(auto) _ _ _ eq_refl eq_refl eq_refl).
+        destruct (H1 _ eq_refl).
+        intuition eauto with steps.
+      - destruct (IHclos_refl_trans_1n cond body ltac:(auto) _ _ _ eq_refl eq_refl eq_refl).
+        intuition eauto with steps.
+  Qed.
+
   Theorem Step_RunsTo : forall p st st',
     Step^* (p, st) (Skip, st') ->
     RunsTo p st st'.
@@ -513,11 +535,10 @@ Section EnvSection.
     + repeat do_inv.
     + destruct (Step_RunsTo_Seq H); intuition eauto with steps.
     + repeat do_inv.
-    + admit.
+    + eapply Step_RunsTo_While; [ intros; eapply IHp | ..]; eauto.
     + repeat do_inv. subst_definitions. eauto with steps.
     + repeat do_inv.
-  Admitted.
-
+  Qed.
   Hint Resolve Step_RunsTo.
 
   CoInductive Safe : Stmt -> State -> Prop :=
