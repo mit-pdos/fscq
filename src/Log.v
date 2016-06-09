@@ -1312,11 +1312,6 @@ Module LOG.
     Unshelve. exact tt. eauto.
   Qed.
 
-  Definition is_some A (a: option A) : {a <> None} + {a = None}.
-  Proof.
-    destruct a; left + right; congruence.
-  Defined.
-
   (* like read_range, but stops when cond is true *)
   Definition read_cond A xp a nr (vfold : A -> valu -> A) v0 (cond : A -> bool) ms : prog _ :=
     let^ (ms, pf, ret) <- ForN i < nr

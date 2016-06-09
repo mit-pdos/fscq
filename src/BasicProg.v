@@ -165,6 +165,12 @@ Proof.
     cancel.
 Qed.
 
+(* helper to use If with an option *)
+Definition is_some A (a: option A) : {a <> None} + {a = None}.
+Proof.
+  destruct a; left + right; congruence.
+Defined.
+
 Hint Extern 1 ({{_}} Bind (If_ _ _ _) _) => apply if_ok : prog.
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
 
