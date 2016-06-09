@@ -1,6 +1,6 @@
 Require Import Mem.
 Require Import List.
-Require Import Prog.
+Require Import Prog ProgMonad.
 Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import Word.
@@ -1040,7 +1040,7 @@ Module BUFCACHE.
     >} sync a cs.
   Proof.
     unfold sync; intros.
-    eapply pimpl_ok2. apply writeback_ok'.
+    eapply pimpl_ok2; monad_simpl. apply writeback_ok'.
     intros.
     norml; unfold stars; simpl; clear_norm_goal.
     denote (_ d) as Hx; apply ptsto_subset_valid' in Hx as Hy; repeat deex.
@@ -1253,7 +1253,7 @@ Module BUFCACHE.
     >} sync a cs.
   Proof.
     intros.
-    eapply pimpl_ok2.
+    eapply pimpl_ok2; monad_simpl.
     apply sync_ok'.
     intros; norml; unfold stars; simpl.
     rewrite sync_synrep_helper_2 by eauto.
@@ -1757,7 +1757,7 @@ Module BUFCACHE.
     unfold init_load, init, rep.
     step.
 
-    eapply pimpl_ok2; eauto.
+    eapply pimpl_ok2; monad_simpl; eauto.
     simpl; intros.
 
     (**
@@ -1800,7 +1800,7 @@ Module BUFCACHE.
     >} write a v cs.
   Proof.
     intros.
-    eapply pimpl_ok2.
+    eapply pimpl_ok2; monad_simpl.
     apply write_ok'.
     cancel.
     cancel.
@@ -1889,7 +1889,7 @@ Module BUFCACHE.
   Proof.
     unfold write_array, vsupd.
     intros.
-    eapply pimpl_ok2.
+    eapply pimpl_ok2; monad_simpl.
     apply write_ok'.
     cancel.
 
@@ -2326,7 +2326,7 @@ Module BUFCACHE.
   Proof.
     unfold sync_vecs_now; intros.
     step.
-    eapply pimpl_ok2. apply sync_vecs_ok.
+    eapply pimpl_ok2; monad_simpl. apply sync_vecs_ok.
     cancel.
     step.
     step.
