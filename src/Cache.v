@@ -43,82 +43,82 @@ Record cachestate := mk_cs {
 Module BUFCACHE.
 
   (* write-back if a block is dirty, but do not evict from cache *)
-  Definition writeback T a (cs : cachestate) rx : prog T :=
+  Definition writeback a (cs : cachestate) : prog _ :=
     match (Map.find a (CSMap cs)) with
     | Some (v, true) =>
       Write a v ;;
-      rx (mk_cs (Map.add a (v, false) (CSMap cs)) (CSMaxCount cs) (CSEvict cs))
+      Ret (mk_cs (Map.add a (v, false) (CSMap cs)) (CSMaxCount cs) (CSEvict cs))
     | _ =>
-      rx cs
+      Ret cs
     end.
 
-  Definition evict T a (cs : cachestate) rx : prog T :=
+  Definition evict a (cs : cachestate) : prog _ :=
     cs <- writeback a cs;
-    rx (mk_cs (Map.remove a (CSMap cs)) (CSMaxCount cs) (CSEvict cs)).
+    Ret (mk_cs (Map.remove a (CSMap cs)) (CSMaxCount cs) (CSEvict cs)).
 
-  Definition maybe_evict T (cs : cachestate) rx : prog T :=
+  Definition maybe_evict (cs : cachestate) : prog _ :=
     If (lt_dec (Map.cardinal (CSMap cs)) (CSMaxCount cs)) {
-      rx cs
+      Ret cs
     } else {
       let (victim, evictor) := eviction_choose (CSEvict cs) in
       match (Map.find victim (CSMap cs)) with
       | Some _ =>
         cs <- evict victim (mk_cs (CSMap cs) (CSMaxCount cs) evictor);
-        rx cs
+        Ret cs
       | None => (* evictor failed, evict first block *)
         match (Map.elements (CSMap cs)) with
-        | nil => rx cs
+        | nil => Ret cs
         | (a, v) :: tl =>
           cs <- evict a cs;
-          rx cs
+          Ret cs
         end
       end
     }.
 
-  Definition read T a (cs : cachestate) rx : prog T :=
+  Definition read a (cs : cachestate) : prog _ :=
     cs <- maybe_evict cs;
     match Map.find a (CSMap cs) with
-    | Some (v, dirty) => rx ^(cs, v)
+    | Some (v, dirty) => Ret ^(cs, v)
     | None =>
       v <- Read a;
-      rx ^(mk_cs (Map.add a (v, false) (CSMap cs))
+      Ret ^(mk_cs (Map.add a (v, false) (CSMap cs))
                  (CSMaxCount cs) (eviction_update (CSEvict cs) a), v)
     end.
 
-  Definition write T a v (cs : cachestate) rx : prog T :=
+  Definition write a v (cs : cachestate) : prog _ :=
     cs <- maybe_evict cs;
-    rx (mk_cs (Map.add a (v, true) (CSMap cs))
+    Ret (mk_cs (Map.add a (v, true) (CSMap cs))
               (CSMaxCount cs) (eviction_update (CSEvict cs) a)).
 
-  Definition begin_sync T (cs : cachestate) rx : prog T :=
-    rx cs.
+  Definition begin_sync (cs : cachestate) : prog _ :=
+    Ret cs.
 
-  Definition sync T a (cs : cachestate) rx : prog T :=
+  Definition sync a (cs : cachestate) : prog _ :=
     cs <- writeback a cs;
-    rx cs.
+    Ret cs.
 
-  Definition end_sync T (cs : cachestate) rx : prog T :=
+  Definition end_sync (cs : cachestate) : prog _ :=
     Sync;;
-    rx cs.
+    Ret cs.
 
 
   Definition cache0 sz := mk_cs (Map.empty _) sz eviction_init.
 
-  Definition init T (cachesize : nat) (rx : cachestate -> prog T) : prog T :=
+  Definition init (cachesize : nat) : prog _ :=
     Sync;;
-    rx (cache0 cachesize).
+    Ret (cache0 cachesize).
 
-  Definition read_array T a i cs rx : prog T :=
+  Definition read_array a i cs : prog _ :=
     r <- read (a + i) cs;
-    rx r.
+    Ret r.
 
-  Definition write_array T a i v cs rx : prog T :=
+  Definition write_array a i v cs : prog _ :=
     cs <- write (a + i) v cs;
-    rx cs.
+    Ret cs.
 
-  Definition sync_array T a i cs rx : prog T :=
+  Definition sync_array a i cs : prog _ :=
     cs <- sync (a + i) cs;
-    rx cs.
+    Ret cs.
 
 
   (** rep invariant *)
@@ -567,7 +567,7 @@ Module BUFCACHE.
     Unshelve. all: try exact addr_eq_dec.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (writeback _ _) _) => apply writeback_ok : prog.
+  Hint Extern 1 ({{_}} Bind (writeback _ _) _) => apply writeback_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _) (rep _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (synrep _ _ _) (synrep _ _ _)) => constructor : okToUnify.
@@ -596,7 +596,7 @@ Module BUFCACHE.
     eapply size_valid_remove_cardinal_ok; eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (evict _ _) _) => apply evict_ok : prog.
+  Hint Extern 1 ({{_}} Bind (evict _ _) _) => apply evict_ok : prog.
 
 
   Theorem maybe_evict_ok : forall cs,
@@ -646,7 +646,7 @@ Module BUFCACHE.
     Unshelve. all: eauto; exact 0.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (maybe_evict _) _) => apply maybe_evict_ok : prog.
+  Hint Extern 1 ({{_}} Bind (maybe_evict _) _) => apply maybe_evict_ok : prog.
 
 
 
@@ -1263,21 +1263,21 @@ Module BUFCACHE.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
-  Hint Extern 1 ({{_}} progseq (begin_sync _) _) => apply begin_sync_ok : prog.
-  Hint Extern 1 ({{_}} progseq (end_sync _) _) => apply end_sync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} Bind (sync _ _) _) => apply sync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (begin_sync _) _) => apply begin_sync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (end_sync _) _) => apply end_sync_ok : prog.
 
 
 
 
   (* examples of using begin_sync/end_sync *)
 
-  Definition sync_one T a (cs : cachestate) rx : prog T :=
+  Definition sync_one a (cs : cachestate) : prog _ :=
     cs <- begin_sync cs;
     cs <- sync a cs;
     cs <- end_sync cs;
-    rx cs.
+    Ret cs.
 
   Theorem sync_one_ok : forall cs a,
     {< d (F : rawpred) v0,
@@ -1295,12 +1295,12 @@ Module BUFCACHE.
   Qed.
 
 
-  Definition sync_two T a1 a2 (cs : cachestate) rx : prog T :=
+  Definition sync_two a1 a2 (cs : cachestate) : prog _ :=
     cs <- begin_sync cs;
     cs <- sync a1 cs;
     cs <- sync a2 cs;
     cs <- end_sync cs;
-    rx cs.
+    Ret cs.
 
   Theorem sync_two_ok : forall cs a1 a2,
     {< d (F : rawpred) v1 v2,
@@ -1720,7 +1720,7 @@ Module BUFCACHE.
     unfold crash_xform; eexists; eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (init_recover _) _) => apply init_recover_ok : prog.
+  Hint Extern 1 ({{_}} Bind (init_recover _) _) => apply init_recover_ok : prog.
 
 
   Lemma sync_xform_arrayS : forall l start,
@@ -1782,7 +1782,7 @@ Module BUFCACHE.
     apply sync_xform_arrayS in H; eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (init_load _) _) => apply init_load_ok : prog.
+  Hint Extern 1 ({{_}} Bind (init_load _) _) => apply init_load_ok : prog.
 
 
   (** array operations *)
@@ -1929,66 +1929,62 @@ Module BUFCACHE.
     cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
-  Hint Extern 1 ({{_}} progseq (read_array _ _ _) _) => apply read_array_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _) _) => apply write_array_ok : prog.
-  Hint Extern 1 ({{_}} progseq (sync_array _ _ _) _) => apply sync_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (write _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read_array _ _ _) _) => apply read_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (write_array _ _ _ _) _) => apply write_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (sync_array _ _ _) _) => apply sync_array_ok : prog.
 
 
 
   (** batch operations *)
 
-  Definition read_range T A a nr (vfold : A -> valu -> A) a0 cs rx : prog T :=
+  Definition read_range A a nr (vfold : A -> valu -> A) a0 cs : prog _ :=
     let^ (cs, r) <- ForN i < nr
     Ghost [ F crash d vs ]
     Loopvar [ cs pf ]
-    Continuation lrx
     Invariant
       rep cs d * [[ (F * arrayN ptsto_subset a vs)%pred d ]] *
       [[ pf = fold_left vfold (firstn i (map fst vs)) a0 ]]
     OnCrash  crash
     Begin
       let^ (cs, v) <- read_array a i cs;
-      lrx ^(cs, vfold pf v)
+      Ret ^(cs, vfold pf v)
     Rof ^(cs, a0);
-    rx ^(cs, r).
+    Ret ^(cs, r).
 
 
-  Definition write_range T a l cs rx : prog T :=
+  Definition write_range a l cs : prog _ :=
     let^ (cs) <- ForN i < length l
     Ghost [ F crash vs ]
     Loopvar [ cs ]
-    Continuation lrx
     Invariant
       exists d', rep cs d' *
       [[ (F * arrayN ptsto_subset a (vsupd_range vs (firstn i l)))%pred d' ]]
     OnCrash crash
     Begin
       cs <- write_array a i (selN l i $0) cs;
-      lrx ^(cs)
+      Ret ^(cs)
     Rof ^(cs);
-    rx cs.
+    Ret cs.
 
-  Definition sync_range T a nr cs rx : prog T :=
+  Definition sync_range a nr cs : prog _ :=
     let^ (cs) <- ForN i < nr
     Ghost [ F crash vs d0 ]
     Loopvar [ cs ]
-    Continuation lrx
     Invariant
       exists d', synrep cs d0 d' *
       [[ (F * arrayN ptsto_subset a (vssync_range vs i))%pred d' ]]
     OnCrash crash
     Begin
       cs <- sync_array a i cs;
-      lrx ^(cs)
+      Ret ^(cs)
     Rof ^(cs);
-    rx cs.
+    Ret cs.
 
-  Definition write_vecs T a l cs rx : prog T :=
+  Definition write_vecs a l cs : prog _ :=
     let^ (cs) <- ForN i < length l
     Ghost [ F crash vs ]
     Loopvar [ cs ]
-    Continuation lrx
     Invariant
       exists d', rep cs d' *
       [[ (F * arrayN ptsto_subset a (vsupd_vecs vs (firstn i l)))%pred d' ]]
@@ -1996,30 +1992,29 @@ Module BUFCACHE.
     Begin
       let v := selN l i (0, $0) in
       cs <- write_array a (fst v) (snd v) cs;
-      lrx ^(cs)
+      Ret ^(cs)
     Rof ^(cs);
-    rx cs.
+    Ret cs.
 
-  Definition sync_vecs T a l cs rx : prog T :=
+  Definition sync_vecs a l cs : prog _ :=
     let^ (cs) <- ForN i < length l
     Ghost [ F crash vs d0 ]
     Loopvar [ cs ]
-    Continuation lrx
     Invariant
       exists d', synrep cs d0 d' *
       [[ (F * arrayN ptsto_subset a (vssync_vecs vs (firstn i l)))%pred d' ]]
     OnCrash crash
     Begin
       cs <- sync_array a (selN l i 0) cs;
-      lrx ^(cs)
+      Ret ^(cs)
     Rof ^(cs);
-    rx cs.
+    Ret cs.
 
-  Definition sync_vecs_now T a l cs rx : prog T :=
+  Definition sync_vecs_now a l cs : prog _ :=
     cs <- begin_sync cs;
     cs <- sync_vecs a l cs;
     cs <- end_sync cs;
-    rx cs.
+    Ret cs.
 
   Hint Extern 0 (okToUnify (arrayN ?pts ?a _) (arrayN ?pts ?a _)) => constructor : okToUnify.
 
@@ -2333,12 +2328,12 @@ Module BUFCACHE.
     cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (read_range _ _ _ _ _) _) => apply read_range_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write_range _ _ _) _) => apply write_range_ok : prog.
-  Hint Extern 1 ({{_}} progseq (sync_range _ _ _) _) => apply sync_range_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write_vecs _ _ _) _) => apply write_vecs_ok : prog.
-  Hint Extern 1 ({{_}} progseq (sync_vecs _ _ _) _) => apply sync_vecs_ok : prog.
-  Hint Extern 1 ({{_}} progseq (sync_vecs_now _ _ _) _) => apply sync_vecs_now_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read_range _ _ _ _ _) _) => apply read_range_ok : prog.
+  Hint Extern 1 ({{_}} Bind (write_range _ _ _) _) => apply write_range_ok : prog.
+  Hint Extern 1 ({{_}} Bind (sync_range _ _ _) _) => apply sync_range_ok : prog.
+  Hint Extern 1 ({{_}} Bind (write_vecs _ _ _) _) => apply write_vecs_ok : prog.
+  Hint Extern 1 ({{_}} Bind (sync_vecs _ _ _) _) => apply sync_vecs_ok : prog.
+  Hint Extern 1 ({{_}} Bind (sync_vecs_now _ _ _) _) => apply sync_vecs_now_ok : prog.
 
 End BUFCACHE.
 
