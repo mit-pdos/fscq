@@ -48,11 +48,11 @@ Module AsyncRecArray (RA : RASig).
   Definition synced_array xp start items :=
     (exists vl vsl, [[ rep_common xp start items vl vsl /\
         vsl = nils (length vl) ]] *
-    arrayN ((RAStart xp ) + start) (combine vl vsl))%pred.
+    arrayS ((RAStart xp ) + start) (combine vl vsl))%pred.
 
   Definition unsync_array xp start items :=
     (exists vl vsl, [[ rep_common xp start items vl vsl ]] *
-    arrayN ((RAStart xp ) + start) (combine vl vsl))%pred.
+    arrayS ((RAStart xp ) + start) (combine vl vsl))%pred.
 
   Definition array_rep xp start (st : state) :=
    (match st with
@@ -62,7 +62,7 @@ Module AsyncRecArray (RA : RASig).
 
   Definition avail_rep xp start nr : rawpred :=
     (exists vsl, [[ length vsl = nr ]] *
-     arrayN ((RAStart xp) + start) vsl)%pred.
+     arrayS ((RAStart xp) + start) vsl)%pred.
 
   Local Hint Extern 0 (okToUnify (arrayN (RAStart ?a) _ _) (arrayN (RAStart ?a) _ _)) => constructor : okToUnify.
   Local Hint Extern 0 (okToUnify (arrayN (RAStart ?b + ?a) _ _) (arrayN (RAStart ?b + ?a) _ _)) 
@@ -148,7 +148,7 @@ Module AsyncRecArray (RA : RASig).
 
   Lemma synced_array_is : forall xp start items,
     synced_array xp start items =p=>
-    arrayN ((RAStart xp) + start) (combine (ipack items) (nils (length (ipack items)))).
+    arrayS ((RAStart xp) + start) (combine (ipack items) (nils (length (ipack items)))).
   Proof.
     unfold synced_array, rep_common; cancel; subst; auto.
   Qed.
@@ -221,7 +221,7 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     unfold synced_array; intros.
     xform; cancel; subst.
-    rewrite crash_xform_arrayN_combine_nils.
+    rewrite crash_xform_arrayN_subset_combine_nils.
     cancel.
     auto.
   Qed.
@@ -238,7 +238,7 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     unfold avail_rep; intros; intros.
     xform.
-    rewrite crash_xform_arrayN; cancel.
+    rewrite crash_xform_arrayN_subset; cancel.
     unfold possible_crash_list in *; subst; intuition.
     rewrite H0.
     replace (combine l' (repeat [] (length l'))) with (synced_list l') by auto.
@@ -257,7 +257,7 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     unfold avail_rep; intros.
     xform.
-    rewrite crash_xform_arrayN; cancel;
+    rewrite crash_xform_arrayN_subset; cancel;
     apply possible_crash_list_length in H3 as Hlength; subst.
     unfold possible_crash_list in *; subst; intuition.
     instantiate (l := fold_left iunpack l' []).
@@ -283,7 +283,7 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     unfold unsync_array, avail_rep, rep_common; intros.
     xform.
-    rewrite crash_xform_arrayN.
+    rewrite crash_xform_arrayN_subset.
     unfold possible_crash_list.
     cancel.
     rewrite combine_length_eq in *; simplen.
@@ -443,9 +443,7 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     unfold read_all.
     step.
-
-    pred_apply.
-    simplen.
+    rewrite synced_array_is, Nat.add_0_r; cancel.
     simplen.
 
     step; subst.
@@ -457,7 +455,7 @@ Module AsyncRecArray (RA : RASig).
   Lemma vsupd_range_unsync_array : forall xp start items old_vs,
     items_valid xp start items ->
     eqlen old_vs (ipack items) ->
-    arrayN (RAStart xp + start) (vsupd_range old_vs (ipack items))
+    arrayS (RAStart xp + start) (vsupd_range old_vs (ipack items))
       =p=> unsync_array xp start items.
   Proof.
     intros.
@@ -507,9 +505,7 @@ Module AsyncRecArray (RA : RASig).
     setoid_rewrite vsupd_range_unsync_array; auto.
     simplen.
 
-    eapply pimpl_trans; [ | eapply H1 ]; cancel.
-    rewrite H0.
-    do 3 (xform_norm; cancel).
+    xcrash.
     rewrite vsupd_range_length; auto.
     simplen; rewrite Nat.min_l; eauto.
   Qed.
@@ -519,7 +515,7 @@ Module AsyncRecArray (RA : RASig).
     items_valid xp start items ->
     length items = (count * items_per_val)%nat ->
     length vsl = count ->
-    arrayN (RAStart xp + start) (vssync_range (combine (ipack items) vsl) count)
+    arrayS (RAStart xp + start) (vssync_range (combine (ipack items) vsl) count)
       =p=> synced_array xp start items.
   Proof.
     unfold synced_array, rep_common; cancel; simplen.
@@ -556,20 +552,20 @@ Module AsyncRecArray (RA : RASig).
   Lemma vssync_range_pimpl : forall xp start items vsl m,
     length items = (length vsl) * items_per_val ->
     m <= (length vsl) ->
-    arrayN (RAStart xp + start) (vssync_range (combine (ipack items) vsl) m) =p=>
-    arrayN (RAStart xp + start) (combine (ipack items) (repeat nil m ++ skipn m vsl)).
+    arrayS (RAStart xp + start) (vssync_range (combine (ipack items) vsl) m) =p=>
+    arrayS (RAStart xp + start) (combine (ipack items) (repeat nil m ++ skipn m vsl)).
   Proof.
-      intros.
-      unfold vssync_range, ipack.
-      apply arrayN_unify.
-      rewrite skipn_combine by simplen.
-      rewrite <- combine_app.
-      f_equal.
-      rewrite <- firstn_map_comm.
-      rewrite map_fst_combine by simplen.
-      rewrite firstn_skipn; auto.
-      simplen.
-      lia.
+    intros.
+    unfold vssync_range, ipack.
+    apply arrayN_unify.
+    rewrite skipn_combine by simplen.
+    rewrite <- combine_app.
+    f_equal.
+    rewrite <- firstn_map_comm.
+    rewrite map_fst_combine by simplen.
+    rewrite firstn_skipn; auto.
+    simplen.
+    lia.
   Qed.
 
 
@@ -579,38 +575,35 @@ Module AsyncRecArray (RA : RASig).
     rx cs.
 
   Theorem sync_aligned_ok : forall xp start count cs,
-    {< F d items,
-    PRE            BUFCACHE.rep cs d * 
+    {< F d0 d items,
+    PRE            BUFCACHE.synrep cs d0 d * 
                    [[ length items = (count * items_per_val)%nat ]] *
-                   [[ items_valid xp start items ]] *
+                   [[ items_valid xp start items /\ sync_invariant F ]] *
                    [[ (F * array_rep xp start (Unsync items))%pred d ]]
     POST RET: cs
-                   exists d', BUFCACHE.rep cs d' *
+                   exists d', BUFCACHE.synrep cs d0 d' *
                    [[ (F * array_rep xp start (Synced items))%pred d' ]]
-    XCRASH  exists cs' d', BUFCACHE.rep cs' d' *
-                   [[ (F * array_rep xp start (Unsync items))%pred d' ]]
+    CRASH  exists cs', BUFCACHE.rep cs' d0
     >} sync_aligned xp start count cs.
   Proof.
     unfold sync_aligned.
     prestep. norml.
     unfold unsync_array, rep_common in *; destruct_lifts.
-    cancel.
+
+    norm. cancel.
+    intuition simpl.
+    3: eauto.
+    auto.
     rewrite combine_length_eq by simplen.
     rewrite ipack_length; simplen.
 
     step.
     apply vssync_range_sync_array; eauto.
-
-    eapply pimpl_trans; [ | eapply H1 ]; cancel.
-    rewrite H.
-    do 3 (xform_norm; cancel).
   Qed.
 
   Hint Extern 1 ({{_}} progseq (read_all _ _ _) _) => apply read_all_ok : prog.
   Hint Extern 1 ({{_}} progseq (write_aligned _ _ _ _) _) => apply write_aligned_ok : prog.
   Hint Extern 1 ({{_}} progseq (sync_aligned _ _ _ _) _) => apply sync_aligned_ok : prog.
-
-
 
 End AsyncRecArray.
 

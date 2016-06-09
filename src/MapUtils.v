@@ -67,6 +67,7 @@ Module MapDefs (OT : UsualOrderedType) (M : S with Module E := OT).
     reflexivity.
   Qed.
 
+
   Lemma map_add_dup_cardinal' : forall (m : Map.t V) k v, (exists v, Map.MapsTo k v m) ->
     Map.cardinal (Map.add k v m) = Map.cardinal (Map.remove k m) + 1.
   Proof.
@@ -322,7 +323,6 @@ Module MapDefs (OT : UsualOrderedType) (M : S with Module E := OT).
     congruence.
   Qed.
 
-
   Lemma map_remove_not_in_elements_eq : forall a (m : Map.t V),
     ~ Map.In a m ->
     Map.elements (Map.remove a m) = Map.elements m.
@@ -467,6 +467,19 @@ Module MapDefs (OT : UsualOrderedType) (M : S with Module E := OT).
     apply IHents; eauto.
   Qed.
 
+
+  Lemma map_cardinal_remove_le : forall (m : Map.t V) a,
+    Map.cardinal (Map.remove a m) <= Map.cardinal m.
+  Proof.
+    intros.
+    destruct (Map.find a m) eqn: Heq.
+    rewrite map_remove_cardinal.
+    omega.
+    eexists; eapply Map.find_2; eauto.
+    erewrite MapProperties.cardinal_m; eauto.
+    apply map_remove_not_in_equal.
+    apply MapFacts.not_find_in_iff; auto.
+  Qed.
 
   End MapUtilsFacts.
 

@@ -3,7 +3,7 @@ Require Import Word.
 Require Import List.
 Require Import Mem.
 Require Import Eqdep_dec.
-
+Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
 
@@ -152,3 +152,31 @@ Definition sync_mem AT AEQ (m : @mem AT AEQ valuset) : @mem AT AEQ valuset :=
     | None => None
     | Some (v, _) => Some (v, nil)
     end.
+
+Definition sync_addr AT AEQ (m : @mem AT AEQ valuset) a : @mem AT AEQ valuset :=
+  fun a' => if AEQ a a' then
+    match m a with
+    | None => None
+    | Some (v, _) => Some (v, nil)
+    end else m a'.
+
+Lemma sync_addr_ne : forall AT AEQ (m : @mem AT AEQ valuset) a a',
+  a <> a' ->
+  (sync_addr m a) a' = m a'.
+Proof.
+  unfold sync_addr; intros.
+  destruct (AEQ a a'); try congruence.
+Qed.
+
+Lemma sync_addr_eq : forall AT AEQ (m : @mem AT AEQ valuset) a a' vs,
+  a = a' ->
+  m a' = Some vs ->
+  (sync_addr m a) a' = Some (fst vs, nil).
+Proof.
+  unfold sync_addr; intros; subst.
+  destruct (AEQ a' a'); try congruence.
+  destruct (m a'); try congruence.
+  inversion H0; subst.
+  destruct vs; auto.
+Qed.
+

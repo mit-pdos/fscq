@@ -12,6 +12,7 @@ Require Import List.
 Require Import AsyncDisk.
 Require Import EqdepFacts.
 Require Import Hashmap.
+Require Import ListUtils.
 
 Set Implicit Arguments.
 
@@ -20,35 +21,34 @@ Set Implicit Arguments.
 
 Ltac inv_exec :=
   match goal with
-  | [ H: exec _ _ _ _ |- _ ] => inversion H; clear H; subst
+  | [ H: exec _ _ ?p _ |- _ ] => remember p; induction H; subst; try congruence
   end.
 
 Ltac inv_step :=
   match goal with
-  | [ H: step _ _ _ _ _ _|- _ ] => inversion H; clear H; subst
+  | [ H: step _ _ ?p _ _ _|- _ ] => remember p; induction H; inversion Heqp; subst; try congruence
   end.
 
 Theorem read_ok:
   forall (a:addr),
   {< v,
-  PRE        a |-> v
-  POST RET:r a |-> v * [[ r = (fst v) ]]
-  CRASH      a |-> v
+  PRE        a |+> v
+  POST RET:r a |+> v * [[ r = (fst v) ]]
+  CRASH      a |+> v
   >} Read a.
 Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
   - inv_step.
-    eapply H4; eauto.
-    pred_apply; cancel.
-    apply sep_star_comm in H; apply ptsto_valid in H.
-    congruence.
+    + eapply H4; eauto.
+      apply sep_star_comm in H as H'. apply ptsto_subset_valid in H'; repeat deex.
+      pred_apply; cancel.
+    + eapply IHexec; eauto.
+      eapply upd_sync_invariant; eauto.
   - exfalso.
-    apply H1. repeat eexists.
-    econstructor.
-    eapply ptsto_valid.
-    pred_apply; cancel.
+    apply sep_star_comm in H. eapply ptsto_subset_valid in H. repeat deex.
+    apply H0. repeat eexists. econstructor. eauto.
   - right. repeat eexists; intuition eauto.
     eapply H3.
     pred_apply; cancel.
@@ -59,26 +59,30 @@ Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
 Theorem write_ok:
   forall (a:addr) (v:valu),
   {< v0,
-  PRE        a |-> v0
-  POST RET:r a |-> (v, vsmerge v0)
-  CRASH      a |-> v0
+  PRE        a |+> v0
+  POST RET:r a |+> (v, vsmerge v0)
+  CRASH      a |+> v0
   >} Write a v.
 Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
   - inv_step.
-    eapply H4; eauto.
-    eapply pimpl_trans; [ | | eapply ptsto_upd; pred_apply; cancel ].
-    eauto.
-    apply sep_star_comm in H; apply ptsto_valid in H.
-    rewrite H in H12; inversion H12; subst; unfold vsmerge; simpl.
-    cancel.
+    + eapply H4; eauto.
+      apply sep_star_comm in H as H'. apply ptsto_subset_valid in H'; repeat deex.
+      apply sep_star_comm in H as H'. rewrite ptsto_subset_pimpl_ptsto_ex in H'. destruct_lift H'.
+      rewrite H0 in H6; inversion H6; subst.
+      eapply pimpl_trans; [ | | eapply ptsto_upd; pred_apply; cancel ].
+      eauto.
+      rewrite ptsto_pimpl_ptsto_subset.
+      erewrite ptsto_subset_pimpl. cancel.
+      unfold vsmerge; simpl.
+      eapply incl_cons2; eauto.
+    + eapply IHexec; eauto.
+      eapply upd_sync_invariant; eauto.
   - exfalso.
-    apply H1. repeat eexists.
-    econstructor.
-    eapply ptsto_valid.
-    pred_apply; cancel.
+    apply sep_star_comm in H. eapply ptsto_subset_valid in H. repeat deex.
+    apply H0. repeat eexists. econstructor. eauto.
   - right. repeat eexists; intuition eauto.
     eapply H3.
     pred_apply; cancel.
@@ -86,82 +90,58 @@ Qed.
 
 Hint Extern 1 ({{_}} progseq (Write _ _) _) => apply write_ok : prog.
 
-Theorem sync_addr_ok:
-  forall (a:addr),
-  {< v,
-  PRE        a |-> v
-  POST RET:r a |-> (fst v, nil)
-  CRASH      a |-> v
-  >} SyncAddr a.
-Proof.
-  unfold corr2; intros.
-  destruct_lift H.
-  inv_exec.
-  - inv_step.
-    eapply H4; eauto.
-    eapply pimpl_trans; [ | | eapply ptsto_upd; pred_apply; cancel ].
-    eauto.
-    apply sep_star_comm in H; apply ptsto_valid in H.
-    rewrite H in H11; inversion H11; subst.
-    cancel.
-  - exfalso.
-    apply H1. repeat eexists.
-    econstructor.
-    eapply ptsto_valid.
-    pred_apply; cancel.
-  - right. repeat eexists; intuition eauto.
-    eapply H3.
-    pred_apply; cancel.
-Qed.
-
-Hint Extern 1 ({{_}} progseq (SyncAddr _) _) => apply sync_addr_ok : prog.
-
 Theorem sync_ok:
   {!< F,
-  PRE        F
+  PRE        F * [[ sync_invariant F ]]
   POST RET:r sync_xform F
   CRASH      F
-  >!} @Sync _.
+  >!} Sync.
 Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
   - inv_step.
-    eapply H4; eauto.
-    eapply pimpl_trans; [ | | eapply sync_xform_pred_apply; pred_apply; reflexivity ].
-    eauto.
-    cancel.
+    + eapply H4; eauto.
+      eapply pimpl_trans; [ | | eapply sync_xform_pred_apply; pred_apply; reflexivity ].
+      eauto.
+      cancel.
+    + eapply IHexec; eauto.
+      eapply upd_sync_invariant; eauto.
   - exfalso.
-    apply H1. repeat eexists.
-    econstructor.
+    apply H0. repeat eexists. econstructor.
   - right. repeat eexists; intuition eauto.
     eapply H3.
     pred_apply; cancel.
 Qed.
 
 Hint Extern 1 ({{_}} progseq Sync _) => apply sync_ok : prog.
+Hint Extern 1 ({{_}} progseq (@Sync _) _) => apply sync_ok : prog.
 
 Theorem trim_ok:
   forall (a:addr),
   {< v0,
-  PRE        a |-> v0
-  POST RET:r a |->?
-  CRASH      a |->?
+  PRE        a |+> v0
+  POST RET:r a |+>?
+  CRASH      a |+>?
   >} Trim a.
 Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
   - inv_step.
-    eapply H4; eauto.
-    eapply pimpl_trans; [ | | eapply ptsto_upd; pred_apply; cancel ].
-    eauto.
-    cancel.
+    + eapply H4; eauto.
+      apply sep_star_comm in H as H'. apply ptsto_subset_valid in H'; repeat deex.
+      apply sep_star_comm in H as H'. rewrite ptsto_subset_pimpl_ptsto_ex in H'. destruct_lift H'.
+      rewrite H0 in H6; inversion H6; subst.
+      eapply pimpl_trans; [ | | eapply ptsto_upd; pred_apply; cancel ].
+      eauto.
+      rewrite ptsto_pimpl_ptsto_subset.
+      cancel.
+    + eapply IHexec; eauto.
+      eapply upd_sync_invariant; eauto.
   - exfalso.
-    apply H1. repeat eexists.
-    econstructor.
-    eapply ptsto_valid.
-    pred_apply; cancel.
+    apply sep_star_comm in H. eapply ptsto_subset_valid in H. repeat deex.
+    apply H0. repeat eexists. econstructor. eauto.
   - right. repeat eexists; intuition eauto.
     eapply H3.
     pred_apply; cancel.
@@ -188,14 +168,16 @@ Proof.
   destruct_lift H.
   inv_exec.
   - inv_step.
-    eapply H4; eauto.
-    pred_apply.
-    assert (Hbufeq: buf = buf1).
-      pose proof (eq_sigT_snd H5).
-      autorewrite with core in *. congruence.
-    cancel.
+    + eapply H4; eauto.
+      pred_apply.
+      assert (Hbufeq: buf = buf0).
+        pose proof (eq_sigT_snd H8).
+        autorewrite with core in *. congruence.
+      cancel.
+    + eapply IHexec; eauto.
+      eapply upd_sync_invariant; eauto.
   - exfalso.
-    apply H5. repeat eexists.
+    apply H2. repeat eexists.
   - right. repeat eexists; intuition eauto.
     eapply H3.
     pred_apply; cancel.
@@ -205,17 +187,21 @@ Hint Extern 1 ({{_}} progseq (Hash _) _) => apply hash_ok : prog.
 
 Theorem done_ok:
   forall T (r : T),
-  {{ fun hm done crash => done hm r * [[ forall hm, done hm r =p=> crash hm ]] }} Done r.
+  {{ fun hm done crash => done hm r *
+                          [[ sync_invariant (done hm r) ]] *
+                          [[ forall hm, done hm r =p=> crash hm ]] }} Done r.
 Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
   - inv_step.
+    eapply IHexec; eauto.
+    eapply upd_sync_invariant; eauto.
   - exfalso.
-    apply H2. eauto.
+    apply H1. eauto.
   - right. eexists; eexists; intuition eauto.
     apply H3; auto.
-  - left. eexists; eexists; eauto.
+  - left. do 3 eexists; split. eauto. congruence.
 Qed.
 
 Hint Extern 1 ({{_}} progseq (Done _) _) => apply done_ok : prog.
