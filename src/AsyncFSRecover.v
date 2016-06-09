@@ -41,6 +41,7 @@ Module AFS_RECOVER.
 
   Parameter cachesize : nat.
   Axiom cachesize_ok : cachesize <> 0.
+  Hint Resolve cachesize_ok.
 
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
@@ -77,6 +78,7 @@ Module AFS_RECOVER.
       (rewrite LOG.notxn_after_crash_diskIs || rewrite LOG.rollbacktxn_after_crash_diskIs);
       try eassumption.
     cancel.
+
     safestep; subst.
     simpl_idempred_r.
     rewrite <- LOG.before_crash_idempred.

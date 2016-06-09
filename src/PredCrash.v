@@ -1227,6 +1227,28 @@ Proof.
   firstorder.
 Qed.
 
+Lemma possible_sync_possible_crash_trans : forall m m1 m2,
+  possible_crash m m1 ->
+  possible_sync m1 m2 ->
+  possible_crash m m2.
+Proof.
+  unfold possible_sync, possible_crash; intros.
+  specialize (H a); specialize (H0 a); intuition; repeat deex; try congruence.
+  right.
+  do 2 eexists; intuition eauto.
+  rewrite H0 in H1; inversion H1; subst.
+  rewrite H.
+  rewrite incl_in_nil with (l := l'); eauto.
+Qed.
+
+Theorem sync_invariant_crash_xform : forall F,
+  sync_invariant (crash_xform F).
+Proof.
+  unfold sync_invariant, crash_xform; intros; deex.
+  eexists; split; eauto.
+  eapply possible_sync_possible_crash_trans; eauto.
+Qed.
+
 Hint Resolve sync_invariant_ptsto_subset.
 Hint Resolve sync_invariant_ptsto_any.
 Hint Resolve sync_invariant_ptsto_nil.
@@ -1236,6 +1258,7 @@ Hint Resolve sync_invariant_sep_star.
 Hint Resolve sync_invariant_lift_empty.
 Hint Resolve sync_invariant_and.
 Hint Resolve sync_invariant_or.
+Hint Resolve sync_invariant_crash_xform.
 
 
 Theorem upd_sync_invariant : forall (p : @pred _ _ _) m a v l l',

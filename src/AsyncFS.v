@@ -441,7 +441,7 @@ Module AFS.
     Unshelve. all: eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (recover) _) => apply recover_ok : prog.
+  Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
 
   Ltac recover_ro_ok := intros;
     repeat match goal with
