@@ -769,6 +769,27 @@ Module LOG.
     eapply crash_xform_diskIs_trans; eauto.
   Qed.
 
+  Lemma after_crash_idem' : forall xp d ms hm (F : rawpred),
+    F (list2nmem d) ->
+    crash_xform (rep_inner xp (NoTxn (d, nil)) ms hm
+              \/ rep_inner xp (RollbackTxn d) ms hm) =p=>
+    exists d' ms',(rep_inner xp (NoTxn (d', nil)) ms' hm \/
+                   rep_inner xp (RollbackTxn d') ms' hm) *
+                   [[ (crash_xform F) (list2nmem d') ]].
+  Proof.
+    unfold rep_inner; intros.
+    xform_norml.
+    rewrite GLog.crash_xform_cached; cancel.
+    eassign (mk_mstate vmap0 ms').
+    or_l; cancel.
+    eapply crash_xform_diskIs_pred; eauto.
+
+    rewrite GLog.crash_xform_rollback; cancel.
+    eassign (mk_mstate vmap0 ms').
+    or_r; cancel.
+    eapply crash_xform_diskIs_pred; eauto.
+  Qed.
+
   Hint Extern 0 (okToUnify (LOG.rep_inner  _ _ _) (LOG.rep_inner _ _ _ _)) => constructor : okToUnify.
 
   (* TODO: Would be better to rewrite using hashmap_subset. *)

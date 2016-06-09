@@ -360,16 +360,21 @@ Module AFS.
     unfold recover, LOG.after_crash; intros.
     eapply pimpl_ok2.
     eapply BUFCACHE.init_recover_ok.
-    cancel.
-    unfold BUFCACHE.rep; cancel.
-    eauto.
+    intros; norm. cancel.
+    intuition simpl. eauto.
 
-    prestep. norm. cancel.
-    unfold BUFCACHE.rep; cancel.
+    prestep. norml.
+    denote ((crash_xform _) d') as Hx.
+    apply crash_xform_sep_star_dist in Hx.
+    rewrite SB.crash_xform_rep in Hx.
+    rewrite LOG.after_crash_idem' in Hx; eauto.
+    destruct_lift Hx; denote (crash_xform (crash_xform _)) as Hx.
+    apply crash_xform_idem_l in Hx.
+
+    norm. cancel.
     intuition.
     pred_apply.
-    rewrite sep_star_comm.
-    eauto.
+    apply sep_star_comm; eauto.
 
     prestep. norm. cancel.
     unfold LOG.after_crash; norm. cancel.
@@ -433,6 +438,7 @@ Module AFS.
     intuition.
     pred_apply.
     safecancel.
+    Unshelve. all: eauto.
   Qed.
 
   Hint Extern 1 ({{_}} progseq (recover) _) => apply recover_ok : prog.
