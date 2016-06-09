@@ -36,7 +36,7 @@ gsed -r -i 's/\bprogseq\b/Bind/g' "$file"
 
 # Remaining lines with : prog T are untranslated programs, probably due to the
 # continuation having an explicit type assertion. Print them as a warning.
-grep ': prog T :=' "$file"
+grep -n ': prog T :=' "$file"
 
 # return an error status if any untranslated programs were found, inverting the
 # status of grep
