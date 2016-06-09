@@ -5,6 +5,7 @@ Require Import Structures.OrderedTypeEx.
 Require Import Omega.
 Require Import List.
 Require Import Mem.
+Require Import PredCrash.
 Require Import AsyncDisk.
 Require Import Word.
 
@@ -60,14 +61,6 @@ Definition sync_addrs : rawdisk -> rawdisk -> Prop :=
                        incl l' l ->
                        m' = upd m a (v, l')).
 
-Inductive sync_addr_step : rawdisk -> rawdisk -> Prop :=
-| StepSyncAddr : forall m a v l l',
-    m a = Some (v, l) ->
-    incl l' l ->
-    sync_addr_step m (upd m a (v, l'))
-| StepSyncNone : forall m,
-    sync_addr_step m m.
-
 Inductive fail_step : forall T,
     rawdisk -> prog T -> Prop :=
 | FailRead : forall m a,
@@ -85,9 +78,9 @@ Inductive crash_step : forall T, prog T -> Prop :=
 
 Inductive exec : forall T, rawdisk -> hashmap -> prog T -> outcome T -> Prop :=
 | XStep : forall T m hm (p: prog T) m' m'' hm' v,
-    sync_addr_step m m' ->
+    possible_sync m m' ->
     step m' hm p m'' hm' v ->
-    exec m hm p (Finished m'' hm v)
+    exec m hm p (Finished m'' hm' v)
 | XBindFinish : forall m hm T (p1: prog T) m' hm' (v: T)
                   T' (p2: T -> prog T') out,
     exec m hm p1 (Finished m' hm' v) ->
@@ -115,11 +108,6 @@ Inductive recover_outcome (TF TR: Type) :=
   | RFailed
   | RFinished (m: rawdisk) (hm: hashmap) (v: TF)
   | RRecovered (m: rawdisk) (hm: hashmap) (v: TR).
-
-Definition possible_crash (m m' : rawdisk) : Prop :=
-  forall a,
-  (m a = None /\ m' a = None) \/
-  (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (vsmerge vs)).
 
 Inductive exec_recover (TF TR: Type)
     : rawdisk -> hashmap -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=

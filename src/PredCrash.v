@@ -1,6 +1,5 @@
 Require Import Mem.
 Require Import Pred.
-Require Import Prog.
 Require Import List ListUtils.
 Require Import FunctionalExtensionality.
 Require Import Morphisms.
@@ -20,6 +19,10 @@ Notation "a |+>?" := (exists v, a |+> v)%pred (at level 35) : pred_scope.
 
 Definition rawpred := @pred addr addr_eq_dec valuset.
 
+Definition possible_crash (m m' : rawdisk) : Prop :=
+  forall a,
+  (m a = None /\ m' a = None) \/
+  (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (vsmerge vs)).
 
 (* if [p] was true before a crash, then [crash_xform p] is true after a crash *)
 Definition crash_xform (p : rawpred) : rawpred :=
