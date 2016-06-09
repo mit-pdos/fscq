@@ -1312,30 +1312,41 @@ Module LOG.
     Unshelve. exact tt. eauto.
   Qed.
 
+  Definition is_some A (a: option A) : {a <> None} + {a = None}.
+  Proof.
+    destruct a; left + right; congruence.
+  Defined.
 
   (* like read_range, but stops when cond is true *)
-  Definition read_cond T A xp a nr (vfold : A -> valu -> A) v0 (cond : A -> bool) ms rx : prog T :=
-    let^ (ms, r) <- ForN i < nr
+  Definition read_cond A xp a nr (vfold : A -> valu -> A) v0 (cond : A -> bool) ms : prog _ :=
+    let^ (ms, pf, ret) <- ForN i < nr
     Hashmap hm
     Ghost [ F Fm crash ds m vs ]
-    Loopvar [ ms pf ]
-    Continuation lrx
+    Loopvar [ ms pf ret ]
     Invariant
       rep xp F (ActiveTxn ds m) ms hm *
-      [[[ m ::: (Fm * arrayP a vs) ]]] * [[ cond pf = false ]] *
-      [[ pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
+      [[[ m ::: (Fm * arrayP a vs) ]]] *
+      [[ ret = None ->
+        cond pf = false ]] *
+      [[ forall v, ret = Some v ->
+        cond v = true ]] *
+      [[ ret = None ->
+        pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
     OnCrash  crash
     Begin
-      let^ (ms, v) <- read_array xp a i ms;
-      let pf' := vfold pf v in
-      If (bool_dec (cond pf') true) {
-        rx ^(ms, Some pf')
+      If (is_some ret) {
+        Ret ^(ms, pf, ret)
       } else {
-        lrx ^(ms, pf')
+        let^ (ms, v) <- read_array xp a i ms;
+            let pf' := vfold pf v in
+            If (bool_dec (cond pf') true) {
+                Ret ^(ms, pf', Some pf')
+            } else {
+                Ret ^(ms, pf', None)
+            }
       }
-    Rof ^(ms, v0);
-    rx ^(ms, None).
-
+    Rof ^(ms, v0, None);
+    Ret ^(ms, ret).
 
   Theorem read_cond_ok : forall A xp a nr vfold (v0 : A) cond ms,
     {< F Fm ds m vs,
@@ -1355,6 +1366,9 @@ Module LOG.
     step.
 
     safestep.
+    safestep.
+    safestep.
+
     unfold rep_inner; cancel.
     eapply lt_le_trans; eauto.
     denote (replay_disk _ _ = replay_disk _ _) as Heq; rewrite <- Heq.
@@ -1372,6 +1386,9 @@ Module LOG.
     eexists.
     eapply hashmap_subset_trans; eauto.
 
+    destruct a2.
+    safestep.
+    or_l; cancel.
     safestep.
     or_r; cancel.
     eassign raw; pred_apply; cancel.
