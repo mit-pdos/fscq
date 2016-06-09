@@ -132,9 +132,9 @@ write_disk (S fd sr dirty fl) a (W v) = do
       do
         error $ "write_disk: short write: " ++ (show cc) ++ " @ " ++ (show a)
 
-sync_disk :: DiskState -> Integer -> IO ()
-sync_disk (S fd sr dirty fl) a = do
-  debugmsg $ "sync(" ++ (show a) ++ ")"
+sync_disk :: DiskState -> IO ()
+sync_disk (S fd sr dirty fl) = do
+  debugmsg $ "sync()"
   isdirty <- readIORef dirty
   if isdirty then do
     if debugSyncs then do
