@@ -398,7 +398,6 @@ Qed.
 
 Hint Extern 1 ({{_}} Bind (For_ _ _ _ _ _ _) _) => apply for_ok : prog.
 
-(* TODO: fix notation for monads *)
 Notation "'For' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (For_ (fun i =>
           (pair_args_helper (fun l1 => ..
@@ -449,9 +448,9 @@ Fixpoint ForN_  (L : Type) (G : Type) (f : nat -> L -> prog L)
 
 
 Theorem forN_ok':
-  forall (n i : nat)
+  forall T (n i : nat)
          (L : Type) (G : Type)
-         f (rx: _ -> prog L)
+         f (rx: _ -> prog T)
          (nocrash : G -> nat -> L -> hashmap -> pred)
          (crashed : G -> hashmap -> pred)
          (li : L),
@@ -513,8 +512,8 @@ Qed.
 
 Theorem forN_ok:
   forall (n : nat)
-         (L : Type) (G : Type)
-         f (rx: _ -> prog L)
+         T (L : Type) (G : Type)
+         f (rx: _ -> prog T)
          (nocrash : G -> nat -> L -> hashmap -> pred)
          (crashed : G -> hashmap -> pred)
          (li : L),
