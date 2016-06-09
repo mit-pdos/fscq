@@ -427,7 +427,7 @@ Proof.
   apply pimpl_and_split; eauto.
   unfold lift, pimpl; intros.
   cbn in *; intuition.
-  apply in_cons; auto.
+  eauto.
 Qed.
 
 
