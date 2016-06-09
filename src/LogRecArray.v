@@ -22,40 +22,39 @@ Module LogRecArray (RA : RASig).
       [[ items_valid xp items ]] *
       arrayN (@ptsto _ addr_eq_dec valuset) (RAStart xp) (synced_list vl))%pred.
 
-  Definition get T lxp xp ix ms rx : prog T :=
+  Definition get lxp xp ix ms : prog _ :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
     let^ (ms, v) <- LOG.read_array lxp (RAStart xp) bn ms;
-    rx ^(ms, selN_val2block v off).
+    Ret ^(ms, selN_val2block v off).
 
-  Definition put T lxp xp ix item ms rx : prog T :=
+  Definition put lxp xp ix item ms : prog _ :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
     let^ (ms, v) <- LOG.read_array lxp (RAStart xp) bn ms;
     let v' := block2val_updN_val2block v off item in
     ms <- LOG.write_array lxp (RAStart xp) bn v' ms;
-    rx ms.
+    Ret ms.
 
   (** read n blocks starting from the beginning *)
-  Definition read T lxp xp nblocks ms rx : prog T :=
+  Definition read lxp xp nblocks ms : prog _ :=
     let^ (ms, r) <- LOG.read_range lxp (RAStart xp) nblocks iunpack nil ms;
-    rx ^(ms, r).
+    Ret ^(ms, r).
 
   (** write all items starting from the beginning *)
-  Definition write T lxp xp items ms rx : prog T :=
+  Definition write lxp xp items ms : prog _ :=
     ms <- LOG.write_range lxp (RAStart xp) (ipack items) ms;
-    rx ms.
+    Ret ms.
 
   (** set all items to item0 *)
-  Definition init T lxp xp ms rx : prog T :=
+  Definition init lxp xp ms : prog _ :=
     ms <- LOG.write_range lxp (RAStart xp) (repeat $0 (RALen xp)) ms;
-    rx ms.
+    Ret ms.
 
   (* find the first item that satisfies cond *)
-  Definition ifind T lxp xp (cond : item -> addr -> bool) ms rx : prog T :=
+  Definition ifind lxp xp (cond : item -> addr -> bool) ms : prog _ :=
     let^ (ms) <- ForN i < (RALen xp)
     Hashmap hm
     Ghost [ F crash m1 m2 ]
     Loopvar [ ms ]
-    Continuation lrx
     Invariant
       LOG.rep lxp F (LOG.ActiveTxn m1 m2) ms hm
     OnCrash  crash
@@ -63,11 +62,13 @@ Module LogRecArray (RA : RASig).
       let^ (ms, v) <- LOG.read_array lxp (RAStart xp) i ms;
       let r := ifind_block cond (val2block v) (i * items_per_val) in
       match r with
-      | None => lrx ^(ms)
-      | Some ifs => rx ^(ms, Some ifs)
+      (* loop call *)
+      | None => Ret ^(ms)
+      (* break *)
+      | Some ifs => Ret ^(ms, Some ifs)
       end
     Rof ^(ms);
-    rx ^(ms, None).
+    Ret ^(ms, None).
 
   Local Hint Resolve items_per_val_not_0 items_per_val_gt_0 items_per_val_gt_0'.
 
@@ -275,31 +276,31 @@ Module LogRecArray (RA : RASig).
     Unshelve. exact tt.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (get _ _ _ _) _) => apply get_ok : prog.
-  Hint Extern 1 ({{_}} progseq (put _ _ _ _ _) _) => apply put_ok : prog.
-  Hint Extern 1 ({{_}} progseq (read _ _ _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
-  Hint Extern 1 ({{_}} progseq (init _ _ _) _) => apply init_ok : prog.
-  Hint Extern 1 ({{_}} progseq (ifind _ _ _ _) _) => apply ifind_ok : prog.
+  Hint Extern 1 ({{_}} Bind (get _ _ _ _) _) => apply get_ok : prog.
+  Hint Extern 1 ({{_}} Bind (put _ _ _ _ _) _) => apply put_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read _ _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} Bind (write _ _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
+  Hint Extern 1 ({{_}} Bind (ifind _ _ _ _) _) => apply ifind_ok : prog.
 
 
   (** operations using array spec *)
 
-  Definition get_array T lxp xp ix ms rx : prog T :=
+  Definition get_array lxp xp ix ms : prog _ :=
     r <- get lxp xp ix ms;
-    rx r.
+    Ret r.
 
-  Definition put_array T lxp xp ix item ms rx : prog T :=
+  Definition put_array lxp xp ix item ms : prog _ :=
     r <- put lxp xp ix item ms;
-    rx r.
+    Ret r.
 
-  Definition read_array T lxp xp nblocks ms rx : prog T :=
+  Definition read_array lxp xp nblocks ms : prog _ :=
     r <- read lxp xp nblocks ms;
-    rx r.
+    Ret r.
 
-  Definition ifind_array T lxp xp cond ms rx : prog T :=
+  Definition ifind_array lxp xp cond ms : prog _ :=
     r <- ifind lxp xp cond ms;
-    rx r.
+    Ret r.
 
   Theorem get_array_ok : forall lxp xp ix ms,
     {< F Fm Fi m0 m items e,
@@ -413,10 +414,10 @@ Module LogRecArray (RA : RASig).
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (get_array _ _ _ _) _) => apply get_array_ok : prog.
-  Hint Extern 1 ({{_}} progseq (put_array _ _ _ _ _) _) => apply put_array_ok : prog.
-  Hint Extern 1 ({{_}} progseq (read_array _ _ _ _) _) => apply read_array_ok : prog.
-  Hint Extern 1 ({{_}} progseq (ifind_array _ _ _ _) _) => apply ifind_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (get_array _ _ _ _) _) => apply get_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (put_array _ _ _ _ _) _) => apply put_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read_array _ _ _ _) _) => apply read_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (ifind_array _ _ _ _) _) => apply ifind_array_ok : prog.
 
   (* If two arrays are in the same spot, their contents have to be equal *)
   Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
