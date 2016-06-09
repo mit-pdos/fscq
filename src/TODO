@@ -25,6 +25,7 @@
 - eviction from GroupLog
 - prove AtomicCp
 - prove mkfs
+- prove that unlink never fails
 
 - clean up DirTree (no lists, update_subtree_helper, etc)
 - bring back ByteFile
