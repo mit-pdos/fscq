@@ -35,8 +35,6 @@ Inductive outcome (T : Type) :=
 Inductive step : forall T,
     rawdisk -> hashmap -> prog T ->
     rawdisk -> hashmap -> T -> Prop :=
-| StepRet : forall m hm T (v: T),
-    step m hm (Ret v) m hm v
 | StepRead : forall m a v x hm,
     m a = Some (v, x) ->
     step m hm (Read a) m hm v
@@ -77,6 +75,8 @@ Inductive crash_step : forall T, prog T -> Prop :=
     crash_step (Write a v).
 
 Inductive exec : forall T, rawdisk -> hashmap -> prog T -> outcome T -> Prop :=
+| XRet : forall T m hm (v: T),
+    exec m hm (Ret v) (Finished m hm v)
 | XStep : forall T m hm (p: prog T) m' m'' hm' v,
     possible_sync m m' ->
     step m' hm p m'' hm' v ->
