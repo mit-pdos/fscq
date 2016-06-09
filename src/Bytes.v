@@ -112,6 +112,9 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma bsplit_list_preserve: forall sz (b1 b2: bytes sz), b1 = b2 -> bsplit_list b1 = bsplit_list b2.
+Proof. intros. rewrite H. reflexivity. Qed.
+
 Theorem bytes2list2bytes: forall sz (b: bytes sz), exists H, 
 bcombine_list (bsplit_list b) = rew H in b.
 Proof. Admitted. (*  intros. exists (bsplit_list_len b).
@@ -168,4 +171,6 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma valu2bytes_preserve: forall v1 v2, v1 = v2 -> valu2bytes v1 = valu2bytes v2.
+Proof. intros. rewrite H. reflexivity. Qed.
 
