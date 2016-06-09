@@ -485,3 +485,11 @@ Proof.
   eapply Forall_impl; eauto.
   intros; destruct a; eauto.
 Qed.
+
+Theorem NEforall2_exists : forall T1 T2 (p p' : T1 -> T2 -> Prop) (f2 : T2 -> T2) l1 l2,
+  NEforall2 p l1 l2 ->
+  (forall e1 e2, p e1 e2 -> exists e1', p' e1' (f2 e2)) ->
+  exists l1',
+  NEforall2 p' l1' (d_map f2 l2).
+Proof.
+Admitted.

@@ -32,7 +32,7 @@ Require Import AsyncFS.
 Require Import DirUtil.
 Require Import String.
 Require Import TreeCrash.
-
+Require Import TreeSeq.
 
 
 Import ListNotations.
@@ -160,10 +160,20 @@ Module ATOMICCP.
   Definition temp_tree_pred Fm Ftop fsxp newest_ilist newest_free newest_tree mscs tinum :=
     (exists tree tfile ilist freelist,
       Fm * DIRTREE.rep fsxp Ftop tree ilist freelist *
-      [[ DIRTREE.find_subtree [temp_fn] tree = Some (DIRTREE.TreeFile tinum tfile)]] *
+      [[ DIRTREE.find_subtree [temp_fn] tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
       [[ DIRTREE.dirtree_safe ilist (BFILE.pick_balloc freelist (MSAlloc mscs)) tree
                                newest_ilist  (BFILE.pick_balloc newest_free  (MSAlloc mscs)) newest_tree ]]
     )%pred.
+
+  Definition temp_treeseqpred base_tree tinum (to : treeseq_one) :=
+    exists tfile,
+    TStree to = DIRTREE.update_subtree [temp_fn] base_tree (DIRTREE.TreeFile tinum tfile).
+
+  Definition temp_tree_pred_ds Fm Ftop fsxp newest_ilist newest_free newest_tree mscs tinum ds :=
+    exists ts,
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds /\
+    latest ts = mk_tree newest_tree newest_ilist newest_free /\
+    NEforall (temp_treeseqpred newest_tree tinum) ts.
 
   Ltac distinct_names :=
     match goal with
@@ -331,8 +341,7 @@ Module ATOMICCP.
     {< ds Fm Ftop temp_tree src_fn file tfile ilist freelist v0 t0,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree ilist freelist) ]]] *
-      [[ diskset_pred (temp_tree_pred Fm Ftop fsxp ilist freelist temp_tree mscs tinum) ds ]] *
+      [[ temp_tree_pred_ds Fm Ftop fsxp ilist freelist temp_tree mscs tinum ds ]] *
       [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
       [[ DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
       [[ src_fn <> temp_fn ]] *
@@ -342,20 +351,33 @@ Module ATOMICCP.
       exists ds',
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
       exists tree' ilist' freelist',
-        [[ diskset_pred (temp_tree_pred Fm Ftop fsxp ilist' freelist' tree' mscs tinum) ds' ]] *
-        [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist') ]]] *
-        ([[ r = false ]] \/ ([[ r = true ]] * 
-          [[tree' = (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree)]]))
+        [[ temp_tree_pred_ds Fm Ftop fsxp ilist' freelist' tree' mscs tinum ds' ]] *
+        (([[ r = false ]] *
+          exists tfile',
+          [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree ]])
+      \/ ([[ r = true ]] * 
+          [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree ]]))
     XCRASH:hm'
       exists ds',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-      exists tree' ilist' freelist',
-       [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist') ]]] *
-       [[ diskset_pred (temp_tree_pred Fm Ftop fsxp ilist' freelist' tree' mscs tinum) ds' ]]
+      exists tfile' ilist' freelist',
+      let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree in
+      [[ temp_tree_pred_ds Fm Ftop fsxp ilist' freelist' tree' mscs tinum ds' ]]
      >} copydata fsxp src_inum tinum mscs.
   Proof.
     unfold copydata; intros.
-    step.
+
+    prestep.
+    norml; unfold stars; simpl.
+
+    unfold temp_tree_pred_ds in H9.
+    deex.
+    unfold treeseq_in_ds in H3; intuition.
+    unfold tree_rep in H9.
+    rewrite H0 in *; clear H0.
+    cancel.
+    eauto.
+
     step.
     step.
     step.
