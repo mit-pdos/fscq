@@ -5,7 +5,7 @@ Require Import Classes.SetoidTactics.
 Require Import Hashmap.
 Require Import HashmapProg.
 Require Import Pred PredCrash.
-Require Import Prog.
+Require Import Prog ProgMonad.
 Require Import Hoare.
 Require Import SepAuto.
 Require Import BasicProg.
@@ -2232,7 +2232,7 @@ Module PaddedLog.
     step.
 
     intros.
-    eapply pimpl_ok2.
+    eapply pimpl_ok2; monad_simpl.
     eapply hash_list_ok. cancel.
     solve_hash_list_rep; auto.
     step.
@@ -2246,7 +2246,7 @@ Module PaddedLog.
       solve_checksums.
     }
     {
-      eapply pimpl_ok2; eauto with prog.
+      eapply pimpl_ok2; monad_simpl; eauto with prog.
       intros.
       unfold pimpl; intros.
       unfold checksums_match in *; intuition.
@@ -2318,12 +2318,12 @@ Module PaddedLog.
 
     step.
     intros.
-    eapply pimpl_ok2.
+    eapply pimpl_ok2; monad_simpl.
     eapply hash_list_ok.
     cancel.
     solve_hash_list_rep; auto.
     intros.
-    eapply pimpl_ok2.
+    eapply pimpl_ok2; monad_simpl.
     eapply hash_list_ok.
     cancel.
     solve_hash_list_rep; auto.
@@ -2394,7 +2394,7 @@ Module PaddedLog.
 
       step.
       solve_hash_list_rep; eauto.
-      eapply pimpl_ok2; try apply hash_list_ok.
+      eapply pimpl_ok2; monad_simpl; try apply hash_list_ok.
       cancel.
       solve_hash_list_rep; eauto.
 
@@ -2553,13 +2553,13 @@ Module PaddedLog.
     >} recover xp cs.
   Proof.
     unfold would_recover, would_recover'; intros.
-    eapply pimpl_ok2; try eapply nop_ok.
+    eapply pimpl_ok2; monad_simpl; try eapply nop_ok.
     intros. norm'l. unfold stars; cbn.
     intuition; subst.
 
     (* Synced *)
     - cancel.
-      eapply pimpl_ok2; try apply recover_ok_Synced.
+      eapply pimpl_ok2; monad_simpl; try apply recover_ok_Synced.
       cancel.
       eassign l.
       cancel.
@@ -2571,7 +2571,7 @@ Module PaddedLog.
 
     (* Rollback *)
     - cancel.
-      eapply pimpl_ok2; try apply recover_ok_Rollback.
+      eapply pimpl_ok2; monad_simpl; try apply recover_ok_Rollback.
       intros; norm. cancel. intuition simpl. eauto. auto.
       step.
       cancel.
