@@ -321,7 +321,11 @@ Module ATOMICCP.
       | [ Hin: In _ _ |- _ ] => idtac "Hin";  eapply in_selN_exists in Hin; destruct Hin as [? Hin]; destruct Hin as [? Hin1]
       | [ Hin1: _ |- exists _: _, BFILE.block_belong_to_file _ _ _ _] 
         => idtac "Hin1"; rewrite <- Hin1; clear Hin1; eauto 
-     end.
+      | [ H: MSAlloc _ = MSAlloc _ |- DIRTREE.dirtree_safe _ _ _ _ _ _ ]
+        => idtac "rewrite" H; rewrite H in *; clear H
+      | [ H: BFILE.diskset_was _ _ |- diskset_pred _ _ ] => 
+         idtac "subset"; unfold BFILE.diskset_was in H; intuition; subst; clear H  
+     end; eauto with dirtree_safe.
 
   Theorem copydata_ok : forall fsxp src_inum tinum mscs,
     {< ds Fm Ftop temp_tree src_fn file tfile ilist freelist v0 t0,
@@ -358,17 +362,8 @@ Module ATOMICCP.
     step.
     step.
 
-    rewrite H21 in *.
-    rewrite H23 in *.
-    rewrite H17 in *.
-    rewrite H15 in *.
+    diskset_pred_solve.
 
-    unfold BFILE.diskset_was in H26.
-    intuition; subst.
-    diskset_pred_solve.
-    eauto with dirtree_safe.
-    diskset_pred_solve.
-    eauto with dirtree_safe.
     or_r. cancel.
     erewrite update_update_subtree_eq; eauto.
     erewrite update_update_subtree_eq; eauto.
@@ -381,66 +376,20 @@ Module ATOMICCP.
     distinct_names.
     constructor.
 
-    unfold BFILE.diskset_was in H26.
-    intuition; subst.
-    rewrite H21 in *.
-    rewrite H23 in *.
-    rewrite H17 in *.
-    rewrite H15 in *.
-    rewrite H14 in *.
-
     diskset_pred_solve.
-    eauto with dirtree_safe.
-
-    diskset_pred_solve.
-    rewrite H21 in *.
-    rewrite H23 in *.
-    rewrite H17 in *.
-    rewrite H15 in *.
-    rewrite H14 in *.
-
-    eauto with dirtree_safe.
 
     (* Handle crash cases *)
     xcrash.
     repeat (xform_deex_r).
     xform_norm; cancel. 
 
-    unfold BFILE.diskset_was in H26.
-    intuition; subst.
-
     diskset_pred_solve.
-    rewrite H21 in *.
-    rewrite H23 in *.
-    rewrite H17 in *.
-    rewrite H15 in *.
-    eauto with dirtree_safe.
-
-    diskset_pred_solve.
-    rewrite H21 in *.
-    rewrite H23 in *.
-    rewrite H17 in *.
-    rewrite H15 in *.
-    eauto with dirtree_safe.
 
     xcrash.
     repeat (xform_deex_r).
     xform_norm; cancel.
 
-    unfold BFILE.diskset_was in H26.
-    intuition; subst.
-
     diskset_pred_solve.
-    rewrite H23 in *.
-    rewrite H17 in *.
-    rewrite H15 in *.
-    eauto with dirtree_safe.
-
-    diskset_pred_solve.
-    rewrite H23 in *.
-    rewrite H17 in *.
-    rewrite H15 in *.
-    eauto with dirtree_safe.
 
     xcrash.
     repeat (xform_deex_r).
