@@ -518,6 +518,8 @@ Section EnvSection.
     + repeat do_inv.
   Admitted.
 
+  Hint Resolve Step_RunsTo.
+
   CoInductive Safe : Stmt -> State -> Prop :=
   | SafeSkip : forall st, Safe Skip st
   | SafeSeq :
@@ -635,7 +637,8 @@ Arguments NTSome {T} key {H}.
 
 Inductive ScopeItem :=
 | SItemRet A (key : NameTag A) (start : diskstate) (p : forall T, (A -> prog T) -> prog T)
-| SItemDisk A (key : NameTag diskstate) (start : diskstate) (p : forall T, (A -> prog T) -> prog T).
+| SItemDisk A (key : NameTag diskstate) (start : diskstate) (p : forall T, (A -> prog T) -> prog T)
+| SItemDiskCrash A (key : NameTag diskstate) (start : diskstate) (p : forall T, (A -> prog T) -> prog T).
 
 (*
 Notation "` k ->> v" := (SItemRet (NTSome k) v) (at level 50).
@@ -664,23 +667,34 @@ Fixpoint SameValues (st : State) (tenv : Telescope) :=
       | None => False
       end /\ SameValues (StringMap.remove k st) tail
     end
+  | SItemDiskCrash key d0 p :: tail =>
+    match key with
+    | NTSome k =>
+      match StringMap.find k st with
+      | Some d => exists d', computes_to_crash p d0 d' /\ d = wrap d'
+      | None => False
+      end /\ SameValues (StringMap.remove k st) tail
+    end
   end.
 
 Notation "ENV \u2272 TENV" := (SameValues ENV TENV) (at level 50).
 
-Definition ProgOk env prog (initial_tstate final_tstate : Telescope) :=
+Definition ProgOk env prog (initial_tstate final_tstate crash_tstate : Telescope) :=
   forall initial_state : State,
     initial_state \u2272 initial_tstate ->
     Safe env prog initial_state /\
+    (forall crash_state prog',
+      (Step env)^* (prog, initial_state) (prog', crash_state) ->
+      crash_state \u2272 crash_tstate) /\
     forall final_state : State,
       RunsTo env prog initial_state final_state ->
       (final_state \u2272 final_tstate).
 
-Arguments ProgOk env prog%facade_scope initial_tstate final_tstate.
+Arguments ProgOk env prog%facade_scope initial_tstate final_tstate crash_tstate.
 
-Notation "{{ A }} P {{ B }} // EV" :=
-  (ProgOk EV P%facade A B)
-    (at level 60, format "'[v' '{{'  A  '}}' '/'    P '/' '{{'  B  '}}'  //  EV ']'").
+Notation "{{ A }} P {{ B }} {{ C }} // EV" :=
+  (ProgOk EV P%facade A B C)
+    (at level 60, format "'[v' '{{'  A  '}}' '/'    P '/' '{{'  B  '}}' '{{'  C  '}}' //  EV ']'").
 
 Ltac FacadeWrapper_t :=
   abstract (repeat match goal with
@@ -760,61 +774,51 @@ Check exec_trace.
 
 Local Open Scope string_scope.
 
-Lemma CompileAnything :
-  forall (tenv1 tenv2: Telescope) env,
-    {{ tenv1 }}
-      While (Const 1) __
-    {{ tenv2 }} // env.
+Lemma Step_Seq : forall env p1 p2 p' st st'',
+  (Step env)^* (Seq p1 p2, st) (p', st'') ->
+  (exists p1', (Step env)^* (p1, st) (p1', st'') /\ p' = Seq p1' p2) \/
+  (exists st', (Step env)^* (p1, st) (Skip, st') /\ (Step env)^* (p2, st') (p', st'')).
 Proof.
-  unfold ProgOk. intros.
-  intuition.
-  clear H. revert initial_state.
-  cofix.
-  econstructor.
-  reflexivity.
-  econstructor.
-  intros. auto.
-  prep_induction H0. induction H0; intros; subst_definitions; subst; try discriminate.
-  invc H2. invc H0_. eapply IHRunsTo2; eauto.
-  invc H2. discriminate.
+  intros.
+  prep_induction H. induction H; intros; subst.
+  + find_inversion. left. eexists. econstructor. econstructor. trivial.
+  + destruct y. invc H.
+    - destruct (IHclos_refl_trans_1n env a' p2 p' s0 st''); eauto. {
+        deex. left. eexists. intuition. econstructor; eauto.
+      } {
+        deex. right. eexists. intuition. econstructor; eauto. eauto.
+      }
+    - right. eexists. split. econstructor. eauto.
 Qed.
 
 Lemma CompileSeq :
-  forall (tenv1 tenv1' tenv2: Telescope) env p1 p2,
+  forall (tenv1 tenv1' tenv2 tenvc : Telescope) env p1 p2,
     {{ tenv1 }}
       p1
-    {{ tenv1' }} // env ->
+    {{ tenv1' }} {{ tenvc }} // env ->
     {{ tenv1' }}
       p2
-    {{ tenv2 }} // env ->
+    {{ tenv2 }} {{ tenvc }} // env ->
     {{ tenv1 }}
       (Seq p1 p2)
-    {{ tenv2 }} // env.
+    {{ tenv2 }} {{ tenvc }} // env.
 Proof.
   unfold ProgOk.
   intros.
-  split.
+  repeat split.
   + econstructor. split.
     - eapply H; eauto.
     - intros. eapply H0. eapply H; eauto.
+  + intros.
+    eapply Step_Seq in H2. intuition; repeat deex.
+    - eapply H; eauto.
+    - eapply H0; eauto. eapply H; eauto. eapply Step_RunsTo; eauto.
   + intros.
     invc H2.
     eapply H0; eauto.
     eapply H; eauto.
 Qed.
 
-Example micro_noop : sigT (fun p => forall d0,
-  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }} p {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }} // empty _).
-Proof.
-  eexists.
-  intros.
-  instantiate (1 := Skip).
-  intro. intros.
-  split.
-  econstructor.
-  intros.
-  invc H0. eauto.
-Defined.
 
 Definition read : AxiomaticSpec.
   refine {|
@@ -851,11 +855,42 @@ Ltac invert_ret_computes_to :=
       assert (H' := H); apply ret_computes_to in H; apply ret_computes_to_disk in H'; subst
   end.
 
-Theorem extract_finish_equiv : forall A {H: FacadeWrapper Value A} scope pr p,
+Lemma computes_to_computes_to_crash : forall A p d d' r,
+  @computes_to A p d d' r -> computes_to_crash p d d'.
+Proof.
+  unfold computes_to, computes_to_crash.
+  intros.
+  (* I believe this is not provable. *)
+Abort.
+
+Lemma computes_to_crash_refl : forall A p d,
+  @computes_to_crash A p d d.
+Proof.
+  unfold computes_to_crash. eauto.
+Qed.
+
+Example micro_noop : sigT (fun p => forall d0,
+  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }}
+    p
+  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }}
+  {{ [ SItemDiskCrash (NTSome "disk") d0 (ret tt) ] }} // empty _).
+Proof.
+  eexists.
+  intros.
+  instantiate (1 := Skip).
+  intro. intros.
+  repeat split.
+  econstructor.
+  invc H0. simpl in H. find_cases "disk" crash_state. intuition. repeat deex. invert_ret_computes_to.
+  eexists. intuition eauto using computes_to_crash_refl.
+  invc H1. invc H0. simpl in *. intuition.
+Defined.
+
+Theorem extract_finish_equiv : forall A {H: FacadeWrapper Value A} scope cscope pr p,
   (forall d0,
     {{ SItemDisk (NTSome "disk") d0 (ret tt) :: scope }}
       p
-    {{ [ SItemDisk (NTSome "disk") d0 pr; SItemRet (NTSome "out") d0 pr ] }} // disk_env) ->
+    {{ [ SItemDisk (NTSome "disk") d0 pr; SItemRet (NTSome "out") d0 pr ] }} {{ cscope }} // disk_env) ->
   forall st st' d0,
     st \u2272 ( SItemDisk (NTSome "disk") d0 (ret tt) :: scope) ->
     RunsTo disk_env p st st' ->
@@ -864,8 +899,8 @@ Proof.
   unfold ProgOk.
   intros.
   specialize (H0 d0 st ltac:(auto)).
-  destruct H0.
-  specialize (H3 st' ltac:(auto)).
+  intuition.
+  specialize (H5 st' ltac:(auto)).
   simpl in *.
   find_cases "disk" st.
   find_cases "disk" st'.
@@ -874,25 +909,40 @@ Proof.
   intuition eauto.
 Qed.
 
-Theorem extract_crash_equiv : forall A scope pr p,
+Theorem extract_crash_equiv : forall A pscope scope pr p,
   (forall d0,
     {{ SItemDisk (NTSome "disk") d0 (ret tt) :: scope }}
       p
-    {{ [ SItemDisk (NTSome "disk") d0 pr ] }} // disk_env) ->
+    {{ pscope }} {{ [ SItemDiskCrash (NTSome "disk") d0 pr ] }} // disk_env) ->
   forall st p' st' d0,
     st \u2272 (SItemDisk (NTSome "disk") d0 (ret tt) :: scope) ->
     (Step disk_env)^* (p, st) (p', st') ->
     exists d', find "disk" st' = Some (Disk d') /\ @computes_to_crash A pr d0 d'.
 Proof.
-  (* Untrue! ProgOk only guarantees partial correctness of the extracted program, so even though [p] satisfies
-     the postcondition, it's possible that it does a write that [pr] wouldn't have done and then loops forever.
-     If [p] then crashes, the state won't correspond to a possible crash state of [pr]. *)
-Abort.
+  unfold ProgOk.
+  intros.
+  specialize (H d0 st ltac:(auto)).
+  intuition.
+  specialize (H st' p').
+  simpl in *.
+  intuition. find_cases "disk" st'.
+  repeat deex. eauto.
+Qed.
 
+Ltac invert_steps :=
+  match goal with
+  | [ H : Step _ _ _ |- _ ] => invc H
+  | [ H : (Step _)^* _ _ |- _ ] => invc H
+  end.
+
+Ltac invert_runsto :=
+  match goal with
+  | [ H : RunsTo _ _ _ _ |- _ ] => invc H
+  end.
 Example micro_write : sigT (fun p => forall d0 a v,
   {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "a") d0 (ret a) ; SItemRet (NTSome "v") d0 (ret v) ] }}
     p
-  {{ [ SItemDisk (NTSome "disk") d0 (fun T => @Write T a v) ] }} // disk_env).
+  {{ [ SItemDisk (NTSome "disk") d0 (fun T => @Write T a v) ] }} {{ [ SItemDiskCrash (NTSome "disk") d0 (fun T => @Write T a v) ] }} // disk_env).
 Proof.
   eexists.
   intros.
@@ -900,36 +950,33 @@ Proof.
   intro. intros.
   simpl in *.
   maps.
-  intuition idtac.
-
   find_cases "disk" initial_state.
   find_cases "a" initial_state.
   find_cases "v" initial_state.
+  intuition idtac.
+
   econstructor.
   unfold disk_env.
   maps. trivial.
   simpl. unfold sel. rewrite He, He0, He1. trivial.
-  simpl. repeat deex. repeat eexists. trivial.
-  inversion H2.
-  unfold disk_env in H7.
-  maps.
-  invc H7.
-  unfold sel in *.
-  simpl in *.
-  destruct (find "disk" initial_state); [ | exfalso; solve [ intuition idtac ] ].
-  destruct (find "a" initial_state); [ | exfalso; solve [ intuition idtac ] ].
-  destruct (find "v" initial_state); [ | exfalso; solve [ intuition idtac ] ].
-  intuition idtac.
-  repeat deex.
+  simpl. repeat deex. repeat eexists.
 
-  invert_ret_computes_to.
-  invc H2.
-  invc H8.
+  repeat deex.
+  invert_steps; invert_ret_computes_to. rewrite He. eexists; intuition auto using computes_to_crash_refl.
+
+  invert_steps. invert_steps. maps. subst_definitions. invc H7. unfold sel in *. repeat find_rewrite. repeat find_inversion.
+  do 3 (destruct output; try discriminate). unfold disk_env in *. maps. find_inversion. simpl in *.
+  repeat deex. repeat find_inversion. maps. eexists; intuition.
+  econstructor. econstructor. econstructor 3.
+
+  invert_steps.
+
+  invert_runsto. invc H8. repeat deex. unfold sel in *. rewrite He1 in *. rewrite He in *. rewrite He0 in *. repeat find_inversion.
   do 3 (destruct output; try discriminate).
   simpl in *.
-  invc H4.
-  subst st'.
-  maps.
+  unfold disk_env in *. maps. find_inversion. simpl in *. repeat deex. repeat find_inversion.
+  subst_definitions. maps.
+  invert_ret_computes_to.
   do 2 eexists; intuition.
   econstructor; simpl.
   econstructor.
@@ -944,14 +991,15 @@ Defined.
 Example micro_inc : sigT (fun p => forall d0 x,
   {{ [ SItemRet (NTSome "x") d0 (ret x) ] }}
     p
-  {{ [ SItemRet (NTSome "x") d0 (ret (1 + x)) ] }} // empty _).
+  {{ [ SItemRet (NTSome "x") d0 (ret (1 + x)) ] }}
+  {{ [] }} // empty _).
 Proof.
   eexists.
   intros.
   instantiate (1 := ("x" <- Const 1 + Var "x")%facade).
   intro. intros.
   intuition. admit.
-  simpl in *.
+  simpl. auto.
   invc H0.
   maps.
   simpl in *.
@@ -960,10 +1008,12 @@ Proof.
   simpl in *.
   repeat deex.
   invc H3.
-  apply_in_hyp ret_computes_to; subst.
+  invert_ret_computes_to.
+  maps.
   eauto.
 Admitted.
 
+(*
 Lemma CompileCompose :
   forall env var (f g : nat -> nat) p1 p2,
     (forall d0 x,
@@ -988,11 +1038,11 @@ Proof.
   + invc H. eapply H0; eauto.
 Qed.
 
-
 Example micro_inc_two : sigT (fun p => forall d0 x,
   {{ [ SItemRet (NTSome "x") d0 (ret x) ] }}
     p
-  {{ [ SItemRet (NTSome "x") d0 (ret (2 + x)) ] }} // empty _).
+  {{ [ SItemRet (NTSome "x") d0 (ret (2 + x)) ] }}
+  {{ [] }} // empty _).
 Proof.
   eexists.
   intros.
@@ -1000,7 +1050,12 @@ Proof.
   change (2 + x) with (f (f x)).
   eapply CompileCompose; eapply (projT2 micro_inc).
 Qed.
+*)
 
+Ltac find_all_cases :=
+  repeat match goal with
+  | [ H : match find ?d ?v with | Some _ => _ | None => _ end |- _ ] => find_cases d v
+  end.
 
 Lemma CompileRead : forall A avar vvar pr (f : A -> nat) d0,
   avar <> "disk" ->
@@ -1008,36 +1063,34 @@ Lemma CompileRead : forall A avar vvar pr (f : A -> nat) d0,
   {{ [ SItemDisk (NTSome "disk") d0 pr; SItemRet (NTSome avar) d0 (pr |> f) ] }}
     Call vvar "read" ["disk"; avar]
   {{ [ SItemDisk (NTSome "disk") d0 (fun T rx => pr T (fun a => @Read T (f a) rx));
-       SItemRet (NTSome vvar) d0 (fun T rx => pr T (fun a => @Read T (f a) rx)) ] }} // disk_env.
+       SItemRet (NTSome vvar) d0 (fun T rx => pr T (fun a => @Read T (f a) rx)) ] }}
+  {{ [ SItemDiskCrash (NTSome "disk") d0 (fun T rx => pr T (fun a => @Read T (f a) rx)) ] }} // disk_env.
 Proof.
   unfold ProgOk.
   intros.
   intuition.
   simpl in *.
   maps.
-  find_cases "disk" initial_state.
-  find_cases avar initial_state.
+  intuition.
+  find_all_cases.
   econstructor.
   unfold disk_env. maps. trivial.
   unfold sel. simpl. rewrite He. rewrite He0. trivial.
   intuition. repeat deex.
   simpl. eauto.
-  Ltac invert_runsto :=
-    match goal with
-    | [ H : RunsTo _ _ _ _ |- _ ] => invc H
-    end.
+
+  invert_steps. simpl in *. intuition. maps.
+  find_all_cases. repeat deex. eexists; intuition.
+  unfold computes_to, computes_to_crash in *.
+  intros.
+  (* Welp! This is unprovable. *)
+
   invert_runsto.
   simpl in *.
   unfold sel in *.
   maps.
   find_cases "disk" initial_state.
   find_cases avar initial_state.
-  Ltac find_inversion :=
-    match goal with
-    | [ H : ?a _ = ?a _ |- _ ] => invc H
-    | [ H : ?a _ _ = ?a _ _ |- _ ] => invc H
-    | [ H : ?a _ _ _ = ?a _ _ _ |- _ ] => invc H
-    end.
   find_inversion.
   do 2 (destruct output; try discriminate).
   simpl in *.
