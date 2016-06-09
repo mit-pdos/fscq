@@ -197,13 +197,13 @@ Module GLog.
 
   (************* program *)
 
-  Definition read T xp a (ms : memstate) rx : prog T :=
+  Definition read xp a (ms : memstate) : prog _ :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     match Map.find a vm with
-    | Some v =>  rx ^(ms, v)
+    | Some v =>  Ret ^(ms, v)
     | None =>
         let^ (mm', v) <- MLog.read xp a mm;
-        rx ^(mk_memstate vm ts mm', v)
+        Ret ^(mk_memstate vm ts mm', v)
     end.
 
   (* Submit a committed transaction.
@@ -212,22 +212,21 @@ Module GLog.
      This keep the interface compatible with current Log.v, in which
      only commit() can fail, and the caller can choose to abort.
   *)
-  Definition submit T xp ents ms rx : prog T :=
+  Definition submit xp ents ms : prog _ :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     let vm' := replay_mem ents vm in
     If (le_dec (length ents) (LogLen xp)) {
-      rx ^(mk_memstate vm' (ents :: ts) mm, true)
+      Ret ^(mk_memstate vm' (ents :: ts) mm, true)
     } else {
-      rx ^(ms, false)
+      Ret ^(ms, false)
     }.
 
-  Definition flushall_nomerge T xp ms rx : prog T :=
+  Definition flushall_nomerge xp ms : prog _ :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     let^ (mm) <- ForN i < length ts
     Hashmap hm
     Ghost [ F ds crash ]
     Loopvar [ mm ]
-    Continuation lrx
     Invariant
         exists nr,
         << F, MLog.rep: xp (MLog.Synced nr (nthd i ds)) mm hm >>
@@ -235,75 +234,75 @@ Module GLog.
     Begin
       (* r = false is impossible, flushall should always succeed *)
       let^ (mm, r) <- MLog.flush xp (selN ts (length ts - i - 1) nil) mm;
-      lrx ^(mm)
+      Ret ^(mm)
     Rof ^(mm);
-    rx (mk_memstate vmap0 nil mm).
+    Ret (mk_memstate vmap0 nil mm).
 
-  Definition flushall T xp ms rx : prog T :=
+  Definition flushall xp ms : prog _ :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     If (le_dec (Map.cardinal vm) (LogLen xp)) {
       let^ (mm, r) <- MLog.flush xp (Map.elements vm) mm;
-      rx (mk_memstate vmap0 nil mm)
+      Ret (mk_memstate vmap0 nil mm)
     } else {
       ms <- flushall_nomerge xp ms;
-      rx ms
+      Ret ms
     }.
 
-  Definition flushsync T xp ms rx : prog T :=
+  Definition flushsync xp ms : prog _ :=
     ms <- flushall xp ms;
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.apply xp mm;
-    rx (mk_memstate vm ts mm').
+    Ret (mk_memstate vm ts mm').
 
-  Definition dwrite' T (xp : log_xparams) a v ms rx : prog T :=
+  Definition dwrite' (xp : log_xparams) a v ms : prog _ :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dwrite xp a v mm;
-    rx (mk_memstate vm ts mm').
+    Ret (mk_memstate vm ts mm').
 
-  Definition dwrite T (xp : log_xparams) a v ms rx : prog T :=
+  Definition dwrite (xp : log_xparams) a v ms : prog _ :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     If (MapFacts.In_dec vm a) {
       ms <- flushall xp ms;
       ms <- dwrite' xp a v ms;
-      rx ms
+      Ret ms
     } else {
       ms <- dwrite' xp a v ms;
-      rx ms
+      Ret ms
     }.
 
-  Definition dwrite_vecs' T (xp : log_xparams) avs ms rx : prog T :=
+  Definition dwrite_vecs' (xp : log_xparams) avs ms : prog _ :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dwrite_vecs xp avs mm;
-    rx (mk_memstate vm ts mm').
+    Ret (mk_memstate vm ts mm').
 
-  Definition dwrite_vecs T (xp : log_xparams) avs ms rx : prog T :=
+  Definition dwrite_vecs (xp : log_xparams) avs ms : prog _ :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     If (bool_dec (overlap (map fst avs) vm) true) {
       ms <- flushall xp ms;
       ms <- dwrite_vecs' xp avs ms;
-      rx ms
+      Ret ms
     } else {
       ms <- dwrite_vecs' xp avs ms;
-      rx ms
+      Ret ms
     }.
 
-  Definition dsync T xp a ms rx : prog T :=
+  Definition dsync xp a ms : prog _ :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dsync xp a mm;
-    rx (mk_memstate vm ts mm').
+    Ret (mk_memstate vm ts mm').
 
-  Definition dsync_vecs T xp al ms rx : prog T :=
+  Definition dsync_vecs xp al ms : prog _ :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dsync_vecs xp al mm;
-    rx (mk_memstate vm ts mm').
+    Ret (mk_memstate vm ts mm').
 
-  Definition recover T xp cs rx : prog T :=
+  Definition recover xp cs : prog _ :=
     mm <- MLog.recover xp cs;
-    rx (mk_memstate vmap0 nil mm).
+    Ret (mk_memstate vmap0 nil mm).
 
-  Definition init T xp cs rx : prog T :=
+  Definition init xp cs : prog _ :=
     mm <- MLog.init xp cs;
-    rx (mk_memstate vmap0 nil mm).
+    Ret (mk_memstate vmap0 nil mm).
 
 
   Arguments MLog.rep: simpl never.
@@ -771,7 +770,7 @@ Module GLog.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (flushall_nomerge _ _) _) => apply flushall_nomerge_ok : prog.
+  Hint Extern 1 ({{_}} Bind (flushall_nomerge _ _) _) => apply flushall_nomerge_ok : prog.
 
   Opaque flushall_nomerge.
 
@@ -844,9 +843,9 @@ Module GLog.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (submit _ _ _) _) => apply submit_ok : prog.
-  Hint Extern 1 ({{_}} progseq (flushall _ _) _) => apply flushall_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} Bind (submit _ _ _) _) => apply submit_ok : prog.
+  Hint Extern 1 ({{_}} Bind (flushall _ _) _) => apply flushall_ok : prog.
 
 
   Lemma forall_ents_valid_length_eq : forall xp d d' ts,
@@ -1023,7 +1022,7 @@ Module GLog.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (dwrite' _ _ _ _) _) => apply dwrite'_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dwrite' _ _ _ _) _) => apply dwrite'_ok : prog.
 
   Theorem dwrite_ok: forall xp a v ms,
     {< F Fd ds vs,
@@ -1184,7 +1183,7 @@ Module GLog.
     all: simpl; eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (dwrite_vecs' _ _ _) _) => apply dwrite_vecs'_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dwrite_vecs' _ _ _) _) => apply dwrite_vecs'_ok : prog.
 
   Theorem dwrite_vecs_ok: forall xp avl ms,
     {< F ds,
@@ -1522,11 +1521,11 @@ Module GLog.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dsync _ _ _) _) => apply dsync_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
+  Hint Extern 1 ({{_}} Bind (recover _ _) _) => apply recover_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dsync _ _ _) _) => apply dsync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 

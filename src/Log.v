@@ -268,65 +268,65 @@ Module LOG.
   Qed.
 
 
-  Definition init T xp cs rx : prog T :=
+  Definition init xp cs : prog _ :=
     mm <- GLog.init xp cs;
-    rx (mk_memstate vmap0 mm).
+    Ret (mk_memstate vmap0 mm).
 
-  Definition begin T (xp : log_xparams) ms rx : prog T :=
+  Definition begin (xp : log_xparams) ms : prog _ :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
-    rx (mk_memstate vmap0 mm).
+    Ret (mk_memstate vmap0 mm).
 
-  Definition abort T (xp : log_xparams) ms rx : prog T :=
+  Definition abort (xp : log_xparams) ms : prog _ :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
-    rx (mk_memstate vmap0 mm).
+    Ret (mk_memstate vmap0 mm).
 
-  Definition write T (xp : log_xparams) a v ms rx : prog T :=
+  Definition write (xp : log_xparams) a v ms : prog _ :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
-    rx (mk_memstate (Map.add a v cm) mm).
+    Ret (mk_memstate (Map.add a v cm) mm).
 
-  Definition read T xp a ms rx : prog T :=
+  Definition read xp a ms : prog _ :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     match Map.find a cm with
-    | Some v =>  rx ^(ms, v)
+    | Some v =>  Ret ^(ms, v)
     | None =>
         let^ (mm', v) <- GLog.read xp a mm;
-        rx ^(mk_memstate cm mm', v)
+        Ret ^(mk_memstate cm mm', v)
     end.
 
-  Definition commit T xp ms rx : prog T :=
+  Definition commit xp ms : prog _ :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     let^ (mm', r) <- GLog.submit xp (Map.elements cm) mm;
-    rx ^(mk_memstate vmap0 mm', r).
+    Ret ^(mk_memstate vmap0 mm', r).
 
   (* like abort, but use a better name for read-only transactions *)
-  Definition commit_ro T (xp : log_xparams) ms rx : prog T :=
+  Definition commit_ro (xp : log_xparams) ms : prog _ :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
-    rx (mk_memstate vmap0 mm).
+    Ret (mk_memstate vmap0 mm).
 
-  Definition dwrite T (xp : log_xparams) a v ms rx : prog T :=
+  Definition dwrite (xp : log_xparams) a v ms : prog _ :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     let cm' := Map.remove a cm in
     mm' <- GLog.dwrite xp a v mm;
-    rx (mk_memstate cm' mm').
+    Ret (mk_memstate cm' mm').
 
-  Definition dsync T xp a ms rx : prog T :=
+  Definition dsync xp a ms : prog _ :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.dsync xp a mm;
-    rx (mk_memstate cm mm').
+    Ret (mk_memstate cm mm').
 
-  Definition flushsync T xp ms rx : prog T :=
+  Definition flushsync xp ms : prog _ :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.flushsync xp mm;
-    rx (mk_memstate cm mm').
+    Ret (mk_memstate cm mm').
 
-  Definition sync T xp ms rx : prog T :=
+  Definition sync xp ms : prog _ :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.flushall xp mm;
-    rx (mk_memstate cm mm').
+    Ret (mk_memstate cm mm').
 
-  Definition recover T xp cs rx : prog T :=
+  Definition recover xp cs : prog _ :=
     mm <- GLog.recover xp cs;
-    rx (mk_memstate vmap0 mm).
+    Ret (mk_memstate vmap0 mm).
 
 
   Local Hint Unfold rep rep_inner map_replay: hoare_unfold.
@@ -1062,25 +1062,25 @@ Module LOG.
   Hint Extern 0 (okToUnify (intact _ _ _ _) (intact _ _ _ _)) => constructor : okToUnify.
 
 
-  Hint Extern 1 ({{_}} progseq (begin _ _) _) => apply begin_ok : prog.
-  Hint Extern 1 ({{_}} progseq (abort _ _) _) => apply abort_ok : prog.
-  Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
-  Hint Extern 1 ({{_}} progseq (commit _ _) _) => apply commit_ok : prog.
-  Hint Extern 1 ({{_}} progseq (commit_ro _ _) _) => apply commit_ro_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dsync _ _ _) _) => apply dsync_ok : prog.
-  Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
-  Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
+  Hint Extern 1 ({{_}} Bind (begin _ _) _) => apply begin_ok : prog.
+  Hint Extern 1 ({{_}} Bind (abort _ _) _) => apply abort_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} Bind (write _ _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} Bind (commit _ _) _) => apply commit_ok : prog.
+  Hint Extern 1 ({{_}} Bind (commit_ro _ _) _) => apply commit_ro_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dsync _ _ _) _) => apply dsync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (sync _ _) _) => apply sync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (recover _ _) _) => apply recover_ok : prog.
 
 
-  Definition read_array T xp a i ms rx : prog T :=
+  Definition read_array xp a i ms : prog _ :=
     let^ (ms, r) <- read xp (a + i) ms;
-    rx ^(ms, r).
+    Ret ^(ms, r).
 
-  Definition write_array T xp a i v ms rx : prog T :=
+  Definition write_array xp a i v ms : prog _ :=
     ms <- write xp (a + i) v ms;
-    rx ms.
+    Ret ms.
 
   Notation arrayP := (arrayN (@ptsto _ addr_eq_dec valuset)).
 
@@ -1133,17 +1133,16 @@ Module LOG.
     step.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (read_array _ _ _ _) _) => apply read_array_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _ _) _) => apply write_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read_array _ _ _ _) _) => apply read_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (write_array _ _ _ _ _) _) => apply write_array_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _ ?a _) (rep _ _ _ ?a _)) => constructor : okToUnify.
 
-  Definition read_range T A xp a nr (vfold : A -> valu -> A) v0 ms rx : prog T :=
+  Definition read_range A xp a nr (vfold : A -> valu -> A) v0 ms : prog _ :=
     let^ (ms, r) <- ForN i < nr
     Hashmap hm
     Ghost [ F Fm crash ds m vs ]
     Loopvar [ ms pf ]
-    Continuation lrx
     Invariant
       rep xp F (ActiveTxn ds m) ms hm *
       [[[ m ::: (Fm * arrayP a vs) ]]] *
@@ -1151,26 +1150,25 @@ Module LOG.
     OnCrash  crash
     Begin
       let^ (ms, v) <- read_array xp a i ms;
-      lrx ^(ms, vfold pf v)
+      Ret ^(ms, vfold pf v)
     Rof ^(ms, v0);
-    rx ^(ms, r).
+    Ret ^(ms, r).
 
 
-  Definition write_range T xp a l ms rx : prog T :=
+  Definition write_range xp a l ms : prog _ :=
     let^ (ms) <- ForN i < length l
     Hashmap hm
     Ghost [ F Fm crash ds vs ]
     Loopvar [ ms ]
-    Continuation lrx
     Invariant
       exists m, rep xp F (ActiveTxn ds m) ms hm *
       [[[ m ::: (Fm * arrayP a (vsupsyn_range vs (firstn i l))) ]]]
     OnCrash crash
     Begin
       ms <- write_array xp a i (selN l i $0) ms;
-      lrx ^(ms)
+      Ret ^(ms)
     Rof ^(ms);
-    rx ms.
+    Ret ms.
 
 
   Theorem read_range_ok : forall A xp a nr vfold (v0 : A) ms,
@@ -1383,23 +1381,23 @@ Module LOG.
     Unshelve. all: eauto; try exact tt; try exact nil.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (read_cond _ _ _ _ _ _ _) _) => apply read_cond_ok : prog.
-  Hint Extern 1 ({{_}} progseq (read_range _ _ _ _ _ _) _) => apply read_range_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write_range _ _ _ _) _) => apply write_range_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read_cond _ _ _ _ _ _ _) _) => apply read_cond_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read_range _ _ _ _ _ _) _) => apply read_range_ok : prog.
+  Hint Extern 1 ({{_}} Bind (write_range _ _ _ _) _) => apply write_range_ok : prog.
 
 
   (******** batch direct write and sync *)
 
   (* dwrite_vecs discard everything in active transaction *)
-  Definition dwrite_vecs T (xp : log_xparams) avl ms rx : prog T :=
+  Definition dwrite_vecs (xp : log_xparams) avl ms : prog _ :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.dwrite_vecs xp avl mm;
-    rx (mk_memstate vmap0 mm').
+    Ret (mk_memstate vmap0 mm').
 
-  Definition dsync_vecs T xp al ms rx : prog T :=
+  Definition dsync_vecs xp al ms : prog _ :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.dsync_vecs xp al mm;
-    rx (mk_memstate cm mm').
+    Ret (mk_memstate cm mm').
 
 
   Lemma dwrite_ptsto_inbound : forall (F : @pred _ _ valuset) ovl avl m,
@@ -1567,8 +1565,8 @@ Module LOG.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
 
   Lemma idempred_hashmap_subset : forall xp F ds hm hm',

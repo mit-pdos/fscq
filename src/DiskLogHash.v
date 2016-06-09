@@ -188,26 +188,26 @@ Module PaddedLog.
       cancel.
     Qed.
 
-    Definition read T xp cs rx : prog T := Eval compute_rec in
+    Definition read xp cs : prog _ := Eval compute_rec in
       let^ (cs, v) <- BUFCACHE.read (LAHdr xp) cs;
       let header := (val2hdr v) in
-      rx ^(cs, ((# (header :-> "previous_ndesc"), # (header :-> "previous_ndata")),
+      Ret ^(cs, ((# (header :-> "previous_ndesc"), # (header :-> "previous_ndata")),
                 (# (header :-> "ndesc"), # (header :-> "ndata")),
                 (header :-> "addr_checksum", header :-> "valu_checksum"))).
 
-    Definition write T xp n cs rx : prog T :=
+    Definition write xp n cs : prog _ :=
       cs <- BUFCACHE.write (LAHdr xp) (hdr2val (mk_header n)) cs;
-      rx cs.
+      Ret cs.
 
-    Definition sync T xp cs rx : prog T :=
+    Definition sync xp cs : prog _ :=
       cs <- BUFCACHE.sync (LAHdr xp) cs;
-      rx cs.
+      Ret cs.
 
-    Definition sync_now T xp cs rx : prog T :=
+    Definition sync_now xp cs : prog _ :=
       cs <- BUFCACHE.begin_sync cs;
       cs <- BUFCACHE.sync (LAHdr xp) cs;
       cs <- BUFCACHE.end_sync cs;
-      rx cs.
+      Ret cs.
 
     Local Hint Unfold rep state_goodSize : hoare_unfold.
 
@@ -291,10 +291,10 @@ Module PaddedLog.
     Qed.
 
     Hint Resolve sync_invariant_rep.
-    Hint Extern 1 ({{_}} progseq (write _ _ _) _) => apply write_ok : prog.
-    Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
-    Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
-    Hint Extern 1 ({{_}} progseq (sync_now _ _) _) => apply sync_now_ok : prog.
+    Hint Extern 1 ({{_}} Bind (write _ _ _) _) => apply write_ok : prog.
+    Hint Extern 1 ({{_}} Bind (read _ _) _) => apply read_ok : prog.
+    Hint Extern 1 ({{_}} Bind (sync _ _) _) => apply sync_ok : prog.
+    Hint Extern 1 ({{_}} Bind (sync_now _ _) _) => apply sync_now_ok : prog.
 
   End Hdr.
 
@@ -530,18 +530,18 @@ Module PaddedLog.
 
   Local Hint Unfold rep rep_inner rep_contents xparams_ok: hoare_unfold.
 
-  Definition avail T xp cs rx : prog T :=
+  Definition avail xp cs : prog _ :=
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(_, (ndesc, _), _) := nr in
-    rx ^(cs, ((LogLen xp) - ndesc * DescSig.items_per_val)).
+    Ret ^(cs, ((LogLen xp) - ndesc * DescSig.items_per_val)).
 
-  Definition read T xp cs rx : prog T :=
+  Definition read xp cs : prog _ :=
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(_, (ndesc, ndata), _) := nr in
     let^ (cs, wal) <- Desc.read_all xp ndesc cs;
     let al := map (@wordToNat addrlen) wal in
     let^ (cs, vl) <- Data.read_all xp ndata cs;
-    rx ^(cs, combine_nonzero al vl).
+    Ret ^(cs, combine_nonzero al vl).
 
   (* this is an evil hint *)
   Remove Hints Forall_nil.
@@ -996,19 +996,19 @@ Module PaddedLog.
   Local Hint Resolve goodSize_0.
 
 
-  Definition init T xp cs rx : prog T :=
+  Definition init xp cs : prog _ :=
     h <- Hash default_valu;
     cs <- Hdr.write xp ((0, 0), (0, 0), (h, h)) cs;
     cs <- Hdr.sync_now xp cs;
-    rx cs.
+    Ret cs.
 
-  Definition trunc T xp cs rx : prog T :=
+  Definition trunc xp cs : prog _ :=
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(_, current_length, _) := nr in
     h <- Hash default_valu;
     cs <- Hdr.write xp (current_length, (0, 0), (h, h)) cs;
     cs <- Hdr.sync_now xp cs;
-    rx cs.
+    Ret cs.
 
   Local Hint Resolve Forall_nil.
 
@@ -1531,7 +1531,7 @@ Module PaddedLog.
     rewrite entry_valid_vals_nonzero; auto.
   Qed.
 
-  Definition extend T xp log cs rx : prog T :=
+  Definition extend xp log cs : prog _ :=
     (* Synced *)
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(_, (ndesc, ndata), (h_addr, h_valu)) := nr in
@@ -1551,9 +1551,9 @@ Module PaddedLog.
       cs <- Hdr.sync xp cs;
       cs <- BUFCACHE.end_sync cs;
       (* Synced *)
-      rx ^(cs, true)
+      Ret ^(cs, true)
     } else {
-      rx ^(cs, false)
+      Ret ^(cs, false)
     }.
 
   Lemma rep_hashmap_subset : forall xp hm hm',
@@ -1735,10 +1735,10 @@ Module PaddedLog.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (avail _ _) _) => apply avail_ok : prog.
-  Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (trunc _ _) _) => apply trunc_ok : prog.
-  Hint Extern 1 ({{_}} progseq (extend _ _ _) _) => apply extend_ok : prog.
+  Hint Extern 1 ({{_}} Bind (avail _ _) _) => apply avail_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} Bind (trunc _ _) _) => apply trunc_ok : prog.
+  Hint Extern 1 ({{_}} Bind (extend _ _ _) _) => apply extend_ok : prog.
 
   Theorem entry_valid_dec : forall ent,
     {entry_valid ent} + {~ entry_valid ent}.
@@ -2148,7 +2148,7 @@ Module PaddedLog.
     destruct (weq x y); destruct (weq a b); intuition.
   Defined.
 
-  Definition recover T xp cs rx : prog T :=
+  Definition recover xp cs : prog _ :=
     let^ (cs, header) <- Hdr.read xp cs;
     let '((prev_ndesc, prev_ndata),
           (ndesc, ndata),
@@ -2159,7 +2159,7 @@ Module PaddedLog.
     h_addr <- hash_list default_hash (DescDefs.ipack wal);
     h_valu <- hash_list default_hash vl;
     If (weq2 addr_checksum h_addr valu_checksum h_valu) {
-      rx cs
+      Ret cs
     } else {
       let^ (cs, wal) <- Desc.read_all xp prev_ndesc cs;
       let^ (cs, vl) <- Data.read_all xp prev_ndata cs;
@@ -2169,7 +2169,7 @@ Module PaddedLog.
                           (prev_ndesc, prev_ndata),
                           (addr_checksum, valu_checksum)) cs;
       cs <- Hdr.sync_now xp cs;
-      rx cs
+      Ret cs
     }.
 
   Lemma recover_read_ok_helper : forall xp old new,
@@ -2583,7 +2583,7 @@ Module PaddedLog.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
+  Hint Extern 1 ({{_}} Bind (recover _ _) _) => apply recover_ok : prog.
 
 
   (**
@@ -2593,11 +2593,11 @@ Module PaddedLog.
    **)
 
   (*
-  Definition recover {T} cs lxp rx : prog T :=
+  Definition recover cs lxp : prog _ :=
     cs <- BUFCACHE.init_recover 1;
     let^ (cs, fsxp) <- sb_load cs;
     cs <- recover' (FSXPLog fsxp) cs;
-    rx ^(fsxp, cs).
+    Ret ^(fsxp, cs).
 
   Definition recover_ok :
     {< fsxp old new,
@@ -2787,9 +2787,9 @@ Module DLog.
   Section UnifyProof.
   Hint Extern 0 (okToUnify (PaddedLog.rep _ _) (PaddedLog.rep _ _)) => constructor : okToUnify.
 
-  Definition read T xp cs rx : prog T :=
+  Definition read xp cs : prog _ :=
     r <- PaddedLog.read xp cs;
-    rx r.
+    Ret r.
 
   Definition read_ok : forall xp cs,
     {< F l d nr,
@@ -2807,13 +2807,13 @@ Module DLog.
     hoare.
   Qed.
 
-  Definition init T xp cs rx : prog T :=
+  Definition init xp cs : prog _ :=
     cs <- PaddedLog.init xp cs;
-    rx cs.
+    Ret cs.
 
-  Definition trunc T xp cs rx : prog T :=
+  Definition trunc xp cs : prog _ :=
     cs <- PaddedLog.trunc xp cs;
-    rx cs.
+    Ret cs.
 
   Definition trunc_ok : forall xp cs,
     {< F l d nr,
@@ -2843,9 +2843,9 @@ Module DLog.
   Qed.
 
 
-  Definition avail T xp cs rx : prog T :=
+  Definition avail xp cs : prog _ :=
     r <- PaddedLog.avail xp cs;
-    rx r.
+    Ret r.
 
   Definition avail_ok : forall xp cs,
     {< F l d nr,
@@ -2910,9 +2910,9 @@ Module DLog.
 
   Local Hint Resolve extend_length_ok helper_extend_length_ok PaddedLog.log_nonzero_padded_app.
 
-  Definition extend T xp new cs rx : prog T :=
+  Definition extend xp new cs : prog _ :=
     r <- PaddedLog.extend xp new cs;
-    rx r.
+    Ret r.
 
   Definition rounded n := roundup n PaddedLog.DescSig.items_per_val.
 
@@ -2970,14 +2970,14 @@ Module DLog.
     or_r; cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (avail _ _) _) => apply avail_ok : prog.
-  Hint Extern 1 ({{_}} progseq (read _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (trunc _ _) _) => apply trunc_ok : prog.
-  Hint Extern 1 ({{_}} progseq (extend _ _ _) _) => apply extend_ok : prog.
+  Hint Extern 1 ({{_}} Bind (avail _ _) _) => apply avail_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} Bind (trunc _ _) _) => apply trunc_ok : prog.
+  Hint Extern 1 ({{_}} Bind (extend _ _ _) _) => apply extend_ok : prog.
 
-  Definition recover T xp cs rx : prog T :=
+  Definition recover xp cs : prog _ :=
     cs <- PaddedLog.recover xp cs;
-    rx cs.
+    Ret cs.
 
   Definition recover_ok : forall xp cs,
     {< F nr l,
@@ -3019,7 +3019,7 @@ Module DLog.
     xcrash.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
+  Hint Extern 1 ({{_}} Bind (recover _ _) _) => apply recover_ok : prog.
 
   Lemma xform_rep_synced : forall xp na l hm,
     crash_xform (rep xp (Synced na l) hm) =p=> rep xp (Synced na l) hm.

@@ -173,76 +173,76 @@ Module MLog.
 
   (******************  Program *)
 
-  Definition read T xp a ms rx : prog T :=
+  Definition read xp a ms : prog _ :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     match Map.find a oms with
-    | Some v => rx ^(ms, v)
+    | Some v => Ret ^(ms, v)
     | None =>
         let^ (cs, v) <- BUFCACHE.read_array (DataStart xp) a cs;
-        rx ^(mk_memstate oms cs, v)
+        Ret ^(mk_memstate oms cs, v)
     end.
 
-  Definition flush_noapply T xp ents ms rx : prog T :=  
+  Definition flush_noapply xp ents ms : prog _ :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     let^ (cs, ok) <- DLog.extend xp ents cs;
     If (bool_dec ok true) {
-      rx ^(mk_memstate (replay_mem ents oms) cs, true)
+      Ret ^(mk_memstate (replay_mem ents oms) cs, true)
     } else {
-      rx ^(mk_memstate oms cs, false)
+      Ret ^(mk_memstate oms cs, false)
     }.
 
-  Definition apply T xp ms rx : prog T :=
+  Definition apply xp ms : prog _ :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     cs <- BUFCACHE.write_vecs (DataStart xp) (Map.elements oms) cs;
     cs <- BUFCACHE.sync_vecs_now (DataStart xp) (map_keys oms) cs;
     cs <- DLog.trunc xp cs;
-    rx (mk_memstate vmap0 cs).
+    Ret (mk_memstate vmap0 cs).
 
-  Definition flush T xp ents ms rx : prog T :=
+  Definition flush xp ents ms : prog _ :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     If (addr_eq_dec (length ents) 0) {
-      rx ^(ms, true)
+      Ret ^(ms, true)
     } else {
       let^ (cs, na) <- DLog.avail xp cs;
       let ms := (mk_memstate oms cs) in
-      ms' <- IfRx irx (lt_dec na (length ents)) {
+      ms' <- If (lt_dec na (length ents)) {
         ms <- apply xp ms;
-        irx ms
+        Ret ms
       } else {
-        irx ms
+        Ret ms
       };
       r <- flush_noapply xp ents ms';
-      rx r
+      Ret r
    }.
 
-  Definition dwrite T xp a v ms rx : prog T :=
+  Definition dwrite xp a v ms : prog _ :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
-    ms' <- IfRx irx (MapFacts.In_dec oms a) {
+    ms' <- If (MapFacts.In_dec oms a) {
       ms <- apply xp ms;
-      irx ms
+      Ret ms
     } else {
-      irx ms
+      Ret ms
     };
     cs' <- BUFCACHE.write_array (DataStart xp) a v (MSCache ms');
-    rx (mk_memstate (MSInLog ms') cs').
+    Ret (mk_memstate (MSInLog ms') cs').
 
 
-  Definition dsync T xp a ms rx : prog T :=
+  Definition dsync xp a ms : prog _ :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     cs' <- BUFCACHE.begin_sync cs;
     cs' <- BUFCACHE.sync_array (DataStart xp) a cs';
     cs' <- BUFCACHE.end_sync cs';
-    rx (mk_memstate oms cs').
+    Ret (mk_memstate oms cs').
 
 
-  Definition recover T xp cs rx : prog T :=
+  Definition recover xp cs : prog _ :=
     cs <- DLog.recover xp cs;
     let^ (cs, log) <- DLog.read xp cs;
-    rx (mk_memstate (replay_mem log vmap0) cs).
+    Ret (mk_memstate (replay_mem log vmap0) cs).
 
-  Definition init T (xp : log_xparams) cs rx : prog T :=
+  Definition init (xp : log_xparams) cs : prog _ :=
     cs <- DLog.init xp cs;
-    rx (mk_memstate vmap0 cs).
+    Ret (mk_memstate vmap0 cs).
 
 
   Arguments DLog.rep: simpl never.
@@ -729,8 +729,8 @@ Module MLog.
 
 
   Local Hint Unfold map_replay : hoare_unfold.
-  Hint Extern 1 ({{_}} progseq (apply _ _) _) => apply apply_ok : prog.
-  Hint Extern 1 ({{_}} progseq (flush_noapply _ _ _) _) => apply flush_noapply_ok : prog.
+  Hint Extern 1 ({{_}} Bind (apply _ _) _) => apply apply_ok : prog.
+  Hint Extern 1 ({{_}} Bind (flush_noapply _ _ _) _) => apply flush_noapply_ok : prog.
   Hint Extern 0 (okToUnify (synced_rep ?a _) (synced_rep ?a _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (rep _ _ _ _) (rep _ _ _ _)) => constructor : okToUnify.
 
@@ -974,22 +974,22 @@ Module MLog.
 
   (********* dwrite/dsync for a list of address/value pairs *)
 
-  Definition dwrite_vecs T xp avl ms rx : prog T :=
+  Definition dwrite_vecs xp avl ms : prog _ :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
-    ms' <- IfRx irx (bool_dec (overlap (map fst avl) oms) true) {
+    ms' <- If (bool_dec (overlap (map fst avl) oms) true) {
       ms <- apply xp ms;
-      irx ms
+      Ret ms
     } else {
-      irx ms
+      Ret ms
     };
     cs' <- BUFCACHE.write_vecs (DataStart xp) avl (MSCache ms');
-    rx (mk_memstate (MSInLog ms') cs').
+    Ret (mk_memstate (MSInLog ms') cs').
 
 
-  Definition dsync_vecs T xp al ms rx : prog T :=
+  Definition dsync_vecs xp al ms : prog _ :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     cs' <- BUFCACHE.sync_vecs_now (DataStart xp) al cs;
-    rx (mk_memstate oms cs').
+    Ret (mk_memstate oms cs').
 
 
   (****************** crash and recovery *)
@@ -1680,12 +1680,12 @@ Module MLog.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (flush _ _ _) _) => apply flush_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dsync _ _ _) _) => apply dsync_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
-  Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} Bind (flush _ _ _) _) => apply flush_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dsync _ _ _) _) => apply dsync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
+  Hint Extern 1 ({{_}} Bind (recover _ _) _) => apply recover_ok : prog.
 
 End MLog.

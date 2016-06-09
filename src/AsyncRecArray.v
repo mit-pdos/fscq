@@ -438,9 +438,9 @@ Module AsyncRecArray (RA : RASig).
   Qed.
 
   (** read count blocks starting from the beginning *)
-  Definition read_all T xp count cs rx : prog T :=
+  Definition read_all xp count cs : prog _ :=
     let^ (cs, r) <- BUFCACHE.read_range (RAStart xp) count iunpack nil cs;
-    rx ^(cs, r).
+    Ret ^(cs, r).
 
   Theorem read_all_ok : forall xp count cs,
     {< F d items,
@@ -494,10 +494,10 @@ Module AsyncRecArray (RA : RASig).
 
   (** write items from a given block index, 
       slots following the items will be cleared *)
-  Definition write_aligned T xp start (items: itemlist) cs rx : prog T :=
+  Definition write_aligned xp start (items: itemlist) cs : prog _ :=
     let chunks := list_chunk items items_per_val item0 in
     cs <- BUFCACHE.write_range ((RAStart xp) + start) (map block2val chunks) cs;
-    rx cs.
+    Ret cs.
 
   Theorem write_aligned_ok : forall xp start new cs,
     {< F d,
@@ -584,9 +584,9 @@ Module AsyncRecArray (RA : RASig).
 
 
   (** sync count blocks starting from start *)
-  Definition sync_aligned T xp start count cs rx : prog T :=
+  Definition sync_aligned xp start count cs : prog _ :=
     cs <- BUFCACHE.sync_range ((RAStart xp) + start) count cs;
-    rx cs.
+    Ret cs.
 
   Theorem sync_aligned_ok : forall xp start count cs,
     {< F d0 d items,
@@ -612,9 +612,9 @@ Module AsyncRecArray (RA : RASig).
     apply vssync_range_sync_array; eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (read_all _ _ _) _) => apply read_all_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write_aligned _ _ _ _) _) => apply write_aligned_ok : prog.
-  Hint Extern 1 ({{_}} progseq (sync_aligned _ _ _ _) _) => apply sync_aligned_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read_all _ _ _) _) => apply read_all_ok : prog.
+  Hint Extern 1 ({{_}} Bind (write_aligned _ _ _ _) _) => apply write_aligned_ok : prog.
+  Hint Extern 1 ({{_}} Bind (sync_aligned _ _ _ _) _) => apply sync_aligned_ok : prog.
 
 End AsyncRecArray.
 
