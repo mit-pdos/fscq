@@ -24,11 +24,15 @@ gsed -r -i "s/$defsearch/$defrepl/" "$file"
 # Loops no longer require continuations, they just call Ret
 gsed -r -i '/Continuation lrx/d' "$file"
 
-# Replace all continuations with Ret (rx for ordinary functions, lrx for
-# loops). Note that Ret replaces the parameters removed by the above
+# IfRx is no different from If now
+gsed -r -i 's/IfRx irx/If/' "$file"
+
+# Replace all continuations with Ret (rx for ordinary functions, lrx for loops,
+# irx for IfRx). Note that Ret replaces the parameters removed by the above
 # substitution.
 gsed -r -i 's/\brx\b/Ret/g' "$file"
 gsed -r -i 's/\blrx\b/Ret/g' "$file"
+gsed -r -i 's/\birx\b/Ret/g' "$file"
 
 # The generic composition progseq is now replaced by an explicit Bind
 # constructor with a type specific to prog.
