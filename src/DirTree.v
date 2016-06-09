@@ -697,9 +697,9 @@ Module DIRTREE.
   Hint Resolve tree_names_distinct_child.
   Hint Resolve find_subtree_inum_present.
 
-  Lemma update_subtree_notfound : forall name l fnlist subtree,
+  Lemma update_subtree_notfound : forall name l f,
     ~ In name (map fst l) ->
-    map (update_subtree_helper (update_subtree fnlist subtree) name) l = l.
+    map (update_subtree_helper f name) l = l.
   Proof.
     induction l; simpl; intros; eauto.
     destruct a; simpl in *.

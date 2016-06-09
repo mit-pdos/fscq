@@ -1201,6 +1201,61 @@ Proof.
   firstorder.
 Qed.
 
+Theorem pred_empty_mem : forall (p : @pred AT AEQ V),
+  p (@empty_mem AT AEQ V) ->
+  emp =p=> p.
+Proof.
+  unfold pimpl; intros.
+  apply emp_empty_mem_only in H0.
+  subst; auto.
+Qed.
+
+Theorem emp_mem_union : forall (m1 m2 : @mem AT AEQ V),
+  mem_union m1 m2 = empty_mem ->
+  m1 = empty_mem /\ m2 = empty_mem.
+Proof.
+  unfold mem_union, empty_mem; intros.
+  split.
+
+  apply functional_extensionality; intros.
+  apply equal_f with (x0 := x) in H.
+  destruct (m1 x); auto.
+
+  apply functional_extensionality; intros.
+  apply equal_f with (x0 := x) in H.
+  destruct (m1 x); auto.
+  congruence.
+Qed.
+
+Theorem emp_pimpl_sep_star : forall (p q : @pred AT AEQ V),
+  emp =p=> p * q ->
+  (emp =p=> p) /\ (emp =p=> q).
+Proof.
+  unfold_sep_star.
+  unfold pimpl; intros.
+  intuition.
+
+  specialize (H m H0); repeat deex.
+  apply emp_empty_mem_only in H0.
+  rewrite H0.
+  apply emp_mem_union in H0; intuition; subst; auto.
+
+  specialize (H m H0); repeat deex.
+  apply emp_empty_mem_only in H0.
+  rewrite H0.
+  apply emp_mem_union in H0; intuition; subst; auto.
+Qed.
+
+Theorem emp_not_ptsto : forall a v,
+  ~ ((@emp AT AEQ V) =p=> a |-> v)%pred.
+Proof.
+  unfold emp, ptsto, pimpl, not; intros.
+  specialize (H empty_mem).
+  edestruct H.
+  firstorder.
+  unfold empty_mem in *; congruence.
+Qed.
+
 Lemma mem_union_empty_mem : forall (m : @mem AT AEQ V),
   mem_union empty_mem m = m.
 Proof.
@@ -1276,6 +1331,14 @@ Proof.
   destruct (AEQ a x); subst.
   repeat rewrite upd_eq by auto; auto.
   repeat rewrite upd_ne by auto; rewrite mem_except_ne; auto.
+Qed.
+
+Theorem mem_except_upd : forall (m : @mem AT AEQ V) a v,
+  mem_except (upd m a v) a = mem_except m a.
+Proof.
+  unfold mem_except, upd.
+  intros; apply functional_extensionality; intros.
+  destruct (AEQ x a); auto.
 Qed.
 
 Theorem mem_except_none : forall (m : @mem AT AEQ V) a,
@@ -2121,6 +2184,36 @@ Proof.
 Qed.
 
 
+Lemma ptsto_upd_bwd_or :
+  forall AT AEQ V F a v v' (m : @mem AT AEQ V),
+  (a |-> v' * F)%pred (upd m a v) ->
+  F m \/ exists v0, (a |-> v0 * F)%pred m.
+Proof.
+  intros.
+  case_eq (m a); intros.
+  - right.
+    exists v0.
+    apply ptsto_mem_except in H.
+    rewrite mem_except_upd in H.
+    eapply mem_except_ptsto; eauto.
+  - left.
+    apply ptsto_mem_except in H.
+    rewrite mem_except_upd in H.
+    rewrite mem_except_none in H; auto.
+Qed.
 
+
+Definition with_upd {AT AEQ V} (p : @pred AT AEQ V) a v : @pred AT AEQ V :=
+  fun m => p (upd m a v).
+
+Theorem with_upd_sep_star_ptsto : forall AT AEQ V (p : @pred AT AEQ V) a v a' v',
+  a <> a' ->
+  with_upd (p * a' |-> v') a v <=p=> with_upd p a v * a' |-> v'.
+Proof.
+  unfold piff, pimpl, with_upd.
+  unfold_sep_star.
+  split; intros; repeat deex.
+  - exists m1. exists m2.
+Admitted.
 
 Global Opaque pred.
