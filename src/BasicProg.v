@@ -165,7 +165,7 @@ Proof.
     cancel.
 Qed.
 
-Hint Extern 1 ({{_}} If_ _ _ _) => apply if_ok : prog.
+Hint Extern 1 ({{_}} Bind (If_ _ _ _) _) => apply if_ok : prog.
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
 
 Record For_args (L : Type) := {
@@ -554,11 +554,10 @@ Qed.
 
 Hint Extern 1 ({{_}} Bind (ForN_ _ _ _ _ _ _) _) => apply forN_ok : prog.
 
-(* TODO: fix notation for monads *)
-Notation "'ForN' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+Notation "'ForN' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (ForN_ (fun i =>
           (pair_args_helper (fun l1 => ..
-            (pair_args_helper (fun l2 (_:unit) => (fun lrx => body)))
+            (pair_args_helper (fun l2 (_:unit) => body))
           ..)))
         0 n
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
@@ -570,14 +569,13 @@ Notation "'ForN' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation
          fun hm => crashed%pred)) .. )))
   (at level 9, i at level 0, n at level 0,
    g1 closed binder, g2 closed binder,
-   lrx at level 0,
    l1 closed binder, l2 closed binder,
    body at level 9).
 
-Notation "'ForN' i < n 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+Notation "'ForN' i < n 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (ForN_ (fun i =>
           (pair_args_helper (fun l1 => ..
-            (pair_args_helper (fun l2 (_:unit) => (fun lrx => body)))
+            (pair_args_helper (fun l2 (_:unit) => body))
           ..)))
         0 n
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
@@ -589,7 +587,6 @@ Notation "'ForN' i < n 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 
          fun hm => crashed%pred)) .. )))
   (at level 9, i at level 0, n at level 0,
    g1 closed binder, g2 closed binder,
-   lrx at level 0,
    l1 closed binder, l2 closed binder,
    body at level 9).
 
@@ -677,9 +674,8 @@ Qed.
 
 Hint Extern 1 ({{_}} Bind (ForEach_ _ _ _ _ _) _) => apply foreach_ok : prog.
 
-(* TODO: fix notations for monads *)
-Notation "'ForEach' elem rest lst 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
-  (ForEach_ (fun elem => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => (fun lrx => body))) ..)))
+Notation "'ForEach' elem rest lst 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (ForEach_ (fun elem => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => body)) ..)))
         lst
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun rest => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
@@ -688,12 +684,11 @@ Notation "'ForEach' elem rest lst 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'C
          fun hm => crashed%pred)) .. )))
   (at level 9, elem at level 0, rest at level 0,
    g1 closed binder, g2 closed binder,
-   lrx at level 0,
    l1 closed binder, l2 closed binder,
    body at level 9).
 
-Notation "'ForEach' elem rest lst 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
-  (ForEach_ (fun elem => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => (fun lrx => body))) ..)))
+Notation "'ForEach' elem rest lst 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (ForEach_ (fun elem => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => body)) ..)))
         lst
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun rest => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
@@ -702,6 +697,5 @@ Notation "'ForEach' elem rest lst 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ 
          fun hm => crashed%pred)) .. )))
   (at level 9, elem at level 0, rest at level 0,
    g1 closed binder, g2 closed binder,
-   lrx at level 0,
    l1 closed binder, l2 closed binder,
    body at level 9).
