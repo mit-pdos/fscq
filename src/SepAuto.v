@@ -1196,10 +1196,10 @@ Ltac autorewrite_fast :=
 
 Ltac destruct_branch :=
   match goal with
-  | [ |- {{ _ }} match ?v with | Some _ => _ | None => _ end ] => destruct v eqn:?
-  | [ |- {{ _ }} match ?v with | None => _ | Some _ => _ end ] => destruct v eqn:?
-  | [ |- {{ _ }} if ?v then _ else _ ] => destruct v eqn:?
-  | [ |- {{ _ }} let '_ := ?v in _ ] => destruct v eqn:?
+  | [ |- {{ _ }} Bind (match ?v with | Some _ => _ | None => _ end) _ ] => destruct v eqn:?
+  | [ |- {{ _ }} Bind (match ?v with | None => _ | Some _ => _ end) _ ] => destruct v eqn:?
+  | [ |- {{ _ }} Bind (if ?v then _ else _) _ ] => destruct v eqn:?
+  | [ |- {{ _ }} Bind (let '_ := ?v in _) _ ] => destruct v eqn:?
   end.
 
 Ltac prestep :=
