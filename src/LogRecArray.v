@@ -51,24 +51,34 @@ Module LogRecArray (RA : RASig).
 
   (* find the first item that satisfies cond *)
   Definition ifind lxp xp (cond : item -> addr -> bool) ms : prog _ :=
-    let^ (ms) <- ForN i < (RALen xp)
+    let^ (ms, ret) <- ForN i < (RALen xp)
     Hashmap hm
-    Ghost [ F crash m1 m2 ]
-    Loopvar [ ms ]
+    Ghost [ F m xp items Fm crash m1 m2 ]
+    Loopvar [ ms ret ]
     Invariant
-      LOG.rep lxp F (LOG.ActiveTxn m1 m2) ms hm
+    LOG.rep lxp F (LOG.ActiveTxn m1 m2) ms hm *
+                              [[[ m ::: Fm * rep xp items ]]] *
+                              [[ forall st,
+                                   ret = Some st ->
+                                   cond (snd st) (fst st) = true
+                                   /\ (fst st) < length items
+                                   /\ snd st = selN items (fst st) item0 ]]
     OnCrash  crash
     Begin
-      let^ (ms, v) <- LOG.read_array lxp (RAStart xp) i ms;
-      let r := ifind_block cond (val2block v) (i * items_per_val) in
-      match r with
-      (* loop call *)
-      | None => Ret ^(ms)
-      (* break *)
-      | Some ifs => Ret ^(ms, Some ifs)
-      end
-    Rof ^(ms);
-    Ret ^(ms, None).
+      If (is_some ret) {
+        Ret ^(ms, ret)
+      } else {
+        let^ (ms, v) <- LOG.read_array lxp (RAStart xp) i ms;
+        let r := ifind_block cond (val2block v) (i * items_per_val) in
+        match r with
+        (* loop call *)
+        | None => Ret ^(ms, None)
+        (* break *)
+        | Some ifs => Ret ^(ms, Some ifs)
+        end
+      }
+    Rof ^(ms, None);
+    Ret ^(ms, ret).
 
   Local Hint Resolve items_per_val_not_0 items_per_val_gt_0 items_per_val_gt_0'.
 
@@ -235,6 +245,13 @@ Module LogRecArray (RA : RASig).
     apply item0_wellformed.
   Qed.
 
+  Hint Extern 0 (okToUnify (LOG.arrayP (RAStart _) _) (LOG.arrayP (RAStart _) _)) =>
+  constructor : okToUnify.
+
+  Hint Resolve
+       ifind_block_ok_cond
+       ifind_result_inbound
+       ifind_result_item_ok.
 
   Theorem ifind_ok : forall lxp xp cond ms,
     {< F Fm m0 m items,
@@ -253,21 +270,26 @@ Module LogRecArray (RA : RASig).
   Proof.
     unfold ifind, rep.
     safestep. eauto.
+    eassign m.
+    pred_apply; cancel.
+    eauto.
+
+    safestep.
+    safestep.
     safestep.
     eapply ifind_length_ok; eauto.
 
+    unfold items_valid in *; intuition idtac.
     step.
-    unfold items_valid in *; intuition.
-    or_r; cancel.
-    replace p_2 with (snd (p_1, p_2)) by auto.
-    eapply ifind_block_ok_cond; eauto.
-    replace p_1 with (fst (p_1, p_2)) by auto.
-    eapply ifind_result_inbound; eauto.
-    replace p_2 with (snd (p_1, p_2)) by auto.
-    eapply ifind_result_item_ok; eauto.
     cancel.
 
     step.
+    destruct a; cancel.
+    match goal with
+    | [ H: forall _, Some _ = Some _ -> _ |- _ ] =>
+      edestruct H10; eauto
+    end.
+    or_r; cancel.
     pimpl_crash.
     eassign (exists ms', LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm)%pred.
     cancel.
