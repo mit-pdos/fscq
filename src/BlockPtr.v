@@ -159,21 +159,21 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   (************* program *)
 
-  Definition get T lxp (ir : irec) off ms rx : prog T :=
+  Definition get lxp (ir : irec) off ms : prog _ :=
     If (lt_dec off NDirect) {
-      rx ^(ms, selN (IRBlocks ir) off $0)
+      Ret ^(ms, selN (IRBlocks ir) off $0)
     } else {
       let^ (ms, v) <- IndRec.get lxp (IRIndPtr ir) (off - NDirect) ms;
-      rx ^(ms, v)
+      Ret ^(ms, v)
     }.
 
 
-  Definition read T lxp (ir : irec) ms rx : prog T :=
+  Definition read lxp (ir : irec) ms : prog _ :=
     If (le_dec (IRLen ir) NDirect) {
-      rx ^(ms, firstn (IRLen ir) (IRBlocks ir))
+      Ret ^(ms, firstn (IRLen ir) (IRBlocks ir))
     } else {
       let^ (ms, indbns) <- IndRec.read lxp (IRIndPtr ir) 1 ms;
-      rx ^(ms, (firstn (IRLen ir) ((IRBlocks ir) ++ indbns)))
+      Ret ^(ms, (firstn (IRLen ir) ((IRBlocks ir) ++ indbns)))
     }.
 
 
@@ -188,37 +188,37 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Defined.
 
 
-  Definition shrink T lxp bxp (ir : irec) nr ms rx : prog T :=
+  Definition shrink lxp bxp (ir : irec) nr ms : prog _ :=
     let nl := ((IRLen ir) - nr) in
     If (free_ind_dec (IRLen ir) nl) {
       ms <- BALLOC.free lxp bxp (IRIndPtr ir) ms;
-      rx ^(ms, upd_len ir nl)
+      Ret ^(ms, upd_len ir nl)
     } else {
-      rx ^(ms, upd_len ir nl)
+      Ret ^(ms, upd_len ir nl)
     }.
 
 
-  Definition grow T lxp bxp (ir : irec) bn ms rx : prog T :=
+  Definition grow lxp bxp (ir : irec) bn ms : prog _ :=
     let len := (IRLen ir) in
     If (lt_dec len NDirect) {
       (* change direct block address *)
-      rx ^(ms, Some (upd_irec ir (S len) (IRIndPtr ir) (updN (IRBlocks ir) len bn)))
+      Ret ^(ms, Some (upd_irec ir (S len) (IRIndPtr ir) (updN (IRBlocks ir) len bn)))
     } else {
       (* allocate indirect block if necessary *)
-      let^ (ms, ibn) <- IfRx irx (addr_eq_dec len NDirect) {
+      let^ (ms, ibn) <- If (addr_eq_dec len NDirect) {
         let^ (ms, r) <- BALLOC.alloc lxp bxp ms;
         match r with
-        | None => rx ^(ms, None)
+        | None => Ret ^(ms, None)
         | Some ibn =>
             ms <- IndRec.init lxp ibn ms;
-            irx ^(ms, ibn)
+            Ret ^(ms, ibn)
         end
       } else {
-        irx ^(ms, (IRIndPtr ir))
+        Ret ^(ms, (IRIndPtr ir))
       };
       (* write indirect block *)
       ms <- IndRec.put lxp ibn (len - NDirect) bn ms;
-      rx ^(ms, Some (upd_irec ir (S len) ibn (IRBlocks ir)))
+      Ret ^(ms, Some (upd_irec ir (S len) ibn (IRBlocks ir)))
     }.
 
 
@@ -519,10 +519,10 @@ Module BlockPtr (BPtr : BlockPtrSig).
     Unshelve. all:eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (get _ _ _ _) _) => apply get_ok : prog.
-  Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (shrink _ _ _ _ _) _) => apply shrink_ok : prog.
-  Hint Extern 1 ({{_}} progseq (grow _ _ _ _ _) _) => apply grow_ok : prog.
+  Hint Extern 1 ({{_}} Bind (get _ _ _ _) _) => apply get_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} Bind (shrink _ _ _ _ _) _) => apply shrink_ok : prog.
+  Hint Extern 1 ({{_}} Bind (grow _ _ _ _ _) _) => apply grow_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 
