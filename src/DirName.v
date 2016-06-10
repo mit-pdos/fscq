@@ -492,36 +492,36 @@ Module SDIR.
          rewrite is_valid_sname_valid in H
     end.
 
-  Definition lookup T lxp ixp dnum name ms rx : prog T :=
+  Definition lookup lxp ixp dnum name ms : prog _ :=
     If (Bool.bool_dec (is_valid_sname name) true) {
       let^ (ms, r) <- DIR.lookup lxp ixp dnum (sname2wname name) ms;
-      rx ^(ms, r)
+      Ret ^(ms, r)
     } else {
-      rx ^(ms, None)
+      Ret ^(ms, None)
     }.
 
-  Definition unlink T lxp ixp dnum name ms rx : prog T :=
+  Definition unlink lxp ixp dnum name ms : prog _ :=
     If (Bool.bool_dec (is_valid_sname name) true) {
       let^ (ms, r) <- DIR.unlink lxp ixp dnum (sname2wname name) ms;
-      rx ^(ms, r)
+      Ret ^(ms, r)
     } else {
-      rx ^(ms, false)
+      Ret ^(ms, false)
     }.
 
-  Definition link T lxp bxp ixp dnum name inum isdir ms rx : prog T :=
+  Definition link lxp bxp ixp dnum name inum isdir ms : prog _ :=
     If (Bool.bool_dec (is_valid_sname name) true) {
       let^ (ms, r) <- DIR.link lxp bxp ixp dnum (sname2wname name) inum isdir ms;
-      rx ^(ms, r)
+      Ret ^(ms, r)
     } else {
-      rx ^(ms, false)
+      Ret ^(ms, false)
     }.
 
   Definition readdir_trans (di : DIR.readent) :=
     (wname2sname (fst di), snd di).
 
-  Definition readdir T lxp ixp dnum ms rx : prog T :=
+  Definition readdir lxp ixp dnum ms : prog _ :=
     let^ (ms, r) <- DIR.readdir lxp ixp dnum ms;
-    rx ^(ms, List.map readdir_trans r).
+    Ret ^(ms, List.map readdir_trans r).
 
 
   Definition rep f (dsmap : @mem string string_dec (addr * bool)) : Prop :=
@@ -724,10 +724,10 @@ Module SDIR.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (lookup _ _ _ _ _) _) => apply lookup_ok : prog.
-  Hint Extern 1 ({{_}} progseq (unlink _ _ _ _ _) _) => apply unlink_ok : prog.
-  Hint Extern 1 ({{_}} progseq (link _ _ _ _ _ _ _ _) _) => apply link_ok : prog.
-  Hint Extern 1 ({{_}} progseq (readdir _ _ _ _) _) => apply readdir_ok : prog.
+  Hint Extern 1 ({{_}} Bind (lookup _ _ _ _ _) _) => apply lookup_ok : prog.
+  Hint Extern 1 ({{_}} Bind (unlink _ _ _ _ _) _) => apply unlink_ok : prog.
+  Hint Extern 1 ({{_}} Bind (link _ _ _ _ _ _ _ _) _) => apply link_ok : prog.
+  Hint Extern 1 ({{_}} Bind (readdir _ _ _ _) _) => apply readdir_ok : prog.
 
   Hint Extern 0 (okToUnify (rep ?f _) (rep ?f _)) => constructor : okToUnify.
 

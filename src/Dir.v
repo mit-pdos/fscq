@@ -114,43 +114,43 @@ Module DIR.
 
   Definition lookup_f name de (_ : addr) := (is_valid de) && (name_is name de).
 
-  Definition lookup T lxp ixp dnum name ms rx : prog T :=
+  Definition lookup lxp ixp dnum name ms : prog _ :=
     let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
     match r with
-    | None => rx ^(ms, None)
-    | Some (_, de) => rx ^(ms, Some (DEInum de, is_dir de))
+    | None => Ret ^(ms, None)
+    | Some (_, de) => Ret ^(ms, Some (DEInum de, is_dir de))
     end.
 
   Definition readent := (filename * (addr * bool))%type.
 
-  Definition readdir T lxp ixp dnum ms rx : prog T :=
+  Definition readdir lxp ixp dnum ms : prog _ :=
     let^ (ms, dents) <- Dent.readall lxp ixp dnum ms;
     let r := map (fun de => (DEName de, (DEInum de, is_dir de))) (filter is_valid dents) in
-    rx ^(ms, r).
+    Ret ^(ms, r).
 
-  Definition unlink T lxp ixp dnum name ms rx : prog T :=
+  Definition unlink lxp ixp dnum name ms : prog _ :=
     let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
     match r with
-    | None => rx ^(ms, false)
+    | None => Ret ^(ms, false)
     | Some (ix, _) =>
         ms <- Dent.put lxp ixp dnum ix dent0 ms;
-        rx ^(ms, true)
+        Ret ^(ms, true)
     end.
 
-  Definition link T lxp bxp ixp dnum name inum isdir ms rx : prog T :=
+  Definition link lxp bxp ixp dnum name inum isdir ms : prog _ :=
     let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
     match r with
-    | Some _ => rx ^(ms, false)
+    | Some _ => Ret ^(ms, false)
     | None =>
         let de := mk_dent name inum isdir in
         let^ (ms, r) <- Dent.ifind lxp ixp dnum (fun de _ => negb (is_valid de)) ms;
         match r with
         | Some (ix, _) =>
             ms <- Dent.put lxp ixp dnum ix de ms;
-            rx ^(ms, true)
+            Ret ^(ms, true)
         | None =>
             let^ (ms, ok) <- Dent.extend lxp bxp ixp dnum de ms;
-            rx ^(ms, ok)
+            Ret ^(ms, ok)
         end
     end.
 
@@ -535,10 +535,10 @@ Module DIR.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (lookup _ _ _ _ _) _) => apply lookup_ok : prog.
-  Hint Extern 1 ({{_}} progseq (unlink _ _ _ _ _) _) => apply unlink_ok : prog.
-  Hint Extern 1 ({{_}} progseq (link _ _ _ _ _ _ _ _) _) => apply link_ok : prog.
-  Hint Extern 1 ({{_}} progseq (readdir _ _ _ _) _) => apply readdir_ok : prog.
+  Hint Extern 1 ({{_}} Bind (lookup _ _ _ _ _) _) => apply lookup_ok : prog.
+  Hint Extern 1 ({{_}} Bind (unlink _ _ _ _ _) _) => apply unlink_ok : prog.
+  Hint Extern 1 ({{_}} Bind (link _ _ _ _ _ _ _ _) _) => apply link_ok : prog.
+  Hint Extern 1 ({{_}} Bind (readdir _ _ _ _) _) => apply readdir_ok : prog.
 
   Hint Extern 0 (okToUnify (rep ?f _) (rep ?f _)) => constructor : okToUnify.
 
