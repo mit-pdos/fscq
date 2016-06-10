@@ -533,7 +533,7 @@ Module BFILE.
     step.
     cancel; eauto.
     cancel; eauto.
-    Unshelve. eauto.
+    Unshelve. all: eauto.
   Qed.
 
 
@@ -588,7 +588,8 @@ Module BFILE.
     sepauto.
 
     pimpl_crash; cancel; auto.
-    Grab Existential Variables. all: eauto.
+    Grab Existential Variables.
+    all: try exact unit; eauto using tt.
   Qed.
 
   Theorem grow_ok : forall lxp bxp ixp inum v ms,
