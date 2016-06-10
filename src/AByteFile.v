@@ -102,7 +102,10 @@ Definition rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f fy :=
 [[[ flist ::: (Fi * inum |-> f) ]]] *
 [[ (ByFData fy) = firstn (# (INODE.ABytes (BFILE.BFAttr f)))
      (flat_map valuset2bytesets (BFILE.BFData f)) ]] * 
-[[ # (INODE.ABytes (ByFAttr fy)) = length(ByFData fy)]])%pred .
+[[ # (INODE.ABytes (ByFAttr fy)) = length(ByFData fy)]] *
+[[ forall i j F data, ((F * arrayN (ptsto (V:=byteset)) (i*valubytes + j)%nat data)%pred (list2nmem (ByFData fy))) ->
+j < valubytes -> length data > 0 ->
+(exists F' v, (F' * i |-> v) (list2nmem (BFILE.BFData f))) ]])%pred .
 
 Definition read_first_block T lxp ixp inum fms block_off byte_off read_length rx: prog T :=
       let^ (fms, first_block) <- BFILE.read lxp ixp inum block_off fms;   (* get first block *)
@@ -396,16 +399,10 @@ repeat rewrite <- mult_n_O in H; inversion H.
 omega.
 Qed.
 
-Lemma mult_lt_S: forall n m p, S n * p < S m * p -> p > 0 -> n * p < m * p.
-Proof.
-assert(A: forall x, 0 * x = 0). intros. omega.
-induction n; intros.
-destruct m.
-omega.
-rewrite A.
-Abort.
+Lemma plus_lt_compat_rev: forall n m p, p + n < p + m -> n < m.
+Proof. intros. omega. Qed.
 
-Lemma lt_mult_weaken: forall p n m, n * p < m * p -> p > 0 -> n < m.
+Lemma lt_mult_weaken: forall p n m, n * p < m * p  -> n < m.
 Proof.
 assert(A: forall x, 0 * x = 0). intros. omega.
 induction n. intros.
@@ -416,7 +413,10 @@ destruct m.
 rewrite A in H; inversion H.
 apply lt_n_S.
 apply IHn.
-Abort.
+simpl in H.
+apply plus_lt_compat_rev in H.
+apply H.
+Qed.
 
 Lemma some_eq: forall A (x y: A), Some x = Some y <-> x = y.
 Proof.
@@ -512,7 +512,10 @@ rewrite in_map_iff in H1.
 destruct H1.
 destruct H1.
 rewrite <- H1.
-Abort.
+rewrite valuset2bytesets_len.
+reflexivity.
+apply H0.
+Qed.
  
 Lemma fst_list2byteset: forall l, fst(list2byteset l) =  selN l 0 byte0.
 Proof.
@@ -568,29 +571,39 @@ rewrite valuset2bytesets_len.
 reflexivity.
 Qed.
 
-Lemma len_f_fy: forall lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f fy x,
-(rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f fy) x ->
+Lemma len_f_fy: forall f fy,
+ByFData fy =
+     firstn # (INODE.ABytes (BFILE.BFAttr f))
+       (flat_map valuset2bytesets (BFILE.BFData f))->
  length (ByFData fy) <= length (BFILE.BFData f) * valubytes.
 Proof.
-unfold rep.
 intros.
-destruct_lift H.
-rewrite H3.
+rewrite H.
 rewrite firstn_length.
-unfold BFILE.rep in H0.
-destruct_lift H0.
 rewrite flat_map_len.
-SearchAbout min.
 apply Min.le_min_r.
 Qed.
+
+Lemma block_exists: forall f fy i j b F, 
+(ByFData fy) = firstn (# (INODE.ABytes (BFILE.BFAttr f)))
+     (flat_map valuset2bytesets (BFILE.BFData f)) ->
+(F *(i*valubytes + j)%nat |-> b )%pred (list2nmem (ByFData fy)) ->
+j < valubytes -> 
+(exists F' v, (F' * i |-> v)%pred (list2nmem (BFILE.BFData f))).
+Proof. Admitted.
+
+Definition pts (a: addr) (b: byteset): @pred addr addr_eq_dec byteset:=
+a |-> b.
+
+
 (*Specs*)
 Theorem read_first_block_ok: forall lxp bxp ixp inum fms block_off byte_off read_length,
- {< F Fm Fi Fd m0 m flist ilist frees f fy data,
+ {< F Fm Fi Fd m0 m flist ilist frees f fy (data: list byteset),
     PRE:hm
           let file_length := (# (INODE.ABytes (ByFAttr fy))) in
           let block_size := valubytes in
            rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f fy  *
-           [[[ (ByFData fy) ::: (Fd * arrayN (block_off * block_size + byte_off) data) ]]] *
+           [[[ (ByFData fy) ::: (Fd * (arrayN pts (block_off * block_size + byte_off) data)) ]]] *
            [[ 0 < read_length]] * 
            [[ length data = read_length ]] *
            [[ byte_off + read_length <= block_size]]
@@ -604,13 +617,26 @@ Theorem read_first_block_ok: forall lxp bxp ixp inum fms block_off byte_off read
 Proof.
 unfold read_first_block, rep.
 safestep.
-eapply list2nmem_arrayN_bound in H7.
-destruct H7.
-rewrite H0 in H6.
-inversion H6.
-rewrite len_f_fy with (f:=f) (fy:= fy) in H0.
-apply le2lt_l in H0.
-apply lt_weaken_l with (m:= byte_off) in H0.
+eapply list2nmem_arrayN_bound in H8.
+destruct H8.
+rewrite H in H7.
+inversion H7.
+rewrite len_f_fy with (f:=f) (fy:=fy) in H.
+apply le2lt_l in H.
+apply lt_weaken_l with (m:= byte_off) in H.
+apply lt_mult_weaken in H.
+apply H.
+apply H7.
+apply H11.
+Admitted.
+
+(* 
+
+
+
+
+apply H11.
+eauto.
 SearchAbout lt.
 
 assert(AS: forall n m p, n * p < m * p -> n < m). intros.
@@ -698,7 +724,7 @@ rewrite H17 in H5.
 omega.
 Grab Existential Variables.
 apply dummy.
-Qed.
+Qed. *)
 
 
 Theorem read_middle_blocks_ok: forall lxp bxp ixp inum fms block_off num_of_full_blocks,
