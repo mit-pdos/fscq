@@ -154,13 +154,13 @@ Module INODE.
   (************* program *)
 
 
-  Definition init T lxp xp ms rx : prog T :=
+  Definition init lxp xp ms : prog _ :=
     ms <- IRec.init lxp xp ms;
-    rx ms.
+    Ret ms.
 
-  Definition getlen T lxp xp inum ms rx : prog T := Eval compute_rec in
+  Definition getlen lxp xp inum ms : prog _ := Eval compute_rec in
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
-    rx ^(ms, # (ir :-> "len" )).
+    Ret ^(ms, # (ir :-> "len" )).
 
   (* attribute getters *)
 
@@ -169,14 +169,14 @@ Module INODE.
   Definition AType   (a : iattr) := Eval cbn in ( a :-> "itype" ).
   Definition ADev    (a : iattr) := Eval cbn in ( a :-> "dev" ).
 
-  Definition getattrs T lxp xp inum ms rx : prog T := Eval compute_rec in
+  Definition getattrs lxp xp inum ms : prog _ := Eval compute_rec in
     let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
-    rx ^(ms, (i :-> "attrs")).
+    Ret ^(ms, (i :-> "attrs")).
 
-  Definition setattrs T lxp xp inum attr ms rx : prog T := Eval compute_rec in
+  Definition setattrs lxp xp inum attr ms : prog _ := Eval compute_rec in
     let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
     ms <- IRec.put_array lxp xp inum (i :=> "attrs" := attr) ms;
-    rx ms.
+    Ret ms.
 
   (* For updattr : a convenient way for setting individule attribute *)
 
@@ -195,36 +195,36 @@ Module INODE.
   | UDev   v => (e :=> "dev"   := v)
   end.
 
-  Definition updattr T lxp xp inum a ms rx : prog T := Eval compute_rec in
+  Definition updattr lxp xp inum a ms : prog _ := Eval compute_rec in
     let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
     ms <- IRec.put_array lxp xp inum (i :=> "attrs" := (iattr_upd (i :-> "attrs") a)) ms;
-    rx ms.
+    Ret ms.
 
 
-  Definition getbnum T lxp xp inum off ms rx : prog T :=
+  Definition getbnum lxp xp inum off ms : prog _ :=
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     ms <- Ind.get lxp ir off ms;
-    rx ms.
+    Ret ms.
 
-  Definition getallbnum T lxp xp inum ms rx : prog T :=
+  Definition getallbnum lxp xp inum ms : prog _ :=
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     ms <- Ind.read lxp ir ms;
-    rx ms.
+    Ret ms.
 
-  Definition shrink T lxp bxp xp inum nr ms rx : prog T :=
+  Definition shrink lxp bxp xp inum nr ms : prog _ :=
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     let^ (ms, ir') <- Ind.shrink lxp bxp ir nr ms;
     ms <- IRec.put_array lxp xp inum ir' ms;
-    rx ms.
+    Ret ms.
 
-  Definition grow T lxp bxp xp inum bn ms rx : prog T :=
+  Definition grow lxp bxp xp inum bn ms : prog _ :=
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     let^ (ms, r) <- Ind.grow lxp bxp ir ($ bn) ms;
     match r with
-    | None => rx ^(ms, false)
+    | None => Ret ^(ms, false)
     | Some ir' =>
         ms <- IRec.put_array lxp xp inum ir' ms;
-        rx ^(ms, true)
+        Ret ^(ms, true)
     end.
 
 
@@ -631,14 +631,14 @@ Module INODE.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (getlen _ _ _ _) _) => apply getlen_ok : prog.
-  Hint Extern 1 ({{_}} progseq (getattrs _ _ _ _) _) => apply getattrs_ok : prog.
-  Hint Extern 1 ({{_}} progseq (setattrs _ _ _ _ _) _) => apply setattrs_ok : prog.
-  Hint Extern 1 ({{_}} progseq (updattr _ _ _ _ _) _) => apply updattr_ok : prog.
-  Hint Extern 1 ({{_}} progseq (getbnum _ _ _ _ _) _) => apply getbnum_ok : prog.
-  Hint Extern 1 ({{_}} progseq (getallbnum _ _ _ _) _) => apply getallbnum_ok : prog.
-  Hint Extern 1 ({{_}} progseq (grow _ _ _ _ _ _) _) => apply grow_ok : prog.
-  Hint Extern 1 ({{_}} progseq (shrink _ _ _ _ _ _) _) => apply shrink_ok : prog.
+  Hint Extern 1 ({{_}} Bind (getlen _ _ _ _) _) => apply getlen_ok : prog.
+  Hint Extern 1 ({{_}} Bind (getattrs _ _ _ _) _) => apply getattrs_ok : prog.
+  Hint Extern 1 ({{_}} Bind (setattrs _ _ _ _ _) _) => apply setattrs_ok : prog.
+  Hint Extern 1 ({{_}} Bind (updattr _ _ _ _ _) _) => apply updattr_ok : prog.
+  Hint Extern 1 ({{_}} Bind (getbnum _ _ _ _ _) _) => apply getbnum_ok : prog.
+  Hint Extern 1 ({{_}} Bind (getallbnum _ _ _ _) _) => apply getallbnum_ok : prog.
+  Hint Extern 1 ({{_}} Bind (grow _ _ _ _ _ _) _) => apply grow_ok : prog.
+  Hint Extern 1 ({{_}} Bind (shrink _ _ _ _ _ _) _) => apply shrink_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 
