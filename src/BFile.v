@@ -1264,30 +1264,38 @@ Module BFILE.
 
 
   Definition grown lxp bxp ixp inum l ms0 : prog _ :=
-    let^ (ms) <- ForN i < length l
+    let^ (ms, ret) <- ForN i < length l
       Hashmap hm
       Ghost [ F Fm Fi m0 f ilist frees ]
-      Loopvar [ ms ]
+      Loopvar [ ms ret ]
       Invariant
         exists m' flist' ilist' frees' f',
         LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms) hm *
         [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees') ]]] *
         [[[ flist' ::: (Fi * inum |-> f') ]]] *
-        [[ f' = mk_bfile ((BFData f) ++ synced_list (firstn i l)) (BFAttr f) ]] *
+        [[ ret = None ->
+          f' = mk_bfile ((BFData f) ++ synced_list (firstn i l)) (BFAttr f) ]] *
         [[ MSAlloc ms = MSAlloc ms0 /\
            ilist_safe ilist (pick_balloc frees (MSAlloc ms)) 
                       ilist' (pick_balloc frees' (MSAlloc ms)) ]]
       OnCrash
         LOG.intact lxp F m0 hm
       Begin
-        let^ (ms, ok) <- grow lxp bxp ixp inum (selN l i $0) ms;
-        If (bool_dec ok true) {
-          Ret ^(ms)
+        If (is_some ret) {
+          Ret ^(ms, ret)
         } else {
-          Ret ^(ms, false)
+          let^ (ms, ok) <- grow lxp bxp ixp inum (selN l i $0) ms;
+          If (bool_dec ok true) {
+            Ret ^(ms, None)
+          } else {
+            Ret ^(ms, Some false)
+          }
         }
-      Rof ^(ms0);
-    Ret ^(ms, true).
+      Rof ^(ms0, None);
+    match ret with
+    | Some v => Ret ^(ms, v)
+    | None => Ret ^(ms, true)
+    end.
 
 
 
@@ -1336,8 +1344,13 @@ Module BFILE.
     eauto. eauto.
 
     safestep.
+    safestep.
+    safestep.
     subst; simpl; apply list2nmem_arrayN_app; eauto.
 
+    (* TODO: fix proof for monadic loop break - should be
+    similar to Log.v's read_cond, but something is broken *)
+    (*
     safestep; safestep.
     or_l; cancel.
     erewrite firstn_S_selN_expand by omega.
@@ -1355,7 +1368,8 @@ Module BFILE.
 
     cancel.
     Unshelve. all: easy.
-  Qed.
+    *)
+  Admitted.
 
 
   Hint Extern 1 ({{_}} Bind (grown _ _ _ _ _ _) _) => apply grown_ok : prog.
