@@ -702,3 +702,24 @@ Notation "'ForEach' elem rest lst 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ 
    g1 closed binder, g2 closed binder,
    l1 closed binder, l2 closed binder,
    body at level 9).
+
+(* TODO: need a good spec for this. Probably want a predicate
+describing early breaks, so that we can guarantee something if the
+function terminates without breaking (otherwise the spec would equally
+apply to a loop that didn't do anything) *)
+Fixpoint ForNBreak_  (L : Type) (G : Type) (f : nat -> L -> prog (L+L))
+                (i n : nat)
+                (nocrash : G -> nat -> L -> hashmap -> rawpred)
+                (crashed : G -> hashmap -> rawpred)
+                (l : L) : prog L :=
+  match n with
+  | 0 =>   Ret l
+  | S m => l' <- f i l;
+            match l' with
+            | inl l' => ForNBreak_ f (S i) m nocrash crashed l'
+            | inr l' => Ret l'
+            end
+  end.
+
+Definition Continue L (l:L) : L + L := inl l.
+Definition Break L (l:L) : L + L := inr l.
