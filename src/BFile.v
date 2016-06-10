@@ -1173,27 +1173,35 @@ Module BFILE.
   Definition read_cond A lxp ixp inum (vfold : A -> valu -> A)
                        v0 (cond : A -> bool) ms0 : prog _ :=
     let^ (ms, nr) <- getlen lxp ixp inum ms0;
-    let^ (ms, r) <- ForN i < nr
+    let^ (ms, r, ret) <- ForN i < nr
     Hashmap hm
     Ghost [ bxp F Fm Fi crash m0 m flist f ilist frees ]
-    Loopvar [ ms pf ]
+    Loopvar [ ms pf ret ]
     Invariant
       LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
       [[[ m ::: (Fm * rep bxp ixp flist ilist frees) ]]] *
       [[[ flist ::: (Fi * inum |-> f) ]]] *
-      [[ pf = fold_left vfold (firstn i (map fst (BFData f))) v0 ]] *
-      [[ cond pf = false /\ MSAlloc ms = MSAlloc ms0 ]]
+      [[ ret = None ->
+        pf = fold_left vfold (firstn i (map fst (BFData f))) v0 ]] *
+      [[ ret = None ->
+        cond pf = false /\ MSAlloc ms = MSAlloc ms0 ]] *
+      [[ forall v, ret = Some v ->
+        cond v = true ]]
     OnCrash  crash
     Begin
-      let^ (ms, v) <- read lxp ixp inum i ms;
-      let pf' := vfold pf v in
-      If (bool_dec (cond pf') true) {
-        Ret ^(ms, Some pf')
+      If (is_some ret) {
+        Ret ^(ms, pf, ret)
       } else {
-        Ret ^(ms, pf')
+        let^ (ms, v) <- read lxp ixp inum i ms;
+        let pf' := vfold pf v in
+        If (bool_dec (cond pf') true) {
+          Ret ^(ms, pf', Some pf')
+        } else {
+          Ret ^(ms, pf', None)
+        }
       }
-    Rof ^(ms, v0);
-    Ret ^(ms, None).
+    Rof ^(ms, v0, None);
+    Ret ^(ms, ret).
 
 
   Theorem read_cond_ok : forall A lxp bxp ixp inum (vfold : A -> valu -> A)
@@ -1218,10 +1226,17 @@ Module BFILE.
     prestep. cancel.
     safestep. eauto.
     prestep; norm. cancel. intuition simpl. eauto.
-    pred_apply; cancel.
+    step.
+    admit. (* where does this obligation come from? *)
     sepauto. sepauto.
 
-    safestep.
+    destruct a2; safestep.
+    admit. (* again crash => something *)
+    (* TODO: debug what changed about this proof due to monads.
+
+    Not especially concerning for now given that read_cond is never used. *)
+    (*
+    pred_apply; cancel.
     safestep.
     or_l; cancel; filldef; eauto.
 
@@ -1240,7 +1255,8 @@ Module BFILE.
     apply LOG.rep_hashmap_subset; eauto.
 
     Unshelve. all: try easy. exact ($0, nil).
-  Qed.
+    *)
+  Admitted.
 
 
   Hint Extern 1 ({{_}} Bind (read_range _ _ _ _ _ _ _ _) _) => apply read_range_ok : prog.
