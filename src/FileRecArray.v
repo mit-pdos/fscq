@@ -51,45 +51,44 @@ Module FileRecArray (FRA : FileRASig).
       [[ items_valid f items ]] *
       arrayN (@ptsto _ addr_eq_dec _) 0 (synced_list vl))%pred.
 
-  Definition get T lxp ixp inum ix ms rx : prog T :=
+  Definition get lxp ixp inum ix ms : prog _ :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
     let^ (ms, v) <- BFILE.read_array lxp ixp inum 0 bn ms;
-    rx ^(ms, selN_val2block v off).
+    Ret ^(ms, selN_val2block v off).
 
-  Definition put T lxp ixp inum ix item ms rx : prog T :=
+  Definition put lxp ixp inum ix item ms : prog _ :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
     let^ (ms, v) <- BFILE.read_array lxp ixp inum 0 bn ms;
     let v' := block2val_updN_val2block v off item in
     ms <- BFILE.write_array lxp ixp inum 0 bn v' ms;
-    rx ms.
+    Ret ms.
 
   (* extending one block and put item at the first entry *)
-  Definition extend T lxp bxp ixp inum item ms rx : prog T :=
+  Definition extend lxp bxp ixp inum item ms : prog _ :=
     let v := block2val (updN block0 0 item) in
     let^ (ms, r) <- BFILE.grow lxp bxp ixp inum v ms;
-    rx ^(ms, r).
+    Ret ^(ms, r).
 
-  Definition readall T lxp ixp inum ms rx : prog T :=
+  Definition readall lxp ixp inum ms : prog _ :=
     let^ (ms, nr) <- BFILE.getlen lxp ixp inum ms;
     let^ (ms, r) <- BFILE.read_range lxp ixp inum 0 nr iunpack nil ms;
-    rx ^(ms, r).
+    Ret ^(ms, r).
 
-  Definition init T lxp bxp ixp inum ms rx : prog T :=
+  Definition init lxp bxp ixp inum ms : prog _ :=
     let^ (ms, nr) <- BFILE.getlen lxp ixp inum ms;
     ms <- BFILE.shrink lxp bxp ixp inum nr ms;
-    rx ms.
+    Ret ms.
 
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
 
   (* find the first item that satisfies cond *)
-  Definition ifind T lxp ixp inum (cond : item -> addr -> bool) ms0 rx : prog T :=
+  Definition ifind lxp ixp inum (cond : item -> addr -> bool) ms0 : prog _ :=
     let^ (ms, nr) <- BFILE.getlen lxp ixp inum ms0;
     let^ (ms) <- ForN i < nr
     Hashmap hm
     Ghost [ bxp F Fm Fi crash m0 m flist f items ilist frees ]
     Loopvar [ ms ]
-    Continuation lrx
     Invariant
       LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
       [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
@@ -103,11 +102,11 @@ Module FileRecArray (FRA : FileRASig).
       let^ (ms, v) <- BFILE.read_array lxp ixp inum 0 i ms;
       let r := ifind_block cond (val2block v) (i * items_per_val) in
       match r with
-      | None => lrx ^(ms)
-      | Some ifs => rx ^(ms, Some ifs)
+      | None => Ret ^(ms)
+      | Some ifs => Ret ^(ms, Some ifs)
       end
     Rof ^(ms);
-    rx ^(ms, None).
+    Ret ^(ms, None).
 
 
   Local Hint Resolve items_per_val_not_0 items_per_val_gt_0 items_per_val_gt_0'.
@@ -399,31 +398,31 @@ Module FileRecArray (FRA : FileRASig).
     Unshelve.  all: try exact tt; eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (get _ _ _ _ _) _) => apply get_ok : prog.
-  Hint Extern 1 ({{_}} progseq (put _ _ _ _ _ _) _) => apply put_ok : prog.
-  Hint Extern 1 ({{_}} progseq (extend _ _ _ _ _ _) _) => apply extend_ok : prog.
-  Hint Extern 1 ({{_}} progseq (readall _ _ _ _) _) => apply readall_ok : prog.
-  Hint Extern 1 ({{_}} progseq (init _ _ _ _ _) _) => apply init_ok : prog.
-  Hint Extern 1 ({{_}} progseq (ifind _ _ _ _ _) _) => apply ifind_ok : prog.
+  Hint Extern 1 ({{_}} Bind (get _ _ _ _ _) _) => apply get_ok : prog.
+  Hint Extern 1 ({{_}} Bind (put _ _ _ _ _ _) _) => apply put_ok : prog.
+  Hint Extern 1 ({{_}} Bind (extend _ _ _ _ _ _) _) => apply extend_ok : prog.
+  Hint Extern 1 ({{_}} Bind (readall _ _ _ _) _) => apply readall_ok : prog.
+  Hint Extern 1 ({{_}} Bind (init _ _ _ _ _) _) => apply init_ok : prog.
+  Hint Extern 1 ({{_}} Bind (ifind _ _ _ _ _) _) => apply ifind_ok : prog.
 
 
   (** operations using array spec *)
 
-  Definition get_array T lxp ixp inum ix ms rx : prog T :=
+  Definition get_array lxp ixp inum ix ms : prog _ :=
     r <- get lxp ixp inum ix ms;
-    rx r.
+    Ret r.
 
-  Definition put_array T lxp ixp inum ix item ms rx : prog T :=
+  Definition put_array lxp ixp inum ix item ms : prog _ :=
     r <- put lxp ixp inum ix item ms;
-    rx r.
+    Ret r.
 
-  Definition extend_array T lxp bxp ixp inum item ms rx : prog T :=
+  Definition extend_array lxp bxp ixp inum item ms : prog _ :=
     r <- extend lxp bxp ixp inum item ms;
-    rx r.
+    Ret r.
 
-  Definition ifind_array T lxp ixp inum cond ms rx : prog T :=
+  Definition ifind_array lxp ixp inum cond ms : prog _ :=
     r <- ifind lxp ixp inum cond ms;
-    rx r.
+    Ret r.
 
   Theorem get_array_ok : forall lxp ixp bxp inum ix ms,
     {< F Fm Fi Fe m0 m flist f items e ilist frees,
@@ -543,10 +542,10 @@ Module FileRecArray (FRA : FileRASig).
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (get_array _ _ _ _ _) _) => apply get_array_ok : prog.
-  Hint Extern 1 ({{_}} progseq (put_array _ _ _ _ _ _) _) => apply put_array_ok : prog.
-  Hint Extern 1 ({{_}} progseq (extend_array _ _ _ _ _ _) _) => apply extend_array_ok : prog.
-  Hint Extern 1 ({{_}} progseq (ifind_array _ _ _ _ _) _) => apply ifind_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (get_array _ _ _ _ _) _) => apply get_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (put_array _ _ _ _ _ _) _) => apply put_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (extend_array _ _ _ _ _ _) _) => apply extend_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (ifind_array _ _ _ _ _) _) => apply ifind_array_ok : prog.
 
   Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
 
