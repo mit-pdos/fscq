@@ -110,15 +110,17 @@ Section MonadLaws.
 
 End MonadLaws.
 
-Ltac monad_simpl :=
-  repeat match goal with
-         | [ |- {{_}} Bind (Ret _) _ ] =>
-           eapply corr2_equivalence;
-           [ | apply bind_left_id ]
-         | [ |- {{_}} Bind _ Ret ] =>
-           eapply corr2_equivalence;
-           [ | apply bind_right_id ]
-         | [ |- {{_}} Bind (Bind _ _) _ ] =>
-           eapply corr2_equivalence;
-           [ | apply bind_assoc ]
-         end.
+Ltac monad_simpl_one :=
+  match goal with
+  | [ |- {{_}} Bind (Ret _) _ ] =>
+    eapply corr2_equivalence;
+    [ | apply bind_left_id ]
+  | [ |- {{_}} Bind _ Ret ] =>
+    eapply corr2_equivalence;
+    [ | apply bind_right_id ]
+  | [ |- {{_}} Bind (Bind _ _) _ ] =>
+    eapply corr2_equivalence;
+    [ | apply bind_assoc ]
+  end.
+
+Ltac monad_simpl := repeat monad_simpl_one.

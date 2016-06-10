@@ -1,7 +1,7 @@
 Require Import Arith.
 Require Import Pred PredCrash.
 Require Import Word.
-Require Import Prog.
+Require Import Prog ProgMonad.
 Require Import Hoare.
 Require Import SepAuto.
 Require Import BasicProg.
@@ -211,14 +211,18 @@ Module BlockPtr (BPtr : BlockPtrSig).
         | None => Ret ^(ms, None)
         | Some ibn =>
             ms <- IndRec.init lxp ibn ms;
-            Ret ^(ms, ibn)
+            Ret ^(ms, Some ibn)
         end
       } else {
-        Ret ^(ms, (IRIndPtr ir))
+        Ret ^(ms, Some (IRIndPtr ir))
       };
-      (* write indirect block *)
-      ms <- IndRec.put lxp ibn (len - NDirect) bn ms;
-      Ret ^(ms, Some (upd_irec ir (S len) ibn (IRBlocks ir)))
+      match ibn with
+      | Some ibn =>
+        (* write indirect block *)
+        ms <- IndRec.put lxp ibn (len - NDirect) bn ms;
+        Ret ^(ms, Some (upd_irec ir (S len) ibn (IRBlocks ir)))
+      | None => Ret ^(ms, None)
+      end
     }.
 
 
@@ -307,8 +311,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
     eapply rep_selN_direct_ok; eauto.
 
     prestep; norml.
-    rewrite rep_piff_indirect in H by omega.
-    unfold rep_indirect in H; destruct_lift H; cancel; try omega.
+    rewrite rep_piff_indirect in H0 by omega.
+    unfold rep_indirect in H0; destruct_lift H0; cancel; try omega.
     step; substl.
     substl NDirect; rewrite selN_app2.
     rewrite selN_firstn by omega; auto.
@@ -501,6 +505,9 @@ Module BlockPtr (BPtr : BlockPtrSig).
     prestep; norml.
     rewrite rep_piff_indirect in Hx by omega.
     unfold rep_indirect in Hx; destruct_lift Hx; cancel; try omega.
+    2: cancel.
+    omega.
+
     step.
     or_r; cancel.
     rewrite rep_piff_indirect by (rewrite app_length; simpl; omega).
@@ -515,6 +522,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite firstn_app_updN_eq; auto.
     substl (length dummy); omega.
     autorewrite with core lists; auto.
+
+    cancel.
 
     Unshelve. all:eauto.
   Qed.

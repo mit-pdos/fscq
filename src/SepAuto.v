@@ -1207,16 +1207,15 @@ Ltac prestep :=
   try autounfold with hoare_unfold in *;
   repeat destruct_pair_once;
   try cancel;
-  repeat destruct_branch;
+  repeat (destruct_branch || monad_simpl_one);
   (*   remember_xform; *)
-  monad_simpl;
   ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])
    || (eapply pimpl_ok3; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok3_cont; [ solve [ eauto with prog ] | | ])
    || (eapply pimpl_ok2; [
         match goal with
-        | [ |- {{ _ }} ?a _ ] => is_var a
+        | [ |- {{ _ }} Bind ?a _ ] => is_var a
         end; solve [ eapply nop_ok ] | ]));
   intros; try subst;
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
