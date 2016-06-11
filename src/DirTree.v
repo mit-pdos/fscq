@@ -1627,10 +1627,10 @@ Module DIRTREE.
   Definition namei fsxp dnum (fnlist : list string) mscs : prog _ :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
-    let^ (mscs, inum, isdir) <- ForEach fn fnrest fnlist
+    let^ (mscs, inum, isdir, valid) <- ForEach fn fnrest fnlist
       Hashmap hm
       Ghost [ mbase m F Fm Ftop treetop bflist freeinodes freeinode_pred ilist freeblocks mscs0 ]
-      Loopvar [ mscs inum isdir ]
+      Loopvar [ mscs inum isdir valid ]
       Invariant
         LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) hm *
         exists tree,
@@ -1642,23 +1642,31 @@ Module DIRTREE.
         [[ inum = dirtree_inum tree ]] *
         [[ isdir = dirtree_isdir tree ]] *
         [[ find_name fnlist treetop = find_name fnrest tree ]] *
-        [[ isdir = true -> (exists Fsub, 
+        [[ valid = true -> isdir = true -> (exists Fsub,
                    Fsub * tree_pred ibxp tree * freeinode_pred)%pred (list2nmem bflist) ]] *
         [[ MSAlloc mscs = MSAlloc mscs0 ]]
       OnCrash
         LOG.intact fsxp.(FSXPLog) F mbase hm
       Begin
-        If (bool_dec isdir true) {
-          let^ (mscs, r) <- SDIR.lookup lxp ixp inum fn mscs;
-          match r with
-          | Some (inum, isdir) => Ret ^(mscs, inum, isdir)
-          | None => Ret ^(mscs, None)
-          end
+        If (bool_dec valid false) {
+          Ret ^(mscs, inum, isdir, valid)
         } else {
-          Ret ^(mscs, None)
-        }
-    Rof ^(mscs, dnum, true);
-    Ret ^(mscs, Some (inum, isdir)).
+          If (bool_dec isdir true) {
+            let^ (mscs, r) <- SDIR.lookup lxp ixp inum fn mscs;
+            match r with
+            | Some (inum, isdir) => Ret ^(mscs, inum, isdir, true)
+            | None => Ret ^(mscs, inum, isdir, false)
+            end
+          } else {
+            Ret ^(mscs, inum, isdir, false)
+          }
+       }
+    Rof ^(mscs, dnum, true, true);
+    If (bool_dec valid true) {
+      Ret ^(mscs, Some (inum, isdir))
+    } else {
+      Ret ^(mscs, None)
+    }.
 
    Local Hint Unfold SDIR.rep_macro rep : hoare_unfold.
 
