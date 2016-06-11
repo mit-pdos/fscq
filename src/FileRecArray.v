@@ -85,28 +85,37 @@ Module FileRecArray (FRA : FileRASig).
   (* find the first item that satisfies cond *)
   Definition ifind lxp ixp inum (cond : item -> addr -> bool) ms0 : prog _ :=
     let^ (ms, nr) <- BFILE.getlen lxp ixp inum ms0;
-    let^ (ms) <- ForN i < nr
+    let^ (ms, ret) <- ForN i < nr
     Hashmap hm
     Ghost [ bxp F Fm Fi crash m0 m flist f items ilist frees ]
-    Loopvar [ ms ]
+    Loopvar [ ms ret ]
     Invariant
       LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
       [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
       [[[ flist ::: (Fi * inum |-> f) ]]] *
       [[[ RAData f ::: rep f items ]]] *
-      [[ forall ix, ix < i * items_per_val ->
-                    cond (selN items ix item0) ix = false ]] *
+      [[ ret = None ->
+         forall ix, ix < i * items_per_val ->
+               cond (selN items ix item0) ix = false ]] *
+      [[ forall st, ret = Some st ->
+              cond (snd st) (fst st) = true
+              /\ (fst st) < length items
+              /\ snd st = selN items (fst st) item0 ]] *
       [[ MSAlloc ms = MSAlloc ms0 ]]
     OnCrash  crash
     Begin
-      let^ (ms, v) <- BFILE.read_array lxp ixp inum 0 i ms;
-      let r := ifind_block cond (val2block v) (i * items_per_val) in
-      match r with
-      | None => Ret ^(ms)
-      | Some ifs => Ret ^(ms, Some ifs)
-      end
-    Rof ^(ms);
-    Ret ^(ms, None).
+        If (is_some ret) {
+          Ret ^(ms, ret)
+        } else {
+            let^ (ms, v) <- BFILE.read_array lxp ixp inum 0 i ms;
+            let r := ifind_block cond (val2block v) (i * items_per_val) in
+            match r with
+            | None => Ret ^(ms, None)
+            | Some ifs => Ret ^(ms, Some ifs)
+            end
+        }
+    Rof ^(ms, None);
+    Ret ^(ms, ret).
 
 
   Local Hint Resolve items_per_val_not_0 items_per_val_gt_0 items_per_val_gt_0'.
@@ -372,25 +381,29 @@ Module FileRecArray (FRA : FileRASig).
     safestep.
     safestep. auto. auto. eauto.
     safestep.
+    safestep.
+    safestep.
     cbv [BFILE.datatype]; cancel.
 
     eapply ifind_length_ok; eauto.
+    Hint Resolve
+         ifind_block_ok_cond
+         ifind_result_inbound
+         ifind_result_item_ok.
+    unfold items_valid in *; intuition idtac.
     safestep.
-
-    unfold items_valid in *; intuition.
-    or_r; cancel.
-    replace p_2 with (snd (p_1, p_2)) by auto.
-    eapply ifind_block_ok_cond; eauto.
-    replace p_1 with (fst (p_1, p_2)) by auto.
-    eapply ifind_result_inbound; eauto.
-    replace p_2 with (snd (p_1, p_2)) by auto.
-    eapply ifind_result_item_ok; eauto.
 
     unfold items_valid, RALen in *; intuition.
     eapply ifind_block_none_progress; eauto.
     cancel.
 
     safestep.
+    destruct a1; cancel.
+    match goal with
+    | [ H: forall _, Some _ = Some _ -> _ |- _ ] =>
+      edestruct H; eauto
+    end.
+    or_r; cancel.
     or_l; cancel.
     unfold items_valid, RALen in *; intuition.
     cancel.
