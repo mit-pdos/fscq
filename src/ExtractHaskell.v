@@ -4,7 +4,6 @@ Require Import AsyncFS.
 Extraction Language Haskell.
 
 (* Optimize away some noop-like wrappers. *)
-Extraction Inline Prog.progseq.
 Extraction Inline Prog.pair_args_helper.
 
 (* Uncomment the next line to enable eventlog-based profiling *)
