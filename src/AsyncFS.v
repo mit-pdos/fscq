@@ -1,4 +1,4 @@
-Require Import Prog.
+Require Import Prog ProgMonad.
 Require Import Log.
 Require Import BFile.
 Require Import Word.
@@ -90,21 +90,20 @@ Module AFS.
     all: lia.
   Qed.
 
-  Definition mkfs_alternate_allocators {T} lxp bxp1 bxp2 mscs rx : prog T :=
+  Definition mkfs_alternate_allocators lxp bxp1 bxp2 mscs : prog _ :=
     let^ (mscs, bxp1, bxp2) <- ForN i < (BmapNBlocks bxp1 * valulen)
     Hashmap hm
     Ghost [ F ]
     Loopvar [ mscs bxp1 bxp2 ]
-    Continuation lrx
     Invariant F
     OnCrash F
     Begin
       mscs <- BALLOC.steal lxp bxp1 i mscs;
-      lrx ^(mscs, bxp2, bxp1)
+      Ret ^(mscs, bxp2, bxp1)
     Rof ^(mscs, bxp1, bxp2);
-    rx mscs.
+    Ret mscs.
 
-  Definition mkfs {T} cachesize data_bitmaps inode_bitmaps log_descr_blocks rx : prog T :=
+  Definition mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks : prog _ :=
     let fsxp := compute_xparams data_bitmaps inode_bitmaps log_descr_blocks in
     cs <- BUFCACHE.init_load cachesize;
     cs <- SB.init fsxp cs;
@@ -119,7 +118,7 @@ Module AFS.
     match r with
     | None =>
       mscs <- LOG.abort (FSXPLog fsxp) mscs;
-      rx None
+      Ret None
     | Some inum =>
       (**
        * We should write a new fsxp back to the superblock with the new root
@@ -130,12 +129,12 @@ Module AFS.
         let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
         If (bool_dec ok true) {
           mscs <- LOG.flushsync (FSXPLog fsxp) mscs;
-          rx (Some ((BFILE.mk_memstate true mscs), fsxp))
+          Ret (Some ((BFILE.mk_memstate true mscs), fsxp))
         } else {
-          rx None
+          Ret None
         }
       } else {
-        rx None
+        Ret None
       }
     end.
 
@@ -178,167 +177,167 @@ Module AFS.
     all: try solve [ xcrash; apply pimpl_any ].
   Admitted.
 
-  Definition recover {T} cachesize rx : prog T :=
+  Definition recover cachesize : prog _ :=
     cs <- BUFCACHE.init_recover cachesize;
     let^ (cs, fsxp) <- SB.load cs;
     mscs <- LOG.recover (FSXPLog fsxp) cs;
-    rx ^(BFILE.mk_memstate true mscs, fsxp).
+    Ret ^(BFILE.mk_memstate true mscs, fsxp).
 
-  Definition file_get_attr T fsxp inum ams rx : prog T :=
+  Definition file_get_attr fsxp inum ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, attr) <- DIRTREE.getattr fsxp inum (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), attr).
+    Ret ^((MSAlloc ams, ms), attr).
 
-  Definition file_get_sz T fsxp inum ams rx : prog T :=
+  Definition file_get_sz fsxp inum ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, attr) <- DIRTREE.getattr fsxp inum (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), INODE.ABytes attr).
+    Ret ^((MSAlloc ams, ms), INODE.ABytes attr).
 
-  Definition file_set_attr T fsxp inum attr ams rx : prog T :=
+  Definition file_set_attr fsxp inum attr ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.setattr fsxp inum attr (MSAlloc ams, ms);
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), ok).
+    Ret ^((MSAlloc ams, ms), ok).
 
-  Definition file_set_sz T fsxp inum sz ams rx : prog T :=
+  Definition file_set_sz fsxp inum sz ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.updattr fsxp inum (INODE.UBytes sz) (MSAlloc ams, ms);
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), ok).
+    Ret ^((MSAlloc ams, ms), ok).
 
-  Definition read_fblock T fsxp inum off ams rx : prog T :=
+  Definition read_fblock fsxp inum off ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, b) <- DIRTREE.read fsxp inum off (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), b).
+    Ret ^((MSAlloc ams, ms), b).
 
-  Definition file_truncate T fsxp inum sz ams rx : prog T :=
+  Definition file_truncate fsxp inum sz ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, ok) <- DIRTREE.truncate fsxp inum sz (MSAlloc ams, ms);
     If (bool_dec ok false) {
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-      rx ^((MSAlloc ams, ms), false)
+      Ret ^((MSAlloc ams, ms), false)
     } else {
       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-      rx ^((MSAlloc ams, ms), ok)
+      Ret ^((MSAlloc ams, ms), ok)
     }.
 
   (* update an existing block directly.  XXX dwrite happens to sync metadata. *)
-  Definition update_fblock_d T fsxp inum off v ams rx : prog T :=
+  Definition update_fblock_d fsxp inum off v ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.dwrite fsxp inum off v (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms)).
+    Ret ^((MSAlloc ams, ms)).
 
-  Definition update_fblock T fsxp inum off v ams rx : prog T :=
+  Definition update_fblock fsxp inum off v ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.write fsxp inum off v (MSAlloc ams, ms);
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), ok).
+    Ret ^((MSAlloc ams, ms), ok).
 
   (* sync only data blocks of a file. *)
-  Definition file_sync T fsxp inum ams rx : prog T :=
+  Definition file_sync fsxp inum ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.datasync fsxp inum (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms)).
+    Ret ^((MSAlloc ams, ms)).
 
-  Definition readdir T fsxp dnum ams rx : prog T :=
+  Definition readdir fsxp dnum ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, files) <- SDIR.readdir (FSXPLog fsxp) (FSXPInode fsxp) dnum (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), files).
+    Ret ^((MSAlloc ams, ms), files).
 
-  Definition create T fsxp dnum name ams rx : prog T :=
+  Definition create fsxp dnum name ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (MSAlloc ams, ms);
     match oi with
       | None =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-          rx ^((MSAlloc ams, ms), None)
+          Ret ^((MSAlloc ams, ms), None)
       | Some inum =>
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
-          | true => rx ^((MSAlloc ams, ms), Some inum)
-          | false => rx ^((MSAlloc ams, ms), None)
+          | true => Ret ^((MSAlloc ams, ms), Some inum)
+          | false => Ret ^((MSAlloc ams, ms), None)
         end
     end.
 
-  Definition mksock T fsxp dnum name ams rx : prog T :=
+  Definition mksock fsxp dnum name ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (MSAlloc ams, ms);
     match oi with
       | None =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-        rx ^((MSAlloc ams, ms), None)
+        Ret ^((MSAlloc ams, ms), None)
       | Some inum =>
         ams <- BFILE.updattr (FSXPLog fsxp) (FSXPInode fsxp) inum (INODE.UType $1) ams;
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
-          | true => rx ^((MSAlloc ams, ms), Some inum)
-          | false => rx ^((MSAlloc ams, ms), None)
+          | true => Ret ^((MSAlloc ams, ms), Some inum)
+          | false => Ret ^((MSAlloc ams, ms), None)
         end
     end.
 
-  Definition mkdir T fsxp dnum name ams rx : prog T :=
+  Definition mkdir fsxp dnum name ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, oi) <- DIRTREE.mkdir fsxp dnum name (MSAlloc ams, ms);
     match oi with
       | None =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-          rx ^((MSAlloc ams, ms), None)
+          Ret ^((MSAlloc ams, ms), None)
       | Some inum =>
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
-          | true => rx ^((MSAlloc ams, ms), Some inum)
-          | false => rx ^((MSAlloc ams, ms), None)
+          | true => Ret ^((MSAlloc ams, ms), Some inum)
+          | false => Ret ^((MSAlloc ams, ms), None)
         end
     end.
 
-  Definition delete T fsxp dnum name ams rx : prog T :=
+  Definition delete fsxp dnum name ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, ok) <- DIRTREE.delete fsxp dnum name (MSAlloc ams, ms);
     If (bool_dec ok true) {
        let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-       rx ^((MSAlloc ams, ms), ok)
+       Ret ^((MSAlloc ams, ms), ok)
     } else {
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-      rx ^((MSAlloc ams, ms), false)
+      Ret ^((MSAlloc ams, ms), false)
     }.
 
-  Definition lookup T fsxp dnum names ams rx : prog T :=
+  Definition lookup fsxp dnum names ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, r) <- DIRTREE.namei fsxp dnum names (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), r).
+    Ret ^((MSAlloc ams, ms), r).
 
-  Definition rename T fsxp dnum srcpath srcname dstpath dstname ams rx : prog T :=
+  Definition rename fsxp dnum srcpath srcname dstpath dstname ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname (MSAlloc ams, ms);
     If (bool_dec r true) {
       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-      rx ^((MSAlloc ams, ms), ok)
+      Ret ^((MSAlloc ams, ms), ok)
     } else {
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-      rx ^((MSAlloc ams, ms), false)
+      Ret ^((MSAlloc ams, ms), false)
     }.
 
   (* sync directory tree; will flush all outstanding changes to tree (but not dupdates to files) *)
-  Definition tree_sync T fsxp ams rx : prog T :=
+  Definition tree_sync fsxp ams : prog _ :=
     ams <- DIRTREE.sync fsxp ams;
-    rx ^(ams).
+    Ret ^(ams).
 
-  Definition statfs T fsxp ams rx : prog T :=
+  Definition statfs fsxp ams : prog _ :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     (*
     let^ (mscs, free_blocks) <- BALLOC.numfree (FSXPLog fsxp) (FSXPBlockAlloc fsxp) mscs;
     let^ (mscs, free_inodes) <- BALLOC.numfree (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
      *)
     ms <- LOG.commit_ro (FSXPLog fsxp) ms;
-    (* rx ^(mscs, free_blocks, free_inodes).  *)
-    rx ^((MSAlloc ams, ms), 0, 0).
+    (* Ret ^(mscs, free_blocks, free_inodes).  *)
+    Ret ^((MSAlloc ams, ms), 0, 0).
 
   (* Recover theorems *)
 
@@ -358,7 +357,7 @@ Module AFS.
      >} recover cachesize.
   Proof.
     unfold recover, LOG.after_crash; intros.
-    eapply pimpl_ok2.
+    eapply pimpl_ok2; monad_simpl.
     eapply BUFCACHE.init_recover_ok.
     intros; norm. cancel.
     intuition simpl. eauto.
@@ -441,7 +440,7 @@ Module AFS.
     Unshelve. all: eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (recover _) _) => apply recover_ok : prog.
+  Hint Extern 1 ({{_}} Bind (recover _) _) => apply recover_ok : prog.
 
   Ltac recover_ro_ok := intros;
     repeat match goal with
@@ -475,7 +474,7 @@ Module AFS.
     unfold file_get_attr; intros.
     step.
     step.
-    eapply pimpl_ok2.
+    eapply pimpl_ok2; monad_simpl.
     apply LOG.commit_ro_ok.
     cancel.
     step.
@@ -485,7 +484,7 @@ Module AFS.
     rewrite LOG.notxn_intact. rewrite LOG.intact_idempred. reflexivity.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
+  Hint Extern 1 ({{_}} Bind (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
 
   Ltac xcrash_solve :=
     repeat match goal with
@@ -562,7 +561,7 @@ Module AFS.
     unfold read_fblock; intros.
     step.
     step.
-    eapply pimpl_ok2.
+    eapply pimpl_ok2; monad_simpl.
     apply LOG.commit_ro_ok.
     cancel.
     step.
@@ -574,7 +573,7 @@ Module AFS.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (read_fblock _ _ _ _) _) => apply read_fblock_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read_fblock _ _ _ _) _) => apply read_fblock_ok : prog.
 
   Theorem file_set_attr_ok : forall fsxp inum attr mscs,
   {< ds pathname Fm Ftop tree f ilist frees,
@@ -608,7 +607,7 @@ Module AFS.
     rewrite LOG.intact_idempred; cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (file_set_attr _ _ _ _) _) => apply file_set_attr_ok : prog.
+  Hint Extern 1 ({{_}} Bind (file_set_attr _ _ _ _) _) => apply file_set_attr_ok : prog.
 
   Theorem file_truncate_ok : forall fsxp inum sz mscs,
     {< ds Fm Ftop tree pathname f ilist frees,
@@ -655,7 +654,7 @@ Module AFS.
     rewrite LOG.intact_idempred. xform_norm. cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (file_truncate _ _ _ _) _) => apply file_truncate_ok : prog.
+  Hint Extern 1 ({{_}} Bind (file_truncate _ _ _ _) _) => apply file_truncate_ok : prog.
 
 
   Ltac latest_rewrite := unfold latest, pushd; simpl.
@@ -727,7 +726,7 @@ Module AFS.
       xform_normr; cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (update_fblock_d _ _ _ _ _) _) => apply update_fblock_d_ok : prog.
+  Hint Extern 1 ({{_}} Bind (update_fblock_d _ _ _ _ _) _) => apply update_fblock_d_ok : prog.
 
 
   Theorem file_sync_ok: forall fsxp inum mscs,
@@ -775,7 +774,7 @@ Module AFS.
       cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (file_sync _ _ _) _) => apply file_sync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (file_sync _ _ _) _) => apply file_sync_ok : prog.
 
 
   Theorem tree_sync_ok: forall fsxp  mscs,
@@ -798,7 +797,7 @@ Module AFS.
     cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (tree_sync _ _) _) => apply tree_sync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (tree_sync _ _) _) => apply tree_sync_ok : prog.
 
   Theorem lookup_ok: forall fsxp dnum fnlist mscs,
     {< ds Fm Ftop tree ilist frees,
@@ -817,7 +816,7 @@ Module AFS.
     unfold lookup; intros.
     step.
     step.
-    eapply pimpl_ok2.
+    eapply pimpl_ok2; monad_simpl.
     apply LOG.commit_ro_ok.
     cancel.
     step.
@@ -827,7 +826,7 @@ Module AFS.
     apply LOG.notxn_idempred.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (lookup _ _ _ _) _) => apply lookup_ok : prog.
+  Hint Extern 1 ({{_}} Bind (lookup _ _ _ _) _) => apply lookup_ok : prog.
 
   Theorem create_ok : forall fsxp dnum name mscs,
     {< ds pathname Fm Ftop tree tree_elem ilist frees,
@@ -862,7 +861,7 @@ Module AFS.
     apply LOG.notxn_idempred.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (create _ _ _ _ ) _) => apply create_ok : prog.
+  Hint Extern 1 ({{_}} Bind (create _ _ _ _ ) _) => apply create_ok : prog.
 
   Definition rename_rep ds mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname hm :=
     (exists d tree' srcnum srcents dstnum dstents subtree pruned renamed ilist' frees',
@@ -909,7 +908,7 @@ Module AFS.
     apply LOG.notxn_idempred.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
+  Hint Extern 1 ({{_}} Bind (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
 
 
   Theorem delete_ok : forall fsxp dnum name mscs,
@@ -949,7 +948,7 @@ Module AFS.
     apply LOG.notxn_idempred.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (delete _ _ _ _) _) => apply delete_ok : prog.
+  Hint Extern 1 ({{_}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.
 
 End AFS.
 
