@@ -1,6 +1,6 @@
 Require Import DirName.
 Require Import Balloc.
-Require Import Prog.
+Require Import Prog ProgMonad.
 Require Import BasicProg.
 Require Import Bool.
 Require Import Word.
@@ -2035,23 +2035,27 @@ Module DIRTREE.
     match oi with
     | None => Ret ^(mscs, false)
     | Some (inum, isdir) =>
-      mscs <- If (bool_dec isdir false) {
-        Ret mscs
+      let^ (mscs, ok) <- If (bool_dec isdir false) {
+        Ret ^(mscs, true)
       } else {
         let^ (mscs, l) <- SDIR.readdir lxp ixp inum mscs;
         match l with
-        | nil => Ret mscs
+        | nil => Ret ^(mscs, true)
         | _ => Ret ^(mscs, false)
         end
       };
-      let^ (mscs, ok) <- SDIR.unlink lxp ixp dnum name mscs;
-      If (bool_dec ok true) {
-        mscs' <- IAlloc.free lxp ibxp inum (MSLL mscs);
-        mscs <- BFILE.reset lxp bxp ixp inum (MSAlloc mscs, mscs');
-        Ret ^(mscs, true)
-      } else {
+      If (bool_dec ok false) {
         Ret ^(mscs, false)
-      }
+      } else {
+        let^ (mscs, ok) <- SDIR.unlink lxp ixp dnum name mscs;
+        If (bool_dec ok true) {
+          mscs' <- IAlloc.free lxp ibxp inum (MSLL mscs);
+          mscs <- BFILE.reset lxp bxp ixp inum (MSAlloc mscs, mscs');
+          Ret ^(mscs, true)
+        } else {
+          Ret ^(mscs, false)
+        }
+     }
     end.
 
 
@@ -2312,7 +2316,7 @@ Module DIRTREE.
     unfold delete, rep.
 
     (* extract some basic facts from rep *)
-    intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
+    intros; eapply pimpl_ok2; monad_simpl; eauto with prog; intros; norm'l.
     assert (tree_inodes_distinct (TreeDir dnum tree_elem)) as HiID.
     eapply rep_tree_inodes_distinct with (m := list2nmem m).
     pred_apply; unfold rep; cancel.
@@ -2327,6 +2331,8 @@ Module DIRTREE.
     safecancel. 2: eauto.
     unfold SDIR.rep_macro.
     cancel; eauto.
+    step.
+    step.
     step.
 
     (* unlink *)
@@ -2372,6 +2378,8 @@ Module DIRTREE.
     step.
     step.
     step.
+    step.
+    step.
 
     (* post conditions *)
     or_r; cancel.
@@ -2384,11 +2392,14 @@ Module DIRTREE.
     apply dirlist_safe_delete; auto.
 
     step.
+    step.
+    step.
     cancel; auto.
     cancel; auto.
 
     Unshelve.
     all: try exact addr_eq_dec.  6: eauto. all: eauto.
+    auto using Build_balloc_xparams.
   Qed.
 
 
