@@ -144,9 +144,9 @@ Module SB.
   Definition rep (fsxp : fs_xparams) : rawpred :=
     ([[ fs_xparams_ok fsxp ]] * 0 |+> (v_pickle_superblock fsxp, nil))%pred.
 
-  Definition load T cs rx : prog T :=
+  Definition load cs : prog _ :=
     let^ (cs, v) <- BUFCACHE.read 0 cs;
-    rx ^(cs, v_unpickle_superblock v).
+    Ret ^(cs, v_unpickle_superblock v).
 
   Theorem load_ok : forall cs,
     {< m F fsxp,
@@ -163,12 +163,12 @@ Module SB.
     apply v_pickle_unpickle_superblock; auto.
   Qed.
 
-  Definition init T fsxp cs rx : prog T :=
+  Definition init fsxp cs : prog _ :=
     cs <- BUFCACHE.write 0 (v_pickle_superblock fsxp) cs;
     cs <- BUFCACHE.begin_sync cs;
     cs <- BUFCACHE.sync 0 cs;
     cs <- BUFCACHE.end_sync cs;
-    rx cs.
+    Ret cs.
 
   Theorem init_ok : forall fsxp cs,
     {< m F,
@@ -194,8 +194,8 @@ Module SB.
     xcrash.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (load _) _) => apply load_ok : prog.
-  Hint Extern 1 ({{_}} progseq (init _ _) _) => apply init_ok : prog.
+  Hint Extern 1 ({{_}} Bind (load _) _) => apply load_ok : prog.
+  Hint Extern 1 ({{_}} Bind (init _ _) _) => apply init_ok : prog.
 
   Theorem crash_xform_rep : forall fsxp,
     crash_xform (rep fsxp) <=p=> rep fsxp.
