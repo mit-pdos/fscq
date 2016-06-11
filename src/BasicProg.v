@@ -608,9 +608,9 @@ Fixpoint ForEach_ (ITEM : Type)
   end.
 
 Theorem foreach_ok:
-  forall ITEM (lst : list ITEM)
+  forall T ITEM (lst : list ITEM)
          (L : Type) (G : Type)
-         f (rx: _ -> prog L)
+         f (rx: _ -> prog T)
          (nocrash : G -> list ITEM -> L -> hashmap -> pred)
          (crashed : G -> hashmap -> pred)
          (li : L),
