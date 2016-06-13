@@ -11,6 +11,7 @@ Require Import FunctionalExtensionality.
 
 
 Set Implicit Arguments.
+Set Default Proof Using "Type".
 
 Section MemPred.
 

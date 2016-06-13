@@ -9,6 +9,7 @@ Require Import AsyncDisk.
 Import ListNotations.
 
 Set Implicit Arguments.
+Set Default Proof Using "Type".
 
 
 (** * A generic array predicate: a sequence of consecutive points-to facts *)
