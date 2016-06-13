@@ -47,14 +47,12 @@ Inductive PrevProg {Sigma} (p: prog Sigma) :=
 
 Local Ltac set_prog p :=
   try match goal with
-  | [ H: CurrentProg ?p |- _ ] =>
-    match goal with
-    | [ H: PrevProg _ |- _ ] =>
-      clear H
-    | _ => idtac
-    end;
+  | [ H: CurrentProg ?p' |- _ ] =>
+    try match goal with
+        | [ H': PrevProg _ |- _ ] => clear H'
+        end;
     let Hprev := fresh "PostOf" in
-    pose proof (SomePrevProg p) as Hprev;
+    pose proof (SomePrevProg p') as Hprev;
     clear H
   end;
   let H := fresh "PreOf" in
@@ -86,7 +84,10 @@ Ltac unfold_prog :=
 Ltac valid_match_ok :=
   match goal with
   | [ |- valid _ _ _ (match ?d with | _ => _ end) ] =>
-    case_eq d; intros
+    case_eq d; intros;
+    match goal with
+    | [ |- valid _ _ _ ?p ] => set_prog p
+    end
   end.
 
 Ltac step' simplifier finisher :=
