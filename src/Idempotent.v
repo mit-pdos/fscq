@@ -14,18 +14,38 @@ Qed.
 
 Hint Resolve step_hashmap_subset.
 
+Lemma hashmap_subset_some_list_trans : forall hm hm' hm'',
+    (exists l, hashmap_subset l hm hm') ->
+    (exists l, hashmap_subset l hm' hm'') ->
+    exists l, hashmap_subset l hm hm''.
+Proof.
+  eauto.
+Qed.
+
+Lemma finished_val_eq : forall T m hm (v:T),
+    exists v', Finished m hm v = Finished m hm v'.
+Proof. eauto. Qed.
+
+Hint Resolve finished_val_eq.
+
 Lemma exec_crashed_hashmap_subset' : forall T m m' hm hm' p out,
   exec m hm p out
   -> (out = Crashed T m' hm' \/ exists v, out = Finished m' hm' v)
   -> exists l, hashmap_subset l hm hm'.
 Proof.
-  induction 1; subst; intuition; repeat deex; try congruence;
+  intros.
+  generalize dependent hm'.
+  generalize dependent m'.
+  induction H; subst; intuition; repeat deex; try congruence;
     try match goal with
         | [ H: @eq (outcome _) _ _ |- _ ] =>
           inversion H; subst
         end;
     eauto.
-Admitted.
+
+  eauto 7 using hashmap_subset_some_list_trans.
+  eauto 7 using hashmap_subset_some_list_trans.
+Qed.
 
 Lemma exec_crashed_hashmap_subset : forall T m m' hm hm' p out,
   exec m hm p out
