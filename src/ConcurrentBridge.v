@@ -170,10 +170,9 @@ Section ExampleSeqSpecs.
 
 End ExampleSeqSpecs.
 
-Inductive ConcurHoareSpec R :=
-| ConcurSpec A
-             (pre: TID -> A -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop)
-             (post: TID -> A -> R -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop).
+Record ConcurHoareSpec R :=
+  ConcurSpec { concur_spec_pre: TID -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop;
+               concur_spec_post: TID -> R -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop }.
 
 Definition concur_hoare_double R (spec: ConcurHoareSpec R)
            (p: (R -> prog Sigma) -> prog Sigma) :=
