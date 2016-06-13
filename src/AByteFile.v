@@ -104,7 +104,7 @@ Definition rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f fy :=
      (flat_map valuset2bytesets (BFILE.BFData f)) ]] * 
 [[ # (INODE.ABytes (ByFAttr fy)) = length(ByFData fy)]])%pred .
 
-Definition read_first_block lxp ixp inum fms block_off byte_off read_length : prog _ :=
+Definition read_first_block lxp ixp inum fms block_off byte_off read_length :=
       let^ (fms, first_block) <- BFILE.read lxp ixp inum block_off fms;   (* get first block *)
       let data_init := (get_sublist (valu2list first_block) byte_off read_length) in
       Ret ^(fms, data_init).
@@ -116,7 +116,7 @@ forall i, (i < read_length) -> selN r i byte0 =
     fst (selN (ByFData fy) (block_off * block_size + byte_off + i) byteset0).
 
 
-Definition read_middle_blocks lxp ixp inum fms block_off num_of_full_blocks : prog _ :=
+Definition read_middle_blocks lxp ixp inum fms block_off num_of_full_blocks :=
 let^ (data) <- (ForN_ (fun i =>
         (pair_args_helper (fun data (_:unit) => (fun Ret =>
         
@@ -144,7 +144,7 @@ forall i, (i < num_of_full_blocks * block_size) ->
 selN r i byte0 = fst (selN (ByFData fy) (block_off*block_size +i) byteset0).
 
 
-Definition read_last_block lxp ixp inum fms block_off read_length : prog _ :=
+Definition read_last_block lxp ixp inum fms block_off read_length :=
 let^ (fms, last_block) <- BFILE.read lxp ixp inum block_off fms;   (* get final block *)
 let data_last := (get_sublist (valu2list last_block) 0 read_length) in (* get final block data *)
 Ret ^(fms, data_last).
@@ -156,7 +156,7 @@ forall i, (i < read_length) -> selN r i byte0 =
 
 
 (*Interface*)
-Definition read lxp ixp inum off len fms : prog _ :=
+Definition read lxp ixp inum off len fms :=
 If (lt_dec 0 len)                        (* if read length > 0 *)
 {                    
   let^ (fms, flen) <- BFILE.getlen lxp ixp inum fms;          (* get file length *)
@@ -194,7 +194,7 @@ else                                                   (* if read length is not 
   Ret ^(fms, nil)
 }.
 
-(* Definition write lxp ixp inum off data fms : prog _ :=
+(* Definition write lxp ixp inum off data fms :=
     let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     let^ (fms, flen) <- BFILE.getlen lxp ixp inum fms;          (* get file length *)
     let len := min (length data) (flen - off) in
@@ -243,7 +243,7 @@ else                                                   (* if read length is not 
   
   
 (* same as write except uses LOG.dwrite *)
-Definition dwrite lxp ixp inum off data fms : prog _ :=
+Definition dwrite lxp ixp inum off data fms :=
     let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     let^ (fms, flen) <- BFILE.getlen lxp ixp inum fms;          (* get file length *)
     let len := min (length data) (flen - off) in
@@ -290,22 +290,22 @@ Definition dwrite lxp ixp inum off data fms : prog _ :=
  *)
 
 (*Same as BFile*)
- Definition getlen lxp ixp inum fms : prog _ :=
+ Definition getlen lxp ixp inum fms :=
     let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     let^ (ms, n) <- INODE.getlen lxp ixp inum ms;
     Ret ^(BFILE.mk_memstate al ms, n).
 
-  Definition getattrs lxp ixp inum fms : prog _ :=
+  Definition getattrs lxp ixp inum fms :=
     let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     let^ (ms, n) <- INODE.getattrs lxp ixp inum ms;
     Ret ^(BFILE.mk_memstate al ms, n).
 
-  Definition setattrs lxp ixp inum a fms : prog _ :=
+  Definition setattrs lxp ixp inum a fms :=
     let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     ms <- INODE.setattrs lxp ixp inum a ms;
     Ret (BFILE.mk_memstate al ms).
 
-  Definition updattr lxp ixp inum kv fms : prog _ :=
+  Definition updattr lxp ixp inum kv fms :=
     let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     ms <- INODE.updattr lxp ixp inum kv ms;
     Ret (BFILE.mk_memstate al ms).
@@ -1112,13 +1112,13 @@ Proof. Admitted.
           
 (*From BFile
 
-  Definition datasync lxp ixp inum fms : prog _ :=
+  Definition datasync lxp ixp inum fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
     ms <- LOG.dsync_vecs lxp (map (@wordToNat _) bns) ms;
     Ret (mk_memstate al ms).
 
-  Definition sync lxp (ixp : INODE.IRecSig.xparams) fms : prog _ :=
+  Definition sync lxp (ixp : INODE.IRecSig.xparams) fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     ms <- LOG.sync lxp ms;
     Ret (mk_memstate (negb al) ms).
@@ -1126,7 +1126,7 @@ Proof. Admitted.
   Definition pick_balloc A (a : A * A) (flag : bool) :=
     if flag then fst a else snd a.
 
-  Definition grow lxp bxps ixp inum v fms : prog _ :=
+  Definition grow lxp bxps ixp inum v fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, len) <- INODE.getlen lxp ixp inum ms;
     If (lt_dec len INODE.NBlocks) {
@@ -1146,7 +1146,7 @@ Proof. Admitted.
       Ret ^(mk_memstate al ms, false)
     }.
 
-  Definition shrink lxp bxps ixp inum nr fms : prog _ :=
+  Definition shrink lxp bxps ixp inum nr fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
     let l := map (@wordToNat _) (skipn ((length bns) - nr) bns) in

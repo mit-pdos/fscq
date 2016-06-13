@@ -43,7 +43,7 @@ Record cachestate := mk_cs {
 Module BUFCACHE.
 
   (* write-back if a block is dirty, but do not evict from cache *)
-  Definition writeback a (cs : cachestate) : prog _ :=
+  Definition writeback a (cs : cachestate) :=
     match (Map.find a (CSMap cs)) with
     | Some (v, true) =>
       Write a v ;;
@@ -52,11 +52,11 @@ Module BUFCACHE.
       Ret cs
     end.
 
-  Definition evict a (cs : cachestate) : prog _ :=
+  Definition evict a (cs : cachestate) :=
     cs <- writeback a cs;
     Ret (mk_cs (Map.remove a (CSMap cs)) (CSMaxCount cs) (CSEvict cs)).
 
-  Definition maybe_evict (cs : cachestate) : prog _ :=
+  Definition maybe_evict (cs : cachestate) :=
     If (lt_dec (Map.cardinal (CSMap cs)) (CSMaxCount cs)) {
       Ret cs
     } else {
@@ -75,7 +75,7 @@ Module BUFCACHE.
       end
     }.
 
-  Definition read a (cs : cachestate) : prog _ :=
+  Definition read a (cs : cachestate) :=
     cs <- maybe_evict cs;
     match Map.find a (CSMap cs) with
     | Some (v, dirty) => Ret ^(cs, v)
@@ -85,38 +85,38 @@ Module BUFCACHE.
                  (CSMaxCount cs) (eviction_update (CSEvict cs) a), v)
     end.
 
-  Definition write a v (cs : cachestate) : prog _ :=
+  Definition write a v (cs : cachestate) :=
     cs <- maybe_evict cs;
     Ret (mk_cs (Map.add a (v, true) (CSMap cs))
               (CSMaxCount cs) (eviction_update (CSEvict cs) a)).
 
-  Definition begin_sync (cs : cachestate) : prog _ :=
+  Definition begin_sync (cs : cachestate) :=
     Ret cs.
 
-  Definition sync a (cs : cachestate) : prog _ :=
+  Definition sync a (cs : cachestate) :=
     cs <- writeback a cs;
     Ret cs.
 
-  Definition end_sync (cs : cachestate) : prog _ :=
+  Definition end_sync (cs : cachestate) :=
     Sync;;
     Ret cs.
 
 
   Definition cache0 sz := mk_cs (Map.empty _) sz eviction_init.
 
-  Definition init (cachesize : nat) : prog _ :=
+  Definition init (cachesize : nat) :=
     Sync;;
     Ret (cache0 cachesize).
 
-  Definition read_array a i cs : prog _ :=
+  Definition read_array a i cs :=
     r <- read (a + i) cs;
     Ret r.
 
-  Definition write_array a i v cs : prog _ :=
+  Definition write_array a i v cs :=
     cs <- write (a + i) v cs;
     Ret cs.
 
-  Definition sync_array a i cs : prog _ :=
+  Definition sync_array a i cs :=
     cs <- sync (a + i) cs;
     Ret cs.
 
@@ -1273,7 +1273,7 @@ Module BUFCACHE.
 
   (* examples of using begin_sync/end_sync *)
 
-  Definition sync_one a (cs : cachestate) : prog _ :=
+  Definition sync_one a (cs : cachestate) :=
     cs <- begin_sync cs;
     cs <- sync a cs;
     cs <- end_sync cs;
@@ -1295,7 +1295,7 @@ Module BUFCACHE.
   Qed.
 
 
-  Definition sync_two a1 a2 (cs : cachestate) : prog _ :=
+  Definition sync_two a1 a2 (cs : cachestate) :=
     cs <- begin_sync cs;
     cs <- sync a1 cs;
     cs <- sync a2 cs;
@@ -1938,7 +1938,7 @@ Module BUFCACHE.
 
   (** batch operations *)
 
-  Definition read_range A a nr (vfold : A -> valu -> A) a0 cs : prog _ :=
+  Definition read_range A a nr (vfold : A -> valu -> A) a0 cs :=
     let^ (cs, r) <- ForN i < nr
     Ghost [ F crash d vs ]
     Loopvar [ cs pf ]
@@ -1953,7 +1953,7 @@ Module BUFCACHE.
     Ret ^(cs, r).
 
 
-  Definition write_range a l cs : prog _ :=
+  Definition write_range a l cs :=
     let^ (cs) <- ForN i < length l
     Ghost [ F crash vs ]
     Loopvar [ cs ]
@@ -1967,7 +1967,7 @@ Module BUFCACHE.
     Rof ^(cs);
     Ret cs.
 
-  Definition sync_range a nr cs : prog _ :=
+  Definition sync_range a nr cs :=
     let^ (cs) <- ForN i < nr
     Ghost [ F crash vs d0 ]
     Loopvar [ cs ]
@@ -1981,7 +1981,7 @@ Module BUFCACHE.
     Rof ^(cs);
     Ret cs.
 
-  Definition write_vecs a l cs : prog _ :=
+  Definition write_vecs a l cs :=
     let^ (cs) <- ForN i < length l
     Ghost [ F crash vs ]
     Loopvar [ cs ]
@@ -1996,7 +1996,7 @@ Module BUFCACHE.
     Rof ^(cs);
     Ret cs.
 
-  Definition sync_vecs a l cs : prog _ :=
+  Definition sync_vecs a l cs :=
     let^ (cs) <- ForN i < length l
     Ghost [ F crash vs d0 ]
     Loopvar [ cs ]
@@ -2010,7 +2010,7 @@ Module BUFCACHE.
     Rof ^(cs);
     Ret cs.
 
-  Definition sync_vecs_now a l cs : prog _ :=
+  Definition sync_vecs_now a l cs :=
     cs <- begin_sync cs;
     cs <- sync_vecs a l cs;
     cs <- end_sync cs;

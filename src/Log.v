@@ -268,23 +268,23 @@ Module LOG.
   Qed.
 
 
-  Definition init xp cs : prog _ :=
+  Definition init xp cs :=
     mm <- GLog.init xp cs;
     Ret (mk_memstate vmap0 mm).
 
-  Definition begin (xp : log_xparams) ms : prog _ :=
+  Definition begin (xp : log_xparams) ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     Ret (mk_memstate vmap0 mm).
 
-  Definition abort (xp : log_xparams) ms : prog _ :=
+  Definition abort (xp : log_xparams) ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     Ret (mk_memstate vmap0 mm).
 
-  Definition write (xp : log_xparams) a v ms : prog _ :=
+  Definition write (xp : log_xparams) a v ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     Ret (mk_memstate (Map.add a v cm) mm).
 
-  Definition read xp a ms : prog _ :=
+  Definition read xp a ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     match Map.find a cm with
     | Some v =>  Ret ^(ms, v)
@@ -293,38 +293,38 @@ Module LOG.
         Ret ^(mk_memstate cm mm', v)
     end.
 
-  Definition commit xp ms : prog _ :=
+  Definition commit xp ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     let^ (mm', r) <- GLog.submit xp (Map.elements cm) mm;
     Ret ^(mk_memstate vmap0 mm', r).
 
   (* like abort, but use a better name for read-only transactions *)
-  Definition commit_ro (xp : log_xparams) ms : prog _ :=
+  Definition commit_ro (xp : log_xparams) ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     Ret (mk_memstate vmap0 mm).
 
-  Definition dwrite (xp : log_xparams) a v ms : prog _ :=
+  Definition dwrite (xp : log_xparams) a v ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     let cm' := Map.remove a cm in
     mm' <- GLog.dwrite xp a v mm;
     Ret (mk_memstate cm' mm').
 
-  Definition dsync xp a ms : prog _ :=
+  Definition dsync xp a ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.dsync xp a mm;
     Ret (mk_memstate cm mm').
 
-  Definition flushsync xp ms : prog _ :=
+  Definition flushsync xp ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.flushsync xp mm;
     Ret (mk_memstate cm mm').
 
-  Definition sync xp ms : prog _ :=
+  Definition sync xp ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.flushall xp mm;
     Ret (mk_memstate cm mm').
 
-  Definition recover xp cs : prog _ :=
+  Definition recover xp cs :=
     mm <- GLog.recover xp cs;
     Ret (mk_memstate vmap0 mm).
 
@@ -1074,11 +1074,11 @@ Module LOG.
   Hint Extern 1 ({{_}} Bind (recover _ _) _) => apply recover_ok : prog.
 
 
-  Definition read_array xp a i ms : prog _ :=
+  Definition read_array xp a i ms :=
     let^ (ms, r) <- read xp (a + i) ms;
     Ret ^(ms, r).
 
-  Definition write_array xp a i v ms : prog _ :=
+  Definition write_array xp a i v ms :=
     ms <- write xp (a + i) v ms;
     Ret ms.
 
@@ -1138,7 +1138,7 @@ Module LOG.
 
   Hint Extern 0 (okToUnify (rep _ _ _ ?a _) (rep _ _ _ ?a _)) => constructor : okToUnify.
 
-  Definition read_range A xp a nr (vfold : A -> valu -> A) v0 ms : prog _ :=
+  Definition read_range A xp a nr (vfold : A -> valu -> A) v0 ms :=
     let^ (ms, r) <- ForN i < nr
     Hashmap hm
     Ghost [ F Fm crash ds m vs ]
@@ -1155,7 +1155,7 @@ Module LOG.
     Ret ^(ms, r).
 
 
-  Definition write_range xp a l ms : prog _ :=
+  Definition write_range xp a l ms :=
     let^ (ms) <- ForN i < length l
     Hashmap hm
     Ghost [ F Fm crash ds vs ]
@@ -1313,7 +1313,7 @@ Module LOG.
   Qed.
 
   (* like read_range, but stops when cond is true *)
-  Definition read_cond A xp a nr (vfold : A -> valu -> A) v0 (cond : A -> bool) ms : prog _ :=
+  Definition read_cond A xp a nr (vfold : A -> valu -> A) v0 (cond : A -> bool) ms :=
     let^ (ms, pf, ret) <- ForN i < nr
     Hashmap hm
     Ghost [ F Fm crash ds m vs ]
@@ -1401,12 +1401,12 @@ Module LOG.
   (******** batch direct write and sync *)
 
   (* dwrite_vecs discard everything in active transaction *)
-  Definition dwrite_vecs (xp : log_xparams) avl ms : prog _ :=
+  Definition dwrite_vecs (xp : log_xparams) avl ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.dwrite_vecs xp avl mm;
     Ret (mk_memstate vmap0 mm').
 
-  Definition dsync_vecs xp al ms : prog _ :=
+  Definition dsync_vecs xp al ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.dsync_vecs xp al mm;
     Ret (mk_memstate cm mm').

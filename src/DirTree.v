@@ -1624,7 +1624,7 @@ Module DIRTREE.
     | [ H: MSAlloc _ = MSAlloc _ |- _ ] => rewrite H in *; clear H
     end.
 
-  Definition namei fsxp dnum (fnlist : list string) mscs : prog _ :=
+  Definition namei fsxp dnum (fnlist : list string) mscs :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
     let^ (mscs, inum, isdir, valid) <- ForEach fn fnrest fnlist
@@ -1738,7 +1738,7 @@ Module DIRTREE.
 
   Hint Extern 1 ({{_}} Bind (namei _ _ _ _) _) => apply namei_ok : prog.
 
-  Definition mkfile fsxp dnum name fms : prog _ :=
+  Definition mkfile fsxp dnum name fms :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
@@ -1757,7 +1757,7 @@ Module DIRTREE.
     end.
 
 
-  Definition mkdir fsxp dnum name fms : prog _ :=
+  Definition mkdir fsxp dnum name fms :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
@@ -2028,7 +2028,7 @@ Module DIRTREE.
     end.
 
 
-  Definition delete fsxp dnum name mscs : prog _ :=
+  Definition delete fsxp dnum name mscs :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
     let^ (mscs, oi) <- SDIR.lookup lxp ixp dnum name mscs;
@@ -2434,7 +2434,7 @@ Module DIRTREE.
 
   Hint Extern 1 ({{_}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.
 
-  Definition rename fsxp dnum srcpath srcname dstpath dstname mscs : prog _ :=
+  Definition rename fsxp dnum srcpath srcname dstpath dstname mscs :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
     let^ (mscs, osrcdir) <- namei fsxp dnum srcpath mscs;
@@ -3309,44 +3309,44 @@ Module DIRTREE.
 
   Hint Extern 1 ({{_}} Bind (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
 
-  Definition read fsxp inum off mscs : prog _ :=
+  Definition read fsxp inum off mscs :=
     let^ (mscs, v) <- BFILE.read (FSXPLog fsxp) (FSXPInode fsxp) inum off mscs;
     Ret ^(mscs, v).
 
-  Definition write fsxp inum off v mscs : prog _ :=
+  Definition write fsxp inum off v mscs :=
     mscs <- BFILE.write (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
     Ret mscs.
 
-  Definition dwrite fsxp inum off v mscs : prog _ :=
+  Definition dwrite fsxp inum off v mscs :=
     mscs <- BFILE.dwrite (FSXPLog fsxp) (FSXPInode fsxp) inum off v mscs;
     Ret mscs.
 
-  Definition datasync fsxp inum mscs : prog _ :=
+  Definition datasync fsxp inum mscs :=
     mscs <- BFILE.datasync (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
     Ret mscs.
 
-  Definition sync fsxp mscs : prog _ :=
+  Definition sync fsxp mscs :=
     mscs <- BFILE.sync (FSXPLog fsxp) (FSXPInode fsxp) mscs;
     Ret mscs.
 
-  Definition truncate fsxp inum nblocks mscs : prog _ :=
+  Definition truncate fsxp inum nblocks mscs :=
     let^ (mscs, ok) <- BFILE.truncate (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
                                      inum nblocks mscs;
     Ret ^(mscs, ok).
 
-  Definition getlen fsxp inum mscs : prog _ :=
+  Definition getlen fsxp inum mscs :=
     let^ (mscs, len) <- BFILE.getlen (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
     Ret ^(mscs, len).
 
-  Definition getattr fsxp inum mscs : prog _ :=
+  Definition getattr fsxp inum mscs :=
     let^ (mscs, attr) <- BFILE.getattrs (FSXPLog fsxp) (FSXPInode fsxp) inum mscs;
     Ret ^(mscs, attr).
 
-  Definition setattr fsxp inum attr mscs : prog _ :=
+  Definition setattr fsxp inum attr mscs :=
     mscs <- BFILE.setattrs (FSXPLog fsxp) (FSXPInode fsxp) inum attr mscs;
     Ret mscs.
 
-  Definition updattr fsxp inum kv mscs : prog _ :=
+  Definition updattr fsxp inum kv mscs :=
     mscs <- BFILE.updattr (FSXPLog fsxp) (FSXPInode fsxp) inum kv mscs;
     Ret mscs.
 

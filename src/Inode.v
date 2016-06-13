@@ -154,11 +154,11 @@ Module INODE.
   (************* program *)
 
 
-  Definition init lxp xp ms : prog _ :=
+  Definition init lxp xp ms :=
     ms <- IRec.init lxp xp ms;
     Ret ms.
 
-  Definition getlen lxp xp inum ms : prog _ := Eval compute_rec in
+  Definition getlen lxp xp inum ms := Eval compute_rec in
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     Ret ^(ms, # (ir :-> "len" )).
 
@@ -169,11 +169,11 @@ Module INODE.
   Definition AType   (a : iattr) := Eval cbn in ( a :-> "itype" ).
   Definition ADev    (a : iattr) := Eval cbn in ( a :-> "dev" ).
 
-  Definition getattrs lxp xp inum ms : prog _ := Eval compute_rec in
+  Definition getattrs lxp xp inum ms := Eval compute_rec in
     let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
     Ret ^(ms, (i :-> "attrs")).
 
-  Definition setattrs lxp xp inum attr ms : prog _ := Eval compute_rec in
+  Definition setattrs lxp xp inum attr ms := Eval compute_rec in
     let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
     ms <- IRec.put_array lxp xp inum (i :=> "attrs" := attr) ms;
     Ret ms.
@@ -195,29 +195,29 @@ Module INODE.
   | UDev   v => (e :=> "dev"   := v)
   end.
 
-  Definition updattr lxp xp inum a ms : prog _ := Eval compute_rec in
+  Definition updattr lxp xp inum a ms := Eval compute_rec in
     let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
     ms <- IRec.put_array lxp xp inum (i :=> "attrs" := (iattr_upd (i :-> "attrs") a)) ms;
     Ret ms.
 
 
-  Definition getbnum lxp xp inum off ms : prog _ :=
+  Definition getbnum lxp xp inum off ms :=
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     ms <- Ind.get lxp ir off ms;
     Ret ms.
 
-  Definition getallbnum lxp xp inum ms : prog _ :=
+  Definition getallbnum lxp xp inum ms :=
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     ms <- Ind.read lxp ir ms;
     Ret ms.
 
-  Definition shrink lxp bxp xp inum nr ms : prog _ :=
+  Definition shrink lxp bxp xp inum nr ms :=
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     let^ (ms, ir') <- Ind.shrink lxp bxp ir nr ms;
     ms <- IRec.put_array lxp xp inum ir' ms;
     Ret ms.
 
-  Definition grow lxp bxp xp inum bn ms : prog _ :=
+  Definition grow lxp bxp xp inum bn ms :=
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     let^ (ms, r) <- Ind.grow lxp bxp ir ($ bn) ms;
     match r with

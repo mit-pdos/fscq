@@ -51,12 +51,12 @@ Module FileRecArray (FRA : FileRASig).
       [[ items_valid f items ]] *
       arrayN (@ptsto _ addr_eq_dec _) 0 (synced_list vl))%pred.
 
-  Definition get lxp ixp inum ix ms : prog _ :=
+  Definition get lxp ixp inum ix ms :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
     let^ (ms, v) <- BFILE.read_array lxp ixp inum 0 bn ms;
     Ret ^(ms, selN_val2block v off).
 
-  Definition put lxp ixp inum ix item ms : prog _ :=
+  Definition put lxp ixp inum ix item ms :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
     let^ (ms, v) <- BFILE.read_array lxp ixp inum 0 bn ms;
     let v' := block2val_updN_val2block v off item in
@@ -64,17 +64,17 @@ Module FileRecArray (FRA : FileRASig).
     Ret ms.
 
   (* extending one block and put item at the first entry *)
-  Definition extend lxp bxp ixp inum item ms : prog _ :=
+  Definition extend lxp bxp ixp inum item ms :=
     let v := block2val (updN block0 0 item) in
     let^ (ms, r) <- BFILE.grow lxp bxp ixp inum v ms;
     Ret ^(ms, r).
 
-  Definition readall lxp ixp inum ms : prog _ :=
+  Definition readall lxp ixp inum ms :=
     let^ (ms, nr) <- BFILE.getlen lxp ixp inum ms;
     let^ (ms, r) <- BFILE.read_range lxp ixp inum 0 nr iunpack nil ms;
     Ret ^(ms, r).
 
-  Definition init lxp bxp ixp inum ms : prog _ :=
+  Definition init lxp bxp ixp inum ms :=
     let^ (ms, nr) <- BFILE.getlen lxp ixp inum ms;
     ms <- BFILE.shrink lxp bxp ixp inum nr ms;
     Ret ms.
@@ -83,7 +83,7 @@ Module FileRecArray (FRA : FileRASig).
   Notation MSAlloc := BFILE.MSAlloc.
 
   (* find the first item that satisfies cond *)
-  Definition ifind lxp ixp inum (cond : item -> addr -> bool) ms0 : prog _ :=
+  Definition ifind lxp ixp inum (cond : item -> addr -> bool) ms0 :=
     let^ (ms, nr) <- BFILE.getlen lxp ixp inum ms0;
     let^ (ms, ret) <- ForN i < nr
     Hashmap hm
@@ -421,19 +421,19 @@ Module FileRecArray (FRA : FileRASig).
 
   (** operations using array spec *)
 
-  Definition get_array lxp ixp inum ix ms : prog _ :=
+  Definition get_array lxp ixp inum ix ms :=
     r <- get lxp ixp inum ix ms;
     Ret r.
 
-  Definition put_array lxp ixp inum ix item ms : prog _ :=
+  Definition put_array lxp ixp inum ix item ms :=
     r <- put lxp ixp inum ix item ms;
     Ret r.
 
-  Definition extend_array lxp bxp ixp inum item ms : prog _ :=
+  Definition extend_array lxp bxp ixp inum item ms :=
     r <- extend lxp bxp ixp inum item ms;
     Ret r.
 
-  Definition ifind_array lxp ixp inum cond ms : prog _ :=
+  Definition ifind_array lxp ixp inum cond ms :=
     r <- ifind lxp ixp inum cond ms;
     Ret r.
 

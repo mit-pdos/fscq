@@ -74,11 +74,11 @@ Module BmapAlloc (Sig : AllocSig).
   Definition is_avail (s : state) := if (state_dec s) then true else false.
   Definition avail_nonzero s i := if (addr_eq_dec i 0) then false else is_avail s.
 
-  Definition free lxp xp bn ms : prog _ :=
+  Definition free lxp xp bn ms :=
     ms <- Bmp.put lxp xp bn $0 ms;
     Ret ms.
 
-  Definition alloc lxp xp ms : prog _ :=
+  Definition alloc lxp xp ms :=
     let^ (ms, r) <- Bmp.ifind lxp xp avail_nonzero ms;
     match r with
     | None =>
@@ -88,11 +88,11 @@ Module BmapAlloc (Sig : AllocSig).
         Ret ^(ms, Some bn)
     end.
 
-  Definition steal lxp xp bn ms : prog _ :=
+  Definition steal lxp xp bn ms :=
     ms <- Bmp.put lxp xp bn $1 ms;
     Ret ms.
 
-  Definition init lxp xp ms : prog _ :=
+  Definition init lxp xp ms :=
     ms <- Bmp.init lxp xp ms;
     Ret ms.
 
@@ -309,19 +309,19 @@ Module BALLOC.
   Module Alloc := BmapAlloc Sig.
   Module Defs := Alloc.Defs.
 
-  Definition alloc lxp xp ms : prog _ :=
+  Definition alloc lxp xp ms :=
     r <- Alloc.alloc lxp xp ms;
     Ret r.
 
-  Definition free lxp xp bn ms : prog _ :=
+  Definition free lxp xp bn ms :=
     r <- Alloc.free lxp xp bn ms;
     Ret r.
 
-  Definition steal lxp xp bn ms : prog _ :=
+  Definition steal lxp xp bn ms :=
     r <- Alloc.steal lxp xp bn ms;
     Ret r.
 
-  Definition init lxp xp ms : prog _ :=
+  Definition init lxp xp ms :=
     r <- Alloc.init lxp xp ms;
     Ret r.
 
@@ -383,7 +383,7 @@ Module BALLOC.
   Qed.
 
 
-  Definition freevec lxp xp l ms : prog _ :=
+  Definition freevec lxp xp l ms :=
     let^ (ms) <- ForN i < length l
     Hashmap hm
     Ghost [ F Fm crash m0 freeblocks ]

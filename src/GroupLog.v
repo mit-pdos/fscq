@@ -197,7 +197,7 @@ Module GLog.
 
   (************* program *)
 
-  Definition read xp a (ms : memstate) : prog _ :=
+  Definition read xp a (ms : memstate) :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     match Map.find a vm with
     | Some v =>  Ret ^(ms, v)
@@ -212,7 +212,7 @@ Module GLog.
      This keep the interface compatible with current Log.v, in which
      only commit() can fail, and the caller can choose to abort.
   *)
-  Definition submit xp ents ms : prog _ :=
+  Definition submit xp ents ms :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     let vm' := replay_mem ents vm in
     If (le_dec (length ents) (LogLen xp)) {
@@ -221,7 +221,7 @@ Module GLog.
       Ret ^(ms, false)
     }.
 
-  Definition flushall_nomerge xp ms : prog _ :=
+  Definition flushall_nomerge xp ms :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     let^ (mm) <- ForN i < length ts
     Hashmap hm
@@ -238,7 +238,7 @@ Module GLog.
     Rof ^(mm);
     Ret (mk_memstate vmap0 nil mm).
 
-  Definition flushall xp ms : prog _ :=
+  Definition flushall xp ms :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     If (le_dec (Map.cardinal vm) (LogLen xp)) {
       let^ (mm, r) <- MLog.flush xp (Map.elements vm) mm;
@@ -248,18 +248,18 @@ Module GLog.
       Ret ms
     }.
 
-  Definition flushsync xp ms : prog _ :=
+  Definition flushsync xp ms :=
     ms <- flushall xp ms;
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.apply xp mm;
     Ret (mk_memstate vm ts mm').
 
-  Definition dwrite' (xp : log_xparams) a v ms : prog _ :=
+  Definition dwrite' (xp : log_xparams) a v ms :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dwrite xp a v mm;
     Ret (mk_memstate vm ts mm').
 
-  Definition dwrite (xp : log_xparams) a v ms : prog _ :=
+  Definition dwrite (xp : log_xparams) a v ms :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     If (MapFacts.In_dec vm a) {
       ms <- flushall xp ms;
@@ -270,12 +270,12 @@ Module GLog.
       Ret ms
     }.
 
-  Definition dwrite_vecs' (xp : log_xparams) avs ms : prog _ :=
+  Definition dwrite_vecs' (xp : log_xparams) avs ms :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dwrite_vecs xp avs mm;
     Ret (mk_memstate vm ts mm').
 
-  Definition dwrite_vecs (xp : log_xparams) avs ms : prog _ :=
+  Definition dwrite_vecs (xp : log_xparams) avs ms :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     If (bool_dec (overlap (map fst avs) vm) true) {
       ms <- flushall xp ms;
@@ -286,21 +286,21 @@ Module GLog.
       Ret ms
     }.
 
-  Definition dsync xp a ms : prog _ :=
+  Definition dsync xp a ms :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dsync xp a mm;
     Ret (mk_memstate vm ts mm').
 
-  Definition dsync_vecs xp al ms : prog _ :=
+  Definition dsync_vecs xp al ms :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dsync_vecs xp al mm;
     Ret (mk_memstate vm ts mm').
 
-  Definition recover xp cs : prog _ :=
+  Definition recover xp cs :=
     mm <- MLog.recover xp cs;
     Ret (mk_memstate vmap0 nil mm).
 
-  Definition init xp cs : prog _ :=
+  Definition init xp cs :=
     mm <- MLog.init xp cs;
     Ret (mk_memstate vmap0 nil mm).
 

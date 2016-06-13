@@ -188,22 +188,22 @@ Module PaddedLog.
       cancel.
     Qed.
 
-    Definition read xp cs : prog _ := Eval compute_rec in
+    Definition read xp cs := Eval compute_rec in
       let^ (cs, v) <- BUFCACHE.read (LAHdr xp) cs;
       let header := (val2hdr v) in
       Ret ^(cs, ((# (header :-> "previous_ndesc"), # (header :-> "previous_ndata")),
                 (# (header :-> "ndesc"), # (header :-> "ndata")),
                 (header :-> "addr_checksum", header :-> "valu_checksum"))).
 
-    Definition write xp n cs : prog _ :=
+    Definition write xp n cs :=
       cs <- BUFCACHE.write (LAHdr xp) (hdr2val (mk_header n)) cs;
       Ret cs.
 
-    Definition sync xp cs : prog _ :=
+    Definition sync xp cs :=
       cs <- BUFCACHE.sync (LAHdr xp) cs;
       Ret cs.
 
-    Definition sync_now xp cs : prog _ :=
+    Definition sync_now xp cs :=
       cs <- BUFCACHE.begin_sync cs;
       cs <- BUFCACHE.sync (LAHdr xp) cs;
       cs <- BUFCACHE.end_sync cs;
@@ -530,12 +530,12 @@ Module PaddedLog.
 
   Local Hint Unfold rep rep_inner rep_contents xparams_ok: hoare_unfold.
 
-  Definition avail xp cs : prog _ :=
+  Definition avail xp cs :=
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(_, (ndesc, _), _) := nr in
     Ret ^(cs, ((LogLen xp) - ndesc * DescSig.items_per_val)).
 
-  Definition read xp cs : prog _ :=
+  Definition read xp cs :=
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(_, (ndesc, ndata), _) := nr in
     let^ (cs, wal) <- Desc.read_all xp ndesc cs;
@@ -996,13 +996,13 @@ Module PaddedLog.
   Local Hint Resolve goodSize_0.
 
 
-  Definition init xp cs : prog _ :=
+  Definition init xp cs :=
     h <- Hash default_valu;
     cs <- Hdr.write xp ((0, 0), (0, 0), (h, h)) cs;
     cs <- Hdr.sync_now xp cs;
     Ret cs.
 
-  Definition trunc xp cs : prog _ :=
+  Definition trunc xp cs :=
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(_, current_length, _) := nr in
     h <- Hash default_valu;
@@ -1531,7 +1531,7 @@ Module PaddedLog.
     rewrite entry_valid_vals_nonzero; auto.
   Qed.
 
-  Definition extend xp log cs : prog _ :=
+  Definition extend xp log cs :=
     (* Synced *)
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(_, (ndesc, ndata), (h_addr, h_valu)) := nr in
@@ -2148,7 +2148,7 @@ Module PaddedLog.
     destruct (weq x y); destruct (weq a b); intuition.
   Defined.
 
-  Definition recover xp cs : prog _ :=
+  Definition recover xp cs :=
     let^ (cs, header) <- Hdr.read xp cs;
     let '((prev_ndesc, prev_ndata),
           (ndesc, ndata),
@@ -2593,7 +2593,7 @@ Module PaddedLog.
    **)
 
   (*
-  Definition recover cs lxp : prog _ :=
+  Definition recover cs lxp :=
     cs <- BUFCACHE.init_recover 1;
     let^ (cs, fsxp) <- sb_load cs;
     cs <- recover' (FSXPLog fsxp) cs;
@@ -2787,7 +2787,7 @@ Module DLog.
   Section UnifyProof.
   Hint Extern 0 (okToUnify (PaddedLog.rep _ _) (PaddedLog.rep _ _)) => constructor : okToUnify.
 
-  Definition read xp cs : prog _ :=
+  Definition read xp cs :=
     r <- PaddedLog.read xp cs;
     Ret r.
 
@@ -2807,11 +2807,11 @@ Module DLog.
     hoare.
   Qed.
 
-  Definition init xp cs : prog _ :=
+  Definition init xp cs :=
     cs <- PaddedLog.init xp cs;
     Ret cs.
 
-  Definition trunc xp cs : prog _ :=
+  Definition trunc xp cs :=
     cs <- PaddedLog.trunc xp cs;
     Ret cs.
 
@@ -2843,7 +2843,7 @@ Module DLog.
   Qed.
 
 
-  Definition avail xp cs : prog _ :=
+  Definition avail xp cs :=
     r <- PaddedLog.avail xp cs;
     Ret r.
 
@@ -2910,7 +2910,7 @@ Module DLog.
 
   Local Hint Resolve extend_length_ok helper_extend_length_ok PaddedLog.log_nonzero_padded_app.
 
-  Definition extend xp new cs : prog _ :=
+  Definition extend xp new cs :=
     r <- PaddedLog.extend xp new cs;
     Ret r.
 
@@ -2975,7 +2975,7 @@ Module DLog.
   Hint Extern 1 ({{_}} Bind (trunc _ _) _) => apply trunc_ok : prog.
   Hint Extern 1 ({{_}} Bind (extend _ _ _) _) => apply extend_ok : prog.
 
-  Definition recover xp cs : prog _ :=
+  Definition recover xp cs :=
     cs <- PaddedLog.recover xp cs;
     Ret cs.
 

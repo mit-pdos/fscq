@@ -492,7 +492,7 @@ Module SDIR.
          rewrite is_valid_sname_valid in H
     end.
 
-  Definition lookup lxp ixp dnum name ms : prog _ :=
+  Definition lookup lxp ixp dnum name ms :=
     If (Bool.bool_dec (is_valid_sname name) true) {
       let^ (ms, r) <- DIR.lookup lxp ixp dnum (sname2wname name) ms;
       Ret ^(ms, r)
@@ -500,7 +500,7 @@ Module SDIR.
       Ret ^(ms, None)
     }.
 
-  Definition unlink lxp ixp dnum name ms : prog _ :=
+  Definition unlink lxp ixp dnum name ms :=
     If (Bool.bool_dec (is_valid_sname name) true) {
       let^ (ms, r) <- DIR.unlink lxp ixp dnum (sname2wname name) ms;
       Ret ^(ms, r)
@@ -508,7 +508,7 @@ Module SDIR.
       Ret ^(ms, false)
     }.
 
-  Definition link lxp bxp ixp dnum name inum isdir ms : prog _ :=
+  Definition link lxp bxp ixp dnum name inum isdir ms :=
     If (Bool.bool_dec (is_valid_sname name) true) {
       let^ (ms, r) <- DIR.link lxp bxp ixp dnum (sname2wname name) inum isdir ms;
       Ret ^(ms, r)
@@ -519,7 +519,7 @@ Module SDIR.
   Definition readdir_trans (di : DIR.readent) :=
     (wname2sname (fst di), snd di).
 
-  Definition readdir lxp ixp dnum ms : prog _ :=
+  Definition readdir lxp ixp dnum ms :=
     let^ (ms, r) <- DIR.readdir lxp ixp dnum ms;
     Ret ^(ms, List.map readdir_trans r).
 

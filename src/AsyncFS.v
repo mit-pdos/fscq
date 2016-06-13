@@ -90,7 +90,7 @@ Module AFS.
     all: lia.
   Qed.
 
-  Definition mkfs_alternate_allocators lxp bxp1 bxp2 mscs : prog _ :=
+  Definition mkfs_alternate_allocators lxp bxp1 bxp2 mscs :=
     let^ (mscs, bxp1, bxp2) <- ForN i < (BmapNBlocks bxp1 * valulen)
     Hashmap hm
     Ghost [ F ]
@@ -103,7 +103,7 @@ Module AFS.
     Rof ^(mscs, bxp1, bxp2);
     Ret mscs.
 
-  Definition mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks : prog _ :=
+  Definition mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks :=
     let fsxp := compute_xparams data_bitmaps inode_bitmaps log_descr_blocks in
     cs <- BUFCACHE.init_load cachesize;
     cs <- SB.init fsxp cs;
@@ -177,43 +177,43 @@ Module AFS.
     all: try solve [ xcrash; apply pimpl_any ].
   Admitted.
 
-  Definition recover cachesize : prog _ :=
+  Definition recover cachesize :=
     cs <- BUFCACHE.init_recover cachesize;
     let^ (cs, fsxp) <- SB.load cs;
     mscs <- LOG.recover (FSXPLog fsxp) cs;
     Ret ^(BFILE.mk_memstate true mscs, fsxp).
 
-  Definition file_get_attr fsxp inum ams : prog _ :=
+  Definition file_get_attr fsxp inum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, attr) <- DIRTREE.getattr fsxp inum (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
     Ret ^((MSAlloc ams, ms), attr).
 
-  Definition file_get_sz fsxp inum ams : prog _ :=
+  Definition file_get_sz fsxp inum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, attr) <- DIRTREE.getattr fsxp inum (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
     Ret ^((MSAlloc ams, ms), INODE.ABytes attr).
 
-  Definition file_set_attr fsxp inum attr ams : prog _ :=
+  Definition file_set_attr fsxp inum attr ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.setattr fsxp inum attr (MSAlloc ams, ms);
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
     Ret ^((MSAlloc ams, ms), ok).
 
-  Definition file_set_sz fsxp inum sz ams : prog _ :=
+  Definition file_set_sz fsxp inum sz ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.updattr fsxp inum (INODE.UBytes sz) (MSAlloc ams, ms);
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
     Ret ^((MSAlloc ams, ms), ok).
 
-  Definition read_fblock fsxp inum off ams : prog _ :=
+  Definition read_fblock fsxp inum off ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, b) <- DIRTREE.read fsxp inum off (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
     Ret ^((MSAlloc ams, ms), b).
 
-  Definition file_truncate fsxp inum sz ams : prog _ :=
+  Definition file_truncate fsxp inum sz ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, ok) <- DIRTREE.truncate fsxp inum sz (MSAlloc ams, ms);
     If (bool_dec ok false) {
@@ -225,32 +225,32 @@ Module AFS.
     }.
 
   (* update an existing block directly.  XXX dwrite happens to sync metadata. *)
-  Definition update_fblock_d fsxp inum off v ams : prog _ :=
+  Definition update_fblock_d fsxp inum off v ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.dwrite fsxp inum off v (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
     Ret ^((MSAlloc ams, ms)).
 
-  Definition update_fblock fsxp inum off v ams : prog _ :=
+  Definition update_fblock fsxp inum off v ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.write fsxp inum off v (MSAlloc ams, ms);
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
     Ret ^((MSAlloc ams, ms), ok).
 
   (* sync only data blocks of a file. *)
-  Definition file_sync fsxp inum ams : prog _ :=
+  Definition file_sync fsxp inum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.datasync fsxp inum (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
     Ret ^((MSAlloc ams, ms)).
 
-  Definition readdir fsxp dnum ams : prog _ :=
+  Definition readdir fsxp dnum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, files) <- SDIR.readdir (FSXPLog fsxp) (FSXPInode fsxp) dnum (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
     Ret ^((MSAlloc ams, ms), files).
 
-  Definition create fsxp dnum name ams : prog _ :=
+  Definition create fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (MSAlloc ams, ms);
     match oi with
@@ -265,7 +265,7 @@ Module AFS.
         end
     end.
 
-  Definition mksock fsxp dnum name ams : prog _ :=
+  Definition mksock fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (MSAlloc ams, ms);
     match oi with
@@ -281,7 +281,7 @@ Module AFS.
         end
     end.
 
-  Definition mkdir fsxp dnum name ams : prog _ :=
+  Definition mkdir fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, oi) <- DIRTREE.mkdir fsxp dnum name (MSAlloc ams, ms);
     match oi with
@@ -296,7 +296,7 @@ Module AFS.
         end
     end.
 
-  Definition delete fsxp dnum name ams : prog _ :=
+  Definition delete fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, ok) <- DIRTREE.delete fsxp dnum name (MSAlloc ams, ms);
     If (bool_dec ok true) {
@@ -307,13 +307,13 @@ Module AFS.
       Ret ^((MSAlloc ams, ms), false)
     }.
 
-  Definition lookup fsxp dnum names ams : prog _ :=
+  Definition lookup fsxp dnum names ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, r) <- DIRTREE.namei fsxp dnum names (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
     Ret ^((MSAlloc ams, ms), r).
 
-  Definition rename fsxp dnum srcpath srcname dstpath dstname ams : prog _ :=
+  Definition rename fsxp dnum srcpath srcname dstpath dstname ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname (MSAlloc ams, ms);
     If (bool_dec r true) {
@@ -325,11 +325,11 @@ Module AFS.
     }.
 
   (* sync directory tree; will flush all outstanding changes to tree (but not dupdates to files) *)
-  Definition tree_sync fsxp ams : prog _ :=
+  Definition tree_sync fsxp ams :=
     ams <- DIRTREE.sync fsxp ams;
     Ret ^(ams).
 
-  Definition statfs fsxp ams : prog _ :=
+  Definition statfs fsxp ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     (*
     let^ (mscs, free_blocks) <- BALLOC.numfree (FSXPLog fsxp) (FSXPBlockAlloc fsxp) mscs;

@@ -159,7 +159,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   (************* program *)
 
-  Definition get lxp (ir : irec) off ms : prog _ :=
+  Definition get lxp (ir : irec) off ms :=
     If (lt_dec off NDirect) {
       Ret ^(ms, selN (IRBlocks ir) off $0)
     } else {
@@ -168,7 +168,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     }.
 
 
-  Definition read lxp (ir : irec) ms : prog _ :=
+  Definition read lxp (ir : irec) ms :=
     If (le_dec (IRLen ir) NDirect) {
       Ret ^(ms, firstn (IRLen ir) (IRBlocks ir))
     } else {
@@ -188,7 +188,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Defined.
 
 
-  Definition shrink lxp bxp (ir : irec) nr ms : prog _ :=
+  Definition shrink lxp bxp (ir : irec) nr ms :=
     let nl := ((IRLen ir) - nr) in
     If (free_ind_dec (IRLen ir) nl) {
       ms <- BALLOC.free lxp bxp (IRIndPtr ir) ms;
@@ -198,7 +198,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     }.
 
 
-  Definition grow lxp bxp (ir : irec) bn ms : prog _ :=
+  Definition grow lxp bxp (ir : irec) bn ms :=
     let len := (IRLen ir) in
     If (lt_dec len NDirect) {
       (* change direct block address *)

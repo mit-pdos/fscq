@@ -114,7 +114,7 @@ Module DIR.
 
   Definition lookup_f name de (_ : addr) := (is_valid de) && (name_is name de).
 
-  Definition lookup lxp ixp dnum name ms : prog _ :=
+  Definition lookup lxp ixp dnum name ms :=
     let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
     match r with
     | None => Ret ^(ms, None)
@@ -123,12 +123,12 @@ Module DIR.
 
   Definition readent := (filename * (addr * bool))%type.
 
-  Definition readdir lxp ixp dnum ms : prog _ :=
+  Definition readdir lxp ixp dnum ms :=
     let^ (ms, dents) <- Dent.readall lxp ixp dnum ms;
     let r := map (fun de => (DEName de, (DEInum de, is_dir de))) (filter is_valid dents) in
     Ret ^(ms, r).
 
-  Definition unlink lxp ixp dnum name ms : prog _ :=
+  Definition unlink lxp ixp dnum name ms :=
     let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
     match r with
     | None => Ret ^(ms, false)
@@ -137,7 +137,7 @@ Module DIR.
         Ret ^(ms, true)
     end.
 
-  Definition link lxp bxp ixp dnum name inum isdir ms : prog _ :=
+  Definition link lxp bxp ixp dnum name inum isdir ms :=
     let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
     match r with
     | Some _ => Ret ^(ms, false)

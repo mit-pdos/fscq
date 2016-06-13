@@ -438,7 +438,7 @@ Module AsyncRecArray (RA : RASig).
   Qed.
 
   (** read count blocks starting from the beginning *)
-  Definition read_all xp count cs : prog _ :=
+  Definition read_all xp count cs :=
     let^ (cs, r) <- BUFCACHE.read_range (RAStart xp) count iunpack nil cs;
     Ret ^(cs, r).
 
@@ -494,7 +494,7 @@ Module AsyncRecArray (RA : RASig).
 
   (** write items from a given block index, 
       slots following the items will be cleared *)
-  Definition write_aligned xp start (items: itemlist) cs : prog _ :=
+  Definition write_aligned xp start (items: itemlist) cs :=
     let chunks := list_chunk items items_per_val item0 in
     cs <- BUFCACHE.write_range ((RAStart xp) + start) (map block2val chunks) cs;
     Ret cs.
@@ -584,7 +584,7 @@ Module AsyncRecArray (RA : RASig).
 
 
   (** sync count blocks starting from start *)
-  Definition sync_aligned xp start count cs : prog _ :=
+  Definition sync_aligned xp start count cs :=
     cs <- BUFCACHE.sync_range ((RAStart xp) + start) count cs;
     Ret cs.
 

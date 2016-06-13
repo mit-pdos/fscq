@@ -46,51 +46,51 @@ Module BFILE.
 
   (* interface implementation *)
 
-  Definition getlen lxp ixp inum fms : prog _ :=
+  Definition getlen lxp ixp inum fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, n) <- INODE.getlen lxp ixp inum ms;
     Ret ^(mk_memstate al ms, n).
 
-  Definition getattrs lxp ixp inum fms : prog _ :=
+  Definition getattrs lxp ixp inum fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, n) <- INODE.getattrs lxp ixp inum ms;
     Ret ^(mk_memstate al ms, n).
 
-  Definition setattrs lxp ixp inum a fms : prog _ :=
+  Definition setattrs lxp ixp inum a fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     ms <- INODE.setattrs lxp ixp inum a ms;
     Ret (mk_memstate al ms).
 
-  Definition updattr lxp ixp inum kv fms : prog _ :=
+  Definition updattr lxp ixp inum kv fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     ms <- INODE.updattr lxp ixp inum kv ms;
     Ret (mk_memstate al ms).
 
-  Definition read lxp ixp inum off fms : prog _ :=
+  Definition read lxp ixp inum off fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, bn) <-INODE.getbnum lxp ixp inum off ms;
     let^ (ms, v) <- LOG.read lxp (# bn) ms;
     Ret ^(mk_memstate al ms, v).
 
-  Definition write lxp ixp inum off v fms : prog _ :=
+  Definition write lxp ixp inum off v fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, bn) <-INODE.getbnum lxp ixp inum off ms;
     ms <- LOG.write lxp (# bn) v ms;
     Ret (mk_memstate al ms).
 
-  Definition dwrite lxp ixp inum off v fms : prog _ :=
+  Definition dwrite lxp ixp inum off v fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, bn) <- INODE.getbnum lxp ixp inum off ms;
     ms <- LOG.dwrite lxp (# bn) v ms;
     Ret (mk_memstate al ms).
 
-  Definition datasync lxp ixp inum fms : prog _ :=
+  Definition datasync lxp ixp inum fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
     ms <- LOG.dsync_vecs lxp (map (@wordToNat _) bns) ms;
     Ret (mk_memstate al ms).
 
-  Definition sync lxp (ixp : INODE.IRecSig.xparams) fms : prog _ :=
+  Definition sync lxp (ixp : INODE.IRecSig.xparams) fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     ms <- LOG.sync lxp ms;
     Ret (mk_memstate (negb al) ms).
@@ -98,7 +98,7 @@ Module BFILE.
   Definition pick_balloc A (a : A * A) (flag : bool) :=
     if flag then fst a else snd a.
 
-  Definition grow lxp bxps ixp inum v fms : prog _ :=
+  Definition grow lxp bxps ixp inum v fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, len) <- INODE.getlen lxp ixp inum ms;
     If (lt_dec len INODE.NBlocks) {
@@ -118,7 +118,7 @@ Module BFILE.
       Ret ^(mk_memstate al ms, false)
     }.
 
-  Definition shrink lxp bxps ixp inum nr fms : prog _ :=
+  Definition shrink lxp bxps ixp inum nr fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
     let l := map (@wordToNat _) (skipn ((length bns) - nr) bns) in
@@ -1045,11 +1045,11 @@ Module BFILE.
 
 
 
-  Definition read_array lxp ixp inum a i ms : prog _ :=
+  Definition read_array lxp ixp inum a i ms :=
     let^ (ms, r) <- read lxp ixp inum (a + i) ms;
     Ret ^(ms, r).
 
-  Definition write_array lxp ixp inum a i v ms : prog _ :=
+  Definition write_array lxp ixp inum a i v ms :=
     ms <- write lxp ixp inum (a + i) v ms;
     Ret ms.
 
@@ -1113,7 +1113,7 @@ Module BFILE.
   Hint Extern 1 ({{_}} Bind (write_array _ _ _ _ _ _ _) _) => apply write_array_ok : prog.
 
 
-  Definition read_range A lxp ixp inum a nr (vfold : A -> valu -> A) v0 ms0 : prog _ :=
+  Definition read_range A lxp ixp inum a nr (vfold : A -> valu -> A) v0 ms0 :=
     let^ (ms, r) <- ForN i < nr
     Hashmap hm
     Ghost [ bxp F Fm Fi Fd crash m0 m flist ilist frees f vsl ]
@@ -1171,7 +1171,7 @@ Module BFILE.
 
   (* like read_range, but stops when cond is true *)
   Definition read_cond A lxp ixp inum (vfold : A -> valu -> A)
-                       v0 (cond : A -> bool) ms0 : prog _ :=
+                       v0 (cond : A -> bool) ms0 :=
     let^ (ms, nr) <- getlen lxp ixp inum ms0;
     let^ (ms, r, ret) <- ForN i < nr
     Hashmap hm
@@ -1263,7 +1263,7 @@ Module BFILE.
   Hint Extern 1 ({{_}} Bind (read_cond _ _ _ _ _ _ _) _) => apply read_cond_ok : prog.
 
 
-  Definition grown lxp bxp ixp inum l ms0 : prog _ :=
+  Definition grown lxp bxp ixp inum l ms0 :=
     let^ (ms, ret) <- ForN i < length l
       Hashmap hm
       Ghost [ F Fm Fi m0 f ilist frees ]
@@ -1299,7 +1299,7 @@ Module BFILE.
 
 
 
-  Definition truncate lxp bxp xp inum newsz ms : prog _ :=
+  Definition truncate lxp bxp xp inum newsz ms :=
     let^ (ms, sz) <- getlen lxp xp inum ms;
     If (lt_dec newsz sz) {
       ms <- shrink lxp bxp xp inum (sz - newsz) ms;
@@ -1310,7 +1310,7 @@ Module BFILE.
     }.
 
 
-  Definition reset lxp bxp xp inum ms : prog _ :=
+  Definition reset lxp bxp xp inum ms :=
     let^ (ms, sz) <- getlen lxp xp inum ms;
     ms <- shrink lxp bxp xp inum sz ms;
     ms <- setattrs lxp xp inum attr0 ms;

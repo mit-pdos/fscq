@@ -173,7 +173,7 @@ Module MLog.
 
   (******************  Program *)
 
-  Definition read xp a ms : prog _ :=
+  Definition read xp a ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     match Map.find a oms with
     | Some v => Ret ^(ms, v)
@@ -182,7 +182,7 @@ Module MLog.
         Ret ^(mk_memstate oms cs, v)
     end.
 
-  Definition flush_noapply xp ents ms : prog _ :=
+  Definition flush_noapply xp ents ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     let^ (cs, ok) <- DLog.extend xp ents cs;
     If (bool_dec ok true) {
@@ -191,14 +191,14 @@ Module MLog.
       Ret ^(mk_memstate oms cs, false)
     }.
 
-  Definition apply xp ms : prog _ :=
+  Definition apply xp ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     cs <- BUFCACHE.write_vecs (DataStart xp) (Map.elements oms) cs;
     cs <- BUFCACHE.sync_vecs_now (DataStart xp) (map_keys oms) cs;
     cs <- DLog.trunc xp cs;
     Ret (mk_memstate vmap0 cs).
 
-  Definition flush xp ents ms : prog _ :=
+  Definition flush xp ents ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     If (addr_eq_dec (length ents) 0) {
       Ret ^(ms, true)
@@ -215,7 +215,7 @@ Module MLog.
       Ret r
    }.
 
-  Definition dwrite xp a v ms : prog _ :=
+  Definition dwrite xp a v ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     ms' <- If (MapFacts.In_dec oms a) {
       ms <- apply xp ms;
@@ -227,7 +227,7 @@ Module MLog.
     Ret (mk_memstate (MSInLog ms') cs').
 
 
-  Definition dsync xp a ms : prog _ :=
+  Definition dsync xp a ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     cs' <- BUFCACHE.begin_sync cs;
     cs' <- BUFCACHE.sync_array (DataStart xp) a cs';
@@ -235,12 +235,12 @@ Module MLog.
     Ret (mk_memstate oms cs').
 
 
-  Definition recover xp cs : prog _ :=
+  Definition recover xp cs :=
     cs <- DLog.recover xp cs;
     let^ (cs, log) <- DLog.read xp cs;
     Ret (mk_memstate (replay_mem log vmap0) cs).
 
-  Definition init (xp : log_xparams) cs : prog _ :=
+  Definition init (xp : log_xparams) cs :=
     cs <- DLog.init xp cs;
     Ret (mk_memstate vmap0 cs).
 
@@ -974,7 +974,7 @@ Module MLog.
 
   (********* dwrite/dsync for a list of address/value pairs *)
 
-  Definition dwrite_vecs xp avl ms : prog _ :=
+  Definition dwrite_vecs xp avl ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     ms' <- If (bool_dec (overlap (map fst avl) oms) true) {
       ms <- apply xp ms;
@@ -986,7 +986,7 @@ Module MLog.
     Ret (mk_memstate (MSInLog ms') cs').
 
 
-  Definition dsync_vecs xp al ms : prog _ :=
+  Definition dsync_vecs xp al ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     cs' <- BUFCACHE.sync_vecs_now (DataStart xp) al cs;
     Ret (mk_memstate oms cs').
