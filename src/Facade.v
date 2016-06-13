@@ -104,55 +104,54 @@ Section Prog.
       exec m hm p (Crashed T m hm).
 End Prog.
 
+Definition label := string.
+Definition var := string.
+
+Definition W := nat. (* Assume bignums? *)
+
+Inductive binop := Plus | Minus | Times.
+Inductive test := Eq | Ne | Lt | Le.
+
+Inductive Expr :=
+| Var : var -> Expr
+| Const : W -> Expr
+| Binop : binop -> Expr -> Expr -> Expr
+| TestE : test -> Expr -> Expr -> Expr.
+
+Notation "A < B" := (TestE Lt A B) : facade_scope.
+Notation "A <= B" := (TestE Le A B) : facade_scope.
+Notation "A <> B" := (TestE Ne A B) : facade_scope.
+Notation "A = B" := (TestE Eq A B) : facade_scope.
+Delimit Scope facade_scope with facade.
+
+Notation "! x" := (x = 0)%facade (at level 70, no associativity).
+Notation "A * B" := (Binop Times A B) : facade_scope.
+Notation "A + B" := (Binop Plus A B) : facade_scope.
+Notation "A - B" := (Binop Minus A B) : facade_scope.
+
+Inductive Stmt :=
+| Skip : Stmt
+| Seq : Stmt -> Stmt -> Stmt
+| If : Expr -> Stmt -> Stmt -> Stmt
+| While : Expr -> Stmt -> Stmt
+| Call : var -> label -> list var -> Stmt
+| Assign : var -> Expr -> Stmt.
+
+Arguments Assign v val.
+
+Inductive Value :=
+| SCA : W -> Value.
+
+Definition can_alias v :=
+  match v with
+  | SCA _ => true
+  (* | ADT _ => false *)
+  end.
+
 Section Extracted.
 
-  Import StringMap.
-
-  Definition label := string.
-  Definition var := string.
-
-  Definition W := nat. (* Assume bignums? *)
-
-  Inductive binop := Plus | Minus | Times.
-  Inductive test := Eq | Ne | Lt | Le.
-
-  Inductive Expr :=
-  | Var : var -> Expr
-  | Const : W -> Expr
-  | Binop : binop -> Expr -> Expr -> Expr
-  | TestE : test -> Expr -> Expr -> Expr.
-
-  Notation "A < B" := (TestE Lt A B) : facade_scope.
-  Notation "A <= B" := (TestE Le A B) : facade_scope.
-  Notation "A <> B" := (TestE Ne A B) : facade_scope.
-  Notation "A = B" := (TestE Eq A B) : facade_scope.
-  Delimit Scope facade_scope with facade.
-
-  Notation "! x" := (x = 0)%facade (at level 70, no associativity).
-  Notation "A * B" := (Binop Times A B) : facade_scope.
-  Notation "A + B" := (Binop Plus A B) : facade_scope.
-  Notation "A - B" := (Binop Minus A B) : facade_scope.
-
-  Inductive Stmt :=
-  | Skip : Stmt
-  | Seq : Stmt -> Stmt -> Stmt
-  | If : Expr -> Stmt -> Stmt -> Stmt
-  | While : Expr -> Stmt -> Stmt
-  | Call : var -> label -> list var -> Stmt
-  | Assign : var -> Expr -> Stmt.
-
-  Arguments Assign v val%facade.
-
-  Inductive Value :=
-  | SCA : W -> Value.
-
-  Definition can_alias v :=
-    match v with
-    | SCA _ => true
-    (* | ADT _ => false *)
-    end.
-
   Definition State := (rawdisk * StringMap.t Value)%type.
+  Import StringMap.
 
   Definition eval_binop (op : binop + test) a b :=
     match op with
@@ -513,56 +512,32 @@ Class FacadeWrapper (WrappingType WrappedType: Type) :=
   { wrap:        WrappedType -> WrappingType;
     wrap_inj: forall v v', wrap v = wrap v' -> v = v' }.
 
-Inductive NameTag T :=
-| NTSome (key: string) (H: FacadeWrapper Value T) : NameTag T.
-
-Arguments NTSome {T} key {H}.
-
 Inductive ScopeItem :=
-| SItemRet A (key : NameTag A) (start : rawdisk) (p : forall T, (A -> prog T) -> prog T)
-| SItemDisk A (key : NameTag rawdisk) (start : rawdisk) (p : forall T, (A -> prog T) -> prog T)
-| SItemDiskCrash A (key : NameTag rawdisk) (start : rawdisk) (p : forall T, (A -> prog T) -> prog T).
+| SItem A {H: FacadeWrapper Value A} (v : A).
 
 (*
 Notation "` k ->> v" := (SItemRet (NTSome k) v) (at level 50).
 *)
 
-(* Not really a telescope; should maybe just be called Scope *)
-(* TODO: use fmap *)
-Definition Telescope := list ScopeItem.
+Definition Scope := StringMap.t ScopeItem.
 
-Fixpoint SameValues (st : State) (tenv : Telescope) :=
-  match tenv with
-  | [] => True
-  | SItemRet key d0 p :: tail =>
-    match key with
-    | NTSome k =>
-      match StringMap.find k st with
-      | Some v => exists v' d, computes_to p d0 d v' /\ v = wrap v'
-      | None => False
-      end /\ SameValues (StringMap.remove k st) tail
-    end
-  | SItemDisk key d0 p :: tail =>
-    match key with
-    | NTSome k =>
-      match StringMap.find k st with
-      | Some d => exists d' r, computes_to p d0 d' r /\ d = wrap d'
-      | None => False
-      end /\ SameValues (StringMap.remove k st) tail
-    end
-  | SItemDiskCrash key d0 p :: tail =>
-    match key with
-    | NTSome k =>
-      match StringMap.find k st with
-      | Some d => exists d', computes_to_crash p d0 d' /\ d = wrap d'
-      | None => False
-      end /\ SameValues (StringMap.remove k st) tail
-    end
-  end.
+Search StringMap.t list.
+
+Definition SameValues (st : State) (tenv : Scope) :=
+  Forall
+    (fun item =>
+      match item with
+      | (key, SItem val) =>
+        match StringMap.find key (snd st) with
+        | Some v => v = wrap val
+        | None => False
+        end
+      end)
+    (StringMap.elements tenv).
 
 Notation "ENV \u2272 TENV" := (SameValues ENV TENV) (at level 50).
 
-Definition ProgOk env prog (initial_tstate final_tstate crash_tstate : Telescope) :=
+Definition ProgOk env prog (initial_tstate final_tstate crash_tstate : Scope) :=
   forall initial_state : State,
     initial_state \u2272 initial_tstate ->
     Safe env prog initial_state /\
@@ -596,12 +571,6 @@ Defined.
 Instance FacadeWrapper_Self {A: Type} : FacadeWrapper A A.
 Proof.
   refine {| wrap := id;
-            wrap_inj := _ |}; FacadeWrapper_t.
-Defined.
-
-Instance FacadeWrapper_Disk : FacadeWrapper Value rawdisk.
-Proof.
-  refine {| wrap := Disk;
             wrap_inj := _ |}; FacadeWrapper_t.
 Defined.
 
