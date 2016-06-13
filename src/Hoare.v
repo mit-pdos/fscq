@@ -12,7 +12,9 @@ Set Implicit Arguments.
 
 Definition donecond (T: Type) := T -> @mem addr (@weq addrlen) (const valuset) -> Prop.
 
-Definition corr2 (T: Type) (pre: donecond T -> pred -> pred) (p: prog T) :=
+Definition corr2 (T: Type) (pre: donecond T ->
+                                 @pred addr (@weq addrlen) (const valuset) ->
+                                 @pred addr (@weq addrlen) (const valuset)) (p: prog T) :=
   forall done crash m out, pre done crash m
   -> exec m p out
   -> (exists m' v, out = Finished m' v /\ done v m') \/

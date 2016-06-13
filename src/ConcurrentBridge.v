@@ -75,30 +75,28 @@ Abort.
 
 Notation prog_valuset := (word Prog.Valulen.valulen * list (word Prog.Valulen.valulen))%type.
 
-Inductive SeqHoareSpec R :=
-| SeqSpec A
-          (pre: A -> @pred (word Prog.addrlen) _ (const prog_valuset))
-          (post: A -> R -> @pred (word Prog.addrlen) _ (const prog_valuset))
-          (crash: A -> @pred (word Prog.addrlen) _ (const prog_valuset)).
+Record SeqHoareSpec R :=
+  SeqSpec { seq_spec_pre: @pred (word Prog.addrlen) _ (const prog_valuset);
+            seq_spec_post: R -> @pred (word Prog.addrlen) _ (const prog_valuset);
+            seq_spec_crash: @pred (word Prog.addrlen) _ (const prog_valuset) }.
 
-Definition seq_hoare_double R (spec: SeqHoareSpec R)
+Definition seq_hoare_double R A (spec: A -> SeqHoareSpec R)
            (p: forall T, (R -> Prog.prog T) -> Prog.prog T) :=
-  let 'SeqSpec pre post crash := spec in
   forall T (rx : _ -> Prog.prog T),
     Hoare.corr2
       (fun done_ crash_ =>
          exists a F_,
-           F_ * pre a *
+           F_ * seq_spec_pre (spec a) *
            [[ forall r:R, Hoare.corr2
                        (fun done'_ crash'_ =>
-                          F_ * post a r  *
+                          F_ * seq_spec_post (spec a) r  *
                           [[ done'_ = done_ ]] *
                           [[ crash'_ = crash_ ]]
                        ) (rx r) ]] *
-           [[ (F_ * crash a)%pred =p=> crash_ ]])%pred
+           [[ (F_ * seq_spec_crash (spec a))%pred =p=> crash_ ]])%pred
       (p T rx).
 
-Section ExampleSeqSpec.
+Section ExampleSeqSpecs.
   Import Hoare.
 
   (* these are the sorts of theorems needed to go from the notation to
@@ -110,13 +108,48 @@ Section ExampleSeqSpec.
        CRASH      a |-> v
       >} Prog.Read a <->
       seq_hoare_double
-        (SeqSpec (fun v => a |-> v)%pred
-              (fun v r => a |-> v * [[ r = (fst v) ]])%pred
-              (fun v => a |-> v)%pred) (fun T => @Prog.Read T a).
+        (fun v =>
+           SeqSpec (a |-> v)%pred
+                   (fun r => a |-> v * [[ r = (fst v) ]])%pred
+                   (a |-> v)%pred
+        ) (fun T => @Prog.Read T a).
   Proof.
     split; eauto using pimpl_ok2.
   Qed.
-End ExampleSeqSpec.
+
+  Definition swap T a a' rx : Prog.prog T :=
+    v <- Prog.Read a;
+      v' <- Prog.Read a';
+      Prog.Write a v';;
+      Prog.Write a' v;;
+      rx tt.
+
+  Theorem seq_swap_spec : forall (a a': word Prog.addrlen),
+      {< (v v': prog_valuset),
+       PRE       a |-> v * a' |-> v'
+       POST RET:_ a |-> v' * a' |-> v
+       CRASH a |->? * a' |->?
+      >} swap a a' <->
+      seq_hoare_double
+        (fun (vv': prog_valuset * prog_valuset) =>
+           let (v, v') := vv' in
+           (SeqSpec (a |-> v * a' |-> v')
+                    (fun r => a |-> v' * a' |-> v)
+                    (a |->? * a' |->?))
+        )%pred (fun T => @swap T a a').
+  Proof.
+    split; intros.
+    hnf; intros.
+    eapply pimpl_ok2; eauto; intros.
+    cancel.
+    cancel.
+
+    eapply pimpl_ok2; eauto; intros.
+    cancel.
+    cancel.
+  Qed.
+
+End ExampleSeqSpecs.
 
 Inductive ConcurHoareSpec R :=
 | ConcurSpec A
