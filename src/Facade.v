@@ -26,207 +26,217 @@ Ltac apply_in_hyp lem :=
   | [ H : _ |- _ ] => eapply lem in H
   end.
 
-Inductive prog : Type -> Type :=
-  | Ret T (v: T) : prog T
-  | Read (a: addr) : prog valu
-  | Write (a: addr) (v: valu) : prog unit
-  | Sync : prog unit
-  | Bind T T' (p1: prog T) (p2: T -> prog T') : prog T'.
-
-Arguments Ret {T} v.
-
-Inductive outcome (T : Type) :=
-  | Failed
-  | Finished (m: rawdisk) (hm: hashmap) (v: T)
-  | Crashed (m: rawdisk) (hm: hashmap).
-
-Inductive step : forall T,
-    rawdisk -> hashmap -> prog T ->
-    rawdisk -> hashmap -> T -> Prop :=
-| StepRead : forall m a v x hm,
-    m a = Some (v, x) ->
-    step m hm (Read a) m hm v
-| StepWrite : forall m a v v0 x hm,
-    m a = Some (v0, x) ->
-    step m hm (Write a v) (upd m a (v, v0 :: x)) hm tt
-| StepSync : forall m hm,
-    step m hm (Sync) (sync_mem m) hm tt.
-
-Inductive fail_step : forall T,
-    rawdisk -> prog T -> Prop :=
-| FailRead : forall m a,
-    m a = None ->
-    fail_step m (Read a)
-| FailWrite : forall m a v,
-    m a = None ->
-    fail_step m (Write a v).
-
-Inductive crash_step : forall T, prog T -> Prop :=
-| CrashRead : forall a,
-    crash_step (Read a)
-| CrashWrite : forall a v,
-    crash_step (Write a v).
-
-Inductive exec : forall T, rawdisk -> hashmap -> prog T -> outcome T -> Prop :=
-| XRet : forall T m hm (v: T),
-    exec m hm (Ret v) (Finished m hm v)
-| XStep : forall T m hm (p: prog T) m' m'' hm' v,
-    possible_sync m m' ->
-    step m' hm p m'' hm' v ->
-    exec m hm p (Finished m'' hm' v)
-| XBindFinish : forall m hm T (p1: prog T) m' hm' (v: T)
-                  T' (p2: T -> prog T') out,
-    exec m hm p1 (Finished m' hm' v) ->
-    exec m' hm' (p2 v) out ->
-    exec m hm (Bind p1 p2) out
-| XBindFail : forall m hm T (p1: prog T)
-                T' (p2: T -> prog T'),
-    exec m hm p1 (Failed T) ->
-    (* note p2 need not execute at all if p1 fails, a form of lazy
-    evaluation *)
-    exec m hm (Bind p1 p2) (Failed T')
-| XBindCrash : forall m hm T (p1: prog T) m' hm'
-                 T' (p2: T -> prog T'),
-    exec m hm p1 (Crashed T m' hm') ->
-    exec m hm (Bind p1 p2) (Crashed T' m' hm')
-| XFail : forall m hm T (p: prog T),
-    fail_step m p ->
-    exec m hm p (Failed T)
-| XCrash : forall m hm T (p: prog T),
-    crash_step p ->
-    exec m hm p (Crashed T m hm).
-
-Definition label := string.
-Definition var := string.
-
-Definition W := nat. (* Assume bignums? *)
-
-Inductive binop := Plus | Minus | Times.
-Inductive test := Eq | Ne | Lt | Le.
-
-Inductive Expr :=
-| Var : var -> Expr
-| Const : W -> Expr
-| Binop : binop -> Expr -> Expr -> Expr
-| TestE : test -> Expr -> Expr -> Expr.
-
-Notation "A < B" := (TestE Lt A B) : facade_scope.
-Notation "A <= B" := (TestE Le A B) : facade_scope.
-Notation "A <> B" := (TestE Ne A B) : facade_scope.
-Notation "A = B" := (TestE Eq A B) : facade_scope.
-Delimit Scope facade_scope with facade.
-
-Notation "! x" := (x = 0)%facade (at level 70, no associativity).
-Notation "A * B" := (Binop Times A B) : facade_scope.
-Notation "A + B" := (Binop Plus A B) : facade_scope.
-Notation "A - B" := (Binop Minus A B) : facade_scope.
-
-Inductive Stmt :=
-| Skip : Stmt
-| Seq : Stmt -> Stmt -> Stmt
-| If : Expr -> Stmt -> Stmt -> Stmt
-| While : Expr -> Stmt -> Stmt
-| Call : var -> label -> list var -> Stmt
-| Assign : var -> Expr -> Stmt.
-
-Arguments Assign v val%facade.
-
-Inductive Value :=
-| SCA : W -> Value.
-
-Definition can_alias v :=
-  match v with
-  | SCA _ => true
-  (* | ADT _ => false *)
-  end.
-
-Definition State := StringMap.t Value.
-
-Import StringMap.
-
-Definition eval_binop (op : binop + test) a b :=
-  match op with
-    | inl Plus => a + b
-    | inl Minus => a - b
-    | inl Times => a * b
-    | inr Eq => if Nat.eq_dec a b then 1 else 0
-    | inr Ne => if Nat.eq_dec a b then 0 else 1
-    | inr Lt => if Compare_dec.lt_dec a b then 1 else 0
-    | inr Le => if Compare_dec.le_dec a b then 1 else 0
-  end.
-
-Definition eval_binop_m (op : binop + test) (oa ob : option Value) : option Value :=
-  match oa, ob with
-    | Some (SCA a), Some (SCA b) => Some (SCA (eval_binop op a b))
-    | _, _ => None
-  end.
-
-Fixpoint eval (st : State) (e : Expr) : option Value :=
-  match e with
-    | Var x => find x st
-    | Const w => Some (SCA w)
-    | Binop op a b => eval_binop_m (inl op) (eval st a) (eval st b)
-    | TestE op a b => eval_binop_m (inr op) (eval st a) (eval st b)
-  end.
-
-Definition eval_bool st e : option bool :=
-  match eval st e with
-    | Some (SCA w) => Some (if Nat.eq_dec w 0 then false else true)
-    | _ => None
-  end.
-
-Definition is_true st e := eval_bool st e = Some true.
-Definition is_false st e := eval_bool st e = Some false.
-
-Definition mapsto_can_alias x st :=
-  match find x st with
-  | Some v => can_alias v
-  | None => true
-  end.
-
-
-Fixpoint add_remove_many keys (input : list Value) (output : list (option Value)) st :=
-  match keys, input, output with
-    | k :: keys', i :: input', o :: output' =>
-      let st' :=
-          match can_alias i, o with
-            | false, Some v => add k v st
-            | false, None => StringMap.remove k st
-            | _, _ => st
-          end in
-      add_remove_many keys' input' output' st'
-    | _, _, _ => st
-  end.
-
-
-Fixpoint mapM A B (f : A -> option B) ls :=
-  match ls with
-    | x :: xs =>
-      match f x, mapM f xs with
-        | Some y, Some ys => Some (y :: ys)
-        | _, _ => None
-      end
-    | nil => Some nil
-  end.
-
 Ltac subst_definitions :=
   repeat match goal with
   | [ H := _ |- _ ] => subst H
   end.
 
-Record AxiomaticSpec := {
-  PreCond (input : list Value) : Prop;
-  PostCond (input_output : list (Value * option Value)) (ret : Value) : Prop;
-  (* PreCondTypeConform : type_conforming PreCond *)
-}.
+Section Prog.
 
-Definition Env := StringMap.t AxiomaticSpec.
+  Inductive prog : Type -> Type :=
+    | Ret T (v: T) : prog T
+    | Read (a: addr) : prog valu
+    | Write (a: addr) (v: valu) : prog unit
+    | Sync : prog unit
+    | Bind T T' (p1: prog T) (p2: T -> prog T') : prog T'.
 
-Definition sel T m := fun k => find k m : option T.
+  Arguments Ret {T} v.
+
+  Inductive outcome (T : Type) :=
+    | Failed
+    | Finished (m: rawdisk) (hm: hashmap) (v: T)
+    | Crashed (m: rawdisk) (hm: hashmap).
+
+  Inductive step : forall T,
+      rawdisk -> hashmap -> prog T ->
+      rawdisk -> hashmap -> T -> Prop :=
+  | StepRead : forall m a v x hm,
+      m a = Some (v, x) ->
+      step m hm (Read a) m hm v
+  | StepWrite : forall m a v v0 x hm,
+      m a = Some (v0, x) ->
+      step m hm (Write a v) (upd m a (v, v0 :: x)) hm tt
+  | StepSync : forall m hm,
+      step m hm (Sync) (sync_mem m) hm tt.
+
+  Inductive fail_step : forall T,
+      rawdisk -> prog T -> Prop :=
+  | FailRead : forall m a,
+      m a = None ->
+      fail_step m (Read a)
+  | FailWrite : forall m a v,
+      m a = None ->
+      fail_step m (Write a v).
+
+  Inductive crash_step : forall T, prog T -> Prop :=
+  | CrashRead : forall a,
+      crash_step (Read a)
+  | CrashWrite : forall a v,
+      crash_step (Write a v).
+
+  Inductive exec : forall T, rawdisk -> hashmap -> prog T -> outcome T -> Prop :=
+  | XRet : forall T m hm (v: T),
+      exec m hm (Ret v) (Finished m hm v)
+  | XStep : forall T m hm (p: prog T) m' m'' hm' v,
+      possible_sync m m' ->
+      step m' hm p m'' hm' v ->
+      exec m hm p (Finished m'' hm' v)
+  | XBindFinish : forall m hm T (p1: prog T) m' hm' (v: T)
+                    T' (p2: T -> prog T') out,
+      exec m hm p1 (Finished m' hm' v) ->
+      exec m' hm' (p2 v) out ->
+      exec m hm (Bind p1 p2) out
+  | XBindFail : forall m hm T (p1: prog T)
+                  T' (p2: T -> prog T'),
+      exec m hm p1 (Failed T) ->
+      (* note p2 need not execute at all if p1 fails, a form of lazy
+      evaluation *)
+      exec m hm (Bind p1 p2) (Failed T')
+  | XBindCrash : forall m hm T (p1: prog T) m' hm'
+                   T' (p2: T -> prog T'),
+      exec m hm p1 (Crashed T m' hm') ->
+      exec m hm (Bind p1 p2) (Crashed T' m' hm')
+  | XFail : forall m hm T (p: prog T),
+      fail_step m p ->
+      exec m hm p (Failed T)
+  | XCrash : forall m hm T (p: prog T),
+      crash_step p ->
+      exec m hm p (Crashed T m hm).
+End Prog.
+
+Section Extracted.
+
+  Import StringMap.
+
+  Definition label := string.
+  Definition var := string.
+
+  Definition W := nat. (* Assume bignums? *)
+
+  Inductive binop := Plus | Minus | Times.
+  Inductive test := Eq | Ne | Lt | Le.
+
+  Inductive Expr :=
+  | Var : var -> Expr
+  | Const : W -> Expr
+  | Binop : binop -> Expr -> Expr -> Expr
+  | TestE : test -> Expr -> Expr -> Expr.
+
+  Notation "A < B" := (TestE Lt A B) : facade_scope.
+  Notation "A <= B" := (TestE Le A B) : facade_scope.
+  Notation "A <> B" := (TestE Ne A B) : facade_scope.
+  Notation "A = B" := (TestE Eq A B) : facade_scope.
+  Delimit Scope facade_scope with facade.
+
+  Notation "! x" := (x = 0)%facade (at level 70, no associativity).
+  Notation "A * B" := (Binop Times A B) : facade_scope.
+  Notation "A + B" := (Binop Plus A B) : facade_scope.
+  Notation "A - B" := (Binop Minus A B) : facade_scope.
+
+  Inductive Stmt :=
+  | Skip : Stmt
+  | Seq : Stmt -> Stmt -> Stmt
+  | If : Expr -> Stmt -> Stmt -> Stmt
+  | While : Expr -> Stmt -> Stmt
+  | Call : var -> label -> list var -> Stmt
+  | Assign : var -> Expr -> Stmt.
+
+  Arguments Assign v val%facade.
+
+  Inductive Value :=
+  | SCA : W -> Value.
+
+  Definition can_alias v :=
+    match v with
+    | SCA _ => true
+    (* | ADT _ => false *)
+    end.
+
+  Definition State := StringMap.t Value.
+
+
+  Definition eval_binop (op : binop + test) a b :=
+    match op with
+      | inl Plus => a + b
+      | inl Minus => a - b
+      | inl Times => a * b
+      | inr Eq => if Nat.eq_dec a b then 1 else 0
+      | inr Ne => if Nat.eq_dec a b then 0 else 1
+      | inr Lt => if Compare_dec.lt_dec a b then 1 else 0
+      | inr Le => if Compare_dec.le_dec a b then 1 else 0
+    end.
+
+  Definition eval_binop_m (op : binop + test) (oa ob : option Value) : option Value :=
+    match oa, ob with
+      | Some (SCA a), Some (SCA b) => Some (SCA (eval_binop op a b))
+      | _, _ => None
+    end.
+
+  Fixpoint eval (st : State) (e : Expr) : option Value :=
+    match e with
+      | Var x => find x st
+      | Const w => Some (SCA w)
+      | Binop op a b => eval_binop_m (inl op) (eval st a) (eval st b)
+      | TestE op a b => eval_binop_m (inr op) (eval st a) (eval st b)
+    end.
+
+  Definition eval_bool st e : option bool :=
+    match eval st e with
+      | Some (SCA w) => Some (if Nat.eq_dec w 0 then false else true)
+      | _ => None
+    end.
+
+  Definition is_true st e := eval_bool st e = Some true.
+  Definition is_false st e := eval_bool st e = Some false.
+
+  Definition mapsto_can_alias x st :=
+    match find x st with
+    | Some v => can_alias v
+    | None => true
+    end.
+
+
+  Fixpoint add_remove_many keys (input : list Value) (output : list (option Value)) st :=
+    match keys, input, output with
+      | k :: keys', i :: input', o :: output' =>
+        let st' :=
+            match can_alias i, o with
+              | false, Some v => add k v st
+              | false, None => StringMap.remove k st
+              | _, _ => st
+            end in
+        add_remove_many keys' input' output' st'
+      | _, _, _ => st
+    end.
+
+
+  Fixpoint mapM A B (f : A -> option B) ls :=
+    match ls with
+      | x :: xs =>
+        match f x, mapM f xs with
+          | Some y, Some ys => Some (y :: ys)
+          | _, _ => None
+        end
+      | nil => Some nil
+    end.
+
+
+  Record AxiomaticSpec := {
+    PreCond (input : list Value) : Prop;
+    PostCond (input_output : list (Value * option Value)) (ret : Value) : Prop;
+    (* PreCondTypeConform : type_conforming PreCond *)
+  }.
+
+  Definition Env := StringMap.t AxiomaticSpec.
+
+  Definition sel T m := fun k => find k m : option T.
+End Extracted.
 
 Notation "R ^*" := (clos_refl_trans_1n _ R) (at level 0).
 
 Section EnvSection.
+
+  Import StringMap.
 
   Variable env : Env.
 
