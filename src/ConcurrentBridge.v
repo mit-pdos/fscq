@@ -124,6 +124,23 @@ Section ExampleSeqSpecs.
       Prog.Write a' v;;
       rx tt.
 
+  Notation "'SEQSPEC' e1 .. e2 , {{ pre }} {{ post }} {{ crash }}" :=
+    (fun e1 => .. (fun e2 =>
+                  SeqSpec pre%pred post%pred crash%pred) .. )
+      (at level 0,
+       e1 binder,
+       e2 binder).
+
+  Definition uncurry {A B C} (f: A -> B -> C) :
+    A * B -> C :=
+    fun ab => let (a, b) := ab in f a b.
+
+  Definition test_spec a a' :=
+    uncurry SEQSPEC v v',
+    {{ a |-> v * a' |-> v' }}
+      {{ fun r:unit => a |-> v' * a' |-> v }}
+      {{ a |->? * a' |->? }}.
+
   Theorem seq_swap_spec : forall (a a': word Prog.addrlen),
       {< (v v': prog_valuset),
        PRE       a |-> v * a' |-> v'
@@ -131,17 +148,19 @@ Section ExampleSeqSpecs.
        CRASH a |->? * a' |->?
       >} swap a a' <->
       seq_hoare_double
-        (fun (vv': prog_valuset * prog_valuset) =>
-           let (v, v') := vv' in
-           (SeqSpec (a |-> v * a' |-> v')
-                    (fun r => a |-> v' * a' |-> v)
-                    (a |->? * a' |->?))
-        )%pred (fun T => @swap T a a').
+        (uncurry SEQSPEC v v',
+         {{ a |-> v * a' |-> v' }}
+           {{ fun r:unit => a |-> v' * a' |-> v }}
+           {{ a |->? * a' |->? }}
+        ) (fun T => @swap T a a').
   Proof.
+    unfold uncurry.
     split; intros.
-    hnf; intros.
+    unfold seq_hoare_double; intros.
     eapply pimpl_ok2; eauto; intros.
-    cancel.
+    eapply pimpl_exists_l.
+    destruct x.
+    destruct c, c0.
     cancel.
 
     eapply pimpl_ok2; eauto; intros.
