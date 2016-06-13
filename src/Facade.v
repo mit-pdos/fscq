@@ -581,14 +581,12 @@ Notation "` k ->> v" := (SItemRet (NTSome k) v) (at level 50).
 
 Definition Scope := StringMap.t ScopeItem.
 
-Search StringMap.t list.
-
-Definition SameValues (st : State) (tenv : Scope) :=
+Definition SameValues (s : StringMap.t Value) (tenv : Scope) :=
   Forall
     (fun item =>
       match item with
       | (key, SItem val) =>
-        match StringMap.find key (snd st) with
+        match StringMap.find key s with
         | Some v => v = wrap val
         | None => False
         end
@@ -597,22 +595,25 @@ Definition SameValues (st : State) (tenv : Scope) :=
 
 Notation "ENV \u2272 TENV" := (SameValues ENV TENV) (at level 50).
 
-Definition ProgOk env prog (initial_tstate final_tstate crash_tstate : Scope) :=
+Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : Scope) (final_tstate : T -> Scope) :=
   forall initial_state : State,
-    initial_state \u2272 initial_tstate ->
-    Safe env prog initial_state /\
-    (forall crash_state prog',
-      (Step env)^* (prog, initial_state) (prog', crash_state) ->
-      crash_state \u2272 crash_tstate) /\
-    forall final_state : State,
-      RunsTo env prog initial_state final_state ->
-      (final_state \u2272 final_tstate).
+    (snd initial_state) \u2272 initial_tstate ->
+    Safe env eprog initial_state /\
+    forall out,
+      Exec env eprog initial_state out ->
+      (forall final_state,
+        out = EFinished final_state ->
+        exists r hm,
+          exec (fst initial_state) hm sprog (Finished (fst final_state) hm r) /\
+          (snd final_state) \u2272 (final_tstate r)) /\
+      (forall final_disk,
+        out = ECrashed final_disk ->
+        exists hm,
+          exec (fst initial_state) hm sprog (Crashed T final_disk hm)).
 
-Arguments ProgOk env prog%facade_scope initial_tstate final_tstate crash_tstate.
-
-Notation "{{ A }} P {{ B }} {{ C }} // EV" :=
-  (ProgOk EV P%facade A B C)
-    (at level 60, format "'[v' '{{'  A  '}}' '/'    P '/' '{{'  B  '}}' '{{'  C  '}}' //  EV ']'").
+Notation "'EXTRACT' SP {{ A }} EP {{ B }} // EV" :=
+  (ProgOk EV EP%facade SP A B)
+    (at level 60, format "'[v' 'EXTRACT' SP '/' '{{'  A  '}}' '/'    EP '/' '{{'  B  '}}' // EV ']'").
 
 Ltac FacadeWrapper_t :=
   abstract (repeat match goal with
@@ -634,102 +635,11 @@ Proof.
             wrap_inj := _ |}; FacadeWrapper_t.
 Defined.
 
-(*
-Notation "'ParametricExtraction' '#vars' x .. y '#program' post '#arguments' pre" :=
-  (sigT (fun prog => (forall x, .. (forall y, {{ pre }} prog {{ [ `"out" ->> post ] }}) ..)))
-    (at level 200,
-     x binder,
-     y binder,
-     format "'ParametricExtraction' '//'    '#vars'       x .. y '//'    '#program'     post '//'    '#arguments'  pre '//'     ").
-*)
-
-Definition ret A (x : A) : forall T, (A -> prog T) -> prog T := fun T rx => rx x.
-
 Definition extract_code := projT1.
-
 
 Ltac maps := rewrite ?StringMapFacts.remove_neq_o, ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o in * by congruence.
 
-
-Lemma ret_computes_to : forall A (x x' : A) d d', computes_to (ret x) d d' x' -> x = x'.
-Proof.
-  unfold ret, computes_to.
-  intros.
-  specialize (H A Done d x).
-  destruct H as [_ H].
-  specialize (H ltac:(do 2 econstructor)).
-  invc H.
-  invc H0.
-  trivial.
-Qed.
-
-Lemma ret_computes_to_disk : forall A (x x' : A) d d', computes_to (ret x) d d' x' -> d = d'.
-Proof.
-  unfold ret, computes_to.
-  intros.
-  specialize (H A Done d x).
-  destruct H as [_ H].
-  specialize (H ltac:(do 2 econstructor)).
-  invc H.
-  invc H0.
-  destruct d, d'.
-  simpl in *.
-  congruence.
-Qed.
-
-Lemma ret_computes_to_refl : forall A (x : A) d, computes_to (ret x) d d x.
-Proof.
-  split; eauto.
-Qed.
-Hint Resolve ret_computes_to_refl.
-Check exec_trace.
-
 Local Open Scope string_scope.
-
-Lemma Step_Seq : forall env p1 p2 p' st st'',
-  (Step env)^* (Seq p1 p2, st) (p', st'') ->
-  (exists p1', (Step env)^* (p1, st) (p1', st'') /\ p' = Seq p1' p2) \/
-  (exists st', (Step env)^* (p1, st) (Skip, st') /\ (Step env)^* (p2, st') (p', st'')).
-Proof.
-  intros.
-  prep_induction H. induction H; intros; subst.
-  + find_inversion. left. eexists. econstructor. econstructor. trivial.
-  + destruct y. invc H.
-    - destruct (IHclos_refl_trans_1n env a' p2 p' s0 st''); eauto. {
-        deex. left. eexists. intuition. econstructor; eauto.
-      } {
-        deex. right. eexists. intuition. econstructor; eauto. eauto.
-      }
-    - right. eexists. split. econstructor. eauto.
-Qed.
-
-Lemma CompileSeq :
-  forall (tenv1 tenv1' tenv2 tenvc : Telescope) env p1 p2,
-    {{ tenv1 }}
-      p1
-    {{ tenv1' }} {{ tenvc }} // env ->
-    {{ tenv1' }}
-      p2
-    {{ tenv2 }} {{ tenvc }} // env ->
-    {{ tenv1 }}
-      (Seq p1 p2)
-    {{ tenv2 }} {{ tenvc }} // env.
-Proof.
-  unfold ProgOk.
-  intros.
-  repeat split.
-  + econstructor. split.
-    - eapply H; eauto.
-    - intros. eapply H0. eapply H; eauto.
-  + intros.
-    eapply Step_Seq in H2. intuition; repeat deex.
-    - eapply H; eauto.
-    - eapply H0; eauto. eapply H; eauto. eapply Step_RunsTo; eauto.
-  + intros.
-    invc H2.
-    eapply H0; eauto.
-    eapply H; eauto.
-Qed.
 
 
 Definition read : AxiomaticSpec.
