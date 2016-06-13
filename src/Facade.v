@@ -2,6 +2,7 @@ Require Import PeanoNat String List FMapAVL.
 Require Import Relation_Operators Operators_Properties.
 Require Import VerdiTactics.
 Require Import StringMap.
+Require Import Mem AsyncDisk PredCrash.
 
 Import ListNotations.
 
@@ -25,223 +26,75 @@ Ltac apply_in_hyp lem :=
   | [ H : _ |- _ ] => eapply lem in H
   end.
 
-Definition addr := nat.
-Definition valu := nat.
+Inductive prog : Type -> Type :=
+  | Ret T (v: T) : prog T
+  | Read (a: addr) : prog valu
+  | Write (a: addr) (v: valu) : prog unit
+  | Sync : prog unit
+  | Bind T T' (p1: prog T) (p2: T -> prog T') : prog T'.
 
-Definition memory := addr -> valu.
-
-Definition upd (a : addr) (v : valu) (d : memory) :=
-  fun a0 =>
-    if Nat.eq_dec a a0 then v else d a0.
-
-Opaque upd.
-
-Inductive prog T :=
-| Done (v: T)
-| Read (a: addr) (rx: valu -> prog T)
-| Write (a: addr) (v: valu) (rx: unit -> prog T).
-
-Arguments Done {T} v.
-
-Inductive step T : memory -> prog T -> memory -> prog T -> Prop :=
-| StepRead : forall d a rx, step d (Read a rx) d (rx (d a))
-| StepWrite : forall d a v rx, step d (Write a v rx) (upd a v d) (rx tt).
-
-Hint Constructors step.
+Arguments Ret {T} v.
 
 Inductive outcome (T : Type) :=
-| Failed
-| Finished (d: memory) (v: T)
-| Crashed (d: memory).
+  | Failed
+  | Finished (m: rawdisk) (hm: hashmap) (v: T)
+  | Crashed (m: rawdisk) (hm: hashmap).
 
-Inductive exec T : memory -> prog T -> outcome T -> Prop :=
-| XStep : forall d p d' p' out,
-  step d p d' p' ->
-  exec d' p' out ->
-  exec d p out
-| XFail : forall d p, (~exists d' p', step d p d' p') ->
-  (~exists r, p = Done r) ->
-  exec d p (Failed T)
-| XCrash : forall d p, exec d p (Crashed T d)
-| XDone : forall d v,
-  exec d (Done v) (Finished d v).
+Inductive step : forall T,
+    rawdisk -> hashmap -> prog T ->
+    rawdisk -> hashmap -> T -> Prop :=
+| StepRead : forall m a v x hm,
+    m a = Some (v, x) ->
+    step m hm (Read a) m hm v
+| StepWrite : forall m a v v0 x hm,
+    m a = Some (v0, x) ->
+    step m hm (Write a v) (upd m a (v, v0 :: x)) hm tt
+| StepSync : forall m hm,
+    step m hm (Sync) (sync_mem m) hm tt.
 
-Hint Constructors exec.
+Inductive fail_step : forall T,
+    rawdisk -> prog T -> Prop :=
+| FailRead : forall m a,
+    m a = None ->
+    fail_step m (Read a)
+| FailWrite : forall m a v,
+    m a = None ->
+    fail_step m (Write a v).
 
-Definition trace := list (addr * valu).
+Inductive crash_step : forall T, prog T -> Prop :=
+| CrashRead : forall a,
+    crash_step (Read a)
+| CrashWrite : forall a v,
+    crash_step (Write a v).
 
-Inductive step_trace T : memory -> trace -> prog T -> memory -> trace -> prog T -> Prop :=
-| StepTRead : forall d tr a rx , step_trace d tr (Read a rx) d tr (rx (d a))
-| StepTWrite : forall d tr a v rx, step_trace d tr (Write a v rx) (upd a v d) ((a, v) :: tr) (rx tt).
-
-Hint Constructors step_trace.
-
-Inductive exec_trace T : memory -> trace -> prog T -> outcome T -> trace -> Prop :=
-| XTStep : forall d p d' p' out tr tr' tr'',
-  step_trace d tr p d' tr' p' ->
-  exec_trace d' tr' p' out tr'' ->
-  exec_trace d tr p out tr''
-| XTFail : forall d p tr, (~exists d' p', step d p d' p') ->
-  (~exists r, p = Done r) ->
-  exec_trace d tr p (Failed T) tr
-| XTCrash : forall d p tr, exec_trace d tr p (Crashed T d) tr
-| XTDone : forall d v tr,
-  exec_trace d tr (Done v) (Finished d v) tr.
-
-Hint Constructors exec_trace.
-
-Notation diskstate := (memory * trace)%type.
-
-(** [p] calls its continuation with value [x] after evolving disk [d] to disk [d'] *)
-Definition computes_to A (p : forall T, (A -> prog T) -> prog T) (d d' : diskstate) (x : A) :=
-  forall T (rx : A -> prog T) d'' (y : T),
-    exec_trace (fst d') (snd d') (rx x) (Finished (fst d'') y) (snd d'') <-> exec_trace (fst d) (snd d) (p T rx) (Finished (fst d'') y) (snd d'').
-
-Definition computes_to_notrace A (p : forall T, (A -> prog T) -> prog T) (d d' : memory) (x : A) :=
-  forall T (rx : A -> prog T) d'' (y : T),
-    exec d' (rx x) (Finished d'' y) <-> exec d (p T rx) (Finished d'' y).
-
-(** [p] may crash after evolving disk [d] to disk [d'] *)
-Definition computes_to_crash A (p : forall T, (A -> prog T) -> prog T) (d d' : diskstate) :=
-  forall T (rx : A -> prog T),
-    exec_trace (fst d) (snd d) (p T rx) (Crashed T (fst d')) (snd d').
-
-Lemma step_trace_equiv_1 : forall T d p d' p',
-  @step T d p d' p' -> forall tr, exists tr', step_trace d tr p d' (tr' ++ tr) p'.
-Proof.
-  intros.
-  destruct H; eexists; try solve [instantiate (1 := []); eauto]; try solve [instantiate (1 := [_]); simpl; eauto].
-Qed.
-
-Lemma step_trace_equiv_2 : forall T d p d' p' tr tr',
-  step_trace d tr p d' (tr' ++ tr) p' -> @step T d p d' p'.
-Proof.
-  intros.
-  repeat deex. destruct H; eauto.
-Qed.
-
-Hint Resolve step_trace_equiv_2.
-
-Lemma step_trace_prepends : forall T d tr p d' tr' p',
-  @step_trace T d tr p d' tr' p' -> exists tr0, tr' = tr0 ++ tr.
-Proof.
-  intros.
-  destruct H; eexists.
-  + instantiate (1 := []); reflexivity.
-  + instantiate (1 := [_]); reflexivity.
-Qed.
-
-Lemma exec_trace_prepends : forall T d tr p tr' out,
-  @exec_trace T d tr p out tr' -> exists tr0, tr' = tr0 ++ tr.
-Proof.
-  intros.
-  induction H; try solve [ exists []; trivial ].
-  apply_in_hyp step_trace_prepends. repeat deex. eexists. apply app_assoc.
-Qed.
-
-
-Lemma step_trace_append : forall T d tr p d' tr' p' tr0,
-  @step_trace T d tr p d' tr' p' -> step_trace d (tr ++ tr0) p d' (tr' ++ tr0) p'.
-Proof.
-  intros.
-  destruct H; eauto.
-  econstructor.
-Qed.
-
-Hint Resolve step_trace_append.
-
-Lemma exec_trace_append : forall T d tr p tr' out tr0,
-  @exec_trace T d tr p out tr' -> exec_trace d (tr ++ tr0) p out (tr' ++ tr0).
-Proof.
-  intros.
-  induction H; eauto.
-  econstructor. eapply step_trace_append; eauto. eauto.
-Qed.
-
-Hint Resolve exec_trace_append.
-
-Lemma exec_trace_equiv_1 : forall T d p out,
-  @exec T d p out -> forall tr, exists tr', exec_trace d tr p out (tr' ++ tr).
-Proof.
-  intros. revert tr.
-  induction H; try solve [ exists []; eauto].
-  intro.
-  apply_in_hyp step_trace_equiv_1.
-  deex. specialize (IHexec tr'). deex. eauto.
-Qed.
-
-Lemma exec_trace_equiv_2 : forall T d p out tr tr',
-  exec_trace d tr p out (tr' ++ tr) -> @exec T d p out.
-Proof.
-  intros.
-  repeat deex.
-  induction H; eauto.
-  econstructor; eauto.
-  assert (H2 := H).
-  apply_in_hyp step_trace_prepends.
-  repeat deex. eauto.
-Qed.
-
-Theorem exec_trace_det_ret : forall A (x1 x2 : A) d1 d2,
-  exec_trace (fst d1) (snd d1) (Done x1) (Finished (fst d2) x2) (snd d2) ->
-  x1 = x2.
-Proof.
-  intros.
-  invc H; eauto.
-  invc H0.
-Qed.
-
-Theorem exec_trace_det_disk : forall A (x1 x2 : A) d1 d2,
-  exec_trace (fst d1) (snd d1) (Done x1) (Finished (fst d2) x2) (snd d2) ->
-  d1 = d2.
-Proof.
-  intros.
-  destruct d1, d2.
-  invc H; eauto.
-  invc H0. simpl in *. congruence.
-Qed.
-
-Theorem computes_to_det_ret : forall A p d d'1 d'2 (x1 x2 : A),
-  computes_to p d d'1 x1 ->
-  computes_to p d d'2 x2 ->
-  x1 = x2.
-Proof.
-  unfold computes_to.
-  intros.
-  specialize (H _ Done d'1 x1).
-  specialize (H0 _ Done d'1 x1).
-  destruct H, H0.
-  symmetry.
-  eauto using exec_trace_det_ret.
-Qed.
-
-Theorem computes_to_det_disk : forall A p d d'1 d'2 (x1 x2 : A),
-  computes_to p d d'1 x1 ->
-  computes_to p d d'2 x2 ->
-  d'1 = d'2.
-Proof.
-  unfold computes_to.
-  intros.
-  specialize (H _ Done d'1 x1).
-  specialize (H0 _ Done d'1 x1).
-  destruct H, H0.
-  symmetry.
-  eauto using exec_trace_det_disk.
-Qed.
-
-
-Notation "pr '|>' f" :=
-  (fun T rx => pr T (fun a => rx (f a))) (at level 40).
-
-Theorem computes_to_after : forall A B p (f : A -> B) d d' a,
-  computes_to p d d' a ->
-  computes_to (p |> f) d d' (f a).
-Proof.
-  unfold computes_to.
-  intros.
-  specialize (H _ (fun a => rx (f a)) d'' y).
-  eauto.
-Qed.
+Inductive exec : forall T, rawdisk -> hashmap -> prog T -> outcome T -> Prop :=
+| XRet : forall T m hm (v: T),
+    exec m hm (Ret v) (Finished m hm v)
+| XStep : forall T m hm (p: prog T) m' m'' hm' v,
+    possible_sync m m' ->
+    step m' hm p m'' hm' v ->
+    exec m hm p (Finished m'' hm' v)
+| XBindFinish : forall m hm T (p1: prog T) m' hm' (v: T)
+                  T' (p2: T -> prog T') out,
+    exec m hm p1 (Finished m' hm' v) ->
+    exec m' hm' (p2 v) out ->
+    exec m hm (Bind p1 p2) out
+| XBindFail : forall m hm T (p1: prog T)
+                T' (p2: T -> prog T'),
+    exec m hm p1 (Failed T) ->
+    (* note p2 need not execute at all if p1 fails, a form of lazy
+    evaluation *)
+    exec m hm (Bind p1 p2) (Failed T')
+| XBindCrash : forall m hm T (p1: prog T) m' hm'
+                 T' (p2: T -> prog T'),
+    exec m hm p1 (Crashed T m' hm') ->
+    exec m hm (Bind p1 p2) (Crashed T' m' hm')
+| XFail : forall m hm T (p: prog T),
+    fail_step m p ->
+    exec m hm p (Failed T)
+| XCrash : forall m hm T (p: prog T),
+    crash_step p ->
+    exec m hm p (Crashed T m hm).
 
 Definition label := string.
 Definition var := string.
@@ -279,13 +132,12 @@ Inductive Stmt :=
 Arguments Assign v val%facade.
 
 Inductive Value :=
-| SCA : W -> Value
-| Disk : diskstate -> Value.
+| SCA : W -> Value.
 
 Definition can_alias v :=
   match v with
   | SCA _ => true
-  | Disk _ => false
+  (* | ADT _ => false *)
   end.
 
 Definition State := StringMap.t Value.
@@ -657,9 +509,9 @@ Inductive NameTag T :=
 Arguments NTSome {T} key {H}.
 
 Inductive ScopeItem :=
-| SItemRet A (key : NameTag A) (start : diskstate) (p : forall T, (A -> prog T) -> prog T)
-| SItemDisk A (key : NameTag diskstate) (start : diskstate) (p : forall T, (A -> prog T) -> prog T)
-| SItemDiskCrash A (key : NameTag diskstate) (start : diskstate) (p : forall T, (A -> prog T) -> prog T).
+| SItemRet A (key : NameTag A) (start : rawdisk) (p : forall T, (A -> prog T) -> prog T)
+| SItemDisk A (key : NameTag rawdisk) (start : rawdisk) (p : forall T, (A -> prog T) -> prog T)
+| SItemDiskCrash A (key : NameTag rawdisk) (start : rawdisk) (p : forall T, (A -> prog T) -> prog T).
 
 (*
 Notation "` k ->> v" := (SItemRet (NTSome k) v) (at level 50).
@@ -737,7 +589,7 @@ Proof.
             wrap_inj := _ |}; FacadeWrapper_t.
 Defined.
 
-Instance FacadeWrapper_Disk : FacadeWrapper Value diskstate.
+Instance FacadeWrapper_Disk : FacadeWrapper Value rawdisk.
 Proof.
   refine {| wrap := Disk;
             wrap_inj := _ |}; FacadeWrapper_t.
@@ -843,9 +695,9 @@ Qed.
 
 Definition read : AxiomaticSpec.
   refine {|
-    PreCond := fun args => exists (d : diskstate) (a : addr),
+    PreCond := fun args => exists (d : rawdisk) (a : addr),
       args = (wrap d) :: (wrap a) ::  nil;
-    PostCond := fun args ret => exists (d : diskstate) (a : addr),
+    PostCond := fun args ret => exists (d : rawdisk) (a : addr),
       args = (wrap d, Some (wrap d)) :: (wrap a, None) :: nil /\
       ret = wrap (fst d a)
   |}.
@@ -853,9 +705,9 @@ Defined.
 
 Definition write : AxiomaticSpec.
   refine {|
-    PreCond := fun args => exists (d : diskstate) (a : addr) (v : valu),
+    PreCond := fun args => exists (d : rawdisk) (a : addr) (v : valu),
       args = (wrap d) :: (wrap a) :: (wrap v) :: nil;
-    PostCond := fun args ret => exists (d : diskstate) (a : addr) (v : valu),
+    PostCond := fun args ret => exists (d : rawdisk) (a : addr) (v : valu),
       args = (wrap d, Some (wrap (upd a v (fst d), (a, v) :: snd d))) :: (wrap a, None) :: (wrap v, None) :: nil
   |}.
 Defined.
