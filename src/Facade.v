@@ -239,6 +239,7 @@ Section EnvSection.
 
   Definition sel T m := fun k => find k m : option T.
 
+  (* TODO: throw out RunsTo, I think *)
   Inductive RunsTo : Stmt -> State -> State -> Prop :=
   | RunsToSkip : forall st,
       RunsTo Skip st st
@@ -316,7 +317,24 @@ Section EnvSection.
       let s' := add x ret s' in
       Step (Call x f args, (d, s)) (Skip, (d', s')).
 
-  Hint Constructors RunsTo Step : steps.
+  Inductive Outcome :=
+  | EFailed
+  | EFinished (st : State)
+  | ECrashed (d : rawdisk).
+
+  Inductive Exec : Stmt -> State -> Outcome -> Prop :=
+  | EXStep : forall d p d' p' out,
+    Step (p, d) (p', d') ->
+    Exec p' d' out ->
+    Exec p d out
+  | EXFail : forall d p, (~exists d' p', Step (p, d) (p', d')) ->
+    (p <> Skip) ->
+    Exec p d EFailed
+  | EXCrash : forall p d s, Exec p (d, s) (ECrashed d)
+  | EXDone : forall d,
+    Exec Skip d (EFinished d).
+
+  Hint Constructors Exec RunsTo Step : steps.
 
   Hint Constructors clos_refl_trans_1n : steps.
 
@@ -401,6 +419,48 @@ Section EnvSection.
     + repeat do_inv.
   Qed.
   Hint Resolve Step_RunsTo.
+
+  Theorem RunsTo_Exec : forall p st st',
+    RunsTo p st st' ->
+    Exec p st (EFinished st').
+  Proof.
+    intros.
+    eapply RunsTo_Step in H.
+    prep_induction H; induction H; intros; subst.
+    + find_inversion. eauto with steps.
+    + destruct y. eauto with steps.
+  Qed.
+
+  Theorem Exec_RunsTo : forall p st st',
+    Exec p st (EFinished st') ->
+    RunsTo p st st'.
+  Proof.
+    intros.
+    eapply Step_RunsTo.
+    prep_induction H; induction H; intros; subst; eauto with steps; try discriminate.
+    find_inversion. eauto with steps.
+  Qed.
+
+  Theorem Steps_Exec : forall p st p' s' d',
+    Step^* (p, st) (p', (d', s')) ->
+    Exec p st (ECrashed d').
+  Proof.
+    intros.
+    destruct st.
+    prep_induction H; induction H; intros; subst.
+    + repeat find_inversion. eauto with steps.
+    + destruct y. destruct s0. eauto with steps.
+  Qed.
+
+  Theorem Exec_Steps : forall p st d',
+    Exec p st (ECrashed d') ->
+    exists p' s', Step^* (p, st) (p', (d', s')).
+  Proof.
+    intros.
+    prep_induction H; induction H; intros; subst; try discriminate.
+    + specialize (IHExec _ eq_refl). repeat deex. repeat eexists. econstructor; eauto.
+    + find_inversion. eauto with steps.
+  Qed.
 
   CoInductive Safe : Stmt -> State -> Prop :=
   | SafeSkip : forall st, Safe Skip st
