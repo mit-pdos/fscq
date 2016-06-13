@@ -10,9 +10,10 @@ Require Import List.
 Import List.ListNotations.
 Local Open Scope list.
 
-(* defined in Prog. which we don't want to import here *)
-Definition addrlen := 64.
-Definition valulen := 4096*8.
+Require Prog.
+
+Definition addrlen := Prog.addrlen.
+Definition valulen := Prog.Valulen.valulen.
 Notation addr := (word addrlen).
 Notation valu := (word valulen).
 

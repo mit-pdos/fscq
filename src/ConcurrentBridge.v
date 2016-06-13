@@ -2,29 +2,15 @@ Require Import CoopConcur.
 Require Import ConcurrentCache.
 Require Prog Hoare.
 
-Definition valu_conv : valu -> word Prog.Valulen.valulen.
-Proof.
-  intro v.
-  rewrite Prog.Valulen.valulen_is.
-  exact v.
-Defined.
-
-Definition valu_conv' : word Prog.Valulen.valulen -> valu.
-Proof.
-  intro v.
-  rewrite Prog.Valulen.valulen_is in v.
-  exact v.
-Defined.
-
 Fixpoint compiler {T} (error_rx: prog Sigma) (p: Prog.prog T) : prog Sigma :=
   match p with
   | Prog.Done v => Done
   | Prog.Read a rx => opt_v <- cache_read a;
                        match opt_v with
-                       | Some v => compiler error_rx (rx (valu_conv v))
+                       | Some v => compiler error_rx (rx v)
                        | None => error_rx
                        end
-  | Prog.Write a v rx => ok <- cache_write a (valu_conv' v);
+  | Prog.Write a v rx => ok <- cache_write a v;
                           if ok then
                             compiler error_rx (rx tt)
                           else
@@ -73,12 +59,12 @@ Proof.
   admit.
 Abort.
 
-Notation prog_valuset := (word Prog.Valulen.valulen * list (word Prog.Valulen.valulen))%type.
+Notation prog_valuset := (valu * list valu)%type.
 
 Record SeqHoareSpec R :=
-  SeqSpec { seq_spec_pre: @pred (word Prog.addrlen) _ (const prog_valuset);
-            seq_spec_post: R -> @pred (word Prog.addrlen) _ (const prog_valuset);
-            seq_spec_crash: @pred (word Prog.addrlen) _ (const prog_valuset) }.
+  SeqSpec { seq_spec_pre: @pred addr _ (const prog_valuset);
+            seq_spec_post: R -> @pred addr _ (const prog_valuset);
+            seq_spec_crash: @pred addr _ (const prog_valuset) }.
 
 Definition seq_hoare_double R A (spec: A -> SeqHoareSpec R)
            (p: forall T, (R -> Prog.prog T) -> Prog.prog T) :=
@@ -141,7 +127,7 @@ Section ExampleSeqSpecs.
       {{ fun r:unit => a |-> v' * a' |-> v }}
       {{ a |->? * a' |->? }}.
 
-  Theorem seq_swap_spec : forall (a a': word Prog.addrlen),
+  Theorem seq_swap_spec : forall a a',
       {< (v v': prog_valuset),
        PRE       a |-> v * a' |-> v'
        POST RET:_ a |-> v' * a' |-> v
@@ -174,18 +160,17 @@ Record ConcurHoareSpec R :=
   ConcurSpec { concur_spec_pre: TID -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop;
                concur_spec_post: TID -> R -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop }.
 
-Definition concur_hoare_double R (spec: ConcurHoareSpec R)
+Definition concur_hoare_double R A (spec: A -> ConcurHoareSpec R)
            (p: (R -> prog Sigma) -> prog Sigma) :=
-  let 'ConcurSpec pre post := spec in
   forall (rx: _ -> prog Sigma) (tid:TID),
     valid delta tid
           (fun done d m s_i s =>
              exists a,
-               pre tid a d m s_i s /\
+               concur_spec_pre (spec a) tid d m s_i s /\
                (forall ret_,
                    valid delta tid
                          (fun done_rx d' m' s_i' s' =>
-                            post tid a ret_ d' m' s_i' s' /\
+                            concur_spec_post (spec a) tid ret_ d' m' s_i' s' /\
                             done_rx = done)
                          (rx ret_))
           ) (p rx).
@@ -201,7 +186,7 @@ Proof.
   unfold const in *; intro.
   destruct (m a); [ apply Some | apply None ].
   destruct p.
-  exact (valu_conv' w, None).
+  exact (w, None).
 Defined.
 
 Definition project_disk (s: abstraction Sigma) : @mem (word Prog.addrlen) _ (const prog_valuset).
@@ -211,7 +196,7 @@ Proof.
   intro.
   destruct (vd0 a); [ apply Some | apply None ].
   destruct w.
-  exact (valu_conv w, nil).
+  exact (w, nil).
 Qed.
 
 (* The idea of concurrent_spec is to compute a concurrent spec
@@ -232,13 +217,13 @@ definition:
 Definition concurrent_spec R (spec: SeqHoareSpec R) : ConcurHoareSpec R :=
   let 'SeqSpec pre post _ := spec in
   ConcurSpec
-    (fun tid a d m s_i s =>
+    (fun tid d m s_i s =>
        invariant delta d m s /\
-       pre a (project_disk s) /\
+       pre (project_disk s) /\
        guar delta tid s_i s)
-    (fun tid a r d' m' s_i' s' =>
+    (fun tid r d' m' s_i' s' =>
        invariant delta d' m' s' /\
-       post a r (project_disk s') /\
+       post r (project_disk s') /\
        guar delta tid s_i' s').
 
 (* The master theorem: convert a sequential program into a concurrent
