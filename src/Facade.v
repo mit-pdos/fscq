@@ -152,8 +152,7 @@ Section Extracted.
     (* | ADT _ => false *)
     end.
 
-  Definition State := StringMap.t Value.
-
+  Definition State := (rawdisk * StringMap.t Value)%type.
 
   Definition eval_binop (op : binop + test) a b :=
     match op with
@@ -172,7 +171,7 @@ Section Extracted.
       | _, _ => None
     end.
 
-  Fixpoint eval (st : State) (e : Expr) : option Value :=
+  Fixpoint eval (st : StringMap.t Value) (e : Expr) : option Value :=
     match e with
       | Var x => find x st
       | Const w => Some (SCA w)
@@ -222,14 +221,13 @@ Section Extracted.
 
 
   Record AxiomaticSpec := {
-    PreCond (input : list Value) : Prop;
-    PostCond (input_output : list (Value * option Value)) (ret : Value) : Prop;
+    PreCond (disk_in : rawdisk) (input : list Value) : Prop;
+    PostCond (disk_in disk_out : rawdisk) (input_output : list (Value * option Value)) (ret : Value) : Prop;
     (* PreCondTypeConform : type_conforming PreCond *)
   }.
 
   Definition Env := StringMap.t AxiomaticSpec.
 
-  Definition sel T m := fun k => find k m : option T.
 End Extracted.
 
 Notation "R ^*" := (clos_refl_trans_1n _ R) (at level 0).
@@ -240,6 +238,8 @@ Section EnvSection.
 
   Variable env : Env.
 
+  Definition sel T m := fun k => find k m : option T.
+
   Inductive RunsTo : Stmt -> State -> State -> Prop :=
   | RunsToSkip : forall st,
       RunsTo Skip st st
@@ -248,38 +248,38 @@ Section EnvSection.
       RunsTo b st' st'' ->
       RunsTo (Seq a b) st st''
   | RunsToIfTrue : forall cond t f st st',
-      is_true st cond ->
+      is_true (snd st) cond ->
       RunsTo t st st' ->
       RunsTo (If cond t f) st st'
   | RunsToIfFalse : forall cond t f st st',
-      is_false st cond ->
+      is_false (snd st) cond ->
       RunsTo f st st' ->
       RunsTo (If cond t f) st st'
   | RunsToWhileTrue : forall cond body st st' st'',
       let loop := While cond body in
-      is_true st cond ->
+      is_true (snd st) cond ->
       RunsTo body st st' ->
       RunsTo loop st' st'' ->
       RunsTo loop st st''
   | RunsToWhileFalse : forall cond body st,
       let loop := While cond body in
-      is_false st cond ->
+      is_false (snd st) cond ->
       RunsTo loop st st
-  | RunsToAssign : forall x e st st' v,
+  | RunsToAssign : forall x e d s s' v,
       (* rhs can't be a mutable object, to prevent aliasing *)
-      eval st e = Some v ->
+      eval s e = Some v ->
       can_alias v = true ->
-      st' = add x v st ->
-      RunsTo (Assign x e) st st'
-  | RunsToCallAx : forall x f args st spec input output ret,
+      s' = add x v s ->
+      RunsTo (Assign x e) (d, s) (d, s')
+  | RunsToCallAx : forall x f args s spec d d' input output ret,
       StringMap.find f env = Some spec ->
-      mapM (sel st) args = Some input ->
-      PreCond spec input ->
+      mapM (sel s) args = Some input ->
+      PreCond spec d input ->
       length input = length output ->
-      PostCond spec (List.combine input output) ret ->
-      let st' := add_remove_many args input output st in
-      let st' := add x ret st' in
-      RunsTo (Call x f args) st st'.
+      PostCond spec d d' (List.combine input output) ret ->
+      let s' := add_remove_many args input output s in
+      let s' := add x ret s' in
+      RunsTo (Call x f args) (d, s) (d', s').
 
   Inductive Step : Stmt * State -> Stmt * State -> Prop :=
   | StepSeq1 : forall a a' b st st',
@@ -288,34 +288,34 @@ Section EnvSection.
   | StepSeq2 : forall a st,
       Step (Seq Skip a, st) (a, st)
   | StepIfTrue : forall cond t f st,
-      is_true st cond ->
+      is_true (snd st) cond ->
       Step (If cond t f, st) (t, st)
   | StepIfFalse : forall cond t f st,
-      is_false st cond ->
+      is_false (snd st) cond ->
       Step (If cond t f, st) (f, st)
   | StepWhileTrue : forall cond body st,
       let loop := While cond body in
-      is_true st cond ->
+      is_true (snd st) cond ->
       Step (loop, st) (Seq body loop, st)
   | StepWhileFalse : forall cond body st,
       let loop := While cond body in
-      is_false st cond ->
+      is_false (snd st) cond ->
       Step (loop, st) (Skip, st)
-  | StepAssign : forall x e st st' v,
+  | StepAssign : forall x e d s s' v,
       (* rhs can't be a mutable object, to prevent aliasing *)
-      eval st e = Some v ->
+      eval s e = Some v ->
       can_alias v = true ->
-      st' = add x v st ->
-      Step (Assign x e, st) (Skip, st')
-  | StepCallAx : forall x f args st spec input output ret,
+      s' = add x v s ->
+      Step (Assign x e, (d, s)) (Skip, (d, s'))
+  | StepCallAx : forall x f args s spec d d' input output ret,
       StringMap.find f env = Some spec ->
-      mapM (sel st) args = Some input ->
-      PreCond spec input ->
+      mapM (sel s) args = Some input ->
+      PreCond spec d input ->
       length input = length output ->
-      PostCond spec (List.combine input output) ret ->
-      let st' := add_remove_many args input output st in
-      let st' := add x ret st' in
-      Step (Call x f args, st) (Skip, st').
+      PostCond spec d d' (List.combine input output) ret ->
+      let s' := add_remove_many args input output s in
+      let s' := add x ret s' in
+      Step (Call x f args, (d, s)) (Skip, (d', s')).
 
   Hint Constructors RunsTo Step : steps.
 
@@ -346,8 +346,8 @@ Section EnvSection.
     Step^* (p, st) (Skip, st').
   Proof.
     intros.
-    induction H; intros; subst_definitions; eauto 9 with steps.
-    econstructor; do 2 eauto with steps.
+    induction H; intros; subst_definitions; eauto 9 with steps;
+      econstructor; do 2 eauto with steps.
   Qed.
 
   Ltac do_inv := match goal with
@@ -413,18 +413,18 @@ Section EnvSection.
         Safe (Seq a b) st
   | SafeIfTrue :
       forall cond t f st,
-        is_true st cond ->
+        is_true (snd st) cond ->
         Safe t st ->
         Safe (If cond t f) st
   | SafeIfFalse :
       forall cond t f st,
-        is_false st cond ->
+        is_false (snd st) cond ->
         Safe f st ->
         Safe (If cond t f) st
   | SafeWhileTrue :
       forall cond body st,
         let loop := While cond body in
-        is_true st cond ->
+        is_true (snd st) cond ->
         Safe body st ->
         (forall st',
            RunsTo body st st' -> Safe loop st') ->
@@ -432,18 +432,18 @@ Section EnvSection.
   | SafeWhileFalse :
       forall cond body st,
         let loop := While cond body in
-        is_false st cond ->
+        is_false (snd st) cond ->
         Safe loop st
   | SafeAssign :
       forall x e st v,
-        eval st e = Some v ->
+        eval (snd st) e = Some v ->
         can_alias v = true ->
         Safe (Assign x e) st
   | SafeCallAx :
       forall x f args st spec input,
         StringMap.find f env = Some spec ->
-        mapM (sel st) args = Some input ->
-        PreCond spec input ->
+        mapM (sel (snd st)) args = Some input ->
+        PreCond spec (fst st) input ->
         Safe (Call x f args) st.
 
   Section Safe_coind.
@@ -452,29 +452,29 @@ Section EnvSection.
 
     Hypothesis SeqCase : forall a b st, R (Seq a b) st -> R a st /\ forall st', RunsTo a st st' -> R b st'.
 
-    Hypothesis IfCase : forall cond t f st, R (If cond t f) st -> (is_true st cond /\ R t st) \/ (is_false st cond /\ R f st).
+    Hypothesis IfCase : forall cond t f st, R (If cond t f) st -> (is_true (snd st) cond /\ R t st) \/ (is_false (snd st) cond /\ R f st).
 
     Hypothesis WhileCase :
       forall cond body st,
         let loop := While cond body in
         R loop st ->
-        (is_true st cond /\ R body st /\ (forall st', RunsTo body st st' -> R loop st')) \/
-        (is_false st cond).
+        (is_true (snd st) cond /\ R body st /\ (forall st', RunsTo body st st' -> R loop st')) \/
+        (is_false (snd st) cond).
 
     Hypothesis AssignCase :
       forall x e st,
         R (Assign x e) st ->
-        exists v, eval st e = Some v /\
+        exists v, eval (snd st) e = Some v /\
                   can_alias v = true.
 
     Hypothesis CallCase :
       forall x f args st,
         R (Call x f args) st ->
         exists input,
-          mapM (sel st) args = Some input /\
+          mapM (sel (snd st)) args = Some input /\
           ((exists spec,
               StringMap.find f env = Some spec /\
-              PreCond spec input)).
+              PreCond spec (fst st) input)).
 
     Hint Constructors Safe.
 
