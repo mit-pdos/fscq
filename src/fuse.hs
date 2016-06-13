@@ -35,6 +35,9 @@ type HT = Integer
 verboseFuse :: Bool
 verboseFuse = False
 
+cachesize :: Integer
+cachesize = 100000
+
 debug :: String -> IO ()
 debug msg =
   if verboseFuse then
@@ -83,12 +86,12 @@ run_fuse disk_fn fuse_args = do
   then
     do
       putStrLn $ "Recovering file system"
-      (s, (fsxp, ())) <- I.run ds $ AsyncFS._AFS__recover
+      (s, (fsxp, ())) <- I.run ds $ AsyncFS._AFS__recover cachesize
       return (s, fsxp)
   else
     do
       putStrLn $ "Initializing file system"
-      res <- I.run ds $ AsyncFS._AFS__mkfs nDataBitmaps nInodeBitmaps nDescrBlocks
+      res <- I.run ds $ AsyncFS._AFS__mkfs cachesize nDataBitmaps nInodeBitmaps nDescrBlocks
       case res of
         Nothing -> error $ "mkfs failed"
         Just (s, fsxp) -> do

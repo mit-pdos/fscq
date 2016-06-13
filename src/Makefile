@@ -1,17 +1,17 @@
 OCAMLBUILD := ocamlbuild -use-ocamlfind -lib str -lib nums
 OCAMLINC   := -I codegen -I mllib -I ocamlfuse -package extunix
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
-	      Mem AsyncDisk Pred Prog PredCrash Hoare \
+	      Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
 	      Hashmap HashmapProg \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
-	      ReadCache ReadCacheX WritebackCache Cache \
+	      MemPred Cache \
 	      FSLayout AsyncRecArray DiskLogHash \
-	      LogReplay MemLog ListPred MemPred GenSepN \
+	      LogReplay MemLog ListPred GenSepN \
 	      NEList DiskSet GroupLog Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
 	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \
-	      SuperBlock AsyncFS AsyncFSRecover DirUtil ExtrHaskellPrelude \
+	      SuperBlock AsyncFS AsyncFSRecover TreeSeq DirUtil ExtrHaskellPrelude \
 				StringMap VerdiTactics Facade
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))

@@ -1,7 +1,7 @@
 Require Import Arith.
 Require Import Omega.
 Require Import List.
-Require Import Prog.
+Require Import Prog ProgMonad.
 Require Import Pred PredCrash.
 Require Import Hoare.
 Require Import Word.
@@ -593,6 +593,7 @@ Ltac flatten :=
 Definition okToUnify {AT AEQ V} (p1 p2 : @pred AT AEQ V) := p1 = p2.
 
 Hint Extern 0 (okToUnify (?p |-> _) (?p |-> _)) => constructor : okToUnify.
+Hint Extern 0 (okToUnify (?p |+> _) (?p |+> _)) => constructor : okToUnify.
 Hint Extern 0 (okToUnify ?a ?a) => constructor : okToUnify.
 
 (* Try to unify any two [ptsto] predicates.  Since ring does not unify
@@ -1195,10 +1196,10 @@ Ltac autorewrite_fast :=
 
 Ltac destruct_branch :=
   match goal with
-  | [ |- {{ _ }} match ?v with | Some _ => _ | None => _ end ] => destruct v eqn:?
-  | [ |- {{ _ }} match ?v with | None => _ | Some _ => _ end ] => destruct v eqn:?
-  | [ |- {{ _ }} if ?v then _ else _ ] => destruct v eqn:?
-  | [ |- {{ _ }} let '_ := ?v in _ ] => destruct v eqn:?
+  | [ |- {{ _ }} Bind (match ?v with | Some _ => _ | None => _ end) _ ] => destruct v eqn:?
+  | [ |- {{ _ }} Bind (match ?v with | None => _ | Some _ => _ end) _ ] => destruct v eqn:?
+  | [ |- {{ _ }} Bind (if ?v then _ else _) _ ] => destruct v eqn:?
+  | [ |- {{ _ }} Bind (let '_ := ?v in _) _ ] => destruct v eqn:?
   end.
 
 Ltac prestep :=
@@ -1206,15 +1207,15 @@ Ltac prestep :=
   try autounfold with hoare_unfold in *;
   repeat destruct_pair_once;
   try cancel;
-  repeat destruct_branch;
-(*   remember_xform; *)
+  repeat (destruct_branch || monad_simpl_one);
+  (*   remember_xform; *)
   ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])
    || (eapply pimpl_ok3; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok3_cont; [ solve [ eauto with prog ] | | ])
    || (eapply pimpl_ok2; [
         match goal with
-        | [ |- {{ _ }} ?a _ ] => is_var a
+        | [ |- {{ _ }} Bind ?a _ ] => is_var a
         end; solve [ eapply nop_ok ] | ]));
   intros; try subst;
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)

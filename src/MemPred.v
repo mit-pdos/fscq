@@ -257,7 +257,6 @@ Section MemPred.
     intuition; constructor.
   Qed.
 
-
 End MemPred.
 
 Theorem mem_pred_pimpl : forall LA LEQ LV HA HEQ HV hm p1 p2,
@@ -290,6 +289,47 @@ Proof.
 Qed.
 
 
+Theorem mem_pred_absent_hm :
+  forall A AEQ LV HV p hm m a,
+  m a = None ->
+  (forall a v, p a v =p=> exists v', a |-> v') ->
+  @mem_pred A AEQ LV A AEQ HV p hm m ->
+  hm a = None.
+Proof.
+  intros.
+  case_eq (hm a); intros; auto.
+  eapply mem_pred_extract in H1; eauto.
+  rewrite H0 in H1; destruct_lift H1.
+  apply ptsto_valid' in H1; congruence.
+Qed.
+
+Theorem mem_pred_absent_lm :
+  forall A AEQ LV HV p hm m a,
+  hm a = None ->
+  (forall a v, p a v =p=> exists v', a |-> v') ->
+  @mem_pred A AEQ LV A AEQ HV p hm m ->
+  m a = None.
+Proof.
+  intros.
+  unfold mem_pred, mem_pred_one in H1. destruct_lift H1.
+  apply avs2mem_none_notin in H.
+  generalize dependent m.
+  induction dummy; simpl in *; intros.
+  - apply emp_empty_mem_only in H1; subst.
+    firstorder.
+  - destruct a0; simpl in *.
+    rewrite H0 in H1.
+    destruct (AEQ a0 a); try solve [ exfalso; eauto ].
+    destruct_lift H1.
+    generalize dependent H1.
+    unfold_sep_star; intros. repeat deex.
+    inversion H3.
+    eapply IHdummy in H7; eauto.
+    unfold ptsto in H5; destruct H5.
+    unfold mem_union.
+    rewrite H10; eauto.
+Qed.
+
 
 Theorem xform_mem_pred : forall prd (hm : rawdisk),
   crash_xform (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _ prd hm) <=p=>
@@ -306,6 +346,32 @@ Proof.
   cancel.
   eauto.
 Qed.
+
+
+Theorem sync_xform_mem_pred : forall prd (hm : rawdisk),
+  sync_xform (@mem_pred _ addr_eq_dec _ _ addr_eq_dec _ prd hm) <=p=>
+  @mem_pred _ addr_eq_dec _ _ addr_eq_dec _ (fun a v => sync_xform (prd a v)) hm.
+Proof.
+  unfold mem_pred; intros; split.
+  rewrite sync_xform_exists_comm; apply pimpl_exists_l; intros.
+  repeat (rewrite sync_xform_sep_star_dist || rewrite sync_xform_lift_empty).
+  rewrite sync_xform_listpred; cancel.
+
+  rewrite sync_xform_exists_comm; apply pimpl_exists_l; intros.
+  apply pimpl_exists_r; eexists.
+  repeat (rewrite sync_xform_sep_star_dist || rewrite sync_xform_lift_empty).
+  rewrite sync_xform_listpred; cancel.
+Qed.
+
+
+Theorem sync_invariant_mem_pred : forall HighAT HighAEQ HighV (prd : HighAT -> HighV -> _) hm,
+  (forall a v, sync_invariant (prd a v)) ->
+  sync_invariant (@mem_pred _ _ _ _ HighAEQ _ prd hm).
+Proof.
+  unfold mem_pred; eauto.
+Qed.
+
+Hint Resolve sync_invariant_mem_pred.
 
 
 Section MEM_MATCH.
@@ -434,6 +500,7 @@ Section MEM_REGION.
     congruence.
   Qed.
 
+(*
   Lemma arrayN_region_filled : forall l m a F,
     (F * arrayN a l)%pred m ->
     region_filled m a (length l).
@@ -446,6 +513,7 @@ Section MEM_REGION.
     apply sep_star_assoc in H.
     eapply IHl; eauto; omega.
   Qed.
+*)
 
   Lemma mem_match_listupd_l : forall l ma mb a,
     mem_match ma mb ->

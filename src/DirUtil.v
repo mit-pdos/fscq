@@ -622,10 +622,12 @@ Theorem dirtree_update_safe_pathname_vssync_vecs :
   exists tree',
   (F0 * rep fsxp F tree' ilist freeblocks)%pred (list2nmem (vssync_vecs m bns)) /\
   (tree' = tree \/
-   exists pathname' f' data, find_subtree pathname' tree = Some (TreeFile inum f') /\
-   let f'new := BFILE.mk_bfile data (BFILE.BFAttr f') in
-   tree' = update_subtree pathname' (TreeFile inum f'new) tree).
+   exists pathname' f', find_subtree pathname' tree = Some (TreeFile inum f') /\
+   tree' = update_subtree pathname' (TreeFile inum (BFILE.synced_file f')) tree).
 Proof.
+  (* XXX need to strengthen the inductive hypothesis to say we've synced the file
+   * up to some block (corresponding to the induction on bns)..
+   *)
   induction bns using rev_ind; simpl; intros.
   - eexists; intuition eauto.
   - edestruct IHbns; eauto.
@@ -670,6 +672,62 @@ Proof.
   2: exact unit.
   intros; exact tt.
 Qed.
+
+Theorem dirtree_update_safe_pathname_vssync_vecs_pred :
+  forall bns ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks inum m flag,
+  (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
+  dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
+  Forall (fun bn => exists off, BFILE.block_belong_to_file ilist_newest bn inum off) bns ->
+  find_subtree pathname tree_newest = Some (TreeFile inum f) ->
+  (F0 * rep fsxp F tree ilist freeblocks \/
+   exists pathname' f',
+   [[ find_subtree pathname' tree = Some (TreeFile inum f') ]] *
+   let tree' := update_subtree pathname' (TreeFile inum (BFILE.synced_file f')) tree in
+   F0 * rep fsxp F tree' ilist freeblocks)%pred (list2nmem (vssync_vecs m bns)).
+Proof.
+  intros.
+  edestruct dirtree_update_safe_pathname_vssync_vecs; eauto.
+  intuition.
+  eapply pimpl_apply; try eassumption. cancel.
+  eapply pimpl_apply; try eassumption. cancel.
+Qed.
+
+(* XXX maybe p2 cannot be a prefix of p1 *)
+Lemma find_subtree_update_subtree_ne_path : forall p1 p2 tree elem,
+  p1 <> p2 ->
+  DIRTREE.find_subtree p1 (DIRTREE.update_subtree p2 elem tree) =
+    DIRTREE.find_subtree p1 tree.
+Proof.
+Admitted.
+
+Lemma dirtree_safe_dupdate: forall old_tree old_free old_ilist tree ilist freelist inum f p bn off v,
+    DIRTREE.dirtree_safe old_ilist old_free old_tree ilist freelist tree ->
+    DIRTREE.find_subtree p tree = Some (DIRTREE.TreeFile inum f) ->
+    BFILE.block_belong_to_file ilist bn inum off ->
+     DIRTREE.dirtree_safe old_ilist old_free old_tree ilist freelist 
+      (DIRTREE.update_subtree p
+        (DIRTREE.TreeFile inum
+           {|
+           BFILE.BFData := (BFILE.BFData f) ⟦ off := v ⟧;
+           BFILE.BFAttr := BFILE.BFAttr f |}) tree).
+Proof.
+  intros.
+  unfold DIRTREE.dirtree_safe in *.
+  unfold BFILE.ilist_safe in *.
+  destruct H.
+  split; eauto.
+  intros.
+  destruct (list_eq_dec string_dec pathname p); subst.
+  erewrite DIRTREE.find_update_subtree in H3; eauto.
+  inversion H3.
+  subst.
+  intuition.
+  specialize (H6 inum0 off0 bn0 H4).
+  specialize (H2 inum0 off0 bn0 p f H0 H4).
+  eauto.
+  erewrite find_subtree_update_subtree_ne_path in H3; eauto.
+Qed.
+  
 
 
 Global Opaque DIRTREE.tree_graft.

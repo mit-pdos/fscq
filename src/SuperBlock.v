@@ -142,11 +142,11 @@ Module SB.
 
 
   Definition rep (fsxp : fs_xparams) : rawpred :=
-    ([[ fs_xparams_ok fsxp ]] * 0 |=> v_pickle_superblock fsxp)%pred.
+    ([[ fs_xparams_ok fsxp ]] * 0 |+> (v_pickle_superblock fsxp, nil))%pred.
 
-  Definition load T cs rx : prog T :=
+  Definition load cs : prog _ :=
     let^ (cs, v) <- BUFCACHE.read 0 cs;
-    rx ^(cs, v_unpickle_superblock v).
+    Ret ^(cs, v_unpickle_superblock v).
 
   Theorem load_ok : forall cs,
     {< m F fsxp,
@@ -160,34 +160,42 @@ Module SB.
   Proof.
     unfold load, rep.
     hoare.
-    pred_apply; cancel.
-    subst; apply v_pickle_unpickle_superblock; auto.
+    apply v_pickle_unpickle_superblock; auto.
   Qed.
 
-  Definition init T fsxp cs rx : prog T :=
+  Definition init fsxp cs : prog _ :=
     cs <- BUFCACHE.write 0 (v_pickle_superblock fsxp) cs;
+    cs <- BUFCACHE.begin_sync cs;
     cs <- BUFCACHE.sync 0 cs;
-    rx cs.
+    cs <- BUFCACHE.end_sync cs;
+    Ret cs.
 
   Theorem init_ok : forall fsxp cs,
     {< m F,
     PRE
       BUFCACHE.rep cs m * 
-      [[ fs_xparams_ok fsxp /\ (F * 0 |->?)%pred m ]]
+      [[ fs_xparams_ok fsxp /\ (F * 0 |->?)%pred m ]] *
+      [[ sync_invariant F ]]
     POST RET:cs
       exists m',
       BUFCACHE.rep cs m' * [[ (F * rep fsxp)%pred m' ]]
-    CRASH
-      exists cs' m', BUFCACHE.rep cs' m' * 
-      [[ (F * 0 |->?)%pred m' ]]
+    XCRASH
+      exists cs' m' vs, BUFCACHE.rep cs' m' * 
+      [[ (F * 0 |+> vs)%pred m' ]]
     >} init fsxp cs.
   Proof.
     unfold rep, init.
+    step.
+    rewrite ptsto_pimpl_ptsto_subset; cancel.
     hoare.
+    xcrash.
+    xcrash.
+    xcrash.
+    xcrash.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (load _) _) => apply load_ok : prog.
-  Hint Extern 1 ({{_}} progseq (init _ _) _) => apply init_ok : prog.
+  Hint Extern 1 ({{_}} Bind (load _) _) => apply load_ok : prog.
+  Hint Extern 1 ({{_}} Bind (init _ _) _) => apply init_ok : prog.
 
   Theorem crash_xform_rep : forall fsxp,
     crash_xform (rep fsxp) <=p=> rep fsxp.
@@ -196,16 +204,25 @@ Module SB.
     rewrite crash_xform_sep_star_dist;
     rewrite crash_xform_lift_empty.
 
-    rewrite crash_xform_ptsto; cancel.
+    rewrite crash_xform_ptsto_subset; cancel.
+    rewrite ptsto_pimpl_ptsto_subset.
     subst; auto.
 
-    rewrite <- crash_xform_ptsto_r.
+    rewrite <- crash_xform_ptsto_subset_r.
     cancel.
+    rewrite ptsto_subset_pimpl_ptsto; eauto.
     unfold vsmerge; simpl; auto.
   Qed.
 
   Hint Rewrite crash_xform_rep : crash_xform.
 
+  Theorem sync_invariant_rep : forall xp,
+    sync_invariant (rep xp).
+  Proof.
+    unfold rep; eauto.
+  Qed.
+
+  Hint Resolve sync_invariant_rep.
   Hint Extern 0 (okToUnify (rep _) (rep _)) => constructor : okToUnify.
 
 End SB.

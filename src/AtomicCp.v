@@ -32,7 +32,7 @@ Require Import AsyncFS.
 Require Import DirUtil.
 Require Import String.
 Require Import TreeCrash.
-
+Require Import TreeSeq.
 
 
 Import ListNotations.
@@ -130,16 +130,218 @@ Module ATOMICCP.
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
 
+  Lemma diskset_pred_sync: forall V (p: @pred _ _ V) ds,
+    diskset_pred p ds ->
+    diskset_pred p (ds!!, []).
+  Proof.
+    intros.
+    unfold diskset_pred in *.
+    intros.
+    apply H.
+    apply d_in_In in H0; inversion H0; subst.
+    apply latest_in_ds.
+    inversion H1.
+  Qed.
+
+  Lemma diskset_pred_pushd: forall V (p: @pred _ _ V) ds d,
+    diskset_pred p ds ->
+    p (list2nmem d) ->
+    diskset_pred p (pushd d ds).
+  Proof.
+    intros.
+    unfold diskset_pred in *.
+    intros.
+    apply d_in_pushd in H1. intuition; subst.
+    eassumption.
+  Qed.
+
+  (* each tree has a temp file with inode timum. furthermore, there is a dirtree_safe
+   * transition from tree to newest tree. *)
+  Definition temp_tree_pred Fm Ftop fsxp newest_ilist newest_free newest_tree mscs tinum :=
+    (exists tree tfile ilist freelist,
+      Fm * DIRTREE.rep fsxp Ftop tree ilist freelist *
+      [[ DIRTREE.find_subtree [temp_fn] tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
+      [[ DIRTREE.dirtree_safe ilist (BFILE.pick_balloc freelist (MSAlloc mscs)) tree
+                               newest_ilist  (BFILE.pick_balloc newest_free  (MSAlloc mscs)) newest_tree ]]
+    )%pred.
+
+  Definition temp_treeseqpred base_tree tinum (to : treeseq_one) :=
+    exists tfile,
+    TStree to = DIRTREE.update_subtree [temp_fn] base_tree (DIRTREE.TreeFile tinum tfile).
+
+  Definition temp_tree_pred_ds Fm Ftop fsxp newest_ilist newest_free newest_tree mscs tinum ds :=
+    exists ts,
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds /\
+    latest ts = mk_tree newest_tree newest_ilist newest_free /\
+    NEforall (temp_treeseqpred newest_tree tinum) ts.
+
+  Ltac distinct_names :=
+    match goal with
+      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_names_distinct ?tree ] => 
+        eapply DIRTREE.rep_tree_names_distinct; eapply H
+    end.
+
+  Ltac distinct_inodes :=
+    match goal with
+      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_inodes_distinct ?tree ] => 
+        eapply DIRTREE.rep_tree_inodes_distinct; eapply H
+    end.
+
+  Lemma temp_tree_pred_dupdate_eq: forall Fm Ftop fsxp newest_ilist newest_free newest_tree mscs d tinum bn off v f,
+    BFILE.block_belong_to_file newest_ilist bn tinum off ->
+    DIRTREE.find_subtree [temp_fn] newest_tree = Some (DIRTREE.TreeFile tinum f) ->
+    temp_tree_pred Fm Ftop fsxp newest_ilist newest_free newest_tree mscs tinum (list2nmem d) ->
+    temp_tree_pred Fm Ftop fsxp newest_ilist newest_free newest_tree mscs tinum (list2nmem d ⟦ bn := v ⟧).
+  Proof.
+    intros.
+    unfold temp_tree_pred in *.
+    repeat (destruct H1).
+    edestruct DIRTREE.dirtree_update_safe_pathname_pred.
+    eapply pimpl_apply; try eassumption. cancel.
+    2: eassumption.
+    2: eassumption.
+    eapply sep_star_lift_apply in H1.
+    intuition.
+    eassumption.
+    eexists x.
+    eexists x0.
+    eexists x1.
+    eexists x2.
+    eapply pimpl_apply; try eassumption. cancel.
+    destruct_lift H1; eauto.
+    destruct_lift H1; eauto.
+    destruct H2.
+    destruct H2.
+    remember {|
+        BFILE.BFData := (BFILE.BFData x4) ⟦ off := v ⟧;
+        BFILE.BFAttr := BFILE.BFAttr x4|} as f'.
+    eexists (DIRTREE.update_subtree x3 (DIRTREE.TreeFile tinum f') x).
+    eexists f'.
+    eexists x1.
+    eexists x2.
+    (* prove that x3 = temp_fn and x4 = x0 *)
+    destruct_lift H1.
+    destruct_lift H2.
+    assert (x3 = [temp_fn]) as Hpn.
+    eapply find_subtree_inode_pathname_unique.
+    instantiate (1 := x).
+    distinct_inodes.
+    distinct_names.
+    eauto.
+    eassumption.
+    eauto.
+    rewrite Hpn.
+    rewrite Hpn in H3.
+    rewrite H3 in H6.
+    inversion H6.
+    subst.
+    pred_apply.
+    cancel.
+    eapply DIRTREE.dirtree_safe_update_subtree.
+    eassumption.
+    eauto.
+  Qed.
+
+
+  Lemma temp_tree_pred_vssync_eq: forall Fm Ftop fsxp newest_ilist newest_free newest_tree mscs tinum d f al,
+    Forall
+     (fun bn0 : addr =>
+      exists off0 : addr, BFILE.block_belong_to_file newest_ilist bn0 tinum off0) al ->
+    DIRTREE.find_subtree [temp_fn] newest_tree = Some (DIRTREE.TreeFile tinum f) ->
+    temp_tree_pred Fm Ftop fsxp newest_ilist newest_free newest_tree mscs tinum (list2nmem d) ->
+    temp_tree_pred Fm Ftop fsxp newest_ilist newest_free newest_tree mscs tinum (list2nmem (vssync_vecs d al)).
+  Proof.
+    intros.
+    unfold temp_tree_pred in *.
+    repeat (destruct H1).
+    edestruct dirtree_update_safe_pathname_vssync_vecs_pred; eauto.
+    eapply pimpl_apply; try eassumption. cancel.
+    destruct_lift H1.
+    eassumption.
+    eexists x.
+    eexists x0.
+    eexists x1.
+    eexists x2.
+    eapply pimpl_apply; try eassumption. cancel.
+    destruct_lift H1; eauto.
+    destruct_lift H1; eauto.
+    repeat (destruct H2).
+    remember {|
+            BFILE.BFData := x5;
+            BFILE.BFAttr := BFILE.BFAttr x4 |} as f'.
+    eexists (DIRTREE.update_subtree x3 (DIRTREE.TreeFile tinum f') x).
+    eexists f'.
+    eexists x1.
+    eexists x2.
+    destruct_lift H1.
+    destruct_lift H2.
+    assert (x3 = [temp_fn]) as Hpn.
+    eapply find_subtree_inode_pathname_unique.
+    instantiate (1 := x).
+    distinct_inodes.
+    distinct_names.
+    eauto.
+    eassumption.
+    eauto.
+    rewrite Hpn.
+    rewrite Hpn in H3.
+    rewrite H3 in H6.
+    inversion H6.
+    subst.
+    pred_apply.
+    cancel.
+    eapply DIRTREE.dirtree_safe_update_subtree.
+    eassumption.
+    eauto.
+  Qed.
+
+  Hint Resolve DIRTREE.dirtree_safe_trans : dirtree_safe.
+  Hint Resolve DIRTREE.dirtree_safe_refl : dirtree_safe.
+
+  Lemma temp_tree_pred_safe_trans: forall Fm Ftop fsxp ilist free tree ilist' free' tree' mscs tinum,
+    DIRTREE.dirtree_safe ilist (BFILE.pick_balloc free (MSAlloc mscs)) tree ilist' (BFILE.pick_balloc free' (MSAlloc mscs)) tree' ->
+    temp_tree_pred Fm Ftop fsxp ilist free tree mscs tinum =p=> temp_tree_pred Fm Ftop fsxp ilist' free' tree' mscs tinum.
+  Proof.
+    intros.
+    unfold temp_tree_pred in *.
+    cancel.
+    eauto.
+    eauto with dirtree_safe.
+  Qed.
+
+  Ltac diskset_pred_solve := 
+    repeat match goal with
+      | [ |- diskset_pred _ (dssync_vecs (dsupd _ _ _) _) ] 
+          => idtac "diskset_pred dssync";  eapply diskset_pred_d_map
+      | [ |- diskset_pred _ (dsupd _ _ _)] 
+          => idtac "diskset_pred"; eapply diskset_pred_d_map; eauto
+      | [ |- diskset_pred _ (_ !!, []) ] => idtac "sync"; eapply diskset_pred_sync; eauto
+      | [ |- diskset_pred _ (pushd _ _)] => idtac "pushd"; eapply diskset_pred_pushd
+      | [ |- temp_tree_pred _ _ _ _ _ _ _ _ (list2nmem ?d) ]
+          => idtac "temp_tree_pred apply"; pred_apply; unfold temp_tree_pred; cancel; eauto
+      | [ |- temp_tree_pred _ _ _ _ _ _ _ _ (list2nmem (vssync_vecs _ _)) ]
+          => idtac "temp_tree_pred_vssync"; eapply temp_tree_pred_vssync_eq; eauto
+      | [ |- forall _ : _, temp_tree_pred _ _ _ _ _ _ _ _ _ -> _ (list2nmem _ ⟦ _ := _ ⟧)] 
+          => idtac "forall"; intros; eapply temp_tree_pred_dupdate_eq; eauto
+      | [ |- forall _ : _, temp_tree_pred _ _ _ ?ilist _ _ _ _ _ -> temp_tree_pred _ _ _ ?ilist _ _ _ _ _ ] 
+          => idtac "forall2"; intros; eapply temp_tree_pred_vssync_eq; eauto
+      | [ |- forall _ : _, temp_tree_pred _ _ _ ?ilist _ _ _ _ _ -> temp_tree_pred _ _ _ ?ilist' _ _ _ _ _ ] 
+          => idtac "forall3"; intros; eapply temp_tree_pred_safe_trans; eauto
+      | [ |- Forall _ _ ] => eapply Forall_forall; intros ? Hin
+      | [ Hin: In _ _ |- _ ] => idtac "Hin";  eapply in_selN_exists in Hin; destruct Hin as [? Hin]; destruct Hin as [? Hin1]
+      | [ Hin1: _ |- exists _: _, BFILE.block_belong_to_file _ _ _ _] 
+        => idtac "Hin1"; rewrite <- Hin1; clear Hin1; eauto 
+      | [ H: MSAlloc _ = MSAlloc _ |- DIRTREE.dirtree_safe _ _ _ _ _ _ ]
+        => idtac "rewrite" H; rewrite H in *; clear H
+      | [ H: BFILE.diskset_was _ _ |- diskset_pred _ _ ] => 
+         idtac "subset"; unfold BFILE.diskset_was in H; intuition; subst; clear H  
+     end; eauto with dirtree_safe.
+
   Theorem copydata_ok : forall fsxp src_inum tinum mscs,
-    {< ds Fm Ftop temp_tree src_fn file tfile v0 t0 ilist freelist,
+    {< ds Fm Ftop temp_tree src_fn file tfile ilist freelist v0 t0,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree ilist freelist) ]]] *
-      [[ forall d, d_in d ds -> exists tfile' ilist' freelist',
-         let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree in
-         DIRTREE.dirtree_safe ilist' (BFILE.pick_balloc freelist' (MSAlloc mscs)) tree'
-                              ilist  (BFILE.pick_balloc freelist  (MSAlloc mscs)) temp_tree /\
-         (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist')%pred (list2nmem d) ]]%type *
+      [[ temp_tree_pred_ds Fm Ftop fsxp ilist freelist temp_tree mscs tinum ds ]] *
       [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
       [[ DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
       [[ src_fn <> temp_fn ]] *
@@ -148,351 +350,110 @@ Module ATOMICCP.
     POST:hm' RET:^(mscs', r)
       exists ds',
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
-      [[ forall d, d_in d ds' -> exists tfile' ilist' freelist',
-         let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree in
-         (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist')%pred (list2nmem d) ]] *
-      ([[ r = false ]] \/
-       [[ r = true ]] *
-       exists ilist' freelist',
-       let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree in
-       [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist') ]]])
+      exists tree' ilist' freelist',
+        [[ temp_tree_pred_ds Fm Ftop fsxp ilist' freelist' tree' mscs tinum ds' ]] *
+        (([[ r = false ]] *
+          exists tfile',
+          [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree ]])
+      \/ ([[ r = true ]] * 
+          [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree ]]))
     XCRASH:hm'
       exists ds',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-      [[ forall d, d_in d ds' -> exists tfile' ilist' freelist',
-         let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree in
-         (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist')%pred (list2nmem d) ]]
+      exists tfile' ilist' freelist',
+      let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree in
+      [[ temp_tree_pred_ds Fm Ftop fsxp ilist' freelist' tree' mscs tinum ds' ]]
      >} copydata fsxp src_inum tinum mscs.
   Proof.
     unfold copydata; intros.
-    step.
-    step.
-    step.
-    step.
-    step.
-    step.
 
-    denote! (d_in _ _) as Hdin. apply d_in_d_map in Hdin. repeat deex.
-    denote! (d_in _ _) as Hdin.
-      apply d_in_d_map in Hdin. repeat deex.
-    denote! (d_in _ _) as Hdin. eapply BFILE.d_in_diskset_was in Hdin; eauto.
-    denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
+    prestep.
+    norml; unfold stars; simpl.
 
-    (* first, get a tree representation of the disk after the dwrite *)
-    edestruct DIRTREE.dirtree_update_safe_pathname with (m := d'0); repeat deex.
-    4: eauto.
-    3: eauto.
-    2: eassumption.  (* the one about offset zero, not the one about forall offsets *)
+    unfold temp_tree_pred_ds in H9.
+    deex.
+    unfold treeseq_in_ds in H3; intuition.
+    unfold tree_rep in H9.
+    rewrite H0 in *; clear H0.
+    cancel.
     eauto.
 
-    (* second, get a tree representation of the disk after the fdatasync *)
-    intuition; repeat deex; subst.
-    (* creates two cases, from the result of [dirtree_update_safe_pathname] *)
+    step.
+    step.
+    step.
+    step.
+    step.
 
-    edestruct dirtree_update_safe_pathname_vssync_vecs; repeat deex.
-    4: denote! (_ (list2nmem (updN _ bn _))) as Hd; exact Hd.
-    3: eauto.
-    2: apply Forall_forall; intros ? Hin.
-    2: eapply in_selN_exists in Hin; destruct Hin as [? Hin]; destruct Hin as [? Hin].
-    2: rewrite <- Hin; eauto.
-    eauto.
-
-    (* creates two more cases, from the result of [dirtree_update_safe_pathname_vssync_vecs] *)
-    intuition; repeat deex; subst.
-
-    repeat eexists. eauto.
-    repeat eexists. pred_apply.
-    replace pathname' with ([temp_fn]).
-    erewrite update_update_subtree_eq; eauto.
-    eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-    eapply find_subtree_inode_pathname_unique. 4: eassumption.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto.
-    reflexivity.
-
-    (* second case from [dirtree_update_safe_pathname] *)
-    assert (pathname' = [temp_fn]) as Hpn'.
-    eapply find_subtree_inode_pathname_unique. 3: eassumption.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto.
-    reflexivity.
-
-    edestruct dirtree_update_safe_pathname_vssync_vecs; repeat deex.
-    4: denote! (_ (list2nmem (updN _ bn _))) as Hd; exact Hd.
-    3: eapply DIRTREE.dirtree_safe_update_subtree; eauto.
-    2: apply Forall_forall; intros ? Hin.
-    2: eapply in_selN_exists in Hin; destruct Hin as [? Hin]; destruct Hin as [? Hin].
-    2: rewrite <- Hin; eauto.
-    eauto.
-
-    (* creates two more cases, from the result of [dirtree_update_safe_pathname_vssync_vecs] *)
-    intuition; repeat deex; subst.
-
-    repeat eexists. pred_apply.
-      erewrite update_update_subtree_eq; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-
-    repeat eexists. pred_apply.
-      replace pathname'0 with ([temp_fn]).
-      erewrite update_update_subtree_eq; eauto.
-      erewrite update_update_subtree_eq; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-    eapply find_subtree_inode_pathname_unique. 4: eassumption.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto.
-    reflexivity.
+    diskset_pred_solve.
 
     or_r. cancel.
-      erewrite update_update_subtree_eq; eauto.
-      erewrite update_update_subtree_eq; eauto.
-      unfold BFILE.synced_file.
-      erewrite ptsto_0_list2nmem_mem_eq with (d := (BFILE.BFData file)) by eauto.
-      erewrite ptsto_0_list2nmem_mem_eq with (d := (BFILE.BFData f')) by eauto.
-      eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-
-    (* true case [forall d \in ds] ... *)
-    denote! (d_in _ _) as Hdin. apply d_in_pushd in Hdin. intuition; subst.
-
-    (* this d from ds has setattr's changes *)
-    repeat eexists. pred_apply.
-      erewrite update_update_subtree_eq; eauto.
-      erewrite update_update_subtree_eq; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-
-    (* this d from ds is from before setattr *)
-    denote! (d_in _ _) as Hdin. apply d_in_d_map in Hdin. repeat deex.
-    denote! (d_in _ _) as Hdin. apply d_in_d_map in Hdin. repeat deex.
-    denote! (d_in _ _) as Hdin. eapply BFILE.d_in_diskset_was in Hdin; eauto.
-    denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
-
-    (* first, get a tree representation of the disk after the dwrite *)
-    edestruct DIRTREE.dirtree_update_safe_pathname with (m := d'0); repeat deex.
-    4: eauto.
-    3: eauto.
-    2: eassumption.  (* the one about offset zero, not the one about forall offsets *)
-    eauto.
-
-    (* second, get a tree representation of the disk after the fdatasync *)
-    intuition; repeat deex; subst.
-    (* creates two cases, from the result of [dirtree_update_safe_pathname] *)
-
-    edestruct dirtree_update_safe_pathname_vssync_vecs; repeat deex.
-    4: denote! (_ (list2nmem (updN _ bn _))) as Hd; exact Hd.
-    3: eauto.
-    2: apply Forall_forall; intros ? Hin.
-    2: eapply in_selN_exists in Hin; destruct Hin as [? Hin]; destruct Hin as [? Hin].
-    2: rewrite <- Hin; eauto.
-    eauto.
-
-    (* creates two more cases, from the result of [dirtree_update_safe_pathname_vssync_vecs] *)
-    intuition; repeat deex; subst.
-
-    repeat eexists. eauto.
-    repeat eexists. pred_apply.
-    replace pathname' with ([temp_fn]).
     erewrite update_update_subtree_eq; eauto.
-    eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-    eapply find_subtree_inode_pathname_unique. 4: eassumption.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto.
-    reflexivity.
-
-    (* second case from [dirtree_update_safe_pathname] *)
-    assert (pathname' = [temp_fn]) as Hpn'.
-    eapply find_subtree_inode_pathname_unique. 3: eassumption.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto.
-    reflexivity.
-
-    edestruct dirtree_update_safe_pathname_vssync_vecs; repeat deex.
-    4: denote! (_ (list2nmem (updN _ bn _))) as Hd; exact Hd.
-    3: eapply DIRTREE.dirtree_safe_update_subtree; eauto.
-    2: apply Forall_forall; intros ? Hin.
-    2: eapply in_selN_exists in Hin; destruct Hin as [? Hin]; destruct Hin as [? Hin].
-    2: rewrite <- Hin; eauto.
-    eauto.
-
-    (* creates two more cases, from the result of [dirtree_update_safe_pathname_vssync_vecs] *)
-    intuition; repeat deex; subst.
-
-    repeat eexists. pred_apply.
-      erewrite update_update_subtree_eq; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-
-    repeat eexists. pred_apply.
-      replace pathname'0 with ([temp_fn]).
-      erewrite update_update_subtree_eq; eauto.
-      erewrite update_update_subtree_eq; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-    eapply find_subtree_inode_pathname_unique. 4: eassumption.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto.
-    reflexivity.
-
-    (* CRASH CONDITIONS *)
-
-    AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
-    denote! (d_in _ _) as Hdin. apply d_in_d_map in Hdin. repeat deex.
-    denote! (d_in _ _) as Hdin. apply d_in_d_map in Hdin. repeat deex.
-    denote! (d_in _ _) as Hdin. eapply BFILE.d_in_diskset_was in Hdin; eauto.
-    denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
-
-    (* first, get a tree representation of the disk after the dwrite *)
-    edestruct DIRTREE.dirtree_update_safe_pathname with (m := d'0); repeat deex.
-    4: eauto.
-    3: eauto.
-    2: eassumption.  (* the one about offset zero, not the one about forall offsets *)
-    eauto.
-
-    (* second, get a tree representation of the disk after the fdatasync *)
-    intuition; repeat deex; subst.
-    (* creates two cases, from the result of [dirtree_update_safe_pathname] *)
-
-    edestruct dirtree_update_safe_pathname_vssync_vecs; repeat deex.
-    4: denote! (_ (list2nmem (updN _ bn _))) as Hd; exact Hd.
-    3: eauto.
-    2: apply Forall_forall; intros ? Hin.
-    2: eapply in_selN_exists in Hin; destruct Hin as [? Hin]; destruct Hin as [? Hin].
-    2: rewrite <- Hin; eauto.
-    eauto.
-
-    (* creates two more cases, from the result of [dirtree_update_safe_pathname_vssync_vecs] *)
-    intuition; repeat deex; subst.
-
-    repeat eexists. eauto.
-    repeat eexists. pred_apply.
-    replace pathname' with ([temp_fn]).
     erewrite update_update_subtree_eq; eauto.
-    eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-    eapply find_subtree_inode_pathname_unique. 4: eassumption.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto.
-    reflexivity.
-
-    (* second case from [dirtree_update_safe_pathname] *)
-    assert (pathname' = [temp_fn]) as Hpn'.
-    eapply find_subtree_inode_pathname_unique. 3: eassumption.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto.
-    reflexivity.
-
-    edestruct dirtree_update_safe_pathname_vssync_vecs; repeat deex.
-    4: denote! (_ (list2nmem (updN _ bn _))) as Hd; exact Hd.
-    3: eapply DIRTREE.dirtree_safe_update_subtree; eauto.
-    2: apply Forall_forall; intros ? Hin.
-    2: eapply in_selN_exists in Hin; destruct Hin as [? Hin]; destruct Hin as [? Hin].
-    2: rewrite <- Hin; eauto.
+    unfold BFILE.synced_file.
+    erewrite ptsto_0_list2nmem_mem_eq with (d := (BFILE.BFData file)) by eauto.
+    erewrite ptsto_0_list2nmem_mem_eq with (d := (BFILE.BFData f')) by eauto.
     eauto.
+    distinct_names.
+    constructor.
+    distinct_names.
+    constructor.
 
-    (* creates two more cases, from the result of [dirtree_update_safe_pathname_vssync_vecs] *)
-    intuition; repeat deex; subst.
+    diskset_pred_solve.
 
-    repeat eexists. pred_apply.
-      erewrite update_update_subtree_eq; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
+    (* Handle crash cases *)
+    xcrash.
+    repeat (xform_deex_r).
+    xform_norm; cancel. 
 
-    repeat eexists. pred_apply.
-      replace pathname'0 with ([temp_fn]).
-      erewrite update_update_subtree_eq; eauto.
-      erewrite update_update_subtree_eq; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-      eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-    eapply find_subtree_inode_pathname_unique. 4: eassumption.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto.
-    reflexivity.
+    diskset_pred_solve.
 
+    xcrash.
+    repeat (xform_deex_r).
+    xform_norm; cancel.
 
-    (* CRASH after dwrite, so no fsync to contend with.. *)
-    AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
-    denote! (d_in _ _) as Hdin. apply d_in_d_map in Hdin. repeat deex.
-    denote! (d_in _ _) as Hdin. eapply BFILE.d_in_diskset_was in Hdin; eauto.
-    denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
+    diskset_pred_solve.
 
-    (* get a tree representation of the disk after the dwrite *)
-    edestruct DIRTREE.dirtree_update_safe_pathname with (m := d'); repeat deex.
-    4: eauto.
-    3: eauto.
-    2: eassumption.  (* the one about offset zero, not the one about forall offsets *)
+    xcrash.
+    repeat (xform_deex_r).
+    xform_norm; cancel.
+
+    repeat (xform_deex_r).
+    xform_norm; cancel.
+    instantiate (2 := ilist).
+    instantiate (1 := (freelist_1, freelist_2)).
+    instantiate (1 := (DIRTREE.dirtree_update_inode temp_tree tinum 0 (fst v0, vsmerge t0))).
+    rewrite dsupd_latest.
+    eapply DIRTREE.dirtree_update_block; eauto.
+    diskset_pred_solve.
+
+    erewrite DIRTREE.dirtree_update_inode_update_subtree with (pathname := [temp_fn]).
+    erewrite DIRTREE.find_update_subtree; eauto.
+    distinct_inodes.
+    distinct_names.
     eauto.
+    eapply list2nmem_inbound; eauto.
+    pred_apply.
+    cancel.
 
-    intuition; repeat deex; subst.
-    (* creates two cases, from the result of [dirtree_update_safe_pathname] *)
-
-    repeat eexists. eauto.
-    repeat eexists. pred_apply.
-    replace pathname' with ([temp_fn]).
-    erewrite update_update_subtree_eq; eauto.
-    eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-    eapply find_subtree_inode_pathname_unique. 4: eassumption.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto.
-    reflexivity.
-
-
-
-    (* CRASHES from before dwrite *)
-    (* haogang just changed dwrite's crash condition, so no reason to prove the old one here.. *)
-    AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
-    denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
-    repeat eexists. eauto.
-
-    denote! (d_in _ _) as Hdin. apply d_in_d_map in Hdin. repeat deex.
-    denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
-
-    (* get a tree representation of the disk after the dwrite *)
-    edestruct DIRTREE.dirtree_update_safe_pathname with (m := d'); repeat deex.
-    4: eauto.
-    3: eauto.
-    2: eassumption.  (* the one about offset zero, not the one about forall offsets *)
+    erewrite DIRTREE.dirtree_update_inode_update_subtree with (pathname := [temp_fn]).
+    eapply dirtree_safe_dupdate; eauto.
+    distinct_inodes.
+    distinct_names.
     eauto.
+    eapply list2nmem_inbound; eauto.
+    pred_apply.
+    cancel.
 
-    intuition; repeat deex; subst.
-    (* creates two cases, from the result of [dirtree_update_safe_pathname] *)
+    xcrash.
+    repeat (xform_deex_r).
+    xform_norm; cancel.
 
-    repeat eexists. eauto.
-    repeat eexists. pred_apply.
-    replace pathname' with ([temp_fn]).
-    erewrite update_update_subtree_eq; eauto.
-    eapply DIRTREE.rep_tree_names_distinct; eauto. constructor.
-    eapply find_subtree_inode_pathname_unique. 4: eassumption.
-      3: erewrite DIRTREE.find_update_subtree; eauto.
-      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
-      eapply DIRTREE.rep_tree_names_distinct; eauto.
-    reflexivity.
-
-    AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
-    denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
-    repeat eexists. eauto.
-
-    AFS.xcrash_solve; xform_norm; cancel; xform_norm; safecancel.
-    denote! (forall _, d_in _ ds -> _) as Hds; edestruct Hds; eauto; repeat deex.
-    repeat eexists. eauto.
+    xcrash.
+    repeat (xform_deex_r).
+    xform_norm; cancel.
   Qed.
 
-
   Hint Extern 1 ({{_}} progseq (copydata _ _ _ _) _) => apply copydata_ok : prog.
-
-  Ltac distinct_names :=
-    match goal with
-      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_names_distinct ?tree ] => 
-        eapply DIRTREE.rep_tree_names_distinct; eapply H
-    end.
 
   Theorem copy2temp_ok : forall fsxp src_inum tinum mscs,
     {< d Fm Ftop temp_tree src_fn file tfile v0 ilist freeblocks,

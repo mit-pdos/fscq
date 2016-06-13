@@ -74,27 +74,27 @@ Module BmapAlloc (Sig : AllocSig).
   Definition is_avail (s : state) := if (state_dec s) then true else false.
   Definition avail_nonzero s i := if (addr_eq_dec i 0) then false else is_avail s.
 
-  Definition free T lxp xp bn ms rx : prog T :=
+  Definition free lxp xp bn ms : prog _ :=
     ms <- Bmp.put lxp xp bn $0 ms;
-    rx ms.
+    Ret ms.
 
-  Definition alloc T lxp xp ms rx : prog T :=
+  Definition alloc lxp xp ms : prog _ :=
     let^ (ms, r) <- Bmp.ifind lxp xp avail_nonzero ms;
     match r with
     | None =>
-        rx ^(ms, None)
+        Ret ^(ms, None)
     | Some (bn, _) =>
         ms <- Bmp.put lxp xp bn $1 ms;
-        rx ^(ms, Some bn)
+        Ret ^(ms, Some bn)
     end.
 
-  Definition steal T lxp xp bn ms rx : prog T :=
+  Definition steal lxp xp bn ms : prog _ :=
     ms <- Bmp.put lxp xp bn $1 ms;
-    rx ms.
+    Ret ms.
 
-  Definition init T lxp xp ms rx : prog T :=
+  Definition init lxp xp ms : prog _ :=
     ms <- Bmp.init lxp xp ms;
-    rx ms.
+    Ret ms.
 
   Definition freelist_bmap_equiv freelist bmap :=
     forall a, a < length bmap -> (In a freelist <-> Avail (selN bmap a $0)).
@@ -261,8 +261,8 @@ Module BmapAlloc (Sig : AllocSig).
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (alloc _ _ _) _) => apply alloc_ok : prog.
-  Hint Extern 1 ({{_}} progseq (free _ _ _ _) _) => apply free_ok : prog.
+  Hint Extern 1 ({{_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
+  Hint Extern 1 ({{_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 
 
@@ -309,21 +309,21 @@ Module BALLOC.
   Module Alloc := BmapAlloc Sig.
   Module Defs := Alloc.Defs.
 
-  Definition alloc T lxp xp ms rx : prog T :=
+  Definition alloc lxp xp ms : prog _ :=
     r <- Alloc.alloc lxp xp ms;
-    rx r.
+    Ret r.
 
-  Definition free T lxp xp bn ms rx : prog T :=
+  Definition free lxp xp bn ms : prog _ :=
     r <- Alloc.free lxp xp bn ms;
-    rx r.
+    Ret r.
 
-  Definition steal T lxp xp bn ms rx : prog T :=
+  Definition steal lxp xp bn ms : prog _ :=
     r <- Alloc.steal lxp xp bn ms;
-    rx r.
+    Ret r.
 
-  Definition init T lxp xp ms rx : prog T :=
+  Definition init lxp xp ms : prog _ :=
     r <- Alloc.init lxp xp ms;
-    rx r.
+    Ret r.
 
   Definition bn_valid xp bn := bn <> 0 /\ bn < (BmapNBlocks xp) * valulen.
 
@@ -371,8 +371,8 @@ Module BALLOC.
 
 
 
-  Hint Extern 1 ({{_}} progseq (alloc _ _ _) _) => apply alloc_ok : prog.
-  Hint Extern 1 ({{_}} progseq (free _ _ _ _) _) => apply free_ok : prog.
+  Hint Extern 1 ({{_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
+  Hint Extern 1 ({{_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
   Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
 
 
@@ -383,12 +383,11 @@ Module BALLOC.
   Qed.
 
 
-  Definition freevec T lxp xp l ms rx : prog T :=
+  Definition freevec lxp xp l ms : prog _ :=
     let^ (ms) <- ForN i < length l
     Hashmap hm
     Ghost [ F Fm crash m0 freeblocks ]
     Loopvar [ ms ]
-    Continuation lrx
     Invariant
       exists m', LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
       [[[ m' ::: (Fm * rep xp (rev (firstn i l) ++ freeblocks)) *
@@ -396,9 +395,9 @@ Module BALLOC.
     OnCrash crash
     Begin
       ms <- free lxp xp (selN l i 0) ms;
-      lrx ^(ms)
+      Ret ^(ms)
     Rof ^(ms);
-    rx ms.
+    Ret ms.
 
 
   Theorem freevec_ok : forall lxp xp l ms,
@@ -448,7 +447,7 @@ Module BALLOC.
     Unshelve. all: eauto; exact tt.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (freevec _ _ _ _) _) => apply freevec_ok : prog.
+  Hint Extern 1 ({{_}} Bind (freevec _ _ _ _) _) => apply freevec_ok : prog.
 
 
   Lemma xparams_ok_goodSize : forall xp a,
@@ -575,8 +574,8 @@ Module IAlloc.
 
   Definition items_per_val := Alloc.BmpSig.items_per_val.
 
-  Hint Extern 1 ({{_}} progseq (alloc _ _ _) _) => apply alloc_ok : prog.
-  Hint Extern 1 ({{_}} progseq (free _ _ _ _) _) => apply free_ok : prog.
+  Hint Extern 1 ({{_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
+  Hint Extern 1 ({{_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
   Hint Extern 0 (okToUnify (rep ?xp _ _) (rep ?xp _ _)) => constructor : okToUnify.
 
   Definition xform_rep := Alloc.xform_rep.

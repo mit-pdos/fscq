@@ -44,9 +44,9 @@ run_dcode ds (Write a v rx) = do
   debugmsg $ "Write " ++ (show a) ++ " " ++ (show v)
   Disk.write_disk ds a v
   run_dcode ds $ rx ()
-run_dcode ds (Sync a rx) = do
-  debugmsg $ "Sync " ++ (show a)
-  Disk.sync_disk ds a
+run_dcode ds (Sync rx) = do
+  debugmsg $ "Sync"
+  Disk.sync_disk ds
   run_dcode ds $ rx ()
 run_dcode ds (Trim a rx) = do
   debugmsg $ "Trim " ++ (show a)
