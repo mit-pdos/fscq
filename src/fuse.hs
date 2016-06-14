@@ -60,7 +60,7 @@ nDescrBlocks :: Integer
 nDescrBlocks = 64
 
 type MSCS = (Bool, Log.LOG__Coq_memstate)
-type FSprog a = (MSCS -> ((MSCS, a) -> Prog.Coq_prog (MSCS, a)) -> Prog.Coq_prog (MSCS, a))
+type FSprog a = (MSCS -> Prog.Coq_prog (MSCS, a))
 type FSrunner = forall a. FSprog a -> IO a
 doFScall :: DiskState -> IORef MSCS -> FSrunner
 doFScall ds ref f = do
