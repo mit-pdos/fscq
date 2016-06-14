@@ -3,7 +3,7 @@ Require Import PeanoNat String List FMapAVL.
 Require Import Relation_Operators Operators_Properties.
 Require Import VerdiTactics.
 Require Import StringMap.
-Require Import Mem AsyncDisk PredCrash Prog.
+Require Import Mem AsyncDisk PredCrash Prog ProgMonad.
 
 Import ListNotations.
 
@@ -699,6 +699,38 @@ Proof.
 Qed.
 *)
 
+Ltac eforward H :=
+  match type of H with
+  | forall a : ?A, _ =>
+    match type of A with
+    | Prop => fail 1
+    | _ => idtac
+    end;
+    let v := fresh a in
+    evar (v : A); specialize (H v); subst v
+  end.
+
+
+Lemma extract_equiv_prog : forall T env A (B : T -> _) pr1 pr2 p,
+  prog_equiv pr1 pr2 ->
+  EXTRACT pr1
+  {{ A }}
+    p
+  {{ B }} // env ->
+  EXTRACT pr2
+  {{ A }}
+    p
+  {{ B }} // env.
+Proof.
+  unfold prog_equiv, ProgOk.
+  intros.
+  repeat eforward H0. conclude H0 eauto. intuition.
+  eforward H0. conclude H0 eauto. repeat deex.
+  repeat eexists. apply H; eauto. eauto.
+  eforward H4. conclude H4 eauto. repeat deex.
+  repeat eexists. apply H; eauto.
+Qed.
+
 Lemma Forall_elements_add : forall V P k (v : V) m,
   Forall P (StringMap.elements (StringMap.add k v m)) <->
   P (k, v) /\ Forall P (StringMap.elements (StringMap.remove k m)).
@@ -842,17 +874,6 @@ Proof.
       }
     - right. eexists. split. econstructor. eauto.
 Qed.
-
-Ltac eforward H :=
-  match type of H with
-  | forall a : ?A, _ =>
-    match type of A with
-    | Prop => fail 1
-    | _ => idtac
-    end;
-    let v := fresh a in
-    evar (v : A); specialize (H v); subst v
-  end.
 
 Lemma CompileBind : forall T T' {H: FacadeWrapper Value T} {H': FacadeWrapper Value T'} env A (B : T' -> _) p f xp xf var,
   EXTRACT p
