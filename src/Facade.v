@@ -140,12 +140,15 @@ Inductive Stmt :=
 Arguments Assign v val.
 
 Inductive Value :=
-| SCA : W -> Value.
+| Num : W -> Value
+| EmptyStruct : Value
+| Block : valu -> Value.
 
 Definition can_alias v :=
   match v with
-  | SCA _ => true
-  (* | ADT _ => false *)
+  | Num _ => true
+  | EmptyStruct => true
+  | Block _ => false
   end.
 
 Section Extracted.
@@ -166,21 +169,21 @@ Section Extracted.
 
   Definition eval_binop_m (op : binop + test) (oa ob : option Value) : option Value :=
     match oa, ob with
-      | Some (SCA a), Some (SCA b) => Some (SCA (eval_binop op a b))
+      | Some (Num a), Some (Num b) => Some (Num (eval_binop op a b))
       | _, _ => None
     end.
 
   Fixpoint eval (st : StringMap.t Value) (e : Expr) : option Value :=
     match e with
       | Var x => find x st
-      | Const w => Some (SCA w)
+      | Const w => Some (Num w)
       | Binop op a b => eval_binop_m (inl op) (eval st a) (eval st b)
       | TestE op a b => eval_binop_m (inr op) (eval st a) (eval st b)
     end.
 
   Definition eval_bool st e : option bool :=
     match eval st e with
-      | Some (SCA w) => Some (if Nat.eq_dec w 0 then false else true)
+      | Some (Num w) => Some (if Nat.eq_dec w 0 then false else true)
       | _ => None
     end.
 
@@ -619,19 +622,32 @@ Ltac FacadeWrapper_t :=
   abstract (repeat match goal with
                    | _ => progress intros
                    | [ H : _ * _ |- _ ] => destruct H
+                   | [ H : unit |- _ ] => destruct H
                    | [ H : _ = _ |- _ ] => inversion H; solve [eauto]
                    | _ => solve [eauto]
                    end).
 
-Instance FacadeWrapper_SCA : FacadeWrapper Value W.
-Proof.
-  refine {| wrap := SCA;
-            wrap_inj := _ |}; FacadeWrapper_t.
-Defined.
-
 Instance FacadeWrapper_Self {A: Type} : FacadeWrapper A A.
 Proof.
   refine {| wrap := id;
+            wrap_inj := _ |}; FacadeWrapper_t.
+Defined.
+
+Instance FacadeWrapper_Num : FacadeWrapper Value W.
+Proof.
+  refine {| wrap := Num;
+            wrap_inj := _ |}; FacadeWrapper_t.
+Defined.
+
+Instance FacadeWrapper_valu : FacadeWrapper Value valu.
+Proof.
+  refine {| wrap := Block;
+            wrap_inj := _ |}; FacadeWrapper_t.
+Defined.
+
+Instance FacadeWrapper_unit : FacadeWrapper Value unit.
+Proof.
+  refine {| wrap := fun _ => EmptyStruct;
             wrap_inj := _ |}; FacadeWrapper_t.
 Defined.
 
@@ -644,24 +660,29 @@ Local Open Scope string_scope.
 
 Definition read : AxiomaticSpec.
   refine {|
-    PreCond := fun args => exists (d : rawdisk) (a : addr),
-      args = (wrap d) :: (wrap a) ::  nil;
-    PostCond := fun args ret => exists (d : rawdisk) (a : addr),
-      args = (wrap d, Some (wrap d)) :: (wrap a, None) :: nil /\
-      ret = wrap (fst d a)
+    PreCond := fun disk args => exists (a : addr),
+      args = [wrap a];
+    PostCond := fun disk disk' args ret => exists (a : addr) (v : valu) (x : list valu),
+      args = [(wrap a, Some (wrap a))] /\
+      disk a = Some (v, x) /\
+      ret = wrap (v) /\
+      disk' = disk
   |}.
 Defined.
 
 Definition write : AxiomaticSpec.
   refine {|
-    PreCond := fun args => exists (d : rawdisk) (a : addr) (v : valu),
-      args = (wrap d) :: (wrap a) :: (wrap v) :: nil;
-    PostCond := fun args ret => exists (d : rawdisk) (a : addr) (v : valu),
-      args = (wrap d, Some (wrap (upd a v (fst d), (a, v) :: snd d))) :: (wrap a, None) :: (wrap v, None) :: nil
+    PreCond := fun disk args => exists (a : addr) (v : valu),
+      args = [wrap a; wrap v];
+    PostCond := fun disk disk' args ret => exists (a : addr) (v v0 : valu) (x : list valu),
+      args = [(wrap a, Some (wrap a)); (wrap v, Some (wrap v))] /\
+      disk a = Some (v0, x) /\
+      disk' = upd disk a (v, v0 :: x) /\
+      ret = wrap tt
   |}.
 Defined.
 
-Definition disk_env : Env := add "write" write (add "read" read (empty _)).
+Definition disk_env : Env := StringMap.add "write" write (StringMap.add "read" read (StringMap.empty _)).
 
 Ltac find_cases var st := case_eq (find var st); [
   let v := fresh "v" in
@@ -669,27 +690,6 @@ Ltac find_cases var st := case_eq (find var st); [
   intros v He; rewrite ?He in *
 | let Hne := fresh "Hne" in
   intro Hne; rewrite Hne in *; exfalso; solve [ intuition idtac ] ].
-
-Ltac invert_ret_computes_to :=
-  repeat match goal with
-  | [ H : computes_to _ _ _ _ |- _ ] =>
-      let H' := fresh H in
-      assert (H' := H); apply ret_computes_to in H; apply ret_computes_to_disk in H'; subst
-  end.
-
-Lemma computes_to_computes_to_crash : forall A p d d' r,
-  @computes_to A p d d' r -> computes_to_crash p d d'.
-Proof.
-  unfold computes_to, computes_to_crash.
-  intros.
-  (* I believe this is not provable. *)
-Abort.
-
-Lemma computes_to_crash_refl : forall A p d,
-  @computes_to_crash A p d d.
-Proof.
-  unfold computes_to_crash. eauto.
-Qed.
 
 Example micro_noop : sigT (fun p => forall d0,
   {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }}
