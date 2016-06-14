@@ -1,6 +1,6 @@
 Require Import Prog.
 Require Import Hoare.
-Require Import ProofIrrelevance.
+Require Import Eqdep.
 
 Set Implicit Arguments.
 
