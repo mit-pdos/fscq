@@ -234,10 +234,11 @@ Proof.
         erewrite dirents2mem_not_in_none; eauto.
         inversion H.
         inversion H4; eauto.
+        subst; contradict H7.
         admit.
-        eapply IHl.
-        admit.
-        eassumption.
+        eapply IHl; eauto.
         eauto.
-        admit.
-Qed.
+        inversion H; inversion H4; subst.
+        apply dirents2mem_not_in_none; auto.
+Admitted.
+
