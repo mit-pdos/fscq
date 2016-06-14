@@ -23,42 +23,6 @@ Fixpoint compiler {T} (error_rx: prog Sigma) (p: Prog.prog T) : prog Sigma :=
   | Prog.Trim a rx => compiler error_rx (rx tt)
   end.
 
-Fixpoint seq {T} (p1: Prog.prog T) (p2: Prog.prog T) : Prog.prog T :=
-  match p1 with
-  | Prog.Read a rx => Prog.Read a (fun v => seq (rx v) p2)
-  | Prog.Write a v rx => Prog.Write a v (fun v => seq (rx v) p2)
-  | Prog.Sync a rx => Prog.Sync a (fun v => seq (rx v) p2)
-  | Prog.Trim a rx => Prog.Trim a (fun v => seq (rx v) p2)
-  | Prog.Done t => p2
-  end.
-
-CoFixpoint cseq (p1: prog Sigma) (p2: prog Sigma) : prog Sigma :=
-  match p1 with
-  | StartRead a rx => StartRead a (fun v => cseq (rx v) p2)
-  | FinishRead a rx => FinishRead a (fun v => cseq (rx v) p2)
-  | Write a v rx => Write a v (fun v => cseq (rx v) p2)
-  | Sync a rx => Sync a (fun v => cseq (rx v) p2)
-  | Get v rx => Get v (fun t => cseq (rx t) p2)
-  | Assgn v val rx => Assgn v val (fun v => cseq (rx v) p2)
-  | GetTID rx => GetTID (fun tid => cseq (rx tid) p2)
-  | Yield a rx => Yield a (fun v => cseq (rx v) p2)
-  | Wakeup a rx => Wakeup a (fun v => cseq (rx v) p2)
-  | GhostUpdate up rx => GhostUpdate up (fun v => cseq (rx v) p2)
-  | Done => p2
-  end.
-
-Theorem compiler_seq : forall T error_rx (p1 p2: Prog.prog T),
-    compiler error_rx (seq p1 p2) = cseq (compiler error_rx p1) (compiler error_rx p2).
-Proof.
-  intros.
-  induction p1.
-  simpl.
-  (* not sure why an iota reduction isn't possible on cseq: even
-  though it's a cofix, it should be able to reduce when it's matching
-  on a constructor *)
-  admit.
-Abort.
-
 Notation prog_valuset := (valu * list valu)%type.
 
 Record SeqHoareSpec R :=
