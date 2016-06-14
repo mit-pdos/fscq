@@ -469,7 +469,7 @@ Section EnvSection.
       forall a b st,
         Safe a st /\
         (forall st',
-           RunsTo a st st' -> Safe b st') ->
+           Exec a st (EFinished st') -> Safe b st') ->
         Safe (Seq a b) st
   | SafeIfTrue :
       forall cond t f st,
@@ -487,7 +487,7 @@ Section EnvSection.
         is_true (snd st) cond ->
         Safe body st ->
         (forall st',
-           RunsTo body st st' -> Safe loop st') ->
+           Exec body st (EFinished st') -> Safe loop st') ->
         Safe loop st
   | SafeWhileFalse :
       forall cond body st,
@@ -510,7 +510,7 @@ Section EnvSection.
 
     Variable R : Stmt -> State -> Prop.
 
-    Hypothesis SeqCase : forall a b st, R (Seq a b) st -> R a st /\ forall st', RunsTo a st st' -> R b st'.
+    Hypothesis SeqCase : forall a b st, R (Seq a b) st -> R a st /\ forall st', Exec a st (EFinished st') -> R b st'.
 
     Hypothesis IfCase : forall cond t f st, R (If cond t f) st -> (is_true (snd st) cond /\ R t st) \/ (is_false (snd st) cond /\ R f st).
 
@@ -518,7 +518,7 @@ Section EnvSection.
       forall cond body st,
         let loop := While cond body in
         R loop st ->
-        (is_true (snd st) cond /\ R body st /\ (forall st', RunsTo body st st' -> R loop st')) \/
+        (is_true (snd st) cond /\ R body st /\ (forall st', Exec body st (EFinished st') -> R loop st')) \/
         (is_false (snd st) cond).
 
     Hypothesis AssignCase :
@@ -601,17 +601,15 @@ Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : Scope) (final_t
   forall initial_state : State,
     (snd initial_state) \u2272 initial_tstate ->
     Safe env eprog initial_state /\
-    forall out,
-      Exec env eprog initial_state out ->
-      (forall final_state,
-        out = EFinished final_state ->
-        exists r hm,
-          exec (fst initial_state) hm sprog (Finished (fst final_state) hm r) /\
-          (snd final_state) \u2272 (final_tstate r)) /\
-      (forall final_disk,
-        out = ECrashed final_disk ->
-        exists hm,
-          exec (fst initial_state) hm sprog (Crashed T final_disk hm)).
+    (forall final_state,
+      Exec env eprog initial_state (EFinished final_state) ->
+      exists r hm,
+        exec (fst initial_state) hm sprog (Finished (fst final_state) hm r) /\
+        (snd final_state) \u2272 (final_tstate r)) /\
+    (forall final_disk,
+      Exec env eprog initial_state (ECrashed final_disk) ->
+      exists hm,
+        exec (fst initial_state) hm sprog (Crashed T final_disk hm)).
 
 Notation "'EXTRACT' SP {{ A }} EP {{ B }} // EV" :=
   (ProgOk EV EP%facade SP A B)
@@ -840,6 +838,58 @@ Proof.
 
   subst. repeat inv_exec. exists empty_hashmap. econstructor. econstructor.
 Defined.
+
+Lemma Step_Seq : forall env p1 p2 p' st st'',
+  (Step env)^* (Seq p1 p2, st) (p', st'') ->
+  (exists p1', (Step env)^* (p1, st) (p1', st'') /\ p' = Seq p1' p2) \/
+  (exists st', (Step env)^* (p1, st) (Skip, st') /\ (Step env)^* (p2, st') (p', st'')).
+Proof.
+  intros.
+  prep_induction H. induction H; intros; subst.
+  + find_inversion. left. eexists. econstructor. econstructor. trivial.
+  + destruct y. invc H.
+    - destruct (IHclos_refl_trans_1n env a' p2 p' s0 st''); eauto. {
+        deex. left. eexists. intuition. econstructor; eauto.
+      } {
+        deex. right. eexists. intuition. econstructor; eauto. eauto.
+      }
+    - right. eexists. split. econstructor. eauto.
+Qed.
+
+Lemma CompileBind : forall T T' {H: FacadeWrapper Value T} {H': FacadeWrapper Value T'} env A (B : T' -> _) p f xp xf var,
+  EXTRACT p
+  {{ A }}
+    xp
+  {{ fun ret => var ~> ret; A }} // env /\
+  (forall (a : T),
+    EXTRACT f a
+    {{ var ~> a; A }}
+      xf
+    {{ B }} // env) ->
+  EXTRACT Bind p f
+  {{ A }}
+    xp; xf
+  {{ B }} // env.
+Proof.
+  unfold ProgOk.
+  intuition.
+  econstructor. intuition. apply H1. auto.
+  specialize (H1 initial_state ltac:(auto)).
+  intuition. eapply H1 in H3.
+  repeat deex.
+  eapply H2; eauto.
+
+  subst. eapply Exec_RunsTo in H3. eapply RunsTo_Step in H3. eapply Step_Seq in H3.
+  intuition; repeat deex. discriminate.
+  eapply Step_RunsTo in H4. eapply Step_RunsTo in H5.
+  eapply RunsTo_Exec in H4. eapply RunsTo_Exec in H5.
+  specialize (H1 _ ltac:(eauto)).
+  intuition. specialize (H1 _ ltac:(eauto)). repeat deex.
+  specialize (H2 _ _ ltac:(eauto)). intuition.
+  specialize (H2 _ ltac:(eauto)). repeat deex.
+  eexists. exists hm.
+Abort.
+
 
 Example micro_inc : sigT (fun p => forall d0 x,
   {{ [ SItemRet (NTSome "x") d0 (ret x) ] }}
@@ -1094,116 +1144,3 @@ Proof.
   change (SItemRet (NTSome "v") d0 (fun T rx => Read 0 rx)) with (SItemRet (NTSome "v") d0 ((fun T => @Read T 0) |> (fun x => x))).
   eapply CompileWrite; congruence.
 Qed.
-
-(*
-Lemma CompileBind : forall env (pr1 : forall T, (nat -> prog T) -> prog T) (pr2 : nat -> forall T, (nat -> prog T) -> prog T) v1 v2 p1 p2,
-  (forall d0,
-    {{ [SItemDisk (NTSome "disk") d0 pr1; SItemRet (N
-  forall d0,
-    {{ [SItemDisk (NTSome "disk") d0 pr1; SItemRet (NTSome v1) d0 pr1] }}
-      (Seq p1 p2)
-    {{ [SItemDisk (NTSome "disk") d0 (fun T rx => pr1 T (fun x => pr2 x T rx));
-      SItemRet (NTSome v2) d0 (fun T rx => pr1 T (fun x => pr2 x T rx))] }} // env.
-  Check CompileRead.
-
-Example micro_plus : sigT (fun p => forall d0 x y,
-  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "x") d0 (ret x) ; SItemRet (NTSome "y") d0 (ret y) ] }}
-    p
-  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "out") d0 (ret (x + y)) ] }} // empty _).
-Proof.
-  eexists.
-  intros.
-  instantiate (1 := ("out" <- (Var "x" + Var "y"))%facade).
-  intro. intros.
-  invc H0.
-  simpl in *.
-  maps.
-  destruct (find "disk" initial_state); [ | exfalso; solve [ intuition idtac ] ].
-  destruct (find "x" initial_state); [ | exfalso; solve [ intuition idtac ] ].
-  destruct (find "y" initial_state); [ | exfalso; solve [ intuition idtac ] ].
-  intuition idtac.
-  repeat deex.
-  simpl in *.
-  invc H3.
-  eexists. exists d0. intuition.
-  apply ret_computes_to in H2.
-  apply ret_computes_to in H1.
-  apply ret_computes_to_disk in H0.
-  subst.
-  trivial.
-Defined.
-
-Example micro_write_and_ret : sigT (fun p => forall d0 a v,
-  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "a") d0 (ret a) ; SItemRet (NTSome "v") d0 (ret v) ] }}
-    p
-  {{ [ SItemDisk (NTSome "disk") d0 (fun T rx => @Write T a v (fun _ => rx (a + v))) ;
-       SItemRet (NTSome "out") d0 (fun T rx => @Write T a v (fun _ => rx (a + v))) ] }} // disk_env).
-Proof.
-  eexists.
-  intros.
-  instantiate (1 := (Call "_" "write" ["disk"; "a"; "v"]; "out" <- Var "a" + Var "v")%facade).
-  intro. intros.
-  invc H0.
-  invc H3.
-  invc H6.
-  simpl in *.
-  maps.
-  compute in H4.
-  invc H4.
-  unfold sel in *.
-  simpl in *.
-  repeat match goal with
-  | [ H : exists (varname : _), _ |- _ ] =>
-    let newvar := fresh varname in
-    destruct H as [newvar ?]; subst
-  end.
-  do 3 (destruct output; try discriminate).
-  invc H0.
-  simpl in *.
-  subst st'0.
-  maps.
-  destruct (find "disk" initial_state); [ | exfalso; solve [ intuition idtac ] ].
-  destruct (find "a" initial_state); [ | exfalso; solve [ intuition idtac ] ].
-  destruct (find "v" initial_state); [ | exfalso; solve [ intuition idtac ] ].
-  destruct H. destruct H0. destruct H1. repeat match goal with
-  | [ H : exists (varname : _), _ |- _ ] =>
-    let newvar := fresh varname in
-    destruct H as [newvar ?]; subst
-  end.
-  repeat match goal with
-  | [ H : _ /\ _ |- _ ] => destruct H
-  end.
-  repeat match goal with
-  | [ H : computes_to _ _ _ _ |- _ ] =>
-      let H' := fresh H in
-      assert (H' := H); apply ret_computes_to in H; apply ret_computes_to_disk in H'; subst
-  end.
-  invc H5.
-  simpl in *.
-  invc H2.
-  intuition idtac.
-  do 2 eexists; intuition.
-  destruct d.
-  econstructor.
-  econstructor.
-  econstructor.
-  eauto.
-  intro.
-  invc H.
-  invc H0.
-  eauto.
-  do 2 eexists; intuition.
-  destruct d.
-  econstructor.
-  econstructor.
-  econstructor.
-  simpl.
-  instantiate (d := (upd a0 v1 (fst d), (a0, v1) :: (snd d))).
-  eauto.
-  intro.
-  invc H.
-  invc H0.
-  eauto.
-Defined.
-
-*)
