@@ -325,6 +325,13 @@ Section EnvSection.
   | EFinished (st : State)
   | ECrashed (d : rawdisk).
 
+  Inductive CrashStep : Stmt -> Prop :=
+  | CrashSeq1 : forall a b,
+      CrashStep a ->
+      CrashStep (Seq a b)
+  | CrashCall : forall x f args,
+      CrashStep (Call x f args).
+
   Inductive Exec : Stmt -> State -> Outcome -> Prop :=
   | EXStep : forall d p d' p' out,
     Step (p, d) (p', d') ->
@@ -333,7 +340,9 @@ Section EnvSection.
   | EXFail : forall d p, (~exists d' p', Step (p, d) (p', d')) ->
     (p <> Skip) ->
     Exec p d EFailed
-  | EXCrash : forall p d s, Exec p (d, s) (ECrashed d)
+  | EXCrash : forall p d s,
+    CrashStep p ->
+    Exec p (d, s) (ECrashed d)
   | EXDone : forall d,
     Exec Skip d (EFinished d).
 
@@ -442,17 +451,6 @@ Section EnvSection.
     eapply Step_RunsTo.
     prep_induction H; induction H; intros; subst; eauto with steps; try discriminate.
     find_inversion. eauto with steps.
-  Qed.
-
-  Theorem Steps_Exec : forall p st p' s' d',
-    Step^* (p, st) (p', (d', s')) ->
-    Exec p st (ECrashed d').
-  Proof.
-    intros.
-    destruct st.
-    prep_induction H; induction H; intros; subst.
-    + repeat find_inversion. eauto with steps.
-    + destruct y. destruct s0. eauto with steps.
   Qed.
 
   Theorem Exec_Steps : forall p st d',
@@ -616,7 +614,7 @@ Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : Scope) (final_t
 
 Notation "'EXTRACT' SP {{ A }} EP {{ B }} // EV" :=
   (ProgOk EV EP%facade SP A B)
-    (at level 60, format "'[v' 'EXTRACT' SP '/' '{{'  A  '}}' '/'    EP '/' '{{'  B  '}}' // EV ']'").
+    (at level 60, format "'[v' 'EXTRACT'  SP '/' '{{'  A  '}}' '/'    EP '/' '{{'  B  '}}' // EV ']'").
 
 Ltac FacadeWrapper_t :=
   abstract (repeat match goal with
@@ -691,21 +689,27 @@ Ltac find_cases var st := case_eq (find var st); [
 | let Hne := fresh "Hne" in
   intro Hne; rewrite Hne in *; exfalso; solve [ intuition idtac ] ].
 
-Example micro_noop : sigT (fun p => forall d0,
-  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }}
+Ltac inv_exec :=
+  match goal with
+  | [ H : Step _ _ _ |- _ ] => invc H
+  | [ H : Exec _ _ _ _ |- _ ] => invc H
+  | [ H : CrashStep _ |- _ ] => invc H
+  end.
+
+Example micro_noop : sigT (fun p =>
+  EXTRACT Ret tt
+  {{ StringMap.empty _ }}
     p
-  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }}
-  {{ [ SItemDiskCrash (NTSome "disk") d0 (ret tt) ] }} // empty _).
+  {{ fun _ => StringMap.empty _ }} // StringMap.empty _).
 Proof.
   eexists.
-  intros.
+  intro.
   instantiate (1 := Skip).
-  intro. intros.
-  repeat split.
+  intros.
+  repeat split; intros; subst.
   econstructor.
-  invc H0. simpl in H. find_cases "disk" crash_state. intuition. repeat deex. invert_ret_computes_to.
-  eexists. intuition eauto using computes_to_crash_refl.
-  invc H1. invc H0. simpl in *. intuition.
+  repeat inv_exec. exists tt. exists empty_hashmap. intuition. econstructor.
+  repeat inv_exec.
 Defined.
 
 Theorem extract_finish_equiv : forall A {H: FacadeWrapper Value A} scope cscope pr p,
@@ -751,11 +755,6 @@ Proof.
   repeat deex. eauto.
 Qed.
 
-Ltac invert_steps :=
-  match goal with
-  | [ H : Step _ _ _ |- _ ] => invc H
-  | [ H : (Step _)^* _ _ |- _ ] => invc H
-  end.
 
 Ltac invert_runsto :=
   match goal with
