@@ -576,9 +576,10 @@ Class FacadeWrapper (WrappingType WrappedType: Type) :=
 Inductive ScopeItem :=
 | SItem A {H: FacadeWrapper Value A} (v : A).
 
-(*
-Notation "` k ->> v" := (SItemRet (NTSome k) v) (at level 50).
-*)
+Notation "\u2205" := (StringMap.empty _) : map_scope.
+Notation "k ->> v ;  m" := (StringMap.add k v m) (at level 21, right associativity) : map_scope.
+Notation "k ~> v ;  m" := (StringMap.add k (SItem v) m) (at level 21, right associativity) : map_scope.
+Delimit Scope map_scope with map.
 
 Definition Scope := StringMap.t ScopeItem.
 
@@ -680,7 +681,10 @@ Definition write : AxiomaticSpec.
   |}.
 Defined.
 
-Definition disk_env : Env := StringMap.add "write" write (StringMap.add "read" read (StringMap.empty _)).
+
+Local Open Scope map_scope.
+
+Definition disk_env : Env := "write" ->> write ; "read" ->> read ; \u2205.
 
 Ltac find_cases var st := case_eq (find var st); [
   let v := fresh "v" in
@@ -698,9 +702,9 @@ Ltac inv_exec :=
 
 Example micro_noop : sigT (fun p =>
   EXTRACT Ret tt
-  {{ StringMap.empty _ }}
+  {{ \u2205 }}
     p
-  {{ fun _ => StringMap.empty _ }} // StringMap.empty _).
+  {{ fun _ => \u2205 }} // \u2205).
 Proof.
   eexists.
   intro.
@@ -712,6 +716,7 @@ Proof.
   repeat inv_exec.
 Defined.
 
+(*
 Theorem extract_finish_equiv : forall A {H: FacadeWrapper Value A} scope cscope pr p,
   (forall d0,
     {{ SItemDisk (NTSome "disk") d0 (ret tt) :: scope }}
@@ -754,20 +759,17 @@ Proof.
   intuition. find_cases "disk" st'.
   repeat deex. eauto.
 Qed.
+*)
 
-
-Ltac invert_runsto :=
-  match goal with
-  | [ H : RunsTo _ _ _ _ |- _ ] => invc H
-  end.
-Example micro_write : sigT (fun p => forall d0 a v,
-  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ; SItemRet (NTSome "a") d0 (ret a) ; SItemRet (NTSome "v") d0 (ret v) ] }}
+Example micro_write : sigT (fun p => forall a v,
+  EXTRACT Write a v
+  {{ "a" ~> a; "v" ~> v; \u2205 }}
     p
-  {{ [ SItemDisk (NTSome "disk") d0 (fun T => @Write T a v) ] }} {{ [ SItemDiskCrash (NTSome "disk") d0 (fun T => @Write T a v) ] }} // disk_env).
+  {{ fun _ => \u2205 }} // disk_env).
 Proof.
   eexists.
   intros.
-  instantiate (1 := (Call "_" "write" ["disk"; "a"; "v"])%facade).
+  instantiate (1 := (Call "_" "write" ["a"; "v"])%facade).
   intro. intros.
   simpl in *.
   maps.
