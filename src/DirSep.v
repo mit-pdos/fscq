@@ -82,6 +82,16 @@ Qed.
 
 Require Import FunctionalExtensionality.
 
+Lemma mem_union_sel_none : forall AT AEQ V (m1 m2 : @mem AT AEQ V) a,
+  m1 a = None ->
+  m2 a = None ->
+  mem_union m1 m2 a = None.
+Proof.
+  intros.
+  unfold mem_union.
+  destruct (m1 a); eauto.
+Qed.
+
 Lemma ptsto_insert_bwd_ne: forall AT AEQ V (F : @pred AT AEQ V) a v a' v' m,
   a <> a' ->
   m a' = None ->
@@ -98,21 +108,14 @@ Proof.
     destruct (AEQ x a'); subst.
     rewrite H0 in *.
 
-Lemma mem_union_sel_none : forall AT AEQ V (m1 m2 : @mem AT AEQ V) a,
-  m1 a = None ->
-  m2 a = None ->
-  mem_union m1 m2 a = None.
-Proof.
-Admitted.
 
     rewrite mem_union_sel_none; auto.
     apply mem_except_is_none.
     unfold ptsto in H5.
     destruct H5.
     apply H5; eauto.
-
-    admit.
     rewrite H2.
+    .
     Search mem_union mem_except.
   
   
