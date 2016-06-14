@@ -1215,7 +1215,7 @@ Ltac prestep :=
    || (eapply pimpl_ok3_cont; [ solve [ eauto with prog ] | | ])
    || (eapply pimpl_ok2; [
         match goal with
-        | [ |- {{ _ }} Bind ?a _ ] => is_var a
+        | [ |- {{ _ }} ?rx _ ] => is_var rx
         end; solve [ eapply nop_ok ] | ]));
   intros; try subst;
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)

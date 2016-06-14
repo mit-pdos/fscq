@@ -2148,6 +2148,8 @@ Module BUFCACHE.
     apply arrayN_unify.
     apply vssync_range_progress; omega.
 
+    step.
+
     Unshelve. all: try exact tt.
   Qed.
 
