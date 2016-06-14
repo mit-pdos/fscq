@@ -627,7 +627,7 @@ Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : Scope) (final_t
 
 Notation "'EXTRACT' SP {{ A }} EP {{ B }} // EV" :=
   (ProgOk EV EP%facade SP A B)
-    (at level 60, format "'[v' 'EXTRACT'  SP '/' '{{'  A  '}}' '/'    EP '/' '{{'  B  '}}' // EV ']'").
+    (at level 60, format "'[v' 'EXTRACT'  SP '/' '{{'  A  '}}' '/'    EP '/' '{{'  B  '}}'  //  EV ']'").
 
 Ltac FacadeWrapper_t :=
   abstract (repeat match goal with
@@ -772,20 +772,56 @@ Qed.
 *)
 
 Lemma Forall_elements_add : forall V P k (v : V) m,
-  Forall P (StringMap.elements (StringMap.add k v m)) ->
+  Forall P (StringMap.elements (StringMap.add k v m)) <->
   P (k, v) /\ Forall P (StringMap.elements (StringMap.remove k m)).
 Admitted.
 
-Lemma Forall_elements_equiv: forall V P (m1 m2 : StringMap.t V),
+(* TODO: Setoid rewriting? *)
+Lemma Forall_elements_equal: forall V P (m1 m2 : StringMap.t V),
   Forall P (StringMap.elements m1) ->
-  StringMap.Equal m1 m2 ->
+  StringMap.Equal m2 m1 ->
   Forall P (StringMap.elements m2).
 Admitted.
+Hint Resolve Forall_elements_equal. (* in hintdb? *)
 
 Lemma add_remove_comm : forall V k1 k2 (v : V) m,
   k1 <> k2 ->
+  StringMap.Equal (StringMap.add k2 v (StringMap.remove k1 m)) (StringMap.remove k1 (StringMap.add k2 v m)).
+Admitted.
+
+Lemma add_remove_comm' : forall V k1 k2 (v : V) m,
+  k1 <> k2 ->
   StringMap.Equal (StringMap.remove k1 (StringMap.add k2 v m)) (StringMap.add k2 v (StringMap.remove k1 m)).
 Admitted.
+
+Lemma add_remove_same : forall V k (v : V) m,
+  StringMap.Equal (StringMap.remove k (StringMap.add k v m)) (StringMap.remove k m).
+Admitted.
+
+Lemma remove_remove_comm : forall V k1 k2 (m : StringMap.t V),
+  k1 <> k2 ->
+  StringMap.Equal (StringMap.remove k2 (StringMap.remove k1 m)) (StringMap.remove k1 (StringMap.remove k2 m)).
+Admitted.
+
+Lemma Forall_elements_remove_weaken : forall V P k (m : StringMap.t V),
+  Forall P (StringMap.elements m) ->
+  Forall P (StringMap.elements (StringMap.remove k m)).
+Proof.
+Admitted.
+
+Lemma Forall_elements_forall_In : forall V (P : _ -> Prop) m,
+  (forall k (v : V), StringMap.find k m = Some v -> P (k, v)) <->
+  Forall P (StringMap.elements m).
+Proof.
+Admitted.
+
+Lemma remove_empty : forall V k,
+  StringMap.Equal (StringMap.remove k (StringMap.empty V)) (StringMap.empty V).
+Proof.
+  intros. intro.
+  rewrite StringMapFacts.remove_o. destruct (StringMapFacts.eq_dec k y); eauto.
+Qed.
+Hint Resolve remove_empty.
 
 Lemma Forall_elements_empty : forall V P,
   Forall P (StringMap.elements (StringMap.empty V)).
@@ -793,6 +829,7 @@ Proof.
   compute.
   auto.
 Qed.
+Hint Resolve Forall_elements_empty.
 
 Lemma possible_sync_refl : forall AT AEQ (m: @mem AT AEQ _), possible_sync m m.
 Proof.
@@ -811,8 +848,11 @@ Ltac maps := unfold SameValues in *; repeat match goal with
       let H2 := fresh H in
       apply Forall_elements_add in H;
       destruct H as [H1 H2];
-      try (eapply Forall_elements_equiv in H2; [ | apply add_remove_comm; solve [ congruence ] ])
-  | _ => progress rewrite ?StringMapFacts.remove_neq_o, ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o in * by congruence
+      try (eapply Forall_elements_equal in H2; [ | apply add_remove_comm; solve [ congruence ] ])
+  | [ |- Forall _ (StringMap.elements _) ] =>
+      apply Forall_elements_add; split
+  | _ => progress rewrite ?StringMapFacts.remove_neq_o, ?StringMapFacts.remove_eq_o,
+                          ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o in * by congruence
   end.
 
 Ltac find_all_cases :=
@@ -847,7 +887,7 @@ Proof.
   repeat eexists; intuition. econstructor.
 
   apply possible_sync_refl.
-  econstructor; eauto. apply Forall_elements_empty.
+  econstructor; eauto.
 
   subst. repeat inv_exec. eexists. econstructor. econstructor.
 Defined.
@@ -928,11 +968,11 @@ Proof.
     eauto.
 Qed.
 
-Example micro_inc : sigT (fun p => forall d0 x,
-  {{ [ SItemRet (NTSome "x") d0 (ret x) ] }}
+Example micro_inc : sigT (fun p => forall x,
+  EXTRACT Ret (1 + x)
+  {{ "x" ~> x; \u2205 }}
     p
-  {{ [ SItemRet (NTSome "x") d0 (ret (1 + x)) ] }}
-  {{ [] }} // empty _).
+  {{ fun ret => "x" ~> ret; \u2205 }} // \u2205).
 Proof.
   eexists.
   intros.
@@ -940,133 +980,64 @@ Proof.
   intro. intros.
   intuition. admit.
   simpl. auto.
-  invc H0.
+  repeat inv_exec.
   maps.
   simpl in *.
-  find_cases "x" initial_state.
-  intuition.
-  simpl in *.
-  repeat deex.
-  invc H3.
-  invert_ret_computes_to.
-  maps.
-  eauto.
+  find_all_cases.
+  find_inversion. repeat eexists; eauto. maps; eauto.
+
+  repeat inv_exec.
 Admitted.
 
-(*
-Lemma CompileCompose :
-  forall env var (f g : nat -> nat) p1 p2,
-    (forall d0 x,
-      {{ [ SItemRet (NTSome var) d0 (ret x) ] }}
-        p1
-      {{ [ SItemRet (NTSome var) d0 (ret (f x)) ] }} // env) ->
-    (forall d0 y,
-      {{ [ SItemRet (NTSome var) d0 (ret y) ] }}
-        p2
-      {{ [ SItemRet (NTSome var) d0 (ret (g y)) ] }} // env) ->
-    forall d0 x,
-      {{ [ SItemRet (NTSome var) d0 (ret x) ] }}
-        (Seq p1 p2)
-      {{ [ SItemRet (NTSome var) d0 (ret (g (f x))) ] }} // env.
-Proof.
-  intros.
-  unfold ProgOk in *.
-  intros.
-  specialize (H d0 x initial_state H1).
-  intuition.
-  + econstructor. intuition. eapply H0. eauto.
-  + invc H. eapply H0; eauto.
-Qed.
-
-Example micro_inc_two : sigT (fun p => forall d0 x,
-  {{ [ SItemRet (NTSome "x") d0 (ret x) ] }}
-    p
-  {{ [ SItemRet (NTSome "x") d0 (ret (2 + x)) ] }}
-  {{ [] }} // empty _).
-Proof.
-  eexists.
-  intros.
-  set (f := fun x => 1 + x).
-  change (2 + x) with (f (f x)).
-  eapply CompileCompose; eapply (projT2 micro_inc).
-Qed.
-*)
-
-
-Lemma CompileRead : forall A avar vvar pr (f : A -> nat) d0,
-  avar <> "disk" ->
-  vvar <> "disk" ->
-  {{ [ SItemDisk (NTSome "disk") d0 pr; SItemRet (NTSome avar) d0 (pr |> f) ] }}
-    Call vvar "read" ["disk"; avar]
-  {{ [ SItemDisk (NTSome "disk") d0 (fun T rx => pr T (fun a => @Read T (f a) rx));
-       SItemRet (NTSome vvar) d0 (fun T rx => pr T (fun a => @Read T (f a) rx)) ] }}
-  {{ [ SItemDiskCrash (NTSome "disk") d0 (fun T rx => pr T (fun a => @Read T (f a) rx)) ] }} // disk_env.
+Lemma CompileRead : forall F avar vvar a,
+  EXTRACT Read a
+  {{ avar ~> a; F }}
+    Call vvar "read" [avar]
+  {{ fun ret => vvar ~> ret; avar ~> a; F }} // disk_env.
 Proof.
   unfold ProgOk.
   intros.
   intuition.
-  simpl in *.
   maps.
-  intuition.
   find_all_cases.
   econstructor.
   unfold disk_env. maps. trivial.
-  unfold sel. simpl. rewrite He. rewrite He0. trivial.
-  intuition. repeat deex.
+  unfold sel. simpl. rewrite He. trivial.
   simpl. eauto.
 
-  invert_steps. simpl in *. intuition. maps.
-  find_all_cases. repeat deex. eexists; intuition.
-  unfold computes_to, computes_to_crash in *.
-  intros.
-  (* Welp! This is unprovable. *)
+  repeat inv_exec. simpl in *. maps.
+  find_all_cases. unfold disk_env in *. maps. invc H8. simpl in *.
+  repeat deex. destruct output; try discriminate. simpl in *.
+  unfold sel in *. rewrite He in*. repeat find_inversion.
+  repeat eexists. econstructor. eapply possible_sync_refl. eauto.
+  subst_definitions. maps. trivial.
+  (* TODO: automate the hell out of this! *)
+  destruct (StringMapFacts.eq_dec vvar avar). {
+    unfold StringKey.eq in e; subst.
+    eapply Forall_elements_equal; [ | eapply add_remove_same ].
+    eapply Forall_elements_forall_In. intros.
+    eapply Forall_elements_forall_In in H1; eauto. destruct v0.
+    destruct (StringMapFacts.eq_dec k avar).
+    + unfold StringKey.eq in e; subst. maps. discriminate.
+    + maps. eauto.
+  } {
+    unfold StringKey.eq in n. eapply Forall_elements_equal; [ | eapply add_remove_comm'; congruence ]. maps.
+    + rewrite He. trivial.
+    + eapply Forall_elements_equal; [ | eapply remove_remove_comm; congruence ].
+      eapply Forall_elements_forall_In. intros.
+      destruct (StringMapFacts.eq_dec k avar). {
+        unfold StringKey.eq in e; subst. maps. discriminate.
+      }
+      destruct (StringMapFacts.eq_dec k vvar). {
+        unfold StringKey.eq in e; subst. maps. discriminate.
+      }
+      maps.
+      eapply Forall_elements_forall_In in H1; eauto.
+      maps; eauto.
+  }
 
-  invert_runsto.
-  simpl in *.
-  unfold sel in *.
-  maps.
-  find_cases "disk" initial_state.
-  find_cases avar initial_state.
-  find_inversion.
-  do 2 (destruct output; try discriminate).
-  simpl in *.
-  destruct H1 as [? [? _]].
-  subst st'.
-  unfold disk_env in *.
-  maps.
-  repeat find_inversion.
-  repeat deex.
-  unfold computes_to in *.
-  repeat deex.
-  simpl in *.
-  repeat deex.
-  repeat find_inversion.
-  maps.
-  repeat eexists; intros. eauto.
-  simpl in *.
-  repeat deex.
-  repeat find_inversion.
-  repeat eexists; intros. eapply H2.
-  econstructor. econstructor. eapply H1.
+  repeat inv_exec.
   eauto.
-  eapply H2 in H1.
-  invc H1.
-  invc H5.
-  eauto.
-  simpl in *.
-  assert (Hc := H2).
-  eapply computes_to_after in H2.
-  pose proof (computes_to_det_ret H3 H2); subst.
-  pose proof (computes_to_det_disk H3 H2); subst.
-  unfold computes_to in *.
-  repeat deex.
-  repeat find_inversion.
-  repeat eexists; intro.
-  eapply Hc.
-  econstructor. econstructor.
-  eauto.
-  eapply Hc in H1.
-  invc H1. invc H5. eauto.
 Qed.
 
 Lemma CompileWrite : forall A avar vvar (af vf : A -> nat) pr d0,
