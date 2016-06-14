@@ -12,11 +12,11 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
 	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \
 	      SuperBlock AsyncFS AsyncFSRecover TreeSeq DirUtil ExtrHaskellPrelude \
-		  Hlist HlistMem Star RelationCombinators Variables MemClass \
-		  Locking Automation ForwardChaining \
-		  CoopConcur CoopConcurAuto Protocols \
-		  DiskReaders MemCache WriteBuffer WriteBufferSet ConcurrentCache \
-		  ConcurrentBridge
+	      Hlist HlistMem Star RelationCombinators Variables MemClass \
+	      Locking Automation ForwardChaining \
+	      CoopConcur CoopConcurAuto Protocols \
+	      DiskReaders MemCache WriteBuffer WriteBufferSet ConcurrentCache \
+	      ConcurrentBridge
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
