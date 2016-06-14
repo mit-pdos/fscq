@@ -3,7 +3,7 @@ Require Import PeanoNat String List FMapAVL.
 Require Import Relation_Operators Operators_Properties.
 Require Import VerdiTactics.
 Require Import StringMap.
-Require Import Mem AsyncDisk PredCrash.
+Require Import Mem AsyncDisk PredCrash Prog.
 
 Import ListNotations.
 
@@ -31,85 +31,6 @@ Ltac subst_definitions :=
   repeat match goal with
   | [ H := _ |- _ ] => subst H
   end.
-
-Section Prog.
-
-  Inductive prog : Type -> Type :=
-    | Ret T (v: T) : prog T
-    | Read (a: addr) : prog valu
-    | Write (a: addr) (v: valu) : prog unit
-    | Sync : prog unit
-    | Bind T T' (p1: prog T) (p2: T -> prog T') : prog T'.
-
-  Arguments Ret {T} v.
-
-  Inductive outcome (T : Type) :=
-    | Failed
-    | Finished (m: rawdisk) (hm: hashmap) (v: T)
-    | Crashed (m: rawdisk) (hm: hashmap).
-
-  Inductive step : forall T,
-      rawdisk -> hashmap -> prog T ->
-      rawdisk -> hashmap -> T -> Prop :=
-  | StepRead : forall m a v x hm,
-      m a = Some (v, x) ->
-      step m hm (Read a) m hm v
-  | StepWrite : forall m a v v0 x hm,
-      m a = Some (v0, x) ->
-      step m hm (Write a v) (upd m a (v, v0 :: x)) hm tt
-  | StepSync : forall m hm,
-      step m hm (Sync) (sync_mem m) hm tt.
-
-  Inductive fail_step : forall T,
-      rawdisk -> prog T -> Prop :=
-  | FailRead : forall m a,
-      m a = None ->
-      fail_step m (Read a)
-  | FailWrite : forall m a v,
-      m a = None ->
-      fail_step m (Write a v).
-
-  Inductive crash_step : forall T, prog T -> Prop :=
-  | CrashRead : forall a,
-      crash_step (Read a)
-  | CrashWrite : forall a v,
-      crash_step (Write a v).
-
-  Inductive exec : forall T, rawdisk -> hashmap -> prog T -> outcome T -> Prop :=
-  | XRet : forall T m hm (v: T),
-      exec m hm (Ret v) (Finished m hm v)
-  | XStep : forall T m hm (p: prog T) m' m'' hm' v,
-      possible_sync m m' ->
-      step m' hm p m'' hm' v ->
-      exec m hm p (Finished m'' hm' v)
-  | XBindFinish : forall m hm T (p1: prog T) m' hm' (v: T)
-                    T' (p2: T -> prog T') out,
-      exec m hm p1 (Finished m' hm' v) ->
-      exec m' hm' (p2 v) out ->
-      exec m hm (Bind p1 p2) out
-  | XBindFail : forall m hm T (p1: prog T)
-                  T' (p2: T -> prog T'),
-      exec m hm p1 (Failed T) ->
-      (* note p2 need not execute at all if p1 fails, a form of lazy
-      evaluation *)
-      exec m hm (Bind p1 p2) (Failed T')
-  | XBindCrash : forall m hm T (p1: prog T) m' hm'
-                   T' (p2: T -> prog T'),
-      exec m hm p1 (Crashed T m' hm') ->
-      exec m hm (Bind p1 p2) (Crashed T' m' hm')
-  | XFail : forall m hm T (p: prog T),
-      fail_step m p ->
-      exec m hm p (Failed T)
-  | XCrash : forall m hm T (p: prog T),
-      crash_step p ->
-      exec m hm p (Crashed T m hm).
-
-End Prog.
-
-
-Notation "p1 ;; p2" := (Bind p1 (fun _: unit => p2)) (at level 60, right associativity).
-Notation "x <- p1 ; p2" := (Bind p1 (fun x => p2)) (at level 60, right associativity,
-                                                 format "'[v' x  <-  p1 ; '/' p2 ']'").
 
 Hint Constructors step fail_step crash_step exec.
 
