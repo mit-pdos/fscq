@@ -105,6 +105,12 @@ Section Prog.
       exec m hm p (Crashed T m hm).
 
 End Prog.
+
+
+Notation "p1 ;; p2" := (Bind p1 (fun _: unit => p2)) (at level 60, right associativity).
+Notation "x <- p1 ; p2" := (Bind p1 (fun x => p2)) (at level 60, right associativity,
+                                                 format "'[v' x  <-  p1 ; '/' p2 ']'").
+
 Hint Constructors step fail_step crash_step exec.
 
 Definition label := string.
@@ -576,7 +582,7 @@ Section EnvSection.
 End EnvSection.
 
 Notation "A ; B" := (Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : facade_scope.
-Notation "x <- y" := (Assign x y) (at level 90) : facade_scope.
+Notation "x <~ y" := (Assign x y) (at level 90) : facade_scope.
 Notation "'__'" := (Skip) : facade_scope.
 Notation "'While' A B" := (While A B) (at level 200, A at level 0, B at level 1000, format "'[v    ' 'While'  A '/' B ']'") : facade_scope.
 Notation "'If' a 'Then' b 'Else' c 'EndIf'" := (If a b c) (at level 200, a at level 1000, b at level 1000, c at level 1000) : facade_scope.
@@ -983,7 +989,7 @@ Example micro_inc : sigT (fun p => forall x,
 Proof.
   eexists.
   intros.
-  instantiate (1 := ("x" <- Const 1 + Var "x")%facade).
+  instantiate (1 := ("x" <~ Const 1 + Var "x")%facade).
   intro. intros.
   intuition. admit.
   simpl. auto.
@@ -1093,59 +1099,19 @@ Proof.
   eauto.
 Qed.
 
-Definition inc_disk_prog T rx : prog T := Read 0 (fun x => Write 0 x rx).
+Definition swap_prog :=
+  a <- Read 0;
+  b <- Read 1;
+  Write 0 b;;
+  Write 1 a;;
+  Ret tt.
 
-Example micro_inc_disk : sigT (fun p => forall d0,
-  {{ [ SItemDisk (NTSome "disk") d0 (ret tt) ] }}
-    p
-  {{ [ SItemDisk (NTSome "disk") d0 inc_disk_prog ] }} // disk_env).
+Example micro_swap : sigT (fun p =>
+  EXTRACT swap_prog {{ \u2205 }} p {{ fun _ => \u2205 }} // disk_env).
 Proof.
-  unfold inc_disk_prog.
-  eexists; intro.
-  eapply CompileSeq.
-  instantiate (Goal := ("a" <- Const 0; _)%facade).
-  eapply CompileSeq.
-  instantiate (tenv1'0 := [SItemDisk (NTSome "disk") d0 (ret tt); SItemRet (NTSome "a") d0 (ret 0)]).
-  {
-  intro. intros.
-  simpl in *.
-  find_cases "disk" initial_state.
-  intuition; repeat deex.
-  econstructor. simpl. trivial. trivial.
-  invert_runsto.
-  simpl in *. find_inversion.
-  maps. rewrite He.
-  invert_ret_computes_to.
-  do 2 eexists. intuition.
-  invert_runsto.
-  simpl in *. find_inversion.
-  maps.
-  do 2 eexists. intuition.
-  }
-  change (ret 0) with (ret tt |> (fun x => 0)).
-  eapply CompileRead. congruence. instantiate (1 := "v"). congruence.
-  unfold inc_disk_prog. unfold ret.
-  instantiate (Goal1 := ("a" <- Const 0; _)%facade).
-  eapply CompileSeq.
-  instantiate (tenv1' := [SItemDisk (NTSome "disk") d0 (fun T rx => Read 0 rx);
-                          SItemRet (NTSome "a") d0 (fun T rx => Read 0 (fun _ => rx 0));
-                          SItemRet (NTSome "v") d0 (fun T rx => Read 0 rx)]).
-  {
-  intro. intros.
-  simpl in *. maps.
-  find_cases "disk" initial_state.
-  find_cases "v" initial_state.
-  destruct H as [[? [? [? ?]]] [[? [? [? ?]]] _]]; subst.
-  split.
-  econstructor.
-  simpl. trivial. trivial.
-  intros. invert_runsto. maps. maps. rewrite He. rewrite He0.
-  pose proof (computes_to_det_disk H H1); subst.
-  pose proof (computes_to_det_ret H H1); subst.
-  intuition; do 2 eexists; intuition eauto.
-  eapply computes_to_after in H. eapply H. invc H4. trivial.
-  }
-  change (fun T rx => Read 0 (fun _ : valu => rx 0)) with ((fun T => @Read T 0) |> (fun _ => 0)).
-  change (SItemRet (NTSome "v") d0 (fun T rx => Read 0 rx)) with (SItemRet (NTSome "v") d0 ((fun T => @Read T 0) |> (fun x => x))).
-  eapply CompileWrite; congruence.
-Qed.
+  unfold swap_prog.
+  eexists.
+  eapply CompileBind.
+  eauto with typeclass_instances.
+  intuition.
+Abort.
