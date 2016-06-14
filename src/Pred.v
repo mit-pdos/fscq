@@ -2320,4 +2320,104 @@ Proof.
     rewrite mem_except_none in H; auto.
 Qed.
 
+Section MemDomains.
+
+Variable (AT:Type).
+Variable (AEQ: EqDec AT).
+Variable (V:Type).
+
+Implicit Types (m: @mem AT AEQ V).
+
+(* m <= m' *)
+Definition subset m m' :=
+  forall a v, m a = Some v -> exists v', m' a = Some v'.
+
+Definition same_domain m m' :=
+  subset m m' /\
+  subset m' m.
+
+Theorem same_domain_refl : forall m,
+  same_domain m m.
+Proof.
+  firstorder.
+Qed.
+
+Theorem same_domain_sym : forall m m',
+  same_domain m m' ->
+  same_domain m' m.
+Proof.
+  firstorder.
+Qed.
+
+Theorem same_domain_trans : forall m m' m'',
+  same_domain m m' ->
+  same_domain m' m'' ->
+  same_domain m m''.
+Proof.
+  unfold same_domain, subset.
+  intuition eauto;
+  match goal with
+  | [ H: context[forall _, ?m _ = Some _ -> _], H': ?m _ = Some _ |- _] =>
+    apply H in H'
+  end; deex; eauto.
+Qed.
+
+Theorem same_domain_upd : forall m a v v0,
+  m a = Some v0 ->
+  same_domain m (upd m a v).
+Proof.
+  unfold same_domain, subset, upd.
+  unfold eq_rect_r.
+  firstorder.
+  destruct matches; subst; eauto;
+    rewrite <- eq_rect_eq in *; eauto.
+  destruct matches in *; eauto.
+Qed.
+
+Lemma subset_inverse : forall m m' a,
+    m a = None ->
+    subset m' m ->
+    m' a = None.
+Proof.
+  unfold subset.
+  intros.
+  case_eq (m' a); intros; eauto.
+  specialize (H0 _ _ H1).
+  deex; congruence.
+Qed.
+
+Lemma same_domain_none : forall m m' a,
+    m a = None ->
+    same_domain m m' ->
+    m' a = None.
+Proof.
+  unfold same_domain.
+  intuition.
+  eapply subset_inverse; eassumption.
+Qed.
+
+Lemma same_domain_remove_upd : forall m m' a v v',
+    m a = Some v ->
+    same_domain (upd m a v') m' ->
+    same_domain m m'.
+Proof.
+  unfold same_domain, subset.
+  intuition; case_eq (AEQ a a0); intros; subst.
+  eapply H1; autorewrite with upd; eauto.
+  eapply H1; autorewrite with upd; eauto.
+
+  edestruct H2; eauto; autorewrite with upd in *; eauto.
+  edestruct H2; eauto; autorewrite with upd in *; eauto.
+Qed.
+
+End MemDomains.
+
+Instance same_domain_equiv AT AEQ V : Equivalence (@same_domain AT AEQ V).
+Proof.
+  constructor; hnf; intros;
+    eauto using same_domain_refl,
+    same_domain_sym,
+    same_domain_trans.
+Qed.
+
 Global Opaque pred.
