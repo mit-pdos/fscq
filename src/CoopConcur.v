@@ -1,7 +1,7 @@
 Require Export MemClass.
 Require Export Pred.
 Require Export Word.
-Require Export SepAuto.
+Require Export SepAuto Automation.
 Require Export Hlist.
 Require Export Variables.
 Require Export AsyncDisk.
@@ -87,245 +87,156 @@ End LogicDefinition.
 Section CoopConcur.
   Set Default Proof Using "Type".
 
-  Variable Sigma:State.
+  Context {Sigma:State}.
   Variable delta:Protocol Sigma.
 
-  CoInductive prog :=
-  | StartRead (a: addr) (rx: unit -> prog)
-  | FinishRead (a: addr) (rx: valu -> prog)
-  | Write (a: addr) (v: valu) (rx: unit -> prog)
-  | Sync (a: addr) (rx: unit -> prog)
-  | Get t (v: var (mem_types Sigma) t) (rx: t -> prog)
-  | Assgn t (v: var (mem_types Sigma) t) (val:t) (rx: unit -> prog)
-  | GetTID (rx: TID -> prog)
-  | Yield (wchan: addr) (rx: unit -> prog)
-  | Wakeup (wchan: addr) (rx: unit -> prog)
-  | GhostUpdate (up: abstraction Sigma -> abstraction Sigma) (rx: unit -> prog)
-  | Done.
+  CoInductive prog : Type -> Type :=
+  | StartRead (a: addr) : prog unit
+  | FinishRead (a: addr) : prog valu
+  | Write (a: addr) (v: valu) : prog unit
+  | Sync (a: addr) : prog unit
+  | Get T (v: var (mem_types Sigma) T) : prog T
+  | Assgn T (v: var (mem_types Sigma) T) (val:T) : prog unit
+  | GetTID : prog TID
+  | Yield (wchan: addr) : prog unit
+  | Wakeup (wchan: addr) : prog unit
+  | GhostUpdate (up: abstraction Sigma -> abstraction Sigma) : prog unit
+  | Ret T (v:T) : prog T
+  | Bind T T' (p: prog T) (p': T -> prog T') : prog T'.
+
+  Arguments Ret {T} v.
 
   Ltac inv_prog :=
     match goal with
-    | [ H: @eq prog _ _ |- _ ] =>
+    | [ H: @eq (prog _) _ _ |- _ ] =>
       inversion H
     end.
 
   Implicit Type d : DISK.
   Implicit Type m : memory Sigma.
   Implicit Type s : abstraction Sigma.
-  Implicit Type p : prog.
 
   Definition state := (DISK * memory Sigma * abstraction Sigma * abstraction Sigma)%type.
 
-  Reserved Notation "tid ':-' p '/' st '==>' p' '/' st'"
-           (at level 40, p at next level, p' at next level).
-
-  Inductive step (tid:TID) : forall p st p' st', Prop :=
-  | StepStartRead : forall d m s0 s v
-                      a rx,
+  Inductive step {tid:TID} : forall T,
+      prog T -> state ->
+      state -> T -> Prop :=
+  | StepStartRead : forall d m s_i s,
+        forall a v,
       d a = Some (v, None) ->
       let d' := upd d a (v, Some tid) in
-      tid :- StartRead a rx / (d, m, s0, s) ==>
-        rx tt / (d', m, s0, s)
-  | StepFinishRead : forall d m s0 s a rx v,
-      d a = Some (v, Some tid) ->
-      let d' := upd d a (v, None) in
-      tid :- FinishRead a rx / (d, m, s0, s) ==>
-          rx v / (d', m, s0, s)
-  | StepWrite : forall d m s0 s a rx v0 v',
-      d a = Some (v0, None) ->
-      let d' := upd d a (v', None) in
-      tid :- Write a v' rx / (d, m, s0, s) ==>
-          rx tt / (d', m, s0, s)
-  | StepYield : forall d m s0 s s' m' d' wchan rx,
+      step (StartRead a)
+           (d, m, s_i, s) (d', m, s_i, s) tt
+  | StepFinishRead : forall d m s_i s,
+      forall a v,
+        d a = Some (v, Some tid) ->
+        let d' := upd d a (v, None) in
+        step (FinishRead a)
+             (d, m, s_i, s) (d', m, s_i, s) v
+  | StepWrite : forall d m s_i s,
+      forall a v v0,
+        d a = Some (v0, None) ->
+        let d' := upd d a (v, None) in
+        step (Write a v)
+             (d, m, s_i, s) (d', m, s_i, s) tt
+  | StepYield : forall d m s_i s,
+      forall wchan d' m' s',
       invariant delta d m s ->
       invariant delta d' m' s' ->
-      guar delta tid s0 s ->
+      guar delta tid s_i s ->
       rely delta tid s s' ->
-      tid :- Yield wchan rx / (d, m, s0, s) ==>
-          rx tt / (d', m', s', s')
-  | StepWakeup : forall d m s0 s wchan rx,
-      tid :- Wakeup wchan rx / (d, m, s0, s) ==>
-          rx tt / (d, m, s0, s)
-  | StepGhostUpdate : forall d m s0 s up rx,
-      let s' := up s in
-      tid :- GhostUpdate up rx / (d, m, s0, s) ==>
-          rx tt / (d, m, s0, s')
-  | StepGetTID : forall st rx,
-      tid :- GetTID rx / st ==> rx tid / st
-  | StepGet : forall d m s s0 t (v: var (mem_types Sigma) t) rx,
-      tid :- Get v rx / (d, m, s0, s) ==> rx (get v m) / (d, m, s0, s)
-  | StepAssgn : forall d m s s0 t (v: var (mem_types Sigma) t) val rx,
-      let m' := set v val m in
-      tid :- Assgn v val rx / (d, m, s0, s) ==> rx tt / (d, m', s0, s)
-  where "tid ':-' p '/' st '==>' p' '/' st'" := (step tid p st p' st').
+      step (Yield wchan)
+           (d, m, s_i, s) (d', m', s', s') tt
+  | StepWakeup : forall d m s_i s,
+      forall wchan,
+        step (Wakeup wchan)
+             (d, m, s_i, s) (d, m, s_i, s) tt
+  | StepGhostUpdate : forall d m s_i s,
+      forall up,
+        step (GhostUpdate up)
+             (d, m, s_i, s) (d, m, s_i, up s) tt
+  | StepGetTID : forall d m s_i s,
+      step (GetTID)
+           (d, m, s_i, s) (d, m, s_i, s) tid
+  | StepGet : forall d m s_i s,
+      forall T (v: var (mem_types Sigma) T),
+        step (Get v)
+             (d, m, s_i, s) (d, m, s_i, s) (get v m)
+  | StepAssgn : forall d m s_i s,
+      forall T (v: var (mem_types Sigma) T) (val: T),
+        let m' := set v val m in
+        step (Assgn v val)
+             (d, m, s_i, s) (d, m', s_i, s) tt.
 
-  Inductive fail_step (tid:TID) : prog -> state -> Prop :=
-  | FailStepStartRead : forall a d m s0 s rx,
+  Arguments step tid {T} p st st' r.
+
+  Inductive fail_step (tid:TID) : forall T, prog T -> state -> Prop :=
+  | FailStepStartRead : forall a d m s0 s,
       d a = None ->
-      fail_step tid (StartRead a rx) (d, m, s0, s)
-  | FailStepStartReadConflict : forall a vs tid' d m s0 s rx,
+      fail_step tid (StartRead a) (d, m, s0, s)
+  | FailStepStartReadConflict : forall a vs tid' d m s0 s,
       tid' <> tid ->
       d a = Some (vs, Some tid') ->
-      fail_step tid (StartRead a rx) (d, m, s0, s)
-  | FailStepFinishRead : forall a vs d m s0 s rx,
+      fail_step tid (StartRead a) (d, m, s0, s)
+  | FailStepFinishRead : forall a vs d m s0 s,
       d a = Some (vs, None) ->
-      fail_step tid (FinishRead a rx) (d, m, s0, s)
-  | FailStepFinishConflict : forall a vs tid' d m s0 s rx,
+      fail_step tid (FinishRead a) (d, m, s0, s)
+  | FailStepFinishConflict : forall a vs tid' d m s0 s,
       tid' <> tid ->
       d a = Some (vs, Some tid') ->
-      fail_step tid (FinishRead a rx) (d, m, s0, s)
-  | FailStepWriteMissing : forall a v d m s0 s rx,
+      fail_step tid (FinishRead a) (d, m, s0, s)
+  | FailStepWriteMissing : forall a v d m s0 s,
       d a = None ->
-      fail_step tid (Write a v rx) (d, m, s0, s)
-  | FailStepYield : forall d m s0 s wchan rx,
+      fail_step tid (Write a v) (d, m, s0, s)
+  | FailStepYield : forall d m s0 s wchan,
       (~invariant delta d m s) ->
-      fail_step tid (Yield wchan rx) (d, m, s0, s).
+      fail_step tid (Yield wchan) (d, m, s0, s).
 
   Hint Constructors step fail_step.
 
-  Theorem fail_step_consistent : forall tid p st p' st',
-      step tid p st p' st' ->
+  Theorem fail_step_consistent : forall tid T (p: prog T) st t st',
+      step tid p st st' t ->
       fail_step tid p st ->
       False.
   Proof.
-    inversion 1; inversion 1; congruence.
+    destruct p; inversion 1; inversion 1;
+      subst; congruence.
   Qed.
 
   Ltac inv_step :=
     match goal with
     | [ H: step _ _ _ _ _ |- _ ] =>
-      inversion H; subst
+      inversion H; subst;
+      repeat sigT_eq
     end.
 
-  Inductive outcome :=
+  Inductive outcome T :=
   | Failed
-  | Crashed d
-  | Finished d.
+  | Finished (st: state) (t:T).
 
-  (** yieldProg p holds when p begins by yielding to the scheduler.
-
-  This might be needed to define executions such that a crash in the middle of
-  a yield results in a state consistent with the lock discipline, but I don't
-  believe this is important since some other thread must have crashed during
-  execution and we can use its crash condition. *)
-  Inductive yieldProg : forall p, Prop :=
-  | YieldProgYield : forall wchan rx,
-    yieldProg (Yield wchan rx).
-
-  Inductive exec tid : forall p st (out:outcome), Prop :=
-  | ExecStep : forall p st p' st' out,
-      tid :- p / st ==> p' / st' ->
-      exec tid p' st' out ->
-      exec tid p st out
-  | ExecFail : forall p st,
+  Inductive exec {tid:TID} : forall T, prog T -> state -> outcome T -> Prop :=
+  | ExecRet : forall T (v: T) st,
+      exec (Ret v) st (Finished st v)
+  | ExecStep : forall T (p: prog T) st v st',
+      step tid p st st' v ->
+      exec p st (Finished st' v)
+  | ExecBindFinish : forall T T' (p: prog T) (p': T -> prog T')
+                       st v st' out,
+      exec p st (Finished st' v) ->
+      exec (p' v) st' out ->
+      exec (Bind p p') st out
+  | ExecBindFail : forall T T' (p: prog T) (p': T -> prog T') st,
+      exec p st (Failed T) ->
+      exec (Bind p p') st (Failed T')
+  | ExecFail : forall T (p: prog T) st,
       fail_step tid p st ->
-      exec tid p st Failed
-  | ExecDone : forall d m s0 s,
-      exec tid Done (d, m, s0, s) (Finished d).
+      exec p st (Failed T).
+
+  Arguments exec tid {T} p st out.
 
   Hint Constructors exec.
 
-  Section TwoStepExecution.
-
-  Definition exec_ind2
-                     (tid : TID)
-                     (P : prog -> state -> outcome -> Prop)
-                     (f : forall (st : state) (p  : prog)
-                                 (st' : state) (p' : prog)
-                                 (out : outcome),
-                          tid :- p / st ==> p' / st' ->
-                          exec tid p' st' out ->
-                          ((p' = Done) \/
-                           fail_step tid p' st') ->
-                          P p' st' out ->
-                          P p st out)
-                     (g : forall (st : state) (p   : prog)
-                                 (st' : state) (p'  : prog)
-                                 (st'' : state) (p'' : prog)
-                                 (out : outcome),
-                          tid :- p / st ==> p' / st' ->
-                          tid :- p' / st' ==> p'' / st'' ->
-                          exec tid p'' st'' out ->
-                          P p'' st'' out ->
-                          P p st out)
-                     (f0 : forall (st : state) (p : prog),
-                           fail_step tid p st ->
-                           P p st Failed)
-                     (f1 : forall (d : DISK) m s0 s,
-                           P Done (d, m, s0, s) (Finished d))
-                     (p : prog)
-                     (st : state)
-                     (out : outcome)
-                     (e : exec tid p st out) : (P p st out).
-
-    refine ((fix exec_ind2
-                     (p : prog)
-                     (st : state)
-                     (out : outcome)
-                     (e : exec tid p st out) {struct e} : (P p st out) := _) p st out e).
-    destruct e.
-
-    - destruct e.
-      + eapply g; eauto.
-      + eapply f; eauto.
-      + eapply f; eauto.
-    - eauto.
-    - eauto.
-  Defined.
-
-  Inductive exec2 tid : forall p st (out:outcome), Prop :=
-  | Exec2Step : forall p st p' st' p'' st'' out,
-      tid :- p / st ==> p' / st' ->
-      tid :- p' / st' ==> p'' / st'' ->
-      exec2 tid p'' st'' out ->
-      exec2 tid p st out
-  | Exec2Fail : forall p st,
-      fail_step tid p st ->
-      exec2 tid p st Failed
-  | Exec2StepFail : forall p st p' st',
-      tid :- p / st ==> p' / st' ->
-      fail_step tid p' st' ->
-      exec2 tid p st Failed
-  | Exec2Done : forall d m s0 s,
-      exec2 tid (Done) (d, m, s0, s) (Finished d)
-  | Exec2StepDone : forall p st d' m' s0' s',
-      tid :- p / st ==> Done / (d', m', s0', s') ->
-      exec2 tid p st (Finished d').
-
-  Hint Constructors exec2.
-
-  Theorem exec2_imp_exec : forall tid p st out,
-      exec2 tid p st out ->
-      exec tid p st out.
-  Proof.
-    induction 1; eauto.
-  Qed.
-
-  Theorem exec_imp_exec2 : forall tid p st out,
-      exec tid p st out ->
-      exec2 tid p st out.
-  Proof.
-    induction 1; subst; eauto.
-    inversion H0; subst; eauto.
-  Admitted.
-
-  Theorem exec_equiv_exec2 : forall tid p st out,
-      exec tid p st out <->
-      exec2 tid p st out.
-  Proof.
-    split; auto using exec2_imp_exec, exec_imp_exec2.
-  Qed.
-
-  End TwoStepExecution.
-
-  (* clear up dependent equalities produced by inverting fail_step *)
-  Ltac sigT_eq :=
-    match goal with
-    | [ H: @eq (sigT _) _ _ |- _ ] =>
-      apply ProofIrrelevance.ProofIrrelevanceTheory.EqdepTheory.inj_pair2 in H;
-        subst
-    end.
-
+  (* clear up dependent equalities produced by inverting step and fail_step *)
   Ltac inv_fail_step :=
     match goal with
     | [ H: context[fail_step] |- _ ] =>
@@ -342,24 +253,24 @@ Section CoopConcur.
   Ltac condition_failure :=
     intros; inv_fail_step; eauto; try congruence.
 
-  Theorem start_read_failure : forall tid d m s0 s rx a v,
-      fail_step tid (StartRead a rx) (d, m, s0, s) ->
+  Theorem start_read_failure : forall tid d m s0 s a v,
+      fail_step tid (StartRead a) (d, m, s0, s) ->
       d a = Some (v, None) ->
       False.
   Proof.
     condition_failure.
   Qed.
 
-  Theorem finish_read_failure : forall tid d m s0 s rx a v,
-      fail_step tid (FinishRead a rx) (d, m, s0, s) ->
+  Theorem finish_read_failure : forall tid d m s0 s a v,
+      fail_step tid (FinishRead a) (d, m, s0, s) ->
       d a = Some (v, Some tid) ->
       False.
   Proof.
     condition_failure.
   Qed.
 
-  Theorem write_failure : forall tid d m s0 s rx a v vs0,
-      fail_step tid (Write a v rx) (d, m, s0, s) ->
+  Theorem write_failure : forall tid d m s0 s a v vs0,
+      fail_step tid (Write a v) (d, m, s0, s) ->
       d a = Some (vs0, None) ->
       False.
   Proof.
@@ -368,58 +279,23 @@ Section CoopConcur.
 
   Hint Resolve start_read_failure finish_read_failure write_failure.
 
-  Definition donecond := DISK_PRED.
+  Definition donecond T := T -> DISK_PRED.
 
   (** A Hoare double judgement: encodes a Crash Hoare Logic tuple via
   a precondition that accepts appropriate postconditions (donecond) and crash
   conditions. *)
-  Definition valid tid (pre: donecond ->
-        (* state: d, m, s0, s *)
-        DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop) p : Prop :=
-    forall d m s0 s done out,
-      pre done d m s0 s ->
-      exec tid p (d, m, s0, s) out ->
-      (exists d',
-        out = Finished d' /\ done d').
-
-  (** Programs are written in continuation-passing style, where sequencing
-  is simply function application. We wrap this sequencing in a function for
-  automation purposes, so that we can recognize when logically instructions
-  are being sequenced. B is a continuation, of the type (input -> prog), while
-  A is the type of the whole expression, (output -> prog). *)
-  Definition progseq (A B:Type) (p1 : B -> A) (p2: B) := p1 p2.
-
-  Ltac inv_st :=
-    match goal with
-    | [ H : @eq state _ _ |- _ ] =>
-      inversion H
-    end.
-
-  Ltac inv_tuple :=
-    match goal with
-    | [ H : (_, _, _, _) = (_, _, _, _) |- _ ] =>
-      inversion H; subst
-    end.
-
-  Ltac ind_exec :=
-    match goal with
-    | [ H : exec _ ?st ?p _ |- _ ] =>
-      remember st; remember p;
-      induction H; subst;
-      try (destruct st; inv_st);
-      try inv_tuple;
-      try inv_step;
-      try inv_prog
-    end.
-
-  Ltac prove_rx :=
-    match goal with
-    | [ H: forall _, valid _ _ _ |- _ ] =>
-      edestruct H; eauto
-    end.
+  Definition valid tid T (pre: donecond T ->
+        (* state: d, m, s_i, s *)
+        DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop) (p: prog T) : Prop :=
+    forall d m s_i s done out,
+      pre done d m s_i s ->
+      exec tid p (d, m, s_i, s) out ->
+      (exists d' m' s_i' s' v,
+          out = Finished (d', m', s_i', s') v /\
+          done v d').
 
   Notation "tid |- {{ e1 .. e2 , | 'PRE' d m s_i s : pre | 'POST' d' m' s_i' s' r : post }} p" :=
-    (forall (rx: _ -> prog) (tid:TID),
+    (forall T (rx: _ -> prog T) (tid:TID),
         valid tid (fun done d m s_i s =>
                      (ex (fun e1 => .. (ex (fun e2 =>
                                            pre%judgement /\
@@ -429,7 +305,7 @@ Section CoopConcur.
                                                       done_rx = done)
                                                    (rx ret_))
                                     )) .. ))
-                  ) (p rx))
+                  ) (Bind p rx))
       (at level 0, p at level 60,
        e1 binder, e2 binder,
        d at level 0,
@@ -443,58 +319,61 @@ Section CoopConcur.
        r at level 0,
        only parsing).
 
+  Ltac split_state' st :=
+    destruct st as [ [ [? ?] ? ] ? ].
+
+  Ltac split_state :=
+    match goal with
+    | [ st: state |- _ ] => split_state' st
+    end.
+
+  Ltac inv_exec' H :=
+    inversion H;
+    subst;
+    repeat sigT_eq;
+    try solve [ inv_fail_step ].
+
+  Ltac prove_rx :=
+    lazymatch goal with
+    | [ H: forall _, valid _ _ _ |- _ ] =>
+      edestruct H; [ | eauto | eauto ];
+      lazymatch goal with
+      | [ H: exec _ _ _ (Finished _ _) |- _ ] =>
+        inv_exec' H;
+        inv_step
+      end
+    end.
+
+  Ltac inv_exec :=
+    lazymatch goal with
+    | [ H: exec _ _ ?st _ |- _ ] =>
+      remember st;
+      inv_exec' H
+    end;
+    try inv_step;
+    try split_state;
+    try match goal with
+        | [ H: exec _ (?rx _) _ ?out |- _ ] =>
+          is_var rx; is_var out;
+          prove_rx
+        end;
+    try match goal with
+        | [ H: exec _ _ _ (Failed _) |- _ ] =>
+          inv_exec' H;
+          exfalso
+        end.
+
   (* extract the precondition of a valid statement into the hypotheses *)
   Ltac intros_pre :=
     unfold valid at 1; unfold pred_in; intros;
     repeat deex.
 
-  (* simplify the postcondition obligation to its components *)
-  Ltac simpl_post :=
-    cbn; intuition;
-      (* get rid of local definitions in context *)
-      repeat match goal with
-             | [ v := _ : _ |- _ ] => subst v
-             end.
-
-  Ltac learn_mem_val H m a v :=
-      assert (m a = Some v);
-      [ eapply ptsto_valid;
-        pred_apply' H; cancel |].
-
-  Ltac learn_some_addr :=
-    match goal with
-    | [ a: addr, H: ?P ?m |- _ ] =>
-      match P with
-      | context[(a |-> ?v)%pred] => learn_mem_val H m a v
-      end
-    end.
-
-  Ltac match_contents :=
-    match goal with
-    | [ H: ?d ?a = Some ?v1, H': ?d ?a = Some ?v2 |- _ ] =>
-      let H := fresh in
-      assert (v1 = v2) as H by congruence;
-        inversion H; subst;
-      clear H'
-    end.
+  Hint Resolve ptsto_valid'.
+  Hint Resolve ptsto_upd'.
 
   Ltac opcode_ok :=
-    intros_pre; ind_exec;
-    try match goal with
-    | [ H: context[step] |- _ ] =>
-      prove_rx; simpl_post
-    | [ H: context[fail_step] |- _ ] =>
-      try solve [ inversion H; congruence ];
-        try match goal with
-        | [ Ha: context[ptsto] |- _ ] =>
-          apply ptsto_valid' in Ha
-        end;
-      exfalso
-    end;
-    try (learn_some_addr; match_contents);
-    eauto 10.
-
-  Hint Resolve ptsto_upd'.
+    intros_pre; inv_exec;
+    intuition eauto.
 
   Theorem Write_ok : forall a v,
       tid |- {{ F v0,
@@ -518,7 +397,7 @@ Section CoopConcur.
           }} StartRead a.
   Proof.
     opcode_ok.
-    assert (v = v0).
+    assert (v0 = v1).
     eapply ptsto_valid' in H1.
     congruence.
     subst; eauto.
@@ -553,7 +432,7 @@ Section CoopConcur.
                                     s' = s
             }} Get v.
   Proof.
-    opcode_ok; repeat sigT_eq; auto.
+    opcode_ok.
   Qed.
 
   Theorem Assgn_ok : forall t (v: var _ t) val,
@@ -565,7 +444,7 @@ Section CoopConcur.
                                     s' = s
             }} Assgn v val.
   Proof.
-    opcode_ok; repeat sigT_eq; eauto.
+    opcode_ok.
   Qed.
 
   Theorem GetTID_ok :
@@ -591,6 +470,7 @@ Section CoopConcur.
     }} Yield wchan.
   Proof.
     opcode_ok.
+    inv_fail_step; eauto.
   Qed.
 
   Theorem GhostUpdate_ok : forall up,
@@ -617,7 +497,7 @@ Section CoopConcur.
     opcode_ok.
   Qed.
 
-  Theorem pimpl_ok : forall tid (pre pre': _ -> _ -> _ ->  _ -> _ -> Prop) p,
+  Theorem pimpl_ok : forall tid T (pre pre': _ -> _ -> _ ->  _ -> _ -> Prop) (p: prog T),
       valid tid pre p ->
       (forall done d m s_i s, pre' done d m s_i s ->
         pre done d m s_i s) ->
@@ -629,20 +509,10 @@ Section CoopConcur.
     eauto.
   Qed.
 
-  Definition If_ P Q (b: {P} + {Q}) (ptrue pfalse : prog) :=
+  Definition If_ P Q (b: {P} + {Q}) T (ptrue pfalse : prog T) :=
     if b then ptrue else pfalse.
 
-  Fixpoint For_ (L : Type) (G : Type) (f : nat -> L -> (L -> prog) -> prog)
-             (i n : nat)
-             (nocrash : G -> nat -> L -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop)
-             (l : L)
-             (rx: L -> prog) : prog :=
-    match n with
-    | O => rx l
-    | Datatypes.S n' =>  (f i l) (fun l' => For_ f (1 + i) n' nocrash l' rx)
-    end.
-
-  Lemma valid_exists_to_forall : forall A tid pre p,
+  Lemma valid_exists_to_forall : forall A T tid pre (p: prog T),
       (forall a:A, valid tid (fun done d m s_i s =>
                            pre done d m s_i s a) p) ->
       (valid tid (fun done d m s_i s =>
@@ -660,8 +530,8 @@ Section CoopConcur.
         subst a'
     end.
 
-  Lemma pimpl_pre_valid : forall tid (pre: donecond -> _ -> _ -> _ -> _ -> Prop)
-                            pre' p,
+  Lemma pimpl_pre_valid : forall tid T (pre: donecond T -> _ -> _ -> _ -> _ -> Prop)
+                            pre' (p: prog T),
       (forall done d m s_i s, pre done d m s_i s ->
                               valid tid (pre' done) p) ->
       (forall done d m s_i s, pre done d m s_i s ->
@@ -674,106 +544,21 @@ Section CoopConcur.
   Hint Extern 4 (_ <= _) => omega.
   Hint Extern 5 (@eq nat _ _) => omega.
 
-  Theorem for_ok' : forall tid L G
-                     (rx: _ -> prog)
-                     nocrash
-                     n i f (li:L),
-      valid tid (fun done =>
-                   fun d m s_i s =>
-                     exists (g:G),
-                       nocrash g i li d m s_i s /\
-                       (forall n' ln' rxm,
-                           i <= n' ->
-                           n' < n + i ->
-                           (forall lSm,
-                               valid tid (fun done' d' m' s_i' s' =>
-                                            nocrash g (1+n') lSm d' m' s_i' s' /\
-                                            done' = done) (rxm lSm)) ->
-                           valid tid (fun done' d' m' s_i' s' =>
-                                        nocrash g n' ln' d' m' s_i' s' /\
-                                        done' = done) (f n' ln' rxm)) /\
-                       (forall lfinal,
-                           valid tid (fun done' d' m' s_i' s' =>
-                                        nocrash g (i+n) lfinal d' m' s_i' s' /\
-                                        done' = done) (rx lfinal)))
-            (For_ f i n nocrash li rx).
-  Proof.
-    intro.
-    induction n; cbn; intros.
-    - unfold valid in *; intros; repeat deex.
-      (* TODO: ring_simplify should handle this *)
-      rewrite <- plus_n_O in *.
-      eauto.
-    - apply valid_exists_to_forall; intros.
-      eapply pimpl_pre_valid; intuition.
-      eapply pimpl_ok.
-      apply H; eauto.
-      intros; eapply pimpl_ok.
-      apply IHn.
-      intuition; subst; cbn.
-      match goal with
-      | [ g: ?G |- exists _:?G, _ ] => exists g
-      end; intuition eauto.
-      eapply pimpl_ok; eauto.
-      intuition eauto.
-      (* TODO: ring_simplify should handle this *)
-      match goal with
-      | [ H: nocrash _ ?i ?l _ _ _ _
-          |- nocrash _ ?i' ?l _ _ _ _ ] =>
-        replace i with i' in H by omega; assumption
-      end.
-
-      (* TODO: proof has diverged here for some reason from previous
-      version (when we had crashes) and original FSCQ BasicProg for
-      loops *)
-      intros.
-      (* eapply H2. *)
-      intuition.
-  Admitted.
-
-  Theorem for_ok : forall tid L G
-                     (rx: _ -> prog)
-                     nocrash
-                     n f (li:L),
-      valid tid (fun done =>
-                   fun d m s_i s =>
-                     exists (g:G),
-                       nocrash g 0 li d m s_i s /\
-                       (forall n' ln' rxm,
-                           n' < n ->
-                           (forall lSm,
-                               valid tid (fun done' d' m' s_i' s' =>
-                                            nocrash g (1+n') lSm d' m' s_i' s' /\
-                                            done' = done) (rxm lSm)) ->
-                           valid tid (fun done' d' m' s_i' s' =>
-                                        nocrash g n' ln' d' m' s_i' s' /\
-                                        done' = done) (f n' ln' rxm)) /\
-                       (forall lfinal,
-                           valid tid (fun done' d' m' s_i' s' =>
-                                        nocrash g n lfinal d' m' s_i' s' /\
-                                        done' = done) (rx lfinal)))
-            (For_ f 0 n nocrash li rx).
-  Proof.
-    intros.
-    apply valid_exists_to_forall; intros.
-    eapply pimpl_ok.
-    apply for_ok'.
-    intros; intuition.
-    match goal with
-    | [ g: ?G |- exists _:?G, _ ] => exists g
-    end; intuition eauto.
-  Qed.
-
 End CoopConcur.
+
+Arguments exec {Sigma} delta tid {T} p st out.
+Arguments prog Sigma T : clear implicits.
+
+Arguments Ret {Sigma} {T} v.
 
 (** Copy-paste metaprogramming:
 
 * Copy the above notation
 * add delta, tid |- in front to specify the transition system and thread TID
-* quantify over T and tid and change prog to prog _ _ T (the state/mem types should be inferred)
+* quantify over T and tid and change prog to prog _ T (the Sigma should be inferred)
 * add delta as an argument to valid *)
 Notation "'SPEC' delta , tid |- {{ e1 .. e2 , | 'PRE' d m s_i s : pre | 'POST' d' m' s_i' s' r : post }} p" :=
-  (forall (rx: _ -> prog _) (tid:TID),
+  (forall T (rx: _ -> prog _ T) (tid:TID),
       valid delta tid
             (fun done d m s_i s =>
                (ex (fun e1 => .. (ex (fun e2 =>
@@ -785,7 +570,7 @@ Notation "'SPEC' delta , tid |- {{ e1 .. e2 , | 'PRE' d m s_i s : pre | 'POST' d
                                                 done_rx = done)
                                              (rx ret_))
                               )) .. ))
-            ) (p rx))
+            ) (Bind p rx))
     (at level 0, p at level 60,
      e1 binder, e2 binder,
      d at level 0,
@@ -799,7 +584,7 @@ Notation "'SPEC' delta , tid |- {{ e1 .. e2 , | 'PRE' d m s_i s : pre | 'POST' d
      r at level 0,
      only parsing).
 
-Lemma valid_unfold : forall Sigma (delta: Protocol Sigma) tid pre p,
+Lemma valid_unfold : forall Sigma (delta: Protocol Sigma) T tid pre (p: prog Sigma T),
     ltac:(let def := eval unfold valid in (valid delta tid pre p) in
               exact def) ->
     valid delta tid pre p.
@@ -807,17 +592,32 @@ Proof.
   auto.
 Qed.
 
+Definition prog_equiv Sigma T (p1 p2: prog Sigma T) :=
+  forall delta tid st out,
+    exec delta tid p1 st out <-> exec delta tid p2 st out.
+
+Theorem valid_equiv : forall Sigma delta T pre (p p': prog Sigma T) tid,
+    prog_equiv p p' ->
+    valid delta tid pre p' ->
+    valid delta tid pre p.
+Proof.
+  unfold valid; intros.
+  match goal with
+  | [ H: prog_equiv _ _ |- _ ] =>
+    edestruct H; eauto
+  end.
+Qed.
+
 Global Opaque valid.
 
-Notation "p1 ;; p2" := (progseq p1 (fun _:unit => p2))
+Notation "p1 ;; p2" := (Bind p1 (fun _:unit => p2))
                          (at level 60, right associativity).
-Notation "x <- p1 ; p2" := (progseq p1 (fun x => p2))
+Notation "x <- p1 ; p2" := (Bind p1 (fun x => p2))
                               (at level 60, right associativity).
 
-(* maximally insert the state types for GetTID and Done, which are
+(* maximally insert the state types for GetTID, which is
    always called without applying to any arguments *)
-Arguments Done {Sigma}.
-Arguments GetTID {Sigma} rx.
+Arguments GetTID {Sigma}.
 
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
 
@@ -825,35 +625,10 @@ Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 
 
 The ; _ is merely a visual indicator that the pattern applies to any Hoare
 statement beginning with f and followed by anything else. *)
-Notation "{{ f ; '_' }}" := (valid _ _ _ (progseq f _)).
+Notation "{{ f ; '_' }}" := (valid _ _ _ (Bind f _)).
 
 (* copy of pair_args_helper from Prog *)
 Definition tuple_args (A B C:Type) (f: A->B->C) (x: A*B) := f (fst x) (snd x).
-
-Notation "'For' i < n | 'Ghost' [ g1 .. g2 ] | 'Loopvar' [ l1 .. l2 ] | 'Continuation' lrx | 'LoopInv' nocrash | 'OnCrash' crashed | 'Begin' body | 'Rof'" :=
-  (For_ (fun i =>
-           (tuple_args
-              (fun l1 => .. (tuple_args
-                             (fun l2 (_:unit) => (fun lrx => body)))
-                          ..)))
-        0 n
-        (tuple_args
-           (fun g1 => .. (tuple_args
-                          (fun g2 (_:unit) =>
-                             fun i =>
-                               (tuple_args
-                                  (fun l1 => .. (tuple_args
-                                                 (fun l2 (_:unit) => nocrash)) ..))
-                       )) .. ))
-        (tuple_args
-           (fun g1 => .. (tuple_args
-                          (fun g2 (_:unit) =>
-                             crashed)) .. )))
-    (at level 9, i at level 0, n at level 0,
-     g1 closed binder, g2 closed binder,
-     lrx at level 0,
-     l1 closed binder, l2 closed binder,
-     body at level 9).
 
 Hint Extern 1 {{ StartRead _; _ }} => apply StartRead_ok : prog.
 Hint Extern 1 {{ FinishRead _; _ }} => apply FinishRead_ok : prog.
@@ -864,4 +639,3 @@ Hint Extern 1 {{ GetTID ; _ }} => apply GetTID_ok : prog.
 Hint Extern 1 {{ Yield _; _ }} => apply Yield_ok : prog.
 Hint Extern 1 {{ GhostUpdate _; _ }} => apply GhostUpdate_ok : prog.
 Hint Extern 1 {{ Wakeup _; _ }} => apply Wakeup_ok : prog.
-Hint Extern 1 {{ For_ _ _ _ _ _ _; _ }} => apply for_ok : prog.

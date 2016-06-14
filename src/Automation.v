@@ -24,6 +24,13 @@ Ltac remove_unit :=
   | [ a: unit |- _ ] => clear a
   end.
 
+Ltac sigT_eq :=
+  match goal with
+  | [ H: @eq (sigT _) _ _ |- _ ] =>
+    apply ProofIrrelevance.ProofIrrelevanceTheory.EqdepTheory.inj_pair2 in H;
+    subst
+  end.
+
 Ltac simpl_match :=
   let repl_match_goal d d' :=
     replace d with d';

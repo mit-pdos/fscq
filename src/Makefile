@@ -14,7 +14,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      SuperBlock AsyncFS AsyncFSRecover TreeSeq DirUtil ExtrHaskellPrelude \
 	      Hlist Star RelationCombinators Variables MemClass \
 	      Locking Automation ForwardChaining \
-	      CoopConcur CoopConcurAuto Protocols \
+	      CoopConcur CoopConcurMonad CoopConcurAuto Protocols \
 	      DiskReaders MemCache WriteBuffer WriteBufferSet ConcurrentCache \
 	      ConcurrentBridge
 VS         := $(MODULES:%=%.v)

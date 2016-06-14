@@ -1,4 +1,4 @@
-Require Import CoopConcur.
+Require Import CoopConcur CoopConcurMonad.
 Require Export Locking.
 Require Export Automation.
 Require Import FunctionalExtensionality.
@@ -39,10 +39,10 @@ Ltac simpl_post :=
 
 (* Captures a program in a type so the hypotheses can give the program that
   produced each proof obligation. *)
-Inductive CurrentProg {Sigma} (p: prog Sigma) :=
+Inductive CurrentProg {Sigma} {T} (p: prog Sigma T) :=
 | SomeProg.
 
-Inductive PrevProg {Sigma} (p: prog Sigma) :=
+Inductive PrevProg {Sigma} {T} (p: prog Sigma T) :=
 | SomePrevProg.
 
 Local Ltac set_prog p :=
@@ -71,12 +71,13 @@ Tactic Notation "current" "prog" :=
 Ltac next_control_step :=
     match goal with
     | [ |- valid _ _ _ ?p ] =>
+      monad_simpl;
       eapply pimpl_ok; [ now (auto with prog) | set_prog p  ]
     end.
 
 Ltac unfold_prog :=
   lazymatch goal with
-  | [ |- valid _ _ _ ?p ] =>
+  | [ |- valid _ _ _ (Bind ?p _) ] =>
     let program := head_symbol p in
     unfold program
   end.
@@ -129,10 +130,10 @@ Tactic Notation "hoare" "pre" tactic(simplifier) := hoare' simplifier step_finis
 Tactic Notation "hoare" "pre" tactic(simplifier) "with" tactic(finisher) := hoare' simplifier finisher.
 Tactic Notation "hoare" "with" tactic(finisher) := hoare' step_simplifier finisher.
 
-Definition Read {Sigma} a rx : prog Sigma :=
+Definition Read {Sigma} a : prog Sigma _ :=
   StartRead a;;
             v <- FinishRead a;
-  rx v.
+    Ret v.
 
 Section ReadWriteTheorems.
 
@@ -171,9 +172,9 @@ Section ReadWriteTheorems.
     pred_apply; cancel.
   Qed.
 
-Definition StartRead_upd {Sigma} a rx : prog Sigma :=
-  StartRead a;;
-            rx tt.
+  Definition StartRead_upd {Sigma} a : prog Sigma _ :=
+    StartRead a;;
+              Ret tt.
 
 Theorem StartRead_upd_ok : forall Sigma (delta:Protocol Sigma) a,
     SPEC delta, tid |-
@@ -195,9 +196,9 @@ Proof.
   auto.
 Qed.
 
-Definition FinishRead_upd {Sigma} a rx : prog Sigma :=
+Definition FinishRead_upd {Sigma} a : prog Sigma _ :=
   v <- FinishRead a;
-            rx v.
+            Ret v.
 
 Theorem FinishRead_upd_ok : forall Sigma (delta:Protocol Sigma) a,
     SPEC delta, tid |-
@@ -220,9 +221,9 @@ Proof.
   eauto.
 Qed.
 
-Definition Write_upd {Sigma} a v rx : prog Sigma :=
+Definition Write_upd {Sigma} a v : prog Sigma _ :=
   Write a v;;
-        rx tt.
+        Ret tt.
 
 Theorem Write_upd_ok : forall Sigma (delta: Protocol Sigma) a v,
     SPEC delta, tid |-
@@ -255,32 +256,33 @@ Section WaitForCombinator.
 
 CoFixpoint wait_for {Sigma}
            tv (v: var (mem_types Sigma) tv) {P} (test: forall val, {P val} + {~P val}) (wchan: addr)
-  rx : prog Sigma :=
+  : prog Sigma _ :=
   val <- Get v;
   if (test val) then (
-    rx tt
+    Ret tt
   ) else (
     Yield wchan;;
-    wait_for v test wchan rx
+    wait_for v test wchan
     ).
 
 (* dummy function that will trigger computation of cofix *)
-Definition prog_frob Sigma (p: prog Sigma) :=
+Definition prog_frob Sigma T (p: prog Sigma T) : prog Sigma T :=
   match p with
-  | StartRead a rx => StartRead a rx
-  | FinishRead a rx => FinishRead a rx
-  | Write a v rx => Write a v rx
-  | Sync a rx => Sync a rx
-  | Get v rx => Get v rx
-  | Assgn v val rx => Assgn v val rx
-  | GetTID rx => GetTID rx
-  | Yield wchan rx => Yield wchan rx
-  | Wakeup wchan rx => Wakeup wchan rx
-  | GhostUpdate update rx => GhostUpdate update rx
-  | Done => Done
+  | StartRead a => StartRead a
+  | FinishRead a => FinishRead a
+  | Write a v => Write a v
+  | Sync a => Sync a
+  | Get v => Get v
+  | Assgn v val => Assgn v val
+  | GetTID => GetTID
+  | Yield wchan => Yield wchan
+  | Wakeup wchan => Wakeup wchan
+  | GhostUpdate update => GhostUpdate update
+  | Ret v => Ret v
+  | Bind p1 p2 => Bind p1 p2
   end.
 
-Theorem prog_frob_eq : forall Sigma (p: prog Sigma),
+Theorem prog_frob_eq : forall Sigma T (p: prog Sigma T),
     p = prog_frob p.
 Proof.
   destruct p; reflexivity.
@@ -288,14 +290,14 @@ Qed.
 
 Theorem wait_for_expand : forall Sigma tv (v: var (mem_types Sigma) tv)
                             P (test: forall val, {P val} + {~ P val})
-                            wchan (rx : _ -> prog Sigma),
-    wait_for v test wchan rx =
+                            wchan,
+    wait_for v test wchan =
     val <- Get v;
     if (test val) then (
-        rx tt
+        Ret tt
     ) else (
         Yield wchan;;
-        wait_for v test wchan rx
+        wait_for v test wchan
     ).
 Proof.
   intros.
@@ -306,19 +308,6 @@ Proof.
   end; cbn.
   auto.
 Qed.
-
-Ltac sigT_eq :=
-  match goal with
-  | [ H: @eq (sigT _) _ _ |- _ ] =>
-    apply ProofIrrelevance.ProofIrrelevanceTheory.EqdepTheory.inj_pair2 in H;
-      subst
-  end.
-
-Ltac inv_step :=
-  match goal with
-  | [ H: step _ _ _ _ _ _ |- _ ] =>
-    inversion H; subst; repeat sigT_eq
-  end.
 
 Ltac inv_st :=
   match goal with
@@ -389,8 +378,7 @@ Theorem wait_for_ok : forall Sigma (delta: Protocol Sigma)
     }} wait_for v test wchan.
 Proof.
   intros; cbn.
-  unfold valid.
-  intros.
+  apply valid_unfold; intros.
   rewrite wait_for_expand in H0.
   repeat deex; intuition.
 
