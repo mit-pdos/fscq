@@ -72,6 +72,15 @@ Proof.
   destruct (m1 a); eauto.
 Qed.
 
+Lemma mem_union_none_sel : forall AT AEQ V (m1 m2 : @mem AT AEQ V) a,
+  mem_union m1 m2 a = None ->
+  m1 a = None /\  m2 a = None.
+Proof.
+  unfold mem_union; intros.
+  destruct (m1 a) eqn:?; destruct (m2 a) eqn:?; intuition.
+  congruence.
+Qed.
+
 Lemma mem_union_sel_l : forall AT AEQ V (m1 m2 : @mem AT AEQ V) a,
   mem_disjoint m1 m2 ->
   m2 a = None ->
@@ -101,14 +110,46 @@ Proof.
   unfold ptsto; intuition.
 Qed.
 
+Lemma mem_union_insert_comm : forall AT AEQ V (m1 m2 : @mem AT AEQ V) a v,
+  m1 a = None ->
+  m2 a = None ->
+  insert (mem_union m1 m2) a v = mem_union (insert m1 a v) m2.
+Proof.
+  unfold mem_union; intros.
+  apply functional_extensionality; intros.
+  destruct (AEQ a x); subst.
+  repeat rewrite insert_eq; auto.
+  rewrite H; auto.
+  repeat rewrite insert_ne; auto.
+Qed.
+
+Lemma mem_disjoint_insert_l : forall AT AEQ V (m1 m2 : @mem AT AEQ V) a v,
+  mem_disjoint m1 m2 ->
+  m2 a = None ->
+  mem_disjoint (insert m1 a v) m2.
+Proof.
+  unfold insert, mem_disjoint; intros.
+  contradict H; repeat deex.
+  destruct (AEQ a0 a); subst; try congruence.
+  destruct (m1 a) eqn:?;
+  exists a0; do 2 eexists; eauto.
+Qed.
+
+
 Lemma ptsto_insert_disjoint_ne: forall AT AEQ V (F : @pred AT AEQ V) a v a' v' m,
   a <> a' ->
   m a' = None ->
   (pred_except F a' v' * a |-> v)%pred m ->
   (F * a |-> v)%pred (insert m a' v').
 Proof.
-  intros.
-Admitted.
+  unfold_sep_star; unfold pred_except; intros.
+  repeat deex.
+  exists (insert m1 a' v'), m2; intuition.
+  apply mem_union_insert_comm; auto.
+  eapply mem_union_none_sel; eauto.
+  eapply mem_disjoint_insert_l; eauto.
+  eapply mem_union_none_sel; eauto.
+Qed.
 
 
 Lemma ptsto_insert_bwd_ne: forall AT AEQ V (F : @pred AT AEQ V) a v a' v' m,
