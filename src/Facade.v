@@ -652,8 +652,6 @@ Defined.
 
 Definition extract_code := projT1.
 
-Ltac maps := rewrite ?StringMapFacts.remove_neq_o, ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o in * by congruence.
-
 Local Open Scope string_scope.
 
 
@@ -686,7 +684,7 @@ Local Open Scope map_scope.
 
 Definition disk_env : Env := "write" ->> write ; "read" ->> read ; \u2205.
 
-Ltac find_cases var st := case_eq (find var st); [
+Ltac find_cases var st := case_eq (StringMap.find var st); [
   let v := fresh "v" in
   let He := fresh "He" in
   intros v He; rewrite ?He in *
@@ -698,7 +696,7 @@ Ltac inv_exec :=
   | [ H : Step _ _ _ |- _ ] => invc H
   | [ H : Exec _ _ _ _ |- _ ] => invc H
   | [ H : CrashStep _ |- _ ] => invc H
-  end.
+  end; try discriminate.
 
 Example micro_noop : sigT (fun p =>
   EXTRACT Ret tt
@@ -761,6 +759,55 @@ Proof.
 Qed.
 *)
 
+Lemma Forall_elements_add : forall V P k (v : V) m,
+  Forall P (StringMap.elements (StringMap.add k v m)) ->
+  P (k, v) /\ Forall P (StringMap.elements (StringMap.remove k m)).
+Admitted.
+
+Lemma Forall_elements_equiv: forall V P (m1 m2 : StringMap.t V),
+  Forall P (StringMap.elements m1) ->
+  StringMap.Equal m1 m2 ->
+  Forall P (StringMap.elements m2).
+Admitted.
+
+Lemma add_remove_comm : forall V k1 k2 (v : V) m,
+  k1 <> k2 ->
+  StringMap.Equal (StringMap.remove k1 (StringMap.add k2 v m)) (StringMap.add k2 v (StringMap.remove k1 m)).
+Admitted.
+
+Lemma Forall_elements_empty : forall V P,
+  Forall P (StringMap.elements (StringMap.empty V)).
+Proof.
+  compute.
+  auto.
+Qed.
+
+Lemma possible_sync_refl : forall AT AEQ (m: @mem AT AEQ _), possible_sync m m.
+Proof.
+  intros.
+  unfold possible_sync.
+  intros.
+  destruct (m a).
+  destruct p.
+  right. repeat eexists. unfold incl. eauto.
+  eauto.
+Qed.
+
+Ltac maps := unfold SameValues in *; repeat match goal with
+  | [ H : Forall _ (StringMap.elements _) |- _ ] =>
+      let H1 := fresh H in
+      let H2 := fresh H in
+      apply Forall_elements_add in H;
+      destruct H as [H1 H2];
+      try (eapply Forall_elements_equiv in H2; [ | apply add_remove_comm; solve [ congruence ] ])
+  | _ => progress rewrite ?StringMapFacts.remove_neq_o, ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o in * by congruence
+  end.
+
+Ltac find_all_cases :=
+  repeat match goal with
+  | [ H : match StringMap.find ?d ?v with | Some _ => _ | None => _ end |- _ ] => find_cases d v
+  end; subst.
+
 Example micro_write : sigT (fun p => forall a v,
   EXTRACT Write a v
   {{ "a" ~> a; "v" ~> v; \u2205 }}
@@ -771,44 +818,27 @@ Proof.
   intros.
   instantiate (1 := (Call "_" "write" ["a"; "v"])%facade).
   intro. intros.
-  simpl in *.
   maps.
-  find_cases "disk" initial_state.
-  find_cases "a" initial_state.
-  find_cases "v" initial_state.
+  find_all_cases.
   intuition idtac.
 
   econstructor.
   unfold disk_env.
   maps. trivial.
-  simpl. unfold sel. rewrite He, He0, He1. trivial.
+  simpl. unfold sel. rewrite He, He0. trivial.
   simpl. repeat deex. repeat eexists.
 
   repeat deex.
-  invert_steps; invert_ret_computes_to. rewrite He. eexists; intuition auto using computes_to_crash_refl.
+  repeat inv_exec. unfold disk_env in *. maps. invc H8. unfold sel in *. simpl in *. rewrite He, He0 in *. subst_definitions.
+  repeat deex. simpl in *. do 2 (destruct output; try discriminate). find_inversion. find_inversion.
 
-  invert_steps. invert_steps. maps. subst_definitions. invc H7. unfold sel in *. repeat find_rewrite. repeat find_inversion.
-  do 3 (destruct output; try discriminate). unfold disk_env in *. maps. find_inversion. simpl in *.
-  repeat deex. repeat find_inversion. maps. eexists; intuition.
-  econstructor. econstructor. econstructor 3.
+  repeat eexists; intuition. econstructor.
 
-  invert_steps.
+  apply possible_sync_refl.
+  instantiate (hm := empty_hashmap).
+  econstructor; eauto. apply Forall_elements_empty.
 
-  invert_runsto. invc H8. repeat deex. unfold sel in *. rewrite He1 in *. rewrite He in *. rewrite He0 in *. repeat find_inversion.
-  do 3 (destruct output; try discriminate).
-  simpl in *.
-  unfold disk_env in *. maps. find_inversion. simpl in *. repeat deex. repeat find_inversion.
-  subst_definitions. maps.
-  invert_ret_computes_to.
-  do 2 eexists; intuition.
-  econstructor; simpl.
-  econstructor.
-  econstructor.
-  eauto.
-  intro.
-  invc H.
-  invc H0.
-  eauto.
+  subst. repeat inv_exec. exists empty_hashmap. econstructor. econstructor.
 Defined.
 
 Example micro_inc : sigT (fun p => forall d0 x,
@@ -875,10 +905,6 @@ Proof.
 Qed.
 *)
 
-Ltac find_all_cases :=
-  repeat match goal with
-  | [ H : match find ?d ?v with | Some _ => _ | None => _ end |- _ ] => find_cases d v
-  end.
 
 Lemma CompileRead : forall A avar vvar pr (f : A -> nat) d0,
   avar <> "disk" ->
