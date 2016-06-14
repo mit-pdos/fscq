@@ -39,11 +39,26 @@ Section GenMem.
     destruct (AEQ a a); tauto.
   Qed.
 
+  Theorem insert_eq : forall m (a : A) (v v' : V) a',
+    m a = None -> a' = a -> insert m a v a' = Some v.
+  Proof.
+    intros; subst; unfold insert.
+    rewrite H.
+    destruct (AEQ a a); congruence.
+  Qed.
+
   Theorem upd_ne : forall m (a : A) (v : V) a',
     a' <> a -> upd m a v a' = m a'.
   Proof.
     intros; subst; unfold upd.
     destruct (AEQ a' a); tauto.
+  Qed.
+
+  Theorem insert_ne : forall m (a : A) (v : V) a',
+    a' <> a -> insert m a v a' = m a'.
+  Proof.
+    intros; subst; unfold insert.
+    destruct (AEQ a' a); congruence.
   Qed.
 
   Theorem upd_repeat: forall m (a : A) (v v':V),
@@ -63,6 +78,15 @@ Section GenMem.
     case_eq (AEQ a x); intros; subst.
     repeat erewrite upd_eq; eauto.
     repeat rewrite upd_ne; auto.
+  Qed.
+
+  Theorem upd_none : forall m (a : A) (v : V),
+    m a = None ->
+    upd m a v = m.
+  Proof.
+    unfold upd; intros; apply functional_extensionality; intros.
+    rewrite H.
+    destruct (AEQ x a); subst; auto.
   Qed.
 
   Theorem upd_comm: forall m (a0 : A) (v0 : V) a1 v1, a0 <> a1

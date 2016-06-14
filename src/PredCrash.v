@@ -149,10 +149,14 @@ Lemma possible_crash_upd : forall m m' a v vs,
   possible_crash (upd m a vs) (upd m' a (v, nil)).
 Proof.
   unfold possible_crash; intuition.
-  destruct (addr_eq_dec a a0); subst.
-  repeat rewrite upd_eq; auto.
-  specialize (H a0); intuition; right; eexists; eauto.
-  repeat rewrite upd_ne; auto.
+  pose proof (H a) as H'; intuition; repeat deex.
+
+  - repeat rewrite upd_none by eauto.
+    intuition.
+
+  - destruct (addr_eq_dec a a0); subst.
+    + repeat erewrite upd_eq by eauto. right. eauto.
+    + repeat rewrite upd_ne by eauto. eauto.
 Qed.
 
 Definition synced_mem (m : rawdisk) :=
@@ -222,7 +226,7 @@ Proof.
 
   - specialize (H0 a); intuition.
     left; congruence.
-    right; rewrite upd_eq by auto; repeat deex; destruct vs; simpl in *.
+    right; erewrite upd_eq by eauto; repeat deex; destruct vs; simpl in *.
     rewrite H in H2; inversion H2; subst.
     exists (w0, l0); exists w1; intuition.
     rewrite H in H2; inversion H2; subst.
@@ -253,7 +257,7 @@ Proof.
   unfold possible_crash, vsmerge; intuition.
   destruct (addr_eq_dec a a1); subst; simpl in *.
   - specialize (H a1); intuition; right;
-    rewrite upd_eq in *; try congruence.
+    erewrite upd_eq in * by eauto; try congruence.
     repeat deex.
     destruct vs, v0; inversion H2; subst; simpl in *.
     exists (w0, l0), w; intuition.
@@ -374,13 +378,13 @@ Theorem crash_xform_ptsto_r: forall a v vs,
   a |=> v =p=> crash_xform (a |-> vs).
 Proof.
   unfold crash_xform, possible_crash, ptsto, pimpl; intros.
-  exists (upd empty_mem a vs).
+  exists (insert empty_mem a vs).
   intuition.
-  rewrite upd_eq; auto.
-  rewrite upd_ne; auto.
+  rewrite insert_eq; eauto.
+  rewrite insert_ne; eauto.
   destruct (eq_nat_dec a a0); subst.
-  - right. rewrite upd_eq; auto. exists vs. exists v. intuition.
-  - left. rewrite upd_ne; auto.
+  - right. rewrite insert_eq; auto. exists vs. exists v. intuition.
+  - left. rewrite insert_ne; auto.
 Qed.
 
 
@@ -784,8 +788,8 @@ Proof.
   unfold possible_sync; intros.
   destruct (AEQ a a0); subst.
   - right. exists v. exists l. exists l'. intuition.
-    rewrite upd_eq; eauto.
-  - rewrite upd_ne; eauto.
+    erewrite upd_eq; eauto.
+  - erewrite upd_ne; eauto.
     destruct (m a0); intuition.
     right. do 3 eexists. intuition eauto. apply incl_refl.
 Qed.
