@@ -39,26 +39,20 @@ Proof.
 Qed.
 
 
-(* xxx unused *)
-Lemma insert_dirents2mem_found: forall l a v,
-  (In a (map fst l)) ->
-  insert (dirents2mem l) a v = dirents2mem l.
+Lemma fst_update_subtree: forall l name newtree,
+  map fst (map (update_subtree_helper (fun _: dirtree => newtree) name) l) = map fst l.
 Proof.
   intros.
   induction l.
-  - unfold insert, dirents2mem; simpl.
-    simpl in H.
-    exfalso; auto.
-  - destruct a0.
-    rewrite dirents2mem_cons.
-    destruct (string_dec s a).
-    + subst. rewrite insert_repeat; eauto.
-    + rewrite insert_comm; eauto.
-      rewrite IHl; eauto.
-      erewrite map_cons in H.
-      eapply in_inv in H.
-      destruct H; eauto; simpl in H. congruence.
+  - simpl; auto.
+  - erewrite map_cons.
+    unfold update_subtree_helper at 1.
+    destruct a.
+    destruct (string_dec s name).
+    erewrite map_cons; erewrite IHl; simpl; auto.
+    erewrite map_cons; erewrite IHl; simpl; auto.
 Qed.
+
 
 Require Import FunctionalExtensionality.
 
@@ -233,12 +227,12 @@ Proof.
         eapply ptsto_insert_disjoint_ne; auto.
         erewrite dirents2mem_not_in_none; eauto.
         inversion H.
-        inversion H4; eauto.
+        inversion H4; eauto. subst.
         subst; contradict H7.
-        admit.
+         erewrite fst_update_subtree in H7; eauto.
         eapply IHl; eauto.
         eauto.
         inversion H; inversion H4; subst.
         apply dirents2mem_not_in_none; auto.
-Admitted.
+Qed.
 
