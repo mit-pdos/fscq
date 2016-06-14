@@ -107,6 +107,10 @@ Admitted.
 
     rewrite mem_union_sel_none; auto.
     apply mem_except_is_none.
+    unfold ptsto in H5.
+    destruct H5.
+    apply H5; eauto.
+
     admit.
     rewrite H2.
     Search mem_union mem_except.
