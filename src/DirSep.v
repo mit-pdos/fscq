@@ -63,22 +63,11 @@ Qed.
 Lemma ptsto_insert_disjoint_ne: forall AT AEQ V (F : @pred AT AEQ V) a v a' v' m,
   a <> a' ->
   m a' = None ->
-  (exists F', (F' * a |-> v)%pred m /\ (F' * a' |->v' = F)%pred) ->
+  (pred_except F a' v' * a |-> v)%pred m ->
   (F * a |-> v)%pred (insert m a' v').
 Proof.
   intros.
-  destruct H1.
-  intuition.
-  rewrite <- H3.
-  eapply pimpl_apply.
-  eapply sep_star_comm.
-  eapply pimpl_apply.
-  eapply sep_star_assoc_1.
-  apply ptsto_insert_disjoint; eauto.
-  eapply pimpl_apply.
-  eapply sep_star_comm.
-  eassumption.
-Qed.
+Admitted.
 
 Require Import FunctionalExtensionality.
 
@@ -100,40 +89,52 @@ Lemma ptsto_insert_bwd_ne: forall AT AEQ V (F : @pred AT AEQ V) a v a' v' m,
 Proof.
   unfold_sep_star; unfold pimpl, pred_except, insert; intros.
   repeat deex.
-  exists (mem_except m a').
+  exists (mem_except m1 a').
   exists m2.
   intuition.
   apply functional_extensionality; intros.
   - apply equal_f with (x0 := x) in H2.
     destruct (AEQ x a'); subst.
     rewrite H0 in *.
-
-
     rewrite mem_union_sel_none; auto.
     apply mem_except_is_none.
     unfold ptsto in H5.
     destruct H5.
     apply H5; eauto.
-    rewrite H2.
-    .
-    Search mem_union mem_except.
-  
-  
-  replace (fun a => if AEQ a a' then Some v' else mem_except m0 a' a) with m0.
-  Search mem_except Some.
-  exists (fun a => if AEQ a a' then v'
-  do 2 eexists.
-  
-  setoid_rewrite pred_except_ptsto with (p := F) (a := a') (v := v') in H1.
-  pred_apply.
-  cancel.
-
-  instantiate (v' := v').
-  pred_apply.
-  cancel.
-Admitted.
-
-     (* F = (F' * a' |-> v')%pred -> *)
+    destruct (AEQ x a); subst.
+    unfold mem_union in *.
+    rewrite mem_except_ne by auto.
+    destruct (m1 a); try congruence.
+    unfold mem_union, mem_except in *.
+    destruct (AEQ x a'); try congruence.
+  - apply mem_disjoint_comm.
+    apply mem_disjoint_mem_except; eauto.
+    apply mem_disjoint_comm; auto.
+  - apply mem_except_is_none.
+  - assert (m1 = (fun a'0 : AT =>
+   if AEQ a'0 a'
+   then
+    match mem_except m1 a' a' with
+    | Some _ => mem_except m1 a' a'0
+    | None => Some v'
+    end
+   else mem_except m1 a' a'0)).
+   apply functional_extensionality; intros.
+    apply equal_f with (x0 := x) in H2.
+   destruct (AEQ x a').
+    subst.
+    rewrite mem_except_is_none; auto.
+    destruct (m a').
+    congruence.
+    unfold mem_union in H2.
+    destruct (m1 a'); try congruence.
+    unfold ptsto in H5.
+    destruct H5.
+    specialize (H5 a').
+    rewrite H5 in H2; auto.
+    rewrite mem_except_ne; auto.
+    rewrite H4 in H3; eauto.
+Qed.
 
 Theorem dirents2mem_update_subtree :
   forall root F name oldtree newtree,
@@ -171,16 +172,14 @@ Proof.
         inversion H.
         inversion H4; eauto.
       * eapply ptsto_insert_bwd_ne in H0.
-        destruct H0.
-        destruct H0.
         eapply ptsto_insert_disjoint_ne; auto.
         erewrite dirents2mem_not_in_none; eauto.
         inversion H.
-        inversion H5; eauto.
+        inversion H4; eauto.
         admit.
-        eexists x.
-        split.
-        eapply IHl; eauto.
+        eapply IHl.
+        admit.
         eassumption.
-        congruence.
+        eauto.
+        admit.
 Qed.
