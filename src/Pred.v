@@ -1409,6 +1409,14 @@ Proof.
   destruct (AEQ x a); auto.
 Qed.
 
+Lemma mem_except_insert: forall AT AEQ V (m : @mem AT AEQ V) a v,
+  mem_except (insert m a v) a = mem_except m a.
+Proof.
+  unfold mem_except, insert.
+  intros; apply functional_extensionality; intros.
+  destruct (AEQ x a); eauto.
+Qed.
+
 Theorem mem_except_none : forall (m : @mem AT AEQ V) a,
   m a = None ->
   mem_except m a = m.
@@ -2319,5 +2327,19 @@ Proof.
     rewrite mem_except_upd in H.
     rewrite mem_except_none in H; auto.
 Qed.
+
+
+Lemma ptsto_insert_bwd :
+  forall AT AEQ V F a v v' (m : @mem AT AEQ V),
+  m a = None ->
+  (a  |-> v' * F)%pred (insert m a v) ->
+  F m.
+Proof.
+  intros.
+  apply ptsto_mem_except in H0.
+  rewrite mem_except_insert in H0.
+  rewrite mem_except_none in H0; auto.
+Qed.
+
 
 Global Opaque pred.

@@ -12,11 +12,21 @@ Fixpoint dirents2mem (ents : list (string * dirtree)) : @mem _ string_dec _ :=
   match ents with
   | nil => empty_mem
   | (name, subtree) :: rest =>
-    Mem.upd (dirents2mem rest) name subtree
+    Mem.insert (dirents2mem rest) name subtree
   end.
 
 Definition dir2mem (t : dirtree) :=
   dirents2mem (dirtree_dirents t).
+
+
+Lemma dirents2mem_cons: forall l ent_name ent_tree,
+  dirents2mem ((ent_name, ent_tree) :: l) = Mem.insert (dirents2mem l) ent_name ent_tree.
+Proof.
+  intros.
+  unfold dirents2mem.
+  reflexivity.
+Qed.
+
 
 Theorem dirents2mem_not_in_none : forall name l,
   (~ In name (map fst l)) ->
@@ -25,8 +35,77 @@ Proof.
   induction l; simpl; intros.
   - firstorder.
   - destruct a.
-    rewrite upd_ne; eauto.
+    rewrite insert_ne; eauto.
 Qed.
+
+
+(* xxx unused *)
+Lemma insert_dirents2mem_found: forall l a v,
+  (In a (map fst l)) ->
+  insert (dirents2mem l) a v = dirents2mem l.
+Proof.
+  intros.
+  induction l.
+  - unfold insert, dirents2mem; simpl.
+    simpl in H.
+    exfalso; auto.
+  - destruct a0.
+    rewrite dirents2mem_cons.
+    destruct (string_dec s a).
+    + subst. rewrite insert_repeat; eauto.
+    + rewrite insert_comm; eauto.
+      rewrite IHl; eauto.
+      erewrite map_cons in H.
+      eapply in_inv in H.
+      destruct H; eauto; simpl in H. congruence.
+Qed.
+
+Lemma ptsto_insert_disjoint_ne: forall AT AEQ V (F : @pred AT AEQ V) a v a' v' m,
+  a <> a' ->
+  m a' = None ->
+  (exists F', (F' * a |-> v)%pred m /\ (F' * a' |->v' = F)%pred) ->
+  (F * a |-> v)%pred (insert m a' v').
+Proof.
+  intros.
+  destruct H1.
+  intuition.
+  rewrite <- H3.
+  eapply pimpl_apply.
+  eapply sep_star_comm.
+  eapply pimpl_apply.
+  eapply sep_star_assoc_1.
+  apply ptsto_insert_disjoint; eauto.
+  eapply pimpl_apply.
+  eapply sep_star_comm.
+  eassumption.
+Qed.
+
+Lemma ptsto_insert_bwd_ne: forall AT AEQ V (F : @pred AT AEQ V) a v a' v' m,
+  a <> a' ->
+  m a' = None ->
+  (F * a |-> v)%pred (insert m a' v') ->
+  exists F': @pred AT AEQ V, (F' * a |-> v)%pred m.
+Proof.
+  intros.
+  eexists (pred_except F a' v').
+  unfold pred_except.
+
+  eapply ptsto_insert_bwd with (v := v'); eauto.
+  rewrite <- pred_except_sep_star_ptsto by auto.
+  eapply pred_except_ptsto in H1.
+  Search pred_except.
+
+Lemma ptsto_except_idem: forall F,
+  a |-> v * pred_except F a v <=p=> F.
+Proof.
+
+
+  instantiate (v' := v').
+  pred_apply.
+  cancel.
+Admitted.
+
+     (* F = (F' * a' |-> v')%pred -> *)
 
 Theorem dirents2mem_update_subtree :
   forall root F name oldtree newtree,
@@ -51,15 +130,29 @@ Proof.
       exfalso; eapply emp_not_ptsto; eauto.
     + destruct a; simpl in *.
       destruct (string_dec s name); subst; simpl in *.
-      * inversion H. inversion H4.
-        erewrite update_subtree_notfound by auto.
+      * erewrite update_subtree_notfound.
+        apply ptsto_insert_disjoint.
         apply sep_star_comm in H0.
-        apply ptsto_upd_bwd_or in H0.
-        intuition.
-        -- eapply ptsto_upd_disjoint; eauto.
-           eapply dirents2mem_not_in_none; eauto.
-        -- deex.
-           apply sep_star_comm.
-           eapply ptsto_upd. eauto.
-      * admit.
-Admitted.
+        eapply ptsto_insert_bwd; eauto.
+        eapply dirents2mem_not_in_none; eauto.
+        inversion H. inversion H4.
+        inversion H4; eauto.
+        eapply dirents2mem_not_in_none; eauto.
+        inversion H.
+        inversion H4; eauto.
+        inversion H.
+        inversion H4; eauto.
+      * eapply ptsto_insert_bwd_ne in H0.
+        destruct H0.
+        destruct H0.
+        eapply ptsto_insert_disjoint_ne; auto.
+        erewrite dirents2mem_not_in_none; eauto.
+        inversion H.
+        inversion H5; eauto.
+        admit.
+        eexists x.
+        split.
+        eapply IHl; eauto.
+        eassumption.
+        congruence.
+Qed.
