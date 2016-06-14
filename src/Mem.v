@@ -15,6 +15,9 @@ Section GenMem.
   Variable AEQ : EqDec A.
 
   Definition upd (m : @mem A AEQ V) (a : A) (v : V) : @mem A AEQ V :=
+    fun a' => if AEQ a' a then Some v else m a'.
+
+  Definition updSome (m : @mem A AEQ V) (a : A) (v : V) : @mem A AEQ V :=
     fun a' => if AEQ a' a then
       match m a with
       | None => None
@@ -31,10 +34,17 @@ Section GenMem.
       | Some _ => m a'
       end else m a'.
 
-  Theorem upd_eq : forall m (a : A) (v v' : V) a',
-    m a = Some v' -> a' = a -> upd m a v a' = Some v.
+  Theorem upd_eq : forall m (a : A) (v : V) a',
+    a' = a -> upd m a v a' = Some v.
   Proof.
     intros; subst; unfold upd.
+    destruct (AEQ a a); tauto.
+  Qed.
+
+  Theorem updSome_eq : forall m (a : A) (v v' : V) a',
+    m a = Some v' -> a' = a -> updSome m a v a' = Some v.
+  Proof.
+    intros; subst; unfold updSome.
     rewrite H.
     destruct (AEQ a a); tauto.
   Qed.
@@ -54,6 +64,13 @@ Section GenMem.
     destruct (AEQ a' a); tauto.
   Qed.
 
+  Theorem updSome_ne : forall m (a : A) (v : V) a',
+    a' <> a -> updSome m a v a' = m a'.
+  Proof.
+    intros; subst; unfold updSome.
+    destruct (AEQ a' a); tauto.
+  Qed.
+
   Theorem insert_ne : forall m (a : A) (v : V) a',
     a' <> a -> insert m a v a' = m a'.
   Proof.
@@ -65,6 +82,14 @@ Section GenMem.
     upd (upd m a v') a v = upd m a v.
   Proof.
     intros; apply functional_extensionality; unfold upd; intros.
+    destruct (AEQ a a); try congruence.
+    destruct (AEQ x a); auto.
+  Qed.
+
+  Theorem updSome_repeat: forall m (a : A) (v v':V),
+    updSome (updSome m a v') a v = updSome m a v.
+  Proof.
+    intros; apply functional_extensionality; unfold updSome; intros.
     destruct (AEQ a a); try congruence.
     destruct (AEQ x a); auto.
     destruct (m a); auto.
@@ -80,11 +105,21 @@ Section GenMem.
     repeat rewrite upd_ne; auto.
   Qed.
 
-  Theorem upd_none : forall m (a : A) (v : V),
-    m a = None ->
-    upd m a v = m.
+  Theorem updSome_nop: forall m (a : A) (v : V),
+    m a = Some v ->
+    updSome m a v = m.
   Proof.
-    unfold upd; intros; apply functional_extensionality; intros.
+    intros; apply functional_extensionality; intros.
+    case_eq (AEQ a x); intros; subst.
+    repeat erewrite updSome_eq; eauto.
+    repeat rewrite updSome_ne; auto.
+  Qed.
+
+  Theorem updSome_none : forall m (a : A) (v : V),
+    m a = None ->
+    updSome m a v = m.
+  Proof.
+    unfold updSome; intros; apply functional_extensionality; intros.
     rewrite H.
     destruct (AEQ x a); subst; auto.
   Qed.
@@ -97,18 +132,26 @@ Section GenMem.
     case_eq (AEQ x a1); case_eq (AEQ x a0); intros; subst; try congruence.
   Qed.
 
-  Theorem upd_insert_comm: forall m (a0 : A) (v0 : V) a1 v1, a0 <> a1
-    -> upd (insert m a0 v0) a1 v1 = insert (upd m a1 v1) a0 v0.
+  Theorem updSome_comm: forall m (a0 : A) (v0 : V) a1 v1, a0 <> a1
+    -> updSome (updSome m a0 v0) a1 v1 = updSome (updSome m a1 v1) a0 v0.
   Proof.
-    intros; apply functional_extensionality; unfold upd, insert; intros.
+    intros; apply functional_extensionality; unfold updSome; intros.
     destruct (AEQ a1 a0); destruct (AEQ a0 a1); try congruence.
     case_eq (AEQ x a1); case_eq (AEQ x a0); intros; subst; try congruence.
   Qed.
 
-  Theorem upd_delete_comm: forall m (a0 : A) a1 (v1 : V), a0 <> a1
-    -> upd (delete m a0) a1 v1 = delete (upd m a1 v1) a0.
+  Theorem updSome_insert_comm: forall m (a0 : A) (v0 : V) a1 v1, a0 <> a1
+    -> updSome (insert m a0 v0) a1 v1 = insert (updSome m a1 v1) a0 v0.
   Proof.
-    intros; apply functional_extensionality; unfold upd, delete; intros.
+    intros; apply functional_extensionality; unfold updSome, insert; intros.
+    destruct (AEQ a1 a0); destruct (AEQ a0 a1); try congruence.
+    case_eq (AEQ x a1); case_eq (AEQ x a0); intros; subst; try congruence.
+  Qed.
+
+  Theorem updSome_delete_comm: forall m (a0 : A) a1 (v1 : V), a0 <> a1
+    -> updSome (delete m a0) a1 v1 = delete (updSome m a1 v1) a0.
+  Proof.
+    intros; apply functional_extensionality; unfold updSome, delete; intros.
     destruct (AEQ a1 a0); destruct (AEQ a0 a1); try congruence.
     case_eq (AEQ x a1); case_eq (AEQ x a0); intros; subst; try congruence.
   Qed.

@@ -1,4 +1,4 @@
-Require Import Arith Omega NArith Nomega Word Prog.
+Require Import Arith Omega NArith Nomega Word.
 
 
 Ltac set_evars :=

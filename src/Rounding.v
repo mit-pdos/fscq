@@ -1,6 +1,5 @@
 Require Import Arith Omega.
 Require Import Word.
-Require Import Prog.
 Require Import Psatz.
 
 (* TODO: move byte-specific lemmas *)
