@@ -1,6 +1,6 @@
 Require Import CoopConcur.
 
-Definition Disk:Type := @mem addr (@weq addrlen) (const valu).
+Definition Disk:Type := @mem addr nat_dec valu.
 Definition hide_readers (d:DISK) : Disk :=
   fun a => match d a with
         | Some (v, _) => Some v

@@ -16,7 +16,7 @@ Definition wb_writes wb : list (addr * valu) :=
                 | (_, WbMissing) => acc
                 end) nil (wb_entries wb).
 
-Definition upd_all A AEQ V (m: @mem A AEQ (const V)) (entries: list (A * V)) :=
+Definition upd_all A AEQ V (m: @mem A AEQ V) (entries: list (A * V)) :=
   fold_right (fun (e:A * V) acc =>
                 let (a, v) := e in
                 upd acc a v) m entries.
@@ -151,7 +151,7 @@ Proof.
   generalize dependent (wb_entries wb); intros.
   induction l; simpl in *; eauto.
   destruct a0.
-  destruct w0; simpl in *; intuition.
+  destruct w; simpl in *; intuition.
 Qed.
 
 
@@ -475,7 +475,7 @@ Proof.
 Qed.
 
 Theorem upd_all_app_ignore : forall A AEQ V l1 l2
-                                    (d: @mem A AEQ (const V)) (a:A),
+                                    (d: @mem A AEQ V) (a:A),
     ~In a (map fst l2) ->
     upd_all d (l1 ++ l2) a = upd_all d l1 a.
 Proof.
@@ -492,7 +492,7 @@ Proof.
 Qed.
 
 Corollary upd_all_not_in : forall A AEQ V l
-                                  (d: @mem A AEQ (const V)) (a:A),
+                                  (d: @mem A AEQ V) (a:A),
     ~In a (map fst l) ->
     upd_all d l a = d a.
 Proof.
@@ -502,7 +502,7 @@ Proof.
 Qed.
 
 Theorem upd_all_app_last : forall A AEQ V l
-                                  (d: @mem A AEQ (const V))
+                                  (d: @mem A AEQ V)
                                   a v,
     ~In a (map fst l) ->
     upd_all d (l ++ [ (a, v) ]) a = Some v.
@@ -554,7 +554,7 @@ Proof.
   apply not_in_map; auto.
 Qed.
 
-Theorem upd_all_in : forall A AEQ V (d: @mem A AEQ (const V)) l a v,
+Theorem upd_all_in : forall A AEQ V (d: @mem A AEQ V) l a v,
     NoDup (map fst l) ->
     In (a, v) l ->
     upd_all d l a = Some v.

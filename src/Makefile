@@ -12,7 +12,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
 	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \
 	      SuperBlock AsyncFS AsyncFSRecover TreeSeq DirUtil ExtrHaskellPrelude \
-	      Hlist HlistMem Star RelationCombinators Variables MemClass \
+	      Hlist Star RelationCombinators Variables MemClass \
 	      Locking Automation ForwardChaining \
 	      CoopConcur CoopConcurAuto Protocols \
 	      DiskReaders MemCache WriteBuffer WriteBufferSet ConcurrentCache \

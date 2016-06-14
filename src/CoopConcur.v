@@ -4,24 +4,15 @@ Require Export Word.
 Require Export SepAuto.
 Require Export Hlist.
 Require Export Variables.
+Require Export AsyncDisk.
+Require Import Structures.OrderedTypeEx.
 Require Import Omega.
 Require Import Star.
 Require Import List.
 Import List.ListNotations.
 Local Open Scope list.
 
-Require Prog.
-
-Definition addrlen := Prog.addrlen.
-Definition valulen := Prog.Valulen.valulen.
-Notation addr := (word addrlen).
-Notation valu := (word valulen).
-
-Module AddrM <: Word.WordSize.
-  Definition sz := addrlen.
-End AddrM.
-
-Module Addr_as_OT := Word_as_OT AddrM.
+Module Addr_as_OT := Nat_as_OT.
 
 Global Set Implicit Arguments.
 
@@ -32,36 +23,15 @@ Notation "m '|=' F" :=
 
 Delimit Scope mem_judgement_scope with judgement.
 
-Section AsyncDiskWrites.
-
-  Inductive valuset : Set :=
-  | Valuset (last:valu) (pending:list valu).
-
-  Definition buffer_valu (vs:valuset) v :=
-    match vs with
-    | Valuset last pending => Valuset v (last::pending)
-    end.
-
-  Definition latest_valu (vs:valuset) :=
-    let 'Valuset last _ := vs in last.
-
-  Definition pending_valus (vs:valuset) :=
-    let 'Valuset _ pending := vs in pending.
-
-  Definition synced (vs:valuset) :=
-    let 'Valuset last _ := vs in Valuset last nil.
-
-End AsyncDiskWrites.
-
 Definition TID := nat.
 
 Definition wr_set : Type := valu * option TID.
 
 (* a disk state *)
-Notation DISK := (@mem addr (@weq addrlen) (const wr_set)).
+Notation DISK := (@mem addr nat_dec wr_set).
 
 (* a disk predicate *)
-Notation DISK_PRED := (@pred addr (@weq addrlen) (const wr_set)).
+Notation DISK_PRED := (@pred addr nat_dec wr_set).
 
 Section LogicDefinition.
 

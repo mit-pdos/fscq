@@ -6,7 +6,7 @@ Require Import Eqdep_dec.
 Require Import Automation.
 Require Import Locking.
 
-Module Map := FMapAVL.Make(Addr_as_OT).
+Module Map := FMapAVL.Make(Nat_as_OT).
 Module MapFacts := WFacts_fun Addr_as_OT Map.
 Module MapProperties := WProperties_fun Addr_as_OT Map.
 
