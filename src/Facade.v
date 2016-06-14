@@ -758,6 +758,12 @@ Lemma add_remove_same : forall V k (v : V) m,
   StringMap.Equal (StringMap.remove k (StringMap.add k v m)) (StringMap.remove k m).
 Admitted.
 
+Lemma add_add_comm : forall V k1 k2 v1 v2 (m : StringMap.t V),
+  k1 <> k2 ->
+  StringMap.Equal (StringMap.add k2 v2 (StringMap.add k1 v1 m))
+                  (StringMap.add k1 v1 (StringMap.add k2 v2 m)).
+Admitted.
+
 Lemma remove_remove_comm : forall V k1 k2 (m : StringMap.t V),
   k1 <> k2 ->
   StringMap.Equal (StringMap.remove k2 (StringMap.remove k1 m)) (StringMap.remove k1 (StringMap.remove k2 m)).
@@ -817,8 +823,11 @@ Ltac maps := unfold SameValues in *; repeat match goal with
       try (eapply Forall_elements_equal in H2; [ | apply add_remove_comm; solve [ congruence ] ])
   | [ |- Forall _ (StringMap.elements _) ] =>
       apply Forall_elements_add; split
+  | _ => discriminate
+  | _ => congruence
   | _ => progress rewrite ?StringMapFacts.remove_neq_o, ?StringMapFacts.remove_eq_o,
-                          ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o in * by congruence
+                          ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o,
+                          ?StringMapFacts.empty_o in * by congruence
   end.
 
 Ltac find_all_cases :=
@@ -858,6 +867,41 @@ Proof.
   subst. repeat inv_exec. eexists. econstructor. econstructor.
 Defined.
 
+Lemma CompileSkip : forall env A,
+  EXTRACT Ret tt
+  {{ A }}
+    Skip
+  {{ fun _ => A }} // env.
+Proof.
+  unfold ProgOk.
+  intuition.
+  econstructor. intuition. econstructor.
+
+  repeat inv_exec; eauto.
+  repeat inv_exec; eauto.
+Qed.
+
+Lemma CompileConst : forall T {H: FacadeWrapper Value T} env A var v,
+  EXTRACT Ret v
+  {{ A }}
+    var <~ Const v
+  {{ fun ret => var ~> ret; A }} // env.
+Proof.
+  unfold ProgOk.
+  intuition.
+  econstructor. intuition. econstructor.
+
+  repeat inv_exec. simpl in *. find_inversion.
+  repeat eexists. eauto. maps. trivial.
+  eapply forall_In_Forall_elements. intros.
+  pose proof (Forall_elements_forall_In _ H0).
+  simpl in *.
+  destruct (StringMapFacts.eq_dec k var0); maps; try discriminate.
+  specialize (H2 k v0 ltac:(eauto)). auto.
+
+  repeat inv_exec.
+Qed.
+
 Lemma Step_Seq : forall env p1 p2 p' st st'',
   (Step env)^* (Seq p1 p2, st) (p', st'') ->
   (exists p1', (Step env)^* (p1, st) (p1', st'') /\ p' = Seq p1' p2) \/
@@ -875,11 +919,12 @@ Proof.
     - right. eexists. split. econstructor. eauto.
 Qed.
 
+
 Lemma CompileBind : forall T T' {H: FacadeWrapper Value T} {H': FacadeWrapper Value T'} env A (B : T' -> _) p f xp xf var,
   EXTRACT p
   {{ A }}
     xp
-  {{ fun ret => var ~> ret; A }} // env /\
+  {{ fun ret => var ~> ret; A }} // env ->
   (forall (a : T),
     EXTRACT f a
     {{ var ~> a; A }}
@@ -892,33 +937,114 @@ Lemma CompileBind : forall T T' {H: FacadeWrapper Value T} {H': FacadeWrapper Va
 Proof.
   unfold ProgOk.
   intuition.
-  econstructor. intuition. apply H1. exact hm. auto.
-  specialize (H1 _ hm ltac:(eauto)).
-  intuition. eapply H1 in H3.
+  econstructor. intuition. apply H0. exact hm. auto.
+  specialize (H0 _ hm ltac:(eauto)).
+  intuition. eapply H0 in H3.
   repeat deex.
-  eapply H2; eauto.
+  eapply H1; eauto.
 
   (* TODO: automate proof. ([crush] can probably do this) *)
   subst. eapply Exec_RunsTo in H3. eapply RunsTo_Step in H3. eapply Step_Seq in H3.
   intuition; repeat deex. discriminate.
   eapply Step_RunsTo in H4. eapply Step_RunsTo in H5.
   eapply RunsTo_Exec in H4. eapply RunsTo_Exec in H5.
-  specialize (H1 _ hm ltac:(eauto)).
-  intuition. specialize (H1 _ ltac:(eauto)). repeat deex.
-  specialize (H2 _ _ hm' ltac:(eauto)). intuition.
-  specialize (H2 _ ltac:(eauto)). repeat deex.
+  specialize (H0 _ hm ltac:(eauto)).
+  intuition. specialize (H0 _ ltac:(eauto)). repeat deex.
+  specialize (H1 _ _ hm' ltac:(eauto)). intuition.
+  specialize (H1 _ ltac:(eauto)). repeat deex.
   eexists. exists hm'0. intuition eauto.
 
   eapply Exec_Steps in H3. repeat deex. eapply Step_Seq in H4.
   intuition; repeat deex.
   + eapply Steps_Exec in H4.
-    repeat eforward H1. specialize (H1 ltac:(eauto)). intuition.
+    repeat eforward H0. specialize (H0 ltac:(eauto)). intuition.
     specialize (H7 _ ltac:(eauto)). repeat deex.
     eexists. eauto. invc H5. auto.
   + destruct st'. eapply Step_RunsTo in H4. eapply RunsTo_Exec in H4. eapply Steps_Exec in H6; eauto.
+    repeat eforward H0. conclude H0 eauto. intuition.
+    eforward H0. conclude H0 eauto. repeat deex.
     repeat eforward H1. conclude H1 eauto. intuition.
-    eforward H1. conclude H1 eauto. repeat deex.
-    repeat eforward H2. conclude H2 eauto. intuition.
+    eforward H11. conclude H11 eauto. repeat deex.
+    eauto.
+Qed.
+
+Lemma hoare_weaken_post : forall T env A (B1 B2 : T -> _) pr p,
+  (forall x k e, StringMap.find k (B2 x) = Some e -> StringMap.find k (B1 x) = Some e) ->
+  EXTRACT pr
+  {{ A }} p {{ B1 }} // env ->
+  EXTRACT pr
+  {{ A }} p {{ B2 }} // env.
+Proof.
+  unfold ProgOk.
+  intros.
+  repeat eforward H0. conclude H0 eauto.
+  intuition.
+  eforward H0. conclude H0 eauto. repeat deex.
+  repeat eexists; eauto.
+  unfold SameValues in *.
+  apply forall_In_Forall_elements. intros.
+  eapply Forall_elements_forall_In in H6; eauto.
+Qed.
+
+Lemma hoare_strengthen_pre : forall T env A1 A2 (B : T -> _) pr p,
+  (forall k e, StringMap.find k A1 = Some e -> StringMap.find k A2 = Some e) ->
+  EXTRACT pr
+  {{ A1 }} p {{ B }} // env ->
+  EXTRACT pr
+  {{ A2 }} p {{ B }} // env.
+Proof.
+  unfold ProgOk.
+  intros.
+  specialize (H0 initial_state hm). forward H0.
+  unfold SameValues in *.
+  apply forall_In_Forall_elements. intros.
+  eapply Forall_elements_forall_In in H1; eauto.
+  intuition.
+Qed.
+
+Lemma CompileBindDiscard : forall T T' {H: FacadeWrapper Value T} {H': FacadeWrapper Value T'} env A (B : T' -> _) p f xp xf,
+  EXTRACT p
+  {{ A }}
+    xp
+  {{ fun _ => A }} // env ->
+  EXTRACT f
+  {{ A }}
+    xf
+  {{ B }} // env ->
+  EXTRACT Bind p (fun (_ : T') => f)
+  {{ A }}
+    xp; xf
+  {{ B }} // env.
+Proof.
+  unfold ProgOk.
+  intuition.
+  econstructor. intuition. apply H0. exact hm. auto.
+  specialize (H0 _ hm ltac:(eauto)).
+  intuition. eapply H0 in H3.
+  repeat deex.
+  eapply H1; eauto.
+
+  (* TODO: automate proof. ([crush] can probably do this) *)
+  subst. eapply Exec_RunsTo in H3. eapply RunsTo_Step in H3. eapply Step_Seq in H3.
+  intuition; repeat deex. discriminate.
+  eapply Step_RunsTo in H4. eapply Step_RunsTo in H5.
+  eapply RunsTo_Exec in H4. eapply RunsTo_Exec in H5.
+  specialize (H0 _ hm ltac:(eauto)).
+  intuition. specialize (H0 _ ltac:(eauto)). repeat deex.
+  specialize (H1 _ hm' ltac:(eauto)). intuition.
+  specialize (H1 _ ltac:(eauto)). repeat deex.
+  eexists. exists hm'0. intuition eauto.
+
+  eapply Exec_Steps in H3. repeat deex. eapply Step_Seq in H4.
+  intuition; repeat deex.
+  + eapply Steps_Exec in H4.
+    repeat eforward H0. specialize (H0 ltac:(eauto)). intuition.
+    specialize (H7 _ ltac:(eauto)). repeat deex.
+    eexists. eauto. invc H5. auto.
+  + destruct st'. eapply Step_RunsTo in H4. eapply RunsTo_Exec in H4. eapply Steps_Exec in H6; eauto.
+    repeat eforward H0. conclude H0 eauto. intuition.
+    eforward H0. conclude H0 eauto. repeat deex.
+    repeat eforward H1. conclude H1 eauto. intuition.
     eforward H11. conclude H11 eauto. repeat deex.
     eauto.
 Qed.
@@ -973,22 +1099,22 @@ Proof.
     eapply forall_In_Forall_elements. intros.
     eapply Forall_elements_forall_In in H1; eauto. destruct v0.
     destruct (StringMapFacts.eq_dec k avar).
-    + unfold StringKey.eq in e; subst. maps. discriminate.
-    + maps. eauto.
+    + unfold StringKey.eq in e; subst. maps.
+    + maps.
   } {
     unfold StringKey.eq in n. eapply Forall_elements_equal; [ | eapply add_remove_comm'; congruence ]. maps.
     + rewrite He. trivial.
     + eapply Forall_elements_equal; [ | eapply remove_remove_comm; congruence ].
       eapply forall_In_Forall_elements. intros.
       destruct (StringMapFacts.eq_dec k avar). {
-        unfold StringKey.eq in e; subst. maps. discriminate.
+        unfold StringKey.eq in e; subst. maps.
       }
       destruct (StringMapFacts.eq_dec k vvar). {
-        unfold StringKey.eq in e; subst. maps. discriminate.
+        unfold StringKey.eq in e; subst. maps.
       }
       maps.
       eapply Forall_elements_forall_In in H1; eauto.
-      maps; eauto.
+      maps.
   }
 
   repeat inv_exec.
@@ -999,7 +1125,7 @@ Lemma CompileWrite : forall F tvar avar vvar a v,
   avar <> vvar ->
   tvar <> avar ->
   tvar <> vvar ->
-  ~ StringMap.In tvar F ->
+  StringMap.find tvar F = None ->
   EXTRACT Write a v
   {{ avar ~> a; vvar ~> v; F }}
     Call tvar "write" [avar; vvar]
@@ -1024,22 +1150,19 @@ Proof.
   eapply forall_In_Forall_elements. intros.
   pose proof (Forall_elements_forall_In _ H6).
   destruct v. simpl in *.
-  destruct (StringMapFacts.eq_dec k tvar); maps. {
-    apply_in_hyp StringMapFacts.not_find_in_iff. congruence.
-  }
+  destruct (StringMapFacts.eq_dec k tvar); maps.
   destruct (StringMapFacts.eq_dec k vvar); maps. {
     find_inversion. repeat apply_in_hyp inj_pair2. (* NOTE: Assumes axiom eq_rect_eq *)
     subst. trivial.
   }
-  destruct (StringMapFacts.eq_dec k avar); maps. {
-    congruence.
-  }
+  destruct (StringMapFacts.eq_dec k avar); maps.
   specialize (H7 k (SItem v)). conclude H7 ltac:(maps; eauto).
   simpl in *. eauto.
 
   repeat inv_exec.
   eauto.
 Qed.
+
 
 Definition swap_prog :=
   a <- Read 0;
@@ -1053,7 +1176,70 @@ Example micro_swap : sigT (fun p =>
 Proof.
   unfold swap_prog.
   eexists.
-  eapply CompileBind.
+  eapply CompileBind; intros.
   eauto with typeclass_instances.
-  intuition.
-Abort.
+  eapply extract_equiv_prog.
+  eapply bind_left_id.
+  eapply CompileBind; intros.
+  eauto with typeclass_instances.
+  instantiate (var0 := "c0"). (* TODO gensym *)
+  eapply CompileConst.
+  eauto with typeclass_instances.
+  eapply hoare_weaken_post; [ | eapply CompileRead ].
+  instantiate (var := "a"). instantiate (Goal2 := "a").
+  intros. maps. destruct (StringMapFacts.eq_dec k "a"); maps; eauto.
+
+  eapply CompileBind; intros.
+  eauto with typeclass_instances.
+  eapply extract_equiv_prog.
+  eapply bind_left_id.
+  eapply CompileBind; intros.
+  eauto with typeclass_instances.
+  instantiate (var0 := "c1"). (* TODO gensym *)
+  eapply CompileConst.
+  eauto with typeclass_instances.
+  eapply hoare_weaken_post; [ | eapply CompileRead ].
+  instantiate (var := "b"). instantiate (Goal4 := "b").
+  intros. maps. destruct (StringMapFacts.eq_dec k "b"); destruct (StringMapFacts.eq_dec k "a"); maps; eauto.
+
+  eapply CompileBindDiscard.
+  eauto with typeclass_instances.
+  eauto with typeclass_instances.
+  eapply extract_equiv_prog.
+  change (Write 0 a0) with ((fun c0 => Write c0 a0) 0). (* TODO use pattern tactic *)
+  eapply bind_left_id.
+  eapply CompileBind; intros.
+  eauto with typeclass_instances.
+  eapply CompileConst.
+  eauto with typeclass_instances.
+  eapply hoare_weaken_post; [ | eapply CompileWrite ].
+  instantiate (var := "_"). instantiate (Goal2 := "c1").
+  intros. maps. destruct (StringMapFacts.eq_dec k "b"); destruct (StringMapFacts.eq_dec k "a"); maps; eauto.
+  congruence.
+  congruence.
+  congruence.
+  maps.
+
+  eapply CompileBindDiscard.
+  eauto with typeclass_instances.
+  eauto with typeclass_instances.
+  eapply extract_equiv_prog.
+  change (Write 1 a) with ((fun c1 => Write c1 a) 1). (* TODO use pattern tactic *)
+  eapply bind_left_id.
+  eapply CompileBind; intros.
+  eauto with typeclass_instances.
+  eapply CompileConst.
+  eauto with typeclass_instances.
+  eapply hoare_strengthen_pre; [ |
+  eapply hoare_weaken_post; [ | eapply CompileWrite ]].
+  intros. rewrite add_add_comm with (k1 := "a") by congruence. eapply H.
+  instantiate (var := "_"). instantiate (Goal1 := "c1").
+  intros. maps. destruct (StringMapFacts.eq_dec k "b"); destruct (StringMapFacts.eq_dec k "a"); maps; eauto.
+  congruence.
+  congruence.
+  congruence.
+  maps.
+
+  eapply hoare_weaken_post; [ | eapply CompileSkip ].
+  intros. maps.
+Qed.
