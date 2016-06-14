@@ -1,18 +1,27 @@
 Require Import Arith.
 Require Import Omega.
 Require Import List.
-Require Import Prog.
+Require Import Prog ProgMonad.
 Require Import Pred PredCrash.
 Require Import Hoare.
 Require Import Word.
+Require Import AsyncDisk.
+Require Import Hashmap.
 
 Set Implicit Arguments.
+
+
+Hint Extern 1 (exists _, hashmap_subset _ _ _) => try solve_hashmap_subset.
 
 (* Helpers for existential variables *)
 
 Ltac set_evars :=
   repeat match goal with
-              | [ |- context[?e] ] => is_evar e; let H := fresh in set (H := e)
+              | [ |- context[?e] ] => is_evar e; 
+                 match type of e with
+                 | prod _ _ => idtac
+                 | _ => let H := fresh in set (H := e)
+                 end
             end.
 
 Ltac subst_evars :=
@@ -24,6 +33,17 @@ Ltac set_evars_in H :=
   repeat match type of H with
               | context[?e] => is_evar e; let E := fresh in set (E := e) in H
             end.
+
+Ltac equate x y :=
+  let dummy := constr:(eq_refl x : x = y) in idtac.
+
+Ltac eassign' t :=
+  match goal with
+  | [ |- context [?x] ] => is_evar x; equate x t
+  end.
+
+Tactic Notation "eassign" constr(t) := eassign' t.
+
 
 (** * Helpers for keeping track of variable names *)
 
@@ -55,6 +75,205 @@ Proof.
   destruct H as [b H].
   exists (a, b); auto.
 Qed.
+
+Theorem destruct_varname1_0 : forall AN A (p : AN * A),
+  exists an a, p = (an, a).
+Proof.
+  intros; destruct p; eauto.
+Qed.
+
+Theorem destruct_varname1_1 : forall AN A B (p : AN * A * B ),
+  exists an a b, p = (an, a, b).
+Proof.
+  intros; do 2 destruct p; eauto.
+Qed.
+
+Theorem destruct_varname1_2 : forall AN A B C (p : AN * A * B * C),
+  exists an a b c, p = (an, a, b, c).
+Proof.
+  intros; repeat destruct_prod; repeat eexists.
+Qed.
+
+Theorem destruct_varname1_4 : forall AN A B C D E (p : AN * A * B * C * D * E),
+  exists an a b c d e, p = (an, a, b, c, d, e).
+Proof.
+  intros; repeat destruct_prod; repeat eexists.
+Qed.
+
+Theorem destruct_varname1_8 : forall AN A B C D E F G (p : AN * A * B * C * D * E * F * G),
+  exists an a b c d e f g, p = (an, a, b, c, d, e, f, g).
+Proof.
+  intros; repeat destruct_prod; repeat eexists.
+Qed.
+
+Theorem destruct_varname2 : forall AN BN A B C (p : (AN * A) * ((BN * B) * C) ),
+  exists an a bn b c, p = ((an, a), ((bn, b), c)).
+Proof.
+  intros. repeat destruct_prod.
+  repeat eexists.
+Qed.
+
+Theorem destruct_varname3 : forall AN BN CN A B C D (p : (AN * A) * ((BN * B) * ((CN * C) * D))),
+  exists an a bn b cn c d, p = ((an, a), ((bn, b), ((cn, c), d))).
+Proof.
+  intros. repeat destruct_prod.
+  repeat eexists.
+Qed.
+
+Theorem destruct_varname4 : forall AN BN CN DN A B C D E 
+                  (p : (AN * A) * ((BN * B) * ((CN * C) * ((DN * D) * E)))),
+  exists an a bn b cn c dn d e, p = ((an, a), ((bn, b), ((cn, c), ((dn, d), e)))).
+Proof.
+  intros. repeat destruct_prod.
+  repeat eexists.
+Qed.
+
+Ltac destruct_varname1 :=
+  match goal with
+  | [ H : VARNAME (_) * _ |- _ ] => let Hx := fresh in
+      pose proof (destruct_varname1_0 H) as Hx;
+      match type of Hx with
+      | exists (_ : VARNAME (vn)) _, _ = _ =>
+        destruct Hx as [? [?vn Hx] ]
+      end
+  | [ H : VARNAME (_) * _ * _ |- _ ] => let Hx := fresh in
+      pose proof (destruct_varname1_1 H) as Hx;
+      match type of Hx with
+      | exists (_ : VARNAME (vn)) _ _, _ = _ =>
+        destruct Hx as [? [?vn [? Hx] ] ]
+      end
+  | [ H : VARNAME (_) * _ * _ * _ |- _ ] => let Hx := fresh in
+      pose proof (destruct_varname1_2 H) as Hx;
+      match type of Hx with
+      | exists (_ : VARNAME (vn)) _ _ _, _ = _ =>
+        destruct Hx as [? [?vn [? [? Hx] ] ] ]
+      end
+  | [ H : VARNAME (_) * _ * _ * _ * _ * _ |- _ ] => let Hx := fresh in
+      pose proof (destruct_varname1_4 H) as Hx;
+      match type of Hx with
+      | exists (_ : VARNAME (vn)) _ _ _ _ _, _ = _ =>
+        destruct Hx as [? [?vn [? [? [? [? Hx] ] ] ] ] ]
+      end
+  | [ H : VARNAME (_) * _ * _ * _ * _ * _ * _ * _ |- _ ] => let Hx := fresh in
+      pose proof (destruct_varname1_8 H) as Hx;
+      match type of Hx with
+      | exists (_ : VARNAME (vn)) _ _ _ _ _ _ _, _ = _ =>
+        destruct Hx as [? [?vn [? [? [? [? [? [? Hx] ] ] ] ] ] ] ]
+      end
+  end.
+
+Ltac destruct_varname2 :=
+  match goal with
+  | [ H : VARNAME (_) * _ * ((VARNAME (_) * _) * _) |- _ ] => let Hx := fresh in
+      pose proof (destruct_varname2 H) as Hx;
+      match type of Hx with
+      | exists (_ : VARNAME (vn1)) _ (_ : VARNAME (vn2)) _ _, _ = _ =>
+        destruct Hx as [? [?vn1 [? [?vn2 [? Hx] ] ] ] ]
+      end
+  end.
+
+Ltac destruct_varname3 :=
+  match goal with
+  | [ H : VARNAME (_) * _ * ((VARNAME (_) * _) * ((VARNAME (_) * _) * _)) |- _ ] => let Hx := fresh in
+      pose proof (destruct_varname3 H) as Hx;
+      match type of Hx with
+      | exists (_ : VARNAME (vn1)) _ (_ : VARNAME (vn2)) _ (_ : VARNAME (vn3)) _ _, _ = _ =>
+        destruct Hx as [? [?vn1 [? [?vn2 [? [?vn3 [? Hx] ] ] ] ] ] ]
+      end
+  end.
+
+Ltac destruct_varname4 :=
+  match goal with
+  | [ H : VARNAME (_) * _ * ((VARNAME (_) * _) * ((VARNAME (_) * _) * ((VARNAME (_) * _) * _))) |- _ ] =>
+      let Hx := fresh in
+      pose proof (destruct_varname4 H) as Hx;
+      match type of Hx with
+      | exists (_ : VARNAME (vn1)) _ (_ : VARNAME (vn2)) _ (_ : VARNAME (vn3)) _ (_ : VARNAME (vn4)) _ _ , _ = _ =>
+        destruct Hx as [? [?vn1 [? [?vn2 [? [?vn3 [? [?vn4 [? Hx] ] ] ] ] ] ] ] ]
+      end
+  end.
+
+Ltac destruct_varnames :=
+  repeat (( destruct_varname4 || destruct_varname3 || destruct_varname2 || destruct_varname1); subst).
+
+Theorem destruct_pair2 : forall A B (p : A * B),
+  exists a b, p = (a, b).
+Proof.
+  intros; destruct p; repeat eexists.
+Qed.
+
+Theorem destruct_pair4 : forall A B C D (p : A * B * C * D),
+  exists a b c d, p = (a, b, c, d).
+Proof.
+  intros; do 3 destruct p; repeat eexists.
+Qed.
+
+Theorem destruct_pair6 : forall A B C D E F (p : A * B * C * D * E * F),
+  exists a b c d e f, p = (a, b, c, d, e, f).
+Proof.
+  intros; do 5 destruct p; repeat eexists.
+Qed.
+
+Theorem destruct_pair8 : forall A B C D E F G H (p : A * B * C * D * E * F * G * H),
+  exists a b c d e f g h, p = (a, b, c, d, e, f, g, h).
+Proof.
+  intros; do 7 destruct p; repeat eexists.
+Qed.
+
+Ltac destruct_pair2 :=
+  match goal with
+  | [ H : _ * _ |- _ ] => first [ clear H || let Hx := fresh in
+      pose proof (destruct_pair2 H) as Hx;
+      match type of Hx with
+      | exists _ _, _ = _ =>
+        let H1 := fresh H "_1" in let H2 := fresh H "_2" in
+        destruct Hx as [H1 [H2 Hx] ]
+      end ]
+  end.
+
+Ltac destruct_pair4 :=
+  match goal with
+  | [ H : _ * _ * _ * _ |- _ ] => first [ clear H || let Hx := fresh in
+      pose proof (destruct_pair4 H) as Hx;
+      match type of Hx with
+      | exists _ _ _ _, _ = _ =>
+        destruct Hx as [? [? [? [? Hx] ] ] ]
+      end ]
+  end.
+
+Ltac destruct_pair6 :=
+  match goal with
+  | [ H : _ * _ * _ * _ * _ * _ |- _ ] => first [ clear H || let Hx := fresh in
+      pose proof (destruct_pair6 H) as Hx;
+      match type of Hx with
+      | exists _ _ _ _ _ _, _ = _ =>
+        destruct Hx as [? [? [? [? [? [? Hx] ] ] ] ] ]
+      end ]
+  end.
+
+
+Ltac destruct_pair8 :=
+  match goal with
+  | [ H : _ * _ * _ * _ * _ * _ * _ * _ |- _ ] => first [ clear H ||  let Hx := fresh in
+      pose proof (destruct_pair8 H) as Hx;
+      match type of Hx with
+      | exists _ _ _ _ _ _ _ _, _ = _ =>
+        destruct Hx as [? [? [? [? [? [? [? [? Hx] ] ] ] ] ] ] ]
+      end ]
+  end.
+
+Ltac destruct_pair_once :=
+  match goal with
+  | [ v: valuset |- _ ] =>
+    let v0 := fresh v "_cur" in
+    let v1 := fresh v "_old" in
+    destruct v as [v0 v1]
+  | _ => ( destruct_pair8 || destruct_pair6 || destruct_pair4 || destruct_pair2)
+  end; subst.
+
+Ltac destruct_pairs :=
+  repeat (destruct_varnames; simpl in *; try destruct_pair_once).
+
 
 (**
  * These "anon" names will currently show up for ghost variables inside for loops..
@@ -99,9 +318,7 @@ Ltac eexists_one :=
 
 Ltac pred_apply' H := eapply pimpl_apply; [ | exact H ].
 
-Ltac pred_apply :=
-  match goal with
-  | [ |- _ =p=> _ ] => fail 1
+Ltac pred_apply := match goal with
   | [ H: _ ?m |- _ ?m ] => pred_apply' H
   | [ |- exists _, _ ] => eexists; pred_apply
   end.
@@ -113,6 +330,7 @@ Ltac pimpl_crash :=
   set_evars;
   try match goal with
   | [ H: _ =p=> _ |- _ =p=> ?crash ] => eapply pimpl_trans; [| solve [ eapply H ] ]
+  | [ H: forall _, _ =p=> _ |- _ =p=> ?crash ] => eapply pimpl_trans; [| solve [ eapply H ] ]
   end;
   subst_evars.
 
@@ -375,6 +593,7 @@ Ltac flatten :=
 Definition okToUnify {AT AEQ V} (p1 p2 : @pred AT AEQ V) := p1 = p2.
 
 Hint Extern 0 (okToUnify (?p |-> _) (?p |-> _)) => constructor : okToUnify.
+Hint Extern 0 (okToUnify (?p |+> _) (?p |+> _)) => constructor : okToUnify.
 Hint Extern 0 (okToUnify ?a ?a) => constructor : okToUnify.
 
 (* Try to unify any two [ptsto] predicates.  Since ring does not unify
@@ -382,7 +601,7 @@ Hint Extern 0 (okToUnify ?a ?a) => constructor : okToUnify.
  * if the addresses in the two [ptsto] predicates are necessarily equal.
  * Fold [wzero] for [ring], and convert nat multiplications and additions
  * into word, so that [ring] can solve them.
- *)
+
 Ltac rw_natToWord_mult :=
   match goal with
   | [ |- context[natToWord ?s (?x * ?y)] ] =>
@@ -417,12 +636,11 @@ Ltac ring_prepare :=
   fold (wzero addrlen);
   repeat rewrite natToWord_wordToNat.
 
+
 Ltac words := ring_prepare; ring.
 
 Ltac wordcmp_one :=
   match goal with
-  | [ H: context[valu2addr (addr2valu _)] |- _ ] => rewrite addr2valu2addr in H
-  | [ |- context[valu2addr (addr2valu _)] ] => rewrite addr2valu2addr
   | [ H: (natToWord ?sz ?n < ?x)%word |- _ ] =>
     assert (goodSize sz (wordToNat x)) by (apply wordToNat_good);
     assert (wordToNat (natToWord sz n) < wordToNat x) by (apply wlt_lt'; unfold goodSize in *; auto; omega);
@@ -438,7 +656,11 @@ Ltac wordcmp_one :=
     try solve [ rewrite H; apply le_n ]
   end.
 
+
 Ltac wordcmp := repeat wordcmp_one.
+
+*)
+
 
 Inductive pick {AT AEQ V} (lhs : pred) : list (@pred AT AEQ V) -> list pred -> Prop :=
 | PickFirst : forall p ps,
@@ -455,14 +677,18 @@ Proof.
   intuition; apply PickLater; auto.
 Qed.
 
-Lemma crash_xform_okToUnify : forall AT AEQ (P Q: @pred AT AEQ _),
+Lemma crash_xform_okToUnify : forall (P Q: rawpred),
   okToUnify P Q -> okToUnify (crash_xform P) (crash_xform Q).
 Proof.
   intros. unfold okToUnify in *. congruence.
 Qed.
 
-Ltac pick := solve [ repeat ((apply PickFirst; solve [ try apply crash_xform_okToUnify; trivial with okToUnify ])
-                               || apply PickLater) ].
+
+Ltac pick := solve [ repeat 
+          ((apply PickFirst;
+            solve [ try apply crash_xform_okToUnify; trivial with okToUnify ]
+           ) || apply PickLater) ].
+
 
 Theorem imply_one : forall AT AEQ V qs qs' (p : @pred AT AEQ V) q ps F,
   (pick q qs qs' /\ (p =p=> q))
@@ -533,7 +759,7 @@ Ltac cancel' := repeat (cancel_one || delay_one);
                     | context[sep_star] => match Q with context[sep_star] => fail 2 end
                     | _ => idtac
                     end;
-                    apply finish_frame
+                    simple apply finish_frame
                   end ].
 
 Theorem split_or_one : forall AT AEQ V (q : @pred AT AEQ V) pa pb ps F,
@@ -644,11 +870,16 @@ Ltac destruct_lift' H :=
  * and then doing [simpl in H] on specific hypotheses. *)
 Ltac destruct_lift H :=
   destruct_lift' H;
-  repeat destruct_prod;
+  destruct_pairs;
   simpl in *;
   repeat destruct_type True;
   repeat destruct_type unit;
+  simpl in *;
   repeat clear_varname.
+
+Ltac destruct_lifts := try progress match goal with 
+  | [ H : sep_star _ _  _ |- _ ] => destruct_lift H
+end.
 
 Definition norm_goal (T: Type) (g: T) := True.
 Theorem norm_goal_ok: forall T g, @norm_goal T g. Proof. firstorder. Qed.
@@ -679,7 +910,7 @@ Opaque pimpl_hidden.
 (**
  * In-code hints to transform predicates.
  *)
-
+(*
 Definition xform_fwd {T: Prop} (x: T) := True.
 Definition xform_bwd {T: Prop} (x: T) := True.
 Opaque xform_fwd xform_bwd.
@@ -729,6 +960,7 @@ Ltac apply_xform canceller := match goal with
     end
   | _ => idtac
   end; clear_xform.
+*)
 
 (**
  * Older predicate replacement machinery.
@@ -812,15 +1044,24 @@ Ltac norm'r := eapply start_normalizing_right; [ flatten | ];
 
 Create HintDb false_precondition_hint.
 
-Ltac norm := unfold pair_args_helper;
+
+Ltac destruct_pair_eq :=
+    match goal with
+    | [ H : (_ , _) = (_, _) |- _ ] => inversion H; clear H
+    end.
+
+Ltac norml := unfold pair_args_helper;
              norm'l; repeat deex; repeat destruct_type valuset;
+             repeat destruct_pair_eq;
              (* To check whether [split_or_l] succeeded, we require that it
               * produce at least 2 subgoals.  Also, because [split_or_l] reverses
               * the list of predicates, we run it twice to preserve the order.
               *)
              repeat ( split_or_l; [ | | .. ]; split_or_l; unfold stars; simpl; norm'l );
              set_norm_goal;
-             repeat ( replace_left; unfold stars; simpl; set_norm_goal; norm'l );
+             repeat ( replace_left; unfold stars; simpl; set_norm_goal; norm'l ).
+
+Ltac norm := norml;
              solve [ exfalso ; auto with false_precondition_hint ] ||
              ( norm'r; [ try ( replace_right; unfold stars; simpl; norm ) | .. ] );
              repeat clear_norm_goal.
@@ -835,22 +1076,66 @@ Ltac inv_option_eq' := repeat match goal with
 
 Ltac inv_option_eq := try ((progress inv_option_eq'); subst; eauto).
 
-Tactic Notation "hypmatch" constr(pattern) "as" ident(n) :=
+Tactic Notation "denote" open_constr(pattern) "as" ident(n) :=
   match goal with | [ H: context [ pattern ] |- _ ] => rename H into n end.
 
-Ltac cancel_with_split t splitter :=
+Tactic Notation "denote!" open_constr(pattern) "as" ident(n) :=
+  match goal with | [ H: pattern |- _ ] => rename H into n end.
+
+Tactic Notation "substl" :=
+  subst; repeat match goal with
+  | [ H : ?l = ?r |- _ ] => is_var l;
+    match goal with
+     | [ |- context [ r ] ] => idtac
+     | _ => setoid_rewrite H
+    end
+  end.
+
+Tactic Notation "substl" constr(term) "at" integer_list(pos) :=
+  match goal with
+  | [ H : term = _  |- _ ] => setoid_rewrite H at pos
+  | [ H : _ = term  |- _ ] => setoid_rewrite <- H at pos
+  end.
+
+Tactic Notation "substl" constr(term) :=
+  match goal with
+  | [ H : term = _  |- _ ] => setoid_rewrite H
+  | [ H : _ = term  |- _ ] => setoid_rewrite <- H
+  end.
+
+
+Ltac safecancel :=
   intros;
   unfold stars; simpl; try subst;
   pimpl_crash;
   norm;
   try match goal with
       | [ |- _ =p=> stars ((_ \/ _) :: nil) ] =>
-        solve [ apply stars_or_left; cancel_with_split t splitter
-              | apply stars_or_right; cancel_with_split t splitter ]
+        solve [ apply stars_or_left; safecancel
+              | apply stars_or_right; safecancel ]
       | [ |- _ =p=> _ ] => cancel'
       end;
-  splitter;
-  try ( pred_apply; cancel_with_split t splitter );
+  set_evars; intuition; subst_evars;
+  try ( pred_apply; safecancel );
+  try congruence;
+  unfold stars; simpl; inv_option_eq;
+  try match goal with
+  | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
+  end.
+
+Ltac cancel_with' t intuition_t :=
+  intros;
+  unfold stars; simpl; try subst;
+  pimpl_crash;
+  norm;
+  try match goal with
+      | [ |- _ =p=> stars ((_ \/ _) :: nil) ] =>
+        solve [ apply stars_or_left; cancel_with' t intuition_t
+              | apply stars_or_right; cancel_with' t intuition_t ]
+      | [ |- _ =p=> _ ] => cancel'
+      end;
+  intuition intuition_t;
+  try ( pred_apply; cancel_with' t intuition_t);
   try congruence;
   try t;
   unfold stars; simpl; inv_option_eq;
@@ -858,10 +1143,8 @@ Ltac cancel_with_split t splitter :=
   | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
   end.
 
-Ltac cancel_with t := cancel_with_split t intuition.
-
+Ltac cancel_with t := cancel_with' t auto.
 Ltac cancel := cancel_with idtac.
-
 
 (* fastest version of cancel, should always try this first *)
 Ltac cancel_exact := repeat match goal with 
@@ -878,12 +1161,17 @@ Ltac cancel_exact := repeat match goal with
 end.
 
 
+Ltac cancel_by H :=
+  eapply pimpl_ext; [ eapply H | cancel | cancel ].
+
+
 Theorem nop_ok :
   forall T A v (rx : A -> prog T),
-  {{ fun done_ crash_ => exists F, F * [[ forall r_,
-    {{ fun done' crash' => (fun r => F * [[ r = v ]]) r_ *
+  {{ fun hm done_ crash_ => exists F, F * [[ forall r_,
+    {{ fun hm' done' crash' => (fun r => F * [[ r = v ]]) r_ *
+                           [[ hm = hm' ]] *
                            [[ done' = done_ ]] * [[ crash' = crash_ ]]}}
-     rx r_ ]] * [[ F =p=> crash_]] }} rx v.
+     rx r_ ]] * [[ F =p=> crash_ hm]] }} rx v.
 Proof.
   unfold corr2, pimpl.
   intros.
@@ -908,29 +1196,73 @@ Ltac autorewrite_fast :=
 
 Ltac destruct_branch :=
   match goal with
-  | [ |- {{ _ }} match ?v with | Some _ => _ | None => _ end ] => destruct v eqn:?
-  | [ |- {{ _ }} match ?v with | None => _ | Some _ => _ end ] => destruct v eqn:?
-  | [ |- {{ _ }} if ?v then _ else _ ] => destruct v eqn:?
-  | [ |- {{ _ }} let '_ := ?v in _ ] => destruct v eqn:?
+  | [ |- {{ _ }} Bind (match ?v with | Some _ => _ | None => _ end) _ ] => destruct v eqn:?
+  | [ |- {{ _ }} Bind (match ?v with | None => _ | Some _ => _ end) _ ] => destruct v eqn:?
+  | [ |- {{ _ }} Bind (if ?v then _ else _) _ ] => destruct v eqn:?
+  | [ |- {{ _ }} Bind (let '_ := ?v in _) _ ] => destruct v eqn:?
   end.
 
-Ltac step_with unfolder t :=
+Ltac prestep :=
   intros;
   try autounfold with hoare_unfold in *;
+  repeat destruct_pair_once;
   try cancel;
-  repeat destruct_branch;
-  remember_xform;
+  repeat (destruct_branch || monad_simpl_one);
+  (*   remember_xform; *)
   ((eapply pimpl_ok2; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok2_cont; [ solve [ eauto with prog ] | | ])
    || (eapply pimpl_ok3; [ solve [ eauto with prog ] | ])
    || (eapply pimpl_ok3_cont; [ solve [ eauto with prog ] | | ])
    || (eapply pimpl_ok2; [
         match goal with
-        | [ |- {{ _ }} ?a _ ] => is_var a
+        | [ |- {{ _ }} ?rx _ ] => is_var rx
         end; solve [ eapply nop_ok ] | ]));
   intros; try subst;
   repeat destruct_type unit;  (* for returning [unit] which is [tt] *)
-  try autounfold with hoare_unfold in *; unfolder; eauto;
+  try autounfold with hoare_unfold in *; eauto.
+
+Ltac poststep t :=
+  let tac := match goal with
+  | [ |- corr2 _ _ ] => idtac
+  | _ => t
+  end in
+  intuition tac;
+  try omega;
+  try congruence;
+  try tac.
+
+Ltac safestep :=
+    prestep; safecancel;
+    set_evars; poststep auto; subst_evars.
+
+Ltac or_r := apply pimpl_or_r; right.
+Ltac or_l := apply pimpl_or_r; left.
+
+
+Tactic Notation "step" "using" tactic(t) "with" ident(db) "in" "*" :=
+  prestep;
+  try ( cancel_with t ; try ( autorewrite with db in * |-; cancel_with t ) );
+  poststep t.
+
+Tactic Notation "step" "using" tactic(t) "with" ident(db) :=
+  prestep;
+  try ( cancel_with t ; try ( autorewrite with db; cancel_with t ) );
+  poststep t.
+
+Tactic Notation "step" "using" tactic(t) "with" "intuition" tactic(intuition_t) :=
+  prestep;
+  try (cancel_with' t intuition_t; try cancel_with' t intuition_t);
+  poststep t.
+
+Tactic Notation "step" "using" tactic(t) :=
+  prestep;
+  try (cancel_with t; try cancel_with t);
+  poststep t.
+
+
+(*
+Ltac step_with t :=
+  prestep;
   try ( cancel_with t ; try ( progress autorewrite_fast ; cancel_with t ) );
   apply_xform cancel;
   try cancel_with t; try autorewrite_fast;
@@ -938,24 +1270,63 @@ Ltac step_with unfolder t :=
   try omega;
   try congruence;
   try t.
+*)
 
-Ltac step_unfold unfolder := step_with unfolder eauto.
+Ltac step := step using eauto.
+Ltac step_idtac := step using idtac with intuition idtac.
 
-Ltac step := step_unfold idtac.
+Tactic Notation "hoare" "using" tactic(t) "with" ident(db) "in" "*" :=
+  repeat (step using t with db in *).
 
-Ltac hoare := repeat step.
-Ltac hoare_unfold unfolder := unfolder; repeat (step_unfold unfolder).
-Ltac hoare_with unfolder t := unfolder; repeat (step_with unfolder t).
+Tactic Notation "hoare" "using" tactic(t) "with" ident(db) :=
+  repeat (step using t with db).
 
-(** These hints are for existential variables created by automation
-    that don't matter (for example, the selN default value, or any unit).
-    The Immediate keyword is unnecessary (obviously these values don't have
-    hypotheses), but emphasizes that these hints have no cost in terms of
-    expanding the proof search tree.
+Tactic Notation "hoare" "using" tactic(t) :=
+  repeat (step using t).
 
-    Feel free to add more such hints whenever "Grab Existential Variables.
-    all: auto." doesn't cover something. *)
-Hint Immediate tt.
-Hint Immediate emp.
-Hint Immediate $0.
-Hint Extern 0 (list _) => apply nil.
+Ltac hoare := hoare using eauto.
+
+
+
+Ltac xform_deex_r :=
+    match goal with
+    | [ |- pimpl _ (crash_xform (exis _)) ] =>
+            rewrite crash_xform_exists_comm;
+            apply pimpl_exists_r; eexists
+    end.
+
+
+Ltac xform_deex_l :=
+    norml; unfold stars; simpl; clear_norm_goal;
+    try rewrite -> crash_xform_exists_comm;
+    try (rewrite sep_star_comm, star_emp_pimpl);
+    try match goal with
+    | [ |- pimpl (exis _) _ ] => apply pimpl_exists_l; intro
+    end.
+
+Ltac xform_dist :=
+  rewrite crash_xform_sep_star_dist ||
+  rewrite crash_xform_or_dist ||
+  rewrite crash_xform_lift_empty ||
+  rewrite crash_invariant_emp ||
+  rewrite <- crash_invariant_emp_r.
+
+Ltac xform_norml :=
+  repeat (xform_deex_l || xform_dist).
+
+Ltac xform_normr :=
+  repeat (xform_deex_r || xform_dist).
+
+Ltac xform_norm :=
+  xform_norml; xform_normr.
+
+Ltac xcrash_rewrite :=
+  match goal with
+  | [ H : forall rc hm, (crash_xform rc =p=> crash_xform ?x) -> _ =p=> ?c hm |- _ =p=> ?c ?hm] =>
+      eapply pimpl_trans; [ | eapply H ]; cancel; subst
+  | [ H : crash_xform ?rc =p=> _ |- crash_xform ?rc =p=> _ ] => rewrite H
+  end.
+
+Ltac xcrash := subst; repeat xcrash_rewrite;
+               xform_norm; cancel; xform_normr; cancel.
+

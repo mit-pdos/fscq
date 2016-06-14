@@ -1,2156 +1,1499 @@
 Require Import Mem.
+Require Import ListUtils.
 Require Import List Omega Ring Word Pred PredCrash.
 Require Import Prog Hoare SepAuto BasicProg.
 Require Import FunctionalExtensionality.
 Require Import WordAuto.
+Require Import AsyncDisk.
+
+Import ListNotations.
 
 Set Implicit Arguments.
+Set Default Proof Using "Type".
 
 
 (** * A generic array predicate: a sequence of consecutive points-to facts *)
 
-Fixpoint array {V : Type} (a : addr) (vs : list V) (stride : addr) : @pred _ (@weq addrlen) _ :=
-  match vs with
-    | nil => emp
-    | v :: vs' => a |-> v * array (a ^+ stride) vs' stride
-  end%pred.
+Section GenArray.
 
-Fixpoint arrayN {V : Type} (a : nat) (vs : list V) : @pred _ eq_nat_dec _ :=
-  match vs with
-    | nil => emp
-    | v :: vs' => a |-> v * arrayN (S a) vs'
-  end%pred.
+  Variable V : Type.
+  Variable pts : addr -> V -> @pred addr addr_eq_dec V.
 
-(** * Reading and writing from arrays *)
+  Infix "|-?->" := pts (at level 35) : pred_scope.
 
-Fixpoint selN (V : Type) (vs : list V) (n : nat) (default : V) : V :=
-  match vs with
-    | nil => default
-    | v :: vs' =>
-      match n with
-        | O => v
-        | S n' => selN vs' n' default
-      end
-  end.
+  Fixpoint arrayN (a : addr) (vs : list V) : @pred _ addr_eq_dec _ :=
+    match vs with
+      | nil => emp
+      | v :: vs' => a |-?-> v * arrayN (S a) vs'
+    end%pred.
 
-Definition sel (V : Type) (vs : list V) (i : addr) (default : V) : V :=
-  selN vs (wordToNat i) default.
+  Lemma arrayN_unify : forall (a b : list V) s,
+    a = b -> arrayN s a =p=> arrayN s b.
+  Proof.
+    intros; subst; auto.
+  Qed.
 
-Fixpoint updN T (vs : list T) (n : nat) (v : T) : list T :=
-  match vs with
-    | nil => nil
-    | v' :: vs' =>
-      match n with
-        | O => v :: vs'
-        | S n' => v' :: updN vs' n' v
-      end
-  end.
+  Lemma arrayN_one: forall v,
+      0 |-?-> v <=p=> arrayN 0 [v].
+  Proof.
+    split; cancel.
+  Qed.
 
-Definition upd T (vs : list T) (i : addr) (v : T) : list T :=
-  updN vs (wordToNat i) v.
+  Lemma isolateN_fwd' : forall vs i a (default : V),
+    i < length vs
+    -> arrayN a vs =p=> arrayN a (firstn i vs)
+       * (a + i) |-?-> selN vs i default
+       * arrayN (a + i + 1) (skipn (S i) vs).
+  Proof.
+    induction vs; simpl; intuition.
 
-Definition upd_prepend (vs : list valuset) (i : addr) (v : valu) : list valuset :=
-  upd vs i (v, valuset_list (sel vs i ($0, nil))).
+    inversion H.
 
-Definition upd_sync (vs : list valuset) (i : addr) (default : valuset) : list valuset :=
-  upd vs i (fst (sel vs i default), nil).
+    destruct i; simpl.
 
-Notation "l [ i ]" := (selN l i _) (at level 56, left associativity).
-Notation "l [ i := v ]" := (updN l i v) (at level 76, left associativity).
-Notation "l $[ i ]" := (sel l i _) (at level 56, left associativity).
-Notation "l $[ i := v ]" := (upd l i v) (at level 76, left associativity).
+    replace (a0 + 0) with (a0) by omega.
+    replace (a0 + 1) with (S a0) by omega.
+    cancel.
 
-(* rewrite hints for various List facts *)
+    eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl | apply IHvs ] | ]; clear IHvs.
+    instantiate (1 := i); omega.
+    simpl.
+    replace (S (a0 + i)) with (a0 + S i) by omega.
+    replace (S (a0 + i + 1)) with (a0 + S i + 1) by omega.
+    cancel.
+  Qed.
 
-Hint Rewrite repeat_length.
-Hint Rewrite map_length.
-Hint Rewrite app_length.
-Hint Rewrite Nat.min_idempotent.
+  Theorem isolateN_fwd : forall (default : V) a i vs,
+    i < length vs
+    -> arrayN a vs =p=> arrayN a (firstn i vs)
+       * (a + i) |-?-> selN vs i default
+       * arrayN (a + i + 1) (skipn (S i) vs).
+  Proof.
+    intros.
+    eapply pimpl_trans; [ apply isolateN_fwd' | ].
+    eassumption.
+    apply pimpl_refl.
+  Qed.
 
-(* list population *)
+  Lemma isolateN_bwd' : forall vs i a (default : V),
+    i < length vs
+    -> arrayN a (firstn i vs)
+       * (a + i) |-?-> selN vs i default
+       * arrayN (a + i + 1) (skipn (S i) vs)
+    =p=> arrayN a vs.
+  Proof.
+    induction vs; simpl; intuition.
 
-Definition removeN {V} (l : list V) i :=
-   (firstn i l) ++ (skipn (S i) l).
+    inversion H.
 
-Lemma repeat_selN : forall T i n (v def : T),
-  i < n
-  -> selN (repeat v n) i def = v.
+    destruct i; simpl.
+
+    replace (a0 + 0) with (a0) by omega.
+    replace (a0 + 1) with (S a0) by omega.
+    cancel.
+
+    eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl | apply IHvs ] ]; clear IHvs.
+    2: instantiate (1 := i); omega.
+    simpl.
+    replace (a0 + S i) with (S (a0 + i)) by omega.
+    cancel.
+  Qed.
+
+  Theorem isolateN_bwd : forall (default : V) a i vs,
+    i < length vs
+    -> arrayN a (firstn i vs)
+       * (a + i) |-?-> selN vs i default
+       * arrayN (a + i + 1) (skipn (S i) vs)
+    =p=> arrayN a vs.
+  Proof.
+    intros.
+    eapply pimpl_trans; [ | apply isolateN_bwd' ].
+    2: eassumption.
+    apply pimpl_refl.
+  Qed.
+
+  Theorem arrayN_isolate : forall (default : V) a i vs,
+    i < length vs
+    -> arrayN a vs <=p=>
+       arrayN a (firstn i vs)
+       * (a + i) |-?-> selN vs i default
+       * arrayN (a + i + 1) (skipn (S i) vs).
+  Proof.
+    unfold piff; split.
+    apply isolateN_fwd; auto.
+    apply isolateN_bwd; auto.
+  Qed.
+
+  Theorem isolate_fwd_upd : forall (v : V) a i vs,
+    i < length vs
+    -> arrayN a (updN vs i v) <=p=>
+       arrayN a (firstn i vs)
+       * (a + i) |-?-> v
+       * arrayN (a + i + 1) (skipn (S i) vs).
+  Proof.
+    intros.
+    erewrite arrayN_isolate with (vs:=updN vs i v) (i:=i) (default:=v);
+      autorewrite with lists; auto.
+    unfold piff; split.
+    cancel; autorewrite with lists; cancel.
+    cancel; autorewrite with lists; cancel.
+  Qed.
+
+  Theorem isolateN_bwd_upd : forall (v : V) a i vs,
+    i < length vs
+    -> arrayN a (firstn i vs)
+       * (a + i) |-?-> v
+       * arrayN (a + i + 1) (skipn (S i) vs)
+       =p=> arrayN a (updN vs i v).
+  Proof.
+    intros.
+    erewrite <- isolateN_bwd with (vs:=updN vs i v) (i:=i) (default:=v).
+    rewrite selN_updN_eq by auto.
+    rewrite firstn_updN_oob by auto.
+    rewrite skipN_updN' by auto.
+    cancel.
+    rewrite length_updN.
+    auto.
+  Qed.
+
+  Theorem arrayN_app : forall (a b : list V) st,
+    arrayN st (a ++ b) <=p=>
+    arrayN st a * arrayN (st + length a) b.
+  Proof.
+    induction a; split; simpl; auto.
+    rewrite Nat.add_0_r; cancel.
+    rewrite Nat.add_0_r; cancel.
+    rewrite IHa.
+    replace (S st + length a0) with (st + S (length a0)) by omega.
+    cancel.
+    rewrite IHa.
+    replace (S st + length a0) with (st + S (length a0)) by omega.
+    cancel.
+  Qed.
+
+  Theorem arrayN_split : forall i (a b : list V) st,
+    arrayN st a <=p=>
+    arrayN st (firstn i a) * arrayN (st + i) (skipn i a).
+  Proof.
+    intros.
+    destruct (lt_dec i (length a)).
+    erewrite arrayN_isolate; eauto.
+    setoid_rewrite arrayN_isolate with (i := 0) at 4.
+    rewrite skipn_skipn, skipn_selN.
+    replace (st + i + 0) with (st+i) by omega.
+    replace (1 + i) with (S i) by omega.
+    replace (i + 0) with i by omega.
+    split; cancel.
+    rewrite skipn_length.
+    omega.
+    rewrite firstn_oob, skipn_oob by omega.
+    split; cancel.
+    Grab Existential Variables.
+    destruct a.
+    contradict l; simpl; omega.
+    exact v.
+  Qed.
+
+
+  Lemma arrayN_ptsto_selN_0 : forall l (def : V) a,
+    length l = 1 ->
+    arrayN a l <=p=> (a |-?-> selN l 0 def)%pred.
+  Proof.
+    destruct l; simpl; intros; try congruence.
+    assert (length l = 0) by omega.
+    apply length_nil in H0; subst; simpl; split; cancel.
+  Qed.
+
+
+End GenArray.
+
+
+
+Section PtstoArray.
+
+  Variable V : Type.
+  Notation pts := (@ptsto addr addr_eq_dec V).
+
+  Lemma arrayN_oob': forall (l : list V) a i m,
+    i >= length l
+    -> arrayN pts a l m
+    -> m (a + i) = None.
+  Proof.
+    induction l; intros; auto; simpl in *.
+    destruct (eq_nat_dec i 0); auto.
+    subst; simpl in *; omega.
+
+    unfold sep_star in H0; rewrite sep_star_is in H0; unfold sep_star_impl in H0.
+    repeat deex.
+    unfold mem_union.
+    unfold ptsto in H2; destruct H2; rewrite H2.
+    pose proof (IHl (S a0) (i - 1)).
+    replace (S a0 + (i - 1)) with (a0 + i) in H3 by omega.
+    apply H3; try omega.
+
+    auto.
+    omega.
+  Qed.
+
+  Lemma arrayN_oob: forall (l : list V) i m,
+    i >= length l
+    -> arrayN pts 0 l m
+    -> m i = None.
+  Proof.
+    intros.
+    replace i with (0 + i) by omega.
+    eapply arrayN_oob'; eauto.
+  Qed.
+
+
+  Lemma arrayN_updN_memupd : forall F l a i (v : V) m,
+    (F * arrayN pts a l)%pred m ->
+    i < length l ->
+    (F * arrayN pts a (updN l i v))%pred (Mem.upd m (a + i) v).
+  Proof.
+    intros.
+    rewrite arrayN_isolate with (i := i).
+    eapply pimpl_trans; [ apply pimpl_refl | | eapply ptsto_upd ].
+    rewrite selN_updN_eq by auto.
+    cancel.
+    rewrite firstn_updN_oob by auto.
+    rewrite skipn_updN by auto.
+    pred_apply.
+    rewrite arrayN_isolate by eauto.
+    cancel.
+    rewrite length_updN; auto.
+    Grab Existential Variables. all: eauto.
+  Qed.
+
+  Lemma arrayN_app_memupd : forall l (v : V) m,
+    arrayN pts 0 l m
+    -> arrayN pts 0 (l ++ v :: nil) (Mem.upd m (length l) v).
+  Proof.
+    intros.
+
+    eapply isolateN_bwd with (i := (length l)) (default := v).
+    rewrite app_length; simpl; omega.
+
+    rewrite firstn_app; auto.
+    rewrite selN_last; auto.
+    rewrite skipn_oob; [ | rewrite app_length; simpl; omega ].
+    unfold arrayN at 2; auto; apply emp_star_r.
+    simpl.
+
+    apply ptsto_upd_disjoint; auto.
+    eapply arrayN_oob; eauto.
+  Qed.
+
+
+  Theorem arrayN_list_eq : forall (vs1 vs2 : list V) s m,
+    arrayN pts s vs1 m -> arrayN pts s vs2 m -> vs1 = vs2.
+  Proof.
+    induction vs1; destruct vs2; simpl; intros; auto.
+    apply ptsto_valid in H0; congruence.
+    apply ptsto_valid in H; congruence.
+    apply ptsto_valid in H as Hx.
+    apply ptsto_valid in H0 as Hy.
+    rewrite Hx in Hy; inversion Hy; subst; clear Hx Hy; f_equal.
+    apply ptsto_mem_except in H.
+    apply ptsto_mem_except in H0.
+    eapply IHvs1; eauto.
+  Qed.
+
+  Theorem arrayN_strictly_exact : forall (vs : list V) base,
+    strictly_exact (arrayN pts base vs).
+  Proof.
+    induction vs; simpl; intros.
+    apply emp_strictly_exact.
+    apply sep_star_strictly_exact.
+    apply ptsto_strictly_exact.
+    eauto.
+  Qed.
+
+  Lemma arrayN_selN : forall F a st l m (def : V),
+    (F * arrayN pts st l)%pred m ->
+    a >= st ->
+    a < st + length l ->
+    m a = Some (selN l (a - st) def).
+  Proof.
+    intros.
+    eapply ptsto_valid; pred_apply.
+    rewrite arrayN_isolate with (i := a - st) by omega.
+    replace (st + (a - st)) with a by omega.
+    clear H; cancel.
+  Qed.
+
+  Lemma arrayN_selN_exis : forall F a st (l : list V) m,
+    (F * arrayN pts st l)%pred m ->
+    a >= st ->
+    a < st + length l ->
+    exists v, m a = Some v.
+  Proof.
+    intros; destruct l.
+    simpl in *; try omega.
+    eexists; eapply arrayN_selN with (def := v); eauto; try omega.
+  Qed.
+
+
+End PtstoArray.
+
+
+
+
+Definition vsupd (vs : list valuset) (i : addr) (v : valu) : list valuset :=
+  updN vs i (v, vsmerge (selN vs i ($0, nil))).
+
+Definition vssync (vs : list valuset) (i : addr) : list valuset :=
+  updN vs i (fst (selN vs i ($0, nil)), nil).
+
+Definition vsupd_range (vsl : list valuset) (vl : list valu) :=
+  let n := length vl in
+  (List.combine vl (map vsmerge (firstn n vsl))) ++ skipn n vsl.
+
+
+Lemma vsupd_length : forall vsl a v,
+  length (vsupd vsl a v) = length vsl.
 Proof.
-  induction i; destruct n; firstorder; inversion H.
+  unfold vsupd; intros.
+  rewrite length_updN; auto.
 Qed.
 
-Lemma repeat_sel : forall T i n (v def : T),
-  wordToNat i < n
-  -> sel (repeat v n) i def = v.
+Lemma vsupd_range_length : forall vsl l,
+  length l <= length vsl ->
+  length (vsupd_range vsl l) = length vsl.
 Proof.
-  unfold sel; intros; apply repeat_selN; auto.
-Qed.
-
-Lemma repeat_app : forall T i j (x : T),
-  repeat x i ++ repeat x j = repeat x (i + j).
-Proof.
-  induction i; simpl; intros; auto.
-  f_equal; eauto.
-Qed.
-
-Lemma repeat_map : forall A B (f:A -> B) x n,
-  map f (repeat x n) = repeat (f x) n.
-Proof.
-  intros.
-  induction n; simpl.
-  reflexivity.
-  rewrite IHn.
-  reflexivity.
-Qed.
-
-Lemma length_nil : forall A (l : list A),
-  length l = 0 -> l = nil.
-Proof.
-  induction l; firstorder.
-  inversion H.
-Qed.
-
-(** XXX use [nth] everywhere *)
-Lemma nth_selN_eq : forall t n l (z:t), selN l n z = nth n l z.
-Proof.
-  induction n; intros; destruct l; simpl; auto.
-Qed.
-
-Lemma length_updN : forall T vs n (v : T), length (updN vs n v) = length vs.
-Proof.
-  induction vs; destruct n; simpl; intuition.
-Qed.
-
-Theorem length_upd : forall T vs i (v : T), length (upd vs i v) = length vs.
-Proof.
-  intros; apply length_updN.
-Qed.
-
-Hint Rewrite length_updN length_upd.
-
-Lemma selN_updN_eq : forall V vs n v (default : V),
-  n < length vs
-  -> selN (updN vs n v) n default = v.
-Proof.
-  induction vs; destruct n; simpl; intuition; omega.
-Qed.
-
-Lemma selN_updN_eq_default : forall V vs n (v : V),
-  selN (updN vs n v) n v = v.
-Proof.
-  induction vs; destruct n; simpl; intuition; omega.
-Qed.
-
-Lemma selN_updN_ne : forall V vs n n' v (default : V),
-  n <> n'
-  -> selN (updN vs n v) n' default = selN vs n' default.
-Proof.
-  induction vs; destruct n; destruct n'; simpl; intuition.
-Qed.
-
-Lemma sel_upd_eq : forall V vs i v (default : V),
-  wordToNat i < length vs
-  -> sel (upd vs i v) i default = v.
-Proof.
-  intros; apply selN_updN_eq; auto.
-Qed.
-
-Lemma sel_upd_ne : forall V vs i i' v (default : V),
-  i <> i'
-  -> sel (upd vs i v) i' default = sel vs i' default.
-Proof.
-  intros; apply selN_updN_ne.
-  intro Heq. apply H; clear H.
-  apply wordToNat_inj; auto.
-Qed.
-
-Lemma selN_eq_updN_eq : forall A (l : list A) i a def,
-  a = selN l i def
-  -> updN l i a = l.
-Proof.
-  induction l; destruct i; simpl; firstorder.
-  f_equal; auto.
-  erewrite IHl; eauto.
-Qed.
-
-
-Hint Rewrite selN_updN_eq sel_upd_eq using (simpl; omega).
-
-Lemma in_skipn_S : forall A l n (a : A) def,
-  selN l n def <> a
-  -> In a (skipn n l)
-  -> In a (skipn (S n) l).
-Proof.
-  induction l; destruct n; simpl; firstorder.
-Qed.
-
-Lemma in_firstn_in : forall A l n (a : A),
-  In a (firstn n l) -> In a l.
-Proof.
-  induction l; destruct n; simpl; firstorder.
-Qed.
-
-Lemma in_skipn_in : forall A l n (a : A),
-  In a (skipn n l) -> In a l.
-Proof.
-  induction l; destruct n; simpl; firstorder.
-Qed.
-
-Lemma in_cons_head : forall A l (a:A),
-  In a (a :: l).
-Proof.
-  intros.
-  constructor.
-  reflexivity.
-Qed.
-
-Lemma in_app_middle : forall A l1 l2 (a:A),
-  In a (l1 ++ a :: l2).
-Proof.
-  intros.
-  induction l1; simpl; auto.
-Qed.
-
-Lemma firstn_updN : forall T (v : T) vs i j,
-  i <= j
-  -> firstn i (updN vs j v) = firstn i vs.
-Proof.
-  induction vs; destruct i, j; simpl; intuition.
+  unfold vsupd_range; intros.
+  rewrite app_length.
+  rewrite combine_length.
+  rewrite Nat.min_l.
+  rewrite skipn_length.
   omega.
-  rewrite IHvs; auto; omega.
+  rewrite map_length.
+  rewrite firstn_length_l; auto.
 Qed.
 
-Lemma firstn_upd : forall T (v : T) vs i j,
-  i <= wordToNat j
-  -> firstn i (upd vs j v) = firstn i vs.
+Lemma vsupd_range_nil : forall vsl,
+  vsupd_range vsl nil = vsl.
 Proof.
-  intros; apply firstn_updN; auto.
+  unfold vsupd_range; intros.
+  autorewrite with lists; simpl; auto.
 Qed.
 
-Theorem updN_firstn_comm : forall T (v : T) vs i j,
-  firstn i (updN vs j v) = updN (firstn i vs) j v.
+Lemma vsupd_range_progress : forall i vsl l,
+  length l <= length vsl -> i < length l ->
+    (vsupd (vsupd_range vsl (firstn i l)) i (selN l i $0))
+  = (vsupd_range vsl ((firstn i l) ++ [ selN l i $0 ])).
 Proof.
-  induction vs; destruct i, j; simpl; intuition.
-  rewrite IHvs by omega.
-  reflexivity.
+  unfold vsupd, vsmerge; intros.
+  unfold vsupd_range.
+  autorewrite with lists; simpl.
+  repeat replace (length (firstn i l)) with i
+    by (rewrite firstn_length_l by omega; auto).
+  rewrite updN_app2.
+  erewrite firstn_plusone_selN by omega.
+  rewrite map_app.
+  rewrite combine_app
+    by (rewrite map_length; repeat rewrite firstn_length_l; omega).
+  rewrite <- app_assoc; f_equal; simpl.
+  rewrite combine_length; autorewrite with lists.
+  rewrite Nat.min_l; repeat rewrite firstn_length_l; try omega.
+  replace (i - i) with 0 by omega.
+  rewrite updN_0_skip_1 by (rewrite skipn_length; omega).
+  rewrite skipn_skipn'; f_equal; f_equal.
+  rewrite selN_app2.
+  rewrite combine_length; rewrite Nat.min_l;
+     autorewrite with lists; repeat rewrite firstn_length_l; try omega.
+  replace (i + (i - i)) with i by omega.
+  unfold vsmerge; auto.
+  all: rewrite combine_length_eq2; autorewrite with lists;
+    repeat rewrite firstn_length_l; omega.
 Qed.
 
-Hint Rewrite firstn_updN firstn_upd using omega.
-
-Lemma skipn_skipn': forall A n m (l: list A),
-  skipn n (skipn m l) = skipn (m + n) l.
+Lemma forall_incl_refl : forall vs,
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) vs vs.
 Proof.
-  intros until m.
-  induction m; intros; simpl; auto.
-  destruct l.
-  destruct n; auto.
-  apply IHm.
+  induction vs; auto.
+  constructor; auto.
+  apply incl_refl.
 Qed.
 
-Lemma skipn_skipn: forall A n m (l: list A),
-  skipn n (skipn m l) = skipn (n + m) l.
+
+Lemma vsupd_range_incl : forall l vs,
+  length l <= length vs ->
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) vs (vsupd_range vs l).
 Proof.
-  intros.
-  rewrite Nat.add_comm.
-  apply skipn_skipn'.
-Qed.
-
-Lemma skipn_selN : forall T i j vs (def: T),
-  selN (skipn i vs) j def = selN vs (i + j) def.
-Proof.
-  induction i; intros; auto.
-  destruct vs; simpl; auto.
-Qed.
-
-Hint Rewrite skipn_selN using omega.
-
-Lemma skipN_updN' : forall T (v : T) vs i j,
-  i > j
-  -> skipn i (updN vs j v) = skipn i vs.
-Proof.
-  induction vs; destruct i, j; simpl; intuition; omega.
-Qed.
-
-Lemma skipn_updN : forall T (v : T) vs i j,
-  i >= j
-  -> match updN vs j v with
-       | nil => nil
-       | _ :: vs' => skipn i vs'
-     end
-     = match vs with
-         | nil => nil
-         | _ :: vs' => skipn i vs'
-       end.
-Proof.
-  destruct vs, j; simpl; eauto using skipN_updN'.
-Qed.
-
-Lemma skipn_upd : forall T (v : T) vs i j,
-  i >= wordToNat j
-  -> match upd vs j v with
-       | nil => nil
-       | _ :: vs' => skipn i vs'
-     end
-     = match vs with
-         | nil => nil
-         | _ :: vs' => skipn i vs'
-       end.
-Proof.
-  intros; apply skipn_updN; auto.
-Qed.
-
-Hint Rewrite skipn_updN skipn_upd using omega.
-
-Lemma updN_twice : forall T (l : list T) a v v',
-  updN (updN l a v') a v = updN l a v.
-Proof.
-  induction l; simpl; intros; auto.
-  destruct a0; auto; simpl.
-  rewrite IHl; auto.
-Qed.
-
-Lemma upd_twice : forall T (l : list T) a v v',
-  upd (upd l a v') a v = upd l a v.
-Proof.
-  unfold upd; intros.
-  apply updN_twice.
-Qed.
-
-Hint Rewrite updN_twice upd_twice.
-
-Lemma updN_comm : forall T (l : list T) a0 v0 a1 v1,
-  a0 <> a1 ->
-  updN (updN l a0 v0) a1 v1 = updN (updN l a1 v1) a0 v0.
-Proof.
-  induction l; simpl; intros; auto.
-  destruct a0; destruct a1; simpl in *; try congruence.
-  rewrite IHl by omega. auto.
-Qed.
-
-Lemma upd_comm : forall T (l : list T) a0 v0 a1 v1,
-  a0 <> a1 ->
-  upd (upd l a0 v0) a1 v1 = upd (upd l a1 v1) a0 v0.
-Proof.
-  unfold upd; intros.
-  apply updN_comm.
-  contradict H.
-  apply wordToNat_inj; auto.
-Qed.
-
-Lemma updN_firstn_skipn : forall T (l:list T) n v,
-  n < length l ->
-  updN l n v = firstn n l ++ v::nil ++ skipn (n+1) l.
-Proof.
-  intros.
-  generalize dependent n.
   induction l; intros; simpl.
+  rewrite vsupd_range_nil.
+  apply forall_incl_refl.
+
+  destruct vs.
   inversion H.
-  induction n; simpl.
-  reflexivity.
-  f_equal.
+  cbn.
+  constructor.
+  apply incl_tl; apply incl_refl.
   apply IHl.
+  simpl in *; omega.
+Qed.
+
+
+Lemma vsupd_range_selN_oob : forall vs n l,
+  n >= length l ->
+  length l <= length vs ->
+  selN (vsupd_range vs l) n ($0, nil) = selN vs n ($0, nil).
+Proof.
+  unfold vsupd_range; intros.
+  rewrite selN_app2.
+  rewrite combine_length_eq.
+  rewrite skipn_selN.
+  f_equal; omega.
+  rewrite map_length, firstn_length_l; omega.
+  rewrite combine_length_eq; auto.
+  rewrite map_length, firstn_length_l; omega.
+Qed.
+
+Lemma vsupd_range_selN_inb : forall vs n l,
+  n < length l ->
+  length l <= length vs ->
+  selN (vsupd_range vs l) n ($0, nil) = (selN l n $0, vsmerge (selN vs n ($0, nil))).
+Proof.
+  unfold vsupd_range; intros.
+  rewrite selN_app1.
+  rewrite selN_combine.
+  erewrite selN_map.
+  rewrite selN_firstn; auto.
+  rewrite firstn_length_l; omega.
+  rewrite map_length, firstn_length_l; omega.
+  rewrite combine_length_eq; auto.
+  rewrite map_length, firstn_length_l; omega.
+Qed.
+
+
+Lemma vsupd_range_firstn_incl : forall n l vs,
+  length l <= length vs ->
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) 
+            (vsupd_range vs (firstn n l)) (vsupd_range vs l).
+Proof.
+  induction n; intros.
+  apply vsupd_range_incl; auto.
+  destruct (lt_dec n (length l)).
+
+  erewrite firstn_S_selN by auto.
+  rewrite <- vsupd_range_progress by omega.
+  erewrite <- updN_selN_eq with (l := (vsupd_range vs l)) (ix := n).
+  apply forall2_updN; eauto.
+  rewrite vsupd_range_selN_oob.
+  rewrite vsupd_range_selN_inb; auto; try omega.
+  apply incl_refl.
+  rewrite firstn_length_l; omega.
+  rewrite firstn_length_l; omega.
+
+  rewrite firstn_oob by omega.
+  apply forall_incl_refl.
+Qed.
+
+
+
+Definition vssync_range (vsl : list valuset) n :=
+  (List.combine (map fst (firstn n vsl)) (repeat nil n)) ++ skipn n vsl.
+
+Lemma vssync_range_length : forall vsl n,
+  n <= length vsl ->
+  length (vssync_range vsl n) = length vsl.
+Proof.
+  unfold vssync_range; intros.
+  autorewrite with lists.
+  rewrite combine_length.
+  rewrite Nat.min_l.
+  rewrite skipn_length.
+  autorewrite with lists.
+  rewrite firstn_length_l; omega.
+  autorewrite with lists.
+  rewrite firstn_length_l; omega.
+Qed.
+
+Lemma vssync_range_progress : forall vs m,
+  m < length vs ->
+  vssync (vssync_range vs m) m = vssync_range vs (S m).
+Proof.
+  unfold vssync, vssync_range; intros.
+  rewrite updN_app2.
+  erewrite firstn_S_selN by auto.
+  rewrite map_app.
+  rewrite repeat_app_tail.
+  rewrite combine_app
+    by (autorewrite with lists; rewrite firstn_length_l; omega).
+  rewrite <- app_assoc; f_equal.
+  rewrite combine_length; autorewrite with lists.
+  rewrite Nat.min_l; repeat rewrite firstn_length_l; try omega.
+  replace (m - m) with 0 by omega.
+  rewrite updN_0_skip_1 by (rewrite skipn_length; omega).
+  rewrite skipn_skipn; simpl.
+  f_equal; f_equal.
+  rewrite selN_app2.
+  rewrite combine_length; rewrite Nat.min_l;
+     autorewrite with lists; repeat rewrite firstn_length_l; try omega.
+  replace (m + (m - m)) with m by omega.
+  unfold vsmerge; auto.
+  all: rewrite combine_length_eq2; autorewrite with lists;
+    repeat rewrite firstn_length_l; omega.
+Qed.
+
+
+Lemma vssync_range_incl : forall n vs,
+  n <= length vs ->
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) (vssync_range vs n) vs.
+Proof.
+  induction n; simpl; intros.
+  cbn.
+  apply forall_incl_refl.
+  rewrite <- vssync_range_progress by omega.
+  rewrite <- updN_selN_eq with (ix := n) (l := vs) (default := ($0, nil)) at 2.
+  apply forall2_updN.
+  apply IHn; omega.
+
+  unfold vsmerge; simpl.
+  unfold vssync_range.
+  rewrite selN_app2, skipn_selN.
+  rewrite combine_length_eq, map_length, firstn_length_l.
+  rewrite Nat.sub_diag, Nat.add_0_r.
+  apply incl_cons2; apply incl_nil.
+  omega.
+  rewrite map_length, firstn_length_l, repeat_length; omega.
+  rewrite combine_length_eq, map_length, firstn_length_l; try omega.
+  rewrite map_length, firstn_length_l, repeat_length; omega.
+Qed.
+
+
+Definition vsupsyn_range (vsl : list valuset) (vl : list valu) :=
+  let n := length vl in
+  (List.combine vl (repeat nil n)) ++ skipn n vsl.
+
+Lemma vsupsyn_range_length : forall vsl l,
+  length l <= length vsl ->
+  length (vsupsyn_range vsl l) = length vsl.
+Proof.
+  unfold vsupsyn_range; intros.
+  rewrite app_length.
+  rewrite combine_length.
+  rewrite Nat.min_l.
+  rewrite skipn_length.
+  omega.
+  rewrite repeat_length; auto.
+Qed.
+
+Lemma vsupsyn_range_selN : forall vsl vl i def,
+  i < length vl ->
+  selN (vsupsyn_range vsl vl) i (def, nil) = (selN vl i def, nil).
+Proof.
+  unfold vsupsyn_range; intros.
+  rewrite selN_app1.
+  rewrite selN_combine, repeat_selN; auto.
+  rewrite repeat_length; auto.
+  rewrite combine_length_eq; auto.
+  rewrite repeat_length; auto.
+Qed.
+
+Lemma vsupsyn_range_selN_oob : forall vsl vl i def,
+  i >= length vl ->
+  selN (vsupsyn_range vsl vl) i def = selN vsl i def.
+Proof.
+  unfold vsupsyn_range; intros.
+  rewrite selN_app2.
+  rewrite skipn_selN.
+  rewrite combine_length_eq.
+  rewrite le_plus_minus_r; auto.
+  rewrite repeat_length; auto.
+  rewrite combine_length_eq; auto.
+  rewrite repeat_length; auto.
+Qed.
+
+Lemma vsupd_range_app_tl : forall l vs v,
+  length l + 1 <= length vs ->
+  vsupd_range vs (l ++ [v]) = vsupd (vsupd_range vs l) (length l) v.
+Proof.
+  unfold vsupd_range, vsupd; intros.
+  rewrite updN_app2, selN_app2; rewrite combine_length, map_length, firstn_length, Nat.min_l; auto;
+  try apply Nat.min_case_strong; intros; try omega.
+  rewrite Nat.sub_diag, app_length; simpl.
+  erewrite firstn_plusone_selN, map_app by omega.
+  rewrite combine_app by (rewrite map_length, firstn_length_l by omega; auto); simpl.
+  rewrite app_assoc_reverse, updN_0_skip_1, <- cons_app by (rewrite skipn_length; omega).
+  rewrite skipn_skipn', skipn_selN, Nat.add_0_r.
+  reflexivity.
+Qed.
+
+
+(** update vsl according to (addr, valu) pairs in l. *)
+Definition vsupd_vecs (vsl : list valuset) (l : list (addr * valu)) : list valuset :=
+  fold_left (fun vs e => (vsupd vs (fst e) (snd e))) l vsl.
+
+
+Lemma vsupd_vecs_length : forall l vs,
+  length (vsupd_vecs vs l) = length vs.
+Proof.
+  induction l; intros; simpl; auto.
+  rewrite IHl.
+  unfold vsupd.
+  rewrite length_updN; auto.
+Qed.
+
+Lemma vsupd_vecs_length_ok : forall l m def vs,
+  Forall (fun e => fst e < length vs) l ->
+  m < length l ->
+  fst (selN l m def) < length (vsupd_vecs vs (firstn m l)).
+Proof.
+  intros.
+  rewrite vsupd_vecs_length.
+  rewrite Forall_forall in H.
+  apply H.
+  apply in_selN; auto.
+Qed.
+
+Lemma vsupd_vecs_progress : forall l m vs,
+  m < length l ->
+  let e := selN l m (0, $0) in
+  vsupd (vsupd_vecs vs (firstn m l)) (fst e) (snd e) =
+  vsupd_vecs vs (firstn (S m) l).
+Proof.
+  induction l; intros.
+  inversion H.
+  destruct m; auto.
+  simpl.
+  rewrite IHl; auto.
   simpl in H.
   omega.
 Qed.
 
-Theorem list_selN_ext' : forall len T (a b : list T) default,
-  length a = len
-  -> length b = len
-  -> (forall pos, pos < len -> selN a pos default = selN b pos default)
-  -> a = b.
+
+Lemma vsupd_comm : forall l a1 v1 a2 v2,
+  a1 <> a2 ->
+  vsupd (vsupd l a1 v1) a2 v2 = vsupd (vsupd l a2 v2) a1 v1.
 Proof.
-  induction len; intros; destruct a; destruct b; simpl in *; try congruence.
-  f_equal.
-  apply (H1 0).
-  omega.
-  eapply IHlen; [ omega | omega | ].
-  intros.
-  apply (H1 (S pos)).
-  omega.
+  unfold vsupd; intros.
+  rewrite updN_comm by auto.
+  repeat rewrite selN_updN_ne; auto.
 Qed.
 
-Theorem list_selN_ext : forall T (a b : list T) default,
-  length a = length b
-  -> (forall pos, pos < length a -> selN a pos default = selN b pos default)
-  -> a = b.
+Lemma vsupd_vecs_vsupd_notin : forall av l a v,
+  ~ In a (map fst av) ->
+  vsupd_vecs (vsupd l a v) av = vsupd (vsupd_vecs l av) a v.
 Proof.
-  intros. apply list_selN_ext' with (len:=length a) (default:=default); auto.
+  induction av; simpl; intros; auto.
+  destruct a; simpl in *; intuition.
+  rewrite <- IHav by auto.
+  rewrite vsupd_comm; auto.
 Qed.
 
-
-Ltac nth_selN H := intros; repeat rewrite nth_selN_eq; apply H; assumption.
-
-Lemma in_selN : forall t n l (z:t), n < length l -> In (selN l n z) l.
+Lemma vsupd_vecs_selN_not_in : forall l a d,
+  ~ In a (map fst l) ->
+  selN (vsupd_vecs d l) a ($0, nil) = selN d a ($0, nil).
 Proof.
-  nth_selN nth_In.
-Qed.
-
-Lemma in_sel : forall t n l (z:t), wordToNat n < length l -> In (sel l n z) l.
-Proof.
-  intros. apply in_selN; assumption.
-Qed.
-
-Lemma in_updN : forall t n l x (xn:t), In x (updN l n xn) ->
-  In x l \/ x = xn.
-Proof.
-  induction n; intros; destruct l; intuition; simpl in *; destruct H; auto.
-  destruct (IHn l x xn H); auto.
-Qed.
-
-Lemma in_upd : forall t n l x (xn:t), In x (upd l n xn) ->
-  In x l \/ x = xn.
-Proof.
-  intros. apply in_updN with (n:=wordToNat n); auto.
-Qed.
-
-Lemma Forall_upd : forall t P l n (v:t), Forall P l -> P v -> Forall P (upd l n v).
-Proof.
-  intros. apply Forall_forall. intros v0 Hi. apply in_upd in Hi. destruct Hi.
-  rewrite Forall_forall in H. apply H; assumption.
-  subst. assumption.
-Qed.
-
-Lemma Forall_app: forall A f l (a : A),
-  Forall f l -> f a -> Forall f (l ++ a :: nil).
-Proof.
-  intros.
-  rewrite Forall_forall.
-  rewrite Forall_forall in H.
-  intros.
-  apply in_app_or in H1.
-  destruct H1.
-  apply H; auto.
-  simpl in H1.
-  destruct H1.
-  subst; auto.
-  exfalso; auto.
-Qed.
-
-Lemma Forall_append: forall A f (l1 l2:list A),
-  Forall f l1 -> Forall f l2 -> Forall f (l1 ++ l2).
-Proof.
-  intros.
-  rewrite Forall_forall in *.
-  intros.
-  apply in_app_or in H1.
-  destruct H1.
-  apply H; assumption.
-  apply H0; assumption.
-Qed.
-
-Lemma Forall_repeat: forall A (f:A -> Prop) a n,
-  f a -> Forall f (repeat a n).
-Proof.
-  intros.
-  rewrite Forall_forall.
-  intros.
-  apply repeat_spec in H0.
-  congruence.
-Qed.
-
-Lemma Forall_cons2 : forall A (l : list A) a f,
-  Forall f (a :: l) -> Forall f l.
-Proof.
-  intros.
-  rewrite Forall_forall in *; intros.
-  apply H.
-  apply in_cons; auto.
-Qed.
-
-Lemma updN_selN_eq : forall T (l : list T) ix default,
-  updN l ix (selN l ix default) = l.
-Proof.
-  induction l; auto.
-  intros. destruct ix. auto. simpl. rewrite IHl. trivial.
-Qed.
-
-Lemma upd_sel_eq : forall T (l : list T) ix default,
-  upd l ix (sel l ix default) = l.
-Proof.
-  unfold upd, sel. intros. apply updN_selN_eq.
-Qed.
-
-Lemma updN_app1 : forall t l l' (v:t) n,
-  n < length l -> updN (l ++ l') n v = updN l n v ++ l'.
-Proof.
-  (* copied from proof of app_nth1 *)
-  induction l.
-  intros.
-  inversion H.
-  intros l' d n.
-  case n; simpl; auto.
-  intros; rewrite IHl; auto with arith.
-Qed.
-
-Lemma updN_app2 : forall t l l' (v:t) n,
-  n >= length l -> updN (l ++ l') n v = l ++ updN l' (n - length l) v.
-Proof.
-  (* copied from proof of app_nth2 *)
-  induction l.
-  intros.
-  simpl.
-  rewrite <- minus_n_O; auto.
-  intros l' d n.
-  case n; simpl; auto.
-  intros.
-  inversion H.
-  intros.
-  rewrite IHl; auto with arith.
-Qed.
-
-Lemma updN_app_tail : forall T (l : list T) a v,
-  updN (l ++ (a :: nil)) (length l) v = l ++ (v :: nil).
-Proof.
-  induction l; simpl; firstorder.
-  rewrite IHl; auto.
-Qed.
-
-Lemma updN_concat : forall t a b m l (v:t), b < m ->
-  Forall (fun sl => length sl = m) l ->
-  updN (concat l) (b + a * m) v =
-    concat (updN l a (updN (selN l a nil) b v)).
-Proof.
-  (* XXX this is almost exactly the same as selN_concat *)
-  induction a; intros; destruct l; simpl; inversion H0.
-  trivial.
-  replace (b + 0) with b by omega. subst.
-  rewrite updN_app1; auto.
-  trivial.
-  subst. remember (a * length l) as al. rewrite updN_app2 by omega.
-  replace (b + (length l + al) - length l) with (b + al) by omega. subst.
-  rewrite IHa; auto.
-Qed.
-
-Lemma selN_app1 : forall t l l' (d:t) n,
-  n < length l -> selN (l ++ l') n d = selN l n d.
-Proof.
-  nth_selN app_nth1.
-Qed.
-
-Lemma selN_app2 : forall t l l' (d:t) n,
-  n >= length l -> selN (l ++ l') n d = selN l' (n - length l) d.
-Proof.
-  nth_selN app_nth2.
-Qed.
-
-Theorem seq_right : forall b a, seq a (S b) = seq a b ++ (a + b :: nil).
-Proof.
-  induction b; simpl; intros.
-  replace (a + 0) with (a) by omega; reflexivity.
-  f_equal.
-  replace (a + S b) with (S a + b) by omega.
-  rewrite <- IHb.
-  auto.
-Qed.
-
-Theorem seq_right_0 : forall b, seq 0 (S b) = seq 0 b ++ (b :: nil).
-Proof.
-  intros; rewrite seq_right; f_equal.
-Qed.
-
-Lemma selN_map_some_range : forall A (l : list A) idx a,
-  selN (map (@Some _) l) idx None = Some a ->
-  idx < length l.
-Proof.
-  induction l; simpl; intros.
-  - congruence.
-  - destruct idx; try omega.
-    apply IHl in H; omega.
-Qed.
-
-Lemma map_updN : forall T U (v : T) (f : T -> U) vs i,
-  map f (updN vs i v) = updN (map f vs) i (f v).
-Proof.
-  induction vs; auto; destruct i; simpl; f_equal; auto.
-Qed.
-
-Lemma map_upd : forall T U (v : T) (f : T -> U) vs i,
-  map f (upd vs i v) = upd (map f vs) i (f v).
-Proof.
-  unfold upd; intros.
-  apply map_updN.
-Qed.
-
-Hint Rewrite map_updN map_upd.
-
-Theorem selN_map_seq' : forall T i n f base (default : T), i < n
-  -> selN (map f (seq base n)) i default = f (i + base).
-Proof.
-  induction i; destruct n; simpl; intros; try omega; auto.
-  replace (S (i + base)) with (i + (S base)) by omega.
-  apply IHi; omega.
-Qed.
-
-Theorem selN_map_seq : forall T i n f (default : T), i < n
-  -> selN (map f (seq 0 n)) i default = f i.
-Proof.
-  intros.
-  replace i with (i + 0) at 2 by omega.
-  apply selN_map_seq'; auto.
-Qed.
-
-Theorem sel_map_seq : forall T i n f (default : T), (i < n)%word
-  -> sel (map f (seq 0 (wordToNat n))) i default = f (wordToNat i).
-Proof.
-  intros.
-  unfold sel.
-  apply selN_map_seq.
-  apply wlt_lt; auto.
-Qed.
-
-Hint Rewrite selN_map_seq sel_map_seq using ( solve [ auto ] ).
-
-Theorem selN_map : forall T T' l i f (default : T) (default' : T'), i < length l
-  -> selN (map f l) i default = f (selN l i default').
-Proof.
-  induction l; simpl; intros; try omega.
-  destruct i; auto.
-  apply IHl; omega.
-Qed.
-
-Theorem sel_map : forall T T' l i f (default : T) (default' : T'), wordToNat i < length l
-  -> sel (map f l) i default = f (sel l i default').
-Proof.
-  intros.
-  unfold sel.
-  apply selN_map; auto.
-Qed.
-
-Lemma in_selN_map : forall A B (l : list (A*B)) i def1 def2,
-  i < length l
-  -> In (selN (map fst l) i def1, selN (map snd l) i def2) l.
-Proof.
-  induction l; destruct i; simpl; firstorder.
-  left; destruct a; auto.
-Qed.
-
-Theorem updN_map_seq_app_eq : forall T (f : nat -> T) len start (v : T) x,
-  updN (map f (seq start len) ++ (x :: nil)) len v =
-  map f (seq start len) ++ (v :: nil).
-Proof.
-  induction len; auto; simpl; intros.
-  f_equal; auto.
-Qed.
-
-Theorem updN_map_seq_app_ne : forall T (f : nat -> T) len start (v : T) x pos, pos < len
-  -> updN (map f (seq start len) ++ (x :: nil)) pos v =
-     updN (map f (seq start len)) pos v ++ (x :: nil).
-Proof.
-  induction len; intros; try omega.
-  simpl; destruct pos; auto.
-  rewrite IHlen by omega.
-  auto.
-Qed.
-
-Theorem updN_map_seq : forall T f len start pos (v : T), pos < len
-  -> updN (map f (seq start len)) pos v =
-     map (fun i => if eq_nat_dec i (start + pos) then v else f i) (seq start len).
-Proof.
-  induction len; intros; try omega.
-  simpl seq; simpl map.
-  destruct pos.
-  - replace (start + 0) with (start) by omega; simpl.
-    f_equal.
-    + destruct (eq_nat_dec start start); congruence.
-    + apply map_ext_in; intros.
-      destruct (eq_nat_dec a start); auto.
-      apply in_seq in H0; omega.
-  - simpl; f_equal.
-    destruct (eq_nat_dec start (start + S pos)); auto; omega.
-    rewrite IHlen by omega.
-    replace (S start + pos) with (start + S pos) by omega.
-    auto.
-Qed.
-
-Lemma combine_l_nil : forall T R (a : list T), List.combine a (@nil R) = nil.
-Proof.
-  induction a; auto.
-Qed.
-
-Hint Rewrite combine_l_nil.
-
-Theorem firstn_combine_comm : forall n T R (a : list T) (b : list R),
-  firstn n (List.combine a b) = List.combine (firstn n a) (firstn n b).
-Proof.
-  induction n; simpl; intros; auto.
-  destruct a; simpl; auto.
-  destruct b; simpl; auto.
-  f_equal.
-  auto.
-Qed.
-
-Theorem skipn_combine_comm : forall n T R (a : list T) (b : list R),
-  match (List.combine a b) with
-  | nil => nil
-  | _ :: c => skipn n c
-  end = List.combine (skipn (S n) a) (skipn (S n) b).
-Proof.
-  induction n.
-  - simpl; intros.
-    destruct a; simpl; auto.
-    destruct b; simpl; auto.
-    autorewrite with core; auto.
-  - intros.
-    destruct a; [simpl; auto|].
-    destruct b; [simpl; auto|].
-    autorewrite with core; auto.
-    replace (skipn (S (S n)) (t :: a)) with (skipn (S n) a) by auto.
-    replace (skipn (S (S n)) (r :: b)) with (skipn (S n) b) by auto.
-    rewrite <- IHn.
-    simpl; auto.
+  induction l; intros; destruct a; simpl in *; auto; intuition.
+  rewrite IHl by auto.
+  unfold vsupd.
+  rewrite selN_updN_ne; auto.
 Qed.
 
 
-(** * Isolating an array cell *)
-
-Lemma isolate_fwd' : forall V vs i a stride (default : V),
-  i < length vs
-  -> array a vs stride =p=> array a (firstn i vs) stride
-     * (a ^+ $ i ^* stride) |-> selN vs i default
-     * array (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride.
+Lemma vsupd_vecs_app : forall d a b,
+  vsupd_vecs d (a ++ b) = vsupd_vecs (vsupd_vecs d a) b.
 Proof.
-  induction vs; simpl; intuition.
-
-  inversion H.
-
-  destruct i; simpl.
-
-  replace (a0 ^+ $0 ^* stride) with (a0) by words.
-  replace (($0 ^+ $1) ^* stride) with (stride) by words.
-  cancel.
-
-  eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl | apply IHvs ] | ]; clear IHvs.
-  instantiate (1 := i); omega.
-  simpl.
-  replace (a0 ^+ stride ^+ ($ i ^+ $1) ^* stride)
-    with (a0 ^+ ($ (S i) ^+ $1) ^* stride) by words.
-  replace (a0 ^+ stride ^+ $ i ^* stride)
-    with (a0 ^+ $ (S i) ^* stride) by words.
-  cancel.
+  unfold vsupd_vecs; intros.
+  rewrite fold_left_app; auto.
 Qed.
 
-Theorem isolate_fwd : forall V (default : V) (a i : addr) vs stride,
-  wordToNat i < length vs
-  -> array a vs stride =p=> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i default
-     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
+Lemma vsupd_vecs_cons : forall l a v avl,
+  vsupd_vecs l ((a, v) :: avl) = vsupd_vecs (vsupd l a v) avl.
 Proof.
-  intros.
-  eapply pimpl_trans; [ apply isolate_fwd' | ].
-  eassumption.
-  rewrite natToWord_wordToNat.
-  apply pimpl_refl.
-Qed.
-
-Lemma isolateN_fwd' : forall V vs i a (default : V),
-  i < length vs
-  -> arrayN a vs =p=> arrayN a (firstn i vs)
-     * (a + i) |-> selN vs i default
-     * arrayN (a + i + 1) (skipn (S i) vs).
-Proof.
-  induction vs; simpl; intuition.
-
-  inversion H.
-
-  destruct i; simpl.
-
-  replace (a0 + 0) with (a0) by omega.
-  replace (a0 + 1) with (S a0) by omega.
-  cancel.
-
-  eapply pimpl_trans; [ apply pimpl_sep_star; [ apply pimpl_refl | apply IHvs ] | ]; clear IHvs.
-  instantiate (1 := i); omega.
-  simpl.
-  replace (S (a0 + i)) with (a0 + S i) by omega.
-  replace (S (a0 + i + 1)) with (a0 + S i + 1) by omega.
-  cancel.
-Qed.
-
-Theorem isolateN_fwd : forall V (default : V) a i vs,
-  i < length vs
-  -> arrayN a vs =p=> arrayN a (firstn i vs)
-     * (a + i) |-> selN vs i default
-     * arrayN (a + i + 1) (skipn (S i) vs).
-Proof.
-  intros.
-  eapply pimpl_trans; [ apply isolateN_fwd' | ].
-  eassumption.
-  apply pimpl_refl.
-Qed.
-
-
-Lemma isolate_bwd' : forall V vs i a stride (default : V),
-  i < length vs
-  -> array a (firstn i vs) stride
-     * (a ^+ $ i ^* stride) |-> selN vs i default
-     * array (a ^+ ($ i ^+ $1) ^* stride) (skipn (S i) vs) stride
-  =p=> array a vs stride.
-Proof.
-  induction vs; simpl; intuition.
-
-  inversion H.
-
-  destruct i; simpl.
-
-  replace (a0 ^+ $0 ^* stride) with (a0) by words.
-  replace (($0 ^+ $1) ^* stride) with (stride) by words.
-  cancel.
-
-  eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl | apply IHvs ] ]; clear IHvs.
-  2: instantiate (1 := i); omega.
-  simpl.
-  replace (a0 ^+ stride ^+ ($ i ^+ $1) ^* stride)
-    with (a0 ^+ ($ (S i) ^+ $1) ^* stride) by words.
-  replace (a0 ^+ stride ^+ $ i ^* stride)
-    with (a0 ^+ $ (S i) ^* stride) by words.
-  cancel.
-Qed.
-
-Theorem isolate_bwd : forall V (default : V) (a i : addr) vs stride,
-  wordToNat i < length vs
-  -> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i default
-     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride
-  =p=> array a vs stride.
-Proof.
-  intros.
-  eapply pimpl_trans; [ | apply isolate_bwd' ].
-  2: eassumption.
-  rewrite natToWord_wordToNat.
-  apply pimpl_refl.
-Qed.
-
-Lemma isolateN_bwd' : forall V vs i a (default : V),
-  i < length vs
-  -> arrayN a (firstn i vs)
-     * (a + i) |-> selN vs i default
-     * arrayN (a + i + 1) (skipn (S i) vs)
-  =p=> arrayN a vs.
-Proof.
-  induction vs; simpl; intuition.
-
-  inversion H.
-
-  destruct i; simpl.
-
-  replace (a0 + 0) with (a0) by omega.
-  replace (a0 + 1) with (S a0) by omega.
-  cancel.
-
-  eapply pimpl_trans; [ | apply pimpl_sep_star; [ apply pimpl_refl | apply IHvs ] ]; clear IHvs.
-  2: instantiate (1 := i); omega.
-  simpl.
-  replace (a0 + S i) with (S (a0 + i)) by omega.
-  cancel.
-Qed.
-
-Theorem isolateN_bwd : forall V (default : V) a i vs,
-  i < length vs
-  -> arrayN a (firstn i vs)
-     * (a + i) |-> selN vs i default
-     * arrayN (a + i + 1) (skipn (S i) vs)
-  =p=> arrayN a vs.
-Proof.
-  intros.
-  eapply pimpl_trans; [ | apply isolateN_bwd' ].
-  2: eassumption.
-  apply pimpl_refl.
-Qed.
-
-
-Theorem array_isolate : forall V (default : V) (a i : addr) vs stride,
-  wordToNat i < length vs
-  -> array a vs stride <=p=>
-     array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> sel vs i default
-     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
-Proof.
-  unfold piff; split.
-  apply isolate_fwd; auto.
-  apply isolate_bwd; auto.
-Qed.
-
-Theorem arrayN_isolate : forall V (default : V) a i vs,
-  i < length vs
-  -> arrayN a vs <=p=>
-     arrayN a (firstn i vs)
-     * (a + i) |-> selN vs i default
-     * arrayN (a + i + 1) (skipn (S i) vs).
-Proof.
-  unfold piff; split.
-  apply isolateN_fwd; auto.
-  apply isolateN_bwd; auto.
-Qed.
-
-Theorem array_isolate_upd : forall V (v : V) (a i : addr) vs stride,
-  wordToNat i < length vs
-  -> array a (upd vs i v) stride <=p=>
-     array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> v
-     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride.
-Proof.
-  intros.
-  erewrite array_isolate with (vs:=upd vs i v) (i:=i) (default:=v);
-    autorewrite with core; auto.
-  unfold piff; split.
-  cancel; autorewrite with core; cancel.
-  cancel; autorewrite with core; cancel.
-Qed.
-
-Theorem arrayN_isolate_upd : forall V (v : V) a i vs,
-  i < length vs
-  -> arrayN a (updN vs i v) <=p=>
-     arrayN a (firstn i vs)
-     * (a + i) |-> v
-     * arrayN (a + i + 1) (skipn (S i) vs).
-Proof.
-  intros.
-  erewrite arrayN_isolate with (vs:=updN vs i v) (i:=i) (default:=v);
-    autorewrite with core; auto.
-  unfold piff; split.
-  cancel; autorewrite with core; cancel.
-  cancel; autorewrite with core; cancel.
-Qed.
-
-
-Theorem isolate_bwd_upd : forall V (v : V) (a i : addr) vs stride,
-  wordToNat i < length vs
-  -> array a (firstn (wordToNat i) vs) stride
-     * (a ^+ i ^* stride) |-> v
-     * array (a ^+ (i ^+ $1) ^* stride) (skipn (S (wordToNat i)) vs) stride
-     =p=> array a (upd vs i v) stride.
-Proof.
-  intros.
-  erewrite <- isolate_bwd with (vs:=upd vs i v) (i:=i) (default:=v).
-  cancel.
-  autorewrite with core.
-  cancel.
-  autorewrite with core.
-  auto.
-Qed.
-
-Theorem isolateN_bwd_upd : forall V (v : V) a i vs,
-  i < length vs
-  -> arrayN a (firstn i vs)
-     * (a + i) |-> v
-     * arrayN (a + i + 1) (skipn (S i) vs)
-     =p=> arrayN a (updN vs i v).
-Proof.
-  intros.
-  erewrite <- isolateN_bwd with (vs:=updN vs i v) (i:=i) (default:=v).
-  cancel.
-  autorewrite with core.
-  cancel.
-  autorewrite with core.
   auto.
 Qed.
 
 
-Hint Extern 0 (okToUnify (?a |-> _) (($0 ^+ ?a ^* $1) |-> _)) =>
-  unfold okToUnify; ring_prepare; f_equal; ring : okToUnify.
-Hint Extern 0 (okToUnify (($0 ^+ ?a ^* $1) |-> _) (?a |-> _)) =>
-  unfold okToUnify; ring_prepare; f_equal; ring : okToUnify.
-
-Theorem array_memupd : forall V l off (v : V) m (default : V),
-  array $0 l $1 m
-  -> wordToNat off < length l
-  -> array $0 (updN l (wordToNat off) v) $1 (Mem.upd m off v).
+Lemma vsupd_vecs_selN_vsmerge_in' : forall a v avl l,
+  In v (vsmerge (selN l a ($0, nil))) ->
+  a < length l ->
+  In v (vsmerge (selN (vsupd_vecs l avl) a ($0, nil))).
 Proof.
   intros.
-  eapply isolate_bwd with (default:=default).
-  autorewrite with core.
-  eassumption.
-  eapply pimpl_trans; [| apply pimpl_refl | eapply ptsto_upd ].
-  unfold sel; rewrite selN_updN_eq by auto.
-  cancel.
-  pred_apply.
-  rewrite isolate_fwd with (default:=default) by eassumption.
-  simpl.
-  rewrite firstn_updN by auto.
-  rewrite skipn_updN by auto.
-  fold @sep_star.
-  cancel.
+  destruct (In_dec addr_eq_dec a (map fst avl)).
+  - revert H H0 i; revert avl l a v.
+    induction avl; auto; intros; destruct a.
+    destruct i; simpl in H0; subst.
+
+    destruct (In_dec addr_eq_dec n (map fst avl)).
+    apply IHavl; auto.
+    right; unfold vsupd; simpl.
+    rewrite selN_updN_eq; auto.
+    unfold vsupd; rewrite length_updN; simpl in *; auto.
+
+    rewrite vsupd_vecs_cons, vsupd_vecs_vsupd_notin by auto.
+    unfold vsupd; rewrite selN_updN_eq.
+    rewrite vsupd_vecs_selN_not_in; auto.
+    right; auto.
+    rewrite vsupd_vecs_length; auto.
+
+    rewrite vsupd_vecs_cons.
+    apply IHavl; auto; unfold vsupd.
+    destruct (addr_eq_dec a0 n); subst.
+    rewrite selN_updN_eq; auto.
+    right; auto.
+    rewrite selN_updN_ne; auto.
+    rewrite length_updN; auto.
+  - rewrite vsupd_vecs_selN_not_in; auto.
 Qed.
 
-Lemma array_oob': forall A (l : list A) a i m,
-  wordToNat i >= length l
-  -> array a l $1 m
-  -> m (a ^+ i)%word = None.
-Proof.
-  induction l; intros; auto; simpl in *.
-  destruct (weq i $0); auto.
-  subst; simpl in *; omega.
 
-  unfold sep_star in H0; rewrite sep_star_is in H0; unfold sep_star_impl in H0.
-  repeat deex.
-  unfold mem_union.
-  unfold ptsto in H2; destruct H2; rewrite H2.
-  pose proof (IHl (a0 ^+ $1) (i ^- $1)).
-  ring_simplify (a0 ^+ $1 ^+ (i ^- $1)) in H3.
-  apply H3.
-  rewrite wordToNat_minus_one; try omega; auto.
-
-  auto.
-  apply not_eq_sym.
-  apply word_neq.
-  replace (a0 ^+ i ^- a0) with i by ring; auto.
-Qed.
-
-Lemma array_oob: forall A (l : list A) i m,
-  wordToNat i >= length l
-  -> array $0 l $1 m
-  -> m i = None.
+Lemma vsupd_vecs_selN_vsmerge_in : forall a v avl l,
+  In v (vsmerge (selN l a ($0, nil))) ->
+  In v (vsmerge (selN (vsupd_vecs l avl) a ($0, nil))).
 Proof.
   intros.
-  replace i with ($0 ^+ i).
-  eapply array_oob'; eauto.
-  ring_simplify ($0 ^+ i); auto.
+  destruct (lt_dec a (length l)).
+  apply vsupd_vecs_selN_vsmerge_in'; auto.
+  rewrite selN_oob in *; auto; try omega.
+  rewrite vsupd_vecs_length; omega.
 Qed.
 
-Lemma arrayN_oob': forall A (l : list A) a i m,
-  i >= length l
-  -> arrayN a l m
-  -> m (a + i) = None.
-Proof.
-  induction l; intros; auto; simpl in *.
-  destruct (eq_nat_dec i 0); auto.
-  subst; simpl in *; omega.
-
-  unfold sep_star in H0; rewrite sep_star_is in H0; unfold sep_star_impl in H0.
-  repeat deex.
-  unfold mem_union.
-  unfold ptsto in H2; destruct H2; rewrite H2.
-  pose proof (IHl (S a0) (i - 1)).
-  replace (S a0 + (i - 1)) with (a0 + i) in H3 by omega.
-  apply H3; try omega.
-
-  auto.
-  omega.
-Qed.
-
-Lemma arrayN_oob: forall A (l : list A) i m,
-  i >= length l
-  -> arrayN 0 l m
-  -> m i = None.
+Lemma vsupd_vecs_incl : forall l vs,
+  Forall (fun e => fst e < length vs) l ->
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) vs (vsupd_vecs vs l).
 Proof.
   intros.
-  replace i with (0 + i) by omega.
-  eapply arrayN_oob'; eauto.
+  eapply selN_Forall2.
+  rewrite vsupd_vecs_length; auto.
+  intros.
+  unfold incl; intros.
+  apply vsupd_vecs_selN_vsmerge_in; eauto.
 Qed.
 
-Lemma array_app_stride : forall T (l1 l2: list T) a1 a2 stride,
-  a2 = a1 ^+ $ (length l1) ^* stride ->
-  array a1 l1 stride * array a2 l2 stride <=p=> array a1 (l1 ++ l2) stride.
-Proof.
-  induction l1.
-  intros; word2nat_auto; split; cancel; apply equal_arrays; word2nat_auto.
-  intros; simpl; rewrite sep_star_assoc. rewrite IHl1. auto.
-  simpl in *.
-  subst. words.
-Qed.
-
-Lemma array_app : forall T (l1 l2: list T) a1 a2,
-  a2 = a1 ^+ $ (length l1) ->
-  array a1 l1 $1 * array a2 l2 $1 <=p=> array a1 (l1 ++ l2) $1.
+Lemma vsupd_vecs_firstn_incl : forall n l vs,
+  Forall (fun e => fst e < length vs) l ->
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) 
+            (vsupd_vecs vs (firstn n l)) (vsupd_vecs vs l).
 Proof.
   intros.
-  apply array_app_stride.
-  subst.
-  ring.
+  eapply selN_Forall2 with (da := ($0, nil)) (db := ($0, nil)).
+  repeat rewrite vsupd_vecs_length; auto.
+  repeat rewrite vsupd_vecs_length; auto.
+  intros.
+
+  generalize dependent vs.
+  generalize dependent n.
+  induction l; intros.
+  rewrite firstn_nil; cbn.
+  apply incl_refl.
+  destruct n; simpl.
+  unfold incl; intros.
+  apply vsupd_vecs_selN_vsmerge_in; eauto.
+  cbn.
+  unfold vsupd; destruct a; simpl.
+  destruct (addr_eq_dec n i); subst.
+  rewrite selN_updN_eq; eauto.
+  rewrite selN_updN_ne; eauto.
+
+  apply IHl.
+  rewrite vsupd_length.
+  eapply Forall_cons2; eauto.
+  rewrite vsupd_length; auto.
 Qed.
 
 
-Lemma emp_star_r: forall AT AEQ V (F:@pred AT AEQ V),
-  F =p=> (F * emp)%pred.
+(** sync vsl for all addresses in l. *)
+Definition vssync_vecs (vsl : list valuset) (l : list addr) : list valuset :=
+  fold_left vssync l vsl.
+
+Definition vssync_vecs_rev (vsl : list valuset) (l : list addr) : list valuset :=
+  fold_right (fun a m => vssync m a) vsl (rev l).
+
+Theorem vssync_vecs_rev_eq : forall l vsl,
+  vssync_vecs vsl l = vssync_vecs_rev vsl l.
+Proof.
+  intros; unfold vssync_vecs, vssync_vecs_rev.
+  rewrite fold_left_rev_right; auto.
+Qed.
+
+Lemma vssync_vecs_app : forall m l a,
+  vssync_vecs m (l ++ [a]) = vssync (vssync_vecs m l) a.
 Proof.
   intros.
-  rewrite sep_star_comm.
-  apply emp_star.
+  repeat rewrite vssync_vecs_rev_eq.
+  unfold vssync_vecs_rev.
+  rewrite rev_unit; reflexivity.
 Qed.
 
-
-Lemma selN_last: forall A l n def (a : A),
-  n = length l -> selN (l ++ a :: nil) n def = a.
+Lemma vssync_vecs_length : forall l vs,
+  length (vssync_vecs vs l) = length vs.
 Proof.
-  unfold selN; induction l; destruct n; intros;
-  firstorder; inversion H.
-Qed.
-
-
-Lemma selN_firstn: forall {A} (l:list A) i n d,
-  i < n -> selN (firstn n l) i d = selN l i d.
-Proof.
-  induction l; destruct i, n; intros; try omega; auto.
-  apply IHl; omega.
-Qed.
-
-
-Lemma selN_oob: forall A n l (def : A),
-  length l <= n
-  -> selN l n def = def.
-Proof.
-  induction n; destruct l; simpl; firstorder.
-  inversion H.
-Qed.
-
-
-Lemma selN_app: forall A n l l' (def : A),
-  n < length l
-  -> selN (l ++ l') n def = selN l n def.
-Proof.
-  induction n; destruct l; simpl; firstorder; inversion H.
-Qed.
-
-
-Lemma firstn_app: forall A n (l1 l2 : list A),
-  n = length l1 -> firstn n (l1 ++ l2) = l1.
-Proof.
-  induction n; destruct l1; intros; inversion H; auto; subst.
-  unfold firstn; simpl.
-  rewrite IHn; auto.
-Qed.
-
-
-Lemma skipn_oob: forall T n (l : list T),
-  n >= length l -> skipn n l = nil.
-Proof.
-  unfold skipn; induction n; destruct l; intros; auto.
-  inversion H.
-  apply IHn; firstorder.
-Qed.
-
-Lemma updN_oob: forall T l i (v : T),
-  i >= length l -> updN l i v = l.
-Proof.
-  unfold updN; induction l; destruct i; intros; auto.
-  inversion H.
-  rewrite IHl; firstorder.
-Qed.
-
-
-Lemma firstn_oob: forall A (l : list A) n,
-  n >= length l -> firstn n l = l.
-Proof.
-  unfold firstn; induction l; destruct n; intros; firstorder.
-  rewrite IHl; firstorder.
-Qed.
-
-
-Lemma firstn_firstn : forall A (l : list A) n1 n2 ,
-  firstn n1 (firstn n2 l) = firstn (Init.Nat.min n1 n2) l.
-Proof.
-  induction l; destruct n1, n2; simpl; auto.
-  rewrite IHl; auto.
-Qed.
-
-Lemma firstn_plusone_selN : forall A n (l : list A) def,
-  n < length l
-  -> firstn (n + 1) l = firstn n l ++ (selN l n def :: nil).
-Proof.
-  induction n; destruct l; intros; simpl in *; firstorder.
-  inversion H.
-  rewrite IHn with (def:=def) by omega; auto.
-Qed.
-
-Definition firstn_plusone_selN' : forall A n l (x: A) def,
-  x = selN l n def ->
-  n < length l ->
-  firstn (n + 1) l = firstn n l ++ x::nil.
-Proof.
-  intros.
-  rewrite H.
-  apply firstn_plusone_selN; auto.
-Qed.
-
-Lemma firstn_updN_oob: forall A (l : list A) n i def,
-  n <= i -> firstn n (updN l i def) = firstn n l.
-Proof.
-  induction l; destruct n; destruct i; intros; simpl; auto.
-  inversion H.
-  rewrite IHl by omega; auto.
-Qed.
-
-Lemma firstn_app_updN_eq : forall A l n (x : A),
-  n < length l
-  -> (firstn n l) ++ x :: nil = firstn (n + 1) (updN l n x).
-Proof.
-  intros.
-  rewrite firstn_plusone_selN with (def := x).
-  rewrite selN_updN_eq by auto.
-  rewrite firstn_updN_oob; auto.
+  induction l; intros; simpl; auto.
+  rewrite IHl.
+  unfold vssync.
   rewrite length_updN; auto.
 Qed.
 
-Lemma array_app_memupd : forall V l (v : V) m (b : addr),
-  length l <= wordToNat b
-  -> array $0 l $1 m
-  -> array $0 (l ++ v :: nil) $1 (Mem.upd m $ (length l) v)%word.
+Lemma vssync_vecs_length_ok : forall l m def vs,
+  Forall (fun e => e < length vs) l ->
+  m < length l ->
+  selN l m def < length (vssync_vecs vs (firstn m l)).
 Proof.
   intros.
-
-  assert (wordToNat (natToWord addrlen (length l)) = length l).
-  erewrite wordToNat_natToWord_bound; eauto.
-  eapply isolate_bwd with (i := $ (length l)) (default := v).
-  rewrite H1; rewrite app_length; simpl; omega.
-
-  unfold sel; rewrite H1; rewrite firstn_app; auto.
-  rewrite selN_last; auto.
-  rewrite skipn_oob; [ | rewrite app_length; simpl; omega ].
-  unfold array at 2; auto; apply emp_star_r.
-  ring_simplify ($ (0) ^+ $ (length l) ^* natToWord addrlen (1)).
-  replace (0 + length l * 1) with (length l) by omega; auto.
-
-  apply ptsto_upd_disjoint; auto.
-  eapply array_oob; eauto.
-  erewrite wordToNat_natToWord_bound; eauto.
+  rewrite vssync_vecs_length.
+  rewrite Forall_forall in H.
+  apply H.
+  apply in_selN; auto.
 Qed.
 
-Lemma arrayN_app_memupd : forall V l (v : V) m,
-  arrayN 0 l m
-  -> arrayN 0 (l ++ v :: nil) (Mem.upd m (length l) v).
+Lemma vssync_vecs_progress : forall l m vs,
+  m < length l ->
+  vssync (vssync_vecs vs (firstn m l)) (selN l m 0) =
+  vssync_vecs vs (firstn (S m) l).
 Proof.
-  intros.
-
-  eapply isolateN_bwd with (i := (length l)) (default := v).
-  rewrite app_length; simpl; omega.
-
-  rewrite firstn_app; auto.
-  rewrite selN_last; auto.
-  rewrite skipn_oob; [ | rewrite app_length; simpl; omega ].
-  unfold arrayN at 2; auto; apply emp_star_r.
-  simpl.
-
-  apply ptsto_upd_disjoint; auto.
-  eapply arrayN_oob; eauto.
-Qed.
-
-
-Lemma length_not_nil : forall A (l : list A),
-  l <> nil <-> length l > 0.
-Proof.
-  split; induction l; simpl; firstorder.
-Qed.
-
-Lemma length_not_nil' : forall A (l : list A),
-  l <> nil <-> length l <> 0.
-Proof.
-  split; intros.
-  apply length_not_nil in H; omega.
-  apply length_not_nil; omega.
-Qed.
-
-Lemma firstn_is_nil : forall A n (l : list A),
-  n > 0 -> firstn n l = nil -> l = nil.
-Proof.
-  induction n; destruct l; firstorder.
+  induction l; intros.
   inversion H.
-  simpl in H0; inversion H0.
-Qed.
-
-Lemma removelast_firstn_sub : forall A n (l : list A),
-  n > 0 -> n <= length l
-  -> removelast (firstn n l) = firstn (n - 1) l.
-Proof.
-  intros.
-  replace n with (S (n - 1)) by omega.
-  replace (S (n - 1) - 1) with (n - 1) by omega.
-  apply removelast_firstn; omega.
-Qed.
-
-
-
-Lemma firstn_nil : forall A n,
-  firstn n nil = @nil A.
-Proof.
-  induction n; firstorder.
-Qed.
-
-Lemma firstn_cons : forall A n (a : A) l,
-  firstn (S n) (a :: l) = a :: firstn n l.
-Proof.
-  induction n; intros.
-  simpl; auto.
-  simpl; f_equal.
-Qed.
-
-Lemma firstn_length_l : forall A (l : list A) n,
-  n <= length l -> length (firstn n l) = n.
-Proof.
-  intros.
-  rewrite firstn_length.
-  rewrite Nat.min_l; auto.
-Qed.
-
-Lemma firstn_length_l_iff : forall A (l : list A) n,
-  n <= length l <-> length (firstn n l) = n.
-Proof.
-  intros.
-  split.
-  - intros.
-    apply firstn_length_l; auto.
-  - intros.
-    rewrite firstn_length in H.
-    apply Nat.min_l_iff; auto.
-Qed.
-
-Lemma firstn_length_r : forall A (l : list A) n,
-  n >= length l -> length (firstn n l) = length l.
-Proof.
-  intros.
-  rewrite firstn_length.
-  rewrite Nat.min_r; auto.
-Qed.
-
-Lemma skipn_length: forall A n (l : list A),
-  n <= length l
-  -> length (skipn n l) = length l - n.
-Proof.
-  induction n; destruct l; intros; firstorder.
-Qed.
-
-Lemma skipn_nil : forall A n,
-  skipn n nil = @nil A.
-Proof.
-  induction n; firstorder.
-Qed.
-
-Lemma removeN_nil : forall A n,
-  removeN nil n = (@nil A).
-Proof.
-  induction n; firstorder.
-Qed.
-
-Lemma cons_nil_app : forall A l r (a : A),
-  (l ++ (a :: nil)) ++ r = l ++ a :: r.
-Proof.
-  intros.
-  rewrite app_assoc_reverse.
-  simpl; auto.
-Qed.
-
-Hint Resolve cons_nil_app.
-
-Lemma firstn_app_r : forall T i (b a : list T),
-  firstn (length a + i) (a ++ b) = a ++ (firstn i b).
-Proof.
-  induction i; firstorder.
-  rewrite firstn_app by omega.
-  simpl; rewrite app_nil_r; auto.
-
-  destruct b.
-  simpl; rewrite app_nil_r.
-  rewrite firstn_oob; auto; omega.
-  rewrite firstn_cons.
-  replace (length a + S i) with (length (a ++ (t :: nil)) + i).
-  replace (a ++ t :: b) with ((a ++ (t :: nil)) ++ b) by auto.
-  rewrite IHi; auto.
-  rewrite app_length; simpl; omega.
-Qed.
-
-Lemma firstn_app_l: forall A (a b: list A) n,
-  n <= length a ->
-  firstn n (a ++ b) = firstn n a.
-Proof.
-  induction a; intros; simpl in *.
-  inversion H. auto.
-  destruct n; simpl in *; auto.
-  rewrite IHa by omega; auto.
-Qed.
-
-Lemma skipn_app : forall T (a b : list T),
-  skipn (length a) (a ++ b) = b.
-Proof.
-  induction a; firstorder.
-Qed.
-
-Lemma skipn_app_eq : forall T (a b : list T) n,
-  length a = n -> skipn n (a ++ b) = b.
-Proof.
-  intros.
-  rewrite <- H.
-  apply skipn_app.
-Qed.
-
-Lemma skipn_app_r : forall T i (b a : list T),
-  skipn (length a + i) (a ++ b) = skipn i b.
-Proof.
-  induction i; firstorder.
-  replace (length a + 0) with (length a) by omega.
-  rewrite skipn_app; simpl; auto.
-
-  destruct a; destruct b; simpl; firstorder.
-  rewrite app_nil_r.
-  rewrite skipn_oob; auto; omega.
-  rewrite <- IHi with (a := a ++ (t0 :: nil)).
-  rewrite cons_nil_app.
-  f_equal.
-  rewrite app_length; simpl; omega.
-Qed.
-
-Lemma skipn_app_l : forall T i (a b : list T),
-  i <= length a ->
-  skipn i (a ++ b) = (skipn i a) ++ b.
-Proof.
-  intros.
-  generalize dependent a.
-  induction i; intros; firstorder.
-  induction a; simpl; firstorder.
-  inversion H.
-Qed.
-
-Lemma removeN_app_r : forall T (b a : list T) i,
-  removeN (a ++ b) (length a + i) = a ++ (removeN b i).
-Proof.
-  unfold removeN; intros.
-  rewrite firstn_app_r.
-  replace (S (length a + i)) with (length a + (S i)) by omega.
-  rewrite skipn_app_r.
-  apply app_assoc_reverse.
-Qed.
-
-Lemma firstn_repeat : forall T m n (v : T),
-  n <= m -> firstn n (repeat v m) = repeat v n.
-Proof.
-  induction m; simpl; intros.
-  replace n with 0 by omega.
-  firstorder.
-
-  unfold repeat at 1; fold repeat.
-  destruct n.
-  unfold repeat; simpl; auto.
-
-  rewrite firstn_cons.
-  rewrite IHm by omega; auto.
-Qed.
-
-Lemma skipn_repeat : forall A (v : A) m n,
-  n <= m -> skipn n (repeat v m) = repeat v (m - n).
-Proof.
-  induction m; simpl; intros.
-  inversion H; subst; simpl; auto.
-  destruct n; auto.
-  rewrite <- IHm; auto.
-  omega.
-Qed.
-
-Lemma app_repeat : forall T m n (v : T),
-  repeat v m ++ repeat v n = repeat v (m + n).
-Proof.
-  induction m; unfold repeat; firstorder; fold repeat.
-  rewrite <- app_comm_cons.
-  rewrite IHm.
-  replace (S m + n) with (S (m + n)) by omega.
-  auto.
-Qed.
-
-Lemma repeat_app_tail : forall T n (a : T),
-  repeat a (S n) = repeat a n ++ (a :: nil).
-Proof.
-  induction n; intros; simpl; auto.
-  unfold repeat; fold repeat; f_equal.
-  rewrite <- IHn.
-  auto.
-Qed.
-
-Lemma removeN_repeat : forall T n i (e : T),
-   n > 0 -> i < n
-   -> removeN (repeat e n) i = repeat e (n - 1).
-Proof.
-  intros.
-  unfold removeN.
-  rewrite firstn_repeat by omega.
-  rewrite skipn_repeat by omega.
-  rewrite app_repeat.
-  f_equal; omega.
-Qed.
-
-Local Opaque pow2.
-
-Lemma firstn_nonnil : forall T (l : list T) n, 0 < n -> l <> nil ->
-  exists e l', firstn n l = e :: l'.
-Proof.
-  destruct l; simpl; intros; try congruence.
-  destruct n; simpl; try omega.
-  eauto.
-Qed.
-
-Lemma skipn_nonnil : forall T (l : list T) n, n < length l ->
-  exists e l', skipn n l = e :: l'.
-Proof.
-  induction l; simpl; intros; try omega.
-  destruct n.
-  exists a; exists l; eauto.
-  destruct (IHl n); try omega.
-  destruct H0.
-  eauto.
-Qed.
-
-Lemma firstn_sum_split : forall A n off (l: list A),
-  firstn (n+off) l = firstn n l ++ firstn off (skipn n l).
-Proof.
-  intros.
-  generalize dependent l.
-  induction n; intros; simpl.
-  - reflexivity.
-  - induction l; simpl.
-    + rewrite firstn_nil.
-      reflexivity.
-    + f_equal.
-      apply IHn.
-Qed.
-
-Lemma skipn_sum_split : forall A n k (l: list A),
-  skipn n l = firstn k (skipn n l) ++ skipn (n+k) l.
-Proof.
-  intros.
-  generalize dependent l.
-  induction n; intros; simpl.
-  - symmetry; apply firstn_skipn.
-  - induction l; simpl.
-    + rewrite firstn_nil.
-      reflexivity.
-    + rewrite <- skipn_skipn'.
-      symmetry; apply firstn_skipn.
-Qed.
-
-Lemma skipn_sum_split' : forall A n off1 off2 (l: list A),
-  off1 <= off2 ->
-  skipn (n+off1) l =
-    firstn (off2 - off1) (skipn (n+off1) l) ++ skipn (n+off2) l.
-Proof.
-  intros.
-  replace (n+off2) with (n+off1 + (off2 - off1)) by omega.
-  apply skipn_sum_split.
-Qed.
-
-Lemma firstn_sum_app : forall A (l1 l2: list A) n1 n2,
-  n1 = length l1 ->
-  firstn (n1 + n2) (l1 ++ l2) = l1 ++ firstn n2 l2.
-Proof.
-  intros.
-  rewrite firstn_sum_split.
-  rewrite H.
-  rewrite firstn_app by reflexivity.
-  rewrite skipn_app.
-  reflexivity.
-Qed.
-
-Lemma skipn_sum_app : forall A (l1 l2: list A) n1 n2,
-  n1 = length l1 ->
-  skipn (n1 + n2) (l1 ++ l2) = skipn n2 l2.
-Proof.
-  intros.
-  rewrite H.
-  rewrite <- skipn_skipn'.
-  rewrite skipn_app.
-  reflexivity.
-Qed.
-
-Lemma firstn_double_skipn : forall A n len1 len2 (l:list A),
-  len1 + n <= len2 ->
-  firstn len1 (skipn n (firstn len2 l)) = firstn len1 (skipn n l).
-Proof.
-  intros.
-
-  case_eq (lt_dec (length l) len2); intros.
-  - rewrite firstn_oob with (n := len2) by omega.
-    auto.
-  - rewrite <- firstn_skipn with (n := len2) (l := l) at 2.
-    rewrite skipn_app_l.
-    rewrite firstn_app_l.
-    auto.
-    rewrite skipn_length.
-    all: rewrite firstn_length_l; omega.
-Qed.
-
-Lemma firstn_skipn_subslice : forall A n1 len1 n2 len2 (l:list A),
-  len1 + n1 <= len2 ->
-  firstn len1 (skipn n1 (firstn len2 (skipn n2 l))) =
-    firstn len1 (skipn (n1+n2) l).
-Proof.
-  intros.
-  rewrite firstn_double_skipn; auto.
-  rewrite skipn_skipn; auto.
-Qed.
-
-(* several facts about concat on lists of equally-sized
-   (homogeneous) lists *)
-Lemma concat_hom_length : forall A (lists: list (list A)) k,
-  Forall (fun sublist => length sublist = k) lists ->
-  length (concat lists) = (length lists) * k.
-Proof.
-  intros.
-  induction lists.
-  rewrite concat_nil.
-  simpl; reflexivity.
-  rewrite concat_cons.
-  rewrite app_length.
+  destruct m; auto.
   simpl.
-  rewrite IHlists.
-  rewrite Forall_forall in H.
-  replace k with (length a).
-  reflexivity.
-  apply H; apply in_cons_head.
-  eapply Forall_cons2.
-  eassumption.
-Qed.
-
-Lemma concat_hom_firstn : forall A (lists: list (list A)) n k,
-  Forall (fun sublist => length sublist = k) lists ->
-  firstn (n * k) (concat lists) = concat (firstn n lists).
-Proof.
-  intros.
-  generalize dependent n.
-  induction lists; intros; simpl.
-  repeat (rewrite firstn_nil).
-  reflexivity.
-  case_eq n; intros.
-   + reflexivity.
-   + rewrite firstn_cons.
-     rewrite concat_cons.
-     assert (H' := H).
-     rewrite Forall_forall in H'.
-     assert (length a = k) as Hk.
-     apply H'; apply in_cons_head.
-     replace (S n0 * k) with (k + n0 * k) by auto.
-     rewrite <- Hk.
-     rewrite firstn_app_r.
-     f_equal.
-     rewrite Hk.
-     apply IHlists.
-     eapply Forall_cons2.
-     eassumption.
-Qed.
-
-(* copied concat_hom_firstn proof, s/firstn/skipn/
-   (except for firstn_cons, that becomes simpl) *)
-Lemma concat_hom_skipn : forall A (lists: list (list A)) n k,
-  Forall (fun sublist => length sublist = k) lists ->
-  skipn (n * k) (concat lists) = concat (skipn n lists).
-Proof.
-  intros.
-  generalize dependent n.
-  induction lists; intros; simpl.
-  repeat (rewrite skipn_nil).
-  reflexivity.
-  case_eq n; intros.
-   + reflexivity.
-   + simpl.
-     assert (H' := H).
-     rewrite Forall_forall in H'.
-     assert (length a = k) as Hk.
-     apply H'. left; reflexivity.
-     replace (S n0 * k) with (k + n0 * k) by auto.
-     rewrite <- Hk.
-     rewrite skipn_app_r.
-     f_equal.
-     rewrite Hk.
-     apply IHlists.
-     eapply Forall_cons2.
-     eassumption.
-Qed.
-
-Lemma concat_hom_updN_first_skip : forall A n k (lists: list (list A)) (l: list A),
-  Forall (fun sublist => length sublist = k) lists ->
-  n < length lists ->
-  firstn (n * k) (concat lists) ++ l ++
-  skipn (n * k + k) (concat lists) = concat (updN lists n l).
-Proof.
-  intros.
-  rewrite updN_firstn_skipn by assumption.
-  rewrite concat_app.
-  rewrite concat_cons.
-  rewrite concat_app.
-  rewrite concat_nil.
-  rewrite app_nil_l.
-  f_equal.
-  apply concat_hom_firstn; assumption.
-  f_equal.
-  replace (n * k + k) with ((n + 1) * k).
-  apply concat_hom_skipn; assumption.
-  rewrite Nat.mul_add_distr_r.
-  rewrite Nat.mul_1_l.
-  reflexivity.
-Qed.
-
-Lemma concat_hom_subselect_firstn : forall A n off k (l: list (list A)) (def: list A),
-  Forall (fun sublist => length sublist = k) l ->
-  off <= k ->
-  n < length l ->
-  firstn off (selN l n def) = firstn off (concat (skipn n l)).
-Proof.
-  intros.
-  generalize dependent off.
-  generalize dependent l.
-  induction n; intros; simpl.
-  induction l; simpl.
-  inversion H1. (* impossible *)
-  rewrite Forall_forall in H.
-  assert (length a = k).
-  apply H; apply in_cons_head.
-  symmetry; apply firstn_app_l.
-  rewrite H2.
-  assumption.
-  destruct l; simpl.
-  inversion H1. (* impossible *)
-  apply IHn; firstorder.
-  eapply Forall_cons2; eassumption.
-Qed.
-
-Lemma concat_hom_subselect_skipn : forall A n off k (l: list (list A)) (def: list A),
-  Forall (fun sublist => length sublist = k) l ->
-  off <= k ->
-  n < length l ->
-  skipn off (selN l n def) =
-    firstn (k - off) (skipn off (concat (skipn n l))).
- Proof.
-  intros.
-  generalize dependent off.
-  generalize dependent l.
-  induction n; intros; simpl.
-  induction l; simpl.
-  inversion H1. (* impossible *)
-  rewrite Forall_forall in H.
-  assert (length a = k).
-  apply H; apply in_cons_head.
-  rewrite skipn_app_l by omega.
-  rewrite firstn_app.
-  reflexivity.
-  rewrite skipn_length; omega.
-  destruct l; simpl.
-  inversion H1. (* impossible *)
-  apply IHn; firstorder.
-  eapply Forall_cons2; eassumption.
-Qed.
-
-Theorem array_max_length : forall T (l : list T) m start stride,
-  array start l stride m -> goodSizeEq addrlen (length l).
-Proof.
-  unfold goodSizeEq; intros.
-  setoid_rewrite <- (firstn_skipn (pow2 addrlen)) in H.
-  pose proof (@array_app_stride T (firstn (pow2 addrlen) l)
-                                  (skipn (pow2 addrlen) l)
-                                  start
-                                  (start ^+ $ (pow2 addrlen) ^* stride)
-                                  stride).
-  destruct (le_dec (length l) (pow2 addrlen)); auto.
-  destruct H0.
-  rewrite firstn_length. rewrite Min.min_l by omega. auto.
-  apply H1 in H. clear H0 H1.
-  rewrite natToWord_pow2 in *. ring_simplify (start ^+ $0 ^* stride) in H.
-  edestruct firstn_nonnil with (l:=l) (n:=pow2 addrlen).
-  apply zero_lt_pow2. destruct l; simpl in *; try omega; discriminate.
-  edestruct skipn_nonnil with (l:=l) (n:=pow2 addrlen).
-  omega.
-  repeat deex.
-  rewrite H0 in H. rewrite H1 in H. simpl in H.
-  exfalso. eapply ptsto_conflict_F with (a:=start). pred_apply' H. cancel.
-Qed.
-
-Theorem array_max_length_F : forall T (l : list T) m start stride F,
-  (F * array start l stride)%pred m -> goodSizeEq addrlen (length l).
-Proof.
-  unfold_sep_star. intros. repeat deex.
-  eapply array_max_length.
-  eauto.
-Qed.
-
-Theorem array_max_length_pimpl : forall T (l : list T) start stride,
-  array start l stride =p=> array start l stride * [[ goodSizeEq addrlen (length l) ]].
-Proof.
-  unfold pimpl; intros.
-  pred_apply; cancel.
-  eapply array_max_length; eauto.
-Qed.
-
-
-(** * Operations for array accesses, to guide automation *)
-
-Definition ArrayRead T a i stride rx : prog T :=
-  Xform (isolate_fwd (V:=valuset) ($0, nil)) isolate_bwd
-    (v <- Read (a ^+ i ^* stride);
-     Xform isolate_bwd pimpl_refl (rx v)).
-
-Definition ArrayWrite T a i stride v rx : prog T :=
-  Xform (isolate_fwd (V:=valuset) ($0, nil)) isolate_bwd
-    (v <- Write (a ^+ i ^* stride) v;
-     Xform isolate_bwd_upd pimpl_refl (rx v)).
-
-
-Definition ArraySync T a i stride rx : prog T :=
-  Xform (isolate_fwd (V:=valuset) ($0, nil)) isolate_bwd
-    (v <- Sync (a ^+ i ^* stride);
-     Xform isolate_bwd_upd pimpl_refl (rx v)).
-
-(** * Hoare rules *)
-
-Local Hint Extern 0 (okToUnify (array _ _ _) (array _ _ _)) => constructor : okToUnify.
-
-Theorem read_ok:
-  forall T (a i stride:addr) (rx:valu->prog T),
-  {{ fun done crash => exists vs F, array a vs stride * F
-   * [[wordToNat i < length vs]]
-   * [[{{ fun done' crash' => array a vs stride * F * [[ done' = done ]] * [[ crash' = crash ]]
-       }} rx (fst (sel vs i ($0, nil)))]]
-   * [[array a vs stride * F =p=> crash]]
-  }} ArrayRead a i stride rx.
-Proof.
-  unfold ArrayRead.
-  hoare.
-  rewrite <- surjective_pairing. cancel.
-  rewrite <- surjective_pairing. cancel.
-  rewrite <- surjective_pairing. cancel.
-Qed.
-
-Theorem write_ok:
-  forall T (a i stride:addr) (v:valu) (rx:unit->prog T),
-  {{ fun done crash => exists vs F, array a vs stride * F
-   * [[wordToNat i < length vs]]
-   * [[{{ fun done' crash' => array a (upd_prepend vs i v) stride * F
-        * [[ done' = done ]] * [[ crash' = crash ]]
-       }} rx tt]]
-   * [[ array a vs stride * F =p=> crash ]]
-  }} ArrayWrite a i stride v rx.
-Proof.
-  unfold ArrayWrite.
-  hoare.
-  rewrite <- surjective_pairing. cancel.
-  rewrite <- surjective_pairing. cancel.
-Qed.
-
-Theorem sync_ok:
-  forall T (a i stride:addr) (rx:unit->prog T),
-  {{ fun done crash => exists vs F, array a vs stride * F
-   * [[wordToNat i < length vs]]
-   * [[{{ fun done' crash' => array a (upd_sync vs i ($0, nil)) stride * F
-        * [[ done' = done ]] * [[ crash' = crash ]]
-       }} rx tt]]
-   * [[ array a vs stride * F =p=> crash ]]
-  }} ArraySync a i stride rx.
-Proof.
-  unfold ArraySync.
-  hoare.
-  rewrite <- surjective_pairing. cancel.
-  rewrite <- surjective_pairing. cancel.
-Qed.
-
-Hint Extern 1 ({{_}} progseq (ArrayRead _ _ _) _) => apply read_ok : prog.
-Hint Extern 1 ({{_}} progseq (ArrayWrite _ _ _ _) _) => apply write_ok : prog.
-Hint Extern 1 ({{_}} progseq (ArraySync _ _ _) _) => apply sync_ok : prog.
-
-(** * Some test cases *)
-
-Definition read_back T a rx : prog T :=
-  ArrayWrite a $0 $1 $42;;
-  v <- ArrayRead a $0 $1;
-  rx v.
-
-Ltac unfold_prepend := unfold upd_prepend.
-
-Theorem read_back_ok : forall T a (rx : _ -> prog T),
-  {{ fun done crash => exists vs F, array a vs $1 * F
-     * [[length vs > 0]]
-     * [[{{fun done' crash' => array a (upd_prepend vs $0 $42) $1 * F
-          * [[ done' = done ]] * [[ crash' = crash ]]
-         }} rx $42 ]]
-     * [[ array a vs $1 * F \/
-          array a (upd_prepend vs $0 $42) $1 * F =p=> crash ]]
-  }} read_back a rx.
-Proof.
-  unfold read_back; hoare_unfold unfold_prepend.
-Qed.
-
-Definition swap T a i j rx : prog T :=
-  vi <- ArrayRead a i $1;
-  vj <- ArrayRead a j $1;
-  ArrayWrite a i $1 vj;;
-  ArrayWrite a j $1 vi;;
-  rx.
-
-Theorem swap_ok : forall T a i j (rx : prog T),
-  {{ fun done crash => exists vs F, array a vs $1 * F
-     * [[wordToNat i < length vs]]
-     * [[wordToNat j < length vs]]
-     * [[{{fun done' crash' => array a (upd_prepend (upd_prepend vs i (fst (sel vs j ($0, nil)))) j (fst (sel vs i ($0, nil)))) $1 * F
-           * [[ done' = done ]] * [[ crash' = crash ]]
-         }} rx ]]
-     * [[ array a vs $1 * F \/
-          array a (upd_prepend vs i (fst (sel vs j ($0, nil)))) $1 * F \/
-          array a (upd_prepend (upd_prepend vs i (fst (sel vs j ($0, nil)))) j (fst (sel vs i ($0, nil)))) $1 * F =p=> crash ]]
-  }} swap a i j rx.
-Proof.
-  unfold swap; hoare_unfold unfold_prepend.
-Qed.
-
-
-Definition combine_updN : forall A B i a b (va:A) (vb:B),
-  List.combine (updN a i va) (updN b i vb) = updN (List.combine a b) i (va, vb).
-Proof.
-  induction i; intros; destruct a, b; simpl; auto.
-  rewrite IHi; auto.
-Qed.
-
-Lemma selN_combine : forall Ta Tb i a b (a0:Ta) (b0:Tb),
-  length a = length b
-  -> selN (List.combine a b) i (a0, b0) = pair (selN a i a0) (selN b i b0).
-Proof.
-  induction i; destruct a, b; intros; inversion H; auto.
-  simpl; apply IHi; assumption.
-Qed.
-
-Lemma combine_length_eq: forall A B (a : list A) (b : list B),
-  length a = length b
-  -> length (List.combine a b) = length a.
-Proof.
-  intros.
-  rewrite combine_length.
-  rewrite H; intuition.
-Qed.
-
-Lemma combine_length_eq2: forall A B (a : list A) (b : list B),
-  length a = length b
-  -> length (List.combine a b) = length b.
-Proof.
-  intros.
-  rewrite combine_length.
-  rewrite H; intuition.
-Qed.
-
-
-Theorem combine_app: forall A B (al ar : list A) (bl br: list B),
-  length al = length bl
-  -> List.combine (al ++ ar) (bl ++ br) 
-     = (List.combine al bl) ++ (List.combine ar br).
-Proof.
-  induction al; destruct bl; simpl; intros; try omega; auto.
-  f_equal.
-  apply IHal; omega.
-Qed.
-
-Theorem removeN_updN : forall V l i (v : V),
-   removeN (updN l i v) i = removeN l i.
-Proof.
-   unfold removeN; intros.
-   rewrite firstn_updN; auto.
-   simpl; rewrite skipn_updN; auto.
-Qed.
-
-Theorem removeN_oob: forall A (l : list A) i,
-  i >= length l -> removeN l i = l.
-Proof.
-  intros; unfold removeN.
-  rewrite firstn_oob by auto.
-  rewrite skipn_oob by auto.
-  firstorder.
-Qed.
-
-Lemma removeN_head: forall A l i (a : A),
-  removeN (a :: l) (S i) = a :: (removeN l i).
-Proof.
-  unfold removeN; firstorder.
-Qed.
-
-Theorem removeN_combine: forall A B i (a : list A) (b : list B),
-  removeN (List.combine a b) i = List.combine (removeN a i) (removeN b i).
-Proof.
-  induction i; destruct a, b; intros; simpl; auto.
-  - unfold removeN at 2; simpl.
-    repeat rewrite removeN_oob by auto.
-    induction a0; firstorder.
-  - rewrite removeN_head.
-    rewrite IHi.
-    unfold removeN; firstorder.
-Qed.
-
-Lemma removeN_length: forall A (l : list A) i,
-  i < length l -> length (removeN l i) = length l - 1.
-Proof.
-  unfold removeN; induction l; intros; simpl.
-  unfold length in H; omega.
-  rewrite app_length.
-  rewrite firstn_length; rewrite Nat.min_l; simpl in *; try omega.
-  rewrite skipn_length; omega.
-Qed.
-
-
-Lemma removeN_length_eq: forall A B (a : list A) (b : list B) i,
-  i < length a -> i < length b
-  -> length (removeN a i) = length (removeN b i)
-  -> length a = length b.
-Proof.
-  intros; destruct (Nat.eq_dec (length a) 0); try omega.
-  rewrite removeN_length in H1; auto.
-  rewrite removeN_length in H1; auto.
+  rewrite IHl; auto.
+  simpl in H.
   omega.
 Qed.
 
-
-Lemma removeN_tail: forall A (l : list A) a,
-  removeN (l ++ a :: nil) (length l) = l.
+Lemma vssync_vecs_vssync_comm : forall l d a,
+  vssync_vecs (vssync d a) l = vssync (vssync_vecs d l) a.
 Proof.
-  intros; unfold removeN.
-  rewrite skipn_oob.
-  rewrite firstn_app; firstorder.
-  rewrite app_length; simpl; omega.
+  induction l; intros; simpl; auto.
+  destruct (addr_eq_dec a a0); subst; auto.
+  repeat rewrite IHl.
+  unfold vssync.
+  repeat rewrite selN_updN_ne by auto.
+  rewrite updN_comm; auto.
 Qed.
 
 
-Lemma selN_removelast : forall A n l (def : A),
-  n < length l - 1
-  -> selN (removelast l) n def = selN l n def.
+Lemma vssync_synced : forall l a,
+  snd (selN l a ($0, nil)) = nil ->
+  vssync l a = l.
 Proof.
-  induction l using rev_ind; destruct n;
-  intros; simpl; intuition;
-  rewrite removelast_app; pred;
-  simpl; rewrite app_nil_r;
-  rewrite selN_app; firstorder.
+  unfold vssync; induction l; intros; auto.
+  destruct a0; simpl in *.
+  destruct a; simpl in *.
+  rewrite <- H; auto.
+  f_equal.
+  rewrite IHl; auto.
+Qed.
+
+Lemma vssync_vsupd_eq : forall l a v,
+  vssync (vsupd l a v) a = updN l a (v, nil).
+Proof.
+  unfold vsupd, vssync, vsmerge; intros.
+  rewrite updN_twice.
+  destruct (lt_dec a (length l)).
+  rewrite selN_updN_eq; simpl; auto.
+  rewrite selN_oob.
+  repeat rewrite updN_oob; auto.
+  omega. omega.
+  autorewrite with lists; omega.
+Qed.
+
+Lemma updN_vsupd_vecs_notin : forall av l a v,
+  ~ In a (map fst av) ->
+  updN (vsupd_vecs l av) a v = vsupd_vecs (updN l a v) av.
+Proof.
+  induction av; simpl; intros; auto.
+  destruct a; simpl in *; intuition.
+  rewrite IHav by auto.
+  unfold vsupd, vsmerge.
+  rewrite updN_comm by auto.
+  rewrite selN_updN_ne; auto.
 Qed.
 
 
-Lemma length_removelast : forall A (l : list A),
-  l <> nil -> length (removelast l) = length l - 1.
+Lemma vssync_selN_not_in : forall l i d,
+  ~ In i l ->
+  selN (vssync_vecs d l) i ($0, nil) = selN d i ($0, nil).
 Proof.
-  induction l using rev_ind; intros; simpl; auto.
-  rewrite app_length; simpl.
-  rewrite removelast_app; firstorder.
-  unfold removelast; rewrite app_length; simpl.
-  omega.
-Qed.
-
-Lemma removeN_removelast : forall A (l : list A),
-  length l > 0
-  -> removeN l (length l - 1) = removelast l.
-Proof.
-  induction l using rev_ind; intros; simpl; firstorder.
-  rewrite removelast_app; simpl.
-  rewrite app_nil_r.
-  rewrite app_length; simpl.
-  replace (length l + 1 - 1) with (length l) by omega.
-  rewrite removeN_tail; auto.
-  congruence.
+  induction l; simpl; auto; intuition.
+  rewrite IHl; auto.
+  unfold vssync.
+  rewrite selN_updN_ne; simpl; auto.
 Qed.
 
 
-Theorem firstn_removelast_eq : forall V (l : list V),
-  length l > 0
-  -> firstn (length l - 1) l = removelast l.
+Lemma vssync_vecs_selN_In : forall l i d,
+  In i l ->
+  i < length d ->
+  selN (vssync_vecs d l) i ($0, nil) = (fst (selN d i ($0, nil)), nil).
 Proof.
-  destruct l using rev_ind; firstorder.
-  rewrite app_length; simpl.
-  rewrite removelast_app; simpl; try congruence.
-  replace (length l + 1 - 1) with (length l) by omega.
-  rewrite firstn_app; auto.
+  induction l; intros; auto.
+  inversion H.
+  destruct (addr_eq_dec a i); subst; simpl.
+  destruct (in_dec addr_eq_dec i l).
+  rewrite IHl; unfold vssync; auto.
+  rewrite selN_updN_eq; simpl; auto.
+  rewrite length_updN; auto.
+
+  rewrite vssync_selN_not_in by auto.
+  unfold vssync; rewrite selN_updN_eq; simpl; auto.
+
+  inversion H; subst; try congruence.
+  rewrite IHl; unfold vssync; auto.
+  rewrite selN_updN_ne; auto.
+  rewrite length_updN; auto.
+Qed.
+
+
+Lemma vssync_vecs_incl : forall l vs,
+  Forall (fun a => a < length vs) l ->
+  Forall2 (fun va vb => incl (vsmerge va) (vsmerge vb)) (vssync_vecs vs l) vs.
+Proof.
+  induction l; simpl; intros.
+  apply forall_incl_refl.
+  rewrite vssync_vecs_vssync_comm.
+  rewrite <- updN_selN_eq with (ix := a) (l := vs) (default := ($0, nil)) at 2.
+  apply forall2_updN.
+  apply IHl; auto.
+  eapply Forall_cons2; eauto.
+
+  destruct (In_dec addr_eq_dec a l).
+  rewrite vssync_vecs_selN_In; auto.
+  unfold vsmerge; simpl.
+  apply incl_cons2; apply incl_nil.
+  inversion H; eauto.
+
+  rewrite vssync_selN_not_in; auto.
+  unfold vsmerge; simpl.
+  apply incl_cons2; apply incl_nil.
+Qed.
+
+
+
+(* crash prediate over arrays *)
+Definition synced_list m: list valuset := List.combine m (repeat nil (length m)).
+
+Definition possible_crash_list (l: list valuset) (l': list valu) :=
+  length l = length l' /\
+  forall i, i < length l -> In (selN l' i $0) (vsmerge (selN l i ($0, nil))).
+
+Lemma synced_list_selN : forall l i def,
+  selN (synced_list l) i (def, nil) = (selN l i def, nil).
+Proof.
+  unfold synced_list; intros.
+  rewrite selN_combine.
+  destruct (lt_dec i (length l)).
+  rewrite repeat_selN; auto.
+  setoid_rewrite selN_oob; auto.
+  omega. rewrite repeat_length; omega. omega.
+  rewrite repeat_length; omega.
+Qed.
+
+Lemma synced_list_map_fst : forall l,
+  map fst (synced_list l) = l.
+Proof.
+  unfold synced_list; intros.
+  rewrite map_fst_combine; auto.
+  rewrite repeat_length; auto.
+Qed.
+
+Lemma vsupsyn_range_synced_list : forall a b,
+  length a = length b ->
+  vsupsyn_range a b = synced_list b.
+Proof.
+  unfold vsupsyn_range, synced_list; intros.
+  rewrite skipn_oob by omega.
   rewrite app_nil_r; auto.
 Qed.
 
-Lemma firstn_app_le : forall A (a b : list A) n,
-  length a <= n ->
-    firstn n (a ++ b) = a ++ firstn (n - length a) b.
+Lemma possible_crash_list_length : forall l l',
+  possible_crash_list l l' -> length l = length l'.
 Proof.
-  induction a; simpl; intros.
-  rewrite <- minus_n_O; auto.
-  destruct n; try omega; simpl.
+  unfold possible_crash_list; firstorder.
+Qed.
+
+Lemma synced_list_length : forall l,
+  length (synced_list l) = length l.
+Proof.
+  unfold synced_list; intros.
+  rewrite combine_length_eq; auto.
+  rewrite repeat_length; auto.
+Qed.
+
+Lemma synced_list_updN : forall l a v,
+  updN (synced_list l) a (v, nil) = synced_list (updN l a v).
+Proof.
+  unfold synced_list; induction l; simpl; intros; auto.
+  destruct a0; simpl; auto.
+  rewrite IHl; auto.
+Qed.
+
+Lemma synced_list_app : forall a b,
+  synced_list (a ++ b) = synced_list a ++ synced_list b.
+Proof.
+  induction a; simpl; auto; intros.
+  unfold synced_list at 1; simpl.
   f_equal.
   apply IHa.
-  omega.
 Qed.
 
-Lemma firstn_repeat_le : forall n m A (x : A),
-  n <= m ->
-    firstn n (repeat x m) = repeat x n.
+Lemma map_snd_synced_list_eq : forall a b,
+  length a = length b ->
+  map snd (synced_list a) = map snd (synced_list b).
 Proof.
-  induction n; simpl; intros; auto.
-  destruct m; try omega; simpl.
+  unfold synced_list; intros.
+  repeat rewrite map_snd_combine; autorewrite with lists; auto.
+Qed.
+
+Lemma map_snd_vsupd_vecs_not_in : forall l d a v,
+  ~ In a (map fst l) ->
+  NoDup (map fst l) ->
+  map snd (vsupd_vecs (synced_list (updN d a v)) l) = map snd (vsupd_vecs (synced_list d) l).
+Proof.
+  induction l; simpl; intros.
+  erewrite map_snd_synced_list_eq; eauto.
+  autorewrite with lists; auto.
+
+  destruct a; intuition; simpl in *.
+  inversion H0; subst.
+  setoid_rewrite vsupd_vecs_vsupd_notin; auto.
+  unfold vsupd.
+  repeat rewrite map_snd_updN.
   f_equal.
-  apply IHn.
-  omega.
+  apply IHl; auto.
+  f_equal; f_equal; f_equal.
+  rewrite <- synced_list_updN.
+  rewrite <- updN_vsupd_vecs_notin by auto.
+  rewrite selN_updN_ne; auto.
 Qed.
 
-Lemma selN_skip_first : forall T (l:list T) n m p def,
-  n + m < p ->
-    selN l (n + m) def = selN (skipn n (firstn p l)) m def.
+
+Lemma possible_crash_list_updN : forall l l' a v vs,
+  possible_crash_list l l' ->
+  possible_crash_list (updN l a (v, vs)) (updN l' a v).
 Proof.
-  intros.
-  rewrite skipn_selN.
-  rewrite selN_firstn.
-  reflexivity.
-  assumption.
+  unfold possible_crash_list; simpl; intuition;
+  autorewrite with lists in *; auto.
+  destruct (Nat.eq_dec a i); subst.
+  repeat rewrite selN_updN_eq; auto; omega.
+  repeat rewrite selN_updN_ne; eauto.
 Qed.
 
 
-Lemma isolate_last: forall A l (a : A) (b:addr),
-  length l <= wordToNat b ->
-  (array $0 (l ++ a :: nil) $1 <=p=>
-   array $0 l $1 * $ (length l) |-> a)%pred.
+Lemma possible_crash_list_unique : forall a b,
+  (forall n, snd (selN a n ($0, nil)) = nil) ->
+  possible_crash_list a b ->
+  b = map fst a.
 Proof.
-  intros.
-  assert (wordToNat (natToWord addrlen (length l)) = length l) as Heq by
-    (eapply wordToNat_natToWord_bound; eauto).
+  unfold possible_crash_list; intuition.
+  eapply list_selN_ext; auto; intros.
+  rewrite map_length; auto.
+  rewrite <- H1 in H0.
+  specialize (H2 _ H0).
+  inversion H2.
 
-  rewrite array_isolate with (i := $ (length l)) (default := a) by
-    (rewrite app_length; unfold length at 3; omega ).
-  unfold sel; rewrite selN_last by omega.
-  ring_simplify ((natToWord addrlen 0) ^+ $ (length l) ^* $ (1)).
-  replace (wordToNat $ (length l)) with (length l) by auto.
-  rewrite firstn_app by auto.
-  rewrite skipn_oob by (rewrite app_length; simpl; omega).
-  unfold array at 2.
-
-  clear Heq.
-  unfold piff; split; cancel.
+  erewrite selN_map; eauto.
+  rewrite H in H3.
+  inversion H3.
 Qed.
 
-Definition setlen A l n (def : A) :=
-  firstn n l ++ (repeat def (n - length l)).
-
-Lemma repeat_is_nil : forall T (v : T) n,
-  n = 0 -> repeat v n = nil.
+Lemma possible_crash_list_synced_list_eq : forall a b,
+  possible_crash_list (synced_list a) b -> a = b.
 Proof.
-  intros; subst; unfold repeat; auto.
+  unfold possible_crash_list; intuition.
+  rewrite synced_list_length in *.
+  eapply list_selN_ext; auto; intros.
+  specialize (H1 _ H).
+  inversion H1.
+
+  generalize H2.
+  unfold synced_list; rewrite selN_combine; eauto.
+  rewrite repeat_length; auto.
+
+  generalize H2.
+  unfold synced_list; rewrite selN_combine; simpl.
+  rewrite repeat_selN by auto.
+  intro Hx; inversion Hx.
+  rewrite repeat_length; auto.
 Qed.
 
-Lemma setlen_length : forall A l n (def : A),
-  length (setlen l n def) = n.
+Lemma possible_crash_list_synced_list : forall l,
+  possible_crash_list (synced_list l) l.
 Proof.
-  unfold setlen; intros.
-  rewrite app_length.
-  rewrite repeat_length.
-  destruct (le_lt_dec n (length l)).
-  apply Nat.sub_0_le in l0 as Heq; rewrite Heq.
-  rewrite firstn_length_l; auto.
-  rewrite firstn_length_r; omega.
+  unfold possible_crash_list; intuition.
+  rewrite synced_list_length; auto.
+  unfold synced_list; constructor.
+  rewrite selN_combine; auto.
+  rewrite repeat_length; auto.
 Qed.
 
-Theorem arrayN_list_eq : forall A (vs1 vs2 : list A) s m,
-  arrayN s vs1 m -> arrayN s vs2 m -> vs1 = vs2.
+Lemma possible_crash_list_cons : forall vsl vl v vs,
+  possible_crash_list vsl vl ->
+  In v (vsmerge vs) ->
+  possible_crash_list (vs :: vsl) (v :: vl).
 Proof.
-  induction vs1; destruct vs2; simpl; intros; auto.
-  apply ptsto_valid in H0; unfold emp in *; congruence.
-  apply ptsto_valid in H; unfold emp in *; congruence.
-  apply ptsto_valid in H as Hx.
-  apply ptsto_valid in H0 as Hy.
-  rewrite Hx in Hy; inversion Hy; subst; clear Hx Hy; f_equal.
-  apply ptsto_mem_except in H.
-  apply ptsto_mem_except in H0.
-  eapply IHvs1; eauto.
+  unfold possible_crash_list; intuition.
+  simpl; omega.
+  destruct i, vs, vsl; firstorder.
 Qed.
 
-Theorem array_strictly_exact : forall A (vs : list A) base stride,
-  strictly_exact (array base vs stride).
+Theorem possible_crash_list_vssync : forall l l' a,
+  possible_crash_list (vssync l a) l' ->
+  possible_crash_list l l'.
 Proof.
-  induction vs; simpl; intros.
-  apply emp_strictly_exact.
-  apply sep_star_strictly_exact.
-  apply ptsto_strictly_exact.
-  eauto.
+  unfold possible_crash_list, vssync; intuition; rewrite length_updN in *; auto.
+  specialize (H1 _ H).
+  destruct (addr_eq_dec i a); subst.
+  erewrite selN_updN_eq in H1 by auto; simpl in *. intuition.
+  erewrite selN_updN_ne in H1 by auto; eauto.
 Qed.
 
-Theorem arrayN_strictly_exact : forall A (vs : list A) base,
-  strictly_exact (arrayN base vs).
-Proof.
-  induction vs; simpl; intros.
-  apply emp_strictly_exact.
-  apply sep_star_strictly_exact.
-  apply ptsto_strictly_exact.
-  eauto.
-Qed.
+
+
+Section ArrayCrashXform.
+
+  Notation pts := (@ptsto addr addr_eq_dec valuset).
+
+  Lemma crash_xform_arrayN: forall l st,
+    crash_xform (arrayN pts st l) =p=>
+      exists l', [[ possible_crash_list l l' ]] *
+      arrayN pts st (synced_list l').
+  Proof.
+    unfold possible_crash_list.
+    induction l; simpl; intros.
+    cancel.
+    instantiate (1 := nil).
+    simpl; auto. auto.
+
+    xform.
+    rewrite IHl.
+    cancel; [ instantiate (1 := v' :: l') | .. ]; simpl; auto; try cancel;
+    destruct i; simpl; auto;
+    destruct (H4 i); try omega; simpl; auto.
+  Qed.
+
+  Lemma crash_xform_arrayN_r: forall l l' st,
+    possible_crash_list l' l ->
+    arrayN pts st (synced_list l) =p=> crash_xform (arrayN pts st l').
+  Proof.
+    unfold possible_crash_list.
+    induction l; simpl; intros; auto.
+    - intuition; destruct l'; simpl in *; try congruence.
+      apply crash_invariant_emp_r.
+    - intuition; destruct l'; simpl in *; try congruence.
+      pose proof (H1 0) as H1'. simpl in H1'.
+      rewrite IHl.
+      rewrite crash_xform_sep_star_dist.
+      rewrite <- crash_xform_ptsto_r with (v := a) by (apply H1'; omega).
+      apply pimpl_refl.
+      intuition.
+      specialize (H1 (S i)). simpl in H1. apply H1. omega.
+  Qed.
+
+  Lemma crash_xform_synced_arrayN: forall l st,
+    Forall (fun x => snd x = nil) l ->
+    crash_xform (arrayN pts st l) =p=> arrayN pts st l.
+  Proof.
+    induction l; simpl; auto; intros.
+    xform.
+    rewrite IHl.
+    cancel; subst.
+    inversion H; simpl in *; subst; auto.
+    inversion H; simpl in *; subst.
+    inversion H1.
+    eapply Forall_cons2; eauto.
+  Qed.
+
+  Lemma crash_xform_arrayN_combine_nils: forall (l : list valu) st,
+    crash_xform (arrayN pts st (List.combine l (repeat nil (length l)))) =p=>
+    arrayN pts st (List.combine l (repeat nil (length l))).
+  Proof.
+    intros.
+    apply crash_xform_synced_arrayN.
+    rewrite Forall_forall; intros.
+    induction l; simpl in *.
+    inversion H.
+    inversion H; subst; simpl; auto.
+  Qed.
+
+  Lemma crash_xform_arrayN_synced: forall (l : list valu) st,
+    crash_xform (arrayN pts st (synced_list l)) =p=>
+    arrayN pts st (List.combine l (repeat nil (length l))).
+  Proof.
+    intros.
+    apply crash_xform_synced_arrayN.
+    rewrite Forall_forall; intros.
+    induction l; simpl in *.
+    inversion H.
+    inversion H; subst; simpl; auto.
+  Qed.
+
+End ArrayCrashXform.
+
+
+
+Section SubsetArray.
+
+  Theorem sync_invariant_arrayN_subset : forall vs a,
+    sync_invariant (arrayN ptsto_subset a vs).
+  Proof.
+    induction vs; simpl; auto.
+  Qed.
+
+  Lemma arrayN_subset_oob': forall l a i m,
+    i >= length l
+    -> arrayN ptsto_subset a l m
+    -> m (a + i) = None.
+  Proof.
+    induction l; intros; auto; simpl in *.
+    destruct (eq_nat_dec i 0); auto.
+    subst; simpl in *; omega.
+
+    unfold sep_star in H0; rewrite sep_star_is in H0; unfold sep_star_impl in H0.
+    repeat deex.
+    unfold mem_union.
+    unfold ptsto_subset in H2.
+    destruct_lift H2.
+    unfold ptsto in H1; destruct H1.
+    pose proof (IHl (S a0) (i - 1)).
+    replace (S a0 + (i - 1)) with (a0 + i) in H3 by omega.
+    destruct (m1 (a0 + i)) eqn:?.
+    contradict Heqo.
+    rewrite H2; try congruence.
+    omega.
+    apply H3.
+    omega.
+    auto.
+  Qed.
+
+  Lemma arrayN_subset_oob: forall l i m,
+    i >= length l
+    -> arrayN ptsto_subset 0 l m
+    -> m i = None.
+  Proof.
+    intros.
+    replace i with (0 + i) by omega.
+    eapply arrayN_subset_oob'; eauto.
+  Qed.
+
+  Lemma arrayN_selN_subset : forall F a st l m def,
+    (F * arrayN ptsto_subset st l)%pred m ->
+    a >= st ->
+    a < st + length l ->
+    let vs0 := (selN l (a - st) def) in
+    exists vs, m a = Some vs /\ fst vs = fst vs0 /\ incl (snd vs) (snd vs0).
+  Proof.
+    cbn; intros.
+    rewrite arrayN_isolate with (i := a - st) in H by omega.
+    unfold ptsto_subset at 2 in H; destruct_lift H; simpl in *.
+    eexists; split; try split.
+    eapply ptsto_valid.
+    pred_apply; replace (st + (a - st)) with a by omega; cancel.
+    simpl; auto.
+    auto.
+  Qed.
+
+  Lemma arrayN_subset_memupd : forall F l a i v vs vs' m,
+    (F * arrayN ptsto_subset a l)%pred m ->
+    incl vs' vs ->
+    i < length l ->
+    (F * arrayN ptsto_subset a (updN l i (v, vs)))%pred (Mem.upd m (a + i) (v, vs')).
+  Proof.
+    intros.
+    rewrite arrayN_isolate with (i := i) in H by auto.
+    unfold ptsto_subset at 2 in H; destruct_lift H.
+    setoid_rewrite sep_star_comm in H.
+    apply sep_star_assoc in H.
+    apply ptsto_upd with (v := (v, vs')) in H.
+    pred_apply.
+    setoid_rewrite arrayN_isolate with (i := i) at 3.
+    unfold ptsto_subset at 4.
+    rewrite selN_updN_eq by auto.
+    cancel.
+    rewrite firstn_updN_oob by auto.
+    rewrite skipn_updN by auto.
+    cancel.
+    rewrite length_updN; auto.
+    Grab Existential Variables. all: eauto.
+  Qed.
+
+  Lemma crash_xform_arrayN_subset: forall l st,
+    crash_xform (arrayN ptsto_subset st l) =p=>
+      exists l', [[ possible_crash_list l l' ]] *
+      arrayN ptsto_subset st (synced_list l').
+  Proof.
+    unfold possible_crash_list.
+    induction l; simpl; intros.
+    cancel.
+    instantiate (1 := nil).
+    simpl; auto. auto.
+
+    xform.
+    rewrite IHl.
+    rewrite crash_xform_ptsto_subset; unfold ptsto_subset, synced_list.
+    cancel; [ instantiate (1 := v' :: l') | .. ]; simpl; auto; try cancel;
+    destruct i; simpl; auto;
+    destruct (H4 i); try omega; simpl; auto.
+  Qed.
+
+  Lemma crash_xform_arrayN_subset_r: forall l l' st,
+    possible_crash_list l' l ->
+    arrayN ptsto_subset st (synced_list l) =p=>
+     crash_xform (arrayN ptsto_subset st l').
+  Proof.
+    unfold possible_crash_list.
+    induction l; simpl; intros; auto.
+    - intuition; destruct l'; simpl in *; try congruence.
+      apply crash_invariant_emp_r.
+    - intuition; destruct l'; simpl in *; try congruence.
+      pose proof (H1 0) as H1'. simpl in H1'.
+      rewrite IHl.
+      rewrite crash_xform_sep_star_dist.
+      rewrite <- crash_xform_ptsto_subset_r with (v := a) by (apply H1'; omega).
+      rewrite ptsto_subset_pimpl_ptsto.
+      apply pimpl_refl.
+      intuition.
+      specialize (H1 (S i)). simpl in H1. apply H1. omega.
+  Qed.
+
+  Lemma crash_xform_synced_arrayN_subset: forall l st,
+    Forall (fun x => snd x = nil) l ->
+    crash_xform (arrayN ptsto_subset st l) =p=> arrayN ptsto_subset st l.
+  Proof.
+    induction l; simpl; auto; intros.
+    xform.
+    rewrite IHl.
+    cancel; subst.
+    rewrite crash_xform_ptsto_subset; unfold ptsto_subset.
+    cancel.
+    inversion H; simpl in *; subst; auto.
+    inversion H; simpl in *; subst.
+    inversion H0.
+    eapply Forall_cons2; eauto.
+  Qed.
+
+  Lemma crash_xform_arrayN_subset_combine_nils: forall (l : list valu) st,
+    crash_xform (arrayN ptsto_subset st (List.combine l (repeat nil (length l)))) =p=>
+    arrayN ptsto_subset st (List.combine l (repeat nil (length l))).
+  Proof.
+    intros.
+    apply crash_xform_synced_arrayN_subset.
+    rewrite Forall_forall; intros.
+    induction l; simpl in *.
+    inversion H.
+    inversion H; subst; simpl; auto.
+  Qed.
+
+  Lemma crash_xform_arrayN_subset_synced: forall (l : list valu) st,
+    crash_xform (arrayN ptsto_subset st (synced_list l)) =p=>
+    arrayN ptsto_subset st (List.combine l (repeat nil (length l))).
+  Proof.
+    intros.
+    apply crash_xform_synced_arrayN_subset.
+    rewrite Forall_forall; intros.
+    induction l; simpl in *.
+    inversion H.
+    inversion H; subst; simpl; auto.
+  Qed.
+
+End SubsetArray.
+
+
+Hint Resolve sync_invariant_arrayN_subset.
+Notation arrayS := (arrayN ptsto_subset).
+
+
+Section ListUpd.
+
+  Variable V : Type.
+  Notation pts := (@ptsto addr addr_eq_dec V).
+
+  Fixpoint listupd (m : @mem _ addr_eq_dec V) base (vs : list V) :=
+    match vs with
+    | nil => m
+    | v :: tl => listupd (upd m base v) (S base) tl
+    end.
+
+  Lemma arrayN_listupd: forall l (m : @mem _ _ V) l0 base F,
+    (F * arrayN pts base l0 )%pred m ->
+    length l0 = length l ->
+    (F * arrayN pts base l)%pred (listupd m base l).
+  Proof.
+    induction l; intros; destruct l0; simpl in *; auto; try omega.
+    apply sep_star_assoc.
+    eapply IHl with (l0 := l0); eauto.
+    setoid_rewrite sep_star_comm at 1.
+    apply sep_star_assoc.
+    eapply ptsto_upd.
+    pred_apply; cancel.
+  Qed.
+
+  Lemma arrayN_listupd_eq : forall (l : list V) F st d,
+    (F * arrayN pts st l)%pred d ->
+    d = listupd d st l.
+  Proof.
+    induction l; simpl; intros; auto.
+    erewrite <- IHl.
+    rewrite upd_nop; auto.
+    eapply ptsto_valid.
+    pred_apply; cancel.
+    rewrite upd_nop; auto.
+    pred_apply; cancel.
+    eapply ptsto_valid.
+    pred_apply; cancel.
+  Qed.
+
+  Lemma listupd_sel_oob : forall (l : list V) a off m,
+    a < off \/ a >= off + (length l) ->
+    listupd m off l a = m a.
+  Proof.
+    induction l; simpl; intros; auto.
+    rewrite IHl by (intuition omega).
+    destruct (addr_eq_dec off a0); subst.
+    exfalso; intuition.
+    rewrite Mem.upd_ne; auto.
+  Qed.
+
+  Lemma listupd_sel_inb : forall (l : list V) a off m def,
+    a >= off ->
+    a < off + (length l) ->
+    listupd m off l a = Some (selN l (a - off) def).
+  Proof.
+    induction l; simpl; intros; try omega.
+    case_eq (a0 - off); intros.
+    replace off with a0 in * by omega.
+    rewrite listupd_sel_oob; intuition.
+    apply Mem.upd_eq; auto.
+
+    erewrite IHl; try omega.
+    replace (a0 - S off) with n by omega; auto.
+  Qed.
+
+  Lemma listupd_sel_cases : forall (l : list V) a off m def,
+    ((a < off \/ a >= off + (length l)) /\ listupd m off l a = m a ) \/
+    (a >= off /\ a < off + (length l) /\ listupd m off l a = Some (selN l (a - off) def) ).
+  Proof.
+    intros.
+    destruct (lt_dec a off);
+    destruct (ge_dec a (off + (length l)));
+    try ( left; intuition; apply listupd_sel_oob; auto ).
+    right; intuition.
+    apply listupd_sel_inb; omega.
+  Qed.
+
+End ListUpd.
+
+
+Section ListUpdSubset.
+
+  Lemma arrayN_listupd_subset : forall l m l0 base F,
+    (F * arrayN ptsto_subset base l0 )%pred m ->
+    length l0 = length l ->
+    (F * arrayN ptsto_subset base l)%pred (listupd m base l).
+  Proof.
+    induction l; intros; destruct l0; simpl in *; auto; try omega.
+    apply sep_star_assoc.
+    eapply IHl with (l0 := l0); eauto.
+    setoid_rewrite sep_star_comm at 1.
+    apply sep_star_assoc.
+    apply sep_star_comm; destruct a, p.
+    eapply ptsto_subset_upd.
+    pred_apply; cancel.
+    apply incl_refl.
+  Qed.
+
+End ListUpdSubset.

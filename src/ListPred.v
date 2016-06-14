@@ -1,5 +1,5 @@
 Require Import Mem.
-Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg Array.
+Require Import List Omega Ring Word Pred PredCrash Prog Hoare SepAuto BasicProg Array ListUtils.
 Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
@@ -7,57 +7,14 @@ Set Implicit Arguments.
 
 (* A general list predicate *)
 
-Theorem remove_not_In :
-  forall T dec (a : T) l, ~ In a l -> remove dec a l = l.
-Proof.
-  induction l.
-  auto.
-  intro Hni. simpl.
-  destruct (dec a a0).
-  subst. destruct Hni. simpl. tauto.
-  rewrite IHl. trivial.
-  simpl in Hni. tauto.
-Qed.
-
-Theorem remove_still_In : forall T dec (a b : T) l,
-  In a (remove dec b l) -> In a l.
-Proof.
-  induction l; simpl; [tauto|].
-  destruct (dec b a0).
-  right; apply IHl; assumption.
-  intro H. destruct H. subst. auto.
-  right; apply IHl; assumption.
-Qed.
-
-Theorem remove_still_In_ne : forall T dec (a b : T) l,
-  In a (remove dec b l) -> b <> a.
-Proof.
-  induction l; simpl; [tauto|].
-  destruct (dec b a0).
-  assumption.
-  intro H. destruct H. subst. auto.
-  apply IHl; assumption.
-Qed.
-
-Theorem remove_other_In : forall T dec (a b : T) l,
-  b <> a -> In a l -> In a (remove dec b l).
-Proof.
-  induction l.
-  auto.
-  simpl. destruct (dec b a0).
-  subst. intros. destruct H0; [subst; tauto | apply IHl; auto].
-  simpl. intros. destruct H0; [left; auto | right; apply IHl; auto].
-Qed.
-
-
 Section LISTPRED.
 
   Set Default Proof Using "Type".
 
   Variable T : Type.
   Variable AT : Type.
-  Variable AEQ : DecEq AT.
-  Variable V : AT -> Type.
+  Variable AEQ : EqDec AT.
+  Variable V : Type.
   Variable prd : T -> @pred AT AEQ V.
 
   Fixpoint listpred (ts : list T) :=
@@ -170,6 +127,15 @@ Section LISTPRED.
     cancel.
   Qed.
 
+  Theorem listpred_split : forall l n,
+    listpred l <=p=> listpred (firstn n l) * listpred (skipn n l).
+  Proof.
+    intros.
+    setoid_rewrite <- firstn_skipn with (n := n) at 1.
+    rewrite listpred_app.
+    split; cancel.
+  Qed.
+
   Theorem listpred_isolate_fwd : forall l i def,
     i < length l ->
     listpred l =p=> listpred (removeN l i) * prd (selN l i def).
@@ -224,12 +190,25 @@ Section LISTPRED.
     eapply IHl; eauto.
   Qed.
 
-  Theorem listpred_nodup' : forall l,
+  Theorem listpred_nodup_piff : forall l,
     (forall x y : T, {x = y} + {x <> y}) ->
     (forall (y : T) m', ~ (prd y * prd y)%pred m') ->
-    listpred l =p=> [[ NoDup l ]] * listpred l.
+    listpred l <=p=> [[ NoDup l ]] * listpred l.
   Proof.
-    intros. apply lift_impl. intros. eapply listpred_nodup; eauto.
+    intros. split. apply lift_impl. intros. eapply listpred_nodup; eauto.
+    cancel.
+  Qed.
+
+  Theorem listpred_nodup_F : forall l m,
+    (forall x y : T, {x = y} + {x <> y}) ->
+    (forall (y : T) m', ~ (prd y * prd y)%pred m') ->
+    (exists F, F * listpred l)%pred m -> NoDup l.
+  Proof.
+    intros.
+    destruct_lift H0.
+    rewrite listpred_nodup_piff in H0 by eauto.
+    destruct_lift H0.
+    eauto.
   Qed.
 
   Theorem listpred_remove :
@@ -241,10 +220,26 @@ Section LISTPRED.
     intros.
     induction l.
     cancel.
-    rewrite listpred_nodup'; eauto.
+    rewrite listpred_nodup_piff; eauto.
     simpl; destruct (dec x a).
     cancel; inversion H2; rewrite remove_not_In; eauto.
     rewrite IHl; [ cancel | destruct H0; subst; tauto ].
+  Qed.
+
+  Theorem listpred_remove' :
+    forall (dec : forall x y : T, {x = y} + {x <> y}) x l,
+    (forall (y : T) m', ~ (prd y * prd y)%pred m') ->
+    NoDup l ->
+    In x l ->
+    prd x * listpred (remove dec x l) =p=> listpred l.
+  Proof.
+    intros.
+    induction l.
+    cancel.
+    simpl; destruct (dec x a); subst.
+    - inversion H0. rewrite remove_not_In; eauto.
+    - simpl; cancel.
+      rewrite <- IHl. cancel. inversion H0. eauto. eauto.
   Qed.
 
   (**
@@ -276,8 +271,8 @@ Section LISTMATCH.
   Variable A : Type.
   Variable B : Type.
   Variable AT : Type.
-  Variable AEQ : DecEq AT.
-  Variable V : AT -> Type.
+  Variable AEQ : EqDec AT.
+  Variable V : Type.
   Variable prd : A -> B -> @pred AT AEQ V.
 
   Definition pprd := prod_curry prd.
@@ -307,6 +302,11 @@ Section LISTMATCH.
     destruct_lift H; auto.
   Qed.
 
+  Lemma listmatch_length_pimpl : forall a b,
+    listmatch a b =p=> (listmatch a b) * [[ length a = length b ]].
+  Proof.
+    unfold listmatch; cancel.
+  Qed.
 
   Theorem listmatch_isolate : forall a b i ad bd,
     i < length a -> i < length b ->
@@ -395,7 +395,7 @@ Section LISTMATCH.
   Qed.
 
 
-  Theorem listmatch_app_r: forall F a b av bv,
+  Theorem listmatch_app_tail: forall F a b av bv,
     length a = length b ->
     F =p=> prd av bv ->
     (listmatch a b) * F =p=> listmatch (a ++ av :: nil) (b ++ bv :: nil).
@@ -412,41 +412,256 @@ Section LISTMATCH.
     cancel; auto.
   Qed.
 
+  Theorem listmatch_app : forall a1 b1 a2 b2,
+    listmatch a1 b1 * listmatch a2 b2 =p=> listmatch (a1 ++ a2) (b1 ++ b2).
+  Proof.
+    unfold listmatch; intros; cancel.
+    repeat rewrite combine_app by auto.
+    rewrite listpred_app; cancel.
+    repeat rewrite app_length; omega.
+  Qed.
+
+  Theorem listmatch_split : forall a b n,
+    listmatch a b <=p=> listmatch (firstn n a) (firstn n b) * listmatch (skipn n a) (skipn n b).
+  Proof.
+    unfold listmatch; intros.
+    rewrite listpred_split with (n := n).
+    rewrite firstn_combine_comm.
+    split; cancel.
+    rewrite skipn_combine; eauto; cancel.
+    repeat rewrite firstn_length; auto.
+    repeat rewrite skipn_length; auto.
+    rewrite skipn_combine; auto.
+    eapply skipn_firstn_length_eq; eauto.
+    eapply skipn_firstn_length_eq; eauto.
+  Qed.
+
 End LISTMATCH.
 
-Hint Resolve listmatch_length_r.
-Hint Resolve listmatch_length_l.
-Hint Resolve listmatch_length.
-
-Ltac solve_length_eq :=
-  eauto; try congruence ; try omega;
-  match goal with
-  | [ H : length ?l = _ |- context [ length ?l ] ] =>
-        solve [ setoid_rewrite H ; eauto ; try congruence ; try omega ]
-  | [ H : _ = length ?l |- context [ length ?l ] ] =>
-        solve [ setoid_rewrite <- H ; eauto ; try congruence ; try omega ]
-  | [ H : context [ listmatch _ ?a ?b ] |- context [ length ?c ] ] =>
-        let Heq := fresh in
-        first [ apply listmatch_length_r in H as Heq
-              | apply listmatch_length_l in H as Heq
-              | apply listmatch_length in H as Heq ];
-        solve [ constr_eq a c; repeat setoid_rewrite Heq ;
-                eauto ; try congruence ; try omega
-              | constr_eq b c; repeat setoid_rewrite <- Heq;
-                eauto; try congruence ; try omega ];
-        clear Heq
-  end.
 
 
-Ltac extract_listmatch_at ix :=
-  match goal with
-    | [  H : context [ listmatch ?p ?a _ ] |- _ ] =>
-            erewrite listmatch_extract with (i := wordToNat ix) in H;
-            try autorewrite with defaults in H; auto;
-            match p with
-            | ?n _ => try unfold n at 2 in H
-            | _    => try unfold p at 2 in H
-            end;
-            destruct_lift H
-  end.
+
+
+Lemma listmatch_sym : forall AT AEQ V A B (al : list A) (bl : list B) f,
+  (@listmatch _ _ AT AEQ V) f al bl <=p=>
+  listmatch (fun b a => f a b) bl al.
+Proof.
+  unfold listmatch; intros.
+  split; cancel;
+  generalize dependent bl;
+  generalize dependent al;
+  induction al; destruct bl; cancel; auto.
+Qed.
+
+Lemma listmatch_map_l : forall AT AEQ V A B C al bl f (g : A -> C),
+  (@listmatch C B AT AEQ V) f (map g al) bl <=p=>
+  (@listmatch A B _ _ _) (fun a b => f (g a) b) al bl.
+Proof.
+  unfold listmatch; intros.
+  split; cancel; autorewrite with lists in *; auto;
+  generalize dependent bl;
+  generalize dependent al;
+  induction al; destruct bl; cancel; auto.
+Qed.
+
+Lemma listmatch_map_r : forall AT AEQ V A B C al bl f (g : B -> C),
+  (@listmatch A C AT AEQ V) f al (map g bl) <=p=>
+  (@listmatch A B _ _ _) (fun a b => f a (g b)) al bl.
+Proof.
+  intros.
+  rewrite listmatch_sym.
+  rewrite listmatch_map_l.
+  rewrite listmatch_sym; auto.
+Qed.
+
+Lemma listmatch_map : forall AT AEQ V A B A' B' al bl f (fa : A -> A') (fb : B -> B'),
+  (@listmatch A B AT AEQ V) (fun a b => f (fa a) (fb b)) al bl <=p=>
+  (@listmatch A' B' _ _ _) f (map fa al) (map fb bl).
+Proof.
+  intros; rewrite listmatch_map_l, listmatch_map_r; auto.
+Qed.
+
+Lemma listpred_map : forall AT AEQ V A B l f (g : A -> B),
+  @listpred B AT AEQ V f (map g l) <=p=>
+  @listpred A AT AEQ V (fun a => f (g a)) l.
+Proof.
+  induction l; simpl; intros; auto.
+  split; cancel; rewrite IHl; auto.
+Qed.
+
+
+Lemma listmatch_ptsto_listpred : forall AT AEQ V (al : list AT) (vl : list V),
+  listmatch (fun v a => a |-> v) vl al =p=>
+  (@listpred _ _ AEQ _) (fun a => a |->?) al.
+Proof.
+  unfold listmatch; induction al; destruct vl.
+  cancel. cancel.
+  norml; inversion H0.
+  cancel; inversion H0.
+  unfold pimpl in *; intros.
+  eapply IHal; eauto.
+  pred_apply; cancel.
+Qed.
+
+Theorem xform_listpred : forall V (l : list V) prd,
+  crash_xform (listpred prd l) <=p=> listpred (fun x => crash_xform (prd x)) l.
+Proof.
+  induction l; simpl; intros; split; auto; xform_dist; auto.
+  rewrite IHl; auto.
+  rewrite IHl; auto.
+Qed.
+
+
+Lemma crash_xform_pprd : forall A B (prd : A -> B -> rawpred),
+  (fun p => crash_xform (pprd prd p)) =
+  (pprd (fun x y => crash_xform (prd x y))).
+Proof.
+  unfold pprd, prod_curry, crash_xform; intros.
+  apply functional_extensionality; intros; destruct x; auto.
+Qed.
+
+Theorem xform_listmatch : forall A B (a : list A) (b : list B) prd,
+  crash_xform (listmatch prd a b) <=p=> listmatch (fun x y => crash_xform (prd x y)) a b.
+Proof.
+  unfold listmatch; intros; split; xform_norm;
+  rewrite xform_listpred; cancel;
+  rewrite crash_xform_pprd; auto.
+Qed.
+
+Theorem xform_listpred_idem_l : forall V (l : list V) prd,
+  (forall e, crash_xform (prd e) =p=> prd e) ->
+  crash_xform (listpred prd l) =p=> listpred prd l.
+Proof.
+  induction l; simpl; intros; auto.
+  xform_dist.
+  rewrite H.
+  rewrite IHl; auto.
+Qed.
+
+
+Theorem xform_listpred_idem_r : forall V (l : list V) prd,
+  (forall e,  prd e =p=> crash_xform (prd e)) ->
+  listpred prd l =p=> crash_xform (listpred prd l).
+Proof.
+  induction l; simpl; intros; auto.
+  xform_dist; auto.
+  xform_dist.
+  rewrite <- H.
+  rewrite <- IHl; auto.
+Qed.
+
+Theorem xform_listpred_idem : forall V (l : list V) prd,
+  (forall e, crash_xform (prd e) <=p=> prd e) ->
+  crash_xform (listpred prd l) <=p=> listpred prd l.
+Proof.
+  split.
+  apply xform_listpred_idem_l; intros.
+  apply H.
+  apply xform_listpred_idem_r; intros.
+  apply H.
+Qed.
+
+Theorem xform_listmatch_idem_l : forall A B (a : list A) (b : list B) prd,
+  (forall a b, crash_xform (prd a b) =p=> prd a b) ->
+  crash_xform (listmatch prd a b) =p=> listmatch prd a b.
+Proof.
+  unfold listmatch; intros.
+  xform_norm; cancel.
+  apply xform_listpred_idem_l; intros.
+  destruct e; cbn; auto.
+Qed.
+
+Theorem xform_listmatch_idem_r : forall A B (a : list A) (b : list B) prd,
+  (forall a b,  prd a b =p=> crash_xform (prd a b)) ->
+  listmatch prd a b =p=> crash_xform (listmatch prd a b).
+Proof.
+  unfold listmatch; intros.
+  cancel.
+  xform_normr.
+  rewrite <- xform_listpred_idem_r; cancel.
+  auto.
+Qed.
+
+Theorem xform_listmatch_idem : forall A B (a : list A) (b : list B) prd,
+  (forall a b, crash_xform (prd a b) <=p=> prd a b) ->
+  crash_xform (listmatch prd a b) <=p=> listmatch prd a b.
+Proof.
+  split.
+  apply xform_listmatch_idem_l; auto.
+  apply H.
+  apply xform_listmatch_idem_r; auto.
+  apply H.
+Qed.
+
+Lemma xform_listpred_ptsto : forall l,
+  crash_xform (listpred (fun a => a |->?) l) =p=>
+               listpred (fun a => a |->?) l.
+Proof.
+  induction l; simpl.
+  rewrite crash_invariant_emp; auto.
+  xform_dist.
+  rewrite crash_xform_ptsto_exis, IHl.
+  auto.
+Qed.
+
+Lemma xform_listmatch_ptsto : forall al vl,
+  crash_xform (listmatch (fun v a => a |-> v) vl al) =p=>
+    exists l, [[ possible_crash_list vl l ]] *
+    listmatch (fun v a => a |-> v) (synced_list l) al.
+Proof.
+  unfold listmatch; induction al; destruct vl; xform_norm.
+  - cancel. instantiate (1 := nil); simpl; auto.
+    unfold possible_crash_list; intuition; inversion H.
+    rewrite synced_list_length; auto.
+  - inversion H0.
+  - inversion H0.
+  - rewrite crash_xform_ptsto.
+    specialize (IHal vl).
+    rewrite crash_xform_sep_star_dist, crash_xform_lift_empty in IHal.
+    inversion H; subst.
+    setoid_rewrite lift_impl with (Q := length vl = length al) at 3; intros; eauto.
+    rewrite IHal; simpl.
+
+    cancel.
+    eassign (v' :: l); cancel.
+    simpl; cancel.
+    apply possible_crash_list_cons; simpl; auto.
+    rewrite synced_list_length in *; simpl; omega.
+    apply possible_crash_list_cons; simpl; auto.
+    rewrite synced_list_length in *; simpl; omega.
+Qed.
+
+Theorem sync_invariant_listpred : forall T prd (l : list T),
+  (forall x, sync_invariant (prd x)) ->
+  sync_invariant (listpred prd l).
+Proof.
+  induction l; simpl; eauto.
+Qed.
+
+Hint Resolve sync_invariant_listpred.
+
+Theorem sync_xform_listpred : forall V (l : list V) prd,
+  sync_xform (listpred prd l) <=p=> listpred (fun x => sync_xform (prd x)) l.
+Proof.
+  induction l; simpl; intros; split; auto.
+  apply sync_xform_emp.
+  apply sync_xform_emp.
+  rewrite sync_xform_sep_star_dist.
+  rewrite IHl; auto.
+  rewrite sync_xform_sep_star_dist.
+  rewrite IHl; auto.
+Qed.
+
+
+Lemma sync_xform_listpred' : forall T (l : list T) p q,
+  (forall x, sync_xform (p x) =p=> q x) ->
+  sync_xform (listpred p l) =p=> listpred q l.
+Proof.
+  induction l; simpl; intros; auto.
+  apply sync_xform_emp.
+  repeat rewrite sync_xform_sep_star_dist.
+  rewrite IHl by eauto.
+  rewrite H; auto.
+Qed.
+
 

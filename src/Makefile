@@ -1,50 +1,116 @@
-OCAMLBUILD := ocamlbuild -lib str
-OCAMLINC   := -I codegen
-MODULES    := Nomega Word WordAuto WordZ Bytes Rounding \
-	      Mem Pred Prog PredCrash Hoare \
-	      SepAuto SepAuto2 Idempotent Errno \
-	      BasicProg Array AddrMap Rec RecArray \
-	      GenSep GenSepN ListPred Cache FSLayout \
-	      Log Balloc Inode BFile BFileRec Dir \
-	      MemMatch DirName DirTree ByteFile FS Testprog \
-	      Hlist HlistMem Star RelationCombinators Variables MemClass \
-	      Locking Automation ForwardChaining \
-	      CoopConcur CoopConcurAuto Protocols \
+OCAMLBUILD := ocamlbuild -use-ocamlfind -lib str -lib nums
+OCAMLINC   := -I codegen -I mllib -I ocamlfuse -package extunix
+MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
+	      Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
+	      Hashmap HashmapProg \
+	      SepAuto Idempotent Errno \
+	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
+	      MemPred Cache \
+	      FSLayout AsyncRecArray DiskLogHash \
+	      LogReplay MemLog ListPred GenSepN \
+	      NEList DiskSet GroupLog Log LogRecArray \
+	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
+	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \
+	      SuperBlock AsyncFS AsyncFSRecover TreeSeq DirUtil ExtrHaskellPrelude \
+		  Hlist HlistMem Star RelationCombinators Variables MemClass \
+		  Locking Automation ForwardChaining \
+		  CoopConcur CoopConcurAuto Protocols \
 		  DiskReaders MemCache WriteBuffer WriteBufferSet ConcurrentCache \
-		  ConcurrentBridge \
-	      ExtrHaskellPrelude Extraction
+		  ConcurrentBridge
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
+VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
+VS_HS      := codegen/AsyncFS.hs
+VS_ML      := codegen/AsyncFS.ml
+VS_JSON    := codegen/AsyncFS.json
 GHC 	   := ghc
-ifeq (,$(shell $(GHC) --version | grep 'version 7.10' 2>/dev/null))
-	GHC := /opt/ghc/7.10.2/bin/ghc
+HSC2HS	   := hsc2hs
+ifeq (,$(shell $(GHC) --version | grep 'version 8.0' 2>/dev/null))
+	GHC := /opt/ghc/8.0.1/bin/ghc
+	HSC2HS := /opt/ghc/8.0.1/bin/hsc2hs
 endif
 
 GHCARGS    := -O2 -threaded
 		# -prof -fprof-auto -rtsopts
 		# -eventlog
+HSLIB_FUSE := hscgen/Fuse.hs
 HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
 HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs hslib/ConcurInterp.hs
 J ?= 4
 
+OCAMLFUSE_ML	:= ocamlfuse/Result.ml \
+		   ocamlfuse/Unix_util.ml \
+		   ocamlfuse/Fuse_bindings.ml \
+		   ocamlfuse/Fuse_lib.ml \
+		   ocamlfuse/Fuse.ml
+OCAMLFUSE_MLI	:= ocamlfuse/Fuse.mli \
+		   ocamlfuse/Fuse_bindings.mli
+
+OCAMLFUSE_CMX	:= $(patsubst %.ml,%.cmx,$(OCAMLFUSE_ML))
+OCAMLFUSE_DEP	:= $(patsubst %.ml,%.d,$(OCAMLFUSE_ML)) \
+		   $(patsubst %.mli,%.di,$(OCAMLFUSE_MLI))
+
 .PHONY: coq proof clean
 
-all: hstest
+all: fuse mkfs
 
-%: %.ml coq
+-include $(OCAMLFUSE_DEP)
+
+%.mli %.ml %_stubs.c: %.idl
+	camlidl -header $<
+
+%.d: %.ml
+	ocamldep $< > $@
+
+%.di: %.mli
+	ocamldep $< > $@
+
+ocamlfuse/%.o: ocamlfuse/%.c
+	ocamlc -c -ccopt '-fPIC -D_FILE_OFFSET_BITS=64 -I. -pthread -DPIC -DNATIVE_CODE -o $@' $<
+
+ocamlfuse/libFuse_stubs.a: ocamlfuse/Fuse_bindings_stubs.o ocamlfuse/Unix_util_stubs.o ocamlfuse/Fuse_util.o
+	ar rcs $@ $^
+
+%.cmx: %.ml
+	ocamlopt -I ocamlfuse -c -thread $<
+
+%.cmi: %.mli
+	ocamlopt -I ocamlfuse -c -thread $<
+
+ocamlfuse/Fuse.cmxa: $(OCAMLFUSE_CMX) ocamlfuse/libFuse_stubs.a
+	ocamlopt -a -thread -linkall -cclib -lFuse_stubs -cclib -lfuse -cclib -lcamlidl -o $@ $(OCAMLFUSE_CMX)
+
+%: %.ml $(VS_ML)
 	rm -f $@
+	-mv codegen/Word.ml codegen/WordCoq.ml
+	-mv codegen/Word.mli codegen/WordCoq.mli
 	$(OCAMLBUILD) $(OCAMLINC) -no-links $@.native
 	ln -s $(CURDIR)/_build/$@.native $@
 
-%: %.hs coq
+hscgen/%.hs: hslib/%.hsc
+	@mkdir -p $(@D)
+	$(HSC2HS) $< -o $@ --cflag=-D_FILE_OFFSET_BITS=64
+
+%: %.hs $(VS_HS) $(HSLIB_FUSE)
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
+	$(GHC) $(GHCARGS) $(HSLIB_FUSE)
 	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
 	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen
-	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -o $@
+	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -ihscgen -optl -lfuse -o $@
 
-coq: coqbuild/Makefile.coq
+$(VS_HS): $(VS_VIO) coqbuild/ExtractHaskell.v
+	( cd coqbuild && coqc -q -R . Fscq ExtractHaskell )
+
+$(VS_ML): $(VS_VIO) coqbuild/ExtractOcaml.v
+	( cd coqbuild && coqc -q -R . Fscq ExtractOcaml )
+
+$(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
+	( cd coqbuild && coqc -q -R . Fscq ExtractJSON )
+
+$(VS_VIO): coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -f Makefile.coq quick )
+	@touch coqbuild/*.vio
 
 checkproofs: coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -f Makefile.coq checkproofs J=$(J) )
@@ -52,7 +118,7 @@ checkproofs: coqbuild/Makefile.coq
 proof: coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -f Makefile.coq )
 
-parproof: coq
+parproof: $(VS_VIO)
 	( cd coqbuild && $(MAKE) -f Makefile.coq vio2vo J=$(J) )
 
 coqbuild/%.v: %.v
@@ -75,4 +141,11 @@ gotest: $(patsubst %.json,%/main.go,$(wildcard codegen/*.json))
 	GOPATH=$(shell cd .. && pwd):${GOPATH} go build gotest.go
 
 clean:
-	rm -rf codegen coqbuild _build fstest hstest gotest disk.img
+	rm -rf codegen coqbuild _build fstest hstest gotest disk.img \
+	       fuse mkfs *.o *.hi ocamlfuse/*.d ocamlfuse/*.di \
+	       ocamlfuse/*.cmi ocamlfuse/*.cmx ocamlfuse/*.cmo \
+	       ocamlfuse/*.o ocamlfuse/Fuse_bindings_stubs.c \
+	       ocamlfuse/Fuse_bindings.h ocamlfuse/Fuse_bindings.ml \
+	       ocamlfuse/libFuse_stubs.a
+
+.PRECIOUS: hscgen/%.hs %_stubs.c

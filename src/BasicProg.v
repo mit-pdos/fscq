@@ -1,5 +1,6 @@
-Require Import Prog.
+Require Import Prog ProgMonad.
 Require Import Pred.
+Require Import PredCrash.
 Require Import Hoare.
 Require Import Omega.
 Require Import SepAuto.
@@ -8,156 +9,152 @@ Require Import Nomega.
 Require Import NArith.
 Require Import FunctionalExtensionality.
 Require Import List.
+Require Import AsyncDisk.
+Require Import Hashmap.
+Require Import ListUtils.
 
 Set Implicit Arguments.
 
-
 (** * Some helpful [prog] combinators and proofs *)
 
-Ltac inv_option :=
-  match goal with
-  | [ H: Some _ = Some _ |- _ ] => inversion H; clear H; subst
-  | [ H: ?a = Some ?b |- _ ] =>
-    match goal with
-    | [ H': a = Some ?c |- _ ] =>
-      match b with
-      | c => fail 1
-      | _ => rewrite H in H'
-      end
-    end
-  end.
+Lemma sync_invariant_possible_sync : forall (F: rawpred) (m: rawdisk),
+    F m ->
+    sync_invariant F ->
+    possible_sync m =p=> F.
+Proof.
+  unfold sync_invariant; eauto.
+Qed.
 
-Ltac inv_exec :=
-  match goal with
-  | [ H: exec _ _ _ |- _ ] => inversion H; clear H; subst
-  end.
-
-Ltac inv_step :=
-  match goal with
-  | [ H: step _ _ _ _ |- _ ] => inversion H; clear H; subst
-  end.
+Hint Resolve sync_invariant_possible_sync.
 
 Theorem read_ok:
   forall (a:addr),
   {< v,
-  PRE        a |-> v
-  POST RET:r a |-> v * [[ r = (fst v) ]]
-  CRASH      a |-> v
+  PRE        a |+> v
+  POST RET:r a |+> v * [[ r = (fst v) ]]
+  CRASH      a |+> v
   >} Read a.
 Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
-  - inv_step.
+  - inv_exec.
     eapply H4; eauto.
     pred_apply; cancel.
-    apply sep_star_comm in H; apply ptsto_valid in H.
-    congruence.
+    eauto.
+    admit. (* m a |+> (dummy_cur, x) and m' a |+> (v, x'); equal using sync_addr_step *)
   - exfalso.
-    apply H1. repeat eexists.
-    econstructor.
-    eapply ptsto_valid with (V := const valuset).
+    apply sep_star_comm in H. eapply ptsto_subset_valid in H. repeat deex.
+    congruence.
+  - right. repeat eexists; intuition eauto.
+    eapply H3.
     pred_apply; cancel.
-  - right. eexists; intuition eauto.
-Qed.
+Admitted.
 
-Hint Extern 1 ({{_}} progseq (Read _) _) => apply read_ok : prog.
+Hint Extern 1 ({{_}} Bind (Read _) _) => apply read_ok : prog.
 
 Theorem write_ok:
   forall (a:addr) (v:valu),
   {< v0,
-  PRE        a |-> v0
-  POST RET:r a |-> (v, valuset_list v0)
-  CRASH      a |-> v0
+  PRE        a |+> v0
+  POST RET:r a |+> (v, vsmerge v0)
+  CRASH      a |+> v0
   >} Write a v.
 Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
-  - inv_step.
+  - inv_exec.
     eapply H4; eauto.
-    eapply pimpl_trans; [ cancel | | eapply ptsto_upd; pred_apply; cancel ].
-    apply sep_star_comm in H; apply ptsto_valid in H.
-    rewrite H in H10; inversion H10; subst; unfold valuset_list; simpl.
-    cancel.
+    admit.
   - exfalso.
-    apply H1. repeat eexists.
-    econstructor.
-    eapply ptsto_valid with (V := const valuset).
+    apply sep_star_comm in H. eapply ptsto_subset_valid in H. repeat deex.
+    congruence.
+  - right. repeat eexists; intuition eauto.
+    eapply H3.
     pred_apply; cancel.
-  - right. eexists; intuition eauto.
-Qed.
+Admitted.
 
-Hint Extern 1 ({{_}} progseq (Write _ _) _) => apply write_ok : prog.
+Hint Extern 1 ({{_}} Bind (Write _ _) _) => apply write_ok : prog.
 
 Theorem sync_ok:
-  forall (a:addr),
-  {< v,
-  PRE        a |-> v
-  POST RET:r a |-> (fst v, nil)
-  CRASH      a |-> v
-  >} Sync a.
+  {!< F,
+  PRE        F * [[ sync_invariant F ]]
+  POST RET:r sync_xform F
+  CRASH      F
+  >!} Sync.
 Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
-  - inv_step.
+  - inv_exec.
     eapply H4; eauto.
-    eapply pimpl_trans; [ cancel | | eapply ptsto_upd; pred_apply; cancel ].
-    apply sep_star_comm in H; apply ptsto_valid in H.
-    rewrite H in H9; inversion H9; subst.
+
+    eapply pimpl_apply; [ | eapply sync_xform_pred_apply; pred_apply; reflexivity ].
     cancel.
-  - exfalso.
-    apply H1. repeat eexists.
-    econstructor.
-    eapply ptsto_valid with (V := const valuset).
-    pred_apply; cancel.
-  - right. eexists; intuition eauto.
+    apply sync_xform_pimpl; eauto.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (Sync _) _) => apply sync_ok : prog.
+Hint Extern 1 ({{_}} Bind Sync _) => apply sync_ok : prog.
+Hint Extern 1 ({{_}} Bind (@Sync _) _) => apply sync_ok : prog.
 
 Theorem trim_ok:
   forall (a:addr),
   {< v0,
-  PRE        a |-> v0
-  POST RET:r a |->?
-  CRASH      a |->?
+  PRE        a |+> v0
+  POST RET:r a |+>?
+  CRASH      a |+>?
   >} Trim a.
 Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
-  - inv_step.
-    eapply H4; eauto.
-    eapply pimpl_trans; [ | | eapply ptsto_upd; pred_apply; cancel ].
-    cancel.
-    cancel.
-  - exfalso.
-    apply H1. repeat eexists.
-    econstructor.
-    eapply ptsto_valid with (V := const valuset).
-    pred_apply; cancel.
-  - right. eexists; intuition eauto.
-    pred_apply. cancel.
+  - eapply H4; eauto.
+    apply sep_star_comm in H as H'. apply ptsto_subset_valid in H'; repeat deex.
+    apply sep_star_comm in H as H'. rewrite ptsto_subset_pimpl_ptsto_ex in H'. destruct_lift H'.
+    apply ptsto_valid in H0.
+    rewrite H0 in H1; inversion H1; subst.
+    admit.
+Admitted.
 
-  Grab Existential Variables.
-  eauto.
+Hint Extern 1 ({{_}} Bind (Trim _) _) => apply trim_ok : prog.
+
+Theorem hash_ok:
+  forall sz (buf : word sz),
+  {< (_: unit),
+  PRE:hm    emp
+  POST:hm'
+    RET:h   emp *
+              [[ hash_safe hm h buf ]] *
+              [[ h = hash_fwd buf ]] *
+              [[ hm' = upd_hashmap' hm h buf ]]
+  CRASH:hm' emp * [[ hm' = hm ]]
+  >} Hash buf.
+Proof.
+  unfold corr2; intros.
+  destruct_lift H.
+  inv_exec.
+  - inv_exec.
+    eapply H4; eauto.
+    pred_apply; cancel.
+    eauto.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (Trim _) _) => apply trim_ok : prog.
+Hint Extern 1 ({{_}} Bind (Hash _) _) => apply hash_ok : prog.
 
-Definition If_ {PROGTYPE : Type -> Type} {T : Type} P Q (b : {P} + {Q}) (p1 p2 : PROGTYPE T) :=
+(** program equivalence and monad laws *)
+
+Definition If_ T P Q (b : {P} + {Q}) (p1 p2 : prog T) :=
   if b then p1 else p2.
 
 Theorem if_ok:
-  forall T P Q (b : {P}+{Q}) (p1 p2 : prog T),
-  {{ fun done crash => exists pre, pre
-   * [[ {{ fun done' crash' => pre * [[P]] * [[ done' = done ]] * [[ crash' = crash ]] }} p1 ]]
-   * [[ {{ fun done' crash' => pre * [[Q]] * [[ done' = done ]] * [[ crash' = crash ]] }} p2 ]]
-  }} If_ b p1 p2.
+  forall T T' P Q (b : {P}+{Q}) (p1 p2 : prog T) (p': T -> prog T'),
+  {{ fun hm done crash => exists pre, pre
+   * [[ {{ fun hm' done' crash' => pre * [[P]] * [[ hm = hm' ]] * [[ done' = done ]] * [[ crash' = crash ]] }} Bind p1 p' ]]
+   * [[ {{ fun hm' done' crash' => pre * [[Q]] * [[ hm = hm' ]] * [[ done' = done ]] * [[ crash' = crash ]] }} Bind p2 p' ]]
+  }} Bind (If_ b p1 p2) p'.
 Proof.
-  unfold corr2, exis; intros; repeat deex.
+  unfold corr2, corr2, exis; intros; repeat deex.
   repeat ( apply sep_star_lift2and in H; destruct H ).
   destruct b.
   - eapply H2; eauto.
@@ -168,32 +165,18 @@ Proof.
     cancel.
 Qed.
 
-Hint Extern 1 ({{_}} If_ _ _ _) => apply if_ok : prog.
+(* helper to use If with an option *)
+Definition is_some A (a: option A) : {a <> None} + {a = None}.
+Proof.
+  destruct a; left + right; congruence.
+Defined.
+
+Hint Extern 1 ({{_}} Bind (If_ _ _ _) _) => apply if_ok : prog.
 Notation "'If' b { p1 } 'else' { p2 }" := (If_ b p1 p2) (at level 9, b at level 0).
 
-Definition IfRx_ {PROGTYPE : Type -> Type} {T : Type} P Q R (b : {P} + {Q})
-                 (p1 p2 : (R -> PROGTYPE T) -> PROGTYPE T) (rx : R -> PROGTYPE T) : PROGTYPE T :=
-  If_ b (p1 rx) (p2 rx).
-
-Theorem ifrx_ok:
-  forall T P Q R (b : {P}+{Q}) (p1 p2 : (R -> prog T) -> prog T) rx,
-  {{ fun done crash => exists pre, pre
-   * [[ {{ fun done' crash' => pre * [[P]] * [[ done' = done ]] * [[ crash' = crash ]] }} p1 rx ]]
-   * [[ {{ fun done' crash' => pre * [[Q]] * [[ done' = done ]] * [[ crash' = crash ]] }} p2 rx ]]
-  }} IfRx_ b p1 p2 rx.
-Proof.
-  unfold IfRx_; intros.
-  apply if_ok.
-Qed.
-
-Hint Extern 1 ({{_}} progseq (IfRx_ _ _ _) _) => apply ifrx_ok : prog.
-
-Notation "'IfRx' rx b { p1 } 'else' { p2 }" :=
-  (IfRx_ b (fun rx => p1) (fun rx => p2)) (at level 9, rx at level 0, b at level 0).
-
 Record For_args (L : Type) := {
-  For_args_i : addr;
-  For_args_n : addr;
+  For_args_i : waddr;
+  For_args_n : waddr;
   For_args_l : L
 }.
 
@@ -206,65 +189,49 @@ Proof.
   apply wlt_lt; auto.
 Qed.
 
-Definition For_ {PROGTYPE : Type -> Type}
-                {T: Type}
-                (L : Type) (G : Type) (f : addr -> L -> (L -> PROGTYPE T) -> PROGTYPE T)
-                (i n : addr)
-                (nocrash : G -> addr -> L -> @pred addr (@weq addrlen) (const valuset))
-                (crashed : G -> @pred addr (@weq addrlen) (const valuset))
-                (l : L)
-                (rx: L -> PROGTYPE T) : PROGTYPE T.
-  refine (Fix (@for_args_wf L) (fun _ => PROGTYPE T)
+Lemma word_minus_1 : forall sz (w: word sz),
+    w <> $ 0 ->
+    (w ^- $1 < w)%word.
+Proof.
+  intros.
+  apply weq_minus1_wlt; auto.
+Qed.
+
+Definition For_ (L : Type) (G : Type) (f : waddr -> L -> prog L)
+                (i n : waddr)
+                (nocrash : G -> waddr -> L -> hashmap -> rawpred)
+                (crashed : G -> hashmap -> rawpred)
+                (l : L) : prog L.
+Proof.
+  refine (Fix (@for_args_wf L) (fun _ => prog L)
           (fun args For_ => _)
           {| For_args_i := i; For_args_n := n; For_args_l := l |}).
   clear i n l.
   destruct args.
-  refine (if weq For_args_n0 $0 then rx For_args_l0 else _).
+  refine (if weq For_args_n0 $0 then Ret For_args_l0 else _).
   refine (l' <- (f For_args_i0 For_args_l0); _).
   refine (For_ {| For_args_i := For_args_i0 ^+ $1;
                   For_args_n := For_args_n0 ^- $1;
                   For_args_l := l' |} _).
 
-  assert (wordToNat For_args_n0 <> 0).
-  unfold not in *; intros; apply n.
-  rewrite <- H.
-  rewrite natToWord_wordToNat; auto.
-
   simpl.
-  rewrite wminus_Alt.
-  rewrite wminus_Alt2.
-  unfold wordBinN.
-  rewrite (@wordToNat_natToWord_idempotent' addrlen 1);
-    [| replace (1) with (wordToNat (natToWord addrlen 1)) by auto; apply wordToNat_bound ].
-  apply lt_wlt.
-
-  rewrite wordToNat_natToWord_idempotent';
-    [| assert (wordToNat For_args_n0 < pow2 addrlen) by apply wordToNat_bound;
-       unfold goodSize in *; omega ].
-  apply PeanoNat.Nat.sub_lt; omega.
-
-  unfold wlt, not in *; intro Hn.
-  apply H.
-  apply Nlt_out in Hn.
-  repeat rewrite wordToN_nat in Hn.
-  repeat rewrite Nat2N.id in Hn.
-  simpl in Hn.
-  omega.
+  apply word_minus_1; auto.
 Defined.
 
-Lemma For_step: forall {PROGTYPE : Type -> Type} T L G f i n l nocrash crashed (rx: _ -> PROGTYPE T),
-  @For_ PROGTYPE T L G f i n nocrash crashed l rx =
+Lemma For_step: forall L G (f: waddr -> L -> prog L) i n l nocrash crashed,
+  @For_ L G f i n nocrash crashed l =
     if weq n $0
-    then rx l
+    then Ret l
     else l' <- (f i l);
-         @For_ PROGTYPE T L G f
-               (i ^+ $1)
-               (n ^- $1)
-               nocrash crashed l' rx.
+         @For_ L G f
+             (i ^+ $1)
+             (n ^- $1)
+             nocrash crashed l'.
 Proof.
   intros.
   unfold For_.
   rewrite Fix_eq.
+  simpl.
 
   destruct (weq n $0); f_equal.
 
@@ -285,32 +252,41 @@ Proof.
 Qed.
 
 Theorem for_ok':
-  forall T (n i : addr)
+  forall T (n i : waddr)
          (L : Type) (G : Type)
-         f (rx: _ -> prog T)
-         (nocrash : G -> addr -> L -> pred)
-         (crashed : G -> pred)
+         (f: waddr -> L -> prog L) (rx: L -> prog T)
+         (nocrash : G -> waddr -> L -> hashmap -> rawpred)
+         (crashed : G -> hashmap -> rawpred)
          (li : L),
-  {{ fun done crash => exists F (g:G), F * nocrash g i li
+  {{ fun hm done crash => exists F (g:G) hm', F * nocrash g i li hm
+   * [[ exists l, hashmap_subset l hm' hm ]]
    * [[forall m lm rxm,
       (i <= m)%word ->
       (m < n ^+ i)%word ->
       (forall lSm,
-       {{ fun done' crash' => F * nocrash g (m ^+ $1) lSm * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun hm'' done' crash' => F * nocrash g (m ^+ $1) lSm hm'' *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
-      {{ fun done' crash' => F * nocrash g m lm * [[ done' = done ]] * [[ crash' = crash ]]
-      }} f m lm rxm]]
+      {{ fun hm'' done' crash' => F * nocrash g m lm hm'' *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
+      }} Bind (f m lm) rxm]]
    * [[forall lfinal,
-       {{ fun done' crash' => F * nocrash g (n ^+ i) lfinal * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun hm'' done' crash' => F * nocrash g (n ^+ i) lfinal hm'' *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
    * [[wordToNat i + wordToNat n = wordToNat (i ^+ n)]]
-   * [[F * crashed g =p=> crash]]
-  }} (For_ f i n nocrash crashed li rx).
+   * [[forall hm'',
+        F * crashed g hm'' * [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash hm'' ]]
+  }} Bind (For_ f i n nocrash crashed li) rx.
 Proof.
   intro T.
   wlt_ind.
 
   intros.
+  apply corr2_exists; intros.
   apply corr2_exists; intros.
   apply corr2_exists; intros.
   case_eq (weq x $0); intros; subst.
@@ -319,7 +295,7 @@ Proof.
     + unfold pimpl, lift; intros.
       rewrite For_step.
       eapply pimpl_ok2.
-      simpl; eauto.
+      simpl; monad_simpl; eauto.
       intros.
       apply pimpl_refl.
     + fold (wzero addrlen). ring_simplify (wzero addrlen ^+ i). cancel.
@@ -327,11 +303,12 @@ Proof.
   - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
     + assert (wordToNat x <> 0).
       unfold not in *; intros; apply n.
-      rewrite <- H5; rewrite natToWord_wordToNat; auto.
+      rewrite <- H6; rewrite natToWord_wordToNat; auto.
 
       unfold pimpl, lift; intros.
       rewrite For_step.
       rewrite H0.
+      monad_simpl.
       apply H4.
 
       apply eq_le; auto.
@@ -343,31 +320,19 @@ Proof.
       eapply pimpl_ok2.
       apply H.
 
-      apply lt_wlt.
-      rewrite wminus_Alt.
-      rewrite wminus_Alt2.
-      unfold wordBinN.
-      rewrite wordToNat_natToWord_idempotent'.
-      simpl; omega.
-      simpl (wordToNat $1).
-      eapply Nat.lt_le_trans; [| apply (wordToNat_bound x) ].
-      omega.
-      unfold not in *; intros; apply n.
-      apply wlt_lt in H7; simpl in H7.
-      rewrite <- natToWord_wordToNat with (w:=x).
-      f_equal.
-      omega.
+      apply word_minus_1; auto.
 
       intros.
       apply pimpl_exists_r; exists a.
       apply pimpl_exists_r; exists a0.
+      apply pimpl_exists_r; exists a1.
       ring_simplify (i ^+ $1 ^+ (x ^- $1)).
       ring_simplify (x ^- $1 ^+ (i ^+ $1)).
       cancel.
 
       subst; apply H4; eauto.
-      intros; apply H7; clear H7.
-      apply wlt_lt in H9.
+      intros; apply H9; clear H9.
+      apply wlt_lt in H12.
       unfold wlt.
       repeat rewrite wordToN_nat.
       apply Nlt_in.
@@ -378,8 +343,6 @@ Proof.
       rewrite wordToNat_natToWord_idempotent'.
       omega.
       eapply Nat.le_lt_trans; [| apply (wordToNat_bound (i ^+ x)) ]; omega.
-
-      subst; eauto.
 
       rewrite wminus_Alt.
       rewrite wminus_Alt2.
@@ -394,33 +357,40 @@ Proof.
       eapply Nat.le_lt_trans; [| apply (wordToNat_bound x) ]; omega.
       eapply Nat.le_lt_trans; [| apply (wordToNat_bound (i ^+ x)) ]; omega.
 
-      unfold not; intros; apply H5.
+      unfold not; intros; apply H6.
       assert (wordToNat x < 1); [| omega ].
-      apply wlt_lt in H7; simpl in H7; auto.
-      subst; auto.
+      apply wlt_lt in H9; simpl in H9; auto.
     + cancel.
 Qed.
 
 Theorem for_ok:
-  forall T (n : addr)
+  forall T (n : waddr)
          (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> addr -> L -> pred)
-         (crashed : G -> pred)
+         (nocrash : G -> waddr -> L -> hashmap -> rawpred)
+         (crashed : G -> hashmap -> rawpred)
          (li : L),
-  {{ fun done crash => exists F (g:G), F * nocrash g $0 li
+  {{ fun hm done crash => exists F (g:G) hm', F * nocrash g $0 li hm
+   * [[ exists l, hashmap_subset l hm' hm ]]
    * [[forall m lm rxm,
       (m < n)%word ->
       (forall lSm,
-       {{ fun done' crash' => F * nocrash g (m ^+ $1) lSm * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun hm'' done' crash' => F * nocrash g (m ^+ $1) lSm hm'' *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
-      {{ fun done' crash' => F * nocrash g m lm * [[ done' = done ]] * [[ crash' = crash ]]
-      }} f m lm rxm]]
+      {{ fun hm'' done' crash' => F * nocrash g m lm hm'' *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
+      }} Bind (f m lm) rxm]]
    * [[forall lfinal,
-       {{ fun done' crash' => F * nocrash g n lfinal * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun hm'' done' crash' => F * nocrash g n lfinal hm'' *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
-   * [[F * crashed g =p=> crash]]
-  }} For_ f $0 n nocrash crashed li rx.
+   * [[forall hm'',
+        F * crashed g hm'' * [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash hm'' ]]
+  }} Bind (For_ f $0 n nocrash crashed li) rx.
 Proof.
   intros.
   eapply pimpl_ok2.
@@ -432,99 +402,272 @@ Proof.
   cancel.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (For_ _ _ _ _ _ _) _) => apply for_ok : prog.
+Hint Extern 1 ({{_}} Bind (For_ _ _ _ _ _ _) _) => apply for_ok : prog.
 
-Notation "'For' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+Notation "'For' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (For_ (fun i =>
           (pair_args_helper (fun l1 => ..
-            (pair_args_helper (fun l2 (_:unit) => (fun lrx => body)))
+            (pair_args_helper (fun l2 (_:unit) => body))
           ..)))
         $0 n
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun i =>
-          (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => nocrash%pred)) ..))
+          (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
+           fun hm => nocrash%pred)) ..))
         )) .. ))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
-         crashed%pred)) .. )))
+         fun hm => crashed%pred)) .. )))
   (at level 9, i at level 0, n at level 0,
    g1 closed binder, g2 closed binder,
-   lrx at level 0,
    l1 closed binder, l2 closed binder,
    body at level 9).
 
+Notation "'For' i < n 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (For_ (fun i =>
+          (pair_args_helper (fun l1 => ..
+            (pair_args_helper (fun l2 (_:unit) => body))
+          ..)))
+        $0 n
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun i =>
+          (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
+           fun hm => nocrash%pred)) ..))
+        )) .. ))
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun hm => crashed%pred)) .. )))
+  (at level 9, i at level 0, n at level 0,
+   g1 closed binder, g2 closed binder,
+   l1 closed binder, l2 closed binder,
+   body at level 9).
 
-Fixpoint ForEach_
-                {PROGTYPE : Type -> Type} {T: Type} (ITEM : Type)
-                (L : Type) (G : Type) (f : ITEM -> L -> (L -> PROGTYPE T) -> PROGTYPE T)
-                (lst : list ITEM)
-                (nocrash : G -> list ITEM -> L -> @pred addr (@weq addrlen) (const valuset))
-                (crashed : G -> @pred addr (@weq addrlen) (const valuset))
-                (l : L) (rx: L -> PROGTYPE T) : PROGTYPE T :=
-  match lst with
-  | nil => rx l
-  | elem :: lst' =>
-    l' <- f elem l;
-    ForEach_ f lst' nocrash crashed l' rx
+Fixpoint ForN_  (L : Type) (G : Type) (f : nat -> L -> prog L)
+                (i n : nat)
+                (nocrash : G -> nat -> L -> hashmap -> rawpred)
+                (crashed : G -> hashmap -> rawpred)
+                (l : L) : prog L :=
+  match n with
+  | 0 =>   Ret l
+  | S m => l' <- f i l;  ForN_ f (S i) m nocrash crashed l'
   end.
 
-Theorem foreach_ok:
-  forall T ITEM (lst : list ITEM)
+
+Theorem forN_ok':
+  forall T (n i : nat)
          (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> list ITEM -> L -> pred)
-         (crashed : G -> pred)
+         (nocrash : G -> nat -> L -> hashmap -> pred)
+         (crashed : G -> hashmap -> pred)
          (li : L),
-  {{ fun done crash => exists F (g:G), F * nocrash g lst li
-   * [[forall elem lst' lm rxm,
+  {{ fun hm done crash => exists F (g:G) hm', F * nocrash g i li hm
+   * [[ exists l, hashmap_subset l hm' hm ]]
+   * [[forall m lm rxm,
+      i <= m ->
+      m < n + i ->
       (forall lSm,
-       {{ fun done' crash' => F * nocrash g lst' lSm * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun hm'' done' crash' => F * nocrash g (S m) lSm hm'' *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
-      {{ fun done' crash' => F * nocrash g (elem :: lst') lm *
-         [[ exists prefix, prefix ++ elem :: lst' = lst ]] *
-         [[ done' = done ]] * [[ crash' = crash ]]
-      }} f elem lm rxm]]
+      {{ fun hm'' done' crash' => F * nocrash g m lm hm'' *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
+      }} Bind (f m lm) rxm]]
    * [[forall lfinal,
-       {{ fun done' crash' => F * nocrash g nil lfinal * [[ done' = done ]] * [[ crash' = crash ]]
+       {{ fun hm'' done' crash' => F * nocrash g (n + i) lfinal hm'' *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
-   * [[F * crashed g =p=> crash]]
-  }} ForEach_ f lst nocrash crashed li rx.
+   * [[forall hm'',
+        F * crashed g hm'' *
+        [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash hm'' ]]
+  }} Bind (ForN_ f i n nocrash crashed li) rx.
 Proof.
-  intros T ITEM.
-  induction lst; intros;
+  induction n; intros;
+    apply corr2_exists; intros;
     apply corr2_exists; intros;
     apply corr2_exists; intros.
-
   - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
     + simpl.
       unfold pimpl, lift; intros.
-      eapply pimpl_ok2; eauto.
+      eapply pimpl_ok2; monad_simpl; eauto.
       intros.
       apply pimpl_refl.
     + cancel.
   - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
     + simpl.
       unfold pimpl, lift; intros.
+      eapply pimpl_ok2; monad_simpl.
+      apply H1. omega. omega.
+      intros.
       eapply pimpl_ok2.
+      eapply IHn.
+      cancel.
+      cancel.
+      eapply pimpl_ok2.
+      apply H0.
+      intros.
+      cancel.
+      replace (n + S i) with (S (n + i)) by omega.
+      cancel.
+      intros.
+      apply pimpl_refl.
+    + cancel.
+Qed.
+
+Theorem forN_ok:
+  forall (n : nat)
+         T (L : Type) (G : Type)
+         f (rx: _ -> prog T)
+         (nocrash : G -> nat -> L -> hashmap -> pred)
+         (crashed : G -> hashmap -> pred)
+         (li : L),
+  {{ fun hm done crash => exists F (g:G) hm', F * nocrash g 0 li hm
+   * [[ exists l, hashmap_subset l hm' hm ]]
+   * [[forall m lm rxm,
+      m < n ->
+      (forall lSm,
+       {{ fun hm'' done' crash' => F * nocrash g (S m) lSm hm'' *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
+       }} rxm lSm) ->
+      {{ fun hm'' done' crash' => F * nocrash g m lm hm'' *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
+      }} Bind (f m lm) rxm]]
+   * [[forall lfinal,
+       {{ fun hm'' done' crash' => F * nocrash g n lfinal hm'' *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
+       }} rx lfinal]]
+   * [[forall hm'',
+        F * crashed g hm'' *
+        [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash hm'' ]]
+  }} Bind (ForN_ f 0 n nocrash crashed li) rx.
+Proof.
+  intros.
+  eapply pimpl_ok2.
+  apply forN_ok'.
+  cancel.
+  cancel.
+  eapply pimpl_ok2.
+  eauto.
+  cancel.
+  replace (n + 0) with n by omega; auto.
+Qed.
+
+Hint Extern 1 ({{_}} Bind (ForN_ _ _ _ _ _ _) _) => apply forN_ok : prog.
+
+Notation "'ForN' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (ForN_ (fun i =>
+          (pair_args_helper (fun l1 => ..
+            (pair_args_helper (fun l2 (_:unit) => body))
+          ..)))
+        0 n
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun i =>
+          (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
+           fun hm => nocrash%pred)) ..))
+        )) .. ))
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun hm => crashed%pred)) .. )))
+  (at level 9, i at level 0, n at level 0,
+   g1 closed binder, g2 closed binder,
+   l1 closed binder, l2 closed binder,
+   body at level 9).
+
+Notation "'ForN' i < n 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (ForN_ (fun i =>
+          (pair_args_helper (fun l1 => ..
+            (pair_args_helper (fun l2 (_:unit) => body))
+          ..)))
+        0 n
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun i =>
+          (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
+           fun hm => nocrash%pred)) ..))
+        )) .. ))
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun hm => crashed%pred)) .. )))
+  (at level 9, i at level 0, n at level 0,
+   g1 closed binder, g2 closed binder,
+   l1 closed binder, l2 closed binder,
+   body at level 9).
+
+
+Fixpoint ForEach_ (ITEM : Type)
+                (L : Type) (G : Type) (f : ITEM -> L -> prog L)
+                (lst : list ITEM)
+                (nocrash : G -> list ITEM -> L -> hashmap -> rawpred)
+                (crashed : G -> hashmap -> rawpred)
+                (l : L) : prog L :=
+  match lst with
+  | nil => Ret l
+  | elem :: lst' =>
+    l' <- f elem l;
+    ForEach_ f lst' nocrash crashed l'
+  end.
+
+Theorem foreach_ok:
+  forall T ITEM (lst : list ITEM)
+         (L : Type) (G : Type)
+         f (rx: _ -> prog T)
+         (nocrash : G -> list ITEM -> L -> hashmap -> pred)
+         (crashed : G -> hashmap -> pred)
+         (li : L),
+  {{ fun hm done crash => exists F (g:G) hm', F * nocrash g lst li hm
+   * [[ exists l, hashmap_subset l hm' hm ]]
+   * [[forall elem lst' lm rxm,
+      (forall lSm,
+       {{ fun hm'' done' crash' => F * nocrash g lst' lSm hm'' *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]]  * [[ crash' = crash ]]
+       }} rxm lSm) ->
+      {{ fun hm'' done' crash' => F * nocrash g (elem :: lst') lm hm'' *
+         [[ exists l, hashmap_subset l hm' hm'' ]] *
+         [[ exists prefix, prefix ++ elem :: lst' = lst ]] *
+         [[ done' = done ]] * [[ crash' = crash ]]
+      }} Bind (f elem lm) rxm]]
+   * [[forall lfinal,
+       {{ fun hm'' done' crash' => F * nocrash g nil lfinal hm'' *
+          [[ exists l, hashmap_subset l hm' hm'' ]] *
+          [[ done' = done ]] * [[ crash' = crash ]]
+       }} rx lfinal]]
+   * [[forall hm'',
+        F * crashed g hm'' * [[ exists l, hashmap_subset l hm' hm'' ]] =p=> crash hm'' ]]
+  }} Bind (ForEach_ f lst nocrash crashed li) rx.
+Proof.
+  intros ITEM.
+  induction lst; intros;
+    apply corr2_exists; intros;
+    apply corr2_exists; intros;
+    apply corr2_exists; intros.
+
+  - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
+    + simpl.
+      unfold pimpl, lift; intros.
+      eapply pimpl_ok2; monad_simpl; eauto.
+      intros.
+      apply pimpl_refl.
+    + cancel.
+  - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
+    + simpl.
+      unfold pimpl, lift; intros.
+      eapply pimpl_ok2; monad_simpl.
       apply H1.
       intros.
       eapply pimpl_ok2.
       apply IHlst.
       cancel.
-      instantiate (lst' := lst).
-      instantiate (g := a1).
+      eassign lst.
       cancel.
       eapply pimpl_ok2.
       apply H1.
       intros.
       eapply pimpl_ok2.
-      apply H3.
+      apply H2.
       cancel.
       cancel.
       exists (a :: prefix); auto.
-      eapply pimpl_ok2.
-      apply H0.
-      cancel.
-      cancel.
 
       intros.
       apply pimpl_refl.
@@ -532,17 +675,51 @@ Proof.
       exists nil; auto.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (ForEach_ _ _ _ _ _) _) => apply foreach_ok : prog.
+Hint Extern 1 ({{_}} Bind (ForEach_ _ _ _ _ _) _) => apply foreach_ok : prog.
 
-Notation "'ForEach' elem rest lst 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Continuation' lrx 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
-  (ForEach_ (fun elem => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => (fun lrx => body))) ..)))
+Notation "'ForEach' elem rest lst 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (ForEach_ (fun elem => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => body)) ..)))
         lst
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
-         fun rest => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => nocrash%pred)) ..))  )) .. ))
+         fun rest => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
+         fun hm => nocrash%pred)) ..))  )) .. ))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
-         crashed%pred)) .. )))
+         fun hm => crashed%pred)) .. )))
   (at level 9, elem at level 0, rest at level 0,
    g1 closed binder, g2 closed binder,
-   lrx at level 0,
    l1 closed binder, l2 closed binder,
    body at level 9).
+
+Notation "'ForEach' elem rest lst 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
+  (ForEach_ (fun elem => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => body)) ..)))
+        lst
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun rest => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
+         fun hm => nocrash%pred)) ..))  )) .. ))
+        (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
+         fun hm => crashed%pred)) .. )))
+  (at level 9, elem at level 0, rest at level 0,
+   g1 closed binder, g2 closed binder,
+   l1 closed binder, l2 closed binder,
+   body at level 9).
+
+(* TODO: need a good spec for this. Probably want a predicate
+describing early breaks, so that we can guarantee something if the
+function terminates without breaking (otherwise the spec would equally
+apply to a loop that didn't do anything) *)
+Fixpoint ForNBreak_  (L : Type) (G : Type) (f : nat -> L -> prog (L+L))
+                (i n : nat)
+                (nocrash : G -> nat -> L -> hashmap -> rawpred)
+                (crashed : G -> hashmap -> rawpred)
+                (l : L) : prog L :=
+  match n with
+  | 0 =>   Ret l
+  | S m => l' <- f i l;
+            match l' with
+            | inl l' => ForNBreak_ f (S i) m nocrash crashed l'
+            | inr l' => Ret l'
+            end
+  end.
+
+Definition Continue L (l:L) : L + L := inl l.
+Definition Break L (l:L) : L + L := inr l.

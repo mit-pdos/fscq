@@ -10,9 +10,7 @@ Require Import Recdef.
 Require Import Ring.
 Require Import Ring_polynom.
 Require Import ProofIrrelevance.
-
-Require Structures.OrderedType.
-Require Import Structures.OrderedTypeEx.
+Require Import Psatz.
 
 Set Implicit Arguments.
 
@@ -484,19 +482,8 @@ Proof.
   auto.
 Qed.
 
-Theorem eq_rect_double : forall A T (a b c : A) x ab bc,
-  eq_rect b T (eq_rect a T x b ab) c bc = eq_rect a T x c (eq_trans ab bc).
-Proof.
-  intros.
-  destruct ab, bc.
-  reflexivity.
-Qed.
-
-Hint Rewrite eq_rect_double.
+Hint Rewrite eq_rect_nat_double.
 Hint Rewrite <- (eq_rect_eq_dec eq_nat_dec).
-Hint Rewrite eq_rect_double : eq.
-Hint Rewrite <- (eq_rect_eq_dec eq_nat_dec) : eq.
-Hint Rewrite <- eq_rect_eq : eq.
 
 Ltac generalize_proof :=
     match goal with
@@ -504,8 +491,9 @@ Ltac generalize_proof :=
     end.
 
 Ltac eq_rect_simpl :=
-  unfold eq_rec_r, eq_rec, eq_rect_r;
-  repeat autorewrite with eq.
+  unfold eq_rec_r, eq_rec;
+  repeat rewrite eq_rect_nat_double;
+  repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
 
 Lemma eq_rect_word_offset_helper : forall a b c,
   a = b -> c + a = c + b.
@@ -519,7 +507,8 @@ Theorem eq_rect_word_offset : forall n n' offset w Heq,
 Proof.
   intros.
   destruct Heq.
-  now eq_rect_simpl.
+  rewrite (UIP_dec eq_nat_dec (eq_rect_word_offset_helper offset eq_refl) eq_refl).
+  reflexivity.
 Qed.
 
 Lemma eq_rect_word_mult_helper : forall a b c,
@@ -534,7 +523,8 @@ Theorem eq_rect_word_mult : forall n n' scale w Heq,
 Proof.
   intros.
   destruct Heq.
-  now eq_rect_simpl.
+  rewrite (UIP_dec eq_nat_dec (eq_rect_word_mult_helper scale eq_refl) eq_refl).
+  reflexivity.
 Qed.
 
 Theorem eq_rect_word_match : forall n n' (w : word n) (H : n = n'),
@@ -542,6 +532,9 @@ Theorem eq_rect_word_match : forall n n' (w : word n) (H : n = n'),
   | eq_refl => w
   end = eq_rect n (fun n => word n) w n' H.
 Proof.
+  intros.
+  destruct H.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec).
   reflexivity.
 Qed.
 
@@ -552,8 +545,11 @@ Theorem whd_match : forall n n' (w : word (S n)) (Heq : S n = S n'),
 Proof.
   intros.
   rewrite eq_rect_word_match.
-  inversion Heq; subst.
-  now eq_rect_simpl.
+  generalize dependent w.
+  remember Heq as Heq'. clear HeqHeq'.
+  generalize dependent Heq'.
+  replace (n') with (n) by omega.
+  intros. rewrite <- (eq_rect_eq_dec eq_nat_dec). reflexivity.
 Qed.
 
 Theorem wtl_match : forall n n' (w : word (S n)) (Heq : S n = S n') (Heq' : n = n'),
@@ -564,8 +560,17 @@ Theorem wtl_match : forall n n' (w : word (S n)) (Heq : S n = S n') (Heq' : n = 
                end).
 Proof.
   intros.
-  repeat rewrite eq_rect_word_match.
-  subst; now eq_rect_simpl.
+  repeat match goal with
+           | [ |- context[match ?pf with refl_equal => _ end] ] => generalize pf
+         end.
+  generalize dependent w; clear.
+  intros.
+  generalize Heq Heq'.
+  subst.
+  intros.
+  rewrite (UIP_dec eq_nat_dec Heq' (refl_equal _)).
+  rewrite (UIP_dec eq_nat_dec Heq0 (refl_equal _)).
+  reflexivity.
 Qed.
 
 (** * Combining and splitting *)
@@ -742,10 +747,12 @@ Lemma whd_eq_rect : forall n w Heq,
   whd w.
 Proof.
   intros.
-  generalize_proof.
+  generalize Heq.
   replace (n + 0) with n by omega.
   intros.
-  now eq_rect_simpl.
+  f_equal.
+  eq_rect_simpl.
+  reflexivity.
 Qed.
 
 Lemma wtl_eq_rect : forall n w Heq Heq',
@@ -755,7 +762,8 @@ Proof.
   intros.
   generalize dependent Heq.
   rewrite <- Heq'; simpl; intros.
-  now eq_rect_simpl.
+  rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
 Qed.
 
 Theorem split1_0 : forall n w Heq,
@@ -1369,7 +1377,7 @@ Proof.
   apply div2_double.
 Qed.
 
-Theorem wmult_unit : forall sz (x : word sz), natToWord sz 1 ^* x = x.
+Theorem wmult_unit_l : forall sz (x : word sz), natToWord sz 1 ^* x = x.
 Proof.
   intros; rewrite wmult_alt; unfold wmultN, wordBinN; intros.
   destruct sz; simpl.
@@ -1388,6 +1396,13 @@ Qed.
 Theorem wmult_comm : forall sz (x y : word sz), x ^* y = y ^* x.
 Proof.
   intros; repeat rewrite wmult_alt; unfold wmultN, wordBinN; auto with arith.
+Qed.
+
+Theorem wmult_unit_r : forall sz (x : word sz), x ^* natToWord sz 1 = x.
+Proof.
+  intros.
+  rewrite wmult_comm.
+  apply wmult_unit_l.
 Qed.
 
 Theorem wmult_assoc : forall sz (x y z : word sz), x ^* (y ^* z) = x ^* y ^* z.
@@ -1515,6 +1530,13 @@ Proof.
   eapply goodSize_word_bound; eauto.
 Qed.
 
+Lemma goodSize_sub : forall sz n a,
+  goodSize sz n -> goodSize sz (n - a).
+Proof.
+  intros; eapply goodSize_trans with (n2 := n); eauto; omega.
+Qed.
+
+
 Lemma wordToNat_natToWord_idempotent'_iff : forall n sz,
   @wordToNat sz (natToWord sz n) = n -> goodSize sz n.
 Proof.
@@ -1523,6 +1545,19 @@ Proof.
   rewrite H.
   auto.
 Qed.
+
+Lemma goodSize_add_l : forall sz a b,
+  goodSize sz (a + b) -> goodSize sz a.
+Proof.
+  intros; eapply goodSize_trans with (n2 := a + b); auto; omega.
+Qed.
+
+Lemma goodSize_add_r : forall sz a b,
+  goodSize sz (a + b) -> goodSize sz b.
+Proof.
+  intros; eapply goodSize_trans with (n2 := a + b); auto; omega.
+Qed.
+
 
 Theorem natToWord_pow2 : forall sz, natToWord sz (pow2 sz) = natToWord sz 0.
 Proof.
@@ -1555,7 +1590,7 @@ Qed.
 Definition wring (sz : nat) : ring_theory (wzero sz) (wone sz) (@wplus sz) (@wmult sz) (@wminus sz) (@wneg sz) (@eq _) :=
   mk_rt _ _ _ _ _ _ _
   (@wplus_unit _) (@wplus_comm _) (@wplus_assoc _)
-  (@wmult_unit _) (@wmult_comm _) (@wmult_assoc _)
+  (@wmult_unit_l _) (@wmult_comm _) (@wmult_assoc _)
   (@wmult_plus_distr _) (@wminus_def _) (@wminus_inv _).
 
 Theorem weqb_sound : forall sz (x y : word sz), weqb x y = true -> x = y.
@@ -1868,7 +1903,6 @@ Qed.
 
 Hint Resolve word_neq lt_le eq_le sub_0_eq le_neq_lt : worder.
 
-
 Ltac shatter_word x :=
   match type of x with
     | word 0 => try rewrite (shatter_word_0 x) in *
@@ -2108,6 +2142,15 @@ Proof.
   omega.
 Qed.
 
+Lemma wordToNat_natToWord_lt : forall sz n b,
+  (n < b -> wordToNat (natToWord sz n) < b)%nat.
+Proof.
+  intros.
+  eapply le_lt_trans.
+  apply wordToNat_natToWord_le.
+  auto.
+Qed.
+
 Lemma wordToNat_eq_natToWord : forall sz (w : word sz) n,
   wordToNat w = n
   -> w = natToWord sz n.
@@ -2143,7 +2186,7 @@ Proof.
   reflexivity.
   apply wlt_lt in H0.
   rewrite wordToNat_natToWord_idempotent' by auto.
-  instantiate (bound:=bound). omega.
+  instantiate (1:=bound). omega.
 Qed.
 
 Lemma lt_wlt: forall sz (n : word sz) m, (wordToNat n < wordToNat m)%nat ->
@@ -2354,45 +2397,17 @@ Proof.
   discriminate H0.
 Qed.
 
-Module Type WordSize.
-  Parameter sz : nat.
-End WordSize.
-
-Module Word_as_OT(Word : WordSize) <: UsualOrderedType.
-  Import Word.
-  Definition t := word sz.
-  Definition eq := @eq t.
-  Definition eq_refl := @eq_refl t.
-  Definition eq_sym := @eq_sym t.
-  Definition eq_trans := @eq_trans t.
-  Definition lt := @wlt Word.sz.
-
-  Lemma lt_trans: forall x y z : t, lt x y -> lt y z -> lt x z.
-  Proof.
-    unfold lt; intros.
-    apply wlt_lt in H; apply wlt_lt in H0.
-    apply lt_wlt.
-    omega.
-  Qed.
-
-  Lemma lt_not_eq : forall x y : t, lt x y -> ~ eq x y.
-  Proof.
-    unfold lt, eq; intros.
-    apply wlt_lt in H.
-    intro He; subst; omega.
-  Qed.
-
-  Definition compare x y : OrderedType.Compare lt eq x y.
-    unfold lt, eq.
-    destruct (wlt_dec x y); destruct (weq x y);
-    auto using OrderedType.LT, OrderedType.EQ, OrderedType.GT, le_neq_lt.
-  Defined.
-
-  Definition eq_dec := @weq Word.sz.
-End Word_as_OT.
-
 Notation "$ n" := (natToWord _ n) (at level 0).
 Notation "# n" := (wordToNat n) (at level 0).
+
+Definition bit_dec : forall (a : word 1), {a = $0} + {a = $1}.
+  intro.
+  rewrite (shatter_word a).
+  replace (wtl a) with WO by auto.
+  destruct (whd a).
+  right; apply eq_refl.
+  left; apply eq_refl.
+Defined.
 
 Lemma neq0_wneq0: forall sz (n : word sz),
   wordToNat n <> 0  <-> n <> $0.

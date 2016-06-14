@@ -1,7 +1,9 @@
 #!/bin/sh
 
-DEV=/dev/sda3
-FSCQBLOCKS=34310
+DEV=/dev/sda1
+OLDFSCQBLOCKS=34310
+NEWFSCQBLOCKS=66628
+ORIGFSCQ=/tmp/fscq-master
 MOUNT="/tmp/ft"
 TRACE="/tmp/blktrace.out"
 
@@ -16,19 +18,25 @@ fi
 ## Just in case..
 fusermount -u $MOUNT
 mkdir -p $MOUNT
-mkdir -p $MOUNT.real
 
 ## Ensure sudo works first
 ( sudo true ) || exit 1
 
+## ramdisk
+DEV=$(losetup -f)
+dd if=/dev/zero of=/dev/shm/fscq.img bs=1G count=1
+sudo losetup $DEV /dev/shm/fscq.img
+sudo chmod 777 $DEV
+
 ## Do a priming run on whatever the native /tmp file system is..
+rm -rf $MOUNT
 mkdir -p $MOUNT
 $CMD
 rm -rf $MOUNT
 mkdir -p $MOUNT
 
 ## fscq
-dd if=/dev/zero of=$DEV bs=4096 count=$FSCQBLOCKS
+dd if=/dev/zero of=$DEV bs=4096 count=$NEWFSCQBLOCKS
 ../src/mkfs $DEV
 ../src/fuse $DEV -s -f $MOUNT &
 sudo blktrace -d $DEV -o - > $TRACE &
@@ -44,75 +52,42 @@ wait $TRACEPID
 mv $TRACE $SCRIPTPREFIX-fscq.blktrace
 ./blkstats.sh $SCRIPTPREFIX-fscq.blktrace >> $SCRIPTPREFIX-fscq.out
 
-## xv6
-../xv6/mkfs $DEV
-../xv6/xv6fs $DEV -s -f $MOUNT &
+## origfscq
+dd if=/dev/zero of=$DEV bs=4096 count=$OLDFSCQBLOCKS
+$ORIGFSCQ/src/mkfs $DEV
+$ORIGFSCQ/src/fuse $DEV -s -f $MOUNT &
 sudo blktrace -d $DEV -o - > $TRACE &
 TRACEPID=$!
 sleep 1
 
-script $SCRIPTPREFIX-xv6.out -c "$CMD"
+script $SCRIPTPREFIX-origfscq.out -c "$CMD"
 
 fusermount -u $MOUNT
 sudo killall blktrace
 sleep 1
 wait $TRACEPID
-mv $TRACE $SCRIPTPREFIX-xv6.blktrace
-./blkstats.sh $SCRIPTPREFIX-xv6.blktrace >> $SCRIPTPREFIX-xv6.out
+mv $TRACE $SCRIPTPREFIX-origfscq.blktrace
+./blkstats.sh $SCRIPTPREFIX-origfscq.blktrace >> $SCRIPTPREFIX-origfscq.out
 
-## ext4
-yes | mke2fs -t ext4 $DEV
-sudo mount -t ext4 $DEV $MOUNT -o data=journal,sync
+## ext4async
+yes | mke2fs -t ext4 -J size=4 $DEV
+sudo mount $DEV $MOUNT -o journal_async_commit,data=journal
 sudo chmod 777 $MOUNT
 sudo blktrace -d $DEV -o - > $TRACE &
 TRACEPID=$!
 sleep 1
 
-script $SCRIPTPREFIX-ext4.out -c "$CMD"
+script $SCRIPTPREFIX-ext4async.out -c "$CMD"
 
 sudo killall blktrace
 sudo umount $MOUNT
 wait $TRACEPID
-mv $TRACE $SCRIPTPREFIX-ext4.blktrace
-./blkstats.sh $SCRIPTPREFIX-ext4.blktrace >> $SCRIPTPREFIX-ext4.out
-
-## ext4journalasync
-yes | mke2fs -t ext4 $DEV
-sudo mount -t ext4 $DEV $MOUNT -o journal_async_commit,data=journal,sync
-sudo chmod 777 $MOUNT
-sudo blktrace -d $DEV -o - > $TRACE &
-TRACEPID=$!
-sleep 1
-
-script $SCRIPTPREFIX-ext4journalasync.out -c "$CMD"
-
-sudo killall blktrace
-sudo umount $MOUNT
-wait $TRACEPID
-mv $TRACE $SCRIPTPREFIX-ext4journalasync.blktrace
-./blkstats.sh $SCRIPTPREFIX-ext4journalasync.blktrace >> $SCRIPTPREFIX-ext4journalasync.out
-
-## ext4fuse
-yes | mke2fs -t ext4 $DEV
-sudo mount -t ext4 $DEV $MOUNT.real -o data=journal,sync
-sudo chmod 777 $MOUNT.real
-fusexmp $MOUNT -o modules=subdir,subdir=$MOUNT.real
-sudo blktrace -d $DEV -o - > $TRACE &
-TRACEPID=$!
-sleep 1
-
-script $SCRIPTPREFIX-ext4fuse.out -c "$CMD"
-
-sudo killall blktrace
-fusermount -u $MOUNT
-sudo umount $MOUNT.real
-wait $TRACEPID
-mv $TRACE $SCRIPTPREFIX-ext4fuse.blktrace
-./blkstats.sh $SCRIPTPREFIX-ext4fuse.blktrace >> $SCRIPTPREFIX-ext4fuse.out
+mv $TRACE $SCRIPTPREFIX-ext4async.blktrace
+./blkstats.sh $SCRIPTPREFIX-ext4async.blktrace >> $SCRIPTPREFIX-ext4async.out
 
 ## ext4ordered
-yes | mke2fs -t ext4 $DEV
-sudo mount -t ext4 $DEV $MOUNT -o data=ordered,sync
+yes | mke2fs -t ext4 -J size=4 $DEV
+sudo mount $DEV $MOUNT -o data=ordered
 sudo chmod 777 $MOUNT
 sudo blktrace -d $DEV -o - > $TRACE &
 TRACEPID=$!
@@ -126,18 +101,5 @@ wait $TRACEPID
 mv $TRACE $SCRIPTPREFIX-ext4ordered.blktrace
 ./blkstats.sh $SCRIPTPREFIX-ext4ordered.blktrace >> $SCRIPTPREFIX-ext4ordered.out
 
-## ext4async
-yes | mke2fs -t ext4 $DEV
-sudo mount -t ext4 $DEV $MOUNT -o data=ordered,async
-sudo chmod 777 $MOUNT
-sudo blktrace -d $DEV -o - > $TRACE &
-TRACEPID=$!
-sleep 1
-
-script $SCRIPTPREFIX-ext4async.out -c "$CMD"
-
-sudo killall blktrace
-sudo umount $MOUNT
-wait $TRACEPID
-mv $TRACE $SCRIPTPREFIX-ext4async.blktrace
-./blkstats.sh $SCRIPTPREFIX-ext4async.blktrace >> $SCRIPTPREFIX-ext4async.out
+## Just in case this was a ramdisk...
+sudo losetup -d $DEV

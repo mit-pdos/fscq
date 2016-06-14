@@ -1,18 +1,90 @@
 Require Import Hoare.
-Require Import Prog.
+Require Import Prog ProgMonad.
 Require Import Pred PredCrash.
 Require Import SepAuto.
-Require Import Word.
+Require Import AsyncDisk.
+Require Import Hashmap.
+
+Lemma step_hashmap_subset : forall T m hm p m' hm' (v: T),
+    step m hm p m' hm' v ->
+    exists l, hashmap_subset l hm hm'.
+Proof.
+  inversion 1; eauto.
+Qed.
+
+Hint Resolve step_hashmap_subset.
+
+Lemma hashmap_subset_some_list_trans : forall hm hm' hm'',
+    (exists l, hashmap_subset l hm hm') ->
+    (exists l, hashmap_subset l hm' hm'') ->
+    exists l, hashmap_subset l hm hm''.
+Proof.
+  eauto.
+Qed.
+
+Lemma finished_val_eq : forall T m hm (v:T),
+    exists v', Finished m hm v = Finished m hm v'.
+Proof. eauto. Qed.
+
+Hint Resolve finished_val_eq.
+
+Lemma exec_crashed_hashmap_subset' : forall T m m' hm hm' p out,
+  exec m hm p out
+  -> (out = Crashed T m' hm' \/ exists v, out = Finished m' hm' v)
+  -> exists l, hashmap_subset l hm hm'.
+Proof.
+  intros.
+  generalize dependent hm'.
+  generalize dependent m'.
+  induction H; subst; intuition; repeat deex; try congruence;
+    try match goal with
+        | [ H: @eq (outcome _) _ _ |- _ ] =>
+          inversion H; subst
+        end;
+    eauto.
+
+  eauto 7 using hashmap_subset_some_list_trans.
+  eauto 7 using hashmap_subset_some_list_trans.
+Qed.
+
+Lemma exec_crashed_hashmap_subset : forall T m m' hm hm' p out,
+  exec m hm p out
+  -> out = Crashed T m' hm'
+  -> exists l, hashmap_subset l hm hm'.
+Proof.
+  intros.
+  eapply exec_crashed_hashmap_subset'; eauto.
+Qed.
+
+Ltac solve_hashmap_subset' :=
+  match goal with
+  | [ H: exec _ _ _ (Crashed _ _ _), Hpre: forall (_ : hashmap), _ =p=> ?pre _ _ _
+      |- forall (_ : hashmap), _ =p=> ?pre _ _ _ ]
+    => eapply exec_crashed_hashmap_subset in H as H'; eauto;
+        intros;
+        eapply pimpl_trans; try apply Hpre;
+        autorewrite with crash_xform; cancel
+  | [ |- context[hashmap_subset] ]
+        => pred_apply; cancel
+  end; try solve [
+    repeat match goal with
+    | [ H: forall (_ : hashmap), _ =p=> _ |- _ ] => clear H
+    end; solve_hashmap_subset
+  ].
 
 Lemma corr3_from_corr2_failed:
-  forall (TF TR: Type) m mr (p: prog TF) (r: prog TR) out
-         (crash: @pred addr (@weq addrlen) _) ppre rpre crashdone_p crashdone_r,
-  exec_recover mr p r out
+  forall (TF TR: Type) m mr hmr (p: prog TF) (r: prog TR) out
+         (crash: hashmap -> pred) ppre rpre crashdone_p crashdone_r,
+  exec_recover mr hmr p r out
   -> TF = TR
   -> possible_crash m mr
-  -> crash m
-  -> (crash_xform crash =p=> ppre crashdone_p crash)
-  -> (crash_xform crash =p=> rpre crashdone_r crash)
+  -> crash hmr m
+  -> (forall hm', crash_xform (crash hm'
+      * [[ exists l, hashmap_subset l hmr hm' ]])
+      =p=> ppre hm' crashdone_p crash)
+  -> (forall hm', crash_xform (crash hm'
+      * [[ exists l, hashmap_subset l hmr hm' ]])
+      =p=> rpre hm' crashdone_r crash)
   -> {{ ppre }} p
   -> {{ rpre }} r
   -> out <> RFailed TF TR.
@@ -22,76 +94,107 @@ Proof.
   induction H; intros; try congruence.
   - edestruct H5; eauto.
     apply H3. eapply crash_xform_apply; eauto.
-    destruct H7. destruct H7. destruct H7. congruence.
-    destruct H7. destruct H7. congruence.
-  - rewrite H0. eapply IHexec_recover.
-    eauto. eauto. eauto. eauto. eauto. eauto.
-    edestruct H5; eauto.
-    apply H3. eapply crash_xform_apply; eauto.
-    destruct H9. destruct H9. destruct H9. congruence.
-    destruct H9. destruct H9. inversion H9. congruence.
+    pred_apply; cancel.
+    repeat econstructor.
+    repeat (destruct H7; try congruence).
+    repeat (destruct H7; try congruence).
+  - rewrite H0. eapply IHexec_recover; eauto.
+    + eapply exec_crashed_hashmap_subset with (hm':=hm') in H as H'.
+      intros.
+      eapply pimpl_trans; try apply H4.
+      autorewrite with crash_xform; cancel.
+      inversion H11; inversion H'.
+      eexists. clear H3. solve_hashmap_subset.
+      eauto.
+    + solve_hashmap_subset'.
+    + edestruct H5; eauto.
+      apply H3. eapply crash_xform_apply; eauto.
+      solve_hashmap_subset'.
+      repeat (destruct H9; try congruence).
+      repeat (destruct H9; try congruence).
 Qed.
 
 Lemma corr3_from_corr2_finished:
-  forall (TF TR: Type) m mr (p: prog TF) (r: prog TR) out
-         (crash: @pred addr (@weq addrlen) _) ppre rpre crashdone_p crashdone_r m' v,
-  exec_recover mr p r out
+  forall (TF TR: Type) m mr hmr (p: prog TF) (r: prog TR) out
+         (crash: hashmap -> pred) ppre rpre crashdone_p crashdone_r m' hm' v,
+  exec_recover mr hmr p r out
   -> TF = TR
   -> possible_crash m mr
-  -> crash m
-  -> (crash_xform crash =p=> ppre crashdone_p crash)
-  -> (crash_xform crash =p=> rpre crashdone_r crash)
+  -> crash hmr m
+  -> (forall hm', crash_xform (crash hm'
+      * [[ exists l, hashmap_subset l hmr hm' ]])
+      =p=> ppre hm' crashdone_p crash)
+  -> (forall hm', crash_xform (crash hm'
+      * [[ exists l, hashmap_subset l hmr hm' ]])
+      =p=> rpre hm' crashdone_r crash)
   -> {{ ppre }} p
   -> {{ rpre }} r
-  -> out = RFinished TR m' v
-  -> crashdone_p v m'.
+  -> out = RFinished TR m' hm' v
+  -> crashdone_p hm' v m'.
 Proof.
   intros.
   induction H; try congruence.
   edestruct H5; eauto.
   - apply H3. eapply crash_xform_apply; eauto.
+    pred_apply; cancel.
+    eexists. econstructor.
   - destruct H8. destruct H8. destruct H8.
     inversion H8. congruence.
-  - destruct H8. destruct H8. congruence.
+  - repeat (destruct H8; try congruence).
 Qed.
 
 Lemma corr3_from_corr2_recovered:
-  forall (TF TR: Type) m mr (p: prog TF) (r: prog TR) out
-         (crash: @pred addr (@weq addrlen) _) ppre rpre crashdone_p crashdone_r m' v,
-  exec_recover mr p r out
+  forall (TF TR: Type) m mr hmr (p: prog TF) (r: prog TR) out
+         (crash: hashmap -> pred) ppre rpre crashdone_p crashdone_r m' hm' v,
+  exec_recover mr hmr p r out
   -> TF = TR
   -> possible_crash m mr
-  -> crash m
-  -> (crash_xform crash =p=> ppre crashdone_p crash)
-  -> (crash_xform crash =p=> rpre crashdone_r crash)
+  -> crash hmr m
+  -> (forall hm', crash_xform (crash hm'
+      * [[ exists l, hashmap_subset l hmr hm' ]])
+      =p=> ppre hm' crashdone_p crash)
+  -> (forall hm', crash_xform (crash hm'
+      * [[ exists l, hashmap_subset l hmr hm' ]])
+      =p=> rpre hm' crashdone_r crash)
   -> {{ ppre }} p
   -> {{ rpre }} r
-  -> out = RRecovered TF m' v
-  -> crashdone_r v m'.
+  -> out = RRecovered TF m' hm' v
+  -> crashdone_r hm' v m'.
 Proof.
   intros.
   generalize dependent m.
   induction H; intros; try congruence.
-  - eapply corr3_from_corr2_finished; eauto; try congruence.
+  - eapply corr3_from_corr2_finished; eauto.
     clear IHexec_recover H2.
     edestruct H5; eauto.
     + apply H3. eapply crash_xform_apply; eauto.
-    + destruct H2. destruct H2. destruct H2. congruence.
-    + destruct H2. destruct H2. congruence.
+      pred_apply; cancel.
+      eexists. clear H3. solve_hashmap_subset.
+    + repeat (destruct H2; try congruence).
+    + destruct H2. destruct H2. destruct H2.
+      inversion H2. eauto.
+    + solve_hashmap_subset'.
+    + solve_hashmap_subset'.
+    + congruence.
   - eapply IHexec_recover; eauto; clear IHexec_recover H2.
+    + solve_hashmap_subset'.
+    + solve_hashmap_subset'.
     + inversion H7. auto.
     + edestruct H5; eauto.
       * apply H3. eapply crash_xform_apply; eauto.
-      * destruct H2. destruct H2. destruct H2. congruence.
-      * destruct H2. destruct H2. congruence.
+        solve_hashmap_subset'.
+      * repeat (destruct H2; try congruence).
+      * repeat (destruct H2; try congruence).
 Qed.
 
-Theorem corr3_from_corr2: forall TF TR (p: prog TF) (r: prog TR)
-  (ppre: donecond TF -> @pred _ (@weq addrlen) _ -> @pred _ (@weq addrlen) _)
-  (rpre: donecond TR -> @pred _ (@weq addrlen) _ -> @pred _ (@weq addrlen) _), {{ ppre }} p
+Theorem corr3_from_corr2: forall TF TR (p: prog TF) (r: prog TR) ppre rpre, {{ ppre }} p
   -> {{ rpre }} r
-  -> {{ fun done crashdone => exists (crash: @pred _ (@weq addrlen) _),
-        ppre done crash * [[ @pimpl _ (@weq addrlen) _ (crash_xform crash) (rpre crashdone crash) ]] }} p >> r.
+  -> {{ fun hm done crashdone => exists crash,
+        ppre hm done crash
+        * [[ forall hm',
+          crash_xform (crash hm'
+          * [[ exists l, hashmap_subset l hm hm' ]])
+          =p=> rpre hm' crashdone crash ]] }} p >> r.
 Proof.
   unfold corr3; intros.
   destruct H1 as [crash H1].
@@ -105,29 +208,38 @@ Proof.
   - exfalso.
     edestruct H; eauto; repeat deex; try congruence.
     inversion H8; clear H8; subst.
-    clear H H1 H2 H3 ppre p done m.
     eapply corr3_from_corr2_failed; eauto.
+    solve_hashmap_subset'.
+    solve_hashmap_subset'.
   - edestruct H; eauto; repeat deex; try congruence.
     inversion H8; clear H8; subst.
-    clear H H1 H2 H3 ppre p m.
-    right. exists m''; exists v. intuition.
+    clear H H1 H2 ppre.
+    right. repeat eexists.
     eapply corr3_from_corr2_finished; eauto.
+    solve_hashmap_subset'.
+    solve_hashmap_subset'.
   - edestruct H; eauto; repeat deex; try congruence.
     inversion H8; clear H8; subst.
-    clear H H1 H2 H3 ppre p m.
-    right. exists m''; exists v. intuition.
+    clear H H1 H2 ppre.
+    right. repeat eexists.
     eapply corr3_from_corr2_recovered; eauto.
+    solve_hashmap_subset'.
+    solve_hashmap_subset'.
 Qed.
 
 Theorem corr3_from_corr2_rx :
-  forall TF TR RF RR (p: _ -> prog TF) (r: _ -> prog TR)
-         (rxp : RF -> prog TF) (rxr : RR -> prog TR)
+  forall TF TR RF RR (p: prog TF) (r:  prog TR)
+         (rxp : TF -> prog RF) (rxr : TR -> prog RR)
          ppre rpre,
-  {{ ppre }} progseq p rxp
-  -> {{ rpre }} progseq r rxr
-  -> {{ fun done crashdone => exists (crash: @pred _ (@weq addrlen) _),
-        ppre done crash * [[ @pimpl _ (@weq _) _ (crash_xform crash) (rpre crashdone crash) ]] }} p rxp >> r rxr.
+  {{ ppre }} Bind p rxp
+  -> {{ rpre }} Bind r rxr
+  -> {{ fun hm done crashdone => exists crash,
+        ppre hm done crash
+        * [[ forall hm',
+          crash_xform (crash hm'
+          * [[ exists l, hashmap_subset l hm hm' ]])
+          =p=> rpre hm' crashdone crash ]] }} Bind p rxp >> Bind r rxr.
 Proof.
-  unfold progseq; intros.
+  intros.
   apply corr3_from_corr2; eauto.
 Qed.

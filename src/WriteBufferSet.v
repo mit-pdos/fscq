@@ -205,13 +205,13 @@ Proof.
   unfold incl; simpl; intuition.
 Abort.
 
-Fixpoint remove_first A (decA: DecEq A) (a:A) l :=
+Fixpoint remove_first A (decA: EqDec A) (a:A) l :=
   match l with
   | nil => nil
   | a'::l' => if decA a a' then l' else a' :: remove_first decA a l'
   end.
 
-Lemma in_split_first : forall A (decA: DecEq A) l (a:A),
+Lemma in_split_first : forall A (decA: EqDec A) l (a:A),
     In a l ->
     exists l1 l2, l = l1 ++ a :: l2 /\
                   ~In a l1.
@@ -232,7 +232,7 @@ Proof.
   inversion H1; subst; intuition eauto.
 Qed.
 
-Lemma remove_first_app : forall A (decA: DecEq A) l l' (a: A),
+Lemma remove_first_app : forall A (decA: EqDec A) l l' (a: A),
     ~In a l ->
     remove_first decA a (l ++ l') = l ++ remove_first decA a l'.
 Proof.
@@ -244,7 +244,7 @@ Proof.
   rewrite IHl; eauto.
 Qed.
 
-Lemma remove_first_eq : forall A (decA: DecEq A) l (a:A),
+Lemma remove_first_eq : forall A (decA: EqDec A) l (a:A),
     remove_first decA a (a::l) = l.
 Proof.
   intros; simpl.
@@ -285,7 +285,7 @@ Proof.
     intuition auto using in_or_app.
 Qed.
 
-Lemma incl_remove' : forall A (decA: DecEq A) l l' (a:A),
+Lemma incl_remove' : forall A (decA: EqDec A) l l' (a:A),
     ~In a l ->
     incl (a::l) l' ->
     incl l (remove_first decA a l').
@@ -310,7 +310,7 @@ Proof.
   intuition eauto.
 Qed.
 
-Lemma count_occ_app : forall A (decA: DecEq A) l l' (a:A),
+Lemma count_occ_app : forall A (decA: EqDec A) l l' (a:A),
     count_occ decA (l ++ l') a =
     count_occ decA l a + count_occ decA l' a.
 Proof.
@@ -321,7 +321,7 @@ Qed.
 
 Require Import Arith.
 
-Lemma count_occ_remove_first : forall A (decA: DecEq A) (l: list A) a,
+Lemma count_occ_remove_first : forall A (decA: EqDec A) (l: list A) a,
     In a l ->
     count_occ decA (remove_first decA a l) a < count_occ decA l a.
 Proof.
@@ -337,7 +337,7 @@ Qed.
 
 Require Import Omega.
 
-Lemma count_occ_in : forall A (decA : DecEq A) l (a:A),
+Lemma count_occ_in : forall A (decA : EqDec A) l (a:A),
     In a l ->
     1 <= count_occ decA l a.
 Proof.
@@ -349,7 +349,7 @@ Proof.
   omega.
 Qed.
 
-Lemma count_occ_not_in : forall A (decA : DecEq A) l (a:A),
+Lemma count_occ_not_in : forall A (decA : EqDec A) l (a:A),
     ~In a l ->
     count_occ decA l a = 0.
 Proof.
@@ -359,7 +359,7 @@ Proof.
   exfalso; eauto.
 Qed.
 
-Lemma incl_nodup_count_occ : forall A (decA: DecEq A) (l l': list A),
+Lemma incl_nodup_count_occ : forall A (decA: EqDec A) (l l': list A),
     NoDup l ->
     incl l l' ->
     (forall a, count_occ decA l a <= count_occ decA l' a).

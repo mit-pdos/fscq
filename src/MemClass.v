@@ -4,12 +4,12 @@ Require Import Basics.
 
 Set Implicit Arguments.
 
-Existing Class DecEq.
+Existing Class EqDec.
 
-Instance word_dec : forall n, DecEq (word n) := weq.
-Instance nat_dec : DecEq nat := PeanoNat.Nat.eq_dec.
+Instance word_dec : forall n, EqDec (word n) := weq.
+Instance nat_dec : EqDec nat := PeanoNat.Nat.eq_dec.
 
-Instance unit_dec : DecEq unit.
+Instance unit_dec : EqDec unit.
 Proof.
   left.
   destruct a, b; auto.
@@ -29,9 +29,9 @@ Module Example.
   Definition nat_mem := @mem nat _ (fun _ => unit).
 End Example.
 
-Instance pair_dec : forall A B, DecEq A -> DecEq B -> DecEq (A*B).
+Instance pair_dec : forall A B, EqDec A -> EqDec B -> EqDec (A*B).
 Proof.
-  unfold DecEq; intros A B AEQ BEQ.
+  unfold EqDec; intros A B AEQ BEQ.
   destruct a as [a0 b0], b as [a1 b1].
   destruct (AEQ a0 a1), (BEQ b0 b1);
     left + right;

@@ -4,7 +4,7 @@ Require Import Eqdep_dec.
 Require Import Array.
 Require Import Psatz.
 Require Import ProofIrrelevance.
-
+Require Import ListUtils.
 Import ListNotations.
 Open Scope string_scope.
 
@@ -330,7 +330,7 @@ Module Rec.
     simpl in *. destruct H. destruct v; try discriminate.
     rewrite split1_combine. rewrite split2_combine.
     inversion H0. subst. rewrite IHt by assumption. rewrite IHn by auto. trivial.
-    instantiate (Q := fun rt => forall v,
+    2: instantiate (1 := fun rt => forall v,
       (fix well_formed' {rt : rectype} : data (RecF rt) -> Prop :=
         match rt as rt return (data (RecF rt) -> Prop) with
         | [] => fun _ => True
@@ -512,7 +512,7 @@ Module Rec.
       generalize (word_selN_helper (len ft) l0).
       replace (S l * len ft - len ft - 0 * len ft) with (l * len ft) by lia.
       simpl; intros.
-      rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      erewrite <- eq_rec_eq.
       reflexivity.
 
     - rewrite <- IHl by omega; clear IHl.
@@ -550,12 +550,12 @@ Module Rec.
       f_equal.
       generalize dependent e0'; clear e0.
       rewrite <- e; intros.
-      repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      repeat rewrite <- eq_rec_eq.
       reflexivity.
 
       destruct (Nat.add_assoc n n1 n2).
       destruct e0.
-      repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+      repeat rewrite <- eq_rec_eq.
       reflexivity.
   Qed.
 
@@ -585,7 +585,7 @@ Module Rec.
 
   Definition word_updN {ft : type} {l : nat} (idx : nat) (w : word (len (ArrayF ft l)))
                                              (v : word (len ft)) : word (len (ArrayF ft l)).
-    refine (if lt_dec idx l then _ else $0); simpl in *.
+    refine (if lt_dec idx l then _ else w); simpl in *.
 
     replace (l * len ft) with (idx * len ft + (l * len ft - idx * len ft))
       in * by (apply word_updN_helper2; assumption).
@@ -599,6 +599,14 @@ Module Rec.
     remember (split2 (idx * len ft + len ft) (l * len ft - idx * len ft - len ft) w) as hi; clear Heqhi.
     refine (combine v hi).
   Defined.
+
+  Theorem word_updN_oob : forall ft l idx w v, idx >= l ->
+    @word_updN ft l idx w (to_word v) = w.
+  Proof.
+    unfold word_updN; simpl; intros.
+    destruct (lt_dec idx l); auto.
+    exfalso; omega.
+  Qed.
 
   Theorem word_updN_equiv : forall ft l idx w v, idx < l ->
     @word_updN ft l idx w (to_word v) = @to_word (ArrayF ft l) (updN (of_word w) idx v).
@@ -763,6 +771,15 @@ Module Rec.
       lia.
   Qed.
 
+  Program Fixpoint word_concat {ft : type} (items : list (word (len ft)))
+    : word ((len ft) * (List.length items)) :=
+    match items with
+    | nil => $0
+    | m :: rest => combine m (@word_concat ft rest)
+    end.
+  Next Obligation.
+  abstract nia.
+  Defined.
 
   Theorem of_word_zero_list : forall ft n,
     @Rec.of_word (ArrayF ft n) $0 = repeat (Rec.of_word $0) n.
@@ -947,6 +964,10 @@ End Rec.
 Notation "r :-> n" := (Rec.recget' n r) (at level 20).
 Notation "r :=> n := v" := (Rec.recset' n r v) (at level 80).
 
+Notation "r .⟦ n ⟧" := (Rec.recget' n r) (at level 8).
+Notation "r .⟦ n := v ⟧" := (Rec.recset' n r v) (at level 8).
+
+
 (**
  * This [compute_rec] convtactic allows us to do partial evaluation
  * of [recget] and [recset] so that extracted code does not deal
@@ -957,18 +978,38 @@ Notation "r :=> n := v" := (Rec.recset' n r v) (at level 80).
  *
  * where [yy] may contain calls to [recget] and [recset].
  *)
+
 Declare Reduction compute_rec :=
   cbv [Rec.recget' Rec.recget Rec.recset' Rec.recset Rec.fieldp
        String.string_dec String.string_rec String.string_rect
        Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
        sumbool_rec sumbool_rect
        bool_dec bool_rec bool_rect
-       eq_rec_r eq_rec eq_rect eq_sym].
+       eq_rec_r eq_rec eq_rect eq_sym eq_ind_r eq_ind].
 
-Ltac rec_simpl :=
+Tactic Notation "rec_cbv" "in" hyp(H) :=
   cbv [Rec.recget' Rec.recget Rec.recset' Rec.recset Rec.fieldp
        String.string_dec String.string_rec String.string_rect
        Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
        sumbool_rec sumbool_rect
        bool_dec bool_rec bool_rect
-       eq_rec_r eq_rec eq_rect eq_sym] in *.
+       eq_rec_r eq_rec eq_rect eq_sym eq_ind_r eq_ind] in H;
+  cbn [fst snd] in H.
+
+Tactic Notation "rec_cbv" :=
+  cbv [Rec.recget' Rec.recget Rec.recset' Rec.recset Rec.fieldp
+       String.string_dec String.string_rec String.string_rect
+       Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
+       sumbool_rec sumbool_rect
+       bool_dec bool_rec bool_rect
+       eq_rec_r eq_rec eq_rect eq_sym eq_ind_r eq_ind];
+  cbn [fst snd].
+
+Ltac rec_simpl :=
+  repeat match goal with
+  | [ H: context [ Rec.recget' ] |- _ ] => rec_cbv in H
+  | [ H: context [ Rec.recset' ] |- _ ] => rec_cbv in H
+  | [ |- context [ Rec.recget' ] ] => rec_cbv
+  | [ |- context [ Rec.recset' ] ] => rec_cbv
+  end.
+

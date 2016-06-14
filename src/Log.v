@@ -1,3 +1,4 @@
+Require Import Hashmap.
 Require Import Arith.
 Require Import Bool.
 Require Import List.
@@ -9,7 +10,6 @@ Require Import Structures.OrderedTypeEx.
 Require Import Pred PredCrash.
 Require Import Prog.
 Require Import Hoare.
-Require Import SepAuto2.
 Require Import BasicProg.
 Require Import FunctionalExtensionality.
 Require Import Omega.
@@ -17,3147 +17,1656 @@ Require Import Word.
 Require Import Rec.
 Require Import Array.
 Require Import Eqdep_dec.
-Require Import GenSep.
 Require Import WordAuto.
 Require Import Cache.
 Require Import Idempotent.
+Require Import ListUtils.
 Require Import FSLayout.
+Require Import AsyncDisk.
+Require Import SepAuto.
+Require Import GenSepN.
+Require Import MemLog.
+Require Import MapUtils.
+Require Import ListPred.
+Require Import LogReplay.
+Require Import GroupLog.
+Require Import DiskSet.
+Require Import RelationClasses.
+Require Import Morphisms.
 
-Module Map := FMapAVL.Make(Addr_as_OT).
-Module MapFacts := WFacts_fun Addr_as_OT Map.
-Module MapProperties := WProperties_fun Addr_as_OT Map.
-Module MapOrdProperties := OrdProperties Map.
 
 Import ListNotations.
+
 Set Implicit Arguments.
-
-Definition memstate := Map.t valu.
-Definition ms_empty : memstate := Map.empty valu.
-Definition memstate_cachestate := (memstate * (cachestate * unit))%type.
-
-Definition diskstate := list valu.
-
-Inductive logstate :=
-| NoTransaction (cur : diskstate)
-(* Don't touch the disk directly in this state. *)
-
-| ActiveTxn (old : diskstate) (cur : diskstate)
-(* A transaction is in progress.
- * It started from the first memory and has evolved into the second.
- * It has not committed yet. *)
-
-| FlushedUnsyncTxn (old : diskstate) (cur : diskstate)
-(* A transaction has been flushed to the log, but not sync'ed or
- * committed yet. *)
-
-| FlushedTxn (old : diskstate) (cur : diskstate)
-(* Like FlushedUnsyncTxn above, except that we sync'ed the log.
- *)
-
-| CommittedUnsyncTxn (old : diskstate) (cur : diskstate)
-
-| CommittedTxn (cur : diskstate)
-(* A transaction has committed but the log has not necessarily been applied yet. *)
-
-
-| AppliedUnsyncTxn (cur : diskstate)
-(* A transaction has been committed and applied but not yet flushed. *)
-
-| AppliedTxn (cur : diskstate)
-(* A transaction has been committed, applied, and flushed. *).
 
 
 Module LOG.
 
-  Definition header_type := Rec.RecF ([("length", Rec.WordF addrlen)]).
-  Definition header := Rec.data header_type.
-  Definition mk_header (len : nat) : header := ($ len, tt).
+  Import AddrMap LogReplay.
 
-  Theorem header_sz_ok : Rec.len header_type <= valulen.
+  Record mstate := mk_mstate {
+    MSTxn   : valumap;         (* memory state for active txns *)
+    MSGLog  : GLog.mstate    (* lower-level state *)
+  }.
+
+  Definition memstate := (mstate * cachestate)%type.
+  Definition mk_memstate mm (ll : GLog.memstate) : memstate := 
+    (mk_mstate mm (fst ll), (snd ll)).
+
+  Definition MSCache (ms : memstate) := snd ms.
+  Definition MSLL (ms : memstate) : GLog.memstate := (MSGLog (fst ms), (snd ms)).
+
+
+  Inductive state :=
+  | NoTxn (cur : diskset)
+  (* No active transaction, MemLog.Synced or MemLog.Applying *)
+
+  | ActiveTxn (old : diskset) (cur : diskstate)
+  (* A transaction is in progress.
+   * It started from the first memory and has evolved into the second.
+   *)
+
+  | FlushingTxn (new : diskset)
+  (* A flushing is in progress
+   *)
+
+  | RollbackTxn (old : diskstate)
+  | RecoveringTxn (old : diskstate)
+  .
+
+  Definition rep_inner xp st ms hm :=
+  let '(cm, mm) := (MSTxn ms, MSGLog ms) in
+  (match st with
+    | NoTxn ds =>
+      [[ Map.Empty cm ]] *
+      GLog.rep xp (GLog.Cached ds) mm hm
+    | ActiveTxn ds cur =>
+      [[ map_valid cm ds!! ]] *
+      [[ map_replay cm ds!! cur ]] *
+      GLog.rep xp (GLog.Cached ds) mm hm
+    | FlushingTxn ds =>
+      GLog.would_recover_any xp ds hm
+    | RollbackTxn d =>
+      [[ Map.Empty cm ]] *
+      GLog.rep xp (GLog.Rollback d) mm hm
+    | RecoveringTxn d =>
+      [[ Map.Empty cm ]] *
+      GLog.rep xp (GLog.Recovering d) mm hm
+  end)%pred.
+
+  Definition rep xp F st ms hm :=
+    (exists raw, BUFCACHE.rep (snd ms) raw *
+      [[ (F * rep_inner xp st (fst ms) hm)%pred raw ]])%pred.
+
+  Definition intact xp F ds hm :=
+    (exists ms,
+      rep xp F (NoTxn ds) ms hm \/
+      exists new, rep xp F (ActiveTxn ds new) ms hm)%pred.
+
+  Definition recover_any xp F ds hm :=
+    (exists ms, rep xp F (FlushingTxn ds) ms hm)%pred.
+
+  Theorem sync_invariant_rep : forall xp F st ms hm,
+    sync_invariant F ->
+    sync_invariant (rep xp F st ms hm).
   Proof.
-    rewrite valulen_is. apply leb_complete. compute. trivial.
+    unfold rep; destruct st; intros; eauto.
+  Qed.
+  Hint Resolve sync_invariant_rep.
+
+  Theorem sync_invariant_intact : forall xp F ds hm,
+    sync_invariant F ->
+    sync_invariant (intact xp F ds hm).
+  Proof.
+    unfold intact; auto.
   Qed.
 
-  Theorem plus_minus_header : Rec.len header_type + (valulen - Rec.len header_type) = valulen.
+  Theorem sync_invariant_recover_any : forall xp F ds hm,
+    sync_invariant F ->
+    sync_invariant (recover_any xp F ds hm).
   Proof.
-    apply le_plus_minus_r; apply header_sz_ok.
+    unfold recover_any; auto.
+  Qed.
+  Hint Resolve sync_invariant_intact sync_invariant_recover_any.
+
+  Lemma active_intact : forall xp F old new ms hm,
+    rep xp F (ActiveTxn old new) ms hm =p=> intact xp F old hm.
+  Proof.
+    unfold intact; cancel.
   Qed.
 
-  Definition header_to_valu (h : header) : valu.
-    set (zext (Rec.to_word h) (valulen - Rec.len header_type)) as r.
-    rewrite plus_minus_header in r.
-    refine r.
-  Defined.
-  Arguments header_to_valu : simpl never.
-
-  Definition valu_to_header (v : valu) : header.
-    apply Rec.of_word.
-    rewrite <- plus_minus_header in v.
-    refine (split1 _ _ v).
-  Defined.
-
-  Definition header_valu_id : forall h,
-    valu_to_header (header_to_valu h) = h.
+  Lemma notxn_intact : forall xp F old ms hm,
+    rep xp F (NoTxn old) ms hm =p=> intact xp F old hm.
   Proof.
-    unfold valu_to_header, header_to_valu.
-    unfold eq_rec_r, eq_rec.
+    unfold intact; cancel.
+  Qed.
+
+  Lemma flushing_any : forall xp F ds ms hm,
+    rep xp F (FlushingTxn ds) ms hm =p=> recover_any xp F ds hm.
+  Proof.
+    unfold recover_any; cancel.
+  Qed.
+
+  Lemma intact_any : forall xp F ds hm,
+    intact xp F ds hm =p=> recover_any xp F ds hm.
+  Proof.
+    unfold intact, recover_any, rep, rep_inner; cancel.
+    apply GLog.cached_recover_any.
+    apply GLog.cached_recover_any.
+    Unshelve. all: eauto.
+  Qed.
+
+  Lemma notxn_any : forall xp F ds ms hm,
+    rep xp F (NoTxn ds) ms hm =p=> recover_any xp F ds hm.
+  Proof.
+    unfold intact, recover_any, rep, rep_inner; cancel.
+    apply GLog.cached_recover_any.
+    Unshelve. all: eauto.
+  Qed.
+
+  Lemma active_notxn : forall xp F old new ms hm,
+    rep xp F (ActiveTxn old new) ms hm =p=>
+    rep xp F (NoTxn old) (mk_mstate vmap0 (MSGLog (fst ms)), (snd ms)) hm.
+  Proof.
+    unfold rep, rep_inner; cancel.
+  Qed.
+
+  Lemma intact_dsupd_latest : forall xp F ds a v hm gms,
+    GLog.dset_match xp ds gms ->
+    intact xp F (dsupd (ds!!, nil) a v) hm =p=>
+    recover_any xp F (dsupd ds a v) hm.
+  Proof.
+    unfold dsupd at 1, d_map at 1; simpl; intros.
+    rewrite <- dsupd_latest.
+    unfold intact, rep, rep_inner.
+    unfold recover_any, rep, rep_inner; cancel.
+    rewrite GLog.cached_dsupd_latest_recover_any; eauto.
+    rewrite GLog.cached_dsupd_latest_recover_any; eauto.
+    Unshelve. all: eauto.
+  Qed.
+
+  Lemma intact_dssync_vecs_latest : forall xp F ds al hm gms,
+    GLog.dset_match xp ds gms ->
+    intact xp F (dssync_vecs (ds!!, nil) al) hm =p=>
+    recover_any xp F (dssync_vecs ds al) hm.
+  Proof.
+    unfold dssync_vecs at 1, d_map at 1; simpl; intros.
+    rewrite <- dssync_vecs_latest.
+    unfold intact, rep, rep_inner.
+    unfold recover_any, rep, rep_inner; cancel.
+    rewrite GLog.cached_dssync_vecs_latest_recover_any; eauto.
+    rewrite GLog.cached_dssync_vecs_latest_recover_any; eauto.
+    Unshelve. all: eauto.
+  Qed.
+
+  Lemma active_dset_match_pimpl : forall xp F ds d hm ms,
+    rep xp F (ActiveTxn ds d) ms hm <=p=>
+    rep xp F (ActiveTxn ds d) ms hm * [[ exists gms, GLog.dset_match xp ds gms ]].
+  Proof.
+    unfold rep, rep_inner, GLog.rep; intros; split; cancel.
+    eexists; eauto.
+  Qed.
+
+  Lemma notxn_dset_match_pimpl : forall xp F ds hm ms,
+    rep xp F (NoTxn ds) ms hm <=p=>
+    rep xp F (NoTxn ds) ms hm * [[ exists gms, GLog.dset_match xp ds gms ]].
+  Proof.
+    unfold rep, rep_inner, GLog.rep; intros; split; cancel.
+    eexists; eauto.
+  Qed.
+
+  Lemma rep_inner_hashmap_subset : forall xp ms hm hm',
+    (exists l, hashmap_subset l hm hm')
+    -> forall st, rep_inner xp st ms hm
+        =p=> rep_inner xp st ms hm'.
+  Proof.
     intros.
-    rewrite <- plus_minus_header.
-    unfold zext.
-    autorewrite with core.
-    apply Rec.of_to_id.
-    simpl; destruct h; tauto.
+    destruct st; unfold rep_inner, GLog.would_recover_any.
+    all: try erewrite GLog.rep_hashmap_subset; eauto.
+    cancel.
+    erewrite GLog.rep_hashmap_subset; eauto.
+    auto.
   Qed.
 
-  
-  Definition addr_per_block := valulen / addrlen.
-  Definition descriptor_type := Rec.ArrayF (Rec.WordF addrlen) addr_per_block.
-  Definition descriptor := Rec.data descriptor_type.
-  Theorem descriptor_sz_ok : valulen = Rec.len descriptor_type.
+  Lemma rep_hashmap_subset : forall xp F ms hm hm',
+    (exists l, hashmap_subset l hm hm')
+    -> forall st, rep xp F st ms hm
+        =p=> rep xp F st ms hm'.
   Proof.
-    simpl. unfold addr_per_block. rewrite valulen_is. vm_compute. reflexivity.
+    unfold rep; intros; cancel.
+    erewrite rep_inner_hashmap_subset; eauto.
   Qed.
 
-  Definition descriptor_to_valu (d : descriptor) : valu.
-    rewrite descriptor_sz_ok.
-    apply Rec.to_word; auto.
-  Defined.
-  Arguments descriptor_to_valu : simpl never.
-
-  Definition valu_to_descriptor (v : valu) : descriptor.
-    rewrite descriptor_sz_ok in v.
-    apply Rec.of_word; auto.
-  Defined.
-
-  Theorem valu_descriptor_id : forall v,
-    descriptor_to_valu (valu_to_descriptor v) = v.
+  Lemma intact_hashmap_subset : forall xp F ds hm hm',
+    (exists l, hashmap_subset l hm hm')
+    -> intact xp F ds hm
+        =p=> intact xp F ds hm'.
   Proof.
-    unfold descriptor_to_valu, valu_to_descriptor.
-    unfold eq_rec_r, eq_rec.
-    intros.
-    rewrite Rec.to_of_id.
-    rewrite <- descriptor_sz_ok.
-    autorewrite with core.
-    trivial.
+    unfold intact; intros; cancel;
+    erewrite rep_hashmap_subset; eauto.
+    all: cancel.
   Qed.
 
-  Theorem descriptor_valu_id : forall d,
-    Rec.well_formed d -> valu_to_descriptor (descriptor_to_valu d) = d.
+  Lemma rep_inner_notxn_pimpl : forall xp d ms hm,
+    rep_inner xp (NoTxn (d, nil)) ms hm
+    =p=> exists ms', rep_inner xp (RecoveringTxn d) ms' hm.
   Proof.
-    unfold descriptor_to_valu, valu_to_descriptor.
-    unfold eq_rec_r, eq_rec.
-    intros.
-    rewrite descriptor_sz_ok.
-    autorewrite with core.
-    apply Rec.of_to_id; auto.
+    unfold rep_inner; intros.
+    rewrite GLog.cached_recovering.
+    norm'l. cancel.
+    eassign (mk_mstate vmap0 ms'); auto.
+    apply map_empty_vmap0.
   Qed.
 
-  Theorem valu_to_descriptor_length : forall v,
-    length (valu_to_descriptor v) = addr_per_block.
+  Lemma rep_inner_rollbacktxn_pimpl : forall xp d ms hm,
+    rep_inner xp (RollbackTxn d) ms hm
+    =p=> rep_inner xp (RecoveringTxn d) ms hm.
   Proof.
-    unfold valu_to_descriptor.
-    intros.
-    pose proof (@Rec.of_word_length descriptor_type).
-    unfold Rec.well_formed in H.
-    simpl in H.
-    apply H.
-  Qed.
-  Hint Resolve valu_to_descriptor_length.
-
-  Lemma descriptor_to_valu_zeroes: forall l n,
-    descriptor_to_valu (l ++ repeat $0 n) = descriptor_to_valu l.
-  Proof.
-    unfold descriptor_to_valu.
-    unfold eq_rec_r, eq_rec.
-    intros.
-    rewrite descriptor_sz_ok.
-    autorewrite with core.
-    apply Rec.to_word_append_zeroes.
-  Qed.
-
-  Definition indomain' (a : addr) (m : diskstate) := wordToNat a < length m.
-
-  (* Check that the state is well-formed *)
-  Definition valid_entries m (ms : memstate) :=
-    forall a v, Map.MapsTo a v ms -> indomain' a m.
-
-  Definition valid_size xp (ms : memstate) :=
-    Map.cardinal ms <= wordToNat (LogLen xp).
-
-  Theorem valid_entries_empty : forall m, valid_entries m ms_empty.
-  Proof.
-    unfold valid_entries; intros.
-    apply MapFacts.empty_mapsto_iff in H. intuition.
-  Qed.
-
-  Theorem valid_size_empty : forall xp, valid_size xp ms_empty.
-  Proof.
-    unfold valid_size; intros.
-    rewrite MapProperties.cardinal_1 by apply Map.empty_1. omega.
-  Qed.
-
-  Hint Resolve valid_entries_empty.
-  Hint Resolve valid_size_empty.
-
-  (* Replay the state in memory *)
-  Definition replay' V (l : list (addr * V)) (m : list V) : list V :=
-    fold_left (fun m' p => upd m' (fst p) (snd p)) l m.
-
-  Definition replay (ms : memstate) (m : diskstate) : diskstate :=
-    replay' (Map.elements ms) m.
-
-  Theorem replay_empty : forall d, replay ms_empty d = d.
-  Proof.
-    unfold replay.
-    rewrite MapProperties.elements_empty.
-    reflexivity.
-  Qed.
-
-  Hint Rewrite replay_empty.
-
-  Lemma replay'_upd : forall V l d a (v : V),
-    upd (replay' l (upd d a v)) a v = upd (replay' l d) a v.
-  Proof.
-    induction l; simpl; intros.
-    autorewrite with core; auto.
-    destruct (weq a0 (fst a)); subst.
-    - repeat rewrite upd_twice. auto.
-    - rewrite upd_comm by auto. rewrite IHl. auto.
-  Qed.
-
-  Lemma replay'_upd_elim : forall V l d a (v : V),
-    In a (map fst l)
-    -> replay' l (upd d a v) = replay' l d.
-  Proof.
-    induction l; simpl; intuition.
-    rewrite H0; autorewrite with core; auto.
-    simpl; destruct (weq a a0); subst.
-    rewrite upd_twice; auto.
-    rewrite upd_comm by auto.
-    erewrite IHl; eauto.
-  Qed.
-
-  Lemma replay'_upd_comm : forall V l d a (v : V),
-    ~ In a (map fst l)
-    -> replay' l (upd d a v) = upd (replay' l d) a v.
-  Proof.
-    induction l; simpl; intuition; simpl in *.
-    rewrite upd_comm by auto.
-    apply IHl; auto.
-  Qed.
-
-  Theorem replay_twice : forall m d, replay m (replay m d) = replay m d.
-  Proof.
-    unfold replay.
-    intro m; generalize (Map.elements m); clear m.
-    induction l; simpl; auto; intros.
-    destruct (In_dec (@weq addrlen) (fst a) (map fst l)).
-    repeat rewrite replay'_upd_elim by auto.
-    apply IHl.
-    rewrite <- replay'_upd_comm by auto.
-    rewrite upd_twice.
-    apply IHl.
-  Qed.
-
-  Definition avail_region start len : @pred addr (@weq addrlen) (const valuset) :=
-    (exists l, [[ length l = len ]] * array start l $1)%pred.
-
-  Theorem avail_region_shrink_one : forall start len,
-    len > 0
-    -> avail_region start len =p=>
-       start |->? * avail_region (start ^+ $1) (len - 1).
-  Proof.
-    destruct len; intros; try omega.
-    unfold avail_region.
-    norm'l; unfold stars; simpl.
-    destruct l; simpl in *; try congruence.
+    unfold rep_inner; intros.
+    rewrite GLog.rollback_recovering.
     cancel.
   Qed.
 
-  Lemma avail_region_grow_all : forall fsxp m,
-    valid_size fsxp m ->
-    array (LogData fsxp)
-      (List.combine (map snd (Map.elements (elt:=valu) m))
-         (repeat [] (length (map snd (Map.elements (elt:=valu) m))))) $ (1) *
-    avail_region (LogData fsxp ^+ $ (Map.cardinal (elt:=valu) m))
-      (# (LogLen fsxp) - Map.cardinal (elt:=valu) m) =p=>
-    avail_region (LogData fsxp) # (LogLen fsxp).
-  Proof.
-    unfold valid_size, avail_region.
-    intros; norm; unfold stars; simpl.
-    instantiate (a := (List.combine (map snd (Map.elements m))
-                        (repeat [] (length (map snd (Map.elements m))))) ++ l).
-    rewrite <- array_app.
-    cancel.
-    rewrite combine_length. autorewrite with core.
-    rewrite Map.cardinal_1. auto.
-    intuition.
-    autorewrite with core. rewrite combine_length. autorewrite with core.
-    rewrite Map.cardinal_1 in *. omega.
-  Qed.
 
-  Definition synced_list m: list valuset := List.combine m (repeat nil (length m)).
+  Definition init xp cs :=
+    mm <- GLog.init xp cs;
+    Ret (mk_memstate vmap0 mm).
 
-  Lemma length_synced_list : forall l,
-    length (synced_list l) = length l.
-  Proof.
-    unfold synced_list; intros.
-    rewrite combine_length. autorewrite with core. auto.
-  Qed.
+  Definition begin (xp : log_xparams) ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    Ret (mk_memstate vmap0 mm).
 
-  Definition data_rep (xp: log_xparams) (m: list valuset) : @pred addr (@weq addrlen) (const valuset) :=
-    array (DataStart xp) m $1.
+  Definition abort (xp : log_xparams) ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    Ret (mk_memstate vmap0 mm).
 
-  (** On-disk representation of the log *)
-  Definition log_rep xp m (ms : memstate) : @pred addr (@weq addrlen) (const valuset) :=
-     ([[ valid_entries m ms ]] *
-      [[ valid_size xp ms ]] *
-      exists rest,
-      (LogDescriptor xp) |=> (descriptor_to_valu (map fst (Map.elements ms) ++ rest)) *
-      [[ @Rec.well_formed descriptor_type (map fst (Map.elements ms) ++ rest) ]] *
-      array (LogData xp) (synced_list (map snd (Map.elements ms))) $1 *
-      avail_region (LogData xp ^+ $ (Map.cardinal ms))
-                         (wordToNat (LogLen xp) - Map.cardinal ms))%pred.
+  Definition write (xp : log_xparams) a v ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    Ret (mk_memstate (Map.add a v cm) mm).
 
-  (* XXX DRY? *)
-  Definition log_rep_unsynced xp m (ms : memstate) : @pred addr (@weq addrlen) (const valuset) :=
-     ([[ valid_entries m ms ]] *
-      [[ valid_size xp ms ]] *
-      exists rest others,
-      (LogDescriptor xp) |-> (descriptor_to_valu (map fst (Map.elements ms) ++ rest),
-                              map descriptor_to_valu others) *
-      [[ @Rec.well_formed descriptor_type (map fst (Map.elements ms) ++ rest) ]] *
-      exists unsynced,
-      array (LogData xp) (List.combine (map snd (Map.elements ms)) unsynced) $1 *
-      [[ length unsynced = Map.cardinal ms ]] *
-      avail_region (LogData xp ^+ $ (Map.cardinal ms))
-                         (wordToNat (LogLen xp) - Map.cardinal ms) *
-      [[ Forall (@Rec.well_formed descriptor_type) others ]])%pred.
-
-  Definition log_rep_empty xp : @pred addr (@weq addrlen) (const valuset) :=
-     (exists rest,
-      (LogDescriptor xp) |=> descriptor_to_valu rest *
-      [[ @Rec.well_formed descriptor_type (rest) ]] *
-      avail_region (LogData xp) (wordToNat (LogLen xp)))%pred.
-
-  Definition cur_rep (old : diskstate) (ms : memstate) (cur : diskstate) : @pred addr (@weq addrlen) (const valuset) :=
-    [[ cur = replay ms old ]]%pred.
-
-  Definition nil_unless_in (ms: list addr) (l: list (list valu)) :=
-    forall a, ~ In a ms -> sel l a nil = nil.
-
-  Definition equal_unless_in T (ms: list addr) (m1: list T) (m2: list T) (def: T) :=
-    length m1 = length m2 /\ forall n, (~ goodSize addrlen n \/ ~ In ($ n) ms) -> selN m1 n def = selN m2 n def.
-
-  Definition rep_inner xp (st: logstate) (ms: memstate) :=
-    (* For now, support just one descriptor block, at the start of the log. *)
-    ([[ wordToNat (LogLen xp) <= addr_per_block ]] *
-     (* The log shouldn't overflow past the end of disk *)
-     [[ goodSize addrlen (# (LogData xp) + # (LogLen xp)) ]] *
-    match st with
-    | NoTransaction m =>
-      (LogHeader xp) |=> (header_to_valu (mk_header 0))
-    * [[ Map.Equal ms ms_empty ]]
-    * data_rep xp (synced_list m)
-    * log_rep_empty xp
-
-    | ActiveTxn old cur =>
-      (LogHeader xp) |=> (header_to_valu (mk_header 0))
-    * data_rep xp (synced_list old) (* Transactions are always completely buffered in memory. *)
-    * log_rep_empty xp
-    * cur_rep old ms cur
-    * [[ valid_entries old ms ]]
-
-    | FlushedUnsyncTxn old cur =>
-      (LogHeader xp) |=> (header_to_valu (mk_header 0))
-    * data_rep xp (synced_list old)
-    * log_rep_unsynced xp old ms
-    * cur_rep old ms cur
-
-    | FlushedTxn old cur =>
-      (LogHeader xp) |=> (header_to_valu (mk_header 0))
-    * data_rep xp (synced_list old)
-    * log_rep xp old ms
-    * cur_rep old ms cur
-
-    | CommittedUnsyncTxn old cur =>
-      (LogHeader xp) |-> (header_to_valu (mk_header (Map.cardinal ms)), header_to_valu (mk_header 0) :: nil)
-    * data_rep xp (synced_list old)
-    * log_rep xp old ms
-    * cur_rep old ms cur
-
-    | CommittedTxn cur =>
-      (LogHeader xp) |=> (header_to_valu (mk_header (Map.cardinal ms)))
-    * exists old d, data_rep xp d
-      (* If something's in the transaction, it doesn't matter what state it's in on disk *)
-    * [[ equal_unless_in (map fst (Map.elements ms)) (synced_list old) d ($0, nil) ]]
-    * log_rep xp old ms
-    * cur_rep old ms cur
-
-    | AppliedUnsyncTxn cur =>
-      (LogHeader xp) |=> (header_to_valu (mk_header (Map.cardinal ms)))
-    * exists old old_unflushed, data_rep xp (List.combine cur old_unflushed)
-    * [[ length cur = length old_unflushed ]]
-    * [[ nil_unless_in (map fst (Map.elements ms)) old_unflushed ]]
-    * log_rep xp old ms
-    * cur_rep old ms cur
-
-    | AppliedTxn cur =>
-      (LogHeader xp) |-> (header_to_valu (mk_header 0), header_to_valu (mk_header (Map.cardinal ms)) :: nil)
-    * data_rep xp (synced_list cur)
-    * exists old, log_rep xp old ms
-    * cur_rep old ms cur
-
-    end)%pred.
-
-  Definition rep xp F st mscs := let '^(ms, cs) := mscs in (exists d,
-    BUFCACHE.rep cs d * [[ (F * rep_inner xp st ms)%pred d ]])%pred.
-
-  Ltac log_unfold := unfold rep, rep_inner, data_rep, cur_rep, log_rep, log_rep_empty, log_rep_unsynced, valid_size, synced_list.
-
-  Lemma mapeq_elements : forall V m1 m2,
-    @Map.Equal V m1 m2 -> Map.elements m1 = Map.elements m2.
-  Proof.
-    intros.
-    apply MapOrdProperties.elements_Equal_eqlistA in H.
-    generalize dependent (Map.elements m2).
-    generalize dependent (Map.elements m1).
-    induction l.
-    - intros. inversion H. reflexivity.
-    - intros. destruct l0; inversion H.
-      inversion H3. destruct a; destruct p; simpl in *; subst.
-      f_equal; eauto.
-  Qed.
-
-  Create HintDb mapeq.
-
-  Lemma mapeq_replay_eq : forall m1 m2 l,
-    Map.Equal m1 m2 -> replay m1 l = replay m2 l.
-  Proof.
-    unfold replay, replay'.
-    intros.
-    erewrite mapeq_elements; eauto.
-  Qed.
-  Hint Resolve mapeq_replay_eq : mapeq.
-
-  Lemma valid_entries_mapeq : forall m1 m2 l,
-    Map.Equal m1 m2 -> valid_entries l m1 -> valid_entries l m2.
-  Proof.
-    unfold valid_entries.
-    intros.
-    eapply MapFacts.Equal_mapsto_iff in H.
-    eapply H0.
-    eapply H; eauto.
-  Qed.
-  Hint Resolve valid_entries_mapeq : mapeq.
-
-  Lemma mapeq_rep : forall xp s m1 m2,
-    Map.Equal m2 m1 -> rep_inner xp s m1 =p=> rep_inner xp s m2.
-  Proof.
-    intros; log_unfold.
-    apply MapFacts.Equal_sym in H.
-    generalize H; intro He.
-    apply mapeq_elements in He.
-    repeat rewrite Map.cardinal_1.
-    rewrite He.
-    case s; cancel; eauto with mapeq.
-  Qed.
-
-  Definition init T xp cs rx : prog T :=
-    cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
-    cs <- BUFCACHE.write (LogDescriptor xp) (descriptor_to_valu (repeat $0 addr_per_block)) cs;
-    cs <- BUFCACHE.sync (LogHeader xp) cs;
-    cs <- BUFCACHE.sync (LogDescriptor xp) cs;
-    rx ^(ms_empty, cs).
-
-
-  Hint Extern 0 (okToUnify (log_rep _ _ _) (log_rep _ _ _)) => constructor : okToUnify.
-  Hint Extern 0 (okToUnify (cur_rep _ _ _) (cur_rep _ _ _)) => constructor : okToUnify.
-  Hint Extern 0 (okToUnify (data_rep _ _) (data_rep _)) => constructor : okToUnify.
-  Hint Extern 0 (okToUnify (rep_inner _ _ _) (rep_inner _ _ _)) => constructor : okToUnify.
-
-  (* XXX actually okay? *)
-  Local Hint Extern 0 (okToUnify (array (DataStart _) _ _) (array (DataStart _) _ _)) => constructor : okToUnify.
-
-  Definition log_uninitialized xp old :=
-    ([[ wordToNat (LogLen xp) <= addr_per_block ]] *
-     [[ goodSize addrlen (# (LogData xp) + # (LogLen xp)) ]] *
-     data_rep xp (synced_list old) *
-     avail_region (LogData xp) (wordToNat (LogLen xp)) *
-     (LogDescriptor xp) |->? *
-     (LogHeader xp) |->?)%pred.
-
-  (* XXX remove once SepAuto and SepAuto2 are unified *)
-  Hint Extern 0 (okToUnify (BUFCACHE.rep _ _) (BUFCACHE.rep _ _)) => constructor : okToUnify.
-
-  Definition unifiable_array := @array valuset.
-
-  Hint Extern 0 (okToUnify (unifiable_array _ _ _) (unifiable_array _ _ _)) => constructor : okToUnify.
-
-  Theorem init_ok : forall xp cs,
-    {< old d F,
-    PRE
-      BUFCACHE.rep cs d * [[ (F * log_uninitialized xp old)%pred d ]]
-    POST RET:mscs
-      rep xp F (NoTransaction old) mscs
-    CRASH
-      exists cs' d', BUFCACHE.rep cs' d' * [[ (F * log_uninitialized xp old)%pred d' ]]
-    >} init xp cs.
-  Proof.
-    unfold init, log_uninitialized; log_unfold.
-    hoare.
-    rewrite Forall_forall; intuition.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (init _ _) _) => apply init_ok : prog.
-
-  Definition begin T (xp : log_xparams) (mscs : memstate_cachestate) rx : prog T :=
-    let '^(ms, cs) := mscs in
-    rx ^(ms_empty, cs).
-
-  Theorem begin_ok: forall xp mscs,
-    {< m F,
-    PRE
-      rep xp F (NoTransaction m) mscs
-    POST RET:r
-      rep xp F (ActiveTxn m m) r
-    CRASH
-      exists mscs', rep xp F (NoTransaction m) mscs' \/ rep xp F (ActiveTxn m m) mscs'
-    >} begin xp mscs.
-  Proof.
-    unfold begin; log_unfold.
-    hoare.
-    apply pimpl_or_r; left.
-    cancel.
-    eauto.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (begin _ _) _) => apply begin_ok : prog.
-
-  Definition abort T (xp : log_xparams) (mscs : memstate_cachestate) rx : prog T :=
-    let '^(ms, cs) := mscs in
-    rx ^(ms_empty, cs).
-
-  Theorem abort_ok : forall xp mscs,
-    {< m1 m2 F,
-    PRE
-      rep xp F (ActiveTxn m1 m2) mscs
-    POST RET:r
-      rep xp F (NoTransaction m1) r
-    CRASH
-      exists mscs', rep xp F (ActiveTxn m1 m2) mscs' \/ rep xp F (NoTransaction m1) mscs'
-    >} abort xp mscs.
-  Proof.
-    unfold abort; log_unfold.
-    hoare.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (abort _ _) _) => apply abort_ok : prog.
-
-  Ltac word2nat_clear := try clear_norm_goal; repeat match goal with
-    | [ H : forall _, {{ _ }} _ |- _ ] => clear H
-    | [ H : _ =p=> _ |- _ ] => clear H
+  Definition read xp a ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    match Map.find a cm with
+    | Some v =>  Ret ^(ms, v)
+    | None =>
+        let^ (mm', v) <- GLog.read xp a mm;
+        Ret ^(mk_memstate cm mm', v)
     end.
 
-  Lemma skipn_1_length': forall T (l: list T),
-    length (match l with [] => [] | _ :: l' => l' end) = length l - 1.
-  Proof.
-    destruct l; simpl; omega.
-  Qed.
+  Definition commit xp ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    let^ (mm', r) <- GLog.submit xp (Map.elements cm) mm;
+    Ret ^(mk_memstate vmap0 mm', r).
 
-  Hint Rewrite app_length firstn_length skipn_length combine_length map_length repeat_length length_upd
-    skipn_1_length' : lengths.
+  (* like abort, but use a better name for read-only transactions *)
+  Definition commit_ro (xp : log_xparams) ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    Ret (mk_memstate vmap0 mm).
 
-  Ltac solve_lengths' :=
-    repeat (progress (autorewrite with lengths; repeat rewrite Nat.min_l by solve_lengths'; repeat rewrite Nat.min_r by solve_lengths'));
-    simpl; try word2nat_solve.
+  Definition dwrite (xp : log_xparams) a v ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    let cm' := Map.remove a cm in
+    mm' <- GLog.dwrite xp a v mm;
+    Ret (mk_memstate cm' mm').
 
-  Ltac solve_lengths_prepare :=
-    intros; word2nat_clear; simpl;
-    (* Stupidly, this is like 5x faster than [rewrite Map.cardinal_1 in *] ... *)
-    repeat match goal with
-    | [ H : context[Map.cardinal] |- _ ] => rewrite Map.cardinal_1 in H
-    | [ |- context[Map.cardinal] ] => rewrite Map.cardinal_1
-    end.
+  Definition dsync xp a ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    mm' <- GLog.dsync xp a mm;
+    Ret (mk_memstate cm mm').
 
-  Ltac solve_lengths_prepped :=
-    try (match goal with
-      | [ |- context[{{ _ }} _] ] => fail 1
-      | [ |- _ =p=> _ ] => fail 1
-      | _ => idtac
-      end;
-      word2nat_clear; word2nat_simpl; word2nat_rewrites; solve_lengths').
+  Definition flushsync xp ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    mm' <- GLog.flushsync xp mm;
+    Ret (mk_memstate cm mm').
 
-  Ltac solve_lengths := solve_lengths_prepare; solve_lengths_prepped.
+  Definition sync xp ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    mm' <- GLog.flushall xp mm;
+    Ret (mk_memstate cm mm').
+
+  Definition recover xp cs :=
+    mm <- GLog.recover xp cs;
+    Ret (mk_memstate vmap0 mm).
 
 
-  Definition KIn V := InA (@Map.eq_key V).
-  Definition KNoDup V := NoDupA (@Map.eq_key V).
+  Local Hint Unfold rep rep_inner map_replay: hoare_unfold.
+  Arguments GLog.rep: simpl never.
+  Hint Extern 0 (okToUnify (GLog.rep _ _ _ _) (GLog.rep _ _ _ _)) => constructor : okToUnify.
 
-  Lemma replay'_sel_other : forall l d a (def : valu),
-    ~ In a (map fst l)
-    -> NoDup (map fst l)
-    -> sel (replay' l d) a def = sel d a def.
-  Proof.
-    induction l; simpl; intuition; simpl in *.
-    inversion H0; subst; auto.
-    rewrite replay'_upd_comm by auto.
-    rewrite sel_upd_ne by auto.
-    apply IHl; auto.
-  Qed.
+  (* destruct memstate *)
+  Ltac dems := eauto; repeat match goal with
+  | [ H : eq _ (mk_memstate _ _) |- _ ] =>
+     inversion H; subst; simpl; clear H
+  | [ |- Map.Empty vmap0 ] => apply Map.empty_1
+  | [ |- map_valid vmap0 _ ] => apply map_valid_map0
+  end; eauto.
 
-  Lemma in_map_fst_exists_snd : forall A B (l : list (A * B)) a,
-    In a (map fst l) -> exists b, In (a, b) l.
-  Proof.
-    induction l; simpl; firstorder.
-    destruct a; simpl in *; subst; eauto.
-  Qed.
-
+  Local Hint Resolve KNoDup_map_elements.
   Local Hint Resolve MapProperties.eqke_equiv.
 
-  Lemma KNoDup_NoDup: forall V (l : list (addr * V)),
-    KNoDup l -> NoDup (map fst l).
+
+  Theorem begin_ok: forall xp ms,
+    {< F ds,
+    PRE:hm
+      rep xp F (NoTxn ds) ms hm
+    POST:hm' RET:r
+      rep xp F (ActiveTxn ds ds!!) r hm'
+    CRASH:hm'
+      exists ms', rep xp F (NoTxn ds) ms' hm'
+    >} begin xp ms.
   Proof.
-    induction l; simpl; intros; constructor.
-    inversion H; subst.
-    contradict H2.
-    apply in_map_fst_exists_snd in H2; destruct H2.
-    apply InA_alt.
-    exists (fst a, x); intuition.
-    destruct a; simpl in *.
-    cbv; auto.
-    inversion H; subst.
-    apply IHl; auto.
-  Qed.
-
-  Lemma map_fst_nodup: forall (ms : memstate),
-    NoDup (map fst (Map.elements ms)).
-  Proof.
-    intros.
-    apply KNoDup_NoDup.
-    apply Map.elements_3w.
-  Qed.
-
-  Local Hint Resolve map_fst_nodup.
-
-  Lemma replay_sel_other : forall a ms m def,
-    ~ Map.In a ms
-    -> selN (replay ms m) (wordToNat a) def = selN m (wordToNat a) def.
-  Proof.
-    intros.
-    apply replay'_sel_other; auto.
-    contradict H.
-    erewrite MapFacts.elements_in_iff.
-    apply in_map_fst_exists_snd in H; destruct H.
-    eexists; apply In_InA; eauto.
-  Qed.
-
-  Lemma replay'_length : forall V (l:list (addr * V)) (m:list V),
-    length (replay' l m) = length m.
-  Proof.
-    induction l; simpl; intros; auto.
-    destruct (In_dec (@weq addrlen) (fst a) (map fst l)).
-    rewrite replay'_upd_elim by auto.
-    apply IHl; auto.
-    rewrite replay'_upd_comm by auto.
-    rewrite length_upd.
-    apply IHl; auto.
-  Qed.
-
-  Hint Rewrite replay'_length : lengths.
-
-  Lemma replay'_sel_in' : forall V l d a (v def : V),
-    In (a, v) l -> NoDup (map fst l) -> # a < length d
-    -> sel (replay' l d) a def = v.
-  Proof.
-    induction l; simpl; intros; auto.
-    inversion H.
-    inversion H0; subst.
-    destruct a; intuition; simpl.
-    inversion H2; subst.
-    rewrite replay'_upd_comm by auto.
-    rewrite sel_upd_eq; auto.
-    erewrite replay'_length; auto.
-    simpl in *.
-    apply IHl; auto.
-    rewrite length_upd; auto.
-  Qed.
-
-  Lemma replay'_sel_in : forall V a (v: V) l m def,
-    KNoDup l -> In (a, v) l -> # a < length m
-    -> sel (replay' l m) a def = v.
-  Proof.
-    intros.
-    eapply replay'_sel_in'; eauto.
-    apply KNoDup_NoDup; auto.
+    unfold begin.
+    hoare using dems.
+    pred_apply; cancel; dems.
   Qed.
 
 
-  Lemma InA_eqke_In : forall V a v l,
-    InA (Map.eq_key_elt (elt:=V)) (a, v) l -> In (a, v) l.
+  Theorem abort_ok : forall xp ms,
+    {< F ds m,
+    PRE:hm
+      rep xp F (ActiveTxn ds m) ms hm
+    POST:hm' RET:r
+      rep xp F (NoTxn ds) r hm'
+    CRASH:hm'
+      exists ms', rep xp F (NoTxn ds) ms' hm'
+    >} abort xp ms.
   Proof.
-    induction l; intros; auto; inversion H; subst.
-    inversion H1.
-    destruct a0; simpl in *; subst; auto.
-    simpl. right.
-    apply IHl; auto.
-  Qed.
-
-  Lemma replay_sel_in : forall a v ms m def,
-    # a < length m -> Map.MapsTo a v ms
-    -> selN (replay ms m) (wordToNat a) def = v.
-  Proof.
-    intros.
-    apply replay'_sel_in; auto.
-    apply Map.elements_3w.
-    apply InA_eqke_In.
-    apply MapFacts.elements_mapsto_iff; auto.
-  Qed.
-
-  Lemma replay_length : forall ms m,
-    length (replay ms m) = length m.
-  Proof.
-    intros.
-    unfold replay.
-    rewrite replay'_length; auto.
-  Qed.
-
-  Hint Rewrite replay_length : lengths.
-
-  Lemma replay'_sel_invalid : forall V a (l : list (addr * V)) d def,
-    ~ goodSize addrlen a
-    -> selN (replay' l d) a def = selN d a def.
-  Proof.
-    intros; unfold goodSize in *.
-    destruct (lt_dec a (length d)).
-
-    unfold replay'.
-    revert d l0.
-    induction l; simpl; intros; auto.
-    destruct a0; simpl.
-    rewrite IHl.
-    unfold upd; rewrite selN_updN_ne; auto.
-    contradict H.
-    word2nat_auto.
-    rewrite length_upd; auto.
-    repeat rewrite (selN_oob); auto; try omega.
-    rewrite replay'_length; omega.
-  Qed.
-
-  Lemma replay_sel_invalid : forall a ms d def,
-    ~ goodSize addrlen a
-    -> selN (replay ms d) a def = selN d a def.
-  Proof.
-    unfold replay; intros.
-    apply replay'_sel_invalid; auto.
-  Qed.
-
-  Lemma valid_entries_replay : forall m d,
-    valid_entries d m ->
-    valid_entries (replay m d) m.
-  Proof.
-    unfold valid_entries, indomain', replay. intros.
-    apply H in H0.
-    rewrite replay'_length; auto.
-  Qed.
-
-  Hint Resolve valid_entries_replay.
-
-  Lemma replay_add : forall a v ms m,
-    replay (Map.add a v ms) m = upd (replay ms m) a v.
-  Proof.
-    intros.
-    (* Let's show that the lists are equal because [sel] at any index [pos] gives the same valu *)
-    eapply list_selN_ext.
-    autorewrite with core.
-    solve_lengths.
-    intros.
-    destruct (lt_dec pos (pow2 addrlen)).
-    - (* [pos] is a valid address *)
-      replace pos with (wordToNat (natToWord addrlen (pos))) by word2nat_auto.
-      destruct (weq ($ pos) a).
-      + (* [pos] is [a], the address we're updating *)
-        erewrite replay_sel_in.
-        reflexivity.
-        autorewrite with lengths in *.
-        solve_lengths.
-        instantiate (default := $0).
-        subst.
-        unfold upd.
-        rewrite selN_updN_eq.
-        apply Map.add_1.
-        trivial.
-        rewrite replay_length in *.
-        word2nat_auto.
-
-      + (* [pos] is another address *)
-        unfold upd.
-        rewrite selN_updN_ne by word2nat_auto.
-
-        case_eq (Map.find $ pos ms).
-
-        (* [pos] is in the transaction *)
-        intros w Hf.
-        autorewrite with lengths in *.
-        erewrite replay_sel_in.
-        reflexivity.
-        solve_lengths.
-        apply Map.find_2 in Hf.
-        erewrite replay_sel_in.
-        apply Map.add_2.
-        unfold not in *; intros; solve [auto].
-        eauto.
-        solve_lengths.
-        eauto.
-
-        (* [pos] is not in the transaction *)
-        Ltac wneq H := intro HeqContra; symmetry in HeqContra; apply H; auto.
-        intro Hf; 
-          repeat (erewrite replay_sel_other);
-          try trivial;
-          intro HIn; destruct HIn as [x HIn];
-          try apply Map.add_3 in HIn;
-          try apply Map.find_1 in HIn;
-          try wneq n;
-          replace (Map.find $ (pos) ms) with (Some x) in Hf; inversion Hf.
-    - (* [pos] is an invalid address *)
-      rewrite replay_sel_invalid by auto.
-      unfold upd.
-      rewrite selN_updN_ne by (
-        generalize (wordToNat_bound a); intro Hb;
-        omega).
-      rewrite replay_sel_invalid by auto; trivial.
-  Qed.
-
-  Lemma valid_entries_add : forall a v ms m,
-    valid_entries m ms -> indomain' a m -> valid_entries m (Map.add a v ms).
-  Proof.
-    unfold valid_entries in *.
-    intros.
-    destruct (weq a a0).
-    subst; auto.
-    eapply H.
-    eapply Map.add_3; eauto.
+    unfold abort.
+    safestep.
+    step using dems; subst; simpl.
+    pred_apply; cancel.
+    pimpl_crash; norm. cancel.
+    eassign (mk_mstate vmap0 (MSGLog ms_1)).
+    intuition; pred_apply; cancel.
   Qed.
 
 
-  Lemma upd_prepend_length: forall l a v, length (upd_prepend l a v) = length l.
+  Theorem read_ok: forall xp ms a,
+    {< F Fm ds m v,
+    PRE:hm
+      rep xp F (ActiveTxn ds m) ms hm *
+      [[[ m ::: Fm * a |-> v ]]]
+    POST:hm' RET:^(ms', r)
+      rep xp F (ActiveTxn ds m) ms' hm' * [[ r = fst v ]]
+    CRASH:hm'
+      exists ms', rep xp F (ActiveTxn ds m) ms' hm'
+    >} read xp a ms.
   Proof.
-    intros; unfold upd_prepend.
-    solve_lengths.
+    unfold read.
+    prestep.
+    cancel.
+    step.
+
+    eapply replay_disk_eq; eauto.
+    eassign ds!!; pred_apply; cancel.
+    pimpl_crash; cancel.
+
+    cancel.
+    2: step.
+    eexists; subst.
+    eapply ptsto_replay_disk_not_in; eauto.
+    apply MapFacts.not_find_in_iff; eauto.
+
+    pimpl_crash; norm. cancel.
+    eassign (mk_mstate (MSTxn ms_1) ms'_1).
+    intuition; pred_apply; cancel.
   Qed.
-  Hint Rewrite upd_prepend_length : lengths.
 
-  Definition write T (xp : log_xparams) a v (mscs : memstate_cachestate) rx : prog T :=
-    let '^(ms, cs) := mscs in
-    rx ^(Map.add a v ms, cs).
 
-  Theorem write_ok : forall xp mscs a v,
-    {< m1 m2 F F' v0,
-    PRE
-      rep xp F (ActiveTxn m1 m2) mscs * [[ (F' * a |-> v0)%pred (list2mem m2) ]]
-    POST RET:mscs
-      exists m', rep xp F (ActiveTxn m1 m') mscs *
-      [[ (F' * a |-> v)%pred (list2mem m') ]]
-    CRASH
-      exists m' mscs', rep xp F (ActiveTxn m1 m') mscs'
-    >} write xp a v mscs.
+  Theorem write_ok : forall xp ms a v,
+    {< F Fm ds m vs,
+    PRE:hm
+      rep xp F (ActiveTxn ds m) ms hm * [[ a <> 0 ]] *
+      [[[ m ::: (Fm * a |-> vs) ]]]
+    POST:hm' RET:ms'
+      exists m', rep xp F (ActiveTxn ds m') ms' hm' *
+      [[[ m' ::: (Fm * a |-> (v, nil)) ]]]
+    CRASH:hm'
+      exists m' ms', rep xp F (ActiveTxn ds m') ms' hm'
+    >} write xp a v ms.
   Proof.
-    unfold write; log_unfold.
+    unfold write.
+    hoare using dems.
+    pred_apply; cancel.
+
+    apply map_valid_add; eauto.
+    erewrite <- replay_disk_length.
+    eapply list2nmem_ptsto_bound; eauto.
+
+    rewrite replay_disk_add.
+    eapply list2nmem_updN; eauto.
+  Qed.
+
+
+  Set Regular Subst Tactic.
+
+  Theorem dwrite_ok : forall xp ms a v,
+    {< F Fm ds vs,
+    PRE:hm
+      rep xp F (ActiveTxn ds ds!!) ms hm *
+      [[[ ds!! ::: (Fm * a |-> vs) ]]] *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms' exists ds' ds0,
+      rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
+      [[[ ds'!! ::: (Fm * a |-> (v, vsmerge vs)) ]]] *
+      [[ ds' = dsupd ds0 a (v, vsmerge vs) ]] *
+      [[ ds0 = ds \/ ds0 = (ds!!, nil) ]]
+    XCRASH:hm'
+      recover_any xp F ds hm' \/
+      recover_any xp F (dsupd ds a (v, vsmerge vs)) hm'
+    >} dwrite xp a v ms.
+  Proof.
+    unfold dwrite, recover_any.
+    step.
+    step; subst.
+
+    eapply map_valid_remove; autorewrite with lists; eauto.
+    rewrite dsupd_latest_length; auto.
+    rewrite dsupd_latest.
+    apply updN_replay_disk_remove_eq; eauto.
+    rewrite dsupd_latest.
+    eapply list2nmem_updN; eauto.
+    setoid_rewrite singular_latest at 1; simpl; auto.
+    eapply map_valid_remove; autorewrite with lists; eauto.
+    apply updN_replay_disk_remove_eq; eauto.
+    rewrite dsupd_latest.
+    eapply list2nmem_updN; eauto.
+
+    (* crash conditions *)
+    xcrash.
+    or_l; cancel; xform_normr; cancel.
+
+    or_r; cancel.
+    xform_normr; cancel.
+
+    Unshelve. all: eauto.
+  Qed.
+
+
+  Theorem dsync_ok : forall xp ms a,
+    {< F Fm ds vs,
+    PRE:hm
+      rep xp F (ActiveTxn ds ds!!) ms hm *
+      [[[ ds!! ::: (Fm * a |-> vs) ]]] *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms' exists ds',
+      rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
+      [[ ds' = dssync ds a ]]
+    CRASH:hm'
+      recover_any xp F ds hm'
+    >} dsync xp a ms.
+  Proof.
+    unfold dsync, recover_any.
+    step.
+    step; subst.
+    rewrite dssync_latest; unfold vssync; apply map_valid_updN; auto.
+    rewrite dssync_latest; substl (ds!!) at 1.
+    apply replay_disk_vssync_comm.
+    Unshelve. eauto.
+  Qed.
+
+
+  Theorem sync_ok : forall xp ms,
+    {< F ds,
+    PRE:hm
+      rep xp F (NoTxn ds) ms hm *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms'
+      rep xp F (NoTxn (ds!!, nil)) ms' hm'
+    XCRASH:hm'
+      recover_any xp F ds hm'
+    >} sync xp ms.
+  Proof.
+    unfold sync, recover_any.
     hoare.
-
-    apply valid_entries_add; eauto.
-    unfold indomain'.
-    erewrite <- replay_length.
-    (* XXX probably want to make a version of [list2mem_ptsto_bounds] that takes two lists
-       and a hypothesis that their lengths are equal *)
-    eapply list2mem_ptsto_bounds; eauto.
-
-    rewrite replay_add.
-    eapply list2mem_upd; eauto.
+    xcrash.
+    Unshelve. eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
 
-  Definition read T (xp: log_xparams) a (mscs : memstate_cachestate) rx : prog T :=
-    let '^(ms, cs) := mscs in
-    match Map.find a ms with
-    | Some v =>
-      rx ^(^(ms, cs), v)
-    | None =>
-      let^ (cs, v) <- BUFCACHE.read_array (DataStart xp) a cs;
-      rx ^(^(ms, cs), v)
-    end.
+  Local Hint Resolve map_valid_log_valid length_elements_cardinal_gt map_empty_vmap0.
 
-
-  Theorem read_ok: forall xp mscs a,
-    {< m1 m2 v F,
-    PRE
-      rep xp F (ActiveTxn m1 m2) mscs *
-      [[ exists F, (F * a |-> v) (list2mem m2) ]]
-    POST RET:^(mscs,r)
-      rep xp F (ActiveTxn m1 m2) mscs *
-      [[ r = v ]]
-    CRASH
-      exists mscs', rep xp F (ActiveTxn m1 m2) mscs'
-    >} read xp a mscs.
+  Theorem commit_ok : forall xp ms,
+    {< F ds m,
+     PRE:hm  rep xp F (ActiveTxn ds m) ms hm
+     POST:hm' RET:^(ms',r)
+          ([[ r = true ]] *
+            rep xp F (NoTxn (pushd m ds)) ms' hm') \/
+          ([[ r = false ]] *
+            [[ Map.cardinal (MSTxn (fst ms)) > (LogLen xp) ]] *
+            rep xp F (NoTxn ds) ms' hm')
+     CRASH:hm' exists ms', rep xp F (NoTxn ds) ms' hm'
+    >} commit xp ms.
   Proof.
-    unfold read; log_unfold.
-    destruct mscs as [ms cs]; simpl; intros.
+    unfold commit.
+    step.
+    step.
 
-    case_eq (Map.find a ms); hoare.
-
-    eapply list2mem_sel with (def := $0) in H1.
-    apply Map.find_2 in H.
-    eapply replay_sel_in in H.
-    rewrite <- H.
-    rewrite H1.
-    reflexivity.
-    unfold valid_entries in *.
-    eauto.
-
-    solve_lengths.
-    unfold indomain' in *.
-    eauto.
-
-    unfold sel.
-    rewrite combine_length; autorewrite_fast.
-    apply list2mem_ptsto_bounds in H1.
-    rewrite replay_length in *.
-    eauto.
-
-    eapply list2mem_sel with (def := $0) in H1.
-    rewrite H1.
-    unfold sel.
-    rewrite replay_sel_other. trivial.
-    intuition.
-    subst.
-    rewrite selN_combine.
-    simpl.
-    eauto.
-
-    rewrite repeat_length.
-    eauto.
-
-    intro.
-    hnf in H4.
-    destruct H4.
-    apply Map.find_1 in H4.
-    congruence.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
-
-  Definition flush_unsync T xp (mscs : memstate_cachestate) rx : prog T :=
-    let '^(ms, cs) := mscs in
-    let^ (cs) <- For i < $ (Map.cardinal ms)
-    Ghost [ old crash F ]
-    Loopvar [ cs ]
-    Continuation lrx
-    Invariant
-      exists d', BUFCACHE.rep cs d' *
-      [[ (F
-          * (LogHeader xp) |=> header_to_valu (mk_header 0)
-          * data_rep xp (synced_list old)
-          * exists rest, (LogDescriptor xp) |=> descriptor_to_valu rest
-          * [[ @Rec.well_formed descriptor_type rest ]]
-          * exists l', [[ length l' = # i ]]
-          * array (LogData xp) (firstn (# i) (List.combine (map snd (Map.elements ms)) l')) $1
-          * avail_region (LogData xp ^+ i) (# (LogLen xp) - # i))%pred d' ]]
-    OnCrash crash
-    Begin
-      cs <- BUFCACHE.write_array (LogData xp ^+ i) $0
-        (sel (map snd (Map.elements ms)) i $0) cs;
-      lrx ^(cs)
-    Rof ^(cs);
-    cs <- BUFCACHE.write (LogDescriptor xp)
-      (descriptor_to_valu (map fst (Map.elements ms))) cs;
-    rx ^(ms, cs).
-
-  Definition flush_sync T xp (mscs : memstate_cachestate) rx : prog T :=
-    let '^(ms, cs) := mscs in
-    cs <- BUFCACHE.sync (LogDescriptor xp) cs;
-    let^ (cs) <- For i < $ (Map.cardinal ms)
-    Ghost [ old crash F ]
-    Loopvar [ cs ]
-    Continuation lrx
-    Invariant
-      exists d', BUFCACHE.rep cs d' *
-      [[ (F
-          * (LogHeader xp) |=> header_to_valu (mk_header 0)
-          * data_rep xp (synced_list old)
-          * exists rest, (LogDescriptor xp) |=> descriptor_to_valu (map fst (Map.elements ms) ++ rest)
-          * [[ @Rec.well_formed descriptor_type (map fst (Map.elements ms) ++ rest) ]]
-          * array (LogData xp) (firstn (# i) (synced_list (map snd (Map.elements ms)))) $1
-          * exists l', [[ length l' = Map.cardinal ms - # i ]]
-          * array (LogData xp ^+ i) (List.combine (skipn (# i) (map snd (Map.elements ms))) l') $1
-          * avail_region (LogData xp ^+ $ (Map.cardinal ms)) (# (LogLen xp) - Map.cardinal ms))%pred d' ]]
-    OnCrash crash
-    Begin
-      cs <- BUFCACHE.sync_array (LogData xp ^+ i) $0 cs;
-      lrx ^(cs)
-    Rof ^(cs);
-    rx ^(ms, cs).
-
-  Definition flush T xp (mscs : memstate_cachestate) rx : prog T :=
-    let '^(ms, cs) := mscs in
-    If (lt_dec (wordToNat (LogLen xp)) (Map.cardinal ms)) {
-      rx ^(^(ms, cs), false)
-    } else {
-      (* Write... *)
-      let^ (ms, cs) <- flush_unsync xp ^(ms, cs);
-      (* ... and sync *)
-      let^ (ms, cs) <- flush_sync xp ^(ms, cs);
-      rx ^(^(ms, cs), true)
-    }.
-
-  Theorem firstn_map : forall A B n l (f: A -> B),
-    firstn n (map f l) = map f (firstn n l).
-  Proof.
-    induction n; simpl; intros.
-    reflexivity.
-    destruct l; simpl.
-    reflexivity.
-    f_equal.
-    eauto.
-  Qed.
-
-  Lemma combine_one: forall A B (a: A) (b: B), [(a, b)] = List.combine [a] [b].
-  Proof.
-    intros; auto.
-  Qed.
-
-  Definition emp_star_r' : forall AT AEQ V P, P * (emp (V:=V) (AT:=AT) (AEQ:=AEQ)) =p=> P.
-  Proof.
-    cancel.
-  Qed.
-
-  Ltac word_assert P := let H := fresh in assert P as H by
-      (word2nat_simpl; repeat rewrite wordToNat_natToWord_idempotent'; word2nat_solve); clear H.
-
-  Ltac array_sort' :=
-    eapply pimpl_trans; rewrite emp_star; [ apply pimpl_refl |];
-    set_evars;
-    repeat rewrite <- sep_star_assoc;
-    subst_evars;
-    match goal with
-    | [ |- ?p =p=> ?p ] => fail 1
-    | _ => idtac
-    end;
-    repeat match goal with
-    | [ |- context[(?p * array ?a1 ?l1 ?s * array ?a2 ?l2 ?s)%pred] ] =>
-      word_assert (a2 <= a1)%word;
-      first [
-        (* if two arrays start in the same place, try to prove one of them is empty and eliminate it *)
-        word_assert (a1 = a2)%word;
-        first [
-          let H := fresh in assert (length l1 = 0) by solve_lengths;
-          apply length_nil in H; try rewrite H; clear H; simpl; rewrite emp_star_r'
-        | let H := fresh in assert (length l2 = 0) by solve_lengths;
-          apply length_nil in H; try rewrite H; clear H; simpl; rewrite emp_star_r'
-        | fail 2
-        ]
-      | (* otherwise, just swap *)
-        rewrite (sep_star_assoc p (array a1 l1 s));
-        rewrite (sep_star_comm (array a1 l1 s)); rewrite <- (sep_star_assoc p (array a2 l2 s))
-      ]
-    end;
-    (* make sure we can prove it's sorted *)
-    match goal with
-    | [ |- context[(?p * array ?a1 ?l1 ?s * array ?a2 ?l2 ?s)%pred] ] =>
-      (word_assert (a1 <= a2)%word; fail 1) || fail 2
-    | _ => idtac
-    end;
-    eapply pimpl_trans; rewrite <- emp_star; [ apply pimpl_refl |].
-
-  Ltac array_sort :=
-    word2nat_clear; word2nat_auto; [ array_sort' | .. ].
-
-  Lemma singular_array: forall T a (v: T),
-    a |-> v <=p=> array a [v] $1.
-  Proof.
-    intros. split; cancel.
-  Qed.
-
-  Lemma equal_arrays: forall T (l1 l2: list T) a1 a2,
-    a1 = a2 -> l1 = l2 -> array a1 l1 $1 =p=> array a2 l2 $1.
-  Proof.
-    cancel.
-  Qed.
-
-  Ltac rewrite_singular_array :=
-    repeat match goal with
-    | [ |- context[@ptsto addr (@weq addrlen) ?V ?a ?v] ] =>
-      setoid_replace (@ptsto addr (@weq addrlen) V a v)%pred
-      with (array a [v] $1) by (apply singular_array)
-    end.
-
-  Lemma make_unifiable: forall a l s,
-    array a l s <=p=> unifiable_array a l s.
-  Proof.
-    split; cancel.
-  Qed.
-
-  Ltac array_cancel_trivial :=
-    fold unifiable_array;
-    match goal with
-    | [ |- _ =p=> ?x * unifiable_array ?a ?l ?s ] => first [ is_evar x | is_var x ]; unfold unifiable_array; rewrite (make_unifiable a l s)
-    | [ |- _ =p=> unifiable_array ?a ?l ?s * ?x ] => first [ is_evar x | is_var x ]; unfold unifiable_array; rewrite (make_unifiable a l s)
-    end;
-    solve [ cancel ].
-
-  Ltac array_match :=
-    unfold unifiable_array in *;
-    match goal with (* early out *)
-    | [ |- _ =p=> _ * array _ _ _ ] => idtac
-    | [ |- _ =p=> _ * _ |-> _ ] => idtac
-    | [ |- _ =p=> array _ _ _ ] => idtac
-    end;
-    solve_lengths_prepare;
-    rewrite_singular_array;
-    array_sort;
-    set_evars;
-    repeat (rewrite array_app; [ | solve_lengths_prepped ]); [ repeat rewrite <- app_assoc | .. ];
-    try apply pimpl_refl;
-    try (apply equal_arrays; [ solve_lengths_prepped | try reflexivity ]);
-    subst_evars.
-
-  Ltac try_arrays_lengths := try (array_cancel_trivial || array_match); solve_lengths_prepped.
-
-  (* Slightly different from CPDT [equate] *)
-  Ltac equate x y :=
-    let tx := type of x in
-    let ty := type of y in
-    let H := fresh in
-    assert (x = y) as H by reflexivity; clear H.
-
-  Ltac split_pair_list_evar :=
-    match goal with
-    | [ |- context [ ?l ] ] =>
-      is_evar l;
-      match type of l with
-      | list (?A * ?B) =>
-        let l0 := fresh in
-        let l1 := fresh in
-        evar (l0 : list A); evar (l1 : list B);
-        let l0' := eval unfold l0 in l0 in
-        let l1' := eval unfold l1 in l1 in
-        equate l (@List.combine A B l0' l1');
-        clear l0; clear l1
-      end
-    end.
-
-  Theorem combine_upd: forall A B i a b (va: A) (vb: B),
-    List.combine (upd a i va) (upd b i vb) = upd (List.combine a b) i (va, vb).
-  Proof.
-    unfold upd; intros.
-    apply combine_updN.
-  Qed.
-
-  Lemma updN_0_skip_1: forall A l (a: A),
-    length l > 0 -> updN l 0 a = a :: skipn 1 l .
-  Proof.
-    intros; destruct l.
-    simpl in H. omega.
-    reflexivity.
-  Qed.
-
-  Lemma cons_app: forall A l (a: A),
-    a :: l = [a] ++ l.
-  Proof.
+    eassign (mk_mstate vmap0 ms'_1).
+    step.
     auto.
   Qed.
 
-  Lemma combine_map_fst_snd: forall A B (l: list (A * B)),
-    List.combine (map fst l) (map snd l) = l.
+
+  (* a pseudo-commit for read-only transactions *)
+  Theorem commit_ro_ok : forall xp ms,
+    {< F ds,
+    PRE:hm
+      rep xp F (ActiveTxn ds ds!!) ms hm
+    POST:hm' RET:r
+      rep xp F (NoTxn ds) r hm'
+    CRASH:hm'
+      exists ms', rep xp F (NoTxn ds) ms' hm'
+    >} commit_ro xp ms.
   Proof.
-    induction l.
+    intros.
+    eapply pimpl_ok2.
+    apply abort_ok.
+    safecancel.
+    apply sep_star_comm.
     auto.
-    simpl; rewrite IHl; rewrite <- surjective_pairing; auto.
-  Qed.
-
-  Hint Rewrite firstn_combine_comm skipn_combine_comm selN_combine
-    removeN_combine List.combine_split combine_nth combine_one updN_0_skip_1 skipn_selN : lists.
-  Hint Rewrite <- combine_updN combine_upd combine_app : lists.
-
-  Ltac split_pair_list_vars :=
-    set_evars;
-    repeat match goal with
-    | [ H : list (?A * ?B) |- _ ] =>
-      match goal with
-      | |- context[ List.combine (map fst H) (map snd H) ] => fail 1
-      | _ => idtac
-      end;
-      rewrite <- combine_map_fst_snd with (l := H)
-    end;
-    subst_evars.
-
-  Ltac split_lists :=
-    unfold upd_prepend, upd_sync;
-    unfold sel, upd;
-    repeat split_pair_list_evar;
-    split_pair_list_vars;
-    autorewrite with lists; [ f_equal | .. ].
-
-  Ltac or_r := apply pimpl_or_r; right.
-  Ltac or_l := apply pimpl_or_r; left.
-
-
-  Theorem flush_unsync_ok : forall xp mscs,
-    {< m1 m2 F,
-    PRE
-      rep xp F (ActiveTxn m1 m2) mscs *
-      [[ let '^(ms, cs) := mscs in Map.cardinal ms <= wordToNat (LogLen xp) ]]
-    POST RET:mscs
-      rep xp F (FlushedUnsyncTxn m1 m2) mscs *
-      [[ let '^(ms, cs) := mscs in Map.cardinal ms <= wordToNat (LogLen xp) ]]
-    CRASH
-      exists mscs', rep xp F (ActiveTxn m1 m2) mscs' \/ rep xp F (FlushedUnsyncTxn m1 m2) mscs'
-    >} flush_unsync xp mscs.
-  Proof.
-    unfold flush_unsync; log_unfold; unfold avail_region, log_rep_empty.
-    destruct mscs as [ms cs].
-    intros.
-    solve_lengths_prepare.
-    step_with ltac:(unfold avail_region) try_arrays_lengths.
-    ring_simplify (# (LogData xp) + 0).
-    word2nat_simpl.
-    instantiate (1 := l).
-    cancel.
-    instantiate (1 := nil); auto.
-    solve_lengths.
-    step_with ltac:(unfold avail_region) try_arrays_lengths.
-    step_with ltac:(unfold avail_region, upd_prepend) try_arrays_lengths.
-    split_lists.
-    erewrite firstn_plusone_selN.
-    rewrite <- app_assoc.
-    f_equal.
-    simpl.
-    repeat f_equal.
-    solve_lengths.
-    erewrite firstn_plusone_selN.
-    rewrite <- app_assoc.
-    simpl.
-    instantiate (3 := l0 ++ [valuset_list (selN l1 0 ($0, nil))]).
-    simpl.
-    rewrite firstn_app_l by solve_lengths.
-    repeat erewrite selN_map by solve_lengths.
-    rewrite <- surjective_pairing.
-    rewrite selN_app2.
-    rewrite H21.
-    rewrite Nat.sub_diag.
-    reflexivity.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    abstract (case_eq l1; intros; subst; word2nat_clear; simpl in *; solve_lengths).
-
-    or_l. cancel.
-    array_match.
-    reflexivity.
-    solve_lengths.
-    or_l. cancel.
-    array_match.
-    reflexivity.
-    solve_lengths.
-    step_with ltac:(unfold avail_region) try_arrays_lengths.
-    (* Annoyingly, [intuition] just incorrectly applies [Forall_nil] in one place, so we can't use [step] *)
-    eapply pimpl_ok2; [ eauto with prog | ].
-    intros; norm; [ cancel' | intuition idtac ].
-    pred_apply; norm; [ cancel' | intuition idtac ].
-    rewrite firstn_oob by solve_lengths.
-    rewrite Map.cardinal_1.
-    unfold valuset_list.
-    instantiate (2 := l0).
-    instantiate (2 := [d1]).
-    rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - Map.cardinal ms).
-    cancel.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    rewrite Forall_forall; intuition.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    intuition.
-    abstract solve_lengths.
-    or_l. cancel.
-    rewrite firstn_oob by solve_lengths.
-    array_match.
-    reflexivity.
-    abstract solve_lengths.
-
-    or_r.
-    norm; [ cancel' | intuition idtac ].
-    pred_apply; norm; [ cancel' | intuition idtac ].
-    rewrite firstn_oob by solve_lengths.
-    rewrite Map.cardinal_1.
-    unfold valuset_list.
-    instantiate (2 := l0).
-    instantiate (2 := [d1]).
-    rewrite <- descriptor_to_valu_zeroes with (n := addr_per_block - Map.cardinal ms).
-    cancel.
-    eauto.
-    abstract solve_lengths.
-    solve_lengths.
-    rewrite Forall_forall; intuition.
-    abstract solve_lengths.
-    abstract solve_lengths.
-    intuition.
-
-    Unshelve.
-    all: auto.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (flush_unsync _ _) _) => apply flush_unsync_ok : prog.
-
-  Theorem flush_sync_ok : forall xp mscs,
-    {< m1 m2 F,
-    PRE
-      rep xp F (FlushedUnsyncTxn m1 m2) mscs *
-      [[ let '^(ms, cs) := mscs in Map.cardinal ms <= wordToNat (LogLen xp) ]]
-    POST RET:mscs
-      rep xp F (FlushedTxn m1 m2) mscs *
-      [[ let '^(ms, cs) := mscs in Map.cardinal ms <= wordToNat (LogLen xp) ]]
-    CRASH
-      exists mscs', rep xp F (ActiveTxn m1 m2) mscs' \/
-                    rep xp F (FlushedUnsyncTxn m1 m2) mscs'
-    >} flush_sync xp mscs.
-  Proof.
-    unfold flush_sync; log_unfold; unfold avail_region.
-    destruct mscs as [ms cs].
-    intros.
-    solve_lengths_prepare.
     step.
-    step.
-
-    ring_simplify (LogData xp ^+ $0).
-    cancel; eauto.
-    omega.
-
-    step.
-    instantiate (a5 := List.combine (skipn # m1 (map snd (Map.elements ms))) l4).
-    cancel.
-    solve_lengths.
-
-    step.
-    try_arrays_lengths.
-    split_lists.
-    rewrite skipn_skipn.
-    rewrite (plus_comm 1).
-    rewrite Nat.add_0_r.
-    erewrite firstn_plusone_selN.
-    rewrite <- app_assoc.
-    reflexivity.
-    solve_lengths.
-    erewrite firstn_plusone_selN.
-    rewrite <- app_assoc.
-    rewrite repeat_selN.
-    reflexivity.
-
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-
-    or_l. cancel.
-    try_arrays_lengths.
-    solve_lengths.
-
-    or_l. cancel.
-    try_arrays_lengths.
-    unfold upd_sync; solve_lengths.
-    unfold upd_sync; solve_lengths.
-    unfold upd_sync; solve_lengths.
-
-    step.
-    try_arrays_lengths.
-    rewrite firstn_oob by solve_lengths.
-    eauto.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-
-    or_r. cancel.
-    try_arrays_lengths.
-    solve_lengths.
-    solve_lengths.
-    solve_lengths.
-
-    or_l. cancel.
-    try_arrays_lengths.
-    solve_lengths.
-
-    Unshelve.
-    all: auto.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (flush_sync _ _) _) => apply flush_sync_ok : prog.
-
-  Theorem flush_ok : forall xp mscs,
-    {< m1 m2 F,
-    PRE
-      rep xp F (ActiveTxn m1 m2) mscs
-    POST RET:^(mscs,r)
-      ([[ r = true ]] * rep xp F (FlushedTxn m1 m2) mscs) \/
-      ([[ r = false ]] * rep xp F (ActiveTxn m1 m2) mscs)
-    CRASH
-      exists mscs', rep xp F (ActiveTxn m1 m2) mscs' \/ rep xp F (FlushedUnsyncTxn m1 m2) mscs'
-    >} flush xp mscs.
-  Proof.
-    unfold flush.
-    hoare.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (flush _ _) _) => apply flush_ok : prog.
-
-  Lemma equal_unless_in_trans: forall T m a b c (def: T),
-    equal_unless_in m a b def -> equal_unless_in m b c def -> equal_unless_in m a c def.
-  Proof.
-    unfold equal_unless_in; intuition.
-    rewrite H2 by auto. apply H3; auto.
-    rewrite H2 by auto. apply H3; auto.
-  Qed.
-
-  Lemma equal_unless_in_comm: forall T m a b (def: T),
-    equal_unless_in m a b def -> equal_unless_in m b a def.
-  Proof.
-    unfold equal_unless_in; intuition. rewrite H1 by auto; reflexivity.
-    rewrite H1 by auto; reflexivity.
-  Qed.
-
-  Lemma In_MapIn: forall V a (ms: Map.t V), In a (map fst (Map.elements ms)) <-> Map.In a ms.
-    intuition.
-    apply MapFacts.elements_in_iff.
-    apply in_map_iff in H.
-    destruct H.
-    intuition; subst.
-    eexists.
-    apply InA_alt.
-    eexists.
-    intuition; eauto.
-    constructor; simpl; auto.
-
-    apply MapFacts.elements_in_iff in H.
-    apply in_map_iff.
-    destruct H.
-    apply InA_alt in H.
-    destruct H.
-    intuition.
-    eexists.
-    intuition; eauto.
-    destruct x0; inversion H0; auto.
-  Qed.
-
-  Lemma equal_unless_in_replay_eq: forall ms a b def,
-    replay ms a = replay ms b <-> equal_unless_in (map fst (Map.elements ms)) a b def.
-  Proof.
-    unfold equal_unless_in, sel.
-    intuition.
-    {
-    erewrite <- replay_length with (m := a).
-    erewrite <- replay_length with (m := b).
-    f_equal; eauto.
-    }
-    {
-      erewrite <- replay_sel_invalid with (d := a).
-      erewrite <- replay_sel_invalid with (d := b).
-      f_equal; eauto.
-      word2nat_auto.
-      word2nat_auto.
-    }
-    {
-    destruct (lt_dec n (pow2 addrlen)).
-    - (* [pos] is a valid address *)
-      replace n with (wordToNat (natToWord addrlen (n))) by word2nat_auto.
-      erewrite <- replay_sel_other.
-      erewrite <- replay_sel_other with (m := b).
-      f_equal; eauto.
-      intro Hi; apply In_MapIn in Hi; tauto.
-      intro Hi; apply In_MapIn in Hi; tauto.
-    - erewrite <- replay_sel_invalid with (d := a).
-      erewrite <- replay_sel_invalid with (d := b).
-      f_equal; eauto.
-      word2nat_auto.
-      word2nat_auto.
-    }
-    {
-    eapply list_selN_ext.
-    repeat rewrite replay_length; auto.
-    intros.
-    destruct (lt_dec pos (pow2 addrlen)).
-    - (* [pos] is a valid address *)
-      replace pos with (wordToNat (natToWord addrlen (pos))) by word2nat_auto.
-      case_eq (Map.find $ pos ms).
-      + intros w Hf. apply Map.find_2 in Hf. apply replay_sel_in.
-        autorewrite with lengths in *.
-        solve_lengths.
-        erewrite replay_sel_in; eauto.
-        autorewrite with lengths in *.
-        solve_lengths.
-      + intros Hf. repeat erewrite replay_sel_other.
-        apply H1.
-        right.
-        word2nat_rewrites; try word2nat_solve.
-        intro HIn.
-        apply MapFacts.not_find_in_iff in Hf.
-        apply In_MapIn in HIn. tauto.
-        apply MapFacts.not_find_in_iff; auto.
-        apply MapFacts.not_find_in_iff; auto.
-    - repeat rewrite replay_sel_invalid by auto.
-      apply H1.
-      left.
-      word2nat_auto.
-    }
-  Qed.
-
-  Lemma f_equal_unless_in: forall A B (f: A -> B) l a b def def',
-    equal_unless_in l a b def -> equal_unless_in l (map f a) (map f b) def'.
-  Proof.
-    unfold equal_unless_in; split.
-    repeat rewrite map_length; intuition.
-    intros.
-    destruct H.
-    destruct (lt_dec n (length b)).
-    repeat rewrite selN_map with (default' := def) by congruence.
-    f_equal. intuition.
-    repeat rewrite selN_oob by (rewrite map_length; omega); trivial.
-  Qed.
-
-  Lemma equal_unless_in_replay_eq': forall ms (a b: list valuset) def,
-    equal_unless_in (map fst (Map.elements ms)) a b def -> replay ms (map fst a) = replay ms (map fst b).
-  Proof.
-    intros.
-    apply equal_unless_in_replay_eq with (def := fst def).
-    eapply f_equal_unless_in; eauto.
-  Qed.
-
-  Lemma combine_repeat_map: forall A B (v: B) (l: list A),
-    List.combine l (repeat v (length l)) = map (fun x => (x, v)) l.
-  Proof.
-    induction l; simpl; auto.
-    fold repeat; rewrite IHl; auto.
-  Qed.
-
-  Lemma equal_unless_in_replay_eq'': forall ms (a b: list valu) def,
-    replay ms a = replay ms b -> equal_unless_in (map fst (Map.elements ms))
-            (List.combine a (repeat (@nil valu) (length a))) 
-            (List.combine b (repeat (@nil valu) (length b))) def.
-  Proof.
-    intros.
-    repeat rewrite combine_repeat_map.
-    eapply f_equal_unless_in.
-    apply equal_unless_in_replay_eq with (def := fst def); auto.
-  Qed.
-
-
-  Lemma map_fst_combine: forall A B (a: list A) (b: list B),
-    length a = length b -> map fst (List.combine a b) = a.
-  Proof.
-    unfold map, List.combine; induction a; intros; auto.
-    destruct b; try discriminate; simpl in *.
-    rewrite IHa; [ auto | congruence ].
-  Qed.
-
-  Lemma map_snd_combine: forall A B (a: list A) (b: list B),
-    length a = length b -> map snd (List.combine a b) = b.
-  Proof.
-    unfold map, List.combine.
-    induction a; destruct b; simpl; auto; try discriminate.
-    intros; rewrite IHa; eauto.
-  Qed.
-
-
-  Hint Resolve equal_unless_in_trans equal_unless_in_comm equal_unless_in_replay_eq equal_unless_in_replay_eq'' : replay.
-
-  Lemma valid_entries_replay' : forall l l' ms def,
-    equal_unless_in (map fst (Map.elements ms))
-                    (List.combine l (repeat (@nil valu) (length l))) l' def
-    -> valid_entries l ms
-    -> valid_entries (replay' (Map.elements ms) (map fst l')) ms.
-  Proof.
-    intros.
-    pose proof (equal_unless_in_replay_eq' _ H) as Heq.
-    unfold replay in Heq; rewrite <- Heq; clear Heq.
-    rewrite map_fst_combine by solve_lengths.
-    eapply (@valid_entries_replay ms l); auto.
-  Qed.
-
-  Lemma nil_combine_nil_unless_in : forall A (l : list A) l' msa def,
-    equal_unless_in msa (List.combine l (repeat (@nil valu) (length l))) l' def
-    -> nil_unless_in msa (map snd l').
-  Proof.
-    unfold equal_unless_in, nil_unless_in; intros.
-    destruct H; unfold sel.
-    pose proof (H1 (# a)) as Hx; intuition.
-    destruct (lt_dec (# a) (length l')).
-    erewrite selN_map with (default' := def); eauto.
-    rewrite <- H3.
-    destruct def; erewrite selN_combine by solve_lengths; simpl.
-    rewrite repeat_selN; auto.
-    rewrite combine_length_eq in H by solve_lengths.
-    rewrite H; auto.
-    word2nat_auto.
-    rewrite selN_oob; solve_lengths.
-  Qed.
-
-  Lemma nil_unless_in_bwd : forall n l ms,
-    nil_unless_in (skipn n ms) l
-    -> nil_unless_in ms l.
-  Proof.
-    unfold nil_unless_in, sel, upd; intros.
-    apply H.
-    contradict H0.
-    eapply in_skipn_in; eauto.
-  Qed.
-
-  Lemma valid_entries_addr_valid : forall (i : addr) m l def,
-    (i < $ (Map.cardinal m))%word
-    -> valid_entries l m
-    -> # (sel (map fst (Map.elements m)) i def) < length l.
-  Proof.
-    intros.
-    eapply H0.
-    apply MapFacts.elements_mapsto_iff.
-    apply In_InA.
-    apply MapProperties.eqke_equiv.
-    apply in_selN_map.
-    solve_lengths.
-    Grab Existential Variables.
-    exact $0.
-  Qed.
-
-  Lemma helper_valid_entries_addr_valid : forall i ls log (l l' : list valuset) ms def,
-    valid_entries log ms
-    -> (i < $ (Map.cardinal ms))%word
-    -> equal_unless_in ls log (map fst l') $0
-    -> # (sel (map fst (Map.elements ms)) i def) < length l'.
-  Proof.
-    unfold equal_unless_in, valid_entries; intros.
-    destruct H1.
-    rewrite map_length in H1.
-    rewrite <- H1.
-    apply valid_entries_addr_valid; auto.
-  Qed.
-
-  Lemma fold_left_skipn_S : forall A B l (f : A -> B -> A) i a def,
-    i < length l
-    -> fold_left f (skipn (S i) l) (f a (selN l i def))
-     = fold_left f (skipn i l) a.
-  Proof.
-    induction l; simpl; intros; auto.
-    inversion H.
-    destruct i.
-    simpl; auto.
-    apply IHl.
-    omega.
-  Qed.
-
-  Lemma replay_skipn_progress : forall i (log : list (addr * valu)) l,
-    i < length log
-    -> replay' (skipn (S i) log) (upd l (selN (map fst log) i $0) (selN (map snd log) i $0)) 
-     = replay' (skipn i log) l.
-  Proof.
-    intros.
-    repeat erewrite selN_map with (default' := ($0, $0)); eauto.
-    unfold replay'.
-    remember (fun m' p => upd m' (fst p) (snd p)) as f.
-    replace (upd l (fst (selN log i ($0, $0))) (snd (selN log i ($0, $0))))
-        with (f l (selN log i ($0, $0)) ).
-    rewrite fold_left_skipn_S; auto.
-    subst; auto.
-  Qed.
-
-  Lemma fst_upd_prepend : forall vs a v,
-    map fst (upd_prepend vs a v) = upd (map fst vs) a v.
-  Proof.
-    unfold upd_prepend; intros.
-    rewrite map_upd; auto.
-  Qed.
-
-
-  Lemma equal_unless_in_bwd : forall A n l l' (def : A) ms,
-    equal_unless_in (skipn n ms) l l' def
-    -> equal_unless_in ms l l' def.
-  Proof.
-    unfold equal_unless_in, sel, upd; intros.
-    destruct H.
-    split; auto;intuition.
-    apply H0. right.
-    contradict H2.
-    eapply in_skipn_in; eauto.
-  Qed.
-
-  Lemma valid_entries_replay'_rev : forall l m,
-    valid_entries (replay' (Map.elements m) l) m
-    -> valid_entries l m.
-  Proof.
-    unfold valid_entries, indomain'; intros.
-    apply H in H0.
-    rewrite replay'_length in H0; auto.
-  Qed.
-
-  Lemma replay'_sel_fst_eq_snd : forall V n (log : list (addr * V)) l ad vd,
-    KNoDup log
-    -> n < length log
-    -> # (selN (map fst log) n ad) < length l
-    -> sel (replay' log l) (selN (map fst log) n ad) vd
-                          = selN (map snd log) n vd.
-  Proof.
-    intros.
-    erewrite replay'_sel_in; eauto.
-    apply in_selN_map; auto.
-  Qed.
-
-  Lemma equal_unless_in_S : forall (n : addr) (log : list (addr * valu)) l l' def m,
-    equal_unless_in (skipn (# n) (map fst log)) (replay' log l) l' def
-    -> (n < $ (Map.cardinal m))%word
-    -> valid_entries (replay' log l) m
-    -> log = Map.elements m
-    -> equal_unless_in (skipn (S (# n)) (map fst log)) (replay' log l)
-       (upd l' (selN (map fst log) (# n) $0) (selN (map snd log) (# n) def)) def.
-  Proof.
-    unfold equal_unless_in, upd, sel; intros.
-    assert (length l = length l') as Heq.
-    rewrite replay'_length in H; apply H.
-
-    destruct H; split; intros.
-    rewrite replay'_length; rewrite length_updN; auto.
-
-    destruct (Nat.eq_dec n0 (# (selN (map fst log) (# n) $0))); subst.
-    rewrite selN_updN_eq.
-    apply replay'_sel_fst_eq_snd.
-    apply Map.elements_3w.
-    solve_lengths.
-    apply valid_entries_addr_valid; auto.
-    apply valid_entries_replay'_rev; auto.
-
-    rewrite <- Heq.
-    apply valid_entries_addr_valid; auto.
-    apply valid_entries_replay'_rev; auto.
-
-    rewrite selN_updN_ne by auto.
-    apply H3.
-    destruct (lt_dec n0 (pow2 addrlen)); inversion H4; auto.
-    right; contradict H2.
-    eapply in_skipn_S; auto.
-    apply wordToNat_neq_inj.
-    rewrite wordToNat_natToWord_idempotent'; eauto.
-  Qed.
-
-  Lemma nil_unless_in_prepend : forall l d a v,
-    nil_unless_in l (map snd d) -> In a l
-    -> nil_unless_in l (map snd (upd_prepend d a v)).
-  Proof.
-    unfold nil_unless_in, upd_prepend; intros.
-    destruct (weq a a0); try congruence.
-    destruct (lt_dec (# a0) (length d)).
-    erewrite sel_map.
-    rewrite sel_upd_ne by auto.
-    erewrite <- H by eauto.
-    erewrite sel_map; eauto.
-    rewrite length_upd; eauto.
-    unfold sel; rewrite selN_oob; eauto.
-    solve_lengths.
-    Grab Existential Variables.
-    exact ($0, nil).
-  Qed.
-
-  Ltac solve_equal_unless_in_length :=
-    repeat match goal with
-    | [ H : equal_unless_in _ ?l1 ?l2 _ |- _ ] =>
-      let Hx := fresh in
-      unfold equal_unless_in in H; destruct H as [Hx ?];
-      autorewrite with lengths in Hx;
-      try rewrite Nat.min_id in Hx
-    | [ |- length _ = length _ ] => progress autorewrite with lengths
-    | [ H : length ?a = length ?b |- context [length ?a ] ] => rewrite H
-    end; auto.
-
-  Lemma equal_unless_in_replay' : forall (ms : memstate) l l' def,
-    equal_unless_in (map fst (Map.elements ms)) (replay' (Map.elements ms) l) l' def
-    -> equal_unless_in (map fst (Map.elements ms)) l l' def.
-  Proof.
-    intros.
-    apply equal_unless_in_replay_eq.
-    rewrite <- replay_twice.
-    apply <- equal_unless_in_replay_eq; eauto.
-  Qed.
-
-  Lemma pair_selN_map : forall A B (l : list (A * B)) n ad bd,
-    (selN (map fst l) n ad, selN (map snd l) n bd) = selN l n (ad, bd).
-  Proof.
-    induction l; destruct n; simpl; firstorder.
-    destruct a; auto.
-  Qed.
-
-  Lemma equal_unless_in_combine : forall A B log (l : list (A * B)) a b ad bd,
-    equal_unless_in log a (map fst l) ad
-    -> equal_unless_in log b (map snd l) bd
-    -> equal_unless_in log (List.combine a b) l (ad, bd).
-  Proof.
-    unfold equal_unless_in; intros.
-    assert (length a = length b).
-    rewrite map_length in *; solve_lengths.
-
-    destruct H; destruct H0.
-    split; intros.
-    rewrite map_length in *.
-    rewrite combine_length_eq; auto; solve_lengths.
-
-    rewrite selN_combine by auto.
-    rewrite H2 by auto.
-    rewrite H3 by auto.
-    apply pair_selN_map.
-  Qed.
-
-  Lemma equal_unless_in_split : forall A B log (l : list (A * B)) a b def,
-    equal_unless_in log (List.combine a b) l def
-    -> length a = length b
-    -> equal_unless_in log a (map fst l) (fst def) /\
-       equal_unless_in log b (map snd l) (snd def).
-  Proof.
-    unfold equal_unless_in; intros.
-    destruct H.
-    rewrite combine_length_eq in H by auto.
-    split; split; try solve_lengths.
-
-    destruct (lt_dec n (length l)).
-    erewrite selN_map by auto.
-    rewrite <- H1 by auto.
-    destruct def.
-    rewrite selN_combine by auto.
-    simpl; auto.
-    rewrite selN_oob by omega.
-    rewrite selN_oob; auto.
-    rewrite map_length; omega.
-
-    destruct (lt_dec n (length l)).
-    erewrite selN_map by auto.
-    rewrite <- H1 by auto.
-    destruct def.
-    rewrite selN_combine by auto.
-    simpl; auto.
-    rewrite selN_oob by omega.
-    rewrite selN_oob; auto.
-    rewrite map_length; omega.
-  Qed.
-
-  Lemma nil_unless_in_equal_unless_in : forall log n l,
-    nil_unless_in log l
-    -> n = length l
-    -> goodSizeEq addrlen n
-    -> equal_unless_in log (repeat nil n) l nil.
-  Proof.
-    unfold nil_unless_in, equal_unless_in; intros.
-    split; solve_lengths.
-    destruct (lt_dec n0 n).
-
-    rewrite repeat_selN by auto.
-    destruct (lt_dec n0 (pow2 addrlen)).
-    intuition.
-    erewrite <- H at 1; eauto.
-    unfold sel.
-    rewrite wordToNat_natToWord_idempotent'; auto.
-
-    intuition; unfold goodSize, goodSizeEq in *; omega.
-    repeat rewrite selN_oob; solve_lengths.
-  Qed.
-
-  Lemma equal_unless_in_trans_nil : forall log l (l1 : list valuset) l2,
-    equal_unless_in log (List.combine l (repeat nil (length l))) l1 ($0, nil)
-    -> equal_unless_in log (map fst l1) (map fst l2) $0
-    -> nil_unless_in log (map snd l2)
-    -> goodSizeEq addrlen (length l)
-    -> equal_unless_in log (List.combine l (repeat nil (length l))) l2 ($0, nil).
-  Proof.
-    intros.
-    apply equal_unless_in_split in H; destruct H; simpl in *.
-    eapply equal_unless_in_combine.
-    eapply equal_unless_in_trans; eauto.
-    apply nil_unless_in_equal_unless_in; auto.
-    solve_equal_unless_in_length.
-    solve_lengths.
-  Qed.
-
-  Lemma equal_unless_in_upd_in : forall (n : addr) log l l' def m,
-    equal_unless_in (map fst log) l l' def
-    -> (n < $ (Map.cardinal m))%word
-    -> valid_entries l m
-    -> log = Map.elements m
-    -> goodSizeEq addrlen (length l')
-    -> equal_unless_in (map fst log) l
-       (upd l' (selN (map fst log) (# n) $0) (selN (map snd log) (# n) def)) def.
-  Proof.
-    unfold equal_unless_in, upd, sel; intros.
-    destruct H; split; intros.
-    rewrite length_updN; auto.
-
-    destruct (Nat.eq_dec n0 (# (selN (map fst log) (# n) $0))); subst.
-    intuition.
-    rewrite H4 by auto.
-    destruct (lt_dec # (selN (map fst (Map.elements m)) (# n) $0) (length l'));
-    unfold goodSize, goodSizeEq, Map.key in *.
-    contradict H2; omega.
-    rewrite selN_oob by omega.
-    rewrite selN_oob; auto.
-    rewrite length_updN; omega.
-
-    contradict H2.
-    rewrite natToWord_wordToNat.
-    apply in_selN;  solve_lengths.
-
-    rewrite selN_updN_ne by auto.
-    apply H4; auto.
-  Qed.
-
-  Lemma equal_unless_in_trans_upd_in : forall (n : addr) log l (l1 : list valuset) l2 m,
-    equal_unless_in (map fst log) (List.combine l (repeat nil (length l))) l1 ($0, nil)
-    -> equal_unless_in (skipn (# n) (map fst log)) (replay' log (map fst l1)) l2 $0
-    -> (n < $ (Map.cardinal m))%word
-    -> valid_entries l m
-    -> log = Map.elements m
-    -> goodSizeEq addrlen (length l2)
-    -> equal_unless_in (map fst log) l
-       (upd l2 (selN (map fst log) (# n) $0) (selN (map snd log) (# n) $0)) $0.
-  Proof.
-    intros.
-    apply equal_unless_in_split in H; destruct H; simpl in *.
-    eapply equal_unless_in_bwd in H0; eauto.
-    subst; eapply equal_unless_in_replay' in H0.
-    eapply equal_unless_in_upd_in; eauto.
-    eapply equal_unless_in_trans; eauto.
-    solve_lengths.
-  Qed.
-
-  Lemma replay'_terminate_replay : forall (m : memstate) l (l1 : list valuset) l2 (bound : addr),
-    equal_unless_in (map fst (Map.elements m)) (List.combine l (repeat nil (length l))) l1 ($0, nil)
-    -> replay' (skipn # (natToWord addrlen (Map.cardinal m)) (Map.elements m)) l2
-       = replay' (Map.elements m) (map fst l1)
-    -> Map.cardinal m <= # bound
-    -> l2 = replay m l.
-  Proof.
-    intros.
-    rewrite skipn_oob in H0; simpl in H0.
-    rewrite H0.
-    apply equal_unless_in_split in H; destruct H.
-    apply equal_unless_in_replay_eq in H.
-    rewrite H; auto.
-    solve_lengths.
-    erewrite wordToNat_natToWord_bound; eauto.
-    solve_lengths.
-  Qed.
-
-  Lemma replay_unsync_crash : forall (m m' : memstate) l (l1 : list valuset) l2,
-    equal_unless_in (map fst (Map.elements m)) (List.combine l (repeat nil (length l))) l1 ($0, nil)
-    -> replay' (Map.elements m) (map fst l1) = replay m' l2
-    -> replay m l = replay m' l2.
-  Proof.
-    intros.
-    apply equal_unless_in_split in H; destruct H.
-    apply equal_unless_in_replay_eq in H.
-    rewrite H; auto.
-    solve_lengths.
-  Qed.
-
-  Definition apply_unsync T xp (mscs : memstate_cachestate) rx : prog T :=
-    let '^(ms, cs) := mscs in
-    let^ (cs) <- For i < $ (Map.cardinal ms)
-    Ghost [ cur F ]
-    Loopvar [ cs ]
-    Continuation lrx
-    Invariant
-      exists d', BUFCACHE.rep cs d' *
-      [[ (F
-          * (LogHeader xp) |=> header_to_valu (mk_header (Map.cardinal ms))
-          * log_rep xp cur ms
-          * exists d, data_rep xp d
-          * [[ replay' (skipn (wordToNat i) (Map.elements ms)) (map fst d) = cur ]]
-          * [[ equal_unless_in (skipn (wordToNat i) (map fst (Map.elements ms))) cur (map fst d) $0 ]]
-          * [[ nil_unless_in (map fst (Map.elements ms)) (map snd d) ]])%pred d' ]]
-    OnCrash
-      exists mscs', rep xp F (CommittedTxn cur) mscs'
-    Begin
-      cs <- BUFCACHE.write_array (DataStart xp)
-        (sel (map fst (Map.elements ms)) i $0) (sel (map snd (Map.elements ms)) i $0) cs;
-      lrx ^(cs)
-    Rof ^(cs);
-    rx ^(ms, cs).
-
-  Theorem apply_unsync_ok: forall xp mscs,
-    {< m F,
-    PRE
-      rep xp F (CommittedTxn m) mscs
-    POST RET:mscs
-      rep xp F (AppliedUnsyncTxn m) mscs
-    CRASH
-      exists mscs', rep xp F (CommittedTxn m) mscs'
-    >} apply_unsync xp mscs.
-  Proof.
-    unfold apply_unsync; log_unfold.
-
-    step.
-    eapply valid_entries_replay'; eauto.
-    apply equal_unless_in_replay_eq.
-    pose proof (replay_twice) as Hx; unfold replay at 2 in Hx.
-    rewrite Hx; auto.
-    eapply nil_combine_nil_unless_in; eauto.
-
-    step.
-    eapply helper_valid_entries_addr_valid; eauto.
-
-    step.
-    rewrite fst_upd_prepend.
-    erewrite wordToNat_plusone by eauto.
-    rewrite replay_skipn_progress; auto.
-    abstract solve_lengths.
-
-    rewrite fst_upd_prepend.
-    erewrite wordToNat_plusone by eauto.
-    eapply equal_unless_in_S; eauto.
-
-    apply nil_unless_in_prepend; auto.
-    apply in_sel.
-    abstract solve_lengths.
-
-    cancel; auto.
-    eapply equal_unless_in_trans_nil; eauto.
-    eapply equal_unless_in_replay'.
-    eapply equal_unless_in_bwd; eauto.
-    hypmatch (array (DataStart xp) l2) as Hx.
-    setoid_rewrite array_max_length_pimpl with (l := l2) in Hx.
-    destruct_lift Hx; replace (length l) with (length l2); auto.
-    abstract solve_equal_unless_in_length.
-
-    cancel; auto.
-    apply equal_unless_in_combine.
-    rewrite fst_upd_prepend.
-    eapply equal_unless_in_trans_upd_in; eauto.
-    hypmatch (array (DataStart xp) l2) as Hx.
-    setoid_rewrite array_max_length_pimpl with (l := l2) in Hx.
-    destruct_lift Hx; rewrite map_length; auto.
-
-    apply nil_unless_in_equal_unless_in.
-    apply nil_unless_in_prepend; auto.
-    apply in_sel; solve_lengths.
-    rewrite map_length; rewrite upd_prepend_length.
-    abstract solve_equal_unless_in_length.
-    hypmatch (array (DataStart xp) l2) as Hx.
-    setoid_rewrite array_max_length_pimpl with (l := l2) in Hx.
-    destruct_lift Hx; replace (length l) with (length l2); auto.
-    abstract solve_equal_unless_in_length.
-
-    step.
-    apply equal_arrays; auto.
-    rewrite <- combine_map_fst_snd at 1.
-    f_equal.
-    eapply replay'_terminate_replay; eauto.
-    abstract solve_equal_unless_in_length.
-
-    eapply replay_unsync_crash; eauto.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (apply_unsync _ _) _) => apply apply_unsync_ok : prog.
-
-  Definition apply_sync T xp (mscs : memstate_cachestate) rx : prog T :=
-    let '^(ms, cs) := mscs in
-    let^ (cs) <- For i < $ (Map.cardinal ms)
-    Ghost [ cur F ]
-    Loopvar [ cs ]
-    Continuation lrx
-    Invariant
-      exists d', BUFCACHE.rep cs d' *
-      [[ (F
-          * (LogHeader xp) |=> header_to_valu (mk_header (Map.cardinal ms))
-          * log_rep xp cur ms
-          * exists cur_unflushed, data_rep xp (List.combine cur cur_unflushed)
-          * [[ length cur = length cur_unflushed ]]
-          * [[ nil_unless_in (skipn (wordToNat i) (map fst (Map.elements ms))) cur_unflushed ]])%pred d' ]]
-    OnCrash
-      exists mscs', rep xp F (AppliedUnsyncTxn cur) mscs'
-    Begin
-      cs <- BUFCACHE.sync_array (DataStart xp) (sel (map fst (Map.elements ms)) i $0) cs;
-      lrx ^(cs)
-    Rof ^(cs);
-    cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header 0)) cs;
-    rx ^(ms, cs).
-
-  Lemma nil_unless_in_S : forall n l ms,
-    nil_unless_in (skipn n ms) l
-    -> nil_unless_in (skipn (S n) ms) (upd l (selN ms n $0) nil).
-  Proof.
-    unfold nil_unless_in, upd, sel; intros.
-    destruct (Nat.eq_dec (# (selN ms n $0)) (# a)).
-    rewrite e; rewrite selN_updN_eq_default; auto.
-    rewrite selN_updN_ne; auto.
-    apply H. contradict H0.
-    eapply in_skipn_S; eauto.
-    apply wordToNat_neq_inj; eauto.
-  Qed.
-
-  Lemma helper_upd_sync_pimpl : forall m d l ms s a,
-    length (replay m d) = length l
-    -> array s (upd_sync (List.combine (replay m d) l) (sel ms a $0) ($0, nil)) $1
-    =p=> array s (List.combine (replay m d) (upd l (sel ms a $0) nil)) $1.
-  Proof.
-    intros.
-    apply equal_arrays; auto; unfold upd_sync.
-    rewrite <- combine_upd; f_equal.
-    eapply selN_eq_updN_eq; unfold sel.
-    rewrite selN_combine; simpl; eauto.
-  Qed.
-
-  Lemma repeat_selN_is : forall A l (a def : A),
-    (forall i, selN l i def = a)
-    -> l = repeat a (length l).
-  Proof.
-    induction l; intros; auto.
-    erewrite <- (H 0). simpl.
-    unfold repeat; fold repeat.
-    f_equal.
-    pose proof (H 0); simpl in H0; subst.
-    eapply IHl with (def := def); intro.
-    rewrite <- (H (S i)).
-    simpl; auto.
-  Qed.
-
-  Lemma nil_unless_in_oob' : forall n l n' ms,
-    nil_unless_in (skipn n ms) l
-    -> goodSizeEq addrlen (length l)
-    -> n = length ms
-    -> n' = length l
-    -> l = repeat nil n'.
-  Proof.
-    intros; subst.
-    rewrite skipn_oob in H by auto.
-    unfold nil_unless_in, sel in *.
-    apply repeat_selN_is with (def := nil); intro.
-    destruct (lt_dec i (pow2 addrlen)).
-    erewrite <- (H (natToWord addrlen i)) at 2; auto.
-    f_equal.
-    erewrite wordToNat_natToWord_idempotent'; eauto.
-    rewrite selN_oob; auto.
-    unfold goodSizeEq in H0.
-    omega.
-  Qed.
-
-  Lemma nil_unless_in_oob : forall n l n' ms F xp l' d m ,
-    nil_unless_in (skipn n ms) l
-    -> n = length ms
-    -> n' = length l
-    -> (F * array xp (List.combine (replay l' d) l) $ (1))%pred m
-    -> length (replay l' d) = length l
-    -> l = repeat nil n'.
-  Proof.
-    intros.
-    eapply nil_unless_in_oob'; eauto.
-    rewrite array_max_length_pimpl in H2.
-    destruct_lift H2.
-    erewrite <- combine_length_eq2; eauto.
-  Qed.
-
-  Theorem apply_sync_ok: forall xp mscs,
-    {< m F,
-    PRE
-      rep xp F (AppliedUnsyncTxn m) mscs
-    POST RET:mscs
-      rep xp F (AppliedTxn m) mscs
-    CRASH
-      exists mscs', rep xp F (AppliedUnsyncTxn m) mscs' \/ rep xp F (AppliedTxn m) mscs'
-    >} apply_sync xp mscs.
-  Proof.
-    unfold apply_sync; log_unfold.
-    step.
-    step.
-
-    (* address passed to [sync_array] is in-bounds *)
-    rewrite combine_length_eq by auto.
-    apply valid_entries_addr_valid; auto.
-
-    (* updating the (List.combine cur cur_unflushed) *)
-    (* cannot [step], it will unify length _ = length _ *)
-    eapply pimpl_ok2; eauto with prog; intros; cancel.
-    apply helper_upd_sync_pimpl; auto.
-    rewrite length_upd; auto.
-
-    (* nil_unless_in for one less item *)
-    erewrite wordToNat_plusone; eauto.
-    apply nil_unless_in_S; auto.
-
-    (* crash condition *)
-    or_l; cancel; auto.
-    eapply nil_unless_in_bwd; eauto.
-
-    or_l; cancel; auto.
-    cancel.
-    apply helper_upd_sync_pimpl; auto.
-    rewrite length_upd; auto.
-    eapply nil_unless_in_bwd.
-    eapply nil_unless_in_S; eauto.
-
-    step.
-    step.
-
-    apply equal_arrays; auto; f_equal.
-    eapply nil_unless_in_oob; eauto.
-    abstract solve_lengths.
-
-    or_l; cancel; auto.
-    eapply nil_unless_in_bwd; eauto.
-
-    or_r; cancel; auto.
-    cancel.
-    apply equal_arrays; auto; f_equal.
-    eapply nil_unless_in_oob; eauto.
-    abstract solve_lengths.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (apply_sync _ _) _) => apply apply_sync_ok : prog.
-
-  Lemma helper_apply_goodSize : forall F xp d ms m,
-    (F * rep_inner xp (AppliedUnsyncTxn (replay ms d)) ms)%pred m
-    -> goodSizeEq addrlen (length d).
-  Proof.
-    log_unfold; intros.
-    setoid_rewrite array_max_length_pimpl in H.
-    destruct_lift H.
-    erewrite <- replay_length.
-    erewrite <- combine_length_eq; eauto.
-  Qed.
-
-  Definition apply T xp (mscs : memstate_cachestate) rx : prog T :=
-    let '^(ms, cs) := mscs in
-    let^ (ms, cs) <- apply_unsync xp ^(ms, cs);
-    let^ (ms, cs) <- apply_sync xp ^(ms, cs);
-    cs <- BUFCACHE.sync (LogHeader xp) cs;
-    rx ^(ms_empty, cs).
-
-  Theorem apply_ok: forall xp mscs,
-    {< m F,
-    PRE
-      rep xp F (CommittedTxn m) mscs
-    POST RET:mscs
-      rep xp F (NoTransaction m) mscs
-    CRASH
-      exists mscs', rep xp F (CommittedTxn m) mscs' \/
-                    rep xp F (AppliedTxn m) mscs' \/
-                    rep xp F (NoTransaction m) mscs'
-    >} apply xp mscs.
-  Proof.
-    unfold apply.
-    step; try cancel.
-    step; try solve [ cancel ].
-
-    unfold rep_inner.
-    step.
-    step.
-    log_unfold.
-    cancel.
-    rewrite <- avail_region_grow_all by eauto.
-    cancel; eauto.
-
-    unfold rep_inner.
-    cancel.
-    or_r; or_r.
-    cancel.
-    log_unfold.
-    cancel.
-    rewrite <- avail_region_grow_all by eauto.
-    cancel; eauto.
-    apply MapFacts.Equal_refl.
-
-    or_l.
-    cancel.
-    log_unfold.
-    cancel; auto.
-
-    apply equal_unless_in_combine.
-    rewrite map_fst_combine by auto.
-    apply equal_unless_in_replay_eq.
-    rewrite replay_twice; auto.
-
-    rewrite map_snd_combine by auto.
-    apply nil_unless_in_equal_unless_in; auto.
-    erewrite <- replay_length; eauto.
-    eapply helper_apply_goodSize; eauto.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (apply _ _) _) => apply apply_ok : prog.
-
-  Definition commit T xp (mscs : memstate_cachestate) rx : prog T :=
-    let '^(ms, cs) := mscs in
-    If (bool_dec (Map.is_empty ms) true) {
-      rx ^(^(ms, cs), true)
-    } else {
-      let^ (mscs, ok) <- flush xp ^(ms, cs);
-      let '^(ms, cs) := mscs in
-      If (bool_dec ok true) {
-        cs <- BUFCACHE.write (LogHeader xp) (header_to_valu (mk_header (Map.cardinal ms))) cs;
-        cs <- BUFCACHE.sync (LogHeader xp) cs;
-        let^ (ms, cs) <- apply xp ^(ms, cs);
-        rx ^(^(ms, cs), true)
-      } else {
-        let^ (ms, cs) <- abort xp ^(ms, cs);
-        rx ^(^(ms, cs), false)
-      }
-    }.
-
-  Definition would_recover_old' xp old :=
-    (exists ms, rep_inner xp (NoTransaction old) ms \/
-     (exists cur, rep_inner xp (ActiveTxn old cur) ms))%pred.
-
-  Definition would_recover_old xp F old :=
-    (exists cs d, BUFCACHE.rep cs d * [[ (F * would_recover_old' xp old)%pred d ]])%pred.
-
-  Definition would_recover_either' xp old cur :=
-    (exists ms,
-      rep_inner xp (NoTransaction old) ms \/
-      (exists x, rep_inner xp (ActiveTxn old x) ms) \/
-      rep_inner xp (CommittedTxn old) ms \/
-      rep_inner xp (AppliedTxn old) ms \/
-      rep_inner xp (FlushedUnsyncTxn old cur) ms \/
-      rep_inner xp (CommittedUnsyncTxn old cur) ms \/
-      rep_inner xp (CommittedTxn cur) ms \/
-      rep_inner xp (AppliedTxn cur) ms \/
-      rep_inner xp (NoTransaction cur) ms)%pred.
-
-  Definition would_recover_either_pred' xp old curpred :=
-    (exists ms,
-      rep_inner xp (NoTransaction old) ms \/
-      (exists x, rep_inner xp (ActiveTxn old x) ms) \/
-      rep_inner xp (CommittedTxn old) ms \/
-      rep_inner xp (AppliedTxn old) ms \/
-      (exists cur, rep_inner xp (FlushedUnsyncTxn old cur) ms * [[ curpred (list2mem cur) ]]) \/
-      (exists cur, rep_inner xp (CommittedUnsyncTxn old cur) ms * [[ curpred (list2mem cur) ]]) \/
-      (exists cur, rep_inner xp (CommittedTxn cur) ms * [[ curpred (list2mem cur) ]]) \/
-      (exists cur, rep_inner xp (AppliedTxn cur) ms * [[ curpred (list2mem cur) ]]) \/
-      (exists cur, rep_inner xp (NoTransaction cur) ms * [[ curpred (list2mem cur) ]]))%pred.
-
-  Definition would_recover_either xp F old cur :=
-    (exists cs d, BUFCACHE.rep cs d * [[ (F * would_recover_either' xp old cur)%pred d ]])%pred.
-
-  Definition would_recover_either_pred xp F old curpred :=
-    (exists cs d, BUFCACHE.rep cs d * [[ (F * would_recover_either_pred' xp old curpred)%pred d ]])%pred.
-
-  Hint Extern 0 (okToUnify (would_recover_old _ _ _) (would_recover_old _ _ _)) => constructor : okToUnify.
-  Hint Extern 0 (SepAuto.okToUnify (would_recover_old _ _ _) (would_recover_old _ _ _)) => constructor : okToUnify.
-  Hint Extern 0 (okToUnify (would_recover_either _ _ _ _) (would_recover_either _ _ _ _)) => constructor : okToUnify.
-  Hint Extern 0 (SepAuto.okToUnify (would_recover_either _ _ _ _) (would_recover_either _ _ _ _)) => constructor : okToUnify.
-  Hint Extern 0 (okToUnify (would_recover_either_pred _ _ _ _) (would_recover_either_pred _ _ _ _)) => constructor : okToUnify.
-  Hint Extern 0 (SepAuto.okToUnify (would_recover_either_pred _ _ _ _) (would_recover_either_pred _ _ _ _)) => constructor : okToUnify.
-
-  Theorem commit_ok: forall xp mscs,
-    {< m1 m2 F,
-     PRE            rep xp F (ActiveTxn m1 m2) mscs
-     POST RET:^(mscs,r)
-                    ([[ r = true ]] * rep xp F (NoTransaction m2) mscs) \/
-                    ([[ r = false ]] * rep xp F (NoTransaction m1) mscs)
-     CRASH          would_recover_either xp F m1 m2
-    >} commit xp mscs.
-  Proof.
-    unfold commit, would_recover_either, would_recover_either'.
-    hoare_with log_unfold ltac:(eauto with replay).
-    + or_l.
-      cancel_with ltac:(eauto with replay).
-      apply Map.is_empty_2 in H10.
-      unfold replay, replay'.
-      destruct (MapProperties.elements_Empty m) as [He ?].
-      rewrite He by auto.
-      auto.
-      apply Map.is_empty_2 in H10.
-      pose proof (@Map.empty_1 valu).
-      unfold ms_empty.
-      hnf. intros.
-      hnf in H10.
-      eapply eq_trans.
-      apply MapFacts.not_find_in_iff.
-      intro Hi.
-      hnf in Hi.
-      destruct Hi as [v ?].
-      eapply H10; eauto.
-      apply eq_sym.
-      apply MapFacts.not_find_in_iff.
-      intro Hi.
-      hnf in Hi.
-      destruct Hi as [v ?].
-      eapply H; eauto.
-    + or_r; or_r; or_r; or_r; or_r; or_r.
-      or_l. cancel. cancel.
-      eauto with replay.
-      eauto.
-      congruence.
-    + or_r; or_r; or_r; or_r; or_r; or_r; or_r.
-      or_l. cancel. cancel.
-      rewrite H18. cancel.
-      eauto.
-      congruence.
-    + repeat or_r. cancel.
-      rewrite H18. cancel.
-      eauto.
-    + or_r. or_l.
-      unfold avail_region.
-      cancel.
-      array_match.
-      reflexivity.
-      solve_lengths.
-    + or_r; or_r; or_r; or_r.
-      or_l. cancel. cancel.
-      solve_lengths.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (commit _ _) _) => apply commit_ok : prog.
-
-  Definition read_log T (xp : log_xparams) cs rx : prog T :=
-    let^ (cs, d) <- BUFCACHE.read (LogDescriptor xp) cs;
-    let desc := valu_to_descriptor d in
-    let^ (cs, h) <- BUFCACHE.read (LogHeader xp) cs;
-    let len := (valu_to_header h) :-> "length" in
-    let^ (cs, log) <- For i < len
-    Ghost [ cur log_on_disk F ]
-    Loopvar [ cs log_prefix ]
-    Continuation lrx
-    Invariant
-      exists d', BUFCACHE.rep cs d' *
-      [[ (F
-          * (LogHeader xp) |=> header_to_valu (mk_header (Map.cardinal log_on_disk))
-          * exists old d, data_rep xp d
-          * cur_rep old log_on_disk cur
-          * log_rep xp old log_on_disk
-            (* If something's in the transaction, it doesn't matter what state it's in on disk *)
-          * [[ equal_unless_in (map fst (Map.elements log_on_disk)) (synced_list old) d ($0, nil) ]]
-          * [[ log_prefix = firstn (wordToNat i) (Map.elements log_on_disk) ]])%pred d' ]]
-    OnCrash
-      exists mscs, rep xp F (CommittedTxn cur) mscs
-    Begin
-      let^ (cs, v) <- BUFCACHE.read_array (LogData xp) i cs;
-      lrx ^(cs, log_prefix ++ [(sel desc i $0, v)])
-    Rof ^(cs, []);
-    rx ^(MapProperties.of_list log, cs).
-
-  Theorem read_log_ok: forall xp cs,
-    {< m ms F,
-    PRE
-      rep xp F (CommittedTxn m) ^(ms, cs)
-    POST RET:^(r,cs)
-      [[ Map.Equal r ms ]] * rep xp F (CommittedTxn m) ^(ms, cs)
-    CRASH
-      exists mscs', rep xp F (CommittedTxn m) mscs'
-    >} read_log xp cs.
-  Proof.
-    unfold read_log; log_unfold.
-    hoare.
-    instantiate (1 := (List.combine (map snd (Map.elements (elt:=valu) m))
-     (repeat [] (length (map snd (Map.elements (elt:=valu) m)))))).
-    autorewrite_fast. cancel.
-    rewrite header_valu_id in *.
-    rec_simpl.
-    simpl in H.
-    solve_lengths.
-    eauto with replay.
-    rewrite header_valu_id in *.
-    rec_simpl.
-    assert (# m1 < length (Map.elements m)).
-    solve_lengths.
-    replace (# (m1 ^+ $ 1)) with (# m1 + 1).
-    erewrite firstn_plusone_selN'.
-    eauto.
-    rewrite descriptor_valu_id.
-    unfold sel.
-    rewrite selN_app1 by solve_lengths.
-    autorewrite with lists.
-    repeat erewrite selN_map by auto.
-    simpl.
-    rewrite <- surjective_pairing.
-    auto.
-    solve_lengths.
-    unfold Rec.well_formed; simpl.
-    intuition.
-    auto.
-    word2nat_clear.
-    word2nat_auto.
-    cancel.
-    eauto with replay.
-    eauto.
-    rewrite header_valu_id.
-    rewrite firstn_oob.
-    apply MapProperties.of_list_3.
-    rec_simpl.
-    simpl.
-    solve_lengths.
-    eauto with replay.
-    cancel.
-    auto.
-    Unshelve.
-    repeat constructor. exact $0.
-  Qed.
-
-  Hint Extern 1 ({{_}} progseq (read_log _ _) _) => apply read_log_ok : prog.
-
-  Definition recover T (xp: log_xparams) cs rx : prog T :=
-    let^ (ms, cs) <- read_log xp cs;
-    let^ (ms, cs) <- apply xp ^(ms, cs);
-    rx ^(ms, cs).
-
-  Lemma crash_invariant_synced_array: forall l start stride,
-    crash_xform (array start (List.combine l (repeat nil (length l))) stride) =p=>
-    array start (List.combine l (repeat nil (length l))) stride.
-  Proof.
-    unfold array.
-    induction l; intros; simpl; auto.
-    autorewrite with crash_xform.
-    cancel.
-    auto.
-  Qed.
-  Hint Rewrite crash_invariant_synced_array : crash_xform.
-
-  Definition possible_crash_list (l: list valuset) (l': list valu) :=
-    length l = length l' /\ forall i, i < length l -> In (selN l' i $0) (valuset_list (selN l i ($0, nil))).
-
-  Lemma crash_xform_array: forall l start stride,
-    crash_xform (array start l stride) =p=>
-      exists l', [[ possible_crash_list l l' ]] * array start (List.combine l' (repeat nil (length l'))) stride.
-  Proof.
-    unfold array, possible_crash_list.
-    induction l; intros.
-    cancel.
-    instantiate (a := nil).
-    simpl; auto.
-    auto.
-    autorewrite with crash_xform.
-    rewrite IHl.
-    cancel; [ instantiate (a := w :: l0) | .. ]; simpl; auto; fold repeat; try cancel;
-      destruct i; simpl; auto;
-      destruct (H4 i); try omega; simpl; auto.
-  Qed.
-
-  Lemma crash_invariant_avail_region: forall start len,
-    crash_xform (avail_region start len) =p=> avail_region start len.
-  Proof.
-    unfold avail_region.
-    intros.
-    autorewrite with crash_xform.
-    norm'l.
-    unfold stars; simpl.
-    autorewrite with crash_xform.
-    rewrite crash_xform_array.
-    unfold possible_crash_list.
-    cancel.
-    solve_lengths.
-  Qed.
-  Hint Rewrite crash_invariant_avail_region : crash_xform.
-
-  Lemma valid_entries_lengths_eq : forall l1 l2 m,
-    length l1 = length l2 -> valid_entries l1 m -> valid_entries l2 m.
-  Proof.
-    unfold valid_entries, indomain'.
-    intuition.
-    rewrite <- H; eauto.
-  Qed.
-
-  Lemma possible_crash_equal_unless_in : forall l0 l1 l2 (m: memstate),
-    equal_unless_in (map fst (Map.elements m)) (List.combine l0 (repeat [] (length l0))) l1 ($0, nil) ->
-    possible_crash_list l1 l2 ->
-    equal_unless_in (map fst (Map.elements m)) l0 l2 $0.
-  Proof.
-    unfold equal_unless_in, possible_crash_list.
-    intros.
-    assert (length l0 = length l1).
-    autorewrite with lengths in *.
-    rewrite Nat.min_r in * by auto.
-    intuition.
-    split.
-    intuition.
-    intros.
-    destruct (lt_dec n (length l0)).
-    destruct H.
-    destruct H0.
-    specialize (H3 n).
-    specialize (H4 n).
-    autorewrite with lists in *.
-    rewrite repeat_selN in * by auto.
-    rewrite <- H3 in H4.
-    simpl in H4.
-    elim H4; intuition.
-    intuition.
-    solve_lengths.
-    repeat rewrite selN_oob by omega.
-    auto.
-  Qed.
-
-  Ltac word_discriminate :=
-    match goal with [ H: $ _ = $ _ |- _ ] => solve [
-      apply natToWord_discriminate in H; [ contradiction | rewrite valulen_is; apply leb_complete; compute; trivial]
-    ] end.
-
-  Ltac cancel_pred_crash :=
-    eapply pred_apply_crash_xform; eauto;
-    autorewrite with crash_xform;
-    cancel; subst; cancel.
-
-  Lemma equal_unless_in_refl : forall A ms l d,
-    @equal_unless_in A ms l l d.
-  Proof.
-    unfold equal_unless_in; intuition.
-  Qed.
-  Hint Resolve equal_unless_in_refl : replay.
-
-  Lemma would_recover_old'_either' : forall xp old,
-    would_recover_old' xp old =p=> would_recover_either' xp old old.
-  Proof.
-    unfold would_recover_old', would_recover_either'.
     cancel.
   Qed.
 
-  Lemma would_recover_old_either : forall xp F old,
-    would_recover_old xp F old =p=> would_recover_either xp F old old.
+
+  Definition after_crash xp F ds cs hm :=
+    (exists raw, BUFCACHE.rep cs raw *
+     [[ ( exists d n ms, [[ n <= length (snd ds) ]] *
+       F * (rep_inner xp (NoTxn (d, nil)) ms hm \/
+            rep_inner xp (RollbackTxn d) ms hm) *
+       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
+     )%pred raw ]])%pred.
+
+  Definition before_crash xp F ds hm :=
+    (exists cs raw, BUFCACHE.rep cs raw *
+     [[ ( exists d n ms, [[ n <= length (snd ds) ]] *
+       F * (rep_inner xp (RecoveringTxn d) ms hm) *
+       [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
+     )%pred raw ]])%pred.
+
+  Theorem sync_invariant_after_crash : forall xp F ds cs hm,
+    sync_invariant F ->
+    sync_invariant (after_crash xp F ds cs hm).
   Proof.
-    unfold would_recover_old, would_recover_either.
-    cancel.
-    apply would_recover_old'_either'.
+    unfold after_crash; eauto.
   Qed.
 
-  Lemma would_recover_old'_either_pred' : forall xp old p,
-    would_recover_old' xp old =p=> would_recover_either_pred' xp old p.
+  Theorem sync_invariant_before_crash : forall xp F ds hm,
+    sync_invariant F ->
+    sync_invariant (before_crash xp F ds hm).
   Proof.
-    unfold would_recover_old', would_recover_either_pred'.
-    cancel.
+    unfold before_crash; eauto.
   Qed.
 
-  Lemma would_recover_old_either_pred : forall xp F old p,
-    would_recover_old xp F old =p=> would_recover_either_pred xp F old p.
-  Proof.
-    unfold would_recover_old, would_recover_either_pred.
-    cancel.
-    apply would_recover_old'_either_pred'.
-  Qed.
-
-  Lemma would_recover_either'_pred'_diskIs : forall xp old new,
-    would_recover_either' xp old new =p=> would_recover_either_pred' xp old (diskIs (list2mem new)).
-  Proof.
-    unfold would_recover_either', would_recover_either_pred'.
-    (* split up manually because the automated search takes too long to find the 8th OR *)
-    intros; norm; intuition; unfold stars; simpl.
-    cancel.
-    cancel.
-    cancel.
-    cancel.
-    do 4 or_r. or_l. cancel.
-    do 5 or_r. or_l. cancel.
-    do 6 or_r. or_l. cancel.
-    do 7 or_r. or_l. cancel.
-    repeat or_r. cancel.
-  Qed.
-
-  Lemma would_recover_either_pred_diskIs : forall xp F old new,
-    would_recover_either xp F old new =p=> would_recover_either_pred xp F old (diskIs (list2mem new)).
-  Proof.
-    unfold would_recover_either, would_recover_either_pred.
-    cancel.
-    rewrite would_recover_either'_pred'_diskIs.
-    cancel.
-  Qed.
-
-  Lemma would_recover_either_pred'_diskIs_rev : forall xp old new,
-    goodSizeEq addrlen (length new) ->
-    would_recover_either_pred' xp old (diskIs (list2mem new)) =p=>
-    would_recover_either' xp old new.
-  Proof.
-    unfold would_recover_either_pred', would_recover_either'.
-    intros; norm; intuition; unfold stars; simpl; unfold diskIs in *.
-    - cancel.
-    - cancel.
-    - cancel.
-    - cancel.
-    - do 4 or_r. or_l.
-      unfold rep_inner, data_rep, cur_rep.
-      setoid_rewrite array_max_length_pimpl at 1.
-      cancel.
-      eapply list2mem_inj; eauto.
-      rewrite replay_length. rewrite length_synced_list in *. auto.
-    - do 5 or_r. or_l.
-      unfold rep_inner, data_rep, cur_rep.
-      setoid_rewrite array_max_length_pimpl at 1.
-      cancel.
-      eapply list2mem_inj; eauto.
-      rewrite replay_length. rewrite length_synced_list in *. auto.
-    - do 6 or_r. or_l.
-      unfold rep_inner, data_rep, cur_rep.
-      setoid_rewrite array_max_length_pimpl at 1.
-      cancel.
-      unfold equal_unless_in in *; intuition.
-      eapply list2mem_inj; eauto.
-      rewrite replay_length. rewrite length_synced_list in *. rewrite H0 in *. auto.
-    - do 7 or_r. or_l.
-      unfold rep_inner, data_rep, cur_rep.
-      setoid_rewrite array_max_length_pimpl at 1.
-      cancel.
-      replace (replay m d) with (new); try cancel.
-      eapply list2mem_inj; eauto.
-      rewrite length_synced_list in *. rewrite replay_length in *. auto.
-      eapply list2mem_inj; eauto.
-      rewrite length_synced_list in *. rewrite replay_length in *. auto.
-    - repeat or_r.
-      unfold rep_inner, data_rep, cur_rep.
-      setoid_rewrite array_max_length_pimpl at 1.
-      cancel.
-      replace (a) with (new); try cancel.
-      eapply list2mem_inj; eauto.
-      rewrite length_synced_list in *. auto.
-      eauto.
-  Qed.
-
-  Lemma would_recover_either_pred_diskIs_rev : forall xp F old new,
-    goodSizeEq addrlen (length new) ->
-    would_recover_either_pred xp F old (diskIs (list2mem new)) =p=>
-    would_recover_either xp F old new.
-  Proof.
-    unfold would_recover_either_pred, would_recover_either.
-    intros; cancel.
-    apply would_recover_either_pred'_diskIs_rev; auto.
-  Qed.
-
-  Lemma would_recover_either'_pred'_pimpl : forall xp old new p,
-    would_recover_either' xp old new * [[ p (list2mem new) ]] =p=> would_recover_either_pred' xp old p.
-  Proof.
-    unfold would_recover_either', would_recover_either_pred'.
-    (* split up manually because the automated search takes too long to find the 8th OR *)
-    intros; norm; intuition; unfold stars; simpl.
-    cancel.
-    cancel.
-    cancel.
-    cancel.
-    do 4 or_r. or_l. cancel.
-    do 5 or_r. or_l. cancel.
-    do 6 or_r. or_l. cancel.
-    do 7 or_r. or_l. cancel.
-    repeat or_r. cancel.
-  Qed.
-
-  Lemma would_recover_either_pred_pimpl : forall xp F old new p,
-    would_recover_either xp F old new * [[ p (list2mem new) ]] =p=> would_recover_either_pred xp F old p.
-  Proof.
-    unfold would_recover_either, would_recover_either_pred.
-    cancel.
-    rewrite <- would_recover_either'_pred'_pimpl.
-    cancel.
-  Qed.
-
-  Lemma notxn_would_recover_old : forall xp F old mscs,
-    rep xp F (NoTransaction old) mscs =p=> would_recover_old xp F old.
-  Proof.
-    unfold would_recover_old, would_recover_old'.
-    cancel. cancel.
-  Qed.
-
-  Lemma activetxn_would_recover_old : forall xp F old new mscs,
-    rep xp F (ActiveTxn old new) mscs =p=> would_recover_old xp F old.
-  Proof.
-    unfold would_recover_old, would_recover_old'.
-    cancel. cancel.
-  Qed.
-
-  Lemma notxn_bounded_length : forall xp F old mscs,
-    rep xp F (NoTransaction old) mscs =p=>
-    rep xp F (NoTransaction old) mscs * [[ goodSizeEq addrlen (length old) ]].
-  Proof.
-    unfold rep; cancel.
-    unfold rep_inner, data_rep, synced_list in H0.
-    assert (goodSizeEq addrlen (length (List.combine old (repeat (@nil valu) (length old))))).
-    eapply array_max_length_F with (start:=DataStart _).
-    pred_apply' H0. cancel.
-    rewrite combine_length in *.
-    rewrite repeat_length in *.
-    rewrite Nat.min_idempotent in *.
-    auto.
-  Qed.
-
-  (**
-   * [after_crash_pred'] is similar to [would_recover_either_pred'] but describes
-   * states after a crash (i.e., after [crash_xform]).  This is a smaller set of
-   * different states that we have to consider.
-   *)
-  Definition after_crash_pred' xp old curpred :=
-    (exists ms,
-      rep_inner xp (NoTransaction old) ms \/
-      rep_inner xp (CommittedTxn old) ms \/
-      (exists cur, rep_inner xp (CommittedTxn cur) ms * [[ curpred (list2mem cur) ]]) \/
-      (exists cur, rep_inner xp (NoTransaction cur) ms * [[ curpred (list2mem cur) ]]))%pred.
-
-  Lemma crash_xform_would_recover_either_pred' : forall fsxp old curpred,
-    crash_xform (would_recover_either_pred' fsxp old curpred) =p=>
-    after_crash_pred' fsxp old curpred.
-  Proof.
-    intros.
-    unfold would_recover_either_pred', after_crash_pred'.
-    autorewrite with crash_xform.
-    repeat setoid_rewrite crash_xform_or_dist.
-    setoid_rewrite crash_xform_exists_comm.
-    norm'l; unfold stars; simpl.
-    rewrite sep_star_comm. rewrite star_emp_pimpl.
-    repeat apply pimpl_or_l; unfold rep_inner at 1;
-      unfold data_rep, log_rep, log_rep_empty, log_rep_unsynced, synced_list, cur_rep.
-
-    - (* NoTransaction old *)
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. cancel.
-
-      or_l.
-      unfold rep_inner, data_rep, log_rep_empty. cancel.
-      eauto.
-
-    - (* ActiveTxn old *)
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. cancel.
-
-      or_l.
-      unfold rep_inner, data_rep, log_rep_empty. cancel.
-      eapply MapFacts.Equal_refl.
-
-    - (* CommittedTxn old *)
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. rewrite crash_xform_array. cancel.
-
-      or_r. or_l.
-      unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
-      cancel; auto.
-      unfold possible_crash_list in *.
-      unfold equal_unless_in in H7.
-      intuition.
-      autorewrite with lengths in H1.
-      rewrite Nat.min_l in H1 by auto.
-      eapply valid_entries_lengths_eq; [ | eauto ]. congruence.
-      eapply equal_unless_in_replay_eq.
-      eapply possible_crash_equal_unless_in; eauto.
-
-    - (* AppliedTxn old *)
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. intuition.
-
-      + (* Header change applied too *)
-        cancel.
-        or_l.
-        unfold rep_inner, data_rep, log_rep_empty. cancel.
-        apply avail_region_grow_all; auto.
-        eapply MapFacts.Equal_refl.
-
-      + (* Header change was lost *)
-        cancel.
-        or_r. or_l.
-        unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
-        cancel. cancel.
-        rewrite replay_twice; auto.
-
-    - (* FlushedUnsyncTxn old new *)
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      rewrite crash_xform_array. norm'r; [ | intuition ].
-      or_l.
-      log_unfold. unfold avail_region, valid_size in *.
-      norm'l.
-      match goal with
-      | [ H : possible_crash_list _ _ |- _ ] =>
-        unfold possible_crash_list in H; destruct H as [H ?];
-        autorewrite with lengths in H; rewrite Nat.min_r in H by solve_lengths
-      end.
-      norm'r; [ cancel' | intuition idtac ].
-      rewrite valu_descriptor_id.
-      cancel; rewrite array_app by solve_lengths; cancel.
-      apply MapFacts.Equal_refl.
-      auto.
-      rewrite Forall_forall; intuition.
-      solve_lengths.
-      apply MapFacts.Equal_refl.
-      auto.
-      rewrite Forall_forall; intuition.
-      solve_lengths.
-
-    - (* CommittedUnsyncTxn old new *)
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. intuition.
-
-      + (* Commit bit applied *)
-        cancel.
-        or_r. or_r. or_l.
-        unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
-        cancel. cancel.
-
-      + (* Commit bit lost *)
-        cancel.
-        or_l.
-        unfold rep_inner, data_rep, log_rep_empty. cancel.
-        apply avail_region_grow_all; auto.
-        eapply MapFacts.Equal_refl.
-
-    - (* CommittedTxn new *)
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. rewrite crash_xform_array. cancel.
-
-      or_r. or_r. or_l.
-      unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
-      cancel.
-      cancel.
-      unfold possible_crash_list in *.
-      unfold equal_unless_in in H8.
-      intuition.
-      autorewrite with lengths in H1.
-      rewrite Nat.min_l in H1 by auto.
-      eapply valid_entries_lengths_eq; [ | eauto ]. congruence.
-      assert (replay m l = replay m l2).
-      eapply equal_unless_in_replay_eq.
-      eapply possible_crash_equal_unless_in; eauto.
-      congruence.
-
-    - (* AppliedTxn new *)
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. intuition.
-
-      + (* Header change applied too *)
-        autorewrite with crash_xform. norm'l; unfold stars; simpl.
-        autorewrite with crash_xform. cancel.
-
-        or_r. or_r. or_r.
-        unfold rep_inner, data_rep, log_rep_empty. cancel.
-        apply avail_region_grow_all; auto.
-        eapply MapFacts.Equal_refl.
-
-      + (* Header change was lost *)
-        autorewrite with crash_xform. norm'l; unfold stars; simpl.
-        autorewrite with crash_xform. cancel.
-
-        or_r. or_r. or_l.
-        unfold rep_inner, data_rep, log_rep, synced_list, cur_rep.
-        cancel. cancel.
-        rewrite replay_twice; eauto.
-
-    - (* NoTransaction new *)
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. norm'l; unfold stars; simpl.
-      autorewrite with crash_xform. cancel.
-
-      or_r. or_r. or_r.
-      unfold rep_inner, data_rep, log_rep_empty. cancel.
-      eapply MapFacts.Equal_refl.
-
-  Qed.
-
-  Hint Rewrite crash_xform_would_recover_either_pred' : crash_xform.
-
-  Lemma after_crash_pred'_would_recover_either_pred' : forall fsxp old curpred,
-    after_crash_pred' fsxp old curpred =p=>
-    would_recover_either_pred' fsxp old curpred.
-  Proof.
-    unfold after_crash_pred', would_recover_either_pred'.
-    intros; norm'l; unfold stars; simpl.
-    rewrite sep_star_comm. rewrite star_emp_pimpl.
-    repeat apply pimpl_or_l.
-    cancel.
-    cancel.
-    cancel.
-    (* the automated search takes too long to get to the 8th OR branch.. *)
-    norm; unfold stars; simpl; auto.
-    repeat or_r. cancel.
-  Qed.
-
+  Hint Resolve sync_invariant_after_crash sync_invariant_before_crash.
 
   Theorem recover_ok: forall xp cs,
-    {< m1 m2pred F,
-    PRE
-      exists d, BUFCACHE.rep cs d *
-      [[ crash_xform (F * would_recover_either_pred' xp m1 m2pred)%pred d ]]
-    POST RET:mscs
-      rep xp (crash_xform F) (NoTransaction m1) mscs \/
-      exists m2,
-      rep xp (crash_xform F) (NoTransaction m2) mscs * [[ m2pred (list2mem m2) ]]
-    CRASH
-      would_recover_either_pred xp (crash_xform F) m1 m2pred
+    {< F ds,
+    PRE:hm
+      after_crash xp F ds cs hm *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms' 
+      exists d n, [[ n <= length (snd ds) ]] *
+      rep xp F (NoTxn (d, nil)) ms' hm' *
+      [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
+    XCRASH:hm'
+      before_crash xp F ds hm'
     >} recover xp cs.
   Proof.
-    unfold recover, would_recover_either_pred.
-    intros.
-    eapply pimpl_ok2; eauto with prog.
-    intros. norm'l. unfold stars; simpl.
+    unfold recover, after_crash, before_crash, rep, rep_inner.
+    safestep.
+    unfold GLog.recover_any_pred. norm.
+    eassign F; cancel.
+    or_l; cancel.
+    intuition simpl; eauto.
+    unfold GLog.recover_any_pred. norm.
+    cancel.
+    or_r; cancel.
+    intuition simpl; eauto.
+    eauto.
 
-    (* We need to split up all of the possible [rep] preconditions, because
-     * this will decide what disk image to use for instantiating our evars.
-     * We convert [crash_xform would_recover_either_pred'] into [after_crash_pred'],
-     * which has fewer distinct states.
-     *)
+    prestep. norm. cancel.
+    intuition simpl; eauto.
+    pred_apply; cancel.
 
-    (* XXX an odd setoid_rewrite issue: can't rewrite the top-level term? *)
-    apply crash_xform_sep_star_dist in H4.
-    autorewrite with crash_xform in H4.
-    unfold after_crash_pred' in H4.
-    destruct_lift H4.
-    repeat ( apply sep_star_or_distr in H; apply pimpl_or_apply in H; destruct H;
-      destruct_lift H ).
-
-    - (* NoTransaction old *)
-      cancel. instantiate (1:=ms_empty).
-      unfold rep_inner, data_rep, synced_list.
-      cancel.
-      unfold log_rep_empty, log_rep, cur_rep.
-      rewrite MapProperties.cardinal_1 by apply Map.empty_1.
-      rewrite Nat.sub_0_r. ring_simplify (LogData xp ^+ $0).
-      cancel.
-
-      autorewrite with core.
-
-      step.
-      rewrite mapeq_rep.
-      cancel.
-      auto.
-      step.
-      unfold would_recover_either_pred'; cancel. cancel.
-      unfold would_recover_either_pred'; cancel. cancel.
-      unfold would_recover_either_pred'; cancel.
-      autorewrite with core; cancel. cancel.
-      unfold would_recover_either_pred'; cancel.
-
-    - (* CommittedTxn old *)
-      cancel.
-      step.
-      rewrite mapeq_rep.
-      cancel.
-      auto.
-      step.
-
-      unfold would_recover_either_pred'; cancel. cancel.
-      unfold would_recover_either_pred'; cancel. cancel.
-      unfold would_recover_either_pred'; cancel. cancel.
-      cancel.
-      unfold would_recover_either_pred'; cancel.
-
-    - (* CommittedTxn new *)
-      cancel.
-      step.
-      rewrite mapeq_rep.
-      cancel.
-      auto.
-      step.
-      unfold would_recover_either_pred'; cancel. cancel.
-      unfold would_recover_either_pred'; cancel. cancel.
-      unfold would_recover_either_pred'. norm; unfold stars; simpl; auto. repeat or_r. cancel.
-      (* [cancel] takes forever here *)
-      repeat (apply pimpl_or_r; right).
-      cancel.
-      intuition.
-      cancel.
-      unfold would_recover_either_pred'; cancel.
-
-    - (* NoTransaction new *)
-      cancel. instantiate (1:=ms_empty).
-      unfold rep_inner, data_rep, synced_list.
-      cancel.
-      unfold log_rep_empty, log_rep, cur_rep.
-      rewrite MapProperties.cardinal_1 by apply Map.empty_1.
-      rewrite Nat.sub_0_r. ring_simplify (LogData xp ^+ $0).
-      cancel.
-
-      autorewrite with core.
-      step.
-      rewrite mapeq_rep.
-      cancel.
-      auto.
-      step.
-      unfold would_recover_either_pred'; cancel. cancel.
-      unfold would_recover_either_pred'; cancel. cancel.
-      unfold would_recover_either_pred'. norm; unfold stars; simpl; auto. repeat or_r. cancel.
-      repeat (apply pimpl_or_r; right).
-      cancel.
-      autorewrite with core; cancel.
-      unfold would_recover_either_pred'; cancel.
+    norm'l.
+    repeat xcrash_rewrite.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm.
+    norm.
+    cancel.
+    intuition simpl; eauto.
+    pred_apply.
+    norm.
+    cancel.
+    eassign (mk_mstate vmap0 x1); eauto.
+    intuition simpl; eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
 
-  Definition read_array T xp a i stride mscs rx : prog T :=
-    let^ (mscs, r) <- read xp (a ^+ i ^* stride) mscs;
-    rx ^(mscs, r).
+  Lemma crash_xform_before_crash : forall xp F ds hm,
+    crash_xform (before_crash xp F ds hm) =p=>
+      exists cs, after_crash xp (crash_xform F) ds cs hm.
+  Proof.
+    unfold before_crash, after_crash, rep_inner; intros.
+    xform_norm.
+    rewrite BUFCACHE.crash_xform_rep_pred by eauto.
+    norm.
+    cancel.
+    intuition.
+    pred_apply.
+    xform_norm.
+    rewrite GLog.crash_xform_recovering.
+    unfold GLog.recover_any_pred.
+    norm. unfold stars; simpl.
+    cancel.
+    unfold GLog.recover_any_pred; cancel.
+    or_l; cancel.
+    eassign (mk_mstate vmap0 ms); eauto.
+    auto.
+    intuition simpl; eauto.
+    eapply crash_xform_diskIs_trans; eauto.
 
-  Definition write_array T xp a i stride v mscs rx : prog T :=
-    mscs <- write xp (a ^+ i ^* stride) v mscs;
-    rx mscs.
+    unfold stars; simpl.
+    cancel.
+    or_r; cancel.
+    eassign (mk_mstate vmap0 ms); eauto.
+    auto.
+    intuition simpl; eauto.
+    eapply crash_xform_diskIs_trans; eauto.
+  Qed.
 
-  Theorem read_array_ok : forall xp mscs a i stride,
-    {< mbase m vs F,
-    PRE
-      rep xp F (ActiveTxn mbase m) mscs *
-      [[ exists F', (array a vs stride * F')%pred (list2mem m) ]] *
-      [[ wordToNat i < length vs ]]
-    POST RET:^(mscs,r)
-      [[ r = sel vs i $0 ]] * rep xp F (ActiveTxn mbase m) mscs
-    CRASH
-      exists mscs', rep xp F (ActiveTxn mbase m) mscs'
-    >} read_array xp a i stride mscs.
+
+  Lemma crash_xform_any : forall xp F ds hm,
+    crash_xform (recover_any xp F ds hm) =p=>
+      exists cs, after_crash xp (crash_xform F) ds cs hm.
+  Proof.
+    unfold recover_any, after_crash, rep, rep_inner; intros.
+    xform_norm.
+    rewrite BUFCACHE.crash_xform_rep_pred by eauto.
+    xform_norm.
+    norm. cancel.
+    intuition simpl; pred_apply; xform_norm.
+    rewrite GLog.crash_xform_any.
+    unfold GLog.recover_any_pred.
+    norm. cancel.
+    eassign (mk_mstate vmap0 ms); eauto.
+    intuition simpl; eauto.
+
+    or_l; cancel.
+    intuition simpl; eauto.
+    cancel.
+    or_r; cancel.
+    eassign (mk_mstate vmap0 ms); eauto.
+    eauto.
+    intuition simpl; eauto.
+  Qed.
+
+
+  Lemma after_crash_notxn : forall xp cs F ds hm,
+    after_crash xp F ds cs hm =p=>
+      exists d n ms, [[ n <= length (snd ds) ]] *
+      (rep xp F (NoTxn (d, nil)) ms hm \/
+        rep xp F (RollbackTxn d) ms hm) *
+      [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]].
+  Proof.
+    unfold after_crash, recover_any, rep, rep_inner.
+    intros. norm. cancel.
+    denote or as Hor; apply sep_star_or_distr in Hor.
+    destruct Hor; destruct_lift H.
+    or_l; cancel.
+    or_r; cancel.
+    intuition simpl. eassumption.
+    auto.
+  Qed.
+
+
+  Lemma after_crash_notxn_singular : forall xp cs F d hm,
+    after_crash xp F (d, nil) cs hm =p=>
+      exists d' ms, (rep xp F (NoTxn (d', nil)) ms hm \/
+                      rep xp F (RollbackTxn d') ms hm) *
+      [[[ d' ::: crash_xform (diskIs (list2nmem d)) ]]].
+  Proof.
+    intros; rewrite after_crash_notxn; cancel.
+  Qed.
+
+
+  Lemma after_crash_idem : forall xp F ds cs hm,
+    crash_xform (after_crash xp F ds cs hm) =p=>
+     exists cs', after_crash xp (crash_xform F) ds cs' hm.
+  Proof.
+    unfold after_crash, rep_inner; intros.
+    xform_norm.
+    rewrite BUFCACHE.crash_xform_rep_pred by eauto.
+    xform_norm.
+    denote crash_xform as Hx.
+    apply crash_xform_sep_star_dist in Hx.
+    rewrite crash_xform_or_dist in Hx.
+    apply sep_star_or_distr in Hx.
+    norm. unfold stars; simpl. cancel.
+    intuition simpl; eauto.
+
+    destruct Hx as [Hx | Hx];
+    autorewrite with crash_xform in Hx;
+    destruct_lift Hx; pred_apply.
+
+    rewrite GLog.crash_xform_cached.
+    norm. cancel.
+    or_l; cancel.
+    eassign (mk_mstate vmap0 ms'); cancel.
+    auto.
+    intuition simpl; eauto.
+    eapply crash_xform_diskIs_trans; eauto.
+
+    rewrite GLog.crash_xform_rollback.
+    norm. cancel.
+    or_r; cancel.
+    eassign (mk_mstate vmap0 ms'); cancel.
+    auto.
+    intuition simpl; eauto.
+    eapply crash_xform_diskIs_trans; eauto.
+  Qed.
+
+  Lemma after_crash_idem' : forall xp d ms hm (F : rawpred),
+    F (list2nmem d) ->
+    crash_xform (rep_inner xp (NoTxn (d, nil)) ms hm
+              \/ rep_inner xp (RollbackTxn d) ms hm) =p=>
+    exists d' ms',(rep_inner xp (NoTxn (d', nil)) ms' hm \/
+                   rep_inner xp (RollbackTxn d') ms' hm) *
+                   [[ (crash_xform F) (list2nmem d') ]].
+  Proof.
+    unfold rep_inner; intros.
+    xform_norml.
+    rewrite GLog.crash_xform_cached; cancel.
+    eassign (mk_mstate vmap0 ms').
+    or_l; cancel.
+    eapply crash_xform_diskIs_pred; eauto.
+
+    rewrite GLog.crash_xform_rollback; cancel.
+    eassign (mk_mstate vmap0 ms').
+    or_r; cancel.
+    eapply crash_xform_diskIs_pred; eauto.
+  Qed.
+
+  Hint Extern 0 (okToUnify (LOG.rep_inner  _ _ _) (LOG.rep_inner _ _ _ _)) => constructor : okToUnify.
+
+  (* TODO: Would be better to rewrite using hashmap_subset. *)
+  Instance rep_proper_iff :
+    Proper (eq ==> piff ==> eq ==> eq ==> eq ==> pimpl) rep.
+  Proof.
+    unfold Proper, respectful; intros.
+    unfold rep; cancel.
+    apply H0.
+  Qed.
+
+  Instance intact_proper_iff :
+    Proper (eq ==> piff ==> eq ==> eq ==> pimpl) intact.
+  Proof.
+    unfold Proper, respectful; intros.
+    unfold intact; cancel; or_l.
+    rewrite H0; eauto.
+    rewrite active_notxn.
+    rewrite H0; eauto.
+  Qed.
+
+  Instance after_crash_proper_iff :
+    Proper (eq ==> piff ==> eq ==> eq ==> eq ==> pimpl) after_crash.
+  Proof.
+    unfold Proper, respectful; intros.
+    unfold after_crash.
+    subst. norm. cancel. intuition simpl.
+    pred_apply. norm.
+
+    cancel.
+    rewrite sep_star_or_distr.
+    or_l; cancel.
+    rewrite H0; eauto.
+    intuition simpl; eauto.
+
+    cancel.
+    rewrite sep_star_or_distr.
+    or_r; cancel.
+    rewrite H0; eauto.
+    intuition simpl; eauto.
+  Qed.
+
+  Lemma notxn_after_crash_diskIs : forall xp F n ds d ms hm,
+    crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
+    n <= length (snd ds) ->
+    rep xp F (NoTxn (d, nil)) ms hm =p=> after_crash xp F ds (snd ms) hm.
+  Proof.
+    unfold rep, after_crash, rep_inner; intros.
+    safecancel.
+    or_l; cancel.
+    eauto.
+    auto.
+  Qed.
+
+  Lemma rollbacktxn_after_crash_diskIs : forall xp F n d ds ms hm,
+    crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
+    n <= length (snd ds) ->
+    rep xp F (RollbackTxn d) ms hm =p=> after_crash xp F ds (snd ms) hm.
+  Proof.
+    unfold rep, after_crash, rep_inner; intros.
+    safecancel.
+    or_r; cancel.
+    eauto.
+    auto.
+  Qed.
+
+  (** idempred includes both before-crash cand after-crash cases *)
+  Definition idempred xp F ds hm :=
+    (recover_any xp F ds hm \/
+      before_crash xp F ds hm \/
+      exists cs, after_crash xp F ds cs hm)%pred.
+
+  Theorem sync_invariant_idempred : forall xp F ds hm,
+    sync_invariant F ->
+    sync_invariant (idempred xp F ds hm).
+  Proof.
+    unfold idempred; auto.
+  Qed.
+  Hint Resolve sync_invariant_idempred.
+
+  Theorem idempred_idem : forall xp F ds hm,
+    crash_xform (idempred xp F ds hm) =p=>
+      exists cs, after_crash xp (crash_xform F) ds cs hm.
+  Proof.
+    unfold idempred; intros.
+    xform_norm.
+    rewrite crash_xform_any; cancel.
+    rewrite crash_xform_before_crash; cancel.
+    rewrite after_crash_idem; cancel.
+  Qed.
+
+  Theorem recover_any_idempred : forall xp F ds hm,
+    recover_any xp F ds hm =p=> idempred xp F ds hm.
+  Proof.
+    unfold idempred; cancel.
+  Qed.
+
+  Theorem intact_idempred : forall xp F ds hm,
+    intact xp F ds hm =p=> idempred xp F ds hm.
+  Proof.
+    intros.
+    rewrite intact_any.
+    apply recover_any_idempred.
+  Qed.
+
+  Theorem notxn_idempred : forall xp F ds ms hm,
+    rep xp F (NoTxn ds) ms hm =p=> idempred xp F ds hm.
+  Proof.
+    intros.
+    rewrite notxn_intact.
+    apply intact_idempred.
+  Qed.
+
+  Theorem active_idempred : forall xp F ds ms d hm,
+    rep xp F (ActiveTxn ds d) ms hm =p=> idempred xp F ds hm.
+  Proof.
+    intros.
+    rewrite active_intact.
+    apply intact_idempred.
+  Qed.
+
+  Theorem after_crash_idempred : forall xp F ds cs hm,
+    after_crash xp F ds cs hm =p=> idempred xp F ds hm.
+  Proof.
+    unfold idempred; intros.
+    or_r; cancel.
+  Qed.
+
+  Theorem before_crash_idempred : forall xp F ds hm,
+    before_crash xp F ds hm =p=> idempred xp F ds hm.
+  Proof.
+    unfold idempred; intros.
+    or_r; or_l; cancel.
+  Qed.
+
+  Instance idempred_proper_iff :
+    Proper (eq ==> piff ==> eq ==> eq ==> pimpl) idempred.
+  Proof.
+    unfold Proper, respectful; intros.
+    unfold idempred; cancel.
+    unfold recover_any, rep. or_l; cancel.
+    rewrite H0; cancel.
+
+    unfold before_crash, rep.
+    or_r; or_l.
+    norm. cancel.
+    intuition. pred_apply.
+    norm. cancel.
+    rewrite H0; cancel.
+    intuition simpl; eauto.
+
+    unfold after_crash, rep.
+    or_r; or_r.
+    norm. cancel.
+    intuition. pred_apply.
+    norm. cancel.
+    rewrite sep_star_or_distr.
+    or_l; cancel.
+    rewrite H0; cancel.
+    intuition simpl; eauto.
+
+    norm; auto. cancel.
+    rewrite sep_star_or_distr.
+    or_r; cancel.
+    rewrite H0; cancel.
+    intuition simpl; eauto.
+  Qed.
+
+  Theorem crash_xform_intact : forall xp F ds hm,
+    crash_xform (intact xp F ds hm) =p=>
+      exists ms d, rep xp (crash_xform F) (NoTxn (d, nil)) ms hm *
+        [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]].
+  Proof.
+    unfold intact, rep, rep_inner; intros.
+    xform_norm;
+    rewrite BUFCACHE.crash_xform_rep_pred by eauto;
+    xform_norm;
+    denote crash_xform as Hx;
+    apply crash_xform_sep_star_dist in Hx;
+    rewrite GLog.crash_xform_cached in Hx;
+    destruct_lift Hx.
+
+    cancel.
+    eassign (mk_mstate (MSTxn x_1) dummy0).
+    cancel. auto. auto.
+
+    cancel.
+    eassign (mk_mstate vmap0 dummy0).
+    cancel. auto. auto.
+  Qed.
+
+  Theorem crash_xform_idempred : forall xp F ds hm,
+    crash_xform (idempred xp F ds hm) =p=>
+      exists ms d n,
+        (rep xp (crash_xform F) (NoTxn (d, nil)) ms hm \/
+          rep xp (crash_xform F) (RollbackTxn d) ms hm) *
+        [[ n <= length (snd ds) ]] *
+        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]].
+  Proof.
+    unfold idempred, recover_any, after_crash, before_crash, rep, rep_inner; intros.
+    xform_norm;
+    rewrite BUFCACHE.crash_xform_rep_pred by eauto;
+    xform_norm;
+    denote crash_xform as Hx.
+
+    - apply crash_xform_sep_star_dist in Hx;
+      rewrite GLog.crash_xform_any in Hx;
+      unfold GLog.recover_any_pred in Hx;
+      destruct_lift Hx.
+
+      denote or as Hor.
+      apply sep_star_or_distr in Hor.
+      destruct Hor.
+
+      safecancel.
+      or_l; cancel.
+      eassign (mk_mstate (Map.empty valu) dummy1).
+      cancel. auto. eassumption. auto.
+
+      safecancel.
+      or_r; cancel.
+      eassign (mk_mstate (Map.empty valu) dummy1).
+      cancel. auto. eassumption. auto.
+
+    - apply crash_xform_sep_star_dist in Hx;
+      rewrite GLog.crash_xform_recovering in Hx;
+      unfold GLog.recover_any_pred in Hx;
+      destruct_lift Hx.
+
+      denote or as Hor.
+      apply sep_star_or_distr in Hor.
+      destruct Hor.
+
+      safecancel.
+      or_l; cancel.
+      eassign (mk_mstate (Map.empty valu) dummy4).
+      cancel. auto. eassumption.
+      eapply crash_xform_diskIs_trans; eauto.
+
+      safecancel.
+      or_r; cancel.
+      eassign (mk_mstate (Map.empty valu) dummy4).
+      cancel. auto. eassumption.
+      eapply crash_xform_diskIs_trans; eauto.
+
+    - apply crash_xform_sep_star_dist in Hx.
+      rewrite crash_xform_or_dist in Hx.
+      apply sep_star_or_distr in Hx;
+      destruct Hx; autorewrite with crash_xform in H0.
+
+      rewrite GLog.crash_xform_cached in H0.
+      destruct_lift H0.
+      safecancel.
+      or_l; cancel.
+      eassign (mk_mstate (Map.empty valu) dummy3).
+      cancel. auto. eassumption.
+      eapply crash_xform_diskIs_trans; eauto.
+
+      rewrite GLog.crash_xform_rollback in H0.
+      destruct_lift H0.
+      safecancel.
+      or_r; cancel.
+      eassign (mk_mstate (Map.empty valu) dummy3).
+      cancel. auto. eassumption.
+      eapply crash_xform_diskIs_trans; eauto.
+  Qed.
+
+
+  Hint Resolve active_intact flushing_any.
+  Hint Extern 0 (okToUnify (intact _ _ _ _) (intact _ _ _ _)) => constructor : okToUnify.
+
+
+  Hint Extern 1 ({{_}} Bind (begin _ _) _) => apply begin_ok : prog.
+  Hint Extern 1 ({{_}} Bind (abort _ _) _) => apply abort_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} Bind (write _ _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} Bind (commit _ _) _) => apply commit_ok : prog.
+  Hint Extern 1 ({{_}} Bind (commit_ro _ _) _) => apply commit_ro_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dsync _ _ _) _) => apply dsync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (sync _ _) _) => apply sync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (recover _ _) _) => apply recover_ok : prog.
+
+
+  Definition read_array xp a i ms :=
+    let^ (ms, r) <- read xp (a + i) ms;
+    Ret ^(ms, r).
+
+  Definition write_array xp a i v ms :=
+    ms <- write xp (a + i) v ms;
+    Ret ms.
+
+  Notation arrayP := (arrayN (@ptsto _ addr_eq_dec valuset)).
+
+  Theorem read_array_ok : forall xp ms a i,
+    {< F Fm ds m vs,
+    PRE:hm   rep xp F (ActiveTxn ds m) ms hm *
+          [[ i < length vs]] *
+          [[[ m ::: Fm * arrayP a vs ]]]
+    POST:hm' RET:^(ms', r)
+          rep xp F (ActiveTxn ds m) ms' hm' *
+          [[ r = fst (selN vs i ($0, nil)) ]]
+    CRASH:hm' exists ms',
+          rep xp F (ActiveTxn ds m) ms' hm'
+    >} read_array xp a i ms.
   Proof.
     unfold read_array.
     hoare.
 
-    rewrite isolate_fwd with (i:=i) by auto.
+    subst; pred_apply.
+    rewrite isolateN_fwd with (i:=i) by auto.
+    rewrite <- surjective_pairing.
     cancel.
   Qed.
 
-  Theorem write_array_ok : forall xp a i stride v mscs,
-    {< mbase m vs F F',
-    PRE
-      rep xp F (ActiveTxn mbase m) mscs *
-      [[ (array a vs stride * F')%pred (list2mem m) ]] *
-      [[ wordToNat i < length vs ]]
-    POST RET:mscs
-      exists m', rep xp F (ActiveTxn mbase m') mscs *
-      [[ (array a (Array.upd vs i v) stride * F')%pred (list2mem m') ]]
-    CRASH
-      exists m' mscs', rep xp F (ActiveTxn mbase m') mscs'
-    >} write_array xp a i stride v mscs.
+
+  Theorem write_array_ok : forall xp a i v ms,
+    {< F Fm ds m vs,
+    PRE:hm   rep xp F (ActiveTxn ds m) ms hm *
+          [[[ m ::: Fm * arrayP a vs ]]] *
+          [[ i < length vs /\ a <> 0 ]]
+    POST:hm' RET:ms' exists m',
+          rep xp F (ActiveTxn ds m') ms' hm' *
+          [[[ m' ::: Fm * arrayP a (updN vs i (v, nil)) ]]]
+    CRASH:hm' exists m' ms',
+          rep xp F (ActiveTxn ds m') ms' hm'
+    >} write_array xp a i v ms.
   Proof.
     unfold write_array.
-    hoare.
-
-    rewrite isolate_fwd with (i:=i) by auto.
+    prestep. norm. cancel.
+    unfold rep_inner; intuition.
+    pred_apply; cancel.
+    subst; pred_apply.
+    rewrite isolateN_fwd with (i:=i) by auto.
+    rewrite surjective_pairing with (p := selN vs i ($0, nil)).
     cancel.
 
-    rewrite <- isolate_bwd_upd by auto.
+    step.
+    rewrite <- isolateN_bwd_upd by auto.
     cancel.
-
-    Grab Existential Variables.
-    exact $0.
+    step.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (read_array _ _ _ _ _) _) => apply read_array_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _ _ _) _) => apply write_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read_array _ _ _ _) _) => apply read_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (write_array _ _ _ _ _) _) => apply write_array_ok : prog.
 
-  Hint Extern 0 (okToUnify (rep _ _ _ ?a) (rep _ _ _ ?a)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep _ _ _ ?a _) (rep _ _ _ ?a _)) => constructor : okToUnify.
 
-  (* XXX remove once SepAuto and SepAuto2 are unified *)
-  Hint Extern 0 (SepAuto.okToUnify (rep _ _ _ ?a) (rep _ _ _ ?a)) => constructor : okToUnify.
+  Definition read_range A xp a nr (vfold : A -> valu -> A) v0 ms :=
+    let^ (ms, r) <- ForN i < nr
+    Hashmap hm
+    Ghost [ F Fm crash ds m vs ]
+    Loopvar [ ms pf ]
+    Invariant
+      rep xp F (ActiveTxn ds m) ms hm *
+      [[[ m ::: (Fm * arrayP a vs) ]]] *
+      [[ pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
+    OnCrash  crash
+    Begin
+      let^ (ms, v) <- read_array xp a i ms;
+      Ret ^(ms, vfold pf v)
+    Rof ^(ms, v0);
+    Ret ^(ms, r).
+
+
+  Definition write_range xp a l ms :=
+    let^ (ms) <- ForN i < length l
+    Hashmap hm
+    Ghost [ F Fm crash ds vs ]
+    Loopvar [ ms ]
+    Invariant
+      exists m, rep xp F (ActiveTxn ds m) ms hm *
+      [[[ m ::: (Fm * arrayP a (vsupsyn_range vs (firstn i l))) ]]]
+    OnCrash crash
+    Begin
+      ms <- write_array xp a i (selN l i $0) ms;
+      Ret ^(ms)
+    Rof ^(ms);
+    Ret ms.
+
+
+  Theorem read_range_ok : forall A xp a nr vfold (v0 : A) ms,
+    {< F Fm ds m vs,
+    PRE:hm
+      rep xp F (ActiveTxn ds m) ms hm *
+      [[ nr <= length vs ]] *
+      [[[ m ::: (Fm * arrayP a vs) ]]]
+    POST:hm' RET:^(ms', r)
+      rep xp F (ActiveTxn ds m) ms' hm' *
+      [[ r = fold_left vfold (firstn nr (map fst vs)) v0 ]]
+    CRASH:hm'
+      exists ms', rep xp F (ActiveTxn ds m) ms' hm'
+    >} read_range xp a nr vfold v0 ms.
+  Proof.
+    unfold read_range; intros.
+    safestep. auto.
+    subst; pred_apply; cancel.
+
+    eauto.
+    safestep.
+    unfold rep_inner; cancel.
+    eapply lt_le_trans; eauto.
+    subst; denote (Map.elements (MSTxn a1)) as Hx; rewrite <- Hx.
+    pred_apply; cancel.
+
+    step.
+    rewrite firstn_S_selN_expand with (def := $0).
+    rewrite fold_left_app; simpl.
+    erewrite selN_map by omega; subst; auto.
+    rewrite map_length; omega.
+
+    unfold rep_inner; cancel.
+    step.
+    cancel.
+    eassign raw; pred_apply.
+    cancel; eauto.
+    apply GLog.rep_hashmap_subset; eauto.
+    Unshelve. exact tt. auto.
+  Qed.
+
+
+  Lemma firstn_vsupsyn_range_firstn_S : forall i vs l,
+    i < length l ->
+    firstn i (vsupsyn_range vs (firstn (S i) l)) =
+    firstn i (vsupsyn_range vs (firstn i l)).
+  Proof.
+    unfold vsupsyn_range; intros.
+    erewrite firstn_S_selN with (def := $0) by auto.
+    rewrite app_length; simpl.
+    rewrite <- repeat_app.
+    rewrite combine_app by (autorewrite with lists; auto); simpl.
+    rewrite <- app_assoc.
+    repeat rewrite firstn_app_l; auto.
+    all: autorewrite with lists; rewrite firstn_length_l; omega.
+  Qed.
+
+  Lemma skip_vsupsyn_range_skip_S : forall i vs l,
+    i < length l -> length l <= length vs ->
+    skipn (S i) (vsupsyn_range vs (firstn (S i) l)) =
+    skipn (S i) (vsupsyn_range vs (firstn i l)).
+  Proof.
+    unfold vsupsyn_range; intros.
+    setoid_rewrite skipn_selN_skipn with (def := ($0, nil)) at 4.
+    rewrite <- cons_nil_app.
+    repeat rewrite skipn_app_eq;
+      autorewrite with lists; repeat rewrite firstn_length_l by omega;
+      simpl; auto; try omega.
+    rewrite firstn_length_l; omega.
+  Qed.
+
+  Lemma sep_star_reorder_helper1 : forall AT AEQ V (a b c d : @pred AT AEQ V),
+    ((a * b * d) * c) =p=> (a * ((b * c) * d)).
+  Proof.
+    cancel.
+  Qed.
+
+  Lemma vsupsyn_range_progress : forall F l a m vs d,
+    m < length l -> length l <= length vs ->
+    (F ✶ arrayP a (vsupsyn_range vs (firstn m l)))%pred (list2nmem d) ->
+    (F ✶ arrayP a (vsupsyn_range vs (firstn (S m) l)))%pred 
+        (list2nmem (updN d (a + m) (selN l m $0, nil))).
+  Proof.
+    intros.
+    rewrite arrayN_isolate with (i := m) (default := ($0, nil)).
+    apply sep_star_reorder_helper1.
+    rewrite vsupsyn_range_selN.
+    rewrite selN_firstn by auto.
+    eapply list2nmem_updN.
+    pred_apply.
+    rewrite arrayN_isolate with (i := m) (default := ($0, nil)).
+    rewrite firstn_vsupsyn_range_firstn_S by auto.
+    rewrite skip_vsupsyn_range_skip_S by auto.
+    cancel.
+    all: try rewrite vsupsyn_range_length; try rewrite firstn_length_l; omega.
+  Qed.
+
+  Lemma write_range_length_ok : forall F a i ms d vs,
+    i < length vs ->
+    (F ✶ arrayP a vs)%pred (list2nmem (replay_disk (Map.elements ms) d)) ->
+    a + i < length d.
+  Proof.
+    intros.
+    apply list2nmem_arrayN_bound in H0; destruct H0; subst; simpl in *.
+    inversion H.
+    rewrite replay_disk_length in *.
+    omega.
+  Qed.
+
+  Theorem write_range_ok : forall xp a l ms,
+    {< F Fm ds m vs,
+    PRE:hm
+      rep xp F (ActiveTxn ds m) ms hm *
+      [[[ m ::: (Fm * arrayP a vs) ]]] *
+      [[ a <> 0 /\ length l <= length vs ]]
+    POST:hm' RET:ms'
+      exists m', rep xp F (ActiveTxn ds m') ms' hm' *
+      [[[ m' ::: (Fm * arrayP a (vsupsyn_range vs l)) ]]]
+    CRASH:hm' exists ms' m',
+      rep xp F (ActiveTxn ds m') ms' hm'
+    >} write_range xp a l ms.
+  Proof.
+    unfold write_range; intros.
+    step.
+
+    step.
+    apply map_valid_add; auto; try omega.
+    eapply write_range_length_ok; eauto.
+    rewrite vsupsyn_range_length. omega.
+    rewrite firstn_length_l; omega.
+
+    subst; rewrite replay_disk_add.
+    apply vsupsyn_range_progress; auto.
+
+    step.
+    erewrite firstn_oob; eauto.
+    eassign raw.
+    pred_apply; cancel.
+    apply GLog.rep_hashmap_subset; eauto.
+    eauto.
+    Unshelve. exact tt. eauto.
+  Qed.
+
+  (* like read_range, but stops when cond is true *)
+  Definition read_cond A xp a nr (vfold : A -> valu -> A) v0 (cond : A -> bool) ms :=
+    let^ (ms, pf, ret) <- ForN i < nr
+    Hashmap hm
+    Ghost [ F Fm crash ds m vs ]
+    Loopvar [ ms pf ret ]
+    Invariant
+      rep xp F (ActiveTxn ds m) ms hm *
+      [[[ m ::: (Fm * arrayP a vs) ]]] *
+      [[ ret = None ->
+        cond pf = false ]] *
+      [[ forall v, ret = Some v ->
+        cond v = true ]] *
+      [[ ret = None ->
+        pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
+    OnCrash  crash
+    Begin
+      If (is_some ret) {
+        Ret ^(ms, pf, ret)
+      } else {
+        let^ (ms, v) <- read_array xp a i ms;
+            let pf' := vfold pf v in
+            If (bool_dec (cond pf') true) {
+                Ret ^(ms, pf', Some pf')
+            } else {
+                Ret ^(ms, pf', None)
+            }
+      }
+    Rof ^(ms, v0, None);
+    Ret ^(ms, ret).
+
+  Theorem read_cond_ok : forall A xp a nr vfold (v0 : A) cond ms,
+    {< F Fm ds m vs,
+    PRE:hm
+      rep xp F (ActiveTxn ds m) ms hm *
+      [[ nr <= length vs /\ cond v0 = false ]] *
+      [[[ m ::: (Fm * arrayP a vs) ]]]
+    POST:hm' RET:^(ms', r)
+      rep xp F (ActiveTxn ds m) ms' hm' *
+      ( exists v, [[ r = Some v /\ cond v = true ]] \/
+      [[ r = None /\ cond (fold_left vfold (firstn nr (map fst vs)) v0) = false ]])
+    CRASH:hm'
+      exists ms', rep xp F (ActiveTxn ds m) ms' hm'
+    >} read_cond xp a nr vfold v0 cond ms.
+  Proof.
+    unfold read_cond; intros.
+    step.
+
+    safestep.
+    safestep.
+    safestep.
+
+    unfold rep_inner; cancel.
+    eapply lt_le_trans; eauto.
+    denote (replay_disk _ _ = replay_disk _ _) as Heq; rewrite <- Heq.
+    subst; pred_apply; cancel.
+
+    step; step.
+    apply not_true_is_false; auto.
+    rewrite firstn_S_selN_expand with (def := $0).
+    rewrite fold_left_app; simpl.
+    erewrite selN_map by omega; subst; auto.
+    rewrite map_length; omega.
+
+    pimpl_crash. unfold rep_inner; norm. cancel. intuition simpl. pred_apply.
+    eassign (mk_mstate (MSTxn a1) (MSGLog ms'_1)); cancel.
+    eexists.
+    eapply hashmap_subset_trans; eauto.
+
+    destruct a2.
+    safestep.
+    or_l; cancel.
+    safestep.
+    or_r; cancel.
+    eassign raw; pred_apply; cancel.
+    apply GLog.rep_hashmap_subset; eauto.
+    eauto.
+
+    Unshelve. all: eauto; try exact tt; try exact nil.
+  Qed.
+
+  Hint Extern 1 ({{_}} Bind (read_cond _ _ _ _ _ _ _) _) => apply read_cond_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read_range _ _ _ _ _ _) _) => apply read_range_ok : prog.
+  Hint Extern 1 ({{_}} Bind (write_range _ _ _ _) _) => apply write_range_ok : prog.
+
+
+  (******** batch direct write and sync *)
+
+  (* dwrite_vecs discard everything in active transaction *)
+  Definition dwrite_vecs (xp : log_xparams) avl ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    mm' <- GLog.dwrite_vecs xp avl mm;
+    Ret (mk_memstate vmap0 mm').
+
+  Definition dsync_vecs xp al ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    mm' <- GLog.dsync_vecs xp al mm;
+    Ret (mk_memstate cm mm').
+
+
+  Lemma dwrite_ptsto_inbound : forall (F : @pred _ _ valuset) ovl avl m,
+    (F * listmatch (fun v e => fst e |-> v) ovl avl)%pred (list2nmem m) ->
+    Forall (fun e => (@fst _ valu) e < length m) avl.
+  Proof.
+    intros.
+    apply Forall_map_l.
+    eapply listmatch_ptsto_list2nmem_inbound.
+    pred_apply.
+    rewrite listmatch_map_l.
+    rewrite listmatch_sym. eauto.
+  Qed.
+
+  Lemma sep_star_reorder_helper2: forall AT AEQ V (a b c d : @pred AT AEQ V),
+    (a * (b * (c * d))) <=p=> (a * b * d) * c.
+  Proof.
+    split; cancel.
+  Qed.
+
+  Lemma sep_star_reorder_helper3: forall AT AEQ V (a b c d : @pred AT AEQ V),
+    ((a * b) * (c * d)) <=p=> ((a * c * d) * b).
+  Proof.
+    split; cancel.
+  Qed.
+
+  Lemma dwrite_vsupd_vecs_ok : forall avl ovl m F,
+    (F * listmatch (fun v e => fst e |-> v) ovl avl)%pred (list2nmem m) ->
+    NoDup (map fst avl) ->
+    (F * listmatch (fun v e => fst e |-> (snd e, vsmerge v)) ovl avl)%pred (list2nmem (vsupd_vecs m avl)).
+  Proof.
+    unfold listmatch; induction avl; destruct ovl;
+    simpl; intros; eauto; destruct_lift H; inversion H2.
+    inversion H0; subst.
+    rewrite vsupd_vecs_vsupd_notin by auto.
+    denote NoDup as Hx.
+    refine (_ (IHavl ovl m _ _ Hx)); [ intro | pred_apply; cancel ].
+    erewrite (@list2nmem_sel _ _ m a_1 (p_cur, _)) by (pred_apply; cancel).
+    erewrite <- vsupd_vecs_selN_not_in; eauto.
+    apply sep_star_reorder_helper2.
+    eapply list2nmem_updN.
+    pred_apply; cancel.
+  Qed.
+
+  Lemma dsync_vssync_vecs_ok : forall al vsl m F,
+    (F * listmatch (fun vs a => a |-> vs) vsl al)%pred (list2nmem m) ->
+    (F * listmatch (fun vs a => a |-> (fst vs, nil)) vsl al)%pred (list2nmem (vssync_vecs m al)).
+  Proof.
+    unfold listmatch; induction al; destruct vsl;
+    simpl; intros; eauto; destruct_lift H; inversion H1.
+    refine (_ (IHal vsl (vssync m a) _ _)).
+    apply pimpl_apply; cancel.
+    unfold vssync.
+    erewrite <- (@list2nmem_sel _ _ m a) by (pred_apply; cancel).
+    apply sep_star_reorder_helper3.
+    eapply list2nmem_updN.
+    pred_apply; cancel.
+  Qed.
+
+  Lemma dsync_vssync_vecs_partial : forall al n vsl F m,
+    (F * listmatch (fun vs a => a |-> vs) vsl al)%pred (list2nmem m) ->
+    (F * listmatch (fun vs a => a |-> vs \/ a |=> fst vs) vsl al)%pred 
+        (list2nmem (vssync_vecs m (firstn n al))).
+  Proof.
+    unfold listmatch; induction al; destruct vsl;
+    simpl; intros; eauto; destruct_lift H; inversion H1.
+    rewrite firstn_nil; simpl; pred_apply; cancel.
+
+    destruct n; simpl.
+    apply sep_star_comm; apply sep_star_assoc; apply sep_star_comm.
+    apply sep_star_lift_apply'; auto.
+    refine (_ (IHal 0 vsl _ m _)); intros.
+    simpl in x; pred_apply; cancel.
+    pred_apply; repeat cancel.
+
+    apply sep_star_comm; apply sep_star_assoc; apply sep_star_comm.
+    apply sep_star_lift_apply'; auto.
+    refine (_ (IHal n vsl _ (vssync m a) _)); intros.
+    pred_apply; cancel.
+
+    unfold vssync.
+    erewrite <- (@list2nmem_sel _ _ m a) by (pred_apply; cancel); simpl.
+    apply sep_star_comm in H.
+    apply sep_star_assoc in H.
+    eapply list2nmem_updN with (y := (p_cur, nil)) in H.
+    pred_apply; repeat cancel.
+  Qed.
+
+
+  Theorem dwrite_vecs_ok : forall xp ms avl,
+    {< F Fm ds ovl,
+    PRE:hm
+      rep xp F (ActiveTxn ds ds!!) ms hm *
+      [[[ ds!! ::: Fm * listmatch (fun v e => (fst e) |-> v) ovl avl ]]] *
+      [[ NoDup (map fst avl) /\ sync_invariant F ]]
+    POST:hm' RET:ms' exists ds',
+      rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
+      [[[ ds'!! ::: Fm * listmatch (fun v e => (fst e) |-> (snd e, vsmerge v)) ovl avl ]]] *
+      [[ ds' = (dsupd_vecs ds avl) \/ ds' = dsupd_vecs (ds!!, nil) avl ]]
+    XCRASH:hm'
+      recover_any xp F ds hm' \/
+      intact xp F (vsupd_vecs (ds !!) avl, nil) hm' \/
+      intact xp F (vsupd_vecs (fst ds) avl, nil) hm'
+    >} dwrite_vecs xp avl ms.
+  Proof.
+    unfold dwrite_vecs.
+    step.
+    eapply dwrite_ptsto_inbound; eauto.
+
+    step; subst.
+    apply map_valid_map0.
+    rewrite dsupd_vecs_latest; apply dwrite_vsupd_vecs_ok; auto.
+    apply map_valid_map0.
+    rewrite dsupd_vecs_latest; apply dwrite_vsupd_vecs_ok; auto.
+
+    (* crash conditions *)
+    xcrash.
+    or_l; unfold recover_any, rep; cancel.
+    xform_normr; cancel.
+    eassign x; eassign (mk_mstate vmap0 (MSGLog ms_1), x0); simpl; eauto.
+    pred_apply; cancel.
+
+    or_r; or_l; cancel.
+    unfold intact; xform_normr.
+    or_l; unfold rep, rep_inner; xform_normr; cancel.
+    erewrite snd_pair; eauto.
+    eassign (mk_mstate vmap0 x_1); eauto.
+    pred_apply; cancel.
+
+    or_r; or_r; cancel.
+    unfold intact; xform_normr.
+    or_l; unfold rep, rep_inner; xform_normr; cancel.
+    erewrite snd_pair; eauto.
+    eassign (mk_mstate vmap0 x_1); eauto.
+    pred_apply; cancel.
+  Qed.
+
+
+  Theorem dsync_vecs_ok : forall xp ms al,
+    {< F Fm ds vsl,
+    PRE:hm
+      rep xp F (ActiveTxn ds ds!!) ms hm *
+      [[[ ds!! ::: Fm * listmatch (fun vs a => a |-> vs) vsl al ]]] *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms' exists ds',
+      rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
+      [[[ ds'!! ::: Fm * listmatch (fun vs a => a |=> fst vs) vsl al ]]] *
+      [[ ds' = dssync_vecs ds al ]]
+    CRASH:hm'
+      recover_any xp F ds hm'
+    >} dsync_vecs xp al ms.
+  Proof.
+    unfold dsync_vecs, recover_any.
+    step.
+    eapply listmatch_ptsto_list2nmem_inbound.
+    pred_apply; rewrite listmatch_sym; eauto.
+
+    step; subst; try rewrite dssync_vecs_latest.
+    apply map_valid_vssync_vecs; auto.
+    rewrite <- replay_disk_vssync_vecs_comm.
+    f_equal; auto.
+    apply dsync_vssync_vecs_ok; auto.
+
+    Unshelve. eauto.
+  Qed.
+
+
+  Hint Extern 1 ({{_}} Bind (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
+
+
+  Lemma idempred_hashmap_subset : forall xp F ds hm hm',
+    (exists l, hashmap_subset l hm hm')
+    -> idempred xp F ds hm
+       =p=> idempred xp F ds hm'.
+  Proof.
+    unfold idempred, recover_any, after_crash, before_crash; cancel.
+    rewrite rep_hashmap_subset by eauto.
+    or_l; cancel.
+    rewrite rep_inner_hashmap_subset in * by eauto.
+    or_r. safecancel.
+    rewrite rep_inner_hashmap_subset in * by eauto.
+    denote or as Hor; apply sep_star_or_distr in Hor.
+    destruct Hor.
+    or_r; or_r.
+    norm. cancel.
+    intuition.
+    pred_apply. norm. cancel.
+    or_l; cancel.
+    intuition simpl; eauto.
+    or_r; or_r.
+    norm. cancel.
+    intuition.
+    pred_apply. norm. cancel.
+    rewrite rep_inner_hashmap_subset by eauto.
+    or_r; cancel.
+    intuition simpl; eauto.
+  Qed.
+
+  Lemma crash_xform_intact_dssync_vecs_idempred : forall xp F ds al hm,
+    crash_xform (LOG.intact xp F (dssync_vecs ds al) hm) =p=>
+    LOG.idempred xp (crash_xform F) ds hm.
+  Proof.
+    intros.
+    rewrite crash_xform_intact.
+    xform_norm.
+    rewrite notxn_after_crash_diskIs.
+    rewrite after_crash_idempred.
+    cancel.
+    rewrite nthd_0.
+    pred_apply.
+    rewrite crash_xform_diskIs_vssync_vecs; auto.
+    omega.
+  Qed.
+
+  Lemma notxn_latest_any : forall xp F ds ms gms hm,
+    GLog.dset_match xp ds gms ->
+    rep xp F (NoTxn (ds!!, nil)) ms hm =p=> recover_any xp F ds hm.
+  Proof.
+    unfold intact, recover_any, rep, rep_inner; cancel.
+    eapply GLog.cached_latest_recover_any; eauto.
+    Unshelve. all: eauto.
+  Qed.
+
+  Lemma crash_xform_intact_dssync_vecs_latest_idempred : forall xp F ds al hm gms,
+    GLog.dset_match xp ds gms ->
+    crash_xform (intact xp F (dssync_vecs (ds!!, nil) al) hm) =p=>
+    LOG.idempred xp (crash_xform F) ds hm.
+  Proof.
+    intros.
+    rewrite crash_xform_intact.
+    xform_norm.
+    apply crash_xform_diskIs_vssync_vecs in H2.
+    rewrite notxn_after_crash_diskIs.
+    simpl.
+    rewrite after_crash_idempred.
+    cancel.
+    eassign (length ds_2).
+    pred_apply.
+    repeat rewrite nthd_oob.
+    auto.
+    all: simpl; auto.
+  Qed.
+
 
 End LOG.
+
+
+(* rewrite rules for recover_either_pred *)
+
 
 
 
 Global Opaque LOG.begin.
 Global Opaque LOG.abort.
+Global Opaque LOG.commit.
+Global Opaque LOG.commit_ro.
 Global Opaque LOG.write.
 Global Opaque LOG.write_array.
 Arguments LOG.rep : simpl never.

@@ -3,6 +3,7 @@ Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg Array.
 Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
+Set Default Proof Using "Type".
 
 (* bijection on restricted domain *)
 
@@ -112,10 +113,9 @@ Section MEMMATCH.
   Variable AT2 : Type.
   Variable atrans : AT1 -> AT2.
 
-  Variable AEQ1 : DecEq AT1.
-  Variable AEQ2 : DecEq AT2.
-  Variable VT : Type.
-  Definition V {AT} := @const Type AT VT.
+  Variable AEQ1 : EqDec AT1.
+  Variable AEQ2 : EqDec AT2.
+  Variable V : Type.
   Variable m1 : @mem AT1 AEQ1 V.
   Variable m2 : @mem AT2 AEQ2 V.
 
@@ -131,7 +131,7 @@ Section MEMMATCH.
   Variable AP1_ok : forall a1, indomain a1 m1 -> AP1 a1.
   Variable AP2_ok : forall a2, indomain a2 m2 -> AP2 a2.
 
-  Definition mem_atrans
+  Definition mem_atrans AT1 AEQ1 V AT2 AEQ2
     f (m : @mem AT1 AEQ1 V) (m' : @mem AT2 AEQ2 V) (P : AT1 -> Prop) :=
     forall a, P a -> m a = m' (f a).
 
@@ -207,7 +207,6 @@ Section MEMMATCH.
       apply mem_ainv_any; auto.
       replace (atrans (ainv a)) with a; auto.
       apply eq_sym; apply HInv; auto.
-      apply H; auto.
       apply HInv; auto.
 
       destruct (indomain_dec a m2); auto.
@@ -233,16 +232,12 @@ Section MEMMATCH.
     Lemma mem_ainv_mem_upd : forall a v (ap : AP2 a),
       mem_atrans atrans (Mem.upd m1 (ainv a) v) (Mem.upd m2 a v) AP1.
     Proof.
-      intros; unfold mem_atrans; intro x.
-      destruct (AEQ1 x (ainv a)); destruct (AEQ2 (atrans x) a); simpl_upd; auto.
-      rewrite e0; simpl_upd.
-      rewrite <- e; simpl_upd.
-      auto.
-
+      intros; unfold mem_atrans, Mem.upd; intro x.
+      destruct (AEQ1 x (ainv a)); destruct (AEQ2 (atrans x) a); auto.
       contradict n; subst.
       apply HInv; auto.
 
-      intros.
+      intros; subst.
       contradict n.
       erewrite cond_inv_rewrite_left; eauto.
     Qed.

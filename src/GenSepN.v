@@ -9,6 +9,7 @@ Require Import WordAuto.
 Require Import Omega.
 Require Import Ring.
 Require Import SepAuto.
+Require Import ListUtils.
 Require Import ListPred.
 
 Set Implicit Arguments.
@@ -27,9 +28,11 @@ Set Implicit Arguments.
  * object that maps inode numbers (list positions) into files (or None, if the
  * inode number is too big).  [list2nmem] always uses [nat] as the index.
  *)
-Definition list2nmem (A: Type) (l: list A) : (@mem nat eq_nat_dec (const A)) :=
+Definition list2nmem (A: Type) (l: list A) : (@mem nat eq_nat_dec A) :=
   fun a => selN (map (@Some A) l) a None.
 
+Notation "[[[ NS ':::' P ]]]" := [[ (P)%pred (list2nmem NS) ]]%pred : pred_scope.
+Notation "【 NS '‣‣' P 】" := [[ (P)%pred (list2nmem NS) ]]%pred : pred_scope.
 
 Theorem list2nmem_oob : forall A (l : list A) i,
   i >= length l
@@ -74,13 +77,14 @@ Lemma listupd_memupd: forall A l i (v : A),
   -> list2nmem (updN l i v) = Mem.upd (list2nmem l) i v.
 Proof.
   intros.
-  apply functional_extensionality_dep; intro.
+  apply functional_extensionality; intro.
   unfold list2nmem, Mem.upd.
-  autorewrite with core.
+  autorewrite with core lists.
 
   destruct (eq_nat_dec x i).
   subst; erewrite selN_updN_eq; auto.
   rewrite map_length; auto.
+
   erewrite selN_updN_ne; auto.
 Qed.
 
@@ -96,20 +100,28 @@ Proof.
   eapply list2nmem_inbound; eauto.
 Qed.
 
-Theorem list2nmem_upd: forall A F (l: list A) i x y,
-  (F * #i |-> x)%pred (list2nmem l)
-  -> (F * #i |-> y)%pred (list2nmem (upd l i y)).
+Lemma list2nmem_updN_selN : forall A F (l : list A) a v1 def,
+  (F * a |-> v1)%pred (list2nmem (updN l a v1)) ->
+  (F * a |-> selN l a def)%pred (list2nmem l).
 Proof.
-  unfold upd; intros.
-  eapply list2nmem_updN.
-  eauto.
+
+  intros.
+  destruct (lt_dec a (length l)).
+
+  eapply list2nmem_updN with (y := selN l a def) in H.
+  rewrite updN_twice in H.
+  rewrite updN_selN_eq in H; auto.
+  apply list2nmem_inbound in H.
+  rewrite length_updN in H.
+  congruence.
 Qed.
+
 
 Theorem listapp_memupd: forall A l (a : A),
   list2nmem (l ++ a :: nil) = Mem.upd (list2nmem l) (length l) a.
 Proof.
   intros.
-  apply functional_extensionality_dep; intro.
+  apply functional_extensionality; intro.
   unfold list2nmem, Mem.upd.
 
   destruct (lt_dec x (length l)).
@@ -129,21 +141,22 @@ Proof.
 Qed.
 
 
-Theorem list2nmem_app: forall A (F : @pred _ _ (const A)) l a,
+Theorem list2nmem_app: forall A (F : @pred _ _ A) l a,
   F (list2nmem l)
   -> (F * (length l) |-> a)%pred (list2nmem (l ++ a :: nil)).
 Proof.
   intros.
   erewrite listapp_memupd; eauto.
   apply ptsto_upd_disjoint; auto.
-  unfold list2nmem, sel.
+  unfold list2nmem, selN.
   rewrite selN_oob; auto.
   rewrite map_length.
   omega.
 Qed.
 
-Theorem list2nmem_arrayN_app: forall A (F : @pred _ _ (const A)) l l',
-  F (list2nmem l) -> (F * arrayN (length l) l') %pred (list2nmem (l ++ l')).
+Theorem list2nmem_arrayN_app: forall A (F : @pred _ _ A) l l',
+  F (list2nmem l) ->
+  (F * arrayN (@ptsto _ eq_nat_dec A) (length l) l') %pred (list2nmem (l ++ l')).
 Proof.
   intros.
   generalize dependent F.
@@ -163,21 +176,13 @@ Proof.
     symmetry; apply Nat.add_1_r.
 Qed.
 
-Theorem list2nmem_arrayN_app_eq : forall A (F : @pred _ _ (const A)) l l' n,
-  n = length l ->
-  F (list2nmem l) ->
-  (F * arrayN n l') %pred (list2nmem (l ++ l')).
-Proof.
-  intros; subst; auto using list2nmem_arrayN_app.
-Qed.
-
 Theorem list2nmem_removelast_is : forall A l (def : A),
   l <> nil
   -> list2nmem (removelast l) =
      fun i => if (lt_dec i (length l - 1)) then Some (selN l i def) else None.
 Proof.
-  intros; apply functional_extensionality_dep; intros.
-  destruct (lt_dec x (length l - 1)); unfold list2nmem, sel.
+  intros; apply functional_extensionality; intros.
+  destruct (lt_dec x (length l - 1)); unfold list2nmem.
   - rewrite selN_map with (default' := def).
     rewrite selN_removelast by omega; auto.
     rewrite length_removelast by auto; omega.
@@ -193,7 +198,7 @@ Theorem list2nmem_removelast_list2nmem : forall A (l : list A) (def : A),
   -> list2nmem (removelast l) =
      fun i => if (eq_nat_dec i (length l - 1)) then None else (list2nmem l) i.
 Proof.
-  intros; apply functional_extensionality_dep; intros.
+  intros; apply functional_extensionality; intros.
   erewrite list2nmem_removelast_is with (def := def) by eauto.
   unfold list2nmem.
   destruct (lt_dec x (length l - 1));
@@ -226,7 +231,7 @@ Theorem list2nmem_removelast: forall A F (l : list A) v,
 Proof.
   unfold_sep_star; unfold ptsto; intuition; repeat deex.
   assert (m1 = list2nmem (removelast l)); subst; auto.
-  apply functional_extensionality_dep; intros.
+  apply functional_extensionality; intros.
   rewrite list2nmem_removelast_list2nmem; auto.
 
   destruct (eq_nat_dec x (length l - 1)); subst.
@@ -240,7 +245,7 @@ Qed.
 
 
 Theorem list2nmem_array: forall  A (l : list A),
-  arrayN 0 l (list2nmem l).
+  arrayN (@ptsto _ eq_nat_dec A) 0 l (list2nmem l).
 Proof.
   induction l using rev_ind; intros; firstorder; simpl.
   erewrite listapp_memupd; try omega.
@@ -248,136 +253,29 @@ Proof.
   eauto.
 Qed.
 
+Theorem list2nmem_array': forall  A (l l' : list A),
+  l = l' ->
+  arrayN (@ptsto _ eq_nat_dec A) 0 l' (list2nmem l).
+Proof.
+  intros; subst; apply list2nmem_array.
+Qed.
+
 Theorem list2nmem_arrayN_firstn_skipn: forall A (l:list A) n,
-  (arrayN 0 (firstn n l) * arrayN n (skipn n l))%pred (list2nmem l).
+  (arrayN (@ptsto _ eq_nat_dec A) 0 (firstn n l) *
+   arrayN (@ptsto _ eq_nat_dec A) n (skipn n l))%pred (list2nmem l).
 Proof.
   intros.
   case_eq (lt_dec n (length l)); intros.
-  - (* need to rewrite only one occurrence of l, and setoid rewriting causes
-      replace ... at 3 not work *)
-    set (l' := l).
-    match goal with
-    | [ |- ?P (list2nmem _) ] =>
-      change (P (list2nmem l))
-    end.
-    replace l with (firstn n l ++ skipn n l) by auto using firstn_skipn.
-    subst l'.
-    apply list2nmem_arrayN_app_eq.
-    rewrite firstn_length_l; omega.
+  - rewrite <- firstn_skipn with (l := l) (n := n) at 3.
+    replace n with (length (firstn n l)) at 2.
+    apply list2nmem_arrayN_app.
     apply list2nmem_array.
+    apply firstn_length_l; omega.
   - rewrite firstn_oob by omega.
     rewrite skipn_oob by omega.
     eapply pimpl_apply.
     cancel.
     apply list2nmem_array.
-Qed.
-
-Lemma list2nmem_arrayN_xyz : forall A (def:A) data F off (l:list A),
-  (F * arrayN off data)%pred (list2nmem l) ->
-  (F * arrayN off data)%pred (list2nmem (
-    firstn off l ++ data ++ skipn (off + length data) l)).
-Proof.
-  induction data; intros; simpl in *.
-  rewrite Nat.add_0_r.
-  rewrite firstn_skipn.
-  assumption.
-
-  assert ((F * arrayN (S off) data * off |-> a)%pred (list2nmem l)).
-  pred_apply; cancel.
-  assert ((F * off |-> a * arrayN (S off) data)%pred (list2nmem l)).
-  pred_apply; cancel.
-  assert (IHa := IHdata (F * off |-> a)%pred (S off) (updN l off a)).
-  assert (Habound := H0).
-  apply list2nmem_inbound in Habound.
-  eapply list2nmem_sel in H0.
-  assert (Hasel := H0).
-  apply selN_eq_updN_eq in H0.
-  rewrite H0 in IHa.
-  assert (IHa' := IHa H1).
-  replace (firstn (S off) l) with (firstn off l ++ a :: nil) in IHa'.
-  replace (S off + length data) with (off + S (length data)) in IHa'.
-  rewrite cons_nil_app in IHa'.
-  (* cancel tries to do some substitution that doesn't work,
-     so manually call assoc lemma *)
-  pred_apply; apply sep_star_assoc.
-  omega.
-  replace (S off) with (off + 1) by omega.
-  symmetry; eapply firstn_plusone_selN'.
-  eassumption.
-  assumption.
-
-  Grab Existential Variables.
-  exact def.
-Qed.
-
-Lemma list2nmem_arrayN_newlist_partial : forall A (def:A) n F off (l:list A) olddata newdata,
-  length olddata = length newdata ->
-  (F * arrayN off olddata)%pred (list2nmem l) ->
-  (F * arrayN off (firstn n newdata) * arrayN (off+n) (skipn n olddata))%pred
-    (list2nmem (firstn off l ++
-      firstn n newdata ++ skipn n olddata ++
-      skipn (off+length olddata) l)).
-Proof.
-  induction n; intros; simpl.
-  rewrite Nat.add_0_r.
-  assert (Hsplit := list2nmem_arrayN_xyz def olddata off H0).
-  pred_apply; cancel.
-  destruct newdata; destruct olddata; simpl; auto; try inversion H.
-  rewrite Nat.add_0_r.
-  rewrite firstn_skipn.
-  pred_apply; cancel.
-  replace (off + S n) with (S off + n) by omega.
-  replace (off + S (length olddata)) with (S off + length olddata) by omega.
-  assert (IHn' := IHn (F * off |-> a)%pred (S off) (updN l off a) _ _ H2).
-  simpl in H0.
-  (* there are many asserts here because I don't know of a way to use
-     sep_star_assoc to rewrite separation logic propositions other than
-     pred_apply; cancel, and pred_apply requires that a hypothesis regarding
-     the same memory.
-
-     What I really want is pred_rewrite H, where H is a pimpl or pimpl_iff. *)
-  assert ((F * arrayN (S off) olddata * off |-> a)%pred
-    (list2nmem (updN l off a))) as Hupdl.
-  eapply list2nmem_updN.
-  pred_apply; cancel.
-  assert ((F * off |-> a * arrayN (S off) olddata)%pred
-    (list2nmem (updN l off a))).
-  pred_apply; cancel.
-  assert (IHn'' := IHn' H1).
-  replace (firstn (S off) (updN l off a)) with (firstn off l ++ a :: nil) in IHn''.
-  rewrite cons_nil_app in IHn''.
-  rewrite skipN_updN' in IHn'' by omega.
-  pred_apply; cancel.
-  replace (S off) with (off + 1) by omega.
-  assert (off < length l) as Hoffbound.
-  eapply list2nmem_inbound.
-  pred_apply; cancel.
-  erewrite firstn_plusone_selN' with (x := a).
-  rewrite firstn_updN_oob.
-  auto.
-  auto.
-  symmetry; apply selN_updN_eq.
-  assumption.
-  rewrite length_updN; assumption.
-
-  Grab Existential Variables.
-  exact def.
-Qed.
-
-Lemma list2nmem_arrayN_newlist : forall A (def:A) F off (l:list A) olddata newdata,
-  length olddata = length newdata ->
-  (F * arrayN off olddata)%pred (list2nmem l) ->
-  (F * arrayN off newdata)%pred
-    (list2nmem (firstn off l ++
-      newdata ++
-      skipn (off+length olddata) l)).
-Proof.
-  intros.
-  assert (Hnewlist := list2nmem_arrayN_newlist_partial def (length newdata) _ _ _ H H0).
-  rewrite firstn_oob in Hnewlist by omega.
-  rewrite skipn_oob in Hnewlist by omega.
-  simpl in Hnewlist.
-  pred_apply; cancel.
 Qed.
 
 
@@ -388,8 +286,8 @@ Definition list2nmem_off (A: Type) (start : nat) (l: list A) : (nat -> option A)
 
 Theorem list2nmem_off_eq : forall A (l : list A), list2nmem l = list2nmem_off 0 l.
 Proof.
-  unfold list2nmem, list2nmem_off, sel; intros.
-  apply functional_extensionality_dep; intros.
+  unfold list2nmem, list2nmem_off; intros.
+  apply functional_extensionality; intros.
   rewrite <- minus_n_O.
   reflexivity.
 Qed.
@@ -411,7 +309,7 @@ Qed.
 Theorem list2nmem_fix_off_eq : forall A (l : list A) n,
   list2nmem_off n l = list2nmem_fix n l.
 Proof.
-  induction l; intros; apply functional_extensionality_dep; intros.
+  induction l; intros; apply functional_extensionality; intros.
   unfold list2nmem_off; destruct (lt_dec x n); auto.
 
   unfold list2nmem_off; simpl in *.
@@ -439,19 +337,18 @@ Theorem list2nmem_fix_eq : forall A (l : list A),
 Proof.
   intros.
   rewrite list2nmem_off_eq.
-  eapply list2nmem_fix_off_eq with (A := A).
+  eapply list2nmem_fix_off_eq.
 Qed.
 
 Theorem list2nmem_off_app_union : forall A (a b : list A) start,
-  list2nmem_off start (a ++ b) = @mem_union _ eq_nat_dec (const A)
-                                                           (list2nmem_off start a)
+  list2nmem_off start (a ++ b) = @mem_union _ eq_nat_dec A (list2nmem_off start a)
                                                            (list2nmem_off (start + length a) b).
 Proof.
   intros.
   repeat rewrite list2nmem_fix_off_eq.
   generalize dependent b.
   generalize dependent start.
-  induction a; simpl; intros; apply functional_extensionality_dep; intros.
+  induction a; simpl; intros; apply functional_extensionality; intros.
   - unfold mem_union. rewrite <- plus_n_O. auto.
   - unfold mem_union in *.
     destruct (eq_nat_dec x start); eauto.
@@ -462,40 +359,38 @@ Qed.
 
 Theorem list2nmem_off_disjoint : forall A (a b : list A) sa sb,
   (sb >= sa + length a \/ sa >= sb + length b) ->
-  @mem_disjoint _ eq_nat_dec (const A) (list2nmem_off sa a) (list2nmem_off sb b).
+  @mem_disjoint _ eq_nat_dec A (list2nmem_off sa a) (list2nmem_off sb b).
 Proof.
   unfold mem_disjoint, list2nmem_off, not; intros; repeat deex;
     destruct (lt_dec a0 sa); destruct (lt_dec a0 sb); try congruence;
     apply selN_map_some_range in H0;
     apply selN_map_some_range in H2;
-    try omega.
-  admit.
-  admit.
-Admitted.
+    omega.
+Qed.
 
 Lemma list2nmem_nil_array : forall A (l : list A) start,
-  arrayN start l (list2nmem nil) -> l = nil.
+  arrayN (@ptsto _ eq_nat_dec A) start l (list2nmem nil) -> l = nil.
 Proof.
   destruct l; simpl; auto.
-  unfold_sep_star; unfold ptsto, list2nmem, sel; simpl; intros.
+  unfold_sep_star; unfold ptsto, list2nmem; simpl; intros.
   repeat deex.
   unfold mem_union in H0.
-  apply equal_f_dep with (start) in H0.
+  apply equal_f with (start) in H0.
   rewrite H2 in H0.
   congruence.
 Qed.
 
 Lemma list2nmem_array_nil : forall A (l : list A) start,
-  arrayN start nil (list2nmem_fix start l) -> l = nil.
+  arrayN (@ptsto _ eq_nat_dec A) start nil (list2nmem_fix start l) -> l = nil.
 Proof.
   destruct l; simpl; auto.
-  unfold list2nmem, sel, emp; intros.
+  unfold list2nmem, emp; intros.
   pose proof (H start).
   destruct (eq_nat_dec start start); simpl in *; congruence.
 Qed.
 
 Theorem list2nmem_array_eq': forall A (l' l : list A) start,
-  arrayN start l (list2nmem_fix start l')
+  arrayN (@ptsto _ eq_nat_dec A) start l (list2nmem_fix start l')
   -> l' = l.
 Proof.
   induction l'; simpl; intros.
@@ -508,20 +403,20 @@ Proof.
       repeat deex.
       unfold ptsto in H1; destruct H1.
       f_equal.
-      * eapply equal_f_dep with (start) in H0 as H0'.
+      * eapply equal_f with (start) in H0 as H0'.
         unfold mem_union in H0'.
         rewrite H1 in H0'.
         destruct (eq_nat_dec start start); congruence.
       * apply IHl' with (start:=S start); eauto; try omega.
         assert (m2 = list2nmem_fix (S start) l'); subst; auto.
 
-        apply functional_extensionality_dep; intros.
+        apply functional_extensionality; intros.
         unfold mem_union in H0.
-        apply equal_f_dep with x in H0.
+        apply equal_f with x in H0.
         destruct (eq_nat_dec x start).
 
         rewrite list2nmem_fix_below by omega.
-        eapply mem_disjoint_either with (V := const A).
+        eapply mem_disjoint_either.
         eauto.
         rewrite <- e in H1.
         eauto.
@@ -531,7 +426,7 @@ Proof.
 Qed.
 
 Theorem list2nmem_array_eq: forall A (l' l : list A),
-  arrayN 0 l (list2nmem l')
+  arrayN (@ptsto _ eq_nat_dec A) 0 l (list2nmem l')
   -> l' = l.
 Proof.
   intros; eapply list2nmem_array_eq' with (start:=0); try rewrite <- plus_n_O; eauto.
@@ -540,7 +435,7 @@ Qed.
 
 
 Theorem list2nmem_array_app_eq: forall A (l l' : list A) a,
-  (arrayN 0 l * (length l) |-> a)%pred (list2nmem l')
+  (arrayN (@ptsto _ eq_nat_dec A) 0 l * (length l) |-> a)%pred (list2nmem l')
   -> l' = (l ++ a :: nil).
 Proof.
   intros.
@@ -581,7 +476,7 @@ Proof.
 Qed.
 
 Theorem list2nmem_arrayN_bound : forall A (l m : list A) off F,
-  (F * arrayN off l)%pred (list2nmem m)
+  (F * arrayN (@ptsto _ eq_nat_dec A) off l)%pred (list2nmem m)
   -> l = nil \/ off + length l <= length m.
 Proof.
   induction l; simpl; intros.
@@ -598,25 +493,51 @@ Proof.
   omega.
 Qed.
 
+Theorem list2nmem_arrayN_length : forall A (l m : list A) F,
+  (F * arrayN (@ptsto _ eq_nat_dec A) 0 l)%pred (list2nmem m)
+  -> length l <= length m.
+Proof.
+  intros.
+  apply list2nmem_arrayN_bound in H; destruct H; auto.
+  rewrite H; simpl; omega.
+Qed.
+
 Theorem list2nmem_ptsto_bound : forall A (l : list A) off v F,
   (F * off |-> v)%pred (list2nmem l)
   -> off < length l.
 Proof.
   intros.
-  assert ((F * arrayN off (v :: nil))%pred (list2nmem l)).
+  assert ((F * arrayN (@ptsto _ eq_nat_dec A) off (v :: nil))%pred (list2nmem l)).
   pred_apply; cancel.
   apply list2nmem_arrayN_bound in H0. intuition; try congruence.
   simpl in *; omega.
 Qed.
 
 
-Definition arrayN_ex A (vs : list A) i :=
-  (arrayN 0 (firstn i vs) * arrayN (i + 1) (skipn (S i) vs))%pred.
+Definition arrayN_ex A pts (vs : list A) i :=
+  (arrayN pts 0 (firstn i vs) *
+   arrayN pts (i + 1) (skipn (S i) vs))%pred.
 
+Lemma arrayN_ex_one: forall V pts (l : list V),
+    List.length l = 1 ->
+    arrayN_ex pts l 0 <=p=> emp.
+Proof.
+  destruct l.
+  simpl; intros.
+  congruence.
+  destruct l.
+  simpl. intros.
+  unfold arrayN_ex.
+  simpl.
+  split; cancel.
+  simpl. intros.
+  congruence.
+Qed.
 
 Theorem arrayN_except : forall V vs (def : V) i,
   i < length vs
-  -> arrayN 0 vs <=p=> (arrayN_ex vs i) * (i |-> selN vs i def).
+  -> arrayN (@ptsto _ eq_nat_dec V) 0 vs <=p=> 
+    (arrayN_ex (@ptsto _ eq_nat_dec V) vs i) * (i |-> selN vs i def).
 Proof.
   intros; unfold arrayN_ex.
   erewrite arrayN_isolate with (default := def); eauto.
@@ -627,53 +548,47 @@ Qed.
 
 Theorem arrayN_except_upd : forall V vs (v : V) i,
   i < length vs
-  -> arrayN 0 (updN vs i v) <=p=> (arrayN_ex vs i) * (i |-> v).
+  -> arrayN (@ptsto _ eq_nat_dec V) 0 (updN vs i v) <=p=>
+    (arrayN_ex (@ptsto _ eq_nat_dec V) vs i) * (i |-> v).
 Proof.
   intros; unfold arrayN_ex.
-  erewrite arrayN_isolate_upd; eauto.
+  erewrite isolate_fwd_upd; eauto.
   simpl.
   unfold piff; split; cancel.
 Qed.
 
 
 Theorem arrayN_ex_updN_eq : forall A l i (v : A),
-  arrayN_ex (updN l i v) i <=p=> arrayN_ex l i.
+  arrayN_ex (@ptsto _ eq_nat_dec A) (updN l i v) i <=p=>
+  arrayN_ex (@ptsto _ eq_nat_dec A) l i.
 Proof.
-  unfold arrayN_ex; intros; autorewrite with core;
+  unfold arrayN_ex; intros; autorewrite with core lists;
   split; simpl; rewrite skipn_updN; eauto.
 Qed.
 
 Theorem list2nmem_array_pick : forall V l (def : V) i,
   i < length l
-  -> (arrayN_ex l i * i |-> selN l i def)%pred (list2nmem l).
+  -> (arrayN_ex (@ptsto _ eq_nat_dec V) l i * i |-> selN l i def)%pred (list2nmem l).
 Proof.
   intros.
   eapply arrayN_except; eauto.
   eapply list2nmem_array; eauto.
 Qed.
 
-Theorem list2nmem_array_upd : forall V ol nl (v : V) i,
-  (arrayN_ex ol i * i |-> v)%pred (list2nmem nl)
+Theorem list2nmem_array_updN : forall V ol nl (v : V) i,
+  (arrayN_ex (@ptsto _ eq_nat_dec V) ol i * i |-> v)%pred (list2nmem nl)
   -> i < length ol
   -> nl = updN ol i v.
 Proof.
   intros.
-  eapply list2nmem_array_eq; autorewrite with core; auto.
+  eapply list2nmem_array_eq; autorewrite with core lists; auto.
   pred_apply.
-  rewrite arrayN_except_upd; auto.
-Qed.
-
-Theorem list2nmem_array_updN : forall V ol nl (v : V) i,
-  (arrayN_ex ol i * i |-> v)%pred (list2nmem nl)
-  -> i < length ol
-  -> updN ol i v = nl.
-Proof.
-  intros; apply eq_sym.
-  eapply list2nmem_array_upd; eauto.
+  rewrite isolate_fwd_upd; auto.
+  cancel.
 Qed.
 
 Theorem list2nmem_array_removelast_eq : forall V (nl ol : list V),
-  (arrayN_ex ol (length ol - 1))%pred (list2nmem nl)
+  (arrayN_ex (@ptsto _ eq_nat_dec V) ol (length ol - 1))%pred (list2nmem nl)
   -> length ol > 0
   -> nl = removelast ol.
 Proof.
@@ -691,36 +606,48 @@ Qed.
 
 
 Theorem list2nmem_array_exis : forall V l (def : V) i,
-  (arrayN_ex l i * i |-> selN l i def)%pred (list2nmem l)
-  -> (arrayN_ex l i * i |->?)%pred (list2nmem l).
+  (arrayN_ex (@ptsto _ eq_nat_dec V) l i * i |-> selN l i def)%pred (list2nmem l)
+  -> (arrayN_ex (@ptsto _ eq_nat_dec V) l i * i |->?)%pred (list2nmem l).
 Proof.
   intros; pred_apply; cancel.
 Qed.
 
 
-Lemma list2nmem_ptsto_cancel : forall V i (def : V) l, #i < length l ->
-  (arrayN_ex l #i * #i |-> sel l i def)%pred (list2nmem l).
+Lemma list2nmem_ptsto_cancel : forall V i (def : V) l, i < length l ->
+  (arrayN_ex (@ptsto _ eq_nat_dec V) l i * i |-> selN l i def)%pred (list2nmem l).
 Proof.
   intros.
-  assert (arrayN 0 l (list2nmem l)) as Hx by eapply list2nmem_array.
+  assert (arrayN (@ptsto _ eq_nat_dec V) 0 l (list2nmem l)) as Hx by eapply list2nmem_array.
   pred_apply; erewrite arrayN_except; eauto.
 Qed.
 
+Lemma list2nmem_ptsto_cancel_pair : forall A B i (def : A * B) l,
+  i < length l ->
+  (arrayN_ex (@ptsto _ eq_nat_dec (A * B)) l i * 
+    i |-> (fst (selN l i def), snd (selN l i def)))%pred (list2nmem l).
+Proof.
+  intros.
+  assert (arrayN (@ptsto _ eq_nat_dec (A * B)) 0 l (list2nmem l)) as Hx by eapply list2nmem_array.
+  pred_apply; erewrite arrayN_except; eauto.
+  rewrite <- surjective_pairing.
+  cancel.
+Qed.
+
 Lemma list2nmem_sel_for_eauto : forall V A i (v v' : V) l def,
-  (A * #i |-> v)%pred (list2nmem l)
-  -> v' = sel l i def
+  (A * i |-> v)%pred (list2nmem l)
+  -> v' = selN l i def
   -> v' = v.
 Proof.
-  unfold sel; intros.
+  intros.
   apply list2nmem_sel with (def:=def) in H.
   congruence.
 Qed.
 
 
-Lemma arrayN_split : forall A off (l : list A) start,
+Lemma arrayN_split : forall A pts off (l : list A) start,
   off <= length l ->
-  arrayN start (firstn off l) * arrayN (start + off) (skipn off l) <=p=>
-  arrayN start l.
+  arrayN pts start (firstn off l) * arrayN pts (start + off) (skipn off l) <=p=>
+  arrayN pts start l.
 Proof.
   induction off; simpl; intros.
   - replace (start + 0) with start by omega.
@@ -733,8 +660,8 @@ Proof.
     omega.
 Qed.
 
-Lemma arrayN_combine' : forall A (a b : list A) start,
-  arrayN start a * arrayN (start + length a) b <=p=> arrayN start (a ++ b).
+Lemma arrayN_combine' : forall A pts (a b : list A) start,
+  arrayN pts start a * arrayN pts (start + length a) b <=p=> arrayN pts start (a ++ b).
 Proof.
   induction a; simpl; intros.
   - replace (start + 0) with start by omega.
@@ -745,28 +672,17 @@ Proof.
     apply IHa.
 Qed.
 
-Lemma arrayN_combine : forall A (a b : list A) start off,
+Lemma arrayN_combine : forall A pts (a b : list A) start off,
   off = start + length a ->
-  arrayN start a * arrayN off b <=p=> arrayN start (a ++ b).
+  arrayN pts start a * arrayN pts off b <=p=> arrayN pts start (a ++ b).
 Proof.
   intros; subst.
   apply arrayN_combine'.
 Qed.
 
 
-Lemma skipn_selN_skipn : forall off A (l : list A) def,
-  off < length l ->
-  skipn off l = selN l off def :: skipn (S off) l.
-Proof.
-  induction off; simpl; intros.
-  destruct l; simpl in *; try omega; auto.
-  destruct l; simpl in *; try omega.
-  apply IHoff.
-  omega.
-Qed.
-
 Lemma arrayN_list2nmem : forall A (def : A) (a b : list A) F off,
-  (F * arrayN off a)%pred (list2nmem b) ->
+  (F * arrayN (@ptsto _ eq_nat_dec A) off a)%pred (list2nmem b) ->
   a = firstn (length a) (skipn off b).
 Proof.
   induction a; simpl; intros; auto.
@@ -780,7 +696,7 @@ Proof.
   pred_apply. cancel.
 Qed.
 
-Theorem list2nmem_ptsto_end_eq : forall A (F : @pred _ _ (@const _ _ A)) l a a',
+Theorem list2nmem_ptsto_end_eq : forall A (F : @pred _ _ A) l a a',
   (F * (length l) |-> a)%pred (list2nmem (l ++ a' :: nil)) ->
   a = a'.
 Proof.
@@ -789,21 +705,22 @@ Proof.
   rewrite selN_last in H; auto.
 Qed.
 
-Theorem list2nmem_arrayN_end_eq : forall A (F : @pred _ _ (@const _ _ A)) l l' l'' (def:A),
+Theorem list2nmem_arrayN_end_eq : forall A (F : @pred _ _ A) l l' l'' (def:A),
   length l' = length l'' ->
-  (F * arrayN (length l) l')%pred (list2nmem (l ++ l'')) ->
+  (F * arrayN (@ptsto _ eq_nat_dec A) (length l) l')%pred (list2nmem (l ++ l'')) ->
   l' = l''.
 Proof.
   intros.
-  apply (arrayN_list2nmem def) in H0.
-  erewrite skipn_app in H0.
+  apply arrayN_list2nmem in H0.
+  rewrite skipn_app in H0.
   rewrite firstn_oob in H0.
   auto.
   omega.
+  exact def.
 Qed.
 
-Theorem list2nmem_off_arrayN: forall  A (l : list A) off,
-  arrayN off l (list2nmem_off off l).
+Theorem list2nmem_off_arrayN: forall A (l : list A) off,
+  arrayN (@ptsto _ eq_nat_dec A) off l (list2nmem_off off l).
 Proof.
   intros; rewrite list2nmem_fix_off_eq.
   generalize dependent off; induction l; simpl; intros.
@@ -813,8 +730,8 @@ Proof.
     omega.
 Qed.
 
-Theorem list2nmem_arrayN_app_iff : forall A (F : @pred _ _ (@const _ _ A)) l l',
-  (F * arrayN (length l) l')%pred (list2nmem (l ++ l')) ->
+Theorem list2nmem_arrayN_app_iff : forall A (F : @pred _ _ A) l l',
+  (F * arrayN (@ptsto _ eq_nat_dec A) (length l) l')%pred (list2nmem (l ++ l')) ->
   F (list2nmem l).
 Proof.
   intros.
@@ -823,75 +740,387 @@ Proof.
   eapply septract_sep_star.
   2: unfold septract; eexists; intuition.
   4: pred_apply' H; cancel.
-  apply strictly_exact_to_exact_domain; apply arrayN_strictly_exact.
+  apply strictly_exact_to_exact_domain.
+  apply arrayN_strictly_exact.
   apply list2nmem_off_disjoint; intuition.
   apply list2nmem_off_arrayN.
 Qed.
 
 
-(* Ltacs *)
+Lemma mem_except_list2nmem_oob : forall A (l : list A) a,
+  a >= length l ->
+  mem_except (list2nmem l) a = list2nmem l.
+Proof.
+  unfold mem_except, list2nmem; intros.
+  apply functional_extensionality; intro.
+  destruct (Nat.eq_dec x a); subst; simpl; auto.
+  erewrite selN_oob; auto.
+  autorewrite with lists in *; omega.
+Qed.
 
-Ltac rewrite_list2nmem_pred_bound H :=
-  let Hi := fresh in
-  eapply list2nmem_inbound in H as Hi.
+Lemma list2nmem_sel_inb : forall A (l : list A) a def,
+  a < length l ->
+  list2nmem l a = Some (selN l a def).
+Proof.
+  induction l using rev_ind; intros.
+  inversion H.
+  rewrite listapp_memupd.
 
-Ltac rewrite_list2nmem_pred_sel H :=
-  let Hx := fresh in
-  eapply list2nmem_sel in H as Hx;
-  try autorewrite with defaults in Hx;
-  unfold sel in Hx.
-
-Ltac rewrite_list2nmem_pred_upd H:=
-  let Hx := fresh in
-  eapply list2nmem_array_upd in H as Hx;
-  [ unfold upd in Hx | .. ].
-
-Ltac rewrite_list2nmem_pred :=
-  match goal with
-  | [ H : (?prd * ?ix |-> ?v)%pred (list2nmem ?l) |- _ ] =>
-    rewrite_list2nmem_pred_bound H;
-    first [
-      is_var v; rewrite_list2nmem_pred_sel H; subst v |
-      match prd with
-      | arrayN_ex ?ol ix =>
-        is_var l; rewrite_list2nmem_pred_upd H;
-        [ subst l | clear H .. ]
-      end ]
-  end.
-
-Ltac list2nmem_ptsto_cancel :=
-  match goal with
-  | [ |- (_ * ?p |-> ?a)%pred (list2nmem ?l) ] =>
-    let Hx := fresh in
-    assert (arrayN 0 l (list2nmem l)) as Hx by eapply list2nmem_array;
-      pred_apply; erewrite arrayN_except; clear Hx;
-      try autorewrite with defaults; eauto
-  end.
-
-Ltac destruct_listmatch_n :=
-  match goal with
-    | [  H : context [ listmatch ?prd ?a _ ],
-        H2 : ?p%pred (list2nmem ?a) |- _ ] =>
-      match p with
-        | context [ (wordToNat ?ix |-> _)%pred ] =>
-            let Hb := fresh in
-            apply list2nmem_inbound in H2 as Hb;
-            extract_listmatch_at ix;
-            clear Hb
-      end
-  end.
-
-Ltac list2nmem_cancel :=
-    repeat rewrite_list2nmem_pred;
-    repeat destruct_listmatch_n;
-    subst; eauto;
-    try list2nmem_ptsto_cancel; eauto.
+  destruct (Nat.eq_dec a (length l)); subst.
+  rewrite upd_eq; auto.
+  rewrite selN_last; auto.
+  rewrite upd_ne; auto.
+  rewrite app_length in H; simpl in H.
+  erewrite IHl by omega.
+  rewrite selN_app1 by omega; auto.
+Qed.
 
 
-Ltac list2nmem_bound :=
-  match goal with
-    | [ H : ( _ * ?p |-> ?i)%pred (list2nmem ?l) |- ?p < length ?l' ] =>
-          let Ha := fresh in assert (length l = length l') by solve_length_eq;
-          let Hb := fresh in apply list2nmem_inbound in H as Hb;
-          eauto; (omega || setoid_rewrite <- Ha; omega); clear Hb Ha
-  end.
+Lemma sep_star_reorder_helper1 : forall AT AEQ V (a b c d : @pred AT AEQ V),
+  (a * ((b * c) * d)) <=p=> (a * b * d) * c.
+Proof.
+  intros; split; cancel.
+Qed.
+
+Lemma list2nmem_arrayN_updN : forall V F a vl l i (v : V),
+  (F * arrayN (@ptsto _ eq_nat_dec V) a vl)%pred (list2nmem l) ->
+  i < length vl ->
+  (F * arrayN (@ptsto _ eq_nat_dec V) a (updN vl i v))%pred (list2nmem (updN l (a + i) v)).
+Proof.
+  intros.
+  rewrite arrayN_isolate with (i:=i) (default := v) by (rewrite length_updN; auto).
+  rewrite selN_updN_eq by auto.
+  rewrite firstn_updN_oob by auto.
+  rewrite skipN_updN' by auto.
+  apply sep_star_reorder_helper1.
+  eapply list2nmem_updN with (x := selN vl i v).
+  apply sep_star_reorder_helper1.
+  rewrite <- arrayN_isolate; auto.
+Qed.
+
+
+Lemma listmatch_ptsto_list2nmem_inbound : forall VT al vl (F : @pred _ _ VT) m ,
+  (F * listmatch (fun a v => a |-> v) al vl)%pred (list2nmem m) ->
+  Forall (fun a => a < length m) al.
+Proof.
+  induction al; intros.
+  apply Forall_nil.
+  unfold listmatch in H; destruct vl; destruct_lift H.
+  inversion H1.
+  apply Forall_cons.
+  eapply list2nmem_ptsto_bound.
+  pred_apply; cancel.
+  eapply IHal with (vl := vl).
+  pred_apply.
+  unfold listmatch; cancel.
+Qed.
+
+
+Lemma list2nmem_inj' : forall A (a b : list A) n,
+  list2nmem_off n a = list2nmem_off n b ->
+  a = b.
+Proof.
+  intros.
+  repeat rewrite list2nmem_fix_off_eq in H.
+  revert H. revert a b n.
+  induction a; destruct b; simpl; firstorder.
+  eapply equal_f with (x := n) in H; simpl in H.
+  destruct (Nat.eq_dec n n); congruence.
+  eapply equal_f with (x := n) in H.
+  destruct (Nat.eq_dec n n); congruence.
+  erewrite IHa with (b := b) (n := S n).
+  eapply equal_f with (x := n) in H.
+  destruct (Nat.eq_dec n n); try congruence.
+
+  apply functional_extensionality; intros.
+  destruct (Nat.eq_dec x n); subst.
+  repeat rewrite list2nmem_fix_below; auto.
+  eapply equal_f with (x0 := x) in H.
+  destruct (Nat.eq_dec x n); try congruence.
+Qed.
+
+
+Lemma list2nmem_inj : forall A (a b : list A),
+  list2nmem a = list2nmem b ->  a = b.
+Proof.
+  intros.
+  apply list2nmem_inj' with (n := 0).
+  repeat rewrite <- list2nmem_off_eq; auto.
+Qed.
+
+
+(* crashes *)
+
+Require Import PredCrash AsyncDisk.
+Import ListNotations.
+
+Lemma list2nmem_crash_xform : forall vl vsl (F : rawpred),
+  possible_crash_list vsl vl ->
+  F (list2nmem vsl) ->
+  crash_xform F (list2nmem (synced_list vl)).
+Proof.
+  induction vl using rev_ind; simpl; intuition.
+  unfold crash_xform, possible_crash; eexists; intuition.
+  setoid_rewrite length_nil in H0; auto.
+  apply possible_crash_list_length in H; auto.
+
+  unfold crash_xform, possible_crash.
+  eexists; intuition. eauto.
+  destruct H as [H Hx].
+  destruct (lt_eq_lt_dec a (length vl)).
+  destruct s.
+  assert (a < length vsl).
+  rewrite H; autorewrite with lists; simpl; omega.
+
+  right.
+  exists (selN vsl a ($0, nil)).
+  exists (selN vl a $0); intuition.
+  apply selN_map; auto.
+  unfold list2nmem, synced_list.
+  erewrite selN_map.
+  rewrite selN_combine, selN_app1, repeat_selN; auto.
+  autorewrite with lists; simpl; omega.
+  autorewrite with lists; auto.
+  rewrite combine_length_eq; autorewrite with lists; simpl; omega.
+  specialize (Hx a H1).
+  rewrite selN_app1 in Hx; auto.
+
+  right; subst.
+  eexists; exists x; intuition.
+  autorewrite with lists in H; simpl in H.
+  unfold list2nmem; erewrite selN_map by omega; eauto.
+  unfold list2nmem; rewrite synced_list_app.
+  erewrite selN_map, selN_app2.
+  rewrite synced_list_length, Nat.sub_diag; auto.
+  rewrite synced_list_length; auto.
+  rewrite app_length, synced_list_length; simpl; omega.
+  rewrite app_length in H; simpl in H.
+  assert (length vl < length vsl) as Hy by omega.
+  specialize (Hx (length vl) Hy).
+  rewrite selN_app2, Nat.sub_diag in Hx by omega; simpl in Hx.
+  unfold vsmerge; eauto.
+
+  left; split.
+  rewrite app_length in H; simpl in H.
+  unfold list2nmem; erewrite selN_oob; auto.
+  rewrite map_length; omega.
+  unfold list2nmem; erewrite selN_oob; auto.
+  rewrite map_length, synced_list_length, app_length; simpl; omega.
+  Unshelve. all: eauto.
+Qed.
+
+
+Lemma crash_xform_list2nmem_possible_crash_list : forall vl (F : rawpred),
+  crash_xform F (list2nmem vl) ->
+  exists vsl, F (list2nmem vsl) /\ possible_crash_list vsl (map fst vl).
+Proof.
+  unfold crash_xform.
+  induction vl using rev_ind; intros; auto.
+  exists nil; deex.
+  replace (list2nmem nil) with m'; auto.
+  apply functional_extensionality; intro.
+  specialize (H1 x).
+  destruct H1; destruct H.
+  rewrite H; auto.
+  deex; unfold list2nmem in H; simpl in *; congruence.
+  unfold possible_crash_list; intuition.
+  inversion H.
+
+  deex.
+
+  (* Figure out [m' (length vl)] *)
+  case_eq (m' (length vl)); [ intro p | ]; intro Hp.
+  specialize (IHvl (pred_except F (length vl) p)).
+  rewrite listapp_memupd in H1.
+
+  pose proof (possible_crash_upd_mem_except H1) as Hx.
+  rewrite mem_except_list2nmem_oob in Hx by auto.
+  specialize (H1 (length vl)); destruct H1.
+  contradict H; rewrite upd_eq by auto.
+  intuition congruence.
+  repeat deex.
+
+  eapply pred_execpt_mem_except in H0 as Hy.
+  destruct IHvl as [ ? Hz ].
+  eexists; eauto.
+  destruct Hz as [ Hz [ Heq HP ] ].
+  rewrite map_length in Heq.
+
+  unfold pred_except in Hz.
+  rewrite <- Heq in Hz.
+  rewrite <- listapp_memupd in Hz.
+  eexists; split; eauto.
+
+  split; autorewrite with lists; simpl; intros.
+  repeat rewrite app_length; omega.
+  destruct (lt_dec i (length x0)); repeat rewrite map_app.
+  setoid_rewrite selN_app1; try rewrite map_length; try omega.
+  apply HP; auto.
+  setoid_rewrite selN_app2; try rewrite map_length; try omega.
+  rewrite <- Heq; replace (i - length x0) with 0 by omega; simpl.
+  rewrite upd_eq in H by auto.
+  destruct x; inversion H; subst; simpl.
+  rewrite Hp in H1; inversion H1; subst.
+  eauto.
+  eauto.
+
+  specialize (H1 (length vl)); destruct H1.
+  destruct H; contradict H1.
+  rewrite listapp_memupd, upd_eq; auto; congruence.
+  repeat deex; congruence.
+Qed.
+
+
+Lemma crash_xform_list2nmem_synced : forall vl (F : rawpred),
+  crash_xform F (list2nmem vl) ->
+  map snd vl = repeat (@nil valu) (length vl).
+Proof.
+  unfold crash_xform.
+  induction vl using rev_ind; intros; auto.
+  deex; rewrite map_app.
+
+  pose proof (H1 (length vl)) as Hx; destruct Hx.
+  destruct H as [ H Hx ]; contradict Hx.
+  rewrite listapp_memupd, upd_eq by auto; congruence.
+  repeat deex; auto.
+  rewrite listapp_memupd, upd_eq in H by auto; inversion H; subst.
+
+  erewrite IHvl; simpl.
+  rewrite app_length; simpl.
+  rewrite <- repeat_app_tail.
+  f_equal; omega.
+  exists (mem_except m' (length vl)).
+  intuition.
+
+  apply pred_execpt_mem_except; eauto.
+  replace (list2nmem vl) with (mem_except (list2nmem (vl ++ [(v', nil)])) (length vl)).
+  apply possible_crash_mem_except; eauto.
+  rewrite listapp_memupd.
+  rewrite <- mem_except_upd.
+  rewrite mem_except_list2nmem_oob; auto.
+Qed.
+
+
+Lemma crash_xform_list2nmem_list_eq : forall F vsl vl,
+  crash_xform F (list2nmem vsl) ->
+  possible_crash_list vsl vl ->
+  vsl = synced_list vl.
+Proof.
+  intros.
+  destruct H0 as [Heq Hx].
+  apply crash_xform_list2nmem_synced in H.
+  apply list_selN_ext with (default := ($0, nil)); intros.
+  rewrite synced_list_length; auto.
+  rewrite synced_list_selN.
+  specialize (Hx _ H0); unfold vsmerge in Hx.
+  rewrite surjective_pairing at 1.
+  erewrite <- selN_map with (f := snd) in * by auto.
+  rewrite H in *.
+  rewrite repeat_selN in * by auto.
+  simpl in *; intuition.
+  rewrite <- H1; simpl; auto.
+  Unshelve. all: eauto.
+Qed.
+
+Lemma possible_crash_list2nmem_cons : forall l l' x y,
+  possible_crash (list2nmem (x :: l)) (list2nmem (y :: l'))
+  -> possible_crash (list2nmem l) (list2nmem l').
+Proof.
+  intros.
+  unfold possible_crash; intros.
+  destruct (le_dec (length l) a);
+  destruct (le_dec (length l') a).
+  left.
+  split;
+  apply list2nmem_oob; omega.
+
+  unfold possible_crash in H;
+  specialize (H (S a)); intuition.
+  unfold possible_crash in H;
+  specialize (H (S a)); intuition.
+
+  unfold possible_crash in H;
+  specialize (H (S a)); intuition.
+Qed.
+
+Lemma possible_crash_list2nmem_length : forall l l',
+  possible_crash (list2nmem l) (list2nmem l')
+  -> length l = length l'.
+Proof.
+  induction l; destruct l'; intros; simpl; auto.
+
+  unfold possible_crash in H.
+  specialize (H 0); intuition.
+  inversion H1.
+  repeat deex.
+  inversion H0.
+
+  unfold possible_crash in H.
+  specialize (H 0); intuition.
+  inversion H.
+  repeat deex.
+  inversion H.
+
+  erewrite IHl; eauto.
+  eapply possible_crash_list2nmem_cons; eauto.
+Qed.
+
+
+Lemma possible_crash_list2nmem_vssync : forall a d m,
+  possible_crash (list2nmem (vssync d a)) m ->
+  possible_crash (list2nmem d) m.
+Proof.
+  unfold vssync; intros.
+  destruct (lt_dec a (length d)).
+  rewrite listupd_memupd in H by auto.
+  eapply possible_crash_upd_nil; eauto.
+  apply list2nmem_sel_inb; auto.
+  rewrite updN_oob in H; auto; omega.
+Qed.
+
+Lemma possible_crash_list2nmem_vssync_vecs : forall al d m,
+  possible_crash (list2nmem (vssync_vecs d al)) m ->
+  possible_crash (list2nmem d) m.
+Proof.
+  induction al using rev_ind; simpl; auto; intros.
+  rewrite vssync_vecs_app in H.
+  apply IHal.
+  eapply possible_crash_list2nmem_vssync; eauto.
+Qed.
+
+Lemma crash_xform_diskIs_vssync_vecs : forall al d,
+  crash_xform (diskIs (list2nmem (vssync_vecs d al))) =p=>
+  crash_xform (diskIs (list2nmem d)).
+Proof.
+  intros.
+  rewrite crash_xform_diskIs; cancel.
+  rewrite <- crash_xform_diskIs_r; eauto.
+  eapply possible_crash_list2nmem_vssync_vecs; eauto.
+Qed.
+
+Lemma setlen_singleton : forall T l (v : T),
+  setlen l 1 v = [ selN (setlen l 1 v) 0 v ].
+Proof.
+  unfold setlen.
+  destruct l; simpl in *; congruence.
+Qed.
+
+Lemma setlen_singleton_ptsto : forall (l : list valuset),
+  let l' := setlen l 1 ($0, nil) in
+  (0 |-> selN l' 0 ($0, nil))%pred (list2nmem l').
+Proof.
+  intros; subst l'.
+  eapply arrayN_one.
+  rewrite <- setlen_singleton.
+  apply list2nmem_array.
+Qed.
+
+Lemma ptsto_0_list2nmem_mem_eq : forall V v (d : list V),
+  (0 |-> v)%pred (list2nmem d) -> d = [v].
+Proof.
+  intros.
+  apply list2nmem_inj.
+  eapply ptsto_complete. eauto.
+  unfold ptsto, list2nmem; simpl; intuition.
+  destruct a'; try congruence.
+Qed.

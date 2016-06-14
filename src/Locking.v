@@ -87,14 +87,14 @@ Section FreeSetTheorems.
 
 End FreeSetTheorems.
 
-Definition Locks AT (AEQ: DecEq AT) := AT -> BusyFlagOwner.
+Definition Locks AT (AEQ: EqDec AT) := AT -> BusyFlagOwner.
 
 Arguments Locks AT {AEQ}.
 
 Section AbstractLocks.
 
   Variable AT:Type.
-  Variable AEQ: DecEq AT.
+  Variable AEQ: EqDec AT.
 
   Definition upd_lock (l: @Locks AT AEQ) a0 o' :=
     fun a => if AEQ a0 a then o' else l a.
@@ -131,7 +131,7 @@ Proof.
   inversion 1; auto.
 Qed.
 
-Definition locks_rep AT (AEQ: DecEq AT) (flags: AT -> BusyFlag) (locks: Locks AT) :=
+Definition locks_rep AT (AEQ: EqDec AT) (flags: AT -> BusyFlag) (locks: Locks AT) :=
   forall a, lock_rep (flags a) (locks a).
 
 Inductive lock_transition tid : BusyFlagOwner -> BusyFlagOwner -> Prop :=
@@ -157,10 +157,10 @@ Proof.
   end; eauto.
 Qed.
 
-Definition lock_protocol AT (AEQ: DecEq AT) tid (locks locks': Locks AT) :=
+Definition lock_protocol AT (AEQ: EqDec AT) tid (locks locks': Locks AT) :=
   forall a, lock_transition tid (locks a) (locks' a).
 
-Theorem lock_protocol_refl : forall AT (AEQ: DecEq AT) tid (locks: Locks AT),
+Theorem lock_protocol_refl : forall AT (AEQ: EqDec AT) tid (locks: Locks AT),
     lock_protocol tid locks locks.
 Proof.
   unfold lock_protocol;

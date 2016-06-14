@@ -1,7 +1,10 @@
 Require Import Arith Omega.
 Require Import Word.
-Require Import Prog.
 Require Import Psatz.
+
+(* TODO: move byte-specific lemmas *)
+Require Import AsyncDisk.
+Import Valulen.
 
 (** The divup and roundup functions and associated theorems.
     divup n sz performs n / sz, rounding up rather than down.
@@ -12,7 +15,43 @@ Require Import Psatz.
 Definition divup (n unitsz : nat) : nat := (n + unitsz - 1) / unitsz.
 Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
 
- Lemma roundup_ge: forall x sz,
+  Lemma lt_add_lt_sub : forall a b c,
+    b <= a -> a < b + c -> a - b < c.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma lt_div_mul_add_le : forall a b c,
+    b > 0 -> a < c / b -> b + a * b <= c.
+  Proof.
+    intros.
+    apply lt_le_S in H0.
+    apply mult_le_compat_r with ( p := b ) in H0; auto.
+    rewrite Nat.add_comm, <- Nat.mul_succ_l.
+    eapply le_trans; eauto.
+    rewrite Nat.mul_comm.
+    apply Nat.mul_div_le; omega.
+  Qed.
+
+  Lemma lt_div_mul_lt : forall a b c,
+    b > 0 -> a < c / b -> a * b < c.
+  Proof.
+    intros.
+    apply lt_div_mul_add_le in H0; auto; omega.
+  Qed.
+
+  Lemma div_lt_mul_lt : forall a b c,
+    b > 0 -> a / b < c -> a < c * b.
+  Proof.
+    intros.
+    apply lt_le_S in H0.
+    apply mult_le_compat_r with ( p := b ) in H0; auto.
+    eapply lt_le_trans; [ | eauto ].
+    rewrite Nat.mul_comm.
+    apply Nat.mul_succ_div_gt; omega.
+  Qed.
+
+  Lemma roundup_ge: forall x sz,
       sz > 0 ->
       roundup x sz >= x.
   Proof.
@@ -54,6 +93,24 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     case_eq x; intros.
     reflexivity.
     apply Nat.div_small.
+    omega.
+  Qed.
+
+  Lemma roundup_0:
+    forall x,
+    roundup 0 x = 0.
+  Proof.
+    unfold roundup; intros.
+    rewrite divup_0. auto.
+  Qed.
+
+  Lemma divup_1: forall x,
+    divup x 1 = x.
+  Proof.
+    simpl; intros.
+    replace (x + 1 - 1) with x by omega.
+    pose proof (Nat.divmod_spec x 0 0 0 (Nat.le_refl 0)).
+    destruct (Nat.divmod x 0 0 0); simpl.
     omega.
   Qed.
 
@@ -106,6 +163,16 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     apply Nat.eq_le_incl.
     apply Nat.div_mod.
     omega.
+  Qed.
+  
+  Lemma divup_ge : forall a b c,
+    b > 0 -> 
+    c >= divup a b -> c * b >= a.
+  Proof.
+    intros.
+    apply le_trans with (m := divup a b * b).
+    apply roundup_ge; auto.
+    apply Nat.mul_le_mono_pos_r; auto.
   Qed.
 
   Lemma divup_mono: forall m n sz,
@@ -257,7 +324,7 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
   Qed.
 
   Lemma divup_goodSize:
-    forall (a: addr),
+    forall (a: waddr),
       goodSize addrlen (divup #a valubytes).
   Proof.
     assert (addrlen > 1) by ( unfold addrlen ; omega ).
@@ -281,4 +348,350 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     rewrite (pow2_add_mul (11+n) 1).
     simpl (pow2 1).
     omega.
+  Qed.
+
+  Lemma divup_sub_1 : forall n sz,
+    n >= sz -> sz <> 0 ->
+    divup (n - sz) sz = divup n sz - 1.
+  Proof.
+    unfold divup; intros; simpl.
+    replace (n - sz + sz) with n by lia.
+    replace (n + sz - 1) with (n - 1 + 1 * sz) by lia.
+    rewrite Nat.div_add by auto.
+    omega.
+  Qed.
+
+  Lemma divup_sub : forall i n sz,
+    n >= i * sz -> sz <> 0 ->
+    divup (n - i * sz) sz = divup n sz - i.
+  Proof.
+    induction i; intros; simpl.
+    repeat rewrite Nat.sub_0_r; auto.
+    replace (n - (sz + i * sz)) with ((n - sz) - (i * sz)) by nia.
+    rewrite IHi by nia.
+    rewrite divup_sub_1; nia.
+  Qed.
+
+  Lemma sub_mod_add_mod : forall a b,
+    b <> 0 -> b - a mod b + a mod b = b.
+  Proof.
+    intros.
+    pose proof (Nat.mod_upper_bound a b H).
+    omega.
+  Qed.
+
+  Lemma divup_mul_l : forall b c,
+    divup (c * b) b <= c.
+  Proof.
+    intros; destruct (Nat.eq_dec b 0); subst.
+    rewrite Nat.mul_0_r; rewrite divup_0; omega.
+    rewrite divup_mul; omega.
+  Qed.
+
+  Lemma divup_mul_r : forall b c,
+    divup (b * c) b <= c.
+  Proof.
+    intros; rewrite Nat.mul_comm; apply divup_mul_l.
+  Qed.
+
+  Lemma divup_le : forall a b c,
+    a <= b * c -> divup a b <= c.
+  Proof.
+    intros.
+    eapply le_trans.
+    apply divup_mono; eauto.
+    rewrite divup_mul_r; auto.
+  Qed.
+
+  Lemma divup_le_1 : forall a b,
+    a <= b -> divup a b <= 1.
+  Proof.
+    intros; apply divup_le; omega.
+  Qed.
+
+  Lemma divup_ge_1 : forall a b,
+   b <> 0 -> a >= b -> divup a b >= 1.
+  Proof.
+    intros; unfold divup.
+    replace (a + b - 1) with (a - 1 + 1 * b) by omega.
+    rewrite Nat.div_add by auto.
+    nia.
+  Qed.
+
+  Lemma divup_mul_ge : forall a b c,
+    b <> 0 -> a >= b * c -> divup a b >= c.
+  Proof.
+    intros.
+    eapply le_trans.
+    2: apply divup_mono; eauto.
+    rewrite Nat.mul_comm.
+    rewrite divup_mul; auto.
+  Qed.
+
+
+  Lemma mod_div_0 : forall a b,
+    (a mod b) / b = 0.
+  Proof.
+    intros.
+    destruct (Nat.eq_dec b 0); subst; simpl; auto.
+    rewrite Nat.div_small; auto.
+    apply Nat.mod_bound_pos; omega.
+  Qed.
+
+  Lemma div_add_distr_le : forall a b c,
+    a / c + b / c <= (a + b) / c.
+  Proof.
+    intros.
+    destruct (Nat.eq_dec c 0); subst; simpl; auto.
+    rewrite Nat.div_mod with (x := a) (y := c) by auto.
+    rewrite Nat.div_mod with (x := b) (y := c) by auto.
+    replace (c * (a / c) + a mod c + (c * (b / c) + b mod c)) with
+            (((a mod c + b mod c) + (b / c) * c) + (a / c) * c) by nia.
+    repeat rewrite Nat.div_add by auto.
+    setoid_rewrite Nat.add_comm at 2 3.
+    setoid_rewrite Nat.mul_comm.
+    repeat rewrite Nat.div_add by auto.
+    repeat rewrite mod_div_0.
+    repeat rewrite Nat.add_0_l.
+    omega.
+  Qed.
+
+
+  Lemma divup_add' : forall i n sz,
+    sz <> 0 -> n <> 0 ->
+    divup (n + sz * i) sz = divup n sz + i.
+  Proof.
+    induction i; intros; simpl.
+    rewrite Nat.add_0_r; rewrite Nat.mul_0_r; auto.
+    replace (n + (sz * S i)) with ((n + sz) + (sz * i)) by nia.
+    rewrite IHi by nia.
+    unfold divup.
+    replace (n + sz + sz - 1) with (n - 1 + 2 * sz) by nia.
+    replace (n + sz - 1) with (n - 1 + 1 * sz) by nia.
+    repeat rewrite Nat.div_add by auto.
+    omega.
+  Qed.
+  
+  Lemma divup_add : forall i n sz,
+    sz <> 0 -> divup (n + sz * i) sz = divup n sz + i.
+  Proof.
+    intros.
+    destruct (Nat.eq_dec n 0); subst.
+    rewrite divup_0; rewrite Nat.add_0_l; rewrite Nat.mul_comm.
+    rewrite divup_mul; omega.
+    apply divup_add'; auto.
+  Qed.
+
+  Lemma add_lt_upper_bound : forall a b c d,
+    a <= b -> c + b < d -> c + a < d.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma helper_sub_add_cancel : forall a b c,
+    a >= b -> b >= c ->
+    a - b + (b - c) = a - c.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma helper_add_sub_lt : forall a b c,
+    b > 0 -> a < c -> a + b - c < b.
+  Proof.
+    intros. omega.
+  Qed.
+
+  Lemma div_mul_lt : forall a b,
+    b <> 0 -> a mod b <> 0 -> a / b * b < a.
+  Proof.
+    intros.
+    rewrite Nat.div_mod with (x := a) (y := b) by auto.
+    setoid_rewrite Nat.mul_comm at 2.
+    repeat rewrite Nat.div_add_l by omega.
+    rewrite Nat.div_small with (a := (a mod b)).
+    rewrite Nat.add_0_r, Nat.mul_comm.
+    omega.
+    apply Nat.mod_upper_bound; omega.
+  Qed.
+
+
+  Lemma roundup_sub_lt : forall n sz,
+    sz > 0 -> roundup n sz - n < sz.
+  Proof.
+    unfold roundup; intros.
+    divup_cases.
+    replace (n / sz * sz) with n; try omega.
+    rewrite Nat.mul_comm.
+    rewrite Nat.div_exact; omega.
+    rewrite Nat.mul_add_distr_r, Nat.mul_1_l.
+
+    apply helper_add_sub_lt; auto.
+    apply div_mul_lt; omega.
+  Qed.
+
+  Lemma divup_add_small : forall m n k,
+    k > 0 -> n <= roundup m k - m ->
+    divup (m + n) k = divup m k.
+  Proof.
+    unfold roundup, divup; intros.
+    replace (m + n + k - 1) with ((m + k - 1) + n) by omega.
+    rewrite Nat.div_mod with (x := (m + k -1)) (y := k) by omega.
+    rewrite Nat.mul_comm.
+    rewrite <- Nat.add_assoc.
+    repeat rewrite Nat.div_add_l by omega.
+    f_equal.
+    repeat rewrite Nat.div_small; auto.
+    apply Nat.mod_upper_bound; omega.
+
+    eapply add_lt_upper_bound; eauto.
+    rewrite Nat.mod_eq by omega.
+    rewrite Nat.mul_comm.
+
+    destruct (le_gt_dec (m + k - 1) ((m + k - 1) / k * k)).
+    replace (m + k - 1 - (m + k - 1) / k * k ) with 0 by omega.
+    rewrite Nat.add_0_l.
+
+    apply roundup_sub_lt; auto.
+    rewrite helper_sub_add_cancel; try omega.
+    apply roundup_ge; auto.
+  Qed.
+
+  Lemma divup_divup: forall x sz,
+      sz > 0 ->
+      divup ((divup x sz) * sz) sz = divup x sz.
+  Proof.
+    unfold divup; intros.
+    rewrite <- Nat.add_sub_assoc by omega.
+    rewrite Nat.div_add_l by omega.
+    replace ((sz - 1) / sz) with 0. omega.
+    rewrite Nat.div_small; omega.
+  Qed.
+
+  Lemma roundup_roundup : forall n sz,
+    sz > 0 ->
+    roundup (roundup n sz) sz = roundup n sz.
+  Proof.
+    unfold roundup; intros.
+    rewrite divup_divup; auto.
+  Qed.
+
+  Lemma roundup_roundup_add : forall x n sz,
+    sz > 0 ->
+    roundup (roundup n sz + x) sz = roundup n sz + roundup x sz.
+  Proof.
+    unfold roundup; intros.
+    rewrite Nat.add_comm.
+    setoid_rewrite Nat.mul_comm at 2.
+    rewrite divup_add by omega.
+    lia.
+  Qed.
+
+  Lemma sub_sub_assoc : forall a b,
+    a >= b -> a - (a - b) = b.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma divup_same : forall x,
+    x <> 0 -> divup x x = 1.
+  Proof.
+    intros; erewrite <- divup_mul; eauto.
+    rewrite Nat.mul_1_l; auto.
+  Qed.
+
+  Lemma divup_gt : forall a b sz,
+    sz > 0 -> divup a sz > b -> a > b * sz.
+  Proof.
+    intros a b sz H.
+    divup_cases.
+    eapply Nat.mul_lt_mono_pos_r in H1; eauto.
+    replace (a / sz * sz) with a in H1; auto.
+    rewrite Nat.mul_comm.
+    apply Nat.div_exact; omega.
+
+    destruct b.
+    destruct (Nat.eq_dec a 0); subst.
+    contradict H0.
+    rewrite Nat.mod_0_l; omega.
+    omega.
+
+    rewrite Nat.add_1_r in H1.
+    apply lt_n_Sm_le in H1.
+    eapply Nat.mul_le_mono_pos_r in H1; eauto.
+    replace (a / sz * sz) with (a - a mod sz) in H1.
+    rewrite H0 in H1.
+    eapply Nat.le_lt_trans; eauto.
+    destruct (Nat.eq_dec a 0); subst.
+    contradict H0.
+    rewrite Nat.mod_0_l; omega.
+    omega.
+
+    rewrite Nat.mod_eq by omega.
+    setoid_rewrite Nat.mul_comm at 2.
+    apply sub_sub_assoc.
+    apply Nat.mul_div_le; omega.
+  Qed.
+
+  Definition divup_S x sz :=
+    match (x mod sz) with
+    | O => divup x sz + 1
+    | S _ => divup x sz
+    end.
+
+  Theorem divup_eq_divup_S : forall x sz,
+    sz <> 0 ->
+    divup (S x) sz = divup_S x sz.
+  Proof.
+    intros.
+    unfold divup, divup_S.
+    divup_cases;
+    replace (S x + sz - 1) with (x + 1 * sz) by omega;
+    rewrite Nat.div_add; auto.
+  Qed.
+
+
+  Lemma divup_add_gt : forall a b n sz,
+    sz > 0 -> a + divup b sz > n ->
+    a * sz + b > n * sz.
+  Proof.
+    induction a; intros; auto.
+    rewrite Nat.add_0_l in H0.
+    rewrite Nat.add_0_l.
+    apply divup_gt; auto.
+
+    replace (S a * sz + b) with (a * sz + (b + sz * 1)).
+    apply IHa; auto.
+    rewrite divup_add; omega.
+    rewrite Nat.mul_1_r.
+    rewrite Nat.mul_succ_l.
+    omega.
+  Qed.
+
+  Lemma roundup_le' : forall a b sz,
+    sz > 0 ->
+    a <= b * sz -> roundup a sz <= b * sz.
+  Proof.
+    intros.
+    apply (roundup_mono _ _ sz) in H0.
+    eapply le_trans; eauto.
+    unfold roundup.
+    apply Nat.mul_le_mono_pos_r; auto.
+    apply divup_mul_l.
+  Qed.
+
+  Lemma roundup_le : forall a b sz,
+    a <= b * sz -> roundup a sz <= b * sz.
+  Proof.
+    destruct sz; intros.
+    unfold roundup.
+    repeat rewrite Nat.mul_0_r; auto.
+    apply roundup_le'; auto; omega.
+  Qed.
+
+  Lemma roundup_min_r : forall a b,
+    b > 0 -> Nat.min ((divup a b) * b ) a = a.
+  Proof.
+    intros.
+    apply Nat.min_r.
+    apply roundup_ge; auto.
   Qed.

@@ -9,6 +9,7 @@ SETUP="$1"
 CHECK="$2"
 
 rm -rf /tmp/crashlog*.img
+rm -rf /tmp/crashlog*.img.out
 ../src/mkfs /tmp/crashlog.img
 ../src/fuse /tmp/crashlog.img -s -f /tmp/ft &
 FUSEPID=$!

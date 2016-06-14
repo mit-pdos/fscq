@@ -7,7 +7,6 @@ Require Import BasicProg.
 Require Import Bool.
 Require Import Pred.
 Require Import Hoare.
-Require Import GenSep.
 Require Import GenSepN.
 Require Import SepAuto.
 Require Import Idempotent.
@@ -19,12 +18,14 @@ Require Import Array.
 Require Import FSLayout.
 Require Import Cache.
 Require Import Rec.
-Require Import RecArray.
+Require Import FileRecArray RecArrayUtils LogRecArray.
 Require Import Omega.
 Require Import Eqdep_dec.
 Require Import Bytes.
 Require Import ProofIrrelevance.
-Require Import BFileRec Rounding.
+Require Import Rounding.
+
+
 
 Set Implicit Arguments.
 Import ListNotations.
@@ -32,7 +33,7 @@ Import ListNotations.
 (** A byte-based interface to a BFileRec. Fast because it uses the range
 update operation in BFileRec to do writes, and exposes an API that uses
 [byte count]s rather than [list byte]s as inputs. *)
-Module BYTEFILE.
+Module FASTBYTEFILE.
 
   Definition byte_type := Rec.WordF 8.
   Definition itemsz := Rec.len byte_type.
@@ -177,7 +178,7 @@ Module BYTEFILE.
    >} read_bytes fsxp inum off len mscs.
    Proof.
     unfold read_bytes, rep, bytes_rep.
-    step. (* 15s *)
+    time step. (* 15s *)
     step.
     step.
     step.
@@ -257,14 +258,14 @@ Module BYTEFILE.
       >} update_bytes fsxp inum off newbytes mscs.
   Proof.
     unfold update_bytes.
-    step. (* 40s *)
+    time step. (* 40s *)
     inversion H6 as [allbytes Hrepconj].
     inversion Hrepconj as [Hbytes_rep Hrepconj']; clear Hrepconj.
     inversion Hbytes_rep as [Hrecrep Hallbytes_goodSize].
     (* TODO: replace this with filelen f *)
     set (flen := # (INODE.ISize (BFILE.BFAttr f))) in *.
 
-    step. (* 50s *)
+    time step. (* 50s *)
     - instantiate (Fx0 := (Fx * arrayN flen
         (skipn flen allbytes))%pred).
       rewrite <- firstn_skipn with (l := allbytes) (n := flen) at 2.
@@ -297,13 +298,14 @@ Module BYTEFILE.
         auto.
       * replace (BFILE.BFAttr f').
         apply firstn_length_l_iff in H10.
+        fold flen.
         match goal with
         | [ H : _ (list2nmem ilist') |- _ ] => rename H into Hilist'
         end.
-        rewrite <- firstn_skipn with (l := ilist') (n := # (INODE.ISize (BFILE.BFAttr f))) in Hilist'.
-        assert (length (firstn # (INODE.ISize (BFILE.BFAttr f)) ilist')
-          = # (INODE.ISize (BFILE.BFAttr f))) as Hflen.
+        rewrite <- firstn_skipn with (l := ilist') (n := flen) in Hilist'.
+        assert (length (firstn flen ilist') = flen) as Hflen.
         apply firstn_length_l; omega.
+
         eapply pimpl_apply in Hilist'; [|apply sep_star_abc_to_acb].
         rewrite <- Hflen in Hilist' at 1.
         assert (Htails_eq := Hilist').
@@ -334,7 +336,9 @@ Module BYTEFILE.
         let^ (mscs) <- bf_update_range items_per_valu itemsz_ok
            fsxp inum #oldlen zeros mscs;
          mscs <- BFILE.bfsetattr fsxp.(FSXPLog) fsxp.(FSXPInode) inum
-                                (INODE.IAUpdate oldattr INODE.ISizeF ($ newlen)) mscs;
+                                (INODE.Build_iattr ($ newlen)
+                                                   (INODE.IMTime oldattr)
+                                                   (INODE.IType oldattr)) mscs;
         rx ^(mscs, true)
       } else {
         rx ^(mscs, false)
@@ -362,16 +366,16 @@ Module BYTEFILE.
            [[ (Fm * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist')%pred (list2mem m') ]] *
            [[ (A * #inum |-> f')%pred (list2nmem flist') ]] *
            [[ bytes' = (bytes ++ (repeat $0 (newlen -  (# (INODE.ISize (BFILE.BFAttr f)))))) ]] *
-           [[ rep bytes' f' ]] *
-           [[ attr = INODE.IAUpdate f.(BFILE.BFAttr) INODE.ISizeF ($ newlen) ]] *
-           [[ f' = BFILE.Build_bfile fdata' attr ]])
+           [[ rep bytes' f']] *
+           [[ attr = INODE.Build_iattr ($ newlen) (f.(BFILE.BFAttr).(INODE.IMTime)) (f.(BFILE.BFAttr).(INODE.IType))]] *
+           [[ f' = BFILE.Build_bfile fdata' attr]])
        CRASH LOG.would_recover_old (FSXPLog fsxp) F mbase
      >} grow_file fsxp inum newlen mscs.
    Proof.
      unfold grow_file, rep, bytes_rep.
-     step. (* 30s *)
+     time step. (* 30s *)
      step.
-     step. (* 10s *)
+     time step. (* 10s *)
 
      fold (filelen f) in *.
      instantiate (Fi := arrayN 0 allbytes).
@@ -403,10 +407,10 @@ Module BYTEFILE.
      apply Nat.min_l; auto.
 
      step.
-     step. (* 60s *)
+     time step. (* 60s *)
      step.
 
-     step. (* 80s *)
+     time step. (* 80s *)
      fold (filelen f) in *.
      apply firstn_length_l_iff in H6.
      instantiate (Fx0 := arrayN 0 (firstn (filelen f) allbytes)).
@@ -440,7 +444,7 @@ Module BYTEFILE.
      omega.
 
      step.
-     step. (* 15s *)
+     time step. (* 15s *)
      apply pimpl_or_r; right.
      cancel.
      fold (filelen f) in *.
@@ -580,7 +584,7 @@ Module BYTEFILE.
       >} append fsxp inum off newbytes mscs.
   Proof.
     unfold append, write_bytes.
-    step. (* 50s *)
+    time step. (* 50s *)
     inversion H7 as [allbytes Hrepconj].
     inversion Hrepconj as [Hbytes_rep Hrepconj']; clear Hrepconj.
     inversion Hrepconj' as [Hbytes Hrepconj'']; clear Hrepconj'.
@@ -592,15 +596,15 @@ Module BYTEFILE.
     apply roundup_valu_ge.
 
     step.
-    step. (* 10s *)
+    time step. (* 10s *)
 
     unfold filelen.
     auto.
 
     step.
-    step. (* 165s -> 7.5s !!! *)
+    time step. (* 165s -> 7.5s !!! *)
     step.
-    step. (* 165s -> 13s *)
+    time step. (* 165s -> 13s *)
 
     instantiate (Fx0 := (Fi * arrayN (filelen f) (repeat $0 (off - filelen f)))%pred).
     instantiate (olddata0 := repeat $0 len).
@@ -620,7 +624,7 @@ Module BYTEFILE.
     autorewrite with lengths.
     reflexivity.
 
-    step. (* 15s *)
+    time step. (* 15s *)
     step.
     (* just the first part of step *)
     eapply pimpl_ok2; eauto with prog.
@@ -638,7 +642,7 @@ Module BYTEFILE.
     pred_apply; cancel.
     auto.
 
-    step.
+    time step.
     eapply pimpl_or_r; right; cancel; eauto.
     (* there are no zeroes, since we're appending nothing *)
     replace (off - filelen f) with 0 by omega.
@@ -650,4 +654,4 @@ Module BYTEFILE.
 
   Hint Extern 1 ({{_}} progseq (append _ _ _ _ _) _) => apply append_ok : prog.
 
-End BYTEFILE.
+End FASTBYTEFILE.

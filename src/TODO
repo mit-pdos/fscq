@@ -1,15 +1,7 @@
 - double-indirect blocks
-- factor out on-disk list code from MemLog
-- bigger log (more than one descriptor block)
 - deleting a file should free its data blocks
 - TRIM support (TRIM opcode randomizes block contents)
 - prove end-to-end theorem about mkfs
-- non-journaled data writes (file fsync)
-- asynchronous metadata updates (directory fsync)
-- implement ext3/4 logging optimizations
-  delay applying log to disk
-  batch transactions 
-  checksum of log in header
 
 - extraction without Haskell
 - integrate into MirageOS unikernel by extracting to OCaml
@@ -22,10 +14,27 @@
 - use http://why.lri.fr/ or http://why3.lri.fr/ to integrate Z3 into Coq
 - use Canonical Structure for defaults
 - integrate error codes (Errno.v)
-- k/v store, on-disk hash table (stephanie)
 - db transaction system (abort)
 - combine Verdi's Paxos with FSCQ for stable storage, prove end-to-end theorem
   under both network and node failures (how to combine different spec styles??)
-- add security to fscq specs (something better than ACLs; maybe capsicum?)
 - provably secure sandbox on top of fscq
 - concurrent transactions
+
+===
+
+- eviction from GroupLog
+- prove AtomicCp
+- prove mkfs
+- prove that unlink never fails
+
+- clean up DirTree (no lists, update_subtree_helper, etc)
+- bring back ByteFile
+- high-performance extraction
+- simplify AtomicCp proofs
+  apply pred to diskset
+- more applications
+- security specs: need to deal with non-determinism, and at the lowest level,
+  need to change the semantics to show that the disk independently chooses
+  which valu to preserve from a valuset (i.e., non-interference between sector
+  crashes)
+

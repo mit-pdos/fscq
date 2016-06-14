@@ -423,6 +423,12 @@ int ioSize;				/* # of bytes per I/O operation */
     ioCount = 0;
     seekLocation = 0;
     gettimeofday ( &before, NULL );
+
+    for (int iter = 0; iter < 64; iter++) {
+
+    ioCount = 0;
+    seekLocation = 0;
+
     while ( ioCount < fileSize ) {
 
 	/*
@@ -451,7 +457,12 @@ int ioSize;				/* # of bytes per I/O operation */
 	    fprintf ( stderr, "Short write in rand_write().  %d bytes\n", rval );
 	}
 	ioCount += rval;
+
+        fdatasync(fd);
     }
+
+    }
+
     fsync ( fd );
     gettimeofday ( &after, NULL );
     time = time + (after.tv_sec - before.tv_sec) * 1000000 +

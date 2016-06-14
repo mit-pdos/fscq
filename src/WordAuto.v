@@ -1,4 +1,4 @@
-Require Import Arith Omega NArith Nomega Word Prog.
+Require Import Arith Omega NArith Nomega Word.
 
 
 Ltac set_evars :=
@@ -15,6 +15,7 @@ Ltac set_evars_in H :=
   repeat match type of H with
               | context[?e] => is_evar e; let E := fresh in set (E := e) in H
             end.
+
 
 
 Theorem f_neq : forall {A B : Type} (f : A -> B) x y, f x <> f y -> x <> y.

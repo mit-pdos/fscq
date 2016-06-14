@@ -12,7 +12,7 @@ Set Implicit Arguments.
 Section RGDef.
 
   Variable AT : Type.
-  Variable AEQ : DecEq AT.
+  Variable AEQ : EqDec AT.
   Variable V : Type.
 
   Definition action := @mem AT AEQ V -> @mem AT AEQ V -> Prop.
@@ -88,7 +88,7 @@ Notation "i |> a" := (fence i%pred a%act) (at level 90).
 Section RGThm.
 
   Variable AT : Type.
-  Variable AEQ : DecEq AT.
+  Variable AEQ : EqDec AT.
   Variable V : Type.
 
   Ltac act_unfold :=

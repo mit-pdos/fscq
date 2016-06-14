@@ -31,9 +31,9 @@ Proof.
   subst; auto.
 Qed.
 
-Instance haddress_dec {types} : DecEq (haddress types).
+Instance haddress_dec {types} : EqDec (haddress types).
 Proof.
-  unfold DecEq; intros.
+  unfold EqDec; intros.
   destruct a, b; auto;
   try solve [ right; intro H; inversion H].
   destruct (member_index_dec m m0); [ left | right ]; intros.
