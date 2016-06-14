@@ -80,25 +80,46 @@ Proof.
   eassumption.
 Qed.
 
+Require Import FunctionalExtensionality.
+
 Lemma ptsto_insert_bwd_ne: forall AT AEQ V (F : @pred AT AEQ V) a v a' v' m,
   a <> a' ->
   m a' = None ->
   (F * a |-> v)%pred (insert m a' v') ->
-  exists F': @pred AT AEQ V, (F' * a |-> v)%pred m.
+  (pred_except F a' v' * a |-> v)%pred m.
 Proof.
-  intros.
-  eexists (pred_except F a' v').
-  unfold pred_except.
+  unfold_sep_star; unfold pimpl, pred_except, insert; intros.
+  repeat deex.
+  exists (mem_except m a').
+  exists m2.
+  intuition.
+  apply functional_extensionality; intros.
+  - apply equal_f with (x0 := x) in H2.
+    destruct (AEQ x a'); subst.
+    rewrite H0 in *.
 
-  eapply ptsto_insert_bwd with (v := v'); eauto.
-  rewrite <- pred_except_sep_star_ptsto by auto.
-  eapply pred_except_ptsto in H1.
-  Search pred_except.
-
-Lemma ptsto_except_idem: forall F,
-  a |-> v * pred_except F a v <=p=> F.
+Lemma mem_union_sel_none : forall AT AEQ V (m1 m2 : @mem AT AEQ V) a,
+  m1 a = None ->
+  m2 a = None ->
+  mem_union m1 m2 a = None.
 Proof.
+Admitted.
 
+    rewrite mem_union_sel_none; auto.
+    apply mem_except_is_none.
+    admit.
+    rewrite H2.
+    Search mem_union mem_except.
+  
+  
+  replace (fun a => if AEQ a a' then Some v' else mem_except m0 a' a) with m0.
+  Search mem_except Some.
+  exists (fun a => if AEQ a a' then v'
+  do 2 eexists.
+  
+  setoid_rewrite pred_except_ptsto with (p := F) (a := a') (v := v') in H1.
+  pred_apply.
+  cancel.
 
   instantiate (v' := v').
   pred_apply.
