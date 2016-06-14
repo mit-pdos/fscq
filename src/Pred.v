@@ -334,6 +334,7 @@ Theorem mem_union_upd:
   mem_union (upd m1 a v) m2 = upd (mem_union m1 m2) a v.
 Proof.
   unfold mem_union, upd; intros; apply functional_extensionality; intros.
+  rewrite H.
   destruct (AEQ x a); eauto.
 Qed.
 
@@ -808,11 +809,11 @@ Proof.
 Qed.
 
 
-Lemma ptsto_upd_disjoint: forall V (F : @pred AT AEQ V) a v m,
+Lemma ptsto_insert_disjoint: forall V (F : @pred AT AEQ V) a v m,
   F m -> m a = None
-  -> (F * a |-> v)%pred (upd m a v).
+  -> (F * a |-> v)%pred (insert m a v).
 Proof.
-  unfold upd; unfold_sep_star; intros; repeat deex.
+  unfold insert; unfold_sep_star; intros; repeat deex.
   exists m.
   exists (fun a' => if AEQ a' a then Some v else None).
   split; [|split].
@@ -834,9 +835,13 @@ Lemma ptsto_upd:
   (a |-> v0 * F)%pred m ->
   (a |-> v * F)%pred (upd m a v).
 Proof.
+  intros.
+  apply ptsto_valid in H as H'.
+  generalize dependent H.
   unfold upd; unfold_sep_star; intros; repeat deex.
   exists (fun a' => if AEQ a' a then Some v else None).
   exists m2.
+  rewrite H'.
   split; [|split].
   - apply functional_extensionality; intro.
     unfold mem_union; destruct (AEQ x a); eauto.
@@ -1311,6 +1316,14 @@ Proof.
   destruct (AEQ x a); auto.
 Qed.
 
+Lemma mem_except_is_none : forall AT AEQ V (m : @mem AT AEQ V) a,
+  mem_except m a a = None.
+Proof.
+  intros.
+  unfold mem_except.
+  destruct (AEQ0 a a); congruence.
+Qed.
+
 Theorem mem_except_eq : forall (m : @mem AT AEQ V) a,
   mem_except m a a = None.
 Proof.
@@ -1324,13 +1337,15 @@ Proof.
   unfold mem_except; intros; destruct (AEQ a' a); congruence.
 Qed.
 
-Theorem upd_mem_except : forall (m : @mem AT AEQ V) a v,
-  upd (mem_except m a) a v = upd m a v.
+Theorem insert_mem_except : forall (m : @mem AT AEQ V) a v v0,
+  m a = Some v0 ->
+  insert (mem_except m a) a v = upd m a v.
 Proof.
   intros; apply functional_extensionality; intros.
-  destruct (AEQ a x); subst.
-  repeat rewrite upd_eq by auto; auto.
-  repeat rewrite upd_ne by auto; rewrite mem_except_ne; auto.
+  unfold insert, upd, mem_except.
+  destruct (AEQ x a); subst; auto.
+  rewrite H.
+  destruct (AEQ a a); congruence.
 Qed.
 
 Theorem mem_except_upd : forall (m : @mem AT AEQ V) a v,
@@ -2102,19 +2117,21 @@ Proof.
   apply mem_except_ptsto; eauto.
 Qed.
 
-Theorem diskIs_combine_upd : forall AT AEQ V a v (m : @mem AT AEQ V),
+Theorem diskIs_combine_upd : forall AT AEQ V a v v0 (m : @mem AT AEQ V),
+  m a = Some v0 ->
   diskIs (mem_except m a) * a |-> v =p=> diskIs (upd m a v).
 Proof.
   unfold pimpl, diskIs, ptsto, upd; unfold_sep_star; intros; subst; repeat deex.
   apply functional_extensionality; intros.
   case_eq (AEQ x a); intros; subst.
-  - rewrite mem_union_comm; auto.
+  - rewrite H.
+    rewrite mem_union_comm; auto.
     erewrite mem_union_addr; eauto.
     apply mem_disjoint_comm; auto.
   - unfold mem_union, mem_except.
     destruct (AEQ x a); try discriminate.
     case_eq (m x); auto; intros.
-    rewrite H4; auto.
+    rewrite H5; auto.
 Qed.
 
 Theorem diskIs_combine_same : forall AT AEQ V a v (m : @mem AT AEQ V),
@@ -2142,17 +2159,16 @@ Qed.
 
 (* exclude an address from a predicate *)
 Definition pred_except AT AEQ V (F : @pred AT AEQ V) a v : @pred AT AEQ V :=
-  fun m => F (upd m a v).
+  fun m => m a = None /\ F (insert m a v).
 
-Lemma pred_execpt_mem_except : forall AT AEQ V (F : @pred AT AEQ V) m a v,
+Lemma pred_except_mem_except : forall AT AEQ V (F : @pred AT AEQ V) m a v,
   F m -> m a = Some v -> (pred_except F a v) (mem_except m a).
 Proof.
   unfold pred_except; intros.
-  case_eq (m a); intros; replace (upd (mem_except m a) a v) with m; auto.
-  apply functional_extensionality; intros.
-  unfold upd, mem_except.
-  destruct (AEQ x a); subst; auto.
-  congruence.
+  erewrite insert_mem_except by eauto.
+  rewrite upd_nop; eauto.
+  intuition.
+  apply mem_except_is_none.
 Qed.
 
 Lemma pred_except_ptsto : forall AT AEQ V (p : @pred AT AEQ V) a v,
@@ -2169,18 +2185,69 @@ Proof.
   rewrite <- emp_star; eauto.
   eauto.
   eapply mem_except_ptsto; auto.
-  apply pred_execpt_mem_except; eauto.
+  apply pred_except_mem_except; eauto.
 Qed.
 
-Definition pred_ex AT AEQ V (F : @pred AT AEQ V) a : @pred AT AEQ V :=
-  fun m => exists v, F (upd m a v).
-
-Lemma pred_ex_mem_except : forall AT AEQ V (F : @pred AT AEQ V) m a,
-  F m -> indomain a m-> (pred_ex F a) (mem_except m a).
+Theorem pred_except_sep_star_ptsto : forall AT AEQ V (p : @pred AT AEQ V) a v a' v',
+  a <> a' ->
+  pred_except (p * a' |-> v') a v <=p=> pred_except p a v * a' |-> v'.
 Proof.
-  unfold pred_ex; intros.
-  unfold indomain in H0; destruct H0; eexists.
-  apply pred_execpt_mem_except; eauto.
+  unfold piff, pimpl, pred_except.
+  unfold_sep_star.
+  split; intros; intuition; repeat deex.
+  - exists (mem_except m1 a).
+    exists m2.
+    intuition.
+
+    + apply functional_extensionality; intros.
+      apply equal_f with (x0 := x) in H2.
+      destruct (AEQ a x); subst.
+      * rewrite H1. unfold mem_union, mem_except. destruct (AEQ x x); try congruence.
+        unfold ptsto in H5. intuition. rewrite H6; auto.
+      * unfold insert in H2.
+        unfold mem_union, mem_except in *.
+        destruct (AEQ x a); try congruence.
+
+    + apply mem_disjoint_comm.
+      apply mem_disjoint_mem_except.
+      apply mem_disjoint_comm.
+      assumption.
+
+    + apply mem_except_is_none.
+
+    + assert (m1 a = Some v).
+      unfold insert, mem_union in *.
+      apply equal_f with (x := a) in H2.
+      destruct (AEQ a a); try congruence.
+      rewrite H1 in *.
+      rewrite H2.
+      case_eq (m1 a); intros; auto.
+      unfold ptsto in H5; intuition.
+      rewrite H7; auto.
+
+      erewrite insert_mem_except by eauto.
+      rewrite upd_nop; eauto.
+
+  - unfold mem_union.
+    rewrite H3.
+    firstorder.
+
+  - exists (insert m1 a v).
+    exists m2.
+    intuition.
+
+    + unfold insert, mem_union; apply functional_extensionality; intros.
+      rewrite H3.
+      destruct (AEQ x a); subst; auto.
+      unfold ptsto in *; intuition.
+      rewrite H2; eauto.
+
+    + unfold mem_disjoint, insert, not in *; intros; repeat deex.
+      rewrite H3 in *.
+      destruct (AEQ a0 a); subst; try solve [ firstorder ].
+      unfold ptsto in H4. intuition.
+      rewrite H7 in H6; eauto.
+      congruence.
 Qed.
 
 
@@ -2201,19 +2268,5 @@ Proof.
     rewrite mem_except_upd in H.
     rewrite mem_except_none in H; auto.
 Qed.
-
-
-Definition with_upd {AT AEQ V} (p : @pred AT AEQ V) a v : @pred AT AEQ V :=
-  fun m => p (upd m a v).
-
-Theorem with_upd_sep_star_ptsto : forall AT AEQ V (p : @pred AT AEQ V) a v a' v',
-  a <> a' ->
-  with_upd (p * a' |-> v') a v <=p=> with_upd p a v * a' |-> v'.
-Proof.
-  unfold piff, pimpl, with_upd.
-  unfold_sep_star.
-  split; intros; repeat deex.
-  - exists m1. exists m2.
-Admitted.
 
 Global Opaque pred.
