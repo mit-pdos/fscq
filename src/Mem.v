@@ -181,3 +181,6 @@ Section GenMem.
   Qed.
 
 End GenMem.
+
+Hint Rewrite upd_eq using (solve [ auto ]) : upd.
+Hint Rewrite upd_ne using (solve [ auto ]) : upd.

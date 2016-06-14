@@ -2200,6 +2200,73 @@ Proof.
   rewrite H5; auto; discriminate.
 Qed.
 
+Lemma diskIs_combine_same':
+forall AT AEQ V a v (m: @mem AT AEQ V),
+  m a = Some v ->
+  diskIs m =p=> diskIs (mem_except m a) * a |-> v.
+Proof.
+  unfold_sep_star; unfold pimpl, diskIs.
+  intros; subst.
+  exists (mem_except m0 a).
+  exists (upd empty_mem a v).
+  unfold mem_except, ptsto, mem_disjoint, mem_union, empty_mem in *.
+  intuition eauto; autorewrite with upd; auto.
+  extensionality a'.
+  destruct (AEQ a' a); subst;
+    autorewrite with upd;
+    auto.
+  destruct (m0 a'); auto.
+  repeat deex.
+  destruct (AEQ a0 a);
+    autorewrite with upd in *;
+    congruence.
+Qed.
+
+Lemma diskIs_combine_same'_applied
+  : forall AT AEQ V a v (m d : @mem AT AEQ V),
+    m a = Some v ->
+    diskIs m d ->
+    (diskIs (mem_except m a) * a |-> v)%pred d.
+Proof.
+  intros.
+  apply diskIs_combine_same'; auto.
+Qed.
+
+Lemma diskIs_same : forall AT AEQ V (d: @mem AT AEQ V),
+    diskIs d d.
+Proof.
+  unfold diskIs; auto.
+Qed.
+
+Lemma diskIs_split_upd : forall AT AEQ V a v (m: @mem AT AEQ V),
+  diskIs (upd m a v) =p=>
+  diskIs (mem_except m a) * a |-> v.
+Proof.
+  unfold diskIs, pimpl, mem_except, mem_union, mem_disjoint.
+  unfold_sep_star.
+  intros.
+  eexists.
+  exists (upd empty_mem a v).
+  intuition eauto.
+  unfold mem_union, empty_mem; subst.
+  extensionality a'.
+  destruct (AEQ a' a); subst;
+  autorewrite with upd;
+  auto.
+  repeat rewrite upd_eq by auto;
+  repeat rewrite upd_ne by auto;
+  auto.
+  destruct (m a'); auto.
+
+  unfold mem_disjoint, empty_mem; intro; repeat deex.
+  destruct (AEQ a0 a); subst;
+  autorewrite with upd in *;
+  congruence.
+  unfold ptsto, empty_mem; intuition;
+    autorewrite with upd;
+    auto.
+Qed.
+
 Theorem diskIs_pred : forall AT AEQ V (m : @mem AT AEQ V) (p : @pred AT AEQ V),
   p m ->
   diskIs m =p=> p.
