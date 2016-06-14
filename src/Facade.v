@@ -1,3 +1,4 @@
+Require Import Eqdep.
 Require Import PeanoNat String List FMapAVL.
 Require Import Relation_Operators Operators_Properties.
 Require Import VerdiTactics.
@@ -809,9 +810,15 @@ Lemma Forall_elements_remove_weaken : forall V P k (m : StringMap.t V),
 Proof.
 Admitted.
 
-Lemma Forall_elements_forall_In : forall V (P : _ -> Prop) m,
-  (forall k (v : V), StringMap.find k m = Some v -> P (k, v)) <->
+Lemma forall_In_Forall_elements : forall V (P : _ -> Prop) m,
+  (forall k (v : V), StringMap.find k m = Some v -> P (k, v)) ->
   Forall P (StringMap.elements m).
+Proof.
+Admitted.
+
+Lemma Forall_elements_forall_In : forall V (P : _ -> Prop) m,
+  Forall P (StringMap.elements m) ->
+  (forall k (v : V), StringMap.find k m = Some v -> P (k, v)).
 Proof.
 Admitted.
 
@@ -1015,7 +1022,7 @@ Proof.
   destruct (StringMapFacts.eq_dec vvar avar). {
     unfold StringKey.eq in e; subst.
     eapply Forall_elements_equal; [ | eapply add_remove_same ].
-    eapply Forall_elements_forall_In. intros.
+    eapply forall_In_Forall_elements. intros.
     eapply Forall_elements_forall_In in H1; eauto. destruct v0.
     destruct (StringMapFacts.eq_dec k avar).
     + unfold StringKey.eq in e; subst. maps. discriminate.
@@ -1024,7 +1031,7 @@ Proof.
     unfold StringKey.eq in n. eapply Forall_elements_equal; [ | eapply add_remove_comm'; congruence ]. maps.
     + rewrite He. trivial.
     + eapply Forall_elements_equal; [ | eapply remove_remove_comm; congruence ].
-      eapply Forall_elements_forall_In. intros.
+      eapply forall_In_Forall_elements. intros.
       destruct (StringMapFacts.eq_dec k avar). {
         unfold StringKey.eq in e; subst. maps. discriminate.
       }
@@ -1040,60 +1047,50 @@ Proof.
   eauto.
 Qed.
 
-Lemma CompileWrite : forall A avar vvar (af vf : A -> nat) pr d0,
-  avar <> "disk" ->
-  vvar <> "disk" ->
+Lemma CompileWrite : forall F tvar avar vvar a v,
   avar <> vvar ->
-  {{ [ SItemDisk (NTSome "disk") d0 pr; SItemRet (NTSome avar) d0 (pr |> af); SItemRet (NTSome vvar) d0 (pr |> vf)] }}
-    Call "_" "write" ["disk"; avar; vvar]
-  {{ [ SItemDisk (NTSome "disk") d0 (fun T rx => pr T (fun x => @Write T (af x) (vf x) rx))] }} // disk_env.
+  tvar <> avar ->
+  tvar <> vvar ->
+  ~ StringMap.In tvar F ->
+  EXTRACT Write a v
+  {{ avar ~> a; vvar ~> v; F }}
+    Call tvar "write" [avar; vvar]
+  {{ fun _ => avar ~> a; vvar ~> v; F }} // disk_env.
 Proof.
   unfold ProgOk.
   intros.
   intuition.
-  simpl in *.
   maps.
-  find_cases "disk" initial_state.
-  find_cases avar initial_state.
-  find_cases vvar initial_state.
+  find_all_cases.
   econstructor.
   unfold disk_env. maps. trivial.
-  unfold sel. simpl. rewrite He. rewrite He0. rewrite He1. trivial.
-  intuition. repeat deex.
+  unfold sel. simpl. rewrite He, He0. trivial.
   simpl. eauto.
-  invert_runsto.
-  simpl in *.
-  unfold sel in *.
-  maps.
-  find_cases "disk" initial_state.
-  find_cases avar initial_state.
-  find_cases vvar initial_state.
-  find_inversion.
-  do 3 (destruct output; try discriminate).
-  simpl in *.
-  destruct H2 as [? [? [? _]]].
-  subst st'.
-  unfold disk_env in *.
-  maps.
-  repeat find_inversion.
-  repeat deex.
-  assert (Hc := H3).
-  eapply computes_to_after in Hc.
-  pose proof (computes_to_det_disk Hc H5); subst.
-  pose proof (computes_to_det_ret Hc H5); subst.
-  assert (Hc' := H3).
-  eapply computes_to_after in Hc'.
-  pose proof (computes_to_det_disk Hc' H4); subst.
-  pose proof (computes_to_det_ret Hc' H4); subst.
-  unfold computes_to in *.
-  repeat deex.
-  simpl in *.
-  repeat deex.
-  repeat find_inversion.
-  maps.
-  repeat eexists; intros. simpl in *. eauto.
-  eapply H3. eauto.
-  eapply H3 in H2. invc H2. invc H7. eauto.
+
+  repeat inv_exec. simpl in *. maps.
+  find_all_cases. unfold disk_env in *. maps. invc H12. simpl in *.
+  repeat deex. do 2 (destruct output; try discriminate). simpl in *.
+  unfold sel in *. rewrite He, He0 in *. repeat find_inversion.
+  repeat eexists. econstructor. eapply possible_sync_refl. eauto.
+  subst_definitions. maps. rewrite He0. trivial.
+  eapply forall_In_Forall_elements. intros.
+  pose proof (Forall_elements_forall_In _ H6).
+  destruct v. simpl in *.
+  destruct (StringMapFacts.eq_dec k tvar); maps. {
+    apply_in_hyp StringMapFacts.not_find_in_iff. congruence.
+  }
+  destruct (StringMapFacts.eq_dec k vvar); maps. {
+    find_inversion. repeat apply_in_hyp inj_pair2. (* NOTE: Assumes axiom eq_rect_eq *)
+    subst. trivial.
+  }
+  destruct (StringMapFacts.eq_dec k avar); maps. {
+    congruence.
+  }
+  specialize (H7 k (SItem v)). conclude H7 ltac:(maps; eauto).
+  simpl in *. eauto.
+
+  repeat inv_exec.
+  eauto.
 Qed.
 
 Definition inc_disk_prog T rx : prog T := Read 0 (fun x => Write 0 x rx).
