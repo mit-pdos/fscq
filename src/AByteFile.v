@@ -132,34 +132,35 @@ Definition rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f pfy ufy
 [[ bytefile_valid ufy fy ]] * 
 [[ # (INODE.ABytes (ByFAttr fy)) = length(ByFData fy)]])%pred .
 
-Definition read_first_block lxp ixp inum fms block_off byte_off read_length :=
+Definition read_first_block T lxp ixp inum fms block_off byte_off read_length rx: prog T :=
       let^ (fms, first_block) <- BFILE.read lxp ixp inum block_off fms;   (* get first block *)
       let data_init := (get_sublist (valu2list first_block) byte_off read_length) in
-      Ret ^(fms, data_init).
+      rx ^(fms, data_init).
       
 
 
-Definition read_middle_blocks lxp ixp inum fms block_off num_of_full_blocks :=
+Definition read_middle_blocks T lxp ixp inum fms block_off num_of_full_blocks rx: prog T :=
 let^ (data) <- (ForN_ (fun i =>
-        (pair_args_helper (fun data (_:unit) => (fun Ret =>
+        (pair_args_helper (fun data (_:unit) => (fun lrx => 
         
         let^ (fms, block) <- BFILE.read lxp ixp inum (block_off + i) fms; (* get i'th block *)
-        Ret ^(data++(valu2list block))%list (* append its contents *)
+        lrx ^(data++(valu2list block))%list (* append its contents *)
         
         )))) 1 num_of_full_blocks
       (fun _:nat => (fun _ => (fun _ => (fun _ => (fun _ => True)%pred)))) (* trivial invariant *)
       (fun _:nat => (fun _ => (fun _ => True)%pred))) ^(nil);             (* trivial crashpred *)
-Ret ^(fms, data).
+rx ^(fms, data).
 
 (* let^ ((data:list byte)) <- ForN i < num_of_full_blocks 
             Ghost [ lxp ixp inum fms block_off ] 
             Loopvar [ (data:list byte) ] 
+            Continuation lrx
             Invariant [[True]] OnCrash [[True]] 
             Begin
             let^ (fms, block) <- BFILE.read lxp ixp inum (block_off +1 + i) fms; (* get i'th block *)
-            Ret ^(data++(valu2list block))%list (* append its contents *)
+            lrx ^(data++(valu2list block))%list (* append its contents *) 
             Rof ^((nil:list byte));
-Ret ^(fms, data). *)
+rx ^(fms, data). *)
 
 Definition middle_blocks_match r fy block_off num_of_full_blocks: Prop :=
 let block_size := valubytes in
@@ -167,10 +168,10 @@ forall i, (i < num_of_full_blocks * block_size) ->
 selN r i byte0 = fst (selN (ByFData fy) (block_off*block_size +i) byteset0).
 
 
-Definition read_last_block lxp ixp inum fms block_off read_length :=
+Definition read_last_block  T lxp ixp inum fms block_off read_length rx: prog T :=
 let^ (fms, last_block) <- BFILE.read lxp ixp inum block_off fms;   (* get final block *)
 let data_last := (get_sublist (valu2list last_block) 0 read_length) in (* get final block data *)
-Ret ^(fms, data_last).
+rx ^(fms, data_last).
 
 Definition last_block_match r fy block_off read_length: Prop :=
 let block_size := valubytes in
@@ -179,7 +180,7 @@ forall i, (i < read_length) -> selN r i byte0 =
 
 
 (*Interface*)
-Definition read lxp ixp inum off len fms :=
+Definition read T lxp ixp inum off len fms rx : prog T :=
 If (lt_dec 0 len)                        (* if read length > 0 *)
 {                    
   let^ (fms, flen) <- BFILE.getlen lxp ixp inum fms;          (* get file length *)
@@ -196,18 +197,6 @@ If (lt_dec 0 len)                        (* if read length > 0 *)
       
       let len_remain := (len - first_read_length) in  (* length of remaining part *)
       let num_of_full_blocks := (len_remain / block_size) in (* number of full blocks in length *)
-<<<<<<< 74e098c93555717e6048b981aca9a1d1f96e2415
-
-      (*for loop for reading full blocks in between*)
-      let^ (fms, data_middle) <- read_middle_blocks lxp ixp inum fms block_off num_of_full_blocks;
-
-      let off_final := (block_off + num_of_full_blocks) in (* offset of final block *)
-      let len_final := (len_remain - num_of_full_blocks * block_size) in (* final remaining length *)
-      
-      (*Read last block*)
-      let^ (fms, data_last) <- read_last_block lxp ixp inum fms off_final len_final;
-      Ret ^(fms, data_first++data_middle++data_last)%list                  (* append everything and return *)
-=======
       If (lt_dec 0 num_of_full_blocks)                        (* if read length > 0 *)
       {  
         (*for loop for reading full blocks in between*)
@@ -238,19 +227,18 @@ If (lt_dec 0 len)                        (* if read length > 0 *)
           rx ^(fms, data_first)%list  
         }
       }
->>>>>>> 471ebe210b171289b1d7500fd2f261f038fbf5b7
   } 
   else                                                 (* if offset is not valid, return nil *)
   {    
-    Ret ^(fms, nil)
+    rx ^(fms, nil)
   }
 } 
 else                                                   (* if read length is not valid, return nil *)
 {    
-  Ret ^(fms, nil)
+  rx ^(fms, nil)
 }.
 
-(* Definition write lxp ixp inum off data fms :=
+(* Definition write T lxp ixp inum off data fms rx : prog T :=
     let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     let^ (fms, flen) <- BFILE.getlen lxp ixp inum fms;          (* get file length *)
     let len := min (length data) (flen - off) in
@@ -273,11 +261,11 @@ else                                                   (* if read length is not 
     
     (*for loop for writing full blocks in between*)
     let^ (temp) <- (ForN_ (fun i =>
-      (pair_args_helper (fun data (_:unit) => (fun Ret =>
+      (pair_args_helper (fun data (_:unit) => (fun lrx => 
       
       let^ (ms, bn) <- INODE.getbnum lxp ixp inum (block_off+i) ms;(* get i'th block number *)
       ms <- LOG.write lxp (# bn) (list2valu (get_sublist data (first_write_length + i*block_size) block_size)) ms;
-      Ret ^(nil)
+      lrx ^(nil)
       
       )))) 1 num_of_full_blocks
     (fun _:nat => (fun _ => (fun _ => (fun _ => (fun _ => True)%pred)))) (* trivial invariant *)
@@ -294,12 +282,12 @@ else                                                   (* if read length is not 
     let^ (ms, bn) <- INODE.getbnum lxp ixp inum (off_final) ms;(* get final block number *)
     ms <- LOG.write lxp (# bn) last_block_write ms;
   
-    Ret ^(BFILE.mk_memstate al ms).
+    rx ^(BFILE.mk_memstate al ms).
     
   
   
 (* same as write except uses LOG.dwrite *)
-Definition dwrite lxp ixp inum off data fms :=
+Definition dwrite T lxp ixp inum off data fms rx : prog T :=
     let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     let^ (fms, flen) <- BFILE.getlen lxp ixp inum fms;          (* get file length *)
     let len := min (length data) (flen - off) in
@@ -321,11 +309,11 @@ Definition dwrite lxp ixp inum off data fms :=
     
     (*for loop for writing full blocks in between*)
     let^ (temp) <- (ForN_ (fun i =>
-      (pair_args_helper (fun data (_:unit) => (fun Ret =>
+      (pair_args_helper (fun data (_:unit) => (fun lrx => 
       
       let^ (ms, bn) <- INODE.getbnum lxp ixp inum (block_off+i) ms;(* get i'th block number *)
       ms <- LOG.dwrite lxp (# bn) (list2valu (get_sublist data (first_write_length + i*block_size) block_size)) ms;
-      Ret ^(nil)
+      lrx ^(nil)
       
       )))) 1 num_of_full_blocks
     (fun _:nat => (fun _ => (fun _ => (fun _ => (fun _ => True)%pred)))) (* trivial invariant *)
@@ -342,29 +330,29 @@ Definition dwrite lxp ixp inum off data fms :=
     let^ (ms, bn) <- INODE.getbnum lxp ixp inum (off_final) ms;(* get final block number *)
     ms <- LOG.dwrite lxp (# bn) last_block_write ms;
   
-    Ret ^(BFILE.mk_memstate al ms).
+    rx ^(BFILE.mk_memstate al ms).
  *)
 
 (*Same as BFile*)
- Definition getlen lxp ixp inum fms :=
+ Definition getlen T lxp ixp inum fms rx : prog T :=
     let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     let^ (ms, n) <- INODE.getlen lxp ixp inum ms;
-    Ret ^(BFILE.mk_memstate al ms, n).
+    rx ^(BFILE.mk_memstate al ms, n).
 
-  Definition getattrs lxp ixp inum fms :=
+  Definition getattrs T lxp ixp inum fms rx : prog T :=
     let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     let^ (ms, n) <- INODE.getattrs lxp ixp inum ms;
-    Ret ^(BFILE.mk_memstate al ms, n).
+    rx ^(BFILE.mk_memstate al ms, n).
 
-  Definition setattrs lxp ixp inum a fms :=
+  Definition setattrs T lxp ixp inum a fms rx : prog T :=
     let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     ms <- INODE.setattrs lxp ixp inum a ms;
-    Ret (BFILE.mk_memstate al ms).
+    rx (BFILE.mk_memstate al ms).
 
-  Definition updattr lxp ixp inum kv fms :=
+  Definition updattr T lxp ixp inum kv fms rx : prog T :=
     let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     ms <- INODE.updattr lxp ixp inum kv ms;
-    Ret (BFILE.mk_memstate al ms).
+    rx (BFILE.mk_memstate al ms).
     
 
 (* Helper length lemmas.*)
@@ -741,8 +729,27 @@ Proof. Admitted.
 
 Lemma addr_id: forall A (l: list A) a def, 
 a < length l ->
-exists F, (F * a |-> (selN l a def))%pred (list2nmem l).
+((diskIs (mem_except (list2nmem l) a)) * a |-> (selN l a def))%pred (list2nmem l).
 Proof. Admitted.
+(* intros.
+apply list2nmem_updN_selN with (v1:= selN l a def).
+Search updN.
+
+  assert (arrayN (@ptsto _ eq_nat_dec _) 0 l (list2nmem l)) as Hx by eapply list2nmem_array.
+  pred_apply; erewrite arrayN_except; eauto.
+  rewrite <- arrayN_except.
+  rewrite <- diskIs_extract.
+  Search arrayN 0.
+  apply  diskIs_pred in Hx.
+  apply Hx.
+  Search diskIs.
+  Search mem_except.
+  
+  apply diskIs_extract.
+  
+  rewrite <- surjective_pairing.
+  cancel.
+Qed. *)
 
 Lemma firstn1 : forall A (l:list(list A)),
 concat(firstn 1 l) = selN l 0 nil.
@@ -767,53 +774,113 @@ Search min le.
 apply Min.le_min_r.
 Qed.
 
+Lemma unified_byte_protobyte_len: forall pfy ufy k,
+unified_bytefile_valid pfy ufy ->
+Forall (fun sublist : list byteset => length sublist = k) (PByFData pfy) ->
+length(UByFData ufy) = length (PByFData pfy) * k.
+Proof.
+intros.
+rewrite H.
+apply concat_hom_length with (k:= k).
+apply H0.
+Qed.
+
 Lemma byte2unifiedbyte: forall ufy fy F a b,
 bytefile_valid ufy fy ->
 (F * a|-> b)%pred (list2nmem (ByFData fy)) ->
-exists F', (F' * a|->b)%pred (list2nmem (UByFData ufy)).
+ (F * (arrayN (ptsto (V:= byteset)) (length(ByFData fy)) 
+          (skipn (length(ByFData fy)) (UByFData ufy)))
+  * a|->b)%pred (list2nmem (UByFData ufy)).
 Proof.
-intros.
+unfold bytefile_valid; intros.
 pose proof H0.
 rewrite H in H0.
-eapply list2nmem_sel in H0.
+apply list2nmem_sel with (def:= byteset0) in H0.
 rewrite H0.
 rewrite selN_firstn.
-apply addr_id.
-apply list2nmem_inbound in H1. 
-eapply Nat.lt_le_trans.
+apply sep_star_comm.
+apply sep_star_assoc.
+replace (list2nmem(UByFData ufy))
+    with (list2nmem(ByFData fy ++ skipn (length (ByFData fy)) (UByFData ufy))).
+apply list2nmem_arrayN_app.
+apply sep_star_comm.
+rewrite selN_firstn in H0.
+rewrite <- H0.
 apply H1.
+apply list2nmem_inbound in H1.
+apply H1.
+rewrite H.
+rewrite firstn_length.
+rewrite Min.min_l. 
+rewrite firstn_skipn.
+reflexivity.
 apply bytefile_unified_byte_len.
 apply H.
 apply list2nmem_inbound in H1.
 apply H1.
-Grab Existential Variables.
-apply byteset0. 
 Qed.
 
-Lemma unifiedbyte2protobyte: forall pfy ufy a b F,
+Search Mem.mem.
+Lemma unifiedbyte2protobyte: forall pfy ufy a b F k,
 unified_bytefile_valid pfy ufy ->
-Forall (fun sublist : list byteset => length sublist = valubytes) (PByFData pfy) ->
+Forall (fun sublist : list byteset => length sublist = k) (PByFData pfy) ->
+k > 0 ->
 (F * a|->b)%pred (list2nmem (UByFData ufy)) ->
-exists F', (F' * (a/valubytes) |-> get_sublist (UByFData ufy) ((a/valubytes) * valubytes) valubytes)%pred (list2nmem (PByFData pfy)).
+(diskIs (mem_except (list2nmem (PByFData pfy)) (a/k))  * 
+(a/k) |-> get_sublist (UByFData ufy) ((a/k) * k) k)%pred (list2nmem (PByFData pfy)).
 Proof.
 intros.
-pose proof H1.
-rewrite H in H1.
-rewrite H.
 unfold get_sublist.
-erewrite concat_hom_skipn.
-Search firstn concat.
-replace (firstn valubytes (concat (skipn (a / valubytes) (PByFData pfy))))
-  with (firstn (1*valubytes) (concat (skipn (a / valubytes) (PByFData pfy)))).
-erewrite concat_hom_firstn.
+rewrite H.
+Search skipn concat.
+rewrite concat_hom_skipn with (k:= k).
+replace (k) with (1 * k) by omega.
+rewrite concat_hom_firstn.
 rewrite firstn1.
 rewrite skipn_selN.
-replace (a / valubytes + 0) with (a / valubytes) by omega. 
+simpl.
+repeat rewrite <- plus_n_O.
 apply addr_id.
-unfold unified_bytefile_valid in H.
-Search firstn 1.
-(* HERE *)
-Admitted.
+Search mult Nat.div lt.
+apply Nat.div_lt_upper_bound.
+unfold not; intros.
+rewrite H3 in H1; inversion H1.
+rewrite Nat.mul_comm.
+rewrite <- unified_byte_protobyte_len with (ufy:= ufy).
+apply list2nmem_inbound in H2.
+apply H2.
+apply H.
+apply H0.
+simpl;  rewrite <- plus_n_O.
+Search Forall skipn.
+apply forall_skipn.
+apply H0.
+apply H0.
+Qed.
+
+Lemma protobyte2block: forall a b f pfy,
+proto_bytefile_valid f pfy ->
+(diskIs (mem_except (list2nmem (PByFData pfy)) a) * a|->b)%pred (list2nmem (PByFData pfy)) ->
+(diskIs (mem_except (list2nmem (BFILE.BFData f)) a) * a|->(bytesets2valuset b))%pred (list2nmem (BFILE.BFData f)).
+Proof.
+unfold proto_bytefile_valid; intros.
+rewrite H in H0.
+pose proof H0.
+eapply list2nmem_sel in H0.
+erewrite selN_map in H0.
+rewrite H0.
+rewrite valuset2bytesets2valuset.
+apply addr_id.
+apply list2nmem_inbound in H1.
+rewrite map_length in H1.
+apply H1.
+apply list2nmem_inbound in H1.
+rewrite map_length in H1.
+apply H1.
+Grab Existential Variables.
+apply nil.
+apply valuset0.
+Qed. 
 
 Lemma bytefile_bfile_eq: forall f pfy ufy fy,
 proto_bytefile_valid f pfy -> 
@@ -832,6 +899,13 @@ rewrite <- H0.
 apply H1.
 Qed.
 
+Lemma div_eq: forall n m k, k < m -> (n * m + k)/m = n.
+intros.
+induction k.
+rewrite <- plus_n_O.
+induction m.
+inversion H.
+unfold Nat.div.
 
 (*Specs*)
 Theorem read_first_block_ok: forall lxp bxp ixp inum fms block_off byte_off read_length,
@@ -870,8 +944,14 @@ apply H11.
 apply H10.
 
 pose proof H12.
-eapply protobyte2block with (i:= block_off) in H12.
-inversion H12.
+eapply protobyte2block with (a:= block_off) in H12.
+apply H12.
+eapply unifiedbyte2protobyte with (a:= block_off * valubytes + byte_off) (k:= valubytes)in H11.
+
+
+
+
+
 
 rewrite H in H4.
 apply H10.
@@ -1187,47 +1267,47 @@ Proof. Admitted.
           
 (*From BFile
 
-  Definition datasync lxp ixp inum fms :=
+  Definition datasync T lxp ixp inum fms rx : prog T :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
     ms <- LOG.dsync_vecs lxp (map (@wordToNat _) bns) ms;
-    Ret (mk_memstate al ms).
+    rx (mk_memstate al ms).
 
-  Definition sync lxp (ixp : INODE.IRecSig.xparams) fms :=
+  Definition sync T lxp (ixp : INODE.IRecSig.xparams) fms rx : prog T :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     ms <- LOG.sync lxp ms;
-    Ret (mk_memstate (negb al) ms).
+    rx (mk_memstate (negb al) ms).
 
   Definition pick_balloc A (a : A * A) (flag : bool) :=
     if flag then fst a else snd a.
 
-  Definition grow lxp bxps ixp inum v fms :=
+  Definition grow T lxp bxps ixp inum v fms rx : prog T :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, len) <- INODE.getlen lxp ixp inum ms;
     If (lt_dec len INODE.NBlocks) {
       let^ (ms, r) <- BALLOC.alloc lxp (pick_balloc bxps al) ms;
       match r with
-      | None => Ret ^(mk_memstate al ms, false)
+      | None => rx ^(mk_memstate al ms, false)
       | Some bn =>
            let^ (ms, succ) <- INODE.grow lxp (pick_balloc bxps al) ixp inum bn ms;
            If (bool_dec succ true) {
               ms <- LOG.write lxp bn v ms;
-              Ret ^(mk_memstate al ms, true)
+              rx ^(mk_memstate al ms, true)
            } else {
-             Ret ^(mk_memstate al ms, false)
+             rx ^(mk_memstate al ms, false)
            }
       end
     } else {
-      Ret ^(mk_memstate al ms, false)
+      rx ^(mk_memstate al ms, false)
     }.
 
-  Definition shrink lxp bxps ixp inum nr fms :=
+  Definition shrink T lxp bxps ixp inum nr fms rx : prog T :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
     let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
     let l := map (@wordToNat _) (skipn ((length bns) - nr) bns) in
     ms <- BALLOC.freevec lxp (pick_balloc bxps (negb al)) l ms;
     ms <- INODE.shrink lxp (pick_balloc bxps (negb al)) ixp inum nr ms;
-    Ret (mk_memstate al ms).
+    rx (mk_memstate al ms).
 End*)
 
 End ABYTEFILE.
