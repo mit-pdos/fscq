@@ -102,7 +102,9 @@ Section Prog.
   | XCrash : forall m hm T (p: prog T),
       crash_step p ->
       exec m hm p (Crashed T m hm).
+
 End Prog.
+Hint Constructors step fail_step crash_step exec.
 
 Definition label := string.
 Definition var := string.
@@ -455,12 +457,24 @@ Section EnvSection.
 
   Theorem Exec_Steps : forall p st d',
     Exec p st (ECrashed d') ->
-    exists p' s', Step^* (p, st) (p', (d', s')).
+    exists p' s', Step^* (p, st) (p', (d', s')) /\ CrashStep p'.
   Proof.
     intros.
     prep_induction H; induction H; intros; subst; try discriminate.
-    + specialize (IHExec _ eq_refl). repeat deex. repeat eexists. econstructor; eauto.
+    + specialize (IHExec _ eq_refl). repeat deex. repeat eexists; eauto. econstructor; eauto.
     + find_inversion. eauto with steps.
+  Qed.
+
+  Theorem Steps_Exec : forall p st p' s' d',
+    Step^* (p, st) (p', (d', s')) ->
+    CrashStep p' ->
+    Exec p st (ECrashed d').
+  Proof.
+    intros.
+    destruct st.
+    prep_induction H; induction H; intros; subst.
+    + repeat find_inversion. eauto with steps.
+    + destruct y. destruct s0. eauto with steps.
   Qed.
 
   CoInductive Safe : Stmt -> State -> Prop :=
@@ -598,18 +612,18 @@ Definition SameValues (s : StringMap.t Value) (tenv : Scope) :=
 Notation "ENV \u2272 TENV" := (SameValues ENV TENV) (at level 50).
 
 Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : Scope) (final_tstate : T -> Scope) :=
-  forall initial_state : State,
+  forall initial_state hm,
     (snd initial_state) \u2272 initial_tstate ->
     Safe env eprog initial_state /\
     (forall final_state,
       Exec env eprog initial_state (EFinished final_state) ->
-      exists r hm,
-        exec (fst initial_state) hm sprog (Finished (fst final_state) hm r) /\
+      exists r hm',
+        exec (fst initial_state) hm sprog (Finished (fst final_state) hm' r) /\
         (snd final_state) \u2272 (final_tstate r)) /\
     (forall final_disk,
       Exec env eprog initial_state (ECrashed final_disk) ->
-      exists hm,
-        exec (fst initial_state) hm sprog (Crashed T final_disk hm)).
+      exists hm',
+        exec (fst initial_state) hm sprog (Crashed T final_disk hm')).
 
 Notation "'EXTRACT' SP {{ A }} EP {{ B }} // EV" :=
   (ProgOk EV EP%facade SP A B)
@@ -708,7 +722,7 @@ Proof.
   intros.
   repeat split; intros; subst.
   econstructor.
-  repeat inv_exec. exists tt. exists empty_hashmap. intuition. econstructor.
+  repeat inv_exec. exists tt. exists hm. intuition.
   repeat inv_exec.
 Defined.
 
@@ -833,10 +847,9 @@ Proof.
   repeat eexists; intuition. econstructor.
 
   apply possible_sync_refl.
-  instantiate (hm := empty_hashmap).
   econstructor; eauto. apply Forall_elements_empty.
 
-  subst. repeat inv_exec. exists empty_hashmap. econstructor. econstructor.
+  subst. repeat inv_exec. eexists. econstructor. econstructor.
 Defined.
 
 Lemma Step_Seq : forall env p1 p2 p' st st'',
@@ -856,6 +869,17 @@ Proof.
     - right. eexists. split. econstructor. eauto.
 Qed.
 
+Ltac eforward H :=
+  match type of H with
+  | forall a : ?A, _ =>
+    match type of A with
+    | Prop => fail 1
+    | _ => idtac
+    end;
+    let v := fresh a in
+    evar (v : A); specialize (H v); subst v
+  end.
+
 Lemma CompileBind : forall T T' {H: FacadeWrapper Value T} {H': FacadeWrapper Value T'} env A (B : T' -> _) p f xp xf var,
   EXTRACT p
   {{ A }}
@@ -873,23 +897,36 @@ Lemma CompileBind : forall T T' {H: FacadeWrapper Value T} {H': FacadeWrapper Va
 Proof.
   unfold ProgOk.
   intuition.
-  econstructor. intuition. apply H1. auto.
-  specialize (H1 initial_state ltac:(auto)).
+  econstructor. intuition. apply H1. exact hm. auto.
+  specialize (H1 _ hm ltac:(eauto)).
   intuition. eapply H1 in H3.
   repeat deex.
   eapply H2; eauto.
 
+  (* TODO: automate proof. ([crush] can probably do this) *)
   subst. eapply Exec_RunsTo in H3. eapply RunsTo_Step in H3. eapply Step_Seq in H3.
   intuition; repeat deex. discriminate.
   eapply Step_RunsTo in H4. eapply Step_RunsTo in H5.
   eapply RunsTo_Exec in H4. eapply RunsTo_Exec in H5.
-  specialize (H1 _ ltac:(eauto)).
+  specialize (H1 _ hm ltac:(eauto)).
   intuition. specialize (H1 _ ltac:(eauto)). repeat deex.
-  specialize (H2 _ _ ltac:(eauto)). intuition.
+  specialize (H2 _ _ hm' ltac:(eauto)). intuition.
   specialize (H2 _ ltac:(eauto)). repeat deex.
-  eexists. exists hm.
-Abort.
+  eexists. exists hm'0. intuition eauto.
 
+  eapply Exec_Steps in H3. repeat deex. eapply Step_Seq in H4.
+  intuition; repeat deex.
+  + eapply Steps_Exec in H4.
+    repeat eforward H1. specialize (H1 ltac:(eauto)). intuition.
+    specialize (H7 _ ltac:(eauto)). repeat deex.
+    eexists. eauto. invc H5. auto.
+  + destruct st'. eapply Step_RunsTo in H4. eapply RunsTo_Exec in H4. eapply Steps_Exec in H6; eauto.
+    repeat eforward H1. conclude H1 eauto. intuition.
+    eforward H1. conclude H1 eauto. repeat deex.
+    repeat eforward H2. conclude H2 eauto. intuition.
+    eforward H11. conclude H11 eauto. repeat deex.
+    eauto.
+Qed.
 
 Example micro_inc : sigT (fun p => forall d0 x,
   {{ [ SItemRet (NTSome "x") d0 (ret x) ] }}
