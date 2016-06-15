@@ -355,13 +355,15 @@ Module LOG.
              goodSize addrlen ((LogHeader xp) + length l) ]] *
           [[ sync_invariant F ]]
     POST:hm' RET: ms exists d,
-          rep xp F (NoTxn (d, nil)) ms hm'
+          rep xp F (NoTxn (d, nil)) ms hm' *
+          [[[ d ::: arrayN (@ptsto _ _ _) 0 d ]]]
     XCRASH:hm_crash any
     >} init xp cs.
   Proof.
     unfold init, rep.
     step.
     step.
+    apply list2nmem_array.
   Qed.
 
 

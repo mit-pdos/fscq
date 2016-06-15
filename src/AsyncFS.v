@@ -111,7 +111,7 @@ Module AFS.
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
     mscs <- BALLOC.init (FSXPLog fsxp) (FSXPBlockAlloc1 fsxp) mscs;
     mscs <- BALLOC.init (FSXPLog fsxp) (FSXPBlockAlloc2 fsxp) mscs;
-    mscs <- BALLOC.init (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
+    mscs <- IAlloc.init (FSXPLog fsxp) fsxp mscs;
     mscs <- INODE.init (FSXPLog fsxp) (FSXPInode fsxp) mscs;
     mscs <- mkfs_alternate_allocators (FSXPLog fsxp) (FSXPBlockAlloc1 fsxp) (FSXPBlockAlloc2 fsxp) mscs;
     let^ (mscs, r) <- BALLOC.alloc (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
@@ -199,7 +199,6 @@ Module AFS.
 
     (* LOG.begin *)
     step.
-    
 
     all: try solve [ xcrash; apply pimpl_any ].
     
