@@ -731,25 +731,6 @@ Lemma addr_id: forall A (l: list A) a def,
 a < length l ->
 ((diskIs (mem_except (list2nmem l) a)) * a |-> (selN l a def))%pred (list2nmem l).
 Proof. Admitted.
-(* intros.
-apply list2nmem_updN_selN with (v1:= selN l a def).
-Search updN.
-
-  assert (arrayN (@ptsto _ eq_nat_dec _) 0 l (list2nmem l)) as Hx by eapply list2nmem_array.
-  pred_apply; erewrite arrayN_except; eauto.
-  rewrite <- arrayN_except.
-  rewrite <- diskIs_extract.
-  Search arrayN 0.
-  apply  diskIs_pred in Hx.
-  apply Hx.
-  Search diskIs.
-  Search mem_except.
-  
-  apply diskIs_extract.
-  
-  rewrite <- surjective_pairing.
-  cancel.
-Qed. *)
 
 Lemma firstn1 : forall A (l:list(list A)),
 concat(firstn 1 l) = selN l 0 nil.
@@ -762,6 +743,22 @@ simpl.
 apply app_nil_r.
 Qed.
 
+Lemma concat_hom_O: forall A (l: list(list A)) i k,
+Forall (fun sublist : list A => length sublist = k) l ->
+i<= k -> 
+firstn i (concat l) = firstn i (selN l 0 nil).
+Proof.
+intros.
+induction l.
+reflexivity.
+simpl.
+rewrite firstn_app_l.
+reflexivity.
+rewrite Forall_forall in H.
+destruct H with (x:= a).
+apply in_eq.
+apply H0.
+Qed.
 
 Lemma bytefile_unified_byte_len: forall ufy fy, 
 bytefile_valid ufy fy -> 
@@ -770,7 +767,6 @@ Proof.
 intros.
 rewrite H.
 rewrite firstn_length.
-Search min le.
 apply Min.le_min_r.
 Qed.
 
@@ -820,7 +816,6 @@ apply list2nmem_inbound in H1.
 apply H1.
 Qed.
 
-Search Mem.mem.
 Lemma unifiedbyte2protobyte: forall pfy ufy a b F k,
 unified_bytefile_valid pfy ufy ->
 Forall (fun sublist : list byteset => length sublist = k) (PByFData pfy) ->
@@ -832,7 +827,6 @@ Proof.
 intros.
 unfold get_sublist.
 rewrite H.
-Search skipn concat.
 rewrite concat_hom_skipn with (k:= k).
 replace (k) with (1 * k) by omega.
 rewrite concat_hom_firstn.
@@ -841,7 +835,6 @@ rewrite skipn_selN.
 simpl.
 repeat rewrite <- plus_n_O.
 apply addr_id.
-Search mult Nat.div lt.
 apply Nat.div_lt_upper_bound.
 unfold not; intros.
 rewrite H3 in H1; inversion H1.
@@ -852,7 +845,6 @@ apply H2.
 apply H.
 apply H0.
 simpl;  rewrite <- plus_n_O.
-Search Forall skipn.
 apply forall_skipn.
 apply H0.
 apply H0.
@@ -899,13 +891,59 @@ rewrite <- H0.
 apply H1.
 Qed.
 
-Lemma div_eq: forall n m k, k < m -> (n * m + k)/m = n.
+Lemma le_eq_O: forall n m k, k = 0 -> n + m <= k -> n + m = 0.
+Proof. intros. omega. Qed.
+
+Lemma div_plus_zero: forall n m k, (n + k)/m = 0 -> n/m = 0 /\ k/m = 0.
+Proof.
 intros.
-induction k.
-rewrite <- plus_n_O.
-induction m.
+apply le_eq_O with (n:= n/m)(m:= k/m) in H.
+apply plus_is_O in H.
+apply H.
+apply Rounding.div_add_distr_le.
+Qed.
+
+Lemma S_lt_nonzero: forall n m, S n < S m -> m > 0.
+Proof. intros. omega. Qed.
+
+Lemma div_one_O: forall n, n/1 = 0 -> n = 0.
+Proof.
+induction n; intros; try reflexivity.
+replace (S n) with (n + 1) in H by omega.
+apply div_plus_zero in H.
 inversion H.
-unfold Nat.div.
+inversion H1.
+Qed.
+
+Lemma div_eq: forall m n k, k < m -> (n * m + k)/m = n.
+Proof. Admitted.
+
+Lemma mapfst_maplist2byteset: forall l, map fst (map list2byteset l) = map (selN' 0 byte0) l.
+Proof.
+intros.
+rewrite map_map.
+unfold selN'.
+replace (fun x : list byte => fst (list2byteset x)) with
+  (fun x : list byte => selN x 0 byte0).
+reflexivity.
+apply functional_extensionality.
+intros; symmetry; apply fst_list2byteset.
+Qed.
+
+Lemma elemwise_concat_contr: forall A (l: list (list A)) a,
+elemwise_concat a (fold_right elemwise_concat nil l) =
+(fold_right elemwise_concat nil (a::l)).
+Proof. intros. reflexivity. Qed.
+
+Lemma elemwise_a_nil: forall A (a: list A), 
+elemwise_concat a nil = make_all_list a.
+Proof. destruct a; reflexivity. Qed.
+
+
+Lemma mapselN_fold_elem: forall A i (l: list (list A)) def, 
+map (selN' i def) (fold_right elemwise_concat nil l) =
+selN l i nil.
+Proof. Admitted.
 
 (*Specs*)
 Theorem read_first_block_ok: forall lxp bxp ixp inum fms block_off byte_off read_length,
@@ -946,102 +984,197 @@ apply H10.
 pose proof H12.
 eapply protobyte2block with (a:= block_off) in H12.
 apply H12.
+
+
 eapply unifiedbyte2protobyte with (a:= block_off * valubytes + byte_off) (k:= valubytes)in H11.
-
-
-
-
-
-
+rewrite div_eq in H11.
+apply H11.
+omega.
+unfold proto_bytefile_valid in H.
+apply Forall_forall; intros.
 rewrite H in H4.
-apply H10.
-Search arrayN sep_star.
-erewrite arrayN_isolate with (i:=0)in H8.
-pred_apply.
-apply sep_star_comm.
-eapply ptsto_byte2block with (i:=block_off).
-apply H10.
-replace (block_off * valubytes + byte_off + 0) 
-  with (block_off * valubytes + byte_off) in H8.
-apply H8.
+apply in_map_iff in H4.
+destruct H4.
+inversion H4.
+rewrite <- H6.
+apply valuset2bytesets_len.
+unfold full_list.
+unfold not; intros.
+inversion H15.
 omega.
-omega.
-eapply block_exists.
-apply H10.
-replace (block_off * valubytes + byte_off + 0) 
-  with (block_off * valubytes + byte_off) in H8.
-apply H8.
-omega.
-omega.
-omega.
-step.
-unfold valu2list, get_sublist.
-pose proof H10.
-eapply ptsto_byte2block with (i:=block_off) in H10.
-apply ptsto_valid in H10.
-unfold list2nmem in H10; simpl in H10.
-erewrite selN_map in H10.
-rewrite some_eq in H10.
-rewrite H10.
-eapply contents_equal.
-apply H8.
-apply sep_star_comm.
-eapply ptsto_byte2block.
-apply H4.
 
-eapply arrayN_extract in H8.
-replace (block_off * valubytes + byte_off + 0) 
-  with (block_off * valubytes + byte_off) in H8.
+eapply byte2unifiedbyte.
+apply H10.
+rewrite arrayN_isolate with (i:=0) in H8.
+rewrite <- plus_n_O in H8.
+apply sep_star_assoc in H8.
+apply sep_star_comm in H8.
+apply sep_star_assoc in H8.
+apply sep_star_assoc in H8.
 apply H8.
-omega.
-omega.
-omega.
-eapply block_exists.
-apply H4.
-eapply arrayN_extract in H8.
-replace (block_off * valubytes + byte_off + 0) 
-  with (block_off * valubytes + byte_off) in H8.
-  apply H8.
-  omega.
-  omega.
-  omega.
-  omega.
-  
-eapply list2nmem_arrayN_bound in H8.
-destruct H8.
-rewrite H6 in H7.
-inversion H7.
-rewrite len_f_fy with (f:=f) (fy:=fy) in H6.
-apply le2lt_l in H6.
-apply lt_weaken_l with (m:= byte_off) in H6.
-apply lt_mult_weaken in H6.
-apply H6.
 apply H7.
-apply H4.
-eapply arrayN_extract with (j:=0)in H8.
-apply sep_star_comm.
-replace (block_off * valubytes + byte_off + 0) 
-  with (block_off * valubytes + byte_off) in H8.
-  apply sep_star_comm.
-apply H8.
-omega.
-omega.
+
+step.
+unfold get_sublist.
+pose proof H8.
+apply arrayN_list2nmem in H8.
+rewrite H10 in H8.
+rewrite <- skipn_firstn_comm in H8.
+rewrite firstn_firstn in H8.
+rewrite Min.min_l in H8.
+rewrite skipn_firstn_comm in H8.
+rewrite H8.
+rewrite firstn_length.
+rewrite skipn_length.
+rewrite Min.min_l.
+rewrite H11.
+rewrite concat_hom_skipn.
+replace (firstn valubytes (concat (skipn block_off (PByFData pfy))))
+  with (firstn (1 * valubytes) (concat (skipn block_off (PByFData pfy)))).
+rewrite concat_hom_firstn.
+rewrite firstn1.
+rewrite skipn_selN.
+rewrite <- firstn_map_comm.
+rewrite <- plus_n_O.
+rewrite Nat.add_comm.
+rewrite <- skipn_skipn with (m:= block_off * valubytes).
+rewrite concat_hom_skipn.
+rewrite <- skipn_map_comm.
+rewrite H12.
+rewrite concat_map.
+erewrite selN_map.
+rewrite valuset2bytesets2valuset.
+
+repeat rewrite skipn_map_comm.
+repeat rewrite <- skipn_firstn_comm.
+rewrite concat_hom_O with (k:= valubytes).
+repeat erewrite selN_map.
+erewrite skipn_selN.
+rewrite <- plus_n_O.
+unfold valuset2bytesets.
+rewrite mapfst_maplist2byteset.
+rewrite mapselN_fold_elem.
+erewrite selN_map.
+unfold full_list.
+reflexivity.
+
+unfold full_list.
+simpl.
 omega.
 
-eapply block_exists.
+rewrite skipn_length.
+apply Nat.lt_add_lt_sub_r.
+simpl.
+eapply list2nmem_arrayN_bound in H4.
+destruct H4.
+rewrite H4 in H7.
+inversion H7.
+rewrite len_f_fy with (f:=f) (fy:=fy) in H4.
+apply le2lt_l in H4.
+apply lt_weaken_l with (m:= byte_off) in H4.
+apply lt_mult_weaken in H4.
 apply H4.
-eapply arrayN_extract in H8.
-replace (block_off * valubytes + byte_off + 0) 
-  with (block_off * valubytes + byte_off) in H8.
-  apply H8.
-  omega.
-  omega.
-  omega.
+apply H7.
+eapply bytefile_bfile_eq.
+apply H12.
+apply H11.
+apply H10.
+
+rewrite map_length.
+rewrite skipn_length.
+apply Nat.lt_add_lt_sub_r.
+simpl.
+eapply list2nmem_arrayN_bound in H4.
+destruct H4.
+rewrite H4 in H7.
+inversion H7.
+rewrite len_f_fy with (f:=f) (fy:=fy) in H4.
+apply le2lt_l in H4.
+apply lt_weaken_l with (m:= byte_off) in H4.
+apply lt_mult_weaken in H4.
+apply H4.
+apply H7.
+eapply bytefile_bfile_eq.
+apply H12.
+apply H11.
+apply H10.
+
+rewrite Forall_forall; intros.
+rewrite in_map_iff in H6.
+repeat destruct H6.
+rewrite in_map_iff in H14.
+repeat destruct H14.
+repeat destruct H6.
+rewrite map_length.
+apply valuset2bytesets_len.
+unfold not; intros.
+inversion H6.
+
+apply H5.
+
+eapply list2nmem_arrayN_bound in H4.
+destruct H4.
+rewrite H4 in H7.
+inversion H7.
+rewrite len_f_fy with (f:=f) (fy:=fy) in H4.
+apply le2lt_l in H4.
+apply lt_weaken_l with (m:= byte_off) in H4.
+apply lt_mult_weaken in H4.
+apply H4.
+apply H7.
+eapply bytefile_bfile_eq.
+apply H12.
+apply H11.
+apply H10.
+
+rewrite Forall_forall; intros.
+rewrite H12 in H6.
+rewrite in_map_iff in H6.
+repeat destruct H6.
+apply valuset2bytesets_len.
+unfold not; intros.
+inversion H6.
+
+rewrite Forall_forall; intros.
+rewrite H12 in H6.
+rewrite skipn_map_comm in H6.
+rewrite in_map_iff in H6.
+repeat destruct H6.
+apply valuset2bytesets_len.
+unfold not; intros.
+inversion H6.
+
+simpl.
+rewrite <- plus_n_O.
+reflexivity.
+
+rewrite Forall_forall; intros.
+rewrite H12 in H6.
+rewrite in_map_iff in H6.
+repeat destruct H6.
+apply valuset2bytesets_len.
+unfold not; intros.
+inversion H6.
+
+apply list2nmem_arrayN_bound in H4.
+destruct H4.
+rewrite H4 in H7; inversion H7.
+apply Nat.le_add_le_sub_l.
+rewrite bytefile_unified_byte_len in H4.
+apply H4.
+apply H10.
+
+apply list2nmem_arrayN_bound in H4.
+destruct H4.
+rewrite H4 in H7; inversion H7.
+apply H4.
+
+apply byteset0.
+
 Grab Existential Variables.
-apply byteset0.
 apply valuset0.
-apply valuset0.
-apply byteset0.
+apply valu0.
+apply nil.
 apply byteset0.
 Qed.
 
