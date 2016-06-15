@@ -34,6 +34,24 @@ Definition seq_hoare_double R A (spec: A -> SeqHoareSpec R)
               crash_ hm_crash ]])%pred
       (Bind p rx).
 
+(* technically the fully expanded spec is a quadruple: the three
+predicates in spec, plus the program (in comparison to ordinary Hoare
+triples consisting of a precondition, postcondition and program) *)
+Definition seq_hoare_quadruple R A (spec: A -> SeqHoareSpec R)
+           (p: Prog.prog R) :=
+  forall a F hm d out,
+    (F * seq_spec_pre (spec a) *
+     [[ sync_invariant F ]])%pred d ->
+    exec d hm p out ->
+    (exists d' hm' r,
+        out = Finished d' hm' r /\
+        (F * seq_spec_post (spec a) r *
+         [[ exists l, hashmap_subset l hm hm' ]])%pred d') \/
+    (exists d' hm',
+        out = Crashed R d' hm' /\
+        (F * seq_spec_crash (spec a) *
+         [[ exists l, hashmap_subset l hm hm' ]])%pred d').
+
 Section ExampleSeqSpecs.
 
   (* isomorphic to prod, but distinct for the benefit of Ltac *)
@@ -145,3 +163,38 @@ Section ExampleSeqSpecs.
   Qed.
 
 End ExampleSeqSpecs.
+
+Hint Resolve <- bind_right_id.
+
+Theorem spec_double_to_quadruple : forall T A (spec: A -> SeqHoareSpec T) (p: prog T),
+    seq_hoare_double spec p ->
+    seq_hoare_quadruple spec p.
+Proof.
+  unfold seq_hoare_double, seq_hoare_quadruple; intros.
+  unfold corr2 at 1 in H.
+  specialize (H _ Ret).
+  specialize (H (fun hm' r =>
+                   F * seq_spec_post (spec a) r *
+                   [[ exists l, hashmap_subset l hm hm' ]])%pred).
+  specialize (H (fun hm' =>
+                   F * seq_spec_crash (spec a) *
+                   [[ exists l, hashmap_subset l hm hm' ]])%pred).
+  specialize (H d hm out).
+  match type of H with
+  | ?H -> _ => assert H
+  end.
+  exists a, F.
+  pred_apply; cancel.
+  unfold corr2; intros.
+  inv_exec.
+  left.
+  do 3 eexists; intuition eauto.
+  repeat match goal with
+         | [ H: (_ * [[ _ ]])%pred _ |- _ ] =>
+           apply sep_star_lift_apply in H;
+             destruct H
+         end; subst.
+  pred_apply; cancel.
+
+  intuition.
+Qed.
