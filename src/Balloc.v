@@ -96,6 +96,12 @@ Module BmapAlloc (Sig : AllocSig).
     ms <- Bmp.init lxp xp ms;
     Ret ms.
 
+  (* init with no free objects *)
+  Definition init_nofree lxp xp ms :=
+    ms <- Bmp.init lxp xp ms;
+    ms <- Bmp.write lxp xp (repeat $1 ((BMPLen xp) * valulen)) ms;
+    Ret ms.
+
   Definition freelist_bmap_equiv freelist bmap :=
     forall a, a < length bmap -> (In a freelist <-> Avail (selN bmap a $0)).
 
@@ -238,6 +244,34 @@ Module BmapAlloc (Sig : AllocSig).
     apply arrayN_listpred_seq; auto.
   Qed.
 
+  Theorem init_nofree_ok : forall V lxp xp ms,
+    {< F Fm m0 m bl,
+    PRE:hm
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (BMPStart xp) bl) ]]] *
+          [[ xparams_ok xp /\ BMPStart xp <> 0 /\ length bl = BMPLen xp ]]
+    POST:hm' RET:ms exists m',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+          [[[ m' ::: (Fm * @rep V xp nil emp) ]]]
+    CRASH:hm' LOG.intact lxp F m0 hm'
+    >} init_nofree lxp xp ms.
+  Proof.
+    unfold init_nofree, rep; intros.
+    step.
+    step.
+    unfold Bmp.items_valid; intuition.
+    rewrite repeat_length; auto.
+    step.
+    unfold freelist_bmap_equiv; split; intros.
+    denote (In _ nil) as Hx; inversion Hx.
+    denote (Avail _) as Hx; unfold Avail in Hx.
+    rewrite repeat_selN in Hx; inversion Hx.
+    rewrite repeat_length in *; auto.
+    Unshelve.
+    all: try exact $0; try exact tt.
+  Qed.
+
+
   Theorem steal_ok : forall V lxp xp bn ms,
     {< F Fm m0 m freelist freepred,
     PRE:hm
@@ -326,6 +360,7 @@ Module BmapAlloc (Sig : AllocSig).
   Qed.
 
   Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
+  Hint Extern 1 ({{_}} Bind (init_nofree _ _ _) _) => apply init_nofree_ok : prog.
   Hint Extern 1 ({{_}} Bind (steal _ _ _ _) _) => apply steal_ok : prog.
   Hint Extern 1 ({{_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
   Hint Extern 1 ({{_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
@@ -391,6 +426,10 @@ Module BALLOC.
     r <- Alloc.init lxp xp ms;
     Ret r.
 
+  Definition init_nofree lxp xp ms :=
+    r <- Alloc.init_nofree lxp xp ms;
+    Ret r.
+
   Definition bn_valid xp bn := bn <> 0 /\ bn < (BmapNBlocks xp) * valulen.
 
   Definition rep xp (freeblocks : list addr) :=
@@ -413,6 +452,24 @@ Module BALLOC.
     >} init lxp xp ms.
   Proof.
     unfold init, rep; intros.
+    step.
+    step.
+  Qed.
+
+  Theorem init_nofree_ok : forall lxp xp ms,
+    {< F Fm m0 m bl,
+    PRE:hm
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (BmapStart xp) bl) ]]] *
+          [[ (BmapNBlocks xp) <= valulen * valulen /\ BmapStart xp <> 0 ]] *
+          [[ length bl = BmapNBlocks xp ]]
+    POST:hm' RET:ms exists m',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+          [[[ m' ::: (Fm * rep xp nil) ]]]
+    CRASH:hm' LOG.intact lxp F m0 hm'
+    >} init_nofree lxp xp ms.
+  Proof.
+    unfold init_nofree, rep; intros.
     step.
     step.
   Qed.
@@ -482,6 +539,7 @@ Module BALLOC.
 
 
   Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
+  Hint Extern 1 ({{_}} Bind (init_nofree _ _ _) _) => apply init_nofree_ok : prog.
   Hint Extern 1 ({{_}} Bind (steal _ _ _ _) _) => apply steal_ok : prog.
   Hint Extern 1 ({{_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
   Hint Extern 1 ({{_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
