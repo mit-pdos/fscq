@@ -544,6 +544,20 @@ Module DIRTREE.
       cancel. apply H2. inversion H4; eauto.
   Qed.
 
+  Lemma update_dirtree_preserve_name: forall l name newtree,
+    map fst (map (update_subtree_helper (fun _: dirtree => newtree) name) l) = map fst l.
+  Proof.
+    intros.
+    induction l.
+    - simpl; auto.
+    - erewrite map_cons.
+      unfold update_subtree_helper at 1.
+      destruct a.
+      destruct (string_dec s name).
+      erewrite map_cons; erewrite IHl; simpl; auto.
+      erewrite map_cons; erewrite IHl; simpl; auto.
+  Qed.
+
   Lemma update_subtree_preserve_name : forall l fnlist s subtree,
     map fst (map (update_subtree_helper (update_subtree fnlist subtree) s) l) = map fst l.
   Proof.
