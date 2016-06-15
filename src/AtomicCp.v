@@ -135,6 +135,61 @@ Module ATOMICCP.
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
 
+  Definition temp_treeseqpred tinum (to : treeseq_one) :=
+    (exists F tfile,
+      F * temp_fn |-> (DIRTREE.TreeFile tinum tfile))%pred (dir2mem (TStree to)).
+
+
+  Theorem copydata_ok : forall fsxp src_inum tinum mscs,
+    {< ds ts Fm Ftop src_fn file tfile v0 t0,
+    PRE:hm
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+      [[ treeseq_pred (temp_treeseqpred tinum) ts ]] *
+      [[ DIRTREE.find_subtree [src_fn] (TStree ts!!) = Some (DIRTREE.TreeFile src_inum file) ]] *
+      [[ DIRTREE.find_subtree [temp_fn] (TStree ts!!) = Some (DIRTREE.TreeFile tinum tfile) ]] *
+      [[ src_fn <> temp_fn ]] *
+      [[[ BFILE.BFData file ::: (0 |-> v0) ]]] *
+      [[[ BFILE.BFData tfile ::: (0 |-> t0) ]]]
+    POST:hm' RET:^(mscs', r)
+      exists F' ds' ts',
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
+       [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
+       [[ treeseq_pred (temp_treeseqpred tinum) ts' ]] *
+        (([[ r = false ]]) 
+         \/ ([[ r = true ]] *              (* maybe have ::: notation for dir2mem? *)
+            [[ (F' * temp_fn |-> (DIRTREE.TreeFile tinum (BFILE.synced_file file)))%pred (dir2mem (TStree ts'!!)) ]]))
+    XCRASH:hm'
+      exists ds' ts',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
+      [[ treeseq_pred (temp_treeseqpred tinum) ts' ]] 
+       (* XXX unnecessary?
+        exists F' tfile',
+          [[ (F' * temp_fn |-> (DIRTREE.TreeFile tinum tfile'))%pred (dir2mem (TStree ts'!!)) ]] *)
+     >} copydata fsxp src_inum tinum mscs.
+  Proof.
+    unfold copydata; intros.
+
+    prestep.
+    norml; unfold stars; simpl.
+    unfold treeseq_in_ds in H11.
+    destruct H11.
+    unfold tree_rep in H0.
+    cancel.
+    eassumption.
+
+    step.
+    step.
+    step.
+    step.
+    step.
+
+    
+
+
+
+
   Lemma diskset_pred_sync: forall V (p: @pred _ _ V) ds,
     diskset_pred p ds ->
     diskset_pred p (ds!!, []).
@@ -169,10 +224,6 @@ Module ATOMICCP.
       [[ DIRTREE.dirtree_safe ilist (BFILE.pick_balloc freelist (MSAlloc mscs)) tree
                                newest_ilist  (BFILE.pick_balloc newest_free  (MSAlloc mscs)) newest_tree ]]
     )%pred.
-
-  Definition temp_treeseqpred base_tree tinum (to : treeseq_one) :=
-    exists tfile,
-    TStree to = DIRTREE.update_subtree [temp_fn] base_tree (DIRTREE.TreeFile tinum tfile).
 
   Definition temp_tree_pred_ds Fm Ftop fsxp newest_ilist newest_free newest_tree mscs tinum ds :=
     exists ts,
