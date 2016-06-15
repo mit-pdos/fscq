@@ -19,15 +19,6 @@ Definition dir2mem (t : dirtree) :=
   dirents2mem (dirtree_dirents t).
 
 
-Lemma dirents2mem_cons: forall l ent_name ent_tree,
-  dirents2mem ((ent_name, ent_tree) :: l) = Mem.insert (dirents2mem l) ent_name ent_tree.
-Proof.
-  intros.
-  unfold dirents2mem.
-  reflexivity.
-Qed.
-
-
 Theorem dirents2mem_not_in_none : forall name l,
   (~ In name (map fst l)) ->
   dirents2mem l name = None.
