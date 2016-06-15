@@ -880,7 +880,7 @@ Proof.
   repeat inv_exec; eauto.
 Qed.
 
-Lemma CompileConst : forall T {H: FacadeWrapper Value T} env A var v,
+Lemma CompileConst : forall env A var v,
   EXTRACT Ret v
   {{ A }}
     var <~ Const v
@@ -893,10 +893,10 @@ Proof.
   repeat inv_exec. simpl in *. find_inversion.
   repeat eexists. eauto. maps. trivial.
   eapply forall_In_Forall_elements. intros.
-  pose proof (Forall_elements_forall_In _ H0).
+  pose proof (Forall_elements_forall_In _ H).
   simpl in *.
   destruct (StringMapFacts.eq_dec k var0); maps; try discriminate.
-  specialize (H2 k v0 ltac:(eauto)). auto.
+  specialize (H1 k v0 ltac:(eauto)). auto.
 
   repeat inv_exec.
 Qed.
@@ -919,7 +919,7 @@ Proof.
 Qed.
 
 
-Lemma CompileBind : forall T T' {H: FacadeWrapper Value T} {H': FacadeWrapper Value T'} env A (B : T' -> _) p f xp xf var,
+Lemma CompileBind : forall T T' {H: FacadeWrapper Value T} env A (B : T' -> _) p f xp xf var,
   EXTRACT p
   {{ A }}
     xp
@@ -1001,7 +1001,7 @@ Proof.
   intuition.
 Qed.
 
-Lemma CompileBindDiscard : forall T T' {H: FacadeWrapper Value T} {H': FacadeWrapper Value T'} env A (B : T' -> _) p f xp xf,
+Lemma CompileBindDiscard : forall T' env A (B : T' -> _) p f xp xf,
   EXTRACT p
   {{ A }}
     xp
@@ -1017,34 +1017,34 @@ Lemma CompileBindDiscard : forall T T' {H: FacadeWrapper Value T} {H': FacadeWra
 Proof.
   unfold ProgOk.
   intuition.
-  econstructor. intuition. apply H0. exact hm. auto.
-  specialize (H0 _ hm ltac:(eauto)).
-  intuition. eapply H0 in H3.
+  econstructor. intuition. eauto. apply H; auto.
+  specialize (H _ hm ltac:(eauto)).
+  intuition. eapply H in H2.
   repeat deex.
-  eapply H1; eauto.
+  eapply H0; eauto.
 
   (* TODO: automate proof. ([crush] can probably do this) *)
-  subst. eapply Exec_RunsTo in H3. eapply RunsTo_Step in H3. eapply Step_Seq in H3.
+  subst. eapply Exec_RunsTo in H2. eapply RunsTo_Step in H2. eapply Step_Seq in H2.
   intuition; repeat deex. discriminate.
-  eapply Step_RunsTo in H4. eapply Step_RunsTo in H5.
-  eapply RunsTo_Exec in H4. eapply RunsTo_Exec in H5.
-  specialize (H0 _ hm ltac:(eauto)).
-  intuition. specialize (H0 _ ltac:(eauto)). repeat deex.
-  specialize (H1 _ hm' ltac:(eauto)). intuition.
-  specialize (H1 _ ltac:(eauto)). repeat deex.
+  eapply Step_RunsTo in H3. eapply Step_RunsTo in H4.
+  eapply RunsTo_Exec in H3. eapply RunsTo_Exec in H4.
+  specialize (H _ hm ltac:(eauto)).
+  intuition. specialize (H _ ltac:(eauto)). repeat deex.
+  specialize (H0 _ hm' ltac:(eauto)). intuition.
+  specialize (H0 _ ltac:(eauto)). repeat deex.
   eexists. exists hm'0. intuition eauto.
 
-  eapply Exec_Steps in H3. repeat deex. eapply Step_Seq in H4.
+  eapply Exec_Steps in H2. repeat deex. eapply Step_Seq in H3.
   intuition; repeat deex.
-  + eapply Steps_Exec in H4.
-    repeat eforward H0. specialize (H0 ltac:(eauto)). intuition.
-    specialize (H7 _ ltac:(eauto)). repeat deex.
-    eexists. eauto. invc H5. auto.
-  + destruct st'. eapply Step_RunsTo in H4. eapply RunsTo_Exec in H4. eapply Steps_Exec in H6; eauto.
+  + eapply Steps_Exec in H3.
+    repeat eforward H. specialize (H ltac:(eauto)). intuition.
+    specialize (H6 _ ltac:(eauto)). repeat deex.
+    eexists. eauto. invc H4. auto.
+  + destruct st'. eapply Step_RunsTo in H3. eapply RunsTo_Exec in H3. eapply Steps_Exec in H5; eauto.
+    repeat eforward H. conclude H eauto. intuition.
+    eforward H. conclude H eauto. repeat deex.
     repeat eforward H0. conclude H0 eauto. intuition.
-    eforward H0. conclude H0 eauto. repeat deex.
-    repeat eforward H1. conclude H1 eauto. intuition.
-    eforward H11. conclude H11 eauto. repeat deex.
+    eforward H10. conclude H10 eauto. repeat deex.
     eauto.
 Qed.
 
@@ -1175,43 +1175,33 @@ Proof.
   unfold swap_prog.
   eexists.
   eapply CompileBind; intros.
-  eauto with typeclass_instances.
   eapply extract_equiv_prog.
   eapply bind_left_id.
   eapply CompileBind; intros.
-  eauto with typeclass_instances.
   instantiate (var0 := "c0"). (* TODO gensym *)
   eapply CompileConst.
-  eauto with typeclass_instances.
   eapply hoare_weaken_post; [ | eapply CompileRead ].
-  instantiate (var := "a"). instantiate (Goal2 := "a").
+  instantiate (var := "a"). instantiate (Goal4 := "a").
   intros. maps. destruct (StringMapFacts.eq_dec k "a"); maps; eauto.
 
   eapply CompileBind; intros.
-  eauto with typeclass_instances.
   eapply extract_equiv_prog.
   eapply bind_left_id.
   eapply CompileBind; intros.
-  eauto with typeclass_instances.
   instantiate (var0 := "c1"). (* TODO gensym *)
   eapply CompileConst.
-  eauto with typeclass_instances.
   eapply hoare_weaken_post; [ | eapply CompileRead ].
   instantiate (var := "b"). instantiate (Goal4 := "b").
   intros. maps. destruct (StringMapFacts.eq_dec k "b"); destruct (StringMapFacts.eq_dec k "a"); maps; eauto.
 
   eapply CompileBindDiscard.
-  eauto with typeclass_instances.
-  eauto with typeclass_instances.
   eapply extract_equiv_prog.
   change (Write 0 a0) with ((fun c0 => Write c0 a0) 0). (* TODO use pattern tactic *)
   eapply bind_left_id.
   eapply CompileBind; intros.
-  eauto with typeclass_instances.
   eapply CompileConst.
-  eauto with typeclass_instances.
   eapply hoare_weaken_post; [ | eapply CompileWrite ].
-  instantiate (var := "_"). instantiate (Goal2 := "c1").
+  instantiate (var := "_"). instantiate (Goal4 := "c1").
   intros. maps. destruct (StringMapFacts.eq_dec k "b"); destruct (StringMapFacts.eq_dec k "a"); maps; eauto.
   congruence.
   congruence.
@@ -1219,15 +1209,11 @@ Proof.
   maps.
 
   eapply CompileBindDiscard.
-  eauto with typeclass_instances.
-  eauto with typeclass_instances.
   eapply extract_equiv_prog.
   change (Write 1 a) with ((fun c1 => Write c1 a) 1). (* TODO use pattern tactic *)
   eapply bind_left_id.
   eapply CompileBind; intros.
-  eauto with typeclass_instances.
   eapply CompileConst.
-  eauto with typeclass_instances.
   eapply hoare_strengthen_pre; [ |
   eapply hoare_weaken_post; [ | eapply CompileWrite ]].
   intros. rewrite add_add_comm with (k1 := "a") by congruence. eapply H.
