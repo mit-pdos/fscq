@@ -171,7 +171,7 @@ Section GenArray.
     cancel.
   Qed.
 
-  Theorem arrayN_split : forall i (a b : list V) st,
+  Theorem arrayN_split : forall i (a : list V) st,
     arrayN st a <=p=>
     arrayN st (firstn i a) * arrayN (st + i) (skipn i a).
   Proof.
@@ -202,6 +202,14 @@ Section GenArray.
     destruct l; simpl; intros; try congruence.
     assert (length l = 0) by omega.
     apply length_nil in H0; subst; simpl; split; cancel.
+  Qed.
+
+  Lemma arrayN_isolate_hd : forall l (def : V) a,
+    length l >= 1 ->
+    arrayN a l <=p=> (a |-?-> selN l 0 def * arrayN (a + 1) (skipn 1 l) )%pred.
+  Proof.
+    destruct l; simpl; intros; try omega.
+    replace (a + 1) with (S a) by omega; auto.
   Qed.
 
 

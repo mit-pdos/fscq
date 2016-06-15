@@ -503,6 +503,29 @@ Module MLog.
   Section UnfoldProof1.
   Local Hint Unfold rep map_replay: hoare_unfold.
 
+  Definition init_ok : forall xp cs,
+    {< F l d,
+    PRE:hm   BUFCACHE.rep cs d *
+          [[ (F * arrayS (LogHeader xp) l)%pred d ]] *
+          [[ length l = (1 + LogDescLen xp + LogLen xp) /\
+             LogDescriptor xp = LogHeader xp + 1 /\
+             LogData xp = LogDescriptor xp + LogDescLen xp /\
+             LogLen xp = (LogDescLen xp * PaddedLog.DescSig.items_per_val)%nat /\
+             goodSize addrlen ((LogHeader xp) + length l) ]] *
+          [[ sync_invariant F ]]
+    POST:hm' RET: ms  exists d' nr,
+          BUFCACHE.rep (MSCache ms) d' *
+          [[ (F * rep xp (Synced nr nil) (MSInLog ms) hm')%pred d' ]]
+    XCRASH:hm_crash any
+    >} init xp cs.
+  Proof.
+    unfold init, rep.
+    step.
+    step.
+    apply zero_lt_pow2.
+    apply map_valid_map0.
+  Qed.
+
   Theorem read_ok: forall xp ms a,
     {< F d na vs,
     PRE:hm
@@ -1679,7 +1702,7 @@ Module MLog.
     erewrite DLog.rep_hashmap_subset; eauto.
   Qed.
 
-
+  Hint Extern 1 ({{_}} Bind (init _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_}} Bind (read _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} Bind (flush _ _ _) _) => apply flush_ok : prog.
   Hint Extern 1 ({{_}} Bind (dwrite _ _ _ _) _) => apply dwrite_ok : prog.

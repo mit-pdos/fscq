@@ -344,6 +344,26 @@ Module LOG.
   Local Hint Resolve KNoDup_map_elements.
   Local Hint Resolve MapProperties.eqke_equiv.
 
+  Definition init_ok : forall xp cs,
+    {< F l d,
+    PRE:hm   BUFCACHE.rep cs d *
+          [[ (F * arrayS (LogHeader xp) l)%pred d ]] *
+          [[ length l = (1 + LogDescLen xp + LogLen xp) /\
+             LogDescriptor xp = LogHeader xp + 1 /\
+             LogData xp = LogDescriptor xp + LogDescLen xp /\
+             LogLen xp = (LogDescLen xp * DiskLogHash.PaddedLog.DescSig.items_per_val)%nat /\
+             goodSize addrlen ((LogHeader xp) + length l) ]] *
+          [[ sync_invariant F ]]
+    POST:hm' RET: ms exists d,
+          rep xp F (NoTxn (d, nil)) ms hm'
+    XCRASH:hm_crash any
+    >} init xp cs.
+  Proof.
+    unfold init, rep.
+    step.
+    step.
+  Qed.
+
 
   Theorem begin_ok: forall xp ms,
     {< F ds,
@@ -1061,7 +1081,7 @@ Module LOG.
   Hint Resolve active_intact flushing_any.
   Hint Extern 0 (okToUnify (intact _ _ _ _) (intact _ _ _ _)) => constructor : okToUnify.
 
-
+  Hint Extern 1 ({{_}} Bind (init _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_}} Bind (begin _ _) _) => apply begin_ok : prog.
   Hint Extern 1 ({{_}} Bind (abort _ _) _) => apply abort_ok : prog.
   Hint Extern 1 ({{_}} Bind (read _ _ _) _) => apply read_ok : prog.
@@ -1295,6 +1315,7 @@ Module LOG.
     step.
 
     step.
+    unfold rep_inner; cancel.
     apply map_valid_add; auto; try omega.
     eapply write_range_length_ok; eauto.
     rewrite vsupsyn_range_length. omega.

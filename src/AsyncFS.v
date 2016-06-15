@@ -142,6 +142,12 @@ Module AFS.
   Notation MSAlloc := BFILE.MSAlloc.
   Import DIRTREE.
 
+  Lemma S_minus_1_helper : forall n a b,
+    S (n + 1 + a + b) - 1 - n = S (a + b).
+  Proof.
+    intros; omega.
+  Qed.
+
   Theorem mkfs_ok : forall cachesize data_bitmaps inode_bitmaps log_descr_blocks,
     {!!< disk,
      PRE:hm
@@ -168,13 +174,35 @@ Module AFS.
 
     prestep.
     norml; unfold stars; simpl.
-    denote! (arrayS _ _ _) as HarrayS.
-    eapply arrayN_isolate with (i := 0) in HarrayS; unfold ptsto_subset in HarrayS; simpl in *.
-    cancel.
+    denote! (arrayS _ _ _) as Hx.
+    eapply arrayN_isolate_hd in Hx.
+    unfold ptsto_subset in Hx at 1.
+    safecancel.
     apply compute_xparams_ok.
-    rewrite H4 in *; eauto.
+    denote (length disk = _) as Heq; rewrite Heq in *; auto.
+    auto.
+
+    safestep.
+    erewrite arrayN_split.
+    setoid_rewrite Nat.add_1_l.
+    apply sep_star_assoc.
+    rewrite skipn_length.
+    setoid_rewrite skipn_length with (n := 1).
+    substl (length disk).
+    apply S_minus_1_helper.
+    rewrite skipn_length.
+    setoid_rewrite skipn_length with (n := 1).
+    substl (length disk).
+    rewrite S_minus_1_helper.
+    eapply goodSize_trans; [ | eauto ]; omega.
+    eauto.
+
+    (* LOG.begin *)
+    step.
+    
 
     all: try solve [ xcrash; apply pimpl_any ].
+    
   Admitted.
 
   Definition recover cachesize :=
