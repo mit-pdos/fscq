@@ -103,31 +103,31 @@ Section ConcurrentCache.
 
   (* abstraction helpers *)
 
-  Definition modify_cache (up: Cache -> Cache) rx : prog Sigma :=
+  Definition modify_cache (up: Cache -> Cache) :=
     c <- Get mCache;
       _ <- Assgn mCache (up c);
       _ <- var_update vCache up;
-      rx tt.
+      Ret tt.
 
-  Definition modify_wb (up: WriteBuffer -> WriteBuffer) rx : prog Sigma :=
+  Definition modify_wb (up: WriteBuffer -> WriteBuffer) :=
     wb <- Get mWriteBuffer;
       _ <- Assgn mWriteBuffer (up wb);
       _ <- var_update vWriteBuffer up;
-      rx tt.
+      Ret tt.
 
   (** safe read: returns None upon cache miss  *)
-  Definition cache_maybe_read a rx : prog Sigma :=
+  Definition cache_maybe_read a :=
     c <- Get mWriteBuffer;
       match wb_val c a with
-      | Some v => rx (Some v)
+      | Some v => Ret (Some v)
       | None =>
         c <- Get mCache;
-          rx (cache_val c a)
+          Ret (cache_val c a)
       end.
 
   (** Prepare to fill address a, locking the address and marking it
   invalid in the cache to signal the lock to concurrent threads. *)
-  Definition prepare_fill a rx : prog Sigma :=
+  Definition prepare_fill a :=
     tid <- GetTID;
       _ <- StartRead_upd a;
       (* note that no updates to Disk are needed since the readers are
@@ -135,28 +135,28 @@ Section ConcurrentCache.
       _ <- var_update vDisk0
         (fun vd => add_reader vd a tid);
       _ <- modify_cache (fun c => cache_add c a Invalid);
-      rx tt.
+      Ret tt.
 
-  Definition cache_fill a rx : prog Sigma :=
+  Definition cache_fill a :=
     _ <- prepare_fill a;
       _ <- Yield a;
       v <- FinishRead_upd a;
       _ <- var_update vDisk0
         (fun vd => remove_reader vd a);
       _ <- modify_cache (fun c => cache_add c a (Clean v));
-      rx v.
+      Ret v.
 
   (** buffer a new write: fails (returns false) if the write overlaps
   with the address being read filled *)
-  Definition cache_try_write a v rx : prog Sigma :=
+  Definition cache_try_write a v :=
     c <- Get mCache;
       match cache_get c a with
-      | Invalid => rx false
+      | Invalid => Ret false
       | _ =>
         _ <- modify_wb (fun wb => wb_write wb a v);
           _ <- var_update vdisk
             (fun vd => upd vd a v);
-          rx true
+          Ret true
       end.
 
   Fixpoint cache_add_all (c: Cache) (entries: list (addr * valu)) : Cache :=
@@ -169,46 +169,46 @@ Section ConcurrentCache.
 
     safety is provided by the invariant no_wb_reader_conflict enforced
     by cache_write's checks *)
-  Definition cache_commit rx : prog Sigma :=
+  Definition cache_commit :=
     c <- Get mCache;
       wb <- Get mWriteBuffer;
       _ <- modify_cache (fun c => cache_add_all c (wb_writes wb));
       _ <- var_update vDisk0 (fun d => upd_buffered_writes d (wb_writes wb));
       _ <- modify_wb (fun _ => emptyWriteBuffer);
-      rx tt.
+      Ret tt.
 
   (** abort all buffered writes, restoring vDisk0 *)
-  Definition cache_abort rx : prog Sigma :=
+  Definition cache_abort :=
     _ <- modify_wb (fun _ => emptyWriteBuffer);
       _ <- GhostUpdate (fun s =>
                          let vd' := hide_readers (get vDisk0 s) in
                          set vdisk vd' s);
-      rx tt.
+      Ret tt.
 
-  Definition cache_read a rx : prog Sigma :=
+  Definition cache_read a :=
     opt_v <- cache_maybe_read a;
       match opt_v with
-      | Some v => rx (Some v)
+      | Some v => Ret (Some v)
       | None => _ <- cache_abort;
                  v <- cache_fill a;
-                 rx None
+                 Ret None
       end.
 
-  Definition cache_write a v rx : prog Sigma :=
+  Definition cache_write a v :=
     ok <- cache_try_write a v;
       if ok then
-        rx true
+        Ret true
       else
         _ <- cache_abort;
       _ <- Yield a;
-      rx false.
+      Ret false.
 
   (** TODO: need to write a into cache from WriteBuffer, evict from
   cache (writing if necessary), and then note in place of the
   writebuffer that rollback is no longer possible *)
-  Definition cache_writeback (a: addr) rx : prog Sigma :=
+  Definition cache_writeback (a: addr) :=
     wb <- Get mWriteBuffer;
-      rx tt.
+      Ret tt.
 
   (* start of automation *)
 
@@ -355,7 +355,7 @@ Section ConcurrentCache.
       vd a = Some v ->
       d a = Some (v, None).
     Proof.
-      unfold const; intros.
+      intros.
       specialize (H a).
       specialize (H0 a).
       simpl_match.
@@ -371,7 +371,7 @@ Section ConcurrentCache.
         no_wb_reader_conflict (cache_add c a Invalid) wb.
     Proof.
       unfold no_wb_reader_conflict; intros.
-      destruct (weq a a0); subst;
+      destruct (nat_dec a a0); subst;
         autorewrite with cache in *;
         eauto.
     Qed.
@@ -382,7 +382,7 @@ Section ConcurrentCache.
         no_wb_reader_conflict c (wb_write wb a v).
     Proof.
       unfold no_wb_reader_conflict; intros.
-      destruct (weq a a0); subst;
+      destruct (nat_dec a a0); subst;
         rewrite ?wb_get_write_eq, ?wb_get_write_neq
         in * by auto;
         eauto || congruence.
@@ -393,7 +393,7 @@ Section ConcurrentCache.
     Proof.
       unfold same_domain, subset, add_reader; split;
         intros;
-        destruct (weq a a0); subst;
+        destruct (nat_dec a a0); subst;
           destruct matches in *;
           autorewrite with upd in *;
           eauto.
@@ -404,7 +404,7 @@ Section ConcurrentCache.
     Proof.
       unfold same_domain, subset, remove_reader; split;
         intros;
-        destruct (weq a a0); subst;
+        destruct (nat_dec a a0); subst;
           destruct matches in *;
           autorewrite with upd in *;
           eauto.
@@ -415,7 +415,7 @@ Section ConcurrentCache.
         readers_locked tid vd (add_reader vd a tid').
     Proof.
       unfold readers_locked, add_reader; intros.
-      destruct (weq a a0); subst;
+      destruct (nat_dec a a0); subst;
         simpl_match;
         autorewrite with upd;
         congruence.
@@ -426,7 +426,7 @@ Section ConcurrentCache.
         readers_locked tid vd (remove_reader vd a).
     Proof.
       unfold readers_locked, remove_reader; intros.
-      destruct (weq a a0); subst;
+      destruct (nat_dec a a0); subst;
         simpl_match;
         autorewrite with upd;
         eauto || congruence.
@@ -440,7 +440,7 @@ Section ConcurrentCache.
     Proof.
       unfold wb_rep; intros.
       specialize (H a0).
-      destruct (weq a a0); subst;
+      destruct (nat_dec a a0); subst;
         rewrite ?wb_get_write_eq, ?wb_get_write_neq by auto;
         autorewrite with upd;
         eauto.
@@ -549,9 +549,9 @@ Section ConcurrentCache.
       vd0 a = Some (v, None).
   Proof.
     intros.
-    pose proof (wb_val_none ltac:(eauto) ltac:(eauto) ltac:(eauto)).
+    pose proof (wb_val_none _ ltac:(eauto) ltac:(eauto) ltac:(eauto)).
     deex.
-    pose proof (cache_val_no_reader ltac:(eauto) ltac:(eauto) ltac:(eauto)).
+    pose proof (cache_val_no_reader _ ltac:(eauto) ltac:(eauto) ltac:(eauto)).
     congruence.
   Qed.
 
@@ -678,12 +678,13 @@ Section ConcurrentCache.
     hoare.
     assert (exists v, d1 a = Some (v, Some tid)).
     eauto using cache_rep_disk_val.
+    admit.
     deex.
     eexists; simplify; finish.
 
     hoare;
-      let n := numgoals in guard n = 4;
-      match goal with
+      let n := numgoals in guard n = 5;
+      try match goal with
       (* cache_rep stable when adding reader *)
       | [ |- cache_rep (upd _ _ _)
                       (cache_add _ _ _)
@@ -698,6 +699,7 @@ Section ConcurrentCache.
             effect is the same as a rely *)
       | [ |- rely delta _ _ _ ] => admit
       end.
+    admit.
   Admitted.
 
   Hint Extern 1 {{cache_fill _; _}} => apply cache_fill_ok.
@@ -826,10 +828,10 @@ Section ConcurrentCache.
       same_domain d d'.
   Proof.
     unfold same_domain, subset; intuition eauto.
-    specialize (H0 _ _ (hide_readers_eq _ H)); deex.
+    specialize (H0 _ _ (hide_readers_eq _ _ H)); deex.
     eapply hide_readers_eq'; eauto.
 
-    specialize (H1 _ _ (hide_readers_eq _ H)); deex.
+    specialize (H1 _ _ (hide_readers_eq _ _ H)); deex.
     eapply hide_readers_eq'; eauto.
   Qed.
 
@@ -908,12 +910,12 @@ Section ConcurrentCache.
 
   Section ExampleProgram.
 
-    Definition copy a a' rx : prog Sigma :=
+    Definition copy a a' :=
       opt_v <- cache_read a;
         match opt_v with
-        | None => rx false
+        | None => Ret false
         | Some v => ok <- cache_write a' v;
-                     rx ok
+                     Ret ok
         end.
 
     Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.

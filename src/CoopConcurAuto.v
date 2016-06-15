@@ -84,7 +84,7 @@ Ltac unfold_prog :=
 
 Ltac valid_match_ok :=
   match goal with
-  | [ |- valid _ _ _ (match ?d with | _ => _ end) ] =>
+  | [ |- valid _ _ _ (Bind (match ?d with | _ => _ end) _) ] =>
     case_eq d; intros;
     match goal with
     | [ |- valid _ _ _ ?p ] => set_prog p
