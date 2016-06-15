@@ -1,4 +1,3 @@
-Require Import Eqdep.
 Require Import PeanoNat String List FMapAVL.
 Require Import Relation_Operators Operators_Properties.
 Require Import VerdiTactics.
@@ -1149,14 +1148,13 @@ Proof.
   subst_definitions. maps. rewrite He0. trivial.
   eapply forall_In_Forall_elements. intros.
   pose proof (Forall_elements_forall_In _ H6).
-  destruct v. simpl in *.
+  simpl in *.
   destruct (StringMapFacts.eq_dec k tvar); maps.
   destruct (StringMapFacts.eq_dec k vvar); maps. {
-    find_inversion. repeat apply_in_hyp inj_pair2. (* NOTE: Assumes axiom eq_rect_eq *)
-    subst. trivial.
+    find_inversion. trivial.
   }
   destruct (StringMapFacts.eq_dec k avar); maps.
-  specialize (H7 k (SItem v)). conclude H7 ltac:(maps; eauto).
+  specialize (H7 k v). conclude H7 ltac:(maps; eauto).
   simpl in *. eauto.
 
   repeat inv_exec.
