@@ -302,9 +302,8 @@ Theorem wait_for_expand : forall Sigma tv (v: var (mem_types Sigma) tv)
 Proof.
   intros.
   match goal with
-  | [ |- ?p1 = ?p2 ] =>
-    rewrite (prog_frob_eq p1) at 1;
-    rewrite (prog_frob_eq p2) at 1
+  | [ |- ?p1 = _ ] =>
+    rewrite (prog_frob_eq p1) at 1
   end; cbn.
   auto.
 Qed.
@@ -360,11 +359,49 @@ Proof.
   unfold rely; eauto.
 Qed.
 
+Lemma guar_stutter : forall Sigma (delta: Protocol Sigma),
+    forall tid s, guar delta tid s s.
+Proof.
+  intros.
+  destruct delta.
+  apply guar_refl_trans; eauto.
+Qed.
+
 Hint Resolve rely_stutter.
+Hint Resolve guar_stutter.
+
+Transparent valid.
+
+Lemma exec_get : forall Sigma delta T tid d m s_i s out tv v (rx: tv -> prog Sigma T),
+    exec delta tid (x <- Get v; rx x) (d, m, s_i, s) out ->
+    exec delta tid (rx (get v m)) (d, m, s_i, s) out.
+Proof.
+  intros; inv_exec.
+  inv_exec' H5; eauto.
+  inv_exec' H5; eauto.
+Qed.
+
+Lemma exec_yield : forall Sigma delta T tid d m s_i s out wchan (rx: prog Sigma T),
+    exec delta tid (Yield wchan;; rx) (d, m, s_i, s) out ->
+    invariant delta d m s ->
+    guar delta tid s_i s ->
+    exists d' m' s',
+      invariant delta d' m' s' /\
+      rely delta tid s s' /\
+      exec delta tid rx (d', m', s', s') out.
+Proof.
+  intros.
+  inv_exec.
+  destruct st' as [ [ [? ?] ? ] ?].
+  inv_exec' H7; inv_step.
+  repeat eexists; eauto.
+
+  inv_exec' H7; intuition.
+Qed.
 
 Theorem wait_for_ok : forall Sigma (delta: Protocol Sigma)
-                        tv (v: var (mem_types Sigma) tv) P (test: forall v, {P v} + {~ P v}) wchan
-                        (R_stutter: forall tid s, guar delta tid s s),
+                        tv (v: var (mem_types Sigma) tv)
+                        P (test: forall v, {P v} + {~ P v}) wchan,
   SPEC delta, tid |-
     {{ (_:unit),
      | PRE d m s_i s:
@@ -381,6 +418,7 @@ Proof.
   apply valid_unfold; intros.
   rewrite wait_for_expand in H0.
   repeat deex; intuition.
+  apply bind_assoc in H0.
 
   match goal with
   | [ H: exec _ _ ?p ?st _ |- _ ] =>
@@ -393,45 +431,31 @@ Proof.
   generalize dependent s_i.
   generalize dependent s.
   generalize dependent st.
-  induction 1 using exec_ind2; intros; subst.
+  induction 1; intros; subst.
 
+  - inversion Heqp.
   - inv_step.
+  - inversion Heqp.
+    subst tv.
+    repeat sigT_eq.
 
-    intuition.
-    deex.
-    case_eq (test (get v m)); intros p Htest;
-    rewrite Htest in *; try solve [ inv_prog ].
-    eapply H2; [| eauto ]. intuition eauto.
-    unfold rely; eauto.
-
-    case_eq (test (get v m)); intros ? Htest;
-    rewrite Htest in *; try solve [ inv_prog ].
-    eapply H2; [| eauto ]. intuition eauto.
-
-    inv_fail_step; congruence.
-
-  - inv_step.
-    match goal with
-    | [ H: step _ _ (if ?d then _ else _) _ _ _ |- _ ] =>
-      destruct d
-    end.
-    eapply H2; [| eauto ]. intuition.
-    destruct (test (get v m)); eauto; congruence.
-    inversion H0; repeat sigT_eq; subst.
-
-    eapply IHexec.
-    apply wait_for_expand.
-    3: eauto.
-    all: eauto.
-    intros; intuition.
-    eapply H2; [| eauto ]. subst. intuition.
-
-    econstructor. eexists; eauto.
-    all: eauto using star_trans, star_impl.
-
+    inv_exec' H0_.
+    destruct (test (get v m)) eqn:Htest.
+    (* easy case - exit loop *)
+    + apply bind_left_id in H0_0.
+      eapply H2; intuition eauto.
+    + apply bind_assoc in H0_0.
+      apply exec_yield in H0_0; eauto;
+        repeat deex.
+      (* need to apply inductive hypothesis, but need notion of
+      two-step execution so hypothesis has an expanded wait_for
+      equality we can actually prove *)
+      admit.
+  - inversion Heqp; subst;
+      repeat sigT_eq.
+    inv_exec' H0; inv_fail_step.
   - inv_fail_step.
-  - inv_prog.
-Qed.
+Admitted.
 
 End WaitForCombinator.
 
@@ -441,11 +465,10 @@ Section GhostVarUpdate.
 
 Definition var_update {Sigma}
   tv (v: var (abstraction_types Sigma) tv)
-  (up: tv -> tv)
-  rx : prog Sigma :=
+  (up: tv -> tv) : prog Sigma _ :=
   GhostUpdate (fun s =>
     set v (up (get v s)) s);;
-    rx tt.
+    Ret tt.
 
 Theorem var_update_ok : forall Sigma (delta: Protocol Sigma)
                         tv (v: var (abstraction_types Sigma) tv) up,
@@ -481,13 +504,12 @@ Defined.
 Definition AcquireLock {Sigma}
                        (l : var (mem_types Sigma) BusyFlag)
                        (lock_ghost : TID -> abstraction Sigma -> abstraction Sigma)
-                       (wchan : addr)
-                       (rx : unit -> prog Sigma) :=
+                       (wchan : addr) :=
   wait_for l is_unlocked wchan;;
   tid <- GetTID;
   GhostUpdate (lock_ghost tid);;
   Assgn l Locked;;
-  rx tt.
+  Ret tt.
 
 Theorem AcquireLock_ok : forall Sigma (delta: Protocol Sigma)
                         (R_trans : forall tid s1 s2, star (guar delta tid) s1 s2 -> guar delta tid s1 s2)
