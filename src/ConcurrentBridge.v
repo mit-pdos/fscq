@@ -1,6 +1,6 @@
 Require Import CoopConcur.
 Require Import ConcurrentCache.
-Require Prog Hoare.
+Require Import Specifications.
 
 Fixpoint compiler {T} (error_rx: prog Sigma) (p: Prog.prog T) : prog Sigma :=
   match p with
@@ -22,103 +22,6 @@ Fixpoint compiler {T} (error_rx: prog Sigma) (p: Prog.prog T) : prog Sigma :=
                        compiler error_rx (rx tt)
   | Prog.Trim a rx => compiler error_rx (rx tt)
   end.
-
-Notation prog_valuset := (valu * list valu)%type.
-
-Record SeqHoareSpec R :=
-  SeqSpec { seq_spec_pre: @pred addr _ (const prog_valuset);
-            seq_spec_post: R -> @pred addr _ (const prog_valuset);
-            seq_spec_crash: @pred addr _ (const prog_valuset) }.
-
-Definition seq_hoare_double R A (spec: A -> SeqHoareSpec R)
-           (p: forall T, (R -> Prog.prog T) -> Prog.prog T) :=
-  forall T (rx : _ -> Prog.prog T),
-    Hoare.corr2
-      (fun done_ crash_ =>
-         exists a F_,
-           F_ * seq_spec_pre (spec a) *
-           [[ forall r:R, Hoare.corr2
-                       (fun done'_ crash'_ =>
-                          F_ * seq_spec_post (spec a) r  *
-                          [[ done'_ = done_ ]] *
-                          [[ crash'_ = crash_ ]]
-                       ) (rx r) ]] *
-           [[ (F_ * seq_spec_crash (spec a))%pred =p=> crash_ ]])%pred
-      (p T rx).
-
-Section ExampleSeqSpecs.
-  Import Hoare.
-
-  (* these are the sorts of theorems needed to go from the notation to
-  the more structured SeqHoareSpec. *)
-  Theorem seq_read_spec : forall a,
-      {< v,
-       PRE        a |-> v
-       POST RET:r a |-> v * [[ r = (fst v) ]]
-       CRASH      a |-> v
-      >} Prog.Read a <->
-      seq_hoare_double
-        (fun v =>
-           SeqSpec (a |-> v)%pred
-                   (fun r => a |-> v * [[ r = (fst v) ]])%pred
-                   (a |-> v)%pred
-        ) (fun T => @Prog.Read T a).
-  Proof.
-    split; eauto using pimpl_ok2.
-  Qed.
-
-  Definition swap T a a' rx : Prog.prog T :=
-    v <- Prog.Read a;
-      v' <- Prog.Read a';
-      Prog.Write a v';;
-      Prog.Write a' v;;
-      rx tt.
-
-  Notation "'SEQSPEC' e1 .. e2 , {{ pre }} {{ post }} {{ crash }}" :=
-    (fun e1 => .. (fun e2 =>
-                  SeqSpec pre%pred post%pred crash%pred) .. )
-      (at level 0,
-       e1 binder,
-       e2 binder).
-
-  Definition uncurry {A B C} (f: A -> B -> C) :
-    A * B -> C :=
-    fun ab => let (a, b) := ab in f a b.
-
-  Definition test_spec a a' :=
-    uncurry SEQSPEC v v',
-    {{ a |-> v * a' |-> v' }}
-      {{ fun r:unit => a |-> v' * a' |-> v }}
-      {{ a |->? * a' |->? }}.
-
-  Theorem seq_swap_spec : forall a a',
-      {< (v v': prog_valuset),
-       PRE       a |-> v * a' |-> v'
-       POST RET:_ a |-> v' * a' |-> v
-       CRASH a |->? * a' |->?
-      >} swap a a' <->
-      seq_hoare_double
-        (uncurry SEQSPEC v v',
-         {{ a |-> v * a' |-> v' }}
-           {{ fun r:unit => a |-> v' * a' |-> v }}
-           {{ a |->? * a' |->? }}
-        ) (fun T => @swap T a a').
-  Proof.
-    unfold uncurry.
-    split; intros.
-    unfold seq_hoare_double; intros.
-    eapply pimpl_ok2; eauto; intros.
-    eapply pimpl_exists_l.
-    destruct x.
-    destruct c, c0.
-    cancel.
-
-    eapply pimpl_ok2; eauto; intros.
-    cancel.
-    cancel.
-  Qed.
-
-End ExampleSeqSpecs.
 
 Record ConcurHoareSpec R :=
   ConcurSpec { concur_spec_pre: TID -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop;
