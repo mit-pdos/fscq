@@ -2,7 +2,7 @@ Require Import PeanoNat String List FMapAVL.
 Require Import Relation_Operators Operators_Properties.
 Require Import VerdiTactics.
 Require Import StringMap.
-Require Import Mem AsyncDisk PredCrash Prog ProgMonad.
+Require Import Mem AsyncDisk PredCrash Prog ProgMonad SepAuto.
 Require Import Gensym.
 
 Import ListNotations.
@@ -814,6 +814,14 @@ Proof.
   eauto.
 Qed.
 
+Ltac set_hyp_evars :=
+  repeat match goal with
+  | [ H : context[?e] |- _ ] =>
+    is_evar e;
+    let H := fresh in
+    set (H := e) in *
+  end.
+
 Ltac maps := unfold SameValues in *; repeat match goal with
   | [ H : Forall _ (StringMap.elements _) |- _ ] =>
       let H1 := fresh H in
@@ -825,9 +833,9 @@ Ltac maps := unfold SameValues in *; repeat match goal with
       apply Forall_elements_add; split
   | _ => discriminate
   | _ => congruence
-  | _ => progress rewrite ?StringMapFacts.remove_neq_o, ?StringMapFacts.remove_eq_o,
+  | _ => set_evars; set_hyp_evars; progress rewrite ?StringMapFacts.remove_neq_o, ?StringMapFacts.remove_eq_o,
                           ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o,
-                          ?StringMapFacts.empty_o in * by congruence
+                          ?StringMapFacts.empty_o in * by congruence; subst_evars
   end.
 
 Ltac find_all_cases :=
@@ -1178,7 +1186,6 @@ Ltac find_fast value fmap :=
   end.
 
 Ltac match_variable_names_right :=
-  simpl; intros; idtac "x";
   match goal with
   | [ H : StringMap.find _ ?m = _ |- _ ] =>
     repeat match goal with
@@ -1191,8 +1198,7 @@ Ltac match_variable_names_right :=
   end.
 
 Ltac match_variable_names_left :=
-  intros; simpl;
-  match goal with
+  try (match goal with
   | [ H : context[StringMap.add ?k (SItem ?v) _] |- _ ] =>
     is_evar k;
     match goal with
@@ -1201,7 +1207,28 @@ Ltac match_variable_names_left :=
       | Some ?k' => unify k k'
       end
     end
-  end; try match_variable_names_left.
+  end; match_variable_names_left).
+
+Ltac keys_equal_cases :=
+  match goal with
+  | [ H : StringMap.find ?k0 _ = _ |- _ ] =>
+    match goal with
+    | [ H : context[StringMap.add ?k (SItem ?v) _] |- _ ] => destruct (StringMapFacts.eq_dec k0 k); maps
+    end
+  end.
+
+Ltac prepare_for_frame :=
+  match goal with
+  | [ H : ~ StringKey.eq _ ?k |- _ ] =>
+    rewrite add_add_comm with (k1 := k) by congruence; maps (* A bit inefficient: don't need to rerun maps if it's still the same [k] *)
+  end.
+
+Ltac match_scopes :=
+  simpl; intros;
+  match_variable_names_left; match_variable_names_right;
+  repeat keys_equal_cases;
+  repeat prepare_for_frame;
+  try eassumption.
 
 Definition swap_prog :=
   a <- Read 0;
@@ -1220,26 +1247,22 @@ Proof.
   eapply extract_equiv_prog; [ eapply bind_left_id | ];
   let c := gensym "c" in
   eapply CompileBind with (var := c); intros; [ eapply CompileConst | ].
-  eapply hoare_weaken_post; [ | eapply CompileRead ]; match_variable_names_right.
-  destruct (StringMapFacts.eq_dec k "r"); maps; eauto.
+  eapply hoare_weaken_post; [ | eapply CompileRead ]; match_scopes.
 
   let r := gensym "r" in
   eapply CompileBind with (var := r); intros.
   eapply extract_equiv_prog; [ eapply bind_left_id | ];
   let c := gensym "c" in
   eapply CompileBind with (var := c); intros; [ eapply CompileConst | ].
-  eapply hoare_weaken_post; [ | eapply CompileRead ]; match_variable_names_right.
-  destruct (StringMapFacts.eq_dec k "r0"); destruct (StringMapFacts.eq_dec k "r"); maps; eauto.
-
+  eapply hoare_weaken_post; [ | eapply CompileRead ]; match_scopes.
   eapply CompileBindDiscard.
   eapply extract_equiv_prog.
   change (Write 0 a0) with ((fun c0 => Write c0 a0) 0). (* TODO use pattern tactic *)
   eapply bind_left_id.
   let c := gensym "c" in
   eapply CompileBind with (var := c); intros; [ eapply CompileConst | ].
-  let tmp := gensym "tmp" in
-  eapply hoare_weaken_post; [ | eapply CompileWrite with (tvar := tmp); maps ]; match_variable_names_right.
-  destruct (StringMapFacts.eq_dec k "r0"); destruct (StringMapFacts.eq_dec k "r"); maps.
+  let tmp := gensym "_" in
+  eapply hoare_weaken_post; [ | eapply CompileWrite with (tvar := tmp) ]; try match_scopes; maps.
 
   eapply CompileBindDiscard.
   eapply extract_equiv_prog.
@@ -1247,18 +1270,12 @@ Proof.
   eapply bind_left_id.
   let c := gensym "c" in
   eapply CompileBind with (var := c); intros; [ eapply CompileConst | ].
-  let tmp := gensym "tmp" in
+  let tmp := gensym "_" in
   eapply hoare_strengthen_pre; [ |
-  eapply hoare_weaken_post; [ | eapply CompileWrite with (tvar := tmp) ]].
-  match_variable_names_left.
-  instantiate (F := "r0" ~> a0; \u2205).
-  destruct (StringMapFacts.eq_dec k "c"); destruct (StringMapFacts.eq_dec k "r"); destruct (StringMapFacts.eq_dec k "r0"); maps; eauto.
-  intros. simpl. destruct (StringMapFacts.eq_dec k "r"); destruct (StringMapFacts.eq_dec k "r0"); maps; eauto.
-  maps.
-  maps.
-  maps.
-  maps.
+  eapply hoare_weaken_post; [ | eapply CompileWrite with (tvar := tmp) ]]; try match_scopes; maps.
 
   eapply hoare_weaken_post; [ | eapply CompileSkip ].
   intros. maps.
-Qed.
+Defined.
+
+Eval lazy in projT1 micro_swap.
