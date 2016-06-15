@@ -33,6 +33,7 @@ Require Import DirUtil.
 Require Import String.
 Require Import TreeCrash.
 Require Import TreeSeq.
+Require Import DirSep.
 
 
 Import ListNotations.
@@ -50,6 +51,10 @@ Set Implicit Arguments.
 Module ATOMICCP.
 
   Parameter the_dnum : addr.
+  Parameter cachesize : nat.
+  Axiom cachesize_ok : cachesize <> 0.
+  Hint Resolve cachesize_ok.
+
 
   Definition temp_fn := ".temp"%string.
   
@@ -57,68 +62,68 @@ Module ATOMICCP.
 
   (* copy an existing src into an existing, empty dst. *)
 
-  Definition copydata T fsxp src_inum dst_inum mscs rx : prog T :=
+  Definition copydata fsxp src_inum dst_inum mscs :=
     let^ (mscs, attr) <- AFS.file_get_attr fsxp src_inum mscs;
     let^ (mscs, b) <- AFS.read_fblock fsxp src_inum 0 mscs;
     let^ (mscs) <- AFS.update_fblock_d fsxp dst_inum 0 b mscs;
     let^ (mscs) <- AFS.file_sync fsxp dst_inum mscs;   (* sync blocks *)
     let^ (mscs, ok) <- AFS.file_set_attr fsxp dst_inum attr mscs;
-    rx ^(mscs, ok).
+    Ret ^(mscs, ok).
 
-  Definition copy2temp T fsxp src_inum dst_inum mscs rx : prog T :=
+  Definition copy2temp fsxp src_inum dst_inum mscs :=
     let^ (mscs, ok) <- AFS.file_truncate fsxp dst_inum 1 mscs;  (* XXX type error when passing sz *)
     If (bool_dec ok true) {
       let^ (mscs, ok) <- copydata fsxp src_inum dst_inum mscs;
-      rx ^(mscs, ok)
+      Ret ^(mscs, ok)
     } else {
-      rx ^(mscs, ok)
+      Ret ^(mscs, ok)
     }.
 
-  Definition copy_and_rename T fsxp src_inum dst_inum dst_fn mscs rx : prog T :=
+  Definition copy_and_rename fsxp src_inum dst_inum dst_fn mscs :=
     let^ (mscs, ok) <- copy2temp fsxp src_inum dst_inum mscs;
     match ok with
       | false =>
         let^ (mscs) <- AFS.tree_sync fsxp mscs;
         (* Just for a simpler spec: the state is always (d, nil) after this function *)
-        rx ^(mscs, false)
+        Ret ^(mscs, false)
       | true =>
         let^ (mscs, ok1) <- AFS.rename fsxp the_dnum [] temp_fn [] dst_fn mscs;
         let^ (mscs) <- AFS.tree_sync fsxp mscs;
-        rx ^(mscs, ok1)
+        Ret ^(mscs, ok1)
     end.
 
-  Definition atomic_cp T fsxp src_inum dst_fn mscs rx : prog T :=
+  Definition atomic_cp fsxp src_inum dst_fn mscs :=
     let^ (mscs, maybe_dst_inum) <- AFS.create fsxp the_dnum temp_fn mscs;
     match maybe_dst_inum with
-      | None => rx ^(mscs, false)
+      | None => Ret ^(mscs, false)
       | Some dst_inum =>
         let^ (mscs, ok) <- copy_and_rename fsxp src_inum dst_inum dst_fn mscs;
-        rx ^(mscs, ok)
+        Ret ^(mscs, ok)
     end.
 
   (** recovery programs **)
 
   (* atomic_cp recovery: if temp_fn exists, delete it *)
-  Definition cleanup {T} fsxp mscs rx : prog T :=
+  Definition cleanup fsxp mscs :=
     let^ (mscs, maybe_src_inum) <- AFS.lookup fsxp the_dnum [temp_fn] mscs;
     match maybe_src_inum with
-    | None => rx mscs
+    | None => Ret mscs
     | Some (src_inum, isdir) =>
       let^ (mscs, ok) <- AFS.delete fsxp the_dnum temp_fn mscs;
       let^ (mscs) <- AFS.tree_sync fsxp mscs;
-      rx mscs
+      Ret mscs
     end.
 
   (* top-level recovery function: call AFS recover and then atomic_cp's recovery *)
-  Definition recover {T} rx : prog T :=
-    let^ (mscs, fsxp) <- AFS.recover;
+  Definition recover :=
+    let^ (mscs, fsxp) <- AFS.recover cachesize;
     let^ (mscs, maybe_src_inum) <- AFS.lookup fsxp the_dnum [temp_fn] mscs;
     match maybe_src_inum with
-    | None => rx ^(mscs, fsxp)
+    | None => Ret ^(mscs, fsxp)
     | Some (src_inum, isdir) =>
       let^ (mscs, ok) <- AFS.delete fsxp the_dnum temp_fn mscs;
       let^ (mscs) <- AFS.tree_sync fsxp mscs;
-      rx ^(mscs, fsxp)
+      Ret ^(mscs, fsxp)
     end.
 
   (** Specs and proofs **)
