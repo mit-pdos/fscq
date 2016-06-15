@@ -166,6 +166,13 @@ End ExampleSeqSpecs.
 
 Hint Resolve <- bind_right_id.
 
+Ltac lift_sep_star :=
+ repeat match goal with
+         | [ H: (_ * [[ _ ]])%pred _ |- _ ] =>
+           apply sep_star_lift_apply in H;
+             destruct H
+         end .
+
 Theorem spec_double_to_quadruple : forall T A (spec: A -> SeqHoareSpec T) (p: prog T),
     seq_hoare_double spec p ->
     seq_hoare_quadruple spec p.
@@ -189,12 +196,55 @@ Proof.
   inv_exec.
   left.
   do 3 eexists; intuition eauto.
-  repeat match goal with
-         | [ H: (_ * [[ _ ]])%pred _ |- _ ] =>
-           apply sep_star_lift_apply in H;
-             destruct H
-         end; subst.
+  lift_sep_star; subst.
   pred_apply; cancel.
 
   intuition.
+Qed.
+
+Ltac deex_pred :=
+  deex ||
+  match goal with
+  | [ H: exis (fun (varname:_) => _) _ |- _ ] =>
+    let newvar := fresh varname in
+    unfold exis in H at 1;
+    destruct H as (newvar, ?);
+    intuition idtac
+  end.
+
+Ltac inv_outcome :=
+  match goal with
+  | [ H: _ = _ :> (outcome _) |- _ ] =>
+    inversion H; subst; clear H
+  end.
+
+Theorem spec_quadruple_to_double : forall T A (spec: A -> SeqHoareSpec T) (p: prog T),
+    seq_hoare_quadruple spec p ->
+    seq_hoare_double spec p.
+Proof.
+  unfold seq_hoare_double, seq_hoare_quadruple; intros.
+  unfold corr2 at 1; intros.
+  inv_exec;
+    repeat deex_pred;
+    lift_sep_star;
+    match goal with
+    | [ Hexec: exec _ _ _ _ |- _ ] =>
+      apply (H a F_) in Hexec
+    end;
+    intuition;
+    repeat deex;
+    try inv_outcome;
+    try solve [ pred_apply; cancel ].
+
+  match goal with
+  | [ H: forall _, {{_}} rx _, Hexec: exec _ _ (rx _) _ |- _] =>
+    eapply H in Hexec; eauto
+  end.
+  pred_apply; cancel.
+
+  right; repeat eexists; eauto.
+  match goal with
+  | [ H: forall _, _ =p=> crash _ |- _ ] =>
+    apply H; pred_apply; cancel
+  end.
 Qed.
