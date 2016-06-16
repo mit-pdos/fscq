@@ -649,19 +649,19 @@ Module GLog.
 
   (************* correctness theorems *)
 
-
   Definition init_ok : forall xp cs,
-    {< F l d,
+    {< F l d m,
     PRE:hm   BUFCACHE.rep cs d *
-          [[ (F * arrayS (LogHeader xp) l)%pred d ]] *
+          [[ (F * arrayS (DataStart xp) m * arrayS (LogHeader xp) l)%pred d ]] *
           [[ length l = (1 + LogDescLen xp + LogLen xp) /\
+             length m = (LogHeader xp) - (DataStart xp) /\
              LogDescriptor xp = LogHeader xp + 1 /\
              LogData xp = LogDescriptor xp + LogDescLen xp /\
              LogLen xp = (LogDescLen xp * PaddedLog.DescSig.items_per_val)%nat /\
              goodSize addrlen ((LogHeader xp) + length l) ]] *
           [[ sync_invariant F ]]
-    POST:hm' RET: ms exists d,
-          << F, rep: xp (Cached (d, nil)) ms hm' >> 
+    POST:hm' RET: ms
+          << F, rep: xp (Cached (m, nil)) ms hm' >> 
     XCRASH:hm_crash any
     >} init xp cs.
   Proof.

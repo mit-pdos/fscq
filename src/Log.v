@@ -345,10 +345,11 @@ Module LOG.
   Local Hint Resolve MapProperties.eqke_equiv.
 
   Definition init_ok : forall xp cs,
-    {< F l d,
+    {< F l d m,
     PRE:hm   BUFCACHE.rep cs d *
-          [[ (F * arrayS (LogHeader xp) l)%pred d ]] *
+          [[ (F * arrayS (DataStart xp) m * arrayS (LogHeader xp) l)%pred d ]] *
           [[ length l = (1 + LogDescLen xp + LogLen xp) /\
+             length m = (LogHeader xp) - (DataStart xp) /\
              LogDescriptor xp = LogHeader xp + 1 /\
              LogData xp = LogDescriptor xp + LogDescLen xp /\
              LogLen xp = (LogDescLen xp * DiskLogHash.PaddedLog.DescSig.items_per_val)%nat /\
@@ -356,7 +357,8 @@ Module LOG.
           [[ sync_invariant F ]]
     POST:hm' RET: ms exists d,
           rep xp F (NoTxn (d, nil)) ms hm' *
-          [[[ d ::: arrayN (@ptsto _ _ _) 0 d ]]]
+          [[[ d ::: arrayN (@ptsto _ _ _) 0 d ]]] *
+          [[ length d = (LogHeader xp) - (DataStart xp) ]]
     XCRASH:hm_crash any
     >} init xp cs.
   Proof.

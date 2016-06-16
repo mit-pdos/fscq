@@ -55,8 +55,8 @@ Module AFS.
      **)
 
     (* XXX: not quite right, fix later *)
-    let data_blocks := data_bitmaps * BALLOC.items_per_val in
-    let inode_blocks := inode_bitmaps * BALLOC.items_per_val / INODE.IRecSig.items_per_val in
+    let data_blocks := data_bitmaps * valulen in
+    let inode_blocks := inode_bitmaps * valulen / INODE.IRecSig.items_per_val in
     let inode_base := data_blocks in
     let balloc_base1 := inode_base + inode_blocks + inode_bitmaps in
     let balloc_base2 := balloc_base1 + data_bitmaps in
@@ -76,8 +76,8 @@ Module AFS.
 
   Lemma compute_xparams_ok : forall data_bitmaps inode_bitmaps log_descr_blocks,
     goodSize addrlen (1 +
-          data_bitmaps * BALLOC.items_per_val +
-          inode_bitmaps * BALLOC.items_per_val / INODE.IRecSig.items_per_val +
+          data_bitmaps * valulen +
+          inode_bitmaps * valulen / INODE.IRecSig.items_per_val +
           inode_bitmaps + data_bitmaps + data_bitmaps +
           1 + log_descr_blocks + log_descr_blocks * PaddedLog.DescSig.items_per_val) ->
     fs_xparams_ok (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks).
@@ -109,8 +109,8 @@ Module AFS.
     cs <- SB.init fsxp cs;
     mscs <- LOG.init (FSXPLog fsxp) cs;
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
+    mscs <- BALLOC.init_nofree (FSXPLog fsxp) (FSXPBlockAlloc2 fsxp) mscs;
     mscs <- BALLOC.init (FSXPLog fsxp) (FSXPBlockAlloc1 fsxp) mscs;
-    mscs <- BALLOC.init (FSXPLog fsxp) (FSXPBlockAlloc2 fsxp) mscs;
     mscs <- IAlloc.init (FSXPLog fsxp) fsxp mscs;
     mscs <- INODE.init (FSXPLog fsxp) (FSXPInode fsxp) mscs;
     mscs <- mkfs_alternate_allocators (FSXPLog fsxp) (FSXPBlockAlloc1 fsxp) (FSXPBlockAlloc2 fsxp) mscs;
@@ -148,14 +148,44 @@ Module AFS.
     intros; omega.
   Qed.
 
+  Lemma S_minus_1_helper2 : forall n,
+    S n - 1 = n.
+  Proof.
+    intros; omega.
+  Qed.
+
+
+  Lemma add_nonzero_exfalso_helper : forall a b,
+    a + b = 0 -> b <> 0 -> False.
+  Proof.
+    intros; omega.
+  Qed.
+
+
+  Lemma add_nonzero_exfalso_helper2 : forall a b,
+    a * valulen + b = 0 -> a <> 0 -> False.
+  Proof.
+    intros.
+    destruct a; auto.
+    rewrite Nat.mul_succ_l in H.
+    assert (0 < a * valulen + valulen + b).
+    apply Nat.add_pos_l.
+    apply Nat.add_pos_r.
+    rewrite valulen_is; simpl.
+    apply Nat.lt_0_succ.
+    omega.
+  Qed.
+
+
   Theorem mkfs_ok : forall cachesize data_bitmaps inode_bitmaps log_descr_blocks,
     {!!< disk,
      PRE:hm
        arrayS 0 disk *
-       [[ cachesize <> 0 ]] *
+       [[ cachesize <> 0 /\ data_bitmaps <> 0 /\ inode_bitmaps <> 0 ]] *
+       [[ data_bitmaps <= valulen * valulen /\ inode_bitmaps <= valulen * valulen ]] *
        [[ length disk = 1 +
-          data_bitmaps * BALLOC.items_per_val +
-          inode_bitmaps * BALLOC.items_per_val / INODE.IRecSig.items_per_val +
+          data_bitmaps * valulen +
+          inode_bitmaps * valulen / INODE.IRecSig.items_per_val +
           inode_bitmaps + data_bitmaps + data_bitmaps +
           1 + log_descr_blocks + log_descr_blocks * PaddedLog.DescSig.items_per_val ]] *
        [[ goodSize addrlen (length disk) ]]
@@ -182,23 +212,97 @@ Module AFS.
     denote (length disk = _) as Heq; rewrite Heq in *; auto.
     auto.
 
-    safestep.
-    erewrite arrayN_split.
+    (* LOG.init *)
+    prestep. norm. cancel.
+    intuition simpl. pred_apply.
+    (* split LHS into log region and data region *)
+    erewrite arrayN_split at 1.
     setoid_rewrite Nat.add_1_l.
+    rewrite sep_star_comm.
     apply sep_star_assoc.
+
     rewrite skipn_length.
     setoid_rewrite skipn_length with (n := 1).
     substl (length disk).
     apply S_minus_1_helper.
+
+    rewrite firstn_length.
+    setoid_rewrite skipn_length with (n := 1).
+    substl (length disk).
+    rewrite Nat.min_l.
+    rewrite Nat.sub_0_r; auto.
+    rewrite S_minus_1_helper2.
+    generalize (data_bitmaps * valulen + inode_bitmaps * valulen / INODE.IRecSig.items_per_val); intros.
+    generalize (log_descr_blocks * PaddedLog.DescSig.items_per_val); intros.
+    omega.
+
+    eapply goodSize_trans; [ | eauto ].
     rewrite skipn_length.
     setoid_rewrite skipn_length with (n := 1).
     substl (length disk).
-    rewrite S_minus_1_helper.
-    eapply goodSize_trans; [ | eauto ]; omega.
-    eauto.
-
-    (* LOG.begin *)
+    generalize (data_bitmaps * valulen + inode_bitmaps * valulen / INODE.IRecSig.items_per_val); intros.
+    generalize (log_descr_blocks * PaddedLog.DescSig.items_per_val); intros.
+    omega.
+    auto.
+    auto.
     step.
+    rewrite Nat.sub_0_r in *.
+
+    (* BALLOC.init_nofree *)
+    prestep. norm. cancel.
+    intuition simpl. pred_apply.
+
+    (* now we need to split the LHS several times to get the correct layout *)
+    erewrite arrayN_split at 1; repeat rewrite Nat.add_0_l.
+    (* data alloc2 is the last chunk *)
+    apply pimpl_refl.
+    eapply add_nonzero_exfalso_helper; eauto.
+    rewrite skipn_length.
+    substl (length d0); omega.
+    auto.
+
+    (* BALLOC.init *)
+    prestep. norm. cancel.
+    intuition simpl. pred_apply.
+    erewrite arrayN_split at 1; repeat rewrite Nat.add_0_l.
+    erewrite arrayN_split with (i := data_bitmaps * valulen) at 1; repeat rewrite Nat.add_0_l.
+    (* data region is the first chunk, and data alloc1 is the last chunk *)
+    match goal with
+    | [ |- ((_ * _) * arrayN _ ?a _) * _ =p=> _ * arrayN _ ?b _ ] =>
+        equate a b
+    end.
+    cancel.
+    eapply add_nonzero_exfalso_helper; eauto.
+    rewrite skipn_length.
+    rewrite firstn_length_l; omega.
+    repeat rewrite firstn_firstn.
+    repeat rewrite Nat.min_l; try omega.
+    rewrite firstn_length_l; omega.
+    auto.
+
+    (* IAlloc.init *)
+    prestep. norm. cancel.
+    intuition simpl. pred_apply.
+    eapply pimpl_trans2.
+    cbn. apply pimpl_refl.
+    erewrite arrayN_split at 1; repeat rewrite Nat.add_0_l.
+    (* inode region is the first chunk, and inode alloc is the second chunk *)
+    match goal with
+    | [ |- (_ * (_ * arrayN _ ?a _)) * _ =p=> _ * arrayN _ ?b _ ] =>
+        equate a b
+    end.
+    cancel.
+    unfold IAlloc.Sig.xparams_ok, compute_xparams; cbn.
+    denote IAlloc.Sig.BMPStart as Heq; cbn in Heq.
+    eapply add_nonzero_exfalso_helper2; eauto.
+    rewrite skipn_skipn, firstn_firstn.
+    rewrite Nat.min_l, skipn_length by omega.
+    rewrite firstn_length_l by omega.
+    cbn; omega.
+    auto.
+
+    (* Inode.init *)
+    
 
     all: try solve [ xcrash; apply pimpl_any ].
     
