@@ -38,7 +38,9 @@ Fixpoint compiler {T} (p: Prog.prog T) : prog Sigma (Exc T) :=
 
 Record ConcurHoareSpec R :=
   ConcurSpec { concur_spec_pre: TID -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop;
-               concur_spec_post: TID -> R -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop }.
+               concur_spec_post: TID -> R ->
+                                 DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma ->
+                                 DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop }.
 
 Definition concur_hoare_double R A (spec: A -> ConcurHoareSpec R)
            (p: prog Sigma R) :=
@@ -50,7 +52,7 @@ Definition concur_hoare_double R A (spec: A -> ConcurHoareSpec R)
                (forall ret_,
                    valid delta tid
                          (fun done_rx d' m' s_i' s' =>
-                            concur_spec_post (spec a) tid ret_ d' m' s_i' s' /\
+                            concur_spec_post (spec a) tid ret_ d m s_i s d' m' s_i' s' /\
                             done_rx = done)
                          (rx ret_))
           ) (Bind p rx).
@@ -72,12 +74,11 @@ Defined.
 Definition project_disk (s: abstraction Sigma) : @mem addr _ prog_valuset.
 Proof.
   pose proof (get vDisk0 s) as vd0.
-  unfold id in *.
   intro a.
   destruct (vd0 a); [ apply Some | apply None ].
   destruct w.
   exact (w, nil).
-Qed.
+Defined.
 
 (* The idea of concurrent_spec is to compute a concurrent spec
 corresponding to sequential spec, capturing the same spec on top of
@@ -94,21 +95,27 @@ definition:
   system call. This condition should be generalized so we can prove
   concurrent_spec about the compiled program by induction.
 *)
-Definition concurrent_spec R (spec: SeqHoareSpec R) : ConcurHoareSpec R :=
+Definition concurrent_spec R (spec: SeqHoareSpec R) : ConcurHoareSpec (Exc R) :=
   let 'SeqSpec pre post _ := spec in
   ConcurSpec
     (fun tid d m s_i s =>
        invariant delta d m s /\
        pre (project_disk s) /\
        guar delta tid s_i s)
-    (fun tid r d' m' s_i' s' =>
+    (fun tid r d m s_i s d' m' s_i' s' =>
        invariant delta d' m' s' /\
-       post r (project_disk s') /\
+       match r with
+       | Some r => post r (project_disk s')
+       | None => rely delta tid s s'
+       end /\
        guar delta tid s_i' s').
 
 (* The master theorem: convert a sequential program into a concurrent
 program via [compiler], convert its spec to a concurrent spec via
 [concurrent_spec], and prove the resulting concurrent Hoare double.
-
-TODO: state using new monadic programs
 *)
+Theorem compiler_correct : forall T (p: Prog.prog T) A (spec: A -> SeqHoareSpec T),
+    seq_hoare_double spec p ->
+    concur_hoare_double (fun a => concurrent_spec (spec a)) (compiler p).
+Proof.
+Abort.
