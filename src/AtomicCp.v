@@ -140,7 +140,7 @@ Module AFSTreeSeqSep.
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts!!) ]] *
-        [[ ts' = (pushd (mk_tree tree' (TSilist ilist') (TSfree ts !!)) ts) ]] *
+        [[ ts' = (pushd (mk_tree tree' ilist' (TSfree ts !!)) ts) ]] *
         [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
         [[ (Ftree * pathname |-> (inum, f'))%pred (dir2flatmem [] tree') ]])
   XCRASH:hm'
@@ -166,22 +166,17 @@ Module AFSTreeSeqSep.
     cancel.
     eapply treeseq_in_ds_pushd; eauto.
     unfold tree_rep.
-    pred_apply.
-    simpl.
-    (* instantiate (1 := ilist').  XXX why not *)
-    admit.
     unfold treeseq_one_safe.
     simpl.
-    (* eassumption. XXX cannot instantiate ilist'0 *)
-    admit.
+    rewrite H4 in H11.
+    eassumption.
     eapply dir2flatmem_update_subtree.
     unfold treeseq_in_ds in H6.
     intuition.
     unfold tree_rep in H5.
     distinct_names.
     eassumption.
-  Admitted.
-
+  Qed.
 
   Theorem tree_update_fblock_d_ok : forall fsxp inum off v mscs,
     {< ds ts Fm Ftop Ftree pathname f Fd vs,
@@ -280,6 +275,7 @@ Module AFSTreeSeqSep.
 
   Hint Extern 1 ({{_}} Bind (AFS.file_get_attr _ _ _) _) => apply tree_file_getattr_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.read_fblock _ _ _ _) _) => apply tree_read_fblock_ok : prog.
+  Hint Extern 1 ({{_}} Bind (AFS.file_set_attr _ _ _ _) _) => apply tree_file_set_attr_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.update_fblock_d _ _ _ _ _) _) => apply tree_update_fblock_d_ok : prog.
 
 End AFSTreeSeqSep.
