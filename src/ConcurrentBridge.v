@@ -73,10 +73,9 @@ Defined.
 
 Definition project_disk (s: abstraction Sigma) : @mem addr _ prog_valuset.
 Proof.
-  pose proof (get vDisk0 s) as vd0.
+  pose proof (get vdisk s) as vd.
   intro a.
-  destruct (vd0 a); [ apply Some | apply None ].
-  destruct w.
+  destruct (vd a); [ apply Some | apply None ].
   exact (w, nil).
 Defined.
 
@@ -89,11 +88,11 @@ definition:
 
 - The abstraction from the cache is some combination of vDisk0 and
   vdisk: vDisk0 is for between system calls and vdisk is for a given
-  system call. [project_disk] currently just uses vDisk0, which seems
-  wrong.
-- The precondition needs to state that we aren't in the middle of a
-  system call. This condition should be generalized so we can prove
-  concurrent_spec about the compiled program by induction.
+  system call. [project_disk] currently just uses vdisk - vDisk0 is
+  probably needed since aborts jump to it.
+- We currently never state we're not in a system call. Here we expect
+  to be at the beginning but need a generalized correctness property
+  for induction during a system call.
 *)
 Definition concurrent_spec R (spec: SeqHoareSpec R) : ConcurHoareSpec (Exc R) :=
   let 'SeqSpec pre post _ := spec in
