@@ -1226,9 +1226,46 @@ Ltac prepare_for_frame :=
 Ltac match_scopes :=
   simpl; intros;
   match_variable_names_left; match_variable_names_right;
+  try eassumption; (* TODO this is not going to cover everything *)
   repeat keys_equal_cases;
   repeat prepare_for_frame;
   try eassumption.
+
+Ltac compile :=
+  repeat match goal with
+  | [ |- @sigT _ _ ] => eexists
+  | _ => eapply CompileBindDiscard
+  | _ => let r := gensym "r" in eapply CompileBind with (var := r); intros
+  | _ => eapply CompileConst
+  | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
+    eapply hoare_weaken_post; [ | eapply CompileSkip ]; try match_scopes; maps
+  | [ |- EXTRACT Read ?a {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_fast a pre with
+    | Some ?k =>
+      eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
+        eapply CompileRead with (avar := k) ]]; try match_scopes; maps
+    | None =>
+      eapply extract_equiv_prog; [ eapply bind_left_id | ]
+    end
+  | [ |- EXTRACT Write ?a ?v {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_fast a pre with
+    | Some ?ka =>
+      match find_fast v pre with
+      | Some ?kv =>
+        let tmp := gensym "_" in
+        eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
+          eapply CompileWrite with (avar := ka) (vvar := kv) (tvar := tmp) ]]; try match_scopes; maps
+      | None =>
+        eapply extract_equiv_prog; [ eapply bind_left_id | ]
+      end
+    | None =>
+      eapply extract_equiv_prog; [
+        let arg := fresh "arg" in
+        set (arg := Write a v);
+        pattern a in arg; subst arg;
+        eapply bind_left_id | ]
+    end
+  end.
 
 Definition swap_prog :=
   a <- Read 0;
@@ -1240,42 +1277,7 @@ Definition swap_prog :=
 Example micro_swap : sigT (fun p =>
   EXTRACT swap_prog {{ \u2205 }} p {{ fun _ => \u2205 }} // disk_env).
 Proof.
-  unfold swap_prog.
-  eexists.
-  let r := gensym "r" in
-  eapply CompileBind with (var := r); intros.
-  eapply extract_equiv_prog; [ eapply bind_left_id | ];
-  let c := gensym "c" in
-  eapply CompileBind with (var := c); intros; [ eapply CompileConst | ].
-  eapply hoare_weaken_post; [ | eapply CompileRead ]; match_scopes.
-
-  let r := gensym "r" in
-  eapply CompileBind with (var := r); intros.
-  eapply extract_equiv_prog; [ eapply bind_left_id | ];
-  let c := gensym "c" in
-  eapply CompileBind with (var := c); intros; [ eapply CompileConst | ].
-  eapply hoare_weaken_post; [ | eapply CompileRead ]; match_scopes.
-  eapply CompileBindDiscard.
-  eapply extract_equiv_prog.
-  change (Write 0 a0) with ((fun c0 => Write c0 a0) 0). (* TODO use pattern tactic *)
-  eapply bind_left_id.
-  let c := gensym "c" in
-  eapply CompileBind with (var := c); intros; [ eapply CompileConst | ].
-  let tmp := gensym "_" in
-  eapply hoare_weaken_post; [ | eapply CompileWrite with (tvar := tmp) ]; try match_scopes; maps.
-
-  eapply CompileBindDiscard.
-  eapply extract_equiv_prog.
-  change (Write 1 a) with ((fun c1 => Write c1 a) 1). (* TODO use pattern tactic *)
-  eapply bind_left_id.
-  let c := gensym "c" in
-  eapply CompileBind with (var := c); intros; [ eapply CompileConst | ].
-  let tmp := gensym "_" in
-  eapply hoare_strengthen_pre; [ |
-  eapply hoare_weaken_post; [ | eapply CompileWrite with (tvar := tmp) ]]; try match_scopes; maps.
-
-  eapply hoare_weaken_post; [ | eapply CompileSkip ].
-  intros. maps.
+  compile.
 Defined.
 
 Eval lazy in projT1 micro_swap.
