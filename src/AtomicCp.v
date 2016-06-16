@@ -54,6 +54,22 @@ Module AFSTreeSeqSep.
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
 
+  Opaque LOG.idempred.
+  Opaque crash_xform.
+
+  Ltac distinct_names :=
+    match goal with
+      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_names_distinct ?tree ] => 
+        eapply DIRTREE.rep_tree_names_distinct; eapply H
+    end.
+
+  Ltac distinct_inodes :=
+    match goal with
+      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_inodes_distinct ?tree ] => 
+        eapply DIRTREE.rep_tree_inodes_distinct; eapply H
+    end.
+
+
   (* any point in treeseq-style spec for AFS.lookup?  most likely needed to prove
    * treeseq spec for [cleanup] *)
 
@@ -93,27 +109,23 @@ Module AFSTreeSeqSep.
 
   Admitted.
 
-    (* it may be more reasonable to have a dirsep spec for update_flock_d_ok, but is it? *)
-    Theorem tree_update_fblock_d_ok : forall fsxp inum off v mscs,
-    {< ds ts Fm Ftop Ftree pathname fn f Fd vs,
+
+  Theorem tree_update_fblock_d_ok : forall fsxp inum off v mscs,
+    {< ds ts Fm Ftop Ftree pathname f Fd vs,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ DIRTREE.find_subtree pathname (TStree ts!!) = Some (DIRTREE.TreeFile inum f) ]] *
-      [[ fn = (List.last pathname "") ]] *
-       (* XXX it seems next is line derivable from earlier line. kill? *)
-      [[ (Ftree * fn |-> (DIRTREE.TreeFile inum f))%pred (dir2mem (TStree ts!!)) ]] *
+      [[ (Ftree * pathname |-> (inum, f))%pred  (dir2flatmem [] (TStree ts!!)) ]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(mscs')
-      exists tree' f' ds0 ds' ts' bn ilist,
+      exists f' ds0 ds' ts' bn ilist,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ ds' = dsupd ds0 bn (v, vsmerge vs) /\ BFILE.diskset_was ds0 ds ]] *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
        [[ BFILE.block_belong_to_file ilist bn inum off ]] *
        [[ MSAlloc mscs' = MSAlloc mscs ]] *
-       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts!!) ]] *
-       (* XXX it seems next is line derivable from previous line *)
-       [[ (Ftree * fn |-> (DIRTREE.TreeFile inum f') )%pred (dir2mem tree') ]] *
+       [[ (Ftree * pathname |-> (inum, f'))%pred 
+        (dir2flatmem [] (DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts'!!))) ]] *
        [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
        [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
     XCRASH:hm'
@@ -127,15 +139,34 @@ Module AFSTreeSeqSep.
     eapply AFS.update_fblock_d_ok.
     cancel.
 
-    unfold treeseq_in_ds in H9.
+    unfold treeseq_in_ds in H7.
     intuition.
     unfold tree_rep in H.
     eassumption.
-    eauto.
-    eauto.
-  
+    eapply dir2flatmem_find_subtree_ptsto.
+    2: eassumption.
+    2: eassumption.
+
+    unfold treeseq_in_ds in H7.
+    intuition.
+    unfold tree_rep in H.
+    distinct_names.
     step.
 
+    admit.
+
+    eapply dir2flatmem_update_subtree.
+
+    admit.
+
+    eassumption.
+
+    xcrash.
+    or_r.
+    eapply pimpl_exists_r; eexists.
+    repeat (xform_deex_r).
+    xform_norm; cancel.
+    eassumption.
   Admitted.
 
   (* 
@@ -341,17 +372,6 @@ Module ATOMICCP.
     latest ts = mk_tree newest_tree newest_ilist newest_free /\
     NEforall (temp_treeseqpred newest_tree tinum) ts.
 
-  Ltac distinct_names :=
-    match goal with
-      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_names_distinct ?tree ] => 
-        eapply DIRTREE.rep_tree_names_distinct; eapply H
-    end.
-
-  Ltac distinct_inodes :=
-    match goal with
-      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_inodes_distinct ?tree ] => 
-        eapply DIRTREE.rep_tree_inodes_distinct; eapply H
-    end.
 
   Lemma temp_tree_pred_dupdate_eq: forall Fm Ftop fsxp newest_ilist newest_free newest_tree mscs d tinum bn off v f,
     BFILE.block_belong_to_file newest_ilist bn tinum off ->
