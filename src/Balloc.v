@@ -278,7 +278,7 @@ Module BmapAlloc (Sig : AllocSig).
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
           [[[ m ::: (Fm * @rep V xp freelist freepred) ]]] *
           [[ In bn freelist /\ bn < (BMPLen xp) * valulen ]]
-    POST:hm' RET:ms exists bn m' freepred',
+    POST:hm' RET:ms exists m' freepred',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
           [[[ m' ::: (Fm * @rep V xp (remove addr_eq_dec bn freelist) freepred') ]]] *
           [[ freepred =p=> freepred' * bn |->? ]]
@@ -480,7 +480,7 @@ Module BALLOC.
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
           [[[ m ::: (Fm * rep xp freeblocks) ]]] *
           [[ bn_valid xp bn /\ In bn freeblocks ]]
-    POST:hm' RET:ms exists bn m',
+    POST:hm' RET:ms exists m',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
           [[[ m' ::: (Fm * bn |->? * rep xp (remove addr_eq_dec bn freeblocks)) ]]]
     CRASH:hm' LOG.intact lxp F m0 hm'

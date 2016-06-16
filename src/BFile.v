@@ -126,12 +126,36 @@ Module BFILE.
     ms <- INODE.shrink lxp (pick_balloc bxps (negb al)) ixp inum nr ms;
     Ret (mk_memstate al ms).
 
+  Definition shuffle_allocs lxp bxps ms :=
+    let^ (ms) <- ForN i < (BmapNBlocks (fst bxps) * valulen)
+    Hashmap hm
+    Ghost [ F Fm crash m0 ]
+    Loopvar [ ms ]
+    Invariant
+         exists m' frees,
+         LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm *
+         [[[ m' ::: (Fm * BALLOC.rep (fst bxps) (fst frees) *
+                         BALLOC.rep (snd bxps) (snd frees)) ]]] *
+         [[ forall bn, bn < (BmapNBlocks (fst bxps)) * valulen /\ bn >= i
+             -> In bn (fst frees) ]]
+    OnCrash crash
+    Begin
+      If (bool_dec (Nat.odd i) true) {
+        ms <- BALLOC.steal lxp (fst bxps) i ms;
+        ms <- BALLOC.free lxp (snd bxps) i ms;
+        Ret ^(ms)
+      } else {
+        Ret ^(ms)
+      }
+    Rof ^(ms);
+    Ret ms.
 
   Definition init lxp bxps bixp ixp ms :=
     ms <- BALLOC.init_nofree lxp (snd bxps) ms;
     ms <- BALLOC.init lxp (fst bxps) ms;
     ms <- IAlloc.init lxp bixp ms;
     ms <- INODE.init lxp ixp ms;
+    ms <- shuffle_allocs lxp bxps ms;
     Ret (mk_memstate true ms).
 
   (* rep invariants *)
@@ -360,6 +384,14 @@ Module BFILE.
     unfold file_match, listmatch; cancel.
   Qed.
 
+  Lemma odd_nonzero : forall n,
+    Nat.odd n = true -> n <> 0.
+  Proof.
+    destruct n; intros; auto.
+    cbv in H; congruence.
+  Qed.
+
+  Local Hint Resolve odd_nonzero.
 
   (**** automation **)
 
@@ -387,6 +419,43 @@ Module BFILE.
   Local Hint Extern 1 (LOG.rep _ _ _ ?ms _ =p=> LOG.rep _ _ _ (MSLL ?e) _) => assignms.
 
   (*** specification *)
+
+
+  Theorem shuffle_allocs_ok : forall lxp bxps ms,
+    {< F Fm m0 m frees,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           [[[ m ::: (Fm * BALLOC.rep (fst bxps) (fst frees) *
+                           BALLOC.rep (snd bxps) (snd frees)) ]]] *
+           [[ forall bn, bn < (BmapNBlocks (fst bxps)) * valulen -> In bn (fst frees) ]] *
+           [[ BmapNBlocks (fst bxps) = BmapNBlocks (snd bxps) ]]
+    POST:hm' RET:ms'  exists m' frees',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' *
+           [[[ m' ::: (Fm * BALLOC.rep (fst bxps) (fst frees') *
+                            BALLOC.rep (snd bxps) (snd frees')) ]]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} shuffle_allocs lxp bxps ms.
+  Proof.
+    unfold shuffle_allocs.
+    step.
+    step.
+    step.
+    unfold BALLOC.bn_valid; split; auto.
+    step.
+    unfold BALLOC.bn_valid; split; auto.
+    substl (BmapNBlocks bxps_2); auto.
+    step.
+    apply remove_other_In.
+    omega.
+    intuition.
+    step.
+    step.
+    eapply LOG.intact_hashmap_subset.
+    eauto.
+    Unshelve. exact tt.
+  Qed.
+
+  Hint Extern 1 ({{_}} Bind (shuffle_allocs _ _ _) _) => apply shuffle_allocs_ok : prog.
 
   Theorem init_ok : forall lxp bxps ibxp ixp ms,
     {< F Fm m0 m l,
@@ -474,6 +543,9 @@ Module BFILE.
     eapply add_nonzero_exfalso_helper2 with (b := 0).
     rewrite Nat.add_0_r; eauto.
     auto.
+
+    (* shuffle_allocs *)
+    step.
 
     (* post condition *)
     prestep; unfold IAlloc.rep; cancel.
