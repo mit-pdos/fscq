@@ -70,47 +70,65 @@ Module AFSTreeSeqSep.
     end.
 
 
-  (* any point in treeseq-style spec for AFS.lookup?  most likely needed to prove
-   * treeseq spec for [cleanup] *)
-
-  (* to explore, added a dirsep spec for the file corresponding to the returned inum,
-   * which requires a stronger spec than AFS.lookup_ok provides, but that is fixable.
-   * is it worth having a dirsep spec? *)
-  Theorem tree_lookup_ok: forall fsxp dnum fnlist mscs,
-    {< ds ts Fm Ftop tree inum fn Ftree file t,
-    PRE:hm
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+  Theorem file_getattr_ok : forall fsxp inum mscs,
+  {< ds ts pathname Fm Ftop Ftree f,
+  PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ DIRTREE.dirtree_inum (TStree ts!!) = dnum]] *
-      [[ DIRTREE.dirtree_isdir (TStree ts!!) = true ]]
-    POST:hm' RET:^(mscs', r)
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-      [[ r = DIRTREE.find_name fnlist tree ]] *
-      (([[ r = Some (inum, t) ]] *
-         [[ fn = (List.last fnlist "") ]] *
-         [[  DIRTREE.find_subtree fnlist tree = Some (DIRTREE.TreeFile inum file) ]] *
-         [[ (Ftree * fn |-> (DIRTREE.TreeFile inum file))%pred (dir2mem (TStree ts!!)) ]] )
-       \/ ([[ r = None ]])) *
-      [[ MSAlloc mscs' = MSAlloc mscs ]]
-    CRASH:hm'  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
-     >} AFS.lookup fsxp dnum fnlist mscs.
+      [[ (Ftree * pathname |-> (inum, f))%pred  (dir2flatmem [] (TStree ts!!)) ]] 
+  POST:hm' RET:^(mscs',r)
+         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+         [[ r = BFILE.BFAttr f /\ MSAlloc mscs' = MSAlloc mscs ]]
+  CRASH:hm'
+         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+  >} AFS.file_get_attr fsxp inum mscs.
   Proof.
     intros.
     eapply pimpl_ok2.
-    eapply AFS.lookup_ok.
+    eapply AFS.file_getattr_ok.
     cancel.
+    unfold treeseq_in_ds in H6.
+    intuition.
+    unfold tree_rep in H.
+    eassumption.
+    eapply dir2flatmem_find_subtree_ptsto.
+    unfold treeseq_in_ds in H6.
+    intuition.
+    unfold tree_rep in H.
+    distinct_names.
+    eassumption.
+  Qed.
 
+ Theorem read_fblock_ok : forall fsxp inum off mscs,
+    {< ds ts Fm Ftop Ftree pathname f Fd vs,
+    PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+      [[ (Ftree * pathname |-> (inum, f))%pred  (dir2flatmem [] (TStree ts!!)) ]] *
+      [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
+    POST:hm' RET:^(mscs', r)
+           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+           [[ r = fst vs /\ MSAlloc mscs' = MSAlloc mscs ]]
+    CRASH:hm'
+           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+    >} AFS.read_fblock fsxp inum off mscs.
+  Proof.
+    intros.
+    eapply pimpl_ok2.
+    eapply AFS.read_fblock_ok.
+    cancel.
     unfold treeseq_in_ds in H7.
     intuition.
     unfold tree_rep in H.
     eassumption.
+    eapply dir2flatmem_find_subtree_ptsto.
+    unfold treeseq_in_ds in H7.
+    intuition.
+    unfold tree_rep in H.
+    distinct_names.
+    eassumption.
+    eassumption.
+  Qed.
 
-    step.
-
-  Admitted.
-
-
-  Theorem tree_update_fblock_d_ok : forall fsxp inum off v mscs,
+  Theorem update_fblock_d_ok : forall fsxp inum off v mscs,
     {< ds ts Fm Ftop Ftree pathname f Fd vs,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
@@ -129,6 +147,7 @@ Module AFSTreeSeqSep.
        [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
        [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
     XCRASH:hm'
+      (* XXX update to use treeseq *)
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
        exists bn ilist, [[ BFILE.block_belong_to_file ilist bn inum off ]] *
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (dsupd ds bn (v, vsmerge vs)) hm'
@@ -153,6 +172,15 @@ Module AFSTreeSeqSep.
     distinct_names.
     step.
 
+    unfold treeseq_in_ds.
+    split.
+    pred_apply.
+    cancel.
+    unfold tree_rep.
+    cancel.
+
+
+    admit.
     admit.
 
     eapply dir2flatmem_update_subtree.
