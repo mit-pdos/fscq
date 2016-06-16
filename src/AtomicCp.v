@@ -47,6 +47,105 @@ Set Implicit Arguments.
  *)
 
 
+Module AFSTreeSeqSep.
+
+  (* a layer over AFS that provides the same functions but with treeseq and dirsep specs *)
+
+  Notation MSLL := BFILE.MSLL.
+  Notation MSAlloc := BFILE.MSAlloc.
+
+  (* any point in treeseq-style spec for AFS.lookup?  most likely needed to prove
+   * treeseq spec for [cleanup] *)
+
+  (* to explore, added a dirsep spec for the file corresponding to the returned inum,
+   * which requires a stronger spec than AFS.lookup_ok provides, but that is fixable.
+   * is it worth having a dirsep spec? *)
+  Theorem tree_lookup_ok: forall fsxp dnum fnlist mscs,
+    {< ds ts Fm Ftop tree inum fn Ftree file t,
+    PRE:hm
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+      [[ DIRTREE.dirtree_inum (TStree ts!!) = dnum]] *
+      [[ DIRTREE.dirtree_isdir (TStree ts!!) = true ]]
+    POST:hm' RET:^(mscs', r)
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+      [[ r = DIRTREE.find_name fnlist tree ]] *
+      (([[ r = Some (inum, t) ]] *
+         [[ fn = (List.last fnlist "") ]] *
+         [[  DIRTREE.find_subtree fnlist tree = Some (DIRTREE.TreeFile inum file) ]] *
+         [[ (Ftree * fn |-> (DIRTREE.TreeFile inum file))%pred (dir2mem (TStree ts!!)) ]] )
+       \/ ([[ r = None ]])) *
+      [[ MSAlloc mscs' = MSAlloc mscs ]]
+    CRASH:hm'  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+     >} AFS.lookup fsxp dnum fnlist mscs.
+  Proof.
+    intros.
+    eapply pimpl_ok2.
+    eapply AFS.lookup_ok.
+    cancel.
+
+    unfold treeseq_in_ds in H7.
+    intuition.
+    unfold tree_rep in H.
+    eassumption.
+
+    step.
+
+  Admitted.
+
+    (* it may be more reasonable to have a dirsep spec for update_flock_d_ok, but is it? *)
+    Theorem tree_update_fblock_d_ok : forall fsxp inum off v mscs,
+    {< ds ts Fm Ftop Ftree pathname fn f Fd vs,
+    PRE:hm
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+      [[ DIRTREE.find_subtree pathname (TStree ts!!) = Some (DIRTREE.TreeFile inum f) ]] *
+      [[ fn = (List.last pathname "") ]] *
+       (* XXX it seems next is line derivable from earlier line. kill? *)
+      [[ (Ftree * fn |-> (DIRTREE.TreeFile inum f))%pred (dir2mem (TStree ts!!)) ]] *
+      [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
+    POST:hm' RET:^(mscs')
+      exists tree' f' ds0 ds' ts' bn ilist,
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
+       [[ ds' = dsupd ds0 bn (v, vsmerge vs) /\ BFILE.diskset_was ds0 ds ]] *
+       [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+       [[ BFILE.block_belong_to_file ilist bn inum off ]] *
+       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+       [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts!!) ]] *
+       (* XXX it seems next is line derivable from previous line *)
+       [[ (Ftree * fn |-> (DIRTREE.TreeFile inum f') )%pred (dir2mem tree') ]] *
+       [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
+       [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
+    XCRASH:hm'
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+       exists bn ilist, [[ BFILE.block_belong_to_file ilist bn inum off ]] *
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (dsupd ds bn (v, vsmerge vs)) hm'
+   >} AFS.update_fblock_d fsxp inum off v mscs.
+  Proof.
+    intros.
+    eapply pimpl_ok2.
+    eapply AFS.update_fblock_d_ok.
+    cancel.
+
+    unfold treeseq_in_ds in H9.
+    intuition.
+    unfold tree_rep in H.
+    eassumption.
+    eauto.
+    eauto.
+  
+    step.
+
+  Admitted.
+
+  (* 
+   XXX breaks step:
+Hint Extern 1 ({{_}} Bind (AFS.update_fblock_d _ _ _ _ _) _) => apply tree_update_fblock_d_ok : prog.
+  *)
+
+End AFSTreeSeqSep.
+
+
 
 Module ATOMICCP.
 
@@ -156,7 +255,9 @@ Module ATOMICCP.
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
        [[ treeseq_pred (temp_treeseqpred Ftree tinum) ts' ]] *
-        (([[ r = false ]]) 
+        (([[ r = false ]] *
+          exists tfile',
+            [[ (Ftree * temp_fn |-> (DIRTREE.TreeFile tinum tfile'))%pred (dir2mem (TStree ts'!!)) ]])
          \/ ([[ r = true ]] *              (* maybe have ::: notation for dir2mem? *)
             [[ (Ftree * temp_fn |-> (DIRTREE.TreeFile tinum (BFILE.synced_file file)))%pred (dir2mem (TStree ts'!!)) ]]))
     XCRASH:hm'
@@ -182,7 +283,19 @@ Module ATOMICCP.
     step.
     step.
 
-    
+    or_l.
+    cancel.   (* XXX ts' is instantiated with ts *)
+    (* maybe because we don't describe ts',
+       because AFS ops don't see anything about treeseq  this maybe
+       fixed with treeseq specs for AFS ops *)
+    unfold treeseq_in_ds.
+    split.
+    pred_apply.
+    unfold tree_rep.
+    cancel.
+
+  Admitted.
+
 
 
 
