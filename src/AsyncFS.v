@@ -302,7 +302,23 @@ Module AFS.
     auto.
 
     (* Inode.init *)
+    prestep. norm. cancel.
+    intuition simpl. pred_apply.
+    cancel.
+    rewrite firstn_firstn.
+    rewrite firstn_length_l; auto.
+    rewrite skipn_length, firstn_length.
+    substl (length d0).
+    repeat rewrite Nat.min_l; try omega.
+    cbn; omega.
+    eapply add_nonzero_exfalso_helper2 with (b := 0).
+    rewrite Nat.add_0_r; eauto.
+    auto.
+    auto.
+
+    (* *)
     
+
 
     all: try solve [ xcrash; apply pimpl_any ].
     

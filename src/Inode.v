@@ -357,9 +357,45 @@ Module INODE.
 
   Arguments Rec.well_formed : simpl never.
 
+  Lemma inode_match_init_ok : forall bxp n,
+    emp =p=> listmatch (inode_match bxp) (repeat inode0 n) (repeat IRec.Defs.item0 n).
+  Proof.
+    induction n; simpl; intros.
+    unfold listmatch; cancel.
+    rewrite IHn.
+    unfold listmatch; cancel.
+    unfold inode_match.
+    rewrite Ind.rep_piff_direct by (cbn; omega).
+    rewrite sep_star_assoc.
+    apply sep_star_lift_r'.
+    apply pimpl_and_split.
+    unfold pimpl, lift; intros; auto.
+    unfold Ind.rep_direct; cancel.
+    apply Forall_nil.
+  Qed.
 
 
   (********************** SPECs *)
+
+  Theorem init_ok : forall lxp bxp xp ms,
+    {< F Fm m0 m l,
+    PRE:hm 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (IXStart xp) l) ]]] *
+           [[ length l = (IXLen xp) /\ (IXStart xp) <> 0 ]]
+    POST:hm' RET:ms exists m' ilist,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           [[[ m' ::: (Fm * rep bxp xp ilist) ]]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} init lxp xp ms.
+  Proof.
+    unfold init, rep.
+    step.
+    cbv; auto.
+    step.
+    apply inode_match_init_ok.
+  Qed.
+
 
   Theorem getlen_ok : forall lxp bxp xp inum ms,
     {< F Fm Fi m0 m ilist ino,
@@ -630,7 +666,7 @@ Module INODE.
     Unshelve. all: eauto; exact emp.
   Qed.
 
-
+  Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_}} Bind (getlen _ _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_}} Bind (getattrs _ _ _ _) _) => apply getattrs_ok : prog.
   Hint Extern 1 ({{_}} Bind (setattrs _ _ _ _ _) _) => apply setattrs_ok : prog.
