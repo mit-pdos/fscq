@@ -4,6 +4,8 @@ Require Import VerdiTactics.
 Require Import StringMap.
 Require Import Mem AsyncDisk PredCrash Prog ProgMonad SepAuto.
 Require Import Gensym.
+Require Import Word.
+Require Import ProofIrrelevance.
 
 Import ListNotations.
 
@@ -590,6 +592,13 @@ Proof.
             wrap_inj := _ |}; FacadeWrapper_t.
 Defined.
 
+Instance FacadeWrapper_dec {P Q} : FacadeWrapper Value ({P} + {Q}).
+Proof.
+  refine {| wrap := fun (v : {P} + {Q}) => if v then Num 1 else Num 0;
+            wrap_inj := _ |}.
+  destruct v; destruct v'; try congruence; intros; f_equal; apply proof_irrelevance.
+Defined.
+
 Definition extract_code := projT1.
 
 Local Open Scope string_scope.
@@ -910,6 +919,20 @@ Proof.
   repeat inv_exec.
 Qed.
 
+Lemma CompileVar : forall env A var T (v : T) {H : FacadeWrapper Value T},
+  EXTRACT Ret v
+  {{ var ~> v; A }}
+    Skip
+  {{ fun ret => var ~> ret; A }} // env.
+Proof.
+  unfold ProgOk.
+  intuition.
+  econstructor. intuition. econstructor.
+
+  repeat inv_exec; eauto.
+  repeat inv_exec; eauto.
+Qed.
+
 Lemma Step_Seq : forall env p1 p2 p' st st'',
   (Step env)^* (Seq p1 p2, st) (p', st'') ->
   (exists p1', (Step env)^* (p1, st) (p1', st'') /\ p' = Seq p1' p2) \/
@@ -1076,6 +1099,56 @@ Proof.
   find_inversion. repeat eexists; eauto. maps; eauto.
 
   repeat inv_exec.
+Admitted.
+
+Lemma CompileIf : forall P Q {H1 : FacadeWrapper Value ({P}+{Q})}
+                         T {H : FacadeWrapper Value T}
+                         A B env (pt pf : prog T) (cond : {P} + {Q}) xpt xpf xcond retvar condvar,
+  retvar <> condvar ->
+  EXTRACT pt
+  {{ A }}
+    xpt
+  {{ B }} // env ->
+  EXTRACT pf
+  {{ A }}
+    xpf
+  {{ B }} // env ->
+  EXTRACT Ret cond
+  {{ A }}
+    xcond
+  {{ fun ret => condvar ~> ret; A }} // env ->
+  EXTRACT if cond then pt else pf
+  {{ A }}
+   xcond ; If Var condvar Then xpt Else xpf EndIf
+  {{ B }} // env.
+Proof.
+  unfold ProgOk.
+  intuition.
+  econstructor. intuition. apply H4. exact hm. auto.
+Admitted.
+
+Lemma CompileWeq : forall A (a b : valu) env xa xb retvar avar bvar,
+  avar <> bvar ->
+  avar <> retvar ->
+  bvar <> retvar ->
+  EXTRACT Ret a
+  {{ A }}
+    xa
+  {{ fun ret => avar ~> ret; A }} // env ->
+  (forall (av : valu),
+  EXTRACT Ret b
+  {{ avar ~> av; A }}
+    xb
+  {{ fun ret => bvar ~> ret; avar ~> av; A }} // env) ->
+  EXTRACT Ret (weq a b)
+  {{ A }}
+    xa ; xb ; retvar <~ (Var avar = Var bvar)
+  {{ fun ret => retvar ~> ret; A }} // env.
+Proof.
+  unfold ProgOk.
+  intuition.
+  econstructor. intuition. apply H2. exact hm. auto.
+  econstructor. intuition. eapply H3. exact hm.
 Admitted.
 
 Lemma CompileRead : forall F avar vvar a,
@@ -1281,3 +1354,46 @@ Proof.
 Defined.
 
 Eval lazy in projT1 micro_swap.
+
+Definition swap2_prog :=
+  a <- Read 0;
+  b <- Read 1;
+  if weq a b then
+    Ret tt
+  else
+    Write 0 b;;
+    Write 1 a;;
+    Ret tt.
+
+Example micro_swap2 : sigT (fun p =>
+  EXTRACT swap2_prog {{ \u2205 }} p {{ fun _ => \u2205 }} // disk_env).
+Proof.
+  compile.
+
+  eapply hoare_weaken_post; [ | eapply CompileIf with (condvar := "c0") (retvar := "r") ];
+    try match_scopes; maps.
+
+  apply FacadeWrapper_unit.
+  compile. apply H.
+
+  compile.
+  eapply CompileWeq.
+
+  shelve.
+  shelve.
+  shelve.
+
+  eapply hoare_strengthen_pre.
+  2: eapply CompileVar.
+  match_scopes.
+
+  intros.
+  eapply hoare_strengthen_pre.
+  2: eapply CompileVar.
+  match_scopes.
+
+  Unshelve.
+  all: congruence.
+Defined.
+
+Eval lazy in projT1 micro_swap2.
