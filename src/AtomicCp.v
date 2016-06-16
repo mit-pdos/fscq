@@ -296,31 +296,30 @@ Module ATOMICCP.
       (Ftree * tmppath |-> (inum, f))%pred  (dir2flatmem [] (TStree to)).
 
   Theorem copydata_ok : forall fsxp src_inum tmppath tinum mscs,
-    {< ds ts Fm Ftop Ftreesrc Ftreetmp srcpath file tfile v0 t0,
+    {< ds ts Fm Ftop Ftree Ftmp srcpath file tfile v0 t0,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ treeseq_pred (temp_treeseqpred Ftreetmp tmppath tinum) ts ]] *
-      [[ (Ftreesrc * srcpath |-> (src_inum, file))%pred  (dir2flatmem [] (TStree ts!!)) ]] *
-      [[ (Ftreetmp * tmppath |-> (tinum, tfile))%pred  (dir2flatmem [] (TStree ts!!)) ]] *
-     (* XXX [[ src_fn <> temp_fn ]] * *)
+      [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts ]] *
+      [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile))%pred
+            (dir2flatmem [] (TStree ts!!)) ]] *
       [[[ BFILE.BFData file ::: (0 |-> v0) ]]] *
       [[[ BFILE.BFData tfile ::: (0 |-> t0) ]]]
     POST:hm' RET:^(mscs', r)
       exists ds' ts',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
-       [[ treeseq_pred (temp_treeseqpred Ftreetmp tmppath tinum) ts' ]] *
+       [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts' ]] *
         (([[ r = false ]] *
           exists tfile',
-            [[ (Ftreetmp * tmppath |-> (tinum, tfile'))%pred (dir2flatmem [] (TStree ts'!!)) ]])
+            [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile'))%pred (dir2flatmem [] (TStree ts'!!)) ]])
          \/ ([[ r = true ]] *
-            [[ (Ftreetmp * tmppath |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts'!!)) ]]))
+            [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts'!!)) ]]))
     XCRASH:hm'
       exists ds' ts',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
-      [[ treeseq_pred (temp_treeseqpred Ftreetmp tmppath tinum) ts' ]]
+      [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts' ]]
      >} copydata fsxp src_inum tinum mscs.
   Proof.
     unfold copydata; intros.
