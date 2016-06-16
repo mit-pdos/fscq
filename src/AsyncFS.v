@@ -90,18 +90,9 @@ Module AFS.
     all: lia.
   Qed.
 
-  Definition mkfs_alternate_allocators lxp bxp1 bxp2 mscs :=
-    let^ (mscs, bxp1, bxp2) <- ForN i < (BmapNBlocks bxp1 * valulen)
-    Hashmap hm
-    Ghost [ F ]
-    Loopvar [ mscs bxp1 bxp2 ]
-    Invariant F
-    OnCrash F
-    Begin
-      mscs <- BALLOC.steal lxp bxp1 i mscs;
-      Ret ^(mscs, bxp2, bxp1)
-    Rof ^(mscs, bxp1, bxp2);
-    Ret mscs.
+  Notation MSLL := BFILE.MSLL.
+  Notation MSAlloc := BFILE.MSAlloc.
+  Import DIRTREE.
 
   Definition mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks :=
     let fsxp := compute_xparams data_bitmaps inode_bitmaps log_descr_blocks in
@@ -109,12 +100,8 @@ Module AFS.
     cs <- SB.init fsxp cs;
     mscs <- LOG.init (FSXPLog fsxp) cs;
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
-    mscs <- BALLOC.init_nofree (FSXPLog fsxp) (FSXPBlockAlloc2 fsxp) mscs;
-    mscs <- BALLOC.init (FSXPLog fsxp) (FSXPBlockAlloc1 fsxp) mscs;
-    mscs <- IAlloc.init (FSXPLog fsxp) fsxp mscs;
-    mscs <- INODE.init (FSXPLog fsxp) (FSXPInode fsxp) mscs;
-    mscs <- mkfs_alternate_allocators (FSXPLog fsxp) (FSXPBlockAlloc1 fsxp) (FSXPBlockAlloc2 fsxp) mscs;
-    let^ (mscs, r) <- BALLOC.alloc (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
+    ms <- BFILE.init (FSXPLog fsxp) (FSXPBlockAlloc1 fsxp, FSXPBlockAlloc2 fsxp) fsxp (FSXPInode fsxp) mscs;
+    let^ (mscs, r) <- IAlloc.alloc (FSXPLog fsxp) fsxp (MSLL ms);
     match r with
     | None =>
       mscs <- LOG.abort (FSXPLog fsxp) mscs;
@@ -129,7 +116,7 @@ Module AFS.
         let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
         If (bool_dec ok true) {
           mscs <- LOG.flushsync (FSXPLog fsxp) mscs;
-          Ret (Some ((BFILE.mk_memstate true mscs), fsxp))
+          Ret (Some ((BFILE.mk_memstate (MSAlloc ms) mscs), fsxp))
         } else {
           Ret None
         }
@@ -138,9 +125,6 @@ Module AFS.
       }
     end.
 
-  Notation MSLL := BFILE.MSLL.
-  Notation MSAlloc := BFILE.MSAlloc.
-  Import DIRTREE.
 
   Lemma S_minus_1_helper : forall n a b,
     S (n + 1 + a + b) - 1 - n = S (a + b).
@@ -248,76 +232,20 @@ Module AFS.
     step.
     rewrite Nat.sub_0_r in *.
 
-    (* BALLOC.init_nofree *)
-    prestep. norm. cancel.
-    intuition simpl. pred_apply.
+    (* BFILE.init *)
+    step.
 
-    (* now we need to split the LHS several times to get the correct layout *)
-    erewrite arrayN_split at 1; repeat rewrite Nat.add_0_l.
-    (* data alloc2 is the last chunk *)
-    apply pimpl_refl.
-    eapply add_nonzero_exfalso_helper; eauto.
-    rewrite skipn_length.
-    substl (length d0); omega.
-    auto.
+    (* IAlloc.alloc *)
+    step.
+    step.
+    step.
+    step.
 
-    (* BALLOC.init *)
-    prestep. norm. cancel.
-    intuition simpl. pred_apply.
-    erewrite arrayN_split at 1; repeat rewrite Nat.add_0_l.
-    erewrite arrayN_split with (i := data_bitmaps * valulen) at 1; repeat rewrite Nat.add_0_l.
-    (* data region is the first chunk, and data alloc1 is the last chunk *)
-    match goal with
-    | [ |- ((_ * _) * arrayN _ ?a _) * _ =p=> _ * arrayN _ ?b _ ] =>
-        equate a b
-    end.
-    cancel.
-    eapply add_nonzero_exfalso_helper; eauto.
-    rewrite skipn_length.
-    rewrite firstn_length_l; omega.
-    repeat rewrite firstn_firstn.
-    repeat rewrite Nat.min_l; try omega.
-    rewrite firstn_length_l; omega.
-    auto.
-
-    (* IAlloc.init *)
-    prestep. norm. cancel.
-    intuition simpl. pred_apply.
-    eapply pimpl_trans2.
-    cbn. apply pimpl_refl.
-    erewrite arrayN_split at 1; repeat rewrite Nat.add_0_l.
-    (* inode region is the first chunk, and inode alloc is the second chunk *)
-    match goal with
-    | [ |- (_ * (_ * arrayN _ ?a _)) * _ =p=> _ * arrayN _ ?b _ ] =>
-        equate a b
-    end.
-    cancel.
-    unfold IAlloc.Sig.xparams_ok, compute_xparams; cbn.
-    denote IAlloc.Sig.BMPStart as Heq; cbn in Heq.
-    eapply add_nonzero_exfalso_helper2; eauto.
-    rewrite skipn_skipn, firstn_firstn.
-    rewrite Nat.min_l, skipn_length by omega.
-    rewrite firstn_length_l by omega.
-    cbn; omega.
-    auto.
-
-    (* Inode.init *)
-    prestep. norm. cancel.
-    intuition simpl. pred_apply.
-    cancel.
-    rewrite firstn_firstn.
-    rewrite firstn_length_l; auto.
-    rewrite skipn_length, firstn_length.
-    substl (length d0).
-    repeat rewrite Nat.min_l; try omega.
-    cbn; omega.
-    eapply add_nonzero_exfalso_helper2 with (b := 0).
-    rewrite Nat.add_0_r; eauto.
-    auto.
-    auto.
-
-    (* *)
-    
+    (* LOG.flushsync *)
+    admit.
+    step.
+    admit.
+    step.
 
 
     all: try solve [ xcrash; apply pimpl_any ].
