@@ -2,25 +2,38 @@ Require Import CoopConcur.
 Require Import ConcurrentCache.
 Require Import Specifications.
 
-Fixpoint compiler {T} (error_rx: prog Sigma) (p: Prog.prog T) : prog Sigma :=
+(* Exc is a (somewhat obscure) synonym for option defined in Specif *)
+Fixpoint compiler {T} (p: Prog.prog T) : prog Sigma (Exc T) :=
   match p with
-  | Prog.Done v => Done
-  | Prog.Read a rx => opt_v <- cache_read a;
+  | Prog.Ret v => Ret (value v)
+  | Prog.Read a => opt_v <- cache_read a;
                        match opt_v with
-                       | Some v => compiler error_rx (rx v)
-                       | None => error_rx
+                       | Some v => Ret (value v)
+                       (* in this branch T = valu so error_rx is safe;
+                       might need to write this as a dependent match
+                       to get it to typecheck *)
+                       | None => Ret error
                        end
-  | Prog.Write a v rx => ok <- cache_write a v;
+  | Prog.Write a v => ok <- cache_write a v;
                           if ok then
-                            compiler error_rx (rx tt)
+                            Ret (value tt)
                           else
-                            error_rx
-  | Prog.Sync a rx => _ <- cache_writeback a;
+                            Ret error
+  | Prog.Sync => _ <- cache_writeback;
                        (* current concurrent disk model has no
                        asynchrony, but otherwise would need to issue
                        our own Sync here *)
-                       compiler error_rx (rx tt)
-  | Prog.Trim a rx => compiler error_rx (rx tt)
+                    Ret (value tt)
+  (* TODO: should really just remove Trim from Prog.prog *)
+  | Prog.Trim a => Ret error
+  (* TODO: should be a direct translation, but need hashing in
+     concurrent execution semantics *)
+  | Prog.Hash buf => Ret error
+  | Prog.Bind p1 p2 => x <- compiler p1;
+                        match x with
+                        | Some x => compiler (p2 x)
+                        | None => Ret error
+                        end
   end.
 
 Record ConcurHoareSpec R :=
@@ -28,8 +41,8 @@ Record ConcurHoareSpec R :=
                concur_spec_post: TID -> R -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop }.
 
 Definition concur_hoare_double R A (spec: A -> ConcurHoareSpec R)
-           (p: (R -> prog Sigma) -> prog Sigma) :=
-  forall (rx: _ -> prog Sigma) (tid:TID),
+           (p: prog Sigma R) :=
+  forall T (rx: _ -> prog Sigma T) (tid:TID),
     valid delta tid
           (fun done d m s_i s =>
              exists a,
@@ -40,7 +53,7 @@ Definition concur_hoare_double R A (spec: A -> ConcurHoareSpec R)
                             concur_spec_post (spec a) tid ret_ d' m' s_i' s' /\
                             done_rx = done)
                          (rx ret_))
-          ) (p rx).
+          ) (Bind p rx).
 
 (* [lift_disk] and [project_disk] convert between the view of the disk
 from sequential programs [Prog.prog] and concurrent programs [prog]:
@@ -48,19 +61,19 @@ the differences are in the extra state (buffered writes vs race
 detecting readers) and the annoyance of having two different but
 provably equal valu definitions. *)
 
-Definition lift_disk (m: @mem (word Prog.addrlen) _ (const prog_valuset)) : DISK.
+Definition lift_disk (m: @mem addr _ prog_valuset) : DISK.
 Proof.
-  unfold const in *; intro.
+  intro a.
   destruct (m a); [ apply Some | apply None ].
   destruct p.
   exact (w, None).
 Defined.
 
-Definition project_disk (s: abstraction Sigma) : @mem (word Prog.addrlen) _ (const prog_valuset).
+Definition project_disk (s: abstraction Sigma) : @mem addr _ prog_valuset.
 Proof.
   pose proof (get vDisk0 s) as vd0.
-  unfold const, id in *.
-  intro.
+  unfold id in *.
+  intro a.
   destruct (vd0 a); [ apply Some | apply None ].
   destruct w.
   exact (w, nil).
@@ -97,8 +110,5 @@ Definition concurrent_spec R (spec: SeqHoareSpec R) : ConcurHoareSpec R :=
 program via [compiler], convert its spec to a concurrent spec via
 [concurrent_spec], and prove the resulting concurrent Hoare double.
 
-It's not actually clear how to even state this in a way that type
-checks using SeqHoareSpec and ConcurHoareSpec; the most natural way
-requires compiling a program that takes a continuation, which is
-impossible since that would be a function (R -> prog) -> prog.
+TODO: state using new monadic programs
 *)

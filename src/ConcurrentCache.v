@@ -203,10 +203,12 @@ Section ConcurrentCache.
       _ <- Yield a;
       Ret false.
 
-  (** TODO: need to write a into cache from WriteBuffer, evict from
-  cache (writing if necessary), and then note in place of the
-  writebuffer that rollback is no longer possible *)
-  Definition cache_writeback (a: addr) :=
+  (** TODO: need to write all addresses into cache from WriteBuffer,
+  evict from cache (writing if necessary), and then note in place of
+  the writebuffer that rollback is no longer possible *)
+  (* now that this is all addresses, it might just basically be
+  cache_commit *)
+  Definition cache_writeback :=
     wb <- Get mWriteBuffer;
       Ret tt.
 
