@@ -70,7 +70,7 @@ Module AFSTreeSeqSep.
     end.
 
 
-  Theorem file_getattr_ok : forall fsxp inum mscs,
+  Theorem tree_file_getattr_ok : forall fsxp inum mscs,
   {< ds ts pathname Fm Ftop Ftree f,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
@@ -98,7 +98,7 @@ Module AFSTreeSeqSep.
     eassumption.
   Qed.
 
- Theorem read_fblock_ok : forall fsxp inum off mscs,
+ Theorem tree_read_fblock_ok : forall fsxp inum off mscs,
     {< ds ts Fm Ftop Ftree pathname f Fd vs,
     PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
@@ -128,7 +128,7 @@ Module AFSTreeSeqSep.
     eassumption.
   Qed.
 
-  Theorem update_fblock_d_ok : forall fsxp inum off v mscs,
+  Theorem tree_update_fblock_d_ok : forall fsxp inum off v mscs,
     {< ds ts Fm Ftop Ftree pathname f Fd vs,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
@@ -197,13 +197,11 @@ Module AFSTreeSeqSep.
     eassumption.
   Admitted.
 
-  (* 
-   XXX breaks step:
-Hint Extern 1 ({{_}} Bind (AFS.update_fblock_d _ _ _ _ _) _) => apply tree_update_fblock_d_ok : prog.
-  *)
+  Hint Extern 1 ({{_}} Bind (AFS.file_get_attr _ _ _) _) => apply tree_file_getattr_ok : prog.
+  Hint Extern 1 ({{_}} Bind (AFS.read_fblock _ _ _ _) _) => apply tree_read_fblock_ok : prog.
+  Hint Extern 1 ({{_}} Bind (AFS.update_fblock_d _ _ _ _ _) _) => apply tree_update_fblock_d_ok : prog.
 
 End AFSTreeSeqSep.
-
 
 
 Module ATOMICCP.
@@ -293,65 +291,60 @@ Module ATOMICCP.
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
 
-  Definition temp_treeseqpred F tinum (to : treeseq_one) :=
-    (exists tfile,
-      F * temp_fn |-> (DIRTREE.TreeFile tinum tfile))%pred (dir2mem (TStree to)).
+  Definition temp_treeseqpred Ftree tmppath inum (to : treeseq_one) :=
+    exists f,
+      (Ftree * tmppath |-> (inum, f))%pred  (dir2flatmem [] (TStree to)).
 
-
-  Theorem copydata_ok : forall fsxp src_inum tinum mscs,
-    {< ds ts Fm Ftop Ftree src_fn file tfile v0 t0,
+  Theorem copydata_ok : forall fsxp src_inum tmppath tinum mscs,
+    {< ds ts Fm Ftop Ftreesrc Ftreetmp srcpath file tfile v0 t0,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ treeseq_pred (temp_treeseqpred Ftree tinum) ts ]] *
-      [[ DIRTREE.find_subtree [src_fn] (TStree ts!!) = Some (DIRTREE.TreeFile src_inum file) ]] *
-      [[ DIRTREE.find_subtree [temp_fn] (TStree ts!!) = Some (DIRTREE.TreeFile tinum tfile) ]] *
-      [[ src_fn <> temp_fn ]] *
+      [[ treeseq_pred (temp_treeseqpred Ftreetmp tmppath tinum) ts ]] *
+      [[ (Ftreesrc * srcpath |-> (src_inum, file))%pred  (dir2flatmem [] (TStree ts!!)) ]] *
+      [[ (Ftreetmp * tmppath |-> (tinum, tfile))%pred  (dir2flatmem [] (TStree ts!!)) ]] *
+     (* XXX [[ src_fn <> temp_fn ]] * *)
       [[[ BFILE.BFData file ::: (0 |-> v0) ]]] *
       [[[ BFILE.BFData tfile ::: (0 |-> t0) ]]]
     POST:hm' RET:^(mscs', r)
       exists ds' ts',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
-       [[ treeseq_pred (temp_treeseqpred Ftree tinum) ts' ]] *
+       [[ treeseq_pred (temp_treeseqpred Ftreetmp tmppath tinum) ts' ]] *
         (([[ r = false ]] *
           exists tfile',
-            [[ (Ftree * temp_fn |-> (DIRTREE.TreeFile tinum tfile'))%pred (dir2mem (TStree ts'!!)) ]])
-         \/ ([[ r = true ]] *              (* maybe have ::: notation for dir2mem? *)
-            [[ (Ftree * temp_fn |-> (DIRTREE.TreeFile tinum (BFILE.synced_file file)))%pred (dir2mem (TStree ts'!!)) ]]))
+            [[ (Ftreetmp * tmppath |-> (tinum, tfile'))%pred (dir2flatmem [] (TStree ts'!!)) ]])
+         \/ ([[ r = true ]] *
+            [[ (Ftreetmp * tmppath |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts'!!)) ]]))
     XCRASH:hm'
       exists ds' ts',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
-      [[ treeseq_pred (temp_treeseqpred Ftree tinum) ts' ]]
+      [[ treeseq_pred (temp_treeseqpred Ftreetmp tmppath tinum) ts' ]]
      >} copydata fsxp src_inum tinum mscs.
   Proof.
     unfold copydata; intros.
+    
+    prestep.
+    norml; unfold stars; simpl.
+    safecancel.
+    eassumption.
+    eassumption.
+    prestep.
+    norml; unfold stars; simpl.
+    safecancel.
+    (* s = mscs, H15 *)
+    admit.
+    eassumption.
+    instantiate (Fd := emp).
+    admit.
 
     prestep.
     norml; unfold stars; simpl.
-    unfold treeseq_in_ds in H11.
-    destruct H11.
-    unfold tree_rep in H0.
-    cancel.
-    eassumption.
-
-    step.
-    step.
-    step.
-    step.
-    step.
-
-    or_l.
-    cancel.   (* XXX ts' is instantiated with ts *)
-    (* maybe because we don't describe ts',
-       because AFS ops don't see anything about treeseq  this maybe
-       fixed with treeseq specs for AFS ops *)
-    unfold treeseq_in_ds.
-    split.
-    pred_apply.
-    unfold tree_rep.
-    cancel.
+    safecancel.
+    admit.
+    admit.
+    admit.
 
   Admitted.
 
