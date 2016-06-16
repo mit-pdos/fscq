@@ -1638,7 +1638,6 @@ Module DIRTREE.
     | [ H: MSAlloc _ = MSAlloc _ |- _ ] => rewrite H in *; clear H
     end.
 
-
   Definition namei fsxp dnum (fnlist : list string) mscs :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in

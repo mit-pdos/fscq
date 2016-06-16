@@ -870,7 +870,31 @@ Module GLog.
   Hint Extern 1 ({{_}} Bind (read _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} Bind (submit _ _ _) _) => apply submit_ok : prog.
   Hint Extern 1 ({{_}} Bind (flushall _ _) _) => apply flushall_ok : prog.
+  Hint Extern 0 (okToUnify (rep _ _ _ _) (rep _ _ _ _)) => constructor : okToUnify.
 
+  Theorem flushsync_ok: forall xp ms,
+    {< F ds,
+    PRE:hm
+      << F, rep: xp (Cached ds) ms hm >> *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms'
+      << F, rep: xp (Cached (ds!!, nil)) ms' hm' >> *
+      [[ MSTxns (fst ms') = nil /\ MSVMap (fst ms') = vmap0 ]]
+    XCRASH:hm'
+      << F, would_recover_any: xp ds hm' -- >>
+    >} flushsync xp ms.
+  Proof.
+    unfold flushsync.
+    step.
+    prestep; unfold rep; cancel.
+    prestep; unfold rep; cancel.
+    xcrash.
+    denote rep as Hx; unfold rep in Hx.
+    destruct_lift Hx.
+    eapply recover_before_any; eauto.
+  Qed.
+
+  Hint Extern 1 ({{_}} Bind (flushsync _ _) _) => apply flushsync_ok : prog.
 
   Lemma forall_ents_valid_length_eq : forall xp d d' ts,
     Forall (ents_valid xp d) ts ->
@@ -1551,7 +1575,6 @@ Module GLog.
   Hint Extern 1 ({{_}} Bind (dsync _ _ _) _) => apply dsync_ok : prog.
   Hint Extern 1 ({{_}} Bind (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
-  Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 
 End GLog.
 

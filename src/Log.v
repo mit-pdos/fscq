@@ -319,7 +319,7 @@ Module LOG.
     mm' <- GLog.flushsync xp mm;
     Ret (mk_memstate cm mm').
 
-  Definition sync xp ms :=
+  Definition flushall xp ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.flushall xp mm;
     Ret (mk_memstate cm mm').
@@ -530,7 +530,7 @@ Module LOG.
   Qed.
 
 
-  Theorem sync_ok : forall xp ms,
+  Theorem flushall_ok : forall xp ms,
     {< F ds,
     PRE:hm
       rep xp F (NoTxn ds) ms hm *
@@ -539,9 +539,27 @@ Module LOG.
       rep xp F (NoTxn (ds!!, nil)) ms' hm'
     XCRASH:hm'
       recover_any xp F ds hm'
-    >} sync xp ms.
+    >} flushall xp ms.
   Proof.
-    unfold sync, recover_any.
+    unfold flushall, recover_any.
+    hoare.
+    xcrash.
+    Unshelve. eauto.
+  Qed.
+
+
+  Theorem flushsync_ok : forall xp ms,
+    {< F ds,
+    PRE:hm
+      rep xp F (NoTxn ds) ms hm *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms'
+      rep xp F (NoTxn (ds!!, nil)) ms' hm'
+    XCRASH:hm'
+      recover_any xp F ds hm'
+    >} flushsync xp ms.
+  Proof.
+    unfold flushsync, recover_any.
     hoare.
     xcrash.
     Unshelve. eauto.
@@ -1094,7 +1112,8 @@ Module LOG.
   Hint Extern 1 ({{_}} Bind (commit_ro _ _) _) => apply commit_ro_ok : prog.
   Hint Extern 1 ({{_}} Bind (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
   Hint Extern 1 ({{_}} Bind (dsync _ _ _) _) => apply dsync_ok : prog.
-  Hint Extern 1 ({{_}} Bind (sync _ _) _) => apply sync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (flushall _ _) _) => apply flushall_ok : prog.
+  Hint Extern 1 ({{_}} Bind (flushsync _ _) _) => apply flushsync_ok : prog.
   Hint Extern 1 ({{_}} Bind (recover _ _) _) => apply recover_ok : prog.
 
 

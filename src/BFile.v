@@ -92,7 +92,7 @@ Module BFILE.
 
   Definition sync lxp (ixp : INODE.IRecSig.xparams) fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
-    ms <- LOG.sync lxp ms;
+    ms <- LOG.flushsync lxp ms;
     Ret (mk_memstate (negb al) ms).
 
   Definition pick_balloc A (a : A * A) (flag : bool) :=
@@ -457,6 +457,8 @@ Module BFILE.
 
   Hint Extern 1 ({{_}} Bind (shuffle_allocs _ _ _) _) => apply shuffle_allocs_ok : prog.
 
+  Local Hint Resolve INODE.IRec.Defs.items_per_val_gt_0 INODE.IRec.Defs.items_per_val_not_0 valulen_gt_0.
+
   Theorem init_ok : forall lxp bxps ibxp ixp ms,
     {< F Fm m0 m l,
     PRE:hm
@@ -479,10 +481,11 @@ Module BFILE.
               data_bitmaps <= valulen * valulen /\
              inode_bitmaps <= valulen * valulen
            ]]
-    POST:hm' RET:ms'  exists m' flist ilist frees freeinodes freeinode_pred,
+    POST:hm' RET:ms'  exists m' n frees freeinodes freeinode_pred,
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-           [[[ m' ::: (Fm * rep bxps ixp flist ilist frees * 
-                            @IAlloc.rep INODE.inode ibxp freeinodes freeinode_pred) ]]]
+           [[[ m' ::: (Fm * rep bxps ixp (repeat bfile0 n) (repeat INODE.inode0 n) frees * 
+                            @IAlloc.rep bfile ibxp freeinodes freeinode_pred) ]]] *
+           [[ n = ((IXLen ixp) * INODE.IRecSig.items_per_val)%nat /\ n > 1 ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} init lxp bxps ibxp ixp ms.
   Proof.
@@ -550,6 +553,19 @@ Module BFILE.
     (* post condition *)
     prestep; unfold IAlloc.rep; cancel.
     apply file_match_init_ok.
+    substl (IXLen ixp).
+
+    apply Rounding.div_lt_mul_lt; auto.
+    rewrite Nat.div_small.
+    apply Nat.div_str_pos; split.
+    apply INODE.IRec.Defs.items_per_val_gt_0.
+    rewrite Nat.mul_comm.
+    apply Rounding.div_le_mul; try omega.
+    cbv; omega.
+    unfold INODE.IRecSig.items_per_val.
+    rewrite valulen_is.
+    compute; omega.
+
     all: auto; cancel.
   Qed.
 

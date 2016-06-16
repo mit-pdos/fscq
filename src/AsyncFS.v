@@ -121,6 +121,7 @@ Module AFS.
           Ret None
         }
       } else {
+        mscs <- LOG.abort (FSXPLog fsxp) mscs;
         Ret None
       }
     end.
@@ -139,28 +140,6 @@ Module AFS.
   Qed.
 
 
-  Lemma add_nonzero_exfalso_helper : forall a b,
-    a + b = 0 -> b <> 0 -> False.
-  Proof.
-    intros; omega.
-  Qed.
-
-
-  Lemma add_nonzero_exfalso_helper2 : forall a b,
-    a * valulen + b = 0 -> a <> 0 -> False.
-  Proof.
-    intros.
-    destruct a; auto.
-    rewrite Nat.mul_succ_l in H.
-    assert (0 < a * valulen + valulen + b).
-    apply Nat.add_pos_l.
-    apply Nat.add_pos_r.
-    rewrite valulen_is; simpl.
-    apply Nat.lt_0_succ.
-    omega.
-  Qed.
-
-
   Theorem mkfs_ok : forall cachesize data_bitmaps inode_bitmaps log_descr_blocks,
     {!!< disk,
      PRE:hm
@@ -173,12 +152,11 @@ Module AFS.
           inode_bitmaps + data_bitmaps + data_bitmaps +
           1 + log_descr_blocks + log_descr_blocks * PaddedLog.DescSig.items_per_val ]] *
        [[ goodSize addrlen (length disk) ]]
-     POST:hm' RET:r
-       [[ r = None ]] \/
-       exists ms fsxp d ilist frees,
-       [[ r = Some (ms, fsxp) ]] *
+     POST:hm' RET:r exists ms fsxp d,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
-       [[[ d ::: rep fsxp emp (TreeDir (FSXPRootInum fsxp) nil) ilist frees ]]]
+       ( [[ r = None ]] \/ exists ilist frees,
+         [[ r = Some (ms, fsxp) ]] *
+         [[[ d ::: rep fsxp emp (TreeDir (FSXPRootInum fsxp) nil) ilist frees ]]] )
      CRASH:hm'
        any
      >!!} mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks.
@@ -242,15 +220,53 @@ Module AFS.
     step.
 
     (* LOG.flushsync *)
-    admit.
     step.
-    admit.
     step.
+    rewrite latest_pushd.
+    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks).
+    eassign a3.
+    eassign (BFILE.mk_memstate (MSAlloc r_1) (a1, b1)).
+    cancel.
 
+    unfold rep, IAlloc.rep; or_r.
+    cancel.
+    admit.
 
-    all: try solve [ xcrash; apply pimpl_any ].
-    
+    (* failure cases *)
+    apply pimpl_any.
+    step.
+    step.
+    step.
+    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks).
+    eassign d0.
+    eassign (BFILE.mk_memstate (MSAlloc r_1) (a5, b3)).
+    cancel.
+    or_l; cancel.
+
+    apply pimpl_any.
+    step.
+    step.
+    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks).
+    eassign d0.
+    eassign (BFILE.mk_memstate (MSAlloc r_1) (a5, b1)).
+    cancel.
+    or_l; cancel.
+
+    apply pimpl_any.
+    step.
+    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks).
+    eassign d0.
+    eassign (BFILE.mk_memstate (MSAlloc r_1) (a1, b1)).
+    cancel.
+    or_l; cancel.
+
+    all: try solve [ try xcrash; apply pimpl_any ].
+    substl (length disk).
+    apply gt_Sn_O.
+
+    Unshelve. all: eauto; try exact ($0, nil).
   Admitted.
+
 
   Definition recover cachesize :=
     cs <- BUFCACHE.init_recover cachesize;
