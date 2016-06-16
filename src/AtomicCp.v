@@ -170,23 +170,49 @@ Module AFSTreeSeqSep.
     intuition.
     unfold tree_rep in H.
     distinct_names.
+
+
+    (* prestep.
+    norml; unfold stars; simpl.
+    safecancel. *)
     step.
+
+
+
+(*
+  evar (ts'': treeseq).
+   instantiate (ts' :=  (pushd (mk_tree (DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts !!))
+  (TSilist ts !!) (fst (TSfree ts !!), snd (TSfree ts !!))) ts)).
+*)
 
     unfold treeseq_in_ds.
     split.
+
+   match goal with 
+    | [ |- tree_rep _ _ _ (?ts' !!) _  ] =>
+      idtac ts'; replace (ts' !!) with (mk_tree (DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts !!))
+  (TSilist ts !!) (fst (TSfree ts !!), snd (TSfree ts !!)))
+    end.
+ 
     pred_apply.
     cancel.
     unfold tree_rep.
     cancel.
-
+    apply eq_sym.
+    eapply latest_pushd.
+    rewrite latest_pushd.
+    
+    (* XXX we need more restrictions on tree seq *)
 
     admit.
-    admit.
+
 
     eapply dir2flatmem_update_subtree.
 
     admit.
 
+    eapply dir2flatmem_update_subtree.
+    admit.
     eassumption.
 
     xcrash.
