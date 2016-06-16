@@ -643,23 +643,6 @@ Proof.
   congruence.
 Qed.
 
-
-Lemma arrayN_split : forall A pts off (l : list A) start,
-  off <= length l ->
-  arrayN pts start (firstn off l) * arrayN pts (start + off) (skipn off l) <=p=>
-  arrayN pts start l.
-Proof.
-  induction off; simpl; intros.
-  - replace (start + 0) with start by omega.
-    split; cancel.
-  - destruct l; simpl in *; try omega.
-    replace (start + S off) with (S start + off) by omega.
-    rewrite sep_star_assoc.
-    apply piff_star_l.
-    apply IHoff.
-    omega.
-Qed.
-
 Lemma arrayN_combine' : forall A pts (a b : list A) start,
   arrayN pts start a * arrayN pts (start + length a) b <=p=> arrayN pts start (a ++ b).
 Proof.

@@ -127,6 +127,13 @@ Module BFILE.
     Ret (mk_memstate al ms).
 
 
+  Definition init lxp bxps bixp ixp ms :=
+    ms <- BALLOC.init_nofree lxp (snd bxps) ms;
+    ms <- BALLOC.init lxp (fst bxps) ms;
+    ms <- IAlloc.init lxp bixp ms;
+    ms <- INODE.init lxp ixp ms;
+    Ret (mk_memstate true ms).
+
   (* rep invariants *)
 
   Definition attr := INODE.iattr.
@@ -329,6 +336,31 @@ Module BFILE.
 
   Definition synced_file f := mk_bfile (synced_list (map fst (BFData f))) (BFAttr f).
 
+  Lemma add_nonzero_exfalso_helper2 : forall a b,
+    a * valulen + b = 0 -> a <> 0 -> False.
+  Proof.
+    intros.
+    destruct a; auto.
+    rewrite Nat.mul_succ_l in H.
+    assert (0 < a * valulen + valulen + b).
+    apply Nat.add_pos_l.
+    apply Nat.add_pos_r.
+    rewrite valulen_is; simpl.
+    apply Nat.lt_0_succ.
+    omega.
+  Qed.
+
+  Lemma file_match_init_ok : forall n,
+    emp =p=> listmatch file_match (repeat bfile0 n) (repeat INODE.inode0 n).
+  Proof.
+    induction n; simpl; intros.
+    unfold listmatch; cancel.
+    rewrite IHn.
+    unfold listmatch; cancel.
+    unfold file_match, listmatch; cancel.
+  Qed.
+
+
   (**** automation **)
 
   Fact resolve_selN_bfile0 : forall l i d,
@@ -355,6 +387,100 @@ Module BFILE.
   Local Hint Extern 1 (LOG.rep _ _ _ ?ms _ =p=> LOG.rep _ _ _ (MSLL ?e) _) => assignms.
 
   (*** specification *)
+
+  Theorem init_ok : forall lxp bxps ibxp ixp ms,
+    {< F Fm m0 m l,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           [[[ m ::: (Fm * arrayN (@ptsto _ _ _) 0 l) ]]] *
+           [[ let data_bitmaps := (BmapNBlocks (fst bxps)) in
+              let inode_bitmaps := (IAlloc.Sig.BMPLen ibxp) in
+              let data_blocks := (data_bitmaps * valulen)%nat in
+              let inode_blocks := (inode_bitmaps * valulen / INODE.IRecSig.items_per_val)%nat in
+              let inode_base := data_blocks in
+              let balloc_base1 := inode_base + inode_blocks + inode_bitmaps in
+              let balloc_base2 := balloc_base1 + data_bitmaps in
+              length l = balloc_base2 + data_bitmaps /\
+              BmapNBlocks (fst bxps) = BmapNBlocks (snd bxps) /\
+              BmapStart (fst bxps) = balloc_base1 /\
+              BmapStart (snd bxps) = balloc_base2 /\
+              IAlloc.Sig.BMPStart ibxp = inode_base + inode_blocks /\
+              IXStart ixp = inode_base /\ IXLen ixp = inode_blocks /\
+              data_bitmaps <> 0 /\ inode_bitmaps <> 0 /\
+              data_bitmaps <= valulen * valulen /\
+             inode_bitmaps <= valulen * valulen
+           ]]
+    POST:hm' RET:ms'  exists m' flist ilist frees freeinodes freeinode_pred,
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
+           [[[ m' ::: (Fm * rep bxps ixp flist ilist frees * 
+                            @IAlloc.rep INODE.inode ibxp freeinodes freeinode_pred) ]]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} init lxp bxps ibxp ixp ms.
+  Proof.
+    unfold init, rep.
+
+    (* BALLOC.init_nofree *)
+    prestep. norm. cancel.
+    intuition simpl. pred_apply.
+
+    (* now we need to split the LHS several times to get the correct layout *)
+    erewrite arrayN_split at 1; repeat rewrite Nat.add_0_l.
+    (* data alloc2 is the last chunk *)
+    apply sep_star_assoc.
+    omega. omega.
+    rewrite skipn_length; omega.
+
+    (* BALLOC.init *)
+    prestep. norm. cancel.
+    intuition simpl. pred_apply.
+    erewrite arrayN_split at 1; repeat rewrite Nat.add_0_l.
+    erewrite arrayN_split with (i := (BmapNBlocks bxps_1) * valulen) at 1; repeat rewrite Nat.add_0_l.
+    (* data region is the first chunk, and data alloc1 is the last chunk *)
+    eassign(BmapStart bxps_1); cancel.
+    omega.
+    rewrite skipn_length.
+    rewrite firstn_length_l; omega.
+    repeat rewrite firstn_firstn.
+    repeat rewrite Nat.min_l; try omega.
+    rewrite firstn_length_l; omega.
+
+    (* IAlloc.init *)
+    prestep. norm. cancel.
+    intuition simpl. pred_apply.
+    erewrite arrayN_split at 1; repeat rewrite Nat.add_0_l.
+    (* inode region is the first chunk, and inode alloc is the second chunk *)
+    substl (IAlloc.Sig.BMPStart ibxp).
+    eassign (IAlloc.Sig.BMPLen ibxp * valulen / INODE.IRecSig.items_per_val).
+    cancel.
+
+    denote (IAlloc.Sig.BMPStart) as Hx; contradict Hx.
+    substl (IAlloc.Sig.BMPStart ibxp); intro.
+    eapply add_nonzero_exfalso_helper2; eauto.
+    rewrite skipn_skipn, firstn_firstn.
+    rewrite Nat.min_l, skipn_length by omega.
+    rewrite firstn_length_l by omega.
+    omega.
+
+    (* Inode.init *)
+    prestep. norm. cancel.
+    intuition simpl. pred_apply.
+    substl (IXStart ixp); cancel.
+
+    rewrite firstn_firstn, firstn_length, skipn_length, firstn_length.
+    repeat rewrite Nat.min_l with (n := (BmapStart bxps_1)) by omega.
+    rewrite Nat.min_l; omega.
+    denote (IXStart ixp) as Hx; contradict Hx.
+    substl (IXStart ixp); intro.
+    eapply add_nonzero_exfalso_helper2 with (b := 0).
+    rewrite Nat.add_0_r; eauto.
+    auto.
+
+    (* post condition *)
+    prestep; unfold IAlloc.rep; cancel.
+    apply file_match_init_ok.
+    all: auto; cancel.
+  Qed.
+
 
   Theorem getlen_ok : forall lxp bxps ixp inum ms,
     {< F Fm Fi m0 m f flist ilist frees,
@@ -1030,6 +1156,7 @@ Module BFILE.
   Qed.
 
 
+  Hint Extern 1 ({{_}} Bind (init _ _ _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_}} Bind (getlen _ _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_}} Bind (getattrs _ _ _ _) _) => apply getattrs_ok : prog.
   Hint Extern 1 ({{_}} Bind (setattrs _ _ _ _ _) _) => apply setattrs_ok : prog.
@@ -1042,7 +1169,6 @@ Module BFILE.
   Hint Extern 1 ({{_}} Bind (datasync _ _ _ _) _) => apply datasync_ok : prog.
   Hint Extern 1 ({{_}} Bind (sync _ _ _) _) => apply sync_ok : prog.
   Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
-
 
 
   Definition read_array lxp ixp inum a i ms :=

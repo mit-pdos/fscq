@@ -383,9 +383,9 @@ Module INODE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (IXStart xp) l) ]]] *
            [[ length l = (IXLen xp) /\ (IXStart xp) <> 0 ]]
-    POST:hm' RET:ms exists m' ilist,
+    POST:hm' RET:ms exists m',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * rep bxp xp ilist) ]]]
+           [[[ m' ::: (Fm * rep bxp xp (repeat inode0 ((IXLen xp) * IRecSig.items_per_val))) ]]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} init lxp xp ms.
   Proof.
