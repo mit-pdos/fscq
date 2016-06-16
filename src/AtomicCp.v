@@ -128,6 +128,61 @@ Module AFSTreeSeqSep.
     eassumption.
   Qed.
 
+  Theorem tree_file_set_attr_ok : forall fsxp inum attr mscs,
+  {< ds ts pathname Fm Ftop Ftree f,
+  PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+     [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+     [[ (Ftree * pathname |-> (inum, f))%pred  (dir2flatmem [] (TStree ts!!)) ]] 
+  POST:hm' RET:^(mscs', ok)
+      [[ MSAlloc mscs' = MSAlloc mscs ]] *
+     ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+      [[ ok = true  ]] * exists ds' ts' mscs' tree' f' ilist',
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
+        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+        [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts!!) ]] *
+        [[ ts' = (pushd (mk_tree tree' (TSilist ilist') (TSfree ts !!)) ts) ]] *
+        [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
+        [[ (Ftree * pathname |-> (inum, f'))%pred (dir2flatmem [] tree') ]])
+  XCRASH:hm'
+         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+  >} AFS.file_set_attr fsxp inum attr mscs.
+  Proof.
+    intros.
+    eapply pimpl_ok2.
+    eapply AFS.file_set_attr_ok.
+    cancel.
+    unfold treeseq_in_ds in H6.
+    intuition.
+    unfold tree_rep in H.
+    eassumption.
+    eapply dir2flatmem_find_subtree_ptsto.
+    unfold treeseq_in_ds in H6.
+    intuition.
+    unfold tree_rep in H.
+    distinct_names.
+    eassumption.
+    step.
+    or_r.
+    cancel.
+    eapply treeseq_in_ds_pushd; eauto.
+    unfold tree_rep.
+    pred_apply.
+    simpl.
+    (* instantiate (1 := ilist').  XXX why not *)
+    admit.
+    unfold treeseq_one_safe.
+    simpl.
+    (* eassumption. XXX cannot instantiate ilist'0 *)
+    admit.
+    eapply dir2flatmem_update_subtree.
+    unfold treeseq_in_ds in H6.
+    intuition.
+    unfold tree_rep in H5.
+    distinct_names.
+    eassumption.
+  Admitted.
+
+
   Theorem tree_update_fblock_d_ok : forall fsxp inum off v mscs,
     {< ds ts Fm Ftop Ftree pathname f Fd vs,
     PRE:hm
