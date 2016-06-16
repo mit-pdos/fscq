@@ -85,7 +85,9 @@ Definition can_alias v :=
 
 Section Extracted.
 
-  Definition State := (rawdisk * StringMap.t Value)%type.
+  Definition Locals := StringMap.t Value.
+
+  Definition State := (list (Stmt * Locals) * rawdisk)%type.
   Import StringMap.
 
   Definition eval_binop (op : binop + test) a b :=
@@ -105,7 +107,7 @@ Section Extracted.
       | _, _ => None
     end.
 
-  Fixpoint eval (st : StringMap.t Value) (e : Expr) : option Value :=
+  Fixpoint eval (st : Locals) (e : Expr) : option Value :=
     match e with
       | Var x => find x st
       | Const w => Some (Num w)
@@ -153,6 +155,67 @@ Section Extracted.
       | nil => Some nil
     end.
 
+  Local Open Scope bool_scope.
+
+  Fixpoint NoDup_bool A (eqb : A -> A -> bool) (ls : list A) {struct ls} :=
+    match ls with
+      | nil => true
+      | x :: xs => forallb (fun e => negb (eqb e x)) xs && NoDup_bool eqb xs
+    end.
+
+  Require Import Bool.
+
+  Lemma NoDup_bool_sound : forall A eqb, (forall a b : A, eqb a b = true <-> a = b) -> forall ls, NoDup_bool eqb ls = true -> NoDup ls.
+    induction ls; simpl; intros.
+    econstructor.
+    apply_in_hyp andb_true_iff.
+    intuition.
+    econstructor.
+    intro.
+    apply_in_hyp forallb_forall; eauto.
+    apply_in_hyp negb_true_iff.
+    replace (eqb a a) with true in *.
+    intuition.
+    symmetry; eapply H; eauto.
+    eauto.
+  Qed.
+
+  Definition sumbool_to_bool A B (b : {A} + {B}) := if b then true else false.
+
+  Definition string_bool a b := sumbool_to_bool (string_dec a b).
+
+  Definition is_string_eq := string_bool.
+
+  Lemma is_string_eq_iff a b : is_string_eq a b = true <-> a = b.
+    unfold is_string_eq, string_bool.
+    destruct (string_dec a b); intuition; try discriminate.
+  Qed.
+
+  Lemma iff_not_iff P Q : (P <-> Q) -> (~ P <-> ~ Q).
+  Proof.
+    split; intros; intuition.
+  Qed.
+
+  Lemma is_string_eq_iff_conv a b : is_string_eq a b = false <-> a <> b.
+  Proof.
+    etransitivity.
+    { symmetry; eapply not_true_iff_false. }
+    eapply iff_not_iff.
+    eapply is_string_eq_iff.
+  Qed.
+
+  Lemma NoDup_bool_string_eq_sound : forall ls, NoDup_bool string_bool ls = true -> NoDup ls.
+    intros.
+    eapply NoDup_bool_sound.
+    2 : eauto.
+    split; intros.
+    unfold string_bool, sumbool_to_bool in *; destruct (string_dec a b); try discriminate; eauto.
+    unfold string_bool, sumbool_to_bool in *; destruct (string_dec a b); try discriminate; eauto.
+  Qed.
+
+  Definition is_no_dup := NoDup_bool string_bool.
+
+  Definition is_in (a : string) ls := if in_dec string_dec a ls then true else false.
 
   Record AxiomaticSpec := {
     PreCond (disk_in : rawdisk) (input : list Value) : Prop;
@@ -160,7 +223,20 @@ Section Extracted.
     (* PreCondTypeConform : type_conforming PreCond *)
   }.
 
-  Definition Env := StringMap.t AxiomaticSpec.
+  Record OperationalSpec := {
+    ArgVars : list string;
+    RetVar : string;
+    Body : Stmt;
+    ret_not_in_args : negb (is_in RetVar ArgVars) = true;
+    args_no_dup : is_no_dup ArgVars = true;
+    (* TODO syntax_ok with is_actual_args_no_dup *)
+  }.
+
+  Inductive FuncSpec :=
+  | Axiomatic : AxiomaticSpec -> FuncSpec
+  | Operational : OperationalSpec -> FuncSpec.
+
+  Definition Env := StringMap.t FuncSpec.
 
 End Extracted.
 
@@ -174,8 +250,15 @@ Section EnvSection.
 
   Definition sel T m := fun k => find k m : option T.
 
+
+  Fixpoint make_map {elt} keys values :=
+    match keys, values with
+      | k :: keys', v :: values' => add k v (make_map keys' values')
+      | _, _ => @empty elt
+    end.
+
   (* TODO: throw out RunsTo, I think *)
-  Inductive RunsTo : Stmt -> State -> State -> Prop :=
+  Inductive RunsTo : Stmt -> rawdisk * Locals -> rawdisk * Locals -> Prop :=
   | RunsToSkip : forall st,
       RunsTo Skip st st
   | RunsToSeq : forall a b st st' st'',
@@ -207,54 +290,86 @@ Section EnvSection.
       s' = add x v s ->
       RunsTo (Assign x e) (d, s) (d, s')
   | RunsToCallAx : forall x f args s spec d d' input output ret,
-      StringMap.find f env = Some spec ->
+      StringMap.find f env = Some (Axiomatic spec) ->
       mapM (sel s) args = Some input ->
       PreCond spec d input ->
       length input = length output ->
       PostCond spec d d' (List.combine input output) ret ->
       let s' := add_remove_many args input output s in
       let s' := add x ret s' in
+      RunsTo (Call x f args) (d, s) (d', s')
+  | RunsToCallOp : forall x f args s spec d d' input callee_s' ret,
+      StringMap.find f env = Some (Operational spec) ->
+      length args = length (ArgVars spec) ->
+      mapM (sel s) args = Some input ->
+      let callee_s := make_map (ArgVars spec) input in
+      RunsTo (Body spec) (d, callee_s) (d', callee_s') ->
+      sel callee_s' (RetVar spec) = Some ret ->
+      let output := List.map (sel callee_s') (ArgVars spec) in
+      let s' := add_remove_many args input output s in
+      let s' := add x ret s' in
       RunsTo (Call x f args) (d, s) (d', s').
 
-  Inductive Step : Stmt * State -> Stmt * State -> Prop :=
-  | StepSeq1 : forall a a' b st st',
-      Step (a, st) (a', st') ->
-      Step (Seq a b, st) (Seq a' b, st')
-  | StepSeq2 : forall a st,
-      Step (Seq Skip a, st) (a, st)
+  Inductive Step0 : Stmt * (rawdisk * Locals) -> Stmt * (rawdisk * Locals) -> Prop :=
   | StepIfTrue : forall cond t f st,
       is_true (snd st) cond ->
-      Step (If cond t f, st) (t, st)
+      Step0 (If cond t f, st) (t, st)
   | StepIfFalse : forall cond t f st,
       is_false (snd st) cond ->
-      Step (If cond t f, st) (f, st)
+      Step0 (If cond t f, st) (f, st)
   | StepWhileTrue : forall cond body st,
       let loop := While cond body in
       is_true (snd st) cond ->
-      Step (loop, st) (Seq body loop, st)
+      Step0 (loop, st) (Seq body loop, st)
   | StepWhileFalse : forall cond body st,
       let loop := While cond body in
       is_false (snd st) cond ->
-      Step (loop, st) (Skip, st)
+      Step0 (loop, st) (Skip, st)
   | StepAssign : forall x e d s s' v,
       (* rhs can't be a mutable object, to prevent aliasing *)
       eval s e = Some v ->
       can_alias v = true ->
       s' = add x v s ->
-      Step (Assign x e, (d, s)) (Skip, (d, s'))
+      Step0 (Assign x e, (d, s)) (Skip, (d, s'))
   | StepCallAx : forall x f args s spec d d' input output ret,
-      StringMap.find f env = Some spec ->
+      StringMap.find f env = Some (Axiomatic spec) ->
       mapM (sel s) args = Some input ->
       PreCond spec d input ->
       length input = length output ->
       PostCond spec d d' (List.combine input output) ret ->
       let s' := add_remove_many args input output s in
       let s' := add x ret s' in
-      Step (Call x f args, (d, s)) (Skip, (d', s')).
+      Step0 (Call x f args, (d, s)) (Skip, (d', s')).
+
+  Inductive Step : State -> State -> Prop :=
+  | StepStep0 : forall a a' s s' d d' fs,
+      Step0 (a, (d, s)) (a', (d', s')) ->
+      Step ((a, s) :: fs, d) ((a', s') :: fs, d')
+  | StepSeq1 : forall a a' b s s' d d' fs,
+      Step ((a, s) :: fs, d) ((a', s') :: fs, d') ->
+      Step ((Seq a b, s) :: fs, d) ((Seq a' b, s') :: fs, d')
+  | StepSeq2 : forall a s d fs,
+      Step ((Seq Skip a, s) :: fs, d) ((a, s) :: fs, d)
+  | StepCallOp : forall x f args s spec d input fs,
+      StringMap.find f env = Some (Operational spec) ->
+      length args = length (ArgVars spec) ->
+      mapM (sel s) args = Some input ->
+      let callee_s := make_map (ArgVars spec) input in
+      let st := (Call x f args, s) :: fs in
+      Step (st, d) ((Body spec, callee_s) :: st, d)
+  | StepCallRet : forall x f args s callee_s' spec d input ret fs,
+      StringMap.find f env = Some (Operational spec) ->
+      mapM (sel s) args = Some input ->
+      length args = length (ArgVars spec) ->
+      sel callee_s' (RetVar spec) = Some ret ->
+      let output := List.map (sel callee_s') (ArgVars spec) in
+      let s' := add_remove_many args input output s in
+      let s' := add x ret s' in
+      Step ((Skip, callee_s') :: (Call x f args, s) :: fs, d) ((Skip, s') :: fs, d).
 
   Inductive Outcome :=
   | EFailed
-  | EFinished (st : State)
+  | EFinished (st : rawdisk * Locals)
   | ECrashed (d : rawdisk).
 
   Inductive CrashStep : Stmt -> Prop :=
@@ -264,19 +379,21 @@ Section EnvSection.
   | CrashCall : forall x f args,
       CrashStep (Call x f args).
 
-  Inductive Exec : Stmt -> State -> Outcome -> Prop :=
-  | EXStep : forall d p d' p' out,
-    Step (p, d) (p', d') ->
-    Exec p' d' out ->
-    Exec p d out
-  | EXFail : forall d p, (~exists d' p', Step (p, d) (p', d')) ->
+  Inductive Exec : State -> Outcome -> Prop :=
+  | EXStep : forall st st' out,
+    Step st st' ->
+    Exec st' out ->
+    Exec st out
+  | EXFail : forall d p s fs,
+    let st := ((p, s) :: fs, d) in
+    (~exists st', Step st st') ->
     (p <> Skip) ->
-    Exec p d EFailed
-  | EXCrash : forall p d s,
+    Exec st EFailed
+  | EXCrash : forall p d s fs,
     CrashStep p ->
-    Exec p (d, s) (ECrashed d)
-  | EXDone : forall d,
-    Exec Skip d (EFinished d).
+    Exec ((p, s) :: fs, d) (ECrashed d)
+  | EXDone : forall d s,
+    Exec ([(Skip, s)], d) (EFinished (d, s)).
 
   Hint Constructors Exec RunsTo Step : steps.
 
