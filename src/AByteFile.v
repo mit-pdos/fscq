@@ -58,19 +58,20 @@ Definition byteset0 := singular byte0.
 Definition valu0 := bytes2valu  (natToWord (valubytes*8) 0).
 Definition valuset0 := singular valu0.
 
-
 (* Helper Functions *)
-Definition list2byteset (l: list byte): byteset :=
-match l with
-| nil => byteset0
-| h::t => pushdlist (rev t) (singular h)
+Fixpoint chunk_rec A (l : list A) k n : list (list A) := 
+match n with
+| O => l::nil
+| S n' => (firstn k l)::(chunk_rec (skipn k l) k n')
 end.
 
+Definition chunk A (l: list A) k: list(list A) :=
+  chunk_rec l k ((length l)/k).
+
+
+
 Definition bytes2valubytes sz (b: bytes sz) : bytes valubytes :=
-if beq_nat sz valubytes then
-(word2bytes valubytes eq_refl (natToWord (valubytes*8)(wordToNat b)))
-else
-(word2bytes valubytes eq_refl (natToWord (valubytes*8) 0)). (* need to corrrect this so that it returns 0 padding *)
+(word2bytes valubytes eq_refl (natToWord (valubytes*8)(wordToNat b))).
 
 Definition list2valu l: valu :=
 bytes2valu (bytes2valubytes (bcombine_list l)).
@@ -102,13 +103,23 @@ match l with
 | h::t => max h (maxlist t)
 end.
 
-Definition full_list (vs: valuset) := (fst vs)::(snd vs).
+Definition selN' {A: Type} i def (l: list A): A :=
+selN l i def.
+
+Fixpoint valuset2bytesets_rec (vs: list (list byte)) i: list byteset :=
+match i with
+| O => nil
+| S i' => (valuset2bytesets_rec vs i')++((list2nelist byteset0 (map (selN' i' byte0) vs))::nil)
+end.
 
 Definition valuset2bytesets (vs: valuset): list byteset :=
-map list2byteset (fold_right elemwise_concat nil (map valu2list (full_list vs))).
+valuset2bytesets_rec (map valu2list (nelist2list vs)) valubytes.
 
-Definition bytesets2valuset (bs: list byteset) : valuset.
-Proof. Admitted.
+(* Definition valuset2bytesets (vs: valuset): list byteset :=
+map (list2nelist (A:= byte) byteset0) (fold_right elemwise_concat nil (map valu2list (nelist2list vs))). *)
+
+Definition bytesets2valuset (bs: list byteset) : valuset :=
+list2nelist valuset0 (map list2valu (fold_right elemwise_concat nil (map (@nelist2list byte) bs))).
 
 Definition get_sublist {A:Type}(l: list A) (off len: nat) : list A :=
 firstn len (skipn off l).
@@ -132,55 +143,46 @@ Definition rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f pfy ufy
 [[ bytefile_valid ufy fy ]] * 
 [[ # (INODE.ABytes (ByFAttr fy)) = length(ByFData fy)]])%pred .
 
-Definition read_first_block T lxp ixp inum fms block_off byte_off read_length rx: prog T :=
+Definition read_first_block lxp ixp inum fms block_off byte_off read_length :=
       let^ (fms, first_block) <- BFILE.read lxp ixp inum block_off fms;   (* get first block *)
       let data_init := (get_sublist (valu2list first_block) byte_off read_length) in
-      rx ^(fms, data_init).
+      Ret ^(fms, data_init).
       
 
 
-Definition read_middle_blocks T lxp ixp inum fms block_off num_of_full_blocks rx: prog T :=
+Definition read_middle_blocks lxp ixp inum fms block_off num_of_full_blocks:=
 let^ (data) <- (ForN_ (fun i =>
-        (pair_args_helper (fun data (_:unit) => (fun lrx => 
+        (pair_args_helper (fun data (_:unit) => 
         
         let^ (fms, block) <- BFILE.read lxp ixp inum (block_off + i) fms; (* get i'th block *)
-        lrx ^(data++(valu2list block))%list (* append its contents *)
+        Ret ^(data++(valu2list block))%list (* append its contents *)
         
-        )))) 1 num_of_full_blocks
+        ))) 1 num_of_full_blocks
       (fun _:nat => (fun _ => (fun _ => (fun _ => (fun _ => True)%pred)))) (* trivial invariant *)
       (fun _:nat => (fun _ => (fun _ => True)%pred))) ^(nil);             (* trivial crashpred *)
-rx ^(fms, data).
+Ret ^(fms, data).
 
 (* let^ ((data:list byte)) <- ForN i < num_of_full_blocks 
             Ghost [ lxp ixp inum fms block_off ] 
             Loopvar [ (data:list byte) ] 
-            Continuation lrx
             Invariant [[True]] OnCrash [[True]] 
             Begin
-            let^ (fms, block) <- BFILE.read lxp ixp inum (block_off +1 + i) fms; (* get i'th block *)
-            lrx ^(data++(valu2list block))%list (* append its contents *) 
+            let^ (fms, (block: valu)) <- BFILE.read lxp ixp inum (block_off +1 + i) fms; (* get i'th block *)
+            Ret ^(data++(valu2list block))%list (* append its contents *) 
             Rof ^((nil:list byte));
-rx ^(fms, data). *)
-
-Definition middle_blocks_match r fy block_off num_of_full_blocks: Prop :=
-let block_size := valubytes in
-forall i, (i < num_of_full_blocks * block_size) -> 
-selN r i byte0 = fst (selN (ByFData fy) (block_off*block_size +i) byteset0).
+Ret ^(fms, data). *)
 
 
-Definition read_last_block  T lxp ixp inum fms block_off read_length rx: prog T :=
+
+Definition read_last_block  lxp ixp inum fms block_off read_length :=
 let^ (fms, last_block) <- BFILE.read lxp ixp inum block_off fms;   (* get final block *)
 let data_last := (get_sublist (valu2list last_block) 0 read_length) in (* get final block data *)
-rx ^(fms, data_last).
+Ret ^(fms, data_last).
 
-Definition last_block_match r fy block_off read_length: Prop :=
-let block_size := valubytes in
-forall i, (i < read_length) -> selN r i byte0 = 
-    fst (selN (ByFData fy) (block_size*block_off + i) byteset0).
 
 
 (*Interface*)
-Definition read T lxp ixp inum off len fms rx : prog T :=
+Definition read lxp ixp inum off len fms :=
 If (lt_dec 0 len)                        (* if read length > 0 *)
 {                    
   let^ (fms, flen) <- BFILE.getlen lxp ixp inum fms;          (* get file length *)
@@ -206,11 +208,11 @@ If (lt_dec 0 len)                        (* if read length > 0 *)
         If (lt_dec 0 len_final)
         {
           let^ (fms, data_last) <- read_last_block lxp ixp inum fms off_final len_final;
-          rx ^(fms, data_first++data_middle++data_last)%list  
+          Ret ^(fms, data_first++data_middle++data_last)%list  
         }
         else
         {
-          rx ^(fms, data_first++data_middle)%list  
+          Ret ^(fms, data_first++data_middle)%list  
         }
       }
       else
@@ -220,22 +222,22 @@ If (lt_dec 0 len)                        (* if read length > 0 *)
         If (lt_dec 0 len_final)
         {
           let^ (fms, data_last) <- read_last_block lxp ixp inum fms off_final len_final;
-          rx ^(fms, data_first++data_last)%list  
+          Ret ^(fms, data_first++data_last)%list  
         }
         else
         {
-          rx ^(fms, data_first)%list  
+          Ret ^(fms, data_first)%list  
         }
       }
   } 
   else                                                 (* if offset is not valid, return nil *)
   {    
-    rx ^(fms, nil)
+    Ret ^(fms, nil)
   }
 } 
 else                                                   (* if read length is not valid, return nil *)
 {    
-  rx ^(fms, nil)
+  Ret ^(fms, nil)
 }.
 
 (* Definition write T lxp ixp inum off data fms rx : prog T :=
@@ -334,10 +336,10 @@ Definition dwrite T lxp ixp inum off data fms rx : prog T :=
  *)
 
 (*Same as BFile*)
- Definition getlen T lxp ixp inum fms rx : prog T :=
+ Definition getlen lxp ixp inum fms :=
     let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
     let^ (ms, n) <- INODE.getlen lxp ixp inum ms;
-    rx ^(BFILE.mk_memstate al ms, n).
+    Ret ^(BFILE.mk_memstate al ms, n).
 
   Definition getattrs T lxp ixp inum fms rx : prog T :=
     let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
@@ -458,17 +460,24 @@ unfold not.
 intros; inversion H0.
 Qed.
 
+Lemma valuset2bytesets_rec_len: forall i l, 
+length(valuset2bytesets_rec l i) = i.
+Proof. intros.
+induction i.
+reflexivity.
+simpl.
+rewrite app_length.
+rewrite IHi.
+simpl;
+omega.
+Qed.
+
 Lemma valuset2bytesets_len: forall vs, 
-full_list vs <> nil -> length(valuset2bytesets vs) = valubytes.
+length(valuset2bytesets vs) = valubytes.
 Proof.
 intros.
 unfold valuset2bytesets.
-rewrite map_length.
-rewrite fold_right_elem_len.
-rewrite map_map.
-rewrite maxlist_len.
-reflexivity.
-apply H.
+apply valuset2bytesets_rec_len.
 Qed.
 
 (* helper le-lt lemmas. *)
@@ -618,12 +627,10 @@ destruct H1.
 destruct H1.
 rewrite <- H1.
 apply valuset2bytesets_len.
-unfold full_list; unfold not; intros.
-inversion H3.
 apply H0.
 Qed.
  
-Lemma fst_list2byteset: forall l, fst(list2byteset l) =  selN l 0 byte0.
+Lemma fst_list2byteset: forall A (l:list A) def, fst(list2nelist (singular def) l) =  selN l 0 def.
 Proof.
 induction l.
 reflexivity.
@@ -668,9 +675,6 @@ simpl in H.
 omega.
 Qed.
 
-Definition selN' {A: Type} i def (l: list A): A :=
-selN l i def.
-
 Lemma selN_fold_elem: forall (A: Type) (l: list(list A)) i k def, 
 Forall (fun sublist => length sublist = k) l ->
 i < k -> selN (fold_right elemwise_concat nil l) i nil =
@@ -704,8 +708,6 @@ rewrite app_length.
 rewrite IHvs.
 rewrite valuset2bytesets_len.
 reflexivity.
-unfold full_list; unfold not; intros.
-inversion H.
 Qed.
 
 Lemma len_f_fy: forall f fy,
@@ -721,10 +723,20 @@ rewrite flat_map_len.
 apply Min.le_min_r.
 Qed.
 
+Lemma fold_elem_expand: forall A (l: list (list A)) a,
+fold_right elemwise_concat nil (a::l) = 
+elemwise_concat a (fold_right elemwise_concat nil l).
+Proof. intros; reflexivity. Qed.
+
+(* Lemma fold_elem_expand: forall A (l: list (list A)) a,
+fold_right elemwise_concat nil (a::l) = 
+elemwise_concat a (fold_right elemwise_concat nil l).
+Proof. intros; reflexivity. Qed. *)
+
 Lemma valuset2bytesets2valuset: forall vs, bytesets2valuset (valuset2bytesets vs) = vs.
 Proof. Admitted.
 
-Lemma bytesets2valuset2bytesets: forall bs, valuset2bytesets (bytesets2valuset bs) = bs.
+Lemma bytesets2valuset2bytesets: forall bs, bs <> nil -> valuset2bytesets (bytesets2valuset bs) = bs.
 Proof. Admitted.
 
 Lemma addr_id: forall A (l: list A) a def, 
@@ -824,8 +836,8 @@ k > 0 ->
 (diskIs (mem_except (list2nmem (PByFData pfy)) (a/k))  * 
 (a/k) |-> get_sublist (UByFData ufy) ((a/k) * k) k)%pred (list2nmem (PByFData pfy)).
 Proof.
+unfold get_sublist, unified_bytefile_valid.
 intros.
-unfold get_sublist.
 rewrite H.
 rewrite concat_hom_skipn with (k:= k).
 replace (k) with (1 * k) by omega.
@@ -891,40 +903,23 @@ rewrite <- H0.
 apply H1.
 Qed.
 
-Lemma le_eq_O: forall n m k, k = 0 -> n + m <= k -> n + m = 0.
-Proof. intros. omega. Qed.
-
-Lemma div_plus_zero: forall n m k, (n + k)/m = 0 -> n/m = 0 /\ k/m = 0.
-Proof.
-intros.
-apply le_eq_O with (n:= n/m)(m:= k/m) in H.
-apply plus_is_O in H.
-apply H.
-apply Rounding.div_add_distr_le.
-Qed.
-
-Lemma S_lt_nonzero: forall n m, S n < S m -> m > 0.
-Proof. intros. omega. Qed.
-
-Lemma div_one_O: forall n, n/1 = 0 -> n = 0.
-Proof.
-induction n; intros; try reflexivity.
-replace (S n) with (n + 1) in H by omega.
-apply div_plus_zero in H.
-inversion H.
-inversion H1.
-Qed.
 
 Lemma div_eq: forall m n k, k < m -> (n * m + k)/m = n.
-Proof. Admitted.
+Proof.
+intros.
+rewrite Nat.div_add_l.
+apply Nat.div_small in H.
+rewrite H; symmetry; apply plus_n_O.
+unfold not; intros; rewrite H0 in H; inversion H.
+Qed.
 
-Lemma mapfst_maplist2byteset: forall l, map fst (map list2byteset l) = map (selN' 0 byte0) l.
+Lemma mapfst_maplist2byteset: forall A (l: list (list A)) def, map fst (map (list2nelist (singular def)) l) = map (selN' 0 def) l.
 Proof.
 intros.
 rewrite map_map.
 unfold selN'.
-replace (fun x : list byte => fst (list2byteset x)) with
-  (fun x : list byte => selN x 0 byte0).
+replace (fun x : list A => fst (list2nelist (singular def) x)) with
+  (fun x : list A => selN x 0 def).
 reflexivity.
 apply functional_extensionality.
 intros; symmetry; apply fst_list2byteset.
@@ -940,10 +935,19 @@ elemwise_concat a nil = make_all_list a.
 Proof. destruct a; reflexivity. Qed.
 
 
-Lemma mapselN_fold_elem: forall A i (l: list (list A)) def, 
+(* Lemma mapselN_fold_elem: forall A  (l: list (list A)) i def, 
 map (selN' i def) (fold_right elemwise_concat nil l) =
 selN l i nil.
-Proof. Admitted.
+Proof.
+induction l; intros.
+reflexivity.
+destruct i.
+simpl.
+rewrite elemwise_concat_expand.
+rewrite selN_elemwise_concat.
+
+
+ Admitted. *)
 
 (*Specs*)
 Theorem read_first_block_ok: forall lxp bxp ixp inum fms block_off byte_off read_length,
@@ -998,9 +1002,8 @@ destruct H4.
 inversion H4.
 rewrite <- H6.
 apply valuset2bytesets_len.
-unfold full_list.
+unfold nelist2list.
 unfold not; intros.
-inversion H15.
 omega.
 
 eapply byte2unifiedbyte.
@@ -1052,13 +1055,14 @@ repeat erewrite selN_map.
 erewrite skipn_selN.
 rewrite <- plus_n_O.
 unfold valuset2bytesets.
-rewrite mapfst_maplist2byteset.
+unfold byteset0.
+rewrite mapfst_maplist2byteset with (def:= byte0).
 rewrite mapselN_fold_elem.
 erewrite selN_map.
-unfold full_list.
+unfold nelist2list.
 reflexivity.
 
-unfold full_list.
+unfold nelist2list.
 simpl.
 omega.
 
