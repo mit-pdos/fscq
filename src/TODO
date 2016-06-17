@@ -22,11 +22,11 @@
 
 ===
 
-- eviction from GroupLog
-- prove AtomicCp
-- prove mkfs
-- prove that unlink never fails
+- global sync with nop-spec
+- dwrite without calling flushall in GroupLog
 
+- prove AtomicCp
+- prove that unlink never fails
 - clean up DirTree (no lists, update_subtree_helper, etc)
 - bring back ByteFile
 - high-performance extraction
