@@ -91,6 +91,18 @@ Definition treeseq_one_upd (t: treeseq_one) pathname off v :=
 Definition tsupd (ts: treeseq) pathname off v :=
   d_map (fun t => treeseq_one_upd t pathname off v) ts.
 
+(* XXX to prove this property when creating a new file, we would have to issue a sync,
+ * since otherwise inode number reuse can make this false.  a solution may be to add
+ * generation numbers to inodes (perhaps just keeping them as ghost state).  with
+ * generation numbers, [dirtree_safe] could be more specific in stating that the block
+ * should only be belong to inodes with the same generation#.
+ *)
+Definition no_inode_regrow ilist1 ilist2 inum :=
+  forall off bn1 bn2,
+    BFILE.block_belong_to_file ilist1 bn1 inum off ->
+    BFILE.block_belong_to_file ilist2 bn2 inum off ->
+    bn1 = bn2.
+
 (* XXX maybe need a bit more disallow alloc, free, re-alloc of bn in treeseq. *)
 Definition treeseq_upd_safe Ftree pathname inum bn off (to : treeseq_one) :=
     BFILE.block_is_unused (fst (TSfree to)) bn \/
