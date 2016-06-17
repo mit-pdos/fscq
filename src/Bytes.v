@@ -177,3 +177,12 @@ Proof. intros. rewrite H. reflexivity. Qed.
 Lemma bcombine_list_contr: forall a l, 
 bcombine (byte2bytes a) (bcombine_list l) = bcombine_list (a::l).
 Proof. intros; reflexivity. Qed.
+
+Lemma selN_O_bsplit_list: forall sz (bs: bytes (1 + sz)) def,
+selN (bsplit_list bs) 0 def = bsplit1 1 sz bs.
+Proof.
+intros.
+simpl.
+unfold bsplit1_dep.
+reflexivity.
+Qed.

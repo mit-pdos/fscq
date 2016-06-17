@@ -596,16 +596,12 @@ repeat erewrite selN_map.
 erewrite skipn_selN.
 rewrite <- plus_n_O.
 unfold valuset2bytesets.
-unfold byteset0.
-rewrite mapfst_maplist2byteset with (def:= byte0).
-rewrite mapselN_fold_elem.
-erewrite selN_map.
 unfold nelist2list.
+rewrite map_cons.
+rewrite mapfst_valuset2bytesets.
 reflexivity.
 
-unfold nelist2list.
-simpl.
-omega.
+apply valu2list_len.
 
 rewrite skipn_length.
 apply Nat.lt_add_lt_sub_r.
@@ -652,8 +648,6 @@ repeat destruct H14.
 repeat destruct H6.
 rewrite map_length.
 apply valuset2bytesets_len.
-unfold not; intros.
-inversion H6.
 
 apply H5.
 
@@ -677,8 +671,6 @@ rewrite H12 in H6.
 rewrite in_map_iff in H6.
 repeat destruct H6.
 apply valuset2bytesets_len.
-unfold not; intros.
-inversion H6.
 
 rewrite Forall_forall; intros.
 rewrite H12 in H6.
@@ -686,8 +678,6 @@ rewrite skipn_map_comm in H6.
 rewrite in_map_iff in H6.
 repeat destruct H6.
 apply valuset2bytesets_len.
-unfold not; intros.
-inversion H6.
 
 simpl.
 rewrite <- plus_n_O.
@@ -698,8 +688,6 @@ rewrite H12 in H6.
 rewrite in_map_iff in H6.
 repeat destruct H6.
 apply valuset2bytesets_len.
-unfold not; intros.
-inversion H6.
 
 apply list2nmem_arrayN_bound in H4.
 destruct H4.
@@ -717,9 +705,8 @@ apply H4.
 apply byteset0.
 
 Grab Existential Variables.
-apply valuset0.
-apply valu0.
 apply nil.
+apply valuset0.
 apply byteset0.
 Qed.
 
