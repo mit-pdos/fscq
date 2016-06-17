@@ -413,6 +413,30 @@ Proof.
   repeat rewrite insert_ne; auto.
 Qed.
 
+Lemma mem_disjoint_mem_union_split_l : forall (m1 m2 m3 : @mem AT AEQ V),
+  mem_disjoint m1 m3 ->
+  mem_disjoint m2 m3 ->
+  mem_disjoint (mem_union m1 m2) m3.
+Proof.
+  unfold mem_disjoint, mem_union; intuition repeat deex.
+  destruct (m1 a) eqn:?.
+  - inversion H2; subst.
+    apply H; do 3 eexists; intuition eauto.
+  - apply H0; do 3 eexists; intuition eauto.
+Qed.
+
+Lemma mem_disjoint_mem_union_split_r : forall (m1 m2 m3 : @mem AT AEQ V),
+  mem_disjoint m1 m2 ->
+  mem_disjoint m1 m3 ->
+  mem_disjoint m1 (mem_union m2 m3).
+Proof.
+  intros.
+  apply mem_disjoint_comm.
+  apply mem_disjoint_mem_union_split_l.
+  apply mem_disjoint_comm; auto.
+  apply mem_disjoint_comm; auto.
+Qed.
+
 Theorem sep_star_comm1:
   forall (p1 p2 : @pred AT AEQ V),
   (p1 * p2 =p=> p2 * p1)%pred.
@@ -849,6 +873,43 @@ Proof.
   - unfold mem_disjoint, not; intros.
     repeat deex.
     congruence.
+Qed.
+
+Lemma ptsto_exact_domain : forall a v,
+  exact_domain (@ptsto AT AEQ V a v).
+Proof.
+  unfold exact_domain, ptsto; intuition.
+  destruct (AEQ a a0); subst; intuition; congruence.
+  destruct (AEQ a a0); subst; intuition; congruence.
+Qed.
+
+Lemma ptsto_exis_exact_domain : forall a,
+  @exact_domain AT AEQ V (a |->?).
+Proof.
+  unfold exact_domain, ptsto; intuition.
+  destruct H as [? [? ?] ].
+  destruct H0 as [? [? ?] ].
+  destruct (AEQ a a0); subst; intuition; congruence.
+  destruct H as [? [? ?] ].
+  destruct H0 as [? [? ?] ].
+  destruct (AEQ a a0); subst; intuition; congruence.
+Qed.
+
+Lemma ptsto_mem_is : forall a v,
+  @ptsto AT AEQ V a v (fun x => if (AEQ x a) then Some v else None).
+Proof.
+  unfold ptsto; intros; split; intros.
+  destruct (AEQ a a); congruence.
+  destruct (AEQ a' a); congruence.
+Qed.
+
+Lemma ptsto_exis_mem_is : forall a v,
+  (exists v, @ptsto AT AEQ V a v)%pred (fun x => if (AEQ x a) then Some v else None).
+Proof.
+  unfold ptsto, exis; intros.
+  exists v; split; intros.
+  destruct (AEQ a a); congruence.
+  destruct (AEQ a' a); congruence.
 Qed.
 
 Lemma ptsto_valid:
@@ -1730,6 +1791,23 @@ Proof.
     specialize (H2 x).
     destruct (m1 x); destruct (m1' x); destruct (m2 x); destruct (m2' x); firstorder;
       exfalso; eauto.
+Qed.
+
+Theorem exact_domain_disjoint_union' : forall (p : @pred AT AEQ V) m1 m2 m1' m2',
+  exact_domain p ->
+  mem_union m1 m2 = mem_union m1' m2' ->
+  mem_disjoint m1 m2 ->
+  mem_disjoint m1' m2' ->
+  p m2 ->
+  p m2' ->
+  m1 = m1' /\ m2 = m2'.
+Proof.
+  intros.
+  apply and_comm.
+  apply mem_disjoint_comm in H1.
+  apply mem_disjoint_comm in H2.
+  eapply exact_domain_disjoint_union; eauto.
+  setoid_rewrite mem_union_comm at 1 2; auto.
 Qed.
 
 Theorem septract_sep_star :

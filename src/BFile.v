@@ -485,7 +485,8 @@ Module BFILE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
            [[[ m' ::: (Fm * rep bxps ixp (repeat bfile0 n) (repeat INODE.inode0 n) frees * 
                             @IAlloc.rep bfile ibxp freeinodes freeinode_pred) ]]] *
-           [[ n = ((IXLen ixp) * INODE.IRecSig.items_per_val)%nat /\ n > 1 ]]
+           [[ n = ((IXLen ixp) * INODE.IRecSig.items_per_val)%nat /\ n > 1 ]] *
+           [[ forall dl, length dl = n -> arrayN (@ptsto _ _ _) 0 dl =p=> freeinode_pred ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} init lxp bxps ibxp ixp ms.
   Proof.
@@ -566,9 +567,19 @@ Module BFILE.
     rewrite valulen_is.
     compute; omega.
 
-    all: auto; cancel.
-  Qed.
+    denote (_ =p=> freepred) as Hx; apply Hx.
+    substl (length dl); substl (IXLen ixp).
+    apply Rounding.mul_div; auto.
+    apply Nat.mod_divide; auto.
+    apply Nat.divide_mul_r.
+    unfold INODE.IRecSig.items_per_val.
+    apply Nat.mod_divide; auto.
+    rewrite valulen_is.
+    compute; auto.
 
+    all: auto; cancel.
+    Unshelve. eauto.
+  Qed.
 
   Theorem getlen_ok : forall lxp bxps ixp inum ms,
     {< F Fm Fi m0 m f flist ilist frees,

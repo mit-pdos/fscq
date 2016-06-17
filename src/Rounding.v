@@ -29,6 +29,19 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     destruct (mult_O_le (S n) b); auto; omega.
   Qed.
 
+  Lemma mul_div : forall a b,
+    a mod b = 0 ->
+    b > 0 ->
+    a / b * b = a.
+  Proof.
+    intros.
+    erewrite Nat.div_mod with (x := a) (y := b) by omega.
+    rewrite H, Nat.add_0_r.
+    setoid_rewrite Nat.mul_comm at 2.
+    rewrite Nat.div_mul by omega.
+    setoid_rewrite Nat.mul_comm at 2; auto.
+  Qed.
+
   Lemma lt_add_lt_sub : forall a b c,
     b <= a -> a < b + c -> a - b < c.
   Proof.

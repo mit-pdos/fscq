@@ -253,6 +253,19 @@ Section PtstoArray.
     eapply arrayN_oob'; eauto.
   Qed.
 
+  Lemma arrayN_oob_lt: forall (l : list V) i a m,
+    arrayN pts a l m ->
+    i < a ->
+    m i = None.
+  Proof.
+    induction l; intros; auto; simpl in *.
+    unfold sep_star in H; rewrite sep_star_is in H; unfold sep_star_impl in H.
+    repeat deex.
+    unfold mem_union.
+    unfold ptsto in H2; destruct H2; rewrite H2.
+    eapply IHl; eauto.
+    omega.
+  Qed.
 
   Lemma arrayN_updN_memupd : forall F l a i (v : V) m,
     (F * arrayN pts a l)%pred m ->

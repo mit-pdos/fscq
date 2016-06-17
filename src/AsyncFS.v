@@ -29,6 +29,7 @@ Require Import DiskLogHash.
 Require Import SuperBlock.
 Require Import DiskSet.
 Require Import Lia.
+Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
 Import ListNotations.
@@ -139,6 +140,82 @@ Module AFS.
     intros; omega.
   Qed.
 
+  Lemma arrayN_ptsto_mem_disjoint : forall V a l st m m' v,
+    arrayN (@ptsto _ _ V) st l m ->
+    (a |-> v)%pred m' ->
+    a < st \/ a >= st + length l ->
+    mem_disjoint m m'.
+  Proof.
+    intros.
+    unfold ptsto in H0; unfold mem_disjoint; intuition repeat deex.
+    - destruct (addr_eq_dec a a0); subst.
+      eapply arrayN_oob_lt in H; eauto; congruence.
+      specialize (H4 _ n); congruence.
+    - destruct (addr_eq_dec a a0); subst.
+      eapply arrayN_oob' with (i := a0 - st) in H; try omega.
+      replace (st + (a0 - st)) with a0 in H by omega; congruence.
+      specialize (H4 _ n); congruence.
+  Qed.
+
+  Lemma arrayN_ex_mem_disjoint : forall V l a m m' v,
+    arrayN_ex (@ptsto _ _ V) l a m ->
+    (a |-> v)%pred m' ->
+    mem_disjoint m m'.
+  Proof.
+    unfold arrayN_ex; intros.
+    destruct (lt_dec a (length l)).
+    - unfold sep_star in H; rewrite sep_star_is in H; unfold sep_star_impl in H.
+      repeat deex.
+      apply mem_disjoint_mem_union_split_l.
+      + eapply arrayN_ptsto_mem_disjoint.
+        pred_apply; cancel.
+        eauto.
+        right.
+        rewrite firstn_length_l; omega.
+      + eapply arrayN_ptsto_mem_disjoint.
+        pred_apply; cancel.
+        eauto.
+        omega.
+    - rewrite firstn_oob, skipn_oob in H by omega; simpl in H.
+      eapply arrayN_ptsto_mem_disjoint.
+      pred_apply; cancel.
+      eauto.
+      intuition omega.
+  Qed.
+
+  Lemma arrayN_ex_ptsto_exis : forall V l a p,
+    (arrayN (@ptsto _ _ V) 0 l =p=> p * a |->?) ->
+    a < length l ->
+    (arrayN_ex (@ptsto _ _ V) l a =p=> p).
+  Proof.
+    intros.
+    destruct l.
+    simpl in H0; inversion H0.
+    rewrite arrayN_except with (def := v) in H; eauto.
+    generalize H; unfold_sep_star; unfold pimpl; intros.
+    edestruct H1.
+    exists m; eexists.
+    intuition simpl.
+    2: apply ptsto_mem_is.
+    eapply arrayN_ex_mem_disjoint; eauto.
+    apply ptsto_mem_is.
+    repeat deex.
+    assert (x = m); subst; auto.
+    edestruct (exact_domain_disjoint_union'); eauto.
+    apply ptsto_exis_exact_domain.
+    eapply arrayN_ex_mem_disjoint; eauto.
+    apply ptsto_mem_is.
+    apply ptsto_exis_mem_is.
+  Qed.
+
+  Ltac equate_log_rep :=
+    match goal with
+    | [ r : BFILE.memstate,
+        H : context [ compute_xparams ?a1 ?a2 ?a3 ]
+        |- LOG.rep ?xp ?F ?d ?ms _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ * _ ] =>
+        equate d d'; equate ms' (MSLL (BFILE.mk_memstate (MSAlloc r) ms));
+        equate xp' (FSXPLog (compute_xparams a1 a2 a3))
+    end.
 
   Theorem mkfs_ok : forall cachesize data_bitmaps inode_bitmaps log_descr_blocks,
     {!!< disk,
@@ -223,40 +300,44 @@ Module AFS.
     step.
     step.
     rewrite latest_pushd.
-    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks).
-    eassign a3.
-    eassign (BFILE.mk_memstate (MSAlloc r_1) (a1, b1)).
+    equate_log_rep.
     cancel.
-
     unfold rep, IAlloc.rep; or_r.
     cancel.
-    admit.
+    denote (_ =p=> freeinode_pred) as Hy.
+    denote (freeinode_pred =p=> _) as Hz.
+    rewrite <- Hy in Hz by (apply repeat_length with (x := BFILE.bfile0)).
+    assert (1 < length (repeat BFILE.bfile0 (inode_bitmaps * valulen
+       / INODE.IRecSig.items_per_val * INODE.IRecSig.items_per_val))) as Hlen.
+    rewrite repeat_length; omega.
+    apply arrayN_ex_ptsto_exis in Hz; auto.
+    rewrite <- Hz.
+    pose proof (list2nmem_ptsto_cancel BFILE.bfile0 _ Hlen).
+    pred_apply; unfold tree_dir_names_pred.
+    cancel.
+    rewrite repeat_selN by auto.
+    apply SDIR.bfile0_empty.
+    apply emp_empty_mem.
 
     (* failure cases *)
     apply pimpl_any.
     step.
     step.
     step.
-    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks).
-    eassign d0.
-    eassign (BFILE.mk_memstate (MSAlloc r_1) (a5, b3)).
+    equate_log_rep.
     cancel.
     or_l; cancel.
 
     apply pimpl_any.
     step.
     step.
-    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks).
-    eassign d0.
-    eassign (BFILE.mk_memstate (MSAlloc r_1) (a5, b1)).
+    equate_log_rep.
     cancel.
     or_l; cancel.
 
     apply pimpl_any.
     step.
-    eassign (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks).
-    eassign d0.
-    eassign (BFILE.mk_memstate (MSAlloc r_1) (a1, b1)).
+    equate_log_rep.
     cancel.
     or_l; cancel.
 
@@ -265,7 +346,7 @@ Module AFS.
     apply gt_Sn_O.
 
     Unshelve. all: eauto; try exact ($0, nil).
-  Admitted.
+  Qed.
 
 
   Definition recover cachesize :=
