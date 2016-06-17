@@ -2459,7 +2459,7 @@ Proof.
   intros; omega.
 Qed.
 
-Definition wlshift' (sz : nat) (w : word sz) (nshift : nat) : word sz.
+Definition wlshift (sz : nat) (w : word sz) (nshift : nat) : word sz.
   refine (if lt_dec nshift sz then _ else wzero sz).
   refine (let nkeep := sz - nshift in _).
   erewrite sz_minus_nshift in w by eassumption.
@@ -2470,7 +2470,7 @@ Definition wlshift' (sz : nat) (w : word sz) (nshift : nat) : word sz.
   exact result.
 Defined.
 
-Definition wrshift' (sz : nat) (w : word sz) (nshift : nat) : word sz.
+Definition wrshift (sz : nat) (w : word sz) (nshift : nat) : word sz.
   refine (if lt_dec nshift sz then _ else wzero sz).
   refine (let nkeep := sz - nshift in _).
   erewrite sz_minus_nshift in w by eassumption; rewrite plus_comm in w.
@@ -2482,14 +2482,58 @@ Definition wrshift' (sz : nat) (w : word sz) (nshift : nat) : word sz.
   exact result.
 Defined.
 
-Definition wlshift (sz sz' : nat) (w : word sz) (nshift : word sz') :=
-  wlshift' w (wordToNat nshift).
-Definition wrshift (sz sz' : nat) (w : word sz) (nshift : word sz') :=
-  wrshift' w (wordToNat nshift).
-
 Notation "l ^<< r" := (@wlshift _ _ l%word r%word) (at level 35).
 Notation "l ^>> r" := (@wrshift _ _ l%word r%word) (at level 35).
 
+Theorem wlshift_0 : forall sz (w : word sz), @wlshift sz w 0 = w.
+Proof.
+  intros.
+  unfold wlshift.
+  destruct w; auto; simpl.
+  erewrite eq_rec_eq.
+  repeat f_equal; unfold eq_rec.
+  - rewrite whd_eq_rect; auto.
+  - erewrite wtl_eq_rect, split1_0; auto.
+  Grab Existential Variables.
+  auto.
+Qed.
+
+Theorem wrshift_0 : forall sz (w : word sz), @wrshift sz w 0 = w.
+Proof.
+  intros.
+  unfold wrshift.
+  destruct w; auto; simpl.
+  eq_rect_simpl.
+  unfold wzero; simpl.
+  erewrite WS_eq_rect.
+  f_equal.
+  eq_rect_simpl.
+  induction w; auto; simpl.
+  erewrite WS_eq_rect; f_equal; eauto.
+  Grab Existential Variables. auto.
+Qed.
+
+
+Theorem wlshift_le : forall sz (w : word sz) (n : nat) H,
+  wlshift w n = split1 sz n (eq_rec (n + sz) word (combine (wzero n) w) (sz + n) H).
+Proof.
+  intros.
+Admitted.
+
+Theorem wlshift_gt : forall sz (w : word sz) n, (n > sz)%nat ->
+  wlshift w n = wzero sz.
+Proof.
+  unfold wlshift; intros.
+  destruct lt_dec; try omega; auto.
+Qed.
+
+Theorem wlshift_bitwp : forall sz (w1 w2 : word sz) f n H,
+  wlshift (bitwp f w1 w2) n = split1 sz n (
+    eq_rec (n + sz) word (combine (wzero n) (bitwp f w1 w2)) (sz + n) H).
+Proof.
+  intros.
+  eapply wlshift_le.
+Qed.
 
 (* Setting an individual bit *)
 
