@@ -771,6 +771,83 @@ Module Rec.
       lia.
   Qed.
 
+  Definition word_mask (l n : nat) (idx : nat) : word (l * n).
+    destruct l eqn:H.
+    exact (wzero 0).
+    exact (wlshift (combine (wones n) (wzero (n0 * n))) (idx * n)).
+  Defined.
+
+
+  Theorem word_mask_gt : forall l n H idx, l > 0 ->
+    word_mask l n idx = eq_rec (n + (l * n - n)) word (combine (wones n) (wzero (l * n - n))) (l * n) H.
+  Proof.
+    intros l n.
+    remember (l * n - n) as e.
+    destruct l; auto.
+    intros; simpl in *.
+    assert (e = l * n) as HH by lia.
+    generalize dependent idx.
+    generalize dependent H.
+    generalize dependent H0.
+    rewrite HH.
+    intros.
+    eq_rect_simpl.
+    auto.
+  Qed.
+
+  Fact pow2_gt_0 : forall n, n > 0 -> n < pow2 n.
+  Proof.
+    induction n; try omega.
+    pose proof zero_lt_pow2 n.
+    simpl; omega.
+  Qed.
+
+  Definition word_updN_shift (l n : nat) (idx : nat) (w : word (l * n))
+                                             (v : word n) : word (l * n).
+    destruct l eqn:H.
+    exact w.
+    remember (zext v (n0 * n)) as v'.
+    remember (word_mask (S n0) n idx) as mask.
+    remember (n * idx) as shift.
+    remember (wlshift v' shift) as newmask.
+    exact ((w ^& (wnot mask)) ^| newmask).
+  Defined.
+
+  Theorem word_mask_eq_combine_zero : forall n l idx H,
+    l > 0 -> idx < l ->
+    word_mask l n idx = split1 (l * n) n (
+    eq_rec (idx + (n + (l * n - idx))) word
+    (combine (wzero idx) (combine (wones n) (wzero (l * n - idx))))
+    (l * n + n) H).
+  Proof.
+    intros.
+    assert (l * n >= n) by (induction l; lia).
+    erewrite word_mask_gt; auto.
+  Admitted.
+
+  Theorem word_updN_shift_equiv : forall l idx ft w v, idx < l ->
+    @word_updN_shift l (len ft) idx w v = @word_updN ft l idx w v.
+  Proof.
+    destruct l; auto.
+    intros.
+    unfold word_updN_shift.
+    erewrite word_mask_eq_combine_zero by omega.
+    unfold word_updN.
+    destruct lt_dec; try omega.
+  Admitted.
+
+  Definition word_updN' {ft : type} {l : nat} (idx : nat) (w : word (len (ArrayF ft l)))
+            (v : word (len ft)) : word (len (ArrayF ft l)) := @word_updN_shift l (len ft) idx w v.
+
+  Theorem word_updN'_equiv : forall ft l idx w v, idx < l ->
+    @word_updN' ft l idx w (to_word v) = @to_word (ArrayF ft l) (updN (of_word w) idx v).
+  Proof.
+    intros.
+    unfold word_updN'.
+    rewrite word_updN_shift_equiv; auto.
+    apply word_updN_equiv; auto.
+  Qed.
+
   Program Fixpoint word_concat {ft : type} (items : list (word (len ft)))
     : word ((len ft) * (List.length items)) :=
     match items with
