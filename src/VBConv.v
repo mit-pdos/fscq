@@ -42,7 +42,10 @@ selN l i def.
 Fixpoint valuset2bytesets_rec (vs: list (list byte)) i: list byteset :=
 match i with
 | O => nil
-| S i' => (valuset2bytesets_rec vs i')++((list2nelist byteset0 (map (selN' i' byte0) vs))::nil)
+| S i' => match vs with
+          | nil => nil
+          | _ =>  (valuset2bytesets_rec vs i')++((list2nelist byteset0 (map (selN' i' byte0) vs))::nil)
+          end
 end.
 
 Definition valuset2bytesets (vs: valuset): list byteset :=
@@ -55,7 +58,7 @@ match i with
 end.
 
 Definition bytesets2valuset (bs: list byteset) : valuset :=
-list2nelist valuset0 (bytesets2valuset_rec (map (@nelist2list byte) bs) (length(nelist2list (selN bs 0 byteset0)))).
+list2nelist valuset0 (bytesets2valuset_rec (map (@nelist2list byte) bs) (length(snd(selN bs 0 byteset0))+1)).
 
 Definition get_sublist {A:Type}(l: list A) (off len: nat) : list A :=
 firstn len (skipn off l).
@@ -106,10 +109,13 @@ intros; inversion H0.
 Qed.
 
 Lemma valuset2bytesets_rec_len: forall i l, 
-length(valuset2bytesets_rec l i) = i.
+l<> nil -> length(valuset2bytesets_rec l i) = i.
 Proof. intros.
 induction i.
 reflexivity.
+simpl.
+destruct l.
+destruct H; reflexivity.
 simpl.
 rewrite app_length.
 rewrite IHi.
@@ -123,6 +129,7 @@ Proof.
 intros.
 unfold valuset2bytesets.
 apply valuset2bytesets_rec_len.
+unfold not; intros; inversion H.
 Qed.
 
 (* helper le-lt lemmas. *)
@@ -266,6 +273,10 @@ rewrite valuset2bytesets_len.
 reflexivity.
 Qed.
 
+Lemma valuset2bytesets_rec_nil: forall i,
+valuset2bytesets_rec nil i = nil.
+Proof. intros; destruct i; reflexivity. Qed.
+
 
 Lemma valuset2bytesets2valuset: forall vs, bytesets2valuset (valuset2bytesets vs) = vs.
 Proof. Admitted.
@@ -325,3 +336,18 @@ reflexivity.
 apply functional_extensionality.
 intros; symmetry; apply fst_list2nelist.
 Qed.
+Lemma bcombine_list_contr: forall a l, 
+bcombine (byte2bytes a) (bcombine_list l) = bcombine_list (a::l).
+Proof. intros; reflexivity. Qed.
+
+Lemma list2valu2list: forall l, l<>nil -> valu2list (list2valu l) = l.
+Proof. Admitted.
+
+Lemma valu2list2valu: forall v, list2valu (valu2list v) = v.
+Proof. Admitted.
+
+(* (map fst
+        (valuset2bytesets_rec
+           (map valu2list
+              (nelist2list (BFILE.BFData f) ⟦ block_off ⟧))
+           valubytes))) *)

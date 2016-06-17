@@ -319,7 +319,7 @@ reflexivity.
 apply H0.
 Qed.
 
-Lemma selN_flat_map: forall f block_off i def def', 
+(* Lemma selN_flat_map: forall f block_off i def def', 
 block_off < length(BFILE.BFData f) -> i < valubytes ->
 selN (flat_map valuset2bytesets (BFILE.BFData f))  (block_off * valubytes  + i) def = 
 selN (valuset2bytesets(selN (BFILE.BFData f) block_off def')) i def.
@@ -338,7 +338,7 @@ destruct H1.
 rewrite <- H1.
 apply valuset2bytesets_len.
 apply H0.
-Qed.
+Qed. *)
 
 Lemma len_f_fy: forall f fy,
 ByFData fy =

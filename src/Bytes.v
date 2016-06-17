@@ -174,3 +174,6 @@ Qed.
 Lemma valu2bytes_preserve: forall v1 v2, v1 = v2 -> valu2bytes v1 = valu2bytes v2.
 Proof. intros. rewrite H. reflexivity. Qed.
 
+Lemma bcombine_list_contr: forall a l, 
+bcombine (byte2bytes a) (bcombine_list l) = bcombine_list (a::l).
+Proof. intros; reflexivity. Qed.
