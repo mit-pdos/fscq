@@ -9,8 +9,12 @@ Require Import AsyncDisk.
 Require Import Array.
 Require Import ListUtils.
 Require Import DirUtil.
+Require Import DirSep.
+
+Print DirSep.
 
 Import DIRTREE.
+Import ListNotations.
 
 Record treeseq_one := mk_tree {
   TStree  : DIRTREE.dirtree;
@@ -72,4 +76,39 @@ Proof.
   edestruct NEforall2_exists.
 
   edestruct dirtree_update_safe_pathname_vssync_vecs.
+Admitted.
+
+(* XXX if file smaller than off, don't update *)
+Definition treeseq_one_upd (t: treeseq_one) pathname off v :=
+  match find_subtree pathname (TStree t) with
+  | None => t
+  | Some (TreeFile inum f) => mk_tree (update_subtree pathname 
+                                (TreeFile inum (BFILE.mk_bfile (updN (BFILE.BFData f) off v) (BFILE.BFAttr f))) (TStree t))
+                         (TSilist t) (TSfree t)
+  | Some (TreeDir inum d) => t
+  end.
+
+Definition tsupd (ts: treeseq) pathname off v :=
+  d_map (fun t => treeseq_one_upd t pathname off v) ts.
+
+(* XXX maybe need a bit more disallow alloc, free, re-alloc of bn in treeseq. *)
+Definition treeseq_upd_safe Ftree pathname inum bn off (to : treeseq_one) :=
+    BFILE.block_is_unused (fst (TSfree to)) bn \/
+    (exists f,
+      ((Ftree * pathname |-> (inum, f))%pred  (dir2flatmem [] (TStree to)) /\
+       BFILE.block_belong_to_file (TSilist to) bn inum off)).
+
+Theorem treeseq_in_ds_upd : forall  F Ftop Ftree fsxp mscs ts ds mscs' pathname inum bn off v,
+  treeseq_in_ds F Ftop fsxp mscs ts ds ->
+  treeseq_pred (treeseq_upd_safe Ftree pathname inum off bn) ts ->
+  tree_rep F Ftop fsxp (tsupd ts pathname off v) !! (list2nmem (dsupd ds bn v) !!) ->
+  BFILE.MSAlloc mscs' = BFILE.MSAlloc mscs ->
+  treeseq_in_ds F Ftop fsxp mscs' (tsupd ts pathname off v) (dsupd ds bn v).
+Proof.
+  intros.
+  unfold treeseq_in_ds; simpl; intuition.
+  unfold treeseq_pred in H0.
+  unfold treeseq_upd_safe in H0.
+  unfold tsupd.
+  (* maybe using H0 we can prove goal, maybe n *)
 Admitted.
