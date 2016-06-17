@@ -178,22 +178,30 @@ Module AFSTreeSeqSep.
     eassumption.
   Qed.
 
+  (* XXX how to express f hasn't been shrunk and regrown? *)
+  Definition fixedpath Ftree pathname inum (to : treeseq_one) :=
+    DIRTREE.find_name pathname (TStree to) = None \/
+    exists f,
+      (Ftree * pathname |-> (inum, f))%pred  (dir2flatmem [] (TStree to)).
+
+  (* A less general version of AFS.update_fblock_d, but easier to use for applications. *)
   Theorem tree_update_fblock_d_ok : forall fsxp inum off v mscs,
     {< ds ts Fm Ftop Ftree pathname f Fd vs,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+      [[ treeseq_pred (fixedpath Ftree pathname inum) ts ]] *
       [[ (Ftree * pathname |-> (inum, f))%pred  (dir2flatmem [] (TStree ts!!)) ]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(mscs')
-      exists f' ds0 ds' ts' bn ilist,
+      exists ts' f' ds0 ds' bn ilist,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ ds' = dsupd ds0 bn (v, vsmerge vs) /\ BFILE.diskset_was ds0 ds ]] *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+       [[ treeseq_pred (fixedpath Ftree pathname inum) ts ]] *
        [[ BFILE.block_belong_to_file ilist bn inum off ]] *
        [[ MSAlloc mscs' = MSAlloc mscs ]] *
-       [[ (Ftree * pathname |-> (inum, f'))%pred 
-        (dir2flatmem [] (DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts'!!))) ]] *
+       [[ (Ftree * pathname |-> (inum, f'))%pred (dir2flatmem []  (TStree ts' !!)) ]] *
        [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
        [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
     XCRASH:hm'
@@ -208,7 +216,7 @@ Module AFSTreeSeqSep.
     eapply AFS.update_fblock_d_ok.
     cancel.
 
-    unfold treeseq_in_ds in H7.
+    unfold treeseq_in_ds in H8.
     intuition.
     unfold tree_rep in H.
     eassumption.
@@ -216,43 +224,38 @@ Module AFSTreeSeqSep.
     2: eassumption.
     2: eassumption.
 
-    unfold treeseq_in_ds in H7.
+    unfold treeseq_in_ds in H8.
     intuition.
     unfold tree_rep in H.
     distinct_names.
 
-
-    (* prestep.
+    prestep.
     norml; unfold stars; simpl.
-    safecancel. *)
-    step.
+    cancel.
 
-
-
-(*
-  evar (ts'': treeseq).
-   instantiate (ts' :=  (pushd (mk_tree (DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts !!))
-  (TSilist ts !!) (fst (TSfree ts !!), snd (TSfree ts !!))) ts)).
-*)
+    (* XXX ts' is ts but with bn updated.  we need a NEforall2_upd? *)
+    (* match goal with 
+    | [ |- treeseq_in_ds _ _ _ _ ?ts' _  ] =>
+      idtac ts'; replace ts' with (pushd (mk_tree (DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts !!))
+       (TSilist ts !!) (fst (TSfree ts !!), snd (TSfree ts !!))) ts)
+    end. *)
+    
+    (* XXX maybe along the following lines: *)
+    match goal with 
+    | [ |- treeseq_in_ds _ _ _ _ ?ts' _  ] =>
+      idtac ts'; replace ts' with (tsupd ts bn (v, vsverge vs))
+    end.
 
     unfold treeseq_in_ds.
     split.
 
-   match goal with 
-    | [ |- tree_rep _ _ _ (?ts' !!) _  ] =>
-      idtac ts'; replace (ts' !!) with (mk_tree (DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts !!))
-  (TSilist ts !!) (fst (TSfree ts !!), snd (TSfree ts !!)))
-    end.
- 
     pred_apply.
-    cancel.
     unfold tree_rep.
     cancel.
-    apply eq_sym.
-    eapply latest_pushd.
-    rewrite latest_pushd.
-    
-    (* XXX we need more restrictions on tree seq *)
+
+    eapply NEforall2_upd.
+
+    unfold NEforall2; simpl.
 
     admit.
 
