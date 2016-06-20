@@ -95,12 +95,18 @@ Definition treeseq_one_upd (t: treeseq_one) pathname off v :=
 Definition tsupd (ts: treeseq) pathname off v :=
   d_map (fun t => treeseq_one_upd t pathname off v) ts.
 
-Definition treeseq_upd_safe pathname bn off (to : treeseq_one) :=
-  forall f inum off',
-  (find_subtree pathname (TStree to) = Some (TreeFile inum f) /\
-   off < length (BFILE.BFData f) /\
-   off = off') <->
-  BFILE.block_belong_to_file (TSilist to) bn inum off'.
+Definition treeseq_upd_safe pathname off flag (tnewest tolder : treeseq_one) :=
+  forall bn inum f,
+  find_subtree pathname (TStree tnewest) = Some (TreeFile inum f) ->
+  BFILE.block_belong_to_file (TSilist tnewest) bn inum off ->
+  (BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn /\
+   ~ exists inum' f',
+   find_subtree pathname (TStree tolder) = Some (TreeFile inum' f') /\ off < length (BFILE.BFData f')
+   )
+  \/
+  (exists f',
+   find_subtree pathname (TStree tolder) = Some (TreeFile inum f') /\
+   BFILE.block_belong_to_file (TSilist tolder) bn inum off).
 
 Lemma Forall2_map2: forall  A (l1 : list A) B l2 T1 T2 (p : T1 -> T2 -> Prop) ( q : A -> B -> Prop) (f1 : A -> T1) (f2 : B -> T2),
     (forall a b, In a l1 -> In b l2 -> q a b -> p (f1 a) (f2 b)) ->
@@ -166,10 +172,11 @@ Lemma update_subtree_same_2 :
   update_subtree pn subtree tree = tree.
 Admitted.
 
-Theorem treeseq_in_ds_upd : forall  F Ftop fsxp mscs ts ds mscs' pathname bn off v inum' off',
-  BFILE.block_belong_to_file (TSilist (ts !!)) bn inum' off' ->
+Theorem treeseq_in_ds_upd : forall  F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f,
+  find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
+  BFILE.block_belong_to_file (TSilist (ts !!)) bn inum off ->
   treeseq_in_ds F Ftop fsxp mscs ts ds ->
-  treeseq_pred (treeseq_upd_safe pathname bn off) ts ->
+  treeseq_pred (treeseq_upd_safe pathname off (BFILE.MSAlloc mscs) (ts !!)) ts ->
   BFILE.MSAlloc mscs' = BFILE.MSAlloc mscs ->
   treeseq_in_ds F Ftop fsxp mscs' (tsupd ts pathname off v) (dsupd ds bn v).
 Proof.
@@ -180,17 +187,44 @@ Proof.
   unfold dsupd.
   eapply NEforall2_d_map; eauto.
   simpl; intros.
-  intuition.
-  eapply NEforall_d_in in H1 as H1'; eauto.
-  unfold treeseq_upd_safe in H1'.
-  case_eq (find_subtree pathname (TStree a)).
-  intros; case_eq d; intros; subst.
-  destruct (lt_dec off (length (BFILE.BFData b0))).
+  intuition; subst.
 
-  (* Case 1: pathname points to a file, and [off] is within bounds *)
+  eapply NEforall_d_in in H2 as H2'; [ | apply nthd_in_ds with (n := n) ].
+  unfold treeseq_upd_safe in H2'.
+  edestruct H2'.
+  eauto.
+  eauto.
+
+  (* case 1: block is unused and there's no filename at [pathname] that's longer than off *)
+  intuition.
   unfold tree_rep in *.
-  eapply dirtree_update_block with (v := v) in H6 as H6'; eauto.
-  2: eapply H1'; intuition eauto.
+  eapply dirtree_update_free with (v := v) in H7; eauto.
+  pred_apply.
+
+  case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
+  case_eq d; intros; subst.
+  destruct (lt_dec off (length (BFILE.BFData b))).
+  exfalso; eauto.
+
+  (* off out of bounds *)
+  unfold treeseq_one_upd; rewrite H4; simpl.
+  rewrite updN_oob by omega.
+  erewrite update_subtree_same_2. cancel.
+  eapply rep_tree_names_distinct; eauto.
+  destruct b; simpl in *; eauto.
+
+  (* pathname is a directory *)
+  unfold treeseq_one_upd; rewrite H4; simpl.
+  cancel.
+
+  (* pathname does not exist *)
+  unfold treeseq_one_upd; rewrite H4; simpl.
+  cancel.
+
+  (* case 2: block does exist, in the right pathname *)
+  repeat deex; intuition.
+  unfold tree_rep in *.
+  eapply dirtree_update_block with (v := v) in H7 as H7'; eauto.
   pred_apply.
   unfold treeseq_one_upd; rewrite H5; simpl.
   erewrite dirtree_update_inode_update_subtree.
@@ -198,103 +232,14 @@ Proof.
   eapply rep_tree_inodes_distinct; eauto.
   eapply rep_tree_names_distinct; eauto.
   eauto.
-  eauto.
 
-  (* Case 2: [off] is out of bounds *)
-  eapply NEforall2_d_in in H0.
-  2: reflexivity.
-  2: reflexivity.
-  intuition.
-  unfold treeseq_one_safe in H4.
-  unfold dirtree_safe in H4.
-  intuition.
-  edestruct H8.
-  eapply NEforall_d_in in H1; [ | eapply latest_in_ds ].
-  unfold treeseq_upd_safe in H1.
-  edestruct H1.
-  apply H9 in H; intuition.
-  eassumption.
-  eassumption.
-  intuition; repeat deex.
+  Search BFILE.block_belong_to_file length.
+  admit.
 
-  edestruct H1'.
-  apply H11 in H9; intuition.
-  exfalso; eauto.
-
-  unfold tree_rep in *.
-  eapply dirtree_update_free with (v := v) in H3; eauto.
-  pred_apply.
-
-  (* This should be a lemma *)
-  unfold treeseq_one_upd; rewrite H5; simpl.
-  rewrite updN_oob by omega.
-  erewrite update_subtree_same_2. cancel.
-  eapply rep_tree_names_distinct; eauto.
-  destruct b0; simpl in *; eauto.
-
-  (* Case 3: [pathname] points to a directory *)
-  eapply NEforall2_d_in in H0.
-  2: reflexivity.
-  2: reflexivity.
-  intuition.
-  unfold treeseq_one_safe in H4.
-  unfold dirtree_safe in H4.
-  intuition.
-  edestruct H8.
-  eapply NEforall_d_in in H1; [ | eapply latest_in_ds ].
-  unfold treeseq_upd_safe in H1.
-  edestruct H1.
-  apply H9 in H; intuition.
-  eassumption.
-  eassumption.
-  intuition; repeat deex.
-
-  edestruct H1'.
-  apply H11 in H9; intuition.
-  congruence.
-
-  unfold tree_rep in *.
-  eapply dirtree_update_free with (v := v) in H3; eauto.
-  pred_apply.
-
-  unfold treeseq_one_upd; rewrite H5; simpl.
-  cancel.
-
-  (* Case 4: [pathname] does not exist *)
-  eapply NEforall2_d_in in H0.
-  2: reflexivity.
-  2: reflexivity.
-  intuition.
-  unfold treeseq_one_safe in H7.
-  unfold dirtree_safe in H7.
-  intuition.
-  edestruct H10.
-  eapply NEforall_d_in in H1; [ | eapply latest_in_ds ].
-  unfold treeseq_upd_safe in H1.
-  edestruct H1.
-  apply H11 in H; intuition.
-  eassumption.
-  eassumption.
-  intuition; repeat deex.
-
-  edestruct H1'.
-  apply H7 in H11; intuition.
-  congruence.
-
-  unfold tree_rep in *.
-  subst.
-  eapply dirtree_update_free with (v := v) in H8; [ | eassumption ].
-  pred_apply.
-
-  unfold treeseq_one_upd; rewrite H5; simpl.
-  cancel.
-
-  apply nthd_in_ds.
-
-  rename H0 into H0'.
-  eapply NEforall2_d_in in H0' as H0; try eassumption; intuition.
+  (* now, prove treeseq_one_safe.. *)
+  rename H1 into H1'.
+  eapply NEforall2_d_in in H1' as H1; try eassumption; intuition.
   unfold treeseq_one_safe in *.
-
   rewrite d_map_latest.
 
   (* First, prove some intermediate thing that will be useful in all 3 cases below.. *)
@@ -303,60 +248,66 @@ Proof.
     (BFILE.pick_balloc (TSfree (treeseq_one_upd ts !! pathname off v)) (MSAlloc mscs'))
     (TStree (treeseq_one_upd ts !! pathname off v))).
 
-  (* Here, consider three cases, to decide whether the right [treeseq_one_upd] had an effect *)
+  eapply NEforall_d_in in H2; [ | eapply latest_in_ds ].
+  unfold treeseq_upd_safe in H2.
+  edestruct H2.
+  eauto.
+  eauto.
+
+  (* block is unused *)
+  intuition.
   case_eq (find_subtree pathname (TStree ts !!)).
   intros; case_eq d; intros; subst.
-  destruct (lt_dec off (length (BFILE.BFData b0))).
+  destruct (lt_dec off (length (BFILE.BFData b))).
 
-  (* all in range.. *)
-  eapply NEforall_d_in in H1; [ | eapply latest_in_ds ].
-  unfold treeseq_upd_safe in H1.
-
-  unfold treeseq_one_upd; rewrite H0; simpl.
-  eapply dirtree_safe_dupdate; eauto.
-  congruence.
-
-  eapply H1.
-  intuition eauto.
+  (* cannot be in-range *)
+  exfalso; eauto.
 
   (* out of range *)
-  unfold treeseq_one_upd; rewrite H0; simpl.
+  unfold treeseq_one_upd; rewrite H1; simpl.
   rewrite updN_oob by omega.
-  rewrite H2.
+  rewrite H3.
   rewrite update_subtree_same_2.
   eauto.
 
-  eapply NEforall2_d_in in H0'. intuition.
+  eapply NEforall2_d_in in H1'. intuition.
   unfold tree_rep in *.
   eapply rep_tree_names_distinct; eauto.
   rewrite nthd_oob; auto.
   eauto.
-  destruct b0; simpl in *; eauto.
+  destruct b; simpl in *; eauto.
 
   (* it's a directory *)
-  unfold treeseq_one_upd; rewrite H0; simpl.
-  rewrite H2.
+  unfold treeseq_one_upd; rewrite H1; simpl.
+  rewrite H3.
   eauto.
 
   (* it's not present *)
-  intros; subst.
-  unfold treeseq_one_upd; rewrite H0; simpl.
-  rewrite H2.
+  intros.
+  unfold treeseq_one_upd; rewrite H1; simpl.
+  rewrite H3.
+  eauto.
+
+  (* block IS USED *)
+  repeat deex; intuition.
+  unfold treeseq_one_upd; rewrite H6; simpl.
+  eapply dirtree_safe_dupdate; eauto.
+  rewrite H3.
   eauto.
 
   (* First, consider whether the left [treeseq_one_upd] had an effect *)
-  case_eq (find_subtree pathname (TStree a)).
+  case_eq (find_subtree pathname (TStree (nthd n ts))).
   intros; case_eq d; intros; subst.
-  unfold treeseq_one_upd at 1 2 3; rewrite H9; simpl.
+  unfold treeseq_one_upd at 1 2 3; rewrite H6; simpl.
   eapply dirtree_safe_update_subtree; eauto.
 
   (* Directory *)
-  unfold treeseq_one_upd at 1 2 3; rewrite H9; simpl.
+  unfold treeseq_one_upd at 1 2 3; rewrite H6; simpl.
   eauto.
 
   (* Not present *)
   intros; subst.
-  unfold treeseq_one_upd at 1 2 3; rewrite H9; simpl.
+  unfold treeseq_one_upd at 1 2 3; rewrite H6; simpl.
   eauto.
 
   Unshelve.
