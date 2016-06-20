@@ -186,7 +186,7 @@ Module AFSTreeSeqSep.
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ treeseq_pred (treeseq_upd_safe Ftree pathname inum bn off) ts ]] *
+      [[ treeseq_pred (treeseq_upd_safe pathname bn off) ts ]] *
       [[ (Ftree * pathname |-> (inum, f))%pred  (dir2flatmem [] (TStree ts!!)) ]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(mscs')
@@ -194,7 +194,7 @@ Module AFSTreeSeqSep.
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
        [[ ts' = tsupd ts pathname off (v, vsmerge vs) ]] *
-       [[ treeseq_pred (treeseq_upd_safe Ftree pathname inum bn off) ts' ]] *
+       [[ treeseq_pred (treeseq_upd_safe pathname bn off) ts' ]] *
        [[ MSAlloc mscs' = MSAlloc mscs ]] *
        [[ (Ftree * pathname |-> (inum, f'))%pred (dir2flatmem []  (TStree ts' !!)) ]] *
        [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
@@ -211,25 +211,32 @@ Module AFSTreeSeqSep.
     eapply AFS.update_fblock_d_ok.
     cancel.
 
-    unfold treeseq_in_ds in H8.
-    intuition.
-    unfold tree_rep in H.
-    eassumption.
-    eapply dir2flatmem_find_subtree_ptsto.
-    2: eassumption.
-    2: eassumption.
+    unfold treeseq_in_ds, tree_rep in H8.
+    eapply NEforall2_d_in in H8.
+    intuition eauto.
+    eauto.
+    rewrite nthd_oob; eauto.
 
-    unfold treeseq_in_ds in H8.
-    intuition.
-    unfold tree_rep in H.
-    distinct_names.
+    eapply dir2flatmem_find_subtree_ptsto.
+    2: rewrite nthd_oob; eauto.
+    2: admit.
+    admit.
+
+    eauto.
 
     step.
     eapply treeseq_in_ds_upd; eauto.
+    rewrite nthd_oob in H18; eauto.
+    admit.
+
     unfold BFILE.diskset_was in H20.
     intuition.
     subst; eauto.
-    rewrite H4.
+    (* should be impossible once haogang gets rid of [diskset_was] *)
+    admit.
+
+    
+
     admit.  (* by assumption *)
     admit.  (* bn0 = bn? *)
     admit.  (* XXX need a lemma about tsupd. *)
