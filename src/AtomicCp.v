@@ -182,11 +182,11 @@ Module AFSTreeSeqSep.
    * This version puts additional constraints on the trees in the treeseq.
    *)
   Theorem tree_update_fblock_d_ok : forall fsxp inum off v mscs,
-    {< ds ts Fm Ftop Ftree pathname f Fd bn vs,
+    {< ds ts Fm Ftop Ftree pathname f Fd vs,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ treeseq_pred (treeseq_upd_safe pathname bn off) ts ]] *
+      [[ treeseq_pred (treeseq_upd_safe pathname off (MSAlloc mscs) (ts !!)) ts ]] *
       [[ (Ftree * pathname |-> (inum, f))%pred  (dir2flatmem [] (TStree ts!!)) ]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(mscs')
@@ -194,16 +194,19 @@ Module AFSTreeSeqSep.
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
        [[ ts' = tsupd ts pathname off (v, vsmerge vs) ]] *
-       [[ treeseq_pred (treeseq_upd_safe pathname bn off) ts' ]] *
+       [[ treeseq_pred (treeseq_upd_safe pathname off (MSAlloc mscs') (ts' !!)) ts' ]] *
        [[ MSAlloc mscs' = MSAlloc mscs ]] *
        [[ (Ftree * pathname |-> (inum, f'))%pred (dir2flatmem []  (TStree ts' !!)) ]] *
        [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
        [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
     XCRASH:hm'
       (* XXX update to use treeseq *)
+(*
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
        exists bn ilist, [[ BFILE.block_belong_to_file ilist bn inum off ]] *
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (dsupd ds bn (v, vsmerge vs)) hm'
+*)
+      any
    >} AFS.update_fblock_d fsxp inum off v mscs.
   Proof.
     intros.
@@ -226,6 +229,9 @@ Module AFSTreeSeqSep.
 
     step.
     eapply treeseq_in_ds_upd; eauto.
+    eapply dir2flatmem_find_subtree_ptsto.
+    admit.
+    eauto.
     rewrite nthd_oob in H18; eauto.
     admit.
 
@@ -235,7 +241,31 @@ Module AFSTreeSeqSep.
     (* should be impossible once haogang gets rid of [diskset_was] *)
     admit.
 
+Lemma NEforall_d_in':
+  forall T (p : T -> Prop) l, (forall x, d_in x l -> p x) -> NEforall p l.
+Admitted.
+
+    eapply NEforall_d_in'; intros.
+    apply d_in_d_map in H4; deex; intuition.
+    eapply NEforall_d_in in H7; try eassumption.
+    unfold tsupd; rewrite d_map_latest.
+
+    unfold treeseq_one_upd at 1.
+    erewrite dir2flatmem_find_subtree_ptsto.
+    3: eauto.
+
+    case_eq (DIRTREE.find_subtree pathname (TStree d')); intros; subst;
+    [ destruct d; [ destruct (lt_dec off (Datatypes.length (BFILE.BFData b))) | ] | ];
+    unfold treeseq_one_upd; rewrite H4; simpl;
+    unfold treeseq_upd_safe in *; simpl in *; intros.
+
+    (* XXX *)
     
+
+    unfold treeseq_upd_safe in *.
+
+    unfold treeseq_pred.
+    unfold tsupd.
 
     admit.  (* by assumption *)
     admit.  (* bn0 = bn? *)
