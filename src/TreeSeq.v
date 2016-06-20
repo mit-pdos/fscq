@@ -11,10 +11,11 @@ Require Import ListUtils.
 Require Import DirUtil.
 Require Import DirSep.
 
-Print DirSep.
 
 Import DIRTREE.
 Import ListNotations.
+
+
 
 Record treeseq_one := mk_tree {
   TStree  : DIRTREE.dirtree;
@@ -110,6 +111,33 @@ Definition treeseq_upd_safe Ftree pathname inum bn off (to : treeseq_one) :=
       ((Ftree * pathname |-> (inum, f))%pred  (dir2flatmem [] (TStree to)) /\
        BFILE.block_belong_to_file (TSilist to) bn inum off)).
 
+Lemma Forall2_map2: forall  A (l1 : list A) B l2 T1 T2 (p : T1 -> T2 -> Prop) ( q : A -> B -> Prop) (f1 : A -> T1) (f2 : B -> T2),
+    (forall a b, q a b -> p (f1 a) (f2 b)) ->
+    Forall2 q l1 l2 ->
+    Forall2 p (map f1 l1) (map f2 l2).
+Proof.
+  intros.
+  induction H0.
+  - simpl. eapply Forall2_nil.
+  - constructor.
+    specialize (H x y).
+    eapply H; eauto.
+    eauto. 
+Qed.
+
+Theorem NEforall2_d_map : forall T1 T2 A B (p : T1 -> T2 -> Prop) ( q : A -> B -> Prop) l1 (f1 : A -> T1) l2 (f2 : B -> T2),
+  (forall a b, q a b -> p (f1 a) (f2 b)) ->
+  NEforall2 q l1 l2 ->
+  NEforall2 p (d_map f1 l1) (d_map f2 l2).
+Proof.
+  destruct l1; destruct l2; unfold NEforall2; intuition; simpl in *.
+  specialize (H a b).
+  eapply H; auto.
+  eapply Forall2_map2.
+  eapply H.
+  eauto.
+Qed.
+
 Theorem treeseq_in_ds_upd : forall  F Ftop Ftree fsxp mscs ts ds mscs' pathname inum bn off v,
   treeseq_in_ds F Ftop fsxp mscs ts ds ->
   treeseq_pred (treeseq_upd_safe Ftree pathname inum off bn) ts ->
@@ -119,8 +147,18 @@ Theorem treeseq_in_ds_upd : forall  F Ftop Ftree fsxp mscs ts ds mscs' pathname 
 Proof.
   intros.
   unfold treeseq_in_ds; simpl; intuition.
-  unfold treeseq_pred in H0.
-  unfold treeseq_upd_safe in H0.
   unfold tsupd.
-  (* maybe using H0 we can prove goal, maybe n *)
+  unfold dsupd.
+  eapply NEforall2_d_map.
+  unfold treeseq_in_ds in H.
+  instantiate (1 := ((fun (t : treeseq_one) (d : list valuset) =>
+       tree_rep F Ftop fsxp t (list2nmem d) /\
+       treeseq_one_safe t ts !! mscs))).
+  intros; simpl.
+  simpl in H3.
+  intuition.
+  Focus 3.
+  unfold treeseq_in_ds in H.
+  intuition.
+  (* maybe now in right position to prove these obligations? *)
 Admitted.
