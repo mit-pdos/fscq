@@ -53,7 +53,7 @@ match i with
           end
 end.
 
-Search lt true.
+
 
 Fixpoint valuset2bytesets_rec (vs: list (list byte)) i : list byteset :=
 match i with
@@ -314,11 +314,6 @@ valuset2bytesets_rec nil i = nil.
 Proof. intros; destruct i; reflexivity. Qed.
 
 
-Lemma valuset2bytesets2valuset: forall vs, bytesets2valuset (valuset2bytesets vs) = vs.
-Proof. Admitted.
-
-Lemma bytesets2valuset2bytesets: forall bs, bs <> nil -> valuset2bytesets (bytesets2valuset bs) = bs.
-Proof. Admitted.
 
 
 Lemma firstn1 : forall A (l:list(list A)),
@@ -428,3 +423,92 @@ rewrite skipn_length.
 omega.
 omega.
 Qed.
+
+Definition cons' {A} (a: list A) b:= cons b a.
+
+Lemma v2b_rec_nil: forall l i,
+i = length l  ->
+valuset2bytesets_rec (l::nil) i = map (list2nelist byteset0) (map (cons' nil) l).
+Proof.
+induction l; intros.
+rewrite H; reflexivity.
+simpl.
+destruct i.
+inversion H.
+simpl.
+rewrite IHl.
+reflexivity.
+simpl in H.
+inversion H; reflexivity.
+Qed.
+
+(* Lemma v2b_rec_selN: forall i j l,
+length l = i -> j < i ->
+selN (valuset2bytesets_rec l i) j byteset0 = list2nelist byteset0 (map (selN' j byte0) l).
+Proof.
+induction i; intros.
+inversion H0.
+destruct l.
+reflexivity.
+destruct j.
+reflexivity.
+rewrite valuset2bytesets_rec_expand.
+replace (S i - 1) with i by omega.
+rewrite selN_cons.
+rewrite IHi.
+unfold list2nelist.
+simpl.
+rewrite map_map.
+simpl.
+
+simpl.
+inversion H0.
+rewrite <- IHi.
+simpl.
+simpl.
+destruct j.
+reflexivity.
+unfold list2nelist in IHl.
+destruct a.
+simpl.
+rewrite IHl. *)
+
+
+Lemma bsplit1_bsplit_list: forall sz (b: bytes (1 + (sz - 1))),
+(bsplit1 1 (sz - 1) b
+    :: bsplit_list (bsplit2 1 (sz - 1) b)) = bsplit_list b.
+Proof.
+intros.
+simpl.
+unfold bsplit1_dep, bsplit2_dep.
+reflexivity.
+Qed.
+
+Lemma valuset2bytesets2valuset: forall vs, bytesets2valuset (valuset2bytesets vs) = vs.
+Proof. Admitted.
+
+repeat rewrite valuset2bytesets_rec_expand.
+repeat rewrite map_cons.
+rewrite valuset2bytesets_rec_expand.
+simpl.
+repeat rewrite v2b_rec_nil.
+simpl.
+unfold singular, list2valu, bsplit1_dep, bsplit2_dep.
+simpl.
+rewrite map_map.
+unfold cons'.
+simpl.
+repeat rewrite map_map.
+simpl.
+rewrite map_id.
+Search bsplit_list.
+apply bytes2list2bytes.
+
+replace   (fun x : list (word 8) => fst (list2nelist byteset0 x))
+  with  (fun x : list (word 8) => selN x 0 byte0).
+unfold bsp
+unfold valuset2bytesets_rec.
+simpl.
+
+Lemma bytesets2valuset2bytesets: forall bs, bs <> nil -> valuset2bytesets (bytesets2valuset bs) = bs.
+Proof. Admitted.

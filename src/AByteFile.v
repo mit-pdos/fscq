@@ -67,8 +67,8 @@ UByFData ufy = concat (PByFData pfy).
 Definition bytefile_valid ufy fy: Prop :=
 ByFData fy = firstn (length(ByFData fy)) (UByFData ufy).
   
-Definition rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f pfy ufy fy :=
-(LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms) hm *
+Definition rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f fy :=
+( exists pfy ufy, LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms) hm *
 [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
 [[[ flist ::: (Fi * inum |-> f) ]]] *
 [[ proto_bytefile_valid f pfy ]] *
@@ -90,7 +90,7 @@ let^ (data) <- (ForN_ (fun i =>
         let^ (fms, block) <- BFILE.read lxp ixp inum (block_off + i) fms; (* get i'th block *)
         Ret ^(data++(valu2list block))%list (* append its contents *)
         
-        ))) 1 num_of_full_blocks
+        ))) 0 num_of_full_blocks
       (fun _:nat => (fun _ => (fun _ => (fun _ => (fun _ => True)%pred)))) (* trivial invariant *)
       (fun _:nat => (fun _ => (fun _ => True)%pred))) ^(nil);             (* trivial crashpred *)
 Ret ^(fms, data).
@@ -130,6 +130,7 @@ If (lt_dec 0 len)                        (* if read length > 0 *)
       (*Read first block*)
       let^ (fms, data_first) <- read_first_block lxp ixp inum fms block_off byte_off first_read_length;   (* get first block *)
       
+      let block_off := S block_off in
       let len_remain := (len - first_read_length) in  (* length of remaining part *)
       let num_of_full_blocks := (len_remain / block_size) in (* number of full blocks in length *)
       If (lt_dec 0 num_of_full_blocks)                        (* if read length > 0 *)
@@ -319,27 +320,6 @@ reflexivity.
 apply H0.
 Qed.
 
-(* Lemma selN_flat_map: forall f block_off i def def', 
-block_off < length(BFILE.BFData f) -> i < valubytes ->
-selN (flat_map valuset2bytesets (BFILE.BFData f))  (block_off * valubytes  + i) def = 
-selN (valuset2bytesets(selN (BFILE.BFData f) block_off def')) i def.
-Proof.
-intros.
-rewrite flat_map_concat_map.
-rewrite concat_hom_selN.
-erewrite selN_map.
-reflexivity.
-apply H.
-rewrite Forall_forall.
-intros.
-rewrite in_map_iff in H1.
-destruct H1.
-destruct H1.
-rewrite <- H1.
-apply valuset2bytesets_len.
-apply H0.
-Qed. *)
-
 Lemma len_f_fy: forall f fy,
 ByFData fy =
      firstn (length(ByFData fy))
@@ -357,7 +337,14 @@ Qed.
 Lemma addr_id: forall A (l: list A) a def, 
 a < length l ->
 ((diskIs (mem_except (list2nmem l) a)) * a |-> (selN l a def))%pred (list2nmem l).
-Proof. Admitted.
+
+Proof.
+intros.
+eapply diskIs_extract.
+eapply list2nmem_ptsto_cancel in H.
+pred_apply; cancel.
+firstorder.
+Qed.
 
 Lemma bytefile_unified_byte_len: forall ufy fy, 
 bytefile_valid ufy fy -> 
@@ -490,101 +477,131 @@ rewrite <- H0.
 apply H1.
 Qed.
 
-(*Specs*)
-Theorem read_first_block_ok: forall lxp bxp ixp inum fms block_off byte_off read_length,
- {< F Fm Fi Fd m0 m flist ilist frees f pfy ufy fy (data: list byteset),
-    PRE:hm
-          let file_length := (# (INODE.ABytes (ByFAttr fy))) in
-          let block_size := valubytes in
-           rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f pfy ufy fy  *
-           [[[ (ByFData fy) ::: (Fd * (arrayN (ptsto (V:= byteset)) (block_off * block_size + byte_off) data)) ]]] *
-           [[ 0 < read_length]] * 
-           [[ length data = read_length ]] *
-           [[ byte_off + read_length <= block_size]]
-    POST:hm' RET:^(fms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm' *
-          [[ r = (map fst data) ]] *
-          [[BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
-    CRASH:hm'  exists (fms':BFILE.memstate),
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm'
-    >} read_first_block lxp ixp inum fms block_off byte_off read_length.
+Fact inlen_bfile: forall f pfy ufy fy i j Fd data, 
+proto_bytefile_valid f pfy ->
+unified_bytefile_valid pfy ufy ->
+bytefile_valid ufy fy ->
+j < valubytes -> length data > 0 ->
+(Fd ✶ arrayN (ptsto (V:=byteset)) (i * valubytes + j) data)%pred (list2nmem (ByFData fy)) ->
+i < length (BFILE.BFData f).
 Proof.
-unfold read_first_block, rep.
-step.
-eapply list2nmem_arrayN_bound in H8.
-destruct H8.
-rewrite H in H7.
-inversion H7.
-rewrite len_f_fy with (f:=f) (fy:=fy) in H.
-apply le2lt_l in H.
-apply lt_weaken_l with (m:= byte_off) in H.
-apply lt_mult_weaken in H.
-apply H.
-apply H7.
-eapply bytefile_bfile_eq.
-apply H12.
-apply H11.
-apply H10.
-
-pose proof H12.
-eapply protobyte2block with (a:= block_off) in H12.
-apply H12.
-
-
-eapply unifiedbyte2protobyte with (a:= block_off * valubytes + byte_off) (k:= valubytes)in H11.
-rewrite div_eq in H11.
-apply H11.
-omega.
-unfold proto_bytefile_valid in H.
-apply Forall_forall; intros.
-rewrite H in H4.
-apply in_map_iff in H4.
+intros.
+eapply list2nmem_arrayN_bound in H4.
 destruct H4.
-inversion H4.
+rewrite H4 in H3.
+inversion H3.
+rewrite len_f_fy with (f:=f) (fy:=fy) in H4.
+apply le2lt_l in H4.
+apply lt_weaken_l with (m:= j) in H4.
+apply lt_mult_weaken in H4.
+apply H4.
+apply H3.
+eapply bytefile_bfile_eq.
+apply H.
+apply H0.
+apply H1.
+Qed.
+
+Fact block_exists: forall f pfy ufy fy i j Fd data,
+proto_bytefile_valid f pfy ->
+unified_bytefile_valid pfy ufy ->
+bytefile_valid ufy fy ->
+j < valubytes -> length data > 0 ->
+(Fd ✶ arrayN (ptsto (V:=byteset)) (i * valubytes + j) data)%pred (list2nmem (ByFData fy)) ->
+exists F vs, (F ✶ i |-> vs)%pred (list2nmem (BFILE.BFData f)).
+Proof.
+intros.
+repeat eexists.
+eapply unifiedbyte2protobyte with (a:= i * valubytes + j) (k:= valubytes)in H0.
+rewrite div_eq in H0.
+unfold proto_bytefile_valid in H.
+eapply protobyte2block; eauto.
+apply H2.
+apply Forall_forall; intros.
+rewrite H in H5.
+apply in_map_iff in H5.
+destruct H5.
+inversion H5.
 rewrite <- H6.
 apply valuset2bytesets_len.
-unfold nelist2list.
-unfold not; intros.
 omega.
-
 eapply byte2unifiedbyte.
-apply H10.
-rewrite arrayN_isolate with (i:=0) in H8.
-rewrite <- plus_n_O in H8.
-apply sep_star_assoc in H8.
-apply sep_star_comm in H8.
-apply sep_star_assoc in H8.
-apply sep_star_assoc in H8.
-apply H8.
-apply H7.
+eauto.
+pred_apply.
+rewrite arrayN_isolate with (i:=0).
+rewrite <- plus_n_O .
+cancel.
+auto.
+Grab Existential Variables.
+apply byteset0.
+Qed.
 
-step.
+Fact proto_len: forall f pfy,
+proto_bytefile_valid f pfy ->
+Forall (fun sublist : list byteset => length sublist = valubytes) (PByFData pfy).
+Proof.
+intros.
+apply Forall_forall; intros.
+rewrite H in H0.
+apply in_map_iff in H0.
+destruct H0.
+inversion H0.
+rewrite <- H1.
+apply valuset2bytesets_len.
+Qed.
+
+Fact proto_skip_len: forall f pfy i,
+proto_bytefile_valid f pfy ->
+Forall (fun sublist : list byteset => length sublist = valubytes) (skipn i (PByFData pfy)).
+Proof.
+intros.
+apply Forall_forall; intros.
+Search In skipn.
+apply in_skipn_in in H0.
+rewrite H in H0.
+rewrite in_map_iff in H0.
+repeat destruct H0.
+apply valuset2bytesets_len.
+Qed.
+
+Fact content_match: forall Fd f pfy ufy fy i j data,
+proto_bytefile_valid f pfy ->
+unified_bytefile_valid pfy ufy ->
+bytefile_valid ufy fy ->
+(Fd ✶ arrayN (ptsto (V:=byteset)) (i * valubytes + j) data)%pred (list2nmem (ByFData fy)) ->
+j < valubytes ->
+length data > 0 ->
+j + length data <= valubytes ->
+get_sublist (valu2list (fst (bytesets2valuset
+(get_sublist (UByFData ufy) (i * valubytes) valubytes)))) j (length data) = map fst data.
+ Proof.
+ intros.
+       
 unfold get_sublist.
-pose proof H8.
-apply arrayN_list2nmem in H8.
-rewrite H10 in H8.
-rewrite <- skipn_firstn_comm in H8.
-rewrite firstn_firstn in H8.
-rewrite Min.min_l in H8.
-rewrite skipn_firstn_comm in H8.
-rewrite H8.
+apply arrayN_list2nmem in H2 as H1'.
+rewrite H1 in H1'.
+rewrite <- skipn_firstn_comm in H1'.
+rewrite firstn_firstn in H1'.
+rewrite Min.min_l in H1'.
+rewrite skipn_firstn_comm in H1'.
+rewrite H1'.
 rewrite firstn_length.
 rewrite skipn_length.
 rewrite Min.min_l.
-rewrite H11.
+rewrite H0.
 rewrite concat_hom_skipn.
-replace (firstn valubytes (concat (skipn block_off (PByFData pfy))))
-  with (firstn (1 * valubytes) (concat (skipn block_off (PByFData pfy)))).
+replace (firstn valubytes (concat (skipn i (PByFData pfy))))
+  with (firstn (1 * valubytes) (concat (skipn i (PByFData pfy)))).
 rewrite concat_hom_firstn.
 rewrite firstn1.
 rewrite skipn_selN.
 rewrite <- firstn_map_comm.
 rewrite <- plus_n_O.
 rewrite Nat.add_comm.
-rewrite <- skipn_skipn with (m:= block_off * valubytes).
+rewrite <- skipn_skipn with (m:= i * valubytes).
 rewrite concat_hom_skipn.
 rewrite <- skipn_map_comm.
-rewrite H12.
+rewrite H.
 rewrite concat_map.
 erewrite selN_map.
 rewrite valuset2bytesets2valuset.
@@ -606,129 +623,126 @@ apply valu2list_len.
 rewrite skipn_length.
 apply Nat.lt_add_lt_sub_r.
 simpl.
-eapply list2nmem_arrayN_bound in H4.
-destruct H4.
-rewrite H4 in H7.
-inversion H7.
-rewrite len_f_fy with (f:=f) (fy:=fy) in H4.
-apply le2lt_l in H4.
-apply lt_weaken_l with (m:= byte_off) in H4.
-apply lt_mult_weaken in H4.
-apply H4.
-apply H7.
-eapply bytefile_bfile_eq.
-apply H12.
-apply H11.
-apply H10.
+eapply inlen_bfile; eauto.
 
 rewrite map_length.
 rewrite skipn_length.
 apply Nat.lt_add_lt_sub_r.
 simpl.
-eapply list2nmem_arrayN_bound in H4.
-destruct H4.
-rewrite H4 in H7.
-inversion H7.
-rewrite len_f_fy with (f:=f) (fy:=fy) in H4.
-apply le2lt_l in H4.
-apply lt_weaken_l with (m:= byte_off) in H4.
-apply lt_mult_weaken in H4.
-apply H4.
-apply H7.
-eapply bytefile_bfile_eq.
-apply H12.
-apply H11.
-apply H10.
+eapply inlen_bfile; eauto.
 
 rewrite Forall_forall; intros.
 rewrite in_map_iff in H6.
 repeat destruct H6.
-rewrite in_map_iff in H14.
-repeat destruct H14.
+rewrite in_map_iff in H7.
+repeat destruct H7.
 repeat destruct H6.
 rewrite map_length.
 apply valuset2bytesets_len.
+auto.
+eapply inlen_bfile; eauto.
+eapply proto_len; eauto.
 
-apply H5.
-
-eapply list2nmem_arrayN_bound in H4.
-destruct H4.
-rewrite H4 in H7.
-inversion H7.
-rewrite len_f_fy with (f:=f) (fy:=fy) in H4.
-apply le2lt_l in H4.
-apply lt_weaken_l with (m:= byte_off) in H4.
-apply lt_mult_weaken in H4.
-apply H4.
-apply H7.
-eapply bytefile_bfile_eq.
-apply H12.
-apply H11.
-apply H10.
-
-rewrite Forall_forall; intros.
-rewrite H12 in H6.
-rewrite in_map_iff in H6.
-repeat destruct H6.
-apply valuset2bytesets_len.
-
-rewrite Forall_forall; intros.
-rewrite H12 in H6.
-rewrite skipn_map_comm in H6.
-rewrite in_map_iff in H6.
-repeat destruct H6.
-apply valuset2bytesets_len.
+eapply proto_skip_len; eauto.
 
 simpl.
 rewrite <- plus_n_O.
 reflexivity.
 
-rewrite Forall_forall; intros.
-rewrite H12 in H6.
-rewrite in_map_iff in H6.
-repeat destruct H6.
-apply valuset2bytesets_len.
+eapply proto_len; eauto.
 
-apply list2nmem_arrayN_bound in H4.
-destruct H4.
-rewrite H4 in H7; inversion H7.
+apply list2nmem_arrayN_bound in H2.
+destruct H2.
+rewrite H2 in H4; inversion H4.
 apply Nat.le_add_le_sub_l.
-rewrite bytefile_unified_byte_len in H4.
-apply H4.
-apply H10.
+rewrite bytefile_unified_byte_len in H2.
+apply H2.
+auto.
 
-apply list2nmem_arrayN_bound in H4.
-destruct H4.
-rewrite H4 in H7; inversion H7.
-apply H4.
+apply list2nmem_arrayN_bound in H2.
+destruct H2.
+rewrite H2 in H4; inversion H4.
+apply H2.
 
 apply byteset0.
 
 Grab Existential Variables.
 apply nil.
 apply valuset0.
-apply byteset0.
 Qed.
+
+(*Specs*)
 
 
 Theorem read_middle_blocks_ok: forall lxp bxp ixp inum fms block_off num_of_full_blocks,
- {< F Fm Fi m0 m flist ilist frees f fy,
+ {< F Fm Fi Fd m0 m flist ilist frees f fy (data: list byteset),
     PRE:hm
-          let file_length := (wordToNat (INODE.ABytes (BFILE.BFAttr f))) in
+          let file_length := (# (INODE.ABytes (ByFAttr fy))) in
           let block_size := valubytes in
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms) hm *
-           [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
-           [[[ flist ::: (Fi * inum |-> f) ]]] *
-           [[ rep f fy ]] *
-           [[ block_off + num_of_full_blocks*block_size < file_length]]
+           rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f fy *
+           [[[ (ByFData fy) ::: (Fd * (arrayN (ptsto (V:=byteset)) (block_off * block_size) data))]]] *
+           [[ num_of_full_blocks > 0 ]] *
+           [[ length data = mult num_of_full_blocks block_size ]]
     POST:hm' RET:^(fms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm' *
-          [[ middle_blocks_match r fy block_off num_of_full_blocks]] *
+          [[ r = (map fst data)]] *
           [[BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
     CRASH:hm'  exists (fms':BFILE.memstate),
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm'
     >} read_middle_blocks lxp ixp inum fms block_off num_of_full_blocks.
-Proof. Admitted.
+Proof.
+unfold read_middle_blocks, rep.
+step.
+ Admitted.
+
+
+
+Theorem read_first_block_ok: forall lxp bxp ixp inum fms block_off byte_off read_length,
+ {< F Fm Fi Fd m0 m flist ilist frees f fy (data: list byteset),
+    PRE:hm
+          let file_length := (# (INODE.ABytes (ByFAttr fy))) in
+          let block_size := valubytes in
+           rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f fy  *
+           [[[ (ByFData fy) ::: (Fd * (arrayN (ptsto (V:= byteset)) (block_off * block_size + byte_off) data)) ]]] *
+           [[ 0 < read_length]] * 
+           [[ length data = read_length ]] *
+           [[ byte_off + read_length <= block_size]]
+    POST:hm' RET:^(fms', r)
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm' *
+          [[ r = (map fst data) ]] *
+          [[BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
+    CRASH:hm'  exists (fms':BFILE.memstate),
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm'
+    >} read_first_block lxp ixp inum fms block_off byte_off read_length.
+Proof.
+unfold read_first_block, rep.
+step.
+
+eapply inlen_bfile; eauto.
+omega.
+
+eapply protobyte2block; eauto.
+eapply unifiedbyte2protobyte with (a:= block_off * valubytes + byte_off) (k:= valubytes) in H11; try omega.
+rewrite div_eq in H11; try omega.
+apply H11.
+
+eapply proto_len; eauto.
+eapply byte2unifiedbyte; eauto.
+pred_apply.
+rewrite arrayN_isolate with (i:=0).
+rewrite <- plus_n_O .
+cancel.
+auto.
+
+step.
+
+eapply content_match; eauto.
+omega.
+Grab Existential Variables.
+apply byteset0. 
+Qed.
+
+
 
 Theorem read_last_block_ok: forall lxp bxp ixp inum fms block_off read_length,
  {< F Fm Fi m0 m flist ilist frees f fy,
