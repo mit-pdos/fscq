@@ -71,6 +71,12 @@ Section NonEmptyList.
   Definition pushd (d : T) (ds : nelist) : nelist :=
       (fst ds, d :: snd ds).
 
+  Theorem latest_pushd : forall d ds,
+    latest (pushd d ds) = d.
+  Proof.
+    unfold pushd; intros; apply latest_cons.
+  Qed.
+
   Fixpoint pushdlist (dlist : list T) (ds : nelist) : nelist :=
       match dlist with
       | nil => ds
@@ -313,6 +319,19 @@ Section NonEmptyList.
     intros; unfold pushd; simpl; auto.
   Qed.
 
+  Lemma pushdlist_length: forall dlist ds,
+    length (snd (pushdlist dlist ds)) =
+    length dlist + length (snd ds).
+  Proof.
+    induction dlist.
+    reflexivity.
+    simpl.
+    intros.
+    rewrite IHdlist.
+    rewrite pushd_length.
+    omega.
+  Qed.
+
   Lemma nthd_pushd : forall l t n d,
     n <= length l
     -> nthd n (pushd d (t, l)) = nthd n (t, l).
@@ -429,4 +448,82 @@ Proof.
   destruct H.
   eexists; intuition eauto.
   apply d_in_In'; eauto.
+Qed.
+
+Definition NEforall T (p : T -> Prop) (l : nelist T) :=
+  p (fst l) /\ Forall p (snd l).
+Definition NEforall2 T1 T2 (p : T1 -> T2 -> Prop) (l1 : nelist T1) (l2 : nelist T2) :=
+  p (fst l1) (fst l2) /\ Forall2 p (snd l1) (snd l2).
+
+Theorem NEforall2_pushd : forall T1 T2 (p : T1 -> T2 -> _) l1 l2 e1 e2,
+  NEforall2 p l1 l2 ->
+  p e1 e2 ->
+  NEforall2 p (pushd e1 l1) (pushd e2 l2).
+Proof.
+  firstorder; simpl.
+  firstorder.
+Qed.
+
+Theorem NEforall_impl : forall T (p1 p2 : T -> Prop) l,
+  NEforall p1 l ->
+  (forall a, p1 a -> p2 a) ->
+  NEforall p2 l.
+Proof.
+  destruct l; unfold NEforall; intuition.
+  eapply Forall_impl; eauto.
+Qed.
+
+Theorem NEforall2_impl : forall T1 T2 (p1 p2 : T1 -> T2 -> Prop) l1 l2,
+  NEforall2 p1 l1 l2 ->
+  (forall a b, p1 a b -> p2 a b) ->
+  NEforall2 p2 l1 l2.
+Proof.
+  destruct l1; destruct l2; unfold NEforall2; intuition; simpl in *.
+  apply forall2_forall in H2 as H2'.
+  apply forall2_length in H2 as H2''.
+  apply forall_forall2; eauto.
+  eapply Forall_impl; eauto.
+  intros; destruct a; eauto.
+Qed.
+
+Theorem NEforall2_exists : forall T1 T2 (p p' : T1 -> T2 -> Prop) (f2 : T2 -> T2) l1 l2,
+  NEforall2 p l1 l2 ->
+  (forall e1 e2, p e1 e2 -> exists e1', p' e1' (f2 e2)) ->
+  exists l1',
+  NEforall2 p' l1' (d_map f2 l2).
+Proof.
+Admitted.
+
+Definition list2nelist A def (l: list A) : nelist A :=
+  match l with
+  | nil => def
+  | h::t => pushdlist (rev t) (singular h)
+  end.
+
+Definition nelist2list A (nel: nelist A) : list A := (fst nel)::(snd nel).
+
+Lemma nelist2list2nelist: forall A (l: nelist A) def, 
+  list2nelist def (nelist2list l) = l.
+Proof.
+  intros.
+  unfold list2nelist, nelist2list.
+  unfold singular.
+  rewrite pushdlist_app.
+  rewrite rev_involutive.
+  rewrite app_nil_r.
+  symmetry; apply surjective_pairing.
+Qed.
+
+Lemma list2nelist2list: forall A (l: list A) def, 
+  l<>nil -> nelist2list (list2nelist def l) = l.
+Proof.
+  intros.
+  destruct l.
+  destruct H; reflexivity.
+  unfold list2nelist.
+  unfold singular.
+  rewrite pushdlist_app.
+  rewrite rev_involutive.
+  rewrite app_nil_r.
+  unfold nelist2list; reflexivity.
 Qed.

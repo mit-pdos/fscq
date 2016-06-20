@@ -20,20 +20,19 @@ Require Import Omega.
 Set Implicit Arguments.
 
 
-Definition hash_list T h values rx : prog T :=
+Definition hash_list h values :=
   let^ (hash) <- ForN i < length values
   Hashmap hm'
   Ghost [ l crash ]
   Loopvar [ hash ]
-  Continuation lrx
   Invariant
     [[ hash_list_rep (rev (firstn i values) ++ l) hash hm' ]]
   OnCrash crash
   Begin
     hash <- Hash (Word.combine (selN values i default_valu) hash);
-    lrx ^(hash)
+    Ret ^(hash)
   Rof ^(h);
-  rx hash.
+  Ret hash.
 
 
 Theorem hash_list_ok : forall h values,
@@ -93,4 +92,4 @@ Proof.
   all: econstructor.
 Qed.
 
-Hint Extern 1 ({{_}} progseq (hash_list _ _) _) => apply hash_list_ok : prog.
+Hint Extern 1 ({{_}} Bind (hash_list _ _) _) => apply hash_list_ok : prog.

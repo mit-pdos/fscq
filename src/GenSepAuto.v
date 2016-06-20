@@ -150,7 +150,7 @@ Ltac rewrite_list2nmem_pred :=
     first [
       is_var v; rewrite_list2nmem_pred_sel H; subst v |
       match prd with
-      | arrayN_ex ?ol ix =>
+      | arrayN_ex _ ?ol ix =>
         is_var l; rewrite_list2nmem_pred_upd H;
         [ subst l | simplen'; clear H .. ]
       end ]

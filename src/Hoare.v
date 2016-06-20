@@ -59,6 +59,7 @@ Notation "{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash cras
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ forall r_ ,
         {{ fun hm' done'_ crash'_ =>
            post F_ r_ * [[ exists l, hashmap_subset l hm hm' ]] *
@@ -69,7 +70,7 @@ Notation "{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash cras
           =p=> crash_ hm_crash ]]
      )) .. ))
    )%pred
-   (p1 rx)%pred)
+   (Bind p1 rx)%pred)
   (at level 0, p1 at level 60,
     hm at level 0, hm' at level 0, hm_crash at level 0,
     e1 closed binder, e2 closed binder).
@@ -88,6 +89,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >} p1" :=
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ forall r_ ,
         {{ fun hm' done'_ crash'_ =>
            post F_ r_ * [[ exists l, hashmap_subset l hm hm' ]] *
@@ -98,7 +100,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >} p1" :=
           =p=> crash_ hm_crash ]]
      )) .. ))
    )%pred
-   (p1 rx)%pred)
+   (Bind p1 rx)%pred)
   (at level 0, p1 at level 60,
     e1 closed binder, e2 closed binder).
 
@@ -107,6 +109,26 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >} p1" :=
  * The {!< .. >!} notation is the same as above, except it lacks a frame
  * predicate.  This is useful for bootstrapping-style programs.
  *)
+Notation "{!!< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash crash >!!} p1" :=
+  (forall T (rx: _ -> prog T), corr2
+   (fun hm done_ crash_ =>
+    (exis (fun e1 => .. (exis (fun e2 =>
+     pre *
+     [[ forall r_,
+        {{ fun hm' done'_ crash'_ =>
+           post emp r_ * [[ exists l, hashmap_subset l hm hm' ]] *
+           [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
+        }} rx r_ ]] *
+     [[ forall (hm_crash : hashmap),
+        crash * [[ exists l, hashmap_subset l hm hm_crash ]]
+          =p=> crash_ hm_crash ]]
+     )) .. ))
+   )%pred
+   (Bind p1 rx)%pred)
+  (at level 0, p1 at level 60,
+    hm at level 0, hm' at level 0, hm_crash at level 0,
+    e1 closed binder, e2 closed binder).
+
 Notation "{!< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >!} p1" :=
   (forall T (rx: _ -> prog T), corr2
    (fun hm done_ crash_ =>
@@ -122,7 +144,7 @@ Notation "{!< e1 .. e2 , 'PRE' pre 'POST' post 'CRASH' crash >!} p1" :=
           =p=> crash_ hm_crash ]]
      )) .. ))
    )%pred
-   (p1 rx)%pred)
+   (Bind p1 rx)%pred)
   (at level 0, p1 at level 60, e1 binder, e2 binder).
 
 
@@ -136,6 +158,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'XCRASH' crash >} p1" :=
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ forall r_,
         {{ fun hm' done'_ crash'_ =>
            post F_ r_ * [[ exists l, hashmap_subset l hm hm' ]] *
@@ -147,7 +170,7 @@ Notation "{< e1 .. e2 , 'PRE' pre 'POST' post 'XCRASH' crash >} p1" :=
           crash_ hm_crash)%pred ]]
      )) .. ))
    )%pred
-   (p1 rx)%pred)
+   (Bind p1 rx)%pred)
   (at level 0, p1 at level 60,
     e1 closed binder, e2 closed binder).
 
@@ -157,6 +180,7 @@ Notation "{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'XCRASH' : hm_crash cra
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ forall r_,
         {{ fun hm' done'_ crash'_ =>
            post F_ r_ * [[ exists l, hashmap_subset l hm hm' ]] *
@@ -168,7 +192,7 @@ Notation "{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'XCRASH' : hm_crash cra
           crash_ hm_crash)%pred ]]
      )) .. ))
    )%pred
-   (p1 rx)%pred)
+   (Bind p1 rx)%pred)
   (at level 0, p1 at level 60,
     hm at level 0, hm' at level 0, hm_crash at level 0,
     e1 closed binder, e2 closed binder).
@@ -185,6 +209,7 @@ Notation "{<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_rec crash >
    (fun hm done_ crashdone_ =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
         {{ fun hm' done'_ crash'_ => post F_ r_ *
@@ -205,8 +230,8 @@ Notation "{<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_rec crash >
             =p=> F_ * idemcrash hm_crash ]]
         }} rxREC r_ ]]
    )%pred
-   (p1 rxOK)%pred
-   (p2 rxREC)%pred)) .. ))
+   (Bind p1 rxOK)%pred
+   (Bind p2 rxREC)%pred)) .. ))
   (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
    hm at level 0, hm' at level 0, hm_rec at level 0,
    post at level 1, crash at level 1).
@@ -218,6 +243,7 @@ Notation "{X<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_rec crash 
    (fun hm done_ crashdone_ =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
         {{ fun hm' done'_ crash'_ => post F_ r_ *
@@ -230,8 +256,8 @@ Notation "{X<< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'REC' : hm_rec crash 
           [[ done'_ = crashdone_ ]]
         }} rxREC r_ ]]
    )%pred
-   (p1 rxOK)%pred
-   (p2 rxREC)%pred)) .. ))
+   (Bind p1 rxOK)%pred
+   (Bind p2 rxREC)%pred)) .. ))
   (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
    hm at level 0, hm' at level 0, hm_rec at level 0,
    post at level 1, crash at level 1).
@@ -245,6 +271,7 @@ Notation "{<< e1 .. e2 , 'PRE' pre 'POST' post 'REC' crash >>} p1 >> p2" :=
    (fun hm done_ crashdone_ =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
         {{ fun hm' done'_ crash'_ => post F_ r_ *
@@ -265,8 +292,8 @@ Notation "{<< e1 .. e2 , 'PRE' pre 'POST' post 'REC' crash >>} p1 >> p2" :=
             =p=> F_ * idemcrash hm_crash ]]
         }} rxREC r_ ]]
    )%pred
-   (p1 rxOK)%pred
-   (p2 rxREC)%pred)) .. ))
+   (Bind p1 rxOK)%pred
+   (Bind p2 rxREC)%pred)) .. ))
   (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
    post at level 1, crash at level 1).
 
@@ -283,6 +310,7 @@ Notation "{<<< e1 .. e2 , 'PRE' pre 'POST' post >>>} p1 >> p2" :=
    (fun done_ crashdone_ =>
      exists F_,
      F_ * pre *
+     [[ sync_invariant F_ ]] *
      [[ crash_xform F_ =p=> F_ ]] *
      [[ forall r_,
         {{ fun done'_ crash'_ => post F_ (Complete r_) *
@@ -293,8 +321,8 @@ Notation "{<<< e1 .. e2 , 'PRE' pre 'POST' post >>>} p1 >> p2" :=
                                  [[ done'_ = crashdone_ ]] * [[ crash'_ =p=> F_ * idemcrash ]]
         }} rxREC r_ ]]
    )%pred
-   (p1 rxOK)%pred
-   (p2 rxREC)%pred)) .. ))
+   (Bind p1 rxOK)%pred
+   (Bind p2 rxREC)%pred)) .. ))
   (at level 0, p1 at level 60, p2 at level 60, e1 binder, e2 binder,
    post at level 1).
 

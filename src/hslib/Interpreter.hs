@@ -33,32 +33,37 @@ debugmsg s =
     return ()
 
 run_dcode :: Disk.DiskState -> Prog.Coq_prog a -> IO a
-run_dcode _ (Done r) = do
+run_dcode _ (Ret r) = do
   debugmsg $ "Done"
   return r
-run_dcode ds (Read a rx) = do
+run_dcode ds (Read a) = do
   debugmsg $ "Read " ++ (show a)
   val <- Disk.read_disk ds a
-  run_dcode ds $ rx val
-run_dcode ds (Write a v rx) = do
+  return $ unsafeCoerce val
+run_dcode ds (Write a v) = do
   debugmsg $ "Write " ++ (show a) ++ " " ++ (show v)
   Disk.write_disk ds a v
-  run_dcode ds $ rx ()
-run_dcode ds (Sync a rx) = do
-  debugmsg $ "Sync " ++ (show a)
-  Disk.sync_disk ds a
-  run_dcode ds $ rx ()
-run_dcode ds (Trim a rx) = do
+  return $ unsafeCoerce ()
+run_dcode ds Sync = do
+  debugmsg $ "Sync"
+  Disk.sync_disk ds
+  return $ unsafeCoerce ()
+run_dcode ds (Trim a) = do
   debugmsg $ "Trim " ++ (show a)
   Disk.trim_disk ds a
-  run_dcode ds $ rx ()
-run_dcode ds (Hash sz (W64 w) rx) = run_dcode ds (Hash sz (W $ fromIntegral w) rx)
-run_dcode ds (Hash sz (W w) rx) = do
+  return $ unsafeCoerce ()
+run_dcode ds (Hash sz (W64 w)) = run_dcode ds (Hash sz (W $ fromIntegral w))
+run_dcode _ (Hash sz (W w)) = do
   debugmsg $ "Hash " ++ (show sz) ++ " " ++ (show w)
   wbs <- Disk.i2bs w $ fromIntegral $ (sz + 7) `div` 8
   h <- return $ SHA256.hash wbs
   ih <- Disk.bs2i h
-  run_dcode ds $ rx (W ih)
+  return $ unsafeCoerce $ W ih
+run_dcode ds (Bind p1 p2) = do
+  debugmsg $ "Bind"
+  r1 <- run_dcode ds p1
+  r2 <- run_dcode ds (p2 r1)
+  return r2
 
-run :: Disk.DiskState -> ((a -> Prog.Coq_prog a) -> Prog.Coq_prog a) -> IO a
-run ds p = run_dcode ds $ p (\x -> Prog.Done x)
+run :: Disk.DiskState -> Prog.Coq_prog a -> IO a
+run ds p = run_dcode ds p

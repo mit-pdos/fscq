@@ -2198,6 +2198,15 @@ Proof.
   firstorder.
 Qed.
 
+Lemma incl_in_nil : forall T (l : list T),
+  incl l nil -> l = nil.
+Proof.
+  destruct l; auto; intros.
+  assert (In t nil).
+  apply H; constructor; auto.
+  inversion H0.
+Qed.
+
 Lemma incl_remove : forall T dec (a : T) (l : list T),
   incl (remove dec a l) l.
 Proof.

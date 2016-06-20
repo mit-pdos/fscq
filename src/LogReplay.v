@@ -478,7 +478,7 @@ Module LogReplay.
     ~ In a (map fst l) ->
     KNoDup l ->
     (F * a |-> v)%pred (list2nmem (replay_disk l d)) ->
-    ((arrayN_ex d a) * a |-> v)%pred (list2nmem d).
+    ((arrayN_ex (@ptsto _ addr_eq_dec valuset) d a) * a |-> v)%pred (list2nmem d).
   Proof.
     induction l; simpl; intros; auto.
     erewrite list2nmem_sel with (x := v); eauto.
@@ -501,7 +501,7 @@ Module LogReplay.
   Lemma ptsto_replay_disk_not_in : forall F a v d m,
     ~ Map.In a m ->
     (F * a |-> v)%pred (list2nmem (replay_disk (Map.elements m) d)) ->
-    ((arrayN_ex d a) * a |-> v)%pred (list2nmem d).
+    ((arrayN_ex (@ptsto _ addr_eq_dec valuset) d a) * a |-> v)%pred (list2nmem d).
   Proof.
     intros.
     eapply ptsto_replay_disk_not_in'; eauto.

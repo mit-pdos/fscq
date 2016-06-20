@@ -1,6 +1,6 @@
 Require Import Arith Omega.
 Require Import Word.
-Require Import Prog.
+Require Import WordAuto.
 Require Import Psatz.
 
 (* TODO: move byte-specific lemmas *)
@@ -15,6 +15,32 @@ Import Valulen.
 
 Definition divup (n unitsz : nat) : nat := (n + unitsz - 1) / unitsz.
 Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
+
+  Lemma div_le_mul : forall n a b,
+    b > 0 -> a > 0 -> n / a <= n * b.
+  Proof.
+    intros.
+    destruct n.
+    destruct a; cbv; auto.
+    destruct a; try omega.
+    eapply le_trans.
+    apply div_le; auto.
+    rewrite Nat.mul_comm.
+    destruct (mult_O_le (S n) b); auto; omega.
+  Qed.
+
+  Lemma mul_div : forall a b,
+    a mod b = 0 ->
+    b > 0 ->
+    a / b * b = a.
+  Proof.
+    intros.
+    erewrite Nat.div_mod with (x := a) (y := b) by omega.
+    rewrite H, Nat.add_0_r.
+    setoid_rewrite Nat.mul_comm at 2.
+    rewrite Nat.div_mul by omega.
+    setoid_rewrite Nat.mul_comm at 2; auto.
+  Qed.
 
   Lemma lt_add_lt_sub : forall a b c,
     b <= a -> a < b + c -> a - b < c.
