@@ -161,23 +161,46 @@ Module TREESEQ.
       eapply in_cons; eauto.
   Qed.
 
+  Lemma Forall2_map2': forall  A (l1 : list A) B l2 T1 T2 (p : T1 -> T2 -> Prop) ( q : A -> B -> Prop) (f1 : A -> T1) (f2 : B -> T2),
+      (forall a b n, selN l1 n a = a -> selN l2 n b = b -> q a b -> p (f1 a) (f2 b)) ->
+      Forall2 q l1 l2 ->
+      Forall2 p (map f1 l1) (map f2 l2).
+  Proof.
+    intros.
+    induction H0.
+    - simpl. eapply Forall2_nil.
+    - constructor.
+      specialize (H x y 0).
+      eapply H; eauto.
+      eapply IHForall2; intros.
+      eapply H; eauto.
+      instantiate (1 := (S n)).
+      admit.
+      admit.
+  Admitted.
+
   Theorem NEforall2_d_map : forall T1 T2 A B (p : T1 -> T2 -> Prop) ( q : A -> B -> Prop) l1 (f1 : A -> T1) l2 (f2 : B -> T2),
     (forall a b n, a = nthd n l1 -> b = nthd n l2 -> q a b -> p (f1 a) (f2 b)) ->
     NEforall2 q l1 l2 ->
     NEforall2 p (d_map f1 l1) (d_map f2 l2).
   Proof.
-  (*
-    destruct l1; destruct l2; unfold NEforall2; intuition; simpl in *.
-    eapply H; auto.
+    intros.
+    unfold NEforall2 in *.
+    unfold d_map in *.
+    simpl.
+    split.
+    specialize (H (fst l1) (fst l2) 0).
+    apply H.
     admit.
     admit.
-    eapply Forall2_map2; eauto; intros.
-    eapply H; eauto.
-    Search In nthd.
-    right; eauto.
-    right; eauto.
-  Qed.
-  *)
+    admit.
+    eapply Forall2_map2' with (q := q).
+    intros.
+    specialize (H a b n).
+    apply H; eauto.
+    admit.
+    admit.
+    intuition.
   Admitted.
 
   Lemma NEforall_d_in : forall T (p : T -> Prop) l x,
@@ -198,6 +221,12 @@ Module TREESEQ.
     p x y.
   Proof.
     intros.
+    rewrite H0.
+    rewrite H1.
+    unfold nthd.
+    eapply forall2_selN; eauto.
+
+    admit. (* l1 and l2 are non-empty *)
   Admitted.
 
   Lemma update_subtree_same: forall pn tree subtree,
