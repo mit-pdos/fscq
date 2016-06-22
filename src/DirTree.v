@@ -1329,10 +1329,69 @@ Module DIRTREE.
    * Helpers for higher levels that need to reason about updated trees.
    *)
 
-  (* XXX second premise is unnecessary *)
+ Lemma tree_names_distinct_head_name : forall inum name subtree rest,
+    tree_names_distinct (TreeDir inum ((name, subtree) :: rest)) ->
+    ~ In name (map fst rest).
+  Proof.
+    inversion 1.
+    simpl in *.
+    inversion H3; auto.
+  Qed.
+
+  Lemma tree_names_distinct_head_name' : forall  rest name  f,
+    map fst (map (update_subtree_helper f name) rest) = map fst rest.
+  Proof.
+    induction rest; simpl; intros.
+    auto.
+    erewrite IHrest.
+    unfold update_subtree_helper.
+    destruct a.
+    destruct (string_dec s name); eauto.
+  Qed.
+
+  Lemma map_update_subtree_helper_notfound : forall f name l,
+    ~ In name (map fst l) ->
+    map (update_subtree_helper f name) l = l.
+  Proof.
+   induction l; simpl; intros; auto.
+    rewrite IHl by intuition.
+    unfold update_subtree_helper.
+    destruct a.
+    destruct (string_dec s name); subst; simpl; auto.
+    firstorder.
+  Qed.
+
+  Lemma tree_name_distinct_rest: forall inum x l,
+        tree_names_distinct (TreeDir inum (x::l)) ->
+        tree_names_distinct (TreeDir inum l).
+  Proof.
+    intros.
+    inversion H.
+    rewrite map_cons in H2.
+    apply Forall_cons2 in H2.
+    rewrite map_cons in H3.
+    rewrite NoDup_cons_iff in H3.
+    intuition.
+    constructor; eauto.
+  Qed.
+
+  Lemma tree_name_distinct_head: forall inum name l t,
+        tree_names_distinct (TreeDir inum ((name, t)::l)) ->
+        tree_names_distinct t.
+  Proof.
+    intros.
+    destruct t.
+    constructor.
+    inversion H.
+    rewrite map_cons in H2.
+    apply Forall_inv in H2.
+    simpl in H2.
+    inversion H2.
+    constructor; eauto.
+  Qed.
+
   Theorem find_update_subtree : forall fnlist tree subtree subtree0,
     find_subtree fnlist tree = Some subtree0 ->
-    dirtree_inum subtree0 = dirtree_inum subtree ->
     find_subtree fnlist (update_subtree fnlist subtree tree) = Some subtree.
   Proof.
     induction fnlist; simpl; try congruence; intros.
@@ -1345,6 +1404,45 @@ Module DIRTREE.
   Qed.
 
   Hint Resolve find_update_subtree.
+
+  Lemma update_subtree_same: forall pn tree subtree,
+    tree_names_distinct tree ->
+    find_subtree pn tree = Some subtree ->
+    update_subtree pn subtree tree = tree.
+  Proof.
+    induction pn; simpl; intros.
+    - inversion H0; reflexivity.
+    - destruct tree; eauto.
+      f_equal.
+      induction l.
+      + simpl; eauto.
+      + erewrite map_cons.
+        unfold update_subtree_helper at 1.
+
+        destruct a0.
+        destruct (string_dec s a).
+        rewrite e.
+        rewrite IHpn; eauto.
+        erewrite update_subtree_notfound; eauto.
+        eapply tree_names_distinct_head_name with (inum := n); eauto.
+        rewrite <- e; eauto.
+
+        unfold find_subtree_helper in H0.
+        simpl in H0.
+        destruct (string_dec a a) in H0; eauto.
+        rewrite e in H0.
+        simpl in H0.
+        destruct (string_dec a a) in H0; eauto.
+        congruence.
+        congruence.
+
+        f_equal.
+        rewrite IHl; eauto.
+        unfold find_subtree_helper in H0.
+        simpl in H0.
+        destruct (string_dec s a) in H0; eauto.
+        congruence.
+  Qed.
 
   Lemma find_subtree_update_subtree_ne_file :
     forall p2 p1 tree inum1 inum2 f1 f1' f2,
@@ -3701,68 +3799,7 @@ Module DIRTREE.
     admit.
   Admitted.
 
-  Lemma tree_names_distinct_head_name : forall inum name subtree rest,
-    tree_names_distinct (TreeDir inum ((name, subtree) :: rest)) ->
-    ~ In name (map fst rest).
-  Proof.
-    inversion 1.
-    simpl in *.
-    inversion H3; auto.
-  Qed.
-
-  Lemma tree_names_distinct_head_name' : forall  rest name  f,
-    map fst (map (update_subtree_helper f name) rest) = map fst rest.
-  Proof.
-    induction rest; simpl; intros.
-    auto.
-    erewrite IHrest.
-    unfold update_subtree_helper.
-    destruct a.
-    destruct (string_dec s name); eauto.
-  Qed.
-
-  Lemma map_update_subtree_helper_notfound : forall f name l,
-    ~ In name (map fst l) ->
-    map (update_subtree_helper f name) l = l.
-  Proof.
-   induction l; simpl; intros; auto.
-    rewrite IHl by intuition.
-    unfold update_subtree_helper.
-    destruct a.
-    destruct (string_dec s name); subst; simpl; auto.
-    firstorder.
-  Qed.
-
-  Lemma tree_name_distinct_rest: forall inum x l,
-        tree_names_distinct (TreeDir inum (x::l)) ->
-        tree_names_distinct (TreeDir inum l).
-  Proof.
-    intros.
-    inversion H.
-    rewrite map_cons in H2.
-    apply Forall_cons2 in H2.
-    rewrite map_cons in H3.
-    rewrite NoDup_cons_iff in H3.
-    intuition.
-    constructor; eauto.
-  Qed.
-
-  Lemma tree_name_distinct_head: forall inum name l t,
-        tree_names_distinct (TreeDir inum ((name, t)::l)) ->
-        tree_names_distinct t.
-  Proof.
-    intros.
-    destruct t.
-    constructor.
-    inversion H.
-    rewrite map_cons in H2.
-    apply Forall_inv in H2.
-    simpl in H2.
-    inversion H2.
-    constructor; eauto.
-  Qed.
-
-
+ 
   Lemma update_name_twice: forall tree_elem name tree subtree subtree' dnum,
     tree_names_distinct
       (update_subtree ([name]) subtree'

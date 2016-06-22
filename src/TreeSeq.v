@@ -144,32 +144,6 @@ Module TREESEQ.
      find_subtree pathname (TStree tolder) = Some (TreeFile inum f') /\
      BFILE.block_belong_to_file (TSilist tolder) bn inum off).
 
-
-  Lemma update_subtree_same: forall pn tree subtree,
-    tree_names_distinct tree ->
-    find_subtree pn tree = Some subtree ->
-    update_subtree pn subtree tree = tree.
-  Proof.
-    induction pn; simpl; intros.
-    - inversion H0; reflexivity.
-    - destruct tree; eauto.
-      f_equal.
-      induction l.
-      + simpl; eauto.
-      + erewrite map_cons.
-        unfold update_subtree_helper at 1.
-        destruct a0.
-        destruct (string_dec s a).
-        rewrite IHpn.
-        erewrite update_subtree_notfound; eauto.
-        admit.
-        admit.
-        admit.
-        f_equal.
-        rewrite IHl; eauto.
-        admit. (* follows from H0. *)
-  Admitted.
-
   Theorem treeseq_in_ds_upd : forall  F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file (TSilist (ts !!)) bn inum off ->
