@@ -144,33 +144,41 @@ Module TREESEQ.
      find_subtree pathname (TStree tolder) = Some (TreeFile inum f') /\
      BFILE.block_belong_to_file (TSilist tolder) bn inum off).
 
-  Theorem treeseq_in_ds_upd : forall  F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f,
+  Lemma block_belong_to_file_length: forall F Ftop fsxp ilist frees d tree pathname off bn inum f,
+      (F* DIRTREE.rep Ftop fsxp tree ilist frees)%pred (list2nmem d) ->
+      find_subtree pathname tree = Some (TreeFile inum f) ->
+      BFILE.block_belong_to_file ilist bn inum off ->
+      off < Datatypes.length (BFILE.BFData f).
+  Proof.
+    intros.
+    unfold rep in H.
+    destruct_lift H.
+    assert (selN dummy inum BFILE.bfile0 = f) by admit.
+    rewrite <- H2.
+    eapply BFILE.block_belong_to_file_bfdata_length with (m := (list2nmem d)); eauto.
+    pred_apply.
+    cancel.
+  Admitted.
+
+  Lemma tree_rep_nth_upd: forall F Ftop fsxp mscs ts ds n pathname bn off v inum f,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file (TSilist (ts !!)) bn inum off ->
     treeseq_in_ds F Ftop fsxp mscs ts ds ->
-    treeseq_pred (treeseq_upd_safe pathname off (BFILE.MSAlloc mscs) (ts !!)) ts ->
-    BFILE.MSAlloc mscs' = BFILE.MSAlloc mscs ->
-    treeseq_in_ds F Ftop fsxp mscs' (tsupd ts pathname off v) (dsupd ds bn v).
+    tree_rep F Ftop fsxp (nthd n ts) (list2nmem (nthd n ds)) ->
+    treeseq_pred (treeseq_upd_safe pathname off (MSAlloc mscs) ts !!) ts ->
+    tree_rep F Ftop fsxp (treeseq_one_upd (nthd n ts) pathname off v) (list2nmem (nthd n ds) ⟦ bn := v ⟧).
   Proof.
-    unfold treeseq_in_ds.
     intros.
-    simpl; intuition.
-    unfold tsupd.
-    unfold dsupd.
-    eapply NEforall2_d_map; eauto.
-    simpl; intros.
-    intuition; subst.
-
-    eapply NEforall_d_in in H2 as H2'; [ | apply nthd_in_ds with (n := n) ].
-    unfold treeseq_upd_safe in H2'.
-    edestruct H2'.
+    eapply NEforall_d_in in H3 as H3'; [ | apply nthd_in_ds with (n := n) ].
+    unfold treeseq_upd_safe in H3'.
+    edestruct H3'.
     eauto.
     eauto.
 
     (* case 1: block is unused and there's no filename at [pathname] that's longer than off *)
     intuition.
     unfold tree_rep in *.
-    eapply dirtree_update_free with (v := v) in H7; eauto.
+    eapply dirtree_update_free with (v := v) in H2; eauto.
     pred_apply.
 
     case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
@@ -196,7 +204,7 @@ Module TREESEQ.
     (* case 2: block does exist, in the right pathname *)
     repeat deex; intuition.
     unfold tree_rep in *.
-    eapply dirtree_update_block with (v := v) in H7 as H7'; eauto.
+    eapply dirtree_update_block with (v := v) in H2 as H2'; eauto.
     pred_apply.
     unfold treeseq_one_upd; rewrite H5; simpl.
     erewrite dirtree_update_inode_update_subtree.
@@ -204,9 +212,27 @@ Module TREESEQ.
     eapply rep_tree_inodes_distinct; eauto.
     eapply rep_tree_names_distinct; eauto.
     eauto.
+    eapply block_belong_to_file_length with (pathname := pathname); eauto.
+  Admitted.
 
-    Search BFILE.block_belong_to_file length.
-    admit.
+  Theorem treeseq_in_ds_upd : forall  F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f,
+    find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
+    BFILE.block_belong_to_file (TSilist (ts !!)) bn inum off ->
+    treeseq_in_ds F Ftop fsxp mscs ts ds ->
+    treeseq_pred (treeseq_upd_safe pathname off (BFILE.MSAlloc mscs) (ts !!)) ts ->
+    BFILE.MSAlloc mscs' = BFILE.MSAlloc mscs ->
+    treeseq_in_ds F Ftop fsxp mscs' (tsupd ts pathname off v) (dsupd ds bn v).
+  Proof.
+    unfold treeseq_in_ds.
+    intros.
+    simpl; intuition.
+    unfold tsupd.
+    unfold dsupd.
+    eapply NEforall2_d_map; eauto.
+    simpl; intros.
+    intuition; subst.
+
+    eapply tree_rep_nth_upd; eauto.
 
     (* now, prove treeseq_one_safe.. *)
     rename H1 into H1'.
