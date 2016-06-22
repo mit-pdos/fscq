@@ -1674,6 +1674,114 @@ Fixpoint bitwp (f : bool -> bool -> bool) sz (w1 : word sz) : word sz -> word sz
     | WS b w1' => fun w2 => WS (f b (whd w2)) (bitwp f w1' (wtl w2))
   end.
 
+Fact bitwp_wtl : forall sz (w w' : word (S sz)) op, bitwp op (wtl w) (wtl w') = wtl (bitwp op w w').
+Proof.
+  intros.
+  rewrite (shatter_word w), (shatter_word w').
+  auto.
+Qed.
+
+Lemma split1_bitwp_dist : forall sz1 sz2 w w' op,
+  split1 sz1 sz2 (bitwp op w w') = bitwp op (split1 sz1 sz2 w) (split1 sz1 sz2 w').
+Proof.
+  induction sz1; intros; auto.
+  simpl.
+  f_equal.
+  rewrite (shatter_word w), (shatter_word w'); auto.
+  rewrite <- IHsz1, bitwp_wtl.
+  reflexivity.
+Qed.
+
+Lemma split2_bitwp_dist : forall sz1 sz2 w w' op,
+  split2 sz1 sz2 (bitwp op w w') = bitwp op (split2 sz1 sz2 w) (split2 sz1 sz2 w').
+Proof.
+  induction sz1; intros; auto.
+  simpl; rewrite <- IHsz1, bitwp_wtl.
+  reflexivity.
+Qed.
+
+Lemma combine_bitwp : forall sz1 sz2 (wa wa' : word sz1) (wb wb' : word sz2) op,
+  combine (bitwp op wa wa') (bitwp op wb wb') = bitwp op (combine wa wb) (combine wa' wb').
+Proof.
+  induction sz1; intros; rewrite (shatter_word wa), (shatter_word wa'); simpl; f_equal; auto.
+Qed.
+
+Lemma eq_rect_bitwp : forall a b Heq f w1 w2,
+  bitwp f w1 w2 = eq_rect a word (
+    bitwp f (eq_rect b word w1 a Heq) (eq_rect b word w2 a Heq)) b (eq_sym Heq).
+Proof.
+  intros a b H; subst a.
+  intros; eq_rect_simpl; reflexivity.
+Qed.
+
+Fact eq_rect_bitwp' : forall a b Heq f w1 w2,
+  eq_rect b word (bitwp f w1 w2) a Heq = bitwp f (eq_rect b word w1 a Heq) (eq_rect b word w2 a Heq).
+Proof.
+  intros a b H1; subst a.
+  intros; eq_rect_simpl; reflexivity.
+Qed.
+
+Fact eq_rect_bitwp_1 : forall a b Heq f w1 w2,
+  bitwp f (eq_rect a word w1 b Heq) w2 = eq_rect a word (bitwp f w1 (eq_rect b word w2 a (eq_sym Heq))) b Heq.
+Proof.
+  intros a b H.
+  subst a; intros; eq_rect_simpl; auto.
+Qed.
+
+Definition wnot' sz := bitwp xorb (wones sz).
+
+Theorem wnot_wnot'_equiv : forall sz (w : word sz), wnot w = wnot' w.
+Proof.
+  unfold wnot'.
+  induction sz; intros w; shatterer.
+Qed.
+
+Theorem wnot_split1 : forall sz1 sz2 w, wnot (split1 sz1 sz2 w) = split1 sz1 sz2 (wnot w).
+Proof.
+  intros.
+  repeat rewrite wnot_wnot'_equiv.
+  unfold wnot'.
+  erewrite <- split1_combine with (w := wones _).
+  rewrite <- split1_bitwp_dist, combine_wones.
+  reflexivity.
+Qed.
+
+Theorem wnot_split2 : forall sz1 sz2 w, wnot (split2 sz1 sz2 w) = split2 sz1 sz2 (wnot w).
+Proof.
+  intros.
+  repeat rewrite wnot_wnot'_equiv.
+  unfold wnot'.
+  erewrite <- split2_combine with (z := wones _).
+  rewrite <- split2_bitwp_dist, combine_wones.
+  reflexivity.
+Qed.
+
+Theorem wnot_combine : forall sz1 sz2 (w1 : word sz1) (w2 : word sz2),
+  wnot (combine w1 w2) = combine (wnot w1) (wnot w2).
+Proof.
+  intros.
+  repeat rewrite wnot_wnot'_equiv.
+  unfold wnot'.
+  rewrite <- combine_wones, combine_bitwp.
+  reflexivity.
+Qed.
+
+Theorem wnot_zero: forall sz, wnot (wzero sz) = wones sz.
+Proof.
+  induction sz; simpl; f_equal; eauto.
+Qed.
+
+Theorem wnot_ones : forall sz, wnot (wones sz) = wzero sz.
+Proof.
+  induction sz; simpl; f_equal; try rewrite IHsz; eauto.
+Qed.
+
+Theorem wnot_eq_rect : forall a b H (w : word a), wnot (eq_rect a word w b H) = eq_rect a word (wnot w) b H.
+Proof.
+  intros.
+  subst b; eq_rect_simpl; auto.
+Qed.
+
 Definition wor := bitwp orb.
 Definition wand := bitwp andb.
 Definition wxor := bitwp xorb.
@@ -1720,6 +1828,57 @@ Theorem wand_or_distr : forall sz (x y z : word sz), (x ^| y) ^& z = (x ^& z) ^|
 Proof.
   unfold wand, wor; induction x; intro y; rewrite (shatter_word y); intro z; rewrite (shatter_word z); simpl; intuition; f_equal; auto with bool.
   destruct (whd y); destruct (whd z); destruct b; reflexivity.
+Qed.
+
+Lemma wor_wones : forall sz w, wones sz ^| w = wones sz.
+Proof.
+  unfold wor; induction sz; intros; simpl; auto.
+  rewrite IHsz; auto.
+Qed.
+
+Lemma wor_wzero : forall sz w, wzero sz ^| w = w.
+Proof.
+  unfold wor; induction sz; shatterer.
+Qed.
+
+Lemma wand_wones : forall sz w, wones sz ^& w = w.
+Proof.
+  unfold wand; induction sz; shatterer.
+Qed.
+
+Lemma wand_wzero : forall sz w, wzero sz ^& w = wzero sz.
+Proof.
+  intros. rewrite <- wzero'_def.
+  unfold wand; induction sz; shatterer.
+Qed.
+
+Lemma wxor_wones : forall sz w, wxor (wones sz) w = wnot w.
+Proof.
+  unfold wxor; induction sz; shatterer.
+Qed.
+
+Lemma wxor_wzero : forall sz w, wxor (wzero sz) w = w.
+Proof.
+  unfold wxor; induction sz; shatterer; destruct (whd w); auto.
+Qed.
+
+Lemma wxor_comm : forall sz (w1 w2 : word sz), wxor w1 w2 = wxor w2 w1.
+Proof.
+  unfold wxor; induction sz. shatterer.
+  intros. rewrite (shatter_word w1), (shatter_word w2).
+  simpl.
+  rewrite xorb_comm, IHsz.
+  reflexivity.
+Qed.
+
+Lemma wxor_assoc : forall sz (w1 w2 w3 : word sz), wxor w1 (wxor w2 w3) = wxor (wxor w1 w2) w3.
+Proof.
+  unfold wxor.
+  induction sz; intros; rewrite (shatter_word w1), (shatter_word w2), (shatter_word w3); auto.
+  simpl; f_equal.
+  rewrite xorb_assoc_reverse; auto.
+  rewrite IHsz.
+  reflexivity.
 Qed.
 
 Definition wbring (sz : nat) : semi_ring_theory (wzero sz) (wones sz) (@wor sz) (@wand sz) (@eq _) :=
@@ -2528,6 +2687,19 @@ Proof.
   reflexivity.
 Qed.
 
+Theorem wnot_wlshift : forall sz (w : word sz) n,
+  wnot (wlshift w n) = split1 sz n (eq_rec _ word (combine (wones n) (wnot w)) _ (Nat.add_comm n sz)).
+Proof.
+  intros.
+  unfold wlshift.
+  rewrite wnot_split1.
+  rewrite wnot_eq_rect.
+  rewrite wnot_combine.
+  rewrite wnot_zero.
+  eq_rect_simpl.
+  reflexivity.
+Qed.
+
 (* Setting an individual bit *)
 
 Definition wbit sz sz' (n : word sz') := natToWord sz (pow2 (wordToNat n)).
@@ -2642,11 +2814,6 @@ Proof.
   rewrite <- H1.
   eapply IHsz.
   omega.
-Qed.
-
-Theorem wnot_zero: forall sz, wnot (wzero sz) = wones sz.
-Proof.
-  induction sz; simpl; f_equal; eauto.
 Qed.
 
 Theorem wbit_and_not_other: forall sz sz' (n1 n2 : word sz'), (wordToNat n1 < sz)%nat
