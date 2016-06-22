@@ -30,6 +30,8 @@ Require Import Omega.
 Require Import SuperBlock.
 Require Import FSLayout.
 Require Import AsyncFS.
+Require Import Arith.
+
 
 Import DIRTREE.
 Import ListNotations.
@@ -142,7 +144,7 @@ Module TREESEQ.
      find_subtree pathname (TStree tolder) = Some (TreeFile inum f') /\
      BFILE.block_belong_to_file (TSilist tolder) bn inum off).
 
-  Lemma Forall2_map2: forall  A (l1 : list A) B l2 T1 T2 (p : T1 -> T2 -> Prop) ( q : A -> B -> Prop) (f1 : A -> T1) (f2 : B -> T2),
+  Lemma Forall2_map2_in: forall  A (l1 : list A) B l2 T1 T2 (p : T1 -> T2 -> Prop) ( q : A -> B -> Prop) (f1 : A -> T1) (f2 : B -> T2),
       (forall a b, In a l1 -> In b l2 -> q a b -> p (f1 a) (f2 b)) ->
       Forall2 q l1 l2 ->
       Forall2 p (map f1 l1) (map f2 l2).
@@ -161,8 +163,8 @@ Module TREESEQ.
       eapply in_cons; eauto.
   Qed.
 
-  Lemma Forall2_map2': forall  A (l1 : list A) B l2 T1 T2 (p : T1 -> T2 -> Prop) ( q : A -> B -> Prop) (f1 : A -> T1) (f2 : B -> T2),
-      (forall a b n, selN l1 n a = a -> selN l2 n b = b -> q a b -> p (f1 a) (f2 b)) ->
+  Lemma Forall2_map_selN: forall  A (l1 : list A) B l2 T1 T2 (p : T1 -> T2 -> Prop) ( q : A -> B -> Prop) (f1 : A -> T1) (f2 : B -> T2) def1 def2,
+      (forall a b n, selN l1 n def1 = a -> selN l2 n def2 = b -> q a b -> p (f1 a) (f2 b)) ->
       Forall2 q l1 l2 ->
       Forall2 p (map f1 l1) (map f2 l2).
   Proof.
@@ -175,9 +177,13 @@ Module TREESEQ.
       eapply IHForall2; intros.
       eapply H; eauto.
       instantiate (1 := (S n)).
-      admit.
-      admit.
-  Admitted.
+      rewrite selN_cons; eauto.
+      replace (S n - 1) with n by omega; eauto.
+      omega.
+      rewrite selN_cons; eauto.
+      replace (S n - 1) with n by omega; eauto.
+      omega.
+  Qed.
 
   Theorem NEforall2_d_map : forall T1 T2 A B (p : T1 -> T2 -> Prop) ( q : A -> B -> Prop) l1 (f1 : A -> T1) l2 (f2 : B -> T2),
     (forall a b n, a = nthd n l1 -> b = nthd n l2 -> q a b -> p (f1 a) (f2 b)) ->
@@ -191,16 +197,25 @@ Module TREESEQ.
     split.
     specialize (H (fst l1) (fst l2) 0).
     apply H.
-    admit.
-    admit.
-    admit.
-    eapply Forall2_map2' with (q := q).
-    intros.
-    specialize (H a b n).
-    apply H; eauto.
-    admit.
-    admit.
+    rewrite nthd_0; eauto.
+    rewrite nthd_0; eauto.
     intuition.
+    intuition.
+    eapply Forall2_map_selN with (q := q).
+    intros.
+    specialize (H a b (Datatypes.length (snd l1)-n)).
+    apply H; eauto.
+    rewrite <- H0.
+    unfold nthd.
+    assert (Datatypes.length (snd l1) >= n) by admit.
+    replace (Datatypes.length (snd l1) - (Datatypes.length (snd l1) - n)) with n by omega; eauto.
+    rewrite <- H3.
+    unfold nthd.
+    eapply forall2_length in H2 as Hl.
+    rewrite <- Hl.
+    assert (Datatypes.length (snd l1) >= n) by admit.
+    replace (Datatypes.length (snd l1) - (Datatypes.length (snd l1) - n)) with n by omega; eauto.
+    eassumption.
   Admitted.
 
   Lemma NEforall_d_in : forall T (p : T -> Prop) l x,
