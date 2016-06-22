@@ -2459,15 +2459,9 @@ Proof.
   intros; omega.
 Qed.
 
-Definition wlshift (sz : nat) (w : word sz) (nshift : nat) : word sz.
-  refine (if lt_dec nshift sz then _ else wzero sz).
-  refine (let nkeep := sz - nshift in _).
-  erewrite sz_minus_nshift in w by eassumption.
-  refine (let keepbits := split1 nkeep nshift w in _).
-  refine (let result := combine (wzero nshift) keepbits in _).
-  subst nkeep.
-  rewrite nshift_plus_nkeep in result by eassumption.
-  exact result.
+Definition wlshift (sz : nat) (w : word sz) (n : nat) : word sz.
+  pose proof plus_comm n sz as H.
+  exact (split1 sz n (eq_rect (n + sz) word (combine (wzero n) w) (sz + n) H)).
 Defined.
 
 Definition wrshift (sz : nat) (w : word sz) (nshift : nat) : word sz.
@@ -2489,13 +2483,7 @@ Theorem wlshift_0 : forall sz (w : word sz), @wlshift sz w 0 = w.
 Proof.
   intros.
   unfold wlshift.
-  destruct w; auto; simpl.
-  erewrite eq_rec_eq.
-  repeat f_equal; unfold eq_rec.
-  - rewrite whd_eq_rect; auto.
-  - erewrite wtl_eq_rect, split1_0; auto.
-  Grab Existential Variables.
-  auto.
+  eapply split1_0.
 Qed.
 
 Theorem wrshift_0 : forall sz (w : word sz), @wrshift sz w 0 = w.
@@ -2513,26 +2501,31 @@ Proof.
   Grab Existential Variables. auto.
 Qed.
 
-
-Theorem wlshift_le : forall sz (w : word sz) (n : nat) H,
-  wlshift w n = split1 sz n (eq_rec (n + sz) word (combine (wzero n) w) (sz + n) H).
-Proof.
-  intros.
-Admitted.
-
-Theorem wlshift_gt : forall sz (w : word sz) n, (n > sz)%nat ->
+Theorem wlshift_gt : forall sz n (w : word sz), (n > sz)%nat ->
   wlshift w n = wzero sz.
 Proof.
-  unfold wlshift; intros.
-  destruct lt_dec; try omega; auto.
+  intros sz n w H.
+  generalize dependent w.
+  remember (n - sz) as e.
+  assert (n = sz + e) by omega; subst n.
+  intros w.
+  unfold wlshift.
+  rewrite <- combine_wzero.
+  erewrite combine_assoc, eq_rect_word_match.
+  eq_rect_simpl.
+  rewrite eq_rect_combine.
+  apply split1_combine.
+  Grab Existential Variables. omega.
 Qed.
 
-Theorem wlshift_bitwp : forall sz (w1 w2 : word sz) f n H,
+Theorem wlshift_bitwp : forall sz (w1 w2 : word sz) f n, exists H,
   wlshift (bitwp f w1 w2) n = split1 sz n (
     eq_rec (n + sz) word (combine (wzero n) (bitwp f w1 w2)) (sz + n) H).
 Proof.
   intros.
-  eapply wlshift_le.
+  unfold wlshift.
+  exists (Nat.add_comm n sz).
+  reflexivity.
 Qed.
 
 (* Setting an individual bit *)
