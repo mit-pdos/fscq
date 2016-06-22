@@ -942,6 +942,17 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma split1_eq_rect_eq1_helper : forall a b c, b = a -> a + c = b + c.
+Proof. intros. subst. reflexivity. Qed.
+
+Theorem split1_eq_rect_eq1 : forall a a' b H w,
+  split1 a b w = eq_rect _ word (split1 a' b
+    (eq_rect _ word w _ (split1_eq_rect_eq1_helper b H))) _ H.
+Proof.
+  intros a a' b H.
+  subst a'; intros; eq_rect_simpl; auto.
+Qed.
+
 Theorem eq_rect_split1_eq2 : forall n1 n2 n2' (w: word (n1 + n2)) Heq,
      split1 n1 n2 w = split1 n1 n2'
         (eq_rect (n1 + n2) (fun y : nat => word y) w
@@ -955,6 +966,42 @@ Proof.
   rewrite <- (eq_rect_eq_dec eq_nat_dec).
   reflexivity.
 Qed.
+
+Fact eq_rect_combine_dist_helper1 : forall a b c d, b * c = d -> (a + b) * c = a * c + d.
+Proof. intros; subst. apply Nat.mul_add_distr_r. Qed.
+
+Fact eq_rect_combine_dist_helper2 : forall a b c d, b * c = d -> a * c + d = (a + b) * c.
+Proof. intros; subst. symmetry; apply Nat.mul_add_distr_r. Qed.
+
+Theorem eq_rect_combine_dist : forall a b c d (w : word ((a + b) * c)) (H : b * c = d),
+  b * c = d ->
+  let H1 := (eq_rect_combine_dist_helper1 a b c H) in
+  let H2 := (eq_rect_combine_dist_helper2 a b c H) in
+  let w' := eq_rec ((a + b) * c) word w _ H1 in
+  w = eq_rec _ word (combine (split1 (a * c) d w') (split2 (a * c) d w')) _ H2.
+Proof.
+  intros.
+  subst d.
+  rewrite combine_split.
+  eq_rect_simpl.
+  generalize dependent w.
+  generalize dependent H2.
+  rewrite H1.
+  intros.
+  eq_rect_simpl; auto.
+Qed.
+
+Lemma wzero_dist : forall a b c H,
+  wzero ((a + b) * c) = eq_rect _ word (wzero (a * c + b * c)) _ H.
+Proof.
+  intros a b c H.
+  rewrite H.
+  reflexivity.
+Qed.
+
+Lemma wzero_rev : forall (a b : nat) H,
+   wzero (a + b) = eq_rect _ word (wzero (b + a)) _ H.
+Proof. intros a b H. rewrite H. auto. Qed.
 
 Lemma split1_zero : forall sz1 sz2, split1 sz1 sz2 (natToWord _ O) = natToWord _ O.
 Proof.
@@ -985,6 +1032,18 @@ Proof.
     f_equal; auto.
 Qed.
 
+Theorem combine_wzero : forall sz1 sz2, combine (wzero sz1) (wzero sz2) = wzero (sz1 + sz2).
+Proof.
+  induction sz1; auto.
+  unfold wzero in *.
+  intros; simpl; f_equal; auto.
+Qed.
+
+Theorem combine_wones : forall sz1 sz2, combine (wones sz1) (wones sz2) = wones (sz1 + sz2).
+Proof.
+  induction sz1; auto.
+  intros; simpl; f_equal; auto.
+Qed.
 
 (** * Extension operators *)
 
