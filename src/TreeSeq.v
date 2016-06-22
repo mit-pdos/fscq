@@ -10,8 +10,8 @@ Require Import Pred PredCrash.
 Require Import DiskSet.
 Require Import DirTree.
 Require Import Pred.
-Require Import List.
 Require Import String.
+Require Import List.
 Require Import BFile.
 Require Import Inode.
 Require Import Hoare.
@@ -188,36 +188,30 @@ Module TREESEQ.
   Qed.
 
   Theorem NEforall2_d_map : forall T1 T2 A B (p : T1 -> T2 -> Prop) ( q : A -> B -> Prop) l1 (f1 : A -> T1) l2 (f2 : B -> T2),
-    (forall a b n, n <= Datatypes.length (snd l1) -> a = nthd n l1 -> b = nthd n l2 -> q a b -> p (f1 a) (f2 b)) ->
+    (forall a b n, a = nthd n l1 -> b = nthd n l2 -> q a b -> p (f1 a) (f2 b)) ->
     NEforall2 q l1 l2 ->
     NEforall2 p (d_map f1 l1) (d_map f2 l2).
   Proof.
     intros.
-    unfold NEforall2 in *.
-    unfold d_map in *.
-    simpl.
-    split.
+    unfold NEforall2, d_map in *.
+    simpl; split.
     specialize (H (fst l1) (fst l2) 0).
     apply H.
-    omega.
     rewrite nthd_0; eauto.
     rewrite nthd_0; eauto.
     intuition.
     intuition.
-    eapply Forall2_map_selN with (q := q).
-    intros.
-    specialize (H a b (Datatypes.length (snd l1)-n)).
-    apply H; eauto.
-    omega.
-    rewrite <- H3.
-    unfold nthd.
-    replace (Datatypes.length (snd l1) - (Datatypes.length (snd l1) - n)) with n by omega; eauto.
-    rewrite <- H4.
-    unfold nthd.
-    eapply forall2_length in H2 as Hl.
-    rewrite <- Hl.
-    replace (Datatypes.length (snd l1) - (Datatypes.length (snd l1) - n)) with n by omega; eauto.
-    eassumption.
+    assert (length (snd l1) = length (snd l2)).
+    eapply forall2_length; eauto.
+    eapply Forall2_map_selN with (q := q); auto; intros.
+    destruct (lt_dec n (length (snd l1))).
+    - eapply H with (n := (length (snd l1) - n)); unfold nthd; subst; eauto.
+      replace (length (snd l1) - (length (snd l1) - n)) with n by omega; eauto.
+      replace (length (snd l2) - (length (snd l1) - n)) with n by omega; eauto.
+    - rewrite selN_oob in * by omega; subst.
+      eapply H; auto.
+      rewrite nthd_0; auto.
+      rewrite nthd_0; auto.
   Qed.
 
   Lemma NEforall_d_in : forall T (p : T -> Prop) l x,
