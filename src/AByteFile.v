@@ -1,7 +1,7 @@
 Require Import Arith.
 Require Import Pred PredCrash.
 Require Import Word.
-Require Import Prog.
+Require Import Prog ProgMonad.
 Require Import Hoare.
 Require Import SepAuto.
 Require Import BasicProg.
@@ -91,7 +91,7 @@ let^ (data) <- (ForN_ (fun i =>
         Ret ^(data++(valu2list block))%list (* append its contents *)
         
         ))) 0 num_of_full_blocks
-      (pair_args_helper (fun (crash: rawpred) =>
+      
       (pair_args_helper (A:= log_xparams) (fun lxp =>
       (pair_args_helper (A:= INODE.IRecSig.xparams)(fun ixp =>
       (pair_args_helper (A:= addr)(fun inum =>
@@ -99,15 +99,15 @@ let^ (data) <- (ForN_ (fun i =>
       (pair_args_helper (A:= addr)(fun block_off (_:unit) =>
       (fun i =>
       (pair_args_helper (fun (data: list byte) (_:unit) =>
-      (fun hm =>  [[i = length data / valubytes]]))))))))))))))))%pred (* trivial invariant *)
+      (fun hm =>  [[i = length data / valubytes]]))))))))))))))%pred (* trivial invariant *)
       
-      (pair_args_helper (fun crash =>
+      
       (pair_args_helper (fun lxp =>
       (pair_args_helper (fun ixp =>
       (pair_args_helper (fun inum =>
       (pair_args_helper (fun fms => 
       (pair_args_helper (fun block_off (_:unit) =>
-      (fun hm =>  crash)))))))))))))) ^(nil);             (* trivial crashpred *)
+      (fun hm =>  [[True]]))))))))))))%pred ^(nil);             (* trivial crashpred *)
 Ret ^(fms, data). 
 
 (* let^ ((data:list byte)) <- ForN i < num_of_full_blocks 
@@ -666,6 +666,29 @@ apply nil.
 apply valuset0.
 Qed.
 
+
+
+Fact iblocks_file_len_eq: forall F bxp ixp flist ilist frees m inum,
+inum < length ilist ->
+(F * BFILE.rep bxp ixp flist ilist frees)%pred m ->
+length (INODE.IBlocks (selN ilist inum INODE.inode0)) = length (BFILE.BFData (selN flist inum BFILE.bfile0)).
+Proof. 
+intros.
+unfold BFILE.rep in H0.
+repeat rewrite sep_star_assoc in H0.
+apply sep_star_comm in H0.
+repeat rewrite <- sep_star_assoc in H0.
+
+unfold BFILE.file_match in H0.
+rewrite listmatch_isolate with (i:=inum) in H0.
+sepauto.
+Search listmatch length.
+rewrite listmatch_length_pimpl in H0.
+sepauto.
+rewrite listmatch_length_pimpl in H0.
+sepauto.
+Qed.
+
 (*Specs*)
 
 
@@ -801,7 +824,16 @@ Theorem read_middle_blocks_ok: forall lxp bxp ixp inum fms block_off num_of_full
     CRASH:hm'  exists (fms':BFILE.memstate),
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm'
     >} read_middle_blocks lxp ixp inum fms block_off num_of_full_blocks.
-Proof. Admitted.
+Proof.
+unfold read_middle_blocks, rep; step.
+rewrite valubytes_is; reflexivity.
+eapply pimpl_pre2; intros.
+repeat ( apply sep_star_lift_l; intros ).
+unfold pimpl, lift; intros.
+eapply pimpl_ok2. repeat monad_simpl.
+Focus 2. intros.
+apply pimpl_refl.
+Admitted.
 
 Theorem read_ok : forall lxp bxp ixp inum off len fms,
     {< F Fm Fi Fd m0 m flist ilist frees f fy data,
@@ -879,35 +911,200 @@ cancel.
 omega.
 
 step.
+
+erewrite iblocks_file_len_eq.
+
+eapply inlen_bfile; eauto.
+Search ptsto selN.
+eapply list2nmem_sel in H13.
+rewrite <- H13.
+auto.
+rewrite valubytes_is in *.
+omega.
+omega.
+
 Show Existentials.
-Existential  3:= (selN ilist inum _).
-Search INODE.IBlocks BFILE.BFData.
-simpl.
-replace (length (INODE.IBlocks ?ino)) with (length (BFILE.BFData f)).
-eapply inlen_bfile; try eauto; try omega.
-Search length INODE.IBlocks.
-Focus 4.
-step.
-inversion H14.
+Existential  9:= ilist.
+auto.
+apply list2nmem_inbound in H13.
 unfold BFILE.rep in H0.
-unfold INODE.rep in H0.
-Search BFILE.bfile INODE.inode.
-eapply H13.
-apply pimpl_sep_star.
-eauto.
-Search BFILE.rep pimpl.
+replace (length ilist) with (length flist).
+apply H13.
+rewrite listmatch_length_pimpl in H0.
+destruct_lift H0.
+apply H21.
+apply H0.
 unfold BFILE.rep.
 cancel.
+apply addr_id.
+
+apply list2nmem_inbound in H13.
+unfold BFILE.rep in H0.
+replace (length ilist) with (length flist).
+apply H13.
+rewrite listmatch_length_pimpl in H0.
+destruct_lift H0.
+apply H21.
+
+step.
+
+pose proof H0 as H0'.
+unfold BFILE.rep in H0.
+destruct_lift H0.
+unfold BFILE.file_match in H0.
+rewrite listmatch_isolate with (i:= inum) in H0.
+destruct_lift H0.
 Search listmatch.
+unfold listmatch in H0.
+destruct_lift H0.
+
+remember((((Fm ✶ BALLOC.rep bxp_1 frees_1) ✶ BALLOC.rep bxp_2 frees_2)
+        ✶ INODE.rep bxp_1 ixp ilist)
+       ✶ listpred
+           (pprd
+              (fun (f : BFILE.bfile) (i : INODE.inode) =>
+               (⟦⟦ length (BFILE.BFData f) =
+                   length (map (wordToNat (sz:=addrlen)) (INODE.IBlocks i)) ⟧⟧
+                ✶ listpred (pprd (fun (v : BFILE.datatype) (a : addr) => a |-> v))
+                    (combine (BFILE.BFData f)
+                       (map (wordToNat (sz:=addrlen)) (INODE.IBlocks i))))
+               ✶ ⟦⟦ BFILE.BFAttr f = INODE.IAttr i ⟧⟧))
+           (combine (removeN flist inum) (removeN ilist inum)))%pred as F'.
+           
+rewrite listpred_isolate with (i:= block_off) in H0.
+
+unfold pprd in H0.
+unfold prod_curry in H0.
+apply sep_star_assoc in H0.
+erewrite selN_combine in H0.
+eapply list2nmem_sel with (F:= (F'
+       ✶ listpred (fun p : BFILE.datatype * addr => let (x, y) := p in y |-> x)
+           (removeN
+              (combine (BFILE.BFData flist ⟦ inum ⟧)
+                 (map (wordToNat (sz:=addrlen)) (INODE.IBlocks ilist ⟦ inum ⟧)))
+              block_off))%pred) in H0.
+              
+              erewrite selN_map in H0.
+rewrite H14 in H0.
+eapply list2nmem_sel in H13.
+rewrite <- H13 in H0.
+Search LogReplay.diskstate 0.
+3: apply H20.
+Focus 2.
+eapply list2nmem_sel in H13 as H13'.
+erewrite iblocks_file_len_eq with (flist:= flist).
+eapply inlen_bfile; eauto; try omega.
+rewrite <- H13'; eauto.
+
+
+apply list2nmem_inbound in H13.
+unfold BFILE.rep in H0'.
+replace (length ilist) with (length flist).
+apply H13.
+rewrite listmatch_length_pimpl in H0'.
+destruct_lift H0'.
+eauto.
+eauto.
+
+Focus 2.
+rewrite combine_length.
+rewrite map_length.
+eapply list2nmem_sel in H13 as H13'.
+erewrite iblocks_file_len_eq with (flist:=flist).
+repeat rewrite <- H13'.
+rewrite Nat.min_id.
+eapply inlen_bfile; eauto; try omega.
+apply list2nmem_inbound in H13.
+unfold BFILE.rep in H0'.
+replace (length ilist) with (length flist).
+apply H13.
+rewrite listmatch_length_pimpl in H0'.
+destruct_lift H0'.
+eauto.
+eauto.
+
+Focus 2.
+apply list2nmem_inbound in H13.
+apply H13.
+
+Focus 2.
+apply list2nmem_inbound in H13.
+unfold BFILE.rep in H0'.
+replace (length ilist) with (length flist).
+apply H13.
+rewrite listmatch_length_pimpl in H0'.
+destruct_lift H0'.
+eauto.
+eauto.
+
+Focus 2.
 unfold pimpl; intros.
+unfold BFILE.rep in H14.
+rewrite listmatch_isolate with (i:= inum) in H14.
+unfold BFILE.file_match in H14.
+destruct_lift H14.
+apply sep_star_comm in H14.
+rewrite listmatch_isolate with (i:= block_off) in H14.
+erewrite selN_map in H14.
+apply sep_star_comm in H14.
+apply sep_star_assoc in H14.
+apply sep_star_comm.
+apply mem_except_ptsto.
+apply sep_star_comm in H14.
+apply ptsto_valid in H14.
+replace (?anon, ?anon0) 
+  with (selN (BFILE.BFData (selN flist inum BFILE.bfile0)) block_off valuset0).
+apply H14.
+apply injective_projections; reflexivity.
+apply sep_star_comm in H14.
+apply ptsto_mem_except in H14.
+apply H14.
 
-cancel.
+erewrite iblocks_file_len_eq with (flist:= flist).
+eapply list2nmem_sel in H13.
+rewrite <- H13.
+eapply inlen_bfile; eauto; try omega.
 
-Search emp.
-pred_apply.
-destruct_lift H2.
-Search INODE.IBlocks.
-Print INODE.IBlocks.
+apply list2nmem_inbound in H13.
+unfold BFILE.rep in H0.
+replace (length ilist) with (length flist).
+apply H13.
+rewrite listmatch_length_pimpl in H0.
+destruct_lift H0.
+eauto.
+eauto.
+
+eapply list2nmem_sel in H13.
+rewrite <- H13.
+eapply inlen_bfile; eauto; try omega.
+
+rewrite map_length.
+erewrite iblocks_file_len_eq with (flist:= flist).
+eapply list2nmem_sel in H13.
+rewrite <- H13.
+eapply inlen_bfile; eauto; try omega.
+
+apply list2nmem_inbound in H13.
+unfold BFILE.rep in H0.
+replace (length ilist) with (length flist).
+apply H13.
+rewrite listmatch_length_pimpl in H0.
+destruct_lift H0.
+eauto.
+eauto.
+
+apply list2nmem_inbound in H13.
+apply H13.
+
+
+apply list2nmem_inbound in H13.
+unfold BFILE.rep in H0.
+replace (length ilist) with (length flist).
+apply H13.
+rewrite listmatch_length_pimpl in H0.
+destruct_lift H0.
+eauto.
+Admitted.
 
 
 
