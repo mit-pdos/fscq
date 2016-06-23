@@ -769,6 +769,12 @@ Module Rec.
     exact (wlshift (combine (wones n) (wzero (n0 * n))) (idx * n)).
   Defined.
 
+  Definition word_selN_shift (l n : nat) (idx : nat) (w : word (l * n)) : word n.
+    destruct l eqn:H.
+    exact (wzero n).
+    exact (split1 n (n0 * n) (wrshift w (idx * n))).
+  Defined.
+
   Definition word_updN_shift (l n : nat) (idx : nat) (w : word (l * n))
                                              (v : word n) : word (l * n).
     destruct l eqn:H.
@@ -780,51 +786,35 @@ Module Rec.
     exact ((w ^& (wnot mask)) ^| newmask).
   Defined.
 
-  Fact word_updN_shift_helper1 : forall n idx off, n + (idx + off) * n = (idx + 1 + off) * n.
+
+  Fact word_shift_helper1 : forall n idx off, n + (idx + off) * n = (idx + 1 + off) * n.
   Proof. intros. lia. Qed.
 
-  Fact word_updN_shift_helper2 : forall n l, l > 0 -> n + (l - 1) * n = l * n.
+  Fact word_shift_helper2 : forall n l, l > 0 -> n + (l - 1) * n = l * n.
   Proof. intros. destruct l; simpl; try rewrite <- minus_n_O; omega. Qed.
 
-  Theorem word_updN_shift_l_gt_0 : forall idx off n w v,
-    @word_updN_shift (idx + 1 + off) n idx w v = w ^& wnot (word_mask (idx + 1 + off) n idx) ^| wlshift (
-      eq_rect _ word (zext v ((idx + off) * n)) _ (word_updN_shift_helper1 n idx off)) (idx * n).
+  Fact word_shift_helper3 : forall a b c, a * c + (c + b * c) = (a + 1 + b) * c.
+  Proof. intros. lia. Qed.
+
+  Fact word_shift_helper4 : forall a b c, (a + 1 + b) * c = a * c + c + b * c.
+  Proof. intros. lia. Qed.
+
+  Theorem word_selN_shift_gt_0 : forall idx off n w,
+    word_selN_shift (idx + 1 + off) n idx w = split1 n ((idx + off) * n)
+      (eq_rect _ word (wrshift w (idx * n)) _ (eq_sym (word_shift_helper1 n idx off))).
   Proof.
-    unfold word_updN_shift.
     intros idx off n.
-    generalize dependent (word_updN_shift_helper1 n idx off).
-    replace (idx + 1 + off) with (S (idx + off)) by omega.
+    assert (idx + 1 + off = S (idx + off)) as H by omega.
+    generalize_proof.
+    rewrite H.
     intros.
     eq_rect_simpl.
-    f_equal.
-    f_equal.
-    apply mult_comm.
-  Qed.
-
-  Theorem word_mask_l_gt_0 : forall l n idx (H : l > 0),
-    @word_mask l n idx = wlshift (eq_rect _ word (combine (wones n) (wzero ((l - 1) * n))) _
-      (word_updN_shift_helper2 n H))
-      (idx * n).
-  Proof.
-    unfold word_mask; destruct l; auto; intros.
-    erewrite combine_eq_rect2.
-    repeat f_equal.
-    generalize_proof.
-    intros HH; rewrite HH; auto.
-    Grab Existential Variables.
-    simpl; rewrite <- minus_n_O.
     reflexivity.
   Qed.
 
-  Fact word_updN_shift_helper3 : forall a b c, a * c + (c + b * c) = (a + 1 + b) * c.
-  Proof. intros. lia. Qed.
-
-  Fact word_updN_shift_helper4 : forall a b c, (a + 1 + b) * c = a * c + c + b * c.
-  Proof. intros. lia. Qed.
-
   Theorem eq_rect_combine_dist3 : forall a b c (w : word ((a + 1 + b) * c)),
-    let H := word_updN_shift_helper3 a b c in
-    let H1 := word_updN_shift_helper4 a b c in
+    let H := word_shift_helper3 a b c in
+    let H1 := word_shift_helper4 a b c in
     let w' := eq_rect ((a + 1 + b) * c) word w _ (eq_sym H) in
     let w'' := eq_rect ((a + 1 + b) * c) word w _ H1 in
     w = eq_rect _ word (combine
@@ -850,6 +840,17 @@ Module Rec.
     reflexivity.
   Qed.
 
+  Fact eq_rect_both_helper : forall T (x y z : T), x = y -> z = y -> z = x.
+  Proof. intros. subst. reflexivity. Qed.
+
+  Theorem eq_rect_both : forall x y z (H1 : x = z) (H2 : y = z) wa wb,
+    wa = eq_rect y word wb x (eq_rect_both_helper H1 H2) -> eq_rect x word wa z H1 = eq_rect y word wb z H2.
+  Proof.
+    intros. subst.
+    eq_rect_simpl.
+    reflexivity.
+   Qed.
+
   Fact split1_eq_rect_combine_partial_helper : forall a b c d (H : a + c = a + b + d), c = b + d.
   Proof. intros. omega. Qed.
 
@@ -869,13 +870,128 @@ Module Rec.
     reflexivity.
   Qed.
 
+  Fact combine_eq_rect_combine_helper : forall a b c d, a + b = c -> a + (b + d) = c + d.
+  Proof. intros. omega. Qed.
+
+  Fact combine_eq_rect_combine : forall a b c d H (wa : word a) (wb : word b) (wa' : word d),
+    combine (eq_rect (a + b) word (combine wa wb) c H) wa' =
+    eq_rect _ word (combine wa (combine wb wa')) _ (combine_eq_rect_combine_helper a b d H).
+  Proof.
+    intros a b c d H.
+    subst c.
+    intros.
+    eq_rect_simpl.
+    erewrite combine_assoc, eq_rect_word_match.
+    reflexivity.
+  Qed.
+
+  Fact split2_eq_rect_combine : forall a b c H (wa : word a) (wc : word c),
+    split2 a b (eq_rect (a + c) word (combine wa wc) (a + b) H) =
+    eq_rect c word wc b (plus_reg_l c b a H).
+  Proof.
+    intros a b c H.
+    assert (c = b) by omega; subst.
+    intros.
+    eq_rect_simpl.
+    apply split2_combine.
+  Qed.
+
+  Theorem word_selN_shift_eq_middle : forall idx off n w,
+    @word_selN_shift (idx + 1 + off) n idx w = middle (idx * n) n (off * n)
+      (eq_rec _ word w _ (eq_sym (word_shift_helper3 idx off n))).
+  Proof.
+    intros.
+    eq_rect_simpl.
+    rewrite word_selN_shift_gt_0.
+    generalize_proof.
+    replace ((idx + off) * n) with (idx * n + off * n) by lia.
+    intros HH.
+    unfold wrshift.
+    eq_rect_simpl.
+    erewrite combine_eq_rect2.
+    rewrite eq_rect_combine_dist3 with (w := w); eq_rect_simpl.
+    erewrite combine_eq_rect_combine; eq_rect_simpl.
+    erewrite split2_eq_rect_combine; eq_rect_simpl.
+    repeat erewrite combine_assoc, eq_rect_word_match; eq_rect_simpl.
+    unfold middle.
+    repeat progress (rewrite eq_rect_combine ||
+                     rewrite split1_combine  ||
+                     rewrite split2_combine).
+    reflexivity.
+    Grab Existential Variables.
+    all : lia.
+  Qed.
+
+  Theorem word_selN_shift_equiv : forall ft l idx w, idx < l ->
+    @word_selN ft l idx w = @word_selN_shift l (len ft) idx w.
+  Proof.
+    intros.
+    generalize dependent w.
+    remember (l - idx - 1) as off.
+    assert (l = (idx + 1+ off)) by omega.
+    subst l.
+    intros w.
+    unfold word_selN.
+    destruct lt_dec; try omega.
+    erewrite word_selN_shift_eq_middle.
+    generalize dependent (word_selN_helper (len ft) l).
+    replace ((idx + 1 + off) * len ft - len ft - idx * len ft) with (off * len ft) by lia.
+    intros HH.
+    f_equal.
+    apply eq_rect_both; eq_rect_simpl.
+    reflexivity.
+  Qed.
+
+  Definition word_selN' {ft : type} {l : nat} (idx : nat) (w : word (len (ArrayF ft l)))
+    : word (len ft) := @word_selN_shift l (len ft) idx w.
+
+  Theorem word_selN'_equiv : forall ft l idx w def, idx < l ->
+    of_word (@word_selN' ft l idx w) = selN (of_word w) idx def.
+  Proof.
+    intros.
+    unfold word_selN'.
+    rewrite <- word_selN_shift_equiv; auto.
+    apply word_selN_equiv; auto.
+  Qed.
+
+
+  Theorem word_updN_shift_l_gt_0 : forall idx off n w v,
+    @word_updN_shift (idx + 1 + off) n idx w v = w ^& wnot (word_mask (idx + 1 + off) n idx) ^| wlshift (
+      eq_rect _ word (zext v ((idx + off) * n)) _ (word_shift_helper1 n idx off)) (idx * n).
+  Proof.
+    unfold word_updN_shift.
+    intros idx off n.
+    generalize dependent (word_shift_helper1 n idx off).
+    replace (idx + 1 + off) with (S (idx + off)) by omega.
+    intros.
+    eq_rect_simpl.
+    f_equal.
+    f_equal.
+    apply mult_comm.
+  Qed.
+
+  Theorem word_mask_l_gt_0 : forall l n idx (H : l > 0),
+    @word_mask l n idx = wlshift (eq_rect _ word (combine (wones n) (wzero ((l - 1) * n))) _
+      (word_shift_helper2 n H))
+      (idx * n).
+  Proof.
+    unfold word_mask; destruct l; auto; intros.
+    erewrite combine_eq_rect2.
+    repeat f_equal.
+    generalize_proof.
+    intros HH; rewrite HH; auto.
+    Grab Existential Variables.
+    simpl; rewrite <- minus_n_O.
+    reflexivity.
+  Qed.
+
   Theorem wnot_word_mask_l_gt_0 : forall off n idx,
     wnot (@word_mask (idx + 1 + off) n idx) = eq_rec _ word (
     combine (wones (idx * n)) (combine (wzero n) (wones (off * n)))) ((idx + 1 + off) * n)
-      (word_updN_shift_helper3 idx off n).
+      (word_shift_helper3 idx off n).
   Proof.
     intros off n idx.
-    generalize dependent (word_updN_shift_helper3 idx off n).
+    generalize dependent (word_shift_helper3 idx off n).
     replace (idx + 1 + off) with (S (idx + off)) by omega.
     intros H.
     unfold word_mask.
@@ -896,9 +1012,9 @@ Module Rec.
   Qed.
 
   Lemma wand_wnot_word_mask_w : forall idx off n w,
-    let H := word_updN_shift_helper3 idx off n in
+    let H := word_shift_helper3 idx off n in
     let w' := eq_rect _ word w (idx * n + (n + off * n)) (eq_sym H) in
-    let w'' := eq_rect _ word w (idx * n + n + off * n) (word_updN_shift_helper4 idx off n) in
+    let w'' := eq_rect _ word w (idx * n + n + off * n) (word_shift_helper4 idx off n) in
     w ^& wnot (word_mask (idx + 1 + off) n idx) = eq_rec _ word (
       combine (split1 (idx * n) _ w') (combine (wzero n) (split2 (idx * n + n) _ w''))) _ H.
   Proof.
@@ -916,17 +1032,9 @@ Module Rec.
       reflexivity.
   Qed.
 
-  Fact eq_rect_combine_assoc' : forall a b c H wa wb wc,
-    eq_rect (a + (b + c)) word (combine wa (combine wb wc)) _ H = combine (combine wa wb) wc.
-  Proof.
-    intros.
-    erewrite combine_assoc, eq_rect_word_match.
-    reflexivity.
-  Qed.
-
   Theorem word_updN_shift_abs : forall off idx n w v,
-    let H := word_updN_shift_helper3 idx off n in
-    let H1 := word_updN_shift_helper4 idx off n in
+    let H := word_shift_helper3 idx off n in
+    let H1 := word_shift_helper4 idx off n in
     let w' := eq_rec _ word w _ (eq_sym H) in
     let w'' := eq_rec _ word w _ H1 in
     @word_updN_shift (idx + 1 + off) n idx w v = eq_rec _ word (
@@ -964,20 +1072,9 @@ Module Rec.
   Fact word_updN_abs_helper : forall idx off, idx < idx + 1 + off.
   Proof. intros. omega. Qed.
 
-  Fact eq_rect_both_helper : forall T (x y z : T), x = y -> z = y -> z = x.
-  Proof. intros. subst. reflexivity. Qed.
-
-  Theorem eq_rect_both : forall x y z (H1 : x = z) (H2 : y = z) wa wb,
-    wa = eq_rect y word wb x (eq_rect_both_helper H1 H2) -> eq_rect x word wa z H1 = eq_rect y word wb z H2.
-  Proof.
-    intros. subst.
-    eq_rect_simpl.
-    reflexivity.
-   Qed.
-
   Theorem word_updN_abs : forall idx off ft w v,
-    let H := word_updN_shift_helper3 idx off (len ft) in
-    let H1 := word_updN_shift_helper4 idx off (len ft) in
+    let H := word_shift_helper3 idx off (len ft) in
+    let H1 := word_shift_helper4 idx off (len ft) in
     let w' := eq_rec _ word w _ (eq_sym H) in
     let w'' := eq_rec _ word w _ H1 in
     @word_updN ft (idx + 1 + off) idx w v = eq_rec _ word (
