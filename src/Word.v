@@ -742,6 +742,16 @@ Proof.
   omega.
 Qed.
 
+Theorem combine_n_0 : forall sz1 (w : word sz1) (v : word 0),
+  combine w v = eq_rect _ word w _ (plus_n_O sz1).
+Proof.
+  induction w; intros.
+  - replace v with WO; auto.
+  - simpl; rewrite IHw.
+    erewrite WS_eq_rect.
+    reflexivity.
+Qed.
+
 Lemma whd_eq_rect : forall n w Heq,
   whd (eq_rect (S n) word w (S (n + 0)) Heq) =
   whd w.
@@ -831,6 +841,15 @@ Proof.
   generalize dependent w2.
   rewrite e; intros.
   repeat rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
+
+Lemma eq_rect_combine_assoc' : forall a b c H wa wb wc,
+  eq_rect (a + (b + c)) word (combine wa (combine wb wc)) _ H = combine (combine wa wb) wc.
+Proof.
+  intros.
+  erewrite combine_assoc, eq_rect_word_match.
   reflexivity.
 Qed.
 
@@ -2678,20 +2697,15 @@ Proof.
 Qed.
 
 Definition wlshift (sz : nat) (w : word sz) (n : nat) : word sz.
-  pose proof plus_comm n sz as H.
-  exact (split1 sz n (eq_rect (n + sz) word (combine (wzero n) w) (sz + n) H)).
+  refine (split1 sz n _).
+  rewrite plus_comm.
+  exact (combine (wzero n) w).
 Defined.
 
-Definition wrshift (sz : nat) (w : word sz) (nshift : nat) : word sz.
-  refine (if lt_dec nshift sz then _ else wzero sz).
-  refine (let nkeep := sz - nshift in _).
-  erewrite sz_minus_nshift in w by eassumption; rewrite plus_comm in w.
-  refine (let keepbits := split2 nshift nkeep w in _).
-  refine (let result := combine keepbits (wzero nshift) in _).
-  subst nkeep.
-  rewrite plus_comm in result.
-  rewrite nshift_plus_nkeep in result by eassumption.
-  exact result.
+Definition wrshift (sz : nat) (w : word sz) (n : nat) : word sz.
+  refine (split2 n sz _).
+  rewrite plus_comm.
+  exact (combine w (wzero n)).
 Defined.
 
 Notation "l ^<< r" := (@wlshift _ _ l%word r%word) (at level 35).
@@ -2708,15 +2722,9 @@ Theorem wrshift_0 : forall sz (w : word sz), @wrshift sz w 0 = w.
 Proof.
   intros.
   unfold wrshift.
-  destruct w; auto; simpl.
-  eq_rect_simpl.
-  unfold wzero; simpl.
-  erewrite WS_eq_rect.
-  f_equal.
-  eq_rect_simpl.
-  induction w; auto; simpl.
-  erewrite WS_eq_rect; f_equal; eauto.
-  Grab Existential Variables. auto.
+  simpl.
+  rewrite combine_n_0.
+  eq_rect_simpl. reflexivity.
 Qed.
 
 Theorem wlshift_gt : forall sz n (w : word sz), (n > sz)%nat ->
@@ -2736,26 +2744,67 @@ Proof.
   Grab Existential Variables. omega.
 Qed.
 
-Theorem wlshift_bitwp : forall sz (w1 w2 : word sz) f n, exists H,
+Theorem wrshift_gt : forall sz n (w : word sz), (n > sz)%nat ->
+  wrshift w n = wzero sz.
+Proof.
+  intros sz n w H.
+  generalize dependent w.
+  remember (n - sz) as e.
+  assert (n = sz + e) by omega; subst n.
+  intros w.
+  unfold wrshift.
+  erewrite wzero_rev, <- combine_wzero.
+  eq_rect_simpl.
+  rewrite <- eq_rect_word_match, <- eq_rect_combine, eq_rect_word_match.
+  eq_rect_simpl.
+  rewrite eq_rect_combine_assoc', split2_combine.
+  reflexivity.
+  Grab Existential Variables. omega.
+Qed.
+
+Theorem wlshift_bitwp : forall sz (w1 w2 : word sz) f n,
   wlshift (bitwp f w1 w2) n = split1 sz n (
-    eq_rec (n + sz) word (combine (wzero n) (bitwp f w1 w2)) (sz + n) H).
+    eq_rec _ word (combine (wzero n) (bitwp f w1 w2)) _ (eq_sym (Nat.add_comm sz n))).
 Proof.
   intros.
   unfold wlshift.
-  exists (Nat.add_comm n sz).
+  eq_rect_simpl.
+  reflexivity.
+Qed.
+
+Theorem wrshift_bitwp : forall sz (w1 w2 : word sz) f n,
+  wrshift (bitwp f w1 w2) n = split2 n sz (
+    eq_rect _ word (combine (bitwp f w1 w2) (wzero n)) _ (eq_sym (Nat.add_comm n sz))).
+Proof.
+  intros.
+  unfold wrshift.
+  eq_rect_simpl.
   reflexivity.
 Qed.
 
 Theorem wnot_wlshift : forall sz (w : word sz) n,
-  wnot (wlshift w n) = split1 sz n (eq_rec _ word (combine (wones n) (wnot w)) _ (Nat.add_comm n sz)).
+  wnot (wlshift w n) = split1 sz n (eq_rect _ word (combine (wones n) (wnot w)) _ (eq_sym (Nat.add_comm sz n))).
 Proof.
   intros.
   unfold wlshift.
   rewrite wnot_split1.
+  eq_rect_simpl.
   rewrite wnot_eq_rect.
   rewrite wnot_combine.
   rewrite wnot_zero.
+  reflexivity.
+Qed.
+
+Theorem wnot_wrshift : forall sz (w : word sz) n,
+  wnot (wrshift w n) = split2 n sz (eq_rect _ word (combine (wnot w) (wones n)) _ (eq_sym (Nat.add_comm n sz))).
+Proof.
+  intros.
+  unfold wrshift.
+  rewrite wnot_split2.
   eq_rect_simpl.
+  rewrite wnot_eq_rect.
+  rewrite wnot_combine.
+  rewrite wnot_zero.
   reflexivity.
 Qed.
 
