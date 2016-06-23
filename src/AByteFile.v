@@ -81,14 +81,13 @@ Definition read_first_block lxp ixp inum fms block_off byte_off read_length :=
       let data_init := (get_sublist (valu2list first_block) byte_off read_length) in
       Ret ^(fms, data_init).
       
-Print pair_args_helper.
 
 Definition read_middle_blocks lxp ixp inum fms block_off num_of_full_blocks:=
 let^ (data) <- (ForN_ (fun i =>
         (pair_args_helper (fun data (_:unit) => 
         
-        let^ (fms, block) <- BFILE.read lxp ixp inum (block_off + i) fms; (* get i'th block *)
-        Ret ^(data++(valu2list block))%list (* append its contents *)
+        let^ (fms, list) <- read_first_block lxp ixp inum fms (block_off + i) 0 valubytes;
+        Ret ^(data++list)%list (* append its contents *)
         
         ))) 0 num_of_full_blocks
       
@@ -124,9 +123,8 @@ Ret ^(fms, data). *)
 
 
 Definition read_last_block  lxp ixp inum fms block_off read_length :=
-let^ (fms, last_block) <- BFILE.read lxp ixp inum block_off fms;   (* get final block *)
-let data_last := (get_sublist (valu2list last_block) 0 read_length) in (* get final block data *)
-Ret ^(fms, data_last).
+let^ (fms, list) <- read_first_block lxp ixp inum fms block_off 0 read_length;
+Ret ^(fms, list).
 
 
 
@@ -551,7 +549,6 @@ Forall (fun sublist : list byteset => length sublist = valubytes) (skipn i (PByF
 Proof.
 intros.
 apply Forall_forall; intros.
-Search In skipn.
 apply in_skipn_in in H0.
 rewrite H in H0.
 rewrite in_map_iff in H0.
@@ -682,7 +679,6 @@ repeat rewrite <- sep_star_assoc in H0.
 unfold BFILE.file_match in H0.
 rewrite listmatch_isolate with (i:=inum) in H0.
 sepauto.
-Search listmatch length.
 rewrite listmatch_length_pimpl in H0.
 sepauto.
 rewrite listmatch_length_pimpl in H0.
@@ -827,6 +823,13 @@ Theorem read_middle_blocks_ok: forall lxp bxp ixp inum fms block_off num_of_full
 Proof.
 unfold read_middle_blocks, rep; step.
 rewrite valubytes_is; reflexivity.
+prestep.
+norm.
+unfold stars.
+simpl.
+rewrite LOG.rep_hashmap_subset by eauto.
+cancel.
+intuition.
 eapply pimpl_pre2; intros.
 repeat ( apply sep_star_lift_l; intros ).
 unfold pimpl, lift; intros.
@@ -884,8 +887,10 @@ Theorem write_first_block_ok : forall lxp bxp ixp inum block_off byte_off data f
            [[ byte_off + length data <= valubytes ]] 
     POST:hm' RET:fms'  exists m' flist' f' fy',
            rep lxp bxp ixp flist' ilist frees inum  F Fm Fi fms' m0 m' hm' f' fy' *
-           [[[ (ByFData fy) ::: (Fd * arrayN (ptsto (V:=byteset)) (block_off * valubytes + byte_off)  (map (@singular byte) data))]]] *
-           [[ fy' = mk_bytefile (updN_list (ByFData fy) (block_off * valubytes + byte_off) (map (@singular byte) data)) (ByFAttr fy) ]] *
+           [[[ (ByFData fy') ::: (Fd * arrayN (ptsto (V:=byteset)) (block_off * valubytes + byte_off) 
+            (map (@singular byte) data))]]] *
+           [[ fy' = mk_bytefile (updN_list (ByFData fy) (block_off * valubytes + byte_off) 
+           (map (@singular byte) data)) (ByFAttr fy) ]] *
            [[ BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} write_first_block lxp ixp inum fms block_off byte_off data.
@@ -915,12 +920,10 @@ step.
 erewrite iblocks_file_len_eq.
 
 eapply inlen_bfile; eauto.
-Search ptsto selN.
 eapply list2nmem_sel in H13.
 rewrite <- H13.
 auto.
-rewrite valubytes_is in *.
-omega.
+rewrite valubytes_is in *; omega.
 omega.
 
 Show Existentials.
@@ -954,7 +957,6 @@ destruct_lift H0.
 unfold BFILE.file_match in H0.
 rewrite listmatch_isolate with (i:= inum) in H0.
 destruct_lift H0.
-Search listmatch.
 unfold listmatch in H0.
 destruct_lift H0.
 
@@ -988,7 +990,6 @@ eapply list2nmem_sel with (F:= (F'
 rewrite H14 in H0.
 eapply list2nmem_sel in H13.
 rewrite <- H13 in H0.
-Search LogReplay.diskstate 0.
 3: apply H20.
 Focus 2.
 eapply list2nmem_sel in H13 as H13'.
@@ -1104,6 +1105,22 @@ apply H13.
 rewrite listmatch_length_pimpl in H0.
 destruct_lift H0.
 eauto.
+
+Focus 2.
+step.
+unfold pimpl; intros.
+eauto.
+unfold BFILE.rep in H0.
+sepauto.
+eapply pimpl_pre3 in H2.
+destruct H2.
+eauto.
+repeat destruct H2.
+repeat eexists.
+eauto.
+destruct_lift H14.
+rewrite H20.
+
 Admitted.
 
 
