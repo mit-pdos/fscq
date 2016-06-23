@@ -144,21 +144,55 @@ Module TREESEQ.
      find_subtree pathname (TStree tolder) = Some (TreeFile inum f') /\
      BFILE.block_belong_to_file (TSilist tolder) bn inum off).
 
-  Lemma block_belong_to_file_length: forall F Ftop fsxp ilist frees d tree pathname off bn inum f,
-      (F* DIRTREE.rep Ftop fsxp tree ilist frees)%pred (list2nmem d) ->
+  Lemma tree_file_flist: forall F Ftop flist  tree pathname inum f,
+    find_subtree pathname tree = Some (TreeFile inum f) ->
+    (F * tree_pred Ftop tree)%pred (list2nmem flist) ->
+    selN flist inum BFILE.bfile0 = f.
+  Proof.
+    intros.
+    rewrite subtree_extract in H0; eauto.
+    unfold tree_pred in H0.
+    setoid_rewrite sep_star_comm at 2 in H0.
+    setoid_rewrite sep_star_assoc_2 in H0.
+    eapply sep_star_assoc_2 in H0.
+    eapply list2nmem_sel in H0; eauto.
+  Qed.
+
+  (* XXX maybe we can use [block_belong_to_file_bfdata_length] combined with [tree_file_flist] *)
+  Lemma tree_file_length_ok: forall F Ftop fsxp ilist frees d tree pathname off bn inum f,
+      (F * rep Ftop fsxp tree ilist frees)%pred d ->
       find_subtree pathname tree = Some (TreeFile inum f) ->
       BFILE.block_belong_to_file ilist bn inum off ->
       off < Datatypes.length (BFILE.BFData f).
   Proof.
     intros.
+    apply BFILE.block_belong_to_file_inum_ok in H1 as H1'.
+
     unfold rep in H.
+    unfold BFILE.rep in H.
     destruct_lift H.
-    assert (selN dummy inum BFILE.bfile0 = f) by admit.
-    rewrite <- H2.
-    eapply BFILE.block_belong_to_file_bfdata_length with (m := (list2nmem d)); eauto.
-    pred_apply.
-    cancel.
-  Admitted.
+
+    eapply sep_star_assoc_1 in H3.
+    setoid_rewrite sep_star_comm in H3.
+    eapply sep_star_assoc_2 in H3.
+    eapply tree_file_flist with (pathname := pathname) in H3 as H3'.
+
+    erewrite listmatch_extract with (i := inum) in H.
+    unfold BFILE.file_match at 2 in H.
+    rewrite listmatch_length_pimpl with (a := BFILE.BFData _) in H.
+    destruct_lift H.
+    rewrite map_length in *.
+    rewrite H3' in H14.
+    rewrite H14; eauto.
+    unfold BFILE.block_belong_to_file in H1.
+    intuition.
+    eassumption.
+
+    rewrite listmatch_length_pimpl in H.
+    destruct_lift H.
+    rewrite H11. eauto.
+    eassumption.
+  Qed.
 
   Lemma tree_rep_nth_upd: forall F Ftop fsxp mscs ts ds n pathname bn off v inum f,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
@@ -212,8 +246,8 @@ Module TREESEQ.
     eapply rep_tree_inodes_distinct; eauto.
     eapply rep_tree_names_distinct; eauto.
     eauto.
-    eapply block_belong_to_file_length with (pathname := pathname); eauto.
-  Admitted.
+    eapply tree_file_length_ok in H2; eauto.
+  Qed.
 
   Theorem treeseq_in_ds_upd : forall  F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
