@@ -357,6 +357,35 @@ Module TREESEQ.
     eapply tree_safe_upd; eauto.
    Qed.
 
+  Lemma d_in_nthd: forall T (l: nelist T) d,
+    d_in d l ->
+    exists n, d = nthd n l.
+  Proof.
+    induction 1.
+    - exists 0.
+      erewrite nthd_0; eauto.
+    - Search In selN.
+      eapply in_selN_exists in H as H'.
+      destruct H'.
+      unfold nthd.
+      exists (Datatypes.length (snd l)-x).
+      replace (Datatypes.length (snd l) - (Datatypes.length (snd l) - x)) with x by omega.
+      intuition.
+      rewrite H2; eauto.
+  Qed.
+
+  Lemma latest_nthd: forall A (l: nelist A),
+    latest l = nthd (Datatypes.length (snd l)) l.
+  Proof.
+    destruct l.
+    unfold latest, nthd, hd, fst, snd. 
+    induction l.
+    - simpl; auto.
+    - unfold hd, fst, snd.
+      replace (Datatypes.length (a0 :: l) - Datatypes.length (a0 :: l)) with 0 by omega.
+      simpl; auto.
+  Qed.
+
   Theorem treeseq_file_getattr_ok : forall fsxp inum mscs,
   {< ds ts pathname Fm Ftop Ftree f,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
@@ -373,15 +402,35 @@ Module TREESEQ.
     eapply pimpl_ok2.
     eapply AFS.file_getattr_ok.
     cancel.
+    
+    (* rep holds. should be a lemma *)
     unfold treeseq_in_ds in H6.
     intuition.
     unfold tree_rep in H6.
-    eassumption.
+    eapply NEforall2_d_in with (x := ts !!) in H6.
+    intuition.
+    eapply H.
+    instantiate (1 := (Datatypes.length (snd ts))).
+    rewrite latest_nthd; auto.
+    unfold NEforall2 in H6.
+    intuition.
+    eapply forall2_length in H4.
+    rewrite H4.
+    rewrite latest_nthd; auto.
+
     eapply dir2flatmem_find_subtree_ptsto.
     unfold treeseq_in_ds in H6.
+    eapply NEforall2_d_in with (x := ts !!) (y := ds !!) in H6.
     intuition.
     unfold tree_rep in H.
     distinct_names.
+    instantiate (1 := (Datatypes.length (snd ts))).
+    rewrite latest_nthd; auto.
+    unfold NEforall2 in H6.
+    intuition.
+    eapply forall2_length in H4.
+    rewrite H4.
+    rewrite latest_nthd; auto.
     eassumption.
   Qed.
 
