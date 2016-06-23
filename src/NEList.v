@@ -243,6 +243,35 @@ Section NonEmptyList.
     destruct ds; unfold d_in; simpl; intuition.
   Qed.
 
+  Lemma d_in_nthd: forall l d,
+    d_in d l ->
+    exists n, d = nthd n l.
+  Proof.
+    induction 1.
+    - exists 0.
+      erewrite nthd_0; eauto.
+    - Search In selN.
+      eapply in_selN_exists in H as H'.
+      destruct H'.
+      unfold nthd.
+      exists (Datatypes.length (snd l)-x).
+      replace (Datatypes.length (snd l) - (Datatypes.length (snd l) - x)) with x by omega.
+      intuition.
+      rewrite H2; eauto.
+  Qed.
+
+  Lemma latest_nthd: forall l,
+    latest l = nthd (Datatypes.length (snd l)) l.
+  Proof.
+    destruct l.
+    unfold latest, nthd, hd, fst, snd. 
+    induction l.
+    - simpl; auto.
+    - unfold hd, fst, snd.
+      replace (Datatypes.length (a :: l) - Datatypes.length (a :: l)) with 0 by omega.
+      simpl; auto.
+  Qed.
+
   (** The second non-empty list's is a subset, in
     * the same order, of the first non-empty list
     *)
