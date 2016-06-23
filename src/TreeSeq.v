@@ -44,18 +44,6 @@ Module TREESEQ.
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
 
-  Ltac distinct_names :=
-    match goal with
-      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_names_distinct ?tree ] => 
-        eapply DIRTREE.rep_tree_names_distinct; eapply H
-    end.
-
-  Ltac distinct_inodes :=
-    match goal with
-      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_inodes_distinct ?tree ] => 
-        eapply DIRTREE.rep_tree_inodes_distinct; eapply H
-    end.
-
   Record treeseq_one := mk_tree {
     TStree  : DIRTREE.dirtree;
     TSilist : list INODE.inode;
@@ -375,6 +363,25 @@ Module TREESEQ.
     rewrite latest_nthd; auto.
   Qed.
 
+  Ltac distinct_names :=
+    match goal with
+      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_names_distinct ?tree ] => 
+        eapply DIRTREE.rep_tree_names_distinct; eapply H
+    end.
+
+  Ltac distinct_inodes :=
+    match goal with
+      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_inodes_distinct ?tree ] => 
+        eapply DIRTREE.rep_tree_inodes_distinct; eapply H
+    end.
+
+  Ltac distinct_names' :=
+    repeat match goal with
+      | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- DIRTREE.tree_names_distinct (TStree ?ts !!) ] => 
+        idtac "treeseq"; eapply treeseq_in_ds_tree_pred_latest in H as Hpred;
+        eapply DIRTREE.rep_tree_names_distinct; eapply Hpred
+    end.
+
   Theorem treeseq_file_getattr_ok : forall fsxp inum mscs,
   {< ds ts pathname Fm Ftop Ftree f,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
@@ -393,8 +400,7 @@ Module TREESEQ.
     cancel.
     eapply treeseq_in_ds_tree_pred_latest in H6 as Hpred; eauto.
     eapply dir2flatmem_find_subtree_ptsto.
-    eapply treeseq_in_ds_tree_pred_latest in H6 as Hpred; eauto.
-    distinct_names.
+    distinct_names'.
     eassumption.
   Qed.
 
@@ -417,8 +423,7 @@ Module TREESEQ.
     cancel.
     eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
     eapply dir2flatmem_find_subtree_ptsto.
-    eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
-    distinct_names.
+    distinct_names'.
     eassumption.
     eassumption.
   Qed.
@@ -446,15 +451,9 @@ Module TREESEQ.
     eapply pimpl_ok2.
     eapply AFS.file_set_attr_ok.
     cancel.
-    unfold treeseq_in_ds in H6.
-    intuition.
-    unfold tree_rep in H.
-    eassumption.
+    eapply treeseq_in_ds_tree_pred_latest in H6 as Hpred; eauto.
     eapply dir2flatmem_find_subtree_ptsto.
-    unfold treeseq_in_ds in H6.
-    intuition.
-    unfold tree_rep in H.
-    distinct_names.
+    distinct_names'.
     eassumption.
     step.
     or_r.
@@ -466,10 +465,7 @@ Module TREESEQ.
     rewrite H4 in H11.
     eassumption.
     eapply dir2flatmem_update_subtree.
-    unfold treeseq_in_ds in H6.
-    intuition.
-    unfold tree_rep in H5.
-    distinct_names.
+    distinct_names'.
     eassumption.
   Qed.
 
