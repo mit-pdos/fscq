@@ -504,27 +504,17 @@ Module TREESEQ.
     eapply pimpl_ok2.
     eapply AFS.update_fblock_d_ok.
     cancel.
-
-    unfold treeseq_in_ds, tree_rep in H8.
-    eapply NEforall2_d_in in H8.
-    intuition eauto.
-    eauto.
-    rewrite nthd_oob; eauto.
-
+    eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred; eauto.
     eapply dir2flatmem_find_subtree_ptsto.
-    2: rewrite nthd_oob; eauto.
-    2: admit.
-    admit.
-
-    eauto.
+    distinct_names'.
+    eassumption.
+    eassumption.
 
     step.
     eapply treeseq_in_ds_upd; eauto.
     eapply dir2flatmem_find_subtree_ptsto.
-    admit.
-    eauto.
-    rewrite nthd_oob in H18; eauto.
-    admit.
+    distinct_names'.
+    eassumption.
 
     unfold BFILE.diskset_was in H20.
     intuition.
@@ -542,13 +532,58 @@ Admitted.
     unfold tsupd; rewrite d_map_latest.
 
     unfold treeseq_one_upd at 1.
+
     erewrite dir2flatmem_find_subtree_ptsto.
     3: eauto.
+    case_eq (DIRTREE.find_subtree pathname (TStree d')).
+    - (* case 1: a directory or a file *)
+      intros; subst.
+      destruct d.
+      + (* a file *)
+        destruct (lt_dec off (Datatypes.length (BFILE.BFData b))).
+        * (* block is present *) 
+          unfold treeseq_one_upd; rewrite H4; simpl.
+          unfold treeseq_upd_safe in *; simpl in *; intros.
+          right.
+          exists f0.
+          split; eauto.
+          rewrite <- H9.
+          eapply dir2flatmem_find_subtree_ptsto in H0 as H0'.
+          (* pathname -> inum is stable for disks in ts.  H7 and H4 impl inum = n. *)
+          specialize (H7 bn inum f H0' H18).
+          destruct H7; eauto.
 
-    case_eq (DIRTREE.find_subtree pathname (TStree d')); intros; subst;
-    [ destruct d; [ destruct (lt_dec off (Datatypes.length (BFILE.BFData b))) | ] | ];
-    unfold treeseq_one_upd; rewrite H4; simpl;
-    unfold treeseq_upd_safe in *; simpl in *; intros.
+          (* case 1: pathname doesn't exists. *)
+          intuition.
+          admit.  (* clear contradiction *)
+          (* case 2: pathname does exists. *)
+          destruct H7.
+          intuition.
+          rewrite H4 in H11.
+          inversion H11.
+          admit.  (* where is x = f coming from? *)
+          distinct_names'.
+          admit.  (* from H7 ... *)
+        * (* block is not present *)
+          admit.  (* update subtree shouldn't haven an effect when off >= length *)
+      + (* a directory *)
+        unfold treeseq_upd_safe in H7.
+        eapply dir2flatmem_find_subtree_ptsto in H0 as H0'.
+        specialize (H7 bn inum f H0' H18).
+        destruct H7.
+        admit. (* contradiction: pathname exists *)
+        destruct H7.
+        intuition.
+        rewrite H4 in H9.
+        congruence.
+        distinct_names'.
+    - (*case 2: non existing *)
+      intros.
+      admit.  (* contradiction block is in use *)
+    - distinct_names'.
+    - admit.  (* H16 *)
+    - xcrash.
+      intros; subst.
 
     (* XXX *)
     
