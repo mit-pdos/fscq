@@ -249,26 +249,19 @@ Module TREESEQ.
     eapply tree_file_length_ok in H2; eauto.
   Qed.
 
-  Theorem treeseq_in_ds_upd : forall  F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f,
+
+  Lemma tree_safe_upd: forall F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f n,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file (TSilist (ts !!)) bn inum off ->
     treeseq_in_ds F Ftop fsxp mscs ts ds ->
-    treeseq_pred (treeseq_upd_safe pathname off (BFILE.MSAlloc mscs) (ts !!)) ts ->
-    BFILE.MSAlloc mscs' = BFILE.MSAlloc mscs ->
-    treeseq_in_ds F Ftop fsxp mscs' (tsupd ts pathname off v) (dsupd ds bn v).
+    treeseq_pred (treeseq_upd_safe pathname off (MSAlloc mscs) ts !!) ts ->
+    BFILE.MSAlloc mscs' = BFILE.MSAlloc mscs -> 
+    treeseq_one_safe (treeseq_one_upd (nthd n ts) pathname off v) 
+     (d_map (fun t : treeseq_one => treeseq_one_upd t pathname off v) ts) !! mscs'.
   Proof.
-    unfold treeseq_in_ds.
     intros.
-    simpl; intuition.
-    unfold tsupd.
-    unfold dsupd.
-    eapply NEforall2_d_map; eauto.
-    simpl; intros.
-    intuition; subst.
+    unfold treeseq_in_ds in H1.
 
-    eapply tree_rep_nth_upd; eauto.
-
-    (* now, prove treeseq_one_safe.. *)
     rename H1 into H1'.
     eapply NEforall2_d_in in H1' as H1; try eassumption; intuition.
     unfold treeseq_one_safe in *.
@@ -341,10 +334,28 @@ Module TREESEQ.
     intros; subst.
     unfold treeseq_one_upd at 1 2 3; rewrite H6; simpl.
     eauto.
-
-    Unshelve.
-    all: try apply BFILE.bfile0.
   Qed.
+
+  Theorem treeseq_in_ds_upd : forall F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f,
+    find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
+    BFILE.block_belong_to_file (TSilist (ts !!)) bn inum off ->
+    treeseq_in_ds F Ftop fsxp mscs ts ds ->
+    treeseq_pred (treeseq_upd_safe pathname off (BFILE.MSAlloc mscs) (ts !!)) ts ->
+    BFILE.MSAlloc mscs' = BFILE.MSAlloc mscs ->
+    treeseq_in_ds F Ftop fsxp mscs' (tsupd ts pathname off v) (dsupd ds bn v).
+  Proof.
+    unfold treeseq_in_ds.
+    intros.
+    simpl; intuition.
+    unfold tsupd.
+    unfold dsupd.
+    eapply NEforall2_d_map; eauto.
+    simpl; intros.
+    intuition; subst.
+
+    eapply tree_rep_nth_upd; eauto.
+    eapply tree_safe_upd; eauto.
+   Qed.
 
   Theorem treeseq_file_getattr_ok : forall fsxp inum mscs,
   {< ds ts pathname Fm Ftop Ftree f,
@@ -364,7 +375,7 @@ Module TREESEQ.
     cancel.
     unfold treeseq_in_ds in H6.
     intuition.
-    unfold tree_rep in H.
+    unfold tree_rep in H6.
     eassumption.
     eapply dir2flatmem_find_subtree_ptsto.
     unfold treeseq_in_ds in H6.
