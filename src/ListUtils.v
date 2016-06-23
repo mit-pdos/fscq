@@ -2056,6 +2056,49 @@ Proof.
   omega.
 Qed.
 
+Lemma forall2_map2_in: forall  A (l1 : list A) B l2 T1 T2 (p : T1 -> T2 -> Prop) ( q : A -> B -> Prop) (f1 : A -> T1) (f2 : B -> T2),
+    (forall a b, In a l1 -> In b l2 -> q a b -> p (f1 a) (f2 b)) ->
+    Forall2 q l1 l2 ->
+    Forall2 p (map f1 l1) (map f2 l2).
+Proof.
+  intros.
+  induction H0.
+  - simpl. eapply Forall2_nil.
+  - constructor.
+    specialize (H x y).
+    eapply H; eauto.
+    constructor; auto.
+    constructor; auto.
+    eapply IHForall2; intros.
+    eapply H; eauto.
+    eapply in_cons; eauto.
+    eapply in_cons; eauto.
+Qed.
+
+Lemma forall2_map2_selN: forall  A (l1 : list A) B l2 T1 T2 (p : T1 -> T2 -> Prop) ( q : A -> B -> Prop) (f1 : A -> T1) (f2 : B -> T2) def1 def2,
+    (forall a b n, n < Datatypes.length l1 -> selN l1 n def1 = a -> selN l2 n def2 = b -> q a b -> p (f1 a) (f2 b)) ->
+    Forall2 q l1 l2 ->
+    Forall2 p (map f1 l1) (map f2 l2).
+Proof.
+  intros.
+  induction H0.
+  - simpl. eapply Forall2_nil.
+  - constructor.
+    specialize (H x y 0).
+    eapply H; eauto.
+    simpl; omega.
+    eapply IHForall2; intros.
+    eapply H; eauto.
+    instantiate (1 := (S n)).
+    simpl; omega.
+    rewrite selN_cons; eauto.
+    replace (S n - 1) with n by omega; eauto.
+    omega.
+    rewrite selN_cons; eauto.
+    replace (S n - 1) with n by omega; eauto.
+    omega.
+Qed.
+
 Definition cuttail A n (l : list A) := firstn (length l - n) l.
 
 Lemma cuttail_length : forall A (l : list A) n,
@@ -2148,6 +2191,15 @@ Lemma incl_nil : forall T (l : list T),
   incl nil l.
 Proof.
   firstorder.
+Qed.
+
+Lemma incl_in_nil : forall T (l : list T),
+  incl l nil -> l = nil.
+Proof.
+  destruct l; auto; intros.
+  assert (In t nil).
+  apply H; constructor; auto.
+  inversion H0.
 Qed.
 
 Lemma incl_remove : forall T dec (a : T) (l : list T),

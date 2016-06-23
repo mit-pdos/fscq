@@ -1,7 +1,7 @@
 Require Import Arith.
 Require Import Pred PredCrash.
 Require Import Word.
-Require Import Prog.
+Require Import Prog ProgMonad.
 Require Import Hoare.
 Require Import SepAuto.
 Require Import BasicProg.
@@ -159,21 +159,21 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   (************* program *)
 
-  Definition get T lxp (ir : irec) off ms rx : prog T :=
+  Definition get lxp (ir : irec) off ms :=
     If (lt_dec off NDirect) {
-      rx ^(ms, selN (IRBlocks ir) off $0)
+      Ret ^(ms, selN (IRBlocks ir) off $0)
     } else {
       let^ (ms, v) <- IndRec.get lxp (IRIndPtr ir) (off - NDirect) ms;
-      rx ^(ms, v)
+      Ret ^(ms, v)
     }.
 
 
-  Definition read T lxp (ir : irec) ms rx : prog T :=
+  Definition read lxp (ir : irec) ms :=
     If (le_dec (IRLen ir) NDirect) {
-      rx ^(ms, firstn (IRLen ir) (IRBlocks ir))
+      Ret ^(ms, firstn (IRLen ir) (IRBlocks ir))
     } else {
       let^ (ms, indbns) <- IndRec.read lxp (IRIndPtr ir) 1 ms;
-      rx ^(ms, (firstn (IRLen ir) ((IRBlocks ir) ++ indbns)))
+      Ret ^(ms, (firstn (IRLen ir) ((IRBlocks ir) ++ indbns)))
     }.
 
 
@@ -188,37 +188,41 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Defined.
 
 
-  Definition shrink T lxp bxp (ir : irec) nr ms rx : prog T :=
+  Definition shrink lxp bxp (ir : irec) nr ms :=
     let nl := ((IRLen ir) - nr) in
     If (free_ind_dec (IRLen ir) nl) {
       ms <- BALLOC.free lxp bxp (IRIndPtr ir) ms;
-      rx ^(ms, upd_len ir nl)
+      Ret ^(ms, upd_len ir nl)
     } else {
-      rx ^(ms, upd_len ir nl)
+      Ret ^(ms, upd_len ir nl)
     }.
 
 
-  Definition grow T lxp bxp (ir : irec) bn ms rx : prog T :=
+  Definition grow lxp bxp (ir : irec) bn ms :=
     let len := (IRLen ir) in
     If (lt_dec len NDirect) {
       (* change direct block address *)
-      rx ^(ms, Some (upd_irec ir (S len) (IRIndPtr ir) (updN (IRBlocks ir) len bn)))
+      Ret ^(ms, Some (upd_irec ir (S len) (IRIndPtr ir) (updN (IRBlocks ir) len bn)))
     } else {
       (* allocate indirect block if necessary *)
-      let^ (ms, ibn) <- IfRx irx (addr_eq_dec len NDirect) {
+      let^ (ms, ibn) <- If (addr_eq_dec len NDirect) {
         let^ (ms, r) <- BALLOC.alloc lxp bxp ms;
         match r with
-        | None => rx ^(ms, None)
+        | None => Ret ^(ms, None)
         | Some ibn =>
             ms <- IndRec.init lxp ibn ms;
-            irx ^(ms, ibn)
+            Ret ^(ms, Some ibn)
         end
       } else {
-        irx ^(ms, (IRIndPtr ir))
+        Ret ^(ms, Some (IRIndPtr ir))
       };
-      (* write indirect block *)
-      ms <- IndRec.put lxp ibn (len - NDirect) bn ms;
-      rx ^(ms, Some (upd_irec ir (S len) ibn (IRBlocks ir)))
+      match ibn with
+      | Some ibn =>
+        (* write indirect block *)
+        ms <- IndRec.put lxp ibn (len - NDirect) bn ms;
+        Ret ^(ms, Some (upd_irec ir (S len) ibn (IRBlocks ir)))
+      | None => Ret ^(ms, None)
+      end
     }.
 
 
@@ -307,8 +311,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
     eapply rep_selN_direct_ok; eauto.
 
     prestep; norml.
-    rewrite rep_piff_indirect in H by omega.
-    unfold rep_indirect in H; destruct_lift H; cancel; try omega.
+    rewrite rep_piff_indirect in H0 by omega.
+    unfold rep_indirect in H0; destruct_lift H0; cancel; try omega.
     step; substl.
     substl NDirect; rewrite selN_app2.
     rewrite selN_firstn by omega; auto.
@@ -501,6 +505,9 @@ Module BlockPtr (BPtr : BlockPtrSig).
     prestep; norml.
     rewrite rep_piff_indirect in Hx by omega.
     unfold rep_indirect in Hx; destruct_lift Hx; cancel; try omega.
+    2: cancel.
+    omega.
+
     step.
     or_r; cancel.
     rewrite rep_piff_indirect by (rewrite app_length; simpl; omega).
@@ -516,13 +523,15 @@ Module BlockPtr (BPtr : BlockPtrSig).
     substl (length dummy); omega.
     autorewrite with core lists; auto.
 
+    cancel.
+
     Unshelve. all:eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (get _ _ _ _) _) => apply get_ok : prog.
-  Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (shrink _ _ _ _ _) _) => apply shrink_ok : prog.
-  Hint Extern 1 ({{_}} progseq (grow _ _ _ _ _) _) => apply grow_ok : prog.
+  Hint Extern 1 ({{_}} Bind (get _ _ _ _) _) => apply get_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} Bind (shrink _ _ _ _ _) _) => apply shrink_ok : prog.
+  Hint Extern 1 ({{_}} Bind (grow _ _ _ _ _) _) => apply grow_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 

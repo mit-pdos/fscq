@@ -439,7 +439,15 @@ Section LISTMATCH.
 End LISTMATCH.
 
 
-
+Lemma arrayN_listpred_seq : forall V l st n,
+  length l = n ->
+  arrayN (@ptsto _ _ V) st l =p=> listpred (fun a => a |->?) (seq st n).
+Proof.
+  induction l; destruct n; simpl; intros; try omega; auto.
+  rewrite IHl.
+  cancel.
+  omega.
+Qed.
 
 
 Lemma listmatch_sym : forall AT AEQ V A B (al : list A) (bl : list B) f,
@@ -629,6 +637,39 @@ Proof.
     rewrite synced_list_length in *; simpl; omega.
     apply possible_crash_list_cons; simpl; auto.
     rewrite synced_list_length in *; simpl; omega.
+Qed.
+
+Theorem sync_invariant_listpred : forall T prd (l : list T),
+  (forall x, sync_invariant (prd x)) ->
+  sync_invariant (listpred prd l).
+Proof.
+  induction l; simpl; eauto.
+Qed.
+
+Hint Resolve sync_invariant_listpred.
+
+Theorem sync_xform_listpred : forall V (l : list V) prd,
+  sync_xform (listpred prd l) <=p=> listpred (fun x => sync_xform (prd x)) l.
+Proof.
+  induction l; simpl; intros; split; auto.
+  apply sync_xform_emp.
+  apply sync_xform_emp.
+  rewrite sync_xform_sep_star_dist.
+  rewrite IHl; auto.
+  rewrite sync_xform_sep_star_dist.
+  rewrite IHl; auto.
+Qed.
+
+
+Lemma sync_xform_listpred' : forall T (l : list T) p q,
+  (forall x, sync_xform (p x) =p=> q x) ->
+  sync_xform (listpred p l) =p=> listpred q l.
+Proof.
+  induction l; simpl; intros; auto.
+  apply sync_xform_emp.
+  repeat rewrite sync_xform_sep_star_dist.
+  rewrite IHl by eauto.
+  rewrite H; auto.
 Qed.
 
 

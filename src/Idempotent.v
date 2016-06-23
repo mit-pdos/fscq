@@ -1,9 +1,51 @@
 Require Import Hoare.
-Require Import Prog.
+Require Import Prog ProgMonad.
 Require Import Pred PredCrash.
 Require Import SepAuto.
 Require Import AsyncDisk.
 Require Import Hashmap.
+
+Lemma step_hashmap_subset : forall T m hm p m' hm' (v: T),
+    step m hm p m' hm' v ->
+    exists l, hashmap_subset l hm hm'.
+Proof.
+  inversion 1; eauto.
+Qed.
+
+Hint Resolve step_hashmap_subset.
+
+Lemma hashmap_subset_some_list_trans : forall hm hm' hm'',
+    (exists l, hashmap_subset l hm hm') ->
+    (exists l, hashmap_subset l hm' hm'') ->
+    exists l, hashmap_subset l hm hm''.
+Proof.
+  eauto.
+Qed.
+
+Lemma finished_val_eq : forall T m hm (v:T),
+    exists v', Finished m hm v = Finished m hm v'.
+Proof. eauto. Qed.
+
+Hint Resolve finished_val_eq.
+
+Lemma exec_crashed_hashmap_subset' : forall T m m' hm hm' p out,
+  exec m hm p out
+  -> (out = Crashed T m' hm' \/ exists v, out = Finished m' hm' v)
+  -> exists l, hashmap_subset l hm hm'.
+Proof.
+  intros.
+  generalize dependent hm'.
+  generalize dependent m'.
+  induction H; subst; intuition; repeat deex; try congruence;
+    try match goal with
+        | [ H: @eq (outcome _) _ _ |- _ ] =>
+          inversion H; subst
+        end;
+    eauto.
+
+  eauto 7 using hashmap_subset_some_list_trans.
+  eauto 7 using hashmap_subset_some_list_trans.
+Qed.
 
 Lemma exec_crashed_hashmap_subset : forall T m m' hm hm' p out,
   exec m hm p out
@@ -11,16 +53,7 @@ Lemma exec_crashed_hashmap_subset : forall T m m' hm hm' p out,
   -> exists l, hashmap_subset l hm hm'.
 Proof.
   intros.
-  induction H; intuition.
-  - inversion H; subst; auto.
-    inversion H2; subst.
-    assert (Hhm: exists l, hashmap_subset l hm (upd_hashmap' hm (hash_fwd buf) buf)).
-      econstructor. solve_hashmap_subset.
-    inversion Hhm.
-    solve_hashmap_subset.
-  - inversion H0.
-  - inversion H0. solve_hashmap_subset.
-  - inversion H0.
+  eapply exec_crashed_hashmap_subset'; eauto.
 Qed.
 
 Ltac solve_hashmap_subset' :=
@@ -195,18 +228,18 @@ Proof.
 Qed.
 
 Theorem corr3_from_corr2_rx :
-  forall TF TR RF RR (p: _ -> prog TF) (r: _ -> prog TR)
-         (rxp : RF -> prog TF) (rxr : RR -> prog TR)
+  forall TF TR RF RR (p: prog TF) (r:  prog TR)
+         (rxp : TF -> prog RF) (rxr : TR -> prog RR)
          ppre rpre,
-  {{ ppre }} progseq p rxp
-  -> {{ rpre }} progseq r rxr
+  {{ ppre }} Bind p rxp
+  -> {{ rpre }} Bind r rxr
   -> {{ fun hm done crashdone => exists crash,
         ppre hm done crash
         * [[ forall hm',
           crash_xform (crash hm'
           * [[ exists l, hashmap_subset l hm hm' ]])
-          =p=> rpre hm' crashdone crash ]] }} p rxp >> r rxr.
+          =p=> rpre hm' crashdone crash ]] }} Bind p rxp >> Bind r rxr.
 Proof.
-  unfold progseq; intros.
+  intros.
   apply corr3_from_corr2; eauto.
 Qed.

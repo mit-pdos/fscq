@@ -1,4 +1,4 @@
-Require Import Prog.
+Require Import Prog ProgMonad.
 Require Import Log.
 Require Import BFile.
 Require Import Word.
@@ -28,13 +28,13 @@ Require Import GroupLog.
 Require Import DiskLogHash.
 Require Import SuperBlock.
 Require Import DiskSet.
+Require Import Lia.
+Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
 Import ListNotations.
 
 Module AFS.
-
-  Parameter cachesize : nat.
 
   (* Programs *)
 
@@ -56,8 +56,8 @@ Module AFS.
      **)
 
     (* XXX: not quite right, fix later *)
-    let data_blocks := data_bitmaps * BALLOC.items_per_val in
-    let inode_blocks := inode_bitmaps * BALLOC.items_per_val / INODE.IRecSig.items_per_val in
+    let data_blocks := data_bitmaps * valulen in
+    let inode_blocks := inode_bitmaps * valulen / INODE.IRecSig.items_per_val in
     let inode_base := data_blocks in
     let balloc_base1 := inode_base + inode_blocks + inode_bitmaps in
     let balloc_base2 := balloc_base1 + data_bitmaps in
@@ -75,36 +75,38 @@ Module AFS.
      1
      max_addr).
 
-  Definition mkfs_alternate_allocators {T} lxp bxp1 bxp2 mscs rx : prog T :=
-    let^ (mscs, bxp1, bxp2) <- ForN i < (BmapNBlocks bxp1 * valulen)
-    Hashmap hm
-    Ghost [ F ]
-    Loopvar [ mscs bxp1 bxp2 ]
-    Continuation lrx
-    Invariant F
-    OnCrash F
-    Begin
-      mscs <- BALLOC.steal lxp bxp1 i mscs;
-      lrx ^(mscs, bxp2, bxp1)
-    Rof ^(mscs, bxp1, bxp2);
-    rx mscs.
+  Lemma compute_xparams_ok : forall data_bitmaps inode_bitmaps log_descr_blocks,
+    goodSize addrlen (1 +
+          data_bitmaps * valulen +
+          inode_bitmaps * valulen / INODE.IRecSig.items_per_val +
+          inode_bitmaps + data_bitmaps + data_bitmaps +
+          1 + log_descr_blocks + log_descr_blocks * PaddedLog.DescSig.items_per_val) ->
+    fs_xparams_ok (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks).
+  Proof.
+    unfold fs_xparams_ok.
+    unfold log_xparams_ok, inode_xparams_ok, balloc_xparams_ok.
+    unfold compute_xparams; simpl.
+    intuition.
+    all: eapply goodSize_trans; try eassumption.
+    all: lia.
+  Qed.
 
-  Definition mkfs {T} data_bitmaps inode_bitmaps log_descr_blocks rx : prog T :=
+  Notation MSLL := BFILE.MSLL.
+  Notation MSAlloc := BFILE.MSAlloc.
+  Import DIRTREE.
+
+  Definition mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks :=
     let fsxp := compute_xparams data_bitmaps inode_bitmaps log_descr_blocks in
-    cs <- BUFCACHE.init_recover cachesize;
+    cs <- BUFCACHE.init_load cachesize;
     cs <- SB.init fsxp cs;
     mscs <- LOG.init (FSXPLog fsxp) cs;
     mscs <- LOG.begin (FSXPLog fsxp) mscs;
-    mscs <- BALLOC.init (FSXPLog fsxp) (FSXPBlockAlloc1 fsxp) mscs;
-    mscs <- BALLOC.init (FSXPLog fsxp) (FSXPBlockAlloc2 fsxp) mscs;
-    mscs <- BALLOC.init (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
-    mscs <- INODE.init (FSXPLog fsxp) (FSXPInode fsxp) mscs;
-    mscs <- mkfs_alternate_allocators (FSXPLog fsxp) (FSXPBlockAlloc1 fsxp) (FSXPBlockAlloc2 fsxp) mscs;
-    let^ (mscs, r) <- BALLOC.alloc (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
+    ms <- BFILE.init (FSXPLog fsxp) (FSXPBlockAlloc1 fsxp, FSXPBlockAlloc2 fsxp) fsxp (FSXPInode fsxp) mscs;
+    let^ (mscs, r) <- IAlloc.alloc (FSXPLog fsxp) fsxp (MSLL ms);
     match r with
     | None =>
       mscs <- LOG.abort (FSXPLog fsxp) mscs;
-      rx None
+      Ret None
     | Some inum =>
       (**
        * We should write a new fsxp back to the superblock with the new root
@@ -115,211 +117,435 @@ Module AFS.
         let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
         If (bool_dec ok true) {
           mscs <- LOG.flushsync (FSXPLog fsxp) mscs;
-          rx (Some ((BFILE.mk_memstate true mscs), fsxp))
+          Ret (Some ((BFILE.mk_memstate (MSAlloc ms) mscs), fsxp))
         } else {
-          rx None
+          Ret None
         }
       } else {
-        rx None
+        mscs <- LOG.abort (FSXPLog fsxp) mscs;
+        Ret None
       }
     end.
 
-  Notation MSLL := BFILE.MSLL.
-  Notation MSAlloc := BFILE.MSAlloc.
-  Import DIRTREE.
+
+  Lemma S_minus_1_helper : forall n a b,
+    S (n + 1 + a + b) - 1 - n = S (a + b).
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma S_minus_1_helper2 : forall n,
+    S n - 1 = n.
+  Proof.
+    intros; omega.
+  Qed.
+
+  Lemma arrayN_ptsto_mem_disjoint : forall V a l st m m' v,
+    arrayN (@ptsto _ _ V) st l m ->
+    (a |-> v)%pred m' ->
+    a < st \/ a >= st + length l ->
+    mem_disjoint m m'.
+  Proof.
+    intros.
+    unfold ptsto in H0; unfold mem_disjoint; intuition repeat deex.
+    - destruct (addr_eq_dec a a0); subst.
+      eapply arrayN_oob_lt in H; eauto; congruence.
+      specialize (H4 _ n); congruence.
+    - destruct (addr_eq_dec a a0); subst.
+      eapply arrayN_oob' with (i := a0 - st) in H; try omega.
+      replace (st + (a0 - st)) with a0 in H by omega; congruence.
+      specialize (H4 _ n); congruence.
+  Qed.
+
+  Lemma arrayN_ex_mem_disjoint : forall V l a m m' v,
+    arrayN_ex (@ptsto _ _ V) l a m ->
+    (a |-> v)%pred m' ->
+    mem_disjoint m m'.
+  Proof.
+    unfold arrayN_ex; intros.
+    destruct (lt_dec a (length l)).
+    - unfold sep_star in H; rewrite sep_star_is in H; unfold sep_star_impl in H.
+      repeat deex.
+      apply mem_disjoint_mem_union_split_l.
+      + eapply arrayN_ptsto_mem_disjoint.
+        pred_apply; cancel.
+        eauto.
+        right.
+        rewrite firstn_length_l; omega.
+      + eapply arrayN_ptsto_mem_disjoint.
+        pred_apply; cancel.
+        eauto.
+        omega.
+    - rewrite firstn_oob, skipn_oob in H by omega; simpl in H.
+      eapply arrayN_ptsto_mem_disjoint.
+      pred_apply; cancel.
+      eauto.
+      intuition omega.
+  Qed.
+
+  Lemma arrayN_ex_ptsto_exis : forall V l a p,
+    (arrayN (@ptsto _ _ V) 0 l =p=> p * a |->?) ->
+    a < length l ->
+    (arrayN_ex (@ptsto _ _ V) l a =p=> p).
+  Proof.
+    intros.
+    destruct l.
+    simpl in H0; inversion H0.
+    rewrite arrayN_except with (def := v) in H; eauto.
+    generalize H; unfold_sep_star; unfold pimpl; intros.
+    edestruct H1.
+    exists m; eexists.
+    intuition simpl.
+    2: apply ptsto_mem_is.
+    eapply arrayN_ex_mem_disjoint; eauto.
+    apply ptsto_mem_is.
+    repeat deex.
+    assert (x = m); subst; auto.
+    edestruct (exact_domain_disjoint_union'); eauto.
+    apply ptsto_exis_exact_domain.
+    eapply arrayN_ex_mem_disjoint; eauto.
+    apply ptsto_mem_is.
+    apply ptsto_exis_mem_is.
+  Qed.
+
+  Ltac equate_log_rep :=
+    match goal with
+    | [ r : BFILE.memstate,
+        H : context [ compute_xparams ?a1 ?a2 ?a3 ]
+        |- LOG.rep ?xp ?F ?d ?ms _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ * _ ] =>
+        equate d d'; equate ms' (MSLL (BFILE.mk_memstate (MSAlloc r) ms));
+        equate xp' (FSXPLog (compute_xparams a1 a2 a3))
+    end.
+
+  Theorem mkfs_ok : forall cachesize data_bitmaps inode_bitmaps log_descr_blocks,
+    {!!< disk,
+     PRE:hm
+       arrayS 0 disk *
+       [[ cachesize <> 0 /\ data_bitmaps <> 0 /\ inode_bitmaps <> 0 ]] *
+       [[ data_bitmaps <= valulen * valulen /\ inode_bitmaps <= valulen * valulen ]] *
+       [[ length disk = 1 +
+          data_bitmaps * valulen +
+          inode_bitmaps * valulen / INODE.IRecSig.items_per_val +
+          inode_bitmaps + data_bitmaps + data_bitmaps +
+          1 + log_descr_blocks + log_descr_blocks * PaddedLog.DescSig.items_per_val ]] *
+       [[ goodSize addrlen (length disk) ]]
+     POST:hm' RET:r exists ms fsxp d,
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
+       ( [[ r = None ]] \/ exists ilist frees,
+         [[ r = Some (ms, fsxp) ]] *
+         [[[ d ::: rep fsxp emp (TreeDir (FSXPRootInum fsxp) nil) ilist frees ]]] )
+     CRASH:hm'
+       any
+     >!!} mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks.
+  Proof.
+    unfold mkfs.
+    safestep.
+
+    prestep.
+    norml; unfold stars; simpl.
+    denote! (arrayS _ _ _) as Hx.
+    eapply arrayN_isolate_hd in Hx.
+    unfold ptsto_subset in Hx at 1.
+    safecancel.
+    apply compute_xparams_ok.
+    denote (length disk = _) as Heq; rewrite Heq in *; auto.
+    auto.
+
+    (* LOG.init *)
+    prestep. norm. cancel.
+    intuition simpl. pred_apply.
+    (* split LHS into log region and data region *)
+    erewrite arrayN_split at 1.
+    setoid_rewrite Nat.add_1_l.
+    rewrite sep_star_comm.
+    apply sep_star_assoc.
+
+    rewrite skipn_length.
+    setoid_rewrite skipn_length with (n := 1).
+    substl (length disk).
+    apply S_minus_1_helper.
+
+    rewrite firstn_length.
+    setoid_rewrite skipn_length with (n := 1).
+    substl (length disk).
+    rewrite Nat.min_l.
+    rewrite Nat.sub_0_r; auto.
+    rewrite S_minus_1_helper2.
+    generalize (data_bitmaps * valulen + inode_bitmaps * valulen / INODE.IRecSig.items_per_val); intros.
+    generalize (log_descr_blocks * PaddedLog.DescSig.items_per_val); intros.
+    omega.
+
+    eapply goodSize_trans; [ | eauto ].
+    rewrite skipn_length.
+    setoid_rewrite skipn_length with (n := 1).
+    substl (length disk).
+    generalize (data_bitmaps * valulen + inode_bitmaps * valulen / INODE.IRecSig.items_per_val); intros.
+    generalize (log_descr_blocks * PaddedLog.DescSig.items_per_val); intros.
+    omega.
+    auto.
+    auto.
+    step.
+    rewrite Nat.sub_0_r in *.
+
+    (* BFILE.init *)
+    step.
+
+    (* IAlloc.alloc *)
+    step.
+    step.
+    step.
+    step.
+
+    (* LOG.flushsync *)
+    step.
+    step.
+    rewrite latest_pushd.
+    equate_log_rep.
+    cancel.
+    unfold rep, IAlloc.rep; or_r.
+    cancel.
+    denote (_ =p=> freeinode_pred) as Hy.
+    denote (freeinode_pred =p=> _) as Hz.
+    rewrite <- Hy in Hz by (apply repeat_length with (x := BFILE.bfile0)).
+    assert (1 < length (repeat BFILE.bfile0 (inode_bitmaps * valulen
+       / INODE.IRecSig.items_per_val * INODE.IRecSig.items_per_val))) as Hlen.
+    rewrite repeat_length; omega.
+    apply arrayN_ex_ptsto_exis in Hz; auto.
+    rewrite <- Hz.
+    pose proof (list2nmem_ptsto_cancel BFILE.bfile0 _ Hlen).
+    pred_apply; unfold tree_dir_names_pred.
+    cancel.
+    rewrite repeat_selN by auto.
+    apply SDIR.bfile0_empty.
+    apply emp_empty_mem.
+
+    (* failure cases *)
+    apply pimpl_any.
+    step.
+    step.
+    step.
+    equate_log_rep.
+    cancel.
+    or_l; cancel.
+
+    apply pimpl_any.
+    step.
+    step.
+    equate_log_rep.
+    cancel.
+    or_l; cancel.
+
+    apply pimpl_any.
+    step.
+    equate_log_rep.
+    cancel.
+    or_l; cancel.
+
+    all: try solve [ try xcrash; apply pimpl_any ].
+    substl (length disk).
+    apply gt_Sn_O.
+
+    Unshelve. all: eauto; try exact ($0, nil).
+  Qed.
 
 
-  Definition recover {T} rx : prog T :=
-    cs <- BUFCACHE.init_recover 10;
+  Definition recover cachesize :=
+    cs <- BUFCACHE.init_recover cachesize;
     let^ (cs, fsxp) <- SB.load cs;
     mscs <- LOG.recover (FSXPLog fsxp) cs;
-    rx ^(BFILE.mk_memstate true mscs, fsxp).
+    Ret ^(BFILE.mk_memstate true mscs, fsxp).
 
-  Definition file_get_attr T fsxp inum ams rx : prog T :=
+  Definition file_get_attr fsxp inum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, attr) <- DIRTREE.getattr fsxp inum (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), attr).
+    Ret ^((MSAlloc ams, ms), attr).
 
-  Definition file_get_sz T fsxp inum ams rx : prog T :=
+  Definition file_get_sz fsxp inum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, attr) <- DIRTREE.getattr fsxp inum (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), INODE.ABytes attr).
+    Ret ^((MSAlloc ams, ms), INODE.ABytes attr).
 
-  Definition file_set_attr T fsxp inum attr ams rx : prog T :=
+  Definition file_set_attr fsxp inum attr ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.setattr fsxp inum attr (MSAlloc ams, ms);
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), ok).
+    Ret ^((MSAlloc ams, ms), ok).
 
-  Definition file_set_sz T fsxp inum sz ams rx : prog T :=
+  Definition file_set_sz fsxp inum sz ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.updattr fsxp inum (INODE.UBytes sz) (MSAlloc ams, ms);
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), ok).
+    Ret ^((MSAlloc ams, ms), ok).
 
-  Definition read_fblock T fsxp inum off ams rx : prog T :=
+  Definition read_fblock fsxp inum off ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, b) <- DIRTREE.read fsxp inum off (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), b).
+    Ret ^((MSAlloc ams, ms), b).
 
-  Definition file_truncate T fsxp inum sz ams rx : prog T :=
+  Definition file_truncate fsxp inum sz ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, ok) <- DIRTREE.truncate fsxp inum sz (MSAlloc ams, ms);
     If (bool_dec ok false) {
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-      rx ^((MSAlloc ams, ms), false)
+      Ret ^((MSAlloc ams, ms), false)
     } else {
       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-      rx ^((MSAlloc ams, ms), ok)
+      Ret ^((MSAlloc ams, ms), ok)
     }.
 
   (* update an existing block directly.  XXX dwrite happens to sync metadata. *)
-  Definition update_fblock_d T fsxp inum off v ams rx : prog T :=
+  Definition update_fblock_d fsxp inum off v ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.dwrite fsxp inum off v (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms)).
+    Ret ^((MSAlloc ams, ms)).
 
-  Definition update_fblock T fsxp inum off v ams rx : prog T :=
+  Definition update_fblock fsxp inum off v ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.write fsxp inum off v (MSAlloc ams, ms);
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), ok).
+    Ret ^((MSAlloc ams, ms), ok).
 
   (* sync only data blocks of a file. *)
-  Definition file_sync T fsxp inum ams rx : prog T :=
+  Definition file_sync fsxp inum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.datasync fsxp inum (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms)).
+    Ret ^((MSAlloc ams, ms)).
 
-  Definition readdir T fsxp dnum ams rx : prog T :=
+  Definition readdir fsxp dnum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, files) <- SDIR.readdir (FSXPLog fsxp) (FSXPInode fsxp) dnum (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), files).
+    Ret ^((MSAlloc ams, ms), files).
 
-  Definition create T fsxp dnum name ams rx : prog T :=
+  Definition create fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (MSAlloc ams, ms);
     match oi with
       | None =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-          rx ^((MSAlloc ams, ms), None)
+          Ret ^((MSAlloc ams, ms), None)
       | Some inum =>
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
-          | true => rx ^((MSAlloc ams, ms), Some inum)
-          | false => rx ^((MSAlloc ams, ms), None)
+          | true => Ret ^((MSAlloc ams, ms), Some inum)
+          | false => Ret ^((MSAlloc ams, ms), None)
         end
     end.
 
-  Definition mksock T fsxp dnum name ams rx : prog T :=
+  Definition mksock fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (MSAlloc ams, ms);
     match oi with
       | None =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-        rx ^((MSAlloc ams, ms), None)
+        Ret ^((MSAlloc ams, ms), None)
       | Some inum =>
         ams <- BFILE.updattr (FSXPLog fsxp) (FSXPInode fsxp) inum (INODE.UType $1) ams;
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
-          | true => rx ^((MSAlloc ams, ms), Some inum)
-          | false => rx ^((MSAlloc ams, ms), None)
+          | true => Ret ^((MSAlloc ams, ms), Some inum)
+          | false => Ret ^((MSAlloc ams, ms), None)
         end
     end.
 
-  Definition mkdir T fsxp dnum name ams rx : prog T :=
+  Definition mkdir fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, oi) <- DIRTREE.mkdir fsxp dnum name (MSAlloc ams, ms);
     match oi with
       | None =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-          rx ^((MSAlloc ams, ms), None)
+          Ret ^((MSAlloc ams, ms), None)
       | Some inum =>
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
-          | true => rx ^((MSAlloc ams, ms), Some inum)
-          | false => rx ^((MSAlloc ams, ms), None)
+          | true => Ret ^((MSAlloc ams, ms), Some inum)
+          | false => Ret ^((MSAlloc ams, ms), None)
         end
     end.
 
-  Definition delete T fsxp dnum name ams rx : prog T :=
+  Definition delete fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, ok) <- DIRTREE.delete fsxp dnum name (MSAlloc ams, ms);
     If (bool_dec ok true) {
        let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-       rx ^((MSAlloc ams, ms), ok)
+       Ret ^((MSAlloc ams, ms), ok)
     } else {
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-      rx ^((MSAlloc ams, ms), false)
+      Ret ^((MSAlloc ams, ms), false)
     }.
 
-  Definition lookup T fsxp dnum names ams rx : prog T :=
+  Definition lookup fsxp dnum names ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, r) <- DIRTREE.namei fsxp dnum names (MSAlloc ams, ms);
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    rx ^((MSAlloc ams, ms), r).
+    Ret ^((MSAlloc ams, ms), r).
 
-  Definition rename T fsxp dnum srcpath srcname dstpath dstname ams rx : prog T :=
+  Definition rename fsxp dnum srcpath srcname dstpath dstname ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname (MSAlloc ams, ms);
     If (bool_dec r true) {
       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-      rx ^((MSAlloc ams, ms), ok)
+      Ret ^((MSAlloc ams, ms), ok)
     } else {
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-      rx ^((MSAlloc ams, ms), false)
+      Ret ^((MSAlloc ams, ms), false)
     }.
 
   (* sync directory tree; will flush all outstanding changes to tree (but not dupdates to files) *)
-  Definition tree_sync T fsxp ams rx : prog T :=
+  Definition tree_sync fsxp ams :=
     ams <- DIRTREE.sync fsxp ams;
-    rx ^(ams).
+    Ret ^(ams).
 
-  Definition statfs T fsxp ams rx : prog T :=
+  Definition statfs fsxp ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     (*
     let^ (mscs, free_blocks) <- BALLOC.numfree (FSXPLog fsxp) (FSXPBlockAlloc fsxp) mscs;
     let^ (mscs, free_inodes) <- BALLOC.numfree (FSXPLog fsxp) (FSXPInodeAlloc fsxp) mscs;
      *)
     ms <- LOG.commit_ro (FSXPLog fsxp) ms;
-    (* rx ^(mscs, free_blocks, free_inodes).  *)
-    rx ^((MSAlloc ams, ms), 0, 0).
+    (* Ret ^(mscs, free_blocks, free_inodes).  *)
+    Ret ^((MSAlloc ams, ms), 0, 0).
 
   (* Recover theorems *)
 
   Hint Extern 0 (okToUnify (LOG.rep_inner _ _ _ _) (LOG.rep_inner _ _ _ _)) => constructor : okToUnify.
 
-  Theorem recover_ok :
+  Theorem recover_ok : forall cachesize,
     {< fsxp cs ds,
      PRE:hm
-       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm
+       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm *
+       [[ cachesize <> 0 ]]
      POST:hm' RET:^(ms, fsxp')
        [[ fsxp' = fsxp ]] * exists d n, [[ n <= length (snd ds) ]] *
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
      XCRASH:hm'
        LOG.before_crash (FSXPLog fsxp) (SB.rep fsxp) ds hm'
-     >} recover.
+     >} recover cachesize.
   Proof.
     unfold recover, LOG.after_crash; intros.
-    eapply pimpl_ok2.
+    eapply pimpl_ok2; monad_simpl.
     eapply BUFCACHE.init_recover_ok.
-    cancel.
-    unfold BUFCACHE.rep; cancel.
-    eauto.
+    intros; norm. cancel.
+    intuition simpl. eauto.
 
-    prestep. norm. cancel.
-    unfold BUFCACHE.rep; cancel.
+    prestep. norml.
+    denote ((crash_xform _) d') as Hx.
+    apply crash_xform_sep_star_dist in Hx.
+    rewrite SB.crash_xform_rep in Hx.
+    rewrite LOG.after_crash_idem' in Hx; eauto.
+    destruct_lift Hx; denote (crash_xform (crash_xform _)) as Hx.
+    apply crash_xform_idem_l in Hx.
+
+    norm. cancel.
     intuition.
     pred_apply.
-    rewrite sep_star_comm.
-    eauto.
+    apply sep_star_comm; eauto.
 
     prestep. norm. cancel.
     unfold LOG.after_crash; norm. cancel.
@@ -383,9 +609,10 @@ Module AFS.
     intuition.
     pred_apply.
     safecancel.
+    Unshelve. all: eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (recover) _) => apply recover_ok : prog.
+  Hint Extern 1 ({{_}} Bind (recover _) _) => apply recover_ok : prog.
 
   Ltac recover_ro_ok := intros;
     repeat match goal with
@@ -419,7 +646,7 @@ Module AFS.
     unfold file_get_attr; intros.
     step.
     step.
-    eapply pimpl_ok2.
+    eapply pimpl_ok2; monad_simpl.
     apply LOG.commit_ro_ok.
     cancel.
     step.
@@ -429,7 +656,7 @@ Module AFS.
     rewrite LOG.notxn_intact. rewrite LOG.intact_idempred. reflexivity.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
+  Hint Extern 1 ({{_}} Bind (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
 
   Ltac xcrash_solve :=
     repeat match goal with
@@ -506,7 +733,7 @@ Module AFS.
     unfold read_fblock; intros.
     step.
     step.
-    eapply pimpl_ok2.
+    eapply pimpl_ok2; monad_simpl.
     apply LOG.commit_ro_ok.
     cancel.
     step.
@@ -518,7 +745,7 @@ Module AFS.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (read_fblock _ _ _ _) _) => apply read_fblock_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read_fblock _ _ _ _) _) => apply read_fblock_ok : prog.
 
   Theorem file_set_attr_ok : forall fsxp inum attr mscs,
   {< ds pathname Fm Ftop tree f ilist frees,
@@ -552,7 +779,7 @@ Module AFS.
     rewrite LOG.intact_idempred; cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (file_set_attr _ _ _ _) _) => apply file_set_attr_ok : prog.
+  Hint Extern 1 ({{_}} Bind (file_set_attr _ _ _ _) _) => apply file_set_attr_ok : prog.
 
   Theorem file_truncate_ok : forall fsxp inum sz mscs,
     {< ds Fm Ftop tree pathname f ilist frees,
@@ -599,7 +826,7 @@ Module AFS.
     rewrite LOG.intact_idempred. xform_norm. cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (file_truncate _ _ _ _) _) => apply file_truncate_ok : prog.
+  Hint Extern 1 ({{_}} Bind (file_truncate _ _ _ _) _) => apply file_truncate_ok : prog.
 
 
   Ltac latest_rewrite := unfold latest, pushd; simpl.
@@ -671,7 +898,7 @@ Module AFS.
       xform_normr; cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (update_fblock_d _ _ _ _ _) _) => apply update_fblock_d_ok : prog.
+  Hint Extern 1 ({{_}} Bind (update_fblock_d _ _ _ _ _) _) => apply update_fblock_d_ok : prog.
 
 
   Theorem file_sync_ok: forall fsxp inum mscs,
@@ -719,7 +946,7 @@ Module AFS.
       cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (file_sync _ _ _) _) => apply file_sync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (file_sync _ _ _) _) => apply file_sync_ok : prog.
 
 
   Theorem tree_sync_ok: forall fsxp  mscs,
@@ -742,7 +969,7 @@ Module AFS.
     cancel.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (tree_sync _ _) _) => apply tree_sync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (tree_sync _ _) _) => apply tree_sync_ok : prog.
 
   Theorem lookup_ok: forall fsxp dnum fnlist mscs,
     {< ds Fm Ftop tree ilist frees,
@@ -761,7 +988,7 @@ Module AFS.
     unfold lookup; intros.
     step.
     step.
-    eapply pimpl_ok2.
+    eapply pimpl_ok2; monad_simpl.
     apply LOG.commit_ro_ok.
     cancel.
     step.
@@ -771,7 +998,7 @@ Module AFS.
     apply LOG.notxn_idempred.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (lookup _ _ _ _) _) => apply lookup_ok : prog.
+  Hint Extern 1 ({{_}} Bind (lookup _ _ _ _) _) => apply lookup_ok : prog.
 
   Theorem create_ok : forall fsxp dnum name mscs,
     {< ds pathname Fm Ftop tree tree_elem ilist frees,
@@ -806,7 +1033,7 @@ Module AFS.
     apply LOG.notxn_idempred.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (create _ _ _ _ ) _) => apply create_ok : prog.
+  Hint Extern 1 ({{_}} Bind (create _ _ _ _ ) _) => apply create_ok : prog.
 
   Definition rename_rep ds mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname hm :=
     (exists d tree' srcnum srcents dstnum dstents subtree pruned renamed ilist' frees',
@@ -853,7 +1080,7 @@ Module AFS.
     apply LOG.notxn_idempred.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
+  Hint Extern 1 ({{_}} Bind (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
 
 
   Theorem delete_ok : forall fsxp dnum name mscs,
@@ -893,7 +1120,7 @@ Module AFS.
     apply LOG.notxn_idempred.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (delete _ _ _ _) _) => apply delete_ok : prog.
+  Hint Extern 1 ({{_}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.
 
 End AFS.
 

@@ -3,6 +3,7 @@ Require Import List Omega Ring Word Pred Prog Hoare SepAuto BasicProg Array.
 Require Import FunctionalExtensionality.
 
 Set Implicit Arguments.
+Set Default Proof Using "Type".
 
 (* bijection on restricted domain *)
 

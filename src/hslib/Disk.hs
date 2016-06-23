@@ -45,7 +45,7 @@ data FlushLog =
   -- The second list is the list of previous flushed write groups
 
 data DiskState =
-  S !Fd !(IORef DiskStats) !(IORef Bool) !(Maybe (IORef FlushLog))
+  S !Fd !(IORef DiskStats) !(Maybe (IORef FlushLog))
 
 bumpRead :: IORef DiskStats -> IO ()
 bumpRead sr = do
@@ -100,7 +100,7 @@ i2bs :: Integer -> Int -> IO BS.ByteString
 i2bs i nbytes = BSI.create nbytes $ i2buf i $ fromIntegral nbytes
 
 read_disk :: DiskState -> Integer -> IO Coq_word
-read_disk (S fd sr _ _) a = do
+read_disk (S fd sr _) a = do
   debugmsg $ "read(" ++ (show a) ++ ")"
   bumpRead sr
   allocaBytes 4096 $ \buf -> do
@@ -116,11 +116,10 @@ read_disk (S fd sr _ _) a = do
 
 write_disk :: DiskState -> Integer -> Coq_word -> IO ()
 write_disk _ _ (W64 _) = error "write_disk: short value"
-write_disk (S fd sr dirty fl) a (W v) = do
+write_disk (S fd sr fl) a (W v) = do
   -- maybeCrash
   debugmsg $ "write(" ++ (show a) ++ ")"
   bumpWrite sr
-  writeIORef dirty True
   logWrite fl a (W v)
   allocaBytes 4096 $ \buf -> do
     _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 4096*a
@@ -133,25 +132,21 @@ write_disk (S fd sr dirty fl) a (W v) = do
         error $ "write_disk: short write: " ++ (show cc) ++ " @ " ++ (show a)
 
 sync_disk :: DiskState -> IO ()
-sync_disk (S fd sr dirty fl) = do
+sync_disk (S fd sr fl) = do
   debugmsg $ "sync()"
-  isdirty <- readIORef dirty
-  if isdirty then do
-    if debugSyncs then do
-      callstack <- currentCallStack
-      putStrLn $ "Sync call stack:"
-      _ <- mapM (\loc -> putStrLn $ "  " ++ loc) callstack
-      return ()
-    else
-      return ()
 
-    bumpSync sr
-    logFlush fl
-    if reallySync then
-      fileSynchroniseDataOnly fd
-    else
-      return ()
-    writeIORef dirty False
+  if debugSyncs then do
+    callstack <- currentCallStack
+    putStrLn $ "Sync call stack:"
+    _ <- mapM (\loc -> putStrLn $ "  " ++ loc) callstack
+    return ()
+  else
+    return ()
+
+  bumpSync sr
+  logFlush fl
+  if reallySync then
+    fileSynchroniseDataOnly fd
   else
     return ()
 
@@ -161,11 +156,11 @@ trim_disk _ a = do
   return ()
 
 clear_stats :: DiskState -> IO ()
-clear_stats (S _ sr _ _) = do
+clear_stats (S _ sr _) = do
   writeIORef sr $ Stats 0 0 0
 
 get_stats :: DiskState -> IO DiskStats
-get_stats (S _ sr _ _) = do
+get_stats (S _ sr _) = do
   s <- readIORef sr
   return s
 
@@ -173,37 +168,35 @@ init_disk :: FilePath -> IO DiskState
 init_disk disk_fn = do
   fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
   sr <- newIORef $ Stats 0 0 0
-  dirty <- newIORef False
-  return $ S fd sr dirty Nothing
+  return $ S fd sr Nothing
 
 init_disk_crashlog :: FilePath -> IO DiskState
 init_disk_crashlog disk_fn = do
   fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
   sr <- newIORef $ Stats 0 0 0
-  dirty <- newIORef False
   fl <- newIORef $ FL [] []
-  return $ S fd sr dirty $ Just fl
+  return $ S fd sr $ Just fl
 
 set_nblocks_disk :: DiskState -> Int -> IO ()
-set_nblocks_disk (S fd _ _ _) nblocks = do
+set_nblocks_disk (S fd _ _) nblocks = do
   setFdSize fd $ fromIntegral $ nblocks * 4096
   return ()
 
 close_disk :: DiskState -> IO DiskStats
-close_disk (S fd sr _ _) = do
+close_disk (S fd sr _) = do
   closeFd fd
   s <- readIORef sr
   return s
 
 get_flush_log :: DiskState -> IO [[(Integer, Coq_word)]]
-get_flush_log (S _ _ _ Nothing) = return []
-get_flush_log (S _ _ _ (Just fl)) = do
+get_flush_log (S _ _ Nothing) = return []
+get_flush_log (S _ _ (Just fl)) = do
   FL writes flushes <- readIORef fl
   return (writes : flushes)
 
 clear_flush_log :: DiskState -> IO [[(Integer, Coq_word)]]
-clear_flush_log (S _ _ _ Nothing) = return []
-clear_flush_log (S _ _ _ (Just fl)) = do
+clear_flush_log (S _ _ Nothing) = return []
+clear_flush_log (S _ _ (Just fl)) = do
   FL writes flushes <- readIORef fl
   writeIORef fl $ FL [] []
   return (writes : flushes)

@@ -35,6 +35,9 @@ type HT = Integer
 verboseFuse :: Bool
 verboseFuse = False
 
+cachesize :: Integer
+cachesize = 100000
+
 debug :: String -> IO ()
 debug msg =
   if verboseFuse then
@@ -57,7 +60,7 @@ nDescrBlocks :: Integer
 nDescrBlocks = 64
 
 type MSCS = (Bool, Log.LOG__Coq_memstate)
-type FSprog a = (MSCS -> ((MSCS, a) -> Prog.Coq_prog (MSCS, a)) -> Prog.Coq_prog (MSCS, a))
+type FSprog a = (MSCS -> Prog.Coq_prog (MSCS, a))
 type FSrunner = forall a. FSprog a -> IO a
 doFScall :: DiskState -> IORef MSCS -> FSrunner
 doFScall ds ref f = do
@@ -83,12 +86,12 @@ run_fuse disk_fn fuse_args = do
   then
     do
       putStrLn $ "Recovering file system"
-      (s, (fsxp, ())) <- I.run ds $ AsyncFS._AFS__recover
+      (s, (fsxp, ())) <- I.run ds $ AsyncFS._AFS__recover cachesize
       return (s, fsxp)
   else
     do
       putStrLn $ "Initializing file system"
-      res <- I.run ds $ AsyncFS._AFS__mkfs nDataBitmaps nInodeBitmaps nDescrBlocks
+      res <- I.run ds $ AsyncFS._AFS__mkfs cachesize nDataBitmaps nInodeBitmaps nDescrBlocks
       case res of
         Nothing -> error $ "mkfs failed"
         Just (s, fsxp) -> do

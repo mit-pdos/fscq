@@ -1,6 +1,5 @@
 Require Import Mem.
 Require Import Pred.
-Require Import Prog.
 Require Import List ListUtils.
 Require Import FunctionalExtensionality.
 Require Import Morphisms.
@@ -11,15 +10,19 @@ Set Implicit Arguments.
 
 
 Definition ptsto_subset {AT AEQ} (a : AT) (vs : valuset) : @pred AT AEQ valuset :=
-  (exists old, a |-> (fst vs, old) /\ [ forall v, In v old -> In v (snd vs) ])%pred.
+  (exists old, a |-> (fst vs, old) * [[ incl old (snd vs) ]])%pred.
 
 Notation "a |=> v" := (a |-> ((v, nil) : valuset))%pred (at level 35) : pred_scope.
 Notation "a |~> v" := (exists old, a |-> ((v, old) : valuset))%pred (at level 35) : pred_scope.
 Notation "a |+> v" := (ptsto_subset a v) (at level 35) : pred_scope.
-
+Notation "a |+>?" := (exists v, a |+> v)%pred (at level 35) : pred_scope.
 
 Definition rawpred := @pred addr addr_eq_dec valuset.
 
+Definition possible_crash (m m' : rawdisk) : Prop :=
+  forall a,
+  (m a = None /\ m' a = None) \/
+  (exists vs v', m a = Some vs /\ m' a = Some (v', nil) /\ In v' (vsmerge vs)).
 
 (* if [p] was true before a crash, then [crash_xform p] is true after a crash *)
 Definition crash_xform (p : rawpred) : rawpred :=
@@ -152,6 +155,22 @@ Proof.
   repeat rewrite upd_ne; auto.
 Qed.
 
+Lemma possible_crash_updSome : forall m m' a v vs,
+  possible_crash m m' ->
+  In v (vsmerge vs) ->
+  possible_crash (updSome m a vs) (updSome m' a (v, nil)).
+Proof.
+  unfold possible_crash; intuition.
+  pose proof (H a) as H'; intuition; repeat deex.
+
+  - repeat rewrite updSome_none by eauto.
+    intuition.
+
+  - destruct (addr_eq_dec a a0); subst.
+    + repeat erewrite updSome_eq by eauto. right. eauto.
+    + repeat rewrite updSome_ne by eauto. eauto.
+Qed.
+
 Definition synced_mem (m : rawdisk) :=
   forall a, m a = None \/ exists v, m a = Some (v, nil).
 
@@ -207,20 +226,19 @@ Proof.
   congruence.
 Qed.
 
-Lemma possible_crash_ptsto_upd_incl : forall F m m' a vs vs',
-  (F * a |-> vs)%pred m ->
+Lemma possible_crash_ptsto_upd_incl' : forall m m' a vs vs',
+  m a = Some vs ->
   possible_crash m m' ->
   incl (vsmerge vs) (vsmerge vs') ->
   possible_crash (upd m a vs') m'.
 Proof.
   unfold possible_crash, vsmerge; simpl; intros.
-  apply ptsto_valid' in H.
   destruct vs, vs'; simpl in *.
   destruct (addr_eq_dec a0 a); subst.
 
   - specialize (H0 a); intuition.
     left; congruence.
-    right; rewrite upd_eq by auto; repeat deex; destruct vs; simpl in *.
+    right; erewrite upd_eq by eauto; repeat deex; destruct vs; simpl in *.
     rewrite H in H2; inversion H2; subst.
     exists (w0, l0); exists w1; intuition.
     rewrite H in H2; inversion H2; subst.
@@ -228,6 +246,18 @@ Proof.
 
   - rewrite upd_ne by auto.
     specialize (H0 a0); intuition.
+Qed.
+
+
+Lemma possible_crash_ptsto_upd_incl : forall F m m' a vs vs',
+  (F * a |-> vs)%pred m ->
+  possible_crash m m' ->
+  incl (vsmerge vs) (vsmerge vs') ->
+  possible_crash (upd m a vs') m'.
+Proof.
+  intros.
+  eapply possible_crash_ptsto_upd_incl'; eauto.
+  eapply ptsto_valid'; eauto.
 Qed.
 
 Lemma possible_crash_upd_incl : forall m m' a v v0,
@@ -239,7 +269,7 @@ Proof.
   unfold possible_crash, vsmerge; intuition.
   destruct (addr_eq_dec a a1); subst; simpl in *.
   - specialize (H a1); intuition; right;
-    rewrite upd_eq in *; try congruence.
+    erewrite upd_eq in * by eauto; try congruence.
     repeat deex.
     destruct vs, v0; inversion H2; subst; simpl in *.
     exists (w0, l0), w; intuition.
@@ -272,6 +302,18 @@ Proof.
   unfold incl, postfix in *; destruct H1; subst; intuition.
   eapply in_skipn_in; eauto.
 Qed.
+
+Lemma possible_crash_sel_exis : forall m m' a vs,
+  possible_crash m m' ->
+  m a = Some vs ->
+  exists v, m' a = Some (v, nil) /\ In v (vsmerge vs).
+Proof.
+  unfold possible_crash; intuition.
+  specialize (H a); intuition; try congruence.
+  repeat deex; eexists; split; eauto.
+  rewrite H0 in H1; inversion H1; subst; auto.
+Qed.
+
 
 Theorem crash_xform_sep_star_dist : forall (p q : rawpred),
   crash_xform (p * q) <=p=> crash_xform p * crash_xform q.
@@ -348,13 +390,13 @@ Theorem crash_xform_ptsto_r: forall a v vs,
   a |=> v =p=> crash_xform (a |-> vs).
 Proof.
   unfold crash_xform, possible_crash, ptsto, pimpl; intros.
-  exists (upd empty_mem a vs).
+  exists (insert empty_mem a vs).
   intuition.
-  rewrite upd_eq; auto.
-  rewrite upd_ne; auto.
+  rewrite insert_eq; eauto.
+  rewrite insert_ne; eauto.
   destruct (eq_nat_dec a a0); subst.
-  - right. rewrite upd_eq; auto. exists vs. exists v. intuition.
-  - left. rewrite upd_ne; auto.
+  - right. rewrite insert_eq; auto. exists vs. exists v. intuition.
+  - left. rewrite insert_ne; auto.
 Qed.
 
 
@@ -370,6 +412,41 @@ Proof.
   exists (x0, nil).
   rewrite sep_star_comm.
   apply sep_star_lift_l; intros; auto.
+Qed.
+
+Theorem crash_xform_ptsto_subset : forall a v,
+  crash_xform (a |+> v) =p=> exists v', [[ In v' (vsmerge v) ]] * a |=> v'.
+Proof.
+  unfold ptsto_subset; intros.
+  rewrite crash_xform_exists_comm.
+  apply pimpl_exists_l; intros.
+  rewrite crash_xform_sep_star_dist, crash_xform_lift_empty.
+  rewrite crash_xform_ptsto.
+  apply sep_star_lift_l; intro.
+  apply pimpl_exists_l; intros.
+  rewrite sep_star_comm.
+  apply sep_star_lift_l; intro.
+  apply pimpl_exists_r; exists x0.
+  apply sep_star_lift_r'.
+  apply pimpl_and_split; auto.
+  unfold lift, pimpl; intros.
+  cbn in *; intuition.
+Qed.
+
+Theorem crash_xform_ptsto_subset_r: forall a v vs,
+  In v (vsmerge vs) ->
+  a |=> v =p=> crash_xform (a |+> vs).
+Proof.
+  unfold ptsto_subset; intros.
+  rewrite crash_xform_exists_comm.
+  apply pimpl_exists_r; eexists.
+  rewrite crash_xform_sep_star_dist, crash_xform_lift_empty.
+  rewrite <- crash_xform_ptsto_r.
+  apply sep_star_lift_r.
+  apply pimpl_and_split; eauto.
+  unfold lift, pimpl; intros.
+  cbn in *; intuition.
+  eauto.
 Qed.
 
 
@@ -686,6 +763,50 @@ Proof.
 Qed.
 
 
+Definition possible_sync AT AEQ (m m' : @mem AT AEQ valuset) :=
+  forall a, (m a = None /\ m' a = None) \/
+  (exists v l l', m a = Some (v, l) /\ m' a = Some (v, l') /\ incl l' l).
+
+Theorem possible_sync_trans : forall AT AEQ (m1 m2 m3 : @mem AT AEQ _),
+  possible_sync m1 m2 ->
+  possible_sync m2 m3 ->
+  possible_sync m1 m3.
+Proof.
+  unfold possible_sync; intros.
+  specialize (H a).
+  specialize (H0 a).
+  destruct (m1 a); intuition try congruence; repeat deex; try congruence.
+  right.
+  rewrite H0 in H1; inversion H1; subst.
+  do 3 eexists; intuition eauto.
+  eapply incl_tran; eauto.
+Qed.
+
+Theorem possible_sync_sync_mem : forall AT AEQ (m : @mem AT AEQ valuset),
+  possible_sync m (sync_mem m).
+Proof.
+  unfold possible_sync, sync_mem; intros.
+  destruct (m a); intuition.
+  right.
+  repeat eexists.
+  apply incl_nil.
+Qed.
+
+Theorem possible_sync_upd : forall AT AEQ (m : @mem AT AEQ _) a v l l',
+  m a = Some (v, l) ->
+  incl l' l ->
+  possible_sync m (upd m a (v, l')).
+Proof.
+  unfold possible_sync; intros.
+  destruct (AEQ a a0); subst.
+  - right. exists v. exists l. exists l'. intuition.
+    erewrite upd_eq; eauto.
+  - erewrite upd_ne; eauto.
+    destruct (m a0); intuition.
+    right. do 3 eexists. intuition eauto. apply incl_refl.
+Qed.
+
+
 Ltac xform_simpl :=
   match goal with
   | [ |- pimpl (exis _) _ ] => apply pimpl_exists_l; intro
@@ -694,16 +815,73 @@ Ltac xform' := autorewrite with crash_xform; repeat xform_simpl.
 Ltac xform := repeat xform'.
 
 
-Definition sync_invariant p : Prop := sync_xform p =p=> p.
+Definition sync_invariant (p : rawpred) :=
+  (forall m m',
+   possible_sync m m' ->
+   p m -> p m').
+
+Theorem sync_xform_sync_invariant : forall p,
+  sync_invariant p ->
+  sync_xform p =p=> p.
+Proof.
+  unfold sync_invariant, sync_xform, pimpl; intros.
+  deex.
+  eapply H; eauto.
+  apply possible_sync_sync_mem.
+Qed.
+
 
 Theorem ptsto_pimpl_ptsto_subset : forall AT AEQ (a : AT) vs,
   ((a |-> vs) : @pred AT AEQ _) =p=> a |+> vs.
 Proof.
   unfold pimpl, ptsto_subset; intros.
   exists (snd vs).
-  split.
+  apply sep_star_lift_apply'.
   destruct vs; exact H.
   firstorder.
+Qed.
+
+Theorem ptsto_subset_pimpl_ptsto_ex : forall AT AEQ (a : AT) vs,
+  ((a |+> vs) : @pred AT AEQ _) =p=> a |->?.
+Proof.
+  unfold pimpl, ptsto_subset; intros.
+  destruct H.
+  apply sep_star_lift_apply in H; intuition.
+  eexists; eauto.
+Qed.
+
+Theorem ptsto_subset_pimpl_ptsto : forall AT AEQ (a : AT) v,
+  ((a |+> (v, nil)) : @pred AT AEQ _) <=p=> a |=> v.
+Proof.
+  unfold ptsto_subset; intros; split.
+  apply pimpl_exists_l; intros; simpl.
+  apply sep_star_lift_l; intros.
+  erewrite incl_in_nil with (l := x); auto.
+  apply pimpl_exists_r; intros; simpl.
+  exists nil.
+  apply sep_star_lift_r.
+  apply pimpl_and_lift; auto.
+  apply incl_nil.
+Qed.
+
+Theorem ptsto_subset_pimpl : forall AT AEQ (a : AT) v l l',
+  incl l l' ->
+  ((a |+> (v, l)) : @pred AT AEQ _) =p=> a |+> (v, l').
+Proof.
+  unfold pimpl, ptsto_subset; intros.
+  destruct H0.
+  apply sep_star_lift_apply in H0; intuition.
+  eexists. apply sep_star_lift_apply'; eauto.
+  eapply incl_tran; eauto.
+Qed.
+
+Theorem crash_xform_ptsto_subset' : forall a v,
+  crash_xform (a |+> v) =p=> exists v', [[ In v' (vsmerge v) ]] * a |+> (v', nil).
+Proof.
+  intros; rewrite crash_xform_ptsto_subset.
+  apply pimpl_exists_l; intros.
+  rewrite ptsto_pimpl_ptsto_subset.
+  apply pimpl_exists_r; exists x; auto.
 Qed.
 
 Theorem ptsto_sync_mem : forall (a : addr) (vs : valuset) v m,
@@ -716,50 +894,93 @@ Proof.
   rewrite H2 by eauto; auto.
 Qed.
 
-Theorem sync_xform_ptsto_subset_preserve : forall a vs,
-  sync_invariant (a |+> vs)%pred.
+Theorem possible_sync_ptsto : forall AT AEQ a v l (m m' : @mem AT AEQ _),
+  possible_sync m m' ->
+  (a |-> (v, l))%pred m ->
+  (exists l', a |-> (v, l') * [[ incl l' l ]])%pred m'.
 Proof.
-  unfold sync_invariant, pimpl, sync_xform, ptsto_subset; intros.
-  deex. destruct H0. destruct H.
-  exists nil.
-  split.
-  eapply ptsto_sync_mem; eauto.
-  intro; intros.
-  inversion H1.
+  unfold possible_sync, ptsto; intuition;
+    remember H as H'; clear HeqH'; specialize (H' a); intuition; try congruence.
+  repeat deex. rewrite H1 in H3. inversion H3; subst.
+  eexists.
+  apply sep_star_lift_apply'; eauto.
+  intuition.
+  specialize (H a'); intuition.
+  repeat deex. rewrite H2 in H6; congruence.
 Qed.
 
-Theorem sync_xform_ptsto_any : forall a,
+
+Theorem sync_invariant_ptsto_subset : forall a vs,
+  sync_invariant (a |+> vs)%pred.
+Proof.
+  unfold sync_invariant, pimpl, ptsto_subset, lift; intuition.
+  destruct H0.
+  apply sep_star_lift_apply in H0; intuition.
+  eapply possible_sync_ptsto in H; [ | eauto ].
+  destruct H.
+  apply sep_star_lift_apply in H; intuition.
+  eexists.
+  apply sep_star_lift_apply'. eauto.
+  eapply incl_tran; eauto.
+Qed.
+
+Theorem sync_invariant_ptsto_any : forall a,
   sync_invariant (a |->?)%pred.
 Proof.
-  unfold sync_invariant, pimpl, sync_xform; intros; deex.
-  destruct H0. eexists.
-  eapply ptsto_sync_mem; eauto.
+  unfold sync_invariant, pimpl; intros.
+  destruct H0; destruct x.
+  eapply possible_sync_ptsto in H; [ | eauto ].
+  destruct H.
+  apply sep_star_lift_apply in H; intuition.
+  eexists; eauto.
 Qed.
 
 Theorem sync_xform_ptsto_subset_precise : forall a vs,
   sync_xform (a |+> vs) =p=> a |=> (fst vs).
 Proof.
   unfold sync_xform, ptsto_subset, pimpl; intros.
-  deex. destruct H0. destruct H.
+  deex. destruct H0. apply sep_star_lift_apply in H; intuition.
   eapply ptsto_sync_mem; eauto.
 Qed.
 
-Theorem sync_xform_ptsto_nil : forall a v,
+Theorem sync_xform_ptsto_subset_preserve : forall a vs,
+  sync_xform (a |+> vs) =p=> a |+> vs.
+Proof.
+  intros.
+  rewrite sync_xform_ptsto_subset_precise.
+  unfold ptsto_subset, pimpl; intros.
+  exists nil.
+  apply sep_star_lift_apply'; eauto.
+  apply incl_nil.
+Qed.
+
+Theorem sync_invariant_ptsto_nil : forall a v,
   sync_invariant (a |=> v)%pred.
 Proof.
-  unfold sync_invariant, sync_xform, pimpl; intros; deex.
-  eapply ptsto_sync_mem; eauto.
+  unfold sync_invariant, pimpl; intros.
+  eapply possible_sync_ptsto in H; [ | eauto ].
+  destruct H. apply sep_star_lift_apply in H; intuition.
+  apply incl_in_nil in H2; subst; eauto.
 Qed.
 
-Theorem sync_xform_emp :
+Theorem sync_invariant_emp :
   sync_invariant emp.
 Proof.
-  unfold sync_invariant, sync_xform, sync_mem, emp, pimpl; intros; deex.
-  rewrite H0; auto.
+  unfold sync_invariant, possible_sync, emp, pimpl; intros.
+  specialize (H0 a).
+  specialize (H a).
+  intuition.
+  repeat deex. congruence.
 Qed.
 
 Theorem sync_xform_or_dist : forall p q,
   sync_xform (p \/ q) <=p=> sync_xform p \/ sync_xform q.
+Proof.
+  firstorder.
+Qed.
+
+Theorem sync_xform_and_dist : forall p q,
+  sync_xform (p /\ q) =p=> sync_xform p /\ sync_xform q.
 Proof.
   firstorder.
 Qed.
@@ -773,6 +994,16 @@ Proof.
   exists m; intuition.
   apply functional_extensionality; intros.
   rewrite H1; auto.
+Qed.
+
+Theorem sync_xform_emp :
+  sync_xform emp <=p=> emp.
+Proof.
+  unfold sync_xform, sync_mem, emp; split; intro; intros; repeat deex.
+  destruct (m' a) eqn:?; congruence.
+  eexists; split; eauto.
+  apply functional_extensionality; intros.
+  destruct (m x) eqn:?; congruence.
 Qed.
 
 Lemma sync_mem_union : forall AT AEQ (m1 m2 : @mem AT AEQ _),
@@ -859,6 +1090,12 @@ Proof.
   firstorder.
 Qed.
 
+Instance sync_invariant_piff_proper:
+  Proper (piff ==> Basics.impl) sync_invariant.
+Proof.
+  firstorder.
+Qed.
+
 Theorem sync_xform_diskIs: forall m,
   sync_xform (diskIs m) =p=> diskIs (sync_mem m).
 Proof.
@@ -889,4 +1126,213 @@ Proof.
   - eexists; split.
     exists m'; intuition.
     rewrite sync_mem_idem; auto.
+Qed.
+
+Theorem sync_invariant_exists : forall T (p : T -> rawpred),
+  (forall v, sync_invariant (p v)) ->
+  sync_invariant (exists v, p v)%pred.
+Proof.
+  unfold sync_invariant; intros.
+  destruct H1. eexists. eauto.
+Qed.
+
+Theorem possible_sync_mem_union : forall AT AEQ (ma mb m' : @mem AT AEQ _),
+  possible_sync (mem_union ma mb) m'
+  -> @mem_disjoint _ _ _ ma mb
+  -> exists ma' mb', m' = mem_union ma' mb' /\ mem_disjoint ma' mb' /\
+                     possible_sync ma ma' /\ possible_sync mb mb'.
+Proof.
+  intros.
+  exists (fun a => match ma a with | None => None | Some v => m' a end).
+  exists (fun a => match mb a with | None => None | Some v => m' a end).
+  repeat split.
+
+  - unfold mem_union; apply functional_extensionality; intros.
+    case_eq (ma x); case_eq (mb x); case_eq (m' x); auto.
+    intros; unfold possible_sync in *.
+    destruct (H x).
+    destruct H4; congruence.
+    repeat deex. unfold mem_union in H5.
+    rewrite H2 in H5. rewrite H3 in H5. congruence.
+  - unfold mem_disjoint; intro; repeat deex.
+    case_eq (ma a); case_eq (mb a); intros.
+    firstorder.
+    rewrite H1 in H3; congruence.
+    rewrite H4 in H2; congruence.
+    rewrite H4 in H2; congruence.
+  - intro a.
+    case_eq (ma a); intros; [right|left]; auto.
+    pose proof (mem_union_addr a H0 H1).
+    destruct (H a); destruct H3; try congruence.
+    repeat deex; repeat eexists; eauto.
+    congruence.
+  - intro a.
+    case_eq (mb a); intros; [right|left]; auto.
+    rewrite mem_disjoint_comm in H0.
+    pose proof (mem_union_addr a H0 H1); rewrite mem_union_comm in H2 by auto.
+    destruct (H a); destruct H3; try congruence.
+    repeat deex; repeat eexists; eauto.
+    congruence.
+Qed.
+
+Theorem possible_sync_disjoint : forall AT AEQ (ma mb ma' mb' : @mem AT AEQ _),
+  @mem_disjoint _ _ _ ma' mb'
+  -> possible_sync ma ma'
+  -> possible_sync mb mb'
+  -> @mem_disjoint _ _ _ ma mb.
+Proof.
+  unfold mem_disjoint; intros.
+  intro Hnot.
+  repeat deex.
+  destruct (H0 a); destruct (H1 a); try intuition congruence.
+  repeat deex.
+  apply H.
+  do 3 eexists; eauto.
+Qed.
+
+Theorem possible_sync_union : forall AT AEQ (ma mb ma' mb' : @mem AT AEQ _), possible_sync ma ma'
+  -> possible_sync mb mb'
+  -> possible_sync (mem_union ma mb) (mem_union ma' mb').
+Proof.
+  unfold possible_sync, mem_union; intros.
+  destruct (H a); destruct (H0 a).
+  - destruct H1. destruct H2.
+    rewrite H1 in *; rewrite H2 in *; rewrite H3 in *; rewrite H4 in *.
+    intuition.
+  - destruct H1. repeat deex.
+    rewrite H1 in *; rewrite H2 in *; rewrite H3 in *; rewrite H4 in *.
+    right. do 3 eexists. intuition.
+  - repeat deex.
+    rewrite H1 in *; rewrite H2 in *.
+    right. do 3 eexists. intuition.
+  - repeat deex.
+    rewrite H1 in *; rewrite H3 in *; rewrite H4 in *.
+    right. do 3 eexists. intuition.
+Qed.
+
+
+Theorem sync_invariant_sep_star : forall p q,
+  sync_invariant p ->
+  sync_invariant q ->
+  sync_invariant (p * q)%pred.
+Proof.
+  unfold_sep_star; unfold sync_invariant; intros; repeat deex.
+  apply possible_sync_mem_union in H1; eauto; repeat deex.
+  do 2 eexists. intuition eauto.
+Qed.
+
+Theorem sync_invariant_lift_empty : forall P,
+  sync_invariant [[ P ]]%pred.
+Proof.
+  unfold sync_invariant; intros.
+  apply star_emp_pimpl; apply pimpl_star_emp in H0.
+  apply sep_star_lift_apply in H0. apply sep_star_lift_apply'; intuition.
+  eapply sync_invariant_emp; eauto.
+Qed.
+
+Theorem sync_invariant_and : forall p q,
+  sync_invariant p ->
+  sync_invariant q ->
+  sync_invariant (p /\ q)%pred.
+Proof.
+  firstorder.
+Qed.
+
+Theorem sync_invariant_or : forall p q,
+  sync_invariant p ->
+  sync_invariant q ->
+  sync_invariant (p \/ q)%pred.
+Proof.
+  firstorder.
+Qed.
+
+Lemma possible_sync_possible_crash_trans : forall m m1 m2,
+  possible_crash m m1 ->
+  possible_sync m1 m2 ->
+  possible_crash m m2.
+Proof.
+  unfold possible_sync, possible_crash; intros.
+  specialize (H a); specialize (H0 a); intuition; repeat deex; try congruence.
+  right.
+  do 2 eexists; intuition eauto.
+  rewrite H0 in H1; inversion H1; subst.
+  rewrite H.
+  rewrite incl_in_nil with (l := l'); eauto.
+Qed.
+
+Theorem sync_invariant_crash_xform : forall F,
+  sync_invariant (crash_xform F).
+Proof.
+  unfold sync_invariant, crash_xform; intros; deex.
+  eexists; split; eauto.
+  eapply possible_sync_possible_crash_trans; eauto.
+Qed.
+
+Hint Resolve sync_invariant_ptsto_subset.
+Hint Resolve sync_invariant_ptsto_any.
+Hint Resolve sync_invariant_ptsto_nil.
+Hint Resolve sync_invariant_emp.
+Hint Resolve sync_invariant_exists.
+Hint Resolve sync_invariant_sep_star.
+Hint Resolve sync_invariant_lift_empty.
+Hint Resolve sync_invariant_and.
+Hint Resolve sync_invariant_or.
+Hint Resolve sync_invariant_crash_xform.
+
+
+Theorem upd_sync_invariant : forall (p : @pred _ _ _) m a v l l',
+  sync_invariant p ->
+  p m ->
+  m a = Some (v, l) ->
+  incl l' l ->
+  p (upd m a (v, l')).
+Proof.
+  intros.
+  eapply H; eauto.
+  eapply possible_sync_upd; eauto.
+Qed.
+
+Theorem ptsto_subset_valid : forall AT AEQ a vs F (m : @mem AT AEQ _),
+  (a |+> vs * F)%pred m ->
+  exists l, m a = Some (fst vs, l) /\ incl l (snd vs).
+Proof.
+  unfold ptsto_subset, ptsto; unfold_sep_star.
+  intros; repeat deex.
+  destruct H1. repeat deex.
+  eexists; split.
+  apply mem_union_addr; eauto.
+  apply mem_union_addr; eauto.
+  apply H5.
+Qed.
+
+Theorem ptsto_subset_valid' : forall AT AEQ a vs F (m : @mem AT AEQ _),
+  (F * a |+> vs)%pred m ->
+  exists l, m a = Some (fst vs, l) /\ incl l (snd vs).
+Proof.
+  intros.
+  apply sep_star_comm in H.
+  eapply ptsto_subset_valid; eauto.
+Qed.
+
+Lemma ptsto_subset_upd : forall v0 v a m vs vs' vs0 (F : rawpred),
+  (F * a |+> (v0, vs0))%pred m ->
+  incl vs' vs ->
+  (F * a |+> (v, vs))%pred (upd m a (v, vs')).
+Proof.
+  unfold ptsto_subset; simpl in *; intros.
+  apply sep_star_comm in H.
+  apply pimpl_exists_r_star_r in H.
+  destruct H.
+  apply sep_star_assoc in H.
+  eapply ptsto_upd with (v := (v, vs')) in H.
+  setoid_rewrite sep_star_comm in H.
+  apply sep_star_assoc in H.
+  apply sep_star_lift_apply in H; destruct H.
+
+  apply sep_star_comm.
+  apply pimpl_exists_r_star.
+  eapply pimpl_exists_r; eauto.
+  setoid_rewrite sep_star_comm.
+  apply sep_star_assoc; apply sep_star_comm.
+  apply sep_star_lift_apply'; eauto.
 Qed.

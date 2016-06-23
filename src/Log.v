@@ -106,6 +106,29 @@ Module LOG.
   Definition recover_any xp F ds hm :=
     (exists ms, rep xp F (FlushingTxn ds) ms hm)%pred.
 
+  Theorem sync_invariant_rep : forall xp F st ms hm,
+    sync_invariant F ->
+    sync_invariant (rep xp F st ms hm).
+  Proof.
+    unfold rep; destruct st; intros; eauto.
+  Qed.
+  Hint Resolve sync_invariant_rep.
+
+  Theorem sync_invariant_intact : forall xp F ds hm,
+    sync_invariant F ->
+    sync_invariant (intact xp F ds hm).
+  Proof.
+    unfold intact; auto.
+  Qed.
+
+  Theorem sync_invariant_recover_any : forall xp F ds hm,
+    sync_invariant F ->
+    sync_invariant (recover_any xp F ds hm).
+  Proof.
+    unfold recover_any; auto.
+  Qed.
+  Hint Resolve sync_invariant_intact sync_invariant_recover_any.
+
   Lemma active_intact : forall xp F old new ms hm,
     rep xp F (ActiveTxn old new) ms hm =p=> intact xp F old hm.
   Proof.
@@ -245,65 +268,65 @@ Module LOG.
   Qed.
 
 
-  Definition init T xp cs rx : prog T :=
+  Definition init xp cs :=
     mm <- GLog.init xp cs;
-    rx (mk_memstate vmap0 mm).
+    Ret (mk_memstate vmap0 mm).
 
-  Definition begin T (xp : log_xparams) ms rx : prog T :=
+  Definition begin (xp : log_xparams) ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
-    rx (mk_memstate vmap0 mm).
+    Ret (mk_memstate vmap0 mm).
 
-  Definition abort T (xp : log_xparams) ms rx : prog T :=
+  Definition abort (xp : log_xparams) ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
-    rx (mk_memstate vmap0 mm).
+    Ret (mk_memstate vmap0 mm).
 
-  Definition write T (xp : log_xparams) a v ms rx : prog T :=
+  Definition write (xp : log_xparams) a v ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
-    rx (mk_memstate (Map.add a v cm) mm).
+    Ret (mk_memstate (Map.add a v cm) mm).
 
-  Definition read T xp a ms rx : prog T :=
+  Definition read xp a ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     match Map.find a cm with
-    | Some v =>  rx ^(ms, v)
+    | Some v =>  Ret ^(ms, v)
     | None =>
         let^ (mm', v) <- GLog.read xp a mm;
-        rx ^(mk_memstate cm mm', v)
+        Ret ^(mk_memstate cm mm', v)
     end.
 
-  Definition commit T xp ms rx : prog T :=
+  Definition commit xp ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     let^ (mm', r) <- GLog.submit xp (Map.elements cm) mm;
-    rx ^(mk_memstate vmap0 mm', r).
+    Ret ^(mk_memstate vmap0 mm', r).
 
   (* like abort, but use a better name for read-only transactions *)
-  Definition commit_ro T (xp : log_xparams) ms rx : prog T :=
+  Definition commit_ro (xp : log_xparams) ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
-    rx (mk_memstate vmap0 mm).
+    Ret (mk_memstate vmap0 mm).
 
-  Definition dwrite T (xp : log_xparams) a v ms rx : prog T :=
+  Definition dwrite (xp : log_xparams) a v ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     let cm' := Map.remove a cm in
     mm' <- GLog.dwrite xp a v mm;
-    rx (mk_memstate cm' mm').
+    Ret (mk_memstate cm' mm').
 
-  Definition dsync T xp a ms rx : prog T :=
+  Definition dsync xp a ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.dsync xp a mm;
-    rx (mk_memstate cm mm').
+    Ret (mk_memstate cm mm').
 
-  Definition flushsync T xp ms rx : prog T :=
+  Definition flushsync xp ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.flushsync xp mm;
-    rx (mk_memstate cm mm').
+    Ret (mk_memstate cm mm').
 
-  Definition sync T xp ms rx : prog T :=
+  Definition flushall xp ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.flushall xp mm;
-    rx (mk_memstate cm mm').
+    Ret (mk_memstate cm mm').
 
-  Definition recover T xp cs rx : prog T :=
+  Definition recover xp cs :=
     mm <- GLog.recover xp cs;
-    rx (mk_memstate vmap0 mm).
+    Ret (mk_memstate vmap0 mm).
 
 
   Local Hint Unfold rep rep_inner map_replay: hoare_unfold.
@@ -320,6 +343,30 @@ Module LOG.
 
   Local Hint Resolve KNoDup_map_elements.
   Local Hint Resolve MapProperties.eqke_equiv.
+
+  Definition init_ok : forall xp cs,
+    {< F l d m,
+    PRE:hm   BUFCACHE.rep cs d *
+          [[ (F * arrayS (DataStart xp) m * arrayS (LogHeader xp) l)%pred d ]] *
+          [[ length l = (1 + LogDescLen xp + LogLen xp) /\
+             length m = (LogHeader xp) - (DataStart xp) /\
+             LogDescriptor xp = LogHeader xp + 1 /\
+             LogData xp = LogDescriptor xp + LogDescLen xp /\
+             LogLen xp = (LogDescLen xp * DiskLogHash.PaddedLog.DescSig.items_per_val)%nat /\
+             goodSize addrlen ((LogHeader xp) + length l) ]] *
+          [[ sync_invariant F ]]
+    POST:hm' RET: ms exists d,
+          rep xp F (NoTxn (d, nil)) ms hm' *
+          [[[ d ::: arrayN (@ptsto _ _ _) 0 d ]]] *
+          [[ length d = (LogHeader xp) - (DataStart xp) ]]
+    XCRASH:hm_crash any
+    >} init xp cs.
+  Proof.
+    unfold init, rep.
+    step.
+    step.
+    apply list2nmem_array.
+  Qed.
 
 
   Theorem begin_ok: forall xp ms,
@@ -421,7 +468,8 @@ Module LOG.
     {< F Fm ds vs,
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
-      [[[ ds!! ::: (Fm * a |-> vs) ]]]
+      [[[ ds!! ::: (Fm * a |-> vs) ]]] *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms' exists ds' ds0,
       rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
       [[[ ds'!! ::: (Fm * a |-> (v, vsmerge vs)) ]]] *
@@ -463,11 +511,12 @@ Module LOG.
     {< F Fm ds vs,
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
-      [[[ ds!! ::: (Fm * a |-> vs) ]]]
+      [[[ ds!! ::: (Fm * a |-> vs) ]]] *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms' exists ds',
       rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
       [[ ds' = dssync ds a ]]
-    XCRASH:hm'
+    CRASH:hm'
       recover_any xp F ds hm'
     >} dsync xp a ms.
   Proof.
@@ -477,24 +526,40 @@ Module LOG.
     rewrite dssync_latest; unfold vssync; apply map_valid_updN; auto.
     rewrite dssync_latest; substl (ds!!) at 1.
     apply replay_disk_vssync_comm.
+    Unshelve. eauto.
+  Qed.
 
-    (* crashes *)
+
+  Theorem flushall_ok : forall xp ms,
+    {< F ds,
+    PRE:hm
+      rep xp F (NoTxn ds) ms hm *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms'
+      rep xp F (NoTxn (ds!!, nil)) ms' hm'
+    XCRASH:hm'
+      recover_any xp F ds hm'
+    >} flushall xp ms.
+  Proof.
+    unfold flushall, recover_any.
+    hoare.
     xcrash.
     Unshelve. eauto.
   Qed.
 
 
-  Theorem sync_ok : forall xp ms,
+  Theorem flushsync_ok : forall xp ms,
     {< F ds,
     PRE:hm
-      rep xp F (NoTxn ds) ms hm
+      rep xp F (NoTxn ds) ms hm *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms'
       rep xp F (NoTxn (ds!!, nil)) ms' hm'
     XCRASH:hm'
       recover_any xp F ds hm'
-    >} sync xp ms.
+    >} flushsync xp ms.
   Proof.
-    unfold sync, recover_any.
+    unfold flushsync, recover_any.
     hoare.
     xcrash.
     Unshelve. eauto.
@@ -539,8 +604,11 @@ Module LOG.
     intros.
     eapply pimpl_ok2.
     apply abort_ok.
-    cancel.
+    safecancel.
     apply sep_star_comm.
+    auto.
+    step.
+    cancel.
   Qed.
 
 
@@ -559,11 +627,27 @@ Module LOG.
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
      )%pred raw ]])%pred.
 
+  Theorem sync_invariant_after_crash : forall xp F ds cs hm,
+    sync_invariant F ->
+    sync_invariant (after_crash xp F ds cs hm).
+  Proof.
+    unfold after_crash; eauto.
+  Qed.
+
+  Theorem sync_invariant_before_crash : forall xp F ds hm,
+    sync_invariant F ->
+    sync_invariant (before_crash xp F ds hm).
+  Proof.
+    unfold before_crash; eauto.
+  Qed.
+
+  Hint Resolve sync_invariant_after_crash sync_invariant_before_crash.
 
   Theorem recover_ok: forall xp cs,
     {< F ds,
     PRE:hm
-      after_crash xp F ds cs hm
+      after_crash xp F ds cs hm *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms' 
       exists d n, [[ n <= length (snd ds) ]] *
       rep xp F (NoTxn (d, nil)) ms' hm' *
@@ -582,6 +666,7 @@ Module LOG.
     cancel.
     or_r; cancel.
     intuition simpl; eauto.
+    eauto.
 
     prestep. norm. cancel.
     intuition simpl; eauto.
@@ -726,6 +811,27 @@ Module LOG.
     eapply crash_xform_diskIs_trans; eauto.
   Qed.
 
+  Lemma after_crash_idem' : forall xp d ms hm (F : rawpred),
+    F (list2nmem d) ->
+    crash_xform (rep_inner xp (NoTxn (d, nil)) ms hm
+              \/ rep_inner xp (RollbackTxn d) ms hm) =p=>
+    exists d' ms',(rep_inner xp (NoTxn (d', nil)) ms' hm \/
+                   rep_inner xp (RollbackTxn d') ms' hm) *
+                   [[ (crash_xform F) (list2nmem d') ]].
+  Proof.
+    unfold rep_inner; intros.
+    xform_norml.
+    rewrite GLog.crash_xform_cached; cancel.
+    eassign (mk_mstate vmap0 ms').
+    or_l; cancel.
+    eapply crash_xform_diskIs_pred; eauto.
+
+    rewrite GLog.crash_xform_rollback; cancel.
+    eassign (mk_mstate vmap0 ms').
+    or_r; cancel.
+    eapply crash_xform_diskIs_pred; eauto.
+  Qed.
+
   Hint Extern 0 (okToUnify (LOG.rep_inner  _ _ _) (LOG.rep_inner _ _ _ _)) => constructor : okToUnify.
 
   (* TODO: Would be better to rewrite using hashmap_subset. *)
@@ -797,6 +903,14 @@ Module LOG.
     (recover_any xp F ds hm \/
       before_crash xp F ds hm \/
       exists cs, after_crash xp F ds cs hm)%pred.
+
+  Theorem sync_invariant_idempred : forall xp F ds hm,
+    sync_invariant F ->
+    sync_invariant (idempred xp F ds hm).
+  Proof.
+    unfold idempred; auto.
+  Qed.
+  Hint Resolve sync_invariant_idempred.
 
   Theorem idempred_idem : forall xp F ds hm,
     crash_xform (idempred xp F ds hm) =p=>
@@ -989,33 +1103,35 @@ Module LOG.
   Hint Resolve active_intact flushing_any.
   Hint Extern 0 (okToUnify (intact _ _ _ _) (intact _ _ _ _)) => constructor : okToUnify.
 
+  Hint Extern 1 ({{_}} Bind (init _ _) _) => apply init_ok : prog.
+  Hint Extern 1 ({{_}} Bind (begin _ _) _) => apply begin_ok : prog.
+  Hint Extern 1 ({{_}} Bind (abort _ _) _) => apply abort_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read _ _ _) _) => apply read_ok : prog.
+  Hint Extern 1 ({{_}} Bind (write _ _ _ _) _) => apply write_ok : prog.
+  Hint Extern 1 ({{_}} Bind (commit _ _) _) => apply commit_ok : prog.
+  Hint Extern 1 ({{_}} Bind (commit_ro _ _) _) => apply commit_ro_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dsync _ _ _) _) => apply dsync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (flushall _ _) _) => apply flushall_ok : prog.
+  Hint Extern 1 ({{_}} Bind (flushsync _ _) _) => apply flushsync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (recover _ _) _) => apply recover_ok : prog.
 
-  Hint Extern 1 ({{_}} progseq (begin _ _) _) => apply begin_ok : prog.
-  Hint Extern 1 ({{_}} progseq (abort _ _) _) => apply abort_ok : prog.
-  Hint Extern 1 ({{_}} progseq (read _ _ _) _) => apply read_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write _ _ _ _) _) => apply write_ok : prog.
-  Hint Extern 1 ({{_}} progseq (commit _ _) _) => apply commit_ok : prog.
-  Hint Extern 1 ({{_}} progseq (commit_ro _ _) _) => apply commit_ro_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dwrite _ _ _ _) _) => apply dwrite_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dsync _ _ _) _) => apply dsync_ok : prog.
-  Hint Extern 1 ({{_}} progseq (sync _ _) _) => apply sync_ok : prog.
-  Hint Extern 1 ({{_}} progseq (recover _ _) _) => apply recover_ok : prog.
 
-
-  Definition read_array T xp a i ms rx : prog T :=
+  Definition read_array xp a i ms :=
     let^ (ms, r) <- read xp (a + i) ms;
-    rx ^(ms, r).
+    Ret ^(ms, r).
 
-  Definition write_array T xp a i v ms rx : prog T :=
+  Definition write_array xp a i v ms :=
     ms <- write xp (a + i) v ms;
-    rx ms.
+    Ret ms.
 
+  Notation arrayP := (arrayN (@ptsto _ addr_eq_dec valuset)).
 
   Theorem read_array_ok : forall xp ms a i,
     {< F Fm ds m vs,
     PRE:hm   rep xp F (ActiveTxn ds m) ms hm *
           [[ i < length vs]] *
-          [[[ m ::: Fm * arrayN a vs ]]]
+          [[[ m ::: Fm * arrayP a vs ]]]
     POST:hm' RET:^(ms', r)
           rep xp F (ActiveTxn ds m) ms' hm' *
           [[ r = fst (selN vs i ($0, nil)) ]]
@@ -1036,11 +1152,11 @@ Module LOG.
   Theorem write_array_ok : forall xp a i v ms,
     {< F Fm ds m vs,
     PRE:hm   rep xp F (ActiveTxn ds m) ms hm *
-          [[ i < length vs /\ a <> 0 ]] *
-          [[[ m ::: Fm * arrayN a vs ]]]
+          [[[ m ::: Fm * arrayP a vs ]]] *
+          [[ i < length vs /\ a <> 0 ]]
     POST:hm' RET:ms' exists m',
           rep xp F (ActiveTxn ds m') ms' hm' *
-          [[[ m' ::: Fm * arrayN a (updN vs i (v, nil)) ]]]
+          [[[ m' ::: Fm * arrayP a (updN vs i (v, nil)) ]]]
     CRASH:hm' exists m' ms',
           rep xp F (ActiveTxn ds m') ms' hm'
     >} write_array xp a i v ms.
@@ -1060,44 +1176,42 @@ Module LOG.
     step.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (read_array _ _ _ _) _) => apply read_array_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write_array _ _ _ _ _) _) => apply write_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read_array _ _ _ _) _) => apply read_array_ok : prog.
+  Hint Extern 1 ({{_}} Bind (write_array _ _ _ _ _) _) => apply write_array_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _ ?a _) (rep _ _ _ ?a _)) => constructor : okToUnify.
 
-  Definition read_range T A xp a nr (vfold : A -> valu -> A) v0 ms rx : prog T :=
+  Definition read_range A xp a nr (vfold : A -> valu -> A) v0 ms :=
     let^ (ms, r) <- ForN i < nr
     Hashmap hm
     Ghost [ F Fm crash ds m vs ]
     Loopvar [ ms pf ]
-    Continuation lrx
     Invariant
       rep xp F (ActiveTxn ds m) ms hm *
-      [[[ m ::: (Fm * arrayN a vs) ]]] *
+      [[[ m ::: (Fm * arrayP a vs) ]]] *
       [[ pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
     OnCrash  crash
     Begin
       let^ (ms, v) <- read_array xp a i ms;
-      lrx ^(ms, vfold pf v)
+      Ret ^(ms, vfold pf v)
     Rof ^(ms, v0);
-    rx ^(ms, r).
+    Ret ^(ms, r).
 
 
-  Definition write_range T xp a l ms rx : prog T :=
+  Definition write_range xp a l ms :=
     let^ (ms) <- ForN i < length l
     Hashmap hm
     Ghost [ F Fm crash ds vs ]
     Loopvar [ ms ]
-    Continuation lrx
     Invariant
       exists m, rep xp F (ActiveTxn ds m) ms hm *
-      [[[ m ::: (Fm * arrayN a (vsupsyn_range vs (firstn i l))) ]]]
+      [[[ m ::: (Fm * arrayP a (vsupsyn_range vs (firstn i l))) ]]]
     OnCrash crash
     Begin
       ms <- write_array xp a i (selN l i $0) ms;
-      lrx ^(ms)
+      Ret ^(ms)
     Rof ^(ms);
-    rx ms.
+    Ret ms.
 
 
   Theorem read_range_ok : forall A xp a nr vfold (v0 : A) ms,
@@ -1105,7 +1219,7 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds m) ms hm *
       [[ nr <= length vs ]] *
-      [[[ m ::: (Fm * arrayN a vs) ]]]
+      [[[ m ::: (Fm * arrayP a vs) ]]]
     POST:hm' RET:^(ms', r)
       rep xp F (ActiveTxn ds m) ms' hm' *
       [[ r = fold_left vfold (firstn nr (map fst vs)) v0 ]]
@@ -1177,8 +1291,8 @@ Module LOG.
 
   Lemma vsupsyn_range_progress : forall F l a m vs d,
     m < length l -> length l <= length vs ->
-    (F ✶ arrayN a (vsupsyn_range vs (firstn m l)))%pred (list2nmem d) ->
-    (F ✶ arrayN a (vsupsyn_range vs (firstn (S m) l)))%pred 
+    (F ✶ arrayP a (vsupsyn_range vs (firstn m l)))%pred (list2nmem d) ->
+    (F ✶ arrayP a (vsupsyn_range vs (firstn (S m) l)))%pred 
         (list2nmem (updN d (a + m) (selN l m $0, nil))).
   Proof.
     intros.
@@ -1197,7 +1311,7 @@ Module LOG.
 
   Lemma write_range_length_ok : forall F a i ms d vs,
     i < length vs ->
-    (F ✶ arrayN a vs)%pred (list2nmem (replay_disk (Map.elements ms) d)) ->
+    (F ✶ arrayP a vs)%pred (list2nmem (replay_disk (Map.elements ms) d)) ->
     a + i < length d.
   Proof.
     intros.
@@ -1211,11 +1325,11 @@ Module LOG.
     {< F Fm ds m vs,
     PRE:hm
       rep xp F (ActiveTxn ds m) ms hm *
-      [[ a <> 0 /\ length l <= length vs ]] *
-      [[[ m ::: (Fm * arrayN a vs) ]]]
+      [[[ m ::: (Fm * arrayP a vs) ]]] *
+      [[ a <> 0 /\ length l <= length vs ]]
     POST:hm' RET:ms'
       exists m', rep xp F (ActiveTxn ds m') ms' hm' *
-      [[[ m' ::: (Fm * arrayN a (vsupsyn_range vs l)) ]]]
+      [[[ m' ::: (Fm * arrayP a (vsupsyn_range vs l)) ]]]
     CRASH:hm' exists ms' m',
       rep xp F (ActiveTxn ds m') ms' hm'
     >} write_range xp a l ms.
@@ -1224,6 +1338,7 @@ Module LOG.
     step.
 
     step.
+    unfold rep_inner; cancel.
     apply map_valid_add; auto; try omega.
     eapply write_range_length_ok; eauto.
     rewrite vsupsyn_range_length. omega.
@@ -1241,37 +1356,43 @@ Module LOG.
     Unshelve. exact tt. eauto.
   Qed.
 
-
   (* like read_range, but stops when cond is true *)
-  Definition read_cond T A xp a nr (vfold : A -> valu -> A) v0 (cond : A -> bool) ms rx : prog T :=
-    let^ (ms, r) <- ForN i < nr
+  Definition read_cond A xp a nr (vfold : A -> valu -> A) v0 (cond : A -> bool) ms :=
+    let^ (ms, pf, ret) <- ForN i < nr
     Hashmap hm
     Ghost [ F Fm crash ds m vs ]
-    Loopvar [ ms pf ]
-    Continuation lrx
+    Loopvar [ ms pf ret ]
     Invariant
       rep xp F (ActiveTxn ds m) ms hm *
-      [[[ m ::: (Fm * arrayN a vs) ]]] * [[ cond pf = false ]] *
-      [[ pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
+      [[[ m ::: (Fm * arrayP a vs) ]]] *
+      [[ ret = None ->
+        cond pf = false ]] *
+      [[ forall v, ret = Some v ->
+        cond v = true ]] *
+      [[ ret = None ->
+        pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
     OnCrash  crash
     Begin
-      let^ (ms, v) <- read_array xp a i ms;
-      let pf' := vfold pf v in
-      If (bool_dec (cond pf') true) {
-        rx ^(ms, Some pf')
+      If (is_some ret) {
+        Ret ^(ms, pf, ret)
       } else {
-        lrx ^(ms, pf')
+        let^ (ms, v) <- read_array xp a i ms;
+            let pf' := vfold pf v in
+            If (bool_dec (cond pf') true) {
+                Ret ^(ms, pf', Some pf')
+            } else {
+                Ret ^(ms, pf', None)
+            }
       }
-    Rof ^(ms, v0);
-    rx ^(ms, None).
-
+    Rof ^(ms, v0, None);
+    Ret ^(ms, ret).
 
   Theorem read_cond_ok : forall A xp a nr vfold (v0 : A) cond ms,
     {< F Fm ds m vs,
     PRE:hm
       rep xp F (ActiveTxn ds m) ms hm *
       [[ nr <= length vs /\ cond v0 = false ]] *
-      [[[ m ::: (Fm * arrayN a vs) ]]]
+      [[[ m ::: (Fm * arrayP a vs) ]]]
     POST:hm' RET:^(ms', r)
       rep xp F (ActiveTxn ds m) ms' hm' *
       ( exists v, [[ r = Some v /\ cond v = true ]] \/
@@ -1284,6 +1405,9 @@ Module LOG.
     step.
 
     safestep.
+    safestep.
+    safestep.
+
     unfold rep_inner; cancel.
     eapply lt_le_trans; eauto.
     denote (replay_disk _ _ = replay_disk _ _) as Heq; rewrite <- Heq.
@@ -1301,6 +1425,9 @@ Module LOG.
     eexists.
     eapply hashmap_subset_trans; eauto.
 
+    destruct a2.
+    safestep.
+    or_l; cancel.
     safestep.
     or_r; cancel.
     eassign raw; pred_apply; cancel.
@@ -1310,23 +1437,23 @@ Module LOG.
     Unshelve. all: eauto; try exact tt; try exact nil.
   Qed.
 
-  Hint Extern 1 ({{_}} progseq (read_cond _ _ _ _ _ _ _) _) => apply read_cond_ok : prog.
-  Hint Extern 1 ({{_}} progseq (read_range _ _ _ _ _ _) _) => apply read_range_ok : prog.
-  Hint Extern 1 ({{_}} progseq (write_range _ _ _ _) _) => apply write_range_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read_cond _ _ _ _ _ _ _) _) => apply read_cond_ok : prog.
+  Hint Extern 1 ({{_}} Bind (read_range _ _ _ _ _ _) _) => apply read_range_ok : prog.
+  Hint Extern 1 ({{_}} Bind (write_range _ _ _ _) _) => apply write_range_ok : prog.
 
 
   (******** batch direct write and sync *)
 
   (* dwrite_vecs discard everything in active transaction *)
-  Definition dwrite_vecs T (xp : log_xparams) avl ms rx : prog T :=
+  Definition dwrite_vecs (xp : log_xparams) avl ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.dwrite_vecs xp avl mm;
-    rx (mk_memstate vmap0 mm').
+    Ret (mk_memstate vmap0 mm').
 
-  Definition dsync_vecs T xp al ms rx : prog T :=
+  Definition dsync_vecs xp al ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     mm' <- GLog.dsync_vecs xp al mm;
-    rx (mk_memstate cm mm').
+    Ret (mk_memstate cm mm').
 
 
   Lemma dwrite_ptsto_inbound : forall (F : @pred _ _ valuset) ovl avl m,
@@ -1420,8 +1547,8 @@ Module LOG.
     {< F Fm ds ovl,
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
-      [[ NoDup (map fst avl) ]] *
-      [[[ ds!! ::: Fm * listmatch (fun v e => (fst e) |-> v) ovl avl ]]]
+      [[[ ds!! ::: Fm * listmatch (fun v e => (fst e) |-> v) ovl avl ]]] *
+      [[ NoDup (map fst avl) /\ sync_invariant F ]]
     POST:hm' RET:ms' exists ds',
       rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
       [[[ ds'!! ::: Fm * listmatch (fun v e => (fst e) |-> (snd e, vsmerge v)) ovl avl ]]] *
@@ -1469,12 +1596,13 @@ Module LOG.
     {< F Fm ds vsl,
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm *
-      [[[ ds!! ::: Fm * listmatch (fun vs a => a |-> vs) vsl al ]]]
+      [[[ ds!! ::: Fm * listmatch (fun vs a => a |-> vs) vsl al ]]] *
+      [[ sync_invariant F ]]
     POST:hm' RET:ms' exists ds',
       rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
       [[[ ds'!! ::: Fm * listmatch (fun vs a => a |=> fst vs) vsl al ]]] *
       [[ ds' = dssync_vecs ds al ]]
-    XCRASH:hm'
+    CRASH:hm'
       recover_any xp F ds hm'
     >} dsync_vecs xp al ms.
   Proof.
@@ -1489,14 +1617,12 @@ Module LOG.
     f_equal; auto.
     apply dsync_vssync_vecs_ok; auto.
 
-    (* crashes *)
-    xcrash.
     Unshelve. eauto.
   Qed.
 
 
-  Hint Extern 1 ({{_}} progseq (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
-  Hint Extern 1 ({{_}} progseq (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dwrite_vecs _ _ _) _) => apply dwrite_vecs_ok : prog.
+  Hint Extern 1 ({{_}} Bind (dsync_vecs _ _ _) _) => apply dsync_vecs_ok : prog.
 
 
   Lemma idempred_hashmap_subset : forall xp F ds hm hm',

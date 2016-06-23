@@ -29,10 +29,10 @@ Require Import GroupLog.
 Require Import SuperBlock.
 Require Import DiskSet.
 Require Import AsyncFS.
-Require Import DirUtil.
 Require Import String.
 Require Import TreeCrash.
-
+Require Import TreeSeq.
+Require Import DirSep.
 
 
 Import ListNotations.
@@ -46,10 +46,13 @@ Set Implicit Arguments.
  *)
 
 
-
 Module ATOMICCP.
 
   Parameter the_dnum : addr.
+  Parameter cachesize : nat.
+  Axiom cachesize_ok : cachesize <> 0.
+  Hint Resolve cachesize_ok.
+
 
   Definition temp_fn := ".temp"%string.
   
@@ -57,68 +60,68 @@ Module ATOMICCP.
 
   (* copy an existing src into an existing, empty dst. *)
 
-  Definition copydata T fsxp src_inum dst_inum mscs rx : prog T :=
+  Definition copydata fsxp src_inum dst_inum mscs :=
     let^ (mscs, attr) <- AFS.file_get_attr fsxp src_inum mscs;
     let^ (mscs, b) <- AFS.read_fblock fsxp src_inum 0 mscs;
     let^ (mscs) <- AFS.update_fblock_d fsxp dst_inum 0 b mscs;
     let^ (mscs) <- AFS.file_sync fsxp dst_inum mscs;   (* sync blocks *)
     let^ (mscs, ok) <- AFS.file_set_attr fsxp dst_inum attr mscs;
-    rx ^(mscs, ok).
+    Ret ^(mscs, ok).
 
-  Definition copy2temp T fsxp src_inum dst_inum mscs rx : prog T :=
+  Definition copy2temp fsxp src_inum dst_inum mscs :=
     let^ (mscs, ok) <- AFS.file_truncate fsxp dst_inum 1 mscs;  (* XXX type error when passing sz *)
     If (bool_dec ok true) {
       let^ (mscs, ok) <- copydata fsxp src_inum dst_inum mscs;
-      rx ^(mscs, ok)
+      Ret ^(mscs, ok)
     } else {
-      rx ^(mscs, ok)
+      Ret ^(mscs, ok)
     }.
 
-  Definition copy_and_rename T fsxp src_inum dst_inum dst_fn mscs rx : prog T :=
+  Definition copy_and_rename fsxp src_inum dst_inum dst_fn mscs :=
     let^ (mscs, ok) <- copy2temp fsxp src_inum dst_inum mscs;
     match ok with
       | false =>
         let^ (mscs) <- AFS.tree_sync fsxp mscs;
         (* Just for a simpler spec: the state is always (d, nil) after this function *)
-        rx ^(mscs, false)
+        Ret ^(mscs, false)
       | true =>
         let^ (mscs, ok1) <- AFS.rename fsxp the_dnum [] temp_fn [] dst_fn mscs;
         let^ (mscs) <- AFS.tree_sync fsxp mscs;
-        rx ^(mscs, ok1)
+        Ret ^(mscs, ok1)
     end.
 
-  Definition atomic_cp T fsxp src_inum dst_fn mscs rx : prog T :=
+  Definition atomic_cp fsxp src_inum dst_fn mscs :=
     let^ (mscs, maybe_dst_inum) <- AFS.create fsxp the_dnum temp_fn mscs;
     match maybe_dst_inum with
-      | None => rx ^(mscs, false)
+      | None => Ret ^(mscs, false)
       | Some dst_inum =>
         let^ (mscs, ok) <- copy_and_rename fsxp src_inum dst_inum dst_fn mscs;
-        rx ^(mscs, ok)
+        Ret ^(mscs, ok)
     end.
 
   (** recovery programs **)
 
   (* atomic_cp recovery: if temp_fn exists, delete it *)
-  Definition cleanup {T} fsxp mscs rx : prog T :=
+  Definition cleanup fsxp mscs :=
     let^ (mscs, maybe_src_inum) <- AFS.lookup fsxp the_dnum [temp_fn] mscs;
     match maybe_src_inum with
-    | None => rx mscs
+    | None => Ret mscs
     | Some (src_inum, isdir) =>
       let^ (mscs, ok) <- AFS.delete fsxp the_dnum temp_fn mscs;
       let^ (mscs) <- AFS.tree_sync fsxp mscs;
-      rx mscs
+      Ret mscs
     end.
 
   (* top-level recovery function: call AFS recover and then atomic_cp's recovery *)
-  Definition recover {T} rx : prog T :=
-    let^ (mscs, fsxp) <- AFS.recover;
+  Definition recover :=
+    let^ (mscs, fsxp) <- AFS.recover cachesize;
     let^ (mscs, maybe_src_inum) <- AFS.lookup fsxp the_dnum [temp_fn] mscs;
     match maybe_src_inum with
-    | None => rx ^(mscs, fsxp)
+    | None => Ret ^(mscs, fsxp)
     | Some (src_inum, isdir) =>
       let^ (mscs, ok) <- AFS.delete fsxp the_dnum temp_fn mscs;
       let^ (mscs) <- AFS.tree_sync fsxp mscs;
-      rx ^(mscs, fsxp)
+      Ret ^(mscs, fsxp)
     end.
 
   (** Specs and proofs **)
@@ -129,6 +132,66 @@ Module ATOMICCP.
   Ltac xcrash_norm :=  repeat (xform_norm; cancel).
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
+
+  Definition temp_treeseqpred Ftree tmppath inum (to : treeseq_one) :=
+    exists f,
+      (Ftree * tmppath |-> (inum, f))%pred  (dir2flatmem [] (TStree to)).
+
+  Theorem copydata_ok : forall fsxp src_inum tmppath tinum mscs,
+    {< ds ts Fm Ftop Ftree Ftmp srcpath file tfile v0 t0,
+    PRE:hm
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+      [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts ]] *
+      [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile))%pred
+            (dir2flatmem [] (TStree ts!!)) ]] *
+      [[[ BFILE.BFData file ::: (0 |-> v0) ]]] *
+      [[[ BFILE.BFData tfile ::: (0 |-> t0) ]]]
+    POST:hm' RET:^(mscs', r)
+      exists ds' ts',
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
+       [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
+       [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts' ]] *
+        (([[ r = false ]] *
+          exists tfile',
+            [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile'))%pred (dir2flatmem [] (TStree ts'!!)) ]])
+         \/ ([[ r = true ]] *
+            [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts'!!)) ]]))
+    XCRASH:hm'
+      exists ds' ts',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
+      [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts' ]]
+     >} copydata fsxp src_inum tinum mscs.
+  Proof.
+    unfold copydata; intros.
+    
+    prestep.
+    norml; unfold stars; simpl.
+    safecancel.
+    eassumption.
+    eassumption.
+    prestep.
+    norml; unfold stars; simpl.
+    safecancel.
+    (* s = mscs, H15 *)
+    admit.
+    eassumption.
+    instantiate (Fd := emp).
+    admit.
+
+    prestep.
+    norml; unfold stars; simpl.
+    safecancel.
+    admit.
+    admit.
+    admit.
+
+  Admitted.
+
+
+
+
 
   Lemma diskset_pred_sync: forall V (p: @pred _ _ V) ds,
     diskset_pred p ds ->
@@ -160,22 +223,17 @@ Module ATOMICCP.
   Definition temp_tree_pred Fm Ftop fsxp newest_ilist newest_free newest_tree mscs tinum :=
     (exists tree tfile ilist freelist,
       Fm * DIRTREE.rep fsxp Ftop tree ilist freelist *
-      [[ DIRTREE.find_subtree [temp_fn] tree = Some (DIRTREE.TreeFile tinum tfile)]] *
+      [[ DIRTREE.find_subtree [temp_fn] tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
       [[ DIRTREE.dirtree_safe ilist (BFILE.pick_balloc freelist (MSAlloc mscs)) tree
                                newest_ilist  (BFILE.pick_balloc newest_free  (MSAlloc mscs)) newest_tree ]]
     )%pred.
 
-  Ltac distinct_names :=
-    match goal with
-      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_names_distinct ?tree ] => 
-        eapply DIRTREE.rep_tree_names_distinct; eapply H
-    end.
+  Definition temp_tree_pred_ds Fm Ftop fsxp newest_ilist newest_free newest_tree mscs tinum ds :=
+    exists ts,
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds /\
+    latest ts = mk_tree newest_tree newest_ilist newest_free /\
+    NEforall (temp_treeseqpred newest_tree tinum) ts.
 
-  Ltac distinct_inodes :=
-    match goal with
-      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_inodes_distinct ?tree ] => 
-        eapply DIRTREE.rep_tree_inodes_distinct; eapply H
-    end.
 
   Lemma temp_tree_pred_dupdate_eq: forall Fm Ftop fsxp newest_ilist newest_free newest_tree mscs d tinum bn off v f,
     BFILE.block_belong_to_file newest_ilist bn tinum off ->
@@ -331,8 +389,7 @@ Module ATOMICCP.
     {< ds Fm Ftop temp_tree src_fn file tfile ilist freelist v0 t0,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop temp_tree ilist freelist) ]]] *
-      [[ diskset_pred (temp_tree_pred Fm Ftop fsxp ilist freelist temp_tree mscs tinum) ds ]] *
+      [[ temp_tree_pred_ds Fm Ftop fsxp ilist freelist temp_tree mscs tinum ds ]] *
       [[ DIRTREE.find_subtree [src_fn] temp_tree = Some (DIRTREE.TreeFile src_inum file) ]] *
       [[ DIRTREE.find_subtree [temp_fn] temp_tree = Some (DIRTREE.TreeFile tinum tfile) ]] *
       [[ src_fn <> temp_fn ]] *
@@ -342,20 +399,33 @@ Module ATOMICCP.
       exists ds',
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
       exists tree' ilist' freelist',
-        [[ diskset_pred (temp_tree_pred Fm Ftop fsxp ilist' freelist' tree' mscs tinum) ds' ]] *
-        [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist') ]]] *
-        ([[ r = false ]] \/ ([[ r = true ]] * 
-          [[tree' = (DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree)]]))
+        [[ temp_tree_pred_ds Fm Ftop fsxp ilist' freelist' tree' mscs tinum ds' ]] *
+        (([[ r = false ]] *
+          exists tfile',
+          [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree ]])
+      \/ ([[ r = true ]] * 
+          [[ tree' = DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum (BFILE.synced_file file)) temp_tree ]]))
     XCRASH:hm'
       exists ds',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-      exists tree' ilist' freelist',
-       [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' freelist') ]]] *
-       [[ diskset_pred (temp_tree_pred Fm Ftop fsxp ilist' freelist' tree' mscs tinum) ds' ]]
+      exists tfile' ilist' freelist',
+      let tree' := DIRTREE.update_subtree [temp_fn] (DIRTREE.TreeFile tinum tfile') temp_tree in
+      [[ temp_tree_pred_ds Fm Ftop fsxp ilist' freelist' tree' mscs tinum ds' ]]
      >} copydata fsxp src_inum tinum mscs.
   Proof.
     unfold copydata; intros.
-    step.
+
+    prestep.
+    norml; unfold stars; simpl.
+
+    unfold temp_tree_pred_ds in H9.
+    deex.
+    unfold treeseq_in_ds in H3; intuition.
+    unfold tree_rep in H9.
+    rewrite H0 in *; clear H0.
+    cancel.
+    eauto.
+
     step.
     step.
     step.
