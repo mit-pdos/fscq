@@ -780,12 +780,19 @@ Module Rec.
     exact ((w ^& (wnot mask)) ^| newmask).
   Defined.
 
-  Theorem word_updN_shift_l_gt_0 : forall idx off n H w v,
+  Fact word_updN_shift_helper1 : forall n idx off, n + (idx + off) * n = (idx + 1 + off) * n.
+  Proof. intros. lia. Qed.
+
+  Fact word_updN_shift_helper2 : forall n l, l > 0 -> n + (l - 1) * n = l * n.
+  Proof. intros. destruct l; simpl; try rewrite <- minus_n_O; omega. Qed.
+
+  Theorem word_updN_shift_l_gt_0 : forall idx off n w v,
     @word_updN_shift (idx + 1 + off) n idx w v = w ^& wnot (word_mask (idx + 1 + off) n idx) ^| wlshift (
-      eq_rect _ word (zext v ((idx + off) * n)) _ H) (idx * n).
+      eq_rect _ word (zext v ((idx + off) * n)) _ (word_updN_shift_helper1 n idx off)) (idx * n).
   Proof.
     unfold word_updN_shift.
-    intros idx off.
+    intros idx off n.
+    generalize dependent (word_updN_shift_helper1 n idx off).
     replace (idx + 1 + off) with (S (idx + off)) by omega.
     intros.
     eq_rect_simpl.
@@ -794,9 +801,9 @@ Module Rec.
     apply mult_comm.
   Qed.
 
-  Theorem word_mask_l_gt_0 : forall l n idx H, l > 0 ->
-    @word_mask l n idx = wlshift (
-      eq_rect _ word (combine (wones n) (wzero ((l - 1) * n))) _ H)
+  Theorem word_mask_l_gt_0 : forall l n idx (H : l > 0),
+    @word_mask l n idx = wlshift (eq_rect _ word (combine (wones n) (wzero ((l - 1) * n))) _
+      (word_updN_shift_helper2 n H))
       (idx * n).
   Proof.
     unfold word_mask; destruct l; auto; intros.
@@ -804,19 +811,33 @@ Module Rec.
     repeat f_equal.
     generalize_proof.
     intros HH; rewrite HH; auto.
-    Grab Existential Variables. lia.
+    Grab Existential Variables.
+    simpl; rewrite <- minus_n_O.
+    reflexivity.
   Qed.
 
-  Theorem eq_rect_combine_dist3 : forall a b c H H1 H2 (w : word ((a + 1 + b) * c)),
-    let w' := eq_rect ((a + 1 + b) * c) word w _ H1 in
-    let w'' := eq_rect ((a + 1 + b) * c) word w _ H2 in
+  Fact word_updN_shift_helper3 : forall a b c, a * c + (c + b * c) = (a + 1 + b) * c.
+  Proof. intros. lia. Qed.
+
+  Fact word_updN_shift_helper4 : forall a b c, (a + 1 + b) * c = a * c + c + b * c.
+  Proof. intros. lia. Qed.
+
+  Theorem eq_rect_combine_dist3 : forall a b c (w : word ((a + 1 + b) * c)),
+    let H := word_updN_shift_helper3 a b c in
+    let H1 := word_updN_shift_helper4 a b c in
+    let w' := eq_rect ((a + 1 + b) * c) word w _ (eq_sym H) in
+    let w'' := eq_rect ((a + 1 + b) * c) word w _ H1 in
     w = eq_rect _ word (combine
       (split1 (a * c) _ w')
       (combine
         (middle (a * c) c (b * c) w')
         (split2 (a * c + c) (b * c) w''))) _ H.
   Proof.
-    intros a b c H.
+    intros.
+    generalize dependent H1.
+    generalize dependent w.
+    generalize dependent H.
+    intros H.
     rewrite <- H.
     intros.
     subst w' w''.
@@ -848,13 +869,15 @@ Module Rec.
     reflexivity.
   Qed.
 
-  Theorem wnot_word_mask_l_gt_0 : forall off n idx H,
+  Theorem wnot_word_mask_l_gt_0 : forall off n idx,
     wnot (@word_mask (idx + 1 + off) n idx) = eq_rec _ word (
-    combine (wones (idx * n)) (combine (wzero n) (wones (off * n)))) ((idx + 1 + off) * n) H.
+    combine (wones (idx * n)) (combine (wzero n) (wones (off * n)))) ((idx + 1 + off) * n)
+      (word_updN_shift_helper3 idx off n).
   Proof.
     intros off n idx.
+    generalize dependent (word_updN_shift_helper3 idx off n).
     replace (idx + 1 + off) with (S (idx + off)) by omega.
-    intros.
+    intros H.
     unfold word_mask.
     rewrite wnot_wlshift.
     eq_rect_simpl.
@@ -872,11 +895,12 @@ Module Rec.
     all : lia.
   Qed.
 
-  Lemma wand_wnot_word_mask_w : forall idx off n H1 H2 H3 w,
-    let w' := eq_rect _ word w (idx * n + (n + off * n)) H1 in
-    let w'' := eq_rect _ word w (idx * n + n + off * n) H2 in
+  Lemma wand_wnot_word_mask_w : forall idx off n w,
+    let H := word_updN_shift_helper3 idx off n in
+    let w' := eq_rect _ word w (idx * n + (n + off * n)) (eq_sym H) in
+    let w'' := eq_rect _ word w (idx * n + n + off * n) (word_updN_shift_helper4 idx off n) in
     w ^& wnot (word_mask (idx + 1 + off) n idx) = eq_rec _ word (
-      combine (split1 (idx * n) _ w') (combine (wzero n) (split2 (idx * n + n) _ w''))) _ H3.
+      combine (split1 (idx * n) _ w') (combine (wzero n) (split2 (idx * n + n) _ w''))) _ H.
   Proof.
     intros.
     erewrite eq_rect_combine_dist3 with (w := w).
@@ -900,12 +924,14 @@ Module Rec.
     reflexivity.
   Qed.
 
-  Theorem word_updN_shift_abs : forall off idx n H1 H2 H3 w v,
-    let w' := eq_rec _ word w _ H1 in
-    let w'' := eq_rec _ word w _ H2 in
+  Theorem word_updN_shift_abs : forall off idx n w v,
+    let H := word_updN_shift_helper3 idx off n in
+    let H1 := word_updN_shift_helper4 idx off n in
+    let w' := eq_rec _ word w _ (eq_sym H) in
+    let w'' := eq_rec _ word w _ H1 in
     @word_updN_shift (idx + 1 + off) n idx w v = eq_rec _ word (
       combine (split1 (idx * n) (n + off * n) w')
-      (combine v (split2 (idx * n + n) (off * n) w''))) _ H3.
+      (combine v (split2 (idx * n + n) (off * n) w''))) _ H.
   Proof.
     intros.
     assert ((idx + 1 + off) * n = idx * n + n + off * n) as Hc by lia.
@@ -949,9 +975,11 @@ Module Rec.
     reflexivity.
    Qed.
 
-  Theorem word_updN_abs : forall idx off ft H H1 H2 w v,
-    let w' := eq_rec _ word w _ H1 in
-    let w'' := eq_rec _ word w _ H2 in
+  Theorem word_updN_abs : forall idx off ft w v,
+    let H := word_updN_shift_helper3 idx off (len ft) in
+    let H1 := word_updN_shift_helper4 idx off (len ft) in
+    let w' := eq_rec _ word w _ (eq_sym H) in
+    let w'' := eq_rec _ word w _ H1 in
     @word_updN ft (idx + 1 + off) idx w v = eq_rec _ word (
       combine (split1 (idx * len ft) (len ft + off * len ft) w')
         (combine v (split2 (idx * len ft + len ft) (off * len ft) w''))) _ H.
@@ -986,8 +1014,6 @@ Module Rec.
     erewrite word_updN_shift_abs by auto.
     erewrite word_updN_abs.
     repeat f_equal.
-    Grab Existential Variables.
-    all : lia.
   Qed.
 
   Definition word_updN' {ft : type} {l : nat} (idx : nat) (w : word (len (ArrayF ft l)))
