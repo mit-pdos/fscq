@@ -134,6 +134,12 @@ wlshift sz w1 s -- handle shifts larger than maxShift recursively
 wlshift _  (W w1) s = W $ w1 `Data.Bits.shiftL` (fromIntegral s)
 wlshift _ (W64 w1) w2 = W64 $ w1 `Data.Bits.shiftL` (fromIntegral w2)
 
+wrshift :: Integer ->  Coq_word -> Integer -> Coq_word
+wrshift sz w1 s -- handle shifts larger than maxShift recursively
+    | s > maxShift = wrshift sz (wrshift sz w1 maxShift) (s - maxShift)
+wrshift _  (W w1) s = W $ w1 `Data.Bits.shiftR` (fromIntegral s)
+wrshift _ (W64 w1) w2 = W64 $ w1 `Data.Bits.shiftR` (fromIntegral w2)
+
 wnot :: Integer -> Coq_word -> Coq_word
 wnot _ (W w) = W $ complement w
 wnot _ (W64 w) = W64 $ complement w
