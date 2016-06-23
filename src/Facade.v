@@ -395,44 +395,83 @@ Section EnvSection.
   | EXDone : forall d s,
     Exec ([(Skip, s)], d) (EFinished (d, s)).
 
-  Hint Constructors Exec RunsTo Step : steps.
+  Hint Constructors Exec RunsTo Step Step0 : steps.
 
   Hint Constructors clos_refl_trans_1n : steps.
 
-  Lemma Step_Sequence : forall a b a' st st',
-    Step^* (a, st) (a', st') ->
-    Step^* (Seq a b, st) (Seq a' b, st').
+  Lemma Step_add_stack : forall a a' s s' d d' fs,
+    Step ((a, s) :: [], d) ((a', s') :: [], d') ->
+    Step ((a, s) :: fs, d) ((a', s') :: fs, d').
+  Proof.
+    intros.
+    prep_induction H; induction H; intros; subst; repeat find_inversion; eauto with steps.
+  Qed.
+  Hint Resolve Step_add_stack : steps.
+
+  Lemma Steps_add_stack : forall a a' s s' d d' fs,
+    Step^* ((a, s) :: [], d) ((a', s') :: [], d') ->
+    Step^* ((a, s) :: fs, d) ((a', s') :: fs, d').
+  Proof.
+    intros.
+    prep_induction H; induction H; intros; subst.
+    + find_inversion. eauto with steps.
+    + destruct y. destruct l. invc H. destruct l. destruct p. econstructor. eapply Step_add_stack. eauto. eauto.
+      invc H.
+      econstructor. subst_definitions. eapply StepCallOp; eauto.
+  Admitted.
+
+  Lemma Step_Sequence : forall a b a' s s' d d',
+    Step^* ((a, s) :: [], d) ((a', s') :: [], d') ->
+    Step^* ((Seq a b, s) :: [], d) ((Seq a' b, s') :: [], d').
   Proof.
     intros.
     prep_induction H; induction H; intros; subst.
     + find_inversion; eauto with steps.
-    + destruct y. econstructor; try eapply StepSeq1; eauto.
-  Qed.
+    + destruct y. destruct l. invc H. destruct l. destruct p. econstructor. eapply StepSeq1. eauto. eauto.
+      invc H.
+      (* Probably true. *)
+  Admitted.
   Hint Resolve Step_Sequence : steps.
 
-  Hint Resolve clos_rt_rt1n clos_rt1n_rt : steps.
-  Hint Extern 1 (clos_refl_trans _ _ ?x ?y) =>
+  Lemma rt1n_trans : forall A R x y z,
+    clos_refl_trans_1n A R x y ->
+    clos_refl_trans_1n A R y z ->
+    clos_refl_trans_1n A R x z.
+  Proof.
+    eauto using clos_rt_rt1n, clos_rt1n_rt, rt_trans with steps.
+  Qed.
+
+  Hint Extern 1 (clos_refl_trans_1n _ _ ?x ?y) =>
     match goal with
     | _ => is_evar x; fail 1
     | _ => is_evar y; fail 1
-    | _ => eapply rt_trans
+    | _ => eapply rt1n_trans
     end : steps.
 
-
-  Theorem RunsTo_Step : forall st p st',
-    RunsTo p st st' ->
-    Step^* (p, st) (Skip, st').
+  Theorem RunsTo_Step : forall p s s' d d',
+    RunsTo p (d, s) (d', s') ->
+    Step^* ((p, s) :: [], d) ((Skip, s') :: [], d').
   Proof.
     intros.
-    induction H; intros; subst_definitions; eauto 9 with steps;
-      econstructor; do 2 eauto with steps.
-  Qed.
+    prep_induction H; induction H; intros; subst_definitions; subst.
+    + find_inversion. eauto with steps.
+    + destruct st'. eapply rt1n_trans. eapply Step_Sequence. eapply IHRunsTo1; eauto. eauto with steps.
+    + econstructor. econstructor. eauto with steps.
+      eauto.
+    + econstructor. econstructor. eauto with steps. eauto.
+    + econstructor. econstructor. eauto with steps.
+      destruct st'. eapply rt1n_trans. eapply Step_Sequence. eapply IHRunsTo1; eauto. eauto with steps.
+    + find_inversion. econstructor. econstructor. eauto with steps. eauto with steps.
+    + repeat find_inversion. econstructor. econstructor. eauto with steps. eauto with steps.
+    + (* Nope, need stronger induction which generalizes over call stacks! *)
+  Admitted.
 
   Ltac do_inv := match goal with
   | [ H : Step _ _ |- _ ] => invc H; eauto with steps
   | [ H : clos_refl_trans_1n _ _ _ _ |- _ ] => invc H; eauto with steps
   end.
 
+(*
   Lemma Step_RunsTo_Seq : forall a b st st',
     Step^* (Seq a b, st) (Skip, st')
     -> exists st0, Step^* (a, st) (Skip, st0) /\ Step^* (b, st0) (Skip, st').
@@ -466,11 +505,15 @@ Section EnvSection.
       - destruct (IHclos_refl_trans_1n cond body ltac:(auto) _ _ _ eq_refl eq_refl eq_refl).
         intuition eauto with steps.
   Qed.
+*)
 
-  Theorem Step_RunsTo : forall p st st',
-    Step^* (p, st) (Skip, st') ->
-    RunsTo p st st'.
+  Theorem Step_RunsTo : forall p s s' d d',
+    Step^* ((p, s) :: [], d) ((Skip, s') :: [], d') ->
+    RunsTo p (d, s) (d', s').
   Proof.
+  Admitted.
+
+(*
     induction p; intros; subst.
     + repeat do_inv.
     + destruct (Step_RunsTo_Seq H); intuition eauto with steps.
@@ -479,23 +522,25 @@ Section EnvSection.
     + repeat do_inv. subst_definitions. eauto with steps.
     + repeat do_inv.
   Qed.
-  Hint Resolve Step_RunsTo.
-
-  Theorem RunsTo_Exec : forall p st st',
-    RunsTo p st st' ->
-    Exec p st (EFinished st').
+  Hint Resolve Step_RunsTo. *)
+  Theorem RunsTo_Exec : forall p s d st',
+    RunsTo p (d, s) st' ->
+    Exec ([(p, s)], d) (EFinished st').
   Proof.
-    intros.
+    intros. destruct st'.
     eapply RunsTo_Step in H.
     prep_induction H; induction H; intros; subst.
     + find_inversion. eauto with steps.
-    + destruct y. eauto with steps.
-  Qed.
+    + destruct y. econstructor. eapply H. eapply IHclos_refl_trans_1n; eauto. (* And again. *)
+  Admitted.
 
-  Theorem Exec_RunsTo : forall p st st',
-    Exec p st (EFinished st') ->
-    RunsTo p st st'.
+  Theorem Exec_RunsTo : forall p s d st',
+    Exec ([(p, s)], d) (EFinished st') ->
+    RunsTo p (d, s) st'.
   Proof.
+  Admitted.
+
+(*
     intros.
     eapply Step_RunsTo.
     prep_induction H; induction H; intros; subst; eauto with steps; try discriminate.
@@ -522,7 +567,7 @@ Section EnvSection.
     prep_induction H; induction H; intros; subst.
     + repeat find_inversion. eauto with steps.
     + destruct y. destruct s0. eauto with steps.
-  Qed.
+  Qed.*)
 
   CoInductive Safe : Stmt -> State -> Prop :=
   | SafeSkip : forall st, Safe Skip st
@@ -567,6 +612,7 @@ Section EnvSection.
         PreCond spec (fst st) input ->
         Safe (Call x f args) st.
 
+(*
   Section Safe_coind.
 
     Variable R : Stmt -> State -> Prop.
@@ -618,7 +664,7 @@ Section EnvSection.
     Qed.
 
   End Safe_coind.
-
+*)
 End EnvSection.
 
 Notation "A ; B" := (Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : facade_scope.
