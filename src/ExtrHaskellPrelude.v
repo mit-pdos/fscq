@@ -18,6 +18,8 @@ Extract Constant PeanoNat.Nat.pred => "(\n -> Prelude.max 0 (Prelude.pred n))".
 Extract Constant PeanoNat.Nat.sub => "(\n m -> Prelude.max 0 (n Prelude.- m))".
 Extract Constant PeanoNat.Nat.modulo =>
   "(\n m -> if m Prelude.== 0 then 0 else Prelude.mod n m)".
+Extract Constant PeanoNat.Nat.even => "Prelude.even".
+Extract Constant PeanoNat.Nat.odd => "Prelude.odd".
 
 Extract Inductive comparison => "Prelude.Ordering"
   [ "Prelude.EQ" "Prelude.LT" "Prelude.GT" ].
