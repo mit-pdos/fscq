@@ -11,7 +11,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      NEList DiskSet GroupLog Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
 	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \
-	      SuperBlock AsyncFS AsyncFSRecover TreeSeq VBConv ExtrHaskellPrelude \
+	      SuperBlock AsyncFS AsyncFSRecover VBConv ExtrHaskellPrelude \
 	      DirSep
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))

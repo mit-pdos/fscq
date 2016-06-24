@@ -597,22 +597,44 @@ Qed.
 
 Definition list2nelist A def (l: list A) : nelist A :=
   match l with
-  | nil => def
-  | h::t => pushdlist (rev t) (singular h)
+  | nil => singular def
+  | _ => pushdlist (rev (firstn (length l - 1) l)) (singular (selN l (length l - 1) def))
   end.
 
-Definition nelist2list A (nel: nelist A) : list A := (fst nel)::(snd nel).
+Definition nelist2list A (nel: nelist A) : list A := (snd nel)++((fst nel)::nil).
 
 Lemma nelist2list2nelist: forall A (l: nelist A) def, 
   list2nelist def (nelist2list l) = l.
 Proof.
   intros.
+  destruct l.
   unfold list2nelist, nelist2list.
+  simpl.
+  destruct l.
+  simpl.
   unfold singular.
+  reflexivity.
+  
+  simpl;
+  rewrite <- minus_n_O.
+  rewrite app_length.
+  unfold singular.
+  simpl.
+  destruct (length l) eqn:D; simpl.
+  apply length_nil in D; subst.
+  rewrite app_nil_l.
+  simpl.
+  unfold pushd.
+  reflexivity.
   rewrite pushdlist_app.
-  rewrite rev_involutive.
   rewrite app_nil_r.
-  symmetry; apply surjective_pairing.
+  rewrite rev_unit.
+  rewrite rev_involutive.
+  rewrite firstn_app.
+  rewrite selN_last.
+  reflexivity.
+  omega.
+  omega.
 Qed.
 
 Lemma list2nelist2list: forall A (l: list A) def, 
@@ -621,10 +643,21 @@ Proof.
   intros.
   destruct l.
   destruct H; reflexivity.
-  unfold list2nelist.
+  unfold list2nelist, nelist2list.
   unfold singular.
+  simpl.
   rewrite pushdlist_app.
   rewrite rev_involutive.
   rewrite app_nil_r.
-  unfold nelist2list; reflexivity.
+  simpl.
+  rewrite <- minus_n_O.
+  destruct (length l) eqn:D.
+  apply length_nil in D; subst.
+  reflexivity.
+  simpl.
+  rewrite <- firstn_plusone_selN.
+  rewrite firstn_oob.
+  reflexivity.
+  omega.
+  omega.
 Qed.
