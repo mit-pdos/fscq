@@ -87,7 +87,8 @@ Section Extracted.
 
   Definition Locals := StringMap.t Value.
 
-  Definition State := (list (Stmt * Locals) * rawdisk)%type.
+
+  Definition State := (rawdisk * Locals)%type.
   Import StringMap.
 
   Definition eval_binop (op : binop + test) a b :=
@@ -238,6 +239,12 @@ Section Extracted.
 
   Definition Env := StringMap.t FuncSpec.
 
+  Record frame := {
+    Locs : Locals;
+    Cont : Stmt;
+    Spec : FuncSpec;
+  }.
+
 End Extracted.
 
 Notation "R ^*" := (clos_refl_trans_1n _ R) (at level 0).
@@ -258,7 +265,7 @@ Section EnvSection.
     end.
 
   (* TODO: throw out RunsTo, I think *)
-  Inductive RunsTo : Stmt -> rawdisk * Locals -> rawdisk * Locals -> Prop :=
+  Inductive RunsTo : Stmt -> State -> State -> Prop :=
   | RunsToSkip : forall st,
       RunsTo Skip st st
   | RunsToSeq : forall a b st st' st'',
@@ -310,27 +317,30 @@ Section EnvSection.
       let s' := add x ret s' in
       RunsTo (Call x f args) (d, s) (d', s').
 
-  Inductive Step0 : Stmt * (rawdisk * Locals) -> Stmt * (rawdisk * Locals) -> Prop :=
+
+  (* Control-stack small-step semantics *)
+
+  Inductive Step0 : State * Stmt -> State * Stmt -> Prop :=
   | StepIfTrue : forall cond t f st,
       is_true (snd st) cond ->
-      Step0 (If cond t f, st) (t, st)
+      Step0 (st, If cond t f) (st, t)
   | StepIfFalse : forall cond t f st,
       is_false (snd st) cond ->
-      Step0 (If cond t f, st) (f, st)
+      Step0 (st, If cond t f) (st, f)
   | StepWhileTrue : forall cond body st,
       let loop := While cond body in
       is_true (snd st) cond ->
-      Step0 (loop, st) (Seq body loop, st)
+      Step0 (st, loop) (st, Seq body loop)
   | StepWhileFalse : forall cond body st,
       let loop := While cond body in
       is_false (snd st) cond ->
-      Step0 (loop, st) (Skip, st)
+      Step0 (st, loop) (st, Skip)
   | StepAssign : forall x e d s s' v,
       (* rhs can't be a mutable object, to prevent aliasing *)
       eval s e = Some v ->
       can_alias v = true ->
       s' = add x v s ->
-      Step0 (Assign x e, (d, s)) (Skip, (d, s'))
+      Step0 (d, s, Assign x e) (d, s', Skip)
   | StepCallAx : forall x f args s spec d d' input output ret,
       StringMap.find f env = Some (Axiomatic spec) ->
       mapM (sel s) args = Some input ->
@@ -339,25 +349,27 @@ Section EnvSection.
       PostCond spec d d' (List.combine input output) ret ->
       let s' := add_remove_many args input output s in
       let s' := add x ret s' in
-      Step0 (Call x f args, (d, s)) (Skip, (d', s')).
+      Step0 (d, s, Call x f args) (d', s', Skip).
 
-  Inductive Step : State -> State -> Prop :=
-  | StepStep0 : forall a a' s s' d d' fs,
-      Step0 (a, (d, s)) (a', (d', s')) ->
-      Step ((a, s) :: fs, d) ((a', s') :: fs, d')
-  | StepSeq1 : forall a a' b s s' d d' fs,
-      Step ((a, s) :: fs, d) ((a', s') :: fs, d') ->
-      Step ((Seq a b, s) :: fs, d) ((Seq a' b, s') :: fs, d')
-  | StepSeq2 : forall a s d fs,
-      Step ((Seq Skip a, s) :: fs, d) ((a, s) :: fs, d)
-  | StepCallOp : forall x f args s spec d input fs,
+  Definition StepState := (State * list frame * Stmt)%type.
+
+  Inductive Step : StepState * Stmt -> StepState * Stmt -> Prop :=
+  | StepStep0 : forall a a' st st' fs k,
+      Step0 (st, a) (st', a') ->
+      Step (st, fs, k, a) (st', fs, k, a')
+  | StepSeq1 : forall a a' b st st' fs k,
+      Step (st, fs, k, a) (st', fs, k, a') ->
+      Step (st, fs, k, Seq a b) (st', fs, k, Seq a' b)
+  | StepSeq2 : forall a st fs k,
+      Step (st, fs, k, Seq Skip a) (st, fs, k, a)
+  | StepCallOp : forall x f args s spec d input fs k,
       StringMap.find f env = Some (Operational spec) ->
       length args = length (ArgVars spec) ->
       mapM (sel s) args = Some input ->
       let callee_s := make_map (ArgVars spec) input in
-      let st := (Call x f args, s) :: fs in
-      Step (st, d) ((Body spec, callee_s) :: st, d)
-  | StepCallRet : forall x f args s callee_s' spec d input ret fs,
+      Step ((d, s), fs, k, Call x f args)
+           ((d, callee_s), {| Locs := s; Cont := k; Spec := Operational spec |} :: fs, Skip, spec.(Body))
+  | StepCallRet : forall x f args s callee_s' spec d input ret fs k,
       StringMap.find f env = Some (Operational spec) ->
       mapM (sel s) args = Some input ->
       length args = length (ArgVars spec) ->
@@ -365,7 +377,8 @@ Section EnvSection.
       let output := List.map (sel callee_s') (ArgVars spec) in
       let s' := add_remove_many args input output s in
       let s' := add x ret s' in
-      Step ((Skip, callee_s') :: (Call x f args, s) :: fs, d) ((Skip, s') :: fs, d).
+      Step ((d, callee_s'), {| Locs := s; Cont := k; Spec := Operational spec |} :: fs, Skip, Skip)
+           ((d, s'), fs, Skip, k).
 
   Inductive Outcome :=
   | EFailed
@@ -379,21 +392,24 @@ Section EnvSection.
   | CrashCall : forall x f args,
       CrashStep (Call x f args).
 
-  Inductive Exec : State -> Outcome -> Prop :=
+  Definition is_final (sst : StepState * Stmt) : Prop :=
+    let '(st, fs, k, c) := sst in
+    fs = [] /\ k = Skip /\ c = Skip.
+
+  Inductive Exec : StepState * Stmt -> Outcome -> Prop :=
   | EXStep : forall st st' out,
     Step st st' ->
     Exec st' out ->
     Exec st out
-  | EXFail : forall d p s fs,
-    let st := ((p, s) :: fs, d) in
+  | EXFail : forall st,
     (~exists st', Step st st') ->
-    (p <> Skip) ->
+    ~is_final st ->
     Exec st EFailed
-  | EXCrash : forall p d s fs,
-    CrashStep p ->
-    Exec ((p, s) :: fs, d) (ECrashed d)
-  | EXDone : forall d s,
-    Exec ([(Skip, s)], d) (EFinished (d, s)).
+  | EXCrash : forall d s fs k c,
+    CrashStep c ->
+    Exec (d, s, fs, k, c) (ECrashed d)
+  | EXDone : forall st fs,
+    Exec (st, fs, Skip, Skip) (EFinished st).
 
   Hint Constructors Exec RunsTo Step Step0 : steps.
 
