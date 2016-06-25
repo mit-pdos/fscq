@@ -119,14 +119,21 @@ Module TREESEQ.
   Definition tsupd (ts: treeseq) pathname off v :=
     d_map (fun t => treeseq_one_upd t pathname off v) ts.
 
+  (* A predicate that states when it is safe to perform an upd a in treeseq. For example,
+   * it is unsafe to perform an upd on a treeseq if a tree in the sequence uses the block
+   * in another file than in the newest tree. This predicate forbids this case, as well as
+   * others.
+   *)
   Definition treeseq_upd_safe pathname off flag (tnewest tolder : treeseq_one) :=
     forall bn inum f,
     find_subtree pathname (TStree tnewest) = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file (TSilist tnewest) bn inum off ->
     (BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn /\
-     ~ exists inum' f',
-      (* XXX should be: find_name pathname (TStree tolder) = Some (inum', b) *)
-     find_subtree pathname (TStree tolder) = Some (TreeFile inum' f') /\ off < List.length (BFILE.BFData f')
+      (match find_subtree pathname (TStree tolder) with
+      | Some (TreeFile inum' f') => inum' = inum /\ off >= List.length (BFILE.BFData f')
+      | Some (TreeDir _ _) => False
+      | None => True
+      end)
      )
     \/
     (exists f',
@@ -205,11 +212,10 @@ Module TREESEQ.
     pred_apply.
 
     case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
+    rewrite H4 in H6.
     case_eq d; intros; subst.
-    destruct (lt_dec off (List.length (BFILE.BFData b))).
-    exfalso; eauto.
-
-    (* off out of bounds *)
+    (* a file and off is out of bound *)
+    intuition.
     unfold treeseq_one_upd; rewrite H4; simpl.
     rewrite updN_oob by omega.
     erewrite update_subtree_same. cancel.
@@ -272,12 +278,11 @@ Module TREESEQ.
     intuition.
     case_eq (find_subtree pathname (TStree ts !!)).
     intros; case_eq d; intros; subst.
-    destruct (lt_dec off (List.length (BFILE.BFData b))).
 
-    (* cannot be in-range *)
-    exfalso; eauto.
+    rewrite H1 in H7.
+    intuition.
 
-    (* out of range *)
+     (* out of range *)
     unfold treeseq_one_upd; rewrite H1; simpl.
     rewrite updN_oob by omega.
     rewrite H3.
@@ -292,10 +297,8 @@ Module TREESEQ.
     destruct b; simpl in *; eauto.
 
     (* it's a directory *)
-    unfold treeseq_one_upd; rewrite H1; simpl.
-    rewrite H3.
-    eauto.
-
+    rewrite H1 in H7; exfalso; auto.
+ 
     (* it's not present *)
     intros.
     unfold treeseq_one_upd; rewrite H1; simpl.
@@ -532,7 +535,7 @@ Admitted.
     eapply NEforall_d_in in H7; try eassumption.
     unfold tsupd; rewrite d_map_latest.
 
-    unfold treeseq_one_upd at 1.
+    unfold treeseq_one_upd.
 
     erewrite dir2flatmem_find_subtree_ptsto.
     3: eauto.
@@ -543,7 +546,7 @@ Admitted.
       + (* a file *)
         destruct (lt_dec off (Datatypes.length (BFILE.BFData b))).
         * (* block is present *) 
-          unfold treeseq_one_upd; rewrite H4; simpl.
+          (* unfold treeseq_one_upd; rewrite H4; simpl. *)
           unfold treeseq_upd_safe. simpl in *; intros.
           right.
           exists {|
@@ -551,92 +554,112 @@ Admitted.
              BFILE.BFAttr := BFILE.BFAttr b |}.
           eapply dir2flatmem_find_subtree_ptsto in H0 as H0'.
           specialize (H7 bn inum f H0' H18).
-          destruct H7; eauto.
-          (* case 1: pathname doesn't exists. *)
+          destruct H7; try congruence.
+          (* case 1: block is unused in old tree *)
+          rewrite H4 in H7.
           intuition.
-          destruct H15.
-          intros.
-          exists n.
-          exists b.
-          split; eauto.
-          destruct H15.
-          intros.
-          exists n.
-          exists b.
-          split; eauto.
-          (* case 2: pathname does exists. *)
+          erewrite updN_oob.
+          rewrite H7.
+          erewrite find_update_subtree in H9; eauto.
+          inversion H9; eauto.
+          eassumption.
+          admit. (* contradiction between H19 and l0 *)
+          (* case 2: block is in use in old tree *)
           destruct H7.
+          erewrite find_update_subtree in H9; eauto.
+          inversion H9; eauto.
+          rewrite <- H15 in *.
           intuition.
           rewrite H4 in H11.
           inversion H11.
-          erewrite find_update_subtree in H9; eauto.
-          inversion H9; eauto.
-          erewrite find_update_subtree in H9; eauto.
-          inversion H9; eauto.
-          rewrite <- H19 in *.
+          rewrite H22 in *.
+          eauto.
           unfold BFILE.block_belong_to_file in H18.
           unfold BFILE.block_belong_to_file in H10.
           intuition.
           rewrite <- H22 in H23.
           rewrite H23; eauto.
           distinct_names'.
-        * (* block is not present; update subtree shouldn't haven an effect when off >= length *)
-          unfold treeseq_one_upd; rewrite H4; simpl.
+        * (* block is not present in old tree; update subtree shouldn't haven an effect when off >= length *)
+          (* unfold treeseq_one_upd; rewrite H4; simpl. *)
           unfold treeseq_upd_safe. simpl in *; intros.
-          right.
-          exists {|
-             BFILE.BFData := (BFILE.BFData b);
-             BFILE.BFAttr := BFILE.BFAttr b |}.
-          erewrite updN_oob.
+          left.
           eapply dir2flatmem_find_subtree_ptsto in H0 as H0'.
           specialize (H7 bn inum f H0' H18).
-          destruct H7; eauto.
-          (* case 1: pathname doesn't exists. *)
-          intuition.
-          admit. (* some contradiction but where? *)
-          admit.
-          (* case 2: pathname does exists. *)
-          destruct H7.
-          intuition.
-          rewrite H4 in H11.
-          inversion H11.
+          rewrite H4 in H7.
+          destruct H7; try congruence.
+          (* case 1: block is unused *)
+          split.
           erewrite find_update_subtree in H9; eauto.
           inversion H9; eauto.
-          erewrite find_update_subtree in H9; eauto.
-          inversion H9; eauto.
-          rewrite <- H19 in *.
           unfold BFILE.block_belong_to_file in H18.
           unfold BFILE.block_belong_to_file in H10.
           intuition.
-          rewrite <- H22 in H23.
-          rewrite H23; eauto.
+          rewrite <- H15 in *.
+          rewrite <- H21 in *.
+          rewrite <- H23 in *.
+          rewrite H23 in *.
+          rewrite H17; eauto.
+          erewrite updN_oob.
+          erewrite find_update_subtree; eauto.
+          split.
+          erewrite find_update_subtree in H9; eauto.
+          inversion H9; eauto.
+          rewrite <- H15 in *.
+          intuition.
+          intuition.
+          intuition.
+          (* case 2: block is inuse *)
+          admit. (* contradiction between H7 and n0 *)
           distinct_names'.
-          admit.  (* follows from n0 *)
       + (* a directory *)
         unfold treeseq_upd_safe in H7.
         eapply dir2flatmem_find_subtree_ptsto in H0 as H0'.
         specialize (H7 bn inum f H0' H18).
+        rewrite H4 in H7; try congruence.
         destruct H7.
-        (* case 1: pathname doesn't exist *)
+        (* first case *)
         intuition.
-        destruct H10.
-        exists n.
-        admit.
-        (* case 2: contradiction: pathname exists *)
+        (* second case *)
         destruct H7.
         intuition.
-        rewrite H4 in H9.
-        congruence.
+        admit. (* contradiction H9 *)
         distinct_names'.
     - (* case 2: non existing *)
-      intros.
-      admit.  (* contradiction block is in use *)
-    distinct_names'.
-    admit.  (* H16 *)
-    { 
-      xcrash.
       intros; subst.
-    }
+      eapply dir2flatmem_find_subtree_ptsto in H0 as H0'.
+      specialize (H7 bn inum f H0' H18).
+      rewrite H4 in H7.
+      unfold treeseq_upd_safe. simpl in *; intros.
+      left.
+      destruct H7.
+      (* left of or *)
+      split.
+      intuition.
+        erewrite find_update_subtree in H9; eauto.
+          inversion H9; eauto.
+          unfold BFILE.block_belong_to_file in H18.
+          unfold BFILE.block_belong_to_file in H10.
+          intuition.
+          rewrite <- H19 in *.
+          rewrite <- H22 in H23.
+          rewrite <- H23 in *.
+          rewrite H17; eauto.
+          rewrite H4; eauto.
+      (* right of or *)
+      destruct H7.
+      intuition.
+      exfalso.
+      inversion H11.
+      rewrite H4.
+      exfalso.
+      inversion H11.
+      distinct_names'.
+    - distinct_names'.
+    - Search ptsto dir2flatmem.
+      admit.  (* H16? *)
+    - xcrash.
+      intros; subst.
 
     (* XXX *)
     xcrash.
