@@ -595,36 +595,3 @@ Proof.
   omega.
 Qed.
 
-Definition list2nelist A def (l: list A) : nelist A :=
-  match l with
-  | nil => def
-  | h::t => pushdlist (rev t) (singular h)
-  end.
-
-Definition nelist2list A (nel: nelist A) : list A := (fst nel)::(snd nel).
-
-Lemma nelist2list2nelist: forall A (l: nelist A) def, 
-  list2nelist def (nelist2list l) = l.
-Proof.
-  intros.
-  unfold list2nelist, nelist2list.
-  unfold singular.
-  rewrite pushdlist_app.
-  rewrite rev_involutive.
-  rewrite app_nil_r.
-  symmetry; apply surjective_pairing.
-Qed.
-
-Lemma list2nelist2list: forall A (l: list A) def, 
-  l<>nil -> nelist2list (list2nelist def l) = l.
-Proof.
-  intros.
-  destruct l.
-  destruct H; reflexivity.
-  unfold list2nelist.
-  unfold singular.
-  rewrite pushdlist_app.
-  rewrite rev_involutive.
-  rewrite app_nil_r.
-  unfold nelist2list; reflexivity.
-Qed.
