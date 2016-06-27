@@ -611,13 +611,10 @@ Module TREESEQ.
        [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
        [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
     XCRASH:hm'
-      (* XXX update to use treeseq *)
-(*
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-       exists bn ilist, [[ BFILE.block_belong_to_file ilist bn inum off ]] *
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (dsupd ds bn (v, vsmerge vs)) hm'
-*)
-      any
+       exists ts' ds' mscs',
+         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']]
    >} AFS.update_fblock_d fsxp inum off v mscs.
   Proof.
     intros.
@@ -651,10 +648,10 @@ Admitted.
     eapply NEforall_d_in in H7; try eassumption.
     unfold tsupd; rewrite d_map_latest.
 
-  eapply treeseq_upd_safe_upd; eauto.
-  rewrite H17; eauto.
-  distinct_names'.
-  admit. (* H16 *)
+    eapply treeseq_upd_safe_upd; eauto.
+    rewrite H17; eauto.
+    distinct_names'.
+    admit. (* H16 *)
 
     (* XXX *)
     xcrash.
@@ -662,7 +659,9 @@ Admitted.
     eapply pimpl_exists_r; eexists.
     repeat (xform_deex_r).
     xform_norm; cancel.
-    eassumption.
+    eapply treeseq_in_ds_upd; eauto.
+    eapply dir2flatmem_find_subtree_ptsto; eauto.
+    distinct_names'.
   Admitted.
 
   Hint Extern 1 ({{_}} Bind (AFS.file_get_attr _ _ _) _) => apply treeseq_file_getattr_ok : prog.
