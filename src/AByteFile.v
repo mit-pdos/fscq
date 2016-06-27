@@ -188,15 +188,14 @@ else                                                   (* if read length is not 
 }.
 
 Definition write_to_block lxp ixp inum fms block_off byte_off data :=
- let^ (fms, block) <- BFILE.read lxp ixp inum block_off fms;   (* get first block *) 
+ let^ (fms, block) <- BFILE.read lxp ixp inum block_off fms;   (* get the block *) 
     let block_list := valu2list block in
-    let block_write := list2valu ((firstn byte_off block_list)     (* Construct first block*)
+    let block_write := list2valu ((firstn byte_off block_list)     (* Construct new block*)
                               ++data++(skipn (byte_off + length data) block_list))%list in 
-    (*Write first block*)                          
-    let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
-    let^ (ms, bn) <-INODE.getbnum lxp ixp inum block_off (BFILE.MSLL fms);
-    ms <- LOG.write lxp (# bn) block_write ms;
-Ret (BFILE.mk_memstate al ms).
+    (*Write the block*)                          
+    
+    fms <- BFILE.dwrite lxp ixp inum block_off block_write fms;
+Ret (fms).
 
 
 
@@ -233,7 +232,7 @@ Definition write_last_block lxp ixp inum fms off_final len_final data:=
                             ++ (get_sublist (valu2list last_block) len_final (block_size - len_final)))%list in
                             
     let^ (ms, bn) <- INODE.getbnum lxp ixp inum (off_final) (BFILE.MSLL fms);(* get final block number *)
-    ms <- LOG.write lxp (# bn) last_block_write ms;
+    ms <- LOG.dwrite lxp (# bn) last_block_write ms;
     Ret (fms).
 
 Definition write lxp ixp inum off data fms :=
@@ -770,70 +769,6 @@ apply read_first_block_ok.
 Admitted.
 
 
-(* 
-
-Theorem read_last_block_ok: forall lxp bxp ixp inum fms block_off read_length,
- {< F Fm Fi Fd m0 m flist ilist frees f fy data,
-    PRE:hm
-          let file_length := (# (INODE.ABytes (ByFAttr fy))) in
-          let block_size := valubytes in
-           rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f fy  *
-           [[[ (ByFData fy) ::: (Fd * (arrayN (ptsto (V:= byteset)) (block_off * block_size) data)) ]]] *
-           [[ 0 < read_length]] * 
-           [[ length data = read_length ]] *
-           [[ read_length < block_size]]
-    POST:hm' RET:^(fms', r)
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm' *
-          [[ r = map fst data ]] *
-          [[BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
-    CRASH:hm'  exists (fms':BFILE.memstate),
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm'
-    >} read_last_block lxp ixp inum fms block_off read_length.
-Proof.
-unfold read_last_block, rep.
-step.
-
-eapply list2nmem_arrayN_bound in H8.
-destruct H8.
-rewrite H in H7.
-inversion H7.
-rewrite len_f_fy with (f:=f) (fy:=fy) in H.
-apply le2lt_l in H.
-replace (block_off * valubytes) with (block_off * valubytes + 0) in H by omega.
-apply lt_weaken_l with (m:= 0) in H.
-apply lt_mult_weaken in H.
-apply H.
-apply H7.
-eapply bytefile_bfile_eq.
-eauto.
-eauto.
-eauto.
-
-eapply protobyte2block; eauto.
-eapply unifiedbyte2protobyte with (a:= block_off * valubytes + 0) (k:= valubytes) in H11; try omega.
-rewrite div_eq in H11; try omega.
-apply H11.
-
-eapply proto_len; eauto.
-eapply byte2unifiedbyte; eauto.
-pred_apply.
-rewrite arrayN_isolate with (i:=0).
-rewrite <- plus_n_O .
-cancel.
-auto.
-
-step.
-
-eapply content_match; eauto.
-rewrite <- plus_n_O.
-eauto.
-omega.
-omega.
-
-Grab Existential Variables.
-apply byteset0.
-Qed.
-
 
 Theorem read_ok : forall lxp bxp ixp inum off len fms,
     {< F Fm Fi Fd m0 m flist ilist frees f fy data,
@@ -866,7 +801,67 @@ destruct (lt_dec 0 (Init.Nat.min (length data) (a0 - off) -
           (Init.Nat.min (length data) (a0 - off))) / valubytes * valubytes)).
           constructor.
 destruct_lift H.
-Admitted. *)
+Admitted.
+
+Fact flist_eq_ilist: forall F F' flist flist' ilist m, 
+  (@sep_star addr addr_eq_dec BFILE.datatype 
+      F  (listmatch (fun (v : BFILE.datatype) (a : addr) => a |-> v) flist ilist))%pred m ->
+  (@sep_star addr addr_eq_dec BFILE.datatype 
+      F'  (listmatch (fun (v : BFILE.datatype) (a : addr) => a |-> v) flist' ilist))%pred m ->
+  forall i def, i < length flist -> selN flist i def = selN flist' i def.
+Proof.
+  intros.
+  Search ptsto.
+  eapply sep_star_ptsto_some_eq with (a:= (selN ilist i _)).
+  erewrite listmatch_isolate with (i:= i) in H.
+  apply sep_star_comm.
+  eapply sep_star_assoc in H.
+  eapply H.
+  auto.
+  apply listmatch_length_r in H as H'.
+  rewrite <- H'; auto.
+  Search listmatch.
+  rewrite listmatch_extract with (i:= i) in H0.
+  destruct_lift H; destruct_lift H0.
+  apply ptsto_valid' in H0.
+  apply H0.
+  apply listmatch_length_r in H as H'.
+  apply listmatch_length_r in H0 as H0'.
+  omega.
+  Grab Existential Variables.
+  apply O.
+Qed.
+
+
+Fact map_1to1_eq: forall A B (f: A -> B) (l l': list A), 
+  (forall x y, f x = f y -> x = y) -> 
+  map f l = map f l' ->
+  l = l'.
+  
+Proof.
+  induction l; intros.
+  simpl in H0; symmetry in H0.
+  eapply map_eq_nil in H0.
+  eauto.
+  destruct l'.
+  rewrite map_cons in H0; simpl in H0.
+  inversion H0.
+  repeat rewrite map_cons in H0.
+  inversion H0.
+  apply H in H2.
+  rewrite H2.
+  eapply IHl in H.
+  apply cons_simpl.
+  eauto.
+  eauto.
+Qed.
+
+Fact map_eq: forall A B (f: A -> B) (l l': list A), 
+  l = l' ->
+  map f l = map f l'.
+
+Proof. intros; rewrite H; reflexivity. Qed.
+
 
 Definition upd_byteset bs b: byteset := (b, (fst bs)::(snd bs)).
 
@@ -884,11 +879,11 @@ Theorem write_first_block_ok : forall lxp bxp ixp inum block_off byte_off data f
            [[ length old_data = length data]] *
            [[ length data > 0 ]] *
            [[ byte_off + length data <= valubytes ]] 
-    POST:hm' RET:fms'  exists m' flist' f' fy',
+    POST:hm' RET:fms'  exists m' flist' f',
+            let fy' := mk_bytefile (updN_list (ByFData fy) (block_off * valubytes + byte_off) data) (ByFAttr fy) in  
            rep lxp bxp ixp flist' ilist frees inum  F Fm Fi fms' m0 m' hm' f' fy' *
            [[[ (ByFData fy') ::: (Fd * arrayN (ptsto (V:=byteset)) 
            (block_off * valubytes + byte_off) (updN_list old_data 0 data))]]] *
-           [[ fy' = mk_bytefile (updN_list (ByFData fy) (block_off * valubytes + byte_off) data) (ByFAttr fy)  ]] *
            [[ BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} write_to_block lxp ixp inum fms block_off byte_off data.
@@ -915,42 +910,73 @@ rewrite arrayN_isolate with (i:=0).
 rewrite <- plus_n_O .
 cancel.
 omega.
+monad_simpl.
 
-step.
-
-erewrite iblocks_file_len_eq.
+safestep.
 
 eapply inlen_bfile; eauto.
-eapply list2nmem_sel in H13.
-rewrite <- H13.
-auto.
 rewrite valubytes_is in *; omega.
 omega.
 
-Show Existentials.
-Existential  10:= ilist.
-auto.
-apply list2nmem_inbound in H13.
-unfold BFILE.rep in H0.
-replace (length ilist) with (length flist).
-apply H13.
-rewrite listmatch_length_pimpl in H0.
-destruct_lift H0.
-apply H21.
-apply H0.
-unfold BFILE.rep.
-cancel.
-apply addr_id.
 
-apply list2nmem_inbound in H13.
-unfold BFILE.rep in H0.
-replace (length ilist) with (length flist).
-apply H13.
-rewrite listmatch_length_pimpl in H0.
-destruct_lift H0.
-apply H21.
+eapply protobyte2block; eauto.
+eapply unifiedbyte2protobyte with (a:= block_off * valubytes + byte_off) (k:= valubytes) in H11; try omega.
+rewrite div_eq in H11; try omega.
+apply H11.
+
+eapply proto_len; eauto.
+
+eapply byte2unifiedbyte; eauto.
+pred_apply.
+rewrite arrayN_isolate with (i:=0).
+rewrite <- plus_n_O .
+cancel.
+omega.
+eapply BFILE.dwrite_ok.
 
 step.
+
+unfold proto_bytefile_valid.
+simpl.
+rewrite H12.
+Search map.
+
+
+
+eapply map_eq.
+sepauto.
+Locate "⟧". *)
+(* rewrite H11.
+rewrite H12.
+unfold get_sublist.
+rewrite concat_hom_skipn.
+replace valubytes with (1*valubytes) by omega.
+rewrite concat_hom_firstn.
+rewrite firstn1.
+ *)
+
+eapply list2nmem_sel in H23; simpl in H23.
+rewrite H23.
+
+
+
+
+erewrite flist_eq_ilist.
+
+
+unfold BFILE.rep in H0.
+destruct_lift H0.
+unfold BFILE.file_match in H0.
+Search selN updN.
+erewrite selN_eq_updN_eq.
+reflexivity.
+rewrite listmatch_isolate with (i:= inum) in H14.
+
+
+
+unfold BFILE.rep in H18.
+destruct_lift H18.
+Search list2nmem ptsto.
 
 (* pose proof H0 as H0'.
 unfold BFILE.rep in H0.
@@ -1106,7 +1132,10 @@ rewrite listmatch_length_pimpl in H0.
 destruct_lift H0.
 eauto.
 eauto.
-(* 
+erewrite selN_map.
+Search ptsto sep_star.
+
+ 
 assert(AS:(list2valu
                 (firstn byte_off
                    (valu2list
@@ -1132,7 +1161,7 @@ rewrite firstn1.
 erewrite selN_map.
 rewrite valuset2bytesets2valuset.
 rewrite skipn_selN.
-rewrite <- plus_n_O. *)
+rewrite <- plus_n_O.
 Admitted.
 
 
