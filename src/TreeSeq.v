@@ -651,9 +651,23 @@ Admitted.
     eapply treeseq_upd_safe_upd; eauto.
     rewrite H17; eauto.
     distinct_names'.
-    admit. (* H16 *)
+    
+    unfold tsupd.
+    erewrite d_map_latest.
+    unfold treeseq_one_upd.
+    eapply dir2flatmem_find_subtree_ptsto in H0 as H0'.
+    destruct (find_subtree pathname (TStree ts !!)); try congruence.
+    destruct d; try congruence; simpl.
+    inversion H0'.
+    assert (f' = {|
+           BFILE.BFData := (BFILE.BFData f) ⟦ off
+                           := (v, vsmerge vs) ⟧;
+           BFILE.BFAttr := BFILE.BFAttr f |}) by admit.
+    rewrite <- H4.
+    eapply dir2flatmem_update_subtree; eauto.
+    distinct_names'.
+    distinct_names'.
 
-    (* XXX *)
     xcrash.
     or_r.
     eapply pimpl_exists_r; eexists.
