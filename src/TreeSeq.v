@@ -620,14 +620,23 @@ Module TREESEQ.
     intros.
     eapply pimpl_ok2.
     eapply AFS.update_fblock_d_ok.
-    cancel.
+    safecancel.
     eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred; eauto.
     eapply dir2flatmem_find_subtree_ptsto.
     distinct_names'.
     eassumption.
-    eassumption.
+
+    pose proof (list2nmem_array (BFILE.BFData f)).
+    pred_apply.
+    erewrite arrayN_except with (i := off).
+
+    cancel.
+    eapply list2nmem_inbound; eauto.
 
     step.
+    
+    eapply list2nmem_sel in H5 as H5'.
+    rewrite <- H5'.
     eapply treeseq_in_ds_upd; eauto.
     eapply dir2flatmem_find_subtree_ptsto.
     distinct_names'.
@@ -635,13 +644,10 @@ Module TREESEQ.
 
     unfold BFILE.diskset_was in H20.
     intuition.
+    clear H5'.
     subst; eauto.
     (* should be impossible once haogang gets rid of [diskset_was] *)
     admit.
-
-Lemma NEforall_d_in':
-  forall T (p : T -> Prop) l, (forall x, d_in x l -> p x) -> NEforall p l.
-Admitted.
 
     eapply NEforall_d_in'; intros.
     apply d_in_d_map in H4; deex; intuition.
@@ -649,6 +655,9 @@ Admitted.
     unfold tsupd; rewrite d_map_latest.
 
     eapply treeseq_upd_safe_upd; eauto.
+    eapply list2nmem_sel in H5 as H5'.
+    rewrite <- H5' in *; eauto.
+
     rewrite H17; eauto.
     distinct_names'.
     
@@ -662,7 +671,13 @@ Admitted.
     assert (f' = {|
            BFILE.BFData := (BFILE.BFData f) ⟦ off
                            := (v, vsmerge vs) ⟧;
-           BFILE.BFAttr := BFILE.BFAttr f |}) by admit.
+           BFILE.BFAttr := BFILE.BFAttr f |}).
+    destruct f'.
+    f_equal; eauto.
+    simpl in *.
+    erewrite list2nmem_sel; eauto.
+    2: eassumption.
+
     rewrite <- H4.
     eapply dir2flatmem_update_subtree; eauto.
     distinct_names'.
