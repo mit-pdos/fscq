@@ -409,8 +409,8 @@ Section EnvSection.
   | EXCrash : forall d s fs k c,
     CrashStep c ->
     Exec (d, s, fs, k, c) (ECrashed d)
-  | EXDone : forall st fs,
-    Exec (st, fs, Skip, Skip) (EFinished st).
+  | EXDone : forall st,
+    Exec (st, [], Skip, Skip) (EFinished st).
 
   Hint Constructors Exec RunsTo Step Step0 : steps.
 
@@ -624,52 +624,55 @@ Section EnvSection.
     apply Step_RunsTo' in H. simpl in *. repeat inv_runsto. trivial.
   Qed.
 
-(*
-  Theorem RunsTo_Exec : forall p s d st',
-    RunsTo p (d, s) st' ->
-    Exec ([(p, s)], d) (EFinished st').
-  Proof.
-    intros. destruct st'.
-    eapply RunsTo_Step in H.
-    prep_induction H; induction H; intros; subst.
-    + find_inversion. eauto with steps.
-    + destruct y. econstructor. eapply H. eapply IHclos_refl_trans_1n; eauto. (* And again. *)
-  Admitted.
-
-  Theorem Exec_RunsTo : forall p s d st',
-    Exec ([(p, s)], d) (EFinished st') ->
-    RunsTo p (d, s) st'.
+  Theorem RunsToInCall_Step : forall fs p k st st',
+    RunsTo_InCall (equiv_stmt fs (Cur (Seq p k))) st st' ->
+    Step^* (st, fs, k, p) (st', [], Skip, Skip).
   Proof.
   Admitted.
 
-
-    intros.
-    eapply Step_RunsTo.
-    prep_induction H; induction H; intros; subst; eauto with steps; try discriminate.
-    find_inversion. eauto with steps.
-  Qed.
-
-  Theorem Exec_Steps : forall p st d',
-    Exec p st (ECrashed d') ->
-    exists p' s', Step^* (p, st) (p', (d', s')) /\ CrashStep p'.
+  Theorem ExecFinished_Steps : forall fs k p st st',
+    Exec (st, fs, k, p) (EFinished st') ->
+    Step^* (st, fs, k, p) (st', [], Skip, Skip).
   Proof.
     intros.
     prep_induction H; induction H; intros; subst; try discriminate.
-    + specialize (IHExec _ eq_refl). repeat deex. repeat eexists; eauto. econstructor; eauto.
-    + find_inversion. eauto with steps.
+    + destruct st'. destruct st'0. destruct s. destruct p0.
+      eauto with steps.
+    + invc H2. invc H1. eauto with steps.
   Qed.
 
-  Theorem Steps_Exec : forall p st p' s' d',
-    Step^* (p, st) (p', (d', s')) ->
+  Theorem Steps_ExecFinished' : forall fs p k st st',
+    Step^* (st, fs, k, p) (st', [], Skip, Skip) ->
+    Exec (st, fs, k, p) (EFinished st').
+  Proof.
+    intros.
+    prep_induction H; induction H; intros; subst; try discriminate.
+    + find_inversion. eauto with steps.
+    + destruct y. destruct s. destruct p0.
+      eauto with steps.
+  Qed.
+
+  Theorem ExecCrashed_Steps : forall fs p k st d',
+    Exec (st, fs, k, p) (ECrashed d') ->
+    exists s' fs' k' p', Step^* (st, fs, k, p) ((d', s'), fs', k', p') /\ CrashStep p'.
+  Proof.
+    intros.
+    prep_induction H; induction H; intros; subst; try discriminate.
+    + destruct st'. destruct s. destruct p0. specialize (IHExec _ _ _ _ _ eq_refl eq_refl). repeat deex. eauto 8 with steps.
+    + find_inversion. find_inversion. eauto 8 with steps.
+  Qed.
+
+  Theorem Steps_ExecCrashed : forall st fs k p d' s' fs' k' p',
+    Step^* (st, fs, k, p) ((d', s'), fs', k', p') ->
     CrashStep p' ->
-    Exec p st (ECrashed d').
+    Exec (st, fs, k, p) (ECrashed d').
   Proof.
     intros.
     destruct st.
     prep_induction H; induction H; intros; subst.
     + repeat find_inversion. eauto with steps.
-    + destruct y. destruct s0. eauto with steps.
-  Qed.*)
+    + destruct y. destruct s. destruct p0. destruct s1. eauto with steps.
+  Qed.
 
   CoInductive Safe : Stmt -> State -> Prop :=
   | SafeSkip : forall st, Safe Skip st
