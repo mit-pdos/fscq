@@ -242,7 +242,9 @@ Section Extracted.
   Record frame := {
     Locs : Locals;
     Cont : Stmt;
-    Spec : FuncSpec;
+    Spec : OperationalSpec;
+    Args : list var;
+    RetV : var;
   }.
 
 End Extracted.
@@ -357,18 +359,17 @@ Section EnvSection.
   | StepStep0 : forall a a' st st' fs k,
       Step0 (st, a) (st', a') ->
       Step (st, fs, k, a) (st', fs, k, a')
-  | StepSeq1 : forall a a' b st st' fs k,
-      Step (st, fs, k, a) (st', fs, k, a') ->
-      Step (st, fs, k, Seq a b) (st', fs, k, Seq a' b)
-  | StepSeq2 : forall a st fs k,
-      Step (st, fs, k, Seq Skip a) (st, fs, k, a)
+  | StepSeq : forall a b st fs k,
+      Step (st, fs, k, Seq a b) (st, fs, Seq b k, a)
+  | StepCont : forall st fs k1 k2,
+      Step (st, fs, Seq k1 k2, Skip) (st, fs, k2, k1)
   | StepCallOp : forall x f args s spec d input fs k,
       StringMap.find f env = Some (Operational spec) ->
       length args = length (ArgVars spec) ->
       mapM (sel s) args = Some input ->
       let callee_s := make_map (ArgVars spec) input in
       Step ((d, s), fs, k, Call x f args)
-           ((d, callee_s), {| Locs := s; Cont := k; Spec := Operational spec |} :: fs, Skip, spec.(Body))
+           ((d, callee_s), {| Locs := s; Cont := k; Spec := spec; Args := args; RetV := x |} :: fs, Skip, spec.(Body))
   | StepCallRet : forall x f args s callee_s' spec d input ret fs k,
       StringMap.find f env = Some (Operational spec) ->
       mapM (sel s) args = Some input ->
@@ -377,8 +378,8 @@ Section EnvSection.
       let output := List.map (sel callee_s') (ArgVars spec) in
       let s' := add_remove_many args input output s in
       let s' := add x ret s' in
-      Step ((d, callee_s'), {| Locs := s; Cont := k; Spec := Operational spec |} :: fs, Skip, Skip)
-           ((d, s'), fs, Skip, k).
+      Step ((d, callee_s'), {| Locs := s; Cont := k; Spec := spec; Args := args; RetV := x |} :: fs, Skip, Skip)
+           ((d, s'), fs, k, Skip).
 
   Inductive Outcome :=
   | EFailed
@@ -415,41 +416,28 @@ Section EnvSection.
 
   Hint Constructors clos_refl_trans_1n : steps.
 
-  Lemma Step_add_stack : forall a a' s s' d d' fs,
-    Step ((a, s) :: [], d) ((a', s') :: [], d') ->
-    Step ((a, s) :: fs, d) ((a', s') :: fs, d').
+  Ltac do_inv :=
+    match goal with
+    | [ H : Step _ _ |- _ ] => invc H; eauto with steps
+    | [ H : clos_refl_trans_1n _ _ _ _ |- _ ] => invc H; eauto with steps
+    end.
+
+  Lemma Steps_add_stack : forall st st' fs1 fs c c' k k',
+    Step^* (st, fs1, c, k) (st', [], c', k') ->
+    Step^* (st, fs1 ++ fs, c, k) (st', fs, c', k').
   Proof.
     intros.
-    prep_induction H; induction H; intros; subst; repeat find_inversion; eauto with steps.
+    prep_induction H; induction H; intros; subst.
+    - find_inversion. eauto with steps.
+    - destruct y. destruct s. destruct p. do_inv.
+      + econstructor; eauto. econstructor; eauto. (* Why doesn't [eauto] apply [StepStep0]? :( *)
+      + econstructor; eauto. econstructor; eauto.
+      + econstructor; eauto. eapply StepCallRet; eauto.
   Qed.
-  Hint Resolve Step_add_stack : steps.
 
-  Lemma Steps_add_stack : forall a a' s s' d d' fs,
-    Step^* ((a, s) :: [], d) ((a', s') :: [], d') ->
-    Step^* ((a, s) :: fs, d) ((a', s') :: fs, d').
-  Proof.
-    intros.
-    prep_induction H; induction H; intros; subst.
-    + find_inversion. eauto with steps.
-    + destruct y. destruct l. invc H. destruct l. destruct p. econstructor. eapply Step_add_stack. eauto. eauto.
-      invc H.
-      econstructor. subst_definitions. eapply StepCallOp; eauto.
-  Admitted.
+  Definition rt1n_front := Relation_Operators.rt1n_trans.
 
-  Lemma Step_Sequence : forall a b a' s s' d d',
-    Step^* ((a, s) :: [], d) ((a', s') :: [], d') ->
-    Step^* ((Seq a b, s) :: [], d) ((Seq a' b, s') :: [], d').
-  Proof.
-    intros.
-    prep_induction H; induction H; intros; subst.
-    + find_inversion; eauto with steps.
-    + destruct y. destruct l. invc H. destruct l. destruct p. econstructor. eapply StepSeq1. eauto. eauto.
-      invc H.
-      (* Probably true. *)
-  Admitted.
-  Hint Resolve Step_Sequence : steps.
-
-  Lemma rt1n_trans : forall A R x y z,
+  Lemma rt1n_trans' : forall A R x y z,
     clos_refl_trans_1n A R x y ->
     clos_refl_trans_1n A R y z ->
     clos_refl_trans_1n A R x z.
@@ -461,84 +449,182 @@ Section EnvSection.
     match goal with
     | _ => is_evar x; fail 1
     | _ => is_evar y; fail 1
-    | _ => eapply rt1n_trans
+    | _ => eapply rt1n_trans'
     end : steps.
 
-  Theorem RunsTo_Step : forall p s s' d d',
-    RunsTo p (d, s) (d', s') ->
-    Step^* ((p, s) :: [], d) ((Skip, s') :: [], d').
+  (* For some reason, the [Hint Constructors] isn't enough. *)
+  Hint Extern 1 (Step (_, Seq _ _) _) =>
+    eapply StepSeq : steps.
+  Hint Extern 1 (Step (_, If _ _ _) _) =>
+    eapply StepStep0; eapply StepIfTrue : steps.
+  Hint Extern 1 (Step (_, If _ _ _) _) =>
+    eapply StepStep0; eapply StepIfFalse : steps.
+  Hint Extern 1 (Step (_, _) _) =>
+    eapply StepStep0; eapply StepWhileTrue : steps.
+  Hint Extern 1 (Step (_, _) _) =>
+    eapply StepStep0; eapply StepWhileFalse : steps.
+  Hint Extern 1 (Step (_, Assign _ _) _) =>
+    eapply StepStep0; eapply StepAssign : steps.
+  Hint Extern 1 (Step (_, Call _ _ _) _) =>
+    eapply StepCallOp : steps.
+  Hint Extern 1 (Step (_, Call _ _ _) _) =>
+    eapply StepStep0; eapply StepCallAx : steps.
+  Hint Extern 1 (Step (_, _ :: _, _ _) _) =>
+    eapply StepCallRet : steps.
+
+  Theorem RunsTo_Step' : forall p st st' k,
+    RunsTo p st st' ->
+    Step^* (st, [], k, p) (st', [], k, Skip).
   Proof.
     intros.
-    prep_induction H; induction H; intros; subst_definitions; subst.
-    + find_inversion. eauto with steps.
-    + destruct st'. eapply rt1n_trans. eapply Step_Sequence. eapply IHRunsTo1; eauto. eauto with steps.
-    + econstructor. econstructor. eauto with steps.
-      eauto.
-    + econstructor. econstructor. eauto with steps. eauto.
-    + econstructor. econstructor. eauto with steps.
-      destruct st'. eapply rt1n_trans. eapply Step_Sequence. eapply IHRunsTo1; eauto. eauto with steps.
-    + find_inversion. econstructor. econstructor. eauto with steps. eauto with steps.
-    + repeat find_inversion. econstructor. econstructor. eauto with steps. eauto with steps.
-    + (* Nope, need stronger induction which generalizes over call stacks! *)
-  Admitted.
+    generalize (@nil frame).
+    intros. generalizeEverythingElse H.
+    induction H; intros; eauto 8 with steps.
+    + eapply rt1n_trans'.
+       eapply rt1n_front.
+        apply StepCallOp; eauto.
+        apply IHRunsTo.
+       eapply rt1n_front.
+        eapply StepCallRet; eauto. 
+        subst_definitions. (* It's because of this subst_definitions that [eauto] doesn't work on this case. *)
+         eauto with steps.
+  Qed.
 
-  Ltac do_inv := match goal with
-  | [ H : Step _ _ |- _ ] => invc H; eauto with steps
-  | [ H : clos_refl_trans_1n _ _ _ _ |- _ ] => invc H; eauto with steps
-  end.
+  Theorem RunsTo_Step : forall p st st',
+    RunsTo p st st' ->
+    Step^* (st, [], Skip, p) (st', [], Skip, Skip).
+  Proof.
+    intros. eapply RunsTo_Step'; eauto.
+  Qed.
+
+  Inductive InCallStmt :=
+  | Cur (p: Stmt)
+  | InCall (v0: Locals) (spec: OperationalSpec) (args: list var) (retv: var) (c: InCallStmt) (k: Stmt).
+
+  Inductive RunsTo_InCall : InCallStmt -> State -> State -> Prop :=
+  | RunsToCur : forall p st st',
+      RunsTo p st st'
+      -> RunsTo_InCall (Cur p) st st'
+  | RunsToInCall : forall s0 x args spec input ret p k d d' d'' s'' callee_s callee_s',
+      RunsTo_InCall p (d, callee_s) (d', callee_s')
+      -> mapM (sel s0) args = Some input
+      -> length args = length (ArgVars spec)
+      -> sel callee_s' (RetVar spec) = Some ret
+      -> let output := List.map (sel callee_s') (ArgVars spec) in
+         let s' := add_remove_many args input output s0 in
+         let s' := add x ret s' in
+         RunsTo k (d', s') (d'', s'')
+      -> RunsTo_InCall (InCall s0 spec args x p k) (d, callee_s) (d'', s'').
+
+  Fixpoint equiv_stmt (fs : list frame) (c : InCallStmt) : InCallStmt :=
+    match fs with
+    | [] => c
+    | {| Locs := s0; Cont := k; Spec := spec; Args := args; RetV := retv |} :: fs' =>
+      equiv_stmt fs' (InCall s0 spec args retv c k)
+    end.
+
+  Fixpoint equiv_stmt_rev (fs : list frame) (c : InCallStmt) : InCallStmt :=
+    match fs with
+    | [] => c
+    | {| Locs := s0; Cont := k; Spec := spec; Args := args; RetV := retv |} :: fs' =>
+      (InCall s0 spec args retv (equiv_stmt_rev fs' c) k)
+    end.
+
+  Lemma equiv_stmt_last : forall l c s0 k spec args retv,
+    equiv_stmt (l ++ [{| Locs := s0; Cont := k; Spec := spec; Args := args; RetV := retv |}]) c =
+      InCall s0 spec args retv (equiv_stmt l c) k.
+  Proof.
+    induction l; intros; eauto.
+    destruct a. simpl. rewrite IHl. trivial.
+  Qed.
+
+  Lemma equiv_stmt_rev_rev : forall l c,
+    equiv_stmt (rev l) c = equiv_stmt_rev l c.
+  Proof.
+    induction l; eauto.
+    destruct a. simpl. intros. rewrite equiv_stmt_last. rewrite IHl. trivial.
+  Qed.
+
+  Ltac inv_runsto :=
+    match goal with
+    | [ H: RunsTo ?c _ _ |- _ ] =>
+      (is_var c; fail 1)
+      || invc H
+    | [ H: RunsTo_InCall (Cur ?c) _ _ |- _ ] =>
+      invc H
+    end.
+
+  Hint Constructors RunsTo RunsTo_InCall : steps.
+
+  Lemma runsto_inside : forall fs s s' s'' c,
+    RunsTo_InCall c s s' ->
+    RunsTo_InCall (equiv_stmt fs (Cur Skip)) s' s'' ->
+    RunsTo_InCall (equiv_stmt fs c) s s''.
+  Proof.
+    intros.
+    rewrite <- rev_involutive with (l := fs) in *.
+    rewrite equiv_stmt_rev_rev in *.
+    remember (rev fs) as rfs.
+    clear fs Heqrfs.
+    rename rfs into fs.
+    revert s s' s'' c H H0.
+    induction fs; intros.
+    - simpl in *. invc H0. inv_runsto. eauto.
+    - destruct a. simpl in *. invc H0. subst_definitions. destruct s.
+      find_eapply_lem_hyp IHfs; eauto with steps.
+  Qed.
+
+  Lemma runsto_inside' : forall fs s s'' c,
+    RunsTo_InCall (equiv_stmt fs c) s s'' ->
+    exists s',
+         RunsTo_InCall c s s'
+      /\ RunsTo_InCall (equiv_stmt fs (Cur Skip)) s' s''.
+  Proof.
+    intros.
+    rewrite <- rev_involutive with (l := fs) in *.
+    rewrite equiv_stmt_rev_rev in *.
+    remember (rev fs) as rfs.
+    clear fs Heqrfs.
+    rename rfs into fs.
+    revert s s'' c H.
+    induction fs; intros.
+    - simpl in *. eauto with steps.
+    - destruct a. simpl in *. invc H. subst_definitions.
+      find_eapply_lem_hyp IHfs; eauto. deex. destruct s'. eexists; split; eauto with steps.
+  Qed.
+
+  Hint Resolve runsto_inside runsto_inside' : steps.
+
+  Theorem Step_RunsTo' : forall fs p st st' k,
+    Step^* (st, fs, k, p) (st', [], Skip, Skip) ->
+    RunsTo_InCall (equiv_stmt fs (Cur (Seq p k))) st st'.
+  Proof.
+    intros.
+    prep_induction H; induction H; intros; subst.
+    - find_inversion. simpl. eauto with steps.
+    - destruct y. destruct s. destruct p0.
+      specialize (IHclos_refl_trans_1n _ _ _ _ _ eq_refl eq_refl eq_refl).
+      rename IHclos_refl_trans_1n into Hr.
+      do_inv.
+      + invc H2; eapply runsto_inside' in Hr; deex; repeat (inv_runsto; eauto with steps).
+        * eapply runsto_inside. econstructor. econstructor; eauto. eauto with steps. eauto.
+        * eapply runsto_inside. econstructor. econstructor; eauto. econstructor; eauto with steps. eauto.
+      + eapply runsto_inside' in Hr; deex. eapply runsto_inside' in H2; deex. repeat inv_runsto. eauto with steps.
+      + eapply runsto_inside' in Hr; deex. eapply runsto_inside' in H2; deex. repeat inv_runsto. eauto with steps.
+      + simpl in *. eapply runsto_inside' in Hr; deex. eapply runsto_inside' in H2; deex. repeat inv_runsto. invc H0. subst_definitions. inv_runsto. inv_runsto. inv_runsto.
+        eapply runsto_inside; eauto. econstructor; eauto. econstructor; eauto. rewrite H11 in H15. invc H15. eauto with steps.
+      + subst_definitions. simpl in *. eapply runsto_inside' in Hr; deex. repeat inv_runsto. eapply runsto_inside; eauto. destruct s'. eauto with steps.
+  Qed.
+
+  Theorem Step_RunsTo : forall p st st',
+    Step^* (st, [], Skip, p) (st', [], Skip, Skip) ->
+    RunsTo p st st'.
+  Proof.
+    intros.
+    apply Step_RunsTo' in H. simpl in *. repeat inv_runsto. trivial.
+  Qed.
 
 (*
-  Lemma Step_RunsTo_Seq : forall a b st st',
-    Step^* (Seq a b, st) (Skip, st')
-    -> exists st0, Step^* (a, st) (Skip, st0) /\ Step^* (b, st0) (Skip, st').
-  Proof.
-    intros.
-    prep_induction H; induction H; intros; subst; try discriminate.
-    destruct y. do_inv.
-    destruct (IHclos_refl_trans_1n _ _ _ _ eq_refl eq_refl eq_refl).
-    intuition eauto with steps.
-  Qed.
-  Hint Resolve Step_RunsTo_Seq : steps.
-
-  (* Steps will look like: (StepWhileTrue StepSeq1* StepSeq2)* StepWhileFalse *)
-  Lemma Step_RunsTo_While : forall cond body,
-    (forall st st', Step^* (body, st) (Skip, st') -> RunsTo body st st')
-    -> forall st st' p1, Step^* (p1, st) (Skip, st')
-      -> (p1 = While cond body -> RunsTo (While cond body) st st')
-      /\ (forall p', p1 = Seq p' (While cond body) -> exists st1, Step^* (p', st) (Skip, st1) /\ RunsTo (While cond body) st1 st').
-  Proof.
-    intros.
-    prep_induction H0; induction H0; intuition; subst; repeat find_inversion.
-    + do 3 do_inv.
-      - destruct (IHclos_refl_trans_1n cond body ltac:(auto) _ _ _ eq_refl eq_refl eq_refl).
-        destruct (H0 _ eq_refl). intuition eauto with steps.
-      - destruct (IHclos_refl_trans_1n cond Skip ltac:(auto) _ _ _ eq_refl eq_refl eq_refl).
-        destruct (H0 _ eq_refl). intuition eauto with steps.
-    + do_inv.
-      - destruct (IHclos_refl_trans_1n cond body ltac:(auto) _ _ _ eq_refl eq_refl eq_refl).
-        destruct (H1 _ eq_refl).
-        intuition eauto with steps.
-      - destruct (IHclos_refl_trans_1n cond body ltac:(auto) _ _ _ eq_refl eq_refl eq_refl).
-        intuition eauto with steps.
-  Qed.
-*)
-
-  Theorem Step_RunsTo : forall p s s' d d',
-    Step^* ((p, s) :: [], d) ((Skip, s') :: [], d') ->
-    RunsTo p (d, s) (d', s').
-  Proof.
-  Admitted.
-
-(*
-    induction p; intros; subst.
-    + repeat do_inv.
-    + destruct (Step_RunsTo_Seq H); intuition eauto with steps.
-    + repeat do_inv.
-    + eapply Step_RunsTo_While; [ intros; eapply IHp | ..]; eauto.
-    + repeat do_inv. subst_definitions. eauto with steps.
-    + repeat do_inv.
-  Qed.
-  Hint Resolve Step_RunsTo. *)
   Theorem RunsTo_Exec : forall p s d st',
     RunsTo p (d, s) st' ->
     Exec ([(p, s)], d) (EFinished st').
@@ -556,7 +642,7 @@ Section EnvSection.
   Proof.
   Admitted.
 
-(*
+
     intros.
     eapply Step_RunsTo.
     prep_induction H; induction H; intros; subst; eauto with steps; try discriminate.
