@@ -615,9 +615,10 @@ Module TREESEQ.
        [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
     XCRASH:hm'
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-       exists ts' ds' mscs',
+       exists ts' ds' mscs' bn,
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']]
+         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+         [[ BFILE.block_belong_to_file (TSilist ts !!) bn inum off ]]
    >} AFS.update_fblock_d fsxp inum off v mscs.
   Proof.
     intros.
@@ -629,14 +630,15 @@ Module TREESEQ.
     distinct_names'.
     eassumption.
 
+
     pose proof (list2nmem_array (BFILE.BFData f)).
     pred_apply.
     erewrite arrayN_except with (i := off).
-
     cancel.
+
     eapply list2nmem_inbound; eauto.
 
-    step.
+    safestep.
     
     eapply list2nmem_sel in H5 as H5'.
     rewrite <- H5'.
@@ -651,6 +653,7 @@ Module TREESEQ.
     subst; eauto.
     (* should be impossible once haogang gets rid of [diskset_was] *)
     admit.
+    reflexivity.
 
     eapply NEforall_d_in'; intros.
     apply d_in_d_map in H4; deex; intuition.
@@ -661,9 +664,16 @@ Module TREESEQ.
     eapply list2nmem_sel in H5 as H5'.
     rewrite <- H5' in *; eauto.
 
+    pred_apply.
+    rewrite arrayN_ex_frame_pimpl; eauto.
+    eapply list2nmem_sel in H5 as H5'.
+    rewrite H5'.
+    cancel.
+
     rewrite H17; eauto.
     distinct_names'.
     
+    instantiate (1 := f').
     unfold tsupd.
     erewrite d_map_latest.
     unfold treeseq_one_upd.
@@ -671,22 +681,34 @@ Module TREESEQ.
     destruct (find_subtree pathname (TStree ts !!)); try congruence.
     destruct d; try congruence; simpl.
     inversion H0'.
-    assert (f' = {|
-           BFILE.BFData := (BFILE.BFData f) ⟦ off
-                           := (v, vsmerge vs) ⟧;
+    assert( f' = {|
+           BFILE.BFData := (BFILE.BFData f) ⟦ off := (v, vsmerge vs) ⟧;
            BFILE.BFAttr := BFILE.BFAttr f |}).
     destruct f'.
-    f_equal; eauto.
-    simpl in *.
-    erewrite list2nmem_sel; eauto.
-    2: eassumption.
-
-    rewrite <- H4.
+    f_equal.
+    simpl in H14.
+    eapply list2nmem_array_updN in H14.
+    rewrite H14.
+    eapply list2nmem_sel in H5 as H5'.
+    rewrite H5'; auto.
+    eapply list2nmem_ptsto_bound in H5 as H5'; eauto.
+    eauto.
+    rewrite H4.
     eapply dir2flatmem_update_subtree; eauto.
     distinct_names'.
     distinct_names'.
+    simpl; eauto.
+    pred_apply.
+    rewrite arrayN_ex_frame_pimpl; eauto.
+    eapply list2nmem_sel in H5 as H5'.
+    rewrite H5'.
+    cancel.
+    assumption.
 
-    xcrash.
+    xcrash_rewrite.
+    xcrash_rewrite.
+    xform_norm.
+    cancel.
     or_r.
     eapply pimpl_exists_r; eexists.
     repeat (xform_deex_r).
@@ -694,6 +716,8 @@ Module TREESEQ.
     eapply treeseq_in_ds_upd; eauto.
     eapply dir2flatmem_find_subtree_ptsto; eauto.
     distinct_names'.
+    eassumption.
+    Unshelve.
   Admitted.
 
   Hint Extern 1 ({{_}} Bind (AFS.file_get_attr _ _ _) _) => apply treeseq_file_getattr_ok : prog.
