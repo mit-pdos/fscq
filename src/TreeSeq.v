@@ -473,6 +473,16 @@ Module TREESEQ.
     eassumption.
   Qed.
 
+  Fact block_belong_to_file_bn_eq: forall tree bn bn0 inum off,
+    BFILE.block_belong_to_file tree bn inum off ->
+    BFILE.block_belong_to_file tree bn0 inum off ->
+    bn = bn0.
+  Proof.
+    intros;
+    unfold BFILE.block_belong_to_file in *.
+    intuition.
+  Qed.
+
   Lemma treeseq_upd_safe_upd: forall Fm fsxp Ftop mscs Ftree Fd ts ds d' pathname f f' off vs v inum bn,
     (Fm ✶ rep fsxp Ftop (update_subtree pathname (TreeFile inum f') (TStree ts !!)) (TSilist ts !!)
          (fst (TSfree ts !!), snd (TSfree ts !!)))%pred (list2nmem (dsupd ds bn (v, vsmerge vs)) !!)->
@@ -499,11 +509,12 @@ Module TREESEQ.
         * (* block is present *) 
           unfold treeseq_upd_safe in *. simpl in *; intros.
           erewrite find_update_subtree in H7; eauto.
+          inversion H7; subst.
           right.
           exists {|
              BFILE.BFData := (BFILE.BFData b) ⟦ off := (v, vsmerge vs) ⟧;
              BFILE.BFAttr := BFILE.BFAttr b |}.
-          specialize (H4 bn inum f H0' H3).
+          specialize (H4 bn inum0 f H0' H3).
           rewrite H6 in H4.
           destruct H4; auto.
           (* case 1 of H4: block is in unused in old tree *)
@@ -512,42 +523,26 @@ Module TREESEQ.
           omega.
            (* case 2 of H4: block is in use in old tree *)
           destruct H4.
-          intuition.
-          inversion H8.
-          inversion H7.
           erewrite find_update_subtree; eauto.
-          inversion H9.
-          rewrite <- H13.
-          unfold BFILE.block_belong_to_file in H3.
-          unfold BFILE.block_belong_to_file in H8.
           intuition.
-          inversion H7.
-          rewrite <- H11 in *.
-          unfold BFILE.block_belong_to_file in H3.
-          unfold BFILE.block_belong_to_file in H8.
-          intuition.
-          rewrite <- H13 in H14.
-          rewrite H14; eauto.
+          inversion H9; eauto.
+          eapply block_belong_to_file_bn_eq in H8; eauto.
+          subst; eauto.
         * (* block isn't present *)
           unfold treeseq_upd_safe in *. simpl in *. intros.
           erewrite find_update_subtree in H7; eauto.
-          specialize (H4 bn inum f H0' H3).
+          inversion H7; subst.
+          specialize (H4 bn inum0 f H0' H3).
           destruct H4.
           rewrite H6 in H4 at 1.
           destruct H4.
           left.
           (* case 1 of H4: block is unused *)
-          inversion H7.
-          unfold BFILE.block_belong_to_file in H3.
-          unfold BFILE.block_belong_to_file in H8.
-          intuition.
-          rewrite <- H11 in *.
-          rewrite <- H13 in H15.
-          rewrite H15; eauto.
+          eapply block_belong_to_file_bn_eq in H8; eauto.
+          subst; eauto.
           erewrite find_update_subtree; eauto.
-          split.
-          inversion H7.
-          rewrite H3; eauto.
+          split; eauto.
+          intuition.
           erewrite updN_oob; eauto.
           (* case 2 of H4: block is in use *)
           right.
@@ -556,20 +551,13 @@ Module TREESEQ.
           erewrite updN_oob; eauto.
           erewrite find_update_subtree; eauto.
           intuition.
-          rewrite H6 in H9.
           inversion H9.
-          inversion H7.
+          rewrite H6.
           f_equal.
           f_equal.
-          rewrite <- H12; eauto.
           destruct b; eauto.
-          unfold BFILE.block_belong_to_file in H3.
-          unfold BFILE.block_belong_to_file in H8.
-          inversion H7.
-          rewrite <- H11 in *.
-          intuition.
-          rewrite <- H13 in H14.
-          rewrite H14 in *; eauto.
+          eapply block_belong_to_file_bn_eq in H8; eauto.
+          subst; eauto.
           omega.
        + (* a directory *)
         unfold treeseq_upd_safe in H4.
@@ -585,21 +573,18 @@ Module TREESEQ.
     - (* case 2: non existing *)
       unfold treeseq_upd_safe in *. simpl in *; intros.
       erewrite find_update_subtree in H7; eauto.
-      specialize (H4 bn inum f H0' H3).
+      inversion H7; subst.
+      specialize (H4 bn inum0 f H0' H3).
       rewrite H6 in H4.
       left.
       destruct H4.
       (* case 1 of H4: block is unused *)
       split.
-      unfold BFILE.block_belong_to_file in H3.
-      unfold BFILE.block_belong_to_file in H8.
+      eapply block_belong_to_file_bn_eq in H8; eauto.
+      subst; eauto.
       intuition.
-      inversion H7.
-      rewrite <- H13 in *.
-      rewrite <- H10 in H12.
-      rewrite H12; eauto.
-      destruct (find_subtree pathname (TStree d')); try congruence; eauto.
-      (* case 2 of H4: block is in use in a file *)
+      rewrite H6; eauto.
+     (* case 2 of H4: block is in use in a file *)
       destruct H4.
       intuition.
       exfalso.
