@@ -87,11 +87,11 @@ Module TREESEQ.
   Qed.
 
 
-  Theorem treeseq_dssync_vecs : forall F Ftop fsxp mscs ts ds al inum,
+  Theorem treeseq_in_ds_dssync_vecs : forall F Ftop fsxp mscs mscs' ts ds al inum,
     treeseq_in_ds F Ftop fsxp mscs ts ds ->
     (forall i, i < List.length al -> BFILE.block_belong_to_file (TSilist (latest ts)) (selN al i 0) inum i) ->
     exists ts',
-    treeseq_in_ds F Ftop fsxp mscs ts' (dssync_vecs ds al) /\
+    treeseq_in_ds F Ftop fsxp mscs' ts' (dssync_vecs ds al) /\
     NEforall2
       (fun t t' => t' = t \/
                    exists pathname' f',
@@ -102,7 +102,8 @@ Module TREESEQ.
   Proof.
     unfold treeseq_in_ds, tree_rep; intuition.
     edestruct NEforall2_exists.
-
+    eapply H.
+    admit.
     (* lift from DirUtil: edestruct dirtree_update_safe_pathname_vssync_vecs. *)
   Admitted.
 
@@ -720,10 +721,85 @@ Module TREESEQ.
     Unshelve.
   Admitted.
 
+  Theorem treeseq_file_sync_ok : forall fsxp inum mscs,
+    {< ds ts Fm Ftop Ftree pathname f,
+    PRE:hm
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+      [[ (Ftree * pathname |-> (inum, f))%pred  (dir2flatmem [] (TStree ts!!)) ]]
+    POST:hm' RET:^(mscs')
+      exists ts' ds' al,
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
+       [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+       [[ ds' = dssync_vecs ds al ]] *
+       [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
+              BFILE.block_belong_to_file (TSilist ts !!) (selN al i 0) inum i ]] *
+       [[ NEforall2 (fun t t' => (t = t' \/
+           exists pathname' f',
+              find_subtree pathname' (TStree t) = Some (TreeFile inum f') /\
+              t' = mk_tree (update_subtree pathname' (TreeFile inum (BFILE.synced_file f')) (TStree t))
+                                (TSilist t) (TSfree t))%type)
+          ts ts' ]] *
+       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+       [[ let tree' := update_subtree pathname (TreeFile inum  (BFILE.synced_file f)) (TStree ts !!)  in
+         (Ftree * pathname |-> (inum, (BFILE.synced_file f)))%pred (dir2flatmem [] tree') ]]
+    XCRASH:hm'
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+   >} AFS.file_sync fsxp inum mscs.
+  Proof.
+    intros.
+    eapply pimpl_ok2.
+    eapply AFS.file_sync_ok.
+    cancel.
+    eapply treeseq_in_ds_tree_pred_latest in H6 as Hpred; eauto.
+    eapply dir2flatmem_find_subtree_ptsto.
+    distinct_names'.
+    eassumption.
+    prestep.  (* we need to fish out ts' *)
+    norm'l.
+    eapply treeseq_in_ds_dssync_vecs in H16 as H16'.
+    2: apply H6.
+    destruct H16'.
+    safecancel.
+    instantiate (1 := x).
+    eapply H5; eauto.
+    2: eassumption.
+    reflexivity.
+    apply H16; eauto.
+    admit.  (* apply H7 doesn't work *)
+    eapply dir2flatmem_update_subtree.
+    distinct_names'.
+    eassumption.
+  Admitted.
+
+  Theorem file_sync_ok: forall fsxp inum mscs,
+    {< ds Fm Ftop tree pathname f ilist frees,
+    PRE:hm
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)]]] *
+      [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+    POST:hm' RET:^(mscs')
+      exists ds' tree' al,
+        [[ MSAlloc mscs' = MSAlloc mscs ]] *
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
+        [[ ds' = dssync_vecs ds al]] *
+        [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
+              BFILE.block_belong_to_file ilist (selN al i 0) inum i ]] *
+        [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist frees)]]] *
+        [[ tree' = update_subtree pathname (TreeFile inum  (BFILE.synced_file f)) tree ]] *
+        [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
+                        ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
+    XCRASH:hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+   >} file_sync fsxp inum mscs.
+
+
+
   Hint Extern 1 ({{_}} Bind (AFS.file_get_attr _ _ _) _) => apply treeseq_file_getattr_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.read_fblock _ _ _ _) _) => apply treeseq_read_fblock_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.file_set_attr _ _ _ _) _) => apply treeseq_file_set_attr_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.update_fblock_d _ _ _ _ _) _) => apply treeseq_update_fblock_d_ok : prog.
+  Hint Extern 1 ({{_}} Bind (AFS.file_sync_ok _ _ _ ) _) => apply treeseq_file_sync_ok : prog.
 
 End TREESEQ.
 
