@@ -772,29 +772,6 @@ Module TREESEQ.
     eassumption.
   Admitted.
 
-  Theorem file_sync_ok: forall fsxp inum mscs,
-    {< ds Fm Ftop tree pathname f ilist frees,
-    PRE:hm
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)]]] *
-      [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
-    POST:hm' RET:^(mscs')
-      exists ds' tree' al,
-        [[ MSAlloc mscs' = MSAlloc mscs ]] *
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
-        [[ ds' = dssync_vecs ds al]] *
-        [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
-              BFILE.block_belong_to_file ilist (selN al i 0) inum i ]] *
-        [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist frees)]]] *
-        [[ tree' = update_subtree pathname (TreeFile inum  (BFILE.synced_file f)) tree ]] *
-        [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
-                        ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
-    XCRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
-   >} file_sync fsxp inum mscs.
-
-
-
   Hint Extern 1 ({{_}} Bind (AFS.file_get_attr _ _ _) _) => apply treeseq_file_getattr_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.read_fblock _ _ _ _) _) => apply treeseq_read_fblock_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.file_set_attr _ _ _ _) _) => apply treeseq_file_set_attr_ok : prog.
