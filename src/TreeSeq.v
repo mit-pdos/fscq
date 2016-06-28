@@ -508,9 +508,9 @@ Module TREESEQ.
           destruct H4; auto.
           (* case 1 of H4: block is in unused in old tree *)
           intuition.
-          admit.  (* contradiction H10 and l *)
-          admit.  (* same contradiction *)
-          (* case 2 of H4: block is in use in old tree *)
+          omega.
+          omega.
+           (* case 2 of H4: block is in use in old tree *)
           destruct H4.
           intuition.
           inversion H8.
@@ -529,31 +529,49 @@ Module TREESEQ.
           rewrite <- H13 in H14.
           rewrite H14; eauto.
         * (* block isn't present *)
-          unfold treeseq_upd_safe in *. simpl in *; intros.
+          unfold treeseq_upd_safe in *. simpl in *. intros.
           erewrite find_update_subtree in H7; eauto.
-          left.
           specialize (H4 bn inum f H0' H3).
-          rewrite H6 in H4.
           destruct H4.
+          rewrite H6 in H4 at 1.
+          destruct H4.
+          left.
           (* case 1 of H4: block is unused *)
           inversion H7.
           unfold BFILE.block_belong_to_file in H3.
           unfold BFILE.block_belong_to_file in H8.
           intuition.
-          rewrite <- H10 in *.
-          rewrite <- H12 in H14.
-          rewrite H14; eauto.
+          rewrite <- H11 in *.
+          rewrite <- H13 in H15.
+          rewrite H15; eauto.
           erewrite find_update_subtree; eauto.
           split.
           inversion H7.
-          rewrite H8; eauto.
+          rewrite H3; eauto.
           erewrite updN_oob; eauto.
           (* case 2 of H4: block is in use *)
-          unfold BFILE.block_belong_to_file in H8.
+          right.
+          destruct H4.
+          exists x.
+          erewrite updN_oob; eauto.
+          erewrite find_update_subtree; eauto.
           intuition.
-          admit. (* contradiction H9 and n0 *)
-          admit. (* same *)
-      + (* a directory *)
+          rewrite H6 in H9.
+          inversion H9.
+          inversion H7.
+          f_equal.
+          f_equal.
+          rewrite <- H12; eauto.
+          destruct b; eauto.
+          unfold BFILE.block_belong_to_file in H3.
+          unfold BFILE.block_belong_to_file in H8.
+          inversion H7.
+          rewrite <- H11 in *.
+          intuition.
+          rewrite <- H13 in H14.
+          rewrite H14 in *; eauto.
+          omega.
+       + (* a directory *)
         unfold treeseq_upd_safe in H4.
         specialize (H4 bn inum f H0' H3).
         rewrite H6 in H4.
@@ -587,7 +605,7 @@ Module TREESEQ.
       exfalso.
       inversion H9.
       inversion H9.
-   Admitted.
+   Qed.
 
   (* A less general version of AFS.update_fblock_d, but easier to use for applications.
    * This version puts additional constraints on the trees in the treeseq.
