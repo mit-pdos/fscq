@@ -250,8 +250,7 @@ Section NonEmptyList.
     induction 1.
     - exists 0.
       erewrite nthd_0; eauto.
-    - Search In selN.
-      eapply in_selN_exists in H as H'.
+    - eapply in_selN_exists in H as H'.
       destruct H'.
       unfold nthd.
       exists (Datatypes.length (snd l)-x).
