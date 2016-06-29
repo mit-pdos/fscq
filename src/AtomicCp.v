@@ -178,25 +178,6 @@ Module ATOMICCP.
     erewrite H0; eauto.
   Qed.
 
-  Lemma pred_split: forall AT AEQ V F  (x: @pred AT AEQ V) y m,
-      (F * x * y)%pred m ->
-      (exists F1, (F1 * x)%pred m) /\ (exists F2, (F2 * y)%pred m).
-   Proof.
-    intros.
-    split.
-    exists (F*y)%pred.
-  Admitted.
-
-  Lemma pimpl_split: forall AT AEQ V F  (x: @pred AT AEQ V) y,
-    exists F1 F2, 
-      (F * x * y)%pred =p=> (F1 * x)%pred /\ (F2 * y)%pred.
-   Proof.
-    intros.
-    exists (F*y)%pred.
-    exists (F*x)%pred.
-  Admitted.
-
-
 Lemma Forall2_latest: forall (T1 T2 : Type) (p : T1 -> T2 -> Prop) (l1 : nelist T1)
     (l2 : nelist T2),
   NEforall2 p l1 l2 -> p (l1 !!) (l2 !!).
@@ -281,18 +262,17 @@ Admitted.
     admit.
     distinct_names'.
 
-    safestep.
-    Focus 2.
-    erewrite treeseq_in_ds_eq; eauto.
+    safestep.  (* step picks the wrong ts. *)
+    2: erewrite treeseq_in_ds_eq; eauto.
     or_l.
     cancel.
 
-    admit.  (* derive some facts from ts!! *)
+    rewrite H14.
+    admit.  (* derive some facts from ts'!! as above *)
     admit.
-    Search mscs'.
-  
+    or_r. 
     cancel.
-    
+    2: erewrite treeseq_in_ds_eq; eauto.
 
 
     xcrash.
