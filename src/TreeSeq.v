@@ -776,7 +776,7 @@ Module TREESEQ.
   Hint Extern 1 ({{_}} Bind (AFS.read_fblock _ _ _ _) _) => apply treeseq_read_fblock_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.file_set_attr _ _ _ _) _) => apply treeseq_file_set_attr_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.update_fblock_d _ _ _ _ _) _) => apply treeseq_update_fblock_d_ok : prog.
-  Hint Extern 1 ({{_}} Bind (AFS.file_sync_ok _ _ _ ) _) => apply treeseq_file_sync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (AFS.file_sync _ _ _ ) _) => apply treeseq_file_sync_ok : prog.
 
 End TREESEQ.
 

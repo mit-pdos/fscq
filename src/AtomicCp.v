@@ -143,6 +143,7 @@ Module ATOMICCP.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
       [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts ]] *
+      [[ treeseq_pred (treeseq_upd_safe pathname off (MSAlloc mscs) (ts !!)) ts ]] *
       [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile))%pred
             (dir2flatmem [] (TStree ts!!)) ]] *
       [[[ BFILE.BFData file ::: (0 |-> v0) ]]] *
