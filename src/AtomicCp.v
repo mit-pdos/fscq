@@ -34,7 +34,7 @@ Require Import TreeCrash.
 Require Import TreeSeq.
 Require Import DirSep.
 
-
+Import TREESEQ.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -55,6 +55,7 @@ Module ATOMICCP.
 
 
   Definition temp_fn := ".temp"%string.
+  Definition Off0 := 0.
   
   (** Programs **)
 
@@ -62,8 +63,8 @@ Module ATOMICCP.
 
   Definition copydata fsxp src_inum dst_inum mscs :=
     let^ (mscs, attr) <- AFS.file_get_attr fsxp src_inum mscs;
-    let^ (mscs, b) <- AFS.read_fblock fsxp src_inum 0 mscs;
-    let^ (mscs) <- AFS.update_fblock_d fsxp dst_inum 0 b mscs;
+    let^ (mscs, b) <- AFS.read_fblock fsxp src_inum Off0 mscs;
+    let^ (mscs) <- AFS.update_fblock_d fsxp dst_inum Off0 b mscs;
     let^ (mscs) <- AFS.file_sync fsxp dst_inum mscs;   (* sync blocks *)
     let^ (mscs, ok) <- AFS.file_set_attr fsxp dst_inum attr mscs;
     Ret ^(mscs, ok).
@@ -137,21 +138,93 @@ Module ATOMICCP.
     exists f,
       (Ftree * tmppath |-> (inum, f))%pred  (dir2flatmem [] (TStree to)).
 
+  Lemma treeseq_in_ds_eq: forall Fm Ftop fsxp mscs a ts ds,
+    MSAlloc a = MSAlloc mscs ->
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds <->
+    treeseq_in_ds Fm Ftop fsxp a ts ds.
+  Proof.
+    intros.
+    unfold treeseq_in_ds in *.
+    unfold treeseq_one_safe in *.
+    rewrite H.
+    split.
+    intro.
+    apply H0.
+    intro.
+    apply H0.
+  Qed.
+
+  Lemma pimpl_sep_star_split_l: forall AT AEQ V F1 F2 (x: @pred AT AEQ V) y m,
+      (F1 * x * y) %pred m ->
+      (F1 * y) =p=> F2 ->
+      (F1 * x) * y =p=> F2 * x.
+  Proof.
+    intros.
+    erewrite sep_star_assoc_1.
+    setoid_rewrite sep_star_comm at 2.
+    erewrite sep_star_assoc_2.
+    erewrite H0; eauto.
+  Qed.
+
+  Lemma pimpl_sep_star_split_r: forall AT AEQ V F1 F2 (x: @pred AT AEQ V) y m,
+      (F1 * x * y) %pred m ->
+      (F1 * x) =p=> F2 ->
+      (F1 * y) * x =p=> F2 * y.
+  Proof.
+    intros.
+    erewrite sep_star_assoc_1.
+    setoid_rewrite sep_star_comm at 2.
+    erewrite sep_star_assoc_2.
+    erewrite H0; eauto.
+  Qed.
+
+  Lemma pred_split: forall AT AEQ V F  (x: @pred AT AEQ V) y m,
+      (F * x * y)%pred m ->
+      (exists F1, (F1 * x)%pred m) /\ (exists F2, (F2 * y)%pred m).
+   Proof.
+    intros.
+    split.
+    exists (F*y)%pred.
+  Admitted.
+
+  Lemma pimpl_split: forall AT AEQ V F  (x: @pred AT AEQ V) y,
+    exists F1 F2, 
+      (F * x * y)%pred =p=> (F1 * x)%pred /\ (F2 * y)%pred.
+   Proof.
+    intros.
+    exists (F*y)%pred.
+    exists (F*x)%pred.
+  Admitted.
+
+
+Lemma Forall2_latest: forall (T1 T2 : Type) (p : T1 -> T2 -> Prop) (l1 : nelist T1)
+    (l2 : nelist T2),
+  NEforall2 p l1 l2 -> p (l1 !!) (l2 !!).
+Proof.
+  intros.
+Admitted.
+
+Lemma tsupd_latest: forall (ts: treeseq) pathname off v,
+  (tsupd ts pathname off v) !! = treeseq_one_upd (ts !!) pathname off v.
+Proof.
+Admitted.
+
   Theorem copydata_ok : forall fsxp src_inum tmppath tinum mscs,
     {< ds ts Fm Ftop Ftree Ftmp srcpath file tfile v0 t0,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
       [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts ]] *
-      [[ treeseq_pred (treeseq_upd_safe pathname off (MSAlloc mscs) (ts !!)) ts ]] *
+      [[ treeseq_pred (treeseq_upd_safe tmppath Off0 (MSAlloc mscs) (ts !!)) ts ]] *
       [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile))%pred
             (dir2flatmem [] (TStree ts!!)) ]] *
-      [[[ BFILE.BFData file ::: (0 |-> v0) ]]] *
-      [[[ BFILE.BFData tfile ::: (0 |-> t0) ]]]
+      [[[ BFILE.BFData file ::: (Off0 |-> v0) ]]] *
+      [[[ BFILE.BFData tfile ::: (Off0 |-> t0) ]]]
     POST:hm' RET:^(mscs', r)
       exists ds' ts',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
-       [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
+       (* [[ MSAlloc mscs = MSAlloc mscs' ]] *)
+       [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
        [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts' ]] *
         (([[ r = false ]] *
           exists tfile',
@@ -166,33 +239,65 @@ Module ATOMICCP.
      >} copydata fsxp src_inum tinum mscs.
   Proof.
     unfold copydata; intros.
+    step.
+    eapply pimpl_sep_star_split_l; eauto.
+    step.
+    erewrite treeseq_in_ds_eq; eauto.
+    eapply pimpl_sep_star_split_l; eauto.
+    pred_apply.
+    cancel.
+    step.
+    erewrite treeseq_in_ds_eq; eauto.
+    step.
     
     prestep.
-    norml; unfold stars; simpl.
-    safecancel.
-    eassumption.
-    eassumption.
-    prestep.
-    norml; unfold stars; simpl.
-    safecancel.
-    (* s = mscs, H15 *)
-    admit.
-    eassumption.
-    instantiate (Fd := emp).
-    admit.
+    norm'l.
 
-    prestep.
-    norml; unfold stars; simpl.
-    safecancel.
-    admit.
-    admit.
-    admit.
 
+    eapply Forall2_latest in H27 as H27latest.
+    destruct H27latest.
+    admit.  (* contradiction 13? *)
+    repeat deex.
+
+
+    safecancel.
+    eauto.
+    rewrite H14.
+    rewrite tsupd_latest.
+    unfold treeseq_one_upd; simpl.
+    rewrite tsupd_latest in H13.
+    unfold treeseq_one_upd in H13; simpl in H13.
+    eapply dir2flatmem_find_subtree_ptsto in H0 as H0'; eauto.
+    rewrite H0' in H13; simpl in H13.
+    rewrite H0'; simpl.
+    erewrite DIRTREE.update_subtree_same. 
+    eapply dir2flatmem_update_subtree.
+    distinct_names'.
+    instantiate (1 := tfile).
+    eapply pimpl_sep_star_split_r; eauto.
+    pred_apply.
+    cancel.
+    admit.
+    admit.
+    distinct_names'.
+
+    safestep.
+    Focus 2.
+    erewrite treeseq_in_ds_eq; eauto.
+    or_l.
+    cancel.
+
+    admit.  (* derive some facts from ts!! *)
+    admit.
+    Search mscs'.
+  
+    cancel.
+    
+
+
+    xcrash.
+    (* a2 = mscs etc. *)
   Admitted.
-
-
-
-
 
   Lemma diskset_pred_sync: forall V (p: @pred _ _ V) ds,
     diskset_pred p ds ->
