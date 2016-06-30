@@ -138,57 +138,6 @@ Module ATOMICCP.
     exists f,
       (Ftree * tmppath |-> (inum, f))%pred  (dir2flatmem [] (TStree to)).
 
-  Lemma treeseq_in_ds_eq: forall Fm Ftop fsxp mscs a ts ds,
-    MSAlloc a = MSAlloc mscs ->
-    treeseq_in_ds Fm Ftop fsxp mscs ts ds <->
-    treeseq_in_ds Fm Ftop fsxp a ts ds.
-  Proof.
-    intros.
-    unfold treeseq_in_ds in *.
-    unfold treeseq_one_safe in *.
-    rewrite H.
-    split.
-    intro.
-    apply H0.
-    intro.
-    apply H0.
-  Qed.
-
-  Lemma pimpl_sep_star_split_l: forall AT AEQ V F1 F2 (x: @pred AT AEQ V) y m,
-      (F1 * x * y) %pred m ->
-      (F1 * y) =p=> F2 ->
-      (F1 * x) * y =p=> F2 * x.
-  Proof.
-    intros.
-    erewrite sep_star_assoc_1.
-    setoid_rewrite sep_star_comm at 2.
-    erewrite sep_star_assoc_2.
-    erewrite H0; eauto.
-  Qed.
-
-  Lemma pimpl_sep_star_split_r: forall AT AEQ V F1 F2 (x: @pred AT AEQ V) y m,
-      (F1 * x * y) %pred m ->
-      (F1 * x) =p=> F2 ->
-      (F1 * y) * x =p=> F2 * y.
-  Proof.
-    intros.
-    erewrite sep_star_assoc_1.
-    setoid_rewrite sep_star_comm at 2.
-    erewrite sep_star_assoc_2.
-    erewrite H0; eauto.
-  Qed.
-
-Lemma Forall2_latest: forall (T1 T2 : Type) (p : T1 -> T2 -> Prop) (l1 : nelist T1)
-    (l2 : nelist T2),
-  NEforall2 p l1 l2 -> p (l1 !!) (l2 !!).
-Proof.
-  intros.
-Admitted.
-
-Lemma tsupd_latest: forall (ts: treeseq) pathname off v,
-  (tsupd ts pathname off v) !! = treeseq_one_upd (ts !!) pathname off v.
-Proof.
-Admitted.
 
   Theorem copydata_ok : forall fsxp src_inum tmppath tinum mscs,
     {< ds ts Fm Ftop Ftree Ftmp srcpath file tfile v0 t0,
@@ -213,10 +162,11 @@ Admitted.
          \/ ([[ r = true ]] *
             [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts'!!)) ]]))
     XCRASH:hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists ds' ts',
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-      [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
-      [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts' ]]
+        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+        [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
+        [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts' ]]
      >} copydata fsxp src_inum tinum mscs.
   Proof.
     unfold copydata; intros.
@@ -230,54 +180,56 @@ Admitted.
     step.
     erewrite treeseq_in_ds_eq; eauto.
     step.
-    
-    prestep.
-    norm'l.
-
-
-    eapply Forall2_latest in H27 as H27latest.
-    destruct H27latest.
-    admit.  (* contradiction 13? *)
-    repeat deex.
-
-
-    safecancel.
-    eauto.
-    rewrite H14.
-    rewrite tsupd_latest.
-    unfold treeseq_one_upd; simpl.
-    rewrite tsupd_latest in H13.
-    unfold treeseq_one_upd in H13; simpl in H13.
-    eapply dir2flatmem_find_subtree_ptsto in H0 as H0'; eauto.
-    rewrite H0' in H13; simpl in H13.
-    rewrite H0'; simpl.
-    erewrite DIRTREE.update_subtree_same. 
-    eapply dir2flatmem_update_subtree.
-    distinct_names'.
-    instantiate (1 := tfile).
-    eapply pimpl_sep_star_split_r; eauto.
-    pred_apply.
-    cancel.
-    admit.
-    admit.
-    distinct_names'.
+    step.
 
     safestep.  (* step picks the wrong ts. *)
     2: erewrite treeseq_in_ds_eq; eauto.
     or_l.
     cancel.
 
-    rewrite H14.
-    admit.  (* derive some facts from ts'!! as above *)
-    admit.
-    or_r. 
-    cancel.
-    2: erewrite treeseq_in_ds_eq; eauto.
+    admit.  (* XXX should be true, but maybe this isn't the pred i want *)
 
+    or_r.
+    cancel.
+    2: eassumption.
+    pred_apply.
+    cancel.
+    unfold BFILE.synced_file.
+    erewrite ptsto_0_list2nmem_mem_eq with (d := (BFILE.BFData file)) by eauto.
+    erewrite ptsto_0_list2nmem_mem_eq with (d := (BFILE.BFData f')) by eauto.
+    simpl.
+    cancel.
+
+    admit.  (* same as XXX above *)
+    
+    xcrash.
+    or_r; cancel.
+    xform_normr.
+    cancel.
+    erewrite treeseq_in_ds_eq; eauto.
+    admit.  (* same as XXX above *)
+  
+    xcrash.
+    or_r; cancel.
+    xform_normr.
+    cancel.
+    erewrite treeseq_in_ds_eq; eauto.
+    admit.  (* XXX same as XXX above *)
+
+    xcrash_rewrite.
+    xcrash_rewrite.
+    rewrite crash_xform_or_dist.
+    safecancel. xform_norm. or_l. cancel.
+    xform_normr.
+    or_r. xform_norm. eapply pimpl_exists_r. eexists x0.
+    xform_norm. eapply pimpl_exists_r. eexists x. xform_norm. cancel.
+    erewrite treeseq_in_ds_eq; eauto.
+
+    admit.  (* XXX same as XXX above *)
 
     xcrash.
-    (* a2 = mscs etc. *)
-  Admitted.
+    xcrash.
+   Admitted.
 
   Lemma diskset_pred_sync: forall V (p: @pred _ _ V) ds,
     diskset_pred p ds ->

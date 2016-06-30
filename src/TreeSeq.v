@@ -67,6 +67,22 @@ Module TREESEQ.
 
   Definition treeseq_pred (p : treeseq_one -> Prop) (ts : treeseq) := NEforall p ts.
 
+  Lemma treeseq_in_ds_eq: forall Fm Ftop fsxp mscs a ts ds,
+    MSAlloc a = MSAlloc mscs ->
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds <->
+    treeseq_in_ds Fm Ftop fsxp a ts ds.
+  Proof.
+    intros.
+    unfold treeseq_in_ds in *.
+    unfold treeseq_one_safe in *.
+    rewrite H.
+    split.
+    intro.
+    apply H0.
+    intro.
+    apply H0.
+  Qed.
+
   Theorem treeseq_in_ds_pushd : forall F Ftop fsxp mscs ts ds t mscs' d,
     treeseq_in_ds F Ftop fsxp mscs ts ds ->
     tree_rep F Ftop fsxp t (list2nmem d) ->
@@ -85,7 +101,6 @@ Module TREESEQ.
     eapply DIRTREE.dirtree_safe_trans; eauto.
     eapply DIRTREE.dirtree_safe_refl.
   Qed.
-
 
   Theorem treeseq_in_ds_dssync_vecs : forall F Ftop fsxp mscs mscs' ts ds al inum,
     treeseq_in_ds F Ftop fsxp mscs ts ds ->
@@ -119,6 +134,14 @@ Module TREESEQ.
 
   Definition tsupd (ts: treeseq) pathname off v :=
     d_map (fun t => treeseq_one_upd t pathname off v) ts.
+
+  Lemma tsupd_latest: forall (ts: treeseq) pathname off v,
+    (tsupd ts pathname off v) !! = treeseq_one_upd (ts !!) pathname off v.
+  Proof.
+    intros.
+    unfold tsupd.
+    rewrite d_map_latest; eauto.
+  Qed.
 
   (* A predicate that states when it is safe to perform an upd a in treeseq. For example,
    * it is unsafe to perform an upd on a treeseq if a tree in the sequence uses the block
@@ -618,6 +641,7 @@ Module TREESEQ.
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
        exists ts' ds' mscs' bn,
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+         [[ MSAlloc mscs' = MSAlloc mscs ]] *
          [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
          [[ BFILE.block_belong_to_file (TSilist ts !!) bn inum off ]]
    >} AFS.update_fblock_d fsxp inum off v mscs.
@@ -718,7 +742,7 @@ Module TREESEQ.
     eapply dir2flatmem_find_subtree_ptsto; eauto.
     distinct_names'.
     eassumption.
-    Unshelve.
+    Unshelve.  (* XXX *)
   Admitted.
 
   Theorem treeseq_file_sync_ok : forall fsxp inum mscs,
@@ -741,8 +765,8 @@ Module TREESEQ.
                                 (TSilist t) (TSfree t))%type)
           ts ts' ]] *
        [[ MSAlloc mscs' = MSAlloc mscs ]] *
-       [[ let tree' := update_subtree pathname (TreeFile inum  (BFILE.synced_file f)) (TStree ts !!)  in
-         (Ftree * pathname |-> (inum, (BFILE.synced_file f)))%pred (dir2flatmem [] tree') ]]
+       [[ (TStree ts' !!) = update_subtree pathname (TreeFile inum  (BFILE.synced_file f)) (TStree ts !!) ]] *
+       [[ (Ftree * pathname |-> (inum, (BFILE.synced_file f)))%pred (dir2flatmem [] (TStree ts' !!)) ]]
     XCRASH:hm'
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
    >} AFS.file_sync fsxp inum mscs.
@@ -767,6 +791,14 @@ Module TREESEQ.
     reflexivity.
     apply H16; eauto.
     admit.  (* apply H7 doesn't work *)
+    assert (TStree x !! = update_subtree pathname (TreeFile inum (BFILE.synced_file f)) (TStree ts !!)).
+    unfold treeseq_in_ds in H5.
+    eapply NEforall2_latest in H5 as H5'.
+    intuition.
+    unfold tree_rep in H.
+
+    admit. (* XXX TStree x !! should be derivable from H and H12. *)
+
     eapply dir2flatmem_update_subtree.
     distinct_names'.
     eassumption.

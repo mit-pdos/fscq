@@ -607,6 +607,14 @@ Proof.
   omega.
 Qed.
 
+Lemma NEforall2_latest: forall (T1 T2 : Type) (p : T1 -> T2 -> Prop) (l1 : nelist T1)
+    (l2 : nelist T2),
+  NEforall2 p l1 l2 -> p (l1 !!) (l2 !!).
+Proof.
+  destruct l1; destruct l2; unfold NEforall2; intuition; simpl in *.
+  unfold latest in *; simpl.
+Admitted.
+
 Definition list2nelist A def (l: list A) : nelist A :=
   match l with
   | nil => def

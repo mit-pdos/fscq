@@ -2610,5 +2610,29 @@ Proof.
     rewrite <- H4; auto.
 Qed.
 
+Lemma pimpl_sep_star_split_l: forall AT AEQ V F1 F2 (x: @pred AT AEQ V) y m,
+    (F1 * x * y) %pred m ->
+    (F1 * y) =p=> F2 ->
+    (F1 * x) * y =p=> F2 * x.
+Proof.
+  intros.
+  erewrite sep_star_assoc_1.
+  setoid_rewrite sep_star_comm at 2.
+  erewrite sep_star_assoc_2.
+  erewrite H0; eauto.
+Qed.
+
+Lemma pimpl_sep_star_split_r: forall AT AEQ V F1 F2 (x: @pred AT AEQ V) y m,
+    (F1 * x * y) %pred m ->
+    (F1 * x) =p=> F2 ->
+    (F1 * y) * x =p=> F2 * y.
+Proof.
+  intros.
+  erewrite sep_star_assoc_1.
+  setoid_rewrite sep_star_comm at 2.
+  erewrite sep_star_assoc_2.
+  erewrite H0; eauto.
+Qed.
+
 
 Global Opaque pred.
