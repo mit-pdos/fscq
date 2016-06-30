@@ -84,10 +84,10 @@ Definition read_from_block lxp ixp inum fms block_off byte_off read_length :=
 Definition read_middle_blocks lxp ixp inum fms block_off num_of_full_blocks:=
 let^ (data) <- ForN i < num_of_full_blocks 
         Ghost [(lxp : log_xparams) (ixp : INODE.IRecSig.xparams) 
-         (inum : addr) (fms : BFILE.memstate) (block_off : addr)]
+         (inum : addr) (fms : BFILE.memstate) (block_off : addr) crash]
         Loopvar [(data : list byte)]
-        Invariant ⟦⟦ i = length data / valubytes ⟧⟧ 
-        OnCrash ⟦⟦ True ⟧⟧
+        Invariant ⟦⟦ True ⟧⟧ 
+        OnCrash crash
         Begin (
           let^((fms : BFILE.memstate),(list : list byte)) <- 
                 read_from_block lxp ixp inum fms (block_off + i) 0 valubytes;
@@ -633,15 +633,9 @@ Theorem read_from_block_ok: forall lxp bxp ixp inum fms block_off byte_off read_
     >} read_from_block lxp ixp inum fms block_off byte_off read_length.
 Proof.
 unfold read_from_block, rep.
-prestep.
-norm.
-unfold stars; cancel.
-intuition; eauto.
+step.
 
 eapply inlen_bfile; eauto.
-apply list2nmem_arrayN_bound in H8.
-destruct H8.
-rewrite H in H6; inversion H6.
 omega.
 
 eapply protobyte2block; eauto.
@@ -686,25 +680,24 @@ Theorem read_middle_blocks_ok: forall lxp bxp ixp inum fms block_off num_of_full
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm'
     >} read_middle_blocks lxp ixp inum fms block_off num_of_full_blocks.
 Proof.
-unfold read_middle_blocks.
-prestep.
-norm.
-unfold stars; cancel.
-unfold rep; cancel.
-intuition; eauto.
-rewrite valubytes_is; reflexivity.
+unfold read_middle_blocks, rep.
+step.
+
+monad_simpl.
+
 eapply pimpl_ok2.
 monad_simpl.
 
 apply read_from_block_ok.
-unfold rep.
-
-Focus 3.
 unfold pimpl; intros.
-apply H1.
+exists F, Fm, Fi, Fd, m0, m, flist, ilist, (frees_1, frees_2), f, fy, data, F_.
 pred_apply.
-cancel.
-rewrite <- LOG.rep_hashmap_subset.
+unfold rep.
+cancel; eauto.
+apply LOG.rep_hashmap_subset.
+exists l.
+auto.
+(* Need to figure out the loop invariant *)
 Admitted.
 
 
@@ -716,7 +709,7 @@ Theorem read_ok : forall lxp bxp ixp inum off len fms,
         let block_size := valubytes in
            rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f fy  *
            [[[ (ByFData fy) ::: (Fd * (arrayN (ptsto (V:= byteset)) off data)) ]]] *
-           [[ length data = len ]]
+           [[ length data <= len ]]
     POST:hm' RET:^(fms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm' *
           [[ r = map fst data]] *
@@ -726,45 +719,123 @@ Theorem read_ok : forall lxp bxp ixp inum off len fms,
     >} read lxp ixp inum off len fms.
 Proof.
 unfold rep, read.
-prestep.
-norm.
+step.
+step.
+step.
+
+monad_simpl.
+
+eapply pimpl_ok2.
+apply read_from_block_ok.
+intros; norm.
 unfold stars; cancel.
+unfold rep; cancel; eauto.
+intuition; eauto.
+Search Nat.div Nat.modulo plus.
+rewrite Nat.mul_comm.
+replace (valubytes * (off / valubytes) + off mod valubytes) with off.
+eauto.
+apply Nat.div_mod.
+rewrite valubytes_is; unfold not; intros H'; inversion H'. 
+
+Focus 4.
+monad_simpl.
+eapply pimpl_ok2.
+apply read_middle_blocks_ok.
+unfold pimpl; intros.
+exists F, Fm, Fi, (Fd * arrayN (ptsto (V:=byteset)) off (firstn ((S (off / valubytes) * valubytes) - off) data))%pred, 
+        m0, m, flist, ilist, (frees_1, frees_2), f, fy, (skipn ((S (off / valubytes) * valubytes) - off) data), F_.
+pred_apply.
+unfold rep.
+cancel; eauto.
+
+unfold pimpl; intros.
+
+
+eapply arrayN_split with (i:= (valubytes + off / valubytes * valubytes - off)) in H13.
+replace (off + (valubytes + off / valubytes * valubytes - off)) with (valubytes + off / valubytes * valubytes) in H13.
+auto.
+apply le_plus_minus.
+
+assert (AS: forall n m, n <> 0 -> m <= n + m/n * n).
+intros.
+replace (n + m3 / n * n) with (S (m3 / n) * n) by reflexivity.
+apply Nat.mul_succ_div_gt with (a:= m3) in H14.
+apply Nat.lt_le_incl in H14.
+rewrite Nat.mul_comm.
+auto.
+apply AS.
+rewrite valubytes_is; unfold not; intros H'; inversion H'.
+
+apply Nat.div_str_pos.
+split.
+rewrite valubytes_is; omega.
+
+Focus 3.
+step.
+monad_simpl.
+eapply pimpl_ok2.
+apply read_from_block_ok.
+intros; norm; eauto.
+unfold stars; cancel.
+unfold rep; cancel; eauto.
 intuition; eauto.
 
-prestep.
-norm.
+step.
+rewrite skipn_length.
+
+
+reflexivity
+simpl.
+remember (valubytes + off / valubytes * valubytes) as x.
+Search plus minus.
+rewrite minus_plus. with (m:= valubytes + off / valubytes * valubytes).
+
+intros; norm; eauto.
+unfold stars; cancel.
+unfold rep; cancel; eauto.
+intuition; eauto.
+
+Show Existentials.
+Existential 7:= (Fd * arrayN (ptsto (V:=byteset)) off (firstn (off - (valubytes * off/valubytes * valubytes)))).
+rewrite Nat.mul_comm.
+replace (valubytes * (off / valubytes) + off mod valubytes) with off.
+eauto.
+apply Nat.div_mod.
+
+Focus 4.
+monad_simpl.
+eapply pimpl_ok2.
+apply if_ok.
+intros; norm.
 unfold stars; cancel.
 
 Focus 2.
 intuition; eauto.
-
 eapply pimpl_ok2.
-apply if_ok.
-unfold pimpl; intros.
-eexists.
-simpl.
 monad_simpl.
-Search sep_star lift_empty.
-apply sep_star_lift_apply'.
-apply sep_star_lift_apply'.
-eauto.
-
-monad_simpl.
-eapply pimpl_ok2.
 apply read_from_block_ok.
+intros; norm.
+unfold stars; cancel.
+unfold rep; cancel; eauto.
 
-unfold pimpl; intros.
-repeat eexists.
-apply sep_star_lift_apply'.
-apply sep_star_lift_apply'.
-apply sep_star_lift_apply'.
-unfold rep.
-pred_apply.
-cancel; eauto.
-Search Nat.div mult Nat.modulo.
-rewrite Nat.mul_comm.
-rewrite <- Nat.div_mod.
-Search diskIs sep_star.
+Focus 2.
+intuition; eauto.
+
+Unfocus.
+Unfocus.
+Unfocus.
+Unfocus.
+Unfocus.
+Unfocus.
+Unfocus.
+
+
+
+
+Focus 15.
+
+safestep.
 Admitted.
 
 Fact flist_eq_ilist: forall F F' flist flist' ilist m, 
