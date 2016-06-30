@@ -798,13 +798,8 @@ Module AFS.
         [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                         ilist' (BFILE.pick_balloc frees'  (MSAlloc mscs')) tree' ]])
     XCRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-      exists d tree' f' ilist' frees',
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
-      [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees')]]] *
-      [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-      [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]]
-     >} file_truncate fsxp inum sz mscs.
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+    >} file_truncate fsxp inum sz mscs.
   Proof.
     unfold file_truncate; intros.
     step.
