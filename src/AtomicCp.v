@@ -275,6 +275,7 @@ Module ATOMICCP.
     rewrite pushd_latest.
     eapply treeseq_upd_safe_truncate; eauto.
     rewrite H0; eauto.
+    distinct_names'.
     rewrite pushd_latest; simpl.
     eapply dir2flatmem_update_subtree.
     distinct_names'.

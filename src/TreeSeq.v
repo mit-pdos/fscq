@@ -409,21 +409,105 @@ Module TREESEQ.
         eapply DIRTREE.rep_tree_names_distinct; eapply Hpred
     end.
 
-  Lemma treeseq_upd_safe_truncate: forall F1 F2 ts pathname off flag inum file ilist' frees',
+
+  Lemma treeseq_upd_safe_eq: forall pathname off flag tree,
+   treeseq_upd_safe pathname off flag tree tree.
+  Proof.
+    intros.
+    unfold treeseq_upd_safe.
+    intros.
+    right.
+    eexists f.
+    split; eauto.
+  Qed.
+
+  Lemma NEforall_treeseq_upd_safe_pushd: forall ts pathname off flag tree',
+    NEforall (treeseq_upd_safe pathname off flag tree') ts ->
+    NEforall (treeseq_upd_safe pathname off flag tree') (pushd tree' ts).
+  Proof.
+    intros.
+    eapply NEforall_d_in'; intros.
+    eapply d_in_pushd in H0.
+    intuition.
+    rewrite H1.
+    eapply treeseq_upd_safe_eq.
+    eapply NEforall_d_in; eauto. 
+  Qed.
+
+  Lemma treeseq_upd_safe_truncate': forall F1 ts pathname off flag inum file ilist' frees',
+    let file' := {|
+               BFILE.BFData := setlen (BFILE.BFData file) 1 ($ (0), []);
+               BFILE.BFAttr := BFILE.BFAttr file |} in
+    let tree' := mk_tree (update_subtree pathname (TreeFile inum file') (TStree ts !!)) ilist' frees' in
+    (F1 * pathname |-> (inum, file))%pred (dir2flatmem [] (TStree ts !!)) ->    
+    tree_names_distinct (TStree ts !!) ->
+    treeseq_pred (treeseq_upd_safe pathname off flag ts !!) ts ->
+    treeseq_pred (treeseq_upd_safe pathname off flag tree') ts.
+  Proof.
+    intros.
+    unfold treeseq_pred.
+    eapply NEforall_d_in'; intros.
+    unfold treeseq_upd_safe.
+    intros.
+    unfold treeseq_pred in H1.
+    eapply NEforall_d_in in H1 as H1'; eauto.
+    unfold treeseq_upd_safe in H1'.
+    specialize (H1' bn inum file).
+    destruct H1'.
+    eapply dir2flatmem_find_subtree_ptsto in H as H'; eauto.
+    admit. (* should follow from setlen *)
+    intuition.
+    destruct (find_subtree pathname (TStree x)).
+    destruct d.
+    destruct (lt_dec off (Datatypes.length (BFILE.BFData b))).
+    - (* block is in x *)
+      right.
+      eexists b.
+      intuition.
+      omega.
+      omega.
+    - (* block isn't in x *)
+      intuition.
+      left.
+      split; eauto.
+      split; eauto.
+      rewrite H5.
+      eapply dir2flatmem_find_subtree_ptsto in H as H'; eauto.
+      simpl in H3.
+      erewrite find_update_subtree in H3.
+      inversion H3; eauto.
+      eassumption.
+    - eauto.
+    - left. split; auto.
+    - destruct H5.
+      intuition.
+      right.
+      eexists x0.
+      eapply dir2flatmem_find_subtree_ptsto in H as H'; eauto.
+      simpl in H3.
+      erewrite find_update_subtree in H3.
+      inversion H3; eauto.
+      rewrite H8 in *.
+      split; eauto.
+      eassumption.
+  Admitted.
+    
+  (* XXX for now only truncate by +1 *)
+  Lemma treeseq_upd_safe_truncate: forall F1 ts pathname off flag inum file ilist' frees',
     let file' := {|
                BFILE.BFData := setlen (BFILE.BFData file) 1 ($ (0), []);
                BFILE.BFAttr := BFILE.BFAttr file |} in
     let tree' := mk_tree (update_subtree pathname (TreeFile inum file') (TStree ts !!)) ilist' frees' in
     treeseq_pred (treeseq_upd_safe pathname off flag ts !!) ts ->
     (F1 * pathname |-> (inum, file))%pred (dir2flatmem [] (TStree ts !!)) ->
-    (F2 * pathname |-> (inum, file'))%pred (dir2flatmem [] (TStree tree')) ->
-      treeseq_pred (treeseq_upd_safe pathname off flag tree') (pushd tree' ts).
+    tree_names_distinct (TStree ts !!) ->
+    treeseq_pred (treeseq_upd_safe pathname off flag tree') (pushd tree' ts).
   Proof.
     intros.
-    eexists.
-    intros.
     unfold treeseq_pred.
-  Admitted.
+    eapply NEforall_treeseq_upd_safe_pushd.
+    eapply treeseq_upd_safe_truncate'; eauto.
+  Qed.
 
   Theorem treeseq_file_getattr_ok : forall fsxp inum mscs,
   {< ds ts pathname Fm Ftop Ftree f,
