@@ -231,6 +231,49 @@ Module ATOMICCP.
     xcrash.
    Admitted.
 
+  Hint Extern 1 ({{_}} Bind (copydata _ _ _ _) _) => apply copydata_ok : prog.
+
+  Theorem copy2temp_ok : forall fsxp src_inum tinum mscs,
+    {< Fm Ftop Ftmp Ftree ds ts tmppath srcpath file tfile v0,
+    PRE:hm
+     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+      [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts ]] *
+      [[ treeseq_pred (treeseq_upd_safe tmppath Off0 (MSAlloc mscs) (ts !!)) ts ]] *
+      [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile))%pred
+            (dir2flatmem [] (TStree ts!!)) ]] *
+      [[[ BFILE.BFData file ::: (Off0 |-> v0) ]]]
+    POST:hm' RET:^(mscs', r)
+      exists ds' ts',
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
+       (* [[ MSAlloc mscs = MSAlloc mscs' ]] *)
+       [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
+       [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts' ]] *
+        (([[ r = false ]] *
+          exists tfile',
+            [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile'))%pred (dir2flatmem [] (TStree ts'!!)) ]])
+         \/ ([[ r = true ]] *
+            [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts'!!)) ]]))
+    XCRASH:hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+      exists ds' ts',
+        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+        [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
+        [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts' ]]
+    >} copy2temp fsxp src_inum tinum mscs.
+  Proof.
+    unfold copy2temp; intros.
+    step.
+    step.
+    step.
+    step.
+    erewrite treeseq_in_ds_eq; eauto.
+    step.
+    admit.
+  Admitted.
+
+
+
   Lemma diskset_pred_sync: forall V (p: @pred _ _ V) ds,
     diskset_pred p ds ->
     diskset_pred p (ds!!, []).

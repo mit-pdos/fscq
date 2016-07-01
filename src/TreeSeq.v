@@ -102,18 +102,18 @@ Module TREESEQ.
     eapply DIRTREE.dirtree_safe_refl.
   Qed.
 
+  Definition treeseq_dssync inum (t : treeseq_one) t' :=
+    forall pathname' f',
+      find_subtree pathname' (TStree t) = Some (TreeFile inum f') ->
+      t' = mk_tree (update_subtree pathname' (TreeFile inum (BFILE.synced_file f')) (TStree t))
+                                (TSilist t) (TSfree t).
+
   Theorem treeseq_in_ds_dssync_vecs : forall F Ftop fsxp mscs mscs' ts ds al inum,
     treeseq_in_ds F Ftop fsxp mscs ts ds ->
     (forall i, i < List.length al -> BFILE.block_belong_to_file (TSilist (latest ts)) (selN al i 0) inum i) ->
     exists ts',
     treeseq_in_ds F Ftop fsxp mscs' ts' (dssync_vecs ds al) /\
-    NEforall2
-      (fun t t' => t' = t \/
-                   exists pathname' f',
-                   find_subtree pathname' (TStree t) = Some (TreeFile inum f') /\
-                   t' = mk_tree (update_subtree pathname' (TreeFile inum (BFILE.synced_file f')) (TStree t))
-                                (TSilist t) (TSfree t))
-      ts ts'.
+    NEforall2 (treeseq_dssync inum) ts ts'.
   Proof.
     unfold treeseq_in_ds, tree_rep; intuition.
     edestruct NEforall2_exists.
@@ -497,6 +497,47 @@ Module TREESEQ.
     eassumption.
   Qed.
 
+  Theorem treeseq_file_truncate_ok : forall fsxp inum sz mscs,
+  {< ds ts pathname Fm Ftop Ftree f,
+  PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+     [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+     [[ (Ftree * pathname |-> (inum, f))%pred  (dir2flatmem [] (TStree ts!!)) ]] 
+  POST:hm' RET:^(mscs', ok)
+      [[ MSAlloc mscs' = MSAlloc mscs ]] *
+     ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+      [[ ok = true  ]] * exists ds' ts' ilist' frees' tree' f',
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
+        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+        [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]] *
+        [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts !!) ]] *
+        [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
+        [[ (Ftree * pathname |-> (inum, f'))%pred (dir2flatmem [] tree') ]])
+  XCRASH:hm'
+    LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+  >} AFS.file_truncate fsxp inum sz mscs.
+  Proof.
+    intros.
+    eapply pimpl_ok2.
+    eapply AFS.file_truncate_ok.
+    cancel.
+    eapply treeseq_in_ds_tree_pred_latest in H6 as Hpred; eauto.
+    eapply dir2flatmem_find_subtree_ptsto.
+    distinct_names'.
+    eassumption.
+    step.
+    or_r.
+    cancel.
+    eapply treeseq_in_ds_pushd; eauto.
+    unfold tree_rep.
+    unfold treeseq_one_safe.
+    simpl.
+    rewrite H4 in H11.
+    eassumption.
+    eapply dir2flatmem_update_subtree.
+    distinct_names'.
+    eassumption.
+  Qed.
+
   Fact block_belong_to_file_bn_eq: forall tree bn bn0 inum off,
     BFILE.block_belong_to_file tree bn inum off ->
     BFILE.block_belong_to_file tree bn0 inum off ->
@@ -742,7 +783,8 @@ Module TREESEQ.
     eapply dir2flatmem_find_subtree_ptsto; eauto.
     distinct_names'.
     eassumption.
-    Unshelve.  (* XXX *)
+    Unshelve.
+    all: exact ($0, nil).
   Admitted.
 
   Theorem treeseq_file_sync_ok : forall fsxp inum mscs,
@@ -755,17 +797,10 @@ Module TREESEQ.
       exists ts' ds' al,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
-       [[ ds' = dssync_vecs ds al ]] *
        [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
               BFILE.block_belong_to_file (TSilist ts !!) (selN al i 0) inum i ]] *
-       [[ NEforall2 (fun t t' => (t = t' \/
-           exists pathname' f',
-              find_subtree pathname' (TStree t) = Some (TreeFile inum f') /\
-              t' = mk_tree (update_subtree pathname' (TreeFile inum (BFILE.synced_file f')) (TStree t))
-                                (TSilist t) (TSfree t))%type)
-          ts ts' ]] *
+       [[ NEforall2 (treeseq_dssync inum) ts ts' ]] *
        [[ MSAlloc mscs' = MSAlloc mscs ]] *
-       [[ (TStree ts' !!) = update_subtree pathname (TreeFile inum  (BFILE.synced_file f)) (TStree ts !!) ]] *
        [[ (Ftree * pathname |-> (inum, (BFILE.synced_file f)))%pred (dir2flatmem [] (TStree ts' !!)) ]]
     XCRASH:hm'
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
@@ -787,28 +822,27 @@ Module TREESEQ.
     safecancel.
     instantiate (1 := x).
     eapply H5; eauto.
-    2: eassumption.
-    reflexivity.
-    apply H16; eauto.
-    admit.  (* apply H7 doesn't work *)
-    assert (TStree x !! = update_subtree pathname (TreeFile inum (BFILE.synced_file f)) (TStree ts !!)).
+    eauto.
+    eauto.
+    eauto.
+    eapply dir2flatmem_find_subtree_ptsto in H0 as H0'.
+    eapply NEforall2_latest in H7 as H7'.
     unfold treeseq_in_ds in H5.
-    eapply NEforall2_latest in H5 as H5'.
-    intuition.
-    unfold tree_rep in H.
-
-    admit. (* XXX TStree x !! should be derivable from H and H12. *)
-
+    unfold treeseq_dssync in H7'.
+    specialize (H7' pathname f H0').
+    rewrite H7'; simpl.
     eapply dir2flatmem_update_subtree.
     distinct_names'.
     eassumption.
-  Admitted.
+    distinct_names'.
+  Qed.
 
   Hint Extern 1 ({{_}} Bind (AFS.file_get_attr _ _ _) _) => apply treeseq_file_getattr_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.read_fblock _ _ _ _) _) => apply treeseq_read_fblock_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.file_set_attr _ _ _ _) _) => apply treeseq_file_set_attr_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.update_fblock_d _ _ _ _ _) _) => apply treeseq_update_fblock_d_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.file_sync _ _ _ ) _) => apply treeseq_file_sync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (AFS.file_truncate _ _ _ _) _) => apply treeseq_file_truncate_ok : prog.
 
 End TREESEQ.
 
