@@ -271,6 +271,15 @@ Section NonEmptyList.
       simpl; auto.
   Qed.
 
+  Lemma pushd_latest: forall l d,
+    latest (pushd d l)  = d.
+  Proof.
+    intros.
+    unfold pushd, latest.
+    simpl; eauto.
+  Qed.
+
+
   (** The second non-empty list's is a subset, in
     * the same order, of the first non-empty list
     *)

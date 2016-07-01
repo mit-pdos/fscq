@@ -268,7 +268,6 @@ Module TREESEQ.
     eapply tree_file_length_ok in H2; eauto.
   Qed.
 
-
   Lemma tree_safe_upd: forall F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f n,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file (TSilist (ts !!)) bn inum off ->
@@ -410,6 +409,22 @@ Module TREESEQ.
         eapply DIRTREE.rep_tree_names_distinct; eapply Hpred
     end.
 
+  Lemma treeseq_upd_safe_truncate: forall F1 F2 ts pathname off flag inum file ilist' frees',
+    let file' := {|
+               BFILE.BFData := setlen (BFILE.BFData file) 1 ($ (0), []);
+               BFILE.BFAttr := BFILE.BFAttr file |} in
+    let tree' := mk_tree (update_subtree pathname (TreeFile inum file') (TStree ts !!)) ilist' frees' in
+    treeseq_pred (treeseq_upd_safe pathname off flag ts !!) ts ->
+    (F1 * pathname |-> (inum, file))%pred (dir2flatmem [] (TStree ts !!)) ->
+    (F2 * pathname |-> (inum, file'))%pred (dir2flatmem [] (TStree tree')) ->
+      treeseq_pred (treeseq_upd_safe pathname off flag tree') (pushd tree' ts).
+  Proof.
+    intros.
+    eexists.
+    intros.
+    unfold treeseq_pred.
+  Admitted.
+
   Theorem treeseq_file_getattr_ok : forall fsxp inum mscs,
   {< ds ts pathname Fm Ftop Ftree f,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
@@ -537,6 +552,7 @@ Module TREESEQ.
     distinct_names'.
     eassumption.
   Qed.
+
 
   Fact block_belong_to_file_bn_eq: forall tree bn bn0 inum off,
     BFILE.block_belong_to_file tree bn inum off ->

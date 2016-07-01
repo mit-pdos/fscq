@@ -34,6 +34,7 @@ Require Import TreeCrash.
 Require Import TreeSeq.
 Require Import DirSep.
 
+Import DIRTREE.
 Import TREESEQ.
 Import ListNotations.
 
@@ -268,10 +269,28 @@ Module ATOMICCP.
     step.
     step.
     erewrite treeseq_in_ds_eq; eauto.
-    step.
+    safestep. (* step instantiates incorrectly *)
+    erewrite treeseq_in_ds_eq; eauto.
+    admit. (* XXX temp_treeseqpred *)
+    rewrite pushd_latest.
+    eapply treeseq_upd_safe_truncate; eauto.
+    rewrite H0; eauto.
+    rewrite pushd_latest; simpl.
+    eapply dir2flatmem_update_subtree.
+    distinct_names'.
+    all: try eassumption.
     admit.
+    safestep.
+    or_l.
+    cancel.
+    all: try eassumption.
+    or_r.
+    cancel.
+    admit.
+    safestep.
   Admitted.
 
+  (* XXX old stuff *)
 
 
   Lemma diskset_pred_sync: forall V (p: @pred _ _ V) ds,
