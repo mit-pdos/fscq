@@ -239,7 +239,7 @@ Module ATOMICCP.
     PRE:hm
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts ]] *
+      [[ treeseq_pred (treeseq_grow_safe tmppath Off0 (MSAlloc mscs) ts !!) ts ]] *
       [[ treeseq_pred (treeseq_upd_safe tmppath Off0 (MSAlloc mscs) (ts !!)) ts ]] *
       [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile))%pred
             (dir2flatmem [] (TStree ts!!)) ]] *
@@ -269,26 +269,30 @@ Module ATOMICCP.
     step.
     step.
     erewrite treeseq_in_ds_eq; eauto.
-    safestep. (* step instantiates incorrectly *)
+    admit. (* XXX temp_treeseqpred *)
+    step.
+    admit. (* XXX temp_treeseqpred *)    
+
+    instantiate (1 := ($ (0), [])).
+    admit. (* XXX need list2nmem_setlen? *)
+
+    step.
+    xcrash.
+    or_r.
+    eapply pimpl_exists_r. exists ds'.
+    xcrash.
     erewrite treeseq_in_ds_eq; eauto.
     admit. (* XXX temp_treeseqpred *)
-    rewrite pushd_latest.
-    eapply treeseq_upd_safe_truncate; eauto.
-    rewrite H0; eauto.
-    distinct_names'.
-    rewrite pushd_latest; simpl.
-    eapply dir2flatmem_update_subtree.
-    distinct_names'.
-    all: try eassumption.
-    admit.
-    safestep.
-    or_l.
-    cancel.
-    all: try eassumption.
+    xcrash.
     or_r.
-    cancel.
-    admit.
-    safestep.
+    eapply pimpl_exists_r. exists x.
+    xcrash.
+    erewrite treeseq_in_ds_eq; eauto.
+    admit. (* XXX temp_treeseqpred *)
+    step.
+    xcrash.
+    or_l.
+    eauto.
   Admitted.
 
   (* XXX old stuff *)

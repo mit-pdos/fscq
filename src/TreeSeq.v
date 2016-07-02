@@ -164,6 +164,19 @@ Module TREESEQ.
      find_subtree pathname (TStree tolder) = Some (TreeFile inum f') /\
      BFILE.block_belong_to_file (TSilist tolder) bn inum off).
 
+  (* A predicate that states when it is safe to grow a file at offset by one block.
+  *)
+  Definition treeseq_grow_safe pathname off flag (tnewest tolder : treeseq_one) :=
+    forall bn inum f,
+    find_subtree pathname (TStree tnewest) = Some (TreeFile inum f) ->
+    (BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn /\
+      (match find_subtree pathname (TStree tolder) with
+      | Some (TreeFile inum' f') => inum' = inum /\ off >= List.length (BFILE.BFData f')
+      | Some (TreeDir _ _) => False
+      | None => True
+      end)
+     ).
+
   Lemma tree_file_flist: forall F Ftop flist  tree pathname inum f,
     find_subtree pathname tree = Some (TreeFile inum f) ->
     (F * tree_pred Ftop tree)%pred (list2nmem flist) ->
@@ -434,6 +447,7 @@ Module TREESEQ.
     eapply NEforall_d_in; eauto. 
   Qed.
 
+
   Lemma treeseq_upd_safe_truncate': forall F1 ts pathname off flag inum file ilist' frees',
     let file' := {|
                BFILE.BFData := setlen (BFILE.BFData file) 1 ($ (0), []);
@@ -441,7 +455,7 @@ Module TREESEQ.
     let tree' := mk_tree (update_subtree pathname (TreeFile inum file') (TStree ts !!)) ilist' frees' in
     (F1 * pathname |-> (inum, file))%pred (dir2flatmem [] (TStree ts !!)) ->    
     tree_names_distinct (TStree ts !!) ->
-    treeseq_pred (treeseq_upd_safe pathname off flag ts !!) ts ->
+    treeseq_pred (treeseq_grow_safe pathname off flag tree') ts ->
     treeseq_pred (treeseq_upd_safe pathname off flag tree') ts.
   Proof.
     intros.
@@ -451,54 +465,48 @@ Module TREESEQ.
     intros.
     unfold treeseq_pred in H1.
     eapply NEforall_d_in in H1 as H1'; eauto.
-    unfold treeseq_upd_safe in H1'.
+  Qed.
+
+  Lemma treeseq_grow_safe_grow: forall F1 ts pathname inum off flag file ilist' frees',
+    let file' := {|
+                 BFILE.BFData := setlen (BFILE.BFData file) 1 ($ (0), []);
+                 BFILE.BFAttr := BFILE.BFAttr file |} in
+    let tree' := mk_tree (update_subtree pathname (TreeFile inum file') (TStree ts !!)) ilist' frees' in
+    find_subtree pathname (TStree ts !!) = Some (TreeFile inum file) ->
+    (F1 ✶ pathname |-> (inum, file))%pred (dir2flatmem [] (TStree ts !!)) ->
+    treeseq_pred (treeseq_grow_safe pathname off flag ts !!) ts ->
+    tree_names_distinct (TStree ts!!) ->
+    treeseq_pred (treeseq_grow_safe pathname off flag tree') ts.
+   Proof.
+    intros.
+    unfold treeseq_pred.
+    eapply NEforall_d_in'.
+    intros.
+    unfold treeseq_pred in H1.
+    eapply NEforall_d_in in H1 as H1'; eauto.
+    unfold treeseq_grow_safe in *.
+    intros.
     specialize (H1' bn inum file).
     destruct H1'.
-    eapply dir2flatmem_find_subtree_ptsto in H as H'; eauto.
-    admit. (* should follow from setlen *)
-    intuition.
+    eassumption.
     destruct (find_subtree pathname (TStree x)).
     destruct d.
-    destruct (lt_dec off (Datatypes.length (BFILE.BFData b))).
-    - (* block is in x *)
-      right.
-      eexists b.
-      intuition.
-      omega.
-      omega.
-    - (* block isn't in x *)
-      intuition.
-      left.
-      split; eauto.
-      split; eauto.
-      rewrite H5.
-      eapply dir2flatmem_find_subtree_ptsto in H as H'; eauto.
-      simpl in H3.
-      erewrite find_update_subtree in H3.
-      inversion H3; eauto.
-      eassumption.
-    - eauto.
-    - left. split; auto.
-    - destruct H5.
-      intuition.
-      right.
-      eexists x0.
-      eapply dir2flatmem_find_subtree_ptsto in H as H'; eauto.
-      simpl in H3.
-      erewrite find_update_subtree in H3.
-      inversion H3; eauto.
-      rewrite H8 in *.
-      split; eauto.
-      eassumption.
-  Admitted.
-    
-  (* XXX for now only truncate by +1 *)
+    split; eauto.
+    subst tree'; simpl in *.
+    erewrite find_update_subtree in H4.
+    inversion H4.
+    intuition.
+    eassumption.
+    eauto.
+    eauto.
+   Qed.
+
   Lemma treeseq_upd_safe_truncate: forall F1 ts pathname off flag inum file ilist' frees',
     let file' := {|
                BFILE.BFData := setlen (BFILE.BFData file) 1 ($ (0), []);
                BFILE.BFAttr := BFILE.BFAttr file |} in
     let tree' := mk_tree (update_subtree pathname (TreeFile inum file') (TStree ts !!)) ilist' frees' in
-    treeseq_pred (treeseq_upd_safe pathname off flag ts !!) ts ->
+    treeseq_pred (treeseq_grow_safe pathname off flag ts !!) ts ->
     (F1 * pathname |-> (inum, file))%pred (dir2flatmem [] (TStree ts !!)) ->
     tree_names_distinct (TStree ts !!) ->
     treeseq_pred (treeseq_upd_safe pathname off flag tree') (pushd tree' ts).
@@ -507,6 +515,9 @@ Module TREESEQ.
     unfold treeseq_pred.
     eapply NEforall_treeseq_upd_safe_pushd.
     eapply treeseq_upd_safe_truncate'; eauto.
+    eapply treeseq_grow_safe_grow; auto.
+    eapply dir2flatmem_find_subtree_ptsto; eauto.
+    eassumption.
   Qed.
 
   Theorem treeseq_file_getattr_ok : forall fsxp inum mscs,
@@ -596,6 +607,7 @@ Module TREESEQ.
     eassumption.
   Qed.
 
+  (* XXX Unused *)
   Theorem treeseq_file_truncate_ok : forall fsxp inum sz mscs,
   {< ds ts pathname Fm Ftop Ftree f,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
@@ -637,6 +649,56 @@ Module TREESEQ.
     eassumption.
   Qed.
 
+
+  (* A more restricted version intended to be used with treeseq_safe_upd. This restricted
+   * version allows only extending a file by one block. It promises that if treeseq_upd_safe holds
+   * afterwards. 
+   *)
+  Theorem treeseq_file_grow_ok : forall fsxp inum off mscs,
+  {< ds ts pathname Fm Ftop Ftree f,
+  PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+     [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+     [[ treeseq_pred (treeseq_grow_safe pathname off (MSAlloc mscs) (ts !!)) ts ]] *
+     [[ (Ftree * pathname |-> (inum, f))%pred  (dir2flatmem [] (TStree ts!!)) ]] 
+  POST:hm' RET:^(mscs', ok)
+      [[ MSAlloc mscs' = MSAlloc mscs ]] *
+     ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+      [[ ok = true  ]] * exists ds' ts' ilist' frees' tree' f',
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
+        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+        [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) 1 ($0, nil)) (BFILE.BFAttr f) ]] *
+        [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts !!) ]] *
+        [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
+        [[ treeseq_pred (treeseq_upd_safe pathname off (MSAlloc mscs') (ts' !!)) ts' ]] *
+        [[ (Ftree * pathname |-> (inum, f'))%pred (dir2flatmem [] tree') ]])
+  XCRASH:hm'
+    LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+  >} AFS.file_truncate fsxp inum 1 mscs.
+  Proof.
+    intros.
+    eapply pimpl_ok2.
+    eapply AFS.file_truncate_ok.
+    cancel.
+    eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
+    eapply dir2flatmem_find_subtree_ptsto.
+    distinct_names'.
+    eassumption.
+    step.
+    or_r.
+    cancel.
+    eapply treeseq_in_ds_pushd; eauto.
+    unfold tree_rep.
+    unfold treeseq_one_safe.
+    simpl in *.
+    rewrite H0 in H12.
+    eassumption.
+    erewrite pushd_latest; simpl.
+    eapply treeseq_upd_safe_truncate; eauto.
+    rewrite H0; eauto.
+    distinct_names'.
+    eapply dir2flatmem_update_subtree; eauto.
+    distinct_names'.
+  Qed.
 
   Fact block_belong_to_file_bn_eq: forall tree bn bn0 inum off,
     BFILE.block_belong_to_file tree bn inum off ->
@@ -942,7 +1004,7 @@ Module TREESEQ.
   Hint Extern 1 ({{_}} Bind (AFS.file_set_attr _ _ _ _) _) => apply treeseq_file_set_attr_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.update_fblock_d _ _ _ _ _) _) => apply treeseq_update_fblock_d_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.file_sync _ _ _ ) _) => apply treeseq_file_sync_ok : prog.
-  Hint Extern 1 ({{_}} Bind (AFS.file_truncate _ _ _ _) _) => apply treeseq_file_truncate_ok : prog.
+  Hint Extern 1 ({{_}} Bind (AFS.file_truncate _ _ _ _) _) => apply treeseq_file_grow_ok : prog.
 
 End TREESEQ.
 
