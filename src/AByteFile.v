@@ -93,7 +93,7 @@ let^ (data) <- ForN i < num_of_full_blocks
         Ghost [(lxp : log_xparams) (ixp : INODE.IRecSig.xparams) 
          (inum : addr) (fms : BFILE.memstate) (block_off : addr) crash]
         Loopvar [(data : list byte)]
-        Invariant ⟦⟦ True ⟧⟧ 
+        Invariant [[ True ]] 
         OnCrash crash
         Begin (
           let^((fms : BFILE.memstate),(list : list byte)) <- 
@@ -224,7 +224,7 @@ else                                                   (* if read length is not 
 }.
 
 Definition write_to_block lxp ixp inum fms block_off byte_off data :=
-  let^ (fms, block) <- BFILE.read lxp ixp inum block_off fms;   (* get the block *) 
+    let^ (fms, block) <- BFILE.read lxp ixp inum block_off fms;   (* get the block *) 
     let block_list := valu2list block in
     let block_write := list2valu ((firstn byte_off block_list)     (* Construct new block*)
                               ++data++(skipn (byte_off + length data) block_list))%list in 
@@ -273,23 +273,6 @@ Definition write lxp ixp inum off data fms :=
   
     Ret (fms).
     
-  
-
-(*Same as BFile*)
-  Definition getattrs T lxp ixp inum fms rx : prog T :=
-    let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
-    let^ (ms, n) <- INODE.getattrs lxp ixp inum ms;
-    rx ^(BFILE.mk_memstate al ms, n).
-
-  Definition setattrs T lxp ixp inum a fms rx : prog T :=
-    let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
-    ms <- INODE.setattrs lxp ixp inum a ms;
-    rx (BFILE.mk_memstate al ms).
-
-  Definition updattr T lxp ixp inum kv fms rx : prog T :=
-    let '(al, ms) := (BFILE.MSAlloc fms, BFILE.MSLL fms) in
-    ms <- INODE.updattr lxp ixp inum kv ms;
-    rx (BFILE.mk_memstate al ms).
     
 
 (* Helper lemmas.*)
@@ -703,6 +686,109 @@ apply IHn.
 omega. omega.
 Qed.
 
+Fact valubytes_ne_O: valubytes <> 0.
+Proof. rewrite valubytes_is; unfold not; intros H'; inversion H'. Qed.
+
+Fact divmult_plusminus_eq:forall n m, m <> 0 ->
+   m + n / m * m = n + (m - n mod m).
+Proof.
+intros.   
+rewrite Nat.add_sub_assoc.
+replace (n + m - n mod m) 
+    with (m + n - n mod m) by omega.
+rewrite <- Nat.add_sub_assoc.
+rewrite Nat.add_cancel_l with (p:= m); eauto.
+rewrite Nat.mod_eq; eauto.
+rewrite Rounding.sub_sub_assoc.
+apply Nat.mul_comm.
+apply Nat.mul_div_le; eauto.
+apply Nat.mod_le; eauto.
+apply Nat.lt_le_incl.
+apply Nat.mod_upper_bound; eauto.
+Qed.
+
+Fact le_minus_divmult: forall n m k, m <> 0 ->
+    n - (m - k mod m) - (n - (m - k mod m)) / m * m <= m.
+Proof. intros.
+remember (n - (m - k mod m)) as b.
+replace (b - b / m * m) with (b mod m).
+apply Nat.lt_le_incl.
+apply Nat.mod_upper_bound; eauto.
+rewrite Nat.mul_comm.
+apply Nat.mod_eq; eauto.
+Qed.
+
+Fact grouping_minus: forall n m k a, n - (m - k + a) = n - (m - k) - a.
+Proof. intros. omega. Qed.
+
+Fact flist_eq_ilist: forall F F' flist flist' ilist m, 
+  (@sep_star addr addr_eq_dec BFILE.datatype 
+      F  (listmatch (fun (v : BFILE.datatype) (a : addr) => a |-> v) flist ilist))%pred m ->
+  (@sep_star addr addr_eq_dec BFILE.datatype 
+      F'  (listmatch (fun (v : BFILE.datatype) (a : addr) => a |-> v) flist' ilist))%pred m ->
+  forall i def, i < length flist -> selN flist i def = selN flist' i def.
+Proof.
+  intros.
+  Search ptsto.
+  eapply sep_star_ptsto_some_eq with (a:= (selN ilist i _)).
+  erewrite listmatch_isolate with (i:= i) in H.
+  apply sep_star_comm.
+  eapply sep_star_assoc in H.
+  eapply H.
+  auto.
+  apply listmatch_length_r in H as H'.
+  rewrite <- H'; auto.
+  Search listmatch.
+  rewrite listmatch_extract with (i:= i) in H0.
+  destruct_lift H; destruct_lift H0.
+  apply ptsto_valid' in H0.
+  apply H0.
+  apply listmatch_length_r in H as H'.
+  apply listmatch_length_r in H0 as H0'.
+  omega.
+  Grab Existential Variables.
+  apply O.
+Qed.
+
+
+Fact map_1to1_eq: forall A B (f: A -> B) (l l': list A), 
+  (forall x y, f x = f y -> x = y) -> 
+  map f l = map f l' ->
+  l = l'.
+  
+Proof.
+  induction l; intros.
+  simpl in H0; symmetry in H0.
+  eapply map_eq_nil in H0.
+  eauto.
+  destruct l'.
+  rewrite map_cons in H0; simpl in H0.
+  inversion H0.
+  repeat rewrite map_cons in H0.
+  inversion H0.
+  apply H in H2.
+  rewrite H2.
+  eapply IHl in H.
+  apply cons_simpl.
+  eauto.
+  eauto.
+Qed.
+
+Fact map_eq: forall A B (f: A -> B) (l l': list A), 
+  l = l' ->
+  map f l = map f l'.
+
+Proof. intros; rewrite H; reflexivity. Qed.
+
+
+Definition upd_byteset bs b: byteset := (b, (fst bs)::(snd bs)).
+
+Fixpoint updN_list (l: list byteset) off (l1: list byte): list byteset :=
+match l1 with
+| nil => l
+| h::t => updN_list ((firstn off l)++((upd_byteset (selN l off byteset0) h)::(skipn (S off) l))) (S off) t
+end.
+
 (*Specs*)
 
 
@@ -712,7 +798,8 @@ PRE:hm
        rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f fy
 POST:hm' RET:^(fms',r)
        LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm' *
-       [[ r = length (ByFData fy) /\ BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
+       [[ r = length (ByFData fy)]] *
+       [[ BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
 CRASH:hm'  exists fms',
        LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm'
 >} getlen lxp ixp inum fms.
@@ -820,19 +907,60 @@ unfold read_middle_blocks, rep.
 step.
 
 monad_simpl.
-
 eapply pimpl_ok2.
-monad_simpl.
-
 apply read_from_block_ok.
-unfold pimpl; intros.
-exists F, Fm, Fi, Fd, m0, m, flist, ilist, (frees_1, frees_2), f, fy, data, F_.
-pred_apply.
-unfold rep.
-cancel; eauto.
+
+intros; norm; eauto.
+unfold stars; cancel.
+rewrite LOG.rep_hashmap_subset with (hm':=hm0).
+unfold rep; cancel; eauto.
+exists l; auto.
+intuition; eauto.
+rewrite <- plus_n_O.
+instantiate (1:= firstn valubytes (skipn (m1 * valubytes) data)).
+erewrite arrayN_split with (i:= m1 * valubytes)in H7.
+apply sep_star_assoc in H7.
+remember (Fd ✶ arrayN (ptsto (V:=byteset)) (block_off * valubytes) (firstn (m1 * valubytes) data))%pred as F'.
+erewrite arrayN_split with (i:= valubytes)in H7.
+apply sep_star_assoc in H7.
+apply sep_star_comm in H7.
+apply sep_star_assoc in H7.
+rewrite Nat.mul_add_distr_r.
+rewrite HeqF' in H7.
+apply H7.
+
+rewrite firstn_length.
+rewrite skipn_length.
+rewrite H5.
+apply Nat.min_l.
+rewrite <- Nat.mul_sub_distr_r.
+replace valubytes with (1*valubytes ) by omega.
+replace ((num_of_full_blocks - m1) * (1 * valubytes))
+    with ((num_of_full_blocks - m1) * valubytes) by (rewrite Nat.mul_1_l; reflexivity).
+apply mult_le_compat_r.
+omega.
+
+rewrite firstn_length.
+rewrite skipn_length.
+rewrite H5.
+rewrite Nat.min_l.
+rewrite valubytes_is; omega.
+rewrite <- Nat.mul_sub_distr_r.
+replace valubytes with (1*valubytes ) by omega.
+replace ((num_of_full_blocks - m1) * (1 * valubytes))
+    with ((num_of_full_blocks - m1) * valubytes) by (rewrite Nat.mul_1_l; reflexivity).
+apply mult_le_compat_r.
+omega.
+
+step.
+
+Focus 2.
+cancel.
+
+Focus 2.
+step.
 apply LOG.rep_hashmap_subset.
-exists l.
-auto.
+exists l; auto.
 (* Need to figure out the loop invariant *)
 Admitted.
 
@@ -887,9 +1015,6 @@ apply sep_star_assoc in H6.
 apply sep_star_comm in H6.
 apply H6.
 apply Nat.div_mod.
-
-Fact valubytes_ne_O: valubytes <> 0.
-Proof. rewrite valubytes_is; unfold not; intros H'; inversion H'. Qed.
 
 apply valubytes_ne_O.
 rewrite firstn_length.
@@ -949,28 +1074,6 @@ rewrite HeqF'' in H6.
 rewrite HeqF' in H6.
 apply H6.
 
-
-
-
-
-Fact divmult_plusminus_eq:forall n m, m <> 0 ->
-   m + n / m * m = n + (m - n mod m).
-Proof.
-intros.   
-rewrite Nat.add_sub_assoc.
-replace (n + m - n mod m) 
-    with (m + n - n mod m) by omega.
-rewrite <- Nat.add_sub_assoc.
-rewrite Nat.add_cancel_l with (p:= m); eauto.
-rewrite Nat.mod_eq; eauto.
-rewrite Rounding.sub_sub_assoc.
-apply Nat.mul_comm.
-apply Nat.mul_div_le; eauto.
-apply Nat.mod_le; eauto.
-apply Nat.lt_le_incl.
-apply Nat.mod_upper_bound; eauto.
-Qed.
-
 apply divmult_plusminus_eq; apply valubytes_ne_O.
 
 rewrite firstn_length.
@@ -1029,8 +1132,6 @@ rewrite skipn_length.
 rewrite H7 in H5.
 rewrite H5.
 rewrite Nat.min_l.
-Fact grouping_minus: forall n m k a, n - (m - k + a) = n - (m - k) - a.
-Proof. intros. omega. Qed.
 
 apply grouping_minus.
 
@@ -1043,17 +1144,6 @@ rewrite Nat.min_l.
 rewrite grouping_minus; auto.
 apply Nat.lt_le_incl.
 auto.
-
-Fact le_minus_divmult: forall n m k, m <> 0 ->
-    n - (m - k mod m) - (n - (m - k mod m)) / m * m <= m.
-Proof. intros.
-remember (n - (m - k mod m)) as b.
-replace (b - b / m * m) with (b mod m).
-apply Nat.lt_le_incl.
-apply Nat.mod_upper_bound; eauto.
-rewrite Nat.mul_comm.
-apply Nat.mod_eq; eauto.
-Qed.
 
 apply le_minus_divmult; apply valubytes_ne_O.
 
@@ -1548,73 +1638,6 @@ omega.
 Qed.
 
 
-Fact flist_eq_ilist: forall F F' flist flist' ilist m, 
-  (@sep_star addr addr_eq_dec BFILE.datatype 
-      F  (listmatch (fun (v : BFILE.datatype) (a : addr) => a |-> v) flist ilist))%pred m ->
-  (@sep_star addr addr_eq_dec BFILE.datatype 
-      F'  (listmatch (fun (v : BFILE.datatype) (a : addr) => a |-> v) flist' ilist))%pred m ->
-  forall i def, i < length flist -> selN flist i def = selN flist' i def.
-Proof.
-  intros.
-  Search ptsto.
-  eapply sep_star_ptsto_some_eq with (a:= (selN ilist i _)).
-  erewrite listmatch_isolate with (i:= i) in H.
-  apply sep_star_comm.
-  eapply sep_star_assoc in H.
-  eapply H.
-  auto.
-  apply listmatch_length_r in H as H'.
-  rewrite <- H'; auto.
-  Search listmatch.
-  rewrite listmatch_extract with (i:= i) in H0.
-  destruct_lift H; destruct_lift H0.
-  apply ptsto_valid' in H0.
-  apply H0.
-  apply listmatch_length_r in H as H'.
-  apply listmatch_length_r in H0 as H0'.
-  omega.
-  Grab Existential Variables.
-  apply O.
-Qed.
-
-
-Fact map_1to1_eq: forall A B (f: A -> B) (l l': list A), 
-  (forall x y, f x = f y -> x = y) -> 
-  map f l = map f l' ->
-  l = l'.
-  
-Proof.
-  induction l; intros.
-  simpl in H0; symmetry in H0.
-  eapply map_eq_nil in H0.
-  eauto.
-  destruct l'.
-  rewrite map_cons in H0; simpl in H0.
-  inversion H0.
-  repeat rewrite map_cons in H0.
-  inversion H0.
-  apply H in H2.
-  rewrite H2.
-  eapply IHl in H.
-  apply cons_simpl.
-  eauto.
-  eauto.
-Qed.
-
-Fact map_eq: forall A B (f: A -> B) (l l': list A), 
-  l = l' ->
-  map f l = map f l'.
-
-Proof. intros; rewrite H; reflexivity. Qed.
-
-
-Definition upd_byteset bs b: byteset := (b, (fst bs)::(snd bs)).
-
-Fixpoint updN_list (l: list byteset) off (l1: list byte): list byteset :=
-match l1 with
-| nil => l
-| h::t => updN_list ((firstn off l)++((upd_byteset (selN l off byteset0) h)::(skipn (S off) l))) (S off) t
-end.
 
 Theorem write_first_block_ok : forall lxp bxp ixp inum block_off byte_off data fms,
     {< F Fm Fi Fd m0 m flist ilist frees f fy old_data,
@@ -1635,17 +1658,14 @@ Theorem write_first_block_ok : forall lxp bxp ixp inum block_off byte_off data f
 
 Proof.
 unfold write_to_block, rep.
-prestep.
-norm.
-unfold stars; cancel.
-intuition; eauto.
+step.
 
 eapply inlen_bfile; try eauto; try omega.
 
 eapply protobyte2block; eauto.
-eapply unifiedbyte2protobyte with (a:= block_off * valubytes + byte_off) (k:= valubytes) in H11; try omega.
-rewrite div_eq in H11; try omega.
-apply H11.
+eapply unifiedbyte2protobyte with (a:= block_off * valubytes + byte_off) (k:= valubytes) in H12; try omega.
+rewrite div_eq in H12; try omega.
+apply H12.
 
 eapply proto_len; eauto.
 
@@ -1656,40 +1676,28 @@ rewrite <- plus_n_O .
 cancel.
 omega.
 
-Focus 2.
-cancel.
-Search LOG.rep LOG.intact.
-unfold LOG.intact.
-unfold pimpl; intros.
-exists (BFILE.MSLL ms').
-right.
-exists m.
-apply H4.
-
-prestep.
-norm.
-unfold stars; cancel.
+safestep.
 
 Focus 2.
-intuition; eauto.
-eapply inlen_bfile; eauto.
-apply le2lt_l in H5; omega. rewrite H7; auto.
-sepauto.
+eapply inlen_bfile; try eauto; try omega.
 
-unfold latest.
-Show Existentials.
-Existential 2:=(bxp_1, bxp_2).
-Existential 2:=(m, nil).
-Existential 3:= ilist.
-Existential 3:= frees_1.
-Existential 3:= frees_2.
-simpl.
-apply H0.
+Focus 2.
+instantiate (1:= (m, nil)).
+instantiate (1:= frees_2).
+instantiate (1:= frees_1).
+instantiate (1:= ilist).
+instantiate (1:= flist).
+instantiate (1:= (bxp_1, bxp_2)).
+eauto.
 
+Focus 2.
+eauto.
+
+Focus 2.
 eapply protobyte2block; eauto.
-eapply unifiedbyte2protobyte with (a:= block_off * valubytes + byte_off) (k:= valubytes) in H11; try omega.
-rewrite div_eq in H11; try omega.
-apply H11.
+eapply unifiedbyte2protobyte with (a:= block_off * valubytes + byte_off) (k:= valubytes) in H12; try omega.
+rewrite div_eq in H12; try omega.
+apply H12.
 
 eapply proto_len; eauto.
 
@@ -1700,477 +1708,8 @@ rewrite <- plus_n_O .
 cancel.
 omega.
 
-Admitted.
-
-step.
-apply H2.
-
-eapply corr3_forall.
-
-constructor.
-
-repeat eexists.
-
-Search exec Finished.
-apply XBindFinish in H14.
-
-
-
-Search GroupLog.GLog.recover_any_pred.
-sepauto.
-cancel.
-rewrite LOG.rep_hashmap_subset.
-unfold pimpl; intros.
-sepauto.
-cancel.
-eauto.
-eapply inlen_bfile; eauto.
-rewrite valubytes_is in *; omega.
-omega.
-
-
-eapply protobyte2block; eauto.
-eapply unifiedbyte2protobyte with (a:= block_off * valubytes + byte_off) (k:= valubytes) in H11; try omega.
-rewrite div_eq in H11; try omega.
-apply H11.
-
-eapply proto_len; eauto.
-
-eapply byte2unifiedbyte; eauto.
-pred_apply.
-rewrite arrayN_isolate with (i:=0).
-rewrite <- plus_n_O .
-cancel.
-omega.
-eapply BFILE.dwrite_ok.
-
-step.
-
-unfold proto_bytefile_valid.
-simpl.
-rewrite H12.
-Search map.
-
-
-
-eapply map_eq.
-sepauto.
-Locate "⟧". *)
-(* rewrite H11.
-rewrite H12.
-unfold get_sublist.
-rewrite concat_hom_skipn.
-replace valubytes with (1*valubytes) by omega.
-rewrite concat_hom_firstn.
-rewrite firstn1.
- *)
-
-eapply list2nmem_sel in H23; simpl in H23.
-rewrite H23.
-
-
-
-
-erewrite flist_eq_ilist.
-
-
-unfold BFILE.rep in H0.
-destruct_lift H0.
-unfold BFILE.file_match in H0.
-Search selN updN.
-erewrite selN_eq_updN_eq.
-reflexivity.
-rewrite listmatch_isolate with (i:= inum) in H14.
-
-
-
-unfold BFILE.rep in H18.
-destruct_lift H18.
-Search list2nmem ptsto.
-
-(* pose proof H0 as H0'.
-unfold BFILE.rep in H0.
-destruct_lift H0.
-unfold BFILE.file_match in H0.
-rewrite listmatch_isolate with (i:= inum) in H0.
-destruct_lift H0.
-unfold listmatch in H0.
-destruct_lift H0.
-
-remember((((Fm ✶ BALLOC.rep bxp_1 frees_1) ✶ BALLOC.rep bxp_2 frees_2)
-        ✶ INODE.rep bxp_1 ixp ilist)
-       ✶ listpred
-           (pprd
-              (fun (f : BFILE.bfile) (i : INODE.inode) =>
-               (⟦⟦ length (BFILE.BFData f) =
-                   length (map (wordToNat (sz:=addrlen)) (INODE.IBlocks i)) ⟧⟧
-                ✶ listpred (pprd (fun (v : BFILE.datatype) (a : addr) => a |-> v))
-                    (combine (BFILE.BFData f)
-                       (map (wordToNat (sz:=addrlen)) (INODE.IBlocks i))))
-               ✶ ⟦⟦ BFILE.BFAttr f = INODE.IAttr i ⟧⟧))
-           (combine (removeN flist inum) (removeN ilist inum)))%pred as F'.
-           
-rewrite listpred_isolate with (i:= block_off) in H0.
-
-unfold pprd in H0.
-unfold prod_curry in H0.
-apply sep_star_assoc in H0.
-erewrite selN_combine in H0.
-eapply list2nmem_sel with (F:= (F'
-       ✶ listpred (fun p : BFILE.datatype * addr => let (x, y) := p in y |-> x)
-           (removeN
-              (combine (BFILE.BFData flist ⟦ inum ⟧)
-                 (map (wordToNat (sz:=addrlen)) (INODE.IBlocks ilist ⟦ inum ⟧)))
-              block_off))%pred) in H0.
-              
-              erewrite selN_map in H0.
-rewrite H14 in H0.
-eapply list2nmem_sel in H13.
-rewrite <- H13 in H0. *)
-
-Focus 2.
-unfold pimpl; intros.
-unfold BFILE.rep in H14.
-rewrite listmatch_isolate with (i:= inum) in H14.
-unfold BFILE.file_match in H14.
-destruct_lift H14.
-apply sep_star_comm in H14.
-rewrite listmatch_isolate with (i:= block_off) in H14.
-erewrite selN_map in H14.
-apply sep_star_comm in H14.
-apply sep_star_assoc in H14.
-apply sep_star_comm.
-apply mem_except_ptsto.
-apply sep_star_comm in H14.
-apply ptsto_valid in H14.
-replace (?anon, ?anon0) 
-  with (selN (BFILE.BFData (selN flist inum BFILE.bfile0)) block_off valuset0).
-apply H14.
-apply injective_projections; reflexivity.
-apply sep_star_comm in H14.
-apply ptsto_mem_except in H14.
-apply H14.
-
-eapply list2nmem_sel in H13 as H13'.
-erewrite iblocks_file_len_eq with (flist:= flist).
-eapply inlen_bfile; eauto; try omega.
-rewrite <- H13'; eauto.
-
-
-apply list2nmem_inbound in H13.
-unfold BFILE.rep in H0.
-replace (length ilist) with (length flist).
-apply H13.
-rewrite listmatch_length_pimpl in H0.
-destruct_lift H0.
-eauto.
-eauto.
-
-eapply list2nmem_sel in H13.
-rewrite <- H13.
-eapply inlen_bfile; eauto; try omega.
-
-rewrite map_length.
-erewrite iblocks_file_len_eq with (flist:= flist).
-eapply list2nmem_sel in H13.
-rewrite <- H13.
-eapply inlen_bfile; eauto; try omega.
-
-apply list2nmem_inbound in H13.
-unfold BFILE.rep in H0.
-replace (length ilist) with (length flist).
-apply H13.
-rewrite listmatch_length_pimpl in H0.
-destruct_lift H0.
-eauto.
-eauto.
-
-apply list2nmem_inbound in H13.
-apply H13.
-
-
-apply list2nmem_inbound in H13.
-unfold BFILE.rep in H0.
-replace (length ilist) with (length flist).
-apply H13.
-rewrite listmatch_length_pimpl in H0.
-destruct_lift H0.
-eauto.
-
 Focus 2.
 step.
-
-unfold BFILE.rep.
-cancel.
-unfold BFILE.file_match.
-cancel.
-unfold pimpl; intros.
-eapply listmatch_isolate with (i:= inum).
-
-apply list2nmem_inbound in H13.
-apply H13.
-
-
-apply list2nmem_inbound in H13.
-unfold BFILE.rep in H0.
-replace (length ilist) with (length flist).
-apply H13.
-rewrite listmatch_length_pimpl in H0.
-destruct_lift H0.
-eauto.
-pred_apply.
-cancel.
-
-unfold pimpl; intros.
-eapply listmatch_isolate with (i:= block_off).
-
-eapply list2nmem_sel in H13.
-rewrite <- H13.
-eapply inlen_bfile; eauto; try omega.
-
-rewrite map_length.
-erewrite iblocks_file_len_eq with (flist:= flist).
-eapply list2nmem_sel in H13.
-rewrite <- H13.
-eapply inlen_bfile; eauto; try omega.
-
-apply list2nmem_inbound in H13.
-unfold BFILE.rep in H0.
-replace (length ilist) with (length flist).
-apply H13.
-rewrite listmatch_length_pimpl in H0.
-destruct_lift H0.
-eauto.
-eauto.
-erewrite selN_map.
-Search ptsto sep_star.
-
- 
-assert(AS:(list2valu
-                (firstn byte_off
-                   (valu2list
-                      (fst
-                         (bytesets2valuset
-                            (get_sublist (UByFData ufy) (block_off * valubytes) valubytes)))) ++
-                 data ++
-                 skipn (byte_off + length data)
-                   (valu2list
-                      (fst
-                         (bytesets2valuset
-                            (get_sublist (UByFData ufy) (block_off * valubytes) valubytes))))),
-             nil) =  selN (BFILE.BFData (selN flist inum BFILE.bfile0)) block_off valuset0).
-Focus 1.           
-rewrite H11.  
-rewrite H12.
-unfold get_sublist.
-rewrite concat_hom_skipn.
-rewrite skipn_map_comm.
-replace valubytes with (1*valubytes) by omega.
-rewrite concat_hom_firstn.
-rewrite firstn1.
-erewrite selN_map.
-rewrite valuset2bytesets2valuset.
-rewrite skipn_selN.
-rewrite <- plus_n_O.
 Admitted.
-
-
-
-  Ltac assignms :=
-    match goal with
-    [ fms : BFILE.memstate |- LOG.rep _ _ _ ?ms _ =p=> LOG.rep _ _ _ (BFILE.MSLL ?e) _ ] =>
-      is_evar e; eassign (BFILE.mk_memstate (BFILE.MSAlloc fms) ms); simpl; eauto
-    end.
-
-  Local Hint Extern 1 (LOG.rep _ _ _ ?ms _ =p=> LOG.rep _ _ _ (BFILE.MSLL ?e) _) => assignms.
-    
-    Theorem getlen_ok : forall lxp bxps ixp inum ms,
-    {< F Fm Fi m0 m f flist ilist frees,
-    PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms) hm *
-           [[[ m ::: (Fm * BFILE.rep bxps ixp flist ilist frees) ]]] *
-           [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST:hm' RET:^(ms',r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm' *
-           [[ r = length (BFILE.BFData f) /\ BFILE.MSAlloc ms = BFILE.MSAlloc ms' ]]
-    CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm'
-    >} getlen lxp ixp inum ms.
-  Proof.
-    unfold getlen, BFILE.rep.
-    safestep.
-    sepauto.
-
-    safestep.
-    extract; seprewrite; subst.
-    setoid_rewrite listmatch_length_pimpl in H at 2.
-    destruct_lift H; eauto.
-    simplen.
-
-    cancel.
-    eauto.
-  Qed.
-
-
-  Theorem getattrs_ok : forall lxp bxp ixp inum ms,
-    {< F Fm Fi m0 m flist ilist frees f,
-    PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms) hm *
-           [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
-           [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST:hm' RET:^(ms',r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm' *
-           [[ r = BFILE.BFAttr f /\ BFILE.MSAlloc ms = BFILE.MSAlloc ms' ]]
-    CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm'
-    >} getattrs lxp ixp inum ms.
-  Proof.
-    unfold getattrs, BFILE.rep.
-    safestep.
-    sepauto.
-
-    safestep.
-    extract; seprewrite.
-    subst; eauto.
-
-    cancel.
-    eauto.
-  Qed.
-
-
-
-  Theorem setattrs_ok : forall lxp bxps ixp inum a ms,
-    {< F Fm Fi m0 m flist ilist frees f,
-    PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms) hm *
-           [[[ m ::: (Fm * BFILE.rep bxps ixp flist ilist frees) ]]] *
-           [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST:hm' RET:ms'  exists m' flist' f' ilist',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BFILE.MSLL ms') hm' *
-           [[[ m' ::: (Fm * BFILE.rep bxps ixp flist' ilist' frees) ]]] *
-           [[[ flist' ::: (Fi * inum |-> f') ]]] *
-           [[ f' = BFILE.mk_bfile (BFILE.BFData f) a ]] *
-           [[ BFILE.MSAlloc ms = BFILE.MSAlloc ms' /\
-              let free := BFILE.pick_balloc frees (BFILE.MSAlloc ms') in
-              BFILE.ilist_safe ilist free ilist' free ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
-    >} setattrs lxp ixp inum a ms.
-  Proof.
-    unfold setattrs, BFILE.rep.
-    safestep.
-    sepauto.
-
-    safestep.
-    repeat extract. seprewrite.
-    2: sepauto.
-    2: eauto.
-    eapply listmatch_updN_selN; try omega.
-    unfold BFILE.file_match; cancel.
-
-    denote (list2nmem m') as Hm'.
-    rewrite listmatch_length_pimpl in Hm'; destruct_lift Hm'.
-    denote (list2nmem ilist') as Hilist'.
-    assert (inum < length ilist) by simplen'.
-    apply arrayN_except_upd in Hilist'; eauto.
-    apply list2nmem_array_eq in Hilist'; subst.
-    unfold BFILE.ilist_safe; intuition. left.
-    destruct (addr_eq_dec inum inum0); subst.
-    - unfold BFILE.block_belong_to_file in *; intuition.
-      all: erewrite selN_updN_eq in * by eauto; simpl; eauto.
-    - unfold BFILE.block_belong_to_file in *; intuition.
-      all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
-  Qed.
-
-
-  Theorem updattr_ok : forall lxp bxps ixp inum kv ms,
-    {< F Fm Fi m0 m flist ilist frees f,
-    PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms) hm *
-           [[[ m ::: (Fm * BFILE.rep bxps ixp flist ilist frees) ]]] *
-           [[[ flist ::: (Fi * inum |-> f) ]]]
-    POST:hm' RET:ms'  exists m' flist' ilist' f',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BFILE.MSLL ms') hm' *
-           [[[ m' ::: (Fm * BFILE.rep bxps ixp flist' ilist' frees) ]]] *
-           [[[ flist' ::: (Fi * inum |-> f') ]]] *
-           [[ f' = BFILE.mk_bfile (BFILE.BFData f) (INODE.iattr_upd (BFILE.BFAttr f) kv) ]] *
-           [[ BFILE.MSAlloc ms = BFILE.MSAlloc ms' /\
-              let free := BFILE.pick_balloc frees (BFILE.MSAlloc ms') in
-              BFILE.ilist_safe ilist free ilist' free ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
-    >} updattr lxp ixp inum kv ms.
-  Proof.
-    unfold updattr, BFILE.rep.
-    step.
-    sepauto.
-
-    safestep.
-    repeat extract. seprewrite.
-    2: sepauto.
-    2: eauto.
-    eapply listmatch_updN_selN; try omega.
-    unfold BFILE.file_match; cancel.
-
-    denote (list2nmem m') as Hm'.
-    rewrite listmatch_length_pimpl in Hm'; destruct_lift Hm'.
-    denote (list2nmem ilist') as Hilist'.
-    assert (inum < length ilist) by simplen'.
-    apply arrayN_except_upd in Hilist'; eauto.
-    apply list2nmem_array_eq in Hilist'; subst.
-    unfold BFILE.ilist_safe; intuition. left.
-    destruct (addr_eq_dec inum inum0); subst.
-    - unfold BFILE.block_belong_to_file in *; intuition.
-      all: erewrite selN_updN_eq in * by eauto; simpl; eauto.
-    - unfold BFILE.block_belong_to_file in *; intuition.
-      all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
-  Qed.
-    
-    
-    
-    
-          
-(*From BFile
-
-  Definition datasync T lxp ixp inum fms rx : prog T :=
-    let '(al, ms) := (MSAlloc fms, MSLL fms) in
-    let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
-    ms <- LOG.dsync_vecs lxp (map (@wordToNat _) bns) ms;
-    rx (mk_memstate al ms).
-
-  Definition sync T lxp (ixp : INODE.IRecSig.xparams) fms rx : prog T :=
-    let '(al, ms) := (MSAlloc fms, MSLL fms) in
-    ms <- LOG.sync lxp ms;
-    rx (mk_memstate (negb al) ms).
-
-  Definition pick_balloc A (a : A * A) (flag : bool) :=
-    if flag then fst a else snd a.
-
-  Definition grow T lxp bxps ixp inum v fms rx : prog T :=
-    let '(al, ms) := (MSAlloc fms, MSLL fms) in
-    let^ (ms, len) <- INODE.getlen lxp ixp inum ms;
-    If (lt_dec len INODE.NBlocks) {
-      let^ (ms, r) <- BALLOC.alloc lxp (pick_balloc bxps al) ms;
-      match r with
-      | None => rx ^(mk_memstate al ms, false)
-      | Some bn =>
-           let^ (ms, succ) <- INODE.grow lxp (pick_balloc bxps al) ixp inum bn ms;
-           If (bool_dec succ true) {
-              ms <- LOG.write lxp bn v ms;
-              rx ^(mk_memstate al ms, true)
-           } else {
-             rx ^(mk_memstate al ms, false)
-           }
-      end
-    } else {
-      rx ^(mk_memstate al ms, false)
-    }.
-
-  Definition shrink T lxp bxps ixp inum nr fms rx : prog T :=
-    let '(al, ms) := (MSAlloc fms, MSLL fms) in
-    let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
-    let l := map (@wordToNat _) (skipn ((length bns) - nr) bns) in
-    ms <- BALLOC.freevec lxp (pick_balloc bxps (negb al)) l ms;
-    ms <- INODE.shrink lxp (pick_balloc bxps (negb al)) ixp inum nr ms;
-    rx (mk_memstate al ms).
-End*)
 
 End ABYTEFILE.
