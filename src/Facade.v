@@ -218,12 +218,6 @@ Section Extracted.
 
   Definition is_in (a : string) ls := if in_dec string_dec a ls then true else false.
 
-  Record AxiomaticSpec := {
-    PreCond (disk_in : rawdisk) (input : list Value) : Prop;
-    PostCond (disk_in disk_out : rawdisk) (input_output : list (Value * option Value)) (ret : Value) : Prop;
-    (* PreCondTypeConform : type_conforming PreCond *)
-  }.
-
   Record OperationalSpec := {
     ArgVars : list string;
     RetVar : string;
@@ -233,11 +227,7 @@ Section Extracted.
     (* TODO syntax_ok with is_actual_args_no_dup *)
   }.
 
-  Inductive FuncSpec :=
-  | Axiomatic : AxiomaticSpec -> FuncSpec
-  | Operational : OperationalSpec -> FuncSpec.
-
-  Definition Env := StringMap.t FuncSpec.
+  Definition Env := StringMap.t OperationalSpec.
 
   Record frame := {
     Locs : Locals;
@@ -298,17 +288,8 @@ Section EnvSection.
       can_alias v = true ->
       s' = add x v s ->
       RunsTo (Assign x e) (d, s) (d, s')
-  | RunsToCallAx : forall x f args s spec d d' input output ret,
-      StringMap.find f env = Some (Axiomatic spec) ->
-      mapM (sel s) args = Some input ->
-      PreCond spec d input ->
-      length input = length output ->
-      PostCond spec d d' (List.combine input output) ret ->
-      let s' := add_remove_many args input output s in
-      let s' := add x ret s' in
-      RunsTo (Call x f args) (d, s) (d', s')
   | RunsToCallOp : forall x f args s spec d d' input callee_s' ret,
-      StringMap.find f env = Some (Operational spec) ->
+      StringMap.find f env = Some spec ->
       length args = length (ArgVars spec) ->
       mapM (sel s) args = Some input ->
       let callee_s := make_map (ArgVars spec) input in
@@ -342,16 +323,7 @@ Section EnvSection.
       eval s e = Some v ->
       can_alias v = true ->
       s' = add x v s ->
-      Step0 (d, s, Assign x e) (d, s', Skip)
-  | StepCallAx : forall x f args s spec d d' input output ret,
-      StringMap.find f env = Some (Axiomatic spec) ->
-      mapM (sel s) args = Some input ->
-      PreCond spec d input ->
-      length input = length output ->
-      PostCond spec d d' (List.combine input output) ret ->
-      let s' := add_remove_many args input output s in
-      let s' := add x ret s' in
-      Step0 (d, s, Call x f args) (d', s', Skip).
+      Step0 (d, s, Assign x e) (d, s', Skip).
 
   Definition StepState := (State * list frame * Stmt)%type.
 
@@ -364,14 +336,14 @@ Section EnvSection.
   | StepCont : forall st fs k1 k2,
       Step (st, fs, Seq k1 k2, Skip) (st, fs, k2, k1)
   | StepCallOp : forall x f args s spec d input fs k,
-      StringMap.find f env = Some (Operational spec) ->
+      StringMap.find f env = Some spec ->
       length args = length (ArgVars spec) ->
       mapM (sel s) args = Some input ->
       let callee_s := make_map (ArgVars spec) input in
       Step ((d, s), fs, k, Call x f args)
            ((d, callee_s), {| Locs := s; Cont := k; Spec := spec; Args := args; RetV := x |} :: fs, Skip, spec.(Body))
   | StepCallRet : forall x f args s callee_s' spec d input ret fs k,
-      StringMap.find f env = Some (Operational spec) ->
+      StringMap.find f env = Some spec ->
       mapM (sel s) args = Some input ->
       length args = length (ArgVars spec) ->
       sel callee_s' (RetVar spec) = Some ret ->
@@ -467,8 +439,6 @@ Section EnvSection.
     eapply StepStep0; eapply StepAssign : steps.
   Hint Extern 1 (Step (_, Call _ _ _) _) =>
     eapply StepCallOp : steps.
-  Hint Extern 1 (Step (_, Call _ _ _) _) =>
-    eapply StepStep0; eapply StepCallAx : steps.
   Hint Extern 1 (Step (_, _ :: _, _ _) _) =>
     eapply StepCallRet : steps.
 
@@ -608,7 +578,6 @@ Section EnvSection.
       do_inv.
       + invc H2; eapply runsto_inside' in Hr; deex; repeat (inv_runsto; eauto with steps).
         * eapply runsto_inside. econstructor. econstructor; eauto. eauto with steps. eauto.
-        * eapply runsto_inside. econstructor. econstructor; eauto. econstructor; eauto with steps. eauto.
       + eapply runsto_inside' in Hr; deex. eapply runsto_inside' in H2; deex. repeat inv_runsto. eauto with steps.
       + eapply runsto_inside' in Hr; deex. eapply runsto_inside' in H2; deex. repeat inv_runsto. eauto with steps.
       + simpl in *. eapply runsto_inside' in Hr; deex. eapply runsto_inside' in H2; deex. repeat inv_runsto. invc H0. subst_definitions. inv_runsto. inv_runsto. inv_runsto.
@@ -710,16 +679,10 @@ Section EnvSection.
         eval (snd st) e = Some v ->
         can_alias v = true ->
         Safe (Assign x e) st
-  | SafeCallAx :
-      forall x f args st spec input,
-        StringMap.find f env = Some (Axiomatic spec) ->
-        mapM (sel (snd st)) args = Some input ->
-        PreCond spec (fst st) input ->
-        Safe (Call x f args) st
   | SafeCallOp :
       forall x f args d d' s spec input,
         NoDup args ->
-        StringMap.find f env = Some (Operational spec) ->
+        StringMap.find f env = Some spec ->
         length args = length (ArgVars spec) ->
         mapM (sel s) args = Some input ->
         let callee_s := make_map (ArgVars spec) input in
