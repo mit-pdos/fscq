@@ -266,7 +266,7 @@ Section EnvSection.
       | _, _ => @empty elt
     end.
 
-  (* TODO: throw out RunsTo, I think *)
+  (* TODO: throw out RunsTo? *)
   Inductive RunsTo : Stmt -> State -> State -> Prop :=
   | RunsToSkip : forall st,
       RunsTo Skip st st
@@ -680,7 +680,7 @@ Section EnvSection.
       forall a b st,
         Safe a st /\
         (forall st',
-           Exec a st (EFinished st') -> Safe b st') ->
+           RunsTo a st st' -> Safe b st') ->
         Safe (Seq a b) st
   | SafeIfTrue :
       forall cond t f st,
@@ -698,7 +698,7 @@ Section EnvSection.
         is_true (snd st) cond ->
         Safe body st ->
         (forall st',
-           Exec body st (EFinished st') -> Safe loop st') ->
+           RunsTo body st st' -> Safe loop st') ->
         Safe loop st
   | SafeWhileFalse :
       forall cond body st,
@@ -712,10 +712,22 @@ Section EnvSection.
         Safe (Assign x e) st
   | SafeCallAx :
       forall x f args st spec input,
-        StringMap.find f env = Some spec ->
+        StringMap.find f env = Some (Axiomatic spec) ->
         mapM (sel (snd st)) args = Some input ->
         PreCond spec (fst st) input ->
-        Safe (Call x f args) st.
+        Safe (Call x f args) st
+  | SafeCallOp :
+      forall x f args d d' s spec input,
+        NoDup args ->
+        StringMap.find f env = Some (Operational spec) ->
+        length args = length (ArgVars spec) ->
+        mapM (sel s) args = Some input ->
+        let callee_s := make_map (ArgVars spec) input in
+        Safe (Body spec) (d, callee_s) ->
+        (forall callee_s',
+           RunsTo (Body spec) (d, callee_s) (d', callee_s') ->
+           sel callee_s' (RetVar spec) <> None) ->
+        Safe (Call x f args) (d, s).
 
 (*
   Section Safe_coind.
@@ -814,12 +826,12 @@ Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : Scope) (final_t
     (snd initial_state) \u2272 initial_tstate ->
     Safe env eprog initial_state /\
     (forall final_state,
-      Exec env eprog initial_state (EFinished final_state) ->
+      Exec env (initial_state, [], Skip, eprog) (EFinished final_state) ->
       exists r hm',
         exec (fst initial_state) hm sprog (Finished (fst final_state) hm' r) /\
         (snd final_state) \u2272 (final_tstate r)) /\
     (forall final_disk,
-      Exec env eprog initial_state (ECrashed final_disk) ->
+      Exec env (initial_state, [], Skip, eprog) (ECrashed final_disk) ->
       exists hm',
         exec (fst initial_state) hm sprog (Crashed T final_disk hm')).
 
