@@ -62,42 +62,42 @@ Module ATOMICCP.
 
   (* copy an existing src into an existing, empty dst. *)
 
-  Definition copydata fsxp src_inum dst_inum mscs :=
+  Definition copydata fsxp src_inum tinum mscs :=
     let^ (mscs, attr) <- AFS.file_get_attr fsxp src_inum mscs;
     let^ (mscs, b) <- AFS.read_fblock fsxp src_inum Off0 mscs;
-    let^ (mscs) <- AFS.update_fblock_d fsxp dst_inum Off0 b mscs;
-    let^ (mscs) <- AFS.file_sync fsxp dst_inum mscs;   (* sync blocks *)
-    let^ (mscs, ok) <- AFS.file_set_attr fsxp dst_inum attr mscs;
+    let^ (mscs) <- AFS.update_fblock_d fsxp tinum Off0 b mscs;
+    let^ (mscs) <- AFS.file_sync fsxp tinum mscs;   (* sync blocks *)
+    let^ (mscs, ok) <- AFS.file_set_attr fsxp tinum attr mscs;
     Ret ^(mscs, ok).
 
-  Definition copy2temp fsxp src_inum dst_inum mscs :=
-    let^ (mscs, ok) <- AFS.file_truncate fsxp dst_inum 1 mscs;  (* XXX type error when passing sz *)
+  Definition copy2temp fsxp src_inum tinum mscs :=
+    let^ (mscs, ok) <- AFS.file_truncate fsxp tinum 1 mscs;  (* XXX type error when passing sz *)
     If (bool_dec ok true) {
-      let^ (mscs, ok) <- copydata fsxp src_inum dst_inum mscs;
+      let^ (mscs, ok) <- copydata fsxp src_inum tinum mscs;
       Ret ^(mscs, ok)
     } else {
       Ret ^(mscs, ok)
     }.
 
-  Definition copy_and_rename fsxp src_inum dst_inum dst_fn mscs :=
-    let^ (mscs, ok) <- copy2temp fsxp src_inum dst_inum mscs;
+  Definition copy_and_rename fsxp src_inum tinum (dstbase:list string) (dstname:string) mscs :=
+    let^ (mscs, ok) <- copy2temp fsxp src_inum tinum mscs;
     match ok with
       | false =>
         let^ (mscs) <- AFS.tree_sync fsxp mscs;
         (* Just for a simpler spec: the state is always (d, nil) after this function *)
         Ret ^(mscs, false)
       | true =>
-        let^ (mscs, ok1) <- AFS.rename fsxp the_dnum [] temp_fn [] dst_fn mscs;
+        let^ (mscs, ok1) <- AFS.rename fsxp the_dnum [] temp_fn dstbase dstname mscs;
         let^ (mscs) <- AFS.tree_sync fsxp mscs;
         Ret ^(mscs, ok1)
     end.
 
-  Definition atomic_cp fsxp src_inum dst_fn mscs :=
-    let^ (mscs, maybe_dst_inum) <- AFS.create fsxp the_dnum temp_fn mscs;
-    match maybe_dst_inum with
+  Definition atomic_cp fsxp src_inum dstbase dstname mscs :=
+    let^ (mscs, maybe_tinum) <- AFS.create fsxp the_dnum temp_fn mscs;
+    match maybe_tinum with
       | None => Ret ^(mscs, false)
-      | Some dst_inum =>
-        let^ (mscs, ok) <- copy_and_rename fsxp src_inum dst_inum dst_fn mscs;
+      | Some tinum =>
+        let^ (mscs, ok) <- copy_and_rename fsxp src_inum tinum dstbase dstname mscs;
         Ret ^(mscs, ok)
     end.
 
@@ -294,6 +294,55 @@ Module ATOMICCP.
     or_l.
     eauto.
   Admitted.
+
+  Hint Extern 1 ({{_}} Bind (copy2temp _ _ _ _) _) => apply copy2temp_ok : prog.
+
+  Theorem copy_rename_ok : forall fsxp src_inum tinum (dstbase: list string) (dstname:string) mscs,
+    {< Fm Ftop Ftmp Ftree ds ts tmppath srcpath file tfile v0,
+    PRE:hm
+     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+      [[ treeseq_pred (treeseq_grow_safe tmppath Off0 (MSAlloc mscs) ts !!) ts ]] *
+      [[ treeseq_pred (treeseq_upd_safe tmppath Off0 (MSAlloc mscs) (ts !!)) ts ]] *
+      [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile))%pred (dir2flatmem [] (TStree ts!!)) ]] *
+      [[[ BFILE.BFData file ::: (Off0 |-> v0) ]]]
+    POST:hm' RET:^(mscs', r)
+      exists ds' ts',
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
+       [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
+       [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts' ]] *
+      (([[r = false ]] *
+        (exists f',
+          [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, f'))%pred (dir2flatmem [] (TStree ts'!!)) ]])  \/
+       ([[r = true ]] *
+          [[ (Ftree * srcpath |-> (src_inum, file) * (dstbase++[dstname])%list |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts'!!)) ]]
+       )))
+    XCRASH:hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+      (exists ds' ts',
+        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+        [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
+        (([[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts' ]]) \/
+            [[ (Ftree * srcpath |-> (src_inum, file) * 
+               (dstbase++[dstname])%list |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts'!!)) ]] *
+          [[ DIRTREE.find_subtree [temp_fn] (TStree ts'!!) = None ]]))
+    >} copy_and_rename fsxp src_inum tinum dstbase dstname mscs.
+  Proof.
+    unfold copy_and_rename; intros.
+    step.
+    step.
+    instantiate (2 := (TStree ts !!)).
+    instantiate (2 := []).
+    admit.  (* implied by H11 *)
+    admit. 
+    step.
+    erewrite treeseq_in_ds_eq; eauto.
+    admit. (* update spec for rename *)
+    step.
+    or_l.
+
+  Admitted.
+
 
   (* XXX old stuff *)
 
