@@ -640,7 +640,7 @@ Section EnvSection.
     + invc H2. invc H1. eauto with steps.
   Qed.
 
-  Theorem Steps_ExecFinished' : forall fs p k st st',
+  Theorem Steps_ExecFinished : forall fs p k st st',
     Step^* (st, fs, k, p) (st', [], Skip, Skip) ->
     Exec (st, fs, k, p) (EFinished st').
   Proof.
@@ -672,114 +672,6 @@ Section EnvSection.
     + repeat find_inversion. eauto with steps.
     + destruct y. destruct s. destruct p0. destruct s1. eauto with steps.
   Qed.
-
-  CoInductive Safe : Stmt -> State -> Prop :=
-  | SafeSkip : forall st, Safe Skip st
-  | SafeSeq :
-      forall a b st,
-        Safe a st /\
-        (forall st',
-           RunsTo a st st' -> Safe b st') ->
-        Safe (Seq a b) st
-  | SafeIfTrue :
-      forall cond t f st,
-        is_true (snd st) cond ->
-        Safe t st ->
-        Safe (If cond t f) st
-  | SafeIfFalse :
-      forall cond t f st,
-        is_false (snd st) cond ->
-        Safe f st ->
-        Safe (If cond t f) st
-  | SafeWhileTrue :
-      forall cond body st,
-        let loop := While cond body in
-        is_true (snd st) cond ->
-        Safe body st ->
-        (forall st',
-           RunsTo body st st' -> Safe loop st') ->
-        Safe loop st
-  | SafeWhileFalse :
-      forall cond body st,
-        let loop := While cond body in
-        is_false (snd st) cond ->
-        Safe loop st
-  | SafeAssign :
-      forall x e st v,
-        eval (snd st) e = Some v ->
-        can_alias v = true ->
-        Safe (Assign x e) st
-  | SafeRead :
-      forall x e st v,
-        eval (snd st) e = Some v ->
-        can_alias v = true ->
-        Safe (Assign x e) st
-  | SafeCallOp :
-      forall x f args d d' s spec input,
-        NoDup args ->
-        StringMap.find f env = Some spec ->
-        length args = length (ArgVars spec) ->
-        mapM (sel s) args = Some input ->
-        let callee_s := make_map (ArgVars spec) input in
-        Safe (Body spec) (d, callee_s) ->
-        (forall callee_s',
-           RunsTo (Body spec) (d, callee_s) (d', callee_s') ->
-           sel callee_s' (RetVar spec) <> None) ->
-        Safe (Call x f args) (d, s).
-
-(*
-  Section Safe_coind.
-
-    Variable R : Stmt -> State -> Prop.
-
-    Hypothesis SeqCase : forall a b st, R (Seq a b) st -> R a st /\ forall st', Exec a st (EFinished st') -> R b st'.
-
-    Hypothesis IfCase : forall cond t f st, R (If cond t f) st -> (is_true (snd st) cond /\ R t st) \/ (is_false (snd st) cond /\ R f st).
-
-    Hypothesis WhileCase :
-      forall cond body st,
-        let loop := While cond body in
-        R loop st ->
-        (is_true (snd st) cond /\ R body st /\ (forall st', Exec body st (EFinished st') -> R loop st')) \/
-        (is_false (snd st) cond).
-
-    Hypothesis AssignCase :
-      forall x e st,
-        R (Assign x e) st ->
-        exists v, eval (snd st) e = Some v /\
-                  can_alias v = true.
-
-    Hypothesis CallCase :
-      forall x f args st,
-        R (Call x f args) st ->
-        exists input,
-          mapM (sel (snd st)) args = Some input /\
-          ((exists spec,
-              StringMap.find f env = Some spec /\
-              PreCond spec (fst st) input)).
-
-    Hint Constructors Safe.
-
-    Ltac openhyp :=
-      repeat match goal with
-               | H : _ /\ _ |- _  => destruct H
-               | H : _ \/ _ |- _ => destruct H
-               | H : exists x, _ |- _ => destruct H
-             end.
-
-
-    Theorem Safe_coind : forall c st, R c st -> Safe c st.
-      cofix; intros; destruct c.
-      - eauto.
-      - eapply SeqCase in H; openhyp; eapply SafeSeq; eauto.
-      - eapply IfCase in H; openhyp; eauto.
-      - eapply WhileCase in H; openhyp; eauto.
-      - eapply CallCase in H; openhyp; simpl in *; intuition eauto.
-      - eapply AssignCase in H; openhyp; eauto.
-    Qed.
-
-  End Safe_coind.
-*)
 End EnvSection.
 
 Notation "A ; B" := (Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : facade_scope.
@@ -822,7 +714,6 @@ Notation "ENV \u2272 TENV" := (SameValues ENV TENV) (at level 50).
 Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : Scope) (final_tstate : T -> Scope) :=
   forall initial_state hm,
     (snd initial_state) \u2272 initial_tstate ->
-    Safe env eprog initial_state /\
     (forall final_state,
       Exec env (initial_state, [], Skip, eprog) (EFinished final_state) ->
       exists r hm',
@@ -831,7 +722,9 @@ Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : Scope) (final_t
     (forall final_disk,
       Exec env (initial_state, [], Skip, eprog) (ECrashed final_disk) ->
       exists hm',
-        exec (fst initial_state) hm sprog (Crashed T final_disk hm')).
+        exec (fst initial_state) hm sprog (Crashed T final_disk hm')) /\
+    (Exec env (initial_state, [], Skip, eprog) EFailed ->
+      exec (fst initial_state) hm sprog (Failed T)).
 
 Notation "'EXTRACT' SP {{ A }} EP {{ B }} // EV" :=
   (ProgOk EV EP%facade SP A B)
@@ -910,7 +803,7 @@ Proof.
   intros.
   repeat split; intros; subst.
   econstructor.
-  repeat inv_exec. exists tt. exists hm. intuition.
+  repeat inv_exec. exists hm. intuition.
   repeat inv_exec.
 Defined.
 
@@ -985,10 +878,10 @@ Proof.
   unfold prog_equiv, ProgOk.
   intros.
   repeat eforward H0. conclude H0 eauto. intuition.
-  eforward H0. conclude H0 eauto. repeat deex.
-  repeat eexists. apply H; eauto. eauto.
-  eforward H4. conclude H4 eauto. repeat deex.
-  repeat eexists. apply H; eauto.
+  eforward H2. conclude H2 eauto. repeat deex.
+  repeat eexists; eauto. apply H; eauto.
+  eforward H3. conclude H3 eauto. repeat deex.
+  repeat eexists; eauto. apply H; eauto.
 Qed.
 
 Lemma Forall_elements_add : forall V P k (v : V) m,
@@ -1074,6 +967,8 @@ Proof.
   eauto.
 Qed.
 
+Hint Immediate possible_sync_refl.
+
 Ltac set_hyp_evars :=
   repeat match goal with
   | [ H : context[?e] |- _ ] =>
@@ -1117,22 +1012,11 @@ Proof.
   find_all_cases.
   intuition idtac.
 
-  econstructor.
-  unfold disk_env.
-  maps. trivial.
-  simpl. unfold sel. rewrite He, He0. trivial.
-  simpl. repeat deex. repeat eexists.
+  exists tt. eexists.
+  repeat inv_exec. simpl in *. rewrite He, He0 in *. find_inversion. find_inversion.
+  repeat eexists; intuition eauto.
 
-  repeat deex.
-  repeat inv_exec. unfold disk_env in *. maps. invc H8. unfold sel in *. simpl in *. rewrite He, He0 in *. subst_definitions.
-  repeat deex. simpl in *. do 2 (destruct output; try discriminate). find_inversion. find_inversion.
-
-  repeat eexists; intuition. econstructor.
-
-  apply possible_sync_refl.
-  econstructor; eauto.
-
-  subst. repeat inv_exec. eexists. econstructor. econstructor.
+  repeat inv_exec.
 Defined.
 
 Lemma CompileSkip : forall env A,
@@ -1184,27 +1068,19 @@ Proof.
   repeat inv_exec; eauto.
 Qed.
 
-Lemma Step_Seq : forall env p1 p2 p' st st'',
-  (Step env)^* (Seq p1 p2, st) (p', st'') ->
-  (exists p1', (Step env)^* (p1, st) (p1', st'') /\ p' = Seq p1' p2) \/
-  (exists st', (Step env)^* (p1, st) (Skip, st') /\ (Step env)^* (p2, st') (p', st'')).
+Lemma Step_Seq : forall env p1 p2 st st'',
+  (Step env)^* (st, [], Skip, Seq p1 p2) (st'', [], Skip, Skip) ->
+  (exists st', (Step env)^* (st, [], Skip, p1) (st', [], Skip, Skip) /\ (Step env)^* (st', [], Skip, p2) (st'', [], Skip, Skip)).
 Proof.
   intros.
-  prep_induction H. induction H; intros; subst.
-  + find_inversion. left. eexists. econstructor. econstructor. trivial.
-  + destruct y. invc H.
-    - destruct (IHclos_refl_trans_1n env a' p2 p' s0 st''); eauto. {
-        deex. left. eexists. intuition. econstructor; eauto.
-      } {
-        deex. right. eexists. intuition. econstructor; eauto. eauto.
-      }
-    - right. eexists. split. econstructor. eauto.
+  find_eapply_lem_hyp Step_RunsTo.
+  invc H.
+  repeat find_eapply_lem_hyp RunsTo_Step. eauto.
 Qed.
-
 
 Lemma CompileBind : forall T T' {H: FacadeWrapper Value T} env A (B : T' -> _) p f xp xf var,
   EXTRACT p
-  {{ A }}
+  {{ A }}  
     xp
   {{ fun ret => var ~> ret; A }} // env ->
   (forall (a : T),
@@ -1219,24 +1095,18 @@ Lemma CompileBind : forall T T' {H: FacadeWrapper Value T} env A (B : T' -> _) p
 Proof.
   unfold ProgOk.
   intuition.
-  econstructor. intuition. apply H0. exact hm. auto.
-  specialize (H0 _ hm ltac:(eauto)).
-  intuition. eapply H0 in H3.
-  repeat deex.
-  eapply H1; eauto.
 
   (* TODO: automate proof. ([crush] can probably do this) *)
-  subst. eapply Exec_RunsTo in H3. eapply RunsTo_Step in H3. eapply Step_Seq in H3.
-  intuition; repeat deex. discriminate.
-  eapply Step_RunsTo in H4. eapply Step_RunsTo in H5.
-  eapply RunsTo_Exec in H4. eapply RunsTo_Exec in H5.
+  subst. eapply ExecFinished_Steps in H3. eapply Step_Seq in H3.
+  intuition; repeat deex.
+  eapply Steps_ExecFinished in H4. eapply Steps_ExecFinished in H5.
   specialize (H0 _ hm ltac:(eauto)).
-  intuition. specialize (H0 _ ltac:(eauto)). repeat deex.
+  intuition. specialize (H3 _ ltac:(eauto)). repeat deex.
   specialize (H1 _ _ hm' ltac:(eauto)). intuition.
-  specialize (H1 _ ltac:(eauto)). repeat deex.
+  specialize (H0 _ ltac:(eauto)). repeat deex.
   eexists. exists hm'0. intuition eauto.
 
-  eapply Exec_Steps in H3. repeat deex. eapply Step_Seq in H4.
+  eapply ExecCrashed_Steps in H3. repeat deex. eapply Step_Seq in H4.
   intuition; repeat deex.
   + eapply Steps_Exec in H4.
     repeat eforward H0. specialize (H0 ltac:(eauto)). intuition.
