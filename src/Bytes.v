@@ -116,17 +116,27 @@ Lemma bsplit_list_preserve: forall sz (b1 b2: bytes sz), b1 = b2 -> bsplit_list 
 Proof. intros. rewrite H. reflexivity. Qed.
 
 Theorem bytes2list2bytes: forall sz (b: bytes sz) H, 
-sz > 0 -> bcombine_list (bsplit_list b) = rew H in b.
-Proof. Admitted. (*  intros. exists (bsplit_list_len b).
+bcombine_list (bsplit_list b) = rew H in b.
+Proof.
+intros.
 induction sz; simpl.
-unfold bytes0.
-unfold word2bytes.
 eq_rect_simpl.
-rewrite word0; auto.
+unfold bytes0.
+simpl.
+rewrite word0.
+reflexivity.
 
-rewrite IHsz.
-repeat generalize_proof.
-Admitted. *)
+simpl in H.
+inversion H.
+rewrite IHsz with (H:= H1).
+destruct H1.
+unfold byte2bytes.
+simpl.
+unfold bsplit1_dep, bsplit2_dep; simpl.
+rewrite bcombine_bsplit.
+eq_rect_simpl.
+reflexivity.
+Qed.
 
 Notation "'valubytes'" := (Valulen.valubytes).
 Notation "'valubytes_is'" := (Valulen.valubytes_is).
