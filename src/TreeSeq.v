@@ -1041,11 +1041,11 @@ Module TREESEQ.
 
 
   Theorem treeseq_rename_ok : forall fsxp dnum srcbase (srcname:string) dstbase dstname mscs,
-    {< ds ts Fm Ftop Ftree cwd tree tree_elem subtree srcpath dstpath srcnum dstnum srcfile dstfile,
+    {< ds ts Fm Ftop Ftree cwd tree_elem subtree srcpath dstpath srcnum dstnum srcfile dstfile,
     PRE:hm
     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ DIRTREE.find_subtree cwd tree = Some subtree ]] *
+      [[ DIRTREE.find_subtree cwd (TStree ts!!) = Some subtree ]] *
       [[ subtree = (DIRTREE.TreeDir dnum tree_elem) ]] *
       [[ srcpath = srcbase ++ [srcname] ]] *
       [[ dstpath = dstbase ++ [dstname] ]] *
@@ -1053,20 +1053,37 @@ Module TREESEQ.
     POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
       ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
-       [[ ok = true  ]] * exists ds' ts' ilist' frees' tree' pruned renamed srcents dstents,
+       [[ ok = true  ]] * exists ds' ts' ilist' frees' tree' pruned renamed srcdirnum srcents dstdirnum dstents,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
-       [[ DIRTREE.find_subtree srcpath subtree = Some (DIRTREE.TreeDir srcnum srcents) ]] *
-       [[ pruned = DIRTREE.tree_prune srcnum srcents srcpath srcname subtree ]] *
-       [[ DIRTREE.find_subtree dstpath pruned = Some (DIRTREE.TreeDir dstnum dstents) ]] *
-       [[ renamed = DIRTREE.tree_graft dstnum dstents dstpath dstname (DIRTREE.TreeFile srcnum srcfile) pruned ]] *
-       [[ tree' = DIRTREE.update_subtree cwd renamed tree ]] *
+       [[ DIRTREE.find_subtree srcbase subtree = Some (DIRTREE.TreeDir srcdirnum srcents) ]] *
+       [[ pruned = DIRTREE.tree_prune srcdirnum srcents srcbase srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
+       [[ DIRTREE.find_subtree dstbase pruned = Some (DIRTREE.TreeDir dstdirnum dstents) ]] *
+       [[ renamed = DIRTREE.tree_graft dstdirnum dstents dstbase dstname (DIRTREE.TreeFile srcnum srcfile) pruned ]] *
+       [[ tree' = DIRTREE.update_subtree cwd renamed (TStree ts !!) ]] *
        [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
        [[ (Ftree * dstpath |-> (srcnum, srcfile))%pred (dir2flatmem cwd renamed) ]])
     XCRASH:hm'
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
    >} AFS.rename fsxp dnum srcbase srcname dstbase dstname mscs.
   Proof.
+    intros.
+    eapply pimpl_ok2.
+    eapply AFS.rename_ok.
+    cancel.
+    eapply treeseq_in_ds_tree_pred_latest in H10 as Hpred; eauto.
+    eassumption.
+    step.
+    unfold AFS.rename_rep.
+    cancel.
+    or_r.
+    cancel.
+    eapply treeseq_in_ds_pushd; eauto.
+    pred_apply.
+    unfold tree_rep; simpl.
+    cancel.
+    (* subtree should be (TreeFile srcnum srcfile) using H0 *)
+    
   Admitted.
 
 
