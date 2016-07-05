@@ -54,6 +54,24 @@ Record bytefile := mk_bytefile {
 }.
 Definition bytefile0 := mk_bytefile nil attr0.
 
+Definition bfiledata2protobytefile fd : proto_bytefile :=
+mk_proto_bytefile (map valuset2bytesets fd).
+
+Definition protobytefile2unifiedbytefile pfy : unified_bytefile :=
+mk_unified_bytefile (concat (PByFData pfy)). 
+
+Definition unifiedbytefile2bytefiledata ufy len: list byteset :=
+(firstn len (UByFData ufy)).
+
+Definition unifiedbytefile2bytefile ufy len iattr: bytefile :=
+mk_bytefile (firstn len (UByFData ufy)) iattr.
+
+Definition bfiledata2bytefiledata fd len: list byteset:=
+unifiedbytefile2bytefiledata (protobytefile2unifiedbytefile (bfiledata2protobytefile fd)) len.
+
+Definition bfile2bytefile f len: bytefile:=
+unifiedbytefile2bytefile (protobytefile2unifiedbytefile (bfiledata2protobytefile (BFILE.BFData f))) len (BFILE.BFAttr f).
+
 (* Helper Functions *)
 
 
@@ -89,17 +107,20 @@ Definition read_from_block lxp ixp inum fms block_off byte_off read_length :=
       
 
 Definition read_middle_blocks lxp ixp inum fms block_off num_of_full_blocks:=
-let^ (data) <- ForN i < num_of_full_blocks 
+let^ (ms, data) <- ForN i < num_of_full_blocks 
         Ghost [(lxp : log_xparams) (ixp : INODE.IRecSig.xparams) 
-         (inum : addr) (fms : BFILE.memstate) (block_off : addr) crash]
-        Loopvar [(data : list byte)]
-        Invariant [[ True ]] 
+         (inum : addr) (fms : BFILE.memstate) (block_off : addr) crash 
+         bxp flist ilist frees  F Fm Fi m0 m hm f fy]
+        Loopvar [(ms' : BFILE.memstate) (data : list byte)]
+        Invariant 
+          rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f fy *
+          [[ data = map fst (get_sublist (ByFData fy) (block_off * valubytes) (i * valubytes))]]
         OnCrash crash
         Begin (
-          let^((fms : BFILE.memstate),(list : list byte)) <- 
+          let^((fms' : BFILE.memstate), (list : list byte)) <- 
                 read_from_block lxp ixp inum fms (block_off + i) 0 valubytes;
-          Ret ^( data ++ list)) Rof ^( nil);
-Ret ^(fms, data).
+          Ret ^(fms', data ++ list)) Rof ^(fms, nil);
+Ret ^(ms, data).
 
 
 
@@ -904,6 +925,8 @@ Theorem read_middle_blocks_ok: forall lxp bxp ixp inum fms block_off num_of_full
     >} read_middle_blocks lxp ixp inum fms block_off num_of_full_blocks.
 Proof.
 unfold read_middle_blocks, rep.
+prestep.
+norm.
 step.
 
 monad_simpl.
@@ -957,10 +980,15 @@ step.
 Focus 2.
 cancel.
 
+Focus 3.
+cancel.
+rewrite LOG.rep_hashmap_subset with (hm' := hm'').
+instantiate (1:= fms).
+cancel.
+exists l; auto.
+
 Focus 2.
 step.
-apply LOG.rep_hashmap_subset.
-exists l; auto.
 (* Need to figure out the loop invariant *)
 Admitted.
 
@@ -1637,23 +1665,42 @@ rewrite H5; reflexivity.
 omega.
 Qed.
 
+Print dsupd.
+Print d_map.
 
+Definition diskset2listlistbyteset (ds: diskset) : nelist (list (list byteset)):= 
+d_map (map valuset2bytesets) ds.
+
+Definition listlistbyteset2diskset (llb : nelist (list (list byteset))) : diskset :=
+d_map (map bytesets2valuset) llb.
+
+Definition dsbupd (ds : diskset) (a : addr) (b : byteset): diskset :=
+listlistbyteset2diskset (d_map (map (fun x : list byteset => x ⟦ a := b ⟧)) 
+      (diskset2listlistbyteset ds)).
+
+Fixpoint dsblistupd (ds : diskset) (a : addr) (lb : list byteset): diskset :=
+match lb with
+| nil => ds
+| h::t => dsblistupd (dsbupd ds a h) (a+1) t
+end. 
 
 Theorem write_first_block_ok : forall lxp bxp ixp inum block_off byte_off data fms,
-    {< F Fm Fi Fd m0 m flist ilist frees f fy old_data,
+    {< F Fm Fi Fd ds flist ilist frees f fy old_data,
     PRE:hm
-           rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms m0 m hm f fy  *
+           rep lxp bxp ixp flist ilist frees inum  F Fm Fi fms ds ds!! hm f fy  *
            [[[ (ByFData fy) ::: (Fd * arrayN (ptsto (V:=byteset)) (block_off * valubytes + byte_off) old_data)]]] *
            [[ length old_data = length data]] *
            [[ length data > 0 ]] *
            [[ byte_off + length data <= valubytes ]] 
-    POST:hm' RET:fms'  exists m' flist' f',
-            let fy' := mk_bytefile (updN_list (ByFData fy) (block_off * valubytes + byte_off) data) (ByFAttr fy) in  
-           rep lxp bxp ixp flist' ilist frees inum  F Fm Fi fms' m0 m' hm' f' fy' *
+           
+     POST:hm' RET:fms'  exists flist' f' bn ds0 ds',
+           let fy' := mk_bytefile (updN_list (ByFData fy) (block_off * valubytes + byte_off) data) (ByFAttr fy) in  
+           rep lxp bxp ixp flist' ilist frees inum F Fm Fi fms' ds' ds'!! hm' f' fy' *
+           [[ ds' = dsblistupd ds0 bn (updN_list old_data 0 data) /\ BFILE.diskset_was ds0 ds ]] *
            [[[ (ByFData fy') ::: (Fd * arrayN (ptsto (V:=byteset)) 
            (block_off * valubytes + byte_off) (updN_list old_data 0 data))]]] *
            [[ BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
-    CRASH:hm'  LOG.intact lxp F m0 hm'
+    CRASH:hm'  LOG.intact lxp F ds hm'
     >} write_to_block lxp ixp inum fms block_off byte_off data.
 
 Proof.
@@ -1676,12 +1723,28 @@ rewrite <- plus_n_O .
 cancel.
 omega.
 
-safestep.
+step.
 
-Focus 2.
 eapply inlen_bfile; try eauto; try omega.
 
+eapply protobyte2block; eauto.
+eapply unifiedbyte2protobyte with (a:= block_off * valubytes + byte_off) (k:= valubytes) in H12; try omega.
+rewrite div_eq in H12; try omega.
+apply H12.
+
+eapply proto_len; eauto.
+
+eapply byte2unifiedbyte; eauto.
+pred_apply.
+rewrite arrayN_isolate with (i:=0).
+rewrite <- plus_n_O .
+cancel.
+omega.
+
 Focus 2.
+step.
+rewrite H13.
+
 instantiate (1:= (m, nil)).
 instantiate (1:= frees_2).
 instantiate (1:= frees_1).
