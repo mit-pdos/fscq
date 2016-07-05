@@ -690,7 +690,7 @@ Class FacadeWrapper (WrappingType WrappedType: Type) :=
 Inductive ScopeItem :=
 | SItem A {H: FacadeWrapper Value A} (v : A).
 
-Notation "\u2205" := (StringMap.empty _) : map_scope.
+Notation "∅" := (StringMap.empty _) : map_scope.
 Notation "k ->> v ;  m" := (StringMap.add k v m) (at level 21, right associativity) : map_scope.
 Notation "k ~> v ;  m" := (StringMap.add k (SItem v) m) (at level 21, right associativity) : map_scope.
 Delimit Scope map_scope with map.
@@ -793,9 +793,9 @@ Ltac inv_exec :=
 
 Example micro_noop : sigT (fun p =>
   EXTRACT Ret tt
-  {{ \u2205 }}
+  {{ ∅ }}
     p
-  {{ fun _ => \u2205 }} // \u2205).
+  {{ fun _ => ∅ }} // ∅).
 Proof.
   eexists.
   intro.
@@ -805,6 +805,9 @@ Proof.
   econstructor.
   repeat inv_exec. exists hm. intuition.
   repeat inv_exec.
+  repeat inv_exec.
+  contradiction H2.
+  econstructor; eauto.
 Defined.
 
 (*
@@ -880,8 +883,9 @@ Proof.
   repeat eforward H0. conclude H0 eauto. intuition.
   eforward H2. conclude H2 eauto. repeat deex.
   repeat eexists; eauto. apply H; eauto.
-  eforward H3. conclude H3 eauto. repeat deex.
+  eforward H0. conclude H0 eauto. repeat deex.
   repeat eexists; eauto. apply H; eauto.
+  apply H; eauto.
 Qed.
 
 Lemma Forall_elements_add : forall V P k (v : V) m,
@@ -998,11 +1002,29 @@ Ltac find_all_cases :=
   | [ H : match StringMap.find ?d ?v with | Some _ => _ | None => _ end |- _ ] => find_cases d v
   end; subst.
 
+Lemma write_fails_not_present:
+  forall env fs k (a : W) (v : valu) st,
+    StringMap.find "v" (snd st) = Some (wrap v) ->
+    StringMap.find "a" (snd st) = Some (wrap a) ->
+    ~ (exists st', Step env (st, fs, k, DiskWrite (Var "a") (Var "v")) st') ->
+    fst st a = None.
+Proof.
+  intros.
+  assert (~exists v0, fst st a = Some v0).
+  intuition.
+  deex.
+  contradiction H1.
+  destruct v0, st. eexists. econstructor. econstructor; eauto.
+  destruct (fst st a); eauto. contradiction H2. eauto.
+Qed.
+
+Hint Resolve write_fails_not_present.
+
 Example micro_write : sigT (fun p => forall a v,
   EXTRACT Write a v
-  {{ "a" ~> a; "v" ~> v; \u2205 }}
+  {{ "a" ~> a; "v" ~> v; ∅ }}
     p
-  {{ fun _ => \u2205 }} // \u2205).
+  {{ fun _ => ∅ }} // ∅).
 Proof.
   eexists.
   intros.
@@ -1017,6 +1039,9 @@ Proof.
   repeat eexists; intuition eauto.
 
   repeat inv_exec.
+
+  repeat inv_exec; eauto.
+  contradiction H0. econstructor; eauto.
 Defined.
 
 Lemma CompileSkip : forall env A,
@@ -1031,6 +1056,7 @@ Proof.
 
   repeat inv_exec; eauto.
   repeat inv_exec; eauto.
+  repeat inv_exec. contradiction H2. unfold is_final; eauto.
 Qed.
 
 Lemma CompileConst : forall env A var v,
@@ -1052,6 +1078,8 @@ Proof.
   specialize (H1 k v0 ltac:(eauto)). auto.
 
   repeat inv_exec.
+  repeat inv_exec. contradiction H1; unfold is_final; eauto.
+  contradiction H1. eexists. econstructor. econstructor; simpl; eauto.
 Qed.
 
 Lemma CompileVar : forall env A var T (v : T) {H : FacadeWrapper Value T},
@@ -1203,9 +1231,9 @@ Qed.
 
 Example micro_inc : sigT (fun p => forall x,
   EXTRACT Ret (1 + x)
-  {{ "x" ~> x; \u2205 }}
+  {{ "x" ~> x; ∅ }}
     p
-  {{ fun ret => "x" ~> ret; \u2205 }} // \u2205).
+  {{ fun ret => "x" ~> ret; ∅ }} // ∅).
 Proof.
   eexists.
   intros.
@@ -1469,7 +1497,7 @@ Definition swap_prog :=
   Ret tt.
 
 Example micro_swap : sigT (fun p =>
-  EXTRACT swap_prog {{ \u2205 }} p {{ fun _ => \u2205 }} // disk_env).
+  EXTRACT swap_prog {{ ∅ }} p {{ fun _ => ∅ }} // disk_env).
 Proof.
   compile.
 Defined.
@@ -1487,7 +1515,7 @@ Definition swap2_prog :=
     Ret tt.
 
 Example micro_swap2 : sigT (fun p =>
-  EXTRACT swap2_prog {{ \u2205 }} p {{ fun _ => \u2205 }} // disk_env).
+  EXTRACT swap2_prog {{ ∅ }} p {{ fun _ => ∅ }} // disk_env).
 Proof.
   compile.
 
