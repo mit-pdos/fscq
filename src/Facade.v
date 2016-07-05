@@ -39,7 +39,7 @@ Hint Constructors step fail_step crash_step exec.
 Definition label := string.
 Definition var := string.
 
-Definition W := nat. (* Assume bignums? *)
+Notation W := nat. (* Assume bignums? *)
 
 Inductive binop := Plus | Minus | Times.
 Inductive test := Eq | Ne | Lt | Le.
@@ -67,7 +67,9 @@ Inductive Stmt :=
 | If : Expr -> Stmt -> Stmt -> Stmt
 | While : Expr -> Stmt -> Stmt
 | Call : var -> label -> list var -> Stmt
-| Assign : var -> Expr -> Stmt.
+| Assign : var -> Expr -> Stmt
+| DiskRead : var -> Expr -> Stmt
+| DiskWrite : Expr -> Expr -> Stmt.
 
 Arguments Assign v val.
 
@@ -256,6 +258,8 @@ Section EnvSection.
       | _, _ => @empty elt
     end.
 
+  Eval hnf in rawdisk.
+
   (* TODO: throw out RunsTo? *)
   Inductive RunsTo : Stmt -> State -> State -> Prop :=
   | RunsToSkip : forall st,
@@ -288,6 +292,17 @@ Section EnvSection.
       can_alias v = true ->
       s' = add x v s ->
       RunsTo (Assign x e) (d, s) (d, s')
+  | RunsToDiskRead : forall x ae a d s s' v vs,
+      eval s ae = Some (Num a) ->
+      d a = Some (v, vs) ->
+      s' = add x (Block v) s ->
+      RunsTo (DiskRead x ae) (d, s) (d, s')
+  | RunsToDiskWrite : forall ae a ve v d d' s v0 v0s,
+      eval s ae = Some (Num a) ->
+      eval s ve = Some (Block v) ->
+      d a = Some (v0, v0s) ->
+      d' = upd d a (v, v0 :: v0s) ->
+      RunsTo (DiskWrite ae ve) (d, s) (d', s)
   | RunsToCallOp : forall x f args s spec d d' input callee_s' ret,
       StringMap.find f env = Some spec ->
       length args = length (ArgVars spec) ->
@@ -323,7 +338,18 @@ Section EnvSection.
       eval s e = Some v ->
       can_alias v = true ->
       s' = add x v s ->
-      Step0 (d, s, Assign x e) (d, s', Skip).
+      Step0 (d, s, Assign x e) (d, s', Skip)
+  | StepDiskRead : forall x ae a d s s' v vs,
+      eval s ae = Some (Num a) ->
+      d a = Some (v, vs) ->
+      s' = add x (Block v) s ->
+      Step0 (d, s, DiskRead x ae) (d, s', Skip)
+  | StepDiskWrite : forall ae a ve v d d' s v0 v0s,
+      eval s ae = Some (Num a) ->
+      eval s ve = Some (Block v) ->
+      d a = Some (v0, v0s) ->
+      d' = upd d a (v, v0 :: v0s) ->
+      Step0 (d, s, DiskWrite ae ve) (d', s, Skip).
 
   Definition StepState := (State * list frame * Stmt)%type.
 
@@ -437,6 +463,10 @@ Section EnvSection.
     eapply StepStep0; eapply StepWhileFalse : steps.
   Hint Extern 1 (Step (_, Assign _ _) _) =>
     eapply StepStep0; eapply StepAssign : steps.
+  Hint Extern 1 (Step (_, DiskRead _ _) _) =>
+    eapply StepStep0; eapply StepDiskRead : steps.
+  Hint Extern 1 (Step (_, DiskWrite _ _) _) =>
+    eapply StepStep0; eapply StepDiskWrite : steps.
   Hint Extern 1 (Step (_, Call _ _ _) _) =>
     eapply StepCallOp : steps.
   Hint Extern 1 (Step (_, _ :: _, _ _) _) =>
@@ -576,8 +606,8 @@ Section EnvSection.
       specialize (IHclos_refl_trans_1n _ _ _ _ _ eq_refl eq_refl eq_refl).
       rename IHclos_refl_trans_1n into Hr.
       do_inv.
-      + invc H2; eapply runsto_inside' in Hr; deex; repeat (inv_runsto; eauto with steps).
-        * eapply runsto_inside. econstructor. econstructor; eauto. eauto with steps. eauto.
+      + invc H2; eapply runsto_inside' in Hr; deex; repeat (inv_runsto; eauto with steps);
+          ( eapply runsto_inside; [ econstructor; econstructor; eauto | ]; eauto with steps ).
       + eapply runsto_inside' in Hr; deex. eapply runsto_inside' in H2; deex. repeat inv_runsto. eauto with steps.
       + eapply runsto_inside' in Hr; deex. eapply runsto_inside' in H2; deex. repeat inv_runsto. eauto with steps.
       + simpl in *. eapply runsto_inside' in Hr; deex. eapply runsto_inside' in H2; deex. repeat inv_runsto. invc H0. subst_definitions. inv_runsto. inv_runsto. inv_runsto.
@@ -675,6 +705,11 @@ Section EnvSection.
         is_false (snd st) cond ->
         Safe loop st
   | SafeAssign :
+      forall x e st v,
+        eval (snd st) e = Some v ->
+        can_alias v = true ->
+        Safe (Assign x e) st
+  | SafeRead :
       forall x e st v,
         eval (snd st) e = Some v ->
         can_alias v = true ->
@@ -846,35 +881,7 @@ Definition extract_code := projT1.
 
 Local Open Scope string_scope.
 
-
-Definition read : AxiomaticSpec.
-  refine {|
-    PreCond := fun disk args => exists (a : addr),
-      args = [wrap a];
-    PostCond := fun disk disk' args ret => exists (a : addr) (v : valu) (x : list valu),
-      args = [(wrap a, Some (wrap a))] /\
-      disk a = Some (v, x) /\
-      ret = wrap (v) /\
-      disk' = disk
-  |}.
-Defined.
-
-Definition write : AxiomaticSpec.
-  refine {|
-    PreCond := fun disk args => exists (a : addr) (v : valu),
-      args = [wrap a; wrap v];
-    PostCond := fun disk disk' args ret => exists (a : addr) (v v0 : valu) (x : list valu),
-      args = [(wrap a, Some (wrap a)); (wrap v, Some (wrap v))] /\
-      disk a = Some (v0, x) /\
-      disk' = upd disk a (v, v0 :: x) /\
-      ret = wrap tt
-  |}.
-Defined.
-
-
 Local Open Scope map_scope.
-
-Definition disk_env : Env := "write" ->> write ; "read" ->> read ; \u2205.
 
 Ltac find_cases var st := case_eq (StringMap.find var st); [
   let v := fresh "v" in
@@ -885,8 +892,9 @@ Ltac find_cases var st := case_eq (StringMap.find var st); [
 
 Ltac inv_exec :=
   match goal with
+  | [ H : Step0 _ _ |- _ ] => invc H
   | [ H : Step _ _ _ |- _ ] => invc H
-  | [ H : Exec _ _ _ _ |- _ ] => invc H
+  | [ H : Exec _ _ _ |- _ ] => invc H
   | [ H : CrashStep _ |- _ ] => invc H
   end; try discriminate.
 
@@ -1099,11 +1107,11 @@ Example micro_write : sigT (fun p => forall a v,
   EXTRACT Write a v
   {{ "a" ~> a; "v" ~> v; \u2205 }}
     p
-  {{ fun _ => \u2205 }} // disk_env).
+  {{ fun _ => \u2205 }} // \u2205).
 Proof.
   eexists.
   intros.
-  instantiate (1 := (Call "_" "write" ["a"; "v"])%facade).
+  instantiate (1 := (DiskWrite (Var "a") (Var "v"))%facade).
   intro. intros.
   maps.
   find_all_cases.
