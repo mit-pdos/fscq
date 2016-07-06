@@ -6,6 +6,7 @@ Require Import FunctionalExtensionality.
 Require Import NArith.
 Require Import AsyncDisk.
 Require Import Bytes.
+Require Import DiskSet.
 
 Notation "'byteset'" := (byte * list byte)%type.
 
@@ -145,6 +146,9 @@ Qed.
 Lemma le_trans: forall n m k, n <= m -> m <= k -> n <= k.
 Proof. intros. omega. Qed.
 
+Fact lt_le_trans: forall n m p, n < m -> m <= p -> n < p.
+Proof. intros. omega. Qed.
+
 Lemma le_weaken_l: forall n m k, n + m <= k -> n <= k.
 Proof. intros. omega. Qed.
 
@@ -195,6 +199,7 @@ simpl in H.
 apply plus_lt_compat_rev in H.
 apply H.
 Qed.
+
 
 Lemma some_eq: forall A (x y: A), Some x = Some y <-> x = y.
 Proof.
@@ -356,7 +361,6 @@ unfold bytes2valubytes.
 simpl.
 rewrite natToWord_wordToNat.
 apply bytes2valu2bytes.
-rewrite valubytes_is; omega.
 Qed.
 
 Lemma cons_simpl: forall A a (l l': list A),
@@ -546,4 +550,28 @@ reflexivity.
 simpl.
 rewrite map_map; simpl.
 Admitted.
+
+Definition upd_byteset bs b: byteset := (b, (fst bs)::(snd bs)).
+
+Fixpoint updN_list (l: list byteset) off (l1: list byte): list byteset :=
+match l1 with
+| nil => l
+| h::t => updN_list ((firstn off l)++((upd_byteset (selN l off byteset0) h)::(skipn (S off) l))) (S off) t
+end.
+
+Definition diskset2listlistbyteset (ds: diskset) : nelist (list (list byteset)):= 
+d_map (map valuset2bytesets) ds.
+
+Definition listlistbyteset2diskset (llb : nelist (list (list byteset))) : diskset :=
+d_map (map bytesets2valuset) llb.
+
+Definition dsbupd (ds : diskset) (a : addr) (b : byteset): diskset :=
+listlistbyteset2diskset (d_map (map (fun x : list byteset => x ⟦ a := b ⟧)) 
+      (diskset2listlistbyteset ds)).
+
+Fixpoint dsblistupd (ds : diskset) (a : addr) (lb : list byteset): diskset :=
+match lb with
+| nil => ds
+| h::t => dsblistupd (dsbupd ds a h) (a+1) t
+end. 
 
