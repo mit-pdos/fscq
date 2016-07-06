@@ -37,11 +37,6 @@ Proof.
 Qed.
 
 
-Definition valu2bytes (v : valu) : bytes (1 + (valubytes - 1)).
-  refine (@word2bytes valulen (1 + (valubytes - 1)) _ v).
-  rewrite valulen_is. rewrite valubytes_is. reflexivity.
-Defined.
-
 Definition byteset0 := (byte0, nil: list byte).
 Definition valu0 := bytes2valu  (natToWord (valubytes*8) 0).
 Definition valuset0 := (valu0, nil: list valu).
@@ -328,13 +323,41 @@ Lemma bcombine_list_contr: forall a l,
 bcombine (byte2bytes a) (bcombine_list l) = bcombine_list (a::l).
 Proof. intros; reflexivity. Qed.
 
-Lemma list2valu2list: forall l, l<>nil -> valu2list (list2valu l) = l.
-Proof. Admitted.
+Lemma word2bytes_preserve: forall sz (b: bytes sz),
+word2bytes sz eq_refl $ (# b) = b.
+Proof.
+intros.
+simpl.
+apply natToWord_wordToNat.
+Qed.
+
+Lemma list2valu2list: forall l, length l = valubytes -> valu2list (list2valu l) = l.
+Proof.
+intros.
+unfold list2valu, valu2list.
+rewrite valu2bytes2valu.
+unfold bytes2valubytes.
+destruct H.
+simpl.
+rewrite natToWord_wordToNat.
+apply list2bytes2list.
+Qed.
 
 Lemma valu2list2valu: forall v, list2valu (valu2list v) = v.
-Proof. Admitted.
-
-
+Proof. 
+intros.
+unfold list2valu, valu2list.
+assert(valubytes = length (bsplit_list (valu2bytes v))).
+rewrite bsplit_list_len. reflexivity.
+rewrite bytes2list2bytes with (H:= H).
+destruct H.
+eq_rect_simpl.
+unfold bytes2valubytes.
+simpl.
+rewrite natToWord_wordToNat.
+apply bytes2valu2bytes.
+rewrite valubytes_is; omega.
+Qed.
 
 Lemma cons_simpl: forall A a (l l': list A),
 l = l' -> (a::l) = (a::l').
@@ -356,27 +379,6 @@ reflexivity.
 apply H.
 Qed.
 
-
-
-Lemma mapfst_valuset2bytesets: forall i a vs,
-length a = i ->
-(map fst (valuset2bytesets_rec (a::vs) i)) = a.
-Proof.
-induction i; intros.
-apply length_nil in H.
-symmetry; apply H.
-rewrite mapfst_v2b_unfold.
-replace (S i - 1) with i by omega.
-rewrite map_cons.
-rewrite IHi.
-rewrite <- skipn_selN_skipn.
-reflexivity.
-omega.
-rewrite skipn_length.
-omega.
-omega.
-Qed.
-
 Definition cons' {A} (a: list A) b:= cons b a.
 
 Lemma v2b_rec_nil: forall l i,
@@ -394,6 +396,63 @@ reflexivity.
 simpl in H.
 inversion H; reflexivity.
 Qed.
+
+Lemma length_skip1: forall l i, 
+length l = S i -> 
+length ((fun l : list byte => match l with
+                             | nil => nil
+                             | _ :: l0 => l0
+                             end) l) = i.
+Proof.
+intros.
+destruct l.
+inversion H.
+simpl in H; omega.
+Qed.
+
+
+Lemma mapfst_valuset2bytesets: forall a i vs,
+Forall (fun sublist : list byte => length sublist = i) (a::vs) ->
+(map fst (valuset2bytesets_rec (a::vs) i)) = a.
+Proof.
+induction a; intros.
+destruct i.
+reflexivity.
+rewrite Forall_forall in H.
+destruct H with (x:= nil: list byte).
+apply in_eq.
+reflexivity.
+
+
+destruct i.
+rewrite Forall_forall in *.
+assert(In (a::a0)((a :: a0) :: vs) ). apply in_eq.
+apply H in H0.
+inversion H0.
+simpl.
+simpl in *.
+rewrite cons_simpl with (l':= a0).
+reflexivity.
+apply IHa.
+
+rewrite Forall_forall in *; intros.
+destruct H0.
+assert(In (a::a0)((a :: a0) :: vs) ). apply in_eq.
+apply H in H1.
+simpl in H1.
+subst.
+omega.
+
+pose proof length_skip1.
+
+apply in_map_iff in H0.
+destruct H0.
+destruct H0.
+destruct H1 with (l:= x0) (i:= i).
+apply H; apply in_cons; auto.
+rewrite H0;reflexivity.
+Qed.
+
 
 (* Lemma v2b_rec_selN: forall i j l,
 length l = i -> j < i ->
@@ -426,6 +485,25 @@ destruct a.
 simpl.
 rewrite IHl. *)
 
+Lemma mapsnd_valuset2bytesets: forall i a vs,
+ vs <> nil ->
+(map snd (valuset2bytesets_rec (a::vs) i)) = (map byteset2list (valuset2bytesets_rec (vs) i)).
+Proof.
+induction i; intros.
+reflexivity.
+
+destruct vs.
+unfold not in H; destruct H; reflexivity.
+
+simpl.
+rewrite IHi.
+unfold selN'.
+unfold byteset2list.
+simpl.
+reflexivity.
+unfold not; intros; inversion H0.
+Qed.
+
 
 Lemma bsplit1_bsplit_list: forall sz (b: bytes (1 + (sz - 1))),
 (bsplit1 1 (sz - 1) b
@@ -438,7 +516,34 @@ reflexivity.
 Qed.
 
 Lemma valuset2bytesets2valuset: forall vs, bytesets2valuset (valuset2bytesets vs) = vs.
-Proof. Admitted.
+Proof.
+intros.
+unfold bytesets2valuset, valuset2bytesets.
+unfold byteset2list.
+simpl.
+rewrite valuset2bytesets_rec_expand.
+simpl.
+unfold selN'.
+rewrite map_map; simpl.
+rewrite mapfst_valuset2bytesets.
+replace ((valu2list (fst vs)) ⟦ 0 ⟧ :: match valu2list (fst vs) with
+                                  | nil => nil
+                                  | _ :: l => l
+                                  end) with (valu2list (fst vs)).
+rewrite valu2list2valu.
+rewrite map_map; simpl.
+rewrite map_map; simpl.
+rewrite map_map; simpl.
+destruct (valu2list (fst vs)) eqn:D.
+apply length_zero_iff_nil in D.
+rewrite valu2list_len in D.
+rewrite valubytes_is in D; inversion D.
+apply injective_projections.
+reflexivity.
+simpl.
+induction (snd vs).
+reflexivity.
+simpl.
+rewrite map_map; simpl.
+Admitted.
 
-Lemma bytesets2valuset2bytesets: forall bs, bs <> nil -> valuset2bytesets (bytesets2valuset bs) = bs.
-Proof. Admitted.
