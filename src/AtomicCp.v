@@ -154,7 +154,7 @@ Module ATOMICCP.
     POST:hm' RET:^(mscs', r)
       exists ds' ts',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
-       (* [[ MSAlloc mscs = MSAlloc mscs' ]] *)
+       [[ MSAlloc mscs = MSAlloc mscs' ]] *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
        [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts' ]] *
         (([[ r = false ]] *
@@ -247,7 +247,7 @@ Module ATOMICCP.
     POST:hm' RET:^(mscs', r)
       exists ds' ts',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
-       (* [[ MSAlloc mscs = MSAlloc mscs' ]] *)
+       [[ MSAlloc mscs = MSAlloc mscs' ]] *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
        [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts' ]] *
         (([[ r = false ]] *
@@ -298,13 +298,14 @@ Module ATOMICCP.
   Hint Extern 1 ({{_}} Bind (copy2temp _ _ _ _) _) => apply copy2temp_ok : prog.
 
   Theorem copy_rename_ok : forall fsxp src_inum tinum (dstbase: list string) (dstname:string) mscs,
-    {< Fm Ftop Ftmp Ftree ds ts tmppath srcpath file tfile v0,
+    {< Fm Ftop Ftmp Ftree ds ts tmppath srcpath file tfile v0 dstinum dstfile,
     PRE:hm
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
       [[ treeseq_pred (treeseq_grow_safe tmppath Off0 (MSAlloc mscs) ts !!) ts ]] *
       [[ treeseq_pred (treeseq_upd_safe tmppath Off0 (MSAlloc mscs) (ts !!)) ts ]] *
-      [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile))%pred (dir2flatmem [] (TStree ts!!)) ]] *
+      [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile) *
+          ((dstbase++[dstname])%list |-> (dstinum, dstfile)))%pred (dir2flatmem [] (TStree ts!!)) ]] *
       [[[ BFILE.BFData file ::: (Off0 |-> v0) ]]]
     POST:hm' RET:^(mscs', r)
       exists ds' ts',
@@ -313,7 +314,8 @@ Module ATOMICCP.
        [[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts' ]] *
       (([[r = false ]] *
         (exists f',
-          [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, f'))%pred (dir2flatmem [] (TStree ts'!!)) ]])  \/
+          [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, f') *
+              (dstbase ++ [dstname])%list |-> (dstinum, dstfile))%pred (dir2flatmem [] (TStree ts'!!)) ]])  \/
        ([[r = true ]] *
           [[ (Ftree * srcpath |-> (src_inum, file) * (dstbase++[dstname])%list |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts'!!)) ]]
        )))
@@ -324,23 +326,63 @@ Module ATOMICCP.
         [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
         (([[ treeseq_pred (temp_treeseqpred Ftmp tmppath tinum) ts' ]]) \/
             [[ (Ftree * srcpath |-> (src_inum, file) * 
-               (dstbase++[dstname])%list |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts'!!)) ]] *
-          [[ DIRTREE.find_subtree [temp_fn] (TStree ts'!!) = None ]]))
+               (dstbase++[dstname])%list |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts'!!)) ]]))
     >} copy_and_rename fsxp src_inum tinum dstbase dstname mscs.
   Proof.
     unfold copy_and_rename; intros.
     step.
+    instantiate (1 := srcpath).
+    cancel.
     step.
-    instantiate (2 := (TStree ts !!)).
     instantiate (2 := []).
-    admit.  (* implied by H11 *)
+    eapply sep_star_split_l in H11 as H11'.
+    destruct H11'.
+    admit.  (* implied by H6 *)
     admit. 
     step.
     erewrite treeseq_in_ds_eq; eauto.
-    admit. (* update spec for rename *)
     step.
-    or_l.
-
+    admit. (* XXX temp_tree pred *)
+    xcrash.
+    or_r.
+    xcrash.
+    left.
+    admit. (* temp_tree pred *)
+    erewrite treeseq_in_ds_eq; eauto.
+    step.
+    admit. (* temp_tree pred *)
+    xcrash.
+    or_r.
+    xcrash.
+    or_r.
+    cancel. 
+    2 :  erewrite treeseq_in_ds_eq; eauto.
+    simpl.
+    eassumption.
+    xcrash.
+    or_r.
+    xcrash.
+    or_r.
+    cancel.
+    2: erewrite treeseq_in_ds_eq; eauto.
+    pred_apply.
+    cancel.
+    admit. (* one more case: XXX rename failed *)
+    step.
+    admit. (* temp_tree pred *) 
+    xcrash.
+    or_r.
+    xcrash.
+    or_r.
+    2: erewrite treeseq_in_ds_eq; eauto.
+    cancel.
+    admit. (* XXX: copy2temp didn't succeed *)
+    xcrash.
+    or_r.
+    xcrash.
+    2: erewrite treeseq_in_ds_eq; eauto.
+    or_r.
+    cancel.
   Admitted.
 
 
