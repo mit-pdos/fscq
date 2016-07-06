@@ -103,19 +103,8 @@ Module ATOMICCP.
 
   (** recovery programs **)
 
-  (* atomic_cp recovery: if temp_fn exists, delete it *)
-  Definition cleanup fsxp mscs :=
-    let^ (mscs, maybe_src_inum) <- AFS.lookup fsxp the_dnum [temp_fn] mscs;
-    match maybe_src_inum with
-    | None => Ret mscs
-    | Some (src_inum, isdir) =>
-      let^ (mscs, ok) <- AFS.delete fsxp the_dnum temp_fn mscs;
-      let^ (mscs) <- AFS.tree_sync fsxp mscs;
-      Ret mscs
-    end.
-
   (* top-level recovery function: call AFS recover and then atomic_cp's recovery *)
-  Definition recover :=
+  Definition atomic_cp_recover :=
     let^ (mscs, fsxp) <- AFS.recover cachesize;
     let^ (mscs, maybe_src_inum) <- AFS.lookup fsxp the_dnum [temp_fn] mscs;
     match maybe_src_inum with
@@ -375,6 +364,48 @@ Module ATOMICCP.
 
 
   (* specs for copy_and_rename_cleanup and atomic_cp *)
+
+  Theorem atomic_cp_recover_ok :
+    {< Fm Ftop Ftree fsxp cs mscs ds ts srcpath tmppath dstbase dstname tinum src_inum file tfile dstinum dstfile,
+    PRE:hm
+      LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+      (([[ (Ftree * srcpath |-> (src_inum, file) * 
+               (dstbase++[dstname])%list |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts!!)) ]]) \/
+       ([[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile) *
+              (dstbase ++ [dstname])%list |-> (dstinum, dstfile))%pred (dir2flatmem [] (TStree ts!!)) ]]))
+    POST:hm' RET:^(mscs', fsxp')
+      [[ fsxp' = fsxp ]] * exists ds' ts',
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (ds' !!, nil)) (MSLL mscs') hm' *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs' (ts' !!, nil) ds' ]] *
+      (([[ (Ftree * srcpath |-> (src_inum, file) * 
+               (dstbase++[dstname])%list |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts!!)) ]]) \/
+       ([[ (Ftree * srcpath |-> (src_inum, file) *
+               (dstbase ++ [dstname])%list |-> (dstinum, dstfile))%pred (dir2flatmem [] (TStree ts!!)) ]]))
+    XCRASH:hm'
+     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+      (exists ds' ts',
+        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+        [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
+        (([[ (Ftree * srcpath |-> (src_inum, file) * 
+               (dstbase++[dstname])%list |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts'!!)) ]]) \/
+         ([[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile) *
+              (dstbase ++ [dstname])%list |-> (dstinum, dstfile))%pred (dir2flatmem [] (TStree ts'!!)) ]]))
+      )
+    >} atomic_cp_recover.
+  Proof.
+    unfold atomic_cp_recover; intros.
+    prestep. norml.  (* XXX slow! *)
+    safecancel.
+    step.
+    Focus 4.
+    destruct a1.
+    step.
+    (* XXX looks proming ....*)
+  Admitted.
+    
+
+  (* old stuff *)
 
   Theorem atomic_cp_recover_ok :
     {< fsxp cs ds base_tree temp_dents src_fn src_inum dst_fn file tinum old_tfile,

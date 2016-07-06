@@ -542,6 +542,27 @@ Module TREESEQ.
     eassumption.
   Qed.
 
+ Theorem treeseq_lookup_ok: forall fsxp dnum fnlist mscs,
+    {< ds ts Fm Ftop,
+    PRE:hm
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+      [[ DIRTREE.dirtree_inum (TStree ts !!) = dnum]] *
+      [[ DIRTREE.dirtree_isdir (TStree ts !!) = true ]]
+    POST:hm' RET:^(mscs', r)
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+      [[ r = DIRTREE.find_name fnlist (TStree ts !!) /\ MSAlloc mscs' = MSAlloc mscs ]]
+    CRASH:hm'  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+     >} AFS.lookup fsxp dnum fnlist mscs.
+  Proof.
+    intros.
+    eapply pimpl_ok2.
+    eapply AFS.lookup_ok.
+    cancel.
+    eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
+    step.
+  Qed.
+
   Theorem treeseq_read_fblock_ok : forall fsxp inum off mscs,
     {< ds ts Fm Ftop Ftree pathname f Fd vs,
     PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
@@ -1125,8 +1146,48 @@ Admitted.
     admit. (* XXX distinct names *)
   Admitted.
 
+  (* restricted to deleting files *)
+  Theorem treeseq_delete_ok : forall fsxp dnum name mscs,
+    {< ds ts pathname Fm Ftop Ftree tree_elem finum file,
+    PRE:hm
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+      [[ DIRTREE.find_subtree pathname (TStree ts !!) = Some (DIRTREE.TreeDir dnum tree_elem) ]] *
+      [[ (Ftree * ((pathname++[name])%list) |-> (finum, file))%pred (dir2flatmem [] (TStree ts !!)) ]]
+    POST:hm RET:^(mscs', ok)
+      [[ MSAlloc mscs' = MSAlloc mscs ]] *
+      [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm \/
+      [[ ok = true ]] * exists ds' ts' tree' ilist' frees',
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm *
+        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+        [[ tree' = DIRTREE.update_subtree pathname
+                      (DIRTREE.delete_from_dir name (DIRTREE.TreeDir dnum tree_elem)) (TStree ts !!) ]] *
+        [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
+        [[ Ftree (dir2flatmem [] (TStree ts' !!)) ]]
+    CRASH:hm
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm
+    >} AFS.delete fsxp dnum name mscs.
+  Proof.
+    intros.
+    eapply pimpl_ok2.
+    eapply AFS.delete_ok.
+    cancel.
+    eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
+    eassumption.
+    step.
+    or_r.
+    cancel.
+    eapply treeseq_in_ds_pushd; eauto.
+    unfold treeseq_one_safe; simpl.
+    rewrite H0 in H12.
+    eassumption.
+    eapply dir2flatmem_delete_file; eauto.
+    distinct_names'.
+  Qed.
+
 
   Hint Extern 1 ({{_}} Bind (AFS.file_get_attr _ _ _) _) => apply treeseq_file_getattr_ok : prog.
+  Hint Extern 1 ({{_}} Bind (AFS.lookup _ _ _ _) _) => apply treeseq_lookup_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.read_fblock _ _ _ _) _) => apply treeseq_read_fblock_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.file_set_attr _ _ _ _) _) => apply treeseq_file_set_attr_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.update_fblock_d _ _ _ _ _) _) => apply treeseq_update_fblock_d_ok : prog.
@@ -1134,6 +1195,7 @@ Admitted.
   Hint Extern 1 ({{_}} Bind (AFS.file_truncate _ _ _ _) _) => apply treeseq_file_grow_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.tree_sync _ _ ) _) => apply treeseq_tree_sync_ok : prog.
   Hint Extern 1 ({{_}} Bind (AFS.rename _ _ _ _ _ _ _) _) => apply treeseq_rename_ok : prog.
+  Hint Extern 1 ({{_}} Bind (AFS.delete _ _ _ _) _) => apply treeseq_delete_ok : prog.
 
 End TREESEQ.
 
