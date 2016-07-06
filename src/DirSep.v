@@ -170,3 +170,57 @@ Proof.
         apply dirents2mem_not_in_none; auto.
 Qed.
 
+Lemma dir2flatmem_graft_upd : forall tree inum inum' f f' basenum basedents base name,
+  tree_names_distinct tree ->
+  find_subtree (base++[name]) tree = Some (TreeFile inum f) ->
+  dir2flatmem [] (tree_graft basenum basedents base name (TreeFile inum' f') tree) =
+  upd (dir2flatmem [] tree) (base++[name]) (inum', f').
+Proof.
+Admitted.
+
+(* if name exists then the graft is the same as an update but with new inum too *)
+Theorem dirents2mem_graft_file' : forall (F: @pred (list string) (@list_eq_dec string string_dec) (addr * BFILE.bfile))
+      tree name inum f inum' f' basenum basedents base,
+  tree_names_distinct tree ->
+  (F * (base ++ [name]) |-> (inum', f'))%pred (dir2flatmem [] tree) -> 
+  (F * (base ++ [name]) |-> (inum, f))%pred (dir2flatmem [] (tree_graft basenum basedents base name (TreeFile inum f) tree)).
+Proof.
+  intros.
+  erewrite dir2flatmem_graft_upd; eauto.
+  eapply ptsto_upd'; eauto.
+  eapply dir2flatmem_find_subtree_ptsto; eauto.
+Qed.
+
+(* unproven version for when dst doesn't exist *)
+Theorem dirents2mem_graft_file : forall (F: @pred (list string) (@list_eq_dec string string_dec) (addr * BFILE.bfile))
+      tree name inum f basenum basedents base,
+  tree_names_distinct tree ->
+  F (dir2flatmem [] tree) -> 
+  (F * (base ++ [name]) |-> (inum, f))%pred (dir2flatmem [] (tree_graft basenum basedents base name (TreeFile inum f) tree)).
+Proof.
+Admitted.
+
+Lemma dir2flatmem_prune_delete : forall tree inum f basenum basedents base name,
+  tree_names_distinct tree ->
+  find_subtree (base++[name]) tree = Some (TreeFile inum f) ->
+  dir2flatmem [] (tree_prune basenum basedents base name tree) =
+  mem_except (dir2flatmem [] tree) (base++[name]).
+Proof.
+Admitted.
+
+Theorem dirents2mem_prune_file : forall (F: @pred (list string) (@list_eq_dec string string_dec) (addr * BFILE.bfile))
+      tree name inum f basenum basedents base,
+  tree_names_distinct tree ->
+  (F * (base ++ [name]) |-> (inum, f))%pred (dir2flatmem [] tree) ->
+  F (dir2flatmem [] (tree_prune basenum basedents base name tree)).
+Proof.
+  intros.
+  erewrite dir2flatmem_prune_delete; eauto.
+  eapply ptsto_mem_except; eauto.
+  pred_apply.
+  cancel.
+  eapply dir2flatmem_find_subtree_ptsto; eauto.
+Qed.
+
+
+Global Opaque dir2flatmem.

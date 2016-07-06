@@ -2610,6 +2610,16 @@ Proof.
     rewrite <- H4; auto.
 Qed.
 
+Lemma sep_star_split_l: forall AT AEQ V F (x: @pred AT AEQ V) y m,
+  (F * x * y)%pred m -> 
+  exists F1, (F1 * x)%pred m.
+Proof.
+  intros.
+  exists (F*y)%pred.
+  pred_apply.
+  cancel.
+Qed.
+
 Lemma pimpl_sep_star_split_l: forall AT AEQ V F1 F2 (x: @pred AT AEQ V) y m,
     (F1 * x * y) %pred m ->
     (F1 * y) =p=> F2 ->

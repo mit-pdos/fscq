@@ -1039,19 +1039,21 @@ Module TREESEQ.
     constructor.
   Admitted.
 
-Global Opaque dir2flatmem.
 
+Lemma find_subtree_find_dirlist_eq: forall name inum dents ,
+  find_subtree [name] (TreeDir inum dents) = find_dirlist name dents.
+Proof.
+  intros.
+Admitted.
 
   Theorem treeseq_rename_ok : forall fsxp dnum srcbase (srcname:string) dstbase dstname mscs,
-    {< ds ts Fm Ftop Ftree cwd tree_elem subtree srcpath dstpath srcnum dstnum srcfile dstfile,
+    {< ds ts Fm Ftop Ftree cwd tree_elem subtree srcnum dstnum srcfile dstfile,
     PRE:hm
     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
       [[ DIRTREE.find_subtree cwd (TStree ts!!) = Some subtree ]] *
       [[ subtree = (DIRTREE.TreeDir dnum tree_elem) ]] *
-      [[ srcpath = srcbase ++ [srcname] ]] *
-      [[ dstpath = dstbase ++ [dstname] ]] *
-      [[ (Ftree * srcpath |-> (srcnum, srcfile) * dstpath |-> (dstnum, dstfile) )%pred (dir2flatmem [] subtree) ]]
+      [[ (Ftree * ((srcbase++[srcname]%list) |-> (srcnum, srcfile)) * ((dstbase++[dstname])%list) |-> (dstnum, dstfile) )%pred (dir2flatmem [] subtree) ]]
     POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
       ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
@@ -1064,7 +1066,7 @@ Global Opaque dir2flatmem.
        [[ renamed = DIRTREE.tree_graft dstdirnum dstents dstbase dstname (DIRTREE.TreeFile srcnum srcfile) pruned ]] *
        [[ tree' = DIRTREE.update_subtree cwd renamed (TStree ts !!) ]] *
        [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
-       [[ (Ftree * dstpath |-> (srcnum, srcfile))%pred (dir2flatmem [] renamed) ]])
+       [[ (Ftree * (dstbase ++ [dstname]) |-> (srcnum, srcfile))%pred (dir2flatmem [] renamed) ]])
     XCRASH:hm'
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
    >} AFS.rename fsxp dnum srcbase srcname dstbase dstname mscs.
@@ -1073,87 +1075,38 @@ Global Opaque dir2flatmem.
     eapply pimpl_ok2.
     eapply AFS.rename_ok.
     cancel.
-    eapply treeseq_in_ds_tree_pred_latest in H10 as Hpred; eauto.
+    eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred; eauto.
     eassumption.
     step.
     unfold AFS.rename_rep.
     cancel.
     or_r.
-    cancel.
-    eapply treeseq_in_ds_pushd; eauto.
-    pred_apply.
-    unfold tree_rep; simpl.
-    cancel.
 
-Lemma sep_star_split_l: forall AT AEQ V F (x: @pred AT AEQ V) y m,
-  (F * x * y)%pred m -> 
-  exists F1, (F1 * x)%pred m.
-Proof.
-Admitted.
-
-    (* subtree should be (TreeFile srcnum srcfile) using H0 *)
+    (* a few obligations need: subtree = (TreeFile srcnum srcfile) using H0 *)
     eapply sep_star_split_l in H0 as H0'.
     destruct H0'.
     eapply dir2flatmem_find_subtree_ptsto in H5.
     erewrite find_subtree_app in H5.
     2: eassumption.
-
-Lemma find_subtree_find_dirlist_eq: forall name inum dents ,
-  find_subtree [name] (TreeDir inum dents) = find_dirlist name dents.
-Proof.
-  intros.
-Admitted.
-
     erewrite find_subtree_find_dirlist_eq in H5.
     rewrite H14 in H5.
     inversion H5.
+    rewrite H11 in *.
+
     cancel.
-    distinct_names'.
-    admit.  (* the whole tree has distinct names, so a subdir too *)
+    eapply treeseq_in_ds_pushd; eauto.
     unfold treeseq_one_safe; simpl.
-    rewrite H4 in H7.
-    admit.  (* eapply H7 after subst of subtree as above *)
+    rewrite H4 in H9.
     eassumption.
-    eassumption.
-
-Theorem dirents2mem_graft_file : forall (F: @pred (list string) (@list_eq_dec string string_dec) (addr * BFILE.bfile))
-      root name inum f dstnum dstents dstbase,
-  tree_names_distinct root ->
-  F (dir2flatmem [] root) -> 
-  (F * (dstbase ++ [name]) |-> (inum, f))%pred (dir2flatmem [] (tree_graft dstnum dstents dstbase name (TreeFile inum f) root)).
-Proof.
-Admitted.
-  
-
-(* if dst file, exists then the graft is the same as an update but with new inum *)
-Theorem dirents2mem_graft_file' : forall (F: @pred (list string) (@list_eq_dec string string_dec) (addr * BFILE.bfile))
-      root name inum f dstnum dstents dstbase old,
-  tree_names_distinct root ->
-  (F * (dstbase ++ [name]) |-> old)%pred (dir2flatmem [] root) -> 
-  (F * (dstbase ++ [name]) |-> (inum, f))%pred (dir2flatmem [] (tree_graft dstnum dstents dstbase name (TreeFile inum f) root)).
-Proof.
-Admitted.
-
-  eapply dirents2mem_graft_file'.
-
-Theorem dirents2mem_prune_file : forall (F: @pred (list string) (@list_eq_dec string string_dec) (addr * BFILE.bfile))
-      root name inum f dstnum dents base,
-  tree_names_distinct root ->
-  (F * (base ++ [name]) |-> (inum, f))%pred (dir2flatmem [] root) ->
-  F (dir2flatmem [] (tree_prune dstnum dents base name root)).
-Proof.
-Admitted.
-
-  Focus 2.
-  eapply dirents2mem_prune_file.
-
-  Focus 2.
-  pred_apply.
-  cancel.
-  instantiate (1 := (dstnum, dstfile)).
-  cancel.
-
-Admitted.
+    eapply dirents2mem_graft_file'.
+    admit.  (* XXX distinct names *)
+    eapply dirents2mem_prune_file.
+    admit. (* XXX distinct names *)
+    pred_apply.
+    cancel.
+    cancel.
+    admit. (* XXX distinct names *)
+  Admitted.
 
 
   Hint Extern 1 ({{_}} Bind (AFS.file_get_attr _ _ _) _) => apply treeseq_file_getattr_ok : prog.
