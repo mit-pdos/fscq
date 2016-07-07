@@ -146,11 +146,10 @@ Module ATOMICCP.
          \/ ([[ r = true ]] *
             [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts'!!)) ]]))
     XCRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-      (exists ds' ts' tfile',
-        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-        [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
-        [[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile'))%pred (dir2flatmem [] (TStree ts'!!)) ]])
+      exists newds ts',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushdlist newds ds) hm' *
+      [[ newds <> nil -> treeseq_in_ds Fm Ftop fsxp mscs ts' (list2nelist ds newds) ]] *
+      [[ newds <> nil -> NEforall (fun t => exists tfile', (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile'))%pred (dir2flatmem [] (TStree t)))%type ts' ]]
      >} copydata fsxp src_inum tinum mscs.
   Proof.
     unfold copydata; intros.
@@ -366,32 +365,25 @@ Module ATOMICCP.
   (* specs for copy_and_rename_cleanup and atomic_cp *)
 
   Theorem atomic_cp_recover_ok :
-    {< Fm Ftop Ftree fsxp cs mscs ds ts srcpath tmppath dstbase dstname tinum src_inum file tfile dstinum dstfile,
+    {< Fm Ftop fsxp cs mscs ds ts tmppath,
     PRE:hm
       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm *
-      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      (([[ (Ftree * srcpath |-> (src_inum, file) * 
-               (dstbase++[dstname])%list |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts!!)) ]]) \/
-       ([[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile) *
-              (dstbase ++ [dstname])%list |-> (dstinum, dstfile))%pred (dir2flatmem [] (TStree ts!!)) ]]))
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]]
     POST:hm' RET:^(mscs', fsxp')
-      [[ fsxp' = fsxp ]] * exists ds' ts',
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (ds' !!, nil)) (MSLL mscs') hm' *
-      [[ treeseq_in_ds Fm Ftop fsxp mscs' (ts' !!, nil) ds' ]] *
-      (([[ (Ftree * srcpath |-> (src_inum, file) * 
-               (dstbase++[dstname])%list |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts!!)) ]]) \/
-       ([[ (Ftree * srcpath |-> (src_inum, file) *
-               (dstbase ++ [dstname])%list |-> (dstinum, dstfile))%pred (dir2flatmem [] (TStree ts!!)) ]]))
+      [[ fsxp' = fsxp ]] * exists n d t,
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs') hm' *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs' (t, nil) (d, nil) ]] *
+      [[ forall Ftree f,
+         (Ftree * tmppath |-> f)%pred (dir2flatmem [] (TStree (nthd n ts))) ->
+         (Ftree) (dir2flatmem [] (TStree t)) ]]
     XCRASH:hm'
-     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-      (exists ds' ts',
-        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-        [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
-        (([[ (Ftree * srcpath |-> (src_inum, file) * 
-               (dstbase++[dstname])%list |-> (tinum, (BFILE.synced_file file)))%pred (dir2flatmem [] (TStree ts'!!)) ]]) \/
-         ([[ (Ftree * srcpath |-> (src_inum, file) * tmppath |-> (tinum, tfile) *
-              (dstbase ++ [dstname])%list |-> (dstinum, dstfile))%pred (dir2flatmem [] (TStree ts'!!)) ]]))
-      )
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+      exists n d t,
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, nil) hm' *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs (t, nil) (d, nil) ]] *
+      [[ forall Ftree f,
+         (Ftree * tmppath |-> f)%pred (dir2flatmem [] (TStree (nthd n ts))) ->
+         (Ftree) (dir2flatmem [] (TStree t)) ]]
     >} atomic_cp_recover.
   Proof.
     unfold atomic_cp_recover; intros.
