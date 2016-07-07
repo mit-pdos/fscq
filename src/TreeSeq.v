@@ -1028,16 +1028,6 @@ Module TREESEQ.
     simpl; reflexivity.
   Qed.
 
-Lemma dirtree_safe_sync: forall i f fl t,
-  dirtree_safe i (BFILE.pick_balloc f fl) t i (BFILE.pick_balloc f fl) t ->
-  dirtree_safe i (BFILE.pick_balloc f (negb fl)) t i (BFILE.pick_balloc f (negb fl)) t.
-Proof.
-  intros.
-  unfold dirtree_safe in *; subst; simpl.
-  intuition.
-  unfold BFILE.ilist_safe in *.
-Admitted.
-
   Theorem treeseq_tree_sync_ok : forall fsxp mscs,
     {< ds ts Fm Ftop,
     PRE:hm
@@ -1045,8 +1035,7 @@ Admitted.
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]]
     POST:hm' RET:^(mscs')
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (ds!!, nil)) (MSLL mscs') hm' *
-       [[ treeseq_in_ds Fm Ftop fsxp mscs' ((ts !!), nil) (ds!!, nil)]] *
-       [[ MSAlloc mscs' = negb (MSAlloc mscs) ]] 
+       [[ treeseq_in_ds Fm Ftop fsxp mscs' ((ts !!), nil) (ds!!, nil)]]
     XCRASH:hm'
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
    >} AFS.tree_sync fsxp mscs.
@@ -1073,7 +1062,7 @@ Admitted.
     simpl in *.
     rewrite H9; simpl.
     erewrite treeseq_latest.
-    eapply dirtree_safe_sync; eauto.
+    eapply dirtree_safe_refl.
     constructor.
   Qed.
 
