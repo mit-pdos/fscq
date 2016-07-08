@@ -579,7 +579,12 @@ Proof.
   inversion H.
 Qed.
 
-
+Fact d_map_d_map: forall A B C (a: A) (l: list A) (f: A -> B) (g: B -> C),
+d_map g (d_map f (a,l)) = d_map (fun x => g(f x)) (a, l).
+Proof.
+intros; unfold d_map; simpl.
+rewrite map_map; reflexivity.
+Qed.
 
 (* Lemma v2b_rec_selN: forall i j l,
 length l = i -> j < i ->
