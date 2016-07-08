@@ -1329,10 +1329,69 @@ Module DIRTREE.
    * Helpers for higher levels that need to reason about updated trees.
    *)
 
-  (* XXX second premise is unnecessary *)
+ Lemma tree_names_distinct_head_name : forall inum name subtree rest,
+    tree_names_distinct (TreeDir inum ((name, subtree) :: rest)) ->
+    ~ In name (map fst rest).
+  Proof.
+    inversion 1.
+    simpl in *.
+    inversion H3; auto.
+  Qed.
+
+  Lemma tree_names_distinct_head_name' : forall  rest name  f,
+    map fst (map (update_subtree_helper f name) rest) = map fst rest.
+  Proof.
+    induction rest; simpl; intros.
+    auto.
+    erewrite IHrest.
+    unfold update_subtree_helper.
+    destruct a.
+    destruct (string_dec s name); eauto.
+  Qed.
+
+  Lemma map_update_subtree_helper_notfound : forall f name l,
+    ~ In name (map fst l) ->
+    map (update_subtree_helper f name) l = l.
+  Proof.
+   induction l; simpl; intros; auto.
+    rewrite IHl by intuition.
+    unfold update_subtree_helper.
+    destruct a.
+    destruct (string_dec s name); subst; simpl; auto.
+    firstorder.
+  Qed.
+
+  Lemma tree_name_distinct_rest: forall inum x l,
+        tree_names_distinct (TreeDir inum (x::l)) ->
+        tree_names_distinct (TreeDir inum l).
+  Proof.
+    intros.
+    inversion H.
+    rewrite map_cons in H2.
+    apply Forall_cons2 in H2.
+    rewrite map_cons in H3.
+    rewrite NoDup_cons_iff in H3.
+    intuition.
+    constructor; eauto.
+  Qed.
+
+  Lemma tree_name_distinct_head: forall inum name l t,
+        tree_names_distinct (TreeDir inum ((name, t)::l)) ->
+        tree_names_distinct t.
+  Proof.
+    intros.
+    destruct t.
+    constructor.
+    inversion H.
+    rewrite map_cons in H2.
+    apply Forall_inv in H2.
+    simpl in H2.
+    inversion H2.
+    constructor; eauto.
+  Qed.
+
   Theorem find_update_subtree : forall fnlist tree subtree subtree0,
     find_subtree fnlist tree = Some subtree0 ->
-    dirtree_inum subtree0 = dirtree_inum subtree ->
     find_subtree fnlist (update_subtree fnlist subtree tree) = Some subtree.
   Proof.
     induction fnlist; simpl; try congruence; intros.
@@ -1345,6 +1404,45 @@ Module DIRTREE.
   Qed.
 
   Hint Resolve find_update_subtree.
+
+  Lemma update_subtree_same: forall pn tree subtree,
+    tree_names_distinct tree ->
+    find_subtree pn tree = Some subtree ->
+    update_subtree pn subtree tree = tree.
+  Proof.
+    induction pn; simpl; intros.
+    - inversion H0; reflexivity.
+    - destruct tree; eauto.
+      f_equal.
+      induction l.
+      + simpl; eauto.
+      + erewrite map_cons.
+        unfold update_subtree_helper at 1.
+
+        destruct a0.
+        destruct (string_dec s a).
+        rewrite e.
+        rewrite IHpn; eauto.
+        erewrite update_subtree_notfound; eauto.
+        eapply tree_names_distinct_head_name with (inum := n); eauto.
+        rewrite <- e; eauto.
+
+        unfold find_subtree_helper in H0.
+        simpl in H0.
+        destruct (string_dec a a) in H0; eauto.
+        rewrite e in H0.
+        simpl in H0.
+        destruct (string_dec a a) in H0; eauto.
+        congruence.
+        congruence.
+
+        f_equal.
+        rewrite IHl; eauto.
+        unfold find_subtree_helper in H0.
+        simpl in H0.
+        destruct (string_dec s a) in H0; eauto.
+        congruence.
+  Qed.
 
   Lemma find_subtree_update_subtree_ne_file :
     forall p2 p1 tree inum1 inum2 f1 f1' f2,
@@ -3701,68 +3799,7 @@ Module DIRTREE.
     admit.
   Admitted.
 
-  Lemma tree_names_distinct_head_name : forall inum name subtree rest,
-    tree_names_distinct (TreeDir inum ((name, subtree) :: rest)) ->
-    ~ In name (map fst rest).
-  Proof.
-    inversion 1.
-    simpl in *.
-    inversion H3; auto.
-  Qed.
-
-  Lemma tree_names_distinct_head_name' : forall  rest name  f,
-    map fst (map (update_subtree_helper f name) rest) = map fst rest.
-  Proof.
-    induction rest; simpl; intros.
-    auto.
-    erewrite IHrest.
-    unfold update_subtree_helper.
-    destruct a.
-    destruct (string_dec s name); eauto.
-  Qed.
-
-  Lemma map_update_subtree_helper_notfound : forall f name l,
-    ~ In name (map fst l) ->
-    map (update_subtree_helper f name) l = l.
-  Proof.
-   induction l; simpl; intros; auto.
-    rewrite IHl by intuition.
-    unfold update_subtree_helper.
-    destruct a.
-    destruct (string_dec s name); subst; simpl; auto.
-    firstorder.
-  Qed.
-
-  Lemma tree_name_distinct_rest: forall inum x l,
-        tree_names_distinct (TreeDir inum (x::l)) ->
-        tree_names_distinct (TreeDir inum l).
-  Proof.
-    intros.
-    inversion H.
-    rewrite map_cons in H2.
-    apply Forall_cons2 in H2.
-    rewrite map_cons in H3.
-    rewrite NoDup_cons_iff in H3.
-    intuition.
-    constructor; eauto.
-  Qed.
-
-  Lemma tree_name_distinct_head: forall inum name l t,
-        tree_names_distinct (TreeDir inum ((name, t)::l)) ->
-        tree_names_distinct t.
-  Proof.
-    intros.
-    destruct t.
-    constructor.
-    inversion H.
-    rewrite map_cons in H2.
-    apply Forall_inv in H2.
-    simpl in H2.
-    inversion H2.
-    constructor; eauto.
-  Qed.
-
-
+ 
   Lemma update_name_twice: forall tree_elem name tree subtree subtree' dnum,
     tree_names_distinct
       (update_subtree ([name]) subtree'
@@ -3875,4 +3912,137 @@ Module DIRTREE.
     destruct t; simpl; intros; congruence.
   Qed.
 
+  Theorem find_subtree_inode_pathname_unique : forall tree path1 path2 f1 f2,
+    tree_inodes_distinct tree ->
+    tree_names_distinct tree ->
+    find_subtree path1 tree = Some f1 ->
+    find_subtree path2 tree = Some f2 ->
+    dirtree_inum f1 = dirtree_inum f2 ->
+    path1 = path2.
+  Proof.
+  Admitted.
+
+  Lemma find_subtree_update_subtree_same_inum : forall path1 path2 inum f f' tree,
+    tree_inodes_distinct tree ->
+    tree_names_distinct tree ->
+    find_subtree path1 (update_subtree path2 (TreeFile inum f) tree) = Some (TreeFile inum f') ->
+    path1 = path2.
+  Proof.
+  Admitted.
+
+  Theorem dirtree_update_safe_pathname_vssync_vecs :
+    forall bns ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks inum m flag,
+    find_subtree pathname tree_newest = Some (TreeFile inum f) ->
+    Forall (fun bn => exists off, BFILE.block_belong_to_file ilist_newest bn inum off) bns ->
+    dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
+    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
+    exists tree',
+    (F0 * rep fsxp F tree' ilist freeblocks)%pred (list2nmem (vssync_vecs m bns)) /\
+    (tree' = tree \/
+     exists pathname' f', find_subtree pathname' tree = Some (TreeFile inum f') /\
+     tree' = update_subtree pathname' (TreeFile inum (BFILE.synced_file f')) tree).
+  Proof.
+    (* XXX need to strengthen the inductive hypothesis to say we've synced the file
+     * up to some block (corresponding to the induction on bns)..
+     *)
+    induction bns using rev_ind; simpl; intros.
+    - eexists; intuition eauto.
+    - edestruct IHbns; eauto.
+      eapply forall_app_r; eauto.
+      denote! (_ (list2nmem m)) as Hm; rewrite <- locked_eq in Hm.
+      rewrite vssync_vecs_app; unfold vssync.
+      intuition; subst.
+      + (* case 1: previous syncs did nothing *)
+        apply forall_app_l in H0; inversion H0; eauto; repeat deex.
+        edestruct dirtree_update_safe_pathname; eauto.
+        intuition eauto; repeat deex.
+        eexists.
+        split. eassumption.
+        right; eauto.
+      + (* case 2: previous syncs changed something *)
+        repeat deex.
+        apply forall_app_l in H0; inversion H0; eauto; repeat deex.
+        edestruct dirtree_update_safe_pathname.
+        3: eapply dirtree_safe_update_subtree.
+        3: eassumption.
+        2: eauto.
+        3: eauto.
+        all: eauto.
+        intuition.
+        * (* this sync did nothing *)
+          eexists; split. eassumption.
+          right. eauto.
+        * (* this sync also changed something *)
+          repeat deex.
+          eexists; split. eassumption.
+          right. repeat eexists; eauto.
+          assert (pathname'0 = pathname'); subst.
+          eapply find_subtree_update_subtree_same_inum; eauto.
+          eapply rep_tree_inodes_distinct; eauto.
+          eapply rep_tree_names_distinct; eauto.
+          rewrite update_update_subtree_eq'.
+          erewrite find_update_subtree in *; eauto.
+          inversion H8; simpl.
+          reflexivity.
+
+    Unshelve.
+    2: exact unit.
+    intros; exact tt.
+  Qed.
+
+  Theorem dirtree_update_safe_pathname_vssync_vecs_pred :
+    forall bns ilist_newest free_newest tree_newest pathname f tree fsxp F F0 ilist freeblocks inum m flag,
+    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
+    dirtree_safe ilist (BFILE.pick_balloc freeblocks flag) tree ilist_newest free_newest tree_newest ->
+    Forall (fun bn => exists off, BFILE.block_belong_to_file ilist_newest bn inum off) bns ->
+    find_subtree pathname tree_newest = Some (TreeFile inum f) ->
+    (F0 * rep fsxp F tree ilist freeblocks \/
+     exists pathname' f',
+     [[ find_subtree pathname' tree = Some (TreeFile inum f') ]] *
+     let tree' := update_subtree pathname' (TreeFile inum (BFILE.synced_file f')) tree in
+     F0 * rep fsxp F tree' ilist freeblocks)%pred (list2nmem (vssync_vecs m bns)).
+  Proof.
+    intros.
+    edestruct dirtree_update_safe_pathname_vssync_vecs; eauto.
+    intuition.
+    eapply pimpl_apply; try eassumption. cancel.
+    eapply pimpl_apply; try eassumption. cancel.
+  Qed.
+
+  (* XXX maybe p2 cannot be a prefix of p1 *)
+  Lemma find_subtree_update_subtree_ne_path : forall p1 p2 tree elem,
+    p1 <> p2 ->
+    DIRTREE.find_subtree p1 (DIRTREE.update_subtree p2 elem tree) =
+      DIRTREE.find_subtree p1 tree.
+  Proof.
+  Admitted.
+
+  Lemma dirtree_safe_dupdate: forall old_tree old_free old_ilist tree ilist freelist inum f p bn off v,
+      DIRTREE.dirtree_safe old_ilist old_free old_tree ilist freelist tree ->
+      DIRTREE.find_subtree p tree = Some (DIRTREE.TreeFile inum f) ->
+      BFILE.block_belong_to_file ilist bn inum off ->
+       DIRTREE.dirtree_safe old_ilist old_free old_tree ilist freelist 
+        (DIRTREE.update_subtree p
+          (DIRTREE.TreeFile inum
+             {|
+             BFILE.BFData := (BFILE.BFData f) ⟦ off := v ⟧;
+             BFILE.BFAttr := BFILE.BFAttr f |}) tree).
+  Proof.
+    intros.
+    unfold DIRTREE.dirtree_safe in *.
+    unfold BFILE.ilist_safe in *.
+    destruct H.
+    split; eauto.
+    intros.
+    destruct (list_eq_dec string_dec pathname p); subst.
+    erewrite DIRTREE.find_update_subtree in H3; eauto.
+    inversion H3.
+    subst.
+    intuition.
+    specialize (H6 inum0 off0 bn0 H4).
+    specialize (H2 inum0 off0 bn0 p f H0 H4).
+    eauto.
+    erewrite find_subtree_update_subtree_ne_path in H3; eauto.
+  Qed.
+  
 End DIRTREE.

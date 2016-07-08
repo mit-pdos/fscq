@@ -243,6 +243,43 @@ Section NonEmptyList.
     destruct ds; unfold d_in; simpl; intuition.
   Qed.
 
+  Lemma d_in_nthd: forall l d,
+    d_in d l ->
+    exists n, d = nthd n l.
+  Proof.
+    induction 1.
+    - exists 0.
+      erewrite nthd_0; eauto.
+    - eapply in_selN_exists in H as H'.
+      destruct H'.
+      unfold nthd.
+      exists (Datatypes.length (snd l)-x).
+      replace (Datatypes.length (snd l) - (Datatypes.length (snd l) - x)) with x by omega.
+      intuition.
+      rewrite H2; eauto.
+  Qed.
+
+  Lemma latest_nthd: forall l,
+    latest l = nthd (Datatypes.length (snd l)) l.
+  Proof.
+    destruct l.
+    unfold latest, nthd, hd, fst, snd. 
+    induction l.
+    - simpl; auto.
+    - unfold hd, fst, snd.
+      replace (Datatypes.length (a :: l) - Datatypes.length (a :: l)) with 0 by omega.
+      simpl; auto.
+  Qed.
+
+  Lemma pushd_latest: forall l d,
+    latest (pushd d l)  = d.
+  Proof.
+    intros.
+    unfold pushd, latest.
+    simpl; eauto.
+  Qed.
+
+
   (** The second non-empty list's is a subset, in
     * the same order, of the first non-empty list
     *)
@@ -492,6 +529,99 @@ Theorem NEforall2_exists : forall T1 T2 (p p' : T1 -> T2 -> Prop) (f2 : T2 -> T2
   exists l1',
   NEforall2 p' l1' (d_map f2 l2).
 Proof.
+Admitted.
+
+Theorem NEforall2_d_map : forall T1 T2 A B (p : T1 -> T2 -> Prop) ( q : A -> B -> Prop) l1 (f1 : A -> T1) l2 (f2 : B -> T2),
+  (forall a b n, a = nthd n l1 -> b = nthd n l2 -> q a b -> p (f1 a) (f2 b)) ->
+  NEforall2 q l1 l2 ->
+  NEforall2 p (d_map f1 l1) (d_map f2 l2).
+Proof.
+  intros.
+  unfold NEforall2, d_map in *.
+  simpl; split.
+  specialize (H (fst l1) (fst l2) 0).
+  apply H.
+  rewrite nthd_0; eauto.
+  rewrite nthd_0; eauto.
+  intuition.
+  intuition.
+  assert (length (snd l1) = length (snd l2)).
+  eapply forall2_length; eauto.
+  eapply forall2_map2_selN with (q := q); auto; intros.
+  destruct (lt_dec n (length (snd l1))).
+  - eapply H with (n := (length (snd l1) - n)); unfold nthd; subst; eauto.
+    replace (length (snd l1) - (length (snd l1) - n)) with n by omega; eauto.
+    replace (length (snd l2) - (length (snd l1) - n)) with n by omega; eauto.
+  - rewrite selN_oob in * by omega; subst.
+    eapply H; auto.
+    rewrite nthd_0; auto.
+    rewrite nthd_0; auto.
+Qed.
+
+Lemma NEforall_d_in : forall T (p : T -> Prop) l x,
+  NEforall p l ->
+  d_in x l ->
+  p x.
+Proof.
+  unfold NEforall, d_in.
+  intuition.
+  subst; eauto.
+  eapply Forall_forall; eauto.
+Qed.
+
+Lemma NEforall_d_in':
+  forall T (p : T -> Prop) l, (forall x, d_in x l -> p x) -> NEforall p l.
+Proof.
+  intros. destruct l. unfold NEforall2, NEforall; simpl in *.
+  split.
+  specialize (H t).
+  eapply H.
+  unfold d_in; eauto.
+  unfold d_in in H; simpl in *.
+  eapply Forall_forall.
+  eauto.
+Qed.
+
+Lemma NEforall2_length : forall T1 T2 (p : T1 -> T2 -> Prop) l1 l2,
+  NEforall2 p l1 l2 ->
+  Datatypes.length (snd l1) = Datatypes.length (snd l2).
+Proof.
+  unfold NEforall2; intuition.
+  apply forall2_length in H1; auto.
+Qed.
+
+Lemma NEforall2_d_in : forall T1 T2 (p : T1 -> T2 -> Prop) l1 l2 x y n,
+  NEforall2 p l1 l2 ->
+  x = nthd n l1 ->
+  y = nthd n l2 ->
+  p x y.
+Proof.
+  intros.
+  rewrite H0.
+  rewrite H1.
+  unfold nthd.
+  apply NEforall2_length in H as H'.
+  destruct n.
+
+  repeat rewrite selN_oob by omega.
+  firstorder.
+
+  case_eq (Datatypes.length (snd l1)); intros.
+  repeat rewrite selN_oob by omega.
+  firstorder.
+
+  rewrite <- H'. rewrite H2.
+  eapply forall2_selN.
+  firstorder.
+  omega.
+Qed.
+
+Lemma NEforall2_latest: forall (T1 T2 : Type) (p : T1 -> T2 -> Prop) (l1 : nelist T1)
+    (l2 : nelist T2),
+  NEforall2 p l1 l2 -> p (l1 !!) (l2 !!).
+Proof.
+  destruct l1; destruct l2; unfold NEforall2; intuition; simpl in *.
+  unfold latest in *; simpl.
 Admitted.
 
 Definition list2nelist A def (l: list A) : nelist A :=
