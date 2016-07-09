@@ -388,8 +388,10 @@ Section EnvSection.
   | CrashSeq1 : forall a b,
       CrashStep a ->
       CrashStep (Seq a b)
-  | CrashCall : forall x f args,
-      CrashStep (Call x f args).
+  | CrashRead : forall x a,
+      CrashStep (DiskRead x a)
+  | CrashWrite : forall a v,
+      CrashStep (DiskWrite a v).
 
   Definition is_final (sst : StepState * Stmt) : Prop :=
     let '(st, fs, k, c) := sst in
@@ -485,7 +487,7 @@ Section EnvSection.
         apply StepCallOp; eauto.
         apply IHRunsTo.
        eapply rt1n_front.
-        eapply StepCallRet; eauto. 
+        eapply StepCallRet; eauto.
         subst_definitions. (* It's because of this subst_definitions that [eauto] doesn't work on this case. *)
          eauto with steps.
   Qed.
@@ -1038,7 +1040,7 @@ Proof.
   repeat inv_exec. simpl in *. rewrite He, He0 in *. find_inversion. find_inversion.
   repeat eexists; intuition eauto.
 
-  repeat inv_exec.
+  repeat inv_exec; eauto.
 
   repeat inv_exec; eauto.
   contradiction H0. econstructor; eauto.
@@ -1094,6 +1096,8 @@ Proof.
 
   repeat inv_exec; eauto.
   repeat inv_exec; eauto.
+  repeat inv_exec; eauto.
+  contradiction H3; unfold is_final; eauto.
 Qed.
 
 Lemma Step_Seq : forall env p1 p2 st st'',
@@ -1108,7 +1112,7 @@ Qed.
 
 Lemma CompileBind : forall T T' {H: FacadeWrapper Value T} env A (B : T' -> _) p f xp xf var,
   EXTRACT p
-  {{ A }}  
+  {{ A }}
     xp
   {{ fun ret => var ~> ret; A }} // env ->
   (forall (a : T),
@@ -1131,10 +1135,16 @@ Proof.
   specialize (H0 _ hm ltac:(eauto)).
   intuition. specialize (H3 _ ltac:(eauto)). repeat deex.
   specialize (H1 _ _ hm' ltac:(eauto)). intuition.
-  specialize (H0 _ ltac:(eauto)). repeat deex.
+  specialize (H3 _ ltac:(eauto)). repeat deex.
   eexists. exists hm'0. intuition eauto.
 
-  eapply ExecCrashed_Steps in H3. repeat deex. eapply Step_Seq in H4.
+  find_eapply_lem_hyp ExecCrashed_Steps. repeat deex.
+  remember (final_disk, s', fs', k', p').
+  destruct H4.
+  admit.
+  invc H3.
+  inversion H11.
+  
   intuition; repeat deex.
   + eapply Steps_Exec in H4.
     repeat eforward H0. specialize (H0 ltac:(eauto)). intuition.
