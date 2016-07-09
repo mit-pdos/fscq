@@ -985,6 +985,23 @@ apply valuset0.
 Qed.
 
 
+Fact vs2bs_selN_O: forall l,
+selN (valuset2bytesets l) 0 byteset0 = (list2byteset byte0 (map (selN' 0 byte0) (map valu2list (byteset2list l)))).
+Proof.
+intros.
+unfold valuset2bytesets.
+destruct l.
+simpl.
+rewrite map_map; simpl.
+rewrite valuset2bytesets_rec_expand.
+simpl.
+unfold selN'.
+rewrite map_map; reflexivity.
+rewrite valubytes_is; omega.
+Qed.
+
+Lemma updN_eq: forall A v v' a (l: list A), v = v' -> updN l a v  = updN l a v'.
+Proof. intros; subst; reflexivity. Qed.
 
 (*Specs*)
 
@@ -1000,7 +1017,7 @@ Theorem write_first_block_ok : forall lxp bxp ixp inum block_off byte_off data f
            [[ length old_data = length data ]] *
            [[ length data > 0 ]] *
            [[ byte_off + length data <= valubytes ]] 
-     POST:hm' RET:fms'  exists m' flist' f',
+     POST:hm' RET:fms'  exists Fd' m' flist' f',
            let fy' := mk_bytefile (firstn (block_off * valubytes + byte_off) (ByFData fy) ++ 
                                      map (fun x => (x,nil)) data ++ 
                                     skipn (block_off * valubytes + byte_off + length data) (ByFData fy)) (ByFAttr fy) in  
@@ -1008,7 +1025,7 @@ Theorem write_first_block_ok : forall lxp bxp ixp inum block_off byte_off data f
            [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist frees) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            rep f' fy' *
-           [[[ (ByFData fy') ::: (Fd * arrayN (ptsto (V:=byteset))(block_off * valubytes + byte_off) (map (fun x => (x,nil)) data )) ]]] *
+           [[[ (ByFData fy') ::: (Fd' * arrayN (ptsto (V:=byteset))(block_off * valubytes + byte_off) (map (fun x => (x,nil)) data )) ]]] *
            [[ BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} write_to_block lxp ixp inum fms block_off byte_off data.
@@ -1053,7 +1070,7 @@ omega.
 prestep.
 norm.
 unfold stars; cancel.
-intuition.
+repeat split.
 eauto.
 eauto.
 
@@ -1063,11 +1080,6 @@ instantiate (1:= mk_proto_bytefile (updN (PByFData pfy) block_off ((firstn (byte
 unfold proto_bytefile_valid; simpl.
 rewrite H10.
 rewrite map_updN.
-Search updN.
-
-Lemma updN_eq: forall A v v' a (l: list A), v = v' -> updN l a v  = updN l a v'.
-Proof. intros; subst; reflexivity. Qed.
-
 apply updN_eq.
 rewrite selN_map with (default':= valuset0).
 rewrite H20; rewrite H10.
@@ -1130,25 +1142,11 @@ replace (block_off * valubytes) with (block_off * valubytes + 0) in A by omega.
 rewrite concat_hom_selN with (k:= valubytes) in A.
 rewrite selN_map with (default':= valuset0) in A.
 
-Fact vs2bs_selN_O: forall l,
-selN (valuset2bytesets l) 0 byteset0 = (list2byteset byte0 (map (selN' 0 byte0) (map valu2list (byteset2list l)))).
-Proof.
-intros.
-unfold valuset2bytesets.
-destruct l.
-simpl.
-rewrite map_map; simpl.
-rewrite valuset2bytesets_rec_expand.
-simpl.
-unfold selN'.
-rewrite map_map; reflexivity.
-rewrite valubytes_is; omega.
-Qed.
+
 
 rewrite vs2bs_selN_O in A.
 unfold selN' in A.
 rewrite map_map in A; simpl in A.
-Search map nil.
 apply map_eq_nil in A.
 auto.
 
@@ -1187,7 +1185,6 @@ rewrite map_length.
 rewrite Nat.add_assoc.
 remember (block_off * valubytes + byte_off + length data ) as c.
 rewrite <- Heqc.
-Search plus minus.
 rewrite H17; apply le_plus_minus.
 apply list2nmem_arrayN_bound in H9.
 destruct H9.
@@ -1202,27 +1199,17 @@ Focus 4.
 eauto.
 
 Focus 3.
-
-Fact list2nmem_arrayN_app_l: forall A (l1 l2: list A) (F:pred),
-F (list2nmem l2) -> (F * arrayN (ptsto (V:=A)) 0 l1)%pred (list2nmem (l1++l2)).
-Proof.
-induction l1; intros.
-simpl.
-apply emp_star_r. auto.
-rewrite arrayN_isolate with (i:= 0).
-simpl.
-rewrite <- emp_star.
-Search ptsto sep_star.
-Search any pimpl.
-apply sep_star_comm.
-apply sep_star_assoc.
-apply sep_star_comm.
-Search any.
+Show Existentials.
+instantiate (1:= (arrayN (ptsto (V:=byteset)) 0 (firstn (block_off * valubytes + byte_off) (ByFData fy)) *
+                 arrayN (ptsto (V:=byteset)) (block_off * valubytes + byte_off + length data) (skipn (block_off * valubytes + byte_off + length data)
+        (ByFData fy))%pred)).
 
 (* Left Here *)
 
-replace (arrayN (ptsto (V:=A)) 1 l1 ✶ F)%pred with (@any addr addr_eq_dec A).
-Search ptsto any.
+assert (AS:(arrayN (ptsto (V:=A)) 1 l1 ✶ F)%pred =p=> any).
+apply pimpl_any.
+Search ptsto list2nmem.
+rewrite AS with (m:= (list2nmem (a :: l1 ++ l2))).
 apply any_sep_star_ptsto.
 unfold list2nmem; reflexivity.
 erewrite pimpl_any with (p:= (arrayN (ptsto (V:=A)) 1 l1 ✶ F)%pred).
