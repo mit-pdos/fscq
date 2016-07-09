@@ -61,34 +61,55 @@ Notation "A * B" := (Binop Times A B) : facade_scope.
 Notation "A + B" := (Binop Plus A B) : facade_scope.
 Notation "A - B" := (Binop Minus A B) : facade_scope.
 
-Inductive Stmt :=
-| Skip : Stmt
-| Seq : Stmt -> Stmt -> Stmt
-| If : Expr -> Stmt -> Stmt -> Stmt
-| While : Expr -> Stmt -> Stmt
-| Call : var -> label -> list var -> Stmt
-| Assign : var -> Expr -> Stmt
-| DiskRead : var -> Expr -> Stmt
-| DiskWrite : Expr -> Expr -> Stmt.
-
-Arguments Assign v val.
-
-Inductive Value :=
-| Num : W -> Value
-| EmptyStruct : Value
-| Block : valu -> Value.
-
-Definition can_alias v :=
-  match v with
-  | Num _ => true
-  | EmptyStruct => true
-  | Block _ => false
-  end.
-
 Section Extracted.
+
+  Inductive Value :=
+  | Num : W -> Value
+  | EmptyStruct : Value
+  | Block : valu -> Value.
+
+  Definition can_alias v :=
+    match v with
+      | Num _ => true
+      | EmptyStruct => true
+      | Block _ => false
+    end.
 
   Definition Locals := StringMap.t Value.
 
+  Inductive Stmt :=
+  | Skip : Stmt
+  | Seq : Stmt -> Stmt -> Stmt
+  | If : Expr -> Stmt -> Stmt -> Stmt
+  | While : Expr -> Stmt -> Stmt
+  | Call : var -> label -> list var -> Stmt
+  | Assign : var -> Expr -> Stmt
+  | DiskRead : var -> Expr -> Stmt
+  | DiskWrite : Expr -> Expr -> Stmt
+  (* Only appears at runtime *)
+  | InCall (s0: Locals) (argvars: list var) (retvar: var) (args: list var) (ret: var) (p: Stmt).
+
+  (* Everything program does not contain an InCall. Could probably be expressed directly if we had generics. *)
+  Inductive SourceStmt : Stmt -> Prop :=
+  | SSkip : SourceStmt Skip
+  | SSeq :
+      forall a b,
+        SourceStmt a ->
+        SourceStmt b ->
+        SourceStmt (Seq a b)
+  | SIf :
+      forall cond t f,
+        SourceStmt t ->
+        SourceStmt f ->
+        SourceStmt (If cond t f)
+  | SWhile :
+      forall cond body,
+        SourceStmt body ->
+        SourceStmt (While cond body)
+  | SCall : forall x f args, SourceStmt (Call x f args)
+  | SAssign : forall x e, SourceStmt (Assign x e)
+  | SDiskRead : forall x a, SourceStmt (DiskRead x a)
+  | SDiskWrite : forall a v, SourceStmt (DiskWrite a v).
 
   Definition State := (rawdisk * Locals)%type.
   Import StringMap.
@@ -260,7 +281,6 @@ Section EnvSection.
 
   Eval hnf in rawdisk.
 
-  (* TODO: throw out RunsTo? *)
   Inductive RunsTo : Stmt -> State -> State -> Prop :=
   | RunsToSkip : forall st,
       RunsTo Skip st st
@@ -305,6 +325,7 @@ Section EnvSection.
       RunsTo (DiskWrite ae ve) (d, s) (d', s)
   | RunsToCallOp : forall x f args s spec d d' input callee_s' ret,
       StringMap.find f env = Some spec ->
+      SourceStmt (Body spec) ->
       length args = length (ArgVars spec) ->
       mapM (sel s) args = Some input ->
       let callee_s := make_map (ArgVars spec) input in
@@ -315,69 +336,64 @@ Section EnvSection.
       let s' := add x ret s' in
       RunsTo (Call x f args) (d, s) (d', s').
 
-
-  (* Control-stack small-step semantics *)
-
-  Inductive Step0 : State * Stmt -> State * Stmt -> Prop :=
+  Inductive Step : State * Stmt -> State * Stmt -> Prop :=
+  | StepSeq1 : forall a a' b st st',
+      Step (st, a) (st', a') ->
+      Step (st, Seq a b) (st', Seq a' b)
+  | StepSeq2 : forall a st,
+      Step (st, Seq Skip a) (st, a)
   | StepIfTrue : forall cond t f st,
       is_true (snd st) cond ->
-      Step0 (st, If cond t f) (st, t)
+      Step (st, If cond t f) (st, t)
   | StepIfFalse : forall cond t f st,
       is_false (snd st) cond ->
-      Step0 (st, If cond t f) (st, f)
+      Step (st, If cond t f) (st, f)
   | StepWhileTrue : forall cond body st,
       let loop := While cond body in
       is_true (snd st) cond ->
-      Step0 (st, loop) (st, Seq body loop)
+      Step (st, loop) (st, Seq body loop)
   | StepWhileFalse : forall cond body st,
       let loop := While cond body in
       is_false (snd st) cond ->
-      Step0 (st, loop) (st, Skip)
+      Step (st, loop) (st, Skip)
   | StepAssign : forall x e d s s' v,
       (* rhs can't be a mutable object, to prevent aliasing *)
       eval s e = Some v ->
       can_alias v = true ->
       s' = add x v s ->
-      Step0 (d, s, Assign x e) (d, s', Skip)
+      Step (d, s, Assign x e) (d, s', Skip)
   | StepDiskRead : forall x ae a d s s' v vs,
       eval s ae = Some (Num a) ->
       d a = Some (v, vs) ->
       s' = add x (Block v) s ->
-      Step0 (d, s, DiskRead x ae) (d, s', Skip)
+      Step (d, s, DiskRead x ae) (d, s', Skip)
   | StepDiskWrite : forall ae a ve v d d' s v0 v0s,
       eval s ae = Some (Num a) ->
       eval s ve = Some (Block v) ->
       d a = Some (v0, v0s) ->
       d' = upd d a (v, v0 :: v0s) ->
-      Step0 (d, s, DiskWrite ae ve) (d', s, Skip).
-
-  Definition StepState := (State * list frame * Stmt)%type.
-
-  Inductive Step : StepState * Stmt -> StepState * Stmt -> Prop :=
-  | StepStep0 : forall a a' st st' fs k,
-      Step0 (st, a) (st', a') ->
-      Step (st, fs, k, a) (st', fs, k, a')
-  | StepSeq : forall a b st fs k,
-      Step (st, fs, k, Seq a b) (st, fs, Seq b k, a)
-  | StepCont : forall st fs k1 k2,
-      Step (st, fs, Seq k1 k2, Skip) (st, fs, k2, k1)
-  | StepCallOp : forall x f args s spec d input fs k,
-      StringMap.find f env = Some spec ->
-      length args = length (ArgVars spec) ->
-      mapM (sel s) args = Some input ->
-      let callee_s := make_map (ArgVars spec) input in
-      Step ((d, s), fs, k, Call x f args)
-           ((d, callee_s), {| Locs := s; Cont := k; Spec := spec; Args := args; RetV := x |} :: fs, Skip, spec.(Body))
-  | StepCallRet : forall x f args s callee_s' spec d input ret fs k,
-      StringMap.find f env = Some spec ->
-      mapM (sel s) args = Some input ->
-      length args = length (ArgVars spec) ->
-      sel callee_s' (RetVar spec) = Some ret ->
-      let output := List.map (sel callee_s') (ArgVars spec) in
-      let s' := add_remove_many args input output s in
-      let s' := add x ret s' in
-      Step ((d, callee_s'), {| Locs := s; Cont := k; Spec := spec; Args := args; RetV := x |} :: fs, Skip, Skip)
-           ((d, s'), fs, k, Skip).
+      Step (d, s, DiskWrite ae ve) (d', s, Skip)
+  | StepStartCall :
+      forall x f args s spec d input,
+        StringMap.find f env = Some spec ->
+        SourceStmt (Body spec) ->
+        length args = length (ArgVars spec) ->
+        mapM (sel s) args = Some input ->
+        let callee_s := make_map (ArgVars spec) input in
+        Step (d, s, Call x f args) (d, callee_s, InCall s spec.(ArgVars) spec.(RetVar) args x spec.(Body))
+  | StepInCall :
+      forall st p st' p' s0 argvars retvar args ret,
+        Step (st, p) (st', p') ->
+        Step (st, InCall s0 argvars retvar args ret p) (st', InCall s0 argvars retvar args ret p')
+  | StepEndCall :
+      forall callee_s' s d input retval argvars retvar args ret,
+        mapM (sel s) args = Some input ->
+        length args = length argvars ->
+        sel callee_s' retvar = Some retval ->
+        let output := List.map (sel callee_s') argvars in
+        let s' := add_remove_many args input output s in
+        let s' := add ret retval s' in
+        Step (d, callee_s', InCall s argvars retvar args ret Skip) (d, s', Skip).
 
   Inductive Outcome :=
   | EFailed
@@ -388,52 +404,35 @@ Section EnvSection.
   | CrashSeq1 : forall a b,
       CrashStep a ->
       CrashStep (Seq a b)
+  | CrashInCall : forall s argvars retvar args ret p,
+      CrashStep p ->
+      CrashStep (InCall s argvars retvar args ret p)
   | CrashRead : forall x a,
       CrashStep (DiskRead x a)
   | CrashWrite : forall a v,
       CrashStep (DiskWrite a v).
 
-  Definition is_final (sst : StepState * Stmt) : Prop :=
-    let '(st, fs, k, c) := sst in
-    fs = [] /\ k = Skip /\ c = Skip.
+  Definition is_final (sst : State * Stmt) : Prop :=
+    snd sst = Skip.
 
-  Inductive Exec : StepState * Stmt -> Outcome -> Prop :=
-  | EXStep : forall st st' out,
-    Step st st' ->
-    Exec st' out ->
-    Exec st out
-  | EXFail : forall st,
-    (~exists st', Step st st') ->
-    ~is_final st ->
-    Exec st EFailed
-  | EXCrash : forall d s fs k c,
-    CrashStep c ->
-    Exec (d, s, fs, k, c) (ECrashed d)
+  Inductive Exec : State * Stmt -> Outcome -> Prop :=
+  | EXStep : forall sst sst' out,
+    Step sst sst' ->
+    Exec sst' out ->
+    Exec sst out
+  | EXFail : forall sst,
+    (~exists sst', Step sst sst') ->
+    ~is_final sst ->
+    Exec sst EFailed
+  | EXCrash : forall d s p,
+    CrashStep p ->
+    Exec (d, s, p) (ECrashed d)
   | EXDone : forall st,
-    Exec (st, [], Skip, Skip) (EFinished st).
+    Exec (st, Skip) (EFinished st).
 
-  Hint Constructors Exec RunsTo Step Step0 : steps.
+  Hint Constructors Exec RunsTo Step : steps.
 
   Hint Constructors clos_refl_trans_1n : steps.
-
-  Ltac do_inv :=
-    match goal with
-    | [ H : Step _ _ |- _ ] => invc H; eauto with steps
-    | [ H : clos_refl_trans_1n _ _ _ _ |- _ ] => invc H; eauto with steps
-    end.
-
-  Lemma Steps_add_stack : forall st st' fs1 fs c c' k k',
-    Step^* (st, fs1, c, k) (st', [], c', k') ->
-    Step^* (st, fs1 ++ fs, c, k) (st', fs, c', k').
-  Proof.
-    intros.
-    prep_induction H; induction H; intros; subst.
-    - find_inversion. eauto with steps.
-    - destruct y. destruct s. destruct p. do_inv.
-      + econstructor; eauto. econstructor; eauto. (* Why doesn't [eauto] apply [StepStep0]? :( *)
-      + econstructor; eauto. econstructor; eauto.
-      + econstructor; eauto. eapply StepCallRet; eauto.
-  Qed.
 
   Definition rt1n_front := Relation_Operators.rt1n_trans.
 
@@ -452,227 +451,234 @@ Section EnvSection.
     | _ => eapply rt1n_trans'
     end : steps.
 
-  (* For some reason, the [Hint Constructors] isn't enough. *)
-  Hint Extern 1 (Step (_, Seq _ _) _) =>
-    eapply StepSeq : steps.
-  Hint Extern 1 (Step (_, If _ _ _) _) =>
-    eapply StepStep0; eapply StepIfTrue : steps.
-  Hint Extern 1 (Step (_, If _ _ _) _) =>
-    eapply StepStep0; eapply StepIfFalse : steps.
-  Hint Extern 1 (Step (_, _) _) =>
-    eapply StepStep0; eapply StepWhileTrue : steps.
-  Hint Extern 1 (Step (_, _) _) =>
-    eapply StepStep0; eapply StepWhileFalse : steps.
-  Hint Extern 1 (Step (_, Assign _ _) _) =>
-    eapply StepStep0; eapply StepAssign : steps.
-  Hint Extern 1 (Step (_, DiskRead _ _) _) =>
-    eapply StepStep0; eapply StepDiskRead : steps.
-  Hint Extern 1 (Step (_, DiskWrite _ _) _) =>
-    eapply StepStep0; eapply StepDiskWrite : steps.
-  Hint Extern 1 (Step (_, Call _ _ _) _) =>
-    eapply StepCallOp : steps.
-  Hint Extern 1 (Step (_, _ :: _, _ _) _) =>
-    eapply StepCallRet : steps.
 
-  Theorem RunsTo_Step' : forall p st st' k,
-    RunsTo p st st' ->
-    Step^* (st, [], k, p) (st', [], k, Skip).
+  Ltac do_inv :=
+    match goal with
+    | [ H : Step _ _ |- _ ] => invc H; eauto with steps
+    | [ H : clos_refl_trans_1n _ _ _ _ |- _ ] => invc H; eauto with steps
+    end.
+
+  Lemma steps_incall :
+    forall s0 argvars retvar args ret st p st' p',
+      Step^* (st, p) (st', p') ->
+      Step^* (st, InCall s0 argvars retvar args ret p) (st', InCall s0 argvars retvar args ret p').
   Proof.
     intros.
-    generalize (@nil frame).
-    intros. generalizeEverythingElse H.
-    induction H; intros; eauto 8 with steps.
-    + eapply rt1n_trans'.
-       eapply rt1n_front.
-        apply StepCallOp; eauto.
-        apply IHRunsTo.
-       eapply rt1n_front.
-        eapply StepCallRet; eauto.
-        subst_definitions. (* It's because of this subst_definitions that [eauto] doesn't work on this case. *)
-         eauto with steps.
+    prep_induction H; induction H; intros; subst.
+    - find_inversion. eauto with steps.
+    - destruct y. eauto with steps.
   Qed.
-
-  Theorem RunsTo_Step : forall p st st',
-    RunsTo p st st' ->
-    Step^* (st, [], Skip, p) (st', [], Skip, Skip).
+  Hint Resolve steps_incall : steps.
+    
+  Lemma steps_sequence :
+    forall p0 st p st' p',
+      Step^* (st, p) (st', p') ->
+      Step^* (st, Seq p p0) (st', Seq p' p0).
   Proof.
-    intros. eapply RunsTo_Step'; eauto.
+    intros.
+    prep_induction H; induction H; intros; subst.
+    - find_inversion. eauto with steps.
+    - destruct y. eauto with steps.
   Qed.
+  Hint Resolve steps_sequence : steps.
 
-  Inductive InCallStmt :=
-  | Cur (p: Stmt)
-  | InCall (v0: Locals) (spec: OperationalSpec) (args: list var) (retv: var) (c: InCallStmt) (k: Stmt).
+  (* For some reason (probably involving tuples), the [Hint Constructors] isn't enough. *)
+  Hint Extern 1 (Step (_, Assign _ _) _) =>
+    eapply StepAssign : steps.
+  Hint Extern 1 (Step (_, DiskRead _ _) _) =>
+    eapply StepDiskRead : steps.
+  Hint Extern 1 (Step (_, DiskWrite _ _) _) =>
+    eapply StepDiskWrite : steps.
+  Hint Extern 1 (Step (_, Call _ _ _) _) =>
+    eapply StepStartCall : steps.
+  Hint Extern 1 (Step (_, InCall _ _ _ _ _ _) _) =>
+    eapply StepEndCall : steps.
 
-  Inductive RunsTo_InCall : InCallStmt -> State -> State -> Prop :=
-  | RunsToCur : forall p st st',
-      RunsTo p st st'
-      -> RunsTo_InCall (Cur p) st st'
-  | RunsToInCall : forall s0 x args spec input ret p k d d' d'' s'' callee_s callee_s',
-      RunsTo_InCall p (d, callee_s) (d', callee_s')
-      -> mapM (sel s0) args = Some input
-      -> length args = length (ArgVars spec)
-      -> sel callee_s' (RetVar spec) = Some ret
-      -> let output := List.map (sel callee_s') (ArgVars spec) in
-         let s' := add_remove_many args input output s0 in
-         let s' := add x ret s' in
-         RunsTo k (d', s') (d'', s'')
-      -> RunsTo_InCall (InCall s0 spec args x p k) (d, callee_s) (d'', s'').
-
-  Fixpoint equiv_stmt (fs : list frame) (c : InCallStmt) : InCallStmt :=
-    match fs with
-    | [] => c
-    | {| Locs := s0; Cont := k; Spec := spec; Args := args; RetV := retv |} :: fs' =>
-      equiv_stmt fs' (InCall s0 spec args retv c k)
-    end.
-
-  Fixpoint equiv_stmt_rev (fs : list frame) (c : InCallStmt) : InCallStmt :=
-    match fs with
-    | [] => c
-    | {| Locs := s0; Cont := k; Spec := spec; Args := args; RetV := retv |} :: fs' =>
-      (InCall s0 spec args retv (equiv_stmt_rev fs' c) k)
-    end.
-
-  Lemma equiv_stmt_last : forall l c s0 k spec args retv,
-    equiv_stmt (l ++ [{| Locs := s0; Cont := k; Spec := spec; Args := args; RetV := retv |}]) c =
-      InCall s0 spec args retv (equiv_stmt l c) k.
+  Theorem RunsTo_Steps :
+    forall p st st',
+      RunsTo p st st' ->
+      Step^* (st, p) (st', Skip).
   Proof.
-    induction l; intros; eauto.
-    destruct a. simpl. rewrite IHl. trivial.
+    intros.
+    induction H; subst_definitions; subst; eauto 10 with steps.
   Qed.
 
-  Lemma equiv_stmt_rev_rev : forall l c,
-    equiv_stmt (rev l) c = equiv_stmt_rev l c.
+  Inductive RunsTo_InCall : Stmt -> State -> State -> Prop :=
+  (* We'd have to duplicate all the [RunsTo] constructors which are recursive anyway *)
+  | RunsToICSkip : forall st,
+      RunsTo_InCall Skip st st
+  | RunsToICSeq : forall a b st st' st'',
+      RunsTo_InCall a st st' ->
+      RunsTo_InCall b st' st'' ->
+      RunsTo_InCall (Seq a b) st st''
+  | RunsToICIfTrue : forall cond t f st st',
+      is_true (snd st) cond ->
+      RunsTo_InCall t st st' ->
+      RunsTo_InCall (If cond t f) st st'
+  | RunsToICIfFalse : forall cond t f st st',
+      is_false (snd st) cond ->
+      RunsTo_InCall f st st' ->
+      RunsTo_InCall (If cond t f) st st'
+  | RunsToICWhileTrue : forall cond body st st' st'',
+      let loop := While cond body in
+      is_true (snd st) cond ->
+      RunsTo_InCall body st st' ->
+      RunsTo_InCall loop st' st'' ->
+      RunsTo_InCall loop st st''
+  | RunsToICWhileFalse : forall cond body st,
+      let loop := While cond body in
+      is_false (snd st) cond ->
+      RunsTo_InCall loop st st
+  | RunsToICAssign : forall x e d s s' v,
+      (* rhs can't be a mutable object, to prevent aliasing *)
+      eval s e = Some v ->
+      can_alias v = true ->
+      s' = add x v s ->
+      RunsTo_InCall (Assign x e) (d, s) (d, s')
+  | RunsToICDiskRead : forall x ae a d s s' v vs,
+      eval s ae = Some (Num a) ->
+      d a = Some (v, vs) ->
+      s' = add x (Block v) s ->
+      RunsTo_InCall (DiskRead x ae) (d, s) (d, s')
+  | RunsToICDiskWrite : forall ae a ve v d d' s v0 v0s,
+      eval s ae = Some (Num a) ->
+      eval s ve = Some (Block v) ->
+      d a = Some (v0, v0s) ->
+      d' = upd d a (v, v0 :: v0s) ->
+      RunsTo_InCall (DiskWrite ae ve) (d, s) (d', s)
+  | RunsToICCallOp : forall x f args s spec d d' input callee_s' ret,
+      StringMap.find f env = Some spec ->
+      SourceStmt (Body spec) ->
+      length args = length (ArgVars spec) ->
+      mapM (sel s) args = Some input ->
+      let callee_s := make_map (ArgVars spec) input in
+      RunsTo_InCall (Body spec) (d, callee_s) (d', callee_s') ->
+      sel callee_s' (RetVar spec) = Some ret ->
+      let output := List.map (sel callee_s') (ArgVars spec) in
+      let s' := add_remove_many args input output s in
+      let s' := add x ret s' in
+      RunsTo_InCall (Call x f args) (d, s) (d', s')
+  | RunsToInCall : forall s0 x args argvars retvar input ret p d d' callee_s callee_s',
+      mapM (sel s0) args = Some input ->
+      length args = length argvars ->
+      sel callee_s' retvar = Some ret ->
+      let output := List.map (sel callee_s') argvars in
+      let s' := add_remove_many args input output s0 in
+      let s' := add x ret s' in
+      RunsTo_InCall p (d, callee_s) (d', callee_s') ->
+      RunsTo_InCall (InCall s0 argvars retvar args x p) (d, callee_s) (d', s').
+
+  Hint Constructors SourceStmt.
+
+  Lemma SourceStmt_RunsToInCall_RunsTo :
+    forall p,
+      SourceStmt p ->
+      forall st st',
+        RunsTo_InCall p st st' ->
+        RunsTo p st st'.
   Proof.
-    induction l; eauto.
-    destruct a. simpl. intros. rewrite equiv_stmt_last. rewrite IHl. trivial.
+    induction 2; intros; subst_definitions; invc H; eauto with steps.
   Qed.
+
+  Hint Resolve SourceStmt_RunsToInCall_RunsTo : steps.
+
+  Hint Constructors RunsTo_InCall : steps.
+
+  Lemma RunsTo_RunsToInCall :
+    forall p st st',
+      RunsTo p st st' ->
+      RunsTo_InCall p st st'.
+  Proof.
+    induction 1; intros; subst_definitions; eauto with steps.
+  Qed.
+
+  Hint Resolve RunsTo_RunsToInCall : steps.
 
   Ltac inv_runsto :=
     match goal with
     | [ H: RunsTo ?c _ _ |- _ ] =>
-      (is_var c; fail 1)
-      || invc H
-    | [ H: RunsTo_InCall (Cur ?c) _ _ |- _ ] =>
+      (is_var c; fail 1) ||
+      invc H
+    | [ H: RunsTo_InCall _ _ _ |- _ ] =>
       invc H
     end.
 
-  Hint Constructors RunsTo RunsTo_InCall : steps.
-
-  Lemma runsto_inside : forall fs s s' s'' c,
-    RunsTo_InCall c s s' ->
-    RunsTo_InCall (equiv_stmt fs (Cur Skip)) s' s'' ->
-    RunsTo_InCall (equiv_stmt fs c) s s''.
+  Lemma Step_RunsTo :
+    forall st p st' p' st'',
+      Step (st, p) (st', p') ->
+      RunsTo_InCall p' st' st'' ->
+      RunsTo_InCall p st st''.
   Proof.
     intros.
-    rewrite <- rev_involutive with (l := fs) in *.
-    rewrite equiv_stmt_rev_rev in *.
-    remember (rev fs) as rfs.
-    clear fs Heqrfs.
-    rename rfs into fs.
-    revert s s' s'' c H H0.
-    induction fs; intros.
-    - simpl in *. invc H0. inv_runsto. eauto.
-    - destruct a. simpl in *. invc H0. subst_definitions. destruct s.
-      find_eapply_lem_hyp IHfs; eauto with steps.
+    prep_induction H0; induction H0; intros; subst_definitions; subst; do_inv.
+    - subst_definitions. eauto with steps.
+    - eapply RunsToICCallOp; eauto. assert (Some input = Some input0) by congruence. find_inversion. auto.
+    - destruct st. eapply RunsToInCall; eauto.
   Qed.
 
-  Lemma runsto_inside' : forall fs s s'' c,
-    RunsTo_InCall (equiv_stmt fs c) s s'' ->
-    exists s',
-         RunsTo_InCall c s s'
-      /\ RunsTo_InCall (equiv_stmt fs (Cur Skip)) s' s''.
-  Proof.
-    intros.
-    rewrite <- rev_involutive with (l := fs) in *.
-    rewrite equiv_stmt_rev_rev in *.
-    remember (rev fs) as rfs.
-    clear fs Heqrfs.
-    rename rfs into fs.
-    revert s s'' c H.
-    induction fs; intros.
-    - simpl in *. eauto with steps.
-    - destruct a. simpl in *. invc H. subst_definitions.
-      find_eapply_lem_hyp IHfs; eauto. deex. destruct s'. eexists; split; eauto with steps.
-  Qed.
+  Hint Resolve Step_RunsTo : steps.
 
-  Hint Resolve runsto_inside runsto_inside' : steps.
-
-  Theorem Step_RunsTo' : forall fs p st st' k,
-    Step^* (st, fs, k, p) (st', [], Skip, Skip) ->
-    RunsTo_InCall (equiv_stmt fs (Cur (Seq p k))) st st'.
+  Theorem Steps_RunsTo' :
+    forall p st st',
+      Step^* (st, p) (st', Skip) ->
+      RunsTo_InCall p st st'.
   Proof.
     intros.
     prep_induction H; induction H; intros; subst.
-    - find_inversion. simpl. eauto with steps.
-    - destruct y. destruct s. destruct p0.
-      specialize (IHclos_refl_trans_1n _ _ _ _ _ eq_refl eq_refl eq_refl).
-      rename IHclos_refl_trans_1n into Hr.
-      do_inv.
-      + invc H2; eapply runsto_inside' in Hr; deex; repeat (inv_runsto; eauto with steps);
-          ( eapply runsto_inside; [ econstructor; econstructor; eauto | ]; eauto with steps ).
-      + eapply runsto_inside' in Hr; deex. eapply runsto_inside' in H2; deex. repeat inv_runsto. eauto with steps.
-      + eapply runsto_inside' in Hr; deex. eapply runsto_inside' in H2; deex. repeat inv_runsto. eauto with steps.
-      + simpl in *. eapply runsto_inside' in Hr; deex. eapply runsto_inside' in H2; deex. repeat inv_runsto. invc H0. subst_definitions. inv_runsto. inv_runsto. inv_runsto.
-        eapply runsto_inside; eauto. econstructor; eauto. econstructor; eauto. rewrite H11 in H15. invc H15. eauto with steps.
-      + subst_definitions. simpl in *. eapply runsto_inside' in Hr; deex. repeat inv_runsto. eapply runsto_inside; eauto. destruct s'. eauto with steps.
+    - find_inversion. eauto with steps.
+    - destruct y. eauto with steps.
   Qed.
 
-  Theorem Step_RunsTo : forall p st st',
-    Step^* (st, [], Skip, p) (st', [], Skip, Skip) ->
-    RunsTo p st st'.
+  Theorem Steps_RunsTo :
+    forall p st st',
+      SourceStmt p ->
+      Step^* (st, p) (st', Skip) ->
+      RunsTo p st st'.
   Proof.
     intros.
-    apply Step_RunsTo' in H. simpl in *. repeat inv_runsto. trivial.
+    eauto using Steps_RunsTo' with steps.
   Qed.
 
-  Theorem RunsToInCall_Step : forall fs p k st st',
-    RunsTo_InCall (equiv_stmt fs (Cur (Seq p k))) st st' ->
-    Step^* (st, fs, k, p) (st', [], Skip, Skip).
-  Proof.
-  Admitted.
-
-  Theorem ExecFinished_Steps : forall fs k p st st',
-    Exec (st, fs, k, p) (EFinished st') ->
-    Step^* (st, fs, k, p) (st', [], Skip, Skip).
+  Theorem ExecFinished_Steps : forall p st st',
+    Exec (st, p) (EFinished st') ->
+    Step^* (st, p) (st', Skip).
   Proof.
     intros.
     prep_induction H; induction H; intros; subst; try discriminate.
-    + destruct st'. destruct st'0. destruct s. destruct p0.
-      eauto with steps.
-    + invc H2. invc H1. eauto with steps.
+    + destruct sst'. eauto with steps.
+    + repeat find_inversion. eauto with steps.
   Qed.
 
-  Theorem Steps_ExecFinished : forall fs p k st st',
-    Step^* (st, fs, k, p) (st', [], Skip, Skip) ->
-    Exec (st, fs, k, p) (EFinished st').
+  Theorem Steps_ExecFinished : forall p st st',
+    Step^* (st, p) (st', Skip) ->
+    Exec (st, p) (EFinished st').
   Proof.
     intros.
     prep_induction H; induction H; intros; subst; try discriminate.
     + find_inversion. eauto with steps.
-    + destruct y. destruct s. destruct p0.
-      eauto with steps.
+    + destruct y. eauto with steps.
   Qed.
 
-  Theorem ExecCrashed_Steps : forall fs p k st d',
-    Exec (st, fs, k, p) (ECrashed d') ->
-    exists s' fs' k' p', Step^* (st, fs, k, p) ((d', s'), fs', k', p') /\ CrashStep p'.
+  Theorem ExecCrashed_Steps : forall p st d',
+    Exec (st, p) (ECrashed d') ->
+    exists s' p', Step^* (st, p) (d', s', p') /\ CrashStep p'.
   Proof.
     intros.
     prep_induction H; induction H; intros; subst; try discriminate.
-    + destruct st'. destruct s. destruct p0. specialize (IHExec _ _ _ _ _ eq_refl eq_refl). repeat deex. eauto 8 with steps.
+    + destruct sst'. specialize (IHExec _ _ _ eq_refl eq_refl). repeat deex. eauto 8 with steps.
     + find_inversion. find_inversion. eauto 8 with steps.
   Qed.
 
-  Theorem Steps_ExecCrashed : forall st fs k p d' s' fs' k' p',
-    Step^* (st, fs, k, p) ((d', s'), fs', k', p') ->
+  Theorem Steps_ExecCrashed : forall st p d' s' p',
+    Step^* (st, p) (d', s', p') ->
     CrashStep p' ->
-    Exec (st, fs, k, p) (ECrashed d').
+    Exec (st, p) (ECrashed d').
   Proof.
     intros.
     destruct st.
     prep_induction H; induction H; intros; subst.
     + repeat find_inversion. eauto with steps.
-    + destruct y. destruct s. destruct p0. destruct s1. eauto with steps.
+    + destruct y. destruct s. eauto with steps.
   Qed.
 End EnvSection.
 
@@ -717,15 +723,15 @@ Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : Scope) (final_t
   forall initial_state hm,
     (snd initial_state) \u2272 initial_tstate ->
     (forall final_state,
-      Exec env (initial_state, [], Skip, eprog) (EFinished final_state) ->
+      Exec env (initial_state, eprog) (EFinished final_state) ->
       exists r hm',
         exec (fst initial_state) hm sprog (Finished (fst final_state) hm' r) /\
         (snd final_state) \u2272 (final_tstate r)) /\
     (forall final_disk,
-      Exec env (initial_state, [], Skip, eprog) (ECrashed final_disk) ->
+      Exec env (initial_state, eprog) (ECrashed final_disk) ->
       exists hm',
         exec (fst initial_state) hm sprog (Crashed T final_disk hm')) /\
-    (Exec env (initial_state, [], Skip, eprog) EFailed ->
+    (Exec env (initial_state, eprog) EFailed ->
       exec (fst initial_state) hm sprog (Failed T)).
 
 Notation "'EXTRACT' SP {{ A }} EP {{ B }} // EV" :=
@@ -787,7 +793,6 @@ Ltac find_cases var st := case_eq (StringMap.find var st); [
 
 Ltac inv_exec :=
   match goal with
-  | [ H : Step0 _ _ |- _ ] => invc H
   | [ H : Step _ _ _ |- _ ] => invc H
   | [ H : Exec _ _ _ |- _ ] => invc H
   | [ H : CrashStep _ |- _ ] => invc H
@@ -1005,10 +1010,10 @@ Ltac find_all_cases :=
   end; subst.
 
 Lemma write_fails_not_present:
-  forall env fs k (a : W) (v : valu) st,
+  forall env (a : W) (v : valu) st,
     StringMap.find "v" (snd st) = Some (wrap v) ->
     StringMap.find "a" (snd st) = Some (wrap a) ->
-    ~ (exists st', Step env (st, fs, k, DiskWrite (Var "a") (Var "v")) st') ->
+    ~ (exists st', Step env (st, DiskWrite (Var "a") (Var "v")) st') ->
     fst st a = None.
 Proof.
   intros.
@@ -1016,7 +1021,7 @@ Proof.
   intuition.
   deex.
   contradiction H1.
-  destruct v0, st. eexists. econstructor. econstructor; eauto.
+  destruct v0, st. eexists. econstructor; eauto.
   destruct (fst st a); eauto. contradiction H2. eauto.
 Qed.
 
@@ -1079,9 +1084,9 @@ Proof.
   destruct (StringMapFacts.eq_dec k var0); maps; try discriminate.
   specialize (H1 k v0 ltac:(eauto)). auto.
 
-  repeat inv_exec.
+  repeat inv_exec; eauto.
   repeat inv_exec. contradiction H1; unfold is_final; eauto.
-  contradiction H1. eexists. econstructor. econstructor; simpl; eauto.
+  contradiction H1. eexists. econstructor; simpl; eauto.
 Qed.
 
 Lemma CompileVar : forall env A var T (v : T) {H : FacadeWrapper Value T},
