@@ -680,6 +680,21 @@ Section EnvSection.
     + repeat find_inversion. eauto with steps.
     + destruct y. destruct s. eauto with steps.
   Qed.
+
+  Lemma Steps_Seq :
+    forall p1 p2 p' st st'',
+      Step^* (st, Seq p1 p2) (st'', p') ->
+      (exists p1', Step^* (st, p1) (st'', p1') /\ p' = Seq p1' p2) \/
+      (exists st', Step^* (st, p1) (st', Skip) /\ Step^* (st', p2) (st'', p')).
+  Proof.
+    intros.
+    prep_induction H; induction H; intros; subst.
+    - find_inversion. eauto with steps.
+    - destruct y. invc H.
+      + destruct (IHclos_refl_trans_1n _ _ _ _ _ eq_refl eq_refl); eauto; deex; eauto with steps.
+      + eauto with steps.
+  Qed.
+
 End EnvSection.
 
 Notation "A ; B" := (Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : facade_scope.
@@ -1105,16 +1120,6 @@ Proof.
   contradiction H3; unfold is_final; eauto.
 Qed.
 
-Lemma Step_Seq : forall env p1 p2 st st'',
-  (Step env)^* (st, [], Skip, Seq p1 p2) (st'', [], Skip, Skip) ->
-  (exists st', (Step env)^* (st, [], Skip, p1) (st', [], Skip, Skip) /\ (Step env)^* (st', [], Skip, p2) (st'', [], Skip, Skip)).
-Proof.
-  intros.
-  find_eapply_lem_hyp Step_RunsTo.
-  invc H.
-  repeat find_eapply_lem_hyp RunsTo_Step. eauto.
-Qed.
-
 Lemma CompileBind : forall T T' {H: FacadeWrapper Value T} env A (B : T' -> _) p f xp xf var,
   EXTRACT p
   {{ A }}
@@ -1134,33 +1139,28 @@ Proof.
   intuition.
 
   (* TODO: automate proof. ([crush] can probably do this) *)
-  subst. eapply ExecFinished_Steps in H3. eapply Step_Seq in H3.
-  intuition; repeat deex.
-  eapply Steps_ExecFinished in H4. eapply Steps_ExecFinished in H5.
-  specialize (H0 _ hm ltac:(eauto)).
-  intuition. specialize (H3 _ ltac:(eauto)). repeat deex.
-  specialize (H1 _ _ hm' ltac:(eauto)). intuition.
-  specialize (H3 _ ltac:(eauto)). repeat deex.
-  eexists. exists hm'0. intuition eauto.
+  - subst. find_eapply_lem_hyp ExecFinished_Steps. find_eapply_lem_hyp Steps_Seq.
+    intuition; repeat deex; try discriminate.
+    find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFinished.
+    specialize (H0 _ hm ltac:(eauto)).
+    intuition. specialize (H3 _ ltac:(eauto)). repeat deex.
+    specialize (H1 _ _ hm' ltac:(eauto)). intuition.
+    specialize (H3 _ ltac:(eauto)). repeat deex.
+    eexists. exists hm'0. intuition eauto.
 
-  find_eapply_lem_hyp ExecCrashed_Steps. repeat deex.
-  remember (final_disk, s', fs', k', p').
-  destruct H4.
-  admit.
-  invc H3.
-  inversion H11.
-  
-  intuition; repeat deex.
-  + eapply Steps_Exec in H4.
-    repeat eforward H0. specialize (H0 ltac:(eauto)). intuition.
-    specialize (H7 _ ltac:(eauto)). repeat deex.
-    eexists. eauto. invc H5. auto.
-  + destruct st'. eapply Step_RunsTo in H4. eapply RunsTo_Exec in H4. eapply Steps_Exec in H6; eauto.
-    repeat eforward H0. conclude H0 eauto. intuition.
-    eforward H0. conclude H0 eauto. repeat deex.
-    repeat eforward H1. conclude H1 eauto. intuition.
-    eforward H11. conclude H11 eauto. repeat deex.
-    eauto.
+  - find_eapply_lem_hyp ExecCrashed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
+    intuition; repeat deex.
+    + invc H5. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
+      repeat eforward H0. specialize (H0 ltac:(eauto)). intuition.
+      specialize (H0 _ ltac:(eauto)). repeat deex; eauto.
+    + destruct st'. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
+      repeat eforward H0. conclude H0 eauto. intuition.
+      eforward H3. conclude H3 eauto. repeat deex.
+      repeat eforward H1. conclude H1 eauto. intuition.
+      eforward H1. conclude H1 eauto. repeat deex.
+      eauto.
+
+  - admit.
 Qed.
 
 Lemma hoare_weaken_post : forall T env A (B1 B2 : T -> _) pr p,
