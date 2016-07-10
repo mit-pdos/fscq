@@ -1208,7 +1208,7 @@ Proof.
   intros.
   repeat eforward H0. conclude H0 eauto.
   intuition.
-  eforward H0. conclude H0 eauto. repeat deex.
+  eforward H2. conclude H2 eauto. repeat deex.
   repeat eexists; eauto.
   unfold SameValues in *.
   apply forall_In_Forall_elements. intros.
@@ -1224,7 +1224,7 @@ Lemma hoare_strengthen_pre : forall T env A1 A2 (B : T -> _) pr p,
 Proof.
   unfold ProgOk.
   intros.
-  specialize (H0 initial_state hm). forward H0.
+  repeat eforward H0. forward H0.
   unfold SameValues in *.
   apply forall_In_Forall_elements. intros.
   eapply Forall_elements_forall_In in H1; eauto.
@@ -1247,35 +1247,41 @@ Lemma CompileBindDiscard : forall T' env A (B : T' -> _) p f xp xf,
 Proof.
   unfold ProgOk.
   intuition.
-  econstructor. intuition. eauto. apply H; auto.
-  specialize (H _ hm ltac:(eauto)).
-  intuition. eapply H in H2.
-  repeat deex.
-  eapply H0; eauto.
 
-  (* TODO: automate proof. ([crush] can probably do this) *)
-  subst. eapply Exec_RunsTo in H2. eapply RunsTo_Step in H2. eapply Step_Seq in H2.
-  intuition; repeat deex. discriminate.
-  eapply Step_RunsTo in H3. eapply Step_RunsTo in H4.
-  eapply RunsTo_Exec in H3. eapply RunsTo_Exec in H4.
-  specialize (H _ hm ltac:(eauto)).
-  intuition. specialize (H _ ltac:(eauto)). repeat deex.
-  specialize (H0 _ hm' ltac:(eauto)). intuition.
-  specialize (H0 _ ltac:(eauto)). repeat deex.
-  eexists. exists hm'0. intuition eauto.
-
-  eapply Exec_Steps in H2. repeat deex. eapply Step_Seq in H3.
-  intuition; repeat deex.
-  + eapply Steps_Exec in H3.
-    repeat eforward H. specialize (H ltac:(eauto)). intuition.
-    specialize (H6 _ ltac:(eauto)). repeat deex.
-    eexists. eauto. invc H4. auto.
-  + destruct st'. eapply Step_RunsTo in H3. eapply RunsTo_Exec in H3. eapply Steps_Exec in H5; eauto.
-    repeat eforward H. conclude H eauto. intuition.
-    eforward H. conclude H eauto. repeat deex.
+  - subst. find_eapply_lem_hyp ExecFinished_Steps. find_eapply_lem_hyp Steps_Seq.
+    intuition; repeat deex; try discriminate.
+    find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFinished.
+    repeat eforward H. conclude H eauto.
+    intuition. repeat eforward H2. conclude H2 eauto. repeat deex.
     repeat eforward H0. conclude H0 eauto. intuition.
-    eforward H10. conclude H10 eauto. repeat deex.
-    eauto.
+    repeat eforward H2. conclude H2 eauto. repeat deex.
+    eexists. exists hm'0. intuition eauto.
+
+  - find_eapply_lem_hyp ExecCrashed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
+    intuition; repeat deex.
+    + invc H4. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
+      repeat eforward H. specialize (H ltac:(eauto)). intuition.
+      specialize (H _ ltac:(eauto)). repeat deex; eauto.
+    + destruct st'. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
+      repeat eforward H. conclude H eauto. intuition.
+      eforward H2. conclude H2 eauto. repeat deex.
+      repeat eforward H0. conclude H0 eauto. intuition.
+      eforward H0. conclude H0 eauto. repeat deex.
+      eauto.
+
+  - find_eapply_lem_hyp ExecFailed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
+    intuition; repeat deex.
+    + clear H2. eapply Steps_ExecFailed in H4; eauto.
+      repeat eforward H. conclude H eauto. intuition eauto.
+      unfold is_final; simpl; intuition subst.
+      contradiction H5. eexists. eapply StepSeq2.
+      intuition. deex.
+      contradiction H5. destruct sst'. eexists. eapply StepSeq1; eauto.
+    + destruct st'. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFailed; eauto.
+      repeat eforward H. conclude H eauto. intuition.
+      eforward H3. conclude H3 eauto. repeat deex.
+      repeat eforward H0. conclude H0 eauto. intuition.
+      eauto.
 Qed.
 
 Example micro_inc : sigT (fun p => forall x,
@@ -1288,8 +1294,7 @@ Proof.
   intros.
   instantiate (1 := ("x" <~ Const 1 + Var "x")%facade).
   intro. intros.
-  intuition. admit.
-  simpl. auto.
+  intuition.
   repeat inv_exec.
   maps.
   simpl in *.
@@ -1297,7 +1302,11 @@ Proof.
   find_inversion. repeat eexists; eauto. maps; eauto.
 
   repeat inv_exec.
-Admitted.
+
+  repeat inv_exec. contradiction H1. unfold is_final; auto.
+  contradiction H1. destruct initial_state. eexists. econstructor; simpl; auto.
+  maps. simpl in *. find_all_cases. eauto. eauto.
+Qed.
 
 Lemma CompileIf : forall P Q {H1 : FacadeWrapper Value ({P}+{Q})}
                          T {H : FacadeWrapper Value T}
@@ -1322,7 +1331,7 @@ Lemma CompileIf : forall P Q {H1 : FacadeWrapper Value ({P}+{Q})}
 Proof.
   unfold ProgOk.
   intuition.
-  econstructor. intuition. apply H4. exact hm. auto.
+  econstructor. intuition.
 Admitted.
 
 Lemma CompileWeq : forall A (a b : valu) env xa xb retvar avar bvar,
@@ -1345,15 +1354,13 @@ Lemma CompileWeq : forall A (a b : valu) env xa xb retvar avar bvar,
 Proof.
   unfold ProgOk.
   intuition.
-  econstructor. intuition. apply H2. exact hm. auto.
-  econstructor. intuition. eapply H3. exact hm.
 Admitted.
 
-Lemma CompileRead : forall F avar vvar a,
+Lemma CompileRead : forall env F avar vvar a,
   EXTRACT Read a
   {{ avar ~> a; F }}
-    Call vvar "read" [avar]
-  {{ fun ret => vvar ~> ret; avar ~> a; F }} // disk_env.
+    DiskRead vvar (Var avar)
+  {{ fun ret => vvar ~> ret; avar ~> a; F }} // env.
 Proof.
   unfold ProgOk.
   intros.
@@ -1361,9 +1368,6 @@ Proof.
   maps.
   find_all_cases.
   econstructor.
-  unfold disk_env. maps. trivial.
-  unfold sel. simpl. rewrite He. trivial.
-  simpl. eauto.
 
   repeat inv_exec. simpl in *. maps.
   find_all_cases. unfold disk_env in *. maps. invc H8. simpl in *.
