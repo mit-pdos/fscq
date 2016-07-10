@@ -34,6 +34,17 @@ Ltac subst_definitions :=
   | [ H := _ |- _ ] => subst H
   end.
 
+Ltac eforward H :=
+  match type of H with
+  | forall a : ?A, _ =>
+    match type of A with
+    | Prop => fail 1
+    | _ => idtac
+    end;
+    let v := fresh a in
+    evar (v : A); specialize (H v); subst v
+  end.
+
 Hint Constructors step fail_step crash_step exec.
 
 Definition label := string.
@@ -430,9 +441,9 @@ Section EnvSection.
   | EXDone : forall st,
     Exec (st, Skip) (EFinished st).
 
-  Hint Constructors Exec RunsTo Step : steps.
+  Hint Constructors Exec RunsTo Step.
 
-  Hint Constructors clos_refl_trans_1n : steps.
+  Hint Constructors clos_refl_trans_1n.
 
   Definition rt1n_front := Relation_Operators.rt1n_trans.
 
@@ -441,7 +452,7 @@ Section EnvSection.
     clos_refl_trans_1n A R y z ->
     clos_refl_trans_1n A R x z.
   Proof.
-    eauto using clos_rt_rt1n, clos_rt1n_rt, rt_trans with steps.
+    eauto using clos_rt_rt1n, clos_rt1n_rt, rt_trans.
   Qed.
 
   Hint Extern 1 (clos_refl_trans_1n _ _ ?x ?y) =>
@@ -449,13 +460,13 @@ Section EnvSection.
     | _ => is_evar x; fail 1
     | _ => is_evar y; fail 1
     | _ => eapply rt1n_trans'
-    end : steps.
+    end.
 
 
   Ltac do_inv :=
     match goal with
-    | [ H : Step _ _ |- _ ] => invc H; eauto with steps
-    | [ H : clos_refl_trans_1n _ _ _ _ |- _ ] => invc H; eauto with steps
+    | [ H : Step _ _ |- _ ] => invc H; eauto
+    | [ H : clos_refl_trans_1n _ _ _ _ |- _ ] => invc H; eauto
     end.
 
   Lemma steps_incall :
@@ -465,10 +476,10 @@ Section EnvSection.
   Proof.
     intros.
     prep_induction H; induction H; intros; subst.
-    - find_inversion. eauto with steps.
-    - destruct y. eauto with steps.
+    - find_inversion. eauto.
+    - destruct y. eauto.
   Qed.
-  Hint Resolve steps_incall : steps.
+  Hint Resolve steps_incall.
     
   Lemma steps_sequence :
     forall p0 st p st' p',
@@ -477,22 +488,22 @@ Section EnvSection.
   Proof.
     intros.
     prep_induction H; induction H; intros; subst.
-    - find_inversion. eauto with steps.
-    - destruct y. eauto with steps.
+    - find_inversion. eauto.
+    - destruct y. eauto.
   Qed.
-  Hint Resolve steps_sequence : steps.
+  Hint Resolve steps_sequence.
 
   (* For some reason (probably involving tuples), the [Hint Constructors] isn't enough. *)
   Hint Extern 1 (Step (_, Assign _ _) _) =>
-    eapply StepAssign : steps.
+    eapply StepAssign.
   Hint Extern 1 (Step (_, DiskRead _ _) _) =>
-    eapply StepDiskRead : steps.
+    eapply StepDiskRead.
   Hint Extern 1 (Step (_, DiskWrite _ _) _) =>
-    eapply StepDiskWrite : steps.
+    eapply StepDiskWrite.
   Hint Extern 1 (Step (_, Call _ _ _) _) =>
-    eapply StepStartCall : steps.
+    eapply StepStartCall.
   Hint Extern 1 (Step (_, InCall _ _ _ _ _ _) _) =>
-    eapply StepEndCall : steps.
+    eapply StepEndCall.
 
   Theorem RunsTo_Steps :
     forall p st st',
@@ -500,7 +511,7 @@ Section EnvSection.
       Step^* (st, p) (st', Skip).
   Proof.
     intros.
-    induction H; subst_definitions; subst; eauto 10 with steps.
+    induction H; subst_definitions; subst; eauto 10.
   Qed.
 
   Inductive RunsTo_InCall : Stmt -> State -> State -> Prop :=
@@ -577,22 +588,22 @@ Section EnvSection.
         RunsTo_InCall p st st' ->
         RunsTo p st st'.
   Proof.
-    induction 2; intros; subst_definitions; invc H; eauto with steps.
+    induction 2; intros; subst_definitions; invc H; eauto.
   Qed.
 
-  Hint Resolve SourceStmt_RunsToInCall_RunsTo : steps.
+  Hint Resolve SourceStmt_RunsToInCall_RunsTo.
 
-  Hint Constructors RunsTo_InCall : steps.
+  Hint Constructors RunsTo_InCall.
 
   Lemma RunsTo_RunsToInCall :
     forall p st st',
       RunsTo p st st' ->
       RunsTo_InCall p st st'.
   Proof.
-    induction 1; intros; subst_definitions; eauto with steps.
+    induction 1; intros; subst_definitions; eauto.
   Qed.
 
-  Hint Resolve RunsTo_RunsToInCall : steps.
+  Hint Resolve RunsTo_RunsToInCall.
 
   Ltac inv_runsto :=
     match goal with
@@ -611,12 +622,12 @@ Section EnvSection.
   Proof.
     intros.
     prep_induction H0; induction H0; intros; subst_definitions; subst; do_inv.
-    - subst_definitions. eauto with steps.
+    - subst_definitions. eauto.
     - eapply RunsToICCallOp; eauto. assert (Some input = Some input0) by congruence. find_inversion. auto.
     - destruct st. eapply RunsToInCall; eauto.
   Qed.
 
-  Hint Resolve Step_RunsTo : steps.
+  Hint Resolve Step_RunsTo.
 
   Theorem Steps_RunsTo' :
     forall p st st',
@@ -625,8 +636,8 @@ Section EnvSection.
   Proof.
     intros.
     prep_induction H; induction H; intros; subst.
-    - find_inversion. eauto with steps.
-    - destruct y. eauto with steps.
+    - find_inversion. eauto.
+    - destruct y. eauto.
   Qed.
 
   Theorem Steps_RunsTo :
@@ -636,7 +647,7 @@ Section EnvSection.
       RunsTo p st st'.
   Proof.
     intros.
-    eauto using Steps_RunsTo' with steps.
+    eauto using Steps_RunsTo'.
   Qed.
 
   Theorem ExecFinished_Steps : forall p st st',
@@ -645,8 +656,8 @@ Section EnvSection.
   Proof.
     intros.
     prep_induction H; induction H; intros; subst; try discriminate.
-    + destruct sst'. eauto with steps.
-    + repeat find_inversion. eauto with steps.
+    + destruct sst'. eauto.
+    + repeat find_inversion. eauto.
   Qed.
 
   Theorem Steps_ExecFinished : forall p st st',
@@ -655,8 +666,8 @@ Section EnvSection.
   Proof.
     intros.
     prep_induction H; induction H; intros; subst; try discriminate.
-    + find_inversion. eauto with steps.
-    + destruct y. eauto with steps.
+    + find_inversion. eauto.
+    + destruct y. eauto.
   Qed.
 
   Theorem ExecCrashed_Steps : forall p st d',
@@ -665,8 +676,8 @@ Section EnvSection.
   Proof.
     intros.
     prep_induction H; induction H; intros; subst; try discriminate.
-    + destruct sst'. specialize (IHExec _ _ _ eq_refl eq_refl). repeat deex. eauto 8 with steps.
-    + find_inversion. find_inversion. eauto 8 with steps.
+    + destruct sst'. specialize (IHExec _ _ _ eq_refl eq_refl). repeat deex. eauto 8.
+    + find_inversion. find_inversion. eauto 8.
   Qed.
 
   Theorem Steps_ExecCrashed : forall st p d' s' p',
@@ -677,8 +688,30 @@ Section EnvSection.
     intros.
     destruct st.
     prep_induction H; induction H; intros; subst.
-    + repeat find_inversion. eauto with steps.
-    + destruct y. destruct s. eauto with steps.
+    + repeat find_inversion. eauto.
+    + destruct y. destruct s. eauto.
+  Qed.
+
+  Theorem ExecFailed_Steps :
+    forall st p,
+      Exec (st, p) EFailed ->
+      exists st' p', Step^* (st, p) (st', p') /\ ~is_final (st', p') /\ ~exists sst', Step (st', p') sst'.
+  Proof.
+    intros.
+    unfold is_final; simpl.
+    prep_induction H; induction H; intros; subst; try discriminate; eauto.
+    - destruct sst'. repeat eforward IHExec. repeat conclude IHExec eauto. repeat deex.
+      eauto 10.
+  Qed.
+
+  Theorem Steps_ExecFailed :
+    forall st p st' p',
+      ~is_final (st', p') ->
+      (~exists sst', Step (st', p') sst') ->
+      Step^* (st, p) (st', p') ->
+      Exec (st, p) EFailed.
+  Proof.
+    induction 3; eauto.
   Qed.
 
   Lemma Steps_Seq :
@@ -689,10 +722,10 @@ Section EnvSection.
   Proof.
     intros.
     prep_induction H; induction H; intros; subst.
-    - find_inversion. eauto with steps.
+    - find_inversion. eauto.
     - destruct y. invc H.
-      + destruct (IHclos_refl_trans_1n _ _ _ _ _ eq_refl eq_refl); eauto; deex; eauto with steps.
-      + eauto with steps.
+      + destruct (IHclos_refl_trans_1n _ _ _ _ _ eq_refl eq_refl); eauto; deex; eauto.
+      + eauto.
   Qed.
 
 End EnvSection.
@@ -876,17 +909,6 @@ Proof.
   repeat deex. eauto.
 Qed.
 *)
-
-Ltac eforward H :=
-  match type of H with
-  | forall a : ?A, _ =>
-    match type of A with
-    | Prop => fail 1
-    | _ => idtac
-    end;
-    let v := fresh a in
-    evar (v : A); specialize (H v); subst v
-  end.
 
 
 Lemma extract_equiv_prog : forall T env A (B : T -> _) pr1 pr2 p,
@@ -1160,7 +1182,19 @@ Proof.
       eforward H1. conclude H1 eauto. repeat deex.
       eauto.
 
-  - admit.
+  - find_eapply_lem_hyp ExecFailed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
+    intuition; repeat deex.
+    + clear H3. eapply Steps_ExecFailed in H5; eauto.
+      repeat eforward H0. conclude H0 eauto. intuition eauto.
+      unfold is_final; simpl; intuition subst.
+      contradiction H6. eexists. eapply StepSeq2.
+      intuition. deex.
+      contradiction H6. destruct sst'. eexists. eapply StepSeq1; eauto.
+    + destruct st'. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFailed; eauto.
+      repeat eforward H0. conclude H0 eauto. intuition.
+      eforward H4. conclude H4 eauto. repeat deex.
+      repeat eforward H1. conclude H1 eauto. intuition.
+      eauto.
 Qed.
 
 Lemma hoare_weaken_post : forall T env A (B1 B2 : T -> _) pr p,
