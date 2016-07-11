@@ -838,9 +838,9 @@ Module AFS.
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(mscs')
-      exists tree' f' ds0 ds' bn,
+      exists tree' f' ds' bn,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
-       [[ ds' = dsupd ds0 bn (v, vsmerge vs) /\ BFILE.diskset_was ds0 ds ]] *
+       [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
        [[ BFILE.block_belong_to_file ilist bn inum off ]] *
        [[ MSAlloc mscs' = MSAlloc mscs ]] *
        (* spec about files on the latest diskset *)
@@ -878,8 +878,6 @@ Module AFS.
 
       unfold BFILE.diskset_was in *; intuition subst.
       rewrite LOG.intact_idempred; cancel.
-      rewrite LOG.intact_dsupd_latest by eauto.
-      rewrite LOG.recover_any_idempred; auto.
       eauto.
 
     - cancel.
