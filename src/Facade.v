@@ -1529,7 +1529,7 @@ Ltac match_scopes :=
 
 Ltac compile :=
   repeat match goal with
-  | [ |- @sigT _ _ ] => eexists
+  | [ |- @sigT _ _ ] => eexists; intros
   | _ => eapply CompileBindDiscard
   | _ => let r := gensym "r" in eapply CompileBind with (var := r); intros
   | _ => eapply CompileConst
@@ -1540,8 +1540,6 @@ Ltac compile :=
     | Some ?k =>
       eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
         eapply CompileRead with (avar := k) ]]; try match_scopes; maps
-    | None =>
-      eapply extract_equiv_prog; [ eapply bind_left_id | ]
     end
   | [ |- EXTRACT Write ?a ?v {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_fast a pre with
@@ -1551,13 +1549,19 @@ Ltac compile :=
         let tmp := gensym "_" in
         eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
           eapply CompileWrite with (avar := ka) (vvar := kv) (tvar := tmp) ]]; try match_scopes; maps
+      end
+    end
+  | [ |- EXTRACT ?f ?a {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_fast a pre with
       | None =>
         eapply extract_equiv_prog; [ eapply bind_left_id | ]
-      end
+    end
+  | [ |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_fast a pre with
     | None =>
       eapply extract_equiv_prog; [
         let arg := fresh "arg" in
-        set (arg := Write a v);
+        set (arg := f a b);
         pattern a in arg; subst arg;
         eapply bind_left_id | ]
     end
@@ -1581,8 +1585,6 @@ Eval lazy in projT1 (micro_swap 0 1).
 Example micro_swap_args : forall env, sigT (fun p =>
   forall a b, EXTRACT swap_prog a b {{ "a" ~> a; "b" ~> b; ∅ }} p {{ fun _ => ∅ }} // env).
 Proof.
-  intros.
-  compile.
   intros.
   compile.
 Defined.
@@ -1625,16 +1627,6 @@ Example extract_call_swap :
           EXTRACT call_swap {{ ∅ }} p {{ fun _ => ∅ }} // swap_env).
 Proof.
   compile.
-  eapply extract_equiv_prog; [ eapply bind_left_id | ].
-  compile.
-  match goal with
-      | [ |- EXTRACT ?goal {{ _ }} _ {{ _ }} // _ ] =>
-      eapply extract_equiv_prog; [
-        let arg := fresh "arg" in
-        set (arg := goal);
-        pattern 0 in arg; subst arg;
-        eapply bind_left_id | ] end.
-  compile.
   eapply hoare_weaken_post.
   shelve.
   eauto with extracted.
@@ -1644,7 +1636,6 @@ Proof.
   congruence.
 Defined.
 Eval lazy in projT1 extract_call_swap.
-
 
 Definition swap2_prog :=
   a <- Read 0;
