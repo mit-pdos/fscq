@@ -172,7 +172,7 @@ Module LOG.
   Qed.
 
   Lemma intact_dsupd_latest : forall xp F ds a v hm gms,
-    GLog.dset_match xp ds gms ->
+    GLog.dset_match xp (GLog.effective ds (length gms)) gms ->
     intact xp F (dsupd (ds!!, nil) a v) hm =p=>
     recover_any xp F (dsupd ds a v) hm.
   Proof.
@@ -186,7 +186,7 @@ Module LOG.
   Qed.
 
   Lemma intact_dssync_vecs_latest : forall xp F ds al hm gms,
-    GLog.dset_match xp ds gms ->
+    GLog.dset_match xp (GLog.effective ds (length gms)) gms ->
     intact xp F (dssync_vecs (ds!!, nil) al) hm =p=>
     recover_any xp F (dssync_vecs ds al) hm.
   Proof.
@@ -201,7 +201,8 @@ Module LOG.
 
   Lemma active_dset_match_pimpl : forall xp F ds d hm ms,
     rep xp F (ActiveTxn ds d) ms hm <=p=>
-    rep xp F (ActiveTxn ds d) ms hm * [[ exists gms, GLog.dset_match xp ds gms ]].
+    rep xp F (ActiveTxn ds d) ms hm * 
+      [[ exists gms, GLog.dset_match xp (GLog.effective ds (length gms)) gms ]].
   Proof.
     unfold rep, rep_inner, GLog.rep; intros; split; cancel.
     eexists; eauto.
@@ -209,7 +210,8 @@ Module LOG.
 
   Lemma notxn_dset_match_pimpl : forall xp F ds hm ms,
     rep xp F (NoTxn ds) ms hm <=p=>
-    rep xp F (NoTxn ds) ms hm * [[ exists gms, GLog.dset_match xp ds gms ]].
+    rep xp F (NoTxn ds) ms hm * 
+      [[ exists gms, GLog.dset_match xp (GLog.effective ds (length gms)) gms ]].
   Proof.
     unfold rep, rep_inner, GLog.rep; intros; split; cancel.
     eexists; eauto.
@@ -1002,8 +1004,9 @@ Module LOG.
 
   Theorem crash_xform_intact : forall xp F ds hm,
     crash_xform (intact xp F ds hm) =p=>
-      exists ms d, rep xp (crash_xform F) (NoTxn (d, nil)) ms hm *
-        [[[ d ::: crash_xform (diskIs (list2nmem (fst ds))) ]]].
+      exists ms d n, rep xp (crash_xform F) (NoTxn (d, nil)) ms hm *
+        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] *
+        [[ n <= length (snd ds) ]].
   Proof.
     unfold intact, rep, rep_inner; intros.
     xform_norm;
@@ -1014,13 +1017,15 @@ Module LOG.
     rewrite GLog.crash_xform_cached in Hx;
     destruct_lift Hx.
 
-    cancel.
-    eassign (mk_mstate (MSTxn x_1) dummy0).
-    cancel. auto. auto.
+    safecancel.
+    eassign (mk_mstate (MSTxn x_1) dummy1).
+    cancel. auto.
+    eauto.
+    eauto.
 
-    cancel.
-    eassign (mk_mstate vmap0 dummy0).
-    cancel. auto. auto.
+    safecancel.
+    eassign (mk_mstate vmap0 dummy1).
+    cancel. auto. eauto. auto.
   Qed.
 
   Theorem crash_xform_idempred : forall xp F ds hm,
@@ -1086,7 +1091,7 @@ Module LOG.
       destruct_lift H0.
       safecancel.
       or_l; cancel.
-      eassign (mk_mstate (Map.empty valu) dummy3).
+      eassign (mk_mstate (Map.empty valu) dummy4).
       cancel. auto. eassumption.
       eapply crash_xform_diskIs_trans; eauto.
 
@@ -1663,20 +1668,12 @@ Module LOG.
     rewrite notxn_after_crash_diskIs.
     rewrite after_crash_idempred.
     cancel.
-    rewrite nthd_0.
     pred_apply.
-    rewrite crash_xform_diskIs_vssync_vecs; auto.
-    omega.
+    rewrite dssync_vecs_nthd.
+    rewrite crash_xform_diskIs_vssync_vecs; eauto.
+    rewrite map_length in *; auto.
   Qed.
 
-  Lemma notxn_latest_any : forall xp F ds ms gms hm,
-    GLog.dset_match xp ds gms ->
-    rep xp F (NoTxn (ds!!, nil)) ms hm =p=> recover_any xp F ds hm.
-  Proof.
-    unfold intact, recover_any, rep, rep_inner; cancel.
-    eapply GLog.cached_latest_recover_any; eauto.
-    Unshelve. all: eauto.
-  Qed.
 
   Lemma crash_xform_intact_dssync_vecs_latest_idempred : forall xp F ds al hm gms,
     GLog.dset_match xp ds gms ->
@@ -1686,7 +1683,7 @@ Module LOG.
     intros.
     rewrite crash_xform_intact.
     xform_norm.
-    apply crash_xform_diskIs_vssync_vecs in H2.
+    apply crash_xform_diskIs_vssync_vecs in H3.
     rewrite notxn_after_crash_diskIs.
     simpl.
     rewrite after_crash_idempred.
