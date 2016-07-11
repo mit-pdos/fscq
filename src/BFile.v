@@ -1077,9 +1077,9 @@ Module BFILE.
 
 
   Lemma block_belong_to_file_ok : forall Fm Fi Fd bxp ixp flist ilist frees inum off f vs m,
-    (Fm ✶ rep bxp ixp flist ilist frees)%pred m ->
-    (Fi ✶ inum |-> f)%pred (list2nmem flist) ->
-    (Fd ✶ off |-> vs)%pred (list2nmem (BFData f)) ->
+    (Fm * rep bxp ixp flist ilist frees)%pred m ->
+    (Fi * inum |-> f)%pred (list2nmem flist) ->
+    (Fd * off |-> vs)%pred (list2nmem (BFData f)) ->
     block_belong_to_file ilist # (selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0) inum off.
   Proof.
     unfold block_belong_to_file; intros; split; auto.

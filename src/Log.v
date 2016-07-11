@@ -326,6 +326,16 @@ Module LOG.
     mm' <- GLog.flushall xp mm;
     Ret (mk_memstate cm mm').
 
+  Definition flushsync_noop xp ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    mm' <- GLog.flushsync_noop xp mm;
+    Ret (mk_memstate cm mm').
+
+  Definition flushall_noop xp ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    mm' <- GLog.flushall_noop xp mm;
+    Ret (mk_memstate cm mm').
+
   Definition recover xp cs :=
     mm <- GLog.recover xp cs;
     Ret (mk_memstate vmap0 mm).
@@ -472,11 +482,10 @@ Module LOG.
       rep xp F (ActiveTxn ds ds!!) ms hm *
       [[[ ds!! ::: (Fm * a |-> vs) ]]] *
       [[ sync_invariant F ]]
-    POST:hm' RET:ms' exists ds' ds0,
+    POST:hm' RET:ms' exists ds',
       rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
       [[[ ds'!! ::: (Fm * a |-> (v, vsmerge vs)) ]]] *
-      [[ ds' = dsupd ds0 a (v, vsmerge vs) ]] *
-      [[ ds0 = ds \/ ds0 = (ds!!, nil) ]]
+      [[ ds' = dsupd ds a (v, vsmerge vs) ]]
     XCRASH:hm'
       recover_any xp F ds hm' \/
       recover_any xp F (dsupd ds a (v, vsmerge vs)) hm'
@@ -489,11 +498,6 @@ Module LOG.
     eapply map_valid_remove; autorewrite with lists; eauto.
     rewrite dsupd_latest_length; auto.
     rewrite dsupd_latest.
-    apply updN_replay_disk_remove_eq; eauto.
-    rewrite dsupd_latest.
-    eapply list2nmem_updN; eauto.
-    setoid_rewrite singular_latest at 1; simpl; auto.
-    eapply map_valid_remove; autorewrite with lists; eauto.
     apply updN_replay_disk_remove_eq; eauto.
     rewrite dsupd_latest.
     eapply list2nmem_updN; eauto.
@@ -1557,11 +1561,10 @@ Module LOG.
     POST:hm' RET:ms' exists ds',
       rep xp F (ActiveTxn ds' ds'!!) ms' hm' *
       [[[ ds'!! ::: Fm * listmatch (fun v e => (fst e) |-> (snd e, vsmerge v)) ovl avl ]]] *
-      [[ ds' = (dsupd_vecs ds avl) \/ ds' = dsupd_vecs (ds!!, nil) avl ]]
+      [[ ds' = (dsupd_vecs ds avl) ]]
     XCRASH:hm'
       recover_any xp F ds hm' \/
-      intact xp F (vsupd_vecs (ds !!) avl, nil) hm' \/
-      intact xp F (vsupd_vecs (fst ds) avl, nil) hm'
+      recover_any xp F (dsupd_vecs ds avl) hm'
     >} dwrite_vecs xp avl ms.
   Proof.
     unfold dwrite_vecs.
@@ -1571,8 +1574,7 @@ Module LOG.
     step; subst.
     apply map_valid_map0.
     rewrite dsupd_vecs_latest; apply dwrite_vsupd_vecs_ok; auto.
-    apply map_valid_map0.
-    rewrite dsupd_vecs_latest; apply dwrite_vsupd_vecs_ok; auto.
+
 
     (* crash conditions *)
     xcrash.
@@ -1581,18 +1583,9 @@ Module LOG.
     eassign x; eassign (mk_mstate vmap0 (MSGLog ms_1), x0); simpl; eauto.
     pred_apply; cancel.
 
-    or_r; or_l; cancel.
-    unfold intact; xform_normr.
-    or_l; unfold rep, rep_inner; xform_normr; cancel.
-    erewrite snd_pair; eauto.
-    eassign (mk_mstate vmap0 x_1); eauto.
-    pred_apply; cancel.
-
-    or_r; or_r; cancel.
-    unfold intact; xform_normr.
-    or_l; unfold rep, rep_inner; xform_normr; cancel.
-    erewrite snd_pair; eauto.
-    eassign (mk_mstate vmap0 x_1); eauto.
+    or_r; unfold recover_any, rep; cancel.
+    xform_normr; cancel.
+    eassign x; eassign (mk_mstate vmap0 (MSGLog ms_1), x0); simpl; eauto.
     pred_apply; cancel.
   Qed.
 

@@ -91,6 +91,13 @@ Proof.
   rewrite d_map_nthd; auto.
 Qed.
 
+Lemma dsupd_vecs_fst : forall ds avl,
+  fst (dsupd_vecs ds avl) = vsupd_vecs (fst ds) avl.
+Proof.
+  unfold dsupd_vecs; intros.
+  simpl; auto.
+Qed.
+
 Lemma dssync_vecs_latest : forall ds al,
   latest (dssync_vecs ds al) = vssync_vecs (latest ds) al.
 Proof.

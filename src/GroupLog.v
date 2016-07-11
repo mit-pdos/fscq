@@ -306,7 +306,7 @@ Module GLog.
   Definition dwrite (xp : log_xparams) a v ms :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     If (MapFacts.In_dec vm a) {
-      ms <- flushall xp ms;
+      ms <- flushall_noop xp ms;
       ms <- dwrite' xp a v ms;
       Ret ms
     } else {
@@ -322,7 +322,7 @@ Module GLog.
   Definition dwrite_vecs (xp : log_xparams) avs ms :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     If (bool_dec (overlap (map fst avs) vm) true) {
-      ms <- flushall xp ms;
+      ms <- flushall_noop xp ms;
       ms <- dwrite_vecs' xp avs ms;
       Ret ms
     } else {
@@ -1296,9 +1296,8 @@ Module GLog.
       << F, rep: xp (Cached ds) ms hm >> *
       [[[ ds !! ::: (Fd * a |-> vs) ]]] *
       [[ sync_invariant F ]]
-    POST:hm' RET:ms' exists ds',
-      << F, rep: xp (Cached (dsupd ds' a (v, vsmerge vs))) ms' hm' >> *
-      [[ ds' = ds \/ ds' = (ds!!, nil) ]]
+    POST:hm' RET:ms'
+      << F, rep: xp (Cached (dsupd ds a (v, vsmerge vs))) ms' hm' >>
     XCRASH:hm'
       << F, would_recover_any: xp ds hm' -- >> \/
       << F, would_recover_any: xp (dsupd ds a (v, vsmerge vs)) hm' -- >>
@@ -1308,25 +1307,24 @@ Module GLog.
     step.
     prestep; unfold rep; cancel.
     prestep; unfold rep; safecancel.
-
-    erewrite dset_match_nthd_effective_fst; eauto.
-    cancel.
-    eauto.
     substl (MSVMap a0); eauto.
+    substl (MSTxns a0); simpl.
+    rewrite Nat.sub_0_r, <- latest_nthd.
     simpl; pred_apply; cancel.
     auto.
-    step.
 
+    step.
     cancel.
     repeat xcrash_rewrite; xform_norm.
 
     or_l; cancel.
     xform_normr; cancel.
-    eapply recover_latest_any_effective; eauto.
 
     or_r; cancel.
     do 2 (xform_norm; cancel).
     repeat rewrite nthd_0; simpl.
+    substl (MSTxns a0); simpl.
+    rewrite Nat.sub_0_r, <- latest_nthd.
     rewrite <- dsupd_latest.
     rewrite synced_recover_any; eauto.
 
@@ -1337,6 +1335,7 @@ Module GLog.
     or_l; cancel.
     xform_normr; cancel.
 
+    (* 2nd case: no flushall *)
     prestep; unfold rep; cancel.
     apply MapFacts.not_find_in_iff; auto.
     eapply list2nmem_ptsto_cancel_pair.
@@ -1482,46 +1481,57 @@ Module GLog.
 
   Hint Extern 1 ({{_}} Bind (dwrite_vecs' _ _ _) _) => apply dwrite_vecs'_ok : prog.
 
+  Lemma effective_avl_addrs_ok : forall (avl : list (addr * valu)) ds ts xp,
+    Forall (fun e => fst e < length (ds !!)) avl ->
+    dset_match xp (effective ds (length ts)) ts ->
+    Forall (fun e => fst e < length (nthd (length (snd ds) - length ts) ds)) avl.
+  Proof.
+    intros.
+    erewrite dset_match_nthd_effective_fst by eauto.
+    rewrite Forall_forall in *; intros.
+    erewrite <- replay_seq_latest_length; eauto.
+    rewrite latest_effective; eauto.
+    unfold dset_match in *; intuition eauto.
+  Qed.
+
   Theorem dwrite_vecs_ok: forall xp avl ms,
     {< F ds,
     PRE:hm
       << F, rep: xp (Cached ds) ms hm >> *
       [[ Forall (fun e => fst e < length (ds!!)) avl /\ sync_invariant F ]]
-    POST:hm' RET:ms' exists ds',
-      << F, rep: xp (Cached (dsupd_vecs ds' avl)) ms' hm' >> *
-      [[ ds' = ds \/ ds' = (ds!!, nil) ]]
+    POST:hm' RET:ms'
+      << F, rep: xp (Cached (dsupd_vecs ds avl)) ms' hm' >>
     XCRASH:hm'
-      << F, would_recover_any: xp ds hm' -- >>
-      (* TODO: use would_recover_any and dsupd_vecs, this spec is not currently used *)
-      \/ (exists ms', 
-      << F, rep: xp (Cached (vsupd_vecs ds!! avl, nil)) ms' hm' >>)
-      \/ (exists ms', 
-      << F, rep: xp (Cached (vsupd_vecs (fst (effective ds (length (MSTxns (fst ms))))) avl, nil)) ms' hm' >>)
+      << F, would_recover_any: xp ds hm' -- >> \/
+      << F, would_recover_any: xp (dsupd_vecs ds avl) hm' -- >>
     >} dwrite_vecs xp avl ms.
   Proof.
     unfold dwrite_vecs, rep.
     step.
     prestep; unfold rep; cancel.
     prestep; unfold rep; safecancel.
-    erewrite dset_match_nthd_effective_fst by eauto.
-    repeat (rewrite nthd_0; simpl).
-    cancel.
-    eauto.
     substl (MSVMap a).
     apply overlap_empty; apply map_empty_vmap0.
-    eauto.
+    eapply effective_avl_addrs_ok; eauto.
     auto.
-    step.
 
+    step.
     cancel.
     repeat xcrash_rewrite; xform_norm.
 
     or_l; cancel.
     xform_normr; cancel.
-    eapply recover_latest_any_effective; eauto.
 
-    or_r; or_l; cancel.
+    or_r; cancel.
     do 2 (xform_norm; cancel).
+    repeat rewrite nthd_0; simpl.
+    substl (MSTxns a); simpl.
+    rewrite Nat.sub_0_r, <- latest_nthd.
+    rewrite <- dsupd_vecs_latest.
+    rewrite synced_recover_any; eauto.
+    eassign (MSTxns a); substl (MSTxns a); simpl.
+    unfold effective; rewrite popn_oob by omega.
+    apply dset_match_nil.
 
     cancel.
     repeat xcrash_rewrite; xform_norm.
@@ -1530,11 +1540,7 @@ Module GLog.
 
     prestep; unfold rep; cancel.
     apply not_true_iff_false; auto.
-    erewrite dset_match_nthd_effective_fst by eauto.
-    rewrite Forall_forall in *; intros.
-    erewrite <- replay_seq_latest_length; eauto.
-    rewrite latest_effective; eauto.
-    unfold dset_match in *; intuition eauto.
+    eapply effective_avl_addrs_ok; eauto.
 
     step.
     cancel.
@@ -1542,8 +1548,19 @@ Module GLog.
     or_l; cancel.
     xform_normr; cancel.
 
-    or_r; or_r; cancel.
+    or_r; cancel.
     do 2 (xform_norm; cancel).
+    repeat rewrite nthd_0; simpl.
+    erewrite dset_match_nthd_effective_fst by eauto.
+    rewrite <- dsupd_vecs_fst, <- effective_dsupd_vecs_comm.
+    rewrite MLog.synced_recover_before.
+    rewrite recover_before_any_fst.
+    auto.
+
+    rewrite effective_dsupd_vecs_comm.
+    eapply dset_match_dsupd_vecs_nonoverlap.
+    apply not_true_is_false; eauto.
+    all: eauto.
   Qed.
 
 
