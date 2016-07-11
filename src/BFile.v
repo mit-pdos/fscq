@@ -95,6 +95,11 @@ Module BFILE.
     ms <- LOG.flushsync lxp ms;
     Ret (mk_memstate (negb al) ms).
 
+  Definition sync_noop lxp (ixp : INODE.IRecSig.xparams) fms :=
+    let '(al, ms) := (MSAlloc fms, MSLL fms) in
+    ms <- LOG.flushsync_noop lxp ms;
+    Ret (mk_memstate (negb al) ms).
+
   Definition pick_balloc A (a : A * A) (flag : bool) :=
     if flag then fst a else snd a.
 
@@ -1075,6 +1080,23 @@ Module BFILE.
     step.
   Qed.
 
+  Theorem sync_noop_ok : forall lxp ixp ms,
+    {< F ds,
+    PRE:hm
+      LOG.rep lxp F (LOG.NoTxn ds) (MSLL ms) hm *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms'
+      LOG.rep lxp F (LOG.NoTxn ds) (MSLL ms') hm' *
+      [[ MSAlloc ms' = negb (MSAlloc ms) ]]
+    XCRASH:hm'
+      LOG.recover_any lxp F ds hm'
+    >} sync_noop lxp ixp ms.
+  Proof.
+    unfold sync_noop, rep.
+    step.
+    step.
+  Qed.
+
 
   Lemma block_belong_to_file_ok : forall Fm Fi Fd bxp ixp flist ilist frees inum off f vs m,
     (Fm * rep bxp ixp flist ilist frees)%pred m ->
@@ -1267,6 +1289,7 @@ Module BFILE.
   Hint Extern 1 ({{_}} Bind (shrink _ _ _ _ _ _) _) => apply shrink_ok : prog.
   Hint Extern 1 ({{_}} Bind (datasync _ _ _ _) _) => apply datasync_ok : prog.
   Hint Extern 1 ({{_}} Bind (sync _ _ _) _) => apply sync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (sync_noop _ _ _) _) => apply sync_noop_ok : prog.
   Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
 
 
