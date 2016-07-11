@@ -94,12 +94,12 @@ Section Extracted.
   | Seq : Stmt -> Stmt -> Stmt
   | If : Expr -> Stmt -> Stmt -> Stmt
   | While : Expr -> Stmt -> Stmt
-  | Call : var -> label -> list var -> Stmt
+  | Call : option var -> label -> list var -> Stmt
   | Assign : var -> Expr -> Stmt
   | DiskRead : var -> Expr -> Stmt
   | DiskWrite : Expr -> Expr -> Stmt
   (* Only appears at runtime *)
-  | InCall (s0: Locals) (argvars: list var) (retvar: var) (args: list var) (ret: var) (p: Stmt).
+  | InCall (s0: Locals) (argvars: list var) (retvar: option var) (args: list var) (ret: option var) (p: Stmt).
 
   (* Everything program does not contain an InCall. Could probably be expressed directly if we had generics. *)
   Inductive SourceStmt : Stmt -> Prop :=
@@ -255,11 +255,17 @@ Section Extracted.
 
   Definition is_in (a : string) ls := if in_dec string_dec a ls then true else false.
 
+  Definition is_none_or_not_in (v : option string) vs :=
+    match v with
+      | None => true
+      | Some rv => negb (is_in rv vs)
+    end.
+
   Record OperationalSpec := {
-    ArgVars : list string;
-    RetVar : string;
+    ArgVars : list var;
+    RetVar : option var;
     Body : Stmt;
-    ret_not_in_args : negb (is_in RetVar ArgVars) = true;
+    ret_not_in_args : is_none_or_not_in RetVar ArgVars = true;
     args_no_dup : is_no_dup ArgVars = true;
     (* TODO syntax_ok with is_actual_args_no_dup *)
   }.
@@ -294,6 +300,12 @@ Section EnvSection.
     end.
 
   Eval hnf in rawdisk.
+
+  Definition maybe_add V k (v : V) m :=
+    match k with
+      | None => m
+      | Some kk => add kk v m
+    end.
 
   Inductive RunsTo : Stmt -> State -> State -> Prop :=
   | RunsToSkip : forall st,
@@ -344,10 +356,13 @@ Section EnvSection.
       mapM (sel s) args = Some input ->
       let callee_s := make_map (ArgVars spec) input in
       RunsTo (Body spec) (d, callee_s) (d', callee_s') ->
-      sel callee_s' (RetVar spec) = Some ret ->
+      match RetVar spec with
+        | None => x = None
+        | Some rv => sel callee_s' rv = Some ret
+      end ->
       let output := List.map (sel callee_s') (ArgVars spec) in
       let s' := add_remove_many args input output s in
-      let s' := add x ret s' in
+      let s' := maybe_add x ret s' in
       RunsTo (Call x f args) (d, s) (d', s').
 
   Inductive Step : State * Stmt -> State * Stmt -> Prop :=
@@ -403,10 +418,13 @@ Section EnvSection.
       forall callee_s' s d input retval argvars retvar args ret,
         mapM (sel s) args = Some input ->
         length args = length argvars ->
-        sel callee_s' retvar = Some retval ->
+        match retvar with
+          | None => ret = None
+          | Some rv => sel callee_s' rv = Some retval
+        end ->
         let output := List.map (sel callee_s') argvars in
         let s' := add_remove_many args input output s in
-        let s' := add ret retval s' in
+        let s' := maybe_add ret retval s' in
         Step (d, callee_s', InCall s argvars retvar args ret Skip) (d, s', Skip).
 
   Inductive Outcome :=
@@ -569,18 +587,24 @@ Section EnvSection.
       mapM (sel s) args = Some input ->
       let callee_s := make_map (ArgVars spec) input in
       RunsTo_InCall (Body spec) (d, callee_s) (d', callee_s') ->
-      sel callee_s' (RetVar spec) = Some ret ->
+      match RetVar spec with
+        | None => x = None
+        | Some rv => sel callee_s' rv = Some ret
+      end ->
       let output := List.map (sel callee_s') (ArgVars spec) in
       let s' := add_remove_many args input output s in
-      let s' := add x ret s' in
+      let s' := maybe_add x ret s' in
       RunsTo_InCall (Call x f args) (d, s) (d', s')
-  | RunsToInCall : forall s0 x args argvars retvar input ret p d d' callee_s callee_s',
+  | RunsToInCall : forall s0 x args (argvars : list var) retvar input ret p d d' callee_s callee_s',
       mapM (sel s0) args = Some input ->
       length args = length argvars ->
-      sel callee_s' retvar = Some ret ->
+      match retvar with
+        | None => x = None
+        | Some rv => sel callee_s' rv = Some ret
+      end ->
       let output := List.map (sel callee_s') argvars in
       let s' := add_remove_many args input output s0 in
-      let s' := add x ret s' in
+      let s' := maybe_add x ret s' in
       RunsTo_InCall p (d, callee_s) (d', callee_s') ->
       RunsTo_InCall (InCall s0 argvars retvar args x p) (d, callee_s) (d', s').
 
@@ -1025,6 +1049,11 @@ Ltac set_hyp_evars :=
     set (H := e) in *
   end.
 
+Ltac map_rewrites := rewrite
+                       ?StringMapFacts.remove_neq_o, ?StringMapFacts.remove_eq_o,
+                       ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o,
+                       ?StringMapFacts.empty_o in * by congruence.
+
 Ltac maps := unfold SameValues in *; repeat match goal with
   | [ H : Forall _ (StringMap.elements _) |- _ ] =>
       let H1 := fresh H in
@@ -1036,9 +1065,7 @@ Ltac maps := unfold SameValues in *; repeat match goal with
       apply Forall_elements_add; split
   | _ => discriminate
   | _ => congruence
-  | _ => set_evars; set_hyp_evars; progress rewrite ?StringMapFacts.remove_neq_o, ?StringMapFacts.remove_eq_o,
-                          ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o,
-                          ?StringMapFacts.empty_o in * by congruence; subst_evars
+  | _ => set_evars; set_hyp_evars; progress map_rewrites; subst_evars
   end.
 
 Ltac find_all_cases :=
@@ -1595,7 +1622,7 @@ Opaque swap_prog.
 Definition swap_env : Env :=
   ("swap" ->> {|
            ArgVars := ["a"; "b"];
-           RetVar := "r0"; Body := projT1 (micro_swap_args ∅);
+           RetVar := Some "r0"; Body := projT1 (micro_swap_args ∅);
            ret_not_in_args := ltac:(auto); args_no_dup := ltac:(auto)
          |}; ∅).
 
@@ -1611,31 +1638,89 @@ Definition rot :=
 Axiom false : False.
 Tactic Notation "really_admit" := elim false.
 
+Definition voidmethod2 A B C {WA: FacadeWrapper Value A} {WB: FacadeWrapper Value B} name (src : A -> B -> prog C) env :=
+  forall avar bvar,
+    avar <> bvar ->
+    forall a b, EXTRACT src a b
+           {{ avar ~> a; bvar ~> b; ∅ }}
+             Call None name [avar; bvar]
+           {{ fun _ => avar ~> a; bvar ~> b; ∅ }} // env.
+
 Example swap_call : forall avar bvar, avar <> bvar -> sigT (fun p =>
   forall a b, EXTRACT swap_prog a b {{ avar ~> a; bvar ~> b; ∅ }} p {{ fun _ => avar ~> a; bvar ~> b; ∅ }} // swap_env).
 Proof.
   eexists.
-  instantiate (p := Call "_" "swap" [avar; bvar]).
-  really_admit.
-Defined.
+  instantiate (p := Call None "swap" [avar; bvar]).
+  intros.
+  intro. intro. intro. intro. intro.
+  intuition.
+  subst.
+  find_eapply_lem_hyp ExecFinished_Steps.
+  find_eapply_lem_hyp Steps_RunsTo.
+  invc H1.
+  find_eapply_lem_hyp RunsTo_Steps.
+  find_eapply_lem_hyp Steps_ExecFinished.
+  pose proof (projT2 (micro_swap_args swap_env)) as Hex.
+  simpl in Hex.
+  specialize (Hex a b).
+  unfold swap_env in H5.
+  maps.
+  find_inversion_safe.
+  subst_definitions.
+  unfold sel in *.
+  simpl in *.
+  find_all_cases.
+  find_inversion_safe.
+  unfold ProgOk in *.
+  repeat eforward Hex.
+  forward Hex.
+  shelve.
+  intuition.
+  forward_solve.
+  simpl in *.
+  do 2 eexists.
+  intuition eauto.
+  maps.
+  rewrite He0; trivial.
+  eapply forall_In_Forall_elements. intros.
+  pose proof (Forall_elements_forall_In _ H10).
+  simpl in *.
+  specialize (H13 k v).
+  (* Why are avar, bvar being looked up in the same map (k) as "a", "b" ?? *)
+Abort.
+
 
 Definition swap_call_cor avar bvar abne := projT2 (@swap_call avar bvar abne).
 Hint Resolve swap_call_cor : extracted.
 
 Example extract_call_swap :
-  sigT (fun p =>
-          EXTRACT call_swap {{ ∅ }} p {{ fun _ => ∅ }} // swap_env).
+  forall env,
+    voidmethod2 "swap" swap_prog env ->
+    sigT (fun p =>
+          EXTRACT call_swap {{ ∅ }} p {{ fun _ => ∅ }} // env).
 Proof.
+  intros.
   compile.
   eapply hoare_weaken_post.
   shelve.
-  eauto with extracted.
+  eapply H.
+  congruence.
   Unshelve.
   match_scopes.
   maps.
-  congruence.
 Defined.
-Eval lazy in projT1 extract_call_swap.
+
+Example extract_call_swap_top :
+    sigT (fun p =>
+          EXTRACT call_swap {{ ∅ }} p {{ fun _ => ∅ }} // swap_env).
+Proof.
+  apply extract_call_swap.
+  unfold voidmethod2.
+  intros.
+  eapply swap_call_cor.
+  Unshelve.
+  eauto.
+Qed.
 
 Definition swap2_prog :=
   a <- Read 0;
