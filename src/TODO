@@ -22,7 +22,6 @@
 
 ===
 
-- global sync with nop-spec
 - dwrite without calling flushall in GroupLog
 
 - prove AtomicCp
