@@ -986,11 +986,30 @@ Module GLog.
     Unshelve. all: try exact nil; eauto; try exact vmap0.
   Qed.
 
+
   Hint Extern 1 ({{_}} Bind (init _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_}} Bind (read _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} Bind (submit _ _ _) _) => apply submit_ok : prog.
   Hint Extern 1 ({{_}} Bind (flushall _ _) _) => apply flushall_ok : prog.
   Hint Extern 0 (okToUnify (rep _ _ _ _) (rep _ _ _ _)) => constructor : okToUnify.
+
+  Theorem flushall_noop_ok: forall xp ms,
+    {< F ds,
+    PRE:hm
+      << F, rep: xp (Cached ds) ms hm >> *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms'
+      << F, rep: xp (Cached ds) ms' hm' >> *
+      [[ MSTxns (fst ms') = nil /\ MSVMap (fst ms') = vmap0 ]]
+    XCRASH:hm'
+      << F, would_recover_any: xp ds hm' -- >>
+    >} flushall_noop xp ms.
+  Proof.
+    unfold flushall_noop; intros.
+    safestep.
+    step.
+    apply cached_latest_cached.
+  Qed.
 
   Theorem flushsync_ok: forall xp ms,
     {< F ds,
@@ -1015,6 +1034,27 @@ Module GLog.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (flushsync _ _) _) => apply flushsync_ok : prog.
+
+  Theorem flushsync_noop_ok: forall xp ms,
+    {< F ds,
+    PRE:hm
+      << F, rep: xp (Cached ds) ms hm >> *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms'
+      << F, rep: xp (Cached ds) ms' hm' >> *
+      [[ MSTxns (fst ms') = nil /\ MSVMap (fst ms') = vmap0 ]]
+    XCRASH:hm'
+      << F, would_recover_any: xp ds hm' -- >>
+    >} flushsync_noop xp ms.
+  Proof.
+    unfold flushsync_noop.
+    safestep.
+    step.
+    apply cached_latest_cached.
+  Qed.
+
+  Hint Extern 1 ({{_}} Bind (flushall_noop _ _) _) => apply flushall_noop_ok : prog.
+  Hint Extern 1 ({{_}} Bind (flushsync_noop _ _) _) => apply flushsync_noop_ok : prog.
 
   Lemma forall_ents_valid_length_eq : forall xp d d' ts,
     Forall (ents_valid xp d) ts ->
