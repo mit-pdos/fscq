@@ -548,7 +548,7 @@ Module TREESEQ.
       [[ DIRTREE.dirtree_isdir (TStree ts !!) = true ]]
     POST:hm' RET:^(mscs', r)
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-      [[ r = DIRTREE.find_name fnlist (TStree ts !!) /\ MSAlloc mscs' = MSAlloc mscs ]]
+      [[ DIRTREE.find_name fnlist (TStree ts !!) = r /\ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
      >} AFS.lookup fsxp dnum fnlist mscs.
   Proof.

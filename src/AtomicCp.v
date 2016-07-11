@@ -36,6 +36,7 @@ Require Import DirSep.
 
 Import DIRTREE.
 Import TREESEQ.
+Import DTCrash.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -365,6 +366,45 @@ Module ATOMICCP.
 
   (* specs for copy_and_rename_cleanup and atomic_cp *)
 
+Lemma crash_xform_possible_crash: forall n ds d,
+   crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
+   possible_crash (list2nmem (nthd n ds)) (list2nmem d).
+Proof.
+  intros.
+  eapply crash_xform_diskIs in H.
+  destruct H.
+  destruct_lift H.
+  unfold diskIs in H.
+  rewrite H in H0; auto.
+Qed.
+
+Lemma treeseq_crash_xform_tree_crash: forall Fm Ftop fsxp mscs ts ds n d,
+  treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
+  crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
+  exists t, tree_crash (TStree t) (TStree (nthd n ts)) /\
+      tree_rep Fm Ftop fsxp t (list2nmem d).
+Proof.
+  intros.
+  eexists.
+  eapply crash_xform_possible_crash in H0.
+  intuition.
+Admitted.
+
+Lemma treeseq_in_ds_tree_crash: forall Fm Ftop fsxp mscs ts ds n d t a,
+  treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
+  tree_crash (TStree t) (TStree (nthd n ts)) ->
+  tree_rep Fm Ftop fsxp t (list2nmem d) ->
+  treeseq_in_ds Fm Ftop fsxp a (t, []) (d, []).
+Proof.
+  intros.
+    unfold treeseq_in_ds.
+    constructor; simpl.
+    intuition.
+    unfold treeseq_one_safe; simpl.
+    eapply dirtree_safe_refl.
+    constructor.
+Qed.
+
   Theorem atomic_cp_recover_ok :
     {< Fm Ftop fsxp cs mscs ds ts tmppath,
     PRE:hm
@@ -376,7 +416,7 @@ Module ATOMICCP.
       [[ treeseq_in_ds Fm Ftop fsxp mscs' (t, nil) (d, nil) ]] *
       [[ forall Ftree f,
          (Ftree * tmppath |-> f)%pred (dir2flatmem2 (TStree (nthd n ts))) ->
-         (Ftree * tmppath |-> None) (dir2flatmem2 (TStree t)) ]]
+         (Ftree * tmppath |-> None)%pred (dir2flatmem2 (TStree t)) ]]
     XCRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists n d t,
@@ -384,16 +424,41 @@ Module ATOMICCP.
       [[ treeseq_in_ds Fm Ftop fsxp mscs (t, nil) (d, nil) ]] *
       [[ forall Ftree f,
          (Ftree * tmppath |-> f)%pred (dir2flatmem2 (TStree (nthd n ts))) ->
-         (Ftree * tmppath |-> None) (dir2flatmem2 (TStree t)) ]]
+         (Ftree * tmppath |-> None)%pred (dir2flatmem2 (TStree t)) ]]
     >} atomic_cp_recover.
   Proof.
     unfold atomic_cp_recover; intros.
     prestep. norml.  (* XXX slow! *)
     safecancel.
+
+    (* need to apply treeseq_crash_xform_tree_crash before instantiation *)
+    prestep. norm'l.
+    eapply treeseq_crash_xform_tree_crash in H10 as Htree; eauto.
+    destruct Htree.
+    cancel.
+
+    instantiate (ts0 := (x, [])).
+
+    eapply treeseq_in_ds_tree_crash; eauto.
+ 
+    admit. (* follows from H6 *)
+    admit. (* follows from H6 *)
+
     step.
-    Focus 4.
-    destruct a1.
+
+    eapply treeseq_in_ds_tree_crash; eauto.
+    instantiate (pathname := []).
+    admit.  (* follows from H6 *)
+
+    admit.  (* need new lemma *)
+
     step.
+
+
+    eapply treeseq_in_ds_tree_crash.
+
+
+
     (* XXX looks proming ....*)
   Admitted.
 
