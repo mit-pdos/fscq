@@ -39,6 +39,7 @@ Import ListNotations.
 
 Set Implicit Arguments.
 
+Parameter should_flushall : bool.
 
 Module LOG.
 
@@ -298,7 +299,12 @@ Module LOG.
   Definition commit xp ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
     let^ (mm', r) <- GLog.submit xp (Map.elements cm) mm;
-    Ret ^(mk_memstate vmap0 mm', r).
+    If (bool_dec should_flushall true) {
+      mm' <- GLog.flushall_noop xp mm';
+      Ret ^(mk_memstate vmap0 mm', r)
+    } else {
+      Ret ^(mk_memstate vmap0 mm', r)
+    }.
 
   (* like abort, but use a better name for read-only transactions *)
   Definition commit_ro (xp : log_xparams) ms :=
@@ -571,28 +577,80 @@ Module LOG.
     Unshelve. eauto.
   Qed.
 
+  Theorem flushall_noop_ok : forall xp ms,
+    {< F ds,
+    PRE:hm
+      rep xp F (NoTxn ds) ms hm *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms'
+      rep xp F (NoTxn ds) ms' hm'
+    XCRASH:hm'
+      recover_any xp F ds hm'
+    >} flushall_noop xp ms.
+  Proof.
+    unfold flushall_noop, recover_any.
+    hoare.
+    xcrash.
+    Unshelve. eauto.
+  Qed.
+
+  Theorem flushsync_noop_ok : forall xp ms,
+    {< F ds,
+    PRE:hm
+      rep xp F (NoTxn ds) ms hm *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms'
+      rep xp F (NoTxn ds) ms' hm'
+    XCRASH:hm'
+      recover_any xp F ds hm'
+    >} flushsync_noop xp ms.
+  Proof.
+    unfold flushsync_noop, recover_any.
+    hoare.
+    xcrash.
+    Unshelve. eauto.
+  Qed.
+
+  Hint Extern 1 ({{_}} Bind (flushall_noop _ _) _) => apply flushall_noop_ok : prog.
+  Hint Extern 1 ({{_}} Bind (flushsync_noop _ _) _) => apply flushsync_noop_ok : prog.
 
   Local Hint Resolve map_valid_log_valid length_elements_cardinal_gt map_empty_vmap0.
 
   Theorem commit_ok : forall xp ms,
     {< F ds m,
-     PRE:hm  rep xp F (ActiveTxn ds m) ms hm
+     PRE:hm  rep xp F (ActiveTxn ds m) ms hm *
+            [[ sync_invariant F ]]
      POST:hm' RET:^(ms',r)
           ([[ r = true ]] *
             rep xp F (NoTxn (pushd m ds)) ms' hm') \/
           ([[ r = false ]] *
             [[ Map.cardinal (MSTxn (fst ms)) > (LogLen xp) ]] *
             rep xp F (NoTxn ds) ms' hm')
-     CRASH:hm' exists ms', rep xp F (NoTxn ds) ms' hm'
+     XCRASH:hm' recover_any xp F (pushd m ds) hm'
     >} commit xp ms.
   Proof.
-    unfold commit.
+    unfold commit, recover_any.
+    step.
+    step.
     step.
     step.
 
-    eassign (mk_mstate vmap0 ms'_1).
+    xcrash.
+    unfold GLog.would_recover_any.
+    cancel.
+    constructor; auto.
+
     step.
-    auto.
+    step.
+    step.
+    xcrash.
+    step.
+    xcrash.
+    rewrite GLog.cached_recover_any.
+    unfold GLog.would_recover_any.
+    cancel.
+    constructor; auto.
+    Unshelve. all: eauto.
   Qed.
 
 
