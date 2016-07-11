@@ -25,6 +25,7 @@ Require Import AsyncDisk.
 Require Import Inode.
 Require Import GenSepAuto.
 Require Import DiskSet.
+Require Import Errno.
 
 
 Import ListNotations.
@@ -109,18 +110,19 @@ Module BFILE.
     If (lt_dec len INODE.NBlocks) {
       let^ (ms, r) <- BALLOC.alloc lxp (pick_balloc bxps al) ms;
       match r with
-      | None => Ret ^(mk_memstate al ms, false)
+      | None => Ret ^(mk_memstate al ms, Err ENOSPCBLOCK)
       | Some bn =>
            let^ (ms, succ) <- INODE.grow lxp (pick_balloc bxps al) ixp inum bn ms;
-           If (bool_dec succ true) {
-              ms <- LOG.write lxp bn v ms;
-              Ret ^(mk_memstate al ms, true)
-           } else {
-             Ret ^(mk_memstate al ms, false)
-           }
+           match succ with
+           | Err e =>
+             Ret ^(mk_memstate al ms, Err e)
+           | OK _ =>
+             ms <- LOG.write lxp bn v ms;
+             Ret ^(mk_memstate al ms, OK tt)
+           end
       end
     } else {
-      Ret ^(mk_memstate al ms, false)
+      Ret ^(mk_memstate al ms, Err EFBIG)
     }.
 
   Definition shrink lxp bxps ixp inum nr fms :=
@@ -830,8 +832,8 @@ Module BFILE.
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: Fd ]]]
     POST:hm' RET:^(ms', r) [[ MSAlloc ms = MSAlloc ms' ]] * exists m',
-           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
-           [[ r = true  ]] * exists flist' ilist' frees' f',
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
+           [[ r = OK tt  ]] * exists flist' ilist' frees' f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
            [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
@@ -1509,7 +1511,7 @@ Module BFILE.
         LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms) hm *
         [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees') ]]] *
         [[[ flist' ::: (Fi * inum |-> f') ]]] *
-        [[ ret = None ->
+        [[ ret = OK tt ->
           f' = mk_bfile ((BFData f) ++ synced_list (firstn i l)) (BFAttr f) ]] *
         [[ MSAlloc ms = MSAlloc ms0 /\
            ilist_safe ilist (pick_balloc frees (MSAlloc ms)) 
@@ -1517,21 +1519,14 @@ Module BFILE.
       OnCrash
         LOG.intact lxp F m0 hm
       Begin
-        If (is_some ret) {
-          Ret ^(ms, ret)
-        } else {
+        match ret with
+        | Err e => Ret ^(ms, ret)
+        | OK _ =>
           let^ (ms, ok) <- grow lxp bxp ixp inum (selN l i $0) ms;
-          If (bool_dec ok true) {
-            Ret ^(ms, None)
-          } else {
-            Ret ^(ms, Some false)
-          }
-        }
-      Rof ^(ms0, None);
-    match ret with
-    | Some v => Ret ^(ms, v)
-    | None => Ret ^(ms, true)
-    end.
+          Ret ^(ms, ok)
+        end
+      Rof ^(ms0, OK tt);
+    Ret ^(ms, ret).
 
 
 
@@ -1539,7 +1534,7 @@ Module BFILE.
     let^ (ms, sz) <- getlen lxp xp inum ms;
     If (lt_dec newsz sz) {
       ms <- shrink lxp bxp xp inum (sz - newsz) ms;
-      Ret ^(ms, true)
+      Ret ^(ms, OK tt)
     } else {
       let^ (ms, ok) <- grown lxp bxp xp inum (repeat $0 (newsz - sz))  ms;
       Ret ^(ms, ok)
@@ -1561,8 +1556,8 @@ Module BFILE.
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: Fd ]]]
     POST:hm' RET:^(ms', r) [[ MSAlloc ms' = MSAlloc ms ]] * exists m',
-           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
-           [[ r = true  ]] * exists flist' ilist' frees' f',
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
+           [[ r = OK tt  ]] * exists flist' ilist' frees' f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
            [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
@@ -1617,8 +1612,8 @@ Module BFILE.
            [[[ m ::: (Fm * rep bxp ixp flist ilist frees ) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:^(ms', r) [[ MSAlloc ms = MSAlloc ms' ]] * exists m',
-           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
-           [[ r = true  ]] * exists flist' ilist' frees' f',
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
+           [[ r = OK tt  ]] * exists flist' ilist' frees' f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
            [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *

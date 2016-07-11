@@ -24,6 +24,7 @@ Require Import FSLayout.
 Require Import AsyncDisk.
 Require Import BlockPtr.
 Require Import GenSepAuto.
+Require Import Errno.
 
 Import ListNotations.
 
@@ -221,10 +222,10 @@ Module INODE.
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     let^ (ms, r) <- Ind.grow lxp bxp ir ($ bn) ms;
     match r with
-    | None => Ret ^(ms, false)
-    | Some ir' =>
+    | Err e => Ret ^(ms, Err e)
+    | OK ir' =>
         ms <- IRec.put_array lxp xp inum ir' ms;
-        Ret ^(ms, true)
+        Ret ^(ms, OK tt)
     end.
 
 
@@ -631,8 +632,8 @@ Module INODE.
            [[[ m ::: (Fm * rep bxp xp ilist * BALLOC.rep bxp freelist) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
     POST:hm' RET:^(ms, r)
-           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' \/
-           [[ r = true ]] * exists m' ilist' ino' freelist',
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' \/
+           [[ r = OK tt ]] * exists m' ilist' ino' freelist',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOC.rep bxp freelist') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *

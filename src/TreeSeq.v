@@ -31,6 +31,7 @@ Require Import SuperBlock.
 Require Import FSLayout.
 Require Import AsyncFS.
 Require Import Arith.
+Require Import Errno.
 
 
 Import DIRTREE.
@@ -548,7 +549,9 @@ Module TREESEQ.
       [[ DIRTREE.dirtree_isdir (TStree ts !!) = true ]]
     POST:hm' RET:^(mscs', r)
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-      [[ DIRTREE.find_name fnlist (TStree ts !!) = r /\ MSAlloc mscs' = MSAlloc mscs ]]
+      [[ (isError r /\ None = DIRTREE.find_name fnlist (TStree ts !!)) \/
+         (exists v, r = OK v /\ Some v = DIRTREE.find_name fnlist (TStree ts !!))%type ]] *
+      [[ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
      >} AFS.lookup fsxp dnum fnlist mscs.
   Proof.
@@ -638,8 +641,8 @@ Module TREESEQ.
      [[ (Ftree * pathname |-> Some (inum, f))%pred  (dir2flatmem2 (TStree ts!!)) ]] 
   POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-     ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
-      [[ ok = true  ]] * exists ds' ts' ilist' frees' tree' f',
+     ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+      [[ ok = OK tt ]] * exists ds' ts' ilist' frees' tree' f',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) 1 ($0, nil)) (BFILE.BFAttr f) ]] *
@@ -1038,8 +1041,8 @@ Admitted.
       [[ (Ftree * ((srcbase++[srcname]%list) |-> Some (srcnum, srcfile)) * ((dstbase++[dstname])%list) |-> Some (dstnum, dstfile) )%pred (dir2flatmem2 subtree) ]]
     POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-      ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
-       [[ ok = true  ]] * exists ds' ts' ilist' frees' tree' pruned renamed srcdirnum srcents dstdirnum dstents,
+      ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+       [[ ok = OK tt ]] * exists ds' ts' ilist' frees' tree' pruned renamed srcdirnum srcents dstdirnum dstents,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
        [[ DIRTREE.find_subtree srcbase subtree = Some (DIRTREE.TreeDir srcdirnum srcents) ]] *
@@ -1100,8 +1103,8 @@ Admitted.
       [[ (Ftree * ((pathname++[name])%list) |-> Some (finum, file))%pred (dir2flatmem2 (TStree ts !!)) ]]
     POST:hm RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-      [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm \/
-      [[ ok = true ]] * exists ds' ts' tree' ilist' frees',
+      [[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm \/
+      [[ ok = OK tt ]] * exists ds' ts' tree' ilist' frees',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm *
         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
         [[ tree' = DIRTREE.update_subtree pathname

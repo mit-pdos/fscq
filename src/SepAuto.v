@@ -7,6 +7,7 @@ Require Import Hoare.
 Require Import Word.
 Require Import AsyncDisk.
 Require Import Hashmap.
+Require Import Errno.
 
 Set Implicit Arguments.
 
@@ -1071,6 +1072,10 @@ Ltac inv_option_eq' := repeat match goal with
   | [ H: None = Some _ |- _ ] => inversion H
   | [ H: Some _ = None |- _ ] => inversion H
   | [ H: Some _ = Some _ |- _ ] => inversion H; clear H
+  | [ H: OK _ = OK _ |- _ ] => inversion H; clear H
+  | [ H: Err _ = Err _ |- _ ] => inversion H; clear H
+  | [ H: OK _ = Err _ |- _ ] => inversion H
+  | [ H: Err _ = OK _ |- _ ] => inversion H
   | [ H: (_, _) = (_, _) |- _ ] => inversion H; clear H
   end.
 

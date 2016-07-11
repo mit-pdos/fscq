@@ -20,6 +20,7 @@ Require Import AsyncDisk.
 Require Import DiskSet.
 Require Import GenSepAuto.
 Require Import Lock.
+Require Import Errno.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -1754,31 +1755,33 @@ Module DIRTREE.
         [[ inum = dirtree_inum tree ]] *
         [[ isdir = dirtree_isdir tree ]] *
         [[ find_name fnlist treetop = find_name fnrest tree ]] *
-        [[ valid = true -> isdir = true -> (exists Fsub,
+        [[ valid = OK tt -> isdir = true -> (exists Fsub,
                    Fsub * tree_pred ibxp tree * freeinode_pred)%pred (list2nmem bflist) ]] *
         [[ MSAlloc mscs = MSAlloc mscs0 ]]
       OnCrash
         LOG.intact fsxp.(FSXPLog) F mbase hm
       Begin
-        If (bool_dec valid false) {
-          Ret ^(mscs, inum, isdir, valid)
-        } else {
+        match valid with
+        | Err e =>
+          Ret ^(mscs, inum, isdir, Err e)
+        | OK _ =>
           If (bool_dec isdir true) {
             let^ (mscs, r) <- SDIR.lookup lxp ixp inum fn mscs;
             match r with
-            | Some (inum, isdir) => Ret ^(mscs, inum, isdir, true)
-            | None => Ret ^(mscs, inum, isdir, false)
+            | Some (inum, isdir) => Ret ^(mscs, inum, isdir, OK tt)
+            | None => Ret ^(mscs, inum, isdir, Err ENOENT)
             end
           } else {
-            Ret ^(mscs, inum, isdir, false)
+            Ret ^(mscs, inum, isdir, Err ENOTDIR)
           }
-       }
-    Rof ^(mscs, dnum, true, true);
-    If (bool_dec valid true) {
-      Ret ^(mscs, Some (inum, isdir))
-    } else {
-      Ret ^(mscs, None)
-    }.
+        end
+    Rof ^(mscs, dnum, true, OK tt);
+    match valid with
+    | OK _ =>
+      Ret ^(mscs, OK (inum, isdir))
+    | Err e =>
+      Ret ^(mscs, Err e)
+    end.
 
    Local Hint Unfold SDIR.rep_macro rep : hoare_unfold.
 
@@ -1790,7 +1793,8 @@ Module DIRTREE.
            [[ dirtree_isdir tree = true ]]
     POST:hm' RET:^(mscs',r)
            LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs') hm' *
-           [[ r = find_name fnlist tree ]] *
+           [[ (isError r /\ None = find_name fnlist tree) \/
+              (exists v, (r = OK v /\ Some v = find_name fnlist tree))%type ]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
@@ -1857,15 +1861,16 @@ Module DIRTREE.
     let^ (ms, oi) <- IAlloc.alloc lxp ibxp ms;
     let fms := BFILE.mk_memstate al ms in
     match oi with
-    | None => Ret ^(fms, None)
+    | None => Ret ^(fms, Err ENOSPCINODE)
     | Some inum =>
       let^ (fms, ok) <- SDIR.link lxp bxp ixp dnum name inum false fms;
-      If (bool_dec ok true) {
+      match ok with
+      | OK _ =>
         fms <- BFILE.reset lxp bxp ixp inum fms;
-        Ret ^(fms, Some (inum : addr))
-      } else {
-        Ret ^(fms, None)
-      }
+        Ret ^(fms, OK (inum : addr))
+      | Err e =>
+        Ret ^(fms, Err e)
+      end
     end.
 
 
@@ -1876,15 +1881,16 @@ Module DIRTREE.
     let^ (ms, oi) <- IAlloc.alloc lxp ibxp ms;
     let fms := BFILE.mk_memstate al ms in
     match oi with
-    | None => Ret ^(fms, None)
+    | None => Ret ^(fms, Err ENOSPCINODE)
     | Some inum =>
       let^ (fms, ok) <- SDIR.link lxp bxp ixp dnum name inum true fms;
-      If (bool_dec ok true) {
+      match ok with
+      | OK _ =>
         fms <- BFILE.reset lxp bxp ixp inum fms;
-        Ret ^(fms, Some (inum : addr))
-      } else {
-        Ret ^(fms, None)
-      }
+        Ret ^(fms, OK (inum : addr))
+      | Err e =>
+        Ret ^(fms, Err e)
+      end
     end.
 
 
@@ -1920,10 +1926,10 @@ Module DIRTREE.
     POST:hm' RET:^(mscs',r)
            exists m', LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') hm' *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           ([[ r = None ]] \/
+           ([[ isError r ]] \/
             exists inum ilist' freeblocks',
             let tree' := TreeDir dnum ((name, TreeDir inum nil) :: tree_elem) in
-            [[ r = Some inum ]] *
+            [[ r = OK inum ]] *
             [[ (Fm * rep fsxp Ftop tree' ilist' freeblocks')%pred (list2nmem m') ]] *
             [[ dirtree_safe ilist  (BFILE.pick_balloc freeblocks  (MSAlloc mscs')) tree
                             ilist' (BFILE.pick_balloc freeblocks' (MSAlloc mscs')) tree' ]] )
@@ -1972,8 +1978,8 @@ Module DIRTREE.
     POST:hm' RET:^(mscs',r)
            exists m', LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') hm' *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           ([[ r = None ]] \/
-            exists inum tree' ilist' frees', [[ r = Some inum ]] *
+           ([[ isError r ]] \/
+            exists inum tree' ilist' frees', [[ r = OK inum ]] *
             [[ tree' = update_subtree pathname (TreeDir dnum
                       ((name, TreeDir inum nil) :: tree_elem)) tree ]] *
             [[ (Fm * rep fsxp Ftop tree' ilist' frees')%pred (list2nmem m') ]] *
@@ -2002,9 +2008,9 @@ Module DIRTREE.
     POST:hm' RET:^(mscs',r) exists m',
            LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') hm' *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           ([[ r = None ]] \/
+           ([[ isError r ]] \/
             exists inum ilist' tree' frees',
-            [[ r = Some inum ]] * [[ ~ In name (map fst tree_elem) ]] *
+            [[ r = OK inum ]] * [[ ~ In name (map fst tree_elem) ]] *
             [[ tree' = update_subtree pathname (TreeDir dnum
                         (tree_elem ++ [(name, (TreeFile inum BFILE.bfile0))] )) tree ]] *
             [[ (Fm * rep fsxp Ftop tree' ilist' frees' )%pred (list2nmem m') ]] *
@@ -2093,9 +2099,9 @@ Module DIRTREE.
     POST:hm' RET:^(mscs',r) exists m',
            LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') hm' *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           ([[ r = None ]] \/
+           ([[ isError r ]] \/
             exists inum ilist' tree' frees',
-            [[ r = Some inum ]] *
+            [[ r = OK inum ]] *
             [[ tree' = tree_graft dnum tree_elem pathname name (TreeFile inum BFILE.bfile0) tree ]] *
             [[ (Fm * rep fsxp Ftop tree' ilist' frees' )%pred (list2nmem m') ]] *
             [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
@@ -2145,7 +2151,7 @@ Module DIRTREE.
                                    fsxp, (FSXPInode fsxp)) in
     let^ (mscs, oi) <- SDIR.lookup lxp ixp dnum name mscs;
     match oi with
-    | None => Ret ^(mscs, false)
+    | None => Ret ^(mscs, Err ENOENT)
     | Some (inum, isdir) =>
       let^ (mscs, ok) <- If (bool_dec isdir false) {
         Ret ^(mscs, true)
@@ -2157,16 +2163,17 @@ Module DIRTREE.
         end
       };
       If (bool_dec ok false) {
-        Ret ^(mscs, false)
+        Ret ^(mscs, Err ENOTEMPTY)
       } else {
         let^ (mscs, ok) <- SDIR.unlink lxp ixp dnum name mscs;
-        If (bool_dec ok true) {
+        match ok with
+        | OK _ =>
           mscs' <- IAlloc.free lxp ibxp inum (MSLL mscs);
           mscs <- BFILE.reset lxp bxp ixp inum (MSAlloc mscs, mscs');
-          Ret ^(mscs, true)
-        } else {
-          Ret ^(mscs, false)
-        }
+          Ret ^(mscs, OK tt)
+        | Err e =>
+          Ret ^(mscs, Err e)
+        end
      }
     end.
 
@@ -2415,8 +2422,8 @@ Module DIRTREE.
     POST:hm' RET:^(mscs',r)
            exists m', LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') hm' *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           ([[ r = false ]] \/
-            [[ r = true  ]] * exists frees' ilist',
+           ([[ isError r ]] \/
+            [[ r = OK tt ]] * exists frees' ilist',
             let tree' := delete_from_dir name tree in
             [[ (Fm * rep fsxp Ftop tree' ilist' frees')%pred (list2nmem m') ]] *
             [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
@@ -2523,8 +2530,8 @@ Module DIRTREE.
     POST:hm' RET:^(mscs',r)
            exists m', LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') hm' *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           ([[ r = false ]] \/
-            [[ r = true ]] * exists tree' ilist' frees',
+           ([[ isError r ]] \/
+            [[ r = OK tt ]] * exists tree' ilist' frees',
             [[ tree' = update_subtree pathname
                       (delete_from_dir name (TreeDir dnum tree_elem)) tree ]] *
             [[ (Fm * rep fsxp Ftop tree' ilist' frees')%pred (list2nmem m') ]] *
@@ -2551,19 +2558,19 @@ Module DIRTREE.
                                    fsxp, (FSXPInode fsxp)) in
     let^ (mscs, osrcdir) <- namei fsxp dnum srcpath mscs;
     match osrcdir with
-    | None => Ret ^(mscs, false)
-    | Some (_, false) => Ret ^(mscs, false)
-    | Some (dsrc, true) =>
+    | Err _ => Ret ^(mscs, Err ENOENT)
+    | OK (_, false) => Ret ^(mscs, Err ENOTDIR)
+    | OK (dsrc, true) =>
       let^ (mscs, osrc) <- SDIR.lookup lxp ixp dsrc srcname mscs;
       match osrc with
-      | None => Ret ^(mscs, false)
+      | None => Ret ^(mscs, Err ENOENT)
       | Some (inum, inum_isdir) =>
         let^ (mscs, _) <- SDIR.unlink lxp ixp dsrc srcname mscs;
         let^ (mscs, odstdir) <- namei fsxp dnum dstpath mscs;
         match odstdir with
-        | None => Ret ^(mscs, false)
-        | Some (_, false) => Ret ^(mscs, false)
-        | Some (ddst, true) =>
+        | Err _ => Ret ^(mscs, Err ENOENT)
+        | OK (_, false) => Ret ^(mscs, Err ENOTDIR)
+        | OK (ddst, true) =>
           let^ (mscs, odst) <- SDIR.lookup lxp ixp ddst dstname mscs;
           match odst with
           | None =>
@@ -2571,12 +2578,13 @@ Module DIRTREE.
             Ret ^(mscs, ok)
           | Some _ =>
             let^ (mscs, ok) <- delete fsxp ddst dstname mscs;
-            If (bool_dec ok true) {
+            match ok with
+            | OK _ =>
               let^ (mscs, ok) <- SDIR.link lxp bxp ixp ddst dstname inum inum_isdir mscs;
               Ret ^(mscs, ok)
-            } else {
-              Ret ^(mscs, false)
-            }
+            | Err e =>
+              Ret ^(mscs, Err e)
+            end
           end
         end
       end
@@ -3221,8 +3229,8 @@ Module DIRTREE.
     POST:hm' RET:^(mscs',r)
            exists m', LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') hm' *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           ([[ r = false ]] \/
-            [[ r = true  ]] * exists snum sents dnum dents subtree pruned tree' ilist' frees',
+           ([[ isError r ]] \/
+            [[ r = OK tt ]] * exists snum sents dnum dents subtree pruned tree' ilist' frees',
             [[ find_subtree srcpath tree = Some (TreeDir snum sents) ]] *
             [[ find_dirlist srcname sents = Some subtree ]] *
             [[ pruned = tree_prune snum sents srcpath srcname tree ]] *
@@ -3389,8 +3397,8 @@ Module DIRTREE.
     POST:hm' RET:^(mscs',r)
            exists m', LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') hm' *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
-           ([[ r = false ]] \/
-            [[ r = true  ]] *
+           ([[ isError r ]] \/
+            [[ r = OK tt ]] *
             exists srcnum srcents dstnum dstents subtree pruned renamed tree' ilist' frees',
             [[ find_subtree srcpath (TreeDir dnum tree_elem) = Some (TreeDir srcnum srcents) ]] *
             [[ find_dirlist srcname srcents = Some subtree ]] *
@@ -3612,8 +3620,8 @@ Module DIRTREE.
            exists d',
            LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d') (MSLL mscs') hm' *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
-          ([[ ok = false ]] \/
-           [[ ok = true ]] *
+          ([[ isError ok ]] \/
+           [[ ok = OK tt ]] *
            exists tree' f' ilist' frees',
            [[[ d' ::: Fm * rep fsxp Ftop tree' ilist' frees' ]]] *
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
