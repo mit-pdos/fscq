@@ -1,11 +1,12 @@
+Require Import ProofIrrelevance.
 Require Import PeanoNat String List FMapAVL.
 Require Import Relation_Operators Operators_Properties.
+Require Import Morphisms.
 Require Import VerdiTactics.
 Require Import StringMap.
 Require Import Mem AsyncDisk PredCrash Prog ProgMonad SepAuto.
 Require Import Gensym.
 Require Import Word.
-Require Import ProofIrrelevance.
 
 Import ListNotations.
 
@@ -149,6 +150,8 @@ Section Extracted.
       | Binop op a b => eval_binop_m (inl op) (eval st a) (eval st b)
       | TestE op a b => eval_binop_m (inr op) (eval st a) (eval st b)
     end.
+
+  Hint Unfold eval.
 
   Definition eval_bool st e : option bool :=
     match eval st e with
@@ -426,13 +429,15 @@ Section EnvSection.
   Definition is_final (sst : State * Stmt) : Prop :=
     snd sst = Skip.
 
+  Hint Unfold is_final.
+
   Inductive Exec : State * Stmt -> Outcome -> Prop :=
   | EXStep : forall sst sst' out,
     Step sst sst' ->
     Exec sst' out ->
     Exec sst out
   | EXFail : forall sst,
-    (~exists sst', Step sst sst') ->
+    (~exists st' p', Step sst (st', p')) ->
     ~is_final sst ->
     Exec sst EFailed
   | EXCrash : forall d s p,
@@ -695,7 +700,7 @@ Section EnvSection.
   Theorem ExecFailed_Steps :
     forall st p,
       Exec (st, p) EFailed ->
-      exists st' p', Step^* (st, p) (st', p') /\ ~is_final (st', p') /\ ~exists sst', Step (st', p') sst'.
+      exists st' p', Step^* (st, p) (st', p') /\ ~is_final (st', p') /\ ~exists st'' p'', Step (st', p') (st'', p'').
   Proof.
     intros.
     unfold is_final; simpl.
@@ -707,7 +712,7 @@ Section EnvSection.
   Theorem Steps_ExecFailed :
     forall st p st' p',
       ~is_final (st', p') ->
-      (~exists sst', Step (st', p') sst') ->
+      (~exists st'' p'', Step (st', p') (st'', p'')) ->
       Step^* (st, p) (st', p') ->
       Exec (st, p) EFailed.
   Proof.
@@ -770,16 +775,17 @@ Notation "ENV \u2272 TENV" := (SameValues ENV TENV) (at level 50).
 Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : Scope) (final_tstate : T -> Scope) :=
   forall initial_state hm,
     (snd initial_state) \u2272 initial_tstate ->
-    (forall final_state,
-      Exec env (initial_state, eprog) (EFinished final_state) ->
+    forall out,
+      Exec env (initial_state, eprog) out ->
+    (forall final_state, out = EFinished final_state ->
       exists r hm',
         exec (fst initial_state) hm sprog (Finished (fst final_state) hm' r) /\
         (snd final_state) \u2272 (final_tstate r)) /\
     (forall final_disk,
-      Exec env (initial_state, eprog) (ECrashed final_disk) ->
+      out = ECrashed final_disk ->
       exists hm',
         exec (fst initial_state) hm sprog (Crashed T final_disk hm')) /\
-    (Exec env (initial_state, eprog) EFailed ->
+    (out = EFailed ->
       exec (fst initial_state) hm sprog (Failed T)).
 
 Notation "'EXTRACT' SP {{ A }} EP {{ B }} // EV" :=
@@ -856,13 +862,11 @@ Proof.
   intro.
   instantiate (1 := Skip).
   intros.
-  repeat split; intros; subst.
-  econstructor.
-  repeat inv_exec. exists hm. intuition.
-  repeat inv_exec.
-  repeat inv_exec.
+  repeat inv_exec;
+    repeat split; intros; subst; try discriminate.
   contradiction H2.
   econstructor; eauto.
+  find_inversion. eauto.
 Defined.
 
 (*
@@ -924,12 +928,8 @@ Lemma extract_equiv_prog : forall T env A (B : T -> _) pr1 pr2 p,
 Proof.
   unfold prog_equiv, ProgOk.
   intros.
-  repeat eforward H0. conclude H0 eauto. intuition.
-  eforward H2. conclude H2 eauto. repeat deex.
-  repeat eexists; eauto. apply H; eauto.
-  eforward H0. conclude H0 eauto. repeat deex.
-  repeat eexists; eauto. apply H; eauto.
-  apply H; eauto.
+  setoid_rewrite <- H.
+  auto.
 Qed.
 
 Lemma Forall_elements_add : forall V P k (v : V) m,
@@ -1047,22 +1047,53 @@ Ltac find_all_cases :=
   end; subst.
 
 Lemma write_fails_not_present:
-  forall env (a : W) (v : valu) st,
-    StringMap.find "v" (snd st) = Some (wrap v) ->
-    StringMap.find "a" (snd st) = Some (wrap a) ->
-    ~ (exists st', Step env (st, DiskWrite (Var "a") (Var "v")) st') ->
-    fst st a = None.
+  forall env (a : W) (v : valu) d s,
+    StringMap.find "v" s = Some (wrap v) ->
+    StringMap.find "a" s = Some (wrap a) ->
+    ~ (exists st' p', Step env (d, s, DiskWrite (Var "a") (Var "v")) (st', p')) ->
+    d a = None.
 Proof.
   intros.
-  assert (~exists v0, fst st a = Some v0).
+  assert (~exists v0, d a = Some v0).
   intuition.
   deex.
   contradiction H1.
-  destruct v0, st. eexists. econstructor; eauto.
-  destruct (fst st a); eauto. contradiction H2. eauto.
+  destruct v0. repeat eexists. econstructor; eauto.
+  destruct (d a); eauto. contradiction H2. eauto.
 Qed.
 
 Hint Resolve write_fails_not_present.
+
+Lemma skip_is_final :
+  forall d s, is_final (d, s, Skip).
+Proof.
+  unfold is_final; trivial.
+Qed.
+
+Hint Resolve skip_is_final.
+
+Ltac match_finds :=
+  match goal with
+    | [ H1: StringMap.find ?a ?s = ?v1, H2: StringMap.find ?a ?s = ?v2 |- _ ] => rewrite H1 in H2; try invc H2
+  end.
+
+Ltac find_inversion_safe :=
+  match goal with
+    | [ H : ?X ?a = ?X ?b |- _ ] =>
+      let He := fresh in
+      assert (a = b) as He by (inversion H; auto); clear H; subst
+  end.
+
+Ltac destruct_pair :=
+  match goal with
+    | [ H : _ * _ |- _ ] => destruct H
+  end.
+
+Ltac inv_exec_progok :=
+  repeat destruct_pair; repeat inv_exec; simpl in *;
+  intuition (subst; try discriminate; repeat find_inversion_safe;
+                                          repeat match_finds; simpl in *;
+                                          try solve [ exfalso; intuition eauto 10 ]; eauto 10).
 
 Example micro_write : sigT (fun p => forall a v,
   EXTRACT Write a v
@@ -1076,16 +1107,7 @@ Proof.
   intro. intros.
   maps.
   find_all_cases.
-  intuition idtac.
-
-  exists tt. eexists.
-  repeat inv_exec. simpl in *. rewrite He, He0 in *. find_inversion. find_inversion.
-  repeat eexists; intuition eauto.
-
-  repeat inv_exec; eauto.
-
-  repeat inv_exec; eauto.
-  contradiction H0. econstructor; eauto.
+  inv_exec_progok.
 Defined.
 
 Lemma CompileSkip : forall env A,
@@ -1095,13 +1117,16 @@ Lemma CompileSkip : forall env A,
   {{ fun _ => A }} // env.
 Proof.
   unfold ProgOk.
-  intuition.
-  econstructor. intuition. econstructor.
-
-  repeat inv_exec; eauto.
-  repeat inv_exec; eauto.
-  repeat inv_exec. contradiction H2. unfold is_final; eauto.
+  intros.
+  inv_exec_progok.
 Qed.
+
+Hint Extern 1 (eval _ _ = _) =>
+unfold eval.
+
+Hint Extern 1 (Step _ (_, Assign _ _) _) =>
+eapply StepAssign.
+Hint Constructors Step.
 
 Lemma CompileConst : forall env A var v,
   EXTRACT Ret v
@@ -1110,20 +1135,16 @@ Lemma CompileConst : forall env A var v,
   {{ fun ret => var ~> ret; A }} // env.
 Proof.
   unfold ProgOk.
-  intuition.
-  econstructor. intuition. econstructor.
-
-  repeat inv_exec. simpl in *. find_inversion.
-  repeat eexists. eauto. maps. trivial.
+  intros.
+  inv_exec_progok.
+  eexists. eexists.
+  intuition eauto.
+  maps; eauto.
   eapply forall_In_Forall_elements. intros.
   pose proof (Forall_elements_forall_In _ H).
   simpl in *.
   destruct (StringMapFacts.eq_dec k var0); maps; try discriminate.
   specialize (H1 k v0 ltac:(eauto)). auto.
-
-  repeat inv_exec; eauto.
-  repeat inv_exec. contradiction H1; unfold is_final; eauto.
-  contradiction H1. eexists. econstructor; simpl; eauto.
 Qed.
 
 Lemma CompileVar : forall env A var T (v : T) {H : FacadeWrapper Value T},
@@ -1133,14 +1154,25 @@ Lemma CompileVar : forall env A var T (v : T) {H : FacadeWrapper Value T},
   {{ fun ret => var ~> ret; A }} // env.
 Proof.
   unfold ProgOk.
-  intuition.
-  econstructor. intuition. econstructor.
-
-  repeat inv_exec; eauto.
-  repeat inv_exec; eauto.
-  repeat inv_exec; eauto.
-  contradiction H3; unfold is_final; eauto.
+  intros.
+  inv_exec_progok.
 Qed.
+
+Ltac forwardauto1 H :=
+  repeat eforward H; conclude H eauto.
+
+Ltac forwardauto H :=
+  forwardauto1 H; repeat forwardauto1 H.
+
+Ltac forward_solve_step :=
+  match goal with
+    | _ => progress intuition eauto
+    | [ H : forall _, _ |- _ ] => forwardauto H
+    | _ => deex
+  end.
+
+Ltac forward_solve :=
+  repeat forward_solve_step.
 
 Lemma CompileBind : forall T T' {H: FacadeWrapper Value T} env A (B : T' -> _) p f xp xf var,
   EXTRACT p
@@ -1158,43 +1190,30 @@ Lemma CompileBind : forall T T' {H: FacadeWrapper Value T} env A (B : T' -> _) p
   {{ B }} // env.
 Proof.
   unfold ProgOk.
-  intuition.
+  intuition subst.
 
-  (* TODO: automate proof. ([crush] can probably do this) *)
-  - subst. find_eapply_lem_hyp ExecFinished_Steps. find_eapply_lem_hyp Steps_Seq.
+  - find_eapply_lem_hyp ExecFinished_Steps. find_eapply_lem_hyp Steps_Seq.
     intuition; repeat deex; try discriminate.
     find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFinished.
-    specialize (H0 _ hm ltac:(eauto)).
-    intuition. specialize (H3 _ ltac:(eauto)). repeat deex.
-    specialize (H1 _ _ hm' ltac:(eauto)). intuition.
-    specialize (H3 _ ltac:(eauto)). repeat deex.
-    eexists. exists hm'0. intuition eauto.
+    forward_solve.
 
   - find_eapply_lem_hyp ExecCrashed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
     intuition; repeat deex.
     + invc H5. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
-      repeat eforward H0. specialize (H0 ltac:(eauto)). intuition.
-      specialize (H0 _ ltac:(eauto)). repeat deex; eauto.
+      forward_solve.
     + destruct st'. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
-      repeat eforward H0. conclude H0 eauto. intuition.
-      eforward H3. conclude H3 eauto. repeat deex.
-      repeat eforward H1. conclude H1 eauto. intuition.
-      eforward H1. conclude H1 eauto. repeat deex.
-      eauto.
+      forward_solve.
 
   - find_eapply_lem_hyp ExecFailed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
     intuition; repeat deex.
-    + clear H3. eapply Steps_ExecFailed in H5; eauto.
-      repeat eforward H0. conclude H0 eauto. intuition eauto.
+    + eapply Steps_ExecFailed in H5; eauto.
+      forward_solve.
       unfold is_final; simpl; intuition subst.
-      contradiction H6. eexists. eapply StepSeq2.
-      intuition. deex.
-      contradiction H6. destruct sst'. eexists. eapply StepSeq1; eauto.
+      contradiction H6. eauto.
+      intuition. repeat deex.
+      contradiction H6. eauto.
     + destruct st'. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFailed; eauto.
-      repeat eforward H0. conclude H0 eauto. intuition.
-      eforward H4. conclude H4 eauto. repeat deex.
-      repeat eforward H1. conclude H1 eauto. intuition.
-      eauto.
+      forward_solve.
 Qed.
 
 Lemma hoare_weaken_post : forall T env A (B1 B2 : T -> _) pr p,
@@ -1206,12 +1225,12 @@ Lemma hoare_weaken_post : forall T env A (B1 B2 : T -> _) pr p,
 Proof.
   unfold ProgOk.
   intros.
-  repeat eforward H0. conclude H0 eauto.
-  intuition.
-  eforward H2. conclude H2 eauto. repeat deex.
-  repeat eexists; eauto.
-  unfold SameValues in *.
-  apply forall_In_Forall_elements. intros.
+  forwardauto H0.
+  intuition subst;
+  forwardauto H3; repeat deex;
+  repeat eexists; eauto;
+  unfold SameValues in *;
+  apply forall_In_Forall_elements; intros;
   eapply Forall_elements_forall_In in H6; eauto.
 Qed.
 
@@ -1224,12 +1243,15 @@ Lemma hoare_strengthen_pre : forall T env A1 A2 (B : T -> _) pr p,
 Proof.
   unfold ProgOk.
   intros.
-  repeat eforward H0. forward H0.
+  repeat eforward H0.
+  forward H0.
   unfold SameValues in *.
-  apply forall_In_Forall_elements. intros.
+  apply forall_In_Forall_elements; intros;
   eapply Forall_elements_forall_In in H1; eauto.
+  forwardauto H0.
   intuition.
 Qed.
+
 
 Lemma CompileBindDiscard : forall T' env A (B : T' -> _) p f xp xf,
   EXTRACT p
@@ -1246,42 +1268,40 @@ Lemma CompileBindDiscard : forall T' env A (B : T' -> _) p f xp xf,
   {{ B }} // env.
 Proof.
   unfold ProgOk.
-  intuition.
+  intuition subst.
 
-  - subst. find_eapply_lem_hyp ExecFinished_Steps. find_eapply_lem_hyp Steps_Seq.
+  - find_eapply_lem_hyp ExecFinished_Steps. find_eapply_lem_hyp Steps_Seq.
     intuition; repeat deex; try discriminate.
     find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFinished.
-    repeat eforward H. conclude H eauto.
-    intuition. repeat eforward H2. conclude H2 eauto. repeat deex.
-    repeat eforward H0. conclude H0 eauto. intuition.
-    repeat eforward H2. conclude H2 eauto. repeat deex.
-    eexists. exists hm'0. intuition eauto.
+    (* [forward_solve] is not really good enough *)
+    forwardauto H. intuition.
+    forwardauto H2. repeat deex.
+    forward_solve.
 
   - find_eapply_lem_hyp ExecCrashed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
     intuition; repeat deex.
     + invc H4. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
-      repeat eforward H. specialize (H ltac:(eauto)). intuition.
-      specialize (H _ ltac:(eauto)). repeat deex; eauto.
+      forward_solve.
     + destruct st'. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
-      repeat eforward H. conclude H eauto. intuition.
-      eforward H2. conclude H2 eauto. repeat deex.
-      repeat eforward H0. conclude H0 eauto. intuition.
-      eforward H0. conclude H0 eauto. repeat deex.
-      eauto.
+      forwardauto H. intuition.
+      forwardauto H2. repeat deex.
+      forward_solve.
 
   - find_eapply_lem_hyp ExecFailed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
     intuition; repeat deex.
-    + clear H2. eapply Steps_ExecFailed in H4; eauto.
-      repeat eforward H. conclude H eauto. intuition eauto.
+    + eapply Steps_ExecFailed in H4; eauto.
+      forward_solve.
       unfold is_final; simpl; intuition subst.
-      contradiction H5. eexists. eapply StepSeq2.
-      intuition. deex.
-      contradiction H5. destruct sst'. eexists. eapply StepSeq1; eauto.
+      contradiction H5. eauto.
+      intuition. repeat deex.
+      contradiction H5. eauto.
     + destruct st'. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFailed; eauto.
-      repeat eforward H. conclude H eauto. intuition.
-      eforward H3. conclude H3 eauto. repeat deex.
-      repeat eforward H0. conclude H0 eauto. intuition.
-      eauto.
+      forwardauto H. intuition.
+      forwardauto H3. repeat deex.
+      forward_solve.
+
+  Unshelve.
+  all: auto.
 Qed.
 
 Example micro_inc : sigT (fun p => forall x,
@@ -1294,17 +1314,14 @@ Proof.
   intros.
   instantiate (1 := ("x" <~ Const 1 + Var "x")%facade).
   intro. intros.
-  intuition.
-  repeat inv_exec.
+  inv_exec_progok.
   maps.
-  simpl in *.
   find_all_cases.
-  find_inversion. repeat eexists; eauto. maps; eauto.
+  simpl in *.
+  repeat eexists; eauto. maps; eauto.
+  simpl; congruence.
 
-  repeat inv_exec.
-
-  repeat inv_exec. contradiction H1. unfold is_final; auto.
-  contradiction H1. destruct initial_state. eexists. econstructor; simpl; auto.
+  contradiction H1. repeat eexists. econstructor; simpl; auto.
   maps. simpl in *. find_all_cases. eauto. eauto.
 Qed.
 
