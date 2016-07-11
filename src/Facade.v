@@ -485,7 +485,7 @@ Section EnvSection.
     - destruct y. eauto.
   Qed.
   Hint Resolve steps_incall.
-    
+
   Lemma steps_sequence :
     forall p0 st p st' p',
       Step^* (st, p) (st', p') ->
@@ -1563,19 +1563,111 @@ Ltac compile :=
     end
   end.
 
-Definition swap_prog :=
-  a <- Read 0;
-  b <- Read 1;
-  Write 0 b;;
-  Write 1 a;;
+Definition swap_prog a b :=
+  va <- Read a;
+  vb <- Read b;
+  Write a vb;;
+  Write b va;;
   Ret tt.
 
-Example micro_swap : sigT (fun p =>
-  EXTRACT swap_prog {{ ∅ }} p {{ fun _ => ∅ }} // ∅).
+Example micro_swap : forall a b, sigT (fun p =>
+  EXTRACT swap_prog a b {{ ∅ }} p {{ fun _ => ∅ }} // ∅).
 Proof.
+  intros.
   compile.
 Defined.
-Eval lazy in projT1 micro_swap.
+Eval lazy in projT1 (micro_swap 0 1).
+
+Example micro_swap_args : sigT (fun p =>
+  forall a b, EXTRACT swap_prog a b {{ "a" ~> a; "b" ~> b; ∅ }} p {{ fun _ => ∅ }} // ∅).
+Proof.
+  intros.
+  compile.
+  intros.
+  compile.
+Defined.
+Eval lazy in projT1 micro_swap_args.
+
+Definition swap_env : Env :=
+  ("swap" ->> {|
+           ArgVars := ["a"; "b"];
+           RetVar := "r0"; Body := projT1 micro_swap_args;
+           ret_not_in_args := ltac:(auto); args_no_dup := ltac:(auto)
+         |}; ∅).
+
+Definition rot :=
+  swap_prog 0 1;;
+  swap_prog 1 2;;
+  Ret tt.
+
+Ltac inv_exec_solve :=
+  intuition (subst; try discriminate; repeat find_inversion_safe;
+                                          repeat match_finds; simpl in *;
+                                          try solve [ exfalso; intuition eauto 10 ]; eauto 10).
+
+Example extract_rot :
+  sigT (fun p =>
+          EXTRACT rot {{ ∅ }} p {{ fun _ => ∅ }} // swap_env).
+Proof.
+  eexists.
+
+  instantiate (p := ("c0" <~ Const 0; "c1" <~ Const 1; "c2" <~ Const 2;
+                    Call "_" "swap" ["c0"; "c1"]; Call "_" "swap" ["c1"; "c2"])%facade).
+  unfold ProgOk.
+  intros.
+  (*
+  Focus 2.
+  inv_exec_solve.
+  contradiction H1. destruct initial_state. eauto 10.
+  Focus 2.
+  inv_exec_solve.
+  invc H4.
+  invc H1.
+
+
+Ltac inv_exec' :=
+  match goal with
+    | [ H : Step _ ?p _ |- _ ] =>
+      match p with
+        | (_, _, Body _) => fail 1
+        | _ => idtac
+      end;
+      invc H
+  | [ H : Exec _ ?p _ |- _ ] => (is_var p; fail 1) || invc H
+  | [ H : CrashStep _ |- _ ] => invc H
+  end; try discriminate.
+*)
+
+
+intuition.
+subst.
+find_eapply_lem_hyp ExecFinished_Steps.
+find_eapply_lem_hyp Steps_RunsTo.
+Ltac inv_runsto :=
+  match goal with
+    | [ H : RunsTo _ _ _ _ |- _ ] => invc H
+  end.
+inv_runsto.
+inv_runsto.
+inv_runsto.
+inv_runsto.
+invc H3.
+invc H4.
+invc H2.
+invc H5.
+unfold swap_env in *.
+maps.
+repeat find_inversion_safe.
+simpl in *.
+eapply RunsTo_Steps in H18.
+eapply Steps_ExecFinished in H18.
+pose proof micro_swap_args.
+unfold ProgOk in *.
+destruct X.
+(* need a weakening lemma which lets us know that micro_swap_args still works in an environment which is a superset *)
+Abort.
+
+
 
 Definition swap2_prog :=
   a <- Read 0;
