@@ -106,7 +106,7 @@ Module AFS.
     match r with
     | None =>
       mscs <- LOG.abort (FSXPLog fsxp) mscs;
-      Ret None
+      Ret (Err ENOSPCINODE)
     | Some inum =>
       (**
        * We should write a new fsxp back to the superblock with the new root
@@ -117,13 +117,13 @@ Module AFS.
         let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
         If (bool_dec ok true) {
           mscs <- LOG.flushsync (FSXPLog fsxp) mscs;
-          Ret (Some ((BFILE.mk_memstate (MSAlloc ms) mscs), fsxp))
+          Ret (OK ((BFILE.mk_memstate (MSAlloc ms) mscs), fsxp))
         } else {
-          Ret None
+          Ret (Err EOVERFLOW)
         }
       } else {
         mscs <- LOG.abort (FSXPLog fsxp) mscs;
-        Ret None
+        Ret (Err EINTERNAL)
       }
     end.
 
@@ -231,8 +231,8 @@ Module AFS.
        [[ goodSize addrlen (length disk) ]]
      POST:hm' RET:r exists ms fsxp d,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
-       ( [[ r = None ]] \/ exists ilist frees,
-         [[ r = Some (ms, fsxp) ]] *
+       ( [[ isError r ]] \/ exists ilist frees,
+         [[ r = OK (ms, fsxp) ]] *
          [[[ d ::: rep fsxp emp (TreeDir (FSXPRootInum fsxp) nil) ilist frees ]]] )
      CRASH:hm'
        any
