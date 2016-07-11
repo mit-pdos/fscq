@@ -3441,6 +3441,10 @@ Module DIRTREE.
     mscs <- BFILE.sync (FSXPLog fsxp) (FSXPInode fsxp) mscs;
     Ret mscs.
 
+  Definition sync_noop fsxp mscs :=
+    mscs <- BFILE.sync_noop (FSXPLog fsxp) (FSXPInode fsxp) mscs;
+    Ret mscs.
+
   Definition truncate fsxp inum nblocks mscs :=
     let^ (mscs, ok) <- BFILE.truncate (FSXPLog fsxp) (FSXPBlockAlloc fsxp) (FSXPInode fsxp)
                                      inum nblocks mscs;
@@ -3503,9 +3507,9 @@ Module DIRTREE.
            [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]] *
            [[ PredCrash.sync_invariant F ]]
     POST:hm' RET:mscs'
-           exists ds' tree' f' bn ds0,
+           exists ds' tree' f' bn,
            LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds' ds'!!) (MSLL mscs') hm' *
-           [[ ds' = dsupd ds0 bn (v, vsmerge vs) /\ BFILE.diskset_was ds0 ds ]] *
+           [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
            [[ BFILE.block_belong_to_file ilist bn inum off ]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
            (* spec about files on the latest diskset *)
@@ -3580,6 +3584,22 @@ Module DIRTREE.
      >} sync fsxp mscs.
   Proof.
     unfold sync, rep.
+    hoare.
+  Qed.
+
+  Theorem sync_noop_ok : forall fsxp mscs,
+    {< F ds Fm Ftop tree ilist frees,
+    PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.NoTxn ds) (MSLL mscs) hm *
+           [[[ ds!! ::: Fm * rep fsxp Ftop tree ilist frees ]]] *
+           [[ PredCrash.sync_invariant F ]]
+    POST:hm' RET:mscs'
+           LOG.rep fsxp.(FSXPLog) F (LOG.NoTxn ds) (MSLL mscs') hm' *
+           [[ MSAlloc mscs' = negb (MSAlloc mscs) ]]
+    XCRASH:hm'
+           LOG.recover_any fsxp.(FSXPLog) F ds hm'
+     >} sync_noop fsxp mscs.
+  Proof.
+    unfold sync_noop, rep.
     hoare.
   Qed.
 
@@ -3691,6 +3711,7 @@ Module DIRTREE.
   Hint Extern 1 ({{_}} Bind (dwrite _ _ _ _ _) _) => apply dwrite_ok : prog.
   Hint Extern 1 ({{_}} Bind (datasync _ _ _) _) => apply datasync_ok : prog.
   Hint Extern 1 ({{_}} Bind (sync _ _) _) => apply sync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (sync_noop _ _) _) => apply sync_noop_ok : prog.
   Hint Extern 1 ({{_}} Bind (truncate _ _ _ _) _) => apply truncate_ok : prog.
   Hint Extern 1 ({{_}} Bind (getlen _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_}} Bind (getattr _ _ _) _) => apply getattr_ok : prog.

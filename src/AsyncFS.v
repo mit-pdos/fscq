@@ -501,6 +501,10 @@ Module AFS.
     ams <- DIRTREE.sync fsxp ams;
     Ret ^(ams).
 
+  Definition tree_sync_noop fsxp ams :=
+    ams <- DIRTREE.sync_noop fsxp ams;
+    Ret ^(ams).
+
   Definition statfs fsxp ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     (*
@@ -965,6 +969,29 @@ Module AFS.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (tree_sync _ _) _) => apply tree_sync_ok : prog.
+
+  Theorem tree_sync_noop_ok: forall fsxp  mscs,
+    {< ds Fm Ftop tree ilist frees,
+    PRE:hm
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)]]] 
+    POST:hm' RET:^(mscs')
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+      [[ MSAlloc mscs' = negb (MSAlloc mscs) ]]
+    XCRASH:hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+   >} tree_sync_noop fsxp mscs.
+  Proof.
+    unfold tree_sync_noop; intros.
+    step.
+    step.
+    xcrash_solve.
+    rewrite LOG.recover_any_idempred.
+    cancel.
+  Qed.
+
+  Hint Extern 1 ({{_}} Bind (tree_sync_noop _ _) _) => apply tree_sync_noop_ok : prog.
+
 
   Theorem lookup_ok: forall fsxp dnum fnlist mscs,
     {< ds Fm Ftop tree ilist frees,
