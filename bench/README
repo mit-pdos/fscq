@@ -9,6 +9,7 @@ Install fusexmp from fuse-2.9.3/example.
 
 Build sv6's mailbench:
 
+  git clone git@g.csail.mit.edu:sv6 ~/proj/sv6
   cd ~/proj/sv6
   make HW=linux o.linux/bin/mail{bench,-deliver,-enqueue,-qman}
 
