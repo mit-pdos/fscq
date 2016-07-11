@@ -1046,11 +1046,29 @@ Ltac find_all_cases :=
   | [ H : match StringMap.find ?d ?v with | Some _ => _ | None => _ end |- _ ] => find_cases d v
   end; subst.
 
+
+Lemma read_fails_not_present:
+  forall env vvar avar (a : W) d s,
+    StringMap.find avar s = Some (wrap a) ->
+    ~ (exists st' p', Step env (d, s, DiskRead vvar (Var avar)) (st', p')) ->
+    d a = None.
+Proof.
+  intros.
+  assert (~exists v0, d a = Some v0).
+  intuition.
+  deex.
+  contradiction H0.
+  destruct v0. repeat eexists. econstructor; eauto.
+  destruct (d a); eauto. contradiction H1. eauto.
+Qed.
+Hint Resolve read_fails_not_present.
+
+
 Lemma write_fails_not_present:
-  forall env (a : W) (v : valu) d s,
-    StringMap.find "v" s = Some (wrap v) ->
-    StringMap.find "a" s = Some (wrap a) ->
-    ~ (exists st' p', Step env (d, s, DiskWrite (Var "a") (Var "v")) (st', p')) ->
+  forall env vvar avar (a : W) (v : valu) d s,
+    StringMap.find vvar s = Some (wrap v) ->
+    StringMap.find avar s = Some (wrap a) ->
+    ~ (exists st' p', Step env (d, s, DiskWrite (Var avar) (Var vvar)) (st', p')) ->
     d a = None.
 Proof.
   intros.
@@ -1061,7 +1079,6 @@ Proof.
   destruct v0. repeat eexists. econstructor; eauto.
   destruct (d a); eauto. contradiction H2. eauto.
 Qed.
-
 Hint Resolve write_fails_not_present.
 
 Lemma skip_is_final :
@@ -1381,27 +1398,26 @@ Lemma CompileRead : forall env F avar vvar a,
 Proof.
   unfold ProgOk.
   intros.
-  intuition.
   maps.
   find_all_cases.
-  econstructor.
+  inv_exec_progok.
+  do 2 eexists.
+  intuition eauto.
+  maps; simpl in *; eauto.
 
-  repeat inv_exec. simpl in *. maps.
-  find_all_cases. unfold disk_env in *. maps. invc H8. simpl in *.
-  repeat deex. destruct output; try discriminate. simpl in *.
-  unfold sel in *. rewrite He in*. repeat find_inversion.
-  repeat eexists. econstructor. eapply possible_sync_refl. eauto.
-  subst_definitions. maps. trivial.
   (* TODO: automate the hell out of this! *)
-  destruct (StringMapFacts.eq_dec vvar avar). {
+  destruct (StringMapFacts.eq_dec vvar avar).
+  {
     unfold StringKey.eq in e; subst.
     eapply Forall_elements_equal; [ | eapply add_remove_same ].
     eapply forall_In_Forall_elements. intros.
-    eapply Forall_elements_forall_In in H1; eauto. destruct v0.
+    eapply Forall_elements_forall_In in H2; eauto. destruct v0.
     destruct (StringMapFacts.eq_dec k avar).
     + unfold StringKey.eq in e; subst. maps.
     + maps.
-  } {
+
+  }
+  {
     unfold StringKey.eq in n. eapply Forall_elements_equal; [ | eapply add_remove_comm'; congruence ]. maps.
     + rewrite He. trivial.
     + eapply Forall_elements_equal; [ | eapply remove_remove_comm; congruence ].
@@ -1413,53 +1429,41 @@ Proof.
         unfold StringKey.eq in e; subst. maps.
       }
       maps.
-      eapply Forall_elements_forall_In in H1; eauto.
+      eapply Forall_elements_forall_In in H2; eauto.
       maps.
   }
-
-  repeat inv_exec.
-  eauto.
 Qed.
 
-Lemma CompileWrite : forall F tvar avar vvar a v,
+Lemma CompileWrite : forall env F tvar avar vvar a v,
   avar <> vvar ->
   tvar <> avar ->
   tvar <> vvar ->
   StringMap.find tvar F = None ->
   EXTRACT Write a v
   {{ avar ~> a; vvar ~> v; F }}
-    Call tvar "write" [avar; vvar]
-  {{ fun _ => avar ~> a; vvar ~> v; F }} // disk_env.
+    DiskWrite (Var avar) (Var vvar)
+  {{ fun _ => avar ~> a; vvar ~> v; F }} // env.
 Proof.
   unfold ProgOk.
   intros.
-  intuition.
   maps.
   find_all_cases.
-  econstructor.
-  unfold disk_env. maps. trivial.
-  unfold sel. simpl. rewrite He, He0. trivial.
-  simpl. eauto.
 
-  repeat inv_exec. simpl in *. maps.
-  find_all_cases. unfold disk_env in *. maps. invc H12. simpl in *.
-  repeat deex. do 2 (destruct output; try discriminate). simpl in *.
-  unfold sel in *. rewrite He, He0 in *. repeat find_inversion.
-  repeat eexists. econstructor. eapply possible_sync_refl. eauto.
-  subst_definitions. maps. rewrite He0. trivial.
+  inv_exec_progok.
+
+  repeat eexists; eauto.
+
+  maps. rewrite He0. eauto.
   eapply forall_In_Forall_elements. intros.
-  pose proof (Forall_elements_forall_In _ H6).
+  pose proof (Forall_elements_forall_In _ H7).
   simpl in *.
   destruct (StringMapFacts.eq_dec k tvar); maps.
   destruct (StringMapFacts.eq_dec k vvar); maps. {
-    find_inversion. trivial.
+    find_inversion. unfold StringKey.eq in *. subst. rewrite He. auto.
   }
   destruct (StringMapFacts.eq_dec k avar); maps.
-  specialize (H7 k v). conclude H7 ltac:(maps; eauto).
+  specialize (H4 k v). conclude H4 ltac:(maps; eauto).
   simpl in *. eauto.
-
-  repeat inv_exec.
-  eauto.
 Qed.
 
 Ltac reduce_or_fallback term continuation fallback :=
@@ -1567,11 +1571,10 @@ Definition swap_prog :=
   Ret tt.
 
 Example micro_swap : sigT (fun p =>
-  EXTRACT swap_prog {{ ∅ }} p {{ fun _ => ∅ }} // disk_env).
+  EXTRACT swap_prog {{ ∅ }} p {{ fun _ => ∅ }} // ∅).
 Proof.
   compile.
 Defined.
-
 Eval lazy in projT1 micro_swap.
 
 Definition swap2_prog :=
@@ -1585,7 +1588,7 @@ Definition swap2_prog :=
     Ret tt.
 
 Example micro_swap2 : sigT (fun p =>
-  EXTRACT swap2_prog {{ ∅ }} p {{ fun _ => ∅ }} // disk_env).
+  EXTRACT swap2_prog {{ ∅ }} p {{ fun _ => ∅ }} // ∅).
 Proof.
   compile.
 
@@ -1614,5 +1617,4 @@ Proof.
   Unshelve.
   all: congruence.
 Defined.
-
 Eval lazy in projT1 micro_swap2.
