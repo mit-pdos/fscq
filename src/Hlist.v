@@ -85,8 +85,8 @@ Proof.
   cbn; auto.
 Qed.
 
-Definition get_next : forall A (B: A -> Type) types elm
-                        (m: member elm types) (l: hlist B types) (v: B elm),
+Definition get_next : forall A (B: A -> Type) types elm elm'
+                        (m: member elm types) (l: hlist B types) (v: B elm'),
     get (HNext m) (HCons v l) = get m l.
 Proof.
   cbn; auto.
@@ -103,6 +103,35 @@ Notation " [( x )] " := (HCons x HNil) : hlist_scope.
 Notation " [( x ; .. ; y )] " := (HCons x .. (HCons y HNil) ..) : hlist_scope.
 
 End HlistNotations.
+
+Definition hhead A (B: A -> Type) types elm
+           (l: hlist B (elm::types)) : B elm
+  := match l as _ in (hlist _ types) return
+           (match types with
+           | nil => unit
+           | a::_ => B a
+            end) with
+     | HNil => tt
+     | HCons a _ => a
+     end.
+
+Lemma hhead_as_get : forall A (B: A -> Type) types elm
+                       (l: hlist B (elm::types)),
+    hhead l = get HFirst l.
+Proof.
+  dependent destruction l; auto.
+Qed.
+
+Definition htail A (B: A -> Type) types elm
+           (l: hlist B (elm::types)) : hlist B types :=
+  match l as _ in (hlist _ types) return
+        (match types with
+         | nil => unit
+         | _::types' => hlist B types'
+         end) with
+  | HNil => tt
+  | HCons _ l => l
+  end.
 
 Local Ltac hlist_nth_member n :=
   match n with
@@ -419,6 +448,10 @@ Import EqNotations.
 Require Import Program.
 Require Import Word.
 
+Ltac eq_rect_simpl :=
+  unfold eq_rect_r, eq_rec_r, eq_rec;
+  rewrite <- ?eq_rect_eq.
+
 Ltac eq_t t :=
   eq_rect_simpl;
   repeat generalize_proof;
@@ -442,8 +475,9 @@ Lemma rew_hnext : forall A (types types': list A)
     rew H in (HNext m) = HNext (rew (cons_inj H) in m).
 Proof.
   intros.
-  inversion H.
-  dep eq rewrite <- H1 in *; auto.
+  inversion H; subst.
+
+  dep eq idtac; auto.
 Qed.
 
 Theorem app_member_l_nil : forall A (types1: list A)
@@ -456,7 +490,7 @@ Proof.
   induction types1; cbn; intros.
   inversion m.
   dependent destruction m; subst; cbn in *;
-  dep eq rewrite app_nil_r in *; auto.
+    dep eq rewrite app_nil_r in *; auto.
   rewrite rew_hnext.
   f_equal; eauto.
 Qed.
@@ -515,6 +549,25 @@ Proof.
   rewrite happ_cons.
   dependent destruction m; cbn; auto.
   apply IHtypes1.
+Qed.
+
+Theorem hlist_get_extensional : forall A (B: A -> Type) types
+                            (l1 l2: hlist B types),
+    (forall t (m: member t types), get m l1 = get m l2) ->
+    l1 = l2.
+Proof.
+  induction types; intros.
+  - dependent destruction l1.
+    dependent destruction l2.
+    auto.
+  - dependent destruction l1.
+    dependent destruction l2.
+    f_equal; eauto.
+    specialize (H a HFirst).
+    rewrite ?get_first in *; auto.
+    eapply IHtypes; intros.
+    specialize (H t (HNext m)).
+    rewrite ?get_next in *; auto.
 Qed.
 
 (* this is the best way to use get_set without getting into trouble *)
