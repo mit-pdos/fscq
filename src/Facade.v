@@ -123,6 +123,35 @@ Section Extracted.
   | SDiskRead : forall x a, SourceStmt (DiskRead x a)
   | SDiskWrite : forall a v, SourceStmt (DiskWrite a v).
 
+  Fixpoint is_source_stmt (p : Stmt) : bool :=
+    match p with
+      | Seq a b => is_source_stmt a && is_source_stmt b
+      | If cond t f => is_source_stmt t && is_source_stmt f
+      | While cond body => is_source_stmt body
+      | InCall _ _ _ _ _ _ => false
+      | _ => true
+    end.
+
+  Hint Constructors SourceStmt.
+
+  Hint Resolve andb_prop.
+  Hint Resolve andb_true_intro.
+
+  Theorem source_stmt_SourceStmt :
+    forall p, is_source_stmt p = true -> SourceStmt p.
+  Proof.
+    induction p; simpl; intuition; try discriminate; find_apply_lem_hyp andb_prop; intuition.
+  Qed.
+
+  Theorem SourceStmt_source_stmt :
+    forall p, SourceStmt p -> is_source_stmt p = true .
+  Proof.
+    induction p; simpl; intuition;
+    match goal with
+      | [ H: SourceStmt _ |- _ ] => invc H
+    end; auto.
+  Qed.
+
   Definition State := (rawdisk * Locals)%type.
   Import StringMap.
 
@@ -267,6 +296,7 @@ Section Extracted.
     Body : Stmt;
     ret_not_in_args : is_none_or_not_in RetVar ArgVars = true;
     args_no_dup : is_no_dup ArgVars = true;
+    body_source : is_source_stmt Body = true;
     (* TODO syntax_ok with is_actual_args_no_dup *)
   }.
 
@@ -1622,7 +1652,7 @@ Opaque swap_prog.
 
 Lemma extract_voidfunc2_call :
   forall A B C {WA: FacadeWrapper Value A} {WB: FacadeWrapper Value B} name (src : A -> B -> prog C) arga argb env,
-    forall rnia and body,
+    forall rnia and body ss,
       (forall a b, EXTRACT src a b {{ arga ~> a; argb ~> b; ∅ }} body {{ fun _ => arga ~> a; argb ~> b; ∅ }} // env) ->
       StringMap.find name env = Some {|
                                     ArgVars := [arga; argb];
@@ -1630,15 +1660,16 @@ Lemma extract_voidfunc2_call :
                                     Body := body;
                                     ret_not_in_args := rnia;
                                     args_no_dup := and;
+                                    body_source := ss;
                                   |} ->
       forall avar bvar,
         avar <> bvar ->
         forall a b, EXTRACT src a b
                {{ avar ~> a; bvar ~> b; ∅ }}
                  Call None name [avar; bvar]
-               {{ fun _ => ∅ (* TODO: could remember a & b if they can be aliased *) }} // env.
+               {{ fun _ => ∅ (* TODO: could remember a & b if they are of aliasable type *) }} // env.
 Proof.      
-  intros A B C WA WB name src arga argb env rnia and body Hex Henv avar bvar Hvarne a b.
+  intros A B C WA WB name src arga argb env rnia and body ss Hex Henv avar bvar Hvarne a b.
   specialize (Hex a b).
   intro.
   intros.
@@ -1684,21 +1715,48 @@ Proof.
     + contradiction H3.
       destruct st'. repeat eexists. econstructor; eauto.
       simpl.
-
+      auto using source_stmt_SourceStmt.
+      unfold sel; simpl in *.
+      maps.
+      find_all_cases.
+      trivial.
+    + invc H2.
+      assert (exists bp', (Step env)^* (d, callee_s, body) (st', bp') /\ p' = InCall s [arga; argb] None [avar; bvar] None bp') by admit. deex.
+      eapply Steps_ExecFailed in H2.
+      unfold ProgOk in *.
+      repeat eforward Hex.
+      forward Hex. shelve.
+      forward_solve.
+      intuition.
+      contradiction H3.
+      unfold is_final in *; simpl in *; subst.
+      destruct st'. repeat eexists. eapply StepEndCall; eauto.
+      intuition.
+      contradiction H3.
+      repeat deex. eauto.
 
   Unshelve.
   simpl in *.
-  maps;
-  find_all_cases.
   maps.
+  find_all_cases.
   find_inversion_safe.
-  simpl in *.
-  trivial.
+  maps.
+  find_all_cases.
   find_inversion_safe.
   eapply Forall_elements_remove_weaken.
-  eapply Forall_elements_add.
-  intuition eauto.
+  eapply forall_In_Forall_elements.
+  intros.
+  destruct (string_dec k argb).
+  subst. maps. find_inversion_safe.
+  find_copy_eapply_lem_hyp NoDup_bool_string_eq_sound.
+  invc H.
+  assert (arga <> argb).
+  intro. subst. contradiction H2. constructor. auto.
   maps.
+  maps.
+  maps.
+  (* argh *)
+Abort.
 
 
 Definition swap_env : Env :=
@@ -1833,6 +1891,7 @@ Definition swap2_prog :=
   if weq a b then
     Ret tt
   else
+    body_source : is_source_stmt Body = true;
     Write 0 b;;
     Write 1 a;;
     Ret tt.
