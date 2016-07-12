@@ -378,31 +378,70 @@ Proof.
   rewrite H in H0; auto.
 Qed.
 
-Lemma treeseq_crash_xform_tree_crash: forall Fm Ftop fsxp mscs ts ds n d,
-  treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
-  crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
-  exists t, tree_crash (TStree t) (TStree (nthd n ts)) /\
-      tree_rep Fm Ftop fsxp t (list2nmem d).
+(* this might be provable because possible_crash tells us the vs for each block 
+ * on the disk. we should be able to use that vs to construct file_crash. *)
+Lemma possible_crash_flist_crash: forall F bxps ixp d d' ilist frees flist,
+  (F * (BFILE.rep bxps ixp flist ilist frees))%pred (list2nmem d) ->
+  possible_crash (list2nmem d) (list2nmem d') ->
+  exists flist', BFILE.flist_crash flist flist'.
 Proof.
   intros.
-  eexists.
-  eapply crash_xform_possible_crash in H0.
-  intuition.
+  unfold possible_crash in H0.
+
+  Search BFILE.rep.
+  unfold BFILE.flist_crash.
+  unfold BFILE.file_crash.
 Admitted.
 
-Lemma treeseq_in_ds_tree_crash: forall Fm Ftop fsxp mscs ts ds n d t a,
+Lemma treeseq_crash_xform_tree_crash: forall Fm Ftop fsxp mscs ts ds n d,
+  let t := TStree (nthd n ts) in
   treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
-  tree_crash (TStree t) (TStree (nthd n ts)) ->
+  crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
+  exists t', tree_crash t t' /\  
+      (Fm * DIRTREE.rep fsxp Ftop t' (TSilist (nthd n ts)) (TSfree (nthd n ts)))%pred (list2nmem d).
+Proof.
+  intros.
+  unfold treeseq_in_ds in H.
+  eapply NEforall2_d_in in H.
+  2: instantiate (1 := n).
+  2: instantiate (1 := (nthd n ts)); eauto.
+  2: instantiate (1 := (nthd n ds)); eauto.
+  intuition.
+  unfold tree_rep in H1.
+  unfold rep in H1.
+  destruct_lift H1.
+  eapply crash_xform_possible_crash in H0 as Hpossible.
+  eapply possible_crash_flist_crash in Hpossible.
+  destruct Hpossible.
+  Focus 2. pred_apply. cancel.
+
+  eexists.
+  intuition.
+  eapply flist_crash_remap_tree_crash.
+  eapply sep_star_assoc_1 in H3.
+  setoid_rewrite sep_star_comm in H3.
+  eapply sep_star_assoc_2 in H3.
+  eapply H3.
+
+  eassumption.
+
+  (* maybe provable too, because (remap_tree tree) is mostly tree and we know
+     rep holds for tree. *)
+  admit.
+
+ Admitted.
+
+Lemma tree_rep_treeseq: forall Fm Ftop fsxp  d t a,
   tree_rep Fm Ftop fsxp t (list2nmem d) ->
   treeseq_in_ds Fm Ftop fsxp a (t, []) (d, []).
 Proof.
   intros.
-    unfold treeseq_in_ds.
-    constructor; simpl.
-    intuition.
-    unfold treeseq_one_safe; simpl.
-    eapply dirtree_safe_refl.
-    constructor.
+  unfold treeseq_in_ds.
+  constructor; simpl.
+  intuition.
+  unfold treeseq_one_safe; simpl.
+  eapply dirtree_safe_refl.
+  constructor.
 Qed.
 
   Theorem atomic_cp_recover_ok :
@@ -437,16 +476,17 @@ Qed.
     destruct Htree.
     cancel.
 
-    instantiate (ts0 := (x, [])).
+    instantiate (ts0 := ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts))), [])).
 
-    eapply treeseq_in_ds_tree_crash; eauto.
+    eapply tree_rep_treeseq; eauto.
  
     admit. (* follows from H6 *)
     admit. (* follows from H6 *)
 
     step.
 
-    eapply treeseq_in_ds_tree_crash; eauto.
+    instantiate (ts0 := ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts))), [])).
+    eapply tree_rep_treeseq; eauto.
     instantiate (pathname := []).
     admit.  (* follows from H6 *)
 
@@ -455,7 +495,7 @@ Qed.
     step.
 
 
-    eapply treeseq_in_ds_tree_crash.
+    eapply tree_rep_treeseq.
 
 
 
