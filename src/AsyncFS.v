@@ -119,11 +119,11 @@ Module AFS.
           mscs <- LOG.flushsync (FSXPLog fsxp) mscs;
           Ret (OK ((BFILE.mk_memstate (MSAlloc ms) mscs), fsxp))
         } else {
-          Ret (Err EOVERFLOW)
+          Ret (Err ELOGOVERFLOW)
         }
       } else {
         mscs <- LOG.abort (FSXPLog fsxp) mscs;
-        Ret (Err EINTERNAL)
+        Ret (Err ELOGOVERFLOW)
       }
     end.
 
@@ -397,7 +397,7 @@ Module AFS.
       If (bool_dec ok true) {
         Ret ^((MSAlloc ams, ms), OK tt)
       } else {
-        Ret ^((MSAlloc ams, ms), Err EINTERNAL)
+        Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
       }
     end.
 
@@ -438,7 +438,7 @@ Module AFS.
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
           | true => Ret ^((MSAlloc ams, ms), OK inum)
-          | false => Ret ^((MSAlloc ams, ms), Err EINTERNAL)
+          | false => Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
         end
     end.
 
@@ -454,7 +454,7 @@ Module AFS.
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
           | true => Ret ^((MSAlloc ams, ms), OK inum)
-          | false => Ret ^((MSAlloc ams, ms), Err EINTERNAL)
+          | false => Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
         end
     end.
 
@@ -469,7 +469,7 @@ Module AFS.
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
           | true => Ret ^((MSAlloc ams, ms), OK inum)
-          | false => Ret ^((MSAlloc ams, ms), Err EINTERNAL)
+          | false => Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
         end
     end.
 
@@ -481,7 +481,7 @@ Module AFS.
        let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
        match ok with
        | true => Ret ^((MSAlloc ams, ms), OK tt)
-       | false => Ret ^((MSAlloc ams, ms), Err EINTERNAL)
+       | false => Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
        end
     | Err e =>
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
@@ -502,7 +502,7 @@ Module AFS.
       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
       match ok with
       | true => Ret ^((MSAlloc ams, ms), OK tt)
-      | false => Ret ^((MSAlloc ams, ms), Err EINTERNAL)
+      | false => Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
       end
     | Err e =>
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);

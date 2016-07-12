@@ -1,7 +1,7 @@
 Set Implicit Arguments.
 
 Inductive Errno :=
-| EINTERNAL
+| ELOGOVERFLOW
 | ENOTDIR
 | EISDIR
 | ENOENT
@@ -11,7 +11,7 @@ Inductive Errno :=
 | ENOSPCBLOCK
 | ENOSPCINODE
 | ENOTEMPTY
-| EOVERFLOW.
+| EINVAL.
 
 Inductive res (T : Type) :=
 | OK : T -> res T
