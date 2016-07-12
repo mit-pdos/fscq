@@ -1610,31 +1610,104 @@ Proof.
 Defined.
 Eval lazy in projT1 (micro_swap 0 1).
 
-Example micro_swap_args : forall env, sigT (fun p =>
+Lemma extract_swap_prog : forall env, sigT (fun p =>
   forall a b, EXTRACT swap_prog a b {{ "a" ~> a; "b" ~> b; ∅ }} p {{ fun _ => ∅ }} // env).
 Proof.
   intros.
   compile.
 Defined.
-Eval lazy in projT1 (micro_swap_args ∅).
+Eval lazy in projT1 (extract_swap_prog ∅).
 
 Opaque swap_prog.
+
+Lemma extract_voidfunc2_call :
+  forall A B C {WA: FacadeWrapper Value A} {WB: FacadeWrapper Value B} name (src : A -> B -> prog C) arga argb env,
+    forall rnia and body,
+      (forall a b, EXTRACT src a b {{ arga ~> a; argb ~> b; ∅ }} body {{ fun _ => arga ~> a; argb ~> b; ∅ }} // env) ->
+      StringMap.find name env = Some {|
+                                    ArgVars := [arga; argb];
+                                    RetVar := None;
+                                    Body := body;
+                                    ret_not_in_args := rnia;
+                                    args_no_dup := and;
+                                  |} ->
+      forall avar bvar,
+        avar <> bvar ->
+        forall a b, EXTRACT src a b
+               {{ avar ~> a; bvar ~> b; ∅ }}
+                 Call None name [avar; bvar]
+               {{ fun _ => ∅ (* TODO: could remember a & b if they can be aliased *) }} // env.
+Proof.      
+  intros A B C WA WB name src arga argb env rnia and body Hex Henv avar bvar Hvarne a b.
+  specialize (Hex a b).
+  intro.
+  intros.
+  intuition subst.
+  - find_eapply_lem_hyp ExecFinished_Steps.
+    find_eapply_lem_hyp Steps_RunsTo.
+    invc H0.
+    find_eapply_lem_hyp RunsTo_Steps.
+    find_eapply_lem_hyp Steps_ExecFinished.
+    rewrite Henv in H4.
+    find_inversion_safe.
+    subst_definitions. unfold sel in *. simpl in *. unfold ProgOk in *.
+    repeat eforward Hex.
+    forward Hex.
+    shelve.
+    forward_solve.
+    simpl in *.
+    do 2 eexists.
+    intuition eauto.
+    maps; find_all_cases; repeat find_inversion_safe; simpl.
+    eauto.
+
+    econstructor.
+  - find_eapply_lem_hyp ExecCrashed_Steps.
+    repeat deex.
+    invc H1; [ solve [ invc H2 ] | ].
+    invc H0.
+    rewrite Henv in H7.
+    find_inversion_safe. unfold sel in *. simpl in *.
+    assert (exists bp', (Step env)^* (d, callee_s, body) (final_disk, s', bp') /\ p' = InCall s [arga; argb] None [avar; bvar] None bp').
+    admit.
+    deex.
+    eapply Steps_ExecCrashed in H1.
+    unfold ProgOk in *.
+    repeat eforward Hex.
+    forward Hex.
+    shelve.
+    forward_solve.
+    invc H2. trivial.
+  - find_eapply_lem_hyp ExecFailed_Steps.
+    repeat deex.
+    invc H1.
+    + contradiction H3.
+      destruct st'. repeat eexists. econstructor; eauto.
+      simpl.
+
+
+  Unshelve.
+  simpl in *.
+  maps;
+  find_all_cases.
+  maps.
+  find_inversion_safe.
+  simpl in *.
+  trivial.
+  find_inversion_safe.
+  eapply Forall_elements_remove_weaken.
+  eapply Forall_elements_add.
+  intuition eauto.
+  maps.
+
 
 Definition swap_env : Env :=
   ("swap" ->> {|
            ArgVars := ["a"; "b"];
-           RetVar := Some "r0"; Body := projT1 (micro_swap_args ∅);
+           RetVar := None; Body := projT1 (extract_swap_prog ∅);
            ret_not_in_args := ltac:(auto); args_no_dup := ltac:(auto)
          |}; ∅).
 
-Definition call_swap :=
-  swap_prog 0 1;;
-  Ret tt.
-
-Definition rot :=
-  swap_prog 0 1;;
-  swap_prog 1 2;;
-  Ret tt.
 
 Axiom false : False.
 Tactic Notation "really_admit" := elim false.
@@ -1720,6 +1793,10 @@ Defined.
 
 Definition swap_call_cor avar bvar abne := projT2 (@swap_call avar bvar abne).
 Hint Resolve swap_call_cor : extracted.
+
+Definition call_swap :=
+  swap_prog 0 1;;
+  Ret tt.
 
 Example extract_call_swap :
   forall env,
