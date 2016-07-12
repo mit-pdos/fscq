@@ -354,6 +354,28 @@ Section PtstoArray.
     eexists; eapply arrayN_selN with (def := v); eauto; try omega.
   Qed.
 
+  Lemma arrayN_unify' : forall a b s m (F1 F2 : pred), length a = length b ->
+    (F1 * arrayN pts s a)%pred m -> (F2 * arrayN pts s b)%pred m -> a = b.
+  Proof.
+    induction a as [|x a']; intros.
+    simpl in *.
+    rewrite length_nil; auto.
+    destruct b as [|y b']; simpl in *.
+    inversion H.
+    inversion H.
+    erewrite IHa' with (s := S s); eauto.
+    f_equal.
+    assert (m s = Some x /\ m s = Some y); intuition.
+    all : try match goal with
+      | [ H : (_ * (pts ?s ?x * _))%pred ?m |- ?m ?s = Some ?x] =>
+        eapply ptsto_valid;
+        eapply pimpl_apply; [> | exact H]; cancel
+      | [ H : (_ * (_ * arrayN _ _ ?a))%pred ?m |- (_ * arrayN _ _ ?a)%pred _] =>
+        eapply pimpl_apply; [> | exact H]; cancel
+    end.
+    remember (m s) as r; clear Heqr; subst.
+    match goal with [H: Some _ = Some _ |- _] => inversion H end; auto.
+  Qed.
 
 End PtstoArray.
 
@@ -1050,6 +1072,21 @@ Proof.
   unfold synced_list at 1; simpl.
   f_equal.
   apply IHa.
+Qed.
+
+Lemma synced_list_inj : forall a b, synced_list a = synced_list b -> a = b.
+Proof.
+  intros.
+  eapply f_equal in H as HH.
+  repeat rewrite synced_list_length in HH.
+  generalize dependent b.
+  induction a; intros; simpl in *.
+  rewrite length_nil; auto.
+  destruct b; simpl in *.
+  inversion HH.
+  unfold synced_list in *.
+  simpl in *.
+  inversion H; f_equal; auto.
 Qed.
 
 Lemma map_snd_synced_list_eq : forall a b,

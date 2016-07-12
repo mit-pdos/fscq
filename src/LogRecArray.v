@@ -435,6 +435,62 @@ Module LogRecArray (RA : RASig).
     apply list2nmem_ptsto_cancel; auto.
   Qed.
 
+  Fact eq_rect_eq : forall (a : nat) (f : nat -> Type) v1 v2 c H,
+    eq_rect a f v1 c H = eq_rect a f v2 c H -> v1 = v2.
+  Proof.
+    intros a f v1 v2 c H.
+    subst; auto.
+  Qed.
+
+  Ltac eq_rect_eq := match goal with [H : eq_rect _ _ _ _ _ = eq_rect _ _ _ _ _ |- _] =>
+      apply eq_rect_eq in H;
+      eapply f_equal in H;
+      rewrite Rec.of_to_id in H;
+      rewrite Rec.of_to_id in H
+    end.
+
+  Lemma ipack_inj : forall ra l1 l2,
+    items_valid ra l1 ->
+    items_valid ra l2 ->
+    ipack l1 =ipack l2 -> l1 = l2.
+  Proof.
+    unfold items_valid.
+    intros ra.
+    generalize (RALen ra) as r; intro r; destruct r.
+    intros; subst; simpl in *; intuition.
+    rewrite length_nil with (l := l2); auto.
+    rewrite length_nil with (l := l1); auto.
+    induction r; intros; intuition.
+    simpl in *; rewrite plus_0_r in *.
+    rewrite ipack_one in *; auto.
+    rewrite ipack_one in *; auto.
+    match goal with [H : _::_ = _::_ |- _] => inversion H; clear H end.
+    unfold block2val, word2val, eq_rec_r, eq_rec in *.
+    simpl in *.
+    eq_rect_eq; auto; unfold Rec.well_formed; simpl; intuition.
+    repeat match goal with
+      [ lx : itemlist,
+        Hl : length ?lx = _,
+        H : context [ipack ?lx] |- _] =>
+        erewrite <- firstn_skipn with (l := lx) (n := items_per_val) in H;
+        erewrite ipack_app with (na := 1) in H;
+        [> erewrite <- firstn_skipn with (l := lx) | ];
+        [> erewrite ipack_one with (l := firstn _ _) in H | ]
+    end; simpl in *; try rewrite plus_0_r in *.
+    match goal with [H: _::_ = _::_ |- _ ] => inversion H end.
+    unfold block2val, word2val, eq_rec_r, eq_rec in *.
+    simpl in *.
+    eq_rect_eq.
+    f_equal; eauto.
+    apply IHr; intuition.
+    all : repeat (
+          auto || lia || split  ||
+          unfold item in *      ||
+          rewrite skipn_length  ||
+          apply forall_skipn    ||
+          apply forall_firstn   ||
+          apply firstn_length_l ).
+  Qed.
 
   Hint Extern 1 ({{_}} Bind (get_array _ _ _ _) _) => apply get_array_ok : prog.
   Hint Extern 1 ({{_}} Bind (put_array _ _ _ _ _) _) => apply put_array_ok : prog.
@@ -444,6 +500,26 @@ Module LogRecArray (RA : RASig).
   (* If two arrays are in the same spot, their contents have to be equal *)
   Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
 
+  Theorem rep_inj : forall F1 F2 l1 l2 ra m,
+    (F1 * rep ra l1)%pred m -> (F2 * rep ra l2)%pred m -> l1 = l2.
+  Proof.
+    intros.
+    unfold rep in *.
+    repeat match goal with
+      [ H : (_ * (exis _))%pred _ |- _ ] => destruct_lift H
+      end.
+    match goal with
+      [ H : context[synced_list _] |- _] =>  eapply arrayN_unify', synced_list_inj in H
+    end.
+    eapply ipack_inj; eauto.
+    repeat rewrite synced_list_length.
+    repeat rewrite ipack_length.
+    f_equal.
+    unfold items_valid in *; intuition.
+    unfold item in *.
+    omega.
+    eassumption.
+  Qed.
 
   Lemma items_wellforemd : forall F xp l m,
     (F * rep xp l)%pred m -> Forall Rec.well_formed l.
