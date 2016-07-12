@@ -141,20 +141,14 @@ Inductive lock_transition tid : BusyFlagOwner -> BusyFlagOwner -> Prop :=
 
 Hint Constructors lock_transition.
 
-Theorem lock_transition_refl : forall tid o,
-    lock_transition tid o o.
-Proof. auto. Qed.
-
-Theorem lock_transition_trans : forall tid o o' o'',
-  lock_transition tid o o' ->
-  lock_transition tid o' o'' ->
-  lock_transition tid o o''.
+Theorem lock_transition_preorder : forall tid,
+    PreOrder (lock_transition tid).
 Proof.
-  intros.
-  repeat match goal with
-  | [ H: lock_transition _ _ _ |- _ ] =>
-    inversion H; subst; clear H
-  end; eauto.
+  constructor; hnf; intros;
+    repeat match goal with
+           | [ H: lock_transition _ _ _ |- _ ] =>
+             inversion H; subst; clear H
+           end; eauto.
 Qed.
 
 Definition lock_protocol AT (AEQ: EqDec AT) tid (locks locks': Locks AT) :=
@@ -164,7 +158,7 @@ Theorem lock_protocol_refl : forall AT (AEQ: EqDec AT) tid (locks: Locks AT),
     lock_protocol tid locks locks.
 Proof.
   unfold lock_protocol;
-    eauto using lock_transition_refl.
+    eauto using lock_transition_preorder.
 Qed.
 
 End Locking.

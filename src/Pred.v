@@ -5,6 +5,7 @@ Require Import Mem.
 Require Import RelationClasses.
 Require Import Morphisms.
 Require Import List.
+Require Import Automation.
 
 Set Implicit Arguments.
 
@@ -964,7 +965,6 @@ Proof.
   unfold any, mem_except; intuition.
   destruct (AEQ a a); intuition.
   destruct (AEQ a' a); intuition.
-  contradict H0; auto.
  Qed.
 
 Lemma ptsto_eq : forall (p1 p2 : @pred AT AEQ V) m a v1 v2,
@@ -1646,8 +1646,8 @@ Proof.
     firstorder.
     specialize (H1 x).
     specialize (H2 x).
-    destruct (m1 x); destruct (m1' x); destruct (m2 x); destruct (m2' x); firstorder;
-      exfalso; eauto.
+    destruct (m1 x); destruct (m1' x); destruct (m2 x); destruct (m2' x);
+      intuition eauto; try solve [ exfalso; eauto ].
 Qed.
 
 Theorem septract_sep_star :
@@ -2403,30 +2403,22 @@ Definition same_domain m m' :=
   subset m m' /\
   subset m' m.
 
-Theorem same_domain_refl : forall m,
-  same_domain m m.
+Global Instance same_domain_equiv : Equivalence same_domain.
 Proof.
-  firstorder.
+  constructor; hnf; eauto.
+  - firstorder.
+  - firstorder.
+  - unfold same_domain, subset.
+    intuition;
+      match goal with
+      | [ H: context[forall _, ?m _ = Some _ -> _], H': ?m _ = Some _ |- _] =>
+        apply H in H'
+      end; deex; eauto.
 Qed.
 
-Theorem same_domain_sym : forall m m',
-  same_domain m m' ->
-  same_domain m' m.
+Global Instance same_domain_preorder : PreOrder same_domain.
 Proof.
-  firstorder.
-Qed.
-
-Theorem same_domain_trans : forall m m' m'',
-  same_domain m m' ->
-  same_domain m' m'' ->
-  same_domain m m''.
-Proof.
-  unfold same_domain, subset.
-  intuition eauto;
-  match goal with
-  | [ H: context[forall _, ?m _ = Some _ -> _], H': ?m _ = Some _ |- _] =>
-    apply H in H'
-  end; deex; eauto.
+  auto using Equivalence_PreOrder, same_domain_equiv.
 Qed.
 
 Theorem same_domain_upd : forall m a v v0,
@@ -2478,13 +2470,5 @@ Proof.
 Qed.
 
 End MemDomains.
-
-Instance same_domain_equiv AT AEQ V : Equivalence (@same_domain AT AEQ V).
-Proof.
-  constructor; hnf; intros;
-    eauto using same_domain_refl,
-    same_domain_sym,
-    same_domain_trans.
-Qed.
 
 Global Opaque pred.

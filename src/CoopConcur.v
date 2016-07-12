@@ -5,6 +5,7 @@ Require Export SepAuto Automation.
 Require Export Hlist.
 Require Export Variables.
 Require Export AsyncDisk.
+Require Export RelationClasses.
 Require Import Structures.OrderedTypeEx.
 Require Import Omega.
 Require Import Star.
@@ -67,13 +68,12 @@ Section LogicDefinition.
     for programs that use the memory/abstraction representation Sigma.
 
    *)
-
   Record Protocol (Sigma:State) : Type :=
     defProtocol
       { invariant: Invariant Sigma;
         guar: TID -> Relation Sigma;
-        guar_refl_trans : forall tid s s',
-            star (guar tid) s s' -> guar tid s s'; }.
+        guar_preorder : forall tid,
+            PreOrder (guar tid); }.
 
   Definition others A (r: TID -> A -> A -> Prop) tid :=
     fun a a' => exists tid', tid <> tid' /\
