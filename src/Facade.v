@@ -867,7 +867,7 @@ Ltac find_cases var st := case_eq (StringMap.find var st); [
   let He := fresh "He" in
   intros v He; rewrite ?He in *
 | let Hne := fresh "Hne" in
-  intro Hne; rewrite Hne in *; exfalso; solve [ intuition idtac ] ].
+  intro Hne; rewrite Hne in *; exfalso; solve [ discriminate || intuition idtac ] ].
 
 Ltac inv_exec :=
   match goal with
@@ -1124,6 +1124,7 @@ Ltac match_finds :=
 Ltac find_inversion_safe :=
   match goal with
     | [ H : ?X ?a = ?X ?b |- _ ] =>
+      (unify a b; fail 1) ||
       let He := fresh in
       assert (a = b) as He by (inversion H; auto); clear H; subst
   end.
@@ -1664,31 +1665,58 @@ Proof.
   simpl in Hex.
   specialize (Hex a b).
   unfold swap_env in H5.
-  maps.
+  map_rewrites.
   find_inversion_safe.
   subst_definitions.
   unfold sel in *.
   simpl in *.
-  find_all_cases.
-  find_inversion_safe.
   unfold ProgOk in *.
   repeat eforward Hex.
   forward Hex.
   shelve.
-  intuition.
   forward_solve.
   simpl in *.
   do 2 eexists.
   intuition eauto.
-  maps.
-  rewrite He0; trivial.
-  eapply forall_In_Forall_elements. intros.
-  pose proof (Forall_elements_forall_In _ H10).
+  maps;
+  find_all_cases;
+  repeat find_inversion_safe;
+  simpl.
+  rewrite He2 in *. trivial.
+  eapply forall_In_Forall_elements.
+  intros.
+  pose proof (Forall_elements_forall_In _ H15).
   simpl in *.
-  specialize (H13 k v).
-  (* Why are avar, bvar being looked up in the same map (k) as "a", "b" ?? *)
-Abort.
+  specialize (H1 k v).
+  assert (k = bvar).
+  {
+    destruct (string_dec k bvar); [ solve [ auto ] | exfalso ].
+    destruct (string_dec k avar); subst; maps.
+  }
+  subst.
+  maps.
+  find_inversion_safe.
+  rewrite He.
+  trivial.
 
+  econstructor.
+  really_admit.
+  really_admit.
+
+  Unshelve.
+  simpl in *.
+  maps;
+  find_all_cases.
+  maps.
+  find_inversion_safe.
+  simpl in *.
+  trivial.
+  find_inversion_safe.
+  eapply Forall_elements_remove_weaken.
+  eapply Forall_elements_add.
+  intuition eauto.
+  maps.
+Defined.
 
 Definition swap_call_cor avar bvar abne := projT2 (@swap_call avar bvar abne).
 Hint Resolve swap_call_cor : extracted.
@@ -1719,7 +1747,7 @@ Proof.
   intros.
   eapply swap_call_cor.
   Unshelve.
-  eauto.
+  auto.
 Qed.
 
 Definition swap2_prog :=
