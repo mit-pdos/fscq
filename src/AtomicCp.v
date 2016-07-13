@@ -366,39 +366,26 @@ Module ATOMICCP.
 
   (* specs for copy_and_rename_cleanup and atomic_cp *)
 
-Lemma crash_xform_possible_crash: forall n ds d,
-   crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
-   possible_crash (list2nmem (nthd n ds)) (list2nmem d).
+Lemma rep_tree_crash: forall Fm fsxp Ftop d t ilist frees d',
+  (Fm * rep fsxp Ftop t ilist frees)%pred (list2nmem d) ->
+  crash_xform (diskIs (list2nmem d)) (list2nmem d') ->
+  (exists t', [[ tree_crash t t' ]] * Fm * rep fsxp Ftop t' ilist frees)%pred (list2nmem d').
 Proof.
   intros.
-  eapply crash_xform_diskIs in H.
-  destruct H.
-  destruct_lift H.
-  unfold diskIs in H.
-  rewrite H in H0; auto.
-Qed.
-
-(* this might be provable because possible_crash tells us the vs for each block 
- * on the disk. we should be able to use that vs to construct file_crash. *)
-Lemma possible_crash_flist_crash: forall F bxps ixp d d' ilist frees flist,
-  (F * (BFILE.rep bxps ixp flist ilist frees))%pred (list2nmem d) ->
-  possible_crash (list2nmem d) (list2nmem d') ->
-  exists flist', BFILE.flist_crash flist flist'.
-Proof.
-  intros.
-  unfold possible_crash in H0.
-
-  Search BFILE.rep.
-  unfold BFILE.flist_crash.
-  unfold BFILE.file_crash.
+  eapply crash_xform_pimpl_proper in H0; [ | apply diskIs_pred; eassumption ].
+  apply crash_xform_sep_star_dist in H0.
+  rewrite xform_tree_rep in H0.
+  destruct_lift H0.
+  exists dummy.
+  pred_apply.
+  cancel.
 Admitted.
 
-Lemma treeseq_crash_xform_tree_crash: forall Fm Ftop fsxp mscs ts ds n d,
-  let t := TStree (nthd n ts) in
+Lemma treeseq_tree_crash_exists: forall Fm Ftop fsxp mscs ts ds n d,
+  let t := (nthd n ts) in
   treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
   crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
-  exists t', tree_crash t t' /\  
-      (Fm * DIRTREE.rep fsxp Ftop t' (TSilist (nthd n ts)) (TSfree (nthd n ts)))%pred (list2nmem d).
+  (exists t', [[ tree_crash (TStree t) t' ]] * rep fsxp Ftop t' (TSilist t) (TSfree t))%pred (list2nmem d).
 Proof.
   intros.
   unfold treeseq_in_ds in H.
@@ -407,29 +394,13 @@ Proof.
   2: instantiate (1 := (nthd n ts)); eauto.
   2: instantiate (1 := (nthd n ds)); eauto.
   intuition.
+  eapply rep_tree_crash.
   unfold tree_rep in H1.
-  unfold rep in H1.
-  destruct_lift H1.
-  eapply crash_xform_possible_crash in H0 as Hpossible.
-  eapply possible_crash_flist_crash in Hpossible.
-  destruct Hpossible.
-  Focus 2. pred_apply. cancel.
-
-  eexists.
-  intuition.
-  eapply flist_crash_remap_tree_crash.
-  eapply sep_star_assoc_1 in H3.
-  setoid_rewrite sep_star_comm in H3.
-  eapply sep_star_assoc_2 in H3.
-  eapply H3.
-
+  instantiate (1 := (nthd n ds)).
+  pred_apply.
+  cancel.
   eassumption.
-
-  (* maybe provable too, because (remap_tree tree) is mostly tree and we know
-     rep holds for tree. *)
-  admit.
-
- Admitted.
+Qed.
 
 Lemma tree_rep_treeseq: forall Fm Ftop fsxp  d t a,
   tree_rep Fm Ftop fsxp t (list2nmem d) ->
@@ -470,12 +441,15 @@ Qed.
     prestep. norml.  (* XXX slow! *)
     safecancel.
 
-    (* need to apply treeseq_crash_xform_tree_crash before instantiation *)
-    prestep. norm'l.
-    eapply treeseq_crash_xform_tree_crash in H10 as Htree; eauto.
-    destruct Htree.
-    cancel.
+    step.
 
+    (* need to apply treeseq_tree_crash_exists before
+     * creating evars in postcondition *)
+    prestep. norm'l.
+    eapply treeseq_tree_crash_exists in H10; eauto.
+    destruct H10.
+    destruct_lift H.
+    cancel.
     instantiate (ts0 := ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts))), [])).
 
     eapply tree_rep_treeseq; eauto.
@@ -503,3 +477,33 @@ Qed.
   Admitted.
 
 End ATOMICCP.
+
+
+
+Lemma flist_crash_exists: forall flist,
+  exists flist', BFILE.flist_crash flist flist'.
+Proof.
+  intros.
+  induction flist.
+  - eexists [].
+    unfold BFILE.flist_crash; simpl.
+    eapply Forall2_nil.
+  - edestruct file_crash_exists.
+    destruct IHflist.
+    exists (x :: x0).
+    eapply Forall2_cons.
+    eassumption.
+    eassumption.
+Qed.
+
+
+(* this might be provable because possible_crash tells us the vs for each block 
+ * on the disk. we should be able to use that vs to construct file_crash. *)
+Lemma possible_crash_flist_crash: forall F bxps ixp d d' ilist frees flist,
+  (F * (BFILE.rep bxps ixp flist ilist frees))%pred (list2nmem d) ->
+  possible_crash (list2nmem d) (list2nmem d') ->
+  exists flist', BFILE.flist_crash flist flist'.
+Proof.
+  intros.
+  eapply flist_crash_exists.
+Qed.
