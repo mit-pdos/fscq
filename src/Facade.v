@@ -1524,131 +1524,14 @@ Proof.
   simpl in *. eauto.
 Qed.
 
-Ltac reduce_or_fallback term continuation fallback :=
-  match nat with
-  | _ => let term' := (eval red in term) in let res := continuation term' in constr:(res)
-  | _ => constr:(fallback)
-  end.
-Ltac find_fast value fmap :=
-  match fmap with
-  | @StringMap.empty _       => constr:(@None string)
-  | StringMap.add ?k (SItem ?v) _    => let eq := constr:(eq_refl v : v = value) in
-                     constr:(Some k)
-  | StringMap.add ?k _ ?tail => let ret := find_fast value tail in constr:(ret)
-  | ?other         => let ret := reduce_or_fallback fmap ltac:(fun reduced => find_fast value reduced) (@None string) in
-                     constr:(ret)
-  end.
+Definition voidfunc2 A B C {WA: FacadeWrapper Value A} {WB: FacadeWrapper Value B} name (src : A -> B -> prog C) env :=
+  forall avar bvar,
+    avar <> bvar ->
+    forall a b, EXTRACT src a b
+           {{ avar ~> a; bvar ~> b; ∅ }}
+             Call None name [avar; bvar]
+           {{ fun _ => ∅ (* TODO: could remember a & b if they are of aliasable type *) }} // env.
 
-Ltac match_variable_names_right :=
-  match goal with
-  | [ H : StringMap.find _ ?m = _ |- _ ] =>
-    repeat match goal with
-    | [ |- context[StringMap.add ?k (SItem ?v) _]] =>
-      is_evar k;
-      match find_fast v m with
-      | Some ?k' => unify k k'
-      end
-    end
-  end.
-
-Ltac match_variable_names_left :=
-  try (match goal with
-  | [ H : context[StringMap.add ?k (SItem ?v) _] |- _ ] =>
-    is_evar k;
-    match goal with
-    | [ |- StringMap.find _ ?m = _ ] =>
-      match find_fast v m with
-      | Some ?k' => unify k k'
-      end
-    end
-  end; match_variable_names_left).
-
-Ltac keys_equal_cases :=
-  match goal with
-  | [ H : StringMap.find ?k0 _ = _ |- _ ] =>
-    match goal with
-    | [ H : context[StringMap.add ?k (SItem ?v) _] |- _ ] => destruct (StringMapFacts.eq_dec k0 k); maps
-    end
-  end.
-
-Ltac prepare_for_frame :=
-  match goal with
-  | [ H : ~ StringKey.eq _ ?k |- _ ] =>
-    rewrite add_add_comm with (k1 := k) by congruence; maps (* A bit inefficient: don't need to rerun maps if it's still the same [k] *)
-  end.
-
-Ltac match_scopes :=
-  simpl; intros;
-  match_variable_names_left; match_variable_names_right;
-  try eassumption; (* TODO this is not going to cover everything *)
-  repeat keys_equal_cases;
-  repeat prepare_for_frame;
-  try eassumption.
-
-Ltac compile :=
-  repeat match goal with
-  | [ |- @sigT _ _ ] => eexists; intros
-  | _ => eapply CompileBindDiscard
-  | _ => let r := gensym "r" in eapply CompileBind with (var := r); intros
-  | _ => eapply CompileConst
-  | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
-    eapply hoare_weaken_post; [ | eapply CompileSkip ]; try match_scopes; maps
-  | [ |- EXTRACT Read ?a {{ ?pre }} _ {{ _ }} // _ ] =>
-    match find_fast a pre with
-    | Some ?k =>
-      eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
-        eapply CompileRead with (avar := k) ]]; try match_scopes; maps
-    end
-  | [ |- EXTRACT Write ?a ?v {{ ?pre }} _ {{ _ }} // _ ] =>
-    match find_fast a pre with
-    | Some ?ka =>
-      match find_fast v pre with
-      | Some ?kv =>
-        let tmp := gensym "_" in
-        eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
-          eapply CompileWrite with (avar := ka) (vvar := kv) (tvar := tmp) ]]; try match_scopes; maps
-      end
-    end
-  | [ |- EXTRACT ?f ?a {{ ?pre }} _ {{ _ }} // _ ] =>
-    match find_fast a pre with
-      | None =>
-        eapply extract_equiv_prog; [ eapply bind_left_id | ]
-    end
-  | [ |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // _ ] =>
-    match find_fast a pre with
-    | None =>
-      eapply extract_equiv_prog; [
-        let arg := fresh "arg" in
-        set (arg := f a b);
-        pattern a in arg; subst arg;
-        eapply bind_left_id | ]
-    end
-  end.
-
-Definition swap_prog a b :=
-  va <- Read a;
-  vb <- Read b;
-  Write a vb;;
-  Write b va;;
-  Ret tt.
-
-Example micro_swap : forall a b, sigT (fun p =>
-  EXTRACT swap_prog a b {{ ∅ }} p {{ fun _ => ∅ }} // ∅).
-Proof.
-  intros.
-  compile.
-Defined.
-Eval lazy in projT1 (micro_swap 0 1).
-
-Lemma extract_swap_prog : forall env, sigT (fun p =>
-  forall a b, EXTRACT swap_prog a b {{ "a" ~> a; "b" ~> b; ∅ }} p {{ fun _ => ∅ }} // env).
-Proof.
-  intros.
-  compile.
-Defined.
-Eval lazy in projT1 (extract_swap_prog ∅).
-
-Opaque swap_prog.
 
 Lemma extract_voidfunc2_call :
   forall A B C {WA: FacadeWrapper Value A} {WB: FacadeWrapper Value B} name (src : A -> B -> prog C) arga argb env,
@@ -1662,13 +1545,9 @@ Lemma extract_voidfunc2_call :
                                     args_no_dup := and;
                                     body_source := ss;
                                   |} ->
-      forall avar bvar,
-        avar <> bvar ->
-        forall a b, EXTRACT src a b
-               {{ avar ~> a; bvar ~> b; ∅ }}
-                 Call None name [avar; bvar]
-               {{ fun _ => ∅ (* TODO: could remember a & b if they are of aliasable type *) }} // env.
+      voidfunc2 name src env.
 Proof.      
+  unfold voidfunc2.
   intros A B C WA WB name src arga argb env rnia and body ss Hex Henv avar bvar Hvarne a b.
   specialize (Hex a b).
   intro.
@@ -1828,6 +1707,136 @@ Proof.
     repeat constructor.
 Qed.
 
+Ltac reduce_or_fallback term continuation fallback :=
+  match nat with
+  | _ => let term' := (eval red in term) in let res := continuation term' in constr:(res)
+  | _ => constr:(fallback)
+  end.
+Ltac find_fast value fmap :=
+  match fmap with
+  | @StringMap.empty _       => constr:(@None string)
+  | StringMap.add ?k (SItem ?v) _    => let eq := constr:(eq_refl v : v = value) in
+                     constr:(Some k)
+  | StringMap.add ?k _ ?tail => let ret := find_fast value tail in constr:(ret)
+  | ?other         => let ret := reduce_or_fallback fmap ltac:(fun reduced => find_fast value reduced) (@None string) in
+                     constr:(ret)
+  end.
+
+Ltac match_variable_names_right :=
+  match goal with
+  | [ H : StringMap.find _ ?m = _ |- _ ] =>
+    repeat match goal with
+    | [ |- context[StringMap.add ?k (SItem ?v) _]] =>
+      is_evar k;
+      match find_fast v m with
+      | Some ?k' => unify k k'
+      end
+    end
+  end.
+
+Ltac match_variable_names_left :=
+  try (match goal with
+  | [ H : context[StringMap.add ?k (SItem ?v) _] |- _ ] =>
+    is_evar k;
+    match goal with
+    | [ |- StringMap.find _ ?m = _ ] =>
+      match find_fast v m with
+      | Some ?k' => unify k k'
+      end
+    end
+  end; match_variable_names_left).
+
+Ltac keys_equal_cases :=
+  match goal with
+  | [ H : StringMap.find ?k0 _ = _ |- _ ] =>
+    match goal with
+    | [ H : context[StringMap.add ?k (SItem ?v) _] |- _ ] => destruct (StringMapFacts.eq_dec k0 k); maps
+    end
+  end.
+
+Ltac prepare_for_frame :=
+  match goal with
+  | [ H : ~ StringKey.eq _ ?k |- _ ] =>
+    rewrite add_add_comm with (k1 := k) by congruence; maps (* A bit inefficient: don't need to rerun maps if it's still the same [k] *)
+  end.
+
+Ltac match_scopes :=
+  simpl; intros;
+  match_variable_names_left; match_variable_names_right;
+  try eassumption; (* TODO this is not going to cover everything *)
+  repeat keys_equal_cases;
+  repeat prepare_for_frame;
+  try eassumption.
+
+Ltac compile :=
+  repeat match goal with
+  | [ |- @sigT _ _ ] => eexists; intros
+  | _ => eapply CompileBindDiscard
+  | _ => let r := gensym "r" in eapply CompileBind with (var := r); intros
+  | _ => eapply CompileConst
+  | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
+    eapply hoare_weaken_post; [ | eapply CompileSkip ]; try match_scopes; maps
+  | [ |- EXTRACT Read ?a {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_fast a pre with
+    | Some ?k =>
+      eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
+        eapply CompileRead with (avar := k) ]]; try match_scopes; maps
+    end
+  | [ |- EXTRACT Write ?a ?v {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_fast a pre with
+    | Some ?ka =>
+      match find_fast v pre with
+      | Some ?kv =>
+        let tmp := gensym "_" in
+        eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
+          eapply CompileWrite with (avar := ka) (vvar := kv) (tvar := tmp) ]]; try match_scopes; maps
+      end
+    end
+  | [ H : voidfunc2 ?name ?f ?env |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // ?env ] =>
+    match find_fast a pre with
+      | Some ?ka =>
+        match find_fast b pre with
+            | Some ?kb =>
+              eapply hoare_weaken_post; [ | eapply hoare_strengthen_pre; [ |
+                eapply H ] ]; try match_scopes; maps
+        end
+    end
+  | [ |- EXTRACT ?f ?a {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_fast a pre with
+      | None =>
+        eapply extract_equiv_prog; [ eapply bind_left_id | ]
+    end
+  | [ |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_fast a pre with
+    | None =>
+      eapply extract_equiv_prog; [
+        let arg := fresh "arg" in
+        set (arg := f a b);
+        pattern a in arg; subst arg;
+        eapply bind_left_id | ]
+    end
+  end.
+
+Definition swap_prog a b :=
+  va <- Read a;
+  vb <- Read b;
+  Write a vb;;
+  Write b va;;
+  Ret tt.
+
+Lemma extract_swap_prog : forall env, sigT (fun p =>
+  forall a b, EXTRACT swap_prog a b {{ "a" ~> a; "b" ~> b; ∅ }} p {{ fun _ => ∅ }} // env).
+Proof.
+  intros.
+  compile.
+Defined.
+Eval lazy in projT1 (extract_swap_prog ∅).
+
+Opaque swap_prog.
+
+Definition extract_swap_prog_corr env := projT2 (extract_swap_prog env).
+Hint Resolve extract_swap_prog_corr : extractions.
+
 Definition swap_env : Env :=
   ("swap" ->> {|
            ArgVars := ["a"; "b"];
@@ -1836,16 +1845,14 @@ Definition swap_env : Env :=
          |}; ∅).
 
 
-Axiom false : False.
-Tactic Notation "really_admit" := elim false.
-
-Definition voidmethod2 A B C {WA: FacadeWrapper Value A} {WB: FacadeWrapper Value B} name (src : A -> B -> prog C) env :=
-  forall avar bvar,
-    avar <> bvar ->
-    forall a b, EXTRACT src a b
-           {{ avar ~> a; bvar ~> b; ∅ }}
-             Call None name [avar; bvar]
-           {{ fun _ => ∅ }} // env.
+Lemma swap_func : voidfunc2 "swap" swap_prog swap_env.
+Proof.
+  unfold voidfunc2.
+  intros.
+  eapply extract_voidfunc2_call; eauto with extractions.
+  unfold swap_env; map_rewrites. auto.
+Qed.
+Hint Resolve swap_func : funcs.
 
 Definition call_swap :=
   swap_prog 0 1;;
@@ -1853,18 +1860,12 @@ Definition call_swap :=
 
 Example extract_call_swap :
   forall env,
-    voidmethod2 "swap" swap_prog env ->
+    voidfunc2 "swap" swap_prog env ->
     sigT (fun p =>
           EXTRACT call_swap {{ ∅ }} p {{ fun _ => ∅ }} // env).
 Proof.
   intros.
   compile.
-  eapply hoare_weaken_post.
-  shelve.
-  eapply H.
-  congruence.
-  Unshelve.
-  match_scopes.
 Defined.
 
 Example extract_call_swap_top :
@@ -1872,15 +1873,9 @@ Example extract_call_swap_top :
           EXTRACT call_swap {{ ∅ }} p {{ fun _ => ∅ }} // swap_env).
 Proof.
   apply extract_call_swap.
-  unfold voidmethod2.
-  intros.
-  eapply extract_voidfunc2_call.
-  intros.
-  eapply (projT2 (extract_swap_prog swap_env)).
-  unfold swap_env.
-  eapply StringMapFacts.add_eq_o; congruence.
-  auto.
+  auto with funcs.
 Defined.
+Eval lazy in projT1 (extract_call_swap_top).
 
 Definition swap2_prog :=
   a <- Read 0;
