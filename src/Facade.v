@@ -1653,7 +1653,7 @@ Opaque swap_prog.
 Lemma extract_voidfunc2_call :
   forall A B C {WA: FacadeWrapper Value A} {WB: FacadeWrapper Value B} name (src : A -> B -> prog C) arga argb env,
     forall rnia and body ss,
-      (forall a b, EXTRACT src a b {{ arga ~> a; argb ~> b; ∅ }} body {{ fun _ => arga ~> a; argb ~> b; ∅ }} // env) ->
+      (forall a b, EXTRACT src a b {{ arga ~> a; argb ~> b; ∅ }} body {{ fun _ => ∅ }} // env) ->
       StringMap.find name env = Some {|
                                     ArgVars := [arga; argb];
                                     RetVar := None;
@@ -1700,7 +1700,19 @@ Proof.
     rewrite Henv in H7.
     find_inversion_safe. unfold sel in *. simpl in *.
     assert (exists bp', (Step env)^* (d, callee_s, body) (final_disk, s', bp') /\ p' = InCall s [arga; argb] None [avar; bvar] None bp').
-    admit.
+    {
+      remember callee_s.
+      clear callee_s Heqt.
+      generalize H3 H2. clear. intros.
+      prep_induction H3; induction H3; intros; subst.
+      - find_inversion.
+        eauto using rt1n_refl.
+      - invc H0.
+        + destruct st'.
+          forwardauto IHclos_refl_trans_1n; deex.
+          eauto using rt1n_front.
+        + invc H3. invc H2. invc H.
+    }
     deex.
     eapply Steps_ExecCrashed in H1.
     unfold ProgOk in *.
@@ -1721,7 +1733,23 @@ Proof.
       find_all_cases.
       trivial.
     + invc H2.
-      assert (exists bp', (Step env)^* (d, callee_s, body) (st', bp') /\ p' = InCall s [arga; argb] None [avar; bvar] None bp') by admit. deex.
+      rewrite Henv in H8.
+      find_inversion_safe. simpl in *.
+      assert (exists bp', (Step env)^* (d, callee_s, body) (st', bp') /\ p' = InCall s [arga; argb] None [avar; bvar] None bp').
+      {
+        remember callee_s.
+        clear callee_s Heqt.
+        generalize H4 H0 H3. clear. intros.
+        prep_induction H4; induction H4; intros; subst.
+        - find_inversion.
+          eauto using rt1n_refl.
+        - invc H0.
+          + destruct st'0.
+            forwardauto IHclos_refl_trans_1n; deex.
+            eauto using rt1n_front.
+          + invc H4. contradiction H1. auto. invc H.
+      }
+      deex.
       eapply Steps_ExecFailed in H2.
       unfold ProgOk in *.
       repeat eforward Hex.
@@ -1736,34 +1764,75 @@ Proof.
       repeat deex. eauto.
 
   Unshelve.
-  simpl in *.
-  maps.
-  find_all_cases.
-  find_inversion_safe.
-  maps.
-  find_all_cases.
-  find_inversion_safe.
-  eapply Forall_elements_remove_weaken.
-  eapply forall_In_Forall_elements.
-  intros.
-  destruct (string_dec k argb).
-  subst. maps. find_inversion_safe.
-  find_copy_eapply_lem_hyp NoDup_bool_string_eq_sound.
-  invc H.
-  assert (arga <> argb).
-  intro. subst. contradiction H2. constructor. auto.
-  maps.
-  maps.
-  maps.
-  (* argh *)
-Abort.
-
+  * simpl in *.
+    maps.
+    find_all_cases.
+    find_inversion_safe.
+    maps.
+    find_all_cases.
+    find_inversion_safe.
+    eapply Forall_elements_remove_weaken.
+    eapply forall_In_Forall_elements.
+    intros.
+    destruct (string_dec k argb).
+    subst. maps. find_inversion_safe.
+    find_copy_eapply_lem_hyp NoDup_bool_string_eq_sound.
+    invc H.
+    assert (arga <> argb).
+    intro. subst. contradiction H2. constructor. auto.
+    maps.
+    maps.
+  * (* argh *)
+    simpl in *.
+    subst_definitions.
+    maps.
+    find_all_cases.
+    find_inversion_safe.
+    maps.
+    eapply Forall_elements_remove_weaken.
+    eapply forall_In_Forall_elements.
+    intros.
+    destruct (string_dec k argb).
+    subst. maps. find_inversion_safe.
+    find_copy_eapply_lem_hyp NoDup_bool_string_eq_sound.
+    invc H.
+    assert (arga <> argb).
+    intro. subst. contradiction H8. constructor. auto.
+    find_cases avar s.
+    find_cases bvar s.
+    find_inversion_safe.
+    maps.
+    maps.
+  * unfold sel in *; simpl in *.
+    subst_definitions.
+    simpl in *.
+    find_cases avar s.
+    find_cases bvar s.
+    find_inversion_safe.
+    maps.
+    rewrite He in *.
+    auto.
+    eapply Forall_elements_remove_weaken.
+    eapply forall_In_Forall_elements.
+    intros.
+    destruct (string_dec k argb).
+    subst. maps. find_inversion_safe.
+    find_copy_eapply_lem_hyp NoDup_bool_string_eq_sound.
+    invc H.
+    assert (arga <> argb).
+    intro. subst. contradiction H9. constructor. auto.
+    maps.
+    rewrite He0 in *. auto.
+    maps.
+  * (* Oops, where did this come from? *)
+    repeat constructor.
+Qed.
 
 Definition swap_env : Env :=
   ("swap" ->> {|
            ArgVars := ["a"; "b"];
            RetVar := None; Body := projT1 (extract_swap_prog ∅);
-           ret_not_in_args := ltac:(auto); args_no_dup := ltac:(auto)
+           ret_not_in_args := ltac:(auto); args_no_dup := ltac:(auto); body_source := ltac:(auto);
          |}; ∅).
 
 
@@ -1776,81 +1845,7 @@ Definition voidmethod2 A B C {WA: FacadeWrapper Value A} {WB: FacadeWrapper Valu
     forall a b, EXTRACT src a b
            {{ avar ~> a; bvar ~> b; ∅ }}
              Call None name [avar; bvar]
-           {{ fun _ => avar ~> a; bvar ~> b; ∅ }} // env.
-
-Example swap_call : forall avar bvar, avar <> bvar -> sigT (fun p =>
-  forall a b, EXTRACT swap_prog a b {{ avar ~> a; bvar ~> b; ∅ }} p {{ fun _ => avar ~> a; bvar ~> b; ∅ }} // swap_env).
-Proof.
-  eexists.
-  instantiate (p := Call None "swap" [avar; bvar]).
-  intros.
-  intro. intro. intro. intro. intro.
-  intuition.
-  subst.
-  find_eapply_lem_hyp ExecFinished_Steps.
-  find_eapply_lem_hyp Steps_RunsTo.
-  invc H1.
-  find_eapply_lem_hyp RunsTo_Steps.
-  find_eapply_lem_hyp Steps_ExecFinished.
-  pose proof (projT2 (micro_swap_args swap_env)) as Hex.
-  simpl in Hex.
-  specialize (Hex a b).
-  unfold swap_env in H5.
-  map_rewrites.
-  find_inversion_safe.
-  subst_definitions.
-  unfold sel in *.
-  simpl in *.
-  unfold ProgOk in *.
-  repeat eforward Hex.
-  forward Hex.
-  shelve.
-  forward_solve.
-  simpl in *.
-  do 2 eexists.
-  intuition eauto.
-  maps;
-  find_all_cases;
-  repeat find_inversion_safe;
-  simpl.
-  rewrite He2 in *. trivial.
-  eapply forall_In_Forall_elements.
-  intros.
-  pose proof (Forall_elements_forall_In _ H15).
-  simpl in *.
-  specialize (H1 k v).
-  assert (k = bvar).
-  {
-    destruct (string_dec k bvar); [ solve [ auto ] | exfalso ].
-    destruct (string_dec k avar); subst; maps.
-  }
-  subst.
-  maps.
-  find_inversion_safe.
-  rewrite He.
-  trivial.
-
-  econstructor.
-  really_admit.
-  really_admit.
-
-  Unshelve.
-  simpl in *.
-  maps;
-  find_all_cases.
-  maps.
-  find_inversion_safe.
-  simpl in *.
-  trivial.
-  find_inversion_safe.
-  eapply Forall_elements_remove_weaken.
-  eapply Forall_elements_add.
-  intuition eauto.
-  maps.
-Defined.
-
-Definition swap_call_cor avar bvar abne := projT2 (@swap_call avar bvar abne).
-Hint Resolve swap_call_cor : extracted.
+           {{ fun _ => ∅ }} // env.
 
 Definition call_swap :=
   swap_prog 0 1;;
@@ -1870,7 +1865,6 @@ Proof.
   congruence.
   Unshelve.
   match_scopes.
-  maps.
 Defined.
 
 Example extract_call_swap_top :
@@ -1880,10 +1874,13 @@ Proof.
   apply extract_call_swap.
   unfold voidmethod2.
   intros.
-  eapply swap_call_cor.
-  Unshelve.
+  eapply extract_voidfunc2_call.
+  intros.
+  eapply (projT2 (extract_swap_prog swap_env)).
+  unfold swap_env.
+  eapply StringMapFacts.add_eq_o; congruence.
   auto.
-Qed.
+Defined.
 
 Definition swap2_prog :=
   a <- Read 0;
@@ -1891,7 +1888,6 @@ Definition swap2_prog :=
   if weq a b then
     Ret tt
   else
-    body_source : is_source_stmt Body = true;
     Write 0 b;;
     Write 1 a;;
     Ret tt.
