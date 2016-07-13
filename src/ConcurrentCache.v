@@ -11,19 +11,29 @@ Import Hlist.HlistNotations.
 Require Import MemCache.
 Require Import WriteBufferSet.
 
-Section ConcurrentCache.
+Module Type GlobalProtocol.
+  Parameter Sigma:State.
+  Parameter delta:Protocol Sigma.
+End GlobalProtocol.
 
-  Definition Sigma := defState [Cache; WriteBuffer] [Cache; WriteBuffer; DISK; Disk].
+Definition Sigma := defState
+                  [Cache; WriteBuffer]
+                  [Cache; WriteBuffer; DISK; Disk].
+
+Module Type CacheProj (App:GlobalProtocol).
+  Parameter stateProj:StateProj App.Sigma Sigma.
+End CacheProj.
+
+Module CacheProtocol (App:GlobalProtocol) (Proj:CacheProj App).
 
   Section Variables.
 
-    Tactic Notation "var" constr(n) constr(f) :=
-      let t := constr:(ltac:(hmember n (f Sigma))) in
-      let t' := eval cbn in t in
-          exact (t': var (f Sigma) _).
+    Tactic Notation "var" constr(n) uconstr(f) :=
+      let t := constr:(ltac:(hget n (f Proj.stateProj))) in
+      exact t.
 
-    Tactic Notation "mvar" constr(n) := var n mem_types.
-    Tactic Notation "absvar" constr(n) := var n abstraction_types.
+    Tactic Notation "mvar" constr(n) := var n memVars.
+    Tactic Notation "absvar" constr(n) := var n abstractionVars.
 
     (* memory variables *)
     Definition mCache := ltac:(mvar 0).
@@ -36,14 +46,59 @@ Section ConcurrentCache.
     Definition vDisk0 := ltac:(absvar 2).
     (* the disk from the perspective of the current syscall *)
     Definition vdisk := ltac:(absvar 3).
-
   End Variables.
+
+  (* TODO: var_index_neq_mem and var_index_neq_abstraction are generic, should
+  be moved out *)
+
+  Lemma var_index_neq_mem :
+    forall (Sigma Sigma':State) (proj: StateProj Sigma Sigma')
+      t (m: var (mem_types Sigma') t)
+      t' (m': var (mem_types Sigma') t'),
+      member_index m <> member_index m' ->
+      member_index (get m (memVars proj)) <>
+      member_index (get m' (memVars proj)).
+  Proof.
+    intros; destruct proj; unfold variables in *; cbn.
+    repeat rewrite member_index_eq_var_index.
+    rewrite ?get_hmap with (def:=0).
+    apply NoDup_get_neq;
+      autorewrite with hlist;
+      eauto using member_index_bound.
+  Qed.
+
+  Lemma var_index_neq_abstraction :
+    forall (Sigma Sigma':State) (proj: StateProj Sigma Sigma')
+      t (m: var (abstraction_types Sigma') t)
+      t' (m': var (abstraction_types Sigma') t'),
+      member_index m <> member_index m' ->
+      member_index (get m (abstractionVars proj)) <>
+      member_index (get m' (abstractionVars proj)).
+  Proof.
+    intros; destruct proj; unfold variables in *; cbn.
+    repeat rewrite member_index_eq_var_index.
+    rewrite ?get_hmap with (def:=0).
+    apply NoDup_get_neq;
+      autorewrite with hlist;
+      eauto using member_index_bound.
+  Qed.
+
+  Ltac vars_distinct :=
+    (apply (var_index_neq_abstraction (Sigma':=Sigma)) ||
+     apply (var_index_neq_mem (Sigma':=Sigma)));
+    cbn;
+    inversion 1.
+
+  Hint Extern 1 (@member_index _ _ (abstraction_types App.Sigma) _ <>
+                 @member_index _ _ (abstraction_types App.Sigma) _) => vars_distinct.
+  Hint Extern 1 (@member_index _ _ (mem_types App.Sigma) _ <>
+                 @member_index _ _ (mem_types App.Sigma) _) => vars_distinct.
 
   Definition no_wb_reader_conflict c wb :=
     forall a, cache_get c a = Invalid ->
          wb_get wb a = WbMissing.
 
-  Definition cacheI : Invariant Sigma :=
+  Definition cacheI : Invariant App.Sigma :=
     fun d m s =>
       get mCache m = get vCache s /\
       get mWriteBuffer m = get vWriteBuffer s /\
@@ -54,53 +109,57 @@ Section ConcurrentCache.
   (** a locking-like protocol, but true for any provable program
       due to the program semantics themselves *)
   Definition readers_locked tid (vd vd': DISK) :=
-      (forall a v tid', vd a = Some (v, Some tid') ->
-                   tid <> tid' ->
-                   vd' a = Some (v, Some tid')).
-
-  Lemma readers_locked_refl : forall tid vd,
-      readers_locked tid vd vd.
-  Proof.
-    unfold readers_locked; eauto.
-  Qed.
-
-  Lemma readers_locked_trans : forall tid vd vd' vd'',
-      readers_locked tid vd vd' ->
-      readers_locked tid vd' vd'' ->
-      readers_locked tid vd vd''.
-  Proof.
-    unfold readers_locked; eauto.
-  Qed.
+    (forall a v tid', vd a = Some (v, Some tid') ->
+                 tid <> tid' ->
+                 vd' a = Some (v, Some tid')).
 
   Instance readers_locked_preorder tid : PreOrder (readers_locked tid).
   Proof.
     constructor; hnf; intros;
-      eauto using readers_locked_refl,
-      readers_locked_trans.
+      unfold readers_locked; eauto.
   Qed.
 
   (* not sure whether to say this about vDisk0, vDisk, or both *)
-  Definition cacheR (tid:TID) : Relation Sigma :=
+  Definition cacheR (tid:TID) : Relation App.Sigma :=
     fun s s' =>
       let vd := get vDisk0 s in
       let vd' := get vDisk0 s' in
       same_domain vd vd' /\
       readers_locked tid vd vd'.
 
-  Hint Immediate same_domain_refl same_domain_trans.
-  Hint Immediate readers_locked_refl readers_locked_trans.
+  Hint Resolve same_domain_preorder same_domain_refl.
+  Hint Resolve readers_locked_preorder.
 
-  Theorem cacheR_trans_closed : forall tid s s',
-      star (cacheR tid) s s' ->
-      cacheR tid s s'.
+  Instance and_preorder A (R1 R2: Relation A)
+           (p1: PreOrder R1) (p2: PreOrder R2)
+    : PreOrder (fun a a' =>
+                  R1 a a' /\
+                  R2 a a').
   Proof.
-    intro tid.
-    apply trans_closed; unfold cacheR; intuition eauto.
+    destruct p1, p2.
+    constructor; hnf; intuition eauto.
   Qed.
 
-  Definition delta : Protocol Sigma :=
-    defProtocol cacheI cacheR cacheR_trans_closed.
+  Theorem cacheR_preorder : forall tid,
+      PreOrder (cacheR tid).
+  Proof.
+    unfold cacheR; intros.
+    apply and_preorder; constructor; hnf; intros.
+    apply same_domain_preorder.
+    eapply same_domain_preorder; eauto.
+    apply readers_locked_preorder.
+    eapply readers_locked_preorder; eauto.
+  Qed.
 
+  Definition delta : Protocol App.Sigma :=
+    defProtocol cacheI cacheR cacheR_preorder.
+
+End CacheProtocol.
+
+Module ConcurrentCache (App:GlobalProtocol) (Proj:CacheProj App).
+
+  Module P := CacheProtocol App Proj.
+  Export P.
   (* abstraction helpers *)
 
   Definition modify_cache (up: Cache -> Cache) :=
@@ -260,14 +319,14 @@ Section ConcurrentCache.
       progress repeat rewrite ?get_set, ?get_set_other by auto
     end.
 
-  Lemma cache_val_mem {m: memory Sigma} {s: abstraction Sigma} :
+  Lemma cache_val_mem {m: memory App.Sigma} {s: abstraction App.Sigma} :
       get mCache m = get vCache s ->
       cache_val (get mCache m) = cache_val (get vCache s).
   Proof.
     congruence.
   Qed.
 
-  Lemma cache_get_mem {m: memory Sigma} {s: abstraction Sigma} :
+  Lemma cache_get_mem {m: memory App.Sigma} {s: abstraction App.Sigma} :
       get mCache m = get vCache s ->
       cache_get (get mCache m) = cache_get (get vCache s).
   Proof.
@@ -576,12 +635,11 @@ Section ConcurrentCache.
   Proof.
     hoare.
     eexists; simplify; finish.
-    eauto using disk_no_reader.
 
     hoare;
       (* make sure that all these goals are still around until we
       specifically solve them *)
-      let n := numgoals in guard n = 4;
+      let n := numgoals in guard n = 5;
       match goal with
       (* cache_rep stable when adding reader *)
       | [ |- cache_rep (upd _ _ _)
@@ -594,9 +652,11 @@ Section ConcurrentCache.
       | [ |- readers_locked _ _ _ ] =>
         (* TODO: debug eauto not being able to follow this chain of
         reasoning *)
-        eapply readers_locked_trans; eauto;
+        eapply readers_locked_preorder; eauto;
           eapply readers_locked_add_reader;
           eapply wb_cache_val_none_vd0; eauto
+      | [ |- same_domain _ _ ] =>
+        eapply same_domain_preorder; eauto
       end.
   Admitted.
 
@@ -618,7 +678,7 @@ Section ConcurrentCache.
     simpl; unfold cacheR, others; intros; deex; eauto.
   Qed.
 
-  Lemma rely_read_lock : forall tid (s s': abstraction Sigma) a v,
+  Lemma rely_read_lock : forall tid (s s': abstraction App.Sigma) a v,
       get vDisk0 s a = Some (v, Some tid) ->
       rely delta tid s s' ->
       get vDisk0 s' a = Some (v, Some tid).
@@ -952,8 +1012,12 @@ Section ConcurrentCache.
 
   End ExampleProgram.
 
-End ConcurrentCache.
-
 (* note that this is, in theory, the entire public cache API *)
 Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
 Hint Extern 1 {{cache_write _ _; _}} => apply cache_write_ok : prog.
+
+End ConcurrentCache.
+
+(* Local Variables: *)
+(* company-coq-local-symbols: (("delta" . ?δ) ("Sigma" . ?Σ)) *)
+(* End: *)

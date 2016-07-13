@@ -2421,6 +2421,12 @@ Proof.
   auto using Equivalence_PreOrder, same_domain_equiv.
 Qed.
 
+Corollary same_domain_refl : forall m,
+    same_domain m m.
+Proof.
+  apply same_domain_preorder.
+Qed.
+
 Theorem same_domain_upd : forall m a v v0,
   m a = Some v0 ->
   same_domain m (upd m a v).

@@ -98,6 +98,9 @@ Section Protocols.
 
 End Protocols.
 
+Arguments memVars {Sigma Sigma'} _.
+Arguments abstractionVars {Sigma Sigma'} _.
+
 Theorem inj__m_get : forall Sigma Sigma' (proj: StateProj Sigma Sigma') m m'
                        t (v_index: var (mem_types Sigma') t),
     pi__m proj (inj__m proj m m') = m'.
