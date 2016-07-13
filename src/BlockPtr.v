@@ -168,6 +168,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
       [[ l = concat l_part ]] *
       listmatch (fun ibn' l' => indrep_ind bxp indlvl' (# ibn') l') iblocks l_part
     end)%pred.
+  Hint Extern 0 (okToUnify (listmatch _ _ _) (listmatch _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (indrep_ind _ _ _ _) (indrep_ind _ _ _ _)) => constructor : okToUnify.
 
   Definition indrep bxp (l : list waddr) ibn indlist :=
@@ -503,6 +504,30 @@ Module BlockPtr (BPtr : BlockPtrSig).
     eapply pimpl_apply; [> | exact H0]; cancel.
   Qed.
 
+  Ltac unify_rep := repeat match goal with
+    | [ l1 : list waddr,
+        l2 : list waddr,
+        H1 : context [indrep_ind _ _ _ ?l1],
+        H2 : context [indrep_ind _ _ _ ?l2]
+        |- ?l1 = ?l2 ] => eapply indrep_ind_inj; eassumption
+    | [ l1 : list (list waddr),
+        l2 : list (list waddr),
+        H1 : context [IndRec.rep ?ir ?l1],
+        H2 : context [IndRec.rep ?ir ?l2] |- _ ] =>
+        tryif (unify l1 l2) then fail else (
+        assert (l1 = l2); [> eapply IndRec.rep_inj | subst];
+        [> eapply pimpl_apply; [> | exact H1]; cancel |
+           eapply pimpl_apply; [> | exact H2]; cancel |
+           idtac ])
+    | [ l1 : list (list waddr),
+        l2 : list (list waddr),
+        H1 : context [listmatch ?f ?l ?l1],
+        H2 : context [listmatch ?f ?l ?l2] |- _ ] =>
+        tryif (unify l1 l2) then fail else (
+        assert (l1 = l2); [> eapply listmatch_inj | subst];
+        try eassumption; intros; simpl in *)
+  end.
+
   Theorem indread_ok : forall indlvl lxp bxp ir ms,
   {< F Fm m0 m l,
     PRE:hm
@@ -518,56 +543,37 @@ Module BlockPtr (BPtr : BlockPtrSig).
     induction indlvl.
     unfold indread; hoare.
     unfold IndRec.Defs.item; simpl; apply firstn_oob; omega.
-    unfold indread; hoare.
-    assert (dummy1 = dummy).
-    eapply IndRec.rep_inj.
-    eapply pimpl_apply; [> | exact H8]; cancel.
-    eapply pimpl_apply; [> | exact H4]; cancel.
-    subst.
+    unfold indread; hoare; unify_rep.
     rewrite firstn_oob by omega.
     rewrite listmatch_extract.
     cancel.
     unfold IndRec.Defs.item in *; simpl in *; omega.
     erewrite plus_comm, firstn_sum_split.
     f_equal.
-    assert (dummy1 = dummy).
-    eapply IndRec.rep_inj.
-    eapply pimpl_apply; [> | exact H8]; cancel.
-    eapply pimpl_apply; [> | exact H4]; cancel.
-    subst.
-    assert (dummy2 = dummy0).
-    eapply listmatch_inj with (f := fun a b => indrep_ind _ _ (# a) b); try eassumption.
-    intros. eapply indrep_ind_inj; eassumption.
-    subst.
-    Search indrep_ind concat.
-    apply listmatch_indrep_ind_length in H8 as H'.
+    apply listmatch_length_r in H8 as H'.
+    unfold IndRec.Defs.item in *; simpl in *.
     rewrite concat_hom_skipn.
-    erewrite <- concat_hom_subselect_firstn.
+    erewrite <- concat_hom_subselect_firstn; auto.
     rewrite firstn_oob; auto.
     rewrite listmatch_extract in H8.
     rewrite indrep_ind_lift in H8.
     destruct_lift H8.
     rewrite H16; auto.
-    unfold IndRec.Defs.item in *; simpl in *; omega.
-    eapply listmatch_lift_r; try eassumption.
-    simpl; intros.
-    rewrite indrep_ind_lift; split; cancel.
-    eauto.
-    omega.
-    apply listmatch_length_r in H8.
-    unfold IndRec.Defs.item in *; simpl in *; omega.
-    eapply listmatch_lift_r; try eassumption.
-    simpl; intros.
-    rewrite indrep_ind_lift; split; cancel.
-    auto.
-    apply firstn_oob; omega.
-    admit.
+    all : try match goal with
+          | [ |- _ < _ ] => unfold IndRec.Defs.item in *; simpl in *; omega
+          | [ |- Forall _ _] =>
+                  eapply listmatch_lift_r; try eassumption; simpl; intros;
+                  rewrite indrep_ind_lift; split; cancel
+          | [ |- firstn _ _ = _] => apply firstn_oob; omega
+          end.
+    apply LOG.rep_hashmap_subset; auto.
     Grab Existential Variables.
     all : eauto; try exact ($ 0); try exact tt.
-  Admitted.
+  Qed.
 
   Opaque indget.
   Hint Extern 1 ({{_}} Bind (indget _ _ _ _ _) _) => apply indget_ok : prog.
+  Hint Extern 1 ({{_}} Bind (indread _ _ _ _) _) => apply indread_ok : prog.
 
   Theorem get_ok : forall lxp bxp ir off ms,
     {< F Fm m0 m l,
