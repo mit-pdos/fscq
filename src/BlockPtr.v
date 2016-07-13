@@ -22,6 +22,7 @@ Require Import Balloc.
 Require Import ListPred.
 Require Import FSLayout.
 Require Import AsyncDisk.
+Require Import Rounding.
 
 Import ListNotations.
 
@@ -156,82 +157,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Local Hint Resolve le_ndirect_goodSize le_nindirect_goodSize le_nblocks_goodSize.
 
-
-  (************* program *)
-
-  Fixpoint indget (indlvl : nat) lxp (bn : addr) off ms :=
-    let divisor := NIndirect ^ indlvl in
-    let^ (ms, v) <- IndRec.get lxp bn (off / divisor) ms;
-    match indlvl with
-    | 0 => Ret ^(ms, v)
-    | S indlvl' => indget indlvl' lxp (# (Rec.to_word v)) (off mod divisor) ms
-    end.
-
-  Definition get lxp (ir : irec) off ms :=
-    If (lt_dec off NDirect) {
-      Ret ^(ms, selN (IRBlocks ir) off $0)
-    } else {
-      let^ (ms, v) <- indget 0 lxp (IRIndPtr ir) (off - NDirect) ms;
-      Ret ^(ms, v)
-    }.
-
-  Definition read lxp (ir : irec) ms :=
-    If (le_dec (IRLen ir) NDirect) {
-      Ret ^(ms, firstn (IRLen ir) (IRBlocks ir))
-    } else {
-      let^ (ms, indbns) <- IndRec.read lxp (IRIndPtr ir) 1 ms;
-      Ret ^(ms, (firstn (IRLen ir) ((IRBlocks ir) ++ indbns)))
-    }.
-
-
-  Definition free_ind_dec ol nl :
-    { ol > NDirect /\ nl <= NDirect } + { ol <= NDirect \/ nl > NDirect }.
-  Proof.
-    destruct (gt_dec ol NDirect).
-    destruct (le_dec nl NDirect).
-    left; split; assumption.
-    right; right; apply not_le; assumption.
-    right; left; apply not_gt; assumption.
-  Defined.
-
-
-  Definition shrink lxp bxp (ir : irec) nr ms :=
-    let nl := ((IRLen ir) - nr) in
-    If (free_ind_dec (IRLen ir) nl) {
-      ms <- BALLOC.free lxp bxp (IRIndPtr ir) ms;
-      Ret ^(ms, upd_len ir nl)
-    } else {
-      Ret ^(ms, upd_len ir nl)
-    }.
-
-
-  Definition grow lxp bxp (ir : irec) bn ms :=
-    let len := (IRLen ir) in
-    If (lt_dec len NDirect) {
-      (* change direct block address *)
-      Ret ^(ms, Some (upd_irec ir (S len) (IRIndPtr ir) (updN (IRBlocks ir) len bn)))
-    } else {
-      (* allocate indirect block if necessary *)
-      let^ (ms, ibn) <- If (addr_eq_dec len NDirect) {
-        let^ (ms, r) <- BALLOC.alloc lxp bxp ms;
-        match r with
-        | None => Ret ^(ms, None)
-        | Some ibn =>
-            ms <- IndRec.init lxp ibn ms;
-            Ret ^(ms, Some ibn)
-        end
-      } else {
-        Ret ^(ms, Some (IRIndPtr ir))
-      };
-      match ibn with
-      | Some ibn =>
-        (* write indirect block *)
-        ms <- IndRec.put lxp ibn (len - NDirect) bn ms;
-        Ret ^(ms, Some (upd_irec ir (S len) ibn (IRBlocks ir)))
-      | None => Ret ^(ms, None)
-      end
-    }.
-
   (************** rep invariant *)
   Fixpoint indrep_ind bxp (indlvl : nat) (ibn : addr) (l : list waddr):=
     ([[ length l = NIndirect ^ (S indlvl) ]] * [[ BALLOC.bn_valid bxp ibn ]] *
@@ -306,9 +231,12 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite selN_app1 by omega; auto.
   Qed.
 
+  Local Hint Resolve IndRec.Defs.items_per_val_not_0.
+  Local Hint Resolve IndRec.Defs.items_per_val_gt_0'.
+
   Lemma off_mod_len_l : forall T off (l : list T), length l = NIndirect -> off mod NIndirect < length l.
   Proof.
-    intros. rewrite H; apply Nat.mod_upper_bound; apply IndRec.Defs.items_per_val_not_0.
+    intros. rewrite H; apply Nat.mod_upper_bound; auto.
   Qed.
 
   Lemma mult_neq_0 : forall m n, m <> 0 -> n <> 0 -> m * n <> 0.
@@ -318,31 +246,25 @@ Module BlockPtr (BPtr : BlockPtrSig).
     destruct H1; auto.
   Qed.
 
-  Hint Resolve off_mod_len_l.
-  Hint Resolve IndRec.Defs.items_per_val_not_0.
-  Hint Resolve IndRec.Defs.items_per_val_gt_0'.
-  Hint Resolve mult_neq_0.
+  Local Hint Resolve off_mod_len_l.
+  Local Hint Resolve mult_neq_0.
 
   Lemma indrep_ind_lift : forall bxp indlvl bn l,
     indrep_ind bxp indlvl bn l <=p=>
     ([[ length l = NIndirect ^ S indlvl ]] * [[ BALLOC.bn_valid bxp bn ]] * indrep_ind bxp indlvl bn l)%pred.
   Proof.
     unfold indrep_ind.
-    split; induction indlvl; cancel.
-    auto.
-    auto.
+    split; induction indlvl; cancel; auto.
   Qed.
 
   Fact divmod_n_zeros : forall n, fst (Nat.divmod n 0 0 0) = n.
   Proof.
     intros.
     pose proof Nat.div_1_r n.
-    unfold Nat.div in H.
-    assumption.
+    unfold Nat.div in H. auto.
   Qed.
 
   Hint Rewrite divmod_n_zeros using auto.
-
   Local Hint Resolve Nat.pow_nonzero.
 
   Ltac mult_nonzero := 
@@ -387,6 +309,101 @@ Module BlockPtr (BPtr : BlockPtrSig).
     split; cancel.
   Qed.
 
+  (************* program *)
+
+  Fixpoint indget (indlvl : nat) lxp (bn : addr) off ms :=
+    let divisor := NIndirect ^ indlvl in
+    let^ (ms, v) <- IndRec.get lxp bn (off / divisor) ms;
+    match indlvl with
+    | 0 => Ret ^(ms, v)
+    | S indlvl' => indget indlvl' lxp (# (Rec.to_word v)) (off mod divisor) ms
+    end.
+
+  Definition get lxp (ir : irec) off ms :=
+    If (lt_dec off NDirect) {
+      Ret ^(ms, selN (IRBlocks ir) off $0)
+    } else {
+      let^ (ms, v) <- indget 0 lxp (IRIndPtr ir) (off - NDirect) ms;
+      Ret ^(ms, v)
+    }.
+
+  Fixpoint indread (indlvl : nat) lxp (ir : addr) ms :=
+    let^ (ms, indbns) <- IndRec.read lxp ir 1 ms;
+    match indlvl with
+      | 0 => Ret ^(ms, indbns)
+      | S indlvl' =>
+        let^ (ms', r) <- ForN i < NIndirect
+          Hashmap hm
+          Ghost [ F Fm l bxp crash m0 m ]
+          Loopvar [ ms r ]
+          Invariant
+            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+            [[[ m ::: Fm * indrep_ind bxp indlvl ir l ]]] *
+            [[ r = firstn (i * NIndirect ^ indlvl) l ]]
+          OnCrash crash
+          Begin
+            let^ (ms, v) <- indread indlvl' lxp #(selN indbns i IndRec.Defs.item0) ms;
+            Ret ^(ms, r ++ v)
+          Rof ^(ms, nil);
+          Ret ^(ms', r)
+    end.
+
+  Definition read lxp (ir : irec) ms :=
+    If (le_dec (IRLen ir) NDirect) {
+      Ret ^(ms, firstn (IRLen ir) (IRBlocks ir))
+    } else {
+      let^ (ms, indbns) <- indread 0 lxp (IRIndPtr ir) ms;
+      Ret ^(ms, (firstn (IRLen ir) ((IRBlocks ir) ++ indbns)))
+    }.
+
+  Definition free_ind_dec ol nl :
+    { ol > NDirect /\ nl <= NDirect } + { ol <= NDirect \/ nl > NDirect }.
+  Proof.
+    destruct (gt_dec ol NDirect).
+    destruct (le_dec nl NDirect).
+    left; split; assumption.
+    right; right; apply not_le; assumption.
+    right; left; apply not_gt; assumption.
+  Defined.
+
+
+  Definition shrink lxp bxp (ir : irec) nr ms :=
+    let nl := ((IRLen ir) - nr) in
+    If (free_ind_dec (IRLen ir) nl) {
+      ms <- BALLOC.free lxp bxp (IRIndPtr ir) ms;
+      Ret ^(ms, upd_len ir nl)
+    } else {
+      Ret ^(ms, upd_len ir nl)
+    }.
+
+
+  Definition grow lxp bxp (ir : irec) bn ms :=
+    let len := (IRLen ir) in
+    If (lt_dec len NDirect) {
+      (* change direct block address *)
+      Ret ^(ms, Some (upd_irec ir (S len) (IRIndPtr ir) (updN (IRBlocks ir) len bn)))
+    } else {
+      (* allocate indirect block if necessary *)
+      let^ (ms, ibn) <- If (addr_eq_dec len NDirect) {
+        let^ (ms, r) <- BALLOC.alloc lxp bxp ms;
+        match r with
+        | None => Ret ^(ms, None)
+        | Some ibn =>
+            ms <- IndRec.init lxp ibn ms;
+            Ret ^(ms, Some ibn)
+        end
+      } else {
+        Ret ^(ms, Some (IRIndPtr ir))
+      };
+      match ibn with
+      | Some ibn =>
+        (* write indirect block *)
+        ms <- IndRec.put lxp ibn (len - NDirect) bn ms;
+        Ret ^(ms, Some (upd_irec ir (S len) ibn (IRBlocks ir)))
+      | None => Ret ^(ms, None)
+      end
+    }.
+
   Theorem indget_ok : forall indlvl lxp bxp bn off ms,
     {< F Fm m0 m l,
     PRE:hm
@@ -428,6 +445,126 @@ Module BlockPtr (BPtr : BlockPtrSig).
     Grab Existential Variables.
     exact ($ off).
   Qed.
+
+  Print indrep_ind.
+  Fact indrep_ind_0_is : forall bxp ibn l, indrep_ind bxp 0 ibn l = 
+    ([[length l = NIndirect ]] * [[ BALLOC.bn_valid bxp ibn ]] * IndRec.rep ibn l)%pred.
+  Proof. unfold indrep_ind; simpl; rewrite mult_1_r; auto. Qed.
+
+  Fact indrep_ind_S_is : forall bxp indlvl ibn l, indrep_ind bxp (S indlvl) ibn l =
+    ([[length l = (NIndirect * NIndirect ^ (S indlvl))%nat ]] * [[ BALLOC.bn_valid bxp ibn ]] * 
+      exists iblocks l_part, IndRec.rep ibn iblocks *
+        [[ length iblocks = NIndirect ]] * [[ l = concat l_part ]] *
+        listmatch (fun ibn' l' => indrep_ind bxp indlvl # (ibn') l') iblocks l_part)%pred.
+  Proof. unfold indrep_ind; auto. Qed.
+
+  Fact listmatch_inj : forall  A B l l1 l2 AT AEQ V F1 F2 (f : A -> B -> @pred AT AEQ V) m,
+    (forall Fa Fb x a b, (Fa * f x a)%pred m -> (Fb * f x b)%pred m -> a = b) -> (F1 * listmatch f l l1)%pred m
+      -> (F2 * listmatch f l l2)%pred m -> l1 = l2.
+  Proof.
+    induction l; intros; destruct l1, l2; auto.
+    all : unfold listmatch in *;
+          destruct_lift H0; destruct_lift H1;
+          match goal with
+          | [ H : 0 = S _ |- _] => inversion H
+          | [ H : S _ = 0 |- _] => inversion H
+          | [ |- _] => idtac
+          end.
+    f_equal.
+    eapply H with (x := a).
+      eapply pimpl_apply; [> | exact H0]; cancel.
+      eapply pimpl_apply; [> | exact H1]; cancel.
+      eapply IHl.
+      eassumption.
+      eapply pimpl_apply; [> | exact H0]; cancel.
+      eapply pimpl_apply; [> | exact H1]; cancel.
+  Qed.
+
+  Theorem indrep_ind_inj : forall indlvl Fa Fb l1 l2 bxp ibn m,
+    (Fa * indrep_ind bxp indlvl ibn l1)%pred m -> (Fb * indrep_ind bxp indlvl ibn l2)%pred m -> l1 = l2.
+  Proof.
+    induction indlvl; intros; simpl in *.
+    eapply IndRec.rep_inj; eauto.
+    eapply pimpl_apply; [> | exact H]; cancel.
+    eapply pimpl_apply; [> | exact H0]; cancel.
+    destruct_lift H.
+    destruct_lift H0.
+    assert (dummy1 = dummy).
+    eapply IndRec.rep_inj.
+    eapply pimpl_apply; [> | exact H0]; cancel.
+    eapply pimpl_apply; [> | exact H]; cancel.
+    subst.
+    f_equal.
+    eapply listmatch_inj with
+      (f := fun a b => indrep_ind bxp indlvl (# a) b)
+      (l := dummy); intros.
+    eapply IHindlvl; eauto.
+    eapply pimpl_apply; [> | exact H]; cancel.
+    eapply pimpl_apply; [> | exact H0]; cancel.
+  Qed.
+
+  Theorem indread_ok : forall indlvl lxp bxp ir ms,
+  {< F Fm m0 m l,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           [[[ m ::: Fm * indrep_ind bxp indlvl ir l ]]]
+    POST:hm' RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
+           [[ r = l ]]
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
+    >} indread indlvl lxp ir ms.
+  Proof.
+    induction indlvl.
+    unfold indread; hoare.
+    unfold IndRec.Defs.item; simpl; apply firstn_oob; omega.
+    unfold indread; hoare.
+    assert (dummy1 = dummy).
+    eapply IndRec.rep_inj.
+    eapply pimpl_apply; [> | exact H8]; cancel.
+    eapply pimpl_apply; [> | exact H4]; cancel.
+    subst.
+    rewrite firstn_oob by omega.
+    rewrite listmatch_extract.
+    cancel.
+    unfold IndRec.Defs.item in *; simpl in *; omega.
+    erewrite plus_comm, firstn_sum_split.
+    f_equal.
+    assert (dummy1 = dummy).
+    eapply IndRec.rep_inj.
+    eapply pimpl_apply; [> | exact H8]; cancel.
+    eapply pimpl_apply; [> | exact H4]; cancel.
+    subst.
+    assert (dummy2 = dummy0).
+    eapply listmatch_inj with (f := fun a b => indrep_ind _ _ (# a) b); try eassumption.
+    intros. eapply indrep_ind_inj; eassumption.
+    subst.
+    Search indrep_ind concat.
+    apply listmatch_indrep_ind_length in H8 as H'.
+    rewrite concat_hom_skipn.
+    erewrite <- concat_hom_subselect_firstn.
+    rewrite firstn_oob; auto.
+    rewrite listmatch_extract in H8.
+    rewrite indrep_ind_lift in H8.
+    destruct_lift H8.
+    rewrite H16; auto.
+    unfold IndRec.Defs.item in *; simpl in *; omega.
+    eapply listmatch_lift_r; try eassumption.
+    simpl; intros.
+    rewrite indrep_ind_lift; split; cancel.
+    eauto.
+    omega.
+    apply listmatch_length_r in H8.
+    unfold IndRec.Defs.item in *; simpl in *; omega.
+    eapply listmatch_lift_r; try eassumption.
+    simpl; intros.
+    rewrite indrep_ind_lift; split; cancel.
+    auto.
+    apply firstn_oob; omega.
+    admit.
+    Grab Existential Variables.
+    all : eauto; try exact ($ 0); try exact tt.
+  Admitted.
 
   Opaque indget.
   Hint Extern 1 ({{_}} Bind (indget _ _ _ _ _) _) => apply indget_ok : prog.
