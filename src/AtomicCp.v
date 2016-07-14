@@ -369,7 +369,7 @@ Module ATOMICCP.
 Lemma rep_tree_crash: forall Fm fsxp Ftop d t ilist frees d',
   (Fm * rep fsxp Ftop t ilist frees)%pred (list2nmem d) ->
   crash_xform (diskIs (list2nmem d)) (list2nmem d') ->
-  (exists t', [[ tree_crash t t' ]] * Fm * rep fsxp Ftop t' ilist frees)%pred (list2nmem d').
+  (exists t', [[ tree_crash t t' ]] * (crash_xform Fm) * rep fsxp Ftop t' ilist frees)%pred (list2nmem d').
 Proof.
   intros.
   eapply crash_xform_pimpl_proper in H0; [ | apply diskIs_pred; eassumption ].
@@ -379,13 +379,13 @@ Proof.
   exists dummy.
   pred_apply.
   cancel.
-Admitted.
+Qed.
 
 Lemma treeseq_tree_crash_exists: forall Fm Ftop fsxp mscs ts ds n d,
   let t := (nthd n ts) in
   treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
   crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
-  (exists t', [[ tree_crash (TStree t) t' ]] * rep fsxp Ftop t' (TSilist t) (TSfree t))%pred (list2nmem d).
+  (exists t', [[ tree_crash (TStree t) t' ]] *  (crash_xform Fm) * rep fsxp Ftop t' (TSilist t) (TSfree t))%pred (list2nmem d).
 Proof.
   intros.
   unfold treeseq_in_ds in H.
@@ -415,11 +415,23 @@ Proof.
   constructor.
 Qed.
 
+  Definition tree_with_tmp Ftree (srcpath: list string) tmppath (srcinum:addr) (file:BFILE.bfile) tinum tfile dstbase dstname dstinum dstfile:  @pred _ (list_eq_dec string_dec) _ :=
+   (Ftree * srcpath |-> Some (srcinum, file) * tmppath |-> Some (tinum, tfile) *
+         (dstbase ++ [dstname])%list |-> Some (dstinum, dstfile))%pred.
+
+  Definition tree_with_dst Ftree (srcpath: list string) tmppath (srcinum:addr) (file:BFILE.bfile) tinum  dstbase dstname :  @pred _ (list_eq_dec string_dec) _ :=
+   (Ftree * srcpath |-> Some (srcinum, file) * tmppath |-> None *
+         (dstbase ++ [dstname])%list |-> Some (tinum, (BFILE.synced_file file)))%pred.
+
   Theorem atomic_cp_recover_ok :
-    {< Fm Ftop fsxp cs mscs ds ts tmppath,
+    {< Fm Ftop Ftree fsxp cs mscs ds ts tmppath srcpath file srcinum dstinum tinum dstfile (dstbase: list string) (dstname:string),
     PRE:hm
       LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm *
-      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]]
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+      [[ NEforall (fun t => exists tfile,
+        find_name [] (TStree t) = Some (the_dnum, true) /\
+        ((tree_with_tmp Ftree srcpath tmppath srcinum file tinum tfile dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
+        (tree_with_dst Ftree srcpath tmppath srcinum file tinum dstbase dstname (dir2flatmem2 (TStree t)))))%type ts ]]
     POST:hm' RET:^(mscs', fsxp')
       [[ fsxp' = fsxp ]] * exists n d t,
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs') hm' *
@@ -441,19 +453,62 @@ Qed.
     prestep. norml.  (* XXX slow! *)
     safecancel.
 
-    step.
+    denote! (NEforall _ _) as Tpred.
 
     (* need to apply treeseq_tree_crash_exists before
      * creating evars in postcondition *)
     prestep. norm'l.
-    eapply treeseq_tree_crash_exists in H10; eauto.
-    destruct H10.
+
+    denote! (crash_xform _ _) as Hcrash.
+
+    eapply treeseq_tree_crash_exists in Hcrash; eauto.
+    destruct Hcrash.
     destruct_lift H.
     cancel.
     instantiate (ts0 := ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts))), [])).
 
     eapply tree_rep_treeseq; eauto.
+
+
+
+    eapply NEforall_d_in in Tpred as Tpred'.
+    destruct Tpred'.
+    2: eapply nthd_in_ds with (n := n).
+    intuition.
  
+    simpl.
+
+Lemma tree_crash_the_dnum: forall t t',
+  tree_crash t t' ->
+  find_name [] t = Some (the_dnum, true) ->
+  find_name [] t' = Some (the_dnum, true).
+Proof.
+  intros.
+  destruct t.
+  - unfold find_name in H0; subst; simpl.
+    destruct (find_subtree [] (TreeFile n b)).
+    destruct d.
+    exfalso; congruence.
+    inversion H0.
+    subst; simpl.
+    admit.
+    exfalso; congruence.
+  - destruct t'.
+    unfold find_name in H0.
+    destruct (find_subtree [] (TreeDir n l)).
+    destruct d.
+    inversion H0.
+    inversion H0.
+    subst; simpl.
+    exfalso.
+    inversion H.
+    congruence.
+    inversion H.
+    subst; simpl; eauto.
+Qed.
+
+  destruct tree_crash in H.
+
     admit. (* follows from H6 *)
     admit. (* follows from H6 *)
 

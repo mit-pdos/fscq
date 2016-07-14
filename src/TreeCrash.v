@@ -179,6 +179,8 @@ Module DTCrash.
     apply sep_star_assoc.
     apply sep_star_comm.
     apply lift_impl; intros; auto.
+    unfold flist_crash in H0.
+    unfold file_crash in H0.
   Admitted.
 
 
