@@ -282,12 +282,12 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Proof.
     intros.
     apply listmatch_length_r in H1 as HH.
-    eapply listmatch_lift_r in H1.
-    apply concat_hom_length with (k := NIndirect ^ S indlvl) in H1.
+    rewrite listmatch_lift_r in H1; destruct_lift H1.
+    apply concat_hom_length with (k := NIndirect ^ S indlvl) in H3.
     rewrite HH in *.
     apply Nat.div_lt_upper_bound.
     mult_nonzero.
-    rewrite H1 in H0.
+    rewrite H3 in H0.
     rewrite H in *.
     simpl in *.
     rewrite mult_comm; auto.
@@ -301,9 +301,10 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Proof.
     intros.
     apply listmatch_length_r in H as HH; rewrite HH in H0.
-    eapply listmatch_lift_r in H.
-    apply concat_hom_length in H.
-    rewrite H0 in H.
+    rewrite listmatch_lift_r in H.
+    destruct_lift H.
+    apply concat_hom_length in H2.
+    rewrite H0 in H2.
     eassumption.
     intros.
     rewrite indrep_ind_lift.
@@ -437,7 +438,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
       apply listmatch_length_r in H0 as HH.
       eapply listmatch_indrep_off in H0; eauto.
     - apply selN_selN_homogenous.
-      eapply listmatch_lift_r in H0; try eassumption.
+      rewrite listmatch_lift_r in H0; destruct_lift H0; try eassumption.
       intros; rewrite indrep_ind_lift; split; cancel.
       apply listmatch_length_r in H0 as HH; rewrite <- HH in *.
       eapply listmatch_indrep_off in H0; eauto.
@@ -561,10 +562,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite H16; auto.
     all : try match goal with
           | [ |- _ < _ ] => unfold IndRec.Defs.item in *; simpl in *; omega
-          | [ |- Forall _ _] =>
-                  eapply listmatch_lift_r; try eassumption; simpl; intros;
-                  rewrite indrep_ind_lift; split; cancel
           | [ |- firstn _ _ = _] => apply firstn_oob; omega
+          | [l1 : (list (list waddr)), H : context[listmatch _ _ ?l1] |- Forall _ ?l1]
+            => rewrite listmatch_lift_r in H;
+              [> destruct_lift H; simpl; eassumption
+               | intros; rewrite indrep_ind_lift; split; cancel ]
           end.
     apply LOG.rep_hashmap_subset; auto.
     Grab Existential Variables.

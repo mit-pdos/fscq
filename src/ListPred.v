@@ -261,6 +261,16 @@ Section LISTPRED.
 
 End LISTPRED.
 
+Theorem listpred_lift : forall T l AT AEQ V prd F G,
+  (forall x, prd x <=p=> [[ F x ]] * G x) ->
+  @listpred T AT AEQ V prd l <=p=> [[ Forall F l ]] * listpred G l.
+Proof.
+  intros; induction l.
+  split; cancel.
+  simpl; rewrite H.
+  rewrite IHl.
+  split; cancel; inversion H1; auto.
+Qed.
 
 (* predicate over a pair of lists *)
 
@@ -436,25 +446,36 @@ Section LISTMATCH.
     eapply skipn_firstn_length_eq; eauto.
   Qed.
 
-  Theorem listmatch_lift_l : forall l1 l2 F G P m,
-    (forall x y, prd x y <=p=> ([[ P x ]] * F x y)%pred) ->
-    (G * listmatch l1 l2)%pred m -> Forall P l1.
-  Proof.
-    unfold listmatch.
-    intros.
-    generalize dependent G. generalize dependent l2.
-    induction l1; auto.
-    intros.
-    destruct l2; simpl in *.
-    destruct_lift H0; inversion H2.
-    rewrite H in H0. destruct_lift H0.
-    inversion H2.
-    apply Forall_cons; auto.
-    eapply IHl1 with (l2 := l2).
-    pred_apply. cancel.
-  Qed.
-
 End LISTMATCH.
+
+Theorem listmatch_lift : forall A B AT AEQ V prd (l1 : list A) (l2 : list B) F P,
+  (forall x y, prd x y ⇦⇨ ⟦⟦ P x y ⟧⟧ ✶ F x y) ->
+  @listmatch A B AT AEQ V prd l1 l2 <=p=> [[ Forall2 P l1 l2]] * listmatch F l1 l2.
+Proof.
+  intros.
+  unfold listmatch.
+  rewrite listpred_lift.
+  split; cancel.
+  apply forall_forall2; eauto.
+  apply forall2_forall; eauto.
+  intros; simpl.
+  destruct x; simpl; auto.
+Qed.
+
+Theorem listmatch_lift_l : forall A B AT AEQ V prd (l1 : list A) (l2 : list B) F P,
+  (forall x y, prd x y ⇦⇨ ⟦⟦ P x ⟧⟧ ✶ F x y) ->
+  @listmatch A B AT AEQ V prd l1 l2 <=p=> [[ Forall P l1 ]] * listmatch F l1 l2.
+Proof.
+  intros.
+  rewrite listmatch_lift with (P := fun x y => P x); eauto.
+  split; intros m HH; rewrite listmatch_length_pimpl in HH; pred_apply; cancel.
+  - erewrite <- map_fst_combine, <- Forall_map; eauto.
+    match goal with [H : Forall2 _ _ _ |- _] => apply forall2_forall in H end.
+    auto.
+  - apply forall_forall2; auto.
+    rewrite Forall_map.
+    rewrite map_fst_combine; auto.
+Qed.
 
 Lemma arrayN_listpred_seq : forall V l st n,
   length l = n ->
@@ -528,15 +549,15 @@ Proof.
   pred_apply; cancel.
 Qed.
 
-Theorem listmatch_lift_r : forall AT AEQ V A C l1 l2 f F G P m,
+Theorem listmatch_lift_r : forall AT AEQ V A C l1 l2 f F P,
   (forall x y, f x y <=p=> ([[ P y ]] * F x y)%pred) ->
-  (G * (@listmatch A C AT AEQ V) f l1 l2)%pred m -> Forall P l2.
+  @listmatch A C AT AEQ V f l1 l2 <=p=> [[ Forall P l2 ]] * listmatch F l1 l2.
 Proof.
   intros.
-  rewrite listmatch_sym in *.
-  eapply listmatch_lift_l.
-  intros; eapply H.
-  eapply H0.
+  rewrite listmatch_sym.
+  rewrite listmatch_lift_l.
+  split; cancel; eauto; try apply listmatch_sym.
+  simpl; auto.
 Qed.
 
 Theorem xform_listpred : forall V (l : list V) prd,
