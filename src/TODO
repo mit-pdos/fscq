@@ -23,6 +23,8 @@
 
 - dwrite without calling flushall in GroupLog
 
+- safe umount: evict all from Cache
+
 - prove AtomicCp
 - prove that unlink never fails
 - clean up DirTree (no lists, update_subtree_helper, etc)
