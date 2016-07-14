@@ -448,7 +448,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
     exact ($ off).
   Qed.
 
-  Print indrep_ind.
   Fact indrep_ind_0_is : forall bxp ibn l, indrep_ind bxp 0 ibn l = 
     ([[length l = NIndirect ]] * [[ BALLOC.bn_valid bxp ibn ]] * IndRec.rep ibn l)%pred.
   Proof. unfold indrep_ind; simpl; rewrite mult_1_r; auto. Qed.
@@ -505,29 +504,32 @@ Module BlockPtr (BPtr : BlockPtrSig).
     eapply pimpl_apply; [> | exact H0]; cancel.
   Qed.
 
-  Ltac unify_rep := repeat match goal with
-    | [ l1 : list waddr,
-        l2 : list waddr,
-        H1 : context [indrep_ind _ _ _ ?l1],
-        H2 : context [indrep_ind _ _ _ ?l2]
-        |- ?l1 = ?l2 ] => eapply indrep_ind_inj; eassumption
-    | [ l1 : list (list waddr),
-        l2 : list (list waddr),
-        H1 : context [IndRec.rep ?ir ?l1],
-        H2 : context [IndRec.rep ?ir ?l2] |- _ ] =>
-        tryif (unify l1 l2) then fail else (
-        assert (l1 = l2); [> eapply IndRec.rep_inj | subst];
+  Theorem indrec_rep_unify : forall l1 l2 l3 l4 Fa Fb Fc Fd bxp indlvl ir m,
+    (Fa * IndRec.rep ir l1)%pred m -> (Fb * IndRec.rep ir l2)%pred m ->
+    (Fc * listmatch (fun a b => indrep_ind bxp indlvl (# a) b) l1 l3)%pred m ->
+    (Fd * listmatch (fun a b => indrep_ind bxp indlvl (# a) b) l2 l4)%pred m ->
+    l1 = l2 /\ l3 = l4.
+  Proof.
+    intros.
+    assert (l1 = l2) by (eapply IndRec.rep_inj; eauto).
+    subst; intuition.
+    eapply listmatch_inj; eauto.
+    simpl; intros.
+    eapply indrep_ind_inj; eauto.
+  Qed.
+
+  Ltac unify_rep := match goal with
+    [ l1 : IndRec.Defs.itemlist, l2 : IndRec.Defs.itemlist,
+      l3 : list (list waddr), l4 : list (list waddr),
+      H1 : context [listmatch _ ?l1 ?l3],
+      H2 : context [listmatch _ ?l2 ?l4]
+      |- _] => assert (l1 = l2 /\ l3 = l4);
+      [> eapply indrec_rep_unify;
         [> eapply pimpl_apply; [> | exact H1]; cancel |
            eapply pimpl_apply; [> | exact H2]; cancel |
-           idtac ])
-    | [ l1 : list (list waddr),
-        l2 : list (list waddr),
-        H1 : context [listmatch ?f ?l ?l1],
-        H2 : context [listmatch ?f ?l ?l2] |- _ ] =>
-        tryif (unify l1 l2) then fail else (
-        assert (l1 = l2); [> eapply listmatch_inj | subst];
-        try eassumption; intros; simpl in *)
-  end.
+           eapply pimpl_apply; [> | exact H1]; cancel |
+           eapply pimpl_apply; [> | exact H2]; cancel ] | intuition; subst]
+      end.
 
   Theorem indread_ok : forall indlvl lxp bxp ir ms,
   {< F Fm m0 m l,
@@ -544,7 +546,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     induction indlvl.
     unfold indread; hoare.
     unfold IndRec.Defs.item; simpl; apply firstn_oob; omega.
-    unfold indread; hoare; unify_rep.
+    unfold indread; hoare; try unify_rep.
     rewrite firstn_oob by omega.
     rewrite listmatch_extract.
     cancel.
