@@ -8,6 +8,8 @@ Require Import AsyncDisk.
 Require Import Bytes.
 Require Import DiskSet.
 
+Set Implicit Arguments.
+
 Notation "'byteset'" := (byte * list byte)%type.
 
 
@@ -24,9 +26,13 @@ Definition byteset0 := (byte0, nil: list byte).
 Definition valu0 := bytes2valu  (natToWord (valubytes*8) 0).
 Definition valuset0 := (valu0, nil: list valu).
 
-(* make this right padded *)
-Definition bytes2valubytes {sz} (b: bytes sz) : bytes valubytes :=
-  (word2bytes valubytes eq_refl (natToWord (valubytes*8)(wordToNat b))).
+Definition bytes2valubytes sz (b: bytes sz) : bytes valubytes :=
+  let c := sz + (valubytes - sz) = valubytes in
+  if (le_dec sz valubytes)
+  then
+    $(#(bcombine b (word2bytes (valubytes-sz) eq_refl $0)))
+  else
+    (word2bytes valubytes eq_refl $0).
 
 Definition byte2valu b : valu :=  bytes2valu (bytes2valubytes (byte2bytes b)).
 
@@ -67,13 +73,17 @@ Definition bytesets2valuset (bs: list byteset) : valuset :=
                              (length(byteset2list(selN bs 0 byteset0)))).
 
 
-Definition upd_byteset bs b: byteset := (b, (fst bs)::(snd bs)).
+Fixpoint merge_bs (lbs: list byteset) (lb: list byte): list byteset :=
+match lb with
+| nil => nil
+| hb :: tb => match lbs with
+              | nil => nil
+              | hbs::tbs => (hb, (fst hbs)::(snd hbs)):: (merge_bs tbs tb)
+              end
+end. 
 
-Fixpoint updN_list (l: list byteset) off (l1: list byte): list byteset :=
-  match l1 with
-  | nil => l
-  | h::t => updN_list ((firstn off l)++((upd_byteset (selN l off byteset0) h)::(skipn (S off) l))) (S off) t
-  end.
+Definition updN_list (l: list byteset) off (l1: list byte): list byteset :=
+(firstn off l)++ (merge_bs (get_sublist l off (length l1)) l1) ++(skipn (off + length l1) l).
 
 Definition ds2llb (ds: diskset) : nelist (list (list byteset)):= d_map (map valuset2bytesets) ds.
 
@@ -216,6 +226,18 @@ Proof.
   apply H.
 Qed.
 
+Lemma le_le_weaken: forall n m p k,
+n + m <= p -> k <= m -> n + k <= p.
+Proof. intros.
+omega.
+Qed.
+
+Lemma le_lt_weaken: forall n m p k,
+n + m <= p -> k < m -> n + k < p.
+Proof. intros.
+omega.
+Qed.
+
 
 Lemma some_eq: forall A (x y: A), Some x = Some y <-> x = y.
 Proof.
@@ -352,10 +374,13 @@ Lemma list2valu2list: forall l, length l = valubytes -> valu2list (list2valu l) 
 Proof.
   intros.
   unfold list2valu, valu2list.
-  rewrite valu2bytes2valu.
+  rewrite  bytes2valu2bytes.
   unfold bytes2valubytes.
   destruct H.
   simpl.
+  replace (length l - length l) with 0 by omega.
+  simpl.
+  rewrite Nat.mul_1_r.
   rewrite natToWord_wordToNat.
   apply list2bytes2list.
 Qed.
@@ -371,8 +396,11 @@ Proof.
   eq_rect_simpl.
   unfold bytes2valubytes.
   simpl.
+  replace (valubytes - valubytes) with 0 by omega.
+  simpl.
+  rewrite Nat.mul_1_r.
   rewrite natToWord_wordToNat.
-  apply bytes2valu2bytes.
+  apply valu2bytes2valu.
 Qed.
 
 Lemma cons_simpl: forall A a (l l': list A), l = l' -> (a::l) = (a::l').
@@ -584,6 +612,186 @@ d_map g (d_map f (a,l)) = d_map (fun x => g(f x)) (a, l).
 Proof.
 intros; unfold d_map; simpl.
 rewrite map_map; reflexivity.
+Qed.
+
+Lemma mod_Sn_n_1: forall a, a >1 -> (a + 1) mod a = 1.
+Proof.
+intros.
+Search Nat.modulo plus.
+rewrite <- Nat.add_mod_idemp_l; try omega.
+rewrite Nat.mod_same; simpl; try omega.
+apply Nat.mod_1_l; auto.
+Qed.
+
+
+Lemma le_mult_weaken: forall p n m, p > 0 -> n * p <= m * p  -> n <= m.
+Proof.
+  assert(A: forall x, 0 * x = 0). intros. omega.
+  induction n. intros.
+  destruct m.
+  omega.
+  omega. intros.
+  destruct m.
+  inversion H0.
+  apply plus_is_O in H2.
+  destruct H2.
+  omega.
+  apply le_n_S.
+  apply IHn.
+  auto.
+  simpl in H0.
+  omega.
+Qed.
+
+
+
+Fact vs2bs_selN_O: forall l,
+selN (valuset2bytesets l) 0 byteset0 = (list2byteset byte0 (map (selN' 0 byte0) (map valu2list (byteset2list l)))).
+Proof.
+intros.
+unfold valuset2bytesets.
+destruct l.
+simpl.
+rewrite map_map; simpl.
+rewrite valuset2bytesets_rec_expand.
+simpl.
+unfold selN'.
+rewrite map_map; reflexivity.
+rewrite valubytes_is; omega.
+Qed.
+
+Lemma updN_eq: forall A v v' a (l: list A), v = v' -> updN l a v  = updN l a v'.
+Proof. intros; subst; reflexivity. Qed.
+
+Lemma skipn_concat_skipn: forall A j i k (l: list (list A)) def,
+i <= k -> j < length l -> Forall (fun sublist : list A => length sublist = k) l ->
+skipn i (concat (skipn j l)) = skipn i (selN l j def) ++ concat (skipn (S j) l).
+Proof. induction j; destruct l; intros; simpl.
+inversion H0.
+apply skipn_app_l.
+rewrite Forall_forall in H1.
+destruct H1 with (x:= l).
+apply in_eq.
+omega.
+inversion H0.
+erewrite IHj.
+reflexivity.
+eauto.
+simpl in H0; omega.
+eapply Forall_cons2.
+eauto.
+Qed.
+
+
+
+
+
+
+
+Fact map_1to1_eq: forall A B (f: A -> B) (l l': list A), 
+  (forall x y, f x = f y -> x = y) -> 
+  map f l = map f l' ->
+  l = l'.
+  
+Proof.
+  induction l; intros.
+  simpl in H0; symmetry in H0.
+  eapply map_eq_nil in H0.
+  eauto.
+  destruct l'.
+  rewrite map_cons in H0; simpl in H0.
+  inversion H0.
+  repeat rewrite map_cons in H0.
+  inversion H0.
+  apply H in H2.
+  rewrite H2.
+  eapply IHl in H.
+  apply cons_simpl.
+  eauto.
+  eauto.
+Qed.
+
+Fact map_eq: forall A B (f: A -> B) (l l': list A), 
+  l = l' ->
+  map f l = map f l'.
+Proof. intros; rewrite H; reflexivity. Qed.
+
+
+Fact minus_eq_O: forall n m, n >= m -> n - m = 0 -> n = m.
+Proof.
+induction n; intros.
+inversion H; reflexivity.
+destruct m.
+inversion H0.
+apply eq_S.
+apply IHn.
+omega. omega.
+Qed.
+
+Fact valubytes_ne_O: valubytes <> 0.
+Proof. rewrite valubytes_is; unfold not; intros H'; inversion H'. Qed.
+
+Fact divmult_plusminus_eq:forall n m, m <> 0 ->
+   m + n / m * m = n + (m - n mod m).
+Proof.
+intros.   
+rewrite Nat.add_sub_assoc.
+replace (n + m - n mod m) 
+    with (m + n - n mod m) by omega.
+rewrite <- Nat.add_sub_assoc.
+rewrite Nat.add_cancel_l with (p:= m); eauto.
+rewrite Nat.mod_eq; eauto.
+rewrite Rounding.sub_sub_assoc.
+apply Nat.mul_comm.
+apply Nat.mul_div_le; eauto.
+apply Nat.mod_le; eauto.
+apply Nat.lt_le_incl.
+apply Nat.mod_upper_bound; eauto.
+Qed.
+
+Fact le_minus_divmult: forall n m k, m <> 0 ->
+    n - (m - k mod m) - (n - (m - k mod m)) / m * m <= m.
+Proof. intros.
+remember (n - (m - k mod m)) as b.
+replace (b - b / m * m) with (b mod m).
+apply Nat.lt_le_incl.
+apply Nat.mod_upper_bound; eauto.
+rewrite Nat.mul_comm.
+apply Nat.mod_eq; eauto.
+Qed.
+
+Fact grouping_minus: forall n m k a, n - (m - k + a) = n - (m - k) - a.
+Proof. intros. omega. Qed.
+
+Lemma mod_dem_neq_dem: forall a b, a <> 0 -> b <> 0 -> b <> a mod b.
+Proof.
+induction b; intros.
+unfold not in H0; destruct H0; reflexivity.
+destruct a.
+unfold not in H; destruct H; reflexivity.
+unfold not in *; intros.
+apply IHb; auto.
+intros.
+rewrite H2 in H1.
+rewrite Nat.mod_1_r in H1; inversion H1.
+simpl in H1.
+destruct b.
+reflexivity.
+simpl in *.
+destruct (snd (Nat.divmod a (S b) 0 b)); omega.
+Qed.
+
+
+Lemma get_sublist_length: forall A (l: list A) a b,
+a + b <= length l ->
+length (get_sublist l a b) = b.
+Proof.
+intros.
+unfold get_sublist.
+rewrite firstn_length_l.
+reflexivity.
+rewrite skipn_length.
+omega.
 Qed.
 
 (* Lemma v2b_rec_selN: forall i j l,
