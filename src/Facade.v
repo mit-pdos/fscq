@@ -1877,6 +1877,30 @@ Proof.
 Defined.
 Eval lazy in projT1 (extract_call_swap_top).
 
+Definition rot3_prog :=
+  swap_prog 0 1;;
+  swap_prog 1 2;;
+  Ret tt.
+
+Example extract_rot3_prog :
+  forall env,
+    voidfunc2 "swap" swap_prog env ->
+    sigT (fun p =>
+          EXTRACT rot3_prog {{ ∅ }} p {{ fun _ => ∅ }} // env).
+Proof.
+  intros.
+  compile.
+Defined.
+
+Example extract_rot3_prog_top :
+    sigT (fun p =>
+          EXTRACT rot3_prog {{ ∅ }} p {{ fun _ => ∅ }} // swap_env).
+Proof.
+  apply extract_rot3_prog.
+  auto with funcs.
+Defined.
+Eval lazy in projT1 (extract_rot3_prog_top).
+
 Definition swap2_prog :=
   a <- Read 0;
   b <- Read 1;
