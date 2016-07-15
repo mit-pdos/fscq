@@ -1492,11 +1492,8 @@ Proof.
   }
 Qed.
 
-Lemma CompileWrite : forall env F tvar avar vvar a v,
+Lemma CompileWrite : forall env F avar vvar a v,
   avar <> vvar ->
-  tvar <> avar ->
-  tvar <> vvar ->
-  StringMap.find tvar F = None ->
   EXTRACT Write a v
   {{ avar ~> a; vvar ~> v; F }}
     DiskWrite (Var avar) (Var vvar)
@@ -1513,14 +1510,13 @@ Proof.
 
   maps. rewrite He0. eauto.
   eapply forall_In_Forall_elements. intros.
-  pose proof (Forall_elements_forall_In _ H7).
+  pose proof (Forall_elements_forall_In _ H4).
   simpl in *.
-  destruct (StringMapFacts.eq_dec k tvar); maps.
   destruct (StringMapFacts.eq_dec k vvar); maps. {
     find_inversion. unfold StringKey.eq in *. subst. rewrite He. auto.
   }
   destruct (StringMapFacts.eq_dec k avar); maps.
-  specialize (H4 k v). conclude H4 ltac:(maps; eauto).
+  specialize (H1 k v). conclude H1 ltac:(maps; eauto).
   simpl in *. eauto.
 Qed.
 
@@ -1787,9 +1783,8 @@ Ltac compile :=
     | Some ?ka =>
       match find_fast v pre with
       | Some ?kv =>
-        let tmp := gensym "_" in
         eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
-          eapply CompileWrite with (avar := ka) (vvar := kv) (tvar := tmp) ]]; try match_scopes; maps
+          eapply CompileWrite with (avar := ka) (vvar := kv) ]]; try match_scopes; maps
       end
     end
   | [ H : voidfunc2 ?name ?f ?env |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // ?env ] =>
