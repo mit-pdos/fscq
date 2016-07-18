@@ -71,14 +71,21 @@ Module ATOMICCP.
     let^ (mscs, ok) <- AFS.file_set_attr fsxp tinum attr mscs;
     Ret ^(mscs, ok).
 
+
   Definition copy2temp fsxp src_inum tinum mscs :=
     let^ (mscs, ok) <- AFS.file_truncate fsxp tinum 1 mscs;  (* XXX type error when passing sz *)
-    If (bool_dec ok true) {
+    match ok with
+    | Err e =>
+      Ret ^(mscs, false)
+    | OK _ =>
       let^ (mscs, ok) <- copydata fsxp src_inum tinum mscs;
-      Ret ^(mscs, ok)
-    } else {
-      Ret ^(mscs, ok)
-    }.
+      If (bool_dec ok true) {
+        Ret ^(mscs, ok)
+      } else {
+        Ret ^(mscs, ok)
+      }
+    end.
+
 
   Definition copy_and_rename fsxp src_inum tinum (dstbase:list string) (dstname:string) mscs :=
     let^ (mscs, ok) <- copy2temp fsxp src_inum tinum mscs;
@@ -88,16 +95,22 @@ Module ATOMICCP.
         (* Just for a simpler spec: the state is always (d, nil) after this function *)
         Ret ^(mscs, false)
       | true =>
-        let^ (mscs, ok1) <- AFS.rename fsxp the_dnum [] temp_fn dstbase dstname mscs;
-        let^ (mscs) <- AFS.tree_sync fsxp mscs;
-        Ret ^(mscs, ok1)
+        let^ (mscs, r) <- AFS.rename fsxp the_dnum [] temp_fn dstbase dstname mscs;
+        match r with
+        | OK _ =>
+          let^ (mscs) <- AFS.tree_sync fsxp mscs;
+          Ret ^(mscs, true)
+        | Err e =>
+          let^ (mscs) <- AFS.tree_sync fsxp mscs;
+          Ret ^(mscs, false)
+        end
     end.
 
   Definition atomic_cp fsxp src_inum dstbase dstname mscs :=
-    let^ (mscs, maybe_tinum) <- AFS.create fsxp the_dnum temp_fn mscs;
-    match maybe_tinum with
-      | None => Ret ^(mscs, false)
-      | Some tinum =>
+    let^ (mscs, r) <- AFS.create fsxp the_dnum temp_fn mscs;
+    match r with
+      | Err _ => Ret ^(mscs, false)
+      | OK tinum =>
         let^ (mscs, ok) <- copy_and_rename fsxp src_inum tinum dstbase dstname mscs;
         Ret ^(mscs, ok)
     end.
@@ -107,10 +120,10 @@ Module ATOMICCP.
   (* top-level recovery function: call AFS recover and then atomic_cp's recovery *)
   Definition atomic_cp_recover :=
     let^ (mscs, fsxp) <- AFS.recover cachesize;
-    let^ (mscs, maybe_src_inum) <- AFS.lookup fsxp the_dnum [temp_fn] mscs;
-    match maybe_src_inum with
-    | None => Ret ^(mscs, fsxp)
-    | Some (src_inum, isdir) =>
+    let^ (mscs, r) <- AFS.lookup fsxp the_dnum [temp_fn] mscs;
+    match r with
+    | Err _ => Ret ^(mscs, fsxp)
+    | OK (src_inum, isdir) =>
       let^ (mscs, ok) <- AFS.delete fsxp the_dnum temp_fn mscs;
       let^ (mscs) <- AFS.tree_sync fsxp mscs;
       Ret ^(mscs, fsxp)
@@ -415,6 +428,46 @@ Proof.
   constructor.
 Qed.
 
+Lemma find_name_dirtree_inum: forall t inum,
+  find_name [] t = Some (inum, true) ->
+  dirtree_inum t = inum.
+Proof.
+  intros.
+  eapply find_name_exists in H.
+  destruct H.
+  intuition.
+  unfold find_subtree in H0.
+  inversion H0; eauto.
+Qed.
+
+Lemma find_name_dirtree_isdir: forall t inum,
+  find_name [] t = Some (inum, true) ->
+  dirtree_isdir t = true.
+Proof.
+  intros.
+  eapply find_name_exists in H.
+  destruct H.
+  intuition.
+  unfold find_subtree in H0.
+  inversion H0; eauto.
+Qed.
+
+Theorem tree_crash_find_name : forall F fnlist t t' f f' inum,
+  tree_crash t t' ->
+  BFILE.file_crash f f' ->
+  (F * fnlist |-> Some (inum, f))%pred (dir2flatmem2 t) ->
+  (F * fnlist |-> Some (inum, f'))%pred (dir2flatmem2 t').
+Proof.
+  (* XXX use treecrash.v version *)
+Admitted.
+
+Lemma find_dir_exists: forall pathname t inum,
+  find_name pathname t = Some (inum, true) ->
+  exists tree_elem, find_subtree pathname t = Some (TreeDir inum tree_elem).
+Proof.
+    intros.
+Admitted.
+
   Definition tree_with_tmp Ftree (srcpath: list string) tmppath (srcinum:addr) (file:BFILE.bfile) tinum tfile dstbase dstname dstinum dstfile:  @pred _ (list_eq_dec string_dec) _ :=
    (Ftree * srcpath |-> Some (srcinum, file) * tmppath |-> Some (tinum, tfile) *
          (dstbase ++ [dstname])%list |-> Some (dstinum, dstfile))%pred.
@@ -422,6 +475,18 @@ Qed.
   Definition tree_with_dst Ftree (srcpath: list string) tmppath (srcinum:addr) (file:BFILE.bfile) tinum  dstbase dstname :  @pred _ (list_eq_dec string_dec) _ :=
    (Ftree * srcpath |-> Some (srcinum, file) * tmppath |-> None *
          (dstbase ++ [dstname])%list |-> Some (tinum, (BFILE.synced_file file)))%pred.
+
+  Ltac nthtree :=
+    repeat match goal with 
+    | [ H : NEforall _ _ |- _ ]  => 
+      idtac "nthd"; eapply NEforall_d_in in H; [|eapply nthd_in_ds]; destruct H; intuition; simpl
+    | [ H: find_name _ (TStree (nthd _ _ )) = _ |- _ ]=>
+      idtac "root"; eapply DTCrash.tree_crash_root in H; eauto 
+    | [ H: find_name [] ?x = Some (_, _) |- dirtree_inum ?x = _ ] =>
+      idtac "inum"; eapply find_name_dirtree_inum; eauto
+    | [ H: find_name [] ?x = Some (_, _) |- dirtree_isdir ?x = _ ] =>
+      idtac "isdir"; eapply find_name_dirtree_isdir; eauto
+    end.
 
   Theorem atomic_cp_recover_ok :
     {< Fm Ftop Ftree fsxp cs mscs ds ts tmppath srcpath file srcinum dstinum tinum dstfile (dstbase: list string) (dstname:string),
@@ -465,70 +530,63 @@ Qed.
     destruct Hcrash.
     destruct_lift H.
     cancel.
-    instantiate (ts0 := ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts))), [])).
+    instantiate (ts0 := ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts))), [])); simpl in *.
 
     eapply tree_rep_treeseq; eauto.
 
+    nthtree.
+    nthtree.
+
+    destruct a1; subst; simpl.
+
+    - (* tmp exists in x *)
+      step.  (* delete *)
+
+      (* tmp doesn't exist in x? maybe destruct is wrong because i have many None cases *)
+      admit. admit. admit. admit. admit.
+
+      (* now the case that tmp exists *)
+      instantiate (ts1 := ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts))), [])).
+      eapply tree_rep_treeseq; eauto.
+      instantiate (pathname0 := []).
+      nthtree.
+      admit. admit. (* XXX create x's direlems earlier *)
+      simpl.
+      eapply tree_crash_find_name; eauto.
+      admit.  (* XXX fix tree_crash_find_name not to require file_crash? *)
+      admit. (* follow from Tpred *)
+
+      step.  (* sync *)
+
+      (* two cases: delete succeeded or not *)
+
+      (* ts1 is x with temp deleted, or is this case where rename fails *)
+      admit.
+      step.
+      admit.
+      admit.
+      admit.
+
+      step.  (* delete succeeded *)
+
+      admit.
+      admit.
+      admit.
+      admit.
+      admit.
+
+    - (* tmp doesn't exist *)
+
+      step.
+      instantiate (t0 := (mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts)))).
+      eapply tree_rep_treeseq; eauto.
+      admit. (* H, but what do we know about crash_xform Fm *)
+      simpl.
+      admit. (* H7 and a version of tree_crash_find_name? *).
+
+   - (* crash conditions *)
 
 
-    eapply NEforall_d_in in Tpred as Tpred'.
-    destruct Tpred'.
-    2: eapply nthd_in_ds with (n := n).
-    intuition.
- 
-    simpl.
-
-Lemma tree_crash_the_dnum: forall t t',
-  tree_crash t t' ->
-  find_name [] t = Some (the_dnum, true) ->
-  find_name [] t' = Some (the_dnum, true).
-Proof.
-  intros.
-  destruct t.
-  - unfold find_name in H0; subst; simpl.
-    destruct (find_subtree [] (TreeFile n b)).
-    destruct d.
-    exfalso; congruence.
-    inversion H0.
-    subst; simpl.
-    admit.
-    exfalso; congruence.
-  - destruct t'.
-    unfold find_name in H0.
-    destruct (find_subtree [] (TreeDir n l)).
-    destruct d.
-    inversion H0.
-    inversion H0.
-    subst; simpl.
-    exfalso.
-    inversion H.
-    congruence.
-    inversion H.
-    subst; simpl; eauto.
-Qed.
-
-  destruct tree_crash in H.
-
-    admit. (* follows from H6 *)
-    admit. (* follows from H6 *)
-
-    step.
-
-    instantiate (ts0 := ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts))), [])).
-    eapply tree_rep_treeseq; eauto.
-    instantiate (pathname := []).
-    admit.  (* follows from H6 *)
-
-    admit.  (* need new lemma *)
-
-    step.
-
-
-    eapply tree_rep_treeseq.
-
-
-
-    (* XXX looks proming ....*)
   Admitted.
 
 End ATOMICCP.
