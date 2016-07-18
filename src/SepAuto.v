@@ -855,6 +855,7 @@ Ltac inv_option_eq' := repeat match goal with
   | [ H: OK _ = Err _ |- _ ] => inversion H
   | [ H: Err _ = OK _ |- _ ] => inversion H
   | [ H: (_, _) = (_, _) |- _ ] => inversion H; clear H
+  | [ H: isError (OK _) |- _ ] => inversion H
   end.
 
 Ltac inv_option_eq := try ((progress inv_option_eq'); subst; eauto).

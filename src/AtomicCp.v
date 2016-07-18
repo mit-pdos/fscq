@@ -138,7 +138,6 @@ Module ATOMICCP.
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
 
-
   Theorem copydata_ok : forall fsxp src_inum tmppath tinum mscs,
     {< ds ts Fm Ftop Ftree srcpath file tfile v0 t0,
     PRE:hm
@@ -195,6 +194,16 @@ Module ATOMICCP.
     cancel.
 
     (* crashed during setattr  *)
+
+    repeat xcrash_rewrite.
+    xform_normr.
+    (* x is equal to ds'0 - ds, but x0 is the more interesting one ?*)
+    (* annoying to instantiate disks/trees by hand *)
+    instantiate (1 := (pushd (ts' !!) ((tsupd ts tmppath Off0 (fst v0, vsmerge t0))!!, nil))).
+    instantiate (1 := (ds' !!) :: (ds'0 !!) :: nil).
+    safecancel.
+    
+
     xcrash.
     or_r.
     xcrash.
@@ -542,10 +551,6 @@ Admitted.
     - (* tmp exists in x *)
       step.  (* delete *)
 
-      (* tmp doesn't exist in x? maybe destruct is wrong because i have many None cases *)
-      admit. admit. admit. admit. admit.
-
-      (* now the case that tmp exists *)
       instantiate (ts1 := ((mk_tree x (TSilist (nthd n ts)) (TSfree (nthd n ts))), [])).
       eapply tree_rep_treeseq; eauto.
       instantiate (pathname0 := []).
