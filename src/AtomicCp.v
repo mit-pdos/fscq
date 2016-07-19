@@ -159,10 +159,11 @@ Module ATOMICCP.
          \/ ([[ r = true ]] *
             [[ (Ftree * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, (BFILE.synced_file file)))%pred (dir2flatmem2 (TStree ts'!!)) ]]))
     XCRASH:hm'
-      exists newds ts',
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushdlist newds ds) hm' *
-      [[ newds <> nil -> treeseq_in_ds Fm Ftop fsxp mscs ts' (list2nelist ds newds) ]] *
-      [[ newds <> nil -> NEforall (fun t => exists tfile', (Ftree * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, tfile'))%pred (dir2flatmem2 (TStree t)))%type ts' ]]
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+      (exists newds ts' bn vs,
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushdlist newds (dsupd ds bn vs)) hm' *
+       [[treeseq_in_ds Fm Ftop fsxp mscs ts' (list2nelist (dsupd ds bn vs) newds) ]] *
+       [[NEforall (fun t => exists tfile', (Ftree * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, tfile'))%pred (dir2flatmem2 (TStree t)))%type ts' ]])
      >} copydata fsxp src_inum tinum mscs.
   Proof.
     unfold copydata; intros.
@@ -195,13 +196,17 @@ Module ATOMICCP.
 
     (* crashed during setattr  *)
 
-    repeat xcrash_rewrite.
+    xcrash.
+    or_r.
     xform_normr.
-    (* x is equal to ds'0 - ds, but x0 is the more interesting one ?*)
+    eapply pimpl_exists_r; eexists.
+    xform_normr.
+
     (* annoying to instantiate disks/trees by hand *)
     instantiate (1 := (pushd (ts' !!) ((tsupd ts tmppath Off0 (fst v0, vsmerge t0))!!, nil))).
     instantiate (1 := (ds' !!) :: (ds'0 !!) :: nil).
     safecancel.
+    xcrash.
     
 
     xcrash.
