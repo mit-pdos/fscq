@@ -259,7 +259,7 @@ fscqGetFileStat :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Err
 fscqGetFileStat fr m_fsxp (_:path)
   | path == "stats" = do
     ctx <- getFuseContext
-    return $ Right $ fileStat ctx _INODE__iattr0
+    return $ Right $ fileStat ctx $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "STAT" path
   nameparts <- return $ splitDirectories path
