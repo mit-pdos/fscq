@@ -342,6 +342,11 @@ Module LOG.
     mm' <- GLog.flushall_noop xp mm;
     Ret (mk_memstate cm mm').
 
+  Definition sync_cache xp ms :=
+    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
+    mm' <- GLog.sync_cache xp mm;
+    Ret (mk_memstate cm mm').
+
   Definition recover xp cs :=
     mm <- GLog.recover xp cs;
     Ret (mk_memstate vmap0 mm).
