@@ -188,7 +188,7 @@ Module INODE.
   | UDev   (v : word 64)
   .
 
-  Definition iattr_upd (e : iattr) (a : iattrupd_arg) := Eval compute_rec in
+  Definition iattr_upd (e : iattr) (a : iattrupd_arg) : iattr := Eval compute_rec in
   match a with
   | UBytes v => (e :=> "bytes" := v)
   | UMTime v => (e :=> "mtime" := v)
