@@ -2396,3 +2396,36 @@ Proof.
   pose proof (H x); pose proof (H x0); intuition.
   firstorder; subst; intuition.
 Qed.
+
+Definition enumerate A (l : list A) := combine (seq 0 (length l)) l.
+
+Theorem selN_enumerate : forall A (l : list A) d i,
+  i < length l -> selN (enumerate l) i d = (i, selN l i (snd d)).
+Proof.
+  intros.
+  unfold enumerate.
+  destruct d.
+  rewrite selN_combine.
+  rewrite nth_selN_eq, seq_nth; auto.
+  apply seq_length.
+Qed.
+
+Fact length_enumerate : forall T (l : list T), length (enumerate l) = length l.
+Proof.
+  unfold enumerate; intros.
+  rewrite combine_length_eq; rewrite seq_length; auto.
+Qed.
+
+Lemma firstn_seq : forall n a b, firstn n (seq a b) = seq a (min n b).
+Proof.
+  induction n; intros; auto; simpl.
+  destruct b; auto; simpl; f_equal; auto.
+Qed.
+
+Lemma firstn_enumerate : forall A (l : list A) n, firstn n (enumerate l) = enumerate (firstn n l).
+Proof.
+  unfold enumerate; intros.
+  rewrite firstn_combine_comm; f_equal.
+  rewrite firstn_seq; f_equal.
+  rewrite firstn_length; auto.
+Qed.
