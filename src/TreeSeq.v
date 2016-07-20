@@ -826,10 +826,12 @@ Module TREESEQ.
        [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
     XCRASH:hm'
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-       exists ts' mscs' bn,
-         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (dsupd ds bn (v, vsmerge vs)) hm' *
+       exists ds' ts' mscs' bn,
+         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+         [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
          [[ MSAlloc mscs' = MSAlloc mscs ]] *
-         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' (dsupd ds bn (v, vsmerge vs))]] *
+         [[ ts' = tsupd ts pathname off (v, vsmerge vs) ]] *
+         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
          [[ BFILE.block_belong_to_file (TSilist ts !!) bn inum off ]]
    >} AFS.update_fblock_d fsxp inum off v mscs.
   Proof.
