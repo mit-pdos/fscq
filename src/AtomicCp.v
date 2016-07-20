@@ -134,17 +134,64 @@ Module ATOMICCP.
   Opaque LOG.idempred.
   Opaque crash_xform.
 
-  Ltac xcrash_norm :=  repeat (xform_norm; cancel).
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
 
+  Definition tree_with_src Ftree (srcpath: list string) (srcinum:addr) (file:BFILE.bfile) dstbase dstname dstinum dstfile:  @pred _ (list_eq_dec string_dec) _ :=
+        (Ftree * srcpath |-> Some (srcinum, file) * (dstbase ++ [dstname])%list |-> Some (dstinum, dstfile))%pred.
+
+  Definition tree_with_tmp Ftree (srcpath: list string) tmppath (srcinum:addr) (file:BFILE.bfile) tinum tfile dstbase dstname dstinum dstfile:  @pred _ (list_eq_dec string_dec) _ :=
+   (Ftree * srcpath |-> Some (srcinum, file) * tmppath |-> Some (tinum, tfile) *
+         (dstbase ++ [dstname])%list |-> Some (dstinum, dstfile))%pred.
+
+  Definition tree_with_dst Ftree (srcpath: list string) tmppath (srcinum:addr) (file:BFILE.bfile) tinum  dstbase dstname :  @pred _ (list_eq_dec string_dec) _ :=
+   (Ftree * srcpath |-> Some (srcinum, file) * tmppath |-> None *
+         (dstbase ++ [dstname])%list |-> Some (tinum, (BFILE.synced_file file)))%pred.
+
+  Lemma treeseq_dsupd_preserve: forall Fm Ftop fsxp mscs ts ds ts' Ftree srcpath tmppath src_inum file tinum dstbase dstname dstinum dstfile (v0:BFILE.datatype) t0 bn,
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
+    treeseq_pred (fun t => 
+        (exists tfile', 
+         tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
+        (tree_with_src Ftree srcpath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))))%type ts ->
+    treeseq_in_ds Fm Ftop fsxp mscs ts' (dsupd ds bn (fst v0, vsmerge t0)) ->
+    treeseq_pred (fun t : treeseq_one =>
+        (exists tfile' : BFILE.bfile, 
+         tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
+        tree_with_src Ftree srcpath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) ts'.
+  Proof.
+    intros.
+    unfold treeseq_in_ds in H1.
+    Search NEforall2 dsupd.
+    NEforall2_d_in.
+  Admitted.
+
+  Lemma treeseq_dssync_dsupd_preserve: forall Fm Ftop fsxp mscs ts ds ts' Ftree srcpath tmppath src_inum file tinum dstbase dstname dstinum dstfile (v0:BFILE.datatype) t0 bn al,
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
+    treeseq_pred (fun t => 
+        (exists tfile', 
+         tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
+        (tree_with_src Ftree srcpath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))))%type ts ->
+    treeseq_in_ds Fm Ftop fsxp mscs ts' (dssync_vecs (dsupd ds bn (fst v0, vsmerge t0)) al) ->
+    treeseq_pred (fun t : treeseq_one =>
+        (exists tfile' : BFILE.bfile, 
+         tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
+        tree_with_src Ftree srcpath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) ts'.
+  Proof.
+    intros.
+    unfold treeseq_in_ds in H1.
+  Admitted.
+
   Theorem copydata_ok : forall fsxp src_inum tmppath tinum mscs,
-    {< ds ts Fm Ftop Ftree srcpath file tfile v0 t0,
+    {< ds ts Fm Ftop Ftree Ftree' srcpath file tfile v0 t0 dstbase dstname dstinum dstfile,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
       [[ treeseq_pred (treeseq_upd_safe tmppath Off0 (MSAlloc mscs) (ts !!)) ts ]] *
-      [[ (Ftree * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, tfile))%pred
+      [[ treeseq_pred (fun t => (exists tfile', 
+           tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
+          (tree_with_src Ftree srcpath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))))%type ts ]] *
+      [[ (Ftree' * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, tfile))%pred
             (dir2flatmem2 (TStree ts!!)) ]] *
       [[[ BFILE.BFData file ::: (Off0 |-> v0) ]]] *
       [[[ BFILE.BFData tfile ::: (Off0 |-> t0) ]]]
@@ -155,17 +202,19 @@ Module ATOMICCP.
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
         (([[ r = false ]] *
           exists tfile',
-            [[ (Ftree * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, tfile'))%pred (dir2flatmem2 (TStree ts'!!)) ]])
+            [[ (Ftree' * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, tfile'))%pred (dir2flatmem2 (TStree ts'!!)) ]])
          \/ ([[ r = true ]] *
-            [[ (Ftree * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, (BFILE.synced_file file)))%pred (dir2flatmem2 (TStree ts'!!)) ]]))
+            [[ (Ftree' * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, (BFILE.synced_file file)))%pred (dir2flatmem2 (TStree ts'!!)) ]]))
     XCRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-      (exists newds ts' bn vs,
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushdlist newds (dsupd ds bn vs)) hm' *
-       [[treeseq_in_ds Fm Ftop fsxp mscs ts' (list2nelist (dsupd ds bn vs) newds) ]] *
-       [[NEforall (fun t => exists tfile', (Ftree * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, tfile'))%pred (dir2flatmem2 (TStree t)))%type ts' ]])
-     >} copydata fsxp src_inum tinum mscs.
-  Proof.
+      exists ds' ts',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+       [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
+       [[ treeseq_pred (fun t => 
+          (exists tfile', 
+           tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
+          (tree_with_src Ftree srcpath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))))%type ts' ]]
+      >} copydata fsxp src_inum tinum mscs.
+   Proof.
     unfold copydata; intros.
     step.
     eapply pimpl_sep_star_split_l; eauto.
@@ -195,56 +244,54 @@ Module ATOMICCP.
     cancel.
 
     (* crashed during setattr  *)
-
-    xcrash.
-    or_r.
-    xform_normr.
-    eapply pimpl_exists_r; eexists.
-    xform_normr.
-
-    (* annoying to instantiate disks/trees by hand *)
-    instantiate (1 := (pushd (ts' !!) ((tsupd ts tmppath Off0 (fst v0, vsmerge t0))!!, nil))).
-    instantiate (1 := (ds' !!) :: (ds'0 !!) :: nil).
-    safecancel.
-    xcrash.
-    
-
-    xcrash.
-    or_r.
     xcrash.
     erewrite treeseq_in_ds_eq; eauto.
-    pred_apply.
-    cancel.
+    eapply treeseq_dssync_dsupd_preserve.
+    2: eapply H8.
+    eassumption.
+    erewrite treeseq_in_ds_eq; eauto.
 
     (* crash during sync *)
     xcrash.
-    or_r.
-    xcrash.
     erewrite treeseq_in_ds_eq; eauto.
-    pred_apply.
-    cancel.
-  
+    eapply treeseq_dsupd_preserve.
+    2: eapply H8.
+    eassumption.
+    erewrite treeseq_in_ds_eq; eauto.
+
     (* crash during upd *)
     xcrash.
-    or_r.
-    xcrash.
     erewrite treeseq_in_ds_eq; eauto.
-    admit. (* is x ts? [update_fblock_d_ok] promises too little? *)
+    eassumption.
+    erewrite treeseq_in_ds_eq; eauto.
+    eapply treeseq_dsupd_preserve.
+    2: eapply H8.
+    eassumption.
+    erewrite treeseq_in_ds_eq; eauto.
 
     xcrash.
+    erewrite treeseq_in_ds_eq; eauto.
+    eassumption.
+
     xcrash.
-  Admitted.
+    erewrite treeseq_in_ds_eq; eauto.
+    eassumption.
+  Qed.
 
   Hint Extern 1 ({{_}} Bind (copydata _ _ _ _) _) => apply copydata_ok : prog.
 
   Theorem copy2temp_ok : forall fsxp src_inum tinum mscs,
-    {< Fm Ftop Ftree ds ts tmppath srcpath file tfile v0,
+    {< Fm Ftop Ftree Ftree' ds ts tmppath srcpath file tfile v0 dstbase dstname dstinum dstfile,
     PRE:hm
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
       [[ treeseq_pred (treeseq_grow_safe tmppath Off0 (MSAlloc mscs) ts !!) ts ]] *
       [[ treeseq_pred (treeseq_upd_safe tmppath Off0 (MSAlloc mscs) (ts !!)) ts ]] *
-      [[ (Ftree * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, tfile))%pred
+      [[ treeseq_pred (fun t => 
+          (exists tfile', 
+           tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
+          (tree_with_src Ftree srcpath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))))%type ts ]] *
+      [[ (Ftree' * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, tfile))%pred
             (dir2flatmem2 (TStree ts!!)) ]] *
       [[[ BFILE.BFData file ::: (Off0 |-> v0) ]]]
     POST:hm' RET:^(mscs', r)
@@ -254,60 +301,60 @@ Module ATOMICCP.
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
         (([[ r = false ]] *
           exists tfile',
-            [[ (Ftree * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, tfile'))%pred (dir2flatmem2 (TStree ts'!!)) ]])
+            [[ (Ftree' * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, tfile'))%pred (dir2flatmem2 (TStree ts'!!)) ]])
          \/ ([[ r = true ]] *
-            [[ (Ftree * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, (BFILE.synced_file file)))%pred (dir2flatmem2 (TStree ts'!!)) ]]))
+            [[ (Ftree' * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, (BFILE.synced_file file)))%pred (dir2flatmem2 (TStree ts'!!)) ]]))
     XCRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-      (exists ds' ts' tfile',
-        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-        [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
-        [[ (Ftree * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, tfile'))%pred (dir2flatmem2 (TStree ts'!!)) ]])
+     exists ds' ts',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+       [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
+       [[ treeseq_pred (fun t => 
+          (exists tfile', 
+           tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
+          (tree_with_src Ftree srcpath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))))%type ts' ]]
     >} copy2temp fsxp src_inum tinum mscs.
   Proof.
     unfold copy2temp; intros.
     step.
+    destruct a0.
     step.
-    step.
-    step.
-    erewrite treeseq_in_ds_eq; eauto.
-    step.
-
+    admit.
     instantiate (1 := ($ (0), [])).
     admit. (* XXX need list2nmem_setlen? *)
 
     step.
-    xcrash.
-    or_r.
-    xcrash.
-    erewrite treeseq_in_ds_eq; eauto.
-    pred_apply.
-    cancel.
+    step.
+    step.
+    step.
+    step.
 
     xcrash.
-    or_r.
-    xcrash.
     erewrite treeseq_in_ds_eq; eauto.
-    pred_apply.
-    cancel.
+    eassumption.
 
     step.
+    erewrite treeseq_in_ds_eq; eauto.
+
     xcrash.
-    or_l.
-    eauto.
+    erewrite treeseq_in_ds_eq; eauto.
+    eassumption.
   Admitted.
 
   Hint Extern 1 ({{_}} Bind (copy2temp _ _ _ _) _) => apply copy2temp_ok : prog.
 
   Theorem copy_and_rename_ok : forall fsxp src_inum tinum (dstbase: list string) (dstname:string) mscs,
-    {< Fm Ftop Ftree ds ts tmppath srcpath file tfile v0 dstinum dstfile,
+    {< Fm Ftop Ftree Ftree' ds ts tmppath srcpath file tfile v0 dstinum dstfile,
     PRE:hm
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
       [[ treeseq_pred (treeseq_grow_safe tmppath Off0 (MSAlloc mscs) ts !!) ts ]] *
       [[ treeseq_pred (treeseq_upd_safe tmppath Off0 (MSAlloc mscs) (ts !!)) ts ]] *
-      [[ (Ftree * srcpath |-> Some (src_inum, file) * tmppath |-> Some(tinum, tfile) *
-          ((dstbase++[dstname])%list |-> Some (dstinum, dstfile)))%pred (dir2flatmem2 (TStree ts!!)) ]] *
+      [[ treeseq_pred (fun t => 
+          (exists tfile', 
+           tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
+          (tree_with_src Ftree srcpath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))))%type ts ]] *
+      [[ tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile dstbase dstname dstinum dstfile
+          %pred (dir2flatmem2 (TStree ts!!)) ]] *
       [[[ BFILE.BFData file ::: (Off0 |-> v0) ]]]
     POST:hm' RET:^(mscs', r)
       exists ds' ts',
@@ -315,77 +362,59 @@ Module ATOMICCP.
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
       (([[r = false ]] *
         (exists f',
-          [[ (Ftree * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, f') *
+          [[ (Ftree' * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, f') *
               (dstbase ++ [dstname])%list |-> Some (dstinum, dstfile))%pred (dir2flatmem2 (TStree ts'!!)) ]])  \/
        ([[r = true ]] *
-          [[ (Ftree * srcpath |-> Some (src_inum, file) * (dstbase++[dstname])%list |-> Some (tinum, (BFILE.synced_file file)) *
+          [[ (Ftree' * srcpath |-> Some (src_inum, file) * (dstbase++[dstname])%list |-> Some (tinum, (BFILE.synced_file file)) *
               tmppath |-> None)%pred (dir2flatmem2 (TStree ts'!!)) ]]
        )))
     XCRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-      (exists ds' ts' f',
-        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-        [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
-        (([[ (Ftree * srcpath |-> Some (src_inum, file) * tmppath |-> None *
-               (dstbase++[dstname])%list |-> Some (tinum, (BFILE.synced_file file)))%pred (dir2flatmem2 (TStree ts'!!)) ]]) \/
-         ([[ (Ftree * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, f') *
-              (dstbase ++ [dstname])%list |-> Some (dstinum, dstfile))%pred (dir2flatmem2 (TStree ts'!!)) ]]))
-      )
+      exists ds' ts',
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+       [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
+       [[ treeseq_pred (fun t => 
+          (exists tfile', 
+           tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
+          (tree_with_src Ftree srcpath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
+          (tree_with_dst Ftree srcpath tmppath src_inum file tinum dstbase dstname (dir2flatmem2 (TStree t))))%type ts' ]]
     >} copy_and_rename fsxp src_inum tinum dstbase dstname mscs.
   Proof.
     unfold copy_and_rename; intros.
     step.
-    instantiate (1 := srcpath).
-    cancel.
+    admit.  (* separate out dst into F' *)
     step.
     instantiate (2 := []).
-    eapply sep_star_split_l in H11 as H11'.
-    destruct H11'.
+    eapply sep_star_split_l in H12 as H12'.
+    destruct H12'.
     admit.  (* implied by H6 *)
     admit.
     step.
+    step.
+
+    xcrash.
+    erewrite treeseq_in_ds_eq; eauto.
+    admit.
+
     erewrite treeseq_in_ds_eq; eauto.
     step.
 
     xcrash.
-    or_r.
-    xcrash.
-    2: erewrite treeseq_in_ds_eq; eauto.
-    or_r.
-    cancel.
-
-    step.
-    xcrash.
-    or_r.
-    xcrash.
-    2: erewrite treeseq_in_ds_eq; eauto.
-    or_l.
-    cancel.
+    erewrite treeseq_in_ds_eq; eauto.
+    admit.  (* XXX adjusts treeseq_rename_ok *)
 
     xcrash.
-    or_r.
-    xcrash.
-    or_r.
-    cancel.
-    2: erewrite treeseq_in_ds_eq; eauto.
-    pred_apply.
-    cancel.
-
+    erewrite treeseq_in_ds_eq; eauto.
+    admit.  (* XXX miss facts about ds' *)
+ 
     step.
 
     xcrash.
-    or_r.
-    xcrash.
-    or_r.
-    2: erewrite treeseq_in_ds_eq; eauto.
-    cancel.
+    erewrite treeseq_in_ds_eq; eauto.
+    admit.  (* XXX miss facts about ds' *)
 
     xcrash.
-    or_r.
-    xcrash.
-    2: erewrite treeseq_in_ds_eq; eauto.
-    or_r.
-    cancel.
+    erewrite treeseq_in_ds_eq; eauto.
+    admit. (* H12 with some manipulation *)
   Admitted.
 
   Hint Extern 1 ({{_}} Bind (copy_and_rename _ _ _ _ _ _) _) => apply copy_and_rename_ok : prog.
@@ -481,14 +510,6 @@ Lemma find_dir_exists: forall pathname t inum,
 Proof.
     intros.
 Admitted.
-
-  Definition tree_with_tmp Ftree (srcpath: list string) tmppath (srcinum:addr) (file:BFILE.bfile) tinum tfile dstbase dstname dstinum dstfile:  @pred _ (list_eq_dec string_dec) _ :=
-   (Ftree * srcpath |-> Some (srcinum, file) * tmppath |-> Some (tinum, tfile) *
-         (dstbase ++ [dstname])%list |-> Some (dstinum, dstfile))%pred.
-
-  Definition tree_with_dst Ftree (srcpath: list string) tmppath (srcinum:addr) (file:BFILE.bfile) tinum  dstbase dstname :  @pred _ (list_eq_dec string_dec) _ :=
-   (Ftree * srcpath |-> Some (srcinum, file) * tmppath |-> None *
-         (dstbase ++ [dstname])%list |-> Some (tinum, (BFILE.synced_file file)))%pred.
 
   Ltac nthtree :=
     repeat match goal with 
