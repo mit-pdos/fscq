@@ -1396,31 +1396,40 @@ Proof.
   auto.
 Qed.
 
-Lemma selN_selN_homogenous : forall T (l : list (list T)) k off def,
+Lemma selN_selN_firstn_hom : forall T (l : list (list T)) k nvalid off d1 d2 d3,
+  Forall (fun sublist : list T => length sublist = k) (firstn nvalid l) ->
+  off < nvalid * k ->
+  off < k * length l -> selN (selN l (off / k) d1) (off mod k) d2 = selN (concat l) off d3.
+Proof.
+  induction l; intros;
+    assert (k > 0) by (destruct (Nat.eq_dec k 0); intuition; subst; intuition).
+  rewrite mult_0_r in *; omega.
+  destruct nvalid; [> omega | ].
+  match goal with [H : Forall _ _ |- _] => inversion H end; subst.
+  destruct (lt_dec off (length a)).
+  - simpl; rewrite selN_app, Nat.div_small, Nat.mod_small; auto.
+    apply selN_inb; auto.
+  - rewrite Nat.nlt_ge in *.
+    rewrite selN_cons.
+    simpl in *; rewrite mult_comm in *; simpl in *; rewrite mult_comm in *.
+    simpl; rewrite selN_app2 by auto.
+    erewrite <- IHl by (eauto; omega).
+    rewrite mod_subt; auto.
+    rewrite <- div_ge_subt by omega.
+    reflexivity.
+    simpl in *; rewrite mult_comm in *; simpl in *; rewrite mult_comm in *.
+    apply Nat.div_str_pos; omega.
+Qed.
+
+Lemma selN_selN_hom : forall T (l : list (list T)) k off def,
   Forall (fun sublist => length sublist = k) l ->
   off < k * length l ->
   selN (selN l (off / k) nil) (Nat.modulo off k) def = selN (concat l) off def.
 Proof.
   intros.
-  assert (k > 0) by (destruct (Nat.eq_dec k 0); intuition; subst; intuition).
-  generalize dependent k.
-  generalize dependent off.
-  induction l; auto.
-  intros.
-  inversion H; subst.
-  destruct (lt_dec off (length a)).
-  simpl.
-  rewrite selN_app, Nat.div_small, Nat.mod_small; auto.
-  apply not_lt in n.
-  rewrite selN_cons.
-  simpl; rewrite selN_app2 by auto.
-  erewrite <- IHl; eauto.
-  rewrite mod_subt; auto.
-  rewrite <- div_ge_subt; auto. omega.
-  simpl in H0. rewrite mult_comm in H0. simpl in H0.
-  apply Nat.le_lt_add_lt with (m := length a) (n := length a); auto.
-  rewrite Nat.sub_add, mult_comm; omega.
-  apply Nat.div_str_pos; omega.
+  eapply selN_selN_firstn_hom; auto.
+  apply forall_firstn; auto.
+  rewrite mult_comm; eauto.
 Qed.
 
 Definition combine_updN : forall A B i a b (va:A) (vb:B),
