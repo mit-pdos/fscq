@@ -405,7 +405,7 @@ Module ConcurrentCache (C:CacheSubProtocol).
 
   Hint Resolve
        modified_nothing
-       one_more_modified
+       one_more_modified_in HHere HLater
        modified_single_var : modified.
 
   Ltac solve_modified :=
@@ -665,10 +665,10 @@ Module ConcurrentCache (C:CacheSubProtocol).
   Qed.
 
   Theorem prepare_fill_ok : forall a,
-      SPEC delta, tid |-
+      SPEC App.delta, tid |-
               {{ v0,
                | PRE d m s_i s:
-                   invariant delta d m s /\
+                   invariant App.delta d m s /\
                    cache_get (get vCache s) a = Missing /\
                    (* XXX: not sure exactly why this is a requirement,
                    but it comes from no_wb_reader_conflict *)
@@ -678,6 +678,7 @@ Module ConcurrentCache (C:CacheSubProtocol).
                | POST d' m' s_i' s' _:
                    invariant delta d' m' s' /\
                    get vDisk0 s' a = Some (v0, Some tid) /\
+                   modified [( vCache; vDisk0 )] s s' /\
                    guar delta tid s_i' s'
               }} prepare_fill a.
   Proof.
