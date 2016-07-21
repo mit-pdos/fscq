@@ -11,6 +11,8 @@ Import Hlist.HlistNotations.
 Require Import MemCache.
 Require Import WriteBufferSet.
 
+(* TODO: split into state/protocol separately to allow creating global protocol
+from module protocol definitions *)
 Module Type GlobalProtocol.
   Parameter Sigma:State.
   Parameter delta:Protocol Sigma.
@@ -156,10 +158,19 @@ Module CacheProtocol (App:GlobalProtocol) (Proj:CacheProj App).
 
 End CacheProtocol.
 
-Module ConcurrentCache (App:GlobalProtocol) (Proj:CacheProj App).
+Module Type CacheSubProtocol.
+  Declare Module App:GlobalProtocol.
+  Declare Module Proj:CacheProj App.
 
-  Module P := CacheProtocol App Proj.
-  Export P.
+  Module CProto := CacheProtocol App Proj.
+
+  Parameter protocolProj:SubProtocol App.delta CProto.delta.
+End CacheSubProtocol.
+
+Module ConcurrentCache (C:CacheSubProtocol).
+  Import C.
+  Import C.CProto.
+
   (* abstraction helpers *)
 
   Definition modify_cache (up: Cache -> Cache) :=
@@ -291,6 +302,30 @@ Module ConcurrentCache (App:GlobalProtocol) (Proj:CacheProj App).
     eauto.
   Qed.
 
+  Lemma protocol_proj_invariant : forall d m s,
+      invariant App.delta d m s ->
+      invariant delta d m s.
+  Proof.
+    intros.
+    apply protocolProj; auto.
+  Qed.
+
+  Lemma protocol_proj_rely : forall tid s s',
+      rely App.delta tid s s' ->
+      rely delta tid s s'.
+  Proof.
+    intros.
+    apply (rely_subprotocol protocolProj); auto.
+  Qed.
+
+  Ltac sub_protocol :=
+    match goal with
+    | [ H: invariant App.delta _ _ _ |- _ ] =>
+      learn that (protocol_proj_invariant _ _ _ H)
+    | [ H: rely App.delta _ _ _ |- _ ] =>
+      learn that (protocol_proj_rely _ _ _ H)
+    end.
+
   Ltac learn_protocol :=
     match goal with
     | [ H: invariant delta _ _ _ |- _ ] =>
@@ -368,11 +403,23 @@ Module ConcurrentCache (App:GlobalProtocol) (Proj:CacheProj App).
       break H
     end.
 
+  Hint Resolve
+       modified_nothing
+       one_more_modified
+       modified_single_var : modified.
+
+  Ltac solve_modified :=
+    match goal with
+    | |- modified _ _ _ =>
+      solve [ auto with modified ]
+    end.
+
   Ltac simp_hook := fail.
 
   Ltac simplify_step :=
     match goal with
     | [ |- forall _, _ ] => intros
+    | _ => sub_protocol
     | _ => learn_protocol
     | _ => deex
     | _ => progress destruct_ands
@@ -384,6 +431,7 @@ Module ConcurrentCache (App:GlobalProtocol) (Proj:CacheProj App).
     | _ => simp_hook
     | _ => descend
     | _ => prove_protocol
+    | _ => solve_modified
     end.
 
   Ltac finish := time "finish"
@@ -513,7 +561,7 @@ Module ConcurrentCache (App:GlobalProtocol) (Proj:CacheProj App).
   End SpecLemmas.
 
   Theorem modify_cache_ok : forall up,
-      SPEC delta, tid |-
+      SPEC App.delta, tid |-
               {{ (_:unit),
                | PRE d m s_i s: get mCache m = get vCache s
                | POST d' m' s_i' s' r:
@@ -529,7 +577,7 @@ Module ConcurrentCache (App:GlobalProtocol) (Proj:CacheProj App).
   Hint Extern 1 {{ modify_cache _; _ }} => apply modify_cache_ok : prog.
 
   Theorem modify_wb_ok : forall up,
-      SPEC delta, tid |-
+      SPEC App.delta, tid |-
               {{ (_:unit),
                | PRE d m s_i s: get mWriteBuffer m = get vWriteBuffer s
                | POST d' m' s_i' s' r:
@@ -571,14 +619,14 @@ Module ConcurrentCache (App:GlobalProtocol) (Proj:CacheProj App).
   Hint Resolve Some_inv.
 
   Theorem cache_maybe_read_ok : forall a,
-      SPEC delta, tid |-
+      SPEC App.delta, tid |-
               {{ v0,
-               | PRE d m s_i s: invariant delta d m s /\
+               | PRE d m s_i s: invariant App.delta d m s /\
                                get vdisk s a = Some v0
                | POST d' m' s_i' s' r:
-                   invariant delta d' m' s' /\
-                   get vdisk s' = get vdisk s /\
-                   get vDisk0 s' = get vDisk0 s /\
+                   invariant App.delta d' m' s' /\
+                   modified [(vdisk; vDisk0)] s s' /\
+                   guar delta tid s s' /\
                    s_i' = s_i /\
                    (r = Some v0 \/
                     r = None /\
