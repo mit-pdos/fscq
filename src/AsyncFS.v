@@ -518,6 +518,11 @@ Module AFS.
     ams <- DIRTREE.sync_noop fsxp ams;
     Ret ^(ams).
 
+  Definition umount fsxp ams :=
+    ams <- DIRTREE.sync fsxp ams;
+    ms <- LOG.sync_cache (FSXPLog fsxp) (MSLL ams);
+    Ret ^((MSAlloc ams, ms)).
+
   Definition statfs fsxp ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     (*

@@ -298,6 +298,11 @@ Module GLog.
     ms <- flushsync xp ms;
     Ret ms.
 
+  Definition sync_cache xp ms :=
+    let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
+    mm' <- MLog.sync_cache xp mm;
+    Ret (mk_memstate vm ts mm').
+
   Definition dwrite' (xp : log_xparams) a v ms :=
     let '(vm, ts, mm) := (MSVMap (fst ms), MSTxns (fst ms), MSLL ms) in
     mm' <- MLog.dwrite xp a v mm;

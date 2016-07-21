@@ -200,8 +200,7 @@ instance Show t => Show (Errno.Coq_res t) where
 
 fscqDestroy :: DiskState -> String -> FSrunner -> MVar Coq_fs_xparams -> IO ()
 fscqDestroy ds disk_fn fr m_fsxp  = withMVar m_fsxp $ \fsxp -> do
-  -- XXX need to also sync all file data (from WritebackCache)
-  _ <- fr $ AsyncFS._AFS__tree_sync fsxp
+  _ <- fr $ AsyncFS._AFS__umount fsxp
   stats <- close_disk ds
   print_stats stats
   case disk_fn of
