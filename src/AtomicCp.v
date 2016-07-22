@@ -137,8 +137,9 @@ Module ATOMICCP.
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
 
-  Definition tree_with_src Ftree (srcpath: list string) (srcinum:addr) (file:BFILE.bfile) dstbase dstname dstinum dstfile:  @pred _ (list_eq_dec string_dec) _ :=
-        (Ftree * srcpath |-> Some (srcinum, file) * (dstbase ++ [dstname])%list |-> Some (dstinum, dstfile))%pred.
+  Definition tree_with_src Ftree (srcpath: list string) tmppath (srcinum:addr) (file:BFILE.bfile) dstbase dstname dstinum dstfile:  @pred _ (list_eq_dec string_dec) _ :=
+        (Ftree * srcpath |-> Some (srcinum, file) * tmppath |-> None * 
+                (dstbase ++ [dstname])%list |-> Some (dstinum, dstfile))%pred.
 
   Definition tree_with_tmp Ftree (srcpath: list string) tmppath (srcinum:addr) (file:BFILE.bfile) tinum tfile dstbase dstname dstinum dstfile:  @pred _ (list_eq_dec string_dec) _ :=
    (Ftree * srcpath |-> Some (srcinum, file) * tmppath |-> Some (tinum, tfile) *
@@ -152,9 +153,9 @@ Module ATOMICCP.
     (tree_names_distinct (TStree t)) /\
     ((exists tfile', 
       tree_with_tmp Ftree srcpath tmppath srcinum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
-     (tree_with_src Ftree srcpath srcinum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))))%type.
+     (tree_with_src Ftree srcpath tmppath srcinum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))))%type.
 
-  Lemma dirents2mem2_treeseq_one_upd : forall (F: @pred _ (@list_eq_dec string string_dec) _) tree tmppath inum f off v,
+  Lemma dirents2mem2_treeseq_one_upd_tmp : forall (F: @pred _ (@list_eq_dec string string_dec) _) tree tmppath inum f off v,
     let f' := {|
              BFILE.BFData := (BFILE.BFData f) ⟦ off := v ⟧;
              BFILE.BFAttr := BFILE.BFAttr f |} in
@@ -173,7 +174,7 @@ Module ATOMICCP.
     inversion Hfind.
   Qed.
 
-  Lemma treeseq_one_upd_tree_rep: forall tree Ftree srcpath tmppath src_inum file tinum tfile dstbase dstname dstinum dstfile off v,
+  Lemma treeseq_one_upd_tree_rep_tmp: forall tree Ftree srcpath tmppath src_inum file tinum tfile dstbase dstname dstinum dstfile off v,
    let tfile' := {|
              BFILE.BFData := (BFILE.BFData tfile) ⟦ off := v ⟧;
              BFILE.BFAttr := BFILE.BFAttr tfile|} in
@@ -185,7 +186,46 @@ Module ATOMICCP.
     unfold tree_with_tmp in *.
     eapply sep_star_comm.
     eapply sep_star_assoc.
-    eapply dirents2mem2_treeseq_one_upd; eauto.
+    eapply dirents2mem2_treeseq_one_upd_tmp; eauto.
+    pred_apply.
+    cancel.
+  Qed.
+
+  Lemma dirents2mem2_treeseq_one_upd_src : forall (F: @pred _ (@list_eq_dec string string_dec) _) F1 tree tmppath srcpath inum f off v,
+    tree_names_distinct (TStree tree) ->
+    (F1 * tmppath |-> None)%pred (dir2flatmem2 (TStree tree)) ->
+    (F * srcpath |-> Some (inum, f))%pred (dir2flatmem2 (TStree tree)) ->
+    (F * srcpath |-> Some (inum, f))%pred (dir2flatmem2 (TStree (treeseq_one_upd tree tmppath off v))).
+  Proof.
+    intros.
+    eapply dir2flatmem2_find_subtree_ptsto in H1 as Hfind; eauto.
+    eapply dir2flatmem2_find_subtree_ptsto_none in H0 as Hfindtmp; eauto.
+    unfold treeseq_one_upd.
+    intuition.
+    destruct (find_subtree tmppath (TStree tree)).
+    inversion H2.
+    eassumption.
+    repeat (deex).
+    destruct (find_subtree tmppath (TStree tree)).
+    destruct d0.
+    inversion H2.
+    eassumption.
+    inversion H2.
+  Qed.
+
+  Lemma treeseq_one_upd_tree_rep_src: forall tree Ftree srcpath tmppath src_inum file dstbase dstname dstinum dstfile off v,
+    tree_names_distinct (TStree tree) ->
+    tree_with_src Ftree srcpath tmppath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree tree)) ->
+    tree_with_src Ftree srcpath tmppath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree (treeseq_one_upd tree tmppath off v))).
+  Proof.
+    intros.
+    unfold tree_with_src in *.
+    eapply sep_star_assoc.
+    eapply sep_star_comm.
+    eapply sep_star_assoc_1.
+    eapply dirents2mem2_treeseq_one_upd_src; eauto.
+    pred_apply.
+    cancel.
     pred_apply.
     cancel.
   Qed.
@@ -198,7 +238,6 @@ Module ATOMICCP.
     eapply d_in_nthd in H as Hin.
     destruct Hin.
     unfold tsupd in H0.
-    Search nthd d_map.
     rewrite d_map_nthd in H0.
     eexists (nthd x ts).
     split; eauto.
@@ -228,21 +267,124 @@ Module ATOMICCP.
     eexists {|
              BFILE.BFData := (BFILE.BFData x1) ⟦ Off0 := (fst v0, vsmerge t0) ⟧;
              BFILE.BFAttr := BFILE.BFAttr x1|}.
-    eapply treeseq_one_upd_tree_rep; eauto.
+    eapply treeseq_one_upd_tree_rep_tmp; eauto.
+    right.
+    rewrite H2.
+    eapply treeseq_one_upd_tree_rep_src; eauto.
   Admitted.
 
-(*
-  XXX file treeseq_file_sync_ok first.
-
-  Lemma treeseq_tssync_tree_rep: forall Fm Ftop fsxp mscs ts ds ts' Ftree srcpath tmppath src_inum file tinum dstbase dstname dstinum dstfile al,
-    treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ->
-    NEforall2 (treeseq_dssync inum) ts ts' ->
-    treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts'.
+  Lemma dirents2mem2_treeseq_one_file_sync_tmp : forall (F: @pred _ (@list_eq_dec string string_dec) _) tree tmppath inum f,
+    let f' := BFILE.synced_file f in
+    tree_names_distinct (TStree tree) ->
+    (F * tmppath |-> Some (inum, f))%pred (dir2flatmem2 (TStree tree)) ->
+    (F * tmppath |-> Some (inum, f'))%pred (dir2flatmem2 (TStree (treeseq_one_file_sync tree tmppath))).
   Proof.
     intros.
-    unfold treeseq_in_ds in H1.
+    eapply dir2flatmem2_find_subtree_ptsto in H0 as Hfind; eauto.
+    unfold treeseq_one_file_sync.
+    destruct (find_subtree tmppath (TStree tree)).
+    destruct d.
+    inversion Hfind; subst; simpl.
+    eapply dir2flatmem2_update_subtree; eauto.
+    inversion Hfind.
+    inversion Hfind.
+  Qed.
+
+  Lemma treeseq_one_file_sync_tree_rep_tmp: forall tree Ftree srcpath tmppath src_inum file tinum tfile dstbase dstname dstinum dstfile,
+   let tfile' := BFILE.synced_file tfile in
+    tree_names_distinct (TStree tree) ->
+    tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile dstbase dstname dstinum dstfile (dir2flatmem2 (TStree tree)) ->
+    tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree (treeseq_one_file_sync tree tmppath))).
+  Proof.
+    intros.
+    unfold tree_with_tmp in *.
+    eapply sep_star_comm.
+    eapply sep_star_assoc.
+    eapply dirents2mem2_treeseq_one_file_sync_tmp; eauto.
+    pred_apply.
+    cancel.
+  Qed.
+
+  Lemma tssync_d_in_exists: forall ts t tmppath,
+    d_in t (ts_file_sync tmppath ts) ->
+    exists x, d_in x ts /\ t = (treeseq_one_file_sync x tmppath).
+  Proof.
+    intros.
+    eapply d_in_nthd in H as Hin.
+    destruct Hin.
+    unfold ts_file_sync in H0.
+    rewrite d_map_nthd in H0.
+    eexists (nthd x ts).
+    split; eauto.
+    eapply nthd_in_ds.
+  Qed.
+
+  Lemma dirents2mem2_treeseq_one_file_sync_src : forall (F: @pred _ (@list_eq_dec string string_dec) _) F1 tree srcpath tmppath inum f,
+    tree_names_distinct (TStree tree) ->
+    (F1 * tmppath |-> None)%pred (dir2flatmem2 (TStree tree)) ->
+    (F * srcpath |-> Some (inum, f))%pred (dir2flatmem2 (TStree tree)) ->
+    (F * srcpath |-> Some (inum, f))%pred (dir2flatmem2 (TStree (treeseq_one_file_sync tree tmppath))).
+  Proof.
+    intros.
+    eapply dir2flatmem2_find_subtree_ptsto in H1 as Hfind; eauto.
+    eapply dir2flatmem2_find_subtree_ptsto_none in H0 as Hfindtmp; eauto.
+    unfold treeseq_one_file_sync.
+    intuition.
+    destruct (find_subtree tmppath (TStree tree)).
+    inversion H2.
+    eassumption.
+    repeat (deex).
+    destruct (find_subtree tmppath (TStree tree)).
+    destruct d0.
+    inversion H2.
+    eassumption.
+    inversion H2.
+   Qed.
+
+  Lemma treeseq_one_file_sync_tree_rep_src: forall tree Ftree srcpath tmppath src_inum file  tfile dstbase dstname dstinum dstfile,
+   let tfile' := BFILE.synced_file tfile in
+    tree_names_distinct (TStree tree) ->
+    tree_with_src Ftree srcpath tmppath src_inum file  dstbase dstname dstinum dstfile (dir2flatmem2 (TStree tree)) ->
+    tree_with_src Ftree srcpath tmppath src_inum file  dstbase dstname dstinum dstfile (dir2flatmem2 (TStree (treeseq_one_file_sync tree tmppath))).
+  Proof.
+    intros.
+    unfold tree_with_src in *.
+    eapply sep_star_assoc.
+    eapply sep_star_comm.
+    eapply sep_star_assoc_1.
+    eapply dirents2mem2_treeseq_one_file_sync_src; eauto.
+    pred_apply.
+    cancel.
+    pred_apply.
+    cancel.
+  Qed.
+
+  Lemma treeseq_tssync_tree_rep: forall ts Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile,
+    treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ->
+    treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile)  (ts_file_sync tmppath ts).
+  Proof.
+    intros.
+    unfold treeseq_pred, tree_rep in *.
+    intros.
+    eapply NEforall_d_in'.
+    intros.
+    eapply tssync_d_in_exists in H0; eauto.
+    destruct H0.
+    intuition.
+    admit. (* XXX tree_names_distinct *)
+    eapply NEforall_d_in in H as Hx.
+    2: instantiate (1 := x0); eauto.
+    intuition.
+    destruct H4.
+    unfold tree_with_tmp in H3.
+    rewrite H2.
+    left.
+    eexists (BFILE.synced_file x1).
+    eapply treeseq_one_file_sync_tree_rep_tmp; eauto.
+    right.
+    rewrite H2.
+    eapply treeseq_one_file_sync_tree_rep_src; eauto.
   Admitted.
-*)
 
   Theorem copydata_ok : forall fsxp srcinum tmppath tinum mscs,
     {< ds ts Fm Ftop Ftree Ftree' srcpath file tfile v0 t0 dstbase dstname dstinum dstfile,
@@ -303,10 +445,8 @@ Module ATOMICCP.
     (* crashed during setattr  *)
     xcrash.
     erewrite treeseq_in_ds_eq; eauto.
-    admit. (* eapply treeseq_dssync_dsupd_tree_rep. *)
-    (*2: eapply H8.
-    eassumption.
-    erewrite treeseq_in_ds_eq; eauto. *)
+    eapply treeseq_tssync_tree_rep; eauto.
+    eapply treeseq_upd_tree_rep; eauto.
 
     (* crash during sync *)
     xcrash.
@@ -318,10 +458,9 @@ Module ATOMICCP.
     erewrite treeseq_in_ds_eq; eauto.
     eassumption.
     erewrite treeseq_in_ds_eq; eauto.
-    eapply treeseq_dwrite_tree_rep.
-    2: eapply H8.
+    rewrite H18.
+    eapply treeseq_upd_tree_rep.
     eassumption.
-    erewrite treeseq_in_ds_eq; eauto.
 
     xcrash.
     erewrite treeseq_in_ds_eq; eauto.

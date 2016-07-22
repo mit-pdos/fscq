@@ -941,6 +941,7 @@ Module TREESEQ.
     all: exact ($0, nil).
   Admitted.
 
+  (* XXX maybe inum should be an argument and the TreeFile case should be split into two cases. *)
   Definition treeseq_one_file_sync (t: treeseq_one) pathname :=
       match find_subtree pathname (TStree t) with
       | None => t
