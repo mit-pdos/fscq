@@ -272,6 +272,22 @@ Proof.
   split; cancel; inversion H1; auto.
 Qed.
 
+Theorem listpred_unify : forall T l1 l2 AT AEQ V f F1 F2 m,
+    (forall Fa Fb a b, In a l1 -> In b l2 -> (Fa * f a)%pred m -> (Fb * f b)%pred m -> a = b) ->
+    (F1 * @listpred T AT AEQ V f l1)%pred m -> (F2 * listpred f l2)%pred m ->
+    length l1 = length l2 ->
+    l1 = l2.
+Proof.
+  induction l1; intros; destruct l2; simpl in *; auto; inversion H2.
+  f_equal.
+  eapply H; auto; match goal with [H : _ |- _] => solve [eapply pimpl_apply; [> | exact H]; cancel] end.
+  eapply IHl1; intros;
+  repeat match goal with
+    | [a : T, b : T |- ?a = ?b ] => eapply H
+    | [H : _ |- _] => solve [intuition | apply H | eapply pimpl_apply; [> | exact H]; cancel]
+  end.
+Qed.
+
 (* predicate over a pair of lists *)
 
 Section LISTMATCH.
@@ -558,6 +574,68 @@ Proof.
   rewrite listmatch_lift_l.
   split; cancel; eauto; try apply listmatch_sym.
   simpl; auto.
+Qed.
+
+Lemma listmatch_unify : forall A B la lb l1 l2 AT AEQ V F1 F2 (f : A -> B -> @pred AT AEQ V) m,
+  (forall Fa Fb xa xb ya yb, In xa la -> In xb lb -> In ya l1 -> In yb l2 ->
+  (Fa * f xa ya)%pred m -> (Fb * f xb yb)%pred m -> (xa = xb /\ ya = yb)) ->
+  (F1 * listmatch f la l1)%pred m -> (F2 * listmatch f lb l2)%pred m ->
+  length la = length lb ->
+  la = lb /\ l1 = l2.
+Proof.
+  intros.
+  unfold listmatch in *.
+  repeat match goal with [H: context [lift_empty] |- _] => destruct_lift H end.
+  split.
+  1 : rewrite <- map_fst_combine with (a := la) (b := l1); auto.
+  1 : rewrite <- map_fst_combine with (a := lb) (b := l2); auto.
+  2 : rewrite <- map_snd_combine with (a := la) (b := l1); auto.
+  2 : rewrite <- map_snd_combine with (a := lb) (b := l2); auto.
+  all : f_equal; eapply listpred_unify; eauto.
+  all : repeat rewrite combine_length_eq2; try omega.
+  all : intros; destruct a, b; simpl in *.
+  all : edestruct H;
+        solve [eauto | subst; eauto |
+               eapply in_combine_l; eauto |
+               eapply in_combine_r; eauto ].
+Qed.
+
+Lemma listmatch_unify_r : forall A B l l1 l2 AT AEQ V F1 F2 (f : A -> B -> @pred AT AEQ V) m,
+  (forall Fa Fb x ya yb, In x l -> In ya l1 -> In yb l2 ->
+  (Fa * f x ya)%pred m -> (Fb * f x yb)%pred m -> (ya = yb)) ->
+  (F1 * listmatch f l l1)%pred m -> (F2 * listmatch f l l2)%pred m ->
+  l1 = l2.
+Proof.
+  induction l; intros; destruct l1, l2; auto.
+  all : unfold listmatch in *;
+        destruct_lift H0; destruct_lift H1;
+        match goal with
+        | [ H : 0 = S _ |- _] => inversion H
+        | [ H : S _ = 0 |- _] => inversion H
+        | [ |- _] => idtac
+        end.
+  f_equal; [> eapply H | eapply IHl]; intros;
+    try match goal with
+    | [ |- _ \/ _] => left; eauto
+    | [ |- _ = _ ] => eapply H
+    end; eauto.
+  all : match goal with
+  | [H : _ |- _] => solve [eapply pimpl_apply; [> | exact H]; cancel]
+  end.
+Qed.
+
+Lemma listmatch_unify_l : forall A B l la lb AT AEQ V F1 F2 (f : A -> B -> @pred AT AEQ V) m,
+  (forall Fa Fb xa xb y, In xa la -> In xb lb -> In y l ->
+  (Fa * f xa y)%pred m -> (Fb * f xb y)%pred m -> (xa = xb)) ->
+  (F1 * listmatch f la l)%pred m -> (F2 * listmatch f lb l)%pred m ->
+  la = lb.
+Proof.
+  intros.
+  rewrite listmatch_sym in H0.
+  rewrite listmatch_sym in H1.
+  eapply listmatch_unify_r; eauto.
+  intros.
+  eapply H; eauto.
 Qed.
 
 Theorem xform_listpred : forall V (l : list V) prd,
