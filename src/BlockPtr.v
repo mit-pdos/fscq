@@ -281,8 +281,118 @@ Module BlockPtr (BPtr : BlockPtrSig).
     | [ |- 0 <> _ ] => apply not_eq_sym
     end; auto).
 
+  Fact nvalid_gt_0_indrep_helper : forall bxp bn l nvalid, nvalid > 0 ->
+    indrep_n_helper bxp bn l nvalid <=p=> [[BALLOC.bn_valid bxp bn]] * IndRec.rep bn l.
+  Proof.
+    unfold indrep_n_helper; intros; destruct addr_eq_dec; simpl; solve [omega | auto].
+  Qed.
 
-  (************* program *)
+  Fact div_mul_le : forall a b : addr, a / b * b <= a.
+  Proof.
+    intros.
+    destruct (Nat.eq_dec b 0) as [H|H]; subst; try omega.
+    pose proof Nat.div_mod a b H.
+    rewrite mult_comm; omega.
+  Qed.
+
+  Hint Rewrite divmod_n_zeros using auto.
+  Local Hint Resolve Nat.pow_nonzero.
+  Local Hint Resolve off_mod_len_l.
+  Local Hint Resolve mult_neq_0.
+
+  Lemma indrep_n_helper_length : forall bxp ibn l nvalid m,
+    indrep_n_helper bxp ibn l nvalid m -> length l = NIndirect.
+  Proof.
+    unfold indrep_n_helper, IndRec.rep, IndRec.items_valid.
+    intros; destruct addr_eq_dec; destruct_lift H; unfold lift_empty in *;
+    intuition; subst; autorewrite with lists; auto.
+    unfold IndRec.Defs.item in *; simpl in *.
+    omega.
+  Qed.
+
+  Lemma indrep_n_helper_length_piff : forall bxp ibn l nvalid,
+    indrep_n_helper bxp ibn l nvalid <=p=> indrep_n_helper bxp ibn l nvalid * [[ length l = NIndirect ]].
+  Proof.
+    intros.
+    split; [> intros m H; apply indrep_n_helper_length in H as HH; pred_apply | ]; cancel.
+  Qed.
+
+  Lemma indrep_n_tree_listmatch_lift_helper : forall indlvl nvalid bxp index (ibn : waddr) y,
+    (fun n_w y => indrep_n_tree indlvl bxp # (snd n_w) y (nvalid - (fst n_w) * (NIndirect * NIndirect ^ indlvl)))
+      (index, ibn) y <=p=> indrep_n_tree indlvl bxp # (ibn) y (nvalid - index * (NIndirect * NIndirect ^ indlvl)).
+  Proof.
+    intros; simpl.
+    apply piff_refl.
+  Qed.
+
+  Lemma indrep_n_length_pimpl : forall indlvl bxp ibn l nvalid,
+    indrep_n_tree indlvl bxp ibn l nvalid <=p=>
+    [[ length l = NIndirect ^ (S indlvl) ]] * indrep_n_tree indlvl bxp ibn l nvalid.
+  Proof.
+    induction indlvl; simpl; intros.
+    intros; split; intros m H; destruct_lift H; pred_apply; cancel.
+    erewrite indrep_n_helper_length; eauto; omega.
+    intros; split; intros m H; destruct_lift H; pred_apply; cancel.
+    rewrite indrep_n_helper_length_piff, listmatch_length_pimpl in H; destruct_lift H.
+    rewrite length_enumerate in *.
+    rewrite listmatch_lift_r in H; destruct_lift H.
+    substl NIndirect; substl (length dummy).
+    apply concat_hom_length; eauto.
+    intros x y; destruct x.
+    rewrite indrep_n_tree_listmatch_lift_helper.
+    split; [> rewrite IHindlvl |]; cancel.
+  Qed.
+
+  Lemma indget_length_helper_l : forall Fm off indlvl bxp bn iblocks l_part nvalid m,
+    off < length (concat l_part) ->
+    ((Fm * indrep_n_helper bxp bn iblocks nvalid) *
+          listmatch (fun (index_ibn' : addr * waddr) (l' : list waddr) =>
+           let '(index, ibn') := index_ibn' in
+            indrep_n_tree indlvl bxp # (ibn') l' (nvalid - index * (NIndirect * NIndirect ^ indlvl)))
+          (enumerate iblocks) l_part)%pred m
+    -> off / (NIndirect * NIndirect ^ indlvl) < length (iblocks).
+  Proof.
+    intros.
+    apply Nat.div_lt_upper_bound; mult_nonzero.
+    rewrite listmatch_length_pimpl, listmatch_lift_r in *.
+    rewrite indrep_n_helper_length_piff in *.
+    rewrite length_enumerate in *.
+    match goal with
+    | [ H : context [ lift_empty _ ] |- _] => destruct_lift H
+    end.
+    match goal with
+    | [ H : ?off < length (concat ?l) |- _] => erewrite concat_hom_length in H by eauto
+    end.
+    rewrite mult_comm.
+    substl (length iblocks); eauto.
+    intros x y. destruct x.
+    rewrite indrep_n_tree_listmatch_lift_helper; simpl.
+    rewrite indrep_n_length_pimpl; split; cancel.
+  Qed.
+
+  Lemma indget_length_helper_r : forall Fm off indlvl bxp bn iblocks l_part nvalid m,
+    off < length (concat l_part) ->
+    ((Fm * indrep_n_helper bxp bn iblocks nvalid) *
+          listmatch (fun (index_ibn' : addr * waddr) (l' : list waddr) =>
+           let '(index, ibn') := index_ibn' in
+            indrep_n_tree indlvl bxp # (ibn') l' (nvalid - index * (NIndirect * NIndirect ^ indlvl)))
+          (enumerate iblocks) l_part)%pred m
+    -> off / (NIndirect * NIndirect ^ indlvl) < length l_part.
+  Proof.
+    intros.
+    rewrite listmatch_length_pimpl in *.
+    rewrite length_enumerate in *.
+    match goal with
+    | [ H : context [ lift_empty _ ] |- _] => destruct_lift H
+    end.
+    substl (length l_part).
+    eapply indget_length_helper_l; eauto.
+  Qed.
+
+  Hint Resolve indget_length_helper_l indget_length_helper_r.
+
+
+  (************* n-indirect program *)
 
   Fixpoint indget (indlvl : nat) lxp (bn : addr) off ms :=
     let divisor := NIndirect ^ indlvl in
@@ -292,15 +402,57 @@ Module BlockPtr (BPtr : BlockPtrSig).
     | S indlvl' => indget indlvl' lxp (# (Rec.to_word v)) (off mod divisor) ms
     end.
 
-  Definition get lxp (ir : irec) off ms :=
-    If (lt_dec off NDirect) {
-      Ret ^(ms, selN (IRBlocks ir) off $0)
-    } else {
-      let^ (ms, v) <- indget 0 lxp (IRIndPtr ir) (off - NDirect) ms;
-      Ret ^(ms, v)
-    }.
+  Theorem indget_ok : forall indlvl lxp bxp bn off ms,
+    {< F Fm m0 m l nvalid,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           [[[ m ::: Fm * indrep_n_tree indlvl bxp bn l nvalid ]]] *
+           [[ off < nvalid ]] * [[ off < length l ]]
+    POST:hm' RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
+           [[ r = selN l off $0 ]]
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
+    >} indget indlvl lxp bn off ms.
+  Proof.
+    induction indlvl; simpl.
+    + repeat safestep; autorewrite with core; eauto.
+      unfold indrep_n_helper.
+      destruct addr_eq_dec; cancel; omega.
+    + repeat safestep; autorewrite with core; try eassumption.
+      - eauto.
+      - rewrite nvalid_gt_0_indrep_helper; auto; solve [omega | cancel].
+      - unfold Rec.to_word; simpl.
+        rewrite listmatch_isolate, selN_enumerate.
+        (* these are hidden by notation, but otherwise prevent cancel from succeeding *)
+        unfold IndRec.Defs.item; simpl; erewrite snd_pair by eauto.
+        cancel.
+        all : try rewrite length_enumerate; solve [eauto].
+      - rewrite <- Nat.lt_add_lt_sub_r by auto.
+        eapply le_lt_trans; try eassumption.
+        rewrite plus_comm, mult_comm.
+        rewrite <- Nat.div_mod; auto.
+      - match goal with [H : context [indrep_n_helper] |-_] => assert (HH := H) end.
+        rewrite listmatch_extract, selN_enumerate in HH.
+        rewrite indrep_n_length_pimpl in HH.
+        destruct_lift HH.
+        match goal with [H : _ |-_ ] => rewrite H end.
+        apply Nat.mod_bound_pos; try solve [omega | mult_nonzero].
+        all : try rewrite length_enumerate; solve [eauto].
+      - apply selN_selN_hom.
+        rewrite listmatch_lift_r in *.
+        match goal with [H : context [lift_empty _] |- _] => destruct_lift H end; eauto.
+        intros x y; destruct x; simpl.
+        rewrite indrep_n_length_pimpl.
+        rewrite indrep_n_tree_listmatch_lift_helper; split; cancel.
+        rewrite mult_comm.
+        apply div_lt_mul_lt; solve [eauto | mult_nonzero].
+      Unshelve.
+      all : try split; eauto.
+      exact IndRec.Defs.item0.
+  Qed.
 
-  Fixpoint indread (indlvl : nat) lxp (ir : addr) ms :=
+  Fixpoint indread (indlvl : nat) lxp (ir : addr) nr ms :=
     let^ (ms, indbns) <- IndRec.read lxp ir 1 ms;
     match indlvl with
       | 0 => Ret ^(ms, indbns)
@@ -311,21 +463,46 @@ Module BlockPtr (BPtr : BlockPtrSig).
           Loopvar [ ms r ]
           Invariant
             LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-            [[[ m ::: Fm * indrep_ind indlvl bxp ir l nvalid ]]] *
+            [[[ m ::: Fm * indrep_n_tree indlvl bxp ir l nvalid ]]] *
             [[ r = firstn (i * NIndirect ^ indlvl) l ]]
           OnCrash crash
           Begin
-            let^ (ms, v) <- indread indlvl' lxp #(selN indbns i IndRec.Defs.item0) ms;
+            let nr' := (min (NIndirect ^ indlvl) (nr - i * NIndirect ^ indlvl)) in
+            let^ (ms, v) <- indread indlvl' lxp #(selN indbns i IndRec.Defs.item0) nr' ms;
             Ret ^(ms, r ++ v)
           Rof ^(ms, nil);
           Ret ^(ms', r)
     end.
 
+  Theorem indread_ok : forall indlvl lxp bxp ir nvalid ms,
+  {< F Fm m0 m l,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           [[[ m ::: Fm * indrep_n_tree indlvl bxp ir l nvalid ]]] *
+           [[ nvalid <= length l ]] * [[ 0 < nvalid ]]
+    POST:hm' RET:^(ms, r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
+           [[ r = firstn (roundup nvalid NIndirect) l ]]
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
+    >} indread indlvl lxp ir nvalid ms.
+  Admitted.
+
+  (************* program *)
+
+  Definition get lxp (ir : irec) off ms :=
+    If (lt_dec off NDirect) {
+      Ret ^(ms, selN (IRBlocks ir) off $0)
+    } else {
+      let^ (ms, v) <- indget 0 lxp (IRIndPtr ir) (off - NDirect) ms;
+      Ret ^(ms, v)
+    }.
+
   Definition read lxp (ir : irec) ms :=
     If (le_dec (IRLen ir) NDirect) {
       Ret ^(ms, firstn (IRLen ir) (IRBlocks ir))
     } else {
-      let^ (ms, indbns) <- indread 0 lxp (IRIndPtr ir) ms;
+      let^ (ms, indbns) <- indread 0 lxp (IRIndPtr ir) (IRLen ir - NDirect) ms;
       Ret ^(ms, (firstn (IRLen ir) ((IRBlocks ir) ++ indbns)))
     }.
 
@@ -399,194 +576,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Qed.
 
   Hint Rewrite length_enumerate firstn_enumerate : list.
-
-  Theorem indget_ok : forall indlvl lxp bxp bn off ms,
-    {< F Fm m0 m l nvalid,
-    PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: Fm * indrep_ind indlvl bxp bn l nvalid ]]] *
-           [[ off < nvalid ]]
-    POST:hm' RET:^(ms, r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
-           [[ r = selN l off $0 ]]
-    CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
-    >} indget indlvl lxp bn off ms.
-  Proof.
-    induction indlvl; simpl.
-    hoare; autorewrite with core; auto; omega.
-    repeat safestep.
-    - apply Nat.div_lt_upper_bound; mult_nonzero.
-      unfold IndRec.rep, IndRec.items_valid, IndRec.Defs.item in *; simpl in *.
-      repeat match goal with
-        | [H : length ?l = _ |- context [length ?l] ] => rewrite H
-        | [H : context [length ?l] |- context [length ?l] ] => destruct_lift H
-      end.
-      lia.
-    - erewrite listmatch_isolate; autorewrite with list.
-      unfold Rec.to_word; simpl.
-      repeat (rewrite firstn_enumerate ||
-              rewrite selN_enumerate   ||
-              rewrite selN_firstn      ||
-              erewrite snd_pair); eauto.
-      cancel.
-      all : repeat match goal with
-            | [ |- ?off / ?N < divup ?nvalid ?N] => eapply lt_le_trans
-            | [ |- ?off / ?N < _ ]=> apply div_lt_divup
-            | [ H: ?off < ?nvalid |- ?off < _ ] => apply H
-            | [ |- context [length (firstn _ _)] ] => rewrite firstn_length_l
-            | [ H : context [IndRec.rep _ ?l] |- context [length ?l] ] =>
-                    unfold IndRec.rep, IndRec.items_valid in H; destruct_lift H; substl (length l)
-            | [ |- ?a <= ?a ] => auto
-            | [ |- divup _ _ <= length ?a ] => substl (length a)
-            | [ |- divup _ _ <= _ ] => apply divup_le; lia
-            end; auto; mult_nonzero.
-    - edestruct Nat.min_spec as [ [H' Hmin] | [H' Hmin] ]; rewrite Hmin; clear Hmin.
-      + rewrite <- Nat.lt_add_lt_sub_r.
-        apply le_lt_trans with (m := off); auto.
-        apply div_mod_le; auto.
-      + apply Nat.mod_upper_bound; mult_nonzero.
-    - eapply selN_selN_firstn_hom.
-      match goal with [H : context [listmatch _ _ _] |- _ ]=>
-        rewrite listmatch_lift_r in H; destruct_lift H; eauto end.
-      intros; destruct x; simpl.
-      rewrite indrep_ind_lift_length.
-      instantiate (1 := fun n_w y => indrep_ind _ _ (# (snd n_w)) y (min (_ - (fst n_w) * _) _)); simpl.
-      apply piff_refl.
-      apply div_lt_mul_lt; mult_nonzero.
-      eapply lt_le_trans; [> apply div_lt_divup; mult_nonzero |]; eauto.
-      match goal with [H : ?a = _ |- context [?a] ] => substl a end.
-      lia.
-      Grab Existential Variables.
-      all : auto.
-  Qed.
-
-  Fact indrep_ind_0_is : forall bxp ibn l, indrep_ind bxp 0 ibn l = 
-    ([[length l = NIndirect ]] * [[ BALLOC.bn_valid bxp ibn ]] * IndRec.rep ibn l)%pred.
-  Proof. unfold indrep_ind; simpl; rewrite mult_1_r; auto. Qed.
-
-  Fact indrep_ind_S_is : forall bxp indlvl ibn l, indrep_ind bxp (S indlvl) ibn l =
-    ([[length l = (NIndirect * NIndirect ^ (S indlvl))%nat ]] * [[ BALLOC.bn_valid bxp ibn ]] * 
-      exists iblocks l_part, IndRec.rep ibn iblocks *
-        [[ length iblocks = NIndirect ]] * [[ l = concat l_part ]] *
-        listmatch (fun ibn' l' => indrep_ind bxp indlvl # (ibn') l') iblocks l_part)%pred.
-  Proof. unfold indrep_ind; auto. Qed.
-
-  Fact listmatch_inj : forall  A B l l1 l2 AT AEQ V F1 F2 (f : A -> B -> @pred AT AEQ V) m,
-    (forall Fa Fb x a b, (Fa * f x a)%pred m -> (Fb * f x b)%pred m -> a = b) -> (F1 * listmatch f l l1)%pred m
-      -> (F2 * listmatch f l l2)%pred m -> l1 = l2.
-  Proof.
-    induction l; intros; destruct l1, l2; auto.
-    all : unfold listmatch in *;
-          destruct_lift H0; destruct_lift H1;
-          match goal with
-          | [ H : 0 = S _ |- _] => inversion H
-          | [ H : S _ = 0 |- _] => inversion H
-          | [ |- _] => idtac
-          end.
-    f_equal.
-    eapply H with (x := a).
-      eapply pimpl_apply; [> | exact H0]; cancel.
-      eapply pimpl_apply; [> | exact H1]; cancel.
-      eapply IHl.
-      eassumption.
-      eapply pimpl_apply; [> | exact H0]; cancel.
-      eapply pimpl_apply; [> | exact H1]; cancel.
-  Qed.
-
-  Theorem indrep_ind_inj : forall indlvl Fa Fb l1 l2 bxp ibn m,
-    (Fa * indrep_ind bxp indlvl ibn l1)%pred m -> (Fb * indrep_ind bxp indlvl ibn l2)%pred m -> l1 = l2.
-  Proof.
-    induction indlvl; intros; simpl in *.
-    eapply IndRec.rep_inj; eauto.
-    eapply pimpl_apply; [> | exact H]; cancel.
-    eapply pimpl_apply; [> | exact H0]; cancel.
-    destruct_lift H.
-    destruct_lift H0.
-    assert (dummy1 = dummy).
-    eapply IndRec.rep_inj.
-    eapply pimpl_apply; [> | exact H0]; cancel.
-    eapply pimpl_apply; [> | exact H]; cancel.
-    subst.
-    f_equal.
-    eapply listmatch_inj with
-      (f := fun a b => indrep_ind bxp indlvl (# a) b)
-      (l := dummy); intros.
-    eapply IHindlvl; eauto.
-    eapply pimpl_apply; [> | exact H]; cancel.
-    eapply pimpl_apply; [> | exact H0]; cancel.
-  Qed.
-
-  Theorem indrec_rep_unify : forall l1 l2 l3 l4 Fa Fb Fc Fd bxp indlvl ir m,
-    (Fa * IndRec.rep ir l1)%pred m -> (Fb * IndRec.rep ir l2)%pred m ->
-    (Fc * listmatch (fun a b => indrep_ind bxp indlvl (# a) b) l1 l3)%pred m ->
-    (Fd * listmatch (fun a b => indrep_ind bxp indlvl (# a) b) l2 l4)%pred m ->
-    l1 = l2 /\ l3 = l4.
-  Proof.
-    intros.
-    assert (l1 = l2) by (eapply IndRec.rep_inj; eauto).
-    subst; intuition.
-    eapply listmatch_inj; eauto.
-    simpl; intros.
-    eapply indrep_ind_inj; eauto.
-  Qed.
-
-  Ltac unify_rep := match goal with
-    [ l1 : IndRec.Defs.itemlist, l2 : IndRec.Defs.itemlist,
-      l3 : list (list waddr), l4 : list (list waddr),
-      H1 : context [listmatch _ ?l1 ?l3],
-      H2 : context [listmatch _ ?l2 ?l4]
-      |- _] => assert (l1 = l2 /\ l3 = l4);
-      [> eapply indrec_rep_unify;
-        [> eapply pimpl_apply; [> | exact H1]; cancel |
-           eapply pimpl_apply; [> | exact H2]; cancel |
-           eapply pimpl_apply; [> | exact H1]; cancel |
-           eapply pimpl_apply; [> | exact H2]; cancel ] | intuition; subst]
-      end.
-
-  Theorem indread_ok : forall indlvl lxp bxp ir ms,
-  {< F Fm m0 m l,
-    PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: Fm * indrep_ind bxp indlvl ir l ]]]
-    POST:hm' RET:^(ms, r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
-           [[ r = l ]]
-    CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
-    >} indread indlvl lxp ir ms.
-  Proof.
-    induction indlvl.
-    unfold indread; hoare.
-    unfold IndRec.Defs.item; simpl; apply firstn_oob; omega.
-    unfold indread; hoare; try unify_rep.
-    rewrite firstn_oob by omega.
-    rewrite listmatch_extract.
-    cancel.
-    unfold IndRec.Defs.item in *; simpl in *; omega.
-    erewrite plus_comm, firstn_sum_split.
-    f_equal.
-    apply listmatch_length_r in H8 as H'.
-    unfold IndRec.Defs.item in *; simpl in *.
-    rewrite concat_hom_skipn.
-    erewrite <- concat_hom_subselect_firstn; auto.
-    rewrite firstn_oob; auto.
-    rewrite listmatch_extract in H8.
-    rewrite indrep_ind_lift in H8.
-    destruct_lift H8.
-    rewrite H16; auto.
-    all : try match goal with
-          | [ |- _ < _ ] => unfold IndRec.Defs.item in *; simpl in *; omega
-          | [ |- firstn _ _ = _] => apply firstn_oob; omega
-          | [l1 : (list (list waddr)), H : context[listmatch _ _ ?l1] |- Forall _ ?l1]
-            => rewrite listmatch_lift_r in H;
-              [> destruct_lift H; simpl; eassumption
-               | intros; rewrite indrep_ind_lift; split; cancel ]
-          end.
-    apply LOG.rep_hashmap_subset; auto.
-    Grab Existential Variables.
-    all : eauto; try exact ($ 0); try exact tt.
-  Qed.
 
   Opaque indget.
   Hint Extern 1 ({{_}} Bind (indget _ _ _ _ _) _) => apply indget_ok : prog.
