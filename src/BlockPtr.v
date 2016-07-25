@@ -159,28 +159,30 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Local Hint Resolve le_ndirect_goodSize le_nindirect_goodSize le_nblocks_goodSize.
 
   (************** rep invariant *)
+
+   Definition indrep_n_helper bxp ibn iblocks nvalid :=
+    (if (addr_eq_dec nvalid 0)
+      then [[ iblocks = repeat ($ 0) NIndirect ]]
+      else [[ BALLOC.bn_valid bxp ibn ]] * IndRec.rep ibn iblocks
+    )%pred.
+
   (* indlvl = 0 if ibn is the address of an indirect block,
      indlvl = 1 for doubly indirect, etc. *)
 
-  Fixpoint indrep_ind indlvl bxp ibn l nvalid :=
-    ([[ length l = NIndirect ^ (S indlvl) ]] * [[ BALLOC.bn_valid bxp ibn ]] *
-    [[ 0 < nvalid <= NIndirect ^ (S indlvl) ]] *
+ Fixpoint indrep_n_tree indlvl bxp ibn l nvalid :=
+    (exists iblocks l_part, indrep_n_helper bxp ibn iblocks nvalid *
+    [[ l = concat l_part ]] *
     match indlvl with
-    | 0 => IndRec.rep ibn l
-    | S indlvl' => exists iblocks l_part,
-      IndRec.rep ibn iblocks *
-        [[ length l_part = NIndirect ]] *
-      [[ l = concat l_part ]] *
-        let divisor := NIndirect ^ indlvl in
-        let nr := divup nvalid divisor in
-        listmatch (fun index_ibn' l' => let '(index, ibn') := index_ibn' in
-                    let nvalid' := min (nvalid - index * divisor) (NIndirect ^ indlvl) in
-                    indrep_ind indlvl' bxp (# ibn') l' nvalid')
-                  (firstn nr (enumerate iblocks)) (firstn nr (l_part))
+    | 0 => [[ iblocks = concat l_part ]]
+    | S indlvl' =>  let divisor := NIndirect ^ indlvl in
+                    let nr := divup nvalid divisor in
+                    listmatch (fun index_ibn' l' => let '(index, ibn') := index_ibn' in
+                        indrep_n_tree indlvl' bxp (# ibn') l' (nvalid - index * divisor))
+                      (enumerate iblocks) l_part
     end)%pred.
 
   Hint Extern 0 (okToUnify (listmatch _ _ _) (listmatch _ _ _)) => constructor : okToUnify.
-  Hint Extern 0 (okToUnify (indrep_ind _ _ _ _ _) (indrep_ind _ _ _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (indrep_n_tree _ _ _ _ _) (indrep_n_tree _ _ _ _ _)) => constructor : okToUnify.
 
   Definition indrep bxp ir (indlist : list waddr) nblocks :=
     ( [[ nblocks = 0 ]] \/ (
