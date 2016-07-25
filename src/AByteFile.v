@@ -1867,18 +1867,20 @@ Hint Extern 1 ({{_}} Bind (write_to_block _ _ _ _ _ _ _) _) => apply write_to_bl
     {
         let^ (ms3, res) <- BFILE.grow lxp bxps ixp inum (byte2valu b) ms2;
         match res with
-           | Err e => Ret ^(ms3, Err e)
+           | Err e => Ret ^(ms3, Err e, false)
            | OK _ =>
               ms4 <- BFILE.updattr lxp ixp inum (INODE.UBytes $(S bylen)) ms3;(*ADD: update size *)
-              Ret ^(ms4, OK tt)
+              Ret ^(ms4, OK tt, true)
         end
 
      }
      else
      {
-       ms3 <- dwrite_to_block lxp ixp inum ms2 (bylen/valubytes) (bylen mod valubytes) (b::nil);
-       ms4 <- BFILE.updattr lxp ixp inum (INODE.UBytes $(S bylen)) ms3; (*ADD: update size *)
-       Ret ^(ms4, OK tt)
+       let^ (ms3, block) BFILE.read lxp ixp inum (blen-1) ms2;
+       let new_block := list2valu (updN (valu2list) (bylen mod valubytes) b)
+       ms4 <- BFILE.dwrite lxp ixp inum (blen-1) new_block ms3;
+       ms5 <- BFILE.updattr lxp ixp inum (INODE.UBytes $(S bylen)) ms4; (*ADD: update size *)
+       Ret ^(ms5, OK tt, false)
      }.
      
 
@@ -1890,10 +1892,10 @@ Theorem grow_ok : forall lxp bxp ixp inum b ms,
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            rep f fy  *
            [[[ (ByFData fy) ::: Fd]]] 
-    POST:hm' RET:^(ms', r) [[ BFILE.MSAlloc ms = BFILE.MSAlloc ms' ]] * exists m' e,
+    POST:hm' RET:^(ms', r, bl) [[ BFILE.MSAlloc ms = BFILE.MSAlloc ms' ]] * exists m' e,
            let fy' := mk_bytefile ((ByFData fy) ++ ((b,nil)::nil))%list ($ (S (length (ByFData fy))), snd (ByFAttr fy)) in
            [[ r = Err e ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (BFILE.MSLL ms') hm' \/
-           [[ r = OK tt ]] * exists flist' ilist' frees' f',
+           [[ r = OK tt /\ bl = true]] * exists flist' ilist' frees' f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (BFILE.MSLL ms') hm' *
            [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist' frees') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
@@ -1901,7 +1903,8 @@ Theorem grow_ok : forall lxp bxp ixp inum b ms,
            [[[ (ByFData fy') ::: (Fd * (length (ByFData fy)) |-> (b, nil))]]] *
            [[ ByFAttr fy' = ($ (S (length (ByFData fy))), snd (ByFAttr fy)) ]] *
            [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (BFILE.MSAlloc ms'))
-                         ilist' (BFILE.pick_balloc frees' (BFILE.MSAlloc ms')) ]]
+                         ilist' (BFILE.pick_balloc frees' (BFILE.MSAlloc ms')) ]] \/
+           (* add spec for dwrite portion *)              
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} grow lxp bxp ixp inum b ms.
 Proof.
@@ -2398,13 +2401,36 @@ rewrite skipn_length.
 rewrite Nat.add_assoc.
 rewrite <- le_plus_minus.
 auto.
-omega.
+
+apply list2nmem_arrayN_bound in H18 as H'.
+destruct H'.
+apply length_zero_iff_nil in H6.
+rewrite skipn_length in H6.
+rewrite H5 in H6.
+rewrite <- Nat.mul_sub_distr_r in H6.
+rewrite valubytes_is in *. omega.
+rewrite skipn_length in H6.
+rewrite valubytes_is in *; omega.
 
 rewrite skipn_length.
 rewrite valubytes_is in *; omega.
-omega.
 
+apply list2nmem_arrayN_bound in H18 as H'.
+destruct H'.
+apply length_zero_iff_nil in H6.
+rewrite skipn_length in H6.
+rewrite H5 in H6.
+rewrite <- Nat.mul_sub_distr_r in H6.
+rewrite valubytes_is in *. omega.
+rewrite skipn_length in H6.
+rewrite valubytes_is in *; omega.
 
+Focus 2.
+instantiate (1:= updN flist0 inum ( BFILE.mk_bfile (updN (BFILE.BFData f0)  (block_off + m1) (list2valu (get_sublist data ( m1 * valubytes) valubytes), nil)) (BFILE.BFAttr f0))).
+Search ptsto list2nmem updN.
+eapply list2nmem_updN.
+eauto.
+pred_apply. cancel.
 repeat split.
 eauto.
 
