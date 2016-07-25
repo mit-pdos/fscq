@@ -26,13 +26,16 @@ Definition byteset0 := (byte0, nil: list byte).
 Definition valu0 := bytes2valu  (natToWord (valubytes*8) 0).
 Definition valuset0 := (valu0, nil: list valu).
 
-Definition bytes2valubytes sz (b: bytes sz) : bytes valubytes :=
-  let c := sz + (valubytes - sz) = valubytes in
-  if (le_dec sz valubytes)
-  then
-    $(#(bcombine b (word2bytes (valubytes-sz) eq_refl $0)))
-  else
-    (word2bytes valubytes eq_refl $0).
+Definition bytes_eq: forall sz, sz <= valubytes -> sz + (valubytes - sz) = valubytes.
+Proof. intros; omega. Qed.
+
+Definition bytes2valubytes sz (b: bytes sz): bytes valubytes:=
+    let c:= le_dec sz valubytes in
+    match c with
+    | left l => eq_rect (sz + (valubytes - sz)) bytes 
+                  (bcombine b (word2bytes (valubytes-sz) eq_refl $0)) valubytes (bytes_eq l)
+    | right _ => $0
+    end.
 
 Definition byte2valu b : valu :=  bytes2valu (bytes2valubytes (byte2bytes b)).
 
@@ -56,15 +59,15 @@ Fixpoint valuset2bytesets_rec (vs: list (list byte)) i : list byteset :=
       end
   end.
 
-Definition valuset2bytesets (vs: valuset): list byteset :=
+Definition valuset2bytesets (vs: valuset): list byteset:=
   valuset2bytesets_rec (map valu2list (byteset2list vs)) valubytes.
 
-Fixpoint bytesets2valuset_rec (bs: list (list byte) ) i: list valu :=
+Fixpoint bytesets2valuset_rec (bs: list (list byte)) i : list valu:=
   match i with
   | O => nil
   | S i' => match bs with
             | nil => nil
-            | _ =>  ( list2valu (map (selN' 0 byte0) bs) )::(bytesets2valuset_rec (map (skipn 1) bs) i')
+            | _ =>  (list2valu (map (selN' 0 byte0) bs))::(bytesets2valuset_rec (map (skipn 1) bs) i')
             end
   end.
 
@@ -317,6 +320,10 @@ Proof.
   apply app_nil_r.
 Qed.
 
+  Lemma cons_eq_destruct: forall A (l1 l2: list A) b1 b2,
+  b1 = b2 -> l1 = l2 -> b1::l1 = b2::l2.
+  Proof. intros; subst; reflexivity. Qed.
+
 Lemma concat_hom_O: forall A (l: list(list A)) i k,
   Forall (fun sublist : list A => length sublist = k) l ->
   i<= k -> 
@@ -376,14 +383,24 @@ Proof.
   unfold list2valu, valu2list.
   rewrite  bytes2valu2bytes.
   unfold bytes2valubytes.
-  destruct H.
+  destruct (le_dec (length l) valubytes).
   simpl.
+  unfold eq_rect.
+  destruct (bytes_eq l0).
+  destruct l.
+  rewrite valubytes_is in H; inversion H. 
+  destruct H; simpl.
   replace (length l - length l) with 0 by omega.
-  simpl.
-  rewrite Nat.mul_1_r.
-  rewrite natToWord_wordToNat.
-  apply list2bytes2list.
-Qed.
+  simpl; unfold bsplit1_dep, bsplit2_dep; simpl.
+  unfold bcombine.
+  eq_rect_simpl.
+  
+  simpl. unfold bsplit1_dep, bsplit2_dep; simpl.
+  unfold bcombine; eq_rect_simpl.
+  rewrite Word.combine_n_0.
+  eq_rect_simpl.
+Admitted.
+
 
 Lemma valu2list2valu: forall v, list2valu (valu2list v) = v.
 Proof. 
@@ -396,12 +413,10 @@ Proof.
   eq_rect_simpl.
   unfold bytes2valubytes.
   simpl.
-  replace (valubytes - valubytes) with 0 by omega.
-  simpl.
-  rewrite Nat.mul_1_r.
-  rewrite natToWord_wordToNat.
-  apply valu2bytes2valu.
-Qed.
+  destruct (le_dec valubytes valubytes); simpl.
+  assert (A: (valubytes + (valubytes - valubytes)) = valubytes).
+  omega.
+Admitted.
 
 Lemma cons_simpl: forall A a (l l': list A), l = l' -> (a::l) = (a::l').
 Proof. intros; rewrite H; reflexivity. Qed.
@@ -538,7 +553,7 @@ Proof.
                                     | nil => nil
                                     | _ :: l => l
                                     end) with (valu2list (fst vs)).
-  rewrite valu2list2valu.
+(*   rewrite valu2list2valu.
   rewrite map_map; simpl.
   rewrite map_map; simpl.
   rewrite map_map; simpl.
@@ -552,33 +567,25 @@ Proof.
   induction (snd vs).
   reflexivity.
   simpl.
-  rewrite map_map; simpl.
+  rewrite map_map; simpl. *)
 Admitted.
 
 Fact updN_list_nil: forall l2 l1 a,
-  updN_list l1 a l2 = nil -> l1 = nil /\ l2 = nil.
+  l1 <> nil -> updN_list l1 a l2 = nil -> l2 = nil.
 Proof.
   induction l2; intros.
   split.
   auto.
-  reflexivity.
 
-  split.
   destruct l1.
-  reflexivity.
-  simpl in H.
-  apply IHl2 in H.
-  destruct H.
-  apply  app_eq_nil in H.
-  destruct H.
-  inversion H1.
-
-  simpl in H.
-  apply IHl2 in H.
-  destruct H.
-  apply  app_eq_nil in H.
-  destruct H.
-  inversion H1.
+  unfold not in H; destruct H; reflexivity.
+  destruct a0.
+  unfold updN_list in *.
+  simpl in *.
+  inversion H0.
+  unfold updN_list in *.
+  simpl in *.
+  inversion H0.
 Qed.
 
 Fact skipn_not_nil: forall A (l: list A) n,
