@@ -186,7 +186,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Definition indrep bxp ir (indlist : list waddr) nblocks :=
     ( [[ nblocks = 0 ]] \/ (
-      [[ nblocks > 0 ]] * indrep_ind 0 bxp (IRIndPtr ir) indlist nblocks))%pred.
+      [[ nblocks > 0 ]] * indrep_n_tree 0 bxp (IRIndPtr ir) indlist nblocks))%pred.
 
   Definition rep bxp (ir : irec) (l : list waddr) :=
     ( [[ length l = (IRLen ir) /\ length l <= NBlocks ]] *
@@ -202,22 +202,29 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Definition rep_indirect bxp (ir : irec) (l : list waddr) :=
     ( [[ length l = (IRLen ir) /\ length l <= NBlocks /\ length l > NDirect ]] *
       [[ length (IRBlocks ir) = NDirect ]] *
-      exists indlist, indrep_ind 0 bxp (IRIndPtr ir) indlist (length l - NDirect) *
+      exists indlist, indrep_n_tree 0 bxp (IRIndPtr ir) indlist (length l - NDirect) *
       [[ l = (IRBlocks ir) ++ firstn (length l - NDirect) indlist ]] )%pred.
 
   (* Necessary to make subst work when there's a recursive term like:
      l = firstn (length l) ... *)
   Set Regular Subst Tactic.
 
+  Lemma indrep_n_helper_0 : forall bxp ibn l,
+    indrep_n_helper bxp ibn l 0 <=p=> [[ l = repeat $0 NIndirect ]] * emp.
+  Proof.
+    unfold indrep_n_helper; intros; split; cancel.
+  Qed.
+
   Lemma rep_piff_direct : forall bxp ir l,
     length l <= NDirect ->
     rep bxp ir l <=p=> rep_direct ir l.
   Proof.
     unfold rep, indrep, rep_direct; intros; split; cancel; try omega.
+    rewrite firstn_app_l in H5 by omega; auto.
     substl l at 1; rewrite firstn_app_l by omega; auto.
-    rewrite app_nil_r; auto.
+    Unshelve.
+    eauto.
   Qed.
-
 
   Lemma rep_piff_indirect : forall bxp ir l,
     length l > NDirect ->
@@ -228,9 +235,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
     replace (NDirect + (length l - NDirect)) with (length l) by omega; auto.
     substl l at 1; rewrite <- firstn_app_r. setoid_rewrite H3.
     replace (NDirect + (length l - NDirect)) with (length l) by omega; auto.
-    Unshelve. eauto.
+    Unshelve. exact nil.
   Qed.
-
 
   Lemma rep_selN_direct_ok : forall F bxp ir l m off,
     (F * rep bxp ir l)%pred m ->
@@ -259,16 +265,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
     destruct H1; auto.
   Qed.
 
-  Local Hint Resolve off_mod_len_l.
-  Local Hint Resolve mult_neq_0.
-
-  Lemma indrep_ind_lift_length : forall indlvl bxp ibn l nvalid,
-    indrep_ind indlvl bxp ibn l nvalid <=p=>
-    [[ length l = NIndirect ^ (S indlvl) ]] * indrep_ind indlvl bxp ibn l nvalid.
-  Proof.
-    destruct indlvl; simpl; intros; split; cancel.
-  Qed.
-
   Fact divmod_n_zeros : forall n, fst (Nat.divmod n 0 0 0) = n.
   Proof.
     intros.
@@ -276,14 +272,13 @@ Module BlockPtr (BPtr : BlockPtrSig).
     unfold Nat.div in H. auto.
   Qed.
 
-  Hint Rewrite divmod_n_zeros using auto.
-  Local Hint Resolve Nat.pow_nonzero.
-
   Ltac mult_nonzero := 
-    repeat (match goal with 
+    repeat (match goal with
     | [ |- mult _ _ <> 0 ] => apply mult_neq_0
     | [ |- mult _ _ > 0 ] => apply lt_mul_mono
     | [ |- 0 < Nat.pow _ _ ] => apply neq_0_lt, not_eq_sym
+    | [ |- 0 < _ ] => apply neq_0_lt
+    | [ |- 0 <> _ ] => apply not_eq_sym
     end; auto).
 
 
