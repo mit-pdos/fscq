@@ -124,18 +124,27 @@ Module TREESEQ.
   Qed.
 
 
-  (* A predicate that states when it is safe to perform an upd a in treeseq. For example,
+  (* f' has the same content as f, but is perhaps shorter *)
+  Definition fileblock_match inum f f' al ilistold ilistnew :=
+    length al = length (BFILE.BFData f) /\
+    (forall i, i < length (BFILE.BFData f') ->
+                BFILE.block_belong_to_file ilistold (selN al i 0) inum i) /\
+    (forall i, i < length (BFILE.BFData f') ->
+                BFILE.block_belong_to_file ilistnew (selN al i 0) inum i).
+
+  (* A predicate that states when it is safe to perform an upd/sync a in treeseq. For example,
    * it is unsafe to perform an upd on a treeseq if a tree in the sequence uses the block
    * in another file than in the newest tree. This predicate forbids this case, as well as
-   * others.
+   * others.  XXX gen numbers to allow inode re-use within treeseq (e.g., unlink, create, truncate, upd *)
    *)
   Definition treeseq_upd_safe pathname off flag (tnewest tolder : treeseq_one) :=
-    forall bn inum f,
+    forall bn inum f al,
     find_subtree pathname (TStree tnewest) = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file (TSilist tnewest) bn inum off ->
     (BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn /\
       (match find_subtree pathname (TStree tolder) with
-      | Some (TreeFile inum' f') => inum' = inum /\ off >= List.length (BFILE.BFData f')
+      | Some (TreeFile inum' f') => inum' = inum /\ off >= Datatypes.length (BFILE.BFData f') /\
+        fileblock_match inum f' f al (TSilist tolder) (TSilist tnewest)
       | Some (TreeDir _ _) => False
       | None => True
       end)
@@ -143,16 +152,18 @@ Module TREESEQ.
     \/
     (exists f',
      find_subtree pathname (TStree tolder) = Some (TreeFile inum f') /\
-     BFILE.block_belong_to_file (TSilist tolder) bn inum off).
-
-  (* A predicate that states when it is safe to grow a file at offset by one block.
-  *)
+     off < Datatypes.length (BFILE.BFData f') /\ 
+     BFILE.block_belong_to_file (TSilist tolder) bn inum off /\    (* redundant with the next one *)
+     fileblock_match inum f' f al (TSilist tolder) (TSilist tnewest)).
+  
+  (* A predicate that states when it is safe to grow a file at offset by one block. *)
   Definition treeseq_grow_safe pathname off flag (tnewest tolder : treeseq_one) :=
-    forall bn inum f,
+    forall bn inum f al,
     find_subtree pathname (TStree tnewest) = Some (TreeFile inum f) ->
     (BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn /\
       (match find_subtree pathname (TStree tolder) with
-      | Some (TreeFile inum' f') => inum' = inum /\ off >= List.length (BFILE.BFData f')
+      | Some (TreeFile inum' f') => inum' = inum /\ off >= List.length (BFILE.BFData f') /\
+         fileblock_match inum f' f al (TSilist tolder) (TSilist tnewest)
       | Some (TreeDir _ _) => False
       | None => True
       end)
@@ -260,6 +271,8 @@ Module TREESEQ.
     eapply rep_tree_names_distinct; eauto.
     eauto.
     eapply tree_file_length_ok in H2; eauto.
+    Unshelve.
+    exact [].
   Qed.
 
   Lemma tree_safe_upd: forall F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f n,
@@ -343,6 +356,8 @@ Module TREESEQ.
     intros; subst.
     unfold treeseq_one_upd at 1 2 3; rewrite H6; simpl.
     eauto.
+    Unshelve.
+    exact [].
   Qed.
 
   Theorem treeseq_in_ds_upd : forall F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f,
@@ -466,7 +481,7 @@ Module TREESEQ.
     unfold treeseq_grow_safe in *.
     intros.
     specialize (H1' bn inum file).
-    destruct H1'.
+    edestruct H1'.
     eassumption.
     destruct (find_subtree pathname (TStree x)).
     destruct d.
@@ -475,6 +490,9 @@ Module TREESEQ.
     erewrite find_update_subtree in H4.
     inversion H4.
     intuition.
+    subst; eauto.
+    rewrite <- H8.
+    rewrite H9.
     eassumption.
     eauto.
     eauto.
