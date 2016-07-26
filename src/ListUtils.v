@@ -107,6 +107,17 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma concat_hom_repeat : forall A l k (item : A),
+  Forall (fun x => x = repeat item k) l ->
+  concat l = repeat item (length l * k).
+Proof.
+  induction l; auto; intros.
+  simpl.
+  inversion H; subst.
+  rewrite <- repeat_app.
+  f_equal; auto.
+Qed.
+
 Lemma length_nil : forall A (l : list A),
   length l = 0 -> l = nil.
 Proof.
@@ -2429,3 +2440,17 @@ Proof.
   rewrite firstn_seq; f_equal.
   rewrite firstn_length; auto.
 Qed.
+
+Lemma enumerate_inj : forall A (l1 l2 : list A), enumerate l1 = enumerate l2 <-> l1 = l2.
+Proof.
+  unfold enumerate.
+  split; intros; subst; auto.
+  generalize dependent H.
+  generalize 0.
+  generalize dependent l2.
+  induction l1; simpl in *; intros;
+  destruct l2; try inversion H; auto.
+  f_equal; eauto.
+Qed.
+
+Hint Rewrite length_enumerate firstn_enumerate selN_enumerate enumerate_inj : lists.
