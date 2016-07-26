@@ -103,6 +103,17 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
       nia.
   Qed.
 
+  Lemma roundup_ge_divisor : forall x sz, 0 < x -> roundup x sz >= sz.
+  Proof.
+    unfold roundup; intros.
+    case_eq sz; intros; subst; auto.
+    unfold ge.
+    rewrite <- mult_1_l at 1.
+    apply mult_le_compat; auto.
+    unfold divup.
+    apply Nat.div_str_pos; omega.
+  Qed.
+
   Lemma divup_ok:
     forall x,
       divup x valubytes * valubytes >= x.
