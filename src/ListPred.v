@@ -288,6 +288,14 @@ Proof.
   end.
 Qed.
 
+Lemma listpred_piff_replace : forall A B AT M l F G,
+  (forall x, In x l -> F x <=p=> G x) -> @listpred A B AT M F l <=p=> listpred G l.
+Proof.
+  induction l; intros; split; cancel.
+  rewrite IHl, H by auto; cancel.
+  rewrite IHl, H by (intuition; symmetry; auto); cancel.
+Qed.
+
 (* predicate over a pair of lists *)
 
 Section LISTMATCH.
@@ -491,6 +499,16 @@ Proof.
   - apply forall_forall2; auto.
     rewrite Forall_map.
     rewrite map_fst_combine; auto.
+Qed.
+
+Lemma listmatch_piff_replace : forall A B AT T M l1 l2 F G,
+  (forall x y, In x l1 -> In y l2 -> F x y <=p=> G x y) -> @listmatch A B AT M T F l1 l2 <=p=> listmatch G l1 l2.
+Proof.
+  unfold listmatch; intros.
+  rewrite listpred_piff_replace.
+  split; cancel.
+  intros a; destruct a; intros HH; simpl; auto.
+  apply H; solve [eapply in_combine_l; eauto | eapply in_combine_r; eauto].
 Qed.
 
 Lemma arrayN_listpred_seq : forall V l st n,
