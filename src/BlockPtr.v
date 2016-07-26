@@ -717,6 +717,61 @@ Module BlockPtr (BPtr : BlockPtrSig).
     Unshelve. all : eauto; split; solve [eauto | exact ($0)].
   Qed.
 
+
+  Fixpoint indshrink (indlvl : nat) lxp bxp (ir : addr) nr (ms : LOG.mstate * Cache.cachestate) : prog (LOG.memstate * unit) :=
+    match indlvl with
+    | 0 =>  If (addr_eq_dec nr NIndirect) {
+              ms <- BALLOC.free lxp bxp ir ms;
+              Ret ^(ms)
+            } else {
+              Ret ^(ms)
+            }
+    | S indlvl' =>
+      let^ (ms, indbns) <- IndRec.read lxp ir 1 ms;
+      let nloops := (divup nr (NIndirect ^ indlvl)) in
+      (* iterate over indbns backwards so the invariant has a nice definition *)
+      ms <- ForN i < nloops
+        Hashmap hm
+        Ghost [ F Fm l bxp crash m0 m freelist nvalid ]
+        Loopvar [ ms ]
+        Invariant
+          exists freelist', LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          [[[ m ::: Fm *
+            indrep_n_tree indlvl bxp ir l (nvalid - (max nr (i * NIndirect ^ indlvl))) *
+            BALLOC.rep bxp freelist' ]]] * [[ incl freelist freelist' ]]
+        OnCrash crash
+        Begin
+          let index := (NIndirect - i - 1) in
+          let bn := #(selN indbns index ($ 0)) in
+          let nr' := (min (NIndirect ^ indlvl) (nr - i * NIndirect ^ indlvl')) in
+          ms <- indshrink indlvl' lxp bxp bn nr' ms;
+          If (addr_eq_dec nr' (NIndirect ^ indlvl)) {
+            ms <- BALLOC.free lxp bxp bn (fst ms);
+            Ret ^(ms)
+          } else {
+            Ret ms
+          }
+        Rof ^(ms);
+        Ret ms
+    end.
+
+  Theorem indshrink_ok : forall indlvl lxp bxp ir nr ms,
+    {< F Fm m0 m l nvalid freelist,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           [[[ m ::: (Fm * indrep_n_tree indlvl bxp ir l nvalid * BALLOC.rep bxp freelist) ]]] *
+           [[ nvalid <= length l ]] * [[0 < nr <= nvalid ]]
+    POST:hm' RET:^(ms)  exists m' freelist' ncut l',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           [[ (indlvl = 0 /\ ncut = 0) \/ (indlvl > 0 /\ ncut = (nr / NIndirect * NIndirect)%nat ) ]] *
+           [[ l' = firstn (roundup nvalid NIndirect) l ++ repeat ($0) (nvalid / NIndirect * NIndirect) ]] *
+           [[[ m' ::: (Fm * indrep_n_tree indlvl bxp ir l' (nvalid - nr) * BALLOC.rep bxp freelist') ]]] *
+           [[ incl freelist freelist' ]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} indshrink indlvl lxp bxp ir nr ms.
+    Proof.
+    Admitted.
+
   (************* program *)
 
   Definition get lxp (ir : irec) off ms :=
