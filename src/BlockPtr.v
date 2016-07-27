@@ -718,9 +718,9 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Qed.
 
 
-  Fixpoint indshrink (indlvl : nat) lxp bxp (ir : addr) nr (ms : LOG.mstate * Cache.cachestate) : prog (LOG.memstate * unit) :=
+  Fixpoint indshrink (indlvl : nat) lxp bxp (ir : addr) nvalid nr (ms : LOG.mstate * Cache.cachestate) : prog (LOG.memstate * unit) :=
     match indlvl with
-    | 0 =>  If (addr_eq_dec nr NIndirect) {
+    | 0 =>  If (addr_eq_dec nr nvalid) {
               ms <- BALLOC.free lxp bxp ir ms;
               Ret ^(ms)
             } else {
@@ -728,23 +728,25 @@ Module BlockPtr (BPtr : BlockPtrSig).
             }
     | S indlvl' =>
       let^ (ms, indbns) <- IndRec.read lxp ir 1 ms;
-      let nloops := (divup nr (NIndirect ^ indlvl)) in
+      let divisor := (NIndirect ^ indlvl) in
+      let nloops := divup nvalid divisor - (nvalid - nr) / divisor * divisor in
       (* iterate over indbns backwards so the invariant has a nice definition *)
       ms <- ForN i < nloops
         Hashmap hm
-        Ghost [ F Fm l bxp crash m0 m freelist nvalid ]
+        Ghost [ F Fm l bxp crash m0 m freelist ]
         Loopvar [ ms ]
         Invariant
           exists freelist', LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
           [[[ m ::: Fm *
-            indrep_n_tree indlvl bxp ir l (nvalid - (max nr (i * NIndirect ^ indlvl))) *
+            indrep_n_tree indlvl bxp ir l (nvalid - (min nr (i * NIndirect ^ indlvl))) *
             BALLOC.rep bxp freelist' ]]] * [[ incl freelist freelist' ]]
         OnCrash crash
         Begin
           let index := (NIndirect - i - 1) in
           let bn := #(selN indbns index ($ 0)) in
+          let nvalid' := min (nvalid - i * NIndirect ^ indlvl') (i * NIndirect ^ indlvl) in
           let nr' := (min (NIndirect ^ indlvl) (nr - i * NIndirect ^ indlvl')) in
-          ms <- indshrink indlvl' lxp bxp bn nr' ms;
+          ms <- indshrink indlvl' lxp bxp bn nvalid' nr' ms;
           If (addr_eq_dec nr' (NIndirect ^ indlvl)) {
             ms <- BALLOC.free lxp bxp bn (fst ms);
             Ret ^(ms)
@@ -755,21 +757,35 @@ Module BlockPtr (BPtr : BlockPtrSig).
         Ret ms
     end.
 
-  Theorem indshrink_ok : forall indlvl lxp bxp ir nr ms,
-    {< F Fm m0 m l nvalid freelist,
+  Theorem indshrink_ok : forall indlvl lxp bxp ir nvalid nr ms,
+    {< F Fm m0 m l freelist,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * indrep_n_tree indlvl bxp ir l nvalid * BALLOC.rep bxp freelist) ]]] *
-           [[ nvalid <= length l ]] * [[0 < nr <= nvalid ]]
-    POST:hm' RET:^(ms)  exists m' freelist' ncut l',
+           [[ nvalid <= NIndirect ^ S indlvl ]] * [[0 < nr <= nvalid ]]
+    POST:hm' RET:^(ms)  exists m' freelist' l',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[ (indlvl = 0 /\ ncut = 0) \/ (indlvl > 0 /\ ncut = (nr / NIndirect * NIndirect)%nat ) ]] *
-           [[ l' = firstn (roundup nvalid NIndirect) l ++ repeat ($0) (nvalid / NIndirect * NIndirect) ]] *
+           [[ firstn (nvalid - nr) l' = firstn (nvalid - nr) l ]] *
            [[[ m' ::: (Fm * indrep_n_tree indlvl bxp ir l' (nvalid - nr) * BALLOC.rep bxp freelist') ]]] *
            [[ incl freelist freelist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
-    >} indshrink indlvl lxp bxp ir nr ms.
+    >} indshrink indlvl lxp bxp ir nvalid nr ms.
     Proof.
+      induction indlvl; simpl.
+      + step; [> repeat safestep | hoare ].
+        - rewrite nvalid_gt_0_indrep_helper in * by omega. destruct_lifts; auto.
+        - rewrite nvalid_gt_0_indrep_helper by omega.
+          rewrite IndRec.items_length_ok_pimpl; cancel.
+          unfold IndRec.Defs.item in *; simpl in *.
+          rewrite Nat.sub_diag, indrep_n_helper_0.
+          unfold IndRec.rep, IndSig.RAStart; cancel.
+          rewrite IndRec.Defs.ipack_one; simpl; solve [omega | cancel].
+        - rewrite Nat.sub_diag. simpl; auto.
+        - instantiate (l_part := [_]); simpl; rewrite app_nil_r.
+          eauto.
+        - simpl; rewrite app_nil_r; auto.
+        - repeat rewrite nvalid_gt_0_indrep_helper by omega. cancel.
+      + repeat safestep.
     Admitted.
 
   (************* program *)
