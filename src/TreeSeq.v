@@ -32,6 +32,7 @@ Require Import FSLayout.
 Require Import AsyncFS.
 Require Import Arith.
 Require Import Errno.
+Require Import List ListUtils.
 
 
 Import DIRTREE.
@@ -48,7 +49,8 @@ Module TREESEQ.
   Record treeseq_one := mk_tree {
     TStree  : DIRTREE.dirtree;
     TSilist : list INODE.inode;
-    TSfree  : list addr * list addr
+    TSfree  : list addr * list addr;
+    TSgen   : list nat
   }.
 
   Definition treeseq_one_safe t1 t2 mscs :=
@@ -108,7 +110,7 @@ Module TREESEQ.
     | None => t
     | Some (TreeFile inum f) => mk_tree (update_subtree pathname 
                                   (TreeFile inum (BFILE.mk_bfile (updN (BFILE.BFData f) off v) (BFILE.BFAttr f))) (TStree t))
-                           (TSilist t) (TSfree t)
+                           (TSilist t) (TSfree t) (TSgen t)
     | Some (TreeDir inum d) => t
     end.
 
@@ -136,15 +138,18 @@ Module TREESEQ.
    * it is unsafe to perform an upd on a treeseq if a tree in the sequence uses the block
    * in another file than in the newest tree. This predicate forbids this case, as well as
    * others.  XXX gen numbers to allow inode re-use within treeseq (e.g., unlink, create, truncate, upd *)
-   *)
+
   Definition treeseq_upd_safe pathname off flag (tnewest tolder : treeseq_one) :=
     forall bn inum f al,
     find_subtree pathname (TStree tnewest) = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file (TSilist tnewest) bn inum off ->
     (BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn /\
       (match find_subtree pathname (TStree tolder) with
-      | Some (TreeFile inum' f') => inum' = inum /\ off >= Datatypes.length (BFILE.BFData f') /\
-        fileblock_match inum f' f al (TSilist tolder) (TSilist tnewest)
+      | Some (TreeFile inum' f')  => 
+        (inum' <> inum) \/
+        ((inum' = inum) /\ (selN (TSgen tnewest) inum 0) <> (selN (TSgen tnewest) inum 0)) \/
+        ((inum' = inum) /\ (selN (TSgen tnewest) inum 0) = (selN (TSgen tnewest) inum 0) /\ off >= Datatypes.length (BFILE.BFData f') /\
+          fileblock_match inum f' f al (TSilist tolder) (TSilist tnewest))
       | Some (TreeDir _ _) => False
       | None => True
       end)
