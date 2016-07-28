@@ -679,6 +679,31 @@ Module ConcurrentCache (C:CacheSubProtocol).
     congruence.
   Qed.
 
+  Lemma add_reader_eq : forall d a tid v rdr,
+      d a = Some (v, rdr) ->
+      add_reader d a tid a = Some (v, Some tid).
+  Proof.
+    unfold add_reader; intros.
+    simpl_match; autorewrite with upd; auto.
+  Qed.
+
+  Lemma wb_add_reader : forall vd0 wb vd a tid v,
+      wb_rep vd0 wb vd ->
+      wb_get wb a = WbMissing ->
+      vd a = Some v ->
+      add_reader vd0 a tid a = Some (v, Some tid).
+  Proof.
+    unfold wb_rep; intros.
+    specialize (H a).
+    simpl_match.
+    destruct matches in *; intuition; try deex.
+    assert (w0 = v) by congruence; subst.
+    eapply add_reader_eq; eauto.
+  Qed.
+
+  Hint Resolve wb_add_reader.
+  Hint Resolve readers_locked_add_reader wb_cache_val_none_vd0.
+
   Theorem prepare_fill_ok : forall a,
       SPEC App.delta, tid |-
               {{ v0,
@@ -700,10 +725,11 @@ Module ConcurrentCache (C:CacheSubProtocol).
     hoare.
     eexists; simplify; finish.
 
-    hoare;
-      (* make sure that all these goals are still around until we
-      specifically solve them *)
-      let n := numgoals in guard n = 5;
+    hoare.
+    eapply invariantRespectsPrivateVars; eauto;
+      try solve_modified.
+    simplify; finish;
+      (let n := numgoals in guard n = 2);
       match goal with
       (* cache_rep stable when adding reader *)
       | [ |- cache_rep (upd _ _ _)
@@ -711,17 +737,12 @@ Module ConcurrentCache (C:CacheSubProtocol).
                       (add_reader _ _ _) ] => admit
       (* wb_rep insensitive to readers *)
       | [ |- wb_rep (add_reader _ _ _) _ _ ] => admit
-      (* add_reader -> upd *)
-      | [ |- add_reader _ ?a _ ?a = _ ] => admit
-      | [ |- readers_locked _ _ _ ] =>
-        (* TODO: debug eauto not being able to follow this chain of
-        reasoning *)
-        eapply readers_locked_preorder; eauto;
-          eapply readers_locked_add_reader;
-          eapply wb_cache_val_none_vd0; eauto
-      | [ |- same_domain _ _ ] =>
-        eapply same_domain_preorder; eauto
       end.
+
+    eapply guar_preorder; [ eassumption | ].
+    eapply protocolRespectsPrivateVars; eauto;
+      try solve_modified.
+    simplify; finish.
   Admitted.
 
   Hint Extern 1 {{ prepare_fill _; _ }} => apply prepare_fill_ok : prog.
