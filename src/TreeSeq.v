@@ -49,8 +49,7 @@ Module TREESEQ.
   Record treeseq_one := mk_tree {
     TStree  : DIRTREE.dirtree;
     TSilist : list INODE.inode;
-    TSfree  : list addr * list addr;
-    TSgen   : list nat
+    TSfree  : list addr * list addr
   }.
 
   Definition treeseq_one_safe t1 t2 mscs :=
@@ -110,7 +109,7 @@ Module TREESEQ.
     | None => t
     | Some (TreeFile inum f) => mk_tree (update_subtree pathname 
                                   (TreeFile inum (BFILE.mk_bfile (updN (BFILE.BFData f) off v) (BFILE.BFAttr f))) (TStree t))
-                           (TSilist t) (TSfree t) (TSgen t)
+                           (TSilist t) (TSfree t)
     | Some (TreeDir inum d) => t
     end.
 
@@ -124,55 +123,6 @@ Module TREESEQ.
     unfold tsupd.
     rewrite d_map_latest; eauto.
   Qed.
-
-
-  (* f' has the same content as f, but is perhaps shorter *)
-  Definition fileblock_match inum f f' al ilistold ilistnew :=
-    length al = length (BFILE.BFData f) /\
-    (forall i, i < length (BFILE.BFData f') ->
-                BFILE.block_belong_to_file ilistold (selN al i 0) inum i) /\
-    (forall i, i < length (BFILE.BFData f') ->
-                BFILE.block_belong_to_file ilistnew (selN al i 0) inum i).
-
-  (* A predicate that states when it is safe to perform an upd/sync a in treeseq. For example,
-   * it is unsafe to perform an upd on a treeseq if a tree in the sequence uses the block
-   * in another file than in the newest tree. This predicate forbids this case, as well as
-   * others.  XXX gen numbers to allow inode re-use within treeseq (e.g., unlink, create, truncate, upd *)
-
-  Definition treeseq_upd_safe pathname off flag (tnewest tolder : treeseq_one) :=
-    forall bn inum f al,
-    find_subtree pathname (TStree tnewest) = Some (TreeFile inum f) ->
-    BFILE.block_belong_to_file (TSilist tnewest) bn inum off ->
-    (BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn /\
-      (match find_subtree pathname (TStree tolder) with
-      | Some (TreeFile inum' f')  => 
-        (inum' <> inum) \/
-        ((inum' = inum) /\ (selN (TSgen tnewest) inum 0) <> (selN (TSgen tnewest) inum 0)) \/
-        ((inum' = inum) /\ (selN (TSgen tnewest) inum 0) = (selN (TSgen tnewest) inum 0) /\ off >= Datatypes.length (BFILE.BFData f') /\
-          fileblock_match inum f' f al (TSilist tolder) (TSilist tnewest))
-      | Some (TreeDir _ _) => False
-      | None => True
-      end)
-     )
-    \/
-    (exists f',
-     find_subtree pathname (TStree tolder) = Some (TreeFile inum f') /\
-     off < Datatypes.length (BFILE.BFData f') /\ 
-     BFILE.block_belong_to_file (TSilist tolder) bn inum off /\    (* redundant with the next one *)
-     fileblock_match inum f' f al (TSilist tolder) (TSilist tnewest)).
-  
-  (* A predicate that states when it is safe to grow a file at offset by one block. *)
-  Definition treeseq_grow_safe pathname off flag (tnewest tolder : treeseq_one) :=
-    forall bn inum f al,
-    find_subtree pathname (TStree tnewest) = Some (TreeFile inum f) ->
-    (BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn /\
-      (match find_subtree pathname (TStree tolder) with
-      | Some (TreeFile inum' f') => inum' = inum /\ off >= List.length (BFILE.BFData f') /\
-         fileblock_match inum f' f al (TSilist tolder) (TSilist tnewest)
-      | Some (TreeDir _ _) => False
-      | None => True
-      end)
-     ).
 
   (**
    * [treeseq_safe] is defined with respect to a specific pathname.  What it means for
@@ -205,25 +155,13 @@ Module TREESEQ.
    * the same pathname).
    *)
   Definition treeseq_safe pathname flag (tnewest tolder : treeseq_one) :=
-    forall inum f off bn,
-    ((find_subtree pathname (TStree tolder) = Some (TreeFile inum f) /\
+    forall inum off bn,
+    ((exists f, find_subtree pathname (TStree tolder) = Some (TreeFile inum f) /\
       BFILE.block_belong_to_file (TSilist tolder) bn inum off) \/
      BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn)
     <->
-    (find_subtree pathname (TStree tnewest) = Some (TreeFile inum f') /\
+    (exists f', find_subtree pathname (TStree tnewest) = Some (TreeFile inum f') /\
      BFILE.block_belong_to_file (TSilist tnewest) bn inum off).
-
-
-    match find_subtree pathname (TStree tolder) with
-    | Some (TreeFile inum' f') =>
-      forall off bn,
-
-
-      (off >= Datatypes.length (BFILE.BFData f') /\ BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn) \/
-      BFILE.block_belong_to_file (TSilist tolder) bn inum' off
-    | Some (TreeDir _ _) => False
-    | None => BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn
-    end.
 
   Lemma tree_file_flist: forall F Ftop flist  tree pathname inum f,
     find_subtree pathname tree = Some (TreeFile inum f) ->
@@ -275,6 +213,7 @@ Module TREESEQ.
     eassumption.
   Qed.
 
+(*
   Lemma tree_rep_nth_upd: forall F Ftop fsxp mscs ts ds n pathname bn off v inum f,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file (TSilist (ts !!)) bn inum off ->
@@ -415,7 +354,9 @@ Module TREESEQ.
     Unshelve.
     exact [].
   Qed.
+*)
 
+(*
   Theorem treeseq_in_ds_upd : forall F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file (TSilist (ts !!)) bn inum off ->
@@ -436,6 +377,7 @@ Module TREESEQ.
     eapply tree_rep_nth_upd; eauto.
     eapply tree_safe_upd; eauto.
    Qed.
+*)
 
   Lemma treeseq_in_ds_tree_pred_latest: forall Fm Ftop fsxp mscs ts ds,
    treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
@@ -474,7 +416,7 @@ Module TREESEQ.
         eapply DIRTREE.rep_tree_names_distinct; eapply Hpred
     end.
 
-
+(*
   Lemma treeseq_upd_safe_eq: forall pathname off flag tree,
    treeseq_upd_safe pathname off flag tree tree.
   Proof.
@@ -485,7 +427,9 @@ Module TREESEQ.
     eexists f.
     split; eauto.
   Qed.
+*)
 
+(*
   Lemma NEforall_treeseq_upd_safe_pushd: forall ts pathname off flag tree',
     NEforall (treeseq_upd_safe pathname off flag tree') ts ->
     NEforall (treeseq_upd_safe pathname off flag tree') (pushd tree' ts).
@@ -498,8 +442,9 @@ Module TREESEQ.
     eapply treeseq_upd_safe_eq.
     eapply NEforall_d_in; eauto. 
   Qed.
+*)
 
-
+(*
   Lemma treeseq_upd_safe_truncate': forall ts pathname off flag inum file ilist' frees',
     let file' := {|
                BFILE.BFData := setlen (BFILE.BFData file) 1 ($ (0), []);
@@ -571,6 +516,7 @@ Module TREESEQ.
     eapply treeseq_grow_safe_grow; auto.
     eapply dir2flatmem2_find_subtree_ptsto; eauto.
   Qed.
+*)
 
   Theorem treeseq_file_getattr_ok : forall fsxp inum mscs,
   {< ds ts pathname Fm Ftop Ftree f,
@@ -658,7 +604,7 @@ Module TREESEQ.
         [[ ds' = pushd d ds ]] *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' (TSfree ts !!)) ]]] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts!!) ]] *
-        [[ ts' = (pushd (mk_tree tree' ilist' (TSfree ts !!)) ts) ]] *
+        [[ ts' = pushd (mk_tree tree' ilist' (TSfree ts !!)) ts ]] *
         [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
         [[ (Ftree * pathname |-> Some (inum, f'))%pred (dir2flatmem2 tree') ]])
   XCRASH:hm'
@@ -692,28 +638,31 @@ Module TREESEQ.
    * version allows only extending a file by one block. It promises that if treeseq_upd_safe holds
    * afterwards. 
    *)
-  Theorem treeseq_file_grow_ok : forall fsxp inum off mscs,
+  Theorem treeseq_file_grow_ok : forall fsxp inum newlen mscs,
   {< ds ts pathname Fm Ftop Ftree f,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-     [[ treeseq_pred (treeseq_grow_safe pathname off (MSAlloc mscs) (ts !!)) ts ]] *
-     [[ (Ftree * pathname |-> Some (inum, f))%pred  (dir2flatmem2 (TStree ts!!)) ]] 
+     [[ treeseq_pred (treeseq_safe pathname (MSAlloc mscs) (ts !!)) ts ]] *
+     [[ (Ftree * pathname |-> Some (inum, f))%pred  (dir2flatmem2 (TStree ts!!)) ]] *
+     [[ newlen >= Datatypes.length (BFILE.BFData f) ]]
   POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
      ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
       [[ ok = OK tt ]] * exists d ds' ts' ilist' frees' tree' f',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+        [[ forall pathname',
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
         [[ ds' = pushd d ds ]] *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees')]]] *
         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) 1 ($0, nil)) (BFILE.BFAttr f) ]] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts !!) ]] *
         [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
-        [[ treeseq_pred (treeseq_upd_safe pathname off (MSAlloc mscs') (ts' !!)) ts' ]] *
         [[ (Ftree * pathname |-> Some (inum, f'))%pred (dir2flatmem2 tree') ]])
   XCRASH:hm'
     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
-  >} AFS.file_truncate fsxp inum 1 mscs.
+  >} AFS.file_truncate fsxp inum newlen mscs.
   Proof.
     intros.
     eapply pimpl_ok2.
@@ -750,6 +699,7 @@ Module TREESEQ.
     intuition.
   Qed.
 
+(*
   Lemma treeseq_upd_safe_upd: forall Fm fsxp Ftop mscs Ftree Fd ts ds d' pathname f f' off vs v inum bn,
     (Fm ✶ rep fsxp Ftop (update_subtree pathname (TreeFile inum f') (TStree ts !!)) (TSilist ts !!)
          (fst (TSfree ts !!), snd (TSfree ts !!)))%pred (list2nmem (dsupd ds bn (v, vsmerge vs)) !!)->
@@ -858,6 +808,7 @@ Module TREESEQ.
       inversion H9.
       inversion H9.
    Qed.
+*)
 
   (* A less general version of AFS.update_fblock_d, but easier to use for applications.
    * It requires treeseq_upd_safe for the trees in the treeseq 
@@ -867,16 +818,18 @@ Module TREESEQ.
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ treeseq_pred (treeseq_upd_safe pathname off (MSAlloc mscs) (ts !!)) ts ]] *
+      [[ treeseq_pred (treeseq_safe pathname (MSAlloc mscs) (ts !!)) ts ]] *
       [[ (Ftree * pathname |-> Some (inum, f))%pred  (dir2flatmem2 (TStree ts!!)) ]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(mscs')
       exists ts' f' ds' bn,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+        [[ forall pathname',
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
        [[ ts' = tsupd ts pathname off (v, vsmerge vs) ]] *
        [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
-       [[ treeseq_pred (treeseq_upd_safe pathname off (MSAlloc mscs') (ts' !!)) ts' ]] *
        [[ MSAlloc mscs' = MSAlloc mscs ]] *
        [[ (Ftree * pathname |-> Some (inum, f'))%pred (dir2flatmem2 (TStree ts' !!)) ]] *
        [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
@@ -1025,6 +978,7 @@ Module TREESEQ.
     - Search vssync_vecs.
   Admitted.
 
+(*
   Lemma tree_rep_nth_file_sync: forall Fm Ftop fsxp mscs ds ts n al pathname inum off f,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
     Datatypes.length al = Datatypes.length (BFILE.BFData f) ->
@@ -1138,21 +1092,25 @@ Module TREESEQ.
     eapply tree_rep_nth_file_sync; eauto.
     eapply tree_safe_file_sync; eauto.
   Qed.
+*)
 
   (* A less general version of AFS.file_sync, but easier to use for applications.
    * It requires treeseq_upd_safe for the trees in the treeseq 
    *)
   Theorem treeseq_file_sync_ok : forall fsxp inum mscs,
-    {< ds ts Fm Ftop Ftree pathname f off,
+    {< ds ts Fm Ftop Ftree pathname f,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ treeseq_pred (treeseq_upd_safe pathname off (MSAlloc mscs) (ts !!)) ts ]] *
+      [[ treeseq_pred (treeseq_safe pathname (MSAlloc mscs) (ts !!)) ts ]] *
       [[ (Ftree * pathname |-> Some (inum, f))%pred (dir2flatmem2 (TStree ts!!)) ]]
     POST:hm' RET:^(mscs')
       exists ts' ds' al,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+        [[ forall pathname',
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
        [[ ds' = dssync_vecs ds al]] *
        [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
               BFILE.block_belong_to_file (TSilist ts !!) (selN al i 0) inum i ]] *
