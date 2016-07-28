@@ -165,6 +165,21 @@ Module Type CacheSubProtocol.
   Module CProto := CacheProtocol App Proj.
 
   Parameter protocolProj:SubProtocol App.delta CProto.delta.
+
+  Parameter protocolRespectsPrivateVars :
+    forall tid s s',
+      guar CProto.delta tid s s' ->
+      modified [( CProto.vCache; CProto.vDisk0 )] s s' ->
+      guar App.delta tid s s'.
+
+  Parameter invariantRespectsPrivateVars :
+    forall d m s d' m' s',
+      invariant App.delta d m s ->
+      modified [( CProto.vCache; CProto.vDisk0 )] s s' ->
+      modified [( CProto.mCache )] m m' ->
+      invariant CProto.delta d' m' s' ->
+      invariant App.delta d' m' s'.
+
 End CacheSubProtocol.
 
 Module ConcurrentCache (C:CacheSubProtocol).
@@ -674,12 +689,12 @@ Module ConcurrentCache (C:CacheSubProtocol).
                    but it comes from no_wb_reader_conflict *)
                    wb_get (get vWriteBuffer s) a = WbMissing /\
                    get vdisk s a = Some v0 /\
-                   guar delta tid s_i s
+                   guar App.delta tid s_i s
                | POST d' m' s_i' s' _:
-                   invariant delta d' m' s' /\
+                   invariant App.delta d' m' s' /\
                    get vDisk0 s' a = Some (v0, Some tid) /\
                    modified [( vCache; vDisk0 )] s s' /\
-                   guar delta tid s_i' s'
+                   guar App.delta tid s_i' s'
               }} prepare_fill a.
   Proof.
     hoare.
