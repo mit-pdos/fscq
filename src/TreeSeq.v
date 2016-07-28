@@ -1205,28 +1205,29 @@ Proof.
 Admitted.
 
   Theorem treeseq_rename_ok : forall fsxp dnum srcbase (srcname:string) dstbase dstname mscs,
-    {< ds ts Fm Ftop Ftree cwd tree_elem subtree srcnum dstnum srcfile dstfile,
+    {< ds ts Fm Ftop Ftree cwd tree_elem srcnum dstnum srcfile dstfile,
     PRE:hm
     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ DIRTREE.find_subtree cwd (TStree ts!!) = Some subtree ]] *
-      [[ subtree = (DIRTREE.TreeDir dnum tree_elem) ]] *
-      [[ (Ftree * ((srcbase++[srcname]%list) |-> Some (srcnum, srcfile)) * ((dstbase++[dstname])%list) |-> Some (dstnum, dstfile) )%pred (dir2flatmem2 subtree) ]]
+      [[ DIRTREE.find_subtree cwd (TStree ts !!) = Some (DIRTREE.TreeDir dnum tree_elem) ]] *
+      [[ (Ftree * (cwd ++ srcbase ++ [srcname]) |-> Some (srcnum, srcfile)
+                * (cwd ++ dstbase ++ [dstname]) |-> Some (dstnum, dstfile))%pred (dir2flatmem2 (TStree ts !!)) ]]
     POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
       ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
-       [[ ok = OK tt ]] * exists d ds' ts' ilist' frees' tree' pruned renamed srcdirnum srcents dstdirnum dstents,
+       [[ ok = OK tt ]] * exists d ds' ts' ilist' frees' tree',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+        [[ forall pathname',
+           pathname' <> cwd ++ srcbase ++ [srcname] ->
+           pathname' <> cwd ++ dstbase ++ [dstname] ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
        [[ ds' = (pushd d ds) ]] *
        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
-       [[ DIRTREE.find_subtree srcbase subtree = Some (DIRTREE.TreeDir srcdirnum srcents) ]] *
-       [[ pruned = DIRTREE.tree_prune srcdirnum srcents srcbase srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
-       [[ DIRTREE.find_subtree dstbase pruned = Some (DIRTREE.TreeDir dstdirnum dstents) ]] *
-       [[ renamed = DIRTREE.tree_graft dstdirnum dstents dstbase dstname (DIRTREE.TreeFile srcnum srcfile) pruned ]] *
-       [[ tree' = DIRTREE.update_subtree cwd renamed (TStree ts !!) ]] *
        [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
-       [[ (Ftree * (dstbase ++ [dstname]) |-> Some (srcnum, srcfile))%pred (dir2flatmem2 renamed) ]])
+       [[ (Ftree * (cwd ++ srcbase ++ [srcname]) |-> None
+                 * (cwd ++ dstbase ++ [dstname]) |-> Some (srcnum, srcfile))%pred (dir2flatmem2 (TStree ts' !!)) ]])
     XCRASH:hm'
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
    >} AFS.rename fsxp dnum srcbase srcname dstbase dstname mscs.
@@ -1282,12 +1283,16 @@ Admitted.
       [[ ok = OK tt ]] * exists d ds' ts' tree' ilist' frees',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm *
         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+        [[ forall pathname',
+           pathname' <> pathname ++ [name] ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
         [[ ds' = pushd d ds ]] *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
         [[ tree' = DIRTREE.update_subtree pathname
                       (DIRTREE.delete_from_dir name (DIRTREE.TreeDir dnum tree_elem)) (TStree ts !!) ]] *
         [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
-        [[ Ftree (dir2flatmem2 (TStree ts' !!)) ]]
+        [[ (Ftree * (pathname ++ [name]) |-> None)%pred (dir2flatmem2 (TStree ts' !!)) ]]
     CRASH:hm
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm
     >} AFS.delete fsxp dnum name mscs.
