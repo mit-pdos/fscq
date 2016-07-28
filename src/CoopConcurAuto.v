@@ -45,6 +45,12 @@ Inductive CurrentProg {Sigma} {T} (p: prog Sigma T) :=
 Inductive PrevProg {Sigma} {T} (p: prog Sigma T) :=
 | SomePrevProg.
 
+Ltac first_prog p :=
+  match p with
+  | Bind ?p' _ => first_prog p'
+  | _ => p
+  end.
+
 Local Ltac set_prog p :=
   try match goal with
   | [ H: CurrentProg ?p' |- _ ] =>
@@ -52,7 +58,8 @@ Local Ltac set_prog p :=
         | [ H': PrevProg _ |- _ ] => clear H'
         end;
     let Hprev := fresh "PostOf" in
-    pose proof (SomePrevProg p') as Hprev;
+    let prev := first_prog p' in
+    pose proof (SomePrevProg prev) as Hprev;
     clear H
   end;
   let H := fresh "PreOf" in
