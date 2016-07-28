@@ -446,11 +446,15 @@ Defined.
 Import EqNotations.
 
 Require Import Program.
-Require Import Word.
 
 Ltac eq_rect_simpl :=
   unfold eq_rect_r, eq_rec_r, eq_rec;
   rewrite <- ?eq_rect_eq.
+
+Ltac generalize_proof :=
+    match goal with
+    | [ |- context[eq_rect _ _ _ _ ?H ] ] => generalize H
+    end.
 
 Ltac eq_t t :=
   eq_rect_simpl;
