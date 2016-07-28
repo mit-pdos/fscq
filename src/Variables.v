@@ -202,4 +202,15 @@ Section Modification.
     destruct (hin_vars_dec m vars m0); intuition.
   Qed.
 
+  Theorem modified_empty :
+    forall contents m m',
+      modified (@HNil _ (var contents)) m m' ->
+      m = m'.
+  Proof.
+    unfold modified; intros.
+    apply hlist_get_extensional; intros.
+    apply H.
+    inversion 1.
+  Qed.
+
 End Modification.
