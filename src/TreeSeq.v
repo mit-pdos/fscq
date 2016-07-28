@@ -174,6 +174,57 @@ Module TREESEQ.
       end)
      ).
 
+  (**
+   * [treeseq_safe] is defined with respect to a specific pathname.  What it means for
+   * [treeseq_safe] to hold for a pathname is that, in all previous trees, that pathname
+   * must refer to a file that has all the same blocks as the current file (modulo being
+   * shorter), or that pathname does not exist.  If, in some previous tree, the file does
+   * not exist or is shorter, then the "leftover" blocks must be unused.
+   *
+   * The reason why [treeseq_safe] is defined per pathname is that we imagine that some
+   * application may want to violate these rules for other pathnames.  For example, other
+   * files might shrink and re-grow over time, without calling [tree_sync] before re-growing.
+   * Or, the application might rename a file and continue writing to it using [update_fblock_d],
+   * which (below) will be not supported unless the caller can prove [treeseq_safe] for the
+   * current pathname of the file being modified.  The other behavior prohibited by [treeseq_safe]
+   * is re-using a pathname without [tree_sync].
+   *
+   * The per-pathname aspect of [treeseq_safe] might also come in handy for concurrency,
+   * where one thread does not know if other threads have already issued their [tree_sync]
+   * or not for other pathnames.
+   *)
+
+  (**
+   * [treeseq_safe] is defined as an if-and-only-if implication.  This captures two
+   * important properties.  First, the file is monotonically growing: if the file existed
+   * and some block belonged to it in the past, then the file must continue to exist and
+   * the block must continue to belong to the file at the same offset.  The forward
+   * implication captures this.  Second, we also need to know that all blocks used by
+   * the current file were never used by other files.  The reverse implication captures
+   * this part (the currently-used blocks were either free or used for the same file at
+   * the same pathname).
+   *)
+  Definition treeseq_safe pathname flag (tnewest tolder : treeseq_one) :=
+    forall inum f off bn,
+    ((find_subtree pathname (TStree tolder) = Some (TreeFile inum f) /\
+      BFILE.block_belong_to_file (TSilist tolder) bn inum off) \/
+     BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn)
+    <->
+    (find_subtree pathname (TStree tnewest) = Some (TreeFile inum f') /\
+     BFILE.block_belong_to_file (TSilist tnewest) bn inum off).
+
+
+    match find_subtree pathname (TStree tolder) with
+    | Some (TreeFile inum' f') =>
+      forall off bn,
+
+
+      (off >= Datatypes.length (BFILE.BFData f') /\ BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn) \/
+      BFILE.block_belong_to_file (TSilist tolder) bn inum' off
+    | Some (TreeDir _ _) => False
+    | None => BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn
+    end.
+
   Lemma tree_file_flist: forall F Ftop flist  tree pathname inum f,
     find_subtree pathname tree = Some (TreeFile inum f) ->
     (F * tree_pred Ftop tree)%pred (list2nmem flist) ->
@@ -596,11 +647,14 @@ Module TREESEQ.
      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
      [[ (Ftree * pathname |-> Some (inum, f))%pred (dir2flatmem2 (TStree ts!!)) ]] 
   POST:hm' RET:^(mscs', ok)
-      [[ MSAlloc mscs' = MSAlloc mscs ]] *
+     [[ MSAlloc mscs' = MSAlloc mscs ]] *
      ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
       [[ ok = true  ]] * exists d ds' ts' tree' ilist' f',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+        [[ forall pathname',
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
         [[ ds' = pushd d ds ]] *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' (TSfree ts !!)) ]]] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts!!) ]] *
