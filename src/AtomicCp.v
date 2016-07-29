@@ -386,12 +386,19 @@ Module ATOMICCP.
     eapply treeseq_one_file_sync_tree_rep_src; eauto.
   Admitted.
 
+
+  Ltac msalloc :=
+  repeat match goal with
+      | [ H: MSAlloc _ = MSAlloc _ |- _]
+       => idtac "rewrite" H; rewrite H in *; clear H
+  end.
+
   Theorem copydata_ok : forall fsxp srcinum tmppath tinum mscs,
     {< ds ts Fm Ftop Ftree Ftree' srcpath file tfile v0 t0 dstbase dstname dstinum dstfile,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ treeseq_pred (treeseq_upd_safe tmppath Off0 (MSAlloc mscs) (ts !!)) ts ]] *
+      [[ treeseq_pred (treeseq_safe tmppath (MSAlloc mscs) (ts !!)) ts ]] *
       [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ]] *
       [[ (Ftree' * srcpath |-> Some (srcinum, file) * tmppath |-> Some (tinum, tfile))%pred
             (dir2flatmem2 (TStree ts!!)) ]] *
@@ -425,6 +432,18 @@ Module ATOMICCP.
     step.
     erewrite treeseq_in_ds_eq; eauto.
     step.
+    specialize (H24 tmppath).
+    destruct H24.
+
+    msalloc.
+    eassumption.
+    unfold treeseq_pred.
+    unfold NEforall.
+    split.
+    msalloc.
+    eassumption.
+    msalloc.
+    eassumption.
     step.
 
     safestep.  (* step picks the wrong ts. *)
@@ -473,18 +492,14 @@ Module ATOMICCP.
 
   Hint Extern 1 ({{_}} Bind (copydata _ _ _ _) _) => apply copydata_ok : prog.
 
-  Theorem copy2temp_ok : forall fsxp src_inum tinum mscs,
+  Theorem copy2temp_ok : forall fsxp srcinum tinum mscs,
     {< Fm Ftop Ftree Ftree' ds ts tmppath srcpath file tfile v0 dstbase dstname dstinum dstfile,
     PRE:hm
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ treeseq_pred (treeseq_grow_safe tmppath Off0 (MSAlloc mscs) ts !!) ts ]] *
-      [[ treeseq_pred (treeseq_upd_safe tmppath Off0 (MSAlloc mscs) (ts !!)) ts ]] *
-      [[ treeseq_pred (fun t => 
-          (exists tfile', 
-           tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
-          (tree_with_src Ftree srcpath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))))%type ts ]] *
-      [[ (Ftree' * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, tfile))%pred
+      [[ treeseq_pred (treeseq_safe tmppath (MSAlloc mscs) (ts !!)) ts ]] *
+      [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ]] *
+      [[ (Ftree' * srcpath |-> Some (srcinum, file) * tmppath |-> Some (tinum, tfile))%pred
             (dir2flatmem2 (TStree ts!!)) ]] *
       [[[ BFILE.BFData file ::: (Off0 |-> v0) ]]]
     POST:hm' RET:^(mscs', r)
@@ -494,24 +509,23 @@ Module ATOMICCP.
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
         (([[ r = false ]] *
           exists tfile',
-            [[ (Ftree' * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, tfile'))%pred (dir2flatmem2 (TStree ts'!!)) ]])
+            [[ (Ftree' * srcpath |-> Some (srcinum, file) * tmppath |-> Some (tinum, tfile'))%pred (dir2flatmem2 (TStree ts'!!)) ]])
          \/ ([[ r = true ]] *
-            [[ (Ftree' * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, (BFILE.synced_file file)))%pred (dir2flatmem2 (TStree ts'!!)) ]]))
+            [[ (Ftree' * srcpath |-> Some (srcinum, file) * tmppath |-> Some (tinum, (BFILE.synced_file file)))%pred (dir2flatmem2 (TStree ts'!!)) ]]))
     XCRASH:hm'
      exists ds' ts',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
-       [[ treeseq_pred (fun t => 
-          (exists tfile', 
-           tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
-          (tree_with_src Ftree srcpath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))))%type ts' ]]
-    >} copy2temp fsxp src_inum tinum mscs.
+       [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts']]
+    >} copy2temp fsxp srcinum tinum mscs.
   Proof.
     unfold copy2temp; intros.
     step.
+    admit. (* eapply list2nmem_inbound in H5. *)
     destruct a0.
     step.
-    admit.
+    admit.  (* XXX treeseq_safe holds still if pushd a new tree with longer lenght *)
+    admit.  (* XXX treerep holds too *)
     instantiate (1 := ($ (0), [])).
     admit. (* XXX need list2nmem_setlen? *)
 
@@ -535,18 +549,14 @@ Module ATOMICCP.
 
   Hint Extern 1 ({{_}} Bind (copy2temp _ _ _ _) _) => apply copy2temp_ok : prog.
 
-  Theorem copy_and_rename_ok : forall fsxp src_inum tinum (dstbase: list string) (dstname:string) mscs,
+  Theorem copy_and_rename_ok : forall fsxp srcinum tinum (dstbase: list string) (dstname:string) mscs,
     {< Fm Ftop Ftree Ftree' ds ts tmppath srcpath file tfile v0 dstinum dstfile,
     PRE:hm
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ treeseq_pred (treeseq_grow_safe tmppath Off0 (MSAlloc mscs) ts !!) ts ]] *
-      [[ treeseq_pred (treeseq_upd_safe tmppath Off0 (MSAlloc mscs) (ts !!)) ts ]] *
-      [[ treeseq_pred (fun t => 
-          (exists tfile', 
-           tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
-          (tree_with_src Ftree srcpath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))))%type ts ]] *
-      [[ tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile dstbase dstname dstinum dstfile
+      [[ treeseq_pred (treeseq_safe tmppath (MSAlloc mscs) (ts !!)) ts ]] *
+      [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ]] *
+      [[ tree_with_tmp Ftree srcpath tmppath srcinum file tinum tfile dstbase dstname dstinum dstfile
           %pred (dir2flatmem2 (TStree ts!!)) ]] *
       [[[ BFILE.BFData file ::: (Off0 |-> v0) ]]]
     POST:hm' RET:^(mscs', r)
@@ -555,34 +565,33 @@ Module ATOMICCP.
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
       (([[r = false ]] *
         (exists f',
-          [[ (Ftree' * srcpath |-> Some (src_inum, file) * tmppath |-> Some (tinum, f') *
+          [[ (Ftree' * srcpath |-> Some (srcinum, file) * tmppath |-> Some (tinum, f') *
               (dstbase ++ [dstname])%list |-> Some (dstinum, dstfile))%pred (dir2flatmem2 (TStree ts'!!)) ]])  \/
        ([[r = true ]] *
-          [[ (Ftree' * srcpath |-> Some (src_inum, file) * (dstbase++[dstname])%list |-> Some (tinum, (BFILE.synced_file file)) *
+          [[ (Ftree' * srcpath |-> Some (srcinum, file) * (dstbase++[dstname])%list |-> Some (tinum, (BFILE.synced_file file)) *
               tmppath |-> None)%pred (dir2flatmem2 (TStree ts'!!)) ]]
        )))
     XCRASH:hm'
       exists ds' ts',
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
-       [[ treeseq_pred (fun t => 
-          (exists tfile', 
-           tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
-          (tree_with_src Ftree srcpath src_inum file dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
-          (tree_with_dst Ftree srcpath tmppath src_inum file tinum dstbase dstname (dir2flatmem2 (TStree t))))%type ts' ]]
-    >} copy_and_rename fsxp src_inum tinum dstbase dstname mscs.
+       [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts']]
+    >} copy_and_rename fsxp srcinum tinum dstbase dstname mscs.
   Proof.
     unfold copy_and_rename; intros.
     step.
     admit.  (* separate out dst into F' *)
     step.
     instantiate (2 := []).
-    eapply sep_star_split_l in H12 as H12'.
-    destruct H12'.
+    eapply sep_star_split_l in H11 as H11'.
+    destruct H11'.
     admit.  (* implied by H6 *)
     admit.
     step.
     step.
+    or_r.
+    cancel.
+    admit. (* eapply H19. *)
 
     xcrash.
     erewrite treeseq_in_ds_eq; eauto.
@@ -593,21 +602,17 @@ Module ATOMICCP.
 
     xcrash.
     erewrite treeseq_in_ds_eq; eauto.
-    admit.  (* XXX adjusts treeseq_rename_ok *)
+    admit.  (* XXX maybe ts' is ts *)
 
     xcrash.
     erewrite treeseq_in_ds_eq; eauto.
-    admit.  (* XXX miss facts about ds' *)
+    admit.  (* XXX maybe ts' is ts *)
  
     step.
 
     xcrash.
     erewrite treeseq_in_ds_eq; eauto.
-    admit.  (* XXX miss facts about ds' *)
-
-    xcrash.
-    erewrite treeseq_in_ds_eq; eauto.
-    admit. (* H12 with some manipulation *)
+    admit.  (* XXX maybe ts's is ts *)
   Admitted.
 
   Hint Extern 1 ({{_}} Bind (copy_and_rename _ _ _ _ _ _) _) => apply copy_and_rename_ok : prog.
