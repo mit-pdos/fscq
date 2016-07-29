@@ -3637,109 +3637,53 @@ Definition write lxp ixp inum fms off data :=
       let^ (ms0, file_length) <- getlen lxp ixp inum fms;
       If (lt_dec off file_length)
       {
-          If(le_dec (off + write_length) file_length)
+          If(le_dec write_length (valubytes - byte_off))
           {
-              If(le_dec write_length (valubytes - byte_off))
-              {
-                  ms1 <- write_to_block lxp ixp inum ms0 block_off byte_off data;
-                  Ret (ms1)
-              }
-              else
-              {
-                  let first_write_length := valubytes - byte_off in
-                  let first_data := firstn first_write_length data in
-                  
-                  ms1 <- write_to_block lxp ixp inum ms0 block_off byte_off first_data;
-                  
-                  let block_off := block_off + 1 in
-                  let remaining_data := skipn first_write_length data in
-                  let write_length := write_length - first_write_length in
-                  let num_of_full_blocks := write_length / valubytes in
-                  If(lt_dec 0 num_of_full_blocks)
-                  {
-                      let middle_data := firstn (num_of_full_blocks * valubytes) remaining_data in
-                      ms2 <- write_middle_blocks lxp ixp inum ms1 block_off num_of_full_blocks middle_data;
-                      
-                      let block_off := block_off + num_of_full_blocks in
-                      let remaining_data := skipn (num_of_full_blocks * valubytes) remaining_data in
-                      let write_length := write_length - (num_of_full_blocks * valubytes) in
-                      If (lt_dec 0 write_length)
-                      {
-                          ms3 <- write_to_block lxp ixp inum ms2 block_off 0 remaining_data;
-                          Ret (ms3)
-                      }
-                      else
-                      {
-                          Ret (ms2)
-                      }
-                      
-                  }
-                  else
-                  {
-                      If (lt_dec 0 write_length)
-                      {
-                          ms2 <- write_to_block lxp ixp inum ms1 block_off 0 remaining_data;
-                          Ret (ms2)
-                      }
-                      else
-                      {
-                          Ret (ms1)
-                      }
-                  }
-               }
+              ms1 <- write_to_block lxp ixp inum ms0 block_off byte_off data;
+              Ret (ms1)
           }
           else
           {
-              let write_length := file_length - off in
-              If(le_dec write_length (valubytes - byte_off))
+              let first_write_length := valubytes - byte_off in
+              let first_data := firstn first_write_length data in
+              
+              ms1 <- write_to_block lxp ixp inum ms0 block_off byte_off first_data;
+              
+              let block_off := block_off + 1 in
+              let remaining_data := skipn first_write_length data in
+              let write_length := write_length - first_write_length in
+              let num_of_full_blocks := write_length / valubytes in
+              If(lt_dec 0 num_of_full_blocks)
               {
-                  ms1 <- write_to_block lxp ixp inum ms0 block_off byte_off (firstn write_length data);
-                  Ret (ms1)
-              }
-              else
-              {
-                  let first_write_length := valubytes - byte_off in
-                  let first_data := firstn first_write_length data in
+                  let middle_data := firstn (num_of_full_blocks * valubytes) remaining_data in
+                  ms2 <- write_middle_blocks lxp ixp inum ms1 block_off num_of_full_blocks middle_data;
                   
-                  ms1 <- write_to_block lxp ixp inum ms0 block_off byte_off first_data;
-                  
-                  let block_off := block_off + 1 in
-                  let remaining_data := skipn first_write_length data in
-                  let write_length := write_length - first_write_length in
-                  let num_of_full_blocks := write_length / valubytes in
-                  If(lt_dec 0 num_of_full_blocks)
+                  let block_off := block_off + num_of_full_blocks in
+                  let remaining_data := skipn (num_of_full_blocks * valubytes) remaining_data in
+                  let write_length := write_length - (num_of_full_blocks * valubytes) in
+                  If (lt_dec 0 write_length)
                   {
-                      let middle_data := firstn (num_of_full_blocks * valubytes) remaining_data in
-                      ms2 <- write_middle_blocks lxp ixp inum ms1 block_off num_of_full_blocks middle_data;
-                      
-                      let block_off := block_off + num_of_full_blocks in
-                      let remaining_data := skipn (num_of_full_blocks * valubytes) remaining_data in
-                      let write_length := write_length - (num_of_full_blocks * valubytes) in
-                      If (lt_dec 0 write_length)
-                      {
-                          ms3 <- write_to_block lxp ixp inum ms2 block_off 0 remaining_data;
-                          Ret (ms3)
-                      }
-                      else
-                      {
-                          Ret (ms2)
-                      }
-
+                      ms3 <- write_to_block lxp ixp inum ms2 block_off 0 remaining_data;
+                      Ret (ms3)
                   }
                   else
                   {
-                      If (lt_dec 0 write_length)
-                      {
-                          ms2 <- write_to_block lxp ixp inum ms1 block_off 0 remaining_data;
-                          Ret (ms2)
-                      }
-                      else
-                      {
-                          Ret (ms1)
-                      }
+                      Ret (ms2)
                   }
               }
-          }
+              else
+              {
+                  If (lt_dec 0 write_length)
+                  {
+                      ms2 <- write_to_block lxp ixp inum ms1 block_off 0 remaining_data;
+                      Ret (ms2)
+                  }
+                  else
+                  {
+                      Ret (ms1)
+                  }
+              }
+           }
       }
       else
       {
@@ -3763,22 +3707,16 @@ Theorem write_ok : forall lxp bxp ixp inum fms off data,
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            rep f fy  *
            [[[ (ByFData fy) ::: (Fd * arrayN (ptsto (V:=byteset)) off old_data)]]] *
-           [[ length old_data = min (file_length - off) (length data)]] 
-     POST:hm' RET:fms'  exists flist' f' m',
+           [[ length old_data = length data]] 
+     POST:hm' RET:fms'  exists flist' f' fy' m',
            let file_length := (# (INODE.ABytes (ByFAttr fy))) in
-           let fy' := mk_bytefile (firstn (off / valubytes * valubytes) (ByFData fy) ++ 
-                         map (fun x => (x,nil)) 
-                            (map fst (firstn (off mod valubytes)(skipn (off / valubytes * valubytes) (ByFData fy))) ++ 
-                          (firstn (min (file_length - off) (length data)) data) ++ 
-                          (map fst (firstn (valubytes - (off mod valubytes + (min (file_length - off) (length data))))  
-                               (skipn (off / valubytes * valubytes + (off mod valubytes + (min (file_length - off) (length data)))) (ByFData fy)) ))) ++
-                         skipn (off / valubytes * valubytes + valubytes) (ByFData fy)) (ByFAttr fy) in  
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (BFILE.MSLL fms') hm' *
            [[[ m' ::: (Fm  * BFILE.rep bxp ixp flist' ilist frees) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            rep f' fy' *
            [[[ (ByFData fy') ::: (Fd * arrayN (ptsto (V:=byteset))
-               off (map (fun x => (x,nil)) (firstn (min (file_length - off) (length data)) data)))]]] *
+               off (map (fun x => (x,nil))  data))]]] *
+           [[ ByFAttr fy' = ByFAttr fy ]] *
            [[ BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} write lxp ixp inum fms off data.
@@ -4052,9 +3990,29 @@ replace   (length (ByFData fy) - off / valubytes * valubytes -
         with (length (ByFData fy) - (off / valubytes * valubytes + valubytes)).
 
 rewrite <- skipn_firstn_comm.
-rewrite <- le_plus_minus.
+destruct (le_dec (length (ByFData fy)) (off / valubytes * valubytes + valubytes)).
+
+replace (off / valubytes * valubytes + valubytes +
+      (length (ByFData fy) - (off / valubytes * valubytes + valubytes)))
+      with (off / valubytes * valubytes + valubytes).
+
+replace (skipn (off / valubytes * valubytes + valubytes)
+  (firstn (off / valubytes * valubytes + valubytes) (UByFData ufy)))
+    with (nil: list byteset).
+
+replace (skipn (off / valubytes * valubytes + valubytes) (firstn (length (ByFData fy)) (UByFData ufy)))
+          with (nil: list byteset).
+
 rewrite <- Nat.add_assoc.
 reflexivity.
+
+rewrite skipn_oob.
+reflexivity.
+rewrite firstn_length_l.
+omega.
+eapply bytefile_unified_byte_len; eauto.
+
+Lemma bytefile_ge_off_v: forall
 
 ------------------------------------------------------------------------------------------------------------
 
@@ -4617,7 +4575,71 @@ Admitted.
 
 (* -------------------------------------------------------------------------------- *)
 
+Theorem dwrite_ok : forall lxp bxp ixp inum fms off data,
+    {< F Fm Fi Fd ds flist ilist frees f fy old_data,
+    PRE:hm
+           let file_length := (# (INODE.ABytes (ByFAttr fy))) in
+           LOG.rep lxp F (LOG.ActiveTxn ds ds!!) (BFILE.MSLL fms) hm *
+           [[[ ds!! ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]] *
+           rep f fy  *
+           [[[ (ByFData fy) ::: (Fd * arrayN (ptsto_subset (V:=byteset)) off old_data)]]] *
+           [[ sync_invariant Fd]] *
+           [[ length old_data = length data ]] 
+     POST:hm' RET:fms'  exists flist' f' fy' ds',
+           let file_length := (# (INODE.ABytes (ByFAttr fy))) in
+           LOG.rep lxp F (LOG.ActiveTxn ds' ds'!!) (BFILE.MSLL fms') hm' *
+           [[[ ds'!! ::: (Fm  * BFILE.rep bxp ixp flist' ilist frees) ]]] *
+           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           rep f' fy' *
+           [[[ (ByFData fy') ::: (Fd * arrayN (ptsto_subset (V:=byteset))
+               off (merge_bs old_data data))]]] *
+           [[ ByFAttr fy = ByFAttr fy' ]] *
+           [[ BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} dwrite lxp ixp inum fms off data.
 
+
+
+
+
+(* Theorem dwrite_to_block_ok : forall lxp bxp ixp inum block_off byte_off data fms,
+    {< F Fm Fi Fd ds flist ilist frees f fy old_data p1 p2,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn ds ds!!) (BFILE.MSLL fms) hm *
+           [[[ ds!! ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]] *
+           rep f fy  *
+           [[[ (ByFData fy) ::: (Fd * arrayN (ptsto_subset (V:=byteset)) (block_off * valubytes) (old_data))]]] *
+           [[ length old_data = length data]] *
+           [[ length old_data > 0 ]] *
+           [[ byte_off + length data <= valubytes ]] *
+           [[ length p1 = byte_off ]] *
+           [[ length (p1++old_data++p2) = valubytes ]] *
+           [[ sync_invariant F ]]
+     POST:hm' RET:fms'  exists flist' f' bn ds0 ds',
+           let fy' := mk_bytefile (updN_list (ByFData fy) 
+              (block_off * valubytes) 
+              ((map fst p1)++data++(map fst p2))) (ByFAttr fy) in  
+           LOG.rep lxp F (LOG.ActiveTxn ds' ds'!!) (BFILE.MSLL fms') hm' *
+           [[ ds' = dsupd ds0 bn 
+                ((list2valu ((map fst p1)++data++(map fst p2))), 
+                vsmerge (selN (BFILE.BFData f) block_off valuset0)) 
+              /\ BFILE.diskset_was ds0 ds ]] *
+           [[ BFILE.block_belong_to_file ilist bn inum block_off ]] *
+           [[[ ds'!! ::: (Fm  * BFILE.rep bxp ixp flist' ilist frees) ]]] *
+           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           rep f' fy' *
+           [[[ (ByFData fy') ::: (Fd * arrayN (ptsto (V:=byteset)) 
+           (block_off * valubytes) (updN_list (p1++old_data++p2) 0 
+                    ((map fst p1)++data++(map fst p2))))]]] *
+           [[ BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
+    XCRASH:hm'
+          LOG.recover_any lxp F ds hm' \/
+          exists bn, [[ BFILE.block_belong_to_file ilist bn inum block_off ]] *
+           LOG.recover_any lxp F (dsupd ds bn ((list2valu ((map fst p1)++data++(map fst p2))), 
+                vsmerge (selN (BFILE.BFData f) block_off valuset0))) hm'
+    >} dwrite_to_block lxp ixp inum fms block_off byte_off data. *)
 
 Theorem dwrite_to_block_ok : forall lxp bxp ixp inum block_off byte_off data fms,
     {< F Fm Fi Fd ds flist ilist frees f fy old_data p1 p2,
@@ -4626,7 +4648,7 @@ Theorem dwrite_to_block_ok : forall lxp bxp ixp inum block_off byte_off data fms
            [[[ ds!! ::: (Fm * BFILE.rep bxp ixp flist ilist frees) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            rep f fy  *
-           [[[ (ByFData fy) ::: (Fd * arrayN (ptsto (V:=byteset)) (block_off * valubytes) (p1 ++ old_data ++ p2))]]] *
+           [[[ (ByFData fy) ::: (Fd * arrayN (ptsto_subset (V:=byteset)) (block_off * valubytes + byte_off) (old_data))]]] *
            [[ length old_data = length data]] *
            [[ length old_data > 0 ]] *
            [[ byte_off + length data <= valubytes ]] *
