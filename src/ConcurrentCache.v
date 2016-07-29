@@ -895,7 +895,7 @@ Module ConcurrentCache (C:CacheSubProtocol).
 
 
   Theorem cache_try_write_ok : forall a v,
-      SPEC delta, tid |-
+      SPEC App.delta, tid |-
               {{ v0,
                | PRE d m s_i s:
                    invariant delta d m s /\
@@ -908,12 +908,7 @@ Module ConcurrentCache (C:CacheSubProtocol).
                    s_i' = s_i
               }} cache_try_write a v.
   Proof.
-    hoare;
-      try match goal with
-          | [ |- valid _ _ _ _ ] =>
-            (* TODO: debug why step's monad_simpl isn't working here *)
-            CoopConcurMonad.monad_simpl; hoare
-          end.
+    hoare.
   Qed.
 
   Hint Extern 1 {{cache_try_write _ _; _}} => apply cache_try_write_ok : prog.
@@ -921,7 +916,7 @@ Module ConcurrentCache (C:CacheSubProtocol).
   Hint Resolve wb_rep_empty.
 
   Theorem cache_commit_ok :
-      SPEC delta, tid |-
+      SPEC App.delta, tid |-
               {{ (_:unit),
                | PRE d m s_i s:
                    invariant delta d m s
@@ -955,7 +950,7 @@ Module ConcurrentCache (C:CacheSubProtocol).
   Hint Resolve wb_rep_id no_wb_reader_conflict_empty.
 
   Theorem cache_abort_ok :
-    SPEC delta, tid |-
+    SPEC App.delta, tid |-
   {{ (_:unit),
    | PRE d m s_i s:
        invariant delta d m s
