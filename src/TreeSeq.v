@@ -154,14 +154,26 @@ Module TREESEQ.
    * this part (the currently-used blocks were either free or used for the same file at
    * the same pathname).
    *)
-  Definition treeseq_safe pathname flag (tnewest tolder : treeseq_one) :=
+
+ Definition treeseq_safe_fwd pathname (tnewest tolder : treeseq_one) :=
     forall inum off bn,
-    ((exists f, find_subtree pathname (TStree tolder) = Some (TreeFile inum f) /\
-      BFILE.block_belong_to_file (TSilist tolder) bn inum off) \/
-     BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn)
-    <->
+    (exists f, find_subtree pathname (TStree tolder) = Some (TreeFile inum f) /\
+      BFILE.block_belong_to_file (TSilist tolder) bn inum off)
+   ->
     (exists f', find_subtree pathname (TStree tnewest) = Some (TreeFile inum f') /\
      BFILE.block_belong_to_file (TSilist tnewest) bn inum off).
+
+ Definition treeseq_safe_bwd pathname flag (tnewest tolder : treeseq_one) :=
+    forall inum off bn,
+    (exists f', find_subtree pathname (TStree tnewest) = Some (TreeFile inum f') /\
+     BFILE.block_belong_to_file (TSilist tnewest) bn inum off) ->
+    ((exists f, find_subtree pathname (TStree tolder) = Some (TreeFile inum f) /\
+      BFILE.block_belong_to_file (TSilist tolder) bn inum off) \/
+     BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn).
+
+  Definition treeseq_safe pathname flag (tnewest tolder : treeseq_one) :=
+    treeseq_safe_fwd pathname tnewest tolder /\ treeseq_safe_bwd pathname flag tnewest tolder.
+
 
   Lemma tree_file_flist: forall F Ftop flist  tree pathname inum f,
     find_subtree pathname tree = Some (TreeFile inum f) ->
@@ -416,33 +428,33 @@ Module TREESEQ.
         eapply DIRTREE.rep_tree_names_distinct; eapply Hpred
     end.
 
-(*
-  Lemma treeseq_upd_safe_eq: forall pathname off flag tree,
-   treeseq_upd_safe pathname off flag tree tree.
+  Lemma treeseq_safe_eq: forall pathname flag tree,
+   treeseq_safe pathname flag tree tree.
   Proof.
     intros.
-    unfold treeseq_upd_safe.
+    unfold treeseq_safe, treeseq_safe_fwd, treeseq_safe_bwd.
+    split.
     intros.
-    right.
-    eexists f.
-    split; eauto.
+    destruct H.
+    eexists x; eauto.
+    intros.
+    destruct H.
+    left.
+    eexists x; eauto.
   Qed.
-*)
 
-(*
-  Lemma NEforall_treeseq_upd_safe_pushd: forall ts pathname off flag tree',
-    NEforall (treeseq_upd_safe pathname off flag tree') ts ->
-    NEforall (treeseq_upd_safe pathname off flag tree') (pushd tree' ts).
+  Lemma treeseq_safe_pushd: forall ts pathname flag tree',
+    treeseq_pred (treeseq_safe pathname flag tree') ts ->
+    treeseq_pred (treeseq_safe pathname flag tree') (pushd tree' ts).
   Proof.
     intros.
     eapply NEforall_d_in'; intros.
     eapply d_in_pushd in H0.
     intuition.
     rewrite H1.
-    eapply treeseq_upd_safe_eq.
+    eapply treeseq_safe_eq.
     eapply NEforall_d_in; eauto. 
   Qed.
-*)
 
 (*
   Lemma treeseq_upd_safe_truncate': forall ts pathname off flag inum file ilist' frees',
@@ -628,6 +640,8 @@ Module TREESEQ.
     simpl.
     rewrite H4 in H11.
     eassumption.
+    eapply treeseq_safe_pushd; eauto.
+    admit. (* XXX treeseq_safe_setattr *)
     eapply dir2flatmem2_update_subtree.
     distinct_names'.
     eassumption.
