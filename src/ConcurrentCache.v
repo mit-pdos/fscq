@@ -634,17 +634,17 @@ Module ConcurrentCache (C:CacheSubProtocol).
   Theorem cache_maybe_read_ok : forall a,
       SPEC App.delta, tid |-
               {{ v0,
-               | PRE d m s_i s: invariant App.delta d m s /\
+               | PRE d m s_i s: invariant delta d m s /\
                                get vdisk s a = Some v0
                | POST d' m' s_i' s' r:
-                   invariant App.delta d' m' s' /\
-                   modified [(vdisk; vDisk0)] s s' /\
-                   guar delta tid s s' /\
+                   invariant delta d m s /\
+                   s' = s /\
+                   m' = m /\
+                   d' = d /\
                    s_i' = s_i /\
                    (r = Some v0 \/
                     r = None /\
-                    cache_get (get vCache s') a = Missing) /\
-                   guar delta tid s s'
+                    cache_get (get vCache s') a = Missing)
               }} cache_maybe_read a.
   Proof.
     hoare.
@@ -821,7 +821,7 @@ Module ConcurrentCache (C:CacheSubProtocol).
                    get vdisk s a = Some v0 /\
                    guar App.delta tid s_i s
                | POST d' m' s_i' s' _:
-                   invariant delta d' m' s' /\
+                   invariant App.delta d' m' s' /\
                    (exists (s1 s2: abstraction App.Sigma),
                        modified [(vCache; vDisk0)] s s1 /\
                        rely App.delta tid s1 s2 /\
@@ -850,21 +850,26 @@ Module ConcurrentCache (C:CacheSubProtocol).
     deex.
     eexists; simplify; finish.
 
-    hoare;
-      try match goal with
-      (* cache_rep stable when adding reader *)
-      | [ |- cache_rep (upd _ _ _)
-                      (cache_add _ _ _)
-                      (remove_reader _ _) ] => admit
-      (* wb_rep insensitive to readers *)
-      | [ |- wb_rep (remove_reader _ _) _ _ ] => admit
-      (* clean addresses irrelevant *)
-      | [ |- no_wb_reader_conflict (cache_add _ _ _) _ ] => admit
-      | [ |- readers_locked _ _ (remove_reader _ _) ] => admit
-      end.
+    hoare.
+    eapply invariantRespectsPrivateVars; eauto;
+      simplify; finish;
+        match goal with
+        (* cache_rep stable when adding reader *)
+        | [ |- cache_rep (upd _ _ _)
+                        (cache_add _ _ _)
+                        (remove_reader _ _) ] => admit
+        (* wb_rep insensitive to readers *)
+        | [ |- wb_rep (remove_reader _ _) _ _ ] => admit
+        (* clean addresses irrelevant *)
+        | [ |- no_wb_reader_conflict (cache_add _ _ _) _ ] => admit
+        | [ |- exists _, _ ] => idtac
+        end.
 
     exists s0, s1.
     intuition eauto; solve_modified.
+    match goal with
+    | [ |- readers_locked _ _ (remove_reader _ _) ] => admit
+    end.
   Admitted.
 
   Hint Extern 1 {{cache_fill _; _}} => apply cache_fill_ok.
@@ -1018,21 +1023,22 @@ Module ConcurrentCache (C:CacheSubProtocol).
   Hint Resolve same_domain_same_vdisk.
 
   Theorem cache_read_ok : forall a,
-      SPEC delta, tid |-
+      SPEC App.delta, tid |-
               {{ v,
                | PRE d m s_i s:
-                   invariant delta d m s /\
+                   invariant App.delta d m s /\
                    get vdisk s a = Some v /\
-                   guar delta tid s_i s
+                   guar App.delta tid s_i s
                | POST d' m' s_i' s' r:
-                   invariant delta d' m' s' /\
+                   invariant App.delta d' m' s' /\
                    (r = None
-                    (* not sure what we can guarantee here - perhaps
-                    that only a rely step occurred, but even that is
-                    difficult *) \/
+                    (* Need to guarantee a rely step, though actually a reader
+                    was added/removed. For the actual global protocol, this
+                    should still be a rely step, since the readers belong to the
+                    cache and others cannot rely on them. *) \/
                     r = Some v /\
                     get vdisk s' = get vdisk s) /\
-                   guar delta tid s_i' s'
+                   guar App.delta tid s_i' s'
               }} cache_read a.
   Proof.
     hoare.
@@ -1042,13 +1048,21 @@ Module ConcurrentCache (C:CacheSubProtocol).
     (* TODO: need to produce value in disk using same_domain or
     something *)
     eexists; simplify; finish.
-    replace (get vWriteBuffer s1) with emptyWriteBuffer by auto.
+    admit. (* XXX: why do we only have invariant delta and no modified
+    restrictions? *)
+    replace (get vWriteBuffer s0) with emptyWriteBuffer by auto.
     apply wb_get_empty.
     admit. (* needed to find get vdisk s1 a first *)
 
-    transitivity (get vDisk0 s); eauto.
+    eapply guar_preorder; eauto.
+    eapply protocolRespectsPrivateVars; eauto.
+    admit. (* XXX: same as above, don't have modified between {m,s} and
+    {m0,s0} *)
 
     step.
+    (* XXX: why is there only guar delta here? *)
+    eapply protocolRespectsPrivateVars; eauto.
+    admit.
   Admitted.
 
   Theorem cache_write_ok : forall a v,
