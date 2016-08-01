@@ -170,12 +170,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
      indlvl = 1 for doubly indirect, etc. *)
 
  Fixpoint indrep_n_tree indlvl bxp ibn l nvalid :=
-    (exists iblocks l_part, indrep_n_helper bxp ibn iblocks nvalid *
-    [[ l = concat l_part ]] *
-    match indlvl with
-    | 0 => [[ iblocks = concat l_part ]]
-    | S indlvl' =>  let divisor := NIndirect ^ indlvl in
-                    let nr := divup nvalid divisor in
+    (match indlvl with
+    | 0 => indrep_n_helper bxp ibn l nvalid
+    | S indlvl' => let divisor := NIndirect ^ indlvl in
+                    exists iblocks l_part, [[ l = concat l_part ]] *
+                    indrep_n_helper bxp ibn iblocks (divup nvalid divisor) *
                     listmatch (fun index_ibn' l' => let '(index, ibn') := index_ibn' in
                         indrep_n_tree indlvl' bxp (# ibn') l' (nvalid - index * divisor))
                       (enumerate iblocks) l_part
@@ -345,7 +344,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Lemma indget_length_helper_l : forall Fm off indlvl bxp bn iblocks l_part nvalid m,
     off < length (concat l_part) ->
-    ((Fm * indrep_n_helper bxp bn iblocks nvalid) *
+    ((Fm * indrep_n_helper bxp bn iblocks (divup nvalid (NIndirect * NIndirect ^ indlvl))) *
           listmatch (fun (index_ibn' : addr * waddr) (l' : list waddr) =>
            let '(index, ibn') := index_ibn' in
             indrep_n_tree indlvl bxp # (ibn') l' (nvalid - index * (NIndirect * NIndirect ^ indlvl)))
@@ -372,7 +371,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Lemma indget_length_helper_r : forall Fm off indlvl bxp bn iblocks l_part nvalid m,
     off < length (concat l_part) ->
-    ((Fm * indrep_n_helper bxp bn iblocks nvalid) *
+    ((Fm * indrep_n_helper bxp bn iblocks (divup nvalid (NIndirect * NIndirect ^ indlvl))) *
           listmatch (fun (index_ibn' : addr * waddr) (l' : list waddr) =>
            let '(index, ibn') := index_ibn' in
             indrep_n_tree indlvl bxp # (ibn') l' (nvalid - index * (NIndirect * NIndirect ^ indlvl)))
@@ -486,11 +485,15 @@ Module BlockPtr (BPtr : BlockPtrSig).
     split; cancel; repeat rewrite nvalid_gt_0_indrep_helper by omega; cancel.
     split; intros m H'; destruct_lift H'; repeat rewrite nvalid_gt_0_indrep_helper in * by omega;
     match goal with [H : _ |- _] => destruct_lift H end; pred_apply; cancel.
-    all : rewrite nvalid_gt_0_indrep_helper by omega.
+    all : rewrite divup_mul in * by mult_nonzero.
+    all : assert (divup nvalid (NIndirect * NIndirect ^ indlvl) > 0) by
+            (apply divup_mul_ge; mult_nonzero; rewrite mult_comm;
+             eapply le_trans; [> apply mult_le_compat_r | apply H]; auto).
+    all : repeat rewrite nvalid_gt_0_indrep_helper in * by auto.
     all : erewrite listmatch_piff_replace; try cancel.
     all : intros x y; destruct x; intros.
     all : unfold IndRec.rep, IndRec.items_valid in *; destruct_lifts.
-    all : unfold enumerate in *; apply in_combine_l, in_seq in H4.
+    all : unfold enumerate in *; apply in_combine_l, in_seq in H5.
     all : unfold IndRec.Defs.item in *; simpl in *.
     all : split; intros mm HH.
     all : apply IHindlvl in HH; try apply IHindlvl; eauto.
@@ -508,7 +511,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Qed.
 
   Lemma indrep_n_tree_length: forall indlvl F ir l1 l2 bxp nvalid m, (F *
-    indrep_n_helper bxp ir l1 nvalid *
+    indrep_n_helper bxp ir l1 (divup nvalid (NIndirect * NIndirect ^ indlvl)) *
     listmatch
      (fun index_ibn' l' => let '(index, ibn') := index_ibn' in
        indrep_n_tree indlvl bxp # (ibn') l' (nvalid - index * (NIndirect * NIndirect ^ indlvl)))
@@ -529,7 +532,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Qed.
 
   Lemma indrep_n_indlist_forall_length : forall F indlvl bxp ir l1 l2 nvalid m,
-    ((F ✶ indrep_n_helper bxp ir l1 nvalid)
+    ((F ✶ indrep_n_helper bxp ir l1 (divup nvalid (NIndirect * NIndirect ^ indlvl)))
         ✶ listmatch
             (fun (index_ibn' : addr * waddr) (l' : list waddr) =>
              let '(index, ibn') := index_ibn' in
@@ -565,6 +568,14 @@ Module BlockPtr (BPtr : BlockPtrSig).
     | S indlvl' => indget indlvl' lxp (# (Rec.to_word v)) (off mod divisor) ms
     end.
 
+  Lemma divup_gt_0 : forall a b, 0 < a -> 0 < b -> divup a b > 0.
+  Proof.
+    intros.
+    apply Nat.div_str_pos; omega.
+  Qed.
+
+  Local Hint Resolve divup_gt_0.
+
   Theorem indget_ok : forall indlvl lxp bxp bn off ms,
     {< F Fm m0 m l nvalid,
     PRE:hm
@@ -584,7 +595,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
       destruct addr_eq_dec; cancel; omega.
     + repeat safestep; autorewrite with core; try eassumption.
       - eauto.
-      - rewrite nvalid_gt_0_indrep_helper; auto; solve [omega | cancel].
+      - rewrite nvalid_gt_0_indrep_helper by (apply divup_gt_0; (omega || mult_nonzero)).
+        cancel.
       - unfold Rec.to_word; simpl.
         rewrite listmatch_isolate, selN_enumerate.
         (* these are hidden by notation, but otherwise prevent cancel from succeeding *)
@@ -620,13 +632,18 @@ Module BlockPtr (BPtr : BlockPtrSig).
     match indlvl with
       | 0 => Ret ^(ms, indbns)
       | S indlvl' =>
-        r <- ForN i < divup nvalid (NIndirect ^ indlvl)
+        let N := (NIndirect ^ (S indlvl')) in
+        r <- ForN i < divup nvalid N
           Hashmap hm
-          Ghost [ F Fm l bxp crash m0 m ]
+          Ghost [ F Fm iblocks l_part l bxp crash m0 m ]
           Loopvar [ ms r ]
           Invariant
             LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-            [[[ m ::: Fm * indrep_n_tree indlvl bxp ir l nvalid]]] *
+            [[[ m ::: Fm * indrep_n_helper bxp ir iblocks (divup nvalid N) *
+                      listmatch (fun index_ibn' l' =>
+                        let '(index, ibn') := index_ibn' in
+                          indrep_n_tree indlvl' bxp (# ibn') l' (nvalid - index * N))
+                        (enumerate iblocks) l_part ]]] *
             [[ r = firstn (min (i * (NIndirect ^ indlvl)) (roundup nvalid NIndirect)) l ]]
           OnCrash crash
           Begin
@@ -660,35 +677,33 @@ Module BlockPtr (BPtr : BlockPtrSig).
         substl NIndirect.
         apply roundup_ge_divisor; auto.
     + hoare.
-      - rewrite nvalid_gt_0_indrep_helper by auto; cancel.
-      - unify_rep. rewrite indrep_n_helper_length_piff in *.
+      - rewrite nvalid_gt_0_indrep_helper by (apply divup_gt_0; (omega || mult_nonzero)); cancel.
+      - rewrite indrep_n_helper_length_piff in H9.
         rewrite listmatch_length_pimpl in *; autorewrite with lists in *.
         destruct_lifts.
         unfold IndRec.Defs.item in *; simpl in *.
         rewrite firstn_oob by omega.
         assert (nvalid <= NIndirect ^ (S (S indlvl))) by (eapply le_trans; eauto;
           eapply Nat.eq_le_incl, indrep_n_tree_length; eauto); simpl in *.
-        rewrite listmatch_isolate with (i := m1), selN_enumerate by
-          (autorewrite with lists; eapply divup_bound_helper; eauto; omega).
+        rewrite listmatch_isolate with (i := m1);
+        autorewrite with lists; try (eapply divup_bound_helper; eauto; omega).
         (* this is hidden by notation, but otherwise prevents cancel from succeeding *)
         erewrite snd_pair by eauto; simpl.
         edestruct Min.min_spec as [ [HH Hmin]|[HH Hmin] ]; rewrite Hmin; cancel.
-        rewrite indrep_n_tree_nvalid_oob; simpl; solve [ cancel | omega].
-      - unify_rep. rewrite indrep_n_helper_length_piff in *.
-        rewrite listmatch_length_pimpl in *; destruct_lifts.
-        unfold IndRec.Defs.item in *; simpl in *.
-        assert (nvalid <= NIndirect ^ (S (S indlvl))) by (eapply le_trans; eauto;
-          eapply Nat.eq_le_incl, indrep_n_tree_length; eauto); simpl in *.
-        match goal with [H : _ |- _] =>
-          rewrite listmatch_isolate with (i := m1) in H
-        end; autorewrite with lists in *; try (eapply divup_bound_helper; eauto; omega).
-        rewrite indrep_n_length_pimpl in *; destruct_lifts.
-        match goal with [H : context [selN]|- _] => rewrite H end.
-        apply Min.le_min_l.
+        rewrite indrep_n_tree_nvalid_oob; simpl; solve [cancel | omega].
+      - match goal with [H : context[indrep_n_helper] |- _] =>
+          eapply indrep_n_indlist_forall_length in H; eapply Forall_selN in H; try rewrite H
+        end.
+        apply Nat.le_min_l.
+        rewrite indrep_n_helper_length_piff, listmatch_length_pimpl in *; destruct_lifts.
+        autorewrite with lists in *.
+        eapply divup_bound_helper; [> eauto | |].
+        eapply le_trans; eauto; eapply Nat.eq_le_incl, indrep_n_tree_length; eauto.
+        omega.
       - edestruct Min.min_spec as [ [HH Hmin]|[HH Hmin] ]; rewrite Hmin; [> mult_nonzero |].
         rewrite <- Nat.lt_add_lt_sub_r; simpl.
         apply divup_gt; auto; mult_nonzero.
-      - unify_rep. rewrite min_roundup, roundup_mult.
+      - rewrite min_roundup, roundup_mult.
         match goal with [H : context[indrep_n_helper] |- _] =>
           rewrite indrep_n_helper_length_piff, listmatch_length_pimpl in H
         end; destruct_lifts; autorewrite with lists in *.
