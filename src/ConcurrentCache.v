@@ -427,6 +427,20 @@ Module ConcurrentCache (C:CacheSubProtocol).
       solve [ auto with modified ]
     end.
 
+  (* lightweight intuition *)
+  Ltac expand_propositional t :=
+    repeat match goal with
+           | [ H: ?P -> _ |- _ ] =>
+             lazymatch type of P with
+             | Prop => let ant := fresh in
+                   assert P as ant by t;
+                   specialize (H ant);
+                   clear ant
+             end
+           | [ H: _ /\ _ |- _ ] =>
+             destruct H
+           end.
+
   Ltac simp_hook := fail.
 
   Ltac simplify_step :=
@@ -434,17 +448,17 @@ Module ConcurrentCache (C:CacheSubProtocol).
     | [ |- forall _, _ ] => intros
     | _ => sub_protocol
     | _ => learn_protocol
-    | _ => deex
-    | _ => progress destruct_ands
+    | _ => time "deex" deex
+    | _ => time "expand_propositional" progress expand_propositional trivial
     | _ => inv_opt
     | _ => pick_opt_condition
     | _ => progress subst
     | _ => replace_mem_val
-    | _ => reduce_hlist
+    | _ => time "reduce_hlist" reduce_hlist
     | _ => simp_hook
     | _ => descend
     | _ => prove_protocol
-    | _ => solve_modified
+    | _ => time "solve_modified" solve_modified
     end.
 
   Ltac finish := time "finish"
