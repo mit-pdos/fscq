@@ -921,9 +921,11 @@ Module ConcurrentCache (C:CacheSubProtocol).
                    get vdisk s a = Some v0
                | POST d' m' s_i' s' r:
                    invariant delta d' m' s' /\
-                   (r = true -> get vdisk s' = upd (get vdisk s) a v) /\
-                   get vDisk0 s' = get vDisk0 s /\
-                   modified [(vWriteBuffer; vdisk)] s s' /\
+                   (r = true ->
+                    get vdisk s' = upd (get vdisk s) a v /\
+                    get vDisk0 s' = get vDisk0 s /\
+                    modified [(vWriteBuffer; vdisk)] s s') /\
+                   (r = false -> s' = s) /\
                    s_i' = s_i
               }} cache_try_write a v.
   Proof.
@@ -976,6 +978,7 @@ Module ConcurrentCache (C:CacheSubProtocol).
    | POST d' m' s_i' s' _:
        invariant delta d' m' s' /\
        get vdisk s' = hide_readers (get vDisk0 s) /\
+       modified [(vWriteBuffer; vdisk)] s s' /\
        get vDisk0 s' = get vDisk0 s /\
        get vCache s' = get vCache s /\
        get vWriteBuffer s' = emptyWriteBuffer /\
@@ -1080,25 +1083,32 @@ Module ConcurrentCache (C:CacheSubProtocol).
   Admitted.
 
   Theorem cache_write_ok : forall a v,
-      SPEC delta, tid |-
+      SPEC App.delta, tid |-
               {{ v0,
                | PRE d m s_i s:
-                   invariant delta d m s /\
+                   invariant App.delta d m s /\
                    get vdisk s a = Some v0 /\
-                   guar delta tid s_i s
+                   guar App.delta tid s_i s
                | POST d' m' s_i' s' r:
                    invariant delta d' m' s' /\
                    (r = false
                     (* same as read - what to guarantee here? *) \/
                     (r = true /\
-                     get vdisk s' = upd (get vdisk s) a v)) /\
-                   guar delta tid s_i' s'
+                     get vdisk s' = upd (get vdisk s) a v) /\
+                    modified [(vWriteBuffer; vdisk)] s s' /\
+                   s_i' = s_i)
               }} cache_write a v.
   Proof.
     hoare.
     eexists; simplify; finish.
     hoare.
-  Qed.
+    admit. (* TODO: actually, this needs to come from an assumption that the
+    invariant is satisfied if we abort *)
+
+    admit. (* TODO: not strong enough to have guar App.delta s_i s at all times
+    - want to know what get vDisk0 s corresponds in some way to get vdisk s_i
+    (both under current disk?) *)
+  Admitted.
 
   Section ExampleProgram.
 
