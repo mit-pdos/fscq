@@ -262,14 +262,16 @@ Section LISTPRED.
 End LISTPRED.
 
 Theorem listpred_lift : forall T l AT AEQ V prd F G,
-  (forall x, prd x <=p=> [[ F x ]] * G x) ->
+  (forall x, In x l -> prd x <=p=> [[ F x ]] * G x) ->
   @listpred T AT AEQ V prd l <=p=> [[ Forall F l ]] * listpred G l.
 Proof.
   intros; induction l.
   split; cancel.
-  simpl; rewrite H.
+  simpl; rewrite H; intuition.
   rewrite IHl.
   split; cancel; inversion H1; auto.
+  intros.
+  apply H; intuition.
 Qed.
 
 Theorem listpred_unify : forall T l1 l2 AT AEQ V f F1 F2 m,
@@ -473,7 +475,7 @@ Section LISTMATCH.
 End LISTMATCH.
 
 Theorem listmatch_lift : forall A B AT AEQ V prd (l1 : list A) (l2 : list B) F P,
-  (forall x y, prd x y ⇦⇨ ⟦⟦ P x y ⟧⟧ ✶ F x y) ->
+  (forall x y, In x l1 -> In y l2 -> prd x y ⇦⇨ ⟦⟦ P x y ⟧⟧ ✶ F x y) ->
   @listmatch A B AT AEQ V prd l1 l2 <=p=> [[ Forall2 P l1 l2]] * listmatch F l1 l2.
 Proof.
   intros.
@@ -484,10 +486,13 @@ Proof.
   apply forall2_forall; eauto.
   intros; simpl.
   destruct x; simpl; auto.
+  apply H.
+  eapply in_combine_l; eauto.
+  eapply in_combine_r; eauto.
 Qed.
 
 Theorem listmatch_lift_l : forall A B AT AEQ V prd (l1 : list A) (l2 : list B) F P,
-  (forall x y, prd x y ⇦⇨ ⟦⟦ P x ⟧⟧ ✶ F x y) ->
+  (forall x y, In x l1 -> In y l2 -> prd x y ⇦⇨ ⟦⟦ P x ⟧⟧ ✶ F x y) ->
   @listmatch A B AT AEQ V prd l1 l2 <=p=> [[ Forall P l1 ]] * listmatch F l1 l2.
 Proof.
   intros.
@@ -584,7 +589,7 @@ Proof.
 Qed.
 
 Theorem listmatch_lift_r : forall AT AEQ V A C l1 l2 f F P,
-  (forall x y, f x y <=p=> ([[ P y ]] * F x y)%pred) ->
+  (forall x y, In x l1 -> In y l2 -> f x y <=p=> ([[ P y ]] * F x y)%pred) ->
   @listmatch A C AT AEQ V f l1 l2 <=p=> [[ Forall P l2 ]] * listmatch F l1 l2.
 Proof.
   intros.
