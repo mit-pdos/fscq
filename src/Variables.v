@@ -1,6 +1,7 @@
 Require Import Hlist.
 Require Import List.
 Require Import PeanoNat.
+Require Import RelationClasses.
 Require Import ProofIrrelevance.
 
 Set Implicit Arguments.
@@ -91,12 +92,42 @@ Section Modification.
     apply hin_get.
   Qed.
 
-  Lemma modified_nothing : forall contents vartypes
+  Theorem modified_refl : forall contents vartypes
                              (vars: variables contents vartypes)
                              (m: hlist (fun T:Type => T) contents),
       modified vars m m.
   Proof.
     unfold modified; intros; auto.
+  Qed.
+
+  Theorem modified_sym : forall contents vartypes
+                           (vars: variables contents vartypes)
+                           (m m': hlist (fun T:Type => T) contents),
+      modified vars m m' ->
+      modified vars m' m.
+  Proof.
+    unfold modified; intros.
+    symmetry; eauto.
+  Qed.
+
+  Theorem modified_trans : forall contents vartypes
+                             (vars: variables contents vartypes)
+                             (m m' m'': hlist (fun T:Type => T) contents),
+      modified vars m m' ->
+      modified vars m' m'' ->
+      modified vars m m''.
+  Proof.
+    unfold modified; intros.
+    transitivity (get m0 m'); eauto.
+  Qed.
+
+  Instance modified_equiv {contents vartypes} {vars: variables contents vartypes} :
+    Equivalence (modified vars).
+  Proof.
+    constructor; hnf.
+    apply modified_refl.
+    apply modified_sym.
+    apply modified_trans.
   Qed.
 
   Hint Resolve hin_get_variables.

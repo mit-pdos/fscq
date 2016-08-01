@@ -417,7 +417,7 @@ Module ConcurrentCache (C:CacheSubProtocol).
     end.
 
   Hint Resolve
-       modified_nothing
+       modified_refl
        one_more_modified_in HHere HLater
        modified_single_var : modified.
 
