@@ -33,6 +33,8 @@ Require Import AsyncFS.
 Require Import Arith.
 Require Import Errno.
 Require Import List ListUtils.
+Require Import GenSepAuto.
+
 
 
 Import DIRTREE.
@@ -572,7 +574,6 @@ Module TREESEQ.
     eapply AFS.lookup_ok.
     cancel.
     eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
-    step.
   Qed.
 
   Theorem treeseq_read_fblock_ok : forall fsxp inum off mscs,
@@ -598,6 +599,226 @@ Module TREESEQ.
     eassumption.
     eassumption.
   Qed.
+
+  Lemma dirtree_block_belong_to_file_setattr_fwd: forall Fm fsxp Ftop pathname d d' tree attr f ilist ilist' frees frees' bn inum off,
+    let tree' := update_subtree pathname (TreeFile inum
+                     {|
+                     BFILE.BFData := BFILE.BFData f;
+                     BFILE.BFAttr := attr |}) tree in
+    (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)%pred (list2nmem d) ->
+    (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees')%pred (list2nmem d') ->
+    find_subtree pathname tree = Some (TreeFile inum f) ->
+    BFILE.block_belong_to_file ilist bn inum off ->
+    BFILE.block_belong_to_file ilist' bn inum off.
+  Proof.
+    (* proof: changing the attr doesn't effect blocks: inum off must be same bn *)
+    intros.
+
+    eapply tree_file_length_ok in H as Hlength; eauto.
+    eapply BFILE.block_belong_to_file_inum_ok in H2 as Hinum; eauto.
+
+    subst tree'.
+    unfold BFILE.block_belong_to_file in *; split.
+
+
+    unfold rep, BFILE.rep, INODE.rep in H0. destruct_lift H0.
+    setoid_rewrite listmatch_extract with (i := inum) in H0 at 2.
+    unfold BFILE.file_match in H0 at 2; destruct_lift H0.
+    setoid_rewrite listmatch_extract with (i := off) in H0 at 3.
+    destruct_lift H0.
+    rewrite map_length in *.
+
+
+    eapply sep_star_assoc_1 in H6.
+    setoid_rewrite sep_star_comm in H6.
+    eapply sep_star_assoc_2 in H6.
+    eapply tree_file_flist with (pathname := pathname) in H6 as Hf; eauto.
+    rewrite <- H9.
+    intuition. 
+    rewrite Hf; simpl; eauto.
+
+    eapply sep_star_assoc_1 in H6.
+    setoid_rewrite sep_star_comm in H6.
+    eapply sep_star_assoc_2 in H6.
+    eapply tree_file_flist with (pathname := pathname) in H6 as Hf; eauto.
+    intuition. 
+    rewrite Hf; simpl; eauto.
+
+    eapply list2nmem_inbound.
+    pred_apply.
+    admit.  (* if find_subtree (update_tree .. ) = inum -> true *)
+
+    intuition.
+
+    unfold rep, BFILE.rep, INODE.rep in H0. destruct_lift H0.
+    setoid_rewrite listmatch_extract with (i := inum) in H0 at 2.
+    unfold BFILE.file_match in H0 at 2; destruct_lift H0.
+    setoid_rewrite listmatch_extract with (i := off) in H0 at 3.
+    destruct_lift H0.
+    rewrite map_length in *.
+
+    eapply sep_star_assoc_1 in H7.
+    setoid_rewrite sep_star_comm in H7.
+    eapply sep_star_assoc_2 in H7.
+    eapply tree_file_flist with (pathname := pathname) in H7 as Hf; eauto.
+
+    (* INODE.IBLocks ilist [[inum ]] = INODE.IBlocks ilist' [[inum]] 
+       because both are equal to BFData f, because setattr didn't change blocks 
+       find a way to rewrite both to BFdata f.
+     *)
+  Admitted.
+
+  Lemma dirtree_block_belong_to_file_setattr_bwd: forall Fm fsxp Ftop pathname d d' tree attr f ilist ilist' frees frees' bn inum off,
+    let tree' := update_subtree pathname (TreeFile inum
+                     {|
+                     BFILE.BFData := BFILE.BFData f;
+                     BFILE.BFAttr := attr |}) tree in
+    (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)%pred (list2nmem d) ->
+    (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees')%pred (list2nmem d') ->
+    find_subtree pathname tree = Some (TreeFile inum f) ->
+    BFILE.block_belong_to_file ilist' bn inum off ->
+    BFILE.block_belong_to_file ilist bn inum off.
+  Proof.
+  Admitted.
+
+  Lemma dirtree_block_belong_to_file_update_ne_fwd: forall Fm fsxp Ftop pathname0 pathname1 d d' tree f0 f1 ilist ilist' frees frees' bn inum0 inum1 off,
+    let tree' := update_subtree pathname0 (TreeFile inum0 f0) tree in
+    (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)%pred (list2nmem d) ->
+    (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees')%pred (list2nmem d') ->
+    pathname0 <> pathname1 ->
+    find_subtree pathname1 tree = Some (TreeFile inum1 f1) ->
+    BFILE.block_belong_to_file ilist bn inum1 off ->
+    BFILE.block_belong_to_file ilist' bn inum1 off.
+  Proof.
+  Admitted.
+
+  Lemma dirtree_block_belong_to_file_update_ne_bwd: forall Fm fsxp Ftop pathname0 pathname1 d d' tree f0 f1 ilist ilist' frees frees' bn inum0 inum1 off,
+    let tree' := update_subtree pathname0 (TreeFile inum0 f0) tree in
+    (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)%pred (list2nmem d) ->
+    (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees')%pred (list2nmem d') ->
+    pathname0 <> pathname1 ->
+    find_subtree pathname1 tree = Some (TreeFile inum1 f1) ->
+    BFILE.block_belong_to_file ilist' bn inum1 off ->
+    BFILE.block_belong_to_file ilist bn inum1 off.
+  Proof.
+  Admitted.
+
+  Lemma treeseq_safe_pushd_attr: forall Fm fsxp Ftop d d' ts pathname ilist' attr f inum  mscs pathname',
+  let tree' := {|
+      TStree := update_subtree pathname
+                  (TreeFile inum
+                     {|
+                     BFILE.BFData := BFILE.BFData f;
+                     BFILE.BFAttr := attr |}) 
+                  (TStree ts !!);
+      TSilist := ilist';
+      TSfree := TSfree ts !! |} in
+  (Fm * DIRTREE.rep fsxp Ftop (TStree ts !!) (TSilist ts !!) (TSfree ts !!))%pred (list2nmem d) ->
+  (Fm * DIRTREE.rep fsxp Ftop (TStree tree') ilist' (TSfree ts !!))%pred (list2nmem d') ->
+  find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
+  treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) ts !!) ts ->
+  treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (pushd tree' ts) !!) (pushd tree' ts).
+  Proof.
+    intros.
+    eapply treeseq_safe_pushd; eauto.
+    eapply NEforall_d_in'; intros.
+    subst tree'.
+    eapply NEforall_d_in in H2.
+    2: instantiate (1 := x); eauto.
+    destruct (list_eq_dec string_dec pathname pathname'); simpl.
+    - rewrite e in *; simpl.
+      unfold treeseq_safe in *.
+      intuition; simpl.
+      * unfold treeseq_safe_fwd in *.
+        intros; simpl.
+        specialize (H4 inum0 off bn).
+        destruct H4.
+        destruct H2.
+        eexists x0.
+        intuition.
+        intuition.
+        exists {| BFILE.BFData := BFILE.BFData f; BFILE.BFAttr := attr |}.
+        erewrite find_update_subtree; eauto.
+        rewrite H1 in H6.
+        inversion H6.
+        split; eauto.
+        eapply dirtree_block_belong_to_file_setattr_fwd in H as Hbelong; eauto.
+        rewrite <- H8; eassumption.
+        rewrite <- H8; eassumption.
+      * unfold treeseq_safe_bwd in *; intros.
+        specialize (H5 inum off bn).
+        destruct (lt_dec off (Datatypes.length (BFILE.BFData f))).
+        destruct H5.
+        eexists f.
+        split; eauto.
+        simpl in *.
+        intuition.
+        eapply dirtree_block_belong_to_file_setattr_bwd; eauto.
+        destruct H2.
+        erewrite find_update_subtree in H2.
+        intuition.
+        inversion H5; eauto.
+        eassumption.
+        destruct H5.
+        intuition.
+        left.
+        eexists x0.
+        rewrite <- e in *.
+        simpl in *.
+        destruct H2.
+        erewrite find_update_subtree in H2.
+        intuition.
+        inversion H5.
+        rewrite H9 in *; eauto.
+        inversion H5.
+        rewrite H9 in *; eauto.
+        eassumption.
+        right; eauto.
+        right; eauto.
+        rewrite <- e in *.
+        (* XXX contradiction from H2 follows that off < BFData f *)
+        destruct H2.
+        intuition.
+        simpl in *.
+        erewrite find_update_subtree in H6.
+        inversion H6.
+        rewrite H8 in *.
+        (* XXX from H7 we must be able conclude that off < BFData f *)
+        exfalso.
+        admit.
+        eassumption.
+     - unfold treeseq_safe in *.
+      intuition; simpl.
+      * unfold treeseq_safe_fwd in *; simpl.
+        (* we updated pathname, but pathname' is still safe, if it was safe. *)
+        erewrite find_subtree_update_subtree_ne_path; eauto.
+        intros.
+        specialize (H4 inum0 off bn).
+        destruct H4.
+        destruct H2.
+        eexists x0.
+        eassumption.
+        eexists x0.
+        split. intuition.
+        intuition.
+        eapply dirtree_block_belong_to_file_update_ne_fwd with (tree := (TStree ts !!)); eauto.
+      * unfold treeseq_safe_bwd in *; simpl.
+        erewrite find_subtree_update_subtree_ne_path; eauto.
+        intros.
+        specialize (H5 inum0 off bn).
+        destruct H5.
+        destruct H2.
+        eexists x0.
+        split.
+        intuition.
+        intuition.
+        eapply dirtree_block_belong_to_file_update_ne_bwd with (tree := (TStree ts !!)); eauto.
+        destruct H5.
+        left.
+        eexists x0.
+        eassumption.
+        right; eauto. 
+  Admitted.
 
   Theorem treeseq_file_set_attr_ok : forall fsxp inum attr mscs,
   {< ds ts pathname Fm Ftop Ftree f,
@@ -640,8 +861,11 @@ Module TREESEQ.
     simpl.
     rewrite H4 in H11.
     eassumption.
-    eapply treeseq_safe_pushd; eauto.
-    admit. (* XXX treeseq_safe_setattr *)
+    rewrite H4 in *.
+    eapply treeseq_in_ds_tree_pred_latest in H6 as Hpred.
+    eapply treeseq_safe_pushd_attr; eauto.
+    eapply dir2flatmem2_find_subtree_ptsto in H0; eauto.
+    distinct_names.
     eapply dir2flatmem2_update_subtree.
     distinct_names'.
     eassumption.
