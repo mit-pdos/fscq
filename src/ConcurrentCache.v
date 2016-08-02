@@ -1091,12 +1091,11 @@ Module ConcurrentCache (C:CacheSubProtocol).
                    guar App.delta tid s_i s
                | POST d' m' s_i' s' r:
                    invariant delta d' m' s' /\
-                   (r = false
-                    (* same as read - what to guarantee here? *) \/
-                    (r = true /\
-                     get vdisk s' = upd (get vdisk s) a v) /\
-                    modified [(vWriteBuffer; vdisk)] s s' /\
-                   s_i' = s_i)
+                   (* same as read - what to guarantee for false? *)
+                   (r = true ->
+                    get vdisk s' = upd (get vdisk s) a v) /\
+                   modified [(vWriteBuffer; vdisk)] s s' /\
+                   s_i' = s_i
               }} cache_write a v.
   Proof.
     hoare.
@@ -1124,19 +1123,18 @@ Module ConcurrentCache (C:CacheSubProtocol).
     Hint Extern 1 {{cache_write _ _; _}} => apply cache_write_ok : prog.
 
     Theorem copy_ok : forall a a',
-        SPEC delta, tid |-
+        SPEC App.delta, tid |-
                 {{ v v0,
                  | PRE d m s_i s:
-                     invariant delta d m s /\
+                     invariant App.delta d m s /\
                      get vdisk s a = Some v /\
                      get vdisk s a' = Some v0 /\
-                     guar delta tid s_i s
+                     guar App.delta tid s_i s
                  | POST d' m' s_i' s' r:
-                     invariant delta d' m' s' /\
-                     (r = false \/
-                      r = true /\
+                     invariant App.delta d' m' s' /\
+                      (r = true ->
                       get vdisk s' = upd (get vdisk s) a' v) /\
-                     guar delta tid s_i' s'
+                     guar App.delta tid s_i' s'
                 }} copy a a'.
     Proof.
       hoare.
@@ -1148,7 +1146,9 @@ Module ConcurrentCache (C:CacheSubProtocol).
       replace (get vdisk s0); eauto.
 
       hoare.
-    Qed.
+      admit. (* insufficient guarantees when cache fails *)
+      admit. (* insufficient guarantees when cache fails *)
+    Admitted.
 
   End ExampleProgram.
 
