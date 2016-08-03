@@ -390,69 +390,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Hint Resolve indget_length_helper_l indget_length_helper_r.
 
-  Theorem indrep_n_tree_unify : forall indlvl Fa Fb l1 l2 bxp ibn nvalid m,
-    (Fa * indrep_n_tree indlvl bxp ibn l1 nvalid)%pred m ->
-    (Fb * indrep_n_tree indlvl bxp ibn l2 nvalid)%pred m ->
-    l1 = l2.
-  Proof.
-    induction indlvl; intros; simpl in *;
-      unfold indrep_n_helper in *;
-      destruct addr_eq_dec; repeat match goal with
-        | [ H : context [lift_empty] |- _] => destruct_lift H
-        | [ H : ?a = ?b |- _ = _ ] => rewrite <- H
-        end; eauto.
-    + eapply IndRec.rep_inj; eauto.
-    + f_equal.
-      eapply listmatch_unify_r; eauto; simpl.
-      intros; destruct x.
-      eapply IHindlvl; eauto.
-    + f_equal.
-      match goal with [l1 : list waddr, l2 : list waddr |- _] =>
-        assert (l1 = l2) by (
-          eapply IndRec.rep_inj;
-          match goal with [H : context [IndRec.rep] |-_ ] =>
-            solve [eapply pimpl_apply; [> | exact H]; cancel]
-          end)
-      end; subst.
-      eapply listmatch_unify_r; eauto; simpl.
-      intros; destruct x.
-      eapply IHindlvl; eauto.
-  Qed.
-
-  Theorem indrec_n_tree_listmatch_unify : forall (l : list waddr) l3 l4  Fc Fd bxp indlvl m nvalid,
-    (Fc * listmatch (fun a_b l' => let '(index, ibn') := a_b in
-            indrep_n_tree indlvl bxp # (ibn') l' (nvalid - index * (NIndirect ^ S indlvl))) (enumerate l) l3)%pred m ->
-    (Fd * listmatch (fun a_b l' => let '(index, ibn') := a_b in
-            indrep_n_tree indlvl bxp # (ibn') l' (nvalid - index * (NIndirect ^ S indlvl))) (enumerate l) l4)%pred m ->
-    l3 = l4.
-  Proof.
-    intros.
-    eapply listmatch_unify_r; eauto.
-    simpl; intros.
-    match goal with [x : _ * _ |- _ ] => destruct x end.
-    eapply indrep_n_tree_unify; eauto.
-  Qed.
-
-  Ltac unify_rep := match goal with
-    [ H1 : context [listmatch _ (enumerate ?l1) ?l3],
-      H2 : context [listmatch _ (enumerate ?l2) ?l4] |- _] =>
-      assert (l1 = l2) by (
-        rewrite nvalid_gt_0_indrep_helper in * by omega;
-        eapply IndRec.rep_inj;
-        match goal with
-          | [H : context [IndRec.rep _ ?l] |- context [IndRec.rep _ ?l] ] =>
-          solve [eapply pimpl_apply; [> | exact H]; cancel]
-        end);
-      try rewrite enumerate_inj in *; subst l1;
-      assert (l3 = l4) by (
-        eapply indrec_n_tree_listmatch_unify;
-        match goal with
-        | [H : _ |- _] => solve [eapply pimpl_apply; [> | exact H]; cancel | apply H]
-        | [ |- ?a ] => idtac a
-        end);
-      subst l3
-    end.
-
   Lemma mult_ge_l : forall m n,
     0 < n -> 0 < m -> n <= n * m.
   Proof.
