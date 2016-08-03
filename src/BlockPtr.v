@@ -162,7 +162,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
    Definition indrep_n_helper bxp ibn iblocks nvalid :=
     (if (addr_eq_dec nvalid 0)
-      then [[ iblocks = repeat ($ 0) NIndirect ]]
+      then [[ length iblocks = NIndirect ]]
       else [[ BALLOC.bn_valid bxp ibn ]] * IndRec.rep ibn iblocks
     )%pred.
 
@@ -209,7 +209,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Set Regular Subst Tactic.
 
   Lemma indrep_n_helper_0 : forall bxp ibn l,
-    indrep_n_helper bxp ibn l 0 <=p=> [[ l = repeat $0 NIndirect ]] * emp.
+    indrep_n_helper bxp ibn l 0 <=p=> [[ length l = NIndirect ]] * emp.
   Proof.
     unfold indrep_n_helper; intros; split; cancel.
   Qed.
@@ -305,8 +305,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
     unfold indrep_n_helper, IndRec.rep, IndRec.items_valid.
     intros; destruct addr_eq_dec; destruct_lift H; unfold lift_empty in *;
     intuition; subst; autorewrite with lists; auto.
-    unfold IndRec.Defs.item in *; simpl in *.
-    omega.
   Qed.
 
   Lemma indrep_n_helper_length_piff : forall bxp ibn l nvalid,
@@ -636,11 +634,12 @@ Module BlockPtr (BPtr : BlockPtrSig).
         autorewrite with lists in *.
         eapply divup_bound_helper; [> eauto | |].
         eapply le_trans; eauto; eapply Nat.eq_le_incl, indrep_n_tree_length; eauto.
-        omega.
+        unfold IndRec.Defs.item in *; simpl in *; congruence.
       - edestruct Min.min_spec as [ [HH Hmin]|[HH Hmin] ]; rewrite Hmin; [> mult_nonzero |].
         rewrite <- Nat.lt_add_lt_sub_r; simpl.
         apply divup_gt; auto; mult_nonzero.
       - rewrite min_roundup, roundup_mult.
+        unfold IndRec.Defs.item in *; simpl in *.
         match goal with [H : context[indrep_n_helper] |- _] =>
           rewrite indrep_n_helper_length_piff, listmatch_length_pimpl in H
         end; destruct_lifts; autorewrite with lists in *.
@@ -654,9 +653,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
         edestruct Min.min_spec as [ [HH' Hmin]|[HH' Hmin] ]; rewrite Hmin in *; clear Hmin.
         erewrite concat_hom_subselect_firstn; eauto.
         rewrite concat_hom_skipn; eauto.
+        unfold IndRec.Defs.item in *; simpl in *.
         eapply divup_bound_helper; eauto; omega.
         rewrite concat_hom_skipn; eauto.
         erewrite concat_hom_subselect_firstn; eauto.
+        unfold IndRec.Defs.item in *; simpl in *.
         eapply divup_bound_helper; eauto; omega.
         pose proof roundup_ge nvalid NIndirect IndRec.Defs.items_per_val_gt_0.
         replace (nvalid - _ * _) with 0 by omega.
