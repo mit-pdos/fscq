@@ -273,6 +273,18 @@ Qed.
 
 Hint Rewrite skipn_selN using omega : lists.
 
+Lemma skipn_seq : forall n a b, skipn n (seq a b) = seq (a + n) (b - n).
+Proof.
+  induction n; intros.
+  rewrite plus_0_r, Nat.sub_0_r; auto.
+  destruct b; auto.
+  simpl.
+  rewrite IHn.
+  f_equal; omega.
+Qed.
+
+Hint Rewrite skipn_seq : lists.
+
 Lemma skipN_updN' : forall T (v : T) vs i j,
   i > j
   -> skipn i (updN vs j v) = skipn i vs.

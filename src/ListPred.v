@@ -259,6 +259,20 @@ Section LISTPRED.
       reflexivity.
   Qed.
 
+  Theorem listpred_emp : forall l,
+    (forall x, In x l -> prd x <=p=> emp) ->
+    listpred l <=p=> emp.
+  Proof.
+    induction l; intros.
+    rewrite listpred_nil; auto.
+    simpl.
+    rewrite H; intuition.
+    rewrite IHl.
+    split; cancel.
+    intros.
+    rewrite H; intuition.
+  Qed.
+
 End LISTPRED.
 
 Theorem listpred_lift : forall T l AT AEQ V prd F G,
@@ -457,12 +471,10 @@ Section LISTMATCH.
     repeat rewrite app_length; omega.
   Qed.
 
-  Theorem listmatch_app_piff : forall a1 b1 a2 b2,
+  Theorem listmatch_app_rev : forall a1 b1 a2 b2,
     length a1 = length b1 \/ length a2 = length b2 ->
-    listmatch a1 b1 * listmatch a2 b2 <=p=> listmatch (a1 ++ a2) (b1 ++ b2).
+    listmatch (a1 ++ a2) (b1 ++ b2) =p=> listmatch a1 b1 * listmatch a2 b2.
   Proof.
-    split.
-    apply listmatch_app.
     unfold listmatch; cancel;
     repeat rewrite app_length in *;
     repeat (omega || rewrite combine_app || apply listpred_app).
@@ -481,6 +493,31 @@ Section LISTMATCH.
     rewrite skipn_combine; auto.
     eapply skipn_firstn_length_eq; eauto.
     eapply skipn_firstn_length_eq; eauto.
+  Qed.
+
+  Theorem listmatch_emp : forall l1 l2,
+    (forall x y, In x l1 -> In y l2 -> prd x y <=p=> emp) ->
+    listmatch l1 l2 =p=> emp.
+  Proof.
+    intros.
+    unfold listmatch.
+    rewrite listpred_emp.
+    cancel.
+    intros; destruct x; simpl.
+    apply H; solve [eapply in_combine_l; eauto |eapply in_combine_r; eauto].
+  Qed.
+
+  Theorem listmatch_emp_piff : forall l1 l2,
+    (forall x y, In x l1 -> In y l2 -> prd x y <=p=> emp) ->
+    listmatch l1 l2 <=p=> [[ length l1 = length l2 ]].
+  Proof.
+    split.
+    rewrite listmatch_length_pimpl; cancel.
+    apply listmatch_emp; auto.
+    unfold listmatch; rewrite listpred_emp.
+    cancel.
+    intros; destruct x; simpl.
+    apply H; solve [eapply in_combine_l; eauto |eapply in_combine_r; eauto].
   Qed.
 
 End LISTMATCH.
