@@ -457,6 +457,17 @@ Section LISTMATCH.
     repeat rewrite app_length; omega.
   Qed.
 
+  Theorem listmatch_app_piff : forall a1 b1 a2 b2,
+    length a1 = length b1 \/ length a2 = length b2 ->
+    listmatch a1 b1 * listmatch a2 b2 <=p=> listmatch (a1 ++ a2) (b1 ++ b2).
+  Proof.
+    split.
+    apply listmatch_app.
+    unfold listmatch; cancel;
+    repeat rewrite app_length in *;
+    repeat (omega || rewrite combine_app || apply listpred_app).
+  Qed.
+
   Theorem listmatch_split : forall a b n,
     listmatch a b <=p=> listmatch (firstn n a) (firstn n b) * listmatch (skipn n a) (skipn n b).
   Proof.
