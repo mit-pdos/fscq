@@ -764,6 +764,8 @@ Module ConcurrentCache (C:CacheSubProtocol).
 
   Hint Resolve wb_rep_add_reader.
 
+  Hint Resolve cache_add_get_eq.
+
   Theorem prepare_fill_ok : forall a,
       SPEC App.delta, tid |-
               {{ v0,
@@ -790,12 +792,11 @@ Module ConcurrentCache (C:CacheSubProtocol).
     eapply invariantRespectsPrivateVars; eauto;
       try solve_modified.
 
-    simplify; finish.
-
-    eapply guar_preorder; [ eassumption | ].
-    eapply protocolRespectsPrivateVars; eauto;
-      try solve_modified.
-    simplify; finish.
+    - simplify; finish.
+    - eapply guar_preorder; [ eassumption | ].
+      eapply protocolRespectsPrivateVars; eauto;
+        try solve_modified.
+      simplify; finish.
   Qed.
 
   Hint Extern 1 {{ prepare_fill _; _ }} => apply prepare_fill_ok : prog.
@@ -864,6 +865,90 @@ Module ConcurrentCache (C:CacheSubProtocol).
     tauto.
   Qed.
 
+  Lemma remove_reader_eq : forall d a v0 rdr0,
+      d a = Some (v0, rdr0) ->
+      remove_reader d a a = Some (v0, None).
+  Proof.
+    unfold remove_reader; intros;
+      destruct matches;
+      simpl_match;
+      autorewrite with upd;
+      auto.
+  Qed.
+
+  Lemma remove_reader_neq : forall d a a',
+      a <> a' ->
+      remove_reader d a a' = d a'.
+  Proof.
+    unfold remove_reader; intros;
+      destruct matches;
+      autorewrite with upd;
+      auto.
+  Qed.
+
+  Lemma cache_rep_remove_reader : forall d c vd a v rdr0,
+      vd a = Some (v, rdr0) ->
+      cache_rep d c vd ->
+      cache_rep (upd d a (v, None))
+                (cache_add c a (Clean v))
+                (remove_reader vd a).
+  Proof.
+    unfold cache_rep; intros.
+    specialize (H0 a0).
+    destruct (nat_dec a a0); subst;
+      autorewrite with upd cache.
+    - erewrite remove_reader_eq by eauto; eauto.
+    - destruct matches; simpl_match;
+        rewrite remove_reader_neq by auto;
+        eauto.
+  Qed.
+
+  Hint Resolve cache_rep_remove_reader.
+
+  Lemma wb_rep_remove_reader : forall d wb vd a v,
+      vd a = Some v ->
+      wb_rep d wb vd ->
+      wb_rep (remove_reader d a) wb vd.
+  Proof.
+    unfold wb_rep; intros.
+    specialize (H0 a0).
+    destruct (nat_dec a a0); subst;
+      destruct matches in *|-; simplify;
+      erewrite ?remove_reader_eq by eauto;
+      rewrite ?remove_reader_neq by auto;
+      try simpl_match;
+      eauto.
+    destruct v0_rdr; erewrite remove_reader_eq by eauto; eauto.
+  Qed.
+
+  Hint Resolve wb_rep_remove_reader.
+
+  Lemma reading_disk_same : forall d c vd a v tid,
+      cache_rep d c vd ->
+      d a = Some (v, Some tid) ->
+      vd a = Some (v, Some tid).
+  Proof.
+    unfold cache_rep; intros.
+    specialize (H a); destruct matches in *;
+      intuition auto;
+      repeat deex;
+      congruence.
+  Qed.
+
+  Lemma reading_virt_disk_same : forall d c vd a v tid,
+      cache_rep d c vd ->
+      vd a = Some (v, Some tid) ->
+      d a = Some (v, Some tid).
+  Proof.
+    unfold cache_rep; intros.
+    specialize (H a); destruct matches in *;
+      intuition auto;
+      repeat deex;
+      congruence.
+  Qed.
+
+  Hint Resolve reading_disk_same.
+
   Theorem cache_fill_ok : forall a,
       SPEC App.delta, tid |-
               {{ v0,
@@ -899,7 +984,6 @@ Module ConcurrentCache (C:CacheSubProtocol).
 
     assert (exists v, d1 a = Some (v, Some tid)). {
       eauto using cache_rep_disk_val.
-      admit.
     }
 
     deex.
@@ -909,10 +993,6 @@ Module ConcurrentCache (C:CacheSubProtocol).
     eapply invariantRespectsPrivateVars; eauto;
       simplify; finish;
         match goal with
-        (* cache_rep stable when adding reader *)
-        | [ |- cache_rep (upd _ _ _)
-                        (cache_add _ _ _)
-                        (remove_reader _ _) ] => admit
         (* wb_rep insensitive to readers *)
         | [ |- wb_rep (remove_reader _ _) _ _ ] => admit
         (* clean addresses irrelevant *)
@@ -922,9 +1002,6 @@ Module ConcurrentCache (C:CacheSubProtocol).
 
     exists s0, s1.
     intuition eauto; solve_modified.
-    match goal with
-    | [ |- readers_locked _ _ (remove_reader _ _) ] => admit
-    end.
   Admitted.
 
   Hint Extern 1 {{cache_fill _; _}} => apply cache_fill_ok.
