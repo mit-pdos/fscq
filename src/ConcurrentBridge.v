@@ -118,3 +118,7 @@ Theorem compiler_correct : forall T (p: Prog.prog T) A (spec: A -> SeqHoareSpec 
     concur_hoare_double (fun a => concurrent_spec (spec a)) (compiler p).
 Proof.
 Abort.
+
+(* Local Variables: *)
+(* company-coq-local-symbols: (("delta" . ?δ) ("Sigma" . ?Σ)) *)
+(* End: *)

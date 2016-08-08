@@ -1159,5 +1159,5 @@ Hint Extern 1 {{cache_write _ _; _}} => apply cache_write_ok : prog.
 End ConcurrentCache.
 
 (* Local Variables: *)
-(* company-coq-local-symbols: (("delta" . ?δ) ("Sigma" . ?Σ)) *)
+(* company-coq-local-symbols: (("delta" . ?δ) ("Sigma" . ?Σ) ("delta'" . (?δ (Br . Bl) ?')) ("Sigma'" . (?Σ (Br . Bl) ?'))) *)
 (* End: *)
