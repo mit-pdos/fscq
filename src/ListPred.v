@@ -260,6 +260,19 @@ Section LISTPRED.
   Qed.
 
   Theorem listpred_emp : forall l,
+    (forall x, In x l -> prd x =p=> emp) ->
+    listpred l =p=> emp.
+  Proof.
+    induction l; intros.
+    rewrite listpred_nil; auto.
+    simpl.
+    rewrite H; intuition.
+    rewrite IHl. cancel.
+    intros.
+    rewrite H; intuition.
+  Qed.
+
+  Theorem listpred_emp_piff : forall l,
     (forall x, In x l -> prd x <=p=> emp) ->
     listpred l <=p=> emp.
   Proof.
@@ -496,7 +509,7 @@ Section LISTMATCH.
   Qed.
 
   Theorem listmatch_emp : forall l1 l2,
-    (forall x y, In x l1 -> In y l2 -> prd x y <=p=> emp) ->
+    (forall x y, In x l1 -> In y l2 -> prd x y =p=> emp) ->
     listmatch l1 l2 =p=> emp.
   Proof.
     intros.
@@ -513,8 +526,9 @@ Section LISTMATCH.
   Proof.
     split.
     rewrite listmatch_length_pimpl; cancel.
-    apply listmatch_emp; auto.
-    unfold listmatch; rewrite listpred_emp.
+    apply listmatch_emp; intuition.
+    rewrite H; auto.
+    unfold listmatch; rewrite listpred_emp_piff.
     cancel.
     intros; destruct x; simpl.
     apply H; solve [eapply in_combine_l; eauto |eapply in_combine_r; eauto].
