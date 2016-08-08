@@ -716,6 +716,54 @@ Module ConcurrentCache (C:CacheSubProtocol).
   Hint Resolve wb_add_reader.
   Hint Resolve readers_locked_add_reader wb_cache_val_none_vd0.
 
+  Lemma add_reader_neq : forall d a tid a',
+      a <> a' ->
+      add_reader d a tid a' = d a'.
+  Proof.
+    unfold add_reader; intros.
+    destruct matches;
+      autorewrite with upd;
+      auto.
+  Qed.
+
+  Lemma cache_rep_add_reader : forall d c vd a v0 rdr0 rdr,
+      vd a = Some (v0, rdr0) ->
+      cache_rep d c vd ->
+      cache_rep (upd d a (v0, Some rdr))
+                (cache_add c a Invalid)
+                (add_reader vd a rdr).
+  Proof.
+    unfold cache_rep; intros.
+    specialize (H0 a0).
+    destruct (nat_dec a a0); subst;
+      autorewrite with upd cache.
+    erewrite add_reader_eq by eauto; eauto.
+
+    destruct matches; simpl_match;
+      rewrite add_reader_neq by auto;
+      eauto.
+  Qed.
+
+  Hint Resolve cache_rep_add_reader.
+
+  Lemma wb_rep_add_reader : forall d wb vd a v tid,
+      vd a = Some v ->
+      wb_rep d wb vd ->
+      wb_rep (add_reader d a tid) wb vd.
+  Proof.
+    unfold wb_rep; intros.
+    specialize (H0 a0).
+    destruct (nat_dec a a0); subst;
+      destruct matches in *|-; simplify;
+      erewrite ?add_reader_eq by eauto;
+      rewrite ?add_reader_neq by auto;
+      try simpl_match;
+      eauto.
+    destruct v0_rdr; erewrite add_reader_eq by eauto; eauto.
+  Qed.
+
+  Hint Resolve wb_rep_add_reader.
+
   Theorem prepare_fill_ok : forall a,
       SPEC App.delta, tid |-
               {{ v0,
@@ -742,22 +790,13 @@ Module ConcurrentCache (C:CacheSubProtocol).
     eapply invariantRespectsPrivateVars; eauto;
       try solve_modified.
 
-    simplify; finish;
-      (let n := numgoals in guard n = 2);
-      match goal with
-      (* cache_rep stable when adding reader *)
-      | [ |- cache_rep (upd _ _ _)
-                      (cache_add _ _ _)
-                      (add_reader _ _ _) ] => admit
-      (* wb_rep insensitive to readers *)
-      | [ |- wb_rep (add_reader _ _ _) _ _ ] => admit
-      end.
+    simplify; finish.
 
     eapply guar_preorder; [ eassumption | ].
     eapply protocolRespectsPrivateVars; eauto;
       try solve_modified.
     simplify; finish.
-  Admitted.
+  Qed.
 
   Hint Extern 1 {{ prepare_fill _; _ }} => apply prepare_fill_ok : prog.
 
