@@ -2466,3 +2466,93 @@ Proof.
 Qed.
 
 Hint Rewrite length_enumerate firstn_enumerate selN_enumerate enumerate_inj : lists.
+
+Definition part {T} (l : list T) (k : nat) :=
+  map (fun i => firstn k (skipn (i * k) l)) (seq 0 (length l / k)).
+
+Definition part_nil : forall T k, part (@nil T) k = nil.
+Proof.
+  unfold part. intros.
+  destruct (Nat.eq_dec 0 k); subst.
+  auto.
+  rewrite Nat.div_0_l by auto. auto.
+Qed.
+
+Lemma part_length : forall T (l : list T) k, Nat.divide k (length l) -> k <> 0 ->
+  length (part l k) = length l / k.
+Proof.
+  intros.
+  unfold Nat.divide in *. destruct H.
+  unfold part.
+  rewrite H, Nat.div_mul by auto.
+  rewrite map_length, seq_length; auto.
+Qed.
+
+Lemma part_forall_length : forall T (l : list T) k, Nat.divide k (length l) -> k <> 0 ->
+  Forall (fun x => length x = k) (part l k).
+Proof.
+  intros.
+  destruct H. unfold part; rewrite H.
+  rewrite Nat.div_mul by auto.
+  apply Forall_map, Forall_forall.
+  intros x0 HH.
+  apply in_seq in HH.
+  apply firstn_length_l.
+  rewrite skipn_length, H.
+  rewrite <- Nat.mul_sub_distr_r, mult_comm.
+  rewrite <- mult_1_r at 1.
+  apply mult_le_compat_l. omega.
+Qed.
+
+Lemma concat_hom_part : forall T (l : list T) k, Nat.divide k (length l) -> k <> 0 ->
+  concat (part l k) = l.
+Proof.
+  intros.
+  unfold part.
+  destruct H.
+  remember (length l) as n.
+  generalize dependent n.
+  generalize dependent l.
+  generalize dependent k.
+  induction x; intros.
+  simpl in *; rewrite H in *.
+  rewrite Nat.div_0_l by auto.
+  simpl.
+  symmetry; apply length_nil. auto.
+  rewrite H; simpl.
+  rewrite Nat.div_add, Nat.div_same by auto.
+  simpl in *.
+  rewrite <- seq_shift, map_map.
+  simpl in *.
+  rewrite <- firstn_skipn with (l := l) at 2.
+  f_equal.
+  rewrite <- IHx with (k := k) (n := x * k); auto.
+  rewrite Nat.div_mul by auto.
+  f_equal. apply map_ext.
+  intros.
+  f_equal.
+  rewrite skipn_skipn'; auto.
+  rewrite skipn_length.
+  assert (x * k >= 0) by intuition.
+  omega.
+Qed.
+
+Lemma part_hom_concat : forall T (l : list (list T)) k, Forall (fun x => length x = k) l -> k <> 0 ->
+  part (concat l) k = l.
+Proof.
+  unfold part.
+  intros.
+  erewrite concat_hom_length; eauto.
+  rewrite Nat.div_mul by auto.
+  induction l; simpl; intros. auto.
+  inversion H; subst.
+  f_equal. rewrite firstn_app; auto.
+  rewrite <- seq_shift, map_map.
+  simpl in *.
+  rewrite <- IHl at 2 by auto.
+  apply map_ext.
+  intros.
+  f_equal.
+  rewrite skipn_app_r. auto.
+Qed.
+Search (?a * ?b <= ?a * ?c).
