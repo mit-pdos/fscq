@@ -827,6 +827,8 @@ Module ConcurrentCache (C:CacheSubProtocol).
     others_rely_readers_locked.
   Qed.
 
+  Arguments rely_read_lock {tid s s' a v} _ _.
+
   Ltac simp_hook ::=
        match goal with
        | [ Hrely: rely delta ?tid ?s _,
