@@ -830,12 +830,12 @@ Module ConcurrentCache (C:CacheSubProtocol).
 
   Arguments rely_read_lock {tid s s' a v} _ _.
 
-  Ltac simp_hook ::=
-       match goal with
-       | [ Hrely: rely delta ?tid ?s _,
-              H: get vDisk0 ?s _ = Some (_, Some ?tid) |- _ ] =>
-         learn that (rely_read_lock H Hrely)
-       end.
+  Ltac read_lock_fwd :=
+    match goal with
+    | [ Hrely: rely delta ?tid ?s _,
+               H: get vDisk0 ?s _ = Some (_, Some ?tid) |- _ ] =>
+      learn that (rely_read_lock H Hrely)
+    end.
 
   Hint Resolve
        same_domain_remove_reader
@@ -856,6 +856,15 @@ Module ConcurrentCache (C:CacheSubProtocol).
         eauto.
     congruence.
   Qed.
+
+  Arguments cache_rep_disk_val {d c vd v rdr a} _ _.
+
+  Ltac cache_virt_disk_fwd :=
+    match goal with
+    | [ Hrep: cache_rep _ _ ?vd,
+              Hvd: ?vd _ = Some (_, _) |- _ ] =>
+      learn that (cache_rep_disk_val Hrep Hvd)
+    end.
 
   Lemma or_distr_impl : forall (P Q R:Prop),
       (P -> R) ->
@@ -949,6 +958,43 @@ Module ConcurrentCache (C:CacheSubProtocol).
 
   Hint Resolve reading_disk_same.
 
+  Lemma wb_rep_in_domain : forall d wb vd a v,
+      wb_rep d wb vd ->
+      d a = Some v ->
+      exists v', vd a = Some v'.
+  Proof.
+    unfold wb_rep; intros.
+    specialize (H a); destruct matches in *;
+      intuition eauto.
+  Qed.
+
+  Arguments wb_rep_in_domain {d wb vd a v} _ _.
+
+  Ltac wb_disk_fwd :=
+    match goal with
+    | [ Hrep: wb_rep ?d _ _,
+              Hd: ?d _ = Some _ |- _ ] =>
+      learn that (wb_rep_in_domain Hrep Hd)
+    end.
+
+  Ltac simp_hook ::=
+       read_lock_fwd ||
+       cache_virt_disk_fwd ||
+       wb_disk_fwd.
+
+  Lemma no_wb_reader_conflict_stable_fill : forall c wb a v,
+      no_wb_reader_conflict c wb ->
+      no_wb_reader_conflict (cache_add c a (Clean v)) wb.
+  Proof.
+    unfold no_wb_reader_conflict; intros.
+    specialize (H a0).
+    destruct (nat_dec a a0); subst;
+      autorewrite with cache in *;
+      (auto || congruence).
+  Qed.
+
+  Hint Resolve no_wb_reader_conflict_stable_fill.
+
   Theorem cache_fill_ok : forall a,
       SPEC App.delta, tid |-
               {{ v0,
@@ -982,27 +1028,15 @@ Module ConcurrentCache (C:CacheSubProtocol).
       now repeat (apply or_distr_impl; [ vars_distinct | ]).
     }
 
-    assert (exists v, d1 a = Some (v, Some tid)). {
-      eauto using cache_rep_disk_val.
-    }
-
-    deex.
     eexists; simplify; finish.
 
     hoare.
     eapply invariantRespectsPrivateVars; eauto;
-      simplify; finish;
-        match goal with
-        (* wb_rep insensitive to readers *)
-        | [ |- wb_rep (remove_reader _ _) _ _ ] => admit
-        (* clean addresses irrelevant *)
-        | [ |- no_wb_reader_conflict (cache_add _ _ _) _ ] => admit
-        | [ |- exists _, _ ] => idtac
-        end.
+      simplify; finish.
 
     exists s0, s1.
     intuition eauto; solve_modified.
-  Admitted.
+  Qed.
 
   Hint Extern 1 {{cache_fill _; _}} => apply cache_fill_ok.
 
