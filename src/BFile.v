@@ -1099,11 +1099,10 @@ Module BFILE.
     step.
   Qed.
 
-
-  Lemma block_belong_to_file_ok : forall Fm Fi Fd bxp ixp flist ilist frees inum off f vs m,
+  Lemma block_belong_to_file_off_ok : forall Fm Fi bxp ixp flist ilist frees inum off f m,
     (Fm * rep bxp ixp flist ilist frees)%pred m ->
     (Fi * inum |-> f)%pred (list2nmem flist) ->
-    (Fd * off |-> vs)%pred (list2nmem (BFData f)) ->
+    off < Datatypes.length (BFData f) -> 
     block_belong_to_file ilist # (selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0) inum off.
   Proof.
     unfold block_belong_to_file; intros; split; auto.
@@ -1114,8 +1113,19 @@ Module BFILE.
     setoid_rewrite listmatch_extract with (i := off) in H at 3.
     destruct_lift H.
     rewrite map_length in *.
-    seprewrite. simplen. simplen. simplen.
+    rewrite <- H7. simplen. simplen. simplen.
     Unshelve. eauto.
+  Qed.
+
+  Lemma block_belong_to_file_ok : forall Fm Fi Fd bxp ixp flist ilist frees inum off f vs m,
+    (Fm * rep bxp ixp flist ilist frees)%pred m ->
+    (Fi * inum |-> f)%pred (list2nmem flist) ->
+    (Fd * off |-> vs)%pred (list2nmem (BFData f)) ->
+    block_belong_to_file ilist # (selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0) inum off.
+  Proof.
+    intros.
+    eapply list2nmem_inbound in H1.
+    eapply block_belong_to_file_off_ok; eauto.
   Qed.
 
   Definition diskset_was (ds0 ds : diskset) := ds0 = ds \/ ds0 = (ds!!, nil).
