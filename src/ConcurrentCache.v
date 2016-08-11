@@ -441,6 +441,17 @@ Module ConcurrentCache (C:CacheSubProtocol).
              destruct H
            end.
 
+  Lemma guar_two_step : forall Sigma (delta: Protocol Sigma) tid s s' s'',
+      guar delta tid s s' ->
+      guar delta tid s' s'' ->
+      guar delta tid s s''.
+  Proof.
+    intros.
+    eapply guar_preorder; eauto.
+  Qed.
+
+  Hint Extern 5 (guar _ _ _ _) => eapply guar_two_step; [ eassumption | ].
+
   Ltac simp_hook := fail.
 
   Ltac simplify_step :=
@@ -775,14 +786,14 @@ Module ConcurrentCache (C:CacheSubProtocol).
                    (* XXX: not sure exactly why this is a requirement,
                    but it comes from no_wb_reader_conflict *)
                    wb_get (get vWriteBuffer s) a = WbMissing /\
-                   get vdisk s a = Some v0 /\
-                   guar App.delta tid s_i s
+                   get vdisk s a = Some v0
                | POST d' m' s_i' s' _:
                    invariant App.delta d' m' s' /\
                    get vDisk0 s' a = Some (v0, Some tid) /\
                    get vDisk0 s' = add_reader (get vDisk0 s) a tid /\
                    modified [( vCache; vDisk0 )] s s' /\
-                   guar App.delta tid s_i' s'
+                   guar App.delta tid s s' /\
+                   s_i' = s_i
               }} prepare_fill a.
   Proof.
     hoare.
@@ -793,8 +804,7 @@ Module ConcurrentCache (C:CacheSubProtocol).
       try solve_modified.
 
     - simplify; finish.
-    - eapply guar_preorder; [ eassumption | ].
-      eapply protocolRespectsPrivateVars; eauto;
+    - eapply protocolRespectsPrivateVars; eauto;
         try solve_modified.
       simplify; finish.
   Qed.
@@ -1064,7 +1074,6 @@ Module ConcurrentCache (C:CacheSubProtocol).
        cache_not_invalid_2
        cache_not_invalid_3.
 
-
   Theorem cache_try_write_ok : forall a v,
       SPEC App.delta, tid |-
               {{ v0,
@@ -1217,19 +1226,24 @@ Module ConcurrentCache (C:CacheSubProtocol).
     (* TODO: need to produce value in disk using same_domain or
     something *)
     eexists; simplify; finish.
-    admit. (* XXX: why do we only have invariant delta and no modified
-    restrictions? *)
+
+    (* TODO: not safe to fill cache after abort in general; need to know that
+       global invariant holds (and global relation holds after undoing disk
+       operations).
+
+       Two reasonable approaches:
+       - Require that after an abort the invariant automatically holds
+       - Add a hook for an App abort that guarantees the global invariant is
+         restored. *)
+    admit.
     replace (get vWriteBuffer s0) with emptyWriteBuffer by auto.
     apply wb_get_empty.
     admit. (* needed to find get vdisk s1 a first *)
 
     eapply guar_preorder; eauto.
-    eapply protocolRespectsPrivateVars; eauto.
-    admit. (* XXX: same as above, don't have modified between {m,s} and
-    {m0,s0} *)
+    admit. (* same as above *)
 
     step.
-    (* XXX: why is there only guar delta here? *)
     eapply protocolRespectsPrivateVars; eauto.
     admit.
   Admitted.
@@ -1243,22 +1257,33 @@ Module ConcurrentCache (C:CacheSubProtocol).
                    guar App.delta tid s_i s
                | POST d' m' s_i' s' r:
                    invariant delta d' m' s' /\
-                   (* same as read - what to guarantee for false? *)
                    (r = true ->
                     get vdisk s' = upd (get vdisk s) a v) /\
-                   modified [(vWriteBuffer; vdisk)] s s' /\
+                   rely delta tid s s' /\
                    s_i' = s_i
               }} cache_write a v.
   Proof.
     hoare.
     eexists; simplify; finish.
     hoare.
-    admit. (* TODO: actually, this needs to come from an assumption that the
-    invariant is satisfied if we abort *)
 
-    admit. (* TODO: not strong enough to have guar App.delta s_i s at all times
+    match goal with
+    | |- rely delta _ _ _ =>
+      admit (* TODO: not sure if we can promise this if write fails *)
+    end.
+
+    match goal with
+    | |- invariant App.delta _ _ _ =>
+      admit (* TODO: actually, this needs to come from an assumption that the
+    invariant is satisfied if we abort *)
+    end.
+
+    match goal with
+    | [ |- guar App.delta _ _ _ ] =>
+      admit (* TODO: not strong enough to have guar App.delta s_i s at all times
     - want to know what get vDisk0 s corresponds in some way to get vdisk s_i
     (both under current disk?) *)
+    end.
   Admitted.
 
   Section ExampleProgram.
