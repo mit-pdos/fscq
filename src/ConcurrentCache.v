@@ -11,10 +11,13 @@ Import Hlist.HlistNotations.
 Require Import MemCache.
 Require Import WriteBufferSet.
 
-(* TODO: split into state/protocol separately to allow creating global protocol
-from module protocol definitions *)
-Module Type GlobalProtocol.
+Module Type GlobalState.
   Parameter Sigma:State.
+End GlobalState.
+
+Module Type GlobalProtocol.
+  Declare Module St : GlobalState.
+  Definition Sigma := St.Sigma.
   Parameter delta:Protocol Sigma.
 End GlobalProtocol.
 
@@ -22,11 +25,11 @@ Definition Sigma := defState
                   [Cache; WriteBuffer]
                   [Cache; WriteBuffer; DISK; Disk].
 
-Module Type CacheProj (App:GlobalProtocol).
-  Parameter stateProj:StateProj App.Sigma Sigma.
+Module Type CacheProj (St:GlobalState).
+  Parameter stateProj:StateProj St.Sigma Sigma.
 End CacheProj.
 
-Module CacheProtocol (App:GlobalProtocol) (Proj:CacheProj App).
+Module CacheProtocol (St:GlobalState) (Proj:CacheProj St).
 
   Section Variables.
 
@@ -91,16 +94,16 @@ Module CacheProtocol (App:GlobalProtocol) (Proj:CacheProj App).
     cbn;
     inversion 1.
 
-  Hint Extern 1 (@member_index _ _ (abstraction_types App.Sigma) _ <>
-                 @member_index _ _ (abstraction_types App.Sigma) _) => vars_distinct.
-  Hint Extern 1 (@member_index _ _ (mem_types App.Sigma) _ <>
-                 @member_index _ _ (mem_types App.Sigma) _) => vars_distinct.
+  Hint Extern 1 (@member_index _ _ (abstraction_types St.Sigma) _ <>
+                 @member_index _ _ (abstraction_types St.Sigma) _) => vars_distinct.
+  Hint Extern 1 (@member_index _ _ (mem_types St.Sigma) _ <>
+                 @member_index _ _ (mem_types St.Sigma) _) => vars_distinct.
 
   Definition no_wb_reader_conflict c wb :=
     forall a, cache_get c a = Invalid ->
          wb_get wb a = WbMissing.
 
-  Definition cacheI : Invariant App.Sigma :=
+  Definition cacheI : Invariant St.Sigma :=
     fun d m s =>
       get mCache m = get vCache s /\
       get mWriteBuffer m = get vWriteBuffer s /\
@@ -122,7 +125,7 @@ Module CacheProtocol (App:GlobalProtocol) (Proj:CacheProj App).
   Qed.
 
   (* not sure whether to say this about vDisk0, vDisk, or both *)
-  Definition cacheR (tid:TID) : Relation App.Sigma :=
+  Definition cacheR (tid:TID) : Relation St.Sigma :=
     fun s s' =>
       let vd := get vDisk0 s in
       let vd' := get vDisk0 s' in
@@ -153,7 +156,7 @@ Module CacheProtocol (App:GlobalProtocol) (Proj:CacheProj App).
     eapply readers_locked_preorder; eauto.
   Qed.
 
-  Definition delta : Protocol App.Sigma :=
+  Definition delta : Protocol St.Sigma :=
     defProtocol cacheI cacheR cacheR_preorder.
 
 End CacheProtocol.
