@@ -29,7 +29,7 @@ Module Type CacheProj (St:GlobalState).
   Parameter stateProj:StateProj St.Sigma Sigma.
 End CacheProj.
 
-Module CacheProtocol (St:GlobalState) (Proj:CacheProj St).
+Module MakeCacheProtocol (St:GlobalState) (Proj:CacheProj St).
 
   Section Variables.
 
@@ -159,35 +159,35 @@ Module CacheProtocol (St:GlobalState) (Proj:CacheProj St).
   Definition delta : Protocol St.Sigma :=
     defProtocol cacheI cacheR cacheR_preorder.
 
-End CacheProtocol.
+End MakeCacheProtocol.
 
 Module Type CacheSubProtocol.
   Declare Module App:GlobalProtocol.
   Declare Module Proj:CacheProj App.
 
-  Module CProto := CacheProtocol App Proj.
+  Module CacheProtocol := MakeCacheProtocol App Proj.
 
-  Parameter protocolProj:SubProtocol App.delta CProto.delta.
+  Parameter protocolProj:SubProtocol App.delta CacheProtocol.delta.
 
   Parameter protocolRespectsPrivateVars :
     forall tid s s',
-      guar CProto.delta tid s s' ->
-      modified [( CProto.vCache; CProto.vDisk0 )] s s' ->
+      guar CacheProtocol.delta tid s s' ->
+      modified [( CacheProtocol.vCache; CacheProtocol.vDisk0 )] s s' ->
       guar App.delta tid s s'.
 
   Parameter invariantRespectsPrivateVars :
     forall d m s d' m' s',
       invariant App.delta d m s ->
-      modified [( CProto.vCache; CProto.vDisk0 )] s s' ->
-      modified [( CProto.mCache )] m m' ->
-      invariant CProto.delta d' m' s' ->
+      modified [( CacheProtocol.vCache; CacheProtocol.vDisk0 )] s s' ->
+      modified [( CacheProtocol.mCache )] m m' ->
+      invariant CacheProtocol.delta d' m' s' ->
       invariant App.delta d' m' s'.
 
 End CacheSubProtocol.
 
-Module ConcurrentCache (C:CacheSubProtocol).
+Module MakeConcurrentCache (C:CacheSubProtocol).
   Import C.
-  Import C.CProto.
+  Import C.CacheProtocol.
 
   (* abstraction helpers *)
 
@@ -1336,7 +1336,7 @@ Module ConcurrentCache (C:CacheSubProtocol).
 Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
 Hint Extern 1 {{cache_write _ _; _}} => apply cache_write_ok : prog.
 
-End ConcurrentCache.
+End MakeConcurrentCache.
 
 (* Local Variables: *)
 (* company-coq-local-symbols: (("delta" . ?δ) ("Sigma" . ?Σ) ("delta'" . (?δ (Br . Bl) ?')) ("Sigma'" . (?Σ (Br . Bl) ?'))) *)
