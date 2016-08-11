@@ -15,12 +15,6 @@ Module Type GlobalState.
   Parameter Sigma:State.
 End GlobalState.
 
-Module Type GlobalProtocol.
-  Declare Module St : GlobalState.
-  Definition Sigma := St.Sigma.
-  Parameter delta:Protocol Sigma.
-End GlobalProtocol.
-
 Definition Sigma := defState
                   [Cache; WriteBuffer]
                   [Cache; WriteBuffer; DISK; Disk].
@@ -160,6 +154,12 @@ Module MakeCacheProtocol (St:GlobalState) (Proj:CacheProj St).
     defProtocol cacheI cacheR cacheR_preorder.
 
 End MakeCacheProtocol.
+
+Module Type GlobalProtocol.
+  Declare Module St : GlobalState.
+  Definition Sigma := St.Sigma.
+  Parameter delta:Protocol Sigma.
+End GlobalProtocol.
 
 Module Type CacheSubProtocol.
   Declare Module App:GlobalProtocol.
