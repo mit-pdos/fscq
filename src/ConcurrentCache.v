@@ -203,16 +203,6 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       _ <- var_update vWriteBuffer up;
       Ret tt.
 
-  (** safe read: returns None upon cache miss  *)
-  Definition cache_maybe_read a :=
-    c <- Get mWriteBuffer;
-      match wb_val c a with
-      | Some v => Ret (Some v)
-      | None =>
-        c <- Get mCache;
-          Ret (cache_val c a)
-      end.
-
   (** Prepare to fill address a, locking the address and marking it
   invalid in the cache to signal the lock to concurrent threads. *)
   Definition prepare_fill a :=
@@ -225,10 +215,8 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       _ <- modify_cache (fun c => cache_add c a Invalid);
       Ret tt.
 
-  Definition cache_fill a :=
-    _ <- prepare_fill a;
-      _ <- Yield a;
-      v <- FinishRead_upd a;
+  Definition finish_fill a :=
+    v <- FinishRead_upd a;
       _ <- var_update vDisk0
         (fun vd => remove_reader vd a);
       _ <- modify_cache (fun c => cache_add c a (Clean v));
@@ -236,7 +224,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
   (** buffer a new write: fails (returns false) if the write overlaps
   with the address being read filled *)
-  Definition cache_try_write a v :=
+  Definition cache_write a v :=
     c <- Get mCache;
       match cache_get c a with
       | Invalid => Ret false
@@ -274,22 +262,20 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       Ret tt.
 
   Definition cache_read a :=
-    opt_v <- cache_maybe_read a;
-      match opt_v with
-      | Some v => Ret (Some v)
-      | None => _ <- cache_abort;
-                 v <- cache_fill a;
-                 Ret None
+    wb <- Get mWriteBuffer;
+      match wb_get wb a  with
+      | Written v => Ret (Some v)
+      | WbMissing =>
+        c <- Get mCache;
+         match cache_get c a with
+         | Clean v => Ret (Some v)
+         | Dirty v => Ret (Some v)
+         | Invalid => v <- finish_fill a;
+                       Ret (Some v)
+         | Missing => _ <- prepare_fill a;
+                       Ret None
+         end
       end.
-
-  Definition cache_write a v :=
-    ok <- cache_try_write a v;
-      if ok then
-        Ret true
-      else
-        _ <- cache_abort;
-      _ <- Yield a;
-      Ret false.
 
   (** TODO: need to write all addresses into cache from WriteBuffer,
   evict from cache (writing if necessary), and then note in place of
@@ -659,29 +645,6 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
   Hint Resolve Some_inv.
 
-  Theorem cache_maybe_read_ok : forall a,
-      SPEC App.delta, tid |-
-              {{ v0,
-               | PRE d m s_i s: invariant delta d m s /\
-                               get vdisk s a = Some v0
-               | POST d' m' s_i' s' r:
-                   invariant delta d m s /\
-                   s' = s /\
-                   m' = m /\
-                   d' = d /\
-                   s_i' = s_i /\
-                   (r = Some v0 \/
-                    r = None /\
-                    cache_get (get vCache s') a = Missing)
-              }} cache_maybe_read a.
-  Proof.
-    hoare.
-    (* requires case analysis on cache_val at a *)
-    admit.
-  Admitted.
-
-  Hint Extern 1 {{cache_maybe_read _; _}} => apply cache_maybe_read_ok : prog.
-
   Hint Resolve
        disk_no_reader
        no_wb_reader_conflict_stable_invalidate
@@ -784,108 +747,41 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       SPEC App.delta, tid |-
               {{ v0,
                | PRE d m s_i s:
-                   invariant App.delta d m s /\
+                   invariant delta d m s /\
                    cache_get (get vCache s) a = Missing /\
                    (* XXX: not sure exactly why this is a requirement,
                    but it comes from no_wb_reader_conflict *)
                    wb_get (get vWriteBuffer s) a = WbMissing /\
                    get vdisk s a = Some v0
                | POST d' m' s_i' s' _:
-                   invariant App.delta d' m' s' /\
+                   invariant delta d' m' s' /\
                    get vDisk0 s' a = Some (v0, Some tid) /\
                    get vDisk0 s' = add_reader (get vDisk0 s) a tid /\
                    modified [( vCache; vDisk0 )] s s' /\
-                   guar App.delta tid s s' /\
+                   guar delta tid s s' /\
                    s_i' = s_i
               }} prepare_fill a.
   Proof.
     hoare.
     eexists; simplify; finish.
-
     hoare.
-    eapply invariantRespectsPrivateVars; eauto;
-      try solve_modified.
-
-    - simplify; finish.
-    - eapply protocolRespectsPrivateVars; eauto;
-        try solve_modified.
-      simplify; finish.
   Qed.
 
   Hint Extern 1 {{ prepare_fill _; _ }} => apply prepare_fill_ok : prog.
 
-  Lemma others_readers_locked_reading : forall tid vd vd' a v,
-      others readers_locked tid vd vd' ->
-      vd a = Some (v, Some tid) ->
-      vd' a = Some (v, Some tid).
-  Proof.
-    unfold others, readers_locked; intros; deex.
-    eauto.
-  Qed.
-
-  Lemma others_rely_readers_locked : forall tid s s',
-      others (guar delta) tid s s' ->
-      others readers_locked tid (get vDisk0 s) (get vDisk0 s').
-  Proof.
-    simpl; unfold cacheR, others; intros; deex; eauto.
-  Qed.
-
-  Lemma rely_read_lock : forall tid (s s': abstraction App.Sigma) a v,
-      get vDisk0 s a = Some (v, Some tid) ->
-      rely delta tid s s' ->
-      get vDisk0 s' a = Some (v, Some tid).
-  Proof.
-    unfold rely; intros.
-    induction H0; eauto.
-    eauto using others_readers_locked_reading,
-    others_rely_readers_locked.
-  Qed.
-
-  Arguments rely_read_lock {tid s s' a v} _ _.
-
-  Ltac read_lock_fwd :=
-    match goal with
-    | [ Hrely: rely delta ?tid ?s _,
-               H: get vDisk0 ?s _ = Some (_, Some ?tid) |- _ ] =>
-      learn that (rely_read_lock H Hrely)
-    end.
-
-  Hint Resolve
-       same_domain_remove_reader
-       readers_locked_remove_reading.
-
-  Lemma cache_rep_disk_val : forall d c vd v rdr a,
+  Lemma cache_disk_val_invalid : forall d c vd a v,
       cache_rep d c vd ->
-      vd a = Some (v, rdr) ->
-      (exists v', d a = Some (v', rdr)).
+      cache_get c a = Invalid ->
+      vd a = Some v ->
+      d a = Some v.
   Proof.
-    intros.
+    unfold cache_rep; intros.
     specialize (H a).
-    destruct matches in *; intuition auto; repeat deex;
-      try match goal with
-          | [ H: ?v = Some (_, ?rdr), H': ?v = Some (_, ?rdr') |- _ ] =>
-            assert (rdr = rdr') by congruence
-          end; subst;
-        eauto.
-    congruence.
+    simpl_match; repeat deex;
+      congruence.
   Qed.
 
-  Arguments cache_rep_disk_val {d c vd v rdr a} _ _.
-
-  Ltac cache_virt_disk_fwd :=
-    match goal with
-    | [ Hrep: cache_rep _ _ ?vd,
-              Hvd: ?vd _ = Some (_, _) |- _ ] =>
-      learn that (cache_rep_disk_val Hrep Hvd)
-    end.
-
-  Lemma or_distr_impl : forall (P Q R:Prop),
-      (P -> R) ->
-      (Q -> R) ->
-      (P \/ Q -> R).
-  Proof.
-    tauto.
-  Qed.
+  Hint Resolve cache_disk_val_invalid.
 
   Lemma remove_reader_eq : forall d a v0 rdr0,
       d a = Some (v0, rdr0) ->
@@ -945,6 +841,88 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
   Hint Resolve wb_rep_remove_reader.
 
+  Lemma wb_rep_missing_vdisk_val : forall d wb vd a v rdr,
+      wb_rep d wb vd ->
+      wb_get wb a = WbMissing ->
+      d a = Some (v, rdr) ->
+      vd a = Some v.
+  Proof.
+    unfold wb_rep; intros.
+    specialize (H a); repeat simpl_match; auto.
+  Qed.
+
+  Hint Resolve wb_rep_missing_vdisk_val.
+
+  Lemma no_wb_reader_conflict_stable_fill : forall c wb a v,
+      no_wb_reader_conflict c wb ->
+      no_wb_reader_conflict (cache_add c a (Clean v)) wb.
+  Proof.
+    unfold no_wb_reader_conflict; intros.
+    specialize (H a0).
+    destruct (nat_dec a a0); subst;
+      autorewrite with cache in *;
+      (auto || congruence).
+  Qed.
+
+  Hint Resolve no_wb_reader_conflict_stable_fill.
+  Hint Resolve same_domain_remove_reader.
+  Hint Resolve readers_locked_remove_reading.
+
+  Theorem finish_fill_ok : forall a,
+      SPEC App.delta, tid |-
+                  {{ v0,
+                   | PRE d m s_i s:
+                       invariant delta d m s /\
+                       cache_get (get vCache s) a = Invalid /\
+                       wb_get (get vWriteBuffer s) a = WbMissing /\
+                       get vDisk0 s a = Some (v0, Some tid)
+                   | POST d' m' s_i' s' r:
+                       invariant delta d' m' s' /\
+                       get vdisk s a = Some v0 /\
+                       modified [( vCache; vDisk0 )] s s' /\
+                       guar delta tid s s' /\
+                       r = v0 /\
+                       s_i' = s_i
+                  }} finish_fill a.
+  Proof.
+    hoare.
+    eexists; simplify; finish.
+    hoare.
+  Qed.
+
+  Hint Extern 1 {{finish_fill _; _}} => apply finish_fill_ok : prog.
+
+  Lemma others_readers_locked_reading : forall tid vd vd' a v,
+      others readers_locked tid vd vd' ->
+      vd a = Some (v, Some tid) ->
+      vd' a = Some (v, Some tid).
+  Proof.
+    unfold others, readers_locked; intros; deex.
+    eauto.
+  Qed.
+
+  Lemma others_rely_readers_locked : forall tid s s',
+      others (guar delta) tid s s' ->
+      others readers_locked tid (get vDisk0 s) (get vDisk0 s').
+  Proof.
+    simpl; unfold cacheR, others; intros; deex; eauto.
+  Qed.
+
+  Lemma rely_read_lock : forall tid (s s': abstraction App.Sigma) a v,
+      get vDisk0 s a = Some (v, Some tid) ->
+      rely delta tid s s' ->
+      get vDisk0 s' a = Some (v, Some tid).
+  Proof.
+    unfold rely; intros.
+    induction H0; eauto.
+    eauto using others_readers_locked_reading,
+    others_rely_readers_locked.
+  Qed.
+
+  Hint Resolve
+       same_domain_remove_reader
+       readers_locked_remove_reading.
+
   Lemma reading_disk_same : forall d c vd a v tid,
       cache_rep d c vd ->
       d a = Some (v, Some tid) ->
@@ -968,90 +946,6 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       repeat deex;
       congruence.
   Qed.
-
-  Hint Resolve reading_disk_same.
-
-  Lemma wb_rep_in_domain : forall d wb vd a v,
-      wb_rep d wb vd ->
-      d a = Some v ->
-      exists v', vd a = Some v'.
-  Proof.
-    unfold wb_rep; intros.
-    specialize (H a); destruct matches in *;
-      intuition eauto.
-  Qed.
-
-  Arguments wb_rep_in_domain {d wb vd a v} _ _.
-
-  Ltac wb_disk_fwd :=
-    match goal with
-    | [ Hrep: wb_rep ?d _ _,
-              Hd: ?d _ = Some _ |- _ ] =>
-      learn that (wb_rep_in_domain Hrep Hd)
-    end.
-
-  Ltac simp_hook ::=
-       read_lock_fwd ||
-       cache_virt_disk_fwd ||
-       wb_disk_fwd.
-
-  Lemma no_wb_reader_conflict_stable_fill : forall c wb a v,
-      no_wb_reader_conflict c wb ->
-      no_wb_reader_conflict (cache_add c a (Clean v)) wb.
-  Proof.
-    unfold no_wb_reader_conflict; intros.
-    specialize (H a0).
-    destruct (nat_dec a a0); subst;
-      autorewrite with cache in *;
-      (auto || congruence).
-  Qed.
-
-  Hint Resolve no_wb_reader_conflict_stable_fill.
-
-  Theorem cache_fill_ok : forall a,
-      SPEC App.delta, tid |-
-              {{ v0,
-               | PRE d m s_i s:
-                   invariant App.delta d m s /\
-                   cache_get (get vCache s) a = Missing /\
-                   (* XXX: not sure exactly why this is a requirement,
-                   but it comes from no_wb_reader_conflict *)
-                   wb_get (get vWriteBuffer s) a = WbMissing /\
-                   get vdisk s a = Some v0 /\
-                   guar App.delta tid s_i s
-               | POST d' m' s_i' s' _:
-                   invariant App.delta d' m' s' /\
-                   (exists (s1 s2: abstraction App.Sigma),
-                       modified [(vCache; vDisk0)] s s1 /\
-                       rely App.delta tid s1 s2 /\
-                       modified [(vCache; vDisk0)] s2 s') /\
-                   guar delta tid s_i' s'
-              }} cache_fill a.
-  Proof.
-    hoare.
-    eexists; simplify; finish.
-    hoare.
-    assert (get vdisk s = get vdisk s0). {
-      match goal with
-      | [ H: modified _ s s0 |- _ ] =>
-        apply H
-      end.
-
-      rewrite hin_index_vars; simpl.
-      now repeat (apply or_distr_impl; [ vars_distinct | ]).
-    }
-
-    eexists; simplify; finish.
-
-    hoare.
-    eapply invariantRespectsPrivateVars; eauto;
-      simplify; finish.
-
-    exists s0, s1.
-    intuition eauto; solve_modified.
-  Qed.
-
-  Hint Extern 1 {{cache_fill _; _}} => apply cache_fill_ok.
 
   Hint Resolve upd_eq.
   Hint Resolve wb_rep_stable_write.
@@ -1077,7 +971,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
        cache_not_invalid_2
        cache_not_invalid_3.
 
-  Theorem cache_try_write_ok : forall a v,
+  Theorem cache_write_ok : forall a v,
       SPEC App.delta, tid |-
               {{ v0,
                | PRE d m s_i s:
@@ -1091,12 +985,12 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                     modified [(vWriteBuffer; vdisk)] s s') /\
                    (r = false -> s' = s) /\
                    s_i' = s_i
-              }} cache_try_write a v.
+              }} cache_write a v.
   Proof.
     hoare.
   Qed.
 
-  Hint Extern 1 {{cache_try_write _ _; _}} => apply cache_try_write_ok : prog.
+  Hint Extern 1 {{cache_write _ _; _}} => apply cache_write_ok : prog.
 
   Hint Resolve wb_rep_empty.
 
@@ -1203,91 +1097,105 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
   Hint Resolve same_domain_same_vdisk.
 
+  (* TODO: these lemmas are very repetitive, figure out how to simplify this *)
+
+  Lemma wb_written_value_vdisk : forall d wb vd a v,
+      wb_rep d wb vd ->
+      wb_get wb a = Written v ->
+      vd a = Some v.
+  Proof.
+    unfold wb_rep; intros.
+    specialize (H a); repeat simpl_match; intuition auto.
+  Qed.
+
+  Arguments wb_written_value_vdisk {d wb vd a v} _ _.
+
+  Ltac wb_written_fwd :=
+    match goal with
+    | [ Hrep: wb_rep _ ?wb _,
+              Hval: wb_get ?wb _ = Written _  |- _ ] =>
+      learn that (wb_written_value_vdisk Hrep Hval)
+    end.
+
+  Lemma cache_clean_value_vdisk : forall d c vd a v,
+      cache_rep d c vd ->
+      cache_get c a = Clean v ->
+      vd a = Some (v, None).
+  Proof.
+    unfold cache_rep; intros.
+    specialize (H a); repeat simpl_match;
+      intuition auto.
+  Qed.
+
+  Arguments cache_clean_value_vdisk {d c vd a v} _ _.
+
+  Ltac cache_clean_fwd :=
+    match goal with
+    | [ Hrep: cache_rep _ ?c _,
+              Hval: cache_get ?c _ = Clean _ |- _ ] =>
+      learn that (cache_clean_value_vdisk Hrep Hval)
+    end.
+
+  Lemma wb_missing_value_vdisk : forall d wb vd a v rdr,
+      wb_rep d wb vd ->
+      wb_get wb a = WbMissing ->
+      d a = Some (v, rdr) ->
+      vd a = Some v.
+  Proof.
+    unfold wb_rep; intros.
+    specialize (H a); repeat simpl_match; auto.
+  Qed.
+
+  Ltac wb_rep_fwd :=
+    match goal with
+    | [ Hrep: wb_rep _ ?wb _,
+              Hval: wb_get ?wb ?a = _ |- _ ] =>
+      learn that (Hrep a)
+    end.
+
+  Ltac cache_rep_fwd :=
+    match goal with
+    | [ Hrep: cache_rep _ ?c _,
+              Hval: cache_get ?c ?a = _ |- _ ] =>
+      learn that (Hrep a)
+    end.
+
+  Ltac simp_hook ::= wb_rep_fwd || cache_rep_fwd || simpl_match.
+
   Theorem cache_read_ok : forall a,
       SPEC App.delta, tid |-
               {{ v,
                | PRE d m s_i s:
-                   invariant App.delta d m s /\
-                   get vdisk s a = Some v /\
-                   guar App.delta tid s_i s
+                   invariant delta d m s /\
+                   get vdisk s a = Some v
                | POST d' m' s_i' s' r:
-                   invariant App.delta d' m' s' /\
-                   (r = None
-                    (* Need to guarantee a rely step, though actually a reader
-                    was added/removed. For the actual global protocol, this
-                    should still be a rely step, since the readers belong to the
-                    cache and others cannot rely on them. *) \/
-                    r = Some v /\
-                    get vdisk s' = get vdisk s) /\
-                   guar App.delta tid s_i' s'
+                   invariant delta d' m' s' /\
+                   guar delta tid s s' /\
+                   (* TODO: only modified a reader - should split vDisk0 so we
+                   can promise not to modify (public) values *)
+                   modified [( vCache; vDisk0 )] s s' /\
+                   (forall v', r = Some v' -> v' = v) /\
+                   s_i' = s_i
               }} cache_read a.
   Proof.
     hoare.
+    (* TODO: eauto on v = v' goals is slow but info_eauto shows nothing *)
+
+    eexists; simplify; finish.
+
+    (* TODO: there's actually no way to know whose pending read is there, but
+does it really matter? Writes need to care about the tid, but handing off
+reading is ok. The programming language semantics have to be relaxed to make
+this ok. *)
+    assert (tid = tid0) by admit; subst.
+    eauto.
+
+    hoare.
     eexists; simplify; finish.
     hoare.
-
-    (* TODO: need to produce value in disk using same_domain or
-    something *)
-    eexists; simplify; finish.
-
-    (* TODO: not safe to fill cache after abort in general; need to know that
-       global invariant holds (and global relation holds after undoing disk
-       operations).
-
-       Two reasonable approaches:
-       - Require that after an abort the invariant automatically holds
-       - Add a hook for an App abort that guarantees the global invariant is
-         restored. *)
-    admit.
-    replace (get vWriteBuffer s0) with emptyWriteBuffer by auto.
-    apply wb_get_empty.
-    admit. (* needed to find get vdisk s1 a first *)
-
-    eapply guar_preorder; eauto.
-    admit. (* same as above *)
-
-    step.
-    eapply protocolRespectsPrivateVars; eauto.
-    admit.
   Admitted.
 
-  Theorem cache_write_ok : forall a v,
-      SPEC App.delta, tid |-
-              {{ v0,
-               | PRE d m s_i s:
-                   invariant App.delta d m s /\
-                   get vdisk s a = Some v0 /\
-                   guar App.delta tid s_i s
-               | POST d' m' s_i' s' r:
-                   invariant delta d' m' s' /\
-                   (r = true ->
-                    get vdisk s' = upd (get vdisk s) a v) /\
-                   rely delta tid s s' /\
-                   s_i' = s_i
-              }} cache_write a v.
-  Proof.
-    hoare.
-    eexists; simplify; finish.
-    hoare.
-
-    match goal with
-    | |- rely delta _ _ _ =>
-      admit (* TODO: not sure if we can promise this if write fails *)
-    end.
-
-    match goal with
-    | |- invariant App.delta _ _ _ =>
-      admit (* TODO: actually, this needs to come from an assumption that the
-    invariant is satisfied if we abort *)
-    end.
-
-    match goal with
-    | [ |- guar App.delta _ _ _ ] =>
-      admit (* TODO: not strong enough to have guar App.delta s_i s at all times
-    - want to know what get vDisk0 s corresponds in some way to get vdisk s_i
-    (both under current disk?) *)
-    end.
-  Admitted.
+  Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
 
   Section ExampleProgram.
 
@@ -1302,39 +1210,77 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
     Hint Extern 1 {{cache_write _ _; _}} => apply cache_write_ok : prog.
 
+    Lemma same_domain_fwd : forall AT AEQ V (d d': @mem AT AEQ V) a,
+        same_domain d d' ->
+        forall v, d a = Some v -> exists v', d' a = Some v'.
+    Proof.
+      unfold same_domain; intuition eauto.
+    Qed.
+
+    Lemma impl_trans : forall (P Q R:Prop),
+        (P -> Q) ->
+        (Q -> R) ->
+        (P -> R).
+    Proof.
+      tauto.
+    Qed.
+
+    Lemma or_impl : forall (P Q R:Prop),
+        (P -> R) ->
+        (Q -> R) ->
+        P \/ Q -> R.
+    Proof.
+      tauto.
+    Qed.
+
     Theorem copy_ok : forall a a',
         SPEC App.delta, tid |-
                 {{ v v0,
                  | PRE d m s_i s:
-                     invariant App.delta d m s /\
+                     invariant delta d m s /\
                      get vdisk s a = Some v /\
                      get vdisk s a' = Some v0 /\
-                     guar App.delta tid s_i s
+                     guar delta tid s_i s
                  | POST d' m' s_i' s' r:
-                     invariant App.delta d' m' s' /\
+                     invariant delta d' m' s' /\
                       (r = true ->
                       get vdisk s' = upd (get vdisk s) a' v) /\
-                     guar App.delta tid s_i' s'
+                      s_i' = s_i
                 }} copy a a'.
     Proof.
       hoare.
       eexists; simplify; finish.
 
       hoare.
+
+      match goal with
+      | [ H: same_domain (get vDisk0 s) (get vDisk0 s0) |- _ ] =>
+        pose proof (same_domain_fwd a' H)
+      end.
+
+      (* TODO: need same_domain across vdisks from invariant + guar; the value
+for get vdisk s0 a' does not matter, since it is overwritten *)
       eexists; simplify; finish.
-      (* need an econgruence *)
-      replace (get vdisk s0); eauto.
+      admit.
 
       hoare.
-      admit. (* insufficient guarantees when cache fails *)
-      admit. (* insufficient guarantees when cache fails *)
+      match goal with
+      | [ H: forall _, Some ?v = Some _ -> _ |- _ ] =>
+        specialize (H v)
+      end; simplify; finish.
+
+      replace (get vdisk s) with (get vdisk s0); auto.
+
+      symmetry.
+      match goal with
+      | [ H: modified _ s s0 |- _ ] =>
+        eapply H
+      end.
+      eapply impl_trans; [ apply hin_iff_index_in | ]; simpl.
+      repeat (apply or_impl; [ vars_distinct | ]); auto.
     Admitted.
 
   End ExampleProgram.
-
-(* note that this is, in theory, the entire public cache API *)
-Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
-Hint Extern 1 {{cache_write _ _; _}} => apply cache_write_ok : prog.
 
 End MakeConcurrentCache.
 
