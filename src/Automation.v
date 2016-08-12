@@ -33,13 +33,14 @@ Ltac sigT_eq :=
 
 Ltac simpl_match :=
   let repl_match_goal d d' :=
-    replace d with d';
-        lazymatch goal with
-        | [ |- context[match d' with _ => _ end] ] => fail
-        | _ => idtac
-        end in
+      replace d with d';
+      lazymatch goal with
+      | [ |- context[match d' with _ => _ end] ] => fail
+      | _ => idtac
+      end in
   let repl_match_hyp H d d' :=
-    replace d with d' in H;
+      is_not_learnt H;
+      replace d with d' in H;
       lazymatch type of H with
       | context[match d' with _ => _ end] => fail
       | _ => idtac

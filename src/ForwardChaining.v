@@ -29,6 +29,12 @@ Local Ltac learn_fact H :=
   | _ => pose proof H; pose proof (AlreadyLearnt H)
   end.
 
+Ltac is_not_learnt H :=
+  lazymatch type of H with
+  | Learnt => fail
+  | _ => idtac
+  end.
+
 Tactic Notation "learn" hyp(H) tactic(t) := learn_tac H t.
 Tactic Notation "learn" "that" constr(H) := learn_fact H.
 
