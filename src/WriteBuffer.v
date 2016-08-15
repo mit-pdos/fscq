@@ -66,8 +66,7 @@ Definition wb_rep (d:DISK) (wb: WriteBuffer) (vd:Disk) :=
   forall a, match wb_get wb a with
        | Written v =>
          vd a = Some v /\
-         (* only requirement to impose is that a is in the domain of d *)
-         (exists v0_rdr, d a = Some v0_rdr)
+         exists v0, d a = Some (v0, None)
        | Missing =>
          match d a with
          | None => vd a = None
@@ -85,7 +84,8 @@ Section RepTheorems.
            end;
     destruct matches in *;
     destruct_ands; repeat deex;
-    try (eauto; congruence).
+    eauto;
+    try congruence.
 
   Theorem wb_rep_same_domain : forall d wb vd,
       wb_rep d wb vd ->
@@ -118,7 +118,7 @@ Section RepTheorems.
     exists rdr, d a = Some (v, rdr).
  Proof.
    t.
-   assert (w = v) by congruence; subst.
+   assert (w0 = v) by congruence; subst.
    eauto.
  Qed.
 
