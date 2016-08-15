@@ -104,12 +104,13 @@ Ltac destruct_matches_in e :=
 
 Ltac destruct_all_matches :=
   repeat (try simpl_match;
-           try match goal with
-           | [ |- context[match ?d with | _ => _ end] ] =>
-              destruct_matches_in d
-           | [ H: context[match ?d with | _ => _ end] |- _ ] =>
-             destruct_matches_in d
-           end);
+          try match goal with
+              | [ |- context[match ?d with | _ => _ end] ] =>
+                destruct_matches_in d
+              | [ H: context[match ?d with | _ => _ end] |- _ ] =>
+                is_not_learnt H;
+                destruct_matches_in d
+              end);
   subst;
   try congruence;
   auto.
