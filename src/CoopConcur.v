@@ -127,8 +127,8 @@ Section CoopConcur.
       step (StartRead a)
            (d, m, s_i, s) (d', m, s_i, s) tt
   | StepFinishRead : forall d m s_i s,
-      forall a v,
-        d a = Some (v, Some tid) ->
+      forall tid' a v,
+        d a = Some (v, Some tid') ->
         let d' := upd d a (v, None) in
         step (FinishRead a)
              (d, m, s_i, s) (d', m, s_i, s) v
@@ -181,11 +181,7 @@ Section CoopConcur.
       fail_step tid (FinishRead a) (d, m, s0, s)
   | FailStepFinishReadNotStarted : forall a vs d m s0 s,
       d a = Some (vs, None) ->
-      fail_step tid (FinishRead a) (d, m, s0, s)
-  | FailStepFinishReadConflict : forall a vs d m s0 s tid',
-      tid <> tid' ->
-      d a = Some (vs, Some tid') ->
-      fail_step tid (FinishRead a) (d, m, s0, s)
+      fail_step tid (FinishRead a) ((d, m, s0, s))
   | FailStepWriteMissing : forall a v d m s0 s,
       d a = None ->
       fail_step tid (Write a v) (d, m, s0, s)
@@ -254,8 +250,6 @@ Section CoopConcur.
           (* solve Ret case *)
           try solve [ left; eauto]; right;
             try solve [ cases ].
-      - cases.
-        destruct (nat_dec t tid); subst; eauto.
       - destruct (X d m s); eauto.
         destruct (X0 s0 s); eauto.
         left; success_step.
@@ -433,9 +427,18 @@ Section CoopConcur.
   Hint Resolve ptsto_valid'.
   Hint Resolve ptsto_upd'.
 
+  Ltac learn_ptsto :=
+    match goal with
+    | [ H: (_ * _ |-> _)%pred _ |- _ ] =>
+      learn that (ptsto_valid' H)
+    end.
+
   Ltac opcode_ok :=
     intros_pre; inv_exec;
-    intuition eauto.
+    intuition eauto;
+    repeat learn_ptsto;
+    try congruence;
+    eauto.
 
   Theorem Write_ok : forall a v,
       tid |- {{ F v0,
@@ -459,15 +462,12 @@ Section CoopConcur.
           }} StartRead a.
   Proof.
     opcode_ok.
-    assert (v0 = v1).
-    eapply ptsto_valid' in H1.
-    congruence.
-    subst; eauto.
+    assert (v0 = v1) by congruence; subst; eauto.
   Qed.
 
   Theorem FinishRead_ok : forall a,
-      tid |- {{ F v,
-             | PRE d m s_i s: d |= F * a |-> (v, Some tid)
+      tid |- {{ F tid' v,
+             | PRE d m s_i s: d |= F * a |-> (v, Some tid')
              | POST d' m' s_i' s' r: d' |= F * a |-> (v, None) /\
                                     s_i' = s_i /\
                                     s' = s /\
@@ -476,12 +476,8 @@ Section CoopConcur.
             }} FinishRead a.
   Proof.
     opcode_ok.
-    assert (v = v0).
-    eapply ptsto_valid' in H1.
-    congruence.
-    subst; eauto.
-    eapply ptsto_valid' in H1.
-    congruence.
+    assert (v = v0) by congruence; subst; eauto.
+    inv_fail_step; congruence.
   Qed.
 
   Theorem Get_ok : forall t (v: var _ t),

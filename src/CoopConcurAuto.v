@@ -209,8 +209,8 @@ Definition FinishRead_upd {Sigma} a : prog Sigma _ :=
 
 Theorem FinishRead_upd_ok : forall Sigma (delta:Protocol Sigma) a,
     SPEC delta, tid |-
-    {{ v,
-     | PRE d m s_i s: d a = Some (v, Some tid)
+    {{ tid' v,
+     | PRE d m s_i s: d a = Some (v, Some tid')
      | POST d' m' s_i' s' r: d' = upd d a (v, None) /\
                             s_i' = s_i /\
                             s' = s /\
@@ -221,7 +221,7 @@ Proof.
   intros.
   step.
   exists (diskIs (mem_except d a)).
-  eexists; intuition eauto.
+  do 2 eexists; intuition eauto.
 
   step.
   eapply diskIs_combine_upd in H; unfold diskIs in H.
