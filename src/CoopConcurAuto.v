@@ -370,7 +370,7 @@ Lemma guar_stutter : forall Sigma (delta: Protocol Sigma),
 Proof.
   intros.
   destruct delta.
-  apply guar_refl_trans; eauto.
+  apply guar_preorder; eauto.
 Qed.
 
 Hint Resolve rely_stutter.
