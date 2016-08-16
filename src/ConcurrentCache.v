@@ -106,29 +106,14 @@ Module MakeCacheProtocol (St:GlobalState) (Proj:CacheProj St).
       wb_rep (get vDisk0 s) (get vWriteBuffer s) (get vdisk s) /\
       no_wb_reader_conflict (get vCache s) (get vWriteBuffer s).
 
-  (** a locking-like protocol, but true for any provable program
-      due to the program semantics themselves *)
-  Definition readers_locked tid (vd vd': DISK) :=
-    (forall a v tid', vd a = Some (v, Some tid') ->
-                 tid <> tid' ->
-                 vd' a = Some (v, Some tid')).
-
-  Instance readers_locked_preorder tid : PreOrder (readers_locked tid).
-  Proof.
-    constructor; hnf; intros;
-      unfold readers_locked; eauto.
-  Qed.
-
   (* not sure whether to say this about vDisk0, vDisk, or both *)
   Definition cacheR (tid:TID) : Relation St.Sigma :=
     fun s s' =>
       let vd := get vDisk0 s in
       let vd' := get vDisk0 s' in
-      same_domain vd vd' /\
-      readers_locked tid vd vd'.
+      same_domain vd vd'.
 
   Hint Resolve same_domain_preorder same_domain_refl.
-  Hint Resolve readers_locked_preorder.
 
   Instance and_preorder A (R1 R2: Relation A)
            (p1: PreOrder R1) (p2: PreOrder R2)
@@ -144,11 +129,9 @@ Module MakeCacheProtocol (St:GlobalState) (Proj:CacheProj St).
       PreOrder (cacheR tid).
   Proof.
     unfold cacheR; intros.
-    apply and_preorder; constructor; hnf; intros.
+    constructor; hnf; intros.
     apply same_domain_preorder.
     eapply same_domain_preorder; eauto.
-    apply readers_locked_preorder.
-    eapply readers_locked_preorder; eauto.
   Qed.
 
   Definition delta : Protocol St.Sigma :=
@@ -547,28 +530,6 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
           eauto.
     Qed.
 
-    Lemma readers_locked_add_reader : forall tid tid' vd a v,
-        vd a = Some (v, None) ->
-        readers_locked tid vd (add_reader vd a tid').
-    Proof.
-      unfold readers_locked, add_reader; intros.
-      destruct (nat_dec a a0); subst;
-        simpl_match;
-        autorewrite with upd;
-        congruence.
-    Qed.
-
-    Lemma readers_locked_remove_reading : forall tid vd a v,
-        vd a = Some (v, Some tid) ->
-        readers_locked tid vd (remove_reader vd a).
-    Proof.
-      unfold readers_locked, remove_reader; intros.
-      destruct (nat_dec a a0); subst;
-        simpl_match;
-        autorewrite with upd;
-        eauto || congruence.
-    Qed.
-
     Theorem wb_rep_stable_write : forall d wb vd a v0 v,
         wb_rep d wb vd ->
         d a = Some (v0, None) ->
@@ -645,8 +606,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Hint Resolve
        disk_no_reader
        no_wb_reader_conflict_stable_invalidate
-       same_domain_add_reader
-       readers_locked_add_reader.
+       same_domain_add_reader.
 
   Hint Resolve wb_get_val_missing.
 
@@ -688,7 +648,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Qed.
 
   Hint Resolve wb_add_reader.
-  Hint Resolve readers_locked_add_reader wb_cache_val_none_vd0.
+  Hint Resolve wb_cache_val_none_vd0.
 
   Lemma add_reader_neq : forall d a tid a',
       a <> a' ->
@@ -862,16 +822,15 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
   Hint Resolve no_wb_reader_conflict_stable_fill.
   Hint Resolve same_domain_remove_reader.
-  Hint Resolve readers_locked_remove_reading.
 
   Theorem finish_fill_ok : forall a,
       SPEC App.delta, tid |-
-                  {{ v0,
+                  {{ v0 tid',
                    | PRE d m s_i s:
                        invariant delta d m s /\
                        cache_get (get vCache s) a = Invalid /\
                        wb_get (get vWriteBuffer s) a = WbMissing /\
-                       get vDisk0 s a = Some (v0, Some tid)
+                       get vDisk0 s a = Some (v0, Some tid')
                    | POST d' m' s_i' s' r:
                        invariant delta d' m' s' /\
                        get vdisk s a = Some v0 /\
@@ -882,42 +841,13 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                   }} finish_fill a.
   Proof.
     hoare.
-    eexists; simplify; finish.
+    do 2 eexists; simplify; finish.
     hoare.
   Qed.
 
   Hint Extern 1 {{finish_fill _; _}} => apply finish_fill_ok : prog.
 
-  Lemma others_readers_locked_reading : forall tid vd vd' a v,
-      others readers_locked tid vd vd' ->
-      vd a = Some (v, Some tid) ->
-      vd' a = Some (v, Some tid).
-  Proof.
-    unfold others, readers_locked; intros; deex.
-    eauto.
-  Qed.
-
-  Lemma others_rely_readers_locked : forall tid s s',
-      others (guar delta) tid s s' ->
-      others readers_locked tid (get vDisk0 s) (get vDisk0 s').
-  Proof.
-    simpl; unfold cacheR, others; intros; deex; eauto.
-  Qed.
-
-  Lemma rely_read_lock : forall tid (s s': abstraction App.Sigma) a v,
-      get vDisk0 s a = Some (v, Some tid) ->
-      rely delta tid s s' ->
-      get vDisk0 s' a = Some (v, Some tid).
-  Proof.
-    unfold rely; intros.
-    induction H0; eauto.
-    eauto using others_readers_locked_reading,
-    others_rely_readers_locked.
-  Qed.
-
-  Hint Resolve
-       same_domain_remove_reader
-       readers_locked_remove_reading.
+  Hint Resolve same_domain_remove_reader.
 
   Lemma reading_disk_same : forall d c vd a v tid,
       cache_rep d c vd ->
@@ -1327,18 +1257,14 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     (* TODO: eauto on v = v' goals is slow but info_eauto shows nothing *)
 
     eexists; simplify; finish.
-
-    (* TODO: there's actually no way to know whose pending read is there, but
-does it really matter? Writes need to care about the tid, but handing off
-reading is ok. The programming language semantics have to be relaxed to make
-this ok. *)
-    assert (tid = tid0) by admit; subst.
-    eauto.
-
     hoare.
+
     eexists; simplify; finish.
     hoare.
-  Admitted.
+
+    eexists; simplify; finish.
+    hoare.
+  Qed.
 
   Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
 
