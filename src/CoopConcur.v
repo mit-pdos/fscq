@@ -94,7 +94,6 @@ Section CoopConcur.
   | StartRead (a: addr) : prog unit
   | FinishRead (a: addr) : prog valu
   | Write (a: addr) (v: valu) : prog unit
-  | Sync (a: addr) : prog unit
   | Get T (v: var (mem_types Sigma) T) : prog T
   | Assgn T (v: var (mem_types Sigma) T) (val:T) : prog unit
   | GetTID : prog TID
@@ -175,33 +174,96 @@ Section CoopConcur.
       d a = None ->
       fail_step tid (StartRead a) (d, m, s0, s)
   | FailStepStartReadConflict : forall a vs tid' d m s0 s,
-      tid' <> tid ->
       d a = Some (vs, Some tid') ->
       fail_step tid (StartRead a) (d, m, s0, s)
-  | FailStepFinishRead : forall a vs d m s0 s,
+  | FailStepFinishRead : forall a d m s0 s,
+      d a = None ->
+      fail_step tid (FinishRead a) (d, m, s0, s)
+  | FailStepFinishReadNotStarted : forall a vs d m s0 s,
       d a = Some (vs, None) ->
       fail_step tid (FinishRead a) (d, m, s0, s)
-  | FailStepFinishConflict : forall a vs tid' d m s0 s,
-      tid' <> tid ->
+  | FailStepFinishReadConflict : forall a vs d m s0 s tid',
+      tid <> tid' ->
       d a = Some (vs, Some tid') ->
       fail_step tid (FinishRead a) (d, m, s0, s)
   | FailStepWriteMissing : forall a v d m s0 s,
       d a = None ->
       fail_step tid (Write a v) (d, m, s0, s)
-  | FailStepYield : forall d m s0 s wchan,
+  | FailStepWriteReading : forall a v0 v d m s0 s tid',
+      d a = Some (v0, Some tid')  ->
+      fail_step tid (Write a v) (d, m, s0, s)
+  | FailStepYieldInvariant : forall d m s0 s wchan,
       (~invariant delta d m s) ->
+      fail_step tid (Yield wchan) (d, m, s0, s)
+  | FailStepYieldGuar : forall d m s0 s wchan,
+      (~guar delta tid s0 s) ->
       fail_step tid (Yield wchan) (d, m, s0, s).
 
   Hint Constructors step fail_step.
 
-  Theorem fail_step_consistent : forall tid T (p: prog T) st t st',
-      step tid p st st' t ->
+  Theorem fail_step_consistent : forall tid T (p: prog T) st v st',
+      step tid p st st' v ->
       fail_step tid p st ->
       False.
   Proof.
     destruct p; inversion 1; inversion 1;
       subst; congruence.
   Qed.
+
+  Section StepFailComplete.
+
+    Ltac case_analysis :=
+      match goal with
+      | [ d: DISK, a: addr |- _ ] =>
+        lazymatch goal with
+        | [ H: d a = _ |- _ ] => fail
+        | _ => let H := fresh in
+              destruct (d a) eqn:H
+        end
+      | [ w: wr_set |- _ ] =>
+        destruct w
+      | [ o: option TID |- _ ] =>
+        destruct o
+      end.
+
+    Ltac success_step :=
+      repeat match goal with
+             | |- exists (_:unit), _ => exists tt
+             | |- exists _, _ => eexists
+             end.
+
+    Ltac cases :=
+      repeat case_analysis; eauto;
+      try solve [ (left; success_step) + right;
+                  eauto using StepStartRead ].
+
+    Theorem step_fail_step_complete : forall tid T (p: prog T) st,
+        (forall d m s, {invariant delta d m s} + {~invariant delta d m s}) ->
+        (forall s s', {guar delta tid s s'} + {~guar delta tid s s'}) ->
+        (exists T' (p1: prog T') p2, p = Bind p1 p2) \/
+        (* can't recall why Ret isn't handled by step *)
+        (exists v, p = Ret v) \/
+        (exists st' v, step tid p st st' v) \/
+        fail_step tid p st.
+    Proof.
+      intros.
+      destruct st as [ [ [d m] s0] s].
+      destruct p;
+        (* solve Bind case *)
+        try solve [ left; eauto ]; right;
+          (* solve Ret case *)
+          try solve [ left; eauto]; right;
+            try solve [ cases ].
+      - cases.
+        destruct (nat_dec t tid); subst; eauto.
+      - destruct (X d m s); eauto.
+        destruct (X0 s0 s); eauto.
+        left; success_step.
+        eapply StepYield; eauto.
+        apply star_refl.
+    Qed.
+
+  End StepFailComplete.
 
   Ltac inv_step :=
     match goal with

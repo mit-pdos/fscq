@@ -278,7 +278,6 @@ Definition prog_frob Sigma T (p: prog Sigma T) : prog Sigma T :=
   | StartRead a => StartRead a
   | FinishRead a => FinishRead a
   | Write a v => Write a v
-  | Sync a => Sync a
   | Get v => Get v
   | Assgn v val => Assgn v val
   | GetTID => GetTID
