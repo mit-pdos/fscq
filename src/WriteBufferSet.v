@@ -1,5 +1,6 @@
 Require Import CoopConcur.
 Require Export WriteBuffer.
+Require Import FunctionalExtensionality.
 Import List.
 Import ListNotations.
 
@@ -643,4 +644,49 @@ Proof.
   apply wb_get_missing in H0.
   rewrite upd_all_not_in; auto.
   rewrite addrs_add_empty_rdr; auto.
+Qed.
+
+Definition upd_all' A AEQ V (m: @mem A AEQ V) (entries: list (A*V)) :=
+  fold_left (fun acc (e: A*V) => let (a, v) := e in upd acc a v) entries m.
+
+Lemma upd_all'_not_in : forall A AEQ V entries (m: @mem A AEQ V) a,
+    ~In a (map fst entries) ->
+    upd_all' m entries a = m a.
+Proof.
+  induction entries; simpl in *; intuition auto; simpl in *.
+  rewrite IHentries; auto.
+  rewrite upd_ne by auto; auto.
+Qed.
+
+Hint Rewrite upd_all'_not_in using (solve [ auto ]) : upd.
+
+Lemma upd_all'_in_mems : forall A AEQ V entries (m m': @mem A AEQ V) a,
+    In a (map fst entries) ->
+    NoDup (map fst entries) ->
+    upd_all' m entries a  = upd_all' m' entries a.
+Proof.
+  induction entries; simpl; intros.
+  destruct H.
+
+  destruct a as [a v].
+  inversion H0; subst.
+  simpl in *.
+  intuition auto; subst.
+  autorewrite with upd; auto.
+Qed.
+
+Lemma upd_all_eq_upd_all' : forall A AEQ V (m: @mem A AEQ V) entries,
+    NoDup (map fst entries) ->
+    upd_all m entries = upd_all' m entries.
+Proof.
+  induction entries; simpl; intuition auto.
+  destruct a as [a v]; simpl in *.
+  inversion H; subst; intuition auto.
+  extensionality a'.
+  destruct (AEQ a a'); subst;
+    autorewrite with upd; auto.
+  rewrite H0.
+  destruct (in_dec AEQ a' (map fst entries));
+    autorewrite with upd; auto.
+  apply upd_all'_in_mems; auto.
 Qed.

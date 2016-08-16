@@ -4,6 +4,7 @@ Import RelationClasses.
 Require Import Protocols.
 Require Import Star.
 Require Import DiskReaders.
+Require Import FunctionalExtensionality.
 Import List.
 Import List.ListNotations.
 Import Hlist.HlistNotations.
@@ -1035,6 +1036,108 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Hint Extern 1 {{cache_write _ _; _}} => apply cache_write_ok : prog.
 
   Hint Resolve wb_rep_empty.
+
+  Lemma cache_rep_add_upd : forall d c vd a v,
+      (exists v0, d a = Some (v0, None)) ->
+      cache_rep d c vd ->
+      cache_rep d (cache_add c a (Dirty v)) (upd vd a (v, None)).
+  Proof.
+    unfold cache_rep; intros; deex.
+    specialize (H0 a0).
+    destruct (nat_dec a a0); subst; simpl;
+      autorewrite with cache upd;
+      eauto.
+  Qed.
+
+  Hint Resolve cache_rep_add_upd.
+
+  Lemma wb_cache_states : forall d c vd0 wb vd a v,
+      cache_rep d c vd0 ->
+      wb_rep vd0 wb vd ->
+      wb_get wb a = Written v ->
+      exists v0, d a = Some (v0, None).
+  Proof.
+    intros.
+    specialize (H a).
+    specialize (H0 a).
+    simpl_match; intuition auto;
+      destruct matches in *;
+      repeat deex;
+      eauto;
+      try congruence.
+  Qed.
+
+  Lemma fst_compose_add_empty_rdr :
+    (fun (e: addr * valu) => fst (add_empty_rdr e)) = fst.
+  Proof.
+    extensionality e; simpl.
+    destruct e; auto.
+  Qed.
+
+  Lemma NoDup_cons_iff_1 : forall A (l: list A) a,
+      NoDup (a :: l) ->
+      NoDup l.
+  Proof.
+    intros.
+    eapply NoDup_cons_iff; eauto.
+  Qed.
+
+  Hint Resolve NoDup_cons_iff_1.
+
+  Lemma cache_rep_add_all_upd : forall ws d c vd,
+      NoDup (map fst ws) ->
+      (forall a, In a (map fst ws) ->
+            exists v0, d a = Some (v0, None)) ->
+      cache_rep d c vd ->
+      cache_rep d (cache_add_all c ws) (upd_buffered_writes vd ws).
+  Proof.
+    induction ws; simpl; intuition auto.
+    rename a0 into a.
+    rename b into v.
+
+    unfold upd_buffered_writes.
+    rewrite upd_all_eq_upd_all'.
+    simpl.
+    rewrite <- upd_all_eq_upd_all'.
+    fold (upd_buffered_writes (upd vd a (v, None)) ws).
+    eapply IHws; eauto.
+
+    rewrite map_map.
+    rewrite fst_compose_add_empty_rdr.
+    eauto.
+
+    rewrite map_map.
+    rewrite fst_compose_add_empty_rdr.
+    eauto.
+  Qed.
+
+  Hint Resolve cache_rep_add_all_upd.
+  Hint Resolve NoDup_writes.
+
+  Lemma in_addr_to_in_entry : forall A V a (entries: list (A*V)),
+      In a (map fst entries) ->
+      exists v, In (a, v) entries.
+  Proof.
+    induction entries; simpl; intros.
+    - destruct H.
+    - destruct a0 as [a' v]; simpl in *.
+      intuition auto; subst; eauto.
+      deex; eauto.
+  Qed.
+
+  Lemma wb_writes_valid_addresses : forall d c vd0 wb vd,
+      wb_rep vd0 wb vd ->
+      cache_rep d c vd0 ->
+      forall a, In a (map fst (wb_writes wb)) ->
+           exists v0, d a = Some (v0, None).
+  Proof.
+    intros.
+    edestruct in_addr_to_in_entry; eauto.
+    eapply wb_cache_states; eauto.
+    apply wb_writes_complete'; eauto.
+  Qed.
+
+  Hint Resolve wb_writes_valid_addresses.
 
   Theorem cache_commit_ok :
       SPEC App.delta, tid |-
