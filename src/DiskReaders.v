@@ -1,5 +1,4 @@
 Require Import CoopConcur.
-Require Import FunctionalExtensionality.
 
 Definition Disk:Type := @mem addr nat_dec valu.
 Definition hide_readers (d:DISK) : Disk :=

@@ -18,7 +18,6 @@ Require Import Arith.
 Require Import MapUtils.
 Require Import MemPred.
 Require Import ListPred.
-Require Import FunctionalExtensionality.
 
 Import AddrMap.
 Import ListNotations.

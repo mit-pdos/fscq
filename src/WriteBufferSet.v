@@ -1,6 +1,5 @@
 Require Import CoopConcur.
 Require Export WriteBuffer.
-Require Import FunctionalExtensionality.
 Import List.
 Import ListNotations.
 

@@ -1,7 +1,6 @@
 Require Import CoopConcur CoopConcurMonad.
 Require Export Locking.
 Require Export Automation.
-Require Import FunctionalExtensionality.
 Require Import Star.
 Import Bool.
 

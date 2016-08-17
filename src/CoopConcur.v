@@ -5,6 +5,7 @@ Require Export SepAuto Automation.
 Require Export Hlist.
 Require Export Variables.
 Require Export AsyncDisk.
+Require Export FunctionalExtensionality.
 Require Export RelationClasses.
 Require Import Structures.OrderedTypeEx.
 Require Import Omega.

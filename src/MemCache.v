@@ -1,9 +1,7 @@
 Require Import CoopConcur.
 Require Import FMapAVL.
 Require Import FMapFacts.
-Require Import FunctionalExtensionality.
 Require Import Eqdep_dec.
-Require Import Automation.
 Require Import Locking.
 
 Module Map := FMapAVL.Make(Addr_as_OT).
