@@ -834,6 +834,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                    | POST d' m' s_i' s' r:
                        invariant delta d' m' s' /\
                        get vdisk s a = Some v0 /\
+                       get vDisk0 s' = remove_reader (get vDisk0 s) a /\
                        modified [( vCache; vDisk0 )] s s' /\
                        guar delta tid s s' /\
                        r = v0 /\
@@ -1246,8 +1247,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                | POST d' m' s_i' s' r:
                    invariant delta d' m' s' /\
                    guar delta tid s s' /\
-                   (* TODO: only modified a reader - should split vDisk0 so we
-                   can promise not to modify (public) values *)
+                   hide_readers (get vDisk0 s') = hide_readers (get vDisk0 s) /\
                    modified [( vCache; vDisk0 )] s s' /\
                    (forall v', r = Some v' -> v' = v) /\
                    s_i' = s_i
@@ -1262,8 +1262,14 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     eexists; simplify; finish.
     hoare.
 
+    replace (get vDisk0 s0).
+    rewrite hide_readers_unchanged_remove; auto.
+
     eexists; simplify; finish.
     hoare.
+
+    replace (get vDisk0 s0).
+    rewrite hide_readers_unchanged_add; auto.
   Qed.
 
   Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.

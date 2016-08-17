@@ -1,4 +1,5 @@
 Require Import CoopConcur.
+Require Import FunctionalExtensionality.
 
 Definition Disk:Type := @mem addr nat_dec valu.
 Definition hide_readers (d:DISK) : Disk :=
@@ -35,4 +36,30 @@ Proof.
   unfold hide_readers; intros.
   destruct (d a);
     eauto || congruence.
+Qed.
+
+Lemma hide_readers_unchanged_remove : forall d a,
+    hide_readers (remove_reader d a) = hide_readers d.
+Proof.
+  unfold hide_readers, remove_reader; intros.
+  extensionality a'.
+  destruct (nat_dec a a');
+    subst;
+    destruct matches;
+    repeat simpl_match;
+    autorewrite with upd in *;
+    congruence.
+Qed.
+
+Lemma hide_readers_unchanged_add : forall d a tid,
+    hide_readers (add_reader d a tid) = hide_readers d.
+Proof.
+  unfold hide_readers, add_reader; intros.
+  extensionality a'.
+  destruct (nat_dec a a');
+    subst;
+    destruct matches;
+    repeat simpl_match;
+    autorewrite with upd in *;
+    congruence.
 Qed.
