@@ -1598,33 +1598,33 @@ Proof.
   eapply weqb_true_iff.
 Qed.
 
-Implicit Arguments weqb_sound [].
+Arguments weqb_sound : clear implicits.
 
 Ltac is_nat_cst n :=
   match eval hnf in n with
-    | O => constr:true
+    | O => constr:(true)
     | S ?n' => is_nat_cst n'
-    | _ => constr:false
+    | _ => constr:(false)
   end.
 
 Ltac isWcst w :=
   match eval hnf in w with
-    | WO => constr:true
+    | WO => constr:(true)
     | WS ?b ?w' =>
       match eval hnf in b with
         | true => isWcst w'
         | false => isWcst w'
-        | _ => constr:false
+        | _ => constr:(false)
       end
     | natToWord _ ?n => is_nat_cst n
-    | _ => constr:false
+    | _ => constr:(false)
   end.
 
 Ltac wcst w :=
   let b := isWcst w in
     match b with
       | true => w
-      | _ => constr:NotConstant
+      | _ => constr:(NotConstant)
     end.
 
 (* Here's how you can add a ring for a specific bit-width.

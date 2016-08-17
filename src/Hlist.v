@@ -135,7 +135,7 @@ Definition htail A (B: A -> Type) types elm
 
 Local Ltac hlist_nth_member n :=
   match n with
-  | O => uconstr:HFirst
+  | O => uconstr:(HFirst)
   | S ?n' =>
     let rest := hlist_nth_member n' in
     uconstr:(HNext rest)
