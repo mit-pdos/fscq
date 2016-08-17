@@ -1472,9 +1472,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
       let N := (NIndirect ^ indlvl) in
       let^ (ms, indbns) <- IndRec.read lxp ir 1 ms;
       let last_block := divup nvalid N - 1 in
-      let nvalid_in_last_block := (if (addr_eq_dec (nvalid mod N) 0) then N else (nvalid mod N)) in
-      If (le_dec nr nvalid_in_last_block) {
-        let^ (ms) <- indshrink indlvl' lxp bxp #(selN indbns last_block $0) nvalid_in_last_block nr ms;
+      If (le_dec nr (nvalid mod N)) {
+        let^ (ms) <- indshrink indlvl' lxp bxp #(selN indbns last_block $0) (nvalid mod N) nr ms;
         If (addr_eq_dec nvalid nr) {
           ms <- BALLOC.free lxp bxp ir ms;
           Ret ^(ms)
@@ -1488,33 +1487,27 @@ Module BlockPtr (BPtr : BlockPtrSig).
         let nr' := (nr - (nvalid mod N)) in
         let^ (ms) <- indshrink_aligned (S indlvl') lxp bxp indbns nvalid' (nr' / N * N) ms;
         (* there is at most one more block that needs to be shrunk *)
-        let nvalid'' := nvalid' - (nr' / N * N) in
-        let nr'' := nr' mod N in
-        If (addr_eq_dec nr'' 0) {
-          (* the endpoint is aligned, so no more shrinking is required *)
-          If (addr_eq_dec nvalid nr) {
-            ms <- BALLOC.free lxp bxp ir ms;
-            Ret ^(ms)
-          } else {
-            Ret ^(ms)
-          }
+        let^ (ms) <- indshrink_aligned_to_ragged (S indlvl') lxp bxp indbns (roundup (nvalid - nr) N) (nr' mod N) ms;
+        If (addr_eq_dec nvalid nr) {
+          ms <- BALLOC.free lxp bxp ir ms;
+          Ret ^(ms)
         } else {
-          (* the endpoing is not aligned, so shrink inside the appropriate block *)
-          let^ (ms) <- indshrink indlvl' lxp bxp #(selN indbns (nvalid'' / N) $0) (nvalid'' mod N) nr''  ms;
           Ret ^(ms)
         }
       }
     end.
 
-  Theorem indshrink_ok : forall indlvl lxp bxp ir nvalid nr ms,
+
+    Theorem indshrink_ok : forall indlvl lxp bxp ir nvalid nr ms,
     {< F Fm m0 m l freelist,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[[ m ::: (Fm * indrep_n_tree indlvl bxp ir l nvalid * BALLOC.rep bxp freelist) ]]] *
            [[ nvalid <= length l ]] * [[0 < nr <= nvalid ]]
-    POST:hm' RET:^(ms)  exists m' freelist',
+    POST:hm' RET:^(ms)  exists m' freelist' nvalid',
+           [[ nvalid' = nvalid - nr ]] *
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * indrep_n_tree indlvl bxp ir l (nvalid - nr) * BALLOC.rep bxp freelist') ]]] *
+           [[[ m' ::: (Fm * indrep_n_tree indlvl bxp ir l nvalid' * BALLOC.rep bxp freelist') ]]] *
            [[ incl freelist freelist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} indshrink indlvl lxp bxp ir nvalid nr ms.
@@ -1526,43 +1519,20 @@ Module BlockPtr (BPtr : BlockPtrSig).
           rewrite Nat.sub_diag, indrep_n_helper_0.
           cancel.
         - repeat rewrite nvalid_gt_0_indrep_helper by omega. cancel.
-      + unfold indshrink.
-        fold indshrink.
-        remember (S indlvl) as I.
-        replace indlvl with (I - 1) by omega.
-        assert (I > 0) by omega. assert (I + 0 = S indlvl) by omega. clear HeqI.
+      + unfold indshrink; fold indshrink.
+        remember (S indlvl) as I. rewrite <- plus_0_r with (n := I) in HeqI.
         replace (indrep_n_tree I) with (indrep_n_tree (S (I - 1))) by (f_equal; omega).
-        simpl.
-        replace (NIndirect * NIndirect ^ (I - 1)) with (NIndirect ^ I) by (destruct I; simpl; repeat f_equal; omega).
         step.
         rewrite nvalid_gt_0_indrep_helper. cancel.
         apply divup_gt_0; mult_nonzero; omega.
-        step.
-        rewrite indrep_n_helper_length_piff, listmatch_length_pimpl in *.
-        autorewrite with lists in *. destruct_lifts.
+        rewrite indrep_n_helper_length_piff in *; destruct_lifts.
         rewrite firstn_oob by omega.
-        replace (I - 1) with indlvl by omega.
-        erewrite indrep_n_tree_length with (indlvl := (I -1)) in *;
-          [> | match goal with
-                | [ H : _ |- _] => eapply pimpl_apply; [> | exact H];
-                  replace (NIndirect ^ I) with (NIndirect ^ (S (I - 1))) by (f_equal; omega); cancel;
-                  rewrite sep_star_comm, <- sep_star_assoc; eapply pimpl_refl
-                end].
-        replace (S (I - 1)) with I in * by omega.
-        assert (divup nvalid (NIndirect ^ I) <= NIndirect) by (apply divup_le; rewrite mult_comm; eauto).
-        assert (divup nvalid (NIndirect ^ I) > 0) by (apply divup_gt_0; solve [omega|mult_nonzero]).
+        erewrite indrep_n_tree_length in * by (eapply pimpl_apply; [> | exact H]; cancel;
+          rewrite sep_star_comm; rewrite <- sep_star_assoc; apply pimpl_refl).
         step.
-        match goal with [|- context [selN ?l ?n] ] =>
-          rewrite listmatch_extract with (i := n); autorewrite with lists
-        end; unfold IndRec.Defs.item in *; simpl in *; try omega.
-        replace indlvl with (I - 1) by omega.
-        match goal with
-          [H : context [if ?a then ?N else ?N'] |- context [nvalid - ?n * ?N] ]=>
-          replace (nvalid - n * N) with (if a then N else N')
-        end.
-        erewrite snd_pair by eauto.
-        instantiate (3 := nil).
-        cancel.
+        match goal with [|- context [nvalid mod ?N] ] =>
+          destruct (addr_eq_dec 0 (nvalid mod N)); [> substl (nvalid mod N) |]
+        end; [> solve [step] |].
         Theorem divup_minus_1 : forall a b, a mod b <> 0 -> divup a b - 1 = a / b.
         Proof.
           intros.
@@ -1575,213 +1545,474 @@ Module BlockPtr (BPtr : BlockPtrSig).
           rewrite divup_eq_divup'. unfold divup'.
           destruct (a mod b); omega.
         Qed.
-        destruct addr_eq_dec.
-        rewrite divup_eq_div by auto.
-        rewrite <- Nat.div_exact in * by mult_nonzero.
-        assert (nvalid / NIndirect ^ I > 0) by (destruct (nvalid / NIndirect ^ I); simpl in *; omega).
-        match goal with [H : nvalid = _ * _ |- _] => rewrite H at 1 end.
-        rewrite mult_comm.
-        rewrite <- Nat.mul_sub_distr_r by mult_nonzero.
-        replace (_ / _ - (_ / _ - 1)) with 1 by omega. rewrite mult_1_l. auto.
-        rewrite divup_minus_1, sub_round_eq_mod; auto.
-        replace (length _ ) with (NIndirect ^ I).
-        destruct addr_eq_dec; auto.
-        apply Nat.lt_le_incl, Nat.mod_upper_bound. mult_nonzero.
-        symmetry.
+        rewrite divup_minus_1 by mult_nonzero.
+        replace (I - 1) with indlvl in * by omega. replace I with (S indlvl) in * by omega.
+        match goal with [H : nvalid <= NIndirect * ?N |- _] =>
+          apply le_lt_eq_dec in H; destruct H as [H | H];
+            [> | subst nvalid; rewrite Nat.mod_mul in * by mult_nonzero; omega];
+            assert (nvalid / N < NIndirect) by (apply Nat.div_lt_upper_bound; mult_nonzero;
+              rewrite mult_comm; congruence)
+        end.
+        rewrite listmatch_length_pimpl in *; autorewrite with lists in *. destruct_lifts.
+        step.
+        Fact sub_le_eq_0 : forall a b, a <= b -> a - b = 0.
+        Proof.
+          intros. omega.
+        Qed.
+        Ltac indrep_n_extract := match goal with
+          | [|- context [listmatch _ ?l] ] =>
+            match goal with [l : list _ |- context [listmatch _ (removeN ?l ?n)] ] =>
+              rewrite listmatch_isolate with (i := n) (a := l);
+              autorewrite with lists in *; try omega; try erewrite snd_pair by eauto
+            end
+          | [|- context [selN ?l ?n] ] => rewrite listmatch_isolate with (i := n) (a := enumerate l);
+              autorewrite with lists in *; try omega; try erewrite snd_pair by eauto
+        end.
+        indrep_n_extract.
+        unfold index_nvalid at 2.
+        rewrite sub_round_eq_mod by mult_nonzero. cancel.
+        eapply le_trans. apply mod_le_r.
+        apply Nat.eq_le_incl. symmetry.
         apply Forall_selN; try omega.
-        replace I with (S (I - 1)) in * by omega; simpl in *; try rewrite Nat.sub_0_r in *.
         eapply indrep_n_indlist_forall_length;
         match goal with
         [H : _ |- _] => solve [eapply pimpl_apply; [> | exact H]; cancel;
           rewrite sep_star_comm, <- sep_star_assoc; eapply pimpl_refl]
         end.
-        unfold IndRec.Defs.item in *; simpl in *; omega.
-        repeat step.
-        rewrite nvalid_gt_0_indrep_helper in * by omega.
-        destruct_lifts. auto.
-        repeat rewrite Nat.sub_diag. rewrite divup_0. simpl.
-        rewrite indrep_n_helper_length_piff, indrep_n_helper_0.
-        rewrite indrep_n_helper_pts_piff by auto. cancel; eauto.
-        match goal with [|- context [selN ?l ?n] ] =>
-          rewrite listmatch_isolate with (i := n) (a := enumerate _); autorewrite with lists
-        end; unfold IndRec.Defs.item in *; simpl in *; try omega.
-        rewrite listmatch_piff_replace. cancel.
-        erewrite snd_pair by eauto.
-        replace indlvl with (I - 1) by omega.
-        destruct addr_eq_dec.
-        rewrite Nat.mod_divide in * by mult_nonzero.
-        Theorem divide_bound : forall a b, a <= b -> Nat.divide b a <->
-          a = 0 \/ a = b.
-        Proof.
-          split; intros.
-          unfold Nat.divide. destruct H0.
-          destruct x; simpl in *; intuition.
-          assert (x * b >= 0) by (apply Peano.le_0_n). omega.
-          unfold Nat.divide; destruct H0.
-          exists 0; auto.
-          exists 1; omega.
-        Qed.
-        rewrite divide_bound in *; intuition; try omega.
-        subst; rewrite Nat.sub_diag. instantiate (1 := nil). cancel.
-        replace (_ - nr) with 0; auto.
-        symmetry; rewrite Nat.sub_0_le. apply Nat.mod_le; mult_nonzero.
-        intros x; destruct x; intros.
-        replace (nr - _) with 0. auto.
-        symmetry; rewrite Nat.sub_0_le.
-        assert (nr <= NIndirect ^ I).
-        destruct addr_eq_dec; auto.
-        apply Nat.lt_le_incl. eapply le_lt_trans; eauto.
-        apply Nat.mod_upper_bound; mult_nonzero.
-        eapply le_trans; eauto.
-        replace (divup nr _) with 1 in *.
-        rewrite Nat.sub_diag in *.
-        unfold enumerate in *; rewrite removeN_combine in *. apply in_combine_l in H16.
-        unfold removeN in *; rewrite skipn_seq in *; simpl in *.
-        rewrite in_seq in *. edestruct mult_O_le; eauto. subst. omega.
-        Search divup 1.
-        admit.
-        rewrite nvalid_gt_0_indrep_helper by omega.
-        rewrite nvalid_gt_0_indrep_helper by (apply divup_gt_0; mult_nonzero; omega).
-        cancel.
-        match goal with [|- context [selN ?l ?n] ] =>
-          rewrite listmatch_isolate with (i := n) (a := enumerate _); autorewrite with lists
-        end; unfold IndRec.Defs.item in *; simpl in *; try omega.
-        rewrite <- Nat.sub_add_distr. rewrite plus_comm. rewrite Nat.sub_add_distr.
-        rewrite listmatch_piff_replace. cancel.
-        replace indlvl with (I - 1) by omega.
-        destruct addr_eq_dec.
-        rewrite divup_eq_div in * by auto.
-        rewrite Nat.mul_sub_distr_r.
-        erewrite mul_div by omega.
-        rewrite mult_1_l.
-        rewrite sub_sub_assoc. erewrite snd_pair by eauto. cancel.
-        Search (?a mod ?b = 0).
-        rewrite <- Nat.div_exact in * by mult_nonzero.
-        destruct (nvalid / _); [> omega | subst].
-        apply mult_ge_l; omega.
-        rewrite divup_minus_1 by auto.
-        rewrite sub_round_eq_mod by mult_nonzero. auto.
-        intros x; destruct x; intros.
-        Theorem in_removeN_enumerate : forall T a b n (l : list T),
-          In (a, b) (removeN (enumerate l) n) -> a < n \/ n < a < length l.
-        Proof.
-          intros.
-          unfold enumerate in H; rewrite removeN_combine in H.
-          apply in_combine_l in H. unfold removeN in H.
-          rewrite in_app_iff in *.
-          rewrite firstn_seq, skipn_seq in H. simpl in H.
-          repeat rewrite in_seq in H.
-          edestruct Nat.min_dec as [H' | H']; rewrite H' in H.
-          destruct H; intuition; omega.
-          rewrite Nat.min_r_iff in H'.
-          left; omega.
-        Qed.
-        apply in_removeN_enumerate in H12. intuition.
-        assert (nvalid - nr - n * (NIndirect ^ I) >= NIndirect ^ I).
-        apply Nat.le_add_le_sub_l.
-        destruct addr_eq_dec.
-        rewrite divup_eq_div in * by auto.
-        Search (?a < _ - _).
-        rewrite <- Nat.lt_add_lt_sub_r in *.
-        apply lt_div_mul_lt in H19; mult_nonzero.
-        rewrite Nat.mod_divides in * by mult_nonzero.
-        destruct e. destruct x; simpl in *; try omega.
-        rewrite mult_comm in H12; simpl in *.
-        assert (n * (NIndirect ^ I) >= 0) by (apply Peano.le_0_n).
-        eapply le_trans with (m := nvalid - NIndirect ^ I); try omega.
-        subst nvalid.
-        rewrite <- Nat.mul_1_l with (n := _ ^ _) at 2 3 5.
-        rewrite <- Nat.mul_1_l with (n :=  _ ^ _) in H19 at 2.
-        repeat rewrite <- Nat.mul_add_distr_r in *.
-        repeat rewrite <- Nat.mul_sub_distr_r in *.
-        rewrite <- Nat.mul_lt_mono_pos_r in * by mult_nonzero.
-        apply mult_le_compat_r; mult_nonzero. omega.
-        rewrite <- Nat.mul_1_l with (n := _ ^ _) at 2.
-        rewrite <- Nat.mul_add_distr_r.
-        rewrite divup_minus_1 in * by auto.
-        eapply le_trans with (m := nvalid - (nvalid mod _)); [> | apply Nat.sub_le_mono_l; eauto].
-        Search (?a mod ?b) (?a / ?b).
-        erewrite Nat.div_mod with (x := nvalid) at 1; [> rewrite Nat.add_sub |]; mult_nonzero.
-        rewrite mult_comm.
-        apply mult_le_compat_l; mult_nonzero; omega.
-        assert (n * (NIndirect ^ I) >= 0) by (apply Peano.le_0_n).
-        repeat rewrite indrep_n_tree_nvalid_oob with (nvalid := _ - _) by
-          (replace (S (I - 1)) with I by omega; omega).
-        auto.
-        assert (nvalid <= n * (NIndirect ^ I)).
-        destruct addr_eq_dec.
-        rewrite divup_eq_div in * by auto.
-        erewrite <- mul_div with (a := nvalid) by (eauto; mult_nonzero).
-        apply mult_le_compat_r. omega.
-        rewrite divup_minus_1 in * by auto.
-        apply Nat.lt_le_incl.
-        apply div_lt_mul_lt; mult_nonzero.
-        repeat replace (_ - _ * _) with 0 by omega.
-        auto.
-
-        rewrite indrep_n_helper_length_piff in *; destruct_lifts.
-        rewrite firstn_oob by omega.
-        erewrite indrep_n_tree_length with (indlvl := (I -1)) in *;
-          [> | match goal with
-                | [ H : _ |- _] => eapply pimpl_apply; [> | exact H];
-                  replace (NIndirect ^ I) with (NIndirect ^ (S (I - 1))) by (f_equal; omega); cancel;
-                  rewrite sep_star_comm, <- sep_star_assoc; eapply pimpl_refl
-                end].
-        replace (S (I - 1)) with I in * by omega.
-        step.
-        step.
-        divide_mult.
-        divide_mult.
-        apply mult_le_compat_r.
-        apply Nat.div_le_mono; mult_nonzero.
-        omega.
-        apply mult_le_compat_r.
-        apply Nat.div_le_upper_bound; mult_nonzero.
-        rewrite mult_comm; auto.
-        replace (I - 1) with indlvl by omega.
-        step.
         repeat step.
         rewrite nvalid_gt_0_indrep_helper in * by (apply divup_gt_0; mult_nonzero).
-        destruct_lifts; auto.
-        rewrite indrep_n_helper_length_piff, indrep_n_helper_pts_piff. cancel.
-        Fact sub_mod_eq_round : forall a b, b <> 0 -> a - (a mod b) = a / b * b.
+        destruct_lifts. auto.
+        match goal with [|- context [nr / ?N] ] =>
+          assert (nr < N) by (eapply le_lt_trans; [> eauto | apply Nat.mod_upper_bound]; mult_nonzero)
+        end.
+        rewrite Nat.div_small by auto.
+        rewrite Nat.sub_diag, divup_0. rewrite indrep_n_helper_0.
+        rewrite indrep_n_helper_length_piff, indrep_n_helper_pts_piff by (apply divup_gt_0; mult_nonzero).
+        cancel; eauto.
+        indrep_n_extract.
+        Theorem listmatch_indrep_n_tree_replace_nvalid : forall indlvl nvalid nvalid' bxp iblocks l_part i,
+          let N := NIndirect ^ S indlvl in
+          i = nvalid / N ->
+          i = nvalid' / N ->
+          listmatch  (fun (index_ibn' : addr * waddr) l' =>
+                      let '(index, ibn') := index_ibn' in
+                        indrep_n_tree indlvl bxp # (ibn') l' (index_nvalid indlvl nvalid index))
+              (removeN (enumerate iblocks) i) (removeN l_part i) <=p=>
+          listmatch  (fun (index_ibn' : addr * waddr) l' =>
+                      let '(index, ibn') := index_ibn' in
+                        indrep_n_tree indlvl bxp # (ibn') l' (index_nvalid indlvl nvalid' index))
+              (removeN (enumerate iblocks) i) (removeN l_part i).
+          Proof.
+            intros. apply listmatch_piff_replace.
+            intros x; destruct x as [a b]; intros.
+            apply in_removeN_enumerate in H1.
+            unfold index_nvalid.
+            intuition.
+            repeat rewrite indrep_n_tree_nvalid_oob with (nvalid := _ - _); auto;
+            match goal with [H : i = ?nvalid / N |- ?nvalid - _ >= _] =>
+              rewrite Nat.div_mod with (x := nvalid) (y := N) by (subst N; mult_nonzero);
+              rewrite mult_comm, plus_comm; subst N;
+              rewrite <- H; rewrite <- Nat.add_sub_assoc by (apply mult_le_compat_r; omega);
+              rewrite <- Nat.mul_sub_distr_r, plus_comm;
+              apply le_plus_trans, mult_ge_r; omega
+            end.
+            repeat rewrite sub_le_eq_0; auto;
+              apply Nat.lt_le_incl; apply div_lt_mul_lt; mult_nonzero; subst N; omega.
+          Qed.
+        rewrite listmatch_indrep_n_tree_replace_nvalid. cancel.
+        unfold index_nvalid. simpl.
+        rewrite sub_le_eq_0 by (apply Nat.mod_le; mult_nonzero). cancel.
+        rewrite Nat.div_small; auto. rewrite Nat.div_0_l; mult_nonzero.
+        indrep_n_extract.
+        repeat rewrite nvalid_gt_0_indrep_helper by (apply divup_gt_0; mult_nonzero; omega).
+        rewrite listmatch_indrep_n_tree_replace_nvalid. cancel.
+        unfold index_nvalid. rewrite sub_sub_comm, sub_round_eq_mod; mult_nonzero. cancel.
+        Fact div_sub_eq : forall a b n, n <> 0 -> b <= a mod n -> a / n = (a - b) / n.
         Proof.
           intros.
-          rewrite <- sub_round_eq_mod at 1 by auto.
-          rewrite sub_sub_assoc; auto.
-          apply div_mul_le.
+          rewrite Nat.div_mod with (x := a) (y := n) by auto.
+          rewrite mult_comm.
+          rewrite <- Nat.add_sub_assoc by auto.
+          repeat rewrite Nat.div_add_l by auto.
+          pose proof Nat.mod_upper_bound a n H.
+          rewrite Nat.div_small with (a := a mod n) by auto.
+          rewrite Nat.div_small with (a := _ - _) by omega.
+          auto.
         Qed.
-        rewrite sub_mod_eq_round by mult_nonzero.
+        auto.
+        apply div_sub_eq; mult_nonzero.
+        replace (NIndirect * NIndirect ^ (I - 1)) with (NIndirect ^ I) in *
+          by (destruct I; simpl; repeat f_equal; omega).
+        step.
+        step.
+        divide_mult.
+        divide_mult.
+        apply mult_le_compat_r, Nat.div_le_mono; mult_nonzero. omega.
+        apply mult_le_compat_r, Nat.div_le_upper_bound; mult_nonzero.
+        rewrite mult_comm; auto.
+        step.
+        unfold index_nvalid.
+        replace (S (I - 1)) with I by omega.
+        erewrite eq_trans with (x := (roundup _ _)); [> cancel | reflexivity |].
+        set (N := NIndirect ^I).
+(*         destruct (addr_eq_dec (nvalid mod NIndirect ^I) (nr mod NIndirect ^I)).
+        assert ((nvalid - nr) mod NIndirect ^I = 0).
+        rewrite Nat.div_mod with (x := nvalid) (y := NIndirect ^I) by auto.
+        rewrite Nat.div_mod with (x := nr) (y := NIndirect ^I) by auto.
+        rewrite plus_comm with (m := nr mod _).
+        rewrite plus_comm. rewrite e.
+        setoid_rewrite <- minus_plus_simpl_l_reverse.
+        rewrite <- Nat.mul_sub_distr_l. rewrite mult_comm, Nat.mod_mul by mult_nonzero. auto.
+        
+        unfold roundup.
+        rewrite divup_eq_div by auto. rewrite mul_div by mult_nonzero.
+        rewrite e. rewrite sub_mod_eq_round by mult_nonzero.
         rewrite Nat.div_mul by mult_nonzero.
-        repeat rewrite Nat.sub_diag. simpl in *. rewrite divup_0, indrep_n_helper_0.
-        replace indlvl with (I - 1) by omega.
-        cancel; eauto.
-        apply divup_gt_0; mult_nonzero.
-        apply incl_tl. eapply incl_tran; eauto.
-        rewrite mul_div with (a := _ - _) by mult_nonzero.
-        Search nvalid.
-        Search (?a - (?b + ?c)).
-        erewrite minus_plus_simpl_l_reverse.
-        Search (?a mod ?b) (?b * (?a / ?b)).
-        rewrite mult_comm, plus_comm.
-        rewrite <- Nat.div_mod.
-        rewrite plus_comm.
-        Search (?a - ?b + ?b).
-        rewrite Nat.sub_add.
-        replace indlvl with (I - 1) by omega. cancel.
-        repeat rewrite nvalid_gt_0_indrep_helper by (apply divup_gt_0; mult_nonzero; omega).
-        cancel.
-        destruct addr_eq_dec; omega.
-        mult_nonzero.
-        eapply incl_tran; eauto.
-        rewrite listmatch_length_pimpl in *; autorewrite with lists in *; destruct_lifts.
-        assert (divup nvalid (NIndirect ^ I) <= NIndirect) by (apply divup_le; rewrite mult_comm; auto).
-        assert (divup nvalid (NIndirect ^ I) > 0) by (apply divup_gt_0; mult_nonzero; omega).
+        rewrite <- sub_mod_eq_round by mult_nonzero.
+        rewrite e. rewrite sub_sub_comm.
+        rewrite <- Nat.sub_add_distr. rewrite mult_comm, <- Nat.div_mod by mult_nonzero. auto.
+        set (N := NIndirect ^I).
+        apply plus_minus. *)
+        Fact mod_sub : forall a b n, a >= b -> (a - b) mod n = (a - (b mod n)) mod n.
+          Proof.
+            intros.
+            destruct (Nat.eq_dec n 0); subst; auto.
+            erewrite <- Nat.mod_add by auto.
+            rewrite <- Nat.add_sub_swap by auto.
+            rewrite <- Nat.add_sub_assoc by (apply divup_n_mul_n_le; auto).
+            rewrite divup_eq_divup'. unfold divup'.
+            destruct (b mod n) eqn:HH.
+            rewrite mul_div, Nat.sub_diag by omega. rewrite plus_0_r, Nat.sub_0_r. auto.
+            Search (_ + _ / _).
+            rewrite Nat.div_mod with (x := b) (y := n) at 2 by auto.
+            rewrite plus_comm with (n := (_ / _)).
+            rewrite Nat.mul_add_distr_r.
+            rewrite Nat.sub_add_distr.
+            rewrite mult_1_l, mult_comm.
+            rewrite Nat.add_sub.
+            rewrite Nat.add_sub_assoc.
+            pose proof Nat.mod_add (a - b mod n) 1 n n0.
+            rewrite plus_comm, mult_1_l in H0.
+            rewrite plus_comm. rewrite <- Nat.add_sub_assoc. congruence.
+            eapply le_trans. apply Nat.mod_le; auto. auto.
+            apply mod_le_r.
+          Qed.
+          Lemma mod_sub_zero : forall a b n, a >= b -> a mod n = b mod n <-> (a - b) mod n = 0.
+          Proof.
+            intros.
+            destruct (Nat.eq_dec n 0); subst. intuition.
+            split; intros.
+            rewrite mod_sub by auto. rewrite <- H0. rewrite sub_mod_eq_round by auto.
+            rewrite Nat.mod_mul; auto.
+            rewrite Nat.mod_divides in H0; destruct H0; auto.
+            assert (b mod n <= b) by (apply Nat.mod_le; auto).
+            eapply Nat.add_cancel_r in H0.
+            rewrite Nat.sub_add in H0 by auto.
+            subst.
+            rewrite plus_comm, mult_comm, Nat.mod_add by auto.
+            auto.
+          Qed.
+          Search nvalid.
+        assert (N <= nvalid) by (destruct (le_lt_dec N nvalid); [> |rewrite Nat.mod_small in *]; auto; omega).
+        Theorem asdf : forall a b n,
+          n <> 0 ->
+          b <= a ->
+          n <= a ->
+          a mod n < b ->
+          roundup (a - b) n = a / n * n - (b - (a mod n)) / n * n.
+        Proof.
+          intros.
+          unfold roundup.
+          destruct (addr_eq_dec (a mod n) (b mod n)) as [H'|H'].
+          + rewrite H'. rewrite sub_mod_eq_round by auto. rewrite Nat.div_mul by auto.
+            apply mod_sub_zero in H' as H''; auto.
+            rewrite divup_eq_div by auto.
+            rewrite mul_div with (a := _ - _) by omega.
+            rewrite <- sub_mod_eq_round by auto.
+            assert (b >= b mod n) by (apply Nat.mod_le; auto).
+            rewrite H'. rewrite sub_sub_comm.
+            rewrite <- Nat.sub_add_distr.
+            f_equal. rewrite mult_comm. apply Nat.div_mod. auto.
+          + pose proof H' as HH. rewrite mod_sub_zero in HH by auto.
+            Fact divup_eq_div_plus_1 : forall a b, a mod b <> 0 -> divup a b = 1 + a / b.
+            Proof.
+              intros.
+              rewrite divup_eq_divup'. unfold divup'. destruct (_ mod _); intuition.
+            Qed.
+            rewrite divup_eq_div_plus_1 by auto. rewrite <- Nat.mul_sub_distr_r. f_equal.
+            Fact asdfefa : forall a b n,
+              n <> 0 ->
+              b <= a ->
+              (a - b) mod n <> 0 ->
+              n <= a ->
+              a mod n < b ->
+              1 + (a - b) / n = a / n - (b - a mod n) / n.
+            Proof.
+              intros.
+              pose proof H1.
+              rewrite <- mod_sub_zero in H1; auto.
+              destruct (le_lt_dec n (a - b)).
+              + destruct (le_lt_dec (a mod n) (b mod n)).
+
+              Fact div_sub_small: forall a b n, b <= a mod n -> (a - b) / n = a / n.
+              Proof.
+                intros. destruct (addr_eq_dec n 0). subst. auto.
+                rewrite Nat.div_mod with (x := a) (y := n) at 1 by auto.
+                rewrite <- Nat.add_sub_assoc by auto.
+                rewrite mult_comm.
+                rewrite Nat.div_add_l by auto.
+                rewrite Nat.div_small with (a := _ - _). auto.
+                Search (?a - ?b < ?c) (?a < ?c). 
+                apply lt_minus'. apply Nat.mod_upper_bound. auto.
+              Qed.
+              Fact div_sub_mod_small : forall a b n, b <= a -> b mod n <= a mod n ->
+                (a - b) / n = a / n - b / n.
+              Proof.
+                intros.
+                destruct (addr_eq_dec n 0). subst; auto.
+                rewrite Nat.div_mod with (x := b) (y := n) at 1 by auto.
+                rewrite Nat.div_mod with (x := a) (y := n) at 1 by auto.
+                rewrite Nat.sub_add_distr.
+                rewrite plus_comm.
+                rewrite <- Nat.add_sub_assoc by (apply Nat.mul_le_mono_l, Nat.div_le_mono; auto).
+                rewrite plus_comm.
+                rewrite <- Nat.mul_sub_distr_l.
+                rewrite <- Nat.add_sub_assoc by auto.
+                rewrite mult_comm, Nat.div_add_l by auto.
+                rewrite Nat.div_small with (a := _ - _). auto.
+                assert (a mod n < n) by (apply Nat.mod_bound_pos; omega). omega.
+              Qed.
+                - rewrite div_sub_small with (a := b) by auto.
+
+              Fact div_sub_mod_large : forall a b n, b <= a -> a mod n < b mod n -> (a - b) / n = a / n - b / n - 1.
+              Proof.
+                intros.
+                destruct (addr_eq_dec n 0). subst. auto.
+                destruct (le_lt_dec n a); [> |repeat rewrite Nat.div_small by omega; auto].
+                destruct (le_lt_dec n (a - b)).
+                + rewrite Nat.div_mod with (x := b) (y := n) at 1 by auto.
+                  rewrite Nat.div_mod with (x := a) (y := n) at 1 by auto.
+                  rewrite Nat.sub_add_distr.
+                  rewrite plus_comm.
+                  rewrite <- Nat.add_sub_assoc by (apply Nat.mul_le_mono_l, Nat.div_le_mono; auto).
+                  replace (a / n) with (S ((a - n) / n)) at 1.
+                  rewrite <- mult_n_Sm.
+                  rewrite plus_comm with (m := n).
+                  Search (?a + ?b - ?c).
+                  rewrite <- Nat.add_sub_assoc with (n := n).
+                  rewrite <- Nat.mul_sub_distr_l.
+                  rewrite plus_comm. rewrite plus_comm with (n := n).
+                  rewrite mult_comm.
+                  rewrite <- Nat.add_assoc.
+                  rewrite <- Nat.add_sub_assoc.
+                  rewrite Nat.div_add_l by auto.
+                  rewrite Nat.div_small with (a := _ + _ - _) by omega.
+                  rewrite plus_0_r.
+                  rewrite div_ge_subt by auto. omega.
+                  - assert (a mod n < n) by (apply Nat.mod_bound_pos; omega).
+                    assert (b mod n < n) by (apply Nat.mod_bound_pos; omega). omega.
+                  - apply Nat.mul_le_mono_l.
+                    rewrite div_ge_subt by auto.
+                    replace a with (b + (a - b)) by omega.
+                    rewrite Nat.div_mod with (x := b) (y := n) at 2 by auto.
+                    rewrite <- plus_assoc. rewrite mult_comm. rewrite Nat.div_add_l by auto.
+                    rewrite <- Nat.add_sub_assoc by (apply Nat.div_str_pos_iff; omega). omega.
+                  - rewrite div_ge_subt by auto.
+                    assert (a / n >= 1) by (apply Nat.div_str_pos_iff; omega). omega.
+                Fact div_sub_close : forall a b n, n <> 0 -> b <= a -> a - b < n -> a / n - b / n <= 1.
+                Proof.
+                  intros.
+                  remember (a - b) as e. replace a with (b + e) by omega.
+                  rewrite Nat.div_mod with (x := b) (y := n) at 1 by auto.
+                  rewrite <- plus_assoc. rewrite mult_comm. rewrite Nat.div_add_l by auto.
+                  rewrite minus_plus.
+                  Fact div_plus_bound : forall a b n x y, a < x * n -> b < y * n -> (a + b) / n < x + y.
+                  Proof.
+                    intros.
+                    destruct (Nat.eq_dec n 0). subst; omega.
+                    destruct (Nat.eq_dec x 0). subst; omega.
+                    destruct (Nat.eq_dec y 0). subst; omega.
+                    apply Nat.div_lt_upper_bound; auto.
+                    rewrite mult_comm, Nat.mul_add_distr_r. omega.
+                  Qed.
+                  apply lt_n_Sm_le.
+                  apply div_plus_bound with (x := 1) (y := 1); rewrite mult_1_l.
+                  apply Nat.mod_bound_pos; omega. omega.
+                Qed.
+                + rewrite Nat.div_small by auto.
+                  symmetry. apply Nat.sub_0_le.
+                  apply div_sub_close; auto.
+              Qed.
+            rewrite div_sub_mod_large by omega.
+            Fact div_sub_far : forall a b n, n <> 0 -> b <= a -> a - b >= n -> a / n - b / n >= 1.
+            Proof.
+              intros.
+              remember (a - b) as e. replace a with (b + e) by omega.
+              rewrite Nat.div_mod with (x := b) (y := n) at 1 by auto.
+              rewrite <- plus_assoc. rewrite mult_comm. rewrite Nat.div_add_l by auto.
+              rewrite minus_plus.
+              apply Nat.div_str_pos_iff; auto. omega.
+            Qed.
+            assert (a / n - b / n >= 1) by (apply div_sub_far; auto).
+            omega.
+          - rewrite div_sub_mod_large with (a := b) by (try rewrite Nat.mod_mod; omega).
+            rewrite Nat.div_small with (a := _ mod _), Nat.sub_0_r by (apply Nat.mod_bound_pos; omega).
+            rewrite div_sub_mod_small by omega.
+            assert (a / n - b / n >= 1) by (apply div_sub_far; auto).
+            destruct (le_lt_dec n b).
+            assert (b / n > 0) by (apply Nat.div_str_pos_iff; omega). omega.
+            repeat rewrite Nat.mod_small in * by omega. omega.
+        + destruct (le_lt_dec (b mod n) (a mod n)).
+          - rewrite div_sub_mod_large with (a := b) by (try rewrite Nat.mod_mod; omega).
+            rewrite mod_div_0. rewrite Nat.sub_0_r.
+            rewrite Nat.div_small by auto. simpl.
+            destruct (le_lt_dec n b).
+            --  rewrite <- div_ge_subt by auto.
+                replace (a / n) with (S ((a - n) / n)).
+                rewrite <- minus_Sn_m.
+                rewrite <- div_sub_mod_small; try omega.
+                rewrite Nat.div_small by omega. auto.
+                repeat rewrite mod_subt by auto. auto.
+                apply Nat.div_le_mono; omega.
+                rewrite div_ge_subt by auto.
+                assert (a / n > 0) by (apply Nat.div_str_pos_iff; omega). omega.
+            --  rewrite Nat.div_small with (a := b) by auto.
+                rewrite Nat.sub_0_r.
+                assert (a / n > 0) by (apply Nat.div_str_pos_iff; omega).
+                assert (a / n < 2).
+                replace a with (b + (a - b)) by omega.
+                apply div_plus_bound with (x := 1) (y := 1); rewrite mult_1_l; auto.
+                omega.
+          - rewrite div_sub_mod_small with (a := b) by (try rewrite Nat.mod_mod; omega).
+            rewrite mod_div_0.
+            rewrite div_sub_mod_large by auto.
+            rewrite Nat.sub_0_r.
+            destruct (le_lt_dec (a / n) (b / n)); [> | omega].
+            assert (b / n < a / n).
+            Theorem div_ererszxces : forall a b n, b <= a -> a mod n < b mod n -> b / n < a / n.
+                Proof.
+                  intros. destruct (addr_eq_dec n 0). subst; simpl in *. auto.
+                  apply Nat.div_le_mono with (c := n) in H as H'; auto.
+                  destruct (le_lt_eq_dec _ _ H') as [HH|HH]. auto.
+                  rewrite Nat.div_mod with (x := b) (y := n) in H by auto.
+                  rewrite Nat.div_mod with (x := a) (y := n) in H by auto.
+                  rewrite HH in H.
+                  apply Nat.add_le_mono_l in H. omega.
+                Qed.
+            apply div_ererszxces; auto. omega.
+      Qed.
+      apply asdfefa; auto.
+    Qed.
+        apply asdf; subst N; mult_nonzero. omega.
+        unfold roundup; apply mult_le_compat_r, divup_le. rewrite mult_comm; omega.
+        unfold roundup; divide_mult.
+        apply Nat.mod_bound_pos; mult_nonzero; omega.
+        destruct (addr_eq_dec nvalid nr); subst.
+        rewrite sub_mod_eq_round, Nat.mod_mul by mult_nonzero.
+        rewrite Nat.sub_diag, roundup_0; auto.
+        eapply le_trans. apply mod_le_r.
+        unfold roundup. apply mult_ge_r, divup_gt_0. omega. mult_nonzero.
+        set (N := _ ^ _).
+        assert (N <= nvalid) by (destruct (le_lt_dec N nvalid); [> |rewrite Nat.mod_small in *]; auto; omega).
         repeat step.
-        match goal with [|- context [selN ?l ?n] ] =>
-          rewrite listmatch_isolate with (i := n) (a := enumerate _); autorewrite with lists
-        end; unfold IndRec.Defs.item in *; simpl in *; try omega.
-    Admitted
+        - rewrite nvalid_gt_0_indrep_helper in * by (apply divup_gt_0; subst N; mult_nonzero; omega).
+          destruct_lifts. auto.
+        - rewrite Nat.sub_diag, roundup_0, divup_0. simpl.
+          rewrite indrep_n_helper_0, indrep_n_helper_length_piff.
+          rewrite indrep_n_helper_pts_piff by (apply divup_gt_0; subst N; mult_nonzero; omega).
+          cancel.
+        - apply incl_tl. repeat (eapply incl_tran; eauto).
+        - erewrite eq_trans with (x := (roundup _ _) - _); [> cancel | reflexivity |].
+        repeat rewrite nvalid_gt_0_indrep_helper by (apply divup_gt_0; subst N; mult_nonzero; omega). cancel.
+        Theorem roundup_asdf : forall a b n,
+          b <= a ->
+          n <> 0 ->
+          a mod n < b ->
+          roundup (a - b) n - (b - a mod n) mod n = a - b.
+        Proof.
+          intros.
+          apply Nat.add_sub_eq_l.
+          destruct (addr_eq_dec ((a - b) mod n) 0) as [H'|H']; pose proof H';
+            rewrite <- mod_sub_zero in H'; auto.
+          - rewrite H'. rewrite sub_mod_eq_round by auto. rewrite Nat.mod_mul by auto.
+            unfold roundup. rewrite divup_eq_div by auto. rewrite mul_div by omega. auto.
+          Theorem roundup_eq : forall a n, n <> 0 -> a mod n <> 0 -> roundup a n = a + (n - a mod n).
+          Proof.
+            intros.
+            unfold roundup.
+            rewrite divup_eq_divup'. unfold divup'.
+            destruct (a mod n) as [|n'] eqn:HH; intuition.
+            substl (S n').
+            rewrite Nat.div_mod with (x := a) (y := n) at 2 by auto.
+            rewrite <- plus_assoc.
+            rewrite <- le_plus_minus by (apply mod_le_r).
+            rewrite Nat.mul_add_distr_r. rewrite mult_comm. omega.
+          Qed.
+          - rewrite roundup_eq by auto.
+            rewrite plus_comm. f_equal.
+            destruct (le_lt_dec (a mod n) (b mod n)).
+            --  rewrite Nat.div_mod with (x := b) (y := n) by auto.
+                rewrite <- Nat.add_sub_assoc by auto.
+                rewrite plus_comm, mult_comm.
+                rewrite Nat.mod_add by auto.
+                assert (b mod n < n) by (apply Nat.mod_bound_pos; omega).
+                assert (a mod n < n) by (apply Nat.mod_bound_pos; omega).
+                rewrite Nat.mod_small by omega.
+                destruct (le_lt_dec n a); [> | repeat rewrite Nat.mod_small in * by omega; omega].
+                rewrite Nat.div_mod with (x := a) (y := n) at 2 by auto.
+                replace (a / n) with (S(a / n - 1)).
+                rewrite <- mult_n_Sm.
+                rewrite <- plus_assoc, plus_comm.
+                rewrite Nat.sub_add_distr.
+                rewrite mult_comm.
+                rewrite <- Nat.add_sub_assoc.
+                rewrite <- Nat.mul_sub_distr_r.
+                rewrite plus_comm.
+                rewrite <- Nat.add_sub_assoc, plus_comm by omega.
+                rewrite Nat.mod_add by auto.
+                rewrite Nat.mod_small with (a := _ - _) by omega. omega.
+                apply mult_le_compat_r.
+                assert (b / n < a / n) by (apply div_ererszxces; omega).
+                omega.
+                rewrite <- div_ge_subt by auto.
+                replace a with (a - n + 1 * n) at 2 by omega.
+                rewrite Nat.div_add by auto.
+                omega.
+            --  rewrite Nat.div_mod with (x := a) (y := n) at 2 by auto.
+                rewrite Nat.div_mod with (x := b) (y := n) at 2 by auto.
+                rewrite Nat.sub_add_distr.
+                rewrite plus_comm.
+                rewrite <- Nat.add_sub_assoc.
+                rewrite <- Nat.mul_sub_distr_l.
+                rewrite plus_comm, mult_comm.
+                rewrite <- Nat.add_sub_assoc by omega.
+                rewrite plus_comm.
+                rewrite Nat.mod_add by auto.
+                assert (b mod n < n) by (apply Nat.mod_bound_pos; omega).
+                assert (a mod n < n) by (apply Nat.mod_bound_pos; omega).
+                rewrite Nat.mod_small with (a := _ mod _ - _) by omega.
+                destruct (le_lt_dec n b); [> | repeat rewrite Nat.mod_small in * by omega; omega].
+                rewrite Nat.div_mod with (x := b) (y := n) at 1 by auto.
+                replace (b / n) with (S(b / n - 1)).
+                rewrite <- mult_n_Sm.
+                rewrite <- plus_assoc.
+                rewrite <- Nat.add_sub_assoc by omega.
+                rewrite plus_comm, mult_comm.
+                rewrite Nat.mod_add by auto.
+                rewrite Nat.mod_small by omega.
+                omega.
+                rewrite <- div_ge_subt by auto.
+                replace b with (b - n + 1 * n) at 2 by omega.
+                rewrite Nat.div_add by auto.
+                omega.
+                apply mult_le_compat_l.
+                apply Nat.div_le_mono; auto.
+        Qed.
+        apply roundup_asdf; subst N; mult_nonzero; omega.
+      - repeat (eapply incl_tran; eauto).
+        Unshelve. all : eauto.
+        Grab Existential Variables.
+    Qed.
 
   (************* program *)
 
