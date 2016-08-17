@@ -1,6 +1,8 @@
 Require Import CoopConcur.
+Require Import CoopConcurAuto.
 Require Import Protocols.
 Require Import ConcurrentCache.
+Require Import DiskReaders.
 Require Import Omega.
 Import Hlist.
 Import Hlist.HlistNotations.
@@ -69,8 +71,76 @@ Module CacheSub <: CacheSubProtocol.
 End CacheSub.
 
 Module ConcurrentCache := MakeConcurrentCache CacheSub.
-
 Import ConcurrentCache.
+
+Definition copy a a' :=
+  opt_v <- cache_read a;
+    match opt_v with
+    | None => _ <- cache_abort;
+               Ret false
+    | Some v => ok <- cache_write a' v;
+                 if ok then
+                   Ret true
+                 else
+                   _ <- cache_abort;
+                 Ret false
+    end.
+
+Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
+
+(* gives all cache variables *)
+Import CacheSub.CacheProtocol.
+
+Lemma same_domain_vdisk : forall d m s d' m' s' tid,
+    invariant delta d m s ->
+    guar delta tid s s' ->
+    invariant delta d' m' s' ->
+    same_domain (get vdisk s) (get vdisk s').
+Proof.
+  simplify.
+Abort.
+
+Theorem copy_ok : forall a a',
+    SPEC App.delta, tid |-
+                {{ v v',
+                 | PRE d m s_i s:
+                     invariant App.delta d m s /\
+                     get vdisk s a = Some v /\
+                     get vdisk s a' = Some v'
+                 | POST d' m' s_i' s' r:
+                     invariant App.delta d' m' s' /\
+                     (r = true ->
+                      get vdisk s' = upd (get vdisk s) a' v) /\
+                     (r = false ->
+                      get vdisk s' = hide_readers (get vDisk0 s))
+                }} copy a a'.
+Proof.
+  hoare.
+  eexists; simplify; finish.
+  hoare.
+  assert (w = v).
+  { match goal with
+    | [ H: forall _, Some ?w = Some _ -> _ |- _ ] =>
+      specialize (H w)
+    end; eauto. }
+  subst.
+  (* TODO: need a derived same_domain for vdisk from invariant + guar *)
+
+  assert (get vdisk s = get vdisk s0) as Hvdiskeq.
+  match goal with
+  | [ H: modified _ s s0 |- _ ] =>
+    apply H
+  end.
+  rewrite (hin_iff_index_in vdisk); simpl.
+  unfold vCache, vdisk, vDisk0; simpl.
+  repeat (rewrite get_first; simpl) ||
+         (rewrite get_next; simpl).
+  intuition.
+  rewrite <- Hvdiskeq in *.
+  eexists; simplify; finish.
+
+  hoare.
+Qed.
 
 (* Local Variables: *)
 (* company-coq-local-symbols: (("delta" . ?δ) ("Sigma" . ?Σ)) *)

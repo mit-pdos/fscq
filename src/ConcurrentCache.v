@@ -1274,7 +1274,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
   Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
 
-  Section ExampleProgram.
+  Module CopyExample.
 
     Definition copy a a' :=
       opt_v <- cache_read a;
@@ -1357,7 +1357,7 @@ for get vdisk s0 a' does not matter, since it is overwritten *)
       repeat (apply or_impl; [ vars_distinct | ]); auto.
     Admitted.
 
-  End ExampleProgram.
+  End CopyExample.
 
 End MakeConcurrentCache.
 
