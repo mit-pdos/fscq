@@ -676,7 +676,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     let^ (ms, v) <- IndRec.get lxp bn (off / divisor) ms;
     match indlvl with
     | 0 => Ret ^(ms, v)
-    | S indlvl' => indget indlvl' lxp (# (Rec.to_word v)) (off mod divisor) ms
+    | S indlvl' => indget indlvl' lxp (# v) (off mod divisor) ms
     end.
 
   Lemma divup_gt_0 : forall a b, 0 < a -> 0 < b -> divup a b > 0.
@@ -717,8 +717,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
       - indrep_n_tree_bound.
       - rewrite nvalid_gt_0_indrep_helper by (apply divup_gt_0; (omega || mult_nonzero)).
         cancel.
-      - unfold Rec.to_word; simpl.
-        rewrite listmatch_isolate, selN_enumerate.
+      - rewrite listmatch_isolate; autorewrite with lists.
         (* these are hidden by notation, but otherwise prevent cancel from succeeding *)
         unfold IndRec.Defs.item; simpl; erewrite snd_pair by eauto.
         cancel.
