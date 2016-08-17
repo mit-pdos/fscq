@@ -1290,7 +1290,175 @@ Module BlockPtr (BPtr : BlockPtrSig).
     all : eauto; try split; eauto; solve [exact $0 | exact nil].
   Qed.
 
-  Hint Extern 1 ({{_}} Bind (indshrink_ragged_to_aligned _ _ _ _ _ _) _) => apply indshrink_ragged_to_aliged_ok : prog.
+  Hint Extern 1 ({{_}} Bind (indshrink_ragged_to_aligned _ _ _ _ _ _) _) => apply indshrink_ragged_to_aligned_ok : prog.
+
+  Fixpoint indshrink_aligned_to_ragged indlvl lxp bxp iblocks nvalid nr ms :=
+    let N := (NIndirect ^ indlvl) in
+    let ragged_bn := (selN iblocks (nvalid / N - 1) $0) in
+    match indlvl with
+    | 0 => Ret ^(ms)
+    | S indlvl' =>
+      let N' := NIndirect ^ indlvl' in
+      If (addr_eq_dec indlvl' 0) {
+        Ret ^(ms)
+      } else {
+        If (addr_eq_dec nr 0) {
+          Ret ^(ms)
+        } else {
+          let^ (ms, indbns) <- IndRec.read lxp #ragged_bn 1 ms;
+          let^ (ms) <- indshrink_aligned indlvl' lxp bxp indbns N (nr / N' * N') ms;
+          let^ (ms) <- indshrink_aligned_to_ragged indlvl' lxp bxp indbns (N - (nr / N' * N')) (nr mod N') ms;
+          Ret ^(ms)
+        }
+      }
+    end.
+
+  Fact sub_mod_eq_round : forall a b, b <> 0 -> a - (a mod b) = a / b * b.
+  Proof.
+    intros.
+    rewrite <- sub_round_eq_mod at 1 by auto.
+    rewrite sub_sub_assoc; auto.
+    apply div_mul_le.
+  Qed.
+
+  Fact sub_sub_comm : forall a b c, a - b - c = a - c - b.
+  Proof.
+    intros.
+    rewrite <- Nat.sub_add_distr. rewrite plus_comm.
+    rewrite Nat.sub_add_distr. auto.
+  Qed.
+
+  Theorem in_enumerate : forall T a b (l : list T), In (a, b) (enumerate l) -> a < length l.
+  Proof.
+    unfold enumerate. intros.
+    apply in_combine_l, in_seq in H. omega.
+  Qed.
+
+  Theorem indshrink_aligned_to_ragged_ok : forall indlvl lxp bxp iblocks l_part nvalid nr ms,
+    let N := NIndirect ^ indlvl in
+    {< F Fm m0 m freelist,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           [[[ m ::: (Fm *
+                listmatch (fun index_ibn' l' => let '(index, ibn') := index_ibn' in
+                    indrep_n_tree (indlvl - 1) bxp (# ibn') l' (index_nvalid (indlvl - 1) nvalid index))
+                  (enumerate iblocks) l_part * BALLOC.rep bxp freelist) ]]] *
+           [[ indlvl > 0 ]] * [[ length iblocks = NIndirect ]] * [[ nvalid <= NIndirect * N ]] *
+           [[ Nat.divide N nvalid ]] * [[ nr < N ]] * [[ nr <= nvalid ]]
+    POST:hm' RET:^(ms)  exists m' freelist',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           [[[ m' ::: (Fm *
+                listmatch (fun index_ibn' l' => let '(index, ibn') := index_ibn' in
+                    indrep_n_tree (indlvl - 1) bxp (# ibn') l' (index_nvalid (indlvl - 1) (nvalid - nr) index))
+                  (enumerate iblocks) l_part * BALLOC.rep bxp freelist') ]]] * [[ incl freelist freelist' ]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} indshrink_aligned_to_ragged indlvl lxp bxp iblocks nvalid nr ms.
+    Proof.
+      destruct indlvl. simpl. hoare.
+      induction indlvl; intros; subst N.
+      + simpl. hoare.
+          match goal with [H : Nat.divide _ _ |- _] => destruct H; subst end.
+          rewrite mult_1_r in *. unfold index_nvalid.
+          rewrite Nat.pow_1_r.
+          apply listmatch_piff_replace.
+          intros a; destruct a; intros.
+          rewrite sub_sub_comm.
+          rewrite <- Nat.mul_le_mono_pos_r in * by mult_nonzero.
+          rewrite <- Nat.mul_sub_distr_r.
+          match goal with [H : In (?n, _) _ |- context [?x - ?n] ] =>
+            apply in_enumerate in H; destruct (le_lt_dec x n);
+              [> replace (x - n) with 0 by omega |
+              assert ((x - n) * NIndirect >= NIndirect) by (apply mult_ge_r; omega)]
+          end.
+          auto.
+          repeat rewrite nvalid_gt_0_indrep_helper by omega. auto.
+      + remember (S indlvl) as I. assert (I > 0) by omega. clear HeqI.
+        simpl.
+        step; [> hoare |].
+        match goal with [H : Nat.divide _ _ |- _] => destruct H as [n']; subst end.
+        rewrite <- Nat.mul_le_mono_pos_r in * by mult_nonzero.
+        repeat rewrite Nat.div_mul in * by mult_nonzero.
+        step; [> hoare |]. repeat rewrite Nat.sub_0_r. auto.
+        destruct (addr_eq_dec n' 0); [> solve [subst; simpl in *; step]|].
+        match goal with [H : context [listmatch _ (enumerate ?l)]|- context [selN ?l ?n] ] =>
+          rewrite listmatch_extract with (i := n) in H; destruct_lift H;
+          autorewrite with lists in *; try omega
+        end.
+        match goal with [H : context [indrep_n_tree ?I ?bxp # (selN ?l ?n ?d)] |- _] =>
+          replace (indrep_n_tree I bxp #(selN l n d)) with (indrep_n_tree (S (I - 1)) bxp #(selN l n d))
+            in H by (f_equal; omega); simpl in H; destruct_lift H
+        end.
+        repeat rewrite Nat.sub_0_r in *.
+        step.
+        rewrite nvalid_gt_0_indrep_helper. erewrite snd_pair by eauto. cancel.
+        apply divup_gt_0; mult_nonzero.
+        unfold index_nvalid. simpl. rewrite <- Nat.mul_sub_distr_r.
+        mult_nonzero; omega.
+        rewrite indrep_n_helper_length_piff in *. destruct_lifts.
+        rewrite firstn_oob by omega.
+        step.
+        divide_mult. divide_mult.
+        rewrite listmatch_piff_replace with (l1 := enumerate _). cancel.
+        intros x; destruct x as [a b]; intros.
+        match goal with [H : In (?n, _) _ |- _ ] =>
+          apply in_enumerate in H
+        end. unfold index_nvalid. replace (S (I - 1)) with I by omega. simpl.
+        repeat rewrite <- Nat.mul_sub_distr_r by mult_nonzero.
+        rewrite sub_sub_assoc, mult_1_l by omega.
+        rewrite <- Nat.mul_sub_distr_r by mult_nonzero. auto.
+        rewrite <- Nat.mul_le_mono_pos_r by mult_nonzero.
+        apply Nat.div_le_upper_bound; mult_nonzero. rewrite mult_comm; omega.
+        step.
+        rewrite <- Nat.mul_sub_distr_r; mult_nonzero.
+        match goal with [H : nr < ?n * ?N |- context [nr / ?N] ] =>
+          rewrite mult_comm in H; apply Nat.div_lt_upper_bound in H; mult_nonzero
+        end. apply mult_le_compat_r; mult_nonzero. omega.
+        rewrite <- Nat.mul_sub_distr_r by mult_nonzero. divide_mult.
+        apply Nat.mod_upper_bound. mult_nonzero.
+        eapply le_trans. apply mod_le_r.
+        rewrite <- Nat.mul_sub_distr_r. apply mult_ge_r.
+        apply Nat.lt_add_lt_sub_r; simpl.
+        apply Nat.div_lt_upper_bound; mult_nonzero.
+        rewrite mult_comm. auto.
+        hoare.
+        rewrite <- Nat.sub_add_distr.
+        rewrite mult_comm with (n := _ / _).
+        rewrite <- Nat.div_mod by mult_nonzero.
+        match goal with [|- context [selN ?l ?n] ] =>
+          rewrite listmatch_isolate with (i := n) (a := enumerate l);
+          autorewrite with lists in *; try omega
+        end. erewrite snd_pair by eauto.
+        unfold index_nvalid.
+        replace (NIndirect * NIndirect ^ (I - 1)) with (NIndirect ^ (S (I -1))) by auto.
+        unfold index_nvalid. replace (S (I - 1)) with I by omega. simpl.
+        rewrite sub_sub_comm.
+        repeat rewrite <- Nat.mul_sub_distr_r.
+        replace (_ - (_ - 1)) with 1 by omega. rewrite mult_1_l.
+        rewrite divup_mul by mult_nonzero.
+        rewrite listmatch_piff_replace. cancel.
+        replace (indrep_n_tree I) with (indrep_n_tree (S (I - 1))) by (f_equal; omega). simpl.
+        unfold index_nvalid.
+        replace (NIndirect * NIndirect ^ (I - 1)) with (NIndirect ^ (S (I - 1))) by auto.
+        unfold index_nvalid. replace (S (I - 1)) with I by omega. simpl.
+        cancel; eauto.
+        rewrite nvalid_gt_0_indrep_helper by auto.
+        rewrite nvalid_gt_0_indrep_helper. cancel.
+        apply divup_gt_0. omega. mult_nonzero.
+        intros x; destruct x as [a b]; intros.
+        rewrite sub_sub_comm. rewrite <- Nat.mul_sub_distr_r.
+        match goal with [H : In _ _ |- _] => apply in_removeN_enumerate in H end. intuition.
+        rewrite indrep_n_tree_nvalid_oob by (simpl; apply mult_ge_r; mult_nonzero; omega).
+        rewrite indrep_n_tree_nvalid_oob with (nvalid := _ - _). auto.
+        simpl.
+        match goal with [|- ?n * ?N - ?nr >= ?N] =>
+          apply Nat.le_add_le_sub_r; eapply le_trans with (m := 2 * N)
+        end; try omega. rewrite <- Nat.mul_le_mono_pos_r by mult_nonzero. omega.
+        replace (n' - a) with 0 by omega. auto.
+        eapply incl_tran; eauto.
+        Unshelve. all : eauto.
+    Qed.
+
+  Hint Extern 1 ({{_}} Bind (indshrink_aligned_to_ragged _ _ _ _ _ _ _) _) => apply indshrink_aligned_to_ragged_ok : prog.
 
   Fixpoint indshrink indlvl lxp bxp ir nvalid nr ms :=
     match indlvl with
