@@ -456,7 +456,7 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     nia.
   Qed.
 
-  Lemma divup_small : forall c n, 0 < c < n -> divup c n = 1.
+  Lemma divup_small : forall c n, 0 < c <= n -> divup c n = 1.
   Proof.
     intros.
     assert (divup c n <= 1) by (apply divup_le_1; omega).
