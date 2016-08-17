@@ -38,6 +38,19 @@ Module App <: GlobalProtocol.
   Definition delta := CacheProtocol.delta.
 End App.
 
+Theorem vdisk_not_cache_or_disk0 :
+  HIn CacheProtocol.vdisk [(CacheProtocol.vCache; CacheProtocol.vDisk0)] -> False.
+Proof.
+  rewrite (hin_iff_index_in CacheProtocol.vdisk); simpl.
+  unfold CacheProtocol.vCache, CacheProtocol.vdisk, CacheProtocol.vDisk0.
+  simpl.
+  repeat (rewrite get_first; simpl) ||
+         (rewrite get_next; simpl).
+  intuition.
+Qed.
+
+Hint Resolve vdisk_not_cache_or_disk0.
+
 Module CacheSub <: CacheSubProtocol.
   Module App := App.
   Module Proj := CopyCacheProj.
@@ -129,13 +142,8 @@ Proof.
   assert (get vdisk s = get vdisk s0) as Hvdiskeq.
   match goal with
   | [ H: modified _ s s0 |- _ ] =>
-    apply H
+    apply H; auto
   end.
-  rewrite (hin_iff_index_in vdisk); simpl.
-  unfold vCache, vdisk, vDisk0; simpl.
-  repeat (rewrite get_first; simpl) ||
-         (rewrite get_next; simpl).
-  intuition.
   rewrite <- Hvdiskeq in *.
   eexists; simplify; finish.
 
