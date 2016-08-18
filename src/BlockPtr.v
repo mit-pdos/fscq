@@ -914,7 +914,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
     intros.
     unfold index_nvalid.
     apply indrep_n_tree_nvalid_oob.
-    Search (?a < ?b / ?c).
     apply lt_div_mul_add_le in H; mult_nonzero.
     omega.
   Qed.
@@ -1903,6 +1902,96 @@ Module BlockPtr (BPtr : BlockPtrSig).
       --  repeat (eapply incl_tran; eauto).
       Unshelve. all : eauto.
   Qed.
+
+  Fixpoint indgrow indlvl bxp lxp (ir : addr) nvalid bn ms :=
+    let N := NIndirect ^ indlvl in
+    let^ (ms, ir) <- If (addr_eq_dec nvalid 0) {
+        let^ (ms, (r : option addr)) <- BALLOC.alloc lxp bxp ms;
+        Ret ^(ms, r)
+      } else {
+        Ret ^(ms, Some ir)
+      };
+    match ir with
+    | None => Ret ^(ms, None)
+    | Some ir =>
+      match indlvl with
+      | 0 => ms <- IndRec.put lxp ir nvalid bn ms;
+        Ret ^(ms, Some ir)
+      | S indlvl' =>
+        let to_grow := nvalid / N in
+        let^ (ms, ir_to_grow) <- If (addr_eq_dec nvalid 0) {
+          Ret ^(ms, 0)
+        } else {
+          let^ (ms, indbns) <- IndRec.read lxp ir 1 ms;
+          Ret ^(ms, # (selN indbns to_grow $0))
+        };
+        let^ (ms, v) <- indgrow indlvl' bxp lxp ir_to_grow (nvalid mod N) bn ms;
+        match v with
+        | None => Ret ^(ms, None)
+        | Some v =>
+          If (addr_eq_dec v ir_to_grow) {
+            Ret ^(ms, Some ir)
+          } else {
+            ms <- IndRec.put lxp ir to_grow ($ v) ms;
+            Ret ^(ms, Some ir)
+          }
+        end
+      end
+    end.
+
+  Theorem indgrow_ok : forall indlvl lxp bxp ir nvalid bn ms,
+    {< F Fm m0 m l freelist,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           [[[ m ::: (Fm * indrep_n_tree indlvl bxp ir l nvalid * BALLOC.rep bxp freelist) ]]] *
+           [[ nvalid < length l ]]
+    POST:hm' RET:^(ms, r)
+           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' \/
+           exists m' freelist' ir' l' nvalid',
+           [[ r = Some ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           [[[ m' ::: (Fm * indrep_n_tree indlvl bxp ir' l' nvalid' * BALLOC.rep bxp freelist') ]]] *
+           [[ incl freelist' freelist ]] * [[ nvalid' = S nvalid ]] * [[ firstn nvalid l = firstn nvalid l' ]] *
+           [[ selN l' nvalid $0 = bn ]] * [[ nvalid = 0 \/ ir = ir' ]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} indgrow indlvl bxp lxp ir nvalid bn ms.
+    Proof.
+      induction indlvl; intros; simpl.
+      + safestep.
+        - step.
+          unfold IndRec.put. rewrite Nat.div_0_l, Nat.mod_0_l by auto. unfold IndSig.RAStart.
+          hoare.
+          --  instantiate (1 := [_]). auto.
+          --  cancel.
+          --  instantiate (1 := [_]). cancel.
+          --  auto.
+          --  unfold BALLOC.bn_valid in *. intuition.
+          --  or_r. cancel.
+              rewrite indrep_n_helper_0, indrep_n_helper_pts_piff by omega. cancel.
+              rewrite IndRec.Defs.block2val_updN_val2block_equiv by auto. cancel.
+              unfold IndRec.items_valid.
+              unfold IndSig.xparams_ok, IndSig.RAStart, Rec.well_formed. simpl.
+              unfold BALLOC.bn_valid in *. rewrite length_updN. intuition.
+              unfold IndRec.Defs.val2block, IndRec.Defs.blocktype.
+              rewrite (@Rec.array_of_word_length indrectype). auto.
+              apply incl_remove.
+              apply selN_updN_eq.
+              unfold IndRec.Defs.val2block, IndRec.Defs.blocktype.
+              rewrite (@Rec.array_of_word_length indrectype).
+              auto.
+      - monad_simpl. simpl.
+        hoare.
+        --  rewrite nvalid_gt_0_indrep_helper by omega. cancel.
+        --  or_r. safecancel.
+            eauto. rewrite nvalid_gt_0_indrep_helper. cancel.
+            rewrite nvalid_gt_0_indrep_helper in * by omega.
+            match goal with [H : context [?P] |- ?P] => destruct_lift H end. auto.
+            instantiate (1 := S _). omega.
+            auto.
+            symmetry. apply firstn_updN; auto.
+            apply selN_updN_eq.
+            omega.
+            auto.
+    Admitted.
 
   (************* program *)
 
