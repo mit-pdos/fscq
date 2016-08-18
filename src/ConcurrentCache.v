@@ -1140,8 +1140,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       eapply same_domain_upd; eauto.
       apply (List.in_map add_empty_rdr) in H2; simpl in *.
       erewrite upd_all_in; eauto.
-      rewrite map_map, fst_compose_add_empty_rdr.
-      inversion H0; auto.
+      rewrite map_map, fst_compose_add_empty_rdr; eauto.
     - eapply same_domain_upd; eauto.
       rewrite upd_all_not_in; eauto.
       rewrite map_map, fst_compose_add_empty_rdr.
