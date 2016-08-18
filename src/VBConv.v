@@ -7,6 +7,7 @@ Require Import NArith.
 Require Import AsyncDisk.
 Require Import Bytes.
 Require Import DiskSet.
+Require Import Pred.
 
 Set Implicit Arguments.
 
@@ -100,6 +101,21 @@ Fixpoint dsblistupd (ds : diskset) (a : addr) (lb : list byteset): diskset :=
   | nil => ds
   | h::t => dsblistupd (dsbupd ds a h) (a+1) t
   end. 
+  
+  
+  Definition mem_except_range AEQ V (m: @Mem.mem _ AEQ V) a n :=
+(fun a' =>
+    if (le_dec a a')
+      then if (lt_dec a' (a + n))
+            then None 
+           else m a'
+    else m a').
+    
+Fixpoint list_split_chunk A k cs (l: list A): list (list A) :=
+match k with
+  | O => nil
+  | S k' => (firstn cs l)::(list_split_chunk k' cs (skipn cs l))
+end.
 
   
 (* Lemmas *)
@@ -800,6 +816,234 @@ reflexivity.
 rewrite skipn_length.
 omega.
 Qed.
+
+Lemma bsplit_list_b2vb: forall b,
+  exists l, (bsplit_list (bytes2valubytes (byte2bytes b))) = b::l.
+Proof. Admitted.
+
+(* Look for goodSize *)
+Lemma n2w_w2n_eq: forall n sz,
+# (natToWord sz n) = n.
+Proof. Admitted.
+
+Lemma list_split_chunk_length: forall A n m (l: list A),
+length (list_split_chunk n m l) = min n (length l / m).
+Proof. Admitted.
+
+Lemma firstn_valuset2bytesets_byte2valu: forall b,
+firstn 1 (valuset2bytesets (byte2valu b, nil)) = (b, nil)::nil.
+Proof. Admitted.
+
+Lemma between_exists: forall a b c,
+a >= (b-1) * c -> a < b*c -> a = (b-1) * c + a mod c.
+Proof. Admitted.
+
+Lemma list_split_chunk_app_1: forall A (l l': list A) a b,
+length l' = b ->
+list_split_chunk (a+1) b (l ++ l') =  list_split_chunk a b l ++ l'::nil.
+Proof. Admitted.
+
+Lemma list_split_chunk_map_comm: forall A B (l: list A) (f:A -> B) a b,
+map (fun x => map f x) (list_split_chunk a b l) = list_split_chunk a b (map f l).
+Proof. Admitted.
+
+Lemma get_sublist_map_comm: forall A B a b (f: A -> B) (l: list A),
+map f (get_sublist l a b) = get_sublist (map f l) a b.
+Proof. Admitted.
+
+Lemma firstn_1_selN: forall A (l: list A) def,
+l <> nil -> firstn 1 l = (selN l 0 def)::nil.
+Proof. Admitted.
+
+
+
+Lemma concat_list_split_chunk_id: forall A a b (l: list A),
+a * b = length l -> concat (list_split_chunk a b l) = l.
+Proof. Admitted.
+
+Lemma list_split_chunk_cons: forall A (l: list A) m1,
+length l = m1 * valubytes + valubytes -> 
+list_split_chunk (m1 + 1) valubytes l  = firstn valubytes l :: list_split_chunk m1 valubytes (skipn valubytes l).
+Proof. Admitted.
+
+Lemma list_split_chunk_nonnil: forall A a b (l: list A),
+length l = a * b ->
+forall x, In x (list_split_chunk a b l) -> x <> nil.
+Proof. Admitted.
+
+
+Lemma minus_middle: forall a b c,
+b <> 0 -> b >= c -> (a - (b - c))/ b = (a + c) / b - 1.
+Proof. Admitted.
+
+Lemma le_minus_weaken: forall a b c,
+a <= b -> a-c <= b - c.
+Proof. Admitted.
+
+Lemma le_minus_dist: forall a b c,
+b >= c ->
+a - (b - c) = a - b + c.
+Proof. Admitted.
+
+Lemma plus_minus_arrange: forall a b c d,
+a - b + c - d + b = a + c - d + b - b.
+Proof. Admitted.
+
+Lemma le_minus_weaken_r: forall a b c,
+a <= b - c -> a <= b.
+Proof. Admitted.
+
+Fact merge_bs_length: forall l' l,
+length l = length l' ->
+length (merge_bs l l') = length l'.
+Proof.
+unfold merge_bs.
+induction l'; intros.
+apply length_zero_iff_nil in H; rewrite H.
+reflexivity.
+destruct l.
+simpl in H; inversion H.
+simpl; rewrite IHl'.
+reflexivity.
+simpl in H; omega.
+Qed.
+
+Fact updN_list_length: forall l a ln,
+a + length ln <= length l ->
+length (updN_list l a ln) = length l.
+Proof.
+intros.
+unfold updN_list.
+repeat rewrite app_length.
+rewrite merge_bs_length.
+rewrite firstn_length_l; try omega.
+rewrite skipn_length.
+rewrite Nat.add_assoc.
+symmetry; apply le_plus_minus.
+auto.
+apply get_sublist_length.
+auto.
+Qed.
+
+Fact updN_list2firstn_skipn: forall ln a l,
+a + length ln <= length l ->
+updN_list l a ln = firstn a l ++ (updN_list (get_sublist l a (length ln)) 0 ln) 
+                      ++ skipn (a + (length ln)) l.
+Proof.
+intros.
+unfold updN_list; simpl.
+unfold get_sublist; simpl.
+rewrite firstn_firstn.
+rewrite Nat.min_id.
+replace (firstn (length ln) (skipn a l)) with (firstn (length ln + 0) (skipn a l)).
+rewrite skipn_firstn_comm.
+simpl. rewrite app_nil_r. reflexivity.
+rewrite <- plus_n_O; reflexivity.
+Qed.
+
+Lemma app_tail_eq: forall A (l l' l'':list A),
+  l = l' -> l ++ l'' = l' ++ l''.
+Proof. intros; rewrite H; reflexivity. Qed.
+
+Lemma app_head_eq: forall A (l l' l'':list A),
+  l = l' -> l'' ++ l = l'' ++ l'.
+Proof. intros; rewrite H; reflexivity. Qed.
+
+Lemma valubytes_ge_O: valubytes > 0.
+Proof. rewrite valubytes_is; omega. Qed.
+
+
+Lemma old_data_m1_ge_0: forall l_old_data m1 l_old_blocks,
+m1 < l_old_blocks ->
+l_old_data = l_old_blocks * valubytes ->
+l_old_data - m1 * valubytes > 0.
+Proof. intros; rewrite valubytes_is in *; omega. Qed.
+
+Lemma length_data_ge_m1: forall l_data l_old_data m1 l_old_blocks,
+l_data = l_old_data ->
+m1 < l_old_blocks ->
+l_old_data = l_old_blocks * valubytes ->
+m1 * valubytes <= l_data.
+Proof. intros; rewrite valubytes_is in *; omega. Qed.
+
+Lemma get_sublist_div_length: forall A (data: list A) l_old_data m1 l_old_blocks,
+length data = l_old_data ->
+m1 < l_old_blocks ->
+l_old_data = l_old_blocks * valubytes ->
+m1 <= length (get_sublist data 0 (m1 * valubytes)) / valubytes.
+Proof.
+intros.
+rewrite get_sublist_length.
+rewrite Nat.div_mul.
+omega.
+apply valubytes_ne_O.
+simpl.
+eapply length_data_ge_m1; eauto.
+Qed.
+
+Lemma length_old_data_ge_O: forall l_data l_old_data m1 l_old_blocks,
+l_data = l_old_data ->
+m1 < l_old_blocks ->
+l_old_data = l_old_blocks * valubytes ->
+l_old_data > 0.
+Proof. intros; rewrite valubytes_is in *; omega. Qed.
+
+Lemma old_data_ne_nil: forall A (old_data: list A) m1 l_old_blocks,
+old_data = nil ->
+m1 < l_old_blocks ->
+length old_data = l_old_blocks * valubytes ->
+False.
+Proof. intros; apply length_zero_iff_nil in H; rewrite valubytes_is in *; omega. Qed.
+
+Lemma length_bytefile_ge_minus: forall l_fy block_off l_old_data m1 l_old_blocks,
+block_off * valubytes + l_old_data <= l_fy ->
+m1 < l_old_blocks ->
+l_old_data = l_old_blocks * valubytes ->
+valubytes <= l_fy - (block_off + m1) * valubytes.
+Proof. intros; rewrite valubytes_is in *; omega. Qed.
+
+Lemma length_data_ge_m1_v: forall l_data l_old_data m1 l_old_blocks,
+l_data = l_old_data ->
+m1 < l_old_blocks ->
+l_old_data = l_old_blocks * valubytes ->
+m1 * valubytes + valubytes <= l_data.
+Proof. intros; rewrite valubytes_is in *; omega. Qed.
+
+Lemma nonnil_exists: forall A (l: list A),
+l <> nil -> exists a l', l = a::l'.
+Proof.
+intros.
+destruct l.
+unfold not in H; destruct H; reflexivity. repeat eexists.
+Qed.
+
+Lemma map_same: forall A B (l1 l2: list A) (f: A -> B),
+l1 = l2 -> map f l1 = map f l2.
+Proof. intros; subst; reflexivity. Qed.
+
+Lemma three_cancel: forall x y z,
+0 = x + z - x - y - z + y.
+Proof. Admitted.
+
+Lemma four_cancel: forall a x y z,
+a + (x + z - x - y - z + y) = a + x + z - x - y - z + y.
+Proof. Admitted.
+
+Lemma one_three_cancel: forall a b c,
+a + b - a -c = b - c.
+Proof. Admitted.
+
+Lemma le_div_mult_add: forall a b,
+b <> 0 -> a <= a/b * b + b.
+Proof. Admitted.
+
+Lemma le_minus_middle_cancel: forall a b c d e,
+a - c <= d - e -> a - b - c <= d - b - e.
+Proof. Admitted.
+
+Lemma mppp_two_five_cancel: forall a b c d,
+a - b + c + d + b = a + c + d.
+Proof. Admitted.
 
 (* Lemma v2b_rec_selN: forall i j l,
 length l = i -> j < i ->
