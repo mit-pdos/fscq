@@ -1070,6 +1070,83 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
   Hint Resolve wb_writes_valid_addresses.
 
+  Lemma no_wb_reader_conflict_empty : forall c,
+      no_wb_reader_conflict c emptyWriteBuffer.
+  Proof.
+    unfold no_wb_reader_conflict, emptyWriteBuffer;
+      intros; auto.
+  Qed.
+
+  Hint Resolve no_wb_reader_conflict_empty.
+
+  Lemma hide_readers_upd_buffered_writes : forall entries d,
+      hide_readers (upd_buffered_writes d entries) =
+      upd_all (hide_readers d) entries.
+  Proof.
+    unfold upd_buffered_writes.
+    induction entries; intros.
+    reflexivity.
+    destruct a as [a v]; simpl.
+    extensionality a'.
+    destruct (nat_dec a a'); subst.
+    unfold hide_readers; autorewrite with upd; auto.
+    rewrite <- IHentries.
+    unfold hide_readers; autorewrite with upd; auto.
+  Qed.
+
+  Lemma wb_rep_upd_all : forall d wb vd,
+      wb_rep d wb vd ->
+      upd_all (hide_readers d) (wb_writes wb) = vd.
+  Proof.
+    unfold wb_rep; intros.
+    extensionality a.
+    specialize (H a).
+    destruct (wb_get wb a) eqn:Ha;
+      destruct_ands; repeat deex.
+    pose proof (wb_writes_complete _ _ Ha).
+    erewrite upd_all_in by eauto; auto.
+    pose proof (wb_get_missing _ _ Ha).
+    rewrite upd_all_not_in by auto.
+    unfold hide_readers.
+    destruct matches in *; auto.
+  Qed.
+
+  Hint Resolve wb_rep_upd_all.
+
+  Lemma upd_buffered_writes_cons : forall vd entries a v,
+      upd_buffered_writes vd ((a, v) :: entries) =
+      upd (upd_buffered_writes vd entries) a (v, None).
+  Proof.
+    reflexivity.
+  Qed.
+
+  Lemma same_domain_upd_buffered_writes : forall entries vd,
+      (forall a v, In (a, v) entries -> exists v0, vd a = Some v0) ->
+      NoDup (map fst entries) ->
+      same_domain vd (upd_buffered_writes vd entries).
+  Proof.
+    induction entries; simpl; intros; auto.
+    destruct a as [a v].
+    pose proof (H a v); intuition auto; deex.
+    clear H3.
+    eapply same_domain_preorder.
+    eapply IHentries; eauto.
+    rewrite upd_buffered_writes_cons.
+
+    unfold upd_buffered_writes.
+    destruct (in_dec nat_dec a (map fst entries)).
+    - apply in_addr_to_in_entry in i; deex.
+      eapply same_domain_upd; eauto.
+      apply (List.in_map add_empty_rdr) in H2; simpl in *.
+      erewrite upd_all_in; eauto.
+      rewrite map_map, fst_compose_add_empty_rdr.
+      inversion H0; auto.
+    - eapply same_domain_upd; eauto.
+      rewrite upd_all_not_in; eauto.
+      rewrite map_map, fst_compose_add_empty_rdr.
+      auto.
+  Qed.
+
   Theorem cache_commit_ok :
       SPEC App.delta, tid |-
               {{ (_:unit),
@@ -1084,7 +1161,13 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
               }} cache_commit.
   Proof.
     hoare.
-  Admitted.
+    rewrite hide_readers_upd_buffered_writes; auto.
+    apply same_domain_upd_buffered_writes; eauto.
+    intros.
+    apply wb_writes_complete' in H7.
+    specialize (H5 a); simpl_match; destruct_ands; deex.
+    eauto.
+  Qed.
 
   Lemma wb_rep_id : forall vd,
       wb_rep vd emptyWriteBuffer (hide_readers vd).
