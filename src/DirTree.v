@@ -3689,7 +3689,7 @@ Module DIRTREE.
     {< F mbase m pathname Fm Ftop tree f ilist frees,
     PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) hm *
            [[ (Fm * rep fsxp Ftop tree ilist frees)%pred (list2nmem m) ]] *
-           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] 
     POST:hm' RET:mscs'
            exists m' tree' f' ilist',
            LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') hm' *
@@ -3698,7 +3698,8 @@ Module DIRTREE.
            [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
            [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                           ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]]
+                           ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
+           [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
     >} setattr fsxp inum attr mscs.
@@ -3709,7 +3710,6 @@ Module DIRTREE.
     step.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
-
     eapply dirlist_safe_subtree; eauto.
     apply dirtree_safe_file_trans; auto.
   Qed.

@@ -642,28 +642,34 @@ Module BFILE.
     eauto.
   Qed.
 
+  Definition treeseq_ilist_safe inum ilist1 ilist2 :=
+    (forall off bn,
+        block_belong_to_file ilist1 bn inum off ->
+        block_belong_to_file ilist2 bn inum off) /\ 
+    (forall i,
+        (inum <> i /\ i < Datatypes.length ilist1) -> selN ilist1 i  = selN ilist2 i).
 
   Theorem setattrs_ok : forall lxp bxps ixp inum a ms,
-    {< F Fm Fi m0 m flist ilist frees f,
+    {< F Fm Ff m0 m flist ilist frees f,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
            [[[ m ::: (Fm * rep bxps ixp flist ilist frees) ]]] *
-           [[[ flist ::: (Fi * inum |-> f) ]]]
+           [[[ flist ::: (Ff * inum |-> f) ]]] 
     POST:hm' RET:ms'  exists m' flist' f' ilist',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
            [[[ m' ::: (Fm * rep bxps ixp flist' ilist' frees) ]]] *
-           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           [[[ flist' ::: (Ff * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) a ]] *
            [[ MSAlloc ms = MSAlloc ms' /\
               let free := pick_balloc frees (MSAlloc ms') in
-              ilist_safe ilist free ilist' free ]]
+              ilist_safe ilist free ilist' free ]] *
+          [[ treeseq_ilist_safe inum ilist ilist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} setattrs lxp ixp inum a ms.
   Proof.
     unfold setattrs, rep.
     safestep.
     sepauto.
-
     safestep.
     repeat extract. seprewrite.
     2: sepauto.
@@ -683,8 +689,18 @@ Module BFILE.
       all: erewrite selN_updN_eq in * by eauto; simpl; eauto.
     - unfold block_belong_to_file in *; intuition.
       all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
-  Qed.
-
+    - unfold treeseq_ilist_safe.
+      split.
+      intros.
+      unfold block_belong_to_file in *.
+      intuition.
+      eapply list2nmem_sel in H12 as H12'.
+      rewrite <- H12'; eauto.
+      eapply list2nmem_sel in H12 as H12'.
+      rewrite <- H12'; eauto.
+      intros.
+      admit.  (* XXX follows from H12 *)
+  Admitted.
 
   Theorem updattr_ok : forall lxp bxps ixp inum kv ms,
     {< F Fm Fi m0 m flist ilist frees f,
@@ -727,7 +743,6 @@ Module BFILE.
     - unfold block_belong_to_file in *; intuition.
       all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
   Qed.
-
 
   Theorem read_ok : forall lxp bxp ixp inum off ms,
     {< F Fm Fi Fd m0 m flist ilist frees f vs,
