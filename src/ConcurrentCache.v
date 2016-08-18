@@ -951,6 +951,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                     get vDisk0 s' = get vDisk0 s /\
                     modified [(vWriteBuffer; vdisk)] s s') /\
                    (r = false -> s' = s) /\
+                   guar delta tid s s' /\
                    s_i' = s_i
               }} cache_write a v.
   Proof.
