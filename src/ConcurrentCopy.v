@@ -11,6 +11,13 @@ Open Scope hlist_scope.
 (* somewhat oddly, Sigma now refers to the cache state - would have hidden that
 and referred to it qualified if Coq let me do so cleanly *)
 
+(** TODO: give copy a non-trivial protocol and prove retrying for this specific
+example. *)
+
+(** Copy example
+
+Each thread tid copies from address 0 to the location (tid+1). *)
+
 Module CopyState <: GlobalState.
   Definition Sigma := Sigma.
 End CopyState.
@@ -32,10 +39,40 @@ End CopyCacheProj.
 
 Module CacheProtocol := MakeCacheProtocol CopyState CopyCacheProj.
 
+Definition destinations_readonly tid (s s': abstraction CopyState.Sigma) :=
+  forall a, a <> tid + 1 ->
+       get CacheProtocol.vdisk s' a = get CacheProtocol.vdisk s a.
+
+Theorem destinations_readonly_preorder : forall tid,
+    PreOrder (destinations_readonly tid).
+Proof.
+  unfold destinations_readonly; intros.
+  constructor; hnf; intros; eauto.
+  rewrite <- H by auto.
+  eauto.
+Qed.
+
 Module App <: GlobalProtocol.
   Module St := CopyState.
   Definition Sigma := St.Sigma.
-  Definition delta := CacheProtocol.delta.
+
+  Definition copyGuar tid (s s': abstraction Sigma) :=
+    guar CacheProtocol.delta tid s s' /\
+    destinations_readonly tid s s'.
+
+  Theorem copyGuar_preorder : forall tid, PreOrder (copyGuar tid).
+  Proof.
+    intros.
+    (* TODO: move and_preorder somewhere else *)
+    apply CacheProtocol.and_preorder.
+    apply guar_preorder.
+    apply destinations_readonly_preorder.
+  Qed.
+
+  Definition delta :=
+    {| invariant := invariant CacheProtocol.delta;
+       guar := copyGuar;
+       guar_preorder := copyGuar_preorder |}.
 End App.
 
 Theorem vdisk_not_cache_or_disk0 :
@@ -55,11 +92,14 @@ Module CacheSub <: CacheSubProtocol.
   Module App := App.
   Module Proj := CopyCacheProj.
 
-  Module CacheProtocol := MakeCacheProtocol App Proj.
+  Module CacheProtocol := CacheProtocol.
 
   Definition protocolProj:SubProtocol App.delta CacheProtocol.delta.
   Proof.
-    constructor; auto.
+    constructor.
+    - auto.
+    - intros.
+      apply H.
   Qed.
 
   Definition protocolRespectsPrivateVars :
@@ -68,7 +108,12 @@ Module CacheSub <: CacheSubProtocol.
       modified [( CacheProtocol.vCache; CacheProtocol.vDisk0 )] s s' ->
       guar App.delta tid s s'.
   Proof.
-    simpl; auto.
+    simpl; intros.
+    unfold App.copyGuar; split; auto.
+    unfold destinations_readonly; intros.
+    assert (get CacheProtocol.vdisk s = get CacheProtocol.vdisk s').
+    apply H0; auto.
+    congruence.
   Qed.
 
   Definition invariantRespectsPrivateVars :
@@ -81,52 +126,47 @@ Module CacheSub <: CacheSubProtocol.
   Proof.
     simpl; intros; auto.
   Qed.
+
 End CacheSub.
 
 Module ConcurrentCache := MakeConcurrentCache CacheSub.
 Import ConcurrentCache.
 
-Definition copy a a' :=
-  opt_v <- cache_read a;
+Definition copy :=
+  tid <- GetTID;
+  opt_v <- cache_read 0;
     match opt_v with
     | None => _ <- cache_abort;
                Ret false
-    | Some v => ok <- cache_write a' v;
+    | Some v => ok <- cache_write (tid+1) v;
                  if ok then
                    Ret true
                  else
                    _ <- cache_abort;
                  Ret false
     end.
+(* TODO: add a yield after aborts *)
 
 Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
 
 (* gives all cache variables *)
 Import CacheSub.CacheProtocol.
 
-Lemma same_domain_vdisk : forall d m s d' m' s' tid,
-    invariant delta d m s ->
-    guar delta tid s s' ->
-    invariant delta d' m' s' ->
-    same_domain (get vdisk s) (get vdisk s').
-Proof.
-  simplify.
-Abort.
-
-Theorem copy_ok : forall a a',
+Theorem copy_ok :
     SPEC App.delta, tid |-
                 {{ v v',
                  | PRE d m s_i s:
                      invariant App.delta d m s /\
-                     get vdisk s a = Some v /\
-                     get vdisk s a' = Some v'
+                     get vdisk s 0 = Some v /\
+                     get vdisk s (tid+1) = Some v'
                  | POST d' m' s_i' s' r:
                      invariant App.delta d' m' s' /\
                      (r = true ->
-                      get vdisk s' = upd (get vdisk s) a' v) /\
+                      get vdisk s' = upd (get vdisk s) (tid+1) v) /\
                      (r = false ->
                       get vdisk s' = hide_readers (get vDisk0 s))
-                }} copy a a'.
+                       (* TODO: promise rely/guar *)
+                }} copy.
 Proof.
   hoare.
   eexists; simplify; finish.
@@ -137,16 +177,24 @@ Proof.
       specialize (H w)
     end; eauto. }
   subst.
-  (* TODO: need a derived same_domain for vdisk from invariant + guar *)
 
   assert (get vdisk s = get vdisk s0) as Hvdiskeq.
   match goal with
   | [ H: modified _ s s0 |- _ ] =>
     apply H; auto
   end.
-  rewrite <- Hvdiskeq in *.
   eexists; simplify; finish.
+  (* TODO: get vdisk s0's are different - probably something module-related *)
+  Set Printing Implicit.
+  (* Hvdisk is about variable in CopyState.Sigma whereas goal is about
+  CacheSub.App.Sigma *)
+  unfold CacheSub.App.Sigma.
+  unfold CacheSub.App.St.Sigma.
+  unfold CopyState.Sigma in Hvdiskeq.
+  rewrite <- Hvdiskeq.
+  Unset Printing Implicit.
 
+  eauto.
   hoare.
 Qed.
 
