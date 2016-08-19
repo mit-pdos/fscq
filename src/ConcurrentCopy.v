@@ -11,12 +11,11 @@ Open Scope hlist_scope.
 (* somewhat oddly, Sigma now refers to the cache state - would have hidden that
 and referred to it qualified if Coq let me do so cleanly *)
 
-(** TODO: give copy a non-trivial protocol and prove retrying for this specific
-example. *)
-
 (** Copy example
 
-Each thread tid copies from address 0 to the location (tid+1). *)
+Each thread tid copies from address 0 to the location (tid+1).
+
+The cache is always committed; transactions can only do writes to (tid+1). *)
 
 Module CopyState <: GlobalState.
   Definition Sigma := Sigma.
@@ -52,9 +51,16 @@ Proof.
   eauto.
 Qed.
 
+Definition cache_committed (s: abstraction CopyState.Sigma) :=
+  get CacheProtocol.vdisk s = hide_readers (get CacheProtocol.vDisk0 s).
+
 Module App <: GlobalProtocol.
   Module St := CopyState.
   Definition Sigma := St.Sigma.
+
+  Definition copyInvariant d m s :=
+    cache_committed s /\
+    invariant CacheProtocol.delta d m s.
 
   Definition copyGuar tid (s s': abstraction Sigma) :=
     guar CacheProtocol.delta tid s s' /\
@@ -70,7 +76,7 @@ Module App <: GlobalProtocol.
   Qed.
 
   Definition delta :=
-    {| invariant := invariant CacheProtocol.delta;
+    {| invariant := copyInvariant;
        guar := copyGuar;
        guar_preorder := copyGuar_preorder |}.
 End App.
@@ -86,32 +92,46 @@ Proof.
   intuition.
 Qed.
 
+Theorem vWriteBuffer_not_cache_or_disk0 :
+  HIn CacheProtocol.vWriteBuffer [(CacheProtocol.vCache; CacheProtocol.vDisk0)] -> False.
+Proof.
+  rewrite (hin_iff_index_in CacheProtocol.vWriteBuffer); simpl.
+  unfold CacheProtocol.vCache, CacheProtocol.vWriteBuffer, CacheProtocol.vDisk0.
+  simpl.
+  repeat (rewrite get_first; simpl) ||
+         (rewrite get_next; simpl).
+  intuition.
+Qed.
+
 Hint Resolve vdisk_not_cache_or_disk0.
+Hint Resolve vWriteBuffer_not_cache_or_disk0.
 
 Module CacheSub <: CacheSubProtocol.
   Module App := App.
   Module Proj := CopyCacheProj.
 
   Module CacheProtocol := CacheProtocol.
+  Import CacheProtocol.
 
-  Definition protocolProj:SubProtocol App.delta CacheProtocol.delta.
+  Definition protocolProj:SubProtocol App.delta delta.
   Proof.
     constructor.
-    - auto.
+    - intros.
+      apply H.
     - intros.
       apply H.
   Qed.
 
   Definition protocolRespectsPrivateVars :
     forall tid s s',
-      guar CacheProtocol.delta tid s s' ->
-      modified [( CacheProtocol.vCache; CacheProtocol.vDisk0 )] s s' ->
+      guar delta tid s s' ->
+      modified [( vCache; vDisk0 )] s s' ->
       guar App.delta tid s s'.
   Proof.
     simpl; intros.
     unfold App.copyGuar; split; auto.
     unfold destinations_readonly; intros.
-    assert (get CacheProtocol.vdisk s = get CacheProtocol.vdisk s').
+    assert (get vdisk s = get vdisk s').
     apply H0; auto.
     congruence.
   Qed.
@@ -125,7 +145,24 @@ Module CacheSub <: CacheSubProtocol.
       invariant App.delta d' m' s'.
   Proof.
     simpl; intros; auto.
-  Qed.
+    split; auto.
+    destruct H.
+    unfold cache_committed in *.
+    unfold Top.CacheProtocol.vdisk, Top.CacheProtocol.vDisk0 in *.
+    fold vdisk vDisk0 in *.
+    assert (get vdisk s = get vdisk s') as Heq.
+    apply H0; auto.
+    rewrite Heq in *.
+    unfold id in *.
+    rewrite H.
+    assert (get vWriteBuffer s = get vWriteBuffer s').
+    apply H0; auto.
+    (* this is actually true since the write buffer didn't change, but it
+    depends on reasoning about the cache_rep in a pretty deep way - this will
+    all be fixed by splitting vDisk0 into the part dealing with readers in the
+    cache_rep and the public linearized disk without readers *)
+    admit.
+  Admitted.
 
 End CacheSub.
 
@@ -141,6 +178,7 @@ Definition copy :=
                Ret false
     | Some v => ok <- cache_write (tid+1) v;
                  if ok then
+                   _ <- cache_commit;
                    Ret true
                  else
                    _ <- cache_abort;
@@ -174,6 +212,48 @@ Qed.
 
 Hint Resolve destinations_readonly_upd.
 
+Ltac unfolds :=
+  unfold CacheSub.App.Sigma, CacheSub.App.St.Sigma, CopyState.Sigma in *;
+  unfold CacheProtocol.vdisk, CacheProtocol.vDisk0 in *;
+  fold vdisk vDisk0 in *.
+
+(* local spec for cache_abort in terms of global invariant *)
+
+Theorem cache_abort_ok :
+  SPEC App.delta, tid |-
+{{ (_:unit),
+ | PRE d m s_i s:
+     invariant CacheProtocol.delta d m s
+ | POST d' m' s_i' s' _:
+     invariant App.delta d' m' s' /\
+     get vdisk s' = hide_readers (get vDisk0 s) /\
+     guar CacheProtocol.delta tid s s' /\
+     s_i' = s_i
+}} cache_abort.
+Proof.
+  hoare.
+  split; eauto.
+  unfold cache_committed.
+  unfolds; congruence.
+Qed.
+
+Hint Extern 1 {{cache_abort; _}} => apply cache_abort_ok : prog.
+
+Ltac simp_hook ::=
+     match goal with
+     | [ H: modified [( vCache; vDisk0 )] ?s ?s' |- _ ] =>
+       learn that (ltac:(apply H; auto) : get vdisk s = get vdisk s')
+     end.
+
+Lemma guar_refl : forall Sigma tid (s: abstraction Sigma) (delta: Protocol Sigma),
+    guar delta tid s s.
+Proof.
+  intros.
+  apply guar_preorder.
+Qed.
+
+Hint Resolve guar_refl.
+
 Theorem copy_ok :
     SPEC App.delta, tid |-
                 {{ v v',
@@ -199,30 +279,35 @@ Proof.
     end; eauto. }
   subst.
 
-  assert (get vdisk s = get vdisk s0) as Hvdiskeq.
-  match goal with
-  | [ H: modified _ s s0 |- _ ] =>
-    apply H; auto
-  end.
   eexists; simplify; finish.
-  Ltac unfolds :=
-    unfold CacheSub.App.Sigma, CacheSub.App.St.Sigma, CopyState.Sigma in *.
-  (* TODO: get vdisk s0's are different - probably something module-related *)
-  (* Hvdisk is about variable in CopyState.Sigma whereas goal is about
-  CacheSub.App.Sigma *)
+  (* TODO: get vdisk s0's are different - probably something
+  module-related *) (* get vdisk s0 equality is about variable in
+  CopyState.Sigma whereas goal is about CacheSub.App.Sigma *)
   Set Printing Implicit. idtac.
   unfolds.
-  rewrite <- Hvdiskeq.
+  replace (get vdisk s0).
   Unset Printing Implicit.
-
   eauto.
+
   hoare.
+
+  split; auto.
+  unfold cache_committed.
   unfolds.
-  replace (get vdisk s1).
+  congruence.
+
+  unfolds.
+  replace (get vdisk s2).
+  match goal with
+  | [ H: get vdisk s1 = upd _ _ _ |- _ ] =>
+    rewrite H
+  end.
   autorewrite with upd; now auto.
 
   eapply guar_preorder with s; eauto.
-  eapply guar_preorder with s0.
+  eapply guar_preorder with s0; eauto.
+  split; eauto.
+  eapply guar_preorder with s1.
   split; eauto.
   split; eauto.
 
@@ -230,12 +315,23 @@ Proof.
   eapply guar_preorder with s0.
   split; eauto.
   split; eauto.
-  (* this yield isn't actually safe - aborting changes the disk at other
-  addresses *)
-  (* TODO: add vdisk = vdisk0 to the invariant, makes everything easy; aborts
-   cause current thread to do nothing (actually there's never anything to
-   abort...) *)
-Abort.
+  unfold destinations_readonly; intros; unfolds.
+  destruct H; unfold cache_committed in H; unfolds.
+  (* these replaces are unnecessary, they just show part of what's going on *)
+  replace (get vdisk s1).
+  replace (get vdisk s0).
+  congruence.
+
+  eapply guar_preorder with s; eauto.
+  eapply guar_preorder with s0.
+  split; eauto.
+  split; eauto.
+  unfold destinations_readonly; intros; unfolds.
+  destruct H; unfold cache_committed in H; unfolds.
+  replace (get vdisk s1).
+  replace (get vdisk s0).
+  congruence.
+Qed.
 
 (* Local Variables: *)
 (* company-coq-local-symbols: (("delta" . ?δ) ("Sigma" . ?Σ)) *)

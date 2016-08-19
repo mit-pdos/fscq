@@ -1169,6 +1169,8 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     eauto.
   Qed.
 
+  Hint Extern 1 {{cache_commit; _}} => apply cache_commit_ok : prog.
+
   Lemma wb_rep_id : forall vd,
       wb_rep vd emptyWriteBuffer (hide_readers vd).
   Proof.
