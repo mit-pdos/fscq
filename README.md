@@ -33,7 +33,27 @@ Provides one layer of regular buffer caching (same type as underlying disk).
 
 Includes another layer for write buffer to support discarding a set of writes (when a system call fails, we don't want other threads to observe partial progress)
 
-Cache only supports a maybe read operation - if it fails, it fills the address (yielding in the middle) and signals failure so the caller can abort and retry.
+The cache exposes four operations:
+
+1. `cache_read a : prog (option valu)`
+
+  read from the cache - if misses in the cache, schedule a read; if there's already a scheduled read, retrieve the result, fill the cache, and return it
+2. `cache_write a v : prog bool`
+
+  write to the cache - if there's a pending read, fail and return false
+3. `cache_commit : prog unit`
+
+  move buffered writes in the WriteBuffer into the main cache.
+4. `cache_abort : prog unit`
+
+  cancel all buffered writes (restoring to old values) in the WriteBuffer
+
+The state of the cache two disks, a committed disk (we will call this vdisk0) and a current partially structured disk (vdisk). If the state is (vd0, vd), abort goes to (vd0, vd0) whereas commit goes to (vd, vd).
+
+In reality the code is currently messy - vdisk0 is actually hide_readers (get vDisk0 s). This can and should be fixed.
+
+Note that the cache code never yields - it is the caller's job to trap read/write failures, abort, and then yield.
+
 
 ## Concurrent Simulation
 
