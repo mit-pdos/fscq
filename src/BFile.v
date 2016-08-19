@@ -645,9 +645,9 @@ Module BFILE.
   Definition treeseq_ilist_safe inum ilist1 ilist2 :=
     (forall off bn,
         block_belong_to_file ilist1 bn inum off ->
-        block_belong_to_file ilist2 bn inum off) /\ 
-    (forall i,
-        (inum <> i /\ i < Datatypes.length ilist1) -> selN ilist1 i  = selN ilist2 i).
+        block_belong_to_file ilist2 bn inum off) /\
+    (forall i def,
+        (inum <> i /\ i < Datatypes.length ilist1) -> selN ilist1 i def = selN ilist2 i def).
 
   Theorem setattrs_ok : forall lxp bxps ixp inum a ms,
     {< F Fm Ff m0 m flist ilist frees f,
@@ -663,7 +663,7 @@ Module BFILE.
            [[ MSAlloc ms = MSAlloc ms' /\
               let free := pick_balloc frees (MSAlloc ms') in
               ilist_safe ilist free ilist' free ]] *
-          [[ treeseq_ilist_safe inum ilist ilist' ]]
+           [[ treeseq_ilist_safe inum ilist ilist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} setattrs lxp ixp inum a ms.
   Proof.
@@ -698,9 +698,13 @@ Module BFILE.
       rewrite <- H12'; eauto.
       eapply list2nmem_sel in H12 as H12'.
       rewrite <- H12'; eauto.
-      intros.
-      admit.  (* XXX follows from H12 *)
-  Admitted.
+
+      intuition.
+      assert (inum < length ilist) by simplen'.
+      apply arrayN_except_upd in H12; auto.
+      apply list2nmem_array_eq in H12; subst.
+      rewrite selN_updN_ne; auto.
+  Qed.
 
   Theorem updattr_ok : forall lxp bxps ixp inum kv ms,
     {< F Fm Fi m0 m flist ilist frees f,
