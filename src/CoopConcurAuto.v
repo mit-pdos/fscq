@@ -364,6 +364,15 @@ Proof.
   unfold rely; eauto.
 Qed.
 
+Lemma rely_trans : forall Sigma (delta: Protocol Sigma) tid s s' s'',
+    rely delta tid s s' ->
+    rely delta tid s' s'' ->
+    rely delta tid s s''.
+Proof.
+  unfold rely; intros.
+  eapply star_trans; eauto.
+Qed.
+
 Lemma guar_stutter : forall Sigma (delta: Protocol Sigma),
     forall tid s, guar delta tid s s.
 Proof.
