@@ -254,6 +254,17 @@ Module DIRTREE.
      [[ (F * tree_pred fsxp tree * freeinode_pred)%pred (list2nmem bflist) ]]
     )%pred.
 
+  Theorem rep_length : forall fsxp F tree ilist frees,
+    rep fsxp F tree ilist frees =p=>
+    (rep fsxp F tree ilist frees *
+     [[ length ilist = ((INODE.IRecSig.RALen (FSXPInode fsxp)) * INODE.IRecSig.items_per_val)%nat ]])%pred.
+  Proof.
+    unfold rep; intros.
+    norml; unfold stars; simpl.
+    rewrite BFILE.rep_length_pimpl at 1.
+    cancel.
+  Qed.
+
   Definition dirtree_safe ilist1 free1 tree1 ilist2 free2 tree2 :=
     BFILE.ilist_safe ilist1 free1 ilist2 free2 /\
     forall inum off bn pathname f,
