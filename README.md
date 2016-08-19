@@ -54,6 +54,13 @@ In reality the code is currently messy - vdisk0 is actually hide_readers (get vD
 
 Note that the cache code never yields - it is the caller's job to trap read/write failures, abort, and then yield.
 
+## Copy example
+
+The file [ConcurrentCopy.v](src/ConcurrentCopy.v) demonstrates an example "application" written on top of the cache. The idea is for each thread `tid` to copy a block from address 0 to `tid + 1`. The global protocol states that only `tid` may modify address `tid + 1` - note that this makes block 0 read-only. The spec for `copy` promises that the program actually does the expected copying. Of course the cache operations required could fail, in which case `copy` Yields and does nothing.
+
+In addition, here we add an invariant on the cache that the cache is always committed. Recall that invariants must hold between Yield points. This means each cache transaction consists of writes from a single thread, which makes reasoning about aborts simpler. `copy` is so simple that its abort is always degenerate, since it never has partially written state (once the write succeeds, it returns).
+
+The condition that the cache is committed between Yield points seems sensible to move into the cache itself, since we never plan on having two threads cooperate on some writes and then coordinate on a single commit. Each cache transaction will correspond to a system call, performed by one thread.
 
 ## Concurrent Simulation
 
