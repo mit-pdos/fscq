@@ -4,6 +4,7 @@ Require Import Protocols.
 Require Import ConcurrentCache.
 Require Import DiskReaders.
 Require Import Omega.
+Require Import Star.
 Import Hlist.
 Import Hlist.HlistNotations.
 Open Scope hlist_scope.
@@ -79,6 +80,7 @@ Module App <: GlobalProtocol.
     {| invariant := copyInvariant;
        guar := copyGuar;
        guar_preorder := copyGuar_preorder |}.
+
 End App.
 
 Theorem vdisk_not_cache_or_disk0 :
@@ -266,6 +268,8 @@ Theorem copy_ok :
                      invariant App.delta d' m' s' /\
                      (r = true ->
                       get vdisk s' (tid+1) = Some v) /\
+                     (r = false ->
+                      rely App.delta tid s s') /\
                      guar App.delta tid s_i' s'
                 }} copy.
 Proof.
@@ -322,6 +326,16 @@ Proof.
   replace (get vdisk s0).
   congruence.
 
+  eapply rely_trans with s1; eauto.
+  unfold rely, others.
+  eapply star_one_step.
+  exists (tid+1); split; [ omega | ].
+  split.
+  unshelve eapply cache_guar_tid_independent; eauto.
+  apply destinations_readonly_vdisk_eq.
+  destruct H; unfold cache_committed in H; unfolds.
+  congruence.
+
   eapply guar_preorder with s; eauto.
   eapply guar_preorder with s0.
   split; eauto.
@@ -330,6 +344,16 @@ Proof.
   destruct H; unfold cache_committed in H; unfolds.
   replace (get vdisk s1).
   replace (get vdisk s0).
+  congruence.
+
+  eapply rely_trans with s1; eauto.
+  unfold rely, others.
+  eapply star_one_step.
+  exists (tid+1); split; [ omega | ].
+  split.
+  unshelve eapply cache_guar_tid_independent; eauto.
+  apply destinations_readonly_vdisk_eq.
+  destruct H; unfold cache_committed in H; unfolds.
   congruence.
 Qed.
 

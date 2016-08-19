@@ -137,6 +137,21 @@ Module MakeCacheProtocol (St:GlobalState) (Proj:CacheProj St).
   Definition delta : Protocol St.Sigma :=
     defProtocol cacheI cacheR cacheR_preorder.
 
+  Theorem cache_guar_tid_independent : forall tid tid' s s',
+      guar delta tid s s' ->
+      guar delta tid' s s'.
+  Proof.
+    auto.
+  Qed.
+
+  Theorem cache_rely : forall tid s s',
+      guar delta tid s s' ->
+      rely delta tid s s'.
+  Proof.
+    unfold rely, others; intros.
+    apply star_one_step; eauto.
+  Qed.
+
 End MakeCacheProtocol.
 
 Module Type GlobalProtocol.
