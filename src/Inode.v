@@ -253,6 +253,18 @@ Module INODE.
 
   (************** Basic lemmas *)
 
+  Lemma rep_length_pimpl : forall bxp xp ilist,
+    rep bxp xp ilist =p=> rep bxp xp ilist * [[ length ilist = ((IRecSig.RALen xp) * IRecSig.items_per_val)%nat ]].
+  Proof.
+    unfold rep; intros.
+    norml; unfold stars; simpl.
+    rewrite IRec.items_length_ok_pimpl.
+    rewrite listmatch_length_pimpl.
+    cancel.
+    rewrite H5.
+    eauto.
+  Qed.
+
   Lemma irec_well_formed : forall Fm xp l i inum m,
     (Fm * IRec.rep xp l)%pred m
     -> i = selN l inum irec0
