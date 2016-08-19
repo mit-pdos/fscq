@@ -137,20 +137,42 @@ Definition copy :=
   opt_v <- cache_read 0;
     match opt_v with
     | None => _ <- cache_abort;
+               _ <- Yield 0;
                Ret false
     | Some v => ok <- cache_write (tid+1) v;
                  if ok then
                    Ret true
                  else
                    _ <- cache_abort;
+                 _ <- Yield (tid+1);
                  Ret false
     end.
-(* TODO: add a yield after aborts *)
 
 Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
 
 (* gives all cache variables *)
 Import CacheSub.CacheProtocol.
+
+Lemma destinations_readonly_vdisk_eq : forall s s',
+    get vdisk s = get vdisk s' ->
+    forall tid, destinations_readonly tid s s'.
+Proof.
+  unfold destinations_readonly; intros.
+  congruence.
+Qed.
+
+Hint Resolve destinations_readonly_vdisk_eq.
+
+Lemma destinations_readonly_upd : forall (s s': abstraction CopyState.Sigma) tid v,
+    get vdisk s' = upd (get vdisk s) (tid+1) v ->
+    destinations_readonly tid s s'.
+Proof.
+  unfold destinations_readonly; intros.
+  rewrite H.
+  autorewrite with upd; now auto.
+Qed.
+
+Hint Resolve destinations_readonly_upd.
 
 Theorem copy_ok :
     SPEC App.delta, tid |-
@@ -158,14 +180,13 @@ Theorem copy_ok :
                  | PRE d m s_i s:
                      invariant App.delta d m s /\
                      get vdisk s 0 = Some v /\
-                     get vdisk s (tid+1) = Some v'
+                     get vdisk s (tid+1) = Some v' /\
+                     guar App.delta tid s_i s
                  | POST d' m' s_i' s' r:
                      invariant App.delta d' m' s' /\
                      (r = true ->
-                      get vdisk s' = upd (get vdisk s) (tid+1) v) /\
-                     (r = false ->
-                      get vdisk s' = hide_readers (get vDisk0 s))
-                       (* TODO: promise rely/guar *)
+                      get vdisk s' (tid+1) = Some v) /\
+                     guar App.delta tid s_i' s'
                 }} copy.
 Proof.
   hoare.
@@ -184,19 +205,37 @@ Proof.
     apply H; auto
   end.
   eexists; simplify; finish.
+  Ltac unfolds :=
+    unfold CacheSub.App.Sigma, CacheSub.App.St.Sigma, CopyState.Sigma in *.
   (* TODO: get vdisk s0's are different - probably something module-related *)
-  Set Printing Implicit.
   (* Hvdisk is about variable in CopyState.Sigma whereas goal is about
   CacheSub.App.Sigma *)
-  unfold CacheSub.App.Sigma.
-  unfold CacheSub.App.St.Sigma.
-  unfold CopyState.Sigma in Hvdiskeq.
+  Set Printing Implicit. idtac.
+  unfolds.
   rewrite <- Hvdiskeq.
   Unset Printing Implicit.
 
   eauto.
   hoare.
-Qed.
+  unfolds.
+  replace (get vdisk s1).
+  autorewrite with upd; now auto.
+
+  eapply guar_preorder with s; eauto.
+  eapply guar_preorder with s0.
+  split; eauto.
+  split; eauto.
+
+  eapply guar_preorder with s; eauto.
+  eapply guar_preorder with s0.
+  split; eauto.
+  split; eauto.
+  (* this yield isn't actually safe - aborting changes the disk at other
+  addresses *)
+  (* TODO: add vdisk = vdisk0 to the invariant, makes everything easy; aborts
+   cause current thread to do nothing (actually there's never anything to
+   abort...) *)
+Abort.
 
 (* Local Variables: *)
 (* company-coq-local-symbols: (("delta" . ?δ) ("Sigma" . ?Σ)) *)
