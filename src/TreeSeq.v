@@ -127,6 +127,26 @@ Module TREESEQ.
   Qed.
 
   (**
+   * [treeseq_safe] helps applications prove their own correctness properties, at
+   * the cost of placing some restrictions on how the file system interface should
+   * be used by the application.
+   *
+   * The two nice things about [treeseq_safe] is that, first, it names files by
+   * pathnames (and, in particular, [treeseq_safe] for a file does not hold after
+   * that file has been renamed).  Second, [treeseq_safe] avoids the shrink-and-regrow
+   * problem that might arise if we were to [fdatasync] a file that has been shrunk
+   * and re-grown.  Without [treeseq_safe], [fdatasync] on a shrunk-and-regrown file
+   * would fail to sync the blocks that were shrunk and regrown, because the current
+   * inode no longer points to those old blocks.  As a result, the contents of the
+   * file on disk remains unsynced; this makes the spec of [fdatasync] complicated
+   * in the general case when the on-disk inode block pointers differ from the in-memory
+   * inode block pointers.
+   *
+   * [treeseq_safe] solves shrink-and-regrow by requiring that files monotonically
+   * grow (or, otherwise, [treeseq_safe] does not hold).  When [treeseq_safe] stops
+   * holding, the application can invoke [fsync] to flush metadata and, trivially,
+   * re-establish [treeseq_safe] because there is only one tree in the sequence now.
+   *
    * [treeseq_safe] is defined with respect to a specific pathname.  What it means for
    * [treeseq_safe] to hold for a pathname is that, in all previous trees, that pathname
    * must refer to a file that has all the same blocks as the current file (modulo being
@@ -174,7 +194,10 @@ Module TREESEQ.
      BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) bn).
 
   Definition treeseq_safe pathname flag (tnewest tolder : treeseq_one) :=
-    treeseq_safe_fwd pathname tnewest tolder /\ treeseq_safe_bwd pathname flag tnewest tolder.
+    treeseq_safe_fwd pathname tnewest tolder /\
+    treeseq_safe_bwd pathname flag tnewest tolder /\
+    BFILE.ilist_safe (TSilist tolder)  (BFILE.pick_balloc (TSfree tolder)  flag)
+                     (TSilist tnewest) (BFILE.pick_balloc (TSfree tnewest) flag).
 
 
   Lemma tree_file_flist: forall F Ftop Ftree flist  tree pathname inum f,
@@ -424,19 +447,13 @@ Module TREESEQ.
   Qed.
 
 
-  Lemma treeseq_safe_eq: forall pathname flag tree,
+  Lemma treeseq_safe_refl : forall pathname flag tree,
    treeseq_safe pathname flag tree tree.
   Proof.
     intros.
     unfold treeseq_safe, treeseq_safe_fwd, treeseq_safe_bwd.
-    split.
-    intros.
-    destruct H.
-    eexists x; eauto.
-    intros.
-    destruct H.
-    left.
-    eexists x; eauto.
+    intuition.
+    apply BFILE.ilist_safe_refl.
   Qed.
 
   Lemma treeseq_safe_pushd: forall ts pathname flag tree',
@@ -448,8 +465,8 @@ Module TREESEQ.
     eapply d_in_pushd in H0.
     intuition.
     rewrite H1.
-    eapply treeseq_safe_eq.
-    eapply NEforall_d_in; eauto. 
+    eapply treeseq_safe_refl.
+    eapply NEforall_d_in; eauto.
   Qed.
 
 (*
@@ -690,29 +707,29 @@ Module TREESEQ.
     rewrite H in H3; eauto.
    Qed.
 
-  Lemma treeseq_safe_pushd_attr: forall Ftree ts pathname ilist' attr f inum  mscs pathname' free1 free2,
+  Lemma treeseq_safe_pushd_update_subtree : forall Ftree ts pathname ilist' f f' inum  mscs pathname' free2,
     let tree' := {|
         TStree := update_subtree pathname
-                    (TreeFile inum
-                       {|
-                       BFILE.BFData := BFILE.BFData f;
-                       BFILE.BFAttr := attr |}) 
+                    (TreeFile inum f') 
                     (TStree ts !!);
         TSilist := ilist';
-        TSfree := TSfree ts !! |} in
+        TSfree := free2 |} in
     tree_names_distinct (TStree ts !!) ->
+    tree_inodes_distinct (TStree ts !!) ->
+    Datatypes.length ilist' = Datatypes.length (TSilist ts!!) ->
     (Ftree * pathname |-> Some(inum, f))%pred (dir2flatmem2 (TStree ts !!)) ->
-    BFILE.ilist_safe (TSilist ts!!) free1 ilist' free2 ->
+    BFILE.ilist_safe (TSilist ts!!) (BFILE.pick_balloc (TSfree ts!!) (MSAlloc mscs))
+                     ilist' (BFILE.pick_balloc free2 (MSAlloc mscs)) ->
     BFILE.treeseq_ilist_safe inum (TSilist ts!!) ilist' ->
     treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) ts !!) ts ->
     treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (pushd tree' ts) !!) (pushd tree' ts).
   Proof.
     intros.
+    subst tree'.
     eapply dir2flatmem2_find_subtree_ptsto in H as Hfind; eauto.
     eapply treeseq_safe_pushd; eauto.
     eapply NEforall_d_in'; intros.
-    subst tree'.
-    eapply NEforall_d_in in H3.
+    eapply NEforall_d_in in H5.
     2: instantiate (1 := x); eauto.
     destruct (list_eq_dec string_dec pathname pathname'); simpl.
     - rewrite e in *; simpl.
@@ -720,104 +737,114 @@ Module TREESEQ.
       intuition; simpl.
       * unfold treeseq_safe_fwd in *.
         intros; simpl.
-        specialize (H5 inum0 off bn).
-        destruct H5.
-        destruct H3.
+        specialize (H7 inum0 off bn).
+        destruct H7.
+        destruct H8.
         eexists x0.
         intuition.
         intuition.
-        exists {| BFILE.BFData := BFILE.BFData f; BFILE.BFAttr := attr |}.
+        exists f'.
         erewrite find_update_subtree; eauto.
-        rewrite Hfind in H7.
-        inversion H7.
+        rewrite Hfind in H10.
+        inversion H10.
         unfold BFILE.treeseq_ilist_safe in *.
         intuition.
-        specialize (H5 off bn).
-        destruct H5.
-        rewrite H9 in *.
+        specialize (H7 off bn).
+        destruct H7.
+        subst.
         eauto.
-        rewrite H9 in *.
+        subst.
         split; eauto.
       * unfold treeseq_safe_bwd in *; intros.
-        specialize (H6 inum off bn).
-        (* destruct (lt_dec off (Datatypes.length (BFILE.BFData f))) *)
-        destruct H6.
-        eexists f.
+        destruct (BFILE.block_is_unused_dec (BFILE.pick_balloc (TSfree ts!!) (MSAlloc mscs)) bn).
+        ++ deex.
+           right.
+           unfold BFILE.ilist_safe in H9; intuition.
+           eapply In_incl.
+           apply b.
+           eauto.
+
+        ++ 
+        specialize (H5 inum off bn).
+        destruct H5.
+        ** eexists f.
         split; eauto.
         simpl in *.
+        subst.
+        erewrite find_update_subtree in H8 by eauto.
+        deex.
+        inversion H8.
+        unfold BFILE.ilist_safe in H3.
         intuition.
-        rewrite <- e in *.
-        simpl in H3.
-        erewrite find_update_subtree in H3.
-        destruct H3.
-        intuition.
-        inversion H6.
-        unfold BFILE.ilist_safe in H1.
-        intuition.
-        specialize (H10 inum off bn).
-        rewrite H8 in H10.
-        destruct H10; eauto.
-        (* XXX a contradiction: bn is part of ilist' and we didn't free a block *)
-        exfalso.
-        admit.
-        eassumption.
-        destruct H3.
+        specialize (H13 inum off bn).
+        subst.
+        destruct H13; eauto.
+
+        exfalso. eauto.
+
+        ** 
+        destruct H5.
         simpl in *.
-        erewrite find_update_subtree in H3.
-        intuition.
-        inversion H7; eauto.
-        rewrite <- H9.
-        destruct H6.
+        erewrite find_update_subtree in H8.
+        intuition. deex.
+        inversion H8; eauto.
+        subst.
         left.
-        eexists x1.
-        eassumption.
-        eassumption.
+        eauto.
+        eauto.
+        **
         right; eauto.
+
+     * eapply BFILE.ilist_safe_trans; eauto.
+
      - unfold treeseq_safe in *.
       intuition; simpl.
       (* we updated pathname, but pathname' is still safe, if it was safe. *)
       * unfold treeseq_safe_fwd in *; simpl.
         erewrite find_subtree_update_subtree_ne_path; eauto.
         intros.
-        specialize (H5 inum0 off bn).
-        destruct H5.
-        destruct H3.
-        eexists x0.
-        eassumption.
-        eexists x0.
-        split. intuition.
+        specialize (H7 inum0 off bn H8).
+        repeat deex.
+        eexists.
+        intuition. eauto.
+        destruct (addr_eq_dec inum inum0).
+        ** subst.
+          exfalso. apply n.
+          eapply find_subtree_inode_pathname_unique; eauto.
+
+        **
+        unfold BFILE.treeseq_ilist_safe in H4; intuition.
+        unfold BFILE.block_belong_to_file.
+        rewrite <- H13.
+        apply H12.
         intuition.
-        admit.
-      * unfold treeseq_safe_bwd in *; simpl.
-        erewrite find_subtree_update_subtree_ne_path; eauto.
-        intros.
-        destruct H3.
+        eapply BFILE.block_belong_to_file_inum_ok; eauto.
+
+      * unfold treeseq_safe_bwd in *; simpl; intros.
+        deex; intuition.
+        erewrite find_subtree_update_subtree_ne_path in *; eauto.
+
+        destruct (addr_eq_dec inum inum0).
+        ** subst.
+          exfalso. apply n.
+          eapply find_subtree_inode_pathname_unique; eauto.
+        **
+
+        eapply H5.
+        eexists. intuition eauto.
+
+        unfold BFILE.treeseq_ilist_safe in H4; intuition.
+        unfold BFILE.block_belong_to_file.
+        rewrite H12.
+        apply H11.
         intuition.
-        specialize (H6 inum0 off bn).
-        destruct H6.
-        eexists x0.
-        split; eauto.
-        unfold BFILE.treeseq_ilist_safe in H2.
-        intuition.
-        destruct (addr_eq_dec inum0 inum).
-        exfalso.
-        (* this means Hfind and H6 resolve to same inum, but then pathname must pathname', which is not the case. *)
-        admit.
-        specialize (H6 inum0).
-        intuition.
-        assert (inum0 < Datatypes.length (TSilist ts !!)).
-        admit.
-        specialize (H6 H2).
-        admit.
-        left.
-        destruct H3.
-        eexists x1.
-        eassumption.
-        right; eauto. 
-  Admitted.
+        rewrite <- H1.
+        eapply BFILE.block_belong_to_file_inum_ok; eauto.
+
+      * eapply BFILE.ilist_safe_trans; eauto.
+  Qed.
 
 
- 
   Theorem treeseq_file_set_attr_ok : forall fsxp inum attr mscs,
   {< ds ts pathname Fm Ftop Ftree Fi f ino,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
@@ -862,11 +889,16 @@ Module TREESEQ.
     eassumption.
     rewrite H0 in *.
     eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred.
-    eapply treeseq_safe_pushd_attr; eauto.
+    eapply treeseq_safe_pushd_update_subtree; eauto.
     distinct_names.
+    distinct_inodes.
+    rewrite DIRTREE.rep_length in Hpred; destruct_lift Hpred.
+    rewrite DIRTREE.rep_length in H11; destruct_lift H11.
+    congruence.
+
     unfold dirtree_safe in *.
     intuition.
-    eassumption.
+
     eapply dir2flatmem2_update_subtree.
     distinct_names'.
     eassumption.
