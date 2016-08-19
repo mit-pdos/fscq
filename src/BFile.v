@@ -191,6 +191,18 @@ Module BFILE.
      [[ BmapNBlocks (fst bxps) = BmapNBlocks (snd bxps) ]]
     )%pred.
 
+  Definition rep_length_pimpl : forall bxps ixp flist ilist frees,
+    rep bxps ixp flist ilist frees =p=>
+    (rep bxps ixp flist ilist frees *
+     [[ length flist = ((INODE.IRecSig.RALen ixp) * INODE.IRecSig.items_per_val)%nat ]] *
+     [[ length ilist = ((INODE.IRecSig.RALen ixp) * INODE.IRecSig.items_per_val)%nat ]])%pred.
+  Proof.
+    unfold rep; intros.
+    rewrite INODE.rep_length_pimpl at 1.
+    rewrite listmatch_length_pimpl at 1.
+    cancel.
+  Qed.
+
   Definition block_belong_to_file ilist bn inum off :=
     off < length (INODE.IBlocks (selN ilist inum INODE.inode0)) /\
     bn = # (selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0).
