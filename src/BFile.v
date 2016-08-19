@@ -209,6 +209,10 @@ Module BFILE.
 
   Definition block_is_unused freeblocks (bn : addr) := In bn freeblocks.
 
+  Definition block_is_unused_dec freeblocks (bn : addr) :
+    { block_is_unused freeblocks bn } + { ~ block_is_unused freeblocks bn }
+    := In_dec addr_eq_dec bn freeblocks.
+
   Definition ilist_safe ilist1 free1 ilist2 free2 :=
     incl free2 free1 /\
     forall inum off bn,
