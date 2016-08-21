@@ -96,7 +96,7 @@ Module TREESEQ.
   Proof.
     unfold treeseq_in_ds; simpl; intuition.
     apply NEforall2_pushd; intuition.
-    rewrite latest_pushd.
+    rewrite _pushd.
     eapply NEforall2_impl; eauto.
     intuition.
     intuition.
@@ -669,7 +669,7 @@ Module TREESEQ.
     intuition.
   Qed.
 
-  (* BFILE *)
+  (* BFILE XXX kill *)
   Lemma block_belong_to_file_setattr_fwd: forall Fi ilist ilist' attr bn inum off ino,
     (Fi * inum |-> ino)%pred (list2nmem ilist) ->
     (Fi * inum |-> INODE.mk_inode (INODE.IBlocks ino) attr)%pred (list2nmem ilist') ->
@@ -687,7 +687,7 @@ Module TREESEQ.
     rewrite H; eauto.
   Qed.
 
-  (* BFILE *)
+  (* BFILE XXX kill *)
   Lemma block_belong_to_file_setattr_bwd: forall Fi ilist ilist' attr bn inum off ino,
     (Fi * inum |-> ino)%pred (list2nmem ilist) ->
     (Fi * inum |-> INODE.mk_inode (INODE.IBlocks ino) attr)%pred (list2nmem ilist') ->
@@ -844,13 +844,11 @@ Module TREESEQ.
       * eapply BFILE.ilist_safe_trans; eauto.
   Qed.
 
-
-  Theorem treeseq_file_set_attr_ok : forall fsxp inum attr mscs,
-  {< ds ts pathname Fm Ftop Ftree Fi f ino,
+ Theorem treeseq_file_set_attr_ok : forall fsxp inum attr mscs,
+  {< ds ts pathname Fm Ftop Ftree f,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-     [[ (Ftree * pathname |-> Some (inum, f))%pred (dir2flatmem2 (TStree ts!!)) ]] *
-     [[[ (TSilist ts!!) ::: (Fi * inum |-> ino) ]]] 
+     [[ (Ftree * pathname |-> Some (inum, f))%pred (dir2flatmem2 (TStree ts!!)) ]] 
   POST:hm' RET:^(mscs', ok)
      [[ MSAlloc mscs' = MSAlloc mscs ]] *
      ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
@@ -874,7 +872,7 @@ Module TREESEQ.
     eapply pimpl_ok2.
     eapply AFS.file_set_attr_ok.
     cancel.
-    eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
+    eapply treeseq_in_ds_tree_pred_latest in H6 as Hpred; eauto.
     eapply dir2flatmem2_find_subtree_ptsto.
     distinct_names'.
     eassumption.
@@ -885,15 +883,15 @@ Module TREESEQ.
     unfold tree_rep.
     unfold treeseq_one_safe.
     simpl.
-    rewrite H0 in H13.
+    rewrite H4 in H12.
     eassumption.
-    rewrite H0 in *.
-    eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred.
+    rewrite H4 in *.
+    eapply treeseq_in_ds_tree_pred_latest in H6 as Hpred.
     eapply treeseq_safe_pushd_update_subtree; eauto.
     distinct_names.
     distinct_inodes.
     rewrite DIRTREE.rep_length in Hpred; destruct_lift Hpred.
-    rewrite DIRTREE.rep_length in H11; destruct_lift H11.
+    rewrite DIRTREE.rep_length in H10; destruct_lift H10.
     congruence.
 
     unfold dirtree_safe in *.
@@ -904,11 +902,7 @@ Module TREESEQ.
     eassumption.
   Qed.
 
-
-  (* A more restricted version intended to be used with treeseq_safe_upd. This restricted
-   * version allows only extending a file by one block. It promises that if treeseq_upd_safe holds
-   * afterwards. 
-   *)
+  (* A more restricted version of truncate intended to be used with treeseq_safe *)
   Theorem treeseq_file_grow_ok : forall fsxp inum newlen mscs,
   {< ds ts pathname Fm Ftop Ftree f,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
@@ -927,7 +921,7 @@ Module TREESEQ.
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
         [[ ds' = pushd d ds ]] *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees')]]] *
-        [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) 1 ($0, nil)) (BFILE.BFAttr f) ]] *
+        [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) newlen ($0, nil)) (BFILE.BFAttr f) ]] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts !!) ]] *
         [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
         [[ (Ftree * pathname |-> Some (inum, f'))%pred (dir2flatmem2 tree') ]])
@@ -939,7 +933,7 @@ Module TREESEQ.
     eapply pimpl_ok2.
     eapply AFS.file_truncate_ok.
     cancel.
-    eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
+    eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred; eauto.
     eapply dir2flatmem2_find_subtree_ptsto.
     distinct_names'.
     eassumption.
@@ -950,15 +944,26 @@ Module TREESEQ.
     unfold tree_rep.
     unfold treeseq_one_safe.
     simpl in *.
-    rewrite H0 in H12.
+    rewrite H4 in H13.
     eassumption.
-    erewrite pushd_latest; simpl.
-    eapply treeseq_upd_safe_truncate; eauto.
-    rewrite H0; eauto.
+    eapply treeseq_safe_pushd_update_subtree; eauto.
     distinct_names'.
+    eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred.
+    distinct_inodes.
+    eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred.
+    rewrite DIRTREE.rep_length in Hpred; destruct_lift Hpred.
+    rewrite DIRTREE.rep_length in H11; destruct_lift H11.
+    congruence.
+
+    unfold dirtree_safe in *.
+    intuition.
+    rewrite H4 in H9; eauto.
+
+    admit.  (* XXX lower truncate ops must promise: BFILE.treeseq_ilist_safe inum (TSilist ts !!) ilist' *)
+
     eapply dir2flatmem2_update_subtree; eauto.
     distinct_names'.
-  Qed.
+  Admitted.
 
 
 (*
