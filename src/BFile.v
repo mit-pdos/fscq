@@ -859,6 +859,7 @@ Module BFILE.
     all: try exact unit; eauto using tt.
   Qed.
 
+
   Theorem grow_ok : forall lxp bxp ixp inum v ms,
     {< F Fm Fi Fd m0 m flist ilist frees f,
     PRE:hm
@@ -875,7 +876,8 @@ Module BFILE.
            [[[ (BFData f') ::: (Fd * (length (BFData f)) |-> (v, nil)) ]]] *
            [[ f' = mk_bfile ((BFData f) ++ [(v, nil)]) (BFAttr f) ]] *
            [[ ilist_safe ilist  (pick_balloc frees  (MSAlloc ms'))
-                         ilist' (pick_balloc frees' (MSAlloc ms')) ]]
+                         ilist' (pick_balloc frees' (MSAlloc ms')) ]] *
+           [[ treeseq_ilist_safe inum ilist ilist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} grow lxp bxp ixp inum v ms.
   Proof.
@@ -896,8 +898,8 @@ Module BFILE.
     - step.
       safestep.
       sepauto.
+      step.
 
-      step; step.
       eapply BALLOC.bn_valid_facts; eauto.
       step.
 
@@ -913,6 +915,8 @@ Module BFILE.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOC.bn_valid_goodSize; eauto.
       apply list2nmem_app; eauto.
+      
+      2:admit.  (* prove treeseq_ilist_safe *)
 
       2: cancel.
       2: or_l; cancel.
@@ -943,7 +947,7 @@ Module BFILE.
       erewrite INODE.rep_bxp_switch by eassumption. cancel.
       sepauto.
 
-      step; step.
+      step.
       eapply BALLOC.bn_valid_facts; eauto.
       step.
 
@@ -960,6 +964,8 @@ Module BFILE.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOC.bn_valid_goodSize; eauto.
       apply list2nmem_app; eauto.
+    
+      2: admit. (* prove treeseq_ilist_safe *)
 
       2: cancel.
       2: or_l; cancel.
