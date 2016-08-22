@@ -98,6 +98,18 @@ Module MakeCacheProtocol (St:GlobalState) (Proj:CacheProj St).
     forall a, cache_get c a = Invalid ->
          wb_get wb a = WbMissing.
 
+  Theorem no_wb_reader_conflict_redundant : forall d c vd0 wb vd,
+      cache_rep d c vd0 ->
+      wb_rep vd0 wb vd ->
+      no_wb_reader_conflict c wb.
+  Proof.
+    unfold cache_rep, wb_rep, no_wb_reader_conflict; intros.
+    specialize (H a); specialize (H0 a).
+    simpl_match; destruct matches in *;
+      repeat deex;
+      congruence.
+  Qed.
+
   Definition cacheI : Invariant St.Sigma :=
     fun d m s =>
       get mCache m = get vCache s /\
