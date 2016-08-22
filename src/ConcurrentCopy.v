@@ -95,6 +95,17 @@ Proof.
   intuition.
 Qed.
 
+Theorem vdisk0_not_cache_or_disk0 :
+  HIn CacheProtocol.vdisk0 [(CacheProtocol.vCache; CacheProtocol.vDisk0)] -> False.
+Proof.
+  rewrite (hin_iff_index_in CacheProtocol.vdisk0); simpl.
+  unfold CacheProtocol.vCache, CacheProtocol.vdisk0, CacheProtocol.vDisk0.
+  simpl.
+  repeat (rewrite get_first; simpl) ||
+         (rewrite get_next; simpl).
+  intuition.
+Qed.
+
 Theorem vWriteBuffer_not_cache_or_disk0 :
   HIn CacheProtocol.vWriteBuffer [(CacheProtocol.vCache; CacheProtocol.vDisk0)] -> False.
 Proof.
@@ -107,6 +118,7 @@ Proof.
 Qed.
 
 Hint Resolve vdisk_not_cache_or_disk0.
+Hint Resolve vdisk0_not_cache_or_disk0.
 Hint Resolve vWriteBuffer_not_cache_or_disk0.
 
 Module CacheSub <: CacheSubProtocol.
@@ -151,21 +163,19 @@ Module CacheSub <: CacheSubProtocol.
     split; auto.
     destruct H.
     unfold cache_committed in *.
-    unfold Top.CacheProtocol.vdisk, Top.CacheProtocol.vDisk0 in *.
-    fold vdisk vDisk0 in *.
+    unfold Top.CacheProtocol.vdisk,
+    Top.CacheProtocol.vdisk0,
+    Top.CacheProtocol.vDisk0 in *;
+      fold vdisk vdisk0 vDisk0 in *.
     assert (get vdisk s = get vdisk s') as Heq.
     apply H0; auto.
-    rewrite Heq in *.
-    unfold id in *.
-    rewrite H.
-    assert (get vWriteBuffer s = get vWriteBuffer s').
+    assert (get vdisk0 s = get vdisk0 s') as Heq0.
     apply H0; auto.
-    (* this is actually true since the write buffer didn't change, but it
-    depends on reasoning about the cache_rep in a pretty deep way - this will
-    all be fixed by splitting vDisk0 into the part dealing with readers in the
-    cache_rep and the public linearized disk without readers *)
-    admit.
-  Admitted.
+    unfold id in *.
+    rewrite <- Heq.
+    rewrite <- Heq0.
+    auto.
+  Qed.
 
 End CacheSub.
 
@@ -217,8 +227,8 @@ Hint Resolve destinations_readonly_upd.
 
 Ltac unfolds :=
   unfold CacheSub.App.Sigma, CacheSub.App.St.Sigma, CopyState.Sigma in *;
-  unfold CacheProtocol.vdisk, CacheProtocol.vDisk0 in *;
-  fold vdisk vDisk0 in *.
+  unfold CacheProtocol.vdisk, CacheProtocol.vdisk0, CacheProtocol.vDisk0 in *;
+  fold vdisk vdisk0 vDisk0 in *.
 
 (* local spec for cache_abort in terms of global invariant *)
 
@@ -229,7 +239,7 @@ Theorem cache_abort_ok :
      invariant CacheProtocol.delta d m s
  | POST d' m' s_i' s' _:
      invariant App.delta d' m' s' /\
-     get vdisk s' = hide_readers (get vDisk0 s) /\
+     get vdisk s' = get vdisk0 s /\
      guar CacheProtocol.delta tid s s' /\
      s_i' = s_i
 }} cache_abort.
