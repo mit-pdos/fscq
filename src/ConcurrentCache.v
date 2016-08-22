@@ -746,8 +746,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                    get vdisk s a = Some v0
                | POST d' m' s_i' s' _:
                    invariant delta d' m' s' /\
-                   get vDisk0 s' a = Some (v0, Some tid) /\
-                   get vDisk0 s' = add_reader (get vDisk0 s) a tid /\
+                   (* note that neither vdisk0 nor vdisk are modified *)
                    modified [( vCache; vDisk0 )] s s' /\
                    guar delta tid s s' /\
                    s_i' = s_i
@@ -757,7 +756,6 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     eexists; simplify; finish.
 
     hoare.
-    erewrite add_reader_eq; eauto.
   Qed.
 
   Hint Extern 1 {{ prepare_fill _; _ }} => apply prepare_fill_ok : prog.
@@ -852,8 +850,6 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                        get vdisk s a = Some v0
                    | POST d' m' s_i' s' r:
                        invariant delta d' m' s' /\
-                       get vdisk s a = Some v0 /\
-                       get vDisk0 s' = remove_reader (get vDisk0 s) a /\
                        modified [( vCache; vDisk0 )] s s' /\
                        guar delta tid s s' /\
                        r = v0 /\
@@ -1141,7 +1137,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                    invariant delta d m s
                | POST d' m' s_i' s' r:
                    invariant delta d' m' s' /\
-                   hide_readers (get vDisk0 s') = get vdisk s /\
+                   get vdisk0 s' = get vdisk s /\
                    get vdisk s' = get vdisk s /\
                    guar delta tid s s' /\
                    s_i' = s_i
@@ -1182,10 +1178,8 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
        invariant delta d m s
    | POST d' m' s_i' s' _:
        invariant delta d' m' s' /\
-       get vdisk s' = hide_readers (get vDisk0 s) /\
+       get vdisk s' = get vdisk0 s /\
        modified [(vWriteBuffer; vdisk)] s s' /\
-       get vDisk0 s' = get vDisk0 s /\
-       get vCache s' = get vCache s /\
        get vWriteBuffer s' = emptyWriteBuffer /\
        guar delta tid s s' /\
        s_i' = s_i
@@ -1306,7 +1300,6 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                | POST d' m' s_i' s' r:
                    invariant delta d' m' s' /\
                    guar delta tid s s' /\
-                   hide_readers (get vDisk0 s') = hide_readers (get vDisk0 s) /\
                    modified [( vCache; vDisk0 )] s s' /\
                    (forall v', r = Some v' -> v' = v) /\
                    s_i' = s_i
@@ -1325,16 +1318,8 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     eexists; simplify; finish.
     hoare.
 
-    replace (get vDisk0 s0);
-      autorewrite with readers;
-      auto.
-
     eexists; simplify; finish.
     hoare.
-
-    replace (get vDisk0 s0);
-      autorewrite with readers;
-      auto.
   Qed.
 
   Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
