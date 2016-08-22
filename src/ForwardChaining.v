@@ -37,6 +37,11 @@ Ltac is_not_learnt H :=
 
 Tactic Notation "learn" hyp(H) tactic(t) := learn_tac H t.
 Tactic Notation "learn" "that" constr(H) := learn_fact H.
+Tactic Notation "learn" "that" "simpl" constr(H) :=
+  learn_fact constr:(ltac:(let P := type of H in
+                           let P := eval simpl in P in
+                               exact (H:P))).
+
 
 Module LearnExample.
 
@@ -67,6 +72,19 @@ Module LearnExample.
            | [ H: exists _, _ |- _ ] => destruct H
            | [ H: P _ |- _ ] => learn H (apply P_Q in H)
            | [ H: P ?x, H': Q ?x _ |- _ ] => learn H (apply Q_R in H'; trivial)
+           | [ |- exists _, _ ] => eexists
+           | _ => eassumption
+           end.
+  Qed.
+
+  Goal forall x, P x -> exists y, R y x.
+  Proof.
+    repeat match goal with
+           | _ => progress intros
+           | [ H: _ /\ _ |- _ ] => destruct H
+           | [ H: exists _, _ |- _ ] => destruct H
+           | [ H: P _ |- _ ] => learn H (apply P_Q in H)
+           | [ H: P ?x, H': Q ?x _ |- _ ] => learn that simpl (Q_R H H')
            | [ |- exists _, _ ] => eexists
            | _ => eassumption
            end.
