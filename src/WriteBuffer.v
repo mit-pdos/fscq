@@ -49,13 +49,17 @@ Section GetModify.
     a = a' ->
     wb_get (wb_write wb a v) a' = Written v.
   Proof.
-  Admitted.
+    unfold wb_get, wb_write; intros.
+    rewrite MapFacts.add_eq_o by auto; auto.
+  Qed.
 
   Theorem wb_get_write_neq : forall wb a a' v,
       a <> a' ->
       wb_get (wb_write wb a v) a' = wb_get wb a'.
   Proof.
-  Admitted.
+    unfold wb_get, wb_write; intros.
+    rewrite MapFacts.add_neq_o by auto; auto.
+  Qed.
 
 End GetModify.
 
