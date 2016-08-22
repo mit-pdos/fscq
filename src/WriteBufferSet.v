@@ -1,5 +1,6 @@
 Require Import CoopConcur.
 Require Export WriteBuffer.
+Require Import DiskReaders.
 Import List.
 Import ListNotations.
 
@@ -30,6 +31,13 @@ Definition add_empty_rdr (ae: addr * valu) : addr * wr_set :=
 Definition upd_buffered_writes (d: DISK) (entries: list (addr * valu)) :=
   upd_all d (map add_empty_rdr entries).
 
+(* convenient expression of the computational behavior of [upd_buffered_writes] *)
+Lemma upd_buffered_writes_cons : forall vd entries a v,
+    upd_buffered_writes vd ((a, v) :: entries) =
+    upd (upd_buffered_writes vd entries) a (v, None).
+Proof.
+  reflexivity.
+Qed.
 
 Hint Resolve in_eq in_cons.
 Hint Resolve SetoidList.InA_cons_hd SetoidList.InA_cons_tl.
@@ -623,26 +631,37 @@ Proof.
   intuition eauto.
 Qed.
 
+Lemma hide_readers_upd_buffered_writes : forall entries d,
+    hide_readers (upd_buffered_writes d entries) =
+    upd_all (hide_readers d) entries.
+Proof.
+  unfold upd_buffered_writes.
+  induction entries; intros.
+  reflexivity.
+  destruct a as [a v]; simpl.
+  extensionality a'.
+  destruct (nat_dec a a'); subst.
+  unfold hide_readers; autorewrite with upd; auto.
+  rewrite <- IHentries.
+  unfold hide_readers; autorewrite with upd; auto.
+Qed.
+
 Theorem wb_rep_empty : forall d wb vd,
-    wb_rep d wb vd ->
-    wb_rep (upd_buffered_writes d (wb_writes wb)) emptyWriteBuffer vd.
+    wb_rep (hide_readers d) wb vd ->
+    wb_rep (hide_readers (upd_buffered_writes d (wb_writes wb))) emptyWriteBuffer vd.
 Proof.
   unfold wb_rep; intros.
   specialize (H a).
   rewrite wb_get_empty.
-  unfold upd_buffered_writes.
+  rewrite hide_readers_upd_buffered_writes.
   let H := fresh in
   destruct (wb_get wb a) eqn:H; intuition.
   apply wb_writes_complete in H0.
   pose proof (NoDup_writes wb).
   erewrite upd_all_in; eauto.
-  2: rewrite addrs_add_empty_rdr; auto.
-  2: apply In_add_empty_rdr; eauto.
-  auto.
 
   apply wb_get_missing in H0.
   rewrite upd_all_not_in; auto.
-  rewrite addrs_add_empty_rdr; auto.
 Qed.
 
 Definition upd_all' A AEQ V (m: @mem A AEQ V) (entries: list (A*V)) :=

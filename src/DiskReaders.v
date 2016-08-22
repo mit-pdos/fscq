@@ -30,11 +30,12 @@ Qed.
 
 Lemma hide_readers_eq' : forall (d: DISK) a v,
     hide_readers d a = Some v ->
-    (exists v0, d a = Some v0).
+    (exists rdr, d a = Some (v, rdr)).
 Proof.
   unfold hide_readers; intros.
-  destruct (d a);
-    eauto || congruence.
+  destruct matches in *.
+  inversion H; subst.
+  eauto.
 Qed.
 
 Lemma hide_readers_unchanged_remove : forall d a,
@@ -62,3 +63,7 @@ Proof.
     autorewrite with upd in *;
     congruence.
 Qed.
+
+Hint Rewrite
+     hide_readers_unchanged_add
+     hide_readers_unchanged_remove : readers.

@@ -66,16 +66,12 @@ End GetModify.
 Hint Rewrite wb_get_write_eq using (now auto) : cache.
 Hint Rewrite wb_get_write_neq using (now auto) : cache.
 
-Definition wb_rep (d:DISK) (wb: WriteBuffer) (vd:Disk) :=
+Definition wb_rep (d:Disk) (wb: WriteBuffer) (vd:Disk) :=
   forall a, match wb_get wb a with
        | Written v =>
          vd a = Some v /\
-         exists v0, d a = Some (v0, None)
-       | Missing =>
-         match d a with
-         | None => vd a = None
-         | Some (v, rdr) => vd a = Some v
-         end
+         exists v0, d a = Some v0
+       | Missing => vd a = d a
        end.
 
 Section RepTheorems.
@@ -88,14 +84,15 @@ Section RepTheorems.
            end;
     destruct matches in *;
     destruct_ands; repeat deex;
+    complete_mem_equalities;
     eauto;
     try congruence.
 
   Theorem wb_rep_same_domain : forall d wb vd,
       wb_rep d wb vd ->
-      same_domain (hide_readers d) vd.
+      same_domain d vd.
   Proof.
-    unfold hide_readers, same_domain, subset;
+    unfold same_domain, subset;
       split; t.
   Qed.
 
@@ -119,11 +116,9 @@ Section RepTheorems.
     wb_rep d wb vd ->
     wb_val wb a = None ->
     vd a = Some v ->
-    exists rdr, d a = Some (v, rdr).
+    d a = Some v.
  Proof.
    t.
-   assert (w0 = v) by congruence; subst.
-   eauto.
  Qed.
 
 End RepTheorems.

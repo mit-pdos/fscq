@@ -31,7 +31,8 @@ Module CopyCacheProj <: CacheProj CopyState.
     exact [( HFirst;
              HNext HFirst;
              HNext (HNext HFirst);
-             HNext (HNext (HNext HFirst)) )].
+             HNext (HNext (HNext HFirst));
+             HNext (HNext (HNext (HNext HFirst))) )].
     repeat (constructor; simpl; intuition auto).
     repeat (constructor; simpl; intuition auto).
   Defined.
@@ -53,7 +54,7 @@ Proof.
 Qed.
 
 Definition cache_committed (s: abstraction CopyState.Sigma) :=
-  get CacheProtocol.vdisk s = hide_readers (get CacheProtocol.vDisk0 s).
+  get CacheProtocol.vdisk s = get CacheProtocol.vdisk0 s.
 
 Module App <: GlobalProtocol.
   Module St := CopyState.

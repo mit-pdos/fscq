@@ -18,7 +18,7 @@ End GlobalState.
 
 Definition Sigma := defState
                   [Cache; WriteBuffer]
-                  [Cache; WriteBuffer; DISK; Disk].
+                  [Cache; WriteBuffer; DISK; Disk; Disk].
 
 Module Type CacheProj (St:GlobalState).
   Parameter stateProj:StateProj St.Sigma Sigma.
@@ -42,10 +42,11 @@ Module MakeCacheProtocol (St:GlobalState) (Proj:CacheProj St).
     (* abstraction ("virtual") variables *)
     Definition vCache := ltac:(absvar 0).
     Definition vWriteBuffer := ltac:(absvar 1).
-    (* the linearized disk, which evolves at each syscall *)
     Definition vDisk0 := ltac:(absvar 2).
+    (* the linearized disk, which evolves at each syscall *)
+    Definition vdisk0 := ltac:(absvar 3).
     (* the disk from the perspective of the current syscall *)
-    Definition vdisk := ltac:(absvar 3).
+    Definition vdisk := ltac:(absvar 4).
   End Variables.
 
   (* TODO: var_index_neq_mem and var_index_neq_abstraction are generic, should
@@ -98,24 +99,13 @@ Module MakeCacheProtocol (St:GlobalState) (Proj:CacheProj St).
     forall a, cache_get c a = Invalid ->
          wb_get wb a = WbMissing.
 
-  Theorem no_wb_reader_conflict_redundant : forall d c vd0 wb vd,
-      cache_rep d c vd0 ->
-      wb_rep vd0 wb vd ->
-      no_wb_reader_conflict c wb.
-  Proof.
-    unfold cache_rep, wb_rep, no_wb_reader_conflict; intros.
-    specialize (H a); specialize (H0 a).
-    simpl_match; destruct matches in *;
-      repeat deex;
-      congruence.
-  Qed.
-
   Definition cacheI : Invariant St.Sigma :=
     fun d m s =>
       get mCache m = get vCache s /\
       get mWriteBuffer m = get vWriteBuffer s /\
       cache_rep d (get vCache s) (get vDisk0 s) /\
-      wb_rep (get vDisk0 s) (get vWriteBuffer s) (get vdisk s) /\
+      get vdisk0 s = hide_readers (get vDisk0 s) /\
+      wb_rep (get vdisk0 s) (get vWriteBuffer s) (get vdisk s) /\
       no_wb_reader_conflict (get vCache s) (get vWriteBuffer s).
 
   (* not sure whether to say this about vDisk0, vDisk, or both *)
@@ -219,8 +209,8 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Definition prepare_fill a :=
     tid <- GetTID;
       _ <- StartRead_upd a;
-      (* note that no updates to Disk are needed since the readers are
-    hidden *)
+      (* note that no updates to either vdisk0 or vdisk are needed since the
+      readers are hidden *)
       _ <- var_update vDisk0
         (fun vd => add_reader vd a tid);
       _ <- modify_cache (fun c => cache_add c a Invalid);
@@ -261,14 +251,16 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       wb <- Get mWriteBuffer;
       _ <- modify_cache (fun c => cache_add_all c (wb_writes wb));
       _ <- var_update vDisk0 (fun d => upd_buffered_writes d (wb_writes wb));
+      _ <- GhostUpdate (fun s =>
+                         set vdisk0 (hide_readers (get vDisk0 s)) s);
       _ <- modify_wb (fun _ => emptyWriteBuffer);
       Ret tt.
 
-  (** abort all buffered writes, restoring vDisk0 *)
+  (** abort all buffered writes, restoring vdisk0 *)
   Definition cache_abort :=
     _ <- modify_wb (fun _ => emptyWriteBuffer);
       _ <- GhostUpdate (fun s =>
-                         let vd' := hide_readers (get vDisk0 s) in
+                         let vd' := get vdisk0 s in
                          set vdisk vd' s);
       Ret tt.
 
@@ -466,6 +458,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     | _ => progress subst
     | _ => replace_mem_val
     | _ => time "reduce_hlist" reduce_hlist
+    | _ => progress autorewrite with readers
     | _ => simp_hook
     | _ => descend
     | _ => prove_protocol
@@ -493,24 +486,6 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   (* prove hoare specs *)
 
   Section SpecLemmas.
-
-    Lemma disk_no_reader : forall d c vd0 wb vd a v,
-      cache_rep d c vd0 ->
-      wb_rep vd0 wb vd ->
-      cache_get c a = Missing ->
-      wb_get wb a = WbMissing ->
-      vd a = Some v ->
-      d a = Some (v, None).
-    Proof.
-      intros.
-      specialize (H a).
-      specialize (H0 a).
-      simpl_match.
-      destruct matches in *;
-        intuition auto;
-        repeat deex;
-        eauto || congruence.
-    Qed.
 
     Lemma no_wb_reader_conflict_stable_invalidate : forall c wb a,
         no_wb_reader_conflict c wb ->
@@ -559,7 +534,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
     Theorem wb_rep_stable_write : forall d wb vd a v0 v,
         wb_rep d wb vd ->
-        d a = Some (v0, None) ->
+        vd a = Some v0 ->
         wb_rep d (wb_write wb a v) (upd vd a v).
     Proof.
       unfold wb_rep; intros.
@@ -568,6 +543,10 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
         rewrite ?wb_get_write_eq, ?wb_get_write_neq by auto;
         autorewrite with upd;
         eauto.
+      split; auto.
+      destruct matches in *; destruct_ands; repeat deex;
+        eauto.
+      exists v0; congruence.
     Qed.
 
   End SpecLemmas.
@@ -631,26 +610,10 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Hint Resolve Some_inv.
 
   Hint Resolve
-       disk_no_reader
        no_wb_reader_conflict_stable_invalidate
        same_domain_add_reader.
 
   Hint Resolve wb_get_val_missing.
-
-  Theorem wb_cache_val_none_vd0 : forall d vd0 vd c wb a v,
-      cache_rep d c vd0 ->
-      wb_rep vd0 wb vd ->
-      vd a = Some v ->
-      cache_get c a = Missing ->
-      wb_get wb a = WbMissing ->
-      vd0 a = Some (v, None).
-  Proof.
-    intros.
-    pose proof (wb_val_none _ ltac:(eauto) ltac:(eauto) ltac:(eauto)).
-    deex.
-    pose proof (cache_val_no_reader _ ltac:(eauto) ltac:(eauto) ltac:(eauto)).
-    congruence.
-  Qed.
 
   Lemma add_reader_eq : forall d a tid v rdr,
       d a = Some (v, rdr) ->
@@ -659,23 +622,6 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     unfold add_reader; intros.
     simpl_match; autorewrite with upd; auto.
   Qed.
-
-  Lemma wb_add_reader : forall vd0 wb vd a tid v,
-      wb_rep vd0 wb vd ->
-      wb_get wb a = WbMissing ->
-      vd a = Some v ->
-      add_reader vd0 a tid a = Some (v, Some tid).
-  Proof.
-    unfold wb_rep; intros.
-    specialize (H a).
-    simpl_match.
-    destruct matches in *; intuition; try deex.
-    assert (w0 = v) by congruence; subst.
-    eapply add_reader_eq; eauto.
-  Qed.
-
-  Hint Resolve wb_add_reader.
-  Hint Resolve wb_cache_val_none_vd0.
 
   Lemma add_reader_neq : forall d a tid a',
       a <> a' ->
@@ -707,25 +653,86 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
   Hint Resolve cache_rep_add_reader.
 
-  Lemma wb_rep_add_reader : forall d wb vd a v tid,
-      vd a = Some v ->
-      wb_get wb a = WbMissing ->
-      wb_rep d wb vd ->
-      wb_rep (add_reader d a tid) wb vd.
+  Hint Resolve cache_add_get_eq.
+
+  Print cache_rep.
+
+  Theorem cache_rep_eq : forall d c vd,
+      cache_rep d c vd ->
+      forall a v, cache_get c a = v ->
+             match v with
+             | Clean v => vd a = Some (v, None) /\ d a = Some (v, None)
+             | Dirty v' => exists v : valu, vd a = Some (v', None) /\ d a = Some (v, None)
+             | Invalid =>
+               exists (v : valu) (tid : TID),
+               vd a = Some (v, Some tid) /\ d a = Some (v, Some tid)
+             | Missing =>
+               forall v rdr, vd a = Some (v, rdr) ->
+                        d a = Some (v, None) /\ rdr = None
+             end.
   Proof.
-    unfold wb_rep; intros.
-    specialize (H1 a0).
-    destruct (nat_dec a a0); subst;
-      destruct matches in *|-; simplify;
-      erewrite ?add_reader_eq by eauto;
-      rewrite ?add_reader_neq by auto;
-      try simpl_match;
-      eauto.
+    unfold cache_rep; intros; subst.
+    specialize (H a).
+    destruct matches in *; eauto.
+    intuition idtac; repeat deex;
+      congruence.
   Qed.
 
-  Hint Resolve wb_rep_add_reader.
+  Theorem wb_rep_eq : forall d wb vd,
+      wb_rep d wb vd ->
+      forall a v, wb_get wb a = v ->
+             match v with
+             | Written v => vd a = Some v /\ (exists v0, d a = Some v0)
+             | WbMissing => vd a = d a
+             end.
+  Proof.
+    unfold wb_rep; intros; subst.
+    specialize (H a).
+    destruct matches in *; eauto.
+  Qed.
 
-  Hint Resolve cache_add_get_eq.
+  Lemma wb_missing_disk_val : forall vd0_c vd0 wb vd a v,
+      wb_rep vd0 wb vd ->
+      wb_get wb a = WbMissing ->
+      vd0 = hide_readers vd0_c ->
+      vd a = Some v ->
+      exists rdr, vd0_c a = Some (v, rdr).
+  Proof.
+    intros.
+    pose proof (wb_rep_eq H _ H0); simpl in *.
+    rewrite H3 in H2.
+    rewrite H1 in H2.
+    apply hide_readers_eq' in H2; deex.
+    eauto.
+  Qed.
+
+  Lemma cache_missing_disk_val : forall d c vd a v,
+      cache_rep d c vd ->
+      cache_get c a = Missing ->
+      (exists rdr, vd a = Some (v, rdr)) ->
+      d a = Some (v, None).
+  Proof.
+    intros.
+    pose proof (cache_rep_eq H _ H0); simpl in *.
+    deex.
+    specialize (H2 _ _ H1); destruct_ands; auto.
+  Qed.
+
+  Lemma cache_missing_vd_val : forall d c vd a v,
+      cache_rep d c vd ->
+      cache_get c a = Missing ->
+      (exists rdr, vd a = Some (v, rdr)) ->
+      vd a = Some (v, None).
+  Proof.
+    intros.
+    pose proof (cache_rep_eq H _ H0); simpl in *.
+    deex.
+    specialize (H2 _ _ H1); destruct_ands; subst; auto.
+  Qed.
+
+  Hint Resolve wb_missing_disk_val
+       cache_missing_disk_val
+       cache_missing_vd_val.
 
   Theorem prepare_fill_ok : forall a,
       SPEC App.delta, tid |-
@@ -748,7 +755,9 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Proof.
     hoare.
     eexists; simplify; finish.
+
     hoare.
+    erewrite add_reader_eq; eauto.
   Qed.
 
   Hint Extern 1 {{ prepare_fill _; _ }} => apply prepare_fill_ok : prog.
@@ -807,31 +816,14 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
   Hint Resolve cache_rep_remove_reader.
 
-  Lemma wb_rep_remove_reader : forall d wb vd a v,
-      vd a = Some v ->
-      wb_rep d wb vd ->
-      wb_rep (remove_reader d a) wb vd.
-  Proof.
-    unfold wb_rep; intros.
-    specialize (H0 a0).
-    destruct (nat_dec a a0); subst;
-      destruct matches in *|-; simplify;
-      erewrite ?remove_reader_eq by eauto;
-      rewrite ?remove_reader_neq by auto;
-      try simpl_match;
-      eauto.
-  Qed.
-
-  Hint Resolve wb_rep_remove_reader.
-
-  Lemma wb_rep_missing_vdisk_val : forall d wb vd a v rdr,
+  Lemma wb_rep_missing_vdisk_val : forall d wb vd a v,
       wb_rep d wb vd ->
       wb_get wb a = WbMissing ->
-      d a = Some (v, rdr) ->
+      d a = Some v ->
       vd a = Some v.
   Proof.
     unfold wb_rep; intros.
-    specialize (H a); repeat simpl_match; auto.
+    specialize (H a); repeat simpl_match; congruence.
   Qed.
 
   Hint Resolve wb_rep_missing_vdisk_val.
@@ -852,12 +844,12 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
   Theorem finish_fill_ok : forall a,
       SPEC App.delta, tid |-
-                  {{ v0 tid',
+                  {{ v0,
                    | PRE d m s_i s:
                        invariant delta d m s /\
                        cache_get (get vCache s) a = Invalid /\
                        wb_get (get vWriteBuffer s) a = WbMissing /\
-                       get vDisk0 s a = Some (v0, Some tid')
+                       get vdisk s a = Some v0
                    | POST d' m' s_i' s' r:
                        invariant delta d' m' s' /\
                        get vdisk s a = Some v0 /\
@@ -869,6 +861,8 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                   }} finish_fill a.
   Proof.
     hoare.
+    eapply wb_missing_disk_val in H2; eauto.
+    learn that simpl (cache_rep_eq ltac:(eauto) _ H0); repeat deex.
     do 2 eexists; simplify; finish.
     hoare.
   Qed.
@@ -948,23 +942,6 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Hint Resolve cache_clean_vd0.
   Hint Resolve cache_dirty_vd0.
 
-  Lemma wb_cache_rep_missing : forall d c vd0 wb vd a v,
-      cache_rep d c vd0 ->
-      wb_rep vd0 wb vd ->
-      vd a = Some v ->
-      cache_get c a = Missing ->
-      exists v0, vd0 a = Some (v0, None).
-  Proof.
-    intros.
-    specialize (H a).
-    specialize (H0 a).
-    destruct matches in *;
-      intuition auto; repeat deex;
-        eauto;
-        try congruence.
-    assert (o = None) by congruence; subst; eauto.
-  Qed.
-
   Theorem cache_write_ok : forall a v,
       SPEC App.delta, tid |-
               {{ v0,
@@ -983,13 +960,6 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
               }} cache_write a v.
   Proof.
     hoare.
-
-    match goal with
-      | [ H: cache_get _ _ = Missing |- _ ] =>
-        eapply wb_cache_rep_missing in H; eauto; deex
-    end.
-
-    eauto.
   Qed.
 
   Hint Extern 1 {{cache_write _ _; _}} => apply cache_write_ok : prog.
@@ -1009,22 +979,6 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Qed.
 
   Hint Resolve cache_rep_add_upd.
-
-  Lemma wb_cache_states : forall d c vd0 wb vd a v,
-      cache_rep d c vd0 ->
-      wb_rep vd0 wb vd ->
-      wb_get wb a = Written v ->
-      exists v0, d a = Some (v0, None).
-  Proof.
-    intros.
-    specialize (H a).
-    specialize (H0 a).
-    simpl_match; intuition auto;
-      destruct matches in *;
-      repeat deex;
-      eauto;
-      try congruence.
-  Qed.
 
   Lemma fst_compose_add_empty_rdr :
     (fun (e: addr * valu) => fst (add_empty_rdr e)) = fst.
@@ -1055,19 +1009,15 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     rename b into v.
 
     unfold upd_buffered_writes.
-    rewrite upd_all_eq_upd_all'.
+    rewrite upd_all_eq_upd_all';
+      rewrite ?map_map, ?fst_compose_add_empty_rdr;
+      eauto.
     simpl.
-    rewrite <- upd_all_eq_upd_all'.
+    rewrite <- upd_all_eq_upd_all';
+      rewrite ?map_map, ?fst_compose_add_empty_rdr;
+      eauto.
     fold (upd_buffered_writes (upd vd a (v, None)) ws).
     eapply IHws; eauto.
-
-    rewrite map_map.
-    rewrite fst_compose_add_empty_rdr.
-    eauto.
-
-    rewrite map_map.
-    rewrite fst_compose_add_empty_rdr.
-    eauto.
   Qed.
 
   Hint Resolve cache_rep_add_all_upd.
@@ -1084,16 +1034,32 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       deex; eauto.
   Qed.
 
-  Lemma wb_writes_valid_addresses : forall d c vd0 wb vd,
+  Lemma wb_writes_valid_addresses : forall d c vd0_c vd0 wb vd,
       wb_rep vd0 wb vd ->
-      cache_rep d c vd0 ->
+      vd0 = hide_readers vd0_c ->
+      cache_rep d c vd0_c ->
+      no_wb_reader_conflict c wb ->
       forall a, In a (map fst (wb_writes wb)) ->
            exists v0, d a = Some (v0, None).
   Proof.
     intros.
+    specialize (H2 a).
     edestruct in_addr_to_in_entry; eauto.
-    eapply wb_cache_states; eauto.
-    apply wb_writes_complete'; eauto.
+    apply wb_writes_complete' in H4.
+    learn that simpl (wb_rep_eq ltac:(eauto) _ ltac:(eauto));
+      destruct_ands; repeat deex.
+    apply hide_readers_eq' in H7; deex.
+    specialize (H1 a);
+      destruct matches in *;
+      destruct_ands;
+      repeat deex;
+      eauto;
+      try congruence.
+    intuition idtac;
+      try congruence;
+      destruct_ands;
+      repeat deex;
+      eauto.
   Qed.
 
   Hint Resolve wb_writes_valid_addresses.
@@ -1107,24 +1073,9 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
   Hint Resolve no_wb_reader_conflict_empty.
 
-  Lemma hide_readers_upd_buffered_writes : forall entries d,
-      hide_readers (upd_buffered_writes d entries) =
-      upd_all (hide_readers d) entries.
-  Proof.
-    unfold upd_buffered_writes.
-    induction entries; intros.
-    reflexivity.
-    destruct a as [a v]; simpl.
-    extensionality a'.
-    destruct (nat_dec a a'); subst.
-    unfold hide_readers; autorewrite with upd; auto.
-    rewrite <- IHentries.
-    unfold hide_readers; autorewrite with upd; auto.
-  Qed.
-
   Lemma wb_rep_upd_all : forall d wb vd,
       wb_rep d wb vd ->
-      upd_all (hide_readers d) (wb_writes wb) = vd.
+      upd_all d (wb_writes wb) = vd.
   Proof.
     unfold wb_rep; intros.
     extensionality a.
@@ -1140,13 +1091,6 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Qed.
 
   Hint Resolve wb_rep_upd_all.
-
-  Lemma upd_buffered_writes_cons : forall vd entries a v,
-      upd_buffered_writes vd ((a, v) :: entries) =
-      upd (upd_buffered_writes vd entries) a (v, None).
-  Proof.
-    reflexivity.
-  Qed.
 
   Lemma same_domain_upd_buffered_writes : forall entries vd,
       (forall a v, In (a, v) entries -> exists v0, vd a = Some v0) ->
@@ -1174,6 +1118,22 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       auto.
   Qed.
 
+  Lemma wb_vd0_c_val : forall vd0_c vd0 wb vd a v,
+      wb_rep vd0 wb vd ->
+      vd0 = hide_readers vd0_c ->
+      vd a = Some v ->
+      exists vr0, vd0_c a = Some vr0.
+  Proof.
+    intros; subst.
+    specialize (H a); destruct matches in *;
+      destruct_ands; repeat deex.
+    apply hide_readers_eq' in H2; deex; eauto.
+    rewrite H in H1.
+    apply hide_readers_eq' in H1; deex; eauto.
+  Qed.
+
+  Hint Resolve wb_vd0_c_val.
+
   Theorem cache_commit_ok :
       SPEC App.delta, tid |-
               {{ (_:unit),
@@ -1188,30 +1148,29 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
               }} cache_commit.
   Proof.
     hoare.
+    eapply wb_rep_empty; eauto.
+    rewrite <- H5; auto.
     rewrite hide_readers_upd_buffered_writes; auto.
+
+    rewrite <- H5; auto.
+
     apply same_domain_upd_buffered_writes; eauto.
     intros.
-    apply wb_writes_complete' in H7.
-    specialize (H5 a); simpl_match; destruct_ands; deex.
+
+    apply wb_writes_complete' in H8.
+    learn that simpl (wb_rep_eq ltac:(eauto) _ ltac:(eauto));
+      destruct_ands; repeat deex.
     eauto.
   Qed.
 
   Hint Extern 1 {{cache_commit; _}} => apply cache_commit_ok : prog.
 
   Lemma wb_rep_id : forall vd,
-      wb_rep vd emptyWriteBuffer (hide_readers vd).
+      wb_rep vd emptyWriteBuffer vd.
   Proof.
-    unfold wb_rep, hide_readers; intros.
+    unfold wb_rep; intros.
     rewrite wb_get_empty.
-    destruct matches.
-  Qed.
-
-  Lemma no_wb_reader_conflict_empty : forall c,
-      no_wb_reader_conflict c emptyWriteBuffer.
-  Proof.
-    unfold no_wb_reader_conflict; intros;
-      rewrite wb_get_empty;
-      auto.
+    auto.
   Qed.
 
   Hint Resolve wb_rep_id no_wb_reader_conflict_empty.
@@ -1277,10 +1236,8 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Proof.
     intros.
     subst vd'.
-    apply same_domain_hide_readers.
     transitivity vd; eauto.
-    symmetry.
-    eauto.
+    symmetry; eauto.
   Qed.
 
   Hint Resolve same_domain_same_vdisk.
@@ -1324,16 +1281,6 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       learn that (cache_clean_value_vdisk Hrep Hval)
     end.
 
-  Lemma wb_missing_value_vdisk : forall d wb vd a v rdr,
-      wb_rep d wb vd ->
-      wb_get wb a = WbMissing ->
-      d a = Some (v, rdr) ->
-      vd a = Some v.
-  Proof.
-    unfold wb_rep; intros.
-    specialize (H a); repeat simpl_match; auto.
-  Qed.
-
   Ltac wb_rep_fwd :=
     match goal with
     | [ Hrep: wb_rep _ ?wb _,
@@ -1367,21 +1314,27 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Proof.
     hoare.
     (* TODO: eauto on v = v' goals is slow but info_eauto shows nothing *)
+    rewrite H6 in H10.
+    unfold hide_readers in H10; simpl_match.
+    congruence.
+
+    rewrite H6 in H10.
+    unfold hide_readers in H10; simpl_match.
+    congruence.
 
     eexists; simplify; finish.
     hoare.
 
-    eexists; simplify; finish.
-    hoare.
-
-    replace (get vDisk0 s0).
-    rewrite hide_readers_unchanged_remove; auto.
+    replace (get vDisk0 s0);
+      autorewrite with readers;
+      auto.
 
     eexists; simplify; finish.
     hoare.
 
-    replace (get vDisk0 s0).
-    rewrite hide_readers_unchanged_add; auto.
+    replace (get vDisk0 s0);
+      autorewrite with readers;
+      auto.
   Qed.
 
   Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
