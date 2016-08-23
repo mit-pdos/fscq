@@ -3638,7 +3638,8 @@ Module DIRTREE.
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
            [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) nblocks ($0, nil)) (BFILE.BFAttr f) ]] *
            [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                           ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] )
+                           ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
+           [[ nblocks >= Datatypes.length (BFILE.BFData f) -> BFILE.treeseq_ilist_safe inum ilist ilist' ]])
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F ds hm'
     >} truncate fsxp inum nblocks mscs.

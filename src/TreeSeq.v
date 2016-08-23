@@ -96,7 +96,7 @@ Module TREESEQ.
   Proof.
     unfold treeseq_in_ds; simpl; intuition.
     apply NEforall2_pushd; intuition.
-    rewrite _pushd.
+    rewrite latest_pushd.
     eapply NEforall2_impl; eauto.
     intuition.
     intuition.
@@ -469,79 +469,6 @@ Module TREESEQ.
     eapply NEforall_d_in; eauto.
   Qed.
 
-(*
-  Lemma treeseq_upd_safe_truncate': forall ts pathname off flag inum file ilist' frees',
-    let file' := {|
-               BFILE.BFData := setlen (BFILE.BFData file) 1 ($ (0), []);
-               BFILE.BFAttr := BFILE.BFAttr file |} in
-    let tree' := mk_tree (update_subtree pathname (TreeFile inum file') (TStree ts !!)) ilist' frees' in
-    treeseq_pred (treeseq_grow_safe pathname off flag tree') ts ->
-    treeseq_pred (treeseq_upd_safe pathname off flag tree') ts.
-  Proof.
-    intros.
-    unfold treeseq_pred.
-    eapply NEforall_d_in'; intros.
-    unfold treeseq_upd_safe.
-    intros.
-    unfold treeseq_pred in H.
-    eapply NEforall_d_in in H as H'; eauto.
-  Qed.
-
-  Lemma treeseq_grow_safe_grow: forall ts pathname inum off flag file ilist' frees',
-    let file' := {|
-                 BFILE.BFData := setlen (BFILE.BFData file) 1 ($ (0), []);
-                 BFILE.BFAttr := BFILE.BFAttr file |} in
-    let tree' := mk_tree (update_subtree pathname (TreeFile inum file') (TStree ts !!)) ilist' frees' in
-    find_subtree pathname (TStree ts !!) = Some (TreeFile inum file) ->
-    True ->
-    treeseq_pred (treeseq_grow_safe pathname off flag ts !!) ts ->
-    True ->
-    treeseq_pred (treeseq_grow_safe pathname off flag tree') ts.
-   Proof.
-    intros.
-    unfold treeseq_pred.
-    eapply NEforall_d_in'.
-    intros.
-    unfold treeseq_pred in H1.
-    eapply NEforall_d_in in H1 as H1'; eauto.
-    unfold treeseq_grow_safe in *.
-    intros.
-    specialize (H1' bn inum file).
-    edestruct H1'.
-    eassumption.
-    destruct (find_subtree pathname (TStree x)).
-    destruct d.
-    split; eauto.
-    subst tree'; simpl in *.
-    erewrite find_update_subtree in H4.
-    inversion H4.
-    intuition.
-    subst; eauto.
-    rewrite <- H8.
-    rewrite H9.
-    eassumption.
-    eauto.
-    eauto.
-  Qed.
-
-  Lemma treeseq_upd_safe_truncate: forall F1 ts pathname off flag inum file ilist' frees',
-    let file' := {|
-               BFILE.BFData := setlen (BFILE.BFData file) 1 ($ (0), []);
-               BFILE.BFAttr := BFILE.BFAttr file |} in
-    let tree' := mk_tree (update_subtree pathname (TreeFile inum file') (TStree ts !!)) ilist' frees' in
-    treeseq_pred (treeseq_grow_safe pathname off flag ts !!) ts ->
-    (F1 * pathname |-> Some (inum, file))%pred (dir2flatmem2 (TStree ts !!)) ->
-    tree_names_distinct (TStree ts !!) ->
-    treeseq_pred (treeseq_upd_safe pathname off flag tree') (pushd tree' ts).
-  Proof.
-    intros.
-    unfold treeseq_pred.
-    eapply NEforall_treeseq_upd_safe_pushd.
-    eapply treeseq_upd_safe_truncate'; eauto.
-    eapply treeseq_grow_safe_grow; auto.
-    eapply dir2flatmem2_find_subtree_ptsto; eauto.
-  Qed.
-*)
 
   Ltac distinct_names' :=
     repeat match goal with
@@ -902,7 +829,6 @@ Module TREESEQ.
     eassumption.
   Qed.
 
-  (* A more restricted version of truncate intended to be used with treeseq_safe *)
   Theorem treeseq_file_grow_ok : forall fsxp inum newlen mscs,
   {< ds ts pathname Fm Ftop Ftree f,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
@@ -944,7 +870,7 @@ Module TREESEQ.
     unfold tree_rep.
     unfold treeseq_one_safe.
     simpl in *.
-    rewrite H4 in H13.
+    rewrite H4 in H14.
     eassumption.
     eapply treeseq_safe_pushd_update_subtree; eauto.
     distinct_names'.
@@ -952,18 +878,16 @@ Module TREESEQ.
     distinct_inodes.
     eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred.
     rewrite DIRTREE.rep_length in Hpred; destruct_lift Hpred.
-    rewrite DIRTREE.rep_length in H11; destruct_lift H11.
-    congruence.
+    rewrite DIRTREE.rep_length in H12; destruct_lift H12.
+    congruence. 
 
     unfold dirtree_safe in *.
     intuition.
-    rewrite H4 in H9; eauto.
-
-    admit.  (* XXX lower truncate ops must promise: BFILE.treeseq_ilist_safe inum (TSilist ts !!) ilist' *)
+    rewrite H4 in H10; eauto.
 
     eapply dir2flatmem2_update_subtree; eauto.
     distinct_names'.
-  Admitted.
+  Qed.
 
 
 (*

@@ -1595,7 +1595,8 @@ Module BFILE.
           f' = mk_bfile ((BFData f) ++ synced_list (firstn i l)) (BFAttr f) ]] *
         [[ MSAlloc ms = MSAlloc ms0 /\
            ilist_safe ilist (pick_balloc frees (MSAlloc ms)) 
-                      ilist' (pick_balloc frees' (MSAlloc ms)) ]]
+                      ilist' (pick_balloc frees' (MSAlloc ms)) ]] *
+        [[ treeseq_ilist_safe inum ilist ilist' ]]
       OnCrash
         LOG.intact lxp F m0 hm
       Begin
@@ -1607,7 +1608,6 @@ Module BFILE.
         end
       Rof ^(ms0, OK tt);
     Ret ^(ms, ret).
-
 
 
   Definition truncate lxp bxp xp inum newsz ms :=
@@ -1644,7 +1644,8 @@ Module BFILE.
            [[[ (BFData f') ::: (Fd * arrayN (@ptsto _ addr_eq_dec _) (length (BFData f)) (synced_list l)) ]]] *
            [[ f' = mk_bfile ((BFData f) ++ (synced_list l)) (BFAttr f) ]] *
            [[ ilist_safe ilist (pick_balloc frees (MSAlloc ms')) 
-                      ilist' (pick_balloc frees' (MSAlloc ms'))  ]]
+                      ilist' (pick_balloc frees' (MSAlloc ms'))  ]] *
+           [[ treeseq_ilist_safe inum ilist ilist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} grown lxp bxp ixp inum l ms.
   Proof.
@@ -1699,7 +1700,8 @@ Module BFILE.
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (setlen (BFData f) sz ($0, nil)) (BFAttr f) ]] *
            [[ ilist_safe ilist (pick_balloc frees (MSAlloc ms')) 
-                         ilist' (pick_balloc frees' (MSAlloc ms'))  ]]
+                         ilist' (pick_balloc frees' (MSAlloc ms'))  ]] *
+           [[ sz >= Datatypes.length (BFData f) -> treeseq_ilist_safe inum ilist ilist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} truncate lxp bxp ixp inum sz ms.
   Proof.
@@ -1711,6 +1713,7 @@ Module BFILE.
       step.
       or_r; safecancel.
       rewrite setlen_inbound, Rounding.sub_sub_assoc by omega; auto.
+      exfalso; omega.
       cancel.
 
     - safestep.
