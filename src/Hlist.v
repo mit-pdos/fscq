@@ -553,6 +553,28 @@ Proof.
   apply IHtypes1.
 Qed.
 
+Lemma HIn_happ : forall A (types1 types2: list A) (B:A -> Type)
+                   (l1: hlist B types1) (l2: hlist B types2)
+                   a (v: B a),
+    HIn v l1 ->
+    HIn v (happ l1 l2).
+Proof.
+  induction 1; eq_rect_simpl; rewrite happ_cons.
+  constructor.
+  constructor; auto.
+Qed.
+
+Lemma HIn_happ' : forall A (types1 types2: list A) (B:A -> Type)
+                   (l1: hlist B types1) (l2: hlist B types2)
+                   a (v: B a),
+    HIn v l2 ->
+    HIn v (happ l1 l2).
+Proof.
+  induction types1; intros; eq_rect_simpl; auto.
+  dependent inversion l1; subst.
+  rewrite happ_cons; constructor; auto.
+Qed.
+
 Theorem hlist_get_extensional : forall A (B: A -> Type) types
                             (l1 l2: hlist B types),
     (forall t (m: member t types), get m l1 = get m l2) ->
