@@ -3,8 +3,10 @@ Import List.ListNotations.
 Open Scope list.
 
 Require Import Equality.
-Import EqdepTheory.
 Require Import Omega.
+Require Import Program.
+Import EqdepTheory.
+Import EqNotations.
 
 Set Implicit Arguments.
 
@@ -442,10 +444,6 @@ Definition app_member_l A (types1 types2:list A)
 Proof.
   induction m; cbn; auto using HFirst, HNext.
 Defined.
-
-Import EqNotations.
-
-Require Import Program.
 
 Ltac eq_rect_simpl :=
   unfold eq_rect_r, eq_rec_r, eq_rec;
