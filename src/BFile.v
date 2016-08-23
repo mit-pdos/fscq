@@ -859,6 +859,35 @@ Module BFILE.
     all: try exact unit; eauto using tt.
   Qed.
 
+  Lemma grow_treeseq_ilist_safe: forall (ilist: list INODE.inode) ilist' inum a,
+    inum < Datatypes.length ilist ->
+    (arrayN_ex (ptsto (V:=INODE.inode)) ilist inum
+     ✶ inum
+       |-> {|
+           INODE.IBlocks := INODE.IBlocks (selN ilist inum INODE.inode0) ++ [$ (a)];
+           INODE.IAttr := INODE.IAttr (selN ilist inum INODE.inode0) |})%pred (list2nmem ilist') ->
+    treeseq_ilist_safe inum ilist ilist'.
+  Proof.
+    intros.
+    unfold treeseq_ilist_safe, block_belong_to_file.
+    apply arrayN_except_upd in H0 as Hselupd; auto.
+    apply list2nmem_array_eq in Hselupd; subst.
+    split. 
+    intros.
+    split.
+    erewrite selN_updN_eq; simpl.
+    erewrite app_length.
+    omega.
+    simplen'.
+    intuition.
+    erewrite selN_updN_eq; simpl.
+    erewrite selN_app; eauto.
+    simplen'.
+    intros.
+    erewrite selN_updN_ne; eauto.
+    intuition.
+  Qed.
+
 
   Theorem grow_ok : forall lxp bxp ixp inum v ms,
     {< F Fm Fi Fd m0 m flist ilist frees f,
@@ -915,8 +944,8 @@ Module BFILE.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOC.bn_valid_goodSize; eauto.
       apply list2nmem_app; eauto.
-      
-      2:admit.  (* prove treeseq_ilist_safe *)
+
+      2: eapply grow_treeseq_ilist_safe in H24; eauto.
 
       2: cancel.
       2: or_l; cancel.
@@ -964,8 +993,8 @@ Module BFILE.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOC.bn_valid_goodSize; eauto.
       apply list2nmem_app; eauto.
-    
-      2: admit. (* prove treeseq_ilist_safe *)
+
+      2: eapply grow_treeseq_ilist_safe in H24; eauto.
 
       2: cancel.
       2: or_l; cancel.
