@@ -84,42 +84,32 @@ Module App <: GlobalProtocol.
 
 End App.
 
-Theorem vdisk_not_cache_or_disk0 :
-  HIn CacheProtocol.vdisk [(CacheProtocol.vCache; CacheProtocol.vDisk0)] -> False.
-Proof.
-  rewrite (hin_iff_index_in CacheProtocol.vdisk); simpl.
-  unfold CacheProtocol.vCache, CacheProtocol.vdisk, CacheProtocol.vDisk0.
-  simpl.
-  repeat (rewrite get_first; simpl) ||
-         (rewrite get_next; simpl).
-  intuition.
-Qed.
+Ltac unfold_list l :=
+  match l with
+  | HNil => idtac
+  | HCons ?v ?l' => unfold v; unfold_list l'
+  end.
 
-Theorem vdisk0_not_cache_or_disk0 :
-  HIn CacheProtocol.vdisk0 [(CacheProtocol.vCache; CacheProtocol.vDisk0)] -> False.
-Proof.
-  rewrite (hin_iff_index_in CacheProtocol.vdisk0); simpl.
-  unfold CacheProtocol.vCache, CacheProtocol.vdisk0, CacheProtocol.vDisk0.
-  simpl.
-  repeat (rewrite get_first; simpl) ||
-         (rewrite get_next; simpl).
-  intuition.
-Qed.
+Ltac prove_not_hin :=
+  match goal with
+  | |- HIn ?v ?l -> False =>
+    rewrite (hin_iff_index_in v); simpl;
+    unfold v; unfold_list l; simpl;
+    repeat (rewrite get_first; simpl) ||
+           (rewrite get_next; simpl);
+    intuition auto
+  end.
 
-Theorem vWriteBuffer_not_cache_or_disk0 :
-  HIn CacheProtocol.vWriteBuffer [(CacheProtocol.vCache; CacheProtocol.vDisk0)] -> False.
-Proof.
-  rewrite (hin_iff_index_in CacheProtocol.vWriteBuffer); simpl.
-  unfold CacheProtocol.vCache, CacheProtocol.vWriteBuffer, CacheProtocol.vDisk0.
-  simpl.
-  repeat (rewrite get_first; simpl) ||
-         (rewrite get_next; simpl).
-  intuition.
-Qed.
+Hint Extern 3 (HIn _ _ -> False) => prove_not_hin.
 
-Hint Resolve vdisk_not_cache_or_disk0.
-Hint Resolve vdisk0_not_cache_or_disk0.
-Hint Resolve vWriteBuffer_not_cache_or_disk0.
+Ltac not_modified v :=
+  match goal with
+  | [ H: modified _ ?s ?s' |- _ ] =>
+    lazymatch goal with
+    | [ H: get v s = get v s' |- _ ] => fail
+    | _ => assert (get v s = get v s') by (apply H; prove_not_hin)
+    end
+  end.
 
 Module CacheSub <: CacheSubProtocol.
   Module App := App.
@@ -146,8 +136,7 @@ Module CacheSub <: CacheSubProtocol.
     simpl; intros.
     unfold App.copyGuar; split; auto.
     unfold destinations_readonly; intros.
-    assert (get vdisk s = get vdisk s').
-    apply H0; auto.
+    not_modified vdisk.
     congruence.
   Qed.
 
@@ -167,13 +156,11 @@ Module CacheSub <: CacheSubProtocol.
     Top.CacheProtocol.vdisk0,
     Top.CacheProtocol.vDisk0 in *;
       fold vdisk vdisk0 vDisk0 in *.
-    assert (get vdisk s = get vdisk s') as Heq.
-    apply H0; auto.
-    assert (get vdisk0 s = get vdisk0 s') as Heq0.
-    apply H0; auto.
+    not_modified vdisk.
+    not_modified vdisk0.
     unfold id in *.
-    rewrite <- Heq.
-    rewrite <- Heq0.
+    rewrite <- H4.
+    rewrite <- H5.
     auto.
   Qed.
 
@@ -189,14 +176,9 @@ Definition copy :=
     | None => _ <- cache_abort;
                _ <- Yield 0;
                Ret false
-    | Some v => ok <- cache_write (tid+1) v;
-                 if ok then
-                   _ <- cache_commit;
-                   Ret true
-                 else
-                   _ <- cache_abort;
-                 _ <- Yield (tid+1);
-                 Ret false
+    | Some v => _ <- cache_write (tid+1) v;
+                 _ <- cache_commit;
+                 Ret true
     end.
 
 Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
@@ -247,7 +229,10 @@ Proof.
   hoare.
   split; eauto.
   unfold cache_committed.
-  unfolds; congruence.
+  unfolds.
+  not_modified vdisk0.
+  unfold CopyState.Sigma in *.
+  congruence.
 Qed.
 
 Hint Extern 1 {{cache_abort; _}} => apply cache_abort_ok : prog.
@@ -266,6 +251,23 @@ Proof.
 Qed.
 
 Hint Resolve guar_refl.
+
+Lemma invariant_cache_committed : forall d m s,
+    invariant App.delta d m s ->
+    get vdisk s = get vdisk0 s.
+Proof.
+  destruct 1; auto.
+Qed.
+
+Hint Resolve invariant_cache_committed.
+
+Ltac simp_hook ::=
+     match goal with
+     | [ H: invariant App.delta _ _ _ |- _ ] =>
+       learn that (invariant_cache_committed H)
+     end ||
+     (progress repeat not_modified vdisk) ||
+     (progress repeat not_modified vdisk0).
 
 Theorem copy_ok :
     SPEC App.delta, tid |-
@@ -295,6 +297,7 @@ Proof.
   subst.
 
   eexists; simplify; finish.
+
   (* TODO: get vdisk s0's are different - probably something
   module-related *) (* get vdisk s0 equality is about variable in
   CopyState.Sigma whereas goal is about CacheSub.App.Sigma *)
@@ -344,27 +347,6 @@ Proof.
   split.
   unshelve eapply cache_guar_tid_independent; eauto.
   apply destinations_readonly_vdisk_eq.
-  destruct H; unfold cache_committed in H; unfolds.
-  congruence.
-
-  eapply guar_preorder with s; eauto.
-  eapply guar_preorder with s0.
-  split; eauto.
-  split; eauto.
-  unfold destinations_readonly; intros; unfolds.
-  destruct H; unfold cache_committed in H; unfolds.
-  replace (get vdisk s1).
-  replace (get vdisk s0).
-  congruence.
-
-  eapply rely_trans with s1; eauto.
-  unfold rely, others.
-  eapply star_one_step.
-  exists (tid+1); split; [ omega | ].
-  split.
-  unshelve eapply cache_guar_tid_independent; eauto.
-  apply destinations_readonly_vdisk_eq.
-  destruct H; unfold cache_committed in H; unfolds.
   congruence.
 Qed.
 
