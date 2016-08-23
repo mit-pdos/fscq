@@ -223,17 +223,23 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       _ <- modify_cache (fun c => cache_add c a (Clean v));
       Ret v.
 
-  (** buffer a new write: fails (returns false) if the write overlaps
-  with the address being read filled *)
+  (** buffer a new write *)
   Definition cache_write a v :=
     c <- Get mCache;
+      let write :=
+          _ <- modify_wb (fun wb => wb_write wb a v:WriteBuffer);
+            var_update vdisk
+                       (fun vd => upd vd a v) in
       match cache_get c a with
-      | Invalid => Ret false
-      | _ =>
-        _ <- modify_wb (fun wb => wb_write wb a v:WriteBuffer);
-          _ <- var_update vdisk
-            (fun vd => upd vd a v);
-          Ret true
+        (* ideally in this branch we would cancel the pending IO and leave the
+        cache invalid, but this leaves a more complicated state for the
+        invariant to handle, and in any case prog provides no way to cancel an
+        IO other than to finish it. *)
+      | Invalid => _ <- finish_fill a;
+                    _ <- write;
+                    Ret tt
+      | _ => _ <- write;
+              Ret tt
       end.
 
   Fixpoint cache_add_all (c: Cache) (entries: list (addr * valu)) : Cache :=
@@ -851,6 +857,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                    | POST d' m' s_i' s' r:
                        invariant delta d' m' s' /\
                        modified [( vCache; vDisk0 )] s s' /\
+                       cache_get (get vCache s') a = Clean v0 /\
                        guar delta tid s s' /\
                        r = v0 /\
                        s_i' = s_i
@@ -861,6 +868,8 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     learn that simpl (cache_rep_eq ltac:(eauto) _ H0); repeat deex.
     do 2 eexists; simplify; finish.
     hoare.
+    rewrite cache_add_get_eq; auto.
+    congruence.
   Qed.
 
   Hint Extern 1 {{finish_fill _; _}} => apply finish_fill_ok : prog.
@@ -938,6 +947,33 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Hint Resolve cache_clean_vd0.
   Hint Resolve cache_dirty_vd0.
 
+  Local Lemma or_impl : forall (P Q R:Prop),
+      (P -> R) ->
+      (Q -> R) ->
+      P \/ Q -> R.
+  Proof.
+    tauto.
+  Qed.
+
+  Lemma vdisk_not_cache_disk0 : HIn vdisk [(vCache; vDisk0)] -> False.
+  Proof.
+    rewrite (hin_iff_index_in vdisk); simpl.
+    repeat (apply or_impl; [ vars_distinct | auto ]).
+  Qed.
+
+  Hint Resolve vdisk_not_cache_disk0.
+
+  Ltac vdisk_const :=
+    match goal with
+    | [ H: modified [(vCache; vDisk0)] ?s ?s' |- _ ] =>
+      lazymatch goal with
+      | [ H: get vdisk s = get vdisk s' |- _ ] => fail
+      | _ => assert (get vdisk s = get vdisk s') by (apply H; auto)
+      end
+    end.
+
+  Ltac simp_hook ::= vdisk_const.
+
   Theorem cache_write_ok : forall a v,
       SPEC App.delta, tid |-
               {{ v0,
@@ -946,16 +982,29 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                    get vdisk s a = Some v0
                | POST d' m' s_i' s' r:
                    invariant delta d' m' s' /\
-                   (r = true ->
-                    get vdisk s' = upd (get vdisk s) a v /\
-                    get vDisk0 s' = get vDisk0 s /\
-                    modified [(vWriteBuffer; vdisk)] s s') /\
-                   (r = false -> s' = s) /\
+                   get vdisk s' = upd (get vdisk s) a v /\
+                   (* vCache, vDisk0 and vWriteBuffer are unconcerning since
+                   they are cache-private variables; the point is that vdisk0
+                   doesn't change *)
+                   modified [(vCache; vDisk0; vWriteBuffer; vdisk)] s s' /\
                    guar delta tid s s' /\
                    s_i' = s_i
               }} cache_write a v.
   Proof.
     hoare.
+
+    eexists; simplify; finish.
+    hoare.
+    rewrite <- H11 in *; eauto.
+
+    apply modified_trans with s0; [ | solve_modified ].
+    eapply modified_reduce; eauto.
+    intros.
+    left.
+    change [(vCache; vDisk0; vWriteBuffer; vdisk)] with
+    (happ [(vCache; vDisk0)] [(vWriteBuffer; vdisk)]).
+    change [Cache; DISK; WriteBuffer; Disk] with ([Cache; DISK] ++ [WriteBuffer; Disk]).
+    apply HIn_happ; eauto.
   Qed.
 
   Hint Extern 1 {{cache_write _ _; _}} => apply cache_write_ok : prog.
@@ -1330,8 +1379,8 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       opt_v <- cache_read a;
         match opt_v with
         | None => Ret false
-        | Some v => ok <- cache_write a' v;
-                     Ret ok
+        | Some v => _ <- cache_write a' v;
+                     Ret true
         end.
 
     Hint Extern 1 {{cache_read _; _}} => apply cache_read_ok : prog.
@@ -1344,68 +1393,36 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       unfold same_domain; intuition eauto.
     Qed.
 
-    Lemma impl_trans : forall (P Q R:Prop),
-        (P -> Q) ->
-        (Q -> R) ->
-        (P -> R).
-    Proof.
-      tauto.
-    Qed.
-
-    Lemma or_impl : forall (P Q R:Prop),
-        (P -> R) ->
-        (Q -> R) ->
-        P \/ Q -> R.
-    Proof.
-      tauto.
-    Qed.
+    Ltac simp_hook ::= vdisk_const.
 
     Theorem copy_ok : forall a a',
         SPEC App.delta, tid |-
-                {{ v v0,
-                 | PRE d m s_i s:
-                     invariant delta d m s /\
-                     get vdisk s a = Some v /\
-                     get vdisk s a' = Some v0 /\
-                     guar delta tid s_i s
-                 | POST d' m' s_i' s' r:
-                     invariant delta d' m' s' /\
-                      (r = true ->
-                      get vdisk s' = upd (get vdisk s) a' v) /\
-                      s_i' = s_i
-                }} copy a a'.
+                    {{ v v0,
+                     | PRE d m s_i s:
+                         invariant delta d m s /\
+                         get vdisk s a = Some v /\
+                         get vdisk s a' = Some v0 /\
+                         guar delta tid s_i s
+                     | POST d' m' s_i' s' r:
+                         invariant delta d' m' s' /\
+                         (r = true ->
+                          get vdisk s' = upd (get vdisk s) a' v) /\
+                         s_i' = s_i
+                    }} copy a a'.
     Proof.
       hoare.
       eexists; simplify; finish.
 
       hoare.
-
-      match goal with
-      | [ H: same_domain (get vDisk0 s) (get vDisk0 s0) |- _ ] =>
-        pose proof (same_domain_fwd a' H)
-      end.
-
-      (* TODO: need same_domain across vdisks from invariant + guar; the value
-for get vdisk s0 a' does not matter, since it is overwritten *)
       eexists; simplify; finish.
-      admit.
+      rewrite <- H14 in *; eauto.
 
       hoare.
       match goal with
       | [ H: forall _, Some ?v = Some _ -> _ |- _ ] =>
         specialize (H v)
       end; simplify; finish.
-
-      replace (get vdisk s) with (get vdisk s0); auto.
-
-      symmetry.
-      match goal with
-      | [ H: modified _ s s0 |- _ ] =>
-        eapply H
-      end.
-      eapply impl_trans; [ apply hin_iff_index_in | ]; simpl.
-      repeat (apply or_impl; [ vars_distinct | ]); auto.
-    Admitted.
+    Qed.
 
   End CopyExample.
 

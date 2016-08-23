@@ -194,8 +194,8 @@ Section Modification.
     forall contents vartypes
       (vars vars': variables contents vartypes)
       (m m': hlist (fun T:Type => T) contents),
-      (forall t (v: var contents t), HIn v vars -> HIn v vars') ->
       modified vars m m' ->
+      (forall t (v: var contents t), HIn v vars -> HIn v vars') ->
       modified vars' m m'.
   Proof.
     firstorder.
@@ -222,9 +222,9 @@ Section Modification.
       (vars: variables contents vartypes)
       (vars': variables contents vartypes')
       (m m': hlist (fun T:Type => T) contents),
+      modified vars m m' ->
       (forall t (v: var contents t), (HIn v vars -> HIn v vars' \/
                                               get v m = get v m')) ->
-      modified vars m m' ->
       modified vars' m m'.
   Proof.
     unfold modified; intros.
