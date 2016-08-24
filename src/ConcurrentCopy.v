@@ -350,6 +350,13 @@ Proof.
   congruence.
 Qed.
 
+CoFixpoint copy_retry :=
+  ok <- copy;
+    if ok then
+      Ret tt
+    else
+      copy_retry.
+
 (* Local Variables: *)
 (* company-coq-local-symbols: (("delta" . ?δ) ("Sigma" . ?Σ)) *)
 (* End: *)
