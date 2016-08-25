@@ -293,6 +293,68 @@ Section CoopConcur.
 
   Hint Constructors exec.
 
+  Section StuckExecution.
+
+    Inductive exec' {tid:TID} : forall T, prog T -> state -> (state * T) -> Prop :=
+    | ExecRet' : forall T (v:T) st,
+        exec' (Ret v) st (st, v)
+    | ExecStep' : forall T (p: prog T) st v st',
+        step tid p st st' v ->
+        exec' p st (st', v)
+    | ExecBind' : forall T T' (p: prog T') (p': T' -> prog T)
+                    st v st' out,
+        exec' p st (st', v) ->
+        exec' (p' v) st' out ->
+        exec' (Bind p p') st out.
+
+    Arguments exec' tid {T} p st out.
+
+    Hint Constructors exec'.
+
+    Theorem exec_exec'_equiv : forall tid T (p: prog T) st st' v,
+        exec tid p st (Finished st' v) <->
+        exec' tid p st (st', v).
+    Proof.
+      split; intros.
+      - match goal with
+        | [ H: exec _ _ _ ?st' |- _ ] =>
+          remember st'
+        end.
+        generalize dependent st'.
+        induction H; intros;
+          match goal with
+          | [ H: @eq (outcome _) _ _ |- _ ] =>
+            inversion H; subst
+          end; eauto.
+      - match goal with
+        | [ H: exec' _ _ _ ?st' |- _ ] =>
+          remember st'
+        end.
+        generalize dependent st'.
+        induction H; intros;
+          match goal with
+          | [ H: @eq (state * _) _ _ |- _ ] =>
+            inversion H; subst
+          end; eauto.
+    Qed.
+
+    Theorem fail_stuck_equiv : forall tid T (p: prog T) st,
+        fail_step tid p st ->
+        forall out, ~exec' tid p st out.
+    Proof.
+      intros.
+      intro.
+      inversion H; subst;
+        repeat sigT_eq;
+        match goal with
+        | [ H: exec' _ _ _ _ |- _ ] =>
+          inversion H; subst; repeat sigT_eq
+        end;
+        inv_step; congruence.
+    Qed.
+
+  End StuckExecution.
+
   (* clear up dependent equalities produced by inverting step and fail_step *)
   Ltac inv_fail_step :=
     match goal with
