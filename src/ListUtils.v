@@ -1398,15 +1398,17 @@ Lemma concat_hom_subselect_skipn : forall A n off k (l: list (list A)) (def: lis
   eapply Forall_cons2; eassumption.
 Qed.
 
-Fact div_ge_subt : forall a b, b <= a -> b <> 0 -> (a - b) / b = a / b - 1.
+Fact div_ge_subt : forall a b, b <> 0 -> (a - b) / b = a / b - 1.
 Proof.
   intros.
+  destruct (le_lt_dec b a).
   apply plus_minus.
   rewrite plus_comm.
-  eapply Nat.div_add in H0.
+  eapply Nat.div_add in H.
   rewrite Nat.mul_1_l in *.
   erewrite Nat.sub_add in * by eassumption.
   eassumption.
+  repeat rewrite Nat.div_small by omega. auto.
 Qed.
 
 Fact mod_subt : forall a b, b >= a -> (b - a) mod a = b mod a.
@@ -2555,4 +2557,3 @@ Proof.
   f_equal.
   rewrite skipn_app_r. auto.
 Qed.
-Search (?a * ?b <= ?a * ?c).

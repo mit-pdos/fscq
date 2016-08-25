@@ -534,6 +534,30 @@ Section LISTMATCH.
     apply H; solve [eapply in_combine_l; eauto |eapply in_combine_r; eauto].
   Qed.
 
+  Theorem listmatch_repeat_l : forall v n l2,
+    listmatch (repeat v n) l2 <=p=> [[ n = length l2 ]] * listpred (prd v) l2.
+  Proof.
+    unfold listmatch. intros.
+    rewrite repeat_length.
+    destruct (Nat.eq_dec n (length l2)); [> | split; cancel].
+    apply piff_star_l; subst.
+    induction l2; intros.
+    - rewrite combine_l_nil. split; cancel.
+    - simpl. rewrite IHl2. auto.
+  Qed.
+
+  Theorem listmatch_repeat_r : forall v n l1,
+    listmatch l1 (repeat v n) <=p=> [[ length l1 = n]] * listpred (fun x => prd x v) l1.
+  Proof.
+    unfold listmatch. intros.
+    rewrite repeat_length.
+    destruct (Nat.eq_dec n (length l1)); [> | split; cancel].
+    apply piff_star_l; subst.
+    induction l1; intros.
+    - rewrite combine_l_nil. split; cancel.
+    - simpl. rewrite IHl1. auto.
+  Qed.
+
 End LISTMATCH.
 
 Theorem listmatch_lift : forall A B AT AEQ V prd (l1 : list A) (l2 : list B) F P,
