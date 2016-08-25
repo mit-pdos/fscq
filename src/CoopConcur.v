@@ -353,6 +353,54 @@ Section CoopConcur.
         inv_step; congruence.
     Qed.
 
+    Inductive smallstep (tid:TID) : forall T (p: prog T) (st: state)
+                                      (p': prog T) (st': state), Prop :=
+    | smallstep_step : forall T (p: prog T) st st' v,
+        step tid p st st' v ->
+        smallstep tid p st (Ret v) st'
+    | smallstep_bind1 : forall T T' (p1: prog T') (p2: T' -> prog T) st p1' st',
+        smallstep tid p1 st p1' st' ->
+        smallstep tid (Bind p1 p2) st (Bind p1' p2) st'
+    | smallstep_bind_ret : forall T T' v (p: T' -> prog T) st,
+        smallstep tid (Bind (Ret v) p) st (p v) st.
+
+    Inductive smallstep_star (tid:TID) T (p: prog T) (st: state) :
+      forall (p': prog T) (st': state), Prop :=
+    | smallstep_refl :
+        smallstep_star tid p st p st
+    | smallstep_trans : forall p' st' p'' st'',
+        smallstep tid p st p' st' ->
+        smallstep_star tid p' st' p'' st'' ->
+        smallstep_star tid p st p'' st''.
+
+    Hint Constructors smallstep.
+    Hint Constructors smallstep_star.
+
+    Theorem smallstep_star_trans : forall tid T (p: prog T) st p' st' p'' st'',
+        smallstep_star tid p st p' st' ->
+        smallstep_star tid p' st' p'' st'' ->
+        smallstep_star tid p st p'' st''.
+    Proof.
+      induction 1; eauto.
+    Qed.
+
+    Theorem exec'_to_smallstep : forall tid T (p: prog T) st st' v,
+        exec' tid p st (st', v) ->
+        smallstep_star tid p st (Ret v) st'.
+    Proof.
+      intros.
+      remember (st', v).
+      generalize dependent st'.
+      induction H; intros; inversion Heqp0; subst; eauto.
+      specialize (IHexec'1 v0 st').
+      specialize (IHexec'2 v st'0).
+      intuition.
+      eapply smallstep_star_trans with (st':=st'); eauto.
+      clear H H0.
+      remember (Ret v0).
+      induction H3; subst; eauto.
+    Qed.
+
   End StuckExecution.
 
   (* clear up dependent equalities produced by inverting step and fail_step *)
