@@ -1162,118 +1162,6 @@ Admitted.
     distinct_names'.
   Qed.
 
-
-(*
-  Lemma treeseq_upd_safe_upd: forall Fm fsxp Ftop mscs Ftree Fd ts ds d' pathname f f' off vs v inum bn,
-    (Fm ✶ rep fsxp Ftop (update_subtree pathname (TreeFile inum f') (TStree ts !!)) (TSilist ts !!)
-         (fst (TSfree ts !!), snd (TSfree ts !!)))%pred (list2nmem (dsupd ds bn (v, vsmerge vs)) !!)->
-    (Ftree ✶ pathname |-> Some (inum, f))%pred (dir2flatmem2 (TStree ts !!)) -> 
-    (Fd ✶ off |-> vs)%pred (list2nmem (BFILE.BFData f)) ->
-    (Fd ✶ off |-> (v, vsmerge vs))%pred (list2nmem (BFILE.BFData f')) ->
-    BFILE.block_belong_to_file (TSilist ts !!) bn inum off ->
-    treeseq_upd_safe pathname off (MSAlloc mscs) ts !! d' ->
-    tree_names_distinct (TStree ts !!) ->
-    treeseq_upd_safe pathname off (MSAlloc mscs)
-      (treeseq_one_upd ts !! pathname off (v, vsmerge vs))
-      (treeseq_one_upd d' pathname off (v, vsmerge vs)).
-  Proof.
-    intros.
-    eapply dir2flatmem2_find_subtree_ptsto in H0 as H0'; eauto.
-    unfold treeseq_one_upd.
-    erewrite dir2flatmem2_find_subtree_ptsto; eauto.
-    case_eq (DIRTREE.find_subtree pathname (TStree d')).
-    - (* case 1: a directory or a file *)
-      intros; subst.
-      destruct d.
-      + (* a file *)
-        destruct (lt_dec off (Datatypes.length (BFILE.BFData b))).
-        * (* block is present *) 
-          unfold treeseq_upd_safe in *. simpl in *; intros.
-          erewrite find_update_subtree in H7; eauto.
-          inversion H7; subst.
-          right.
-          exists {|
-             BFILE.BFData := (BFILE.BFData b) ⟦ off := (v, vsmerge vs) ⟧;
-             BFILE.BFAttr := BFILE.BFAttr b |}.
-          specialize (H4 bn inum0 f H0' H3).
-          rewrite H6 in H4.
-          destruct H4; auto.
-          (* case 1 of H4: block is in unused in old tree *)
-          intuition.
-          omega.
-          omega.
-           (* case 2 of H4: block is in use in old tree *)
-          destruct H4.
-          erewrite find_update_subtree; eauto.
-          intuition.
-          inversion H9; eauto.
-          eapply block_belong_to_file_bn_eq in H8; eauto.
-          subst; eauto.
-        * (* block isn't present *)
-          unfold treeseq_upd_safe in *. simpl in *. intros.
-          erewrite find_update_subtree in H7; eauto.
-          inversion H7; subst.
-          specialize (H4 bn inum0 f H0' H3).
-          destruct H4.
-          rewrite H6 in H4 at 1.
-          destruct H4.
-          left.
-          (* case 1 of H4: block is unused *)
-          eapply block_belong_to_file_bn_eq in H8; eauto.
-          subst; eauto.
-          erewrite find_update_subtree; eauto.
-          split; eauto.
-          intuition.
-          erewrite updN_oob; eauto.
-          (* case 2 of H4: block is in use *)
-          right.
-          destruct H4.
-          exists x.
-          erewrite updN_oob; eauto.
-          erewrite find_update_subtree; eauto.
-          intuition.
-          inversion H9.
-          rewrite H6.
-          f_equal.
-          f_equal.
-          destruct b; eauto.
-          eapply block_belong_to_file_bn_eq in H8; eauto.
-          subst; eauto.
-          omega.
-       + (* a directory *)
-        unfold treeseq_upd_safe in H4.
-        specialize (H4 bn inum f H0' H3).
-        rewrite H6 in H4.
-        destruct H4.
-        (* first case *)
-        intuition.
-        (* second case *)
-        destruct H4.
-        intuition.
-        inversion H7.
-    - (* case 2: non existing *)
-      unfold treeseq_upd_safe in *. simpl in *; intros.
-      erewrite find_update_subtree in H7; eauto.
-      inversion H7; subst.
-      specialize (H4 bn inum0 f H0' H3).
-      rewrite H6 in H4.
-      left.
-      destruct H4.
-      (* case 1 of H4: block is unused *)
-      split.
-      eapply block_belong_to_file_bn_eq in H8; eauto.
-      subst; eauto.
-      intuition.
-      rewrite H6; eauto.
-     (* case 2 of H4: block is in use in a file *)
-      destruct H4.
-      intuition.
-      exfalso.
-      inversion H9.
-      inversion H9.
-   Qed.
-*)
-
   Lemma block_is_unused_xor_belong_to_file : forall F Ftop fsxp t m flag bn inum off,
     tree_rep F Ftop fsxp t m ->
     BFILE.block_is_unused (BFILE.pick_balloc (TSfree t) flag) bn ->
@@ -1334,6 +1222,62 @@ Admitted.
       eapply block_is_unused_xor_belong_to_file; eauto.
   Qed.
 
+  Lemma treeseq_one_upd_alternative : forall t pathname off v,
+    treeseq_one_upd t pathname off v =
+    mk_tree (match find_subtree pathname (TStree t) with
+             | Some (TreeFile inum f) => update_subtree pathname (TreeFile inum (BFILE.mk_bfile (updN (BFILE.BFData f) off v) (BFILE.BFAttr f))) (TStree t)
+             | Some (TreeDir _ _) => TStree t
+             | None => TStree t
+             end) (TSilist t) (TSfree t).
+  Proof.
+    intros.
+    unfold treeseq_one_upd.
+    case_eq (find_subtree pathname (TStree t)); intros.
+    destruct d; auto.
+    destruct t; auto.
+    destruct t; auto.
+  Qed.
+
+  Lemma treeseq_one_safe_dsupd : forall tolder tnewest mscs mscs' pathname off v inum f,
+    treeseq_one_safe tolder tnewest mscs ->
+    find_subtree pathname (TStree tnewest) = Some (TreeFile inum f) ->
+    MSAlloc mscs' = MSAlloc mscs ->
+    treeseq_one_safe (treeseq_one_upd tolder pathname off v)
+      (treeseq_one_upd tnewest pathname off v) mscs'.
+  Proof.
+    unfold treeseq_one_safe; intros.
+    repeat rewrite treeseq_one_upd_alternative; simpl.
+    rewrite H0; simpl.
+    rewrite H1; clear H1 mscs'.
+    unfold dirtree_safe in *; intuition.
+    destruct (list_eq_dec string_dec pathname0 pathname); subst.
+    - erewrite find_update_subtree in H; eauto.
+      inversion H; subst.
+      edestruct H2; eauto.
+      left.
+      intuition.
+      repeat deex.
+      exists pathname'.
+      case_eq (find_subtree pathname (TStree tolder)); intros; eauto.
+      destruct d; eauto.
+      destruct (list_eq_dec string_dec pathname' pathname); subst.
+      + erewrite find_update_subtree; eauto.
+        rewrite H4 in H6; inversion H6. eauto.
+      + rewrite find_subtree_update_subtree_ne_path by auto; eauto.
+    - rewrite find_subtree_update_subtree_ne_path in H by auto.
+      edestruct H2; eauto.
+      left.
+      intuition.
+      repeat deex.
+      exists pathname'.
+      case_eq (find_subtree pathname (TStree tolder)); intros; eauto.
+      destruct d; eauto.
+      destruct (list_eq_dec string_dec pathname' pathname); subst.
+      + erewrite find_update_subtree; eauto.
+        rewrite H4 in H6; inversion H6. eauto.
+      + rewrite find_subtree_update_subtree_ne_path by auto; eauto.
+  Qed.
+
   Theorem treeseq_in_ds_upd : forall F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file (TSilist (ts !!)) bn inum off ->
@@ -1351,8 +1295,9 @@ Admitted.
     simpl; intros.
     intuition; subst.
     eapply tree_rep_nth_upd; eauto.
-    eapply tree_safe_upd; eauto.
-   Qed.
+    rewrite d_map_latest.
+    eapply treeseq_one_safe_dsupd; eauto.
+  Qed.
 
 
   (* A less general version of AFS.update_fblock_d, but easier to use for applications.
