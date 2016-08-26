@@ -199,6 +199,23 @@ Module TREESEQ.
     BFILE.ilist_safe (TSilist tolder)  (BFILE.pick_balloc (TSfree tolder)  flag)
                      (TSilist tnewest) (BFILE.pick_balloc (TSfree tnewest) flag).
 
+  Theorem treeseq_safe_trans: forall pathname flag t0 t1 t2,
+    treeseq_safe pathname flag t0 t1 ->
+    treeseq_safe pathname flag t1 t2 ->
+    treeseq_safe pathname flag t0 t2.
+  Proof.
+    unfold treeseq_safe; intuition.
+    - unfold treeseq_safe_fwd in *; intuition.
+    - unfold treeseq_safe_bwd in *; intuition.
+      specialize (H0 _ _ _ H3).
+      inversion H0; eauto.
+      right.
+      unfold BFILE.ilist_safe in H5; destruct H5.
+      eapply In_incl.
+      apply H6.
+      eauto.
+    - eapply BFILE.ilist_safe_trans; eauto.
+  Qed.
 
   Lemma tree_file_flist: forall F Ftop Ftree flist  tree pathname inum f,
     (Ftree * pathname |-> Some(inum, f))%pred (dir2flatmem2 tree) -> 
