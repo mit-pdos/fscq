@@ -26,6 +26,7 @@ Require Import Inode.
 Require Import GenSepAuto.
 Require Import DiskSet.
 Require Import Errno.
+Require Import Lock.
 
 
 Import ListNotations.
@@ -212,6 +213,54 @@ Module BFILE.
   Definition block_is_unused_dec freeblocks (bn : addr) :
     { block_is_unused freeblocks bn } + { ~ block_is_unused freeblocks bn }
     := In_dec addr_eq_dec bn freeblocks.
+
+  Lemma block_is_unused_xor_belong_to_file : forall F Ftop fsxp files ilist free m flag bn inum off,
+    (F * rep fsxp Ftop files ilist free)%pred m ->
+    block_is_unused (pick_balloc free flag) bn ->
+    block_belong_to_file ilist bn inum off ->
+    False.
+  Proof.
+    unfold rep, block_is_unused, block_belong_to_file; intuition.
+    rewrite <- locked_eq with (x := bn) in H3.
+    destruct_lift H.
+    rewrite listmatch_isolate with (i := inum) in H.
+    unfold file_match at 2 in H.
+    erewrite listmatch_isolate with (i := off) (a := (BFData files ⟦ inum ⟧)) in H by simplen.
+    erewrite selN_map in H; eauto.
+    unfold BALLOC.rep in H; destruct_lift H.
+    unfold BALLOC.Alloc.rep in H; destruct_lift H.
+    destruct flag; simpl in *.
+    - rewrite listpred_pick in H15 by eauto.
+      rewrite H15 in H.
+      destruct_lift H.
+      rewrite locked_eq in H3.
+      rewrite <- H3 in H; clear H3.
+      eapply ptsto_conflict_F with (m := m) (a := bn).
+      pred_apply.
+      destruct ((BFData files ⟦ inum ⟧) ⟦ off ⟧).
+      cancel.
+    - rewrite listpred_pick in H17 by eauto.
+      rewrite H17 in H.
+      destruct_lift H.
+      rewrite locked_eq in H3.
+      rewrite <- H3 in H; clear H3.
+      eapply ptsto_conflict_F with (m := m) (a := bn).
+      pred_apply.
+      destruct ((BFData files ⟦ inum ⟧) ⟦ off ⟧).
+      cancel.
+    - erewrite listmatch_length_r; eauto.
+      destruct (lt_dec inum (length ilist)); eauto.
+      rewrite selN_oob in H2 by omega.
+      unfold INODE.inode0 in H2; simpl in *; omega.
+    - destruct (lt_dec inum (length ilist)); eauto.
+      rewrite selN_oob in H2 by omega.
+      unfold INODE.inode0 in H2; simpl in *; omega.
+
+    Grab Existential Variables.
+    exact ($0, nil).
+    exact bfile0.
+    exact 0.
+  Qed.
 
   Definition ilist_safe ilist1 free1 ilist2 free2 :=
     incl free2 free1 /\
