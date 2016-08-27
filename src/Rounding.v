@@ -821,3 +821,14 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     apply Nat.min_r.
     apply roundup_ge; auto.
   Qed.
+
+  Lemma roundup_gt : forall a b, b <> 0 -> a mod b <> 0 -> a < roundup a b.
+  Proof.
+    intros.
+    unfold roundup.
+    rewrite divup_eq_div_plus_1 by auto.
+    rewrite Nat.mul_add_distr_r. rewrite mult_1_l.
+    rewrite Nat.div_mod with (x := a) (y := b) at 1 by auto.
+    rewrite mult_comm.
+    assert (a mod b < b) by (apply Nat.mod_upper_bound; auto). omega.
+  Qed.
