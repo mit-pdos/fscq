@@ -444,7 +444,16 @@ Proof.
   apply H0; assumption.
 Qed.
 
-
+Theorem firstn_app_split : forall T (l1 l2 : list T) n,
+  firstn n (l1 ++ l2) = firstn n l1 ++ firstn (n - length l1) l2.
+Proof.
+  intros.
+  destruct (le_lt_dec n (length l1)).
+  - rewrite firstn_app_l by auto.
+    replace (_ - _) with 0 by omega. rewrite app_nil_r. auto.
+  - rewrite firstn_app_le by omega.
+    f_equal. rewrite firstn_oob by omega. auto.
+Qed.
 
 Lemma forall_app_r : forall A P (a b : list A),
   Forall P (a ++ b) -> Forall P a.

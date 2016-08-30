@@ -30,6 +30,143 @@ Import ListNotations.
 Set Implicit Arguments.
 
 
+Definition upd_range {T} l start len (v : T) :=
+  firstn start l ++ repeat v len ++ skipn (start + len) l.
+
+Lemma upd_range_0 : forall T l start (v : T),
+  upd_range l start 0 v = l.
+Proof.
+  intros. unfold upd_range. rewrite plus_0_r. rewrite firstn_skipn. auto.
+Qed.
+
+Lemma upd_range_length : forall T l start len (v : T),
+  start + len <= length l ->
+  length (upd_range l start len v) = length l.
+Proof.
+  intros.
+  unfold upd_range. repeat rewrite app_length.
+  rewrite firstn_length_l by omega.
+  rewrite skipn_length. rewrite repeat_length. omega.
+Qed.
+
+Theorem upd_range_selN : forall T l start len (v : T) n d,
+  start <= n < start + len ->
+  start + len <= length l ->
+  selN (upd_range l start len v) n d = v.
+Proof.
+  intros.
+  unfold upd_range. rewrite selN_app2.
+  rewrite selN_app1. rewrite repeat_selN. auto.
+  all : rewrite firstn_length_l by omega.
+  all : try rewrite repeat_length.
+  all : omega.
+Qed.
+
+Lemma upd_range_concat_hom_small : forall T l start len (v : T) k d,
+  start + len <= length (concat l) ->
+  Forall (fun l' => length l' = k) l ->
+  start mod k + len <= k ->
+  0 < k -> 0 < len ->
+  upd_range (concat l) start len v =
+  concat (updN l (start / k) (upd_range (selN l (start / k) d) (start mod k) len v)).
+Proof.
+  intros.
+  unfold upd_range.
+  erewrite concat_hom_length in * by eauto.
+  erewrite <- concat_hom_updN_first_skip; eauto.
+  erewrite concat_hom_subselect_firstn; eauto.
+  erewrite <- concat_hom_skipn; eauto.
+  rewrite <- skipn_firstn_comm. rewrite mult_comm. rewrite <- Nat.div_mod by auto.
+  erewrite <- Nat.min_l with (n := _ * _) at 1. rewrite <- firstn_firstn.
+  repeat rewrite app_assoc. rewrite firstn_skipn.
+  repeat rewrite <- app_assoc. repeat f_equal.
+  erewrite concat_hom_subselect_skipn; eauto.
+  rewrite <- skipn_firstn_comm.
+  rewrite le_plus_minus_r by auto.
+  erewrite <- concat_hom_skipn; eauto.
+  rewrite <- skipn_firstn_comm.
+  rewrite skipn_skipn. rewrite Nat.add_shuffle0.
+  rewrite plus_comm with (m := _ * _). rewrite mult_comm. rewrite <- Nat.div_mod by auto.
+  remember (k - start mod k - len) as e.
+  replace k with (start mod k + len + e) at 3 6 by omega.
+  repeat rewrite plus_assoc. rewrite <- Nat.div_mod by auto.
+  rewrite skipn_firstn_comm.
+  rewrite plus_comm with (m := e).
+  repeat rewrite <- skipn_skipn.
+  rewrite firstn_skipn. auto.
+  all : try (apply Nat.div_lt_upper_bound; auto; rewrite mult_comm; omega).
+  all : try apply Nat.mul_div_le; auto.
+Qed.
+
+Lemma upd_range_concat_hom_start_aligned : forall T l start len (v : T) k d,
+  start + len <= length (concat l) ->
+  Nat.divide k start ->
+  Forall (fun l' => length l' = k) l ->
+  0 < len <= k -> 0 < k ->
+  upd_range (concat l) start len v =
+  concat (updN l (start / k) (upd_range (selN l (start / k) d) 0 len v)).
+Proof.
+  intros.
+  rewrite <- Nat.mod_divide in * by auto.
+  erewrite upd_range_concat_hom_small; eauto. substl (start mod k). auto.
+  all : omega.
+Qed.
+
+Theorem upd_range_same : forall T start len n (v : T), start + len <= n ->
+  upd_range (repeat v n) start len v = repeat v n.
+Proof.
+  unfold upd_range. intros.
+  rewrite firstn_repeat, skipn_repeat by omega.
+  repeat rewrite repeat_app. f_equal. omega.
+Qed.
+
+Lemma forall_upd_range : forall T l start len (v : T) f,
+  Forall f l -> f v -> Forall f (upd_range l start len v).
+Proof.
+  intros.
+  unfold upd_range. repeat apply Forall_append.
+  apply forall_firstn. auto.
+  apply Forall_repeat. auto.
+  apply forall_skipn. auto.
+Qed.
+
+Lemma firstn_upd_range : forall T l n n' len (v : T),
+  n <= n' -> n <= length l -> firstn n (upd_range l n' len v) = firstn n l.
+Proof.
+  intros. unfold upd_range. rewrite firstn_app_l.
+  rewrite firstn_firstn. rewrite Nat.min_comm.
+  min_cases; auto; omega.
+  rewrite firstn_length. min_cases; omega.
+Qed.
+
+Lemma concat_hom_upd_range : forall T l start len (v : T) k,
+  Forall (fun x => length x = k) l ->
+  concat (upd_range l start len (repeat v k)) = upd_range (concat l) (start * k) (len * k) v.
+Proof.
+  intros.
+  unfold upd_range. rewrite concat_hom_firstn by auto.
+  rewrite <- Nat.mul_add_distr_r. rewrite concat_hom_skipn by auto.
+  repeat rewrite concat_app. erewrite concat_hom_repeat with (l := repeat _ _).
+  rewrite repeat_length. eauto.
+  apply Forall_repeat. auto.
+Qed.
+
+Lemma upd_range_upd_range : forall T l start len1 len2 (v : T),
+  start + len1 + len2 <= length l ->
+  upd_range (upd_range l start len1 v) (start + len1) len2 v = upd_range l start (len1 + len2) v.
+Proof.
+  intros.
+  unfold upd_range.
+  rewrite firstn_app_le by (rewrite firstn_length_l; omega).
+  rewrite firstn_length_l by omega. rewrite minus_plus.
+  rewrite firstn_app by (autorewrite with lists; auto).
+  repeat rewrite <- app_assoc. f_equal. rewrite app_assoc. rewrite repeat_app. f_equal.
+  rewrite skipn_app_r_ge; rewrite firstn_length_l by omega.
+  rewrite skipn_app_r_ge; autorewrite with lists.
+  rewrite skipn_skipn. f_equal.
+  all : omega.
+Qed.
+
 Module Type BlockPtrSig.
 
   Parameter irec     : Type.               (* inode record type *)
@@ -638,6 +775,16 @@ Module BlockPtr (BPtr : BlockPtrSig).
     apply Nat.div_str_pos; omega.
   Qed.
 
+  Fact divide_plus_div : forall a b c, Nat.divide c a -> Nat.divide c b ->
+    (a + b) / c = a / c + b / c.
+  Proof.
+    intros.
+    destruct (Nat.eq_dec 0 c). subst. auto.
+    repeat match goal with [H : Nat.divide _ _ |- _] => destruct H end.
+    subst.
+    repeat rewrite Nat.div_add by auto. repeat rewrite Nat.div_mul by auto. auto.
+  Qed.
+
   Local Hint Resolve divup_gt_0.
 
   Theorem in_removeN_enumerate : forall T a b n (l : list T),
@@ -667,6 +814,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
     | [H : In ?a (removeN (enumerate _) _) |- _ ] => destruct a; in_enumerate
     | [H : In ?a (enumerate _) |- _ ] => destruct a; in_enumerate
   end.
+
+  Ltac min_cases :=
+    let H := fresh in let H' := fresh in
+    edestruct Min.min_spec as [ [H H']|[H H'] ];
+    rewrite H' in *; clear H'.
 
   Ltac mult_nonzero := 
     repeat (match goal with
@@ -763,6 +915,18 @@ Module BlockPtr (BPtr : BlockPtrSig).
     apply Forall_repeat. auto.
   Qed.
 
+  Theorem listpred_indrep_n_tree_0 : forall indlvl bxp l,
+    listpred (fun l' => indrep_n_tree indlvl bxp 0 l') l <=p=>
+      [[ Forall (fun x => x = repeat $0 (NIndirect ^ S indlvl)) l ]].
+  Proof.
+    induction l; intros.
+    - split; cancel. constructor.
+    - simpl. rewrite IHl.
+      rewrite indrep_n_tree_0.
+      split; cancel.
+      all : match goal with [H : Forall _ _ |- _] => inversion H; auto end.
+  Qed.
+
   Lemma indrep_n_helper_length : forall bxp ibn l m,
     indrep_n_helper bxp ibn l m -> length l = NIndirect.
   Proof.
@@ -794,6 +958,24 @@ Module BlockPtr (BPtr : BlockPtrSig).
     intros x y.
     split; [> rewrite IHindlvl |]; cancel.
   Qed.
+
+  Lemma listmatch_indrep_n_tree_forall_length : forall indlvl bxp (l1 : list waddr) l2,
+    listmatch (fun ibn' l' =>indrep_n_tree indlvl bxp # (ibn') l') l1 l2 <=p=>
+    listmatch (fun ibn' l' =>indrep_n_tree indlvl bxp # (ibn') l') l1 l2 *
+    [[Forall (fun sublist : list waddr => (length sublist = NIndirect * NIndirect ^ indlvl)%nat) l2]].
+  Proof.
+    intros.
+    split; [> | cancel].
+    rewrite listmatch_lift_r at 1. cancel. eauto.
+    intros. rewrite indrep_n_length_pimpl. split; cancel.
+  Qed.
+
+  Local Hint Extern 1 (Forall (fun x => length x = _) _) => match goal with
+    | [H : context [listmatch (fun x y => indrep_n_tree _ _ # x y) _ ?l]
+        |- Forall (fun x => length x = _) ?l ] =>
+          rewrite listmatch_indrep_n_tree_forall_length in H; destruct_lift H; solve [eassumption]
+    | [|- Forall _ (upd_range ?l _ _ _)] => apply forall_upd_range; autorewrite with lists; eauto
+  end.
 
   Theorem indrep_n_helper_pts_piff : forall bxp ir l,
     ir <> 0 -> indrep_n_helper bxp ir l <=p=> [[ length l = NIndirect ]] *
@@ -901,6 +1083,16 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite indrep_n_length_pimpl. split; cancel.
   Qed.
 
+  Lemma indrep_n_indlist_forall_length' : forall F F' indlvl bxp ir l1 l2 m,
+    (((F ✶ indrep_n_helper bxp ir l1)
+        ✶ listmatch
+            (fun ibn' l' =>indrep_n_tree indlvl bxp # (ibn') l') l1 l2) * F')%pred m ->
+    Forall (fun sublist : list waddr => length sublist = NIndirect * NIndirect ^ indlvl) l2.
+  Proof.
+    intros. eapply indrep_n_indlist_forall_length. eapply pimpl_apply; [> | exact H].
+    cancel. rewrite sep_star_comm. rewrite <- sep_star_assoc. apply pimpl_refl.
+  Qed.
+
   Lemma indrep_index_bound_helper' : forall Fm Fm' off indlvl bxp bn iblocks l_part m,
     off < length (concat l_part) ->
     ((Fm * indrep_n_helper bxp bn iblocks) *
@@ -915,7 +1107,69 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite sep_star_comm, <- sep_star_assoc. apply pimpl_refl.
   Qed.
 
-  Local Hint Resolve indrep_n_indlist_forall_length.
+  Local Hint Resolve indrep_n_indlist_forall_length indrep_n_indlist_forall_length'.
+
+  Lemma indrep_n_roundup_helper_1 : forall a b n, n <> 0 ->
+    n - a mod n < b -> roundup a n - a <= b.
+  Proof.
+    intros.
+    destruct (addr_eq_dec (a mod n) 0).
+    unfold roundup. rewrite divup_eq_div by auto. rewrite mul_div by mult_nonzero. omega.
+    rewrite roundup_eq by mult_nonzero. rewrite minus_plus. omega.
+  Qed.
+  Local Hint Resolve indrep_n_roundup_helper_1.
+
+  Theorem roundup_round : forall a n, roundup a n / n * n = roundup a n.
+  Proof.
+    intros.
+    destruct (Nat.eq_dec n 0). subst. unfold roundup. auto.
+    unfold roundup. rewrite Nat.div_mul by auto. auto.
+  Qed.
+
+  Theorem indclear_upd_range_helper_1 : forall T l l' l'' start (v : T) n k d,
+    k <> 0 -> n <> 0 ->
+    start mod (n * k) <> 0 ->
+    start <= length (concat l) ->
+    length l'' = n * k ->
+    concat l' = upd_range l'' (start mod (n * k)) (roundup (start mod (n * k)) k - start mod (n * k)) v ->
+    selN l (start / (n * k)) d = l'' ->
+    Forall (fun x => length x = k) l' ->
+    Forall (fun x => length x = n * k) l ->
+    concat (updN l (start / (n * k)) (
+      concat (upd_range l' (divup (start mod (n * k)) k) (n - divup (start mod (n * k)) k)
+                (repeat v k)
+    ))) = upd_range (concat l) start (n * k - start mod (n * k)) v.
+  Proof.
+    intros.
+    erewrite concat_hom_length in * by eauto.
+    erewrite upd_range_concat_hom_small.
+    rewrite concat_hom_upd_range by eauto.
+    substl (concat l'). f_equal. f_equal.
+    substl l''.
+    erewrite eq_trans with (x := divup _ _ * _); [> | reflexivity|].
+    rewrite upd_range_upd_range; eauto. f_equal.
+    rewrite Nat.mul_sub_distr_r.
+    rewrite <- Nat.add_sub_swap. rewrite le_plus_minus_r. auto.
+    all : eauto; autorewrite with core.
+    all : ((apply roundup_le; auto) ||
+           (apply roundup_ge; mult_nonzero) ||
+           solve [mult_nonzero] ||
+           unfold roundup; auto with *).
+    rewrite <- Nat.mul_add_distr_r.
+    match goal with [H : _ |- _ ] => rewrite H end.
+    substl (length l''). apply mult_le_compat_r.
+    autorewrite with core; auto.
+    apply divup_le. rewrite mult_comm. auto.
+    erewrite concat_hom_length by eauto.
+    rewrite Nat.add_sub_assoc by auto. rewrite plus_comm.
+    rewrite <- Nat.add_sub_assoc by (apply Nat.mod_le; mult_nonzero).
+    rewrite sub_mod_eq_round by mult_nonzero.
+    rewrite <- mult_1_l with (n := _ * _) at 1. rewrite <- Nat.mul_add_distr_r.
+    apply mult_le_compat_r. simpl.
+    apply Nat.div_lt_upper_bound; mult_nonzero.
+    rewrite mult_comm. edestruct le_lt_eq_dec; eauto.
+    subst. rewrite Nat.mod_mul in * by mult_nonzero. intuition.
+  Qed.
 
   Ltac indrep_n_tree_bound := solve [
         eapply indrep_index_length_helper_l; eauto; omega  |
@@ -959,6 +1213,17 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Hint Extern 1 (BALLOC.bn_valid _ _) => match goal with
     [H : context [indrep_n_helper _ ?ir] |- BALLOC.bn_valid _ ?ir] =>
     rewrite indrep_n_helper_valid in H by omega; destruct_lift H; auto end.
+
+  Local Hint Extern 1 (goodSize _ _) => match goal with
+  | [|- goodSize _ ?a] =>
+    destruct (addr_eq_dec a 0); [> substl a; apply DiskLogHash.PaddedLog.goodSize_0 |];
+    rewrite indrep_n_tree_valid with (ir := a) in * by auto; destruct_lifts;
+    eapply BALLOC.bn_valid_goodSize; eassumption
+  end.
+
+  Hint Rewrite le_plus_minus_r using auto.
+  Local Hint Extern 1 (?a mod ?b < ?b) => apply Nat.mod_bound_pos; mult_nonzero.
+  Local Hint Extern 1 (0 < ?n - ?m) => (apply Nat.lt_add_lt_sub_r; simpl; auto).
 
   (************* n-indirect program *)
 
@@ -1089,7 +1354,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
     Grab Existential Variables. all : eauto; split; solve [eauto | exact ($0)].
   Qed.
 
-  (* TODO put this after indread *)
   Local Hint Extern 1 ({{_}} Bind (indread _ _ _ _ ) _) => apply indread_ok : prog.
 
   Fixpoint indclear_all indlvl lxp bxp root ms : prog (LOG.mstate * Cache.cachestate) :=
@@ -1169,50 +1433,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Qed.
 
   Local Hint Extern 1 ({{_}} Bind (indclear_all _ _ _ _ _ ) _) => apply indclear_all_ok : prog.
-
-  Definition upd_range {T} l start len (v : T) :=
-    firstn start l ++ repeat v len ++ skipn (start + len) l.
-
-  Lemma upd_range_0 : forall T l start (v : T),
-    upd_range l start 0 v = l.
-  Proof.
-    intros. unfold upd_range. rewrite plus_0_r. rewrite firstn_skipn. auto.
-  Qed.
-
-  Lemma upd_range_length : forall T l start len (v : T),
-    start + len <= length l ->
-    length (upd_range l start len v) = length l.
-  Proof.
-    intros.
-    unfold upd_range. repeat rewrite app_length.
-    rewrite firstn_length_l by omega.
-    rewrite skipn_length. rewrite repeat_length. omega.
-  Qed.
-
-(* TODO move this *)
-  Theorem listpred_indrep_n_tree_0 : forall indlvl bxp l,
-    listpred (fun l' => indrep_n_tree indlvl bxp 0 l') l <=p=>
-      [[ Forall (fun x => x = repeat $0 (NIndirect ^ S indlvl)) l ]].
-  Proof.
-    induction l; intros.
-    - split; cancel. constructor.
-    - simpl. rewrite IHl.
-      rewrite indrep_n_tree_0.
-      split; cancel.
-      all : match goal with [H : Forall _ _ |- _] => inversion H; auto end.
-  Qed.
-
-(* TODO move this *)
-  Lemma indrep_n_indlist_forall_length' : forall F F' indlvl bxp ir l1 l2 m,
-    (((F ✶ indrep_n_helper bxp ir l1)
-        ✶ listmatch
-            (fun ibn' l' =>indrep_n_tree indlvl bxp # (ibn') l') l1 l2) * F')%pred m ->
-    Forall (fun sublist : list waddr => length sublist = NIndirect * NIndirect ^ indlvl) l2.
-  Proof.
-    intros. eapply indrep_n_indlist_forall_length. eapply pimpl_apply; [> | exact H].
-    cancel. rewrite sep_star_comm. rewrite <- sep_star_assoc. apply pimpl_refl.
-  Qed.
-  Local Hint Resolve indrep_n_indlist_forall_length'.
 
   Theorem indrep_bound_helper_1 : forall a b n N,
     N <> 0 ->
@@ -1307,31 +1527,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
     Grab Existential Variables. all : eauto; split.
   Qed.
 
-  (* TODO move this *)
-  Theorem upd_range_selN : forall T l start len (v : T) n d,
-    start <= n < start + len ->
-    start + len <= length l ->
-    selN (upd_range l start len v) n d = v.
-  Proof.
-    intros.
-    unfold upd_range. rewrite selN_app2.
-    rewrite selN_app1. rewrite repeat_selN. auto.
-    all : rewrite firstn_length_l by omega.
-    all : try rewrite repeat_length.
-    all : omega.
-  Qed.
-
-  (* TODO move this *)
-  Fact divide_plus_div : forall a b c, Nat.divide c a -> Nat.divide c b ->
-    (a + b) / c = a / c + b / c.
-  Proof.
-    intros.
-    destruct (Nat.eq_dec 0 c). subst. auto.
-    repeat match goal with [H : Nat.divide _ _ |- _] => destruct H end.
-    subst.
-    repeat rewrite Nat.div_add by auto. repeat rewrite Nat.div_mul by auto. auto.
-  Qed.
-
   Local Hint Extern 1 ({{_}} Bind (indclear_aligned _ _ _ _ _ _ _ ) _) => apply indclear_aligned_ok : prog.
 
   Definition update_block lxp bxp bn contents new ms :=
@@ -1396,123 +1591,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
         end
       }
     }.
-
-(*TODO move this*)
-  Lemma upd_range_concat_hom_small : forall T l start len (v : T) k d,
-    start + len <= length (concat l) ->
-    Forall (fun l' => length l' = k) l ->
-    start mod k + len <= k ->
-    0 < k -> 0 < len ->
-    upd_range (concat l) start len v =
-    concat (updN l (start / k) (upd_range (selN l (start / k) d) (start mod k) len v)).
-  Proof.
-    intros.
-    unfold upd_range.
-    erewrite concat_hom_length in * by eauto.
-    erewrite <- concat_hom_updN_first_skip; eauto.
-    erewrite concat_hom_subselect_firstn; eauto.
-    erewrite <- concat_hom_skipn; eauto.
-    rewrite <- skipn_firstn_comm. rewrite mult_comm. rewrite <- Nat.div_mod by auto.
-    erewrite <- Nat.min_l with (n := _ * _) at 1. rewrite <- firstn_firstn.
-    repeat rewrite app_assoc. rewrite firstn_skipn.
-    repeat rewrite <- app_assoc. repeat f_equal.
-    erewrite concat_hom_subselect_skipn; eauto.
-    rewrite <- skipn_firstn_comm.
-    rewrite le_plus_minus_r by auto.
-    erewrite <- concat_hom_skipn; eauto.
-    rewrite <- skipn_firstn_comm.
-    rewrite skipn_skipn. rewrite Nat.add_shuffle0.
-    rewrite plus_comm with (m := _ * _). rewrite mult_comm. rewrite <- Nat.div_mod by auto.
-    remember (k - start mod k - len) as e.
-    replace k with (start mod k + len + e) at 3 6 by omega.
-    repeat rewrite plus_assoc. rewrite <- Nat.div_mod by auto.
-    rewrite skipn_firstn_comm.
-    rewrite plus_comm with (m := e).
-    repeat rewrite <- skipn_skipn.
-    rewrite firstn_skipn. auto.
-    all : try (apply Nat.div_lt_upper_bound; auto; rewrite mult_comm; omega).
-    all : try apply Nat.mul_div_le; auto.
-  Qed.
-
-  Lemma upd_range_concat_hom_start_aligned : forall T l start len (v : T) k d,
-    start + len <= length (concat l) ->
-    Nat.divide k start ->
-    Forall (fun l' => length l' = k) l ->
-    0 < len <= k -> 0 < k ->
-    upd_range (concat l) start len v =
-    concat (updN l (start / k) (upd_range (selN l (start / k) d) 0 len v)).
-  Proof.
-    intros.
-    rewrite <- Nat.mod_divide in * by auto.
-    erewrite upd_range_concat_hom_small; eauto. substl (start mod k). auto.
-    all : omega.
-  Qed.
-
-  (* TODO move this *)
-  Theorem upd_range_same : forall T start len n (v : T), start + len <= n ->
-    upd_range (repeat v n) start len v = repeat v n.
-  Proof.
-    unfold upd_range. intros.
-    rewrite firstn_repeat, skipn_repeat by omega.
-    repeat rewrite repeat_app. f_equal. omega.
-  Qed.
-
-(* TODO move this *)
-  Lemma listmatch_indrep_n_tree_forall_length : forall indlvl bxp (l1 : list waddr) l2,
-    listmatch (fun ibn' l' =>indrep_n_tree indlvl bxp # (ibn') l') l1 l2 <=p=>
-    listmatch (fun ibn' l' =>indrep_n_tree indlvl bxp # (ibn') l') l1 l2 *
-    [[Forall (fun sublist : list waddr => (length sublist = NIndirect * NIndirect ^ indlvl)%nat) l2]].
-  Proof.
-    intros.
-    split; [> | cancel].
-    rewrite listmatch_lift_r at 1. cancel. eauto.
-    intros. rewrite indrep_n_length_pimpl. split; cancel.
-  Qed.
-
-  Lemma forall_upd_range : forall T l start len (v : T) f,
-    Forall f l -> f v -> Forall f (upd_range l start len v).
-  Proof.
-    intros.
-    unfold upd_range. repeat apply Forall_append.
-    apply forall_firstn. auto.
-    apply Forall_repeat. auto.
-    apply forall_skipn. auto.
-  Qed.
-
-  Local Hint Extern 1 (Forall (fun x => length x = _) _) => match goal with
-    | [H : context [listmatch (fun x y => indrep_n_tree _ _ # x y) _ ?l]
-        |- Forall (fun x => length x = _) ?l ] =>
-          rewrite listmatch_indrep_n_tree_forall_length in H; destruct_lift H; solve [eassumption]
-    | [|- Forall _ (upd_range ?l _ _ _)] => apply forall_upd_range; autorewrite with lists; eauto
-  end.
-
-  Lemma concat_hom_upd_range : forall T l start len (v : T) k,
-    Forall (fun x => length x = k) l ->
-    concat (upd_range l start len (repeat v k)) = upd_range (concat l) (start * k) (len * k) v.
-  Proof.
-    intros.
-    unfold upd_range. rewrite concat_hom_firstn by auto.
-    rewrite <- Nat.mul_add_distr_r. rewrite concat_hom_skipn by auto.
-    repeat rewrite concat_app. erewrite concat_hom_repeat with (l := repeat _ _).
-    rewrite repeat_length. eauto.
-    apply Forall_repeat. auto.
-  Qed.
-
-  Lemma upd_range_upd_range : forall T l start len1 len2 (v : T),
-    start + len1 + len2 <= length l ->
-    upd_range (upd_range l start len1 v) (start + len1) len2 v = upd_range l start (len1 + len2) v.
-  Proof.
-    intros.
-    unfold upd_range.
-    rewrite firstn_app_le by (rewrite firstn_length_l; omega).
-    rewrite firstn_length_l by omega. rewrite minus_plus.
-    rewrite firstn_app by (autorewrite with lists; auto).
-    repeat rewrite <- app_assoc. f_equal. rewrite app_assoc. rewrite repeat_app. f_equal.
-    rewrite skipn_app_r_ge; rewrite firstn_length_l by omega.
-    rewrite skipn_app_r_ge; autorewrite with lists.
-    rewrite skipn_skipn. f_equal.
-    all : omega.
-  Qed.
 
   Theorem indclear_from_aligned_ok : forall indlvl lxp bxp indbns start len ms,
     let N := NIndirect ^ S indlvl in
@@ -1697,57 +1775,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
         end
       }
     }.
-
-(* TODO move these *)
-Hint Rewrite le_plus_minus_r using auto.
-      Local Hint Extern 1 (?a mod ?b < ?b) => apply Nat.mod_bound_pos; mult_nonzero.
-      Local Hint Extern 1 (0 < ?n - ?m) => (apply Nat.lt_add_lt_sub_r; simpl; auto).
-
-(* TODO move this *)
-  Theorem indclear_upd_range_helper_1 : forall T l l' l'' start (v : T) n k d,
-    k <> 0 -> n <> 0 ->
-    start mod (n * k) <> 0 ->
-    start <= length (concat l) ->
-    length l'' = n * k ->
-    concat l' = upd_range l'' (start mod (n * k)) (roundup (start mod (n * k)) k - start mod (n * k)) v ->
-    selN l (start / (n * k)) d = l'' ->
-    Forall (fun x => length x = k) l' ->
-    Forall (fun x => length x = n * k) l ->
-    concat (updN l (start / (n * k)) (
-      concat (upd_range l' (divup (start mod (n * k)) k) (n - divup (start mod (n * k)) k)
-                (repeat v k)
-    ))) = upd_range (concat l) start (n * k - start mod (n * k)) v.
-  Proof.
-    intros.
-    erewrite concat_hom_length in * by eauto.
-    erewrite upd_range_concat_hom_small.
-    rewrite concat_hom_upd_range by eauto.
-    substl (concat l'). f_equal. f_equal.
-    substl l''.
-    erewrite eq_trans with (x := divup _ _ * _); [> | reflexivity|].
-    rewrite upd_range_upd_range; eauto. f_equal.
-    rewrite Nat.mul_sub_distr_r.
-    rewrite <- Nat.add_sub_swap. rewrite le_plus_minus_r. auto.
-    all : eauto; autorewrite with core.
-    all : ((apply roundup_le; auto) ||
-           (apply roundup_ge; mult_nonzero) ||
-           solve [mult_nonzero] ||
-           unfold roundup; auto with *).
-    rewrite <- Nat.mul_add_distr_r.
-    match goal with [H : _ |- _ ] => rewrite H end.
-    substl (length l''). apply mult_le_compat_r.
-    autorewrite with core; auto.
-    apply divup_le. rewrite mult_comm. auto.
-    erewrite concat_hom_length by eauto.
-    rewrite Nat.add_sub_assoc by auto. rewrite plus_comm.
-    rewrite <- Nat.add_sub_assoc by (apply Nat.mod_le; mult_nonzero).
-    rewrite sub_mod_eq_round by mult_nonzero.
-    rewrite <- mult_1_l with (n := _ * _) at 1. rewrite <- Nat.mul_add_distr_r.
-    apply mult_le_compat_r. simpl.
-    apply Nat.div_lt_upper_bound; mult_nonzero.
-    rewrite mult_comm. edestruct le_lt_eq_dec; eauto.
-    subst. rewrite Nat.mod_mul in * by mult_nonzero. intuition.
-  Qed.
 
   Theorem indclear_to_aligned_ok : forall indlvl lxp bxp indbns start ms,
     let N := NIndirect ^ S indlvl in
@@ -1955,24 +1982,6 @@ Hint Rewrite le_plus_minus_r using auto.
       }
     }.
 
-  (* TODO move this *)
-  Lemma indrep_n_roundup_helper_1 : forall a b n, n <> 0 ->
-    n - a mod n < b -> roundup a n - a <= b.
-  Proof.
-    intros.
-    destruct (addr_eq_dec (a mod n) 0).
-    unfold roundup. rewrite divup_eq_div by auto. rewrite mul_div by mult_nonzero. omega.
-    rewrite roundup_eq by mult_nonzero. rewrite minus_plus. omega.
-  Qed.
-  Local Hint Resolve indrep_n_roundup_helper_1.
-
-  (* TODO move this *)
-  Theorem roundup_round : forall a n, roundup a n / n * n = roundup a n.
-  Proof.
-    intros.
-    destruct (Nat.eq_dec n 0). subst. unfold roundup. auto.
-    unfold roundup. rewrite Nat.div_mul by auto. auto.
-  Qed.
   Theorem indclear_ok : forall indlvl lxp bxp ir start len ms,
     {< F Fm m0 m l freelist,
     PRE:hm
@@ -2197,6 +2206,8 @@ Hint Rewrite le_plus_minus_r using auto.
     all : eauto; exact $0.
   Qed.
 
+  Local Hint Extern 1 ({{_}} Bind (indclear _ _ _ _ _ _ _ ) _) => apply indclear_ok : prog.
+
   Definition indput_upd_if_necessary lxp ir v indbns to_grow ms := 
     If (addr_eq_dec v #(selN indbns to_grow $0)) {
       Ret ms
@@ -2291,14 +2302,6 @@ Hint Rewrite le_plus_minus_r using auto.
         }
       end
     end.
-
-  (* TODO move to listutils *)
-  Lemma repeat_updN : forall T n (v : T) i, updN (repeat v n) i v = repeat v n.
-  Proof.
-    induction n; intros; simpl. auto.
-    destruct i. auto.
-    f_equal. auto.
-  Qed.
 
   (* putting this in a section prevents leaking the hint below to the global scope *)
   Section indput_wrap.
@@ -2521,6 +2524,19 @@ Hint Rewrite le_plus_minus_r using auto.
     rewrite selN_app1 by omega; auto.
   Qed.
 
+  Theorem indrep_length_pimpl : forall bxp ir l, indrep bxp ir l <=p=> indrep bxp ir l * [[ length l = NBlocks - NDirect ]].
+  Proof.
+    intros.
+    unfold indrep.
+    split; [> | cancel].
+    intros m' H'. pred_apply. cancel.
+    repeat rewrite <- plus_assoc. rewrite minus_plus.
+    indrep_n_tree_extract_lengths.
+    erewrite <- firstn_skipn with (l := l). rewrite app_length. f_equal; eauto.
+    erewrite <- firstn_skipn with (l := skipn _ _). rewrite app_length.
+    f_equal; eauto. rewrite skipn_skipn'. auto.
+  Qed.
+
 
   (************* program *)
 
@@ -2712,24 +2728,6 @@ Hint Rewrite le_plus_minus_r using auto.
     unfold indrep. autorewrite with core. auto.
   Qed.
 
-  (* TODO move near indclear *)
-    Local Hint Extern 1 ({{_}} Bind (indclear _ _ _ _ _ _ _ ) _) => apply indclear_ok : prog.
-
-(* TODO move this *)
-  Ltac min_cases :=
-    let H := fresh in let H' := fresh in
-    edestruct Min.min_spec as [ [H H']|[H H'] ];
-    rewrite H' in *; clear H'.
-(* TODO move this *)
-  Lemma firstn_upd_range : forall T l n n' len (v : T),
-    n <= n' -> n <= length l -> firstn n (upd_range l n' len v) = firstn n l.
-  Proof.
-    intros. unfold upd_range. rewrite firstn_app_l.
-    rewrite firstn_firstn. rewrite Nat.min_comm.
-    min_cases; auto; omega.
-    rewrite firstn_length. min_cases; omega.
-  Qed.
-
   Lemma firstn_eq_firstn_ge : forall T (l1 l2 : list T) n1 n2,
     firstn n2 l1 = firstn n2 l2 -> n1 <= n2 -> firstn n1 l1 = firstn n1 l2.
   Proof.
@@ -2775,32 +2773,6 @@ Hint Rewrite le_plus_minus_r using auto.
       | [|- _] => rewrite indrep_n_length_pimpl with (l := x) in H; destruct_lift H
       end
     end; rewrite mult_1_r in *.
-
-(*TODO move this *)
-  Theorem indrep_length_pimpl : forall bxp ir l, indrep bxp ir l <=p=> indrep bxp ir l * [[ length l = NBlocks - NDirect ]].
-  Proof.
-    intros.
-    unfold indrep.
-    split; [> | cancel].
-    intros m' H'. pred_apply. cancel.
-    repeat rewrite <- plus_assoc. rewrite minus_plus.
-    indrep_n_tree_extract_lengths.
-    erewrite <- firstn_skipn with (l := l). rewrite app_length. f_equal; eauto.
-    erewrite <- firstn_skipn with (l := skipn _ _). rewrite app_length.
-    f_equal; eauto. rewrite skipn_skipn'. auto.
-  Qed.
-
-(*TODO move this *)
-  Theorem firstn_app_split : forall T (l1 l2 : list T) n,
-    firstn n (l1 ++ l2) = firstn n l1 ++ firstn (n - length l1) l2.
-  Proof.
-    intros.
-    destruct (le_lt_dec n (length l1)).
-    - rewrite firstn_app_l by auto.
-      replace (_ - _) with 0 by omega. rewrite app_nil_r. auto.
-    - rewrite firstn_app_le by omega.
-      f_equal. rewrite firstn_oob by omega. auto.
-  Qed.
 
   Theorem indshrink_ok : forall lxp bxp ir nl ms,
     {< F Fm m0 m l0 l1 l2 freelist,
@@ -2896,21 +2868,6 @@ Hint Rewrite le_plus_minus_r using auto.
       apply le_nblocks_goodSize. simpl. rewrite mult_1_r. omega.
   Qed.
 
-  (* TODO move this *)
-  Theorem repeat_eq_updN : forall T i (l : list T)  n v1 v2,
-    i < n ->
-    updN l i v1 = repeat v2 n -> v1 = v2.
-  Proof.
-    induction i; intros.
-    - destruct n. omega.
-      destruct l. simpl in *. inversion H0.
-      simpl in *. inversion H0; auto.
-    - destruct n. omega.
-      destruct l. simpl in *. inversion H0.
-      simpl in *. inversion H0.
-      eapply IHi; [> | eauto]. omega.
-  Qed.
-
  Theorem indgrow_ok : forall lxp bxp ir off bn ms,
     {< F Fm m0 m l0 l1 l2 freelist,
     PRE:hm
@@ -2945,15 +2902,7 @@ Hint Rewrite le_plus_minus_r using auto.
           end.
   Qed.
 
-  Local Hint Extern 1 ({{_}} Bind (indgrow _ _ _ _ _) _) => apply indgrow_ok : prog.
-
-(* TODO move this *)
-Local Hint Extern 1 (goodSize _ _) => match goal with
-| [|- goodSize _ ?a] =>
-  destruct (addr_eq_dec a 0); [> substl a; apply DiskLogHash.PaddedLog.goodSize_0 |];
-  rewrite indrep_n_tree_valid with (ir := a) in * by auto; destruct_lifts;
-  eapply BALLOC.bn_valid_goodSize; eassumption
-end.
+  Local Hint Extern 1 ({{_}} Bind (indgrow _ _ _ _ _ _) _) => apply indgrow_ok : prog.
 
   Theorem grow_ok : forall lxp bxp ir bn ms,
     {< F Fm m0 m l freelist,
@@ -3030,8 +2979,6 @@ end.
       unfold rep in *. destruct_lifts.
       rewrite indrep_length_pimpl in *. unfold indrep in *. destruct_lifts.
       indrep_n_tree_extract_lengths.
-    (* TODO update this above *)
-      Local Hint Extern 1 ({{_}} Bind (indgrow _ _ _ _ _ _) _) => apply indgrow_ok : prog.
       hoare.
       - rewrite mult_1_r. omega.
       - rewrite <- skipn_skipn' in *. repeat rewrite firstn_skipn in *.
