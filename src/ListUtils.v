@@ -444,17 +444,6 @@ Proof.
   apply H0; assumption.
 Qed.
 
-Theorem firstn_app_split : forall T (l1 l2 : list T) n,
-  firstn n (l1 ++ l2) = firstn n l1 ++ firstn (n - length l1) l2.
-Proof.
-  intros.
-  destruct (le_lt_dec n (length l1)).
-  - rewrite firstn_app_l by auto.
-    replace (_ - _) with 0 by omega. rewrite app_nil_r. auto.
-  - rewrite firstn_app_le by omega.
-    f_equal. rewrite firstn_oob by omega. auto.
-Qed.
-
 Lemma forall_app_r : forall A P (a b : list A),
   Forall P (a ++ b) -> Forall P a.
 Proof.
@@ -1650,6 +1639,17 @@ Proof.
   omega.
 Qed.
 
+Lemma firstn_app_split : forall T (l1 l2 : list T) n,
+  firstn n (l1 ++ l2) = firstn n l1 ++ firstn (n - length l1) l2.
+Proof.
+  intros.
+  destruct (le_lt_dec n (length l1)).
+  - rewrite firstn_app_l by auto.
+    replace (_ - _) with 0 by omega. rewrite app_nil_r. auto.
+  - rewrite firstn_app_le by omega.
+    f_equal. rewrite firstn_oob by omega. auto.
+Qed.
+
 Lemma selN_skip_first : forall T (l:list T) n m p def,
   n + m < p ->
     selN l (n + m) def = selN (skipn n (firstn p l)) m def.
@@ -2299,6 +2299,425 @@ Proof.
   induction l; unfold incl; simpl; auto; intros.
   destruct (dec a a0); subst; eauto.
   inversion H; subst; eauto.
+Qed.
+
+Fixpoint upd_range {T} l start len (v : T) :=
+  match len with
+  | 0 => l
+  | S len' => updN (upd_range l (S start) len' v) start v
+  end.
+
+Lemma upd_range_0 : forall T l start (v : T),
+  upd_range l start 0 v = l.
+Proof.
+  auto.
+Qed.
+
+Lemma upd_range_length : forall T l start len (v : T),
+  length (upd_range l start len v) = length l.
+Proof.
+  intros T l start len.
+  generalize dependent l.
+  generalize dependent start.
+  induction len; intros; auto.
+  unfold upd_range in *. simpl.
+  rewrite length_updN. auto.
+Qed.
+
+Lemma upd_range_selN : forall T l start len (v : T) n d,
+  start <= n < start + len ->
+  n < length l ->
+  selN (upd_range l start len v) n d = v.
+Proof.
+  intros T l start len.
+  generalize dependent l.
+  generalize dependent start.
+  induction len; intros. omega.
+  simpl.
+  destruct (Nat.eq_dec start n). subst. rewrite selN_updN_eq. auto.
+  rewrite upd_range_length. auto.
+  rewrite selN_updN_ne by auto.
+  rewrite IHlen. auto. omega. auto.
+Qed.
+
+Definition upd_range' T l start len (v : T) :=
+  firstn start l ++ repeat v len ++ skipn (start + len) l.
+
+Lemma upd_range_eq_upd_range' : forall T (l : list T) start len v,
+  start + len <= length l ->
+  upd_range l start len v = upd_range' l start len v.
+Proof.
+  intros T l start len.
+  generalize dependent l.
+  generalize dependent start.
+  induction len; intros. simpl.
+  - unfold upd_range'. rewrite plus_0_r. simpl.
+    rewrite firstn_skipn. auto.
+  - simpl. rewrite IHlen by omega.
+    unfold upd_range'. simpl repeat.
+    erewrite firstn_S_selN by omega.
+    repeat rewrite <- app_assoc.
+    rewrite updN_app2. rewrite updN_app1.
+    all : rewrite firstn_length_l by omega.
+    rewrite plus_Snm_nSm.
+    rewrite Nat.sub_diag. simpl. auto.
+    all : simpl; omega.
+  Unshelve.
+  eauto.
+Qed.
+
+Lemma upd_range_concat_hom_small : forall T l start len (v : T) k d,
+  start + len <= length (concat l) ->
+  Forall (fun l' => length l' = k) l ->
+  start mod k + len <= k ->
+  0 < k -> 0 < len ->
+  upd_range (concat l) start len v =
+  concat (updN l (start / k) (upd_range (selN l (start / k) d) (start mod k) len v)).
+Proof.
+  intros. assert (k <> 0) by omega.
+  match goal with [H : context [length (concat _)]|- _ ] =>
+    pose proof H; erewrite concat_hom_length in H by eauto end.
+  repeat rewrite upd_range_eq_upd_range'.
+  unfold upd_range'.
+  erewrite <- concat_hom_updN_first_skip; eauto.
+  erewrite concat_hom_subselect_firstn; eauto.
+  erewrite <- concat_hom_skipn; eauto.
+  rewrite <- skipn_firstn_comm. rewrite mult_comm. rewrite <- Nat.div_mod by auto.
+  erewrite <- Nat.min_l with (n := _ * _) at 1. rewrite <- firstn_firstn.
+  repeat rewrite app_assoc. rewrite firstn_skipn.
+  repeat rewrite <- app_assoc. repeat f_equal.
+  erewrite concat_hom_subselect_skipn; eauto.
+  rewrite <- skipn_firstn_comm.
+  rewrite le_plus_minus_r by auto.
+  erewrite <- concat_hom_skipn; eauto.
+  rewrite <- skipn_firstn_comm.
+  rewrite skipn_skipn. rewrite Nat.add_shuffle0.
+  rewrite plus_comm with (m := _ * _). rewrite mult_comm. rewrite <- Nat.div_mod by auto.
+  remember (k - start mod k - len) as e.
+  replace k with (start mod k + len + e) at 3 6 by omega.
+  repeat rewrite plus_assoc. rewrite <- Nat.div_mod by auto.
+  rewrite skipn_firstn_comm.
+  rewrite plus_comm with (m := e).
+  repeat rewrite <- skipn_skipn.
+  rewrite firstn_skipn. auto.
+  all : try (apply Nat.div_lt_upper_bound; auto; rewrite mult_comm; omega).
+  all : try apply Nat.mul_div_le; auto.
+  - omega.
+  - eapply le_trans; eauto. apply Nat.eq_le_incl.
+    symmetry. apply Forall_selN; auto.
+    apply Nat.div_lt_upper_bound; auto. rewrite mult_comm; omega.
+Qed.
+
+Lemma upd_range_concat_hom_start_aligned : forall T l start len (v : T) k d,
+  start + len <= length (concat l) ->
+  Nat.divide k start ->
+  Forall (fun l' => length l' = k) l ->
+  0 < len <= k -> 0 < k ->
+  upd_range (concat l) start len v =
+  concat (updN l (start / k) (upd_range (selN l (start / k) d) 0 len v)).
+Proof.
+  intros.
+  rewrite <- Nat.mod_divide in * by omega.
+  erewrite upd_range_concat_hom_small; eauto. repeat (f_equal; auto).
+  all : omega.
+Qed.
+
+Lemma upd_range_nil : forall T start len (v : T),
+  upd_range nil start len v = nil.
+Proof.
+  intros T start len.
+  generalize start.
+  induction len; intros; simpl; auto.
+  rewrite IHlen. auto.
+Qed.
+
+Lemma upd_range_same : forall T start len n (v : T),
+  upd_range (repeat v n) start len v = repeat v n.
+Proof.
+  intros.
+  generalize dependent start. generalize dependent len.
+  induction len; intros. auto.
+  simpl. rewrite IHlen.
+  destruct (lt_dec start n).
+  erewrite selN_eq_updN_eq. auto.
+  rewrite repeat_selN; auto.
+  rewrite updN_oob. auto.
+  rewrite repeat_length. omega.
+  Unshelve. eauto.
+Qed.
+
+Lemma forall_upd_range : forall T l start len (v : T) f,
+  Forall f l -> f v -> Forall f (upd_range l start len v).
+Proof.
+  intros.
+  generalize dependent start. generalize dependent l.
+  induction len; intros.
+  rewrite upd_range_0. auto.
+  simpl. apply Forall_updN; auto.
+Qed.
+
+Lemma firstn_upd_range : forall T l n n' len (v : T),
+  n <= n' -> firstn n (upd_range l n' len v) = firstn n l.
+Proof.
+  intros.
+  generalize dependent n. generalize dependent l.
+  generalize dependent n'. induction len; intros.
+  rewrite upd_range_0. auto.
+  simpl. rewrite firstn_updN_oob by omega. auto.
+Qed.
+
+Lemma upd_range_updN_oob : forall T l start len (v v2 : T) i,
+  i < start \/ i >= start + len ->
+  upd_range (updN l i v2) start len v = updN (upd_range l start len v) i v2.
+Proof.
+  intros T l start len.
+  generalize dependent start. generalize dependent l.
+  induction len; intros; simpl; auto.
+  rewrite updN_comm by omega.
+  rewrite IHlen by omega. auto.
+Qed.
+
+Lemma upd_range_upd_range : forall T l start len1 len2 (v : T),
+  upd_range (upd_range l start len1 v) (start + len1) len2 v = upd_range l start (len1 + len2) v.
+Proof.
+  intros T l start len1.
+  generalize dependent l. generalize dependent start.
+  induction len1; intros; simpl.
+  rewrite plus_0_r. auto.
+  rewrite upd_range_updN_oob by omega.
+  rewrite <- plus_Snm_nSm. rewrite IHlen1. auto.
+Qed.
+
+Lemma upd_range_hd : forall T l start len x (v : T),
+  upd_range (x :: l) (S start) len v = x :: upd_range l start len v.
+Proof.
+  intros T l start len. generalize dependent start.
+  generalize dependent l.
+  induction len; simpl; intros. auto.
+  rewrite IHlen. auto.
+Qed.
+
+Lemma upd_range_app_l : forall T l1 l2 start len (v : T),
+  start + len <= length l1 ->
+  upd_range (l1 ++ l2) start len v = upd_range l1 start len v ++ l2.
+Proof.
+  intros T l1 l2 start len. generalize dependent start.
+  generalize dependent l1. generalize dependent l2.
+  induction len; intros; simpl; auto.
+  rewrite IHlen by omega.
+  rewrite updN_app1. auto.
+  rewrite upd_range_length. omega.
+Qed.
+
+Lemma upd_range_app_r : forall T l1 l2 start len (v : T),
+  length l1 <= start ->
+  upd_range (l1 ++ l2) start len v = l1 ++ upd_range l2 (start - length l1) len v.
+Proof.
+  intros T l1 l2 start len. generalize dependent start.
+  generalize dependent l1. generalize dependent l2.
+  induction len; intros; simpl; auto.
+  rewrite IHlen by omega.
+  rewrite updN_app2 by omega. repeat f_equal. omega.
+Qed.
+
+Lemma upd_range_selN_oob : forall T (l : list T) start len v i d,
+  i < start \/ i >= start + len ->
+  selN (upd_range l start len v) i d = selN l i d.
+Proof.
+  intros T l start len.
+  generalize dependent start. generalize dependent l.
+  induction len; intros; simpl; auto.
+  rewrite selN_updN_ne by omega. apply IHlen.
+  omega.
+Qed.
+
+Lemma removeN_upd_range_l : forall T (l : list T) start len v,
+  removeN (upd_range l (S start) len v) start = removeN (upd_range l start (S len) v) start.
+Proof.
+  destruct len; intros; simpl;
+    rewrite removeN_updN; auto.
+Qed.
+
+Lemma removeN_updN_lt : forall T (l : list T) i i' v,
+  i < i' ->
+  removeN (updN l i v) i' = updN (removeN l i') i v.
+Proof.
+  intros T l i.
+  generalize dependent l.
+  induction i; intros.
+  - destruct l; simpl in *. rewrite removeN_nil. auto.
+    destruct i'; try omega. repeat rewrite removeN_head. auto.
+  - destruct l; simpl in *. rewrite removeN_nil. auto.
+    destruct i'; try omega. repeat rewrite removeN_head.
+    simpl. f_equal. apply IHi. omega.
+Qed.
+
+Lemma removeN_upd_range_r : forall T (l : list T) start len v,
+  removeN (upd_range l start len v) (start + len) = removeN (upd_range l start (S len) v) (start + len).
+Proof.
+  intros T l start len. generalize dependent start.
+  generalize dependent l.
+  induction len; intros; simpl.
+  - rewrite plus_0_r. rewrite removeN_updN. auto.
+  - repeat rewrite removeN_updN_lt by omega. f_equal.
+    rewrite <- plus_Snm_nSm. apply IHlen.
+Qed.
+
+Lemma upd_range_eq_app_firstn_repeat : forall T (l : list T) start len v,
+  length l <= start + len ->
+  upd_range l start len v = firstn start l ++ repeat v (length l - start).
+Proof.
+  intros T l start len. generalize dependent start.
+  generalize dependent l.
+  induction len; intros; simpl.
+  + rewrite firstn_oob by omega. replace (_ - _) with 0 by omega.
+    rewrite app_nil_r. auto.
+  + rewrite IHlen by omega.
+    destruct (le_lt_dec (length l) start).
+    - repeat rewrite firstn_oob by omega.
+      repeat replace (_ - _) with 0 by omega.
+      rewrite app_nil_r. rewrite updN_oob; auto.
+    - replace (S start) with (start + 1) by omega.
+      rewrite firstn_sum_split.
+      rewrite updN_app1, updN_app2.
+      all : try rewrite app_length.
+      all : repeat rewrite firstn_length_l.
+      rewrite Nat.sub_diag.
+      destruct (skipn start l) eqn:H'.
+      apply f_equal with (f := @length _) in H'. simpl in *.
+      all : try rewrite skipn_length in *; try omega.
+      rewrite <- app_assoc. simpl.
+      replace (length l - start) with (S (length l - (start + 1))) by omega.
+      auto.
+Qed.
+
+Lemma upd_range_oob : forall T (l : list T) start len v,
+  length l <= start ->
+  upd_range l start len v = l.
+Proof.
+  intros T l start len.
+  generalize dependent start. generalize dependent l.
+  induction len; intros; simpl. auto.
+  rewrite updN_oob. rewrite IHlen; auto.
+  rewrite upd_range_length. auto.
+Qed.
+
+Lemma removeN_upd_range_mid : forall T (l : list T) start len v i i',
+  start <= i < start + len ->
+  start <= i' < start + len ->
+  i <= i' < length l ->
+  removeN (upd_range l start len v) i = removeN (upd_range l start len v) i'.
+Proof.
+  intros.
+  destruct (le_lt_dec (length l) (start + len)).
+  + rewrite upd_range_eq_app_firstn_repeat by auto.
+    unfold removeN.
+    repeat rewrite firstn_app_le by (rewrite firstn_length_l; omega).
+    rewrite firstn_length_l by omega.
+    repeat rewrite skipn_app_r_ge by (rewrite firstn_length_l; omega).
+    repeat rewrite skipn_repeat.
+    repeat rewrite firstn_repeat by omega.
+    repeat rewrite <- app_assoc. repeat rewrite repeat_app.
+    f_equal. f_equal. rewrite firstn_length_l by omega.
+    repeat rewrite <- Nat.sub_add_distr.
+    omega.
+  + repeat rewrite upd_range_eq_upd_range' by omega.
+    unfold upd_range', removeN.
+    repeat (
+      rewrite firstn_app_le; rewrite firstn_length;
+      (let H := fresh in let H' := fresh in
+        edestruct Min.min_spec as [ [H H']|[H H'] ];
+        rewrite H' in *; clear H'); try omega;
+      rewrite firstn_app_l by (rewrite repeat_length; omega)).
+    repeat rewrite <- app_assoc. f_equal.
+    rewrite skipn_app_r_ge by (rewrite firstn_length_l; omega).
+    rewrite skipn_app_r_ge with (n := S _) by (rewrite firstn_length_l; omega).
+    repeat rewrite firstn_length_l by omega.
+    repeat rewrite firstn_repeat by omega.
+    match goal with [|- context [skipn ?a (repeat _ ?b ++ _)] ] =>
+      rewrite le_plus_minus with (m := b) (n := a) at 1 by omega;
+      rewrite <- repeat_app, <- app_assoc;
+      rewrite skipn_app_l, skipn_oob by (rewrite repeat_length; omega)
+    end. symmetry.
+    match goal with [|- context [skipn ?a (repeat _ ?b ++ _)] ] =>
+      rewrite le_plus_minus with (m := b) (n := a) at 1 by omega;
+      rewrite <- repeat_app, <- app_assoc;
+      rewrite skipn_app_l, skipn_oob by (rewrite repeat_length; omega)
+    end.
+    repeat rewrite app_nil_l. repeat rewrite app_assoc.
+    repeat rewrite repeat_app. do 2 f_equal.
+    omega.
+Qed.
+
+Lemma concat_hom_upd_range : forall T l start len (v : T) k,
+  Forall (fun x => length x = k) l ->
+  concat (upd_range l start len (repeat v k)) = upd_range (concat l) (start * k) (len * k) v.
+Proof.
+  induction l; intros; simpl.
+  repeat rewrite upd_range_nil. auto.
+  apply Forall_inv in H as H'.
+  apply Forall_cons2 in H as H''. subst.
+  destruct len. auto.
+  simpl. rewrite upd_range_hd.
+  destruct start; simpl.
+  -rewrite IHl by auto. simpl.
+    rewrite <- upd_range_upd_range. simpl.
+    rewrite upd_range_app_l by omega.
+    rewrite upd_range_app_r.
+    rewrite upd_range_eq_app_firstn_repeat with (len := length _) by omega.
+    simpl. rewrite repeat_length. rewrite Nat.sub_0_r, Nat.sub_diag. auto.
+    rewrite upd_range_length. omega.
+  - rewrite upd_range_app_r. f_equal.
+    rewrite minus_plus.
+    rewrite <- IHl with (len := S len) by auto.
+    auto.
+    apply le_plus_l.
+Qed.
+
+Lemma upd_range_start_0 : forall T l len (v : T),
+  len <= length l ->
+  upd_range l 0 len v = repeat v len ++ skipn len l.
+Proof.
+  induction l; intros.
+  rewrite upd_range_nil. rewrite skipn_nil. rewrite app_nil_r.
+  replace len with 0 by (simpl in *; omega). auto.
+  destruct len. auto. simpl in *.
+  rewrite upd_range_hd. rewrite IHl by omega. auto.
+Qed.
+
+Lemma upd_range_all : forall T l len (v : T),
+  length l <= len ->
+  upd_range l 0 len v = repeat v (length l).
+Proof.
+  induction l; intros.
+  simpl. rewrite upd_range_nil. auto.
+  simpl in *. destruct len; try omega.
+  simpl. rewrite upd_range_hd. rewrite IHl by omega. auto.
+Qed.
+
+Lemma upd_range_app : forall T l1 l2 start len (v : T),
+  start <= length l1 < start + len ->
+  start + len <= length (l1 ++ l2) ->
+  upd_range (l1 ++ l2) start len v =
+    upd_range l1 start len v ++ upd_range l2 0 (len - (length l1 - start)) v.
+Proof.
+  intros T l1 l2 start len.
+  generalize dependent l1. generalize dependent l2.
+  generalize dependent start.
+  induction len; intros; auto.
+  rewrite upd_range_eq_upd_range' by auto.
+  unfold upd_range'.
+  rewrite firstn_app_l by omega.
+  rewrite upd_range_eq_app_firstn_repeat by omega.
+  rewrite <- app_assoc. f_equal.
+  rewrite app_length in *.
+  destruct (le_dec (length l2) (S len - (length l1 - start))).
+  rewrite upd_range_all by omega.
+  rewrite skipn_oob by (rewrite app_length; omega).
+  rewrite repeat_app. rewrite app_nil_r. f_equal. omega.
+  rewrite upd_range_start_0 by omega.
+  rewrite app_assoc. rewrite repeat_app.
+  rewrite skipn_app_r_ge by omega. repeat (omega || f_equal).
 Qed.
 
 
