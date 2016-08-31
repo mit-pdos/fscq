@@ -1094,10 +1094,15 @@ Module TREESEQ.
 
         -- (* None *)
           intros.
-          admit.  (* XXX stuck? *)
-
-
-  - (* different pathnames *)
+          right.
+          specialize (H4 inum0 off0 bn0).
+          edestruct H4.
+          exists f; eauto.
+          deex.
+          exfalso.
+          rewrite H8 in H12; congruence.
+          eassumption.
+   - (* different pathnames *)
       (* XXX can we re-use setattr proof. *)
     
 Admitted.
