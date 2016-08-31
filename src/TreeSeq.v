@@ -979,13 +979,131 @@ Module TREESEQ.
     apply d_in_d_map in H6; deex; intuition.
     eapply NEforall_d_in in H7; try eassumption.
     unfold tsupd; rewrite d_map_latest.
+    unfold treeseq_in_ds in H8.
+    eapply d_in_nthd in H9 as H9'; deex.
+    eapply NEforall2_d_in  with (x := (nthd n ts)) in H8 as Hd'; eauto.
+
+
+
+  Lemma treeseq_upd_safe_upd: forall Fm fsxp Ftop mscs Ftree Fd ts ds n pathname pathname' f f' off vs v inum bn,
+    (Fm ✶ rep fsxp Ftop (update_subtree pathname (TreeFile inum f') (TStree ts !!)) (TSilist ts !!)
+         (fst (TSfree ts !!), snd (TSfree ts !!)))%pred (list2nmem (dsupd ds bn (v, vsmerge vs)) !!)->
+    (Ftree ✶ pathname |-> Some (inum, f))%pred (dir2flatmem2 (TStree ts !!)) -> 
+    (Fd ✶ off |-> vs)%pred (list2nmem (BFILE.BFData f)) ->
+    (Fd ✶ off |-> (v, vsmerge vs))%pred (list2nmem (BFILE.BFData f')) ->
+    BFILE.block_belong_to_file (TSilist ts !!) bn inum off ->
+    treeseq_safe pathname (MSAlloc mscs) ts !! (nthd n ts) ->
+    tree_names_distinct (TStree ts !!) ->
+    tree_rep Fm Ftop fsxp (nthd n ts) (list2nmem (nthd n ds)) ->
+    treeseq_safe pathname' (MSAlloc mscs)
+      (treeseq_one_upd ts !! pathname off (v, vsmerge vs))
+      (treeseq_one_upd (nthd n ts) pathname off (v, vsmerge vs)).
+  Proof.
+    intros.
+    eapply dir2flatmem2_find_subtree_ptsto in H0 as H0'; eauto.
+    repeat rewrite treeseq_one_upd_alternative; simpl.
+    rewrite H0' in *; simpl.
+    destruct (list_eq_dec string_dec pathname' pathname); subst; simpl in *.
+    - unfold treeseq_safe in *; intuition.
+      + unfold treeseq_safe_fwd in *; intros; simpl in *.
+        erewrite find_update_subtree in *; eauto.
+        exists {|
+             BFILE.BFData := (BFILE.BFData f) ⟦ off := (v, vsmerge vs) ⟧;
+             BFILE.BFAttr := BFILE.BFAttr f |}.
+        specialize (H7 inum0 off0 bn0).
+        case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
+        destruct d.
+        -- rewrite H10 in *; simpl in *.
+          erewrite find_update_subtree in *; eauto.
+          destruct H8.
+          intuition.
+          inversion H11; subst. clear H11.
+          edestruct H7.
+          eexists b.
+          split; eauto.
+          intuition.
+          rewrite H0' in H11.
+          inversion H11; subst; eauto.
+          edestruct H7.
+          eexists b.
+          intuition.
+          inversion H11; subst; eauto.
+          intuition.
+        -- (* a directory *)
+          rewrite H10 in *; subst; simpl in *.
+          exfalso.
+          edestruct H8.
+          intuition.
+          rewrite H10 in H12; inversion H12.
+        -- (* None *)
+          rewrite H10 in *; subst; simpl in *.
+          exfalso.
+          edestruct H8.
+          intuition.
+          rewrite H10 in H12; inversion H12.
+      + unfold treeseq_safe_bwd in *. intros; simpl in *.
+        erewrite find_update_subtree in *; eauto.
+        destruct H8.
+        intuition.
+        inversion H10.
+        subst.
+        clear H10.
+        case_eq (find_subtree pathname (TStree (nthd n ts))).
+        intros.
+        destruct d.
+        -- (* a file *)
+          specialize (H4 inum0 off0 bn0).
+          destruct H4.
+          eexists f.
+          intuition.
+ 
+          destruct H4.
+          unfold BFILE.ilist_safe in H9.
+          intuition.
+          specialize (H12 inum0 off0 bn0).
+          destruct H12; auto.
+
+          left.
+          eexists.
+          split.
+          intuition.
+          rewrite H8 in H9.
+          inversion H9; subst.
+          eauto.
+          intuition.
+
+          right; eauto.
+
+        -- (* a directory *)
+
+        admit. (* XXX stuck? *)
+
+(*
+        destruct (BFILE.block_is_unused_dec (BFILE.pick_balloc (TSfree ts!!) (MSAlloc mscs)) bn).
+        ++ deex.
+           right.
+           unfold BFILE.ilist_safe in H9; intuition.
+           eapply In_incl.
+           apply b.
+           eauto.   *)
+
+        -- (* None *)
+          intros.
+          admit.  (* XXX stuck? *)
+
+
+  - (* different pathnames *)
+      (* XXX can we re-use setattr proof. *)
+    
+Admitted.
+
 
     eapply treeseq_upd_safe_upd; eauto.
     eapply list2nmem_sel in H5 as H5'.
     rewrite <- H5' in *; eauto.
 
     pred_apply.
-    rewrite arrayN_ex_frame_pimpl; eauto.
+    eapply arrayN_ex_frame_pimpl; eauto.
     eapply list2nmem_sel in H5 as H5'.
     rewrite H5'.
     cancel.
