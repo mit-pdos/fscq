@@ -1075,17 +1075,22 @@ Module TREESEQ.
           right; eauto.
 
         -- (* a directory *)
-
-        admit. (* XXX stuck? *)
-
-(*
-        destruct (BFILE.block_is_unused_dec (BFILE.pick_balloc (TSfree ts!!) (MSAlloc mscs)) bn).
-        ++ deex.
-           right.
-           unfold BFILE.ilist_safe in H9; intuition.
-           eapply In_incl.
-           apply b.
-           eauto.   *)
+        destruct (BFILE.block_is_unused_dec (BFILE.pick_balloc (TSfree ts!!) (MSAlloc mscs)) bn0).
+        ++ right.
+          unfold BFILE.ilist_safe in H9; intuition.
+          eapply In_incl.
+          apply b.
+          eauto.
+        ++ 
+          specialize (H4 inum0 off0 bn0).
+          destruct H4.
+          eexists.
+          split; eauto.
+          destruct H4.
+          intuition.
+          rewrite H8 in H10.
+          exfalso; inversion H10.
+          right; eauto.
 
         -- (* None *)
           intros.
