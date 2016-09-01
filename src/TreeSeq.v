@@ -984,7 +984,6 @@ Module TREESEQ.
     eapply NEforall2_d_in  with (x := (nthd n ts)) in H8 as Hd'; eauto.
 
 
-
   Lemma treeseq_upd_safe_upd: forall Fm fsxp Ftop mscs Ftree Fd ts ds n pathname pathname' f f' off vs v inum bn,
     (Fm ✶ rep fsxp Ftop (update_subtree pathname (TreeFile inum f') (TStree ts !!)) (TSilist ts !!)
          (fst (TSfree ts !!), snd (TSfree ts !!)))%pred (list2nmem (dsupd ds bn (v, vsmerge vs)) !!)->
@@ -992,8 +991,10 @@ Module TREESEQ.
     (Fd ✶ off |-> vs)%pred (list2nmem (BFILE.BFData f)) ->
     (Fd ✶ off |-> (v, vsmerge vs))%pred (list2nmem (BFILE.BFData f')) ->
     BFILE.block_belong_to_file (TSilist ts !!) bn inum off ->
+    treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) ts !!) ts ->
     treeseq_safe pathname (MSAlloc mscs) ts !! (nthd n ts) ->
     tree_names_distinct (TStree ts !!) ->
+    tree_inodes_distinct (TStree ts !!) ->
     tree_rep Fm Ftop fsxp (nthd n ts) (list2nmem (nthd n ds)) ->
     treeseq_safe pathname' (MSAlloc mscs)
       (treeseq_one_upd ts !! pathname off (v, vsmerge vs))
@@ -1004,71 +1005,72 @@ Module TREESEQ.
     repeat rewrite treeseq_one_upd_alternative; simpl.
     rewrite H0' in *; simpl.
     destruct (list_eq_dec string_dec pathname' pathname); subst; simpl in *.
-    - unfold treeseq_safe in *; intuition.
+    - unfold treeseq_safe in *.
+      intuition.
       + unfold treeseq_safe_fwd in *; intros; simpl in *.
         erewrite find_update_subtree in *; eauto.
         exists {|
              BFILE.BFData := (BFILE.BFData f) ⟦ off := (v, vsmerge vs) ⟧;
              BFILE.BFAttr := BFILE.BFAttr f |}.
-        specialize (H7 inum0 off0 bn0).
+        specialize (H9 inum0 off0 bn0).
         case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
         destruct d.
-        -- rewrite H10 in *; simpl in *.
+        -- rewrite H12 in *; simpl in *.
           erewrite find_update_subtree in *; eauto.
-          destruct H8.
+          destruct H10.
           intuition.
-          inversion H11; subst. clear H11.
-          edestruct H7.
+          inversion H13; subst. clear H13.
+          edestruct H9.
           eexists b.
           split; eauto.
           intuition.
-          rewrite H0' in H11.
-          inversion H11; subst; eauto.
-          edestruct H7.
+          rewrite H0' in H13.
+          inversion H13; subst; eauto.
+          edestruct H9.
           eexists b.
           intuition.
-          inversion H11; subst; eauto.
+          inversion H13; subst; eauto.
           intuition.
         -- (* a directory *)
-          rewrite H10 in *; subst; simpl in *.
+          rewrite H12 in *; subst; simpl in *.
           exfalso.
-          edestruct H8.
+          edestruct H10.
           intuition.
-          rewrite H10 in H12; inversion H12.
+          rewrite H12 in H14; inversion H14.
         -- (* None *)
-          rewrite H10 in *; subst; simpl in *.
+          rewrite H12 in *; subst; simpl in *.
           exfalso.
-          edestruct H8.
+          edestruct H10.
           intuition.
-          rewrite H10 in H12; inversion H12.
+          rewrite H12 in H14; inversion H14.
       + unfold treeseq_safe_bwd in *. intros; simpl in *.
         erewrite find_update_subtree in *; eauto.
-        destruct H8.
+        destruct H10.
         intuition.
-        inversion H10.
+        inversion H12.
         subst.
-        clear H10.
+        clear H12.
         case_eq (find_subtree pathname (TStree (nthd n ts))).
         intros.
         destruct d.
         -- (* a file *)
-          specialize (H4 inum0 off0 bn0).
-          destruct H4.
+          specialize (H5 inum0 off0 bn0).
+          destruct H5.
           eexists f.
           intuition.
  
-          destruct H4.
-          unfold BFILE.ilist_safe in H9.
+          destruct H5.
+          unfold BFILE.ilist_safe in H11.
           intuition.
-          specialize (H12 inum0 off0 bn0).
-          destruct H12; auto.
+          specialize (H14 inum0 off0 bn0).
+          destruct H14; auto.
 
           left.
           eexists.
           split.
           intuition.
-          rewrite H8 in H9.
-          inversion H9; subst.
+          rewrite H10 in H11.
+          inversion H11; subst.
           eauto.
           intuition.
 
@@ -1077,53 +1079,93 @@ Module TREESEQ.
         -- (* a directory *)
         destruct (BFILE.block_is_unused_dec (BFILE.pick_balloc (TSfree ts!!) (MSAlloc mscs)) bn0).
         ++ right.
-          unfold BFILE.ilist_safe in H9; intuition.
+          unfold BFILE.ilist_safe in H11; intuition.
           eapply In_incl.
           apply b.
           eauto.
         ++ 
-          specialize (H4 inum0 off0 bn0).
-          destruct H4.
+          specialize (H5 inum0 off0 bn0).
+          destruct H5.
           eexists.
           split; eauto.
-          destruct H4.
+          destruct H5.
           intuition.
-          rewrite H8 in H10.
-          exfalso; inversion H10.
+          rewrite H10 in H12.
+          exfalso; inversion H12.
           right; eauto.
 
         -- (* None *)
           intros.
           right.
-          specialize (H4 inum0 off0 bn0).
-          edestruct H4.
+          specialize (H5 inum0 off0 bn0).
+          edestruct H5.
           exists f; eauto.
           deex.
           exfalso.
-          rewrite H8 in H12; congruence.
+          rewrite H10 in H14; congruence.
           eassumption.
-   - (* different pathnames *)
-      (* XXX can we re-use setattr proof. *)
-    
-Admitted.
-
+   - (* different pathnames, but pathname' is still safe, if it was safe. *)
+     unfold treeseq_safe in *.
+     unfold treeseq_pred in H4.
+     eapply NEforall_d_in with (x := (nthd n ts)) in H4 as H4'.  
+     2: eapply nthd_in_ds.
+     intuition; simpl.
+      * unfold treeseq_safe_fwd in *; simpl in *; eauto.
+        intros.
+        erewrite find_subtree_update_subtree_ne_path; eauto.
+        case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
+        destruct d.
+        (* a file *)
+        rewrite H15 in H11.
+        erewrite find_subtree_update_subtree_ne_path in H11; eauto.
+        destruct H11.
+        (* a directory *)
+        rewrite H15 in H11; eauto.
+        (* None *)
+        rewrite H15 in H11; eauto.
+      * unfold treeseq_safe_bwd in *; simpl; intros.
+        deex; intuition.
+        rewrite find_subtree_update_subtree_ne_path in *; eauto.
+        case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
+        destruct d.
+        erewrite find_subtree_update_subtree_ne_path; eauto.
+        specialize (H10 inum0 off0 bn0).
+        edestruct H10.
+        exists f'0.
+        split; eauto.
+        destruct (addr_eq_dec inum inum0).
+        ** subst.
+          exfalso.
+          eapply find_subtree_inode_pathname_unique in H0'; eauto.
+        ** destruct H17.
+          left.
+          exists x; eauto.
+        ** right; eauto.
+        **
+          specialize (H10 inum0 off0 bn0).
+          edestruct H10.
+          exists f'0.
+          split; eauto.
+          destruct H17.
+          intuition.
+          left.
+          exists x.
+          split; eauto.
+          right; eauto.
+Qed.
 
     eapply treeseq_upd_safe_upd; eauto.
     eapply list2nmem_sel in H5 as H5'.
     rewrite <- H5' in *; eauto.
-
     pred_apply.
-    eapply arrayN_ex_frame_pimpl; eauto.
-    eapply list2nmem_sel in H5 as H5'.
-    rewrite H5'.
-    cancel.
+    admit. (* XXX eapply arrayN_ex_frame_pimpl; eauto. *)
 
-    rewrite H17; eauto.
     distinct_names'.
-    
-    instantiate (1 := f').
+    admit.
+    admit.
+    admit. 
+
     unfold tsupd.
-    erewrite d_map_latest.
     unfold treeseq_one_upd.
     eapply dir2flatmem2_find_subtree_ptsto in H0 as H0'.
     destruct (find_subtree pathname (TStree ts !!)); try congruence.
