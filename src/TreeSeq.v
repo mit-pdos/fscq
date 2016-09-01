@@ -913,77 +913,6 @@ Module TREESEQ.
     eapply treeseq_one_safe_dsupd; eauto.
   Qed.
 
-
-  (* A less general version of AFS.update_fblock_d, but easier to use for applications.
-   * It requires treeseq_upd_safe for the trees in the treeseq 
-   *)
-  Theorem treeseq_update_fblock_d_ok : forall fsxp inum off v mscs,
-    {< ds ts Fm Ftop Ftree pathname f Fd vs,
-    PRE:hm
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ treeseq_pred (treeseq_safe pathname (MSAlloc mscs) (ts !!)) ts ]] *
-      [[ (Ftree * pathname |-> Some (inum, f))%pred  (dir2flatmem2 (TStree ts!!)) ]] *
-      [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
-    POST:hm' RET:^(mscs')
-      exists ts' f' ds' bn,
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
-       [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
-        [[ forall pathname',
-           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
-           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
-       [[ ts' = tsupd ts pathname off (v, vsmerge vs) ]] *
-       [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
-       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-       [[ (Ftree * pathname |-> Some (inum, f'))%pred (dir2flatmem2 (TStree ts' !!)) ]] *
-       [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
-       [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
-    XCRASH:hm'
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-       exists ds' ts' mscs' bn,
-         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-         [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
-         [[ MSAlloc mscs' = MSAlloc mscs ]] *
-         [[ ts' = tsupd ts pathname off (v, vsmerge vs) ]] *
-         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
-         [[ BFILE.block_belong_to_file (TSilist ts !!) bn inum off ]]
-   >} AFS.update_fblock_d fsxp inum off v mscs.
-  Proof.
-    intros.
-    eapply pimpl_ok2.
-    eapply AFS.update_fblock_d_ok.
-    safecancel.
-    eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred; eauto.
-    eapply dir2flatmem2_find_subtree_ptsto.
-    distinct_names'.
-    eassumption.
-
-
-    pose proof (list2nmem_array (BFILE.BFData f)).
-    pred_apply.
-    erewrite arrayN_except with (i := off).
-    cancel.
-
-    eapply list2nmem_inbound; eauto.
-
-    safestep.
-
-
-    eapply treeseq_in_ds_upd; eauto.
-
-    eapply dir2flatmem2_find_subtree_ptsto.
-    distinct_names'.
-    eassumption.
-
-    eapply NEforall_d_in'; intros.
-    apply d_in_d_map in H6; deex; intuition.
-    eapply NEforall_d_in in H7; try eassumption.
-    unfold tsupd; rewrite d_map_latest.
-    unfold treeseq_in_ds in H8.
-    eapply d_in_nthd in H9 as H9'; deex.
-    eapply NEforall2_d_in  with (x := (nthd n ts)) in H8 as Hd'; eauto.
-
-
   Lemma treeseq_upd_safe_upd: forall Fm fsxp Ftop mscs Ftree Fd ts ds n pathname pathname' f f' off vs v inum bn,
     (Fm ✶ rep fsxp Ftop (update_subtree pathname (TreeFile inum f') (TStree ts !!)) (TSilist ts !!)
          (fst (TSfree ts !!), snd (TSfree ts !!)))%pred (list2nmem (dsupd ds bn (v, vsmerge vs)) !!)->
@@ -1152,25 +1081,106 @@ Module TREESEQ.
           exists x.
           split; eauto.
           right; eauto.
-Qed.
+  Qed.
 
+  (* A less general version of AFS.update_fblock_d, but easier to use for applications.
+   * It requires treeseq_upd_safe for the trees in the treeseq 
+   *)
+  Theorem treeseq_update_fblock_d_ok : forall fsxp inum off v mscs,
+    {< ds ts Fm Ftop Ftree pathname f Fd vs,
+    PRE:hm
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+      [[ treeseq_pred (treeseq_safe pathname (MSAlloc mscs) (ts !!)) ts ]] *
+      [[ (Ftree * pathname |-> Some (inum, f))%pred  (dir2flatmem2 (TStree ts!!)) ]] *
+      [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
+    POST:hm' RET:^(mscs')
+      exists ts' f' ds' bn,
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
+       [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+        [[ forall pathname',
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
+       [[ ts' = tsupd ts pathname off (v, vsmerge vs) ]] *
+       [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
+       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+       [[ (Ftree * pathname |-> Some (inum, f'))%pred (dir2flatmem2 (TStree ts' !!)) ]] *
+       [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
+       [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
+    XCRASH:hm'
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+       exists ds' ts' mscs' bn,
+         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+         [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
+         [[ MSAlloc mscs' = MSAlloc mscs ]] *
+         [[ ts' = tsupd ts pathname off (v, vsmerge vs) ]] *
+         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
+         [[ BFILE.block_belong_to_file (TSilist ts !!) bn inum off ]]
+   >} AFS.update_fblock_d fsxp inum off v mscs.
+  Proof.
+    intros.
+    eapply pimpl_ok2.
+    eapply AFS.update_fblock_d_ok.
+    safecancel.
+    eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred; eauto.
+    eapply dir2flatmem2_find_subtree_ptsto.
+    distinct_names'.
+    eassumption.
+
+
+    pose proof (list2nmem_array (BFILE.BFData f)).
+    pred_apply.
+    erewrite arrayN_except with (i := off).
+    cancel.
+
+    eapply list2nmem_inbound; eauto.
+
+    safestep.
+
+
+    eapply treeseq_in_ds_upd; eauto.
+
+    eapply dir2flatmem2_find_subtree_ptsto.
+    distinct_names'.
+    eassumption.
+
+    eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred; eauto.
+    eapply NEforall_d_in'; intros.
+    apply d_in_d_map in H6; deex; intuition.
+    eapply NEforall_d_in in H7 as H7'; try eassumption.
+    unfold tsupd; rewrite d_map_latest.
+    unfold treeseq_in_ds in H8.
+    eapply d_in_nthd in H9 as H9'; deex.
+    eapply NEforall2_d_in  with (x := (nthd n ts)) in H8 as Hd'; eauto.
+    intuition.
     eapply treeseq_upd_safe_upd; eauto.
+
     eapply list2nmem_sel in H5 as H5'.
     rewrite <- H5' in *; eauto.
     pred_apply.
     admit. (* XXX eapply arrayN_ex_frame_pimpl; eauto. *)
 
-    distinct_names'.
-    admit.
-    admit.
-    admit. 
+    distinct_names.
+    distinct_inodes.
 
     unfold tsupd.
     unfold treeseq_one_upd.
+    eapply list2nmem_sel in H5 as H5'.
+    rewrite H5'; eauto.
+ 
+    eapply list2nmem_sel in H5 as H5'.
+    rewrite H5'; eauto.
+    3: eassumption.
+
+    unfold tsupd.
+    erewrite d_map_latest; eauto.
+    unfold treeseq_one_upd.
     eapply dir2flatmem2_find_subtree_ptsto in H0 as H0'.
-    destruct (find_subtree pathname (TStree ts !!)); try congruence.
-    destruct d; try congruence; simpl.
-    inversion H0'.
+    rewrite H0'; simpl.
+
+    eapply list2nmem_sel in H5 as H5'.
+    rewrite <- H5'.
+
     assert( f' = {|
            BFILE.BFData := (BFILE.BFData f) ⟦ off := (v, vsmerge vs) ⟧;
            BFILE.BFAttr := BFILE.BFAttr f |}).
@@ -1179,21 +1189,19 @@ Qed.
     simpl in H14.
     eapply list2nmem_array_updN in H14.
     rewrite H14.
-    eapply list2nmem_sel in H5 as H5'.
-    rewrite H5'; auto.
-    eapply list2nmem_ptsto_bound in H5 as H5'; eauto.
+    subst; eauto.
+    eapply list2nmem_ptsto_bound in H5 as H5''; eauto.
     eauto.
     rewrite H6.
     eapply dir2flatmem2_update_subtree; eauto.
     distinct_names'.
     distinct_names'.
-    simpl; eauto.
+
     pred_apply.
     rewrite arrayN_ex_frame_pimpl; eauto.
     eapply list2nmem_sel in H5 as H5'.
     rewrite H5'.
     cancel.
-    assumption.
 
     xcrash_rewrite.
     xcrash_rewrite.
@@ -1203,6 +1211,10 @@ Qed.
     eapply pimpl_exists_r; eexists.
     repeat (xform_deex_r).
     xform_norm; safecancel.
+    eapply list2nmem_sel in H5 as H5'.
+    rewrite H5'; eauto.
+
+    admit.
     eapply treeseq_in_ds_upd; eauto.
     eapply dir2flatmem2_find_subtree_ptsto; eauto.
     distinct_names'.
