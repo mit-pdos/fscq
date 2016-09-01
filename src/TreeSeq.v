@@ -1155,10 +1155,8 @@ Module TREESEQ.
     intuition.
     eapply treeseq_upd_safe_upd; eauto.
 
-    eapply list2nmem_sel in H5 as H5'.
-    rewrite <- H5' in *; eauto.
-    pred_apply.
-    admit. (* XXX eapply arrayN_ex_frame_pimpl; eauto. *)
+    eapply list2nmem_ptsto_cancel.
+    simplen.
 
     distinct_names.
     distinct_inodes.
@@ -1213,15 +1211,16 @@ Module TREESEQ.
     xform_norm; safecancel.
     eapply list2nmem_sel in H5 as H5'.
     rewrite H5'; eauto.
+    eauto.
 
-    admit.
+    eapply list2nmem_sel in H5 as H5'.
+    rewrite H5'; eauto.
     eapply treeseq_in_ds_upd; eauto.
+
     eapply dir2flatmem2_find_subtree_ptsto; eauto.
     distinct_names'.
     eassumption.
-    Unshelve.
-    all: exact ($0, nil).
-  Admitted.
+  Qed.
 
   (* XXX maybe inum should be an argument and the TreeFile case should be split into two cases. *)
   Definition treeseq_one_file_sync (t: treeseq_one) pathname :=
