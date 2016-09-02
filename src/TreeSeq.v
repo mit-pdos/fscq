@@ -1285,36 +1285,40 @@ Module TREESEQ.
     rewrite d_map_latest.
     eapply NEforall_d_in in H3 as H3'; [ | apply nthd_in_ds with (n := n) ].
     unfold treeseq_safe in H3'.
-
-(*
-    edestruct H3'; eauto.
-    admit.  (* H1 *)
-    - (* block is unused in nth tree *) 
+    intuition.
+    unfold treeseq_one_file_sync in *.
+    rewrite H; simpl.
+    unfold treeseq_one_safe; simpl.
+    case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
+    destruct d; simpl.
+    - (* a file *)
+      Search dirtree_safe update_subtree.
+      unfold dirtree_safe.
       intuition.
-      case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
-      case_eq d; intros; subst.
-      + (* nth tree has a file for pathname *)
-        unfold treeseq_one_file_sync. rewrite H5; simpl. rewrite H; simpl.
-        rewrite H5 in H8.
+      rewrite H4; auto.
+      destruct (list_eq_dec string_dec pathname pathname0); subst; simpl.
+      + erewrite find_update_subtree in H10; eauto.
+        inversion H10; subst. clear H10.
+        left.
         intuition.
-        subst; simpl.
-        admit.
-      + (* nth trree has a directory for pathname, but shorter *)
-        rewrite H5 in H8. exfalso. eauto.
-      + (* nth tree has nothing for pathname *) 
-        rewrite H5 in H8.
-        unfold treeseq_one_file_sync; simpl.
-        rewrite H; simpl.
-        rewrite H5; simpl.
-        unfold treeseq_one_safe; simpl.
-        admit.
-    - (* block is in nth three *)
-      destruct H5.
-      intuition.
-      unfold treeseq_one_file_sync.
-      rewrite H1; simpl.
-      rewrite H; simpl.
-*)
+        admit.  (* XXX bn = al[i] *)
+        exists pathname0.
+        eexists.
+        erewrite find_update_subtree.
+        2: eauto.
+        destruct (addr_eq_dec inum0 n0); subst.
+        eauto.
+        (* XXX pathname0 to inode # binding cannot change ... *)
+        unfold treeseq_safe_bwd in *.
+        specialize (H8 inum0 off bn).
+        edestruct H8.
+        exists f.
+        intuition; eauto.
+        destruct H10.
+        intuition.
+        rewrite H7 in H12.
+        inversion H12; subst.
+        eauto.
   Admitted.
 
   Lemma treeseq_in_ds_file_sync: forall  Fm Ftop fsxp mscs mscs' ds ts al pathname inum  f,
