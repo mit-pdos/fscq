@@ -58,6 +58,22 @@ Module TREESEQ.
     DIRTREE.dirtree_safe (TSilist t1) (BFILE.pick_balloc (TSfree t1) (MSAlloc mscs)) (TStree t1)
                          (TSilist t2) (BFILE.pick_balloc (TSfree t2) (MSAlloc mscs)) (TStree t2).
 
+  Theorem treeseq_one_safe_refl : forall t mscs,
+    treeseq_one_safe t t mscs.
+  Proof.
+    intros.
+    apply DIRTREE.dirtree_safe_refl.
+  Qed.
+
+  Theorem treeseq_one_safe_trans : forall t1 t2 t3 mscs,
+    treeseq_one_safe t1 t2 mscs ->
+    treeseq_one_safe t2 t3 mscs ->
+    treeseq_one_safe t1 t3 mscs.
+  Proof.
+    unfold treeseq_one_safe; intros.
+    eapply DIRTREE.dirtree_safe_trans; eauto.
+  Qed.
+
   Definition treeseq := nelist treeseq_one.
 
   Definition tree_rep F Ftop fsxp t :=
@@ -852,12 +868,46 @@ Module TREESEQ.
     destruct t; auto.
   Qed.
 
-  Lemma treeseq_one_safe_dsupd : forall tolder tnewest mscs mscs' pathname off v inum f,
+  Lemma treeseq_one_safe_dsupd_1 : forall tolder tnewest mscs mscs' pathname off v inum f,
     treeseq_one_safe tolder tnewest mscs ->
     find_subtree pathname (TStree tnewest) = Some (TreeFile inum f) ->
     MSAlloc mscs' = MSAlloc mscs ->
-    treeseq_one_safe (treeseq_one_upd tolder pathname off v)
-      (treeseq_one_upd tnewest pathname off v) mscs'.
+    treeseq_one_safe (treeseq_one_upd tolder pathname off v) tnewest mscs'.
+  Proof.
+    unfold treeseq_one_safe; intros.
+    repeat rewrite treeseq_one_upd_alternative; simpl.
+    rewrite H1; clear H1 mscs'.
+    unfold dirtree_safe in *; intuition.
+    destruct (list_eq_dec string_dec pathname0 pathname); subst.
+    - edestruct H2; eauto.
+      left.
+      intuition.
+      repeat deex.
+      exists pathname'.
+      case_eq (find_subtree pathname (TStree tolder)); intros; eauto.
+      destruct d; eauto.
+      destruct (list_eq_dec string_dec pathname' pathname); subst.
+      + erewrite find_update_subtree; eauto.
+        rewrite H4 in H6; inversion H6. eauto.
+      + rewrite find_subtree_update_subtree_ne_path by auto; eauto.
+    - edestruct H2; eauto.
+      left.
+      intuition.
+      repeat deex.
+      exists pathname'.
+      case_eq (find_subtree pathname (TStree tolder)); intros; eauto.
+      destruct d; eauto.
+      destruct (list_eq_dec string_dec pathname' pathname); subst.
+      + erewrite find_update_subtree; eauto.
+        rewrite H4 in H6; inversion H6. eauto.
+      + rewrite find_subtree_update_subtree_ne_path by auto; eauto.
+  Qed.
+
+  Lemma treeseq_one_safe_dsupd_2 : forall tolder tnewest mscs mscs' pathname off v inum f,
+    treeseq_one_safe tolder tnewest mscs ->
+    find_subtree pathname (TStree tnewest) = Some (TreeFile inum f) ->
+    MSAlloc mscs' = MSAlloc mscs ->
+    treeseq_one_safe tolder (treeseq_one_upd tnewest pathname off v) mscs'.
   Proof.
     unfold treeseq_one_safe; intros.
     repeat rewrite treeseq_one_upd_alternative; simpl.
@@ -868,28 +918,22 @@ Module TREESEQ.
     - erewrite find_update_subtree in H; eauto.
       inversion H; subst.
       edestruct H2; eauto.
-      left.
-      intuition.
-      repeat deex.
-      exists pathname'.
-      case_eq (find_subtree pathname (TStree tolder)); intros; eauto.
-      destruct d; eauto.
-      destruct (list_eq_dec string_dec pathname' pathname); subst.
-      + erewrite find_update_subtree; eauto.
-        rewrite H4 in H6; inversion H6. eauto.
-      + rewrite find_subtree_update_subtree_ne_path by auto; eauto.
     - rewrite find_subtree_update_subtree_ne_path in H by auto.
       edestruct H2; eauto.
-      left.
-      intuition.
-      repeat deex.
-      exists pathname'.
-      case_eq (find_subtree pathname (TStree tolder)); intros; eauto.
-      destruct d; eauto.
-      destruct (list_eq_dec string_dec pathname' pathname); subst.
-      + erewrite find_update_subtree; eauto.
-        rewrite H4 in H6; inversion H6. eauto.
-      + rewrite find_subtree_update_subtree_ne_path by auto; eauto.
+  Qed.
+
+  Lemma treeseq_one_safe_dsupd : forall tolder tnewest mscs mscs' pathname off v inum f,
+    treeseq_one_safe tolder tnewest mscs ->
+    find_subtree pathname (TStree tnewest) = Some (TreeFile inum f) ->
+    MSAlloc mscs' = MSAlloc mscs ->
+    treeseq_one_safe (treeseq_one_upd tolder pathname off v)
+      (treeseq_one_upd tnewest pathname off v) mscs'.
+  Proof.
+    intros.
+    eapply treeseq_one_safe_trans.
+    eapply treeseq_one_safe_dsupd_1; eauto.
+    eapply treeseq_one_safe_dsupd_2; eauto.
+    eapply treeseq_one_safe_refl.
   Qed.
 
   Theorem treeseq_in_ds_upd : forall F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f,
@@ -913,12 +957,12 @@ Module TREESEQ.
     eapply treeseq_one_safe_dsupd; eauto.
   Qed.
 
-  Lemma treeseq_upd_safe_upd: forall Fm fsxp Ftop mscs Ftree Fd ts ds n pathname pathname' f f' off vs v inum bn,
+  Lemma treeseq_upd_safe_upd: forall Fm fsxp Ftop mscs Ftree ts ds n pathname pathname' f f' off v inum bn,
     (Fm ✶ rep fsxp Ftop (update_subtree pathname (TreeFile inum f') (TStree ts !!)) (TSilist ts !!)
-         (fst (TSfree ts !!), snd (TSfree ts !!)))%pred (list2nmem (dsupd ds bn (v, vsmerge vs)) !!)->
+         (fst (TSfree ts !!), snd (TSfree ts !!)))%pred (list2nmem (dsupd ds bn v) !!) ->
     (Ftree ✶ pathname |-> Some (inum, f))%pred (dir2flatmem2 (TStree ts !!)) -> 
-    (Fd ✶ off |-> vs)%pred (list2nmem (BFILE.BFData f)) ->
-    (Fd ✶ off |-> (v, vsmerge vs))%pred (list2nmem (BFILE.BFData f')) ->
+    True ->
+    True ->
     BFILE.block_belong_to_file (TSilist ts !!) bn inum off ->
     treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) ts !!) ts ->
     treeseq_safe pathname (MSAlloc mscs) ts !! (nthd n ts) ->
@@ -926,8 +970,8 @@ Module TREESEQ.
     tree_inodes_distinct (TStree ts !!) ->
     tree_rep Fm Ftop fsxp (nthd n ts) (list2nmem (nthd n ds)) ->
     treeseq_safe pathname' (MSAlloc mscs)
-      (treeseq_one_upd ts !! pathname off (v, vsmerge vs))
-      (treeseq_one_upd (nthd n ts) pathname off (v, vsmerge vs)).
+      (treeseq_one_upd ts !! pathname off v)
+      (treeseq_one_upd (nthd n ts) pathname off v).
   Proof.
     intros.
     eapply dir2flatmem2_find_subtree_ptsto in H0 as H0'; eauto.
@@ -939,7 +983,7 @@ Module TREESEQ.
       + unfold treeseq_safe_fwd in *; intros; simpl in *.
         erewrite find_update_subtree in *; eauto.
         exists {|
-             BFILE.BFData := (BFILE.BFData f) ⟦ off := (v, vsmerge vs) ⟧;
+             BFILE.BFData := (BFILE.BFData f) ⟦ off := v ⟧;
              BFILE.BFAttr := BFILE.BFAttr f |}.
         specialize (H9 inum0 off0 bn0).
         case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
@@ -1152,9 +1196,6 @@ Module TREESEQ.
     intuition.
     eapply treeseq_upd_safe_upd; eauto.
 
-    eapply list2nmem_ptsto_cancel.
-    simplen.
-
     distinct_names.
     distinct_inodes.
 
@@ -1217,6 +1258,9 @@ Module TREESEQ.
     eapply dir2flatmem2_find_subtree_ptsto; eauto.
     distinct_names'.
     eassumption.
+
+  Grab Existential Variables.
+    exact ($0, nil).
   Qed.
 
   (* XXX maybe inum should be an argument and the TreeFile case should be split into two cases. *)
@@ -1270,6 +1314,267 @@ Module TREESEQ.
       eapply dirtree_update_safe_pathname_vssync_vecs_file; eauto.
   Admitted.
 
+  Fixpoint synced_up_to_n n (vsl : list valuset) : list valuset :=
+    match n with
+    | O => vsl
+    | S n' =>
+      match vsl with
+      | nil => nil
+      | vs :: vsl' => (fst vs, nil) :: (synced_up_to_n n' vsl')
+      end
+    end.
+
+  Theorem synced_list_up_to_n : forall vsl,
+    synced_list (map fst vsl) = synced_up_to_n (length vsl) vsl.
+  Proof.
+    induction vsl; eauto.
+    simpl.
+    unfold synced_list; simpl.
+    f_equal.
+    eauto.
+  Qed.
+
+  Lemma length_synced_up_to_n : forall n vsl,
+    length vsl = length (synced_up_to_n n vsl).
+  Proof.
+    induction n; simpl; eauto; intros.
+    destruct vsl; eauto.
+    simpl; eauto.
+  Qed.
+
+  Lemma synced_up_to_n_nil : forall n, synced_up_to_n n nil = nil.
+  Proof.
+    induction n; eauto.
+  Qed.
+
+  Lemma synced_up_to_n_too_long : forall vsl n,
+    n >= Datatypes.length vsl ->
+    synced_up_to_n n vsl = synced_up_to_n (Datatypes.length vsl) vsl.
+  Proof.
+    induction vsl; simpl; intros; eauto.
+    rewrite synced_up_to_n_nil; eauto.
+    destruct n; try omega.
+    simpl; f_equal.
+    eapply IHvsl.
+    omega.
+  Qed.
+
+  Lemma cons_synced_up_to_n' : forall synclen d l default,
+    synclen <= Datatypes.length l ->
+    (fst d, []) :: synced_up_to_n synclen l =
+    synced_up_to_n synclen (d :: l) ⟦ synclen := (fst (selN (d :: l) synclen default), nil) ⟧.
+  Proof.
+    induction synclen; simpl; intros; eauto.
+    f_equal.
+    destruct l; simpl.
+    rewrite synced_up_to_n_nil; eauto.
+    erewrite IHsynclen; simpl in *; eauto.
+    omega.
+  Qed.
+
+  Lemma cons_synced_up_to_n : forall synclen d l default,
+    (fst d, []) :: synced_up_to_n synclen l =
+    synced_up_to_n synclen (d :: l) ⟦ synclen := (fst (selN (d :: l) synclen default), nil) ⟧.
+  Proof.
+    intros.
+    destruct (le_dec synclen (Datatypes.length l)).
+    eapply cons_synced_up_to_n'; eauto.
+    rewrite updN_oob by (simpl; omega).
+    rewrite synced_up_to_n_too_long by omega. rewrite <- synced_list_up_to_n.
+    rewrite synced_up_to_n_too_long by (simpl; omega). rewrite <- synced_list_up_to_n.
+    firstorder.
+  Qed.
+
+  Fixpoint synced_file_alt_helper f off :=
+    match off with
+    | O => f
+    | S off' =>
+      let f' := BFILE.mk_bfile (updN (BFILE.BFData f) off' (fst (selN (BFILE.BFData f) off' ($0, nil)), nil)) (BFILE.BFAttr f) in
+      synced_file_alt_helper f' off'
+    end.
+
+  Definition synced_file_alt f :=
+    synced_file_alt_helper f (Datatypes.length (BFILE.BFData f)).
+
+  Theorem synced_file_alt_equiv : forall f,
+    BFILE.synced_file f = synced_file_alt f.
+  Proof.
+    unfold BFILE.synced_file, synced_file_alt; intros.
+    rewrite synced_list_up_to_n.
+    unfold BFILE.datatype.
+    remember (@Datatypes.length valuset (BFILE.BFData f)) as synclen.
+    assert (synclen <= Datatypes.length (BFILE.BFData f)) by simplen.
+    clear Heqsynclen.
+    generalize dependent f.
+    induction synclen; simpl; intros.
+    - destruct f; eauto.
+    - rewrite <- IHsynclen; simpl.
+      f_equal.
+      destruct (BFILE.BFData f).
+      simpl in *; omega.
+      eapply cons_synced_up_to_n.
+      rewrite length_updN. omega.
+  Qed.
+
+  Lemma treeseq_one_upd_noop : forall t pathname off v inum f def,
+    tree_names_distinct (TStree t) ->
+    find_subtree pathname (TStree t) = Some (TreeFile inum f) ->
+    off < Datatypes.length (BFILE.BFData f) ->
+    selN (BFILE.BFData f) off def = v ->
+    t = treeseq_one_upd t pathname off v.
+  Proof.
+    unfold treeseq_one_upd; intros.
+    rewrite H0.
+    destruct t; simpl in *; f_equal.
+    rewrite update_subtree_same; eauto.
+    rewrite H0.
+    f_equal.
+    f_equal.
+    destruct f; simpl in *.
+    f_equal.
+    rewrite <- H2.
+    rewrite updN_selN_eq; eauto.
+  Qed.
+
+  Fixpoint treeseq_one_file_sync_alt_helper (t : treeseq_one) (pathname : list string) off fdata :=
+    match off with
+    | O => t
+    | S off' =>
+      let t' := treeseq_one_upd t pathname off' (selN fdata off' $0, nil) in
+      treeseq_one_file_sync_alt_helper t' pathname off' fdata
+    end.
+
+  Definition treeseq_one_file_sync_alt (t : treeseq_one) (pathname : list string) :=
+    match find_subtree pathname (TStree t) with
+    | None => t
+    | Some (TreeDir _ _) => t
+    | Some (TreeFile inum f) =>
+      treeseq_one_file_sync_alt_helper t pathname (length (BFILE.BFData f)) (map fst (BFILE.BFData f))
+    end.
+
+  Lemma treeseq_one_file_sync_alt_equiv : forall t pathname,
+    tree_names_distinct (TStree t) ->
+    treeseq_one_file_sync t pathname = treeseq_one_file_sync_alt t pathname.
+  Proof.
+    unfold treeseq_one_file_sync, treeseq_one_file_sync_alt; intros.
+    case_eq (find_subtree pathname (TStree t)); eauto.
+    destruct d; eauto.
+    intros.
+    rewrite synced_file_alt_equiv. unfold synced_file_alt.
+    remember (@Datatypes.length BFILE.datatype (BFILE.BFData b)) as synclen; intros.
+    assert (synclen <= Datatypes.length (BFILE.BFData b)) by simplen.
+    clear Heqsynclen.
+
+    remember (map fst (BFILE.BFData b)) as synced_blocks.
+    generalize dependent synced_blocks.
+    generalize dependent t.
+    generalize dependent b.
+    induction synclen; intros.
+    - simpl.
+      destruct t; destruct b; simpl in *; f_equal.
+      eapply update_subtree_same; eauto.
+    - simpl.
+      erewrite <- IHsynclen.
+      f_equal.
+      + unfold treeseq_one_upd. rewrite H0; simpl.
+        rewrite update_update_subtree_same. reflexivity.
+      + unfold treeseq_one_upd. rewrite H0. destruct t; eauto.
+      + unfold treeseq_one_upd. rewrite H0. destruct t; eauto.
+      + simpl. rewrite length_updN. omega.
+      + unfold treeseq_one_upd. rewrite H0. simpl.
+        eapply tree_names_distinct_update_subtree.
+        eauto. constructor.
+      + subst; simpl.
+        unfold treeseq_one_upd. rewrite H0; simpl.
+        erewrite selN_map.
+        erewrite find_update_subtree; eauto.
+        unfold BFILE.datatype in *; omega.
+      + subst; simpl.
+        rewrite map_updN; simpl.
+        erewrite selN_eq_updN_eq; eauto.
+        erewrite selN_map; eauto.
+  Grab Existential Variables.
+    exact $0.
+  Qed.
+
+  Lemma treeseq_one_file_sync_alt_equiv_d_map : forall pathname ts,
+    NEforall (fun t => tree_names_distinct (TStree t)) ts ->
+    d_map (fun t => treeseq_one_file_sync t pathname) ts =
+    d_map (fun t => treeseq_one_file_sync_alt t pathname) ts.
+  Proof.
+    unfold d_map; destruct ts; intros.
+    f_equal; simpl.
+    - eapply treeseq_one_file_sync_alt_equiv.
+      eapply H.
+    - eapply map_ext_in; intros.
+      eapply treeseq_one_file_sync_alt_equiv.
+      destruct H; simpl in *.
+      eapply Forall_forall in H1; eauto.
+  Qed.
+
+  Lemma tree_safe_file_sync_1 : forall Fm Ftop fsxp mscs ds ts mscs' pathname,
+    (exists inum f, find_subtree pathname (TStree ts !!) = Some (TreeFile inum f)) ->
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
+    BFILE.MSAlloc mscs' = BFILE.MSAlloc mscs -> 
+    treeseq_one_safe (ts !!) (treeseq_one_file_sync (ts !!) pathname) mscs'.
+  Proof.
+    intros.
+    rewrite treeseq_one_file_sync_alt_equiv.
+    unfold treeseq_one_file_sync_alt.
+    inversion H.
+    destruct H2.
+    rewrite H2.
+    remember (Datatypes.length (BFILE.BFData x0)) as len; clear Heqlen.
+    remember (ts !!) as y. rewrite Heqy at 1.
+    assert (treeseq_one_safe ts !! y mscs').
+    subst; eapply treeseq_one_safe_refl.
+    clear Heqy. clear H2.
+    generalize dependent y.
+    induction len; simpl; intros; eauto.
+    eapply IHlen.
+    admit.
+    repeat deex.
+    eapply treeseq_one_safe_dsupd_2; eauto.
+    admit.
+  Admitted.
+
+  Lemma tree_safe_file_sync_2 : forall Fm Ftop fsxp mscs ds ts mscs' n pathname,
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
+    BFILE.MSAlloc mscs' = BFILE.MSAlloc mscs -> 
+    treeseq_one_safe (treeseq_one_file_sync (nthd n ts) pathname) (ts !!) mscs'.
+  Proof.
+    intros.
+    rewrite treeseq_one_file_sync_alt_equiv.
+    unfold treeseq_one_file_sync_alt.
+    case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
+    destruct d.
+
+    remember (Datatypes.length (BFILE.BFData b)) as len; clear Heqlen.
+    remember (nthd n ts) as y.
+    assert (treeseq_one_safe (nthd n ts) y mscs').
+    subst; eapply treeseq_one_safe_refl.
+    clear Heqy.
+    assert (exists b0, find_subtree pathname (TStree y) = Some (TreeFile n0 b0) /\ map fst (BFILE.BFData b) = map fst (BFILE.BFData b0)).
+    eexists; intuition eauto.
+    clear H1.
+    generalize dependent y.
+    induction len; simpl; intros; eauto.
+    admit.
+    eapply IHlen.
+    destruct H3; intuition.
+    eapply treeseq_one_safe_dsupd_2; eauto.
+    destruct H3; intuition.
+    eexists; split.
+    unfold treeseq_one_upd.
+    rewrite H3; simpl.
+    erewrite find_update_subtree by eauto. reflexivity.
+    simpl.
+    admit.
+    admit.
+    admit.
+    admit.
+  Admitted.
+
   Lemma tree_safe_file_sync: forall Fm Ftop fsxp mscs ds ts mscs' n al pathname inum f,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
     Datatypes.length al = Datatypes.length (BFILE.BFData f) ->
@@ -1283,43 +1588,10 @@ Module TREESEQ.
   Proof.
     intros.
     rewrite d_map_latest.
-    eapply NEforall_d_in in H3 as H3'; [ | apply nthd_in_ds with (n := n) ].
-    unfold treeseq_safe in H3'.
-    intuition.
-    unfold treeseq_one_file_sync in *.
-    rewrite H; simpl.
-    unfold treeseq_one_safe; simpl.
-    case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
-    destruct d; simpl.
-    - (* a file *)
-      Search dirtree_safe update_subtree.
-      unfold dirtree_safe.
-      intuition.
-      rewrite H4; auto.
-      destruct (list_eq_dec string_dec pathname pathname0); subst; simpl.
-      + erewrite find_update_subtree in H10; eauto.
-        inversion H10; subst. clear H10.
-        left.
-        intuition.
-        admit.  (* XXX bn = al[i] *)
-        exists pathname0.
-        eexists.
-        erewrite find_update_subtree.
-        2: eauto.
-        destruct (addr_eq_dec inum0 n0); subst.
-        eauto.
-        (* XXX pathname0 to inode # binding cannot change ... *)
-        unfold treeseq_safe_bwd in *.
-        specialize (H8 inum0 off bn).
-        edestruct H8.
-        exists f.
-        intuition; eauto.
-        destruct H10.
-        intuition.
-        rewrite H7 in H12.
-        inversion H12; subst.
-        eauto.
-  Admitted.
+    eapply treeseq_one_safe_trans.
+    eapply tree_safe_file_sync_2; eauto.
+    eapply tree_safe_file_sync_1; eauto.
+  Qed.
 
   Lemma treeseq_in_ds_file_sync: forall  Fm Ftop fsxp mscs mscs' ds ts al pathname inum  f,
     treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
@@ -1357,6 +1629,7 @@ Module TREESEQ.
       (treeseq_one_file_sync ts !! pathname))
       (d_map (fun t : treeseq_one => treeseq_one_file_sync t pathname) ts).
   Proof.
+    
   Admitted.
 
   Ltac distinct_inodes' :=

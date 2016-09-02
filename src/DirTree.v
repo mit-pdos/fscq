@@ -480,6 +480,15 @@ Module DIRTREE.
     cancel.
   Qed.
 
+  Lemma tree_names_distinct_update_subtree : forall t pn subtree,
+    tree_names_distinct t ->
+    tree_names_distinct subtree ->
+    tree_names_distinct (update_subtree pn subtree t).
+  Proof.
+    induction pn; simpl; eauto; intros.
+    
+  Admitted.
+
   Theorem subtree_extract : forall xp fnlist tree subtree,
     find_subtree fnlist tree = Some subtree ->
     tree_pred xp tree =p=> tree_pred_except xp fnlist tree * tree_pred xp subtree.
@@ -3876,11 +3885,11 @@ Module DIRTREE.
 
   (* Rewrite using the tree induction principle doesn't really work out *)
   Lemma update_update_subtree_twice: forall prefix name subtree' subtree d dnum tree_elem,
-     tree_names_distinct 
+    tree_names_distinct 
        (update_subtree (prefix ++ [name]) subtree'
           (update_subtree prefix
              (add_to_dir name subtree (TreeDir dnum tree_elem)) d)) ->
-   update_subtree (prefix ++ [name]) subtree'
+    update_subtree (prefix ++ [name]) subtree'
        (update_subtree prefix (add_to_dir name subtree (TreeDir dnum tree_elem)) d) =
         update_subtree prefix (add_to_dir name subtree' (TreeDir dnum tree_elem)) d.
   Proof.
@@ -3921,6 +3930,10 @@ Module DIRTREE.
       eauto.
   Qed.
 
+  Lemma update_update_subtree_same : forall pn tree subtree subtree',
+    update_subtree pn subtree (update_subtree pn subtree' tree) = update_subtree pn subtree tree.
+  Proof.
+  Admitted.
 
   Theorem update_subtree_tree_graft: 
     forall prefix name tree dnum tree_elem subtree subtree' F Ftop m fsxp ilist frees,
