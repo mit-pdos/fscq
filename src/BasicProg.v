@@ -42,14 +42,19 @@ Proof.
     eapply H4; eauto.
     pred_apply; cancel.
     eauto.
-    admit. (* m a |+> (dummy_cur, x) and m' a |+> (v, x'); equal using sync_addr_step *)
+    eapply ptsto_subset_valid' in H; deex.
+    unfold possible_sync in *.
+    destruct (H10 a).
+    intuition congruence.
+    repeat deex; simpl in *.
+    congruence.
   - exfalso.
     apply sep_star_comm in H. eapply ptsto_subset_valid in H. repeat deex.
     congruence.
   - right. repeat eexists; intuition eauto.
     eapply H3.
     pred_apply; cancel.
-Admitted.
+Qed.
 
 Hint Extern 1 ({{_}} Bind (Read _) _) => apply read_ok : prog.
 
@@ -66,14 +71,27 @@ Proof.
   inv_exec.
   - inv_exec.
     eapply H4; eauto.
-    admit.
+    eapply pimpl_trans.
+    reflexivity.
+    2: eapply ptsto_subset_upd.
+    cancel.
+    eapply sync_invariant_possible_sync; eauto.
+    specialize (H10 a).
+    apply ptsto_subset_valid' in H; repeat deex.
+    congruence.
+    simpl in *.
+    rewrite H0 in H2; inversion H2; subst.
+    rewrite H14 in H; inversion H; subst.
+    unfold vsmerge; simpl.
+    eapply incl_cons. eapply in_eq.
+    eapply incl_tl. eapply incl_tran. eauto. eauto.
   - exfalso.
     apply sep_star_comm in H. eapply ptsto_subset_valid in H. repeat deex.
     congruence.
   - right. repeat eexists; intuition eauto.
     eapply H3.
     pred_apply; cancel.
-Admitted.
+Qed.
 
 Hint Extern 1 ({{_}} Bind (Write _ _) _) => apply write_ok : prog.
 
@@ -114,8 +132,15 @@ Proof.
     apply sep_star_comm in H as H'. rewrite ptsto_subset_pimpl_ptsto_ex in H'. destruct_lift H'.
     apply ptsto_valid in H0.
     rewrite H0 in H1; inversion H1; subst.
-    admit.
-Admitted.
+    inv_exec.
+    destruct vs'.
+    eapply pimpl_trans.
+    reflexivity.
+    2: eapply ptsto_subset_upd.
+    cancel.
+    eapply sync_invariant_possible_sync; eauto.
+    eapply incl_refl.
+Qed.
 
 Hint Extern 1 ({{_}} Bind (Trim _) _) => apply trim_ok : prog.
 
