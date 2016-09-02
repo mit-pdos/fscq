@@ -480,14 +480,32 @@ Module DIRTREE.
     cancel.
   Qed.
 
-  Lemma tree_names_distinct_update_subtree : forall t pn subtree,
+  Lemma tree_names_distinct_update_subtree : forall pn t subtree,
     tree_names_distinct t ->
     tree_names_distinct subtree ->
     tree_names_distinct (update_subtree pn subtree t).
   Proof.
     induction pn; simpl; eauto; intros.
-    
-  Admitted.
+    destruct t; eauto.
+    constructor.
+    - induction l; simpl; constructor.
+      + destruct a0; simpl.
+        inversion H; simpl in *; subst.
+        inversion H3; subst.
+        destruct (string_dec s a); subst; simpl; eauto.
+      + eapply IHl.
+        inversion H; subst.
+        inversion H3; subst.
+        inversion H4; subst.
+        constructor; eauto.
+    - inversion H; subst.
+      replace (map fst (map (update_subtree_helper (update_subtree pn subtree) a) l)) with (map fst l); eauto.
+      clear H H3 H4.
+      induction l; simpl; eauto.
+      f_equal; eauto.
+      destruct a0; simpl.
+      destruct (string_dec s a); eauto.
+  Qed.
 
   Theorem subtree_extract : forall xp fnlist tree subtree,
     find_subtree fnlist tree = Some subtree ->
@@ -3933,7 +3951,16 @@ Module DIRTREE.
   Lemma update_update_subtree_same : forall pn tree subtree subtree',
     update_subtree pn subtree (update_subtree pn subtree' tree) = update_subtree pn subtree tree.
   Proof.
-  Admitted.
+    induction pn; simpl; intros; eauto.
+    destruct tree; eauto.
+    f_equal.
+    induction l; eauto.
+    destruct a0; simpl.
+    rewrite IHl; f_equal.
+    destruct (string_dec s a); subst; simpl.
+    destruct (string_dec a a); congruence.
+    destruct (string_dec s a); congruence.
+  Qed.
 
   Theorem update_subtree_tree_graft: 
     forall prefix name tree dnum tree_elem subtree subtree' F Ftop m fsxp ilist frees,
