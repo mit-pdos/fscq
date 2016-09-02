@@ -1355,6 +1355,13 @@ Module TREESEQ.
   Proof.
   Admitted.
 
+  Ltac distinct_inodes' :=
+    repeat match goal with
+      | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- DIRTREE.tree_inodes_distinct (TStree ?ts !!) ] => 
+        idtac "inodes"; eapply treeseq_in_ds_tree_pred_latest in H as Hpred;
+        eapply DIRTREE.rep_tree_inodes_distinct; eapply Hpred
+    end.
+
   Theorem treeseq_file_sync_ok : forall fsxp inum mscs,
     {< ds ts Fm Ftop Ftree pathname f,
     PRE:hm
@@ -1397,8 +1404,7 @@ Module TREESEQ.
     rewrite d_map_latest.
     eapply treeseq_sync_safe_sync; eauto.
     distinct_names'.
-    admit. (* distinct_inodes' *)
-
+    distinct_inodes'.
     unfold ts_file_sync.
     rewrite d_map_latest.
     unfold treeseq_one_file_sync.
@@ -1407,7 +1413,7 @@ Module TREESEQ.
     eapply dir2flatmem2_update_subtree; eauto.
     distinct_names'.
     distinct_names'.
-  Admitted.
+  Qed.
 
   Lemma treeseq_latest: forall (ts : treeseq),
     (ts !!, []) !! = ts !!.
