@@ -1050,27 +1050,6 @@ Lemma off_mod_v_l_data_le_v: forall length_data off,
 		auto.
 	Qed.
 	
-(* Lemma app_map_fs_eq: forall data a l off,
-length data <= valubytes - off mod valubytes ->
-length
-  (map fst
-     (firstn (off mod valubytes)
-        (valuset2bytesets_rec (a::l) valubytes)) ++
-   data ++
-   map fst
-     (skipn (off mod valubytes + length data)
-        (valuset2bytesets_rec (a::l) valubytes))) = valubytes.
-	Proof.
-		intros;
-		rewrite <- firstn_map_comm.
-		rewrite <- skipn_map_comm.
-		apply app_length_eq.
-		rewrite map_length;
-		apply valuset2bytesets_rec_len.
-		unfold not; intros; inversion H0.
-
-		apply off_mod_v_l_data_le_v; auto.
-	Qed. *)
 	
 Lemma v_off_mod_v_le_length_data: forall length_data off,
 ~ length_data <= valubytes - off mod valubytes ->
