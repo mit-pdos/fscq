@@ -1744,19 +1744,109 @@ rewrite H9.
 destruct (lt_dec a0 (length (ByFData fy))).
 destruct (lt_dec a0 (block_off * valubytes));
 destruct (le_dec (block_off * valubytes + byte_off) a0);
-destruct (lt_dec a0 (block_off * valubytes + byte_off + length data)); try omega.
+destruct (lt_dec a0 (block_off * valubytes + byte_off + length data));
+destruct (lt_dec a0 (block_off * valubytes + valubytes)); try omega.
+
+(* a0 < block_off * valubytes *)
 left. simpl.
 unfold list2nmem.
+repeat rewrite map_app; simpl.
+repeat rewrite selN_app1.
+repeat erewrite selN_map.
+apply some_eq.
+rewrite <- concat_hom_firstn with (k:= valubytes).
+rewrite selN_firstn.
+rewrite <- H22; rewrite H21.
+rewrite selN_firstn.
+reflexivity.
+all: eauto.
+eapply proto_len; eauto.
+rewrite concat_hom_length with (k:= valubytes).
+rewrite firstn_length_l; auto.
 
- reflexivity.
+Lemma block_off_le_length_proto_bytefile: forall  f pfy ufy fy block_off byte_off data F,
+proto_bytefile_valid f pfy ->
+unified_bytefile_valid pfy ufy ->
+bytefile_valid ufy fy -> 
+(F * arrayN ptsto_subset_b (block_off * valubytes + byte_off) data)%pred (list2nmem (ByFData fy)) ->
+byte_off < valubytes ->
+length data > 0 ->
+block_off <= length (PByFData pfy).
 
-right.
-split.
-unfold list2nmem; simpl.
-erewrite selN_map.
-unfold not; intros Hx; inversion Hx.
+	Proof.
+		intros.
+		erewrite bfile_protobyte_len_eq; eauto.
+		apply ptsto_subset_b_to_ptsto in H2 as Hx.
+		repeat destruct Hx.
+		destruct H5.
+		apply Nat.lt_le_incl; eapply inlen_bfile. 
+		eauto.
+		eauto.
+		eauto.
+		3: eauto.
+		omega.
+		omega.
+	Qed.
+
+Lemma proto_len_firstn: forall f pfy a,
+proto_bytefile_valid f pfy ->
+Forall (fun sublist : list byteset => length sublist = valubytes) (firstn a (PByFData pfy)).
+Proof.
+intros.
+apply Forall_forall; intros.
+apply in_firstn_in in H0.
+rewrite H in H0.
+apply in_map_iff in H0.
+destruct H0.
+inversion H0.
+rewrite <- H1.
+apply valuset2bytesets_len.
+Qed.
+
+eapply block_off_le_length_proto_bytefile; eauto; omega.
+eapply proto_len_firstn; eauto.
+rewrite map_length.
+rewrite concat_hom_length with (k:= valubytes).
+rewrite firstn_length_l; auto.
+eapply block_off_le_length_proto_bytefile; eauto; omega.
+eapply proto_len_firstn; eauto.
+
+rewrite app_length.
+repeat rewrite map_length.
+rewrite merge_bs_length.
+rewrite concat_hom_length with (k:= valubytes).
+rewrite firstn_length_l; try omega.
+eapply block_off_le_length_proto_bytefile; eauto; omega.
+eapply proto_len_firstn; eauto.
+
+(* block_off * valubytes + valubytes > a0 >= block_off * valubytes + byte_off + length data *)
+apply Nat.nlt_ge in n.
+apply Nat.nlt_ge in n0.
+right. split; simpl.
+unfold not, list2nmem; intros Hx.
+erewrite selN_map in Hx; inversion Hx.
 auto.
 
+unfold list2nmem.
+repeat rewrite map_app.
+rewrite selN_app2.
+rewrite selN_app2.
+repeat rewrite map_app.
+repeat erewrite selN_map.
+apply some_eq.
+rewrite selN_firstn.
+rewrite selN_app1.
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+rewrite merge_bs_selN.
+simpl.
+repeat rewrite skipn_selN.
+rewrite valuset2bytesets_rec_cons_merge_bs.
+rewrite merge_bs_selN; simpl.
+erewrite selN_map.
 
 
 ---------------------------
