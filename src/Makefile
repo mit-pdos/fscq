@@ -1,5 +1,8 @@
-OCAMLBUILD := ocamlbuild -use-ocamlfind -lib str -lib nums
-OCAMLINC   := -I codegen -I mllib -I ocamlfuse -package extunix
+OCAMLBUILD := env OCAMLPATH=$(shell pwd) ocamlbuild \
+	      -tag thread -tag debug -use-ocamlfind \
+	      -lib str -lib nums \
+	      -I codegen -I mllib -X ocamlfuse \
+	      -package extunix -package zarith -package ocamlfuse
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
 	      Hashmap HashmapProg \
@@ -46,6 +49,7 @@ OCAMLFUSE_MLI	:= ocamlfuse/Fuse.mli \
 OCAMLFUSE_CMX	:= $(patsubst %.ml,%.cmx,$(OCAMLFUSE_ML))
 OCAMLFUSE_DEP	:= $(patsubst %.ml,%.d,$(OCAMLFUSE_ML)) \
 		   $(patsubst %.mli,%.di,$(OCAMLFUSE_MLI))
+OCAMLFUSE	:= ocamlfuse/Fuse.a ocamlfuse/Fuse.cmxa
 
 .PHONY: coq proof clean
 
@@ -74,14 +78,14 @@ ocamlfuse/libFuse_stubs.a: ocamlfuse/Fuse_bindings_stubs.o ocamlfuse/Unix_util_s
 %.cmi: %.mli
 	ocamlopt -I ocamlfuse -c -thread $<
 
-ocamlfuse/Fuse.cmxa: $(OCAMLFUSE_CMX) ocamlfuse/libFuse_stubs.a
+ocamlfuse/Fuse.cmxa ocamlfuse/Fuse.a: $(OCAMLFUSE_CMX) ocamlfuse/libFuse_stubs.a
 	ocamlopt -a -thread -linkall -cclib -lFuse_stubs -cclib -lfuse -cclib -lcamlidl -o $@ $(OCAMLFUSE_CMX)
 
-%: %.ml $(VS_ML)
+%: %.ml $(VS_ML) $(wildcard */*.ml) $(OCAMLFUSE)
 	rm -f $@
 	-mv codegen/Word.ml codegen/WordCoq.ml
 	-mv codegen/Word.mli codegen/WordCoq.mli
-	$(OCAMLBUILD) $(OCAMLINC) -no-links $@.native
+	$(OCAMLBUILD) -no-links $@.native
 	ln -s $(CURDIR)/_build/$@.native $@
 
 hscgen/%.hs: hslib/%.hsc

@@ -783,7 +783,9 @@ Module AFS.
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
         [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
         [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                        ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]])
+                        ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
+        [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
+     )
   XCRASH:hm'
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
   >} file_set_attr fsxp inum attr mscs.
@@ -818,7 +820,8 @@ Module AFS.
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]] *
         [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                        ilist' (BFILE.pick_balloc frees'  (MSAlloc mscs')) tree' ]])
+                        ilist' (BFILE.pick_balloc frees'  (MSAlloc mscs')) tree' ]] *
+        [[ sz >= Datatypes.length (BFILE.BFData f) -> BFILE.treeseq_ilist_safe inum ilist ilist' ]] )
     XCRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} file_truncate fsxp inum sz mscs.

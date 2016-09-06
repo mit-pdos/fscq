@@ -386,10 +386,9 @@ Module ATOMICCP.
     eapply treeseq_one_file_sync_tree_rep_src; eauto.
   Admitted.
 
-
   Ltac msalloc :=
   repeat match goal with
-      | [ H: MSAlloc _ = MSAlloc _ |- _]
+      | [ H: MSAlloc _ = MSAlloc _ |- DIRTREE.dirtree_safe _ _ _ _ _ _ ]
        => idtac "rewrite" H; rewrite H in *; clear H
   end.
 
@@ -434,16 +433,15 @@ Module ATOMICCP.
     step.
     specialize (H24 tmppath).
     destruct H24.
-
-    msalloc.
+    
+    rewrite H17.
+    rewrite H15.
     eassumption.
     unfold treeseq_pred.
     unfold NEforall.
     split.
-    msalloc.
-    eassumption.
-    msalloc.
-    eassumption.
+    rewrite H21; eauto.
+    rewrite H21; eauto.
     step.
 
     safestep.  (* step picks the wrong ts. *)

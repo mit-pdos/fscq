@@ -35,10 +35,32 @@ external is_null : 'a Com.opaque -> bool = "ocaml_fuse_is_null"
 
 let undefined _ = raise (Unix.Unix_error (Unix.ENOSYS,"undefined",""))
 
-let fuse_loop fuse (multithreaded) = 
-   let f = 
+let worker_thread (q, m, c) =
+  Mutex.lock m;
+  while true do
+    while Queue.length q == 0 do
+      Condition.wait c m
+    done;
+    let (x, y) = Queue.take q in
+    Mutex.unlock m;
+    ignore (x y);
+    Mutex.lock m
+  done
+
+let fuse_loop fuse (multithreaded) =
+  let q = Queue.create () in
+  let m = Mutex.create () in
+  let c = Condition.create () in
+  for i = 0 to 1 do
+    ignore (Thread.create worker_thread (q, m, c));
+  done;
+  let f =
     if multithreaded (* TODO: thread pooling instead of creation? *)
-    then fun x y -> ignore (Thread.create x y) 
+    then fun x y ->
+      Mutex.lock m;
+      Queue.add (x, y);
+      Mutex.unlock m;
+      Condition.signal c
     else fun x y -> ignore (x y)
   in
     while not (__fuse_exited fuse) do

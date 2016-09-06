@@ -254,6 +254,17 @@ Module DIRTREE.
      [[ (F * tree_pred fsxp tree * freeinode_pred)%pred (list2nmem bflist) ]]
     )%pred.
 
+  Theorem rep_length : forall fsxp F tree ilist frees,
+    rep fsxp F tree ilist frees =p=>
+    (rep fsxp F tree ilist frees *
+     [[ length ilist = ((INODE.IRecSig.RALen (FSXPInode fsxp)) * INODE.IRecSig.items_per_val)%nat ]])%pred.
+  Proof.
+    unfold rep; intros.
+    norml; unfold stars; simpl.
+    rewrite BFILE.rep_length_pimpl at 1.
+    cancel.
+  Qed.
+
   Definition dirtree_safe ilist1 free1 tree1 ilist2 free2 tree2 :=
     BFILE.ilist_safe ilist1 free1 ilist2 free2 /\
     forall inum off bn pathname f,
@@ -467,6 +478,33 @@ Module DIRTREE.
     eapply rep_tree_names_distinct' with (xp := fsxp).
     pred_apply' H1.
     cancel.
+  Qed.
+
+  Lemma tree_names_distinct_update_subtree : forall pn t subtree,
+    tree_names_distinct t ->
+    tree_names_distinct subtree ->
+    tree_names_distinct (update_subtree pn subtree t).
+  Proof.
+    induction pn; simpl; eauto; intros.
+    destruct t; eauto.
+    constructor.
+    - induction l; simpl; constructor.
+      + destruct a0; simpl.
+        inversion H; simpl in *; subst.
+        inversion H3; subst.
+        destruct (string_dec s a); subst; simpl; eauto.
+      + eapply IHl.
+        inversion H; subst.
+        inversion H3; subst.
+        inversion H4; subst.
+        constructor; eauto.
+    - inversion H; subst.
+      replace (map fst (map (update_subtree_helper (update_subtree pn subtree) a) l)) with (map fst l); eauto.
+      clear H H3 H4.
+      induction l; simpl; eauto.
+      f_equal; eauto.
+      destruct a0; simpl.
+      destruct (string_dec s a); eauto.
   Qed.
 
   Theorem subtree_extract : forall xp fnlist tree subtree,
@@ -3627,7 +3665,8 @@ Module DIRTREE.
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
            [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) nblocks ($0, nil)) (BFILE.BFAttr f) ]] *
            [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                           ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] )
+                           ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
+           [[ nblocks >= Datatypes.length (BFILE.BFData f) -> BFILE.treeseq_ilist_safe inum ilist ilist' ]])
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F ds hm'
     >} truncate fsxp inum nblocks mscs.
@@ -3689,7 +3728,7 @@ Module DIRTREE.
     {< F mbase m pathname Fm Ftop tree f ilist frees,
     PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) hm *
            [[ (Fm * rep fsxp Ftop tree ilist frees)%pred (list2nmem m) ]] *
-           [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] 
     POST:hm' RET:mscs'
            exists m' tree' f' ilist',
            LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m') (MSLL mscs') hm' *
@@ -3698,7 +3737,8 @@ Module DIRTREE.
            [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
            [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                           ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]]
+                           ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
+           [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
     >} setattr fsxp inum attr mscs.
@@ -3709,7 +3749,6 @@ Module DIRTREE.
     step.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
-
     eapply dirlist_safe_subtree; eauto.
     apply dirtree_safe_file_trans; auto.
   Qed.
@@ -3864,11 +3903,11 @@ Module DIRTREE.
 
   (* Rewrite using the tree induction principle doesn't really work out *)
   Lemma update_update_subtree_twice: forall prefix name subtree' subtree d dnum tree_elem,
-     tree_names_distinct 
+    tree_names_distinct 
        (update_subtree (prefix ++ [name]) subtree'
           (update_subtree prefix
              (add_to_dir name subtree (TreeDir dnum tree_elem)) d)) ->
-   update_subtree (prefix ++ [name]) subtree'
+    update_subtree (prefix ++ [name]) subtree'
        (update_subtree prefix (add_to_dir name subtree (TreeDir dnum tree_elem)) d) =
         update_subtree prefix (add_to_dir name subtree' (TreeDir dnum tree_elem)) d.
   Proof.
@@ -3909,6 +3948,19 @@ Module DIRTREE.
       eauto.
   Qed.
 
+  Lemma update_update_subtree_same : forall pn tree subtree subtree',
+    update_subtree pn subtree (update_subtree pn subtree' tree) = update_subtree pn subtree tree.
+  Proof.
+    induction pn; simpl; intros; eauto.
+    destruct tree; eauto.
+    f_equal.
+    induction l; eauto.
+    destruct a0; simpl.
+    rewrite IHl; f_equal.
+    destruct (string_dec s a); subst; simpl.
+    destruct (string_dec a a); congruence.
+    destruct (string_dec s a); congruence.
+  Qed.
 
   Theorem update_subtree_tree_graft: 
     forall prefix name tree dnum tree_elem subtree subtree' F Ftop m fsxp ilist frees,

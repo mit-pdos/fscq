@@ -2222,6 +2222,12 @@ Proof.
   inversion H; subst; eauto.
 Qed.
 
+Lemma In_incl : forall A (x : A) (l1 l2 : list A),
+  In x l1 -> incl l1 l2 -> In x l2.
+Proof.
+  firstorder.
+Qed.
+
 
 Definition postfix A (a b : list A) :=
   exists n, a = skipn n b.
