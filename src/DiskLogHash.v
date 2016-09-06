@@ -188,22 +188,30 @@ Module PaddedLog.
       cancel.
     Qed.
 
-    Definition read xp cs : prog _ := Eval compute_rec in
+    Definition read xp cs := Eval compute_rec in
       let^ (cs, v) <- BUFCACHE.read (LAHdr xp) cs;
       let header := (val2hdr v) in
       Ret ^(cs, ((# (header :-> "previous_ndesc"), # (header :-> "previous_ndata")),
                 (# (header :-> "ndesc"), # (header :-> "ndata")),
                 (header :-> "addr_checksum", header :-> "valu_checksum"))).
 
-    Definition write xp n cs : prog _ :=
+    Definition write xp n cs :=
       cs <- BUFCACHE.write (LAHdr xp) (hdr2val (mk_header n)) cs;
       Ret cs.
 
-    Definition sync xp cs : prog _ :=
+    Definition sync xp cs :=
       cs <- BUFCACHE.sync (LAHdr xp) cs;
       Ret cs.
 
-    Definition sync_now xp cs : prog _ :=
+    Definition sync_now xp cs :=
+      cs <- BUFCACHE.begin_sync cs;
+      cs <- BUFCACHE.sync (LAHdr xp) cs;
+      cs <- BUFCACHE.end_sync cs;
+      Ret cs.
+
+    Definition init xp cs :=
+      h <- Hash default_valu;
+      cs <- BUFCACHE.write (LAHdr xp) (hdr2val (mk_header ((0, 0), (0, 0), (h, h)))) cs;
       cs <- BUFCACHE.begin_sync cs;
       cs <- BUFCACHE.sync (LAHdr xp) cs;
       cs <- BUFCACHE.end_sync cs;
@@ -284,6 +292,32 @@ Module PaddedLog.
       hoare.
     Qed.
 
+    Theorem init_ok : forall xp cs,
+    {< F d v0,
+    PRE            BUFCACHE.rep cs d *
+                   [[ (F * (LAHdr xp) |+> v0)%pred d ]] *
+                   [[ sync_invariant F ]]
+    POST RET: cs
+                   exists d', BUFCACHE.rep cs d' *
+                   [[ (F * rep xp (Synced ((0, 0), (0, 0),
+                          (hash_fwd default_valu, hash_fwd default_valu))))%pred d' ]]
+    CRASH  any
+    >} init xp cs.
+    Proof.
+      unfold init, rep; intros.
+      step.
+      step.
+      step.
+      step.
+      step.
+      prestep; unfold rep; safecancel.
+      unfold hdr_goodSize; cbn.
+      repeat split; apply zero_lt_pow2.
+      all: apply pimpl_any.
+      Unshelve. exact tt.
+    Qed.
+
+
     Theorem sync_invariant_rep : forall xp st,
       sync_invariant (rep xp st).
     Proof.
@@ -295,6 +329,7 @@ Module PaddedLog.
     Hint Extern 1 ({{_}} Bind (read _ _) _) => apply read_ok : prog.
     Hint Extern 1 ({{_}} Bind (sync _ _) _) => apply sync_ok : prog.
     Hint Extern 1 ({{_}} Bind (sync_now _ _) _) => apply sync_now_ok : prog.
+    Hint Extern 1 ({{_}} Bind (init _ _) _) => apply init_ok : prog.
 
   End Hdr.
 
@@ -530,12 +565,12 @@ Module PaddedLog.
 
   Local Hint Unfold rep rep_inner rep_contents xparams_ok: hoare_unfold.
 
-  Definition avail xp cs : prog _ :=
+  Definition avail xp cs :=
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(_, (ndesc, _), _) := nr in
     Ret ^(cs, ((LogLen xp) - ndesc * DescSig.items_per_val)).
 
-  Definition read xp cs : prog _ :=
+  Definition read xp cs :=
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(_, (ndesc, ndata), _) := nr in
     let^ (cs, wal) <- Desc.read_all xp ndesc cs;
@@ -996,13 +1031,11 @@ Module PaddedLog.
   Local Hint Resolve goodSize_0.
 
 
-  Definition init xp cs : prog _ :=
-    h <- Hash default_valu;
-    cs <- Hdr.write xp ((0, 0), (0, 0), (h, h)) cs;
-    cs <- Hdr.sync_now xp cs;
+  Definition init xp cs :=
+    cs <- Hdr.init xp cs;
     Ret cs.
 
-  Definition trunc xp cs : prog _ :=
+  Definition trunc xp cs :=
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(_, current_length, _) := nr in
     h <- Hash default_valu;
@@ -1011,6 +1044,72 @@ Module PaddedLog.
     Ret cs.
 
   Local Hint Resolve Forall_nil.
+
+
+  Definition initrep xp :=
+    (exists hdr, LogHeader xp |+> hdr *
+     Desc.avail_rep xp 0 (LogDescLen xp) *
+     Data.avail_rep xp 0 (LogLen xp))%pred.
+
+
+  Definition init_ok' : forall xp cs,
+    {< F d,
+    PRE:hm   BUFCACHE.rep cs d *
+          [[ (F * initrep xp)%pred d ]] *
+          [[ xparams_ok xp /\ sync_invariant F ]]
+    POST:hm' RET: cs  exists d',
+          BUFCACHE.rep cs d' *
+          [[ (F * rep xp (Synced nil) hm')%pred d' ]]
+    XCRASH:hm_crash any
+    >} init xp cs.
+  Proof.
+    unfold init, initrep.
+    prestep; unfold rep, Hdr.LAHdr; safecancel.
+    auto.
+    step.
+    unfold ndesc_log, ndata_log; rewrite divup_0; simpl; cancel.
+    repeat rewrite Nat.sub_0_r; cbn; cancel.
+    rewrite Desc.array_rep_sync_nil, Data.array_rep_sync_nil by (auto; omega); cancel.
+    solve_checksums; simpl; auto.
+    setoid_rewrite DescDefs.ipack_nil; simpl.
+    solve_hash_list_rep; auto.
+  Qed.
+
+  Definition init_ok : forall xp cs,
+    {< F l d,
+    PRE:hm   BUFCACHE.rep cs d *
+          [[ (F * arrayS (LogHeader xp) l)%pred d ]] *
+          [[ length l = (1 + LogDescLen xp + LogLen xp) /\
+             LogDescriptor xp = LogHeader xp + 1 /\
+             LogData xp = LogDescriptor xp + LogDescLen xp /\
+             xparams_ok xp ]] *
+          [[ sync_invariant F ]]
+    POST:hm' RET: cs  exists d',
+          BUFCACHE.rep cs d' *
+          [[ (F * rep xp (Synced nil) hm')%pred d' ]]
+    XCRASH:hm_crash any
+    >} init xp cs.
+  Proof.
+    intros.
+    eapply pimpl_ok2. apply init_ok'.
+    intros; unfold initrep; safecancel.
+    unfold Desc.avail_rep, Data.avail_rep.
+    rewrite arrayN_isolate_hd by omega.
+    repeat rewrite Nat.add_0_r.
+    rewrite arrayN_split with (i := LogDescLen xp).
+    rewrite surjective_pairing with (p := selN l 0 ($0, nil)).
+    substl (LogData xp); substl (LogDescriptor xp).
+    cancel.
+    rewrite firstn_length_l; auto.
+    setoid_rewrite skipn_length with (n := 1); omega.
+    setoid_rewrite skipn_skipn with (m := 1).
+    rewrite skipn_length; omega.
+    auto.
+    step.
+  Qed.
+
+  Hint Extern 1 ({{_}} Bind (init _ _) _) => apply init_ok : prog.
+
 
   Lemma helper_sep_star_reorder : forall (a b c d : rawpred),
     a * b * c * d =p=> (a * c) * (b * d).
@@ -1531,7 +1630,7 @@ Module PaddedLog.
     rewrite entry_valid_vals_nonzero; auto.
   Qed.
 
-  Definition extend xp log cs : prog _ :=
+  Definition extend xp log cs :=
     (* Synced *)
     let^ (cs, nr) <- Hdr.read xp cs;
     let '(_, (ndesc, ndata), (h_addr, h_valu)) := nr in
@@ -2148,7 +2247,7 @@ Module PaddedLog.
     destruct (weq x y); destruct (weq a b); intuition.
   Defined.
 
-  Definition recover xp cs : prog _ :=
+  Definition recover xp cs :=
     let^ (cs, header) <- Hdr.read xp cs;
     let '((prev_ndesc, prev_ndata),
           (ndesc, ndata),
@@ -2593,7 +2692,7 @@ Module PaddedLog.
    **)
 
   (*
-  Definition recover cs lxp : prog _ :=
+  Definition recover cs lxp :=
     cs <- BUFCACHE.init_recover 1;
     let^ (cs, fsxp) <- sb_load cs;
     cs <- recover' (FSXPLog fsxp) cs;
@@ -2787,7 +2886,7 @@ Module DLog.
   Section UnifyProof.
   Hint Extern 0 (okToUnify (PaddedLog.rep _ _) (PaddedLog.rep _ _)) => constructor : okToUnify.
 
-  Definition read xp cs : prog _ :=
+  Definition read xp cs :=
     r <- PaddedLog.read xp cs;
     Ret r.
 
@@ -2807,11 +2906,11 @@ Module DLog.
     hoare.
   Qed.
 
-  Definition init xp cs : prog _ :=
+  Definition init xp cs :=
     cs <- PaddedLog.init xp cs;
     Ret cs.
 
-  Definition trunc xp cs : prog _ :=
+  Definition trunc xp cs :=
     cs <- PaddedLog.trunc xp cs;
     Ret cs.
 
@@ -2843,7 +2942,7 @@ Module DLog.
   Qed.
 
 
-  Definition avail xp cs : prog _ :=
+  Definition avail xp cs :=
     r <- PaddedLog.avail xp cs;
     Ret r.
 
@@ -2867,6 +2966,36 @@ Module DLog.
   Qed.
 
   End UnifyProof.
+
+  Definition init_ok : forall xp cs,
+    {< F l d,
+    PRE:hm   BUFCACHE.rep cs d *
+          [[ (F * arrayS (LogHeader xp) l)%pred d ]] *
+          [[ length l = (1 + LogDescLen xp + LogLen xp) /\
+             LogDescriptor xp = LogHeader xp + 1 /\
+             LogData xp = LogDescriptor xp + LogDescLen xp /\
+             LogLen xp = (LogDescLen xp * PaddedLog.DescSig.items_per_val)%nat /\
+             goodSize addrlen ((LogHeader xp) + length l) ]] *
+          [[ sync_invariant F ]]
+    POST:hm' RET: cs  exists d' nr,
+          BUFCACHE.rep cs d' *
+          [[ (F * rep xp (Synced nr nil) hm')%pred d' ]]
+    XCRASH:hm_crash any
+    >} init xp cs.
+  Proof.
+    unfold init, rep.
+    step.
+    unfold PaddedLog.xparams_ok, PaddedLog.DescSig.xparams_ok, PaddedLog.DataSig.xparams_ok; intuition.
+    substl (LogDescriptor xp); unfold PaddedLog.DescSig.RALen.
+    eapply goodSize_trans; [ | eauto ]; omega.
+    substl (LogData xp); substl (LogDescriptor xp); unfold PaddedLog.DataSig.RALen.
+    eapply goodSize_trans; [ | eauto ]; omega.
+    rewrite Nat.mul_comm; auto.
+    step.
+    rewrite roundup_0; auto.
+  Qed.
+
+  Hint Extern 1 ({{_}} Bind (init _ _) _) => apply init_ok : prog.
 
   Local Hint Resolve PaddedLog.DescDefs.items_per_val_gt_0.
 
@@ -2910,7 +3039,7 @@ Module DLog.
 
   Local Hint Resolve extend_length_ok helper_extend_length_ok PaddedLog.log_nonzero_padded_app.
 
-  Definition extend xp new cs : prog _ :=
+  Definition extend xp new cs :=
     r <- PaddedLog.extend xp new cs;
     Ret r.
 
@@ -2975,7 +3104,7 @@ Module DLog.
   Hint Extern 1 ({{_}} Bind (trunc _ _) _) => apply trunc_ok : prog.
   Hint Extern 1 ({{_}} Bind (extend _ _ _) _) => apply extend_ok : prog.
 
-  Definition recover xp cs : prog _ :=
+  Definition recover xp cs :=
     cs <- PaddedLog.recover xp cs;
     Ret cs.
 

@@ -433,6 +433,31 @@ Proof.
   erewrite <- list2nmem_fix_eq; eauto.
 Qed.
 
+Theorem list2nmem_array_mem_eq : forall V (l : list V) m,
+  arrayN (@ptsto _ eq_nat_dec V) 0 l m ->
+  m = list2nmem l.
+Proof.
+  intros.
+  apply functional_extensionality.
+  intros.
+  destruct (lt_dec x (length l)).
+  - destruct l; [ simpl in *; omega | ].
+    eapply isolateN_fwd with (i := x) in H; auto.
+
+    assert (m x = Some (selN (v :: l) x v)).
+    eapply ptsto_valid.
+    pred_apply. cancel.
+
+    assert (list2nmem (v :: l) x = Some (selN (v :: l) x v)).
+    eapply ptsto_valid.
+    pose proof (list2nmem_array (v :: l)).
+    pred_apply. rewrite arrayN_isolate with (i := x) by auto. cancel.
+
+    congruence.
+  - eapply arrayN_oob with (i := x) in H; try omega.
+    rewrite list2nmem_oob with (i := x); try omega.
+    auto.
+Qed.
 
 Theorem list2nmem_array_app_eq: forall A (l l' : list A) a,
   (arrayN (@ptsto _ eq_nat_dec A) 0 l * (length l) |-> a)%pred (list2nmem l')
@@ -641,23 +666,6 @@ Proof.
   intros.
   apply list2nmem_sel with (def:=def) in H.
   congruence.
-Qed.
-
-
-Lemma arrayN_split : forall A pts off (l : list A) start,
-  off <= length l ->
-  arrayN pts start (firstn off l) * arrayN pts (start + off) (skipn off l) <=p=>
-  arrayN pts start l.
-Proof.
-  induction off; simpl; intros.
-  - replace (start + 0) with start by omega.
-    split; cancel.
-  - destruct l; simpl in *; try omega.
-    replace (start + S off) with (S start + off) by omega.
-    rewrite sep_star_assoc.
-    apply piff_star_l.
-    apply IHoff.
-    omega.
 Qed.
 
 Lemma arrayN_combine' : forall A pts (a b : list A) start,
@@ -1123,4 +1131,49 @@ Proof.
   eapply ptsto_complete. eauto.
   unfold ptsto, list2nmem; simpl; intuition.
   destruct a'; try congruence.
+Qed.
+
+Theorem arrayN_pimpl : forall V m (F : @pred addr addr_eq_dec V) l,
+  F m ->
+  arrayN (@ptsto _ _ _) 0 l m ->
+  arrayN (@ptsto _ _ _) 0 l =p=> F.
+Proof.
+  unfold pimpl; intros.
+  eapply list2nmem_array_mem_eq in H0.
+  eapply list2nmem_array_mem_eq in H1.
+  congruence.
+Qed.
+
+Lemma pred_except_ptsto_pimpl : forall V (l : list V) off v F,
+  (F * off |-> v)%pred (list2nmem l) ->
+  pred_except (arrayN (@ptsto _ _ _) 0 l) off v =p=> F.
+Proof.
+  unfold pimpl; intros.
+  apply pred_except_ptsto_pimpl in H.
+  apply H.
+  pred_apply.
+  apply pred_except_pimpl_proper; auto.
+  unfold pimpl; intros.
+  apply list2nmem_array_mem_eq in H1; subst.
+  firstorder.
+Qed.
+
+Theorem arrayN_ex_pred_except : forall V (l : list V) off v,
+  arrayN_ex (@ptsto _ _ _) l off =p=>
+  pred_except (arrayN (@ptsto _ _ _) 0 l) off v.
+Proof.
+  intros.
+  destruct (lt_dec off (length l)).
+  - rewrite arrayN_except with (i := off) by omega.
+    admit.
+  - admit.
+Admitted.
+
+Lemma arrayN_ex_frame_pimpl : forall V (l : list V) off v F,
+  (F * off |-> v)%pred (list2nmem l) ->
+  arrayN_ex (@ptsto _ _ _) l off =p=> F.
+Proof.
+  intros.
+  eapply pimpl_trans; [ | eapply pred_except_ptsto_pimpl; eauto ].
+  apply arrayN_ex_pred_except.
 Qed.

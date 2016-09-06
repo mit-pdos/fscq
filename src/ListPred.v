@@ -439,7 +439,15 @@ Section LISTMATCH.
 End LISTMATCH.
 
 
-
+Lemma arrayN_listpred_seq : forall V l st n,
+  length l = n ->
+  arrayN (@ptsto _ _ V) st l =p=> listpred (fun a => a |->?) (seq st n).
+Proof.
+  induction l; destruct n; simpl; intros; try omega; auto.
+  rewrite IHl.
+  cancel.
+  omega.
+Qed.
 
 
 Lemma listmatch_sym : forall AT AEQ V A B (al : list A) (bl : list B) f,

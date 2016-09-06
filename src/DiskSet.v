@@ -56,11 +56,25 @@ Proof.
   rewrite d_map_fst; auto.
 Qed.
 
+Lemma dsupd_nthd : forall ds a v n,
+  nthd n (dsupd ds a v) = updN (nthd n ds) a v.
+Proof.
+  unfold dsupd; intros.
+  rewrite d_map_nthd; auto.
+Qed.
+
 Lemma dssync_latest : forall ds a,
   latest (dssync ds a) = vssync (latest ds) a.
 Proof.
   unfold dssync; intros.
   rewrite d_map_latest; auto.
+Qed.
+
+Lemma dssync_nthd : forall ds a n,
+  nthd n (dssync ds a) = vssync (nthd n ds) a.
+Proof.
+  unfold dssync; intros.
+  rewrite d_map_nthd; auto.
 Qed.
 
 Lemma dsupd_vecs_latest : forall ds avl,
@@ -70,11 +84,32 @@ Proof.
   rewrite d_map_latest; auto.
 Qed.
 
+Lemma dsupd_vecs_nthd : forall ds avl n,
+  nthd n (dsupd_vecs ds avl) = vsupd_vecs (nthd n ds) avl.
+Proof.
+  unfold dsupd_vecs; intros.
+  rewrite d_map_nthd; auto.
+Qed.
+
+Lemma dsupd_vecs_fst : forall ds avl,
+  fst (dsupd_vecs ds avl) = vsupd_vecs (fst ds) avl.
+Proof.
+  unfold dsupd_vecs; intros.
+  simpl; auto.
+Qed.
+
 Lemma dssync_vecs_latest : forall ds al,
   latest (dssync_vecs ds al) = vssync_vecs (latest ds) al.
 Proof.
   unfold dssync_vecs; intros.
   rewrite d_map_latest; auto.
+Qed.
+
+Lemma dssync_vecs_nthd : forall ds al n,
+  nthd n (dssync_vecs ds al) = vssync_vecs (nthd n ds) al.
+Proof.
+  unfold dssync_vecs; intros.
+  rewrite d_map_nthd; auto.
 Qed.
 
 Lemma dssync_latest_length : forall ds a,

@@ -144,7 +144,7 @@ Module SB.
   Definition rep (fsxp : fs_xparams) : rawpred :=
     ([[ fs_xparams_ok fsxp ]] * 0 |+> (v_pickle_superblock fsxp, nil))%pred.
 
-  Definition load cs : prog _ :=
+  Definition load cs :=
     let^ (cs, v) <- BUFCACHE.read 0 cs;
     Ret ^(cs, v_unpickle_superblock v).
 
@@ -163,7 +163,7 @@ Module SB.
     apply v_pickle_unpickle_superblock; auto.
   Qed.
 
-  Definition init fsxp cs : prog _ :=
+  Definition init fsxp cs :=
     cs <- BUFCACHE.write 0 (v_pickle_superblock fsxp) cs;
     cs <- BUFCACHE.begin_sync cs;
     cs <- BUFCACHE.sync 0 cs;

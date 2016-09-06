@@ -22,12 +22,12 @@ Module LogRecArray (RA : RASig).
       [[ items_valid xp items ]] *
       arrayN (@ptsto _ addr_eq_dec valuset) (RAStart xp) (synced_list vl))%pred.
 
-  Definition get lxp xp ix ms : prog _ :=
+  Definition get lxp xp ix ms :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
     let^ (ms, v) <- LOG.read_array lxp (RAStart xp) bn ms;
     Ret ^(ms, selN_val2block v off).
 
-  Definition put lxp xp ix item ms : prog _ :=
+  Definition put lxp xp ix item ms :=
     let '(bn, off) := (ix / items_per_val, ix mod items_per_val) in
     let^ (ms, v) <- LOG.read_array lxp (RAStart xp) bn ms;
     let v' := block2val_updN_val2block v off item in
@@ -35,22 +35,22 @@ Module LogRecArray (RA : RASig).
     Ret ms.
 
   (** read n blocks starting from the beginning *)
-  Definition read lxp xp nblocks ms : prog _ :=
+  Definition read lxp xp nblocks ms :=
     let^ (ms, r) <- LOG.read_range lxp (RAStart xp) nblocks iunpack nil ms;
     Ret ^(ms, r).
 
   (** write all items starting from the beginning *)
-  Definition write lxp xp items ms : prog _ :=
+  Definition write lxp xp items ms :=
     ms <- LOG.write_range lxp (RAStart xp) (ipack items) ms;
     Ret ms.
 
   (** set all items to item0 *)
-  Definition init lxp xp ms : prog _ :=
+  Definition init lxp xp ms :=
     ms <- LOG.write_range lxp (RAStart xp) (repeat $0 (RALen xp)) ms;
     Ret ms.
 
   (* find the first item that satisfies cond *)
-  Definition ifind lxp xp (cond : item -> addr -> bool) ms : prog _ :=
+  Definition ifind lxp xp (cond : item -> addr -> bool) ms :=
     let^ (ms, ret) <- ForN i < (RALen xp)
     Hashmap hm
     Ghost [ F m xp items Fm crash m1 m2 ]
@@ -308,19 +308,19 @@ Module LogRecArray (RA : RASig).
 
   (** operations using array spec *)
 
-  Definition get_array lxp xp ix ms : prog _ :=
+  Definition get_array lxp xp ix ms :=
     r <- get lxp xp ix ms;
     Ret r.
 
-  Definition put_array lxp xp ix item ms : prog _ :=
+  Definition put_array lxp xp ix item ms :=
     r <- put lxp xp ix item ms;
     Ret r.
 
-  Definition read_array lxp xp nblocks ms : prog _ :=
+  Definition read_array lxp xp nblocks ms :=
     r <- read lxp xp nblocks ms;
     Ret r.
 
-  Definition ifind_array lxp xp cond ms : prog _ :=
+  Definition ifind_array lxp xp cond ms :=
     r <- ifind lxp xp cond ms;
     Ret r.
 

@@ -17,6 +17,7 @@ Require Import MemMatch.
 Require Import FunctionalExtensionality.
 Require Import ListUtils.
 Require Import AsyncDisk.
+Require Import Errno.
 Require List.
 
 Set Implicit Arguments.
@@ -492,7 +493,7 @@ Module SDIR.
          rewrite is_valid_sname_valid in H
     end.
 
-  Definition lookup lxp ixp dnum name ms : prog _ :=
+  Definition lookup lxp ixp dnum name ms :=
     If (Bool.bool_dec (is_valid_sname name) true) {
       let^ (ms, r) <- DIR.lookup lxp ixp dnum (sname2wname name) ms;
       Ret ^(ms, r)
@@ -500,26 +501,26 @@ Module SDIR.
       Ret ^(ms, None)
     }.
 
-  Definition unlink lxp ixp dnum name ms : prog _ :=
+  Definition unlink lxp ixp dnum name ms :=
     If (Bool.bool_dec (is_valid_sname name) true) {
       let^ (ms, r) <- DIR.unlink lxp ixp dnum (sname2wname name) ms;
       Ret ^(ms, r)
     } else {
-      Ret ^(ms, false)
+      Ret ^(ms, Err ENAMETOOLONG)
     }.
 
-  Definition link lxp bxp ixp dnum name inum isdir ms : prog _ :=
+  Definition link lxp bxp ixp dnum name inum isdir ms :=
     If (Bool.bool_dec (is_valid_sname name) true) {
       let^ (ms, r) <- DIR.link lxp bxp ixp dnum (sname2wname name) inum isdir ms;
       Ret ^(ms, r)
     } else {
-      Ret ^(ms, false)
+      Ret ^(ms, Err ENAMETOOLONG)
     }.
 
   Definition readdir_trans (di : DIR.readent) :=
     (wname2sname (fst di), snd di).
 
-  Definition readdir lxp ixp dnum ms : prog _ :=
+  Definition readdir lxp ixp dnum ms :=
     let^ (ms, r) <- DIR.readdir lxp ixp dnum ms;
     Ret ^(ms, List.map readdir_trans r).
 
@@ -660,7 +661,7 @@ Module SDIR.
              rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees *
              [[ dmap' = mem_except dmap name ]] *
              [[ notindomain name dmap' ]] *
-             [[ r = true -> indomain name dmap ]] *
+             [[ r = OK tt -> indomain name dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} unlink lxp ixp dnum name ms.
@@ -690,9 +691,9 @@ Module SDIR.
              [[ goodSize addrlen inum ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
-           (([[ r = false ]] *
+           (([[ isError r ]] *
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
-        \/  ([[ r = true ]] *
+        \/  ([[ r = OK tt ]] *
              exists dmap' Fd ilist' frees',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
              rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' *

@@ -9,6 +9,7 @@ Require Import AsyncDisk.
 Import ListNotations.
 
 Set Implicit Arguments.
+Set Default Proof Using "Type".
 
 
 (** * A generic array predicate: a sequence of consecutive points-to facts *)
@@ -170,7 +171,7 @@ Section GenArray.
     cancel.
   Qed.
 
-  Theorem arrayN_split : forall i (a b : list V) st,
+  Theorem arrayN_split : forall i (a : list V) st,
     arrayN st a <=p=>
     arrayN st (firstn i a) * arrayN (st + i) (skipn i a).
   Proof.
@@ -201,6 +202,14 @@ Section GenArray.
     destruct l; simpl; intros; try congruence.
     assert (length l = 0) by omega.
     apply length_nil in H0; subst; simpl; split; cancel.
+  Qed.
+
+  Lemma arrayN_isolate_hd : forall l (def : V) a,
+    length l >= 1 ->
+    arrayN a l <=p=> (a |-?-> selN l 0 def * arrayN (a + 1) (skipn 1 l) )%pred.
+  Proof.
+    destruct l; simpl; intros; try omega.
+    replace (a + 1) with (S a) by omega; auto.
   Qed.
 
 
@@ -244,6 +253,19 @@ Section PtstoArray.
     eapply arrayN_oob'; eauto.
   Qed.
 
+  Lemma arrayN_oob_lt: forall (l : list V) i a m,
+    arrayN pts a l m ->
+    i < a ->
+    m i = None.
+  Proof.
+    induction l; intros; auto; simpl in *.
+    unfold sep_star in H; rewrite sep_star_is in H; unfold sep_star_impl in H.
+    repeat deex.
+    unfold mem_union.
+    unfold ptsto in H2; destruct H2; rewrite H2.
+    eapply IHl; eauto.
+    omega.
+  Qed.
 
   Lemma arrayN_updN_memupd : forall F l a i (v : V) m,
     (F * arrayN pts a l)%pred m ->

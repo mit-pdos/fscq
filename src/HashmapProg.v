@@ -20,7 +20,7 @@ Require Import Omega.
 Set Implicit Arguments.
 
 
-Definition hash_list h values : prog _ :=
+Definition hash_list h values :=
   let^ (hash) <- ForN i < length values
   Hashmap hm'
   Ghost [ l crash ]

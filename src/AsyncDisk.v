@@ -37,6 +37,20 @@ Notation "'valulen'" := (Valulen.valulen).
 Notation "'valulen_is'" := (Valulen.valulen_is).
 Notation "'valu'" := (word valulen).
 
+Theorem valulen_nonzero : valulen <> 0.
+Proof.
+  rewrite valulen_is.
+  compute.
+  apply Nat.neq_succ_0.
+Qed.
+
+Theorem valulen_gt_0 : valulen > 0.
+Proof.
+  generalize valulen_nonzero.
+  generalize valulen.
+  destruct n; intuition.
+Qed.
+
 Theorem valulen_wordToNat_natToWord : # (natToWord addrlen valulen) = valulen.
 Proof.
   rewrite valulen_is.

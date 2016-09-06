@@ -22,6 +22,7 @@ Require Import Balloc.
 Require Import ListPred.
 Require Import FSLayout.
 Require Import AsyncDisk.
+Require Import Errno.
 
 Import ListNotations.
 
@@ -159,7 +160,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   (************* program *)
 
-  Definition get lxp (ir : irec) off ms : prog _ :=
+  Definition get lxp (ir : irec) off ms :=
     If (lt_dec off NDirect) {
       Ret ^(ms, selN (IRBlocks ir) off $0)
     } else {
@@ -168,7 +169,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     }.
 
 
-  Definition read lxp (ir : irec) ms : prog _ :=
+  Definition read lxp (ir : irec) ms :=
     If (le_dec (IRLen ir) NDirect) {
       Ret ^(ms, firstn (IRLen ir) (IRBlocks ir))
     } else {
@@ -188,7 +189,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Defined.
 
 
-  Definition shrink lxp bxp (ir : irec) nr ms : prog _ :=
+  Definition shrink lxp bxp (ir : irec) nr ms :=
     let nl := ((IRLen ir) - nr) in
     If (free_ind_dec (IRLen ir) nl) {
       ms <- BALLOC.free lxp bxp (IRIndPtr ir) ms;
@@ -198,30 +199,30 @@ Module BlockPtr (BPtr : BlockPtrSig).
     }.
 
 
-  Definition grow lxp bxp (ir : irec) bn ms : prog _ :=
+  Definition grow lxp bxp (ir : irec) bn ms :=
     let len := (IRLen ir) in
     If (lt_dec len NDirect) {
       (* change direct block address *)
-      Ret ^(ms, Some (upd_irec ir (S len) (IRIndPtr ir) (updN (IRBlocks ir) len bn)))
+      Ret ^(ms, OK (upd_irec ir (S len) (IRIndPtr ir) (updN (IRBlocks ir) len bn)))
     } else {
       (* allocate indirect block if necessary *)
       let^ (ms, ibn) <- If (addr_eq_dec len NDirect) {
         let^ (ms, r) <- BALLOC.alloc lxp bxp ms;
         match r with
-        | None => Ret ^(ms, None)
+        | None => Ret ^(ms, Err ENOSPCBLOCK)
         | Some ibn =>
             ms <- IndRec.init lxp ibn ms;
-            Ret ^(ms, Some ibn)
+            Ret ^(ms, OK ibn)
         end
       } else {
-        Ret ^(ms, Some (IRIndPtr ir))
+        Ret ^(ms, OK (IRIndPtr ir))
       };
       match ibn with
-      | Some ibn =>
+      | OK ibn =>
         (* write indirect block *)
         ms <- IndRec.put lxp ibn (len - NDirect) bn ms;
-        Ret ^(ms, Some (upd_irec ir (S len) ibn (IRBlocks ir)))
-      | None => Ret ^(ms, None)
+        Ret ^(ms, OK (upd_irec ir (S len) ibn (IRBlocks ir)))
+      | Err e => Ret ^(ms, Err e)
       end
     }.
 
@@ -443,9 +444,9 @@ Module BlockPtr (BPtr : BlockPtrSig).
            [[ length l < NBlocks ]] *
            [[[ m ::: (Fm * rep bxp ir l * BALLOC.rep bxp freelist) ]]]
     POST:hm' RET:^(ms, r)
-           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' \/
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' \/
            exists m' freelist' ir',
-           [[ r = Some ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           [[ r = OK ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp ir' (l ++ [bn]) * BALLOC.rep bxp freelist') ]]] *
            [[ IRAttrs ir' = IRAttrs ir /\ length (IRBlocks ir') = length (IRBlocks ir) ]] *
            [[ incl freelist' freelist ]]

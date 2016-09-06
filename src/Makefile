@@ -11,7 +11,8 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      NEList DiskSet GroupLog Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
 	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \
-	      SuperBlock AsyncFS AsyncFSRecover TreeSeq DirUtil ExtrHaskellPrelude \
+	      SuperBlock AsyncFS AsyncFSRecover VBConv ADestructPair DestructVarname ExtrHaskellPrelude \
+	      DirSep TreeSeq \
 				StringMap VerdiTactics Gensym Go Facade
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
@@ -26,6 +27,7 @@ ifeq (,$(shell $(GHC) --version | grep 'version 8.0' 2>/dev/null))
 	HSC2HS := /opt/ghc/8.0.1/bin/hsc2hs
 endif
 
+J	   ?= 1
 GHCARGS    := -O2 -threaded
 		# -prof -fprof-auto -rtsopts
 		# -eventlog
@@ -104,7 +106,7 @@ $(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractJSON )
 
 $(VS_VIO): coqbuild/Makefile.coq
-	( cd coqbuild && $(MAKE) -f Makefile.coq quick )
+	( cd coqbuild && $(MAKE) -j $(J) -f Makefile.coq quick )
 	@touch coqbuild/*.vio
 
 checkproofs: coqbuild/Makefile.coq

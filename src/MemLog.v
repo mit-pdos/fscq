@@ -173,7 +173,7 @@ Module MLog.
 
   (******************  Program *)
 
-  Definition read xp a ms : prog _ :=
+  Definition read xp a ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     match Map.find a oms with
     | Some v => Ret ^(ms, v)
@@ -182,7 +182,7 @@ Module MLog.
         Ret ^(mk_memstate oms cs, v)
     end.
 
-  Definition flush_noapply xp ents ms : prog _ :=
+  Definition flush_noapply xp ents ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     let^ (cs, ok) <- DLog.extend xp ents cs;
     If (bool_dec ok true) {
@@ -191,14 +191,14 @@ Module MLog.
       Ret ^(mk_memstate oms cs, false)
     }.
 
-  Definition apply xp ms : prog _ :=
+  Definition apply xp ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     cs <- BUFCACHE.write_vecs (DataStart xp) (Map.elements oms) cs;
     cs <- BUFCACHE.sync_vecs_now (DataStart xp) (map_keys oms) cs;
     cs <- DLog.trunc xp cs;
     Ret (mk_memstate vmap0 cs).
 
-  Definition flush xp ents ms : prog _ :=
+  Definition flush xp ents ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     If (addr_eq_dec (length ents) 0) {
       Ret ^(ms, true)
@@ -215,7 +215,12 @@ Module MLog.
       Ret r
    }.
 
-  Definition dwrite xp a v ms : prog _ :=
+  Definition sync_cache (xp : log_xparams) ms :=
+    let '(oms, cs) := (MSInLog ms, MSCache ms) in
+    cs <- BUFCACHE.sync_all cs;
+    Ret (mk_memstate oms cs).
+
+  Definition dwrite xp a v ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     ms' <- If (MapFacts.In_dec oms a) {
       ms <- apply xp ms;
@@ -227,7 +232,7 @@ Module MLog.
     Ret (mk_memstate (MSInLog ms') cs').
 
 
-  Definition dsync xp a ms : prog _ :=
+  Definition dsync xp a ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     cs' <- BUFCACHE.begin_sync cs;
     cs' <- BUFCACHE.sync_array (DataStart xp) a cs';
@@ -235,12 +240,12 @@ Module MLog.
     Ret (mk_memstate oms cs').
 
 
-  Definition recover xp cs : prog _ :=
+  Definition recover xp cs :=
     cs <- DLog.recover xp cs;
     let^ (cs, log) <- DLog.read xp cs;
     Ret (mk_memstate (replay_mem log vmap0) cs).
 
-  Definition init (xp : log_xparams) cs : prog _ :=
+  Definition init (xp : log_xparams) cs :=
     cs <- DLog.init xp cs;
     Ret (mk_memstate vmap0 cs).
 
@@ -502,6 +507,30 @@ Module MLog.
 
   Section UnfoldProof1.
   Local Hint Unfold rep map_replay: hoare_unfold.
+
+  Definition init_ok : forall xp cs,
+    {< F l m d,
+    PRE:hm   BUFCACHE.rep cs d *
+          [[ (F * arrayS (DataStart xp) m * arrayS (LogHeader xp) l)%pred d ]] *
+          [[ length l = (1 + LogDescLen xp + LogLen xp) /\
+             length m = (LogHeader xp) - (DataStart xp) /\
+             LogDescriptor xp = LogHeader xp + 1 /\
+             LogData xp = LogDescriptor xp + LogDescLen xp /\
+             LogLen xp = (LogDescLen xp * PaddedLog.DescSig.items_per_val)%nat /\
+             goodSize addrlen ((LogHeader xp) + length l) ]] *
+          [[ sync_invariant F ]]
+    POST:hm' RET: ms  exists d' nr,
+          BUFCACHE.rep (MSCache ms) d' *
+          [[ (F * rep xp (Synced nr m) (MSInLog ms) hm')%pred d' ]]
+    XCRASH:hm_crash any
+    >} init xp cs.
+  Proof.
+    unfold init, rep.
+    step.
+    step.
+    eapply goodSize_trans; [ | eauto ]; omega.
+    apply map_valid_map0.
+  Qed.
 
   Theorem read_ok: forall xp ms a,
     {< F d na vs,
@@ -974,7 +1003,7 @@ Module MLog.
 
   (********* dwrite/dsync for a list of address/value pairs *)
 
-  Definition dwrite_vecs xp avl ms : prog _ :=
+  Definition dwrite_vecs xp avl ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     ms' <- If (bool_dec (overlap (map fst avl) oms) true) {
       ms <- apply xp ms;
@@ -986,7 +1015,7 @@ Module MLog.
     Ret (mk_memstate (MSInLog ms') cs').
 
 
-  Definition dsync_vecs xp al ms : prog _ :=
+  Definition dsync_vecs xp al ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     cs' <- BUFCACHE.sync_vecs_now (DataStart xp) al cs;
     Ret (mk_memstate oms cs').
@@ -1679,7 +1708,7 @@ Module MLog.
     erewrite DLog.rep_hashmap_subset; eauto.
   Qed.
 
-
+  Hint Extern 1 ({{_}} Bind (init _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_}} Bind (read _ _ _) _) => apply read_ok : prog.
   Hint Extern 1 ({{_}} Bind (flush _ _ _) _) => apply flush_ok : prog.
   Hint Extern 1 ({{_}} Bind (dwrite _ _ _ _) _) => apply dwrite_ok : prog.

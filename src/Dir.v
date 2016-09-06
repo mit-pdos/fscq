@@ -21,6 +21,7 @@ Require Import Log.
 Require Import Cache.
 Require Import ListUtils.
 Require Import AsyncDisk.
+Require Import Errno.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -114,7 +115,7 @@ Module DIR.
 
   Definition lookup_f name de (_ : addr) := (is_valid de) && (name_is name de).
 
-  Definition lookup lxp ixp dnum name ms : prog _ :=
+  Definition lookup lxp ixp dnum name ms :=
     let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
     match r with
     | None => Ret ^(ms, None)
@@ -123,31 +124,31 @@ Module DIR.
 
   Definition readent := (filename * (addr * bool))%type.
 
-  Definition readdir lxp ixp dnum ms : prog _ :=
+  Definition readdir lxp ixp dnum ms :=
     let^ (ms, dents) <- Dent.readall lxp ixp dnum ms;
     let r := map (fun de => (DEName de, (DEInum de, is_dir de))) (filter is_valid dents) in
     Ret ^(ms, r).
 
-  Definition unlink lxp ixp dnum name ms : prog _ :=
+  Definition unlink lxp ixp dnum name ms :=
     let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
     match r with
-    | None => Ret ^(ms, false)
+    | None => Ret ^(ms, Err ENOENT)
     | Some (ix, _) =>
         ms <- Dent.put lxp ixp dnum ix dent0 ms;
-        Ret ^(ms, true)
+        Ret ^(ms, OK tt)
     end.
 
-  Definition link lxp bxp ixp dnum name inum isdir ms : prog _ :=
+  Definition link lxp bxp ixp dnum name inum isdir ms :=
     let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
     match r with
-    | Some _ => Ret ^(ms, false)
+    | Some _ => Ret ^(ms, Err EEXIST)
     | None =>
         let de := mk_dent name inum isdir in
         let^ (ms, r) <- Dent.ifind lxp ixp dnum (fun de _ => negb (is_valid de)) ms;
         match r with
         | Some (ix, _) =>
             ms <- Dent.put lxp ixp dnum ix de ms;
-            Ret ^(ms, true)
+            Ret ^(ms, OK tt)
         | None =>
             let^ (ms, ok) <- Dent.extend lxp bxp ixp dnum de ms;
             Ret ^(ms, ok)
@@ -458,7 +459,7 @@ Module DIR.
              rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees *
              [[ dmap' = mem_except dmap name ]] *
              [[ notindomain name dmap' ]] *
-             [[ r = true -> indomain name dmap ]] *
+             [[ r = OK tt -> indomain name dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} unlink lxp ixp dnum name ms.
@@ -493,8 +494,8 @@ Module DIR.
              [[ goodSize addrlen inum ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
-           (([[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
-        \/  ([[ r = true ]] * 
+           (([[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
+        \/  ([[ r = OK tt ]] * 
              exists dmap' Fd ilist' frees',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
              rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' *

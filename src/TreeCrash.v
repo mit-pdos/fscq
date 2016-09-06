@@ -91,6 +91,30 @@ Module DTCrash.
           apply H3.
   Qed.
 
+  Lemma tree_crash_root: forall t t' inum,
+    tree_crash t t' ->
+    find_name [] t = Some (inum, true) ->
+    find_name [] t' = Some (inum, true).
+  Proof.
+    intros.
+    destruct t.
+    - unfold find_name in H0; subst; simpl.
+      unfold find_subtree in H0.
+      inversion H0.
+    - destruct t'.
+      unfold find_name in H0.
+      destruct (find_subtree [] (TreeDir n l)).
+      destruct d.
+      inversion H0.
+      inversion H0.
+      subst; simpl.
+      exfalso.
+      inversion H.
+      congruence.
+      inversion H.
+      subst; simpl; eauto.
+  Qed.
+
   Lemma map_fst_map_eq : forall A B (ents : list (A * B)) C (f : B -> C),
     map fst ents = map fst (map (fun e => (fst e, f (snd e))) ents).
   Proof.
@@ -179,6 +203,8 @@ Module DTCrash.
     apply sep_star_assoc.
     apply sep_star_comm.
     apply lift_impl; intros; auto.
+    unfold flist_crash in H0.
+    unfold file_crash in H0.
   Admitted.
 
 

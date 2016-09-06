@@ -24,6 +24,7 @@ Require Import FSLayout.
 Require Import AsyncDisk.
 Require Import BlockPtr.
 Require Import GenSepAuto.
+Require Import Errno.
 
 Import ListNotations.
 
@@ -154,11 +155,11 @@ Module INODE.
   (************* program *)
 
 
-  Definition init lxp xp ms : prog _ :=
+  Definition init lxp xp ms :=
     ms <- IRec.init lxp xp ms;
     Ret ms.
 
-  Definition getlen lxp xp inum ms : prog _ := Eval compute_rec in
+  Definition getlen lxp xp inum ms := Eval compute_rec in
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     Ret ^(ms, # (ir :-> "len" )).
 
@@ -169,11 +170,11 @@ Module INODE.
   Definition AType   (a : iattr) := Eval cbn in ( a :-> "itype" ).
   Definition ADev    (a : iattr) := Eval cbn in ( a :-> "dev" ).
 
-  Definition getattrs lxp xp inum ms : prog _ := Eval compute_rec in
+  Definition getattrs lxp xp inum ms := Eval compute_rec in
     let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
     Ret ^(ms, (i :-> "attrs")).
 
-  Definition setattrs lxp xp inum attr ms : prog _ := Eval compute_rec in
+  Definition setattrs lxp xp inum attr ms := Eval compute_rec in
     let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
     ms <- IRec.put_array lxp xp inum (i :=> "attrs" := attr) ms;
     Ret ms.
@@ -187,7 +188,7 @@ Module INODE.
   | UDev   (v : word 64)
   .
 
-  Definition iattr_upd (e : iattr) (a : iattrupd_arg) := Eval compute_rec in
+  Definition iattr_upd (e : iattr) (a : iattrupd_arg) : iattr := Eval compute_rec in
   match a with
   | UBytes v => (e :=> "bytes" := v)
   | UMTime v => (e :=> "mtime" := v)
@@ -195,36 +196,36 @@ Module INODE.
   | UDev   v => (e :=> "dev"   := v)
   end.
 
-  Definition updattr lxp xp inum a ms : prog _ := Eval compute_rec in
+  Definition updattr lxp xp inum a ms := Eval compute_rec in
     let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
     ms <- IRec.put_array lxp xp inum (i :=> "attrs" := (iattr_upd (i :-> "attrs") a)) ms;
     Ret ms.
 
 
-  Definition getbnum lxp xp inum off ms : prog _ :=
+  Definition getbnum lxp xp inum off ms :=
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     ms <- Ind.get lxp ir off ms;
     Ret ms.
 
-  Definition getallbnum lxp xp inum ms : prog _ :=
+  Definition getallbnum lxp xp inum ms :=
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     ms <- Ind.read lxp ir ms;
     Ret ms.
 
-  Definition shrink lxp bxp xp inum nr ms : prog _ :=
+  Definition shrink lxp bxp xp inum nr ms :=
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     let^ (ms, ir') <- Ind.shrink lxp bxp ir nr ms;
     ms <- IRec.put_array lxp xp inum ir' ms;
     Ret ms.
 
-  Definition grow lxp bxp xp inum bn ms : prog _ :=
+  Definition grow lxp bxp xp inum bn ms :=
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     let^ (ms, r) <- Ind.grow lxp bxp ir ($ bn) ms;
     match r with
-    | None => Ret ^(ms, false)
-    | Some ir' =>
+    | Err e => Ret ^(ms, Err e)
+    | OK ir' =>
         ms <- IRec.put_array lxp xp inum ir' ms;
-        Ret ^(ms, true)
+        Ret ^(ms, OK tt)
     end.
 
 
@@ -357,9 +358,45 @@ Module INODE.
 
   Arguments Rec.well_formed : simpl never.
 
+  Lemma inode_match_init_ok : forall bxp n,
+    emp =p=> listmatch (inode_match bxp) (repeat inode0 n) (repeat IRec.Defs.item0 n).
+  Proof.
+    induction n; simpl; intros.
+    unfold listmatch; cancel.
+    rewrite IHn.
+    unfold listmatch; cancel.
+    unfold inode_match.
+    rewrite Ind.rep_piff_direct by (cbn; omega).
+    rewrite sep_star_assoc.
+    apply sep_star_lift_r'.
+    apply pimpl_and_split.
+    unfold pimpl, lift; intros; auto.
+    unfold Ind.rep_direct; cancel.
+    apply Forall_nil.
+  Qed.
 
 
   (********************** SPECs *)
+
+  Theorem init_ok : forall lxp bxp xp ms,
+    {< F Fm m0 m l,
+    PRE:hm 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (IXStart xp) l) ]]] *
+           [[ length l = (IXLen xp) /\ (IXStart xp) <> 0 ]]
+    POST:hm' RET:ms exists m',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           [[[ m' ::: (Fm * rep bxp xp (repeat inode0 ((IXLen xp) * IRecSig.items_per_val))) ]]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} init lxp xp ms.
+  Proof.
+    unfold init, rep.
+    step.
+    cbv; auto.
+    step.
+    apply inode_match_init_ok.
+  Qed.
+
 
   Theorem getlen_ok : forall lxp bxp xp inum ms,
     {< F Fm Fi m0 m ilist ino,
@@ -595,8 +632,8 @@ Module INODE.
            [[[ m ::: (Fm * rep bxp xp ilist * BALLOC.rep bxp freelist) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
     POST:hm' RET:^(ms, r)
-           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' \/
-           [[ r = true ]] * exists m' ilist' ino' freelist',
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' \/
+           [[ r = OK tt ]] * exists m' ilist' ino' freelist',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOC.rep bxp freelist') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
@@ -630,7 +667,7 @@ Module INODE.
     Unshelve. all: eauto; exact emp.
   Qed.
 
-
+  Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_}} Bind (getlen _ _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_}} Bind (getattrs _ _ _ _) _) => apply getattrs_ok : prog.
   Hint Extern 1 ({{_}} Bind (setattrs _ _ _ _ _) _) => apply setattrs_ok : prog.
