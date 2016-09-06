@@ -1,0 +1,126 @@
+a <- Read 0;
+b <- Read 1;
+Write 1 (a + b);;
+Write 0 b
+
+Bind (Read 0) (fun a => Bind (Read 1) (fun b => Bind (Write 1 (a + b)) (fun _ => Write 0 b)))
+
+
+var "c0" Num
+"c0" <- Const 0;
+var "c1" Num
+"a" <- "Read" ("c0");
+"c1" <- Const 1;
+"b" <- "Read" ("c1");
+"c1" <- Const 1;
+var "ab" Block
+"ab" <- Var "a" + Var "b"
+"_" <- "Write" ("c1", "ab");
+"c0" <- Const 0;
+"_" <- "Write" ("c0", "b")
+
+forall c,
+EXTRACT Ret tt
+{{ F }}
+  var <- Const c
+{{ var ->> c :: F }}
+
+
+EXTRACT Read a
+{{ avar ->> a; F }}
+  vvar <- "Read" (avar)
+{{ ret: avar ->> a :: vvar ->> ret :: F }}
+
+
+CompileBind:
+  EXTRACT p
+  {{ A }}
+    xp
+  {{ fun ret => rvar ->> ret :: A }} (* Left-hand side of the bind *can't* introduce any variables that the right-hand-side sees. *)
+/\
+ (forall a, 
+  EXTRACT f a
+  {{ rvar ->> a :: A }}
+    xf
+  {{ B }})
+->
+  EXTRACT Bind p (fun a => f a)
+  {{ A }}
+    xp; xf
+  {{ B }}
+
+
+
+
+EXTRACT Bind (Read 0) (fun a => Bind (Read 1) (fun b => Bind (Write 1 (a + b)) (fun _ => Write 0 b)))
+{{ }}
+  ?p
+{{ }}
+->CompileBind
+  * p := ?xp; ?xf
+  - EXTRACT Read 0
+    {{ }}
+      ?xp
+    {{ ret: "a" ->> ret }}
+    ->CompileArg (* We're basically introducing a bind here (by left identity) *)
+      * xp := ?setarg; ?call 
+      - EXTRACT Ret 0
+        {{ }}
+          ?setarg
+        {{ ret: "c0" ->> ret }}
+        ->CompileConst
+          * setarg := "c0" <- Const 0
+      - forall c0,
+        EXTRACT Read c0
+        {{ "c0" ->> c0 }}
+          ?call
+        {{ ret: "a" ->> ret }}
+        -> CompileRead
+          * call := "a" <- "Read" ("c0")
+  - forall a,
+    EXTRACT Bind (Read 1) (fun b => Bind (Write 1 (a + b)) (fun _ => Write 0 b))
+    {{ "a" -> a }}
+      ?xf
+    {{ }}
+    ->CompileBind
+      * xf := ?xp0; ?xf0
+      - EXTRACT Read 1
+        {{ "a" -> a }}
+          ?xp0
+        {{ ret: "b" -> ret; "a" -> a }}
+        ...
+      - forall b,
+        EXTRACT Bind (Write 1 (a + b)) (fun _ => Write 0 b)
+        {{ "b" -> b; "a" -> a }}
+          ?xf0
+        {{ }}
+        ->CompileBind
+          * xf0 := ?xp1; ?xf1
+          - EXTRACT Write 1 (a + b)
+            {{ "b" -> b; "a" -> a }}
+              ?xp0
+            {{ }}
+            ->Compile2Arg
+              * xp0 := ?setarg1; ?setarg2; ?call0
+              - EXTRACT Ret 1
+                {{ "b" -> b; "a" -> a }}
+                  ?setarg1
+                {{ ret: "c1" ->> 1 }}
+                ->CompileConst...
+              - EXTRACT Ret (a + b)
+                {{ "b" -> b; "a" -> a }}
+                  ?setarg2
+                {{ ret: "ab" ->> ret }}
+                ->CompileAdd...
+              - forall c1 ab,
+                EXTRACT Write c1 ab
+                {{ "b" -> b; "a" -> a; "c1" -> c1; "ab" -> ab }}
+                  ?call0
+                {{ }}
+                ->CompileWrite
+                  * call0 := "_" <- "Write" ("c1", "ab")
+          - EXTRACT Write 0 b
+            {{ "b" -> b; "a" -> a }}
+              ?xf1
+            {{ }}
+
