@@ -1416,6 +1416,123 @@ forall (bsl bsl': @Mem.mem addr addr_eq_dec byteset),
 		( bsl a <> None /\ bsl' a = Some (fst (some_strip (bsl a) byteset0), fst (some_strip (bsl a) byteset0)::snd(some_strip (bsl a) byteset0)))) -> 
 	p bsl -> p bsl'.
 
+Lemma list2nmem_arrayN_ptsto_subset_b_frame_extract: forall a l l' F,
+(F * arrayN ptsto_subset_b a l')%pred (list2nmem l) ->
+F (mem_except_range (list2nmem l) a (length l')).
+	Proof.
+		intros.
+		eapply ptsto_subset_b_to_ptsto in H.
+		repeat destruct H.
+		apply arrayN_frame_mem_ex_range in H. 
+		rewrite H0; auto.
+	Qed.
+
+Lemma block_off_le_length_proto_bytefile: forall  f pfy ufy fy block_off byte_off data F,
+proto_bytefile_valid f pfy ->
+unified_bytefile_valid pfy ufy ->
+bytefile_valid ufy fy -> 
+(F * arrayN ptsto_subset_b (block_off * valubytes + byte_off) data)%pred (list2nmem (ByFData fy)) ->
+byte_off < valubytes ->
+length data > 0 ->
+block_off <= length (PByFData pfy).
+
+	Proof.
+		intros.
+		erewrite bfile_protobyte_len_eq; eauto.
+		apply ptsto_subset_b_to_ptsto in H2 as Hx.
+		repeat destruct Hx.
+		destruct H5.
+		apply Nat.lt_le_incl; eapply inlen_bfile. 
+		eauto.
+		eauto.
+		eauto.
+		3: eauto.
+		omega.
+		omega.
+	Qed.
+
+Lemma proto_len_firstn: forall f pfy a,
+proto_bytefile_valid f pfy ->
+Forall (fun sublist : list byteset => length sublist = valubytes) (firstn a (PByFData pfy)).
+Proof.
+intros.
+apply Forall_forall; intros.
+apply in_firstn_in in H0.
+rewrite H in H0.
+apply in_map_iff in H0.
+destruct H0.
+inversion H0.
+rewrite <- H1.
+apply valuset2bytesets_len.
+Qed.
+
+Lemma bfile_bytefile_snd_nil: forall block_off a0 f pfy ufy fy,
+  proto_bytefile_valid f pfy ->
+  unified_bytefile_valid pfy ufy ->
+  bytefile_valid ufy fy ->
+  block_off < length (BFILE.BFData f) ->
+  a0 < length (ByFData fy) ->
+  block_off * valubytes + valubytes > a0 ->
+  a0 >= block_off * valubytes ->
+  snd (selN (BFILE.BFData f) block_off valuset0) = nil ->
+  snd (selN (ByFData fy) a0 byteset0) = nil.
+Proof. Admitted.
+
+
+Lemma valu2list_selN_fst: forall block_off a0 f pfy ufy fy,
+  proto_bytefile_valid f pfy ->
+  unified_bytefile_valid pfy ufy ->
+  bytefile_valid ufy fy ->
+  block_off < length (BFILE.BFData f) ->
+  a0 < length (ByFData fy) ->
+  block_off * valubytes + valubytes > a0 ->
+  a0 >= block_off * valubytes ->
+  (selN (valu2list (fst (selN (BFILE.BFData f) block_off valuset0))) (a0 - block_off * valubytes) byte0) = fst (selN (ByFData fy) a0 byteset0).
+Proof. Admitted.
+
+Lemma byteset2list_selN_snd: forall block_off a0 f pfy ufy fy,
+  proto_bytefile_valid f pfy ->
+  unified_bytefile_valid pfy ufy ->
+  bytefile_valid ufy fy ->
+  block_off < length (BFILE.BFData f) ->
+  a0 < length (ByFData fy) ->
+  block_off * valubytes + valubytes > a0 ->
+  a0 >= block_off * valubytes ->
+fst (list2byteset byte0
+        (selN (valuset2bytesets_rec (map valu2list (snd (selN (BFILE.BFData f) block_off valuset0))) valubytes) (a0 - block_off * valubytes) nil))
+   :: snd (list2byteset byte0
+           (selN (valuset2bytesets_rec (map valu2list (snd (selN (BFILE.BFData f) block_off valuset0))) valubytes) (a0 - block_off * valubytes) nil)) =
+   snd (selN (ByFData fy) a0 byteset0).
+Proof. Admitted.
+
+Lemma unified_bytefile_bytefile_selN_eq: forall a0 ufy fy,
+  bytefile_valid ufy fy ->
+  a0 < length (ByFData fy) ->
+  selN (UByFData ufy) a0 byteset0 = selN (ByFData fy) a0 byteset0.
+Proof.
+  intros.
+  rewrite H.
+  rewrite selN_firstn.
+  reflexivity.
+  auto.
+Qed.
+
+Lemma merge_bs_skipn_comm: forall l l1 a,
+skipn a (merge_bs l l1) = merge_bs (skipn a l) (skipn a l1).
+Proof.
+  induction l; intros.
+  repeat rewrite skipn_nil.
+  reflexivity.
+  destruct a0.
+  reflexivity.
+  destruct l1.
+  simpl.
+  rewrite IHl.
+  rewrite skipn_nil; reflexivity.
+  simpl.
+  auto.
+Qed.
+
 
 (* Interface *)
 
@@ -1492,7 +1609,7 @@ Theorem dwrite_to_block_ok : forall lxp bxp ixp inum block_off byte_off data fms
            (block_off * valubytes + byte_off) (merge_bs data old_data))]]] *
            [[ ByFAttr fy = ByFAttr fy' ]] *
            [[ BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
-    CRASH:hm'  LOG.intact lxp F ds hm'
+    XCRASH:hm'  LOG.intact lxp F ds hm'
     >}  dwrite_to_block lxp ixp inum fms block_off byte_off data.
 Proof.
 unfold dwrite_to_block, rep.
@@ -1721,18 +1838,6 @@ instantiate (1:= length data).
 rewrite merge_bs_length.
 reflexivity.
 
-
-Lemma list2nmem_arrayN_ptsto_subset_b_frame_extract: forall a l l' F,
-(F * arrayN ptsto_subset_b a l')%pred (list2nmem l) ->
-F (mem_except_range (list2nmem l) a (length l')).
-	Proof.
-		intros.
-		eapply ptsto_subset_b_to_ptsto in H.
-		repeat destruct H.
-		apply arrayN_frame_mem_ex_range in H. 
-		rewrite H0; auto.
-	Qed.
-
 unfold subset_invariant_bs in H5; eapply H5.
 intros.
 
@@ -1764,45 +1869,6 @@ eapply proto_len; eauto.
 rewrite concat_hom_length with (k:= valubytes).
 rewrite firstn_length_l; auto.
 
-Lemma block_off_le_length_proto_bytefile: forall  f pfy ufy fy block_off byte_off data F,
-proto_bytefile_valid f pfy ->
-unified_bytefile_valid pfy ufy ->
-bytefile_valid ufy fy -> 
-(F * arrayN ptsto_subset_b (block_off * valubytes + byte_off) data)%pred (list2nmem (ByFData fy)) ->
-byte_off < valubytes ->
-length data > 0 ->
-block_off <= length (PByFData pfy).
-
-	Proof.
-		intros.
-		erewrite bfile_protobyte_len_eq; eauto.
-		apply ptsto_subset_b_to_ptsto in H2 as Hx.
-		repeat destruct Hx.
-		destruct H5.
-		apply Nat.lt_le_incl; eapply inlen_bfile. 
-		eauto.
-		eauto.
-		eauto.
-		3: eauto.
-		omega.
-		omega.
-	Qed.
-
-Lemma proto_len_firstn: forall f pfy a,
-proto_bytefile_valid f pfy ->
-Forall (fun sublist : list byteset => length sublist = valubytes) (firstn a (PByFData pfy)).
-Proof.
-intros.
-apply Forall_forall; intros.
-apply in_firstn_in in H0.
-rewrite H in H0.
-apply in_map_iff in H0.
-destruct H0.
-inversion H0.
-rewrite <- H1.
-apply valuset2bytesets_len.
-Qed.
-
 eapply block_off_le_length_proto_bytefile; eauto; omega.
 eapply proto_len_firstn; eauto.
 rewrite map_length.
@@ -1827,6 +1893,231 @@ unfold not, list2nmem; intros Hx.
 erewrite selN_map in Hx; inversion Hx.
 auto.
 
+destruct (snd (selN (BFILE.BFData f) block_off valuset0)) eqn:D.
+simpl.
+repeat rewrite v2b_rec_nil.
+
+unfold list2nmem.
+repeat rewrite map_app.
+rewrite selN_app2.
+rewrite selN_app2.
+repeat rewrite map_app.
+repeat erewrite selN_map.
+apply some_eq.
+rewrite selN_firstn.
+rewrite selN_app1.
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+rewrite merge_bs_selN.
+simpl.
+repeat rewrite skipn_selN.
+repeat rewrite l2b_cons_x_nil; simpl.
+
+erewrite bfile_bytefile_snd_nil; eauto.
+
+replace (byte_off + length data + (a0 - (block_off * valubytes + byte_off) - length data))
+    with (a0 - block_off * valubytes) by omega.
+
+repeat (erewrite valu2list_selN_fst; eauto).
+
+repeat instantiate (1:= nil).
+repeat erewrite selN_map. simpl.
+repeat (erewrite valu2list_selN_fst; eauto).
+
+apply ptsto_subset_b_to_ptsto in H10 as H'.
+repeat destruct H'.
+destruct H11.
+eapply inlen_bfile; eauto.
+omega.
+omega.
+
+rewrite valu2list_len; omega.
+
+apply ptsto_subset_b_to_ptsto in H10 as H'.
+repeat destruct H'.
+destruct H11.
+eapply inlen_bfile; eauto.
+omega.
+omega.
+
+apply ptsto_subset_b_to_ptsto in H10 as H'.
+repeat destruct H'.
+destruct H11.
+eapply inlen_bfile; eauto.
+omega.
+omega.
+
+rewrite skipn_length.
+rewrite valu2list_len.
+omega.
+rewrite skipn_length.
+repeat rewrite map_length.
+rewrite valu2list_len; omega.
+rewrite valu2list_len; omega.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+rewrite skipn_length.
+rewrite valu2list_len.
+rewrite <- concat_hom_firstn with (k:= valubytes).
+rewrite firstn_length_l.
+omega. 
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+
+rewrite valu2list_len; omega.
+
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega. 
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+
+rewrite valu2list_len; omega.
+auto.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+rewrite app_length.
+rewrite merge_bs_length.
+rewrite skipn_length.
+rewrite valu2list_len.
+rewrite concat_hom_length with (k:= valubytes).
+rewrite skipn_length.
+rewrite Nat.mul_sub_distr_r.
+erewrite <- unified_byte_protobyte_len; eauto.
+pose proof bytefile_unified_byte_len as H'; eauto.
+apply H' in H21 as Hx.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+repeat rewrite Nat.sub_add_distr.
+
+replace (valubytes - byte_off - length data + (length (UByFData ufy) - (block_off + 1) * valubytes))
+  with (length (UByFData ufy) - block_off * valubytes - byte_off - length data ).
+repeat rewrite <- Nat.sub_add_distr.
+omega.
+
+repeat rewrite Nat.add_sub_assoc.
+repeat rewrite <- Nat.sub_add_distr.
+rewrite Nat.mul_add_distr_r.
+simpl; rewrite <- plus_n_O.
+omega.
+replace (block_off + 1) with (S block_off) by omega.
+eapply unibyte_len; eauto; omega.
+
+eapply proto_len; eauto.
+eapply proto_skip_len; eauto.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+
+rewrite valu2list_len; omega.
+
+
+rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite concat_hom_length with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+rewrite valu2list_len. omega.
+eapply block_off_le_length_proto_bytefile; eauto; omega.
+eapply proto_len_firstn; eauto.
+
+rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite concat_hom_length with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+rewrite valu2list_len. omega.
+eapply block_off_le_length_proto_bytefile; eauto; omega.
+eapply proto_len_firstn; eauto.
+
+rewrite valu2list_len; reflexivity.
+
+(* snd <> nil *)
+
 unfold list2nmem.
 repeat rewrite map_app.
 rewrite selN_app2.
@@ -1846,362 +2137,1041 @@ simpl.
 repeat rewrite skipn_selN.
 rewrite valuset2bytesets_rec_cons_merge_bs.
 rewrite merge_bs_selN; simpl.
-erewrite selN_map.
+erewrite selN_map. simpl.
 
+replace (byte_off + length data + (a0 - (block_off * valubytes + byte_off) - length data))
+    with (a0 - block_off * valubytes) by omega.
 
----------------------------
+repeat (erewrite valu2list_selN_fst; eauto).
 
+repeat instantiate (1:= nil).
+replace (valu2list w :: map valu2list l4)
+  with (map valu2list (snd (selN (BFILE.BFData f) block_off valuset0))).
 
-apply diskIs_id.
+erewrite byteset2list_selN_snd; eauto.
 
-intros.
-repeat rewrite app_length.
-split.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+eapply inlen_bfile; eauto.
+omega.
+omega.
 
-repeat rewrite merge_bs_selN.
-reflexivity.
-rewrite merge_bs_length in H10; auto.
-rewrite merge_bs_length in H10; omega.
-rewrite merge_bs_length in H10; auto.
-rewrite firstn_length_l.
-rewrite merge_bs_length in H10; auto.
-rewrite skipn_length.
+rewrite D; reflexivity.
+
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+eapply inlen_bfile; eauto.
+omega.
+omega.
+
+rewrite valuset2bytesets_rec_len.
+omega.
+unfold not; intros Hx; inversion Hx.
+
+rewrite valu2list_len; omega.
 rewrite map_length.
 rewrite valuset2bytesets_rec_len.
 omega.
-unfold not; intros; inversion H12.
-
-unfold incl; intros.
-rewrite merge_bs_selN in H12.
-unfold byteset2list in H12; simpl in H12.
-rewrite merge_bs_selN.
-unfold byteset2list; simpl.
-
-destruct H12.
-left; auto.
-
-destruct H12.
-rewrite selN_firstn in H12.
-rewrite skipn_selN in H12.
-replace (map (list2byteset byte0)
-           (valuset2bytesets_rec
-              (valu2list (fst (BFILE.BFData f) ⟦ block_off ⟧)
-               :: map valu2list (snd (BFILE.BFData f) ⟦ block_off ⟧))
-              valubytes)) 
-    with (map (list2byteset byte0)
-           (valuset2bytesets_rec
-           		(map valu2list 
-              ((fst (selN (BFILE.BFData f) block_off valuset0))
-               :: (snd (selN (BFILE.BFData f) block_off valuset0))))
-              valubytes)) in H12 by reflexivity.
-              
-replace (map (list2byteset byte0)
-           (valuset2bytesets_rec
-              (map valu2list
-                 (fst (BFILE.BFData f) ⟦ block_off ⟧
-                  :: snd (BFILE.BFData f) ⟦ block_off ⟧)) 
-              valubytes))
-    with (valuset2bytesets (selN (BFILE.BFData f) block_off valuset0)) in H12 by (unfold valuset2bytesets; unfold byteset2list; reflexivity).
-    
-replace (valuset2bytesets (selN (BFILE.BFData f) block_off valuset0))
-		with (selN (map valuset2bytesets (BFILE.BFData f)) block_off nil) in H12.
-
-rewrite <- H15 in H12.
-rewrite <- concat_hom_selN with (k:= valubytes) in H12.
-rewrite <- H21 in H12.
-
-apply ptsto_subset_b_list2nmem in H9 as H'.
-eapply selN_eq with (i:=i) in H'.
-do 2 erewrite selN_map in H'.
-rewrite selN_firstn in H'.
-rewrite skipn_selN in H'.
-
-replace ((UByFData ufy) ⟦ block_off * valubytes + (byte_off + i) ⟧)
-		with (selN (firstn (length (ByFData fy)) (UByFData ufy)) (block_off * valubytes + byte_off + i) byteset0) in H12.
-		
-
-rewrite <- H20 in H12.
-right.
-left.
-rewrite H'. eauto.
-rewrite Nat.add_assoc.
-apply selN_firstn.
-
-rewrite merge_bs_length in H10.
-eapply ptsto_subset_b_to_ptsto in H9 as H''.
-destruct H''.
-destruct H13.
-apply list2nmem_arrayN_bound in H13.
-destruct H13.
-rewrite H13 in H14; simpl in *.
-rewrite H14 in H8; rewrite <- H8 in H7; inversion H7.
-omega.
-
-rewrite merge_bs_length in H10; omega.
-rewrite firstn_length_l.
-rewrite merge_bs_length in H10; omega.
-rewrite skipn_length.
-apply Nat.le_add_le_sub_l.
-
-eapply ptsto_subset_b_to_ptsto in H9 as H''.
-destruct H''.
-destruct H13.
-apply list2nmem_arrayN_bound in H13.
-destruct H13.
-rewrite H13 in H14; simpl in *.
-rewrite H14 in H8; rewrite <- H8 in H7; inversion H7.
-omega.
-
-rewrite merge_bs_length in H10; omega.
-rewrite merge_bs_length in H10; omega.
-eapply proto_len; eauto.
-
-rewrite merge_bs_length in H10; omega.
-eapply selN_map.
-
-eapply ptsto_subset_b_to_ptsto in H9 as H''.
-destruct H''.
-destruct H13.
-eapply inlen_bfile; eauto.
-omega.
-omega.
-rewrite merge_bs_length in H10; omega.
-
-rewrite selN_firstn in H12.
-rewrite skipn_selN in H12.
-replace (map (list2byteset byte0)
-           (valuset2bytesets_rec
-              (valu2list (fst (BFILE.BFData f) ⟦ block_off ⟧)
-               :: map valu2list (snd (BFILE.BFData f) ⟦ block_off ⟧))
-              valubytes)) 
-    with (map (list2byteset byte0)
-           (valuset2bytesets_rec
-           		(map valu2list 
-              ((fst (selN (BFILE.BFData f) block_off valuset0))
-               :: (snd (selN (BFILE.BFData f) block_off valuset0))))
-              valubytes)) in H12 by reflexivity.
-              
-replace (map (list2byteset byte0)
-           (valuset2bytesets_rec
-              (map valu2list
-                 (fst (BFILE.BFData f) ⟦ block_off ⟧
-                  :: snd (BFILE.BFData f) ⟦ block_off ⟧)) 
-              valubytes))
-    with (valuset2bytesets (selN (BFILE.BFData f) block_off valuset0)) in H12 by (unfold valuset2bytesets; unfold byteset2list; reflexivity).
-    
-replace (valuset2bytesets (selN (BFILE.BFData f) block_off valuset0))
-		with (selN (map valuset2bytesets (BFILE.BFData f)) block_off nil) in H12.
-
-rewrite <- H15 in H12.
-rewrite <- concat_hom_selN with (k:= valubytes) in H12.
-rewrite <- H21 in H12.
-
-apply ptsto_subset_b_list2nmem in H9 as H'.
-eapply selN_eq with (i:=i) in H'.
-do 2 erewrite selN_map in H'.
-rewrite selN_firstn in H'.
-rewrite skipn_selN in H'.
-
-replace ((UByFData ufy) ⟦ block_off * valubytes + (byte_off + i) ⟧)
-		with (selN (firstn (length (ByFData fy)) (UByFData ufy)) (block_off * valubytes + byte_off + i) byteset0) in H12.
-		
-
-rewrite <- H20 in H12.
-apply ptsto_subset_b_to_ptsto in H9 as H0';
-destruct H0'.
-destruct H13.
-eapply ptsto_subset_b_incl in H9 as H''.
-3: eauto.
-2: eauto.
-unfold incl in H''.
-unfold byteset2list in H''.
-rewrite arrayN_isolate with (i:= i) in H13.
-
-destruct_lift H13.
-apply sep_star_comm in H13.
-apply sep_star_assoc in H13.
-eapply list2nmem_sel in H13.
-rewrite <- H13 in H12.
-eapply in_cons in H12.
-apply H'' in H12.
-
-right; auto.
-rewrite merge_bs_length in H10; omega.
-rewrite merge_bs_length in H10; omega.
-rewrite Nat.add_assoc; apply selN_firstn.
-
-eapply ptsto_subset_b_to_ptsto in H9 as H''.
-destruct H''.
-destruct H13.
-apply list2nmem_arrayN_bound in H13.
-destruct H13.
-rewrite H13 in H14; simpl in *.
-rewrite H14 in H8; rewrite <- H8 in H7; inversion H7.
-rewrite merge_bs_length in H10; omega.
-
-rewrite merge_bs_length in H10; omega.
-rewrite firstn_length_l.
-rewrite merge_bs_length in H10; omega.
-rewrite skipn_length.
-apply Nat.le_add_le_sub_l.
-
-eapply ptsto_subset_b_to_ptsto in H9 as H''.
-destruct H''.
-destruct H13.
-apply list2nmem_arrayN_bound in H13.
-destruct H13.
-rewrite H13 in H14; simpl in *.
-rewrite H14 in H8; rewrite <- H8 in H7; inversion H7.
-rewrite merge_bs_length in H10; omega.
-
-rewrite merge_bs_length in H10; omega.
-rewrite merge_bs_length in H10; omega.
-
-eapply proto_len; eauto.
-rewrite merge_bs_length in H10; omega.
-apply selN_map.
-
-eapply ptsto_subset_b_to_ptsto in H9 as H''.
-destruct H''.
-destruct H13.
-eapply inlen_bfile; eauto.
-omega.
-omega.
-rewrite merge_bs_length in H10; omega.
-
-rewrite merge_bs_length in H10; omega.
-rewrite merge_bs_length in H10; omega.
-rewrite merge_bs_length in H10; omega.
-
-rewrite firstn_length_l.
-rewrite merge_bs_length in H10; omega.
-rewrite skipn_length.
-rewrite map_length.
-rewrite valuset2bytesets_rec_len.
-apply Nat.le_add_le_sub_l.
-auto.
-
-unfold not; intros; inversion H13.
-
-rewrite merge_bs_length.
-repeat rewrite app_length.
-rewrite merge_bs_length.
-rewrite firstn_length_l.
-rewrite concat_hom_length with (k:= valubytes).
-rewrite firstn_length_l.
-apply Nat.le_add_le_sub_l.
-
-eapply ptsto_subset_b_to_ptsto in H9 as H''.
-destruct H''.
-destruct H10.
-apply list2nmem_arrayN_bound in H10.
-destruct H10.
-rewrite H10 in H12; simpl in *.
-rewrite H12 in H8; rewrite <- H8 in H7; inversion H7.
-omega.
-
-erewrite bfile_protobyte_len_eq; eauto.
-apply Nat.lt_le_incl.
-
-eapply ptsto_subset_b_to_ptsto in H9 as H''.
-destruct H''.
-destruct H10.
-eapply inlen_bfile; eauto.
-omega.
-omega.
+unfold not; intros Hx; inversion Hx.
 
 rewrite Forall_forall; intros.
-apply in_firstn_in in H10.
-generalize dependent x.
-rewrite <- Forall_forall.
-eapply proto_len; eauto.
+repeat destruct H11.
+apply valu2list_len.
+apply valu2list_len.
+apply in_map_iff in H11.
+repeat destruct H11.
+apply valu2list_len.
+
+rewrite skipn_length.
 rewrite valu2list_len; omega.
 
-repeat rewrite app_length.
-rewrite merge_bs_length.
-rewrite firstn_length_l.
-rewrite concat_hom_length with (k:= valubytes).
-rewrite firstn_length_l.
-eapply ptsto_subset_b_to_ptsto in H9 as H''.
-destruct H''.
-destruct H10.
-apply list2nmem_arrayN_bound in H10.
-destruct H10.
-rewrite H10 in H12; simpl in *.
-rewrite H12 in H8; rewrite <- H8 in H7; inversion H7.
-omega.
-
-erewrite bfile_protobyte_len_eq; eauto.
-apply Nat.lt_le_incl.
-
-eapply ptsto_subset_b_to_ptsto in H9 as H''.
-destruct H''.
-destruct H10.
-eapply inlen_bfile; eauto.
-omega.
-omega.
-
-rewrite Forall_forall; intros.
-apply in_firstn_in in H10.
-generalize dependent x.
-rewrite <- Forall_forall.
-eapply proto_len; eauto.
-rewrite valu2list_len; omega.
-
-erewrite bfile_protobyte_len_eq; eauto.
-
-eapply ptsto_subset_b_to_ptsto in H9 as H''.
-destruct H''.
-destruct H10.
-eapply inlen_bfile; eauto.
-omega.
-omega.
-
-rewrite firstn_length_l.
-rewrite firstn_length_l.
-reflexivity.
-
-rewrite firstn_length_l.
-omega.
+rewrite skipn_length.
 rewrite map_length.
 rewrite valuset2bytesets_rec_len.
-auto.
+omega.
 unfold not; intros Hx; inversion Hx.
 rewrite valu2list_len; omega.
 
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+rewrite skipn_length; rewrite valu2list_len;
+omega.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+rewrite valu2list_len; omega.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+rewrite valu2list_len; omega.
+
+auto.
+
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+repeat rewrite concat_hom_length with (k:= valubytes). 
+repeat rewrite skipn_length.
+rewrite valu2list_len.
+rewrite Nat.mul_sub_distr_r.
+erewrite <- unified_byte_protobyte_len; eauto.
+pose proof bytefile_unified_byte_len as H'; eauto.
+apply H' in H21 as Hx.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+repeat rewrite Nat.sub_add_distr.
+replace (valubytes - byte_off - length data + (length (UByFData ufy) - (block_off + 1) * valubytes))
+  with (length (UByFData ufy) - block_off * valubytes - byte_off - length data ).
+repeat rewrite <- Nat.sub_add_distr.
+omega.
+
+repeat rewrite Nat.add_sub_assoc.
+repeat rewrite <- Nat.sub_add_distr.
+rewrite Nat.mul_add_distr_r.
+simpl; rewrite <- plus_n_O.
+omega.
+replace (block_off + 1) with (S block_off) by omega.
+eapply unibyte_len; eauto; omega.
+
+eapply proto_len; eauto.
+eapply proto_skip_len; eauto.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+rewrite valu2list_len; omega.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+rewrite valu2list_len; omega.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+rewrite valu2list_len; omega.
+
+(* block_off * valubytes + valubytes <= a0 *)
+apply Nat.nlt_ge in n;
+apply Nat.nlt_ge in n0;
+apply Nat.nlt_ge in n1.
+left.
+
+unfold list2nmem.
+repeat rewrite map_app.
+rewrite selN_app2.
+rewrite selN_app2.
+repeat rewrite map_app.
+repeat erewrite selN_map.
+apply some_eq.
+rewrite selN_firstn.
+rewrite selN_app2.
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+rewrite skipn_length.
+rewrite valu2list_len.
+
+replace (a0 - (block_off * valubytes + byte_off) - length data - (valubytes - (byte_off + length data)))
+    with (a0 - (block_off + 1) * valubytes).
+
+rewrite <- concat_hom_skipn with (k:= valubytes).
+rewrite <- H22.
+rewrite skipn_selN.
+rewrite <- le_plus_minus.
+
+
+apply unified_bytefile_bytefile_selN_eq; auto.
+rewrite Nat.mul_add_distr_r.
+omega.
+
+eapply proto_len; eauto.
+rewrite Nat.mul_add_distr_r.
+omega.
+rewrite valu2list_len; omega.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+rewrite skipn_length.
+rewrite valu2list_len; omega.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+rewrite valu2list_len; omega.
+
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+rewrite valu2list_len; omega.
+auto.
+
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+rewrite app_length.
+rewrite merge_bs_length.
+rewrite concat_hom_length with (k:= valubytes).
+repeat rewrite skipn_length.
+rewrite valu2list_len.
+rewrite Nat.mul_sub_distr_r.
+erewrite <- unified_byte_protobyte_len; eauto.
+pose proof bytefile_unified_byte_len as H'; eauto.
+apply H' in H21 as Hx.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+repeat rewrite Nat.sub_add_distr.
+replace (valubytes - byte_off - length data + (length (UByFData ufy) - (block_off + 1) * valubytes))
+  with (length (UByFData ufy) - block_off * valubytes - byte_off - length data ).
+repeat rewrite <- Nat.sub_add_distr.
+omega.
+
+repeat rewrite Nat.add_sub_assoc.
+repeat rewrite <- Nat.sub_add_distr.
+rewrite Nat.mul_add_distr_r.
+simpl; rewrite <- plus_n_O.
+omega.
+replace (block_off + 1) with (S block_off) by omega.
+eapply unibyte_len; eauto; omega.
+
+eapply proto_len; eauto.
+eapply proto_skip_len; eauto.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+rewrite valu2list_len; omega.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+rewrite valu2list_len; omega.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+rewrite valu2list_len; omega.
+
+(* block_off * valubytes <= a0 < block_off * valubytes + byte_off *)
+apply Nat.nlt_ge in n;
+apply Nat.nle_gt in n0.
+right. split; simpl.
+unfold not, list2nmem; intros Hx.
+erewrite selN_map in Hx; inversion Hx.
+auto.
+
+destruct (snd (selN (BFILE.BFData f) block_off valuset0)) eqn:D.
+
+(* snd = nil *)
+simpl.
+repeat rewrite v2b_rec_nil.
+
+unfold list2nmem.
+repeat rewrite map_app.
+rewrite selN_app1.
+rewrite selN_app2.
+repeat rewrite map_app.
+repeat erewrite selN_map.
+apply some_eq.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+rewrite merge_bs_selN.
+simpl.
+repeat rewrite skipn_selN.
+repeat rewrite l2b_cons_x_nil; simpl.
+erewrite bfile_bytefile_snd_nil; eauto.
+
+repeat instantiate (1:= nil).
+repeat rewrite selN_firstn.
+
+repeat erewrite selN_map. simpl.
+repeat (erewrite valu2list_selN_fst; eauto).
+
+apply ptsto_subset_b_to_ptsto in H10 as H'.
+repeat destruct H'.
+destruct H11.
+eapply inlen_bfile; eauto.
+omega.
+omega.
+
+apply ptsto_subset_b_to_ptsto in H10 as H'.
+repeat destruct H'.
+destruct H11.
+eapply inlen_bfile; eauto.
+omega.
+omega.
+
+rewrite valu2list_len; omega.
+all: try omega.
+
+apply ptsto_subset_b_to_ptsto in H10 as H'.
+repeat destruct H'.
+destruct H11.
+eapply inlen_bfile; eauto.
+omega.
+omega.
+
+rewrite firstn_length_l.
+omega.
+rewrite valu2list_len; omega.
+
+rewrite firstn_length_l. omega.
+rewrite firstn_length_l. omega.
+repeat rewrite map_length. rewrite valu2list_len; omega.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+rewrite <- concat_hom_firstn with (k:= valubytes).
+rewrite firstn_length_l.
+omega. 
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+
+rewrite valu2list_len; omega.
+
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega. 
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+
+rewrite valu2list_len; omega.
+rewrite valu2list_len; reflexivity.
+
+(* snd <> nil *)
+
+unfold list2nmem.
+repeat rewrite map_app.
+rewrite selN_app1.
+rewrite selN_app2.
+repeat rewrite map_app.
+repeat erewrite selN_map.
+apply some_eq.
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+rewrite merge_bs_selN.
+simpl.
+repeat rewrite skipn_selN.
+rewrite valuset2bytesets_rec_cons_merge_bs.
+repeat rewrite selN_firstn.
+rewrite merge_bs_selN; simpl.
+erewrite selN_map. simpl.
+
+repeat (erewrite valu2list_selN_fst; eauto).
+
+repeat instantiate (1:= nil).
+replace (valu2list w :: map valu2list l4)
+  with (map valu2list (snd (selN (BFILE.BFData f) block_off valuset0))).
+
+erewrite byteset2list_selN_snd; eauto.
+
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+eapply inlen_bfile; eauto.
+omega.
+omega.
+
+rewrite D; reflexivity.
+
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+eapply inlen_bfile; eauto.
+omega.
+omega.
+
+rewrite valuset2bytesets_rec_len.
+omega.
+unfold not; intros Hx; inversion Hx.
+
+rewrite valu2list_len; omega.
+rewrite map_length.
+rewrite valuset2bytesets_rec_len.
+omega.
+unfold not; intros Hx; inversion Hx.
+
+all: try omega.
+
+rewrite Forall_forall; intros.
+repeat destruct H11.
+apply valu2list_len.
+apply valu2list_len.
+apply in_map_iff in H11.
+repeat destruct H11.
+apply valu2list_len.
+
+rewrite firstn_length_l. omega.
+rewrite valu2list_len; omega.
+
+rewrite firstn_length_l. omega.
+rewrite firstn_length_l. omega.
+
+rewrite map_length.
+rewrite valuset2bytesets_rec_len.
+omega.
+unfold not; intros Hx; inversion Hx.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+rewrite valu2list_len; omega.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+repeat rewrite concat_hom_length with (k:= valubytes). 
+repeat rewrite skipn_length.
+erewrite <- unified_byte_protobyte_len; eauto.
+pose proof bytefile_unified_byte_len as H'; eauto.
+apply H' in H21 as Hx.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+repeat rewrite Nat.sub_add_distr.
+replace (valubytes - byte_off - length data + (length (UByFData ufy) - (block_off + 1) * valubytes))
+  with (length (UByFData ufy) - block_off * valubytes - byte_off - length data ).
+repeat rewrite <- Nat.sub_add_distr.
+omega.
+
+repeat rewrite Nat.add_sub_assoc.
+repeat rewrite <- Nat.sub_add_distr.
+rewrite Nat.mul_add_distr_r.
+simpl; rewrite <- plus_n_O.
+omega.
+replace (block_off + 1) with (S block_off) by omega.
+eapply unibyte_len; eauto; omega.
+
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+
+rewrite valu2list_len; omega.
+
+(* a >= length (ByFData fy) *)
+left.
+apply Nat.nlt_ge in n.
+destruct (le_dec (block_off * valubytes + byte_off) a0);
+destruct (lt_dec a0 (block_off * valubytes + byte_off + length data)); try omega.
+reflexivity.
+
+unfold list2nmem.
+rewrite selN_oob.
+rewrite selN_oob.
+reflexivity.
+rewrite map_length; auto.
+
+repeat rewrite map_length.
+repeat rewrite app_length.
+repeat rewrite merge_bs_length.
+repeat rewrite firstn_length_l.
+repeat rewrite <- concat_hom_firstn with (k:= valubytes).
+repeat rewrite firstn_length_l.
+omega.
+
+rewrite concat_hom_length with (k:= valubytes).
+erewrite <- unified_byte_protobyte_len; eauto.
+erewrite <- bytefile_unified_byte_len; eauto.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+eapply proto_len; eauto.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+repeat rewrite skipn_length.
+rewrite valu2list_len.
+repeat rewrite concat_hom_length with (k:= valubytes).
+repeat rewrite firstn_length_l.
+rewrite skipn_length.
+rewrite Nat.mul_sub_distr_r.
+erewrite <- unified_byte_protobyte_len; eauto.
+pose proof bytefile_unified_byte_len as H'; eauto.
+apply H' in H21 as Hx.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+repeat rewrite Nat.sub_add_distr.
+replace (valubytes - byte_off - length data + (length (UByFData ufy) - (block_off + 1) * valubytes))
+  with (length (UByFData ufy) - block_off * valubytes - byte_off - length data ).
+repeat rewrite <- Nat.sub_add_distr.
+omega.
+
+repeat rewrite Nat.add_sub_assoc.
+repeat rewrite <- Nat.sub_add_distr.
+rewrite Nat.mul_add_distr_r.
+simpl; rewrite <- plus_n_O.
+omega.
+replace (block_off + 1) with (S block_off) by omega.
+eapply unibyte_len; eauto; omega.
+
+eapply proto_len; eauto.
+eapply block_off_le_length_proto_bytefile; eauto; omega.
+eapply proto_skip_len; eauto.
+eapply proto_len_firstn; eauto.
+
+rewrite valu2list_len; omega.
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+(* End a0 *)
+
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+intros.
+rewrite merge_bs_length in H14.
+split.
+repeat rewrite merge_bs_selN; auto.
+omega.
+rewrite firstn_length_l; auto.
+rewrite skipn_length.
+rewrite map_length.
+rewrite valuset2bytesets_rec_len.
+omega.
+
+unfold not; intros Hx; inversion Hx.
+eapply ptsto_subset_b_incl with (i:= i) in H10 as H'.
+repeat rewrite merge_bs_selN; auto.
+unfold byteset2list, merge_bs; simpl.
+
+apply incl_cons2.
+rewrite selN_firstn.
+6: eauto.
+apply arrayN_list2nmem in H11 as Hx.
+
+rewrite Hx in H'.
+rewrite selN_firstn in H'.
+rewrite skipn_map_comm.
+repeat erewrite selN_map.
+repeat rewrite skipn_selN.
+
+rewrite H21 in H';
+rewrite H22 in H';
+rewrite H16 in H'. 
+rewrite skipn_selN in H'.
+rewrite selN_firstn in H'.
+rewrite <- Nat.add_assoc in H'.
+rewrite concat_hom_selN with (k:= valubytes) in H'.
+erewrite selN_map  with (default':= valuset0) in H'.
+unfold valuset2bytesets in H'; simpl in H'.
+unfold byteset2list in H'.
+erewrite selN_map in H'.
+apply H'.
+
+rewrite valuset2bytesets_rec_len.
+omega.
+unfold not; intros Hx1; inversion Hx1.
+
+eapply inlen_bfile; eauto; omega.
+rewrite <- H16; eapply proto_len; eauto.
+omega.
+
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+
+rewrite skipn_length.
+rewrite valuset2bytesets_rec_len.
+omega.
+unfold not; intros Hx1; inversion Hx1.
+omega.
+apply byteset0.
+auto.
+omega.
+rewrite firstn_length_l; auto.
+rewrite skipn_length.
+rewrite map_length.
+rewrite valuset2bytesets_rec_len.
+omega.
+unfold not; intros Hx1; inversion Hx1.
+omega.
+omega.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+repeat rewrite skipn_length.
+repeat rewrite concat_hom_length with (k:= valubytes).
+repeat rewrite firstn_length_l.
+
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+rewrite valu2list_len; omega.
+eapply block_off_le_length_proto_bytefile; eauto; omega.
+eapply proto_len_firstn; eauto.
+
+repeat rewrite app_length.
+repeat rewrite map_length.
+repeat rewrite merge_bs_length.
+repeat rewrite skipn_length.
+repeat rewrite concat_hom_length with (k:= valubytes).
+repeat rewrite firstn_length_l.
+
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+apply list2nmem_arrayN_bound in H11.
+destruct H11.
+rewrite H11 in H13; simpl in *.
+rewrite H13 in H9; rewrite <- H9 in H8; inversion H8.
+omega.
+rewrite valu2list_len; omega.
+eapply block_off_le_length_proto_bytefile; eauto; omega.
+eapply proto_len_firstn; eauto.
+erewrite bfile_protobyte_len_eq; eauto.
+
+eapply ptsto_subset_b_to_ptsto in H10 as H''.
+destruct H''.
+destruct H11.
+eapply inlen_bfile; eauto.
+omega.
+omega.
+
+repeat rewrite firstn_length_l.
+reflexivity.
+omega.
+rewrite map_length.
+rewrite valuset2bytesets_rec_len.
+omega.
+unfold not; intros Hx1; inversion Hx1.
+rewrite valu2list_len; omega.
 rewrite app_length.
 repeat rewrite firstn_length_l.
 reflexivity.
 
 rewrite map_length.
 rewrite valuset2bytesets_rec_len.
-auto.
-unfold not; intros Hx; inversion Hx.
+omega.
+unfold not; intros Hx1; inversion Hx1.
 rewrite valu2list_len; omega.
 
 rewrite Forall_forall; intros.
-simpl in H10.
-destruct H10.
-rewrite <- H10.
-erewrite app_length_eq with (len:= valubytes).
-reflexivity.
+destruct H11.
+rewrite <- H11.
+repeat rewrite app_length.
+rewrite firstn_length_l.
+rewrite skipn_length.
+rewrite valu2list_len; omega.
+rewrite valu2list_len; omega.
+destruct H11.
+rewrite <- H11.
 apply valu2list_len.
-auto.
-
-destruct H10.
-rewrite <- H10.
-apply valu2list_len.
-
-apply in_map_iff in H10.
-repeat destruct H10.
+apply in_map_iff in H11.
+repeat destruct H11.
 apply valu2list_len.
 
-erewrite app_length_eq with (len:= valubytes).
-reflexivity.
-apply valu2list_len.
-auto.
+repeat rewrite app_length.
+rewrite firstn_length_l.
+rewrite skipn_length.
+rewrite valu2list_len; omega.
+rewrite valu2list_len; omega.
 
-reflexivity.
 
 Admitted.
 	
@@ -2225,7 +3195,8 @@ Definition dwrite_middle_blocks lxp ixp inum fms block_off num_of_full_blocks da
           [[[ (ByFData fy')::: (Ff * arrayN ptsto_subset_b ((block_off + i) * valubytes) (skipn (i * valubytes) old_data) *
           			arrayN ptsto_subset_b (block_off * valubytes) (merge_bs (firstn (i*valubytes) data) (firstn (i*valubytes) old_data)))]]] *
           [[ ByFAttr fy' = ByFAttr fy ]] *
-          [[ BFILE.MSAlloc fms = BFILE.MSAlloc ms' ]]
+          [[ BFILE.MSAlloc fms = BFILE.MSAlloc ms' ]] *
+          [[ subset_invariant_bs Ff ]]
         OnCrash crash
         Begin (
           let write_data := get_sublist data (i * valubytes) valubytes in
@@ -2246,7 +3217,8 @@ Theorem dwrite_middle_blocks_ok : forall lxp bxp ixp inum block_off num_of_full_
            [[ length old_data = length data]] *
            [[ num_of_full_blocks > 0 ]] *
            [[ length data = mult num_of_full_blocks valubytes ]] *
-           [[ sync_invariant F ]]
+           [[ sync_invariant F ]] *
+           [[ subset_invariant_bs Fd ]]
      POST:hm' RET:fms'  exists flist' fy' f' ds',
            LOG.rep lxp F (LOG.ActiveTxn ds' ds'!!) (BFILE.MSLL fms') hm' *
            [[[ ds'!! ::: (Fm  * BFILE.rep bxp ixp flist' ilist frees) ]]] *
@@ -2256,7 +3228,7 @@ Theorem dwrite_middle_blocks_ok : forall lxp bxp ixp inum block_off num_of_full_
            (block_off * valubytes) (merge_bs data old_data))]]] *
            [[ ByFAttr fy = ByFAttr fy' ]] *
            [[ BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
-    CRASH:hm'  LOG.intact lxp F ds hm'
+    XCRASH:hm'  LOG.intact lxp F ds hm'
     >}  dwrite_middle_blocks lxp ixp inum fms block_off num_of_full_blocks data.
 
 Proof.
@@ -2289,6 +3261,10 @@ Proof.
 	rewrite get_sublist_length.
 	apply le_n.
 	eapply length_data_ge_m1_v; eauto.
+	unfold subset_invariant_bs; intros.
+	Search Mem.mem.
+	edestruct H12.
+	eapply pimpl_apply
 	
 	prestep.
 	rewrite <- plus_n_O.
