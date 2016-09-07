@@ -1534,6 +1534,230 @@ Proof.
 Qed.
 
 
+	Lemma subset_invariant_bs_union: forall F1 F2,
+	subset_invariant_bs F1 -> subset_invariant_bs F2 ->
+	  subset_invariant_bs (F1 * F2)%pred.
+	Proof.
+	    intros.
+	    unfold subset_invariant_bs.
+	    intros.
+	    unfold sep_star in H2; rewrite sep_star_is in H2; unfold sep_star_impl in H2.
+	    destruct H2.
+	    destruct H2.
+	    destruct H2.
+	    destruct H3.
+	    destruct H4.
+      
+	    unfold_sep_star.
+	    exists (fun a => match x a with
+	                     | None => None
+	                     | Some v => bsl' a
+	                     end).
+      exists (fun a => match x0 a with
+	                     | None => None
+	                     | Some v => bsl' a
+	                     end).
+      repeat split.
+	    apply functional_extensionality; intros.
+	    unfold mem_union.
+	    destruct (bsl x1) eqn:D.
+	    rewrite H2 in D. unfold mem_union in D.
+      destruct (x x1) eqn:D1.
+      destruct (bsl' x1).
+      reflexivity.
+      destruct (x0 x1); reflexivity.
+      rewrite D; reflexivity.
+      
+      rewrite H2 in D.
+      unfold mem_union in D.
+      destruct (x x1) eqn:D1.
+      inversion D.
+      
+      destruct H1 with (a:= x1).
+      rewrite H2 in H6.
+      unfold mem_union in H6.
+      rewrite D1 in H6; simpl in H6; rewrite D in H6.
+      rewrite H6; rewrite D; reflexivity.
+      
+      destruct H6.
+      rewrite H2 in H6.
+      unfold mem_union in H6.
+      rewrite D1 in H6; simpl in H6; rewrite D in H6.
+      destruct H6; reflexivity.
+      
+      unfold mem_disjoint in *.
+      unfold not; intros.
+      do 4 destruct H6.
+      destruct H3.
+      destruct (x x1) eqn:D.
+      destruct (x0 x1) eqn:D1.
+      exists x1.
+      exists p.
+      exists p0.
+      split; auto.
+      inversion H7.
+      inversion H6.
+      eapply H.
+      intros.
+      2: eauto.
+      
+      destruct H1 with (a:= a).
+      left.
+      unfold mem_union in *.
+      rewrite H2 in H6.
+      destruct (x a) eqn:D.
+      auto.
+      reflexivity.
+      
+      destruct H6.
+      rewrite H2 in H7.
+      unfold some_strip, mem_union in *.
+      destruct (x a) eqn:D.
+      right.
+      split.
+      unfold not; intros Hx; inversion Hx.
+      auto.
+      left.
+      reflexivity. 
+      
+      eapply H0.
+      intros.
+      2: eauto.
+      
+      destruct H1 with (a:= a).
+      left.
+      unfold mem_union in *.
+      rewrite H2 in H6.
+      destruct (x0 a) eqn:D.
+      unfold mem_disjoint in *.
+      unfold not in *.
+      destruct (x a) eqn:D1.
+      destruct H3.
+      exists a, p0, p.
+      split; auto.
+      auto.
+      reflexivity.
+      
+      destruct H6.
+      rewrite H2 in H7.
+      unfold some_strip, mem_union in *.
+      destruct (x0 a) eqn:D.
+      right.
+      split.
+      unfold not; intros Hx; inversion Hx.
+      destruct (x a) eqn:D1.
+      destruct H3.
+      exists a, p0, p.
+      split; auto.
+      auto.
+      left; reflexivity.
+  Qed.
+
+  Lemma subset_invariant_bs_ptsto_subset_b: forall l a,
+    subset_invariant_bs (arrayN ptsto_subset_b a l).
+    Proof.
+      induction l; intros.
+      unfold subset_invariant_bs; intros.
+      simpl in *.
+      unfold emp in *; intros.
+      destruct H with (a:= a0).
+      rewrite H0 in H1; auto.
+      repeat destruct H1.
+      apply H0.
+      
+      simpl in *.
+      apply subset_invariant_bs_union.
+      unfold subset_invariant_bs; intros.
+      unfold ptsto_subset_b in *;
+      destruct_lift H0.
+      Search ptsto None.
+      
+      destruct H with (a:= a0).
+      apply emp_star in H0 as H'.
+      apply ptsto_valid' in H'.
+      
+      
+      exists dummy.
+      rewrite H' in H1.
+      apply sep_star_lift_apply'.
+      apply emp_star.
+      apply sep_star_comm.
+      apply mem_except_ptsto.
+      auto.
+      
+      assert (forall AT AEQ V (m: @Mem.mem AT AEQ V), m = Mem.empty_mem -> emp m).
+      intros.
+      rewrite H2.
+      apply emp_empty_mem.
+      apply H2.
+      unfold Mem.empty_mem.
+      apply functional_extensionality; intros.
+      unfold mem_except.
+      destruct (addr_eq_dec x a0).
+      reflexivity.
+      
+      destruct H with (a:= x).
+      apply ptsto_ne with (a':= x) in H0 as Hx.
+      rewrite H4; rewrite Hx; reflexivity.
+      unfold not; intros.
+      apply n; omega.
+      
+      
+      destruct H4.
+      apply ptsto_ne with (a':= x) in H0 as Hx.
+      rewrite Hx in H4.
+      destruct H4; reflexivity.
+      unfold not; intros.
+      apply n; omega.
+      auto.
+      
+      (* part2 *)
+      destruct H1.
+      apply emp_star in H0 as H'.
+      apply ptsto_valid' in H'.
+      rewrite H' in H2; simpl in H2.
+      
+      
+      exists (a_1::dummy).
+      apply sep_star_lift_apply'.
+      apply emp_star.
+      apply sep_star_comm.
+      apply mem_except_ptsto.
+      auto.
+      
+      assert (forall AT AEQ V (m: @Mem.mem AT AEQ V), m = Mem.empty_mem -> emp m).
+      intros.
+      rewrite H4.
+      apply emp_empty_mem.
+      apply H4.
+      unfold Mem.empty_mem.
+      apply functional_extensionality; intros.
+      unfold mem_except.
+      destruct (addr_eq_dec x a0).
+      reflexivity.
+     
+     destruct H with (a:= x).
+      apply ptsto_ne with (a':= x) in H0 as Hx.
+      rewrite H5; rewrite Hx; reflexivity.
+      unfold not; intros; apply n; omega.
+      
+      
+      destruct H5.
+      apply ptsto_ne with (a':= x) in H0 as Hx.
+      rewrite Hx in H5.
+      destruct H5; reflexivity.
+      unfold not; intros; apply n; omega.
+      unfold incl; intros.
+      apply H3.
+      repeat destruct H4.
+      apply in_eq.
+      apply in_eq.
+      apply in_cons.
+      auto.
+      auto.
+Qed.
+
+
 (* Interface *)
 
 Definition getattrs := BFILE.getattrs.
@@ -3243,11 +3467,11 @@ Proof.
 	eauto.
 	eauto.
 	rewrite <- plus_n_O; eauto.
-	apply sep_star_comm in H25; apply sep_star_assoc in H25.
+	apply sep_star_comm in H27; apply sep_star_assoc in H27.
 	remember (arrayN ptsto_subset_b (block_off * valubytes)
           (merge_bs (firstn (m * valubytes) data)
-             (firstn (m * valubytes) old_data)) ✶ Fd)%pred as x in H25.
-	rewrite arrayN_split with (i:= valubytes) in H25.
+             (firstn (m * valubytes) old_data)) ✶ Fd)%pred as x in H27.
+	rewrite arrayN_split with (i:= valubytes) in H27.
 	pred_apply. rewrite Heqx; cancel.
 	rewrite get_sublist_length.
 	apply firstn_length_l.
@@ -3261,22 +3485,26 @@ Proof.
 	rewrite get_sublist_length.
 	apply le_n.
 	eapply length_data_ge_m1_v; eauto.
-	unfold subset_invariant_bs; intros.
-	Search Mem.mem.
-	edestruct H12.
-	eapply pimpl_apply
+	 
+
+
+repeat apply subset_invariant_bs_union.
+apply subset_invariant_bs_ptsto_subset_b.
+auto.
+apply subset_invariant_bs_ptsto_subset_b.
 	
-	prestep.
+	unfold rep, get_sublist.
 	rewrite <- plus_n_O.
-	unfold get_sublist.
-	unfold pimpl; intros.
+	step.
 	rewrite skipn_skipn.
 	replace ((block_off + m) * valubytes + valubytes)
 			with ((block_off + S m) * valubytes).
 	cancel.
-		
+	
+
 	rewrite Nat.mul_add_distr_r.
-	rewrite <- arrayN_app'.
+  rewrite sep_star_comm.
+  rewrite <- arrayN_app'.
 	rewrite <- merge_bs_firstn_skipn with (c:= (valubytes + m * valubytes)).
 	cancel.
 	apply Nat.add_comm.
@@ -3291,18 +3519,12 @@ Proof.
 	Focus 2.
 	step.
 	rewrite skipn_oob.
-	rewrite <- H6.
+	rewrite <- H7.
 	rewrite firstn_exact.
-	rewrite <- H8.
+	rewrite <- H9.
 	rewrite firstn_exact.
 	cancel.
-	rewrite <- H6; rewrite <- H8; apply le_n.
-	
-	Focus 2.
-	instantiate (1:= LOG.intact lxp F ds hm).
-	apply LOG.intact_hashmap_subset.
-	exists l; auto.
-	
+	rewrite <- H7; rewrite <- H9; apply le_n.
 Admitted.
 
 
