@@ -189,6 +189,17 @@ Proof.
   erewrite IHl; eauto.
 Qed.
 
+Lemma repeat_eq_updN : forall T i n (v x : T) l,
+  i < n ->
+  repeat v n = updN l i x -> x = v.
+Proof.
+  induction i; intros.
+  - destruct n. omega.
+    destruct l; simpl in *; inversion H0. auto.
+  - destruct n. omega.
+    destruct l; simpl in *; inversion H0.
+    eapply IHi; [> | eauto]. omega.
+Qed.
 
 Hint Rewrite selN_updN_eq using (simpl; omega) : lists.
 

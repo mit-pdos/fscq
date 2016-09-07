@@ -2304,7 +2304,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
         apply le_nblocks_goodSize. simpl. rewrite mult_1_r. omega.
   Qed.
 
- Theorem indgrow_ok : forall lxp bxp ir off bn ms,
+  Theorem indgrow_ok : forall lxp bxp ir off bn ms,
     {< F Fm m0 m l0 l1 l2 freelist,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
@@ -2316,7 +2316,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
            exists m', LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            ([[ v = 0 ]] \/ [[ v <> 0 ]] *
            exists freelist' l0' l1' l2',
-           [[ updN (l0 ++ l1 ++ l2) (IRLen ir - NDirect) bn = l0' ++ l1' ++ l2' ]] *
+           [[ updN (l0 ++ l1 ++ l2) off bn = l0' ++ l1' ++ l2' ]] *
            [[[ m' ::: (Fm * indrep_n_tree 0 bxp indptr' l0' *
                             indrep_n_tree 1 bxp dindptr' l1' *
                             indrep_n_tree 2 bxp tindptr' l2' * BALLOC.rep bxp freelist') ]]] *
@@ -2331,10 +2331,10 @@ Module BlockPtr (BPtr : BlockPtrSig).
     all : match goal with
           | [|- _ = _ ] =>
             repeat rewrite updN_app2 by omega; try rewrite updN_app1 by omega; congruence
-          | [H : ?a = 0, H' : context [indrep_n_tree _ _ ?a _] |- _] =>
-            rewrite H in H'; rewrite indrep_n_tree_0 in H'; destruct_lifts; rewrite mult_1_r in *;
-            match goal with [H : updN _ _ _ = repeat _ _ |- _] => 
-              apply repeat_eq_updN in H; [> contradiction | omega] end
+          | [H : ?bn = $ 0 -> False, H2 : ?a = 0 |- False ] =>
+              rewrite H2 in *; rewrite indrep_n_tree_0 in *; destruct_lifts;
+              apply H; eapply repeat_eq_updN; [> | eauto];
+              rewrite mult_1_r; omega
           end.
   Qed.
 
