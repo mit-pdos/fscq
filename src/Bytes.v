@@ -153,7 +153,7 @@ Definition bytes2valu (v : bytes valubytes) : valu.
   exact v.
 Defined.
 
-Theorem valu2bytes2valu : forall v, valu2bytes (bytes2valu v) = v.
+Theorem bytes2valu2bytes : forall v, valu2bytes (bytes2valu v) = v.
 Proof.
   unfold valu2bytes, bytes2valu, eq_rec_r, eq_rec.
   intros.
@@ -167,7 +167,7 @@ Proof.
   reflexivity.
 Qed.
 
-Theorem bytes2valu2bytes : forall v, bytes2valu (valu2bytes v) = v.
+Theorem valu2bytes2valu : forall v, bytes2valu (valu2bytes v) = v.
 Proof.
   unfold valu2bytes, bytes2valu, eq_rec_r, eq_rec.
   intros.

@@ -12,7 +12,6 @@
 - better automation support for stopping at well-defined points
 - use http://why.lri.fr/ or http://why3.lri.fr/ to integrate Z3 into Coq
 - use Canonical Structure for defaults
-- integrate error codes (Errno.v)
 - db transaction system (abort)
 - combine Verdi's Paxos with FSCQ for stable storage, prove end-to-end theorem
   under both network and node failures (how to combine different spec styles??)
@@ -21,8 +20,9 @@
 
 ===
 
-- global sync with nop-spec
 - dwrite without calling flushall in GroupLog
+
+- prove [umount_ok]
 
 - prove AtomicCp
 - prove that unlink never fails

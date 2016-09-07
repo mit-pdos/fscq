@@ -3,6 +3,7 @@ Require Import Word WordAuto AsyncDisk Pred PredCrash GenSepN Array SepAuto.
 Require Import Rec Prog BasicProg Hoare RecArrayUtils Log.
 Require Import ProofIrrelevance.
 Require Import Inode BFile MemMatch.
+Require Import Errno.
 Import ListNotations EqNotations.
 
 Set Implicit Arguments.
@@ -274,9 +275,9 @@ Module FileRecArray (FRA : FileRASig).
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET: ^(ms', r) exists m', [[ MSAlloc ms' = MSAlloc ms ]] *
-         ([[ r = false ]] * 
+         ([[ isError r ]] * 
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
-          [[ r = true  ]] *
+          [[ r = OK tt  ]] *
           exists flist' f' ilist' frees',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist' frees') ]]] *
@@ -496,9 +497,9 @@ Module FileRecArray (FRA : FileRASig).
           [[[ RAData f ::: rep f items ]]] *
           [[[ items ::: Fe ]]]
     POST:hm' RET:^(ms', r) exists m', [[ MSAlloc ms' = MSAlloc ms ]] *
-         ([[ r = false ]] * 
+         ([[ isError r ]] * 
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
-          [[ r = true  ]] *
+          [[ r = OK tt ]] *
           exists flist' f' items' ilist' frees',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist' frees') ]]] *

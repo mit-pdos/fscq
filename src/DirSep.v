@@ -33,6 +33,23 @@ Proof.
   inversion H0.
 Qed.
 
+Lemma dir2flatmem2_find_subtree_none : forall fnlist tree,
+  tree_names_distinct tree ->
+  dir2flatmem2 tree fnlist = Some None ->
+  find_subtree fnlist tree = None \/ (exists inum d, find_subtree fnlist tree = Some (TreeDir inum d)).
+Proof.
+  unfold dir2flatmem2; intros.
+  destruct (find_subtree fnlist tree).
+  destruct d.
+  inversion H0; subst; auto.
+  right.
+  eexists n.
+  eexists l.
+  eauto.
+  left.
+  inversion H0; subst; auto.
+Qed.
+
 (** This should be useful for satisfying preconditions of most AsyncFS functions
  ** that take as an argument an inode number of an existing file in a tree.
  *)
@@ -44,6 +61,16 @@ Proof.
   intros.
   eapply ptsto_valid' in H0.
   eapply dir2flatmem2_find_subtree; eauto.
+Qed.
+
+Lemma dir2flatmem2_find_subtree_ptsto_none : forall fnlist tree F,
+  tree_names_distinct tree ->
+  (F * fnlist |-> None)%pred (dir2flatmem2 tree) ->
+  find_subtree fnlist tree = None \/ (exists inum d, find_subtree fnlist tree = Some (TreeDir inum d)).
+Proof.
+  intros.
+  eapply ptsto_valid' in H0.
+  eapply dir2flatmem2_find_subtree_none in H0; eauto.
 Qed.
 
 Lemma dir2flatmem2_find_name : forall fnlist tree inum f,

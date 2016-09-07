@@ -236,6 +236,32 @@ int c2ml_unix_error(int c_err)
 
 /* end "Thisk sucks" part */
 
+int c2ml_mode_t_kind(mode_t m)
+{
+  if (S_ISREG(m))
+    return Val_int(0);
+  else if (S_ISDIR(m))
+    return Val_int(1);
+  else if (S_ISCHR(m))
+    return Val_int(2);
+  else if (S_ISBLK(m))
+    return Val_int(3);
+  else if (S_ISLNK(m))
+    return Val_int(4);
+  else if (S_ISFIFO(m))
+    return Val_int(5);
+  else if (S_ISSOCK(m))
+    return Val_int(6);
+
+  // Unknown type; pretend like it's S_REG..
+  return Val_int(0);
+}
+
+int c2ml_mode_t_perm(mode_t m)
+{
+  return Val_int(m & ~S_IFMT);
+}
+
 int ml2c_unix_file_kind[] =
 {
   S_IFREG,
@@ -372,7 +398,7 @@ FOR_ALL_OPS(DECLARE_OP_CLOSURE)
 
 #define mknod_ARGS (const char *path, mode_t mode, dev_t rdev)
 #define mknod_RTYPE int
-#define mknod_CB vpath = copy_string(path); vres=callback2(*mknod_closure,vpath,Val_int(mode));
+#define mknod_CB vpath = copy_string(path); vres=callback4(*mknod_closure,vpath,c2ml_mode_t_kind(mode),c2ml_mode_t_perm(mode),Val_int(rdev));
 #define mknod_RES
 
 #define mkdir_ARGS (const char *path, mode_t mode)

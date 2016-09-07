@@ -24,6 +24,7 @@ Require Import FSLayout.
 Require Import AsyncDisk.
 Require Import BlockPtr.
 Require Import GenSepAuto.
+Require Import Errno.
 
 Import ListNotations.
 
@@ -226,7 +227,7 @@ Module INODE.
   | UDev   (v : word 64)
   .
 
-  Definition iattr_upd (e : iattr) (a : iattrupd_arg) := Eval compute_rec in
+  Definition iattr_upd (e : iattr) (a : iattrupd_arg) : iattr := Eval compute_rec in
   match a with
   | UBytes v => (e :=> "bytes" := v)
   | UMTime v => (e :=> "mtime" := v)
@@ -260,10 +261,10 @@ Module INODE.
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     let^ (ms, r) <- Ind.grow lxp bxp ir ($ bn) ms;
     match r with
-    | None => Ret ^(ms, false)
-    | Some ir' =>
+    | Err e => Ret ^(ms, Err e)
+    | OK ir' =>
         ms <- IRec.put_array lxp xp inum ir' ms;
-        Ret ^(ms, true)
+        Ret ^(ms, OK tt)
     end.
 
 
@@ -290,6 +291,18 @@ Module INODE.
 
 
   (************** Basic lemmas *)
+
+  Lemma rep_length_pimpl : forall bxp xp ilist,
+    rep bxp xp ilist =p=> rep bxp xp ilist * [[ length ilist = ((IRecSig.RALen xp) * IRecSig.items_per_val)%nat ]].
+  Proof.
+    unfold rep; intros.
+    norml; unfold stars; simpl.
+    rewrite IRec.items_length_ok_pimpl.
+    rewrite listmatch_length_pimpl.
+    cancel.
+    rewrite H5.
+    eauto.
+  Qed.
 
   Lemma irec_well_formed : forall Fm xp l i inum m,
     (Fm * IRec.rep xp l)%pred m
@@ -680,8 +693,8 @@ Module INODE.
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
     POST:hm' RET:^(ms, r)
            exists m',
-           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' \/
-           [[ r = true ]] * exists ilist' ino' freelist',
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' \/
+           [[ r = OK tt ]] * exists ilist' ino' freelist',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOC.rep bxp freelist') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *

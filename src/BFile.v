@@ -25,6 +25,8 @@ Require Import AsyncDisk.
 Require Import Inode.
 Require Import GenSepAuto.
 Require Import DiskSet.
+Require Import Errno.
+Require Import Lock.
 
 
 Import ListNotations.
@@ -95,6 +97,11 @@ Module BFILE.
     ms <- LOG.flushsync lxp ms;
     Ret (mk_memstate (negb al) ms).
 
+  Definition sync_noop lxp (ixp : INODE.IRecSig.xparams) fms :=
+    let '(al, ms) := (MSAlloc fms, MSLL fms) in
+    ms <- LOG.flushsync_noop lxp ms;
+    Ret (mk_memstate (negb al) ms).
+
   Definition pick_balloc A (a : A * A) (flag : bool) :=
     if flag then fst a else snd a.
 
@@ -104,18 +111,19 @@ Module BFILE.
     If (lt_dec len INODE.NBlocks) {
       let^ (ms, r) <- BALLOC.alloc lxp (pick_balloc bxps al) ms;
       match r with
-      | None => Ret ^(mk_memstate al ms, false)
+      | None => Ret ^(mk_memstate al ms, Err ENOSPCBLOCK)
       | Some bn =>
            let^ (ms, succ) <- INODE.grow lxp (pick_balloc bxps al) ixp inum bn ms;
-           If (bool_dec succ true) {
-              ms <- LOG.write lxp bn v ms;
-              Ret ^(mk_memstate al ms, true)
-           } else {
-             Ret ^(mk_memstate al ms, false)
-           }
+           match succ with
+           | Err e =>
+             Ret ^(mk_memstate al ms, Err e)
+           | OK _ =>
+             ms <- LOG.write lxp bn v ms;
+             Ret ^(mk_memstate al ms, OK tt)
+           end
       end
     } else {
-      Ret ^(mk_memstate al ms, false)
+      Ret ^(mk_memstate al ms, Err EFBIG)
     }.
 
   Definition shrink lxp bxps ixp inum nr fms :=
@@ -184,11 +192,75 @@ Module BFILE.
      [[ BmapNBlocks (fst bxps) = BmapNBlocks (snd bxps) ]]
     )%pred.
 
+  Definition rep_length_pimpl : forall bxps ixp flist ilist frees,
+    rep bxps ixp flist ilist frees =p=>
+    (rep bxps ixp flist ilist frees *
+     [[ length flist = ((INODE.IRecSig.RALen ixp) * INODE.IRecSig.items_per_val)%nat ]] *
+     [[ length ilist = ((INODE.IRecSig.RALen ixp) * INODE.IRecSig.items_per_val)%nat ]])%pred.
+  Proof.
+    unfold rep; intros.
+    rewrite INODE.rep_length_pimpl at 1.
+    rewrite listmatch_length_pimpl at 1.
+    cancel.
+  Qed.
+
   Definition block_belong_to_file ilist bn inum off :=
     off < length (INODE.IBlocks (selN ilist inum INODE.inode0)) /\
     bn = # (selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0).
 
   Definition block_is_unused freeblocks (bn : addr) := In bn freeblocks.
+
+  Definition block_is_unused_dec freeblocks (bn : addr) :
+    { block_is_unused freeblocks bn } + { ~ block_is_unused freeblocks bn }
+    := In_dec addr_eq_dec bn freeblocks.
+
+  Lemma block_is_unused_xor_belong_to_file : forall F Ftop fsxp files ilist free m flag bn inum off,
+    (F * rep fsxp Ftop files ilist free)%pred m ->
+    block_is_unused (pick_balloc free flag) bn ->
+    block_belong_to_file ilist bn inum off ->
+    False.
+  Proof.
+    unfold rep, block_is_unused, block_belong_to_file; intuition.
+    rewrite <- locked_eq with (x := bn) in H3.
+    destruct_lift H.
+    rewrite listmatch_isolate with (i := inum) in H.
+    unfold file_match at 2 in H.
+    erewrite listmatch_isolate with (i := off) (a := (BFData files ⟦ inum ⟧)) in H by simplen.
+    erewrite selN_map in H; eauto.
+    unfold BALLOC.rep in H; destruct_lift H.
+    unfold BALLOC.Alloc.rep in H; destruct_lift H.
+    destruct flag; simpl in *.
+    - rewrite listpred_pick in H15 by eauto.
+      rewrite H15 in H.
+      destruct_lift H.
+      rewrite locked_eq in H3.
+      rewrite <- H3 in H; clear H3.
+      eapply ptsto_conflict_F with (m := m) (a := bn).
+      pred_apply.
+      destruct ((BFData files ⟦ inum ⟧) ⟦ off ⟧).
+      cancel.
+    - rewrite listpred_pick in H17 by eauto.
+      rewrite H17 in H.
+      destruct_lift H.
+      rewrite locked_eq in H3.
+      rewrite <- H3 in H; clear H3.
+      eapply ptsto_conflict_F with (m := m) (a := bn).
+      pred_apply.
+      destruct ((BFData files ⟦ inum ⟧) ⟦ off ⟧).
+      cancel.
+    - erewrite listmatch_length_r; eauto.
+      destruct (lt_dec inum (length ilist)); eauto.
+      rewrite selN_oob in H2 by omega.
+      unfold INODE.inode0 in H2; simpl in *; omega.
+    - destruct (lt_dec inum (length ilist)); eauto.
+      rewrite selN_oob in H2 by omega.
+      unfold INODE.inode0 in H2; simpl in *; omega.
+
+    Grab Existential Variables.
+    exact ($0, nil).
+    exact bfile0.
+    exact 0.
+  Qed.
 
   Definition ilist_safe ilist1 free1 ilist2 free2 :=
     incl free2 free1 /\
@@ -635,28 +707,34 @@ Module BFILE.
     eauto.
   Qed.
 
+  Definition treeseq_ilist_safe inum ilist1 ilist2 :=
+    (forall off bn,
+        block_belong_to_file ilist1 bn inum off ->
+        block_belong_to_file ilist2 bn inum off) /\
+    (forall i def,
+        (inum <> i /\ i < Datatypes.length ilist1) -> selN ilist1 i def = selN ilist2 i def).
 
   Theorem setattrs_ok : forall lxp bxps ixp inum a ms,
-    {< F Fm Fi m0 m flist ilist frees f,
+    {< F Fm Ff m0 m flist ilist frees f,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
            [[[ m ::: (Fm * rep bxps ixp flist ilist frees) ]]] *
-           [[[ flist ::: (Fi * inum |-> f) ]]]
+           [[[ flist ::: (Ff * inum |-> f) ]]] 
     POST:hm' RET:ms'  exists m' flist' f' ilist',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
            [[[ m' ::: (Fm * rep bxps ixp flist' ilist' frees) ]]] *
-           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           [[[ flist' ::: (Ff * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) a ]] *
            [[ MSAlloc ms = MSAlloc ms' /\
               let free := pick_balloc frees (MSAlloc ms') in
-              ilist_safe ilist free ilist' free ]]
+              ilist_safe ilist free ilist' free ]] *
+           [[ treeseq_ilist_safe inum ilist ilist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} setattrs lxp ixp inum a ms.
   Proof.
     unfold setattrs, rep.
     safestep.
     sepauto.
-
     safestep.
     repeat extract. seprewrite.
     2: sepauto.
@@ -676,8 +754,22 @@ Module BFILE.
       all: erewrite selN_updN_eq in * by eauto; simpl; eauto.
     - unfold block_belong_to_file in *; intuition.
       all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
-  Qed.
+    - unfold treeseq_ilist_safe.
+      split.
+      intros.
+      unfold block_belong_to_file in *.
+      intuition.
+      eapply list2nmem_sel in H12 as H12'.
+      rewrite <- H12'; eauto.
+      eapply list2nmem_sel in H12 as H12'.
+      rewrite <- H12'; eauto.
 
+      intuition.
+      assert (inum < length ilist) by simplen'.
+      apply arrayN_except_upd in H12; auto.
+      apply list2nmem_array_eq in H12; subst.
+      rewrite selN_updN_ne; auto.
+  Qed.
 
   Theorem updattr_ok : forall lxp bxps ixp inum kv ms,
     {< F Fm Fi m0 m flist ilist frees f,
@@ -720,7 +812,6 @@ Module BFILE.
     - unfold block_belong_to_file in *; intuition.
       all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
   Qed.
-
 
   Theorem read_ok : forall lxp bxp ixp inum off ms,
     {< F Fm Fi Fd m0 m flist ilist frees f vs,
@@ -817,6 +908,36 @@ Module BFILE.
     all: try exact unit; eauto using tt.
   Qed.
 
+  Lemma grow_treeseq_ilist_safe: forall (ilist: list INODE.inode) ilist' inum a,
+    inum < Datatypes.length ilist ->
+    (arrayN_ex (ptsto (V:=INODE.inode)) ilist inum
+     ✶ inum
+       |-> {|
+           INODE.IBlocks := INODE.IBlocks (selN ilist inum INODE.inode0) ++ [$ (a)];
+           INODE.IAttr := INODE.IAttr (selN ilist inum INODE.inode0) |})%pred (list2nmem ilist') ->
+    treeseq_ilist_safe inum ilist ilist'.
+  Proof.
+    intros.
+    unfold treeseq_ilist_safe, block_belong_to_file.
+    apply arrayN_except_upd in H0 as Hselupd; auto.
+    apply list2nmem_array_eq in Hselupd; subst.
+    split. 
+    intros.
+    split.
+    erewrite selN_updN_eq; simpl.
+    erewrite app_length.
+    omega.
+    simplen'.
+    intuition.
+    erewrite selN_updN_eq; simpl.
+    erewrite selN_app; eauto.
+    simplen'.
+    intros.
+    erewrite selN_updN_ne; eauto.
+    intuition.
+  Qed.
+
+
   Theorem grow_ok : forall lxp bxp ixp inum v ms,
     {< F Fm Fi Fd m0 m flist ilist frees f,
     PRE:hm
@@ -825,15 +946,16 @@ Module BFILE.
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: Fd ]]]
     POST:hm' RET:^(ms', r) [[ MSAlloc ms = MSAlloc ms' ]] * exists m',
-           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
-           [[ r = true  ]] * exists flist' ilist' frees' f',
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
+           [[ r = OK tt  ]] * exists flist' ilist' frees' f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
            [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * (length (BFData f)) |-> (v, nil)) ]]] *
            [[ f' = mk_bfile ((BFData f) ++ [(v, nil)]) (BFAttr f) ]] *
            [[ ilist_safe ilist  (pick_balloc frees  (MSAlloc ms'))
-                         ilist' (pick_balloc frees' (MSAlloc ms')) ]]
+                         ilist' (pick_balloc frees' (MSAlloc ms')) ]] *
+           [[ treeseq_ilist_safe inum ilist ilist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} grow lxp bxp ixp inum v ms.
   Proof.
@@ -854,8 +976,8 @@ Module BFILE.
     - step.
       safestep.
       sepauto.
+      step.
 
-      step; step.
       eapply BALLOC.bn_valid_facts; eauto.
       step.
 
@@ -871,6 +993,8 @@ Module BFILE.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOC.bn_valid_goodSize; eauto.
       apply list2nmem_app; eauto.
+
+      2: eapply grow_treeseq_ilist_safe in H24; eauto.
 
       2: cancel.
       2: or_l; cancel.
@@ -901,7 +1025,7 @@ Module BFILE.
       erewrite INODE.rep_bxp_switch by eassumption. cancel.
       sepauto.
 
-      step; step.
+      step.
       eapply BALLOC.bn_valid_facts; eauto.
       step.
 
@@ -918,6 +1042,8 @@ Module BFILE.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOC.bn_valid_goodSize; eauto.
       apply list2nmem_app; eauto.
+
+      2: eapply grow_treeseq_ilist_safe in H24; eauto.
 
       2: cancel.
       2: or_l; cancel.
@@ -1075,11 +1201,27 @@ Module BFILE.
     step.
   Qed.
 
+  Theorem sync_noop_ok : forall lxp ixp ms,
+    {< F ds,
+    PRE:hm
+      LOG.rep lxp F (LOG.NoTxn ds) (MSLL ms) hm *
+      [[ sync_invariant F ]]
+    POST:hm' RET:ms'
+      LOG.rep lxp F (LOG.NoTxn ds) (MSLL ms') hm' *
+      [[ MSAlloc ms' = negb (MSAlloc ms) ]]
+    XCRASH:hm'
+      LOG.recover_any lxp F ds hm'
+    >} sync_noop lxp ixp ms.
+  Proof.
+    unfold sync_noop, rep.
+    step.
+    step.
+  Qed.
 
-  Lemma block_belong_to_file_ok : forall Fm Fi Fd bxp ixp flist ilist frees inum off f vs m,
-    (Fm ✶ rep bxp ixp flist ilist frees)%pred m ->
-    (Fi ✶ inum |-> f)%pred (list2nmem flist) ->
-    (Fd ✶ off |-> vs)%pred (list2nmem (BFData f)) ->
+  Lemma block_belong_to_file_off_ok : forall Fm Fi bxp ixp flist ilist frees inum off f m,
+    (Fm * rep bxp ixp flist ilist frees)%pred m ->
+    (Fi * inum |-> f)%pred (list2nmem flist) ->
+    off < Datatypes.length (BFData f) -> 
     block_belong_to_file ilist # (selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0) inum off.
   Proof.
     unfold block_belong_to_file; intros; split; auto.
@@ -1090,8 +1232,19 @@ Module BFILE.
     setoid_rewrite listmatch_extract with (i := off) in H at 3.
     destruct_lift H.
     rewrite map_length in *.
-    seprewrite. simplen. simplen. simplen.
+    rewrite <- H7. simplen. simplen. simplen.
     Unshelve. eauto.
+  Qed.
+
+  Lemma block_belong_to_file_ok : forall Fm Fi Fd bxp ixp flist ilist frees inum off f vs m,
+    (Fm * rep bxp ixp flist ilist frees)%pred m ->
+    (Fi * inum |-> f)%pred (list2nmem flist) ->
+    (Fd * off |-> vs)%pred (list2nmem (BFData f)) ->
+    block_belong_to_file ilist # (selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0) inum off.
+  Proof.
+    intros.
+    eapply list2nmem_inbound in H1.
+    eapply block_belong_to_file_off_ok; eauto.
   Qed.
 
   Definition diskset_was (ds0 ds : diskset) := ds0 = ds \/ ds0 = (ds!!, nil).
@@ -1116,9 +1269,9 @@ Module BFILE.
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: (Fd * off |-> vs) ]]] *
            [[ sync_invariant F ]]
-    POST:hm' RET:ms'  exists flist' f' bn ds0 ds',
+    POST:hm' RET:ms'  exists flist' f' bn ds',
            LOG.rep lxp F (LOG.ActiveTxn ds' ds'!!) (MSLL ms') hm' *
-           [[ ds' = dsupd ds0 bn (v, vsmerge vs) /\ diskset_was ds0 ds ]] *
+           [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
            [[ block_belong_to_file ilist bn inum off ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
            (* spec about files on the latest diskset *)
@@ -1132,7 +1285,7 @@ Module BFILE.
            LOG.recover_any lxp F (dsupd ds bn (v, vsmerge vs)) hm'
     >} dwrite lxp ixp inum off v ms.
   Proof.
-    unfold dwrite, diskset_was.
+    unfold dwrite.
     prestep; norml.
     denote  (list2nmem ds !!) as Hz.
     eapply block_belong_to_file_ok in Hz as Hb; eauto.
@@ -1165,18 +1318,6 @@ Module BFILE.
     cancel.
     eauto.
     cancel.
-
-    intuition simpl.
-    2: sepauto. 2: sepauto.
-    pred_apply; cancel.
-    setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 4.
-    rewrite listmatch_updN_removeN by omega.
-    unfold file_match at 3; cancel; eauto.
-    setoid_rewrite <- updN_selN_eq with (l := INODE.IBlocks _) (ix := off) at 3.
-    erewrite map_updN by omega; filldef.
-    rewrite listmatch_updN_removeN by omega.
-    cancel.
-    eauto.
 
     repeat xcrash_rewrite.
     xform_norm; xform_normr.
@@ -1267,6 +1408,7 @@ Module BFILE.
   Hint Extern 1 ({{_}} Bind (shrink _ _ _ _ _ _) _) => apply shrink_ok : prog.
   Hint Extern 1 ({{_}} Bind (datasync _ _ _ _) _) => apply datasync_ok : prog.
   Hint Extern 1 ({{_}} Bind (sync _ _ _) _) => apply sync_ok : prog.
+  Hint Extern 1 ({{_}} Bind (sync_noop _ _ _) _) => apply sync_noop_ok : prog.
   Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
 
 
@@ -1498,37 +1640,30 @@ Module BFILE.
         LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms) hm *
         [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees') ]]] *
         [[[ flist' ::: (Fi * inum |-> f') ]]] *
-        [[ ret = None ->
+        [[ ret = OK tt ->
           f' = mk_bfile ((BFData f) ++ synced_list (firstn i l)) (BFAttr f) ]] *
         [[ MSAlloc ms = MSAlloc ms0 /\
            ilist_safe ilist (pick_balloc frees (MSAlloc ms)) 
-                      ilist' (pick_balloc frees' (MSAlloc ms)) ]]
+                      ilist' (pick_balloc frees' (MSAlloc ms)) ]] *
+        [[ treeseq_ilist_safe inum ilist ilist' ]]
       OnCrash
         LOG.intact lxp F m0 hm
       Begin
-        If (is_some ret) {
-          Ret ^(ms, ret)
-        } else {
+        match ret with
+        | Err e => Ret ^(ms, ret)
+        | OK _ =>
           let^ (ms, ok) <- grow lxp bxp ixp inum (selN l i $0) ms;
-          If (bool_dec ok true) {
-            Ret ^(ms, None)
-          } else {
-            Ret ^(ms, Some false)
-          }
-        }
-      Rof ^(ms0, None);
-    match ret with
-    | Some v => Ret ^(ms, v)
-    | None => Ret ^(ms, true)
-    end.
-
+          Ret ^(ms, ok)
+        end
+      Rof ^(ms0, OK tt);
+    Ret ^(ms, ret).
 
 
   Definition truncate lxp bxp xp inum newsz ms :=
     let^ (ms, sz) <- getlen lxp xp inum ms;
     If (lt_dec newsz sz) {
       ms <- shrink lxp bxp xp inum (sz - newsz) ms;
-      Ret ^(ms, true)
+      Ret ^(ms, OK tt)
     } else {
       let^ (ms, ok) <- grown lxp bxp xp inum (repeat $0 (newsz - sz))  ms;
       Ret ^(ms, ok)
@@ -1550,15 +1685,16 @@ Module BFILE.
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: Fd ]]]
     POST:hm' RET:^(ms', r) [[ MSAlloc ms' = MSAlloc ms ]] * exists m',
-           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
-           [[ r = true  ]] * exists flist' ilist' frees' f',
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
+           [[ r = OK tt  ]] * exists flist' ilist' frees' f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
            [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * arrayN (@ptsto _ addr_eq_dec _) (length (BFData f)) (synced_list l)) ]]] *
            [[ f' = mk_bfile ((BFData f) ++ (synced_list l)) (BFAttr f) ]] *
            [[ ilist_safe ilist (pick_balloc frees (MSAlloc ms')) 
-                      ilist' (pick_balloc frees' (MSAlloc ms'))  ]]
+                      ilist' (pick_balloc frees' (MSAlloc ms'))  ]] *
+           [[ treeseq_ilist_safe inum ilist ilist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} grown lxp bxp ixp inum l ms.
   Proof.
@@ -1606,14 +1742,15 @@ Module BFILE.
            [[[ m ::: (Fm * rep bxp ixp flist ilist frees ) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:^(ms', r) [[ MSAlloc ms = MSAlloc ms' ]] * exists m',
-           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
-           [[ r = true  ]] * exists flist' ilist' frees' f',
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
+           [[ r = OK tt  ]] * exists flist' ilist' frees' f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
            [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees') ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (setlen (BFData f) sz ($0, nil)) (BFAttr f) ]] *
            [[ ilist_safe ilist (pick_balloc frees (MSAlloc ms')) 
-                         ilist' (pick_balloc frees' (MSAlloc ms'))  ]]
+                         ilist' (pick_balloc frees' (MSAlloc ms'))  ]] *
+           [[ sz >= Datatypes.length (BFData f) -> treeseq_ilist_safe inum ilist ilist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} truncate lxp bxp ixp inum sz ms.
   Proof.
@@ -1625,6 +1762,7 @@ Module BFILE.
       step.
       or_r; safecancel.
       rewrite setlen_inbound, Rounding.sub_sub_assoc by omega; auto.
+      exfalso; omega.
       cancel.
 
     - safestep.

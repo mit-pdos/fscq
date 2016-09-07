@@ -432,10 +432,10 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
     intros.
     unfold goodSize, divup.
     apply Nat.div_lt_upper_bound.
-    rewrite valubytes_is; auto.
+    rewrite valubytes_is; simpl valubytes_real; auto.
     apply lt_minus'.
     unfold addrlen.
-    rewrite valubytes_is.
+    rewrite valubytes_is; simpl valubytes_real.
     replace (4096) with (pow2 12) by reflexivity.
     rewrite <- pow2_add_mul.
     replace (pow2 (12 + n)) with (pow2 (11 + n) + pow2 (11 + n)).

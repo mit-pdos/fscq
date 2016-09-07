@@ -6,14 +6,12 @@
 (*         *       GNU Lesser General Public License Version 2.1        *)
 (************************************************************************)
 
-(** [Big] : a wrapper around ocaml [Big_int] with nicer names,
+(** [Big] : a wrapper around ocaml [Big_int_Z] with nicer names,
     and a few extraction-specific constructions *)
 
-(** To be linked with [nums.(cma|cmxa)] *)
+open Big_int_Z
 
-open Big_int
-
-type big_int = Big_int.big_int
+type big_int = Big_int_Z.big_int
     (** The type of big integers. *)
 
 let zero = zero_big_int

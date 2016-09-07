@@ -215,6 +215,11 @@ Module MLog.
       Ret r
    }.
 
+  Definition sync_cache (xp : log_xparams) ms :=
+    let '(oms, cs) := (MSInLog ms, MSCache ms) in
+    cs <- BUFCACHE.sync_all cs;
+    Ret (mk_memstate oms cs).
+
   Definition dwrite xp a v ms :=
     let '(oms, cs) := (MSInLog ms, MSCache ms) in
     ms' <- If (MapFacts.In_dec oms a) {

@@ -24,6 +24,7 @@ Require Import ListPred.
 Require Import FSLayout.
 Require Import AsyncDisk.
 Require Import Rounding.
+Require Import Errno.
 
 Import ListNotations.
 
@@ -1998,18 +1999,18 @@ Module BlockPtr (BPtr : BlockPtrSig).
     let len := (IRLen ir) in
     If (lt_dec len NDirect) {
       (* change direct block address *)
-      Ret ^(ms, Some (upd_irec ir (S len) (IRIndPtr ir) (IRDindPtr ir) (IRTindPtr ir) (updN (IRBlocks ir) len bn)))
+      Ret ^(ms, OK (upd_irec ir (S len) (IRIndPtr ir) (IRDindPtr ir) (IRTindPtr ir) (updN (IRBlocks ir) len bn)))
     } else {
       let off := (len - NDirect) in
       If (waddr_eq_dec bn $0) {
         let^ (ms, indptr, dindptr, tindptr) <- indshrink lxp bxp ir off ms;
-        Ret ^(ms, Some (upd_irec ir (S len) indptr dindptr tindptr (IRBlocks ir)))
+        Ret ^(ms, OK (upd_irec ir (S len) indptr dindptr tindptr (IRBlocks ir)))
       } else {
         let^ (ms, v, indptr, dindptr, tindptr) <- indgrow lxp bxp ir off bn ms;
         If (addr_eq_dec v 0) {
-          Ret ^(ms, None)
+          Ret ^(ms, Err ENOSPCBLOCK)
         } else {
-          Ret ^(ms, Some (upd_irec ir (S len) indptr dindptr tindptr (IRBlocks ir)))
+          Ret ^(ms, OK (upd_irec ir (S len) indptr dindptr tindptr (IRBlocks ir)))
         }
       }
     }.
@@ -2264,9 +2265,9 @@ Module BlockPtr (BPtr : BlockPtrSig).
            [[[ m ::: (Fm * rep bxp ir l * BALLOC.rep bxp freelist) ]]]
     POST:hm' RET:^(ms, r)
            exists m',
-           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' \/
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' \/
            exists freelist' ir',
-           [[ r = Some ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           [[ r = OK ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp ir' (l ++ [bn]) * BALLOC.rep bxp freelist') ]]] *
            [[ IRAttrs ir' = IRAttrs ir /\ length (IRBlocks ir') = length (IRBlocks ir) ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'

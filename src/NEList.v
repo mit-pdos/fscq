@@ -173,6 +173,24 @@ Section NonEmptyList.
     reflexivity.
   Qed.
 
+  Lemma nthd_popn : forall m n ds,
+    nthd n (popn m ds) = nthd (m + n) ds.
+  Proof.
+    unfold popn, nthd; simpl; intros.
+    rewrite cuttail_length, Nat.sub_add_distr.
+    destruct (lt_dec m (length (snd ds))).
+    destruct n.
+    rewrite Nat.sub_0_r.
+    rewrite selN_oob; auto.
+    rewrite cuttail_length; auto.
+    rewrite selN_cuttail; auto.
+    erewrite selN_inb by omega; eauto.
+    rewrite cuttail_length; omega.
+    replace (length (snd ds) - m - n) with 0 by omega.
+    rewrite cuttail_oob by omega; simpl.
+    replace (length (snd ds) - m) with 0 by omega; auto.
+ Qed.
+
   Definition d_in d (l : nelist) := d = fst l \/ In d (snd l).
 
   Theorem d_in_pushdlist : forall dlist ds d,
@@ -279,6 +297,26 @@ Section NonEmptyList.
     simpl; eauto.
   Qed.
 
+  Lemma length_popn : forall n ds,
+    length (snd (popn n ds)) = length (snd ds) - n.
+  Proof.
+    unfold popn; simpl; intros.
+    rewrite cuttail_length; auto.
+  Qed.
+
+  Lemma latest_popn : forall n ds,
+    latest (popn n ds) = latest ds.
+  Proof.
+    intros.
+    do 2 rewrite latest_nthd.
+    rewrite length_popn.
+    rewrite nthd_popn.
+    destruct (le_dec n (length (snd ds))).
+    f_equal; omega.
+    rewrite nthd_oob, latest_nthd; auto.
+    omega.
+  Qed.
+
 
   (** The second non-empty list's is a subset, in
     * the same order, of the first non-empty list
@@ -350,6 +388,46 @@ Section NonEmptyList.
     eapply nelist_subset_oldest_latest'.
   Qed.
 
+  Lemma nelist_subset_popn : forall n ds ds',
+    NEListSubset (popn n ds) ds' ->
+    NEListSubset ds ds'.
+  Proof.
+    induction n; simpl; intros.
+    rewrite popn_0 in H; auto.
+    replace (S n) with (1 + n) in H by omega.
+    rewrite <- popn_popn in H.
+    apply IHn in H.
+    unfold popn, nthd in H.
+    destruct ds; simpl in *.
+  Admitted.
+
+  Lemma nelist_subset_nthd_latest : forall n ds,
+    n < length (snd ds) ->
+    NEListSubset ds (nthd n ds, latest ds :: nil).
+  Proof.
+    induction n; simpl; intros.
+    rewrite nthd_0.
+    apply nelist_subset_oldest_latest; auto.
+    replace (S n) with (1 + n) by omega.
+    rewrite <- nthd_popn.
+    erewrite <- latest_popn.
+    eapply nelist_subset_popn.
+    apply IHn; simpl.
+    rewrite cuttail_length.
+    omega.
+  Qed.
+
+  Lemma nelist_subset_popn' : forall n ds ds',
+    NEListSubset ds ds' ->
+    NEListSubset ds (popn n ds').
+  Proof.
+    induction n; simpl; intros.
+    rewrite popn_0; auto.
+    replace (S n) with (1 + n) by omega.
+    rewrite <- popn_popn.
+    apply IHn.
+  Admitted.
+
   Lemma pushd_length : forall ds d,
     length (snd (pushd d ds)) = S (length (snd ds)).
   Proof.
@@ -386,6 +464,14 @@ Section NonEmptyList.
     destruct n; intuition.
   Qed.
 
+  Lemma nthd_pushd' : forall ds n d,
+    n <= length (snd ds)
+    -> nthd n (pushd d ds) = nthd n ds.
+  Proof.
+    destruct ds; intros.
+    apply nthd_pushd; auto.
+  Qed.
+
   Lemma nthd_pushd_latest : forall l t d n,
     n = S (length l)
     -> nthd n (pushd d (t, l)) = d.
@@ -393,6 +479,23 @@ Section NonEmptyList.
     unfold nthd, pushd; intros.
     simpl; subst.
     rewrite minus_diag; auto.
+  Qed.
+
+  Lemma nthd_pushd_latest' : forall ds d n,
+    n = S (length (snd ds))
+    -> nthd n (pushd d ds) = d.
+  Proof.
+    destruct ds; intros.
+    apply nthd_pushd_latest; eauto.
+  Qed.
+
+  Lemma popn_pushd_comm : forall d ds n,
+    n <= length (snd ds) ->
+    popn n (pushd d ds) = pushd d (popn n ds).
+  Proof.
+    unfold popn; simpl; intros.
+    rewrite nthd_pushd' by auto.
+    rewrite cuttail_cons; auto.
   Qed.
 
   Lemma nelist_subset_nthd : forall ds ds',
@@ -485,6 +588,21 @@ Proof.
   destruct H.
   eexists; intuition eauto.
   apply d_in_In'; eauto.
+Qed.
+
+Lemma dmap_popn_comm : forall A B n f (ds : nelist A),
+  @popn B n (d_map f ds) = d_map f (popn n ds).
+Proof.
+  intros; simpl.
+  destruct ds; simpl.
+  destruct n.
+  unfold d_map; simpl.
+  rewrite popn_0, nthd_0, cuttail_0; auto.
+  unfold popn; simpl.
+  rewrite d_map_nthd; unfold d_map; simpl.
+  f_equal.
+  unfold cuttail.
+  rewrite firstn_map_comm, map_length; auto.
 Qed.
 
 Definition NEforall T (p : T -> Prop) (l : nelist T) :=

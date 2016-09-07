@@ -2282,6 +2282,18 @@ Proof.
   rewrite cuttail_length in *; omega.
 Qed.
 
+Lemma cuttail_cons : forall A (a : A) l n,
+  n <= length l ->
+  cuttail n (a :: l) = a :: (cuttail n l).
+Proof.
+  unfold cuttail; simpl; intros.
+  destruct n; simpl.
+  rewrite Nat.sub_0_r; auto.
+  rewrite <- firstn_cons.
+  f_equal.
+  omega.
+Qed.
+
 Lemma incl_cons2 : forall T (a b : list T) (v : T), 
   incl a b
   -> incl (v :: a) (v :: b).
@@ -2729,6 +2741,12 @@ Proof.
   rewrite upd_range_start_0 by omega.
   rewrite app_assoc. rewrite repeat_app.
   rewrite skipn_app_r_ge by omega. repeat (omega || f_equal).
+Qed.
+
+Lemma In_incl : forall A (x : A) (l1 l2 : list A),
+  In x l1 -> incl l1 l2 -> In x l2.
+Proof.
+  firstorder.
 Qed.
 
 

@@ -106,7 +106,7 @@ Module AFS.
     match r with
     | None =>
       mscs <- LOG.abort (FSXPLog fsxp) mscs;
-      Ret None
+      Ret (Err ENOSPCINODE)
     | Some inum =>
       (**
        * We should write a new fsxp back to the superblock with the new root
@@ -117,13 +117,13 @@ Module AFS.
         let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
         If (bool_dec ok true) {
           mscs <- LOG.flushsync (FSXPLog fsxp) mscs;
-          Ret (Some ((BFILE.mk_memstate (MSAlloc ms) mscs), fsxp))
+          Ret (OK ((BFILE.mk_memstate (MSAlloc ms) mscs), fsxp))
         } else {
-          Ret None
+          Ret (Err ELOGOVERFLOW)
         }
       } else {
         mscs <- LOG.abort (FSXPLog fsxp) mscs;
-        Ret None
+        Ret (Err ELOGOVERFLOW)
       }
     end.
 
@@ -231,8 +231,8 @@ Module AFS.
        [[ goodSize addrlen (length disk) ]]
      POST:hm' RET:r exists ms fsxp d,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
-       ( [[ r = None ]] \/ exists ilist frees,
-         [[ r = Some (ms, fsxp) ]] *
+       ( [[ isError r ]] \/ exists ilist frees,
+         [[ r = OK (ms, fsxp) ]] *
          [[[ d ::: rep fsxp emp (TreeDir (FSXPRootInum fsxp) nil) ilist frees ]]] )
      CRASH:hm'
        any
@@ -388,13 +388,18 @@ Module AFS.
   Definition file_truncate fsxp inum sz ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, ok) <- DIRTREE.truncate fsxp inum sz (MSAlloc ams, ms);
-    If (bool_dec ok false) {
+    match ok with
+    | Err e =>
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-      Ret ^((MSAlloc ams, ms), false)
-    } else {
+      Ret ^((MSAlloc ams, ms), Err e)
+    | OK _ =>
       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-      Ret ^((MSAlloc ams, ms), ok)
-    }.
+      If (bool_dec ok true) {
+        Ret ^((MSAlloc ams, ms), OK tt)
+      } else {
+        Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
+      }
+    end.
 
   (* update an existing block directly.  XXX dwrite happens to sync metadata. *)
   Definition update_fblock_d fsxp inum off v ams :=
@@ -426,14 +431,14 @@ Module AFS.
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (MSAlloc ams, ms);
     match oi with
-      | None =>
+      | Err e =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-          Ret ^((MSAlloc ams, ms), None)
-      | Some inum =>
+          Ret ^((MSAlloc ams, ms), Err e)
+      | OK inum =>
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
-          | true => Ret ^((MSAlloc ams, ms), Some inum)
-          | false => Ret ^((MSAlloc ams, ms), None)
+          | true => Ret ^((MSAlloc ams, ms), OK inum)
+          | false => Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
         end
     end.
 
@@ -441,15 +446,15 @@ Module AFS.
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (MSAlloc ams, ms);
     match oi with
-      | None =>
+      | Err e =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-        Ret ^((MSAlloc ams, ms), None)
-      | Some inum =>
+        Ret ^((MSAlloc ams, ms), Err e)
+      | OK inum =>
         ams <- BFILE.updattr (FSXPLog fsxp) (FSXPInode fsxp) inum (INODE.UType $1) ams;
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
-          | true => Ret ^((MSAlloc ams, ms), Some inum)
-          | false => Ret ^((MSAlloc ams, ms), None)
+          | true => Ret ^((MSAlloc ams, ms), OK inum)
+          | false => Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
         end
     end.
 
@@ -457,27 +462,31 @@ Module AFS.
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, oi) <- DIRTREE.mkdir fsxp dnum name (MSAlloc ams, ms);
     match oi with
-      | None =>
+      | Err e =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-          Ret ^((MSAlloc ams, ms), None)
-      | Some inum =>
+          Ret ^((MSAlloc ams, ms), Err e)
+      | OK inum =>
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
-          | true => Ret ^((MSAlloc ams, ms), Some inum)
-          | false => Ret ^((MSAlloc ams, ms), None)
+          | true => Ret ^((MSAlloc ams, ms), OK inum)
+          | false => Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
         end
     end.
 
   Definition delete fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, ok) <- DIRTREE.delete fsxp dnum name (MSAlloc ams, ms);
-    If (bool_dec ok true) {
+    match ok with
+    | OK _ =>
        let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-       Ret ^((MSAlloc ams, ms), ok)
-    } else {
+       match ok with
+       | true => Ret ^((MSAlloc ams, ms), OK tt)
+       | false => Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
+       end
+    | Err e =>
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-      Ret ^((MSAlloc ams, ms), false)
-    }.
+      Ret ^((MSAlloc ams, ms), Err e)
+    end.
 
   Definition lookup fsxp dnum names ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
@@ -488,18 +497,31 @@ Module AFS.
   Definition rename fsxp dnum srcpath srcname dstpath dstname ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname (MSAlloc ams, ms);
-    If (bool_dec r true) {
+    match r with
+    | OK _ =>
       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-      Ret ^((MSAlloc ams, ms), ok)
-    } else {
+      match ok with
+      | true => Ret ^((MSAlloc ams, ms), OK tt)
+      | false => Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
+      end
+    | Err e =>
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-      Ret ^((MSAlloc ams, ms), false)
-    }.
+      Ret ^((MSAlloc ams, ms), Err e)
+    end.
 
   (* sync directory tree; will flush all outstanding changes to tree (but not dupdates to files) *)
   Definition tree_sync fsxp ams :=
     ams <- DIRTREE.sync fsxp ams;
     Ret ^(ams).
+
+  Definition tree_sync_noop fsxp ams :=
+    ams <- DIRTREE.sync_noop fsxp ams;
+    Ret ^(ams).
+
+  Definition umount fsxp ams :=
+    ams <- DIRTREE.sync fsxp ams;
+    ms <- LOG.sync_cache (FSXPLog fsxp) (MSLL ams);
+    Ret ^((MSAlloc ams, ms)).
 
   Definition statfs fsxp ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
@@ -761,7 +783,9 @@ Module AFS.
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
         [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
         [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                        ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]])
+                        ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
+        [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
+     )
   XCRASH:hm'
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
   >} file_set_attr fsxp inum attr mscs.
@@ -789,14 +813,15 @@ Module AFS.
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
     POST:hm' RET:^(mscs', r)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-     ([[ r = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
-      [[ r = true  ]] * exists d tree' f' ilist' frees',
+     ([[ isError r ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+      [[ r = OK tt ]] * exists d tree' f' ilist' frees',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees')]]] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]] *
         [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                        ilist' (BFILE.pick_balloc frees'  (MSAlloc mscs')) tree' ]])
+                        ilist' (BFILE.pick_balloc frees'  (MSAlloc mscs')) tree' ]] *
+        [[ sz >= Datatypes.length (BFILE.BFData f) -> BFILE.treeseq_ilist_safe inum ilist ilist' ]] )
     XCRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} file_truncate fsxp inum sz mscs.
@@ -834,9 +859,9 @@ Module AFS.
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(mscs')
-      exists tree' f' ds0 ds' bn,
+      exists tree' f' ds' bn,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
-       [[ ds' = dsupd ds0 bn (v, vsmerge vs) /\ BFILE.diskset_was ds0 ds ]] *
+       [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
        [[ BFILE.block_belong_to_file ilist bn inum off ]] *
        [[ MSAlloc mscs' = MSAlloc mscs ]] *
        (* spec about files on the latest diskset *)
@@ -874,8 +899,6 @@ Module AFS.
 
       unfold BFILE.diskset_was in *; intuition subst.
       rewrite LOG.intact_idempred; cancel.
-      rewrite LOG.intact_dsupd_latest by eauto.
-      rewrite LOG.recover_any_idempred; auto.
       eauto.
 
     - cancel.
@@ -966,6 +989,29 @@ Module AFS.
 
   Hint Extern 1 ({{_}} Bind (tree_sync _ _) _) => apply tree_sync_ok : prog.
 
+  Theorem tree_sync_noop_ok: forall fsxp  mscs,
+    {< ds Fm Ftop tree ilist frees,
+    PRE:hm
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)]]] 
+    POST:hm' RET:^(mscs')
+      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+      [[ MSAlloc mscs' = negb (MSAlloc mscs) ]]
+    XCRASH:hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+   >} tree_sync_noop fsxp mscs.
+  Proof.
+    unfold tree_sync_noop; intros.
+    step.
+    step.
+    xcrash_solve.
+    rewrite LOG.recover_any_idempred.
+    cancel.
+  Qed.
+
+  Hint Extern 1 ({{_}} Bind (tree_sync_noop _ _) _) => apply tree_sync_noop_ok : prog.
+
+
   Theorem lookup_ok: forall fsxp dnum fnlist mscs,
     {< ds Fm Ftop tree ilist frees,
     PRE:hm
@@ -975,7 +1021,8 @@ Module AFS.
       [[ DIRTREE.dirtree_isdir tree = true ]]
     POST:hm' RET:^(mscs', r)
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-      [[ r = DIRTREE.find_name fnlist tree ]] *
+      [[ (isError r /\ None = DIRTREE.find_name fnlist tree) \/
+         (exists v, r = OK v /\ Some v = DIRTREE.find_name fnlist tree)%type ]] *
       [[ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
      >} lookup fsxp dnum fnlist mscs.
@@ -1003,10 +1050,10 @@ Module AFS.
       [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
     POST:hm' RET:^(mscs',r)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-      ([[ r = None ]] *
+      ([[ isError r ]] *
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm'
       \/ exists inum,
-       [[ r = Some inum ]] * exists d tree' ilist' frees',
+       [[ r = OK inum ]] * exists d tree' ilist' frees',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
        [[ tree' = tree_graft dnum tree_elem pathname name (TreeFile inum BFILE.bfile0) tree ]] *
        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
@@ -1052,8 +1099,8 @@ Module AFS.
       [[ DIRTREE.find_subtree cwd tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
     POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-     ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
-      [[ ok = true ]] * 
+     ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+      [[ ok = OK tt ]] * 
         rename_rep ds mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname hm')
     CRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
@@ -1086,9 +1133,9 @@ Module AFS.
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
     POST:hm RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-     ([[ ok = false ]] *
+     ([[ isError ok ]] *
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm   \/
-      [[ ok = true ]] * exists d tree' ilist' frees',
+      [[ ok = OK tt ]] * exists d tree' ilist' frees',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm *
         [[ tree' = DIRTREE.update_subtree pathname
                       (DIRTREE.delete_from_dir name (DIRTREE.TreeDir dnum tree_elem)) tree ]] *
