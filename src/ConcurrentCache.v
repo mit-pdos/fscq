@@ -422,7 +422,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Ltac solve_modified :=
     match goal with
     | |- modified _ _ _ =>
-      solve [ auto with modified ]
+      solve [ auto 10 with modified ]
     end.
 
   (* lightweight intuition *)
@@ -1186,6 +1186,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                    invariant delta d m s
                | POST d' m' s_i' s' r:
                    invariant delta d' m' s' /\
+                   modified [( vCache; vDisk0; vWriteBuffer; vdisk0 )] s s' /\
                    get vdisk0 s' = get vdisk s /\
                    get vdisk s' = get vdisk s /\
                    guar delta tid s s' /\
