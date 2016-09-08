@@ -24,8 +24,6 @@ Section Extracted.
 
 End Extracted.
 
-Notation "R ^*" := (clos_refl_trans_1n _ R) (at level 0).
-
 Notation "A ; B" := (Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : facade_scope.
 Notation "x <~ y" := (Assign x y) (at level 90) : facade_scope.
 Notation "'__'" := (Skip) : facade_scope.

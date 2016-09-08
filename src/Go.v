@@ -52,6 +52,7 @@ Fixpoint all_some A (l : list (option A)) : option (list A) :=
       end
   end.
 
+Notation "R ^*" := (clos_refl_trans_1n _ R) (at level 0).
 
 (*
 Semantics for Go
@@ -128,13 +129,20 @@ Module Go.
   | Seq : stmt -> stmt -> stmt
   | If : expr -> stmt -> stmt -> stmt
   | While : expr -> stmt -> stmt
-  | Call : list var -> label -> list var -> stmt
-  | Assign : var -> expr -> stmt
+  | Call (retvars: list var) (* The caller's variables to get the return values *)
+         (f: label) (* The function to call *)
+         (argvars: list var) (* The caller's variables to pass in *)
   | Declare : var -> type -> stmt
+  | Assign : var -> expr -> stmt
   | DiskRead : var -> expr -> stmt
   | DiskWrite : expr -> expr -> stmt
   (* Only appears at runtime *)
-  | InCall (s0: locals) (argvars: list var) (retvars: list var) (args: list var) (rets: list var) (p: stmt).
+  | InCall (s0: locals) (* The stack frame inside the function *)
+           (paramvars: list var) (* The function's names for the parameters *)
+           (retparamvars: list var) (* The function's names for the returned values *)
+           (argvars: list var) (* The caller's variables which it passed in *)
+           (retvars: list var) (* The caller's variables which will get the return values *)
+           (p: stmt) (* The remaining body *).
 
   (* Program does not contain an InCall. Could probably be expressed directly if we had generics. *)
   Inductive source_stmt : stmt -> Prop :=
@@ -153,7 +161,7 @@ Module Go.
       forall cond body,
         source_stmt body ->
         source_stmt (While cond body)
-  | SCall : forall x f args, source_stmt (Call x f args)
+  | SCall : forall retvars f argvars, source_stmt (Call retvars f argvars)
   | SAssign : forall x e, source_stmt (Assign x e)
   | SDeclare : forall x e, source_stmt (Declare x e)
   | SDiskRead : forall x a, source_stmt (DiskRead x a)
@@ -333,11 +341,11 @@ Module Go.
     end.
 
   Record OperationalSpec := {
-    ArgVars : list var;
-    RetVars : list var;
+    ParamVars : list var;
+    RetParamVars : list var;
     Body : stmt;
-    (* ret_not_in_args : dont_intersect RetVars ArgVars = true; *)
-    args_no_dup : is_no_dup ArgVars = true;
+    (* ret_not_in_args : dont_intersect RetParamVars ParamVars = true; *)
+    args_no_dup : is_no_dup ParamVars = true;
     body_source : is_source_stmt Body = true;
     (* TODO syntax_ok with is_actual_args_no_dup *)
   }.
@@ -379,7 +387,7 @@ Module Go.
     | RunsToSeq : forall a b st st' st'',
                     RunsTo a st st' ->
                     RunsTo b st' st'' ->
-                    RunsTo (Seq a b) st st'
+                    RunsTo (Seq a b) st st''
     | RunsToIfTrue : forall cond t f st st',
                        is_true (snd st) cond ->
                        RunsTo t st st' ->
@@ -398,10 +406,15 @@ Module Go.
                            let loop := While cond body in
                            is_false (snd st) cond ->
                            RunsTo loop st st
-    | RunsToAssign : forall x e d s s' v,
-                       (* rhs can't be a mutable object, to prevent aliasing *)
+    | RunsToDeclare : forall x d s s' t,
+                       StringMap.find x s = None ->
+                       s' = StringMap.add x (default_value t) s ->
+                       RunsTo (Declare x t) (d, s) (d, s')
+    | RunsToAssign : forall x e d s s' v0 v,
                        eval s e = Some v ->
-                       can_alias (type_of v) = true ->
+                       can_alias (type_of v) = true -> (* rhs must be aliasable *)
+                       StringMap.find x s = Some v0 -> (* variable must be declared *)
+                       type_of v = type_of v0 -> (* and have the correct type *)
                        s' = StringMap.add x v s ->
                        RunsTo (Assign x e) (d, s) (d, s')
     | RunsToDiskRead : forall x ae a d s s' v vs,
@@ -415,18 +428,18 @@ Module Go.
                           d a = Some (v0, v0s) ->
                           d' = upd d a (v, v0 :: v0s) ->
                           RunsTo (DiskWrite ae ve) (d, s) (d', s)
-    | RunsToCallOp : forall retvars f args s spec d d' input callee_s' ret,
-                       StringMap.find f env = Some spec ->
-                       source_stmt (Body spec) ->
-                       length args = length (ArgVars spec) ->
-                       mapM (sel s) args = Some input ->
-                       let callee_s := make_map (ArgVars spec) input in
-                       RunsTo (Body spec) (d, callee_s) (d', callee_s') ->
-                       all_some (List.map (fun rv => sel callee_s' rv) (RetVars spec)) = Some ret ->
-                       let output := List.map (sel callee_s') (ArgVars spec) in
-                       let s' := add_remove_many args input output s in
-                       let s' := add_many retvars ret s' in
-                       RunsTo (Call retvars f args) (d, s) (d', s').
+    | RunsToCall : forall retvars f argvars s spec d d' input callee_s' ret,
+                     StringMap.find f env = Some spec ->
+                     source_stmt (Body spec) ->
+                     length argvars = length (ParamVars spec) ->
+                     mapM (sel s) argvars = Some input ->
+                     let callee_s := make_map (ParamVars spec) input in
+                     RunsTo (Body spec) (d, callee_s) (d', callee_s') ->
+                     all_some (List.map (fun rv => sel callee_s' rv) (RetParamVars spec)) = Some ret ->
+                     let output := List.map (sel callee_s') (ParamVars spec) in
+                     let s' := add_remove_many argvars input output s in
+                     let s' := add_many retvars ret s' in
+                     RunsTo (Call retvars f argvars) (d, s) (d', s').
 
     Inductive Step : state * stmt -> state * stmt -> Prop :=
     | StepSeq1 : forall a a' b st st',
@@ -448,86 +461,90 @@ Module Go.
                          let loop := While cond body in
                          is_false (snd st) cond ->
                          Step (st, loop) (st, Skip)
-    | StepAssign : forall x e d s s' v,
+    | StepDeclare : forall x d s s' t,
+                       StringMap.find x s = None ->
+                       s' = StringMap.add x (default_value t) s ->
+                       Step (d, s, Declare x t) (d, s', Skip)
+    | StepAssign : forall x e d s s' v v0,
                      (* rhs can't be a mutable object, to prevent aliasing *)
                      eval s e = Some v ->
-                     can_alias v = true ->
-                     s' = add x v s ->
+                     can_alias (type_of v) = true -> (* rhs must be aliasable *)
+                     StringMap.find x s = Some v0 -> (* variable must be declared *)
+                     type_of v = type_of v0 -> (* and have the correct type *)
+                     s' = StringMap.add x v s ->
                      Step (d, s, Assign x e) (d, s', Skip)
     | StepDiskRead : forall x ae a d s s' v vs,
-                       eval s ae = Some (Num a) ->
+                       eval s ae = Some (Val Num a) ->
                        d a = Some (v, vs) ->
-                       s' = add x (Block v) s ->
+                       s' = add x (Val DiskBlock v) s ->
                        Step (d, s, DiskRead x ae) (d, s', Skip)
     | StepDiskWrite : forall ae a ve v d d' s v0 v0s,
-                        eval s ae = Some (Num a) ->
-                        eval s ve = Some (Block v) ->
+                        eval s ae = Some (Val Num a) ->
+                        eval s ve = Some (Val DiskBlock v) ->
                         d a = Some (v0, v0s) ->
                         d' = upd d a (v, v0 :: v0s) ->
                         Step (d, s, DiskWrite ae ve) (d', s, Skip)
     | StepStartCall :
-        forall x f args s spec d input,
+        forall s retvars f argvars spec d input,
           StringMap.find f env = Some spec ->
-          SourceStmt (Body spec) ->
-          length args = length (ArgVars spec) ->
-          mapM (sel s) args = Some input ->
-          let callee_s := make_map (ArgVars spec) input in
-          Step (d, s, Call x f args) (d, callee_s, InCall s spec.(ArgVars) spec.(RetVar) args x spec.(Body))
+          source_stmt (Body spec) ->
+          length argvars = length (ParamVars spec) ->
+          mapM (sel s) argvars = Some input ->
+          let callee_s := make_map (ParamVars spec) input in
+          Step (d, s, Call retvars f argvars) (d, callee_s, InCall s spec.(ParamVars) spec.(RetParamVars) argvars retvars spec.(Body))
     | StepInCall :
-        forall st p st' p' s0 argvars retvar args ret,
+        forall st p st' p' s0 paramvars retparamvars argvars retvars,
           Step (st, p) (st', p') ->
-          Step (st, InCall s0 argvars retvar args ret p) (st', InCall s0 argvars retvar args ret p')
+          Step (st, InCall s0 paramvars retparamvars argvars retvars p)
+               (st', InCall s0 paramvars retparamvars argvars retvars p')
     | StepEndCall :
-        forall callee_s' s d input retval argvars retvar args ret,
-          mapM (sel s) args = Some input ->
-          length args = length argvars ->
-          match retvar with
-            | None => ret = None
-            | Some rv => sel callee_s' rv = Some retval
-          end ->
-          let output := List.map (sel callee_s') argvars in
-          let s' := add_remove_many args input output s in
-          let s' := maybe_add ret retval s' in
-          Step (d, callee_s', InCall s argvars retvar args ret Skip) (d, s', Skip).
+        forall callee_s' s d input retvals paramvars retparamvars argvars retvars,
+          mapM (sel s) argvars = Some input ->
+          length argvars = length paramvars ->
+          all_some (List.map (fun rv => sel callee_s' rv) retparamvars) = Some retvals ->
+          let output := List.map (sel callee_s') paramvars in
+          let s' := add_remove_many argvars input output s in
+          let s' := add_many retvars retvals s' in
+          Step (d, callee_s', InCall s paramvars retparamvars argvars retvars Skip) (d, s', Skip).
 
-    Inductive Outcome :=
+    Inductive outcome :=
     | EFailed
-    | EFinished (st : rawdisk * Locals)
+    | EFinished (st : rawdisk * locals)
     | ECrashed (d : rawdisk).
 
-    Inductive CrashStep : Stmt -> Prop :=
+    Inductive crash_step : stmt -> Prop :=
     | CrashSeq1 : forall a b,
-                    CrashStep a ->
-                    CrashStep (Seq a b)
+                    crash_step a ->
+                    crash_step (Seq a b)
     | CrashInCall : forall s argvars retvar args ret p,
-                      CrashStep p ->
-                      CrashStep (InCall s argvars retvar args ret p)
+                      crash_step p ->
+                      crash_step (InCall s argvars retvar args ret p)
     | CrashRead : forall x a,
-                    CrashStep (DiskRead x a)
+                    crash_step (DiskRead x a)
     | CrashWrite : forall a v,
-                     CrashStep (DiskWrite a v).
+                     crash_step (DiskWrite a v).
 
-    Definition is_final (sst : State * Stmt) : Prop :=
+    Definition is_final (sst : state * stmt) : Prop :=
       snd sst = Skip.
 
     Hint Unfold is_final.
 
-    Inductive Exec : State * Stmt -> Outcome -> Prop :=
+    Inductive exec : state * stmt -> outcome -> Prop :=
     | EXStep : forall sst sst' out,
                  Step sst sst' ->
-                 Exec sst' out ->
-                 Exec sst out
+                 exec sst' out ->
+                 exec sst out
     | EXFail : forall sst,
                  (~exists st' p', Step sst (st', p')) ->
                  ~is_final sst ->
-                 Exec sst EFailed
+                 exec sst EFailed
     | EXCrash : forall d s p,
-                  CrashStep p ->
-                  Exec (d, s, p) (ECrashed d)
+                  crash_step p ->
+                  exec (d, s, p) (ECrashed d)
     | EXDone : forall st,
-                 Exec (st, Skip) (EFinished st).
+                 exec (st, Skip) (EFinished st).
 
-    Hint Constructors Exec RunsTo Step.
+    Hint Constructors exec RunsTo Step.
 
     Hint Constructors clos_refl_trans_1n.
 
@@ -556,9 +573,9 @@ Module Go.
       end.
 
     Lemma steps_incall :
-      forall s0 argvars retvar args ret st p st' p',
+      forall s0 argvars retvars args ret st p st' p',
         Step^* (st, p) (st', p') ->
-        Step^* (st, InCall s0 argvars retvar args ret p) (st', InCall s0 argvars retvar args ret p').
+        Step^* (st, InCall s0 argvars retvars args ret p) (st', InCall s0 argvars retvars args ret p').
     Proof.
       intros.
       prep_induction H; induction H; intros; subst.
@@ -582,6 +599,8 @@ Module Go.
     (* For some reason (probably involving tuples), the [Hint Constructors] isn't enough. *)
     Hint Extern 1 (Step (_, Assign _ _) _) =>
     eapply StepAssign.
+    Hint Extern 1 (Step (_, Declare _ _) _) =>
+    eapply StepDeclare.
     Hint Extern 1 (Step (_, DiskRead _ _) _) =>
     eapply StepDiskRead.
     Hint Extern 1 (Step (_, DiskWrite _ _) _) =>
@@ -600,7 +619,7 @@ Module Go.
       induction H; subst_definitions; subst; eauto 10.
     Qed.
 
-    Inductive RunsTo_InCall : Stmt -> State -> State -> Prop :=
+    Inductive RunsTo_InCall : stmt -> state -> state -> Prop :=
     (* We'd have to duplicate all the [RunsTo] constructors which are recursive anyway *)
     | RunsToICSkip : forall st,
                        RunsTo_InCall Skip st st
@@ -626,56 +645,55 @@ Module Go.
                              let loop := While cond body in
                              is_false (snd st) cond ->
                              RunsTo_InCall loop st st
-    | RunsToICAssign : forall x e d s s' v,
-                         (* rhs can't be a mutable object, to prevent aliasing *)
+    | RunsToICDeclare : forall x d s s' t,
+                          StringMap.find x s = None ->
+                          s' = StringMap.add x (default_value t) s ->
+                          RunsTo_InCall (Declare x t) (d, s) (d, s')
+    | RunsToICAssign : forall x e d s s' v0 v,
                          eval s e = Some v ->
-                         can_alias v = true ->
-                         s' = add x v s ->
+                         can_alias (type_of v) = true -> (* rhs must be aliasable *)
+                         StringMap.find x s = Some v0 -> (* variable must be declared *)
+                         type_of v = type_of v0 -> (* and have the correct type *)
+                         s' = StringMap.add x v s ->
                          RunsTo_InCall (Assign x e) (d, s) (d, s')
     | RunsToICDiskRead : forall x ae a d s s' v vs,
-                           eval s ae = Some (Num a) ->
+                           eval s ae = Some (Val Num a) ->
                            d a = Some (v, vs) ->
-                           s' = add x (Block v) s ->
+                           s' = add x (Val DiskBlock v) s ->
                            RunsTo_InCall (DiskRead x ae) (d, s) (d, s')
     | RunsToICDiskWrite : forall ae a ve v d d' s v0 v0s,
-                            eval s ae = Some (Num a) ->
-                            eval s ve = Some (Block v) ->
+                            eval s ae = Some (Val Num a) ->
+                            eval s ve = Some (Val DiskBlock v) ->
                             d a = Some (v0, v0s) ->
                             d' = upd d a (v, v0 :: v0s) ->
                             RunsTo_InCall (DiskWrite ae ve) (d, s) (d', s)
-    | RunsToICCallOp : forall x f args s spec d d' input callee_s' ret,
+    | RunsToICCallOp : forall retvars f argvars s spec d d' input callee_s' retvals,
                          StringMap.find f env = Some spec ->
-                         SourceStmt (Body spec) ->
-                         length args = length (ArgVars spec) ->
-                         mapM (sel s) args = Some input ->
-                         let callee_s := make_map (ArgVars spec) input in
+                         source_stmt (Body spec) ->
+                         length argvars = length (ParamVars spec) ->
+                         mapM (sel s) argvars = Some input ->
+                         let callee_s := make_map (ParamVars spec) input in
                          RunsTo_InCall (Body spec) (d, callee_s) (d', callee_s') ->
-                         match RetVar spec with
-                           | None => x = None
-                           | Some rv => sel callee_s' rv = Some ret
-                         end ->
-                         let output := List.map (sel callee_s') (ArgVars spec) in
-                         let s' := add_remove_many args input output s in
-                         let s' := maybe_add x ret s' in
-                         RunsTo_InCall (Call x f args) (d, s) (d', s')
-    | RunsToInCall : forall s0 x args (argvars : list var) retvar input ret p d d' callee_s callee_s',
-                       mapM (sel s0) args = Some input ->
-                       length args = length argvars ->
-                       match retvar with
-                         | None => x = None
-                         | Some rv => sel callee_s' rv = Some ret
-                       end ->
-                       let output := List.map (sel callee_s') argvars in
-                       let s' := add_remove_many args input output s0 in
-                       let s' := maybe_add x ret s' in
+                         all_some (List.map (fun rv => sel callee_s' rv) (RetParamVars spec)) = Some retvals ->
+                         let output := List.map (sel callee_s') (ParamVars spec) in
+                         let s' := add_remove_many argvars input output s in
+                         let s' := add_many retvars retvals s' in
+                         RunsTo_InCall (Call retvars f argvars) (d, s) (d', s')
+    | RunsToInCall : forall s0 paramvars retparamvars argvars retvars input retvals p d d' callee_s callee_s',
+                       mapM (sel s0) argvars = Some input ->
+                       length argvars = length paramvars ->
+                       all_some (List.map (fun rv => sel callee_s' rv) retparamvars) = Some retvals ->
+                       let output := List.map (sel callee_s') paramvars in
+                       let s' := add_remove_many argvars input output s0 in
+                       let s' := add_many retvars retvals s' in
                        RunsTo_InCall p (d, callee_s) (d', callee_s') ->
-                       RunsTo_InCall (InCall s0 argvars retvar args x p) (d, callee_s) (d', s').
+                       RunsTo_InCall (InCall s0 paramvars retparamvars argvars retvars p) (d, callee_s) (d', s').
 
-    Hint Constructors SourceStmt.
+    Hint Constructors source_stmt.
 
-    Lemma SourceStmt_RunsToInCall_RunsTo :
+    Lemma source_stmt_RunsToInCall_RunsTo :
       forall p,
-        SourceStmt p ->
+        source_stmt p ->
         forall st st',
           RunsTo_InCall p st st' ->
           RunsTo p st st'.
@@ -683,7 +701,7 @@ Module Go.
       induction 2; intros; subst_definitions; invc H; eauto.
     Qed.
 
-    Hint Resolve SourceStmt_RunsToInCall_RunsTo.
+    Hint Resolve source_stmt_RunsToInCall_RunsTo.
 
     Hint Constructors RunsTo_InCall.
 
@@ -734,7 +752,7 @@ Module Go.
 
     Theorem Steps_RunsTo :
       forall p st st',
-        SourceStmt p ->
+        source_stmt p ->
         Step^* (st, p) (st', Skip) ->
         RunsTo p st st'.
     Proof.
@@ -743,7 +761,7 @@ Module Go.
     Qed.
 
     Theorem ExecFinished_Steps : forall p st st',
-                                   Exec (st, p) (EFinished st') ->
+                                   exec (st, p) (EFinished st') ->
                                    Step^* (st, p) (st', Skip).
     Proof.
       intros.
@@ -754,7 +772,7 @@ Module Go.
 
     Theorem Steps_ExecFinished : forall p st st',
                                    Step^* (st, p) (st', Skip) ->
-                                   Exec (st, p) (EFinished st').
+                                   exec (st, p) (EFinished st').
     Proof.
       intros.
       prep_induction H; induction H; intros; subst; try discriminate.
@@ -763,19 +781,19 @@ Module Go.
     Qed.
 
     Theorem ExecCrashed_Steps : forall p st d',
-                                  Exec (st, p) (ECrashed d') ->
-                                  exists s' p', Step^* (st, p) (d', s', p') /\ CrashStep p'.
+                                  exec (st, p) (ECrashed d') ->
+                                  exists s' p', Step^* (st, p) (d', s', p') /\ crash_step p'.
     Proof.
       intros.
       prep_induction H; induction H; intros; subst; try discriminate.
-      + destruct sst'. specialize (IHExec _ _ _ eq_refl eq_refl). repeat deex. eauto 8.
+      + destruct sst'. specialize (IHexec _ _ _ eq_refl eq_refl). repeat deex. eauto 8.
       + find_inversion. find_inversion. eauto 8.
     Qed.
 
     Theorem Steps_ExecCrashed : forall st p d' s' p',
                                   Step^* (st, p) (d', s', p') ->
-                                  CrashStep p' ->
-                                  Exec (st, p) (ECrashed d').
+                                  crash_step p' ->
+                                  exec (st, p) (ECrashed d').
     Proof.
       intros.
       destruct st.
@@ -786,13 +804,13 @@ Module Go.
 
     Theorem ExecFailed_Steps :
       forall st p,
-        Exec (st, p) EFailed ->
+        exec (st, p) EFailed ->
         exists st' p', Step^* (st, p) (st', p') /\ ~is_final (st', p') /\ ~exists st'' p'', Step (st', p') (st'', p'').
     Proof.
       intros.
       unfold is_final; simpl.
       prep_induction H; induction H; intros; subst; try discriminate; eauto.
-      - destruct sst'. repeat eforward IHExec. repeat conclude IHExec eauto. repeat deex.
+      - destruct sst'. repeat eforward IHexec. repeat conclude IHexec eauto. repeat deex.
         eauto 10.
     Qed.
 
@@ -801,7 +819,7 @@ Module Go.
         ~is_final (st', p') ->
         (~exists st'' p'', Step (st', p') (st'', p'')) ->
         Step^* (st, p) (st', p') ->
-        Exec (st, p) EFailed.
+        exec (st, p) EFailed.
     Proof.
       induction 3; eauto.
     Qed.
