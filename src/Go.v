@@ -110,6 +110,7 @@ Module Go.
     apply inj_pair2 in H1.
     auto.
   Qed.
+  Hint Resolve value_inj : equalities.
 
   Definition type_of (v : value) :=
     match v with Val t _ => t end.
@@ -852,3 +853,10 @@ Notation "! x" := (x = 0)%go (at level 70, no associativity).
 Notation "A * B" := (Go.Binop Go.Times A B) : go_scope.
 Notation "A + B" := (Go.Binop Go.Plus A B) : go_scope.
 Notation "A - B" := (Go.Binop Go.Minus A B) : go_scope.
+
+Notation "A ; B" := (Go.Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : go_scope.
+Notation "x <~ y" := (Go.Assign x y) (at level 90) : go_scope.
+Notation "'__'" := (Go.Skip) : go_scope.
+Notation "'While' A B" := (Go.While A B) (at level 200, A at level 0, B at level 1000, format "'[v    ' 'While'  A '/' B ']'") : go_scope.
+Notation "'If' a 'Then' b 'Else' c 'EndIf'" := (Go.If a b c) (at level 200, a at level 1000, b at level 1000, c at level 1000) : go_scope.
+

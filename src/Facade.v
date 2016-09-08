@@ -370,12 +370,19 @@ Ltac match_finds :=
     | [ H1: StringMap.find ?a ?s = ?v1, H2: StringMap.find ?a ?s = ?v2 |- _ ] => rewrite H1 in H2; try invc H2
   end.
 
+Ltac invert_trivial H :=
+  match type of H with
+    | ?con ?a = ?con ?b =>
+      let H' := fresh in
+      assert (a = b) as H' by exact (match H with eq_refl => eq_refl end); clear H; rename H' into H
+  end.
+
 Ltac find_inversion_safe :=
   match goal with
     | [ H : ?X ?a = ?X ?b |- _ ] =>
       (unify a b; fail 1) ||
       let He := fresh in
-      assert (a = b) as He by (inversion H; auto using Go.value_inj); clear H; subst
+      assert (a = b) as He by solve [inversion H; auto with equalities | invert_trivial H; auto with equalities]; clear H; subst
   end.
 
 Ltac destruct_pair :=
@@ -383,11 +390,25 @@ Ltac destruct_pair :=
     | [ H : _ * _ |- _ ] => destruct H
   end.
 
+
+Lemma foo : forall (a b: nat), Some a = Some b -> a = b.
+  refine (fun (a b:nat) H => 
+            match
+              H in (_ = y0)
+              return (a = match y0 with
+                            | Some n => n
+                            | _ => a
+                          end)
+            with
+              | eq_refl => eq_refl
+            end ).
+Defined.
+
 Ltac inv_exec_progok :=
   repeat destruct_pair; repeat inv_exec; simpl in *;
-  intuition (subst; try discriminate; repeat find_inversion_safe;
-                                          repeat match_finds; simpl in *;
-                                          try solve [ exfalso; intuition eauto 10 ]; eauto 10).
+  intuition (subst; try discriminate;
+             repeat find_inversion_safe; repeat match_finds; repeat find_inversion_safe;  simpl in *;
+               try solve [ exfalso; intuition eauto 10 ]; eauto 10).
 
 Example micro_write : sigT (fun p => forall a v,
   EXTRACT Write a v
@@ -402,14 +423,12 @@ Proof.
   maps.
   find_all_cases.
   inv_exec_progok.
-  assert (v = v0).
-  inversion H. (* TODO: make a better tactic which doesn't just give up here :P *)
 Defined.
 
 Lemma CompileSkip : forall env A,
   EXTRACT Ret tt
   {{ A }}
-    Skip
+    Go.Skip
   {{ fun _ => A }} // env.
 Proof.
   unfold ProgOk.
@@ -417,17 +436,19 @@ Proof.
   inv_exec_progok.
 Qed.
 
-Hint Extern 1 (eval _ _ = _) =>
-unfold eval.
+Hint Extern 1 (Go.eval _ _ = _) =>
+unfold Go.eval.
 
-Hint Extern 1 (Go.step _ (_, Assign _ _) _) =>
-eapply StepAssign.
+Hint Extern 1 (Go.step _ (_, Go.Assign _ _) _) =>
+eapply Go.StepAssign.
 Hint Constructors Go.step.
+
+Locate "<~".
 
 Lemma CompileConst : forall env A var v,
   EXTRACT Ret v
   {{ A }}
-    var <~ Const v
+    var <~ Go.Const v
   {{ fun ret => var ~> ret; A }} // env.
 Proof.
   unfold ProgOk.
@@ -439,7 +460,7 @@ Proof.
   eapply forall_In_Forall_elements. intros.
   pose proof (Forall_elements_forall_In _ H).
   simpl in *.
-  destruct (StringMapFacts.eq_dec k var0); maps; try discriminate.
+  destruct (StringMapFacts.eq_dec k var); maps; try discriminate.
   specialize (H1 k v0 ltac:(eauto)). auto.
 Qed.
 
