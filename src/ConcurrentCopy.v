@@ -280,7 +280,7 @@ Theorem copy_ok :
                  | POST d' m' s_i' s' r:
                      invariant App.delta d' m' s' /\
                      (r = true ->
-                      get vdisk s' (tid+1) = Some v) /\
+                      get vdisk s' = upd (get vdisk s) (tid+1) v) /\
                      (r = false ->
                       rely App.delta tid s s') /\
                      guar App.delta tid s_i' s'
@@ -288,7 +288,7 @@ Theorem copy_ok :
 Proof.
   hoare.
   eexists; simplify; finish.
-  hoare.
+  hoare. (* 20s *)
   assert (w = v).
   { match goal with
     | [ H: forall _, Some ?w = Some _ -> _ |- _ ] =>
@@ -307,20 +307,12 @@ Proof.
   Unset Printing Implicit.
   eauto.
 
-  hoare.
+  hoare. (* 30s *)
 
   split; auto.
   unfold cache_committed.
   unfolds.
   congruence.
-
-  unfolds.
-  replace (get vdisk s2).
-  match goal with
-  | [ H: get vdisk s1 = upd _ _ _ |- _ ] =>
-    rewrite H
-  end.
-  autorewrite with upd; now auto.
 
   eapply guar_preorder with s; eauto.
   eapply guar_preorder with s0; eauto.
@@ -405,11 +397,13 @@ Theorem copy_retry1_ok :
                      guar App.delta tid s_i s
                  | POST d'' m'' s_i' s'' r:
                      invariant App.delta d'' m'' s'' /\
-                     (exists d' m' s',
-                       rely App.delta tid s s' /\
-                       invariant App.delta d' m' s' /\
-                       r = true ->
-                       get vdisk s'' (tid+1) = Some v) /\
+                     (r = false ->
+                      rely App.delta tid s s'') /\
+                     (r = true ->
+                      exists d' m' s',
+                        rely App.delta tid s s' /\
+                        invariant App.delta d' m' s' /\
+                        get vdisk s'' = upd (get vdisk s') (tid+1) v) /\
                      guar App.delta tid s_i' s''
                 }} copy_retry1.
 Proof.
@@ -419,9 +413,11 @@ Proof.
   descend; simplify; finish.
   step.
 
-  (* this Ret introduces and doesn't solve the existentials in the
-  postcondition *)
   step.
+  (* trivial rely *)
+  exists d, m, s.
+  simplify; finish.
+  apply star_refl.
   step.
 
   (* We don't generate enough equalities for existentials to be automatically
@@ -432,10 +428,9 @@ Proof.
   exists v, v'; simplify; finish.
   step.
 
-  descend; intuition eauto.
+  eapply rely_trans; eauto.
 
-  Grab Existential Variables.
-  all: auto.
+  exists d0, m0, s0; intuition eauto.
 Qed.
 
 CoFixpoint copy_retry :=
