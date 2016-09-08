@@ -20,25 +20,14 @@ Unset Printing Implicit Defensive.
 
 Hint Constructors step fail_step crash_step exec.
 
-Section Extracted.
-
-End Extracted.
-
-Notation "A ; B" := (Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : facade_scope.
-Notation "x <~ y" := (Assign x y) (at level 90) : facade_scope.
-Notation "'__'" := (Skip) : facade_scope.
-Notation "'While' A B" := (While A B) (at level 200, A at level 0, B at level 1000, format "'[v    ' 'While'  A '/' B ']'") : facade_scope.
-Notation "'If' a 'Then' b 'Else' c 'EndIf'" := (If a b c) (at level 200, a at level 1000, b at level 1000, c at level 1000) : facade_scope.
-
-
 (* TODO What here is actually necessary? *)
 
-Class FacadeWrapper (WrappingType WrappedType: Type) :=
-  { wrap:        WrappedType -> WrappingType;
+Class GoWrapper (WrappedType: Type) :=
+  { wrap:        WrappedType -> Go.value;
     wrap_inj: forall v v', wrap v = wrap v' -> v = v' }.
 
 Inductive ScopeItem :=
-| SItem A {H: FacadeWrapper Value A} (v : A).
+| SItem A {H: GoWrapper A} (v : A).
 
 Notation "∅" := (StringMap.empty _) : map_scope.
 Notation "k ->> v ;  m" := (StringMap.add k v m) (at level 21, right associativity) : map_scope.
@@ -47,7 +36,7 @@ Delimit Scope map_scope with map.
 
 Definition Scope := StringMap.t ScopeItem.
 
-Definition SameValues (s : StringMap.t Value) (tenv : Scope) :=
+Definition SameValues (s : StringMap.t Go.value) (tenv : Scope) :=
   Forall
     (fun item =>
       match item with
@@ -65,61 +54,55 @@ Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : Scope) (final_t
   forall initial_state hm,
     (snd initial_state) \u2272 initial_tstate ->
     forall out,
-      Exec env (initial_state, eprog) out ->
-    (forall final_state, out = EFinished final_state ->
+      Go.exec env (initial_state, eprog) out ->
+    (forall final_state, out = Go.Finished final_state ->
       exists r hm',
         exec (fst initial_state) hm sprog (Finished (fst final_state) hm' r) /\
         (snd final_state) \u2272 (final_tstate r)) /\
     (forall final_disk,
-      out = ECrashed final_disk ->
+      out = Go.Crashed final_disk ->
       exists hm',
         exec (fst initial_state) hm sprog (Crashed T final_disk hm')) /\
-    (out = EFailed ->
+    (out = Go.Failed ->
       exec (fst initial_state) hm sprog (Failed T)).
 
 Notation "'EXTRACT' SP {{ A }} EP {{ B }} // EV" :=
-  (ProgOk EV EP%facade SP A B)
+  (ProgOk EV EP%go SP A B)
     (at level 60, format "'[v' 'EXTRACT'  SP '/' '{{'  A  '}}' '/'    EP '/' '{{'  B  '}}'  //  EV ']'").
 
-Ltac FacadeWrapper_t :=
+Ltac GoWrapper_t :=
   abstract (repeat match goal with
                    | _ => progress intros
                    | [ H : _ * _ |- _ ] => destruct H
                    | [ H : unit |- _ ] => destruct H
-                   | [ H : _ = _ |- _ ] => inversion H; solve [eauto]
-                   | _ => solve [eauto]
+                   | [ H : _ = _ |- _ ] => inversion H; solve [eauto using inj_pair2]
+                   | _ => solve [eauto using inj_pair2]
                    end).
 
-Instance FacadeWrapper_Self {A: Type} : FacadeWrapper A A.
+Instance GoWrapper_Num : GoWrapper W.
 Proof.
-  refine {| wrap := id;
-            wrap_inj := _ |}; FacadeWrapper_t.
+  refine {| wrap := Go.Val Go.Num;
+            wrap_inj := _ |}; GoWrapper_t.
 Defined.
 
-Instance FacadeWrapper_Num : FacadeWrapper Value W.
+Instance GoWrapper_valu : GoWrapper valu.
 Proof.
-  refine {| wrap := Num;
-            wrap_inj := _ |}; FacadeWrapper_t.
+  refine {| wrap := Go.Val Go.DiskBlock;
+            wrap_inj := _ |}; GoWrapper_t.
 Defined.
 
-Instance FacadeWrapper_valu : FacadeWrapper Value valu.
+Instance GoWrapper_unit : GoWrapper unit.
 Proof.
-  refine {| wrap := Block;
-            wrap_inj := _ |}; FacadeWrapper_t.
+  refine {| wrap := Go.Val Go.EmptyStruct;
+            wrap_inj := _ |}; GoWrapper_t.
 Defined.
 
-Instance FacadeWrapper_unit : FacadeWrapper Value unit.
+Instance GoWrapper_dec {P Q} : GoWrapper ({P} + {Q}).
 Proof.
-  refine {| wrap := fun _ => EmptyStruct;
-            wrap_inj := _ |}; FacadeWrapper_t.
-Defined.
-
-Instance FacadeWrapper_dec {P Q} : FacadeWrapper Value ({P} + {Q}).
-Proof.
-  refine {| wrap := fun (v : {P} + {Q}) => if v then Num 1 else Num 0;
+  refine {| wrap := fun (v : {P} + {Q}) => if v then Go.Val Go.Num 1 else Go.Val Go.Num 0;
             wrap_inj := _ |}.
-  destruct v; destruct v'; try congruence; intros; f_equal; apply proof_irrelevance.
-Defined.
+  destruct v; destruct v'; intro; try eapply Go.value_inj in H; try congruence; intros; f_equal; try apply proof_irrelevance.
+Qed.
 
 Definition extract_code := projT1.
 
@@ -134,11 +117,12 @@ Ltac find_cases var st := case_eq (StringMap.find var st); [
 | let Hne := fresh "Hne" in
   intro Hne; rewrite Hne in *; exfalso; solve [ discriminate || intuition idtac ] ].
 
+
 Ltac inv_exec :=
   match goal with
-  | [ H : Step _ _ _ |- _ ] => invc H
-  | [ H : Exec _ _ _ |- _ ] => invc H
-  | [ H : CrashStep _ |- _ ] => invc H
+  | [ H : Go.step _ _ _ |- _ ] => invc H
+  | [ H : Go.exec _ _ _ |- _ ] => invc H
+  | [ H : Go.crash_step _ |- _ ] => invc H
   end; try discriminate.
 
 Example micro_noop : sigT (fun p =>
@@ -149,7 +133,7 @@ Example micro_noop : sigT (fun p =>
 Proof.
   eexists.
   intro.
-  instantiate (1 := Skip).
+  instantiate (1 := Go.Skip).
   intros.
   repeat inv_exec;
     repeat split; intros; subst; try discriminate.
@@ -159,7 +143,7 @@ Proof.
 Defined.
 
 (*
-Theorem extract_finish_equiv : forall A {H: FacadeWrapper Value A} scope cscope pr p,
+Theorem extract_finish_equiv : forall A {H: GoWrapper A} scope cscope pr p,
   (forall d0,
     {{ SItemDisk (NTSome "disk") d0 (ret tt) :: scope }}
       p
@@ -189,7 +173,7 @@ Theorem extract_crash_equiv : forall A pscope scope pr p,
     {{ pscope }} {{ [ SItemDiskCrash (NTSome "disk") d0 pr ] }} // disk_env) ->
   forall st p' st' d0,
     st \u2272 (SItemDisk (NTSome "disk") d0 (ret tt) :: scope) ->
-    (Step disk_env)^* (p, st) (p', st') ->
+    (Go.step disk_env)^* (p, st) (p', st') ->
     exists d', find "disk" st' = Some (Disk d') /\ @computes_to_crash A pr d0 d'.
 Proof.
   unfold ProgOk.
@@ -342,7 +326,7 @@ Ltac find_all_cases :=
 Lemma read_fails_not_present:
   forall env vvar avar (a : W) d s,
     StringMap.find avar s = Some (wrap a) ->
-    ~ (exists st' p', Step env (d, s, DiskRead vvar (Var avar)) (st', p')) ->
+    ~ (exists st' p', Go.step env (d, s, Go.DiskRead vvar (Go.Var avar)) (st', p')) ->
     d a = None.
 Proof.
   intros.
@@ -360,7 +344,7 @@ Lemma write_fails_not_present:
   forall env vvar avar (a : W) (v : valu) d s,
     StringMap.find vvar s = Some (wrap v) ->
     StringMap.find avar s = Some (wrap a) ->
-    ~ (exists st' p', Step env (d, s, DiskWrite (Var avar) (Var vvar)) (st', p')) ->
+    ~ (exists st' p', Go.step env (d, s, Go.DiskWrite (Go.Var avar) (Go.Var vvar)) (st', p')) ->
     d a = None.
 Proof.
   intros.
@@ -374,9 +358,9 @@ Qed.
 Hint Resolve write_fails_not_present.
 
 Lemma skip_is_final :
-  forall d s, is_final (d, s, Skip).
+  forall d s, Go.is_final (d, s, Go.Skip).
 Proof.
-  unfold is_final; trivial.
+  unfold Go.is_final; trivial.
 Qed.
 
 Hint Resolve skip_is_final.
@@ -391,7 +375,7 @@ Ltac find_inversion_safe :=
     | [ H : ?X ?a = ?X ?b |- _ ] =>
       (unify a b; fail 1) ||
       let He := fresh in
-      assert (a = b) as He by (inversion H; auto); clear H; subst
+      assert (a = b) as He by (inversion H; auto using Go.value_inj); clear H; subst
   end.
 
 Ltac destruct_pair :=
@@ -413,11 +397,13 @@ Example micro_write : sigT (fun p => forall a v,
 Proof.
   eexists.
   intros.
-  instantiate (1 := (DiskWrite (Var "a") (Var "v"))%facade).
+  instantiate (1 := (Go.DiskWrite (Go.Var "a") (Go.Var "v"))%go).
   intro. intros.
   maps.
   find_all_cases.
   inv_exec_progok.
+  assert (v = v0).
+  inversion H. (* TODO: make a better tactic which doesn't just give up here :P *)
 Defined.
 
 Lemma CompileSkip : forall env A,
@@ -434,9 +420,9 @@ Qed.
 Hint Extern 1 (eval _ _ = _) =>
 unfold eval.
 
-Hint Extern 1 (Step _ (_, Assign _ _) _) =>
+Hint Extern 1 (Go.step _ (_, Assign _ _) _) =>
 eapply StepAssign.
-Hint Constructors Step.
+Hint Constructors Go.step.
 
 Lemma CompileConst : forall env A var v,
   EXTRACT Ret v
@@ -457,7 +443,7 @@ Proof.
   specialize (H1 k v0 ltac:(eauto)). auto.
 Qed.
 
-Lemma CompileVar : forall env A var T (v : T) {H : FacadeWrapper Value T},
+Lemma CompileVar : forall env A var T (v : T) {H : GoWrapper T},
   EXTRACT Ret v
   {{ var ~> v; A }}
     Skip
@@ -484,7 +470,7 @@ Ltac forward_solve_step :=
 Ltac forward_solve :=
   repeat forward_solve_step.
 
-Lemma CompileBind : forall T T' {H: FacadeWrapper Value T} env A (B : T' -> _) p f xp xf var,
+Lemma CompileBind : forall T T' {H: GoWrapper T} env A (B : T' -> _) p f xp xf var,
   EXTRACT p
   {{ A }}
     xp
@@ -622,7 +608,7 @@ Example micro_inc : sigT (fun p => forall x,
 Proof.
   eexists.
   intros.
-  instantiate (1 := ("x" <~ Const 1 + Var "x")%facade).
+  instantiate (1 := ("x" <~ Const 1 + Var "x")%go).
   intro. intros.
   inv_exec_progok.
   maps.
@@ -635,8 +621,8 @@ Proof.
   maps. simpl in *. find_all_cases. eauto. eauto.
 Qed.
 
-Lemma CompileIf : forall P Q {H1 : FacadeWrapper Value ({P}+{Q})}
-                         T {H : FacadeWrapper Value T}
+Lemma CompileIf : forall P Q {H1 : GoWrapper ({P}+{Q})}
+                         T {H : GoWrapper T}
                          A B env (pt pf : prog T) (cond : {P} + {Q}) xpt xpf xcond retvar condvar,
   retvar <> condvar ->
   EXTRACT pt
@@ -755,7 +741,7 @@ Proof.
   simpl in *. eauto.
 Qed.
 
-Definition voidfunc2 A B C {WA: FacadeWrapper Value A} {WB: FacadeWrapper Value B} name (src : A -> B -> prog C) env :=
+Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
   forall avar bvar,
     avar <> bvar ->
     forall a b, EXTRACT src a b
@@ -765,7 +751,7 @@ Definition voidfunc2 A B C {WA: FacadeWrapper Value A} {WB: FacadeWrapper Value 
 
 
 Lemma extract_voidfunc2_call :
-  forall A B C {WA: FacadeWrapper Value A} {WB: FacadeWrapper Value B} name (src : A -> B -> prog C) arga argb env,
+  forall A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) arga argb env,
     forall rnia and body ss,
       (forall a b, EXTRACT src a b {{ arga ~> a; argb ~> b; ∅ }} body {{ fun _ => ∅ }} // env) ->
       StringMap.find name env = Some {|
@@ -809,7 +795,7 @@ Proof.
     invc H0.
     rewrite Henv in H7.
     find_inversion_safe. unfold sel in *. simpl in *.
-    assert (exists bp', (Step env)^* (d, callee_s, body) (final_disk, s', bp') /\ p' = InCall s [arga; argb] None [avar; bvar] None bp').
+    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, s', bp') /\ p' = InCall s [arga; argb] None [avar; bvar] None bp').
     {
       remember callee_s.
       clear callee_s Heqt.
@@ -845,7 +831,7 @@ Proof.
     + invc H2.
       rewrite Henv in H8.
       find_inversion_safe. simpl in *.
-      assert (exists bp', (Step env)^* (d, callee_s, body) (st', bp') /\ p' = InCall s [arga; argb] None [avar; bvar] None bp').
+      assert (exists bp', (Go.step env)^* (d, callee_s, body) (st', bp') /\ p' = InCall s [arga; argb] None [avar; bvar] None bp').
       {
         remember callee_s.
         clear callee_s Heqt.
@@ -1149,7 +1135,7 @@ Proof.
   eapply hoare_weaken_post; [ | eapply CompileIf with (condvar := "c0") (retvar := "r") ];
     try match_scopes; maps.
 
-  apply FacadeWrapper_unit.
+  apply GoWrapper_unit.
   compile. apply H.
 
   compile.
