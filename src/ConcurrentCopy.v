@@ -433,6 +433,71 @@ Proof.
   exists d0, m0, s0; intuition eauto.
 Qed.
 
+Fixpoint copy_fuel_retry n :=
+  match n with
+  | 0 => copy
+  | S n' => ok <- copy;
+             if ok then
+               Ret true
+             else
+               copy_fuel_retry n'
+  end.
+
+Theorem copy_fuel_retry_ok : forall n,
+    SPEC App.delta, tid |-
+                {{ v v',
+                 | PRE d m s_i s:
+                     invariant App.delta d m s /\
+                     get vdisk s 0 = Some v /\
+                     get vdisk s (tid+1) = Some v' /\
+                     guar App.delta tid s_i s
+                 | POST d'' m'' s_i' s'' r:
+                     invariant App.delta d'' m'' s'' /\
+                     (r = false ->
+                      rely App.delta tid s s'') /\
+                     (r = true ->
+                      exists d' m' s',
+                        rely App.delta tid s s' /\
+                        invariant App.delta d' m' s' /\
+                        get vdisk s'' = upd (get vdisk s') (tid+1) v) /\
+                     guar App.delta tid s_i' s''
+                }} copy_fuel_retry n.
+Proof.
+  induction n; intros.
+  - step.
+    descend; simplify; finish.
+    step.
+
+    exists d, m, s; intuition eauto.
+    apply star_refl.
+  - simpl; step.
+    descend; simplify; finish.
+    step.
+    step.
+
+    exists d, m, s; intuition eauto.
+    apply star_refl.
+
+    step.
+    exists v, v'; simplify; finish.
+
+    step.
+    eapply rely_trans; eauto.
+
+    exists d', m', s'; intuition eauto.
+    eapply rely_trans; eauto.
+Qed.
+
+(* copy_retry1 is a special case of having fuel (where you only have 1 fuel).
+
+ Of course 0 fuel is just copy (even moreso evident from the definition of
+ copy_fuel_retry). *)
+Lemma copy_retry1_is_1_fuel :
+  copy_retry1 = copy_fuel_retry 1.
+Proof.
+  reflexivity.
+Qed.
+
 CoFixpoint copy_retry :=
   ok <- copy;
     if ok then
