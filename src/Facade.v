@@ -390,20 +390,6 @@ Ltac destruct_pair :=
     | [ H : _ * _ |- _ ] => destruct H
   end.
 
-
-Lemma foo : forall (a b: nat), Some a = Some b -> a = b.
-  refine (fun (a b:nat) H => 
-            match
-              H in (_ = y0)
-              return (a = match y0 with
-                            | Some n => n
-                            | _ => a
-                          end)
-            with
-              | eq_refl => eq_refl
-            end ).
-Defined.
-
 Ltac inv_exec_progok :=
   repeat destruct_pair; repeat inv_exec; simpl in *;
   intuition (subst; try discriminate;
