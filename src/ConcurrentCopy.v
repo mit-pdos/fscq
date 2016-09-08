@@ -350,6 +350,94 @@ Proof.
   congruence.
 Qed.
 
+Hint Extern 1 {{copy; _}} => apply copy_ok : prog.
+
+(* as a small step to retrying copy, retry up to once and then give up *)
+Definition copy_retry1 :=
+  ok <- copy;
+    if ok then
+      Ret true
+    else
+      copy.
+
+Lemma rely_destination_stable : forall tid (s s': abstraction App.Sigma),
+    rely App.delta tid s s' ->
+    get vdisk s' (tid+1) = get vdisk s (tid+1).
+Proof.
+  induction 1; intros; auto.
+  unfold others in H; deex.
+  unfold App.delta, App.copyGuar in H2; simpl in *; destruct_ands.
+  rewrite IHstar.
+  unfold TID in *.
+  rewrite H2; auto.
+Qed.
+
+Lemma rely_addr_0_stable : forall tid (s s': abstraction App.Sigma),
+    rely App.delta tid s s' ->
+    get vdisk s' 0 = get vdisk s 0.
+Proof.
+  induction 1; auto.
+  rewrite IHstar.
+  unfold others in H; deex.
+  unfold App.delta, App.copyGuar in H2; simpl in *; destruct_ands.
+  rewrite H2; auto.
+Qed.
+
+Ltac simp_hook ::=
+     match goal with
+     | [ H: rely App.delta _ _ _ |- _ ] =>
+       learn that (rely_addr_0_stable H) ||
+             learn that (rely_destination_stable H)
+     end.
+
+Ltac descend :=
+  repeat match goal with
+  | |- exists _, _ => eexists
+  end.
+
+Theorem copy_retry1_ok :
+    SPEC App.delta, tid |-
+                {{ v v',
+                 | PRE d m s_i s:
+                     invariant App.delta d m s /\
+                     get vdisk s 0 = Some v /\
+                     get vdisk s (tid+1) = Some v' /\
+                     guar App.delta tid s_i s
+                 | POST d'' m'' s_i' s'' r:
+                     invariant App.delta d'' m'' s'' /\
+                     (exists d' m' s',
+                       rely App.delta tid s s' /\
+                       invariant App.delta d' m' s' /\
+                       r = true ->
+                       get vdisk s'' (tid+1) = Some v) /\
+                     guar App.delta tid s_i' s''
+                }} copy_retry1.
+Proof.
+  intros.
+  step.
+
+  descend; simplify; finish.
+  step.
+
+  (* this Ret introduces and doesn't solve the existentials in the
+  postcondition *)
+  step.
+  step.
+
+  (* We don't generate enough equalities for existentials to be automatically
+  instantiated (congruence is dispatching the goals), but we could do so. Before
+  a tactic called complete_mem_equalities would do this, taking [m a = Some v]
+  and [m = m'] and producing [m' a = Some v]. This quickly gets out of hand
+  without some control over, eg, what direction equalities use. *)
+  exists v, v'; simplify; finish.
+  step.
+
+  descend; intuition eauto.
+
+  Grab Existential Variables.
+  all: auto.
+Qed.
+
 CoFixpoint copy_retry :=
   ok <- copy;
     if ok then
