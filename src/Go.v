@@ -1,4 +1,4 @@
-Require Import PeanoNat String List FMapAVL.
+Require Import PeanoNat String List FMapAVL Structures.OrderedTypeEx.
 Require Import Relation_Operators Operators_Properties.
 Require Import Morphisms.
 Require Import StringMap.
@@ -65,10 +65,12 @@ Semantics for Go
 
 Notation W := nat. (* Assume bignums? *)
 
+Module VarMap := FMapAVL.Make(Nat_as_OT).
+
 Module Go.
 
   Definition label := string.
-  Definition var := string.
+  Definition var := nat.
 
   Inductive binop := Plus | Minus | Times.
   Inductive test := Eq | Ne | Lt | Le.
@@ -122,8 +124,8 @@ Module Go.
       | DiskBlock => Val DiskBlock $0
     end.
 
-  Definition scope := StringMap.t type.
-  Definition locals := StringMap.t value.
+  Definition scope := VarMap.t type.
+  Definition locals := VarMap.t value.
 
   Inductive stmt :=
   | Skip : stmt
@@ -133,7 +135,7 @@ Module Go.
   | Call (retvars: list var) (* The caller's variables to get the return values *)
          (f: label) (* The function to call *)
          (argvars: list var) (* The caller's variables to pass in *)
-  | Declare : var -> type -> stmt
+  | Declare : type -> (var -> stmt) -> stmt
   | Assign : var -> expr -> stmt
   | DiskRead : var -> expr -> stmt
   | DiskWrite : expr -> expr -> stmt
@@ -164,7 +166,7 @@ Module Go.
         source_stmt (While cond body)
   | SCall : forall retvars f argvars, source_stmt (Call retvars f argvars)
   | SAssign : forall x e, source_stmt (Assign x e)
-  | SDeclare : forall x e, source_stmt (Declare x e)
+  | SDeclare : forall t cont, source_stmt (Declare t cont)
   | SDiskRead : forall x a, source_stmt (DiskRead x a)
   | SDiskWrite : forall a v, source_stmt (DiskWrite a v).
 
@@ -198,7 +200,6 @@ Module Go.
   Qed.
 
   Definition state := (rawdisk * locals)%type.
-  Import StringMap.
 
   Definition eval_binop (op : binop + test) a b :=
     match op with
@@ -219,7 +220,7 @@ Module Go.
 
   Fixpoint eval (st : locals) (e : expr) : option value :=
     match e with
-      | Var x => StringMap.find x st
+      | Var x => VarMap.find x st
       | Const w => Some (Val Num w)
       | Binop op a b => eval_binop_m (inl op) (eval st a) (eval st b)
       | TestE op a b => eval_binop_m (inr op) (eval st a) (eval st b)
@@ -247,8 +248,8 @@ Module Go.
       | k :: keys', i :: input', o :: output' =>
         let st' :=
             match can_alias (type_of i), o with
-              | false, Some v => StringMap.add k v st
-              | false, None => StringMap.remove k st
+              | false, Some v => VarMap.add k v st
+              | false, None => VarMap.remove k st
               | _, _ => st
             end in
         add_remove_many keys' input' output' st'
@@ -258,7 +259,7 @@ Module Go.
   Fixpoint add_many keys (output : list value) st :=
     match keys, output with
       | k :: keys', v :: output' =>
-        let st' := StringMap.add k v st in
+        let st' := VarMap.add k v st in
         add_many keys' output' st'
       | _, _ => st
     end.
@@ -331,7 +332,9 @@ Module Go.
     unfold string_bool, sumbool_to_bool in *; destruct (string_dec a b); try discriminate; eauto.
   Qed.
 
-  Definition is_no_dup := NoDup_bool string_bool.
+  Definition nat_bool a b := sumbool_to_bool (Nat.eq_dec a b).
+
+  Definition is_no_dup := NoDup_bool nat_bool.
 
   Definition is_in (a : string) ls := if in_dec string_dec a ls then true else false.
 
@@ -365,12 +368,12 @@ Module Go.
 
     Variable env : Env.
 
-    Definition sel T m := fun k => StringMap.find k m : option T.
+    Definition sel T m := fun k => VarMap.find k m : option T.
 
     Fixpoint make_map {elt} keys values :=
       match keys, values with
-        | k :: keys', v :: values' => StringMap.add k v (make_map keys' values')
-        | _, _ => @StringMap.empty elt
+        | k :: keys', v :: values' => VarMap.add k v (make_map keys' values')
+        | _, _ => @VarMap.empty elt
       end.
 
     Eval hnf in rawdisk.
@@ -378,7 +381,7 @@ Module Go.
     Definition maybe_add V k (v : V) m :=
       match k with
         | None => m
-        | Some kk => StringMap.add kk v m
+        | Some kk => VarMap.add kk v m
       end.
 
 
@@ -407,21 +410,24 @@ Module Go.
                            let loop := While cond body in
                            is_false (snd st) cond ->
                            runsto loop st st
-    | RunsToDeclare : forall x d s s' t,
-                       StringMap.find x s = None ->
-                       s' = StringMap.add x (default_value t) s ->
-                       runsto (Declare x t) (d, s) (d, s')
+    | RunsToDeclare : forall body body' d s si st' var t,
+                       VarMap.find var s = None ->
+                       si = VarMap.add var (default_value t) s ->
+                       body' = body var ->
+                       source_stmt body' ->
+                       runsto body' (d, si) st' ->
+                       runsto (Declare t body) (d, s) st'
     | RunsToAssign : forall x e d s s' v0 v,
                        eval s e = Some v ->
                        can_alias (type_of v) = true -> (* rhs must be aliasable *)
-                       StringMap.find x s = Some v0 -> (* variable must be declared *)
+                       VarMap.find x s = Some v0 -> (* variable must be declared *)
                        type_of v = type_of v0 -> (* and have the correct type *)
-                       s' = StringMap.add x v s ->
+                       s' = VarMap.add x v s ->
                        runsto (Assign x e) (d, s) (d, s')
     | RunsToDiskRead : forall x ae a d s s' v vs,
                          eval s ae = Some (Val Num a) ->
                          d a = Some (v, vs) ->
-                         s' = StringMap.add x (Val DiskBlock v) s ->
+                         s' = VarMap.add x (Val DiskBlock v) s ->
                          runsto (DiskRead x ae) (d, s) (d, s')
     | RunsToDiskWrite : forall ae a ve v (d : rawdisk) d' s v0 v0s,
                           eval s ae = Some (Val Num a) ->
@@ -462,22 +468,24 @@ Module Go.
                          let loop := While cond body in
                          is_false (snd st) cond ->
                          step (st, loop) (st, Skip)
-    | StepDeclare : forall x d s s' t,
-                       StringMap.find x s = None ->
-                       s' = StringMap.add x (default_value t) s ->
-                       step (d, s, Declare x t) (d, s', Skip)
+    | StepDeclare : forall t body body' d s s' var,
+                      VarMap.find var s = None ->
+                      s' = VarMap.add var (default_value t) s ->
+                      body' = body var ->
+                      source_stmt body' ->
+                      step (d, s, Declare t body) (d, s', body')
     | StepAssign : forall x e d s s' v v0,
                      (* rhs can't be a mutable object, to prevent aliasing *)
                      eval s e = Some v ->
                      can_alias (type_of v) = true -> (* rhs must be aliasable *)
-                     StringMap.find x s = Some v0 -> (* variable must be declared *)
+                     VarMap.find x s = Some v0 -> (* variable must be declared *)
                      type_of v = type_of v0 -> (* and have the correct type *)
-                     s' = StringMap.add x v s ->
+                     s' = VarMap.add x v s ->
                      step (d, s, Assign x e) (d, s', Skip)
     | StepDiskRead : forall x ae a d s s' v vs,
                        eval s ae = Some (Val Num a) ->
                        d a = Some (v, vs) ->
-                       s' = add x (Val DiskBlock v) s ->
+                       s' = VarMap.add x (Val DiskBlock v) s ->
                        step (d, s, DiskRead x ae) (d, s', Skip)
     | StepDiskWrite : forall ae a ve v d d' s v0 v0s,
                         eval s ae = Some (Val Num a) ->
@@ -646,21 +654,24 @@ Module Go.
                              let loop := While cond body in
                              is_false (snd st) cond ->
                              runsto_InCall loop st st
-    | RunsToICDeclare : forall x d s s' t,
-                          StringMap.find x s = None ->
-                          s' = StringMap.add x (default_value t) s ->
-                          runsto_InCall (Declare x t) (d, s) (d, s')
+    | RunsToICDeclare : forall t body body' d s si st' var,
+                          VarMap.find var s = None ->
+                          si = VarMap.add var (default_value t) s ->
+                          body' = body var ->
+                          source_stmt body' ->
+                          runsto_InCall body' (d, si) st' ->
+                          runsto_InCall (Declare t body) (d, s) st'
     | RunsToICAssign : forall x e d s s' v0 v,
                          eval s e = Some v ->
                          can_alias (type_of v) = true -> (* rhs must be aliasable *)
-                         StringMap.find x s = Some v0 -> (* variable must be declared *)
+                         VarMap.find x s = Some v0 -> (* variable must be declared *)
                          type_of v = type_of v0 -> (* and have the correct type *)
-                         s' = StringMap.add x v s ->
+                         s' = VarMap.add x v s ->
                          runsto_InCall (Assign x e) (d, s) (d, s')
     | RunsToICDiskRead : forall x ae a d s s' v vs,
                            eval s ae = Some (Val Num a) ->
                            d a = Some (v, vs) ->
-                           s' = add x (Val DiskBlock v) s ->
+                           s' = VarMap.add x (Val DiskBlock v) s ->
                            runsto_InCall (DiskRead x ae) (d, s) (d, s')
     | RunsToICDiskWrite : forall ae a ve v d d' s v0 v0s,
                             eval s ae = Some (Val Num a) ->
