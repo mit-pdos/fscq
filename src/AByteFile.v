@@ -1466,6 +1466,127 @@ rewrite <- H1.
 apply valuset2bytesets_len.
 Qed.
 
+Lemma valu2list_selN_fst: forall block_off a0 f pfy ufy fy,
+  proto_bytefile_valid f pfy ->
+  unified_bytefile_valid pfy ufy ->
+  bytefile_valid ufy fy ->
+  block_off < length (BFILE.BFData f) ->
+  a0 < length (ByFData fy) ->
+  block_off * valubytes + valubytes > a0 ->
+  a0 >= block_off * valubytes ->
+  (selN (valu2list (fst (selN (BFILE.BFData f) block_off valuset0))) (a0 - block_off * valubytes) byte0) = fst (selN (ByFData fy) a0 byteset0).
+Proof.
+  intros.
+  rewrite H1; rewrite H0; rewrite H.
+  rewrite selN_firstn; auto.
+  rewrite between_exists with (a:= a0)(b:= block_off + 1) (c:= valubytes).
+  replace (block_off + 1 - 1) with block_off by omega.
+  rewrite concat_hom_selN with (k:= valubytes).
+  rewrite selN_map with (default':= valuset0).
+  unfold valuset2bytesets. simpl.
+  destruct  (snd (selN (BFILE.BFData f) block_off valuset0)) eqn:D.
+  replace (snd (BFILE.BFData f) ⟦ block_off ⟧) with (nil: list valu).
+  simpl.
+  rewrite v2b_rec_nil.
+  rewrite l2b_cons_x_nil.
+  erewrite selN_map.
+  simpl.
+  replace ( block_off * valubytes + a0 mod valubytes - block_off * valubytes )
+  with (a0 mod valubytes) by omega.
+  reflexivity.
+  rewrite valu2list_len; apply Nat.mod_upper_bound.
+  apply valubytes_ne_O.
+  rewrite valu2list_len. reflexivity.
+
+
+  rewrite valuset2bytesets_rec_cons_merge_bs.
+  rewrite merge_bs_selN; simpl.
+  replace ( block_off * valubytes + a0 mod valubytes - block_off * valubytes )
+  with (a0 mod valubytes) by omega.
+  reflexivity.
+  rewrite valu2list_len; apply Nat.mod_upper_bound.
+  apply valubytes_ne_O.
+  rewrite map_length.
+  rewrite valuset2bytesets_rec_len.
+  apply Nat.mod_upper_bound.
+  apply valubytes_ne_O.
+  replace (snd (BFILE.BFData f) ⟦ block_off ⟧) with (w::l).
+  unfold not; intros Hx; inversion Hx.
+  rewrite Forall_forall; intros l' Hx; destruct Hx.
+  destruct H6.
+  apply valu2list_len.
+  apply in_map_iff in H6. repeat destruct H6.
+  apply valu2list_len.
+  auto.
+  rewrite <- H; eapply proto_len; eauto.
+  apply Nat.mod_upper_bound.
+  apply valubytes_ne_O.
+  replace (block_off + 1 - 1) with block_off. auto.
+  omega.
+  rewrite Nat.mul_add_distr_r; omega.
+Qed.
+
+Lemma byteset2list_selN_snd: forall block_off a0 f pfy ufy fy,
+  proto_bytefile_valid f pfy ->
+  unified_bytefile_valid pfy ufy ->
+  bytefile_valid ufy fy ->
+  block_off < length (BFILE.BFData f) ->
+  a0 < length (ByFData fy) ->
+  block_off * valubytes + valubytes > a0 ->
+  a0 >= block_off * valubytes ->
+  (snd (selN (BFILE.BFData f) block_off valuset0)) <> nil ->
+fst (list2byteset byte0
+        (selN (valuset2bytesets_rec (map valu2list (snd (selN (BFILE.BFData f) block_off valuset0))) valubytes) (a0 - block_off * valubytes) nil))
+   :: snd (list2byteset byte0
+           (selN (valuset2bytesets_rec (map valu2list (snd (selN (BFILE.BFData f) block_off valuset0))) valubytes) (a0 - block_off * valubytes) nil)) =
+   snd (selN (ByFData fy) a0 byteset0).
+Proof.
+  intros.
+  rewrite H1; rewrite H0; rewrite H.
+  rewrite selN_firstn; auto.
+  rewrite between_exists with (a:= a0)(b:= block_off + 1) (c:= valubytes).
+  replace (block_off + 1 - 1) with block_off by omega.
+  rewrite concat_hom_selN with (k:= valubytes).
+  rewrite selN_map with (default':= valuset0).
+  unfold valuset2bytesets. simpl.
+  destruct  (snd (selN (BFILE.BFData f) block_off valuset0)) eqn:D.
+  destruct H6; reflexivity.
+  simpl.
+  rewrite valuset2bytesets_rec_cons_merge_bs.
+  rewrite merge_bs_selN; simpl.
+  replace ( block_off * valubytes + a0 mod valubytes - block_off * valubytes )
+  with (a0 mod valubytes) by omega.
+  erewrite selN_map.
+  replace (snd (BFILE.BFData f) ⟦ block_off ⟧) with (w::l).
+  simpl.
+  reflexivity.
+  rewrite valuset2bytesets_rec_len.
+  apply Nat.mod_upper_bound.
+  apply valubytes_ne_O.
+  replace (snd (BFILE.BFData f) ⟦ block_off ⟧) with (w::l).
+  unfold not; intros Hx; inversion Hx.
+  rewrite valu2list_len; apply Nat.mod_upper_bound.
+  apply valubytes_ne_O.
+  rewrite map_length.
+  rewrite valuset2bytesets_rec_len.
+  apply Nat.mod_upper_bound.
+  apply valubytes_ne_O.
+  replace (snd (BFILE.BFData f) ⟦ block_off ⟧) with (w::l).
+  unfold not; intros Hx; inversion Hx.
+  rewrite Forall_forall; intros l' Hx; destruct Hx.
+  destruct H7.
+  apply valu2list_len.
+  apply in_map_iff in H7. repeat destruct H7.
+  apply valu2list_len.
+  auto.
+  rewrite <- H; eapply proto_len; eauto.
+  apply Nat.mod_upper_bound.
+  apply valubytes_ne_O.
+  replace (block_off + 1 - 1) with block_off. auto.
+  omega.
+  rewrite Nat.mul_add_distr_r; omega.
+Qed.
+
 Lemma bfile_bytefile_snd_nil: forall block_off a0 f pfy ufy fy,
   proto_bytefile_valid f pfy ->
   unified_bytefile_valid pfy ufy ->
@@ -1476,34 +1597,41 @@ Lemma bfile_bytefile_snd_nil: forall block_off a0 f pfy ufy fy,
   a0 >= block_off * valubytes ->
   snd (selN (BFILE.BFData f) block_off valuset0) = nil ->
   snd (selN (ByFData fy) a0 byteset0) = nil.
-Proof. Admitted.
-
-
-Lemma valu2list_selN_fst: forall block_off a0 f pfy ufy fy,
-  proto_bytefile_valid f pfy ->
-  unified_bytefile_valid pfy ufy ->
-  bytefile_valid ufy fy ->
-  block_off < length (BFILE.BFData f) ->
-  a0 < length (ByFData fy) ->
-  block_off * valubytes + valubytes > a0 ->
-  a0 >= block_off * valubytes ->
-  (selN (valu2list (fst (selN (BFILE.BFData f) block_off valuset0))) (a0 - block_off * valubytes) byte0) = fst (selN (ByFData fy) a0 byteset0).
-Proof. Admitted.
-
-Lemma byteset2list_selN_snd: forall block_off a0 f pfy ufy fy,
-  proto_bytefile_valid f pfy ->
-  unified_bytefile_valid pfy ufy ->
-  bytefile_valid ufy fy ->
-  block_off < length (BFILE.BFData f) ->
-  a0 < length (ByFData fy) ->
-  block_off * valubytes + valubytes > a0 ->
-  a0 >= block_off * valubytes ->
-fst (list2byteset byte0
-        (selN (valuset2bytesets_rec (map valu2list (snd (selN (BFILE.BFData f) block_off valuset0))) valubytes) (a0 - block_off * valubytes) nil))
-   :: snd (list2byteset byte0
-           (selN (valuset2bytesets_rec (map valu2list (snd (selN (BFILE.BFData f) block_off valuset0))) valubytes) (a0 - block_off * valubytes) nil)) =
-   snd (selN (ByFData fy) a0 byteset0).
-Proof. Admitted.
+Proof.
+  intros.
+  rewrite H1; rewrite H0; rewrite H.
+  rewrite selN_firstn; auto.
+  rewrite between_exists with (a:= a0)(b:= block_off + 1) (c:= valubytes).
+  replace (block_off + 1 - 1) with block_off by omega.
+  rewrite concat_hom_selN with (k:= valubytes).
+  erewrite selN_map with (default':= valuset0).
+  (* destruct (selN (BFILE.BFData f) block_off valuset0) eqn:D. *)
+  unfold valuset2bytesets.
+  erewrite selN_map.
+  unfold byteset2list.
+  replace (snd (BFILE.BFData f) ⟦ block_off ⟧) with (nil: list valu).
+  simpl.
+  rewrite v2b_rec_nil.
+  erewrite selN_map.
+  reflexivity.
+   rewrite valu2list_len; apply Nat.mod_upper_bound.
+  apply valubytes_ne_O.
+  rewrite valu2list_len; reflexivity.
+  rewrite valuset2bytesets_rec_len.
+  apply Nat.mod_upper_bound.
+  apply valubytes_ne_O.
+  unfold byteset2list, not; intros Hx; inversion Hx.
+  auto.
+  rewrite <- H; eapply proto_len; eauto.
+  apply Nat.mod_upper_bound.
+  apply valubytes_ne_O.
+  replace (block_off + 1 - 1) with block_off. auto.
+  omega.
+  rewrite Nat.mul_add_distr_r; omega.
+  Unshelve.
+  apply nil.
+  apply byte0.
+Qed.
 
 Lemma unified_bytefile_bytefile_selN_eq: forall a0 ufy fy,
   bytefile_valid ufy fy ->
@@ -1534,227 +1662,227 @@ Proof.
 Qed.
 
 
-	Lemma subset_invariant_bs_union: forall F1 F2,
-	subset_invariant_bs F1 -> subset_invariant_bs F2 ->
-	  subset_invariant_bs (F1 * F2)%pred.
-	Proof.
-	    intros.
-	    unfold subset_invariant_bs.
-	    intros.
-	    unfold sep_star in H2; rewrite sep_star_is in H2; unfold sep_star_impl in H2.
-	    destruct H2.
-	    destruct H2.
-	    destruct H2.
-	    destruct H3.
-	    destruct H4.
-      
-	    unfold_sep_star.
-	    exists (fun a => match x a with
-	                     | None => None
-	                     | Some v => bsl' a
-	                     end).
-      exists (fun a => match x0 a with
-	                     | None => None
-	                     | Some v => bsl' a
-	                     end).
-      repeat split.
-	    apply functional_extensionality; intros.
-	    unfold mem_union.
-	    destruct (bsl x1) eqn:D.
-	    rewrite H2 in D. unfold mem_union in D.
-      destruct (x x1) eqn:D1.
-      destruct (bsl' x1).
-      reflexivity.
-      destruct (x0 x1); reflexivity.
-      rewrite D; reflexivity.
-      
-      rewrite H2 in D.
-      unfold mem_union in D.
-      destruct (x x1) eqn:D1.
-      inversion D.
-      
-      destruct H1 with (a:= x1).
-      rewrite H2 in H6.
-      unfold mem_union in H6.
-      rewrite D1 in H6; simpl in H6; rewrite D in H6.
-      rewrite H6; rewrite D; reflexivity.
-      
-      destruct H6.
-      rewrite H2 in H6.
-      unfold mem_union in H6.
-      rewrite D1 in H6; simpl in H6; rewrite D in H6.
-      destruct H6; reflexivity.
-      
-      unfold mem_disjoint in *.
-      unfold not; intros.
-      do 4 destruct H6.
-      destruct H3.
-      destruct (x x1) eqn:D.
-      destruct (x0 x1) eqn:D1.
-      exists x1.
-      exists p.
-      exists p0.
-      split; auto.
-      inversion H7.
-      inversion H6.
-      eapply H.
-      intros.
-      2: eauto.
-      
-      destruct H1 with (a:= a).
-      left.
-      unfold mem_union in *.
-      rewrite H2 in H6.
-      destruct (x a) eqn:D.
-      auto.
-      reflexivity.
-      
-      destruct H6.
-      rewrite H2 in H7.
-      unfold some_strip, mem_union in *.
-      destruct (x a) eqn:D.
-      right.
-      split.
-      unfold not; intros Hx; inversion Hx.
-      auto.
-      left.
-      reflexivity. 
-      
-      eapply H0.
-      intros.
-      2: eauto.
-      
-      destruct H1 with (a:= a).
-      left.
-      unfold mem_union in *.
-      rewrite H2 in H6.
-      destruct (x0 a) eqn:D.
-      unfold mem_disjoint in *.
-      unfold not in *.
-      destruct (x a) eqn:D1.
-      destruct H3.
-      exists a, p0, p.
-      split; auto.
-      auto.
-      reflexivity.
-      
-      destruct H6.
-      rewrite H2 in H7.
-      unfold some_strip, mem_union in *.
-      destruct (x0 a) eqn:D.
-      right.
-      split.
-      unfold not; intros Hx; inversion Hx.
-      destruct (x a) eqn:D1.
-      destruct H3.
-      exists a, p0, p.
-      split; auto.
-      auto.
-      left; reflexivity.
-  Qed.
+Lemma subset_invariant_bs_union: forall F1 F2,
+subset_invariant_bs F1 -> subset_invariant_bs F2 ->
+  subset_invariant_bs (F1 * F2)%pred.
+Proof.
+    intros.
+    unfold subset_invariant_bs.
+    intros.
+    unfold sep_star in H2; rewrite sep_star_is in H2; unfold sep_star_impl in H2.
+    destruct H2.
+    destruct H2.
+    destruct H2.
+    destruct H3.
+    destruct H4.
+    
+    unfold_sep_star.
+    exists (fun a => match x a with
+                     | None => None
+                     | Some v => bsl' a
+                     end).
+    exists (fun a => match x0 a with
+                     | None => None
+                     | Some v => bsl' a
+                     end).
+    repeat split.
+    apply functional_extensionality; intros.
+    unfold mem_union.
+    destruct (bsl x1) eqn:D.
+    rewrite H2 in D. unfold mem_union in D.
+    destruct (x x1) eqn:D1.
+    destruct (bsl' x1).
+    reflexivity.
+    destruct (x0 x1); reflexivity.
+    rewrite D; reflexivity.
+    
+    rewrite H2 in D.
+    unfold mem_union in D.
+    destruct (x x1) eqn:D1.
+    inversion D.
+    
+    destruct H1 with (a:= x1).
+    rewrite H2 in H6.
+    unfold mem_union in H6.
+    rewrite D1 in H6; simpl in H6; rewrite D in H6.
+    rewrite H6; rewrite D; reflexivity.
+    
+    destruct H6.
+    rewrite H2 in H6.
+    unfold mem_union in H6.
+    rewrite D1 in H6; simpl in H6; rewrite D in H6.
+    destruct H6; reflexivity.
+    
+    unfold mem_disjoint in *.
+    unfold not; intros.
+    do 4 destruct H6.
+    destruct H3.
+    destruct (x x1) eqn:D.
+    destruct (x0 x1) eqn:D1.
+    exists x1.
+    exists p.
+    exists p0.
+    split; auto.
+    inversion H7.
+    inversion H6.
+    eapply H.
+    intros.
+    2: eauto.
+    
+    destruct H1 with (a:= a).
+    left.
+    unfold mem_union in *.
+    rewrite H2 in H6.
+    destruct (x a) eqn:D.
+    auto.
+    reflexivity.
+    
+    destruct H6.
+    rewrite H2 in H7.
+    unfold some_strip, mem_union in *.
+    destruct (x a) eqn:D.
+    right.
+    split.
+    unfold not; intros Hx; inversion Hx.
+    auto.
+    left.
+    reflexivity. 
+    
+    eapply H0.
+    intros.
+    2: eauto.
+    
+    destruct H1 with (a:= a).
+    left.
+    unfold mem_union in *.
+    rewrite H2 in H6.
+    destruct (x0 a) eqn:D.
+    unfold mem_disjoint in *.
+    unfold not in *.
+    destruct (x a) eqn:D1.
+    destruct H3.
+    exists a, p0, p.
+    split; auto.
+    auto.
+    reflexivity.
+    
+    destruct H6.
+    rewrite H2 in H7.
+    unfold some_strip, mem_union in *.
+    destruct (x0 a) eqn:D.
+    right.
+    split.
+    unfold not; intros Hx; inversion Hx.
+    destruct (x a) eqn:D1.
+    destruct H3.
+    exists a, p0, p.
+    split; auto.
+    auto.
+    left; reflexivity.
+Qed.
 
-  Lemma subset_invariant_bs_ptsto_subset_b: forall l a,
-    subset_invariant_bs (arrayN ptsto_subset_b a l).
-    Proof.
-      induction l; intros.
-      unfold subset_invariant_bs; intros.
-      simpl in *.
-      unfold emp in *; intros.
-      destruct H with (a:= a0).
-      rewrite H0 in H1; auto.
-      repeat destruct H1.
-      apply H0.
-      
-      simpl in *.
-      apply subset_invariant_bs_union.
-      unfold subset_invariant_bs; intros.
-      unfold ptsto_subset_b in *;
-      destruct_lift H0.
-      Search ptsto None.
-      
-      destruct H with (a:= a0).
-      apply emp_star in H0 as H'.
-      apply ptsto_valid' in H'.
-      
-      
-      exists dummy.
-      rewrite H' in H1.
-      apply sep_star_lift_apply'.
-      apply emp_star.
-      apply sep_star_comm.
-      apply mem_except_ptsto.
-      auto.
-      
-      assert (forall AT AEQ V (m: @Mem.mem AT AEQ V), m = Mem.empty_mem -> emp m).
-      intros.
-      rewrite H2.
-      apply emp_empty_mem.
-      apply H2.
-      unfold Mem.empty_mem.
-      apply functional_extensionality; intros.
-      unfold mem_except.
-      destruct (addr_eq_dec x a0).
-      reflexivity.
-      
-      destruct H with (a:= x).
-      apply ptsto_ne with (a':= x) in H0 as Hx.
-      rewrite H4; rewrite Hx; reflexivity.
-      unfold not; intros.
-      apply n; omega.
-      
-      
-      destruct H4.
-      apply ptsto_ne with (a':= x) in H0 as Hx.
-      rewrite Hx in H4.
-      destruct H4; reflexivity.
-      unfold not; intros.
-      apply n; omega.
-      auto.
-      
-      (* part2 *)
-      destruct H1.
-      apply emp_star in H0 as H'.
-      apply ptsto_valid' in H'.
-      rewrite H' in H2; simpl in H2.
-      
-      
-      exists (a_1::dummy).
-      apply sep_star_lift_apply'.
-      apply emp_star.
-      apply sep_star_comm.
-      apply mem_except_ptsto.
-      auto.
-      
-      assert (forall AT AEQ V (m: @Mem.mem AT AEQ V), m = Mem.empty_mem -> emp m).
-      intros.
-      rewrite H4.
-      apply emp_empty_mem.
-      apply H4.
-      unfold Mem.empty_mem.
-      apply functional_extensionality; intros.
-      unfold mem_except.
-      destruct (addr_eq_dec x a0).
-      reflexivity.
-     
-     destruct H with (a:= x).
-      apply ptsto_ne with (a':= x) in H0 as Hx.
-      rewrite H5; rewrite Hx; reflexivity.
-      unfold not; intros; apply n; omega.
-      
-      
-      destruct H5.
-      apply ptsto_ne with (a':= x) in H0 as Hx.
-      rewrite Hx in H5.
-      destruct H5; reflexivity.
-      unfold not; intros; apply n; omega.
-      unfold incl; intros.
-      apply H3.
-      repeat destruct H4.
-      apply in_eq.
-      apply in_eq.
-      apply in_cons.
-      auto.
-      auto.
+Lemma subset_invariant_bs_ptsto_subset_b: forall l a,
+subset_invariant_bs (arrayN ptsto_subset_b a l).
+  Proof.
+    induction l; intros.
+    unfold subset_invariant_bs; intros.
+    simpl in *.
+    unfold emp in *; intros.
+    destruct H with (a:= a0).
+    rewrite H0 in H1; auto.
+    repeat destruct H1.
+    apply H0.
+    
+    simpl in *.
+    apply subset_invariant_bs_union.
+    unfold subset_invariant_bs; intros.
+    unfold ptsto_subset_b in *;
+    destruct_lift H0.
+    Search ptsto None.
+    
+    destruct H with (a:= a0).
+    apply emp_star in H0 as H'.
+    apply ptsto_valid' in H'.
+    
+    
+    exists dummy.
+    rewrite H' in H1.
+    apply sep_star_lift_apply'.
+    apply emp_star.
+    apply sep_star_comm.
+    apply mem_except_ptsto.
+    auto.
+    
+    assert (forall AT AEQ V (m: @Mem.mem AT AEQ V), m = Mem.empty_mem -> emp m).
+    intros.
+    rewrite H2.
+    apply emp_empty_mem.
+    apply H2.
+    unfold Mem.empty_mem.
+    apply functional_extensionality; intros.
+    unfold mem_except.
+    destruct (addr_eq_dec x a0).
+    reflexivity.
+    
+    destruct H with (a:= x).
+    apply ptsto_ne with (a':= x) in H0 as Hx.
+    rewrite H4; rewrite Hx; reflexivity.
+    unfold not; intros.
+    apply n; omega.
+    
+    
+    destruct H4.
+    apply ptsto_ne with (a':= x) in H0 as Hx.
+    rewrite Hx in H4.
+    destruct H4; reflexivity.
+    unfold not; intros.
+    apply n; omega.
+    auto.
+    
+    (* part2 *)
+    destruct H1.
+    apply emp_star in H0 as H'.
+    apply ptsto_valid' in H'.
+    rewrite H' in H2; simpl in H2.
+    
+    
+    exists (a_1::dummy).
+    apply sep_star_lift_apply'.
+    apply emp_star.
+    apply sep_star_comm.
+    apply mem_except_ptsto.
+    auto.
+    
+    assert (forall AT AEQ V (m: @Mem.mem AT AEQ V), m = Mem.empty_mem -> emp m).
+    intros.
+    rewrite H4.
+    apply emp_empty_mem.
+    apply H4.
+    unfold Mem.empty_mem.
+    apply functional_extensionality; intros.
+    unfold mem_except.
+    destruct (addr_eq_dec x a0).
+    reflexivity.
+   
+   destruct H with (a:= x).
+    apply ptsto_ne with (a':= x) in H0 as Hx.
+    rewrite H5; rewrite Hx; reflexivity.
+    unfold not; intros; apply n; omega.
+    
+    
+    destruct H5.
+    apply ptsto_ne with (a':= x) in H0 as Hx.
+    rewrite Hx in H5.
+    destruct H5; reflexivity.
+    unfold not; intros; apply n; omega.
+    unfold incl; intros.
+    apply H3.
+    repeat destruct H4.
+    apply in_eq.
+    apply in_eq.
+    apply in_cons.
+    auto.
+    auto.
 Qed.
 
 
@@ -4018,7 +4146,7 @@ all: cancel.
 
 Admitted.
 
-(* ------------------------------------------------------------------------------------- *)
+(* ------------------------------------------------------------------------------------ *)
 (* Definition shrink lxp bxps ixp inum fms :=
   let^ (ms1, bylen) <- getlen lxp ixp inum fms;
   let^ (ms2, blen) <- BFILE.getlen lxp ixp inum ms1;
