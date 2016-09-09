@@ -29,24 +29,24 @@ Class GoWrapper (WrappedType: Type) :=
 Inductive ScopeItem :=
 | SItem A {H: GoWrapper A} (v : A).
 
-Notation "∅" := (StringMap.empty _) : map_scope.
-Notation "k ->> v ;  m" := (StringMap.add k v m) (at level 21, right associativity) : map_scope.
-Notation "k ~> v ;  m" := (StringMap.add k (SItem v) m) (at level 21, right associativity) : map_scope.
+Notation "∅" := (VarMap.empty _) : map_scope.
+Notation "k ->> v ;  m" := (VarMap.add k v m) (at level 21, right associativity) : map_scope.
+Notation "k ~> v ;  m" := (VarMap.add k (SItem v) m) (at level 21, right associativity) : map_scope.
 Delimit Scope map_scope with map.
 
-Definition Scope := StringMap.t ScopeItem.
+Definition Scope := VarMap.t ScopeItem.
 
-Definition SameValues (s : StringMap.t Go.value) (tenv : Scope) :=
+Definition SameValues (s : VarMap.t Go.value) (tenv : Scope) :=
   Forall
     (fun item =>
       match item with
       | (key, SItem val) =>
-        match StringMap.find key s with
+        match VarMap.find key s with
         | Some v => v = wrap val
         | None => False
         end
       end)
-    (StringMap.elements tenv).
+    (VarMap.elements tenv).
 
 Notation "ENV \u2272 TENV" := (SameValues ENV TENV) (at level 50).
 
@@ -129,7 +129,7 @@ Example micro_noop : sigT (fun p =>
   EXTRACT Ret tt
   {{ ∅ }}
     p
-  {{ fun _ => ∅ }} // ∅).
+  {{ fun _ => ∅ }} // StringMap.empty _).
 Proof.
   eexists.
   intro.
@@ -325,7 +325,7 @@ Ltac find_all_cases :=
 
 Lemma read_fails_not_present:
   forall env vvar avar (a : W) d s,
-    StringMap.find avar s = Some (wrap a) ->
+    VarMap.find avar s = Some (wrap a) ->
     ~ (exists st' p', Go.step env (d, s, Go.DiskRead vvar (Go.Var avar)) (st', p')) ->
     d a = None.
 Proof.
@@ -342,8 +342,8 @@ Hint Resolve read_fails_not_present.
 
 Lemma write_fails_not_present:
   forall env vvar avar (a : W) (v : valu) d s,
-    StringMap.find vvar s = Some (wrap v) ->
-    StringMap.find avar s = Some (wrap a) ->
+    VarMap.find vvar s = Some (wrap v) ->
+    VarMap.find avar s = Some (wrap a) ->
     ~ (exists st' p', Go.step env (d, s, Go.DiskWrite (Go.Var avar) (Go.Var vvar)) (st', p')) ->
     d a = None.
 Proof.
@@ -367,7 +367,7 @@ Hint Resolve skip_is_final.
 
 Ltac match_finds :=
   match goal with
-    | [ H1: StringMap.find ?a ?s = ?v1, H2: StringMap.find ?a ?s = ?v2 |- _ ] => rewrite H1 in H2; try invc H2
+    | [ H1: VarMap.find ?a ?s = ?v1, H2: VarMap.find ?a ?s = ?v2 |- _ ] => rewrite H1 in H2; try invc H2
   end.
 
 Ltac invert_trivial H :=
@@ -398,13 +398,13 @@ Ltac inv_exec_progok :=
 
 Example micro_write : sigT (fun p => forall a v,
   EXTRACT Write a v
-  {{ "a" ~> a; "v" ~> v; ∅ }}
+  {{ 0 ~> a; 1 ~> v; ∅ }}
     p
-  {{ fun _ => ∅ }} // ∅).
+  {{ fun _ => ∅ }} // StringMap.empty _).
 Proof.
   eexists.
   intros.
-  instantiate (1 := (Go.DiskWrite (Go.Var "a") (Go.Var "v"))%go).
+  instantiate (1 := (Go.DiskWrite (Go.Var 0) (Go.Var 1))%go).
   intro. intros.
   maps.
   find_all_cases.
