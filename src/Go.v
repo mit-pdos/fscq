@@ -83,12 +83,14 @@ Module Go.
 
   Inductive type :=
   | Num
+  | Bool
   | EmptyStruct
   | DiskBlock.
 
   Definition type_denote (t : type) : Type :=
     match t with
       | Num => W
+      | Bool => bool
       | EmptyStruct => unit
       | DiskBlock => valu
     end.
@@ -96,6 +98,7 @@ Module Go.
   Definition can_alias t :=
     match t with
       | Num => true
+      | Bool => true
       | EmptyStruct => true
       | DiskBlock => false
     end.
@@ -120,6 +123,7 @@ Module Go.
   Definition default_value (t : type) :=
     match t with
       | Num => Val Num 0
+      | Bool => Val Bool false
       | EmptyStruct => Val EmptyStruct tt
       | DiskBlock => Val DiskBlock $0
     end.
@@ -201,20 +205,38 @@ Module Go.
 
   Definition state := (rawdisk * locals)%type.
 
-  Definition eval_binop (op : binop + test) a b :=
+  Definition eval_binop (op : binop) a b :=
     match op with
-      | inl Plus => a + b
-      | inl Minus => a - b
-      | inl Times => a * b
-      | inr Eq => if Nat.eq_dec a b then 1 else 0
-      | inr Ne => if Nat.eq_dec a b then 0 else 1
-      | inr Lt => if Compare_dec.lt_dec a b then 1 else 0
-      | inr Le => if Compare_dec.le_dec a b then 1 else 0
+      | Plus => Some (Val Num (a + b))
+      | Minus => Some (Val Num (a - b))
+      | Times => Some (Val Num (a * b))
     end.
 
-  Definition eval_binop_m (op : binop + test) (oa ob : option value) : option value :=
+  Definition eval_test_num (op : test) a b :=
+    match op with
+      | Eq => if Nat.eq_dec a b then Some (Val Bool true) else Some (Val Bool false)
+      | Ne => if Nat.eq_dec a b then Some (Val Bool false) else Some (Val Bool true)
+      | Lt => if Compare_dec.lt_dec a b then Some (Val Bool true) else Some (Val Bool false)
+      | Le => if Compare_dec.le_dec a b then Some (Val Bool true) else Some (Val Bool false)
+    end.
+
+  Definition eval_test_bool (op : test) a b :=
+    match op with
+      | Eq => if Bool.bool_dec a b then Some (Val Bool true) else Some (Val Bool false)
+      | Ne => if Bool.bool_dec a b then Some (Val Bool false) else Some (Val Bool true)
+      | _ => None
+    end.
+
+  Definition eval_binop_m (op : binop) (oa ob : option value) : option value :=
     match oa, ob with
-      | Some (Val Num a), Some (Val Num b) => Some (Val Num (eval_binop op a b))
+      | Some (Val Num a), Some (Val Num b) => eval_binop op a b
+      | _, _ => None
+    end.
+
+  Definition eval_test_m (op : test) (oa ob : option value) : option value :=
+    match oa, ob with
+      | Some (Val Num a), Some (Val Num b) => eval_test_num op a b
+      | Some (Val Bool a), Some (Val Bool b) => eval_test_bool op a b
       | _, _ => None
     end.
 
@@ -222,15 +244,15 @@ Module Go.
     match e with
       | Var x => VarMap.find x st
       | Const w => Some (Val Num w)
-      | Binop op a b => eval_binop_m (inl op) (eval st a) (eval st b)
-      | TestE op a b => eval_binop_m (inr op) (eval st a) (eval st b)
+      | Binop op a b => eval_binop_m op (eval st a) (eval st b)
+      | TestE op a b => eval_test_m op (eval st a) (eval st b)
     end.
 
   Hint Unfold eval.
 
   Definition eval_bool st e : option bool :=
     match eval st e with
-      | Some (Val Num w) => Some (if Nat.eq_dec w 0 then false else true)
+      | Some (Val Bool b) => Some b
       | _ => None
     end.
 
