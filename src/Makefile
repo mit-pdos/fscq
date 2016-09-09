@@ -16,7 +16,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv ADestructPair DestructVarname ExtrHaskellPrelude \
 	      DirSep TreeSeq \
-				StringMap VerdiTactics Gensym Go Facade
+				MoreMapFacts StringMap VerdiTactics Gensym Go Facade
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))

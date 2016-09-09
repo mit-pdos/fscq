@@ -1,9 +1,9 @@
 Require Import ProofIrrelevance.
-Require Import PeanoNat String List FMapAVL.
+Require Import PeanoNat String List FMapAVL Structures.OrderedTypeEx.
 Require Import Relation_Operators Operators_Properties.
 Require Import Morphisms.
 Require Import VerdiTactics.
-Require Import StringMap.
+Require Import StringMap MoreMapFacts.
 Require Import Mem AsyncDisk PredCrash Prog ProgMonad SepAuto.
 Require Import Gensym.
 Require Import Word.
@@ -110,7 +110,7 @@ Local Open Scope string_scope.
 
 Local Open Scope map_scope.
 
-Ltac find_cases var st := case_eq (StringMap.find var st); [
+Ltac find_cases var st := case_eq (VarMap.find var st); [
   let v := fresh "v" in
   let He := fresh "He" in
   intros v He; rewrite ?He in *
@@ -205,78 +205,6 @@ Proof.
   auto.
 Qed.
 
-Lemma Forall_elements_add : forall V P k (v : V) m,
-  Forall P (StringMap.elements (StringMap.add k v m)) <->
-  P (k, v) /\ Forall P (StringMap.elements (StringMap.remove k m)).
-Admitted.
-
-(* TODO: Setoid rewriting? *)
-Lemma Forall_elements_equal: forall V P (m1 m2 : StringMap.t V),
-  Forall P (StringMap.elements m1) ->
-  StringMap.Equal m2 m1 ->
-  Forall P (StringMap.elements m2).
-Admitted.
-Hint Resolve Forall_elements_equal. (* in hintdb? *)
-
-Lemma add_remove_comm : forall V k1 k2 (v : V) m,
-  k1 <> k2 ->
-  StringMap.Equal (StringMap.add k2 v (StringMap.remove k1 m)) (StringMap.remove k1 (StringMap.add k2 v m)).
-Admitted.
-
-Lemma add_remove_comm' : forall V k1 k2 (v : V) m,
-  k1 <> k2 ->
-  StringMap.Equal (StringMap.remove k1 (StringMap.add k2 v m)) (StringMap.add k2 v (StringMap.remove k1 m)).
-Admitted.
-
-Lemma add_remove_same : forall V k (v : V) m,
-  StringMap.Equal (StringMap.remove k (StringMap.add k v m)) (StringMap.remove k m).
-Admitted.
-
-Lemma add_add_comm : forall V k1 k2 v1 v2 (m : StringMap.t V),
-  k1 <> k2 ->
-  StringMap.Equal (StringMap.add k2 v2 (StringMap.add k1 v1 m))
-                  (StringMap.add k1 v1 (StringMap.add k2 v2 m)).
-Admitted.
-
-Lemma remove_remove_comm : forall V k1 k2 (m : StringMap.t V),
-  k1 <> k2 ->
-  StringMap.Equal (StringMap.remove k2 (StringMap.remove k1 m)) (StringMap.remove k1 (StringMap.remove k2 m)).
-Admitted.
-
-Lemma Forall_elements_remove_weaken : forall V P k (m : StringMap.t V),
-  Forall P (StringMap.elements m) ->
-  Forall P (StringMap.elements (StringMap.remove k m)).
-Proof.
-Admitted.
-
-Lemma forall_In_Forall_elements : forall V (P : _ -> Prop) m,
-  (forall k (v : V), StringMap.find k m = Some v -> P (k, v)) ->
-  Forall P (StringMap.elements m).
-Proof.
-Admitted.
-
-Lemma Forall_elements_forall_In : forall V (P : _ -> Prop) m,
-  Forall P (StringMap.elements m) ->
-  (forall k (v : V), StringMap.find k m = Some v -> P (k, v)).
-Proof.
-Admitted.
-
-Lemma remove_empty : forall V k,
-  StringMap.Equal (StringMap.remove k (StringMap.empty V)) (StringMap.empty V).
-Proof.
-  intros. intro.
-  rewrite StringMapFacts.remove_o. destruct (StringMapFacts.eq_dec k y); eauto.
-Qed.
-Hint Resolve remove_empty.
-
-Lemma Forall_elements_empty : forall V P,
-  Forall P (StringMap.elements (StringMap.empty V)).
-Proof.
-  compute.
-  auto.
-Qed.
-Hint Resolve Forall_elements_empty.
-
 Lemma possible_sync_refl : forall AT AEQ (m: @mem AT AEQ _), possible_sync m m.
 Proof.
   intros.
@@ -298,19 +226,26 @@ Ltac set_hyp_evars :=
     set (H := e) in *
   end.
 
+Module VarMapFacts := FMapFacts.WFacts_fun(Nat_as_OT)(VarMap).
+Module Import MoreVarMapFacts := MoreFacts_fun(Nat_as_OT)(VarMap).
+
 Ltac map_rewrites := rewrite
                        ?StringMapFacts.remove_neq_o, ?StringMapFacts.remove_eq_o,
-                       ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o,
-                       ?StringMapFacts.empty_o in * by congruence.
+                     ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o,
+                     ?StringMapFacts.empty_o,
+                       ?VarMapFacts.remove_neq_o, ?VarMapFacts.remove_eq_o,
+                     ?VarMapFacts.add_neq_o, ?VarMapFacts.add_eq_o,
+                     ?VarMapFacts.empty_o
+    in * by congruence.
 
 Ltac maps := unfold SameValues in *; repeat match goal with
-  | [ H : Forall _ (StringMap.elements _) |- _ ] =>
+  | [ H : Forall _ (VarMap.elements _) |- _ ] =>
       let H1 := fresh H in
       let H2 := fresh H in
       apply Forall_elements_add in H;
       destruct H as [H1 H2];
       try (eapply Forall_elements_equal in H2; [ | apply add_remove_comm; solve [ congruence ] ])
-  | [ |- Forall _ (StringMap.elements _) ] =>
+  | [ |- Forall _ (VarMap.elements _) ] =>
       apply Forall_elements_add; split
   | _ => discriminate
   | _ => congruence
@@ -319,7 +254,7 @@ Ltac maps := unfold SameValues in *; repeat match goal with
 
 Ltac find_all_cases :=
   repeat match goal with
-  | [ H : match StringMap.find ?d ?v with | Some _ => _ | None => _ end |- _ ] => find_cases d v
+  | [ H : match VarMap.find ?d ?v with | Some _ => _ | None => _ end |- _ ] => find_cases d v
   end; subst.
 
 
@@ -444,10 +379,17 @@ Proof.
   intuition eauto.
   maps; eauto.
   eapply forall_In_Forall_elements. intros.
-  pose proof (Forall_elements_forall_In _ H).
+  pose proof (Forall_elements_forall_In H).
   simpl in *.
-  destruct (StringMapFacts.eq_dec k var); maps; try discriminate.
+  destruct (VarMapFacts.eq_dec k var); maps; try discriminate.
   specialize (H1 k v0 ltac:(eauto)). auto.
+
+  contradiction H1.
+  repeat eexists.
+  econstructor; eauto.
+  (* Oh, right, this just isn't true anymore *)
+
+  
 Qed.
 
 Lemma CompileVar : forall env A var T (v : T) {H : GoWrapper T},
