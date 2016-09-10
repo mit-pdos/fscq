@@ -364,8 +364,7 @@ Hint Extern 1 (Go.step _ (_, Go.Assign _ _) _) =>
 eapply Go.StepAssign.
 Hint Constructors Go.step.
 
-Locate "<~".
-
+(*
 Lemma CompileConst : forall env A var v,
   EXTRACT Ret v
   {{ A }}
@@ -981,6 +980,7 @@ Ltac compile :=
         eapply bind_left_id | ]
     end
   end.
+*)
 
 Definition swap_prog a b :=
   va <- Read a;
@@ -988,6 +988,73 @@ Definition swap_prog a b :=
   Write a vb;;
   Write b va;;
   Ret tt.
+
+Import Go.
+
+Example extract_swap_1_2 : forall env, sigT (fun p =>
+  EXTRACT swap_prog 1 2 {{ ∅ }} p {{ fun _ => ∅ }} // env).
+Proof.
+  intros. eexists.
+  instantiate (p := (Declare Num (fun a =>
+                    Declare Num (fun b =>
+                    Declare Num (fun va =>
+                    Declare Num (fun vb =>
+                                         (a <~ Const 1;
+                                         b <~ Const 2;
+                                         DiskRead va (Var a);
+                                         DiskRead vb (Var b);
+                                         DiskWrite (Var a) (Var vb);
+                                         DiskWrite (Var b) (Var va))
+                                   )))))%go).
+  unfold ProgOk.
+  intros.
+  intuition subst.
+  repeat inv_exec.
+  simpl in *.
+  Ltac clear_all X :=
+    repeat match goal with
+      | [ H : X _ |- _ ] => clear H 
+           end.
+  clear_all source_stmt.
+  assert (var0 <> var1) by (intro; maps).
+  assert (var1 <> var2) by (intro; maps).
+  assert (var2 <> var3) by (intro; maps).
+  assert (var0 <> var2) by (intro; maps).
+  assert (var1 <> var3) by (intro; maps).
+  assert (var0 <> var3) by (intro; maps).
+  maps.
+  repeat find_inversion_safe.
+  Ltac clear_obvious :=
+    repeat match goal with
+      | [ H : _ |- _ ] =>
+        let Ht := type of H in
+        clear H; assert Ht as H by auto; clear H
+    end.
+  clear_obvious.
+  repeat eexists.
+  eapply XBindFinish; eauto.
+  eapply XBindFinish; eauto.
+  eapply XBindFinish.
+  econstructor.
+  eapply possible_sync_refl.
+  econstructor; eauto.
+  eapply XBindFinish.
+  econstructor.
+  eapply possible_sync_refl.
+  econstructor; eauto.
+  rewrite H25 in H30.
+  rewrite upd_ne in H32.
+  rewrite H32 in H27.
+  repeat find_inversion_safe.
+  invc H4.
+  invc H6.
+  eapply XRet.
+  congruence.
+  auto with mapfacts.
+
+  repeat inv_exec.
+Defined.
+Eval lazy in projT1 (extract_swap_prog ∅).
 
 Lemma extract_swap_prog : forall env, sigT (fun p =>
   forall a b, EXTRACT swap_prog a b {{ "a" ~> a; "b" ~> b; ∅ }} p {{ fun _ => ∅ }} // env).
