@@ -364,37 +364,37 @@ Hint Extern 1 (Go.step _ (_, Go.Assign _ _) _) =>
 eapply Go.StepAssign.
 Hint Constructors Go.step.
 
-(*
-Lemma CompileConst : forall env A var v,
+Lemma CompileConst : forall env A var (v v0 : nat),
   EXTRACT Ret v
-  {{ A }}
+  {{ var ~> v0; A }}
     var <~ Go.Const v
   {{ fun ret => var ~> ret; A }} // env.
 Proof.
   unfold ProgOk.
   intros.
   inv_exec_progok.
-  eexists. eexists.
+  do 2 eexists.
   intuition eauto.
   maps; eauto.
   eapply forall_In_Forall_elements. intros.
-  pose proof (Forall_elements_forall_In H).
+  pose proof (Forall_elements_forall_In H1).
   simpl in *.
   destruct (VarMapFacts.eq_dec k var); maps; try discriminate.
-  specialize (H1 k v0 ltac:(eauto)). auto.
+  specialize (H2 k v1). maps. intuition.
 
   contradiction H1.
   repeat eexists.
-  econstructor; eauto.
-  (* Oh, right, this just isn't true anymore *)
-
-  
+  unfold SameValues in *.
+  rewrite Forall_elements_add in *.
+  intuition.
+  find_all_cases.
+  eauto.
 Qed.
 
 Lemma CompileVar : forall env A var T (v : T) {H : GoWrapper T},
   EXTRACT Ret v
   {{ var ~> v; A }}
-    Skip
+    Go.Skip
   {{ fun ret => var ~> ret; A }} // env.
 Proof.
   unfold ProgOk.
@@ -417,6 +417,8 @@ Ltac forward_solve_step :=
 
 Ltac forward_solve :=
   repeat forward_solve_step.
+
+Import Go.
 
 Lemma CompileBind : forall T T' {H: GoWrapper T} env A (B : T' -> _) p f xp xf var,
   EXTRACT p
@@ -461,7 +463,7 @@ Proof.
 Qed.
 
 Lemma hoare_weaken_post : forall T env A (B1 B2 : T -> _) pr p,
-  (forall x k e, StringMap.find k (B2 x) = Some e -> StringMap.find k (B1 x) = Some e) ->
+  (forall x k e, VarMap.find k (B2 x) = Some e -> VarMap.find k (B1 x) = Some e) ->
   EXTRACT pr
   {{ A }} p {{ B1 }} // env ->
   EXTRACT pr
@@ -479,7 +481,7 @@ Proof.
 Qed.
 
 Lemma hoare_strengthen_pre : forall T env A1 A2 (B : T -> _) pr p,
-  (forall k e, StringMap.find k A1 = Some e -> StringMap.find k A2 = Some e) ->
+  (forall k e, VarMap.find k A1 = Some e -> VarMap.find k A2 = Some e) ->
   EXTRACT pr
   {{ A1 }} p {{ B }} // env ->
   EXTRACT pr
@@ -550,13 +552,13 @@ Qed.
 
 Example micro_inc : sigT (fun p => forall x,
   EXTRACT Ret (1 + x)
-  {{ "x" ~> x; ∅ }}
+  {{ 0 ~> x; ∅ }}
     p
-  {{ fun ret => "x" ~> ret; ∅ }} // ∅).
+  {{ fun ret => 0 ~> ret; ∅ }} // StringMap.empty _).
 Proof.
   eexists.
   intros.
-  instantiate (1 := ("x" <~ Const 1 + Var "x")%go).
+  instantiate (1 := (0 <~ Const 1 + Var 0)%go).
   intro. intros.
   inv_exec_progok.
   maps.
@@ -564,9 +566,17 @@ Proof.
   simpl in *.
   repeat eexists; eauto. maps; eauto.
   simpl; congruence.
+  eapply forall_In_Forall_elements.
+  intros.
+  rewrite remove_empty in *.
+  maps.
 
-  contradiction H1. repeat eexists. econstructor; simpl; auto.
-  maps. simpl in *. find_all_cases. eauto. eauto.
+  contradiction H1. repeat eexists. econstructor; simpl.
+  maps. simpl in *. find_all_cases. eauto.
+  eauto.
+  maps. simpl in *. find_all_cases. eauto.
+  eauto.
+  trivial.
 Qed.
 
 Lemma CompileIf : forall P Q {H1 : GoWrapper ({P}+{Q})}
@@ -633,27 +643,27 @@ Proof.
   maps; simpl in *; eauto.
 
   (* TODO: automate the hell out of this! *)
-  destruct (StringMapFacts.eq_dec vvar avar).
+  destruct (Nat.eq_dec vvar avar).
   {
-    unfold StringKey.eq in e; subst.
+    subst.
     eapply Forall_elements_equal; [ | eapply add_remove_same ].
     eapply forall_In_Forall_elements. intros.
     eapply Forall_elements_forall_In in H2; eauto. destruct v0.
-    destruct (StringMapFacts.eq_dec k avar).
-    + unfold StringKey.eq in e; subst. maps.
+    destruct (Nat.eq_dec k avar).
+    + subst. maps.
     + maps.
 
   }
   {
-    unfold StringKey.eq in n. eapply Forall_elements_equal; [ | eapply add_remove_comm'; congruence ]. maps.
+    eapply Forall_elements_equal; [ | eapply add_remove_comm'; congruence ]. maps.
     + rewrite He. trivial.
     + eapply Forall_elements_equal; [ | eapply remove_remove_comm; congruence ].
       eapply forall_In_Forall_elements. intros.
-      destruct (StringMapFacts.eq_dec k avar). {
-        unfold StringKey.eq in e; subst. maps.
+      destruct (Nat.eq_dec k avar). {
+        subst. maps.
       }
-      destruct (StringMapFacts.eq_dec k vvar). {
-        unfold StringKey.eq in e; subst. maps.
+      destruct (Nat.eq_dec k vvar). {
+        subst. maps.
       }
       maps.
       eapply Forall_elements_forall_In in H2; eauto.
@@ -679,12 +689,12 @@ Proof.
 
   maps. rewrite He0. eauto.
   eapply forall_In_Forall_elements. intros.
-  pose proof (Forall_elements_forall_In _ H4).
+  pose proof (Forall_elements_forall_In H4).
   simpl in *.
-  destruct (StringMapFacts.eq_dec k vvar); maps. {
-    find_inversion. unfold StringKey.eq in *. subst. rewrite He. auto.
+  destruct (Nat.eq_dec k vvar); maps. {
+    find_inversion. subst. rewrite He. auto.
   }
-  destruct (StringMapFacts.eq_dec k avar); maps.
+  destruct (Nat.eq_dec k avar); maps.
   specialize (H1 k v). conclude H1 ltac:(maps; eauto).
   simpl in *. eauto.
 Qed.
@@ -694,34 +704,34 @@ Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> 
     avar <> bvar ->
     forall a b, EXTRACT src a b
            {{ avar ~> a; bvar ~> b; ∅ }}
-             Call None name [avar; bvar]
+             Call [] name [avar; bvar]
            {{ fun _ => ∅ (* TODO: could remember a & b if they are of aliasable type *) }} // env.
 
 
 Lemma extract_voidfunc2_call :
   forall A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) arga argb env,
-    forall rnia and body ss,
+    forall and body ss,
       (forall a b, EXTRACT src a b {{ arga ~> a; argb ~> b; ∅ }} body {{ fun _ => ∅ }} // env) ->
       StringMap.find name env = Some {|
-                                    ArgVars := [arga; argb];
-                                    RetVar := None;
+                                    ParamVars := [arga; argb];
+                                    RetParamVars := [];
                                     Body := body;
-                                    ret_not_in_args := rnia;
+                                    (* ret_not_in_args := rnia; *)
                                     args_no_dup := and;
                                     body_source := ss;
                                   |} ->
       voidfunc2 name src env.
 Proof.      
   unfold voidfunc2.
-  intros A B C WA WB name src arga argb env rnia and body ss Hex Henv avar bvar Hvarne a b.
+  intros A B C WA WB name src arga argb env and body ss Hex Henv avar bvar Hvarne a b.
   specialize (Hex a b).
   intro.
   intros.
   intuition subst.
   - find_eapply_lem_hyp ExecFinished_Steps.
-    find_eapply_lem_hyp Steps_RunsTo.
+    find_eapply_lem_hyp Steps_runsto.
     invc H0.
-    find_eapply_lem_hyp RunsTo_Steps.
+    find_eapply_lem_hyp runsto_Steps.
     find_eapply_lem_hyp Steps_ExecFinished.
     rewrite Henv in H4.
     find_inversion_safe.
@@ -737,13 +747,14 @@ Proof.
     eauto.
 
     econstructor.
+    econstructor.
   - find_eapply_lem_hyp ExecCrashed_Steps.
     repeat deex.
     invc H1; [ solve [ invc H2 ] | ].
     invc H0.
     rewrite Henv in H7.
     find_inversion_safe. unfold sel in *. simpl in *.
-    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, s', bp') /\ p' = InCall s [arga; argb] None [avar; bvar] None bp').
+    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, s', bp') /\ p' = InCall s [arga; argb] [] [avar; bvar] [] bp').
     {
       remember callee_s.
       clear callee_s Heqt.
@@ -771,7 +782,7 @@ Proof.
     + contradiction H3.
       destruct st'. repeat eexists. econstructor; eauto.
       simpl.
-      auto using source_stmt_SourceStmt.
+      auto using is_source_stmt_sound.
       unfold sel; simpl in *.
       maps.
       find_all_cases.
@@ -779,7 +790,7 @@ Proof.
     + invc H2.
       rewrite Henv in H8.
       find_inversion_safe. simpl in *.
-      assert (exists bp', (Go.step env)^* (d, callee_s, body) (st', bp') /\ p' = InCall s [arga; argb] None [avar; bvar] None bp').
+      assert (exists bp', (Go.step env)^* (d, callee_s, body) (st', bp') /\ p' = InCall s [arga; argb] [] [avar; bvar] [] bp').
       {
         remember callee_s.
         clear callee_s Heqt.
@@ -802,10 +813,10 @@ Proof.
       intuition.
       contradiction H3.
       unfold is_final in *; simpl in *; subst.
-      destruct st'. repeat eexists. eapply StepEndCall; eauto.
+      destruct st'. repeat eexists. eapply StepEndCall; simpl; eauto.
       intuition.
       contradiction H3.
-      repeat deex. eauto.
+      repeat deex; eauto.
 
   Unshelve.
   * simpl in *.
@@ -818,13 +829,14 @@ Proof.
     eapply Forall_elements_remove_weaken.
     eapply forall_In_Forall_elements.
     intros.
-    destruct (string_dec k argb).
+    destruct (Nat.eq_dec k argb).
     subst. maps. find_inversion_safe.
-    find_copy_eapply_lem_hyp NoDup_bool_string_eq_sound.
+    find_copy_eapply_lem_hyp NoDup_bool_sound.
     invc H.
     assert (arga <> argb).
     intro. subst. contradiction H2. constructor. auto.
     maps.
+    intros. apply sumbool_to_bool_dec.
     maps.
   * (* argh *)
     simpl in *.
@@ -836,9 +848,9 @@ Proof.
     eapply Forall_elements_remove_weaken.
     eapply forall_In_Forall_elements.
     intros.
-    destruct (string_dec k argb).
+    destruct (Nat.eq_dec k argb).
     subst. maps. find_inversion_safe.
-    find_copy_eapply_lem_hyp NoDup_bool_string_eq_sound.
+    find_copy_eapply_lem_hyp NoDup_bool_sound.
     invc H.
     assert (arga <> argb).
     intro. subst. contradiction H8. constructor. auto.
@@ -846,6 +858,7 @@ Proof.
     find_cases bvar s.
     find_inversion_safe.
     maps.
+    intros. apply sumbool_to_bool_dec.
     maps.
   * unfold sel in *; simpl in *.
     subst_definitions.
@@ -859,17 +872,16 @@ Proof.
     eapply Forall_elements_remove_weaken.
     eapply forall_In_Forall_elements.
     intros.
-    destruct (string_dec k argb).
+    destruct (Nat.eq_dec k argb).
     subst. maps. find_inversion_safe.
-    find_copy_eapply_lem_hyp NoDup_bool_string_eq_sound.
+    find_copy_eapply_lem_hyp NoDup_bool_sound.
     invc H.
     assert (arga <> argb).
     intro. subst. contradiction H9. constructor. auto.
     maps.
     rewrite He0 in *. auto.
+    intros. apply sumbool_to_bool_dec.
     maps.
-  * (* Oops, where did this come from? *)
-    repeat constructor.
 Qed.
 
 Ltac reduce_or_fallback term continuation fallback :=
@@ -980,7 +992,6 @@ Ltac compile :=
         eapply bind_left_id | ]
     end
   end.
-*)
 
 Definition swap_prog a b :=
   va <- Read a;
@@ -989,8 +1000,7 @@ Definition swap_prog a b :=
   Write b va;;
   Ret tt.
 
-Import Go.
-
+(*
 Example extract_swap_1_2 : forall env, sigT (fun p =>
   EXTRACT swap_prog 1 2 {{ ∅ }} p {{ fun _ => ∅ }} // env).
 Proof.
@@ -1055,6 +1065,7 @@ Proof.
   repeat inv_exec.
 Defined.
 Eval lazy in projT1 (extract_swap_prog ∅).
+*)
 
 Lemma extract_swap_prog : forall env, sigT (fun p =>
   forall a b, EXTRACT swap_prog a b {{ "a" ~> a; "b" ~> b; ∅ }} p {{ fun _ => ∅ }} // env).

@@ -77,7 +77,7 @@ Module Go.
 
   Inductive expr :=
   | Var : var -> expr
-  | Const : W -> expr
+  | Const : W -> expr (* TODO: constants of any type. Shoud see how GoWrapper works out for mutable types first *)
   | Binop : binop -> expr -> expr -> expr
   | TestE : test -> expr -> expr -> expr.
 
@@ -324,6 +324,15 @@ Module Go.
   Qed.
 
   Definition sumbool_to_bool A B (b : {A} + {B}) := if b then true else false.
+
+  Lemma sumbool_to_bool_dec :
+    forall A b,
+      @sumbool_to_bool A (~A) b = true <-> A.
+  Proof.
+    intros.
+    unfold sumbool_to_bool.
+    destruct b; intuition discriminate.
+  Qed.
 
   Definition string_bool a b := sumbool_to_bool (string_dec a b).
 
