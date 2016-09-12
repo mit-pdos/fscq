@@ -85,6 +85,12 @@ Proof.
             wrap_inj := _ |}; GoWrapper_t.
 Defined.
 
+Instance GoWrapper_Bool : GoWrapper bool.
+Proof.
+  refine {| wrap := Go.Val Go.Bool;
+            wrap_inj := _ |}; GoWrapper_t.
+Defined.
+
 Instance GoWrapper_valu : GoWrapper valu.
 Proof.
   refine {| wrap := Go.Val Go.DiskBlock;
@@ -99,7 +105,7 @@ Defined.
 
 Instance GoWrapper_dec {P Q} : GoWrapper ({P} + {Q}).
 Proof.
-  refine {| wrap := fun (v : {P} + {Q}) => if v then Go.Val Go.Num 1 else Go.Val Go.Num 0;
+  refine {| wrap := fun (v : {P} + {Q}) => if v then Go.Val Go.Bool true else Go.Val Go.Bool false;
             wrap_inj := _ |}.
   destruct v; destruct v'; intro; try eapply Go.value_inj in H; try congruence; intros; f_equal; try apply proof_irrelevance.
 Qed.
