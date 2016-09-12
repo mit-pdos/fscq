@@ -446,7 +446,7 @@ Section CoopConcur.
 
   Hint Resolve start_read_failure finish_read_failure write_failure.
 
-  Definition donecond T := T -> DISK_PRED.
+  Definition donecond T := T -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop.
 
   (** A Hoare double judgement: encodes a Crash Hoare Logic tuple via
   a precondition that accepts appropriate postconditions (donecond) and crash
@@ -459,7 +459,7 @@ Section CoopConcur.
       exec tid p (d, m, s_i, s) out ->
       (exists d' m' s_i' s' v,
           out = Finished (d', m', s_i', s') v /\
-          done v d').
+          done v d' m' s_i' s').
 
   Notation "tid |- {{ e1 .. e2 , | 'PRE' d m s_i s : pre | 'POST' d' m' s_i' s' r : post }} p" :=
     (forall T (rx: _ -> prog T) (tid:TID),
@@ -548,6 +548,9 @@ Section CoopConcur.
     intros_pre; inv_exec;
     intuition eauto;
     repeat learn_ptsto;
+    repeat match goal with
+           | [ v := _ |- _ ] => subst v
+           end;
     try congruence;
     eauto.
 
