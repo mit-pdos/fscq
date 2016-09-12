@@ -73,6 +73,14 @@ unifiedbytefile2bytefiledata (protobytefile2unifiedbytefile (bfiledata2protobyte
 Definition bfile2bytefile f len: bytefile:=
 unifiedbytefile2bytefile (protobytefile2unifiedbytefile (bfiledata2protobytefile (BFILE.BFData f))) len (BFILE.BFAttr f).
 
+Fixpoint upd_range {V} (m : @Mem.mem addr addr_eq_dec V) (a : addr) (l : list V) : @Mem.mem addr _ V :=
+		match l with
+		| nil => m
+		| h::t => upd_range (Mem.upd m a h) (a+1) t
+		end.
+
+
+
 (* rep invariants *)
 Definition proto_bytefile_valid f pfy: Prop :=
 (PByFData pfy) = map valuset2bytesets (BFILE.BFData f).
@@ -154,8 +162,40 @@ apply valuset0.
 apply valuset0.
 Qed.
 
-Fact mem_ex_mem_ex_range: forall (A: Type) AEQ i j (l: list A),
-mem_except (AEQ:= AEQ) (mem_except_range (list2nmem l) i j) (i + j) = mem_except_range (list2nmem l) i (j + 1).
+Fact mem_ex_mem_ex_range_head: forall V AEQ i j (m: @Mem.mem _ AEQ V),
+mem_except (AEQ:= AEQ) (mem_except_range m (i + 1) j) i = mem_except_range m i (j + 1).
+Proof.
+intros.
+unfold mem_except, mem_except_range.
+apply functional_extensionality; intros.
+destruct (AEQ x i).
+rewrite e.
+destruct (le_dec i i).
+destruct (lt_dec i (i + (j + 1))).
+reflexivity.
+omega.
+omega.
+
+destruct (le_dec i x).
+destruct (le_dec (i+1) x).
+destruct (lt_dec x (i + 1 + j)).
+destruct (lt_dec x (i + (j + 1))).
+reflexivity.
+omega.
+destruct (lt_dec x (i + (j + 1))).
+omega.
+reflexivity.
+destruct (lt_dec x (i + (j + 1))).
+omega.
+reflexivity.
+destruct (le_dec (i+1) x).
+destruct (lt_dec x (i + 1 + j)).
+omega.
+all: reflexivity.
+Qed.
+
+Fact mem_ex_mem_ex_range_tail: forall V AEQ i j (m: @Mem.mem _ AEQ V),
+mem_except (AEQ:= AEQ) (mem_except_range m i j) (i + j) = mem_except_range m i (j + 1).
 Proof.
 intros.
 unfold mem_except, mem_except_range.
@@ -911,10 +951,6 @@ omega.
 rewrite valubytes_is in *; omega.
 Qed.
 
-Lemma bytesets2valuset2bytesets: forall l,
-  valuset2bytesets (bytesets2valuset l) = l.
-Proof. Admitted.
-
 Lemma bfile_bytefile_length: forall f pfy ufy fy,
   proto_bytefile_valid f pfy ->
   unified_bytefile_valid pfy ufy ->
@@ -1023,40 +1059,154 @@ Proof.
 	reflexivity.
 Qed.
 
-Lemma diskIs_arrayN_length: forall A (l l' l'': list A) a b,
+Lemma diskIs_eq: forall AT AEQ V (m m': @Mem.mem AT AEQ V),
+(diskIs m') m ->
+m = m'.
+Proof.
+    unfold diskIs.
+    intros; symmetry; auto.
+Qed.
+
+  
+Lemma upd_mem_except_range_comm: forall AEQ V a a0 b v (m: _ AEQ V),
+a0 < a \/ a0 > a + b ->
+Mem.upd (AEQ:= AEQ) (mem_except_range m a b) a0 v = mem_except_range (Mem.upd m a0 v) a b.
+Proof.
+  intros; unfold Mem.upd, mem_except_range.
+  destruct H;
+  apply functional_extensionality; intros;
+  destruct (AEQ x a0); 
+  destruct (le_dec a x);
+  destruct (lt_dec x (a+b)); try omega; try reflexivity.
+Qed.
+
+Lemma diskIs_combine_upd_range: forall V (l: list V) m a b ,
+b = length l ->
+(diskIs (mem_except_range m a b) * arrayN (ptsto (V:=V)) a l) =p=> diskIs (upd_range m a l).
+Proof.
+  induction l; intros.
+  simpl in *.
+  rewrite H.
+  rewrite mem_except_range_O.
+  cancel.
+  destruct b.
+  simpl in H; inversion H.
+  rewrite arrayN_isolate_hd.
+  simpl.
+  rewrite <- sep_star_assoc.
+  erewrite diskIs_combine_upd.
+  replace (S b) with (b + 1) by omega.
+  rewrite <- mem_ex_mem_ex_range_head.
+  
+  rewrite diskIs_combine_upd.
+  rewrite upd_mem_except_range_comm.
+  apply IHl.
+  simpl in H; inversion H; auto.
+  left; omega.
+  destruct (m a0) eqn:D.
+  eapply ptsto_upd' with (v0:= v).
+  apply sep_star_comm.
+  apply mem_except_ptsto.
+  auto.
+  apply diskIs_id.
+  apply ptsto_upd_disjoint.
+  rewrite mem_except_none.
+  apply diskIs_id.
+  all: auto.
+  simpl; omega.
+  Grab Existential Variables.
+  trivial.
+Qed.
+
+Lemma upd_range_list2nmem_comm: forall A (l' l: list A) a,
+a + length l' <= length l ->
+upd_range (list2nmem l) a l' = list2nmem (firstn a l ++ l' ++ skipn (a + length l') l).
+Proof.
+  induction l'; intros.
+  simpl.
+  rewrite <- plus_n_O; rewrite firstn_skipn; reflexivity.
+  simpl.
+  Search list2nmem Mem.upd.
+  rewrite <- listupd_memupd.
+  replace (firstn a0 l ++ a :: l' ++ skipn (a0 + S (length l')) l)
+    with (firstn (a0 + 1) (l ⟦ a0 := a ⟧) ++ l' ++ skipn ((a0 + 1) + length l') (l ⟦ a0 := a ⟧)).
+  apply IHl'.
+  rewrite length_updN.
+  simpl in H; omega.
+  rewrite updN_firstn_skipn.
+  rewrite app_comm_cons.
+  rewrite app_assoc.
+  rewrite app_assoc.
+  rewrite firstn_app_l.
+  rewrite firstn_oob.
+  rewrite skipn_app_r_ge.
+  rewrite skipn_skipn.
+  replace (a0 + 1 + length l' - length (firstn a0 l ++ a :: nil) + (a0 + 1))
+    with (a0 + S (length l')).
+  repeat rewrite app_assoc_reverse.
+  rewrite <-cons_app.
+  reflexivity.
+  all: try (rewrite app_length; rewrite firstn_length_l; simpl in *).
+  all: simpl in H; try omega.
+Qed.
+
+
+
+Lemma diskIs_arrayN_length: forall A b a (l l' l'': list A) ,
 length l' = b ->
+a + b <= length l ->
 (diskIs (mem_except_range (list2nmem l) a b) * arrayN (ptsto (V:= A)) a l')%pred (list2nmem l'') ->
 length l'' = length l.
-Proof. Admitted.
+Proof.
+  intros.
+  apply diskIs_combine_upd_range in H1.
+  apply diskIs_eq in H1.
+  rewrite upd_range_list2nmem_comm in H1.
+  apply list2nmem_inj in H1.
+  rewrite H1.
+  repeat rewrite app_length.
+  rewrite skipn_length.
+  rewrite firstn_length_l.
+  all: omega.
+Qed.
 
 Lemma bfile_length_eq: forall a f f' v,
+a < length (BFILE.BFData f) ->
 (diskIs (mem_except (list2nmem (BFILE.BFData f)) a) * a |-> v )%pred (list2nmem (BFILE.BFData f')) ->
 length (BFILE.BFData f') = length (BFILE.BFData f).
-Proof. Admitted.
+Proof.
+  intros.
+  apply diskIs_combine_upd in H0 as H'.
+  apply diskIs_eq in H'.
+  Search list2nmem Mem.upd.
+  symmetry in H'; apply list2nmem_upd_updN in H'.
+  rewrite H'.
+  apply length_updN.
+  auto.
+Qed.
 
 Lemma bfile_range_length_eq: forall a b f f' l,
 length l = b ->
+a + b <= length (BFILE.BFData f) ->
 (diskIs (mem_except_range (list2nmem (BFILE.BFData f)) a b) * LOG.arrayP a l)%pred (list2nmem (BFILE.BFData f')) ->
 length (BFILE.BFData f') = length (BFILE.BFData f).
-Proof. Admitted.
-
-Fixpoint upd_range {V} (m : @Mem.mem addr addr_eq_dec V) (a : addr) (l : list V) : @Mem.mem addr _ V :=
-		match l with
-		| nil => m
-		| h::t => upd_range (Mem.upd m a h) (a+1) t
-		end.
-
-Lemma diskIs_combine_upd_range: forall V m a b (l: list V),
-b = length l ->
-(diskIs (mem_except_range m a b) * arrayN (ptsto (V:=V)) a l) =p=> diskIs (upd_range m a l).
-Proof. Admitted.
+Proof.
+  intros.
+  apply diskIs_arrayN_length in H1.
+  all: auto.
+Qed.
 
 Lemma list2nmem_arrayN_updN_range: forall f f' l a,
+a + length l <= length (BFILE.BFData f) ->
 (diskIs (upd_range (list2nmem (BFILE.BFData f)) a l)) (list2nmem (BFILE.BFData f')) ->
 BFILE.BFData f' = firstn a (BFILE.BFData f) ++ l ++ skipn (a + length l) (BFILE.BFData f).
-Proof. Admitted.
-
-
+Proof.
+  intros.
+  apply diskIs_eq in H0.
+  rewrite upd_range_list2nmem_comm in H0.
+  apply list2nmem_inj in H0.
+  all: auto.
+Qed.
 
 Lemma off_div_v_inlen_bfile: forall off f pfy ufy fy old_data length_data Fd,
 length_data > 0 ->
@@ -1984,7 +2134,7 @@ Theorem dwrite_to_block_ok : forall lxp bxp ixp inum block_off byte_off data fms
     XCRASH:hm'  LOG.intact lxp F ds hm'
     >}  dwrite_to_block lxp ixp inum fms block_off byte_off data.
 Proof.
-(* unfold dwrite_to_block, rep.
+unfold dwrite_to_block, rep.
 step.
 
 apply ptsto_subset_b_to_ptsto in H10 as H'.
@@ -2528,9 +2678,10 @@ destruct H11.
 eapply inlen_bfile; eauto.
 omega.
 omega.
+unfold not; intros Hx; 
+rewrite D in Hx; inversion Hx.
 
 rewrite D; reflexivity.
-
 eapply ptsto_subset_b_to_ptsto in H10 as H''.
 destruct H''.
 destruct H11.
@@ -3154,6 +3305,8 @@ destruct H11.
 eapply inlen_bfile; eauto.
 omega.
 omega.
+unfold not; intros Hx;
+rewrite D in Hx; inversion Hx.
 
 rewrite D; reflexivity.
 
@@ -3543,7 +3696,7 @@ rewrite firstn_length_l.
 rewrite skipn_length.
 rewrite valu2list_len; omega.
 rewrite valu2list_len; omega.
- *)
+
 
 Admitted.
 	
