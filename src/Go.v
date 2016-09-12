@@ -143,7 +143,8 @@ Module Go.
   | Assign : var -> expr -> stmt
   | DiskRead : var -> expr -> stmt
   | DiskWrite : expr -> expr -> stmt
-  (* Only appears at runtime *)
+  (* InCall and Undeclare only appear at runtime *)
+  | Undeclare : var -> stmt
   | InCall (s0: locals) (* The stack frame inside the function *)
            (paramvars: list var) (* The function's names for the parameters *)
            (retparamvars: list var) (* The function's names for the returned values *)
@@ -180,6 +181,7 @@ Module Go.
       | If cond t f => is_source_stmt t && is_source_stmt f
       | While cond body => is_source_stmt body
       | InCall _ _ _ _ _ _ => false
+      | Undeclare _ => false
       | _ => true
     end.
 
@@ -432,13 +434,14 @@ Module Go.
                            let loop := While cond body in
                            is_false (snd st) cond ->
                            runsto loop st st
-    | RunsToDeclare : forall body body' d s si st' var t,
+    | RunsToDeclare : forall body body' d s si si' s' d' var t,
                        VarMap.find var s = None ->
                        si = VarMap.add var (default_value t) s ->
                        body' = body var ->
                        source_stmt body' ->
-                       runsto body' (d, si) st' ->
-                       runsto (Declare t body) (d, s) st'
+                       runsto body' (d, si) (d', si') ->
+                       s' = VarMap.remove var si' ->
+                       runsto (Declare t body) (d, s) (d', s')
     | RunsToAssign : forall x e d s s' v0 v,
                        eval s e = Some v ->
                        can_alias (type_of v) = true -> (* rhs must be aliasable *)
@@ -495,7 +498,10 @@ Module Go.
                       s' = VarMap.add var (default_value t) s ->
                       body' = body var ->
                       source_stmt body' ->
-                      step (d, s, Declare t body) (d, s', body')
+                      step (d, s, Declare t body) (d, s', Seq body' (Undeclare var))
+    | StepUndeclare : forall var d s s',
+                        s' = VarMap.remove var s ->
+                        step (d, s, Undeclare var) (d, s', Skip)
     | StepAssign : forall x e d s s' v v0,
                      (* rhs can't be a mutable object, to prevent aliasing *)
                      eval s e = Some v ->
@@ -632,6 +638,8 @@ Module Go.
     eapply StepAssign.
     Hint Extern 1 (step (_, Declare _ _) _) =>
     eapply StepDeclare.
+    Hint Extern 1 (step (_, Undeclare _) _) =>
+    eapply StepUndeclare.
     Hint Extern 1 (step (_, DiskRead _ _) _) =>
     eapply StepDiskRead.
     Hint Extern 1 (step (_, DiskWrite _ _) _) =>
@@ -676,13 +684,17 @@ Module Go.
                              let loop := While cond body in
                              is_false (snd st) cond ->
                              runsto_InCall loop st st
-    | RunsToICDeclare : forall t body body' d s si st' var,
+    | RunsToICDeclare : forall body body' d s si si' s' d' var t,
                           VarMap.find var s = None ->
                           si = VarMap.add var (default_value t) s ->
                           body' = body var ->
                           source_stmt body' ->
-                          runsto_InCall body' (d, si) st' ->
-                          runsto_InCall (Declare t body) (d, s) st'
+                          runsto_InCall body' (d, si) (d', si') ->
+                          s' = VarMap.remove var si' ->
+                          runsto_InCall (Declare t body) (d, s) (d', s')
+    | RunsToUndeclare : forall var d s s',
+                          s' = VarMap.remove var s ->
+                          runsto_InCall (Undeclare var) (d, s) (d, s')
     | RunsToICAssign : forall x e d s s' v0 v,
                          eval s e = Some v ->
                          can_alias (type_of v) = true -> (* rhs must be aliasable *)
@@ -767,6 +779,7 @@ Module Go.
       intros.
       prep_induction H0; induction H0; intros; subst_definitions; subst; do_inv.
       - subst_definitions. eauto.
+      - destruct st', st''. invc H0_0. eauto.
       - eapply RunsToICCallOp; eauto. assert (Some input = Some input0) by congruence. find_inversion. auto.
       - destruct st. eapply RunsToInCall; eauto.
     Qed.
