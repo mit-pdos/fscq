@@ -60,7 +60,8 @@ Semantics for Go
 ================
 
 * No pointer aliasing. Use pointers for types which can be mutated. (Or for everything?)
-* Disallow shadowing (good idea?)
+* Let the post-extraction phase actually allocate variable names; here the semantics
+  promise to give you unique identifiers (currently of type nat) when you Declare.
 *)
 
 Notation W := nat. (* Assume bignums? *)
@@ -152,7 +153,7 @@ Module Go.
            (retvars: list var) (* The caller's variables which will get the return values *)
            (p: stmt) (* The remaining body *).
 
-  (* Program does not contain an InCall. Could probably be expressed directly if we had generics. *)
+  (* Program does not contain an InCall or Undeclare. Could probably be expressed directly if we had generics. *)
   Inductive source_stmt : stmt -> Prop :=
   | SSkip : source_stmt Skip
   | SSeq :
