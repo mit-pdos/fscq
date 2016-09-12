@@ -1,6 +1,8 @@
 Require Import CoopConcur.
 Require Import ConcurrentCache.
 Require Import Specifications.
+Require Import CoopConcurMonad.
+Import HlistNotations.
 
 Module MakeBridge (C:CacheSubProtocol).
 
@@ -116,6 +118,212 @@ Module MakeBridge (C:CacheSubProtocol).
          | None => rely delta tid s s'
          end /\
          guar delta tid s_i' s').
+
+  Ltac inv_exec :=
+    match goal with
+    | [ H: exec _ _ _ _ _ |- _ ] =>
+      inversion H; subst; repeat sigT_eq
+    end.
+
+  Ltac inv_step :=
+    match goal with
+    | [ H: step _ _ _ _ _ |- _ ] =>
+      inversion H; subst
+    | [ H: fail_step _ _ _ _ |- _ ] =>
+      inversion H; subst
+    end.
+
+  Ltac inv_outcome :=
+    match goal with
+    | [ H: @eq (outcome _) _ _ |- _ ] =>
+      inversion H; subst
+    end; unfold Exc in *; cleanup.
+
+  Lemma exec_ret : forall Sigma (delta: Protocol Sigma)  tid T (v: T) st out,
+      exec delta tid (Ret v) st out ->
+      out = Finished st v.
+  Proof.
+    inversion 1; subst; repeat sigT_eq; auto.
+    inversion H4.
+    inversion H4.
+  Qed.
+
+  Ltac exec_ret :=
+    match goal with
+    | [ H: exec _ _ (Ret _) _ _ |- _ ] =>
+      pose proof (exec_ret H); clear H; subst
+    end.
+
+  Hint Constructors Prog.exec.
+  Hint Constructors Prog.step.
+
+  Theorem cache_read_hoare_triple : forall tid a
+                                      d m s_i s
+                                      d' m' s_i' s' v0 v,
+      exec App.delta tid (cache_read a) (d, m, s_i, s)
+           (Finished (d', m', s_i', s') (Some v)) ->
+      cacheI d m s ->
+      get vdisk s a = Some v0 ->
+      modified [( vCache; vDisk0 )] s s' /\
+      cacheI d' m' s' /\
+      v = v0 /\
+      s_i' = s_i.
+  Proof.
+    intros.
+    apply bind_right_id in H.
+    eapply cache_read_ok in H.
+    2: instantiate (1 := fun r d' m' s_i' s' =>
+                           (forall v, r = Some v -> v = v0) /\
+                           modified [( vCache; vDisk0 )] s s' /\
+                           cacheI d' m' s' /\
+                           s_i' = s_i).
+    repeat deex; inv_outcome; auto.
+
+    exists v0; intuition.
+    apply valid_unfold; intuition idtac.
+    subst.
+    exec_ret.
+    repeat match goal with
+           | |- exists _, _ => eexists
+           end; intuition eauto.
+  Qed.
+
+  Theorem cache_read_no_failure : forall tid a
+                                    d m s_i s
+                                    v0,
+      exec App.delta tid (cache_read a) (d, m, s_i, s)
+           (Failed _) ->
+      cacheI d m s ->
+      get vdisk s a = Some v0 ->
+      False.
+  Proof.
+    intros.
+    apply bind_right_id in H.
+    eapply cache_read_ok in H.
+    2: instantiate (1 := fun _ _ _ _ _ => True).
+    repeat deex; inv_outcome.
+    exists v0; intuition.
+    apply valid_unfold; intuition idtac.
+    exec_ret.
+    repeat match goal with
+           | |- exists _, _ => eexists
+           end; intuition eauto.
+  Qed.
+
+  Lemma cache_addr_valid : forall d m s a v,
+      cacheI d m s ->
+      get vdisk s a = Some v ->
+      exists v', d a = Some v'.
+  Proof.
+    unfold cacheI; intuition idtac.
+    specialize (H2 a).
+    specialize (H4 a).
+    apply equal_f_dep with a in H3.
+    destruct matches in *; intuition idtac;
+      repeat deex; eauto.
+    unfold DiskReaders.hide_readers in H3.
+    simpl_match; congruence.
+    unfold DiskReaders.hide_readers in H3.
+    simpl_match; congruence.
+  Qed.
+
+  Lemma possible_sync_refl : forall A AEQ (m: @mem A AEQ valuset),
+      PredCrash.possible_sync m m.
+  Proof.
+    unfold PredCrash.possible_sync; intros.
+    destruct (m a).
+    - right.
+      destruct p.
+      exists w, l, l; intuition auto.
+      apply List.incl_refl.
+    - left; auto.
+  Qed.
+
+  Theorem cache_simulation : forall T (p: Prog.prog T)
+                               (tid:TID) d m s0 s out hm,
+      exec App.delta tid (compiler p) (d, m, s0, s) out ->
+      cacheI d m s ->
+      (out = Failed (Exc T) ->
+       Prog.exec (project_disk s) hm p (Prog.Failed T)) /\
+      (forall d' m' s0' s' (v:T),
+          out = Finished (d', m', s0', s') (value v) ->
+          Prog.exec (project_disk s) hm p (Prog.Finished (project_disk s') hm v)).
+  Proof.
+    induction p; simpl; intros.
+    - exec_ret.
+      split; intros; inv_outcome; eauto.
+    - (* Read *)
+      inv_exec; try solve [ inv_step ].
+      destruct v; exec_ret;
+        split; intros; inv_outcome; eauto.
+
+      case_eq (get vdisk s a); intros.
+      {
+        eapply cache_read_hoare_triple in H6; eauto.
+        intuition idtac; subst.
+
+        eapply Prog.XStep.
+        apply possible_sync_refl.
+        assert (project_disk s = project_disk s') as Hproj.
+        assert (get vdisk s = get vdisk s') by (apply H2; auto).
+        unfold project_disk.
+        rewrite H3; auto.
+        rewrite <- Hproj.
+        eapply Prog.StepRead.
+        unfold project_disk.
+        simpl_match; auto.
+      }
+      {
+        (* need to show cache_read can't succeed without get vdisk s a = Some _ *)
+        admit.
+      }
+
+      split; intros; inv_outcome.
+      case_eq (get vdisk s a); intros.
+      exfalso.
+      eapply cache_read_no_failure in H6; eauto.
+
+      apply Prog.XFail.
+      constructor.
+      unfold project_disk.
+      rewrite H1; auto.
+    - (* Write *)
+      admit.
+    - (* Sync *)
+      (* probably don't need the writeback (just do nothing) *)
+      admit.
+    - (* Trim *)
+      (* this is fine *)
+      exec_ret.
+      split; intros; inv_outcome.
+    - (* Hash *)
+      (* should add hashing to concurrent execution so it can be directly
+      translated *)
+      exec_ret.
+      split; intros; inv_outcome.
+    - (* Bind *)
+      inversion H0; repeat sigT_eq; subst;
+        try solve [ inv_step ].
+      destruct st' as (((d',m'),s_i'),s').
+      destruct v.
+
+      * eapply IHp with (hm := hm) in H7; eauto; destruct_ands.
+        specialize (H3 d' m' s_i' s' t).
+        (* need cacheI d' m' s' to be part of induction *)
+        assert (cacheI d' m' s') by admit.
+        split; intros; subst.
+        eapply Prog.XBindFinish; eauto.
+        eapply H; eauto.
+
+        eapply Prog.XBindFinish; eauto.
+        eapply H; eauto.
+
+      * split; intros; subst; exec_ret; inv_outcome.
+      * eapply IHp with (hm := hm) in H7; eauto; destruct_ands.
+        split; intros; subst; auto.
+        congruence.
+Abort.
+
 
   (* The master theorem: convert a sequential program into a concurrent
 program via [compiler], convert its spec to a concurrent spec via
