@@ -80,6 +80,11 @@ Fixpoint upd_range {V} (m : @Mem.mem addr addr_eq_dec V) (a : addr) (l : list V)
 		end.
 
 
+Definition ext_opt T (ov: option T) def :=
+match ov with
+| None => def
+| Some v => v
+end.
 
 (* rep invariants *)
 Definition proto_bytefile_valid f pfy: Prop :=
@@ -128,12 +133,6 @@ intros.
 destruct (le_dec a x);
 destruct (lt_dec x a); try omega; try reflexivity.
 Qed.
-
-Definition ext_opt T (ov: option T) def :=
-match ov with
-| None => def
-| Some v => v
-end.
 
 Fact out_except_range_then_in: forall (l: list valuset) s a n def,
 a < length l ->
@@ -2090,7 +2089,7 @@ POST:hm' RET:^(fms',r)
 CRASH:hm'  exists fms',
        LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL fms') hm'
 >} getlen lxp ixp inum fms.
-Proof. Admitted. (* CORRECT: Cheked on July 21 *)
+Proof. Admitted. (* CORRECT: Cheked on Sept 13 *)
 (* unfold getlen, rep.
 hoare.
 Qed.
@@ -2133,8 +2132,8 @@ Theorem dwrite_to_block_ok : forall lxp bxp ixp inum block_off byte_off data fms
            [[ BFILE.MSAlloc fms = BFILE.MSAlloc fms' ]]
     XCRASH:hm'  LOG.intact lxp F ds hm'
     >}  dwrite_to_block lxp ixp inum fms block_off byte_off data.
-Proof.
-unfold dwrite_to_block, rep.
+Proof. (* CORRECT mod crash: Checked on Sept 13 *)
+(* unfold dwrite_to_block, rep.
 step.
 
 apply ptsto_subset_b_to_ptsto in H10 as H'.
@@ -3695,8 +3694,7 @@ repeat rewrite app_length.
 rewrite firstn_length_l.
 rewrite skipn_length.
 rewrite valu2list_len; omega.
-rewrite valu2list_len; omega.
-
+rewrite valu2list_len; omega. *)
 
 Admitted.
 	
@@ -3756,7 +3754,7 @@ Theorem dwrite_middle_blocks_ok : forall lxp bxp ixp inum block_off num_of_full_
     >}  dwrite_middle_blocks lxp ixp inum fms block_off num_of_full_blocks data.
 
 Proof.
-(* 	unfold dwrite_middle_blocks, rep.
+ 	unfold dwrite_middle_blocks, rep.
 	step.
 	rewrite <- plus_n_O; cancel.
 	
@@ -3824,7 +3822,7 @@ apply subset_invariant_bs_ptsto_subset_b.
 	rewrite <- H9.
 	rewrite firstn_exact.
 	cancel.
-	rewrite <- H7; rewrite <- H9; apply le_n. *)
+	rewrite <- H7; rewrite <- H9; apply le_n.
 Admitted.
 
 Hint Extern 1 ({{_}} Bind (dwrite_middle_blocks _ _ _ _ _ _ _) _) => apply dwrite_middle_blocks_ok : prog.
