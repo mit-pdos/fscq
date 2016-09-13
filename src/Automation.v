@@ -239,6 +239,24 @@ Ltac destruct_ands :=
            destruct H
          end.
 
+(* lightweight intuition *)
+Ltac expand_propositional t :=
+  repeat match goal with
+         | |- forall _, _ => intro
+         | [ H: ?P -> _ |- _ ] =>
+           lazymatch type of P with
+           | Prop => let ant := fresh in
+                 assert P as ant by (solve [ trivial ] || t);
+                 specialize (H ant);
+                 clear ant
+           end
+         | [ H: _ /\ _ |- _ ] =>
+           destruct H
+         end.
+
+Tactic Notation "expand" "propositional" := expand_propositional auto.
+Tactic Notation "expand" "propositional" tactic(t) := expand_propositional t.
+
 Ltac specialize_all t :=
   repeat match goal with
   | [ H: forall (_:t), _, x:t |- _ ] =>

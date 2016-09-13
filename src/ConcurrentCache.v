@@ -425,20 +425,6 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       solve [ auto 10 with modified ]
     end.
 
-  (* lightweight intuition *)
-  Ltac expand_propositional t :=
-    repeat match goal with
-           | [ H: ?P -> _ |- _ ] =>
-             lazymatch type of P with
-             | Prop => let ant := fresh in
-                   assert P as ant by t;
-                   specialize (H ant);
-                   clear ant
-             end
-           | [ H: _ /\ _ |- _ ] =>
-             destruct H
-           end.
-
   Lemma guar_two_step : forall Sigma (delta: Protocol Sigma) tid s s' s'',
       guar delta tid s s' ->
       guar delta tid s' s'' ->
