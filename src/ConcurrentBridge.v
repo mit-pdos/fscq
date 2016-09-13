@@ -247,7 +247,10 @@ Module MakeBridge (C:CacheSubProtocol).
        Prog.exec (project_disk s) hm p (Prog.Failed T)) /\
       (forall d' m' s0' s' (v:T),
           out = Finished (d', m', s0', s') (value v) ->
-          Prog.exec (project_disk s) hm p (Prog.Finished (project_disk s') hm v)).
+          Prog.exec (project_disk s) hm p (Prog.Finished (project_disk s') hm v) /\
+          (* this invariant allows us to continue running code in a bind (no pun
+           intended) *)
+          cacheI d' m' s').
   Proof.
     induction p; simpl; intros.
     - exec_ret.
@@ -308,14 +311,14 @@ Module MakeBridge (C:CacheSubProtocol).
       destruct v.
 
       * eapply IHp with (hm := hm) in H7; eauto; destruct_ands.
-        specialize (H3 d' m' s_i' s' t).
-        (* need cacheI d' m' s' to be part of induction *)
-        assert (cacheI d' m' s') by admit.
+        specialize (H3 d' m' s_i' s' t); expand propositional.
         split; intros; subst.
         eapply Prog.XBindFinish; eauto.
         eapply H; eauto.
 
+        split.
         eapply Prog.XBindFinish; eauto.
+        eapply H; eauto.
         eapply H; eauto.
 
       * split; intros; subst; exec_ret; inv_outcome.
