@@ -172,6 +172,7 @@ Module Go.
         source_stmt (While cond body)
   | SCall : forall retvars f argvars, source_stmt (Call retvars f argvars)
   | SAssign : forall x e, source_stmt (Assign x e)
+  (* TODO: SDeclare should actually insist the body is a source_stmt too *)
   | SDeclare : forall t cont, source_stmt (Declare t cont)
   | SDiskRead : forall x a, source_stmt (DiskRead x a)
   | SDiskWrite : forall a v, source_stmt (DiskWrite a v).
