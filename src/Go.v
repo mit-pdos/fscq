@@ -424,7 +424,6 @@ Module Go.
                        VarMap.find var s = None ->
                        si = VarMap.add var (default_value t) s ->
                        body' = body var ->
-                       source_stmt body' ->
                        runsto body' (d, si) (d', si') ->
                        s' = VarMap.remove var si' ->
                        runsto (Declare t body) (d, s) (d', s')
@@ -483,7 +482,6 @@ Module Go.
                       VarMap.find var s = None ->
                       s' = VarMap.add var (default_value t) s ->
                       body' = body var ->
-                      source_stmt body' ->
                       step (d, s, Declare t body) (d, s', Seq body' (Undeclare var))
     | StepUndeclare : forall var d s s',
                         s' = VarMap.remove var s ->
@@ -674,7 +672,6 @@ Module Go.
                           VarMap.find var s = None ->
                           si = VarMap.add var (default_value t) s ->
                           body' = body var ->
-                          source_stmt body' ->
                           runsto_InCall body' (d, si) (d', si') ->
                           s' = VarMap.remove var si' ->
                           runsto_InCall (Declare t body) (d, s) (d', s')

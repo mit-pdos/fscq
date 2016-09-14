@@ -417,7 +417,6 @@ Definition vars_subset V (subset set : VarMap.t V) := forall k, VarMap.find k se
 
 Lemma can_always_declare:
   forall env t xp st,
-    (forall var, Go.source_stmt (xp var)) ->
     exists st'' p'',
       Go.step env (st, Go.Declare t xp) (st'', p'').
 Proof.
@@ -434,7 +433,6 @@ Admitted.
 Lemma CompileDeclare :
   forall env T t (zeroval : Go.type_denote t) {H : GoWrapper(Go.type_denote t)} A B (p : prog T) xp,
     wrap zeroval = Go.default_value t ->
-    (forall var, Go.source_stmt (xp var)) ->
     (forall ret, vars_subset (B ret) A) ->
     (forall var,
        VarMap.find var A = None ->
@@ -454,165 +452,168 @@ Proof.
   - intuition try discriminate.
     find_eapply_lem_hyp Go.ExecFailed_Steps.
     repeat deex.
-    invc H7.
-    contradiction H9.
+    invc H6.
+    contradiction H8.
     eapply can_always_declare; auto.
 
     destruct_pair.
     hnf in s.
     destruct_pair.
     simpl in *.
-    invc H8.
-    specialize (H3 var).
-    forward H3.
+    invc H7.
+    specialize (H2 var).
+    forward H2.
     {
       maps.
-      pose proof (Forall_elements_forall_In H4) as HA.
+      pose proof (Forall_elements_forall_In H3) as HA.
       case_eq (VarMap.find var A); intros.
       forward_solve.
       destruct s.
-      rewrite H15 in HA.
+      rewrite H12 in HA.
       intuition.
       trivial.
     }
     intuition.
-    specialize (H8 (r0, var ->> Go.default_value t; t0) hm).
-    forward H8.
+    specialize (H7 (r0, var ->> Go.default_value t; t0) hm).
+    forward H7.
     {
-      clear H8.
+      clear H7.
       simpl in *; maps.
       eapply forall_In_Forall_elements; intros.
-      pose proof (Forall_elements_forall_In H4).
+      pose proof (Forall_elements_forall_In H3).
       destruct (VarMapFacts.eq_dec k var); maps.
-      specialize (H8 k v).
+      specialize (H7 k v).
       intuition.
     }
     intuition.
     simpl in *.
-    eapply Go.Steps_Seq in H10.
+    find_eapply_lem_hyp Go.Steps_Seq.
     intuition.
     forward_solve.
-    eapply H11; eauto.
-    eapply Go.Steps_ExecFailed in H10; eauto.
+    eapply H10; eauto.
+    eapply Go.Steps_ExecFailed in H9; eauto.
     intuition.
-    contradiction H9.
-    hnf in H8.
-    simpl in H8.
+    contradiction H8.
+    hnf in H7.
+    simpl in H7.
     subst.
     eauto.
     intuition.
-    contradiction H9.
+    contradiction H8.
     repeat deex.
     eauto.
 
     forward_solve.
-    invc H12.
-    contradiction H9.
+    invc H11.
+    contradiction H8.
     destruct st'. 
     repeat eexists. econstructor; eauto.
-    invc H8.
+    invc H7.
     invc H13.
-    contradiction H5.
+    contradiction H4.
     auto.
-    invc H8.
+    invc H7.
 
-  - find_eapply_lem_hyp Go.ExecFinished_Steps.
-    find_eapply_lem_hyp Go.Steps_runsto; auto.
+  - invc H4.
     invc H5.
-    find_eapply_lem_hyp Go.runsto_Steps.
-    find_eapply_lem_hyp Go.Steps_ExecFinished.
-    specialize (H3 var).
-    forward H3.
+    specialize (H2 var).
+    forward H2.
     {
       maps.
       simpl in *.
-      pose proof (Forall_elements_forall_In H4).
+      pose proof (Forall_elements_forall_In H3).
       case_eq (VarMap.find var A); intros.
       destruct s.
       forward_solve.
-      rewrite H10 in H5.
+      find_rewrite.
       intuition.
       auto.
     }
     intuition try discriminate.
     destruct_pair.
-    specialize (H6 (r, var ->> Go.default_value t; t0) hm).
-    forward H6.
+    find_inversion_safe.
+    specialize (H5 (r, var ->> Go.default_value t; t0) hm).
+    forward H5.
     {
-      clear H6.
+      clear H5.
       simpl in *; maps.
       eapply forall_In_Forall_elements; intros.
-      pose proof (Forall_elements_forall_In H4).
+      pose proof (Forall_elements_forall_In H3).
       destruct (VarMapFacts.eq_dec k var); maps.
-      specialize (H7 k v).
+      specialize (H5 k v).
       intuition.
     }
-    invc H3.
+    find_eapply_lem_hyp Go.ExecFinished_Steps.
+    find_eapply_lem_hyp Go.Steps_Seq.
+    intuition; deex; try discriminate.
+    repeat find_eapply_lem_hyp Go.Steps_ExecFinished.
+    invc H8.
+    invc H5.
+    invc H9.
+    invc H5.
     forward_solve.
     simpl in *.
     repeat eexists; eauto.
     maps.
     eapply forall_In_Forall_elements; intros.
-    pose proof (Forall_elements_forall_In H11).
+    pose proof (Forall_elements_forall_In H10).
     forward_solve.
     destruct v.
     destruct (VarMapFacts.eq_dec k var).
     subst.
     maps.
     unfold vars_subset in H1.
-    specialize (H2 r1 var).
+    specialize (H1 r1 var).
     intuition.
     congruence.
     maps.
-    constructor; eauto.
     
-  - invc H5; [ | invc H7 ].
-    invc H6.
+  - invc H4; [ | invc H6 ].
+    invc H5.
     find_eapply_lem_hyp Go.ExecCrashed_Steps.
     repeat deex; try discriminate.
     find_inversion_safe.
     find_eapply_lem_hyp Go.Steps_Seq.
     intuition.
     repeat deex.
-    invc H8.
-    eapply Go.Steps_ExecCrashed in H6; eauto.
+    invc H7.
+    eapply Go.Steps_ExecCrashed in H5; eauto.
     simpl in *.
-    specialize (H3 var).
-    forward H3.
+    specialize (H2 var).
+    forward H2.
     {
       maps.
       simpl in *.
-      pose proof (Forall_elements_forall_In H4).
+      pose proof (Forall_elements_forall_In H3).
       case_eq (VarMap.find var A); intros.
       destruct s.
       forward_solve.
-      rewrite H11 in H5.
+      find_rewrite.
       intuition.
       auto.
     }
     intuition.
-    specialize (H8 (r, var ->> Go.default_value t; t0) hm).
-    forward H8.
+    specialize (H7 (r, var ->> Go.default_value t; t0) hm).
+    forward H7.
     {
-      clear H8.
+      clear H7.
       simpl in *; maps.
       eapply forall_In_Forall_elements; intros.
-      pose proof (Forall_elements_forall_In H4).
+      pose proof (Forall_elements_forall_In H3).
       destruct (VarMapFacts.eq_dec k var); maps.
-      specialize (H8 k v).
+      specialize (H7 k v).
       intuition.
     }
     forward_solve.
 
     deex.
+    invc H6.
     invc H7.
+    invc H4.
     invc H8.
-    invc H5.
-    invc H9.
-    invc H8.
-    invc H5.
+    invc H7.
+    invc H4.
 Qed.
-
 
 Lemma CompileVar : forall env A var T (v : T) {H : GoWrapper T},
   EXTRACT Ret v
@@ -1201,7 +1202,7 @@ Ltac compile_step :=
         eapply CompileDeclare with (zeroval := 0) (t := Num)
       | prog valu =>
         eapply CompileDeclare with (zeroval := $0) (t := DiskBlock)
-    end; auto; [ | unfold vars_subset; maps |
+    end; auto; [ unfold vars_subset; match_scopes |
                  intro v; intros; eapply CompileBind with (var := v);
                  [ eapply hoare_simpl_add_same_post | intros ]]
   | _ => eapply CompileConst
@@ -1260,7 +1261,6 @@ Example compile_one_read : sigT (fun p =>
   {{ fun _ => ∅ }} // StringMap.empty _).
 Proof.
   compile.
-  constructor; auto.
   Unshelve.
   auto.
 Defined.
@@ -1277,10 +1277,7 @@ Example extract_swap_1_2 : forall env, sigT (fun p =>
   EXTRACT swap_prog 1 2 {{ ∅ }} p {{ fun _ => ∅ }} // env).
 Proof.
   intros. unfold swap_prog. compile.
-  all: try constructor; auto.
-  all: try constructor; auto.
-  all: try constructor; auto.
-  all: try match_scopes.
+  (* TODO: automate choosing these frames *)
   subst.
   instantiate (F := var0 ~> a; ∅).
   all: maps.
