@@ -23,8 +23,8 @@ Hint Constructors step fail_step crash_step exec.
 (* TODO What here is actually necessary? *)
 
 Class GoWrapper (WrappedType: Type) :=
-  { wrap:        WrappedType -> Go.value;
-    wrap_inj: forall v v', wrap v = wrap v' -> v = v' }.
+  { wrap:      WrappedType -> Go.value;
+    wrap_inj:  forall v v', wrap v = wrap v' -> v = v' }.
 
 Inductive ScopeItem :=
 | SItem A {H: GoWrapper A} (v : A).
@@ -397,17 +397,6 @@ Proof.
   eauto.
 Qed.
 
-Lemma CompileVar : forall env A var T (v : T) {H : GoWrapper T},
-  EXTRACT Ret v
-  {{ var ~> v; A }}
-    Go.Skip
-  {{ fun ret => var ~> ret; A }} // env.
-Proof.
-  unfold ProgOk.
-  intros.
-  inv_exec_progok.
-Qed.
-
 Ltac forwardauto1 H :=
   repeat eforward H; conclude H eauto.
 
@@ -423,6 +412,100 @@ Ltac forward_solve_step :=
 
 Ltac forward_solve :=
   repeat forward_solve_step.
+
+(* TODO: generalize over types *)
+Lemma CompileDeclareNum :
+  forall env T A B (p : prog T) xp,
+    (forall var,
+       VarMap.find var A = None ->
+       EXTRACT p
+       {{ var ~> 0; A }}
+         xp var
+       {{ fun ret => (* ew *) VarMap.remove var (B ret) }} // env) ->
+    EXTRACT p
+    {{ A }}
+    Go.Declare Go.Num xp
+    {{ fun ret => B ret }} // env.
+Proof.
+Admitted.
+
+Lemma CompileDeclareBlock :
+  forall env T A B (p : prog T) xp,
+    (forall var,
+       VarMap.find var A = None ->
+       EXTRACT p
+       {{ var ~> $0; A }}
+         xp var
+       {{ fun ret => (* ew *) VarMap.remove var (B ret) }} // env) ->
+    EXTRACT p
+    {{ A }}
+    Go.Declare Go.DiskBlock xp
+    {{ fun ret => B ret }} // env.
+Proof.
+Admitted.
+
+(* 
+  unfold ProgOk.
+  intros.
+  repeat destruct_pair.
+  destruct out.
+  Focus 2.
+  eapply Go.ExecFinished_Steps in H1.
+  eapply Go.Steps_runsto in H1; auto.
+  invc H1.
+  eapply Go.runsto_Steps in H11.
+  eapply Go.Steps_ExecFinished in H11.
+  specialize (H var (r, var ->> Go.default_value Go.Num; t) hm).
+  forward H.
+  simpl.
+  maps.
+  reflexivity.
+  
+  intuition.
+  destruct_pair.
+  forward_solve.
+  invc H.
+  simpl in *.
+  repeat eexists.
+  eauto.
+  maps.
+  eapply forall_In_Forall_elements.
+  pose proof (Forall_elements_forall_In H8).
+  intros.
+  find_all_cases.
+  destruct (VarMapFacts.eq_dec k var).
+  subst.
+  maps.
+  
+
+  intuition eauto.
+  maps; eauto.
+  eapply forall_In_Forall_elements. intros.
+  pose proof (Forall_elements_forall_In H1).
+  simpl in *.
+  destruct (VarMapFacts.eq_dec k var); maps; try discriminate.
+  specialize (H2 k v1). maps. intuition.
+
+  contradiction H1.
+  repeat eexists.
+  unfold SameValues in *.
+  rewrite Forall_elements_add in *.
+  intuition.
+  find_all_cases.
+  eauto.
+Qed.
+*)
+
+Lemma CompileVar : forall env A var T (v : T) {H : GoWrapper T},
+  EXTRACT Ret v
+  {{ var ~> v; A }}
+    Go.Skip
+  {{ fun ret => var ~> ret; A }} // env.
+Proof.
+  unfold ProgOk.
+  intros.
+  inv_exec_progok.
+Qed.
 
 Import Go.
 
@@ -705,6 +788,7 @@ Proof.
   simpl in *. eauto.
 Qed.
 
+
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
   forall avar bvar,
     avar <> bvar ->
@@ -897,19 +981,19 @@ Ltac reduce_or_fallback term continuation fallback :=
   end.
 Ltac find_fast value fmap :=
   match fmap with
-  | @StringMap.empty _       => constr:(@None string)
-  | StringMap.add ?k (SItem ?v) _    => let eq := constr:(eq_refl v : v = value) in
+  | @VarMap.empty _       => constr:(@None string)
+  | VarMap.add ?k (SItem ?v) _    => let eq := constr:(eq_refl v : v = value) in
                      constr:(Some k)
-  | StringMap.add ?k _ ?tail => let ret := find_fast value tail in constr:(ret)
+  | VarMap.add ?k _ ?tail => let ret := find_fast value tail in constr:(ret)
   | ?other         => let ret := reduce_or_fallback fmap ltac:(fun reduced => find_fast value reduced) (@None string) in
                      constr:(ret)
   end.
 
 Ltac match_variable_names_right :=
   match goal with
-  | [ H : StringMap.find _ ?m = _ |- _ ] =>
+  | [ H : VarMap.find _ ?m = _ |- _ ] =>
     repeat match goal with
-    | [ |- context[StringMap.add ?k (SItem ?v) _]] =>
+    | [ |- context[VarMap.add ?k (SItem ?v) _]] =>
       is_evar k;
       match find_fast v m with
       | Some ?k' => unify k k'
@@ -919,10 +1003,10 @@ Ltac match_variable_names_right :=
 
 Ltac match_variable_names_left :=
   try (match goal with
-  | [ H : context[StringMap.add ?k (SItem ?v) _] |- _ ] =>
+  | [ H : context[VarMap.add ?k (SItem ?v) _] |- _ ] =>
     is_evar k;
     match goal with
-    | [ |- StringMap.find _ ?m = _ ] =>
+    | [ |- VarMap.find _ ?m = _ ] =>
       match find_fast v m with
       | Some ?k' => unify k k'
       end
@@ -931,15 +1015,21 @@ Ltac match_variable_names_left :=
 
 Ltac keys_equal_cases :=
   match goal with
-  | [ H : StringMap.find ?k0 _ = _ |- _ ] =>
+  | [ H : VarMap.find ?k0 ?m = _ |- _ ] =>
     match goal with
-    | [ H : context[StringMap.add ?k (SItem ?v) _] |- _ ] => destruct (StringMapFacts.eq_dec k0 k); maps
+      | [ H : context[VarMap.add ?k (SItem ?v) _] |- _ ] =>
+        match goal with
+          | [ H : k0 = k |- _ ] => fail 1
+          | [ H : k0 <> k |- _ ] => fail 1
+          | [ H : ~ k0 = k |- _ ] => fail 1
+          | _ => destruct (VarMapFacts.eq_dec k0 k); maps
+        end
     end
   end.
 
 Ltac prepare_for_frame :=
   match goal with
-  | [ H : ~ StringKey.eq _ ?k |- _ ] =>
+  | [ H : _ <> ?k |- _ ] =>
     rewrite add_add_comm with (k1 := k) by congruence; maps (* A bit inefficient: don't need to rerun maps if it's still the same [k] *)
   end.
 
@@ -999,6 +1089,41 @@ Ltac compile :=
     end
   end.
 
+Example compile_one_write : sigT (fun p =>
+  EXTRACT Write 1 $0
+  {{ ∅ }}
+    p
+  {{ fun _ => ∅ }} // StringMap.empty _).
+Proof.
+  eexists.
+  eapply CompileDeclareBlock; intros.
+  eapply CompileDeclareNum; intros.
+  eapply extract_equiv_prog; [
+      let arg := fresh "arg" in
+      set (arg := Write 1 $0);
+        pattern 1 in arg; subst arg;
+        eapply bind_left_id | ].
+  eapply CompileBind with (var := var1).
+  eapply hoare_weaken_post.
+  shelve.
+  eapply CompileConst.
+  intros.
+  eapply hoare_weaken_post.
+  shelve.
+  eapply hoare_strengthen_pre.
+  shelve.
+  eapply CompileWrite with (avar := var1) (vvar := var0).
+  intro. maps.
+  Unshelve.
+  all: try match_scopes.
+  instantiate (F := VarMap.empty _). (* TODO: automate somehow *)
+  maps.
+Qed.
+
+
+
+
+
 Definition swap_prog a b :=
   va <- Read a;
   vb <- Read b;
@@ -1006,72 +1131,15 @@ Definition swap_prog a b :=
   Write b va;;
   Ret tt.
 
-(*
 Example extract_swap_1_2 : forall env, sigT (fun p =>
   EXTRACT swap_prog 1 2 {{ ∅ }} p {{ fun _ => ∅ }} // env).
 Proof.
-  intros. eexists.
-  instantiate (p := (Declare Num (fun a =>
-                    Declare Num (fun b =>
-                    Declare Num (fun va =>
-                    Declare Num (fun vb =>
-                                         (a <~ Const 1;
-                                         b <~ Const 2;
-                                         DiskRead va (Var a);
-                                         DiskRead vb (Var b);
-                                         DiskWrite (Var a) (Var vb);
-                                         DiskWrite (Var b) (Var va))
-                                   )))))%go).
-  unfold ProgOk.
   intros.
-  intuition subst.
-  repeat inv_exec.
-  simpl in *.
-  Ltac clear_all X :=
-    repeat match goal with
-      | [ H : X _ |- _ ] => clear H 
-           end.
-  clear_all source_stmt.
-  assert (var0 <> var1) by (intro; maps).
-  assert (var1 <> var2) by (intro; maps).
-  assert (var2 <> var3) by (intro; maps).
-  assert (var0 <> var2) by (intro; maps).
-  assert (var1 <> var3) by (intro; maps).
-  assert (var0 <> var3) by (intro; maps).
-  maps.
-  repeat find_inversion_safe.
-  Ltac clear_obvious :=
-    repeat match goal with
-      | [ H : _ |- _ ] =>
-        let Ht := type of H in
-        clear H; assert Ht as H by auto; clear H
-    end.
-  clear_obvious.
-  repeat eexists.
-  eapply XBindFinish; eauto.
-  eapply XBindFinish; eauto.
-  eapply XBindFinish.
-  econstructor.
-  eapply possible_sync_refl.
-  econstructor; eauto.
-  eapply XBindFinish.
-  econstructor.
-  eapply possible_sync_refl.
-  econstructor; eauto.
-  rewrite H25 in H30.
-  rewrite upd_ne in H32.
-  rewrite H32 in H27.
-  repeat find_inversion_safe.
-  invc H4.
-  invc H6.
-  eapply XRet.
-  congruence.
-  auto with mapfacts.
-
-  repeat inv_exec.
+  eexists.
+  eapply CompileDeclareNum; intros.
+  eapply CompileDeclareNum; intros.
 Defined.
 Eval lazy in projT1 (extract_swap_prog ∅).
-*)
 
 Lemma extract_swap_prog : forall env, sigT (fun p =>
   forall a b, EXTRACT swap_prog a b {{ "a" ~> a; "b" ~> b; ∅ }} p {{ fun _ => ∅ }} // env).
