@@ -172,40 +172,15 @@ Module Go.
         source_stmt (While cond body)
   | SCall : forall retvars f argvars, source_stmt (Call retvars f argvars)
   | SAssign : forall x e, source_stmt (Assign x e)
-  (* TODO: SDeclare should actually insist the body is a source_stmt too *)
-  | SDeclare : forall t cont, source_stmt (Declare t cont)
+  | SDeclare :
+      forall t cont,
+        (forall var, source_stmt (cont var)) ->
+        source_stmt (Declare t cont)
   | SDiskRead : forall x a, source_stmt (DiskRead x a)
   | SDiskWrite : forall a v, source_stmt (DiskWrite a v).
 
-  Fixpoint is_source_stmt (p : stmt) : bool :=
-    match p with
-      | Seq a b => is_source_stmt a && is_source_stmt b
-      | If cond t f => is_source_stmt t && is_source_stmt f
-      | While cond body => is_source_stmt body
-      | InCall _ _ _ _ _ _ => false
-      | Undeclare _ => false
-      | _ => true
-    end.
-
-  Hint Constructors source_stmt.
-
   Hint Resolve andb_prop.
   Hint Resolve andb_true_intro.
-
-  Theorem is_source_stmt_sound :
-    forall p, is_source_stmt p = true -> source_stmt p.
-  Proof.
-    induction p; simpl; intuition; try discriminate; find_apply_lem_hyp andb_prop; intuition.
-  Qed.
-
-  Theorem is_source_stmt_complete :
-    forall p, source_stmt p -> is_source_stmt p = true .
-  Proof.
-    induction p; simpl; intuition;
-    match goal with
-      | [ H: source_stmt _ |- _ ] => invc H
-    end; auto.
-  Qed.
 
   Definition state := (rawdisk * locals)%type.
 
@@ -385,7 +360,7 @@ Module Go.
     Body : stmt;
     (* ret_not_in_args : dont_intersect RetParamVars ParamVars = true; *)
     args_no_dup : is_no_dup ParamVars = true;
-    body_source : is_source_stmt Body = true;
+    body_source : source_stmt Body;
     (* TODO syntax_ok with is_actual_args_no_dup *)
   }.
 

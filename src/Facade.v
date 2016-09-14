@@ -861,8 +861,6 @@ Proof.
     invc H1.
     + contradiction H3.
       destruct st'. repeat eexists. econstructor; eauto.
-      simpl.
-      auto using is_source_stmt_sound.
       unfold sel; simpl in *.
       maps.
       find_all_cases.
