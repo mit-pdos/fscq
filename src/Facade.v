@@ -373,7 +373,7 @@ Hint Constructors Go.step.
 Lemma CompileConst : forall env A var (v v0 : nat),
   EXTRACT Ret v
   {{ var ~> v0; A }}
-    var <~ Go.Const v
+    var <~ Go.Const Go.Num v
   {{ fun ret => var ~> ret; A }} // env.
 Proof.
   unfold ProgOk.
@@ -796,7 +796,7 @@ Example micro_inc : sigT (fun p => forall x,
 Proof.
   eexists.
   intros.
-  instantiate (1 := (0 <~ Const 1 + Var 0)%go).
+  instantiate (1 := (0 <~ Const Num 1 + Var 0)%go).
   intro. intros.
   inv_exec_progok.
   maps.
@@ -1198,11 +1198,12 @@ Ltac compile_step :=
     let v := fresh "var" in
     match type of p with (* TODO: shouldn't be necessary to type switch here *)
       | prog nat =>
-        eapply CompileDeclare with (zeroval := 0) (t := Num); auto; [ shelve | shelve | intro v; intro ]
+        eapply CompileDeclare with (zeroval := 0) (t := Num)
       | prog valu =>
-        eapply CompileDeclare with (zeroval := $0) (t := DiskBlock); auto; [ shelve | shelve | intro v; intro ]
-    end;
-    eapply CompileBind with (var := v); intros
+        eapply CompileDeclare with (zeroval := $0) (t := DiskBlock)
+    end; auto; [ | unfold vars_subset; maps |
+                 intro v; intros; eapply CompileBind with (var := v);
+                 [ eapply hoare_simpl_add_same_post | intros ]]
   | _ => eapply CompileConst
   | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
     eapply hoare_weaken_post; [ | eapply CompileSkip ]; try match_scopes; maps
@@ -1252,65 +1253,18 @@ Ltac compile_step :=
 
 Ltac compile := repeat compile_step.
 
-Example compile_one_write : sigT (fun p =>
-  EXTRACT Write 1 $0
+Example compile_one_read : sigT (fun p =>
+  EXTRACT Read 1
   {{ ∅ }}
     p
   {{ fun _ => ∅ }} // StringMap.empty _).
 Proof.
-  compile_step.
-  compile_step.
-  lazymatch goal with
-  | [ |- EXTRACT Bind ?p ?q {{ _ }} _ {{ _ }} // _ ] =>
-    let v := fresh "var" in
-    match type of p with (* TODO: shouldn't be necessary to type switch here *)
-      | prog nat =>
-        eapply CompileDeclare with (zeroval := 0) (t := Num); auto; [ shelve | shelve | intro v; intros ]
-      | prog valu =>
-        eapply CompileDeclare with (zeroval := $0) (t := DiskBlock); auto; [ shelve | shelve | intro v; intros ]
-    end
-    (* eapply CompileBind with (var := v); intros *)
-  end.
-  eapply CompileBind with (var := var0).
-  eapply hoare_simpl_add_same_post.
-  eapply CompileConst.
-  compile_step.
-  shelve.
-  shelve.
-  eapply CompileBind; intros.
   compile.
-  
-  eapply CompileDeclare with (zeroval := $0) (t := DiskBlock); auto; intros.
-  shelve.
-  maps.
-  eapply CompileDeclare with (zeroval := 0) (t := Num); auto; intros.
-  shelve.
-  intro. maps.
-  eapply extract_equiv_prog; [
-      let arg := fresh "arg" in
-      set (arg := Write 1 $0);
-        pattern 1 in arg; subst arg;
-        eapply bind_left_id | ].
-  eapply CompileBind with (var := var1).
-  eapply hoare_weaken_post.
-  shelve.
-  eapply CompileConst.
-  intros.
-  eapply hoare_weaken_post.
-  shelve.
-  eapply hoare_strengthen_pre.
-  shelve.
-  eapply CompileWrite with (avar := var1) (vvar := var0).
-  intro. maps.
+  constructor; auto.
   Unshelve.
-  all: try constructor; auto; try match_scopes.
-  instantiate (F := VarMap.empty _). (* TODO: automate somehow *)
-  maps.
+  auto.
 Defined.
-
-
-
-
+Eval lazy in projT1 (compile_one_read).
 
 Definition swap_prog a b :=
   va <- Read a;
@@ -1322,17 +1276,23 @@ Definition swap_prog a b :=
 Example extract_swap_1_2 : forall env, sigT (fun p =>
   EXTRACT swap_prog 1 2 {{ ∅ }} p {{ fun _ => ∅ }} // env).
 Proof.
-  intros.
-  eexists.
-  eapply CompileDeclareNum; intros.
-  eapply CompileDeclareNum; intros.
+  intros. unfold swap_prog. compile.
+  all: try constructor; auto.
+  all: try constructor; auto.
+  all: try constructor; auto.
+  all: try match_scopes.
+  subst.
+  instantiate (F := var0 ~> a; ∅).
+  all: maps.
+  instantiate (F0 := var0 ~> a0; var1 ~> a0; ∅).
+  all: maps.
 Defined.
-Eval lazy in projT1 (extract_swap_prog ∅).
+Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
 
 Lemma extract_swap_prog : forall env, sigT (fun p =>
-  forall a b, EXTRACT swap_prog a b {{ "a" ~> a; "b" ~> b; ∅ }} p {{ fun _ => ∅ }} // env).
+  forall a b, EXTRACT swap_prog a b {{ 0 ~> a; 1 ~> b; ∅ }} p {{ fun _ => ∅ }} // env).
 Proof.
-  intros.
+  intros. unfold swap_prog.
   compile.
 Defined.
 Eval lazy in projT1 (extract_swap_prog ∅).

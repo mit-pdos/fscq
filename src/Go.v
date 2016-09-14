@@ -76,12 +76,6 @@ Module Go.
   Inductive binop := Plus | Minus | Times.
   Inductive test := Eq | Ne | Lt | Le.
 
-  Inductive expr :=
-  | Var : var -> expr
-  | Const : W -> expr (* TODO: constants of any type. Shoud see how GoWrapper works out for mutable types first *)
-  | Binop : binop -> expr -> expr -> expr
-  | TestE : test -> expr -> expr -> expr.
-
   Inductive type :=
   | Num
   | Bool
@@ -95,6 +89,12 @@ Module Go.
       | EmptyStruct => unit
       | DiskBlock => valu
     end.
+
+  Inductive expr :=
+  | Var : var -> expr
+  | Const : forall t, type_denote t -> expr
+  | Binop : binop -> expr -> expr -> expr
+  | TestE : test -> expr -> expr -> expr.
 
   Definition can_alias t :=
     match t with
@@ -222,7 +222,7 @@ Module Go.
   Fixpoint eval (st : locals) (e : expr) : option value :=
     match e with
       | Var x => VarMap.find x st
-      | Const w => Some (Val Num w)
+      | Const t v => Some (Val t v)
       | Binop op a b => eval_binop_m op (eval st a) (eval st b)
       | TestE op a b => eval_test_m op (eval st a) (eval st b)
     end.
