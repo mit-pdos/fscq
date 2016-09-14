@@ -566,8 +566,52 @@ Proof.
     maps.
     constructor; eauto.
     
+  - invc H5; [ | invc H7 ].
+    invc H6.
+    find_eapply_lem_hyp Go.ExecCrashed_Steps.
+    repeat deex; try discriminate.
+    find_inversion_safe.
+    find_eapply_lem_hyp Go.Steps_Seq.
+    intuition.
+    repeat deex.
+    invc H8.
+    eapply Go.Steps_ExecCrashed in H6; eauto.
+    simpl in *.
+    specialize (H3 var).
+    forward H3.
+    {
+      maps.
+      simpl in *.
+      pose proof (Forall_elements_forall_In H4).
+      case_eq (VarMap.find var A); intros.
+      destruct s.
+      forward_solve.
+      rewrite H11 in H5.
+      intuition.
+      auto.
+    }
+    intuition.
+    specialize (H8 (r, var ->> Go.default_value t; t0) hm).
+    forward H8.
+    {
+      clear H8.
+      simpl in *; maps.
+      eapply forall_In_Forall_elements; intros.
+      pose proof (Forall_elements_forall_In H4).
+      destruct (VarMapFacts.eq_dec k var); maps.
+      specialize (H8 k v).
+      intuition.
+    }
+    forward_solve.
 
-Admitted.
+    deex.
+    invc H7.
+    invc H8.
+    invc H5.
+    invc H9.
+    invc H8.
+    invc H5.
+Qed.
 
 
 Lemma CompileVar : forall env A var T (v : T) {H : GoWrapper T},
