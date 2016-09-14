@@ -413,33 +413,19 @@ Ltac forward_solve_step :=
 Ltac forward_solve :=
   repeat forward_solve_step.
 
-(* TODO: generalize over types *)
-Lemma CompileDeclareNum :
-  forall env T A B (p : prog T) xp,
+(* TODO: simplify wrapper system *)
+Lemma CompileDeclare :
+  forall env T t (zeroval : Go.type_denote t) {H : GoWrapper(Go.type_denote t)} A B (p : prog T) xp,
+    wrap zeroval = Go.default_value t ->
     (forall var,
        VarMap.find var A = None ->
        EXTRACT p
-       {{ var ~> 0; A }}
+       {{ var ~> zeroval; A }}
          xp var
        {{ fun ret => (* ew *) VarMap.remove var (B ret) }} // env) ->
     EXTRACT p
     {{ A }}
-    Go.Declare Go.Num xp
-    {{ fun ret => B ret }} // env.
-Proof.
-Admitted.
-
-Lemma CompileDeclareBlock :
-  forall env T A B (p : prog T) xp,
-    (forall var,
-       VarMap.find var A = None ->
-       EXTRACT p
-       {{ var ~> $0; A }}
-         xp var
-       {{ fun ret => (* ew *) VarMap.remove var (B ret) }} // env) ->
-    EXTRACT p
-    {{ A }}
-    Go.Declare Go.DiskBlock xp
+    Go.Declare t xp
     {{ fun ret => B ret }} // env.
 Proof.
 Admitted.
@@ -1096,8 +1082,8 @@ Example compile_one_write : sigT (fun p =>
   {{ fun _ => ∅ }} // StringMap.empty _).
 Proof.
   eexists.
-  eapply CompileDeclareBlock; intros.
-  eapply CompileDeclareNum; intros.
+  eapply CompileDeclare with (zeroval := $0) (t := DiskBlock); auto; intros.
+  eapply CompileDeclare with (zeroval := 0) (t := Num); auto; intros.
   eapply extract_equiv_prog; [
       let arg := fresh "arg" in
       set (arg := Write 1 $0);
