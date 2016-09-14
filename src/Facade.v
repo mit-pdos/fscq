@@ -431,59 +431,60 @@ Lemma CompileDeclare :
     Go.Declare t xp
     {{ fun ret => B ret }} // env.
 Proof.
-Admitted.
-
-(* 
   unfold ProgOk.
   intros.
   repeat destruct_pair.
   destruct out.
   Focus 2.
-  eapply Go.ExecFinished_Steps in H1.
-  eapply Go.Steps_runsto in H1; auto.
-  invc H1.
-  eapply Go.runsto_Steps in H11.
-  eapply Go.Steps_ExecFinished in H11.
-  specialize (H var (r, var ->> Go.default_value Go.Num; t) hm).
-  forward H.
-  simpl.
-  maps.
-  reflexivity.
-  
+  find_eapply_lem_hyp Go.ExecFinished_Steps.
+  find_eapply_lem_hyp Go.Steps_runsto; auto.
+  invc H4.
+  find_eapply_lem_hyp Go.runsto_Steps.
+  find_eapply_lem_hyp Go.Steps_ExecFinished.
+  specialize (H2 var).
+  forward H2.
+  {
+    maps.
+    simpl in *.
+    pose proof (Forall_elements_forall_In H3).
+    case_eq (VarMap.find var A); intros.
+    destruct s.
+    forward_solve.
+    rewrite H9 in H4.
+    intuition.
+    auto.
+  }
   intuition.
   destruct_pair.
+  specialize (H5 (r, var ->> Go.default_value t; t0) hm).
+  forward H5.
+  {
+    clear H5.
+    simpl in *; maps.
+    eapply forall_In_Forall_elements; intros.
+    pose proof (Forall_elements_forall_In H3).
+    destruct (VarMapFacts.eq_dec k var); maps.
+    specialize (H6 k v).
+    intuition.
+  }
+  invc H2.
   forward_solve.
-  invc H.
   simpl in *.
-  repeat eexists.
-  eauto.
+  repeat eexists; eauto.
   maps.
-  eapply forall_In_Forall_elements.
-  pose proof (Forall_elements_forall_In H8).
-  intros.
-  find_all_cases.
+  eapply forall_In_Forall_elements; intros.
+  pose proof (Forall_elements_forall_In H10).
+  forward_solve.
+  destruct v.
   destruct (VarMapFacts.eq_dec k var).
   subst.
   maps.
-  
-
-  intuition eauto.
-  maps; eauto.
-  eapply forall_In_Forall_elements. intros.
-  pose proof (Forall_elements_forall_In H1).
-  simpl in *.
-  destruct (VarMapFacts.eq_dec k var); maps; try discriminate.
-  specialize (H2 k v1). maps. intuition.
-
-  contradiction H1.
-  repeat eexists.
-  unfold SameValues in *.
-  rewrite Forall_elements_add in *.
+  unfold vars_subset in H1.
+  specialize (H1 r1 var).
   intuition.
-  find_all_cases.
-  eauto.
-Qed.
-*)
+  congruence.
+  maps.
+Admitted.
 
 Lemma CompileVar : forall env A var T (v : T) {H : GoWrapper T},
   EXTRACT Ret v
