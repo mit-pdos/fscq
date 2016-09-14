@@ -419,6 +419,7 @@ Definition vars_subset V (subset set : VarMap.t V) := forall k, VarMap.find k se
 Lemma CompileDeclare :
   forall env T t (zeroval : Go.type_denote t) {H : GoWrapper(Go.type_denote t)} A B (p : prog T) xp,
     wrap zeroval = Go.default_value t ->
+    (forall var, Go.source_stmt (xp var)) ->
     (forall ret, vars_subset (B ret) A) ->
     (forall var,
        VarMap.find var A = None ->
@@ -428,7 +429,7 @@ Lemma CompileDeclare :
        {{ fun ret => B ret }} // env) ->
     EXTRACT p
     {{ A }}
-    Go.Declare t xp
+      Go.Declare t xp
     {{ fun ret => B ret }} // env.
 Proof.
   unfold ProgOk.
@@ -438,52 +439,61 @@ Proof.
   Focus 2.
   find_eapply_lem_hyp Go.ExecFinished_Steps.
   find_eapply_lem_hyp Go.Steps_runsto; auto.
-  invc H4.
+  invc H5.
   find_eapply_lem_hyp Go.runsto_Steps.
   find_eapply_lem_hyp Go.Steps_ExecFinished.
-  specialize (H2 var).
-  forward H2.
+  specialize (H3 var).
+  forward H3.
   {
     maps.
     simpl in *.
-    pose proof (Forall_elements_forall_In H3).
+    pose proof (Forall_elements_forall_In H4).
     case_eq (VarMap.find var A); intros.
     destruct s.
     forward_solve.
-    rewrite H9 in H4.
+    rewrite H10 in H5.
     intuition.
     auto.
   }
-  intuition.
+  intuition try discriminate.
   destruct_pair.
-  specialize (H5 (r, var ->> Go.default_value t; t0) hm).
-  forward H5.
+  specialize (H6 (r, var ->> Go.default_value t; t0) hm).
+  forward H6.
   {
-    clear H5.
+    clear H6.
     simpl in *; maps.
     eapply forall_In_Forall_elements; intros.
-    pose proof (Forall_elements_forall_In H3).
+    pose proof (Forall_elements_forall_In H4).
     destruct (VarMapFacts.eq_dec k var); maps.
-    specialize (H6 k v).
+    specialize (H7 k v).
     intuition.
   }
-  invc H2.
+  invc H3.
   forward_solve.
   simpl in *.
   repeat eexists; eauto.
   maps.
   eapply forall_In_Forall_elements; intros.
-  pose proof (Forall_elements_forall_In H10).
+  pose proof (Forall_elements_forall_In H11).
   forward_solve.
   destruct v.
   destruct (VarMapFacts.eq_dec k var).
   subst.
   maps.
   unfold vars_subset in H1.
-  specialize (H1 r1 var).
+  specialize (H2 r1 var).
   intuition.
   congruence.
   maps.
+  constructor; eauto.
+  
+  intuition try discriminate.
+  find_eapply_lem_hyp Go.ExecFailed_Steps.
+  repeat deex.
+  invc H7.
+  contradiction H9.
+  repeat eexists.
+  econstructor; eauto.
 Admitted.
 
 Lemma CompileVar : forall env A var T (v : T) {H : GoWrapper T},
@@ -1077,6 +1087,8 @@ Ltac compile :=
     end
   end.
 
+Hint Constructors source_stmt.
+
 Example compile_one_write : sigT (fun p =>
   EXTRACT Write 1 $0
   {{ ∅ }}
@@ -1085,8 +1097,10 @@ Example compile_one_write : sigT (fun p =>
 Proof.
   eexists.
   eapply CompileDeclare with (zeroval := $0) (t := DiskBlock); auto; intros.
+  shelve.
   maps.
   eapply CompileDeclare with (zeroval := 0) (t := Num); auto; intros.
+  shelve.
   intro. maps.
   eapply extract_equiv_prog; [
       let arg := fresh "arg" in
@@ -1105,7 +1119,7 @@ Proof.
   eapply CompileWrite with (avar := var1) (vvar := var0).
   intro. maps.
   Unshelve.
-  all: try match_scopes.
+  all: try constructor; auto; try match_scopes.
   instantiate (F := VarMap.empty _). (* TODO: automate somehow *)
   maps.
 Qed.
