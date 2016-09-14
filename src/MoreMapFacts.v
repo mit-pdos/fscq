@@ -41,6 +41,10 @@ Module MoreFacts_fun (E:DecidableType)(Import M:WSfun E).
                                          (add k1 v1 (add k2 v2 m)).
   Admitted.
 
+  Lemma add_same : forall V k (v v0 : V) m,
+                            Equal (add k v (add k v0 m)) (add k v m).
+  Admitted.
+
   Lemma remove_remove_comm : forall V k1 k2 (m : t V),
                                k1 <> k2 ->
                                Equal (remove k2 (remove k1 m)) (remove k1 (remove k2 m)).

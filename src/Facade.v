@@ -705,6 +705,37 @@ Proof.
   intuition.
 Qed.
 
+Lemma hoare_equal_post : forall T env A (B1 B2 : T -> _) pr p,
+  (forall x, VarMap.Equal (B1 x) (B2 x)) ->
+  EXTRACT pr
+  {{ A }} p {{ B1 }} // env ->
+  EXTRACT pr
+  {{ A }} p {{ B2 }} // env.
+Proof.
+  intros.
+  eapply hoare_weaken_post.
+  intros.
+  rewrite H; eauto.
+  assumption.
+Qed.
+
+Lemma hoare_simpl_add_same_post : forall T V {H: GoWrapper V} env A (B : T -> _) k (fv : T -> V) v0 pr p,
+  EXTRACT pr
+  {{ A }} p {{ fun r => k ~> fv r; B r }} // env ->
+  EXTRACT pr
+  {{ A }} p {{ fun r => k ~> fv r; k ~> v0; B r }} // env.
+Proof.
+  intros.
+  eapply hoare_equal_post.
+  intros.
+  hnf.
+  intros.
+  instantiate (B1 := fun x => k ~> fv x; B x).
+  simpl.
+  rewrite MoreVarMapFacts.add_same.
+  trivial.
+  assumption.
+Qed.
 
 Lemma CompileBindDiscard : forall T' env A (B : T' -> _) p f xp xf,
   EXTRACT p
@@ -1157,11 +1188,21 @@ Ltac match_scopes :=
   repeat prepare_for_frame;
   try eassumption.
 
-Ltac compile :=
-  repeat match goal with
+Hint Constructors source_stmt.
+
+Ltac compile_step :=
+  match goal with
   | [ |- @sigT _ _ ] => eexists; intros
   | _ => eapply CompileBindDiscard
-  | _ => let r := gensym "r" in eapply CompileBind with (var := r); intros
+  | [ |- EXTRACT Bind ?p ?q {{ _ }} _ {{ _ }} // _ ] =>
+    let v := fresh "var" in
+    match type of p with (* TODO: shouldn't be necessary to type switch here *)
+      | prog nat =>
+        eapply CompileDeclare with (zeroval := 0) (t := Num); auto; [ shelve | shelve | intro v; intro ]
+      | prog valu =>
+        eapply CompileDeclare with (zeroval := $0) (t := DiskBlock); auto; [ shelve | shelve | intro v; intro ]
+    end;
+    eapply CompileBind with (var := v); intros
   | _ => eapply CompileConst
   | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
     eapply hoare_weaken_post; [ | eapply CompileSkip ]; try match_scopes; maps
@@ -1190,6 +1231,10 @@ Ltac compile :=
         end
     end
   | [ |- EXTRACT ?f ?a {{ ?pre }} _ {{ _ }} // _ ] =>
+    match f with
+      | Ret => fail 2
+      | _ => idtac
+    end;
     match find_fast a pre with
       | None =>
         eapply extract_equiv_prog; [ eapply bind_left_id | ]
@@ -1205,7 +1250,7 @@ Ltac compile :=
     end
   end.
 
-Hint Constructors source_stmt.
+Ltac compile := repeat compile_step.
 
 Example compile_one_write : sigT (fun p =>
   EXTRACT Write 1 $0
@@ -1213,7 +1258,28 @@ Example compile_one_write : sigT (fun p =>
     p
   {{ fun _ => ∅ }} // StringMap.empty _).
 Proof.
-  eexists.
+  compile_step.
+  compile_step.
+  lazymatch goal with
+  | [ |- EXTRACT Bind ?p ?q {{ _ }} _ {{ _ }} // _ ] =>
+    let v := fresh "var" in
+    match type of p with (* TODO: shouldn't be necessary to type switch here *)
+      | prog nat =>
+        eapply CompileDeclare with (zeroval := 0) (t := Num); auto; [ shelve | shelve | intro v; intros ]
+      | prog valu =>
+        eapply CompileDeclare with (zeroval := $0) (t := DiskBlock); auto; [ shelve | shelve | intro v; intros ]
+    end
+    (* eapply CompileBind with (var := v); intros *)
+  end.
+  eapply CompileBind with (var := var0).
+  eapply hoare_simpl_add_same_post.
+  eapply CompileConst.
+  compile_step.
+  shelve.
+  shelve.
+  eapply CompileBind; intros.
+  compile.
+  
   eapply CompileDeclare with (zeroval := $0) (t := DiskBlock); auto; intros.
   shelve.
   maps.
@@ -1240,7 +1306,7 @@ Proof.
   all: try constructor; auto; try match_scopes.
   instantiate (F := VarMap.empty _). (* TODO: automate somehow *)
   maps.
-Qed.
+Defined.
 
 
 
