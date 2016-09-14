@@ -413,16 +413,19 @@ Ltac forward_solve_step :=
 Ltac forward_solve :=
   repeat forward_solve_step.
 
+Definition vars_subset V (subset set : VarMap.t V) := forall k, VarMap.find k set = None -> VarMap.find k subset = None.
+
 (* TODO: simplify wrapper system *)
 Lemma CompileDeclare :
   forall env T t (zeroval : Go.type_denote t) {H : GoWrapper(Go.type_denote t)} A B (p : prog T) xp,
     wrap zeroval = Go.default_value t ->
+    (forall ret, vars_subset (B ret) A) ->
     (forall var,
        VarMap.find var A = None ->
        EXTRACT p
        {{ var ~> zeroval; A }}
          xp var
-       {{ fun ret => (* ew *) VarMap.remove var (B ret) }} // env) ->
+       {{ fun ret => B ret }} // env) ->
     EXTRACT p
     {{ A }}
     Go.Declare t xp
@@ -1083,7 +1086,9 @@ Example compile_one_write : sigT (fun p =>
 Proof.
   eexists.
   eapply CompileDeclare with (zeroval := $0) (t := DiskBlock); auto; intros.
+  maps.
   eapply CompileDeclare with (zeroval := 0) (t := Num); auto; intros.
+  intro. maps.
   eapply extract_equiv_prog; [
       let arg := fresh "arg" in
       set (arg := Write 1 $0);
