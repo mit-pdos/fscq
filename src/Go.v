@@ -434,7 +434,9 @@ Module Go.
                        type_of v = type_of v0 -> (* and have the correct type *)
                        s' = VarMap.add x v s ->
                        runsto (Assign x e) (d, s) (d, s')
-    | RunsToDiskRead : forall x ae a d s s' v vs,
+    | RunsToDiskRead : forall x ae a d s s' v0 v vs,
+                         VarMap.find x s = Some v0 -> (* variable must be declared *)
+                         type_of v0 = DiskBlock -> (* and have the correct type *)
                          eval s ae = Some (Val Num a) ->
                          d a = Some (v, vs) ->
                          s' = VarMap.add x (Val DiskBlock v) s ->
@@ -494,7 +496,9 @@ Module Go.
                      type_of v = type_of v0 -> (* and have the correct type *)
                      s' = VarMap.add x v s ->
                      step (d, s, Assign x e) (d, s', Skip)
-    | StepDiskRead : forall x ae a d s s' v vs,
+    | StepDiskRead : forall x ae a d s s' v v0 vs,
+                       VarMap.find x s = Some v0 -> (* variable must be declared *)
+                       type_of v0 = DiskBlock -> (* and have the correct type *)
                        eval s ae = Some (Val Num a) ->
                        d a = Some (v, vs) ->
                        s' = VarMap.add x (Val DiskBlock v) s ->
@@ -685,7 +689,9 @@ Module Go.
                          type_of v = type_of v0 -> (* and have the correct type *)
                          s' = VarMap.add x v s ->
                          runsto_InCall (Assign x e) (d, s) (d, s')
-    | RunsToICDiskRead : forall x ae a d s s' v vs,
+    | RunsToICDiskRead : forall x ae a d s s' v v0 vs,
+                           VarMap.find x s = Some v0 -> (* variable must be declared *)
+                           type_of v0 = DiskBlock -> (* and have the correct type *)
                            eval s ae = Some (Val Num a) ->
                            d a = Some (v, vs) ->
                            s' = VarMap.add x (Val DiskBlock v) s ->

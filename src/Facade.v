@@ -265,8 +265,9 @@ Ltac find_all_cases :=
 
 
 Lemma read_fails_not_present:
-  forall env vvar avar (a : W) d s,
+  forall env vvar avar (a : W) (v0 : valu) d s,
     VarMap.find avar s = Some (wrap a) ->
+    VarMap.find vvar s = Some (wrap v0) ->
     ~ (exists st' p', Go.step env (d, s, Go.DiskRead vvar (Go.Var avar)) (st', p')) ->
     d a = None.
 Proof.
@@ -274,12 +275,11 @@ Proof.
   assert (~exists v0, d a = Some v0).
   intuition.
   deex.
-  contradiction H0.
-  destruct v0. repeat eexists. econstructor; eauto.
-  destruct (d a); eauto. contradiction H1. eauto.
+  contradiction H1.
+  destruct v1. repeat eexists. econstructor; eauto.
+  destruct (d a); eauto. contradiction H2. eauto.
 Qed.
 Hint Resolve read_fails_not_present.
-
 
 Lemma write_fails_not_present:
   forall env vvar avar (a : W) (v : valu) d s,
@@ -878,16 +878,19 @@ Proof.
   intuition.
 Admitted.
 
-Lemma CompileRead : forall env F avar vvar a,
-  EXTRACT Read a
-  {{ avar ~> a; F }}
-    DiskRead vvar (Var avar)
-  {{ fun ret => vvar ~> ret; avar ~> a; F }} // env.
+Lemma CompileRead :
+  forall env F avar vvar (v0 : valu) a,
+    avar <> vvar ->
+    EXTRACT Read a
+    {{ vvar ~> v0; avar ~> a; F }}
+      DiskRead vvar (Var avar)
+    {{ fun ret => vvar ~> ret; avar ~> a; F }} // env.
 Proof.
   unfold ProgOk.
   intros.
   maps.
   find_all_cases.
+  simpl in *.
   inv_exec_progok.
   do 2 eexists.
   intuition eauto.
@@ -899,15 +902,16 @@ Proof.
     subst.
     eapply Forall_elements_equal; [ | eapply add_remove_same ].
     eapply forall_In_Forall_elements. intros.
-    eapply Forall_elements_forall_In in H2; eauto. destruct v0.
+    pose proof (Forall_elements_forall_In H4).
+    specialize (H1 k v1).
+    forward H1; [ maps | ].
     destruct (Nat.eq_dec k avar).
     + subst. maps.
     + maps.
-
   }
   {
     eapply Forall_elements_equal; [ | eapply add_remove_comm'; congruence ]. maps.
-    + rewrite He. trivial.
+    + find_rewrite. trivial.
     + eapply Forall_elements_equal; [ | eapply remove_remove_comm; congruence ].
       eapply forall_In_Forall_elements. intros.
       destruct (Nat.eq_dec k avar). {
@@ -917,7 +921,7 @@ Proof.
         subst. maps.
       }
       maps.
-      eapply Forall_elements_forall_In in H2; eauto.
+      eapply Forall_elements_forall_In in H4; eauto.
       maps.
   }
 Qed.
@@ -1267,13 +1271,13 @@ Ltac compile := repeat compile_step.
 
 Example compile_one_read : sigT (fun p =>
   EXTRACT Read 1
-  {{ ∅ }}
+  {{ 0 ~> $0; ∅ }}
     p
-  {{ fun _ => ∅ }} // StringMap.empty _).
+  {{ fun ret => 0 ~> ret; ∅ }} // StringMap.empty _).
 Proof.
   compile.
-  Unshelve.
-  auto. (* This is here because the postcondition doesn't reference the return value *)
+  instantiate (F := ∅).
+  maps.
 Defined.
 Eval lazy in projT1 (compile_one_read).
 
@@ -1290,7 +1294,11 @@ Proof.
   intros. unfold swap_prog. compile.
   (* TODO: automate choosing these frames *)
   subst.
-  instantiate (F := var0 ~> a0; var1 ~> a0; ∅).
+  instantiate (F := ∅); maps.
+  subst.
+  instantiate (F0 := var0 ~> a; ∅); maps; auto.
+  all: maps; auto.
+  instantiate (F1 := var0 ~> a0; var1 ~> a0; ∅).
   all: maps; auto.
 Defined.
 Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
