@@ -626,11 +626,9 @@ Proof.
   inv_exec_progok.
 Qed.
 
-Import Go.
-
-Lemma CompileBind : forall T T' {H: GoWrapper T} env A (B : T' -> _) p f xp xf var,
+Lemma CompileBind : forall T T' {H: GoWrapper T} env A (B : T' -> _) v0 p f xp xf var,
   EXTRACT p
-  {{ A }}
+  {{ var ~> v0; A }}
     xp
   {{ fun ret => var ~> ret; A }} // env ->
   (forall (a : T),
@@ -639,36 +637,50 @@ Lemma CompileBind : forall T T' {H: GoWrapper T} env A (B : T' -> _) p f xp xf v
       xf
     {{ B }} // env) ->
   EXTRACT Bind p f
-  {{ A }}
+  {{ var ~> v0; A }}
     xp; xf
   {{ B }} // env.
 Proof.
   unfold ProgOk.
   intuition subst.
 
-  - find_eapply_lem_hyp ExecFinished_Steps. find_eapply_lem_hyp Steps_Seq.
+  - find_eapply_lem_hyp Go.ExecFinished_Steps. find_eapply_lem_hyp Go.Steps_Seq.
     intuition; repeat deex; try discriminate.
-    find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFinished.
+    find_eapply_lem_hyp Go.Steps_ExecFinished. find_eapply_lem_hyp Go.Steps_ExecFinished.
+    forwardauto H0; intuition.
+    forwardauto H3; repeat deex.
+    specialize (H1 r).
     forward_solve.
 
-  - find_eapply_lem_hyp ExecCrashed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
+  - find_eapply_lem_hyp Go.ExecCrashed_Steps. repeat deex. find_eapply_lem_hyp Go.Steps_Seq.
     intuition; repeat deex.
-    + invc H5. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
+    + invc H5. find_eapply_lem_hyp Go.Steps_ExecCrashed; eauto.
       forward_solve.
-    + destruct st'. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
+    + destruct st'. find_eapply_lem_hyp Go.Steps_ExecFinished. find_eapply_lem_hyp Go.Steps_ExecCrashed; eauto.
+      forwardauto H0; intuition.
+      forwardauto H3; repeat deex.
+      specialize (H1 r0).
       forward_solve.
 
-  - find_eapply_lem_hyp ExecFailed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
+  - find_eapply_lem_hyp Go.ExecFailed_Steps. repeat deex. find_eapply_lem_hyp Go.Steps_Seq.
     intuition; repeat deex.
-    + eapply Steps_ExecFailed in H5; eauto.
+    + eapply Go.Steps_ExecFailed in H5; eauto.
       forward_solve.
-      unfold is_final; simpl; intuition subst.
+      unfold Go.is_final; simpl; intuition subst.
       contradiction H6. eauto.
       intuition. repeat deex.
       contradiction H6. eauto.
-    + destruct st'. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFailed; eauto.
+    + destruct st'. find_eapply_lem_hyp Go.Steps_ExecFinished. find_eapply_lem_hyp Go.Steps_ExecFailed; eauto.
+      forwardauto H0; intuition.
+      forwardauto H4; repeat deex.
+      specialize (H1 r0).
       forward_solve.
+
+  Unshelve.
+  all: auto.
 Qed.
+
+Import Go.
 
 Lemma hoare_weaken_post : forall T env A (B1 B2 : T -> _) pr p,
   (forall x k e, VarMap.find k (B2 x) = Some e -> VarMap.find k (B1 x) = Some e) ->
@@ -1203,8 +1215,7 @@ Ltac compile_step :=
       | prog valu =>
         eapply CompileDeclare with (zeroval := $0) (t := DiskBlock)
     end; auto; [ unfold vars_subset; match_scopes |
-                 intro v; intros; eapply CompileBind with (var := v);
-                 [ eapply hoare_simpl_add_same_post | intros ]]
+                 intro v; intros; eapply CompileBind with (var := v); intros ]
   | _ => eapply CompileConst
   | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
     eapply hoare_weaken_post; [ | eapply CompileSkip ]; try match_scopes; maps
@@ -1262,7 +1273,7 @@ Example compile_one_read : sigT (fun p =>
 Proof.
   compile.
   Unshelve.
-  auto.
+  auto. (* This is here because the postcondition doesn't reference the return value *)
 Defined.
 Eval lazy in projT1 (compile_one_read).
 
@@ -1279,10 +1290,8 @@ Proof.
   intros. unfold swap_prog. compile.
   (* TODO: automate choosing these frames *)
   subst.
-  instantiate (F := var0 ~> a; ∅).
-  all: maps.
-  instantiate (F0 := var0 ~> a0; var1 ~> a0; ∅).
-  all: maps.
+  instantiate (F := var0 ~> a0; var1 ~> a0; ∅).
+  all: maps; auto.
 Defined.
 Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
 
@@ -1290,7 +1299,10 @@ Lemma extract_swap_prog : forall env, sigT (fun p =>
   forall a b, EXTRACT swap_prog a b {{ 0 ~> a; 1 ~> b; ∅ }} p {{ fun _ => ∅ }} // env).
 Proof.
   intros. unfold swap_prog.
-  compile.
+  compile_step.
+  compile_step.
+  About CompileRead
+  (* oops *)
 Defined.
 Eval lazy in projT1 (extract_swap_prog ∅).
 
