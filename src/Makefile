@@ -39,7 +39,7 @@ GOCAML_ML := $(GOCAML_MOD:%=codegen/%.ml)
 
 .PHONY: coq proof clean
 
-all: fuse mkfs
+all: codegen/fscq2go # this is just so "make" rebuilds the .vio files and is temporary
 
 codegen/big.ml codegen/fscq2go.ml: big.ml fscq2go.ml
 	cp big.ml fscq2go.ml ./codegen/
