@@ -1,18 +1,3 @@
-Require Import ExtrOcamlBasic.
-Require Import ExtrOcamlNatBigInt.
-Require Import ExtrOcamlZBigInt.
-Require Import ExtrOcamlString.
-
-Require Import Coq.Program.Basics.
-
-Require Import PeanoNat.
-Require Import ZArith.
-
-(* Avoid conflicts with existing Ocaml module names. *)
-Extraction Blacklist String List Nat Array Bytes.
-
-Extraction Language Ocaml.
-
 Require Import Go.
 Import Go.
 
@@ -49,7 +34,3 @@ Example swap_example : stmt :=
     }
   }
 *)
-
-Cd "coq2go".
-Separate Extraction Go.
-Extraction swap_example.

@@ -1,8 +1,5 @@
-OCAMLBUILD := env OCAMLPATH=$(shell pwd) ocamlbuild \
-	      -tag thread -tag debug -use-ocamlfind \
-	      -lib str -lib nums \
-	      -I codegen -I mllib -X ocamlfuse \
-	      -package extunix -package zarith -package ocamlfuse
+OCAMLBUILD := ocamlbuild \
+	      -lib str -lib nums
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
 	      Hashmap HashmapProg \
@@ -16,7 +13,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv ADestructPair DestructVarname ExtrHaskellPrelude \
 	      DirSep TreeSeq \
-				MoreMapFacts StringMap VerdiTactics Gensym Go Facade
+				MoreMapFacts StringMap VerdiTactics Gensym Go Facade GoExamples GoFunctions
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
@@ -31,80 +28,30 @@ ifeq (,$(shell $(GHC) --version | grep 'version 8.0' 2>/dev/null))
 endif
 
 J	   ?= 1
-GHCARGS    := -O2 -threaded
-		# -prof -fprof-auto -rtsopts
-		# -eventlog
-HSLIB_FUSE := hscgen/Fuse.hs
-HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
-HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs
 
-OCAMLFUSE_ML	:= ocamlfuse/Result.ml \
-		   ocamlfuse/Unix_util.ml \
-		   ocamlfuse/Fuse_bindings.ml \
-		   ocamlfuse/Fuse_lib.ml \
-		   ocamlfuse/Fuse.ml
-OCAMLFUSE_MLI	:= ocamlfuse/Fuse.mli \
-		   ocamlfuse/Fuse_bindings.mli
+GOCAML_MOD := Ascii BinInt BinNat BinNums BinPos Datatypes \
+	            FMapAVL FMapList Int List0 Nat0 OrderedTypeEx OrderedType \
+              Orders OrdersTac PeanoNat Specif String0 \
+							Go GoFunctions GoExamples StringMap
 
-OCAMLFUSE_CMX	:= $(patsubst %.ml,%.cmx,$(OCAMLFUSE_ML))
-OCAMLFUSE_DEP	:= $(patsubst %.ml,%.d,$(OCAMLFUSE_ML)) \
-		   $(patsubst %.mli,%.di,$(OCAMLFUSE_MLI))
-OCAMLFUSE	:= ocamlfuse/Fuse.a ocamlfuse/Fuse.cmxa
+GOCAML_ML := $(GOCAML_MOD:%=codegen/%.ml)
+
 
 .PHONY: coq proof clean
 
 all: fuse mkfs
 
--include $(OCAMLFUSE_DEP)
+codegen/big.ml codegen/fscq2go.ml: big.ml fscq2go.ml
+	cp big.ml fscq2go.ml ./codegen/
 
-%.mli %.ml %_stubs.c: %.idl
-	camlidl -header $<
+$(GOCAML_ML): $(VS_VIO) coqbuild/ExtractGOcaml.v
+	( cd coqbuild && coqc -q -R . Fscq ExtractGOcaml )
 
-%.d: %.ml
-	ocamldep $< > $@
-
-%.di: %.mli
-	ocamldep $< > $@
-
-ocamlfuse/%.o: ocamlfuse/%.c
-	ocamlc -c -ccopt '-fPIC -D_FILE_OFFSET_BITS=64 -I. -pthread -DPIC -DNATIVE_CODE -o $@' $<
-
-ocamlfuse/libFuse_stubs.a: ocamlfuse/Fuse_bindings_stubs.o ocamlfuse/Unix_util_stubs.o ocamlfuse/Fuse_util.o
-	ar rcs $@ $^
-
-%.cmx: %.ml
-	ocamlopt -I ocamlfuse -c -thread $<
-
-%.cmi: %.mli
-	ocamlopt -I ocamlfuse -c -thread $<
-
-ocamlfuse/Fuse.cmxa ocamlfuse/Fuse.a: $(OCAMLFUSE_CMX) ocamlfuse/libFuse_stubs.a
-	ocamlopt -a -thread -linkall -cclib -lFuse_stubs -cclib -lfuse -cclib -lcamlidl -o $@ $(OCAMLFUSE_CMX)
-
-%: %.ml $(VS_ML) $(wildcard */*.ml) $(OCAMLFUSE)
-	rm -f $@
-	-mv codegen/Word.ml codegen/WordCoq.ml
-	-mv codegen/Word.mli codegen/WordCoq.mli
-	$(OCAMLBUILD) -no-links $@.native
-	ln -s $(CURDIR)/_build/$@.native $@
-
-hscgen/%.hs: hslib/%.hsc
-	@mkdir -p $(@D)
-	$(HSC2HS) $< -o $@ --cflag=-D_FILE_OFFSET_BITS=64
-
-%: %.hs $(VS_HS) $(HSLIB_FUSE)
-	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
-	$(GHC) $(GHCARGS) $(HSLIB_FUSE)
-	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
-	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py codegen/*.hs -ihslib
-	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $(HSLIB_POST) -ihslib -icodegen
-	$(GHC) $(GHCARGS) -F -pgmF ./fiximports.py -Wall $< -ihslib -icodegen -ihscgen -optl -lfuse -o $@
-
-$(VS_HS): $(VS_VIO) coqbuild/ExtractHaskell.v
-	( cd coqbuild && coqc -q -R . Fscq ExtractHaskell )
-
-$(VS_ML): $(VS_VIO) coqbuild/ExtractOcaml.v
-	( cd coqbuild && coqc -q -R . Fscq ExtractOcaml )
+codegen/fscq2go: $(GOCAML_ML) codegen/big.ml codegen/fscq2go.ml
+	rm -f $@ $@.native
+	cp fscq2go.ml codegen/
+	(cd codegen && ocamlbuild -lib nums fscq2go.native)
+	test -f $@.native && ln -s fscq2go.native $@
 
 $(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractJSON )
@@ -132,14 +79,6 @@ coqbuild/Makefile.coq: Makefile $(VS_BUILD)
 	@ln -sf ../coqbuild codegen
 	( cd coqbuild && coq_makefile -R . Fscq $(VS) -o Makefile.coq )
 
-%/main.go: %.json coq2go.py
-	@mkdir -p $(@D)
-	./coq2go.py $< > $(patsubst %/main.go,%/temp.go,$@)
-	go fmt $(patsubst %/main.go,%/temp.go,$@)
-	mv $(patsubst %/main.go,%/temp.go,$@) $@
-
-gotest: $(patsubst %.json,%/main.go,$(wildcard codegen/*.json))
-	GOPATH=$(shell cd .. && pwd):${GOPATH} go build gotest.go
 
 clean:
 	rm -rf codegen coqbuild _build fstest hstest gotest disk.img \
