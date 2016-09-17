@@ -395,64 +395,15 @@ Proof.
 Qed.
 
 Lemma list2valu2list: forall l, length l = valubytes -> valu2list (list2valu l) = l.
-Proof.
-  intros.
-  unfold list2valu, valu2list.
-  rewrite  bytes2valu2bytes.
-  unfold bytes2valubytes.
-  destruct (le_dec (length l) valubytes).
-  simpl.
-  unfold eq_rect.
-  destruct (bytes_eq l0).
-  destruct l.
-  rewrite valubytes_is in H; inversion H. 
-  destruct H; simpl.
-  replace (length l - length l) with 0 by omega.
-  simpl; unfold bsplit1_dep, bsplit2_dep; simpl.
-  unfold bcombine.
-  eq_rect_simpl.
-  
-  simpl. unfold bsplit1_dep, bsplit2_dep; simpl.
-  unfold bcombine; eq_rect_simpl.
-  rewrite Word.combine_n_0.
-  eq_rect_simpl.
-Admitted.
+Proof. Admitted.
 
+  
 
 Lemma valu2list2valu: forall v, list2valu (valu2list v) = v.
-Proof. 
-  intros.
-  unfold list2valu, valu2list.
-  assert(valubytes = length (bsplit_list (valu2bytes v))).
-  rewrite bsplit_list_len. reflexivity.
-  rewrite bytes2list2bytes with (H:= H).
-  destruct H.
-  eq_rect_simpl.
-  unfold bytes2valubytes.
-  simpl.
-  destruct (le_dec valubytes valubytes); simpl.
-  assert (A: (valubytes + (valubytes - valubytes)) = valubytes).
-  omega.
-Admitted.
+Proof. Admitted.
 
 Lemma cons_simpl: forall A a (l l': list A), l = l' -> (a::l) = (a::l').
 Proof. intros; rewrite H; reflexivity. Qed.
-
-(* Lemma mapfst_v2b_unfold: forall i a vs,
-  i > 0 -> 
-  (map fst (valuset2bytesets_rec (a::vs) i)) = 
-  fst (selN a 0 byte0):: (map fst (valuset2bytesets_rec (map (skipn 1 )(a::vs)) (i-1))).
-Proof.
-  induction i; intros.
-  inversion H.
-  rewrite valuset2bytesets_rec_expand.
-  repeat rewrite map_cons.
-  unfold list2byteset.
-  replace (S i - 1) with i by omega.
-  unfold selN'.
-  reflexivity.
-  apply H.
-Qed. *)
 
 Lemma v2b_rec_nil: forall l i,
   i = length l  ->
@@ -540,25 +491,6 @@ map fst (valuset2bytesets vs) = valu2list (fst vs).
 		repeat destruct H.
 		apply valu2list_len.
 	Qed.
-		
-(* Lemma mapsnd_valuset2bytesets: forall i a vs,
-  vs <> nil ->
-  (map snd (valuset2bytesets_rec (a::vs) i)) = (map byteset2list (valuset2bytesets_rec (vs) i)).
-Proof.
-  induction i; intros.
-  reflexivity.
-
-  destruct vs.
-  unfold not in H; destruct H; reflexivity.
-
-  simpl.
-  rewrite IHi.
-  unfold selN'.
-  unfold byteset2list.
-  simpl.
-  reflexivity.
-  unfold not; intros; inversion H0.
-Qed. *)
 
 
 Lemma bsplit1_bsplit_list: forall sz (b: bytes (1 + (sz - 1))),
@@ -569,6 +501,90 @@ Proof.
   unfold bsplit1_dep, bsplit2_dep.
   reflexivity.
 Qed.
+
+Lemma merge_bs_nil: forall l,
+merge_bs l nil = map (fun x => (x, nil)) l.
+Proof.
+	induction l; simpl.
+	reflexivity.
+	rewrite IHl.
+	reflexivity.
+Qed.
+
+Lemma l2b_cons_x_nil: forall l,
+map (list2byteset byte0) (map (cons' nil) l)
+		= map (fun x => (x, nil)) l.
+Proof.
+	intros.
+	rewrite map_map.
+	unfold list2byteset, cons'; simpl.
+	reflexivity.
+Qed.
+	
+Lemma valuset2bytesets_rec_cons_merge_bs: forall k a l,
+  Forall (fun sublist => length sublist = k) (a::l) ->
+ map (list2byteset byte0) (valuset2bytesets_rec (a::l) k) 
+ 		= merge_bs a (map (list2byteset byte0) (valuset2bytesets_rec l k)).
+	Proof.
+		induction k; intros.
+		simpl.
+		rewrite Forall_forall in H.
+		assert (In a (a::l)).
+		apply in_eq.
+		apply H in H0.
+		apply length_zero_iff_nil in H0.
+		rewrite H0; reflexivity.
+		destruct a.
+		assert (In nil (nil::l)).
+		apply in_eq.
+		rewrite Forall_forall in H.
+		apply H in H0.
+		simpl in H0; inversion H0.
+		simpl.
+		destruct l.
+		simpl.
+		rewrite v2b_rec_nil.
+		rewrite merge_bs_nil.
+		rewrite l2b_cons_x_nil.
+		reflexivity.
+		assert (In (b::a) ((b::a)::nil)).
+		apply in_eq.
+		rewrite Forall_forall in H.
+		apply H in H0.
+		simpl in H0; inversion H0.
+		reflexivity.
+		simpl.
+		rewrite IHk.
+		reflexivity.
+		rewrite Forall_forall; intros.
+		repeat destruct H0.
+		assert (In (b::a) ((b::a)::l::l0)).
+		apply in_eq.
+		rewrite Forall_forall in H.
+		apply H in H0.
+		simpl in H0; inversion H0.
+		reflexivity.
+		assert (In l ((b::a)::l::l0)).
+		apply in_cons.
+		apply in_eq.
+		rewrite Forall_forall in H.
+		apply H in H0.
+		destruct l.
+		simpl in H0; inversion H0.
+		simpl in H0; inversion H0.
+		reflexivity.
+		apply in_map_iff in H0.
+		repeat destruct H0.
+		rewrite Forall_forall in H.
+		eapply in_cons in H1.
+		eapply in_cons in H1.
+		apply H in H1.
+		destruct x0.
+		simpl in H1; inversion H1.
+		simpl in H1; inversion H1.
+		reflexivity.
+	Qed.
+
 
 Lemma valuset2bytesets2valuset: forall vs, bytesets2valuset (valuset2bytesets vs) = vs.
 Proof. Admitted.
@@ -799,79 +815,299 @@ Qed.
 
 Lemma bsplit_list_b2vb: forall b,
   exists l, (bsplit_list (bytes2valubytes (byte2bytes b))) = b::l.
-Proof. Admitted.
+Proof. 
+  intros.
+  unfold bytes2valubytes.
+  destruct (le_dec 1 valubytes).
+  simpl.
+  unfold eq_rect.
+  destruct (bytes_eq l).
+  simpl.
+  unfold bsplit1_dep, bsplit2_dep; simpl.
+  rewrite bsplit1_bcombine.
+  rewrite bsplit2_bcombine.
+  unfold natToWord.
+  exists (bsplit_list
+       ((fix natToWord (sz n : addr) {struct sz} : word sz :=
+           match sz as sz0 return (word sz0) with
+           | 0 => WO
+           | S sz' => WS (mod2 n) (natToWord sz' (Nat.div2 n))
+           end) ((valubytes - 1) * 8) 0)).
+  unfold byte2bytes.
+  unfold word2bytes.
+  eq_rect_simpl.
+  reflexivity.
+  rewrite valubytes_is in n; omega.
+Qed.
 
 (* Look for goodSize *)
 Lemma n2w_w2n_eq: forall n sz,
 # (natToWord sz n) = n.
 Proof. Admitted.
 
+Lemma app_length_eq: forall A (l l': list A) len a,
+length l = len -> a + length l' <= len ->
+length (firstn a l ++ l' ++ skipn (a + length l') l) = len.
+	Proof.
+		intros; repeat rewrite app_length.
+		repeat rewrite map_length.
+		rewrite firstn_length_l.
+		rewrite skipn_length.
+		omega.
+		omega.
+	Qed.
+	
+Lemma off_mod_v_l_data_le_v: forall length_data off,
+	length_data <= valubytes - off mod valubytes ->
+	off mod valubytes + length_data <= valubytes.
+	Proof.
+		intros;
+		apply DiskLogHash.PaddedLog.Desc.le_add_le_sub.
+		apply Nat.lt_le_incl; apply Nat.mod_upper_bound.
+		apply valubytes_ne_O.
+		auto.
+	Qed.
+	
+	
+Lemma v_off_mod_v_le_length_data: forall length_data off,
+~ length_data <= valubytes - off mod valubytes ->
+valubytes - off mod valubytes <= length_data.
+	Proof. intros; omega. Qed.
+	
+Lemma three_reorder: forall a b c,
+a + b + c = c + b + a.
+Proof. intros; omega. Qed.
+
+Lemma last_two_reorder: forall a b c,
+a + b + c = a + c + b.
+	Proof. intros; omega. Qed.
+
+Lemma pm_1_3_cancel: forall a b,
+a + b - a = b.
+	Proof. intros; omega. Qed.
+	
+Lemma n_le_n_p_1: forall n,
+n <= n + 1.
+	Proof. intros; omega. Qed.
+
+Lemma ppmp_2_4_cancel: forall a b c d,
+a + b + c - b + d = a + c + d.
+	Proof. intros; omega. Qed.
+
+Lemma mm_dist: forall a b c,
+b <= a ->
+c <= b ->
+a - (b - c) = a - b + c.
+	Proof. intros; omega. Qed.
+	
+	Lemma ppmm_4_5_minus_distr_le: forall a b c d e,
+d <= a + b + c ->
+e <= d ->
+a + b + c - (d - e) = a + b + c - d + e.
+	Proof. intros; omega. Qed.
+	
+Lemma le_2: forall a b c,
+b <= a + b + c.
+	Proof. intros; omega. Qed.
+	
+Lemma app_assoc_middle_2: forall A (l1 l2 l3 l4 l5: list A),
+l1++l2++l3++l4++l5 = l1++l2++(l3++l4)++l5.
+	Proof. intros; repeat rewrite app_assoc; reflexivity. Qed.
+	
+Lemma ppmp_3_4_cancel: forall a b c d,
+a + b + c - c + d = a + b + d.
+	Proof. intros; omega. Qed.
+	
+Lemma mm_1_3_cancel: forall a b,
+a - b - a = 0.
+	Proof. intros; omega. Qed.
+
+
+
 Lemma list_split_chunk_length: forall A n m (l: list A),
+m > 0 ->
+length l = n * m -> 
 length (list_split_chunk n m l) = min n (length l / m).
-Proof. Admitted.
+Proof.
+  induction n; intros; simpl.
+  reflexivity.
+  destruct (length l / m) eqn:D.
+  destruct m eqn:D1; simpl; try omega.
+  apply Nat.div_small_iff in D; try omega.
+  rewrite H0 in D.
+  destruct n.
+  simpl in D. rewrite <- plus_n_O in D; omega.
+  simpl in D. apply lt_S_n in D.
+  assert (forall a b, a + (S b) < a -> False).
+  intros; omega.
+  apply H1 in D; inversion D.
+  rewrite IHn; try omega.
+  rewrite skipn_length.
+  rewrite H0.
+  replace (S n * m - m) with (n * m).
+  rewrite H0 in D.
+  rewrite Nat.div_mul in *.
+  inversion D.
+  reflexivity.
+  all: try omega.
+  simpl.
+  rewrite pm_1_3_cancel.
+  reflexivity.
+  rewrite skipn_length.
+  rewrite H0.
+  simpl.
+  apply pm_1_3_cancel.
+Qed.
 
 Lemma firstn_valuset2bytesets_byte2valu: forall b,
 firstn 1 (valuset2bytesets (byte2valu b, nil)) = (b, nil)::nil.
-Proof. Admitted.
+Proof.
+  intros;
+  unfold valuset2bytesets.
+  simpl.
+  unfold byte2valu.
+  unfold bytes2valubytes.
+  destruct (le_dec 1 valubytes).
+  rewrite v2b_rec_nil.
+  rewrite l2b_cons_x_nil.
+  unfold word2bytes.
+  eq_rect_simpl.
+  unfold valu2list.
+  rewrite bytes2valu2bytes.
+  unfold bcombine.
+  eq_rect_simpl.
+  unfold eq_rect.
+  destruct (bytes_eq l).
+  simpl.
+  unfold bsplit1_dep; simpl.
+  unfold bsplit1.
+  eq_rect_simpl.
+  rewrite Word.split1_combine.
+  unfold byte2bytes.
+  unfold word2bytes.
+  eq_rect_simpl.
+  reflexivity.
+  rewrite valu2list_len; reflexivity.
+  rewrite valubytes_is in n; omega.
+Qed.
 
 Lemma between_exists: forall a b c,
 a >= (b-1) * c -> a < b*c -> a = (b-1) * c + a mod c.
 Proof. Admitted.
 
-Lemma list_split_chunk_app_1: forall A (l l': list A) a b,
+Lemma list_split_chunk_app_1: forall A a b (l l': list A) ,
+length l = a * b ->
 length l' = b ->
 list_split_chunk (a+1) b (l ++ l') =  list_split_chunk a b l ++ l'::nil.
-Proof. Admitted.
+Proof.
+  induction a; intros.
+  simpl in H.
+  apply length_zero_iff_nil in H; rewrite H.
+  simpl.
+  rewrite <- H0; rewrite firstn_exact; reflexivity.
+  simpl.
+  rewrite skipn_app_l.
+  rewrite IHa.
+  rewrite firstn_app_l.
+  reflexivity.
+  all: try omega.
+  all: try rewrite H; simpl; try apply le_plus_trans; try omega.
+  rewrite skipn_length. rewrite H; simpl. apply pm_1_3_cancel.
+Qed.
 
-Lemma list_split_chunk_map_comm: forall A B (l: list A) (f:A -> B) a b,
+Lemma list_split_chunk_map_comm: forall A B a b (l: list A) (f:A -> B),
 map (fun x => map f x) (list_split_chunk a b l) = list_split_chunk a b (map f l).
-Proof. Admitted.
+Proof.
+    induction a; intros.
+    reflexivity.
+    simpl.
+    rewrite IHa.
+    rewrite firstn_map_comm.
+    rewrite skipn_map_comm.
+    reflexivity.
+Qed.
 
 Lemma get_sublist_map_comm: forall A B a b (f: A -> B) (l: list A),
 map f (get_sublist l a b) = get_sublist (map f l) a b.
-Proof. Admitted.
+Proof.
+  intros; unfold get_sublist.
+  rewrite <- firstn_map_comm; 
+  rewrite <- skipn_map_comm;
+  reflexivity.
+Qed.  
 
 Lemma firstn_1_selN: forall A (l: list A) def,
 l <> nil -> firstn 1 l = (selN l 0 def)::nil.
-Proof. Admitted.
-
-
+Proof.
+  intros. 
+  destruct l.
+  destruct H; reflexivity.
+  reflexivity.
+Qed.
 
 Lemma concat_list_split_chunk_id: forall A a b (l: list A),
 a * b = length l -> concat (list_split_chunk a b l) = l.
-Proof. Admitted.
+Proof.
+  induction a; intros.
+  simpl in *.
+  symmetry in H; apply length_zero_iff_nil in H. symmetry; auto.
+  simpl.
+  rewrite IHa.
+  apply firstn_skipn.
+  rewrite skipn_length.
+  rewrite <- H; simpl; rewrite pm_1_3_cancel; reflexivity.
+Qed.
 
-Lemma list_split_chunk_cons: forall A (l: list A) m1,
+Lemma list_split_chunk_cons: forall A m1 (l: list A),
 length l = m1 * valubytes + valubytes -> 
 list_split_chunk (m1 + 1) valubytes l  = firstn valubytes l :: list_split_chunk m1 valubytes (skipn valubytes l).
-Proof. Admitted.
+Proof.
+  intros.
+  replace (m1 + 1) with (S m1) by omega.
+  reflexivity.
+Qed.
 
 Lemma list_split_chunk_nonnil: forall A a b (l: list A),
+b > 0 ->
 length l = a * b ->
 forall x, In x (list_split_chunk a b l) -> x <> nil.
-Proof. Admitted.
+Proof.
+  induction a; intros.
+  simpl in *.
+  inversion H1.
+  simpl in *.
+  destruct H1.
+  unfold not; intros.
+  rewrite <- H1 in H2.
+  apply length_zero_iff_nil in H2.
+  rewrite firstn_length_l in H2; try omega.
+  rewrite H0; apply le_plus_trans. apply le_n.
+  eapply IHa; eauto.
+  rewrite skipn_length.
+  rewrite H0; apply pm_1_3_cancel.
+Qed.
 
-
-Lemma minus_middle: forall a b c,
-b <> 0 -> b >= c -> (a - (b - c))/ b = (a + c) / b - 1.
-Proof. Admitted.
 
 Lemma le_minus_weaken: forall a b c,
 a <= b -> a-c <= b - c.
-Proof. Admitted.
+Proof.  intros. omega. Qed.
+
 
 Lemma le_minus_dist: forall a b c,
+a >= b ->
 b >= c ->
 a - (b - c) = a - b + c.
-Proof. Admitted.
+Proof. intros. omega. Qed.
 
 Lemma plus_minus_arrange: forall a b c d,
+a >= b ->
+a - b + c >= d ->
 a - b + c - d + b = a + c - d + b - b.
-Proof. Admitted.
+Proof. intros; omega. Qed.
 
 Lemma le_minus_weaken_r: forall a b c,
 a <= b - c -> a <= b.
-Proof. Admitted.
+Proof. intros; omega. Qed.
 
 Fact merge_bs_length: forall l l',
 length (merge_bs l l') = length l.
@@ -993,196 +1229,87 @@ Lemma map_same: forall A B (l1 l2: list A) (f: A -> B),
 l1 = l2 -> map f l1 = map f l2.
 Proof. intros; subst; reflexivity. Qed.
 
-Lemma three_cancel: forall x y z,
-0 = x + z - x - y - z + y.
-Proof. Admitted.
-
-Lemma four_cancel: forall a x y z,
-a + (x + z - x - y - z + y) = a + x + z - x - y - z + y.
-Proof. Admitted.
-
-Lemma one_three_cancel: forall a b c,
+Lemma pmm_1_3_cancel: forall a b c,
 a + b - a -c = b - c.
-Proof. Admitted.
+Proof. intros; omega. Qed.
 
 Lemma le_div_mult_add: forall a b,
 b <> 0 -> a <= a/b * b + b.
-Proof. Admitted.
+Proof. 
+  intros.
+  remember (a / b * b + b) as x.
+  rewrite Nat.div_mod with (x:= a)(y:= b).
+  rewrite Heqx.
+  apply plus_le_compat.
+  rewrite Nat.mul_comm; apply le_n.
+  apply Nat.lt_le_incl; apply Nat.mod_upper_bound.
+  all: auto.
+Qed.
 
 Lemma le_minus_middle_cancel: forall a b c d e,
 a - c <= d - e -> a - b - c <= d - b - e.
-Proof. Admitted.
+Proof. intros; omega. Qed.
 
 Lemma mppp_two_five_cancel: forall a b c d,
+a >= b ->
 a - b + c + d + b = a + c + d.
-Proof. Admitted.
-
-Lemma firstn_app_ge: forall A n (l1 l2: list A),
-n >= length l1 ->
-firstn n (l1 ++ l2) = l1 ++ firstn (n - length l1) l2.
-Proof. Admitted.
+Proof. intros; omega. Qed.
 
 Lemma le_minus_lt: forall a b c,
 b > 0 -> c > 0 -> a <= b - c -> a < b.
-Proof. Admitted.
-
-
-Lemma app_length_eq: forall A (l l': list A) len a,
-length l = len -> a + length l' <= len ->
-length (firstn a l ++ l' ++ skipn (a + length l') l) = len.
-	Proof.
-		intros; repeat rewrite app_length.
-		repeat rewrite map_length.
-		rewrite firstn_length_l.
-		rewrite skipn_length.
-		omega.
-		omega.
-	Qed.
-	
-Lemma off_mod_v_l_data_le_v: forall length_data off,
-	length_data <= valubytes - off mod valubytes ->
-	off mod valubytes + length_data <= valubytes.
-	Proof.
-		intros;
-		apply DiskLogHash.PaddedLog.Desc.le_add_le_sub.
-		apply Nat.lt_le_incl; apply Nat.mod_upper_bound.
-		apply valubytes_ne_O.
-		auto.
-	Qed.
-	
-	
-Lemma v_off_mod_v_le_length_data: forall length_data off,
-~ length_data <= valubytes - off mod valubytes ->
-valubytes - off mod valubytes <= length_data.
-	Proof. intros; omega. Qed.
-	
-Lemma three_reorder: forall a b c,
-a + b + c = c + b + a.
 Proof. intros; omega. Qed.
 
-Lemma last_two_reorder: forall a b c,
-a + b + c = a + c + b.
-	Proof. intros; omega. Qed.
-
-Lemma pm_1_3_cancel: forall a b,
-a + b - a = b.
-	Proof. intros; omega. Qed.
-	
-Lemma n_le_n_p_1: forall n,
-n <= n + 1.
-	Proof. intros; omega. Qed.
-
-Lemma ppmp_2_4_cancel: forall a b c d,
-a + b + c - b + d = a + c + d.
-	Proof. intros; omega. Qed.
-
-Lemma mm_dist: forall a b c,
-b <= a ->
-c <= b ->
-a - (b - c) = a - b + c.
-	Proof. intros; omega. Qed.
-	
-	Lemma ppmm_4_5_minus_distr_le: forall a b c d e,
-d <= a + b + c ->
-e <= d ->
-a + b + c - (d - e) = a + b + c - d + e.
-	Proof. intros; omega. Qed.
-	
-Lemma le_2: forall a b c,
-b <= a + b + c.
-	Proof. intros; omega. Qed.
-	
-Lemma app_assoc_middle_2: forall A (l1 l2 l3 l4 l5: list A),
-l1++l2++l3++l4++l5 = l1++l2++(l3++l4)++l5.
-	Proof. intros; repeat rewrite app_assoc; reflexivity. Qed.
-	
-Lemma ppmp_3_4_cancel: forall a b c d,
-a + b + c - c + d = a + b + d.
-	Proof. intros; omega. Qed.
-	
-Lemma mm_1_3_cancel: forall a b,
-a - b - a = 0.
-	Proof. intros; omega. Qed.
-	
-Lemma merge_bs_nil: forall l,
-merge_bs l nil = map (fun x => (x, nil)) l.
+Lemma modulo_eq: forall b a,
+  b <> 0 -> a >= b -> (a - b) mod b = a mod b.
 Proof.
-	induction l; simpl.
-	reflexivity.
-	rewrite IHl.
-	reflexivity.
+  intros.
+  eapply Nat.mod_unique.
+  apply Nat.mod_upper_bound.
+  auto.
+  instantiate (1:= (a - b) / b + 1).
+  remember (b * ((a - b) / b + 1) + (a - b) mod b) as x.
+  rewrite <- Nat.sub_add with (n:= b)(m:= a).
+  rewrite Nat.div_mod with (x:= a-b)(y:=b).
+  rewrite Nat.add_comm.
+  rewrite Nat.add_assoc.
+  rewrite Heqx.
+  rewrite Nat.mul_add_distr_l.
+  omega.
+  all: auto.
 Qed.
 
-Lemma l2b_cons_x_nil: forall l,
-map (list2byteset byte0) (map (cons' nil) l)
-		= map (fun x => (x, nil)) l.
+Lemma minus_middle: forall a b c,
+b <> 0 -> a>= b -> b >= c -> (a - (b - c))/ b = (a + c) / b - 1.
 Proof.
-	intros.
-	rewrite map_map.
-	unfold list2byteset, cons'; simpl.
-	reflexivity.
+  intros.
+  rewrite le_minus_dist.
+  rewrite <- Nat.add_sub_swap.
+  Search Nat.div minus.
+  all: auto.
+  remember (a+c) as x.
+  apply Nat.mul_cancel_l with (p:= b).
+  auto.
+  replace (b * ((x - b) / b)) with ((x - b) - (x-b) mod b).
+  rewrite Nat.mul_sub_distr_l.
+  replace (b * (x / b)) with (x - x mod b).
+  Search minus Nat.modulo.
+  rewrite modulo_eq.
+  omega.
+  all: auto.
+  rewrite Heqx.
+  omega.
+  replace (x - x mod b) 
+    with (b*(x / b) + x mod b - x mod b).
+  apply Nat.add_sub.
+  rewrite <- Nat.div_mod.
+  reflexivity.
+  auto.
+  replace (x - b - (x - b) mod b) 
+    with (b * ((x-b)/b) + (x-b) mod b - (x - b) mod b).
+  apply Nat.add_sub.
+  rewrite <- Nat.div_mod.
+  reflexivity.
+  auto.
 Qed.
-	
-Lemma valuset2bytesets_rec_cons_merge_bs: forall k a l,
-  Forall (fun sublist => length sublist = k) (a::l) ->
- map (list2byteset byte0) (valuset2bytesets_rec (a::l) k) 
- 		= merge_bs a (map (list2byteset byte0) (valuset2bytesets_rec l k)).
-	Proof.
-		induction k; intros.
-		simpl.
-		rewrite Forall_forall in H.
-		assert (In a (a::l)).
-		apply in_eq.
-		apply H in H0.
-		apply length_zero_iff_nil in H0.
-		rewrite H0; reflexivity.
-		destruct a.
-		assert (In nil (nil::l)).
-		apply in_eq.
-		rewrite Forall_forall in H.
-		apply H in H0.
-		simpl in H0; inversion H0.
-		simpl.
-		destruct l.
-		simpl.
-		rewrite v2b_rec_nil.
-		rewrite merge_bs_nil.
-		rewrite l2b_cons_x_nil.
-		reflexivity.
-		assert (In (b::a) ((b::a)::nil)).
-		apply in_eq.
-		rewrite Forall_forall in H.
-		apply H in H0.
-		simpl in H0; inversion H0.
-		reflexivity.
-		simpl.
-		rewrite IHk.
-		reflexivity.
-		rewrite Forall_forall; intros.
-		repeat destruct H0.
-		assert (In (b::a) ((b::a)::l::l0)).
-		apply in_eq.
-		rewrite Forall_forall in H.
-		apply H in H0.
-		simpl in H0; inversion H0.
-		reflexivity.
-		assert (In l ((b::a)::l::l0)).
-		apply in_cons.
-		apply in_eq.
-		rewrite Forall_forall in H.
-		apply H in H0.
-		destruct l.
-		simpl in H0; inversion H0.
-		simpl in H0; inversion H0.
-		reflexivity.
-		apply in_map_iff in H0.
-		repeat destruct H0.
-		rewrite Forall_forall in H.
-		eapply in_cons in H1.
-		eapply in_cons in H1.
-		apply H in H1.
-		destruct x0.
-		simpl in H1; inversion H1.
-		simpl in H1; inversion H1.
-		reflexivity.
-	Qed.
+  
+
