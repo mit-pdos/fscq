@@ -212,6 +212,37 @@ Module MakeBridge (C:CacheSubProtocol).
            end; intuition eauto.
   Qed.
 
+  Theorem cache_write_hoare_triple : forall tid a
+                                      d m s_i s
+                                      d' m' s_i' s' v0 v,
+      exec App.delta tid (cache_write a v) (d, m, s_i, s)
+           (Finished (d', m', s_i', s') tt) ->
+      cacheI d m s ->
+      get vdisk s a = Some v0 ->
+      modified [( vCache; vDisk0; vWriteBuffer; vdisk )] s s' /\
+      cacheI d' m' s' /\
+      get vdisk s' = upd (get vdisk s) a v /\
+      s_i' = s_i.
+  Proof.
+    intros.
+    apply bind_right_id in H.
+    eapply cache_write_ok in H.
+    2: instantiate (1 := fun r d' m' s_i' s' =>
+                           modified [( vCache; vDisk0; vWriteBuffer; vdisk )] s s' /\
+                           cacheI d' m' s' /\
+                           get vdisk s' = upd (get vdisk s) a v /\
+                           s_i' = s_i).
+    repeat deex; inv_outcome; auto.
+
+    exists v0; intuition.
+    apply valid_unfold; intuition idtac.
+    subst.
+    exec_ret.
+    repeat match goal with
+           | |- exists _, _ => eexists
+           end; intuition eauto.
+  Qed.
+
   Lemma cache_addr_valid : forall d m s a v,
       cacheI d m s ->
       get vdisk s a = Some v ->
