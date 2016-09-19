@@ -1,9 +1,11 @@
-Require Import DecidableType DecidableTypeEx OrderedType Morphisms.
+Require Import DecidableTypeEx OrderedType Morphisms.
 Require Export FMapFacts.
 
 Set Implicit Arguments.
 
-Module MoreFacts_fun (E:DecidableType)(Import M:WSfun E).
+
+
+Module MoreFacts_fun (E:UsualDecidableType) (Import M:WSfun E).
 
   Module Import MapFacts := FMapFacts.WFacts_fun(E)(M).
   Import M.
@@ -14,28 +16,6 @@ Module MoreFacts_fun (E:DecidableType)(Import M:WSfun E).
     repeat destruct eq_dec; auto;
     try solve [exfalso; eauto].
 
-  Definition respect_eq {V} P := forall a b (v : V),
-    E.eq a b -> P (a, v) <-> P (b, v).
-
-  Lemma respect_eq_rewrite : forall V P a b (v : V),
-    respect_eq P -> E.eq a b ->
-    P (a, v) <-> P (b, v).
-  Proof.
-    intros.
-    unfold respect_eq in *.
-    rewrite H; eauto.
-  Qed.
-
-  Lemma respect_eq_eq : forall V P,
-    E.eq = eq -> @respect_eq V P.
-  Proof.
-    unfold respect_eq. intros.
-    rewrite H in H0. subst.
-    split; auto.
-  Qed.
-
-  Hint Resolve respect_eq_eq.
-
   Lemma in_add : forall V k (v : V) m,
     In k (add k v m).
   Proof.
@@ -44,7 +24,7 @@ Module MoreFacts_fun (E:DecidableType)(Import M:WSfun E).
   Qed.
 
   Lemma mapsto_elements : forall V k (v : V) m,
-    MapsTo k v m -> exists k', E.eq k k' /\ List.In (k', v) (elements m).
+    MapsTo k v m -> List.In (k, v) (elements m).
   Proof.
     intros.
     apply elements_1 in H.
@@ -53,9 +33,8 @@ Module MoreFacts_fun (E:DecidableType)(Import M:WSfun E).
     inversion H.
     inversion H; subst. destruct a; simpl in *.
     unfold eq_key_elt in *; simpl in *.
-    intuition. eexists. split; subst; eauto.
-    simpl. edestruct IHl; eauto.
-    intuition. eexists. split; subst; eauto.
+    intuition; subst. auto.
+    simpl in *. right. eauto.
   Qed.
 
   Lemma in_remove : forall V x k (m : t V),
@@ -68,64 +47,54 @@ Module MoreFacts_fun (E:DecidableType)(Import M:WSfun E).
   Qed.
 
   Lemma Forall_elements : forall V P (m : t V),
-    respect_eq P ->
     Forall P (elements m) <-> forall k v, MapsTo k v m -> P (k, v).
   Proof.
     split; intros.
-    apply mapsto_elements in H1. repeat destruct H1.
-    rewrite Forall_forall in H0.
-    rewrite respect_eq_rewrite; eauto.
+    apply mapsto_elements in H0.
+    rewrite Forall_forall in H.
+    eauto.
     apply Forall_forall. intros.
     destruct x.
-    rewrite respect_eq_rewrite. apply H0.
-    Search elements MapsTo.
+    apply H.
     apply elements_2.
-    Search InA List.In.
     apply InA_alt.
     eexists.
     split; eauto.
-    unfold eq_key_elt; simpl.
-    all : eauto.
+    unfold eq_key_elt; auto.
   Qed.
 
   Lemma Forall_elements_add : forall V P k (v : V) m,
-                                respect_eq P ->
                                 Forall P (elements (add k v m)) <->
                                 P (k, v) /\ Forall P (elements (remove k m)).
   Proof.
     split; intros.
-    pose proof (add_1 m v (E.eq_refl k)).
-    apply mapsto_elements in H1.
-    repeat destruct H1.
     split.
-    rewrite Forall_forall in H0.
-    apply H0 in H2. rewrite respect_eq_rewrite; eassumption.
+    rewrite Forall_forall in H. apply H.
+    apply mapsto_elements. apply add_1; auto.
 
     apply Forall_elements; auto.
-    rewrite Forall_elements in H0 by auto.
+    rewrite Forall_elements in H.
     intros.
-    apply H0.
-    apply remove_mapsto_iff in H3; intuition.
+    apply H.
+    apply remove_mapsto_iff in H0; intuition.
 
     intuition.
-    apply Forall_elements; auto.
-    rewrite Forall_elements in H2; auto.
+    apply Forall_elements.
+    rewrite Forall_elements in H1; auto.
     intros.
-    rewrite add_mapsto_iff in H0.
-    destruct H0; intuition. subst.
-    rewrite respect_eq_rewrite; eauto.
+    rewrite add_mapsto_iff in H.
+    intuition. congruence.
   Qed.
 
   (* TODO: Setoid rewriting? *)
   Lemma Forall_elements_equal: forall V P (m1 m2 : t V),
-                                 respect_eq P ->
                                  Forall P (elements m1) ->
                                  Equal m2 m1 ->
                                  Forall P (elements m2).
   Proof.
     intros.
     rewrite Forall_elements in * by auto. intros.
-    rewrite Equal_mapsto_iff in H1.
+    rewrite Equal_mapsto_iff in H0.
     firstorder.
   Qed.
   Hint Resolve Forall_elements_equal : mapfacts.
@@ -172,13 +141,12 @@ Module MoreFacts_fun (E:DecidableType)(Import M:WSfun E).
   Qed.
 
   Lemma Forall_elements_remove_weaken : forall V P k (m : t V),
-                                          respect_eq P ->
                                           Forall P (elements m) ->
                                           Forall P (elements (remove k m)).
   Proof.
     intros.
     rewrite Forall_elements in * by auto. intros.
-    apply H0.
+    apply H.
     eapply remove_3. eauto.
   Qed.
 
@@ -196,13 +164,12 @@ Module MoreFacts_fun (E:DecidableType)(Import M:WSfun E).
   Qed.
 
   Lemma Forall_elements_forall_In : forall V (P : _ -> Prop) m,
-                                      respect_eq P ->
                                       Forall P (elements m) ->
                                       (forall k (v : V), find k m = Some v -> P (k, v)).
   Proof.
     intros.
-    rewrite Forall_elements in H0 by auto.
-    apply H0.
+    rewrite Forall_elements in H by auto.
+    apply H.
     apply find_2; auto.
   Qed.
 
