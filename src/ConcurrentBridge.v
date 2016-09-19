@@ -28,11 +28,10 @@ Module MakeBridge (C:CacheSubProtocol).
                         end
     | Prog.Write a v => _ <- cache_write a v;
                          Ret (value tt)
-    | Prog.Sync => _ <- cache_writeback;
-                        (* current concurrent disk model has no
-                        asynchrony, but otherwise would need to issue
-                        our own Sync here *)
-                      Ret (value tt)
+    | Prog.Sync => (* current concurrent disk model has no
+                     asynchrony, but otherwise would need to issue
+                     our own Sync here *)
+      Ret (value tt)
     (* TODO: should really just remove Trim from Prog.prog *)
     | Prog.Trim a => Ret error
     (* TODO: should be a direct translation, but need hashing in
@@ -119,10 +118,13 @@ Module MakeBridge (C:CacheSubProtocol).
          end /\
          guar delta tid s_i' s').
 
+  Ltac inv_exec' H :=
+      inversion H; subst; repeat sigT_eq.
+
   Ltac inv_exec :=
     match goal with
     | [ H: exec _ _ _ _ _ |- _ ] =>
-      inversion H; subst; repeat sigT_eq
+      inv_exec' H
     end.
 
   Ltac inv_step :=
@@ -239,12 +241,76 @@ Module MakeBridge (C:CacheSubProtocol).
     - left; auto.
   Qed.
 
+  Lemma cache_read_success_in_domain : forall tid a
+                                         d m s_i s v
+                                         d' m' s_i' s',
+      exec App.delta tid (cache_read a) (d, m, s_i, s)
+           (Finished (d', m', s_i', s') (Some v)) ->
+      cacheI d m s ->
+      get vdisk s a = Some v.
+  Proof.
+    intros.
+    inv_exec; try solve [ inv_step ].
+
+    inv_exec' H6.
+    inv_step; repeat sigT_eq.
+
+    unfold cacheI in H0; destruct_ands.
+    rewrite H1 in *.
+    destruct matches in *;
+      repeat exec_ret;
+      repeat inv_outcome.
+    match goal with
+    | [ H: WriteBuffer.wb_rep _ _ _ |- _ ] =>
+      specialize (H a)
+    end.
+    simpl_match; destruct_ands; repeat deex.
+
+    inv_exec' H8; try solve [ inv_step ].
+    inv_exec' H15.
+    inv_step; repeat sigT_eq.
+    rewrite H0 in *.
+    match goal with
+    | [ H: MemCache.cache_rep _ _ _ |- _ ] =>
+      specialize (H a)
+    end.
+    match goal with
+    | [ H: WriteBuffer.wb_rep _ _ _ |- _ ] =>
+      specialize (H a)
+    end.
+    destruct matches in *;
+      repeat exec_ret;
+      repeat inv_outcome;
+      repeat simpl_match;
+      destruct_ands; repeat deex.
+    - apply equal_f_dep with a in H3.
+      unfold DiskReaders.hide_readers in H3; simpl_match.
+      congruence.
+    - apply equal_f_dep with a in H3.
+      unfold DiskReaders.hide_readers in H3; simpl_match.
+      congruence.
+    - apply equal_f_dep with a in H3.
+      unfold DiskReaders.hide_readers in H3; simpl_match.
+      (* need hoare spec for finish_fill *)
+      admit.
+    - inv_exec' H17; try solve [ inv_step ].
+      exec_ret.
+      inv_outcome.
+  Admitted.
+
+  Lemma project_disk_synced : forall s,
+      sync_mem (project_disk s) = project_disk s.
+  Proof.
+    intros.
+    extensionality a.
+    unfold sync_mem, project_disk.
+    destruct matches.
+  Qed.
+
   Theorem cache_simulation : forall T (p: Prog.prog T)
                                (tid:TID) d m s0 s out hm,
       exec App.delta tid (compiler p) (d, m, s0, s) out ->
       cacheI d m s ->
-      (out = Failed (Exc T) ->
-       Prog.exec (project_disk s) hm p (Prog.Failed T)) /\
       (forall d' m' s0' s' (v:T),
           out = Finished (d', m', s0', s') (value v) ->
           Prog.exec (project_disk s) hm p (Prog.Finished (project_disk s') hm v) /\
@@ -257,12 +323,11 @@ Module MakeBridge (C:CacheSubProtocol).
       split; intros; inv_outcome; eauto.
     - (* Read *)
       inv_exec; try solve [ inv_step ].
-      destruct v; exec_ret;
-        split; intros; inv_outcome; eauto.
+      destruct v0; exec_ret; inv_outcome; eauto.
 
       case_eq (get vdisk s a); intros.
       {
-        eapply cache_read_hoare_triple in H6; eauto.
+        eapply cache_read_hoare_triple in H7; eauto.
         intuition idtac; subst.
 
         eapply Prog.XStep.
@@ -277,24 +342,22 @@ Module MakeBridge (C:CacheSubProtocol).
         simpl_match; auto.
       }
       {
-        (* need to show cache_read can't succeed without get vdisk s a = Some _ *)
-        admit.
+        apply cache_read_success_in_domain in H7; auto.
+        congruence.
       }
 
-      split; intros; inv_outcome.
-      case_eq (get vdisk s a); intros.
-      exfalso.
-      eapply cache_read_no_failure in H6; eauto.
-
-      apply Prog.XFail.
-      constructor.
-      unfold project_disk.
-      rewrite H1; auto.
+      inv_outcome.
     - (* Write *)
       admit.
     - (* Sync *)
       (* probably don't need the writeback (just do nothing) *)
-      admit.
+      subst.
+      exec_ret; inv_outcome.
+      split; auto.
+      econstructor.
+      apply possible_sync_refl.
+      rewrite <- project_disk_synced at 2.
+      auto.
     - (* Trim *)
       (* this is fine *)
       exec_ret.
@@ -307,24 +370,18 @@ Module MakeBridge (C:CacheSubProtocol).
     - (* Bind *)
       inversion H0; repeat sigT_eq; subst;
         try solve [ inv_step ].
-      destruct st' as (((d',m'),s_i'),s').
-      destruct v.
+      destruct st' as (((d'',m''),s_i''),s'').
+      destruct v0.
 
-      * eapply IHp with (hm := hm) in H7; eauto; destruct_ands.
-        specialize (H3 d' m' s_i' s' t); expand propositional.
+      * eapply IHp with (hm := hm) in H8; eauto; destruct_ands.
+        2: reflexivity.
         split; intros; subst.
         eapply Prog.XBindFinish; eauto.
         eapply H; eauto.
 
-        split.
-        eapply Prog.XBindFinish; eauto.
         eapply H; eauto.
-        eapply H; eauto.
-
       * split; intros; subst; exec_ret; inv_outcome.
-      * eapply IHp with (hm := hm) in H7; eauto; destruct_ands.
-        split; intros; subst; auto.
-        congruence.
+      * congruence.
 Abort.
 
 
