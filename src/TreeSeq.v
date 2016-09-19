@@ -1569,6 +1569,7 @@ Module TREESEQ.
     rewrite H3; simpl.
     erewrite find_update_subtree by eauto. reflexivity.
     simpl.
+    rewrite H4.
     admit.
     admit.
     admit.
@@ -1614,7 +1615,23 @@ Module TREESEQ.
     eapply tree_safe_file_sync; eauto.
   Qed.
 
-  Lemma treeseq_sync_safe_sync: forall Fm fsxp Ftop mscs Ftree ts ds pathname pathname' f inum al,
+  Lemma treeseq_one_file_sync_alternative : forall t pathname,
+    treeseq_one_file_sync t pathname =
+    mk_tree (match find_subtree pathname (TStree t) with
+             | Some (TreeFile inum f) => update_subtree pathname (TreeFile inum (BFILE.synced_file f)) (TStree t)
+             | Some (TreeDir _ _) => TStree t
+             | None => TStree t
+             end) (TSilist t) (TSfree t).
+  Proof.
+    intros.
+    unfold treeseq_one_file_sync.
+    case_eq (find_subtree pathname (TStree t)); intros.
+    destruct d; auto.
+    destruct t; auto.
+    destruct t; auto.
+  Qed.
+
+  Lemma treeseq_sync_safe_sync: forall Fm fsxp Ftop mscs Ftree ts ds n pathname pathname' f inum al,
     (Fm ✶ rep fsxp Ftop (update_subtree pathname (TreeFile inum (BFILE.synced_file f)) (TStree ts !!))
            (TSilist ts !!) (fst (TSfree ts !!), snd (TSfree ts !!)))%pred
         (list2nmem (dssync_vecs ds al) !!) ->
@@ -1623,13 +1640,27 @@ Module TREESEQ.
     (length al = length (BFILE.BFData f) /\ forall i, i < length al ->
                 BFILE.block_belong_to_file (TSilist ts !!) (selN al i 0) inum i) ->
     treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) ts !!) ts ->
+    treeseq_safe pathname (MSAlloc mscs) ts !! (nthd n ts) ->
     tree_names_distinct (TStree ts !!) ->
     tree_inodes_distinct (TStree ts !!) ->
-    treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) 
-      (treeseq_one_file_sync ts !! pathname))
-      (d_map (fun t : treeseq_one => treeseq_one_file_sync t pathname) ts).
+    treeseq_safe pathname' (MSAlloc mscs) 
+      (treeseq_one_file_sync ts !! pathname)
+      (treeseq_one_file_sync (nthd n ts) pathname).
   Proof.
-    
+    intros.
+    eapply dir2flatmem2_find_subtree_ptsto in H0 as H0'; eauto.
+    repeat rewrite treeseq_one_file_sync_alternative; simpl.
+    destruct (list_eq_dec string_dec pathname' pathname); subst; simpl in *.
+    - unfold treeseq_safe in *.
+      intuition.
+      + unfold treeseq_safe_fwd in *; intros; simpl in *.
+        eexists.
+        intuition.
+        specialize (H2 inum0).
+        repeat deex.
+        case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
+        destruct d.
+        -- rewrite H12 in *; simpl in *.
   Admitted.
 
   Ltac distinct_inodes' :=
@@ -1679,9 +1710,15 @@ Module TREESEQ.
 
     unfold ts_file_sync.
     rewrite d_map_latest.
+
+    eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
+    eapply NEforall_d_in'; intros.
+    apply d_in_d_map in H8; deex; intuition.
+    eapply NEforall_d_in in H6 as H6'; try eassumption.
+    eapply d_in_nthd in H9 as H9'; deex.
     eapply treeseq_sync_safe_sync; eauto.
-    distinct_names'.
-    distinct_inodes'.
+    distinct_names.
+    distinct_inodes.
     unfold ts_file_sync.
     rewrite d_map_latest.
     unfold treeseq_one_file_sync.
