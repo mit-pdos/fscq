@@ -14,7 +14,7 @@ Module MoreFacts_fun (E:UsualDecidableType) (Import M:WSfun E).
     unfold Equal; intros;
     repeat rewrite ?remove_o, ?add_o;
     repeat destruct eq_dec; auto;
-    try solve [exfalso; eauto].
+    try solve [exfalso; eauto | congruence].
 
   Lemma in_add : forall V k (v : V) m,
     In k (add k v m).
