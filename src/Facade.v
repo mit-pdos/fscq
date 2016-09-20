@@ -32,6 +32,8 @@ Inductive ScopeItem :=
 Notation "∅" := (VarMap.empty _) : map_scope.
 Notation "k ->> v ;  m" := (VarMap.add k v m) (at level 21, right associativity) : map_scope.
 Notation "k ~> v ;  m" := (VarMap.add k (SItem v) m) (at level 21, right associativity) : map_scope.
+
+Notation "k -s> v ;  m" := (StringMap.add k v m) (at level 21, right associativity) : map_scope.
 Delimit Scope map_scope with map.
 
 Definition Scope := VarMap.t ScopeItem.
@@ -1309,23 +1311,51 @@ Proof.
   intros. unfold swap_prog.
   compile_step.
   compile_step.
-  About CompileRead
-  (* oops *)
+  compile_step.
+  compile_step.
+  compile_step.
+  subst.
+  instantiate (F := 0 ~> a; var0 ~> a0; ∅).
+  all: maps; auto.
+
+  compile_step.
+  compile_step.
+  instantiate (F := 1 ~> b; var0 ~> a0; ∅).
+  all: maps; auto.
+
+  compile_step.
+  match goal with
+  | [ |- EXTRACT Write ?a ?v {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_fast a pre with
+    | Some ?ka =>
+      match find_fast v pre with
+      | Some ?kv =>
+        eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
+          eapply CompileWrite with (avar := ka) (vvar := kv) ]]
+      end
+    end
+  end.
+  instantiate (F := var1 ~> a1; 0 ~> a; ∅).
+  match_scopes.
+  match_scopes.
+  destruct (Nat.eq_dec 1 var0); maps.
+
+  compile_step.
 Defined.
-Eval lazy in projT1 (extract_swap_prog ∅).
+Eval lazy in projT1 (extract_swap_prog (StringMap.empty _)).
 
 Opaque swap_prog.
 
 Definition extract_swap_prog_corr env := projT2 (extract_swap_prog env).
 Hint Resolve extract_swap_prog_corr : extractions.
 
-Definition swap_env : Env :=
-  ("swap" ->> {|
-           ArgVars := ["a"; "b"];
-           RetVar := None; Body := projT1 (extract_swap_prog ∅);
-           ret_not_in_args := ltac:(auto); args_no_dup := ltac:(auto); body_source := ltac:(auto);
-         |}; ∅).
 
+Definition swap_env : Env :=
+  ("swap" -s> {|
+           ParamVars := [0; 1];
+           RetParamVars := []; Body := projT1 (extract_swap_prog (StringMap.empty _));
+           (* ret_not_in_args := ltac:(auto); *) args_no_dup := ltac:(auto); body_source := ltac:(repeat constructor);
+         |}; (StringMap.empty _)).
 
 Lemma swap_func : voidfunc2 "swap" swap_prog swap_env.
 Proof.
@@ -1383,6 +1413,7 @@ Proof.
 Defined.
 Eval lazy in projT1 (extract_rot3_prog_top).
 
+(*
 Definition swap2_prog :=
   a <- Read 0;
   b <- Read 1;
@@ -1394,7 +1425,7 @@ Definition swap2_prog :=
     Ret tt.
 
 Example micro_swap2 : sigT (fun p =>
-  EXTRACT swap2_prog {{ ∅ }} p {{ fun _ => ∅ }} // ∅).
+  EXTRACT swap2_prog {{ ∅ }} p {{ fun _ => ∅ }} // (StringMap.empty _)).
 Proof.
   compile.
 
@@ -1424,3 +1455,4 @@ Proof.
   all: congruence.
 Defined.
 Eval lazy in projT1 micro_swap2.
+*)
