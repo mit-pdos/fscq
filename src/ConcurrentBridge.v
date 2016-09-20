@@ -215,17 +215,19 @@ Module MakeBridge (C:CacheSubProtocol).
 
   Theorem cache_write_hoare_triple : forall tid a
                                       d m s_i s
-                                      d' m' s_i' s' v0 v,
+                                      d' m' s_i' s' v0 v r,
       exec App.delta tid (cache_write a v) (d, m, s_i, s)
-           (Finished (d', m', s_i', s') tt) ->
+           (Finished (d', m', s_i', s') r) ->
       cacheI d m s ->
       get vdisk s a = Some v0 ->
       modified [( vCache; vDisk0; vWriteBuffer; vdisk )] s s' /\
       cacheI d' m' s' /\
       get vdisk s' = upd (get vdisk s) a v /\
-      s_i' = s_i.
+      s_i' = s_i /\
+      r = tt.
   Proof.
     intros.
+    destruct r.
     apply bind_right_id in H.
     eapply cache_write_ok in H.
     2: instantiate (1 := fun r d' m' s_i' s' =>
@@ -337,6 +339,16 @@ Module MakeBridge (C:CacheSubProtocol).
     destruct matches.
   Qed.
 
+  Lemma project_disk_upd : forall (s s': abstraction App.Sigma) a v,
+      get vdisk s' = upd (get vdisk s) a v ->
+      project_disk s' = upd (project_disk s) a (v, nil).
+  Proof.
+    unfold project_disk, upd; intros.
+    rewrite H.
+    extensionality a'.
+    destruct matches.
+  Qed.
+
   Theorem cache_simulation : forall T (p: Prog.prog T)
                                (tid:TID) d m s0 s out hm,
       exec App.delta tid (compiler p) (d, m, s0, s) out ->
@@ -377,7 +389,22 @@ Module MakeBridge (C:CacheSubProtocol).
     - (* Write *)
       inv_exec.
       exec_ret.
-      admit.
+      case_eq (get vdisk s a); intros.
+      {
+        eapply cache_write_hoare_triple in H6; eauto.
+        intuition idtac; subst.
+        econstructor.
+        apply possible_sync_refl.
+
+        erewrite (project_disk_upd s s') by eauto.
+        (* need to move the sync after the write to make this valid *)
+        admit.
+      }
+      {
+        (* this just isn't true; it's possible for cache_write to succeed with
+        an out-of-bounds address, whereas Prog.Write would fail *)
+        admit.
+      }
     - (* Sync *)
       (* probably don't need the writeback (just do nothing) *)
       exec_ret.
