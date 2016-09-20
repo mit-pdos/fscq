@@ -1654,13 +1654,35 @@ Module TREESEQ.
     - unfold treeseq_safe in *.
       intuition.
       + unfold treeseq_safe_fwd in *; intros; simpl in *.
-        eexists.
         intuition.
-        specialize (H2 inum0).
-        repeat deex.
-        case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
+        specialize (H2 inum0 off bn).
+        deex.
+        case_eq (find_subtree pathname (TStree (nthd n ts))); intros; simpl.
         destruct d.
-        -- rewrite H12 in *; simpl in *.
+        -- (* a file *)
+          rewrite H9 in H11; simpl.
+          erewrite find_update_subtree in H11; eauto.
+          inversion H11.
+          subst n0; subst f0; clear H11.
+          edestruct H2.
+          eexists b.
+          intuition.
+          intuition.
+          rewrite H13.
+          exists (BFILE.synced_file x); eauto.
+       -- (* a directory *)
+          rewrite H9 in H11; simpl.
+          exfalso.
+          rewrite H9 in H11.
+          inversion H11.
+       -- (* None *)
+          rewrite H9 in H11; simpl.
+          exfalso.
+          rewrite H9 in H11.
+          inversion H11.
+      + 
+
+          
   Admitted.
 
   Ltac distinct_inodes' :=
