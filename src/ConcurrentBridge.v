@@ -119,7 +119,8 @@ Module MakeBridge (C:CacheSubProtocol).
          guar delta tid s_i' s').
 
   Ltac inv_exec' H :=
-      inversion H; subst; repeat sigT_eq.
+    inversion H; subst; repeat sigT_eq;
+    try solve [ inv_step ].
 
   Ltac inv_exec :=
     match goal with
@@ -281,7 +282,7 @@ Module MakeBridge (C:CacheSubProtocol).
       get vdisk s a = Some v.
   Proof.
     intros.
-    inv_exec; try solve [ inv_step ].
+    inv_exec.
 
     inv_exec' H6.
     inv_step; repeat sigT_eq.
@@ -297,7 +298,8 @@ Module MakeBridge (C:CacheSubProtocol).
     end.
     simpl_match; destruct_ands; repeat deex.
 
-    inv_exec' H8; try solve [ inv_step ].
+    inv_exec' H8.
+    inv_step; repeat sigT_eq.
     inv_exec' H15.
     inv_step; repeat sigT_eq.
     rewrite H0 in *.
@@ -379,6 +381,7 @@ Module MakeBridge (C:CacheSubProtocol).
 
       inv_outcome.
     - (* Write *)
+      inv_exec; try solve [ inv_step ].
       admit.
     - (* Sync *)
       (* probably don't need the writeback (just do nothing) *)
