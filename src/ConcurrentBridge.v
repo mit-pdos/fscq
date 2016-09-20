@@ -155,7 +155,7 @@ Module MakeBridge (C:CacheSubProtocol).
     match goal with
     | [ H: exec _ _ (Ret _) _ _ |- _ ] =>
       pose proof (exec_ret H); clear H; subst
-    end.
+    end; try inv_outcome.
 
   Hint Constructors Prog.exec.
   Hint Constructors Prog.step.
@@ -290,8 +290,7 @@ Module MakeBridge (C:CacheSubProtocol).
     unfold cacheI in H0; destruct_ands.
     rewrite H1 in *.
     destruct matches in *;
-      repeat exec_ret;
-      repeat inv_outcome.
+      repeat exec_ret.
     match goal with
     | [ H: WriteBuffer.wb_rep _ _ _ |- _ ] =>
       specialize (H a)
@@ -313,7 +312,6 @@ Module MakeBridge (C:CacheSubProtocol).
     end.
     destruct matches in *;
       repeat exec_ret;
-      repeat inv_outcome;
       repeat simpl_match;
       destruct_ands; repeat deex.
     - apply equal_f_dep with a in H3.
@@ -326,9 +324,8 @@ Module MakeBridge (C:CacheSubProtocol).
       unfold DiskReaders.hide_readers in H3; simpl_match.
       (* need hoare spec for finish_fill *)
       admit.
-    - inv_exec' H17; try solve [ inv_step ].
+    - inv_exec' H17.
       exec_ret.
-      inv_outcome.
   Admitted.
 
   Lemma project_disk_synced : forall s,
@@ -351,16 +348,15 @@ Module MakeBridge (C:CacheSubProtocol).
            intended) *)
           cacheI d' m' s').
   Proof.
-    induction p; simpl; intros.
-    - exec_ret.
-      split; intros; inv_outcome; eauto.
+    induction p; simpl; intros; subst.
+    - exec_ret; eauto.
     - (* Read *)
-      inv_exec; try solve [ inv_step ].
-      destruct v0; exec_ret; inv_outcome; eauto.
+      inv_exec.
+      destruct v0; exec_ret; eauto.
 
       case_eq (get vdisk s a); intros.
       {
-        eapply cache_read_hoare_triple in H7; eauto.
+        eapply cache_read_hoare_triple in H6; eauto.
         intuition idtac; subst.
 
         eapply Prog.XStep.
@@ -375,18 +371,16 @@ Module MakeBridge (C:CacheSubProtocol).
         simpl_match; auto.
       }
       {
-        apply cache_read_success_in_domain in H7; auto.
+        apply cache_read_success_in_domain in H6; auto.
         congruence.
       }
-
-      inv_outcome.
     - (* Write *)
-      inv_exec; try solve [ inv_step ].
+      inv_exec.
+      exec_ret.
       admit.
     - (* Sync *)
       (* probably don't need the writeback (just do nothing) *)
-      subst.
-      exec_ret; inv_outcome.
+      exec_ret.
       split; auto.
       econstructor.
       apply possible_sync_refl.
@@ -395,19 +389,16 @@ Module MakeBridge (C:CacheSubProtocol).
     - (* Trim *)
       (* this is fine *)
       exec_ret.
-      split; intros; inv_outcome.
     - (* Hash *)
       (* should add hashing to concurrent execution so it can be directly
       translated *)
       exec_ret.
-      split; intros; inv_outcome.
     - (* Bind *)
-      inversion H0; repeat sigT_eq; subst;
-        try solve [ inv_step ].
+      inv_exec' H0.
       destruct st' as (((d'',m''),s_i''),s'').
       destruct v0.
 
-      * eapply IHp with (hm := hm) in H8; eauto; destruct_ands.
+      * eapply IHp with (hm := hm) in H7; eauto; destruct_ands.
         2: reflexivity.
         split; intros; subst.
         eapply Prog.XBindFinish; eauto.
@@ -415,7 +406,6 @@ Module MakeBridge (C:CacheSubProtocol).
 
         eapply H; eauto.
       * split; intros; subst; exec_ret; inv_outcome.
-      * congruence.
 Abort.
 
 
