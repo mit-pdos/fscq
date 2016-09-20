@@ -1343,6 +1343,17 @@ Proof.
   compile_step.
 Defined.
 Eval lazy in projT1 (extract_swap_prog (StringMap.empty _)).
+(*
+Declare DiskBlock
+  (fun var0 : W =>
+   (DiskRead var0 (Var 0);
+    Declare DiskBlock
+      (fun var1 : W =>
+       (DiskRead var1 (Var 1);
+        DiskWrite (Var 0) (Var var1);
+        DiskWrite (Var 1) (Var var0);
+        __)))%go)
+*)
 
 Opaque swap_prog.
 
@@ -1412,6 +1423,24 @@ Proof.
   auto with funcs.
 Defined.
 Eval lazy in projT1 (extract_rot3_prog_top).
+(*
+(Declare Num
+   (fun var0 : W =>
+    (var0 <~ Const Num 1;
+     Declare Num
+       (fun var1 : W =>
+        (var1 <~ Const Num 0;
+         Call [] "swap" [var1; var0]))));
+ Declare Num
+   (fun var0 : W =>
+    (var0 <~ Const Num 2;
+     Declare Num
+       (fun var1 : W =>
+        (var1 <~ Const Num 1;
+         Call [] "swap" [var1; var0]))));
+ __)%go
+*)
+
 
 (*
 Definition swap2_prog :=

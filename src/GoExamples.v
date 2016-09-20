@@ -1,5 +1,10 @@
+Require Import List String.
+Require Import StringMap.
 Require Import Go.
+Import ListNotations.
 Import Go.
+
+Local Open Scope string_scope.
 
 Example swap_example : stmt :=
   (Declare Num (fun a =>
@@ -34,3 +39,64 @@ Example swap_example : stmt :=
     }
   }
 *)
+
+Example swap_function_body : stmt :=
+  (Declare DiskBlock (fun va =>
+    (DiskRead va (Var 0);
+     Declare DiskBlock (fun vb =>
+      (DiskRead vb (Var 1);
+       DiskWrite (Var 0) (Var vb);
+       DiskWrite (Var 1) (Var va)))
+   )))%go.
+
+Example swap_function : OperationalSpec :=
+  {|
+    ParamVars := [0; 1];
+    RetParamVars := [];
+    Body := swap_function_body;
+    args_no_dup := ltac:(auto); body_source := ltac:(repeat constructor);
+  |}.
+
+Definition empty_env : Env := StringMap.empty _.
+
+Definition swap_env : Env :=
+  StringMap.add "swap" swap_function empty_env.
+
+(* Corresponding Go:
+func swap(_0 Num, _1 Num) {
+  var va *DiskBlock
+  {
+    var vb *DiskBlock
+    DiskRead(va, _0)
+    DiskRead(vb, _1)
+    DiskWrite(_0, vb)
+    DiskWrite(_1, va)
+  }
+}
+*)
+
+Example rot3_function_body : stmt :=
+  (Declare Num (fun var0 =>
+    (var0 <~ Const Num 1;
+     Declare Num (fun var1 =>
+      (var1 <~ Const Num 0;
+       Call [] "swap" [var1; var0]))));
+   Declare Num (fun var0 =>
+    (var0 <~ Const Num 2;
+     Declare Num (fun var1 =>
+      (var1 <~ Const Num 1;
+       Call [] "swap" [var1; var0])))))%go.
+
+Example rot3_function : OperationalSpec :=
+  {|
+    ParamVars := [];
+    RetParamVars := [];
+    Body := rot3_function_body;
+    args_no_dup := ltac:(auto); body_source := ltac:(repeat constructor);
+  |}.
+
+(***********************)
+(*  Extract this map:  *)
+(***********************)
+Definition whole_env : Env :=
+  StringMap.add "rot3" rot3_function swap_env.
