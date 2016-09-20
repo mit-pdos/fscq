@@ -1713,10 +1713,83 @@ Module TREESEQ.
           exfalso.
           rewrite H12 in H11.
           inversion H11.
-    - 
-  
-          
-  Admitted.
+    - (* different pathnames, but pathname' is still safe, if it was safe. *)
+      unfold treeseq_safe in *.
+      unfold treeseq_pred in H3.
+      eapply NEforall_d_in with (x := (nthd n ts)) in H3 as H3'.  
+      2: eapply nthd_in_ds.
+      intuition; simpl.
+      + 
+        unfold treeseq_safe_fwd in *; simpl in *; eauto.
+        intros.
+        case_eq (find_subtree pathname (TStree ts!!)); intros.
+        destruct d.
+        erewrite find_subtree_update_subtree_ne_path; eauto.
+        specialize (H4 inum0 off bn).
+        edestruct H4.
+        case_eq (find_subtree pathname (TStree (nthd n ts))); intros.        
+        destruct d.
+        rewrite H15 in H10.
+        erewrite find_subtree_update_subtree_ne_path in H10; eauto.
+        rewrite H15 in H10.
+        deex; eauto.
+        rewrite H15 in H10.
+        deex; eauto.
+        exists x; eauto.
+        rewrite H0' in H14.
+        exfalso.
+        inversion H14.
+        rewrite H0' in H14.
+        exfalso.
+        inversion H14.
+      + 
+        unfold treeseq_safe_bwd in *; simpl in *; eauto.
+        intros.
+        case_eq (find_subtree pathname (TStree (nthd n ts))); intros.        
+        destruct d.
+        erewrite find_subtree_update_subtree_ne_path; eauto.
+        specialize (H9 inum0 off bn).
+        edestruct H9.      
+        case_eq (find_subtree pathname (TStree ts!!)); intros.
+        destruct d.
+        rewrite H15 in H10.
+        deex; eauto.
+        erewrite find_subtree_update_subtree_ne_path in H16; eauto.
+        rewrite H0' in H15.
+        exfalso.
+        inversion H15.
+        rewrite H0' in H15.
+        exfalso.
+        inversion H15.
+        deex.
+        left.
+        exists f0; eauto.
+        right; eauto.
+        (* directory *)
+        case_eq (find_subtree pathname (TStree ts!!)); intros.
+        destruct d.
+        rewrite H15 in H10.
+        deex.
+        erewrite find_subtree_update_subtree_ne_path in H16; eauto.
+        rewrite H0' in H15.
+        exfalso.
+        inversion H15.
+        rewrite H0' in H15.
+        exfalso.
+        inversion H15.
+        (* None *)
+        case_eq (find_subtree pathname (TStree ts!!)); intros.
+        destruct d.
+        rewrite H15 in H10.
+        deex.
+        erewrite find_subtree_update_subtree_ne_path in H16; eauto.
+        rewrite H0' in H15.
+        exfalso.
+        inversion H15.
+        rewrite H0' in H15.
+        exfalso.
+        inversion H15.
+  Qed.
 
   Ltac distinct_inodes' :=
     repeat match goal with
