@@ -1680,8 +1680,41 @@ Module TREESEQ.
           exfalso.
           rewrite H9 in H11.
           inversion H11.
-      + 
-
+      + unfold treeseq_safe_bwd in *; intros; simpl in *.
+        destruct H9.
+        specialize (H4 inum0 off bn).
+        case_eq (find_subtree pathname (TStree ts!!)); intros; simpl.
+        destruct d.
+        -- (* a file *)
+          rewrite H11 in H9; simpl.
+          erewrite find_update_subtree in H9; eauto.
+          intuition.
+          inversion H12.
+          subst n0; subst x.
+          clear H12.
+          edestruct H4.
+          eexists b.
+          intuition; eauto.
+          deex.
+          rewrite H12.
+          left.
+          exists (BFILE.synced_file f0).
+          erewrite find_update_subtree; eauto.
+          right; eauto.
+        -- (* a directory *)
+          rewrite H11 in H9.
+          intuition.
+          exfalso.
+          rewrite H12 in H11.
+          inversion H11.
+        -- (* None *)
+          rewrite H11 in H9.
+          intuition.
+          exfalso.
+          rewrite H12 in H11.
+          inversion H11.
+    - 
+  
           
   Admitted.
 
