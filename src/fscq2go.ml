@@ -1,17 +1,14 @@
 (** val swap_example : Go.stmt **)
-open Go
 open Big
+open String
 
-let swap_example =
-Go.Declare (Go.Num, (fun a -> Go.Declare (Go.Num, (fun b -> Go.Declare (Go.DiskBlock,
-    (fun va -> Go.Declare (Go.DiskBlock, (fun vb -> Go.Seq ((Go.Assign (a, (Go.Const
-        (Go.Num, (Obj.magic (Big.succ Big.zero)))))), (Go.Seq ((Go.Assign (b, (Go.Const (Go.Num,
-            (Obj.magic (Big.succ (Big.succ Big.zero))))))), (Go.Seq ((Go.DiskRead (va, (Go.Var a))),
-                (Go.Seq ((Go.DiskRead (vb, (Go.Var b))), (Go.Seq ((Go.DiskWrite ((Go.Var a), (Go.Var
-                    vb))), (Go.DiskWrite ((Go.Var b), (Go.Var va))))))))))))))))))))
-  
-  
-let go_type coq_go_type =
+open Go
+open StringMap
+
+let char_list_to_string (l : char list) =
+  String.init (List.length l) (List.nth l)
+
+let go_type (coq_go_type : Go.coq_type) =
   match coq_go_type with
   | Go.Num -> "*big.Int"
   | Go.Bool -> "bool"
@@ -53,15 +50,22 @@ let rec go_stmt stmt next_var =
       let line = "var " ^ var_name ^ " " ^ (go_type gType) ^ "\n" in
       let (next_var', text) = go_stmt (fn next_var) (succ next_var) in
       (next_var', "{\n" ^ line ^ text ^ "}\n")
+  | Go.Assign (var, expr) ->
+      let line = var_name var ^ " = " ^ (go_expr expr) ^ "\n" in
+      (next_var, line)
   | Go.If (expr, t, f) ->
       let s_expr = go_expr expr in
       let line = "if (" ^ s_expr ^ ")" in
       let (next_var', t_text) = go_stmt t next_var in
       let (next_var'', f_text) = go_stmt f next_var' in
       (next_var'', line ^ "\n {\n" ^ t_text ^ "} else {\n" ^ f_text ^ "}\n")
-  | Go.Assign (var, expr) ->
-      let line = var_name var ^ " = " ^ (go_expr expr) ^ "\n" in
-      (next_var, line)
+  | Go.Call (rets, name, args) ->
+      let go_args = List.map var_name args in
+      let go_rets = List.map var_name rets in
+      let go_name = char_list_to_string name in
+      let call = go_name ^ "(" ^ (String.concat ", " go_args) ^ ")" in
+      let assign = if (List.length go_rets > 0) then (String.concat ", " go_rets) ^ " = " else "" in
+      (next_var, assign ^ call ^ "\n")
   | Go.DiskRead (var, expr) ->
       let line = var_name var ^ " = DiskRead(" ^ go_expr expr ^ ")\n" in
       (next_var, line)
@@ -70,16 +74,42 @@ let rec go_stmt stmt next_var =
       (next_var, line)
 ;;
 
-let () = 
-  print_endline "package main";;
-  print_endline "";;
-  print_endline "import (\"math/big\")";;
-  print_endline "";;
-  print_endline "func DiskRead(addr *big.Int) *big.Int { return big.NewInt(0) }";;
-  print_endline "func DiskWrite(val *big.Int, addr *big.Int) { }";;
-  print_endline "func main() {";;
-  let (next_var, text) = go_stmt swap_example one in
-  print_endline text;;
-  print_endline "}"
+let arg_pair_to_declaration (v : Go.coq_type * Go.var) =
+  let (arg_t, arg) = v in
+  var_name arg ^ " " ^ go_type arg_t
+
+let go_func (v : StringMap.key * Go.coq_OperationalSpec) =
+  let (name_chars, op_spec) = v in
+  let name = char_list_to_string name_chars in
+  let args = op_spec.coq_ParamVars in
+  let next_var = succ (List.fold_left max zero (List.map snd args)) in
+  let ret = op_spec.coq_RetParamVars in
+  let body = op_spec.coq_Body in
+  let (_, go_body) = go_stmt body next_var in
+  "func " ^ name ^ "(" ^ (concat ", " (List.map arg_pair_to_declaration args)) ^ ") " ^
+     "(" ^ (concat ", " (List.map arg_pair_to_declaration ret)) ^ ") {\n" ^
+     go_body ^ "\n" ^
+  "}"
+
+let header =
+"// generated header
+package fscq
+
+import (\"math/big\")
+
+func DiskRead(addr *big.Int) *big.Int { return big.NewInt(0) }
+func DiskWrite(val *big.Int, addr *big.Int) { }
+
+// end header
+"
+
+let go_fns fn_map =
+  concat "\n\n" (List.map go_func (StringMap.elements fn_map))
+
+
+let  () =
+  print_endline header;;
+  print_endline (go_fns GoFunctions.go_functions);;
+  print_endline "func main() {}"
 
 
