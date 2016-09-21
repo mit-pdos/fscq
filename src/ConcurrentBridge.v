@@ -114,6 +114,7 @@ Module MakeBridge (C:CacheSubProtocol).
          invariant delta d' m' s' /\
          match r with
          | Some r => post r (project_disk s')
+         (* why is this rely? shouldn't it be guar? *)
          | None => rely delta tid s s'
          end /\
          guar delta tid s_i' s').
@@ -435,6 +436,36 @@ Module MakeBridge (C:CacheSubProtocol).
       * split; intros; subst; exec_ret; inv_outcome.
 Abort.
 
+  Theorem cache_simulation_finish : forall T (p: Prog.prog T)
+                                      (tid:TID) d m s_i s out hm,
+      exec App.delta tid (compiler p) (d, m, s_i, s) out ->
+      cacheI d m s ->
+      (forall d' m' s_i' s' (v:T),
+          out = Finished (d', m', s_i', s') (value v) ->
+          (Prog.exec (project_disk s) hm p (Prog.Finished (project_disk s') hm v) /\
+           cacheI d' m' s') \/
+          (Prog.exec (project_disk s) hm p (Prog.Failed T))).
+  Proof.
+  Admitted.
+
+  Theorem cache_simulation_failure : forall T (p: Prog.prog T)
+                                       (tid:TID) d m s_i s hm,
+      exec App.delta tid (compiler p) (d, m, s_i, s) (Failed (Exc T)) ->
+      cacheI d m s ->
+      Prog.exec (project_disk s) hm p (Prog.Failed T).
+  Proof.
+  Admitted.
+
+  Theorem prog_exec_ret : forall T m hm (r:T) out,
+      Prog.exec m hm (Prog.Ret r) out ->
+      out = (Prog.Finished m hm r).
+  Proof.
+    intros.
+    inversion H; repeat sigT_eq; auto.
+    inversion H6.
+    inversion H5.
+    inversion H5.
+  Qed.
 
   (* The master theorem: convert a sequential program into a concurrent
 program via [compiler], convert its spec to a concurrent spec via
@@ -444,6 +475,129 @@ program via [compiler], convert its spec to a concurrent spec via
       seq_hoare_double spec p ->
       concur_hoare_double (fun a => concurrent_spec (spec a)) (compiler p).
   Proof.
+    unfold seq_hoare_double, concur_hoare_double, Hoare.corr2; intros.
+    apply valid_unfold; intros.
+    deex.
+    case_eq (spec a); intros.
+    rewrite H0 in *; simpl in *.
+    destruct_ands.
+    specialize (H T Prog.Ret).
+    Print Hoare.donecond.
+    specialize (H (fun hm r d => seq_spec_post r d) (fun _ _ => True)).
+    specialize (H (project_disk s) empty_hashmap).
+
+    inv_exec' H1; try solve [ inv_fail_step ].
+    destruct v as [r |].
+    { (* executed succesfully to (Some r) *)
+      destruct st' as (((d',m'),s_i'),s').
+      match goal with
+        | [ H: exec _ _ (compiler p) _ _ |- _ ] =>
+          eapply cache_simulation_finish with (hm:=empty_hashmap) in H;
+            eauto; try reflexivity
+      end.
+      intuition.
+      specialize (H (Prog.Finished (project_disk s') empty_hashmap r)).
+      match type of H with
+      | ?P -> ?Q -> _ =>
+        assert Q
+      end.
+      apply ProgMonad.bind_right_id; auto.
+      intuition.
+      match type of H with
+      | ?P -> ?Q -> ?R \/ ?R' =>
+        assert (P -> R) as H'
+      end.
+      intros.
+      intuition.
+      repeat deex; congruence.
+      match type of H' with
+      | ?P -> _ => assert P
+      end.
+      {
+        exists a; exists emp.
+        repeat apply sep_star_lift_apply'; auto.
+        apply pimpl_star_emp; auto.
+        replace (spec a); simpl; auto.
+        intros.
+        destruct_lifts.
+        replace (spec a) in H9; simpl in H9.
+
+        apply prog_exec_ret in H10; subst.
+        left.
+        do 3 eexists; eauto.
+      }
+      intuition; repeat deex; try congruence.
+      inversion H10; subst; clear H10.
+      inversion H11; subst; clear H11.
+      eapply H3 in H13; eauto.
+      intuition auto.
+      admit. (* lemmas need to prove cacheR s_i' s' for compiled programs *)
+
+
+      specialize (H (Prog.Failed T)).
+      match type of H with
+      | ?P -> ?Q -> _ =>
+        assert Q
+      end.
+      apply ProgMonad.bind_right_id; auto.
+      match type of H with
+      | ?P -> ?Q -> ?R \/ ?R' =>
+        assert (P -> R) as H'
+      end.
+      intros.
+      intuition.
+      repeat deex; congruence.
+      match type of H' with
+      | ?P -> _ => assert P
+      end.
+      {
+        exists a; exists emp.
+        repeat apply sep_star_lift_apply'; auto.
+        apply pimpl_star_emp; auto.
+        replace (spec a); simpl; auto.
+        intros.
+        destruct_lifts.
+        replace (spec a) in H8; simpl in H8.
+
+        apply prog_exec_ret in H9; subst.
+        left.
+        do 3 eexists; eauto.
+      }
+      intuition; repeat deex; try congruence.
+    }
+    {
+      (* execute to None case; need lemma to show compiled program "did nothing"
+         (from cache_abort spec and invariant) *)
+      admit.
+    }
+
+    (* compiled code failed *)
+    apply cache_simulation_failure with (hm:=empty_hashmap) in H11; auto.
+    (* TODO: this snippet of proof is repetitive *)
+    specialize (H (Prog.Failed T)).
+    match type of H with
+    | ?P -> ?Q -> ?R \/ ?R' =>
+      assert (P -> R) as H'
+    end.
+    apply ProgMonad.bind_right_id in H11; intuition auto.
+    repeat deex; congruence.
+    match type of H' with
+    | ?P -> _ => assert P
+    end.
+    {
+      exists a; exists emp.
+      repeat apply sep_star_lift_apply'; auto.
+      apply pimpl_star_emp; auto.
+      replace (spec a); simpl; auto.
+      intros.
+      destruct_lifts.
+      replace (spec a) in H6; simpl in H6.
+
+      apply prog_exec_ret in H7; subst.
+      left.
+      do 3 eexists; eauto.
+    }
+    intuition; repeat deex; try congruence.
   Abort.
 
 End MakeBridge.
