@@ -51,7 +51,7 @@ Example swap_function_body : stmt :=
 
 Example swap_function : OperationalSpec :=
   {|
-    ParamVars := [0; 1];
+    ParamVars := [(Go.Num, 0); (Go.Num, 1)];
     RetParamVars := [];
     Body := swap_function_body;
     args_no_dup := ltac:(auto); body_source := ltac:(repeat constructor);
