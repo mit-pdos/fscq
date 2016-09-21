@@ -15,7 +15,7 @@ Module MakeBridge (C:CacheSubProtocol).
   Import ConcurrentCache.
 
   (* Exc is a (somewhat obscure) synonym for option defined in Specif *)
-  Fixpoint compiler {T} (p: Prog.prog T) : prog App.Sigma (Exc T) :=
+  Fixpoint compile {T} (p: Prog.prog T) : prog App.Sigma (Exc T) :=
     match p with
     | Prog.Ret v => Ret (value v)
     | Prog.Read a => opt_v <- cache_read a;
@@ -37,9 +37,9 @@ Module MakeBridge (C:CacheSubProtocol).
     (* TODO: should be a direct translation, but need hashing in
       concurrent execution semantics *)
     | Prog.Hash buf => Ret error
-    | Prog.Bind p1 p2 => x <- compiler p1;
+    | Prog.Bind p1 p2 => x <- compile p1;
                           match x with
-                          | Some x => compiler (p2 x)
+                          | Some x => compile (p2 x)
                           | None => Ret error
                           end
     end.
@@ -352,7 +352,7 @@ Module MakeBridge (C:CacheSubProtocol).
 
   Theorem cache_simulation : forall T (p: Prog.prog T)
                                (tid:TID) d m s_i s out hm,
-      exec App.delta tid (compiler p) (d, m, s_i, s) out ->
+      exec App.delta tid (compile p) (d, m, s_i, s) out ->
       cacheI d m s ->
       (forall d' m' s_i' s' (v:T),
           out = Finished (d', m', s_i', s') (value v) ->
@@ -438,7 +438,7 @@ Abort.
 
   Theorem cache_simulation_finish : forall T (p: Prog.prog T)
                                       (tid:TID) d m s_i s out hm,
-      exec App.delta tid (compiler p) (d, m, s_i, s) out ->
+      exec App.delta tid (compile p) (d, m, s_i, s) out ->
       cacheI d m s ->
       (forall d' m' s_i' s' (v:T),
           out = Finished (d', m', s_i', s') (value v) ->
@@ -450,7 +450,7 @@ Abort.
 
   Theorem cache_simulation_failure : forall T (p: Prog.prog T)
                                        (tid:TID) d m s_i s hm,
-      exec App.delta tid (compiler p) (d, m, s_i, s) (Failed (Exc T)) ->
+      exec App.delta tid (compile p) (d, m, s_i, s) (Failed (Exc T)) ->
       cacheI d m s ->
       Prog.exec (project_disk s) hm p (Prog.Failed T).
   Proof.
@@ -468,12 +468,12 @@ Abort.
   Qed.
 
   (* The master theorem: convert a sequential program into a concurrent
-program via [compiler], convert its spec to a concurrent spec via
+program via [compile], convert its spec to a concurrent spec via
 [concurrent_spec], and prove the resulting concurrent Hoare double.
    *)
   Theorem compiler_correct : forall T (p: Prog.prog T) A (spec: A -> SeqHoareSpec T),
       seq_hoare_double spec p ->
-      concur_hoare_double (fun a => concurrent_spec (spec a)) (compiler p).
+      concur_hoare_double (fun a => concurrent_spec (spec a)) (compile p).
   Proof.
     unfold seq_hoare_double, concur_hoare_double, Hoare.corr2; intros.
     apply valid_unfold; intros.
@@ -491,7 +491,7 @@ program via [compiler], convert its spec to a concurrent spec via
     { (* executed succesfully to (Some r) *)
       destruct st' as (((d',m'),s_i'),s').
       match goal with
-        | [ H: exec _ _ (compiler p) _ _ |- _ ] =>
+        | [ H: exec _ _ (compile p) _ _ |- _ ] =>
           eapply cache_simulation_finish with (hm:=empty_hashmap) in H;
             eauto; try reflexivity
       end.
