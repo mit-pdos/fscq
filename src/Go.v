@@ -355,11 +355,11 @@ Module Go.
     end.
 
   Record OperationalSpec := {
-    ParamVars : list var;
+    ParamVars : list (type * var);
     RetParamVars : list var;
     Body : stmt;
     (* ret_not_in_args : dont_intersect RetParamVars ParamVars = true; *)
-    args_no_dup : is_no_dup ParamVars = true;
+    args_no_dup : is_no_dup (snd (split ParamVars)) = true;
     body_source : source_stmt Body;
     (* TODO syntax_ok with is_actual_args_no_dup *)
   }.
@@ -452,10 +452,10 @@ Module Go.
                      source_stmt (Body spec) ->
                      length argvars = length (ParamVars spec) ->
                      mapM (sel s) argvars = Some input ->
-                     let callee_s := make_map (ParamVars spec) input in
+                     let callee_s := make_map (snd (split (ParamVars spec))) input in
                      runsto (Body spec) (d, callee_s) (d', callee_s') ->
                      all_some (List.map (fun rv => sel callee_s' rv) (RetParamVars spec)) = Some ret ->
-                     let output := List.map (sel callee_s') (ParamVars spec) in
+                     let output := List.map (sel callee_s') (snd (split (ParamVars spec))) in
                      let s' := add_remove_many argvars input output s in
                      let s' := add_many retvars ret s' in
                      runsto (Call retvars f argvars) (d, s) (d', s').
@@ -515,8 +515,9 @@ Module Go.
           source_stmt (Body spec) ->
           length argvars = length (ParamVars spec) ->
           mapM (sel s) argvars = Some input ->
-          let callee_s := make_map (ParamVars spec) input in
-          step (d, s, Call retvars f argvars) (d, callee_s, InCall s spec.(ParamVars) spec.(RetParamVars) argvars retvars spec.(Body))
+          let callee_s := make_map (snd (split (ParamVars spec))) input in
+          step (d, s, Call retvars f argvars) (d, callee_s,
+            InCall s (snd (split spec.(ParamVars))) spec.(RetParamVars) argvars retvars spec.(Body))
     | StepInCall :
         forall st p st' p' s0 paramvars retparamvars argvars retvars,
           step (st, p) (st', p') ->
@@ -590,6 +591,7 @@ Module Go.
       | _ => eapply rt1n_trans'
     end.
 
+    Hint Extern 1 (_ = Datatypes.length (snd (split _))) => rewrite split_length_r.
 
     Ltac do_inv :=
       match goal with
@@ -707,10 +709,10 @@ Module Go.
                          source_stmt (Body spec) ->
                          length argvars = length (ParamVars spec) ->
                          mapM (sel s) argvars = Some input ->
-                         let callee_s := make_map (ParamVars spec) input in
+                         let callee_s := make_map (snd (split (ParamVars spec))) input in
                          runsto_InCall (Body spec) (d, callee_s) (d', callee_s') ->
                          all_some (List.map (fun rv => sel callee_s' rv) (RetParamVars spec)) = Some retvals ->
-                         let output := List.map (sel callee_s') (ParamVars spec) in
+                         let output := List.map (sel callee_s') (snd (split (ParamVars spec))) in
                          let s' := add_remove_many argvars input output s in
                          let s' := add_many retvars retvals s' in
                          runsto_InCall (Call retvars f argvars) (d, s) (d', s')

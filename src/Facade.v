@@ -967,11 +967,11 @@ Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> 
 
 
 Lemma extract_voidfunc2_call :
-  forall A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) arga argb env,
+  forall A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) arga argb arga_t argb_t env,
     forall and body ss,
       (forall a b, EXTRACT src a b {{ arga ~> a; argb ~> b; ∅ }} body {{ fun _ => ∅ }} // env) ->
       StringMap.find name env = Some {|
-                                    ParamVars := [arga; argb];
+                                    ParamVars := [(arga_t, arga); (argb_t, argb)];
                                     RetParamVars := [];
                                     Body := body;
                                     (* ret_not_in_args := rnia; *)
@@ -981,7 +981,7 @@ Lemma extract_voidfunc2_call :
       voidfunc2 name src env.
 Proof.      
   unfold voidfunc2.
-  intros A B C WA WB name src arga argb env and body ss Hex Henv avar bvar Hvarne a b.
+  intros A B C WA WB name src arga argb arga_t argb_t env and body ss Hex Henv avar bvar Hvarne a b.
   specialize (Hex a b).
   intro.
   intros.
@@ -1363,7 +1363,7 @@ Hint Resolve extract_swap_prog_corr : extractions.
 
 Definition swap_env : Env :=
   ("swap" -s> {|
-           ParamVars := [0; 1];
+           ParamVars := [(Go.Num, 0); (Go.Num, 1)];
            RetParamVars := []; Body := projT1 (extract_swap_prog (StringMap.empty _));
            (* ret_not_in_args := ltac:(auto); *) args_no_dup := ltac:(auto); body_source := ltac:(repeat constructor);
          |}; (StringMap.empty _)).
