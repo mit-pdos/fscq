@@ -350,11 +350,11 @@ Module MakeBridge (C:CacheSubProtocol).
   Qed.
 
   Theorem cache_simulation : forall T (p: Prog.prog T)
-                               (tid:TID) d m s0 s out hm,
-      exec App.delta tid (compiler p) (d, m, s0, s) out ->
+                               (tid:TID) d m s_i s out hm,
+      exec App.delta tid (compiler p) (d, m, s_i, s) out ->
       cacheI d m s ->
-      (forall d' m' s0' s' (v:T),
-          out = Finished (d', m', s0', s') (value v) ->
+      (forall d' m' s_i' s' (v:T),
+          out = Finished (d', m', s_i', s') (value v) ->
           Prog.exec (project_disk s) hm p (Prog.Finished (project_disk s') hm v) /\
           (* this invariant allows us to continue running code in a bind (no pun
            intended) *)
