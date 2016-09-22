@@ -1305,6 +1305,51 @@ Proof.
 Defined.
 Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
 
+Fixpoint map_add_sequence T (m : VarMap.t T) kvps :=
+  match kvps with
+    | (k, v) :: kvps =>
+      k ->> v; map_add_sequence m kvps
+    | _ => m
+  end.
+
+Eval simpl in map_add_sequence ∅ [(0, SItem 5); (1, SItem $5)].
+
+Ltac add_sequence_reify M :=
+  match type of M with
+    | VarMap.t ?T =>
+      match M with
+        | VarMap.add ?k ?v ?M' =>
+          let t := add_sequence_reify M' in
+          let kvps' := eval simpl in (fst t) in
+          let m := eval simpl in (snd t) in
+          constr:((k, v) :: kvps', m)
+        | ?m => constr:(@nil (var * T), m)
+      end
+  end.
+
+Lemma find_none_notin :
+  forall T var (m : VarMap.t T) kvps,
+    VarMap.find var (map_add_sequence m kvps) = None -> ~ In var (map fst kvps).
+Proof.
+  induction kvps; simpl; intros; auto.
+  intuition; destruct a; simpl in *; maps.
+  rewrite MapFacts.add_neq_o in H by (intro; maps).
+  intuition.
+Qed.
+
+Ltac notin :=
+  match goal with
+    | [ H : VarMap.find ?var ?M = None |- _ ] =>
+      let t := add_sequence_reify M in
+      let kvps := eval simpl in (fst t) in
+      let m := eval simpl in (snd t) in
+      let H' := fresh in
+      pose proof (find_none_notin var m kvps H) as H';
+      cbv [map fst] in H';
+      clear H;
+      rename H' into H
+  end.
+
 Lemma extract_swap_prog : forall env, sigT (fun p =>
   forall a b, EXTRACT swap_prog a b {{ 0 ~> a; 1 ~> b; ∅ }} p {{ fun _ => ∅ }} // env).
 Proof.
