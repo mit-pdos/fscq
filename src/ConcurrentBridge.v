@@ -114,8 +114,7 @@ Module MakeBridge (C:CacheSubProtocol).
          invariant delta d' m' s' /\
          match r with
          | Some r => post r (project_disk s')
-         (* why is this rely? shouldn't it be guar? *)
-         | None => rely delta tid s s'
+         | None => guar App.delta tid s s'
          end /\
          guar delta tid s_i' s').
 
@@ -665,7 +664,39 @@ program via [compile], convert its spec to a concurrent spec via
     }
     {
       (* execute to None case; need to apply cache_simulation_finish_error *)
-      admit.
+      destruct st' as (((d', m'), s_i'), s').
+      eapply cache_simulation_finish_error in H11; eauto.
+      destruct H11.
+      - destruct_ands.
+        eapply H3 in H13; eauto.
+        intuition eauto.
+        admit. (* forgot to talk about s_i' somewhere? *)
+      - (* failure if sequential isn't possible *)
+        exfalso.
+        specialize (H (Prog.Failed T)).
+        match type of H with
+        | ?P -> ?Q -> ?R \/ ?R' =>
+          assert (P -> R) as H'
+        end.
+        apply ProgMonad.bind_right_id in H6; intuition auto.
+        repeat deex; congruence.
+        match type of H' with
+        | ?P -> _ => assert P
+        end.
+        {
+          exists a; exists emp.
+          repeat apply sep_star_lift_apply'; auto.
+          apply pimpl_star_emp; auto.
+          replace (spec a); simpl; auto.
+          intros.
+          destruct_lifts.
+          replace (spec a) in *; simpl in *.
+
+          apply prog_exec_ret in H8; subst.
+          left.
+          do 3 eexists; eauto.
+        }
+        intuition; repeat deex; try congruence.
     }
 
     (* compiled code failed *)
