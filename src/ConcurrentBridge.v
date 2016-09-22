@@ -192,6 +192,37 @@ Module MakeBridge (C:CacheSubProtocol).
            end; intuition eauto.
   Qed.
 
+  Theorem cache_read_error_hoare_triple : forall tid a
+                                      d m s_i s
+                                      d' m' s_i' s' v0,
+      exec App.delta tid (cache_read a) (d, m, s_i, s)
+           (Finished (d', m', s_i', s') error) ->
+      cacheI d m s ->
+      get vdisk s a = Some v0 ->
+      modified [( vCache; vDisk0 )] s s' /\
+      cacheI d' m' s' /\
+      cacheR tid s s' /\
+      s_i' = s_i.
+  Proof.
+    intros.
+    apply bind_right_id in H.
+    eapply cache_read_ok in H.
+    2: instantiate (1 := fun r d' m' s_i' s' =>
+                           modified [( vCache; vDisk0 )] s s' /\
+                           cacheR tid s s' /\
+                           cacheI d' m' s' /\
+                           s_i' = s_i).
+    repeat deex; inv_outcome; auto.
+
+    exists v0; intuition.
+    apply valid_unfold; intuition idtac.
+    subst.
+    exec_ret.
+    repeat match goal with
+           | |- exists _, _ => eexists
+           end; intuition eauto.
+  Qed.
+
   Theorem cache_read_no_failure : forall tid a
                                     d m s_i s
                                     v0,
@@ -443,7 +474,8 @@ Abort.
       (forall d' m' s_i' s' (v:T),
           out = Finished (d', m', s_i', s') (value v) ->
           (Prog.exec (project_disk s) hm p (Prog.Finished (project_disk s') hm v) /\
-           cacheI d' m' s') \/
+           cacheI d' m' s' /\
+           guar App.delta tid s s') \/
           (Prog.exec (project_disk s) hm p (Prog.Failed T))).
   Proof.
   Admitted.
@@ -467,6 +499,66 @@ Abort.
     inversion H5.
   Qed.
 
+  Theorem project_disk_vdisk_none : forall (s: abstraction App.Sigma) a,
+      get vdisk s a = None ->
+      project_disk s a = None.
+  Proof.
+    unfold project_disk; intros; rewrite H; auto.
+  Qed.
+
+  Theorem cache_simulation_finish_error : forall T (p: Prog.prog T)
+                                            (tid:TID) d m s_i s
+                                            d' m' s_i' s',
+      exec App.delta tid (compile p) (d, m, s_i, s) (Finished (d', m', s_i', s') error) ->
+      cacheI d m s ->
+      (guar App.delta tid s s' /\
+       cacheI d' m' s') \/
+      (* TODO: all of these theorems should apply to any hashmap *)
+      (Prog.exec (project_disk s) empty_hashmap p (Prog.Failed T)).
+  Proof.
+    induction p; simpl; intros.
+    - exec_ret.
+    - inv_exec.
+      case_eq (get vdisk s a); intros.
+      destruct v; exec_ret; try congruence.
+      eapply cache_read_error_hoare_triple in H6; eauto.
+      left.
+      intuition eauto; subst.
+
+      apply C.protocolRespectsPrivateVars; eauto.
+      right.
+      constructor.
+      constructor.
+      apply project_disk_vdisk_none; auto.
+    - inv_exec.
+      exec_ret.
+    - exec_ret.
+    - exec_ret.
+      left.
+      split; auto.
+      apply guar_preorder.
+    - exec_ret.
+      left.
+      split; auto.
+      apply guar_preorder.
+    - inv_exec.
+      destruct v; try exec_ret.
+      destruct st' as (((d'', m''), s_i''), s'').
+      pose proof H7.
+      eapply cache_simulation_finish with (hm:=empty_hashmap) in H7; eauto; try reflexivity.
+      destruct H7; [ destruct_ands | right ].
+      pose proof H9.
+      eapply H in H9; eauto.
+      destruct H9; [ destruct_ands | right ].
+      left.
+      split; eauto.
+      eapply Prog.XBindFinish; eauto.
+      eapply Prog.XBindFail; eauto.
+
+      eapply IHp in H7; eauto.
+      destruct H7; eauto.
+  Qed.
+
   (* The master theorem: convert a sequential program into a concurrent
 program via [compile], convert its spec to a concurrent spec via
 [concurrent_spec], and prove the resulting concurrent Hoare double.
@@ -482,7 +574,6 @@ program via [compile], convert its spec to a concurrent spec via
     rewrite H0 in *; simpl in *.
     destruct_ands.
     specialize (H T Prog.Ret).
-    Print Hoare.donecond.
     specialize (H (fun hm r d => seq_spec_post r d) (fun _ _ => True)).
     specialize (H (project_disk s) empty_hashmap).
 
@@ -520,19 +611,23 @@ program via [compile], convert its spec to a concurrent spec via
         replace (spec a); simpl; auto.
         intros.
         destruct_lifts.
-        replace (spec a) in H9; simpl in H9.
+        replace (spec a) in *; simpl in *.
 
-        apply prog_exec_ret in H10; subst.
+        match goal with
+        | [ H: Prog.exec _ _ (Prog.Ret _) _ |- _ ] =>
+          apply prog_exec_ret in H; subst
+        end.
         left.
         do 3 eexists; eauto.
       }
       intuition; repeat deex; try congruence.
-      inversion H10; subst; clear H10.
-      inversion H11; subst; clear H11.
+      repeat match goal with
+               [ H: @eq (Prog.outcome _) _ _ |- _ ] =>
+               inversion H; clear H
+             end; subst.
       eapply H3 in H13; eauto.
       intuition auto.
       admit. (* lemmas need to prove cacheR s_i' s' for compiled programs *)
-
 
       specialize (H (Prog.Failed T)).
       match type of H with
@@ -557,17 +652,19 @@ program via [compile], convert its spec to a concurrent spec via
         replace (spec a); simpl; auto.
         intros.
         destruct_lifts.
-        replace (spec a) in H8; simpl in H8.
+        replace (spec a) in *; simpl in *.
 
-        apply prog_exec_ret in H9; subst.
+        match goal with
+        | [ H: Prog.exec _ _ (Prog.Ret _) _ |- _ ] =>
+          apply prog_exec_ret in H; subst
+        end.
         left.
         do 3 eexists; eauto.
       }
       intuition; repeat deex; try congruence.
     }
     {
-      (* execute to None case; need lemma to show compiled program "did nothing"
-         (from cache_abort spec and invariant) *)
+      (* execute to None case; need to apply cache_simulation_finish_error *)
       admit.
     }
 
@@ -591,7 +688,7 @@ program via [compile], convert its spec to a concurrent spec via
       replace (spec a); simpl; auto.
       intros.
       destruct_lifts.
-      replace (spec a) in H6; simpl in H6.
+      replace (spec a) in *; simpl in *.
 
       apply prog_exec_ret in H7; subst.
       left.
