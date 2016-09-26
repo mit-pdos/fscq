@@ -237,6 +237,67 @@ Ltac set_hyp_evars :=
 Module VarMapFacts := FMapFacts.WFacts_fun(Nat_as_OT)(VarMap).
 Module Import MoreVarMapFacts := MoreFacts_fun(Nat_as_OT)(VarMap).
 
+Fixpoint map_add_sequence T (m : VarMap.t T) kvps :=
+  match kvps with
+    | (k, v) :: kvps =>
+      k ->> v; map_add_sequence m kvps
+    | _ => m
+  end.
+
+Ltac add_sequence_reify M :=
+  match type of M with
+    | VarMap.t ?T =>
+      match M with
+        | VarMap.add ?k ?v ?M' =>
+          let t := add_sequence_reify M' in
+          let kvps' := eval simpl in (fst t) in
+          let m := eval simpl in (snd t) in
+          constr:((k, v) :: kvps', m)
+        | ?m => constr:(@nil (Go.var * T), m)
+      end
+  end.
+
+Hint Constructors NoDup : nodup.
+Ltac extend_nodup :=
+  match goal with
+    | [ Hi : ~ In ?v1 [?v2] |- _ ] =>
+      let H := fresh in
+      assert (NoDup [v1; v2]) as H by auto with nodup; clear Hi; rename H into Hi
+    | [ Hi : ~ In ?v ?l, Hd : NoDup ?l |- _ ] =>
+      let H := fresh in
+      assert (NoDup (v :: l)) as H by auto with nodup; clear Hd; rename H into Hd
+  end.
+
+Lemma NoDup_tail :
+  forall A (x : A) xs,
+    NoDup (x :: xs) -> NoDup xs.
+Proof.
+  firstorder using NoDup_cons_iff.
+Qed.
+
+Lemma NoDup_head :
+  forall A (x : A) xs,
+    NoDup (x :: xs) -> ~ In x xs.
+Proof.
+  firstorder using NoDup_cons_iff.
+Qed.
+
+Ltac noteq_from_NoDup :=
+  solve [
+    unfold Nat_as_OT.eq; hnf;
+    repeat match goal with
+    | [ H : NoDup (?x :: _) |- ?var1 = ?var2 -> False ] =>
+      (is_evar x; fail 1) ||
+      (is_evar var1; fail 1) ||
+      unify x var1; apply NoDup_head in H; cbv in H; solve [ intuition ]
+    | [ H : NoDup (?x :: _) |- ?var1 = ?var2 -> False ] =>
+      (is_evar x; fail 1) ||
+      (is_evar var2; fail 1) ||
+      unify x var2; apply NoDup_head in H; cbv in H; solve [ intuition ]
+    | [ H : NoDup (_ :: _) |- ?var1 = ?var2 -> False ] =>
+      apply NoDup_tail in H
+  end ].
+
 Ltac map_rewrites := rewrite
                        ?StringMapFacts.remove_neq_o, ?StringMapFacts.remove_eq_o,
                      ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o,
@@ -244,7 +305,7 @@ Ltac map_rewrites := rewrite
                        ?VarMapFacts.remove_neq_o, ?VarMapFacts.remove_eq_o,
                      ?VarMapFacts.add_neq_o, ?VarMapFacts.add_eq_o,
                      ?VarMapFacts.empty_o
-    in * by congruence.
+    in * by (congruence || subst; noteq_from_NoDup).
 
 Ltac maps := unfold SameValues in *; repeat match goal with
   | [ H : Forall _ (VarMap.elements _) |- _ ] =>
@@ -264,6 +325,32 @@ Ltac find_all_cases :=
   repeat match goal with
   | [ H : match VarMap.find ?d ?v with | Some _ => _ | None => _ end |- _ ] => find_cases d v
   end; subst.
+
+Lemma find_none_notin :
+  forall T var (m : VarMap.t T) kvps,
+    VarMap.find var (map_add_sequence m kvps) = None -> ~ In var (map fst kvps).
+Proof.
+  induction kvps; simpl; intros; auto.
+  intuition; destruct a; simpl in *; maps.
+  rewrite MapFacts.add_neq_o in H by (intro; maps).
+  intuition.
+Qed.
+
+Ltac notin :=
+  match goal with
+    | [ H : VarMap.find ?var ?M = None |- _ ] =>
+      let t := add_sequence_reify M in
+      let kvps := eval simpl in (fst t) in
+      let m := eval simpl in (snd t) in
+      let H' := fresh in
+      pose proof (find_none_notin var m kvps H) as H';
+      cbv [map fst] in H';
+      clear H;
+      rename H' into H
+  end.
+
+Ltac prep_nodup := repeat notin; repeat extend_nodup.
+
 
 
 Lemma read_fails_not_present:
@@ -720,6 +807,21 @@ Proof.
   intuition.
 Qed.
 
+Lemma hoare_equal_pre : forall T env A1 A2 (B : T -> _) pr p,
+  VarMap.Equal A1 A2 ->
+  EXTRACT pr
+  {{ A1 }} p {{ B }} // env ->
+  EXTRACT pr
+  {{ A2 }} p {{ B }} // env.
+Proof.
+  intros.
+  eapply hoare_strengthen_pre.
+  intros.
+  rewrite <- H.
+  eassumption.
+  assumption.
+Qed.
+
 Lemma hoare_equal_post : forall T env A (B1 B2 : T -> _) pr p,
   (forall x, VarMap.Equal (B1 x) (B2 x)) ->
   EXTRACT pr
@@ -731,24 +833,6 @@ Proof.
   eapply hoare_weaken_post.
   intros.
   rewrite H; eauto.
-  assumption.
-Qed.
-
-Lemma hoare_simpl_add_same_post : forall T V {H: GoWrapper V} env A (B : T -> _) k (fv : T -> V) v0 pr p,
-  EXTRACT pr
-  {{ A }} p {{ fun r => k ~> fv r; B r }} // env ->
-  EXTRACT pr
-  {{ A }} p {{ fun r => k ~> fv r; k ~> v0; B r }} // env.
-Proof.
-  intros.
-  eapply hoare_equal_post.
-  intros.
-  hnf.
-  intros.
-  instantiate (B1 := fun x => k ~> fv x; B x).
-  simpl.
-  rewrite MoreVarMapFacts.add_same.
-  trivial.
   assumption.
 Qed.
 
@@ -1209,6 +1293,13 @@ Ltac match_scopes :=
 
 Hint Constructors source_stmt.
 
+Ltac put_var_first_left k := 
+  repeat match goal with
+  | [ |- VarMap.Equal (?k0 ->> _; k ->> _; _) _ ] =>
+    rewrite add_add_comm with (k1 := k) (k2 := k0) by noteq_from_NoDup
+  end.
+
+
 Ltac compile_step :=
   match goal with
   | [ |- @sigT _ _ ] => eexists; intros
@@ -1228,8 +1319,10 @@ Ltac compile_step :=
   | [ |- EXTRACT Read ?a {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_fast a pre with
     | Some ?k =>
-      eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
-        eapply CompileRead with (avar := k) ]]; try match_scopes; maps
+      prep_nodup; eapply hoare_equal_pre; [
+      | eapply hoare_weaken_post; [ |
+                                    eapply CompileRead with (avar := k) ] ];
+      try match_scopes; subst; maps; auto; try noteq_from_NoDup; try ( put_var_first_left k; reflexivity)
     end
   | [ |- EXTRACT Write ?a ?v {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_fast a pre with
@@ -1278,9 +1371,7 @@ Example compile_one_read : sigT (fun p =>
   {{ fun ret => 0 ~> ret; ∅ }} // StringMap.empty _).
 Proof.
   compile.
-  instantiate (F := ∅).
-  maps.
-Defined.
+Qed.
 Eval lazy in projT1 (compile_one_read).
 
 Definition swap_prog a b :=
@@ -1293,62 +1384,24 @@ Definition swap_prog a b :=
 Example extract_swap_1_2 : forall env, sigT (fun p =>
   EXTRACT swap_prog 1 2 {{ ∅ }} p {{ fun _ => ∅ }} // env).
 Proof.
-  intros. unfold swap_prog. compile.
-  (* TODO: automate choosing these frames *)
-  subst.
-  instantiate (F := ∅); maps.
-  subst.
-  instantiate (F0 := var0 ~> a; ∅); maps; auto.
-  all: maps; auto.
-  instantiate (F1 := var0 ~> a0; var1 ~> a0; ∅).
-  all: maps; auto.
-Defined.
-Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
+  intros. unfold swap_prog.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  (* why still left? *)
+  maps.
+  auto.
+Admitted.
+(* Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
 
-Fixpoint map_add_sequence T (m : VarMap.t T) kvps :=
-  match kvps with
-    | (k, v) :: kvps =>
-      k ->> v; map_add_sequence m kvps
-    | _ => m
-  end.
-
-Eval simpl in map_add_sequence ∅ [(0, SItem 5); (1, SItem $5)].
-
-Ltac add_sequence_reify M :=
-  match type of M with
-    | VarMap.t ?T =>
-      match M with
-        | VarMap.add ?k ?v ?M' =>
-          let t := add_sequence_reify M' in
-          let kvps' := eval simpl in (fst t) in
-          let m := eval simpl in (snd t) in
-          constr:((k, v) :: kvps', m)
-        | ?m => constr:(@nil (var * T), m)
-      end
-  end.
-
-Lemma find_none_notin :
-  forall T var (m : VarMap.t T) kvps,
-    VarMap.find var (map_add_sequence m kvps) = None -> ~ In var (map fst kvps).
-Proof.
-  induction kvps; simpl; intros; auto.
-  intuition; destruct a; simpl in *; maps.
-  rewrite MapFacts.add_neq_o in H by (intro; maps).
-  intuition.
-Qed.
-
-Ltac notin :=
-  match goal with
-    | [ H : VarMap.find ?var ?M = None |- _ ] =>
-      let t := add_sequence_reify M in
-      let kvps := eval simpl in (fst t) in
-      let m := eval simpl in (snd t) in
-      let H' := fresh in
-      pose proof (find_none_notin var m kvps H) as H';
-      cbv [map fst] in H';
-      clear H;
-      rename H' into H
-  end.
 
 Lemma extract_swap_prog : forall env, sigT (fun p =>
   forall a b, EXTRACT swap_prog a b {{ 0 ~> a; 1 ~> b; ∅ }} p {{ fun _ => ∅ }} // env).
@@ -1388,6 +1441,7 @@ Proof.
   compile_step.
 Defined.
 Eval lazy in projT1 (extract_swap_prog (StringMap.empty _)).
+
 (*
 Declare DiskBlock
   (fun var0 : W =>
@@ -1529,4 +1583,5 @@ Proof.
   all: congruence.
 Defined.
 Eval lazy in projT1 micro_swap2.
+*)
 *)
