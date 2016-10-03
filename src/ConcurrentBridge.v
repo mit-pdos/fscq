@@ -308,7 +308,6 @@ Module MakeBridge (C:CacheSubProtocol).
     - right.
       destruct p.
       exists w, l, l; intuition auto.
-      apply List.incl_refl.
     - left; auto.
   Qed.
 
@@ -423,8 +422,7 @@ Module MakeBridge (C:CacheSubProtocol).
         eapply cache_read_hoare_triple in H6; eauto.
         intuition auto; subst.
 
-        eapply Prog.XStep.
-        apply possible_sync_refl.
+        eapply Prog.XStep; [ | apply possible_sync_refl ].
         assert (project_disk s = project_disk s') as Hproj.
         assert (get vdisk s = get vdisk s') by (apply H2; auto).
         unfold project_disk.
@@ -449,15 +447,18 @@ Module MakeBridge (C:CacheSubProtocol).
         eapply cache_write_hoare_triple in H6; eauto.
         intuition auto; subst.
 
-        eapply Prog.XStep.
-        apply possible_sync_refl.
+        eapply Prog.XStep with (upd (project_disk s) a (v, w::nil)).
+        constructor.
+        unfold project_disk; simpl_match; auto.
         assert (project_disk s' = upd (project_disk s) a (v, nil)) as Hproj.
         unfold project_disk.
         rewrite H3.
         extensionality a'.
-        destruct (nat_dec a a'); autorewrite with upd; auto.
+        destruct (nat_dec a a'); subst; autorewrite with upd; auto.
         rewrite Hproj.
-        admit. (* need to allow Write to not buffer *)
+        Search PredCrash.possible_sync upd.
+        eapply PredCrash.possible_sync_respects_upd; eauto.
+        apply possible_sync_refl.
         admit. (* oops, this shouldn't be a requirement *)
       }
       {
@@ -471,8 +472,7 @@ Module MakeBridge (C:CacheSubProtocol).
       exec_ret.
       left.
       split; auto.
-      econstructor.
-      apply possible_sync_refl.
+      eapply Prog.XStep; [ | apply possible_sync_refl ].
       rewrite <- project_disk_synced at 2.
       auto.
     - (* Trim *)
@@ -512,8 +512,8 @@ Module MakeBridge (C:CacheSubProtocol).
       out = (Prog.Finished m hm r).
   Proof.
     intros.
-    inversion H; repeat sigT_eq; auto.
-    inversion H6.
+    inv_exec' H; auto.
+    inversion H5.
     inversion H5.
     inversion H5.
   Qed.
@@ -537,22 +537,19 @@ Module MakeBridge (C:CacheSubProtocol).
       left.
       intuition eauto; subst.
 
-      apply C.protocolRespectsPrivateVars; eauto.
       right.
       constructor.
       constructor.
-      apply project_disk_vdisk_none; auto.
+      auto.
     - inv_exec.
       exec_ret.
     - exec_ret.
     - exec_ret.
       left.
       split; auto.
-      apply guar_preorder.
     - exec_ret.
       left.
       split; auto.
-      apply guar_preorder.
     - inv_exec.
       destruct v; try exec_ret.
       destruct st' as (((d'', m''), s_i''), s'').

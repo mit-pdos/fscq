@@ -7,6 +7,7 @@ Require Import Mem.
 Require Import PredCrash.
 Require Import AsyncDisk.
 Require Import Word.
+Require Automation.
 
 Import ListNotations.
 
@@ -65,12 +66,101 @@ Inductive crash_step : forall T, prog T -> Prop :=
 | CrashWrite : forall a v,
     crash_step (Write a v).
 
+Module StepPresync.
+
+  Import Automation.
+
+  Hint Constructors step.
+  Hint Resolve possible_sync_trans.
+  Hint Resolve ListUtils.incl_cons2.
+
+  Theorem possible_sync_after_sync : forall A AEQ (m m': @mem A AEQ _),
+      possible_sync (sync_mem m) m' ->
+      m' = sync_mem m.
+  Proof.
+    unfold possible_sync, sync_mem; intros.
+    extensionality a.
+    specialize (H a).
+    destruct matches in *; intuition eauto;
+      repeat deex;
+      try congruence.
+    inversion H1; subst; eauto.
+    apply ListUtils.incl_in_nil in H3; subst; eauto.
+  Qed.
+
+  Lemma possible_sync_respects_upd : forall A AEQ (m m': @mem A AEQ _)
+                                       a v l l',
+      possible_sync m m' ->
+      incl l' l ->
+      possible_sync (upd m a (v, l)) (upd m' a (v,l')).
+  Proof.
+    unfold possible_sync; intros.
+    destruct (AEQ a a0); subst; autorewrite with upd;
+      intuition eauto.
+    specialize (H a0); intuition auto.
+    right; repeat eexists; eauto.
+    repeat deex.
+    right; repeat eexists; eauto.
+  Qed.
+
+  Hint Resolve incl_refl.
+
+  Lemma possible_sync_respects_sync_mem : forall A AEQ (m m': @mem A AEQ _),
+      possible_sync m m' ->
+      possible_sync (sync_mem m) (sync_mem m').
+  Proof.
+    unfold possible_sync, sync_mem; intros.
+    specialize (H a).
+    destruct matches; subst; intuition eauto;
+      try congruence;
+      repeat deex;
+      right;
+      cleanup.
+    do 3 eexists; intuition eauto.
+  Qed.
+
+  Hint Resolve possible_sync_respects_upd.
+  Hint Resolve possible_sync_respects_sync_mem.
+
+  Theorem step_presync : forall T (m m' m'' m''': rawdisk) hm (p: prog T) hm' v,
+      possible_sync (AEQ:=Nat.eq_dec) m m' ->
+      step m' hm p m'' hm' v ->
+      possible_sync (AEQ:=Nat.eq_dec) m'' m''' ->
+      exists (m'2: rawdisk),
+        step m hm p m'2 hm' v /\
+        possible_sync (AEQ:=Nat.eq_dec) m'2 m'''.
+  Proof.
+    intros.
+    inversion H0; subst; repeat sigT_eq; cleanup.
+    - exists m; intuition eauto.
+      specialize (H a); intuition auto; repeat deex; try congruence.
+      assert (v = v0) by congruence; subst.
+      eauto.
+    - pose proof (H a); intuition auto; try congruence.
+      repeat deex.
+      cleanup.
+      exists (upd m a (v0, v::l)).
+      intuition eauto.
+    - exists (sync_mem m).
+      intuition eauto.
+    - pose proof (H a); intuition auto; try congruence.
+      repeat deex.
+      cleanup.
+      exists (upd m a vs').
+      intuition eauto.
+      eapply possible_sync_trans; eauto.
+      destruct vs'.
+      eapply possible_sync_respects_upd; eauto.
+    - exists m; intuition eauto.
+  Qed.
+End StepPresync.
+
 Inductive exec : forall T, rawdisk -> hashmap -> prog T -> outcome T -> Prop :=
 | XRet : forall T m hm (v: T),
     exec m hm (Ret v) (Finished m hm v)
 | XStep : forall T m hm (p: prog T) m' m'' hm' v,
-    possible_sync m m' ->
-    step m' hm p m'' hm' v ->
+    step m hm p m' hm' v ->
+    possible_sync m' m'' ->
     exec m hm p (Finished m'' hm' v)
 | XBindFinish : forall m hm T (p1: prog T) m' hm' (v: T)
                   T' (p2: T -> prog T') out,

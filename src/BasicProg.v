@@ -38,7 +38,7 @@ Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
-  - inv_exec.
+  - inv_exec' H9.
     eapply H4; eauto.
     pred_apply; cancel.
     eauto.
@@ -64,7 +64,7 @@ Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
-  - inv_exec.
+  - inv_exec' H9.
     eapply H4; eauto.
     admit.
   - exfalso.
@@ -77,22 +77,36 @@ Admitted.
 
 Hint Extern 1 ({{_}} Bind (Write _ _) _) => apply write_ok : prog.
 
+Lemma sync_invariant_sync_mem : forall F m,
+    sync_invariant F ->
+    F m ->
+    F (sync_mem m).
+Proof.
+  unfold sync_invariant; intros.
+  eapply H; eauto using possible_sync_sync_mem.
+Qed.
+
 Theorem sync_ok:
   {!< F,
   PRE        F * [[ sync_invariant F ]]
-  POST RET:r sync_xform F
+  POST RET:r (* why sync_xform? F is sync_invariant, so F holds as-is *)
+             sync_xform F
   CRASH      F
   >!} Sync.
 Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
-  - inv_exec.
+  - inv_exec' H9.
     eapply H4; eauto.
 
-    eapply pimpl_apply; [ | eapply sync_xform_pred_apply; pred_apply; reflexivity ].
-    cancel.
-    apply sync_xform_pimpl; eauto.
+    apply possible_sync_after_sync in H13; subst.
+    apply sep_star_lift_apply'; auto.
+    apply sep_star_lift_apply'; auto.
+    apply sep_star_lift_apply'; auto.
+    apply pimpl_star_emp.
+    unfold sync_xform.
+    eexists; intuition eauto.
 Qed.
 
 Hint Extern 1 ({{_}} Bind Sync _) => apply sync_ok : prog.
@@ -109,7 +123,8 @@ Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
-  - eapply H4; eauto.
+  - inv_exec' H9.
+    eapply H4; eauto.
     apply sep_star_comm in H as H'. apply ptsto_subset_valid in H'; repeat deex.
     apply sep_star_comm in H as H'. rewrite ptsto_subset_pimpl_ptsto_ex in H'. destruct_lift H'.
     apply ptsto_valid in H0.
@@ -134,7 +149,7 @@ Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
-  - inv_exec.
+  - inv_exec' H9.
     eapply H4; eauto.
     pred_apply; cancel.
     eauto.
@@ -504,11 +519,12 @@ Proof.
       cancel.
       cancel.
       eapply pimpl_ok2.
-      apply H0.
+      apply H1. omega. omega.
       intros.
+      eapply pimpl_ok2; monad_simpl; eauto.
       cancel.
       replace (n + S i) with (S (n + i)) by omega.
-      cancel.
+      apply H0.
       intros.
       apply pimpl_refl.
     + cancel.
@@ -550,7 +566,7 @@ Proof.
   cancel.
   cancel.
   eapply pimpl_ok2.
-  eauto.
+  eapply H3; eauto; try omega.
   cancel.
   replace (n + 0) with n by omega; auto.
 Qed.

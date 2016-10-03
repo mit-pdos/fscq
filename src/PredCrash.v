@@ -5,6 +5,7 @@ Require Import FunctionalExtensionality.
 Require Import Morphisms.
 Require Import AsyncDisk.
 Require Import Arith.
+Require Import Automation.
 
 Set Implicit Arguments.
 
@@ -806,6 +807,49 @@ Proof.
     right. do 3 eexists. intuition eauto. apply incl_refl.
 Qed.
 
+Theorem possible_sync_after_sync : forall A AEQ (m m': @mem A AEQ _),
+    possible_sync (sync_mem m) m' ->
+    m' = sync_mem m.
+Proof.
+  unfold possible_sync, sync_mem; intros.
+  extensionality a.
+  specialize (H a).
+  destruct matches in *; intuition eauto;
+    repeat deex;
+    try congruence.
+  inversion H1; subst; eauto.
+  apply incl_in_nil in H3; subst; eauto.
+Qed.
+
+Theorem possible_sync_respects_upd : forall A AEQ (m m': @mem A AEQ _)
+                                       a v l l',
+    possible_sync m m' ->
+    incl l' l ->
+    possible_sync (upd m a (v, l)) (upd m' a (v,l')).
+Proof.
+  unfold possible_sync; intros.
+  destruct (AEQ a a0); subst; autorewrite with upd;
+    intuition eauto.
+  specialize (H a0); intuition auto.
+  right; repeat eexists; eauto.
+  repeat deex.
+  right; repeat eexists; eauto.
+Qed.
+
+Theorem possible_sync_respects_sync_mem : forall A AEQ (m m': @mem A AEQ _),
+    possible_sync m m' ->
+    possible_sync (sync_mem m) (sync_mem m').
+Proof.
+  unfold possible_sync, sync_mem; intros.
+  specialize (H a).
+  destruct matches in *; subst; intuition eauto;
+    try congruence;
+    repeat deex;
+    right;
+    cleanup.
+  do 3 eexists; intuition eauto.
+  apply incl_refl.
+Qed.
 
 Ltac xform_simpl :=
   match goal with

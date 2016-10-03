@@ -1,6 +1,13 @@
 Require Import Hlist.
 Require Export ForwardChaining.
 
+Ltac deex :=
+  match goal with
+  | [ H : exists (varname : _), _ |- _ ] =>
+    let newvar := fresh varname in
+    destruct H as [newvar ?]; intuition subst
+  end.
+
 Ltac remove_duplicate :=
   match goal with
   | [ H: ?p, H': ?p |- _ ] =>
