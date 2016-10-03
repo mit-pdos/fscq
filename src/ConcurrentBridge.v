@@ -170,7 +170,8 @@ Module MakeBridge (C:CacheSubProtocol).
       modified [( vCache; vDisk0 )] s s' /\
       cacheI d' m' s' /\
       v = v0 /\
-      s_i' = s_i.
+      s_i' = s_i /\
+      guar App.delta tid s s'.
   Proof.
     intros.
     apply bind_right_id in H.
@@ -179,7 +180,8 @@ Module MakeBridge (C:CacheSubProtocol).
                            (forall v, r = Some v -> v = v0) /\
                            modified [( vCache; vDisk0 )] s s' /\
                            cacheI d' m' s' /\
-                           s_i' = s_i).
+                           s_i' = s_i /\
+                           guar App.delta tid s s').
     repeat deex; inv_outcome; auto.
 
     exists v0; intuition.
@@ -189,6 +191,7 @@ Module MakeBridge (C:CacheSubProtocol).
     repeat match goal with
            | |- exists _, _ => eexists
            end; intuition eauto.
+    apply C.protocolRespectsPrivateVars; eauto.
   Qed.
 
   Theorem cache_read_error_hoare_triple : forall tid a
@@ -201,7 +204,8 @@ Module MakeBridge (C:CacheSubProtocol).
       modified [( vCache; vDisk0 )] s s' /\
       cacheI d' m' s' /\
       cacheR tid s s' /\
-      s_i' = s_i.
+      s_i' = s_i /\
+      guar App.delta tid s s'.
   Proof.
     intros.
     apply bind_right_id in H.
@@ -210,7 +214,8 @@ Module MakeBridge (C:CacheSubProtocol).
                            modified [( vCache; vDisk0 )] s s' /\
                            cacheR tid s s' /\
                            cacheI d' m' s' /\
-                           s_i' = s_i).
+                           s_i' = s_i /\
+                           guar App.delta tid s s').
     repeat deex; inv_outcome; auto.
 
     exists v0; intuition.
@@ -220,6 +225,7 @@ Module MakeBridge (C:CacheSubProtocol).
     repeat match goal with
            | |- exists _, _ => eexists
            end; intuition eauto.
+    apply C.protocolRespectsPrivateVars; eauto.
   Qed.
 
   Theorem cache_read_no_failure : forall tid a
@@ -380,27 +386,42 @@ Module MakeBridge (C:CacheSubProtocol).
     destruct matches.
   Qed.
 
-  Theorem cache_simulation : forall T (p: Prog.prog T)
-                               (tid:TID) d m s_i s out hm,
+  Hint Extern 1 (guar _ _ ?a ?a) => apply guar_preorder.
+
+  Theorem project_disk_vdisk_none : forall (s: abstraction App.Sigma) a,
+      get vdisk s a = None ->
+      project_disk s a = None.
+  Proof.
+    unfold project_disk; intros; rewrite H; auto.
+  Qed.
+
+  Hint Resolve project_disk_vdisk_none.
+
+  Theorem cache_simulation_finish : forall T (p: Prog.prog T)
+                                      (tid:TID) d m s_i s out hm,
       exec App.delta tid (compile p) (d, m, s_i, s) out ->
       cacheI d m s ->
       (forall d' m' s_i' s' (v:T),
           out = Finished (d', m', s_i', s') (value v) ->
-          Prog.exec (project_disk s) hm p (Prog.Finished (project_disk s') hm v) /\
-          (* this invariant allows us to continue running code in a bind (no pun
-           intended) *)
-          cacheI d' m' s').
+          (Prog.exec (project_disk s) hm p (Prog.Finished (project_disk s') hm v) /\
+           cacheI d' m' s' /\
+           (* here we shouldn't guarantee the full guar App.delta, only the
+           cache, since writes need not respect the global protocol *)
+           guar App.delta tid s s') \/
+          (Prog.exec (project_disk s) hm p (Prog.Failed T))).
   Proof.
     induction p; simpl; intros; subst.
-    - exec_ret; eauto.
-    - (* Read *)
-      inv_exec.
+    - exec_ret.
+      left.
+      intuition eauto.
+    - inv_exec.
       destruct v0; exec_ret; eauto.
 
       case_eq (get vdisk s a); intros.
       {
+        left.
         eapply cache_read_hoare_triple in H6; eauto.
-        intuition idtac; subst.
+        intuition auto; subst.
 
         eapply Prog.XStep.
         apply possible_sync_refl.
@@ -414,31 +435,41 @@ Module MakeBridge (C:CacheSubProtocol).
         simpl_match; auto.
       }
       {
-        apply cache_read_success_in_domain in H6; auto.
-        congruence.
+        right.
+        constructor.
+        constructor.
+        auto.
       }
-    - (* Write *)
-      inv_exec.
-      exec_ret.
+    - inv_exec.
+      destruct v0; exec_ret; eauto.
+
       case_eq (get vdisk s a); intros.
       {
+        left.
         eapply cache_write_hoare_triple in H6; eauto.
-        intuition idtac; subst.
-        econstructor.
-        apply possible_sync_refl.
+        intuition auto; subst.
 
-        erewrite (project_disk_upd s s') by eauto.
-        (* need to move the sync after the write to make this valid *)
-        admit.
+        eapply Prog.XStep.
+        apply possible_sync_refl.
+        assert (project_disk s' = upd (project_disk s) a (v, nil)) as Hproj.
+        unfold project_disk.
+        rewrite H3.
+        extensionality a'.
+        destruct (nat_dec a a'); autorewrite with upd; auto.
+        rewrite Hproj.
+        admit. (* need to allow Write to not buffer *)
+        admit. (* oops, this shouldn't be a requirement *)
       }
       {
-        (* this just isn't true; it's possible for cache_write to succeed with
-        an out-of-bounds address, whereas Prog.Write would fail *)
-        admit.
+        right.
+        constructor.
+        constructor.
+        auto.
       }
     - (* Sync *)
       (* probably don't need the writeback (just do nothing) *)
       exec_ret.
+      left.
       split; auto.
       econstructor.
       apply possible_sync_refl.
@@ -456,27 +487,16 @@ Module MakeBridge (C:CacheSubProtocol).
       destruct st' as (((d'',m''),s_i''),s'').
       destruct v0.
 
-      * eapply IHp with (hm := hm) in H7; eauto; destruct_ands.
+      * eapply IHp with (hm := hm) in H7; eauto.
         2: reflexivity.
-        split; intros; subst.
+        intuition auto.
+        edestruct H; eauto.
+        destruct_ands.
+        left.
+        intuition auto.
         eapply Prog.XBindFinish; eauto.
-        eapply H; eauto.
-
-        eapply H; eauto.
-      * split; intros; subst; exec_ret; inv_outcome.
-Abort.
-
-  Theorem cache_simulation_finish : forall T (p: Prog.prog T)
-                                      (tid:TID) d m s_i s out hm,
-      exec App.delta tid (compile p) (d, m, s_i, s) out ->
-      cacheI d m s ->
-      (forall d' m' s_i' s' (v:T),
-          out = Finished (d', m', s_i', s') (value v) ->
-          (Prog.exec (project_disk s) hm p (Prog.Finished (project_disk s') hm v) /\
-           cacheI d' m' s' /\
-           guar App.delta tid s s') \/
-          (Prog.exec (project_disk s) hm p (Prog.Failed T))).
-  Proof.
+      * left.
+        split; intros; subst; exec_ret; inv_outcome.
   Admitted.
 
   Theorem cache_simulation_failure : forall T (p: Prog.prog T)
@@ -496,13 +516,6 @@ Abort.
     inversion H6.
     inversion H5.
     inversion H5.
-  Qed.
-
-  Theorem project_disk_vdisk_none : forall (s: abstraction App.Sigma) a,
-      get vdisk s a = None ->
-      project_disk s a = None.
-  Proof.
-    unfold project_disk; intros; rewrite H; auto.
   Qed.
 
   Theorem cache_simulation_finish_error : forall T (p: Prog.prog T)
