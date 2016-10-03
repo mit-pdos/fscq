@@ -8,6 +8,7 @@ Require Import Mem AsyncDisk PredCrash Prog ProgMonad SepAuto.
 Require Import Gensym.
 Require Import Word.
 Require Import Go.
+Require Import GoSep.
 
 Import ListNotations.
 
@@ -20,47 +21,20 @@ Unset Printing Implicit Defensive.
 
 Hint Constructors step fail_step crash_step exec.
 
-(* TODO What here is actually necessary? *)
-
-Class GoWrapper (WrappedType: Type) :=
-  { wrap:      WrappedType -> Go.value;
-    wrap_inj:  forall v v', wrap v = wrap v' -> v = v' }.
-
-Inductive ScopeItem :=
-| SItem A {H: GoWrapper A} (v : A).
-
-Notation "∅" := (VarMap.empty _) : map_scope.
-Notation "k ->> v ;  m" := (VarMap.add k v m) (at level 21, right associativity) : map_scope.
-Notation "k ~> v ;  m" := (VarMap.add k (SItem v) m) (at level 21, right associativity) : map_scope.
-
 Notation "k -s> v ;  m" := (StringMap.add k v m) (at level 21, right associativity) : map_scope.
 Delimit Scope map_scope with map.
 
-Definition Scope := VarMap.t ScopeItem.
+Notation "k ->> v ;  m" := (VarMap.add k v m) (at level 21, right associativity) : map_scope.
 
-Definition SameValues (s : VarMap.t Go.value) (tenv : Scope) :=
-  Forall
-    (fun item =>
-      match item with
-      | (key, SItem val) =>
-        match VarMap.find key s with
-        | Some v => v = wrap val
-        | None => False
-        end
-      end)
-    (VarMap.elements tenv).
-
-Notation "ENV \u2272 TENV" := (SameValues ENV TENV) (at level 50).
-
-Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : Scope) (final_tstate : T -> Scope) :=
+Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : pred) (final_tstate : T -> pred) :=
   forall initial_state hm,
-    (snd initial_state) \u2272 initial_tstate ->
+    (snd initial_state) ## initial_tstate ->
     forall out,
       Go.exec env (initial_state, eprog) out ->
     (forall final_state, out = Go.Finished final_state ->
       exists r hm',
         exec (fst initial_state) hm sprog (Finished (fst final_state) hm' r) /\
-        (snd final_state) \u2272 (final_tstate r)) /\
+        (snd final_state) ## (final_tstate r)) /\
     (forall final_disk,
       out = Go.Crashed final_disk ->
       exists hm',
@@ -69,7 +43,7 @@ Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : Scope) (final_t
       exec (fst initial_state) hm sprog (Failed T)).
 
 Notation "'EXTRACT' SP {{ A }} EP {{ B }} // EV" :=
-  (ProgOk EV EP%go SP A B)
+  (ProgOk EV EP%go SP A%go_pred B%go_pred)
     (at level 60, format "'[v' 'EXTRACT'  SP '/' '{{'  A  '}}' '/'    EP '/' '{{'  B  '}}'  //  EV ']'").
 
 Ltac GoWrapper_t :=
@@ -157,7 +131,7 @@ Theorem extract_finish_equiv : forall A {H: GoWrapper A} scope cscope pr p,
       p
     {{ [ SItemDisk (NTSome "disk") d0 pr; SItemRet (NTSome "out") d0 pr ] }} {{ cscope }} // disk_env) ->
   forall st st' d0,
-    st \u2272 ( SItemDisk (NTSome "disk") d0 (ret tt) :: scope) ->
+    st ## ( SItemDisk (NTSome "disk") d0 (ret tt) :: scope) ->
     RunsTo disk_env p st st' ->
     exists d', find "disk" st' = Some (Disk d') /\ exists r, @computes_to A pr d0 d' r.
 Proof.
@@ -180,7 +154,7 @@ Theorem extract_crash_equiv : forall A pscope scope pr p,
       p
     {{ pscope }} {{ [ SItemDiskCrash (NTSome "disk") d0 pr ] }} // disk_env) ->
   forall st p' st' d0,
-    st \u2272 (SItemDisk (NTSome "disk") d0 (ret tt) :: scope) ->
+    st ## (SItemDisk (NTSome "disk") d0 (ret tt) :: scope) ->
     (Go.step disk_env)^* (p, st) (p', st') ->
     exists d', find "disk" st' = Some (Disk d') /\ @computes_to_crash A pr d0 d'.
 Proof.
@@ -236,122 +210,6 @@ Ltac set_hyp_evars :=
 
 Module VarMapFacts := FMapFacts.WFacts_fun(Nat_as_OT)(VarMap).
 Module Import MoreVarMapFacts := MoreFacts_fun(Nat_as_OT)(VarMap).
-
-Fixpoint map_add_sequence T (m : VarMap.t T) kvps :=
-  match kvps with
-    | (k, v) :: kvps =>
-      k ->> v; map_add_sequence m kvps
-    | _ => m
-  end.
-
-Ltac add_sequence_reify M :=
-  match type of M with
-    | VarMap.t ?T =>
-      match M with
-        | VarMap.add ?k ?v ?M' =>
-          let t := add_sequence_reify M' in
-          let kvps' := eval simpl in (fst t) in
-          let m := eval simpl in (snd t) in
-          constr:((k, v) :: kvps', m)
-        | ?m => constr:(@nil (Go.var * T), m)
-      end
-  end.
-
-Hint Constructors NoDup : nodup.
-Ltac extend_nodup :=
-  match goal with
-    | [ Hi : ~ In ?v1 [?v2] |- _ ] =>
-      let H := fresh in
-      assert (NoDup [v1; v2]) as H by auto with nodup; clear Hi; rename H into Hi
-    | [ Hi : ~ In ?v ?l, Hd : NoDup ?l |- _ ] =>
-      let H := fresh in
-      assert (NoDup (v :: l)) as H by auto with nodup; clear Hd; rename H into Hd
-  end.
-
-Lemma NoDup_tail :
-  forall A (x : A) xs,
-    NoDup (x :: xs) -> NoDup xs.
-Proof.
-  firstorder using NoDup_cons_iff.
-Qed.
-
-Lemma NoDup_head :
-  forall A (x : A) xs,
-    NoDup (x :: xs) -> ~ In x xs.
-Proof.
-  firstorder using NoDup_cons_iff.
-Qed.
-
-Ltac noteq_from_NoDup :=
-  solve [
-    unfold Nat_as_OT.eq; hnf;
-    repeat match goal with
-    | [ H : NoDup (?x :: _) |- ?var1 = ?var2 -> False ] =>
-      (is_evar x; fail 1) ||
-      (is_evar var1; fail 1) ||
-      unify x var1; apply NoDup_head in H; cbv in H; solve [ intuition ]
-    | [ H : NoDup (?x :: _) |- ?var1 = ?var2 -> False ] =>
-      (is_evar x; fail 1) ||
-      (is_evar var2; fail 1) ||
-      unify x var2; apply NoDup_head in H; cbv in H; solve [ intuition ]
-    | [ H : NoDup (_ :: _) |- ?var1 = ?var2 -> False ] =>
-      apply NoDup_tail in H
-  end ].
-
-Ltac map_rewrites := rewrite
-                       ?StringMapFacts.remove_neq_o, ?StringMapFacts.remove_eq_o,
-                     ?StringMapFacts.add_neq_o, ?StringMapFacts.add_eq_o,
-                     ?StringMapFacts.empty_o,
-                       ?VarMapFacts.remove_neq_o, ?VarMapFacts.remove_eq_o,
-                     ?VarMapFacts.add_neq_o, ?VarMapFacts.add_eq_o,
-                     ?VarMapFacts.empty_o
-    in * by (congruence || subst; noteq_from_NoDup).
-
-Ltac maps := unfold SameValues in *; repeat match goal with
-  | [ H : Forall _ (VarMap.elements _) |- _ ] =>
-      let H1 := fresh H in
-      let H2 := fresh H in
-      apply Forall_elements_add in H;
-      destruct H as [H1 H2];
-      try (eapply Forall_elements_equal in H2; [ | apply add_remove_comm; solve [ congruence ] ])
-  | [ |- Forall _ (VarMap.elements _) ] =>
-      apply Forall_elements_add; split
-  | _ => discriminate
-  | _ => congruence
-  | _ => set_evars; set_hyp_evars; progress map_rewrites; subst_evars
-  end.
-
-Ltac find_all_cases :=
-  repeat match goal with
-  | [ H : match VarMap.find ?d ?v with | Some _ => _ | None => _ end |- _ ] => find_cases d v
-  end; subst.
-
-Lemma find_none_notin :
-  forall T var (m : VarMap.t T) kvps,
-    VarMap.find var (map_add_sequence m kvps) = None -> ~ In var (map fst kvps).
-Proof.
-  induction kvps; simpl; intros; auto.
-  intuition; destruct a; simpl in *; maps.
-  rewrite MapFacts.add_neq_o in H by (intro; maps).
-  intuition.
-Qed.
-
-Ltac notin :=
-  match goal with
-    | [ H : VarMap.find ?var ?M = None |- _ ] =>
-      let t := add_sequence_reify M in
-      let kvps := eval simpl in (fst t) in
-      let m := eval simpl in (snd t) in
-      let H' := fresh in
-      pose proof (find_none_notin var m kvps H) as H';
-      cbv [map fst] in H';
-      clear H;
-      rename H' into H
-  end.
-
-Ltac prep_nodup := repeat notin; repeat extend_nodup.
-
-
 
 Lemma read_fails_not_present:
   forall env vvar avar (a : W) (v0 : valu) d s,
@@ -420,15 +278,31 @@ Ltac destruct_pair :=
     | [ H : _ * _ |- _ ] => destruct H
   end.
 
+(* Something like this is true when [pr] does not fail:
+
+Theorem prog_vars_decrease :
+  forall T env A B p (pr : prog T),
+    EXTRACT pr
+    {{ A }}
+      p
+    {{ B }} // env ->
+    forall r,
+    match A, B r with
+      | Some A', Some B' => forall k, VarMap.In k B' -> VarMap.In k A'
+      | _, _ => True
+    end.
+Admitted.
+*)
+
 Ltac inv_exec_progok :=
   repeat destruct_pair; repeat inv_exec; simpl in *;
   intuition (subst; try discriminate;
              repeat find_inversion_safe; repeat match_finds; repeat find_inversion_safe;  simpl in *;
                try solve [ exfalso; intuition eauto 10 ]; eauto 10).
-
+(*
 Example micro_write : sigT (fun p => forall a v,
   EXTRACT Write a v
-  {{ 0 ~> a; 1 ~> v; ∅ }}
+  {{ 0 ~> a * 1 ~> v }}
     p
   {{ fun _ => ∅ }} // StringMap.empty _).
 Proof.
@@ -436,10 +310,9 @@ Proof.
   intros.
   instantiate (1 := (Go.DiskWrite (Go.Var 0) (Go.Var 1))%go).
   intro. intros.
-  maps.
-  find_all_cases.
   inv_exec_progok.
 Defined.
+*)
 
 Lemma CompileSkip : forall env A,
   EXTRACT Ret tt
@@ -461,28 +334,21 @@ Hint Constructors Go.step.
 
 Lemma CompileConst : forall env A var (v v0 : nat),
   EXTRACT Ret v
-  {{ var ~> v0; A }}
+  {{ var ~> v0 * A }}
     var <~ Go.Const Go.Num v
-  {{ fun ret => var ~> ret; A }} // env.
+  {{ fun ret => var ~> ret * A }} // env.
 Proof.
   unfold ProgOk.
   intros.
   inv_exec_progok.
   do 2 eexists.
   intuition eauto.
-  maps; eauto.
-  eapply forall_In_Forall_elements. intros.
-  pose proof (Forall_elements_forall_In H1).
-  simpl in *.
-  destruct (VarMapFacts.eq_dec k var); maps; try discriminate.
-  specialize (H2 k v1). maps. intuition.
+  eapply ptsto_update; eauto.
+  eapply pimpl_apply; eauto using pimpl_r.
+  eapply ptsto_find in H.
 
   contradiction H1.
   repeat eexists.
-  unfold SameValues in *.
-  rewrite Forall_elements_add in *.
-  intuition.
-  find_all_cases.
   eauto.
 Qed.
 
@@ -520,13 +386,11 @@ Admitted.
 
 (* TODO: simplify wrapper system *)
 Lemma CompileDeclare :
-  forall env T t (zeroval : Go.type_denote t) {H : GoWrapper(Go.type_denote t)} A B (p : prog T) xp,
+  forall env T t (zeroval : Go.type_denote t) {H : GoWrapper (Go.type_denote t)} A B (p : prog T) xp,
     wrap zeroval = Go.default_value t ->
-    (forall ret, vars_subset (B ret) A) ->
     (forall var,
-       VarMap.find var A = None ->
        EXTRACT p
-       {{ var ~> zeroval; A }}
+       {{ var ~> zeroval * A }}
          xp var
        {{ fun ret => B ret }} // env) ->
     EXTRACT p
@@ -541,68 +405,52 @@ Proof.
   - intuition try discriminate.
     find_eapply_lem_hyp Go.ExecFailed_Steps.
     repeat deex.
-    invc H6.
-    contradiction H8.
+    invc H5.
+    contradiction H7.
     eapply can_always_declare; auto.
 
     destruct_pair.
     hnf in s.
     destruct_pair.
     simpl in *.
-    invc H7.
-    specialize (H2 var).
-    forward H2.
+    invc H6.
+    specialize (H1 var (r0, var ->> Go.default_value t; l) hm).
+    forward H1.
     {
-      maps.
-      pose proof (Forall_elements_forall_In H3) as HA.
-      case_eq (VarMap.find var A); intros.
-      forward_solve.
-      destruct s.
-      rewrite H12 in HA.
-      intuition.
-      trivial.
-    }
-    intuition.
-    specialize (H7 (r0, var ->> Go.default_value t; t0) hm).
-    forward H7.
-    {
-      clear H7.
-      simpl in *; maps.
-      eapply forall_In_Forall_elements; intros.
-      pose proof (Forall_elements_forall_In H3).
-      destruct (VarMapFacts.eq_dec k var); maps.
-      specialize (H7 k v).
-      intuition.
+      simpl.
+      rewrite <- H0.
+      eauto using ptsto_update.
     }
     intuition.
     simpl in *.
     find_eapply_lem_hyp Go.Steps_Seq.
     intuition.
-    forward_solve.
-    eapply H10; eauto.
-    eapply Go.Steps_ExecFailed in H9; eauto.
+    eapply H6; eauto.
+    deex.
+    eapply Go.Steps_ExecFailed in H8; eauto.
     intuition.
-    contradiction H8.
-    hnf in H7.
-    simpl in H7.
-    subst.
+    contradiction H7.
+    match goal with
+    | [ H : Go.is_final _ |- _ ] => cbv [snd Go.is_final] in H; subst
+    end.
     eauto.
     intuition.
-    contradiction H8.
+    contradiction H7.
     repeat deex.
     eauto.
 
     forward_solve.
-    invc H11.
-    contradiction H8.
+    invc H9.
+    contradiction H7.
     destruct st'. 
     repeat eexists. econstructor; eauto.
-    invc H7.
-    invc H13.
-    contradiction H4.
+    invc H1.
+    invc H10.
+    contradiction H3.
     auto.
-    invc H7.
+    invc H1.
 
+    (*
   - invc H4.
     invc H5.
     specialize (H2 var).
@@ -702,13 +550,14 @@ Proof.
     invc H8.
     invc H7.
     invc H4.
-Qed.
+*)
+Admitted.
 
 Lemma CompileVar : forall env A var T (v : T) {H : GoWrapper T},
   EXTRACT Ret v
-  {{ var ~> v; A }}
+  {{ var ~> v * A }}
     Go.Skip
-  {{ fun ret => var ~> ret; A }} // env.
+  {{ fun ret => var ~> ret * A }} // env.
 Proof.
   unfold ProgOk.
   intros.
@@ -717,16 +566,16 @@ Qed.
 
 Lemma CompileBind : forall T T' {H: GoWrapper T} env A (B : T' -> _) v0 p f xp xf var,
   EXTRACT p
-  {{ var ~> v0; A }}
+  {{ var ~> v0 * A }}
     xp
-  {{ fun ret => var ~> ret; A }} // env ->
+  {{ fun ret => var ~> ret * A }} // env ->
   (forall (a : T),
     EXTRACT f a
-    {{ var ~> a; A }}
+    {{ var ~> a * A }}
       xf
     {{ B }} // env) ->
   EXTRACT Bind p f
-  {{ var ~> v0; A }}
+  {{ var ~> v0 * A }}
     xp; xf
   {{ B }} // env.
 Proof.
@@ -772,7 +621,7 @@ Qed.
 Import Go.
 
 Lemma hoare_weaken_post : forall T env A (B1 B2 : T -> _) pr p,
-  (forall x k e, VarMap.find k (B2 x) = Some e -> VarMap.find k (B1 x) = Some e) ->
+  (forall x, B1 x =p=> B2 x)%go_pred ->
   EXTRACT pr
   {{ A }} p {{ B1 }} // env ->
   EXTRACT pr
@@ -783,57 +632,27 @@ Proof.
   forwardauto H0.
   intuition subst;
   forwardauto H3; repeat deex;
-  repeat eexists; eauto;
-  unfold SameValues in *;
-  apply forall_In_Forall_elements; intros;
-  eapply Forall_elements_forall_In in H6; eauto.
+  repeat eexists; eauto using pimpl_apply.
 Qed.
 
 Lemma hoare_strengthen_pre : forall T env A1 A2 (B : T -> _) pr p,
-  (forall k e, VarMap.find k A1 = Some e -> VarMap.find k A2 = Some e) ->
+  (A2 =p=> A1)%go_pred ->
   EXTRACT pr
   {{ A1 }} p {{ B }} // env ->
   EXTRACT pr
   {{ A2 }} p {{ B }} // env.
 Proof.
   unfold ProgOk.
-  intros.
-  repeat eforward H0.
-  forward H0.
-  unfold SameValues in *.
-  apply forall_In_Forall_elements; intros;
-  eapply Forall_elements_forall_In in H1; eauto.
-  forwardauto H0.
-  intuition.
+  eauto using pimpl_apply.
 Qed.
 
-Lemma hoare_equal_pre : forall T env A1 A2 (B : T -> _) pr p,
-  VarMap.Equal A1 A2 ->
-  EXTRACT pr
-  {{ A1 }} p {{ B }} // env ->
-  EXTRACT pr
-  {{ A2 }} p {{ B }} // env.
+Instance progok_hoare_proper :
+  forall T env pr,
+  Proper (@prog_equiv T ==> Basics.flip pimpl ==> pointwise_relation _ pimpl ==> Basics.impl) (@ProgOk T env pr).
 Proof.
   intros.
-  eapply hoare_strengthen_pre.
-  intros.
-  rewrite <- H.
-  eassumption.
-  assumption.
-Qed.
-
-Lemma hoare_equal_post : forall T env A (B1 B2 : T -> _) pr p,
-  (forall x, VarMap.Equal (B1 x) (B2 x)) ->
-  EXTRACT pr
-  {{ A }} p {{ B1 }} // env ->
-  EXTRACT pr
-  {{ A }} p {{ B2 }} // env.
-Proof.
-  intros.
-  eapply hoare_weaken_post.
-  intros.
-  rewrite H; eauto.
-  assumption.
+  intros pr1 pr2 Hpr A1 A2 Hpre B1 B2 Hpost H.
+  eauto using hoare_strengthen_pre, hoare_weaken_post, extract_equiv_prog.
 Qed.
 
 Lemma CompileBindDiscard : forall T' env A (B : T' -> _) p f xp xf,
@@ -889,16 +708,17 @@ Qed.
 
 Example micro_inc : sigT (fun p => forall x,
   EXTRACT Ret (1 + x)
-  {{ 0 ~> x; ∅ }}
+  {{ 0 ~> x }}
     p
-  {{ fun ret => 0 ~> ret; ∅ }} // StringMap.empty _).
+  {{ fun ret => 0 ~> ret }} // StringMap.empty _).
 Proof.
   eexists.
   intros.
   instantiate (1 := (0 <~ Const Num 1 + Var 0)%go).
   intro. intros.
   inv_exec_progok.
-  maps.
+  
+  (*
   find_all_cases.
   simpl in *.
   repeat eexists; eauto. maps; eauto.
@@ -914,12 +734,12 @@ Proof.
   maps. simpl in *. find_all_cases. eauto.
   eauto.
   trivial.
-Qed.
+*)
+Admitted.
 
 Lemma CompileIf : forall P Q {H1 : GoWrapper ({P}+{Q})}
                          T {H : GoWrapper T}
-                         A B env (pt pf : prog T) (cond : {P} + {Q}) xpt xpf xcond retvar condvar,
-  retvar <> condvar ->
+                         A B env (pt pf : prog T) (cond : {P} + {Q}) xpt xpf xcond condvar,
   EXTRACT pt
   {{ A }}
     xpt
@@ -931,7 +751,7 @@ Lemma CompileIf : forall P Q {H1 : GoWrapper ({P}+{Q})}
   EXTRACT Ret cond
   {{ A }}
     xcond
-  {{ fun ret => condvar ~> ret; A }} // env ->
+  {{ fun ret => condvar ~> ret * A }} // env ->
   EXTRACT if cond then pt else pf
   {{ A }}
    xcond ; If Var condvar Then xpt Else xpf EndIf
@@ -943,22 +763,19 @@ Proof.
 Admitted.
 
 Lemma CompileWeq : forall A (a b : valu) env xa xb retvar avar bvar,
-  avar <> bvar ->
-  avar <> retvar ->
-  bvar <> retvar ->
   EXTRACT Ret a
   {{ A }}
     xa
-  {{ fun ret => avar ~> ret; A }} // env ->
+  {{ fun ret => avar ~> ret * A }} // env ->
   (forall (av : valu),
   EXTRACT Ret b
-  {{ avar ~> av; A }}
+  {{ avar ~> av * A }}
     xb
-  {{ fun ret => bvar ~> ret; avar ~> av; A }} // env) ->
+  {{ fun ret => bvar ~> ret * avar ~> av * A }} // env) ->
   EXTRACT Ret (weq a b)
   {{ A }}
     xa ; xb ; retvar <~ (Var avar = Var bvar)
-  {{ fun ret => retvar ~> ret; A }} // env.
+  {{ fun ret => retvar ~> ret * A }} // env.
 Proof.
   unfold ProgOk.
   intuition.
@@ -966,14 +783,14 @@ Admitted.
 
 Lemma CompileRead :
   forall env F avar vvar (v0 : valu) a,
-    avar <> vvar ->
     EXTRACT Read a
-    {{ vvar ~> v0; avar ~> a; F }}
+    {{ vvar ~> v0 * avar ~> a * F }}
       DiskRead vvar (Var avar)
-    {{ fun ret => vvar ~> ret; avar ~> a; F }} // env.
+    {{ fun ret => vvar ~> ret * avar ~> a * F }} // env.
 Proof.
   unfold ProgOk.
   intros.
+  (*
   maps.
   find_all_cases.
   simpl in *.
@@ -1010,17 +827,18 @@ Proof.
       eapply Forall_elements_forall_In in H4; eauto.
       maps.
   }
-Qed.
+*)
+Admitted.
 
 Lemma CompileWrite : forall env F avar vvar a v,
-  avar <> vvar ->
   EXTRACT Write a v
-  {{ avar ~> a; vvar ~> v; F }}
+  {{ avar ~> a * vvar ~> v * F }}
     DiskWrite (Var avar) (Var vvar)
-  {{ fun _ => avar ~> a; vvar ~> v; F }} // env.
+  {{ fun _ => avar ~> a * vvar ~> v * F }} // env.
 Proof.
   unfold ProgOk.
   intros.
+  (*
   maps.
   find_all_cases.
 
@@ -1038,14 +856,14 @@ Proof.
   destruct (Nat.eq_dec k avar); maps.
   specialize (H1 k v). conclude H1 ltac:(maps; eauto).
   simpl in *. eauto.
-Qed.
+*)
+Admitted.
 
 
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
   forall avar bvar,
-    avar <> bvar ->
     forall a b, EXTRACT src a b
-           {{ avar ~> a; bvar ~> b; ∅ }}
+           {{ avar ~> a * bvar ~> b }}
              Call [] name [avar; bvar]
            {{ fun _ => ∅ (* TODO: could remember a & b if they are of aliasable type *) }} // env.
 
@@ -1053,7 +871,7 @@ Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> 
 Lemma extract_voidfunc2_call :
   forall A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) arga argb arga_t argb_t env,
     forall and body ss,
-      (forall a b, EXTRACT src a b {{ arga ~> a; argb ~> b; ∅ }} body {{ fun _ => ∅ }} // env) ->
+      (forall a b, EXTRACT src a b {{ arga ~> a * argb ~> b }} body {{ fun _ => ∅ }} // env) ->
       StringMap.find name env = Some {|
                                     ParamVars := [(arga_t, arga); (argb_t, argb)];
                                     RetParamVars := [];
@@ -1065,7 +883,7 @@ Lemma extract_voidfunc2_call :
       voidfunc2 name src env.
 Proof.      
   unfold voidfunc2.
-  intros A B C WA WB name src arga argb arga_t argb_t env and body ss Hex Henv avar bvar Hvarne a b.
+  intros A B C WA WB name src arga argb arga_t argb_t env and body ss Hex Henv avar bvar a b.
   specialize (Hex a b).
   intro.
   intros.
@@ -1085,7 +903,8 @@ Proof.
     simpl in *.
     do 2 eexists.
     intuition eauto.
-    maps; find_all_cases; repeat find_inversion_safe; simpl.
+    break_match.
+    (*
     eauto.
 
     econstructor.
@@ -1222,7 +1041,8 @@ Proof.
     rewrite He0 in *. auto.
     intros. apply sumbool_to_bool_dec.
     maps.
-Qed.
+*)
+Admitted.
 
 Ltac reduce_or_fallback term continuation fallback :=
   match nat with
@@ -1263,43 +1083,14 @@ Ltac match_variable_names_left :=
     end
   end; match_variable_names_left).
 
-Ltac keys_equal_cases :=
-  match goal with
-  | [ H : VarMap.find ?k0 ?m = _ |- _ ] =>
-    match goal with
-      | [ H : context[VarMap.add ?k (SItem ?v) _] |- _ ] =>
-        match goal with
-          | [ H : k0 = k |- _ ] => fail 1
-          | [ H : k0 <> k |- _ ] => fail 1
-          | [ H : ~ k0 = k |- _ ] => fail 1
-          | _ => destruct (VarMapFacts.eq_dec k0 k); maps
-        end
-    end
-  end.
-
-Ltac prepare_for_frame :=
-  match goal with
-  | [ H : _ <> ?k |- _ ] =>
-    rewrite add_add_comm with (k1 := k) by congruence; maps (* A bit inefficient: don't need to rerun maps if it's still the same [k] *)
-  end.
-
 Ltac match_scopes :=
   simpl; intros;
-  match_variable_names_left; match_variable_names_right;
-  try eassumption; (* TODO this is not going to cover everything *)
-  repeat keys_equal_cases;
-  repeat prepare_for_frame;
-  try eassumption.
+  match_variable_names_left; match_variable_names_right.
+  (* TODO *)
 
 Hint Constructors source_stmt.
 
-Ltac put_var_first_left k := 
-  repeat match goal with
-  | [ |- VarMap.Equal (?k0 ->> _; k ->> _; _) _ ] =>
-    rewrite add_add_comm with (k1 := k) (k2 := k0) by noteq_from_NoDup
-  end.
-
-
+(*
 Ltac compile_step :=
   match goal with
   | [ |- @sigT _ _ ] => eexists; intros
@@ -1363,17 +1154,39 @@ Ltac compile_step :=
   end.
 
 Ltac compile := repeat compile_step.
+*)
+
+(*
+Instance prog_equiv_equivalence T :
+  Equivalence (@prog_equiv T).
+Proof.
+  split; hnf; unfold prog_equiv; firstorder.
+  eapply H0. eapply H. trivial.
+  eapply H. eapply H0. trivial.
+Qed.
+*)
 
 Example compile_one_read : sigT (fun p =>
   EXTRACT Read 1
-  {{ 0 ~> $0; ∅ }}
+  {{ 0 ~> $0 }}
     p
-  {{ fun ret => 0 ~> ret; ∅ }} // StringMap.empty _).
+  {{ fun ret => 0 ~> ret }} // StringMap.empty _).
 Proof.
-  compile.
-Qed.
+  eexists.
+  eapply CompileDeclare with (zeroval := 0) (t := Num); eauto; intro var0.
+  rewrite <- bind_left_id. (* XXX: why is setoid rewriting so slow? :( *)
+  eapply CompileBind; [ | intro ].
+  eapply CompileConst.
+  rewrite sep_star_comm.
+  rewrite emp_l_1.
+  eapply hoare_weaken_post; [ | eapply CompileRead ].
+  intros.
+  simpl.
+  (* TODO sep_cancel *)
+Admitted.
 Eval lazy in projT1 (compile_one_read).
 
+(*
 Definition swap_prog a b :=
   va <- Read a;
   vb <- Read b;
@@ -1583,5 +1396,6 @@ Proof.
   all: congruence.
 Defined.
 Eval lazy in projT1 micro_swap2.
+*)
 *)
 *)

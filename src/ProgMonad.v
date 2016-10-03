@@ -1,6 +1,7 @@
 Require Import Prog.
 Require Import Hoare.
 Require Import Eqdep.
+Require Import Morphisms.
 
 Set Implicit Arguments.
 
@@ -67,6 +68,14 @@ Section MonadLaws.
   Arguments prog_equiv {T} _ _.
 
   Infix "~=" := prog_equiv (at level 50, left associativity).
+
+  Global Instance prog_equiv_equivalence T :
+    Equivalence (@prog_equiv T).
+  Proof.
+    split; hnf; unfold prog_equiv; firstorder.
+    eapply H0. eapply H. trivial.
+    eapply H. eapply H0. trivial.
+  Qed.
 
   Theorem bind_left_id : forall T T' v (p: T -> prog T'),
       Bind (Ret v) p ~= p v.
