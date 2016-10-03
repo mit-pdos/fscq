@@ -137,6 +137,7 @@ Module Go.
   | Seq : stmt -> stmt -> stmt
   | If : expr -> stmt -> stmt -> stmt
   | While : expr -> stmt -> stmt
+  | For : var -> expr -> stmt -> stmt
   | Call (retvars: list var) (* The caller's variables to get the return values *)
          (f: label) (* The function to call *)
          (argvars: list var) (* The caller's variables to pass in *)
@@ -170,6 +171,10 @@ Module Go.
       forall cond body,
         source_stmt body ->
         source_stmt (While cond body)
+  | SFor :
+      forall v term body,
+      source_stmt body ->
+      source_stmt (For v term body)
   | SCall : forall retvars f argvars, source_stmt (Call retvars f argvars)
   | SAssign : forall x e, source_stmt (Assign x e)
   | SDeclare :
@@ -394,6 +399,7 @@ Module Go.
         | Some kk => VarMap.add kk v m
       end.
 
+    Definition increment v := Assign v (Binop Plus (Var v) (Const Num 1)).
 
     Inductive runsto : stmt -> state -> state -> Prop :=
     | RunsToSkip : forall st,
@@ -420,6 +426,16 @@ Module Go.
                            let loop := While cond body in
                            is_false (snd st) cond ->
                            runsto loop st st
+    | RunsToForTrue : forall v term body st st' st'',
+                            let loop := For v term body in
+                            is_true (snd st) (TestE Lt (Var v) term) ->
+                            runsto body st st' ->
+                            runsto (Seq (increment v) loop) st' st'' ->
+                            runsto loop st st''
+    | RunsToForFalse : forall term v body st,
+                            let loop := For v term body in
+                            is_false (snd st) (TestE Lt (Var v) term) ->
+                            runsto loop st st
     | RunsToDeclare : forall body body' d s si si' s' d' var t,
                        VarMap.find var s = None ->
                        si = VarMap.add var (default_value t) s ->
@@ -480,6 +496,15 @@ Module Go.
                          let loop := While cond body in
                          is_false (snd st) cond ->
                          step (st, loop) (st, Skip)
+    | StepForTrue : forall v term body st,
+                      let loop := For v term body in
+                      is_true (snd st) (TestE Lt (Var v) term) ->
+                      step (st, loop) (st, Seq body
+                                          (Seq (increment v) loop))
+    | StepForFalse : forall v term body st,
+                       let loop := For v term body in
+                       is_false (snd st) (TestE Lt (Var v) term) ->
+                       step (st, loop) (st, Skip)
     | StepDeclare : forall t body body' d s s' var,
                       VarMap.find var s = None ->
                       s' = VarMap.add var (default_value t) s ->
@@ -674,6 +699,16 @@ Module Go.
                              let loop := While cond body in
                              is_false (snd st) cond ->
                              runsto_InCall loop st st
+    | RunsToICForTrue : forall v term body st st' st'',
+                            let loop := For v term body in
+                            is_true (snd st) (TestE Lt (Var v) term) ->
+                            runsto_InCall body st st' ->
+                            runsto_InCall (Seq (increment v) loop) st' st'' ->
+                            runsto_InCall loop st st''
+    | RunsToICForFalse : forall v term body st,
+                            let loop := For v term body in
+                            is_false (snd st) (TestE Lt (Var v) term) ->
+                            runsto_InCall loop st st
     | RunsToICDeclare : forall body body' d s si si' s' d' var t,
                           VarMap.find var s = None ->
                           si = VarMap.add var (default_value t) s ->
@@ -728,6 +763,13 @@ Module Go.
 
     Hint Constructors source_stmt.
 
+    Lemma source_stmt_increment : forall v, source_stmt (increment v).
+    Proof.
+      unfold increment. eauto.
+    Qed.
+
+    Hint Resolve source_stmt_increment.
+
     Lemma source_stmt_RunsToInCall_runsto :
       forall p,
         source_stmt p ->
@@ -735,7 +777,7 @@ Module Go.
           runsto_InCall p st st' ->
           runsto p st st'.
     Proof.
-      induction 2; intros; subst_definitions; invc H; eauto.
+      induction 2; intros; subst_definitions; invc H; eauto 10.
     Qed.
 
     Hint Resolve source_stmt_RunsToInCall_runsto.
@@ -769,6 +811,7 @@ Module Go.
     Proof.
       intros.
       prep_induction H0; induction H0; intros; subst_definitions; subst; do_inv.
+      - subst_definitions. eauto.
       - subst_definitions. eauto.
       - destruct st', st''. invc H0_0. eauto.
       - eapply RunsToICCallOp; eauto. assert (Some input = Some input0) by congruence. find_inversion. auto.
