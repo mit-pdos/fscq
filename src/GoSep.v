@@ -53,6 +53,53 @@ Proof.
   firstorder using VarMapProperties.for_all_iff.
 Qed.
 
+Lemma not_for_all : forall T (m : VarMap.t T) f,
+  VarMapProperties.for_all f m = false ->
+  exists k v, VarMap.MapsTo k v m /\ f k v = false.
+Proof.
+  unfold VarMapProperties.for_all.
+  setoid_rewrite VarMap.fold_1.
+  setoid_rewrite VarMapProperties.F.elements_mapsto_iff.
+  setoid_rewrite SetoidList.InA_alt.
+  intros T m f.
+  induction (VarMap.elements m); intros.
+  inversion H.
+  destruct a. simpl in *.
+  destruct (f k t) eqn:HH.
+  edestruct IHl. auto.
+  destruct H0. destruct H0. destruct H0. destruct x1.
+  destruct H0.
+  destruct H0. simpl in *. subst.
+  repeat eexists.
+  right. eauto. auto.
+  repeat eexists; intuition.
+Qed.
+
+Lemma for_all_mem_disagree : forall T (m1 m2 : VarMap.t T),
+  VarMapProperties.for_all (fun k _ => negb (VarMap.mem k m1)) m2 = false ->
+  VarMapProperties.for_all (fun k _ => negb (VarMap.mem k m2)) m1 = true ->
+  False.
+Proof.
+  (* TODO clean this up *)
+  intros.
+  apply not_for_all in H.
+  do 3 destruct H.
+  rewrite VarMapProperties.for_all_iff in H0; try congruence.
+  rewrite Bool.negb_false_iff in *.
+  setoid_rewrite Bool.negb_true_iff in H0.
+  rewrite <- VarMapProperties.F.mem_in_iff in *.
+  setoid_rewrite <- VarMapProperties.F.not_mem_in_iff in H0.
+  apply VarMapProperties.F.in_find_iff in H1.
+  destruct (VarMap.find x m1) eqn:HH.
+  apply VarMap.find_2 in HH.
+  contradiction (H0 _ _ HH).
+  apply VarMapProperties.F.in_find_iff.
+  intro.
+  rewrite VarMapProperties.F.find_mapsto_iff in H.
+  rewrite H in H2. inversion H2.
+  contradiction H1; auto.
+Qed.
+
 Lemma maps_disjoint_comm :
   forall T m1 m2, @maps_disjoint T m1 m2 = maps_disjoint m2 m1.
 Proof.
@@ -63,8 +110,9 @@ Proof.
   end;
   match goal with
     | [ |- context[VarMapProperties.for_all ?p m2] ] => case_eq (VarMapProperties.for_all p m2)
-  end; try congruence; intros; exfalso.
-Admitted.
+  end; try congruence;
+    intros; exfalso; eapply for_all_mem_disagree; eauto.
+Qed.
 
 Definition sep_star_impl (p1 p2 : pred) : pred :=
   match p1, p2 with
@@ -136,7 +184,9 @@ Admitted.
 
 Theorem pimpl_refl :
   forall p, p =p=> p.
-Admitted.
+Proof.
+  unfold pimpl. eauto.
+Qed.
 
 Theorem pimpl_trans :
   forall p q r,
