@@ -253,6 +253,7 @@ Module MakeBridge (C:CacheSubProtocol).
       modified [( vCache; vDisk0; vWriteBuffer; vdisk )] s s' /\
       cacheI d' m' s' /\
       get vdisk s' = upd (get vdisk s) a v /\
+      guar delta tid s s' /\
       s_i' = s_i /\
       r = tt.
   Proof.
@@ -264,7 +265,8 @@ Module MakeBridge (C:CacheSubProtocol).
                            modified [( vCache; vDisk0; vWriteBuffer; vdisk )] s s' /\
                            cacheI d' m' s' /\
                            get vdisk s' = upd (get vdisk s) a v /\
-                           s_i' = s_i).
+                           s_i' = s_i /\
+                           guar delta tid s s').
     repeat deex; inv_outcome; auto.
 
     exists v0; intuition.
@@ -454,7 +456,6 @@ Module MakeBridge (C:CacheSubProtocol).
         rewrite Hproj.
         eapply PredCrash.possible_sync_respects_upd; eauto.
         apply possible_sync_refl.
-        admit. (* cache_write_hoare_triple should provide this *)
       }
       {
         right.
@@ -496,7 +497,7 @@ Module MakeBridge (C:CacheSubProtocol).
 
       * left.
         split; intros; subst; exec_ret; inv_outcome.
-  Admitted.
+  Qed.
 
   Theorem cache_simulation_failure : forall T (p: Prog.prog T)
                                        (tid:TID) d m s_i s hm,
