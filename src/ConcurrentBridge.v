@@ -406,7 +406,8 @@ Module MakeBridge (C:CacheSubProtocol).
            cacheI d' m' s' /\
            (* here we shouldn't guarantee the full guar App.delta, only the
            cache, since writes need not respect the global protocol *)
-           guar App.delta tid s s') \/
+           guar App.delta tid s s' /\
+           s_i' = s_i) \/
           (Prog.exec (project_disk s) hm p (Prog.Failed T))).
   Proof.
     induction p; simpl; intros; subst.
@@ -456,7 +457,6 @@ Module MakeBridge (C:CacheSubProtocol).
         extensionality a'.
         destruct (nat_dec a a'); subst; autorewrite with upd; auto.
         rewrite Hproj.
-        Search PredCrash.possible_sync upd.
         eapply PredCrash.possible_sync_respects_upd; eauto.
         apply possible_sync_refl.
         admit. (* oops, this shouldn't be a requirement *)
@@ -492,6 +492,7 @@ Module MakeBridge (C:CacheSubProtocol).
         intuition auto.
         edestruct H; eauto.
         destruct_ands.
+        subst.
         left.
         intuition auto.
         eapply Prog.XBindFinish; eauto.
@@ -524,7 +525,8 @@ Module MakeBridge (C:CacheSubProtocol).
       exec App.delta tid (compile p) (d, m, s_i, s) (Finished (d', m', s_i', s') error) ->
       cacheI d m s ->
       (guar App.delta tid s s' /\
-       cacheI d' m' s') \/
+       cacheI d' m' s' /\
+       s_i' = s_i) \/
       (* TODO: all of these theorems should apply to any hashmap *)
       (Prog.exec (project_disk s) empty_hashmap p (Prog.Failed T)).
   Proof.
@@ -559,8 +561,9 @@ Module MakeBridge (C:CacheSubProtocol).
       pose proof H9.
       eapply H in H9; eauto.
       destruct H9; [ destruct_ands | right ].
+      subst.
       left.
-      split; eauto.
+      intuition eauto.
       eapply Prog.XBindFinish; eauto.
       eapply Prog.XBindFail; eauto.
 
@@ -636,7 +639,8 @@ program via [compile], convert its spec to a concurrent spec via
              end; subst.
       eapply H3 in H13; eauto.
       intuition auto.
-      admit. (* lemmas need to prove cacheR s_i' s' for compiled programs *)
+      eapply cacheR_preorder; eauto.
+      apply C.protocolProj; eauto.
 
       specialize (H (Prog.Failed T)).
       match type of H with
@@ -679,8 +683,10 @@ program via [compile], convert its spec to a concurrent spec via
       destruct H11.
       - destruct_ands.
         eapply H3 in H13; eauto.
+        subst.
         intuition eauto.
-        admit. (* forgot to talk about s_i' somewhere? *)
+        eapply cacheR_preorder; eauto.
+        apply C.protocolProj; eauto.
       - (* failure if sequential isn't possible *)
         exfalso.
         specialize (H (Prog.Failed T)).
@@ -736,7 +742,7 @@ program via [compile], convert its spec to a concurrent spec via
       do 3 eexists; eauto.
     }
     intuition; repeat deex; try congruence.
-  Abort.
+  Qed.
 
 End MakeBridge.
 
