@@ -273,28 +273,18 @@ Ltac find_inversion_safe :=
       (unify a b; fail 1) ||
       let He := fresh in
       assert (a = b) as He by solve [inversion H; auto with equalities | invert_trivial H; auto with equalities]; clear H; subst
+    | [ H : ?X ?a1 ?a2 = ?X ?b1 ?b2 |- _ ] =>
+      (unify a1 b1; fail 1) ||
+      (unify a2 b2; fail 1) ||
+      let He := fresh in
+      assert (a1 = b1 /\ a2 = b2) as He by solve [inversion H; auto with equalities | invert_trivial H; auto with equalities]; clear H; destruct He as [? ?]; subst
   end.
 
 Ltac destruct_pair :=
   match goal with
     | [ H : _ * _ |- _ ] => destruct H
+    | [ H : Go.state |- _ ] => destruct H
   end.
-
-(* Something like this is true when [pr] does not fail:
-
-Theorem prog_vars_decrease :
-  forall T env A B p (pr : prog T),
-    EXTRACT pr
-    {{ A }}
-      p
-    {{ B }} // env ->
-    forall r,
-    match A, B r with
-      | Some A', Some B' => forall k, VarMap.In k B' -> VarMap.In k A'
-      | _, _ => True
-    end.
-Admitted.
-*)
 
 Ltac inv_exec_progok :=
   repeat destruct_pair; repeat inv_exec; simpl in *;
@@ -430,18 +420,111 @@ Proof.
   all : eauto.
 Qed.
 
+Theorem vars_subset_refl :
+  forall V s, @vars_subset V s s.
+Proof.
+  unfold vars_subset.
+  eauto.
+Qed.
+
+Theorem vars_subset_trans :
+  forall V s1 s2 s3,
+    @vars_subset V s1 s2 ->
+    vars_subset s2 s3 ->
+    vars_subset s1 s3.
+Proof.
+  unfold vars_subset.
+  eauto.
+Qed.
+
+Hint Resolve vars_subset_refl vars_subset_trans.
+
 Lemma can_always_declare:
   forall env t xp st,
     exists st'' p'',
       Go.step env (st, Go.Declare t xp) (st'', p'').
 Proof.
   intros.
-  destruct st.
+  destruct_pair.
   repeat eexists.
   econstructor; eauto.
   instantiate (1 := S (list_max (keys l))).
   apply varmap_find_oob. omega.
 Qed.
+
+(* TODO: should have a more general way of dispatching goals like this *)
+Lemma subset_add_remove :
+  forall T var m m' (v : T),
+    vars_subset m' (var ->> v; m) ->
+    vars_subset (VarMap.remove var m') m.
+Proof.
+  unfold vars_subset; intros.
+  destruct (Nat.eq_dec k var).
+  - eauto using VarMapFacts.remove_eq_o.
+  - rewrite VarMapFacts.remove_neq_o; eauto.
+    eapply H.
+    rewrite VarMapFacts.add_neq_o; eauto.
+Qed.
+Hint Resolve subset_add_remove.
+
+Lemma subset_replace :
+  forall T var m (v0 v : T),
+    VarMap.find var m = Some v0 ->
+    vars_subset (var ->> v; m) m.
+Proof.
+  unfold vars_subset; intros.
+  destruct (Nat.eq_dec k var).
+  - congruence.
+  - rewrite VarMapFacts.add_neq_o; eauto.
+Qed.
+Hint Resolve subset_replace.
+
+Lemma subset_remove :
+  forall T var (m : VarMap.t T),
+    vars_subset (VarMap.remove var m) m.
+Proof.
+  unfold vars_subset; intros.
+  destruct (Nat.eq_dec k var).
+  - eauto using VarMapFacts.remove_eq_o.
+  - rewrite VarMapFacts.remove_neq_o; eauto.
+Qed.
+Hint Resolve subset_remove.
+
+Theorem exec_vars_decrease :
+  forall env p d d' s s',
+    Go.exec env ((d, s), p) (Go.Finished (d', s')) ->
+    vars_subset s' s.
+Proof.
+  intros.
+  find_eapply_lem_hyp Go.ExecFinished_Steps.
+  find_eapply_lem_hyp Go.Steps_runsto'.
+  prep_induction H; induction H; intros; subst; unfold Go.locals, Go.state in *;
+    repeat destruct_pair; repeat find_inversion_safe; eauto.
+  - invc H5. (* TODO: make find_inversion_safe get this anyway *)
+    invc H4.
+    eauto.
+  - invc H3; invc H4; eauto.
+  - subst_definitions.
+    admit. (* TODO: execution semantics are wrong here *)
+  - admit.
+Admitted.
+
+(* Something like this is true when [pr] does not fail:
+
+Theorem prog_vars_decrease :
+  forall T env A B p (pr : prog T),
+    EXTRACT pr
+    {{ A }}
+      p
+    {{ B }} // env ->
+    forall r,
+    match A, B r with
+      | Some A', Some B' => forall k, VarMap.In k B' -> VarMap.In k A'
+      | _, _ => True
+    end.
+Admitted.
+*)
+
 
 (* TODO: simplify wrapper system *)
 Lemma CompileDeclare :
