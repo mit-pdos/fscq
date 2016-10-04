@@ -93,15 +93,8 @@ Module MakeBridge (C:CacheSubProtocol).
      corresponding to sequential spec, capturing the same spec on top of
      the abstraction exported by the cache.
 
-     Several things are important and currently broken with this definition:
-
-     - The abstraction from the cache is some combination of vDisk0 and vdisk:
-       vDisk0 is for between system calls and vdisk is for a given system call.
-       [project_disk] currently just uses vdisk - vDisk0 is probably needed
-       since aborts jump to it.
-     - We currently never state we're not in a system call. Here we expect to be
-       at the beginning but need a generalized correctness property for
-       induction during a system call.
+     TODO: need to also state only cache variables are modified, and thread
+     through all lemmas.
    *)
   Definition concurrent_spec R (spec: SeqHoareSpec R) : ConcurHoareSpec (Exc R) :=
     let 'SeqSpec pre post _ := spec in
@@ -114,7 +107,7 @@ Module MakeBridge (C:CacheSubProtocol).
          invariant delta d' m' s' /\
          match r with
          | Some r => post r (project_disk s')
-         | None => guar App.delta tid s s'
+         | None => guar delta tid s s'
          end /\
          guar delta tid s_i' s').
 
@@ -406,7 +399,7 @@ Module MakeBridge (C:CacheSubProtocol).
            cacheI d' m' s' /\
            (* here we shouldn't guarantee the full guar App.delta, only the
            cache, since writes need not respect the global protocol *)
-           guar App.delta tid s s' /\
+           guar delta tid s s' /\
            s_i' = s_i) \/
           (Prog.exec (project_disk s) hm p (Prog.Failed T))).
   Proof.
@@ -414,6 +407,7 @@ Module MakeBridge (C:CacheSubProtocol).
     - exec_ret.
       left.
       intuition eauto.
+      apply cacheR_preorder.
     - inv_exec.
       destruct v0; exec_ret; eauto.
 
@@ -432,6 +426,7 @@ Module MakeBridge (C:CacheSubProtocol).
         eapply Prog.StepRead.
         unfold project_disk.
         simpl_match; auto.
+        apply C.protocolProj; auto.
       }
       {
         right.
@@ -459,7 +454,7 @@ Module MakeBridge (C:CacheSubProtocol).
         rewrite Hproj.
         eapply PredCrash.possible_sync_respects_upd; eauto.
         apply possible_sync_refl.
-        admit. (* oops, this shouldn't be a requirement *)
+        admit. (* cache_write_hoare_triple should provide this *)
       }
       {
         right.
@@ -471,10 +466,11 @@ Module MakeBridge (C:CacheSubProtocol).
       (* probably don't need the writeback (just do nothing) *)
       exec_ret.
       left.
-      split; auto.
+      intuition auto.
       eapply Prog.XStep; [ | apply possible_sync_refl ].
       rewrite <- project_disk_synced at 2.
       auto.
+      apply cacheR_preorder.
     - (* Trim *)
       (* this is fine *)
       exec_ret.
@@ -496,6 +492,8 @@ Module MakeBridge (C:CacheSubProtocol).
         left.
         intuition auto.
         eapply Prog.XBindFinish; eauto.
+        eapply cacheR_preorder; eauto.
+
       * left.
         split; intros; subst; exec_ret; inv_outcome.
   Admitted.
@@ -519,13 +517,15 @@ Module MakeBridge (C:CacheSubProtocol).
     inversion H5.
   Qed.
 
+  Hint Extern 1 (cacheR _ ?a ?a) => apply cacheR_preorder.
+
   Theorem cache_simulation_finish_error : forall T (p: Prog.prog T)
                                             (tid:TID) d m s_i s
                                             d' m' s_i' s',
       exec App.delta tid (compile p) (d, m, s_i, s) (Finished (d', m', s_i', s') error) ->
       cacheI d m s ->
-      (guar App.delta tid s s' /\
-       cacheI d' m' s' /\
+      (cacheI d' m' s' /\
+       guar delta tid s s' /\
        s_i' = s_i) \/
       (* TODO: all of these theorems should apply to any hashmap *)
       (Prog.exec (project_disk s) empty_hashmap p (Prog.Failed T)).
@@ -548,22 +548,23 @@ Module MakeBridge (C:CacheSubProtocol).
     - exec_ret.
     - exec_ret.
       left.
-      split; auto.
+      intuition auto.
     - exec_ret.
       left.
-      split; auto.
+      intuition auto.
     - inv_exec.
       destruct v; try exec_ret.
       destruct st' as (((d'', m''), s_i''), s'').
       pose proof H7.
       eapply cache_simulation_finish with (hm:=empty_hashmap) in H7; eauto; try reflexivity.
-      destruct H7; [ destruct_ands | right ].
+      destruct H7; [ destruct_ands | right ]; subst.
       pose proof H9.
       eapply H in H9; eauto.
       destruct H9; [ destruct_ands | right ].
       subst.
       left.
       intuition eauto.
+      eapply cacheR_preorder; eauto.
       eapply Prog.XBindFinish; eauto.
       eapply Prog.XBindFail; eauto.
 
@@ -640,7 +641,6 @@ program via [compile], convert its spec to a concurrent spec via
       eapply H3 in H13; eauto.
       intuition auto.
       eapply cacheR_preorder; eauto.
-      apply C.protocolProj; eauto.
 
       specialize (H (Prog.Failed T)).
       match type of H with
@@ -686,7 +686,6 @@ program via [compile], convert its spec to a concurrent spec via
         subst.
         intuition eauto.
         eapply cacheR_preorder; eauto.
-        apply C.protocolProj; eauto.
       - (* failure if sequential isn't possible *)
         exfalso.
         specialize (H (Prog.Failed T)).
