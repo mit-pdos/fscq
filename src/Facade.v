@@ -7,6 +7,7 @@ Require Import StringMap MoreMapFacts.
 Require Import Mem AsyncDisk PredCrash Prog ProgMonad SepAuto.
 Require Import Gensym.
 Require Import Word.
+Require Import Omega.
 Require Import Go.
 Require Import GoSep.
 
@@ -370,6 +371,64 @@ Ltac forward_solve :=
 
 Definition vars_subset V (subset set : VarMap.t V) := forall k, VarMap.find k set = None -> VarMap.find k subset = None.
 
+Definition list_max l := fold_left max l 0.
+
+Theorem le_fold_max : forall l v,
+  v <= fold_left Init.Nat.max l v.
+Proof.
+  induction l; auto.
+  simpl; intros.
+  let HH := fresh in (edestruct Max.max_dec as [HH | HH]; rewrite HH).
+  eauto.
+  eapply le_trans.
+  apply Nat.max_r_iff; eauto.
+  eauto.
+Qed.
+
+Theorem le_fold_max_trans : forall l a b,
+  a <= b ->
+  fold_left Init.Nat.max l a <= fold_left Init.Nat.max l b.
+Proof.
+  induction l; intros. auto.
+  simpl.
+  repeat (let HH := fresh in (edestruct Max.max_dec as [HH | HH]; rewrite HH));
+  repeat rewrite ?Nat.max_l_iff, ?Nat.max_r_iff in *;
+  intuition.
+Qed.
+
+Theorem gt_list_max : forall l v,
+  v > list_max l ->
+  ~ In v l.
+Proof.
+  unfold list_max.
+  induction l; intros; simpl; auto.
+  intuition. subst; simpl in *.
+  pose proof (le_fold_max l v). omega.
+  simpl in *. eapply IHl; [ | eauto].
+  pose proof (le_fold_max_trans l (Peano.le_0_n a)).
+  omega.
+Qed.
+
+Definition keys T (l : VarMap.t T) := fst (split (VarMap.elements l)).
+
+Theorem varmap_find_oob : forall T (l : VarMap.t T) v,
+  v > list_max (keys l) ->
+  VarMap.find v l = None.
+Proof.
+  intros.
+  apply VarMapProperties.F.not_find_in_iff.
+  apply gt_list_max in H.
+  intuition.
+  apply H.
+  unfold keys. clear H; rename H0 into H.
+  apply VarMapFacts.elements_in_iff in H. destruct H.
+  erewrite <- ListUtils.fst_pair with (a := v).
+  apply in_split_l.
+  apply mapsto_elements.
+  apply VarMapFacts.elements_mapsto_iff.
+  all : eauto.
+Qed.
+
 Lemma can_always_declare:
   forall env t xp st,
     exists st'' p'',
@@ -379,10 +438,9 @@ Proof.
   destruct st.
   repeat eexists.
   econstructor; eauto.
-  admit. (* Have to pick a variable not already there *)
-  Unshelve.
-  exact 0.
-Admitted.
+  instantiate (1 := S (list_max (keys l))).
+  apply varmap_find_oob. omega.
+Qed.
 
 (* TODO: simplify wrapper system *)
 Lemma CompileDeclare :
