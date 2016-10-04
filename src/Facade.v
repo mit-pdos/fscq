@@ -849,45 +849,35 @@ Lemma CompileRead :
 Proof.
   unfold ProgOk.
   intros.
-  (*
-  maps.
-  find_all_cases.
-  simpl in *.
   inv_exec_progok.
-  do 2 eexists.
-  intuition eauto.
-  maps; simpl in *; eauto.
-
-  (* TODO: automate the hell out of this! *)
-  destruct (Nat.eq_dec vvar avar).
   {
-    subst.
-    eapply Forall_elements_equal; [ | eapply add_remove_same ].
-    eapply forall_In_Forall_elements. intros.
-    pose proof (Forall_elements_forall_In H4).
-    specialize (H1 k v1).
-    forward H1; [ maps | ].
-    destruct (Nat.eq_dec k avar).
-    + subst. maps.
-    + maps.
+    repeat eexists; eauto.
+    rewrite sep_star_assoc_1 in H.
+    erewrite ptsto_find in H6 by eauto; simpl in *.
+    repeat find_inversion_safe.
+    rewrite sep_star_comm in H.
+    rewrite sep_star_assoc_1 in H.
+    erewrite ptsto_find in H9 by eauto; simpl in *.
+    repeat find_inversion_safe.
+    eauto.
+    apply sep_star_assoc_2.
+    apply ptsto_update.
+    eapply pimpl_r.
+    apply sep_star_assoc_1. eauto.
   }
-  {
-    eapply Forall_elements_equal; [ | eapply add_remove_comm'; congruence ]. maps.
-    + find_rewrite. trivial.
-    + eapply Forall_elements_equal; [ | eapply remove_remove_comm; congruence ].
-      eapply forall_In_Forall_elements. intros.
-      destruct (Nat.eq_dec k avar). {
-        subst. maps.
-      }
-      destruct (Nat.eq_dec k vvar). {
-        subst. maps.
-      }
-      maps.
-      eapply Forall_elements_forall_In in H4; eauto.
-      maps.
-  }
-*)
-Admitted.
+  destruct (r a) as [p|] eqn:H'; eauto.
+  destruct p.
+  contradiction H1.
+  repeat eexists; eauto.
+  eapply StepDiskRead; eauto; unfold eval.
+  (* TODO automate this *)
+  rewrite sep_star_assoc_1 in H.
+  eapply ptsto_find in H. eauto. auto.
+  rewrite sep_star_assoc_1 in H.
+  rewrite sep_star_comm in H.
+  rewrite sep_star_assoc_1 in H.
+  eapply ptsto_find in H. eauto.
+Qed.
 
 Lemma CompileWrite : forall env F avar vvar a v,
   EXTRACT Write a v
@@ -909,24 +899,18 @@ Proof.
     repeat find_inversion_safe.
     eauto.
   }
-  destruct (r a) eqn:H'.
-  {
-    destruct p.
-    contradiction H1.
-    repeat eexists; eauto.
-    eapply StepDiskWrite; eauto; unfold eval.
-    rewrite sep_star_assoc_1 in H.
-    eapply ptsto_find in H. eauto.
-    rewrite sep_star_assoc_1 in H.
-    rewrite sep_star_comm in H.
-    rewrite sep_star_assoc_1 in H.
-    eapply ptsto_find in H. eauto.
-  }
-  {
-    apply Prog.XFail.
-    apply FailWrite.
-    auto.
-  }
+  destruct (r a) as [p|] eqn:H'; eauto.
+  destruct p.
+  contradiction H1.
+  repeat eexists; eauto.
+  eapply StepDiskWrite; eauto; unfold eval.
+  (* TODO automate this *)
+  rewrite sep_star_assoc_1 in H.
+  eapply ptsto_find in H. eauto.
+  rewrite sep_star_assoc_1 in H.
+  rewrite sep_star_comm in H.
+  rewrite sep_star_assoc_1 in H.
+  eapply ptsto_find in H. eauto.
 Qed.
 
 Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
