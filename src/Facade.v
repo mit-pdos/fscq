@@ -897,26 +897,37 @@ Lemma CompileWrite : forall env F avar vvar a v,
 Proof.
   unfold ProgOk.
   intros.
-  (*
-  maps.
-  find_all_cases.
-
   inv_exec_progok.
-
-  repeat eexists; eauto.
-
-  maps. rewrite He0. eauto.
-  eapply forall_In_Forall_elements. intros.
-  pose proof (Forall_elements_forall_In H4).
-  simpl in *.
-  destruct (Nat.eq_dec k vvar); maps. {
-    find_inversion. subst. rewrite He. auto.
+  {
+    repeat eexists; eauto.
+    rewrite sep_star_assoc_1 in H.
+    erewrite ptsto_find in H6 by eauto; simpl in *.
+    repeat find_inversion_safe.
+    rewrite sep_star_comm in H.
+    rewrite sep_star_assoc_1 in H.
+    erewrite ptsto_find in H8 by eauto; simpl in *.
+    repeat find_inversion_safe.
+    eauto.
   }
-  destruct (Nat.eq_dec k avar); maps.
-  specialize (H1 k v). conclude H1 ltac:(maps; eauto).
-  simpl in *. eauto.
-*)
-Admitted.
+  destruct (r a) eqn:H'.
+  {
+    destruct p.
+    contradiction H1.
+    repeat eexists; eauto.
+    eapply StepDiskWrite; eauto; unfold eval.
+    rewrite sep_star_assoc_1 in H.
+    eapply ptsto_find in H. eauto.
+    rewrite sep_star_assoc_1 in H.
+    rewrite sep_star_comm in H.
+    rewrite sep_star_assoc_1 in H.
+    eapply ptsto_find in H. eauto.
+  }
+  {
+    apply Prog.XFail.
+    apply FailWrite.
+    auto.
+  }
+Qed.
 
 Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
                           (i n : W)
