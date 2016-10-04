@@ -2691,6 +2691,11 @@ Definition shrink_from_end lxp ixp inum fms n :=
 		Ret(fms)
 	}.
 	
+		Lemma lt_minus_r: forall a b c,
+	b > c -> a > c -> a - c > a -b.
+	Proof. intros; omega. Qed.
+	
+	
 Theorem shrink_from_end_ok : forall lxp bxp ixp inum ms n,
   {< F Fm Fi m0 m flist ilist frees f fy,
   PRE:hm
@@ -2710,8 +2715,8 @@ Theorem shrink_from_end_ok : forall lxp bxp ixp inum ms n,
          [[ length (ByFData fy') = length (ByFData fy) - n ]]
   CRASH:hm'  LOG.intact lxp F m0 hm'
   >} shrink_from_end lxp ixp inum ms n.
-Proof.
-	unfold shrink_from_end, rep; step.
+Proof. Admitted. (* CORRECT: Oct 4 *)
+(* 	unfold shrink_from_end, rep; step.
 	prestep; norm.
 	unfold stars, rep; cancel; eauto.
 	intuition; eauto.
@@ -2738,12 +2743,6 @@ Proof.
 	erewrite bfile_bytefile_length_eq; eauto.
 	rewrite Nat.mul_sub_distr_r.
 	simpl; rewrite <- plus_n_O.
-	Search minus lt.
-	
-	Lemma lt_minus_r: forall a b c,
-	b > c -> a > c -> a - c > a -b.
-	Proof. intros; omega. Qed.
-	
 	apply lt_minus_r.
 	auto.
 	erewrite <- bfile_bytefile_length_eq; eauto.
@@ -2758,8 +2757,9 @@ Proof.
 	cancel.
 	apply LOG.active_intact.
 	step.
-Qed. 
+Qed.  *)
 
+Hint Extern 1 ({{_}} Bind (shrink_from_end _ _ _ _ _) _) => apply shrink_from_end_ok : prog.
 
 Definition shrink lxp bxp ixp inum fms n :=
  If (lt_dec 0 n)
@@ -2962,6 +2962,34 @@ valubytes) as x.
 	
 	rewrite mod_minus_eq.
 	rewrite H21.
+	
+	Lemma mod_minus_mod: forall a b,
+	b <> 0 ->
+	(a - a mod b) mod b = 0.
+	Proof.
+		intros.
+		rewrite mod_minus.
+		apply Nat.mod_mul.
+		all: auto.
+	Qed.
+	
+	apply mod_minus_mod.
+	apply valubytes_ne_O.
+	apply valubytes_ne_O.
+	
+	rewrite H21.
+	rewrite mod_minus.
+	apply mult_le_compat_r.
+	Search Nat.div lt le.
+	Lemma div_lt_le: forall a b c,
+	b <> 0 ->
+	a >= c ->
+	a / b >= c / b.
+	Proof. 
+	
+	apply Nat.div_le_compat_l.
+	omega.
+	Search Nat.modulo 0 minus.
 		
 	
 	
