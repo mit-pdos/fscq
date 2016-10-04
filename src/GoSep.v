@@ -62,16 +62,20 @@ Proof.
   setoid_rewrite VarMapProperties.F.elements_mapsto_iff.
   setoid_rewrite SetoidList.InA_alt.
   intros T m f.
-  induction (VarMap.elements m); intros.
+  induction (VarMap.elements m) as [|a l]; intros.
   inversion H.
   destruct a. simpl in *.
   destruct (f k t) eqn:HH.
-  edestruct IHl. auto.
-  destruct H0. destruct H0. destruct H0. destruct x1.
-  destruct H0.
-  destruct H0. simpl in *. subst.
-  repeat eexists.
-  right. eauto. auto.
+  edestruct IHl; auto.
+  repeat match goal with
+  | [x : _ * _ |- _ ] => destruct x
+  | [H : exists _, _ |- _] => destruct H
+  | [H : _ /\ _ |- _] => destruct H
+  end.
+  match goal with
+    [H : VarMap.eq_key_elt _ _ |- _] => inversion H
+  end. simpl in *. subst.
+  repeat eexists; eauto.
   repeat eexists; intuition.
 Qed.
 
@@ -80,24 +84,23 @@ Lemma for_all_mem_disagree : forall T (m1 m2 : VarMap.t T),
   VarMapProperties.for_all (fun k _ => negb (VarMap.mem k m2)) m1 = true ->
   False.
 Proof.
-  (* TODO clean this up *)
   intros.
   apply not_for_all in H.
-  do 3 destruct H.
+  destruct H as [k [v [H H']]].
   rewrite VarMapProperties.for_all_iff in H0; try congruence.
   rewrite Bool.negb_false_iff in *.
   setoid_rewrite Bool.negb_true_iff in H0.
   rewrite <- VarMapProperties.F.mem_in_iff in *.
-  setoid_rewrite <- VarMapProperties.F.not_mem_in_iff in H0.
-  apply VarMapProperties.F.in_find_iff in H1.
-  destruct (VarMap.find x m1) eqn:HH.
+  rewrite VarMapProperties.F.in_find_iff in *.
+  destruct (VarMap.find k m1) eqn:HH.
   apply VarMap.find_2 in HH.
-  contradiction (H0 _ _ HH).
+  apply H0 in HH.
+  rewrite <- VarMapProperties.F.not_mem_in_iff in *.
+  contradiction HH.
   apply VarMapProperties.F.in_find_iff.
-  intro.
   rewrite VarMapProperties.F.find_mapsto_iff in H.
-  rewrite H in H2. inversion H2.
-  contradiction H1; auto.
+  rewrite H. intro H''. inversion H''.
+  contradiction H'; auto.
 Qed.
 
 Lemma maps_disjoint_comm :
