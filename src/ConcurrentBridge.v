@@ -153,28 +153,39 @@ Module MakeBridge (C:CacheSubProtocol).
   Hint Constructors Prog.exec.
   Hint Constructors Prog.step.
 
+  Ltac _pattern_f x e :=
+    match eval pattern x in e with
+    | ?f _ => f
+    end.
+
+  Ltac _donecond :=
+    match goal with
+    | [ H: exec App.delta _ _ _ (Finished (?d', ?m', ?s_i', ?s') ?r) |- ?g ] =>
+      let f := _pattern_f s' g in
+      let f := _pattern_f s_i' f in
+      let f := _pattern_f m' f in
+      let f := _pattern_f d' f in
+      let f := _pattern_f r f in
+      f
+    end.
+
   Theorem cache_read_hoare_triple : forall tid a
                                       d m s_i s
-                                      d' m' s_i' s' v0 v,
+                                      d' m' s_i' s' v0 r,
       exec App.delta tid (cache_read a) (d, m, s_i, s)
-           (Finished (d', m', s_i', s') (Some v)) ->
+           (Finished (d', m', s_i', s') r) ->
       cacheI d m s ->
       get vdisk s a = Some v0 ->
       modified [( vCache; vDisk0 )] s s' /\
       cacheI d' m' s' /\
-      v = v0 /\
+      (forall v, r = Some v -> v = v0) /\
       s_i' = s_i /\
-      guar App.delta tid s s'.
+      guar delta tid s s'.
   Proof.
     intros.
     apply bind_right_id in H.
-    eapply cache_read_ok in H.
-    2: instantiate (1 := fun r d' m' s_i' s' =>
-                           (forall v, r = Some v -> v = v0) /\
-                           modified [( vCache; vDisk0 )] s s' /\
-                           cacheI d' m' s' /\
-                           s_i' = s_i /\
-                           guar App.delta tid s s').
+    let done := _donecond in
+    apply (cache_read_ok (done:=done)) in H.
     repeat deex; inv_outcome; auto.
 
     exists v0; intuition.
@@ -184,41 +195,6 @@ Module MakeBridge (C:CacheSubProtocol).
     repeat match goal with
            | |- exists _, _ => eexists
            end; intuition eauto.
-    apply C.protocolRespectsPrivateVars; eauto.
-  Qed.
-
-  Theorem cache_read_error_hoare_triple : forall tid a
-                                      d m s_i s
-                                      d' m' s_i' s' v0,
-      exec App.delta tid (cache_read a) (d, m, s_i, s)
-           (Finished (d', m', s_i', s') error) ->
-      cacheI d m s ->
-      get vdisk s a = Some v0 ->
-      modified [( vCache; vDisk0 )] s s' /\
-      cacheI d' m' s' /\
-      cacheR tid s s' /\
-      s_i' = s_i /\
-      guar App.delta tid s s'.
-  Proof.
-    intros.
-    apply bind_right_id in H.
-    eapply cache_read_ok in H.
-    2: instantiate (1 := fun r d' m' s_i' s' =>
-                           modified [( vCache; vDisk0 )] s s' /\
-                           cacheR tid s s' /\
-                           cacheI d' m' s' /\
-                           s_i' = s_i /\
-                           guar App.delta tid s s').
-    repeat deex; inv_outcome; auto.
-
-    exists v0; intuition.
-    apply valid_unfold; intuition idtac.
-    subst.
-    exec_ret.
-    repeat match goal with
-           | |- exists _, _ => eexists
-           end; intuition eauto.
-    apply C.protocolRespectsPrivateVars; eauto.
   Qed.
 
   Theorem cache_read_no_failure : forall tid a
@@ -260,13 +236,8 @@ Module MakeBridge (C:CacheSubProtocol).
     intros.
     destruct r.
     apply bind_right_id in H.
-    eapply cache_write_ok in H.
-    2: instantiate (1 := fun r d' m' s_i' s' =>
-                           modified [( vCache; vDisk0; vWriteBuffer; vdisk )] s s' /\
-                           cacheI d' m' s' /\
-                           get vdisk s' = upd (get vdisk s) a v /\
-                           s_i' = s_i /\
-                           guar delta tid s s').
+    let done := _donecond in
+    apply (cache_write_ok (done:=done)) in H.
     repeat deex; inv_outcome; auto.
 
     exists v0; intuition.
@@ -391,6 +362,13 @@ Module MakeBridge (C:CacheSubProtocol).
 
   Hint Resolve project_disk_vdisk_none.
 
+  Lemma value_is : forall T (v v':T),
+      (forall t, Some v = Some t -> t = v') ->
+      v = v'.
+  Proof.
+    eauto.
+  Qed.
+
   Theorem cache_simulation_finish : forall T (p: Prog.prog T)
                                       (tid:TID) d m s_i s out hm,
       exec App.delta tid (compile p) (d, m, s_i, s) out ->
@@ -418,17 +396,17 @@ Module MakeBridge (C:CacheSubProtocol).
         left.
         eapply cache_read_hoare_triple in H6; eauto.
         intuition auto; subst.
+        apply value_is in H3; subst.
 
         eapply Prog.XStep; [ | apply possible_sync_refl ].
         assert (project_disk s = project_disk s') as Hproj.
         assert (get vdisk s = get vdisk s') by (apply H2; auto).
         unfold project_disk.
-        rewrite H3; auto.
+        replace (get vdisk s); auto.
         rewrite <- Hproj.
         eapply Prog.StepRead.
         unfold project_disk.
         simpl_match; auto.
-        apply C.protocolProj; auto.
       }
       {
         right.
@@ -536,7 +514,7 @@ Module MakeBridge (C:CacheSubProtocol).
     - inv_exec.
       case_eq (get vdisk s a); intros.
       destruct v; exec_ret; try congruence.
-      eapply cache_read_error_hoare_triple in H6; eauto.
+      eapply cache_read_hoare_triple in H6; eauto.
       left.
       intuition eauto; subst.
 
