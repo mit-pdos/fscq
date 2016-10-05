@@ -114,7 +114,8 @@ Module MakeBridge (C:CacheSubProtocol).
 
   Ltac inv_exec' H :=
     inversion H; subst; repeat sigT_eq;
-    try solve [ inv_step ].
+    try solve [ inv_step ];
+    try solve [ inv_fail_step ].
 
   Ltac inv_exec :=
     match goal with
@@ -513,12 +514,147 @@ Module MakeBridge (C:CacheSubProtocol).
         split; intros; subst; exec_ret; inv_outcome.
   Qed.
 
+  Lemma modify_wb_no_failure : forall tid up st,
+        exec App.delta tid (modify_wb up) st (Failed _) ->
+        False.
+  Proof.
+    intros.
+    repeat inv_exec.
+  Qed.
+
+  Lemma modify_cache_no_failure : forall tid up st,
+        exec App.delta tid (modify_cache up) st (Failed _) ->
+        False.
+  Proof.
+    intros.
+    repeat inv_exec.
+  Qed.
+
+  Lemma var_update_no_failure : forall tid T v (up: T -> T)
+                                  st,
+      exec App.delta tid (CoopConcurAuto.var_update v up) st (Failed _) ->
+      False.
+  Proof.
+    intros.
+    repeat inv_exec.
+  Qed.
+
+  Lemma Ret_no_failure : forall tid T (v: T) st,
+      exec App.delta tid (Ret v) st (Failed _) ->
+      False.
+  Proof.
+    intros.
+    exec_ret.
+  Qed.
+
+  Hint Resolve modify_wb_no_failure
+       modify_cache_no_failure
+       var_update_no_failure
+       Ret_no_failure.
+
+  Ltac impossible_failure := exfalso; solve [ repeat (inv_exec; eauto) ].
+
+  Theorem finish_fill_failure : forall tid a
+                                  d m s_i s,
+      exec App.delta tid (finish_fill a) (d, m, s_i, s) (Failed _) ->
+      cache_get (get vCache s) a = Invalid ->
+      cacheI d m s ->
+      get vdisk s a = None.
+  Proof.
+    intros.
+    inv_exec.
+    - (* finish read succeeded; everything else always succeeds *)
+      impossible_failure.
+    - (* FinishRead_upd failed *)
+      inv_exec.
+      impossible_failure.
+      (* FinishRead itself failed *)
+      inv_exec.
+      inv_fail_step.
+      * (* failure do to out-of-bounds address *)
+        unfold cacheI in *; destruct_ands.
+        specialize (H3 a).
+        destruct matches in *; intuition idtac; repeat deex; try congruence.
+      * unfold cacheI in *; destruct_ands.
+        specialize (H3 a).
+        destruct matches in *; intuition idtac; repeat deex; try congruence.
+  Qed.
+
+  Theorem Get_hoare_triple : forall tid T var (v: T)
+                               d m s_i s
+                               d' m' s_i' s',
+      exec App.delta tid (Get var) (d, m, s_i, s)
+           (Finished (d', m', s_i', s') v) ->
+      d' = d /\ m' = m /\ s_i' = s_i /\ s' = s /\
+      v = get var m.
+  Proof.
+    intros.
+    inv_exec.
+    inv_step; repeat sigT_eq; subst.
+    eauto.
+  Qed.
+
+  Theorem cache_write_failure : forall tid a v
+                                  d m s_i s,
+      exec App.delta tid (cache_write a v) (d, m, s_i, s)
+           (Failed _) ->
+      cacheI d m s ->
+      get vdisk s a = None.
+  Proof.
+    intros.
+    inv_exec.
+    destruct matches in *.
+    impossible_failure.
+    impossible_failure.
+
+    inv_exec.
+    impossible_failure.
+
+    match goal with
+    | [ H: exec _ _ (Get mCache) _ (Finished ?st' _) |- _ ] =>
+      destruct st' as (((d', m'), s_i'), s');
+        apply Get_hoare_triple in H;
+        destruct_ands; subst
+    end.
+
+    eapply finish_fill_failure in H9; eauto.
+    unfold cacheI in *; destruct_ands; congruence.
+
+    impossible_failure.
+    impossible_failure.
+  Qed.
+
   Theorem cache_simulation_failure : forall T (p: Prog.prog T)
                                        (tid:TID) d m s_i s hm,
       exec App.delta tid (compile p) (d, m, s_i, s) (Failed (Exc T)) ->
       cacheI d m s ->
       Prog.exec (project_disk s) hm p (Prog.Failed T).
   Proof.
+    induction p; simpl; intros; subst;
+      try exec_ret.
+    - inv_exec.
+      destruct v; exec_ret.
+      case_eq (get vdisk s a); intros.
+      exfalso.
+      eapply cache_read_no_failure; eauto.
+      constructor.
+      constructor.
+      auto.
+    - inv_exec.
+      exec_ret.
+      eapply cache_write_failure in H6; eauto.
+      constructor.
+      constructor.
+      auto.
+    - inv_exec.
+      destruct v; try solve [ exec_ret ].
+      destruct st' as (((d', m'), s_i'), s').
+      eapply Prog.XBindFinish.
+      admit. (* need to know p can execute *)
+      eapply H; eauto.
+      admit. (* ...and that it reaches a cacheI state *)
+
+      eauto.
   Admitted.
 
   Theorem prog_exec_ret : forall T m hm (r:T) out,
