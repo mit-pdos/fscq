@@ -1,5 +1,6 @@
 Require Import CoopConcur.
 Require Import ConcurrentCache.
+Require Import MemCache WriteBufferSet.
 Require Import Specifications.
 Require Import CoopConcurMonad.
 Import HlistNotations.
@@ -249,6 +250,37 @@ Module MakeBridge (C:CacheSubProtocol).
            end; intuition eauto.
   Qed.
 
+  Theorem finish_fill_hoare_triple : forall tid a
+                                       d m s_i s
+                                       d' m' s_i' s' v0 r,
+      exec App.delta tid (finish_fill a) (d, m, s_i, s)
+           (Finished (d', m', s_i', s') r) ->
+      cacheI d m s ->
+      get vdisk s a = Some v0 ->
+      cache_get (get vCache s) a = Invalid ->
+      wb_get (get vWriteBuffer s) a = WbMissing ->
+      cacheI d' m' s' /\
+      modified [( vCache; vDisk0 )] s s' /\
+      cache_get (get vCache s') a = Clean v0 /\
+      guar delta tid s s' /\
+      r = v0 /\
+      s_i' = s_i.
+  Proof.
+    intros.
+    apply bind_right_id in H.
+    let done := _donecond in
+    apply (finish_fill_ok (done := done)) in H.
+    repeat deex; inv_outcome; auto.
+
+    exists v0; intuition eauto.
+    apply valid_unfold; intuition idtac.
+    subst.
+    exec_ret.
+    repeat match goal with
+           | |- exists _, _ => eexists
+           end; intuition eauto.
+  Qed.
+
   Lemma cache_addr_valid : forall d m s a v,
       cacheI d m s ->
       get vdisk s a = Some v ->
@@ -291,6 +323,7 @@ Module MakeBridge (C:CacheSubProtocol).
     inv_exec' H6.
     inv_step; repeat sigT_eq.
 
+    pose proof H0 as HcacheI.
     unfold cacheI in H0; destruct_ands.
     rewrite H1 in *.
     destruct matches in *;
@@ -326,11 +359,14 @@ Module MakeBridge (C:CacheSubProtocol).
       congruence.
     - apply equal_f_dep with a in H3.
       unfold DiskReaders.hide_readers in H3; simpl_match.
-      (* need hoare spec for finish_fill *)
-      admit.
+      inv_exec' H17.
+      exec_ret.
+      assert (get vdisk s a = Some v0) by congruence.
+      eapply finish_fill_hoare_triple in H22; eauto.
+      intuition subst; auto.
     - inv_exec' H17.
       exec_ret.
-  Admitted.
+  Qed.
 
   Lemma project_disk_synced : forall s,
       sync_mem (project_disk s) = project_disk s.
