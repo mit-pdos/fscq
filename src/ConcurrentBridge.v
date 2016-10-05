@@ -514,6 +514,72 @@ Module MakeBridge (C:CacheSubProtocol).
         split; intros; subst; exec_ret; inv_outcome.
   Qed.
 
+  Theorem prog_exec_ret : forall T m hm (r:T) out,
+      Prog.exec m hm (Prog.Ret r) out ->
+      out = (Prog.Finished m hm r).
+  Proof.
+    intros.
+    inv_exec' H; auto.
+    inversion H5.
+    inversion H5.
+    inversion H5.
+  Qed.
+
+  Hint Extern 1 (cacheR _ ?a ?a) => apply cacheR_preorder.
+
+  Theorem cache_simulation_finish_error : forall T (p: Prog.prog T)
+                                            (tid:TID) d m s_i s
+                                            d' m' s_i' s',
+      exec App.delta tid (compile p) (d, m, s_i, s) (Finished (d', m', s_i', s') error) ->
+      cacheI d m s ->
+      (cacheI d' m' s' /\
+       guar delta tid s s' /\
+       s_i' = s_i) \/
+      (* TODO: all of these theorems should apply to any hashmap *)
+      (Prog.exec (project_disk s) empty_hashmap p (Prog.Failed T)).
+  Proof.
+    induction p; simpl; intros.
+    - exec_ret.
+    - inv_exec.
+      case_eq (get vdisk s a); intros.
+      destruct v; exec_ret; try congruence.
+      eapply cache_read_hoare_triple in H6; eauto.
+      left.
+      intuition eauto; subst.
+
+      right.
+      constructor.
+      constructor.
+      auto.
+    - inv_exec.
+      exec_ret.
+    - exec_ret.
+    - exec_ret.
+      left.
+      intuition auto.
+    - exec_ret.
+      left.
+      intuition auto.
+    - inv_exec.
+      destruct v; try exec_ret.
+      destruct st' as (((d'', m''), s_i''), s'').
+      pose proof H7.
+      eapply cache_simulation_finish with (hm:=empty_hashmap) in H7; eauto; try reflexivity.
+      destruct H7; [ destruct_ands | right ]; subst.
+      pose proof H9.
+      eapply H in H9; eauto.
+      destruct H9; [ destruct_ands | right ].
+      subst.
+      left.
+      intuition eauto.
+      eapply cacheR_preorder; eauto.
+      eapply Prog.XBindFinish; eauto.
+      eapply Prog.XBindFail; eauto.
+
+      eapply IHp in H7; eauto.
+      destruct H7; eauto.
+  Qed.
+
   Lemma modify_wb_no_failure : forall tid up st,
         exec App.delta tid (modify_wb up) st (Failed _) ->
         False.
@@ -649,78 +715,10 @@ Module MakeBridge (C:CacheSubProtocol).
     - inv_exec.
       destruct v; try solve [ exec_ret ].
       destruct st' as (((d', m'), s_i'), s').
-      eapply Prog.XBindFinish.
-      admit. (* need to know p can execute *)
-      eapply H; eauto.
-      admit. (* ...and that it reaches a cacheI state *)
+      replace (Some t) with (value t) in H7 by reflexivity.
+      eapply cache_simulation_finish with (hm := hm) in H7; intuition eauto.
 
       eauto.
-  Admitted.
-
-  Theorem prog_exec_ret : forall T m hm (r:T) out,
-      Prog.exec m hm (Prog.Ret r) out ->
-      out = (Prog.Finished m hm r).
-  Proof.
-    intros.
-    inv_exec' H; auto.
-    inversion H5.
-    inversion H5.
-    inversion H5.
-  Qed.
-
-  Hint Extern 1 (cacheR _ ?a ?a) => apply cacheR_preorder.
-
-  Theorem cache_simulation_finish_error : forall T (p: Prog.prog T)
-                                            (tid:TID) d m s_i s
-                                            d' m' s_i' s',
-      exec App.delta tid (compile p) (d, m, s_i, s) (Finished (d', m', s_i', s') error) ->
-      cacheI d m s ->
-      (cacheI d' m' s' /\
-       guar delta tid s s' /\
-       s_i' = s_i) \/
-      (* TODO: all of these theorems should apply to any hashmap *)
-      (Prog.exec (project_disk s) empty_hashmap p (Prog.Failed T)).
-  Proof.
-    induction p; simpl; intros.
-    - exec_ret.
-    - inv_exec.
-      case_eq (get vdisk s a); intros.
-      destruct v; exec_ret; try congruence.
-      eapply cache_read_hoare_triple in H6; eauto.
-      left.
-      intuition eauto; subst.
-
-      right.
-      constructor.
-      constructor.
-      auto.
-    - inv_exec.
-      exec_ret.
-    - exec_ret.
-    - exec_ret.
-      left.
-      intuition auto.
-    - exec_ret.
-      left.
-      intuition auto.
-    - inv_exec.
-      destruct v; try exec_ret.
-      destruct st' as (((d'', m''), s_i''), s'').
-      pose proof H7.
-      eapply cache_simulation_finish with (hm:=empty_hashmap) in H7; eauto; try reflexivity.
-      destruct H7; [ destruct_ands | right ]; subst.
-      pose proof H9.
-      eapply H in H9; eauto.
-      destruct H9; [ destruct_ands | right ].
-      subst.
-      left.
-      intuition eauto.
-      eapply cacheR_preorder; eauto.
-      eapply Prog.XBindFinish; eauto.
-      eapply Prog.XBindFail; eauto.
-
-      eapply IHp in H7; eauto.
-      destruct H7; eauto.
   Qed.
 
   (* The master theorem: convert a sequential program into a concurrent
