@@ -914,7 +914,7 @@ Proof.
 Qed.
 
 Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
-                          (i n : W)
+                          (n i : W)
                           t0 term
                           env (pb : W -> L -> prog L) xpb nocrash oncrash,
   loopvar <> v ->
@@ -930,32 +930,36 @@ Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
     Go.For v term xpb
   {{ fun ret => loopvar ~> ret * v ~> (i + n) * F }} // env.
 Proof.
-  intros L G L' v loopvar F i n.
-  generalize dependent i.
   induction n; intros; simpl.
-  subst term.
-  rewrite <- plus_n_O.
-  unfold ProgOk. intros.
-  inv_exec.
-  {
-    inv_exec; [| inv_exec_progok].
+  - subst term.
+    rewrite <- plus_n_O.
+    unfold ProgOk. intros.
+    inv_exec.
+    {
+      inv_exec; [| inv_exec_progok].
+      rewrite sep_star_assoc_1 in H1.
+      rewrite sep_star_comm in H1.
+      rewrite sep_star_assoc_1 in H1.
+      eapply ptsto_find in H1.
+      repeat (unfold is_true, eval_bool, eval_test_m in *; simpl in *).
+      rewrite H1 in H9.
+      destruct lt_dec. omega.
+      find_inversion.
+    }
+    inv_exec_progok.
     rewrite sep_star_assoc_1 in H1.
     rewrite sep_star_comm in H1.
     rewrite sep_star_assoc_1 in H1.
-    eapply ptsto_find in H1.
-    unfold is_true in *; simpl in *.
-    unfold eval_bool in *; simpl in *.
-    unfold eval_test_m in *; simpl in *.
-    rewrite H1 in H9.
-    destruct Compare_dec.lt_dec. omega.
-    find_inversion.
-  }
-  inv_exec_progok.
-  admit.
-  inv_exec_progok. subst.
-  rewrite sep_star_assoc_1.
-  (* need to rewrite sep_star assoc in postcondition *)
-  admit.
+    apply ptsto_find in H1. simpl in *.
+    contradiction H3.
+    repeat eexists.
+    apply StepForFalse. simpl.
+    unfold is_false, eval_bool, eval, eval_test_m, eval_test_num.
+    rewrite H1. destruct lt_dec; auto; omega.
+    inv_exec_progok.
+  - rewrite sep_star_assoc_1.
+    (* TODO *)
+    admit.
 Admitted.
 
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
