@@ -1225,135 +1225,22 @@ Proof.
 *)
 Admitted.
 
-Ltac reduce_or_fallback term continuation fallback :=
-  match nat with
-  | _ => let term' := (eval red in term) in let res := continuation term' in constr:(res)
-  | _ => constr:(fallback)
-  end.
-Ltac find_fast value fmap :=
-  match fmap with
-  | @VarMap.empty _       => constr:(@None string)
-  | VarMap.add ?k (SItem ?v) _    => let eq := constr:(eq_refl v : v = value) in
-                     constr:(Some k)
-  | VarMap.add ?k _ ?tail => let ret := find_fast value tail in constr:(ret)
-  | ?other         => let ret := reduce_or_fallback fmap ltac:(fun reduced => find_fast value reduced) (@None string) in
-                     constr:(ret)
-  end.
-
-Ltac match_variable_names_right :=
-  match goal with
-  | [ H : VarMap.find _ ?m = _ |- _ ] =>
-    repeat match goal with
-    | [ |- context[VarMap.add ?k (SItem ?v) _]] =>
-      is_evar k;
-      match find_fast v m with
-      | Some ?k' => unify k k'
-      end
-    end
-  end.
-
-Ltac match_variable_names_left :=
-  try (match goal with
-  | [ H : context[VarMap.add ?k (SItem ?v) _] |- _ ] =>
-    is_evar k;
-    match goal with
-    | [ |- VarMap.find _ ?m = _ ] =>
-      match find_fast v m with
-      | Some ?k' => unify k k'
-      end
-    end
-  end; match_variable_names_left).
-
-Ltac match_scopes :=
-  simpl; intros;
-  match_variable_names_left; match_variable_names_right.
-  (* TODO *)
-
 Hint Constructors source_stmt.
-
-(*
-Ltac compile_step :=
-  match goal with
-  | [ |- @sigT _ _ ] => eexists; intros
-  | _ => eapply CompileBindDiscard
-  | [ |- EXTRACT Bind ?p ?q {{ _ }} _ {{ _ }} // _ ] =>
-    let v := fresh "var" in
-    match type of p with (* TODO: shouldn't be necessary to type switch here *)
-      | prog nat =>
-        eapply CompileDeclare with (zeroval := 0) (t := Num)
-      | prog valu =>
-        eapply CompileDeclare with (zeroval := $0) (t := DiskBlock)
-    end; auto; [ unfold vars_subset; match_scopes |
-                 intro v; intros; eapply CompileBind with (var := v); intros ]
-  | _ => eapply CompileConst
-  | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
-    eapply hoare_weaken_post; [ | eapply CompileSkip ]; try match_scopes; maps
-  | [ |- EXTRACT Read ?a {{ ?pre }} _ {{ _ }} // _ ] =>
-    match find_fast a pre with
-    | Some ?k =>
-      prep_nodup; eapply hoare_equal_pre; [
-      | eapply hoare_weaken_post; [ |
-                                    eapply CompileRead with (avar := k) ] ];
-      try match_scopes; subst; maps; auto; try noteq_from_NoDup; try ( put_var_first_left k; reflexivity)
-    end
-  | [ |- EXTRACT Write ?a ?v {{ ?pre }} _ {{ _ }} // _ ] =>
-    match find_fast a pre with
-    | Some ?ka =>
-      match find_fast v pre with
-      | Some ?kv =>
-        eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
-          eapply CompileWrite with (avar := ka) (vvar := kv) ]]; try match_scopes; maps
-      end
-    end
-  | [ H : voidfunc2 ?name ?f ?env |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // ?env ] =>
-    match find_fast a pre with
-      | Some ?ka =>
-        match find_fast b pre with
-            | Some ?kb =>
-              eapply hoare_weaken_post; [ | eapply hoare_strengthen_pre; [ |
-                eapply H ] ]; try match_scopes; maps
-        end
-    end
-  | [ |- EXTRACT ?f ?a {{ ?pre }} _ {{ _ }} // _ ] =>
-    match f with
-      | Ret => fail 2
-      | _ => idtac
-    end;
-    match find_fast a pre with
-      | None =>
-        eapply extract_equiv_prog; [ eapply bind_left_id | ]
-    end
-  | [ |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // _ ] =>
-    match find_fast a pre with
-    | None =>
-      eapply extract_equiv_prog; [
-        let arg := fresh "arg" in
-        set (arg := f a b);
-        pattern a in arg; subst arg;
-        eapply bind_left_id | ]
-    end
-  end.
-
-Ltac compile := repeat compile_step.
-*)
-
-(*
-Instance prog_equiv_equivalence T :
-  Equivalence (@prog_equiv T).
-Proof.
-  split; hnf; unfold prog_equiv; firstorder.
-  eapply H0. eapply H. trivial.
-  eapply H. eapply H0. trivial.
-Qed.
-*)
 
 Local Open Scope go_pred.
 
 Ltac remove_anys :=
   repeat match goal with
-           | [ |- context[any * ?x] ] => rewrite any_r_2 with (p := x) || rewrite <- any_r_1 with (p := x)
-           | [ |- context[?x * any] ] => rewrite any_l_2 with (p := x) || rewrite <- any_l_1 with (p := x)
-         end.
+    | [ |- ?p_ =p=> ?q ] =>
+        match p_ with
+          | context[any * ?x] => etransitivity; [ rewrite any_r_2 with (p := x); reflexivity | ]
+          | context[?x * any] => etransitivity; [ rewrite any_l_2 with (p := x); reflexivity | ]
+        end ||
+        match q with
+          | context[any * ?x] => etransitivity; [ | rewrite <- any_r_1 with (p := x); reflexivity ]
+          | context[?x * any] => etransitivity; [ | rewrite <- any_l_1 with (p := x); reflexivity ]
+        end
+  end.
 
 Ltac flatten :=
   remove_anys;
@@ -1398,12 +1285,38 @@ Proof.
   assumption.
 Qed.
 
+Ltac cancel_one_l' :=
+  match goal with
+    | [ |- _ =p=> _ * (_ * ?r) ] =>
+      not_evar r; apply cancel_one_right_l; repeat apply next_right_l;
+           try rewrite <- sep_star_comm with (p1 := any)
+  end
+    || (apply next_right_l; cancel_one_l').
+
+Ltac add_to_frame p :=
+  match goal with
+    | [ |- context[?F] ] =>
+      match type of F with
+        | pred =>
+          is_evar F;
+            let F' := fresh "F" in
+            evar (F' : pred);
+          unify F (p * F'); subst F'
+      end
+  end;
+  match goal with
+    | [ |- _ =p=> ?q ] =>
+      match q with
+        | context[?p1_ * (p * ?p3_)] =>
+          rewrite <- sep_star_assoc_1 with (p1 := p1_) (p2 := p) (p3 := p3_)
+      end
+  end.
+
 Ltac cancel_one_l :=
-  (match goal with
-     | [ |- _ =p=> _ * (_ * ?r) ] =>
-       (is_evar r; fail 1) || (apply cancel_one_right_l; repeat apply next_right_l;
-                              try rewrite <- sep_star_comm with (p1 := any))
-   end) || (apply next_right_l; cancel_one_l).
+  match goal with
+    | [ |- _ * ?l =p=> _ ] =>
+       cancel_one_l' || (add_to_frame l; cancel_one_l')
+  end.
 
 Ltac cancel_all_l :=
   simpl; intros;
@@ -1437,8 +1350,9 @@ Qed.
 Ltac cancel_one_r :=
   (match goal with
      | [ |- _ * (_ * ?r) =p=> _ ] =>
-       (is_evar r; fail 1) || (apply cancel_one_right_r; repeat apply next_right_r;
-                              try rewrite <- sep_star_comm with (p1 := any))
+       not_evar r;
+     apply cancel_one_right_r; repeat apply next_right_r;
+     try rewrite <- sep_star_comm with (p1 := any)
    end) || (apply next_right_r; cancel_one_r).
 
 Ltac cancel_all_r :=
@@ -1448,24 +1362,95 @@ Ltac cancel_all_r :=
   repeat cancel_one_r;
   remove_anys; try apply pimpl_any.
 
+Ltac find_val v p :=
+  match p with
+    | context[?k ~> v] => constr:(Some k)
+    | _ => constr:(@None var)
+  end.
+
+Ltac compile_step :=
+  match goal with
+  | [ |- @sigT _ _ ] => eexists; intros
+  | _ => eapply CompileBindDiscard
+  | [ |- EXTRACT Bind ?p ?q {{ _ }} _ {{ _ }} // _ ] =>
+    let v := fresh "var" in
+    match type of p with (* TODO: shouldn't be necessary to type switch here *)
+      | prog nat =>
+        eapply CompileDeclare with (zeroval := 0) (t := Num)
+      | prog valu =>
+        eapply CompileDeclare with (zeroval := $0) (t := DiskBlock)
+    end; auto; [ intro v; intros; eapply CompileBind with (var := v); intros ]
+  | _ => eapply CompileConst
+  | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
+    eapply hoare_weaken_post; [ | eapply CompileSkip ]; cancel_all_r
+  | [ |- EXTRACT Read ?a {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_val a pre with
+    | Some ?k =>
+      eapply hoare_strengthen_pre; [
+      | eapply hoare_weaken_post; [ | eapply CompileRead ] ]; [ cancel_all_l | cancel_all_r ]
+    end
+  | [ |- EXTRACT Write ?a ?v {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_val a pre with
+    | Some ?ka =>
+      match find_val v pre with
+      | Some ?kv =>
+        eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
+          eapply CompileWrite with (avar := ka) (vvar := kv) ]]; [ cancel_all_l | cancel_all_r ]
+      end
+    end
+      (*
+  | [ H : voidfunc2 ?name ?f ?env |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // ?env ] =>
+    match find_fast a pre with
+      | Some ?ka =>
+        match find_fast b pre with
+            | Some ?kb =>
+              eapply hoare_weaken_post; [ | eapply hoare_strengthen_pre; [ |
+                eapply H ] ]; try match_scopes; maps
+        end
+    end
+*)
+  | [ |- EXTRACT ?f ?a {{ ?pre }} _ {{ _ }} // _ ] =>
+    match f with
+      | Ret => fail 2
+      | _ => idtac
+    end;
+    match find_val a pre with
+      | None =>
+        eapply extract_equiv_prog; [ eapply bind_left_id | ]
+    end
+  | [ |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_val a pre with
+    | None =>
+      eapply extract_equiv_prog; [
+        let arg := fresh "arg" in
+        set (arg := f a b);
+        pattern a in arg; subst arg;
+        eapply bind_left_id | ]
+    end
+  end.
+
+Ltac compile := repeat compile_step.
+
+(*
+Instance prog_equiv_equivalence T :
+  Equivalence (@prog_equiv T).
+Proof.
+  split; hnf; unfold prog_equiv; firstorder.
+  eapply H0. eapply H. trivial.
+  eapply H. eapply H0. trivial.
+Qed.
+*)
+
 Example compile_one_read : sigT (fun p =>
   EXTRACT Read 1
   {{ 0 ~> $0 }}
     p
   {{ fun ret => 0 ~> ret }} // StringMap.empty _).
 Proof.
-  eexists.
-  eapply CompileDeclare with (zeroval := 0) (t := Num); eauto; intro var0.
-  rewrite <- bind_left_id. (* XXX: why is setoid rewriting so slow? :( *)
-  eapply CompileBind; [ | intro ].
-  eapply CompileConst.
-  eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ | eapply CompileRead ]].
-  cancel_all_l.
-  cancel_all_r.
-Defined.
+  compile.
+Admitted.
 Eval lazy in projT1 (compile_one_read).
 
-(*
 Definition swap_prog a b :=
   va <- Read a;
   vb <- Read b;
@@ -1487,10 +1472,17 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  compile_step.
-  (* why still left? *)
-  maps.
-  auto.
+  match goal with 
+  | [ |- EXTRACT Read ?a {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_val a pre with
+    | Some ?k =>
+      eapply hoare_strengthen_pre; [
+      | eapply hoare_weaken_post; [ | eapply CompileRead with (avar := k) ] ]
+    end                               
+  end.
+  cancel_all_l.
+  cancel_all_r.
+  (* ooops. argh. *)
 Admitted.
 (* Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
 
