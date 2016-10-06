@@ -500,7 +500,7 @@ Proof.
   find_eapply_lem_hyp Go.Steps_runsto'.
   prep_induction H; induction H; intros; subst; unfold Go.locals, Go.state in *;
     repeat destruct_pair; repeat find_inversion_safe; eauto.
-  - invc H5. (* TODO: make find_inversion_safe get this anyway *)
+    invc H5. (* TODO: make find_inversion_safe get this anyway *)
     invc H4.
     eauto.
   - invc H3; invc H4; eauto.
@@ -584,7 +584,7 @@ Proof.
     forward_solve.
     invc H9.
     contradiction H7.
-    destruct st'. 
+    destruct st'.
     repeat eexists. econstructor; eauto.
     invc H1.
     invc H10.
@@ -646,7 +646,7 @@ Proof.
     intuition.
     congruence.
     maps.
-    
+
   - invc H4; [ | invc H6 ].
     invc H5.
     find_eapply_lem_hyp Go.ExecCrashed_Steps.
@@ -859,7 +859,7 @@ Proof.
   instantiate (1 := (0 <~ Const Num 1 + Var 0)%go).
   intro. intros.
   inv_exec_progok.
-  
+
   (*
   find_all_cases.
   simpl in *.
@@ -1062,7 +1062,7 @@ Lemma extract_voidfunc2_call :
                                     body_source := ss;
                                   |} ->
       voidfunc2 name src env.
-Proof.      
+Proof.
   unfold voidfunc2.
   intros A B C WA WB name src arga argb arga_t argb_t env and body ss Hex Henv avar bvar a b.
   specialize (Hex a b).
@@ -1347,6 +1347,107 @@ Proof.
 Qed.
 *)
 
+Local Open Scope go_pred.
+
+Ltac remove_anys :=
+  repeat match goal with
+           | [ |- context[any * ?x] ] => rewrite any_r_2 with (p := x) || rewrite <- any_r_1 with (p := x)
+           | [ |- context[?x * any] ] => rewrite any_l_2 with (p := x) || rewrite <- any_l_1 with (p := x)
+         end.
+
+Ltac flatten :=
+  remove_anys;
+  etransitivity; [ eapply any_r_1 | etransitivity; [ | eapply any_r_2 ]];
+  repeat match goal with
+    | [ |- context[?a * (?b * ?c)] ] => rewrite sep_star_assoc_2 with (p1 := a) (p2 := b) (p3 := c)
+  end;
+  repeat match goal with
+    | [ |- context[?a * (?b * ?c)] ] => rewrite <- sep_star_assoc_1 with (p1 := a) (p2 := b) (p3 := c)
+  end.
+
+Lemma swap_on_right :
+  forall a b c,
+    a * b * c =p=> a * c * b.
+Proof.
+  intros.
+  rewrite sep_star_assoc_1.
+  rewrite sep_star_comm with (p1 := b) (p2 := c).
+  rewrite sep_star_assoc_2.
+  reflexivity.
+Qed.
+
+Lemma next_right_l :
+  forall p q1 q2 r,
+    p =p=> (q1 * r) * q2 ->
+    p =p=> q1 * (q2 * r).
+Proof.
+  intros.
+  rewrite <- sep_star_comm with (p1 := r) (p2 := q2).
+  rewrite <- sep_star_assoc_1.
+  assumption.
+Qed.
+
+Lemma cancel_one_right_l :
+  forall p q1 q2 k v,
+    p =p=> q1 * q2 ->
+    p * k |-> v =p=> q1 * (q2 * k |-> v).
+Proof.
+  intros.
+  rewrite <- sep_star_assoc_1.
+  eapply pimpl_cancel_one.
+  assumption.
+Qed.
+
+Ltac cancel_one_l :=
+  (match goal with
+     | [ |- _ =p=> _ * (_ * ?r) ] =>
+       (is_evar r; fail 1) || (apply cancel_one_right_l; repeat apply next_right_l;
+                              try rewrite <- sep_star_comm with (p1 := any))
+   end) || (apply next_right_l; cancel_one_l).
+
+Ltac cancel_all_l :=
+  simpl; intros;
+  flatten;
+  etransitivity; [ | apply any_r_2 ];
+  repeat cancel_one_l;
+  remove_anys; try reflexivity.
+
+Lemma next_right_r :
+  forall p1 p2 r q,
+    (p1 * r) * p2 =p=> q ->
+    p1 * (p2 * r) =p=> q.
+Proof.
+  intros.
+  rewrite sep_star_comm with (p1 := p2) (p2 := r).
+  rewrite sep_star_assoc_2.
+  assumption.
+Qed.
+
+Lemma cancel_one_right_r :
+  forall p1 p2 q k v,
+    p1 * p2 =p=> q ->
+    p1 * (p2 * k |-> v) =p=> q * k |-> v.
+Proof.
+  intros.
+  rewrite sep_star_assoc_2.
+  eapply pimpl_cancel_one.
+  assumption.
+Qed.
+
+Ltac cancel_one_r :=
+  (match goal with
+     | [ |- _ * (_ * ?r) =p=> _ ] =>
+       (is_evar r; fail 1) || (apply cancel_one_right_r; repeat apply next_right_r;
+                              try rewrite <- sep_star_comm with (p1 := any))
+   end) || (apply next_right_r; cancel_one_r).
+
+Ltac cancel_all_r :=
+  simpl; intros;
+  flatten;
+  etransitivity; [ apply any_r_1 | ];
+  repeat cancel_one_r;
+  remove_anys; try apply pimpl_any.
+
 Example compile_one_read : sigT (fun p =>
   EXTRACT Read 1
   {{ 0 ~> $0 }}
@@ -1358,13 +1459,10 @@ Proof.
   rewrite <- bind_left_id. (* XXX: why is setoid rewriting so slow? :( *)
   eapply CompileBind; [ | intro ].
   eapply CompileConst.
-  rewrite sep_star_comm.
-  rewrite emp_l_1.
-  eapply hoare_weaken_post; [ | eapply CompileRead ].
-  intros.
-  simpl.
-  (* TODO sep_cancel *)
-Admitted.
+  eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ | eapply CompileRead ]].
+  cancel_all_l.
+  cancel_all_r.
+Defined.
 Eval lazy in projT1 (compile_one_read).
 
 (*
