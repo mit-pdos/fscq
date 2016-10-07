@@ -2434,7 +2434,25 @@ Lemma unified_bytefile_minus: forall f pfy ufy fy a,
 		reflexivity.
 	Qed.
 	
-
+		Lemma lt_minus_r: forall a b c,
+	b > c -> a > c -> a - c > a -b.
+	Proof. intros; omega. Qed.
+	
+		Lemma mod_minus_mod: forall a b,
+	b <> 0 ->
+	(a - a mod b) mod b = 0.
+	Proof.
+		intros.
+		rewrite mod_minus.
+		apply Nat.mod_mul.
+		all: auto.
+	Qed.
+	
+	Lemma div_lt_le: forall a b c,
+	b <> 0 ->
+	a >= c ->
+	a / b >= c / b.
+	Proof. Admitted.
 
 (* Interface *)
 
@@ -2691,9 +2709,7 @@ Definition shrink_from_end lxp ixp inum fms n :=
 		Ret(fms)
 	}.
 	
-		Lemma lt_minus_r: forall a b c,
-	b > c -> a > c -> a - c > a -b.
-	Proof. intros; omega. Qed.
+
 	
 	
 Theorem shrink_from_end_ok : forall lxp bxp ixp inum ms n,
@@ -2811,22 +2827,6 @@ Definition shrink lxp bxp ixp inum fms n :=
  		Ret (fms)
  }.
   
-	Lemma mod_minus_mod: forall a b,
-	b <> 0 ->
-	(a - a mod b) mod b = 0.
-	Proof.
-		intros.
-		rewrite mod_minus.
-		apply Nat.mod_mul.
-		all: auto.
-	Qed.
-	
-	Lemma div_lt_le: forall a b c,
-	b <> 0 ->
-	a >= c ->
-	a / b >= c / b.
-	Proof. Admitted.
-  
 Theorem shrink_ok : forall lxp bxp ixp inum ms n,
   {< F Fm Fi m0 m flist ilist frees f fy,
   PRE:hm
@@ -2844,8 +2844,8 @@ Theorem shrink_ok : forall lxp bxp ixp inum ms n,
          [[ length (ByFData fy') = length (ByFData fy) - n ]]
   CRASH:hm'  LOG.intact lxp F m0 hm'
   >} shrink lxp bxp ixp inum ms n.
-Proof.
-  unfold shrink, rep.
+Proof. Admitted. (* CORRECT: Oct 7 *)
+(*   unfold shrink, rep.
   step. (* If (lt_dec 0 n) *)
   prestep.
   norm.
@@ -2950,8 +2950,8 @@ Proof.
 	simpl in H27.
 	rewrite firstn_length_l in H27.
 	rewrite <- Nat.mul_sub_distr_r.
-	remember ((length (BFILE.BFData f') - (n - length (ByFData fy) mod valubytes) / valubytes) *
-valubytes) as x.
+	remember ((length (BFILE.BFData f') - (n - length (ByFData fy) mod valubytes) / valubytes) * valubytes) as x.
+	rewrite <- Heqx.
 	replace valubytes with (1*valubytes) by omega.
 	rewrite Heqx in *; apply mult_le_compat_r.
 	apply Nat.lt_0_mul' in H27.
@@ -3039,74 +3039,137 @@ valubytes) as x.
 	erewrite <- bfile_bytefile_length_eq; eauto.
 	apply Nat.le_sub_l.
 	apply H29. omega.
-	
 	cancel.
 	
 	safestep.
+	instantiate (1:= mk_proto_bytefile (firstn (length (BFILE.BFData f') - (n - length (ByFData fy) mod valubytes) / valubytes) (PByFData pfy0))).
+	unfold proto_bytefile_valid; simpl.
+	rewrite H8.
+	apply firstn_map_comm.
 	
-	rewrite mm_dist.
+	instantiate (1:= mk_unified_bytefile (firstn ((length (BFILE.BFData f') - (n - length (ByFData fy) mod valubytes) / valubytes) * valubytes) (UByFData ufy0))).
+	unfold unified_bytefile_valid; simpl.
+	rewrite H33.
+	apply concat_hom_firstn with (k:= valubytes).
+	eapply proto_len; eauto.
 	
-	Lemma mmp_2_4_cancel: forall a b c,
-	a >= b + c ->
-	a - b - c + b = a - c.
-	Proof. intros; omega. Qed.
+	instantiate (1:= mk_bytefile (firstn (length (ByFData fy) - n) (ByFData fy')) ($ (length (ByFData fy) - length (ByFData fy) mod valubytes -
+  (n - length (ByFData fy) mod valubytes) / valubytes * valubytes), snd (ByFAttr fy'))).
+  unfold bytefile_valid; simpl.
+  rewrite H32.
+  repeat rewrite firstn_firstn.
+  repeat rewrite Nat.min_l.
+  rewrite firstn_length_l.
+  reflexivity.
+  
+  Search Nat.div mult Nat.modulo 0.
+  erewrite <- bytefile_unified_byte_len; eauto.
+  rewrite H22.
+  Search minus le.
+  apply Nat.sub_le_mono_l.
+  omega.
+  
+  rewrite firstn_length_l.
+  rewrite Nat.mul_sub_distr_r.
+  rewrite Rounding.mul_div.
+  erewrite <- bfile_bytefile_length_eq; eauto.
+  rewrite H22.
+  rewrite <- Nat.sub_add_distr.
+  rewrite <- le_plus_minus.
+  apply le_n.
+  omega.
+  apply H29; omega.
+  omega.
+  apply valubytes_ge_O.
+  
+	erewrite <- bytefile_unified_byte_len; eauto.
+  rewrite H22.
+  apply Nat.sub_le_mono_l.
+  omega.
 	
-	apply mmp_2_4_cancel.
-	
-	omega.
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
+	rewrite H22.
+  apply Nat.sub_le_mono_l.
+  omega.
+  
+  simpl.
+  rewrite H31; reflexivity.
+  simpl.
+  rewrite firstn_length_l.
+  rewrite Rounding.mul_div.
+  rewrite <- Nat.sub_add_distr.
+  rewrite <- le_plus_minus.
+  apply n2w_w2n_eq.
+  omega.
+  omega.
+  apply valubytes_ge_O.
+  rewrite H22.
+  apply Nat.sub_le_mono_l.
+  omega.
+  
+  simpl.
+  repeat rewrite firstn_length_l.
+  repeat rewrite Nat.mul_sub_distr_r.
+  rewrite Rounding.mul_div.
+  erewrite <- bfile_bytefile_length_eq; eauto.
+  rewrite H22.
+  repeat rewrite <- Nat.sub_add_distr.
+  rewrite Nat.add_assoc.
+  rewrite <- le_plus_minus.
+  rewrite valubytes_is; omega.
+  omega.
+  apply H29; omega.
+  omega.
+  apply valubytes_ge_O.
+  apply Nat.le_sub_l.
+  rewrite H22.
+  apply Nat.sub_le_mono_l.
+  omega.
+  
+  simpl.
+  apply firstn_length_l.
+  rewrite H22.
+  apply Nat.sub_le_mono_l.
+  omega.
+  
+  prestep.
+  norm.
+  unfold stars; cancel.
+  2: repeat split; eauto.
+  unfold rep; cancel; eauto.
+  rewrite H22.
+  apply mod_minus_mod.
+  apply valubytes_ne_O.
+  omega.
+  
+  apply Nat.nlt_ge in H26.
+  inversion H26.
+  Search Nat.div 0 lt.
+  apply Nat.div_small_iff.
+  apply valubytes_ne_O.
+  auto.
+  
+  unfold rep; step.
+  cancel.
+  cancel.
+  step.
+  safestep.
+  
+  instantiate (1:= proto_bytefile0).
+  unfold proto_bytefile_valid; reflexivity.
+  instantiate (1:= unified_bytefile0).
+  unfold unified_bytefile_valid; reflexivity.
+  instantiate (1:= bytefile0).
+  unfold bytefile_valid; reflexivity.
+  reflexivity.
+  reflexivity.
+  replace (length (ByFData fy) - n) with 0 by omega.
+  reflexivity.
+  cancel.
+  apply LOG.active_intact.
+  step.
+Qed. *)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-Qed.
 
 (* ------------------------------------------------------------------------------------- *)
-
-
-
 
 End ABYTEFILE.
