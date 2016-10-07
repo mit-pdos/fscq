@@ -1632,7 +1632,7 @@ Module TREESEQ.
   Lemma tree_rep_nth_file_sync: forall Fm Ftop fsxp mscs ds ts n al pathname inum f,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
     Datatypes.length al = Datatypes.length (BFILE.BFData f) ->
-    (length al = length (BFILE.BFData f) /\ forall i, i < length al ->
+    (forall i, i < length al ->
                 BFILE.block_belong_to_file (TSilist ts !!) (selN al i 0) inum i) ->
     treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
     tree_rep Fm Ftop fsxp (nthd n ts) (list2nmem (nthd n ds)) ->
@@ -1643,12 +1643,53 @@ Module TREESEQ.
     eapply NEforall_d_in in H4 as H4'; [ | apply nthd_in_ds with (n := n) ].
     unfold treeseq_safe in H4'.
     unfold treeseq_one_file_sync.
+    intuition.
     case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
     destruct d.
     - (* a file *)
       unfold tree_rep; simpl.
-      (* XXX the al for this lemma should be the one corresponding to BFData b *)
-      eapply dirtree_update_safe_pathname_vssync_vecs_file; eauto.
+
+      rewrite <- firstn_skipn with (l := al) (n := length (BFILE.BFData b)).
+      remember (skipn (Datatypes.length (BFILE.BFData b)) al) as al_tail.
+
+      assert (forall i, i < length al_tail -> selN al_tail i 0 = selN al (length (BFILE.BFData b) + i) 0).
+      subst; intros.
+      apply skipn_selN.
+      clear Heqal_tail.
+
+      induction al_tail using rev_ind.
+
+      + (* No more tail remaining; all blocks correspond to file [b] *)
+        rewrite app_nil_r.
+        eapply dirtree_update_safe_pathname_vssync_vecs_file; eauto.
+        admit.
+        admit.
+
+      + rewrite app_assoc. rewrite vssync_vecs_app.
+        unfold vssync.
+        eapply dirtree_update_free.
+        eapply IHal_tail.
+        intros.
+        specialize (H9 i).
+        rewrite selN_app1 in H9 by omega. apply H9. rewrite app_length. omega.
+
+        edestruct H7 with (off := length (BFILE.BFData b) + length al_tail).
+        eexists. intuition eauto.
+        eapply H1.
+
+        admit.
+
+        (* [treeseq_safe_bwd] says that the block is present in the old file.  Should be a contradiction. *)
+        admit.
+
+        (* [treeseq_safe_bwd] says the block is unused. *)
+        rewrite <- H9 in H10.
+        rewrite selN_last in H10 by omega.
+        eapply H10.
+        rewrite app_length. simpl. omega.
+
+    - admit.
+    - admit.
   Admitted.
 
 
