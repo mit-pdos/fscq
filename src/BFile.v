@@ -306,6 +306,54 @@ Module BFILE.
     omega.
   Qed.
 
+  Lemma rep_used_block_eq_Some_helper : forall T (x y: T),
+    Some x = Some y -> x = y.
+  Proof.
+    intros.
+    inversion H.
+    auto.
+  Qed.
+
+  Theorem rep_used_block_eq : forall F bxps ixp flist ilist m bn inum off frees,
+    (F * rep bxps ixp flist ilist frees)%pred (list2nmem m) ->
+    block_belong_to_file ilist bn inum off ->
+    selN (BFData (selN flist inum bfile0)) off ($0, nil) = selN m bn ($0, nil).
+  Proof.
+    unfold rep; intros.
+    destruct_lift H.
+    rewrite listmatch_length_pimpl in H; destruct_lift H.
+    rewrite listmatch_extract with (i := inum) in H.
+    2: substl (length flist); eapply block_belong_to_file_inum_ok; eauto.
+
+    assert (inum < length ilist) by ( eapply block_belong_to_file_inum_ok; eauto ).
+    assert (inum < length flist) by ( substl (length flist); eauto ).
+
+    denote block_belong_to_file as Hx; assert (Hy := Hx).
+    unfold block_belong_to_file in Hy; intuition.
+    unfold file_match at 2 in H.
+    rewrite listmatch_length_pimpl with (a := BFData _) in H; destruct_lift H.
+    denote! (length _ = _) as Heq.
+    rewrite listmatch_extract with (i := off) (a := BFData _) in H.
+    2: rewrite Heq; rewrite map_length; eauto.
+
+    erewrite selN_map in H; eauto.
+    eapply rep_used_block_eq_Some_helper.
+    apply eq_sym.
+    rewrite <- list2nmem_sel_inb.
+
+    eapply ptsto_valid.
+    pred_apply.
+    eassign (natToWord addrlen O).
+    cancel.
+
+    eapply list2nmem_inbound.
+    pred_apply.
+    cancel.
+
+  Grab Existential Variables.
+    all: eauto.
+  Qed.
+
   Theorem rep_safe_used: forall F bxps ixp flist ilist m bn inum off frees v,
     (F * rep bxps ixp flist ilist frees)%pred (list2nmem m) ->
     block_belong_to_file ilist bn inum off ->

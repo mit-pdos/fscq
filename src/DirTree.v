@@ -923,6 +923,36 @@ Module DIRTREE.
       rewrite IHtree_ents; eauto.
   Qed.
 
+  Theorem dirtree_rep_used_block_eq : forall pathname F0 tree fsxp F ilist freeblocks inum off bn m f,
+    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
+    find_subtree pathname tree = Some (TreeFile inum f) ->
+    BFILE.block_belong_to_file ilist bn inum off ->
+    selN (BFILE.BFData f) off ($0, nil) = selN m bn ($0, nil).
+  Proof.
+    intros.
+    apply rep_tree_names_distinct in H as Hnames.
+    apply rep_tree_inodes_distinct in H as Hinodes.
+
+    unfold rep in *.
+    destruct_lift H.
+
+    erewrite <- BFILE.rep_used_block_eq with (m := m).
+    2: pred_apply; cancel.
+    2: eauto.
+    f_equal.
+    f_equal.
+
+    rewrite subtree_extract in H3 by eassumption.
+    simpl in H3.
+    apply eq_sym.
+    eapply BFILE.rep_used_block_eq_Some_helper.
+    rewrite <- list2nmem_sel_inb.
+
+    eapply ptsto_valid. pred_apply; cancel.
+    eapply list2nmem_inbound.
+    pred_apply; cancel.
+  Qed.
+
   Theorem dirtree_update_block : forall pathname F0 tree fsxp F ilist freeblocks inum off v bn m f,
     (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
