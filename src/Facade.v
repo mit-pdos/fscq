@@ -273,28 +273,18 @@ Ltac find_inversion_safe :=
       (unify a b; fail 1) ||
       let He := fresh in
       assert (a = b) as He by solve [inversion H; auto with equalities | invert_trivial H; auto with equalities]; clear H; subst
+    | [ H : ?X ?a1 ?a2 = ?X ?b1 ?b2 |- _ ] =>
+      (unify a1 b1; fail 1) ||
+      (unify a2 b2; fail 1) ||
+      let He := fresh in
+      assert (a1 = b1 /\ a2 = b2) as He by solve [inversion H; auto with equalities | invert_trivial H; auto with equalities]; clear H; destruct He as [? ?]; subst
   end.
 
 Ltac destruct_pair :=
   match goal with
     | [ H : _ * _ |- _ ] => destruct H
+    | [ H : Go.state |- _ ] => destruct H
   end.
-
-(* Something like this is true when [pr] does not fail:
-
-Theorem prog_vars_decrease :
-  forall T env A B p (pr : prog T),
-    EXTRACT pr
-    {{ A }}
-      p
-    {{ B }} // env ->
-    forall r,
-    match A, B r with
-      | Some A', Some B' => forall k, VarMap.In k B' -> VarMap.In k A'
-      | _, _ => True
-    end.
-Admitted.
-*)
 
 Ltac inv_exec_progok :=
   repeat destruct_pair; repeat inv_exec; simpl in *;
@@ -430,18 +420,111 @@ Proof.
   all : eauto.
 Qed.
 
+Theorem vars_subset_refl :
+  forall V s, @vars_subset V s s.
+Proof.
+  unfold vars_subset.
+  eauto.
+Qed.
+
+Theorem vars_subset_trans :
+  forall V s1 s2 s3,
+    @vars_subset V s1 s2 ->
+    vars_subset s2 s3 ->
+    vars_subset s1 s3.
+Proof.
+  unfold vars_subset.
+  eauto.
+Qed.
+
+Hint Resolve vars_subset_refl vars_subset_trans.
+
 Lemma can_always_declare:
   forall env t xp st,
     exists st'' p'',
       Go.step env (st, Go.Declare t xp) (st'', p'').
 Proof.
   intros.
-  destruct st.
+  destruct_pair.
   repeat eexists.
   econstructor; eauto.
   instantiate (1 := S (list_max (keys l))).
   apply varmap_find_oob. omega.
 Qed.
+
+(* TODO: should have a more general way of dispatching goals like this *)
+Lemma subset_add_remove :
+  forall T var m m' (v : T),
+    vars_subset m' (var ->> v; m) ->
+    vars_subset (VarMap.remove var m') m.
+Proof.
+  unfold vars_subset; intros.
+  destruct (Nat.eq_dec k var).
+  - eauto using VarMapFacts.remove_eq_o.
+  - rewrite VarMapFacts.remove_neq_o; eauto.
+    eapply H.
+    rewrite VarMapFacts.add_neq_o; eauto.
+Qed.
+Hint Resolve subset_add_remove.
+
+Lemma subset_replace :
+  forall T var m (v0 v : T),
+    VarMap.find var m = Some v0 ->
+    vars_subset (var ->> v; m) m.
+Proof.
+  unfold vars_subset; intros.
+  destruct (Nat.eq_dec k var).
+  - congruence.
+  - rewrite VarMapFacts.add_neq_o; eauto.
+Qed.
+Hint Resolve subset_replace.
+
+Lemma subset_remove :
+  forall T var (m : VarMap.t T),
+    vars_subset (VarMap.remove var m) m.
+Proof.
+  unfold vars_subset; intros.
+  destruct (Nat.eq_dec k var).
+  - eauto using VarMapFacts.remove_eq_o.
+  - rewrite VarMapFacts.remove_neq_o; eauto.
+Qed.
+Hint Resolve subset_remove.
+
+Theorem exec_vars_decrease :
+  forall env p d d' s s',
+    Go.exec env ((d, s), p) (Go.Finished (d', s')) ->
+    vars_subset s' s.
+Proof.
+  intros.
+  find_eapply_lem_hyp Go.ExecFinished_Steps.
+  find_eapply_lem_hyp Go.Steps_runsto'.
+  prep_induction H; induction H; intros; subst; unfold Go.locals, Go.state in *;
+    repeat destruct_pair; repeat find_inversion_safe; eauto.
+    invc H5. (* TODO: make find_inversion_safe get this anyway *)
+    invc H4.
+    eauto.
+  - invc H3; invc H4; eauto.
+  - subst_definitions.
+    admit. (* TODO: execution semantics are wrong here *)
+  - admit.
+Admitted.
+
+(* Something like this is true when [pr] does not fail:
+
+Theorem prog_vars_decrease :
+  forall T env A B p (pr : prog T),
+    EXTRACT pr
+    {{ A }}
+      p
+    {{ B }} // env ->
+    forall r,
+    match A, B r with
+      | Some A', Some B' => forall k, VarMap.In k B' -> VarMap.In k A'
+      | _, _ => True
+    end.
+Admitted.
+*)
+
 
 (* TODO: simplify wrapper system *)
 Lemma CompileDeclare :
@@ -501,7 +584,7 @@ Proof.
     forward_solve.
     invc H9.
     contradiction H7.
-    destruct st'. 
+    destruct st'.
     repeat eexists. econstructor; eauto.
     invc H1.
     invc H10.
@@ -563,7 +646,7 @@ Proof.
     intuition.
     congruence.
     maps.
-    
+
   - invc H4; [ | invc H6 ].
     invc H5.
     find_eapply_lem_hyp Go.ExecCrashed_Steps.
@@ -776,7 +859,7 @@ Proof.
   instantiate (1 := (0 <~ Const Num 1 + Var 0)%go).
   intro. intros.
   inv_exec_progok.
-  
+
   (*
   find_all_cases.
   simpl in *.
@@ -983,7 +1066,7 @@ Lemma extract_voidfunc2_call :
                                     body_source := ss;
                                   |} ->
       voidfunc2 name src env.
-Proof.      
+Proof.
   unfold voidfunc2.
   intros A B C WA WB name src arga argb arga_t argb_t env and body ss Hex Henv avar bvar a b.
   specialize (Hex a b).
@@ -1146,53 +1229,149 @@ Proof.
 *)
 Admitted.
 
-Ltac reduce_or_fallback term continuation fallback :=
-  match nat with
-  | _ => let term' := (eval red in term) in let res := continuation term' in constr:(res)
-  | _ => constr:(fallback)
-  end.
-Ltac find_fast value fmap :=
-  match fmap with
-  | @VarMap.empty _       => constr:(@None string)
-  | VarMap.add ?k (SItem ?v) _    => let eq := constr:(eq_refl v : v = value) in
-                     constr:(Some k)
-  | VarMap.add ?k _ ?tail => let ret := find_fast value tail in constr:(ret)
-  | ?other         => let ret := reduce_or_fallback fmap ltac:(fun reduced => find_fast value reduced) (@None string) in
-                     constr:(ret)
-  end.
-
-Ltac match_variable_names_right :=
-  match goal with
-  | [ H : VarMap.find _ ?m = _ |- _ ] =>
-    repeat match goal with
-    | [ |- context[VarMap.add ?k (SItem ?v) _]] =>
-      is_evar k;
-      match find_fast v m with
-      | Some ?k' => unify k k'
-      end
-    end
-  end.
-
-Ltac match_variable_names_left :=
-  try (match goal with
-  | [ H : context[VarMap.add ?k (SItem ?v) _] |- _ ] =>
-    is_evar k;
-    match goal with
-    | [ |- VarMap.find _ ?m = _ ] =>
-      match find_fast v m with
-      | Some ?k' => unify k k'
-      end
-    end
-  end; match_variable_names_left).
-
-Ltac match_scopes :=
-  simpl; intros;
-  match_variable_names_left; match_variable_names_right.
-  (* TODO *)
-
 Hint Constructors source_stmt.
 
-(*
+Local Open Scope go_pred.
+
+Ltac remove_anys :=
+  repeat match goal with
+    | [ |- ?p_ =p=> ?q ] =>
+        match p_ with
+          | context[any * ?x] => etransitivity; [ rewrite any_r_2 with (p := x); reflexivity | ]
+          | context[?x * any] => etransitivity; [ rewrite any_l_2 with (p := x); reflexivity | ]
+        end ||
+        match q with
+          | context[any * ?x] => etransitivity; [ | rewrite <- any_r_1 with (p := x); reflexivity ]
+          | context[?x * any] => etransitivity; [ | rewrite <- any_l_1 with (p := x); reflexivity ]
+        end
+  end.
+
+Ltac flatten :=
+  remove_anys;
+  etransitivity; [ eapply any_r_1 | etransitivity; [ | eapply any_r_2 ]];
+  repeat match goal with
+    | [ |- context[?a * (?b * ?c)] ] => rewrite sep_star_assoc_2 with (p1 := a) (p2 := b) (p3 := c)
+  end;
+  repeat match goal with
+    | [ |- context[?a * (?b * ?c)] ] => rewrite <- sep_star_assoc_1 with (p1 := a) (p2 := b) (p3 := c)
+  end.
+
+Lemma swap_on_right :
+  forall a b c,
+    a * b * c =p=> a * c * b.
+Proof.
+  intros.
+  rewrite sep_star_assoc_1.
+  rewrite sep_star_comm with (p1 := b) (p2 := c).
+  rewrite sep_star_assoc_2.
+  reflexivity.
+Qed.
+
+Lemma next_right_l :
+  forall p q1 q2 r,
+    p =p=> (q1 * r) * q2 ->
+    p =p=> q1 * (q2 * r).
+Proof.
+  intros.
+  rewrite <- sep_star_comm with (p1 := r) (p2 := q2).
+  rewrite <- sep_star_assoc_1.
+  assumption.
+Qed.
+
+Lemma cancel_one_right_l :
+  forall p q1 q2 k v,
+    p =p=> q1 * q2 ->
+    p * k |-> v =p=> q1 * (q2 * k |-> v).
+Proof.
+  intros.
+  rewrite <- sep_star_assoc_1.
+  eapply pimpl_cancel_one.
+  assumption.
+Qed.
+
+Ltac cancel_one_l' :=
+  match goal with
+    | [ |- _ =p=> _ * (_ * ?r) ] =>
+      not_evar r; apply cancel_one_right_l; repeat apply next_right_l;
+           try rewrite <- sep_star_comm with (p1 := any)
+  end
+    || (apply next_right_l; cancel_one_l').
+
+Ltac add_to_frame p :=
+  match goal with
+    | [ |- context[?F] ] =>
+      match type of F with
+        | pred =>
+          is_evar F;
+            let F' := fresh "F" in
+            evar (F' : pred);
+          unify F (p * F'); subst F'
+      end
+  end;
+  match goal with
+    | [ |- _ =p=> ?q ] =>
+      match q with
+        | context[?p1_ * (p * ?p3_)] =>
+          rewrite <- sep_star_assoc_1 with (p1 := p1_) (p2 := p) (p3 := p3_)
+      end
+  end.
+
+Ltac cancel_one_l :=
+  match goal with
+    | [ |- _ * ?l =p=> _ ] =>
+       cancel_one_l' || (add_to_frame l; cancel_one_l')
+  end.
+
+Ltac cancel_all_l :=
+  simpl; intros;
+  flatten;
+  etransitivity; [ | apply any_r_2 ];
+  repeat cancel_one_l;
+  remove_anys; try reflexivity.
+
+Lemma next_right_r :
+  forall p1 p2 r q,
+    (p1 * r) * p2 =p=> q ->
+    p1 * (p2 * r) =p=> q.
+Proof.
+  intros.
+  rewrite sep_star_comm with (p1 := p2) (p2 := r).
+  rewrite sep_star_assoc_2.
+  assumption.
+Qed.
+
+Lemma cancel_one_right_r :
+  forall p1 p2 q k v,
+    p1 * p2 =p=> q ->
+    p1 * (p2 * k |-> v) =p=> q * k |-> v.
+Proof.
+  intros.
+  rewrite sep_star_assoc_2.
+  eapply pimpl_cancel_one.
+  assumption.
+Qed.
+
+Ltac cancel_one_r :=
+  (match goal with
+     | [ |- _ * (_ * ?r) =p=> _ ] =>
+       not_evar r;
+     apply cancel_one_right_r; repeat apply next_right_r;
+     try rewrite <- sep_star_comm with (p1 := any)
+   end) || (apply next_right_r; cancel_one_r).
+
+Ltac cancel_all_r :=
+  simpl; intros;
+  flatten;
+  etransitivity; [ apply any_r_1 | ];
+  repeat cancel_one_r;
+  remove_anys; try apply pimpl_any.
+
+Ltac find_val v p :=
+  match p with
+    | context[?k ~> v] => constr:(Some k)
+    | _ => constr:(@None var)
+  end.
+
 Ltac compile_step :=
   match goal with
   | [ |- @sigT _ _ ] => eexists; intros
@@ -1204,28 +1383,26 @@ Ltac compile_step :=
         eapply CompileDeclare with (zeroval := 0) (t := Num)
       | prog valu =>
         eapply CompileDeclare with (zeroval := $0) (t := DiskBlock)
-    end; auto; [ unfold vars_subset; match_scopes |
-                 intro v; intros; eapply CompileBind with (var := v); intros ]
+    end; auto; [ intro v; intros; eapply CompileBind with (var := v); intros ]
   | _ => eapply CompileConst
   | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
-    eapply hoare_weaken_post; [ | eapply CompileSkip ]; try match_scopes; maps
+    eapply hoare_weaken_post; [ | eapply CompileSkip ]; cancel_all_r
   | [ |- EXTRACT Read ?a {{ ?pre }} _ {{ _ }} // _ ] =>
-    match find_fast a pre with
+    match find_val a pre with
     | Some ?k =>
-      prep_nodup; eapply hoare_equal_pre; [
-      | eapply hoare_weaken_post; [ |
-                                    eapply CompileRead with (avar := k) ] ];
-      try match_scopes; subst; maps; auto; try noteq_from_NoDup; try ( put_var_first_left k; reflexivity)
+      eapply hoare_strengthen_pre; [
+      | eapply hoare_weaken_post; [ | eapply CompileRead ] ]; [ cancel_all_l | cancel_all_r ]
     end
   | [ |- EXTRACT Write ?a ?v {{ ?pre }} _ {{ _ }} // _ ] =>
-    match find_fast a pre with
+    match find_val a pre with
     | Some ?ka =>
-      match find_fast v pre with
+      match find_val v pre with
       | Some ?kv =>
         eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
-          eapply CompileWrite with (avar := ka) (vvar := kv) ]]; try match_scopes; maps
+          eapply CompileWrite with (avar := ka) (vvar := kv) ]]; [ cancel_all_l | cancel_all_r ]
       end
     end
+      (*
   | [ H : voidfunc2 ?name ?f ?env |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // ?env ] =>
     match find_fast a pre with
       | Some ?ka =>
@@ -1235,17 +1412,18 @@ Ltac compile_step :=
                 eapply H ] ]; try match_scopes; maps
         end
     end
+*)
   | [ |- EXTRACT ?f ?a {{ ?pre }} _ {{ _ }} // _ ] =>
     match f with
       | Ret => fail 2
       | _ => idtac
     end;
-    match find_fast a pre with
+    match find_val a pre with
       | None =>
         eapply extract_equiv_prog; [ eapply bind_left_id | ]
     end
   | [ |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // _ ] =>
-    match find_fast a pre with
+    match find_val a pre with
     | None =>
       eapply extract_equiv_prog; [
         let arg := fresh "arg" in
@@ -1256,7 +1434,6 @@ Ltac compile_step :=
   end.
 
 Ltac compile := repeat compile_step.
-*)
 
 (*
 Instance prog_equiv_equivalence T :
@@ -1274,21 +1451,10 @@ Example compile_one_read : sigT (fun p =>
     p
   {{ fun ret => 0 ~> ret }} // StringMap.empty _).
 Proof.
-  eexists.
-  eapply CompileDeclare with (zeroval := 0) (t := Num); eauto; intro var0.
-  rewrite <- bind_left_id. (* XXX: why is setoid rewriting so slow? :( *)
-  eapply CompileBind; [ | intro ].
-  eapply CompileConst.
-  rewrite sep_star_comm.
-  rewrite emp_l_1.
-  eapply hoare_weaken_post; [ | eapply CompileRead ].
-  intros.
-  simpl.
-  (* TODO sep_cancel *)
+  compile.
 Admitted.
 Eval lazy in projT1 (compile_one_read).
 
-(*
 Definition swap_prog a b :=
   va <- Read a;
   vb <- Read b;
@@ -1310,10 +1476,17 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  compile_step.
-  (* why still left? *)
-  maps.
-  auto.
+  match goal with 
+  | [ |- EXTRACT Read ?a {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_val a pre with
+    | Some ?k =>
+      eapply hoare_strengthen_pre; [
+      | eapply hoare_weaken_post; [ | eapply CompileRead with (avar := k) ] ]
+    end                               
+  end.
+  cancel_all_l.
+  cancel_all_r.
+  (* ooops. argh. *)
 Admitted.
 (* Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
 

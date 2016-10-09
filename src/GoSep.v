@@ -34,7 +34,7 @@ Definition pred_matches (p : pred) (m : locals) : Prop :=
 
 Definition pimpl (p q : pred) := forall m, pred_matches p m -> pred_matches q m.
 
-Definition emp : pred := Some (VarMap.empty _).
+Definition any : pred := Some (VarMap.empty _).
 
 Definition ptsto var val : pred := Some (VarMap.add var val (VarMap.empty _)).
 
@@ -148,7 +148,7 @@ Delimit Scope go_pred_scope with go_pred.
 Notation "k ~> v" := (k |-> (SItem v))%go_pred (at level 35) : go_pred_scope.
 
 Infix "*" := sep_star : go_pred_scope.
-Notation "∅" := emp : go_pred_scope.
+Notation "∅" := any : go_pred_scope.
 Notation "p =p=> q" := (pimpl p%go_pred q%go_pred) (right associativity, at level 60) : go_pred_scope.
 Notation "m ## p" := (pred_matches p%go_pred m) (at level 70).
 
@@ -217,15 +217,31 @@ Theorem pimpl_r :
     p * q =p=> q.
 Admitted.
 
-Theorem emp_l_1 :
+Theorem pimpl_any :
   forall p,
-    p =p=> p * emp.
+    p =p=> any.
 Admitted.
 
-Theorem emp_l_2 :
+Theorem any_l_1 :
   forall p,
-    p * emp =p=> p.
+    p =p=> p * any.
 Admitted.
+
+Theorem any_l_2 :
+  forall p,
+    p * any =p=> p.
+Admitted.
+
+Theorem any_r_1 :
+  forall p,
+    p =p=> any * p.
+Admitted.
+
+Theorem any_r_2 :
+  forall p,
+    any * p =p=> p.
+Admitted.
+
 
 Theorem ptsto_find :
   forall A {H : GoWrapper A} k (v : A) F m,
@@ -244,6 +260,23 @@ Theorem ptsto_update :
     VarMap.add k (wrap v) m ## k ~> v * F.
 Admitted.
 
+Lemma pimpl_sep_star :
+  forall a b c d,
+  (a =p=> c) ->
+  (b =p=> d) ->
+  (a * b =p=> c * d).
+Proof.
+  unfold pimpl; unfold_sep_star; intros.
+  destruct a, b; try solve [ simpl pred_matches in *; intuition idtac ].
+Admitted.
+
+Lemma pimpl_cancel_one :
+  forall p q k v,
+    p =p=> q ->
+    p * k |-> v =p=> q * k |-> v.
+Admitted.
+
+
 Instance pimpl_preorder :
   PreOrder pimpl.
 Proof.
@@ -260,4 +293,31 @@ Proof.
   destruct p, q; intuition subst.
   eapply Hpq; eauto.
   apply Hpq in H; trivial.
+Qed.
+
+Instance pimpl_pimpl_proper1 :
+  Proper (pimpl ==> Basics.flip pimpl ==> Basics.flip Basics.impl) pimpl.
+Proof.
+  firstorder.
+Qed.
+
+Instance pimpl_pimpl_proper2 :
+  Proper (Basics.flip pimpl ==> pimpl ==> Basics.impl) pimpl.
+Proof.
+  firstorder.
+Qed.
+
+Instance sep_star_pimpl_proper :
+  Proper (pimpl ==> pimpl ==> pimpl) sep_star.
+Proof.
+  intros a b H c d H'.
+  apply pimpl_sep_star; assumption.
+Qed.
+
+
+Instance sep_star_pimpl_proper' :
+  Proper (Basics.flip pimpl ==> Basics.flip pimpl ==> Basics.flip pimpl) sep_star.
+Proof.
+  intros a b H c d H'.
+  apply pimpl_sep_star; assumption.
 Qed.
