@@ -197,6 +197,14 @@ Proof.
   intuition.
 Qed.
 
+Lemma maps_disjoint_empty : forall T (t : VarMap.t T),
+  maps_disjoint t (VarMap.empty _) = true.
+Proof.
+  intros.
+  unfold maps_disjoint; simpl; auto.
+  apply VarMapProperties.for_all_iff; intuition.
+Qed.
+
 Definition sep_star_impl (p1 p2 : pred) : pred :=
   match p1, p2 with
     | Some m1, Some m2 =>
@@ -371,7 +379,11 @@ Theorem pimpl_trans :
     p =p=> q ->
     q =p=> r ->
     p =p=> r.
-Admitted.
+Proof.
+  intros.
+  unfold pimpl in *.
+  firstorder.
+Qed.
 
 Theorem pimpl_apply :
   forall p q m,
@@ -380,43 +392,93 @@ Theorem pimpl_apply :
     m ## q.
 Proof.
   intros.
-Admitted.
+  firstorder.
+Qed.
 
 Theorem pimpl_l :
   forall p q,
     p * q =p=> p.
-Admitted.
+Proof.
+  unfold pimpl, pred_matches, sep_star;
+    rewrite sep_star_is.
+  destruct p, q; simpl; intros; intuition.
+  destruct maps_disjoint eqn:H'; intuition.
+  apply H.
+  rewrite <- VarMapProperties.F.find_mapsto_iff in *.
+  apply VarMapProperties.update_mapsto_iff.
+  intuition; eauto.
+Qed.
 
 Theorem pimpl_r :
   forall p q,
     p * q =p=> q.
-Admitted.
+Proof.
+  intros. intro; intros.
+  eapply pimpl_l.
+  apply sep_star_comm; eauto.
+Qed.
 
 Theorem pimpl_any :
   forall p,
     p =p=> any.
-Admitted.
+Proof.
+  unfold pimpl, pred_matches.
+  destruct p; simpl; intros; intuition.
+  rewrite VarMapProperties.F.empty_o in *.
+  inversion H0.
+Qed.
 
 Theorem any_l_1 :
   forall p,
     p =p=> p * any.
-Admitted.
+Proof.
+  unfold pimpl, pred_matches, sep_star;
+    rewrite sep_star_is.
+  destruct p; simpl in *; intuition.
+  rewrite maps_disjoint_empty; intros.
+  apply H.
+  rewrite <- VarMapProperties.F.find_mapsto_iff in *.
+  find_eapply_lem_hyp VarMapProperties.update_mapsto_iff.
+  intuition; eauto.
+  rewrite VarMapProperties.F.empty_mapsto_iff in *; intuition.
+Qed.
 
 Theorem any_l_2 :
   forall p,
     p * any =p=> p.
-Admitted.
+Proof.
+  intros. apply pimpl_l.
+Qed.
 
 Theorem any_r_1 :
   forall p,
     p =p=> any * p.
-Admitted.
+Proof.
+  unfold pimpl, pred_matches, sep_star;
+    rewrite sep_star_is.
+  destruct p; simpl in *; intuition.
+  apply H.
+  rewrite <- VarMapProperties.F.find_mapsto_iff in *.
+  find_eapply_lem_hyp VarMapProperties.update_mapsto_iff.
+  intuition; eauto.
+  rewrite VarMapProperties.F.empty_mapsto_iff in *; intuition.
+Qed.
 
 Theorem any_r_2 :
   forall p,
     any * p =p=> p.
-Admitted.
+Proof.
+  intros. apply pimpl_r.
+Qed.
 
+(* TODO move this *)
+Lemma update_add_empty : forall T (t : VarMap.t T) k v,
+  VarMapProperties.update t (VarMap.add k v (VarMap.empty _)) = VarMap.add k v t.
+Proof.
+  intros.
+  unfold VarMapProperties.update.
+  rewrite VarMap.fold_1. auto.
+Qed.
 
 Theorem ptsto_find :
   forall A {H : GoWrapper A} k (v : A) F m,
@@ -427,13 +489,47 @@ Proof.
   unfold_sep_star.
   intros.
   break_match; intuition.
-Admitted.
+  break_match; subst.
+  break_match. find_inversion.
+  specialize (H0 k (SItem v)). simpl in *.
+  apply H0.
+  rewrite maps_disjoint_update_eq' by auto.
+  rewrite update_add_empty.
+  apply VarMapProperties.F.add_eq_o; auto.
+  all : inversion Heqp.
+Qed.
 
 Theorem ptsto_update :
   forall A {H : GoWrapper A} k (v : A) F m,
+    ~ VarMap.In k m ->
     m ## F ->
     VarMap.add k (wrap v) m ## k ~> v * F.
-Admitted.
+Proof.
+  unfold pred_matches, ptsto, sep_star.
+  rewrite sep_star_is.
+  intros.
+  destruct F; simpl in *; intuition.
+  destruct maps_disjoint eqn:H'; intros.
+  rewrite maps_disjoint_update_eq' in * by auto.
+  rewrite update_add_empty in *.
+  rewrite VarMapProperties.F.add_o in *.
+  destruct Nat_as_OT.eq_dec; subst.
+  find_inversion; auto.
+  firstorder.
+  apply maps_not_disjoint in H' as H''.
+  deex.
+  rewrite VarMapProperties.F.add_in_iff in *.
+  intuition; subst.
+ 
+  rewrite VarMapProperties.F.in_find_iff in *.
+  destruct VarMap.find eqn:H''.
+  find_eapply_lem_hyp H1.
+  destruct s.
+  apply H0. rewrite H''. intro.
+  inversion H3.
+  apply H4. auto.
+  find_eapply_lem_hyp VarMapProperties.F.empty_in_iff. auto.
+Qed.
 
 Lemma pimpl_sep_star :
   forall a b c d,
