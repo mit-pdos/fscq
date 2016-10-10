@@ -335,7 +335,30 @@ Theorem sep_star_assoc_2 :
   forall p1 p2 p3,
     p1 * (p2 * p3) =p=> p1 * p2 * p3.
 Proof.
-Admitted.
+  unfold pimpl, pred_matches.
+  unfold sep_star.
+  intros.
+  destruct p1, p2, p3;
+    rewrite sep_star_is in *; simpl in *;
+    repeat (match goal with
+    | [H : context [if ?X then _ else _] |- _ ] => let H := fresh in destruct X eqn:H
+    | [|- context [if ?X then _ else _]] => let H := fresh in destruct X eqn:H
+    end; simpl in *); intros; auto; intuition.
+
+  intros.
+  apply H.
+  rewrite <- VarMapProperties.F.find_mapsto_iff in *.
+  repeat rewrite VarMapProperties.update_mapsto_iff in *.
+  rewrite VarMapProperties.update_in_iff in *.
+  intuition.
+  apply Bool.not_true_iff_false in H3; contradiction H3.
+  rewrite maps_disjoint_comm.
+  rewrite maps_disjoint_update_eq.
+  eapply maps_disjoint_assoc; auto.
+  find_eapply_lem_hyp maps_not_disjoint. deex.
+  eapply maps_disjoint_in; eauto.
+  apply VarMapProperties.update_in_iff; auto.
+Qed.
 
 Theorem pimpl_refl :
   forall p, p =p=> p.
