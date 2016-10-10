@@ -757,7 +757,7 @@ Module Go.
                          type_of v = type_of v0 -> (* and have the correct type *)
                          s' = VarMap.add x v s ->
                          runsto_InCall (Assign x e) (d, s) (d, s')
-    | RunsToModify : forall (x : var) (ex : expr) (s s' : locals) d (val v v' : value) op,
+    | RunsToICModify : forall (x : var) (ex : expr) (s s' : locals) d (val v v' : value) op,
                        eval s ex = Some val ->
                        VarMap.find x s = Some v ->
                        can_alias (type_of v) = false ->
