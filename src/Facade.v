@@ -327,7 +327,7 @@ Hint Constructors Go.step.
 Lemma CompileConst : forall env A var (v v0 : nat),
   EXTRACT Ret v
   {{ var ~> v0 * A }}
-    var <~ Go.Const Go.Num v
+    var <<~ Go.Const Go.Num v
   {{ fun ret => var ~> ret * A }} // env.
 Proof.
   unfold ProgOk.
@@ -341,7 +341,7 @@ Proof.
 
   contradiction H1.
   repeat eexists.
-  eauto.
+  eapply Go.StepModify; simpl; eauto.
 Qed.
 
 Ltac forwardauto1 H :=
@@ -448,8 +448,8 @@ Proof.
   destruct_pair.
   repeat eexists.
   econstructor; eauto.
-  instantiate (1 := S (list_max (keys l))).
-  apply varmap_find_oob. omega.
+  apply varmap_find_oob.
+  eauto.
 Qed.
 
 (* TODO: should have a more general way of dispatching goals like this *)
@@ -848,6 +848,35 @@ Proof.
   all: auto.
 Qed.
 
+
+Example micro_dup : sigT (fun p => forall (x : expr) (T : GoWrapper expr) v0,
+  can_alias (type_of (wrap v0)) = false ->
+  EXTRACT Ret tt
+  {{ 0 ~> x * 1 ~> v0 }}
+    p
+  {{ fun _ => 1 ~> x * 0 ~> x }} // StringMap.empty _).
+Proof.
+  eexists. intros.
+  instantiate (1 := Modify 1 DuplicateOp (Var 0)).
+  unfold ProgOk.
+  inv_exec_progok;
+  inv_exec_progok.
+  repeat eexists. eauto.
+  apply ptsto_find in H0 as H'.
+  match_finds.
+  apply ptsto_update.
+  eapply pimpl_l. eauto.
+  Search Prog.exec Prog.Failed.
+  contradiction H2.
+  repeat eexists.
+  eapply StepModify; eauto.
+  unfold eval.
+  eapply ptsto_find; eauto.
+  apply sep_star_comm in H0.
+  eapply ptsto_find; eauto.
+  simpl; auto.
+Defined.
+
 Example micro_inc : sigT (fun p => forall x,
   EXTRACT Ret (1 + x)
   {{ 0 ~> x }}
@@ -856,28 +885,32 @@ Example micro_inc : sigT (fun p => forall x,
 Proof.
   eexists.
   intros.
-  instantiate (1 := (0 <~ Const Num 1 + Var 0)%go).
+  instantiate (1 := (0 += (Const Num 1))%go).
   intro. intros.
   inv_exec_progok.
 
-  (*
-  find_all_cases.
-  simpl in *.
-  repeat eexists; eauto. maps; eauto.
-  simpl; congruence.
-  eapply forall_In_Forall_elements.
-  intros.
-  rewrite remove_empty in *.
-  maps.
+  destruct v, t; simpl in *;
+    try solve [inversion H10 | inversion H11].
+  rewrite Nat.add_1_r in *.
+  find_inversion_safe.
 
-  contradiction H1. repeat eexists. econstructor; simpl.
-  maps. simpl in *. find_all_cases. eauto.
-  eauto.
-  maps. simpl in *. find_all_cases. eauto.
-  eauto.
-  trivial.
-*)
-Admitted.
+  repeat eexists; eauto; intros.
+  destruct (Nat.eq_dec k 0); subst.
+  - specialize (H 0 (SItem x)).
+    rewrite VarMapProperties.F.add_eq_o in * by auto.
+    rewrite H in H9 by auto.
+    repeat find_inversion_safe.
+    unfold wrap, GoWrapper_Num in *.
+    find_inversion_safe. auto.
+  - rewrite VarMapProperties.F.add_neq_o in * by eauto.
+    rewrite VarMapProperties.F.empty_o in *.
+    inversion H0.
+  - contradiction H1.
+    repeat eexists.
+    specialize (H 0 (SItem x)).
+    eapply StepModify; eauto.
+    simpl; auto.
+Defined.
 
 Lemma CompileIf : forall P Q {H1 : GoWrapper ({P}+{Q})}
                          T {H : GoWrapper T}

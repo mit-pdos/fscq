@@ -96,6 +96,7 @@ Module Go.
   | TestE : test -> expr -> expr -> expr.
 
   Inductive modop :=
+  | DuplicateOp : modop
   | ModifyNumOp : numop -> modop
   .
 
@@ -231,6 +232,7 @@ Module Go.
 
   Definition eval_modop op a b : option value :=
     match op with
+    | DuplicateOp => Some b
     | ModifyNumOp n_op =>
       match (a, b) with
       | (Val Num va, Val Num vb) => Some (eval_numop n_op va vb)
@@ -969,6 +971,7 @@ Notation "! x" := (x = 0)%go (at level 70, no associativity).
 
 Notation "A ; B" := (Go.Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : go_scope.
 Notation "x <~ y" := (Go.Assign x y) (at level 90) : go_scope.
+Notation "x <<~ y" := (Go.Modify x Go.DuplicateOp y) (at level 90): go_scope.
 Notation "A *= B" := (Go.Modify A (Go.ModifyNumOp Go.Times) B) (at level 90): go_scope.
 Notation "A += B" := (Go.Modify A (Go.ModifyNumOp Go.Plus) B) (at level 90): go_scope.
 Notation "A -= B" := (Go.Modify A (Go.ModifyNumOp Go.Minus) B) (at level 90): go_scope.
