@@ -148,7 +148,18 @@ Proof.
   intro. rewrite H in *. inversion H0.
 Qed.
 
+Lemma in_mapsto : forall T (t : VarMap.t T) k,
+  VarMap.In k t -> exists v, VarMap.MapsTo k v t.
+Proof.
+  intros.
+  find_eapply_lem_hyp VarMapProperties.F.in_find_iff.
+  destruct VarMap.find eqn:H'.
+  find_eapply_lem_hyp VarMap.find_2; eauto.
+  contradiction H; auto.
+Qed.
+
 Hint Resolve mapsto_in.
+Hint Resolve in_mapsto.
 
 Lemma maps_disjoint_in' : forall T k (t0 t1 : VarMap.t T),
   maps_disjoint t0 t1 = true ->
@@ -298,16 +309,37 @@ Proof.
 Qed.
 
 Theorem maps_not_disjoint : forall T (t0 t1 : VarMap.t T),
-  maps_disjoint t0 t1 = false ->
+  maps_disjoint t0 t1 = false <->
   exists k, VarMap.In k t0 /\ VarMap.In k t1.
 Proof.
   unfold maps_disjoint.
   intros.
-  find_eapply_lem_hyp not_for_all_iff.
-  repeat deex.
-  rewrite Bool.negb_false_iff in *.
-  eexists; split; eauto.
+  rewrite <- not_for_all_iff.
+  split; intros; repeat deex.
+  all : rewrite ?Bool.negb_false_iff in *.
+  eexists; intuition eauto.
   apply VarMapProperties.F.mem_in_iff; auto.
+  find_eapply_lem_hyp in_mapsto.
+  apply in_mapsto in H0.
+  repeat deex.
+  repeat eexists; eauto.
+  rewrite ?Bool.negb_false_iff.
+  apply VarMapProperties.F.mem_in_iff; eauto.
+Qed.
+
+Theorem maps_disjoint_find_update : forall T (t0 t1 : VarMap.t T) k v,
+  maps_disjoint t0 t1 = true ->
+  VarMap.find k (VarMapProperties.update t0 t1) = Some v <->
+  (VarMap.find k t0 = Some v /\ ~VarMap.In k t1) \/
+  (VarMap.find k t1 = Some v /\ ~VarMap.In k t0).
+Proof.
+  intros.
+  repeat rewrite <- VarMapProperties.F.find_mapsto_iff in *.
+  repeat rewrite VarMapProperties.update_mapsto_iff.
+  intuition.
+  right.
+  intuition.
+  eapply maps_disjoint_in; eauto.
 Qed.
 
 Theorem sep_star_assoc_1 :
@@ -326,9 +358,8 @@ Proof.
 
   intros.
   apply H.
-  rewrite <- VarMapProperties.F.find_mapsto_iff in *.
-  repeat rewrite VarMapProperties.update_mapsto_iff in *.
-  rewrite VarMapProperties.update_in_iff in *.
+  repeat rewrite ?maps_disjoint_find_update,
+                 ?VarMapProperties.update_in_iff in * by auto.
   intuition.
   apply Bool.not_true_iff_false in H3; contradiction H3.
   rewrite maps_disjoint_comm in H1.
@@ -353,11 +384,10 @@ Proof.
     | [|- context [if ?X then _ else _]] => let H := fresh in destruct X eqn:H
     end; simpl in *); intros; auto; intuition.
 
-  intros.
+   intros.
   apply H.
-  rewrite <- VarMapProperties.F.find_mapsto_iff in *.
-  repeat rewrite VarMapProperties.update_mapsto_iff in *.
-  rewrite VarMapProperties.update_in_iff in *.
+  repeat rewrite ?maps_disjoint_find_update,
+                 ?VarMapProperties.update_in_iff in * by auto.
   intuition.
   apply Bool.not_true_iff_false in H3; contradiction H3.
   rewrite maps_disjoint_comm.
@@ -488,9 +518,7 @@ Proof.
   unfold pred_matches, ptsto.
   unfold_sep_star.
   intros.
-  break_match; intuition.
-  break_match; subst.
-  break_match. find_inversion.
+  repeat break_match; intuition; subst; try find_inversion.
   specialize (H0 k (SItem v)). simpl in *.
   apply H0.
   rewrite maps_disjoint_update_eq' by auto.
@@ -531,6 +559,28 @@ Proof.
   find_eapply_lem_hyp VarMapProperties.F.empty_in_iff. auto.
 Qed.
 
+Lemma find_some_in : forall T (t : VarMap.t T) k v,
+  VarMap.find k t = Some v -> VarMap.In k t.
+Proof.
+  intros.
+  apply VarMapProperties.F.in_find_iff.
+  intro H'. rewrite H' in *.
+  inversion H.
+Qed.
+
+Hint Resolve find_some_in.
+
+Lemma in_find_some : forall T (t : VarMap.t T) k,
+  VarMap.In k t -> exists v, VarMap.find k t = Some v.
+Proof.
+  intros.
+  find_eapply_lem_hyp in_mapsto.
+  deex.
+  rewrite VarMapProperties.F.find_mapsto_iff in *. eauto.
+Qed.
+
+Hint Resolve in_find_some.
+
 Lemma pimpl_sep_star :
   forall a b c d,
   (a =p=> c) ->
@@ -539,13 +589,33 @@ Lemma pimpl_sep_star :
 Proof.
   unfold pimpl; unfold_sep_star; intros.
   destruct a, b; try solve [ simpl pred_matches in *; intuition idtac ].
+  destruct c, d;
+    repeat match goal with
+    | [H : context [if ?X then _ else _] |- _] => let H := fresh in destruct X eqn:H
+    | [|- context [if ?X then _ else _]] => let H := fresh in destruct X eqn:H
+    end; auto.
+  all : try ((apply H + apply H0);
+    eapply pimpl_l with (q := Some _);
+    apply sep_star_comm + idtac;
+    unfold_sep_star;
+    rewrite H2; auto).
+  all : try (simpl in *; intros;
+    rewrite maps_disjoint_find_update in * by auto;
+    intuition; (apply H + apply H0); intuition;
+      apply H1; rewrite maps_disjoint_find_update;
+      intuition eauto).
+  admit. (* TODO this is a false statement *)
 Admitted.
 
 Lemma pimpl_cancel_one :
   forall p q k v,
     p =p=> q ->
     p * k |-> v =p=> q * k |-> v.
-Admitted.
+Proof.
+  unfold ptsto. intros.
+  eapply pimpl_sep_star; auto.
+  apply pimpl_refl.
+Qed.
 
 
 Instance pimpl_preorder :
