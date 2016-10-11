@@ -1389,7 +1389,7 @@ Ltac cancel_one_r :=
      | [ |- _ * (_ * ?r) =p=> _ ] =>
        not_evar r;
      apply cancel_one_right_r; repeat apply next_right_r;
-     try rewrite <- sep_star_comm with (p1 := any)
+     try rewrite sep_star_comm with (p2 := any)
    end) || (apply next_right_r; cancel_one_r).
 
 Ltac cancel_all_r :=
@@ -1404,6 +1404,27 @@ Ltac find_val v p :=
     | context[?k ~> v] => constr:(Some k)
     | _ => constr:(@None var)
   end.
+
+Ltac var_mapping_to pred val :=
+  lazymatch pred with
+    | context[?var ~> val] => var
+  end.
+
+Definition mark_ret (T : Type) := T.
+Class find_ret {T} (P : pred) := FindRet : T.
+Ltac find_ret_tac P :=
+  match goal with
+    | [ ret : mark_ret ?T |- _ ] => var_mapping_to P ret
+  end.
+Local Hint Extern 0 (@find_ret ?T ?P) => (let x := find_ret_tac P in exact x) : typeclass_instances.
+Ltac var_mapping_to_ret :=
+  lazymatch goal with
+    | [ |- EXTRACT _ {{ _ }} _ {{ fun ret : ?T => ?P }} // _ ] =>
+      lazymatch constr:(fun ret : mark_ret T => (_:find_ret P)) with
+        | (fun ret => ?var) => var
+      end
+  end.
+
 
 Ltac compile_step :=
   match goal with
@@ -1421,10 +1442,11 @@ Ltac compile_step :=
   | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
     eapply hoare_weaken_post; [ | eapply CompileSkip ]; cancel_all_r
   | [ |- EXTRACT Read ?a {{ ?pre }} _ {{ _ }} // _ ] =>
+    let retvar := var_mapping_to_ret in
     match find_val a pre with
     | Some ?k =>
       eapply hoare_strengthen_pre; [
-      | eapply hoare_weaken_post; [ | eapply CompileRead ] ]; [ cancel_all_l | cancel_all_r ]
+      | eapply hoare_weaken_post; [ | eapply CompileRead with (avar := k) (vvar := retvar) ] ]; [ cancel_all_l | cancel_all_r ]
     end
   | [ |- EXTRACT Write ?a ?v {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val a pre with
@@ -1485,7 +1507,7 @@ Example compile_one_read : sigT (fun p =>
   {{ fun ret => 0 ~> ret }} // StringMap.empty _).
 Proof.
   compile.
-Admitted.
+Defined.
 Eval lazy in projT1 (compile_one_read).
 
 Definition swap_prog a b :=
@@ -1499,67 +1521,15 @@ Example extract_swap_1_2 : forall env, sigT (fun p =>
   EXTRACT swap_prog 1 2 {{ ∅ }} p {{ fun _ => ∅ }} // env).
 Proof.
   intros. unfold swap_prog.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  match goal with 
-  | [ |- EXTRACT Read ?a {{ ?pre }} _ {{ _ }} // _ ] =>
-    match find_val a pre with
-    | Some ?k =>
-      eapply hoare_strengthen_pre; [
-      | eapply hoare_weaken_post; [ | eapply CompileRead with (avar := k) ] ]
-    end                               
-  end.
-  cancel_all_l.
-  cancel_all_r.
-  (* ooops. argh. *)
-Admitted.
-(* Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
-
+  compile.
+Defined.
+Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
 
 Lemma extract_swap_prog : forall env, sigT (fun p =>
-  forall a b, EXTRACT swap_prog a b {{ 0 ~> a; 1 ~> b; ∅ }} p {{ fun _ => ∅ }} // env).
+  forall a b, EXTRACT swap_prog a b {{ 0 ~> a * 1 ~> b }} p {{ fun _ => ∅ }} // env).
 Proof.
   intros. unfold swap_prog.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  subst.
-  instantiate (F := 0 ~> a; var0 ~> a0; ∅).
-  all: maps; auto.
-
-  compile_step.
-  compile_step.
-  instantiate (F := 1 ~> b; var0 ~> a0; ∅).
-  all: maps; auto.
-
-  compile_step.
-  match goal with
-  | [ |- EXTRACT Write ?a ?v {{ ?pre }} _ {{ _ }} // _ ] =>
-    match find_fast a pre with
-    | Some ?ka =>
-      match find_fast v pre with
-      | Some ?kv =>
-        eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
-          eapply CompileWrite with (avar := ka) (vvar := kv) ]]
-      end
-    end
-  end.
-  instantiate (F := var1 ~> a1; 0 ~> a; ∅).
-  match_scopes.
-  match_scopes.
-  destruct (Nat.eq_dec 1 var0); maps.
-
-  compile_step.
+  compile.
 Defined.
 Eval lazy in projT1 (extract_swap_prog (StringMap.empty _)).
 
@@ -1587,6 +1557,8 @@ Definition swap_env : Env :=
            RetParamVars := []; Body := projT1 (extract_swap_prog (StringMap.empty _));
            (* ret_not_in_args := ltac:(auto); *) args_no_dup := ltac:(auto); body_source := ltac:(repeat constructor);
          |}; (StringMap.empty _)).
+
+(*
 
 Lemma swap_func : voidfunc2 "swap" swap_prog swap_env.
 Proof.
@@ -1704,6 +1676,5 @@ Proof.
   all: congruence.
 Defined.
 Eval lazy in projT1 micro_swap2.
-*)
 *)
 *)
