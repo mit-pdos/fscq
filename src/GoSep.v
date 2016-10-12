@@ -17,6 +17,11 @@ Class GoWrapper (WrappedType: Type) :=
 Inductive ScopeItem :=
 | SItem A {H: GoWrapper A} (v : A).
 
+Definition wrapped_val_of item :=
+  match item with
+      | SItem val => wrap val
+  end.
+
 (* None matches nothing *)
 Definition pred := option (VarMap.t ScopeItem).
 
@@ -330,8 +335,8 @@ Qed.
 Theorem maps_disjoint_find_update : forall T (t0 t1 : VarMap.t T) k v,
   maps_disjoint t0 t1 = true ->
   VarMap.find k (VarMapProperties.update t0 t1) = Some v <->
-  (VarMap.find k t0 = Some v /\ ~VarMap.In k t1) \/
-  (VarMap.find k t1 = Some v /\ ~VarMap.In k t0).
+  VarMap.find k t0 = Some v \/
+  VarMap.find k t1 = Some v.
 Proof.
   intros.
   repeat rewrite <- VarMapProperties.F.find_mapsto_iff in *.
@@ -339,8 +344,9 @@ Proof.
   intuition.
   right.
   intuition.
-  eapply maps_disjoint_in; eauto.
+  eapply maps_disjoint_in; eauto using mapsto_in.
 Qed.
+Hint Resolve maps_disjoint_find_update : maps.
 
 Theorem sep_star_assoc_1 :
   forall p1 p2 p3,
@@ -581,7 +587,64 @@ Qed.
 
 Hint Resolve in_find_some : maps.
 
-Lemma pimpl_sep_star :
+Lemma pimpl_subset:
+  forall s1 s2,
+    (forall m : locals, m ## Some s1 -> m ## Some s2) ->
+    forall k, VarMap.In k s2 -> VarMap.In k s1.
+Proof.
+  simpl pred_matches; intros.
+  specialize (H (VarMap.map wrapped_val_of s1)).
+  forward H.
+  {
+    intros.
+    destruct item.
+    rewrite VarMapProperties.F.map_o.
+    find_rewrite.
+    reflexivity.
+  }
+  intuition idtac.
+  find_apply_lem_hyp in_find_some; deex.
+  specialize (H2 k v H).
+  destruct v.
+  rewrite VarMapProperties.F.map_o in *.
+  destruct (VarMap.find k s1) eqn:He; try discriminate.
+  eauto with maps.
+Qed.
+Hint Resolve pimpl_subset : maps.
+
+Lemma pred_matches_disjoint_1 :
+  forall s1 s2,
+    maps_disjoint s1 s2 = true ->
+    forall m,
+      m ## Some (VarMapProperties.update s1 s2) -> m ## Some s1.
+Proof.
+  simpl pred_matches; intros.
+  apply H0.
+  apply maps_disjoint_find_update; eauto with maps.
+Qed.
+
+Lemma pred_matches_disjoint_2 :
+  forall s1 s2,
+    maps_disjoint s1 s2 = true ->
+    forall m,
+      m ## Some (VarMapProperties.update s1 s2) -> m ## Some s2.
+Proof.
+  simpl pred_matches; intros.
+  apply H0.
+  apply maps_disjoint_find_update; eauto with maps.
+Qed.
+
+Hint Resolve pred_matches_disjoint_1 pred_matches_disjoint_2 : maps.
+
+Lemma disjoint_Disjoint :
+  forall T s1 s2,
+    @maps_disjoint T s1 s2 = true -> VarMapProperties.Disjoint s1 s2.
+Proof.
+  unfold VarMapProperties.Disjoint.
+  intuition eauto with maps.
+Qed.
+
+Theorem pimpl_sep_star :
   forall a b c d,
   (a =p=> c) ->
   (b =p=> d) ->
@@ -604,9 +667,14 @@ Proof.
     intuition; (apply H + apply H0); intuition;
       apply H1; rewrite maps_disjoint_find_update;
       intuition eauto with maps).
-  simpl in *.
-  admit. (* TODO this is a false statement *)
-Admitted.
+  simpl.
+  pose proof (pimpl_subset H); clear H.
+  pose proof (pimpl_subset H0); clear H0.
+  find_apply_lem_hyp disjoint_Disjoint.
+  unfold VarMapProperties.Disjoint in *.
+  find_apply_lem_hyp maps_not_disjoint; deex.
+  eauto.
+Qed.
 
 Lemma pimpl_cancel_one :
   forall p q k v,
