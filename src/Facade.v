@@ -10,7 +10,7 @@ Require Import Gensym.
 Require Import Word.
 Require Import Omega.
 Require Import Go.
-Require Import GoSep.
+Require Import Pred GoSep.
 
 Import ListNotations.
 
@@ -30,13 +30,13 @@ Notation "k ->> v ;  m" := (VarMap.add k v m) (at level 21, right associativity)
 
 Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : pred) (final_tstate : T -> pred) :=
   forall initial_state hm,
-    (snd initial_state) ## initial_tstate ->
+    (snd initial_state) ≲ initial_tstate ->
     forall out,
       Go.exec env (initial_state, eprog) out ->
     (forall final_state, out = Go.Finished final_state ->
       exists r hm',
         exec (fst initial_state) hm sprog (Finished (fst final_state) hm' r) /\
-        (snd final_state) ## (final_tstate r)) /\
+        (snd final_state ≲ final_tstate r)) /\
     (forall final_disk,
       out = Go.Crashed final_disk ->
       exists hm',
@@ -45,7 +45,7 @@ Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : pred) (final_ts
       exec (fst initial_state) hm sprog (Failed T)).
 
 Notation "'EXTRACT' SP {{ A }} EP {{ B }} // EV" :=
-  (ProgOk EV EP%go SP A%go_pred B%go_pred)
+  (ProgOk EV EP%go SP A%pred B%pred)
     (at level 60, format "'[v' 'EXTRACT'  SP '/' '{{'  A  '}}' '/'    EP '/' '{{'  B  '}}'  //  EV ']'").
 
 Ltac GoWrapper_t :=
@@ -111,9 +111,9 @@ Ltac inv_exec :=
 
 Example micro_noop : sigT (fun p =>
   EXTRACT Ret tt
-  {{ ∅ }}
+  {{ any }}
     p
-  {{ fun _ => ∅ }} // StringMap.empty _).
+  {{ fun _ => any }} // StringMap.empty _).
 Proof.
   eexists.
   intro.
@@ -335,13 +335,16 @@ Proof.
   inv_exec_progok.
   do 2 eexists.
   intuition eauto.
-  eapply ptsto_update; eauto.
-  eapply pimpl_apply; eauto using pimpl_r.
-  eapply ptsto_find in H.
+  rewrite add_upd.
+  eapply ptsto_upd.
+  eassumption.
 
   contradiction H1.
   repeat eexists.
   eapply Go.StepModify; simpl; eauto.
+  find_eapply_lem_hyp sep_star_ptsto_some.
+  eassumption.
+  auto.
 Qed.
 
 Ltac forwardauto1 H :=
@@ -407,7 +410,7 @@ Theorem varmap_find_oob : forall T (l : VarMap.t T) v,
   VarMap.find v l = None.
 Proof.
   intros.
-  apply VarMapProperties.F.not_find_in_iff.
+  apply VarMapFacts.not_find_in_iff.
   apply gt_list_max in H.
   intuition.
   apply H.
@@ -561,7 +564,9 @@ Proof.
     {
       simpl.
       rewrite <- H0.
-      eauto using ptsto_update.
+      rewrite add_upd.
+      rewrite sep_star_comm.
+      eapply ptsto_upd_disjoint; eauto.
     }
     intuition.
     simpl in *.
@@ -763,7 +768,7 @@ Qed.
 Import Go.
 
 Lemma hoare_weaken_post : forall T env A (B1 B2 : T -> _) pr p,
-  (forall x, B1 x =p=> B2 x)%go_pred ->
+  (forall x, B1 x =p=> B2 x)%pred ->
   EXTRACT pr
   {{ A }} p {{ B1 }} // env ->
   EXTRACT pr
@@ -772,20 +777,21 @@ Proof.
   unfold ProgOk.
   intros.
   forwardauto H0.
-  intuition subst;
+  intuition subst.
   forwardauto H3; repeat deex;
-  repeat eexists; eauto using pimpl_apply.
+  repeat eexists; unfold pimpl, pred_apply in *; eauto.
+  eauto.
+  eauto.
 Qed.
 
 Lemma hoare_strengthen_pre : forall T env A1 A2 (B : T -> _) pr p,
-  (A2 =p=> A1)%go_pred ->
+  (A2 =p=> A1)%pred ->
   EXTRACT pr
   {{ A1 }} p {{ B }} // env ->
   EXTRACT pr
   {{ A2 }} p {{ B }} // env.
 Proof.
-  unfold ProgOk.
-  eauto using pimpl_apply.
+  unfold ProgOk, pimpl, pred_apply in *; eauto.
 Qed.
 
 Instance progok_hoare_proper :
@@ -862,21 +868,28 @@ Proof.
   inv_exec_progok;
   inv_exec_progok.
   repeat eexists. eauto.
-  apply ptsto_find in H0 as H'.
-  match_finds.
-  apply ptsto_update.
-  eapply pimpl_l. eauto.
-  Search Prog.exec Prog.Failed.
+  rewrite add_upd.
+  pose proof (ptsto_valid H0).
+  rewrite sep_star_comm in H0.
+  pose proof (ptsto_valid H0).
+  unfold mem_of in *.
+  assert (v' = wrap x) by congruence.
+  assert (v = wrap v0) by congruence.
+  subst.
+  eapply ptsto_upd.
+  eassumption.
+
   contradiction H2.
   repeat eexists.
   eapply StepModify; eauto.
   unfold eval.
-  eapply ptsto_find; eauto.
+  eapply ptsto_valid in H0; eauto.
   apply sep_star_comm in H0.
-  eapply ptsto_find; eauto.
+  eapply ptsto_valid in H0; eauto.
   simpl; auto.
 Defined.
 
+(*
 Example micro_inc : sigT (fun p => forall x,
   EXTRACT Ret (1 + x)
   {{ 0 ~> x }}
@@ -1057,7 +1070,7 @@ Proof.
       rewrite sep_star_comm in H1.
       rewrite sep_star_assoc_1 in H1.
       eapply ptsto_find in H1.
-      repeat (unfold is_true, eval_bool, eval_test_m in *; simpl in *).
+      repeat (unfold is_true, eval_bool, eval_test_m in *; simpl in * ).
       rewrite H1 in H9.
       destruct lt_dec. omega.
       find_inversion.
@@ -1264,7 +1277,7 @@ Admitted.
 
 Hint Constructors source_stmt.
 
-Local Open Scope go_pred.
+Local Open Scope pred.
 
 Ltac remove_anys :=
   repeat match goal with
@@ -1676,5 +1689,6 @@ Proof.
   all: congruence.
 Defined.
 Eval lazy in projT1 micro_swap2.
+*)
 *)
 *)
