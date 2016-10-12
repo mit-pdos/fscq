@@ -43,6 +43,7 @@ Definition any : pred := Some (VarMap.empty _).
 
 Definition ptsto var val : pred := Some (VarMap.add var val (VarMap.empty _)).
 
+Module VarMapFacts := FMapFacts.WFacts_fun(Nat_as_OT)(VarMap).
 Module VarMapProperties := FMapFacts.WProperties_fun(Nat_as_OT)(VarMap).
 
 (* TODO move this and its associated theorems somewhere else *)
@@ -65,7 +66,7 @@ Lemma not_for_all_if : forall T (m : VarMap.t T) f,
 Proof.
   unfold VarMapProperties.for_all.
   setoid_rewrite VarMap.fold_1.
-  setoid_rewrite VarMapProperties.F.elements_mapsto_iff.
+  setoid_rewrite VarMapFacts.elements_mapsto_iff.
   setoid_rewrite SetoidList.InA_alt.
   intros T m f.
   induction (VarMap.elements m) as [|a l]; intros.
@@ -117,15 +118,15 @@ Proof.
   rewrite VarMapProperties.for_all_iff in H0; try congruence.
   rewrite Bool.negb_false_iff in *.
   setoid_rewrite Bool.negb_true_iff in H0.
-  rewrite <- VarMapProperties.F.mem_in_iff in *.
-  rewrite VarMapProperties.F.in_find_iff in *.
+  rewrite <- VarMapFacts.mem_in_iff in *.
+  rewrite VarMapFacts.in_find_iff in *.
   destruct (VarMap.find k m1) eqn:HH.
   apply VarMap.find_2 in HH.
   apply H0 in HH.
-  rewrite <- VarMapProperties.F.not_mem_in_iff in *.
+  rewrite <- VarMapFacts.not_mem_in_iff in *.
   contradiction HH.
-  apply VarMapProperties.F.in_find_iff.
-  rewrite VarMapProperties.F.find_mapsto_iff in H.
+  apply VarMapFacts.in_find_iff.
+  rewrite VarMapFacts.find_mapsto_iff in H.
   rewrite H. intro H''. inversion H''.
   contradiction H'; auto.
 Qed.
@@ -148,7 +149,7 @@ Lemma mapsto_in : forall T k v (t : VarMap.t T),
   VarMap.MapsTo k v t -> VarMap.In k t.
 Proof.
   intros.
-  apply VarMapProperties.F.in_find_iff.
+  apply VarMapFacts.in_find_iff.
   find_eapply_lem_hyp VarMap.find_1.
   intro. rewrite H in *. inversion H0.
 Qed.
@@ -157,7 +158,7 @@ Lemma in_mapsto : forall T (t : VarMap.t T) k,
   VarMap.In k t -> exists v, VarMap.MapsTo k v t.
 Proof.
   intros.
-  find_eapply_lem_hyp VarMapProperties.F.in_find_iff.
+  find_eapply_lem_hyp VarMapFacts.in_find_iff.
   destruct VarMap.find eqn:H'.
   find_eapply_lem_hyp VarMap.find_2; eauto.
   contradiction H; auto.
@@ -172,11 +173,11 @@ Lemma maps_disjoint_in' : forall T k (t0 t1 : VarMap.t T),
 Proof.
   unfold maps_disjoint.
   intros.
-  find_eapply_lem_hyp VarMapProperties.F.in_find_iff.
+  find_eapply_lem_hyp VarMapFacts.in_find_iff.
   destruct VarMap.find eqn:H'.
   find_eapply_lem_hyp for_all_if; try congruence.
   rewrite Bool.negb_true_iff in *.
-  apply VarMapProperties.F.not_mem_in_iff. eauto.
+  apply VarMapFacts.not_mem_in_iff. eauto.
   apply VarMap.find_2. eauto.
   contradiction H0; auto.
 Qed.
@@ -205,10 +206,10 @@ Proof.
   intros. apply Bool.negb_true_iff.
   setoid_rewrite Bool.negb_true_iff in H.
   find_eapply_lem_hyp VarMapProperties.update_mapsto_iff.
-  apply VarMapProperties.F.not_mem_in_iff.
+  apply VarMapFacts.not_mem_in_iff.
   intuition eauto with maps.
   find_eapply_lem_hyp H.
-  find_eapply_lem_hyp VarMapProperties.F.not_mem_in_iff; auto.
+  find_eapply_lem_hyp VarMapFacts.not_mem_in_iff; auto.
   rewrite VarMapProperties.update_in_iff in *.
   intuition.
 Qed.
@@ -285,10 +286,10 @@ Proof.
   intros.
   unfold VarMap.Equal; intros.
   destruct VarMap.find eqn:H'; symmetry.
-  rewrite <- VarMapProperties.F.find_mapsto_iff in *.
+  rewrite <- VarMapFacts.find_mapsto_iff in *.
   rewrite VarMapProperties.update_mapsto_iff in *.
   intuition. right; eauto with maps.
-  rewrite <- VarMapProperties.F.not_find_in_iff in *.
+  rewrite <- VarMapFacts.not_find_in_iff in *.
   intuition.
   rewrite VarMapProperties.update_in_iff in *.
   firstorder.
@@ -304,12 +305,12 @@ Proof.
   intros.
   find_eapply_lem_hyp H.
   rewrite Bool.negb_true_iff in *.
-  rewrite <- VarMapProperties.F.not_mem_in_iff in *.
+  rewrite <- VarMapFacts.not_mem_in_iff in *.
   rewrite VarMapProperties.update_in_iff in *; intuition.
   rewrite <- not_for_all_iff in *.
   repeat deex; repeat eexists;
     rewrite ?Bool.negb_false_iff in *; eauto.
-  rewrite <- VarMapProperties.F.mem_in_iff in *.
+  rewrite <- VarMapFacts.mem_in_iff in *.
   rewrite VarMapProperties.update_in_iff in *; intuition.
 Qed.
 
@@ -323,13 +324,13 @@ Proof.
   split; intros; repeat deex.
   all : rewrite ?Bool.negb_false_iff in *.
   eexists; intuition eauto with maps.
-  apply VarMapProperties.F.mem_in_iff; auto.
+  apply VarMapFacts.mem_in_iff; auto.
   find_eapply_lem_hyp in_mapsto.
   apply in_mapsto in H0.
   repeat deex.
   repeat eexists; eauto.
   rewrite ?Bool.negb_false_iff.
-  apply VarMapProperties.F.mem_in_iff; eauto with maps.
+  apply VarMapFacts.mem_in_iff; eauto with maps.
 Qed.
 
 Theorem maps_disjoint_find_update : forall T (t0 t1 : VarMap.t T) k v,
@@ -339,7 +340,7 @@ Theorem maps_disjoint_find_update : forall T (t0 t1 : VarMap.t T) k v,
   VarMap.find k t1 = Some v.
 Proof.
   intros.
-  repeat rewrite <- VarMapProperties.F.find_mapsto_iff in *.
+  repeat rewrite <- VarMapFacts.find_mapsto_iff in *.
   repeat rewrite VarMapProperties.update_mapsto_iff.
   intuition.
   right.
@@ -440,7 +441,7 @@ Proof.
   destruct p, q; simpl; intros; intuition.
   destruct maps_disjoint eqn:H'; intuition.
   apply H.
-  rewrite <- VarMapProperties.F.find_mapsto_iff in *.
+  rewrite <- VarMapFacts.find_mapsto_iff in *.
   apply VarMapProperties.update_mapsto_iff.
   intuition eauto with maps.
 Qed.
@@ -460,7 +461,7 @@ Theorem pimpl_any :
 Proof.
   unfold pimpl, pred_matches.
   destruct p; simpl; intros; intuition.
-  rewrite VarMapProperties.F.empty_o in *.
+  rewrite VarMapFacts.empty_o in *.
   inversion H0.
 Qed.
 
@@ -473,10 +474,10 @@ Proof.
   destruct p; simpl in *; intuition.
   rewrite maps_disjoint_empty; intros.
   apply H.
-  rewrite <- VarMapProperties.F.find_mapsto_iff in *.
+  rewrite <- VarMapFacts.find_mapsto_iff in *.
   find_eapply_lem_hyp VarMapProperties.update_mapsto_iff.
   intuition; eauto.
-  rewrite VarMapProperties.F.empty_mapsto_iff in *; intuition.
+  rewrite VarMapFacts.empty_mapsto_iff in *; intuition.
 Qed.
 
 Theorem any_l_2 :
@@ -494,10 +495,10 @@ Proof.
     rewrite sep_star_is.
   destruct p; simpl in *; intuition.
   apply H.
-  rewrite <- VarMapProperties.F.find_mapsto_iff in *.
+  rewrite <- VarMapFacts.find_mapsto_iff in *.
   find_eapply_lem_hyp VarMapProperties.update_mapsto_iff.
   intuition; eauto.
-  rewrite VarMapProperties.F.empty_mapsto_iff in *; intuition.
+  rewrite VarMapFacts.empty_mapsto_iff in *; intuition.
 Qed.
 
 Theorem any_r_2 :
@@ -529,7 +530,7 @@ Proof.
   apply H0.
   rewrite maps_disjoint_update_eq' by auto.
   rewrite update_add_empty.
-  apply VarMapProperties.F.add_eq_o; auto.
+  apply VarMapFacts.add_eq_o; auto.
   all : inversion Heqp.
 Qed.
 
@@ -546,30 +547,30 @@ Proof.
   destruct maps_disjoint eqn:H'; intros.
   rewrite maps_disjoint_update_eq' in * by auto.
   rewrite update_add_empty in *.
-  rewrite VarMapProperties.F.add_o in *.
+  rewrite VarMapFacts.add_o in *.
   destruct Nat_as_OT.eq_dec; subst.
   find_inversion; auto.
   firstorder.
   apply maps_not_disjoint in H' as H''.
   deex.
-  rewrite VarMapProperties.F.add_in_iff in *.
+  rewrite VarMapFacts.add_in_iff in *.
   intuition; subst.
  
-  rewrite VarMapProperties.F.in_find_iff in *.
+  rewrite VarMapFacts.in_find_iff in *.
   destruct VarMap.find eqn:H''.
   find_eapply_lem_hyp H1.
   destruct s.
   apply H0. rewrite H''. intro.
   inversion H3.
   apply H4. auto.
-  find_eapply_lem_hyp VarMapProperties.F.empty_in_iff. auto.
+  find_eapply_lem_hyp VarMapFacts.empty_in_iff. auto.
 Qed.
 
 Lemma find_some_in : forall T (t : VarMap.t T) k v,
   VarMap.find k t = Some v -> VarMap.In k t.
 Proof.
   intros.
-  apply VarMapProperties.F.in_find_iff.
+  apply VarMapFacts.in_find_iff.
   intro H'. rewrite H' in *.
   inversion H.
 Qed.
@@ -582,7 +583,7 @@ Proof.
   intros.
   find_eapply_lem_hyp in_mapsto.
   deex.
-  rewrite VarMapProperties.F.find_mapsto_iff in *. eauto.
+  rewrite VarMapFacts.find_mapsto_iff in *. eauto.
 Qed.
 
 Hint Resolve in_find_some : maps.
@@ -598,7 +599,7 @@ Proof.
   {
     intros.
     destruct item.
-    rewrite VarMapProperties.F.map_o.
+    rewrite VarMapFacts.map_o.
     find_rewrite.
     reflexivity.
   }
@@ -606,7 +607,7 @@ Proof.
   find_apply_lem_hyp in_find_some; deex.
   specialize (H2 k v H).
   destruct v.
-  rewrite VarMapProperties.F.map_o in *.
+  rewrite VarMapFacts.map_o in *.
   destruct (VarMap.find k s1) eqn:He; try discriminate.
   eauto with maps.
 Qed.
