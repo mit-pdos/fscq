@@ -158,8 +158,8 @@ Proof.
   contradiction H; auto.
 Qed.
 
-Hint Resolve mapsto_in.
-Hint Resolve in_mapsto.
+Hint Resolve mapsto_in : maps.
+Hint Resolve in_mapsto : maps.
 
 Lemma maps_disjoint_in' : forall T k (t0 t1 : VarMap.t T),
   maps_disjoint t0 t1 = true ->
@@ -185,7 +185,7 @@ Proof.
   rewrite maps_disjoint_comm. auto.
 Qed.
 
-Hint Resolve maps_disjoint_in.
+Hint Resolve maps_disjoint_in : maps.
 
 Lemma maps_disjoint_assoc : forall T (t0 t1 t2 : VarMap.t T),
   maps_disjoint t0 (VarMapProperties.update t1 t2) = true ->
@@ -201,7 +201,7 @@ Proof.
   setoid_rewrite Bool.negb_true_iff in H.
   find_eapply_lem_hyp VarMapProperties.update_mapsto_iff.
   apply VarMapProperties.F.not_mem_in_iff.
-  intuition; eauto.
+  intuition eauto with maps.
   find_eapply_lem_hyp H.
   find_eapply_lem_hyp VarMapProperties.F.not_mem_in_iff; auto.
   rewrite VarMapProperties.update_in_iff in *.
@@ -270,7 +270,7 @@ Proof.
   find_eapply_lem_hyp VarMap.find_2.
   destruct (VarMapProperties.update_mapsto_iff t t0 k (SItem v));
   destruct (VarMapProperties.update_mapsto_iff t0 t k (SItem v)).
-  intuition; apply H, VarMap.find_1; intuition; eauto.
+  intuition; apply H, VarMap.find_1; intuition; eauto with maps.
 Qed.
 
 Theorem maps_disjoint_update_eq' : forall T (t0 t1 : VarMap.t T),
@@ -282,7 +282,7 @@ Proof.
   destruct VarMap.find eqn:H'; symmetry.
   rewrite <- VarMapProperties.F.find_mapsto_iff in *.
   rewrite VarMapProperties.update_mapsto_iff in *.
-  intuition. right; eauto.
+  intuition. right; eauto with maps.
   rewrite <- VarMapProperties.F.not_find_in_iff in *.
   intuition.
   rewrite VarMapProperties.update_in_iff in *.
@@ -317,14 +317,14 @@ Proof.
   rewrite <- not_for_all_iff.
   split; intros; repeat deex.
   all : rewrite ?Bool.negb_false_iff in *.
-  eexists; intuition eauto.
+  eexists; intuition eauto with maps.
   apply VarMapProperties.F.mem_in_iff; auto.
   find_eapply_lem_hyp in_mapsto.
   apply in_mapsto in H0.
   repeat deex.
   repeat eexists; eauto.
   rewrite ?Bool.negb_false_iff.
-  apply VarMapProperties.F.mem_in_iff; eauto.
+  apply VarMapProperties.F.mem_in_iff; eauto with maps.
 Qed.
 
 Theorem maps_disjoint_find_update : forall T (t0 t1 : VarMap.t T) k v,
@@ -436,7 +436,7 @@ Proof.
   apply H.
   rewrite <- VarMapProperties.F.find_mapsto_iff in *.
   apply VarMapProperties.update_mapsto_iff.
-  intuition; eauto.
+  intuition eauto with maps.
 Qed.
 
 Theorem pimpl_r :
@@ -568,7 +568,7 @@ Proof.
   inversion H.
 Qed.
 
-Hint Resolve find_some_in.
+Hint Resolve find_some_in : maps.
 
 Lemma in_find_some : forall T (t : VarMap.t T) k,
   VarMap.In k t -> exists v, VarMap.find k t = Some v.
@@ -579,7 +579,7 @@ Proof.
   rewrite VarMapProperties.F.find_mapsto_iff in *. eauto.
 Qed.
 
-Hint Resolve in_find_some.
+Hint Resolve in_find_some : maps.
 
 Lemma pimpl_sep_star :
   forall a b c d,
@@ -603,7 +603,8 @@ Proof.
     rewrite maps_disjoint_find_update in * by auto;
     intuition; (apply H + apply H0); intuition;
       apply H1; rewrite maps_disjoint_find_update;
-      intuition eauto).
+      intuition eauto with maps).
+  simpl in *.
   admit. (* TODO this is a false statement *)
 Admitted.
 
