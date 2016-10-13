@@ -18,9 +18,9 @@ Definition pred := @Pred.pred var Nat.eq_dec Go.value.
 
 Notation "k ~> v" := (k |-> (wrap v))%pred (at level 35) : pred_scope.
 
-Definition mem_of (m : locals) : @Mem.mem var Nat.eq_dec Go.value := fun k => VarMap.find k m.
+Definition mem_of := ((fun m k => VarMap.find k m) : locals -> @Mem.mem var Nat.eq_dec Go.value).
 
-Notation "m ≲ p" := (mem_of m ## p) (at level 70).
+Notation "m ≲ p" := (mem_of m ## p * any) (at level 70).
 
 Module VarMapFacts := FMapFacts.WFacts_fun(Nat_as_OT)(VarMap).
 
@@ -29,7 +29,7 @@ Theorem add_upd :
     mem_of (VarMap.add k v m) = Mem.upd (mem_of m) k v.
 Proof.
   intros.
-  extensionality k.
+  extensionality k0.
   unfold mem_of, Mem.upd.
   rewrite VarMapFacts.add_o.
   repeat break_match; congruence.

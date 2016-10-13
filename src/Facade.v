@@ -296,7 +296,7 @@ Example micro_write : sigT (fun p => forall a v,
   EXTRACT Write a v
   {{ 0 ~> a * 1 ~> v }}
     p
-  {{ fun _ => ∅ }} // StringMap.empty _).
+  {{ fun _ => emp }} // StringMap.empty _).
 Proof.
   eexists.
   intros.
@@ -336,13 +336,16 @@ Proof.
   do 2 eexists.
   intuition eauto.
   rewrite add_upd.
+  rewrite sep_star_assoc.
   eapply ptsto_upd.
+  rewrite sep_star_assoc in H.
   eassumption.
 
   contradiction H1.
   repeat eexists.
   eapply Go.StepModify; simpl; eauto.
-  find_eapply_lem_hyp sep_star_ptsto_some.
+  rewrite sep_star_assoc in H.
+  eapply sep_star_ptsto_some in H.
   eassumption.
   auto.
 Qed.
@@ -565,6 +568,7 @@ Proof.
       simpl.
       rewrite <- H0.
       rewrite add_upd.
+      rewrite sep_star_assoc.
       rewrite sep_star_comm.
       eapply ptsto_upd_disjoint; eauto.
     }
@@ -767,36 +771,45 @@ Qed.
 
 Import Go.
 
+Definition pimpl_subset (P Q : pred) := P * any =p=> Q * any.
+
+Notation "p >p=> q" := (pimpl_subset p%pred q%pred) (right associativity, at level 90).
+
 Lemma hoare_weaken_post : forall T env A (B1 B2 : T -> _) pr p,
-  (forall x, B1 x =p=> B2 x)%pred ->
+  (forall x, B1 x >p=> B2 x)%pred ->
   EXTRACT pr
   {{ A }} p {{ B1 }} // env ->
   EXTRACT pr
   {{ A }} p {{ B2 }} // env.
 Proof.
-  unfold ProgOk.
+  unfold ProgOk, pimpl_subset.
   intros.
   forwardauto H0.
   intuition subst.
   forwardauto H3; repeat deex;
-  repeat eexists; unfold pimpl, pred_apply in *; eauto.
+  repeat eexists; eauto.
+  unfold pred_apply in *.
+  pred_apply.
+  cancel; eauto.
   eauto.
   eauto.
 Qed.
 
 Lemma hoare_strengthen_pre : forall T env A1 A2 (B : T -> _) pr p,
-  (A2 =p=> A1)%pred ->
+  (A2 >p=> A1)%pred ->
   EXTRACT pr
   {{ A1 }} p {{ B }} // env ->
   EXTRACT pr
   {{ A2 }} p {{ B }} // env.
 Proof.
-  unfold ProgOk, pimpl, pred_apply in *; eauto.
+  unfold ProgOk, pimpl_subset, pred_apply in *; intros.
+  apply H in H1.
+  forward_solve.
 Qed.
 
 Instance progok_hoare_proper :
   forall T env pr,
-  Proper (@prog_equiv T ==> Basics.flip pimpl ==> pointwise_relation _ pimpl ==> Basics.impl) (@ProgOk T env pr).
+  Proper (@prog_equiv T ==> Basics.flip pimpl_subset ==> pointwise_relation _ pimpl_subset ==> Basics.impl) (@ProgOk T env pr).
 Proof.
   intros.
   intros pr1 pr2 Hpr A1 A2 Hpre B1 B2 Hpost H.
@@ -869,13 +882,17 @@ Proof.
   inv_exec_progok.
   repeat eexists. eauto.
   rewrite add_upd.
+  rewrite sep_star_assoc in H0.
   pose proof (ptsto_valid H0).
-  rewrite sep_star_comm in H0.
+  rewrite <- sep_star_assoc in H0.
+  rewrite sep_star_comm with (p2 := (1 ~> v0)%pred) in H0.
+  rewrite sep_star_assoc in H0.
   pose proof (ptsto_valid H0).
   unfold mem_of in *.
   assert (v' = wrap x) by congruence.
   assert (v = wrap v0) by congruence.
   subst.
+  rewrite sep_star_assoc.
   eapply ptsto_upd.
   eassumption.
 
@@ -883,13 +900,14 @@ Proof.
   repeat eexists.
   eapply StepModify; eauto.
   unfold eval.
-  eapply ptsto_valid in H0; eauto.
-  apply sep_star_comm in H0.
-  eapply ptsto_valid in H0; eauto.
+  rewrite sep_star_assoc in H0.
+  find_eapply_lem_hyp ptsto_valid; eauto.
+  rewrite sep_star_comm with (p2 := (1 ~> v0)%pred) in H0.
+  rewrite sep_star_assoc in H0.
+  find_eapply_lem_hyp ptsto_valid; eauto.
   simpl; auto.
 Defined.
 
-(*
 Example micro_inc : sigT (fun p => forall x,
   EXTRACT Ret (1 + x)
   {{ 0 ~> x }}
@@ -908,19 +926,20 @@ Proof.
   find_inversion_safe.
 
   repeat eexists; eauto; intros.
-  destruct (Nat.eq_dec k 0); subst.
-  - specialize (H 0 (SItem x)).
-    rewrite VarMapProperties.F.add_eq_o in * by auto.
-    rewrite H in H9 by auto.
+  - rewrite add_upd.
+    cbn.
+    find_eapply_lem_hyp ptsto_valid.
+    unfold mem_of in *.
+    rewrite H in H9.
     repeat find_inversion_safe.
-    unfold wrap, GoWrapper_Num in *.
-    find_inversion_safe. auto.
-  - rewrite VarMapProperties.F.add_neq_o in * by eauto.
-    rewrite VarMapProperties.F.empty_o in *.
-    inversion H0.
+    rewrite sep_star_comm.
+    eapply any_sep_star_ptsto.
+    auto.
+
   - contradiction H1.
     repeat eexists.
-    specialize (H 0 (SItem x)).
+    find_eapply_lem_hyp ptsto_valid.
+    unfold mem_of in *.
     eapply StepModify; eauto.
     simpl; auto.
 Defined.
@@ -981,18 +1000,8 @@ Proof.
   inv_exec_progok.
   {
     repeat eexists; eauto.
-    rewrite sep_star_assoc_1 in H.
-    erewrite ptsto_find in H6 by eauto; simpl in *.
-    repeat find_inversion_safe.
-    rewrite sep_star_comm in H.
-    rewrite sep_star_assoc_1 in H.
-    erewrite ptsto_find in H9 by eauto; simpl in *.
-    repeat find_inversion_safe.
-    eauto.
-    apply sep_star_assoc_2.
-    apply ptsto_update.
-    eapply pimpl_r.
-    apply sep_star_assoc_1. eauto.
+    admit.
+    admit.
   }
   destruct (r a) as [p|] eqn:H'; eauto.
   destruct p.
@@ -1001,12 +1010,10 @@ Proof.
   eapply StepDiskRead; eauto; unfold eval.
   (* TODO automate this *)
   rewrite sep_star_assoc_1 in H.
-  eapply ptsto_find in H. eauto. auto.
-  rewrite sep_star_assoc_1 in H.
-  rewrite sep_star_comm in H.
-  rewrite sep_star_assoc_1 in H.
-  eapply ptsto_find in H. eauto.
-Qed.
+  admit.
+  admit.
+  admit.
+Admitted.
 
 Lemma CompileWrite : forall env F avar vvar a v,
   EXTRACT Write a v
@@ -1019,14 +1026,7 @@ Proof.
   inv_exec_progok.
   {
     repeat eexists; eauto.
-    rewrite sep_star_assoc_1 in H.
-    erewrite ptsto_find in H6 by eauto; simpl in *.
-    repeat find_inversion_safe.
-    rewrite sep_star_comm in H.
-    rewrite sep_star_assoc_1 in H.
-    erewrite ptsto_find in H8 by eauto; simpl in *.
-    repeat find_inversion_safe.
-    eauto.
+    admit.
   }
   destruct (r a) as [p|] eqn:H'; eauto.
   destruct p.
@@ -1034,13 +1034,7 @@ Proof.
   repeat eexists; eauto.
   eapply StepDiskWrite; eauto; unfold eval.
   (* TODO automate this *)
-  rewrite sep_star_assoc_1 in H.
-  eapply ptsto_find in H. eauto.
-  rewrite sep_star_assoc_1 in H.
-  rewrite sep_star_comm in H.
-  rewrite sep_star_assoc_1 in H.
-  eapply ptsto_find in H. eauto.
-Qed.
+Admitted.
 
 Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
                           (n i : W)
@@ -1069,12 +1063,16 @@ Proof.
       rewrite sep_star_assoc_1 in H1.
       rewrite sep_star_comm in H1.
       rewrite sep_star_assoc_1 in H1.
+      (*
       eapply ptsto_find in H1.
       repeat (unfold is_true, eval_bool, eval_test_m in *; simpl in * ).
       rewrite H1 in H9.
       destruct lt_dec. omega.
       find_inversion.
+*)
+      admit.
     }
+    (*
     inv_exec_progok.
     rewrite sep_star_assoc_1 in H1.
     rewrite sep_star_comm in H1.
@@ -1086,9 +1084,7 @@ Proof.
     unfold is_false, eval_bool, eval, eval_test_m, eval_test_num.
     rewrite H1. destruct lt_dec; auto; omega.
     inv_exec_progok.
-  - rewrite sep_star_assoc_1.
-    (* TODO *)
-    admit.
+*)
 Admitted.
 
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
@@ -1096,13 +1092,12 @@ Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> 
     forall a b, EXTRACT src a b
            {{ avar ~> a * bvar ~> b }}
              Call [] name [avar; bvar]
-           {{ fun _ => ∅ (* TODO: could remember a & b if they are of aliasable type *) }} // env.
-
+           {{ fun _ => emp (* TODO: could remember a & b if they are of aliasable type *) }} // env.
 
 Lemma extract_voidfunc2_call :
   forall A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) arga argb arga_t argb_t env,
     forall and body ss,
-      (forall a b, EXTRACT src a b {{ arga ~> a * argb ~> b }} body {{ fun _ => ∅ }} // env) ->
+      (forall a b, EXTRACT src a b {{ arga ~> a * argb ~> b }} body {{ fun _ => emp }} // env) ->
       StringMap.find name env = Some {|
                                     ParamVars := [(arga_t, arga); (argb_t, argb)];
                                     RetParamVars := [];
@@ -1279,139 +1274,6 @@ Hint Constructors source_stmt.
 
 Local Open Scope pred.
 
-Ltac remove_anys :=
-  repeat match goal with
-    | [ |- ?p_ =p=> ?q ] =>
-        match p_ with
-          | context[any * ?x] => etransitivity; [ rewrite any_r_2 with (p := x); reflexivity | ]
-          | context[?x * any] => etransitivity; [ rewrite any_l_2 with (p := x); reflexivity | ]
-        end ||
-        match q with
-          | context[any * ?x] => etransitivity; [ | rewrite <- any_r_1 with (p := x); reflexivity ]
-          | context[?x * any] => etransitivity; [ | rewrite <- any_l_1 with (p := x); reflexivity ]
-        end
-  end.
-
-Ltac flatten :=
-  remove_anys;
-  etransitivity; [ eapply any_r_1 | etransitivity; [ | eapply any_r_2 ]];
-  repeat match goal with
-    | [ |- context[?a * (?b * ?c)] ] => rewrite sep_star_assoc_2 with (p1 := a) (p2 := b) (p3 := c)
-  end;
-  repeat match goal with
-    | [ |- context[?a * (?b * ?c)] ] => rewrite <- sep_star_assoc_1 with (p1 := a) (p2 := b) (p3 := c)
-  end.
-
-Lemma swap_on_right :
-  forall a b c,
-    a * b * c =p=> a * c * b.
-Proof.
-  intros.
-  rewrite sep_star_assoc_1.
-  rewrite sep_star_comm with (p1 := b) (p2 := c).
-  rewrite sep_star_assoc_2.
-  reflexivity.
-Qed.
-
-Lemma next_right_l :
-  forall p q1 q2 r,
-    p =p=> (q1 * r) * q2 ->
-    p =p=> q1 * (q2 * r).
-Proof.
-  intros.
-  rewrite <- sep_star_comm with (p1 := r) (p2 := q2).
-  rewrite <- sep_star_assoc_1.
-  assumption.
-Qed.
-
-Lemma cancel_one_right_l :
-  forall p q1 q2 k v,
-    p =p=> q1 * q2 ->
-    p * k |-> v =p=> q1 * (q2 * k |-> v).
-Proof.
-  intros.
-  rewrite <- sep_star_assoc_1.
-  eapply pimpl_cancel_one.
-  assumption.
-Qed.
-
-Ltac cancel_one_l' :=
-  match goal with
-    | [ |- _ =p=> _ * (_ * ?r) ] =>
-      not_evar r; apply cancel_one_right_l; repeat apply next_right_l;
-           try rewrite <- sep_star_comm with (p1 := any)
-  end
-    || (apply next_right_l; cancel_one_l').
-
-Ltac add_to_frame p :=
-  match goal with
-    | [ |- context[?F] ] =>
-      match type of F with
-        | pred =>
-          is_evar F;
-            let F' := fresh "F" in
-            evar (F' : pred);
-          unify F (p * F'); subst F'
-      end
-  end;
-  match goal with
-    | [ |- _ =p=> ?q ] =>
-      match q with
-        | context[?p1_ * (p * ?p3_)] =>
-          rewrite <- sep_star_assoc_1 with (p1 := p1_) (p2 := p) (p3 := p3_)
-      end
-  end.
-
-Ltac cancel_one_l :=
-  match goal with
-    | [ |- _ * ?l =p=> _ ] =>
-       cancel_one_l' || (add_to_frame l; cancel_one_l')
-  end.
-
-Ltac cancel_all_l :=
-  simpl; intros;
-  flatten;
-  etransitivity; [ | apply any_r_2 ];
-  repeat cancel_one_l;
-  remove_anys; try reflexivity.
-
-Lemma next_right_r :
-  forall p1 p2 r q,
-    (p1 * r) * p2 =p=> q ->
-    p1 * (p2 * r) =p=> q.
-Proof.
-  intros.
-  rewrite sep_star_comm with (p1 := p2) (p2 := r).
-  rewrite sep_star_assoc_2.
-  assumption.
-Qed.
-
-Lemma cancel_one_right_r :
-  forall p1 p2 q k v,
-    p1 * p2 =p=> q ->
-    p1 * (p2 * k |-> v) =p=> q * k |-> v.
-Proof.
-  intros.
-  rewrite sep_star_assoc_2.
-  eapply pimpl_cancel_one.
-  assumption.
-Qed.
-
-Ltac cancel_one_r :=
-  (match goal with
-     | [ |- _ * (_ * ?r) =p=> _ ] =>
-       not_evar r;
-     apply cancel_one_right_r; repeat apply next_right_r;
-     try rewrite sep_star_comm with (p2 := any)
-   end) || (apply next_right_r; cancel_one_r).
-
-Ltac cancel_all_r :=
-  simpl; intros;
-  flatten;
-  etransitivity; [ apply any_r_1 | ];
-  repeat cancel_one_r;
-  remove_anys; try apply pimpl_any.
-
 Ltac find_val v p :=
   match p with
     | context[?k ~> v] => constr:(Some k)
@@ -1438,6 +1300,16 @@ Ltac var_mapping_to_ret :=
       end
   end.
 
+Definition any' : pred := any.
+
+(* TODO: less hackery *)
+Ltac cancel_subset :=
+  unfold pimpl_subset;
+  fold any';
+  unfold any' at 1;
+  cancel;
+  try solve [ eapply pimpl_any ];
+  try solve [ eapply pimpl_emp_any ].
 
 Ltac compile_step :=
   match goal with
@@ -1450,27 +1322,27 @@ Ltac compile_step :=
         eapply CompileDeclare with (zeroval := 0) (t := Num)
       | prog valu =>
         eapply CompileDeclare with (zeroval := $0) (t := DiskBlock)
-    end; auto; [ intro v; intros; eapply CompileBind with (var := v); intros ]
+    end; auto; [ intro v; intros; eapply CompileBind; intros ]
   | _ => eapply CompileConst
   | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
-    eapply hoare_weaken_post; [ | eapply CompileSkip ]; cancel_all_r
+    eapply hoare_weaken_post; [ | eapply CompileSkip ]
   | [ |- EXTRACT Read ?a {{ ?pre }} _ {{ _ }} // _ ] =>
     let retvar := var_mapping_to_ret in
     match find_val a pre with
     | Some ?k =>
       eapply hoare_strengthen_pre; [
-      | eapply hoare_weaken_post; [ | eapply CompileRead with (avar := k) (vvar := retvar) ] ]; [ cancel_all_l | cancel_all_r ]
+      | eapply hoare_weaken_post; [ | eapply CompileRead with (avar := k) (vvar := retvar) ] ]; cancel_subset
     end
+      (*
   | [ |- EXTRACT Write ?a ?v {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val a pre with
     | Some ?ka =>
       match find_val v pre with
       | Some ?kv =>
         eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
-          eapply CompileWrite with (avar := ka) (vvar := kv) ]]; [ cancel_all_l | cancel_all_r ]
+          eapply CompileWrite with (avar := ka) (vvar := kv) ]]
       end
     end
-      (*
   | [ H : voidfunc2 ?name ?f ?env |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // ?env ] =>
     match find_fast a pre with
       | Some ?ka =>
@@ -1531,15 +1403,17 @@ Definition swap_prog a b :=
   Ret tt.
 
 Example extract_swap_1_2 : forall env, sigT (fun p =>
-  EXTRACT swap_prog 1 2 {{ ∅ }} p {{ fun _ => ∅ }} // env).
+  EXTRACT swap_prog 1 2 {{ emp }} p {{ fun _ => emp }} // env).
 Proof.
   intros. unfold swap_prog.
   compile.
-Defined.
+  (* yikes *)
+Admitted.
 Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
 
+(*
 Lemma extract_swap_prog : forall env, sigT (fun p =>
-  forall a b, EXTRACT swap_prog a b {{ 0 ~> a * 1 ~> b }} p {{ fun _ => ∅ }} // env).
+  forall a b, EXTRACT swap_prog a b {{ 0 ~> a * 1 ~> b }} p {{ fun _ => emp }} // env).
 Proof.
   intros. unfold swap_prog.
   compile.
@@ -1590,7 +1464,7 @@ Example extract_call_swap :
   forall env,
     voidfunc2 "swap" swap_prog env ->
     sigT (fun p =>
-          EXTRACT call_swap {{ ∅ }} p {{ fun _ => ∅ }} // env).
+          EXTRACT call_swap {{ emp }} p {{ fun _ => emp }} // env).
 Proof.
   intros.
   compile.
@@ -1598,7 +1472,7 @@ Defined.
 
 Example extract_call_swap_top :
     sigT (fun p =>
-          EXTRACT call_swap {{ ∅ }} p {{ fun _ => ∅ }} // swap_env).
+          EXTRACT call_swap {{ emp }} p {{ fun _ => emp }} // swap_env).
 Proof.
   apply extract_call_swap.
   auto with funcs.
@@ -1614,7 +1488,7 @@ Example extract_rot3_prog :
   forall env,
     voidfunc2 "swap" swap_prog env ->
     sigT (fun p =>
-          EXTRACT rot3_prog {{ ∅ }} p {{ fun _ => ∅ }} // env).
+          EXTRACT rot3_prog {{ emp }} p {{ fun _ => emp }} // env).
 Proof.
   intros.
   compile.
@@ -1622,7 +1496,7 @@ Defined.
 
 Example extract_rot3_prog_top :
     sigT (fun p =>
-          EXTRACT rot3_prog {{ ∅ }} p {{ fun _ => ∅ }} // swap_env).
+          EXTRACT rot3_prog {{ emp }} p {{ fun _ => emp }} // swap_env).
 Proof.
   apply extract_rot3_prog.
   auto with funcs.
@@ -1659,7 +1533,7 @@ Definition swap2_prog :=
     Ret tt.
 
 Example micro_swap2 : sigT (fun p =>
-  EXTRACT swap2_prog {{ ∅ }} p {{ fun _ => ∅ }} // (StringMap.empty _)).
+  EXTRACT swap2_prog {{ emp }} p {{ fun _ => emp }} // (StringMap.empty _)).
 Proof.
   compile.
 
@@ -1689,6 +1563,5 @@ Proof.
   all: congruence.
 Defined.
 Eval lazy in projT1 micro_swap2.
-*)
 *)
 *)
