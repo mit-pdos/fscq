@@ -1688,10 +1688,34 @@ Module TREESEQ.
         eapply H10.
         rewrite app_length. simpl. omega.
 
-    - admit.
+    - unfold treeseq_safe_fwd in H5.
+      unfold treeseq_safe_bwd in H7.
+
+      specialize (H7 inum).
+      (* XXX use H1? *)
+
+      admit.
     - admit.
   Admitted.
 
+  Definition file_prefix pathname tolder tnewer flag :=
+    (exists inum1 inum2 al1 al2 f1 f2,
+      find_subtree pathname (TStree tnewer) = Some (TreeFile inum1 f1) /\
+      find_subtree pathname (TStree tolder) = Some (TreeFile inum2 f2) /\
+      (* XXX maybe this should be in bfile *)
+      Datatypes.length al1 = Datatypes.length (BFILE.BFData f1) /\
+      Datatypes.length al2 = Datatypes.length (BFILE.BFData f2) /\
+      forall i : addr,
+        i < Datatypes.length al1 ->
+        BFILE.block_belong_to_file (TSilist tnewer) (selN al1 i O)  inum1 i ->
+        BFILE.block_belong_to_file (TSilist tolder) (selN al2 i O)  inum2 i \/
+        BFILE.block_is_unused (BFILE.pick_balloc (TSfree tolder) flag) (selN al1 i O)).
+    
+  Lemma treeseq_safe_impl_file_prefix: forall pathname flag tnew tolder,
+    treeseq_safe pathname flag tnew tolder->
+    file_prefix pathname tnew tolder flag.
+  Proof.
+  Admitted.
 
   Lemma tree_safe_file_sync_1 : forall Fm Ftop fsxp mscs ds ts mscs' pathname,
     (exists inum f, find_subtree pathname (TStree ts !!) = Some (TreeFile inum f)) ->
