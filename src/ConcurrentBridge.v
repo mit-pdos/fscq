@@ -35,9 +35,8 @@ Module MakeBridge (C:CacheSubProtocol).
       Ret (value tt)
     (* TODO: should really just remove Trim from Prog.prog *)
     | Prog.Trim a => Ret error
-    (* TODO: should be a direct translation, but need hashing in
-      concurrent execution semantics *)
-    | Prog.Hash buf => Ret error
+    | Prog.Hash buf => h <- Hash buf;
+                        Ret (Some h)
     | Prog.Bind p1 p2 => x <- compile p1;
                           match x with
                           | Some x => compile (p2 x)
@@ -47,23 +46,26 @@ Module MakeBridge (C:CacheSubProtocol).
 
   Record ConcurHoareSpec R :=
     ConcurSpec
-      { concur_spec_pre: TID -> DISK ->
+      { concur_spec_pre: TID -> DISK -> hashmap ->
                          memory App.Sigma -> abstraction App.Sigma -> abstraction App.Sigma -> Prop;
         concur_spec_post: TID -> R ->
-                          DISK -> memory App.Sigma -> abstraction App.Sigma -> abstraction App.Sigma ->
-                          DISK -> memory App.Sigma -> abstraction App.Sigma -> abstraction App.Sigma -> Prop }.
+                          DISK -> hashmap ->
+                          memory App.Sigma -> abstraction App.Sigma -> abstraction App.Sigma ->
+                          DISK -> hashmap ->
+                          memory App.Sigma -> abstraction App.Sigma -> abstraction App.Sigma -> Prop }.
 
   Definition concur_hoare_double R A (spec: A -> ConcurHoareSpec R)
              (p: prog App.Sigma R) :=
     forall T (rx: _ -> prog App.Sigma T) (tid:TID),
       valid App.delta tid
-            (fun done d m s_i s =>
+            (fun done d hm m s_i s =>
                exists a,
-                 concur_spec_pre (spec a) tid d m s_i s /\
+                 concur_spec_pre (spec a) tid d hm m s_i s /\
                  (forall ret_,
                      valid App.delta tid
-                           (fun done_rx d' m' s_i' s' =>
-                              concur_spec_post (spec a) tid ret_ d m s_i s d' m' s_i' s' /\
+                           (fun done_rx d' hm' m' s_i' s' =>
+                              concur_spec_post (spec a) tid ret_ d hm m s_i s
+                                               d' hm' m' s_i' s' /\
                               done_rx = done)
                            (rx ret_))
             ) (Bind p rx).
@@ -100,16 +102,17 @@ Module MakeBridge (C:CacheSubProtocol).
   Definition concurrent_spec R (spec: SeqHoareSpec R) : ConcurHoareSpec (Exc R) :=
     let 'SeqSpec pre post _ := spec in
     ConcurSpec
-      (fun tid d m s_i s =>
+      (fun tid d hm m s_i s =>
          invariant delta d m s /\
          pre (project_disk s) /\
          guar delta tid s_i s)
-      (fun tid r d m s_i s d' m' s_i' s' =>
+      (fun tid r d hm m s_i s d' hm' m' s_i' s' =>
          invariant delta d' m' s' /\
          match r with
          | Some r => post r (project_disk s')
          | None => guar delta tid s s'
          end /\
+         hashmap_le hm hm' /\
          guar delta tid s_i' s').
 
   Ltac inv_exec' H :=
@@ -162,26 +165,28 @@ Module MakeBridge (C:CacheSubProtocol).
 
   Ltac _donecond :=
     match goal with
-    | [ H: exec App.delta _ _ _ (Finished (?d', ?m', ?s_i', ?s') ?r) |- ?g ] =>
+    | [ H: exec App.delta _ _ _ (Finished (?d', ?hm', ?m', ?s_i', ?s') ?r) |- ?g ] =>
       let f := _pattern_f s' g in
       let f := _pattern_f s_i' f in
       let f := _pattern_f m' f in
+      let f := _pattern_f hm' f in
       let f := _pattern_f d' f in
       let f := _pattern_f r f in
       f
     end.
 
   Theorem cache_read_hoare_triple : forall tid a
-                                      d m s_i s
-                                      d' m' s_i' s' v0 r,
-      exec App.delta tid (cache_read a) (d, m, s_i, s)
-           (Finished (d', m', s_i', s') r) ->
+                                      d hm m s_i s
+                                      d' hm' m' s_i' s' v0 r,
+      exec App.delta tid (cache_read a) (d, hm, m, s_i, s)
+           (Finished (d', hm', m', s_i', s') r) ->
       cacheI d m s ->
       get vdisk s a = Some v0 ->
       modified [( vCache; vDisk0 )] s s' /\
       cacheI d' m' s' /\
       (forall v, r = Some v -> v = v0) /\
       s_i' = s_i /\
+      hm' = hm /\
       guar delta tid s s'.
   Proof.
     intros.
@@ -200,9 +205,9 @@ Module MakeBridge (C:CacheSubProtocol).
   Qed.
 
   Theorem cache_read_no_failure : forall tid a
-                                    d m s_i s
+                                    d hm m s_i s
                                     v0,
-      exec App.delta tid (cache_read a) (d, m, s_i, s)
+      exec App.delta tid (cache_read a) (d, hm, m, s_i, s)
            (Failed _) ->
       cacheI d m s ->
       get vdisk s a = Some v0 ->
@@ -211,7 +216,7 @@ Module MakeBridge (C:CacheSubProtocol).
     intros.
     apply bind_right_id in H.
     eapply cache_read_ok in H.
-    2: instantiate (1 := fun _ _ _ _ _ => True).
+    2: instantiate (1 := fun _ _ _ _ _ _ => True).
     repeat deex; inv_outcome.
     exists v0; intuition.
     apply valid_unfold; intuition idtac.
@@ -222,10 +227,10 @@ Module MakeBridge (C:CacheSubProtocol).
   Qed.
 
   Theorem cache_write_hoare_triple : forall tid a
-                                      d m s_i s
-                                      d' m' s_i' s' v0 v r,
-      exec App.delta tid (cache_write a v) (d, m, s_i, s)
-           (Finished (d', m', s_i', s') r) ->
+                                      d hm m s_i s
+                                      d' hm' m' s_i' s' v0 v r,
+      exec App.delta tid (cache_write a v) (d, hm, m, s_i, s)
+           (Finished (d', hm', m', s_i', s') r) ->
       cacheI d m s ->
       get vdisk s a = Some v0 ->
       modified [( vCache; vDisk0; vWriteBuffer; vdisk )] s s' /\
@@ -233,6 +238,7 @@ Module MakeBridge (C:CacheSubProtocol).
       get vdisk s' = upd (get vdisk s) a v /\
       guar delta tid s s' /\
       s_i' = s_i /\
+      hm' = hm /\
       r = tt.
   Proof.
     intros.
@@ -252,10 +258,10 @@ Module MakeBridge (C:CacheSubProtocol).
   Qed.
 
   Theorem finish_fill_hoare_triple : forall tid a
-                                       d m s_i s
-                                       d' m' s_i' s' v0 r,
-      exec App.delta tid (finish_fill a) (d, m, s_i, s)
-           (Finished (d', m', s_i', s') r) ->
+                                       d hm m s_i s
+                                       d' hm' m' s_i' s' v0 r,
+      exec App.delta tid (finish_fill a) (d, hm, m, s_i, s)
+           (Finished (d', hm', m', s_i', s') r) ->
       cacheI d m s ->
       get vdisk s a = Some v0 ->
       cache_get (get vCache s) a = Invalid ->
@@ -265,6 +271,7 @@ Module MakeBridge (C:CacheSubProtocol).
       cache_get (get vCache s') a = Clean v0 /\
       guar delta tid s s' /\
       r = v0 /\
+      hm' = hm /\
       s_i' = s_i.
   Proof.
     intros.
@@ -311,10 +318,10 @@ Module MakeBridge (C:CacheSubProtocol).
   Qed.
 
   Lemma cache_read_success_in_domain : forall tid a
-                                         d m s_i s v
-                                         d' m' s_i' s',
-      exec App.delta tid (cache_read a) (d, m, s_i, s)
-           (Finished (d', m', s_i', s') (Some v)) ->
+                                         d hm m s_i s v
+                                         d' hm' m' s_i' s',
+      exec App.delta tid (cache_read a) (d, hm, m, s_i, s)
+           (Finished (d', hm', m', s_i', s') (Some v)) ->
       cacheI d m s ->
       get vdisk s a = Some v.
   Proof.
@@ -406,17 +413,30 @@ Module MakeBridge (C:CacheSubProtocol).
     eauto.
   Qed.
 
+  Lemma hashmap_le_upd : forall hm h sz (buf: word sz),
+      hash_safe hm h buf ->
+      hashmap_le hm (upd_hashmap' hm h buf).
+  Proof.
+    unfold hashmap_le; intros.
+    eexists.
+    eapply HS_cons; eauto.
+    eapply HS_nil.
+  Qed.
+
+  Hint Resolve hashmap_le_upd.
+
   Theorem cache_simulation_finish : forall T (p: Prog.prog T)
-                                      (tid:TID) d m s_i s out hm,
-      exec App.delta tid (compile p) (d, m, s_i, s) out ->
+                                      (tid:TID) d hm m s_i s out,
+      exec App.delta tid (compile p) (d, hm, m, s_i, s) out ->
       cacheI d m s ->
-      (forall d' m' s_i' s' (v:T),
-          out = Finished (d', m', s_i', s') (value v) ->
-          (Prog.exec (project_disk s) hm p (Prog.Finished (project_disk s') hm v) /\
+      (forall d' hm' m' s_i' s' (v:T),
+          out = Finished (d', hm', m', s_i', s') (value v) ->
+          (Prog.exec (project_disk s) hm p (Prog.Finished (project_disk s') hm' v) /\
            cacheI d' m' s' /\
            (* here we shouldn't guarantee the full guar App.delta, only the
            cache, since writes need not respect the global protocol *)
            guar delta tid s s' /\
+           hashmap_le hm hm' /\
            s_i' = s_i) \/
           (Prog.exec (project_disk s) hm p (Prog.Failed T))).
   Proof.
@@ -444,6 +464,7 @@ Module MakeBridge (C:CacheSubProtocol).
         eapply Prog.StepRead.
         unfold project_disk.
         simpl_match; auto.
+        auto.
       }
       {
         right.
@@ -471,6 +492,7 @@ Module MakeBridge (C:CacheSubProtocol).
         rewrite Hproj.
         eapply PredCrash.possible_sync_respects_upd; eauto.
         apply possible_sync_refl.
+        auto.
       }
       {
         right.
@@ -493,13 +515,21 @@ Module MakeBridge (C:CacheSubProtocol).
     - (* Hash *)
       (* should add hashing to concurrent execution so it can be directly
       translated *)
+      inv_exec.
       exec_ret.
+      inv_exec.
+      inv_step; repeat sigT_eq.
+      left.
+      intuition eauto.
+      eapply Prog.XStep; [ | apply possible_sync_refl ].
+      eapply Prog.StepHash; eauto.
+      apply cacheR_preorder.
     - (* Bind *)
       inv_exec' H0.
-      destruct st' as (((d'',m''),s_i''),s'').
+      destruct st' as ((((d'',hm''),m''),s_i''),s'').
       destruct v0.
 
-      * eapply IHp with (hm := hm) in H7; eauto.
+      * eapply IHp in H7; eauto.
         2: reflexivity.
         intuition auto.
         edestruct H; eauto.
@@ -509,7 +539,7 @@ Module MakeBridge (C:CacheSubProtocol).
         intuition auto.
         eapply Prog.XBindFinish; eauto.
         eapply cacheR_preorder; eauto.
-
+        eapply hashmap_le_preorder; eauto.
       * left.
         split; intros; subst; exec_ret; inv_outcome.
   Qed.
@@ -528,15 +558,15 @@ Module MakeBridge (C:CacheSubProtocol).
   Hint Extern 1 (cacheR _ ?a ?a) => apply cacheR_preorder.
 
   Theorem cache_simulation_finish_error : forall T (p: Prog.prog T)
-                                            (tid:TID) d m s_i s
-                                            d' m' s_i' s',
-      exec App.delta tid (compile p) (d, m, s_i, s) (Finished (d', m', s_i', s') error) ->
+                                            (tid:TID) d hm m s_i s
+                                            d' hm' m' s_i' s',
+      exec App.delta tid (compile p) (d, hm, m, s_i, s) (Finished (d', hm', m', s_i', s') error) ->
       cacheI d m s ->
       (cacheI d' m' s' /\
        guar delta tid s s' /\
+       hashmap_le hm hm' /\
        s_i' = s_i) \/
-      (* TODO: all of these theorems should apply to any hashmap *)
-      (Prog.exec (project_disk s) empty_hashmap p (Prog.Failed T)).
+      (Prog.exec (project_disk s) hm p (Prog.Failed T)).
   Proof.
     induction p; simpl; intros.
     - exec_ret.
@@ -546,6 +576,7 @@ Module MakeBridge (C:CacheSubProtocol).
       eapply cache_read_hoare_triple in H6; eauto.
       left.
       intuition eauto; subst.
+      auto.
 
       right.
       constructor.
@@ -557,14 +588,13 @@ Module MakeBridge (C:CacheSubProtocol).
     - exec_ret.
       left.
       intuition auto.
-    - exec_ret.
-      left.
-      intuition auto.
+    - inv_exec.
+      exec_ret.
     - inv_exec.
       destruct v; try exec_ret.
-      destruct st' as (((d'', m''), s_i''), s'').
+      destruct st' as ((((d'', hm''), m''), s_i''), s'').
       pose proof H7.
-      eapply cache_simulation_finish with (hm:=empty_hashmap) in H7; eauto; try reflexivity.
+      eapply cache_simulation_finish in H7; eauto; try reflexivity.
       destruct H7; [ destruct_ands | right ]; subst.
       pose proof H9.
       eapply H in H9; eauto.
@@ -573,6 +603,7 @@ Module MakeBridge (C:CacheSubProtocol).
       left.
       intuition eauto.
       eapply cacheR_preorder; eauto.
+      eapply hashmap_le_preorder; eauto.
       eapply Prog.XBindFinish; eauto.
       eapply Prog.XBindFail; eauto.
 
@@ -621,8 +652,8 @@ Module MakeBridge (C:CacheSubProtocol).
   Ltac impossible_failure := exfalso; solve [ repeat (inv_exec; eauto) ].
 
   Theorem finish_fill_failure : forall tid a
-                                  d m s_i s,
-      exec App.delta tid (finish_fill a) (d, m, s_i, s) (Failed _) ->
+                                  d hm m s_i s,
+      exec App.delta tid (finish_fill a) (d, hm, m, s_i, s) (Failed _) ->
       cache_get (get vCache s) a = Invalid ->
       cacheI d m s ->
       get vdisk s a = None.
@@ -647,22 +678,22 @@ Module MakeBridge (C:CacheSubProtocol).
   Qed.
 
   Theorem Get_hoare_triple : forall tid T var (v: T)
-                               d m s_i s
-                               d' m' s_i' s',
-      exec App.delta tid (Get var) (d, m, s_i, s)
-           (Finished (d', m', s_i', s') v) ->
-      d' = d /\ m' = m /\ s_i' = s_i /\ s' = s /\
+                               d hm m s_i s
+                               d' hm' m' s_i' s',
+      exec App.delta tid (Get var) (d, hm, m, s_i, s)
+           (Finished (d', hm', m', s_i', s') v) ->
+      d' = d /\ m' = m /\ s_i' = s_i /\ s' = s /\ hm' = hm /\
       v = get var m.
   Proof.
     intros.
     inv_exec.
     inv_step; repeat sigT_eq; subst.
-    eauto.
+    intuition auto.
   Qed.
 
   Theorem cache_write_failure : forall tid a v
-                                  d m s_i s,
-      exec App.delta tid (cache_write a v) (d, m, s_i, s)
+                                  d hm m s_i s,
+      exec App.delta tid (cache_write a v) (d, hm, m, s_i, s)
            (Failed _) ->
       cacheI d m s ->
       get vdisk s a = None.
@@ -678,7 +709,7 @@ Module MakeBridge (C:CacheSubProtocol).
 
     match goal with
     | [ H: exec _ _ (Get mCache) _ (Finished ?st' _) |- _ ] =>
-      destruct st' as (((d', m'), s_i'), s');
+      destruct st' as ((((d', hm'), m'), s_i'), s');
         apply Get_hoare_triple in H;
         destruct_ands; subst
     end.
@@ -691,8 +722,8 @@ Module MakeBridge (C:CacheSubProtocol).
   Qed.
 
   Theorem cache_simulation_failure : forall T (p: Prog.prog T)
-                                       (tid:TID) d m s_i s hm,
-      exec App.delta tid (compile p) (d, m, s_i, s) (Failed (Exc T)) ->
+                                       (tid:TID) d hm m s_i s,
+      exec App.delta tid (compile p) (d, hm, m, s_i, s) (Failed (Exc T)) ->
       cacheI d m s ->
       Prog.exec (project_disk s) hm p (Prog.Failed T).
   Proof.
@@ -713,10 +744,13 @@ Module MakeBridge (C:CacheSubProtocol).
       constructor.
       auto.
     - inv_exec.
+      exec_ret.
+      inv_exec.
+    - inv_exec.
       destruct v; try solve [ exec_ret ].
-      destruct st' as (((d', m'), s_i'), s').
+      destruct st' as ((((d', hm'), m'), s_i'), s').
       replace (Some t) with (value t) in H7 by reflexivity.
-      eapply cache_simulation_finish with (hm := hm) in H7; intuition eauto.
+      eapply cache_simulation_finish in H7; intuition eauto.
 
       eauto.
   Qed.
@@ -737,19 +771,19 @@ program via [compile], convert its spec to a concurrent spec via
     destruct_ands.
     specialize (H T Prog.Ret).
     specialize (H (fun hm r d => seq_spec_post r d) (fun _ _ => True)).
-    specialize (H (project_disk s) empty_hashmap).
+    specialize (H (project_disk s) hm).
 
     inv_exec' H1; try solve [ inv_fail_step ].
     destruct v as [r |].
     { (* executed succesfully to (Some r) *)
-      destruct st' as (((d',m'),s_i'),s').
+      destruct st' as ((((d',hm'),m'),s_i'),s').
       match goal with
         | [ H: exec _ _ (compile p) _ _ |- _ ] =>
-          eapply cache_simulation_finish with (hm:=empty_hashmap) in H;
+          eapply cache_simulation_finish in H;
             eauto; try reflexivity
       end.
       intuition.
-      specialize (H (Prog.Finished (project_disk s') empty_hashmap r)).
+      specialize (H (Prog.Finished (project_disk s') hm' r)).
       match type of H with
       | ?P -> ?Q -> _ =>
         assert Q
@@ -827,7 +861,7 @@ program via [compile], convert its spec to a concurrent spec via
     }
     {
       (* execute to None case; need to apply cache_simulation_finish_error *)
-      destruct st' as (((d', m'), s_i'), s').
+      destruct st' as ((((d', hm'), m'), s_i'), s').
       eapply cache_simulation_finish_error in H11; eauto.
       destruct H11.
       - destruct_ands.
@@ -864,7 +898,7 @@ program via [compile], convert its spec to a concurrent spec via
     }
 
     (* compiled code failed *)
-    apply cache_simulation_failure with (hm:=empty_hashmap) in H11; auto.
+    apply cache_simulation_failure in H11; auto.
     (* TODO: this snippet of proof is repetitive *)
     specialize (H (Prog.Failed T)).
     match type of H with

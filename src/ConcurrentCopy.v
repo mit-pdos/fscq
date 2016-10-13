@@ -217,12 +217,13 @@ Ltac unfolds :=
 Theorem cache_abort_ok :
   SPEC App.delta, tid |-
 {{ (_:unit),
- | PRE d m s_i s:
+ | PRE d hm m s_i s:
      invariant CacheProtocol.delta d m s
- | POST d' m' s_i' s' _:
+ | POST d' hm' m' s_i' s' _:
      invariant App.delta d' m' s' /\
      get vdisk s' = get vdisk0 s /\
      guar CacheProtocol.delta tid s s' /\
+     hm' = hm /\
      s_i' = s_i
 }} cache_abort.
 Proof.
@@ -272,17 +273,18 @@ Ltac simp_hook ::=
 Theorem copy_ok :
     SPEC App.delta, tid |-
                 {{ v v',
-                 | PRE d m s_i s:
+                 | PRE d hm m s_i s:
                      invariant App.delta d m s /\
                      get vdisk s 0 = Some v /\
                      get vdisk s (tid+1) = Some v' /\
                      guar App.delta tid s_i s
-                 | POST d' m' s_i' s' r:
+                 | POST d' hm' m' s_i' s' r:
                      invariant App.delta d' m' s' /\
                      (r = true ->
                       get vdisk s' = upd (get vdisk s) (tid+1) v) /\
                      (r = false ->
                       rely App.delta tid s s') /\
+                     hashmap_le hm hm' /\
                      guar App.delta tid s_i' s'
                 }} copy.
 Proof.
@@ -340,6 +342,7 @@ Proof.
   unshelve eapply cache_guar_tid_independent; eauto.
   apply destinations_readonly_vdisk_eq.
   congruence.
+  eapply hashmap_le_preorder; eauto.
 Qed.
 
 Hint Extern 1 {{copy; _}} => apply copy_ok : prog.
@@ -390,12 +393,12 @@ Ltac descend :=
 Theorem copy_retry1_ok :
     SPEC App.delta, tid |-
                 {{ v v',
-                 | PRE d m s_i s:
+                 | PRE d hm m s_i s:
                      invariant App.delta d m s /\
                      get vdisk s 0 = Some v /\
                      get vdisk s (tid+1) = Some v' /\
                      guar App.delta tid s_i s
-                 | POST d'' m'' s_i' s'' r:
+                 | POST d'' hm' m'' s_i' s'' r:
                      invariant App.delta d'' m'' s'' /\
                      (r = false ->
                       rely App.delta tid s s'') /\
@@ -404,6 +407,7 @@ Theorem copy_retry1_ok :
                         rely App.delta tid s s' /\
                         invariant App.delta d' m' s' /\
                         get vdisk s'' = upd (get vdisk s') (tid+1) v) /\
+                     hashmap_le hm hm' /\
                      guar App.delta tid s_i' s''
                 }} copy_retry1.
 Proof.
@@ -431,6 +435,7 @@ Proof.
   eapply rely_trans; eauto.
 
   exists d0, m0, s0; intuition eauto.
+  eapply hashmap_le_preorder; eauto.
 Qed.
 
 Fixpoint copy_fuel_retry n :=
@@ -446,12 +451,12 @@ Fixpoint copy_fuel_retry n :=
 Theorem copy_fuel_retry_ok : forall n,
     SPEC App.delta, tid |-
                 {{ v v',
-                 | PRE d m s_i s:
+                 | PRE d hm m s_i s:
                      invariant App.delta d m s /\
                      get vdisk s 0 = Some v /\
                      get vdisk s (tid+1) = Some v' /\
                      guar App.delta tid s_i s
-                 | POST d'' m'' s_i' s'' r:
+                 | POST d'' hm' m'' s_i' s'' r:
                      invariant App.delta d'' m'' s'' /\
                      (r = false ->
                       rely App.delta tid s s'') /\
@@ -460,6 +465,7 @@ Theorem copy_fuel_retry_ok : forall n,
                         rely App.delta tid s s' /\
                         invariant App.delta d' m' s' /\
                         get vdisk s'' = upd (get vdisk s') (tid+1) v) /\
+                     hashmap_le hm hm' /\
                      guar App.delta tid s_i' s''
                 }} copy_fuel_retry n.
 Proof.
@@ -486,6 +492,8 @@ Proof.
 
     exists d', m', s'; intuition eauto.
     eapply rely_trans; eauto.
+
+    eapply hashmap_le_preorder; eauto.
 Qed.
 
 (* copy_retry1 is a special case of having fuel (where you only have 1 fuel).

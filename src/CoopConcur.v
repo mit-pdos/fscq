@@ -7,6 +7,7 @@ Require Export Variables.
 Require Export AsyncDisk.
 Require Export FunctionalExtensionality.
 Require Export RelationClasses.
+Require Export Hashmap.
 Require Import Structures.OrderedTypeEx.
 Require Import Omega.
 Require Import Star.
@@ -97,6 +98,7 @@ Section CoopConcur.
   | Write (a: addr) (v: valu) : prog unit
   | Get T (v: var (mem_types Sigma) T) : prog T
   | Assgn T (v: var (mem_types Sigma) T) (val:T) : prog unit
+  | Hash (sz: nat) (buf: word sz) : prog (word hashlen)
   | GetTID : prog TID
   | Yield (wchan: addr) : prog unit
   | Wakeup (wchan: addr) : prog unit
@@ -114,87 +116,95 @@ Section CoopConcur.
 
   Implicit Type d : DISK.
   Implicit Type m : memory Sigma.
+  Implicit Type hm : hashmap.
   Implicit Type s : abstraction Sigma.
 
-  Definition state := (DISK * memory Sigma * abstraction Sigma * abstraction Sigma)%type.
+  Definition state := (DISK * hashmap * memory Sigma * abstraction Sigma * abstraction Sigma)%type.
 
   Inductive step {tid:TID} : forall T,
       prog T -> state ->
       state -> T -> Prop :=
-  | StepStartRead : forall d m s_i s,
+  | StepStartRead : forall d hm m s_i s,
         forall a v,
       d a = Some (v, None) ->
       let d' := upd d a (v, Some tid) in
       step (StartRead a)
-           (d, m, s_i, s) (d', m, s_i, s) tt
-  | StepFinishRead : forall d m s_i s,
+           (d, hm, m, s_i, s) (d', hm, m, s_i, s) tt
+  | StepFinishRead : forall d hm m s_i s,
       forall tid' a v,
         d a = Some (v, Some tid') ->
         let d' := upd d a (v, None) in
         step (FinishRead a)
-             (d, m, s_i, s) (d', m, s_i, s) v
-  | StepWrite : forall d m s_i s,
+             (d, hm, m, s_i, s) (d', hm, m, s_i, s) v
+  | StepWrite : forall d hm m s_i s,
       forall a v v0,
         d a = Some (v0, None) ->
         let d' := upd d a (v, None) in
         step (Write a v)
-             (d, m, s_i, s) (d', m, s_i, s) tt
-  | StepYield : forall d m s_i s,
-      forall wchan d' m' s',
+             (d, hm, m, s_i, s) (d', hm, m, s_i, s) tt
+  | StepYield : forall d hm m s_i s,
+      forall wchan d' hm' m' s',
       invariant delta d m s ->
       invariant delta d' m' s' ->
       guar delta tid s_i s ->
       rely delta tid s s' ->
+      hashmap_le hm hm' ->
       step (Yield wchan)
-           (d, m, s_i, s) (d', m', s', s') tt
-  | StepWakeup : forall d m s_i s,
+           (d, hm, m, s_i, s) (d', hm', m', s', s') tt
+  | StepWakeup : forall d hm m s_i s,
       forall wchan,
         step (Wakeup wchan)
-             (d, m, s_i, s) (d, m, s_i, s) tt
-  | StepGhostUpdate : forall d m s_i s,
+             (d, hm, m, s_i, s) (d, hm, m, s_i, s) tt
+  | StepGhostUpdate : forall d hm m s_i s,
       forall up,
         step (GhostUpdate up)
-             (d, m, s_i, s) (d, m, s_i, up s) tt
-  | StepGetTID : forall d m s_i s,
+             (d, hm, m, s_i, s) (d, hm, m, s_i, up s) tt
+  | StepGetTID : forall d hm m s_i s,
       step (GetTID)
-           (d, m, s_i, s) (d, m, s_i, s) tid
-  | StepGet : forall d m s_i s,
+           (d, hm, m, s_i, s) (d, hm, m, s_i, s) tid
+  | StepGet : forall d hm m s_i s,
       forall T (v: var (mem_types Sigma) T),
         step (Get v)
-             (d, m, s_i, s) (d, m, s_i, s) (get v m)
-  | StepAssgn : forall d m s_i s,
+             (d, hm, m, s_i, s) (d, hm, m, s_i, s) (get v m)
+  | StepAssgn : forall d hm m s_i s,
       forall T (v: var (mem_types Sigma) T) (val: T),
         let m' := set v val m in
         step (Assgn v val)
-             (d, m, s_i, s) (d, m', s_i, s) tt.
+             (d, hm, m, s_i, s) (d, hm, m', s_i, s) tt
+  | StepHash : forall d hm m s s_i s,
+      forall sz (buf: word sz) hm',
+        let h := hash_fwd buf in
+        hash_safe hm h buf ->
+        step (Hash buf)
+             (d, hm, m, s_i, s) (d, upd_hashmap' hm h buf, m, s_i, s) h.
 
   Arguments step tid {T} p st st' r.
 
   Inductive fail_step (tid:TID) : forall T, prog T -> state -> Prop :=
-  | FailStepStartRead : forall a d m s0 s,
+  | FailStepStartRead : forall a d hm m s0 s,
       d a = None ->
-      fail_step tid (StartRead a) (d, m, s0, s)
-  | FailStepStartReadConflict : forall a vs tid' d m s0 s,
+      fail_step tid (StartRead a) (d, hm, m, s0, s)
+  | FailStepStartReadConflict : forall a vs tid' d hm m s0 s,
       d a = Some (vs, Some tid') ->
-      fail_step tid (StartRead a) (d, m, s0, s)
-  | FailStepFinishRead : forall a d m s0 s,
+      fail_step tid (StartRead a) (d, hm, m, s0, s)
+  | FailStepFinishRead : forall a d hm m s0 s,
       d a = None ->
-      fail_step tid (FinishRead a) (d, m, s0, s)
-  | FailStepFinishReadNotStarted : forall a vs d m s0 s,
+      fail_step tid (FinishRead a) (d, hm, m, s0, s)
+  | FailStepFinishReadNotStarted : forall a vs d hm m s0 s,
       d a = Some (vs, None) ->
-      fail_step tid (FinishRead a) ((d, m, s0, s))
-  | FailStepWriteMissing : forall a v d m s0 s,
+      fail_step tid (FinishRead a) ((d, hm, m, s0, s))
+  | FailStepWriteMissing : forall a v d hm m s0 s,
       d a = None ->
-      fail_step tid (Write a v) (d, m, s0, s)
-  | FailStepWriteReading : forall a v0 v d m s0 s tid',
+      fail_step tid (Write a v) (d, hm, m, s0, s)
+  | FailStepWriteReading : forall a v0 v d hm m s0 s tid',
       d a = Some (v0, Some tid')  ->
-      fail_step tid (Write a v) (d, m, s0, s)
-  | FailStepYieldInvariant : forall d m s0 s wchan,
+      fail_step tid (Write a v) (d, hm, m, s0, s)
+  | FailStepYieldInvariant : forall d hm m s0 s wchan,
       (~invariant delta d m s) ->
-      fail_step tid (Yield wchan) (d, m, s0, s)
-  | FailStepYieldGuar : forall d m s0 s wchan,
+      fail_step tid (Yield wchan) (d, hm, m, s0, s)
+  | FailStepYieldGuar : forall d hm m s0 s wchan,
       (~guar delta tid s0 s) ->
-      fail_step tid (Yield wchan) (d, m, s0, s).
+      fail_step tid (Yield wchan) (d, hm, m, s0, s).
 
   Hint Constructors step fail_step.
 
@@ -244,19 +254,20 @@ Section CoopConcur.
         fail_step tid p st.
     Proof.
       intros.
-      destruct st as [ [ [d m] s0] s].
+      destruct st as [ [ [ [d hm] m] s0] s].
       destruct p;
         (* solve Bind case *)
         try solve [ left; eauto ]; right;
           (* solve Ret case *)
           try solve [ left; eauto]; right;
             try solve [ cases ].
+      - admit. (* not actually true - need to add or case for hash collision *)
       - destruct (X d m s); eauto.
         destruct (X0 s0 s); eauto.
         left; success_step.
         eapply StepYield; eauto.
         apply star_refl.
-    Qed.
+    Abort.
 
   End StepFailComplete.
 
@@ -420,24 +431,24 @@ Section CoopConcur.
   Ltac condition_failure :=
     intros; inv_fail_step; eauto; try congruence.
 
-  Theorem start_read_failure : forall tid d m s0 s a v,
-      fail_step tid (StartRead a) (d, m, s0, s) ->
+  Theorem start_read_failure : forall tid d hm m s0 s a v,
+      fail_step tid (StartRead a) (d, hm, m, s0, s) ->
       d a = Some (v, None) ->
       False.
   Proof.
     condition_failure.
   Qed.
 
-  Theorem finish_read_failure : forall tid d m s0 s a v,
-      fail_step tid (FinishRead a) (d, m, s0, s) ->
+  Theorem finish_read_failure : forall tid d hm m s0 s a v,
+      fail_step tid (FinishRead a) (d, hm, m, s0, s) ->
       d a = Some (v, Some tid) ->
       False.
   Proof.
     condition_failure.
   Qed.
 
-  Theorem write_failure : forall tid d m s0 s a v vs0,
-      fail_step tid (Write a v) (d, m, s0, s) ->
+  Theorem write_failure : forall tid d hm m s0 s a v vs0,
+      fail_step tid (Write a v) (d, hm, m, s0, s) ->
       d a = Some (vs0, None) ->
       False.
   Proof.
@@ -446,28 +457,28 @@ Section CoopConcur.
 
   Hint Resolve start_read_failure finish_read_failure write_failure.
 
-  Definition donecond T := T -> DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop.
+  Definition donecond T := T -> DISK -> hashmap -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop.
 
   (** A Hoare double judgement: encodes a Crash Hoare Logic tuple via
   a precondition that accepts appropriate postconditions (donecond) and crash
   conditions. *)
   Definition valid tid T (pre: donecond T ->
-        (* state: d, m, s_i, s *)
-        DISK -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop) (p: prog T) : Prop :=
-    forall d m s_i s done out,
-      pre done d m s_i s ->
-      exec tid p (d, m, s_i, s) out ->
-      (exists d' m' s_i' s' v,
-          out = Finished (d', m', s_i', s') v /\
-          done v d' m' s_i' s').
+        (* state: d, hm, m, s_i, s *)
+        DISK -> hashmap -> memory Sigma -> abstraction Sigma -> abstraction Sigma -> Prop) (p: prog T) : Prop :=
+    forall d hm m s_i s done out,
+      pre done d hm m s_i s ->
+      exec tid p (d, hm, m, s_i, s) out ->
+      (exists d' hm' m' s_i' s' v,
+          out = Finished (d', hm', m', s_i', s') v /\
+          done v d' hm' m' s_i' s').
 
-  Notation "tid |- {{ e1 .. e2 , | 'PRE' d m s_i s : pre | 'POST' d' m' s_i' s' r : post }} p" :=
+  Notation "tid |- {{ e1 .. e2 , | 'PRE' d hm m s_i s : pre | 'POST' d' hm' m' s_i' s' r : post }} p" :=
     (forall T (rx: _ -> prog T) (tid:TID),
-        valid tid (fun done d m s_i s =>
+        valid tid (fun done d hm m s_i s =>
                      (ex (fun e1 => .. (ex (fun e2 =>
                                            pre%judgement /\
                                            (forall ret_,
-                                             valid tid (fun done_rx d' m' s_i' s' =>
+                                             valid tid (fun done_rx d' hm' m' s_i' s' =>
                                                       (fun r => post%judgement) ret_ /\
                                                       done_rx = done)
                                                    (rx ret_))
@@ -477,6 +488,8 @@ Section CoopConcur.
        e1 binder, e2 binder,
        d at level 0,
        d' at level 0,
+       hm at level 0,
+       hm' at level 0,
        m at level 0,
        m' at level 0,
        s_i at level 0,
@@ -487,7 +500,7 @@ Section CoopConcur.
        only parsing).
 
   Ltac split_state' st :=
-    destruct st as [ [ [? ?] ? ] ? ].
+    destruct st as [ [ [ [? ?] ?] ? ] ? ].
 
   Ltac split_state :=
     match goal with
@@ -556,11 +569,12 @@ Section CoopConcur.
 
   Theorem Write_ok : forall a v,
       tid |- {{ F v0,
-             | PRE d m s_i s: d |= F * a |-> (v0, None)
-             | POST d' m' s_i' s' _: d' |= F * a |-> (v, None) /\
+             | PRE d hm m s_i s: d |= F * a |-> (v0, None)
+             | POST d' hm' m' s_i' s' _: d' |= F * a |-> (v, None) /\
                                 s_i' = s_i /\
                                 s' = s /\
-                                m' = m
+                                m' = m /\
+                                hm' = hm
             }} Write a v.
   Proof.
     opcode_ok.
@@ -568,11 +582,12 @@ Section CoopConcur.
 
   Theorem StartRead_ok : forall a,
     tid |- {{ F v0,
-           | PRE d m s_i s: d |= F * a |-> (v0, None)
-           | POST d' m' s_i' s' _: d' |= F * a |-> (v0, Some tid) /\
+           | PRE d hm m s_i s: d |= F * a |-> (v0, None)
+           | POST d' hm' m' s_i' s' _: d' |= F * a |-> (v0, Some tid) /\
                                   s_i' = s_i /\
                                   s' = s /\
-                                  m' = m
+                                  m' = m /\
+                                  hm' = hm
           }} StartRead a.
   Proof.
     opcode_ok.
@@ -581,11 +596,12 @@ Section CoopConcur.
 
   Theorem FinishRead_ok : forall a,
       tid |- {{ F tid' v,
-             | PRE d m s_i s: d |= F * a |-> (v, Some tid')
-             | POST d' m' s_i' s' r: d' |= F * a |-> (v, None) /\
+             | PRE d hm m s_i s: d |= F * a |-> (v, Some tid')
+             | POST d' hm' m' s_i' s' r: d' |= F * a |-> (v, None) /\
                                     s_i' = s_i /\
                                     s' = s /\
                                     m' = m /\
+                                    hm' = hm /\
                                     r = v
             }} FinishRead a.
   Proof.
@@ -596,10 +612,11 @@ Section CoopConcur.
 
   Theorem Get_ok : forall t (v: var _ t),
       tid |- {{ (_:unit),
-             | PRE d m s_i s: True
-             | POST d' m' s_i' s' r: d' = d /\
+             | PRE d hm m s_i s: True
+             | POST d' hm' m' s_i' s' r: d' = d /\
                                     r = get v m /\
                                     m' = m /\
+                                    hm' = hm /\
                                     s_i' = s_i /\
                                     s' = s
             }} Get v.
@@ -609,10 +626,11 @@ Section CoopConcur.
 
   Theorem Assgn_ok : forall t (v: var _ t) val,
       tid |- {{ (_:unit),
-             | PRE d m s_i s: True
-             | POST d' m' s_i' s' _: d' = d /\
+             | PRE d hm m s_i s: True
+             | POST d' hm' m' s_i' s' _: d' = d /\
                                     m' = set v val m /\
                                     s_i' = s_i /\
+                                    hm' = hm /\
                                     s' = s
             }} Assgn v val.
   Proof.
@@ -621,11 +639,12 @@ Section CoopConcur.
 
   Theorem GetTID_ok :
     tid |- {{ (_:unit),
-           | PRE d m s_i s: True
-           | POST d' m' s_i' s' r: d' = d /\
+           | PRE d hm m s_i s: True
+           | POST d' hm' m' s_i' s' r: d' = d /\
                                   m' = m /\
                                   s_i' = s_i /\
                                   s' = s /\
+                                  hm' = hm /\
                                   r = tid
           }} GetTID.
   Proof.
@@ -634,11 +653,12 @@ Section CoopConcur.
 
   Theorem Yield_ok : forall wchan,
     tid |- {{ (_:unit),
-           | PRE d m s_i s: invariant delta d m s /\
+           | PRE d hm m s_i s: invariant delta d m s /\
                            guar delta tid s_i s
-           | POST d' m' s_i' s' _: invariant delta d' m' s' /\
-                                  s_i' = s' /\
-                                  rely delta tid s s'
+           | POST d' hm' m' s_i' s' _: invariant delta d' m' s' /\
+                                       s_i' = s' /\
+                                       hashmap_le hm hm' /\
+                                       rely delta tid s s'
     }} Yield wchan.
   Proof.
     opcode_ok.
@@ -647,11 +667,12 @@ Section CoopConcur.
 
   Theorem GhostUpdate_ok : forall up,
     tid |- {{ (_:unit),
-           | PRE d m s_i s: True
-           | POST d' m' s_i' s' _: d' = d /\
+           | PRE d hm m s_i s: True
+           | POST d' hm' m' s_i' s' _: d' = d /\
                                   s_i' = s_i /\
                                   s' = up s /\
-                                  m' = m
+                                  m' = m /\
+                                  hm' = hm
           }} GhostUpdate up.
   Proof.
     opcode_ok.
@@ -659,20 +680,36 @@ Section CoopConcur.
 
   Theorem Wakeup_ok : forall a,
     tid |- {{ (_:unit),
-           | PRE d m s_i s: True
-           | POST d' m' s_i' s' _: d' = d /\
+           | PRE d hm m s_i s: True
+           | POST d' hm' m' s_i' s' _: d' = d /\
                                   s_i' = s_i /\
                                   s' = s /\
+                                  hm' = hm /\
                                   m' = m
           }} Wakeup a.
   Proof.
     opcode_ok.
   Qed.
 
-  Theorem pimpl_ok : forall tid T (pre pre': _ -> _ -> _ ->  _ -> _ -> Prop) (p: prog T),
+  Theorem Hash_ok : forall sz (buf: word sz),
+      tid |- {{ (_:unit),
+             | PRE d hm m s_i s: True
+             | POST d' hm' m' s_i' s' r:
+                 d' = d /\
+                 s_i' = s_i /\
+                 s' = s /\
+                 r = hash_fwd buf /\
+                 hash_safe hm r buf /\
+                 hm' = upd_hashmap' hm r buf
+            }} Hash buf.
+  Proof.
+    opcode_ok.
+  Qed.
+
+  Theorem pimpl_ok : forall tid T (pre pre': _ -> _ -> _ -> _ ->  _ -> _ -> Prop) (p: prog T),
       valid tid pre p ->
-      (forall done d m s_i s, pre' done d m s_i s ->
-        pre done d m s_i s) ->
+      (forall done d hm m s_i s, pre' done d hm m s_i s ->
+        pre done d hm m s_i s) ->
       valid tid pre' p.
   Proof.
     unfold valid.
@@ -685,10 +722,10 @@ Section CoopConcur.
     if b then ptrue else pfalse.
 
   Lemma valid_exists_to_forall : forall A T tid pre (p: prog T),
-      (forall a:A, valid tid (fun done d m s_i s =>
-                           pre done d m s_i s a) p) ->
-      (valid tid (fun done d m s_i s =>
-                    exists a, pre done d m s_i s a) p).
+      (forall a:A, valid tid (fun done d hm m s_i s =>
+                           pre done d hm m s_i s a) p) ->
+      (valid tid (fun done d hm m s_i s =>
+                    exists a, pre done d hm m s_i s a) p).
   Proof.
     unfold valid; intros; deex; eauto.
   Qed.
@@ -702,12 +739,12 @@ Section CoopConcur.
         subst a'
     end.
 
-  Lemma pimpl_pre_valid : forall tid T (pre: donecond T -> _ -> _ -> _ -> _ -> Prop)
+  Lemma pimpl_pre_valid : forall tid T (pre: donecond T -> _ -> _ -> _ -> _ -> _ -> Prop)
                             pre' (p: prog T),
-      (forall done d m s_i s, pre done d m s_i s ->
+      (forall done d hm m s_i s, pre done d hm m s_i s ->
                               valid tid (pre' done) p) ->
-      (forall done d m s_i s, pre done d m s_i s ->
-                              pre' done done d m s_i s) ->
+      (forall done d hm m s_i s, pre done d hm m s_i s ->
+                              pre' done done d hm m s_i s) ->
       valid tid pre p.
   Proof.
     unfold valid; eauto.
@@ -729,15 +766,15 @@ Arguments Ret {Sigma} {T} v.
 * add delta, tid |- in front to specify the transition system and thread TID
 * quantify over T and tid and change prog to prog _ T (the Sigma should be inferred)
 * add delta as an argument to valid *)
-Notation "'SPEC' delta , tid |- {{ e1 .. e2 , | 'PRE' d m s_i s : pre | 'POST' d' m' s_i' s' r : post }} p" :=
+Notation "'SPEC' delta , tid |- {{ e1 .. e2 , | 'PRE' d hm m s_i s : pre | 'POST' d' hm' m' s_i' s' r : post }} p" :=
   (forall T (rx: _ -> prog _ T) (tid:TID),
       valid delta tid
-            (fun done d m s_i s =>
+            (fun done d hm m s_i s =>
                (ex (fun e1 => .. (ex (fun e2 =>
                                      pre%judgement /\
                                      (forall ret_,
                                        valid delta tid
-                                             (fun done_rx d' m' s_i' s' =>
+                                             (fun done_rx d' hm' m' s_i' s' =>
                                                 (fun r => post%judgement) ret_ /\
                                                 done_rx = done)
                                              (rx ret_))
@@ -747,6 +784,8 @@ Notation "'SPEC' delta , tid |- {{ e1 .. e2 , | 'PRE' d m s_i s : pre | 'POST' d
      e1 binder, e2 binder,
      d at level 0,
      d' at level 0,
+     hm at level 0,
+     hm' at level 0,
      m at level 0,
      m' at level 0,
      s_i at level 0,
@@ -811,3 +850,4 @@ Hint Extern 1 {{ GetTID ; _ }} => apply GetTID_ok : prog.
 Hint Extern 1 {{ Yield _; _ }} => apply Yield_ok : prog.
 Hint Extern 1 {{ GhostUpdate _; _ }} => apply GhostUpdate_ok : prog.
 Hint Extern 1 {{ Wakeup _; _ }} => apply Wakeup_ok : prog.
+Hint Extern 1 {{ Hash _; _ }} => apply Hash_ok : prog.

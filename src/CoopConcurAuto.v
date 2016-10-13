@@ -2,6 +2,7 @@ Require Import CoopConcur CoopConcurMonad.
 Require Export Locking.
 Require Export Automation.
 Require Import Star.
+Require Import Hashmap.
 Import Bool.
 
 Set Implicit Arguments.
@@ -153,12 +154,13 @@ Section ReadWriteTheorems.
   Theorem Read_ok : forall Sigma (delta: Protocol Sigma) a,
       SPEC delta, tid |-
       {{ F v,
-       | PRE d m s_i s: d |= F * a |-> (v, None)
-       | POST d' m' s_i' s' r: d' = d /\
-                              s_i' = s_i /\
-                              s' = s /\
-                              m' = m /\
-                              r = v
+       | PRE d hm m s_i s: d |= F * a |-> (v, None)
+       | POST d' hm' m' s_i' s' r: d' = d /\
+                                   s_i' = s_i /\
+                                   s' = s /\
+                                   m' = m /\
+                                   hm' = hm /\
+                                   r = v
       }} Read a.
   Proof.
     intros.
@@ -185,11 +187,12 @@ Section ReadWriteTheorems.
 Theorem StartRead_upd_ok : forall Sigma (delta:Protocol Sigma) a,
     SPEC delta, tid |-
     {{ v0,
-     | PRE d m s_i s: d a = Some (v0, None)
-     | POST d' m' s_i' s' _: d' = upd d a (v0, Some tid) /\
-                            s_i' = s_i /\
-                            s' = s /\
-                            m' = m
+     | PRE d hm m s_i s: d a = Some (v0, None)
+     | POST d' hm' m' s_i' s' _: d' = upd d a (v0, Some tid) /\
+                                 s_i' = s_i /\
+                                 s' = s /\
+                                 m' = m /\
+                                 hm' = hm
     }} StartRead_upd a.
 Proof.
   intros.
@@ -209,12 +212,13 @@ Definition FinishRead_upd {Sigma} a : prog Sigma _ :=
 Theorem FinishRead_upd_ok : forall Sigma (delta:Protocol Sigma) a,
     SPEC delta, tid |-
     {{ tid' v,
-     | PRE d m s_i s: d a = Some (v, Some tid')
-     | POST d' m' s_i' s' r: d' = upd d a (v, None) /\
+     | PRE d hm m s_i s: d a = Some (v, Some tid')
+     | POST d' hm' m' s_i' s' r: d' = upd d a (v, None) /\
                             s_i' = s_i /\
                             s' = s /\
                             m' = m /\
-                            r = v
+                            r = v /\
+                            hm' = hm
     }} FinishRead_upd a.
 Proof.
   intros.
@@ -234,11 +238,12 @@ Definition Write_upd {Sigma} a v : prog Sigma _ :=
 Theorem Write_upd_ok : forall Sigma (delta: Protocol Sigma) a v,
     SPEC delta, tid |-
     {{ v0,
-     | PRE d m s_i s: d a = Some (v0, None)
-     | POST d' m' s_i' s' r: d' = upd d a (v, None) /\
-                            s_i' = s_i /\
-                            s' = s /\
-                            m' = m
+     | PRE d hm m s_i s: d a = Some (v0, None)
+     | POST d' hm' m' s_i' s' r: d' = upd d a (v, None) /\
+                                 s_i' = s_i /\
+                                 s' = s /\
+                                 m' = m /\
+                                 hm' = hm
     }} Write_upd a v.
 Proof.
   intros.
@@ -285,6 +290,7 @@ Definition prog_frob Sigma T (p: prog Sigma T) : prog Sigma T :=
   | GhostUpdate update => GhostUpdate update
   | Ret v => Ret v
   | Bind p1 p2 => Bind p1 p2
+  | Hash buf => Hash buf
   end.
 
 Theorem prog_frob_eq : forall Sigma T (p: prog Sigma T),
@@ -395,20 +401,23 @@ Proof.
   inv_exec' H5; eauto.
 Qed.
 
-Lemma exec_yield : forall Sigma delta T tid d m s_i s out wchan (rx: prog Sigma T),
-    exec delta tid (Yield wchan;; rx) (d, m, s_i, s) out ->
+Lemma exec_yield : forall Sigma delta T tid d hm m s_i s out wchan (rx: prog Sigma T),
+    exec delta tid (Yield wchan;; rx) (d, hm, m, s_i, s) out ->
     invariant delta d m s ->
     guar delta tid s_i s ->
-    exists d' m' s',
+    exists d' hm' m' s',
       invariant delta d' m' s' /\
       rely delta tid s s' /\
-      exec delta tid rx (d', m', s', s') out.
+      hashmap_le hm hm' /\
+      exec delta tid rx (d', hm', m', s', s') out.
 Proof.
   intros.
   inv_exec.
   destruct st' as [ [ [? ?] ? ] ?].
   inv_exec' H7; inv_step.
-  repeat eexists; eauto.
+  repeat match goal with
+         | [ |- exists _, _ ] => eexists
+         end; eauto.
 
   inv_exec' H7; intuition.
 Qed.
@@ -418,13 +427,14 @@ Theorem wait_for_ok : forall Sigma (delta: Protocol Sigma)
                         P (test: forall v, {P v} + {~ P v}) wchan,
   SPEC delta, tid |-
     {{ (_:unit),
-     | PRE d m s_i s:
+     | PRE d hm m s_i s:
        invariant delta d m s /\
        guar delta tid s_i s
-     | POST d' m' s_i' s' r:
+     | POST d' hm' m' s_i' s' r:
        invariant delta d' m' s' /\
        (exists H, test (get v m') = left H) /\
        rely delta tid s s' /\
+       hashmap_le hm hm' /\
        guar delta tid s_i' s'
     }} wait_for v test wchan.
 Proof.
@@ -439,8 +449,9 @@ Proof.
     remember p
   end.
 
-  remember (d, m, s_i, s) as st.
+  remember (d, hm, m, s_i, s) as st.
   generalize dependent d.
+  generalize dependent hm.
   generalize dependent m.
   generalize dependent s_i.
   generalize dependent s.
@@ -458,6 +469,7 @@ Proof.
     (* easy case - exit loop *)
     + apply bind_left_id in H0_0.
       eapply H2; intuition eauto.
+
     + apply bind_assoc in H0_0.
       apply exec_yield in H0_0; eauto;
         repeat deex.
@@ -488,10 +500,11 @@ Theorem var_update_ok : forall Sigma (delta: Protocol Sigma)
                         tv (v: var (abstraction_types Sigma) tv) up,
   SPEC delta, tid |-
   {{ (_:unit),
-   | PRE d m s_i s: True
-   | POST d' m' s_i' s' r:
+   | PRE d hm m s_i s: True
+   | POST d' hm' m' s_i' s' r:
      m' = m /\
      d' = d /\
+     hm' = hm /\
      s_i' = s_i /\
      s' = set v (up (get v s)) s
   }} var_update v up.
@@ -530,21 +543,24 @@ Theorem AcquireLock_ok : forall Sigma (delta: Protocol Sigma)
                         l up wchan,
     SPEC delta, tid |-
     {{ (_:unit),
-     | PRE d m s_i s:
+     | PRE d hm m s_i s:
          invariant delta d m s /\
          guar delta tid s_i s
-     | POST d' m'' s_i' s'' _:
+     | POST d' hm' m'' s_i' s'' _:
          exists m' s',
            rely delta tid s s' /\
            invariant delta d' m' s' /\
            m'' = set l Locked m' /\
            s'' = up tid s' /\
            guar delta tid s_i' s' /\
+           hashmap_le hm hm' /\
            get l m'' = Locked
     }} AcquireLock l up wchan.
 Proof.
   hoare.
-  repeat eexists; eauto.
+  repeat match goal with
+         | |- exists _, _ => eexists
+         end; intuition eauto.
   simpl_get_set.
 Qed.
 

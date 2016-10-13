@@ -5,6 +5,7 @@ Require Import Arith.
 Require Import AsyncDisk.
 Require Import ListUtils.
 Require Import List.
+Require Import RelationClasses.
 
 Set Implicit Arguments.
 
@@ -362,3 +363,22 @@ Ltac solve_hash_list_rep :=
     => try (repeat eauto; econstructor)
   end.
 
+Definition hashmap_le hm hm' :=
+  exists l, hashmap_subset l hm hm'.
+
+Lemma hashmap_le_refl : forall hm, hashmap_le hm hm.
+Proof.
+  unfold hashmap_le; intros.
+  exists nil.
+  constructor.
+Qed.
+
+Theorem hashmap_le_preorder : PreOrder hashmap_le.
+Proof.
+  unfold hashmap_le.
+  constructor; hnf; intros; eauto.
+  solve_hashmap_subset.
+  solve_hashmap_subset.
+Qed.
+
+Hint Resolve hashmap_le_refl.

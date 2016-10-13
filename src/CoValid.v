@@ -10,12 +10,12 @@ entire program *)
 Notation "{{{ p ; p' }}}" := (valid _ _ _ (Bind p p')).
 
 Theorem covalid : forall Sigma (delta: Protocol Sigma) tid T (p: prog Sigma T)
-                    (pre: donecond T -> DISK -> memory _ -> abstraction _ -> abstraction _ -> Prop)
+                    (pre: donecond T -> DISK -> hashmap -> memory _ -> abstraction _ -> abstraction _ -> Prop)
                     p' pre',
     TookStep p p' ->
     (valid delta tid pre' p' -> valid delta tid pre p) ->
-    valid delta tid (fun done d m s_i s =>
-                   pre' done d m s_i s /\
+    valid delta tid (fun done d hm m s_i s =>
+                   pre' done d hm m s_i s /\
                    valid delta tid pre p) p' ->
     valid delta tid pre p.
 Proof.

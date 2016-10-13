@@ -546,11 +546,12 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Theorem modify_cache_ok : forall (up : Cache -> Cache),
       SPEC App.delta, tid |-
               {{ (_:unit),
-               | PRE d m s_i s: get mCache m = get vCache s
-               | POST d' m' s_i' s' r:
+               | PRE d hm m s_i s: get mCache m = get vCache s
+               | POST d' hm' m' s_i' s' r:
                    s' = set vCache (up (get vCache s)) s /\
                    m' = set mCache (up (get mCache m)) m /\
                    d' = d /\
+                   hm' = hm /\
                    s_i' = s_i
               }} modify_cache up.
   Proof.
@@ -562,11 +563,12 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Theorem modify_wb_ok : forall (up: WriteBuffer -> WriteBuffer),
       SPEC App.delta, tid |-
               {{ (_:unit),
-               | PRE d m s_i s: get mWriteBuffer m = get vWriteBuffer s
-               | POST d' m' s_i' s' r:
+               | PRE d hm m s_i s: get mWriteBuffer m = get vWriteBuffer s
+               | POST d' hm' m' s_i' s' r:
                    s' = set vWriteBuffer (up (get vWriteBuffer s)) s /\
                    m' = set mWriteBuffer (up (get mWriteBuffer m)) m /\
                    d' = d /\
+                   hm' = hm /\
                    s_i' = s_i
               }} modify_wb up.
   Proof.
@@ -729,18 +731,19 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Theorem prepare_fill_ok : forall a,
       SPEC App.delta, tid |-
               {{ v0,
-               | PRE d m s_i s:
+               | PRE d hm m s_i s:
                    invariant delta d m s /\
                    cache_get (get vCache s) a = Missing /\
                    (* XXX: not sure exactly why this is a requirement,
                    but it comes from no_wb_reader_conflict *)
                    wb_get (get vWriteBuffer s) a = WbMissing /\
                    get vdisk s a = Some v0
-               | POST d' m' s_i' s' _:
+               | POST d' hm' m' s_i' s' _:
                    invariant delta d' m' s' /\
                    (* note that neither vdisk0 nor vdisk are modified *)
                    modified [( vCache; vDisk0 )] s s' /\
                    guar delta tid s s' /\
+                   hm' = hm /\
                    s_i' = s_i
               }} prepare_fill a.
   Proof.
@@ -835,17 +838,18 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Theorem finish_fill_ok : forall a,
       SPEC App.delta, tid |-
                   {{ v0,
-                   | PRE d m s_i s:
+                   | PRE d hm m s_i s:
                        invariant delta d m s /\
                        cache_get (get vCache s) a = Invalid /\
                        wb_get (get vWriteBuffer s) a = WbMissing /\
                        get vdisk s a = Some v0
-                   | POST d' m' s_i' s' r:
+                   | POST d' hm' m' s_i' s' r:
                        invariant delta d' m' s' /\
                        modified [( vCache; vDisk0 )] s s' /\
                        cache_get (get vCache s') a = Clean v0 /\
                        guar delta tid s s' /\
                        r = v0 /\
+                       hm' = hm /\
                        s_i' = s_i
                   }} finish_fill a.
   Proof.
@@ -963,10 +967,10 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Theorem cache_write_ok : forall a v,
       SPEC App.delta, tid |-
               {{ v0,
-               | PRE d m s_i s:
+               | PRE d hm m s_i s:
                    invariant delta d m s /\
                    get vdisk s a = Some v0
-               | POST d' m' s_i' s' r:
+               | POST d' hm' m' s_i' s' r:
                    invariant delta d' m' s' /\
                    get vdisk s' = upd (get vdisk s) a v /\
                    (* vCache, vDisk0 and vWriteBuffer are unconcerning since
@@ -974,6 +978,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                    doesn't change *)
                    modified [(vCache; vDisk0; vWriteBuffer; vdisk)] s s' /\
                    guar delta tid s s' /\
+                   hm' = hm /\
                    s_i' = s_i
               }} cache_write a v.
   Proof.
@@ -1168,14 +1173,15 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Theorem cache_commit_ok :
       SPEC App.delta, tid |-
               {{ (_:unit),
-               | PRE d m s_i s:
+               | PRE d hm m s_i s:
                    invariant delta d m s
-               | POST d' m' s_i' s' r:
+               | POST d' hm' m' s_i' s' r:
                    invariant delta d' m' s' /\
                    modified [( vCache; vDisk0; vWriteBuffer; vdisk0 )] s s' /\
                    get vdisk0 s' = get vdisk s /\
                    get vdisk s' = get vdisk s /\
                    guar delta tid s s' /\
+                   hm' = hm /\
                    s_i' = s_i
               }} cache_commit.
   Proof.
@@ -1210,14 +1216,15 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Theorem cache_abort_ok :
     SPEC App.delta, tid |-
   {{ (_:unit),
-   | PRE d m s_i s:
+   | PRE d hm m s_i s:
        invariant delta d m s
-   | POST d' m' s_i' s' _:
+   | POST d' hm' m' s_i' s' _:
        invariant delta d' m' s' /\
        get vdisk s' = get vdisk0 s /\
        modified [(vWriteBuffer; vdisk)] s s' /\
        get vWriteBuffer s' = emptyWriteBuffer /\
        guar delta tid s s' /\
+       hm' = hm /\
        s_i' = s_i
   }} cache_abort.
   Proof.
@@ -1330,18 +1337,19 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Theorem cache_read_ok : forall a,
       SPEC App.delta, tid |-
               {{ v,
-               | PRE d m s_i s:
+               | PRE d hm m s_i s:
                    invariant delta d m s /\
                    get vdisk s a = Some v
-               | POST d' m' s_i' s' r:
+               | POST d' hm' m' s_i' s' r:
                    invariant delta d' m' s' /\
                    guar delta tid s s' /\
                    modified [( vCache; vDisk0 )] s s' /\
                    (forall v', r = Some v' -> v' = v) /\
+                   hm' = hm /\
                    s_i' = s_i
               }} cache_read a.
   Proof.
-    hoare.
+    hoare. (* 60 s *)
     (* TODO: eauto on v = v' goals is slow but info_eauto shows nothing *)
     rewrite H6 in H10.
     unfold hide_readers in H10; simpl_match.
@@ -1385,15 +1393,16 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     Theorem copy_ok : forall a a',
         SPEC App.delta, tid |-
                     {{ v v0,
-                     | PRE d m s_i s:
+                     | PRE d hm m s_i s:
                          invariant delta d m s /\
                          get vdisk s a = Some v /\
                          get vdisk s a' = Some v0 /\
                          guar delta tid s_i s
-                     | POST d' m' s_i' s' r:
+                     | POST d' hm' m' s_i' s' r:
                          invariant delta d' m' s' /\
                          (r = true ->
                           get vdisk s' = upd (get vdisk s) a' v) /\
+                         hm' = hm /\
                          s_i' = s_i
                     }} copy a a'.
     Proof.
