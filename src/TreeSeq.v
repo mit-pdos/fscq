@@ -1275,45 +1275,6 @@ Module TREESEQ.
   Definition ts_file_sync pathname (ts: treeseq) :=
     d_map (fun t => treeseq_one_file_sync t pathname) ts.
 
-  Theorem dirtree_update_safe_pathname_vssync_vecs_file:
-    forall pathname f tree fsxp F F0 ilist freeblocks inum m al,
-    let tree_newest := update_subtree pathname (TreeFile inum (BFILE.synced_file f)) tree in
-    find_subtree pathname tree = Some (TreeFile inum f) ->
-    Datatypes.length al = Datatypes.length (BFILE.BFData f) ->
-    (length al = length (BFILE.BFData f) /\ forall i, i < length al ->
-                BFILE.block_belong_to_file ilist (selN al i 0) inum i) ->
-    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
-    (F0 * rep fsxp F tree_newest ilist freeblocks)%pred (list2nmem (vssync_vecs m al)).
-  Proof.
-    induction al using rev_ind; simpl; intros.
-    - intuition. simpl. pred_apply.
-      (* H3 implies length of BFILE.sync_file is also 0 *)
-      admit.
-    - Search vssync_vecs.
-  Admitted.
-
-  Lemma tree_rep_nth_file_sync: forall Fm Ftop fsxp mscs ds ts n al pathname inum f,
-    find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
-    Datatypes.length al = Datatypes.length (BFILE.BFData f) ->
-    (length al = length (BFILE.BFData f) /\ forall i, i < length al ->
-                BFILE.block_belong_to_file (TSilist ts !!) (selN al i 0) inum i) ->
-    treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
-    tree_rep Fm Ftop fsxp (nthd n ts) (list2nmem (nthd n ds)) ->
-    treeseq_pred (treeseq_safe pathname (MSAlloc mscs) ts !!) ts ->
-    tree_rep Fm Ftop fsxp (treeseq_one_file_sync (nthd n ts) pathname) (list2nmem (vssync_vecs (nthd n ds) al)).
-  Proof.
-    intros.
-    eapply NEforall_d_in in H4 as H4'; [ | apply nthd_in_ds with (n := n) ].
-    unfold treeseq_safe in H4'.
-    unfold treeseq_one_file_sync.
-    case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
-    destruct d.
-    - (* a file *)
-      unfold tree_rep; simpl.
-      (* XXX the al for this lemma should be the one corresponding to BFData b *)
-      eapply dirtree_update_safe_pathname_vssync_vecs_file; eauto.
-  Admitted.
-
   Fixpoint synced_up_to_n n (vsl : list valuset) : list valuset :=
     match n with
     | O => vsl
@@ -1392,6 +1353,70 @@ Module TREESEQ.
       let f' := BFILE.mk_bfile (updN (BFILE.BFData f) off' (fst (selN (BFILE.BFData f) off' ($0, nil)), nil)) (BFILE.BFAttr f) in
       synced_file_alt_helper f' off'
     end.
+
+  Fixpoint synced_file_alt_helper2 f off {struct off} :=
+    match off with
+    | O => f
+    | S off' =>
+      let f' := synced_file_alt_helper2 f off' in
+      BFILE.mk_bfile (updN (BFILE.BFData f') off' (fst (selN (BFILE.BFData f') off' ($0, nil)), nil)) (BFILE.BFAttr f')
+    end.
+
+  Lemma synced_file_alt_helper2_oob : forall off f off' v,
+    let f' := synced_file_alt_helper f off in
+    off' >= off ->
+    (BFILE.mk_bfile (updN (BFILE.BFData f') off' v) (BFILE.BFAttr f')) =
+    synced_file_alt_helper (BFILE.mk_bfile (updN (BFILE.BFData f) off' v) (BFILE.BFAttr f)) off.
+  Proof.
+    induction off; simpl; intros; eauto.
+    - rewrite IHoff by omega; simpl.
+      f_equal.
+      f_equal.
+      rewrite updN_comm by omega.
+      rewrite selN_updN_ne by omega.
+      auto.
+  Qed.
+
+  Lemma synced_file_alt_helper_selN_oob : forall off f off' default,
+    off' >= off ->
+    selN (BFILE.BFData (synced_file_alt_helper f off)) off' default =
+    selN (BFILE.BFData f) off' default.
+  Proof.
+    induction off; simpl; eauto; intros.
+    rewrite IHoff by omega; simpl.
+    rewrite selN_updN_ne by omega.
+    auto.
+  Qed.
+
+  Theorem synced_file_alt_helper_helper2_equiv : forall off f,
+    synced_file_alt_helper f off = synced_file_alt_helper2 f off.
+  Proof.
+    induction off; intros; simpl; auto.
+    rewrite <- IHoff; clear IHoff.
+    rewrite synced_file_alt_helper2_oob by omega.
+    f_equal.
+    f_equal.
+    rewrite synced_file_alt_helper_selN_oob by omega.
+    auto.
+  Qed.
+
+  Lemma synced_file_alt_helper2_selN_oob : forall off f off' default,
+    off' >= off ->
+    selN (BFILE.BFData (synced_file_alt_helper2 f off)) off' default =
+    selN (BFILE.BFData f) off' default.
+  Proof.
+    intros.
+    rewrite <- synced_file_alt_helper_helper2_equiv.
+    eapply synced_file_alt_helper_selN_oob; auto.
+  Qed.
+
+  Lemma synced_file_alt_helper2_length : forall off f,
+    Datatypes.length (BFILE.BFData (synced_file_alt_helper2 f off)) = Datatypes.length (BFILE.BFData f).
+  Proof.
+    induction off; simpl; intros; auto.
+    rewrite length_updN.
+    eauto.
+  Qed.
 
   Definition synced_file_alt f :=
     synced_file_alt_helper f (Datatypes.length (BFILE.BFData f)).
@@ -1511,6 +1536,162 @@ Module TREESEQ.
       destruct H; simpl in *.
       eapply Forall_forall in H1; eauto.
   Qed.
+
+  Theorem dirtree_update_safe_pathname_vssync_vecs_file:
+    forall pathname f tree fsxp F F0 ilist freeblocks inum m al,
+    let tree_newest := update_subtree pathname (TreeFile inum (BFILE.synced_file f)) tree in
+    find_subtree pathname tree = Some (TreeFile inum f) ->
+    Datatypes.length al = Datatypes.length (BFILE.BFData f) ->
+    (forall i, i < length al -> BFILE.block_belong_to_file ilist (selN al i 0) inum i) ->
+    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
+    (F0 * rep fsxp F tree_newest ilist freeblocks)%pred (list2nmem (vssync_vecs m al)).
+  Proof.
+    intros.
+    subst tree_newest.
+    rewrite synced_file_alt_equiv.
+    unfold synced_file_alt.
+    rewrite synced_file_alt_helper_helper2_equiv.
+    rewrite <- H0.
+    assert (Datatypes.length al <= Datatypes.length (BFILE.BFData f)) by omega.
+    clear H0.
+
+    induction al using rev_ind; simpl; intros.
+    - rewrite update_subtree_same; eauto.
+      distinct_names.
+    - rewrite vssync_vecs_app.
+      unfold vssync.
+      erewrite <- update_update_subtree_same.
+      eapply pimpl_trans; [ apply pimpl_refl | | ].
+      2: eapply dirtree_update_block.
+      erewrite dirtree_update_inode_update_subtree.
+      rewrite app_length; simpl.
+      rewrite plus_comm; simpl.
+
+      rewrite synced_file_alt_helper2_selN_oob by omega.
+      replace (selN (vssync_vecs m al) x ($0, nil)) with
+              (selN (BFILE.BFData f) (Datatypes.length al) ($0, nil)).
+
+      reflexivity.
+
+      erewrite <- synced_file_alt_helper2_selN_oob.
+      eapply dirtree_rep_used_block_eq.
+      eapply IHal.
+      {
+        intros. specialize (H1 i).
+        rewrite selN_app1 in H1 by omega.
+        eapply H1. rewrite app_length. omega.
+      }
+      rewrite app_length in *; omega.
+
+      erewrite find_update_subtree. reflexivity. eauto.
+      {
+        specialize (H1 (Datatypes.length al)).
+        rewrite selN_last in H1 by omega.
+        eapply H1. rewrite app_length. simpl. omega.
+      }
+      omega.
+
+      3: eapply find_update_subtree; eauto.
+
+      eapply DIRTREE.rep_tree_inodes_distinct. eapply IHal.
+      {
+        intros. specialize (H1 i).
+        rewrite selN_app1 in H1 by omega.
+        eapply H1. rewrite app_length. omega.
+      }
+      rewrite app_length in *; omega.
+
+      eapply DIRTREE.rep_tree_names_distinct. eapply IHal.
+      {
+        intros. specialize (H1 i).
+        rewrite selN_app1 in H1 by omega.
+        eapply H1. rewrite app_length. omega.
+      }
+      rewrite app_length in *; omega.
+
+      {
+        rewrite synced_file_alt_helper2_length.
+        rewrite app_length in *; simpl in *; omega.
+      }
+
+      eapply IHal.
+      {
+        intros. specialize (H1 i).
+        rewrite selN_app1 in H1 by omega.
+        eapply H1. rewrite app_length. omega.
+      }
+      rewrite app_length in *; omega.
+
+      eapply find_update_subtree; eauto.
+      specialize (H1 (Datatypes.length al)).
+      rewrite selN_last in * by auto.
+      eapply H1.
+      rewrite app_length; simpl; omega.
+  Qed.
+
+  Lemma tree_rep_nth_file_sync: forall Fm Ftop fsxp mscs ds ts n al pathname inum f,
+    find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
+    Datatypes.length al = Datatypes.length (BFILE.BFData f) ->
+    (forall i, i < length al ->
+                BFILE.block_belong_to_file (TSilist ts !!) (selN al i 0) inum i) ->
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
+    tree_rep Fm Ftop fsxp (nthd n ts) (list2nmem (nthd n ds)) ->
+    treeseq_pred (treeseq_safe pathname (MSAlloc mscs) ts !!) ts ->
+    tree_rep Fm Ftop fsxp (treeseq_one_file_sync (nthd n ts) pathname) (list2nmem (vssync_vecs (nthd n ds) al)).
+  Proof.
+    intros.
+    eapply NEforall_d_in in H4 as H4'; [ | apply nthd_in_ds with (n := n) ].
+    unfold treeseq_safe in H4'.
+    unfold treeseq_one_file_sync.
+    intuition.
+    case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
+    destruct d.
+    - (* a file *)
+      unfold tree_rep; simpl.
+
+      rewrite <- firstn_skipn with (l := al) (n := length (BFILE.BFData b)).
+      remember (skipn (Datatypes.length (BFILE.BFData b)) al) as al_tail.
+
+      assert (forall i, i < length al_tail -> selN al_tail i 0 = selN al (length (BFILE.BFData b) + i) 0).
+      subst; intros.
+      apply skipn_selN.
+      clear Heqal_tail.
+
+      induction al_tail using rev_ind.
+
+      + (* No more tail remaining; all blocks correspond to file [b] *)
+        rewrite app_nil_r.
+        eapply dirtree_update_safe_pathname_vssync_vecs_file; eauto.
+        admit.
+        admit.
+
+      + rewrite app_assoc. rewrite vssync_vecs_app.
+        unfold vssync.
+        eapply dirtree_update_free.
+        eapply IHal_tail.
+        intros.
+        specialize (H9 i).
+        rewrite selN_app1 in H9 by omega. apply H9. rewrite app_length. omega.
+
+        edestruct H7 with (off := length (BFILE.BFData b) + length al_tail).
+        eexists. intuition eauto.
+        eapply H1.
+
+        admit.
+
+        (* [treeseq_safe_bwd] says that the block is present in the old file.  Should be a contradiction. *)
+        admit.
+
+        (* [treeseq_safe_bwd] says the block is unused. *)
+        rewrite <- H9 in H10.
+        rewrite selN_last in H10 by omega.
+        eapply H10.
+        rewrite app_length. simpl. omega.
+
+    - admit.
+    - admit.
+  Admitted.
+
 
   Lemma tree_safe_file_sync_1 : forall Fm Ftop fsxp mscs ds ts mscs' pathname,
     (exists inum f, find_subtree pathname (TStree ts !!) = Some (TreeFile inum f)) ->

@@ -622,12 +622,10 @@ Theorem dirtree_update_safe_pathname_vssync_vecs :
   exists tree',
   (F0 * rep fsxp F tree' ilist freeblocks)%pred (list2nmem (vssync_vecs m bns)) /\
   (tree' = tree \/
-   exists pathname' f', find_subtree pathname' tree = Some (TreeFile inum f') /\
-   tree' = update_subtree pathname' (TreeFile inum (BFILE.synced_file f')) tree).
+   exists pathname' f' data, find_subtree pathname' tree = Some (TreeFile inum f') /\
+   let f'new := BFILE.mk_bfile data (BFILE.BFAttr f') in
+   tree' = update_subtree pathname' (TreeFile inum f'new) tree).
 Proof.
-  (* XXX need to strengthen the inductive hypothesis to say we've synced the file
-   * up to some block (corresponding to the induction on bns)..
-   *)
   induction bns using rev_ind; simpl; intros.
   - eexists; intuition eauto.
   - edestruct IHbns; eauto.
