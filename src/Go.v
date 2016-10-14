@@ -95,9 +95,12 @@ Module Go.
   | Const : forall t, type_denote t -> expr
   | TestE : test -> expr -> expr -> expr.
 
-  Inductive modop :=
-  | DuplicateOp : modop
-  | ModifyNumOp : numop -> modop
+  Inductive modify_unop :=
+  | DuplicateOp : modify_unop
+  .
+
+  Inductive modify_binop :=
+  | ModifyNumOp : numop -> modify_binop
   .
 
   Definition can_alias t :=
@@ -147,7 +150,8 @@ Module Go.
          (argvars: list var) (* The caller's variables to pass in *)
   | Declare : type -> (var -> stmt) -> stmt
   | Assign : var -> expr -> stmt
-  | Modify : var -> modop -> expr -> stmt
+  | ModifyUnary : var -> modify_unop -> var -> stmt
+  | ModifyBinary : var -> modify_binop -> var -> var -> stmt
   | DiskRead : var -> expr -> stmt
   | DiskWrite : expr -> expr -> stmt
   (* InCall and Undeclare only appear at runtime *)
@@ -182,7 +186,8 @@ Module Go.
       source_stmt (For v term body)
   | SCall : forall retvars f argvars, source_stmt (Call retvars f argvars)
   | SAssign : forall x e, source_stmt (Assign x e)
-  | SModify : forall v dst op, source_stmt (Modify dst op v)
+  | SModifyUnary : forall dst op v, source_stmt (ModifyUnary dst op v)
+  | SModifyBinary : forall dst op v1 v2, source_stmt (ModifyBinary dst op v1 v2)
   | SDeclare :
       forall t cont,
         (forall var, source_stmt (cont var)) ->
@@ -230,9 +235,13 @@ Module Go.
       | _, _ => None
     end.
 
-  Definition eval_modop op a b : option value :=
+  Definition eval_unop op a : option value :=
     match op with
-    | DuplicateOp => Some b
+    | DuplicateOp => Some a
+    end.
+
+  Definition eval_binop op a b : option value :=
+    match op with
     | ModifyNumOp n_op =>
       match (a, b) with
       | (Val Num va, Val Num vb) => Some (eval_numop n_op va vb)
@@ -414,8 +423,6 @@ Module Go.
         | Some kk => VarMap.add kk v m
       end.
 
-    Definition increment v := Modify v (ModifyNumOp Plus) (Const Num 1).
-
     Inductive runsto : stmt -> state -> state -> Prop :=
     | RunsToSkip : forall st,
                      runsto Skip st st
@@ -441,6 +448,7 @@ Module Go.
                            let loop := While cond body in
                            is_false (snd st) cond ->
                            runsto loop st st
+                                  (*
     | RunsToForTrue : forall v term body st st' st'',
                             let loop := For v term body in
                             is_true (snd st) (TestE Lt (Var v) term) ->
@@ -451,6 +459,7 @@ Module Go.
                             let loop := For v term body in
                             is_false (snd st) (TestE Lt (Var v) term) ->
                             runsto loop st st
+*)
     | RunsToDeclare : forall body body' d s si si' s' d' var t,
                        VarMap.find var s = None ->
                        si = VarMap.add var (default_value t) s ->
@@ -465,14 +474,13 @@ Module Go.
                        type_of v = type_of v0 -> (* and have the correct type *)
                        s' = VarMap.add x v s ->
                        runsto (Assign x e) (d, s) (d, s')
-    | RunsToModify : forall (x : var) (ex : expr) (s s' : locals) d (val v v' : value) op,
-                       eval s ex = Some val ->
-                       can_alias (type_of val) = false -> (* rhs cannot be aliasable *)
-                       VarMap.find x s = Some v -> (* variable must be declared *)
-                       eval_modop op v val = Some v' -> (* and types must be compatible *)
-                       type_of v = type_of v' -> (* and result has the correct type *)
-                       s' = VarMap.add x v' s ->
-                       runsto (Modify x op ex) (d, s) (d, s')
+    | RunsToModifyUnary : forall x op var (s s' : locals) d (val v0 v : value),
+                           VarMap.find x s = Some v0 ->
+                           can_alias (type_of v) = false ->
+                           VarMap.find var s = Some val ->
+                           eval_unop op val = Some v ->
+                           s' = VarMap.add x v s ->
+                           runsto (ModifyUnary x op var) (d, s) (d, s')
     | RunsToDiskRead : forall x ae a d s s' v0 v vs,
                          VarMap.find x s = Some v0 -> (* variable must be declared *)
                          type_of v0 = DiskBlock -> (* and have the correct type *)
@@ -519,6 +527,7 @@ Module Go.
                          let loop := While cond body in
                          is_false (snd st) cond ->
                          step (st, loop) (st, Skip)
+                              (*
     | StepForTrue : forall v term body st,
                       let loop := For v term body in
                       is_true (snd st) (TestE Lt (Var v) term) ->
@@ -528,6 +537,7 @@ Module Go.
                        let loop := For v term body in
                        is_false (snd st) (TestE Lt (Var v) term) ->
                        step (st, loop) (st, Skip)
+*)
     | StepDeclare : forall t body body' d s s' var,
                       VarMap.find var s = None ->
                       s' = VarMap.add var (default_value t) s ->
@@ -544,14 +554,13 @@ Module Go.
                      type_of v = type_of v0 -> (* and have the correct type *)
                      s' = VarMap.add x v s ->
                      step (d, s, Assign x e) (d, s', Skip)
-    | StepModify : forall (x : var) (ex : expr) (s s' : locals) d (val v v' : value) op,
-                     eval s ex = Some val ->
-                     can_alias (type_of val) = false -> (* rhs cannot be aliasable *)
-                     VarMap.find x s = Some v -> (* variable must be declared *)
-                     eval_modop op v val = Some v' -> (* and types must be compatible *)
-                     type_of v = type_of v' -> (* and result has the correct type *)
-                     s' = VarMap.add x v' s ->
-                     step (d, s, Modify x op ex) (d, s', Skip)
+    | StepModifyUnary : forall x op var (s s' : locals) d (val v0 v : value),
+                           VarMap.find x s = Some v0 ->
+                           can_alias (type_of v) = false ->
+                           VarMap.find var s = Some val ->
+                           eval_unop op val = Some v ->
+                           s' = VarMap.add x v s ->
+                     step (d, s, ModifyUnary x op var) (d, s', Skip)
     | StepDiskRead : forall x ae a d s s' v v0 vs,
                        VarMap.find x s = Some v0 -> (* variable must be declared *)
                        type_of v0 = DiskBlock -> (* and have the correct type *)
@@ -682,8 +691,8 @@ Module Go.
     (* For some reason (probably involving tuples), the [Hint Constructors] isn't enough. *)
     Hint Extern 1 (step (_, _, Assign _ _) _) =>
     eapply StepAssign.
-    Hint Extern 1 (step (_, _, Modify _ _ _) _) =>
-    eapply StepModify.
+    Hint Extern 1 (step (_, _, ModifyUnary _ _ _) _) =>
+    eapply StepModifyUnary.
     Hint Extern 1 (step (_, _, Declare _ _) _) =>
     eapply StepDeclare.
     Hint Extern 1 (step (_, _, Undeclare _) _) =>
@@ -732,6 +741,7 @@ Module Go.
                              let loop := While cond body in
                              is_false (snd st) cond ->
                              runsto_InCall loop st st
+                                           (*
     | RunsToICForTrue : forall v term body st st' st'',
                             let loop := For v term body in
                             is_true (snd st) (TestE Lt (Var v) term) ->
@@ -742,6 +752,7 @@ Module Go.
                             let loop := For v term body in
                             is_false (snd st) (TestE Lt (Var v) term) ->
                             runsto_InCall loop st st
+*)
     | RunsToICDeclare : forall body body' d s si si' s' d' var t,
                           VarMap.find var s = None ->
                           si = VarMap.add var (default_value t) s ->
@@ -759,14 +770,13 @@ Module Go.
                          type_of v = type_of v0 -> (* and have the correct type *)
                          s' = VarMap.add x v s ->
                          runsto_InCall (Assign x e) (d, s) (d, s')
-    | RunsToICModify : forall (x : var) (ex : expr) (s s' : locals) d (val v v' : value) op,
-                       eval s ex = Some val ->
-                       can_alias (type_of val) = false -> (* rhs cannot be aliasable *)
-                       VarMap.find x s = Some v -> (* variable must be declared *)
-                       eval_modop op v val = Some v' -> (* and types must be compatible *)
-                       type_of v = type_of v' -> (* and result has the correct type *)
-                       s' = VarMap.add x v' s ->
-                       runsto_InCall (Modify x op ex) (d, s) (d, s')
+    | RunsToICModifyUnary : forall x op var (s s' : locals) d (val v0 v : value),
+                           VarMap.find x s = Some v0 ->
+                           can_alias (type_of v) = false ->
+                           VarMap.find var s = Some val ->
+                           eval_unop op val = Some v ->
+                           s' = VarMap.add x v s ->
+                           runsto_InCall (ModifyUnary x op var) (d, s) (d, s')
     | RunsToICDiskRead : forall x ae a d s s' v v0 vs,
                            VarMap.find x s = Some v0 -> (* variable must be declared *)
                            type_of v0 = DiskBlock -> (* and have the correct type *)
@@ -803,13 +813,6 @@ Module Go.
                        runsto_InCall (InCall s0 paramvars retparamvars argvars retvars p) (d, callee_s) (d', s').
 
     Hint Constructors source_stmt.
-
-    Lemma source_stmt_increment : forall v, source_stmt (increment v).
-    Proof.
-      unfold increment. eauto.
-    Qed.
-
-    Hint Resolve source_stmt_increment.
 
     Lemma source_stmt_RunsToInCall_runsto :
       forall p,
@@ -852,7 +855,6 @@ Module Go.
     Proof.
       intros.
       prep_induction H0; induction H0; intros; subst_definitions; subst; do_inv.
-      - subst_definitions. eauto.
       - subst_definitions. eauto.
       - destruct st', st''. invc H0_0. eauto.
       - eapply RunsToICCallOp; eauto. assert (Some input = Some input0) by congruence. find_inversion. auto.
@@ -974,10 +976,12 @@ Notation "! x" := (x = 0)%go (at level 70, no associativity).
 
 Notation "A ; B" := (Go.Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : go_scope.
 Notation "x <~ y" := (Go.Assign x y) (at level 90) : go_scope.
-Notation "x <<~ y" := (Go.Modify x Go.DuplicateOp y) (at level 90): go_scope.
+Notation "x <<~ y" := (Go.ModifyUnary x Go.DuplicateOp y) (at level 90): go_scope.
+(*
 Notation "A *= B" := (Go.Modify A (Go.ModifyNumOp Go.Times) B) (at level 90): go_scope.
 Notation "A += B" := (Go.Modify A (Go.ModifyNumOp Go.Plus) B) (at level 90): go_scope.
 Notation "A -= B" := (Go.Modify A (Go.ModifyNumOp Go.Minus) B) (at level 90): go_scope.
+*)
 Notation "'__'" := (Go.Skip) : go_scope.
 Notation "'While' A B" := (Go.While A B) (at level 200, A at level 0, B at level 1000, format "'[v    ' 'While'  A '/' B ']'") : go_scope.
 Notation "'If' a 'Then' b 'Else' c 'EndIf'" := (Go.If a b c) (at level 200, a at level 1000, b at level 1000, c at level 1000) : go_scope.
