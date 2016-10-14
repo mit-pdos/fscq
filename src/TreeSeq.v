@@ -312,6 +312,21 @@ Module TREESEQ.
     rewrite latest_nthd; auto.
   Qed.
 
+  Lemma treeseq_in_ds_tree_pred_nth: forall Fm Ftop fsxp mscs ts ds n,
+   treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
+   (Fm ✶ rep fsxp Ftop (TStree (nthd n ts)) (TSilist (nthd n ts)) (TSfree (nthd n ts)))%pred (list2nmem (nthd n ds)).
+  Proof.
+    intros.
+    unfold treeseq_in_ds in H.
+    intuition.
+    unfold tree_rep in H.
+    eapply NEforall2_d_in with (x := nthd n ts) in H as H'.
+    intuition.
+    eassumption.
+    reflexivity.
+    reflexivity.
+  Qed.
+
 
   Lemma treeseq_safe_refl : forall pathname flag tree,
    treeseq_safe pathname flag tree tree.
@@ -340,6 +355,9 @@ Module TREESEQ.
     repeat match goal with
       | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- DIRTREE.tree_names_distinct (TStree ?ts !!) ] => 
         idtac "treeseq"; eapply treeseq_in_ds_tree_pred_latest in H as Hpred;
+        eapply DIRTREE.rep_tree_names_distinct; eapply Hpred
+      | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- DIRTREE.tree_names_distinct (TStree (nthd ?n ?ts)) ] => 
+        idtac "treeseq"; eapply treeseq_in_ds_tree_pred_nth in H as Hpred;
         eapply DIRTREE.rep_tree_names_distinct; eapply Hpred
     end.
 
@@ -1865,11 +1883,30 @@ Module TREESEQ.
     generalize dependent y.
     induction len; simpl; intros; eauto.
     eapply IHlen.
-    admit.
+
+    repeat deex.
+    do 2 eexists.
+    unfold treeseq_one_upd.
+    rewrite H; simpl.
+    erewrite find_update_subtree; eauto.
+
     repeat deex.
     eapply treeseq_one_safe_dsupd_2; eauto.
-    admit.
-  Admitted.
+
+    distinct_names'.
+  Qed.
+
+  Lemma treeseq_in_ds_one_safe : forall Fm Ftop fsxp mscs mscs' ts ds n,
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
+    MSAlloc mscs' = MSAlloc mscs ->
+    treeseq_one_safe (nthd n ts) ts !! mscs'.
+  Proof.
+    unfold treeseq_in_ds; intros.
+    eapply NEforall2_d_in in H; intuition.
+    unfold treeseq_one_safe.
+    rewrite H0.
+    eauto.
+  Qed.
 
   Lemma tree_safe_file_sync_2 : forall Fm Ftop fsxp mscs ds ts mscs' n pathname,
     treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
@@ -1880,34 +1917,39 @@ Module TREESEQ.
     rewrite treeseq_one_file_sync_alt_equiv.
     unfold treeseq_one_file_sync_alt.
     case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
+    2: eapply treeseq_in_ds_one_safe; eauto.
     destruct d.
+    2: eapply treeseq_in_ds_one_safe; eauto.
 
     remember (Datatypes.length (BFILE.BFData b)) as len; clear Heqlen.
     remember (nthd n ts) as y.
-    assert (treeseq_one_safe (nthd n ts) y mscs').
+    assert (treeseq_one_safe y (nthd n ts) mscs').
     subst; eapply treeseq_one_safe_refl.
+    remember H1 as H1'. clear HeqH1'. rewrite Heqy in H1'.
     clear Heqy.
-    assert (exists b0, find_subtree pathname (TStree y) = Some (TreeFile n0 b0) /\ map fst (BFILE.BFData b) = map fst (BFILE.BFData b0)).
+
+    assert (exists b0, find_subtree pathname (TStree y) = Some (TreeFile n0 b0) (* /\ map fst (BFILE.BFData b) = map fst (BFILE.BFData b0) *)).
     eexists; intuition eauto.
     clear H1.
+
     generalize dependent y.
     induction len; simpl; intros; eauto.
-    admit.
+
+    eapply treeseq_one_safe_trans; eauto.
+    eapply treeseq_in_ds_one_safe; eauto.
+
     eapply IHlen.
     destruct H3; intuition.
-    eapply treeseq_one_safe_dsupd_2; eauto.
+    eapply treeseq_one_safe_dsupd_1; eauto.
+
     destruct H3; intuition.
-    eexists; split.
+    eexists.
     unfold treeseq_one_upd.
-    rewrite H3; simpl.
+    rewrite H1; simpl.
     erewrite find_update_subtree by eauto. reflexivity.
-    simpl.
-    rewrite H4.
-    admit.
-    admit.
-    admit.
-    admit.
-  Admitted.
+
+    distinct_names'.
+  Qed.
 
   Lemma tree_safe_file_sync: forall Fm Ftop fsxp mscs ds ts mscs' n al pathname inum f,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
