@@ -11,8 +11,12 @@ Unset Printing Implicit Defensive.
 Import Go.
 
 Class GoWrapper (WrappedType: Type) :=
-  { wrap:      WrappedType -> Go.value;
-    wrap_inj:  forall v v', wrap v = wrap v' -> v = v' }.
+  {
+    wrap:      WrappedType -> Go.value;
+    wrap_inj:  forall v v', wrap v = wrap v' -> v = v';
+    wrapped_type: Go.type;
+    wrap_type: forall v, type_of (wrap v) = wrapped_type;
+  }.
 
 Definition pred := @Pred.pred var Nat.eq_dec Go.value.
 

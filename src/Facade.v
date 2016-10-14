@@ -60,32 +60,33 @@ Ltac GoWrapper_t :=
 Instance GoWrapper_Num : GoWrapper W.
 Proof.
   refine {| wrap := Go.Val Go.Num;
-            wrap_inj := _ |}; GoWrapper_t.
+            wrapped_type := Go.Num |}; GoWrapper_t.
 Defined.
 
 Instance GoWrapper_Bool : GoWrapper bool.
 Proof.
   refine {| wrap := Go.Val Go.Bool;
-            wrap_inj := _ |}; GoWrapper_t.
+            wrapped_type := Go.Bool |}; GoWrapper_t.
 Defined.
 
 Instance GoWrapper_valu : GoWrapper valu.
 Proof.
   refine {| wrap := Go.Val Go.DiskBlock;
-            wrap_inj := _ |}; GoWrapper_t.
+            wrapped_type := Go.DiskBlock |}; GoWrapper_t.
 Defined.
 
 Instance GoWrapper_unit : GoWrapper unit.
 Proof.
   refine {| wrap := Go.Val Go.EmptyStruct;
-            wrap_inj := _ |}; GoWrapper_t.
+            wrapped_type := Go.EmptyStruct |}; GoWrapper_t.
 Defined.
 
 Instance GoWrapper_dec {P Q} : GoWrapper ({P} + {Q}).
 Proof.
   refine {| wrap := fun (v : {P} + {Q}) => if v then Go.Val Go.Bool true else Go.Val Go.Bool false;
-            wrap_inj := _ |}.
+            wrapped_type := Go.Bool |}.
   destruct v; destruct v'; intro; try eapply Go.value_inj in H; try congruence; intros; f_equal; try apply proof_irrelevance.
+  intros; break_match; auto.
 Qed.
 
 Definition extract_code := projT1.
@@ -338,7 +339,7 @@ Hint Resolve sep_star_ptsto_some_find.
 Lemma CompileConst : forall env A var (v v0 : nat),
   EXTRACT Ret v
   {{ var ~> v0 * A }}
-    var <<~ Go.Const Go.Num v
+    var <0~ v
   {{ fun ret => var ~> ret * A }} // env.
 Proof.
   unfold ProgOk.
@@ -354,7 +355,11 @@ Proof.
 
   contradiction H1.
   repeat eexists.
-  eapply Go.StepModify; simpl; eauto.
+  eapply Go.StepModifyNullary.
+  rewrite sep_star_assoc in H.
+  eapply sep_star_ptsto_some in H.
+  eassumption.
+  all: simpl; eauto.
 Qed.
 
 Ltac forwardauto1 H :=
@@ -539,7 +544,6 @@ Admitted.
 *)
 
 
-(* TODO: simplify wrapper system *)
 Lemma CompileDeclare :
   forall env T t (zeroval : Go.type_denote t) {H : GoWrapper (Go.type_denote t)} A B (p : prog T) xp,
     wrap zeroval = Go.default_value t ->
@@ -880,80 +884,48 @@ Proof.
 Qed.
 
 
-Example micro_dup : sigT (fun p => forall (x : expr) (T : GoWrapper expr) v0,
-  can_alias (type_of (wrap v0)) = false ->
+Example micro_dup : forall T {Wr: GoWrapper T}, sigT (fun p => forall (x v0 : T),
   EXTRACT Ret tt
   {{ 0 ~> x * 1 ~> v0 }}
     p
   {{ fun _ => 1 ~> x * 0 ~> x }} // StringMap.empty _).
 Proof.
   eexists. intros.
-  instantiate (1 := Modify 1 DuplicateOp (Var 0)).
+  instantiate (1 := (1 <1~ 0)%go).
   unfold ProgOk.
   inv_exec_progok;
   inv_exec_progok.
   repeat eexists. eauto.
   rewrite add_upd.
-  rewrite sep_star_assoc in H0.
-  pose proof (ptsto_valid H0).
-  rewrite <- sep_star_assoc in H0.
-  rewrite sep_star_comm with (p2 := (1 ~> v0)%pred) in H0.
-  rewrite sep_star_assoc in H0.
-  pose proof (ptsto_valid H0).
+  rewrite sep_star_assoc in H.
+  pose proof (ptsto_valid H).
+  rewrite <- sep_star_assoc in H.
+  rewrite sep_star_comm with (p2 := (1 ~> v0)%pred) in H.
+  rewrite sep_star_assoc in H.
+  pose proof (ptsto_valid H).
   unfold mem_of in *.
-  assert (v' = wrap x) by congruence.
-  assert (v = wrap v0) by congruence.
+  assert (val = wrap x) by congruence.
+  assert (v1 = wrap v0) by congruence.
+  destruct op.
+  simpl in *.
   subst.
+  find_inversion_safe.
   rewrite sep_star_assoc.
   eapply ptsto_upd.
   eassumption.
 
-  contradiction H2.
+  contradiction H1.
   repeat eexists.
-  eapply StepModify; eauto.
-  unfold eval.
-  rewrite sep_star_assoc in H0.
+  econstructor.
+  rewrite sep_star_comm with (p2 := (1 ~> v0)%pred) in H.
+  rewrite sep_star_assoc in H.
   find_eapply_lem_hyp ptsto_valid; eauto.
-  rewrite sep_star_comm with (p2 := (1 ~> v0)%pred) in H0.
-  rewrite sep_star_assoc in H0.
+  rewrite sep_star_assoc in H.
   find_eapply_lem_hyp ptsto_valid; eauto.
   simpl; auto.
-Defined.
-
-Example micro_inc : sigT (fun p => forall x,
-  EXTRACT Ret (1 + x)
-  {{ 0 ~> x }}
-    p
-  {{ fun ret => 0 ~> ret }} // StringMap.empty _).
-Proof.
-  eexists.
-  intros.
-  instantiate (1 := (0 += (Const Num 1))%go).
-  intro. intros.
-  inv_exec_progok.
-
-  destruct v, t; simpl in *;
-    try solve [inversion H10 | inversion H11].
-  rewrite Nat.add_1_r in *.
-  find_inversion_safe.
-
-  repeat eexists; eauto; intros.
-  - rewrite add_upd.
-    cbn.
-    find_eapply_lem_hyp ptsto_valid.
-    unfold mem_of in *.
-    rewrite H in H9.
-    repeat find_inversion_safe.
-    rewrite sep_star_comm.
-    eapply any_sep_star_ptsto.
-    auto.
-
-  - contradiction H1.
-    repeat eexists.
-    find_eapply_lem_hyp ptsto_valid.
-    unfold mem_of in *.
-    eapply StepModify; eauto.
-    simpl; auto.
+  repeat rewrite wrap_type.
+  auto.
+  eauto.
 Defined.
 
 Lemma CompileIf : forall P Q {H1 : GoWrapper ({P}+{Q})}
@@ -1048,6 +1020,7 @@ Proof.
   (* TODO automate this *)
 Admitted.
 
+(*
 Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
                           (n i : W)
                           t0 term
@@ -1098,6 +1071,7 @@ Proof.
     inv_exec_progok.
 *)
 Admitted.
+*)
 
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
   forall avar bvar,
@@ -1106,6 +1080,8 @@ Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> 
              Call [] name [avar; bvar]
            {{ fun _ => emp (* TODO: could remember a & b if they are of aliasable type *) }} // env.
 
+
+(* TODO: generalize for all kinds of functions *)
 Lemma extract_voidfunc2_call :
   forall A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) arga argb arga_t argb_t env,
     forall and body ss,
@@ -1373,6 +1349,24 @@ Ltac compile_step :=
               eapply H with (avar := ka) (bvar := kb) ] ]; [ cancel_subset .. ]
         end
     end
+  | [ |- EXTRACT Ret (?f ?a) {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_val a pre with
+      | None => 
+        eapply extract_equiv_prog; [
+            let arg := fresh "arg" in
+            set (arg := Ret (f a));
+            pattern a in arg; subst arg;
+            eapply bind_left_id | ]
+    end
+  | [ |- EXTRACT Ret (?f ?a ?b) {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_val a pre with
+      | None => 
+        eapply extract_equiv_prog; [
+            let arg := fresh "arg" in
+            set (arg := Ret (f a b));
+            pattern a in arg; subst arg;
+            eapply bind_left_id | ]
+    end
   | [ |- EXTRACT ?f ?a {{ ?pre }} _ {{ _ }} // _ ] =>
     match f with
       | Ret => fail 2
@@ -1404,6 +1398,18 @@ Proof.
   eapply H. eapply H0. trivial.
 Qed.
 *)
+
+(*
+Example micro_inc : sigT (fun p => forall x,
+  EXTRACT Ret (1 + (2 + x))
+  {{ 0 ~> x }}
+    p
+  {{ fun ret => 0 ~> ret }} // StringMap.empty _).
+Proof.
+
+Defined.
+*)
+
 
 Example compile_one_read : sigT (fun p =>
   EXTRACT Read 1

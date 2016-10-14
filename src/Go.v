@@ -95,6 +95,10 @@ Module Go.
   | Const : forall t, type_denote t -> expr
   | TestE : test -> expr -> expr -> expr.
 
+  Inductive modify_nullop :=
+  | SetConst (n : nat) : modify_nullop
+  .
+
   Inductive modify_unop :=
   | DuplicateOp : modify_unop
   .
@@ -150,6 +154,7 @@ Module Go.
          (argvars: list var) (* The caller's variables to pass in *)
   | Declare : type -> (var -> stmt) -> stmt
   | Assign : var -> expr -> stmt
+  | ModifyNullary : var -> modify_nullop -> stmt
   | ModifyUnary : var -> modify_unop -> var -> stmt
   | ModifyBinary : var -> modify_binop -> var -> var -> stmt
   | DiskRead : var -> expr -> stmt
@@ -186,6 +191,7 @@ Module Go.
         source_stmt (For v term body)
   | SCall : forall retvars f argvars, source_stmt (Call retvars f argvars)
   | SAssign : forall x e, source_stmt (Assign x e)
+  | SModifyNullary : forall dst op, source_stmt (ModifyNullary dst op)
   | SModifyUnary : forall dst op v, source_stmt (ModifyUnary dst op v)
   | SModifyBinary : forall dst op v1 v2, source_stmt (ModifyBinary dst op v1 v2)
   | SDeclare :
@@ -233,6 +239,11 @@ Module Go.
     | Some (Val Num a), Some (Val Num b) => eval_test_num op a b
     | Some (Val Bool a), Some (Val Bool b) => eval_test_bool op a b
     | _, _ => None
+    end.
+
+  Definition eval_nullop op : option value :=
+    match op with
+    | SetConst n => Some (Val Num n)
     end.
 
   Definition eval_unop op a : option value :=
@@ -477,13 +488,27 @@ Module Go.
         type_of v = type_of v0 -> (* and have the correct type *)
         s' = VarMap.add x v s ->
         runsto (Assign x e) (d, s) (d, s')
+    | RunsToModifyNullary : forall x op (s s' : locals) d (v0 v : value),
+        VarMap.find x s = Some v0 ->
+        eval_nullop op = Some v ->
+        type_of v = type_of v0 ->
+        s' = VarMap.add x v s ->
+        runsto (ModifyNullary x op) (d, s) (d, s')
     | RunsToModifyUnary : forall x op var (s s' : locals) d (val v0 v : value),
         VarMap.find x s = Some v0 ->
-        can_alias (type_of v) = false ->
         VarMap.find var s = Some val ->
         eval_unop op val = Some v ->
+        type_of v = type_of v0 ->
         s' = VarMap.add x v s ->
         runsto (ModifyUnary x op var) (d, s) (d, s')
+    | RunsToModifyBinary : forall x op var1 var2 (s s' : locals) d (val1 val2 v0 v : value),
+        VarMap.find x s = Some v0 ->
+        VarMap.find var1 s = Some val1 ->
+        VarMap.find var2 s = Some val2 ->
+        eval_binop op val1 val2 = Some v ->
+        type_of v = type_of v0 ->
+        s' = VarMap.add x v s ->
+        runsto (ModifyBinary x op var1 var2) (d, s) (d, s')
     | RunsToDiskRead : forall x ae a d s s' v0 v vs,
         VarMap.find x s = Some v0 -> (* variable must be declared *)
         type_of v0 = DiskBlock -> (* and have the correct type *)
@@ -557,13 +582,27 @@ Module Go.
         type_of v = type_of v0 -> (* and have the correct type *)
         s' = VarMap.add x v s ->
         step (d, s, Assign x e) (d, s', Skip)
+    | StepModifyNullary : forall x op (s s' : locals) d (v0 v : value),
+        VarMap.find x s = Some v0 ->
+        eval_nullop op = Some v ->
+        type_of v = type_of v0 ->
+        s' = VarMap.add x v s ->
+        step (d, s, ModifyNullary x op) (d, s', Skip)
     | StepModifyUnary : forall x op var (s s' : locals) d (val v0 v : value),
         VarMap.find x s = Some v0 ->
-        can_alias (type_of v) = false ->
         VarMap.find var s = Some val ->
         eval_unop op val = Some v ->
+        type_of v = type_of v0 ->
         s' = VarMap.add x v s ->
         step (d, s, ModifyUnary x op var) (d, s', Skip)
+    | StepModifyBinary : forall x op var1 var2 (s s' : locals) d (val1 val2 v0 v : value),
+        VarMap.find x s = Some v0 ->
+        VarMap.find var1 s = Some val1 ->
+        VarMap.find var2 s = Some val2 ->
+        eval_binop op val1 val2 = Some v ->
+        type_of v = type_of v0 ->
+        s' = VarMap.add x v s ->
+        step (d, s, ModifyBinary x op var1 var2) (d, s', Skip)
     | StepDiskRead : forall x ae a d s s' v v0 vs,
         VarMap.find x s = Some v0 -> (* variable must be declared *)
         type_of v0 = DiskBlock -> (* and have the correct type *)
@@ -694,8 +733,12 @@ Module Go.
     (* For some reason (probably involving tuples), the [Hint Constructors] isn't enough. *)
     Hint Extern 1 (step (_, _, Assign _ _) _) =>
     eapply StepAssign.
+    Hint Extern 1 (step (_, _, ModifyNullary _ _) _) =>
+    eapply StepModifyNullary.
     Hint Extern 1 (step (_, _, ModifyUnary _ _ _) _) =>
     eapply StepModifyUnary.
+    Hint Extern 1 (step (_, _, ModifyBinary _ _ _ _) _) =>
+    eapply StepModifyBinary.
     Hint Extern 1 (step (_, _, Declare _ _) _) =>
     eapply StepDeclare.
     Hint Extern 1 (step (_, _, Undeclare _) _) =>
@@ -773,13 +816,27 @@ Module Go.
         type_of v = type_of v0 -> (* and have the correct type *)
         s' = VarMap.add x v s ->
         runsto_InCall (Assign x e) (d, s) (d, s')
+    | RunsToICModifyNullary : forall x op (s s' : locals) d (v0 v : value),
+        VarMap.find x s = Some v0 ->
+        eval_nullop op = Some v ->
+        type_of v = type_of v0 ->
+        s' = VarMap.add x v s ->
+        runsto_InCall (ModifyNullary x op) (d, s) (d, s')
     | RunsToICModifyUnary : forall x op var (s s' : locals) d (val v0 v : value),
         VarMap.find x s = Some v0 ->
-        can_alias (type_of v) = false ->
         VarMap.find var s = Some val ->
         eval_unop op val = Some v ->
+        type_of v = type_of v0 ->
         s' = VarMap.add x v s ->
         runsto_InCall (ModifyUnary x op var) (d, s) (d, s')
+    | RunsToICModifyBinary : forall x op var1 var2 (s s' : locals) d (val1 val2 v0 v : value),
+        VarMap.find x s = Some v0 ->
+        VarMap.find var1 s = Some val1 ->
+        VarMap.find var2 s = Some val2 ->
+        eval_binop op val1 val2 = Some v ->
+        type_of v = type_of v0 ->
+        s' = VarMap.add x v s ->
+        runsto_InCall (ModifyBinary x op var1 var2) (d, s) (d, s')
     | RunsToICDiskRead : forall x ae a d s s' v v0 vs,
         VarMap.find x s = Some v0 -> (* variable must be declared *)
         type_of v0 = DiskBlock -> (* and have the correct type *)
@@ -979,13 +1036,12 @@ Notation "! x" := (x = 0)%go (at level 70, no associativity).
 
 Notation "A ; B" := (Go.Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : go_scope.
 Notation "x <~ y" := (Go.Assign x y) (at level 90) : go_scope.
-Notation "x <<~ y" := (Go.ModifyUnary x Go.DuplicateOp y) (at level 90): go_scope.
-(*
-Notation "A *= B" := (Go.Modify A (Go.ModifyNumOp Go.Times) B) (at level 90): go_scope.
-Notation "A += B" := (Go.Modify A (Go.ModifyNumOp Go.Plus) B) (at level 90): go_scope.
-Notation "A -= B" := (Go.Modify A (Go.ModifyNumOp Go.Minus) B) (at level 90): go_scope.
- *)
+(* TODO: better syntax *)
+Notation "x <0~ n" := (Go.ModifyNullary x (Go.SetConst n)) (at level 90): go_scope.
+Notation "x <1~ y" := (Go.ModifyUnary x Go.DuplicateOp y) (at level 90): go_scope.
+Notation "x <2~ A * B" := (Go.ModifyBinary x (Go.ModifyNumOp Go.Times) A B) (at level 90): go_scope.
+Notation "x <2~ A + B" := (Go.ModifyBinary x (Go.ModifyNumOp Go.Plus ) A B) (at level 90): go_scope.
+Notation "x <2~ A - B" := (Go.ModifyBinary x (Go.ModifyNumOp Go.Minus) A B) (at level 90): go_scope.
 Notation "'__'" := (Go.Skip) : go_scope.
 Notation "'While' A B" := (Go.While A B) (at level 200, A at level 0, B at level 1000, format "'[v    ' 'While'  A '/' B ']'") : go_scope.
 Notation "'If' a 'Then' b 'Else' c 'EndIf'" := (Go.If a b c) (at level 200, a at level 1000, b at level 1000, c at level 1000) : go_scope.
-
