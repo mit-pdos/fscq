@@ -1020,6 +1020,63 @@ Proof.
   (* TODO automate this *)
 Admitted.
 
+Ltac extract_var_val :=
+  lazymatch goal with
+  | [ H: ?s ≲ ?P |- _ ] =>
+    match P with
+    | context[(?a |-> ?v)%pred] =>
+      match goal with
+      | [ H: VarMap.find a s = Some v |- _ ] => fail 1
+      | _ => idtac
+      end;
+      let He := fresh "He" in
+      assert (VarMap.find a s = Some v) as He; [
+        eapply pred_apply_pimpl_proper in H; [
+        | reflexivity |
+        lazymatch goal with
+        | [ |- _ =p=> ?Q ] =>
+          let F := fresh "F" in
+          evar (F : pred);
+          unify Q (a |-> v * F)%pred;
+          cancel
+        end ];
+        eapply ptsto_valid in H; eassumption
+      | try rewrite He in * ]
+    end
+  end.
+
+Lemma CompileAdd :
+  forall env F sumvar avar bvar (sum0 a b : nat),
+    EXTRACT Ret (a + b)
+    {{ sumvar ~> sum0 * avar ~> a * bvar ~> b * F }}
+      ModifyBinary sumvar (ModifyNumOp Plus) avar bvar
+    {{ fun ret => sumvar ~> ret * avar ~> a * bvar ~> b * F }} // env.
+Proof.
+  unfold ProgOk; intros.
+  destruct_pair; simpl in *.
+  repeat extract_var_val.
+  inv_exec_progok.
+  repeat eexists.
+  econstructor.
+  rewrite add_upd.
+  eapply pred_apply_pimpl_proper; [ reflexivity | | ].
+  2: eapply ptsto_upd.
+  cancel.
+  unfold pred_apply in *.
+  pred_apply.
+  cancel.
+
+  contradiction H1.
+  repeat eexists.
+  econstructor.
+  eauto.
+  eauto.
+  eauto.
+  simpl; eauto.
+  simpl; eauto.
+  eauto.
+Defined.
+
 (*
 Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
                           (n i : W)
@@ -1358,6 +1415,16 @@ Ltac compile_step :=
             pattern a in arg; subst arg;
             eapply bind_left_id | ]
     end
+  | [ |- EXTRACT Ret (?a + ?b) {{ ?pre }} _ {{ _ }} // _ ] =>
+    let retvar := var_mapping_to_ret in
+    match find_val a pre with
+      | Some ?ka =>
+        match find_val b pre with
+          | Some ?kb =>
+            eapply hoare_weaken_post; [ | eapply hoare_strengthen_pre; [ |
+              eapply CompileAdd with (avar := ka) (bvar := kb) (sumvar := retvar) ] ]; [ cancel_subset .. ]
+        end
+    end
   | [ |- EXTRACT Ret (?f ?a ?b) {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val a pre with
       | None => 
@@ -1399,17 +1466,15 @@ Proof.
 Qed.
 *)
 
-(*
 Example micro_inc : sigT (fun p => forall x,
   EXTRACT Ret (1 + (2 + x))
   {{ 0 ~> x }}
     p
   {{ fun ret => 0 ~> ret }} // StringMap.empty _).
 Proof.
-
+  compile.
 Defined.
-*)
-
+Eval lazy in projT1 micro_inc.
 
 Example compile_one_read : sigT (fun p =>
   EXTRACT Read 1
