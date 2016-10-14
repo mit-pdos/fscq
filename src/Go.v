@@ -467,9 +467,10 @@ Module Go.
                        runsto (Assign x e) (d, s) (d, s')
     | RunsToModify : forall (x : var) (ex : expr) (s s' : locals) d (val v v' : value) op,
                        eval s ex = Some val ->
-                       VarMap.find x s = Some v ->
-                       can_alias (type_of v) = false ->
-                       eval_modop op v val = Some v' ->
+                       can_alias (type_of val) = false -> (* rhs cannot be aliasable *)
+                       VarMap.find x s = Some v -> (* variable must be declared *)
+                       eval_modop op v val = Some v' -> (* and types must be compatible *)
+                       type_of v = type_of v' -> (* and result has the correct type *)
                        s' = VarMap.add x v' s ->
                        runsto (Modify x op ex) (d, s) (d, s')
     | RunsToDiskRead : forall x ae a d s s' v0 v vs,
@@ -545,9 +546,10 @@ Module Go.
                      step (d, s, Assign x e) (d, s', Skip)
     | StepModify : forall (x : var) (ex : expr) (s s' : locals) d (val v v' : value) op,
                      eval s ex = Some val ->
-                     VarMap.find x s = Some v ->
-                     can_alias (type_of v) = false ->
-                     eval_modop op v val = Some v' ->
+                     can_alias (type_of val) = false -> (* rhs cannot be aliasable *)
+                     VarMap.find x s = Some v -> (* variable must be declared *)
+                     eval_modop op v val = Some v' -> (* and types must be compatible *)
+                     type_of v = type_of v' -> (* and result has the correct type *)
                      s' = VarMap.add x v' s ->
                      step (d, s, Modify x op ex) (d, s', Skip)
     | StepDiskRead : forall x ae a d s s' v v0 vs,
@@ -759,9 +761,10 @@ Module Go.
                          runsto_InCall (Assign x e) (d, s) (d, s')
     | RunsToICModify : forall (x : var) (ex : expr) (s s' : locals) d (val v v' : value) op,
                        eval s ex = Some val ->
-                       VarMap.find x s = Some v ->
-                       can_alias (type_of v) = false ->
-                       eval_modop op v val = Some v' ->
+                       can_alias (type_of val) = false -> (* rhs cannot be aliasable *)
+                       VarMap.find x s = Some v -> (* variable must be declared *)
+                       eval_modop op v val = Some v' -> (* and types must be compatible *)
+                       type_of v = type_of v' -> (* and result has the correct type *)
                        s' = VarMap.add x v' s ->
                        runsto_InCall (Modify x op ex) (d, s) (d, s')
     | RunsToICDiskRead : forall x ae a d s s' v v0 vs,

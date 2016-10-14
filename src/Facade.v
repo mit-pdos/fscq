@@ -324,6 +324,17 @@ Hint Extern 1 (Go.step _ (_, Go.Assign _ _) _) =>
 eapply Go.StepAssign.
 Hint Constructors Go.step.
 
+Fact sep_star_ptsto_some_find : forall l var val A,
+  l ≲ (var |-> val * A) -> VarMap.find var l = Some val.
+Proof.
+  intros.
+  find_eapply_lem_hyp sep_star_assoc_1.
+  find_eapply_lem_hyp sep_star_ptsto_some.
+  eauto.
+Qed.
+
+Hint Resolve sep_star_ptsto_some_find.
+
 Lemma CompileConst : forall env A var (v v0 : nat),
   EXTRACT Ret v
   {{ var ~> v0 * A }}
@@ -344,10 +355,6 @@ Proof.
   contradiction H1.
   repeat eexists.
   eapply Go.StepModify; simpl; eauto.
-  rewrite sep_star_assoc in H.
-  eapply sep_star_ptsto_some in H.
-  eassumption.
-  auto.
 Qed.
 
 Ltac forwardauto1 H :=
