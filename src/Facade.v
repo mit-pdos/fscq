@@ -1069,12 +1069,62 @@ Proof.
   contradiction H1.
   repeat eexists.
   econstructor.
-  eauto.
-  eauto.
-  eauto.
-  simpl; eauto.
-  simpl; eauto.
-  eauto.
+  all: simpl; eauto.
+Defined.
+
+Lemma CompileAddInPlace1 :
+  forall env F avar bvar (a b : nat),
+    EXTRACT Ret (a + b)
+    {{ avar ~> a * bvar ~> b * F }}
+      ModifyBinary avar (ModifyNumOp Plus) avar bvar
+    {{ fun ret => avar ~> ret * bvar ~> b * F }} // env.
+Proof.
+  unfold ProgOk; intros.
+  destruct_pair; simpl in *.
+  repeat extract_var_val.
+  inv_exec_progok.
+  repeat eexists.
+  econstructor.
+  rewrite add_upd.
+  eapply pred_apply_pimpl_proper; [ reflexivity | | ].
+  2: eapply ptsto_upd.
+  cancel.
+  unfold pred_apply in *.
+  pred_apply.
+  cancel.
+
+  contradiction H1.
+  repeat eexists.
+  econstructor.
+  all: simpl; eauto.
+Defined.
+
+(* TODO: make it unnecessary to have all these separate lemmas *)
+Lemma CompileAddInPlace2 :
+  forall env F avar bvar (a b : nat),
+    EXTRACT Ret (a + b)
+    {{ avar ~> a * bvar ~> b * F }}
+      ModifyBinary bvar (ModifyNumOp Plus) avar bvar
+    {{ fun ret => bvar ~> ret * avar ~> a * F }} // env.
+Proof.
+  unfold ProgOk; intros.
+  destruct_pair; simpl in *.
+  repeat extract_var_val.
+  inv_exec_progok.
+  repeat eexists.
+  econstructor.
+  rewrite add_upd.
+  eapply pred_apply_pimpl_proper; [ reflexivity | | ].
+  2: eapply ptsto_upd.
+  cancel.
+  unfold pred_apply in *.
+  pred_apply.
+  cancel.
+
+  contradiction H1.
+  repeat eexists.
+  econstructor.
+  all: simpl; eauto.
 Defined.
 
 (*
@@ -1421,8 +1471,12 @@ Ltac compile_step :=
       | Some ?ka =>
         match find_val b pre with
           | Some ?kb =>
-            eapply hoare_weaken_post; [ | eapply hoare_strengthen_pre; [ |
-              eapply CompileAdd with (avar := ka) (bvar := kb) (sumvar := retvar) ] ]; [ cancel_subset .. ]
+            eapply hoare_weaken_post; [
+            | eapply hoare_strengthen_pre;
+              [ | (unify retvar ka; eapply CompileAddInPlace1 with (avar := ka) (bvar := kb)) ||
+                  (unify retvar kb; eapply CompileAddInPlace2 with (avar := ka) (bvar := kb)) ||
+                  eapply CompileAdd with (avar := ka) (bvar := kb) (sumvar := retvar) ] ];
+            [ cancel_subset .. ]
         end
     end
   | [ |- EXTRACT Ret (?f ?a ?b) {{ ?pre }} _ {{ _ }} // _ ] =>
@@ -1466,7 +1520,7 @@ Proof.
 Qed.
 *)
 
-Example micro_inc : sigT (fun p => forall x,
+Example micro_add_twice : sigT (fun p => forall x,
   EXTRACT Ret (1 + (2 + x))
   {{ 0 ~> x }}
     p
@@ -1474,7 +1528,17 @@ Example micro_inc : sigT (fun p => forall x,
 Proof.
   compile.
 Defined.
-Eval lazy in projT1 micro_inc.
+Eval lazy in projT1 micro_add_twice.
+
+Example micro_add_use_twice : sigT (fun p => forall x,
+  EXTRACT Ret (x + (2 + x))
+  {{ 0 ~> x }}
+    p
+  {{ fun ret => 0 ~> ret }} // StringMap.empty _).
+Proof.
+  compile.
+Defined.
+Eval lazy in projT1 micro_add_use_twice.
 
 Example compile_one_read : sigT (fun p =>
   EXTRACT Read 1
