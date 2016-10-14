@@ -771,7 +771,7 @@ Qed.
 
 Import Go.
 
-Definition pimpl_subset (P Q : pred) := P * any =p=> Q * any.
+Definition pimpl_subset (P Q : pred) := P =p=> Q * any.
 
 Notation "p >p=> q" := (pimpl_subset p%pred q%pred) (right associativity, at level 90).
 
@@ -790,7 +790,10 @@ Proof.
   repeat eexists; eauto.
   unfold pred_apply in *.
   pred_apply.
-  cancel; eauto.
+  rewrite H.
+  rewrite sep_star_assoc.
+  rewrite pimpl_any with (p := (any * any)%pred).
+  eauto.
   eauto.
   eauto.
 Qed.
@@ -803,7 +806,9 @@ Lemma hoare_strengthen_pre : forall T env A1 A2 (B : T -> _) pr p,
   {{ A2 }} p {{ B }} // env.
 Proof.
   unfold ProgOk, pimpl_subset, pred_apply in *; intros.
-  apply H in H1.
+  rewrite H in H1.
+  apply sep_star_assoc in H1.
+  rewrite pimpl_any with (p := (any * any)%pred) in H1.
   forward_solve.
 Qed.
 
@@ -1302,14 +1307,24 @@ Ltac var_mapping_to_ret :=
 
 Definition any' : pred := any.
 
+Lemma chop_any :
+  forall P Q : pred,
+    P =p=> Q ->
+    P =p=> Q * any.
+Proof.
+  intros.
+  rewrite H.
+  cancel.
+  eapply pimpl_any.
+Qed.
+
 (* TODO: less hackery *)
 Ltac cancel_subset :=
   unfold pimpl_subset;
   fold any';
   unfold any' at 1;
   cancel;
-  try solve [ eapply pimpl_any ];
-  try solve [ eapply pimpl_emp_any ].
+  try solve [ eapply chop_any; cancel | eapply pimpl_any ].
 
 Ltac compile_step :=
   match goal with
@@ -1325,24 +1340,24 @@ Ltac compile_step :=
     end; auto; [ intro v; intros; eapply CompileBind; intros ]
   | _ => eapply CompileConst
   | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
-    eapply hoare_weaken_post; [ | eapply CompileSkip ]
+    eapply hoare_weaken_post; [ | eapply CompileSkip ]; [ cancel_subset ]
   | [ |- EXTRACT Read ?a {{ ?pre }} _ {{ _ }} // _ ] =>
     let retvar := var_mapping_to_ret in
     match find_val a pre with
     | Some ?k =>
-      eapply hoare_strengthen_pre; [
-      | eapply hoare_weaken_post; [ | eapply CompileRead with (avar := k) (vvar := retvar) ] ]; cancel_subset
+      eapply hoare_strengthen_pre; [| eapply hoare_weaken_post; [ |
+        eapply CompileRead with (avar := k) (vvar := retvar) ] ]; [ cancel_subset .. ]
     end
-      (*
   | [ |- EXTRACT Write ?a ?v {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val a pre with
     | Some ?ka =>
       match find_val v pre with
       | Some ?kv =>
         eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
-          eapply CompileWrite with (avar := ka) (vvar := kv) ]]
+          eapply CompileWrite with (avar := ka) (vvar := kv) ] ]; [ cancel_subset .. ]
       end
     end
+      (*
   | [ H : voidfunc2 ?name ?f ?env |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // ?env ] =>
     match find_fast a pre with
       | Some ?ka =>
@@ -1407,8 +1422,7 @@ Example extract_swap_1_2 : forall env, sigT (fun p =>
 Proof.
   intros. unfold swap_prog.
   compile.
-  (* yikes *)
-Admitted.
+Defined.
 Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
 
 (*
@@ -1444,8 +1458,6 @@ Definition swap_env : Env :=
            RetParamVars := []; Body := projT1 (extract_swap_prog (StringMap.empty _));
            (* ret_not_in_args := ltac:(auto); *) args_no_dup := ltac:(auto); body_source := ltac:(repeat constructor);
          |}; (StringMap.empty _)).
-
-(*
 
 Lemma swap_func : voidfunc2 "swap" swap_prog swap_env.
 Proof.
