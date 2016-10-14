@@ -1364,17 +1364,15 @@ Ltac compile_step :=
           eapply CompileWrite with (avar := ka) (vvar := kv) ] ]; [ cancel_subset .. ]
       end
     end
-      (*
   | [ H : voidfunc2 ?name ?f ?env |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // ?env ] =>
-    match find_fast a pre with
+    match find_val a pre with
       | Some ?ka =>
-        match find_fast b pre with
-            | Some ?kb =>
-              eapply hoare_weaken_post; [ | eapply hoare_strengthen_pre; [ |
-                eapply H ] ]; try match_scopes; maps
+        match find_val b pre with
+          | Some ?kb =>
+            eapply hoare_weaken_post; [ | eapply hoare_strengthen_pre; [ |
+              eapply H with (avar := ka) (bvar := kb) ] ]; [ cancel_subset .. ]
         end
     end
-*)
   | [ |- EXTRACT ?f ?a {{ ?pre }} _ {{ _ }} // _ ] =>
     match f with
       | Ret => fail 2
@@ -1432,7 +1430,6 @@ Proof.
 Defined.
 Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
 
-(*
 Lemma extract_swap_prog : forall env, sigT (fun p =>
   forall a b, EXTRACT swap_prog a b {{ 0 ~> a * 1 ~> b }} p {{ fun _ => emp }} // env).
 Proof.
@@ -1471,7 +1468,7 @@ Proof.
   unfold voidfunc2.
   intros.
   eapply extract_voidfunc2_call; eauto with extractions.
-  unfold swap_env; map_rewrites. auto.
+  unfold swap_env; repeat rewrite ?StringMapFacts.add_eq_o, ?StringMapFacts.add_neq_o by congruence; reflexivity.
 Qed.
 Hint Resolve swap_func : funcs.
 
@@ -1540,7 +1537,6 @@ Eval lazy in projT1 (extract_rot3_prog_top).
 *)
 
 
-(*
 Definition swap2_prog :=
   a <- Read 0;
   b <- Read 1;
@@ -1551,6 +1547,7 @@ Definition swap2_prog :=
     Write 1 a;;
     Ret tt.
 
+(*
 Example micro_swap2 : sigT (fun p =>
   EXTRACT swap2_prog {{ emp }} p {{ fun _ => emp }} // (StringMap.empty _)).
 Proof.
@@ -1582,5 +1579,4 @@ Proof.
   all: congruence.
 Defined.
 Eval lazy in projT1 micro_swap2.
-*)
 *)
