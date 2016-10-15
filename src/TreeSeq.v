@@ -2317,37 +2317,59 @@ Admitted.
     eapply pimpl_ok2.
     eapply AFS.rename_ok.
     cancel.
-    eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred; eauto.
+    eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
     eassumption.
     step.
     unfold AFS.rename_rep.
     cancel.
     or_r.
 
-    (* a few obligations need: subtree = (TreeFile srcnum srcfile) using H0 *)
-    eapply sep_star_split_l in H0 as H0'.
-    destruct H0'.
+    (* a few obligations need: subtree *)
+    eapply sep_star_split_l in H4 as H4'.
+    destruct H4'.
     eapply dir2flatmem2_find_subtree_ptsto in H5.
     erewrite find_subtree_app in H5.
     2: eassumption.
-    erewrite find_subtree_find_dirlist_eq in H5.
-    rewrite H14 in H5.
-    inversion H5.
-    rewrite H11 in *.
+    erewrite find_subtree_app in H5.
+    2: eassumption.
+    2: distinct_names'.
 
     cancel.
     eapply treeseq_in_ds_pushd; eauto.
     unfold treeseq_one_safe; simpl.
-    rewrite H4 in H9.
+    rewrite H0 in H9.
     eassumption.
-    eapply dirents2mem2_graft_file'.
-    admit.  (* XXX distinct names *)
-    eapply dirents2mem2_prune_file.
-    admit. (* XXX distinct names *)
-    pred_apply.
-    cancel.
-    cancel.
-    admit. (* XXX distinct names *)
+
+    eapply treeseq_safe_pushd; eauto.
+    eapply NEforall_d_in'; intros.
+    eapply NEforall_d_in in H13.
+    2: instantiate (1 := x0); eauto.
+    destruct (list_eq_dec string_dec pathname' (cwd ++ srcbase ++ [srcname])); simpl; try congruence.
+    destruct (list_eq_dec string_dec pathname' (cwd ++ dstbase ++ [dstname])); simpl; try congruence.
+    unfold treeseq_safe in *.
+    intuition.
+    - unfold treeseq_safe_fwd in *.
+      intros.
+      eexists.
+      intuition; simpl.
+      (* erewrite update_subtree_tree_graft. rename should have no effect on *)
+      (* on pathname' *)
+      admit.
+      (* need to show block is in updated tree *)
+      (* we know that dirtree_safe holds ts!! to updated ts!! *)
+      (* we know that pathname' existed in ts!! *)
+      admit.
+    - unfold treeseq_safe_bwd in *.
+      intros.
+      left.
+      deex.
+      eexists f'.
+      admit.
+    - admit.
+    - 
+     (* eapply dirents2mem2_graft_file'. *)
+     (* eapply dirents2mem2_prune_file. *)
+      admit.
   Admitted.
 
   (* restricted to deleting files *)
