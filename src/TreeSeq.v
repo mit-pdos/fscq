@@ -2278,12 +2278,79 @@ Module TREESEQ.
     constructor.
   Qed.
 
-
+(* XXX delete? *)
 Lemma find_subtree_find_dirlist_eq: forall name inum dents ,
   find_subtree [name] (TreeDir inum dents) = find_dirlist name dents.
 Proof.
   intros.
 Admitted.
+
+
+  Definition isnot_prefix p1 p2 :=
+    ~ (exists suffix : list string, p1 ++ suffix = p2).
+
+  Theorem find_subtree_graft_subtree_oob : forall pn num ents base name tree subtree inum f,
+    (~ exists suffix, pn = base ++ [name] ++ suffix) ->
+    find_subtree pn tree = Some (TreeFile inum f) ->
+    find_subtree pn (tree_graft num ents base name subtree tree) = Some (TreeFile inum f).
+  Proof.
+      (* proof similar to find_subtree_update_subtree_oob? *)
+  Admitted.
+
+ Theorem find_subtree_prune_subtree_oob : forall pn num ents base name tree inum f,
+    (~ exists suffix, pn = base ++ [name] ++ suffix) ->
+    find_subtree pn tree = Some (TreeFile inum f) ->
+    find_subtree pn (tree_prune num ents base name tree) = Some (TreeFile inum f).
+  Proof.
+  Admitted.
+
+  Lemma find_rename_oob: forall tree subtree cwd dnum tree_elem srcnum srcbase 
+         srcents srcname dstnum dstbase dstents dstname pathname inum f,
+    isnot_prefix (cwd ++ srcbase ++ [srcname]) pathname ->
+    isnot_prefix (cwd ++ dstbase ++ [dstname]) pathname -> 
+    find_subtree cwd tree = Some (TreeDir dnum tree_elem) ->
+    find_subtree pathname tree = Some (TreeFile inum f) ->
+    find_subtree srcbase (TreeDir dnum tree_elem) = Some (TreeDir srcnum srcents) ->
+    find_dirlist srcname srcents = Some subtree ->
+    find_subtree dstbase
+      (tree_prune srcnum srcents srcbase srcname (TreeDir dnum tree_elem)) =
+      Some (TreeDir dstnum dstents) ->
+    find_subtree pathname
+     (update_subtree cwd
+       (tree_graft dstnum dstents dstbase dstname subtree
+        (tree_prune srcnum srcents srcbase srcname (TreeDir dnum tree_elem)))
+     tree) = Some (TreeFile inum f).
+  Proof.
+    intros.
+    destruct (pathname_decide_prefix cwd pathname).
+    + destruct (pathname_decide_prefix (cwd ++ srcbase ++ [srcname]) pathname).
+      - (* pathname is inside src subtree; contradiction *)
+        destruct H7.
+        rewrite H7 in H.
+        unfold isnot_prefix in H.
+        destruct H.
+        eexists x; eauto.
+       - (* pathname isn't inside src subtree *)
+        destruct (pathname_decide_prefix (cwd ++ dstbase ++ [dstname]) pathname).
+        ++ (* pathname is inside dst tree; contradiction *)
+          destruct H8.
+          rewrite H8 in *.
+          unfold isnot_prefix in H0.
+          destruct H0.
+          eexists x; eauto.
+        ++ (* pathname isn't inside src and isn't inside dst tree, but inside cwd *)
+          deex.
+          erewrite find_subtree_app; eauto.
+          erewrite find_subtree_graft_subtree_oob; eauto.
+          admit.  (* cut cwd in H8 left and right using app_inv_head? *)
+          erewrite find_subtree_prune_subtree_oob; eauto.
+          admit.
+          erewrite find_subtree_app in H2; eauto.
+    + (* pathname is outside of cwd *)
+      unfold tree_graft, tree_prune.
+      eapply find_subtree_update_subtree_oob; eauto.
+  Admitted.
+
 
   Theorem treeseq_rename_ok : forall fsxp dnum srcbase (srcname:string) dstbase dstname mscs,
     {< ds ts Fm Ftop Ftree cwd tree_elem srcnum dstnum srcfile dstfile,
@@ -2344,17 +2411,20 @@ Admitted.
     eapply NEforall_d_in'; intros.
     eapply NEforall_d_in in H13.
     2: instantiate (1 := x0); eauto.
-    destruct (list_eq_dec string_dec pathname' (cwd ++ srcbase ++ [srcname])); simpl; try congruence.
-    destruct (list_eq_dec string_dec pathname' (cwd ++ dstbase ++ [dstname])); simpl; try congruence.
     unfold treeseq_safe in *.
     intuition.
     - unfold treeseq_safe_fwd in *.
-      intros.
-      eexists.
-      intuition; simpl.
-      (* erewrite update_subtree_tree_graft. rename should have no effect on *)
-      (* on pathname' *)
-      admit.
+      intros; simpl.
+      deex.
+      specialize (H17 inum off bn).
+      destruct H17.
+      exists f; eauto.
+      intuition.
+      exists x1.
+      intuition.
+      eapply find_rename_oob; eauto.
+      admit.  (* adjust preconditions *)
+      admit. 
       (* need to show block is in updated tree *)
       (* we know that dirtree_safe holds ts!! to updated ts!! *)
       (* we know that pathname' existed in ts!! *)
