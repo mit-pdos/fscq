@@ -12,11 +12,12 @@ Import Go.
 
 Class GoWrapper (WrappedType: Type) :=
   {
-    wrap:      WrappedType -> Go.value;
-    wrap_inj:  forall v v', wrap v = wrap v' -> v = v';
-    wrapped_type: Go.type;
-    wrap_type: forall v, type_of (wrap v) = wrapped_type;
+    wrap_type: Go.type;
+    wrap':     WrappedType -> Go.type_denote wrap_type;
+    wrap_inj:  forall a1 a2, wrap' a1 = wrap' a2 -> a1 = a2;
   }.
+
+Definition wrap T {Wr: GoWrapper T} (t : T) : Go.value := Go.Val wrap_type (wrap' t).
 
 Definition pred := @Pred.pred var Nat.eq_dec Go.value.
 

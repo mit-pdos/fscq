@@ -80,15 +80,21 @@ Module Go.
   | Num
   | Bool
   | EmptyStruct
-  | DiskBlock.
+  | DiskBlock
+  | Slice : type -> type.
 
-  Definition type_denote (t : type) : Type :=
+  Fixpoint type_denote (t : type) : Type :=
     match t with
     | Num => W
     | Bool => bool
     | EmptyStruct => unit
     | DiskBlock => valu
+    | Slice t' => list (type_denote t')
     end.
+
+  Definition type_eq_dec : forall t1 t2 : type, {t1 = t2} + {t1 <> t2}.
+    decide equality.
+  Defined.
 
   Inductive expr :=
   | Var : var -> expr
@@ -101,6 +107,7 @@ Module Go.
 
   Inductive modify_unop :=
   | DuplicateOp : modify_unop
+  | AppendOp : modify_unop
   .
 
   Inductive modify_binop :=
@@ -113,6 +120,7 @@ Module Go.
     | Bool => true
     | EmptyStruct => true
     | DiskBlock => false
+    | Slice _ => false
     end.
 
   Inductive value :=
@@ -138,6 +146,7 @@ Module Go.
     | Bool => Val Bool false
     | EmptyStruct => Val EmptyStruct tt
     | DiskBlock => Val DiskBlock $0
+    | Slice t' => Val (Slice t') nil
     end.
 
   Definition scope := VarMap.t type.
@@ -246,10 +255,20 @@ Module Go.
     | SetConst n => Some (Val Num n)
     end.
 
-  Definition eval_unop op a : option value :=
-    match op with
-    | DuplicateOp => Some a
-    end.
+  Definition eval_unop (old : value) (op : modify_unop) (a : value) : option value.
+    refine (
+        match op with
+        | DuplicateOp => Some a
+        | AppendOp =>
+          _ (* TODO: in this case, if [a] is not aliasable, it needs to disappear *)
+        end).
+    (* TODO: use dependent types for this, or leave list typing to semantics? *)
+    destruct old, a.
+    destruct t; [ exact None .. | ].
+    destruct (type_eq_dec t t0); [ | exact None ].
+    rewrite e in v.
+    exact (Some (Val (Slice t0) (v0 :: v))).
+  Defined.
 
   Definition eval_binop op a b : option value :=
     match op with
@@ -497,7 +516,7 @@ Module Go.
     | RunsToModifyUnary : forall x op var (s s' : locals) d (val v0 v : value),
         VarMap.find x s = Some v0 ->
         VarMap.find var s = Some val ->
-        eval_unop op val = Some v ->
+        eval_unop v0 op val = Some v ->
         type_of v = type_of v0 ->
         s' = VarMap.add x v s ->
         runsto (ModifyUnary x op var) (d, s) (d, s')
@@ -591,7 +610,7 @@ Module Go.
     | StepModifyUnary : forall x op var (s s' : locals) d (val v0 v : value),
         VarMap.find x s = Some v0 ->
         VarMap.find var s = Some val ->
-        eval_unop op val = Some v ->
+        eval_unop v0 op val = Some v ->
         type_of v = type_of v0 ->
         s' = VarMap.add x v s ->
         step (d, s, ModifyUnary x op var) (d, s', Skip)
@@ -825,7 +844,7 @@ Module Go.
     | RunsToICModifyUnary : forall x op var (s s' : locals) d (val v0 v : value),
         VarMap.find x s = Some v0 ->
         VarMap.find var s = Some val ->
-        eval_unop op val = Some v ->
+        eval_unop v0 op val = Some v ->
         type_of v = type_of v0 ->
         s' = VarMap.add x v s ->
         runsto_InCall (ModifyUnary x op var) (d, s) (d, s')

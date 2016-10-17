@@ -48,45 +48,68 @@ Notation "'EXTRACT' SP {{ A }} EP {{ B }} // EV" :=
   (ProgOk EV EP%go SP A%pred B%pred)
     (at level 60, format "'[v' 'EXTRACT'  SP '/' '{{'  A  '}}' '/'    EP '/' '{{'  B  '}}'  //  EV ']'").
 
+Create HintDb gowrapper discriminated.
+Hint Resolve wrap_inj : gowrapper.
+
 Ltac GoWrapper_t :=
   abstract (repeat match goal with
                    | _ => progress intros
                    | [ H : _ * _ |- _ ] => destruct H
                    | [ H : unit |- _ ] => destruct H
-                   | [ H : _ = _ |- _ ] => inversion H; solve [eauto using inj_pair2]
-                   | _ => solve [eauto using inj_pair2]
+                   | [ H : _ = _ |- _ ] => inversion H; solve [eauto using inj_pair2 with gowrapper]
+                   | _ => solve [eauto using inj_pair2 with gowrapper]
                    end).
 
 Instance GoWrapper_Num : GoWrapper W.
 Proof.
-  refine {| wrap := Go.Val Go.Num;
-            wrapped_type := Go.Num |}; GoWrapper_t.
+  refine {| wrap' := id;
+            wrap_type := Go.Num |}; GoWrapper_t.
 Defined.
 
 Instance GoWrapper_Bool : GoWrapper bool.
 Proof.
-  refine {| wrap := Go.Val Go.Bool;
-            wrapped_type := Go.Bool |}; GoWrapper_t.
+  refine {| wrap' := id;
+            wrap_type := Go.Bool |}; GoWrapper_t.
 Defined.
 
 Instance GoWrapper_valu : GoWrapper valu.
 Proof.
-  refine {| wrap := Go.Val Go.DiskBlock;
-            wrapped_type := Go.DiskBlock |}; GoWrapper_t.
+  refine {| wrap' := id;
+            wrap_type := Go.DiskBlock |}; GoWrapper_t.
 Defined.
 
 Instance GoWrapper_unit : GoWrapper unit.
 Proof.
-  refine {| wrap := Go.Val Go.EmptyStruct;
-            wrapped_type := Go.EmptyStruct |}; GoWrapper_t.
+  refine {| wrap' := id;
+            wrap_type := Go.EmptyStruct |}; GoWrapper_t.
 Defined.
+
+Lemma map_inj_inj :
+  forall A B (f : A -> B),
+    (forall a1 a2, f a1 = f a2 -> a1 = a2) ->
+    forall as1 as2,
+      map f as1 = map f as2 ->
+      as1 = as2.
+Proof.
+  induction as1; intros; destruct as2; simpl in *; try discriminate; auto.
+  find_inversion.
+  f_equal; eauto.
+Qed.
+Hint Resolve map_inj_inj : gowrapper.
+
+Instance GoWrapper_list T {Wr: GoWrapper T} : GoWrapper (list T).
+Proof.
+  refine {| wrap' := map wrap';
+            wrap_type := Go.Slice wrap_type |}; GoWrapper_t.
+Defined.
+
 
 Instance GoWrapper_dec {P Q} : GoWrapper ({P} + {Q}).
 Proof.
-  refine {| wrap := fun (v : {P} + {Q}) => if v then Go.Val Go.Bool true else Go.Val Go.Bool false;
-            wrapped_type := Go.Bool |}.
-  destruct v; destruct v'; intro; try eapply Go.value_inj in H; try congruence; intros; f_equal; try apply proof_irrelevance.
-  intros; break_match; auto.
+  refine {| wrap' := fun (v : {P} + {Q}) => if v then true else false;
+            wrap_type := Go.Bool |}.
+  intros.
+  destruct a1, a2; f_equal; try discriminate; apply proof_irrelevance.
 Qed.
 
 Definition extract_code := projT1.
@@ -904,12 +927,10 @@ Proof.
   rewrite sep_star_assoc in H.
   pose proof (ptsto_valid H).
   unfold mem_of in *.
-  assert (val = wrap x) by congruence.
+  assert (v = wrap x) by congruence.
   assert (v1 = wrap v0) by congruence.
-  destruct op.
   simpl in *.
   subst.
-  find_inversion_safe.
   rewrite sep_star_assoc.
   eapply ptsto_upd.
   eassumption.
@@ -1045,6 +1066,12 @@ Ltac extract_var_val :=
     end
   end.
 
+Ltac dispatch_step_goal :=
+  match goal with
+  | [ |- type_of _ = type_of _ ] => idtac
+  | _ => simpl; eauto
+  end.
+
 Lemma CompileAdd :
   forall env F sumvar avar bvar (sum0 a b : nat),
     EXTRACT Ret (a + b)
@@ -1056,11 +1083,13 @@ Proof.
   destruct_pair; simpl in *.
   repeat extract_var_val.
   inv_exec_progok.
+  unfold id in *; simpl in *.
   repeat eexists.
   econstructor.
   rewrite add_upd.
   eapply pred_apply_pimpl_proper; [ reflexivity | | ].
   2: eapply ptsto_upd.
+  find_inversion_safe.
   cancel.
   unfold pred_apply in *.
   pred_apply.
@@ -1069,7 +1098,9 @@ Proof.
   contradiction H1.
   repeat eexists.
   econstructor.
-  all: simpl; eauto.
+  
+  all: dispatch_step_goal.
+  reflexivity.
 Defined.
 
 Lemma CompileAddInPlace1 :
@@ -1088,6 +1119,7 @@ Proof.
   rewrite add_upd.
   eapply pred_apply_pimpl_proper; [ reflexivity | | ].
   2: eapply ptsto_upd.
+  find_inversion_safe.
   cancel.
   unfold pred_apply in *.
   pred_apply.
@@ -1096,7 +1128,8 @@ Proof.
   contradiction H1.
   repeat eexists.
   econstructor.
-  all: simpl; eauto.
+  all: dispatch_step_goal.
+  reflexivity.
 Defined.
 
 (* TODO: make it unnecessary to have all these separate lemmas *)
@@ -1116,6 +1149,7 @@ Proof.
   rewrite add_upd.
   eapply pred_apply_pimpl_proper; [ reflexivity | | ].
   2: eapply ptsto_upd.
+  find_inversion_safe.
   cancel.
   unfold pred_apply in *.
   pred_apply.
@@ -1124,7 +1158,58 @@ Proof.
   contradiction H1.
   repeat eexists.
   econstructor.
-  all: simpl; eauto.
+  all: dispatch_step_goal.
+  reflexivity.
+Defined.
+
+Definition any' : pred := any.
+
+Lemma chop_any :
+  forall P Q : pred,
+    P =p=> Q ->
+    P =p=> Q * any.
+Proof.
+  intros.
+  rewrite H.
+  cancel.
+  eapply pimpl_any.
+Qed.
+
+(* TODO: less hackery *)
+Ltac cancel_subset :=
+  unfold pimpl_subset;
+  fold any';
+  unfold any' at 1;
+  cancel;
+  try solve [ eapply chop_any; cancel | eapply pimpl_any ].
+
+Lemma compile_append :
+  forall env F T {Wr: GoWrapper T} lvar vvar (x : T) xs,
+  EXTRACT Ret (x :: xs)
+  {{ vvar ~> x * lvar ~> xs * F }}
+    ModifyUnary lvar AppendOp vvar
+  {{ fun ret => lvar ~> (x :: xs) * F }} // env.
+Proof.
+  unfold ProgOk; intros.
+  repeat extract_var_val.
+  inv_exec_progok.
+  destruct (type_eq_dec wrap_type wrap_type); try congruence.
+  find_inversion_safe.
+  repeat eexists.
+  eauto.
+  rewrite add_upd.
+  rewrite sep_star_assoc.
+  rewrite <- eq_rect_eq.
+  eapply ptsto_upd.
+  unfold pred_apply in *; pred_apply.
+  cancel_subset.
+
+  contradiction H1.
+  repeat eexists; econstructor.
+  all: dispatch_step_goal.
+  break_match; try congruence.
+  rewrite <- eq_rect_eq.
+  all: reflexivity.
 Defined.
 
 (*
@@ -1395,27 +1480,6 @@ Ltac var_mapping_to_ret :=
       end
   end.
 
-Definition any' : pred := any.
-
-Lemma chop_any :
-  forall P Q : pred,
-    P =p=> Q ->
-    P =p=> Q * any.
-Proof.
-  intros.
-  rewrite H.
-  cancel.
-  eapply pimpl_any.
-Qed.
-
-(* TODO: less hackery *)
-Ltac cancel_subset :=
-  unfold pimpl_subset;
-  fold any';
-  unfold any' at 1;
-  cancel;
-  try solve [ eapply chop_any; cancel | eapply pimpl_any ].
-
 Ltac compile_step :=
   match goal with
   | [ |- @sigT _ _ ] => eexists; intros
@@ -1540,6 +1604,7 @@ Proof.
 Defined.
 Eval lazy in projT1 micro_add_use_twice.
 
+                                 
 Example compile_one_read : sigT (fun p =>
   EXTRACT Read 1
   {{ 0 ~> $0 }}
