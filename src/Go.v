@@ -157,7 +157,6 @@ Module Go.
   | Seq : stmt -> stmt -> stmt
   | If : expr -> stmt -> stmt -> stmt
   | While : expr -> stmt -> stmt
-  | For : var -> expr -> stmt -> stmt
   | Call (retvars: list var) (* The caller's variables to get the return values *)
          (f: label) (* The function to call *)
          (argvars: list var) (* The caller's variables to pass in *)
@@ -194,10 +193,6 @@ Module Go.
       forall cond body,
         source_stmt body ->
         source_stmt (While cond body)
-  | SFor :
-      forall v term body,
-        source_stmt body ->
-        source_stmt (For v term body)
   | SCall : forall retvars f argvars, source_stmt (Call retvars f argvars)
   | SAssign : forall x e, source_stmt (Assign x e)
   | SModifyNullary : forall dst op, source_stmt (ModifyNullary dst op)
@@ -481,18 +476,6 @@ Module Go.
         let loop := While cond body in
         is_false (snd st) cond ->
         runsto loop st st
-    (*
-    | RunsToForTrue : forall v term body st st' st'',
-                            let loop := For v term body in
-                            is_true (snd st) (TestE Lt (Var v) term) ->
-                            runsto body st st' ->
-                            runsto (Seq (increment v) loop) st' st'' ->
-                            runsto loop st st''
-    | RunsToForFalse : forall term v body st,
-                            let loop := For v term body in
-                            is_false (snd st) (TestE Lt (Var v) term) ->
-                            runsto loop st st
-     *)
     | RunsToDeclare : forall body body' d s si si' s' d' var t,
         VarMap.find var s = None ->
         si = VarMap.add var (default_value t) s ->
@@ -574,17 +557,6 @@ Module Go.
         let loop := While cond body in
         is_false (snd st) cond ->
         step (st, loop) (st, Skip)
-    (*
-    | StepForTrue : forall v term body st,
-                      let loop := For v term body in
-                      is_true (snd st) (TestE Lt (Var v) term) ->
-                      step (st, loop) (st, Seq body
-                                          (Seq (increment v) loop))
-    | StepForFalse : forall v term body st,
-                       let loop := For v term body in
-                       is_false (snd st) (TestE Lt (Var v) term) ->
-                       step (st, loop) (st, Skip)
-     *)
     | StepDeclare : forall t body body' d s s' var,
         VarMap.find var s = None ->
         s' = VarMap.add var (default_value t) s ->
@@ -806,18 +778,6 @@ Module Go.
         let loop := While cond body in
         is_false (snd st) cond ->
         runsto_InCall loop st st
-    (*
-    | RunsToICForTrue : forall v term body st st' st'',
-                            let loop := For v term body in
-                            is_true (snd st) (TestE Lt (Var v) term) ->
-                            runsto_InCall body st st' ->
-                            runsto_InCall (Seq (increment v) loop) st' st'' ->
-                            runsto_InCall loop st st''
-    | RunsToICForFalse : forall v term body st,
-                            let loop := For v term body in
-                            is_false (snd st) (TestE Lt (Var v) term) ->
-                            runsto_InCall loop st st
-     *)
     | RunsToICDeclare : forall body body' d s si si' s' d' var t,
         VarMap.find var s = None ->
         si = VarMap.add var (default_value t) s ->

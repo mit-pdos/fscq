@@ -1212,58 +1212,70 @@ Proof.
   all: reflexivity.
 Defined.
 
-(*
+Ltac unfold_expr :=
+  unfold is_false, is_true, eval_bool, eval_numop,
+         eval_test_m, eval_test_num, eval_test_bool,
+         eval in *; simpl in *.
+
+Ltac eval_expr :=
+  repeat extract_var_val;
+  repeat unfold_expr;
+  repeat (simpl in *; match goal with
+  | [e : ?x = _, H: context[match ?x with _ => _ end] |- _]
+    => rewrite e in H
+  | [e : ?x = _ |- context[match ?x with _ => _ end] ]
+    => rewrite e
+  | [H : context[if ?x then _ else _] |- _]
+    => let H' := fresh in destruct x eqn:H'; try omega
+  | [|- context[if ?x then _ else _] ]
+    => let H' := fresh in destruct x eqn:H'; try omega
+  end); repeat find_inversion_safe; try congruence.
+
 Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
                           (n i : W)
-                          t0 term
+                          t0 term one
                           env (pb : W -> L -> prog L) xpb nocrash oncrash,
-  loopvar <> v ->
   (forall x A t,
   EXTRACT (pb x t)
   {{ loopvar ~> t * v ~> x * A }}
     xpb
   {{ fun ret => loopvar ~> ret * v ~> x * A }} // env)
   ->
-  term = Const Num (i + n) ->
   EXTRACT (@ForN_ L G pb i n nocrash oncrash t0)
-  {{ loopvar ~> t0 * v ~> i * F }}
-    Go.For v term xpb
-  {{ fun ret => loopvar ~> ret * v ~> (i + n) * F }} // env.
+  {{ loopvar ~> t0 * v ~> i * one ~> 1 * term ~> (i + n) * F }}
+    Go.While (TestE Lt (Var v) (Var term))
+      (xpb; ModifyBinary v (ModifyNumOp Plus) v one)
+  {{ fun ret => loopvar ~> ret * v ~> (i + n) * one ~> 1 * term ~> (i + n) * F }} // env.
 Proof.
   induction n; intros; simpl.
-  - subst term.
-    rewrite <- plus_n_O.
-    unfold ProgOk. intros.
+  - unfold ProgOk. intros.
+    rewrite <- plus_n_O in *.
+    repeat destruct_pair.
     inv_exec.
-    {
-      inv_exec; [| inv_exec_progok].
-      rewrite sep_star_assoc_1 in H1.
-      rewrite sep_star_comm in H1.
-      rewrite sep_star_assoc_1 in H1.
-      (*
-      eapply ptsto_find in H1.
-      repeat (unfold is_true, eval_bool, eval_test_m in *; simpl in * ).
-      rewrite H1 in H9.
-      destruct lt_dec. omega.
-      find_inversion.
-*)
+    + inv_exec.
+      eval_expr.
+      inv_exec_progok.
+    + inv_exec_progok.
+      contradiction H2.
+      repeat eexists.
+      eapply StepWhileFalse.
+      eval_expr.
+    + inv_exec_progok.
+  - unfold ProgOk. intros.
+    destruct_pairs.
+    inv_exec.
+    + inv_exec.
+      eval_expr.
       admit.
-    }
-    (*
-    inv_exec_progok.
-    rewrite sep_star_assoc_1 in H1.
-    rewrite sep_star_comm in H1.
-    rewrite sep_star_assoc_1 in H1.
-    apply ptsto_find in H1. simpl in *.
-    contradiction H3.
-    repeat eexists.
-    apply StepForFalse. simpl.
-    unfold is_false, eval_bool, eval, eval_test_m, eval_test_num.
-    rewrite H1. destruct lt_dec; auto; omega.
-    inv_exec_progok.
-*)
+      eval_expr.
+      admit.
+    + inv_exec_progok.
+      contradiction H2.
+      repeat eexists.
+      eapply StepWhileTrue.
+      eval_expr. unfold id in *. omega.
+    + inv_exec_progok.
 Admitted.
-*)
 
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
   forall avar bvar,
