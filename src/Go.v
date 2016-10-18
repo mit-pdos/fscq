@@ -1001,6 +1001,14 @@ Module Go.
         + eauto.
     Qed.
 
+    Lemma Steps_Skip_unify : forall r l r' l',
+      step^* (r, l, Skip) (r', l', Skip) ->
+      r = r' /\ l = l'.
+    Proof.
+      intros. inversion H; auto.
+      inversion H0.
+    Qed.
+
   End EnvSection.
   
 End Go.

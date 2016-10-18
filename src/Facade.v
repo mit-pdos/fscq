@@ -1215,12 +1215,14 @@ Defined.
 Ltac unfold_expr :=
   unfold is_false, is_true, eval_bool, eval_numop,
          eval_test_m, eval_test_num, eval_test_bool,
+         eval_binop,
          eval in *; simpl in *.
 
 Ltac eval_expr :=
   repeat extract_var_val;
   repeat unfold_expr;
-  repeat (simpl in *; match goal with
+  simpl in *;
+  repeat (match goal with
   | [e : ?x = _, H: context[match ?x with _ => _ end] |- _]
     => rewrite e in H
   | [e : ?x = _ |- context[match ?x with _ => _ end] ]
@@ -1229,7 +1231,11 @@ Ltac eval_expr :=
     => let H' := fresh in destruct x eqn:H'; try omega
   | [|- context[if ?x then _ else _] ]
     => let H' := fresh in destruct x eqn:H'; try omega
-  end); repeat find_inversion_safe; try congruence.
+  end; simpl in *);
+  repeat find_inversion_safe;
+  simpl in *;
+  unfold id in *;
+  try solve[congruence | omega].
 
 Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
                           (n i : W)
@@ -1264,16 +1270,59 @@ Proof.
   - unfold ProgOk. intros.
     destruct_pairs.
     inv_exec.
-    + inv_exec.
-      eval_expr.
+    + inv_exec; eval_expr. subst_definitions.
+      intuition auto; destruct_pairs; simpl in *.
+      {
+        find_eapply_lem_hyp ExecFinished_Steps.
+        find_eapply_lem_hyp Steps_Seq.
+        intuition; repeat deex; try discriminate.
+        repeat find_eapply_lem_hyp Steps_ExecFinished.
+        repeat find_eapply_lem_hyp ExecFinished_Steps. find_eapply_lem_hyp Steps_Seq.
+        intuition; repeat deex; try discriminate.
+        repeat find_eapply_lem_hyp Steps_ExecFinished.
+        edestruct H; eauto.
+        {
+          unfold pred_apply in *.
+          match goal with
+          | [H : _ |- _] => eapply pimpl_apply; [> | exact H]; solve [cancel]
+          end.
+        }
+        edestruct (H2 st'0); eauto.
+        repeat deex. repeat destruct_pair. simpl in *.
+        invc H5.
+        invc H8.
+        eval_expr.
+        find_inversion_safe.
+        find_eapply_lem_hyp ExecFinished_Steps.
+        edestruct IHn; eauto.
+        rewrite plus_Snm_nSm. simpl.
+        rewrite Nat.add_1_r in *.
+        find_eapply_lem_hyp Steps_Skip_unify.
+        intuition subst.
+        rewrite add_upd.
+        repeat rewrite sep_star_assoc; rewrite sep_star_comm.
+        rewrite sep_star_assoc.
+        eapply ptsto_upd.
+        unfold pred_apply in *.
+        match goal with
+        | [H : _ |- _] => eapply pimpl_apply; [> | exact H]; solve [cancel]
+        end.
+        simpl in *.
+        edestruct H5; eauto; simpl in *.
+        repeat deex.
+        repeat eexists.
+        repeat find_eapply_lem_hyp Steps_Skip_unify.
+        intuition subst.
+        eapply XBindFinish; eauto.
+        rewrite <- plus_Snm_nSm; auto.
+      }
       admit.
-      eval_expr.
       admit.
     + inv_exec_progok.
       contradiction H2.
       repeat eexists.
       eapply StepWhileTrue.
-      eval_expr. unfold id in *. omega.
+      eval_expr.
     + inv_exec_progok.
 Admitted.
 
