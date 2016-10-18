@@ -1299,7 +1299,34 @@ Proof.
       eapply XBindFinish; eauto.
       rewrite <- plus_Snm_nSm; auto.
     + (* crashed case *)
-      admit.
+      intuition try congruence. find_inversion.
+      inv_exec; [> | solve [inversion H3] ].
+      inv_exec; eval_expr.
+      find_eapply_lem_hyp ExecCrashed_Steps.
+      intuition; repeat deex.
+      find_eapply_lem_hyp Steps_Seq.
+      intuition auto; repeat deex.
+      {
+        invc H4.
+        find_eapply_lem_hyp Steps_ExecCrashed; eauto.
+        edestruct H; eauto.
+        pred_cancel.
+        intuition auto.
+        edestruct H6; auto.
+        simpl in *.
+        eexists.
+        apply XBindCrash; eauto.
+      }
+      {
+        find_eapply_lem_hyp Steps_ExecFinished.
+        find_eapply_lem_hyp Steps_ExecCrashed; eauto.
+        edestruct H; eauto. pred_cancel.
+        edestruct H2; eauto.
+        repeat deex.
+        edestruct IHn; eauto.
+        rewrite plus_Snm_nSm. pred_cancel.
+        edestruct H12. edestruct H13; eauto.
+      }
 Admitted.
 
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
