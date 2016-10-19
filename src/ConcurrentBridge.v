@@ -92,13 +92,11 @@ Module MakeBridge (C:CacheSubProtocol).
     exact (w, nil).
   Defined.
 
+  Definition cache_vars := [( vCache; vWriteBuffer; vDisk0; vdisk0; vdisk )].
+
   (* The idea of concurrent_spec is to compute a concurrent spec
      corresponding to sequential spec, capturing the same spec on top of
-     the abstraction exported by the cache.
-
-     TODO: need to also state only cache variables are modified, and thread
-     through all lemmas.
-   *)
+     the abstraction exported by the cache. *)
   Definition concurrent_spec R (spec: SeqHoareSpec R) : ConcurHoareSpec (Exc R) :=
     let 'SeqSpec pre post _ := spec in
     ConcurSpec
@@ -113,6 +111,7 @@ Module MakeBridge (C:CacheSubProtocol).
          | None => guar delta tid s s'
          end /\
          hashmap_le hm hm' /\
+         modified cache_vars s s' /\
          guar delta tid s_i' s').
 
   Ltac inv_exec' H :=
@@ -425,6 +424,37 @@ Module MakeBridge (C:CacheSubProtocol).
 
   Hint Resolve hashmap_le_upd.
 
+  Hint Immediate modified_refl.
+  Hint Resolve modified_reduce_strict.
+
+  Ltac prove_hincl :=
+    intros;
+    repeat match goal with
+    | [ H: HIn _ _ |- _ ] =>
+      inversion H; repeat sigT_eq; clear H
+    | [ |- HIn _ _ ] =>
+      solve [ repeat econstructor ]
+    end.
+
+  Lemma cache_disk0_cache_vars : forall t (v: var _ t),
+      HIn v [(vCache; vDisk0)] ->
+      HIn v cache_vars.
+  Proof.
+    prove_hincl.
+  Qed.
+
+  Hint Resolve cache_disk0_cache_vars.
+
+  Lemma cache_disk0_wb_disk_cache_vars :
+    forall (t : Type) (v0 : var (abstraction_types App.Sigma) t),
+      HIn v0 [(vCache; vDisk0; vWriteBuffer; vdisk)] ->
+      HIn v0 cache_vars.
+  Proof.
+    prove_hincl.
+  Qed.
+
+  Hint Resolve cache_disk0_wb_disk_cache_vars.
+
   Theorem cache_simulation_finish : forall T (p: Prog.prog T)
                                       (tid:TID) d hm m s_i s out,
       exec App.delta tid (compile p) (d, hm, m, s_i, s) out ->
@@ -433,10 +463,9 @@ Module MakeBridge (C:CacheSubProtocol).
           out = Finished (d', hm', m', s_i', s') (value v) ->
           (Prog.exec (project_disk s) hm p (Prog.Finished (project_disk s') hm' v) /\
            cacheI d' m' s' /\
-           (* here we shouldn't guarantee the full guar App.delta, only the
-           cache, since writes need not respect the global protocol *)
            guar delta tid s s' /\
            hashmap_le hm hm' /\
+           modified cache_vars s s' /\
            s_i' = s_i) \/
           (Prog.exec (project_disk s) hm p (Prog.Failed T))).
   Proof.
@@ -465,6 +494,7 @@ Module MakeBridge (C:CacheSubProtocol).
         unfold project_disk.
         simpl_match; auto.
         auto.
+        eauto.
       }
       {
         right.
@@ -493,6 +523,7 @@ Module MakeBridge (C:CacheSubProtocol).
         eapply PredCrash.possible_sync_respects_upd; eauto.
         apply possible_sync_refl.
         auto.
+        eauto.
       }
       {
         right.
@@ -540,6 +571,7 @@ Module MakeBridge (C:CacheSubProtocol).
         eapply Prog.XBindFinish; eauto.
         eapply cacheR_preorder; eauto.
         eapply hashmap_le_preorder; eauto.
+        eapply modified_trans; eauto.
       * left.
         split; intros; subst; exec_ret; inv_outcome.
   Qed.
@@ -565,6 +597,7 @@ Module MakeBridge (C:CacheSubProtocol).
       (cacheI d' m' s' /\
        guar delta tid s s' /\
        hashmap_le hm hm' /\
+       modified cache_vars s s' /\
        s_i' = s_i) \/
       (Prog.exec (project_disk s) hm p (Prog.Failed T)).
   Proof.
@@ -604,6 +637,7 @@ Module MakeBridge (C:CacheSubProtocol).
       intuition eauto.
       eapply cacheR_preorder; eauto.
       eapply hashmap_le_preorder; eauto.
+      eapply modified_trans; eauto.
       eapply Prog.XBindFinish; eauto.
       eapply Prog.XBindFail; eauto.
 

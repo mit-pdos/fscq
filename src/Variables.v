@@ -233,6 +233,19 @@ Section Modification.
     destruct (hin_vars_dec m vars m0); intuition.
   Qed.
 
+  Lemma modified_reduce_strict :
+    forall contents vartypes vartypes'
+      (vars: variables contents vartypes)
+      (vars': variables contents vartypes')
+      (m m': hlist (fun T:Type => T) contents),
+      modified vars m m' ->
+      (forall t (v: var contents t), HIn v vars -> HIn v vars') ->
+      modified vars' m m'.
+  Proof.
+    intros.
+    eapply modified_reduce; eauto.
+  Qed.
+
   Theorem modified_empty :
     forall contents m m',
       modified (@HNil _ (var contents)) m m' ->
