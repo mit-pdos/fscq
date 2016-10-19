@@ -1304,6 +1304,32 @@ Proof.
   rewrite incl_in_nil with (l := l'); eauto.
 Qed.
 
+Lemma incl_vsmerge : forall l l' v,
+    incl l l' ->
+    incl (vsmerge (v, l)) (vsmerge (v, l')).
+Proof.
+  induction l'; simpl; intros.
+  - destruct l.
+    apply incl_refl.
+    specialize (H w); simpl in *; intuition.
+  - unfold vsmerge; simpl.
+    unfold incl; simpl in *; intros; intuition eauto.
+    specialize (H a0); simpl in *; intuition eauto.
+Qed.
+
+Lemma possible_crash_possible_sync_trans : forall m m1 m2,
+    possible_sync m m1 ->
+    possible_crash m1 m2 ->
+    possible_crash m m2.
+Proof.
+  unfold possible_sync, possible_crash; intros.
+  specialize (H a); specialize (H0 a); intuition; repeat deex; try congruence.
+  right.
+  do 2 eexists; intuition eauto.
+  rewrite H0 in H1; inversion H1; subst.
+  eapply incl_vsmerge; eauto.
+Qed.
+
 Theorem sync_invariant_crash_xform : forall F,
   sync_invariant (crash_xform F).
 Proof.
