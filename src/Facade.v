@@ -1277,7 +1277,35 @@ Proof.
     destruct_pairs.
     destruct out.
     + (* failure case *)
-      admit.
+      intuition try congruence.
+      inv_exec.
+      {
+        inv_exec; eval_expr.
+        find_eapply_lem_hyp ExecFailed_Steps. repeat deex.
+        find_eapply_lem_hyp Steps_Seq.
+        intuition subst; repeat deex.
+        { (* failure in body *)
+          admit.
+        }
+        { (* failure in loop *)
+          find_eapply_lem_hyp Steps_ExecFinished.
+          edestruct H; eauto. pred_cancel.
+          edestruct H4; eauto. simpl in *; repeat deex.
+          destruct_pair; simpl in *.
+          edestruct (IHn (S i)); eauto.
+          instantiate (4 := (_, _)).
+          instantiate (2 := one).
+          rewrite plus_Snm_nSm. pred_cancel.
+          eapply Steps_ExecFailed; eauto.
+          intuition eauto.
+        }
+      }
+      {
+        contradiction H3.
+        repeat eexists.
+        eapply StepWhileTrue.
+        eval_expr.
+      }
     + (* finished case *)
       inv_exec. inv_exec; eval_expr. subst_definitions.
       intuition try congruence. repeat find_inversion_safe.
