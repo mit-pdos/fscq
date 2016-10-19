@@ -1245,7 +1245,7 @@ Ltac pred_cancel :=
 
 Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
                           (n i : W)
-                          t0 term one
+                          t0 term
                           env (pb : W -> L -> prog L) xpb nocrash oncrash,
   (forall x A t,
   EXTRACT (pb x t)
@@ -1254,10 +1254,10 @@ Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
   {{ fun ret => loopvar ~> ret * v ~> S x * A }} // env)
   ->
   EXTRACT (@ForN_ L G pb i n nocrash oncrash t0)
-  {{ loopvar ~> t0 * v ~> i * one ~> 1 * term ~> (i + n) * F }}
+  {{ loopvar ~> t0 * v ~> i * term ~> (i + n) * F }}
     Go.While (TestE Lt (Var v) (Var term))
       (xpb)
-  {{ fun ret => loopvar ~> ret * v ~> (i + n) * one ~> 1 * term ~> (i + n) * F }} // env.
+  {{ fun ret => loopvar ~> ret * v ~> (i + n) * term ~> (i + n) * F }} // env.
 Proof.
   induction n; intros; simpl.
   - unfold ProgOk. intros.
@@ -1303,8 +1303,7 @@ Proof.
           edestruct H4; eauto. simpl in *; repeat deex.
           destruct_pair; simpl in *.
           edestruct (IHn (S i)); eauto.
-          instantiate (4 := (_, _)).
-          instantiate (2 := one).
+          instantiate (3 := (_, _)).
           rewrite plus_Snm_nSm. pred_cancel.
           eapply Steps_ExecFailed; eauto.
           intuition eauto.
