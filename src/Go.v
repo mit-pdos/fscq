@@ -89,7 +89,7 @@ Module Go.
     | Bool => bool
     | EmptyStruct => unit
     | DiskBlock => valu
-    | Slice t' => list (type_denote t')
+    | Slice t' => list (type_denote t') (* kept in reverse order to make cons = append *)
     end.
 
   Definition type_eq_dec : forall t1 t2 : type, {t1 = t2} + {t1 <> t2}.

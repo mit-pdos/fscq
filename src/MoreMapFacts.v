@@ -10,6 +10,22 @@ Module MoreFacts_fun (E:UsualDecidableType) (Import M:WSfun E).
   Module Import MapFacts := FMapFacts.WFacts_fun(E)(M).
   Import M.
 
+  Definition update V k (v : option V) m :=
+    match v with
+    | Some v0 => add k v0 m
+    | None => remove k m
+    end.
+
+  Lemma update_find :
+    forall V k v m,
+      find k (@update V k v m) = v.
+  Proof.
+    unfold update; intros.
+    destruct v.
+    - apply add_eq_o; trivial.
+    - apply remove_eq_o; trivial.
+  Qed.
+
   Ltac smash_equal :=
     unfold Equal; intros;
     repeat rewrite ?remove_o, ?add_o;
