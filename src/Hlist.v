@@ -302,6 +302,43 @@ Inductive HIn {A:Type} {B:A -> Type} (elt:A) (el:B elt) : forall (types:list A),
 
 Arguments HIn {A} {B} {elt} el {types} l.
 
+Definition HIn_f A (B: A -> Type) {elt:A}
+           (v:B elt) {types: list A} (l: hlist B types) : Prop.
+Proof.
+  induction l.
+  exact False.
+
+  refine (_ \/ IHl).
+  refine (@sig (a = elt) _).
+  intros.
+  rewrite H in *.
+  apply (v = b).
+Defined.
+
+Theorem HIn_to_f : forall A (B: A -> Type) elt
+                     (v:B elt) types (l: hlist B types),
+    HIn v l -> HIn_f v l.
+Proof.
+  induction 1; simpl; intros; eauto.
+  left; intros.
+  exists eq_refl.
+  rewrite <- Eqdep.EqdepTheory.eq_rect_eq; eauto.
+Qed.
+
+Theorem HIn_f_to_Hin : forall A (B: A -> Type) elt
+                     (v:B elt) types (l: hlist B types),
+    HIn_f v l -> HIn v l.
+Proof.
+  induction l; simpl; intros.
+  inversion H.
+  destruct H.
+  - destruct H.
+    subst.
+    rewrite <- Eqdep.EqdepTheory.eq_rect_eq.
+    constructor.
+  - constructor; eauto.
+Qed.
+
 Fixpoint hmap (A:Type) (B:A -> Type) (types:list A) (C:Type) (f: forall a, B a -> C)
          (l: hlist B types) : list C :=
   match l with
