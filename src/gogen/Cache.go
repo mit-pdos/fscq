@@ -46,7 +46,7 @@ func (m *map_bigint_valubool) Size() nat {
 	panic("not impl")
 }
 
-type chachemap map_bigint_valubool
+type cachemap map_bigint_valubool
 
 type cachestate struct {
 	CSMap      cachemap
@@ -56,9 +56,12 @@ type cachestate struct {
 
 func writeback(a addr, cs *cachestate) {
 	var vb *valubool
-	if vb = cs.CSMap.Get(a); vb != nil && vb.snd {
-		DiskWrite(a, vb.fst)
-		cs.CSMap.Add(a, valubool{vb.fst, false})
+	vb = cs.CSMap.Get(a)
+	if vb != nil {
+		if vb.snd {
+			DiskWrite(a, vb.fst)
+			cs.CSMap.Add(a, valubool{vb.fst, false})
+		}
 	}
 }
 
