@@ -1285,7 +1285,17 @@ Proof.
         find_eapply_lem_hyp Steps_Seq.
         intuition subst; repeat deex.
         { (* failure in body *)
-          admit.
+          eapply Prog.XBindFail.
+          repeat destruct_pair.
+          edestruct H; eauto.
+          2 : eapply Steps_ExecFailed; [> | | eauto].
+          pred_cancel.
+          unfold is_final; simpl; intro; subst; eauto.
+          edestruct ExecFailed_Steps.
+          eapply Steps_ExecFailed; eauto.
+          eapply steps_sequence. eauto.
+          repeat deex; eauto.
+          intuition eauto.
         }
         { (* failure in loop *)
           find_eapply_lem_hyp Steps_ExecFinished.
@@ -1355,7 +1365,7 @@ Proof.
         rewrite plus_Snm_nSm. pred_cancel.
         edestruct H12. edestruct H13; eauto.
       }
-Admitted.
+Qed.
 
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
   forall avar bvar,
@@ -1612,6 +1622,8 @@ Ltac compile_step :=
               eapply H with (avar := ka) (bvar := kb) ] ]; [ cancel_subset .. ]
         end
     end
+  | [ |- EXTRACT Ret (S ?a) {{ ?pre }} _ {{ _ }} // _ ] =>
+    rewrite <- (Nat.add_1_r a)
   | [ |- EXTRACT Ret (?f ?a) {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val a pre with
       | None => 
@@ -1729,6 +1741,14 @@ Proof.
   compile.
 Defined.
 Eval lazy in projT1 (extract_swap_prog (StringMap.empty _)).
+
+Example extract_increment : forall env, sigT (fun p => forall i,
+  EXTRACT (Ret (S i)) {{ 0 ~> i }} p {{ fun ret => 0 ~> ret }} // env).
+Proof.
+  intros.
+  compile.
+Defined.
+Eval lazy in projT1 (extract_increment (StringMap.empty _)).
 
 (*
 Declare DiskBlock
