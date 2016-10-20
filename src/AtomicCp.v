@@ -522,7 +522,8 @@ Module ATOMICCP.
     admit. (* eapply list2nmem_inbound in H5. *)
     destruct a0.
     step.
-    admit.  (* XXX treeseq_safe holds still if pushd a new tree with longer lenght *)
+    specialize (H20 tmppath H8).
+    rewrite H0; eauto.
     admit.  (* XXX treerep holds too *)
     instantiate (1 := ($ (0), [])).
     admit. (* XXX need list2nmem_setlen? *)
