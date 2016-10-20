@@ -16,7 +16,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Locking Automation ForwardChaining \
 	      CoopConcur CoValid CoopConcurMonad CoopConcurAuto Protocols \
 	      DiskReaders MemCache WriteBuffer WriteBufferSet ConcurrentCache \
-	      ConcurrentCopy Specifications ConcurrentBridge
+				ConcurrentCopy Specifications ConcurrentBridge ConcurrentFS
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))

@@ -128,6 +128,16 @@ Proof.
       eauto.
 Admitted.
 
+Module Type GlobalState.
+  Parameter Sigma:State.
+End GlobalState.
+
+Module Type GlobalProtocol.
+  Declare Module St : GlobalState.
+  Definition Sigma := St.Sigma.
+  Parameter delta:Protocol Sigma.
+End GlobalProtocol.
+
 (* Local Variables: *)
 (* company-coq-local-symbols: (("delta" . ?δ) ("Sigma" . ?Σ)) *)
 (* End: *)
