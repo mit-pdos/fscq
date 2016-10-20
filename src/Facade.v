@@ -1247,11 +1247,11 @@ Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
                           (n i : W)
                           t0 term
                           env (pb : W -> L -> prog L) xpb nocrash oncrash,
-  (forall x A t,
+  (forall x t,
   EXTRACT (pb x t)
-  {{ loopvar ~> t * v ~> x * A }}
+  {{ loopvar ~> t * v ~> x * term ~> (i + n) * F }}
     xpb
-  {{ fun ret => loopvar ~> ret * v ~> S x * A }} // env)
+  {{ fun ret => loopvar ~> ret * v ~> S x * term ~> (i + n) * F }} // env)
   ->
   EXTRACT (@ForN_ L G pb i n nocrash oncrash t0)
   {{ loopvar ~> t0 * v ~> i * term ~> (i + n) * F }}
@@ -1289,7 +1289,7 @@ Proof.
           repeat destruct_pair.
           edestruct H; eauto.
           2 : eapply Steps_ExecFailed; [> | | eauto].
-          pred_cancel.
+          eauto.
           unfold is_final; simpl; intro; subst; eauto.
           edestruct ExecFailed_Steps.
           eapply Steps_ExecFailed; eauto.
@@ -1302,10 +1302,9 @@ Proof.
           edestruct H; eauto. pred_cancel.
           edestruct H4; eauto. simpl in *; repeat deex.
           destruct_pair; simpl in *.
-          edestruct (IHn (S i)); eauto.
-          instantiate (3 := (_, _)).
-          rewrite plus_Snm_nSm. pred_cancel.
-          eapply Steps_ExecFailed; eauto.
+          edestruct (IHn (S i));
+            [> | | eapply Steps_ExecFailed; eauto |];
+            rewrite ?plus_Snm_nSm; eauto.
           intuition eauto.
         }
       }
@@ -1318,23 +1317,20 @@ Proof.
     + (* finished case *)
       inv_exec. inv_exec; eval_expr. subst_definitions.
       intuition try congruence. repeat find_inversion_safe.
+      repeat match goal with
+      | [H : context[Init.Nat.add _ (S _)] |- _] =>
+          (rewrite <- plus_Snm_nSm in H || setoid_rewrite <- plus_Snm_nSm in H)
+      end.
+      setoid_rewrite <- plus_Snm_nSm.
       destruct_pairs.
       find_eapply_lem_hyp ExecFinished_Steps.
       find_eapply_lem_hyp Steps_Seq.
       intuition; repeat deex; try discriminate.
       repeat find_eapply_lem_hyp Steps_ExecFinished.
-      edestruct H; eauto.
-      pred_cancel.
-      edestruct H2; eauto.
-      repeat deex. repeat destruct_pair. simpl in *.
-      edestruct IHn; eauto.
-      rewrite plus_Snm_nSm. simpl.
-      pred_cancel.
-      simpl in *.
-      edestruct H6; eauto; simpl in *.
-      repeat deex. repeat eexists.
-      eapply XBindFinish; eauto.
-      rewrite <- plus_Snm_nSm; auto.
+      edestruct H; eauto; eauto.
+      forward_solve.
+      edestruct (IHn (S i)); eauto.
+      forward_solve.
     + (* crashed case *)
       intuition try congruence. find_inversion.
       inv_exec; [> | solve [inversion H3] ].
@@ -1346,23 +1342,21 @@ Proof.
       {
         invc H4.
         find_eapply_lem_hyp Steps_ExecCrashed; eauto.
-        edestruct H; eauto.
-        pred_cancel.
-        intuition auto.
-        edestruct H6; auto.
-        simpl in *.
-        eexists.
-        apply XBindCrash; eauto.
+        edestruct H; forward_solve. auto.
       }
       {
         find_eapply_lem_hyp Steps_ExecFinished.
         find_eapply_lem_hyp Steps_ExecCrashed; eauto.
         edestruct H; eauto. pred_cancel.
+        repeat match goal with
+        | [H : context[Init.Nat.add _ (S _)] |- _] =>
+            (rewrite <- plus_Snm_nSm in H || setoid_rewrite <- plus_Snm_nSm in H)
+        end.
         edestruct H2; eauto.
+        forward_solve.
         repeat deex.
         edestruct IHn; eauto.
-        rewrite plus_Snm_nSm. pred_cancel.
-        edestruct H12. edestruct H13; eauto.
+        forward_solve.
       }
 Qed.
 
