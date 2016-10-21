@@ -2402,11 +2402,6 @@ Module TREESEQ.
       clear H.
       induction ents; simpl in *.
       + destruct suffix; simpl in *; try congruence.
-        destruct (string_dec name s); subst; simpl in *; try congruence.
-        contradict H0; eauto.
-        exists suffix.
-        rewrite <- app_assoc.
-        simpl. eauto.
       + destruct suffix; simpl in *; try congruence.
         destruct a; simpl in *.
         destruct (string_dec s0 s); subst.
@@ -2415,7 +2410,6 @@ Module TREESEQ.
           -- simpl in *.
              destruct (string_dec s s); subst; congruence.
         * destruct (string_dec s0 name); subst; simpl in *; try congruence.
-          destruct (string_dec name s); subst; simpl in *; try congruence.
           destruct (string_dec s0 s); subst; simpl in *; try congruence.
           specialize (IHents H1).
           eauto.
