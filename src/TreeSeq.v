@@ -2403,19 +2403,37 @@ Module TREESEQ.
     exists ents1,
     find_subtree pn t = Some (TreeDir dnum0 ents1).
   Proof.
-
-(*       Check find_subtree_update_subtree_oob'. *)
-
-    unfold tree_prune.
-    induction pn; simpl; intros.
-    - destruct t; simpl in *.
-      + destruct base; simpl in *; congruence.
-      + destruct base; simpl in *.
-        * eexists. inversion H; subst. inversion H0; subst. eauto.
-        * induction l; simpl in *; try congruence.
+    unfold tree_prune; intros.
+    destruct (pathname_decide_prefix base pn).
+    - deex.
+      erewrite find_subtree_app in H0; eauto.
+      cut (exists ents1 : list (string * dirtree),
+               find_subtree (suffix) (TreeDir num ents) = Some (TreeDir dnum0 ents1)).
+      intros.
+      deex.
+      eexists.
+      erewrite find_subtree_app; eauto.
+      clear H.
+      destruct suffix; simpl in *.
+      + inversion H0; subst.
+        eauto.
+      + induction ents; simpl in *.
+        * destruct suffix; simpl in *.
+          inversion H0; subst.
+          eexists; eauto.
+        * destruct a.
+          destruct (string_dec s name); subst.
           admit.
-    - admit.
-  Admitted.
+          destruct (string_dec s0 name); subst.
+          ** rewrite H0; simpl.
+             destruct (string_dec name s); try congruence.
+             eauto.
+          ** simpl in *.
+             destruct (string_dec s0 s); subst; eauto.
+    - erewrite find_subtree_update_subtree_oob' in H0; eauto.
+
+      erewrite <- find_subtree_app in H.
+   Admitted.
 
 
   Theorem treeseq_rename_ok : forall fsxp dnum srcbase (srcname:string) dstbase dstname mscs,
