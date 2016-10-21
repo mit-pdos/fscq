@@ -2733,15 +2733,65 @@ Module TREESEQ.
       unfold BFILE.block_belong_to_file in *.
       rewrite H9 in *; eauto.
 
-      admit.
-      admit.
-
+      -- intro. subst.
+        destruct (pathname_decide_prefix cwd pathname').
+        + deex.
+          erewrite find_subtree_app in H17 by eauto.
+          eapply find_subtree_graft_subtree_oob' in H17.
+          2: eauto.
+          eapply find_subtree_prune_subtree_oob' in H17.
+          2: eauto.
+          assert (srcbase = suffix).
+          eapply find_subtree_inode_pathname_unique; eauto.
+          admit.
+          admit.
+          congruence.
+          intro; apply H11.  apply prefix_trim; eauto.
+          intro; apply H12.  apply prefix_trim; eauto.
+        + Search srcnum0.
+          eapply find_subtree_update_subtree_oob' in H17.
+          assert (cwd++srcbase = pathname').
+          erewrite <- find_subtree_app in H16 by eauto.
+          eapply find_subtree_inode_pathname_unique; eauto.
+          distinct_inodes'.
+          distinct_names'.
+          contradiction H14; eauto.
+          eauto.
+      -- intro. subst.
+       destruct (pathname_decide_prefix cwd pathname').
+        + deex.
+          erewrite find_subtree_app in H17 by eauto.
+          eapply find_subtree_graft_subtree_oob' in H17.
+          2: eauto.
+          eapply find_subtree_prune_subtree_oob' in H17.
+          2: eauto.
+          eapply find_subtree_before_prune in H13; eauto.
+          deex.
+          assert (dstbase = suffix).
+          eapply find_subtree_inode_pathname_unique; eauto.
+          admit.
+          admit.
+          congruence.
+          admit.
+          intro; apply H11.  apply prefix_trim; eauto.
+          intro; apply H12.  apply prefix_trim; eauto.
+        + 
+          eapply find_subtree_update_subtree_oob' in H17.
+          eapply find_subtree_before_prune in H13; eauto.
+          deex.
+          assert (cwd++dstbase = pathname').
+          erewrite <- find_subtree_app in H13 by eauto.
+          eapply find_subtree_inode_pathname_unique; eauto.
+          distinct_inodes'.
+          distinct_names'.
+          contradiction H14; eauto.
+          admit.
+          eauto.
     - simpl.
       unfold dirtree_safe in *; intuition.
       rewrite H0 in *.
       rewrite <- surjective_pairing in H14.
       eauto.
-
     - admit.
 
      (* eapply dirents2mem2_graft_file'. *)
