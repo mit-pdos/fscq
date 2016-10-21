@@ -2591,14 +2591,19 @@ Module TREESEQ.
       congruence.
 
       intro. subst.
-      eapply find_subtree_before_prune in H13; deex.
+      eapply find_subtree_before_prune in H13.
+      deex.
       erewrite <- find_subtree_app in H13 by eassumption.
       assert (pathname' = cwd ++ dstbase).
       eapply find_subtree_inode_pathname_unique; eauto.
       distinct_inodes'.
       distinct_names'.
       congruence.
-
+      distinct_names'.
+      eapply find_subtree_tree_names_distinct.
+      2: eauto.
+      distinct_names'.
+      eauto.
     - unfold treeseq_safe_bwd in *.
       intros.
       left.
