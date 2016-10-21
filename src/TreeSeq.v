@@ -2561,6 +2561,23 @@ Module TREESEQ.
         + eapply IHl; eauto.
   Qed.      
 
+  Lemma find_subtree_tree_inodes_distinct: forall pn t subtree,
+      tree_inodes_distinct t ->
+      find_subtree pn t = Some subtree ->
+      tree_inodes_distinct subtree.
+  Proof.
+    induction pn; intros; simpl in *.
+    - congruence.
+    - destruct t; try congruence.
+      induction l.
+      -- simpl in *; try congruence.
+      -- destruct a0; subst; simpl in *.
+        destruct (string_dec s a); subst; simpl in *.
+        + eapply IHpn. 2: eauto.
+          eapply tree_inodes_distinct_child; eauto.
+        + eapply IHl; eauto.
+  Qed.      
+
   Lemma find_subtree_before_prune : forall pn t num ents base name dnum0 ents0,
     tree_names_distinct t ->
     find_subtree base t = Some (TreeDir num ents) ->
@@ -2743,12 +2760,14 @@ Module TREESEQ.
           2: eauto.
           assert (srcbase = suffix).
           eapply find_subtree_inode_pathname_unique; eauto.
-          admit.
-          admit.
+          eapply find_subtree_tree_inodes_distinct; eauto.
+          distinct_inodes'.
+          eapply find_subtree_tree_names_distinct; eauto.
+          distinct_names'.
           congruence.
           intro; apply H11.  apply prefix_trim; eauto.
           intro; apply H12.  apply prefix_trim; eauto.
-        + Search srcnum0.
+        + 
           eapply find_subtree_update_subtree_oob' in H17.
           assert (cwd++srcbase = pathname').
           erewrite <- find_subtree_app in H16 by eauto.
@@ -2769,10 +2788,13 @@ Module TREESEQ.
           deex.
           assert (dstbase = suffix).
           eapply find_subtree_inode_pathname_unique; eauto.
-          admit.
-          admit.
+          eapply find_subtree_tree_inodes_distinct; eauto.
+          distinct_inodes'.
+          eapply find_subtree_tree_names_distinct; eauto.
+          distinct_names'.
           congruence.
-          admit.
+          eapply find_subtree_tree_names_distinct; eauto.
+          distinct_names'.
           intro; apply H11.  apply prefix_trim; eauto.
           intro; apply H12.  apply prefix_trim; eauto.
         + 
@@ -2785,7 +2807,8 @@ Module TREESEQ.
           distinct_inodes'.
           distinct_names'.
           contradiction H14; eauto.
-          admit.
+          eapply find_subtree_tree_names_distinct; eauto.
+          distinct_names'.
           eauto.
     - simpl.
       unfold dirtree_safe in *; intuition.
