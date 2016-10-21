@@ -2425,13 +2425,22 @@ Module TREESEQ.
       assumption.
   Qed.
 
-  Lemma find_subtree_tree_names_distinct: forall t pn subtree,
+  Lemma find_subtree_tree_names_distinct: forall pn t subtree,
       tree_names_distinct t ->
       find_subtree pn t = Some subtree ->
       tree_names_distinct subtree.
   Proof.
-    
-  Admitted.
+    induction pn; intros; simpl in *.
+    - congruence.
+    - destruct t; try congruence.
+      induction l.
+      -- simpl in *; try congruence.
+      -- destruct a0; subst; simpl in *.
+        destruct (string_dec s a); subst; simpl in *.
+        + eapply IHpn. 2: eauto.
+          eapply tree_names_distinct_child; eauto.
+        + eapply IHl; eauto.
+  Qed.      
 
   Lemma find_subtree_before_prune : forall pn t num ents base name dnum0 ents0,
     tree_names_distinct t ->
