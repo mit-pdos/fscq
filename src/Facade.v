@@ -1,4 +1,5 @@
 Require Import ProofIrrelevance.
+Require Import Eqdep_dec.
 Require Import PeanoNat String List FMapAVL Structures.OrderedTypeEx.
 Require Import Relation_Operators Operators_Properties.
 Require Import Morphisms.
@@ -311,7 +312,7 @@ Ltac destruct_pair :=
   end.
 
 Ltac inv_exec_progok :=
-  repeat destruct_pair; repeat inv_exec; simpl in *;
+  repeat destruct_pair; repeat inv_exec; unfold Go.sel in *; simpl in *;
   intuition (subst; try discriminate;
              repeat find_inversion_safe; repeat match_finds; repeat find_inversion_safe;  simpl in *;
                try solve [ exfalso; intuition eauto 10 ]; eauto 10).
@@ -359,10 +360,35 @@ Qed.
 
 Hint Resolve sep_star_ptsto_some_find.
 
+Ltac extract_var_val :=
+  lazymatch goal with
+  | [ H: ?s ≲ ?P |- _ ] =>
+    match P with
+    | context[(?a |-> ?v)%pred] =>
+      match goal with
+      | [ H: VarMap.find a s = Some v |- _ ] => fail 1
+      | _ => idtac
+      end;
+      let He := fresh "He" in
+      assert (VarMap.find a s = Some v) as He; [
+        eapply pred_apply_pimpl_proper in H; [
+        | reflexivity |
+        lazymatch goal with
+        | [ |- _ =p=> ?Q ] =>
+          let F := fresh "F" in
+          evar (F : pred);
+          unify Q (a |-> v * F)%pred;
+          cancel
+        end ];
+        eapply ptsto_valid in H; eassumption
+      | try rewrite He in * ]
+    end
+  end.
+
 Lemma CompileConst : forall env A var (v v0 : nat),
   EXTRACT Ret v
   {{ var ~> v0 * A }}
-    var <0~ v
+    var <~const v
   {{ fun ret => var ~> ret * A }} // env.
 Proof.
   unfold ProgOk.
@@ -370,6 +396,12 @@ Proof.
   inv_exec_progok.
   do 2 eexists.
   intuition eauto.
+  unfold Go.sel in *.
+  repeat extract_var_val.
+  find_inversion.
+  destruct vs; simpl in *; try discriminate.
+  invc H8.
+  find_inversion.
   rewrite add_upd.
   rewrite sep_star_assoc.
   eapply ptsto_upd.
@@ -378,11 +410,14 @@ Proof.
 
   contradiction H1.
   repeat eexists.
-  eapply Go.StepModifyNullary.
+  eapply Go.StepModify.
   rewrite sep_star_assoc in H.
   eapply sep_star_ptsto_some in H.
-  eassumption.
-  all: simpl; eauto.
+  unfold Go.sel; simpl.
+  unfold mem_of in *.
+  rewrite H.
+  trivial.
+  all: simpl; reflexivity.
 Qed.
 
 Ltac forwardauto1 H :=
@@ -541,10 +576,9 @@ Proof.
   find_eapply_lem_hyp Go.Steps_runsto'.
   prep_induction H; induction H; intros; subst; unfold Go.locals, Go.state in *;
     repeat destruct_pair; repeat find_inversion_safe; eauto.
-    invc H5. (* TODO: make find_inversion_safe get this anyway *)
-    invc H4.
-    eauto.
-  - invc H3; invc H4; eauto.
+    (* TODO: theorem about update_many *)
+    admit.
+  - invc H4; invc H5; eauto.
   - subst_definitions.
     admit. (* TODO: execution semantics are wrong here *)
   - admit.
@@ -914,39 +948,35 @@ Example micro_dup : forall T {Wr: GoWrapper T}, sigT (fun p => forall (x v0 : T)
   {{ fun _ => 1 ~> x * 0 ~> x }} // StringMap.empty _).
 Proof.
   eexists. intros.
-  instantiate (1 := (1 <1~ 0)%go).
+  instantiate (1 := (1 <~dup 0)%go).
   unfold ProgOk.
   inv_exec_progok;
   inv_exec_progok.
   repeat eexists. eauto.
-  rewrite add_upd.
-  rewrite sep_star_assoc in H.
-  pose proof (ptsto_valid H).
-  rewrite <- sep_star_assoc in H.
-  rewrite sep_star_comm with (p2 := (1 ~> v0)%pred) in H.
-  rewrite sep_star_assoc in H.
-  pose proof (ptsto_valid H).
-  unfold mem_of in *.
-  assert (v = wrap x) by congruence.
-  assert (v1 = wrap v0) by congruence.
+  unfold sel in *.
+  repeat extract_var_val.
+  find_inversion_safe.
   simpl in *.
-  subst.
-  rewrite sep_star_assoc.
-  eapply ptsto_upd.
-  eassumption.
+  find_inversion_safe.
+  simpl in *.
+  do 2 (break_match; [ | congruence ]).
+  find_inversion.
+  rewrite ?add_upd.
+  unfold pred_apply.
+  eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel | ].
+  eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel | ].
+  eapply pimpl_apply; [ | eassumption ]; cancel.
 
   contradiction H1.
   repeat eexists.
   econstructor.
-  rewrite sep_star_comm with (p2 := (1 ~> v0)%pred) in H.
-  rewrite sep_star_assoc in H.
-  find_eapply_lem_hyp ptsto_valid; eauto.
-  rewrite sep_star_assoc in H.
-  find_eapply_lem_hyp ptsto_valid; eauto.
-  simpl; auto.
-  repeat rewrite wrap_type.
-  auto.
-  eauto.
+  simpl; unfold sel.
+  repeat extract_var_val.
+  reflexivity.
+  reflexivity.
+  simpl.
+  do 2 break_match; try congruence.
+  reflexivity.
 Defined.
 
 Lemma CompileIf : forall P Q {H1 : GoWrapper ({P}+{Q})}
@@ -1041,95 +1071,68 @@ Proof.
   (* TODO automate this *)
 Admitted.
 
-Ltac extract_var_val :=
-  lazymatch goal with
-  | [ H: ?s ≲ ?P |- _ ] =>
-    match P with
-    | context[(?a |-> ?v)%pred] =>
-      match goal with
-      | [ H: VarMap.find a s = Some v |- _ ] => fail 1
-      | _ => idtac
-      end;
-      let He := fresh "He" in
-      assert (VarMap.find a s = Some v) as He; [
-        eapply pred_apply_pimpl_proper in H; [
-        | reflexivity |
-        lazymatch goal with
-        | [ |- _ =p=> ?Q ] =>
-          let F := fresh "F" in
-          evar (F : pred);
-          unify Q (a |-> v * F)%pred;
-          cancel
-        end ];
-        eapply ptsto_valid in H; eassumption
-      | try rewrite He in * ]
-    end
-  end.
-
-Ltac dispatch_step_goal :=
-  match goal with
-  | [ |- type_of _ = type_of _ ] => idtac
-  | _ => simpl; eauto
-  end.
-
 Lemma CompileAdd :
   forall env F sumvar avar bvar (sum0 a b : nat),
     EXTRACT Ret (a + b)
     {{ sumvar ~> sum0 * avar ~> a * bvar ~> b * F }}
-      ModifyBinary sumvar (ModifyNumOp Plus) avar bvar
+      Modify (ModifyNumOp Plus) [sumvar; avar; bvar]
     {{ fun ret => sumvar ~> ret * avar ~> a * bvar ~> b * F }} // env.
 Proof.
   unfold ProgOk; intros.
   destruct_pair; simpl in *.
-  repeat extract_var_val.
-  inv_exec_progok.
-  unfold id in *; simpl in *.
+  inv_exec_progok; repeat extract_var_val.
+  find_inversion_safe.
+  simpl in *.
+  find_inversion_safe.
+  find_inversion.
   repeat eexists.
   econstructor.
-  rewrite add_upd.
-  eapply pred_apply_pimpl_proper; [ reflexivity | | ].
-  2: eapply ptsto_upd.
-  find_inversion_safe.
-  cancel.
-  unfold pred_apply in *.
-  pred_apply.
-  cancel.
+  rewrite ?add_upd.
+  unfold pred_apply.
+  eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel | ].
+  eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel | ].
+  eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel | ].
+  eapply pimpl_apply; [ | eassumption ]; cancel.
 
   contradiction H1.
   repeat eexists.
   econstructor.
-  
-  all: dispatch_step_goal.
-  reflexivity.
+
+  unfold sel; simpl; repeat find_rewrite.
+  all: simpl; reflexivity.
 Defined.
 
 Lemma CompileAddInPlace1 :
   forall env F avar bvar (a b : nat),
     EXTRACT Ret (a + b)
     {{ avar ~> a * bvar ~> b * F }}
-      ModifyBinary avar (ModifyNumOp Plus) avar bvar
+      Modify (ModifyNumOp Plus) [avar; avar; bvar]
     {{ fun ret => avar ~> ret * bvar ~> b * F }} // env.
 Proof.
   unfold ProgOk; intros.
   destruct_pair; simpl in *.
   repeat extract_var_val.
   inv_exec_progok.
+  repeat find_rewrite.
+  find_inversion_safe.
+  simpl in *.
+  find_inversion_safe.
+  find_inversion.
   repeat eexists.
   econstructor.
-  rewrite add_upd.
-  eapply pred_apply_pimpl_proper; [ reflexivity | | ].
-  2: eapply ptsto_upd.
-  find_inversion_safe.
-  cancel.
-  unfold pred_apply in *.
-  pred_apply.
-  cancel.
+  rewrite ?add_upd.
+  rewrite upd_repeat.
+  
+  unfold pred_apply.
+  eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel | ].
+  eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel | ].
+  eapply pimpl_apply; [ | eassumption ]; cancel.
 
   contradiction H1.
   repeat eexists.
   econstructor.
-  all: dispatch_step_goal.
-  reflexivity.
+  unfold sel; simpl; repeat find_rewrite.
+  all: simpl; reflexivity.
 Defined.
 
 (* TODO: make it unnecessary to have all these separate lemmas *)
@@ -1137,29 +1140,33 @@ Lemma CompileAddInPlace2 :
   forall env F avar bvar (a b : nat),
     EXTRACT Ret (a + b)
     {{ avar ~> a * bvar ~> b * F }}
-      ModifyBinary bvar (ModifyNumOp Plus) avar bvar
+      Modify (ModifyNumOp Plus) [bvar; avar; bvar]
     {{ fun ret => bvar ~> ret * avar ~> a * F }} // env.
 Proof.
   unfold ProgOk; intros.
   destruct_pair; simpl in *.
   repeat extract_var_val.
   inv_exec_progok.
+  repeat find_rewrite.
+  find_inversion_safe.
+  simpl in *.
+  find_inversion_safe.
+  find_inversion.
   repeat eexists.
   econstructor.
-  rewrite add_upd.
-  eapply pred_apply_pimpl_proper; [ reflexivity | | ].
-  2: eapply ptsto_upd.
-  find_inversion_safe.
-  cancel.
-  unfold pred_apply in *.
-  pred_apply.
-  cancel.
+  rewrite ?add_upd.
+  
+  unfold pred_apply.
+  eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel | ].
+  eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel | ].
+  eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel | ].
+  eapply pimpl_apply; [ | eassumption ]; cancel.
 
   contradiction H1.
   repeat eexists.
   econstructor.
-  all: dispatch_step_goal.
-  reflexivity.
+  unfold sel; simpl; repeat find_rewrite.
+  all: simpl; reflexivity.
 Defined.
 
 Definition any' : pred := any.
@@ -1183,39 +1190,71 @@ Ltac cancel_subset :=
   cancel;
   try solve [ eapply chop_any; cancel | eapply pimpl_any ].
 
+Theorem eq_dec_eq :
+  forall A (dec : forall a1 a2 : A, {a1 = a2} + {a1 <> a2}) a,
+    dec a a = left eq_refl.
+Proof.
+  intros.
+  destruct (dec a a); try congruence.
+  f_equal.
+  apply UIP_dec; assumption.
+Qed.
+
 Lemma compile_append :
   forall env F T {Wr: GoWrapper T} lvar vvar (x : T) xs,
   EXTRACT Ret (x :: xs)
   {{ vvar ~> x * lvar ~> xs * F }}
-    ModifyUnary lvar AppendOp vvar
+    Modify AppendOp [lvar; vvar]
   {{ fun ret => lvar ~> (x :: xs) * F }} // env.
 Proof.
   unfold ProgOk; intros.
   repeat extract_var_val.
   inv_exec_progok.
-  destruct (type_eq_dec wrap_type wrap_type); try congruence.
-  find_inversion_safe.
-  repeat eexists.
-  eauto.
-  rewrite add_upd.
-  rewrite sep_star_assoc.
-  rewrite <- eq_rect_eq.
-  eapply ptsto_upd.
-  unfold pred_apply in *; pred_apply.
-  cancel_subset.
+  - repeat find_rewrite.
+    find_inversion_safe.
+    simpl in *.
+    rewrite ?eq_dec_eq in *.
+    find_inversion_safe.
+    rewrite ?eq_dec_eq in *.
+    destruct (can_alias wrap_type); simpl in *.
+    + rewrite ?eq_dec_eq in *.
+      find_inversion.
+      repeat eexists.
+      eauto.
+      rewrite ?add_upd.
+      unfold pred_apply.
+      eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel_subset | ].
+      eapply pimpl_apply; [ | eapply ptsto_upd ].
+      (* TODO: make [cancel_subset] do this *)
+      instantiate (F := (lvar |-> ?v0 * F * any)%pred).
+      cancel_subset.
+      eapply pimpl_apply; [ | eassumption ]; cancel_subset.
+    + rewrite ?eq_dec_eq.
+      find_inversion.
+      repeat eexists.
+      eauto.
+      rewrite ?add_upd.
+      unfold pred_apply.
+      (* TODO: facts about [delete] *)
+      (* eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel_subset | ].*)
+      admit.
 
-  contradiction H1.
-  repeat eexists; econstructor.
-  all: dispatch_step_goal.
-  break_match; try congruence.
-  rewrite <- eq_rect_eq.
-  all: reflexivity.
-Defined.
+  - contradiction H1.
+    repeat eexists; econstructor.
+    (* TODO: this is a mess *)
+    all: unfold sel; simpl; repeat find_rewrite; try reflexivity; repeat (simpl; rewrite eq_dec_eq in * ); try reflexivity.
+    simpl.
+    rewrite ?eq_dec_eq in *.
+    simpl.
+    instantiate (Goal4 := if can_alias wrap_type then _ else _).
+    destruct (can_alias wrap_type); simpl in *.
+    + rewrite ?eq_dec_eq; reflexivity.
+    + reflexivity.
+Admitted.
 
 Ltac unfold_expr :=
-  unfold is_false, is_true, eval_bool, eval_numop,
+  unfold is_false, is_true, eval_bool, numop_impl', numop_impl,
          eval_test_m, eval_test_num, eval_test_bool,
-         eval_binop,
          eval in *; simpl in *.
 
 Ltac eval_expr :=
@@ -1243,15 +1282,17 @@ Ltac pred_cancel :=
   | [H : _ |- _] => eapply pimpl_apply; [> | exact H]; solve [cancel]
   end.
 
+(*
+
 Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
                           (n i : W)
                           t0 term one
                           env (pb : W -> L -> prog L) xpb nocrash oncrash,
-  (forall x A t,
-  EXTRACT (pb x t)
-  {{ loopvar ~> t * v ~> x * A }}
+    (forall t x,
+        EXTRACT (pb x t)
+  {{ loopvar ~> t * v ~> x * F }}
     xpb
-  {{ fun ret => loopvar ~> ret * v ~> S x * A }} // env)
+  {{ fun ret => loopvar ~> ret * v ~> S x * F }} // env)
   ->
   EXTRACT (@ForN_ L G pb i n nocrash oncrash t0)
   {{ loopvar ~> t0 * v ~> i * one ~> 1 * term ~> (i + n) * F }}
@@ -1891,4 +1932,5 @@ Proof.
   all: congruence.
 Defined.
 Eval lazy in projT1 micro_swap2.
+*)
 *)

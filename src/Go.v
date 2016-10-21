@@ -1,7 +1,7 @@
 Require Import PeanoNat String List FMapAVL Structures.OrderedTypeEx.
 Require Import Relation_Operators Operators_Properties.
 Require Import Morphisms.
-Require Import StringMap.
+Require Import StringMap MoreMapFacts.
 Require Import Eqdep.
 Require Import VerdiTactics.
 Require Import Word.
@@ -67,6 +67,7 @@ Semantics for Go
 Notation W := nat. (* Assume bignums? *)
 
 Module VarMap := FMapAVL.Make(Nat_as_OT).
+Module MoreVarMapFacts := MoreMapFacts.MoreFacts_fun(Nat_as_OT)(VarMap).
 
 Module Go.
 
@@ -101,17 +102,11 @@ Module Go.
   | Const : forall t, type_denote t -> expr
   | TestE : test -> expr -> expr -> expr.
 
-  Inductive modify_nullop :=
-  | SetConst (n : nat) : modify_nullop
-  .
-
-  Inductive modify_unop :=
-  | DuplicateOp : modify_unop
-  | AppendOp : modify_unop
-  .
-
-  Inductive modify_binop :=
-  | ModifyNumOp : numop -> modify_binop
+  Inductive modify_op :=
+  | SetConst (n : nat)
+  | DuplicateOp
+  | AppendOp
+  | ModifyNumOp (nop : numop)
   .
 
   Definition can_alias t :=
@@ -152,6 +147,144 @@ Module Go.
   Definition scope := VarMap.t type.
   Definition locals := VarMap.t value.
 
+  Definition state := (rawdisk * locals)%type.
+
+  Definition eval_test_num (op : test) a b :=
+    match op with
+    | Eq => if Nat.eq_dec a b then Some (Val Bool true) else Some (Val Bool false)
+    | Ne => if Nat.eq_dec a b then Some (Val Bool false) else Some (Val Bool true)
+    | Lt => if Compare_dec.lt_dec a b then Some (Val Bool true) else Some (Val Bool false)
+    | Le => if Compare_dec.le_dec a b then Some (Val Bool true) else Some (Val Bool false)
+    end.
+
+  Definition eval_test_bool (op : test) a b :=
+    match op with
+    | Eq => if Bool.bool_dec a b then Some (Val Bool true) else Some (Val Bool false)
+    | Ne => if Bool.bool_dec a b then Some (Val Bool false) else Some (Val Bool true)
+    | _ => None
+    end.
+
+  Section Helpers.
+
+    Fixpoint mapM A B (f : A -> option B) ls :=
+      match ls with
+      | x :: xs =>
+        match f x, mapM f xs with
+        | Some y, Some ys => Some (y :: ys)
+        | _, _ => None
+        end
+      | nil => Some nil
+      end.
+    
+    Definition split_pair_func A B C D (f : A -> B) (g: C -> D) : A * C -> B * D :=
+      fun p => let (a, c) := p in (f a, g c).
+
+    (* TODO: monad typeclass? *)
+    Definition bind A B (f : A -> option B) (o : option A) : option B :=
+      match o with
+      | Some a => f a
+      | None => None
+      end.
+
+    Definition ap A B (f : option (A -> B)) (o : option A) : option B :=
+      match f, o with
+      | Some f', Some a => Some (f' a)
+      | _, _ => None
+      end.
+
+  End Helpers.
+
+  Section NiceImpls.
+
+    Definition op_impl := list value -> option (list (option value)).
+
+    Definition numop_impl' (op : numop) (old a b : nat) : list nat :=
+      [match op with
+       | Plus => a + b
+       | Minus => a - b
+       | Times => a * b
+       end; a; b].
+
+    Definition setconst_impl (n : nat) : op_impl :=
+      fun _ => Some [Some (Val Num n)].
+
+    Definition duplicate_impl : op_impl :=
+      fun args =>
+        match args with
+        | [_; a] => Some [Some a; Some a]
+        | _ => None
+        end.
+
+    Definition append_impl' t (l : list (type_denote t)) (a : type_denote t) :
+                                option (option (list (type_denote t)) * option (type_denote t)) :=
+      Some (Some (a :: l), if can_alias t then Some a else None).
+
+  End NiceImpls.
+
+  Section NastyImpls.
+
+    Definition numop_impl (op : numop) : op_impl :=
+      fun args => match args with
+               | [Val Num o; Val Num a; Val Num b] =>
+                 Some (map (fun n => Some (Val Num n)) (numop_impl' op o a b))
+               | _ => None
+               end.
+
+    Definition append_impl : op_impl.
+      refine (fun args => match args with
+                       | [Val t1 l; Val t2 a] =>
+                         match t1 with
+                         | Slice t1' => fun l => _
+                         | _ => fun _ => None
+                         end l
+                       | _ => None
+                       end).
+      destruct (type_eq_dec t1' t2); [ | exact None ].
+      rewrite e in l.
+      (* Hmm, not sure how much the helpers increase clarity here... *)
+      refine (option_map _ (append_impl' _ l a)).
+      refine (fun ret => let (l', a') := ret in
+                      [option_map _ l';
+                       ap _ a']).
+      exact (Val (Slice t2)).
+      exact (if can_alias t2 then Some (Val t2) else None).
+    Defined.
+
+  End NastyImpls.
+
+  Definition impl_for (op : modify_op) : op_impl :=
+    match op with
+    | SetConst n => setconst_impl n
+    | DuplicateOp => duplicate_impl
+    | AppendOp => append_impl
+    | ModifyNumOp nop => numop_impl nop
+    end.
+
+  Definition eval_test_m (op : test) (oa ob : option value) : option value :=
+    match oa, ob with
+    | Some (Val Num a), Some (Val Num b) => eval_test_num op a b
+    | Some (Val Bool a), Some (Val Bool b) => eval_test_bool op a b
+    | _, _ => None
+    end.
+
+  Fixpoint eval (st : locals) (e : expr) : option value :=
+    match e with
+    | Var x => VarMap.find x st
+    | Const t v => Some (Val t v)
+    | TestE op a b => eval_test_m op (eval st a) (eval st b)
+    end.
+
+  Hint Unfold eval.
+
+  Definition eval_bool st e : option bool :=
+    match eval st e with
+    | Some (Val Bool b) => Some b
+    | _ => None
+    end.
+
+  Definition is_true st e := eval_bool st e = Some true.
+  Definition is_false st e := eval_bool st e = Some false.
+
   Inductive stmt :=
   | Skip : stmt
   | Seq : stmt -> stmt -> stmt
@@ -162,9 +295,7 @@ Module Go.
          (argvars: list var) (* The caller's variables to pass in *)
   | Declare : type -> (var -> stmt) -> stmt
   | Assign : var -> expr -> stmt
-  | ModifyNullary : var -> modify_nullop -> stmt
-  | ModifyUnary : var -> modify_unop -> var -> stmt
-  | ModifyBinary : var -> modify_binop -> var -> var -> stmt
+  | Modify : modify_op -> list var -> stmt
   | DiskRead : var -> expr -> stmt
   | DiskWrite : expr -> expr -> stmt
   (* InCall and Undeclare only appear at runtime *)
@@ -195,9 +326,7 @@ Module Go.
         source_stmt (While cond body)
   | SCall : forall retvars f argvars, source_stmt (Call retvars f argvars)
   | SAssign : forall x e, source_stmt (Assign x e)
-  | SModifyNullary : forall dst op, source_stmt (ModifyNullary dst op)
-  | SModifyUnary : forall dst op v, source_stmt (ModifyUnary dst op v)
-  | SModifyBinary : forall dst op v1 v2, source_stmt (ModifyBinary dst op v1 v2)
+  | SModify : forall op vars, source_stmt (Modify op vars)
   | SDeclare :
       forall t cont,
         (forall var, source_stmt (cont var)) ->
@@ -208,107 +337,47 @@ Module Go.
   Hint Resolve andb_prop.
   Hint Resolve andb_true_intro.
 
-  Definition state := (rawdisk * locals)%type.
-
-  Definition eval_numop (op : numop) a b :=
-    match op with
-    | Plus => Val Num (a + b)
-    | Minus => Val Num (a - b)
-    | Times => Val Num (a * b)
-    end.
-
-  Definition eval_test_num (op : test) a b :=
-    match op with
-    | Eq => if Nat.eq_dec a b then Some (Val Bool true) else Some (Val Bool false)
-    | Ne => if Nat.eq_dec a b then Some (Val Bool false) else Some (Val Bool true)
-    | Lt => if Compare_dec.lt_dec a b then Some (Val Bool true) else Some (Val Bool false)
-    | Le => if Compare_dec.le_dec a b then Some (Val Bool true) else Some (Val Bool false)
-    end.
-
-  Definition eval_test_bool (op : test) a b :=
-    match op with
-    | Eq => if Bool.bool_dec a b then Some (Val Bool true) else Some (Val Bool false)
-    | Ne => if Bool.bool_dec a b then Some (Val Bool false) else Some (Val Bool true)
-    | _ => None
-    end.
-
-  Definition eval_numop_m (op : numop) (oa ob : option value) : option value :=
-    match oa, ob with
-    | Some (Val Num a), Some (Val Num b) => Some (eval_numop op a b)
-    | _, _ => None
-    end.
-
-  Definition eval_test_m (op : test) (oa ob : option value) : option value :=
-    match oa, ob with
-    | Some (Val Num a), Some (Val Num b) => eval_test_num op a b
-    | Some (Val Bool a), Some (Val Bool b) => eval_test_bool op a b
-    | _, _ => None
-    end.
-
-  Definition eval_nullop op : option value :=
-    match op with
-    | SetConst n => Some (Val Num n)
-    end.
-
-  Definition eval_unop (old : value) (op : modify_unop) (a : value) : option value.
-    refine (
-        match op with
-        | DuplicateOp => Some a
-        | AppendOp =>
-          _ (* TODO: in this case, if [a] is not aliasable, it needs to disappear *)
-        end).
-    (* TODO: use dependent types for this, or leave list typing to semantics? *)
-    destruct old, a.
-    destruct t; [ exact None .. | ].
-    destruct (type_eq_dec t t0); [ | exact None ].
-    rewrite e in v.
-    exact (Some (Val (Slice t0) (v0 :: v))).
-  Defined.
-
-  Definition eval_binop op a b : option value :=
-    match op with
-    | ModifyNumOp n_op =>
-      match (a, b) with
-      | (Val Num va, Val Num vb) => Some (eval_numop n_op va vb)
-      | _ => None
-      end
-    end.
-
-  Fixpoint eval (st : locals) (e : expr) : option value :=
-    match e with
-    | Var x => VarMap.find x st
-    | Const t v => Some (Val t v)
-    | TestE op a b => eval_test_m op (eval st a) (eval st b)
-    end.
-
-  Hint Unfold eval.
-
-  Definition eval_bool st e : option bool :=
-    match eval st e with
-    | Some (Val Bool b) => Some b
-    | _ => None
-    end.
-
-  Definition is_true st e := eval_bool st e = Some true.
-  Definition is_false st e := eval_bool st e = Some false.
-
   Definition mapsto_can_alias x st :=
     match find x st with
     | Some v => can_alias v
     | None => true
     end.
 
+  (* Update the caller's scope after a function call *)
   Fixpoint add_remove_many keys (input : list value) (output : list (option value)) st :=
     match keys, input, output with
     | k :: keys', i :: input', o :: output' =>
       let st' :=
-          match can_alias (type_of i), o with
-          | false, Some v => VarMap.add k v st
-          | false, None => VarMap.remove k st
-          | _, _ => st
-          end in
+          if can_alias (type_of i)
+          then st
+          else MoreVarMapFacts.update k o st
+      in
       add_remove_many keys' input' output' st'
     | _, _, _ => st
+    end.
+
+  Definition types_match val1 val2 :=
+    match val1, val2 with
+    | Val t1 _, Some (Val t2 _) =>
+      if type_eq_dec t1 t2
+      then true
+      else false
+    | _, None => true
+    end.
+
+  (* Update a scope for an operation *)
+  Fixpoint update_many keys (input : list value) (output : list (option value)) st :=
+    match keys, input, output with
+    | k :: keys', i :: input', o :: output' =>
+      if types_match i o
+      then let ost' := update_many keys' input' output' st
+           in match ost' with
+              | Some st' => Some (MoreVarMapFacts.update k o st')
+              | None => None
+              end
+      else None
+    | [], [], [] => Some st
+    | _, _, _ => None
     end.
 
   Fixpoint add_many keys (output : list value) st :=
@@ -317,16 +386,6 @@ Module Go.
       let st' := VarMap.add k v st in
       add_many keys' output' st'
     | _, _ => st
-    end.
-
-  Fixpoint mapM A B (f : A -> option B) ls :=
-    match ls with
-    | x :: xs =>
-      match f x, mapM f xs with
-      | Some y, Some ys => Some (y :: ys)
-      | _, _ => None
-      end
-    | nil => Some nil
     end.
 
   Local Open Scope bool_scope.
@@ -490,27 +549,11 @@ Module Go.
         type_of v = type_of v0 -> (* and have the correct type *)
         s' = VarMap.add x v s ->
         runsto (Assign x e) (d, s) (d, s')
-    | RunsToModifyNullary : forall x op (s s' : locals) d (v0 v : value),
-        VarMap.find x s = Some v0 ->
-        eval_nullop op = Some v ->
-        type_of v = type_of v0 ->
-        s' = VarMap.add x v s ->
-        runsto (ModifyNullary x op) (d, s) (d, s')
-    | RunsToModifyUnary : forall x op var (s s' : locals) d (val v0 v : value),
-        VarMap.find x s = Some v0 ->
-        VarMap.find var s = Some val ->
-        eval_unop v0 op val = Some v ->
-        type_of v = type_of v0 ->
-        s' = VarMap.add x v s ->
-        runsto (ModifyUnary x op var) (d, s) (d, s')
-    | RunsToModifyBinary : forall x op var1 var2 (s s' : locals) d (val1 val2 v0 v : value),
-        VarMap.find x s = Some v0 ->
-        VarMap.find var1 s = Some val1 ->
-        VarMap.find var2 s = Some val2 ->
-        eval_binop op val1 val2 = Some v ->
-        type_of v = type_of v0 ->
-        s' = VarMap.add x v s ->
-        runsto (ModifyBinary x op var1 var2) (d, s) (d, s')
+    | RunsToModify : forall op vars (s s' : locals) d (vs0 : list value) (vs : list (option value)),
+        mapM (sel s) vars = Some vs0 ->
+        impl_for op vs0 = Some vs ->
+        Some s' = update_many vars vs0 vs s ->
+        runsto (Modify op vars) (d, s) (d, s')
     | RunsToDiskRead : forall x ae a d s s' v0 v vs,
         VarMap.find x s = Some v0 -> (* variable must be declared *)
         type_of v0 = DiskBlock -> (* and have the correct type *)
@@ -573,27 +616,11 @@ Module Go.
         type_of v = type_of v0 -> (* and have the correct type *)
         s' = VarMap.add x v s ->
         step (d, s, Assign x e) (d, s', Skip)
-    | StepModifyNullary : forall x op (s s' : locals) d (v0 v : value),
-        VarMap.find x s = Some v0 ->
-        eval_nullop op = Some v ->
-        type_of v = type_of v0 ->
-        s' = VarMap.add x v s ->
-        step (d, s, ModifyNullary x op) (d, s', Skip)
-    | StepModifyUnary : forall x op var (s s' : locals) d (val v0 v : value),
-        VarMap.find x s = Some v0 ->
-        VarMap.find var s = Some val ->
-        eval_unop v0 op val = Some v ->
-        type_of v = type_of v0 ->
-        s' = VarMap.add x v s ->
-        step (d, s, ModifyUnary x op var) (d, s', Skip)
-    | StepModifyBinary : forall x op var1 var2 (s s' : locals) d (val1 val2 v0 v : value),
-        VarMap.find x s = Some v0 ->
-        VarMap.find var1 s = Some val1 ->
-        VarMap.find var2 s = Some val2 ->
-        eval_binop op val1 val2 = Some v ->
-        type_of v = type_of v0 ->
-        s' = VarMap.add x v s ->
-        step (d, s, ModifyBinary x op var1 var2) (d, s', Skip)
+    | StepModify : forall op vars (s s' : locals) d (vs0 : list value) (vs : list (option value)),
+        mapM (sel s) vars = Some vs0 ->
+        impl_for op vs0 = Some vs ->
+        Some s' = update_many vars vs0 vs s ->
+        step (d, s, Modify op vars) (d, s', Skip)
     | StepDiskRead : forall x ae a d s s' v v0 vs,
         VarMap.find x s = Some v0 -> (* variable must be declared *)
         type_of v0 = DiskBlock -> (* and have the correct type *)
@@ -724,12 +751,8 @@ Module Go.
     (* For some reason (probably involving tuples), the [Hint Constructors] isn't enough. *)
     Hint Extern 1 (step (_, _, Assign _ _) _) =>
     eapply StepAssign.
-    Hint Extern 1 (step (_, _, ModifyNullary _ _) _) =>
-    eapply StepModifyNullary.
-    Hint Extern 1 (step (_, _, ModifyUnary _ _ _) _) =>
-    eapply StepModifyUnary.
-    Hint Extern 1 (step (_, _, ModifyBinary _ _ _ _) _) =>
-    eapply StepModifyBinary.
+    Hint Extern 1 (step (_, _, Modify _ _) _) =>
+    eapply StepModify.
     Hint Extern 1 (step (_, _, Declare _ _) _) =>
     eapply StepDeclare.
     Hint Extern 1 (step (_, _, Undeclare _) _) =>
@@ -795,27 +818,11 @@ Module Go.
         type_of v = type_of v0 -> (* and have the correct type *)
         s' = VarMap.add x v s ->
         runsto_InCall (Assign x e) (d, s) (d, s')
-    | RunsToICModifyNullary : forall x op (s s' : locals) d (v0 v : value),
-        VarMap.find x s = Some v0 ->
-        eval_nullop op = Some v ->
-        type_of v = type_of v0 ->
-        s' = VarMap.add x v s ->
-        runsto_InCall (ModifyNullary x op) (d, s) (d, s')
-    | RunsToICModifyUnary : forall x op var (s s' : locals) d (val v0 v : value),
-        VarMap.find x s = Some v0 ->
-        VarMap.find var s = Some val ->
-        eval_unop v0 op val = Some v ->
-        type_of v = type_of v0 ->
-        s' = VarMap.add x v s ->
-        runsto_InCall (ModifyUnary x op var) (d, s) (d, s')
-    | RunsToICModifyBinary : forall x op var1 var2 (s s' : locals) d (val1 val2 v0 v : value),
-        VarMap.find x s = Some v0 ->
-        VarMap.find var1 s = Some val1 ->
-        VarMap.find var2 s = Some val2 ->
-        eval_binop op val1 val2 = Some v ->
-        type_of v = type_of v0 ->
-        s' = VarMap.add x v s ->
-        runsto_InCall (ModifyBinary x op var1 var2) (d, s) (d, s')
+    | RunsToICModify : forall op vars (s s' : locals) d (vs0 : list value) (vs : list (option value)),
+        mapM (sel s) vars = Some vs0 ->
+        impl_for op vs0 = Some vs ->
+        Some s' = update_many vars vs0 vs s ->
+        runsto_InCall (Modify op vars) (d, s) (d, s')
     | RunsToICDiskRead : forall x ae a d s s' v v0 vs,
         VarMap.find x s = Some v0 -> (* variable must be declared *)
         type_of v0 = DiskBlock -> (* and have the correct type *)
@@ -1016,11 +1023,11 @@ Notation "! x" := (x = 0)%go (at level 70, no associativity).
 Notation "A ; B" := (Go.Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : go_scope.
 Notation "x <~ y" := (Go.Assign x y) (at level 90) : go_scope.
 (* TODO: better syntax *)
-Notation "x <0~ n" := (Go.ModifyNullary x (Go.SetConst n)) (at level 90): go_scope.
-Notation "x <1~ y" := (Go.ModifyUnary x Go.DuplicateOp y) (at level 90): go_scope.
-Notation "x <2~ A * B" := (Go.ModifyBinary x (Go.ModifyNumOp Go.Times) A B) (at level 90): go_scope.
-Notation "x <2~ A + B" := (Go.ModifyBinary x (Go.ModifyNumOp Go.Plus ) A B) (at level 90): go_scope.
-Notation "x <2~ A - B" := (Go.ModifyBinary x (Go.ModifyNumOp Go.Minus) A B) (at level 90): go_scope.
+Notation "x <~const n" := (Go.Modify (Go.SetConst n) [x]) (at level 90): go_scope.
+Notation "x <~dup y" := (Go.Modify Go.DuplicateOp [x; y]) (at level 90): go_scope.
+Notation "x <~num A * B" := (Go.Modify (Go.ModifyNumOp Go.Times) [x; A; B]) (at level 90): go_scope.
+Notation "x <~num A + B" := (Go.Modify (Go.ModifyNumOp Go.Plus ) [x; A; B]) (at level 90): go_scope.
+Notation "x <~num A - B" := (Go.Modify (Go.ModifyNumOp Go.Minus) [x; A; B]) (at level 90): go_scope.
 Notation "'__'" := (Go.Skip) : go_scope.
 Notation "'While' A B" := (Go.While A B) (at level 200, A at level 0, B at level 1000, format "'[v    ' 'While'  A '/' B ']'") : go_scope.
 Notation "'If' a 'Then' b 'Else' c 'EndIf'" := (Go.If a b c) (at level 200, a at level 1000, b at level 1000, c at level 1000) : go_scope.
