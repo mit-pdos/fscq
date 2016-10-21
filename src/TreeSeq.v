@@ -2320,6 +2320,42 @@ Module TREESEQ.
     - eapply find_subtree_update_subtree_oob; eauto.
   Qed.
 
+ Theorem find_subtree_graft_subtree_oob': forall pn num ents base name tree subtree inum f,
+    find_subtree base tree = Some (TreeDir num ents) ->
+    (~ prefix (base ++ [name]) pn) ->
+    find_subtree pn (tree_graft num ents base name subtree tree) = Some (TreeFile inum f) ->
+    find_subtree pn tree = Some (TreeFile inum f).
+  Proof.
+    unfold tree_graft; intros.
+    destruct (pathname_decide_prefix base pn).
+    - deex.
+      erewrite find_subtree_app in H1.
+      erewrite find_subtree_app by eassumption.
+      2: erewrite find_update_subtree; eauto.
+
+      clear H.
+      induction ents; simpl in *.
+      + destruct suffix; simpl in *; try congruence.
+        destruct (string_dec name s); subst; simpl in *; try congruence.
+        contradict H0; eauto.
+        exists suffix.
+        rewrite <- app_assoc.
+        simpl. eauto.
+      + destruct suffix; simpl in *; try congruence.
+        destruct a; simpl in *.
+        destruct (string_dec s0 s); subst.
+        * destruct (string_dec s name); subst.
+          -- exfalso. apply H0. eexists; rewrite <- app_assoc; simpl; eauto.
+          -- simpl in *.
+             destruct (string_dec s s); subst; congruence.
+        * destruct (string_dec s0 name); subst; simpl in *; try congruence.
+          destruct (string_dec name s); subst; simpl in *; try congruence.
+          destruct (string_dec s0 s); subst; simpl in *; try congruence.
+          specialize (IHents H1).
+          eauto.
+    - eapply find_subtree_update_subtree_oob'; eauto.
+  Qed.
+
   Theorem find_subtree_prune_subtree_oob: forall pn num ents base name tree inum f,
     find_subtree base tree = Some (TreeDir num ents) ->
     (~ prefix (base ++ [name]) pn) ->
@@ -2348,6 +2384,42 @@ Module TREESEQ.
           -- simpl. destruct (string_dec name s); congruence.
           -- simpl. destruct (string_dec s0 s); congruence.
     - eapply find_subtree_update_subtree_oob; eauto.
+  Qed.
+
+  Theorem find_subtree_prune_subtree_oob': forall pn num ents base name tree inum f,
+    find_subtree base tree = Some (TreeDir num ents) ->
+    (~ prefix (base ++ [name]) pn) ->
+    find_subtree pn (tree_prune num ents base name tree) = Some (TreeFile inum f) ->
+    find_subtree pn tree = Some (TreeFile inum f).
+  Proof.
+   unfold tree_prune; intros.
+    destruct (pathname_decide_prefix base pn).
+    - deex.
+      erewrite find_subtree_app in H1.
+      erewrite find_subtree_app by eassumption.
+      2: erewrite find_update_subtree; eauto.
+
+      clear H.
+      induction ents; simpl in *.
+      + destruct suffix; simpl in *; try congruence.
+        destruct (string_dec name s); subst; simpl in *; try congruence.
+        contradict H0; eauto.
+        exists suffix.
+        rewrite <- app_assoc.
+        simpl. eauto.
+      + destruct suffix; simpl in *; try congruence.
+        destruct a; simpl in *.
+        destruct (string_dec s0 s); subst.
+        * destruct (string_dec s name); subst.
+          -- exfalso. apply H0. eexists; rewrite <- app_assoc; simpl; eauto.
+          -- simpl in *.
+             destruct (string_dec s s); subst; congruence.
+        * destruct (string_dec s0 name); subst; simpl in *; try congruence.
+          destruct (string_dec name s); subst; simpl in *; try congruence.
+          destruct (string_dec s0 s); subst; simpl in *; try congruence.
+          specialize (IHents H1).
+          eauto.
+    - eapply find_subtree_update_subtree_oob'; eauto.
   Qed.
 
   Lemma find_rename_oob: forall tree subtree cwd dnum tree_elem srcnum srcbase 
@@ -2396,6 +2468,54 @@ Module TREESEQ.
       unfold tree_graft, tree_prune.
       erewrite find_subtree_update_subtree_oob; eauto.
   Qed.
+
+  Lemma find_rename_oob': forall tree subtree cwd dnum tree_elem srcnum srcbase 
+         srcents srcname dstnum dstbase dstents dstname pathname inum f,
+    (~ prefix (cwd ++ srcbase ++ [srcname]) pathname) ->
+    (~ prefix (cwd ++ dstbase ++ [dstname]) pathname) -> 
+    find_subtree cwd tree = Some (TreeDir dnum tree_elem) ->
+    find_subtree srcbase (TreeDir dnum tree_elem) = Some (TreeDir srcnum srcents) ->
+    find_dirlist srcname srcents = Some subtree ->
+    find_subtree dstbase
+      (tree_prune srcnum srcents srcbase srcname (TreeDir dnum tree_elem)) =
+      Some (TreeDir dstnum dstents) ->
+    find_subtree pathname
+     (update_subtree cwd
+       (tree_graft dstnum dstents dstbase dstname subtree
+        (tree_prune srcnum srcents srcbase srcname (TreeDir dnum tree_elem)))
+     tree) = Some (TreeFile inum f) ->
+    find_subtree pathname tree = Some (TreeFile inum f).
+  Proof.
+    intros.
+    destruct (pathname_decide_prefix cwd pathname).
+    + destruct (pathname_decide_prefix (cwd ++ srcbase ++ [srcname]) pathname).
+      - (* pathname is inside src subtree; contradiction *)
+        destruct H7.
+        rewrite H7 in H.
+        unfold prefix in H.
+        destruct H.
+        eexists x; eauto.
+       - (* pathname isn't inside src subtree *)
+        destruct (pathname_decide_prefix (cwd ++ dstbase ++ [dstname]) pathname).
+        ++ (* pathname is inside dst tree; contradiction *)
+          destruct H8.
+          rewrite H8 in *.
+          unfold prefix in H0.
+          destruct H0.
+          eexists x; eauto.
+        ++ (* pathname isn't inside src and isn't inside dst tree, but inside cwd *)
+          deex.
+          erewrite find_subtree_app; eauto.
+          erewrite find_subtree_graft_subtree_oob'; eauto.
+          intro; apply H0. apply prefix_trim. eauto.
+          erewrite find_subtree_prune_subtree_oob'; eauto.
+          intro; apply H. apply prefix_trim. eauto.
+          erewrite find_subtree_app in H1; eauto.
+    + (* pathname is outside of cwd *)
+      unfold tree_graft, tree_prune.
+      erewrite find_subtree_update_subtree_oob; eauto.
+  Qed. 
+
 
   Lemma dirtree_name_in_dents: forall T name tree_elem elem f,
     fold_right (DIRTREE.find_subtree_helper f name) (@None T) tree_elem = Some elem
@@ -2609,12 +2729,8 @@ Module TREESEQ.
       left.
       repeat deex; intuition.
       eexists f'; intuition; simpl in *.
-
-      admit.
-(*
-      eapply find_subtree_update_subtree_oob' in H17; eauto.
-*)
-
+      eapply find_rename_oob'. 7: eauto.
+      all: auto.
       unfold BFILE.block_belong_to_file in *.
       rewrite H9 in *; eauto.
 
