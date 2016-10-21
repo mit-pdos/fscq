@@ -2286,30 +2286,32 @@ Proof.
 Admitted.
 
 
-  Definition isnot_prefix p1 p2 :=
-    ~ (exists suffix : list string, p1 ++ suffix = p2).
+  Definition prefix p1 p2 :=
+    (exists suffix : list string, p1 ++ suffix = p2).
 
-  Theorem find_subtree_graft_subtree_oob : forall pn num ents base name tree subtree inum f,
-    (~ exists suffix, pn = base ++ [name] ++ suffix) ->
+
+  Theorem find_subtree_graft_subtree_oob: forall pn num ents base name tree subtree inum f,
+    (~ prefix (base++[name]) pn)->
     find_subtree pn tree = Some (TreeFile inum f) ->
     find_subtree pn (tree_graft num ents base name subtree tree) = Some (TreeFile inum f).
   Proof.
       (* proof similar to find_subtree_update_subtree_oob? *)
   Admitted.
 
- Theorem find_subtree_prune_subtree_oob : forall pn num ents base name tree inum f,
-    (~ exists suffix, pn = base ++ [name] ++ suffix) ->
+ Theorem find_subtree_prune_subtree_oob: forall pn num ents base name tree inum f,
+    (~ prefix (base ++ [name]) pn) ->
     find_subtree pn tree = Some (TreeFile inum f) ->
     find_subtree pn (tree_prune num ents base name tree) = Some (TreeFile inum f).
   Proof.
   Admitted.
 
+
   Lemma find_rename_oob: forall tree subtree cwd dnum tree_elem srcnum srcbase 
          srcents srcname dstnum dstbase dstents dstname pathname inum f,
-    isnot_prefix (cwd ++ srcbase ++ [srcname]) pathname ->
-    isnot_prefix (cwd ++ dstbase ++ [dstname]) pathname -> 
-    find_subtree cwd tree = Some (TreeDir dnum tree_elem) ->
+    (~ prefix (cwd ++ srcbase ++ [srcname]) pathname) ->
+    (~ prefix (cwd ++ dstbase ++ [dstname]) pathname) -> 
     find_subtree pathname tree = Some (TreeFile inum f) ->
+    find_subtree cwd tree = Some (TreeDir dnum tree_elem) ->
     find_subtree srcbase (TreeDir dnum tree_elem) = Some (TreeDir srcnum srcents) ->
     find_dirlist srcname srcents = Some subtree ->
     find_subtree dstbase
@@ -2327,7 +2329,7 @@ Admitted.
       - (* pathname is inside src subtree; contradiction *)
         destruct H7.
         rewrite H7 in H.
-        unfold isnot_prefix in H.
+        unfold prefix in H.
         destruct H.
         eexists x; eauto.
        - (* pathname isn't inside src subtree *)
@@ -2335,20 +2337,20 @@ Admitted.
         ++ (* pathname is inside dst tree; contradiction *)
           destruct H8.
           rewrite H8 in *.
-          unfold isnot_prefix in H0.
+          unfold prefix in H0.
           destruct H0.
           eexists x; eauto.
         ++ (* pathname isn't inside src and isn't inside dst tree, but inside cwd *)
           deex.
           erewrite find_subtree_app; eauto.
           erewrite find_subtree_graft_subtree_oob; eauto.
-          admit.  (* cut cwd in H8 left and right using app_inv_head? *)
+          admit. (* H8 *)
           erewrite find_subtree_prune_subtree_oob; eauto.
-          admit.
-          erewrite find_subtree_app in H2; eauto.
+          admit.  (* H8 *)
+          erewrite find_subtree_app in H1; eauto.
     + (* pathname is outside of cwd *)
       unfold tree_graft, tree_prune.
-      eapply find_subtree_update_subtree_oob; eauto.
+      erewrite find_subtree_update_subtree_oob; eauto.
   Admitted.
 
 
@@ -2391,7 +2393,7 @@ Admitted.
     cancel.
     or_r.
 
-    (* a few obligations need: subtree *)
+    (* a few obligations need subtree *)
     eapply sep_star_split_l in H4 as H4'.
     destruct H4'.
     eapply dir2flatmem2_find_subtree_ptsto in H5.
@@ -2424,17 +2426,24 @@ Admitted.
       intuition.
       eapply find_rename_oob; eauto.
       admit.  (* adjust preconditions *)
-      admit. 
+      admit.
       (* need to show block is in updated tree *)
       (* we know that dirtree_safe holds ts!! to updated ts!! *)
-      (* we know that pathname' existed in ts!! *)
-      admit.
+       admit.
+
     - unfold treeseq_safe_bwd in *.
       intros.
       left.
       deex.
+      specialize (H13 inum off bn). 
+      destruct H13.
       eexists f'.
+      intuition. simpl in *.
+      eapply find_subtree_update_subtree_oob' in H20; eauto.
       admit.
+      admit. (* dirtree_safe *)
+      eauto.
+      admit. (* contradiction? *)
     - admit.
     - 
      (* eapply dirents2mem2_graft_file'. *)
