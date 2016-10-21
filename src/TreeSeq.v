@@ -2397,7 +2397,44 @@ Module TREESEQ.
       erewrite find_subtree_update_subtree_oob; eauto.
   Qed.
 
+  Lemma dirtree_name_in_dents: forall T name tree_elem elem f,
+    fold_right (DIRTREE.find_subtree_helper f name) (@None T) tree_elem = Some elem
+    -> In name (map fst tree_elem).
+  Proof.
+    intros.
+    induction tree_elem.
+    - intros. simpl in H. congruence.
+    - destruct a.
+      destruct (string_dec s name).
+      rewrite cons_app.
+      rewrite map_app.
+      apply in_app_iff.
+      simpl.
+      left.
+      auto.
+      rewrite cons_app.
+      rewrite map_app.
+      apply in_or_app.
+      right.
+      apply IHtree_elem.
+      rewrite cons_app in H.
+      rewrite fold_right_app in H.
+      simpl in H.
+      destruct (string_dec s name).
+      congruence.
+      assumption.
+  Qed.
+
+  Lemma find_subtree_tree_names_distinct: forall t pn subtree,
+      tree_names_distinct t ->
+      find_subtree pn t = Some subtree ->
+      tree_names_distinct subtree.
+  Proof.
+    
+  Admitted.
+
   Lemma find_subtree_before_prune : forall pn t num ents base name dnum0 ents0,
+    tree_names_distinct t ->
     find_subtree base t = Some (TreeDir num ents) ->
     find_subtree pn (tree_prune num ents base name t) = Some (TreeDir dnum0 ents0) ->
     exists ents1,
@@ -2406,35 +2443,60 @@ Module TREESEQ.
     unfold tree_prune; intros.
     destruct (pathname_decide_prefix base pn).
     - deex.
-      erewrite find_subtree_app in H0; eauto.
+      erewrite find_subtree_app in H1; eauto.
       cut (exists ents1 : list (string * dirtree),
                find_subtree (suffix) (TreeDir num ents) = Some (TreeDir dnum0 ents1)).
       intros.
       deex.
       eexists.
       erewrite find_subtree_app; eauto.
-      clear H.
+      eapply find_subtree_tree_names_distinct in H; eauto.
+      clear H0.
       destruct suffix; simpl in *.
-      + inversion H0; subst.
+      + inversion H1; subst.
         eauto.
-      + induction ents; simpl in *.
+      + 
+        induction ents; simpl in *.
         * destruct suffix; simpl in *.
-          inversion H0; subst.
+          inversion H1; subst.
           eexists; eauto.
-        * destruct a.
-          destruct (string_dec s name); subst.
-          admit.
+        * destruct a; simpl in *.
           destruct (string_dec s0 name); subst.
-          ** rewrite H0; simpl.
-             destruct (string_dec name s); try congruence.
+          ** rewrite H1; simpl.
+             destruct (string_dec name s); subst; try congruence.
+             eapply dirtree_name_in_dents in H1; eauto.
+             inversion H.
+             inversion H4; eauto.
+             exfalso; eauto.
              eauto.
           ** simpl in *.
              destruct (string_dec s0 s); subst; eauto.
-    - erewrite find_subtree_update_subtree_oob' in H0; eauto.
-
-      erewrite <- find_subtree_app in H.
-   Admitted.
-
+    - clear H0.
+      generalize dependent (delete_from_dir name (TreeDir num ents)).
+      generalize dependent pn.
+      generalize dependent t.
+      induction base; intros.
+      + simpl in *.
+      contradiction H2.
+      eauto.
+      + destruct pn.
+        ++ simpl in *.
+            destruct t; try congruence.
+            inversion H1; subst; eauto.
+        ++ destruct t; simpl in *; try congruence.
+           induction l.
+           * simpl in *; try congruence.
+           * destruct a0. simpl in *.
+             destruct (string_dec s0 s); destruct (string_dec s0 a); repeat subst; simpl in *.
+             -- destruct (string_dec s s); subst; try congruence. 
+                eapply IHbase; eauto.
+                intro. deex.
+                apply H2. subst. eexists.
+                eauto.
+             -- destruct (string_dec s s); try congruence; eauto.
+             -- destruct (string_dec a s); try congruence; eauto.
+             -- destruct (string_dec s0 s); try congruence; eauto.
+   Qed.
 
   Theorem treeseq_rename_ok : forall fsxp dnum srcbase (srcname:string) dstbase dstname mscs,
     {< ds ts Fm Ftop Ftree cwd tree_elem srcnum dstnum srcfile dstfile,
