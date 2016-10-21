@@ -2499,15 +2499,20 @@ Module TREESEQ.
           eexists x; eauto.
         ++ (* pathname isn't inside src and isn't inside dst tree, but inside cwd *)
           deex.
-          erewrite find_subtree_app; eauto.
-          erewrite find_subtree_graft_subtree_oob'; eauto.
+          erewrite find_subtree_app in H5; eauto.
+          erewrite find_subtree_app.
+          2: eauto.
+          erewrite find_subtree_prune_subtree_oob'. 
+          Focus 4.
+          eapply find_subtree_graft_subtree_oob'.
+          3: eauto.
+          eauto.
           intro; apply H0. apply prefix_trim. eauto.
-          erewrite find_subtree_prune_subtree_oob'; eauto.
+          all: eauto.
           intro; apply H. apply prefix_trim. eauto.
-          erewrite find_subtree_app in H1; eauto.
     + (* pathname is outside of cwd *)
       unfold tree_graft, tree_prune.
-      erewrite find_subtree_update_subtree_oob; eauto.
+      erewrite find_subtree_update_subtree_oob'; eauto.
   Qed. 
 
 
