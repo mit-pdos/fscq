@@ -3306,12 +3306,16 @@ Module DIRTREE.
             [[ tree' = tree_graft dnum dents dstpath dstname subtree pruned ]] *
             [[ (Fm * rep fsxp Ftop tree' ilist' frees')%pred (list2nmem m') ]] *
             [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                            ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] )
+                            ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
+            [[ forall inum' def', inum' <> snum -> inum' <> dnum ->
+               selN ilist inum' def' = selN ilist' inum' def' ]] )
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
     >} rename fsxp dnum srcpath srcname dstpath dstname mscs.
   Proof.
     unfold rename, rep.
+
+    (* XXX this is broken!! *)
 
     (* extract some basic facts *)
     intros; eapply pimpl_ok2; eauto with prog; intros; norm'l.
@@ -3476,7 +3480,9 @@ Module DIRTREE.
             [[ tree' = update_subtree pathname renamed tree ]] *
             [[ (Fm * rep fsxp Ftop tree' ilist' frees')%pred (list2nmem m') ]] *
             [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                            ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] )
+                            ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
+            [[ forall inum' def', inum' <> srcnum -> inum' <> dstnum ->
+               selN ilist inum' def' = selN ilist' inum' def' ]] )
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
     >} rename fsxp dnum srcpath srcname dstpath dstname mscs.

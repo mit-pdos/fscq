@@ -2278,33 +2278,77 @@ Module TREESEQ.
     constructor.
   Qed.
 
-(* XXX delete? *)
-Lemma find_subtree_find_dirlist_eq: forall name inum dents ,
-  find_subtree [name] (TreeDir inum dents) = find_dirlist name dents.
-Proof.
-  intros.
-Admitted.
-
-
   Definition prefix p1 p2 :=
     (exists suffix : list string, p1 ++ suffix = p2).
 
+  Lemma prefix_trim : forall a b c,
+    prefix a b <-> prefix (c ++ a) (c ++ b).
+  Proof.
+    unfold prefix; split; intros; repeat deex.
+    - eexists. rewrite <- app_assoc. eauto.
+    - rewrite <- app_assoc in H. eexists.
+      apply app_inv_head in H. eauto.
+  Qed.
 
   Theorem find_subtree_graft_subtree_oob: forall pn num ents base name tree subtree inum f,
-    (~ prefix (base++[name]) pn)->
+    find_subtree base tree = Some (TreeDir num ents) ->
+    (~ prefix (base ++ [name]) pn) ->
     find_subtree pn tree = Some (TreeFile inum f) ->
     find_subtree pn (tree_graft num ents base name subtree tree) = Some (TreeFile inum f).
   Proof.
-      (* proof similar to find_subtree_update_subtree_oob? *)
-  Admitted.
+    unfold tree_graft; intros.
+    destruct (pathname_decide_prefix base pn).
+    - deex.
+      erewrite find_subtree_app in H1 by eassumption.
+      erewrite find_subtree_app.
+      2: erewrite find_update_subtree; eauto.
 
- Theorem find_subtree_prune_subtree_oob: forall pn num ents base name tree inum f,
+      clear H.
+      induction ents; simpl in *.
+      + destruct suffix; simpl in *; congruence.
+      + destruct suffix; simpl in *; try congruence.
+        destruct a; simpl in *.
+        destruct (string_dec s0 s); subst.
+        * destruct (string_dec s name); subst.
+          -- exfalso. apply H0. eexists; rewrite <- app_assoc; simpl; eauto.
+          -- simpl in *.
+             destruct (string_dec s s); subst; congruence.
+        * specialize (IHents H1).
+          destruct (string_dec s0 name); subst.
+          -- simpl. destruct (string_dec name s); congruence.
+          -- simpl. destruct (string_dec s0 s); congruence.
+    - eapply find_subtree_update_subtree_oob; eauto.
+  Qed.
+
+  Theorem find_subtree_prune_subtree_oob: forall pn num ents base name tree inum f,
+    find_subtree base tree = Some (TreeDir num ents) ->
     (~ prefix (base ++ [name]) pn) ->
     find_subtree pn tree = Some (TreeFile inum f) ->
     find_subtree pn (tree_prune num ents base name tree) = Some (TreeFile inum f).
   Proof.
-  Admitted.
+    unfold tree_prune; intros.
+    destruct (pathname_decide_prefix base pn).
+    - deex.
+      erewrite find_subtree_app in H1 by eassumption.
+      erewrite find_subtree_app.
+      2: erewrite find_update_subtree; eauto.
 
+      clear H.
+      induction ents; simpl in *.
+      + destruct suffix; simpl in *; congruence.
+      + destruct suffix; simpl in *; try congruence.
+        destruct a; simpl in *.
+        destruct (string_dec s0 s); subst.
+        * destruct (string_dec s name); subst.
+          -- exfalso. apply H0. eexists; rewrite <- app_assoc; simpl; eauto.
+          -- simpl in *.
+             destruct (string_dec s s); subst; congruence.
+        * specialize (IHents H1).
+          destruct (string_dec s0 name); subst.
+          -- simpl. destruct (string_dec name s); congruence.
+          -- simpl. destruct (string_dec s0 s); congruence.
+    - eapply find_subtree_update_subtree_oob; eauto.
+  Qed.
 
   Lemma find_rename_oob: forall tree subtree cwd dnum tree_elem srcnum srcbase 
          srcents srcname dstnum dstbase dstents dstname pathname inum f,
@@ -2344,13 +2388,33 @@ Admitted.
           deex.
           erewrite find_subtree_app; eauto.
           erewrite find_subtree_graft_subtree_oob; eauto.
-          admit. (* H8 *)
+          intro; apply H0. apply prefix_trim. eauto.
           erewrite find_subtree_prune_subtree_oob; eauto.
-          admit.  (* H8 *)
+          intro; apply H. apply prefix_trim. eauto.
           erewrite find_subtree_app in H1; eauto.
     + (* pathname is outside of cwd *)
       unfold tree_graft, tree_prune.
       erewrite find_subtree_update_subtree_oob; eauto.
+  Qed.
+
+  Lemma find_subtree_before_prune : forall pn t num ents base name dnum0 ents0,
+    find_subtree base t = Some (TreeDir num ents) ->
+    find_subtree pn (tree_prune num ents base name t) = Some (TreeDir dnum0 ents0) ->
+    exists ents1,
+    find_subtree pn t = Some (TreeDir dnum0 ents1).
+  Proof.
+
+(*       Check find_subtree_update_subtree_oob'. *)
+
+    unfold tree_prune.
+    induction pn; simpl; intros.
+    - destruct t; simpl in *.
+      + destruct base; simpl in *; congruence.
+      + destruct base; simpl in *.
+        * eexists. inversion H; subst. inversion H0; subst. eauto.
+        * induction l; simpl in *; try congruence.
+          admit.
+    - admit.
   Admitted.
 
 
@@ -2369,8 +2433,8 @@ Admitted.
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
         [[ forall pathname',
-           pathname' <> cwd ++ srcbase ++ [srcname] ->
-           pathname' <> cwd ++ dstbase ++ [dstname] ->
+           ~ prefix (cwd ++ srcbase ++ [srcname]) pathname' ->
+           ~ prefix (cwd ++ dstbase ++ [dstname]) pathname' ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
        [[ ds' = (pushd d ds) ]] *
@@ -2396,59 +2460,83 @@ Admitted.
     (* a few obligations need subtree *)
     eapply sep_star_split_l in H4 as H4'.
     destruct H4'.
-    eapply dir2flatmem2_find_subtree_ptsto in H5.
-    erewrite find_subtree_app in H5.
+    eapply dir2flatmem2_find_subtree_ptsto in H8.
+    erewrite find_subtree_app in H8.
     2: eassumption.
-    erewrite find_subtree_app in H5.
+    erewrite find_subtree_app in H8.
     2: eassumption.
     2: distinct_names'.
 
     cancel.
     eapply treeseq_in_ds_pushd; eauto.
     unfold treeseq_one_safe; simpl.
-    rewrite H0 in H9.
+    rewrite H0 in H10.
     eassumption.
 
     eapply treeseq_safe_pushd; eauto.
     eapply NEforall_d_in'; intros.
-    eapply NEforall_d_in in H13.
-    2: instantiate (1 := x0); eauto.
-    unfold treeseq_safe in *.
-    intuition.
-    - unfold treeseq_safe_fwd in *.
+    eapply NEforall_d_in in H14; eauto.
+    eapply treeseq_safe_trans; eauto.
+
+    (* clear all goals mentioning x0 *)
+    clear H14 H17 x0.
+
+    unfold treeseq_safe; intuition.
+
+    - unfold treeseq_safe_fwd.
       intros; simpl.
       deex.
-      specialize (H17 inum off bn).
-      destruct H17.
       exists f; eauto.
       intuition.
-      exists x1.
-      intuition.
       eapply find_rename_oob; eauto.
-      admit.  (* adjust preconditions *)
-      admit.
-      (* need to show block is in updated tree *)
-      (* we know that dirtree_safe holds ts!! to updated ts!! *)
-       admit.
+
+      unfold BFILE.block_belong_to_file in *.
+      rewrite H9 in *; eauto.
+
+      intro. subst.
+      erewrite <- find_subtree_app in H16 by eassumption.
+      assert (pathname' = cwd ++ srcbase).
+      eapply find_subtree_inode_pathname_unique; eauto.
+      distinct_inodes'.
+      distinct_names'.
+      congruence.
+
+      intro. subst.
+      eapply find_subtree_before_prune in H13; deex.
+      erewrite <- find_subtree_app in H13 by eassumption.
+      assert (pathname' = cwd ++ dstbase).
+      eapply find_subtree_inode_pathname_unique; eauto.
+      distinct_inodes'.
+      distinct_names'.
+      congruence.
 
     - unfold treeseq_safe_bwd in *.
       intros.
       left.
-      deex.
-      specialize (H13 inum off bn). 
-      destruct H13.
-      eexists f'.
-      intuition. simpl in *.
-      eapply find_subtree_update_subtree_oob' in H20; eauto.
+      repeat deex; intuition.
+      eexists f'; intuition; simpl in *.
+
       admit.
-      admit. (* dirtree_safe *)
+(*
+      eapply find_subtree_update_subtree_oob' in H17; eauto.
+*)
+
+      unfold BFILE.block_belong_to_file in *.
+      rewrite H9 in *; eauto.
+
+      admit.
+      admit.
+
+    - simpl.
+      unfold dirtree_safe in *; intuition.
+      rewrite H0 in *.
+      rewrite <- surjective_pairing in H14.
       eauto.
-      admit. (* contradiction? *)
+
     - admit.
-    - 
+
      (* eapply dirents2mem2_graft_file'. *)
      (* eapply dirents2mem2_prune_file. *)
-      admit.
   Admitted.
 
   (* restricted to deleting files *)

@@ -1088,7 +1088,9 @@ Module AFS.
     [[ renamed = DIRTREE.tree_graft dstnum dstents dstpath dstname subtree pruned ]] *
     [[ tree' = DIRTREE.update_subtree cwd renamed tree ]] *
     [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                    ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]]
+                    ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
+    [[ forall inum' def', inum' <> srcnum -> inum' <> dstnum ->
+       selN ilist inum' def' = selN ilist' inum' def' ]]
     ) %pred.
 
   Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
