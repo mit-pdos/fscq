@@ -1421,6 +1421,28 @@ Proof.
 *)
 Admitted.
 
+Lemma CompileDuplicate : forall T (x : T) (T' : GoWrapper T) v v' v0 F env,
+  EXTRACT (Ret x)
+  {{ v' ~> v0 * v ~> x * F}}
+    v' <1~ v
+  {{ fun ret => v' ~> ret * v ~> x * F }} // env.
+Proof.
+  intros.
+  unfold ProgOk. intros.
+  inv_exec_progok.
+  repeat extract_var_val.
+  repeat find_inversion_safe.
+  - repeat eexists; eauto.
+    rewrite add_upd.
+    repeat rewrite sep_star_assoc.
+    eapply ptsto_upd.
+    pred_cancel.
+  - contradiction H1.
+    repeat extract_var_val.
+    repeat eexists.
+    eapply StepModifyUnary with (v := wrap x); eauto.
+Qed.
+
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
   forall avar bvar,
     forall a b, EXTRACT src a b
