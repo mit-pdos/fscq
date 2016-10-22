@@ -900,8 +900,8 @@ Proof.
   eauto using hoare_strengthen_pre, hoare_weaken_post, extract_equiv_prog.
 Qed.
 
-Instance piff_progok_proper : forall p xp env,
-  Proper (piff ==> pointwise_relation W piff ==> flip Basics.impl) (ProgOk env p xp).
+Instance piff_progok_proper : forall T p xp env,
+  Proper (piff ==> pointwise_relation T piff ==> flip Basics.impl) (ProgOk env p xp).
 Proof.
   repeat intro.
   rewrite H in H2.
