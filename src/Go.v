@@ -179,86 +179,109 @@ Module Go.
     Definition split_pair_func A B C D (f : A -> B) (g: C -> D) : A * C -> B * D :=
       fun p => let (a, c) := p in (f a, g c).
 
-    (* TODO: monad typeclass? *)
-    Definition bind A B (f : A -> option B) (o : option A) : option B :=
-      match o with
-      | Some a => f a
-      | None => None
-      end.
-
-    Definition ap A B (f : option (A -> B)) (o : option A) : option B :=
-      match f, o with
-      | Some f', Some a => Some (f' a)
-      | _, _ => None
-      end.
-
   End Helpers.
+
+  Section NTuple.
+
+    Fixpoint n_tuple n T : Type :=
+      match n with
+      | 0 => unit
+      | 1 => T
+      | S n' => n_tuple n' T * T
+      end.
+    
+    Definition tupled_rev T (l : list T) : n_tuple (length l) T.
+      induction l.
+      - exact tt.
+      - simpl in *.
+        destruct l.
+        + exact a.
+        + simpl in *.
+          exact (IHl, a).
+    Defined.
+
+    Definition map_n_tuple A B n (f : A -> B) : n_tuple n A -> n_tuple n B.
+      induction n.
+      - exact (fun _ => tt).
+      - simpl in *; destruct n.
+        + exact f.
+        + apply split_pair_func; assumption.
+    Defined.
+
+    Definition collect n T : n_tuple n (option T) -> option (n_tuple n T).
+      induction n.
+      - exact (fun _ => Some tt).
+      - simpl in *; destruct n.
+        + exact id.
+        + intros [ts tl].
+          destruct tl; [ | exact None ].
+          destruct (IHn ts); [ | exact None ].
+          exact (Some (n0, t)).
+    Defined.
+
+  End NTuple.
 
   Section NiceImpls.
 
-    Definition op_impl := list value -> option (list (option value)).
+    Inductive var_update :=
+    | SetTo (newval : value)
+    | Delete
+    | Leave (*unchanged*).
 
-    Definition numop_impl' (op : numop) (old a b : nat) : list nat :=
-      [match op with
-       | Plus => a + b
-       | Minus => a - b
-       | Times => a * b
-       end; a; b].
+    Definition op_impl n := n_tuple n value -> option (n_tuple n var_update).
 
-    Definition setconst_impl (n : nat) : op_impl :=
-      fun _ => Some [Some (Val Num n)].
+    Definition numop_impl' (op : numop) (old a b : nat) : n_tuple 3 var_update :=
+      (SetTo (Val Num (match op with
+                       | Plus => a + b
+                       | Minus => a - b
+                       | Times => a * b
+                       end)),
+       Leave, Leave).
 
-    Definition duplicate_impl : op_impl :=
-      fun args =>
-        match args with
-        | [_; a] => Some [Some a; Some a]
-        | _ => None
-        end.
+    Definition setconst_impl (n : nat) : op_impl 1 :=
+      fun _ => Some (SetTo (Val Num n)).
 
-    Definition append_impl' t (l : list (type_denote t)) (a : type_denote t) :
-                                option (option (list (type_denote t)) * option (type_denote t)) :=
-      Some (Some (a :: l), if can_alias t then Some a else None).
+    Definition duplicate_impl : op_impl 2 :=
+      fun args => let (_, a) := args in Some (SetTo a, Leave).
+
+    Definition append_impl' t (l : list (type_denote t)) (a : type_denote t) : n_tuple 2 var_update :=
+      (SetTo (Val (Slice t) (a :: l)), if can_alias t then Leave else Delete).
 
   End NiceImpls.
 
   Section NastyImpls.
 
-    Definition numop_impl (op : numop) : op_impl :=
-      fun args => match args with
-               | [Val Num o; Val Num a; Val Num b] =>
-                 Some (map (fun n => Some (Val Num n)) (numop_impl' op o a b))
-               | _ => None
+    Definition numop_impl (op : numop) : op_impl 3 :=
+      fun args => let '(vo, va, vb) := args in
+               match vo, va, vb with
+               | Val Num o, Val Num a, Val Num b =>
+                 Some (numop_impl' op o a b)
+               | _, _, _ => None
                end.
 
-    Definition append_impl : op_impl.
-      refine (fun args => match args with
-                       | [Val t1 l; Val t2 a] =>
-                         match t1 with
-                         | Slice t1' => fun l => _
-                         | _ => fun _ => None
-                         end l
-                       | _ => None
-                       end).
+
+    Definition append_impl : op_impl 2.
+      refine (fun args => let '(Val t1 l, Val t2 a) := args in
+                       match t1 with
+                       | Slice t1' => fun l => _
+                       | _ => fun _ => None
+                       end l).
       destruct (type_eq_dec t1' t2); [ | exact None ].
       rewrite e in l.
-      (* Hmm, not sure how much the helpers increase clarity here... *)
-      refine (option_map _ (append_impl' _ l a)).
-      refine (fun ret => let (l', a') := ret in
-                      [option_map _ l';
-                       ap _ a']).
-      exact (Val (Slice t2)).
-      exact (if can_alias t2 then Some (Val t2) else None).
+      refine (Some (append_impl' _ l a)).
     Defined.
 
   End NastyImpls.
 
-  Definition impl_for (op : modify_op) : op_impl :=
+  Definition impl_for (op : modify_op) : { n : nat & op_impl n } :=
     match op with
-    | SetConst n => setconst_impl n
-    | DuplicateOp => duplicate_impl
-    | AppendOp => append_impl
-    | ModifyNumOp nop => numop_impl nop
+    | SetConst n => existT _ _ (setconst_impl n)
+    | DuplicateOp => existT _ _ duplicate_impl
+    | AppendOp => existT _ _ append_impl
+    | ModifyNumOp nop => existT _ _ (numop_impl nop)
     end.
+
+  Definition op_arity (op : modify_op) : nat := projT1 (impl_for op).
 
   Definition eval_test_m (op : test) (oa ob : option value) : option value :=
     match oa, ob with
@@ -295,7 +318,7 @@ Module Go.
          (argvars: list var) (* The caller's variables to pass in *)
   | Declare : type -> (var -> stmt) -> stmt
   | Assign : var -> expr -> stmt
-  | Modify : modify_op -> list var -> stmt
+  | Modify : forall op : modify_op, n_tuple (op_arity op) var -> stmt
   | DiskRead : var -> expr -> stmt
   | DiskWrite : expr -> expr -> stmt
   (* InCall and Undeclare only appear at runtime *)
@@ -365,20 +388,30 @@ Module Go.
     | _, None => true
     end.
 
-  (* Update a scope for an operation *)
-  Fixpoint update_many keys (input : list value) (output : list (option value)) st :=
-    match keys, input, output with
-    | k :: keys', i :: input', o :: output' =>
-      if types_match i o
-      then let ost' := update_many keys' input' output' st
-           in match ost' with
-              | Some st' => Some (MoreVarMapFacts.update k o st')
-              | None => None
-              end
+  Definition update_one key (old : value) (update : var_update) st :=
+    match update with
+    | SetTo v =>
+      if type_eq_dec (type_of old) (type_of v)
+      then Some (VarMap.add key v st)
       else None
-    | [], [], [] => Some st
-    | _, _, _ => None
+    | Delete => Some (VarMap.remove key st)
+    | Leave => Some st
     end.
+
+  (* Update a scope for an operation *)
+  Definition update_many n :
+    forall (keys : n_tuple n var) (old : n_tuple n value) (update : n_tuple n var_update) (st : VarMap.t value),
+      option (VarMap.t value).
+    induction n; intros.
+    - exact (Some st). (* n = 0 *)
+    - simpl in *; destruct n.
+      + exact (update_one keys old update st). (* n = 1 *)
+      + exact (let ost' := update_one (snd keys) (snd old) (snd update) st
+               in match ost' with
+                  | None => None
+                  | Some st' => IHn (fst keys) (fst old) (fst update) st'
+                  end). (* n > 1 *)
+  Defined.
 
   Fixpoint add_many keys (output : list value) st :=
     match keys, output with
@@ -549,10 +582,12 @@ Module Go.
         type_of v = type_of v0 -> (* and have the correct type *)
         s' = VarMap.add x v s ->
         runsto (Assign x e) (d, s) (d, s')
-    | RunsToModify : forall op vars (s s' : locals) d (vs0 : list value) (vs : list (option value)),
-        mapM (sel s) vars = Some vs0 ->
-        impl_for op vs0 = Some vs ->
-        Some s' = update_many vars vs0 vs s ->
+    | RunsToModify : forall op vars (s s' : locals) d
+                       (vs0 : n_tuple (op_arity op) value)
+                       (vs : n_tuple (op_arity op) var_update),
+        collect _ _ (map_n_tuple _ (sel s) vars) = Some vs0 ->
+        projT2 (impl_for op) vs0 = Some vs ->
+        Some s' = update_many _ vars vs0 vs s ->
         runsto (Modify op vars) (d, s) (d, s')
     | RunsToDiskRead : forall x ae a d s s' v0 v vs,
         VarMap.find x s = Some v0 -> (* variable must be declared *)
@@ -616,10 +651,12 @@ Module Go.
         type_of v = type_of v0 -> (* and have the correct type *)
         s' = VarMap.add x v s ->
         step (d, s, Assign x e) (d, s', Skip)
-    | StepModify : forall op vars (s s' : locals) d (vs0 : list value) (vs : list (option value)),
-        mapM (sel s) vars = Some vs0 ->
-        impl_for op vs0 = Some vs ->
-        Some s' = update_many vars vs0 vs s ->
+    | StepModify : forall op vars (s s' : locals) d
+                     (vs0 : n_tuple (op_arity op) value)
+                     (vs : n_tuple (op_arity op) var_update),
+        collect _ _ (map_n_tuple _ (sel s) vars) = Some vs0 ->
+        projT2 (impl_for op) vs0 = Some vs ->
+        Some s' = update_many _ vars vs0 vs s ->
         step (d, s, Modify op vars) (d, s', Skip)
     | StepDiskRead : forall x ae a d s s' v v0 vs,
         VarMap.find x s = Some v0 -> (* variable must be declared *)
@@ -818,10 +855,12 @@ Module Go.
         type_of v = type_of v0 -> (* and have the correct type *)
         s' = VarMap.add x v s ->
         runsto_InCall (Assign x e) (d, s) (d, s')
-    | RunsToICModify : forall op vars (s s' : locals) d (vs0 : list value) (vs : list (option value)),
-        mapM (sel s) vars = Some vs0 ->
-        impl_for op vs0 = Some vs ->
-        Some s' = update_many vars vs0 vs s ->
+    | RunsToICModify : forall op vars (s s' : locals) d
+                         (vs0 : n_tuple (op_arity op) value)
+                         (vs : n_tuple (op_arity op) var_update),
+        collect _ _ (map_n_tuple _ (sel s) vars) = Some vs0 ->
+        projT2 (impl_for op) vs0 = Some vs ->
+        Some s' = update_many _ vars vs0 vs s ->
         runsto_InCall (Modify op vars) (d, s) (d, s')
     | RunsToICDiskRead : forall x ae a d s s' v v0 vs,
         VarMap.find x s = Some v0 -> (* variable must be declared *)
@@ -868,6 +907,7 @@ Module Go.
           runsto p st st'.
     Proof.
       induction 2; intros; subst_definitions; invc H; eauto 10.
+      find_apply_lem_hyp inj_pair2; subst; eauto.
     Qed.
 
     Hint Resolve source_stmt_RunsToInCall_runsto.
@@ -1023,11 +1063,11 @@ Notation "! x" := (x = 0)%go (at level 70, no associativity).
 Notation "A ; B" := (Go.Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : go_scope.
 Notation "x <~ y" := (Go.Assign x y) (at level 90) : go_scope.
 (* TODO: better syntax *)
-Notation "x <~const n" := (Go.Modify (Go.SetConst n) [x]) (at level 90): go_scope.
-Notation "x <~dup y" := (Go.Modify Go.DuplicateOp [x; y]) (at level 90): go_scope.
-Notation "x <~num A * B" := (Go.Modify (Go.ModifyNumOp Go.Times) [x; A; B]) (at level 90): go_scope.
-Notation "x <~num A + B" := (Go.Modify (Go.ModifyNumOp Go.Plus ) [x; A; B]) (at level 90): go_scope.
-Notation "x <~num A - B" := (Go.Modify (Go.ModifyNumOp Go.Minus) [x; A; B]) (at level 90): go_scope.
+Notation "x <~const n" := (Go.Modify (Go.SetConst n) (x : Go.n_tuple 1 Go.var)) (at level 90): go_scope.
+Notation "x <~dup y" := (Go.Modify Go.DuplicateOp (x, y)) (at level 90): go_scope.
+Notation "x <~num A * B" := (Go.Modify (Go.ModifyNumOp Go.Times) (x, A, B)) (at level 90): go_scope.
+Notation "x <~num A + B" := (Go.Modify (Go.ModifyNumOp Go.Plus ) (x, A, B)) (at level 90): go_scope.
+Notation "x <~num A - B" := (Go.Modify (Go.ModifyNumOp Go.Minus) (x, A, B)) (at level 90): go_scope.
 Notation "'__'" := (Go.Skip) : go_scope.
 Notation "'While' A B" := (Go.While A B) (at level 200, A at level 0, B at level 1000, format "'[v    ' 'While'  A '/' B ']'") : go_scope.
 Notation "'If' a 'Then' b 'Else' c 'EndIf'" := (Go.If a b c) (at level 200, a at level 1000, b at level 1000, c at level 1000) : go_scope.
