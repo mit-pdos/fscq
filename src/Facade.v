@@ -900,6 +900,15 @@ Proof.
   eauto using hoare_strengthen_pre, hoare_weaken_post, extract_equiv_prog.
 Qed.
 
+Instance piff_progok_proper : forall p xp env,
+  Proper (piff ==> pointwise_relation W piff ==> flip Basics.impl) (ProgOk env p xp).
+Proof.
+  repeat intro.
+  rewrite H in H2.
+  setoid_rewrite H0.
+  edestruct H1; intuition eauto.
+Defined.
+
 Lemma CompileBindDiscard : forall T' env A (B : T' -> _) p f xp xf,
   EXTRACT p
   {{ A }}
@@ -1293,7 +1302,7 @@ Ltac pred_cancel :=
 
 Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
                           (n i : W)
-                          t0 term one
+                          t0 term
                           env (pb : W -> L -> prog L) xpb nocrash oncrash,
     (forall t x,
         EXTRACT (pb x t)
@@ -1302,14 +1311,12 @@ Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
   {{ fun ret => loopvar ~> ret * v ~> S x * F }} // env)
   ->
   EXTRACT (@ForN_ L G pb i n nocrash oncrash t0)
-  {{ loopvar ~> t0 * v ~> i * one ~> 1 * term ~> (i + n) * F }}
+  {{ loopvar ~> t0 * v ~> i * term ~> (i + n) * F }}
     Go.While (TestE Lt (Var v) (Var term))
       (xpb)
-  {{ fun ret => loopvar ~> ret * v ~> (i + n) * one ~> 1 * term ~> (i + n) * F }} // env.
+  {{ fun ret => loopvar ~> ret * v ~> (i + n) * term ~> (i + n) * F }} // env.
 Proof.
-Admitted.
-
-(*
+  (*
   induction n; intros; simpl.
   - unfold ProgOk. intros.
     rewrite <- plus_n_O in *.
@@ -1341,6 +1348,7 @@ Admitted.
           edestruct H; eauto.
           2 : eapply Steps_ExecFailed; [> | | eauto].
           pred_cancel.
+          eauto.
           unfold is_final; simpl; intro; subst; eauto.
           edestruct ExecFailed_Steps.
           eapply Steps_ExecFailed; eauto.
@@ -1353,12 +1361,10 @@ Admitted.
           edestruct H; eauto. pred_cancel.
           edestruct H4; eauto. simpl in *; repeat deex.
           destruct_pair; simpl in *.
-          edestruct (IHn (S i)); eauto.
-          instantiate (4 := (_, _)).
-          instantiate (2 := one).
-          rewrite plus_Snm_nSm.
-          pred_cancel. (* fails *)
-          eapply Steps_ExecFailed; eauto.
+          edestruct (IHn (S i));
+            [> | | eapply Steps_ExecFailed; eauto |];
+            rewrite ?plus_Snm_nSm; eauto.
+          pred_cancel.
           intuition eauto.
         }
       }
@@ -1371,23 +1377,20 @@ Admitted.
     + (* finished case *)
       inv_exec. inv_exec; eval_expr. subst_definitions.
       intuition try congruence. repeat find_inversion_safe.
+      repeat match goal with
+      | [H : context[Init.Nat.add _ (S _)] |- _] =>
+          (rewrite <- plus_Snm_nSm in H || setoid_rewrite <- plus_Snm_nSm in H)
+      end.
+      setoid_rewrite <- plus_Snm_nSm.
       destruct_pairs.
       find_eapply_lem_hyp ExecFinished_Steps.
       find_eapply_lem_hyp Steps_Seq.
       intuition; repeat deex; try discriminate.
       repeat find_eapply_lem_hyp Steps_ExecFinished.
-      edestruct H; eauto.
-      pred_cancel.
-      edestruct H2; eauto.
-      repeat deex. repeat destruct_pair. simpl in *.
-      edestruct IHn; eauto.
-      rewrite plus_Snm_nSm. simpl.
-      pred_cancel.
-      simpl in *.
-      edestruct H6; eauto; simpl in *.
-      repeat deex. repeat eexists.
-      eapply XBindFinish; eauto.
-      rewrite <- plus_Snm_nSm; auto.
+      edestruct H; eauto; eauto.
+      forward_solve.
+      edestruct (IHn (S i)); eauto.
+      forward_solve.
     + (* crashed case *)
       intuition try congruence. find_inversion.
       inv_exec; [> | solve [inversion H3] ].
@@ -1399,26 +1402,24 @@ Admitted.
       {
         invc H4.
         find_eapply_lem_hyp Steps_ExecCrashed; eauto.
-        edestruct H; eauto.
-        pred_cancel.
-        intuition auto.
-        edestruct H6; auto.
-        simpl in *.
-        eexists.
-        apply XBindCrash; eauto.
+        edestruct H; forward_solve. auto.
       }
       {
         find_eapply_lem_hyp Steps_ExecFinished.
         find_eapply_lem_hyp Steps_ExecCrashed; eauto.
         edestruct H; eauto. pred_cancel.
+        repeat match goal with
+        | [H : context[Init.Nat.add _ (S _)] |- _] =>
+            (rewrite <- plus_Snm_nSm in H || setoid_rewrite <- plus_Snm_nSm in H)
+        end.
         edestruct H2; eauto.
+        forward_solve.
         repeat deex.
         edestruct IHn; eauto.
-        rewrite plus_Snm_nSm. pred_cancel.
-        edestruct H12. edestruct H13; eauto.
+        forward_solve.
       }
-Qed.
 *)
+Admitted.
 
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
   forall avar bvar,
