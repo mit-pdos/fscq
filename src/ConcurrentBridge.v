@@ -97,17 +97,16 @@ Module MakeBridge (C:CacheSubProtocol).
   (* The idea of concurrent_spec is to compute a concurrent spec
      corresponding to sequential spec, capturing the same spec on top of
      the abstraction exported by the cache. *)
-  Definition concurrent_spec R (spec: SeqHoareSpec R) : ConcurHoareSpec (Exc R) :=
-    let 'SeqSpec pre post _ := spec in
+  Definition concurrent_spec R (spec: hashmap -> SeqHoareSpec R) : ConcurHoareSpec (Exc R) :=
     ConcurSpec
       (fun tid d hm m s_i s =>
          invariant delta d m s /\
-         pre (project_disk s) /\
+         seq_spec_pre (spec hm) (project_disk s) /\
          guar delta tid s_i s)
       (fun tid r d hm m s_i s d' hm' m' s_i' s' =>
          invariant delta d' m' s' /\
          match r with
-         | Some r => post r (project_disk s')
+         | Some r => seq_spec_post (spec hm) r hm' (project_disk s')
          | None => guar delta tid s s'
          end /\
          hashmap_le hm hm' /\
@@ -793,18 +792,15 @@ Module MakeBridge (C:CacheSubProtocol).
 program via [compile], convert its spec to a concurrent spec via
 [concurrent_spec], and prove the resulting concurrent Hoare double.
    *)
-  Theorem compiler_correct : forall T (p: Prog.prog T) A (spec: A -> SeqHoareSpec T),
+  Theorem compiler_correct : forall T (p: Prog.prog T) A (spec: A -> hashmap -> SeqHoareSpec T),
       seq_hoare_double spec p ->
       concur_hoare_double (fun a => concurrent_spec (spec a)) (compile p).
   Proof.
     unfold seq_hoare_double, concur_hoare_double, Hoare.corr2; intros.
     apply valid_unfold; intros.
     deex.
-    case_eq (spec a); intros.
-    rewrite H0 in *; simpl in *.
-    destruct_ands.
     specialize (H T Prog.Ret).
-    specialize (H (fun hm r d => seq_spec_post r d) (fun _ _ => True)).
+    specialize (H (fun hm' r d => seq_spec_post (spec a hm) r hm' d) (fun _ _ => True)).
     specialize (H (project_disk s) hm).
 
     inv_exec' H1; try solve [ inv_fail_step ].
@@ -838,11 +834,10 @@ program via [compile], convert its spec to a concurrent spec via
         exists a; exists emp.
         repeat apply sep_star_lift_apply'; auto.
         apply pimpl_star_emp; auto.
-        replace (spec a); simpl; auto.
+        simpl in *; intuition eauto.
+
         intros.
         destruct_lifts.
-        replace (spec a) in *; simpl in *.
-
         match goal with
         | [ H: Prog.exec _ _ (Prog.Ret _) _ |- _ ] =>
           apply prog_exec_ret in H; subst
@@ -855,7 +850,12 @@ program via [compile], convert its spec to a concurrent spec via
                [ H: @eq (Prog.outcome _) _ _ |- _ ] =>
                inversion H; clear H
              end; subst.
-      eapply H3 in H13; eauto.
+      simpl in *; intuition auto.
+      match goal with
+      | [ H: forall _, valid _ _ _ (rx _),
+            H': exec _ _ (rx _) _ _ |- _ ] =>
+        eapply H in H'; eauto
+      end.
       intuition auto.
       eapply cacheR_preorder; eauto.
 
@@ -879,10 +879,11 @@ program via [compile], convert its spec to a concurrent spec via
         exists a; exists emp.
         repeat apply sep_star_lift_apply'; auto.
         apply pimpl_star_emp; auto.
-        replace (spec a); simpl; auto.
+        simpl in *; intuition eauto.
+
         intros.
         destruct_lifts.
-        replace (spec a) in *; simpl in *.
+        simpl in *.
 
         match goal with
         | [ H: Prog.exec _ _ (Prog.Ret _) _ |- _ ] =>
@@ -892,14 +893,22 @@ program via [compile], convert its spec to a concurrent spec via
         do 3 eexists; eauto.
       }
       intuition; repeat deex; try congruence.
+      simpl in *; intuition eauto.
     }
     {
       (* execute to None case; need to apply cache_simulation_finish_error *)
       destruct st' as ((((d', hm'), m'), s_i'), s').
-      eapply cache_simulation_finish_error in H11; eauto.
-      destruct H11.
+      simpl in *; intuition eauto.
+      match goal with
+      | [ H: exec _ _ (compile _) _ _ |- _ ] =>
+        eapply cache_simulation_finish_error in H; [ destruct H | eauto ]
+      end.
       - destruct_ands.
-        eapply H3 in H13; eauto.
+        match goal with
+        | [ H: forall _, valid _ _ _ (rx _),
+              H': exec _ _ (rx _) _ _ |- _ ] =>
+          eapply H in H'; eauto
+        end.
         subst.
         intuition eauto.
         eapply cacheR_preorder; eauto.
@@ -910,7 +919,8 @@ program via [compile], convert its spec to a concurrent spec via
         | ?P -> ?Q -> ?R \/ ?R' =>
           assert (P -> R) as H'
         end.
-        apply ProgMonad.bind_right_id in H6; intuition auto.
+        intuition eauto.
+        apply ProgMonad.bind_right_id in H4; intuition auto.
         repeat deex; congruence.
         match type of H' with
         | ?P -> _ => assert P
@@ -919,12 +929,10 @@ program via [compile], convert its spec to a concurrent spec via
           exists a; exists emp.
           repeat apply sep_star_lift_apply'; auto.
           apply pimpl_star_emp; auto.
-          replace (spec a); simpl; auto.
-          intros.
-          destruct_lifts.
-          replace (spec a) in *; simpl in *.
+          simpl in *; intuition eauto.
 
-          apply prog_exec_ret in H8; subst.
+          apply prog_exec_ret in H7; subst.
+          destruct_lifts.
           left.
           do 3 eexists; eauto.
         }
@@ -932,14 +940,18 @@ program via [compile], convert its spec to a concurrent spec via
     }
 
     (* compiled code failed *)
-    apply cache_simulation_failure in H11; auto.
+    simpl in *; intuition eauto.
+    match goal with
+      | [ H: exec _ _ _ _ (Failed _) |- _ ] =>
+        apply cache_simulation_failure in H; auto
+    end.
     (* TODO: this snippet of proof is repetitive *)
     specialize (H (Prog.Failed T)).
     match type of H with
     | ?P -> ?Q -> ?R \/ ?R' =>
       assert (P -> R) as H'
     end.
-    apply ProgMonad.bind_right_id in H11; intuition auto.
+    apply ProgMonad.bind_right_id in H8; intuition auto.
     repeat deex; congruence.
     match type of H' with
     | ?P -> _ => assert P
@@ -948,12 +960,11 @@ program via [compile], convert its spec to a concurrent spec via
       exists a; exists emp.
       repeat apply sep_star_lift_apply'; auto.
       apply pimpl_star_emp; auto.
-      replace (spec a); simpl; auto.
+
       intros.
       destruct_lifts.
-      replace (spec a) in *; simpl in *.
 
-      apply prog_exec_ret in H7; subst.
+      apply prog_exec_ret in H6; subst.
       left.
       do 3 eexists; eauto.
     }

@@ -10,46 +10,46 @@ Notation prog_valuset := (valu * list valu)%type.
 
 Record SeqHoareSpec R :=
   SeqSpec { seq_spec_pre: @pred addr _ prog_valuset;
-            seq_spec_post: R -> @pred addr _ prog_valuset;
-            seq_spec_crash: @pred addr _ prog_valuset }.
+            seq_spec_post: R -> hashmap -> @pred addr _ prog_valuset;
+            seq_spec_crash: hashmap -> @pred addr _ prog_valuset }.
 
-Definition seq_hoare_double R A (spec: A -> SeqHoareSpec R)
+Definition seq_hoare_double R A (spec: A -> hashmap -> SeqHoareSpec R)
            (p: Prog.prog R) :=
   forall T' (rx : R -> Prog.prog T'),
     Hoare.corr2
-      (fun hm_ done_ crash_ =>
+      (fun hm done_ crash_ =>
          exists a F_,
-           F_ * seq_spec_pre (spec a) *
+           F_ * seq_spec_pre (spec a hm) *
            [[ sync_invariant F_ ]] *
            [[ forall r, Hoare.corr2
-                       (fun hm'_ done'_ crash'_ =>
-                          F_ * seq_spec_post (spec a) r  *
-                          [[ exists l, hashmap_subset l hm_ hm'_ ]] *
+                       (fun hm' done'_ crash'_ =>
+                          F_ * seq_spec_post (spec a hm) r hm'  *
+                          [[ exists l, hashmap_subset l hm hm' ]] *
                           [[ done'_ = done_ ]] *
                           [[ crash'_ = crash_ ]]
                        ) (rx r) ]] *
            [[ forall hm_crash,
-                (F_ * seq_spec_crash (spec a) *
-                 [[ exists l, hashmap_subset l hm_ hm_crash ]])%pred =p=>
+                (F_ * seq_spec_crash (spec a hm) hm_crash *
+                 [[ exists l, hashmap_subset l hm hm_crash ]])%pred =p=>
               crash_ hm_crash ]])%pred
       (Bind p rx).
 
 (* technically the fully expanded spec is a quadruple: the three
 predicates in spec, plus the program (in comparison to ordinary Hoare
 triples consisting of a precondition, postcondition and program) *)
-Definition seq_hoare_quadruple R A (spec: A -> SeqHoareSpec R)
+Definition seq_hoare_quadruple R A (spec: A -> hashmap -> SeqHoareSpec R)
            (p: Prog.prog R) :=
   forall a F hm d out,
-    (F * seq_spec_pre (spec a) *
+    (F * seq_spec_pre (spec a hm) *
      [[ sync_invariant F ]])%pred d ->
     exec d hm p out ->
     (exists d' hm' r,
         out = Finished d' hm' r /\
-        (F * seq_spec_post (spec a) r *
+        (F * seq_spec_post (spec a hm) r hm' *
          [[ exists l, hashmap_subset l hm hm' ]])%pred d') \/
     (exists d' hm',
         out = Crashed R d' hm' /\
-        (F * seq_spec_crash (spec a) *
+        (F * seq_spec_crash (spec a hm) hm' *
          [[ exists l, hashmap_subset l hm hm' ]])%pred d').
 
 Section ExampleSeqSpecs.
@@ -88,11 +88,11 @@ Section ExampleSeqSpecs.
        CRASH      a |-> v
       >} Prog.Read a <->
       seq_hoare_double
-        (fun v =>
+        (fun v hm =>
            SeqSpec (a |-> v)%pred
-                   (fun r => a |-> v *
-                                 [[ r = (fst v) ]])%pred
-                   (a |-> v)%pred
+                    (fun r _ => a |-> v *
+                             [[ r = (fst v) ]])%pred
+                    (fun _ => (a |-> v)%pred)
         ) (Prog.Read a).
   Proof.
     split; intros.
@@ -107,9 +107,9 @@ Section ExampleSeqSpecs.
       Prog.Write a' v;;
       Ret tt.
 
-  Notation "'SEQSPEC' e1 .. e2 , {{ pre }} {{ post }} {{ crash }}" :=
+  Notation "'SEQSPEC' e1 .. e2 , ( hm ) {{ pre }} {{ post }} {{ crash }}" :=
     (fun e1 => .. (fun e2 =>
-                  SeqSpec pre%pred post%pred crash%pred) .. )
+                  (fun (hm:hashmap) => SeqSpec pre%pred post%pred crash%pred)) .. )
       (at level 0,
        e1 binder,
        e2 binder).
@@ -119,10 +119,10 @@ Section ExampleSeqSpecs.
     fun ab => let 'spec_pair a b := ab in f a b.
 
   Definition test_spec a a' :=
-    uncurry SEQSPEC v v',
+    uncurry SEQSPEC v v', (hm)
     {{ a |-> v * a' |-> v' }}
-      {{ fun r:unit => a |-> v' * a' |-> v }}
-      {{ a |->? * a' |->? }}.
+      {{ fun (r:unit) _ => a |-> v' * a' |-> v }}
+      {{ fun _ =>  a |->? * a' |->? }}.
 
   Hint Resolve spec_pair.
 
@@ -133,10 +133,10 @@ Section ExampleSeqSpecs.
        CRASH a |->? * a' |->?
       >} swap a a' <->
       seq_hoare_double
-        (uncurry SEQSPEC v v',
+        (uncurry SEQSPEC v v', (hm)
          {{ a |-> v * a' |-> v' }}
-           {{ fun r:unit => a |-> v' * a' |-> v }}
-           {{ a |->? * a' |->? }}
+           {{ fun (r:unit) _ => a |-> v' * a' |-> v }}
+           {{ fun _ => a |->? * a' |->? }}
         ) (swap a a').
   Proof.
     unfold uncurry.
@@ -173,7 +173,7 @@ Ltac lift_sep_star :=
              destruct H
          end .
 
-Theorem spec_double_to_quadruple : forall T A (spec: A -> SeqHoareSpec T) (p: prog T),
+Theorem spec_double_to_quadruple : forall T A (spec: A -> hashmap -> SeqHoareSpec T) (p: prog T),
     seq_hoare_double spec p ->
     seq_hoare_quadruple spec p.
 Proof.
@@ -181,10 +181,10 @@ Proof.
   unfold corr2 at 1 in H.
   specialize (H _ Ret).
   specialize (H (fun hm' r =>
-                   F * seq_spec_post (spec a) r *
+                   F * seq_spec_post (spec a hm) r hm' *
                    [[ exists l, hashmap_subset l hm hm' ]])%pred).
   specialize (H (fun hm' =>
-                   F * seq_spec_crash (spec a) *
+                   F * seq_spec_crash (spec a hm) hm' *
                    [[ exists l, hashmap_subset l hm hm' ]])%pred).
   specialize (H d hm out).
   match type of H with
@@ -218,7 +218,7 @@ Ltac inv_outcome :=
     inversion H; subst; clear H
   end.
 
-Theorem spec_quadruple_to_double : forall T A (spec: A -> SeqHoareSpec T) (p: prog T),
+Theorem spec_quadruple_to_double : forall T A (spec: A -> hashmap -> SeqHoareSpec T) (p: prog T),
     seq_hoare_quadruple spec p ->
     seq_hoare_double spec p.
 Proof.

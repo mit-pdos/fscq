@@ -3,7 +3,7 @@ Require Import CoopConcurAuto.
 Require Import ConcurrentBridge.
 Require ConcurrentCache.
 Require Import Protocols.
-Require Import AsyncFS.
+Require Import Specifications.
 
 Import Hlist.
 Import Hlist.HlistNotations.
@@ -91,3 +91,99 @@ Module CacheSubProtocol <: ConcurrentCache.CacheSubProtocol.
 End CacheSubProtocol.
 
 Module Bridge := MakeBridge CacheSubProtocol.
+
+Require Import String.
+Require Import Prog.
+Require Import AsyncFS.
+
+Definition file_get_attr fsxp inum mscs :=
+  Bridge.compile (AFS.file_get_attr fsxp inum mscs).
+
+Check seq_hoare_double.
+
+Check AFS.file_getattr_ok.
+
+Lemma corr2_exists : forall T A spec (p: prog T),
+    (forall (a:A), Hoare.corr2 (fun hm done crash => spec hm done crash a) p) ->
+    Hoare.corr2 (fun hm done crash => exists a, spec hm done crash a)%pred p.
+Proof.
+  intros.
+  unfold Hoare.corr2; intros.
+  unfold exis in *; deex.
+  eapply H; eauto.
+Qed.
+
+Definition file_get_attr_spec fsxp inum mscs :=
+    fun (a: DiskSet.diskset * list string * pred * pred * DirTree.DIRTREE.dirtree * BFile.BFILE.bfile * list Inode.INODE.inode * (list addr * list addr) * pred) (hm: hashmap) =>
+       let '(ds, pathname, Fm, Ftop, tree, f, ilist, frees, F_) := a in
+       SeqSpec
+         ((F_
+             ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                             (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
+                             ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees)
+                                    (GenSepN.list2nmem ds !!) ⟧⟧)
+                  ✶ ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree =
+                       Some (DirTree.DIRTREE.TreeFile inum f) ⟧⟧))
+            ✶ ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
+         (fun (ret: BFile.BFILE.memstate * (BFile.BFILE.attr * unit)) (hm': hashmap) =>
+            let '(mscs', (r, _)) := ret in
+            (F_ ✶
+                (Log.LOG.rep (FSLayout.FSXPLog fsxp)
+                             (SuperBlock.SB.rep fsxp) (Log.LOG.NoTxn ds)
+                             (AFS.MSLL mscs') hm' ✶
+                             ⟦⟦ r = BFile.BFILE.BFAttr f /\
+                                AFS.MSAlloc mscs' = AFS.MSAlloc mscs ⟧⟧))
+              ✶ ⟦⟦ exists l : list (word hashlen * {sz : addr & word sz}),
+                     hashmap_subset l hm hm' ⟧⟧)%pred
+         (fun hm' =>
+            (F_ ✶ Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds hm')
+              ✶ ⟦⟦ exists l : list (word hashlen * {sz : addr & word sz}),
+                     hashmap_subset l hm hm' ⟧⟧)%pred.
+
+Lemma seq_file_get_attr_ok : forall fsxp inum mscs,
+    seq_hoare_double
+      (fun a => file_get_attr_spec fsxp inum mscs a)
+      (AFS.file_get_attr fsxp inum mscs).
+Proof.
+  intros.
+  unfold seq_hoare_double, file_get_attr_spec; intros.
+
+  repeat apply corr2_exists; intros.
+  destruct a as ((((((((ds, pathname), Fm), Ftop), tree), f), ilist), frees), F_).
+
+  eapply Hoare.pimpl_ok2.
+  apply AFS.file_getattr_ok; intros.
+  simpl; intros.
+
+  (* explicitly instantiate all exists on the right hand side; cancel doesn't
+  figure this out *)
+  apply pimpl_exists_r; exists ds.
+  apply pimpl_exists_r; exists pathname.
+  apply pimpl_exists_r; exists Fm.
+  apply pimpl_exists_r; exists Ftop.
+  apply pimpl_exists_r; exists tree.
+  apply pimpl_exists_r; exists f.
+  apply pimpl_exists_r; exists ilist.
+  apply pimpl_exists_r; exists frees.
+  cancel.
+
+  (* post condition *)
+  eapply Hoare.pimpl_ok2.
+  eauto.
+  intros.
+  cancel.
+
+  (* crash condition *)
+  eapply pimpl_trans; [ | eauto ].
+  cancel.
+Qed.
+
+Theorem concurrent_file_get_attr_ok : forall fsxp inum mscs,
+    Bridge.concur_hoare_double
+      (fun a => Bridge.concurrent_spec (file_get_attr_spec fsxp inum mscs a))
+      (file_get_attr fsxp inum mscs).
+Proof.
+  intros.
+  apply Bridge.compiler_correct.
+  apply seq_file_get_attr_ok.
+Qed.
