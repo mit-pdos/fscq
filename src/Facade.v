@@ -1300,7 +1300,7 @@ Ltac pred_cancel :=
   | [H : _ |- _] => eapply pimpl_apply; [> | exact H]; solve [cancel_subset]
   end.
 
-Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
+Lemma CompileForLoopBasic : forall L G (L' : GoWrapper L) v loopvar F
                           (n i : W)
                           t0 term
                           env (pb : W -> L -> prog L) xpb nocrash oncrash,
