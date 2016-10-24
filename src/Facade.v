@@ -1306,9 +1306,9 @@ Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
                           env (pb : W -> L -> prog L) xpb nocrash oncrash,
     (forall t x,
         EXTRACT (pb x t)
-  {{ loopvar ~> t * v ~> x * F }}
+  {{ loopvar ~> t * v ~> x * term ~> (i + n) * F }}
     xpb
-  {{ fun ret => loopvar ~> ret * v ~> S x * F }} // env)
+  {{ fun ret => loopvar ~> ret * v ~> S x * term ~> (i + n) * F }} // env)
   ->
   EXTRACT (@ForN_ L G pb i n nocrash oncrash t0)
   {{ loopvar ~> t0 * v ~> i * term ~> (i + n) * F }}
@@ -1316,7 +1316,6 @@ Lemma CompileFor : forall L G (L' : GoWrapper L) v loopvar F
       (xpb)
   {{ fun ret => loopvar ~> ret * v ~> (i + n) * term ~> (i + n) * F }} // env.
 Proof.
-  (*
   induction n; intros; simpl.
   - unfold ProgOk. intros.
     rewrite <- plus_n_O in *.
@@ -1364,7 +1363,6 @@ Proof.
           edestruct (IHn (S i));
             [> | | eapply Steps_ExecFailed; eauto |];
             rewrite ?plus_Snm_nSm; eauto.
-          pred_cancel.
           intuition eauto.
         }
       }
@@ -1418,8 +1416,7 @@ Proof.
         edestruct IHn; eauto.
         forward_solve.
       }
-*)
-Admitted.
+Qed.
 
 Lemma CompileDuplicate : forall T (x : T) (T' : GoWrapper T) v v' v0 F env,
   EXTRACT (Ret x)
