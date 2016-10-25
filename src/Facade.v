@@ -1273,7 +1273,8 @@ Admitted.
 Ltac unfold_expr :=
   unfold is_false, is_true, eval_bool, numop_impl', numop_impl,
          eval_test_m, eval_test_num, eval_test_bool,
-         eval in *; simpl in *.
+         update_one, setconst_impl, duplicate_impl,
+         sel, id, eval in *; simpl in *.
 
 Ltac eval_expr :=
   repeat extract_var_val;
@@ -1418,26 +1419,338 @@ Proof.
       }
 Qed.
 
-Lemma CompileDuplicate : forall T (x : T) (T' : GoWrapper T) v v' v0 F env,
-  EXTRACT (Ret x)
-  {{ v' ~> v0 * v ~> x * F}}
-    v' <1~ v
-  {{ fun ret => v' ~> ret * v ~> x * F }} // env.
+Fact num_default_value : wrap 0 = default_value Num.
+Proof. auto. Qed.
+
+Hint Resolve num_default_value.
+
+Lemma SetConstBefore : forall T (T' : GoWrapper T) (p : prog T) env xp v n (x : W) A B,
+  EXTRACT p {{ v ~> n * A }} xp {{ B }} // env ->
+  EXTRACT p
+    {{ v ~> x * A }}
+      v <~const n; xp
+    {{ B }} // env.
 Proof.
   intros.
-  unfold ProgOk. intros.
+  unfold ProgOk.
   inv_exec_progok.
-  repeat extract_var_val.
-  repeat find_inversion_safe.
-  - repeat eexists; eauto.
+  - do 5 inv_exec. inv_exec.
+    eval_expr.
+    destruct type_eq_dec; try congruence; find_inversion.
+    edestruct H; eauto.
+    simpl. rewrite add_upd.
+    eapply sep_star_assoc, ptsto_upd.
+    pred_cancel.
+  - do 5 inv_exec; try solve [inv_exec].
+    eval_expr.
+    destruct type_eq_dec; try congruence; find_inversion.
+    edestruct H; eauto.
+    simpl. rewrite add_upd.
+    eapply sep_star_assoc, ptsto_upd. pred_cancel.
+    forward_solve.
+  - inv_exec.
+    do 3 inv_exec.
+    inv_exec. inv_exec.
+    eval_expr.
+    destruct type_eq_dec; try congruence; find_inversion.
+    edestruct H; eauto.
+    simpl. rewrite add_upd.
+    eapply sep_star_assoc, ptsto_upd. pred_cancel.
+    forward_solve.
+    contradiction H1; eauto.
+    contradiction H2.
+    repeat econstructor;
+      eval_expr; eauto.
+    simpl in *. congruence.
+Qed.
+
+Lemma DuplicateBefore : forall T (T' : GoWrapper T) X (X' : GoWrapper X)
+  (p : prog T) xp env v v' (x x' : X) A B,
+  EXTRACT p {{ v ~> x * v' ~> x * A }} xp {{ B }} // env ->
+  EXTRACT p
+    {{ v ~> x' * v' ~> x * A }}
+      v <~dup v'; xp
+    {{ B }} // env.
+Proof.
+  intros.
+  unfold ProgOk.
+  inv_exec_progok.
+  - do 5 inv_exec. inv_exec.
+    destruct_pairs.
+    eval_expr.
+    destruct type_eq_dec; try congruence; find_inversion.
+    eval_expr. repeat find_inversion.
+    edestruct H; eauto.
+    simpl. rewrite add_upd.
+    eapply sep_star_assoc.
+    eapply sep_star_assoc, ptsto_upd.
+    pred_cancel.
+    forward_solve.
+  - do 5 inv_exec; try solve [inv_exec].
+    destruct_pairs.
+    eval_expr.
+    destruct type_eq_dec; try congruence; find_inversion.
+    eval_expr. repeat find_inversion.
+    edestruct H; eauto.
+    simpl. rewrite add_upd.
+    eapply sep_star_assoc. eapply sep_star_assoc, ptsto_upd. pred_cancel.
+    forward_solve.
+  - inv_exec.
+    do 3 inv_exec.
+    inv_exec. inv_exec.
+    destruct_pairs.
+    eval_expr.
+    destruct type_eq_dec; try congruence; find_inversion.
+    eval_expr. repeat find_inversion.
+    edestruct H; eauto.
+    simpl. rewrite add_upd.
+    eapply sep_star_assoc. eapply sep_star_assoc, ptsto_upd. pred_cancel.
+    forward_solve.
+    contradiction H1; eauto.
+    contradiction H2.
+    repeat econstructor;
+      eval_expr; eauto.
+    simpl in *.
+    destruct type_eq_dec; eauto; congruence.
+Qed.
+
+Fact pair_inj : forall A B (a a' : A) (b b' : B), (a, b) = (a', b') <-> a = a' /\ b = b'.
+Proof.
+  split; intros;
+  invc H; auto.
+Qed.
+
+Lemma AddInPlaceLeftBefore : forall T (T' : GoWrapper T) (p : prog T) B xp env
+  va a v x F,
+  EXTRACT p {{ v ~> (x + a) * va ~> a * F }} xp {{ B }} // env ->
+  EXTRACT p
+  {{ v ~> x * va ~> a * F }}
+    Go.Modify (Go.ModifyNumOp Plus) (v, v, va); xp
+  {{ B }} // env.
+Proof.
+  intros.
+  unfold ProgOk.
+  inv_exec_progok.
+  - do 5 inv_exec. inv_exec.
+    edestruct H; eauto.
+    simpl in *.
+    unfold numop_impl in *.
+    repeat (destruct_pair; simpl in *).
+    repeat match goal with [H : context [match ?x with _ => _ end] |- _] =>
+      let H' := fresh in destruct x eqn:H'; simpl in *; try congruence end.
+    unfold sel in *. subst.
+    find_inversion_safe. find_inversion.
+    eval_expr.
+    repeat rewrite pair_inj in *. intuition idtac.
+    repeat find_eapply_lem_hyp value_inj. simpl in *.
+    find_inversion.
     rewrite add_upd.
+    eapply sep_star_assoc.
+    eapply sep_star_assoc, ptsto_upd.
+    pred_cancel.
+  - do 5 inv_exec; try solve [inv_exec].
+    edestruct H; eauto.
+    simpl in *.
+    unfold numop_impl in *.
+    repeat (destruct_pair; simpl in *).
+    repeat match goal with [H : context [match ?x with _ => _ end] |- _] =>
+      let H' := fresh in destruct x eqn:H'; simpl in *; try congruence end.
+    unfold sel in *. subst.
+    find_inversion_safe. find_inversion.
+    eval_expr.
+    repeat rewrite pair_inj in *. intuition idtac.
+    repeat find_eapply_lem_hyp value_inj. simpl in *.
+    find_inversion.
+    rewrite add_upd.
+    eapply sep_star_assoc.
+    eapply sep_star_assoc, ptsto_upd.
+    pred_cancel.
+    forward_solve.
+  - inv_exec.
+    do 3 inv_exec.
+    inv_exec. inv_exec.
+    unfold numop_impl in *.
+    repeat (simpl in *; destruct_pair).
+    repeat match goal with [H : context [match ?x with _ => _ end] |- _] =>
+      let H' := fresh in destruct x eqn:H'; simpl in *; try congruence end.
+    unfold sel in *. subst.
+    find_inversion_safe. find_inversion.
+    eval_expr.
+    repeat rewrite pair_inj in *. intuition idtac.
+    repeat find_eapply_lem_hyp value_inj. simpl in *.
+    find_inversion.
+    edestruct H; eauto.
+    simpl. rewrite add_upd.
+    eapply sep_star_assoc. eapply sep_star_assoc, ptsto_upd. pred_cancel.
+    forward_solve.
+    contradiction H1; eauto.
+    contradiction H2.
+    repeat econstructor;
+      eval_expr; eauto.
+    simpl in *; eauto.
+    simpl. eauto.
+Qed.
+
+Lemma AddInPlaceLeftAfter : forall T (T' : GoWrapper T) (p : prog T) A xp env
+  va a v x F,
+  EXTRACT p {{ A }} xp {{ fun ret => F ret * v ~> x * va ~> a }} // env ->
+  EXTRACT p
+  {{ A }}
+    xp; Go.Modify (Go.ModifyNumOp Plus) (v, v, va)
+  {{ fun ret => F ret * v ~> (x + a) * va ~> a }} // env.
+Proof.
+  intros.
+  unfold ProgOk.
+  inv_exec_progok.
+  - find_eapply_lem_hyp ExecFinished_Steps.
+    find_eapply_lem_hyp Steps_Seq.
+    intuition repeat deex.
+    congruence.
+    repeat find_eapply_lem_hyp Steps_ExecFinished.
+    do 2 inv_exec.
+    eapply ExecFinished_Steps in H4.
+    invc H4.
+    repeat (simpl in *; destruct_pair).
+    find_inversion_safe.
+    repeat rewrite pair_inj in *. intuition idtac. subst.
+    repeat match goal with [H : context [match ?x with _ => _ end] |- _] =>
+      let H' := fresh in destruct x eqn:H'; simpl in *; try congruence end.
+    unfold sel in *.
+    do 2 find_inversion. repeat find_inversion_safe.
+    unfold update_one in *.
+    eval_expr.
+    find_inversion.
+    edestruct H; eauto. auto.
+    forward_solve.
+    eval_expr. repeat match_finds. repeat find_inversion_safe.
+    repeat find_eapply_lem_hyp value_inj. eval_expr.
+    repeat eexists; eauto.
+    rewrite add_upd.
+    repeat rewrite sep_star_assoc.
+    rewrite sep_star_comm.
     repeat rewrite sep_star_assoc.
     eapply ptsto_upd.
     pred_cancel.
-  - contradiction H1.
-    repeat extract_var_val.
-    repeat eexists.
-    eapply StepModifyUnary with (v := wrap x); eauto.
+    inv_exec.
+  - find_eapply_lem_hyp ExecCrashed_Steps.
+    repeat deex.
+    find_eapply_lem_hyp Steps_Seq.
+    intuition repeat deex.
+    inv_exec.
+    find_eapply_lem_hyp Steps_ExecCrashed; eauto.
+    edestruct H; eauto. auto.
+    forward_solve.
+    find_eapply_lem_hyp Steps_ExecFinished.
+    find_eapply_lem_hyp Steps_ExecCrashed; eauto.
+    inv_exec. inv_exec.
+    repeat (simpl in *; destruct_pair).
+    find_inversion_safe.
+    repeat rewrite pair_inj in *. intuition idtac. subst.
+    repeat match goal with [H : context [match ?x with _ => _ end] |- _] =>
+      let H' := fresh in destruct x eqn:H'; simpl in *; try congruence end.
+    unfold sel in *.
+    do 2 find_inversion. repeat find_inversion_safe.
+    unfold update_one in *.
+    eval_expr.
+    find_inversion.
+    inv_exec.
+    inv_exec.
+    invc H4.
+    invc H5.
+  - find_eapply_lem_hyp ExecFailed_Steps.
+    intuition repeat deex.
+    find_eapply_lem_hyp Steps_Seq.
+    intuition repeat deex.
+    + edestruct H with (initial_state := (a0, b)); intuition eauto.
+      eapply Steps_ExecFailed; [> | | eauto].
+      unfold is_final; simpl; intro; subst; forward_solve.
+      intro. intuition forward_solve.
+    + find_eapply_lem_hyp Steps_ExecFinished.
+      find_eapply_lem_hyp Steps_ExecFailed; eauto.
+      inv_exec.
+      {
+        inv_exec.
+        repeat (simpl in *; destruct_pair).
+        find_inversion_safe.
+        repeat rewrite pair_inj in *. intuition idtac. subst.
+        repeat match goal with [H : context [match ?x with _ => _ end] |- _] =>
+          let H' := fresh in destruct x eqn:H'; simpl in *; try congruence end.
+        unfold sel in *.
+        do 2 find_inversion. repeat find_inversion_safe.
+        unfold update_one in *.
+        eval_expr.
+        find_inversion.
+        inv_exec.
+        inv_exec.
+        unfold is_final in *. simpl in *. congruence.
+      }
+      {
+        edestruct H; eauto. auto.
+        edestruct H5; eauto.
+        repeat deex; simpl in *.
+        repeat destruct_pair; simpl in *.
+        contradiction H2.
+        repeat econstructor; eauto.
+        simpl; unfold sel; simpl.
+        eval_expr; eauto.
+        eval_expr; eauto.
+        eval_expr; eauto.
+      }
+  Unshelve. eauto.
+Qed.
+
+Lemma CompileFor : forall L G (L' : GoWrapper L) loopvar F
+                          v vn (n i : W)
+                          t0 env (pb : W -> L -> prog L) xpb nocrash oncrash,
+    (forall t x v term one,
+        EXTRACT (pb x t)
+  {{ loopvar ~> t * v ~> x * term ~> (i + n) * one ~> 1 * vn ~> n * F }}
+    xpb v term one
+  {{ fun ret => loopvar ~> ret * v ~> x * term ~> (i + n) * one ~> 1 * vn ~> n * F }} // env)
+  ->
+  EXTRACT (@ForN_ L G pb i n nocrash oncrash t0)
+  {{ loopvar ~> t0 * v ~> i * vn ~> n * F }}
+    Declare Num (fun one => (
+      one <~const 1;
+      Declare Num (fun term => (
+        Go.Modify (Go.DuplicateOp) (term, v);
+        Go.Modify (Go.ModifyNumOp Go.Plus) (term, term, vn);
+        Go.While (TestE Lt (Var v) (Var term)) (
+          xpb v term one;
+          Go.Modify (Go.ModifyNumOp Go.Plus) (v, v, one)
+        )
+      ))
+    ))
+  {{ fun ret => loopvar ~> ret * F }} // env.
+Proof.
+  intros.
+  eapply CompileDeclare; eauto. intro one.
+  eapply SetConstBefore; eauto.
+  eapply CompileDeclare; eauto. intro term.
+  eapply hoare_strengthen_pre; [>
+  | eapply DuplicateBefore with (x' := 0) (x := i); eauto].
+  cancel_subset.
+  eapply hoare_strengthen_pre; [>
+  | eapply AddInPlaceLeftBefore with (a := n) (x := i); eauto ].
+  cancel_subset.
+  eapply hoare_strengthen_pre; [>
+  | eapply hoare_weaken_post; [>
+  | eapply CompileForLoopBasic with (t0 := t0) (loopvar := loopvar)] ].
+  cancel_subset.
+  cancel_subset.
+  intros.
+  eapply hoare_weaken_post; [>
+  | eapply AddInPlaceLeftAfter with (a := 1) (x := x); eauto].
+  rewrite Nat.add_1_r.
+  instantiate (1 := fun x0 => (loopvar ~> x0 * term ~> (i + n) * _)%pred).
+  cancel_subset.
+  specialize (H t x v term one).
+  eapply hoare_strengthen_pre. shelve.
+  eapply hoare_weaken_post. shelve.
+  eauto.
+  Unshelve.
+  all : try cancel_subset.
+  eapply chop_any, pimpl_any.
 Qed.
 
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
@@ -1822,6 +2135,27 @@ Proof.
   compile.
 Defined.
 Eval lazy in projT1 (extract_increment (StringMap.empty _)).
+
+Example extract_for_loop : forall env, sigT (fun p =>
+  forall cnt nocrash crashed,
+  EXTRACT (@ForN_ W W (fun i sum => Ret (sum + i)) 1 cnt nocrash crashed 0)
+  {{ 0 ~> 0 * 1 ~> cnt }} p {{ fun ret => 0 ~> ret }} // env).
+Proof.
+  intros.
+  compile_step.
+  eapply extract_equiv_prog with (pr1 := Bind (Ret 1) (fun x => ForN_ _ x _ _ _ _)).
+  rewrite bind_left_id. eapply prog_equiv_equivalence.
+  compile_step.
+  compile_step.
+  eapply hoare_strengthen_pre. shelve.
+  eapply hoare_weaken_post. shelve.
+  eapply CompileFor with (v := var0) (loopvar := 0) (vn := 1).
+  intros. compile.
+  eapply chop_any, pimpl_any.
+  Unshelve.
+  cancel_subset.
+  cancel_subset.
+Defined.
 
 (*
 Declare DiskBlock
