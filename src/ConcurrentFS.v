@@ -145,37 +145,12 @@ Lemma seq_file_get_attr_ok : forall fsxp inum mscs,
       (fun a => file_get_attr_spec fsxp inum mscs a)
       (AFS.file_get_attr fsxp inum mscs).
 Proof.
-  intros.
   unfold seq_hoare_double, file_get_attr_spec; intros.
 
-  repeat apply corr2_exists; intros.
-  destruct a as ((((((((ds, pathname), Fm), Ftop), tree), f), ilist), frees), F_).
+  (* work around a bug triggered by cancel *)
+  apply corr2_exists; intros.
 
-  eapply Hoare.pimpl_ok2.
-  apply AFS.file_getattr_ok; intros.
-  simpl; intros.
-
-  (* explicitly instantiate all exists on the right hand side; cancel doesn't
-  figure this out *)
-  apply pimpl_exists_r; exists ds.
-  apply pimpl_exists_r; exists pathname.
-  apply pimpl_exists_r; exists Fm.
-  apply pimpl_exists_r; exists Ftop.
-  apply pimpl_exists_r; exists tree.
-  apply pimpl_exists_r; exists f.
-  apply pimpl_exists_r; exists ilist.
-  apply pimpl_exists_r; exists frees.
-  cancel.
-
-  (* post condition *)
-  eapply Hoare.pimpl_ok2.
-  eauto.
-  intros.
-  cancel.
-
-  (* crash condition *)
-  eapply pimpl_trans; [ | eauto ].
-  cancel.
+  SepAuto.hoare.
 Qed.
 
 Theorem concurrent_file_get_attr_ok : forall fsxp inum mscs,
