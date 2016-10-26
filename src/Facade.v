@@ -299,10 +299,11 @@ Ltac find_inversion_safe :=
       let He := fresh in
       assert (a = b) as He by solve [inversion H; auto with equalities | invert_trivial H; auto with equalities]; clear H; subst
     | [ H : ?X ?a1 ?a2 = ?X ?b1 ?b2 |- _ ] =>
-      (unify a1 b1; fail 1) ||
-      (unify a2 b2; fail 1) ||
+      (unify a1 b1; unify a2 b2; fail 1) ||
       let He := fresh in
       assert (a1 = b1 /\ a2 = b2) as He by solve [inversion H; auto with equalities | invert_trivial H; auto with equalities]; clear H; destruct He as [? ?]; subst
+    | [ H : (?a, ?b) = (?c, ?d) |- _ ] =>
+      invc H; try (subst a || subst c); try (subst b || subst d)
   end.
 
 Ltac destruct_pair :=
@@ -1091,6 +1092,39 @@ Proof.
   (* TODO automate this *)
 Admitted.
 
+Ltac unfold_expr :=
+  unfold is_false, is_true, eval_bool, numop_impl', numop_impl,
+         eval_test_m, eval_test_num, eval_test_bool,
+         update_one, setconst_impl, duplicate_impl,
+         sel, id, eval in *; simpl in *.
+
+Ltac eval_expr_step :=
+    repeat extract_var_val;
+    repeat (destruct_pair + unfold_expr); simpl in *;
+     match goal with
+    | [e : ?x = _, H: context[match ?x with _ => _ end] |- _]
+      => rewrite e in H
+    | [e : ?x = _ |- context[match ?x with _ => _ end] ]
+      => rewrite e
+    | [H : context[if ?x then _ else _] |- _]
+      => let H' := fresh in destruct x eqn:H'; try omega
+    | [|- context[if ?x then _ else _] ]
+      => let H' := fresh in destruct x eqn:H'; try omega
+    | [H : context [match ?x with _ => _ end],
+       H': _ = ?x |- _]
+      => rewrite <- H' in H
+    | [H : context [match ?x with _ => _ end],
+       H': ?x = _ |- _]
+      => rewrite H' in H
+    | [H : context [match ?x with _ => _ end] |- _]
+      => let H' := fresh in destruct x eqn:H'
+    | _
+      => idtac
+    end; try solve [congruence | omega];
+    repeat find_inversion_safe.
+
+Ltac eval_expr := repeat eval_expr_step.
+
 Lemma CompileAdd :
   forall env F sumvar avar bvar (sum0 a b : nat),
     EXTRACT Ret (a + b)
@@ -1101,28 +1135,17 @@ Proof.
   unfold ProgOk; intros.
   destruct_pair; simpl in *.
   inv_exec_progok.
-  find_apply_lem_hyp inj_pair2; subst.
-  unfold sel, numop_impl, update_one, id in *.
-  simpl in *.
-  repeat destruct_pair.
-  repeat extract_var_val.
-  repeat find_inversion_safe.
-  simpl in *.
-  find_inversion.
-  simpl in *.
-  find_inversion.
-  repeat eexists.
-  econstructor.
+  eval_expr.
+  repeat econstructor.
   rewrite ?add_upd.
   unfold pred_apply.
   eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel | ].
   eapply pimpl_apply; [ | eassumption ]; cancel.
 
   contradiction H1.
-  repeat eexists.
-  econstructor.
+  repeat econstructor.
 
-  unfold sel; simpl; repeat extract_var_val.
+  eval_expr.
   all: simpl; reflexivity.
 Defined.
 
@@ -1136,28 +1159,17 @@ Proof.
   unfold ProgOk; intros.
   destruct_pair; simpl in *.
   inv_exec_progok.
-  find_apply_lem_hyp inj_pair2; subst.
-  unfold sel, numop_impl, update_one, id in *.
-  simpl in *.
-  repeat destruct_pair.
-  repeat extract_var_val.
-  repeat find_inversion_safe.
-  simpl in *.
-  find_inversion.
-  simpl in *.
-  find_inversion.
-  repeat eexists.
-  econstructor.
+  eval_expr.
+  repeat econstructor.
   rewrite ?add_upd.
   unfold pred_apply.
   eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel | ].
   eapply pimpl_apply; [ | eassumption ]; cancel.
 
   contradiction H1.
-  repeat eexists.
-  econstructor.
+  repeat econstructor.
 
-  unfold sel; simpl; repeat extract_var_val.
+  eval_expr.
   all: simpl; reflexivity.
 Defined.
 
@@ -1172,28 +1184,17 @@ Proof.
   unfold ProgOk; intros.
   destruct_pair; simpl in *.
   inv_exec_progok.
-  find_apply_lem_hyp inj_pair2; subst.
-  unfold sel, numop_impl, update_one, id in *.
-  simpl in *.
-  repeat destruct_pair.
-  repeat extract_var_val.
-  repeat find_inversion_safe.
-  simpl in *.
-  find_inversion.
-  simpl in *.
-  find_inversion.
-  repeat eexists.
-  econstructor.
+  eval_expr.
+  repeat econstructor.
   rewrite ?add_upd.
   unfold pred_apply.
   eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel | ].
   eapply pimpl_apply; [ | eassumption ]; cancel.
 
   contradiction H1.
-  repeat eexists.
-  econstructor.
+  repeat econstructor.
 
-  unfold sel; simpl; repeat extract_var_val.
+  eval_expr.
   all: simpl; reflexivity.
 Defined.
 
@@ -1270,31 +1271,6 @@ Proof.
     + rewrite ?eq_dec_eq; reflexivity.
     + reflexivity.
 Admitted.
-
-Ltac unfold_expr :=
-  unfold is_false, is_true, eval_bool, numop_impl', numop_impl,
-         eval_test_m, eval_test_num, eval_test_bool,
-         update_one, setconst_impl, duplicate_impl,
-         sel, id, eval in *; simpl in *.
-
-Ltac eval_expr :=
-  repeat extract_var_val;
-  repeat unfold_expr;
-  simpl in *;
-  repeat (match goal with
-  | [e : ?x = _, H: context[match ?x with _ => _ end] |- _]
-    => rewrite e in H
-  | [e : ?x = _ |- context[match ?x with _ => _ end] ]
-    => rewrite e
-  | [H : context[if ?x then _ else _] |- _]
-    => let H' := fresh in destruct x eqn:H'; try omega
-  | [|- context[if ?x then _ else _] ]
-    => let H' := fresh in destruct x eqn:H'; try omega
-  end; simpl in *);
-  repeat find_inversion_safe;
-  simpl in *;
-  unfold id in *;
-  try solve[congruence | omega].
 
 Ltac pred_cancel :=
   unfold pred_apply in *;
@@ -1437,28 +1413,22 @@ Proof.
   inv_exec_progok.
   - do 5 inv_exec. inv_exec.
     eval_expr.
-    destruct type_eq_dec; try congruence; find_inversion.
-    edestruct H; eauto.
+    edestruct H; intuition forward_solve.
     simpl. rewrite add_upd.
     eapply sep_star_assoc, ptsto_upd.
     pred_cancel.
   - do 5 inv_exec; try solve [inv_exec].
     eval_expr.
-    destruct type_eq_dec; try congruence; find_inversion.
-    edestruct H; eauto.
+    edestruct H; intuition forward_solve.
     simpl. rewrite add_upd.
     eapply sep_star_assoc, ptsto_upd. pred_cancel.
-    forward_solve.
   - inv_exec.
-    do 3 inv_exec.
+    do 3 inv_exec; forward_solve.
     inv_exec. inv_exec.
     eval_expr.
-    destruct type_eq_dec; try congruence; find_inversion.
-    edestruct H; eauto.
+    edestruct H; intuition forward_solve.
     simpl. rewrite add_upd.
     eapply sep_star_assoc, ptsto_upd. pred_cancel.
-    forward_solve.
-    contradiction H1; eauto.
     contradiction H2.
     repeat econstructor;
       eval_expr; eauto.
@@ -1477,48 +1447,29 @@ Proof.
   unfold ProgOk.
   inv_exec_progok.
   - do 5 inv_exec. inv_exec.
-    destruct_pairs.
     eval_expr.
-    destruct type_eq_dec; try congruence; find_inversion.
-    eval_expr. repeat find_inversion.
-    edestruct H; eauto.
+    edestruct H; forward_solve.
     simpl. rewrite add_upd.
     eapply sep_star_assoc.
     eapply sep_star_assoc, ptsto_upd.
     pred_cancel.
-    forward_solve.
   - do 5 inv_exec; try solve [inv_exec].
-    destruct_pairs.
     eval_expr.
-    destruct type_eq_dec; try congruence; find_inversion.
-    eval_expr. repeat find_inversion.
-    edestruct H; eauto.
+    edestruct H; forward_solve.
     simpl. rewrite add_upd.
     eapply sep_star_assoc. eapply sep_star_assoc, ptsto_upd. pred_cancel.
-    forward_solve.
   - inv_exec.
-    do 3 inv_exec.
+    do 3 inv_exec; forward_solve.
     inv_exec. inv_exec.
-    destruct_pairs.
     eval_expr.
-    destruct type_eq_dec; try congruence; find_inversion.
-    eval_expr. repeat find_inversion.
-    edestruct H; eauto.
+    edestruct H; forward_solve.
     simpl. rewrite add_upd.
     eapply sep_star_assoc. eapply sep_star_assoc, ptsto_upd. pred_cancel.
-    forward_solve.
-    contradiction H1; eauto.
     contradiction H2.
     repeat econstructor;
       eval_expr; eauto.
     simpl in *.
-    destruct type_eq_dec; eauto; congruence.
-Qed.
-
-Fact pair_inj : forall A B (a a' : A) (b b' : B), (a, b) = (a', b') <-> a = a' /\ b = b'.
-Proof.
-  split; intros;
-  invc H; auto.
+    eval_expr; eauto.
 Qed.
 
 Lemma AddInPlaceLeftBefore : forall T (T' : GoWrapper T) (p : prog T) B xp env
@@ -1534,62 +1485,30 @@ Proof.
   inv_exec_progok.
   - do 5 inv_exec. inv_exec.
     edestruct H; eauto.
-    simpl in *.
-    unfold numop_impl in *.
-    repeat (destruct_pair; simpl in *).
-    repeat match goal with [H : context [match ?x with _ => _ end] |- _] =>
-      let H' := fresh in destruct x eqn:H'; simpl in *; try congruence end.
-    unfold sel in *. subst.
-    find_inversion_safe. find_inversion.
     eval_expr.
-    repeat rewrite pair_inj in *. intuition idtac.
-    repeat find_eapply_lem_hyp value_inj. simpl in *.
-    find_inversion.
     rewrite add_upd.
     eapply sep_star_assoc.
     eapply sep_star_assoc, ptsto_upd.
     pred_cancel.
   - do 5 inv_exec; try solve [inv_exec].
-    edestruct H; eauto.
-    simpl in *.
-    unfold numop_impl in *.
-    repeat (destruct_pair; simpl in *).
-    repeat match goal with [H : context [match ?x with _ => _ end] |- _] =>
-      let H' := fresh in destruct x eqn:H'; simpl in *; try congruence end.
-    unfold sel in *. subst.
-    find_inversion_safe. find_inversion.
+    edestruct H; forward_solve.
     eval_expr.
-    repeat rewrite pair_inj in *. intuition idtac.
-    repeat find_eapply_lem_hyp value_inj. simpl in *.
-    find_inversion.
     rewrite add_upd.
     eapply sep_star_assoc.
     eapply sep_star_assoc, ptsto_upd.
     pred_cancel.
-    forward_solve.
   - inv_exec.
-    do 3 inv_exec.
+    do 3 inv_exec; forward_solve.
     inv_exec. inv_exec.
-    unfold numop_impl in *.
-    repeat (simpl in *; destruct_pair).
-    repeat match goal with [H : context [match ?x with _ => _ end] |- _] =>
-      let H' := fresh in destruct x eqn:H'; simpl in *; try congruence end.
-    unfold sel in *. subst.
-    find_inversion_safe. find_inversion.
     eval_expr.
-    repeat rewrite pair_inj in *. intuition idtac.
-    repeat find_eapply_lem_hyp value_inj. simpl in *.
-    find_inversion.
-    edestruct H; eauto.
+    edestruct H; forward_solve.
     simpl. rewrite add_upd.
     eapply sep_star_assoc. eapply sep_star_assoc, ptsto_upd. pred_cancel.
-    forward_solve.
-    contradiction H1; eauto.
     contradiction H2.
     repeat econstructor;
       eval_expr; eauto.
     simpl in *; eauto.
-    simpl. eauto.
+    simpl; eauto.
 Qed.
 
 Lemma AddInPlaceLeftAfter : forall T (T' : GoWrapper T) (p : prog T) A xp env
