@@ -1999,6 +1999,27 @@ Ltac compile_step :=
           eapply CompileWrite with (avar := ka) (vvar := kv) ] ]; [ cancel_subset .. ]
       end
     end
+  | [ |- EXTRACT ForN_ ?f ?i ?n _ _ ?t0 {{ ?pre }} _ {{ _ }} // _ ] =>
+    let retvar := var_mapping_to_ret in
+    match find_val n pre with
+      | None => eapply extract_equiv_prog with (pr1 := Bind (Ret n) (fun x => ForN_ f i x _ _ t0));
+          [> rewrite bind_left_id; eapply prog_equiv_equivalence | ]
+      | Some ?kn =>
+      match find_val i pre with
+        | None => eapply extract_equiv_prog with (pr1 := Bind (Ret i) (fun x => ForN_ f x n _ _ t0));
+          [> rewrite bind_left_id; eapply prog_equiv_equivalence | ]
+        | Some ?ki =>
+        match find_val t0 pre with
+          | None => eapply extract_equiv_prog with (pr1 := Bind (Ret t0) (fun x => ForN_ f i n _ _ x));
+            [> rewrite bind_left_id; eapply prog_equiv_equivalence | ]
+          | Some ?kt0 =>
+            eapply hoare_strengthen_pre; [>
+            | eapply hoare_weaken_post; [>
+            | eapply CompileFor with (v := ki) (loopvar := kt0) (vn := kn)] ];
+            [> cancel_subset | cancel_subset | intros ]
+        end
+      end
+    end
   | [ H : voidfunc2 ?name ?f ?env |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // ?env ] =>
     match find_val a pre with
       | Some ?ka =>
@@ -2142,17 +2163,7 @@ Example extract_for_loop : forall env, sigT (fun p =>
   {{ 0 ~> 0 * 1 ~> cnt }} p {{ fun ret => 0 ~> ret }} // env).
 Proof.
   intros.
-  compile_step.
-  eapply extract_equiv_prog with (pr1 := Bind (Ret 1) (fun x => ForN_ _ x _ _ _ _)).
-  rewrite bind_left_id. eapply prog_equiv_equivalence.
-  compile_step.
-  compile_step.
-  eapply hoare_strengthen_pre; [>
-  | eapply hoare_weaken_post; [>
-  | eapply CompileFor with (v := var0) (loopvar := 0) (vn := 1);
-    intros; compile; eauto ] ].
-  cancel_subset.
-  cancel_subset.
+  compile.
 Defined.
 Eval lazy in projT1 (extract_for_loop (StringMap.empty _)).
 
