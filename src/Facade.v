@@ -1216,7 +1216,8 @@ Ltac cancel_subset :=
   fold any';
   unfold any' at 1;
   cancel;
-  try solve [ eapply chop_any; cancel | eapply pimpl_any ].
+  try solve [ eapply chop_any; cancel |
+              repeat (eapply pimpl_any || eapply chop_any) ].
 
 Lemma compile_append :
   forall env F T {Wr: GoWrapper T} lvar vvar (x : T) xs,
@@ -1749,8 +1750,7 @@ Proof.
   eapply hoare_weaken_post. shelve.
   eauto.
   Unshelve.
-  all : try cancel_subset.
-  eapply chop_any, pimpl_any.
+  all : cancel_subset.
 Qed.
 
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
@@ -2147,15 +2147,14 @@ Proof.
   rewrite bind_left_id. eapply prog_equiv_equivalence.
   compile_step.
   compile_step.
-  eapply hoare_strengthen_pre. shelve.
-  eapply hoare_weaken_post. shelve.
-  eapply CompileFor with (v := var0) (loopvar := 0) (vn := 1).
-  intros. compile.
-  eapply chop_any, pimpl_any.
-  Unshelve.
+  eapply hoare_strengthen_pre; [>
+  | eapply hoare_weaken_post; [>
+  | eapply CompileFor with (v := var0) (loopvar := 0) (vn := 1);
+    intros; compile; eauto ] ].
   cancel_subset.
   cancel_subset.
 Defined.
+Eval lazy in projT1 (extract_for_loop (StringMap.empty _)).
 
 (*
 Declare DiskBlock
