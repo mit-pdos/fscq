@@ -155,34 +155,212 @@ Module StepPresync.
   Qed.
 End StepPresync.
 
-Inductive exec : forall T, rawdisk -> hashmap -> prog T -> outcome T -> Prop :=
-| XRet : forall T m hm (v: T),
-    exec m hm (Ret v) (Finished m hm v)
-| XStep : forall T m hm (p: prog T) m' m'' hm' v,
-    step m hm p m' hm' v ->
-    possible_sync m' m'' ->
-    exec m hm p (Finished m'' hm' v)
-| XBindFinish : forall m hm T (p1: prog T) m' hm' (v: T)
-                  T' (p2: T -> prog T') out,
-    exec m hm p1 (Finished m' hm' v) ->
-    exec m' hm' (p2 v) out ->
-    exec m hm (Bind p1 p2) out
-| XBindFail : forall m hm T (p1: prog T)
-                T' (p2: T -> prog T'),
-    exec m hm p1 (Failed T) ->
-    (* note p2 need not execute at all if p1 fails, a form of lazy
-    evaluation *)
-    exec m hm (Bind p1 p2) (Failed T')
-| XBindCrash : forall m hm T (p1: prog T) m' hm'
-                 T' (p2: T -> prog T'),
-    exec m hm p1 (Crashed T m' hm') ->
-    exec m hm (Bind p1 p2) (Crashed T' m' hm')
-| XFail : forall m hm T (p: prog T),
-    fail_step m p ->
-    exec m hm p (Failed T)
-| XCrash : forall m hm T (p: prog T),
-    crash_step p ->
-    exec m hm p (Crashed T m hm).
+Module ExecSync.
+
+  Inductive exec {sync_R: rawdisk -> rawdisk -> Prop} : forall T, rawdisk -> hashmap -> prog T -> outcome T -> Prop :=
+  | XRet : forall T m hm (v: T),
+      exec m hm (Ret v) (Finished m hm v)
+  | XStep : forall T m hm (p: prog T) m' m'' hm' v,
+      step m hm p m' hm' v ->
+      sync_R m' m'' ->
+      exec m hm p (Finished m'' hm' v)
+  | XBindFinish : forall m hm T (p1: prog T) m' hm' (v: T)
+                    T' (p2: T -> prog T') out,
+      exec m hm p1 (Finished m' hm' v) ->
+      exec m' hm' (p2 v) out ->
+      exec m hm (Bind p1 p2) out
+  | XBindFail : forall m hm T (p1: prog T)
+                  T' (p2: T -> prog T'),
+      exec m hm p1 (Failed T) ->
+      exec m hm (Bind p1 p2) (Failed T')
+  | XBindCrash : forall m hm T (p1: prog T) m' hm'
+                   T' (p2: T -> prog T'),
+      exec m hm p1 (Crashed T m' hm') ->
+      exec m hm (Bind p1 p2) (Crashed T' m' hm')
+  | XFail : forall m hm T (p: prog T),
+      fail_step m p ->
+      exec m hm p (Failed T)
+  | XCrash : forall m hm T (p: prog T),
+      crash_step p ->
+      exec m hm p (Crashed T m hm).
+
+  Arguments exec sync_R {T} _ _ _ _.
+
+End ExecSync.
+
+Require Import Automation.
+
+Arguments possible_sync {AT AEQ} _ _.
+
+Definition exec := @ExecSync.exec possible_sync.
+
+(* if out is ok, out' is at least as ok *)
+Definition outcome_obs_le T (out out': outcome T) : Prop :=
+  match out with
+  | Failed _ => out' = Failed T
+  | Finished d hm v => exists d', out' = Finished d' hm v /\
+                            possible_sync (AEQ:=addr_eq_dec) d d'
+  | Crashed _ d hm => exists d', out' = Crashed T d' hm /\
+                         possible_sync (AEQ:=addr_eq_dec) d d'
+  end.
+
+Definition outcome_obs_ge T (out' out: outcome T) : Prop :=
+  match out' with
+  | Failed _ => out = Failed T
+  | Finished d' hm v => exists d, out = Finished d hm v /\
+                             possible_sync (AEQ:=addr_eq_dec) d d'
+  | Crashed _ d' hm => exists d, out = Crashed T d hm /\
+                           possible_sync (AEQ:=addr_eq_dec) d d'
+  end.
+
+Theorem outcome_obs_ge_ok : forall T (out out': outcome T),
+    outcome_obs_le out out' <->
+    outcome_obs_ge out' out.
+Proof.
+  destruct out, out'; simpl; intuition idtac;
+    repeat deex;
+    match goal with
+    | [ H: @eq (outcome _) _ _ |- _ ] => inversion H; subst
+    end; eauto.
+Qed.
+
+Hint Resolve possible_sync_refl possible_sync_trans.
+
+Theorem outcome_obs_le_refl : forall T (out: outcome T),
+    outcome_obs_le out out.
+Proof.
+  destruct out; simpl; eauto.
+Qed.
+
+Theorem outcome_obs_le_trans : forall T (out out' out'': outcome T),
+    outcome_obs_le out out' ->
+    outcome_obs_le out' out'' ->
+    outcome_obs_le out out''.
+Proof.
+  destruct out, out'; intros; simpl in *; repeat deex; try congruence; eauto.
+  inversion H0; subst; eauto.
+  inversion H0; subst; eauto.
+Qed.
+
+Instance outcome_obs_le_preorder {T} : PreOrder (outcome_obs_le (T:=T)).
+Proof.
+  constructor; hnf; intros; eauto using outcome_obs_le_refl, outcome_obs_le_trans.
+Qed.
+
+Hint Constructors ExecSync.exec.
+
+Hint Resolve outcome_obs_le_refl outcome_obs_le_trans.
+
+Lemma possible_sync_in_domain : forall AT AEQ (d d': @mem AT AEQ _) a v vs',
+    possible_sync d d' ->
+    d' a = Some (v, vs') ->
+    exists vs, d a = Some (v, vs) /\
+          incl vs' vs.
+Proof.
+  unfold possible_sync; intros.
+  specialize (H a); intuition eauto; try congruence.
+  repeat deex.
+  assert (v = v0) by congruence; subst.
+  assert (l' = vs') by congruence; subst.
+  eauto.
+Qed.
+
+Lemma step_sync_later : forall T (p: prog T) d d' d'' hm hm' v,
+    possible_sync d d' ->
+    step d' hm p d'' hm' v ->
+    exists d'2, step d hm p d'2 hm' v /\
+           possible_sync (AEQ:=addr_eq_dec) d'2 d''.
+Proof.
+  intros.
+  inversion H0; subst; repeat sigT_eq.
+  - (* Read *)
+    eapply possible_sync_in_domain in H8; eauto; deex.
+    eauto.
+  - eapply possible_sync_in_domain in H8; eauto; deex.
+    eexists; split.
+    constructor; eauto.
+    eapply possible_sync_respects_upd; eauto.
+  - eauto.
+  - destruct vs, vs'.
+    eapply possible_sync_in_domain in H8; eauto; deex.
+    eexists; split.
+    econstructor; eauto.
+    eapply possible_sync_respects_upd; eauto.
+  - eauto.
+Qed.
+
+Lemma possible_sync_not_in_domain : forall AT AEQ (d d': @mem AT AEQ _) a,
+    possible_sync d d' ->
+    d' a = None ->
+    d a = None.
+Proof.
+  unfold possible_sync; intros.
+  specialize (H a); intuition eauto;
+    repeat deex; congruence.
+Qed.
+
+Hint Resolve possible_sync_not_in_domain.
+Hint Constructors fail_step.
+
+Lemma fail_step_sync_later  : forall T (p: prog T) d d',
+    fail_step d' p ->
+    possible_sync d d' ->
+    fail_step d p.
+Proof.
+  inversion 1; intros; subst; repeat sigT_eq; eauto.
+Qed.
+
+Theorem exec_eq_sync_later : forall T (p: prog T) d d' hm out,
+    ExecSync.exec eq d' hm p out ->
+    possible_sync d d' ->
+    exists out', ExecSync.exec eq d hm p out' /\
+            outcome_obs_ge out out'.
+Proof.
+  intros.
+  generalize dependent d.
+  induction H; subst; intros; simpl.
+  - eexists; intuition eauto; simpl; eauto.
+  - eapply step_sync_later in H0; eauto; deex.
+    eexists; intuition eauto.
+  - specialize (IHexec1 _ H1); deex.
+    simpl in *; deex.
+    specialize (IHexec2 _ H5); deex.
+    eauto 10.
+  - specialize (IHexec _ H0); deex.
+    simpl in *; subst.
+    eauto 10.
+  - specialize (IHexec _ H0); deex.
+    simpl in *; deex.
+    eauto 10.
+  - eapply fail_step_sync_later in H; eauto.
+  - inversion H; subst; repeat sigT_eq; eauto 10.
+Qed.
+
+Theorem exec_sync_obs_irrelevant : forall T (p: prog T) d hm out,
+    ExecSync.exec possible_sync d hm p out ->
+    exists out', ExecSync.exec eq d hm p out' /\
+            outcome_obs_le out' out.
+Proof.
+  induction 1; intros; repeat deex; eauto.
+  - eexists; intuition eauto.
+    simpl.
+    eauto.
+  - destruct out'0; simpl in *; repeat deex; try congruence.
+    inversion H5; subst.
+    (* m ---> m0, m0 ~~> d', d' ---> out' <= out *)
+    eapply exec_eq_sync_later in H4; eauto; deex.
+    simpl in *; deex.
+    assert (possible_sync (AEQ:=addr_eq_dec) d d') by eauto.
+    eapply exec_eq_sync_later in H1; eauto; deex.
+    apply outcome_obs_ge_ok in H9.
+    eauto.
+  - destruct out'; simpl in *; repeat deex; try congruence.
+    eauto.
+  - destruct out'; simpl in *; repeat deex; try congruence.
+    inversion H2; subst.
+    eexists; intuition eauto.
+    simpl; eauto.
+Qed.
 
 (** program with recovery *)
 Inductive recover_outcome (TF TR: Type) :=
@@ -190,26 +368,80 @@ Inductive recover_outcome (TF TR: Type) :=
   | RFinished (m: rawdisk) (hm: hashmap) (v: TF)
   | RRecovered (m: rawdisk) (hm: hashmap) (v: TR).
 
-Inductive exec_recover (TF TR: Type)
+Module ExecRecover.
+
+Inductive exec_recover {exec: forall T, rawdisk -> hashmap -> prog T -> outcome T -> Prop} (TF TR: Type)
     : rawdisk -> hashmap -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
-  | XRFail : forall m hm p1 p2, exec m hm p1 (Failed TF)
+  | XRFail : forall m hm p1 p2, exec _ m hm p1 (Failed TF)
     -> exec_recover m hm p1 p2 (RFailed TF TR)
-  | XRFinished : forall m hm p1 p2 m' hm' (v: TF), exec m hm p1 (Finished m' hm' v)
+  | XRFinished : forall m hm p1 p2 m' hm' (v: TF), exec _ m hm p1 (Finished m' hm' v)
     -> exec_recover m hm p1 p2 (RFinished TR m' hm' v)
-  | XRCrashedFailed : forall m hm p1 p2 m' hm' m'r, exec m hm p1 (Crashed TF m' hm')
+  | XRCrashedFailed : forall m hm p1 p2 m' hm' m'r, exec _ m hm p1 (Crashed TF m' hm')
     -> possible_crash m' m'r
-    -> @exec_recover TR TR m'r hm' p2 p2 (RFailed TR TR)
+    -> @exec_recover exec TR TR m'r hm' p2 p2 (RFailed TR TR)
     -> exec_recover m hm p1 p2 (RFailed TF TR)
-  | XRCrashedFinished : forall m hm p1 p2 m' hm' m'r m'' hm'' (v: TR), exec m hm p1 (Crashed TF m' hm')
+  | XRCrashedFinished : forall m hm p1 p2 m' hm' m'r m'' hm'' (v: TR), exec _ m hm p1 (Crashed TF m' hm')
     -> possible_crash m' m'r
-    -> @exec_recover TR TR m'r hm' p2 p2 (RFinished TR m'' hm'' v)
+    -> @exec_recover exec TR TR m'r hm' p2 p2 (RFinished TR m'' hm'' v)
     -> exec_recover m hm p1 p2 (RRecovered TF m'' hm'' v)
-  | XRCrashedRecovered : forall m hm p1 p2 m' hm' m'r m'' hm'' (v: TR), exec m hm p1 (Crashed TF m' hm')
+  | XRCrashedRecovered : forall m hm p1 p2 m' hm' m'r m'' hm'' (v: TR), exec _ m hm p1 (Crashed TF m' hm')
     -> possible_crash m' m'r
-    -> @exec_recover TR TR m'r hm' p2 p2 (RRecovered TR m'' hm'' v)
+    -> @exec_recover exec TR TR m'r hm' p2 p2 (RRecovered TR m'' hm'' v)
     -> exec_recover m hm p1 p2 (RRecovered TF m'' hm'' v).
 
-Hint Constructors exec.
+Arguments exec_recover exec {TF TR} _ _ _ _ _.
+
+End ExecRecover.
+
+Definition exec_recover := @ExecRecover.exec_recover exec.
+
+Hint Constructors ExecRecover.exec_recover.
+
+Definition rout_obs_le TF TR (out out': recover_outcome TF TR) :=
+ match out with
+ | RFailed _ _ => out' = RFailed _ _
+ | RFinished _ m hm v => exists m', out' = RFinished _ m' hm v /\
+                            possible_sync (AEQ:=addr_eq_dec) m m'
+ | RRecovered _ m hm v => exists m', out' = RRecovered _ m' hm v /\
+                             possible_sync (AEQ:=addr_eq_dec) m m'
+ end.
+
+Theorem exec_recover_obs_refinement : forall TF TR (p: prog TF) (r: prog TR)
+                                        d hm (P: recover_outcome TF TR -> Prop),
+    (forall d hm v d' hm' v', P (RFinished TR d hm v) ->
+                         outcome_obs_le (Finished d hm v) (Finished d' hm' v') ->
+                         P (RFinished TR d' hm' v')) ->
+    (forall out, ExecRecover.exec_recover (@ExecSync.exec eq) d hm p r out -> P out) ->
+    (forall out, ExecRecover.exec_recover (@ExecSync.exec possible_sync) d hm p r out -> P out).
+Proof.
+  intros.
+  induction H1; subst;
+  repeat match goal with
+         | [ H: ExecSync.exec possible_sync _ _ _ _ |- _ ] =>
+           apply exec_sync_obs_irrelevant in H; deex
+         | [ H: outcome_obs_le _ _ |- _ ] =>
+           apply outcome_obs_ge_ok in H; simpl in H
+         | _ => progress subst
+         | _ => deex
+         end.
+  - eauto.
+  - eapply H; eauto.
+    simpl; eauto.
+  - apply H0; eauto.
+    econstructor 3; eauto.
+    eapply possible_crash_possible_sync_trans; eauto.
+    admit. (* not clear if induction hypothesis can prove this *)
+  - apply H0; eauto.
+    econstructor 4; eauto.
+    eapply possible_crash_possible_sync_trans; eauto.
+    admit. (* similar induction hypothesis-based goal *)
+  - apply H0; eauto.
+    econstructor 5; eauto.
+    eapply possible_crash_possible_sync_trans; eauto.
+    admit. (* again same *)
+Abort.
+
+Hint Constructors GeneralExec.exec.
 Hint Constructors step.
 Hint Constructors exec_recover.
 

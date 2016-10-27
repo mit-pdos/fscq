@@ -768,6 +768,13 @@ Definition possible_sync AT AEQ (m m' : @mem AT AEQ valuset) :=
   forall a, (m a = None /\ m' a = None) \/
   (exists v l l', m a = Some (v, l) /\ m' a = Some (v, l') /\ incl l' l).
 
+Theorem possible_sync_refl : forall AT AEQ (m: @mem AT AEQ _),
+    possible_sync m m.
+Proof.
+  unfold possible_sync; intros.
+  destruct (m a); intuition eauto 10 using incl_refl.
+Qed.
+
 Theorem possible_sync_trans : forall AT AEQ (m1 m2 m3 : @mem AT AEQ _),
   possible_sync m1 m2 ->
   possible_sync m2 m3 ->
@@ -781,6 +788,11 @@ Proof.
   rewrite H0 in H1; inversion H1; subst.
   do 3 eexists; intuition eauto.
   eapply incl_tran; eauto.
+Qed.
+
+Instance possible_sync_preorder AT AEQ : PreOrder (possible_sync (AT:=AT) (AEQ:=AEQ)).
+Proof.
+  constructor; hnf; intros; eauto using possible_sync_refl, possible_sync_trans.
 Qed.
 
 Theorem possible_sync_sync_mem : forall AT AEQ (m : @mem AT AEQ valuset),
