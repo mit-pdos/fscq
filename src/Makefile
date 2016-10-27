@@ -1,7 +1,8 @@
 OCAMLBUILD := ocamlbuild -use-ocamlfind -lib str -lib nums
 OCAMLINC   := -I codegen -I mllib -I ocamlfuse -package extunix
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
-	      Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
+				Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
+				OperationalSemantics \
 	      Hashmap HashmapProg \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
