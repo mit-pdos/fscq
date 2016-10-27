@@ -1361,24 +1361,23 @@ Module LOG.
     cancel.
   Qed.
 
-  Lemma vsupsyn_range_progress : forall F l a m vs d,
+  Lemma vsupsyn_range_progress : forall l a m vs,
     m < length l -> length l <= length vs ->
-    (F ✶ arrayP a (vsupsyn_range vs (firstn m l)))%pred (list2nmem d) ->
-    (F ✶ arrayP a (vsupsyn_range vs (firstn (S m) l)))%pred 
-        (list2nmem (updN d (a + m) (selN l m $0, nil))).
+    arrayP a (updN (vsupsyn_range vs (firstn m l)) m (selN l m $0, nil)) =p=>
+    arrayP a (vsupsyn_range vs (firstn (S m) l)).
   Proof.
-    intros.
-    rewrite arrayN_isolate with (i := m) (default := ($0, nil)).
-    apply sep_star_reorder_helper1.
-    rewrite vsupsyn_range_selN.
-    rewrite selN_firstn by auto.
-    eapply list2nmem_updN.
-    pred_apply.
-    rewrite arrayN_isolate with (i := m) (default := ($0, nil)).
-    rewrite firstn_vsupsyn_range_firstn_S by auto.
-    rewrite skip_vsupsyn_range_skip_S by auto.
-    cancel.
-    all: try rewrite vsupsyn_range_length; try rewrite firstn_length_l; omega.
+    unfold vsupsyn_range; intros.
+    apply arrayN_unify.
+    rewrite updN_app2; autorewrite with lists.
+    all: repeat rewrite firstn_length_l; try omega.
+    erewrite firstn_S_selN, repeat_app_tail by omega.
+    rewrite combine_app, <- app_assoc.
+    f_equal.
+    rewrite Nat.sub_diag, updN_0_skip_1, skipn_skipn.
+    rewrite Nat.add_1_l, cons_app.
+    apply eq_refl.
+    rewrite skipn_length; omega.
+    rewrite firstn_length_l, repeat_length; omega.
   Qed.
 
   Lemma write_range_length_ok : forall F a i ms d vs,
@@ -1409,24 +1408,25 @@ Module LOG.
     unfold write_range; intros.
     step.
 
-    step.
-    unfold rep_inner; cancel.
-    apply map_valid_add; auto; try omega.
-    eapply write_range_length_ok; eauto.
-    rewrite vsupsyn_range_length. omega.
+    safestep.
+    unfold rep_inner; cancel. eauto.
+    rewrite vsupsyn_range_length; auto.
+    omega.
     rewrite firstn_length_l; omega.
 
-    subst; rewrite replay_disk_add.
-    apply vsupsyn_range_progress; auto.
+    step.
+    eapply vsupsyn_range_progress; eauto.
+    unfold rep_inner; cancel.
 
     step.
     erewrite firstn_oob; eauto.
     eassign raw.
     pred_apply; cancel.
     apply GLog.rep_hashmap_subset; eauto.
-    eauto.
+    auto.
     Unshelve. exact tt. eauto.
   Qed.
+
 
   (* like read_range, but stops when cond is true *)
   Definition read_cond A xp a nr (vfold : A -> valu -> A) v0 (cond : A -> bool) ms :=
