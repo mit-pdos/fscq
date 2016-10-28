@@ -1,5 +1,5 @@
 Require Import Prog.
-Require Import AsyncDisk.
+Require Import Word AsyncDisk.
 Require Import Mem Pred PredCrash.
 Require Import Automation.
 
@@ -307,3 +307,320 @@ Proof.
     eexists; intuition eauto.
     simpl; eauto.
 Qed.
+
+Module ExecRecover.
+
+  Inductive R
+            {exec: forall T, rawdisk -> hashmap -> prog T -> outcome T -> Prop}
+            {possible_crash: rawdisk -> rawdisk -> Prop}
+            (TF TR: Type)
+  : rawdisk -> hashmap -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
+  | XRFail : forall m hm p1 p2,
+      exec _ m hm p1 (Failed TF)
+      -> R m hm p1 p2 (RFailed TF TR)
+  | XRFinished : forall m hm p1 p2 m' hm' (v: TF),
+      exec _ m hm p1 (Finished m' hm' v)
+      -> R m hm p1 p2 (RFinished TR m' hm' v)
+  | XRCrashedFailed : forall m hm p1 p2 m' hm' m'r,
+      exec _ m hm p1 (Crashed TF m' hm')
+      -> possible_crash m' m'r
+      -> R (TF:=TR) m'r hm' p2 p2 (RFailed TR TR)
+      -> R m hm p1 p2 (RFailed TF TR)
+  | XRCrashedFinished : forall m hm p1 p2 m' hm' m'r m'' hm'' (v: TR),
+      exec _ m hm p1 (Crashed TF m' hm')
+      -> possible_crash m' m'r
+      -> R (TF:=TR) m'r hm' p2 p2 (RFinished TR m'' hm'' v)
+      -> R m hm p1 p2 (RRecovered TF m'' hm'' v)
+  | XRCrashedRecovered : forall m hm p1 p2 m' hm' m'r m'' hm'' (v: TR),
+      exec _ m hm p1 (Crashed TF m' hm')
+      -> possible_crash m' m'r
+      -> R (TF:=TR) m'r hm' p2 p2 (RRecovered TR m'' hm'' v)
+      -> R m hm p1 p2 (RRecovered TF m'' hm'' v).
+
+  Arguments R exec possible_crash {TF TR} _ _ _ _ _.
+
+End ExecRecover.
+
+Hint Constructors ExecRecover.R exec_recover.
+
+Theorem exec_recover_is_R : forall TF TR d hm (p: prog TF) (r: prog TR) out,
+    exec_recover d hm p r out <->
+    ExecRecover.R exec possible_crash d hm p r out.
+Proof.
+  split; induction 1; eauto.
+Qed.
+
+Module PhysicalSemantics.
+
+  (* we will now _re-interpret_ a valubuf as the following:
+
+     a |-> (v, vs) means v is the current value while the disk contains the
+     sequence of values vs, where the last value is on disk and the earlier
+     values are buffered. *)
+
+  (* partially flush each address by removing some old values and leaving a new
+  value on disk *)
+  Definition flush_disk (d d': rawdisk) :=
+    forall a,
+      match d a with
+      | None => d' a = None
+      | Some (v, vs) => exists n, d' a = Some (v, firstn n vs)
+      end.
+
+  Theorem flush_disk_refl : forall d, flush_disk d d.
+  Proof.
+    unfold flush_disk; intros.
+    destruct matches.
+    exists (length l).
+    rewrite firstn_all.
+    eauto.
+  Qed.
+
+  Theorem flush_disk_trans : forall d d' d'',
+      flush_disk d d' ->
+      flush_disk d' d'' ->
+      flush_disk d d''.
+  Proof.
+    unfold flush_disk; intros.
+    specialize (H a).
+    specialize (H0 a).
+    destruct matches in *; repeat deex; try congruence.
+    rewrite H3 in H.
+    inversion H.
+    subst.
+    replace (d'' a).
+    rewrite firstn_firstn.
+    eauto.
+  Qed.
+
+  Lemma firstn_incl : forall A (l: list A) n,
+      incl (firstn n l) l.
+  Proof.
+    unfold incl.
+    apply ListUtils.in_firstn_in.
+  Qed.
+
+  Hint Resolve firstn_incl.
+
+  Theorem flush_disk_is_sync : forall d d',
+      flush_disk d d' ->
+      possible_sync (AEQ:=addr_eq_dec) d d'.
+  Proof.
+    unfold flush_disk, possible_sync; intros.
+    specialize (H a).
+    destruct (d a); eauto.
+    right.
+    destruct p; deex; eauto 10.
+  Qed.
+
+  Hint Resolve flush_disk_is_sync.
+
+  (* with the new interpretation of valusets, the last value in (v, vs),
+  organized as v::vs, is the on-disk value *)
+  Fixpoint diskval (v: valu) (vs: list valu) :=
+    match vs with
+    | nil => v
+    | v'::vs' => diskval v' vs'
+    end.
+
+  (* discard buffers is actually a function  *)
+  Definition discard_buffers (d d': rawdisk) :=
+    forall a, match d a with
+         | None => d' a = None
+         | Some (v, vs) =>
+           d' a = Some (diskval v vs, nil)
+         end.
+
+  Lemma discard_buffers_f (d: rawdisk) : {d':rawdisk | discard_buffers d d'}.
+  Proof.
+    unfold discard_buffers.
+    exists (fun a =>
+         match d a with
+         | None => None
+         | Some (v, vs) =>
+           Some (diskval v vs, nil)
+         end).
+    intros.
+    destruct (d a); auto.
+    destruct p; auto.
+  Qed.
+
+  Remark discard_buffers_deterministic : forall d d' d'',
+      discard_buffers d d' ->
+      discard_buffers d d'' ->
+      d' = d''.
+  Proof.
+    unfold discard_buffers; intros.
+    extensionality a.
+    specialize (H a).
+    specialize (H0 a).
+    destruct matches in *; eauto.
+  Qed.
+
+  Definition outcome_disk_R (R: rawdisk -> rawdisk -> Prop) T (out out':outcome T) :=
+    match out with
+    | Finished d hm v => exists d', out' = Finished d' hm v /\
+                              R d d'
+    | Crashed _ d hm => exists d', out' = Crashed _ d' hm /\
+                           R d d'
+    | Failed _ => out' = Failed _
+    end.
+
+  Definition pexec T d hm (p: prog T) out :=
+    exists out', Exec.R flush_disk d hm p out' /\
+          outcome_disk_R flush_disk out' out.
+  Definition pexec_recover := @ExecRecover.R pexec discard_buffers.
+
+  Hint Resolve flush_disk_refl flush_disk_trans.
+  Hint Resolve flush_disk_is_sync.
+
+  Lemma flush_disk_in_domain : forall d d' a v vs,
+      d a = Some (v, vs)  ->
+      flush_disk d d' ->
+      exists n, d' a = Some (v, firstn n vs).
+  Proof.
+    unfold flush_disk; intros.
+    specialize (H0 a).
+    simpl_match; eauto.
+  Qed.
+
+  Theorem outcome_obs_le_to_R : forall T (out out': outcome T),
+      outcome_obs_le out out' <->
+      outcome_disk_R possible_sync out out'.
+  Proof.
+    unfold outcome_obs_le, outcome_disk_R; split; intros;
+      destruct matches in *; eauto.
+  Qed.
+
+  (* We want to prove that using the non-deterministic crash (our actual
+  semantics) is sufficient for safety under the real, deterministic crash +
+  non-deterministic flush (the above semantics). This is guaranteed by proving
+  if exec_real -> (exists out, exec_fake to out) -> exec_real's out is
+  similar *)
+
+  (* similarity is vague - want all the values to match for correctness, and to
+  get proof to go through need the write buffers in the real execution to be
+  sensible *)
+
+  Lemma exec_flush_to_exec : forall T (p: prog T) d hm out,
+      Exec.R flush_disk d hm p out ->
+      exec d hm p out.
+  Proof.
+    induction 1; simpl; intros; destruct_ands;
+      repeat deex; intuition eauto 10.
+  Qed.
+
+  Corollary pexec_to_exec : forall T (p: prog T) d hm out,
+      pexec d hm p out ->
+      exists out', exec d hm p out' /\
+              outcome_disk_R flush_disk out' out.
+  Proof.
+    unfold pexec; intros; deex.
+    eauto using exec_flush_to_exec.
+  Qed.
+
+  Definition outcome_disk_R_conv (R: rawdisk -> rawdisk -> Prop)
+             T (out' out: outcome T) :=
+   match out' with
+   | Finished m hm v => exists m', out = Finished m' hm v /\
+                               R m' m
+   | Crashed _ m hm => exists m', out = Crashed _ m' hm /\
+                            R m' m
+   | Failed _ => out = Failed  _
+   end.
+
+  Theorem outcome_disk_R_conv_ok : forall R T (out out': outcome T),
+      outcome_disk_R R out out' <->
+      outcome_disk_R_conv R out' out.
+  Proof.
+    unfold outcome_disk_R, outcome_disk_R_conv; split; intros;
+      destruct out, out'; repeat deex; try congruence.
+    inversion H0; eauto.
+    inversion H0; eauto.
+    inversion H0; eauto.
+    inversion H0; eauto.
+  Qed.
+
+  Definition routcome_disk_R (R: rawdisk -> rawdisk -> Prop)
+             TF TR (out out': recover_outcome TF TR) :=
+    match out with
+    | RFinished _ d hm v => exists d', out' = RFinished _ d' hm v /\
+                               R d d'
+    | RRecovered _ d hm v => exists d', out' = RRecovered _ d' hm v /\
+                                  R d d'
+    | RFailed _ _ => out' = RFailed _ _
+    end.
+
+  Definition routcome_disk_R_conv (R: rawdisk -> rawdisk -> Prop)
+             TF TR (out' out: recover_outcome TF TR) :=
+    match out' with
+    | RFinished _ d hm v => exists d', out = RFinished _ d' hm v /\
+                               R d' d
+    | RRecovered _ d hm v => exists d', out = RRecovered _ d' hm v /\
+                                  R d' d
+    | RFailed _ _ => out = RFailed _ _
+    end.
+
+  Theorem routcome_disk_R_conv_ok : forall R TF TR (out out': recover_outcome TF TR),
+      routcome_disk_R R out out' <->
+      routcome_disk_R_conv R out' out.
+  Proof.
+    split;
+      destruct out, out'; simpl; intros;
+        repeat deex;
+          match goal with
+          | [ H: @eq (recover_outcome _ _) _ _ |- _ ] =>
+            inversion H; subst
+          end; eauto.
+  Qed.
+
+  Lemma diskval_firstn_in_list : forall l n v,
+      In (diskval v (firstn n l)) (v::l).
+  Proof.
+    induction l; simpl; intros.
+    rewrite firstn_nil; eauto.
+    destruct n; simpl; eauto.
+    destruct (IHl n a); simpl; eauto.
+  Qed.
+
+  Theorem discard_flush_is_crash : forall d d' d'',
+      flush_disk d d' ->
+      discard_buffers d' d'' ->
+      possible_crash d d''.
+  Proof.
+    unfold flush_disk, discard_buffers, possible_crash; intros.
+    specialize (H a).
+    specialize (H0 a).
+    destruct matches in *; repeat deex; try congruence.
+    right.
+    rewrite H1 in H.
+    inversion H; subst.
+    repeat eexists; intuition eauto.
+    apply diskval_firstn_in_list.
+  Qed.
+
+  Hint Constructors exec_recover.
+
+  Theorem pexec_recover_to_exec_recover : forall TF TR (p: prog TF) (r: prog TR) d hm out,
+      pexec_recover d hm p r out ->
+      exists out', exec_recover d hm p r out' /\
+              routcome_disk_R possible_sync out' out.
+  Proof.
+    induction 1; simpl;
+      repeat match goal with
+             | [ H: pexec _ _ _ _ |- _ ] =>
+               apply pexec_to_exec in H; simpl in H; deex
+             | [ H: outcome_disk_R _ _ _ |- _ ] =>
+               apply outcome_disk_R_conv_ok in H; progress simpl in H
+             | [ H: routcome_disk_R _ _ _ |- _ ] =>
+               apply routcome_disk_R_conv_ok in H; progress simpl in H
+             | [ H: flush_disk ?d ?d',
+                    H' : discard_buffers ?d' ?d'' |- _ ] =>
+               learn that (discard_flush_is_crash H H')
+             | _ => progress subst
+             | _ => deex
+             end;
+      try solve [ eexists; intuition eauto; simpl; eauto ].
+  Qed.
+
+End PhysicalSemantics.
