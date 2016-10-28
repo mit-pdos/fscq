@@ -4133,4 +4133,393 @@ Module DIRTREE.
         * destruct (string_dec s0 s); try congruence; eauto.
   Qed.
 
+  Definition prefix p1 p2 :=
+    (exists suffix : list string, p1 ++ suffix = p2).
+
+  Lemma prefix_trim : forall a b c,
+    prefix a b <-> prefix (c ++ a) (c ++ b).
+  Proof.
+    unfold prefix; split; intros; repeat deex.
+    - eexists. rewrite <- app_assoc. eauto.
+    - rewrite <- app_assoc in H. eexists.
+      apply app_inv_head in H. eauto.
+  Qed.
+
+  Theorem find_subtree_graft_subtree_oob: forall pn num ents base name tree subtree inum f,
+    find_subtree base tree = Some (TreeDir num ents) ->
+    (~ prefix (base ++ [name]) pn) ->
+    find_subtree pn tree = Some (TreeFile inum f) ->
+    find_subtree pn (tree_graft num ents base name subtree tree) = Some (TreeFile inum f).
+  Proof.
+    unfold tree_graft; intros.
+    destruct (pathname_decide_prefix base pn).
+    - deex.
+      erewrite find_subtree_app in H1 by eassumption.
+      erewrite find_subtree_app.
+      2: erewrite find_update_subtree; eauto.
+
+      clear H.
+      induction ents; simpl in *.
+      + destruct suffix; simpl in *; congruence.
+      + destruct suffix; simpl in *; try congruence.
+        destruct a; simpl in *.
+        destruct (string_dec s0 s); subst.
+        * destruct (string_dec s name); subst.
+          -- exfalso. apply H0. eexists; rewrite <- app_assoc; simpl; eauto.
+          -- simpl in *.
+             destruct (string_dec s s); subst; congruence.
+        * specialize (IHents H1).
+          destruct (string_dec s0 name); subst.
+          -- simpl. destruct (string_dec name s); congruence.
+          -- simpl. destruct (string_dec s0 s); congruence.
+    - eapply find_subtree_update_subtree_oob; eauto.
+  Qed.
+
+ Theorem find_subtree_graft_subtree_oob': forall pn num ents base name tree subtree inum f,
+    find_subtree base tree = Some (TreeDir num ents) ->
+    (~ prefix (base ++ [name]) pn) ->
+    find_subtree pn (tree_graft num ents base name subtree tree) = Some (TreeFile inum f) ->
+    find_subtree pn tree = Some (TreeFile inum f).
+  Proof.
+    unfold tree_graft; intros.
+    destruct (pathname_decide_prefix base pn).
+    - deex.
+      erewrite find_subtree_app in H1.
+      erewrite find_subtree_app by eassumption.
+      2: erewrite find_update_subtree; eauto.
+
+      clear H.
+      induction ents; simpl in *.
+      + destruct suffix; simpl in *; try congruence.
+        destruct (string_dec name s); subst; simpl in *; try congruence.
+        contradict H0; eauto.
+        exists suffix.
+        rewrite <- app_assoc.
+        simpl. eauto.
+      + destruct suffix; simpl in *; try congruence.
+        destruct a; simpl in *.
+        destruct (string_dec s0 s); subst.
+        * destruct (string_dec s name); subst.
+          -- exfalso. apply H0. eexists; rewrite <- app_assoc; simpl; eauto.
+          -- simpl in *.
+             destruct (string_dec s s); subst; congruence.
+        * destruct (string_dec s0 name); subst; simpl in *; try congruence.
+          destruct (string_dec name s); subst; simpl in *; try congruence.
+          destruct (string_dec s0 s); subst; simpl in *; try congruence.
+          specialize (IHents H1).
+          eauto.
+    - eapply find_subtree_update_subtree_oob'; eauto.
+  Qed.
+
+  Theorem find_subtree_prune_subtree_oob: forall pn num ents base name tree inum f,
+    find_subtree base tree = Some (TreeDir num ents) ->
+    (~ prefix (base ++ [name]) pn) ->
+    find_subtree pn tree = Some (TreeFile inum f) ->
+    find_subtree pn (tree_prune num ents base name tree) = Some (TreeFile inum f).
+  Proof.
+    unfold tree_prune; intros.
+    destruct (pathname_decide_prefix base pn).
+    - deex.
+      erewrite find_subtree_app in H1 by eassumption.
+      erewrite find_subtree_app.
+      2: erewrite find_update_subtree; eauto.
+
+      clear H.
+      induction ents; simpl in *.
+      + destruct suffix; simpl in *; congruence.
+      + destruct suffix; simpl in *; try congruence.
+        destruct a; simpl in *.
+        destruct (string_dec s0 s); subst.
+        * destruct (string_dec s name); subst.
+          -- exfalso. apply H0. eexists; rewrite <- app_assoc; simpl; eauto.
+          -- simpl in *.
+             destruct (string_dec s s); subst; congruence.
+        * specialize (IHents H1).
+          destruct (string_dec s0 name); subst.
+          -- simpl. destruct (string_dec name s); congruence.
+          -- simpl. destruct (string_dec s0 s); congruence.
+    - eapply find_subtree_update_subtree_oob; eauto.
+  Qed.
+
+  Theorem find_subtree_prune_subtree_oob': forall pn num ents base name tree inum f,
+    find_subtree base tree = Some (TreeDir num ents) ->
+    (~ prefix (base ++ [name]) pn) ->
+    find_subtree pn (tree_prune num ents base name tree) = Some (TreeFile inum f) ->
+    find_subtree pn tree = Some (TreeFile inum f).
+  Proof.
+   unfold tree_prune; intros.
+    destruct (pathname_decide_prefix base pn).
+    - deex.
+      erewrite find_subtree_app in H1.
+      erewrite find_subtree_app by eassumption.
+      2: erewrite find_update_subtree; eauto.
+
+      clear H.
+      induction ents; simpl in *.
+      + destruct suffix; simpl in *; try congruence.
+      + destruct suffix; simpl in *; try congruence.
+        destruct a; simpl in *.
+        destruct (string_dec s0 s); subst.
+        * destruct (string_dec s name); subst.
+          -- exfalso. apply H0. eexists; rewrite <- app_assoc; simpl; eauto.
+          -- simpl in *.
+             destruct (string_dec s s); subst; congruence.
+        * destruct (string_dec s0 name); subst; simpl in *; try congruence.
+          destruct (string_dec s0 s); subst; simpl in *; try congruence.
+          specialize (IHents H1).
+          eauto.
+    - eapply find_subtree_update_subtree_oob'; eauto.
+  Qed.
+
+  Lemma find_rename_oob: forall tree subtree cwd dnum tree_elem srcnum srcbase 
+         srcents srcname dstnum dstbase dstents dstname pathname inum f,
+    (~ prefix (cwd ++ srcbase ++ [srcname]) pathname) ->
+    (~ prefix (cwd ++ dstbase ++ [dstname]) pathname) -> 
+    find_subtree pathname tree = Some (TreeFile inum f) ->
+    find_subtree cwd tree = Some (TreeDir dnum tree_elem) ->
+    find_subtree srcbase (TreeDir dnum tree_elem) = Some (TreeDir srcnum srcents) ->
+    find_dirlist srcname srcents = Some subtree ->
+    find_subtree dstbase
+      (tree_prune srcnum srcents srcbase srcname (TreeDir dnum tree_elem)) =
+      Some (TreeDir dstnum dstents) ->
+    find_subtree pathname
+     (update_subtree cwd
+       (tree_graft dstnum dstents dstbase dstname subtree
+        (tree_prune srcnum srcents srcbase srcname (TreeDir dnum tree_elem)))
+     tree) = Some (TreeFile inum f).
+  Proof.
+    intros.
+    destruct (pathname_decide_prefix cwd pathname).
+    + destruct (pathname_decide_prefix (cwd ++ srcbase ++ [srcname]) pathname).
+      - (* pathname is inside src subtree; contradiction *)
+        destruct H7.
+        rewrite H7 in H.
+        unfold prefix in H.
+        destruct H.
+        eexists x; eauto.
+       - (* pathname isn't inside src subtree *)
+        destruct (pathname_decide_prefix (cwd ++ dstbase ++ [dstname]) pathname).
+        ++ (* pathname is inside dst tree; contradiction *)
+          destruct H8.
+          rewrite H8 in *.
+          unfold prefix in H0.
+          destruct H0.
+          eexists x; eauto.
+        ++ (* pathname isn't inside src and isn't inside dst tree, but inside cwd *)
+          deex.
+          erewrite find_subtree_app; eauto.
+          erewrite find_subtree_graft_subtree_oob; eauto.
+          intro; apply H0. apply prefix_trim. eauto.
+          erewrite find_subtree_prune_subtree_oob; eauto.
+          intro; apply H. apply prefix_trim. eauto.
+          erewrite find_subtree_app in H1; eauto.
+    + (* pathname is outside of cwd *)
+      unfold tree_graft, tree_prune.
+      erewrite find_subtree_update_subtree_oob; eauto.
+  Qed.
+
+  Lemma find_rename_oob': forall tree subtree cwd dnum tree_elem srcnum srcbase 
+         srcents srcname dstnum dstbase dstents dstname pathname inum f,
+    (~ prefix (cwd ++ srcbase ++ [srcname]) pathname) ->
+    (~ prefix (cwd ++ dstbase ++ [dstname]) pathname) -> 
+    find_subtree cwd tree = Some (TreeDir dnum tree_elem) ->
+    find_subtree srcbase (TreeDir dnum tree_elem) = Some (TreeDir srcnum srcents) ->
+    find_dirlist srcname srcents = Some subtree ->
+    find_subtree dstbase
+      (tree_prune srcnum srcents srcbase srcname (TreeDir dnum tree_elem)) =
+      Some (TreeDir dstnum dstents) ->
+    find_subtree pathname
+     (update_subtree cwd
+       (tree_graft dstnum dstents dstbase dstname subtree
+        (tree_prune srcnum srcents srcbase srcname (TreeDir dnum tree_elem)))
+     tree) = Some (TreeFile inum f) ->
+    find_subtree pathname tree = Some (TreeFile inum f).
+  Proof.
+    intros.
+    destruct (pathname_decide_prefix cwd pathname).
+    + destruct (pathname_decide_prefix (cwd ++ srcbase ++ [srcname]) pathname).
+      - (* pathname is inside src subtree; contradiction *)
+        destruct H7.
+        rewrite H7 in H.
+        unfold prefix in H.
+        destruct H.
+        eexists x; eauto.
+       - (* pathname isn't inside src subtree *)
+        destruct (pathname_decide_prefix (cwd ++ dstbase ++ [dstname]) pathname).
+        ++ (* pathname is inside dst tree; contradiction *)
+          destruct H8.
+          rewrite H8 in *.
+          unfold prefix in H0.
+          destruct H0.
+          eexists x; eauto.
+        ++ (* pathname isn't inside src and isn't inside dst tree, but inside cwd *)
+          deex.
+          erewrite find_subtree_app in H5; eauto.
+          erewrite find_subtree_app.
+          2: eauto.
+          erewrite find_subtree_prune_subtree_oob'. 
+          Focus 4.
+          eapply find_subtree_graft_subtree_oob'.
+          3: eauto.
+          eauto.
+          intro; apply H0. apply prefix_trim. eauto.
+          all: eauto.
+          intro; apply H. apply prefix_trim. eauto.
+    + (* pathname is outside of cwd *)
+      unfold tree_graft, tree_prune.
+      erewrite find_subtree_update_subtree_oob'; eauto.
+  Qed. 
+
+
+  Lemma dirtree_name_in_dents: forall T name tree_elem elem f,
+    fold_right (DIRTREE.find_subtree_helper f name) (@None T) tree_elem = Some elem
+    -> In name (map fst tree_elem).
+  Proof.
+    intros.
+    induction tree_elem.
+    - intros. simpl in H. congruence.
+    - destruct a.
+      destruct (string_dec s name).
+      rewrite cons_app.
+      rewrite map_app.
+      apply in_app_iff.
+      simpl.
+      left.
+      auto.
+      rewrite cons_app.
+      rewrite map_app.
+      apply in_or_app.
+      right.
+      apply IHtree_elem.
+      rewrite cons_app in H.
+      rewrite fold_right_app in H.
+      simpl in H.
+      destruct (string_dec s name).
+      congruence.
+      assumption.
+  Qed.
+
+  Lemma find_subtree_tree_names_distinct: forall pn t subtree,
+      tree_names_distinct t ->
+      find_subtree pn t = Some subtree ->
+      tree_names_distinct subtree.
+  Proof.
+    induction pn; intros; simpl in *.
+    - congruence.
+    - destruct t; try congruence.
+      induction l.
+      -- simpl in *; try congruence.
+      -- destruct a0; subst; simpl in *.
+        destruct (string_dec s a); subst; simpl in *.
+        + eapply IHpn. 2: eauto.
+          eapply tree_names_distinct_child; eauto.
+        + eapply IHl; eauto.
+  Qed.      
+
+  Lemma find_subtree_tree_inodes_distinct: forall pn t subtree,
+      tree_inodes_distinct t ->
+      find_subtree pn t = Some subtree ->
+      tree_inodes_distinct subtree.
+  Proof.
+    induction pn; intros; simpl in *.
+    - congruence.
+    - destruct t; try congruence.
+      induction l.
+      -- simpl in *; try congruence.
+      -- destruct a0; subst; simpl in *.
+        destruct (string_dec s a); subst; simpl in *.
+        + eapply IHpn. 2: eauto.
+          eapply tree_inodes_distinct_child; eauto.
+        + eapply IHl; eauto.
+  Qed.      
+
+  Lemma find_subtree_before_prune : forall pn t num ents base name dnum0 ents0,
+    tree_names_distinct t ->
+    find_subtree base t = Some (TreeDir num ents) ->
+    find_subtree pn (tree_prune num ents base name t) = Some (TreeDir dnum0 ents0) ->
+    exists ents1,
+    find_subtree pn t = Some (TreeDir dnum0 ents1).
+  Proof.
+    unfold tree_prune; intros.
+    destruct (pathname_decide_prefix base pn).
+    - deex.
+      erewrite find_subtree_app in H1; eauto.
+      cut (exists ents1 : list (string * dirtree),
+               find_subtree (suffix) (TreeDir num ents) = Some (TreeDir dnum0 ents1)).
+      intros.
+      deex.
+      eexists.
+      erewrite find_subtree_app; eauto.
+      eapply find_subtree_tree_names_distinct in H; eauto.
+      clear H0.
+      destruct suffix; simpl in *.
+      + inversion H1; subst.
+        eauto.
+      + 
+        induction ents; simpl in *.
+        * destruct suffix; simpl in *.
+          inversion H1; subst.
+          eexists; eauto.
+        * destruct a; simpl in *.
+          destruct (string_dec s0 name); subst.
+          ** rewrite H1; simpl.
+             destruct (string_dec name s); subst; try congruence.
+             eapply dirtree_name_in_dents in H1; eauto.
+             inversion H.
+             inversion H4; eauto.
+             exfalso; eauto.
+             eauto.
+          ** simpl in *.
+             destruct (string_dec s0 s); subst; eauto.
+    - clear H0.
+      generalize dependent (delete_from_dir name (TreeDir num ents)).
+      generalize dependent pn.
+      generalize dependent t.
+      induction base; intros.
+      + simpl in *.
+      contradiction H2.
+      eauto.
+      + destruct pn.
+        ++ simpl in *.
+            destruct t; try congruence.
+            inversion H1; subst; eauto.
+        ++ destruct t; simpl in *; try congruence.
+           induction l.
+           * simpl in *; try congruence.
+           * destruct a0. simpl in *.
+             destruct (string_dec s0 s); destruct (string_dec s0 a); repeat subst; simpl in *.
+             -- destruct (string_dec s s); subst; try congruence. 
+                eapply IHbase; eauto.
+                intro. deex.
+                apply H2. subst. eexists.
+                eauto.
+             -- destruct (string_dec s s); try congruence; eauto.
+             -- destruct (string_dec a s); try congruence; eauto.
+             -- destruct (string_dec s0 s); try congruence; eauto.
+  Qed.
+
+  Lemma find_subtree_pruned_none : forall tree base name basenum basedents,
+    tree_names_distinct tree ->
+    find_subtree base tree = Some (TreeDir basenum basedents) ->
+    find_subtree (base ++ [name]) (tree_prune basenum basedents base name tree) = None.
+  Proof.
+    intros.
+    unfold tree_prune.
+    erewrite find_subtree_app.
+    2: erewrite find_update_subtree; eauto.
+    simpl.
+    eapply find_subtree_tree_names_distinct in H0; eauto.
+    inversion H0; clear H0; subst.
+    clear H3.
+    induction basedents; simpl in *; eauto.
+    destruct a.
+    destruct (string_dec s name); subst.
+    - rewrite find_subtree_ents_not_in; eauto.
+      inversion H4; eauto.
+    - simpl.
+      destruct (string_dec s name); try congruence.
+      eapply IHbasedents.
+      inversion H4; eauto.
+  Qed.
+
 End DIRTREE.
