@@ -133,7 +133,23 @@ Lemma dir2flatmem2_graft_upd : forall tree inum inum' f f' basenum basedents bas
   dir2flatmem2 (tree_graft basenum basedents base name (TreeFile inum' f') tree) =
   upd (dir2flatmem2 tree) (base++[name]) (Some (inum', f')).
 Proof.
+  intros.
+  unfold dir2flatmem2.
+  apply functional_extensionality; intros.
+  destruct (list_eq_dec string_dec x (base ++ [name])); subst.
+  erewrite find_subtree_tree_graft; eauto.
+  rewrite upd_eq; auto.
+  admit.  (* follows from H0 *)
+  unfold tree_graft.
+  rewrite upd_ne; eauto.
+  destruct (find_subtree x tree); simpl in *; try congruence.
+  destruct d; simpl in *; try congruence.
+  (* generalize find_subtree_update_subtree_oob for subtree *)
+  erewrite find_subtree_update_subtree_oob; eauto.
+  admit. (* base + name is a leaf, and neq to x *)
+  admit. (* generalize *)
 Admitted.
+
 
 (* if name exists then the graft is the same as an update but with new inum too *)
 Theorem dirents2mem2_graft_file' : forall (F: @pred _ (@list_eq_dec string string_dec) _)

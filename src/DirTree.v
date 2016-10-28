@@ -3893,16 +3893,6 @@ Module DIRTREE.
     erewrite lookup_path with (dnum := dnum) (tree_elem := tree_elem) by eauto.
     reflexivity.
   Qed.
-
-  Theorem find_subtree_tree_graft_ne : forall prefix name name' tree dnum tree_elem subtree,
-    name <> name' ->
-    find_subtree prefix tree = Some (TreeDir dnum tree_elem) ->
-    find_subtree (prefix++[name]) (tree_graft dnum tree_elem prefix name' subtree tree) =
-      find_subtree (prefix++[name]) tree.
-  Proof.
-    admit.
-  Admitted.
-
  
   Lemma update_name_twice: forall tree_elem name tree subtree subtree' dnum,
     tree_names_distinct
