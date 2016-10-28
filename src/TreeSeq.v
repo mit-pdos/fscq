@@ -2470,7 +2470,7 @@ Module TREESEQ.
     cancel.
     eapply treeseq_in_ds_pushd; eauto.
     unfold treeseq_one_safe; simpl.
-    rewrite H0 in H12.
+    rewrite H0 in H13.
     eassumption.
     2: eapply dir2flatmem2_delete_file; eauto; distinct_names'.
 
@@ -2484,9 +2484,47 @@ Module TREESEQ.
 
     unfold treeseq_safe; intuition.
 
-    - admit.
+    - unfold treeseq_safe_fwd.
+      intros; simpl.
+      deex.
+      exists f; eauto.
+      intuition.
 
-    - admit.
+      eapply find_subtree_prune_subtree_oob in H5; eauto.
+
+      unfold BFILE.block_belong_to_file in *.
+      rewrite H12 in *; eauto.
+      intros; subst.
+      assert (pathname' = pathname).
+      eapply find_subtree_inode_pathname_unique; eauto.
+      distinct_inodes'.
+      distinct_names'.
+      congruence.
+
+    - unfold treeseq_safe_bwd.
+      intros.
+      left.
+      deex.
+      eexists f'; intuition; simpl in *.
+      eapply find_subtree_prune_subtree_oob' in H6; eauto. 
+
+      unfold BFILE.block_belong_to_file in *.
+      rewrite H12 in *; eauto.
+      intros; subst.
+      assert (pathname' = pathname).
+      eapply find_subtree_inode_pathname_unique; eauto.
+  
+      admit. (* XXX tree_inodes_distinct *)
+
+      eapply tree_names_distinct_update_subtree.
+      distinct_names'.
+      eapply tree_names_distinct_delete_from_list; eauto.
+      eapply tree_names_distinct_subtree; eauto.
+      distinct_names'.
+
+      subst.
+      erewrite find_update_subtree in H9; eauto.
+      congruence.
 
     - simpl.
       unfold dirtree_safe in *; intuition.
