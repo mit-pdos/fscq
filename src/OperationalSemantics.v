@@ -337,9 +337,42 @@ Module ExecRecover.
       -> R (TF:=TR) m'r hm' p2 p2 (RRecovered TR m'' hm'' v)
       -> R m hm p1 p2 (RRecovered TF m'' hm'' v).
 
-  Arguments R exec possible_crash {TF TR} _ _ _ _ _.
-
 End ExecRecover.
+
+Arguments ExecRecover.R exec possible_crash {TF TR} _ _ _ _ _.
+
+Definition routcome_disk_R (R: rawdisk -> rawdisk -> Prop)
+           TF TR (out out': recover_outcome TF TR) :=
+  match out with
+  | RFinished _ d hm v => exists d', out' = RFinished _ d' hm v /\
+                               R d d'
+  | RRecovered _ d hm v => exists d', out' = RRecovered _ d' hm v /\
+                                R d d'
+  | RFailed _ _ => out' = RFailed _ _
+  end.
+
+Definition routcome_disk_R_conv (R: rawdisk -> rawdisk -> Prop)
+           TF TR (out' out: recover_outcome TF TR) :=
+  match out' with
+  | RFinished _ d hm v => exists d', out = RFinished _ d' hm v /\
+                               R d' d
+  | RRecovered _ d hm v => exists d', out = RRecovered _ d' hm v /\
+                                R d' d
+  | RFailed _ _ => out = RFailed _ _
+  end.
+
+Theorem routcome_disk_R_conv_ok : forall R TF TR (out out': recover_outcome TF TR),
+    routcome_disk_R R out out' <->
+    routcome_disk_R_conv R out' out.
+Proof.
+  split;
+    destruct out, out'; simpl; intros;
+      repeat deex;
+      match goal with
+      | [ H: @eq (recover_outcome _ _) _ _ |- _ ] =>
+        inversion H; subst
+      end; eauto.
+Qed.
 
 Hint Constructors ExecRecover.R exec_recover.
 
@@ -348,6 +381,28 @@ Theorem exec_recover_is_R : forall TF TR d hm (p: prog TF) (r: prog TR) out,
     ExecRecover.R exec possible_crash d hm p r out.
 Proof.
   split; induction 1; eauto.
+Qed.
+
+Theorem exec_recover_without_sync : forall TF TR d hm (p: prog TF) (r: prog TR) out,
+    ExecRecover.R (@Exec.R possible_sync) possible_crash d hm p r out ->
+    exists out', ExecRecover.R (@Exec.R eq) possible_crash d hm p r out' /\
+            routcome_disk_R possible_sync out' out.
+Proof.
+  induction 1; simpl;
+    repeat match goal with
+           | [ H: Exec.R possible_sync _ _ _ _ |- _ ] =>
+             apply exec_sync_obs_irrelevant in H; simpl in H
+           | [ H: outcome_obs_le _ _ |- _ ] =>
+             apply outcome_obs_ge_ok in H; progress simpl in H
+           | [ H: routcome_disk_R _ _ _ |- _ ] =>
+             apply routcome_disk_R_conv_ok in H; progress simpl in H
+           | [ H: possible_sync ?m ?m',
+                  H': possible_crash ?m' ?m'' |- _ ] =>
+             learn that (possible_crash_possible_sync_trans H H')
+           | _ => progress subst
+           | _ => deex
+           end;
+    try solve [ eexists; intuition eauto; simpl; eauto ].
 Qed.
 
 Module PhysicalSemantics.
@@ -541,38 +596,6 @@ Module PhysicalSemantics.
     inversion H0; eauto.
   Qed.
 
-  Definition routcome_disk_R (R: rawdisk -> rawdisk -> Prop)
-             TF TR (out out': recover_outcome TF TR) :=
-    match out with
-    | RFinished _ d hm v => exists d', out' = RFinished _ d' hm v /\
-                               R d d'
-    | RRecovered _ d hm v => exists d', out' = RRecovered _ d' hm v /\
-                                  R d d'
-    | RFailed _ _ => out' = RFailed _ _
-    end.
-
-  Definition routcome_disk_R_conv (R: rawdisk -> rawdisk -> Prop)
-             TF TR (out' out: recover_outcome TF TR) :=
-    match out' with
-    | RFinished _ d hm v => exists d', out = RFinished _ d' hm v /\
-                               R d' d
-    | RRecovered _ d hm v => exists d', out = RRecovered _ d' hm v /\
-                                  R d' d
-    | RFailed _ _ => out = RFailed _ _
-    end.
-
-  Theorem routcome_disk_R_conv_ok : forall R TF TR (out out': recover_outcome TF TR),
-      routcome_disk_R R out out' <->
-      routcome_disk_R_conv R out' out.
-  Proof.
-    split;
-      destruct out, out'; simpl; intros;
-        repeat deex;
-          match goal with
-          | [ H: @eq (recover_outcome _ _) _ _ |- _ ] =>
-            inversion H; subst
-          end; eauto.
-  Qed.
 
   Lemma diskval_firstn_in_list : forall l n v,
       In (diskval v (firstn n l)) (v::l).
