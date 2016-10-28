@@ -316,4 +316,93 @@ Proof.
   eapply dir2flatmem2_find_subtree_ptsto; eauto.
 Qed.
 
+Theorem dirents2mem_update_subtree_upd : forall base subtree pn v subtree0 t,
+  tree_names_distinct t ->
+  find_subtree base t = Some subtree0 ->
+  dir2flatmem2 subtree = upd (dir2flatmem2 subtree0) pn v ->
+  dir2flatmem2 (update_subtree base subtree t) = upd (dir2flatmem2 t) (base ++ pn) v.
+Proof.
+  intros.
+  unfold dir2flatmem2 in *.
+  apply functional_extensionality; intros.
+  destruct (pathname_decide_prefix base x).
+  - deex.
+    erewrite find_subtree_app.
+    2: eapply find_update_subtree; eauto.
+    eapply equal_f in H1.
+    rewrite H1.
+    destruct (list_eq_dec string_dec pn suffix); subst.
+    + repeat rewrite upd_eq; eauto.
+    + repeat rewrite upd_ne; eauto.
+      erewrite find_subtree_app; eauto.
+      intro. apply n. apply app_inv_head in H2; eauto.
+  - rewrite upd_ne.
+    2: intro; apply H2; eauto.
+    case_eq (find_subtree x t); [ destruct d | ]; intros.
+    + erewrite find_subtree_update_subtree_oob; eauto.
+    + edestruct find_subtree_dir_after_update_subtree.
+      3: eauto.
+      2: eauto.
+      eauto.
+      rewrite H4; eauto.
+    + rewrite find_subtree_none_after_update_subtree; eauto.
+Qed.
+
+Theorem dirents2mem2_update_subtree_one_name : forall t base pn subtree_old subtree_new F v0 v',
+  (F * (base ++ pn) |-> v0)%pred (dir2flatmem2 t) ->
+  dir2flatmem2 subtree_new = upd (dir2flatmem2 subtree_old) pn v' ->
+  tree_names_distinct t ->
+  find_subtree base t = Some subtree_old ->
+  (F * (base ++ pn) |-> v')%pred (dir2flatmem2 (update_subtree base subtree_new t)).
+Proof.
+  intros.
+  erewrite dirents2mem_update_subtree_upd; eauto.
+  eapply ptsto_upd'; eauto.
+Qed.
+
+
+Lemma dirents2mem2_not_prefix : forall t F pn1 i1 f1 pn2 i2 f2,
+  tree_names_distinct t ->
+  (F * pn1 |-> File i1 f1 * pn2 |-> File i2 f2)%pred (dir2flatmem2 t) ->
+  ~ prefix pn1 pn2.
+Proof.
+  intros.
+  eapply pimpl_trans in H0 as H'1; [ | | reflexivity ].
+  eapply pimpl_trans in H0 as H'2; [ | | reflexivity ].
+  eapply dir2flatmem2_find_subtree_ptsto with (fnlist := pn1) in H'1; eauto.
+  eapply dir2flatmem2_find_subtree_ptsto with (fnlist := pn2) in H'2; eauto.
+  2: cancel.
+  2: cancel.
+
+  intro.
+  destruct H1; subst.
+  erewrite find_subtree_app in H'2 by eauto.
+
+  destruct x.
+
+  - rewrite app_nil_r in *.
+    eapply ptsto_conflict_F with (a := pn1).
+    eapply pimpl_trans; [ reflexivity | | eauto ].
+    cancel.
+  - simpl in *; congruence.
+Qed.
+
+Lemma dir2flatmem2_delete_file: forall (F: @pred _ (@list_eq_dec string string_dec) _)
+     tree name inum f basenum basedents base,
+  tree_names_distinct tree ->
+  DIRTREE.find_subtree base tree = Some (DIRTREE.TreeDir basenum basedents) ->
+  (F * (base++[name])%list |-> File inum f)%pred (dir2flatmem2 tree) ->
+  (F * (base++[name])%list |-> Nothing)%pred (dir2flatmem2 (update_subtree base (TreeDir basenum (delete_from_list name basedents)) tree)).
+Proof.
+  intros.
+  eapply dir2flatmem2_prune_delete in H0.
+  unfold tree_prune in H0.
+  unfold delete_from_dir in H0.
+  rewrite H0.
+  eapply ptsto_upd'; eauto.
+  eauto.
+  left.
+  eapply dir2flatmem2_find_subtree_ptsto; eauto.
+Qed.
+
 Global Opaque dir2flatmem2.

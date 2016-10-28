@@ -2372,11 +2372,64 @@ Module TREESEQ.
       rewrite H0 in *.
       rewrite <- surjective_pairing in H14.
       eauto.
-    - admit.
+    - erewrite <- update_update_subtree_same.
+      eapply dirents2mem2_update_subtree_one_name.
+      eapply pimpl_trans; [ reflexivity | | ].
+      2: eapply dirents2mem2_update_subtree_one_name.
+      5: eauto.
+      3: eapply dir2flatmem2_prune_delete with (name := srcname) (base := srcbase).
+      cancel.
+      pred_apply; cancel.
+      3: left.
+      3: erewrite <- find_subtree_app by eauto.
+      3: eapply dir2flatmem2_find_subtree_ptsto.
 
-     (* eapply dirents2mem2_graft_file'. *)
-     (* eapply dirents2mem2_prune_file. *)
-  Admitted.
+      eapply tree_names_distinct_subtree; eauto.
+      distinct_names'.
+
+      eauto.
+      distinct_names'.
+      pred_apply; cancel.
+      distinct_names'.
+
+      3: erewrite find_update_subtree; eauto.
+
+      erewrite <- find_subtree_dirlist in H15.
+      erewrite <- find_subtree_app in H15 by eauto.
+      erewrite <- find_subtree_app in H15 by eauto.
+      erewrite dir2flatmem2_find_subtree_ptsto in H15.
+      3: pred_apply; cancel.
+      inversion H15; subst.
+
+      erewrite dir2flatmem2_graft_upd; eauto.
+
+      eapply tree_names_distinct_prune_subtree'; eauto.
+      eapply tree_names_distinct_subtree; eauto.
+      distinct_names'.
+
+      left.
+      eapply find_subtree_prune_subtree_oob; eauto.
+
+      intro. eapply prefix_trim in H11.
+      eapply dirents2mem2_not_prefix.
+      3: eauto.
+      2: apply H4.
+      distinct_names'.
+
+      erewrite <- find_subtree_app by eauto.
+      erewrite dir2flatmem2_find_subtree_ptsto.
+      reflexivity.
+      distinct_names'.
+      pred_apply; cancel.
+      distinct_names'.
+
+      eapply tree_names_distinct_update_subtree.
+      distinct_names'.
+
+      eapply tree_names_distinct_prune_subtree'; eauto.
+      eapply tree_names_distinct_subtree; eauto.
+      distinct_names'.
+  Qed.
 
   (* restricted to deleting files *)
   Theorem treeseq_delete_ok : forall fsxp dnum name mscs,
@@ -2393,7 +2446,7 @@ Module TREESEQ.
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm *
         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
         [[ forall pathname',
-           pathname' <> pathname ++ [name] ->
+           ~ prefix (pathname ++ [name]) pathname' ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
         [[ ds' = pushd d ds ]] *
@@ -2419,8 +2472,27 @@ Module TREESEQ.
     unfold treeseq_one_safe; simpl.
     rewrite H0 in H12.
     eassumption.
-    eapply dir2flatmem2_delete_file; eauto.
-    distinct_names'.
+    2: eapply dir2flatmem2_delete_file; eauto; distinct_names'.
+
+    eapply treeseq_safe_pushd; eauto.
+    eapply NEforall_d_in'; intros.
+    eapply NEforall_d_in in H8; eauto.
+    eapply treeseq_safe_trans; eauto.
+
+    (* clear x *)
+    clear H8 H9 x.
+
+    unfold treeseq_safe; intuition.
+
+    - admit.
+
+    - admit.
+
+    - simpl.
+      unfold dirtree_safe in *; intuition.
+      rewrite H0 in *.
+      rewrite <- surjective_pairing in H8.
+      eauto.
   Qed.
 
 

@@ -4522,4 +4522,16 @@ Module DIRTREE.
       inversion H4; eauto.
   Qed.
 
+  Lemma tree_names_distinct_prune_subtree' : forall inum ents base name tree,
+    tree_names_distinct tree ->
+    find_subtree base tree = Some (TreeDir inum ents) ->
+    tree_names_distinct (tree_prune inum ents base name tree).
+  Proof.
+    intros.
+    eapply tree_names_distinct_prune_subtree with (path := nil) in H0.
+    eauto.
+    eauto.
+    simpl; eauto.
+  Qed.
+
 End DIRTREE.
