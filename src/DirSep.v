@@ -126,47 +126,102 @@ Proof.
   eapply dir2flatmem2_find_subtree_ptsto; eauto.
 Qed.
 
-
 Lemma dir2flatmem2_graft_upd : forall tree inum inum' f f' basenum basedents base name,
   tree_names_distinct tree ->
-  find_subtree (base++[name]) tree = Some (TreeFile inum f) ->
+  find_subtree base tree = Some (TreeDir basenum basedents) ->
+  (find_subtree (base++[name]) tree = Some (TreeFile inum f) \/
+   find_subtree (base++[name]) tree = None) ->
   dir2flatmem2 (tree_graft basenum basedents base name (TreeFile inum' f') tree) =
   upd (dir2flatmem2 tree) (base++[name]) (Some (inum', f')).
 Proof.
   intros.
   unfold dir2flatmem2.
   apply functional_extensionality; intros.
-  destruct (list_eq_dec string_dec x (base ++ [name])); subst.
-  erewrite find_subtree_tree_graft; eauto.
-  rewrite upd_eq; auto.
-  admit.  (* follows from H0 *)
-  unfold tree_graft.
-  rewrite upd_ne; eauto.
-  destruct (find_subtree x tree); simpl in *; try congruence.
-  destruct d; simpl in *; try congruence.
-  (* generalize find_subtree_update_subtree_oob for subtree *)
-  erewrite find_subtree_update_subtree_oob; eauto.
-  admit. (* base + name is a leaf, and neq to x *)
-  admit. (* generalize *)
-Admitted.
+  destruct (pathname_decide_prefix base x).
+  - destruct H2 as [suffix H2]; subst.
+    destruct (pathname_decide_prefix [name] suffix).
+    + destruct H2 as [suffix0 H2]; subst.
+      rewrite app_assoc.
+      erewrite find_subtree_app.
+      2: erewrite find_subtree_tree_graft; eauto.
+      destruct suffix0; simpl in *.
+      * rewrite app_nil_r. rewrite upd_eq; eauto.
+      * rewrite upd_ne; eauto.
+        2: intro H'; rewrite <- app_nil_r in H'; apply app_inv_head in H'; congruence.
+        intuition.
+        -- erewrite find_subtree_app; eauto. simpl. eauto.
+        -- erewrite find_subtree_app_none; eauto.
+    + destruct suffix; simpl in *.
+      * rewrite app_nil_r in *.
+        rewrite upd_ne; eauto.
+        rewrite H0.
+        unfold tree_graft.
+        erewrite find_update_subtree; eauto.
+        rewrite <- app_nil_r with (l := base) at 1.
+        intro H'.
+        apply app_inv_head in H'. congruence.
+      * assert (s <> name) by ( intro; subst; eauto ).
+        unfold tree_graft.
+        erewrite find_subtree_app.
+        2: erewrite find_update_subtree; eauto.
+        rewrite upd_ne; eauto.
+        2: intro H'; apply app_inv_head in H'; congruence.
+        erewrite find_subtree_app; [ | eauto ].
 
+        clear H0.
+        simpl.
+        induction basedents; simpl in *.
+        -- destruct (string_dec name s); congruence.
+        -- destruct a.
+           destruct (string_dec s0 name); subst; simpl in *.
+          ++ destruct (string_dec name s); try congruence.
+          ++ destruct (string_dec s0 s); try congruence.
 
-(* if name exists then the graft is the same as an update but with new inum too *)
-Theorem dirents2mem2_graft_file' : forall (F: @pred _ (@list_eq_dec string string_dec) _)
+  - clear H1.
+    rewrite upd_ne.
+    unfold tree_graft.
+    2: intro; apply H2; eauto.
+    case_eq (find_subtree x tree); intros.
+    destruct d.
+    + erewrite find_subtree_update_subtree_oob; eauto.
+    + edestruct find_subtree_dir_after_update_subtree; eauto.
+      rewrite H3; eauto.
+    + erewrite find_subtree_none_after_update_subtree; eauto.
+Qed.
+
+Theorem dirents2mem2_graft_file_replace : forall (F: @pred _ (@list_eq_dec string string_dec) _)
       tree name inum f inum' f' basenum basedents base,
   tree_names_distinct tree ->
+  find_subtree base tree = Some (TreeDir basenum basedents) ->
   (F * (base ++ [name]) |-> Some (inum', f'))%pred (dir2flatmem2 tree) -> 
   (F * (base ++ [name]) |-> Some (inum, f))%pred (dir2flatmem2 (tree_graft basenum basedents base name (TreeFile inum f) tree)).
 Proof.
   intros.
   erewrite dir2flatmem2_graft_upd; eauto.
   eapply ptsto_upd'; eauto.
+  left.
+  eapply dir2flatmem2_find_subtree_ptsto; eauto.
+Qed.
+
+Theorem dirents2mem2_graft_file_none : forall (F: @pred _ (@list_eq_dec string string_dec) _)
+      tree name inum f basenum basedents base,
+  tree_names_distinct tree ->
+  find_subtree base tree = Some (TreeDir basenum basedents) ->
+  (F * (base ++ [name]) |-> None)%pred (dir2flatmem2 tree) -> 
+  (F * (base ++ [name]) |-> Some (inum, f))%pred (dir2flatmem2 (tree_graft basenum basedents base name (TreeFile inum f) tree)).
+Proof.
+  intros.
+  erewrite dir2flatmem2_graft_upd; eauto.
+  eapply ptsto_upd'; eauto.
+  right.
   eapply dir2flatmem2_find_subtree_ptsto; eauto.
 Qed.
 
 Lemma dir2flatmem2_prune_delete : forall tree inum f basenum basedents base name,
   tree_names_distinct tree ->
-  find_subtree (base++[name]) tree = Some (TreeFile inum f) ->
+  find_subtree base tree = Some (TreeDir basenum basedents) ->
+  (find_subtree (base++[name]) tree = Some (TreeFile inum f) \/
+   find_subtree (base++[name]) tree = None) ->
   dir2flatmem2 (tree_prune basenum basedents base name tree) =
   upd (dir2flatmem2 tree) (base++[name]) None.
 Proof.

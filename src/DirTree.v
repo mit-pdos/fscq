@@ -1287,6 +1287,18 @@ Module DIRTREE.
     destruct (string_dec s a); eauto.
   Qed.
 
+  Theorem find_subtree_app_none : forall p0 p1 tree,
+    find_subtree p0 tree = None ->
+    find_subtree (p0 ++ p1) tree = None.
+  Proof.
+    induction p0; simpl; intros.
+    inversion H; eauto.
+    destruct tree; try congruence.
+    induction l; simpl in *; intros; try congruence.
+    destruct a0; simpl in *.
+    destruct (string_dec s a); eauto.
+  Qed.
+
   Theorem pathname_decide_prefix : forall (base pn : list string),
     (exists suffix, pn = base ++ suffix) \/
     (~ exists suffix, pn = base ++ suffix).
@@ -4072,5 +4084,53 @@ Module DIRTREE.
     eauto.
     erewrite find_subtree_update_subtree_ne_path in H3; eauto.
   Qed.
-  
+
+  Lemma find_subtree_dir_after_update_subtree : forall base pn t num ents subtree,
+    tree_names_distinct t ->
+    find_subtree pn t = Some (TreeDir num ents) ->
+    ~ (exists suffix : list string, pn = base ++ suffix) ->
+    exists ents,
+    find_subtree pn (update_subtree base subtree t) = Some (TreeDir num ents).
+  Proof.
+    induction base; intros.
+    - simpl in *.
+      contradiction H1; eauto.
+    - destruct pn; simpl in *.
+      + destruct t; try congruence.
+        inversion H0; subst. eauto.
+      + destruct t; simpl in *; try congruence.
+        induction l; simpl in *; eauto.
+        destruct a0. simpl in *.
+        destruct (string_dec s0 s); destruct (string_dec s0 a); repeat subst; simpl in *.
+        * destruct (string_dec a a); subst; try congruence.
+          eapply IHbase; eauto.
+          intro. deex. eauto.
+        * destruct (string_dec s s); try congruence; eauto.
+        * destruct (string_dec a s); try congruence; eauto.
+        * destruct (string_dec s0 s); try congruence; eauto.
+  Qed.
+
+  Lemma find_subtree_none_after_update_subtree : forall base pn t subtree,
+    tree_names_distinct t ->
+    find_subtree pn t = None ->
+    ~ (exists suffix : list string, pn = base ++ suffix) ->
+    find_subtree pn (update_subtree base subtree t) = None.
+  Proof.
+    induction base; intros.
+    - simpl in *.
+      contradiction H1; eauto.
+    - destruct pn; simpl in *.
+      + destruct t; try congruence.
+      + destruct t; simpl in *; try congruence.
+        induction l; simpl in *; eauto.
+        destruct a0. simpl in *.
+        destruct (string_dec s0 s); destruct (string_dec s0 a); repeat subst; simpl in *.
+        * destruct (string_dec a a); subst; try congruence.
+          eapply IHbase; eauto.
+          intro. deex. eauto.
+        * destruct (string_dec s s); try congruence; eauto.
+        * destruct (string_dec a s); try congruence; eauto.
+        * destruct (string_dec s0 s); try congruence; eauto.
+  Qed.
+
 End DIRTREE.
