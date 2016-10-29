@@ -3220,6 +3220,36 @@ Module DIRTREE.
       admit.
   Admitted.
 
+  Lemma NoDup_tree_inodes_delete: forall l n (name:string) (d:dirtree),
+    NoDup (tree_inodes (TreeDir n ((name, d) :: l))) ->
+    NoDup (tree_inodes (TreeDir n l)).
+  Proof.
+  Admitted.
+
+
+  Lemma tree_inodes_distinct_delete_from_list : forall l n name,
+    tree_inodes_distinct (TreeDir n l) ->
+    tree_inodes_distinct (TreeDir n (delete_from_list name l)).
+  Proof.
+    induction l; simpl; intros; auto.
+    destruct a; simpl in *.
+    inversion H; subst; simpl in *.
+    unfold tree_inodes_distinct in *.
+    destruct (string_dec s name); subst; auto.
+    -
+      eapply NoDup_tree_inodes_delete in H; eauto.
+    -
+      eapply NoDup_tree_inodes_delete in H; eauto.
+      eapply IHl in H.
+  Admitted.
+
+  Lemma tree_inodes_distinct_prune_subtree : forall path path' name tree n l subtree,
+    tree_inodes_distinct tree ->
+    find_subtree path' tree = Some (TreeDir n l) ->
+    find_subtree path (tree_prune n l path' name tree) = Some subtree ->
+    tree_inodes_distinct subtree.
+  Proof.
+  Admitted.
 
   Lemma find_subtree_delete_same : forall l rest name n,
     NoDup (map fst l) ->
@@ -4522,6 +4552,7 @@ Module DIRTREE.
       inversion H4; eauto.
   Qed.
 
+
   Lemma tree_names_distinct_prune_subtree' : forall inum ents base name tree,
     tree_names_distinct tree ->
     find_subtree base tree = Some (TreeDir inum ents) ->
@@ -4533,5 +4564,18 @@ Module DIRTREE.
     eauto.
     simpl; eauto.
   Qed.
+
+  Lemma tree_inodes_distinct_prune_subtree' : forall inum ents base name tree,
+    tree_inodes_distinct tree ->
+    find_subtree base tree = Some (TreeDir inum ents) ->
+    tree_inodes_distinct (tree_prune inum ents base name tree).
+  Proof.
+    intros.
+    eapply tree_inodes_distinct_prune_subtree with (path := nil) in H0.
+    eauto.
+    eauto.
+    simpl; eauto.
+  Qed.
+
 
 End DIRTREE.

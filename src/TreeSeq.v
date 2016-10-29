@@ -2514,7 +2514,8 @@ Module TREESEQ.
       assert (pathname' = pathname).
       eapply find_subtree_inode_pathname_unique; eauto.
   
-      admit. (* XXX tree_inodes_distinct *)
+      eapply tree_inodes_distinct_prune_subtree' in H6 as Hinodes; eauto.
+      distinct_inodes'.
 
       eapply tree_names_distinct_update_subtree.
       distinct_names'.
