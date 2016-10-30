@@ -2322,8 +2322,8 @@ Module TREESEQ.
           eapply find_subtree_tree_names_distinct; eauto.
           distinct_names'.
           congruence.
-          intro; apply H11.  apply prefix_trim; eauto.
-          intro; apply H12.  apply prefix_trim; eauto.
+          intro; apply H11.  apply pathname_prefix_trim; eauto.
+          intro; apply H12.  apply pathname_prefix_trim; eauto.
         + 
           eapply find_subtree_update_subtree_oob' in H17.
           assert (cwd++srcbase = pathname').
@@ -2352,8 +2352,8 @@ Module TREESEQ.
           congruence.
           eapply find_subtree_tree_names_distinct; eauto.
           distinct_names'.
-          intro; apply H11.  apply prefix_trim; eauto.
-          intro; apply H12.  apply prefix_trim; eauto.
+          intro; apply H11.  apply pathname_prefix_trim; eauto.
+          intro; apply H12.  apply pathname_prefix_trim; eauto.
         + 
           eapply find_subtree_update_subtree_oob' in H17.
           eapply find_subtree_before_prune in H13; eauto.
@@ -2410,7 +2410,7 @@ Module TREESEQ.
       left.
       eapply find_subtree_prune_subtree_oob; eauto.
 
-      intro. eapply prefix_trim in H11.
+      intro. eapply pathname_prefix_trim in H11.
       eapply dirents2mem2_not_prefix.
       3: eauto.
       2: apply H4.
