@@ -3220,35 +3220,38 @@ Module DIRTREE.
       admit.
   Admitted.
 
-  Lemma NoDup_tree_inodes_delete: forall l n (name:string) (d:dirtree),
-    NoDup (tree_inodes (TreeDir n ((name, d) :: l))) ->
-    NoDup (tree_inodes (TreeDir n l)).
+  Lemma notIn_dirlist_combine_delete_from_list: forall l n name,
+    ~ In n (dirlist_combine tree_inodes l) ->
+    ~ In n (dirlist_combine tree_inodes (delete_from_list name l)).
   Proof.
+
   Admitted.
 
+  Lemma NoDup_dirlist_combine_delete_from_list: forall l name,
+    NoDup (dirlist_combine tree_inodes l) ->
+    NoDup (dirlist_combine tree_inodes (delete_from_list name l)).
+  Proof.
+  Admitted.
 
   Lemma tree_inodes_distinct_delete_from_list : forall l n name,
     tree_inodes_distinct (TreeDir n l) ->
     tree_inodes_distinct (TreeDir n (delete_from_list name l)).
   Proof.
-    induction l; simpl; intros; auto.
-    destruct a; simpl in *.
-    inversion H; subst; simpl in *.
-    unfold tree_inodes_distinct in *.
-    destruct (string_dec s name); subst; auto.
-    -
-      eapply NoDup_tree_inodes_delete in H; eauto.
-    -
-      eapply NoDup_tree_inodes_delete in H; eauto.
-      eapply IHl in H.
-  Admitted.
+    intros.
+    inversion H.
+    constructor.
+    eapply notIn_dirlist_combine_delete_from_list in H2; eauto.
+    eapply NoDup_dirlist_combine_delete_from_list in H3; eauto.
+  Qed.
 
-  Lemma tree_inodes_distinct_prune_subtree : forall path path' name tree n l subtree,
+
+  Lemma tree_inodes_distinct_prune_subtree' : forall inum ents base name tree,
     tree_inodes_distinct tree ->
-    find_subtree path' tree = Some (TreeDir n l) ->
-    find_subtree path (tree_prune n l path' name tree) = Some subtree ->
-    tree_inodes_distinct subtree.
+    find_subtree base tree = Some (TreeDir inum ents) ->
+    tree_inodes_distinct (tree_prune inum ents base name tree).
   Proof.
+    intros.
+    unfold tree_prune.
   Admitted.
 
   Lemma find_subtree_delete_same : forall l rest name n,
@@ -4163,21 +4166,22 @@ Module DIRTREE.
         * destruct (string_dec s0 s); try congruence; eauto.
   Qed.
 
-  Definition prefix p1 p2 :=
+  Definition pathname_prefix p1 p2 :=
     (exists suffix : list string, p1 ++ suffix = p2).
 
-  Lemma prefix_trim : forall a b c,
-    prefix a b <-> prefix (c ++ a) (c ++ b).
+  Lemma pathname_prefix_trim : forall a b c,
+    pathname_prefix a b <-> pathname_prefix (c ++ a) (c ++ b).
   Proof.
-    unfold prefix; split; intros; repeat deex.
+    unfold pathname_prefix; split; intros; repeat deex.
     - eexists. rewrite <- app_assoc. eauto.
     - rewrite <- app_assoc in H. eexists.
       apply app_inv_head in H. eauto.
   Qed.
 
+
   Theorem find_subtree_graft_subtree_oob: forall pn num ents base name tree subtree inum f,
     find_subtree base tree = Some (TreeDir num ents) ->
-    (~ prefix (base ++ [name]) pn) ->
+    (~ pathname_prefix (base ++ [name]) pn) ->
     find_subtree pn tree = Some (TreeFile inum f) ->
     find_subtree pn (tree_graft num ents base name subtree tree) = Some (TreeFile inum f).
   Proof.
@@ -4207,7 +4211,7 @@ Module DIRTREE.
 
  Theorem find_subtree_graft_subtree_oob': forall pn num ents base name tree subtree inum f,
     find_subtree base tree = Some (TreeDir num ents) ->
-    (~ prefix (base ++ [name]) pn) ->
+    (~ pathname_prefix (base ++ [name]) pn) ->
     find_subtree pn (tree_graft num ents base name subtree tree) = Some (TreeFile inum f) ->
     find_subtree pn tree = Some (TreeFile inum f).
   Proof.
@@ -4243,7 +4247,7 @@ Module DIRTREE.
 
   Theorem find_subtree_prune_subtree_oob: forall pn num ents base name tree inum f,
     find_subtree base tree = Some (TreeDir num ents) ->
-    (~ prefix (base ++ [name]) pn) ->
+    (~ pathname_prefix (base ++ [name]) pn) ->
     find_subtree pn tree = Some (TreeFile inum f) ->
     find_subtree pn (tree_prune num ents base name tree) = Some (TreeFile inum f).
   Proof.
@@ -4273,7 +4277,7 @@ Module DIRTREE.
 
   Theorem find_subtree_prune_subtree_oob': forall pn num ents base name tree inum f,
     find_subtree base tree = Some (TreeDir num ents) ->
-    (~ prefix (base ++ [name]) pn) ->
+    (~ pathname_prefix (base ++ [name]) pn) ->
     find_subtree pn (tree_prune num ents base name tree) = Some (TreeFile inum f) ->
     find_subtree pn tree = Some (TreeFile inum f).
   Proof.
@@ -4303,8 +4307,8 @@ Module DIRTREE.
 
   Lemma find_rename_oob: forall tree subtree cwd dnum tree_elem srcnum srcbase 
          srcents srcname dstnum dstbase dstents dstname pathname inum f,
-    (~ prefix (cwd ++ srcbase ++ [srcname]) pathname) ->
-    (~ prefix (cwd ++ dstbase ++ [dstname]) pathname) -> 
+    (~ pathname_prefix (cwd ++ srcbase ++ [srcname]) pathname) ->
+    (~ pathname_prefix (cwd ++ dstbase ++ [dstname]) pathname) -> 
     find_subtree pathname tree = Some (TreeFile inum f) ->
     find_subtree cwd tree = Some (TreeDir dnum tree_elem) ->
     find_subtree srcbase (TreeDir dnum tree_elem) = Some (TreeDir srcnum srcents) ->
@@ -4332,7 +4336,7 @@ Module DIRTREE.
         ++ (* pathname is inside dst tree; contradiction *)
           destruct H8.
           rewrite H8 in *.
-          unfold prefix in H0.
+          unfold pathname_prefix in H0.
           destruct H0.
           eexists x; eauto.
         ++ (* pathname isn't inside src and isn't inside dst tree, but inside cwd *)
@@ -4350,8 +4354,8 @@ Module DIRTREE.
 
   Lemma find_rename_oob': forall tree subtree cwd dnum tree_elem srcnum srcbase 
          srcents srcname dstnum dstbase dstents dstname pathname inum f,
-    (~ prefix (cwd ++ srcbase ++ [srcname]) pathname) ->
-    (~ prefix (cwd ++ dstbase ++ [dstname]) pathname) -> 
+    (~ pathname_prefix (cwd ++ srcbase ++ [srcname]) pathname) ->
+    (~ pathname_prefix (cwd ++ dstbase ++ [dstname]) pathname) -> 
     find_subtree cwd tree = Some (TreeDir dnum tree_elem) ->
     find_subtree srcbase (TreeDir dnum tree_elem) = Some (TreeDir srcnum srcents) ->
     find_dirlist srcname srcents = Some subtree ->
@@ -4371,7 +4375,7 @@ Module DIRTREE.
       - (* pathname is inside src subtree; contradiction *)
         destruct H7.
         rewrite H7 in H.
-        unfold prefix in H.
+        unfold pathname_prefix in H.
         destruct H.
         eexists x; eauto.
        - (* pathname isn't inside src subtree *)
@@ -4379,7 +4383,7 @@ Module DIRTREE.
         ++ (* pathname is inside dst tree; contradiction *)
           destruct H8.
           rewrite H8 in *.
-          unfold prefix in H0.
+          unfold pathname_prefix in H0.
           destruct H0.
           eexists x; eauto.
         ++ (* pathname isn't inside src and isn't inside dst tree, but inside cwd *)
@@ -4565,17 +4569,6 @@ Module DIRTREE.
     simpl; eauto.
   Qed.
 
-  Lemma tree_inodes_distinct_prune_subtree' : forall inum ents base name tree,
-    tree_inodes_distinct tree ->
-    find_subtree base tree = Some (TreeDir inum ents) ->
-    tree_inodes_distinct (tree_prune inum ents base name tree).
-  Proof.
-    intros.
-    eapply tree_inodes_distinct_prune_subtree with (path := nil) in H0.
-    eauto.
-    eauto.
-    simpl; eauto.
-  Qed.
 
 
 End DIRTREE.

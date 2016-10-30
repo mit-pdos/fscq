@@ -364,7 +364,7 @@ Qed.
 Lemma dirents2mem2_not_prefix : forall t F pn1 i1 f1 pn2 i2 f2,
   tree_names_distinct t ->
   (F * pn1 |-> File i1 f1 * pn2 |-> File i2 f2)%pred (dir2flatmem2 t) ->
-  ~ prefix pn1 pn2.
+  ~ pathname_prefix pn1 pn2.
 Proof.
   intros.
   eapply pimpl_trans in H0 as H'1; [ | | reflexivity ].

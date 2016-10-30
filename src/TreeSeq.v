@@ -2215,8 +2215,8 @@ Module TREESEQ.
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
         [[ forall pathname',
-           ~ prefix (cwd ++ srcbase ++ [srcname]) pathname' ->
-           ~ prefix (cwd ++ dstbase ++ [dstname]) pathname' ->
+           ~ pathname_prefix (cwd ++ srcbase ++ [srcname]) pathname' ->
+           ~ pathname_prefix (cwd ++ dstbase ++ [dstname]) pathname' ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
        [[ ds' = (pushd d ds) ]] *
@@ -2446,7 +2446,7 @@ Module TREESEQ.
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm *
         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
         [[ forall pathname',
-           ~ prefix (pathname ++ [name]) pathname' ->
+           ~ pathname_prefix (pathname ++ [name]) pathname' ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
         [[ ds' = pushd d ds ]] *
