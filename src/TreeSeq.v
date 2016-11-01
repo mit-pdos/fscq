@@ -2513,16 +2513,10 @@ Module TREESEQ.
       intros; subst.
       assert (pathname' = pathname).
       eapply find_subtree_inode_pathname_unique; eauto.
-  
-      eapply tree_inodes_distinct_prune_subtree' in H6 as Hinodes; eauto.
-      distinct_inodes'.
 
-      eapply tree_names_distinct_update_subtree.
-      distinct_names'.
-      eapply tree_names_distinct_delete_from_list; eauto.
-      eapply tree_names_distinct_subtree; eauto.
-      distinct_names'.
-
+      eapply DIRTREE.rep_tree_inodes_distinct; eauto.
+      eapply DIRTREE.rep_tree_names_distinct; eauto.
+ 
       subst.
       erewrite find_update_subtree in H9; eauto.
       congruence.

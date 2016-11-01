@@ -3220,40 +3220,6 @@ Module DIRTREE.
       admit.
   Admitted.
 
-  Lemma notIn_dirlist_combine_delete_from_list: forall l n name,
-    ~ In n (dirlist_combine tree_inodes l) ->
-    ~ In n (dirlist_combine tree_inodes (delete_from_list name l)).
-  Proof.
-
-  Admitted.
-
-  Lemma NoDup_dirlist_combine_delete_from_list: forall l name,
-    NoDup (dirlist_combine tree_inodes l) ->
-    NoDup (dirlist_combine tree_inodes (delete_from_list name l)).
-  Proof.
-  Admitted.
-
-  Lemma tree_inodes_distinct_delete_from_list : forall l n name,
-    tree_inodes_distinct (TreeDir n l) ->
-    tree_inodes_distinct (TreeDir n (delete_from_list name l)).
-  Proof.
-    intros.
-    inversion H.
-    constructor.
-    eapply notIn_dirlist_combine_delete_from_list in H2; eauto.
-    eapply NoDup_dirlist_combine_delete_from_list in H3; eauto.
-  Qed.
-
-
-  Lemma tree_inodes_distinct_prune_subtree' : forall inum ents base name tree,
-    tree_inodes_distinct tree ->
-    find_subtree base tree = Some (TreeDir inum ents) ->
-    tree_inodes_distinct (tree_prune inum ents base name tree).
-  Proof.
-    intros.
-    unfold tree_prune.
-  Admitted.
-
   Lemma find_subtree_delete_same : forall l rest name n,
     NoDup (map fst l) ->
     find_subtree (name :: rest) (delete_from_dir name (TreeDir n l)) = None.
@@ -3266,7 +3232,6 @@ Module DIRTREE.
     simpl. rewrite IHl; auto.
     destruct (string_dec s name); congruence; auto.
   Qed.
-
 
   Lemma rename_safe_dest_none : 
     forall ilist1 ilist2 frees1 frees2 srcpath srcname dstpath dstname dnum ents n l n' l' mvtree,
