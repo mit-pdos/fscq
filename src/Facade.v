@@ -396,6 +396,22 @@ Proof.
   apply UIP_dec; assumption.
 Qed.
 
+Ltac forwardauto1 H :=
+  repeat eforward H; conclude H eauto.
+
+Ltac forwardauto H :=
+  forwardauto1 H; repeat forwardauto1 H.
+
+Ltac forward_solve_step :=
+  match goal with
+    | _ => progress intuition eauto
+    | [ H : forall _, _ |- _ ] => forwardauto H
+    | _ => deex
+  end.
+
+Ltac forward_solve :=
+  repeat forward_solve_step.
+
 Lemma CompileConst : forall env A var (v v0 : nat),
   EXTRACT Ret v
   {{ var ~> v0 * A }}
@@ -432,21 +448,41 @@ Proof.
   all: simpl; reflexivity.
 Qed.
 
-Ltac forwardauto1 H :=
-  repeat eforward H; conclude H eauto.
+Lemma CompileRet : forall T {H: GoWrapper T} env A B var (v : T) p,
+  EXTRACT Ret v
+  {{ A }}
+    p
+  {{ fun ret => var ~> ret * B }} // env ->
+  EXTRACT Ret tt
+  {{ A }}
+    p
+  {{ fun _ => var ~> v * B }} // env.
+Proof.
+  unfold ProgOk; intros.
+  forward_solve.
+  - invc H4;
+    repeat find_apply_lem_hyp inj_pair2; repeat subst;
+    eauto.
+    invc H14.
+  - invc H0.
+    repeat find_apply_lem_hyp inj_pair2; repeat subst.
+    invc H10.
+  - invc H5.
+    repeat find_apply_lem_hyp inj_pair2; repeat subst.
+    invc H10.
 
-Ltac forwardauto H :=
-  forwardauto1 H; repeat forwardauto1 H.
+  Unshelve.
+  all: auto.
+Qed.
 
-Ltac forward_solve_step :=
-  match goal with
-    | _ => progress intuition eauto
-    | [ H : forall _, _ |- _ ] => forwardauto H
-    | _ => deex
-  end.
-
-Ltac forward_solve :=
-  repeat forward_solve_step.
+Lemma CompileConst' : forall env A var (v v0 : nat),
+  EXTRACT Ret tt
+  {{ var ~> v0 * A }}
+    var <~const v
+  {{ fun _ => var ~> v * A }} // env.
+Proof.
+  eauto using CompileRet, CompileConst.
+Qed.
 
 Definition vars_subset V (subset set : VarMap.t V) := forall k, VarMap.find k set = None -> VarMap.find k subset = None.
 
@@ -590,7 +626,6 @@ Proof.
     repeat destruct_pair; repeat find_inversion_safe; eauto.
     (* TODO: theorem about update_many *)
     admit.
-  - invc H4; invc H5; eauto.
   - subst_definitions.
     admit. (* TODO: execution semantics are wrong here *)
   - admit.
@@ -892,6 +927,17 @@ Proof.
   forward_solve.
 Qed.
 
+Lemma hoare_weaken : forall T env A1 A2 (B1 B2 : T -> _) pr p,
+  EXTRACT pr
+  {{ A1 }} p {{ B1 }} // env ->
+  (A2 >p=> A1)%pred ->
+  (forall x, B1 x >p=> B2 x)%pred ->
+  EXTRACT pr
+  {{ A2 }} p {{ B2 }} // env.
+Proof.
+  eauto using hoare_strengthen_pre, hoare_weaken_post.
+Qed.
+
 Instance progok_hoare_proper :
   forall T env pr,
   Proper (@prog_equiv T ==> Basics.flip pimpl_subset ==> pointwise_relation _ pimpl_subset ==> Basics.impl) (@ProgOk T env pr).
@@ -910,19 +956,19 @@ Proof.
   edestruct H1; intuition eauto.
 Defined.
 
-Lemma CompileBindDiscard : forall T' env A (B : T' -> _) p f xp xf,
-  EXTRACT p
+Lemma CompileSeq : forall T T' env A B (C : T -> _) p1 p2 x1 x2,
+  EXTRACT p1
   {{ A }}
-    xp
-  {{ fun _ => A }} // env ->
-  EXTRACT f
+    x1
+  {{ fun _ => B }} // env ->
+  EXTRACT p2
+  {{ B }}
+    x2
+  {{ C }} // env ->
+  EXTRACT Bind p1 (fun _ : T' => p2)
   {{ A }}
-    xf
-  {{ B }} // env ->
-  EXTRACT Bind p (fun (_ : T') => f)
-  {{ A }}
-    xp; xf
-  {{ B }} // env.
+    x1; x2
+  {{ C }} // env.
 Proof.
   unfold ProgOk.
   intuition subst.
@@ -949,7 +995,8 @@ Proof.
     + eapply Steps_ExecFailed in H4; eauto.
       forward_solve.
       unfold is_final; simpl; intuition subst.
-      contradiction H5. eauto.
+      contradiction H5.
+      repeat eexists. eauto.
       intuition. repeat deex.
       contradiction H5. eauto.
     + destruct st'. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFailed; eauto.
@@ -961,44 +1008,44 @@ Proof.
   all: auto.
 Qed.
 
-
-Example micro_dup : forall T {Wr: GoWrapper T}, sigT (fun p => forall (x v0 : T),
-  EXTRACT Ret tt
-  {{ 0 ~> x * 1 ~> v0 }}
-    p
-  {{ fun _ => 1 ~> x * 0 ~> x }} // StringMap.empty _).
+Lemma CompileBindDiscard : forall T' env A (B : T' -> _) p f xp xf,
+  EXTRACT p
+  {{ A }}
+    xp
+  {{ fun _ => A }} // env ->
+  EXTRACT f
+  {{ A }}
+    xf
+  {{ B }} // env ->
+  EXTRACT Bind p (fun (_ : T') => f)
+  {{ A }}
+    xp; xf
+  {{ B }} // env.
 Proof.
-  eexists. intros.
-  instantiate (1 := (1 <~dup 0)%go).
-  unfold ProgOk.
-  inv_exec_progok;
-  inv_exec_progok.
-  repeat eexists. eauto.
-  unfold sel, duplicate_impl, update_one in *.
-  find_apply_lem_hyp inj_pair2; subst.
-  simpl in *.
-  repeat extract_var_val.
-  simpl in *.
-  repeat find_inversion_safe.
-  simpl in *.
-  rewrite eq_dec_eq in *.
-  find_inversion.
-  rewrite ?add_upd.
-  unfold pred_apply.
-  eapply pimpl_apply; [ | eapply ptsto_upd ]; [ cancel | ].
-  eapply pimpl_apply; [ | eassumption ]; cancel.
+  intros.
+  eapply CompileSeq; eauto.
+Qed.
 
-  contradiction H1.
-  repeat eexists.
-  econstructor.
-  simpl; unfold sel.
-  repeat extract_var_val.
-  reflexivity.
-  reflexivity.
-  simpl.
-  break_match; try congruence.
-  reflexivity.
-Defined.
+Lemma CompileBefore : forall T env A B (C : T -> _) p x1 x2,
+  EXTRACT Ret tt
+  {{ A }}
+    x1
+  {{ fun _ => B }} // env ->
+  EXTRACT p
+  {{ B }}
+    x2
+  {{ C }} // env ->
+  EXTRACT p
+  {{ A }}
+    x1; x2
+  {{ C }} // env.
+Proof.
+  intros.
+  eapply extract_equiv_prog.
+  instantiate (pr1 := Ret tt;; p).
+  eapply bind_left_id.
+  eapply CompileSeq; eauto.
+Qed.
 
 Lemma CompileIf : forall P Q {H1 : GoWrapper ({P}+{Q})}
                          T {H : GoWrapper T}
@@ -1408,31 +1455,7 @@ Lemma SetConstBefore : forall T (T' : GoWrapper T) (p : prog T) env xp v n (x : 
       v <~const n; xp
     {{ B }} // env.
 Proof.
-  intros.
-  unfold ProgOk.
-  inv_exec_progok.
-  - do 5 inv_exec. inv_exec.
-    eval_expr.
-    edestruct H; intuition forward_solve.
-    simpl. rewrite add_upd.
-    eapply sep_star_assoc, ptsto_upd.
-    pred_cancel.
-  - do 5 inv_exec; try solve [inv_exec].
-    eval_expr.
-    edestruct H; intuition forward_solve.
-    simpl. rewrite add_upd.
-    eapply sep_star_assoc, ptsto_upd. pred_cancel.
-  - inv_exec.
-    do 3 inv_exec; forward_solve.
-    inv_exec. inv_exec.
-    eval_expr.
-    edestruct H; intuition forward_solve.
-    simpl. rewrite add_upd.
-    eapply sep_star_assoc, ptsto_upd. pred_cancel.
-    contradiction H2.
-    repeat econstructor;
-      eval_expr; eauto.
-    simpl in *. congruence.
+  eauto using CompileBefore, CompileConst'.
 Qed.
 
 Lemma DuplicateBefore : forall T (T' : GoWrapper T) X (X' : GoWrapper X)
@@ -1481,34 +1504,14 @@ Lemma AddInPlaceLeftBefore : forall T (T' : GoWrapper T) (p : prog T) B xp env
   {{ B }} // env.
 Proof.
   intros.
-  unfold ProgOk.
-  inv_exec_progok.
-  - do 5 inv_exec. inv_exec.
-    edestruct H; eauto.
-    eval_expr.
-    rewrite add_upd.
-    eapply sep_star_assoc.
-    eapply sep_star_assoc, ptsto_upd.
-    pred_cancel.
-  - do 5 inv_exec; try solve [inv_exec].
-    edestruct H; forward_solve.
-    eval_expr.
-    rewrite add_upd.
-    eapply sep_star_assoc.
-    eapply sep_star_assoc, ptsto_upd.
-    pred_cancel.
-  - inv_exec.
-    do 3 inv_exec; forward_solve.
-    inv_exec. inv_exec.
-    eval_expr.
-    edestruct H; forward_solve.
-    simpl. rewrite add_upd.
-    eapply sep_star_assoc. eapply sep_star_assoc, ptsto_upd. pred_cancel.
-    contradiction H2.
-    repeat econstructor;
-      eval_expr; eauto.
-    simpl in *; eauto.
-    simpl; eauto.
+  eapply CompileBefore; eauto.
+  eapply hoare_weaken.
+  eapply CompileRet with (T := nat).
+  instantiate (var0 := v).
+  eapply hoare_weaken_post; [ | eapply CompileAddInPlace1 with (avar := v) (bvar := va) ].
+  cancel_subset.
+  cancel_subset.
+  cancel_subset.
 Qed.
 
 Lemma AddInPlaceLeftAfter : forall T (T' : GoWrapper T) (p : prog T) A xp env
@@ -2088,10 +2091,10 @@ Eval lazy in projT1 (extract_for_loop (StringMap.empty _)).
 
 (*
 Declare DiskBlock
-  (fun var0 : W =>
+  (fun var0 : nat =>
    (DiskRead var0 (Var 0);
     Declare DiskBlock
-      (fun var1 : W =>
+      (fun var1 : nat =>
        (DiskRead var1 (Var 1);
         DiskWrite (Var 0) (Var var1);
         DiskWrite (Var 1) (Var var0);
