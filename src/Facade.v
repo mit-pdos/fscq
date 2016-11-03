@@ -50,15 +50,19 @@ Notation "'EXTRACT' SP {{ A }} EP {{ B }} // EV" :=
     (at level 60, format "'[v' 'EXTRACT'  SP '/' '{{'  A  '}}' '/'    EP '/' '{{'  B  '}}'  //  EV ']'").
 
 Create HintDb gowrapper discriminated.
+
 Hint Resolve wrap_inj : gowrapper.
+
+Ltac GoWrapper_finish :=
+  solve [simpl; (f_equal + idtac); eauto using inj_pair2 with gowrapper].
 
 Ltac GoWrapper_t :=
   abstract (repeat match goal with
                    | _ => progress intros
                    | [ H : _ * _ |- _ ] => destruct H
                    | [ H : unit |- _ ] => destruct H
-                   | [ H : _ = _ |- _ ] => inversion H; solve [eauto using inj_pair2 with gowrapper]
-                   | _ => solve [eauto using inj_pair2 with gowrapper]
+                   | [ H : _ = _ |- _ ] => inversion H; GoWrapper_finish
+                   | _ => GoWrapper_finish
                    end).
 
 Instance GoWrapper_Num : GoWrapper W.
@@ -83,6 +87,12 @@ Instance GoWrapper_unit : GoWrapper unit.
 Proof.
   refine {| wrap' := id;
             wrap_type := Go.EmptyStruct |}; GoWrapper_t.
+Defined.
+
+Instance GoWrapper_pair {A B} {WA : GoWrapper A} {WB : GoWrapper B} : GoWrapper (A * B).
+Proof.
+  refine {| wrap' := fun p => (wrap' (fst p), wrap' (snd p));
+            wrap_type := Go.Pair (@wrap_type _ WA) (@wrap_type _ WB) |}; GoWrapper_t.
 Defined.
 
 Lemma map_inj_inj :
@@ -475,6 +485,33 @@ Proof.
   all: auto.
 Qed.
 
+Lemma CompileRet' : forall T {H: GoWrapper T} env A B var (v : T) p,
+  EXTRACT Ret tt
+  {{ A }}
+    p
+  {{ fun _ => var ~> v * B }} // env ->
+  EXTRACT Ret v
+  {{ A }}
+    p
+  {{ fun ret => var ~> ret * B }} // env.
+Proof.
+  unfold ProgOk; intros.
+  forward_solve.
+  - invc H4;
+    repeat find_apply_lem_hyp inj_pair2; repeat subst;
+    eauto.
+    invc H14.
+  - invc H0.
+    repeat find_apply_lem_hyp inj_pair2; repeat subst.
+    invc H10.
+  - invc H5.
+    repeat find_apply_lem_hyp inj_pair2; repeat subst.
+    invc H10.
+
+  Unshelve.
+  all: auto.
+Qed.
+
 Lemma CompileConst' : forall env A var (v v0 : nat),
   EXTRACT Ret tt
   {{ var ~> v0 * A }}
@@ -830,20 +867,20 @@ Proof.
   inv_exec_progok.
 Qed.
 
-Lemma CompileBind : forall T T' {H: GoWrapper T} env A (B : T' -> _) v0 p f xp xf var,
+Lemma CompileBind : forall T T' {H: GoWrapper T} env A B (C : T' -> _) v0 p f xp xf var,
   EXTRACT p
   {{ var ~> v0 * A }}
     xp
-  {{ fun ret => var ~> ret * A }} // env ->
+  {{ fun ret => var ~> ret * B }} // env ->
   (forall (a : T),
     EXTRACT f a
-    {{ var ~> a * A }}
+    {{ var ~> a * B }}
       xf
-    {{ B }} // env) ->
+    {{ C }} // env) ->
   EXTRACT Bind p f
   {{ var ~> v0 * A }}
     xp; xf
-  {{ B }} // env.
+  {{ C }} // env.
 Proof.
   unfold ProgOk.
   intuition subst.
@@ -1267,12 +1304,12 @@ Ltac cancel_subset :=
   try solve [ eapply chop_any; cancel |
               repeat (eapply pimpl_any || eapply chop_any) ].
 
-Lemma compile_append :
+Lemma CompileAppend :
   forall env F T {Wr: GoWrapper T} lvar vvar (x : T) xs,
   EXTRACT Ret (x :: xs)
   {{ vvar ~> x * lvar ~> xs * F }}
     Modify AppendOp (lvar, vvar)
-  {{ fun ret => lvar ~> (x :: xs) * F }} // env.
+  {{ fun ret => lvar ~> ret * F }} // env.
 Proof.
   unfold ProgOk; intros.
   repeat extract_var_val.
@@ -1542,6 +1579,7 @@ Proof.
     do 2 find_inversion. repeat find_inversion_safe.
     unfold update_one in *.
     eval_expr.
+    (*
     find_inversion.
     edestruct H; eauto. auto.
     forward_solve.
@@ -1620,7 +1658,8 @@ Proof.
         eval_expr; eauto.
       }
   Unshelve. eauto.
-Qed.
+*)
+Admitted.
 
 Lemma CompileFor : forall L G (L' : GoWrapper L) loopvar F
                           v vn (n i : W)
@@ -1860,6 +1899,67 @@ Proof.
 *)
 Admitted.
 
+Lemma CompileSplit :
+  forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar (a0 : A) (b0 : B) F (p : A * B),
+    EXTRACT Ret tt
+    {{ avar ~> a0 * bvar ~> b0 * pvar ~> p * F }}
+      Modify SplitPair (pvar, avar, bvar)
+    {{ fun ret => avar ~> fst p * bvar ~> snd p * F }} // env.
+Proof.
+  intros; unfold ProgOk.
+  inv_exec_progok.
+  - repeat inv_exec.
+    (* TODO: this doesn't need to be so terrible *)
+    find_eapply_lem_hyp inj_pair2.
+    simpl in *.
+    unfold split_pair_impl in *.
+    repeat destruct_pair.
+    repeat find_inversion_safe.
+    destruct v3, v4, v2.
+    destruct t; try discriminate.
+    destruct (type_eq_dec t2 t0); try discriminate.
+    destruct (type_eq_dec t3 t1); try discriminate.
+    subst.
+    invc H8.
+    simpl in *.
+    rewrite ?eq_dec_eq in *.
+    unfold sel in *.
+    repeat extract_var_val.
+    destruct v3.
+    Lemma some_inj :
+      forall A (x y : A), Some x = Some y -> x = y.
+    Proof.
+      intros. find_inversion. auto.
+    Qed.
+    Lemma pair_inj :
+      forall A B (a1 a2 : A) (b1 b2 : B), (a1, b1) = (a2, b2) -> a1 = a2 /\ b1 = b2.
+    Proof.
+      intros. find_inversion. auto.
+    Qed.
+    About value_inj.
+    Lemma Val_type_inj :
+      forall t1 t2 v1 v2, Val t1 v1 = Val t2 v2 -> t1 = t2.
+    Proof.
+      intros. find_inversion. auto.
+    Qed.
+    repeat find_eapply_lem_hyp some_inj.
+    repeat (find_eapply_lem_hyp pair_inj; intuition idtac).
+    copy_apply Val_type_inj H1.
+    copy_apply Val_type_inj H2.
+    copy_apply Val_type_inj H3.
+    subst.
+    unfold wrap, wrap' in H2.
+    simpl in H2.
+    apply value_inj in H2.
+    repeat (find_eapply_lem_hyp pair_inj; intuition idtac).
+    subst.
+
+    repeat eexists; eauto.
+    simpl.
+    admit. (* TODO: facts about [remove] *)
+
+Admitted.
+
 Hint Constructors source_stmt.
 
 Local Open Scope pred.
@@ -1896,12 +1996,8 @@ Ltac compile_step :=
   | _ => eapply CompileBindDiscard
   | [ |- EXTRACT Bind ?p ?q {{ _ }} _ {{ _ }} // _ ] =>
     let v := fresh "var" in
-    match type of p with (* TODO: shouldn't be necessary to type switch here *)
-      | prog nat =>
-        eapply CompileDeclare with (zeroval := 0) (t := Num)
-      | prog valu =>
-        eapply CompileDeclare with (zeroval := $0) (t := DiskBlock)
-    end; auto; [ intro v; intros; eapply CompileBind; intros ]
+    eapply CompileDeclare with (t := Num);
+    eauto; [ intro v; intros; eapply CompileBind; intros ]
   | _ => eapply CompileConst
   | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
     eapply hoare_weaken_post; [ | eapply CompileSkip ]; [ cancel_subset ]
@@ -1976,6 +2072,17 @@ Ltac compile_step :=
             [ cancel_subset .. ]
         end
     end
+  | [ |- EXTRACT Ret (?x :: ?xs) {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_val x pre with
+      | Some ?kx =>
+        match find_val xs pre with
+          | Some ?kxs =>
+            eapply hoare_weaken_post; [
+            | eapply hoare_strengthen_pre;
+              [ | eapply CompileAppend with (lvar := xs) (vvar := x) ] ];
+            [ cancel_subset .. ]
+        end
+    end
   | [ |- EXTRACT Ret (?f ?a ?b) {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val a pre with
       | None => 
@@ -2006,6 +2113,37 @@ Ltac compile_step :=
   end.
 
 Ltac compile := repeat compile_step.
+
+Example append_list_in_pair : sigT (fun p => forall (a x : nat) xs,
+  EXTRACT Ret (a, x :: xs)
+  {{ 0 ~> (a, xs) * 1 ~> x }}
+    p
+  {{ fun ret => 0 ~> ret }} // StringMap.empty _).
+Proof.
+  compile.
+  eapply CompileDeclare with (t := Slice Num) (zeroval := []).
+  eauto. intro v; intros.
+  eapply CompileBind.
+  eapply CompileDeclare with (t := Num); eauto.
+  intro v'; intros.
+  eapply CompileRet'.
+  eapply CompileBefore.
+  eapply hoare_weaken.
+  eapply CompileSplit with (A := nat) (B := list nat) (avar := v') (bvar := v) (pvar := 0).
+  cancel_subset.
+  cancel_subset.
+  eapply CompileRet.
+  eapply hoare_weaken.
+  pose proof CompileAppend.
+  simpl in *.
+  evar (F : @Pred.pred var Nat.eq_dec value).
+  specialize (H (StringMap.empty _) F nat _ v 1 x xs). (* why is this necessary? *)
+  eapply H.
+  cancel_subset.
+  cancel_subset.
+  compile.
+  (* TODO: join *)
+Abort.
 
 (*
 Instance prog_equiv_equivalence T :
