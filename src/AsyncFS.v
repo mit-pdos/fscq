@@ -1144,9 +1144,8 @@ Module AFS.
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
         [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                         ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
-        [[ forall inum def', inum <> dnum ->
-             selN ilist inum def' = selN ilist' inum def' ]]   (* XXX what the file we deleted? *)
-     )
+        [[ forall inum def', inum <> dnum -> In inum (tree_inodes tree) ->
+             selN ilist inum def' = selN ilist' inum def' ]])
     CRASH:hm
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm
     >} delete fsxp dnum name mscs.
