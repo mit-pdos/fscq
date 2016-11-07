@@ -3209,21 +3209,55 @@ Module DIRTREE.
     apply NoDup_delete_from_list; auto.
   Qed.
 
+  Definition pathname_prefix p1 p2 :=
+    (exists suffix : list string, p1 ++ suffix = p2).
+
+  Lemma pathname_prefix_trim : forall a b c,
+    pathname_prefix a b <-> pathname_prefix (c ++ a) (c ++ b).
+  Proof.
+    unfold pathname_prefix; split; intros; repeat deex.
+    - eexists. rewrite <- app_assoc. eauto.
+    - rewrite <- app_assoc in H. eexists.
+      apply app_inv_head in H. eauto.
+  Qed.
+
+  Lemma find_subtree_update_subtree_ne_path : forall p1 p2 tree elem,
+    (~ pathname_prefix p2 p1) ->
+    DIRTREE.find_subtree p1 (DIRTREE.update_subtree p2 elem tree) =
+      DIRTREE.find_subtree p1 tree.
+  Proof.
+  Admitted.
+
   Lemma tree_names_distinct_prune_subtree : forall path tree path' name subtree n l,
     tree_names_distinct tree ->
     find_subtree path' tree = Some (TreeDir n l) ->
     find_subtree path (tree_prune n l path' name tree) = Some subtree ->
     tree_names_distinct subtree.
   Proof.
-    induction path; intuition; simpl in *.
-    - inversion H1; subst.
-      induction path'; simpl in *.
-      + inversion H0; subst.
-        unfold tree_prune; simpl in *.
-        apply tree_names_distinct_delete_from_list; auto.
-      + destruct tree; try congruence.
-        admit.
-    - eapply IHpath; eauto.
+    intros.
+    unfold tree_prune in *.
+    destruct (pathname_decide_prefix path' path).
+    + (* path is inside of tree pointed to by path' *)
+      (* name cannot be on path because path isn't pruned (H1) *)
+      destruct (list_eq_dec string_dec path' path); subst.
+      - erewrite find_update_subtree in H1; eauto.
+        inversion H1; subst.
+        eapply tree_names_distinct_delete_from_list; eauto.
+        eapply tree_names_distinct_subtree; eauto.
+      - (* look at first component of suffix, compare with name *)         
+        destruct H2; subst.
+        erewrite find_subtree_app in H1; eauto.
+        destruct (pathname_decide_prefix [name] x).
+        destruct H2; subst.
+        -- (* if equal to name -> contradiction with H1 *)
+          exfalso.
+          admit.
+        -- (* not equal to name so not effected *)
+          admit.
+    + (* path is not inside of tree pointed to by path'; pruning doesn't effect path *)
+      erewrite find_subtree_update_subtree_ne_path in H1; eauto.
+      eapply tree_names_distinct_subtree; eauto.
+      unfold pathname_prefix; eauto.
       admit.
   Admitted.
 
@@ -4058,13 +4092,6 @@ Module DIRTREE.
   Proof.
   Admitted.
 
-  (* XXX maybe p2 cannot be a prefix of p1 *)
-  Lemma find_subtree_update_subtree_ne_path : forall p1 p2 tree elem,
-    p1 <> p2 ->
-    DIRTREE.find_subtree p1 (DIRTREE.update_subtree p2 elem tree) =
-      DIRTREE.find_subtree p1 tree.
-  Proof.
-  Admitted.
 
   Lemma dirtree_safe_dupdate: forall old_tree old_free old_ilist tree ilist freelist inum f p bn off v,
       DIRTREE.dirtree_safe old_ilist old_free old_tree ilist freelist tree ->
@@ -4140,18 +4167,6 @@ Module DIRTREE.
         * destruct (string_dec s s); try congruence; eauto.
         * destruct (string_dec a s); try congruence; eauto.
         * destruct (string_dec s0 s); try congruence; eauto.
-  Qed.
-
-  Definition pathname_prefix p1 p2 :=
-    (exists suffix : list string, p1 ++ suffix = p2).
-
-  Lemma pathname_prefix_trim : forall a b c,
-    pathname_prefix a b <-> pathname_prefix (c ++ a) (c ++ b).
-  Proof.
-    unfold pathname_prefix; split; intros; repeat deex.
-    - eexists. rewrite <- app_assoc. eauto.
-    - rewrite <- app_assoc in H. eexists.
-      apply app_inv_head in H. eauto.
   Qed.
 
 
