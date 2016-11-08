@@ -3228,6 +3228,27 @@ Module DIRTREE.
   Proof.
   Admitted.
 
+  Lemma find_subtree_delete_same : forall l rest name n,
+    NoDup (map fst l) ->
+    find_subtree (name :: rest) (delete_from_dir name (TreeDir n l)) = None.
+  Proof.
+    induction l; intros; auto.
+    destruct a; simpl in *.
+    inversion H; subst.
+    destruct (string_dec s name); subst.
+    apply find_subtree_ents_not_in; auto.
+    simpl. rewrite IHl; auto.
+    destruct (string_dec s name); congruence; auto.
+  Qed.
+
+  Lemma find_subtree_delete_ne: forall l name name' n,
+    NoDup (map fst l) ->
+    (~ pathname_prefix [name'] name) ->
+    find_subtree name (delete_from_dir name' (TreeDir n l)) = find_subtree name (TreeDir n l).
+  Proof.
+    induction l; intros; auto.
+  Admitted.
+
   Lemma tree_names_distinct_prune_subtree : forall path tree path' name subtree n l,
     tree_names_distinct tree ->
     find_subtree path' tree = Some (TreeDir n l) ->
@@ -3244,35 +3265,41 @@ Module DIRTREE.
         inversion H1; subst.
         eapply tree_names_distinct_delete_from_list; eauto.
         eapply tree_names_distinct_subtree; eauto.
-      - (* look at first component of suffix, compare with name *)         
+      - (* compare first component of suffix with name *)         
         destruct H2; subst.
         erewrite find_subtree_app in H1; eauto.
         destruct (pathname_decide_prefix [name] x).
         destruct H2; subst.
         -- (* if equal to name -> contradiction with H1 *)
-          exfalso.
-          admit.
-        -- (* not equal to name so not effected *)
-          admit.
+          erewrite find_subtree_app_none in H1.
+          exfalso; congruence.
+          erewrite find_subtree_delete_same; eauto.
+          eapply tree_names_distinct_nodup.
+          eapply tree_names_distinct_subtree; eauto.
+         -- (* not equal to name, so not effect *)
+          erewrite find_subtree_delete_ne in H1; eauto.
+          eapply tree_names_distinct_subtree.
+          2: eapply H1.
+          eapply tree_names_distinct_subtree.
+          eapply H; eauto.
+          eapply H0.
+          eapply tree_names_distinct_nodup.
+          eapply tree_names_distinct_subtree; eauto.
+          unfold pathname_prefix.
+          intro.
+          eapply H2.
+          deex.
+          eexists; eauto.
     + (* path is not inside of tree pointed to by path'; pruning doesn't effect path *)
       erewrite find_subtree_update_subtree_ne_path in H1; eauto.
       eapply tree_names_distinct_subtree; eauto.
       unfold pathname_prefix; eauto.
-      admit.
-  Admitted.
-
-  Lemma find_subtree_delete_same : forall l rest name n,
-    NoDup (map fst l) ->
-    find_subtree (name :: rest) (delete_from_dir name (TreeDir n l)) = None.
-  Proof.
-    induction l; intros; auto.
-    destruct a; simpl in *.
-    inversion H; subst.
-    destruct (string_dec s name); subst.
-    apply find_subtree_ents_not_in; auto.
-    simpl. rewrite IHl; auto.
-    destruct (string_dec s name); congruence; auto.
+      intro. 
+      eapply H2.
+      destruct H3.
+      eexists x; eauto.
   Qed.
+
 
   Lemma rename_safe_dest_none : 
     forall ilist1 ilist2 frees1 frees2 srcpath srcname dstpath dstname dnum ents n l n' l' mvtree,
