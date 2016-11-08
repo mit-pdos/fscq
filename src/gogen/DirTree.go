@@ -48,9 +48,9 @@ type DiskLog_contents []entry
 type txnlist []DiskLog_contents
 
 type GroupLog_mstate struct {
-	MSVMap valumap
-	MSTxns txnlist
-	MSMLog MemLog_mstate
+	MSVMap *valumap
+	MSTxns *txnlist
+	MSMLog *MemLog_mstate
 }
 
 func MSLL(ms GroupLog_memstate) MemLog_memstate {
@@ -63,25 +63,26 @@ type Log_mstate struct {
 }
 
 type Log_memstate struct {
-	fst Log_mstate
-	snd cachestate
+	fst *Log_mstate
+	snd *cachestate
 }
 
 // TODO: put in BFile.go
 type BFile_memstate struct {
 	fst bool
-	snd Log_memstate
+	snd *Log_memstate
 }
 
+/*
 func MSAlloc(ms BFILE_memstate) bool {
 	return ms.fst
 }
 
 func MSLL(ms BFILE_memstate) Log_memstate {
 	return ms.snd
-}
+}*/
 
-type mscs struct{} // TODO
+type GroupLog_memstate struct{}
 
 type pair_balloc_xparams_balloc_xparams struct {
 	fst balloc_xparams
@@ -175,11 +176,11 @@ func mkfile(fsxp fs_xparams, dnum addr, name string, fms *GroupLog_memstate) Err
 	ibxp = fsxp
 	ixp = fsxp.FSXPInode
 	var al bool
-	// var ms MemLog_memstate
-	al = MSAlloc(fms)
-	// ms = MSLL(fms)
+	var ms *MemLog_memstate
+	al, ms = fms.fst, fms.snd // according to semantics, now fms == (Moved, Moved)
 	var oi *addr
-	oi = IAlloc_alloc(lxp, ibxp, &fms.snd)
+	oi = IAlloc_alloc(lxp, ibxp, ms)
+	fms.fst, fms.snd = al, ms
 	if oi == nil {
 		return Err_addr{nil, &ENOSPCINODE}
 	} else {

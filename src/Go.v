@@ -86,6 +86,25 @@ Module Go.
   | Pair : type -> type -> type
   .
 
+  Inductive movable T :=
+  | Here (v : T)
+  | Moved
+  .
+
+  Arguments Here {T} v.
+  Arguments Moved {T}.
+
+  Fixpoint can_alias t :=
+    match t with
+    | Num => false
+    | Bool => true
+    | EmptyStruct => true
+    | DiskBlock => false
+    | Slice _ => false
+    | Pair t1 t2 => can_alias t1 && can_alias t2
+    end.
+
+
   Fixpoint type_denote (t : type) : Type :=
     match t with
     | Num => W
@@ -93,7 +112,7 @@ Module Go.
     | EmptyStruct => unit
     | DiskBlock => valu
     | Slice t' => list (type_denote t') (* kept in reverse order to make cons = append *)
-    | Pair t1 t2 => type_denote t1 * type_denote t2
+    | Pair t1 t2 => movable (type_denote t1) * movable (type_denote t2)
     end.
 
   Definition type_eq_dec : forall t1 t2 : type, {t1 = t2} + {t1 <> t2}.
@@ -114,16 +133,6 @@ Module Go.
   | JoinPair
   .
 
-  Fixpoint can_alias t :=
-    match t with
-    | Num => false
-    | Bool => true
-    | EmptyStruct => true
-    | DiskBlock => false
-    | Slice _ => false
-    | Pair t1 t2 => can_alias t1 && can_alias t2
-    end.
-
   Inductive value :=
   | Val t (v : type_denote t).
 
@@ -142,13 +151,13 @@ Module Go.
     match v with Val t _ => t end.
 
   Fixpoint default_value' (t : type) : type_denote t :=
-    match t with
+    match t return type_denote t with
     | Num => 0
     | Bool => false
     | EmptyStruct => tt
     | DiskBlock => $0
     | Slice t' => nil
-    | Pair t1 t2 => (default_value' t1, default_value' t2)
+    | Pair t1 t2 => (Here (default_value' t1), Here (default_value' t2))
     end.
 
   Definition default_value (t : type) : value :=
@@ -257,11 +266,11 @@ Module Go.
     Definition append_impl' t (l : list (type_denote t)) (a : type_denote t) : n_tuple 2 var_update :=
       (SetTo (Val (Slice t) (a :: l)), if can_alias t then Leave else Delete).
 
-    Definition split_pair_impl' ta tb (p : type_denote ta * type_denote tb) : n_tuple 3 var_update :=
-      (Delete, SetTo (Val ta (fst p)), SetTo (Val tb (snd p))).
+    Definition split_pair_impl' ta tb (a : type_denote ta) (b : type_denote tb) : n_tuple 3 var_update :=
+      (SetTo (Val (Pair ta tb) (Moved, Moved)), SetTo (Val ta a), SetTo (Val tb b)).
 
     Definition join_pair_impl' ta tb (va : type_denote ta) (vb : type_denote tb) : n_tuple 3 var_update :=
-      (SetTo (Val (Pair ta tb) (va, vb)), Delete, Delete).
+      (SetTo (Val (Pair ta tb) (Here va, Here vb)), Delete, Delete).
 
   End NiceImpls.
 
@@ -293,10 +302,15 @@ Module Go.
                        | Pair ta' tb' => fun p => _
                        | _ => fun _ => None
                        end p).
+      refine (match p with
+              | (Here a, Here b) => _
+              | _ => None
+              end
+             ).
       destruct (type_eq_dec ta' ta); [ | exact None ].
       destruct (type_eq_dec tb' tb); [ | exact None ].
       subst.
-      refine (Some (split_pair_impl' ta tb p)).
+      refine (Some (split_pair_impl' ta tb a b)).
     Defined.
 
     Definition join_pair_impl : op_impl 3.

@@ -91,7 +91,7 @@ Defined.
 
 Instance GoWrapper_pair {A B} {WA : GoWrapper A} {WB : GoWrapper B} : GoWrapper (A * B).
 Proof.
-  refine {| wrap' := fun p => (wrap' (fst p), wrap' (snd p));
+  refine {| wrap' := fun p => (Go.Here (wrap' (fst p)), Go.Here (wrap' (snd p)));
             wrap_type := Go.Pair (@wrap_type _ WA) (@wrap_type _ WB) |}; GoWrapper_t.
 Defined.
 
@@ -916,9 +916,6 @@ Proof.
       forwardauto H4; repeat deex.
       specialize (H1 r0).
       forward_solve.
-
-  Unshelve.
-  all: auto.
 Qed.
 
 Import Go.
@@ -1965,7 +1962,7 @@ Lemma CompileSplit :
     EXTRACT Ret tt
     {{ avar ~> a0 * bvar ~> b0 * pvar ~> p * F }}
       Modify SplitPair (pvar, avar, bvar)
-    {{ fun ret => avar ~> fst p * bvar ~> snd p * F }} // env.
+    {{ fun ret => avar ~> fst p * bvar ~> snd p * pvar |-> Val (Pair (@wrap_type _ HA) (@wrap_type _ HB)) (Moved, Moved) * F }} // env.
 Proof.
   intros; unfold ProgOk.
   inv_exec_progok.
@@ -1987,6 +1984,8 @@ Proof.
     unfold sel in *.
     repeat extract_var_val.
     destruct v3.
+    destruct m; try discriminate.
+    destruct m0; try discriminate.
     Lemma some_inj :
       forall A (x y : A), Some x = Some y -> x = y.
     Proof.
@@ -1997,12 +1996,78 @@ Proof.
     Proof.
       intros. find_inversion. auto.
     Qed.
-    About value_inj.
     Lemma Val_type_inj :
       forall t1 t2 v1 v2, Val t1 v1 = Val t2 v2 -> t1 = t2.
     Proof.
       intros. find_inversion. auto.
     Qed.
+    repeat find_eapply_lem_hyp some_inj.
+    repeat (find_eapply_lem_hyp pair_inj; intuition idtac).
+    copy_apply Val_type_inj H4.
+    copy_apply Val_type_inj H5.
+    copy_apply Val_type_inj H6.
+    subst.
+    unfold wrap, wrap' in H5.
+    simpl in H5.
+    apply value_inj in H5.
+    repeat (find_eapply_lem_hyp pair_inj; intuition idtac).
+    simpl in *; rewrite ?eq_dec_eq in *.
+    repeat find_inversion_safe.
+    subst.
+
+    repeat eexists; eauto.
+    simpl.
+    admit. (* TODO: facts about [remove] *)
+
+Admitted.
+
+Lemma CompileJoin :
+  forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar (a : A) (b : B) F,
+    EXTRACT Ret (a, b)
+    {{ avar ~> a * bvar ~> b * pvar |->? * F }}
+      Modify JoinPair (pvar, avar, bvar)
+    {{ fun ret => pvar ~> ret * F }} // env.
+Proof.
+  intros; unfold ProgOk.
+  repeat inv_exec_progok.
+  - repeat inv_exec.
+    (* TODO: this doesn't need to be so terrible *)
+    unfold split_pair_impl in *.
+    repeat destruct_pair.
+    repeat find_inversion_safe.
+    destruct v3, v4, v2.
+    destruct t; try discriminate.
+    destruct (type_eq_dec t2 t0); try discriminate.
+    destruct (type_eq_dec t3 t1); try discriminate.
+    subst.
+    invc H8.
+    simpl in *.
+    rewrite ?eq_dec_eq in *.
+    unfold sel in *.
+    assert (VarMap.find avar b0 = Some (wrap a)) by admit.
+    assert (VarMap.find bvar b0 = Some (wrap b)) by admit.
+    simpl in *.
+    rewrite ?H0, ?H1 in *.
+    (* 
+    eapply pred_apply_pimpl_proper in H; [
+      | reflexivity | ].
+    instantiate (y0 := (avar |-> wrap a * _)%pred).
+        eapply ptsto_valid in H; eassumption.
+    lazymatch goal with
+    | [ |- _ =p=> ?Q ] =>
+      let F := fresh "F" in
+      evar (F : pred);
+        unify Q (avar |-> (wrap a) * F)%pred;
+        cancel
+    end.
+    instantiate (F0 := (_ * pvar |->?)%pred). (* ew *)
+    cancel.
+*)
+
+
+(*
+    destruct m; try discriminate.
+    destruct m0; try discriminate.
     repeat find_eapply_lem_hyp some_inj.
     repeat (find_eapply_lem_hyp pair_inj; intuition idtac).
     copy_apply Val_type_inj H1.
@@ -2013,12 +2078,14 @@ Proof.
     simpl in H2.
     apply value_inj in H2.
     repeat (find_eapply_lem_hyp pair_inj; intuition idtac).
+    repeat find_inversion_safe.
     subst.
 
     repeat eexists; eauto.
     simpl.
     admit. (* TODO: facts about [remove] *)
 
+*)
 Admitted.
 
 Hint Constructors source_stmt.
@@ -2197,17 +2264,20 @@ Example append_list_in_pair : sigT (fun p => forall (a x : nat) xs,
   {{ fun ret => 0 ~> ret }} // StringMap.empty _).
 Proof.
   compile.
-  eapply CompileDeclare with (t := Slice Num) (zeroval := []).
-  eauto. intro v; intros.
-  eapply CompileBind.
   eapply CompileDeclare with (t := Num); eauto.
   intro v'; intros.
+  eapply CompileDeclare with (t := Slice Num) (zeroval := []).
+  eauto. intro v; intros.
+  eapply CompileBind; [ intro | ].
+  
   eapply CompileRet'.
   eapply CompileBefore.
   eapply hoare_weaken.
   eapply CompileSplit with (A := nat) (B := list nat) (avar := v') (bvar := v) (pvar := 0).
   cancel_subset.
-  cancel_subset.
+  intros.
+  eapply chop_any.
+  reflexivity.
   eapply CompileRet.
   eapply hoare_weaken.
   pose proof CompileAppend.
@@ -2215,11 +2285,18 @@ Proof.
   evar (F : @Pred.pred var Nat.eq_dec value).
   specialize (H (StringMap.empty _) F nat _ v 1 x xs). (* why is this necessary? *)
   eapply H.
+  instantiate (F := (v' ~> a * _)%pred).
   cancel_subset.
   cancel_subset.
-  compile.
-  (* TODO: join *)
-Abort.
+
+  intro.
+  eapply hoare_weaken.
+  eapply CompileJoin with (A := nat) (B := list nat) (avar := v') (bvar := v) (pvar := 0).
+  cancel_subset.
+  cancel_subset.
+
+Defined.
+Eval lazy in (projT1 append_list_in_pair).
 
 (*
 Instance prog_equiv_equivalence T :
