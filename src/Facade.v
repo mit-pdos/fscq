@@ -1285,7 +1285,7 @@ Defined.
 Definition any' : pred := any.
 
 Lemma chop_any :
-  forall P Q : pred,
+  forall AT AEQ V (P Q : @Pred.pred AT AEQ V),
     P =p=> Q ->
     P =p=> Q * any.
 Proof.
@@ -1295,14 +1295,66 @@ Proof.
   eapply pimpl_any.
 Qed.
 
+Lemma pimpl_combine_any : forall AT AEQ V (p q : @Pred.pred AT AEQ V),
+  p =p=> q * any * any -> p =p=> q * any.
+Proof.
+  unfold pimpl in *.
+  intros.
+  unfold sep_star in *. rewrite sep_star_is in *.
+  unfold sep_star_impl in *.
+  forward_solve.
+  do 2 eexists.
+  split. apply mem_union_assoc; auto.
+  split; auto.
+  apply mem_disjoint_assoc_1; auto.
+Qed.
+
+Lemma pimpl_any_cancel : forall AT AEQ V (p q r: @Pred.pred AT AEQ V),
+  p =p=> r * any -> p * q =p=> r * any.
+Proof.
+  intros.
+  pose proof pimpl_any q.
+  pose proof pimpl_sep_star H H0.
+  eapply pimpl_combine_any; auto.
+Qed.
+
+Ltac subset_cancel_one x :=
+  match x with
+  | (?x1 * ?x2)%pred => subset_cancel_one x1 || subset_cancel_one x2
+  | ?t =>
+    match goal with
+    | [ |- _ =p=> ?Q ] =>
+      match Q with
+      | context [?X] => is_evar X;
+        match t with
+        | ptsto ?a ?b =>
+          let H := fresh in set (H := X);
+          instantiate (1 := (ptsto a b * _)%pred) in (Value of H);
+          subst H; cancel
+        | ptsto ?k ?v =>
+          eapply pimpl_trans with (b := (_ * ptsto k v)%pred);
+          [> | apply pimpl_any_cancel; solve [cancel] ]; cancel
+        end
+      end
+    end
+  end.
+
+Ltac cancel_subset_step := try unfold any' at 1; match goal with
+| [ |- ?P =p=> ?Q ] =>
+    has_evar Q; subset_cancel_one P
+| [ |- _ =p=> ?Q ] =>
+    match Q with
+    | context[any] => (eapply chop_any || eapply pimpl_any); cancel
+    end
+end.
+
 (* TODO: less hackery *)
 Ltac cancel_subset :=
   unfold pimpl_subset;
   fold any';
   unfold any' at 1;
   cancel;
-  try solve [ eapply chop_any; cancel |
-              repeat (eapply pimpl_any || eapply chop_any) ].
+  repeat cancel_subset_step.
 
 Lemma CompileAppend :
   forall env F T {Wr: GoWrapper T} lvar vvar (x : T) xs,
