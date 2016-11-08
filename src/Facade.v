@@ -1535,7 +1535,16 @@ Qed.
 Fact num_default_value : wrap 0 = default_value Num.
 Proof. auto. Qed.
 
-Hint Resolve num_default_value.
+Fact valu_default_value : wrap (wzero _) = default_value DiskBlock.
+Proof. auto. Qed.
+
+Fact bool_default_value : wrap false = default_value Bool.
+Proof. auto. Qed.
+
+Fact emptystruct_default_value : wrap tt = default_value EmptyStruct.
+Proof. auto. Qed.
+
+Hint Resolve num_default_value valu_default_value bool_default_value emptystruct_default_value.
 
 Lemma SetConstBefore : forall T (T' : GoWrapper T) (p : prog T) env xp v n (x : W) A B,
   EXTRACT p {{ v ~> n * A }} xp {{ B }} // env ->
@@ -2042,14 +2051,29 @@ Ltac var_mapping_to_ret :=
       end
   end.
 
+Ltac Type_denote x :=
+  match x with
+  | W => Num
+  | bool => Bool
+  | valu => DiskBlock
+  | unit => EmptyStruct
+  (* TODO add more types here *)
+  end.
+
 Ltac compile_step :=
   match goal with
   | [ |- @sigT _ _ ] => eexists; intros
   | _ => eapply CompileBindDiscard
   | [ |- EXTRACT Bind ?p ?q {{ _ }} _ {{ _ }} // _ ] =>
-    let v := fresh "var" in
-    eapply CompileDeclare with (t := Num);
-    eauto; [ intro v; intros; eapply CompileBind; intros ]
+    match type of p with
+    | prog ?T =>
+      match Type_denote T with
+      | ?x =>
+        let v := fresh "var" in
+        eapply CompileDeclare with (t := x);
+        eauto; [ intro v; intros; eapply CompileBind; intros ]
+      end
+    end
   | _ => eapply CompileConst
   | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
     eapply hoare_weaken_post; [ | eapply CompileSkip ]; [ cancel_subset ]
