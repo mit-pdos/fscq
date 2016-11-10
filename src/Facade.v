@@ -2009,7 +2009,7 @@ Admitted.
 Lemma CompileJoin :
   forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar (a : A) (b : B) F,
     EXTRACT Ret (a, b)
-    {{ avar ~> a * bvar ~> b * pvar |->? * F }}
+    {{ avar ~> a * bvar ~> b * pvar |-> Val (Pair (@wrap_type _ HA) (@wrap_type _ HB)) (Moved, Moved) * F }}
       Modify JoinPair (pvar, avar, bvar)
     {{ fun ret => pvar ~> ret * F }} // env.
 Proof.
@@ -2029,49 +2029,17 @@ Proof.
     simpl in *.
     rewrite ?eq_dec_eq in *.
     unfold sel in *.
-    assert (VarMap.find avar b0 = Some (wrap a)) by admit.
-    assert (VarMap.find bvar b0 = Some (wrap b)) by admit.
+    repeat extract_var_val.
     simpl in *.
-    rewrite ?H0, ?H1 in *.
-    (* 
-    eapply pred_apply_pimpl_proper in H; [
-      | reflexivity | ].
-    instantiate (y0 := (avar |-> wrap a * _)%pred).
-        eapply ptsto_valid in H; eassumption.
-    lazymatch goal with
-    | [ |- _ =p=> ?Q ] =>
-      let F := fresh "F" in
-      evar (F : pred);
-        unify Q (avar |-> (wrap a) * F)%pred;
-        cancel
-    end.
-    instantiate (F0 := (_ * pvar |->?)%pred). (* ew *)
-    cancel.
-*)
-
-
-(*
-    destruct m; try discriminate.
-    destruct m0; try discriminate.
-    repeat find_eapply_lem_hyp some_inj.
-    repeat (find_eapply_lem_hyp pair_inj; intuition idtac).
-    copy_apply Val_type_inj H1.
-    copy_apply Val_type_inj H2.
-    copy_apply Val_type_inj H3.
-    subst.
-    unfold wrap, wrap' in H2.
-    simpl in H2.
-    apply value_inj in H2.
-    repeat (find_eapply_lem_hyp pair_inj; intuition idtac).
-    repeat find_inversion_safe.
-    subst.
-
+    eval_expr.
     repeat eexists; eauto.
-    simpl.
-    admit. (* TODO: facts about [remove] *)
-
-*)
-Admitted.
+    pred_solve.
+  - contradiction H1.
+    repeat econstructor.
+    eval_expr; eauto.
+    eval_expr; eauto.
+    eval_expr; eauto.
+Qed.
 
 Hint Constructors source_stmt.
 
