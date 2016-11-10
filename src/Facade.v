@@ -290,11 +290,6 @@ Qed.
 
 Hint Resolve skip_is_final.
 
-Ltac match_finds :=
-  match goal with
-    | [ H1: VarMap.find ?a ?s = ?v1, H2: VarMap.find ?a ?s = ?v2 |- _ ] => rewrite H1 in H2; try invc H2
-  end.
-
 Ltac invert_trivial H :=
   match type of H with
     | ?con ?a = ?con ?b =>
@@ -323,6 +318,7 @@ Qed.
 Ltac find_inversion_safe :=
   match goal with
     | [ H : wrap _ = Go.Val _ _ |- _ ] => unfold wrap in H; simpl in H; unfold id in H
+    | [ H : Go.Val _ _ = wrap _ |- _ ] => unfold wrap in H; simpl in H; unfold id in H
     | [ H : Some ?x = Some ?y |- _ ] => apply some_inj in H; try (subst x || subst y)
     | [ H : Go.Val ?ta ?a = Go.Val ?tb ?b |- _ ] =>
       (unify ta tb; unify a b; fail 1) ||
@@ -338,6 +334,12 @@ Ltac find_inversion_safe :=
       assert (a1 = b1 /\ a2 = b2) as He by solve [inversion H; auto with equalities | invert_trivial H; auto with equalities]; clear H; destruct He as [? ?]; subst
     | [ H : (?a, ?b) = (?c, ?d) |- _ ] =>
       apply pair_inj in H; destruct H; try (subst a || subst c); try (subst b || subst d)
+  end.
+
+Ltac match_finds :=
+  match goal with
+    | [ H1: VarMap.find ?a ?s = ?v1, H2: VarMap.find ?a ?s = ?v2 |- _ ] => rewrite H1 in H2;
+      (find_inversion_safe || invc H2 || idtac)
   end.
 
 Ltac destruct_pair :=
@@ -1199,10 +1201,25 @@ Proof.
 Admitted.
 
 Ltac unfold_expr :=
-  unfold is_false, is_true, eval_bool, numop_impl', numop_impl,
+  match goal with
+  | [H : _ |- _ ] =>
+      progress (unfold is_false, is_true, eval_bool,
+         numop_impl', numop_impl,
+         split_pair_impl, split_pair_impl',
+         join_pair_impl, join_pair_impl',
          eval_test_m, eval_test_num, eval_test_bool,
          update_one, setconst_impl, duplicate_impl,
-         sel, id, eval in *; simpl in *.
+         sel, id, eval, eq_rect_r, eq_rect
+         in H); simpl in H
+  | _ => progress (unfold is_false, is_true, eval_bool,
+         numop_impl', numop_impl,
+         split_pair_impl, split_pair_impl',
+         join_pair_impl, join_pair_impl',
+         eval_test_m, eval_test_num, eval_test_bool,
+         update_one, setconst_impl, duplicate_impl,
+         sel, id, eval, eq_rect_r, eq_rect
+         ); simpl
+  end.
 
 Ltac eval_expr_step :=
     repeat extract_var_val;
@@ -1213,6 +1230,7 @@ Ltac eval_expr_step :=
       => rewrite e in H
     | [e : ?x = _ |- context[match ?x with _ => _ end] ]
       => rewrite e
+    | [H : context [eq_sym ?t] |- _ ] => destruct t; simpl in H
     | [H : context[if ?x then _ else _] |- _]
       => let H' := fresh in destruct x eqn:H'; try omega
     | [|- context[if ?x then _ else _] ]
@@ -1961,42 +1979,8 @@ Proof.
   intros; unfold ProgOk.
   inv_exec_progok.
   - repeat inv_exec.
-    (* TODO: this doesn't need to be so terrible *)
-    find_eapply_lem_hyp inj_pair2.
-    simpl in *.
-    unfold split_pair_impl in *.
-    repeat destruct_pair.
-    repeat find_inversion_safe.
-    destruct v3, v4, v2.
-    destruct t; try discriminate.
-    destruct (type_eq_dec t2 t0); try discriminate.
-    destruct (type_eq_dec t3 t1); try discriminate.
-    subst.
-    invc H8.
-    simpl in *.
-    rewrite ?eq_dec_eq in *.
-    unfold sel in *.
-    repeat extract_var_val.
-    destruct v3.
-    destruct m; try discriminate.
-    destruct m0; try discriminate.
-    repeat find_eapply_lem_hyp some_inj.
-    repeat (find_eapply_lem_hyp pair_inj; intuition idtac).
-    copy_apply Val_type_inj H4.
-    copy_apply Val_type_inj H5.
-    copy_apply Val_type_inj H6.
-    subst.
-    unfold wrap, wrap' in H5.
-    simpl in H5.
-    apply value_inj in H5.
-    repeat (find_eapply_lem_hyp pair_inj; intuition idtac).
-    simpl in *; rewrite ?eq_dec_eq in *.
-    repeat find_inversion_safe.
-    subst.
-
-    repeat eexists; eauto.
-    break_match; try discriminate.
-    repeat find_inversion_safe. subst.
+    repeat econstructor.
+    eval_expr.
     pred_solve.
     all : subst; simpl in *;
           unfold sel in *;
@@ -2016,23 +2000,8 @@ Proof.
   intros; unfold ProgOk.
   repeat inv_exec_progok.
   - repeat inv_exec.
-    (* TODO: this doesn't need to be so terrible *)
-    unfold split_pair_impl in *.
-    repeat destruct_pair.
-    repeat find_inversion_safe.
-    destruct v3, v4, v2.
-    destruct t; try discriminate.
-    destruct (type_eq_dec t2 t0); try discriminate.
-    destruct (type_eq_dec t3 t1); try discriminate.
-    subst.
-    invc H8.
-    simpl in *.
-    rewrite ?eq_dec_eq in *.
-    unfold sel in *.
-    repeat extract_var_val.
-    simpl in *.
     eval_expr.
-    repeat eexists; eauto.
+    repeat econstructor.
     pred_solve.
   - contradiction H1.
     repeat econstructor.
