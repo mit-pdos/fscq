@@ -2007,9 +2007,9 @@ Proof.
 Admitted.
 
 Lemma CompileJoin :
-  forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar (a : A) (b : B) F,
+  forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar (a : A) (b : B) pa pb F,
     EXTRACT Ret (a, b)
-    {{ avar ~> a * bvar ~> b * pvar |-> Val (Pair (@wrap_type _ HA) (@wrap_type _ HB)) (Moved, Moved) * F }}
+    {{ avar ~> a * bvar ~> b * pvar |-> Val (Pair (@wrap_type _ HA) (@wrap_type _ HB)) (pa, pb) * F }}
       Modify JoinPair (pvar, avar, bvar)
     {{ fun ret => pvar ~> ret * F }} // env.
 Proof.
