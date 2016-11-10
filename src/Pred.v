@@ -1076,6 +1076,19 @@ Proof.
     firstorder.
 Qed.
 
+Lemma ptsto_delete : forall a (F :pred) (m : mem) v,
+  (a |-> v * F)%pred m -> F (@delete AT V AEQ m a).
+Proof.
+  unfold delete; unfold_sep_star; unfold ptsto, mem_disjoint, mem_union.
+  intros; repeat deex.
+  erewrite functional_extensionality; eauto; intros.
+  destruct AEQ; subst.
+  destruct (m2 a) eqn:H'; auto.
+  contradiction H; eauto.
+  destruct (m1 x) eqn:H'; auto.
+  rewrite H4 in * by auto. congruence.
+Qed.
+
 Lemma any_sep_star_ptsto : forall a v (m : @mem AT AEQ V),
   m a = Some v -> (any * a |-> v)%pred m.
 Proof.

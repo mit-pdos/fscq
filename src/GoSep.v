@@ -39,3 +39,14 @@ Proof.
   rewrite VarMapFacts.add_o.
   repeat break_match; congruence.
 Qed.
+
+Theorem remove_delete :
+  forall m k,
+    mem_of (VarMap.remove k m) = Mem.delete (mem_of m) k.
+Proof.
+  intros.
+  extensionality k0.
+  unfold mem_of, Mem.delete.
+  rewrite VarMapFacts.remove_o.
+  repeat break_match; congruence.
+Qed.
