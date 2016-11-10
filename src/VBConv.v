@@ -52,25 +52,25 @@ Definition get_sublist {A:Type}(l: list A) (off len: nat) : list A := firstn len
 
 
 Fixpoint valuset2bytesets_rec (vs: list (list byte)) i : list (list byte):=
-  match i with
-  | O => nil
-  | S i' => match vs with
-      | nil => nil
-      | _ =>  (map (selN' 0 byte0) vs)::(valuset2bytesets_rec (map (skipn 1) vs) i')
-      end
-  end.
+match i with
+| O => nil
+| S i' => match vs with
+    | nil => nil
+    | _ =>  (map (selN' 0 byte0) vs)::(valuset2bytesets_rec (map (skipn 1) vs) i')
+    end
+end.
 
 Definition valuset2bytesets (vs: valuset): list byteset:=
   map (list2byteset byte0) (valuset2bytesets_rec (map valu2list (byteset2list vs)) valubytes).
 
 Fixpoint bytesets2valuset_rec (bs: list (list byte)) i : list (list  byte):=
-  match i with
-  | O => nil
-  | S i' => match bs with
-            | nil => nil
-            | _ =>  (map (selN' 0 byte0) bs)::(bytesets2valuset_rec (map (skipn 1) bs) i')
-            end
-  end.
+match i with
+| O => nil
+| S i' => match bs with
+          | nil => nil
+          | _ =>  (map (selN' 0 byte0) bs)::(bytesets2valuset_rec (map (skipn 1) bs) i')
+          end
+end.
 
 Definition bytesets2valuset (bs: list byteset) : valuset :=
 	list2byteset valu0 (map (list2valu) (bytesets2valuset_rec (map (@byteset2list byte) bs)
@@ -89,9 +89,11 @@ end.
 Definition updN_list (l: list byteset) off (l1: list byte): list byteset :=
 (firstn off l)++ (merge_bs l1 (get_sublist l off (length l1))) ++(skipn (off + length l1) l).
 
-Definition ds2llb (ds: diskset) : nelist (list (list byteset)):= d_map (map valuset2bytesets) ds.
+Definition ds2llb (ds: diskset) : nelist (list (list byteset)):= 
+d_map (map valuset2bytesets) ds.
 
-Definition llb2ds (llb : nelist (list (list byteset))) : diskset := d_map (map bytesets2valuset) llb.
+Definition llb2ds (llb : nelist (list (list byteset))) : diskset :=
+d_map (map bytesets2valuset) llb.
 
 Definition dsbupd (ds : diskset) (a : addr) (b : byteset): diskset :=
   llb2ds (d_map (map (fun x : list byteset => x ⟦ a := b ⟧)) (ds2llb ds)).
@@ -103,7 +105,7 @@ Fixpoint dsblistupd (ds : diskset) (a : addr) (lb : list byteset): diskset :=
   end. 
   
   
-  Definition mem_except_range AEQ V (m: @Mem.mem _ AEQ V) a n :=
+Definition mem_except_range AEQ V (m: @Mem.mem _ AEQ V) a n :=
 (fun a' =>
     if (le_dec a a')
       then if (lt_dec a' (a + n))
@@ -117,7 +119,25 @@ match k with
   | S k' => (firstn cs l)::(list_split_chunk k' cs (skipn cs l))
 end.
 
-  
+
+Fixpoint list_zero_pad l a :=
+match a with
+| O => l
+| S a' => list_zero_pad (l ++ (byte0 :: nil)) a'
+end.
+
+Definition mod_minus_curb a b: nat:=
+match a mod b with
+| O => 0
+| _ => (b - a mod b)
+end.
+	
+Fixpoint valu0_pad n: list valu :=
+match n with
+| O => nil
+| S n' => valu0::(valu0_pad n')
+end.
+
 (* Lemmas *)
 
 Lemma byteset2list2byteset: forall A (l: A * list A) def, 
@@ -840,10 +860,6 @@ Proof.
   rewrite valubytes_is in n; omega.
 Qed.
 
-(* Look for goodSize *)
-Lemma n2w_w2n_eq: forall n sz,
-# (natToWord sz n) = n.
-Proof. Admitted.
 
 Lemma app_length_eq: forall A (l l': list A) len a,
 length l = len -> a + length l' <= len ->
@@ -1312,4 +1328,308 @@ Proof.
   auto.
 Qed.
   
+	Lemma mod_minus_eq: forall c a b,
+	b <> 0 ->
+	a >= c * b ->
+	(a - c * b) mod b = a mod b.
+	Proof.
+		induction c; intros.
+		simpl.
+		rewrite <- minus_n_O.
+		reflexivity.
+		replace (a - S c * b) with ((a - b) - c * b).
+		rewrite IHc.
+		Search Nat.modulo minus.
+		apply modulo_eq.
+		all: auto.
+		simpl in H0.
+		eapply le_trans.
+		2: apply H0.
+		apply le_plus_l.
+		apply Nat.le_add_le_sub_l.
+		simpl in H0; auto.
+		simpl.
+		rewrite Nat.sub_add_distr.
+		reflexivity.
+	Qed.
+	
+		Lemma lt_minus_r: forall a b c,
+	b > c -> a > c -> a - c > a -b.
+	Proof. intros; omega. Qed.
+	
+		Lemma mod_minus_mod: forall a b,
+	b <> 0 ->
+	(a - a mod b) mod b = 0.
+	Proof.
+		intros.
+		rewrite mod_minus.
+		apply Nat.mod_mul.
+		all: auto.
+	Qed.
+	
+	Lemma div_lt_le: forall a b c,
+	b <> 0 ->
+	a >= c ->
+	a / b >= c / b.
+	Proof. Admitted.
+	
+	
+		Lemma n2w_id: forall a b sz,
+	a = b -> natToWord sz a = natToWord sz b.
+		Proof. intros; subst; reflexivity. Qed.
+	
+	Lemma mod_minus: forall a b,
+	b <> 0 ->
+	a - a mod b = (a / b) * b.
+	Proof.
+	 intros.
+	 remember (a mod b) as x.
+	 remember (a / b * b) as y.
+	 rewrite Nat.div_mod with (x:= a)(y:= b); eauto.
+	 rewrite Heqx; rewrite Heqy.
+	 rewrite Nat.add_sub.
+	 apply Nat.mul_comm.
+ Qed.
+ 
+ 	
+Lemma lt_mp: forall a b c,
+a > b -> 
+c < b ->
+a - b + c < a.
+Proof. intros; omega. Qed.
 
+
+Lemma between_lt_upper: forall a b c,
+b <> 0 ->
+a > (c - 1) * b ->
+a <= c * b ->
+a mod b > 0 ->
+a < c * b.
+	Proof. Admitted.
+	
+
+Lemma list_zero_pad_length: forall a l,
+length (list_zero_pad l a) = length l + a.
+Proof.
+  induction a; intros.
+  simpl; apply plus_n_O.
+  simpl.
+  rewrite IHa.
+  rewrite app_length; simpl; omega.
+Qed.
+
+Lemma list_zero_pad_selN_l: forall a l i def,
+i < length l ->
+selN (list_zero_pad l a) i def = selN l i def.
+Proof.
+  induction a; intros.
+  reflexivity.
+  simpl.
+  rewrite IHa.
+  rewrite selN_app1.
+  reflexivity.
+  auto.
+  rewrite app_length.
+  simpl; omega.
+Qed.
+
+Lemma list_zero_pad_selN_pad: forall a l i,
+i >= length l ->
+selN (list_zero_pad l a) i byte0 = byte0.
+Proof.
+  intros.
+  destruct (lt_dec i (length l + a)).
+  generalize dependent l.
+  induction a; intros.
+  simpl.
+  rewrite selN_oob; auto.
+  simpl.
+  destruct (le_dec (S (length l)) i).
+  apply IHa.
+  rewrite app_length; simpl; omega.
+  rewrite app_length; simpl; omega.
+  apply Nat.nle_gt in n.
+  rewrite list_zero_pad_selN_l.
+  rewrite selN_app2.
+  simpl.
+  destruct (i - length l); try omega; reflexivity.
+  auto.
+  rewrite app_length; simpl; omega.
+  apply selN_oob.
+  rewrite list_zero_pad_length; omega.
+Qed.
+
+Lemma between_mod_ne_0: forall c a b,
+b <> 0 ->
+a > (c - 1) * b ->
+a < c * b ->
+a mod b <> 0.
+Proof.
+  induction c; intros.
+  inversion H1.
+  destruct (lt_dec a b).
+  Search 0 Nat.modulo lt.
+  apply Nat.mod_small_iff in l.
+  rewrite l.
+  unfold not; intros.
+  rewrite H2 in H0; inversion H0.
+  auto.
+  apply Nat.nlt_ge in n.
+  replace (S c - 1) with c in H0 by omega.
+  simpl in *.
+  rewrite <- modulo_eq.
+  apply IHc.
+  all: try omega.
+  rewrite Nat.mul_sub_distr_r.
+  apply Nat.lt_add_lt_sub_r.
+  simpl; rewrite <- plus_n_O.
+  rewrite Nat.sub_add; try omega.
+  destruct c. omega.
+  simpl;  apply le_plus_l.
+Qed.
+
+Lemma merge_bs_firstn_comm: forall l l' a,
+firstn a (merge_bs l l') = merge_bs (firstn a l) (firstn a l').
+Proof. induction l; intros.
+  simpl.
+  repeat rewrite firstn_nil.
+  reflexivity.
+  destruct l'.
+  rewrite firstn_nil.
+  repeat rewrite merge_bs_nil.
+  apply firstn_map_comm.
+  destruct a0.
+  reflexivity.
+  simpl.
+  rewrite IHl.
+  reflexivity.
+Qed.
+
+Lemma list_zero_pad_expand: forall a l,
+list_zero_pad l a = l ++ list_zero_pad nil a.
+Proof. 
+  induction a; intros; simpl.
+  rewrite app_nil_r; reflexivity.
+  rewrite IHa.
+  simpl.
+  remember ((l ++ byte0 :: nil) ++ list_zero_pad nil a) as x.
+  rewrite IHa.
+  rewrite Heqx.
+  rewrite <- app_comm_cons.
+  apply app_assoc_reverse.
+Qed.  
+  
+Lemma list_zero_pad_nil_iff: forall a l,
+list_zero_pad l a = nil <-> l = nil /\ a = 0.
+Proof.
+  induction a; intros.
+  split; intros.
+  split; simpl in *; auto.
+  destruct H.
+  rewrite H; reflexivity.
+  split; intros.
+  simpl in H.
+  apply IHa in H.
+  destruct H.
+  apply app_eq_nil in H.
+  destruct H.
+  inversion H1.
+  destruct H.
+  inversion H0.
+Qed.
+
+Lemma pmp_1_4_cancel: forall a b c,
+a + b - a + c = b + c.
+Proof. intros; omega. Qed.
+
+Lemma lt_minus_S: forall a b,
+a > b ->
+exists n, a - b = S n.
+Proof.
+  induction a; intros.
+  inversion H.
+  destruct b.
+  exists a.
+  omega.
+  simpl.
+  apply IHa.
+  omega.
+Qed.
+
+Lemma mod_upper_bound_le: forall a b,
+a mod b < b ->
+a mod b + 1 <= b.
+Proof. intros. omega. Qed.
+
+Lemma list_zero_pad_nil_firstn: forall a b,
+firstn a (list_zero_pad nil b) = list_zero_pad nil (min a b).
+Proof.
+	induction a; intros.
+	reflexivity.
+	destruct b.
+	reflexivity.
+	simpl.
+	rewrite list_zero_pad_expand.
+	simpl.
+	rewrite IHa.
+	symmetry; apply list_zero_pad_expand.
+Qed.
+
+	
+
+	Lemma mod_between_upper: forall a b c,
+		b <> 0 ->
+		a > (c - 1) * b ->
+		c * b >= a ->
+		a mod b = 0 ->
+		a = c * b.
+		Proof.
+			intros.
+			destruct (lt_dec a (c * b)).
+			apply Nat.lt_le_incl in H0 as H'.
+			apply between_exists in H'; auto.
+			omega.
+			omega.
+		Qed.
+		
+		Lemma lt_0_S: forall a,
+	a > 0 -> exists n, a = S n.
+	Proof. 
+	intros; inversion H. exists 0. reflexivity.
+	exists m. reflexivity.
+	Qed.
+	
+	Lemma mod_minus_lt_0: forall a b,
+	b <> 0 ->
+	b - a mod b > 0.
+	Proof.
+	intros. apply Nat.lt_add_lt_sub_r; simpl.
+	apply Nat.mod_upper_bound; auto.
+	Qed.
+	
+	Lemma mp_2_3_cancel: forall a b,
+	a >= b -> a - b + b = a.
+	Proof. intros; omega. Qed.
+	
+	Lemma mod_upper_bound_le': forall a b,
+	b <> 0 ->
+	b >= a mod b.
+	Proof. 
+	intros; apply Nat.lt_le_incl; 
+	apply Nat.mod_upper_bound; auto.
+	Qed.
+	
+	Lemma mod_ne_0: forall a b,
+b <> 0 -> a mod b > 0 ->
+a > 0.
+Proof. 
+	intros. 
+	rewrite Nat.div_mod with (x:= a)(y:= b).
+	apply Nat.add_nonneg_pos.
+	all: try omega.
+	apply le_0_n.
+Qed.
+
+Lemma minus_le_0_eq: forall a b,
+a >= b -> a - b = 0 -> a = b.
+Proof. intros; omega. Qed.
