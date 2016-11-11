@@ -32,7 +32,6 @@ Cache.v
 GenSepAuto.v
 FSLayout.v
 AsyncRecArray.v
-HashmapProg.v
 SuperBlock.v
 DiskLogHash.v
 LogReplay.v
