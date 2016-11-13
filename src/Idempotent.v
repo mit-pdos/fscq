@@ -103,8 +103,6 @@ Proof.
       intros.
       eapply pimpl_trans; try apply H4.
       autorewrite with crash_xform; cancel.
-      inversion H11; inversion H'.
-      eexists. clear H3. solve_hashmap_subset.
       eauto.
     + solve_hashmap_subset'.
     + edestruct H5; eauto.
@@ -137,7 +135,6 @@ Proof.
   edestruct H5; eauto.
   - apply H3. eapply crash_xform_apply; eauto.
     pred_apply; cancel.
-    eexists. econstructor.
   - destruct H8. destruct H8. destruct H8.
     inversion H8. congruence.
   - repeat (destruct H8; try congruence).
@@ -169,7 +166,6 @@ Proof.
     edestruct H5; eauto.
     + apply H3. eapply crash_xform_apply; eauto.
       pred_apply; cancel.
-      eexists. clear H3. solve_hashmap_subset.
     + repeat (destruct H2; try congruence).
     + destruct H2. destruct H2. destruct H2.
       inversion H2. eauto.
