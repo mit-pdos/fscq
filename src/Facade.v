@@ -31,13 +31,13 @@ Notation "k ->> v ;  m" := (VarMap.add k v m) (at level 21, right associativity)
 
 Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : pred) (final_tstate : T -> pred) :=
   forall initial_state hm,
-    (snd initial_state) ≲ initial_tstate ->
+    (snd initial_state) \u2272 initial_tstate ->
     forall out,
       Go.exec env (initial_state, eprog) out ->
     (forall final_state, out = Go.Finished final_state ->
       exists r hm',
         exec (fst initial_state) hm sprog (Finished (fst final_state) hm' r) /\
-        (snd final_state ≲ final_tstate r)) /\
+        (snd final_state \u2272 final_tstate r)) /\
     (forall final_disk,
       out = Go.Crashed final_disk ->
       exists hm',
@@ -387,7 +387,7 @@ eapply Go.StepAssign.
 Hint Constructors Go.step.
 
 Fact sep_star_ptsto_some_find : forall l var val A,
-  l ≲ (var |-> val * A) -> VarMap.find var l = Some val.
+  l \u2272 (var |-> val * A) -> VarMap.find var l = Some val.
 Proof.
   intros.
   find_eapply_lem_hyp sep_star_assoc_1.
@@ -399,7 +399,7 @@ Hint Resolve sep_star_ptsto_some_find.
 
 Ltac extract_var_val :=
   lazymatch goal with
-  | [ H: ?s ≲ ?P |- _ ] =>
+  | [ H: ?s \u2272 ?P |- _ ] =>
     match P with
     | context[(?a |-> ?v)%pred] =>
       match goal with
@@ -465,7 +465,6 @@ Proof.
   repeat find_inversion_safe.
   find_reverse_rewrite.
   unfold wrap in *; simpl in *.
-  destruct Go.type_eq_dec; try congruence; subst.
   repeat find_inversion_safe.
   rewrite add_upd.
   rewrite sep_star_assoc.
@@ -1108,6 +1107,66 @@ Proof.
   eapply CompileSeq; eauto.
 Qed.
 
+Lemma CompileAfter : forall T env A B (C : T -> _) p x1 x2,
+  EXTRACT p
+  {{ A }}
+    x1
+  {{ B }} // env ->
+  (forall r : T,
+      EXTRACT Ret tt
+      {{ B r }}
+        x2
+      {{ fun _ => C r }} // env) ->
+  EXTRACT p
+  {{ A }}
+    x1; x2
+  {{ C }} // env.
+Proof.
+  unfold ProgOk.
+  intuition subst.
+
+  - find_eapply_lem_hyp ExecFinished_Steps. find_eapply_lem_hyp Steps_Seq.
+    intuition; repeat deex; try discriminate.
+    find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFinished.
+    (* [forward_solve] is not really good enough *)
+    forwardauto H. intuition.
+    forwardauto H2. repeat deex.
+    forward_solve.
+    invc H8; repeat (find_apply_lem_hyp inj_pair2; subst); [ | invc H18 ]; eauto.
+
+  - find_eapply_lem_hyp ExecCrashed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
+    intuition; repeat deex.
+    + invc H4. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
+      forward_solve.
+    + destruct st'. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
+      forwardauto H. intuition.
+      forwardauto H2. repeat deex.
+      forward_solve.
+      invc H0.
+      repeat (find_apply_lem_hyp inj_pair2; subst).
+      invc H15.
+
+  - find_eapply_lem_hyp ExecFailed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
+    intuition; repeat deex.
+    + eapply Steps_ExecFailed in H4; eauto.
+      forward_solve.
+      unfold is_final; simpl; intuition subst.
+      contradiction H5.
+      repeat eexists. eauto.
+      intuition. repeat deex.
+      contradiction H5. eauto.
+    + destruct st'. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFailed; eauto.
+      forwardauto H. intuition.
+      forwardauto H3. repeat deex.
+      forward_solve.
+      invc H10.
+      repeat (find_apply_lem_hyp inj_pair2; subst).
+      invc H15.
+
+  Unshelve.
+  all: auto.
+Qed.
+
 Lemma CompileIf : forall P Q {H1 : GoWrapper ({P}+{Q})}
                          T {H : GoWrapper T}
                          A B env (pt pf : prog T) (cond : {P} + {Q}) xpt xpf xcond condvar,
@@ -1320,7 +1379,7 @@ end.
 Ltac cancel_subset :=
   unfold pimpl_subset;
   fold any';
-  unfold any' at 1;
+  try unfold any' at 1;
   cancel;
   repeat cancel_subset_step.
 
@@ -1359,7 +1418,7 @@ Proof.
 
   eval_expr.
   all: simpl; reflexivity.
-Defined.
+Qed.
 
 Lemma CompileAddInPlace1 :
   forall env F avar bvar (a b : nat),
@@ -1380,7 +1439,7 @@ Proof.
 
   eval_expr.
   all: simpl; reflexivity.
-Defined.
+Qed.
 
 (* TODO: make it unnecessary to have all these separate lemmas *)
 Lemma CompileAddInPlace2 :
@@ -1401,7 +1460,7 @@ Proof.
 
   eval_expr.
   all: simpl; reflexivity.
-Defined.
+Qed.
 
 Lemma CompileAppend :
   forall env F T {Wr: GoWrapper T} lvar vvar (x : T) xs,
@@ -1442,11 +1501,17 @@ Proof.
     simpl.
     rewrite ?eq_dec_eq in *.
     simpl.
-    instantiate (Goal4 := ltac:(destruct (can_alias wrap_type))).
+    instantiate (1 := ltac:(destruct (can_alias wrap_type))).
     destruct (can_alias wrap_type); simpl in *.
     + rewrite ?eq_dec_eq; reflexivity.
     + reflexivity.
 Qed.
+
+Ltac pred_cancel :=
+  unfold pred_apply in *;
+  match goal with
+  | [H : _ |- _] => eapply pimpl_apply; [> | exact H]; solve [cancel_subset]
+  end.
 
 Lemma CompileForLoopBasic : forall L G (L' : GoWrapper L) v loopvar F
                           (n i : W)
@@ -1565,19 +1630,21 @@ Proof.
       }
 Qed.
 
-Fact num_default_value : wrap 0 = default_value Num.
-Proof. auto. Qed.
+Class DefaultValue T := DefaultVal : T.
 
-Fact valu_default_value : wrap (wzero _) = default_value DiskBlock.
-Proof. auto. Qed.
+Instance num_default_value : DefaultValue _ := 0.
+Instance valu_default_value : DefaultValue valu := $0.
+Instance bool_default_value : DefaultValue _ := false.
+Instance emptystruct_default_value : DefaultValue _ := tt.
+Instance slice_value A B {a : DefaultValue A} {b : DefaultValue B} : DefaultValue (A * B) := (a, b).
+Instance list_default_value A : DefaultValue (list A) := [].
 
-Fact bool_default_value : wrap false = default_value Bool.
-Proof. auto. Qed.
-
-Fact emptystruct_default_value : wrap tt = default_value EmptyStruct.
-Proof. auto. Qed.
-
-Hint Resolve num_default_value valu_default_value bool_default_value emptystruct_default_value.
+Ltac default :=
+  lazymatch goal with
+    | [ |- @wrap ?A ?Wa ?v = default_value ?ta ] =>
+      let d := constr:(_ : DefaultValue A) in
+      unify v d; reflexivity
+  end.
 
 Lemma SetConstBefore : forall T (T' : GoWrapper T) (p : prog T) env xp v n (x : W) A B,
   EXTRACT p {{ v ~> n * A }} xp {{ B }} // env ->
@@ -1756,9 +1823,9 @@ Lemma CompileFor : forall L G (L' : GoWrapper L) loopvar F
   {{ fun ret => loopvar ~> ret * F }} // env.
 Proof.
   intros.
-  eapply CompileDeclare; eauto. intro one.
+  eapply CompileDeclare; try default. intro one.
   eapply SetConstBefore; eauto.
-  eapply CompileDeclare; eauto. intro term.
+  eapply CompileDeclare; try default. intro term.
   eapply hoare_strengthen_pre; [>
   | eapply DuplicateBefore with (x' := 0) (x := i); eauto].
   cancel_subset.
@@ -1974,7 +2041,7 @@ Lemma CompileSplit :
     EXTRACT Ret tt
     {{ avar ~> a0 * bvar ~> b0 * pvar ~> p * F }}
       Modify SplitPair (pvar, avar, bvar)
-    {{ fun ret => avar ~> fst p * bvar ~> snd p * pvar |-> Val (Pair (@wrap_type _ HA) (@wrap_type _ HB)) (Moved, Moved) * F }} // env.
+    {{ fun _ => avar ~> fst p * bvar ~> snd p * pvar |-> Val (Pair (@wrap_type _ HA) (@wrap_type _ HB)) (Moved, Moved) * F }} // env.
 Proof.
   intros; unfold ProgOk.
   inv_exec_progok.
@@ -1992,10 +2059,10 @@ Admitted.
 
 Lemma CompileJoin :
   forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar (a : A) (b : B) pa pb F,
-    EXTRACT Ret (a, b)
+    EXTRACT Ret tt
     {{ avar ~> a * bvar ~> b * pvar |-> Val (Pair (@wrap_type _ HA) (@wrap_type _ HB)) (pa, pb) * F }}
       Modify JoinPair (pvar, avar, bvar)
-    {{ fun ret => pvar ~> ret * F }} // env.
+    {{ fun _ => pvar ~> (a, b) * F }} // env.
 Proof.
   intros; unfold ProgOk.
   repeat inv_exec_progok.
@@ -2046,6 +2113,13 @@ Ltac Type_denote x :=
   | bool => Bool
   | valu => DiskBlock
   | unit => EmptyStruct
+  | ?A * ?B =>
+    let ta := Type_denote A in
+    let tb := Type_denote B in
+    constr:(Pair ta tb)
+  | list ?A =>
+    let ta := Type_denote A in
+    constr:(Slice ta)
   (* TODO add more types here *)
   end.
 
@@ -2060,7 +2134,7 @@ Ltac compile_step :=
       | ?x =>
         let v := fresh "var" in
         eapply CompileDeclare with (t := x);
-        eauto; [ intro v; intros; eapply CompileBind; intros ]
+        [ default | intro v; intros; eapply CompileBind; intros ]
       end
     end
   | _ => eapply CompileConst
@@ -2185,11 +2259,12 @@ Example append_list_in_pair : sigT (fun p => forall (a x : nat) xs,
     p
   {{ fun ret => 0 ~> ret }} // StringMap.empty _).
 Proof.
-  compile.
-  eapply CompileDeclare with (t := Num); eauto.
+  compile_step.
+  compile_step.
+  eapply CompileDeclare with (t := Num); [ default |].
   intro v'; intros.
-  eapply CompileDeclare with (t := Slice Num) (zeroval := []).
-  eauto. intro v; intros.
+  eapply CompileDeclare with (t := Slice Num) (zeroval := []); [ default |].
+  intro v; intros.
   eapply CompileBind; [ intro | ].
   
   eapply CompileRet'.
@@ -2213,6 +2288,7 @@ Proof.
 
   intro.
   eapply hoare_weaken.
+  eapply CompileRet'.
   eapply CompileJoin with (A := nat) (B := list nat) (avar := v') (bvar := v) (pvar := 0).
   cancel_subset.
   cancel_subset.
