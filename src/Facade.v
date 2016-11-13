@@ -1714,89 +1714,14 @@ Lemma AddInPlaceLeftAfter : forall T (T' : GoWrapper T) (p : prog T) A xp env
   {{ fun ret => F ret * v ~> (x + a) * va ~> a }} // env.
 Proof.
   intros.
-  unfold ProgOk.
-  inv_exec_progok.
-  - find_eapply_lem_hyp ExecFinished_Steps.
-    find_eapply_lem_hyp Steps_Seq.
-    intuition repeat deex.
-    congruence.
-    repeat find_eapply_lem_hyp Steps_ExecFinished.
-    do 2 inv_exec.
-    eapply ExecFinished_Steps in H4.
-    invc H4.
-    edestruct H; forward_solve. auto.
-    eval_expr.
-    repeat eexists; eauto.
-    pred_solve.
-    inv_exec.
-    (*
-  - find_eapply_lem_hyp ExecCrashed_Steps.
-    repeat deex.
-    find_eapply_lem_hyp Steps_Seq.
-    intuition repeat deex.
-    inv_exec.
-    find_eapply_lem_hyp Steps_ExecCrashed; eauto.
-    edestruct H; eauto. auto.
-    forward_solve.
-    find_eapply_lem_hyp Steps_ExecFinished.
-    find_eapply_lem_hyp Steps_ExecCrashed; eauto.
-    inv_exec. inv_exec.
-    repeat (simpl in *; destruct_pair).
-    find_inversion_safe.
-    repeat rewrite pair_inj in *. intuition idtac. subst.
-    repeat match goal with [H : context [match ?x with _ => _ end] |- _] =>
-      let H' := fresh in destruct x eqn:H'; simpl in *; try congruence end.
-    unfold sel in *.
-    do 2 find_inversion. repeat find_inversion_safe.
-    unfold update_one in *.
-    eval_expr.
-    find_inversion.
-    inv_exec.
-    inv_exec.
-    invc H4.
-    invc H5.
-  - find_eapply_lem_hyp ExecFailed_Steps.
-    intuition repeat deex.
-    find_eapply_lem_hyp Steps_Seq.
-    intuition repeat deex.
-    + edestruct H with (initial_state := (a0, b)); intuition eauto.
-      eapply Steps_ExecFailed; [> | | eauto].
-      unfold is_final; simpl; intro; subst; forward_solve.
-      intro. intuition forward_solve.
-    + find_eapply_lem_hyp Steps_ExecFinished.
-      find_eapply_lem_hyp Steps_ExecFailed; eauto.
-      inv_exec.
-      {
-        inv_exec.
-        repeat (simpl in *; destruct_pair).
-        find_inversion_safe.
-        repeat rewrite pair_inj in *. intuition idtac. subst.
-        repeat match goal with [H : context [match ?x with _ => _ end] |- _] =>
-          let H' := fresh in destruct x eqn:H'; simpl in *; try congruence end.
-        unfold sel in *.
-        do 2 find_inversion. repeat find_inversion_safe.
-        unfold update_one in *.
-        eval_expr.
-        find_inversion.
-        inv_exec.
-        inv_exec.
-        unfold is_final in *. simpl in *. congruence.
-      }
-      {
-        edestruct H; eauto. auto.
-        edestruct H5; eauto.
-        repeat deex; simpl in *.
-        repeat destruct_pair; simpl in *.
-        contradiction H2.
-        repeat econstructor; eauto.
-        simpl; unfold sel; simpl.
-        eval_expr; eauto.
-        eval_expr; eauto.
-        eval_expr; eauto.
-      }
-  Unshelve. eauto.
-*)
-Admitted.
+  eapply CompileAfter; eauto.
+  intros.
+  eapply hoare_weaken_post; [ | eapply CompileRet with (var0 := v) (v := x + a) ].
+  cancel_subset.
+  eapply hoare_weaken.
+  eapply CompileAddInPlace1 with (avar := v) (bvar := va).
+  all: cancel_subset.
+Qed.
 
 Lemma CompileFor : forall L G (L' : GoWrapper L) loopvar F
                           v vn (n i : W)
