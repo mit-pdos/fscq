@@ -767,6 +767,13 @@ Definition possible_sync AT AEQ (m m' : @mem AT AEQ valuset) :=
   forall a, (m a = None /\ m' a = None) \/
   (exists v l l', m a = Some (v, l) /\ m' a = Some (v, l') /\ incl l' l).
 
+Theorem possible_sync_refl : forall AT AEQ (m: @mem AT AEQ _),
+    possible_sync m m.
+Proof.
+  unfold possible_sync; intros.
+  destruct (m a); intuition eauto 10 using incl_refl.
+Qed.
+
 Theorem possible_sync_trans : forall AT AEQ (m1 m2 m3 : @mem AT AEQ _),
   possible_sync m1 m2 ->
   possible_sync m2 m3 ->
@@ -790,6 +797,21 @@ Proof.
   right.
   repeat eexists.
   apply incl_nil.
+Qed.
+
+Theorem possible_sync_after_sync : forall A AEQ (m m': @mem A AEQ _),
+    possible_sync (sync_mem m) m' ->
+    m' = sync_mem m.
+Proof.
+  unfold possible_sync, sync_mem; intros.
+  extensionality a.
+  specialize (H a).
+  destruct (m a) as [ [] | ];
+    intuition eauto;
+    repeat deex;
+    try congruence.
+  inversion H0; subst.
+  apply ListUtils.incl_in_nil in H2; subst; eauto.
 Qed.
 
 Theorem possible_sync_upd : forall AT AEQ (m : @mem AT AEQ _) a v l l',
@@ -1258,6 +1280,32 @@ Proof.
   rewrite H0 in H1; inversion H1; subst.
   rewrite H.
   rewrite incl_in_nil with (l := l'); eauto.
+Qed.
+
+Lemma incl_vsmerge : forall l l' v,
+    incl l l' ->
+    incl (vsmerge (v, l)) (vsmerge (v, l')).
+Proof.
+  induction l'; simpl; intros.
+  - destruct l.
+    apply incl_refl.
+    specialize (H w); simpl in *; intuition.
+  - unfold vsmerge; simpl.
+    unfold incl; simpl in *; intros; intuition eauto.
+    specialize (H a0); simpl in *; intuition eauto.
+Qed.
+
+Lemma possible_crash_possible_sync_trans : forall m m1 m2,
+    possible_sync m m1 ->
+    possible_crash m1 m2 ->
+    possible_crash m m2.
+Proof.
+  unfold possible_sync, possible_crash; intros.
+  specialize (H a); specialize (H0 a); intuition; repeat deex; try congruence.
+  right.
+  do 2 eexists; intuition eauto.
+  rewrite H0 in H1; inversion H1; subst.
+  eapply incl_vsmerge; eauto.
 Qed.
 
 Theorem sync_invariant_crash_xform : forall F,

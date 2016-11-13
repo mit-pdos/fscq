@@ -4,8 +4,9 @@ OCAMLBUILD := env OCAMLPATH=$(shell pwd) ocamlbuild \
 	      -I codegen -I mllib -X ocamlfuse \
 	      -package extunix -package zarith -package ocamlfuse
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
-	      Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
-	      Hashmap HashmapProg \
+				Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
+				OperationalSemantics \
+				Hashmap HashmapProg \
 	      SepAuto Idempotent Errno \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
 	      MemPred Cache \

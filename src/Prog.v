@@ -72,8 +72,8 @@ Inductive exec : forall T, rawdisk -> hashmap -> prog T -> outcome T -> Prop :=
 | XRet : forall T m hm (v: T),
     exec m hm (Ret v) (Finished m hm v)
 | XStep : forall T m hm (p: prog T) m' m'' hm' v,
-    possible_sync m m' ->
-    step m' hm p m'' hm' v ->
+    step m hm p m' hm' v ->
+    possible_sync m' m'' ->
     exec m hm p (Finished m'' hm' v)
 | XBindFinish : forall m hm T (p1: prog T) m' hm' (v: T)
                   T' (p2: T -> prog T') out,
