@@ -710,10 +710,16 @@ Theorem prog_vars_decrease :
 Admitted.
 *)
 
+Class DefaultValue T {Wrapper : GoWrapper T} :=
+  {
+    zeroval : T;
+    default_zero : wrap zeroval = Go.default_value wrap_type;
+  }.
+
+Arguments DefaultValue T {Wrapper}.
 
 Lemma CompileDeclare :
-  forall env T t (zeroval : Go.type_denote t) {H : GoWrapper (Go.type_denote t)} A B (p : prog T) xp,
-    wrap zeroval = Go.default_value t ->
+  forall env R T {Wr : GoWrapper T} {WrD : DefaultValue T} A B (p : prog R) xp,
     (forall var,
        EXTRACT p
        {{ var ~> zeroval * A }}
@@ -721,7 +727,7 @@ Lemma CompileDeclare :
        {{ fun ret => B ret }} // env) ->
     EXTRACT p
     {{ A }}
-      Go.Declare t xp
+      Go.Declare wrap_type xp
     {{ fun ret => B ret }} // env.
 Proof.
   unfold ProgOk.
@@ -731,20 +737,20 @@ Proof.
   - intuition try discriminate.
     find_eapply_lem_hyp Go.ExecFailed_Steps.
     repeat deex.
-    invc H5.
-    contradiction H7.
+    invc H3.
+    contradiction H5.
     eapply can_always_declare; auto.
 
     destruct_pair.
     hnf in s.
     destruct_pair.
     simpl in *.
-    invc H6.
-    specialize (H1 var (r0, var ->> Go.default_value t; l) hm).
-    forward H1.
+    invc H4.
+    specialize (H var (r0, var ->> Go.default_value wrap_type; l) hm).
+    forward H.
     {
       simpl.
-      rewrite <- H0.
+      rewrite <- default_zero.
       rewrite add_upd.
       rewrite sep_star_assoc.
       rewrite sep_star_comm.
@@ -754,30 +760,30 @@ Proof.
     simpl in *.
     find_eapply_lem_hyp Go.Steps_Seq.
     intuition.
-    eapply H6; eauto.
+    eapply H4; eauto.
     deex.
-    eapply Go.Steps_ExecFailed in H8; eauto.
+    eapply Go.Steps_ExecFailed in H6; eauto.
     intuition.
-    contradiction H7.
+    contradiction H5.
     match goal with
     | [ H : Go.is_final _ |- _ ] => cbv [snd Go.is_final] in H; subst
     end.
     eauto.
     intuition.
-    contradiction H7.
+    contradiction H5.
     repeat deex.
     eauto.
 
     forward_solve.
-    invc H9.
-    contradiction H7.
+    invc H7.
+    contradiction H5.
     destruct st'.
     repeat eexists. econstructor; eauto.
-    invc H1.
-    invc H10.
-    contradiction H3.
+    invc H.
+    invc H8.
+    contradiction H1.
     auto.
-    invc H1.
+    invc H.
 
     (*
   - invc H4.
@@ -1010,13 +1016,10 @@ Ltac cancel_subset :=
   cancel;
   repeat cancel_subset_step.
 
-Record Declaration :=
-  {
-    Decl_t : type;
-    Decl_Wr : GoWrapper (type_denote Decl_t);
-    zeroval : type_denote Decl_t;
-    default_zero : wrap zeroval = default_value Decl_t;
-  }.
+Inductive Declaration :=
+| Decl (T : Type) {Wr: GoWrapper T} {D : DefaultValue T}.
+
+Arguments Decl T {Wr} {D}.
 
 Fixpoint n_tuple_unit n (T : Type) : Type :=
   match n with
@@ -1027,13 +1030,15 @@ Fixpoint n_tuple_unit n (T : Type) : Type :=
 Definition decls_pred (decls : list Declaration) (vars : n_tuple_unit (length decls) var) : pred.
   induction decls; simpl in *.
   - exact emp.
-  - exact ((snd vars |-> @wrap (type_denote (Decl_t a)) (Decl_Wr a) (zeroval a) * IHdecls (fst vars))%pred).
+  - destruct a.
+    exact ((snd vars |-> wrap zeroval * IHdecls (fst vars))%pred).
 Defined.
 
 Definition many_declares (decls : list Declaration) (xp : n_tuple_unit (length decls) var -> stmt) : stmt.
   induction decls; simpl in *.
   - exact (xp tt).
-  - eapply (Declare (Decl_t a)); intro var.
+  - destruct a.
+    eapply (Declare wrap_type); intro var.
     apply IHdecls; intro.
     apply xp.
     exact (X, var).
@@ -1053,7 +1058,7 @@ Lemma CompileDeclareMany :
 Proof.
   induction decls; simpl; intros.
   - eapply hoare_strengthen_pre; [ | apply H ]. cancel_subset.
-  - eapply CompileDeclare; eauto using default_zero. intros.
+  - destruct a. eapply CompileDeclare; eauto. intros.
     eapply IHdecls. intros.
     eapply hoare_strengthen_pre; [ | apply H ]. cancel_subset.
 Qed.
@@ -1680,21 +1685,26 @@ Proof.
       }
 Qed.
 
-Class DefaultValue T := DefaultVal : T.
+Instance num_default_value : DefaultValue nat := {| zeroval := 0 |}. auto. Defined.
+Instance valu_default_value : DefaultValue valu := {| zeroval := $0 |}. auto. Defined.
+Instance bool_default_value : DefaultValue bool := {| zeroval := false |}. auto. Defined.
+Instance emptystruct_default_value : DefaultValue unit := {| zeroval := tt |}. auto. Defined.
 
-Instance num_default_value : DefaultValue _ := 0.
-Instance valu_default_value : DefaultValue valu := $0.
-Instance bool_default_value : DefaultValue _ := false.
-Instance emptystruct_default_value : DefaultValue _ := tt.
-Instance slice_value A B {a : DefaultValue A} {b : DefaultValue B} : DefaultValue (A * B) := (a, b).
-Instance list_default_value A : DefaultValue (list A) := [].
+Lemma default_zero' :
+  forall T {W : GoWrapper T} v,
+    wrap v = default_value wrap_type -> wrap' v = default_value' wrap_type.
+Proof.
+  unfold wrap, default_value; intros.
+  eauto using value_inj.
+Qed.
 
-Ltac default :=
-  lazymatch goal with
-    | [ |- @wrap ?A ?Wa ?v = default_value ?ta ] =>
-      let d := constr:(_ : DefaultValue A) in
-      unify v d; reflexivity
-  end.
+Instance slice_default_value A B {Wa : GoWrapper A} {Wb : GoWrapper B}
+  {Da : DefaultValue A} {Db : DefaultValue B} : DefaultValue (A * B) := {| zeroval := (zeroval, zeroval) |}.
+  destruct Da, Db. unfold wrap; simpl. repeat find_apply_lem_hyp default_zero'.
+  repeat find_rewrite. reflexivity.
+Qed.
+
+Instance list_default_value A {W : GoWrapper A} : DefaultValue (list A) := {| zeroval := [] |}. auto. Defined.
 
 Lemma SetConstBefore : forall T (T' : GoWrapper T) (p : prog T) env xp v n (x : W) A B,
   EXTRACT p {{ v ~> n * A }} xp {{ B }} // env ->
@@ -1798,9 +1808,9 @@ Lemma CompileFor : forall L G (L' : GoWrapper L) loopvar F
   {{ fun ret => loopvar ~> ret * F }} // env.
 Proof.
   intros.
-  eapply CompileDeclare; try default. intro one.
+  eapply CompileDeclare with (Wr := GoWrapper_Num). intro one.
   eapply SetConstBefore; eauto.
-  eapply CompileDeclare; try default. intro term.
+  eapply CompileDeclare with (Wr := GoWrapper_Num). intro term.
   eapply hoare_strengthen_pre; [>
   | eapply DuplicateBefore with (x' := 0) (x := i); eauto].
   cancel_subset.
@@ -2104,13 +2114,10 @@ Ltac compile_step :=
   | _ => eapply CompileBindDiscard
   | [ |- EXTRACT Bind ?p ?q {{ _ }} _ {{ _ }} // _ ] =>
     match type of p with
-    | prog ?T =>
-      match Type_denote T with
-      | ?x =>
-        let v := fresh "var" in
-        eapply CompileDeclare with (t := x);
-        [ default | intro v; intros; eapply CompileBind; intros ]
-      end
+    | prog ?T0 =>
+      let v := fresh "var" in
+      eapply CompileDeclare with (T := T0);
+      intro v; intros; eapply CompileBind; intros
     end
   | _ => eapply CompileConst
   | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
@@ -2239,7 +2246,7 @@ Proof.
   compile_step.
   compile_step.
   eapply CompileBefore.
-  instantiate (decls := {| Decl_t := Num; zeroval := 0; default_zero := eq_refl |} :: _); simpl in *.
+  instantiate (decls := Decl nat :: _); simpl in *.
   eapply hoare_weaken.
   eapply CompileSplit with (A := nat) (B := list nat) (avar := snd vars) (bvar := var0) (pvar := 0).
   cancel_subset. instantiate (p := decls_pred ?l (fst vars)); reflexivity.
@@ -2296,7 +2303,6 @@ Proof.
 Defined.
 Eval lazy in projT1 micro_add_use_twice.
 
-                                 
 Example compile_one_read : sigT (fun p =>
   EXTRACT Read 1
   {{ 0 ~> $0 }}
