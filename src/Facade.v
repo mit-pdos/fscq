@@ -443,6 +443,7 @@ Ltac forward_solve_step :=
     | _ => progress intuition eauto
     | [ H : forall _, _ |- _ ] => forwardauto H
     | _ => deex
+    | _ => discriminate
   end.
 
 Ltac forward_solve :=
@@ -835,6 +836,16 @@ Proof.
   + exfalso; eauto using can_always_declare.
 Qed.
 
+Lemma Undeclare_fail :
+  forall env st var,
+    Go.exec env (st, Go.Undeclare var) Go.Failed -> False.
+Proof.
+  intros.
+  invc H.
+  + repeat inv_exec; auto.
+  + contradiction H0. destruct st. repeat econstructor.
+Qed.
+
 Lemma CompileDeclare :
   forall env R T {Wr : GoWrapper T} {WrD : DefaultValue T} A B (p : prog R) xp,
     (forall var,
@@ -849,13 +860,9 @@ Lemma CompileDeclare :
 Proof.
   unfold ProgOk; intros.
   repeat destruct_pair.
-  destruct out.
-  - intuition try discriminate.
+  destruct out; intuition try discriminate; simpl in *.
+  - find_apply_lem_hyp Declare_fail; repeat deex.
 
-    find_apply_lem_hyp Declare_fail.
-    repeat deex.
-
-    simpl in *.
     specialize (H var (r, var ->> Go.default_value wrap_type; l) hm).
     forward H.
     {
@@ -866,82 +873,36 @@ Proof.
     forward_solve.
     find_apply_lem_hyp Go.Steps_Seq.
     forward_solve.
-    find_apply_lem_hyp Go.Steps_ExecFailed; eauto.
-    forward_solve.
-    intuition.
-    match goal with
-    | [ H : Go.is_final _ |- _ ] => cbv [snd Go.is_final] in H; subst
-    end.
-    eauto.
-    intuition; repeat deex. eauto.
 
-    find_apply_lem_hyp Go.Steps_ExecFinished.
-    forward_solve.
-    invc H8.
-    contradiction H7.
-    destruct st'.
-    repeat eexists. econstructor; eauto.
-    invc H3.
-    invc H12.
-    contradiction H.
-    auto.
-    invc H3.
-
-    (*
-  - invc H4.
-    invc H5.
-    specialize (H2 var).
-    forward H2.
-    {
-      maps.
-      simpl in *.
-      pose proof (Forall_elements_forall_In H3).
-      case_eq (VarMap.find var A); intros.
-      destruct s.
+    + find_apply_lem_hyp Go.Steps_ExecFailed; eauto.
       forward_solve.
-      find_rewrite.
-      intuition.
-      auto.
+      cbv [snd Go.is_final]. intuition (subst; eauto).
+      forward_solve.
+
+    + exfalso; eauto using Undeclare_fail, Go.Steps_ExecFailed.
+
+  - do 2 inv_exec.
+    specialize (H var (r, var ->> Go.default_value wrap_type; l) hm).
+    forward H.
+    {
+      simpl. pred_solve.
     }
-    intuition try discriminate.
     destruct_pair.
     find_inversion_safe.
-    specialize (H5 (r, var ->> Go.default_value t; t0) hm).
-    forward H5.
-    {
-      clear H5.
-      simpl in *; maps.
-      eapply forall_In_Forall_elements; intros.
-      pose proof (Forall_elements_forall_In H3).
-      destruct (VarMapFacts.eq_dec k var); maps.
-      specialize (H5 k v).
-      intuition.
-    }
     find_eapply_lem_hyp Go.ExecFinished_Steps.
     find_eapply_lem_hyp Go.Steps_Seq.
-    intuition; deex; try discriminate.
+    forward_solve.
     repeat find_eapply_lem_hyp Go.Steps_ExecFinished.
-    invc H8.
-    invc H5.
-    invc H9.
-    invc H5.
+    invc H4. invc H. invc H5. invc H.
     forward_solve.
     simpl in *.
     repeat eexists; eauto.
-    maps.
-    eapply forall_In_Forall_elements; intros.
-    pose proof (Forall_elements_forall_In H10).
-    forward_solve.
-    destruct v.
-    destruct (VarMapFacts.eq_dec k var).
-    subst.
-    maps.
-    unfold vars_subset in H1.
-    specialize (H1 r1 var).
-    intuition.
-    congruence.
-    maps.
+    (* This is hard or impossible to prove! Probably depends on [exec_vars_decrease] and
+       the determinism (or something similar) of [Prog.exec].
+    *)
+    admit.
 
+(*
   - invc H4; [ | invc H6 ].
     invc H5.
     find_eapply_lem_hyp Go.ExecCrashed_Steps.
