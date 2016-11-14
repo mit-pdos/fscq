@@ -718,6 +718,123 @@ Class DefaultValue T {Wrapper : GoWrapper T} :=
 
 Arguments DefaultValue T {Wrapper}.
 
+Definition pimpl_subset (P Q : pred) := P =p=> Q * any.
+
+Notation "p >p=> q" := (pimpl_subset p%pred q%pred) (right associativity, at level 90).
+
+
+Definition any' : pred := any.
+
+Lemma chop_any :
+  forall AT AEQ V (P Q : @Pred.pred AT AEQ V),
+    P =p=> Q ->
+    P =p=> Q * any.
+Proof.
+  intros.
+  rewrite H.
+  cancel.
+  eapply pimpl_any.
+Qed.
+
+Lemma pimpl_combine_any : forall AT AEQ V (p q : @Pred.pred AT AEQ V),
+  p =p=> q * any * any -> p =p=> q * any.
+Proof.
+  unfold pimpl in *.
+  intros.
+  unfold sep_star in *. rewrite sep_star_is in *.
+  unfold sep_star_impl in *.
+  forward_solve.
+  do 2 eexists.
+  split. apply mem_union_assoc; auto.
+  split; auto.
+  apply mem_disjoint_assoc_1; auto.
+Qed.
+
+Lemma pimpl_any_cancel : forall AT AEQ V (p q r: @Pred.pred AT AEQ V),
+  p =p=> r * any -> p * q =p=> r * any.
+Proof.
+  intros.
+  pose proof pimpl_any q.
+  pose proof pimpl_sep_star H H0.
+  eapply pimpl_combine_any; auto.
+Qed.
+
+Ltac subset_cancel_one x :=
+  match x with
+  | (?x1 * ?x2)%pred => subset_cancel_one x1 || subset_cancel_one x2
+  | ?t =>
+    match goal with
+    | [ |- _ =p=> ?Q ] =>
+      match Q with
+      | context [?X] => is_evar X;
+        match t with
+        | ptsto ?a ?b =>
+          let H := fresh in set (H := X);
+          instantiate (1 := (ptsto a b * _)%pred) in (Value of H);
+          subst H; cancel
+        | ptsto ?k ?v =>
+          eapply pimpl_trans with (b := (_ * ptsto k v)%pred);
+          [> | apply pimpl_any_cancel; solve [cancel] ]; cancel
+        end
+      end
+    end
+  end.
+
+Ltac cancel_subset_step := try unfold any' at 1; match goal with
+| [ |- ?P =p=> ?Q ] =>
+    has_evar Q; subset_cancel_one P
+| [ |- _ =p=> ?Q ] =>
+    match Q with
+    | context[any] => (eapply chop_any || eapply pimpl_any); cancel
+    end
+end.
+
+(* TODO: less hackery *)
+Ltac cancel_subset :=
+  unfold pimpl_subset;
+  fold any';
+  try unfold any' at 1;
+  cancel;
+  repeat cancel_subset_step.
+
+Lemma ptsto_upd_disjoint' : forall (F : pred) a v m,
+  F m -> m a = None
+  -> (a |-> v * F)%pred (upd m a v).
+Proof.
+  intros.
+  eapply pred_apply_pimpl_proper; [ reflexivity | | eapply ptsto_upd_disjoint; eauto ].
+  cancel.
+Qed.
+
+Ltac pred_solve_step := match goal with
+  | [ |- ( ?P )%pred (upd _ ?a ?x) ] =>
+    match P with
+    | context [(?a |-> ?x)%pred] =>
+      eapply pimpl_apply with (p := (a |-> x * _)%pred);
+      [ cancel_subset | (eapply ptsto_upd_disjoint'; solve [eauto]) || eapply ptsto_upd ]
+    end
+  | [ |- ( ?P )%pred (delete _ ?a) ] =>
+    eapply ptsto_delete with (F := P)
+  | [ H : _%pred ?t |- _%pred ?t ] => pred_apply; solve [cancel_subset]
+  | _ => solve [cancel_subset]
+  end.
+
+Ltac pred_solve := progress (
+  repeat (unfold pred_apply in *; rewrite ?add_upd, ?remove_delete, ?default_zero);
+  repeat pred_solve_step).
+
+Lemma Declare_fail :
+  forall env d s t xp,
+    Go.exec env (d, s, Go.Declare t xp) Go.Failed ->
+    exists var, Go.exec env (d, var ->> Go.default_value t; s,
+      (xp var; Go.Undeclare var)%go) Go.Failed /\ VarMap.find var s = None.
+Proof.
+  intros.
+  invc H.
+  + invc H0; eauto.
+  + exfalso; eauto using can_always_declare.
+Qed.
+
 Lemma CompileDeclare :
   forall env R T {Wr : GoWrapper T} {WrD : DefaultValue T} A B (p : prog R) xp,
     (forall var,
@@ -730,60 +847,45 @@ Lemma CompileDeclare :
       Go.Declare wrap_type xp
     {{ fun ret => B ret }} // env.
 Proof.
-  unfold ProgOk.
-  intros.
+  unfold ProgOk; intros.
   repeat destruct_pair.
   destruct out.
   - intuition try discriminate.
-    find_eapply_lem_hyp Go.ExecFailed_Steps.
-    repeat deex.
-    invc H3.
-    contradiction H5.
-    eapply can_always_declare; auto.
 
-    destruct_pair.
-    hnf in s.
-    destruct_pair.
+    find_apply_lem_hyp Declare_fail.
+    repeat deex.
+
     simpl in *.
-    invc H4.
-    specialize (H var (r0, var ->> Go.default_value wrap_type; l) hm).
+    specialize (H var (r, var ->> Go.default_value wrap_type; l) hm).
     forward H.
     {
-      simpl.
-      rewrite <- default_zero.
-      rewrite add_upd.
-      rewrite sep_star_assoc.
-      rewrite sep_star_comm.
-      eapply ptsto_upd_disjoint; eauto.
+      simpl. pred_solve.
     }
+    intuition idtac.
+    find_apply_lem_hyp Go.ExecFailed_Steps.
+    forward_solve.
+    find_apply_lem_hyp Go.Steps_Seq.
+    forward_solve.
+    find_apply_lem_hyp Go.Steps_ExecFailed; eauto.
+    forward_solve.
     intuition.
-    simpl in *.
-    find_eapply_lem_hyp Go.Steps_Seq.
-    intuition.
-    eapply H4; eauto.
-    deex.
-    eapply Go.Steps_ExecFailed in H6; eauto.
-    intuition.
-    contradiction H5.
     match goal with
     | [ H : Go.is_final _ |- _ ] => cbv [snd Go.is_final] in H; subst
     end.
     eauto.
-    intuition.
-    contradiction H5.
-    repeat deex.
-    eauto.
+    intuition; repeat deex. eauto.
 
+    find_apply_lem_hyp Go.Steps_ExecFinished.
     forward_solve.
-    invc H7.
-    contradiction H5.
+    invc H8.
+    contradiction H7.
     destruct st'.
     repeat eexists. econstructor; eauto.
-    invc H.
-    invc H8.
-    contradiction H1.
+    invc H3.
+    invc H12.
+    contradiction H.
     auto.
-    invc H.
+    invc H3.
 
     (*
   - invc H4.
@@ -890,10 +992,6 @@ Admitted.
 
 Import Go.
 
-Definition pimpl_subset (P Q : pred) := P =p=> Q * any.
-
-Notation "p >p=> q" := (pimpl_subset p%pred q%pred) (right associativity, at level 90).
-
 Lemma hoare_weaken_post : forall T env A (B1 B2 : T -> _) pr p,
   (forall x, B1 x >p=> B2 x)%pred ->
   EXTRACT pr
@@ -942,79 +1040,6 @@ Proof.
   eauto using hoare_strengthen_pre, hoare_weaken_post.
 Qed.
 
-Definition any' : pred := any.
-
-Lemma chop_any :
-  forall AT AEQ V (P Q : @Pred.pred AT AEQ V),
-    P =p=> Q ->
-    P =p=> Q * any.
-Proof.
-  intros.
-  rewrite H.
-  cancel.
-  eapply pimpl_any.
-Qed.
-
-Lemma pimpl_combine_any : forall AT AEQ V (p q : @Pred.pred AT AEQ V),
-  p =p=> q * any * any -> p =p=> q * any.
-Proof.
-  unfold pimpl in *.
-  intros.
-  unfold sep_star in *. rewrite sep_star_is in *.
-  unfold sep_star_impl in *.
-  forward_solve.
-  do 2 eexists.
-  split. apply mem_union_assoc; auto.
-  split; auto.
-  apply mem_disjoint_assoc_1; auto.
-Qed.
-
-Lemma pimpl_any_cancel : forall AT AEQ V (p q r: @Pred.pred AT AEQ V),
-  p =p=> r * any -> p * q =p=> r * any.
-Proof.
-  intros.
-  pose proof pimpl_any q.
-  pose proof pimpl_sep_star H H0.
-  eapply pimpl_combine_any; auto.
-Qed.
-
-Ltac subset_cancel_one x :=
-  match x with
-  | (?x1 * ?x2)%pred => subset_cancel_one x1 || subset_cancel_one x2
-  | ?t =>
-    match goal with
-    | [ |- _ =p=> ?Q ] =>
-      match Q with
-      | context [?X] => is_evar X;
-        match t with
-        | ptsto ?a ?b =>
-          let H := fresh in set (H := X);
-          instantiate (1 := (ptsto a b * _)%pred) in (Value of H);
-          subst H; cancel
-        | ptsto ?k ?v =>
-          eapply pimpl_trans with (b := (_ * ptsto k v)%pred);
-          [> | apply pimpl_any_cancel; solve [cancel] ]; cancel
-        end
-      end
-    end
-  end.
-
-Ltac cancel_subset_step := try unfold any' at 1; match goal with
-| [ |- ?P =p=> ?Q ] =>
-    has_evar Q; subset_cancel_one P
-| [ |- _ =p=> ?Q ] =>
-    match Q with
-    | context[any] => (eapply chop_any || eapply pimpl_any); cancel
-    end
-end.
-
-(* TODO: less hackery *)
-Ltac cancel_subset :=
-  unfold pimpl_subset;
-  fold any';
-  try unfold any' at 1;
-  cancel;
-  repeat cancel_subset_step.
 
 Inductive Declaration :=
 | Decl (T : Type) {Wr: GoWrapper T} {D : DefaultValue T}.
@@ -1437,23 +1462,6 @@ Ltac eval_expr_step :=
 
 Ltac eval_expr := repeat eval_expr_step.
 
-
-Ltac pred_solve_step := match goal with
-  | [ |- ( ?P )%pred (upd _ ?a ?x) ] =>
-    match P with
-    | context [(?a |-> ?x)%pred] =>
-      eapply pimpl_apply with (p := (a |-> x * _)%pred);
-      [ cancel | eapply ptsto_upd]
-    end
-  | [ |- ( ?P )%pred (delete _ ?a) ] =>
-    eapply ptsto_delete with (F := P)
-  | [ H : _%pred ?t |- _%pred ?t ] => pred_apply; solve [cancel_subset]
-  | _ => solve [cancel_subset]
-  end.
-
-Ltac pred_solve := progress (
-  repeat (unfold pred_apply in *; rewrite ?add_upd, ?remove_delete);
-  repeat pred_solve_step).
 
 Lemma CompileAdd :
   forall env F sumvar avar bvar (sum0 a b : nat),
