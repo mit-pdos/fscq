@@ -2239,10 +2239,10 @@ Proof.
   compile_step.
   compile_step.
   eapply CompileBefore.
-  instantiate (decls := {| Decl_t := Num; zeroval := 0; default_zero := eq_refl |} :: []); simpl in *.
+  instantiate (decls := {| Decl_t := Num; zeroval := 0; default_zero := eq_refl |} :: _); simpl in *.
   eapply hoare_weaken.
   eapply CompileSplit with (A := nat) (B := list nat) (avar := snd vars) (bvar := var0) (pvar := 0).
-  cancel_subset.
+  cancel_subset. instantiate (p := decls_pred ?l (fst vars)); reflexivity.
   intro. simpl. apply chop_any. reflexivity. (* TODO: make [cancel_subset] not drop [snd vars] here *)
   eapply hoare_weaken.
   pose proof CompileAppend.
@@ -2251,15 +2251,18 @@ Proof.
   specialize (H (StringMap.empty _) F nat _ var0 1 x xs). (* why is this necessary? *)
   eapply H.
   instantiate (F := (snd vars ~> a * _)%pred).
-  cancel_subset.
+  cancel_subset. instantiate (p0 := decls_pred ?l (fst vars)); reflexivity.
   intro. simpl. apply chop_any. reflexivity. (* TODO: make [cancel_subset] not drop [snd vars] here *)
 
   simpl in *.
   eapply hoare_weaken.
   eapply CompileRet'.
   eapply CompileJoin with (A := nat) (B := list nat) (avar := snd vars) (bvar := var0) (pvar := 0).
+  cancel_subset. instantiate (B := decls_pred ?l (fst vars)); reflexivity.
   cancel_subset.
-  cancel_subset.
+
+Unshelve.
+  exact [].
 Defined.
 Eval lazy in (projT1 append_list_in_pair).
 
