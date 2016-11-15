@@ -726,6 +726,8 @@ Notation "p >p=> q" := (pimpl_subset p%pred q%pred) (right associativity, at lev
 
 Definition any' : pred := any.
 
+Definition prod' := prod.
+
 Lemma chop_any :
   forall AT AEQ V (P Q : @Pred.pred AT AEQ V),
     P =p=> Q ->
@@ -792,9 +794,11 @@ end.
 
 (* TODO: less hackery *)
 Ltac cancel_subset :=
+  simpl in *;
   unfold pimpl_subset;
   fold any';
   try unfold any' at 1;
+  fold prod' in *;
   cancel;
   repeat cancel_subset_step.
 
@@ -2218,23 +2222,20 @@ Proof.
   instantiate (decls := Decl nat :: _); simpl in *.
   eapply hoare_weaken.
   eapply CompileSplit with (A := nat) (B := list nat) (avar := snd vars) (bvar := var0) (pvar := 0).
-  cancel_subset. instantiate (p := decls_pred ?l (fst vars)); reflexivity.
-  intro. simpl. apply chop_any. reflexivity. (* TODO: make [cancel_subset] not drop [snd vars] here *)
-  eapply hoare_weaken.
+  cancel_subset.
+  cancel_subset.
   pose proof CompileAppend.
   simpl in *.
   evar (F : @Pred.pred var Nat.eq_dec value).
   specialize (H (StringMap.empty _) F nat _ var0 1 x xs). (* why is this necessary? *)
-  eapply H.
-  instantiate (F := (snd vars ~> a * _)%pred).
-  cancel_subset. instantiate (p0 := decls_pred ?l (fst vars)); reflexivity.
-  intro. simpl. apply chop_any. reflexivity. (* TODO: make [cancel_subset] not drop [snd vars] here *)
-
+  eapply hoare_weaken. eapply H.
+  cancel_subset.
+  cancel_subset.
   simpl in *.
   eapply hoare_weaken.
   eapply CompileRet'.
   eapply CompileJoin with (A := nat) (B := list nat) (avar := snd vars) (bvar := var0) (pvar := 0).
-  cancel_subset. instantiate (B := decls_pred ?l (fst vars)); reflexivity.
+  cancel_subset.
   cancel_subset.
 
 Unshelve.
