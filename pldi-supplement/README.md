@@ -1,7 +1,11 @@
 # CHL: A Framework for Certifying Crash-Safe Storage Systems
 
 This supplement includes the Coq implementation of CHL as part of the latest
-version of FSCQ, which we include with the authors' permission.
+version of FSCQ, which we include with the authors' permission. Note that this
+is an in-progress version of FSCQ in which there are unproven theorems and some
+partial progress towards various features. Our purpose in providing this
+supplement is to present our contribution, the underlying CHL framework and
+demonstrate a significant program built using it.
 
 ## Finding code described in the paper
 
