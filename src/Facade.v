@@ -1329,54 +1329,6 @@ Proof.
   intuition.
 Admitted.
 
-Lemma CompileRead :
-  forall env F avar vvar (v0 : valu) a,
-    EXTRACT Read a
-    {{ vvar ~> v0 * avar ~> a * F }}
-      DiskRead vvar (Var avar)
-    {{ fun ret => vvar ~> ret * avar ~> a * F }} // env.
-Proof.
-  unfold ProgOk.
-  intros.
-  inv_exec_progok.
-  {
-    repeat eexists; eauto.
-    admit.
-    admit.
-  }
-  destruct (r a) as [p|] eqn:H'; eauto.
-  destruct p.
-  contradiction H1.
-  repeat eexists; eauto.
-  eapply StepDiskRead; eauto; unfold eval.
-  (* TODO automate this *)
-  rewrite sep_star_assoc_1 in H.
-  admit.
-  admit.
-  admit.
-Admitted.
-
-Lemma CompileWrite : forall env F avar vvar a v,
-  EXTRACT Write a v
-  {{ avar ~> a * vvar ~> v * F }}
-    DiskWrite (Var avar) (Var vvar)
-  {{ fun _ => avar ~> a * vvar ~> v * F }} // env.
-Proof.
-  unfold ProgOk.
-  intros.
-  inv_exec_progok.
-  {
-    repeat eexists; eauto.
-    admit.
-  }
-  destruct (r a) as [p|] eqn:H'; eauto.
-  destruct p.
-  contradiction H1.
-  repeat eexists; eauto.
-  eapply StepDiskWrite; eauto; unfold eval.
-  (* TODO automate this *)
-Admitted.
-
 Ltac unfold_expr :=
   match goal with
   | [H : _ |- _ ] =>
@@ -1426,6 +1378,49 @@ Ltac eval_expr_step :=
     repeat find_inversion_safe.
 
 Ltac eval_expr := repeat eval_expr_step.
+
+Lemma CompileRead :
+  forall env F avar vvar (v0 : valu) a,
+    EXTRACT Read a
+    {{ vvar ~> v0 * avar ~> a * F }}
+      DiskRead vvar (Var avar)
+    {{ fun ret => vvar ~> ret * avar ~> a * F }} // env.
+Proof.
+  unfold ProgOk.
+  intros.
+  inv_exec_progok.
+  {
+    eval_expr.
+    repeat eexists; eauto.
+    pred_solve.
+  }
+  destruct (r a) as [p|] eqn:H'; eauto.
+  destruct p.
+  contradiction H1.
+  repeat econstructor; eauto.
+  all : eval_expr; eauto.
+Qed.
+
+Lemma CompileWrite : forall env F avar vvar a v,
+  EXTRACT Write a v
+  {{ avar ~> a * vvar ~> v * F }}
+    DiskWrite (Var avar) (Var vvar)
+  {{ fun _ => avar ~> a * vvar ~> v * F }} // env.
+Proof.
+  unfold ProgOk.
+  intros.
+  inv_exec_progok.
+  {
+    eval_expr.
+    repeat eexists; eauto.
+  }
+  destruct (r a) as [p|] eqn:H'; eauto.
+  destruct p.
+  contradiction H1.
+  repeat eexists; eauto.
+  econstructor; eauto.
+  all : eval_expr; eauto.
+Qed.
 
 
 Lemma CompileAdd :
