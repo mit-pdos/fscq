@@ -9,7 +9,9 @@ We note where to find the implementation corresponding to definitions given in
 paper. Any naming differences between the two (largely for brevity or clarity in
 the paper) are pointed out. This presentation follows the order of the paper.
 
-The inductive type in Figure 2 corresponds to `prog` in `Prog.v` (binds do not
+### Section 3.1: Programs
+
+The inductive type in Figure 1 corresponds to `prog` in `Prog.v` (binds do not
 use the `>>=` notation of the paper, but programs are written with Haskell-like
 do-notation, defined using Coq's notation mechanism). The type includes two
 extensions: trim support (as described in Section 4.2) and hashing (as described
@@ -21,6 +23,8 @@ As described in section 3.1, control flow is implemented using Gallina. We
 define an `If` combinator in `BasicProg.v` (primarily for better syntax and
 proof automation) as well as two loops, `For` for iterating over natural numbers
 and `ForEach` for iterating over lists.
+
+### Section 3.2: Operational Semantics
 
 The operational semantics as described in Section 3.2 and given formally in
 Figures 4 and 5 are included alongside the program datatype definition in
@@ -58,6 +62,8 @@ non-deterministic definition `possible_crash` from `PredCrash.v`; ultimately
 these two approaches produce the same values for recovery execution, hence the
 ease of the refinement proof.
 
+### Section 3.3: Specifications
+
 Specifications are described as Hoare quadruples in Section 3.3. As we point out
 in section 4.1, the definition of correctness is encoded as a Hoare double.
 Hoare quadruples are implemented as syntax on top of Hoare doubles and thus
@@ -84,6 +90,8 @@ are implemented as an alternate Hoare quadruple notation using `XCRASH` for the
 crash invariant, which is encoded slightly differently. This notation is also
 defined in `Hoare.v`.
 
+### Section 3.4: Proofs
+
 Hoare quadruples for the primitives are given in `BasicProg.v`, along with
 manual proofs, as described in Section 3.4. Other proofs combine lower-level
 specifications in a style described in Section 3.4 with the Hoare quadruple
@@ -100,6 +108,18 @@ specs). Thus `corr3_from_corr2` provides a proof of a recovery spec (in a
 lower-level Hoare double noation) from crash specifications for the program and
 recovery procedures.
 
+### Section 4.1: Implementation Coq idiosyncracies
+
+The implementation uses Hoare doubles rather than encoding Hoare quadruples. The
+code to do so is all found in `Hoare.v`, where the basic correctness definitions
+`corr2` and `corr3` appear and use a higher-order precondition rather than
+separate precondition, postcondition, and crash invariant. The notation desugars
+a quadruple-like syntax into Hoare doubles. Some complexity in our notation
+arises since the specification notation also binds ghost state with an
+existential quantifer over the whole specification. Other notation is used to
+give programs multiple return variables encoded as a single tuple and support
+let bindings that destruct these tuples.
+
 CHL has proof automation along the same lines as the Bedrock framework, as
 described in Section 4.1. The `cancel` principle is fairly trivial (the lemma
 `pimpl_sep_star` in `Pred.v`), but the automation that applies it is less so and
@@ -110,3 +130,26 @@ Similarly, the pred-apply principle has a trivial proof (`pimpl_apply` in
 `Pred.v`). The automation (tactic `pred_apply` in `SepAuto.v`) is not
 complicated but proved extremely useful when working with many namespaces in
 FSCQ.
+
+### Section 4.2: Limitations
+
+The _Trim_ operation is present in this version of CHL, including semantics and
+a proven specification. It is modelled as a non-deterministic write of any
+value. This is more sophisticated than modelling trim as writing the constant 0
+value, but less sophisticated than allowing the disk to return non-deterministic
+values when _reading from_ a trimmed address. The operation is also unused by
+this version of FSCQ.
+
+### Section 5.1: Evaluation of CHL features
+
+Figure 12 was produced by manually inspecting specifications across FSCQ. The numbers include namespaces that are introduced within definitions and thus do not appear in the code for the specification; for example, the Log.rep predicate internally relates the cache logical disk to the physical disk.
+
+Similarly, Figure 14 was produced by inspecting crash invariants across FSCQ. Log.in_txn, the most frequent crash invariant, is written as Log.intact in the code (and renamed for the paper to better indicate what it states).
+
+
+### Section 5.3: Extensibility
+
+The hashing extension described here is present in this version of FSCQ, both in
+CHL and in actual use in the FSCQ logging protocol.
+
+Mutable memory is present in a different version of CHL we are currently working on and has not been fully integrated into this version.
