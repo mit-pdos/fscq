@@ -5,6 +5,7 @@ version of FSCQ, which we include with the authors' permission. Note that this
 is an in-progress version of FSCQ in which there are unproven theorems and some
 partial progress towards various features. Earlier versions of FSCQ (eg, the
 version described in the published paper) have been completely proven using CHL.
+The CHL theorems are conmplete and proven.
 
 Our purpose in providing this supplement is to present our contribution, the
 underlying CHL framework and demonstrate a significant program built using it.
@@ -91,11 +92,11 @@ Recovery specifications are much the same and also have a notation defined in
 Our definitions of separation logic are in `Mem.v` and `Pred.v`. `Pred.v` in
 particular defines a large number of theorems, largely standard for separation
 logic. There is likely redundancy in `Pred.v`, some of it for convenient
-automation and others unnecessary. Less standard definitions are in
-`PredCrash.v`, including the stability definition `sync_invariant` and points-to
-subset `ptsto_subset`, as well as theorems about them. We use `a |+> v` in the
-code as notation for `ptsto_subset`, while `a |-> v` is the standard points-to
-predicate of separation logic (`ptsto` from `Pred.v`).
+automation and others unnecessary. Novel definitions are in `PredCrash.v`,
+including the stability definition `sync_invariant` and points-to subset
+`ptsto_subset`, as well as theorems about them. We use `a |+> v` in the code as
+notation for `ptsto_subset`, while `a |-> v` is the standard points-to predicate
+of separation logic (`ptsto` from `Pred.v`).
 
 Syncing requires a sync predicate transformer, which is defined as `sync_xform`
 in `PredCrash.v`.
@@ -162,9 +163,14 @@ this version of FSCQ.
 
 ### Section 5.1: Evaluation of CHL features
 
-Figure 12 was produced by manually inspecting specifications across FSCQ. The numbers include namespaces that are introduced within definitions and thus do not appear in the code for the specification; for example, the Log.rep predicate internally relates the cache logical disk to the physical disk.
+Figure 12 was produced by manually inspecting specifications across FSCQ. The
+numbers include namespaces that are introduced within definitions and thus do
+not appear in the code for the specification; for example, the Log.rep predicate
+internally relates the cache logical disk to the physical disk.
 
-Similarly, Figure 14 was produced by inspecting crash invariants across FSCQ. Log.in_txn, the most frequent crash invariant, is written as Log.intact in the code (and renamed for the paper to better indicate what it states).
+Similarly, Figure 14 was produced by inspecting crash invariants across
+FSCQ. Log.in_txn, the most frequent crash invariant, is written as Log.intact in
+the code (and renamed for the paper to better indicate what it states).
 
 
 ### Section 5.3: Extensibility
@@ -172,4 +178,5 @@ Similarly, Figure 14 was produced by inspecting crash invariants across FSCQ. Lo
 The hashing extension described here is present in this version of FSCQ, both in
 CHL and in actual use in the FSCQ logging protocol.
 
-Mutable memory is present in a different version of CHL we are currently working on and has not been fully integrated into this version.
+Mutable memory is present in a different version of CHL we are currently working
+on and has not been fully integrated into this version.
