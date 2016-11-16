@@ -123,6 +123,26 @@ Proof.
   destruct a1, a2; f_equal; try discriminate; apply proof_irrelevance.
 Qed.
 
+Instance GoWrapper_addrmap {T} {WT : GoWrapper T} : GoWrapper (Go.Map.t T).
+Proof.
+  refine {| wrap_type := Go.AddrMap (@wrap_type _ WT);
+            wrap' := Go.Map.map (@wrap' _ WT) |}.
+  intros a1 a2; intros. destruct a1, a2.
+  unfold Go.Map.map in *. simpl in *.
+  find_inversion.
+  generalize dependent this0.
+  induction this; destruct this0; simpl in *; try congruence; intros.
+  erewrite (proof_irrelevance _ is_bst). eauto.
+  find_inversion.
+  find_eapply_lem_hyp wrap_inj; subst.
+  inversion is_bst; subst.
+  inversion is_bst0; subst.
+  repeat match goal with
+  | [H : _, H' : _ |- _ ] => specialize (H H'); try invc H
+  end.
+  erewrite (proof_irrelevance _ is_bst). eauto.
+Defined.
+
 Definition extract_code := projT1.
 
 Local Open Scope string_scope.

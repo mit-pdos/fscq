@@ -6,6 +6,8 @@ Require Import Eqdep.
 Require Import VerdiTactics.
 Require Import Word.
 Require Import Mem AsyncDisk PredCrash Prog.
+Require Import MapUtils.
+Import AddrMap.
 
 Import ListNotations.
 
@@ -84,6 +86,7 @@ Module Go.
   | DiskBlock
   | Slice : type -> type
   | Pair : type -> type -> type
+  | AddrMap : type -> type
   .
 
   Inductive movable T :=
@@ -102,8 +105,10 @@ Module Go.
     | DiskBlock => false
     | Slice _ => false
     | Pair t1 t2 => can_alias t1 && can_alias t2
+    | AddrMap _ => false
     end.
 
+  Module Map := AddrMap.Map.
 
   Fixpoint type_denote (t : type) : Type :=
     match t with
@@ -113,6 +118,7 @@ Module Go.
     | DiskBlock => valu
     | Slice t' => list (type_denote t') (* kept in reverse order to make cons = append *)
     | Pair t1 t2 => movable (type_denote t1) * movable (type_denote t2)
+    | AddrMap vt => Map.t (type_denote vt)
     end.
 
   Definition type_eq_dec : forall t1 t2 : type, {t1 = t2} + {t1 <> t2}.
@@ -131,6 +137,7 @@ Module Go.
   | ModifyNumOp (nop : numop)
   | SplitPair
   | JoinPair
+  | MapAdd
   .
 
   Inductive value :=
@@ -158,6 +165,7 @@ Module Go.
     | DiskBlock => $0
     | Slice t' => nil
     | Pair t1 t2 => (Here (default_value' t1), Here (default_value' t2))
+    | AddrMap vt => Map.empty (type_denote vt)
     end.
 
   Definition default_value (t : type) : value :=
@@ -272,6 +280,9 @@ Module Go.
     Definition join_pair_impl' ta tb (va : type_denote ta) (vb : type_denote tb) : n_tuple 3 var_update :=
       (SetTo (Val (Pair ta tb) (Here va, Here vb)), Delete, Delete).
 
+    Definition map_add_impl' tv (m : Map.t (type_denote tv)) (k : addr) (v : type_denote tv) : n_tuple 3 var_update :=
+      (SetTo (Val (AddrMap tv) (Map.add k v m)), Leave, if can_alias tv then Leave else Delete).
+
   End NiceImpls.
 
   Section NastyImpls.
@@ -324,7 +335,18 @@ Module Go.
       subst.
       refine (Some (join_pair_impl' ta tb va vb)).
     Defined.
- 
+
+    Definition addr_map_add : op_impl 3.
+      refine (fun args => let '(Val tm m, Val tk k, Val tv v) := args in
+                        match tm with
+                        | AddrMap tv' => fun m => _
+                        | _ => fun _ => None
+                        end m).
+      destruct (type_eq_dec tk Num); [ | exact None ].
+      destruct (type_eq_dec tv tv'); [ | exact None ].
+      subst tv' tk.
+      refine (Some (map_add_impl' tv m k v)).
+    Defined.
   End NastyImpls.
 
   Definition impl_for (op : modify_op) : { n : nat & op_impl n } :=
@@ -335,6 +357,7 @@ Module Go.
     | ModifyNumOp nop => existT _ _ (numop_impl nop)
     | SplitPair => existT _ _ split_pair_impl
     | JoinPair => existT _ _ join_pair_impl
+    | MapAdd => existT _ _ addr_map_add
     end.
 
   Definition op_arity (op : modify_op) : nat := projT1 (impl_for op).
