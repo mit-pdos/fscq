@@ -5,7 +5,7 @@ version of FSCQ, which we include with the authors' permission. Note that this
 is an in-progress version of FSCQ in which there are unproven theorems and some
 partial progress towards various features. Earlier versions of FSCQ (eg, the
 version described in the published paper) have been completely proven using CHL.
-The CHL theorems are conmplete and proven.
+The CHL theorems are complete and proven.
 
 Our purpose in providing this supplement is to present our contribution, the
 underlying CHL framework and demonstrate a significant program built using it.
