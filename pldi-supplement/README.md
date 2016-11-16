@@ -23,11 +23,11 @@ use the `>>=` notation of the paper, but programs are written with Haskell-like
 do-notation, defined using Coq's notation mechanism). We initially used 64-bit
 words as addresses for the disk, but changed the disk to support natural numbers
 as addresses to avoid overflow reasoning that seemed unrelated to the
-difficulties faced in real storage systems. The type includes two
-extensions: trim support (as described in Section 4.2) and hashing (as described
-in Section 5.3). The trim operation is included in the operational semantics and
-has a proven specification, but is currently unused in FSCQ. Hashing is used in
-this version of FSCQ to implement an efficient logging protocol.
+difficulties faced in real storage systems. The type includes two extensions:
+trim support (as described in Section 4.2) and hashing (as described in Section
+5.3). The trim operation is included in the operational semantics and has a
+proven specification, but is currently unused in FSCQ. Hashing is used in this
+version of FSCQ to implement an efficient logging protocol.
 
 As described in Section 3.1, control flow is implemented using Gallina. We
 define an `If` combinator in `BasicProg.v` (primarily for better syntax and
@@ -150,9 +150,9 @@ complicated but proved extremely useful when working with many namespaces in
 FSCQ. The general pattern is that a goal requires proving a property about a
 nested namespace, encoded through a lifted proposition. When the context has a
 different property about the same namespace, from the postcondition of the
-previous operation, the `pred_apply` tactic solves the goal by proving a predicate
-implication, re-using the `cancel` automation for working with separation logic
-formulae.
+previous operation, the `pred_apply` tactic solves the goal by proving a
+predicate implication, re-using the `cancel` automation for working with
+separation logic formulae.
 
 ### Section 4.2: Limitations
 
@@ -170,15 +170,15 @@ numbers include namespaces that are introduced within definitions and thus do
 not appear in the text of the specification; for example, the Log.rep predicate
 internally relates the cache logical disk to the physical disk.
 
-Similarly, Figure 14 was produced by inspecting crash invariants across
-FSCQ. Log.in_txn, the most frequent crash invariant, corresponds to `Log.intact` in
+Similarly, Figure 14 was produced by inspecting crash invariants across FSCQ.
+Log.in_txn, the most frequent crash invariant, corresponds to `Log.intact` in
 the code (and renamed for the paper to better indicate what it states).
 
 
 ### Section 5.3: Extensibility
 
-The hashing extension described in this section is present in this version of FSCQ, in
-CHL and used in the FSCQ logging protocol.
+The hashing extension described in this section is present in this version of
+FSCQ, in CHL and used in the FSCQ logging protocol.
 
 Mutable memory is present in a different version of CHL we are currently working
 on and has not been fully integrated into this version.
