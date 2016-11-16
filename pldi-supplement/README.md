@@ -29,10 +29,11 @@ in Section 5.3). The trim operation is included in the operational semantics and
 has a proven specification, but is currently unused in FSCQ. Hashing is used in
 this version of FSCQ to implement an efficient logging protocol.
 
-As described in section 3.1, control flow is implemented using Gallina. We
+As described in Section 3.1, control flow is implemented using Gallina. We
 define an `If` combinator in `BasicProg.v` (primarily for better syntax and
 proof automation) as well as two loops, `For` for iterating over natural numbers
-and `ForEach` for iterating over lists.
+(corresponding to the ForN loop used in the example in Figure 10) and `ForEach`
+for iterating over lists.
 
 ### Section 3.2: Operational Semantics
 
@@ -54,10 +55,6 @@ semantics used in the code allows for more non-determinism, which proves to be
 unimportant once the specifications for the basic operations are proven with
 respect to the semantics.
 
-One point to be made about the semantics is that the disk does not take steps in
-the same manner as programs, but instead flushes an arbitrary subset of
-addresses after each primitive operation.
-
 The crash-execution semantics are given by the `exec` relation in `Prog.v`,
 while the recovery execution semantics are described by the `recovery_exec`
 relation. As in the paper, the crash-execution semantics is built from a `step`
@@ -75,13 +72,13 @@ program implies a hash collision.
 The crash(d) function is defined as `diskval` for a refinement proof in
 `OperationalSemantics.v`. The semantics programs are proven against use a
 non-deterministic definition `possible_crash` from `PredCrash.v`; ultimately
-these two approaches produce the same values for recovery execution, hence the
+these two approaches produce the same states for recovery execution, hence the
 ease of the refinement proof.
 
 ### Section 3.3: Specifications
 
 Specifications are described as Hoare quadruples in Section 3.3. As we point out
-in section 4.1, the definition of correctness is encoded as a Hoare double.
+in Section 4.1, the definition of correctness is encoded as a Hoare double.
 Hoare quadruples are implemented as syntax on top of Hoare doubles and thus
 specifications are written with separate preconditions, postconditions, and
 crash invariants. The syntax and encoding is given as a Coq notation in
@@ -119,7 +116,7 @@ As described in the paper, recovery-execution proofs require a new principle.
 This principle uses the crash predicate transformer, `crash_xform` in
 `PredCrash.v`. The definitions and proofs for the idempotence principle are in
 `Idempotent.v`. Note that the Hoare double-based correctness definitions are
-called `corr2` (for crash execution specs) and `corr3` (for recovery execution
+called `corr2` (for crash-execution specs) and `corr3` (for recovery-execution
 specs). Thus `corr3_from_corr2` provides a proof of a recovery spec (in a
 lower-level Hoare double noation) from crash specifications for the program and
 recovery procedures.
@@ -135,7 +132,7 @@ The implementation uses Hoare doubles rather than encoding Hoare quadruples. The
 code to do so is all found in `Hoare.v`, where the basic correctness definitions
 `corr2` and `corr3` appear and use a higher-order precondition rather than
 separate precondition, postcondition, and crash invariant. The notation desugars
-a quadruple-like syntax into Hoare doubles. Some complexity in our notation
+a quadruple-like syntax into Hoare doubles. Some complexity in CHL's notation
 arises since the specification notation also binds ghost state with an
 existential quantifer over the whole specification. Other notation is used to
 give programs multiple return variables encoded as a single tuple and support
@@ -153,7 +150,7 @@ complicated but proved extremely useful when working with many namespaces in
 FSCQ. The general pattern is that a goal requires proving a property about a
 nested namespace, encoded through a lifted proposition. When the context has a
 different property about the same namespace, from the postcondition of the
-previous operation, the `pred_apply` solves the goal by proving a predicate
+previous operation, the `pred_apply` tactic solves the goal by proving a predicate
 implication, re-using the `cancel` automation for working with separation logic
 formulae.
 
@@ -170,18 +167,18 @@ this version of FSCQ.
 
 Figure 12 was produced by manually inspecting specifications across FSCQ. The
 numbers include namespaces that are introduced within definitions and thus do
-not appear in the code for the specification; for example, the Log.rep predicate
+not appear in the text of the specification; for example, the Log.rep predicate
 internally relates the cache logical disk to the physical disk.
 
 Similarly, Figure 14 was produced by inspecting crash invariants across
-FSCQ. Log.in_txn, the most frequent crash invariant, is written as Log.intact in
+FSCQ. Log.in_txn, the most frequent crash invariant, corresponds to `Log.intact` in
 the code (and renamed for the paper to better indicate what it states).
 
 
 ### Section 5.3: Extensibility
 
-The hashing extension described here is present in this version of FSCQ, both in
-CHL and in actual use in the FSCQ logging protocol.
+The hashing extension described in this section is present in this version of FSCQ, in
+CHL and used in the FSCQ logging protocol.
 
 Mutable memory is present in a different version of CHL we are currently working
 on and has not been fully integrated into this version.
