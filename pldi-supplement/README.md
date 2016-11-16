@@ -153,8 +153,9 @@ complicated but proved extremely useful when working with many namespaces in
 FSCQ. The general pattern is that a goal requires proving a property about a
 nested namespace, encoded through a lifted proposition. When the context has a
 different property about the same namespace, from the postcondition of the
-previous operation, we solve the goal by proving a predicate implication,
-re-using the `cancel` automation for working with separation logic formulae.
+previous operation, the `pred_apply` solves the goal by proving a predicate
+implication, re-using the `cancel` automation for working with separation logic
+formulae.
 
 ### Section 4.2: Limitations
 
