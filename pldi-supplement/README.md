@@ -3,9 +3,11 @@
 This supplement includes the Coq implementation of CHL as part of the latest
 version of FSCQ, which we include with the authors' permission. Note that this
 is an in-progress version of FSCQ in which there are unproven theorems and some
-partial progress towards various features. Our purpose in providing this
-supplement is to present our contribution, the underlying CHL framework and
-demonstrate a significant program built using it.
+partial progress towards various features. Earlier versions of FSCQ (eg, the
+version described in the published paper) have been completely proven using CHL.
+
+Our purpose in providing this supplement is to present our contribution, the
+underlying CHL framework and demonstrate a significant program built using it.
 
 ## Finding code described in the paper
 
@@ -17,7 +19,10 @@ the paper) are pointed out. This presentation follows the order of the paper.
 
 The inductive type in Figure 1 corresponds to `prog` in `Prog.v` (binds do not
 use the `>>=` notation of the paper, but programs are written with Haskell-like
-do-notation, defined using Coq's notation mechanism). The type includes two
+do-notation, defined using Coq's notation mechanism). We initially used 64-bit
+words as addresses for the disk, but changed the disk to support natural numbers
+as addresses to avoid overflow reasoning that seemed unrelated to the
+difficulties faced in real storage systems. The type includes two
 extensions: trim support (as described in Section 4.2) and hashing (as described
 in Section 5.3). The trim operation is included in the operational semantics and
 has a proven specification, but is currently unused in FSCQ. Hashing is used in
@@ -59,6 +64,12 @@ relation for the primitive operations' behavior, as well as `fail_step` to
 describe when the primitives fail (denoted by a step to E in the paper). The
 partial flush of the paper is called `possible_sync` and defined in
 `PredCrash.v`. The sync(d) function is `sync_mem` and defined in `AsyncDisk.v`.
+
+The paper mentions that we prove the semantics form a non-deterministic but
+total function - we prove this in `ProgMetatheory.v` as `exec_progress`. The
+theorem statement must handle hashes since they are included in programs and the
+semantics, so it allows for the possibility that instead of making progress the
+program implies a hash collision.
 
 The crash(d) function is defined as `diskval` for a refinement proof in
 `OperationalSemantics.v`. The semantics programs are proven against use a
@@ -111,6 +122,11 @@ called `corr2` (for crash execution specs) and `corr3` (for recovery execution
 specs). Thus `corr3_from_corr2` provides a proof of a recovery spec (in a
 lower-level Hoare double noation) from crash specifications for the program and
 recovery procedures.
+
+### Section 4 Implementation
+
+The Haskell driver that runs programs extracted from CHL on top of a physical
+disk is the function `run_dcode` in `hslib/Interpreter.hs`.
 
 ### Section 4.1: Implementation Coq idiosyncracies
 
