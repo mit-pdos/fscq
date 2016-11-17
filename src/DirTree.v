@@ -1430,18 +1430,6 @@ Module DIRTREE.
     destruct (string_dec s name); eauto.
   Qed.
 
-  Lemma map_update_subtree_helper_notfound : forall f name l,
-    ~ In name (map fst l) ->
-    map (update_subtree_helper f name) l = l.
-  Proof.
-   induction l; simpl; intros; auto.
-    rewrite IHl by intuition.
-    unfold update_subtree_helper.
-    destruct a.
-    destruct (string_dec s name); subst; simpl; auto.
-    firstorder.
-  Qed.
-
   Lemma tree_name_distinct_rest: forall inum x l,
         tree_names_distinct (TreeDir inum (x::l)) ->
         tree_names_distinct (TreeDir inum l).
@@ -3203,15 +3191,22 @@ Module DIRTREE.
       inversion H.
   Qed.
 
-  Lemma update_subtree_update_trim_head_dir: forall tree name path subtree subtree_head,
-    find_subtree [name] tree = Some subtree_head ->
-    find_subtree [name] (update_subtree ([name]++path) subtree tree) =
-      Some (update_subtree path subtree subtree_head).
+  Lemma find_subtree_head: forall l name n d,
+    find_subtree [name] (TreeDir n ((name,d) :: l)) = Some d.
   Proof.
-    induction tree; intros.
-    - admit.
-    - 
+    intros.
+    simpl.
+    destruct (string_dec name name); try congruence.
+  Qed.
 
+  Lemma find_subtree_head_ne: forall name s n d l,
+    name <> s ->
+    find_subtree [name] (TreeDir n ((s,d) :: l)) = find_subtree [name] (TreeDir n l).
+  Proof.
+    intros.
+    simpl.
+    destruct (string_dec s name); try congruence.
+  Qed.
 
   Lemma update_subtree_update_trim_head_dir: forall l name path n subtree_head subtree,
     find_subtree [name] (TreeDir n l) = Some subtree_head ->
@@ -3220,25 +3215,28 @@ Module DIRTREE.
   Proof.
     induction l; intros.
     - exfalso.
-      admit. 
+      simpl in H.
+      inversion H.
     - destruct a; simpl.
       destruct (string_dec s name); subst.
       + simpl.
         destruct (string_dec name name); try congruence.
-        admit.
+        rewrite find_subtree_head in H.
+        inversion H; eauto.
       + simpl.
         destruct (string_dec s name); try congruence.
-        unfold update_subtree in IHl at 1; simpl.
         unfold find_subtree in IHl at 2; simpl.
-        destruct l in IHl; simpl.
-        ++ admit.
-        ++ destruct p; simpl. 
-  Admitted.
+        case_eq (update_subtree ([name] ++ path) subtree (TreeDir n l)); intros.
+        eapply IHl; eauto.
+        rewrite find_subtree_head_ne in H; eauto.
+        eapply IHl; eauto.
+        rewrite find_subtree_head_ne in H; eauto.
+  Qed.
 
   Lemma find_subtree_update_trim_head: forall name path subtree tree subtree_head,
-  find_subtree [name] tree = Some subtree_head ->
-  find_subtree [name] (update_subtree ([name] ++ path) subtree tree) =
-    Some (update_subtree path subtree subtree_head).
+    find_subtree [name] tree = Some subtree_head ->
+    find_subtree [name] (update_subtree ([name] ++ path) subtree tree) =
+      Some (update_subtree path subtree subtree_head).
   Proof.
     intros. case_eq tree; intros.
     - exfalso.
@@ -3249,6 +3247,24 @@ Module DIRTREE.
       subst; eauto.
   Qed.
 
+
+  Lemma update_subtree_update_trim_head_ne: forall tree name s path subtree,
+    s <> name ->
+    find_subtree [name] (update_subtree (s::path) subtree tree) = 
+        find_subtree [name] tree.
+  Proof.
+    intros; simpl.
+    destruct tree; subst; eauto.
+    induction l; subst; simpl in *; eauto.
+    destruct a; simpl.
+    unfold find_subtree_helper at 1; simpl.
+    destruct (string_dec s0 s); subst; simpl.
+    + destruct (string_dec s name); simpl in *; try congruence.
+    + destruct (string_dec s name); simpl in *; try congruence.
+      destruct (string_dec s0 name); try congruence.
+  Qed.
+
+
   Lemma find_subtree_update_subtree_child: forall path suffix tree subtree subtree_child, 
       find_subtree path tree = Some subtree_child ->
       find_subtree path (update_subtree (path++suffix) subtree tree) = 
@@ -3256,17 +3272,16 @@ Module DIRTREE.
   Proof.
     induction path; intros; subst; auto.
     - rewrite app_nil_l.
-      admit.
-    - rewrite cons_app in *.
+      simpl in *.
+      inversion H; eauto.
+     - rewrite cons_app in *.
       eapply find_subtree_app' in H.
       deex.
       erewrite find_subtree_app with (subtree := 
         (update_subtree (path ++ suffix) subtree subtree_base)).
       eapply IHpath; eauto.
-
       eapply find_subtree_update_trim_head; eauto.
-  Admitted.
-
+  Qed.
 
   Lemma find_subtree_update_trim: forall p1 p2 a tree elem subtree d,
     find_subtree [a] tree = Some subtree ->
@@ -3291,31 +3306,101 @@ Module DIRTREE.
       erewrite find_subtree_update_subtree_child; eauto.
   Qed.
 
-  Theorem find_subtree_update_subtree_oob'' : forall pn tree a subtree d,
+  Theorem find_subtree_update_subtree_oob'' : forall pn tree a subtree,
+    pn <> nil ->
     (~ pathname_prefix [a] pn) ->
-    find_subtree [a] tree = Some d ->
-    find_subtree [a] (update_subtree pn subtree tree) = Some d.
+    find_subtree [a] (update_subtree pn subtree tree) = find_subtree [a] tree.
   Proof.
-  Admitted.
+    intros.
+    destruct pn; try congruence.
+    destruct (string_dec a s); subst.
+    + exfalso.
+      eapply H0.
+      unfold pathname_prefix.
+      eexists pn.
+      eauto.
+    + erewrite update_subtree_update_trim_head_ne; eauto.
+  Qed.
 
-  Theorem find_subtree_update_subtree_oob''_none : forall pn tree a subtree,
-    (~ pathname_prefix [a] pn) ->
-    find_subtree [a] tree = None ->
-    find_subtree [a] (update_subtree pn subtree tree) = None.
-  Proof.
-  Admitted.
 
   Theorem find_subtree_update_subtree_none : forall tree a suffix subtree,
     find_subtree [a] tree = None ->
     find_subtree [a] (update_subtree ([a]++suffix) subtree tree) = None.
   Proof.
-  Admitted.
+    intros.
+    destruct tree; eauto.
+    induction l; intros.
+    - simpl in *; eauto.
+    - destruct a0; simpl.
+      destruct (string_dec s a); subst.
+      + simpl.
+        destruct (string_dec a a); try congruence.
+        rewrite find_subtree_head in H.
+        inversion H; eauto.
+      + simpl.
+        destruct (string_dec s a); try congruence.
+        unfold find_subtree in IHl at 2; simpl.
+        case_eq (update_subtree ([a] ++ suffix) subtree (TreeDir n l)); intros.
+        eapply IHl; eauto.
+        rewrite find_subtree_head_ne in H; eauto.
+        eapply IHl; eauto.
+        rewrite find_subtree_head_ne in H; eauto.
+  Qed.
 
-  Lemma update_subtree_path_notfound: forall p subtree tree,
+  Lemma find_subtree_none_In: forall name n l,
+    find_subtree [name] (TreeDir n l) = None ->
+    ~In name (map fst l).
+  Proof.
+    induction l; intros; subst; eauto.
+    destruct a.
+    erewrite map_cons; simpl.
+    intuition.
+    subst. erewrite find_subtree_head in H.
+    inversion H.
+    eapply IHl; eauto.
+    destruct (string_dec s name); subst.
+    erewrite find_subtree_head in H. inversion H.
+    rewrite find_subtree_head_ne in H; eauto.
+  Qed.
+
+ Lemma tree_names_distinct_nodup : forall dnum ents,
+    tree_names_distinct (TreeDir dnum ents) ->
+    NoDup (map fst ents).
+  Proof.
+    intros; inversion H; auto.
+  Qed.
+
+
+  Lemma update_subtree_path_notfound: forall p tree subtree,
+    tree_names_distinct tree ->
     find_subtree p tree = None ->
     update_subtree p subtree tree = tree.
   Proof.
-  Admitted.
+    induction p; intros; subst.
+    - simpl in *. exfalso. inversion H0.
+    - destruct tree; simpl; eauto.
+      f_equal.
+      induction l; subst; simpl; eauto.
+      destruct a0.
+      destruct (string_dec a s); subst.
+      simpl.
+      destruct (string_dec s s); try congruence.
+      rewrite update_subtree_notfound; eauto.
+      erewrite IHp; eauto.
+      simpl in H0.
+      destruct (string_dec s s) in H0; try congruence.
+      eapply tree_names_distinct_nodup in H.
+      simpl in H.
+      inversion H; eauto.
+      simpl.
+      destruct (string_dec s a); try congruence.
+      f_equal.
+      eapply IHl.
+      eapply tree_name_distinct_rest in H; eauto.
+      simpl in H0.
+      destruct (string_dec s a) in H0; try congruence.
+      simpl; eauto.
+  Qed.
 
   Lemma find_subtree_update_subtree_ne_path : forall p1 p2 tree subtree,
     tree_names_distinct tree ->
@@ -3357,16 +3442,24 @@ Module DIRTREE.
         ++ case_eq(find_subtree [a] tree); intros; subst; try congruence.
           -- (* a is a directory or file *)
             case_eq(find_subtree p2 tree); intros; subst; try congruence.
-            erewrite find_subtree_app.  
-            2: eapply find_subtree_update_subtree_oob'' with (pn := p2); eauto.
+            erewrite find_subtree_app.
+            2: erewrite find_subtree_update_subtree_oob'' with (pn := p2); eauto.
             erewrite find_subtree_app; eauto.
+            intro; subst.
+            eapply H0.
+            unfold pathname_prefix.
+            eexists (a::p1); eauto.
             unfold pathname_prefix; intro; apply H2.
             destruct H5.
             exists x; eauto.
             erewrite update_subtree_path_notfound; eauto.
           -- (* a is not present *)
             repeat erewrite find_subtree_app_none; eauto.
-            eapply find_subtree_update_subtree_oob''_none; eauto.
+            erewrite find_subtree_update_subtree_oob''; eauto.
+            intro; subst.
+            eapply H0.
+            unfold pathname_prefix.
+            eexists (a::p1); eauto.
             unfold pathname_prefix; intro; apply H2.
             destruct H4.
             exists x; eauto.
@@ -3403,13 +3496,6 @@ Module DIRTREE.
     eapply IHl; eauto. 
   Qed.
 
-
-  Lemma tree_names_distinct_nodup : forall dnum ents,
-    tree_names_distinct (TreeDir dnum ents) ->
-    NoDup (map fst ents).
-  Proof.
-    intros; inversion H; auto.
-  Qed.
 
   Lemma In_delete_from_list_snd : forall l x name,
     In x (map snd (delete_from_list name l)) ->
@@ -3492,11 +3578,11 @@ Module DIRTREE.
     eapply find_subtree_app' in H0 as H0'.
     destruct H0'; intuition.
     erewrite find_subtree_update_subtree_child in H1; eauto.
-    erewrite find_update_subtree in H1; eauto.
     inversion H1.
+    eapply tree_names_distinct_update_subtree.
+    eapply tree_names_distinct_subtree; eauto.
     eapply tree_names_distinct_delete_from_list; eauto.
     eapply tree_names_distinct_subtree; eauto.
-    erewrite find_subtree_app in H0; eauto.
   Qed.
 
 
@@ -3537,14 +3623,12 @@ Module DIRTREE.
       - (* path' is inside of path *)
         destruct H3; subst.
         eapply tree_names_distinct_prune_child_subtree; eauto.
-
       - (* paths are disjoint, pruning path1 doesn't effect path *)
         erewrite find_subtree_update_subtree_ne_path in H1; eauto.
         eapply tree_names_distinct_subtree; eauto.
         eapply pathname_prefix_neq; eauto.
         eapply pathname_prefix_neq; eauto.
   Qed.
-
 
   Lemma rename_safe_dest_none : 
     forall ilist1 ilist2 frees1 frees2 srcpath srcname dstpath dstname dnum ents n l n' l' mvtree,
@@ -4236,7 +4320,7 @@ Module DIRTREE.
     - destruct a.
       destruct (string_dec s name); subst; simpl in *.
       destruct (string_dec name name); try congruence.
-      rewrite map_update_subtree_helper_notfound.
+      rewrite update_subtree_notfound.
       reflexivity.
       erewrite <- tree_names_distinct_head_name'.
       eapply tree_names_distinct_head_name.
