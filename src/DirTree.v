@@ -3135,8 +3135,6 @@ Module DIRTREE.
       apply IHl; eauto.
   Qed.
 
-
-
   Definition pathname_prefix p1 p2 :=
     (exists suffix : list string, p1 ++ suffix = p2).
 
