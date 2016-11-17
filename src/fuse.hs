@@ -494,8 +494,8 @@ fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
                        $ BS.append piece_bs
                        $ BS.drop (fromIntegral $ off + cnt) old_bs
       wnew <- bs2i new_bs
-      _ <- fr $ AsyncFS._AFS__update_fblock_d fsxp inum blk (W wnew)
-      -- _ <- fr $ AsyncFS._AFS__update_fblock fsxp inum blk (W wnew)
+      -- _ <- fr $ AsyncFS._AFS__update_fblock_d fsxp inum blk (W wnew)
+      _ <- fr $ AsyncFS._AFS__update_fblock fsxp inum blk (W wnew)
       return $ WriteOK (c + (fromIntegral cnt))
 
 fscqSetFileSize :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileOffset -> IO Errno
