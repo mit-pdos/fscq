@@ -3203,16 +3203,6 @@ Module DIRTREE.
       inversion H.
   Qed.
 
-  Lemma update_subtree_update_trim_head_dir: forall tree name path subtree subtree_head,
-    find_subtree [name] tree = Some subtree_head ->
-    find_subtree [name] (update_subtree ([name]++path) subtree tree) =
-      Some (update_subtree path subtree subtree_head).
-  Proof.
-    induction tree; intros.
-    - admit.
-    - 
-
-
   Lemma update_subtree_update_trim_head_dir: forall l name path n subtree_head subtree,
     find_subtree [name] (TreeDir n l) = Some subtree_head ->
     find_subtree [name] (update_subtree ([name]++path) subtree (TreeDir n l)) =
