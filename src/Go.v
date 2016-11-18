@@ -70,6 +70,7 @@ Notation W := nat. (* Assume bignums? *)
 
 Module VarMap := FMapAVL.Make(Nat_as_OT).
 Module MoreVarMapFacts := MoreMapFacts.MoreFacts_fun(Nat_as_OT)(VarMap).
+Module MoreAddrMapFacts := MoreMapFacts.MoreFacts_fun(Nat_as_OT)(AddrMap.Map).
 
 Module Go.
 
@@ -107,8 +108,6 @@ Module Go.
     | Pair t1 t2 => can_alias t1 && can_alias t2
     | AddrMap _ => false
     end.
-
-  Module Map := AddrMap.Map.
 
   Fixpoint type_denote (t : type) : Type :=
     match t with

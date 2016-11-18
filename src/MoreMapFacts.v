@@ -156,6 +156,16 @@ Module MoreFacts_fun (E:UsualDecidableType) (Import M:WSfun E).
     smash_equal.
   Qed.
 
+
+  Theorem map_add_comm : forall T T' (f : T -> T') m k v,
+    Equal (map f (add k v m)) (add k (f v) (map f m)).
+  Proof.
+    smash_equal; subst.
+    rewrite map_o, add_eq_o; auto.
+    rewrite map_o, add_neq_o; auto.
+    eauto using map_o.
+  Qed.
+
   Lemma Forall_elements_remove_weaken : forall V P k (m : t V),
                                           Forall P (elements m) ->
                                           Forall P (elements (remove k m)).
@@ -218,6 +228,23 @@ Module MoreFacts_fun (E:UsualDecidableType) (Import M:WSfun E).
     intros.
     pose proof (@Forall_elements_empty V (fun _ => False)).
     apply Forall_false. auto.
+  Qed.
+
+  Lemma map_inj_equal : forall T T' (f : T -> T') m1 m2,
+    (forall x y, f x = f y -> x = y) ->
+    Equal m1 m2 <-> Equal (map f m1) (map f m2).
+  Proof.
+    split.
+    - unfold Equal; intros.
+      repeat rewrite map_o.
+      f_equal. eauto.
+    - unfold Equal; intros.
+      repeat setoid_rewrite map_o in H0.
+      specialize (H0 y).
+      unfold option_map in H0.
+      repeat destruct find; try discriminate; auto.
+      inversion H0.
+      f_equal. eauto.
   Qed.
 
   Hint Resolve Forall_elements_empty : mapfacts.

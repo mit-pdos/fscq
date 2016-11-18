@@ -127,20 +127,13 @@ Instance GoWrapper_addrmap {T} {WT : GoWrapper T} : GoWrapper (Go.Map.t T).
 Proof.
   refine {| wrap_type := Go.AddrMap (@wrap_type _ WT);
             wrap' := Go.Map.map (@wrap' _ WT) |}.
-  intros a1 a2; intros. destruct a1, a2.
-  unfold Go.Map.map in *. simpl in *.
-  find_inversion.
-  generalize dependent this0.
-  induction this; destruct this0; simpl in *; try congruence; intros.
-  erewrite (proof_irrelevance _ is_bst). eauto.
-  find_inversion.
-  find_eapply_lem_hyp wrap_inj; subst.
-  inversion is_bst; subst.
-  inversion is_bst0; subst.
-  repeat match goal with
-  | [H : _, H' : _ |- _ ] => specialize (H H'); try invc H
-  end.
-  erewrite (proof_irrelevance _ is_bst). eauto.
+  intros.
+  apply MapUtils.addrmap_equal_eq.
+  pose proof (MapUtils.AddrMap.MapFacts.Equal_refl
+    (Go.Map.map wrap' a1)) as H0.
+  rewrite H in H0 at 2.
+  eapply MoreAddrMapFacts.map_inj_equal; eauto.
+  exact (@wrap_inj _ WT).
 Defined.
 
 Definition extract_code := projT1.
@@ -1555,6 +1548,89 @@ Ltac pred_cancel :=
   match goal with
   | [H : _ |- _] => eapply pimpl_apply; [> | exact H]; solve [cancel_subset]
   end.
+
+Lemma CompileMapAdd : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k (v : T),
+  EXTRACT Ret (Go.Map.add k v m)
+  {{ mvar ~> m * kvar ~> k * vvar ~> v * F }}
+    Go.Modify Go.MapAdd (mvar, kvar, vvar)
+  {{ fun ret => mvar ~> ret * kvar ~> k * F }} // env.
+Proof.
+  intros.
+  unfold ProgOk.
+  inv_exec_progok.
+  - inv_exec.
+    inv_exec.
+    inv_exec.
+    inv_exec.
+    simpl in *.
+    unfold addr_map_add, map_add_impl' in *. simpl in *.
+    eval_expr_step.
+    eval_expr_step.
+    eval_expr_step.
+    eval_expr_step.
+    unfold wrap in *.
+    eval_expr_step.
+    eval_expr_step.
+    rewrite (proof_irrelevance _ e (eq_refl)) in *.
+    eval_expr_step.
+    eval_expr_step.
+    repeat eexists; eauto.
+    erewrite MapUtils.addrmap_equal_eq with (m1 := (Map.map _ (Map.add _ _ _))).
+    pred_solve.
+    rewrite MoreAddrMapFacts.map_add_comm.
+    apply MapUtils.AddrMap.MapFacts.Equal_refl.
+    eval_expr_step.
+    rewrite (proof_irrelevance _ e (eq_refl)) in *.
+    eval_expr_step.
+    eval_expr_step.
+    repeat eexists; eauto.
+    erewrite MapUtils.addrmap_equal_eq with (m1 := (Map.map _ (Map.add _ _ _))).
+    pred_solve.
+    rewrite MoreAddrMapFacts.map_add_comm.
+    apply MapUtils.AddrMap.MapFacts.Equal_refl.
+  - inv_exec_progok.
+  - inv_exec.
+    inv_exec.
+    inv_exec.
+    inv_exec.
+    simpl in *.
+    unfold addr_map_add, map_add_impl' in *. simpl in *.
+    eval_expr_step.
+    eval_expr_step.
+    eval_expr_step.
+    eval_expr_step.
+    eval_expr_step.
+    eval_expr_step.
+    rewrite (proof_irrelevance _ e (eq_refl)) in *.
+    eval_expr.
+    unfold is_final in *. simpl in *. congruence.
+    eval_expr_step.
+    rewrite (proof_irrelevance _ e (eq_refl)) in *.
+    eval_expr_step.
+    eval_expr.
+    contradiction H1. unfold is_final. auto.
+    eval_expr.
+    contradiction H1.
+    repeat econstructor.
+    eval_expr; eauto.
+    eval_expr; eauto.
+    destruct type_eq_dec; try congruence.
+    rewrite (proof_irrelevance _ e (eq_refl)) in *. eauto.
+    eval_expr_step.
+    eval_expr_step.
+    eauto.
+    eval_expr.
+    contradiction H1.
+    repeat econstructor; eauto.
+    eval_expr; eauto.
+    eval_expr; eauto.
+    destruct type_eq_dec.
+    rewrite (proof_irrelevance _ e0 (eq_refl)); eauto.
+    congruence.
+    eval_expr; eauto.
+  Unshelve.
+    all : eauto.
+Qed.
 
 Lemma CompileForLoopBasic : forall L G (L' : GoWrapper L) v loopvar F
                           (n i : W)
