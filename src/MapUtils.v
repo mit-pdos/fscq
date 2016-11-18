@@ -4,6 +4,7 @@ Require Import Omega.
 Require Import ListUtils.
 Require Import OrderedTypeEx.
 Require Import Arith.
+Require Import ProofIrrelevance.
 Import ListNotations.
 Set Implicit Arguments.
 
@@ -494,13 +495,98 @@ Module MapDefs (OT : UsualOrderedType) (M : S with Module E := OT).
   Qed.
 
 
+
 End MapDefs.
 
+Require Import FMapList.
 
+Module AddrMap_List := FMapList.Make(Nat_as_OT).
+Module AddrMap := MapDefs Nat_as_OT AddrMap_List.
 
-Require Import FMapAVL.
+Local Hint Resolve AddrMap_List.Raw.PX.ltk_strorder.
 
-Module AddrMap_AVL := FMapAVL.Make(Nat_as_OT).
-Module AddrMap := MapDefs Nat_as_OT AddrMap_AVL.
+Ltac addrmap_unfold :=
+  unfold AddrMap_List.Raw.PX.ltk, Nat_as_OT.lt, Nat_as_OT.eq in *;
+  simpl in *.
 
+Lemma hdrel_map_raw_find_none : forall T k v l,
+  HdRel (@AddrMap_List.Raw.PX.ltk T) (k, v) l ->
+  AddrMap_List.Raw.find k l = None.
+Proof.
+  intros T k v l H.
+  induction l as [|a l']; inversion H; simpl; auto.
+  destruct a; unfold AddrMap_List.Raw.PX.ltk in *; simpl in *.
+  destruct Nat_as_OT.compare; addrmap_unfold; try omega; auto.
+Qed.
 
+Lemma build_slist_inj : forall T l1 l2 p1 p2,
+  l1 = l2 ->
+  @AddrMap_List.Build_slist T l1 p1 = @AddrMap_List.Build_slist T l2 p2.
+Proof.
+  intros; subst.
+  setoid_rewrite proof_irrelevance. eauto.
+  Grab Existential Variables.
+  eauto.
+Qed.
+
+Theorem addrmap_equal_eq : forall T (m1 m2 : AddrMap_List.t T),
+  AddrMap_List.Equal m1 m2 -> m1 = m2.
+Proof.
+  intros T m1 m2 H.
+  destruct m1, m2.
+  eapply build_slist_inj.
+  generalize dependent this0.
+  induction this; intros; destruct this0; eauto.
+  - unfold AddrMap_List.Equal in H. destruct p.
+    specialize (H n).
+    unfold AddrMap_List.find in H. simpl in H.
+    destruct Nat_as_OT.compare; addrmap_unfold; try omega.
+    discriminate.
+  - unfold AddrMap_List.Equal in H. destruct a.
+    specialize (H n).
+    unfold AddrMap_List.find in H. simpl in H.
+    destruct Nat_as_OT.compare; addrmap_unfold; try omega.
+    discriminate.
+  - repeat match goal with
+    | [h : Sorted _ (_ :: ?l) |- _] =>
+      match goal with
+      | [h' : Sorted _ l |- _] => fail 1
+      | _ => inversion h
+      end; subst
+    | [h : _ |- _ ] => specialize (IHthis h)
+    | [x : _ * _ |- _ ] => destruct x
+    end; subst.
+    pose proof H.
+    match goal with
+    | [h1 : _, h2 : _ |- _ ] =>
+      evar (H' : AddrMap_List.Equal {| AddrMap_List.this := this;  AddrMap_List.sorted := h1 |}
+                              {| AddrMap_List.this := this0; AddrMap_List.sorted := h2 |})
+    end.
+    specialize (IHthis H').
+    inversion IHthis; subst.
+    unfold AddrMap_List.Equal in H.
+    specialize (H n).
+    unfold AddrMap_List.find in *. simpl in *.
+    repeat destruct Nat_as_OT.compare in H; addrmap_unfold;
+      try discriminate; try omega.
+    inversion H; subst. auto.
+    f_equal.
+    erewrite hdrel_map_raw_find_none in H by eauto. discriminate.
+    (* from the evar instantiated above *)
+    Unshelve.
+    unfold AddrMap_List.Equal. intros y.
+    pose proof (H0 y) as H. unfold AddrMap_List.find in *.
+    simpl in *.
+    repeat destruct Nat_as_OT.compare; addrmap_unfold; try congruence; subst;
+      repeat erewrite hdrel_map_raw_find_none in * by
+        (eapply InfA_ltA; eauto; addrmap_unfold; simpl in *; omega); eauto.
+    inversion H; subst.
+    repeat erewrite hdrel_map_raw_find_none; eauto.
+    all : match goal with
+      [n : nat |- _ ] => solve [specialize (H0 n); unfold AddrMap_List.find in H0;
+        simpl in *; repeat destruct Nat_as_OT.compare;
+        addrmap_unfold; try congruence; try omega]
+      end.
+  Grab Existential Variables.
+  all : eauto.
+Qed.

@@ -1,7 +1,6 @@
 Require Import Mem.
 Require Import List.
 Require Import Prog ProgMonad.
-Require Import FMapAVL.
 Require Import FMapFacts.
 Require Import Word.
 Require Import Array.
