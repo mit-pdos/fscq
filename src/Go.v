@@ -80,6 +80,8 @@ Module Go.
   Inductive numop := Plus | Minus | Times.
   Inductive test := Eq | Ne | Lt | Le.
 
+  Module Map := AddrMap.Map.
+
   Inductive type :=
   | Num
   | Bool
@@ -335,7 +337,7 @@ Module Go.
       refine (Some (join_pair_impl' ta tb va vb)).
     Defined.
 
-    Definition addr_map_add : op_impl 3.
+    Definition map_add_impl : op_impl 3.
       refine (fun args => let '(Val tm m, Val tk k, Val tv v) := args in
                         match tm with
                         | AddrMap tv' => fun m => _
@@ -356,7 +358,7 @@ Module Go.
     | ModifyNumOp nop => existT _ _ (numop_impl nop)
     | SplitPair => existT _ _ split_pair_impl
     | JoinPair => existT _ _ join_pair_impl
-    | MapAdd => existT _ _ addr_map_add
+    | MapAdd => existT _ _ map_add_impl
     end.
 
   Definition op_arity (op : modify_op) : nat := projT1 (impl_for op).

@@ -1349,6 +1349,7 @@ Ltac unfold_expr :=
          numop_impl', numop_impl,
          split_pair_impl, split_pair_impl',
          join_pair_impl, join_pair_impl',
+         map_add_impl, map_add_impl',
          eval_test_m, eval_test_num, eval_test_bool,
          update_one, setconst_impl, duplicate_impl,
          sel, id, eval, eq_rect_r, eq_rect
@@ -1367,12 +1368,15 @@ Ltac eval_expr_step :=
     repeat extract_var_val;
     repeat (destruct_pair + unfold_expr); simpl in *;
     try subst;
-     match goal with
+    match goal with
+    | [H : context [match ?e in (_ = _) return _ with _ => _ end] |- _ ]
+      => rewrite (proof_irrelevance _ e (eq_refl)) in H
+    | [H : context [eq_sym ?t] |- _ ]
+      => setoid_rewrite (proof_irrelevance _ t eq_refl) in H
     | [e : ?x = _, H: context[match ?x with _ => _ end] |- _]
       => rewrite e in H
     | [e : ?x = _ |- context[match ?x with _ => _ end] ]
       => rewrite e
-    | [H : context [eq_sym ?t] |- _ ] => destruct t; simpl in H
     | [H : context[if ?x then _ else _] |- _]
       => let H' := fresh in destruct x eqn:H'; try omega
     | [|- context[if ?x then _ else _] ]
@@ -1384,6 +1388,12 @@ Ltac eval_expr_step :=
        H': ?x = _ |- _]
       => rewrite H' in H
     | [H : context [match ?x with _ => _ end] |- _]
+      => let H' := fresh in destruct x eqn:H'
+    | [ |- context [match ?e in (_ = _) return _ with _ => _ end] ]
+      => rewrite (proof_irrelevance _ e (eq_refl))
+    | [ |- context [eq_sym ?t] ]
+      => setoid_rewrite (proof_irrelevance _ t eq_refl)
+    | [ |- context [match ?x with _ => _ end] ]
       => let H' := fresh in destruct x eqn:H'
     | _
       => idtac
@@ -1562,30 +1572,17 @@ Proof.
     inv_exec.
     inv_exec.
     inv_exec.
-    simpl in *.
-    unfold addr_map_add, map_add_impl' in *. simpl in *.
-    eval_expr_step.
-    eval_expr_step.
-    eval_expr_step.
-    eval_expr_step.
-    unfold wrap in *.
-    eval_expr_step.
-    eval_expr_step.
-    rewrite (proof_irrelevance _ e (eq_refl)) in *.
-    eval_expr_step.
-    eval_expr_step.
+    eval_expr.
     repeat eexists; eauto.
-    erewrite MapUtils.addrmap_equal_eq with (m1 := (Map.map _ (Map.add _ _ _))).
+    erewrite MapUtils.addrmap_equal_eq with (m1 := (Map.add _ _ _)).
     pred_solve.
+    simpl.
     rewrite MoreAddrMapFacts.map_add_comm.
     apply MapUtils.AddrMap.MapFacts.Equal_refl.
-    eval_expr_step.
-    rewrite (proof_irrelevance _ e (eq_refl)) in *.
-    eval_expr_step.
-    eval_expr_step.
     repeat eexists; eauto.
-    erewrite MapUtils.addrmap_equal_eq with (m1 := (Map.map _ (Map.add _ _ _))).
+    erewrite MapUtils.addrmap_equal_eq with (m1 := (Map.add _ _ _)).
     pred_solve.
+    simpl.
     rewrite MoreAddrMapFacts.map_add_comm.
     apply MapUtils.AddrMap.MapFacts.Equal_refl.
   - inv_exec_progok.
@@ -1593,41 +1590,15 @@ Proof.
     inv_exec.
     inv_exec.
     inv_exec.
-    simpl in *.
-    unfold addr_map_add, map_add_impl' in *. simpl in *.
-    eval_expr_step.
-    eval_expr_step.
-    eval_expr_step.
-    eval_expr_step.
-    eval_expr_step.
-    eval_expr_step.
-    rewrite (proof_irrelevance _ e (eq_refl)) in *.
     eval_expr.
-    unfold is_final in *. simpl in *. congruence.
-    eval_expr_step.
-    rewrite (proof_irrelevance _ e (eq_refl)) in *.
-    eval_expr_step.
-    eval_expr.
-    contradiction H1. unfold is_final. auto.
+    all : unfold is_final in *; simpl in *; try congruence.
     eval_expr.
     contradiction H1.
-    repeat econstructor.
-    eval_expr; eauto.
-    eval_expr; eauto.
-    destruct type_eq_dec; try congruence.
-    rewrite (proof_irrelevance _ e (eq_refl)) in *. eauto.
-    eval_expr_step.
-    eval_expr_step.
-    eauto.
-    eval_expr.
+    repeat econstructor; eauto;
+    [ eval_expr; eauto ..].
     contradiction H1.
-    repeat econstructor; eauto.
-    eval_expr; eauto.
-    eval_expr; eauto.
-    destruct type_eq_dec.
-    rewrite (proof_irrelevance _ e0 (eq_refl)); eauto.
-    congruence.
-    eval_expr; eauto.
+    repeat econstructor; eauto;
+    [ eval_expr; eauto ..].
   Unshelve.
     all : eauto.
 Qed.
