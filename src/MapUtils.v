@@ -556,15 +556,9 @@ Proof.
     | [h : _ |- _ ] => specialize (IHthis h)
     | [x : _ * _ |- _ ] => destruct x
     end; subst.
-    pose proof H.
-    match goal with
-    | [h1 : _, h2 : _ |- _ ] =>
-      evar (H' : AddrMap_List.Equal {| AddrMap_List.this := this;  AddrMap_List.sorted := h1 |}
-                              {| AddrMap_List.this := this0; AddrMap_List.sorted := h2 |})
-    end.
-    specialize (IHthis H').
-    inversion IHthis; subst.
-    unfold AddrMap_List.Equal in H.
+    match type of IHthis with
+    | ?a -> ?b => enough b
+    end; subst.
     specialize (H n).
     unfold AddrMap_List.find in *. simpl in *.
     repeat destruct Nat_as_OT.compare in H; addrmap_unfold;
@@ -572,18 +566,18 @@ Proof.
     inversion H; subst. auto.
     f_equal.
     erewrite hdrel_map_raw_find_none in H by eauto. discriminate.
-    (* from the evar instantiated above *)
-    Unshelve.
-    unfold AddrMap_List.Equal. intros y.
-    pose proof (H0 y) as H. unfold AddrMap_List.find in *.
+    apply IHthis.
+    (* from the enough above *)
+    intro y.
+    pose proof (H y) as H'. unfold AddrMap_List.find in *.
     simpl in *.
     repeat destruct Nat_as_OT.compare; addrmap_unfold; try congruence; subst;
       repeat erewrite hdrel_map_raw_find_none in * by
         (eapply InfA_ltA; eauto; addrmap_unfold; simpl in *; omega); eauto.
-    inversion H; subst.
+    inversion H'; subst.
     repeat erewrite hdrel_map_raw_find_none; eauto.
     all : match goal with
-      [n : nat |- _ ] => solve [specialize (H0 n); unfold AddrMap_List.find in H0;
+      [n : nat |- _ ] => solve [specialize (H n); unfold AddrMap_List.find in H;
         simpl in *; repeat destruct Nat_as_OT.compare;
         addrmap_unfold; try congruence; try omega]
       end.

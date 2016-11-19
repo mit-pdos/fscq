@@ -281,7 +281,7 @@ Module Go.
     Definition join_pair_impl' ta tb (va : type_denote ta) (vb : type_denote tb) : n_tuple 3 var_update :=
       (SetTo (Val (Pair ta tb) (Here va, Here vb)), Delete, Delete).
 
-    Definition map_add_impl' tv (m : Map.t (type_denote tv)) (k : addr) (v : type_denote tv) : n_tuple 3 var_update :=
+    Definition map_add_impl' tv m (k : addr) (v : type_denote tv) : n_tuple 3 var_update :=
       (SetTo (Val (AddrMap tv) (Map.add k v m)), Leave, if can_alias tv then Leave else Delete).
 
   End NiceImpls.

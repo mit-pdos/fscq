@@ -830,6 +830,10 @@ Ltac pred_solve_step := match goal with
     | context [(?a |-> ?x)%pred] =>
       eapply pimpl_apply with (p := (a |-> x * _)%pred);
       [ cancel_subset | (eapply ptsto_upd_disjoint'; solve [eauto]) || eapply ptsto_upd ]
+    | context [(@ptsto ?AT ?AEQ ?V ?a ?y)%pred] =>
+      let H := fresh in
+      assert (@okToUnify AT AEQ V (ptsto a y) (ptsto a x)) as H;
+      [ eauto with okToUnify | rewrite H ]
     end
   | [ |- ( ?P )%pred (delete _ ?a) ] =>
     eapply ptsto_delete with (F := P)
@@ -1559,6 +1563,21 @@ Ltac pred_cancel :=
   | [H : _ |- _] => eapply pimpl_apply; [> | exact H]; solve [cancel_subset]
   end.
 
+Lemma map_add_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m k (v : T),
+  (@okToUnify AT AEQ value (var ~> Map.add k v m)
+  (var |-> (Val (AddrMap wrap_type) (Map.add k (wrap' v) (Map.map wrap' m)))))%pred.
+Proof.
+  intros. unfold okToUnify.
+  unfold wrap. simpl. repeat f_equal.
+  eauto using MapUtils.addrmap_equal_eq,
+    MoreAddrMapFacts.map_add_comm,
+    MapUtils.AddrMap.MapFacts.Equal_refl.
+Qed.
+
+Local Hint Extern 0 (okToUnify (?var ~> Map.add _ _ _)
+                    (?var |-> (Val _ (Map.add _ _ _)))) =>
+                    eapply map_add_okToUnify : okToUnify.
+
 Lemma CompileMapAdd : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k (v : T),
   EXTRACT Ret (Go.Map.add k v m)
   {{ mvar ~> m * kvar ~> k * vvar ~> v * F }}
@@ -1573,18 +1592,8 @@ Proof.
     inv_exec.
     inv_exec.
     eval_expr.
-    repeat eexists; eauto.
-    erewrite MapUtils.addrmap_equal_eq with (m1 := (Map.add _ _ _)).
-    pred_solve.
-    simpl.
-    rewrite MoreAddrMapFacts.map_add_comm.
-    apply MapUtils.AddrMap.MapFacts.Equal_refl.
-    repeat eexists; eauto.
-    erewrite MapUtils.addrmap_equal_eq with (m1 := (Map.add _ _ _)).
-    pred_solve.
-    simpl.
-    rewrite MoreAddrMapFacts.map_add_comm.
-    apply MapUtils.AddrMap.MapFacts.Equal_refl.
+    repeat eexists; eauto. pred_solve.
+    repeat eexists; eauto. pred_solve.
   - inv_exec_progok.
   - inv_exec.
     inv_exec.
