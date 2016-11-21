@@ -113,13 +113,13 @@ Module Go.
 
   Fixpoint type_denote (t : type) : Type :=
     match t with
-    | Num => W
+    | Num => movable W
     | Bool => bool
     | EmptyStruct => unit
-    | DiskBlock => valu
-    | Slice t' => list (type_denote t') (* kept in reverse order to make cons = append *)
-    | Pair t1 t2 => movable (type_denote t1) * movable (type_denote t2)
-    | AddrMap vt => Map.t (type_denote vt)
+    | DiskBlock => movable valu
+    | Slice t' => movable (list (type_denote t')) (* kept in reverse order to make cons = append *)
+    | Pair t1 t2 => type_denote t1 * type_denote t2
+    | AddrMap vt => movable (Map.t (type_denote vt))
     end.
 
   Definition type_eq_dec : forall t1 t2 : type, {t1 = t2} + {t1 <> t2}.
@@ -159,19 +159,39 @@ Module Go.
   Definition type_of (v : value) :=
     match v with Val t _ => t end.
 
+  Eval cbn in (type_denote Num).
+  
   Fixpoint default_value' (t : type) : type_denote t :=
     match t return type_denote t with
-    | Num => 0
+    | Num => Here 0
     | Bool => false
     | EmptyStruct => tt
-    | DiskBlock => $0
-    | Slice t' => nil
-    | Pair t1 t2 => (Here (default_value' t1), Here (default_value' t2))
-    | AddrMap vt => Map.empty (type_denote vt)
+    | DiskBlock => Here $0
+    | Slice _ => Here nil
+    | Pair t1 t2 => (default_value' t1, default_value' t2)
+    | AddrMap vt => Here (Map.empty (type_denote vt))
     end.
 
   Definition default_value (t : type) : value :=
     Val t (default_value' t).
+
+  Fixpoint moved_value' (t : type) (old : type_denote t) : type_denote t :=
+    match t return type_denote t -> type_denote t with
+    | Num => fun _ => Moved
+    | Bool => fun old => old
+    | EmptyStruct => fun old => old
+    | DiskBlock => fun _ => Moved
+    | Slice _ => fun _ => Moved
+    | Pair t1 t2 =>
+      fun old =>
+        let '(v1, v2) := old
+        in (moved_value' t1 v1, moved_value' t2 v2)
+    | AddrMap vt => fun _ => Moved
+    end old.
+
+  Definition moved_value (old : value) : value :=
+    let '(Val t o) := old in
+    Val t (moved_value' t o).
 
   Definition scope := VarMap.t type.
   Definition locals := VarMap.t value.
@@ -254,39 +274,39 @@ Module Go.
 
     Inductive var_update :=
     | SetTo (newval : value)
-    | Delete
+    | Move
     | Leave (*unchanged*).
 
     Definition op_impl n := n_tuple n value -> option (n_tuple n var_update).
 
-    Definition numop_impl' (op : numop) (old a b : nat) : n_tuple 3 var_update :=
-      (SetTo (Val Num (match op with
-                       | Plus => a + b
-                       | Minus => a - b
-                       | Times => a * b
-                       end)),
+    Definition numop_impl' (op : numop) (a b : nat) : n_tuple 3 var_update :=
+      (SetTo (Val Num (Here (match op with
+                             | Plus => a + b
+                             | Minus => a - b
+                             | Times => a * b
+                             end))),
        Leave, Leave).
 
     Definition setconst_impl (n : nat) : op_impl 1 :=
-      fun _ => Some (SetTo (Val Num n)).
+      fun _ => Some (SetTo (Val Num (Here n))).
 
     Definition duplicate_impl : op_impl 2 :=
       fun args => let (_, a) := args in Some (SetTo a, Leave).
 
     Definition append_impl' t (l : list (type_denote t)) (a : type_denote t) : n_tuple 2 var_update :=
-      (SetTo (Val (Slice t) (a :: l)), if can_alias t then Leave else Delete).
+      (SetTo (Val (Slice t) (Here (a :: l))), Move).
 
     Definition split_pair_impl' ta tb (a : type_denote ta) (b : type_denote tb) : n_tuple 3 var_update :=
-      (SetTo (Val (Pair ta tb) (Moved, Moved)), SetTo (Val ta a), SetTo (Val tb b)).
+      (Move, SetTo (Val ta a), SetTo (Val tb b)).
 
     Definition join_pair_impl' ta tb (va : type_denote ta) (vb : type_denote tb) : n_tuple 3 var_update :=
-      (SetTo (Val (Pair ta tb) (Here va, Here vb)), Delete, Delete).
+      (SetTo (Val (Pair ta tb) (va, vb)), Move, Move).
 
     Definition map_add_impl' tv m (k : addr) (v : type_denote tv) : n_tuple 3 var_update :=
-      (SetTo (Val (AddrMap tv) (Map.add k v m)), Leave, if can_alias tv then Leave else Delete).
+      (SetTo (Val (AddrMap tv) (Here (Map.add k v m))), Leave, Move).
 
     Definition map_card_impl' tv (m : Map.t (type_denote tv)) : n_tuple 2 var_update :=
-      (Leave, SetTo (Val Num (Map.cardinal m))).
+      (Leave, SetTo (Val Num (Here (Map.cardinal m)))).
   End NiceImpls.
 
   Section NastyImpls.
@@ -294,11 +314,10 @@ Module Go.
     Definition numop_impl (op : numop) : op_impl 3 :=
       fun args => let '(vo, va, vb) := args in
                match vo, va, vb with
-               | Val Num o, Val Num a, Val Num b =>
-                 Some (numop_impl' op o a b)
+               | Val Num _, Val Num (Here a), Val Num (Here b) =>
+                 Some (numop_impl' op a b)
                | _, _, _ => None
                end.
-
 
     Definition append_impl : op_impl 2.
       refine (fun args => let '(Val t1 l, Val t2 a) := args in
@@ -308,6 +327,7 @@ Module Go.
                        end l).
       destruct (type_eq_dec t1' t2); [ | exact None ].
       rewrite e in l.
+      destruct l as [ l | ]; [ | exact None ].
       refine (Some (append_impl' _ l a)).
     Defined.
 
@@ -317,11 +337,7 @@ Module Go.
                        | Pair ta' tb' => fun p => _
                        | _ => fun _ => None
                        end p).
-      refine (match p with
-              | (Here a, Here b) => _
-              | _ => None
-              end
-             ).
+      refine (let '(a, b) := p in _).
       destruct (type_eq_dec ta' ta); [ | exact None ].
       destruct (type_eq_dec tb' tb); [ | exact None ].
       subst.
@@ -348,7 +364,9 @@ Module Go.
                         end m).
       destruct (type_eq_dec tk Num); [ | exact None ].
       destruct (type_eq_dec tv tv'); [ | exact None ].
+      destruct m as [m | ]; [ | exact None ].
       subst tv' tk.
+      destruct k as [k | ]; [ | exact None ].
       refine (Some (map_add_impl' tv m k v)).
     Defined.
 
@@ -359,6 +377,7 @@ Module Go.
                         | _ => fun _ => None
                         end m).
       destruct (type_eq_dec tc Num); [ | exact None ].
+      destruct m as [ m | ]; [ | exact None ].
       refine (Some (map_card_impl' tv' m)).
     Defined.
   End NastyImpls.
@@ -379,7 +398,7 @@ Module Go.
 
   Definition eval_test_m (op : test) (oa ob : option value) : option value :=
     match oa, ob with
-    | Some (Val Num a), Some (Val Num b) => eval_test_num op a b
+    | Some (Val Num (Here a)), Some (Val Num (Here b)) => eval_test_num op a b
     | Some (Val Bool a), Some (Val Bool b) => eval_test_bool op a b
     | _, _ => None
     end.
@@ -488,7 +507,7 @@ Module Go.
       if type_eq_dec (type_of old) (type_of v)
       then Some (VarMap.add key v st)
       else None
-    | Delete => Some (VarMap.remove key st)
+    | Move => Some (VarMap.add key (moved_value old) st)
     | Leave => Some st
     end.
 
@@ -686,13 +705,13 @@ Module Go.
     | RunsToDiskRead : forall x ae a d s s' v0 v vs,
         VarMap.find x s = Some v0 -> (* variable must be declared *)
         type_of v0 = DiskBlock -> (* and have the correct type *)
-        eval s ae = Some (Val Num a) ->
+        eval s ae = Some (Val Num (Here a)) ->
         d a = Some (v, vs) ->
-        s' = VarMap.add x (Val DiskBlock v) s ->
+        s' = VarMap.add x (Val DiskBlock (Here v)) s ->
         runsto (DiskRead x ae) (d, s) (d, s')
     | RunsToDiskWrite : forall ae a ve v (d : rawdisk) d' s v0 v0s,
-        eval s ae = Some (Val Num a) ->
-        eval s ve = Some (Val DiskBlock v) ->
+        eval s ae = Some (Val Num (Here a)) ->
+        eval s ve = Some (Val DiskBlock (Here v)) ->
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->
         runsto (DiskWrite ae ve) (d, s) (d', s)
@@ -755,13 +774,13 @@ Module Go.
     | StepDiskRead : forall x ae a d s s' v v0 vs,
         VarMap.find x s = Some v0 -> (* variable must be declared *)
         type_of v0 = DiskBlock -> (* and have the correct type *)
-        eval s ae = Some (Val Num a) ->
+        eval s ae = Some (Val Num (Here a)) ->
         d a = Some (v, vs) ->
-        s' = VarMap.add x (Val DiskBlock v) s ->
+        s' = VarMap.add x (Val DiskBlock (Here v)) s ->
         step (d, s, DiskRead x ae) (d, s', Skip)
     | StepDiskWrite : forall ae a ve v d d' s v0 v0s,
-        eval s ae = Some (Val Num a) ->
-        eval s ve = Some (Val DiskBlock v) ->
+        eval s ae = Some (Val Num (Here a)) ->
+        eval s ve = Some (Val DiskBlock (Here v)) ->
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->
         step (d, s, DiskWrite ae ve) (d', s, Skip)
@@ -959,13 +978,13 @@ Module Go.
     | RunsToICDiskRead : forall x ae a d s s' v v0 vs,
         VarMap.find x s = Some v0 -> (* variable must be declared *)
         type_of v0 = DiskBlock -> (* and have the correct type *)
-        eval s ae = Some (Val Num a) ->
+        eval s ae = Some (Val Num (Here a)) ->
         d a = Some (v, vs) ->
-        s' = VarMap.add x (Val DiskBlock v) s ->
+        s' = VarMap.add x (Val DiskBlock (Here v)) s ->
         runsto_InCall (DiskRead x ae) (d, s) (d, s')
     | RunsToICDiskWrite : forall ae a ve v d d' s v0 v0s,
-        eval s ae = Some (Val Num a) ->
-        eval s ve = Some (Val DiskBlock v) ->
+        eval s ae = Some (Val Num (Here a)) ->
+        eval s ve = Some (Val DiskBlock (Here v)) ->
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->
         runsto_InCall (DiskWrite ae ve) (d, s) (d', s)

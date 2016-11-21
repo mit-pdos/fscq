@@ -31,13 +31,13 @@ Notation "k ->> v ;  m" := (VarMap.add k v m) (at level 21, right associativity)
 
 Definition ProgOk T env eprog (sprog : prog T) (initial_tstate : pred) (final_tstate : T -> pred) :=
   forall initial_state hm,
-    (snd initial_state) \u2272 initial_tstate ->
+    (snd initial_state) ≲ initial_tstate ->
     forall out,
       Go.exec env (initial_state, eprog) out ->
     (forall final_state, out = Go.Finished final_state ->
       exists r hm',
         exec (fst initial_state) hm sprog (Finished (fst final_state) hm' r) /\
-        (snd final_state \u2272 final_tstate r)) /\
+        (snd final_state ≲ final_tstate r)) /\
     (forall final_disk,
       out = Go.Crashed final_disk ->
       exists hm',
@@ -67,7 +67,7 @@ Ltac GoWrapper_t :=
 
 Instance GoWrapper_Num : GoWrapper W.
 Proof.
-  refine {| wrap' := id;
+  refine {| wrap' := Go.Here;
             wrap_type := Go.Num |}; GoWrapper_t.
 Defined.
 
@@ -79,7 +79,7 @@ Defined.
 
 Instance GoWrapper_valu : GoWrapper valu.
 Proof.
-  refine {| wrap' := id;
+  refine {| wrap' := Go.Here;
             wrap_type := Go.DiskBlock |}; GoWrapper_t.
 Defined.
 
@@ -91,7 +91,7 @@ Defined.
 
 Instance GoWrapper_pair {A B} {WA : GoWrapper A} {WB : GoWrapper B} : GoWrapper (A * B).
 Proof.
-  refine {| wrap' := fun p => (Go.Here (wrap' (fst p)), Go.Here (wrap' (snd p)));
+  refine {| wrap' := fun p => (wrap' (fst p), wrap' (snd p));
             wrap_type := Go.Pair (@wrap_type _ WA) (@wrap_type _ WB) |}; GoWrapper_t.
 Defined.
 
@@ -110,7 +110,7 @@ Hint Resolve map_inj_inj : gowrapper.
 
 Instance GoWrapper_list T {Wr: GoWrapper T} : GoWrapper (list T).
 Proof.
-  refine {| wrap' := map wrap';
+  refine {| wrap' := fun l => Go.Here (map wrap' l);
             wrap_type := Go.Slice wrap_type |}; GoWrapper_t.
 Defined.
 
@@ -123,15 +123,69 @@ Proof.
   destruct a1, a2; f_equal; try discriminate; apply proof_irrelevance.
 Qed.
 
+Ltac invert_trivial H :=
+  match type of H with
+    | ?con ?a = ?con ?b =>
+      let H' := fresh in
+      assert (a = b) as H' by exact (match H with eq_refl => eq_refl end); clear H; rename H' into H
+  end.
+
+Lemma some_inj :
+  forall A (x y : A), Some x = Some y -> x = y.
+Proof.
+  intros. find_inversion. auto.
+Qed.
+
+Lemma pair_inj :
+  forall A B (a1 a2 : A) (b1 b2 : B), (a1, b1) = (a2, b2) -> a1 = a2 /\ b1 = b2.
+Proof.
+  intros. find_inversion. auto.
+Qed.
+
+Lemma Val_type_inj :
+  forall t1 t2 v1 v2, Go.Val t1 v1 = Go.Val t2 v2 -> t1 = t2.
+Proof.
+  intros. find_inversion. auto.
+Qed.
+
+Lemma Here_inj :
+  forall T (a b : T), Go.Here a = Go.Here b -> a = b.
+Proof.
+  intros. find_inversion. auto.
+Qed.
+
+Ltac find_inversion_safe :=
+  match goal with
+    | [ H : wrap _ = Go.Val _ _ |- _ ] => unfold wrap in H; simpl in H; unfold id in H
+    | [ H : Go.Val _ _ = wrap _ |- _ ] => unfold wrap in H; simpl in H; unfold id in H
+    | [ H : Some ?x = Some ?y |- _ ] => apply some_inj in H; try (subst x || subst y)
+    | [ H : Go.Val ?ta ?a = Go.Val ?tb ?b |- _ ] =>
+      (unify ta tb; unify a b; fail 1) ||
+      assert (ta = tb) by (eapply Val_type_inj; eauto); try (subst ta || subst tb);
+      assert (a = b) by (eapply Go.value_inj; eauto); clear H; try (subst a || subst b)
+    | [ H : ?X ?a = ?X ?b |- _ ] =>
+      (unify a b; fail 1) ||
+      let He := fresh in
+      assert (a = b) as He by solve [inversion H; auto with equalities | invert_trivial H; auto with equalities]; clear H; subst
+    | [ H : ?X ?a1 ?a2 = ?X ?b1 ?b2 |- _ ] =>
+      (unify a1 b1; unify a2 b2; fail 1) ||
+      let He := fresh in
+      assert (a1 = b1 /\ a2 = b2) as He by solve [inversion H; auto with equalities | invert_trivial H; auto with equalities]; clear H; destruct He as [? ?]; subst
+    | [ H : (?a, ?b) = (?c, ?d) |- _ ] =>
+      apply pair_inj in H; destruct H; try (subst a || subst c); try (subst b || subst d)
+    | [ H : Go.Here ?a = Go.Here ?b |- _ ] =>
+      apply Here_inj in H; try (subst a || subst b)
+  end.
+
 Instance GoWrapper_addrmap {T} {WT : GoWrapper T} : GoWrapper (Go.Map.t T).
 Proof.
   refine {| wrap_type := Go.AddrMap (@wrap_type _ WT);
-            wrap' := Go.Map.map (@wrap' _ WT) |}.
+            wrap' := fun m => Go.Here (Go.Map.map (@wrap' _ WT) m) |}.
   intros.
   apply MapUtils.addrmap_equal_eq.
   pose proof (MapUtils.AddrMap.MapFacts.Equal_refl
     (Go.Map.map wrap' a1)) as H0.
-  rewrite H in H0 at 2.
+  find_inversion_safe. rewrite H in H0 at 2.
   eapply MoreAddrMapFacts.map_inj_equal; eauto.
   exact (@wrap_inj _ WT).
 Defined.
@@ -303,51 +357,6 @@ Qed.
 
 Hint Resolve skip_is_final.
 
-Ltac invert_trivial H :=
-  match type of H with
-    | ?con ?a = ?con ?b =>
-      let H' := fresh in
-      assert (a = b) as H' by exact (match H with eq_refl => eq_refl end); clear H; rename H' into H
-  end.
-
-Lemma some_inj :
-  forall A (x y : A), Some x = Some y -> x = y.
-Proof.
-  intros. find_inversion. auto.
-Qed.
-
-Lemma pair_inj :
-  forall A B (a1 a2 : A) (b1 b2 : B), (a1, b1) = (a2, b2) -> a1 = a2 /\ b1 = b2.
-Proof.
-  intros. find_inversion. auto.
-Qed.
-
-Lemma Val_type_inj :
-  forall t1 t2 v1 v2, Go.Val t1 v1 = Go.Val t2 v2 -> t1 = t2.
-Proof.
-  intros. find_inversion. auto.
-Qed.
-
-Ltac find_inversion_safe :=
-  match goal with
-    | [ H : wrap _ = Go.Val _ _ |- _ ] => unfold wrap in H; simpl in H; unfold id in H
-    | [ H : Go.Val _ _ = wrap _ |- _ ] => unfold wrap in H; simpl in H; unfold id in H
-    | [ H : Some ?x = Some ?y |- _ ] => apply some_inj in H; try (subst x || subst y)
-    | [ H : Go.Val ?ta ?a = Go.Val ?tb ?b |- _ ] =>
-      (unify ta tb; unify a b; fail 1) ||
-      assert (ta = tb) by (eapply Val_type_inj; eauto); try (subst ta || subst tb);
-      assert (a = b) by (eapply Go.value_inj; eauto); clear H; try (subst a || subst b)
-    | [ H : ?X ?a = ?X ?b |- _ ] =>
-      (unify a b; fail 1) ||
-      let He := fresh in
-      assert (a = b) as He by solve [inversion H; auto with equalities | invert_trivial H; auto with equalities]; clear H; subst
-    | [ H : ?X ?a1 ?a2 = ?X ?b1 ?b2 |- _ ] =>
-      (unify a1 b1; unify a2 b2; fail 1) ||
-      let He := fresh in
-      assert (a1 = b1 /\ a2 = b2) as He by solve [inversion H; auto with equalities | invert_trivial H; auto with equalities]; clear H; destruct He as [? ?]; subst
-    | [ H : (?a, ?b) = (?c, ?d) |- _ ] =>
-      apply pair_inj in H; destruct H; try (subst a || subst c); try (subst b || subst d)
-  end.
 
 Ltac match_finds :=
   match goal with
@@ -400,7 +409,7 @@ eapply Go.StepAssign.
 Hint Constructors Go.step.
 
 Fact sep_star_ptsto_some_find : forall l var val A,
-  l \u2272 (var |-> val * A) -> VarMap.find var l = Some val.
+  l ≲ (var |-> val * A) -> VarMap.find var l = Some val.
 Proof.
   intros.
   find_eapply_lem_hyp sep_star_assoc_1.
@@ -412,7 +421,7 @@ Hint Resolve sep_star_ptsto_some_find.
 
 Ltac extract_var_val :=
   lazymatch goal with
-  | [ H: ?s \u2272 ?P |- _ ] =>
+  | [ H: ?s ≲ ?P |- _ ] =>
     match P with
     | context[(?a |-> ?v)%pred] =>
       match goal with
@@ -827,10 +836,10 @@ Qed.
 Ltac pred_solve_step := match goal with
   | [ |- ( ?P )%pred (upd _ ?a ?x) ] =>
     match P with
-    | context [(?a |-> ?x)%pred] =>
+    | context [(a |-> ?x)%pred] =>
       eapply pimpl_apply with (p := (a |-> x * _)%pred);
       [ cancel_subset | (eapply ptsto_upd_disjoint'; solve [eauto]) || eapply ptsto_upd ]
-    | context [(@ptsto ?AT ?AEQ ?V ?a ?y)%pred] =>
+    | context [(@ptsto ?AT ?AEQ ?V a ?y)%pred] =>
       let H := fresh in
       assert (@okToUnify AT AEQ V (ptsto a y) (ptsto a x)) as H;
       [ eauto with okToUnify | rewrite H ]
@@ -873,7 +882,7 @@ Lemma CompileDeclare :
        EXTRACT p
        {{ var ~> zeroval * A }}
          xp var
-       {{ fun ret => B ret }} // env) ->
+       {{ fun ret => var |->? * B ret }} // env) ->
     EXTRACT p
     {{ A }}
       Go.Declare wrap_type xp
@@ -1034,12 +1043,28 @@ Fixpoint n_tuple_unit n (T : Type) : Type :=
   | S n' => n_tuple_unit n' T * T
   end.
 
-Definition decls_pred (decls : list Declaration) (vars : n_tuple_unit (length decls) var) : pred.
+Definition decls_pre (decls : list Declaration) (vars : n_tuple_unit (length decls) var) : pred.
   induction decls; simpl in *.
   - exact emp.
   - destruct a.
     exact ((snd vars |-> wrap zeroval * IHdecls (fst vars))%pred).
 Defined.
+
+Definition decls_post (decls : list Declaration) (vars : n_tuple_unit (length decls) var) : pred.
+  induction decls; simpl in *.
+  - exact emp.
+  - exact ((snd vars |->? * IHdecls (fst vars))%pred).
+Defined.
+
+Lemma decls_pre_impl_post :
+  forall decls vars,
+    decls_pre decls vars =p=> decls_post decls vars.
+Proof.
+  induction decls; simpl in *; intros.
+  - auto.
+  - destruct a.
+    cancel. auto.
+Qed.
 
 Definition many_declares (decls : list Declaration) (xp : n_tuple_unit (length decls) var -> stmt) : stmt.
   induction decls; simpl in *.
@@ -1055,19 +1080,19 @@ Lemma CompileDeclareMany :
   forall env T (decls : list Declaration) xp A B (p : prog T),
     (forall vars : n_tuple_unit (length decls) var,
        EXTRACT p
-       {{ decls_pred decls vars * A }}
+       {{ decls_pre decls vars * A }}
          xp vars
-       {{ fun ret => B ret }} // env) ->
+       {{ fun ret => decls_post decls vars * B ret }} // env) ->
     EXTRACT p
     {{ A }}
       many_declares decls xp
     {{ fun ret => B ret }} // env.
 Proof.
   induction decls; simpl; intros.
-  - eapply hoare_strengthen_pre; [ | apply H ]. cancel_subset.
+  - eapply hoare_weaken; [ apply H | cancel_subset.. ].
   - destruct a. eapply CompileDeclare; eauto. intros.
     eapply IHdecls. intros.
-    eapply hoare_strengthen_pre; [ | apply H ]. cancel_subset.
+    eapply hoare_weaken; [ apply H | cancel_subset.. ].
 Qed.
 
 Lemma CompileVar : forall env A var T (v : T) {H : GoWrapper T},
@@ -1520,7 +1545,7 @@ Lemma CompileAppend :
   EXTRACT Ret (x :: xs)
   {{ vvar ~> x * lvar ~> xs * F }}
     Modify AppendOp (lvar, vvar)
-  {{ fun ret => lvar ~> ret * F }} // env.
+  {{ fun ret => vvar |-> moved_value (wrap x) * lvar ~> ret * F }} // env.
 Proof.
   unfold ProgOk; intros.
   repeat extract_var_val.
@@ -1536,12 +1561,13 @@ Proof.
     repeat find_inversion_safe.
     simpl in *.
     rewrite ?eq_dec_eq in *.
+    repeat find_inversion_safe.
     destruct (can_alias wrap_type); simpl in *.
-    + find_inversion; simpl in *.
+    + rewrite ?eq_dec_eq in *. simpl in *. find_inversion; simpl in *.
       repeat eexists.
       eauto.
       pred_solve.
-    + rewrite ?eq_dec_eq.
+    + rewrite ?eq_dec_eq in *; simpl in *.
       find_inversion.
       repeat econstructor.
       pred_solve.
@@ -1568,7 +1594,7 @@ Ltac pred_cancel :=
 
 Lemma map_add_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m k (v : T),
   (@okToUnify AT AEQ value (var ~> Map.add k v m)
-  (var |-> (Val (AddrMap wrap_type) (Map.add k (wrap' v) (Map.map wrap' m)))))%pred.
+  (var |-> (Val (AddrMap wrap_type) (Here (Map.add k (wrap' v) (Map.map wrap' m))))))%pred.
 Proof.
   intros. unfold okToUnify.
   unfold wrap. simpl. repeat f_equal.
@@ -1583,7 +1609,7 @@ Lemma CompileMapAdd : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k (v : 
   EXTRACT Ret (Go.Map.add k v m)
   {{ mvar ~> m * kvar ~> k * vvar ~> v * F }}
     Go.Modify Go.MapAdd (mvar, kvar, vvar)
-  {{ fun ret => mvar ~> ret * kvar ~> k * F }} // env.
+  {{ fun ret => mvar ~> ret * kvar ~> k * vvar |-> moved_value (wrap v) * F }} // env.
 Proof.
   unfold ProgOk.
   repeat inv_exec_progok.
@@ -1596,7 +1622,7 @@ Qed.
 
 Lemma map_cardinal_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m,
   (@okToUnify AT AEQ value (var ~> Map.cardinal m)
-  (var |-> (Val Num (Map.cardinal (Map.map wrap' m)))))%pred.
+  (var |-> (Val Num (Here (Map.cardinal (Map.map wrap' m))))))%pred.
 Proof.
   intros. unfold okToUnify.
   unfold wrap. simpl. repeat f_equal. unfold id.
@@ -1853,7 +1879,7 @@ Lemma CompileFor : forall L G (L' : GoWrapper L) loopvar F
         )
       ))
     ))
-  {{ fun ret => loopvar ~> ret * F }} // env.
+  {{ fun ret => loopvar ~> ret * v |->? * vn |->? * F }} // env.
 Proof.
   intros.
   eapply CompileDeclare with (Wr := GoWrapper_Num). intro one.
@@ -1889,14 +1915,14 @@ Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> 
     forall a b, EXTRACT src a b
            {{ avar ~> a * bvar ~> b }}
              Call [] name [avar; bvar]
-           {{ fun _ => emp (* TODO: could remember a & b if they are of aliasable type *) }} // env.
+           {{ fun _ => avar |->? * bvar |->? (* TODO: could remember a & b if they are of aliasable type *) }} // env.
 
 
 (* TODO: generalize for all kinds of functions *)
 Lemma extract_voidfunc2_call :
   forall A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) arga argb arga_t argb_t env,
     forall and body ss,
-      (forall a b, EXTRACT src a b {{ arga ~> a * argb ~> b }} body {{ fun _ => emp }} // env) ->
+      (forall a b, EXTRACT src a b {{ arga ~> a * argb ~> b }} body {{ fun _ => arga |->? * argb |->? }} // env) ->
       StringMap.find name env = Some {|
                                     ParamVars := [(arga_t, arga); (argb_t, argb)];
                                     RetParamVars := [];
@@ -2074,7 +2100,7 @@ Lemma CompileSplit :
     EXTRACT Ret tt
     {{ avar ~> a0 * bvar ~> b0 * pvar ~> p * F }}
       Modify SplitPair (pvar, avar, bvar)
-    {{ fun _ => avar ~> fst p * bvar ~> snd p * pvar |-> Val (Pair (@wrap_type _ HA) (@wrap_type _ HB)) (Moved, Moved) * F }} // env.
+    {{ fun _ => avar ~> fst p * bvar ~> snd p * pvar |-> moved_value (wrap p) * F }} // env.
 Proof.
   intros; unfold ProgOk.
   inv_exec_progok.
@@ -2092,15 +2118,15 @@ Admitted.
 
 Lemma CompileJoin :
   forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar (a : A) (b : B) pa pb F,
-    EXTRACT Ret tt
+    EXTRACT Ret (a, b)
     {{ avar ~> a * bvar ~> b * pvar |-> Val (Pair (@wrap_type _ HA) (@wrap_type _ HB)) (pa, pb) * F }}
       Modify JoinPair (pvar, avar, bvar)
-    {{ fun _ => pvar ~> (a, b) * F }} // env.
+    {{ fun ret => avar |-> moved_value (wrap a) * bvar |-> moved_value (wrap b) * pvar ~> ret * F }} // env.
 Proof.
   intros; unfold ProgOk.
   repeat inv_exec_progok.
   - repeat inv_exec.
-    eval_expr.
+    eval_expr. rewrite ?eq_dec_eq in *; simpl in *. repeat find_inversion_safe.
     repeat econstructor.
     pred_solve.
   - contradiction H1.
@@ -2233,11 +2259,10 @@ Ltac compile_step :=
       | Some ?ka =>
         match find_val b pre with
           | Some ?kb =>
-            eapply hoare_weaken_post; [
-            | eapply hoare_strengthen_pre;
-              [ | (unify retvar ka; eapply CompileAddInPlace1 with (avar := ka) (bvar := kb)) ||
-                  (unify retvar kb; eapply CompileAddInPlace2 with (avar := ka) (bvar := kb)) ||
-                  eapply CompileAdd with (avar := ka) (bvar := kb) (sumvar := retvar) ] ];
+            eapply hoare_weaken;
+              [ (unify retvar ka; eapply CompileAddInPlace1 with (avar := ka) (bvar := kb)) ||
+                (unify retvar kb; eapply CompileAddInPlace2 with (avar := ka) (bvar := kb)) ||
+                eapply CompileAdd with (avar := ka) (bvar := kb) (sumvar := retvar) | .. ];
             [ cancel_subset .. ]
         end
     end
@@ -2308,10 +2333,10 @@ Proof.
   cancel_subset.
   simpl in *.
   eapply hoare_weaken.
-  eapply CompileRet'.
   eapply CompileJoin with (A := nat) (B := list nat) (avar := snd vars) (bvar := var0) (pvar := 0).
   cancel_subset.
   cancel_subset.
+  apply decls_pre_impl_post.
 
 Unshelve.
   exact [].
@@ -2374,7 +2399,7 @@ Defined.
 Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
 
 Lemma extract_swap_prog : forall env, sigT (fun p =>
-  forall a b, EXTRACT swap_prog a b {{ 0 ~> a * 1 ~> b }} p {{ fun _ => emp }} // env).
+  forall a b, EXTRACT swap_prog a b {{ 0 ~> a * 1 ~> b }} p {{ fun _ => 0 |->? * 1 |->? }} // env).
 Proof.
   intros. unfold swap_prog.
   compile.
