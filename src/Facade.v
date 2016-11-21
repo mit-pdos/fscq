@@ -1362,6 +1362,7 @@ Ltac unfold_expr :=
          numop_impl', numop_impl,
          split_pair_impl, split_pair_impl',
          join_pair_impl, join_pair_impl',
+         map_add_impl, map_add_impl',
          eval_test_m, eval_test_num, eval_test_bool,
          update_one, setconst_impl, duplicate_impl,
          sel, id, eval, eq_rect_r, eq_rect
@@ -1574,9 +1575,7 @@ Proof.
     MapUtils.AddrMap.MapFacts.Equal_refl.
 Qed.
 
-Local Hint Extern 0 (okToUnify (?var ~> Map.add _ _ _)
-                    (?var |-> (Val _ (Map.add _ _ _)))) =>
-                    eapply map_add_okToUnify : okToUnify.
+Local Hint Resolve map_add_okToUnify.
 
 Lemma CompileMapAdd : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k (v : T),
   EXTRACT Ret (Go.Map.add k v m)
@@ -1600,8 +1599,7 @@ Proof.
     inv_exec.
     inv_exec.
     eval_expr.
-    all : unfold is_final in *; simpl in *; try congruence.
-    eval_expr.
+    all : forward_solve.
     contradiction H1.
     repeat econstructor; eauto;
     [ eval_expr; eauto ..].
