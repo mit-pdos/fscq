@@ -1603,7 +1603,9 @@ Proof.
     MapUtils.AddrMap.MapFacts.Equal_refl.
 Qed.
 
-Local Hint Resolve map_add_okToUnify.
+Local Hint Extern 1 (okToUnify (?var ~> Map.add ?k ?v ?m)
+  (?var |-> (Val (AddrMap wrap_type) (Here (Map.add ?k (wrap' ?v) (Map.map wrap' ?m))))))
+  => apply map_add_okToUnify.
 
 Lemma CompileMapAdd : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k (v : T),
   EXTRACT Ret (Go.Map.add k v m)
@@ -1629,7 +1631,9 @@ Proof.
   eauto using MapUtils.AddrMap.map_cardinal_map_eq.
 Qed.
 
-Local Hint Resolve map_cardinal_okToUnify.
+Local Hint Extern 1 (okToUnify (?var ~> Map.cardinal ?m)
+  (?var |-> (Val Num (Here (Map.cardinal (Map.map wrap' ?m))))))
+  => apply map_cardinal_okToUnify.
 
 Lemma CompileMapCardinal : forall env F T {Wr : GoWrapper T} mvar m var (v0 : W),
   EXTRACT Ret (Go.Map.cardinal m)
