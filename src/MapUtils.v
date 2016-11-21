@@ -482,9 +482,71 @@ Module MapDefs (OT : UsualOrderedType) (M : S with Module E := OT).
     apply MapFacts.not_find_in_iff; auto.
   Qed.
 
+  Lemma map_empty : forall T (f : V -> T) m, Map.Empty m -> Map.Equal (Map.map f m) (Map.empty T).
+  Proof.
+    unfold Map.Equal. intros.
+    rewrite MapFacts.empty_o.
+    destruct Map.find eqn:H'; auto.
+    rewrite MapFacts.map_o in H'.
+    rewrite map_empty_find_none in H' by auto.
+    simpl in H'. discriminate.
+  Qed.
+
+  Ltac smash_equal :=
+    unfold Map.Equal; intros;
+    repeat rewrite ?MapFacts.remove_o, ?MapFacts.add_o;
+    repeat destruct Map.E.eq_dec; auto;
+    try solve [exfalso; eauto | congruence].
+
+  Lemma map_map_add_comm : forall T (f : V -> T) m k v,
+    Map.Equal (Map.map f (Map.add k v m)) (Map.add k (f v) (Map.map f m)).
+  Proof.
+    intros.
+    smash_equal.
+    rewrite MapFacts.map_o, MapFacts.add_eq_o; auto.
+    rewrite MapFacts.map_o, MapFacts.add_neq_o; auto.
+    eauto using MapFacts.map_o.
+  Qed.
+
+  Lemma map_map_remove_comm : forall T (f : V -> T) m k,
+    Map.Equal (Map.map f (Map.remove k m)) (Map.remove k (Map.map f m)).
+    intros. smash_equal.
+    rewrite MapFacts.map_o, MapFacts.remove_eq_o; auto.
+    rewrite MapFacts.map_o, MapFacts.remove_neq_o; auto.
+    eauto using MapFacts.map_o.
+  Qed.
+
+  Lemma map_add_remove_equal : forall T m k (v : T), Map.MapsTo k v m ->
+    Map.Equal m (Map.add k v (Map.remove k m)).
+  Proof.
+    intros.
+    smash_equal. eauto using M.MapsTo_1, M.find_1.
+  Qed.
+
   End MapUtilsFacts.
 
-
+  Lemma map_cardinal_map_eq : forall V T (f : V -> T) m,
+    Map.cardinal (Map.map f m) = Map.cardinal m.
+  Proof.
+    intros.
+    remember (Map.cardinal m) as n.
+    generalize dependent m.
+    induction n; intros; subst.
+    - rewrite map_empty.
+      apply MapProperties.cardinal_Empty, Map.empty_1.
+      apply MapOrdProperties.P.cardinal_Empty. auto.
+    - assert (Map.cardinal m <> 0) as H' by omega.
+      apply MapProperties.cardinal_inv_2b in H'.
+      destruct H' as [[k v] H']; simpl in H'.
+      rewrite map_add_remove_equal with (k := k) (v := v) by auto.
+      rewrite map_map_add_comm.
+      rewrite map_add_cardinal.
+      rewrite IHn; rewrite ?map_remove_cardinal; solve [omega | eauto].
+      intro H''. destruct H'' as [? H''].
+      rewrite map_map_remove_comm in H''.
+      rewrite MapProperties.F.remove_mapsto_iff in H''.
+      intuition.
+  Qed.
 
   (* Coq bug : instance doesn't work well with section arguments *)
   Instance map_elements_proper {V} :

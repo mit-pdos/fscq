@@ -1354,6 +1354,7 @@ Ltac unfold_expr :=
          split_pair_impl, split_pair_impl',
          join_pair_impl, join_pair_impl',
          map_add_impl, map_add_impl',
+         map_card_impl, map_card_impl',
          eval_test_m, eval_test_num, eval_test_bool,
          update_one, setconst_impl, duplicate_impl,
          sel, id, eval, eq_rect_r, eq_rect
@@ -1363,6 +1364,7 @@ Ltac unfold_expr :=
          split_pair_impl, split_pair_impl',
          join_pair_impl, join_pair_impl',
          map_add_impl, map_add_impl',
+         map_card_impl, map_card_impl',
          eval_test_m, eval_test_num, eval_test_bool,
          update_one, setconst_impl, duplicate_impl,
          sel, id, eval, eq_rect_r, eq_rect
@@ -1608,6 +1610,45 @@ Proof.
     [ eval_expr; eauto ..].
   Unshelve.
     all : eauto.
+Qed.
+
+Lemma map_cardinal_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m,
+  (@okToUnify AT AEQ value (var ~> Map.cardinal m)
+  (var |-> (Val Num (Map.cardinal (Map.map wrap' m)))))%pred.
+Proof.
+  intros. unfold okToUnify.
+  unfold wrap. simpl. repeat f_equal. unfold id.
+  eauto using MapUtils.AddrMap.map_cardinal_map_eq.
+Qed.
+
+Local Hint Resolve map_cardinal_okToUnify.
+
+Lemma CompileMapCardinal : forall env F T {Wr : GoWrapper T} mvar m var (v0 : W),
+  EXTRACT Ret (Go.Map.cardinal m)
+  {{ var ~> v0 * mvar ~> m * F }}
+    Go.Modify Go.MapCardinality (mvar, var)
+  {{ fun ret => var ~> ret * mvar ~> m * F }} // env.
+Proof.
+  intros.
+  unfold ProgOk.
+  inv_exec_progok.
+  - inv_exec.
+    inv_exec.
+    inv_exec.
+    inv_exec.
+    eval_expr.
+    repeat eexists; eauto. pred_solve.
+  - inv_exec_progok.
+  - inv_exec.
+    inv_exec.
+    inv_exec.
+    inv_exec.
+    forward_solve.
+    contradiction H1.
+    repeat econstructor.
+    eval_expr; eauto.
+    eval_expr; eauto.
+    eval_expr; eauto.
 Qed.
 
 Lemma CompileForLoopBasic : forall L G (L' : GoWrapper L) v loopvar F

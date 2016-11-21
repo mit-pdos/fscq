@@ -139,6 +139,7 @@ Module Go.
   | SplitPair
   | JoinPair
   | MapAdd
+  | MapCardinality
   .
 
   Inductive value :=
@@ -284,6 +285,8 @@ Module Go.
     Definition map_add_impl' tv m (k : addr) (v : type_denote tv) : n_tuple 3 var_update :=
       (SetTo (Val (AddrMap tv) (Map.add k v m)), Leave, if can_alias tv then Leave else Delete).
 
+    Definition map_card_impl' tv (m : Map.t (type_denote tv)) : n_tuple 2 var_update :=
+      (Leave, SetTo (Val Num (Map.cardinal m))).
   End NiceImpls.
 
   Section NastyImpls.
@@ -348,6 +351,16 @@ Module Go.
       subst tv' tk.
       refine (Some (map_add_impl' tv m k v)).
     Defined.
+
+    Definition map_card_impl : op_impl 2.
+      refine (fun args => let '(Val tm m, Val tc c) := args in
+                        match tm with
+                        | AddrMap tv' => fun m => _
+                        | _ => fun _ => None
+                        end m).
+      destruct (type_eq_dec tc Num); [ | exact None ].
+      refine (Some (map_card_impl' tv' m)).
+    Defined.
   End NastyImpls.
 
   Definition impl_for (op : modify_op) : { n : nat & op_impl n } :=
@@ -359,6 +372,7 @@ Module Go.
     | SplitPair => existT _ _ split_pair_impl
     | JoinPair => existT _ _ join_pair_impl
     | MapAdd => existT _ _ map_add_impl
+    | MapCardinality => existT _ _ map_card_impl
     end.
 
   Definition op_arity (op : modify_op) : nat := projT1 (impl_for op).
