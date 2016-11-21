@@ -1585,31 +1585,13 @@ Lemma CompileMapAdd : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k (v : 
     Go.Modify Go.MapAdd (mvar, kvar, vvar)
   {{ fun ret => mvar ~> ret * kvar ~> k * F }} // env.
 Proof.
-  intros.
   unfold ProgOk.
-  inv_exec_progok.
-  - inv_exec.
-    inv_exec.
-    inv_exec.
-    inv_exec.
-    eval_expr.
-    repeat eexists; eauto. pred_solve.
-    repeat eexists; eauto. pred_solve.
-  - inv_exec_progok.
-  - inv_exec.
-    inv_exec.
-    inv_exec.
-    inv_exec.
-    eval_expr.
-    all : forward_solve.
-    contradiction H1.
+  repeat inv_exec_progok.
+  - eval_expr; [ repeat eexists; eauto; pred_solve..].
+  - eval_expr.
+    repeat (contradiction H1;
     repeat econstructor; eauto;
-    [ eval_expr; eauto ..].
-    contradiction H1.
-    repeat econstructor; eauto;
-    [ eval_expr; eauto ..].
-  Unshelve.
-    all : eauto.
+    [ eval_expr; eauto ..]).
 Qed.
 
 Lemma map_cardinal_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m,
@@ -1629,26 +1611,12 @@ Lemma CompileMapCardinal : forall env F T {Wr : GoWrapper T} mvar m var (v0 : W)
     Go.Modify Go.MapCardinality (mvar, var)
   {{ fun ret => var ~> ret * mvar ~> m * F }} // env.
 Proof.
-  intros.
   unfold ProgOk.
-  inv_exec_progok.
-  - inv_exec.
-    inv_exec.
-    inv_exec.
-    inv_exec.
-    eval_expr.
+  repeat inv_exec_progok.
+  - eval_expr.
     repeat eexists; eauto. pred_solve.
-  - inv_exec_progok.
-  - inv_exec.
-    inv_exec.
-    inv_exec.
-    inv_exec.
-    forward_solve.
-    contradiction H1.
-    repeat econstructor.
-    eval_expr; eauto.
-    eval_expr; eauto.
-    eval_expr; eauto.
+  - contradiction H1.
+    repeat econstructor; [ eval_expr; eauto..].
 Qed.
 
 Lemma CompileForLoopBasic : forall L G (L' : GoWrapper L) v loopvar F
