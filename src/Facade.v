@@ -1775,7 +1775,6 @@ Lemma DuplicateBefore : forall T (T' : GoWrapper T) X (X' : GoWrapper X)
       v <~dup v'; xp
     {{ B }} // env.
 Proof.
-  intros.
   unfold ProgOk.
   inv_exec_progok.
   - do 5 inv_exec. inv_exec.
@@ -1793,10 +1792,8 @@ Proof.
     edestruct H; forward_solve.
     simpl. pred_solve.
     contradiction H2.
-    repeat econstructor;
-      eval_expr; eauto.
-    simpl in *.
-    eval_expr; eauto.
+    repeat eexists; eauto.
+    do 2 econstructor; solve [eval_expr; eauto].
 Qed.
 
 Lemma AddInPlaceLeftBefore : forall T (T' : GoWrapper T) (p : prog T) B xp env
