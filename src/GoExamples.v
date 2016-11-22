@@ -11,8 +11,8 @@ Example swap_example : stmt :=
    Declare Num (fun b =>
    Declare DiskBlock (fun va =>
    Declare DiskBlock (fun vb =>
-     (a <~ Const Num 1;
-     b <~ Const Num 2;
+     (a <~const 1;
+     b <~const 2;
      DiskRead va (Var a);
      DiskRead vb (Var b);
      DiskWrite (Var a) (Var vb);
@@ -79,14 +79,14 @@ func swap(_0 Num, _1 Num) {
 
 Example rot3_function_body : stmt :=
   (Declare Num (fun var0 =>
-    (var0 <~ Const Num 1;
+    (var0 <~const 1;
      Declare Num (fun var1 =>
-      (var1 <~ Const Num 0;
+      (var1 <~const 0;
        Call [] "swap" [var1; var0]))));
    Declare Num (fun var0 =>
-    (var0 <~ Const Num 2;
+    (var0 <~const 2;
      Declare Num (fun var1 =>
-      (var1 <~ Const Num 1;
+      (var1 <~const 1;
        Call [] "swap" [var1; var0])))))%go.
 
 Example rot3_function : OperationalSpec :=
