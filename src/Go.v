@@ -193,6 +193,14 @@ Module Go.
     let '(Val t o) := old in
     Val t (moved_value' t o).
 
+  Lemma moved_value'_idem : forall (T : type) (t : type_denote T),
+    moved_value' _ (moved_value' _ t) = moved_value' _ t.
+  Proof.
+    intros.
+    induction T; simpl in *; try congruence.
+    destruct t; congruence.
+  Qed.
+
   Definition scope := VarMap.t type.
   Definition locals := VarMap.t value.
 

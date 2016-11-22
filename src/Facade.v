@@ -114,6 +114,15 @@ Proof.
             wrap_type := Go.Slice wrap_type |}; GoWrapper_t.
 Defined.
 
+Instance GoWrapper_option {A} {WA : GoWrapper A} : GoWrapper (option A).
+Proof.
+  refine {| wrap' := fun o => match o with
+                              | None => (false, Go.moved_value' _ (Go.default_value' _))
+                              | Some x => (true, wrap' x) end;
+            wrap_type := Go.Pair Go.Bool (@wrap_type _ WA)|}.
+  intros a b H.
+  destruct a, b; invc H; GoWrapper_t.
+Defined.
 
 Instance GoWrapper_dec {P Q} : GoWrapper ({P} + {Q}).
 Proof.
@@ -861,7 +870,9 @@ Ltac pred_solve_step := match goal with
   end.
 
 Ltac pred_solve := progress (
-  repeat (unfold pred_apply in *; rewrite ?add_upd, ?remove_delete, ?default_zero);
+  unfold pred_apply in *;
+  repeat pred_solve_step;
+  repeat rewrite ?add_upd, ?remove_delete, ?default_zero;
   repeat pred_solve_step).
 
 Lemma Declare_fail :
@@ -2120,6 +2131,127 @@ Proof.
 Qed.
 
 Hint Constructors source_stmt.
+
+Definition option2pair {T} {H : GoWrapper T} {D : DefaultValue T} (o : option T) : bool * T :=
+  match o with
+  | None => (false, zeroval)
+  | Some t => (true, t)
+  end.
+
+Lemma CompileRetOptionSome : forall env B {HB: GoWrapper B} {D : DefaultValue B}
+  avar bvar pvar (b : B) (p : bool * B) F,
+  EXTRACT Ret (Some b)
+  {{ avar ~> true * bvar ~> b * pvar ~> p * F }}
+    Modify JoinPair (pvar, avar, bvar)
+  {{ fun ret => pvar ~> option2pair ret *
+                avar |-> moved_value (wrap true) *
+                bvar |-> moved_value (wrap b) * F }} // env.
+Proof.
+  intros.
+  unfold ProgOk.
+  inv_exec_progok.
+  - repeat inv_exec.
+    repeat econstructor.
+    eval_expr.
+    pred_solve.
+  - inv_exec_progok.
+  - inv_exec_progok.
+    contradiction H1.
+    repeat econstructor;
+    [ eval_expr; eauto..].
+Qed.
+
+Lemma CompileRetOptionNone : forall env B {HB: GoWrapper B} {D : DefaultValue B}
+  avar pvar (p : bool * B) F,
+  EXTRACT Ret None
+  {{ avar ~> false * pvar ~> p * F }}
+    Declare wrap_type (fun bvar =>
+      Modify JoinPair (pvar, avar, bvar)
+    )
+  {{ fun ret => pvar ~> (option2pair ret) *
+                avar |-> moved_value (wrap false) * F }} // env.
+Proof.
+  intros.
+  eapply CompileDeclare. intro bvar.
+  unfold ProgOk.
+  inv_exec_progok.
+  - repeat inv_exec.
+    repeat econstructor.
+    eval_expr.
+    pred_solve.
+  - inv_exec_progok.
+  - inv_exec_progok.
+    contradiction H1.
+    repeat econstructor;
+    [ eval_expr; eauto..].
+Qed.
+
+Lemma CompileMatchOption : forall env B {HB : GoWrapper B} X {HX : GoWrapper X} {D : DefaultValue B}
+  ovar avar bvar (o : option B) (a0 : bool) (b0 : B) C (F : pred)
+  (pnone : prog X) xpnone (psome : B -> prog X) xpsome,
+  (forall (b : B),
+  EXTRACT (psome b)
+  {{ avar ~> true * bvar ~> b * ovar |-> moved_value (wrap o) * F }}
+    xpsome
+  {{ fun ret => C ret * avar |->? * bvar |->? * ovar |-> moved_value (wrap o)}} // env) ->
+  EXTRACT pnone
+  {{ avar ~> false * bvar ~> zeroval * ovar |-> moved_value (wrap o) * F }}
+    xpnone
+  {{ fun ret => C ret * avar |->? * bvar |->? * ovar |-> moved_value (wrap o) }} // env ->
+  EXTRACT (match o with
+           | None => pnone
+           | Some b => psome b
+           end)
+  {{ ovar ~> (option2pair o) * avar ~> a0 * bvar ~> b0 * F }}
+    Modify SplitPair (ovar, avar, bvar) ;
+    If Var avar Then xpsome Else xpnone EndIf
+  {{ fun ret => C ret * avar |->? * bvar |->? * ovar |-> moved_value (wrap o) }} // env.
+Proof.
+  intros.
+  eapply extract_equiv_prog with (pr1 := Bind (Ret tt) (fun _ => _)).
+  rewrite bind_left_id. apply prog_equiv_equivalence.
+  eapply CompileSeq.
+  eapply hoare_strengthen_pre;
+    [ | apply CompileSplit with (p := option2pair o)].
+  cancel_subset.
+  destruct o; simpl in *.
+  + unfold ProgOk; inv_exec_progok.
+    - inv_exec.
+      inv_exec; eval_expr.
+      edestruct H; eauto.
+      simpl. pred_solve.
+      forward_solve.
+    - inv_exec; inv_exec; eval_expr.
+      edestruct H; eauto.
+      simpl. pred_solve.
+      forward_solve.
+    - inv_exec.
+      inv_exec; eval_expr.
+      edestruct H; eauto.
+      simpl. pred_solve.
+      forward_solve.
+      contradiction H3.
+      repeat eexists. apply StepIfTrue. eval_expr.
+  + repeat rewrite moved_value'_idem in *.
+    erewrite <- default_zero' in * by apply default_zero.
+    unfold ProgOk; inv_exec_progok.
+    - inv_exec.
+      inv_exec; eval_expr.
+      edestruct H0; eauto.
+      simpl. pred_solve.
+      forward_solve.
+    - inv_exec; inv_exec; eval_expr.
+      edestruct H0; eauto.
+      simpl. pred_solve.
+      forward_solve.
+    - inv_exec.
+      inv_exec; eval_expr.
+      edestruct H0; eauto.
+      simpl. pred_solve.
+      forward_solve.
+      contradiction H3.
+      repeat eexists. apply StepIfFalse. eval_expr.
+Qed.
 
 Local Open Scope pred.
 
