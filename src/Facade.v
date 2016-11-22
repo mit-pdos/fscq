@@ -2102,13 +2102,12 @@ Proof.
     repeat econstructor.
     eval_expr.
     pred_solve.
-    all : subst; simpl in *;
-          unfold sel in *;
-          repeat extract_var_val;
-          unfold id in *.
-    all : repeat find_inversion_safe; congruence.
-    (* TODO other cases *)
-Admitted.
+  - inv_exec_progok.
+  - inv_exec_progok.
+    contradiction H1.
+    repeat econstructor;
+    [ eval_expr; eauto ..].
+Qed.
 
 Lemma CompileJoin :
   forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar (a : A) (b : B) pa pb F,
@@ -2120,7 +2119,7 @@ Proof.
   intros; unfold ProgOk.
   repeat inv_exec_progok.
   - repeat inv_exec.
-    eval_expr. rewrite ?eq_dec_eq in *; simpl in *. repeat find_inversion_safe.
+    eval_expr.
     repeat econstructor.
     pred_solve.
   - contradiction H1.
