@@ -833,6 +833,16 @@ Proof.
   cancel.
 Qed.
 
+Lemma ptsto_delete' : forall a (F :pred) (m : mem),
+  (a |->? * F)%pred m -> F (delete m a).
+Proof.
+  intros.
+  apply pimpl_exists_r_star_r in H.
+  unfold exis in H.
+  deex.
+  eapply ptsto_delete; eauto.
+Qed.
+
 Ltac pred_solve_step := match goal with
   | [ |- ( ?P )%pred (upd _ ?a ?x) ] =>
     match P with
@@ -845,7 +855,7 @@ Ltac pred_solve_step := match goal with
       [ eauto with okToUnify | rewrite H ]
     end
   | [ |- ( ?P )%pred (delete _ ?a) ] =>
-    eapply ptsto_delete with (F := P)
+    eapply ptsto_delete' with (F := P)
   | [ H : _%pred ?t |- _%pred ?t ] => pred_apply; solve [cancel_subset]
   | _ => solve [cancel_subset]
   end.
@@ -927,59 +937,28 @@ Proof.
     forward_solve.
     simpl in *.
     repeat eexists; eauto.
-    (* This is hard or impossible to prove! Probably depends on [exec_vars_decrease] and
-       the determinism (or something similar) of [Prog.exec].
-    *)
-    admit.
+    pred_solve.
 
-(*
-  - invc H4; [ | invc H6 ].
-    invc H5.
+  - do 2 inv_exec.
+    specialize (H var (r, var ->> Go.default_value wrap_type; l) hm).
+    forward H.
+    {
+      simpl. pred_solve.
+    }
+    find_inversion_safe.
     find_eapply_lem_hyp Go.ExecCrashed_Steps.
     repeat deex; try discriminate.
-    find_inversion_safe.
     find_eapply_lem_hyp Go.Steps_Seq.
-    intuition.
-    repeat deex.
-    invc H7.
-    eapply Go.Steps_ExecCrashed in H5; eauto.
-    simpl in *.
-    specialize (H2 var).
-    forward H2.
-    {
-      maps.
+    intuition idtac.
+    + repeat deex.
+      invc H4.
+      eapply Go.Steps_ExecCrashed in H2; eauto.
       simpl in *.
-      pose proof (Forall_elements_forall_In H3).
-      case_eq (VarMap.find var A); intros.
-      destruct s.
       forward_solve.
-      find_rewrite.
-      intuition.
-      auto.
-    }
-    intuition.
-    specialize (H7 (r, var ->> Go.default_value t; t0) hm).
-    forward H7.
-    {
-      clear H7.
-      simpl in *; maps.
-      eapply forall_In_Forall_elements; intros.
-      pose proof (Forall_elements_forall_In H3).
-      destruct (VarMapFacts.eq_dec k var); maps.
-      specialize (H7 k v).
-      intuition.
-    }
-    forward_solve.
-
-    deex.
-    invc H6.
-    invc H7.
-    invc H4.
-    invc H8.
-    invc H7.
-    invc H4.
-*)
-Admitted.
+    + deex.
+      invc H5; [ invc H4 | invc H ].
+      invc H6; [ invc H4 | invc H ].
+Qed.
 
 Import Go.
 
