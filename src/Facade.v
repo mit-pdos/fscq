@@ -1369,6 +1369,7 @@ Ltac unfold_expr :=
          split_pair_impl, split_pair_impl',
          join_pair_impl, join_pair_impl',
          map_add_impl, map_add_impl',
+         map_find_impl, map_find_impl',
          map_card_impl, map_card_impl',
          eval_test_m, eval_test_num, eval_test_bool,
          update_one, setconst_impl, duplicate_impl,
@@ -1379,6 +1380,7 @@ Ltac unfold_expr :=
          split_pair_impl, split_pair_impl',
          join_pair_impl, join_pair_impl',
          map_add_impl, map_add_impl',
+         map_find_impl, map_find_impl',
          map_card_impl, map_card_impl',
          eval_test_m, eval_test_num, eval_test_bool,
          update_one, setconst_impl, duplicate_impl,
@@ -1610,6 +1612,51 @@ Proof.
     repeat (contradiction H1;
     repeat econstructor; eauto;
     [ eval_expr; eauto ..]).
+Qed.
+
+Lemma map_find_some_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m k v,
+  Map.find k (Map.map wrap' m) = Some v ->
+  (@okToUnify AT AEQ value (var ~> Map.find k m)
+  (var |-> Val (Pair Bool wrap_type) (true, v))).
+Proof.
+  intros. unfold okToUnify, wrap. simpl.
+  rewrite MapUtils.AddrMap.MapFacts.map_o in H.
+  destruct Map.find; simpl in *; congruence.
+Qed.
+
+Lemma map_find_none_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m k,
+  Map.find k (Map.map wrap' m) = None ->
+  (@okToUnify AT AEQ value (var ~> Map.find k m)
+  (var |-> Val (Pair Bool wrap_type) (false, default_value' wrap_type))).
+Proof.
+  intros. unfold okToUnify, wrap. simpl.
+  rewrite MapUtils.AddrMap.MapFacts.map_o in H.
+  destruct Map.find; simpl in *; congruence.
+Qed.
+
+Local Hint Extern 1 (okToUnify (?var ~> Map.find ?k ?m)
+  (?var |-> (Val (Pair Bool wrap_type) (true, ?v))))
+  => eapply map_find_some_okToUnify.
+
+Local Hint Extern 1 (okToUnify (?var ~> Map.find ?k ?m)
+  (?var |-> (Val (Pair Bool wrap_type) (false, ?v))))
+  => eapply map_find_none_okToUnify.
+
+Lemma CompileMapFind : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k (v0 : option T),
+  EXTRACT Ret (Go.Map.find k m)
+  {{ mvar ~> m * kvar ~> k * vvar ~> v0 * F }}
+    Go.Modify Go.MapFind (mvar, kvar, vvar)
+  {{ fun ret => vvar ~> ret * mvar ~> m * kvar ~> k * F }} // env.
+Proof.
+  unfold ProgOk.
+  repeat inv_exec_progok.
+  - eval_expr.
+    repeat eexists; eauto. pred_solve.
+    repeat eexists; eauto. pred_solve.
+  - eval_expr.
+    repeat (contradiction H1;
+    repeat econstructor;
+    [ eval_expr; eauto..]).
 Qed.
 
 Lemma map_cardinal_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m,

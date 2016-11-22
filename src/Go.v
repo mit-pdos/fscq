@@ -139,6 +139,7 @@ Module Go.
   | SplitPair
   | JoinPair
   | MapAdd
+  | MapFind
   | MapCardinality
   .
 
@@ -315,6 +316,12 @@ Module Go.
 
     Definition map_card_impl' tv (m : Map.t (type_denote tv)) : n_tuple 2 var_update :=
       (Leave, SetTo (Val Num (Here (Map.cardinal m)))).
+
+    Definition map_find_impl' tv m (k : addr) : n_tuple 3 var_update :=
+      (Leave, Leave, SetTo (Val (Pair Bool tv) (match Map.find k m with
+                                                 | Some x => (true, x)
+                                                 | None => (false, default_value' tv)
+                                                 end))).
   End NiceImpls.
 
   Section NastyImpls.
@@ -388,6 +395,20 @@ Module Go.
       destruct m as [ m | ]; [ | exact None ].
       refine (Some (map_card_impl' tv' m)).
     Defined.
+
+    Definition map_find_impl : op_impl 3.
+      refine (fun args => let '(Val tm m, Val tk k, Val tr r) := args in
+                        match tm with
+                        | AddrMap tv' => fun m => _
+                        | _ => fun _ => None
+                        end m).
+      destruct (type_eq_dec tk Num); [ | exact None].
+      destruct (type_eq_dec tr (Pair Bool tv')); [ | exact None ].
+      subst tr tk.
+      destruct m as [m | ]; [ | exact None].
+      destruct k as [k | ]; [ | exact None].
+      refine (Some (map_find_impl' tv' m k)).
+    Defined.
   End NastyImpls.
 
   Definition impl_for (op : modify_op) : { n : nat & op_impl n } :=
@@ -399,6 +420,7 @@ Module Go.
     | SplitPair => existT _ _ split_pair_impl
     | JoinPair => existT _ _ join_pair_impl
     | MapAdd => existT _ _ map_add_impl
+    | MapFind => existT _ _ map_find_impl
     | MapCardinality => existT _ _ map_card_impl
     end.
 
