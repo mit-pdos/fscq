@@ -2398,16 +2398,20 @@ Ltac compile_bind := match goal with
     end
   end.
 
-Ltac compile_const := eapply CompileConst ||
-  match goal with
+Ltac compile_const :=
+  lazymatch goal with
   | [ |- EXTRACT Ret ?n {{ _ }} _ {{ _ }} // _] =>
-    ((is_var n || is_evar n); fail 1) ||
-    match var_mapping_to_ret with
-    | ?x => eapply hoare_strengthen_pre;
-     [| eapply hoare_weaken_post; [ |
-      eapply CompileConst with (var0 := x) ] ];
-      [ cancel_subset..]
-    end
+    match goal with
+    | [ x : _ |- _] => idtac x;
+      lazymatch n with
+      | context [x] => fail 1
+      end
+      | _ => idtac
+    end;
+      match var_mapping_to_ret with
+      | ?x => eapply hoare_weaken;
+        [eapply CompileConst with (var0 := x) | cancel_subset..]
+      end
   end.
 
 Ltac compile_ret := match goal with
@@ -2492,6 +2496,7 @@ Ltac compile_call := match goal with
 
 Ltac compile_add := match goal with
   | [ |- EXTRACT Ret (S ?a) {{ ?pre }} _ {{ _ }} // _ ] =>
+    (is_var a; fail 2) ||
     rewrite <- (Nat.add_1_r a)
   | [ |- EXTRACT Ret (?a + ?b) {{ ?pre }} _ {{ _ }} // _ ] =>
     let retvar := var_mapping_to_ret in
@@ -2683,8 +2688,8 @@ Proof.
 Defined.
 
 Example find_in_map : sigT (fun p => forall env (m : Map.t W) (f0 : W),
-  EXTRACT (match Map.find 4 m with
-    | Some t => Ret 1
+  EXTRACT (match Map.find (S f0) m with
+    | Some t => Ret (S t)
     | None => Ret 0
     end)
   {{ 0 ~> m * 1 ~> f0}}
