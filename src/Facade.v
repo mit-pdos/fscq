@@ -2415,6 +2415,26 @@ Ltac compile_ret := match goal with
     eapply hoare_weaken_post; [ | eapply CompileSkip ]; [ cancel_subset ]
   end.
 
+Ltac compile_match := match goal with
+  | [ |- EXTRACT match ?o:option with _ => _ end {{ ?pre }} _ {{ fun ret : ?X => ?post }} // _ ] =>
+    match find_val o pre with
+    | None =>
+      eapply extract_equiv_prog with (pr1 := Bind (Ret o) (fun x => _));
+      [ generalize o; intro; rewrite bind_left_id; apply prog_equiv_equivalence |]
+    | Some ?x =>
+      match var_mapping_to_ret with
+      | ?ret =>
+        let vara := fresh "var" in let varb := fresh "var" in
+        eapply CompileDeclare with (T := bool); intro vara;
+        eapply CompileDeclare with (T := X); intro varb;
+        eapply hoare_weaken;
+        [ eapply CompileMatchOption with
+            (ovar := x) (avar := vara) (bvar := varb) (xvar := ret) | cancel_subset.. ];
+        intros
+      end
+    end
+  end.
+
 Ltac compile_read_write := match goal with
   | [ |- EXTRACT Read ?a {{ ?pre }} _ {{ _ }} // _ ] =>
     let retvar := var_mapping_to_ret in
@@ -2549,6 +2569,7 @@ Ltac compile_step :=
   || compile_bind
   || compile_const
   || compile_ret
+  || compile_match
   || compile_read_write
   || compile_for
   || compile_call
@@ -2610,18 +2631,7 @@ Example match_option : sigT (fun p => forall env (o : option W) (r0 : W),
   {{ fun ret => 1 ~> ret * 0 |->? }} // env
   ).
 Proof.
-  compile_step.
-  eapply CompileDeclareMany; intro.
-  instantiate (1 := Decl bool :: Decl W :: _) in vars.
-  simpl in *.
-  eapply hoare_weaken.
-  eapply CompileMatchOption with (ovar := 0) (avar := snd vars) (bvar := (snd (fst vars))) (xvar := 1).
-  intros. compile.
   compile.
-  cancel_subset.
-  cancel_subset.
-  apply decls_pre_impl_post.
-  Unshelve. exact [].
 Defined.
 
 Example find_in_map : sigT (fun p => forall env (m : Map.t W) (f0 : W),
@@ -2633,32 +2643,11 @@ Example find_in_map : sigT (fun p => forall env (m : Map.t W) (f0 : W),
     p
   {{ fun ret => 0 |->? * 1 ~> ret }} // env).
 Proof.
-  intros.
-  compile_step.
-  eapply CompileDeclareMany; intro.
-  match goal with
-  [ |- ProgOk _ _ (match ?f with _ => _ end) _ _ ] =>
-    match goal with
-      [ |- ProgOk _ _ ?P _ _ ] =>
-      eapply extract_equiv_prog with (pr1 := x <- Ret f; (fun x => _) x);
-      [ generalize f; intro; rewrite bind_left_id; eapply prog_equiv_equivalence |]
-    end
-  end.
-  compile.
+  intros. compile.
   eapply hoare_weaken.
   eapply CompileMapFind with (mvar := 0) (kvar := var1) (vvar := var0).
   cancel_subset.
   cancel_subset.
-  instantiate (1 := Decl bool :: Decl W :: _) in vars.
-  simpl in *.
-  eapply hoare_weaken.
-  eapply CompileMatchOption with (ovar := var0) (avar := snd vars) (bvar := (snd (fst vars))) (xvar := 1).
-  intros. compile.
-  compile.
-  cancel_subset.
-  cancel_subset.
-  apply decls_pre_impl_post.
-  Unshelve. exact nil.
 Defined.
 
 Eval lazy in (projT1 find_in_map).
