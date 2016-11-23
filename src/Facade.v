@@ -2240,25 +2240,25 @@ Proof.
 Qed.
 
 Lemma CompileMatchOption : forall env B {HB : GoWrapper B} X {HX : GoWrapper X} {D : DefaultValue B}
-  ovar avar bvar (o : option B) (a0 : bool) (b0 : B) C (F : pred)
-  (pnone : prog X) xpnone (psome : B -> prog X) xpsome,
+  ovar avar bvar xvar (o : option B) (a0 : bool) (b0 : B) (x0 : X)
+  (pnone : prog X) xpnone (psome : B -> prog X) xpsome (F : pred) C,
   (forall (b : B),
   EXTRACT (psome b)
-  {{ avar ~> true * bvar ~> b * ovar |-> moved_value (wrap o) * F }}
+  {{ avar ~> true * bvar ~> b * ovar |-> moved_value (wrap o) * xvar ~> x0 * F }}
     xpsome
-  {{ fun ret => C ret * avar |->? * bvar |->? * ovar |-> moved_value (wrap o)}} // env) ->
+  {{ fun ret => xvar ~> ret * avar |->? * bvar |->? * ovar |->? * C }} // env) ->
   EXTRACT pnone
-  {{ avar ~> false * bvar ~> zeroval * ovar |-> moved_value (wrap o) * F }}
+  {{ avar ~> false * bvar ~> zeroval * ovar |-> moved_value (wrap o) * xvar ~> x0 * F }}
     xpnone
-  {{ fun ret => C ret * avar |->? * bvar |->? * ovar |-> moved_value (wrap o) }} // env ->
+  {{ fun ret => xvar ~> ret * avar |->? * bvar |->? * ovar |->? * C }} // env ->
   EXTRACT (match o with
            | None => pnone
            | Some b => psome b
            end)
-  {{ ovar ~> o * avar ~> a0 * bvar ~> b0 * F }}
+  {{ ovar ~> o * avar ~> a0 * bvar ~> b0 * xvar ~> x0 * F }}
     Modify SplitPair (ovar, avar, bvar) ;
     If Var avar Then xpsome Else xpnone EndIf
-  {{ fun ret => C ret * avar |->? * bvar |->? * ovar |-> moved_value (wrap o) }} // env.
+  {{ fun ret => xvar ~> ret * avar |->? * bvar |->? * ovar |->? * C }} // env.
 Proof.
   intros.
   eapply extract_equiv_prog with (pr1 := Bind (Ret tt) (fun _ => _)).
@@ -2516,6 +2516,89 @@ Unshelve.
   exact [].
 Defined.
 Eval lazy in (projT1 append_list_in_pair).
+
+Instance defaultvalue_option : forall T {H : GoWrapper T},
+  DefaultValue (option T).
+Proof.
+  intros. refine {| zeroval := None |}. reflexivity.
+Defined.
+
+Example match_option : sigT (fun p => forall env (o : option W) (r0 : W),
+  EXTRACT match o with
+  | Some t => Ret (S t)
+  | None => Ret 0
+  end
+  {{ 0 ~> o * 1 ~> r0 }}
+    p
+  {{ fun ret => 1 ~> ret * 0 |->? }} // env
+  ).
+Proof.
+  compile_step.
+  eapply CompileDeclareMany; intro.
+  instantiate (1 := Decl bool :: Decl W :: _) in vars.
+  simpl in *.
+  eapply hoare_weaken.
+  eapply CompileMatchOption with (ovar := 0) (avar := snd vars) (bvar := (snd (fst vars))) (xvar := 1).
+  intros.
+  compile.
+  eapply hoare_weaken.
+  eapply CompileConst with (var0 := 1).
+  cancel_subset.
+  all : cancel_subset.
+  instantiate (1 := []). reflexivity.
+Defined.
+
+Example find_in_map : sigT (fun p => forall env (m : Map.t W) (f0 : W),
+  EXTRACT (match Map.find 4 m with
+    | Some t => Ret 1
+    | None => Ret 0
+    end)
+  {{ 0 ~> m * 1 ~> f0}}
+    p
+  {{ fun ret => 0 |->? * 1 ~> ret }} // env).
+Proof.
+  intros.
+  compile_step.
+  eapply CompileDeclareMany; intro.
+  match goal with
+  [ |- ProgOk _ _ (match ?f with _ => _ end) _ _ ] =>
+    match goal with
+      [ |- ProgOk _ _ ?P _ _ ] =>
+      eapply extract_equiv_prog with (pr1 := x <- Ret f; (fun x => _) x);
+      [ generalize f; intro; rewrite bind_left_id; eapply prog_equiv_equivalence |]
+    end
+  end.
+  compile_step.
+  eapply extract_equiv_prog with
+    (pr1 := Bind (Ret 4) (fun x => Ret (Map.find x _))).
+  rewrite bind_left_id. apply prog_equiv_equivalence.
+  compile_step. compile.
+  eapply hoare_weaken.
+  eapply CompileMapFind with (mvar := 0) (kvar := var1) (vvar := var0).
+  cancel_subset.
+  cancel_subset.
+  instantiate (1 := Decl bool :: Decl W :: _) in vars.
+  simpl in *.
+  Check CompileMatchOption.
+  eapply hoare_weaken.
+  Check CompileMatchOption.
+  eapply CompileMatchOption with (ovar := var0) (avar := snd vars) (bvar := (snd (fst vars))) (xvar := 1).
+  intros. eapply hoare_weaken.
+  eapply CompileConst with (var0 := 1).
+  cancel_subset.
+  cancel_subset.
+  eapply hoare_weaken.
+  eapply CompileConst with (var0 := 1).
+  cancel_subset.
+  cancel_subset.
+  cancel_subset.
+  cancel_subset.
+  instantiate (1 := []). auto.
+Defined.
+
+Eval lazy in (projT1 find_in_map).
+
+
 
 (*
 Instance prog_equiv_equivalence T :
