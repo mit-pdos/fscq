@@ -1369,6 +1369,7 @@ Ltac unfold_expr :=
          split_pair_impl, split_pair_impl',
          join_pair_impl, join_pair_impl',
          map_add_impl, map_add_impl',
+         map_remove_impl, map_remove_impl',
          map_find_impl, map_find_impl',
          map_card_impl, map_card_impl',
          eval_test_m, eval_test_num, eval_test_bool,
@@ -1380,6 +1381,7 @@ Ltac unfold_expr :=
          split_pair_impl, split_pair_impl',
          join_pair_impl, join_pair_impl',
          map_add_impl, map_add_impl',
+         map_remove_impl, map_remove_impl',
          map_find_impl, map_find_impl',
          map_card_impl, map_card_impl',
          eval_test_m, eval_test_num, eval_test_bool,
@@ -1604,6 +1606,36 @@ Lemma CompileMapAdd : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k (v : 
   {{ mvar ~> m * kvar ~> k * vvar ~> v * F }}
     Go.Modify Go.MapAdd (mvar, kvar, vvar)
   {{ fun ret => mvar ~> ret * kvar ~> k * vvar |-> moved_value (wrap v) * F }} // env.
+Proof.
+  unfold ProgOk.
+  repeat inv_exec_progok.
+  - eval_expr; [ repeat eexists; eauto; pred_solve..].
+  - eval_expr.
+    repeat (contradiction H1;
+    repeat econstructor; eauto;
+    [ eval_expr; eauto ..]).
+Qed.
+
+Lemma map_remove_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m k,
+  (@okToUnify AT AEQ value (var ~> Map.remove k m)
+  (var |-> (Val (AddrMap wrap_type) (Here (Map.remove k (Map.map wrap' m))))))%pred.
+Proof.
+  intros. unfold okToUnify.
+  unfold wrap. simpl. repeat f_equal.
+  eauto using MapUtils.addrmap_equal_eq,
+    MoreAddrMapFacts.map_remove_comm,
+    MapUtils.AddrMap.MapFacts.Equal_refl.
+Qed.
+
+Local Hint Extern 1 (okToUnify (?var ~> Map.remove ?k ?m)
+  (?var |-> (Val (AddrMap wrap_type) (Here (Map.remove ?k (Map.map wrap' ?m))))))
+  => apply map_remove_okToUnify.
+
+Lemma CompileMapRemove : forall env F T {Wr : GoWrapper T} mvar kvar m k,
+  EXTRACT Ret (Go.Map.remove k m)
+  {{ mvar ~> m * kvar ~> k * F }}
+    Go.Modify Go.MapRemove (mvar, kvar)
+  {{ fun ret => mvar ~> ret * kvar ~> k * F }} // env.
 Proof.
   unfold ProgOk.
   repeat inv_exec_progok.

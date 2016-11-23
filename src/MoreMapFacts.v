@@ -157,12 +157,21 @@ Module MoreFacts_fun (E:UsualDecidableType) (Import M:WSfun E).
   Qed.
 
 
-  Theorem map_add_comm : forall T T' (f : T -> T') m k v,
+  Lemma map_add_comm : forall T T' (f : T -> T') m k v,
     Equal (map f (add k v m)) (add k (f v) (map f m)).
   Proof.
     smash_equal; subst.
     rewrite map_o, add_eq_o; auto.
     rewrite map_o, add_neq_o; auto.
+    eauto using map_o.
+  Qed.
+
+  Lemma map_remove_comm : forall T T' (f : T -> T') m k,
+    Equal (map f (remove k m)) (remove k (map f m)).
+  Proof.
+    smash_equal; subst.
+    rewrite map_o, remove_eq_o; auto.
+    rewrite map_o, remove_neq_o; auto.
     eauto using map_o.
   Qed.
 
