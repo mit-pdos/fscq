@@ -2388,10 +2388,7 @@ Ltac Type_denote x :=
   (* TODO add more types here *)
   end.
 
-Ltac compile_step :=
-  match goal with
-  | [ |- @sigT _ _ ] => eexists; intros
-  | _ => eapply CompileBindDiscard
+Ltac compile_bind := match goal with
   | [ |- EXTRACT Bind ?p ?q {{ _ }} _ {{ _ }} // _ ] =>
     match type of p with
     | prog ?T0 =>
@@ -2399,9 +2396,26 @@ Ltac compile_step :=
       eapply CompileDeclare with (T := T0);
       intro v; intros; eapply CompileBind; intros
     end
-  | _ => eapply CompileConst
+  end.
+
+Ltac compile_const := eapply CompileConst ||
+  match goal with
+  | [ |- EXTRACT Ret ?n {{ _ }} _ {{ _ }} // _] =>
+    ((is_var n || is_evar n); fail 1) ||
+    match var_mapping_to_ret with
+    | ?x => eapply hoare_strengthen_pre;
+     [| eapply hoare_weaken_post; [ |
+      eapply CompileConst with (var0 := x) ] ];
+      [ cancel_subset..]
+    end
+  end.
+
+Ltac compile_ret := match goal with
   | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
     eapply hoare_weaken_post; [ | eapply CompileSkip ]; [ cancel_subset ]
+  end.
+
+Ltac compile_read_write := match goal with
   | [ |- EXTRACT Read ?a {{ ?pre }} _ {{ _ }} // _ ] =>
     let retvar := var_mapping_to_ret in
     match find_val a pre with
@@ -2418,6 +2432,9 @@ Ltac compile_step :=
           eapply CompileWrite with (avar := ka) (vvar := kv) ] ]; [ cancel_subset .. ]
       end
     end
+  end.
+
+Ltac compile_for := match goal with
   | [ |- EXTRACT ForN_ ?f ?i ?n _ _ ?t0 {{ ?pre }} _ {{ _ }} // _ ] =>
     let retvar := var_mapping_to_ret in
     match find_val n pre with
@@ -2439,6 +2456,9 @@ Ltac compile_step :=
         end
       end
     end
+  end.
+
+Ltac compile_call := match goal with
   | [ H : voidfunc2 ?name ?f ?env |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // ?env ] =>
     match find_val a pre with
       | Some ?ka =>
@@ -2448,17 +2468,11 @@ Ltac compile_step :=
               eapply H with (avar := ka) (bvar := kb) ] ]; [ cancel_subset .. ]
         end
     end
+  end.
+
+Ltac compile_add := match goal with
   | [ |- EXTRACT Ret (S ?a) {{ ?pre }} _ {{ _ }} // _ ] =>
     rewrite <- (Nat.add_1_r a)
-  | [ |- EXTRACT Ret (?f ?a) {{ ?pre }} _ {{ _ }} // _ ] =>
-    match find_val a pre with
-      | None => 
-        eapply extract_equiv_prog; [
-            let arg := fresh "arg" in
-            set (arg := Ret (f a));
-            pattern a in arg; subst arg;
-            eapply bind_left_id | ]
-    end
   | [ |- EXTRACT Ret (?a + ?b) {{ ?pre }} _ {{ _ }} // _ ] =>
     let retvar := var_mapping_to_ret in
     match find_val a pre with
@@ -2472,6 +2486,9 @@ Ltac compile_step :=
             [ cancel_subset .. ]
         end
     end
+  end.
+
+Ltac compile_listop := match goal with
   | [ |- EXTRACT Ret (?x :: ?xs) {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val x pre with
       | Some ?kx =>
@@ -2483,7 +2500,19 @@ Ltac compile_step :=
             [ cancel_subset .. ]
         end
     end
-  | [ |- EXTRACT Ret (?f ?a ?b) {{ ?pre }} _ {{ _ }} // _ ] =>
+  end.
+
+Ltac compile_decompose := match goal with
+  | [ |- EXTRACT Ret (?f ?a) {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_val a pre with
+      | None =>
+        eapply extract_equiv_prog; [
+            let arg := fresh "arg" in
+            set (arg := Ret (f a));
+            pattern a in arg; subst arg;
+            eapply bind_left_id | ]
+    end
+   | [ |- EXTRACT Ret (?f ?a ?b) {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val a pre with
       | None => 
         eapply extract_equiv_prog; [
@@ -2511,6 +2540,22 @@ Ltac compile_step :=
         eapply bind_left_id | ]
     end
   end.
+
+Ltac compile_step :=
+  match goal with
+  | [ |- @sigT _ _ ] => eexists; intros
+  | _ => eapply CompileBindDiscard
+  end
+  || compile_bind
+  || compile_const
+  || compile_ret
+  || compile_read_write
+  || compile_for
+  || compile_call
+  || compile_add
+  || compile_listop
+  || compile_decompose
+  .
 
 Ltac compile := repeat compile_step.
 
@@ -2571,13 +2616,12 @@ Proof.
   simpl in *.
   eapply hoare_weaken.
   eapply CompileMatchOption with (ovar := 0) (avar := snd vars) (bvar := (snd (fst vars))) (xvar := 1).
-  intros.
+  intros. compile.
   compile.
-  eapply hoare_weaken.
-  eapply CompileConst with (var0 := 1).
   cancel_subset.
-  all : cancel_subset.
-  instantiate (1 := []). reflexivity.
+  cancel_subset.
+  apply decls_pre_impl_post.
+  Unshelve. exact [].
 Defined.
 
 Example find_in_map : sigT (fun p => forall env (m : Map.t W) (f0 : W),
@@ -2600,32 +2644,21 @@ Proof.
       [ generalize f; intro; rewrite bind_left_id; eapply prog_equiv_equivalence |]
     end
   end.
-  compile_step.
-  eapply extract_equiv_prog with
-    (pr1 := Bind (Ret 4) (fun x => Ret (Map.find x _))).
-  rewrite bind_left_id. apply prog_equiv_equivalence.
-  compile_step. compile.
+  compile.
   eapply hoare_weaken.
   eapply CompileMapFind with (mvar := 0) (kvar := var1) (vvar := var0).
   cancel_subset.
   cancel_subset.
   instantiate (1 := Decl bool :: Decl W :: _) in vars.
   simpl in *.
-  Check CompileMatchOption.
   eapply hoare_weaken.
-  Check CompileMatchOption.
   eapply CompileMatchOption with (ovar := var0) (avar := snd vars) (bvar := (snd (fst vars))) (xvar := 1).
-  intros. eapply hoare_weaken.
-  eapply CompileConst with (var0 := 1).
+  intros. compile.
+  compile.
   cancel_subset.
   cancel_subset.
-  eapply hoare_weaken.
-  eapply CompileConst with (var0 := 1).
-  cancel_subset.
-  cancel_subset.
-  cancel_subset.
-  cancel_subset.
-  instantiate (1 := []). auto.
+  apply decls_pre_impl_post.
+  Unshelve. exact nil.
 Defined.
 
 Eval lazy in (projT1 find_in_map).
