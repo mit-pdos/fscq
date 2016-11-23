@@ -2522,6 +2522,44 @@ Ltac compile_listop := match goal with
     end
   end.
 
+Ltac compile_map_op := match goal with
+  | [ |- EXTRACT Ret (Map.find ?k ?m) {{ ?pre }} _ {{ fun ret : ?T => ?post }} // _ ] =>
+    match find_val k pre with
+    | Some ?vark =>
+      match find_val m pre with
+      | Some ?varm =>
+        match var_mapping_to_ret with
+        | ?ret =>
+          eapply hoare_weaken; [
+          eapply CompileMapFind with (mvar := varm) (kvar := vark) (vvar := ret) | cancel_subset..]
+        end
+      end
+    end
+  | [ |- EXTRACT Ret (Map.add ?k ?v ?m) {{ ?pre }} _ {{ fun ret : ?T => ?post }} // _ ] =>
+    match find_val k pre with
+    | Some ?vark =>
+      match find_val v pre with
+      | Some ?varv =>
+        match find_val m pre with
+        | Some ?varm =>
+          eapply hoare_weaken; [
+          eapply CompileMapAdd with (kvar := vark) (vvar := varv) (mvar := varm) |
+          cancel_subset..]
+        end
+      end
+    end
+  | [ |- EXTRACT Ret (Map.remove ?k ?m) {{ ?pre }} _ {{ fun ret : ?T => ?post }} // _ ] =>
+    match find_val k pre with
+    | Some ?vark =>
+      match find_val m pre with
+      | Some ?varm =>
+        eapply hoare_weaken; [
+        eapply CompileMapRemove with (kvar := vark) (mvar := varm) |
+        cancel_subset..]
+      end
+    end
+  end.
+
 Ltac compile_decompose := match goal with
   | [ |- EXTRACT Ret (?f ?a) {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val a pre with
@@ -2538,6 +2576,15 @@ Ltac compile_decompose := match goal with
         eapply extract_equiv_prog; [
             let arg := fresh "arg" in
             set (arg := Ret (f a b));
+            pattern a in arg; subst arg;
+            eapply bind_left_id | ]
+    end
+   | [ |- EXTRACT Ret (?f ?a ?b ?c) {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_val a pre with
+      | None =>
+        eapply extract_equiv_prog; [
+            let arg := fresh "arg" in
+            set (arg := Ret (f a b c));
             pattern a in arg; subst arg;
             eapply bind_left_id | ]
     end
@@ -2575,6 +2622,7 @@ Ltac compile_step :=
   || compile_call
   || compile_add
   || compile_listop
+  || compile_map_op
   || compile_decompose
   .
 
@@ -2644,15 +2692,27 @@ Example find_in_map : sigT (fun p => forall env (m : Map.t W) (f0 : W),
   {{ fun ret => 0 |->? * 1 ~> ret }} // env).
 Proof.
   intros. compile.
-  eapply hoare_weaken.
-  eapply CompileMapFind with (mvar := 0) (kvar := var1) (vvar := var0).
-  cancel_subset.
-  cancel_subset.
 Defined.
 
 Eval lazy in (projT1 find_in_map).
 
+Example add_to_map : sigT (fun p => forall env m,
+  EXTRACT (Ret (Map.add 1 5 m))
+  {{ 0 ~> m }}
+    p
+  {{ fun ret => 0 ~> ret }} // env).
+Proof.
+  intros. compile.
+Defined.
 
+Example remove_from_map : sigT (fun p => forall env (m : Map.t W),
+  EXTRACT (Ret (Map.remove 1 m))
+  {{ 0 ~> m }}
+    p
+  {{ fun ret => 0 ~> ret }} // env).
+Proof.
+  intros. compile.
+Defined.
 
 (*
 Instance prog_equiv_equivalence T :
