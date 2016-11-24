@@ -718,7 +718,8 @@ Module INODE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOC.rep bxp freelist') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
-           [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino) ]]
+           [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino) ]] *
+           [[ incl freelist' freelist ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} grow lxp bxp xp inum bn ms.
   Proof.
