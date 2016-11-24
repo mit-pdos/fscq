@@ -181,6 +181,26 @@ Module INODE.
       reflexivity.
     Qed.
 
+    Fact get_len_goodSize : forall ir, goodSize addrlen (IRLen ir).
+    Proof.
+      intros. apply wordToNat_good.
+    Qed.
+
+    Fact get_ind_goodSize : forall ir, goodSize addrlen (IRIndPtr ir).
+    Proof.
+      intros. apply wordToNat_good.
+    Qed.
+
+    Fact get_dind_goodSize : forall ir, goodSize addrlen (IRDindPtr ir).
+    Proof.
+      intros. apply wordToNat_good.
+    Qed.
+
+    Fact get_tind_goodSize : forall ir, goodSize addrlen (IRTindPtr ir).
+    Proof.
+      intros. apply wordToNat_good.
+    Qed.
+
   End BPtrSig.
 
   Module Ind := BlockPtr BPtrSig.
