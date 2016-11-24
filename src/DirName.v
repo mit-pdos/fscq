@@ -701,7 +701,8 @@ Module SDIR.
              [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (Fd dmap /\ notindomain name dmap) ]] *
              [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
-                                 ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] ))
+                                 ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
+             [[ BFILE.treeseq_ilist_safe dnum ilist ilist' ]] ))
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} link lxp bxp ixp dnum name inum isdir ms.
   Proof.
