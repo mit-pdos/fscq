@@ -4532,7 +4532,6 @@ Module DIRTREE.
       destruct (string_dec s name); try congruence.
       simpl in H.
       apply tree_name_distinct_rest in H.
-      Check IHtree_elem.
       specialize (IHtree_elem name d subtree subtree' dnum H).
       inversion IHtree_elem.
       rewrite H1.
