@@ -4,6 +4,7 @@ Require Import Eqdep_dec.
 Require Import AsyncDisk.
 Require Import List ListUtils.
 Require Import Omega.
+Require Import FunctionalExtensionality.
 Import EqNotations.
 
 Set Implicit Arguments.
@@ -196,3 +197,14 @@ simpl.
 unfold bsplit1_dep.
 reflexivity.
 Qed.
+
+Lemma byte2bytes_eq: forall b,
+byte2bytes b = b.
+Proof.
+  intros.
+  unfold byte2bytes.
+  unfold word2bytes.
+  eq_rect_simpl.
+  reflexivity.
+Qed.
+  

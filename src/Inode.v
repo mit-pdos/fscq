@@ -181,6 +181,26 @@ Module INODE.
       reflexivity.
     Qed.
 
+    Fact get_len_goodSize : forall ir, goodSize addrlen (IRLen ir).
+    Proof.
+      intros. apply wordToNat_good.
+    Qed.
+
+    Fact get_ind_goodSize : forall ir, goodSize addrlen (IRIndPtr ir).
+    Proof.
+      intros. apply wordToNat_good.
+    Qed.
+
+    Fact get_dind_goodSize : forall ir, goodSize addrlen (IRDindPtr ir).
+    Proof.
+      intros. apply wordToNat_good.
+    Qed.
+
+    Fact get_tind_goodSize : forall ir, goodSize addrlen (IRTindPtr ir).
+    Proof.
+      intros. apply wordToNat_good.
+    Qed.
+
   End BPtrSig.
 
   Module Ind := BlockPtr BPtrSig.
@@ -698,7 +718,8 @@ Module INODE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOC.rep bxp freelist') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
-           [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino) ]]
+           [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino) ]] *
+           [[ incl freelist' freelist ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} grow lxp bxp xp inum bn ms.
   Proof.

@@ -3014,3 +3014,128 @@ Proof.
   f_equal.
   rewrite skipn_app_r. auto.
 Qed.
+
+Inductive list_same {T : Type} (v : T) : list T -> Prop :=
+| ListSameNil : list_same v nil
+| ListSameCons : forall l, list_same v l -> list_same v (v :: l).
+
+Lemma list_same_app_l : forall T v (a b : list T),
+  list_same v (a ++ b) -> list_same v a.
+Proof.
+  induction a; simpl; intros.
+  constructor.
+  inversion H; subst.
+  constructor.
+  eauto.
+Qed.
+
+Lemma list_same_app_r : forall T v (a b : list T),
+  list_same v (a ++ b) -> list_same v b.
+Proof.
+  induction a; simpl; intros; eauto.
+  inversion H; subst; eauto.
+Qed.
+
+Lemma list_same_app_both : forall T v (a b : list T),
+  list_same v a -> list_same v b -> list_same v (a ++ b).
+Proof.
+  induction a; simpl; intros; eauto.
+  inversion H; subst.
+  constructor; eauto.
+Qed.
+
+Lemma list_same_repeat : forall T (v : T) n,
+  list_same v (repeat v n).
+Proof.
+  induction n; simpl; intros; constructor; eauto.
+Qed.
+
+Lemma list_same_firstn : forall T (v : T) n l,
+  list_same v l -> list_same v (firstn n l).
+Proof.
+  induction n; simpl; intros; try constructor.
+  destruct l; try constructor.
+  inversion H; subst.
+  constructor; eauto.
+Qed.
+
+Lemma list_same_skipn : forall T (v : T) n l,
+  list_same v l -> list_same v (skipn n l).
+Proof.
+  induction n; simpl; intros; eauto.
+  destruct l; try constructor.
+  inversion H; subst; eauto.
+Qed.
+
+Lemma list_same_firstn_le : forall T (v : T) n2 n1 l,
+  n2 <= n1 -> list_same v (firstn n1 l) -> list_same v (firstn n2 l).
+Proof.
+  induction n2; simpl; intros.
+  constructor.
+  destruct n1; try omega.
+  destruct l; try constructor.
+  simpl in *.
+  inversion H0; subst.
+  constructor.
+  eapply IHn2.
+  2: eauto.
+  omega.
+Qed.
+
+Lemma list_same_skipn_ge : forall T (v : T) n1 n2 l,
+  n2 >= n1 -> list_same v (skipn n1 l) -> list_same v (skipn n2 l).
+Proof.
+  induction n1; simpl; intros.
+  eapply list_same_skipn; eauto.
+  destruct n2; try omega; simpl.
+  destruct l; simpl in *.
+  constructor.
+  eapply IHn1; eauto.
+  omega.
+Qed.
+
+Lemma list_same_skipn_upd_range_tail : forall T (v : T) l off,
+  list_same v (skipn off (upd_range l off (length l - off) v)).
+Proof.
+  intros.
+  destruct (le_dec off (length l)).
+  - rewrite upd_range_eq_upd_range' by omega; unfold upd_range'.
+    rewrite skipn_app_r_ge by ( rewrite firstn_length, min_l; omega ).
+    rewrite firstn_length, min_l by omega.
+    replace (off - off) with 0 by omega.
+    simpl.
+    apply list_same_app_both.
+    apply list_same_repeat.
+    replace (off + (length l - off)) with (length l) by omega.
+    rewrite skipn_oob by omega.
+    constructor.
+  - rewrite not_le_minus_0 by auto. rewrite upd_range_0.
+    rewrite skipn_oob by omega. constructor.
+Qed.
+
+Lemma list_same_skipn_upd_range_mid : forall T (v : T) l off count,
+  list_same v (skipn (off + count) l) ->
+  off + count <= length l ->
+  list_same v (skipn off (upd_range l off count v)).
+Proof.
+  intros.
+  rewrite upd_range_eq_upd_range' by omega; unfold upd_range'.
+  rewrite skipn_app_r_ge by ( rewrite firstn_length, min_l; omega ).
+  rewrite firstn_length, min_l by omega.
+  replace (off - off) with 0 by omega.
+  simpl.
+  apply list_same_app_both.
+  apply list_same_repeat.
+  auto.
+Qed.
+
+Lemma list_same_skipn_selN : forall T (v : T) off l def,
+  off < length l -> list_same v (skipn off l) -> v = selN l off def.
+Proof.
+  induction off; simpl; intros.
+  destruct l; simpl in *; try omega.
+  inversion H0; auto.
+  destruct l; simpl in *; try omega.
+  eapply IHoff; eauto.
+  omega.
+Qed.

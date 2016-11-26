@@ -79,6 +79,11 @@ Module Type BlockPtrSig.
   Parameter upd_irec_get_iattr : forall ir len ibptr dibptr tibptr dbns,
       IRAttrs (upd_irec ir len ibptr dibptr tibptr dbns) = IRAttrs ir.
 
+  Parameter get_len_goodSize  : forall ir, goodSize addrlen (IRLen ir).
+  Parameter get_ind_goodSize  : forall ir, goodSize addrlen (IRIndPtr ir).
+  Parameter get_dind_goodSize : forall ir, goodSize addrlen (IRDindPtr ir).
+  Parameter get_tind_goodSize : forall ir, goodSize addrlen (IRTindPtr ir).
+
 End BlockPtrSig.
 
 
@@ -1824,27 +1829,38 @@ Module BlockPtr (BPtr : BlockPtrSig).
     ( [[ length l = (IRLen ir) /\ length l <= NBlocks ]] *
       [[ length (IRBlocks ir) = NDirect ]] *
       exists indlist, indrep bxp ir indlist *
-      [[ l = firstn (length l) ((IRBlocks ir) ++ indlist) ]] )%pred.
+      [[ l = firstn (length l) ((IRBlocks ir) ++ indlist) ]] *
+      [[ list_same $0 (skipn (length l) ((IRBlocks ir) ++ indlist)) ]] )%pred.
 
   Definition rep_direct bxp (ir : irec) (l : list waddr) : @pred _ addr_eq_dec valuset :=
     ( [[ length l = (IRLen ir) /\ length l <= NBlocks /\ length l <= NDirect ]] *
       [[ length (IRBlocks ir) = NDirect ]] *
       exists indlist, indrep bxp ir indlist *
-      [[ l = firstn (length l) (IRBlocks ir) ]] )%pred.
+      [[ l = firstn (length l) (IRBlocks ir) ]] *
+      [[ list_same $0 (skipn (length l) (IRBlocks ir)) ]] *
+      [[ list_same $0 indlist ]] )%pred.
 
   Definition rep_indirect bxp (ir : irec) (l : list waddr) :=
     ( [[ length l = (IRLen ir) /\ length l <= NBlocks /\ length l > NDirect ]] *
       [[ length (IRBlocks ir) = NDirect ]] *
       exists indlist, indrep bxp ir indlist *
-      [[ l = (IRBlocks ir) ++ firstn (length l - NDirect) indlist ]] )%pred.
+      [[ l = (IRBlocks ir) ++ firstn (length l - NDirect) indlist ]] *
+      [[ list_same $0 (skipn (length l - NDirect) indlist) ]] )%pred.
+
+  Hint Resolve list_same_app_l.
+  Hint Resolve list_same_app_r.
+  Hint Resolve list_same_app_both.
 
   Lemma rep_piff_direct : forall bxp ir l,
     length l <= NDirect ->
     rep bxp ir l <=p=> rep_direct bxp ir l.
   Proof.
     intros. unfold rep, rep_direct. split; cancel.
-    rewrite firstn_app_l in * by omega; auto.
-    substl l at 1; rewrite firstn_app_l by omega; auto.
+    - rewrite firstn_app_l in * by omega; auto.
+    - rewrite skipn_app_l in * by omega; eauto.
+    - rewrite skipn_app_l in * by omega; eauto.
+    - substl l at 1; rewrite firstn_app_l by omega; auto.
+    - rewrite skipn_app_l by omega; eauto.
   Qed.
 
   Lemma rep_piff_indirect : forall bxp ir l,
@@ -1852,10 +1868,12 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rep bxp ir l <=p=> rep_indirect bxp ir l.
   Proof.
     unfold rep, rep_indirect; intros; split; cancel; try omega.
-    rewrite <- firstn_app_r; setoid_rewrite H3.
-    replace (NDirect + (length l - NDirect)) with (length l) by omega; auto.
-    substl l at 1; rewrite <- firstn_app_r. setoid_rewrite H3.
-    replace (NDirect + (length l - NDirect)) with (length l) by omega; auto.
+    - rewrite <- firstn_app_r; setoid_rewrite H3.
+      replace (NDirect + (length l - NDirect)) with (length l) by omega; auto.
+    - rewrite skipn_app_r_ge in * by omega. congruence.
+    - substl l at 1; rewrite <- firstn_app_r. setoid_rewrite H3.
+      replace (NDirect + (length l - NDirect)) with (length l) by omega; auto.
+    - rewrite skipn_app_r_ge by omega. congruence.
   Qed.
 
   Lemma rep_selN_direct_ok : forall F bxp ir l m off,
@@ -1971,12 +1989,14 @@ Module BlockPtr (BPtr : BlockPtrSig).
     let ol := (IRLen ir) in
     let nl := (ol - nr) in
     If (le_dec ol NDirect) {
-      Ret ^(ms, upd_len ir nl)
+      Ret ^(ms, upd_irec ir nl (IRIndPtr ir) (IRDindPtr ir) (IRTindPtr ir)
+                         (upd_range (IRBlocks ir) nl (NDirect - nl) $0))
     } else {
       let ol' := ol - NDirect in
       let nl' := nl - NDirect in
       let^ (ms, indptr, dindptr, tindptr) <- indshrink lxp bxp ir nl' ms;
-      Ret ^(ms, upd_irec ir nl indptr dindptr tindptr (IRBlocks ir))
+      Ret ^(ms, upd_irec ir nl indptr dindptr tindptr
+                         (upd_range (IRBlocks ir) nl (NDirect - nl) $0))
     }.
 
   Definition indgrow lxp bxp ir off bn ms :=
@@ -2003,8 +2023,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     } else {
       let off := (len - NDirect) in
       If (waddr_eq_dec bn $0) {
-        let^ (ms, indptr, dindptr, tindptr) <- indshrink lxp bxp ir off ms;
-        Ret ^(ms, OK (upd_irec ir (S len) indptr dindptr tindptr (IRBlocks ir)))
+        Ret ^(ms, OK (upd_len ir (S len)))
       } else {
         let^ (ms, v, indptr, dindptr, tindptr) <- indgrow lxp bxp ir off bn ms;
         If (addr_eq_dec v 0) {
@@ -2109,6 +2128,16 @@ Module BlockPtr (BPtr : BlockPtrSig).
     unfold indrep. autorewrite with core. auto.
   Qed.
 
+  Theorem upd_len_direct_indrep : forall bxp ir l n b,
+    indrep bxp ir l <=p=> indrep bxp (upd_irec ir n (IRIndPtr ir) (IRDindPtr ir) (IRTindPtr ir) b) l.
+  Proof.
+    intros.
+    unfold indrep. autorewrite with core. auto.
+    eapply get_ind_goodSize.
+    eapply get_dind_goodSize.
+    eapply get_tind_goodSize.
+  Qed.
+
   Theorem indshrink_helper_ok : forall lxp bxp bn nl indlvl ms,
     let start := fold_left plus (map (fun i => NIndirect ^ S i) (seq 0 indlvl)) 0 in
     {< F Fm m0 m l freelist,
@@ -2189,12 +2218,27 @@ Module BlockPtr (BPtr : BlockPtrSig).
     + (* case 1: all in direct blocks *)
       step. unfold rep.
       autorewrite with core. cancel.
-      - apply upd_len_indrep.
+      - apply upd_len_direct_indrep.
       - rewrite min_l by omega. omega.
+      - rewrite upd_range_length; eauto.
       - rewrite min_l by omega.
-        substl l at 1. rewrite firstn_firstn, min_l by omega. auto.
+        substl l at 1. rewrite firstn_firstn, min_l by omega.
+        rewrite firstn_app_l by omega.
+        rewrite firstn_app_l by ( rewrite upd_range_length; omega ).
+        rewrite firstn_upd_range by omega.
+        reflexivity.
+      - rewrite min_l by omega.
+        rewrite skipn_app_l by ( rewrite upd_range_length; omega ).
+        rewrite skipn_app_l in * by omega.
+        eapply list_same_app_both; eauto.
+        rewrite upd_range_eq_upd_range' by omega; unfold upd_range'.
+        rewrite skipn_app_r_ge by ( rewrite firstn_length; rewrite min_l by omega; auto ).
+        eapply list_same_skipn.
+        eapply list_same_app_both; try apply list_same_repeat.
+        eapply list_same_skipn_ge.
+        2: denote list_same as Hls; apply list_same_app_l in Hls; eauto.
+        omega.
       - apply le_ndirect_goodSize. omega.
-      - apply upd_irec_eq_upd_len. apply le_nblocks_goodSize. omega.
     + (* case 2 : indirect blocks *)
       unfold indrep in *.
       hoare.
@@ -2208,17 +2252,59 @@ Module BlockPtr (BPtr : BlockPtrSig).
         substl (NIndirect * NIndirect). substl NIndirect.
         rewrite firstn_app. rewrite skipn_app_r. repeat rewrite skipn_app. rewrite firstn_app.
         cancel.
+        all : try rewrite upd_range_length.
         all : auto.
         all : try rewrite min_l by omega; try omega.
         all : indrep_n_tree_extract_lengths.
+        substl l.
+        rewrite firstn_firstn, min_l by omega.
+        destruct (le_dec (IRLen ir - nr) NDirect).
+        {
+          rewrite firstn_app_l by omega.
+          rewrite firstn_app_l by ( rewrite upd_range_length; omega ).
+          rewrite firstn_upd_range by omega.
+          auto.
+        }
+        {
+          rewrite not_le_minus_0 with (n := NDirect) by omega.
+          rewrite upd_range_0.
+
+          match goal with [H : _ ++ _ = _ |- _] => rewrite H end.
+          repeat rewrite firstn_app_split. f_equal.
+          rewrite firstn_upd_range by (repeat rewrite app_length; omega). f_equal.
+          rewrite <- skipn_skipn'.
+          repeat match goal with [|- ?x = _] =>
+            erewrite <- firstn_skipn with (l := x) at 1; f_equal end.
+        }
         match goal with [H : _ ++ _ = _ |- _] => rewrite H end.
-        substl l. rewrite firstn_firstn, min_l by omega.
-        repeat rewrite firstn_app_split. f_equal.
-        rewrite firstn_upd_range by (repeat rewrite app_length; omega). f_equal.
-        rewrite <- skipn_skipn'.
-        repeat match goal with [|- ?x = _] =>
-          erewrite <- firstn_skipn with (l := x) at 1; f_equal end.
+        destruct (le_dec (IRLen ir - nr) NDirect).
+        {
+          rewrite skipn_app_l by ( rewrite upd_range_length; omega ).
+          apply list_same_app_both.
+
+          eapply list_same_skipn_upd_range_mid; [ | omega ].
+          replace (IRLen ir - nr + (NDirect - (IRLen ir - nr))) with NDirect by omega.
+          rewrite skipn_oob by omega. constructor.
+
+          replace (IRLen ir - nr - NDirect) with 0 by omega.
+          rewrite upd_range_eq_upd_range' by omega; unfold upd_range'; simpl.
+          eapply list_same_app_both.
+          eapply list_same_repeat.
+
+          rewrite skipn_oob; [ constructor | ].
+          omega.
+        }
+        {
+          replace (NDirect - (IRLen ir - nr)) with 0 by omega; rewrite upd_range_0.
+          denote list_same as Hls.
+          rewrite skipn_app_r_ge by omega.
+          rewrite skipn_app_r_ge in Hls by omega.
+          replace (length (IRBlocks ir)) with (NDirect) by omega.
+          eapply list_same_skipn_upd_range_tail.
+        }
         apply le_nblocks_goodSize. simpl. rewrite mult_1_r. omega.
+    Grab Existential Variables.
+    all: eauto.
   Qed.
 
   Theorem indgrow_ok : forall lxp bxp ir off bn ms,
@@ -2269,7 +2355,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
            exists freelist' ir',
            [[ r = OK ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp ir' (l ++ [bn]) * BALLOC.rep bxp freelist') ]]] *
-           [[ IRAttrs ir' = IRAttrs ir /\ length (IRBlocks ir') = length (IRBlocks ir) ]]
+           [[ IRAttrs ir' = IRAttrs ir /\ length (IRBlocks ir') = length (IRBlocks ir) ]] *
+           [[ incl freelist' freelist ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} grow lxp bxp ir bn ms.
   Proof.
@@ -2292,6 +2379,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
     all : auto.
     substl l at 1. substl (length l).
     apply firstn_app_updN_eq; omega.
+    rewrite skipN_updN' by omega.
+    eapply list_same_skipn_ge; try eassumption. omega.
     autorewrite with core lists; auto.
 
     (* update indirect blocks *)
@@ -2301,27 +2390,23 @@ Module BlockPtr (BPtr : BlockPtrSig).
       rewrite indrep_length_pimpl in *. unfold indrep in *. destruct_lifts.
       indrep_n_tree_extract_lengths.
       hoare.
-      - repeat rewrite app_length. omega.
-      - rewrite <- skipn_skipn' in *. repeat rewrite firstn_skipn in *.
-        indrep_n_tree_extract_lengths.
-        or_r; cancel; autorewrite with core; (cancel || auto).
-        rewrite <- skipn_skipn'.
-        rewrite firstn_app. rewrite skipn_app_l. rewrite skipn_oob. rewrite app_nil_l.
-        rewrite firstn_app. rewrite skipn_app_l. rewrite skipn_oob. rewrite app_nil_l.
-        cancel_last.
-        all : try rewrite app_length; simpl; try omega.
-       -- apply le_nblocks_goodSize. simpl. rewrite mult_1_r. omega.
-       -- substl l at 1.
-          rewrite plus_comm.
-          repeat match goal with [|- context [firstn ?a (?b ++ ?c)] ] =>
-            rewrite firstn_app_split with (l1 := b); rewrite firstn_oob with (l := b) by omega
-          end. rewrite <- app_assoc. f_equal.
-          rewrite Nat.sub_succ_l by omega.
-          match goal with [H : _ ++ _ = _ |- _] => rewrite H end.
-          erewrite firstn_S_selN.
-          rewrite firstn_upd_range by omega. f_equal.
-          rewrite upd_range_selN by omega. auto.
-          rewrite upd_range_length; omega.
+      rewrite <- skipn_skipn' in *. repeat rewrite firstn_skipn in *.
+      indrep_n_tree_extract_lengths.
+      or_r; cancel; autorewrite with core; (cancel || auto).
+      rewrite <- skipn_skipn'.
+      cancel.
+      all : try rewrite app_length; simpl; try omega.
+      - apply le_nblocks_goodSize. simpl. rewrite mult_1_r. omega.
+      - substl l at 1.
+        rewrite plus_comm.
+        repeat match goal with [|- context [firstn ?a (?b ++ ?c)] ] =>
+          rewrite firstn_app_split with (l1 := b); rewrite firstn_oob with (l := b) by omega
+        end. rewrite <- app_assoc. f_equal.
+        replace (1 + length l - length (IRBlocks ir)) with ((length l - length (IRBlocks ir)) + 1) by omega.
+        erewrite firstn_plusone_selN by omega. f_equal. f_equal.
+        denote list_same as Hls. rewrite skipn_app_r_ge in Hls by omega.
+        eapply list_same_skipn_selN; eauto; omega.
+      - eapply list_same_skipn_ge; [ | eassumption ]. omega.
     + (* write nonzero block *)
       unfold rep in *. destruct_lifts.
       rewrite indrep_length_pimpl in *. unfold indrep in *. destruct_lifts.
@@ -2346,6 +2431,12 @@ Module BlockPtr (BPtr : BlockPtrSig).
           erewrite eq_trans with (x := _ - _); [> | reflexivity |].
           rewrite selN_updN_eq by omega. reflexivity.
           all : try rewrite app_length, length_updN; omega.
+       -- simpl.
+          match goal with [H : updN _ _ _ = _ |- _] => rewrite <- H end.
+          denote list_same as Hls. rewrite skipn_app_r_ge in Hls by omega.
+          rewrite skipn_app_r_ge by omega.
+          rewrite skipN_updN' by omega.
+          eapply list_same_skipn_ge; [ | eassumption ]. omega.
     Grab Existential Variables.
     all : eauto; exact $0.
   Qed.

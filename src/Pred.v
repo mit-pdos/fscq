@@ -2616,8 +2616,10 @@ Lemma sep_star_split_l: forall AT AEQ V F (x: @pred AT AEQ V) y m,
 Proof.
   intros.
   exists (F*y)%pred.
-  pred_apply.
-  cancel.
+  apply sep_star_assoc.
+  setoid_rewrite sep_star_comm.
+  apply sep_star_assoc.
+  eauto.
 Qed.
 
 Lemma pimpl_sep_star_split_l: forall AT AEQ V F1 F2 (x: @pred AT AEQ V) y m,

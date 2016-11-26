@@ -284,8 +284,8 @@ Module FileRecArray (FRA : FileRASig).
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' (items ++ (updN block0 0 e)) ]]] *
           [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
-                              ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]])
-
+                              ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
+          [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] )
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} extend lxp bxp ixp inum e ms.
   Proof.
@@ -294,7 +294,7 @@ Module FileRecArray (FRA : FileRASig).
     safestep.
 
     or_l; safecancel.
-    or_r; norm; [ cancel | intuition; eauto ].
+    or_r. norm; [ cancel | intuition eauto ].
     simpl; pred_apply; norm; [ | intuition ].
     cancel; apply extend_ok_helper; auto.
     apply extend_item_valid; auto.
@@ -509,7 +509,8 @@ Module FileRecArray (FRA : FileRASig).
                 arrayN (@ptsto _ addr_eq_dec _) (length items + 1) (repeat item0 (items_per_val - 1)) ]]] *
           [[ items' = items ++ (updN block0 0 e)  ]] *
           [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
-                              ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]])
+                              ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
+          [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] )
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} extend_array lxp bxp ixp inum e ms.
   Proof.
