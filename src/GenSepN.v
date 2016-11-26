@@ -140,6 +140,29 @@ Proof.
       rewrite app_length; simpl; intuition.
 Qed.
 
+Theorem listapp_meminsert: forall A l (a : A),
+  list2nmem (l ++ a :: nil) = Mem.insert (list2nmem l) (length l) a.
+Proof.
+  intros.
+  apply functional_extensionality; intro.
+  unfold list2nmem, Mem.insert.
+
+  destruct (lt_dec x (length l)).
+  - subst; rewrite selN_map with (default' := a) by ( rewrite app_length; omega ).
+    destruct (eq_nat_dec x (length l)); subst.
+    + rewrite selN_last; auto.
+      rewrite selN_oob by ( rewrite map_length; omega ); auto.
+    + rewrite selN_map with (default' := a); auto.
+      rewrite selN_app; auto.
+  - destruct (eq_nat_dec x (length l)).
+    + subst; erewrite selN_map with (default' := a) by ( rewrite app_length; simpl; omega ).
+      rewrite selN_last; auto.
+      rewrite selN_oob by ( rewrite map_length; omega ); auto.
+    + repeat erewrite selN_oob with (def := None); try rewrite map_length; auto.
+      omega.
+      rewrite app_length; simpl; intuition.
+Qed.
+
 
 Theorem list2nmem_app: forall A (F : @pred _ _ A) l a,
   F (list2nmem l)
@@ -948,7 +971,7 @@ Proof.
   intuition congruence.
   repeat deex.
 
-  eapply pred_execpt_mem_except in H0 as Hy.
+  eapply pred_except_mem_except in H0 as Hy.
   destruct IHvl as [ ? Hz ].
   eexists; eauto.
   destruct Hz as [ Hz [ Heq HP ] ].
@@ -956,7 +979,7 @@ Proof.
 
   unfold pred_except in Hz.
   rewrite <- Heq in Hz.
-  rewrite <- listapp_memupd in Hz.
+  rewrite <- listapp_meminsert in Hz; intuition.
   eexists; split; eauto.
 
   split; autorewrite with lists; simpl; intros.
@@ -1000,7 +1023,7 @@ Proof.
   exists (mem_except m' (length vl)).
   intuition.
 
-  apply pred_execpt_mem_except; eauto.
+  apply pred_except_mem_except; eauto.
   replace (list2nmem vl) with (mem_except (list2nmem (vl ++ [(v', nil)])) (length vl)).
   apply possible_crash_mem_except; eauto.
   rewrite listapp_memupd.
