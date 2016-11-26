@@ -214,7 +214,7 @@ Definition roundup (n unitsz:nat) : nat := (divup n unitsz) * unitsz.
   Proof.
     unfold divup; intros.
     rewrite <- Nat.add_sub_assoc by ( rewrite valubytes_is; omega ).
-    rewrite Nat.div_add_l by ( rewrite valubytes_is; auto ).
+    rewrite Nat.div_add_l by ( rewrite valubytes_is; omega ).
     rewrite Nat.mul_add_distr_r.
     replace ((valubytes - 1) / valubytes * valubytes) with 0. omega.
     rewrite valubytes_is.
