@@ -377,7 +377,7 @@ Module ATOMICCP.
   Ltac msalloc :=
   repeat match goal with
       | [ H: MSAlloc _ = MSAlloc _ |- DIRTREE.dirtree_safe _ _ _ _ _ _ ]
-       => idtac "rewrite" H; rewrite H in *; clear H
+       => rewrite H in *; clear H
   end.
 
   Theorem copydata_ok : forall fsxp srcinum tmppath tinum mscs,
@@ -699,13 +699,13 @@ Admitted.
   Ltac nthtree :=
     repeat match goal with 
     | [ H : NEforall _ _ |- _ ]  => 
-      idtac "nthd"; eapply NEforall_d_in in H; [|eapply nthd_in_ds]; destruct H; intuition; simpl
+      eapply NEforall_d_in in H; [|eapply nthd_in_ds]; destruct H; intuition; simpl
     | [ H: find_name _ (TStree (nthd _ _ )) = _ |- _ ]=>
-      idtac "root"; eapply DTCrash.tree_crash_root in H; eauto 
+      eapply DTCrash.tree_crash_root in H; eauto 
     | [ H: find_name [] ?x = Some (_, _) |- dirtree_inum ?x = _ ] =>
-      idtac "inum"; eapply find_name_dirtree_inum; eauto
+      eapply find_name_dirtree_inum; eauto
     | [ H: find_name [] ?x = Some (_, _) |- dirtree_isdir ?x = _ ] =>
-      idtac "isdir"; eapply find_name_dirtree_isdir; eauto
+      eapply find_name_dirtree_isdir; eauto
     end.
 
   Theorem atomic_cp_recover_ok :

@@ -354,10 +354,10 @@ Module TREESEQ.
   Ltac distinct_names' :=
     repeat match goal with
       | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- DIRTREE.tree_names_distinct (TStree ?ts !!) ] => 
-        idtac "treeseq"; eapply treeseq_in_ds_tree_pred_latest in H as Hpred;
+        eapply treeseq_in_ds_tree_pred_latest in H as Hpred;
         eapply DIRTREE.rep_tree_names_distinct; eapply Hpred
       | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- DIRTREE.tree_names_distinct (TStree (nthd ?n ?ts)) ] => 
-        idtac "treeseq"; eapply treeseq_in_ds_tree_pred_nth in H as Hpred;
+        eapply treeseq_in_ds_tree_pred_nth in H as Hpred;
         eapply DIRTREE.rep_tree_names_distinct; eapply Hpred
     end.
 
@@ -2091,7 +2091,7 @@ Module TREESEQ.
   Ltac distinct_inodes' :=
     repeat match goal with
       | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- DIRTREE.tree_inodes_distinct (TStree ?ts !!) ] => 
-        idtac "inodes"; eapply treeseq_in_ds_tree_pred_latest in H as Hpred;
+        eapply treeseq_in_ds_tree_pred_latest in H as Hpred;
         eapply DIRTREE.rep_tree_inodes_distinct; eapply Hpred
     end.
 

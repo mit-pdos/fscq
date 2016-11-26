@@ -638,13 +638,13 @@ Module AFS.
 
   Ltac recover_ro_ok := intros;
     repeat match goal with
-      | [ |- forall_helper _ ] => idtac "forall"; unfold forall_helper; intros; eexists; intros
-      | [ |- corr3 ?pre' _ _ ] => idtac "corr3 pre"; eapply corr3_from_corr2_rx; eauto with prog
-      | [ |- corr3 _ _ _ ] => idtac "corr3"; eapply pimpl_ok3; intros
-      | [ |- corr2 _ _ ] => idtac "corr2"; step
+      | [ |- forall_helper _ ] => unfold forall_helper; intros; eexists; intros
+      | [ |- corr3 ?pre' _ _ ] => eapply corr3_from_corr2_rx; eauto with prog
+      | [ |- corr3 _ _ _ ] => eapply pimpl_ok3; intros
+      | [ |- corr2 _ _ ] => step
       | [ H: crash_xform ?x =p=> ?x |- context [ crash_xform ?x ] ] => rewrite H
-      | [ H: diskIs _ _ |- _ ] => idtac "unfold"; unfold diskIs in *
-      | [ |- pimpl (crash_xform _) _ ] => idtac "crash_xform"; progress autorewrite with crash_xform
+      | [ H: diskIs _ _ |- _ ] => unfold diskIs in *
+      | [ |- pimpl (crash_xform _) _ ] => progress autorewrite with crash_xform
     end.
 
   Hint Extern 0 (okToUnify (LOG.idempred _ _ _ _) (LOG.idempred _ _ _ _)) => constructor : okToUnify.
@@ -683,7 +683,7 @@ Module AFS.
   Ltac xcrash_solve :=
     repeat match goal with
       | [ H: forall _ _ _,  _ =p=> (?crash _) |- _ =p=> (?crash _) ] => idtac H; eapply pimpl_trans; try apply H; cancel
-      | [ |- crash_xform (LOG.rep _ _ _ _ _) =p=> _ ] => idtac "crash_xform"; rewrite LOG.notxn_intact; cancel
+      | [ |- crash_xform (LOG.rep _ _ _ _ _) =p=> _ ] => rewrite LOG.notxn_intact; cancel
       | [ H: crash_xform ?rc =p=> _ |- crash_xform ?rc =p=> _ ] => idtac H; rewrite H; xform_norm
     end.
 
