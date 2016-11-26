@@ -3917,7 +3917,7 @@ Module DIRTREE.
 
   (* lookup x in the directory dstpath when dstname isn't the first component of x
    * srcpath/srcname was renamed to dstpath/dstname *)
-  Lemma find_subtree_rename_oob: forall x n l n' l' dnum ents inum f srcpath srcname dstpath dstname mvtree,
+  Lemma find_subtree_rename_oob2: forall x n l n' l' dnum ents inum f srcpath srcname dstpath dstname mvtree,
     tree_names_distinct (TreeDir dnum ents) ->
     ~pathname_prefix (dstpath ++ [dstname]) (dstpath++x) ->
     find_subtree srcpath (TreeDir dnum ents) = Some (TreeDir n l) ->
