@@ -6,6 +6,7 @@ Require Import FunctionalExtensionality.
 Require Import List.
 Require Import Arith.PeanoNat.
 Require Import RelationClasses.
+Require Import ListUtils.
 
 Set Implicit Arguments.
 

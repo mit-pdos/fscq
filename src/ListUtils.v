@@ -842,6 +842,9 @@ Proof.
   rewrite IHl; auto.
 Qed.
 
+Lemma firstn_all : forall A (l : list A), firstn (length l) l = l.
+Proof. induction l as [| ? ? H]; simpl; [reflexivity | now rewrite H]. Qed.
+
 Lemma firstn_plusone_selN : forall A n (l : list A) def,
   n < length l
   -> firstn (n + 1) l = firstn n l ++ (selN l n def :: nil).

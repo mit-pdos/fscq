@@ -2058,7 +2058,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     | [H : context [indrep_n_tree _ _ _ ?L] |- _ < length ?L] =>
       rewrite indrep_n_length_pimpl with (l := L) in H; destruct_lift H; omega
     | [ |- pimpl _ _] => cancel
-    | [|- ?H] => idtac H
+    | [|- ?H] => idtac
     end.
     all : substl l.
     all : repeat rewrite selN_app2 by omega.
@@ -2091,7 +2091,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     | [H : context [indrep_n_tree _ _ _ ?L] |- _ < length ?L] =>
       rewrite indrep_n_length_pimpl with (l := L) in H; destruct_lift H; omega
     | [ |- pimpl _ _] => cancel
-    | [|- ?H] => idtac H
+    | [|- ?H] => idtac
     end.
     rewrite app_assoc with (l := firstn _ _).
     rewrite <- firstn_sum_split. rewrite firstn_skipn.
