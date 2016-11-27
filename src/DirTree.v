@@ -3268,19 +3268,6 @@ Module DIRTREE.
       subst; eauto.
   Qed.
 
-  Lemma find_subtree_update_trim_head': forall suffix name path subtree tree subtree_head,
-    find_subtree (name::suffix) tree = Some subtree_head ->
-    find_subtree (name::suffix) (update_subtree ((name::suffix)++path) subtree tree) =
-     find_subtree path (update_subtree path subtree subtree_head).
-  Proof.
-    intros. case_eq tree; intros.
-    - exfalso.
-      subst.
-      unfold find_subtree in H; simpl.
-      inversion H.
-    - admit.
-  Admitted.
-
   Lemma update_subtree_update_trim_head_ne: forall tree name s path subtree,
     s <> name ->
     find_subtree [name] (update_subtree (s::path) subtree tree) = 
@@ -3296,7 +3283,6 @@ Module DIRTREE.
     + destruct (string_dec s name); simpl in *; try congruence.
       destruct (string_dec s0 name); try congruence.
   Qed.
-
 
   Lemma find_subtree_update_subtree_child: forall path suffix tree subtree subtree_child, 
       find_subtree path tree = Some subtree_child ->
@@ -3778,68 +3764,63 @@ Module DIRTREE.
     + repeat deex.
       erewrite find_update_subtree_suffix in H5; eauto.
       erewrite find_update_subtree_suffix in H3; eauto.
-      destruct (pathname_decide_prefix[dstname] x); try congruence.
-      deex.
-      - exfalso; eapply H0.
-        unfold pathname_prefix. exists suffix0; eauto.
-      - (* x doesn't start with [dstname] *)
-        destruct suffix; subst; try congruence.
-        -- (* suffix is nil *)
+      destruct suffix; subst; try congruence.
+      -- (* suffix is nil *)
+        destruct x; repeat rewrite app_nil_r in *.
+        {
+          (* x is nil *)
+          simpl in H5.
+          inversion H5.
+        }
+        destruct (string_dec srcname s); subst; try congruence.
+        ++ (* x starts with srcname *)
+          erewrite find_subtree_add_to_dir_oob in H5; eauto.
+          simpl in H3.
+          inversion H3; subst.
+          rewrite find_subtree_delete_same' in H5.
+          exfalso; inversion H5.
+          eapply tree_names_distinct_nodup.
+          eapply tree_names_distinct_subtree; eauto.
+          simpl in H3; subst.
+          inversion H3.
+          rewrite <- H7.
+          eapply tree_names_distinct_delete_from_list.
+          eapply tree_names_distinct_subtree; eauto.
+        ++ (* x doesn't start with srcname *)
+          erewrite find_subtree_add_to_dir_oob in H5; eauto.
+          simpl in H3.
+          inversion H3; subst.
+          erewrite find_subtree_delete_ne' in H5; eauto.
+          erewrite find_subtree_app; eauto.
+          eapply tree_names_distinct_nodup.
+          eapply tree_names_distinct_subtree; eauto.
+          simpl in H3; subst.
+          inversion H3.
+          rewrite <- H7.
+          eapply tree_names_distinct_delete_from_list.
+          eapply tree_names_distinct_subtree; eauto.
+      -- (* suffix starts with s *)
+        destruct (string_dec s srcname); subst; try congruence.
+        {
+          rewrite find_subtree_delete_same in H3. exfalso; inversion H3.
+          eapply tree_names_distinct_nodup.
+          eapply tree_names_distinct_subtree; eauto.
+        }
+        { (* s <> srcname *)
+          rewrite find_subtree_delete_ne in H3; eauto.
           destruct x; repeat rewrite app_nil_r in *.
-          {
-            (* x is nil *)
+          { (* x is nil *)
             simpl in H5.
             inversion H5.
           }
-          destruct (string_dec srcname s); subst; try congruence.
-          ++ (* x starts with srcname *)
-            erewrite find_subtree_add_to_dir_oob in H5; eauto.
-            simpl in H3.
-            inversion H3; subst.
-            rewrite find_subtree_delete_same' in H5.
-            exfalso; inversion H5.
-            eapply tree_names_distinct_nodup.
-            eapply tree_names_distinct_subtree; eauto.
-            simpl in H3; subst.
-            inversion H3.
-            rewrite <- H8.
-            eapply tree_names_distinct_delete_from_list.
-            eapply tree_names_distinct_subtree; eauto.
-          ++ (* x doesn't start with srcname *)
-            erewrite find_subtree_add_to_dir_oob in H5; eauto.
-            simpl in H3.
-            inversion H3; subst.
-            erewrite find_subtree_delete_ne' in H5; eauto.
-            erewrite find_subtree_app; eauto.
-            eapply tree_names_distinct_nodup.
-            eapply tree_names_distinct_subtree; eauto.
-            simpl in H3; subst.
-            inversion H3.
-            rewrite <- H8.
-            eapply tree_names_distinct_delete_from_list.
-            eapply tree_names_distinct_subtree; eauto.
-        -- (* suffix starts with s *)
-          destruct (string_dec s srcname); subst; try congruence.
-          {
-            rewrite find_subtree_delete_same in H3. exfalso; inversion H3.
-            eapply tree_names_distinct_nodup.
-            eapply tree_names_distinct_subtree; eauto.
-          }
-          { (* s <> srcname *)
-            rewrite find_subtree_delete_ne in H3; eauto.
-            destruct x; repeat rewrite app_nil_r in *.
-            { (* x is nil *)
-              simpl in H5.
-              inversion H5.
-            }
-            erewrite find_subtree_add_to_dir_oob in H5; eauto.
-            erewrite find_subtree_app; eauto.
-            erewrite find_subtree_app; eauto.
-            eapply tree_names_distinct_subtree in H3; eauto.
-            eapply tree_names_distinct_subtree; eauto.
-            eapply tree_names_distinct_nodup.
-            eapply tree_names_distinct_subtree; eauto.
-          }
+          erewrite find_subtree_add_to_dir_oob in H5; eauto.
+          erewrite find_subtree_app; eauto.
+          erewrite find_subtree_app; eauto.
+          eapply tree_names_distinct_subtree in H3; eauto.
+          eapply tree_names_distinct_subtree; eauto.
+          eapply tree_names_distinct_nodup.
+          eapply tree_names_distinct_subtree; eauto.
+        }
     + destruct (pathname_decide_prefix dstpath srcpath).
       - (* dstpath is a prefix of srcpath *)
         deex.
@@ -3859,60 +3840,121 @@ Module DIRTREE.
           destruct H6.
           exists []; rewrite app_nil_r; eauto.
         -- {(* suffix starts with s: srcpath = dstpath+s+suffix *)
-            destruct (pathname_decide_prefix x (s::suffix)).
-            - (* x is a prefix of s::suffix. srcname is below x
+            destruct (pathname_decide_prefix (s::suffix++[srcname]) x).
+            - (* x is a prefix of s::suffix++srcname. srcname is equal or below x
                * s <> dstname, because x doesn't start with dstname *) 
               deex. subst.
               erewrite find_subtree_add_to_dir_oob in H5; eauto.
               erewrite find_subtree_extend with (p1 := dstpath) in H5.
               2: eauto.
-              rewrite H1 in H5.
-              rewrite app_assoc in H5.
-
-  Lemma find_subtree_update_subtree_child_file: forall p1 p2 x subtree tree n b n1 l1,
-    find_subtree (p1++x++p2) tree = Some (TreeDir n1 l1) ->
-    find_subtree (p1++x) (update_subtree ((p1++x)++p2) subtree tree) = Some (TreeFile n b) ->
-    False.
-  Proof.
-    intros.
-    (* if p1++x is a file, then contradiction because H cannot be true *)
-    (* if p1++x is a directory, then after update it still is a directory, and H0 is false *) 
-  Admitted.
-
-              exfalso; eapply find_subtree_update_subtree_child_file in H5; eauto.
-              erewrite find_subtree_app; eauto.
-              rewrite <- H1; eauto.
-              eapply tree_names_distinct_subtree.
-              2: eapply H3.
-              eapply tree_names_distinct_update_subtree; eauto.
-              eapply tree_names_distinct_delete_from_list.
+              replace (dstpath ++ (s :: suffix ++ [srcname]) ++ suffix0) with
+                      ((dstpath ++ s :: suffix)++([srcname]++suffix0)) in H5.
+              erewrite find_update_subtree_suffix in H5.
+              rewrite <- cons_app in H5.
+              unfold delete_from_dir in H5.
+              erewrite find_subtree_delete_same' in H5.
+              inversion H5.
+              eapply tree_names_distinct_nodup with (dnum:= n).
               eapply tree_names_distinct_subtree in H8; eauto.
               eapply tree_names_distinct_subtree in H7; eauto.
-            - (* x isn't a prefix of s::suffix *)
-              destruct (pathname_decide_prefix (s::suffix++[srcname]) x).
-              ++ (* srcpath is a prefix of x *)
+              erewrite find_subtree_app; eauto.
+              rewrite <- app_assoc. f_equal. rewrite app_assoc. f_equal.
+              eapply tree_names_distinct_subtree. 2: eauto.
+              eapply tree_names_distinct_update_subtree;eauto.
+              eapply tree_names_distinct_delete_from_list; eauto.
+              eapply tree_names_distinct_subtree in H8; eauto.
+              eapply tree_names_distinct_subtree in H7; eauto.
+            - (* s::suffix++[srcname] isn't a prefix of x *)
+              erewrite find_subtree_extend with (p1 := dstpath) in H5.
+              2: eauto.
+              erewrite find_update_subtree_suffix in H5; eauto.
+              erewrite find_subtree_add_to_dir_oob in H5; eauto.
+              erewrite find_subtree_extend with (p1 := dstpath) in H5.
+              2: eauto.
+              destruct (pathname_decide_prefix x ([s]++suffix)).
+              ++ (* x is a prefix of [s]++suffix *)
                 deex.
-                admit. (* exfalso? H5 should be None because srcname is gone in l *)
-              ++ (* srcpath isn't a prefix of x *)
-                admit.  (* like below *)
-            }
+                rewrite cons_app in H5.
+                rewrite H9 in H5.
+                rewrite cons_app in H3.
+                rewrite H9 in H3.
+                rewrite cons_app in H8.
+                rewrite H9 in H8.
+                eapply find_subtree_app' in H8.
+                deex; intuition.
+                erewrite find_subtree_app in H5.
+                2: eauto.
+                erewrite find_subtree_update_subtree_child in H3.
+                2: eauto.
+                inversion H3.
+                rewrite <- H12 in H5.
+                clear H3. clear H12.
+                destruct suffix0.
+                -- (* x is [s]++suffix] *)
+                  rewrite app_nil_r in *.
+                  erewrite find_update_subtree in H5; eauto. inversion H5.
+                -- 
+                  erewrite find_subtree_update_subtree_child in H5; eauto.
+                  destruct subtree_base0.
+                  unfold find_subtree in H11; inversion H11.
+                  unfold update_subtree in H5; simpl in *.
+                  inversion H5.
+              ++ (* x isn't a prefix of [s]++suffix *)
+                destruct (pathname_decide_prefix ([s]++suffix) x).
+                +++ (* [s]++suffix is prefix of x *)
+                  deex.
+                  rewrite app_assoc in H5.
+                  erewrite find_update_subtree_suffix in H5.
+                  unfold delete_from_dir in H5.
+                  destruct suffix0.
+                  simpl in H5; inversion H5.
+                  erewrite find_subtree_delete_ne' in H5.
+                  erewrite find_subtree_app; eauto.
+                  eapply tree_names_distinct_nodup with (dnum:= n).
+                  eapply tree_names_distinct_subtree in H8; eauto.
+                  eapply tree_names_distinct_subtree in H7; eauto.
+                  intro.
+                  exfalso. eapply H1.
+                  eexists suffix0.
+                  subst.
+                  rewrite cons_app with (a := srcname). 
+                  rewrite app_assoc with (l := [s]++suffix).
+                  f_equal.
+                  erewrite find_subtree_app; eauto.
+                +++ (* neither is a prefix of the other *)
+                  rewrite find_subtree_update_subtree_ne_path in H5.
+                  erewrite find_subtree_app in H5; eauto.
+                  eauto.
+                  rewrite <- pathname_prefix_trim.
+                  unfold pathname_prefix.
+                  intro.
+                  eapply H10.
+                  deex.
+                  exists suffix0.
+                  f_equal.
+                  rewrite <- pathname_prefix_trim.
+                  unfold pathname_prefix.
+                  intro. eapply H9.
+                  deex. eexists suffix0.
+                  rewrite cons_app in H11. 
+                  rewrite <- H11. reflexivity.
+              ++
+                  eapply tree_names_distinct_subtree in H3; eauto.
+                  eapply tree_names_distinct_update_subtree;eauto.
+                  eapply tree_names_distinct_delete_from_list; eauto.
+                  eapply tree_names_distinct_subtree in H8; eauto.
+                  eapply tree_names_distinct_subtree in H7; eauto.
+         }
       - (* dstpath isn't a prefix of srcpath *)
-        destruct (pathname_decide_prefix [dstname] x); try congruence.
-        ++ 
-          deex.
-          exfalso; apply H0.
-          unfold pathname_prefix.
-          eexists suffix; eauto.
-        ++ (* x doesn't start with dstname *)
-          erewrite find_update_subtree_suffix in H5; eauto.
-          erewrite find_subtree_update_subtree_ne_path in H3; eauto.
-          erewrite find_subtree_add_to_dir_oob in H5; eauto.
-          eapply find_subtree_app with (p1 := x) in H3; eauto.
-          rewrite H5 in H3; eauto.
-          eapply tree_names_distinct_subtree; eauto.
-          eapply pathname_prefix_neq; eauto.
-          eapply pathname_prefix_neq; eauto.
-  Admitted.
+        erewrite find_update_subtree_suffix in H5; eauto.
+        erewrite find_subtree_update_subtree_ne_path in H3; eauto.
+        erewrite find_subtree_add_to_dir_oob in H5; eauto.
+        eapply find_subtree_app with (p1 := x) in H3; eauto.
+        rewrite H5 in H3; eauto.
+        eapply tree_names_distinct_subtree; eauto.
+        eapply pathname_prefix_neq; eauto.
+        eapply pathname_prefix_neq; eauto.
+  Qed.
 
   Lemma rename_safe_dest_none : 
     forall ilist1 ilist2 frees1 frees2 srcpath srcname dstpath dstname dnum ents n l n' l' mvtree,
