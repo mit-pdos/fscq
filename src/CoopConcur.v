@@ -60,6 +60,7 @@ Section LogicDefinition.
   Definition memory (Sigma:State) := Hmem (mem_types Sigma).
   Definition abstraction (Sigma:State) := Hmem (abstraction_types Sigma).
 
+  (* TODO: need hashmap here as well *)
   Definition Invariant (Sigma:State) := DISK -> memory Sigma -> abstraction Sigma -> Prop.
   Definition Relation (Sigma:State) := abstraction Sigma -> abstraction Sigma -> Prop.
 

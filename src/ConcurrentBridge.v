@@ -5,6 +5,26 @@ Require Import Specifications.
 Require Import CoopConcurMonad.
 Import HlistNotations.
 
+(* [lift_disk] and [lower_disk] convert between the view of the disk from
+    sequential programs [Prog.prog] and concurrent programs [prog]: the
+    differences are in the extra state (buffered writes vs race detecting
+    readers) and the annoyance of having two different but provably equal valu
+    definitions. *)
+
+Definition lift_disk (m: @mem addr _ prog_valuset) : DISK.
+Proof.
+  intro a.
+  destruct (m a); [ apply Some | apply None ].
+  destruct p.
+  exact (w, None).
+Defined.
+
+Definition lower_disk (m: DiskReaders.Disk): @mem addr _ prog_valuset.
+  intro a.
+  destruct (m a); [ apply Some | apply None ].
+  exact (w, nil).
+Defined.
+
 Module MakeBridge (C:CacheSubProtocol).
 
   Module ConcurrentCache := MakeConcurrentCache C.
@@ -70,27 +90,8 @@ Module MakeBridge (C:CacheSubProtocol).
                            (rx ret_))
             ) (Bind p rx).
 
-  (* [lift_disk] and [project_disk] convert between the view of the disk from
-    sequential programs [Prog.prog] and concurrent programs [prog]: the
-    differences are in the extra state (buffered writes vs race detecting
-    readers) and the annoyance of having two different but provably equal valu
-    definitions. *)
-
-  Definition lift_disk (m: @mem addr _ prog_valuset) : DISK.
-  Proof.
-    intro a.
-    destruct (m a); [ apply Some | apply None ].
-    destruct p.
-    exact (w, None).
-  Defined.
-
-  Definition project_disk (s: abstraction App.Sigma) : @mem addr _ prog_valuset.
-  Proof.
-    pose proof (get vdisk s) as vd.
-    intro a.
-    destruct (vd a); [ apply Some | apply None ].
-    exact (w, nil).
-  Defined.
+  Definition project_disk (s: abstraction App.Sigma) : @mem addr _ prog_valuset :=
+    lower_disk (get vdisk s).
 
   Definition cache_vars := [( vCache; vWriteBuffer; vDisk0; vdisk0; vdisk )].
 
@@ -304,6 +305,8 @@ Module MakeBridge (C:CacheSubProtocol).
     simpl_match; congruence.
   Qed.
 
+  Hint Resolve List.incl_refl List.incl_tl List.incl_cons.
+
   Lemma possible_sync_refl : forall A AEQ (m: @mem A AEQ valuset),
       PredCrash.possible_sync m m.
   Proof.
@@ -379,7 +382,7 @@ Module MakeBridge (C:CacheSubProtocol).
   Proof.
     intros.
     extensionality a.
-    unfold sync_mem, project_disk.
+    unfold sync_mem, project_disk, lower_disk.
     destruct matches.
   Qed.
 
@@ -387,7 +390,7 @@ Module MakeBridge (C:CacheSubProtocol).
       get vdisk s' = upd (get vdisk s) a v ->
       project_disk s' = upd (project_disk s) a (v, nil).
   Proof.
-    unfold project_disk, upd; intros.
+    unfold project_disk, lower_disk, upd; intros.
     rewrite H.
     extensionality a'.
     destruct matches.
@@ -399,7 +402,7 @@ Module MakeBridge (C:CacheSubProtocol).
       get vdisk s a = None ->
       project_disk s a = None.
   Proof.
-    unfold project_disk; intros; rewrite H; auto.
+    unfold project_disk, lower_disk; intros; rewrite H; auto.
   Qed.
 
   Hint Resolve project_disk_vdisk_none.
@@ -490,7 +493,7 @@ Module MakeBridge (C:CacheSubProtocol).
         replace (get vdisk s); auto.
         rewrite <- Hproj.
         eapply Prog.StepRead.
-        unfold project_disk.
+        unfold project_disk, lower_disk.
         simpl_match; auto.
         auto.
         eauto.
@@ -512,9 +515,9 @@ Module MakeBridge (C:CacheSubProtocol).
 
         eapply Prog.XStep with (upd (project_disk s) a (v, w::nil)).
         constructor.
-        unfold project_disk; simpl_match; auto.
+        unfold project_disk, lower_disk; simpl_match; auto.
         assert (project_disk s' = upd (project_disk s) a (v, nil)) as Hproj.
-        unfold project_disk.
+        unfold project_disk, lower_disk.
         rewrite H3.
         extensionality a'.
         destruct (nat_dec a a'); subst; autorewrite with upd; auto.
