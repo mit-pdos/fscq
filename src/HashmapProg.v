@@ -77,19 +77,23 @@ Proof.
       apply upd_hashmap'_eq.
       intuition.
       unfold hash_safe in *.
-      rewrite H6 in H14.
-      inversion H14 as [ Hdef | Hdef ];
+      denote! (hash_fwd _ = default_hash) as Hd0.
+      denote! (hashmap_get _ _ = None \/ _) as He0.
+      rewrite Hd0 in He0.
+      inversion He0 as [ Hdef | Hdef ];
       contradict_hashmap_get_default Hdef hm0.
 
   (* Loop invariant implies post-condition. *)
   - step.
-    rewrite firstn_oob in H7; try omega.
+    denote! (hash_list_rep (rev (firstn _ _) ++ _) _ _) as Hl.
+    rewrite firstn_oob in Hl; try omega.
     auto.
 
   - exists 0; eexists. simpl. solve_hash_list_rep.
 
   Grab Existential Variables.
-  all: econstructor.
+  all: eauto.
+  all: try ( exact tt || exact 0 || exact False ).
 Qed.
 
 Hint Extern 1 ({{_}} Bind (hash_list _ _) _) => apply hash_list_ok : prog.
