@@ -1,0 +1,34 @@
+How to set up a VM to do nightly builds of fscq
+===============================================
+
+sudo dpkg-reconfigure tzdata
+sudo add-apt-repository ppa:hvr/ghc
+sudo apt-get update
+sudo apt-get dist-upgrade
+sudo apt-get install build-essential git ocaml ocaml-native-compilers camlp5 liblablgtksourceview2-ocaml-dev ghc haskell-platform-prof python3-pexpect nginx camlidl procmail libfuse-dev ghc-8.0.1-prof cabal-install-1.24
+
+git clone https://github.com/coq/coq
+( cd coq && ./configure -prefix /usr/local )
+( cd coq && make -j24 world )
+( cd coq && sudo make install )
+
+mkdir ~/.cabal
+echo 'library-profiling: True' >> ~/.cabal/config
+/opt/cabal/1.24/bin/cabal user-config update
+/opt/cabal/1.24/bin/cabal update
+PATH=/opt/ghc/8.0.1/bin:$PATH /opt/cabal/1.24/bin/cabal install cryptohash
+
+---
+
+copy the scripts from this directory to /home/nickolai/builder
+
+add to /etc/nginx/sites-enabled/default under server {}:
+
+        location /runs/ {
+                root /home/nickolai/builder;
+                autoindex on;
+        }
+
+add to crontab:
+
+        15 1 * * * /home/nickolai/builder/run.sh >/dev/null 2>/dev/null
