@@ -27,6 +27,9 @@ Definition mem_of := ((fun m k => VarMap.find k m) : locals -> @Mem.mem var Nat.
 
 Notation "m ≲ p" := (mem_of m ## p * any) (at level 70).
 
+
+Notation "k ~>? t" := (exists val, k |-> Val t val)%pred (at level 35) : pred_scope.
+
 Module VarMapFacts := FMapFacts.WFacts_fun(Nat_as_OT)(VarMap).
 
 Theorem add_upd :
