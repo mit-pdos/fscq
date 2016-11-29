@@ -4013,21 +4013,28 @@ Module DIRTREE.
         rewrite app_assoc; eauto. 
       + (* not in dstpath *)
         apply find_subtree_update_subtree_oob' in H6; auto.
-        destruct (pathname_decide_prefix srcpath pathname); repeat deex.
-        * (* in srcpath *)
-          destruct (pathname_decide_prefix [srcname] suffix); repeat deex.
-          (* in srcpath/srcname, this is impossible because we've pruned it *)
+        unfold tree_prune, delete_from_dir in H6.
+        destruct (pathname_decide_prefix (srcpath++[srcname]) pathname); repeat deex.
+        * (* srcpath++srcname is a prefix of pathname *)
           exfalso.
-          eapply find_subtree_helper1 in H6; eauto.
+          erewrite <- app_assoc in H6.
+          erewrite find_update_subtree_suffix in H6; eauto.
           rewrite <- cons_app in H6.
-          rewrite find_subtree_delete_same in H6; try congruence.
+          rewrite find_subtree_delete_same' in H6; try congruence.
           eapply tree_names_distinct_nodup.
           eapply tree_names_distinct_subtree; eauto.
-          (* not in srcname *)
-          apply find_subtree_update_subtree_oob' in H6; auto.
-          admit.
-        * admit.
-
+        * (* pathname outside of srcpath++srcname and dst tree, but maybe in srcpath *)
+          destruct (pathname_decide_prefix srcpath pathname).
+          -- (* srcpath is a prefix of pathname *)
+            deex.
+            erewrite find_update_subtree_suffix in H6.
+            destruct suffix; try congruence.
+            
+          -- (* pathname has nothing in common with srcpath and dstpath *)
+            erewrite find_subtree_update_subtree_ne_path in H6; eauto.
+            eapply pathname_prefix_neq; eauto.
+            eapply pathname_prefix_neq; eauto.
+  
   Admitted.
 
 
