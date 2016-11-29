@@ -101,11 +101,11 @@ Module MakeBridge (C:CacheSubProtocol).
   Definition concurrent_spec R (spec: hashmap -> SeqHoareSpec R) : ConcurHoareSpec (Exc R) :=
     ConcurSpec
       (fun tid d hm m s_i s =>
-         invariant delta d m s /\
+         invariant delta d hm m s /\
          seq_spec_pre (spec hm) (project_disk s) /\
          guar delta tid s_i s)
       (fun tid r d hm m s_i s d' hm' m' s_i' s' =>
-         invariant delta d' m' s' /\
+         invariant delta d' hm' m' s' /\
          match r with
          | Some r => seq_spec_post (spec hm) r hm' (project_disk s')
          | None => guar delta tid s s'
@@ -179,10 +179,10 @@ Module MakeBridge (C:CacheSubProtocol).
                                       d' hm' m' s_i' s' v0 r,
       exec App.delta tid (cache_read a) (d, hm, m, s_i, s)
            (Finished (d', hm', m', s_i', s') r) ->
-      cacheI d m s ->
+      cacheI d hm m s ->
       get vdisk s a = Some v0 ->
       modified [( vCache; vDisk0 )] s s' /\
-      cacheI d' m' s' /\
+      cacheI d' hm' m' s' /\
       (forall v, r = Some v -> v = v0) /\
       s_i' = s_i /\
       hm' = hm /\
@@ -208,7 +208,7 @@ Module MakeBridge (C:CacheSubProtocol).
                                     v0,
       exec App.delta tid (cache_read a) (d, hm, m, s_i, s)
            (Failed _) ->
-      cacheI d m s ->
+      cacheI d hm m s ->
       get vdisk s a = Some v0 ->
       False.
   Proof.
@@ -230,10 +230,10 @@ Module MakeBridge (C:CacheSubProtocol).
                                       d' hm' m' s_i' s' v0 v r,
       exec App.delta tid (cache_write a v) (d, hm, m, s_i, s)
            (Finished (d', hm', m', s_i', s') r) ->
-      cacheI d m s ->
+      cacheI d hm m s ->
       get vdisk s a = Some v0 ->
       modified [( vCache; vDisk0; vWriteBuffer; vdisk )] s s' /\
-      cacheI d' m' s' /\
+      cacheI d' hm' m' s' /\
       get vdisk s' = upd (get vdisk s) a v /\
       guar delta tid s s' /\
       s_i' = s_i /\
@@ -261,11 +261,11 @@ Module MakeBridge (C:CacheSubProtocol).
                                        d' hm' m' s_i' s' v0 r,
       exec App.delta tid (finish_fill a) (d, hm, m, s_i, s)
            (Finished (d', hm', m', s_i', s') r) ->
-      cacheI d m s ->
+      cacheI d hm m s ->
       get vdisk s a = Some v0 ->
       cache_get (get vCache s) a = Invalid ->
       wb_get (get vWriteBuffer s) a = WbMissing ->
-      cacheI d' m' s' /\
+      cacheI d' hm' m' s' /\
       modified [( vCache; vDisk0 )] s s' /\
       cache_get (get vCache s') a = Clean v0 /\
       guar delta tid s s' /\
@@ -288,8 +288,8 @@ Module MakeBridge (C:CacheSubProtocol).
            end; intuition eauto.
   Qed.
 
-  Lemma cache_addr_valid : forall d m s a v,
-      cacheI d m s ->
+  Lemma cache_addr_valid : forall d hm m s a v,
+      cacheI d hm m s ->
       get vdisk s a = Some v ->
       exists v', d a = Some v'.
   Proof.
@@ -323,7 +323,7 @@ Module MakeBridge (C:CacheSubProtocol).
                                          d' hm' m' s_i' s',
       exec App.delta tid (cache_read a) (d, hm, m, s_i, s)
            (Finished (d', hm', m', s_i', s') (Some v)) ->
-      cacheI d m s ->
+      cacheI d hm m s ->
       get vdisk s a = Some v.
   Proof.
     intros.
@@ -460,11 +460,11 @@ Module MakeBridge (C:CacheSubProtocol).
   Theorem cache_simulation_finish : forall T (p: Prog.prog T)
                                       (tid:TID) d hm m s_i s out,
       exec App.delta tid (compile p) (d, hm, m, s_i, s) out ->
-      cacheI d m s ->
+      cacheI d hm m s ->
       (forall d' hm' m' s_i' s' (v:T),
           out = Finished (d', hm', m', s_i', s') (value v) ->
           (Prog.exec (project_disk s) hm p (Prog.Finished (project_disk s') hm' v) /\
-           cacheI d' m' s' /\
+           cacheI d' hm' m' s' /\
            guar delta tid s s' /\
            hashmap_le hm hm' /\
            modified cache_vars s s' /\
@@ -595,8 +595,8 @@ Module MakeBridge (C:CacheSubProtocol).
                                             (tid:TID) d hm m s_i s
                                             d' hm' m' s_i' s',
       exec App.delta tid (compile p) (d, hm, m, s_i, s) (Finished (d', hm', m', s_i', s') error) ->
-      cacheI d m s ->
-      (cacheI d' m' s' /\
+      cacheI d hm m s ->
+      (cacheI d' hm' m' s' /\
        guar delta tid s s' /\
        hashmap_le hm hm' /\
        modified cache_vars s s' /\
@@ -691,7 +691,7 @@ Module MakeBridge (C:CacheSubProtocol).
                                   d hm m s_i s,
       exec App.delta tid (finish_fill a) (d, hm, m, s_i, s) (Failed _) ->
       cache_get (get vCache s) a = Invalid ->
-      cacheI d m s ->
+      cacheI d hm m s ->
       get vdisk s a = None.
   Proof.
     intros.
@@ -731,7 +731,7 @@ Module MakeBridge (C:CacheSubProtocol).
                                   d hm m s_i s,
       exec App.delta tid (cache_write a v) (d, hm, m, s_i, s)
            (Failed _) ->
-      cacheI d m s ->
+      cacheI d hm m s ->
       get vdisk s a = None.
   Proof.
     intros.
@@ -760,7 +760,7 @@ Module MakeBridge (C:CacheSubProtocol).
   Theorem cache_simulation_failure : forall T (p: Prog.prog T)
                                        (tid:TID) d hm m s_i s,
       exec App.delta tid (compile p) (d, hm, m, s_i, s) (Failed (Exc T)) ->
-      cacheI d m s ->
+      cacheI d hm m s ->
       Prog.exec (project_disk s) hm p (Prog.Failed T).
   Proof.
     induction p; simpl; intros; subst;

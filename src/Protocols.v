@@ -48,7 +48,7 @@ Section Protocols.
       Transitions in delta correspond to transitions in delta', projected onto
       Sigma'. *)
   Definition SubProtocolPi delta delta' :=
-    (forall d m s, invariant delta d m s -> invariant delta' d (pi__m m) (pi__s s)) /\
+    (forall d hm m s, invariant delta d hm m s -> invariant delta' d hm (pi__m m) (pi__s s)) /\
     (forall tid s s', guar delta tid s s' -> guar delta' tid (pi__s s) (pi__s s')).
 
   Theorem rely_subprotocol_pi : forall delta delta',
@@ -60,7 +60,7 @@ Section Protocols.
   Qed.
 
   Definition SubProtocol (delta delta': Protocol Sigma) :=
-    (forall d m s, invariant delta d m s -> invariant delta' d m s) /\
+    (forall d hm m s, invariant delta d hm m s -> invariant delta' d hm m s) /\
     (forall tid s s', guar delta tid s s' -> guar delta' tid s s').
 
   Theorem rely_subprotocol : forall delta delta',
@@ -93,9 +93,9 @@ Section Protocols.
   Defined.
 
   Definition InjectProtocol delta delta' :=
-    (forall d m s d' m' s', invariant delta d m s ->
-                       invariant delta' d' m' s' ->
-                       invariant delta d (inj__m m m') (inj__s s s')) /\
+    (forall d hm m s d' hm' m' s', invariant delta d hm m s ->
+                       invariant delta' d' hm' m' s' ->
+                       invariant delta d hm (inj__m m m') (inj__s s s')) /\
     (forall tid s0 s s', guar delta' tid s s' ->
                     guar delta tid (inj__s s0 s) (inj__s s0 s')).
 

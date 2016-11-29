@@ -96,7 +96,7 @@ Module MakeCacheProtocol (St:GlobalState) (Proj:CacheProj St).
          wb_get wb a = WbMissing.
 
   Definition cacheI : Invariant St.Sigma :=
-    fun d m s =>
+    fun d hm m s =>
       get mCache m = get vCache s /\
       get mWriteBuffer m = get vWriteBuffer s /\
       cache_rep d (get vCache s) (get vDisk0 s) /\
@@ -167,12 +167,13 @@ Module Type CacheSubProtocol.
       guar App.delta tid s s'.
 
   Parameter invariantRespectsPrivateVars :
-    forall d m s d' m' s',
-      invariant App.delta d m s ->
+    forall d hm m s d' hm' m' s',
+      invariant App.delta d hm m s ->
       modified [( CacheProtocol.vCache; CacheProtocol.vDisk0 )] s s' ->
       modified [( CacheProtocol.mCache )] m m' ->
-      invariant CacheProtocol.delta d' m' s' ->
-      invariant App.delta d' m' s'.
+      invariant CacheProtocol.delta d' hm' m' s' ->
+      hashmap_le hm hm' ->
+      invariant App.delta d' hm' m' s'.
 
 End CacheSubProtocol.
 
@@ -287,9 +288,9 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
   (* start of automation *)
 
-  Lemma unfold_invariant : forall d m s,
-      invariant delta d m s ->
-      ltac:(let t := eval simpl in (invariant delta d m s) in
+  Lemma unfold_invariant : forall d hm m s,
+      invariant delta d hm m s ->
+      ltac:(let t := eval simpl in (invariant delta d hm m s) in
                 let t := eval unfold cacheI in t in
                     exact t).
   Proof.
@@ -305,9 +306,9 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     eauto.
   Qed.
 
-  Lemma protocol_proj_invariant {d m s} :
-      invariant App.delta d m s ->
-      invariant delta d m s.
+  Lemma protocol_proj_invariant {d hm m s} :
+      invariant App.delta d hm m s ->
+      invariant delta d hm m s.
   Proof.
     apply protocolProj; auto.
   Qed.
@@ -321,7 +322,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
   Ltac sub_protocol :=
     match goal with
-    | [ H: invariant App.delta _ _ _ |- _ ] =>
+    | [ H: invariant App.delta _ _ _ _ |- _ ] =>
       learn that (protocol_proj_invariant H)
     | [ H: rely App.delta _ _ _ |- _ ] =>
       learn that (protocol_proj_rely H)
@@ -329,7 +330,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
   Ltac learn_protocol :=
     match goal with
-    | [ H: invariant delta _ _ _ |- _ ] =>
+    | [ H: invariant delta _ _ _ _ |- _ ] =>
       learn that (unfold_invariant H)
     | [ H: guar delta _ _ _ |- _ ] =>
       learn that (unfold_protocol H)
@@ -339,7 +340,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     match goal with
     | [ |- guar delta ?tid _ _ ] =>
       simpl; unfold cacheR
-    | [ |- invariant delta _ _ _ ] =>
+    | [ |- invariant delta _ _ _ _ ] =>
       simpl; unfold cacheI
     end.
 
@@ -722,14 +723,14 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       SPEC App.delta, tid |-
               {{ v0,
                | PRE d hm m s_i s:
-                   invariant delta d m s /\
+                   invariant delta d hm m s /\
                    cache_get (get vCache s) a = Missing /\
                    (* XXX: not sure exactly why this is a requirement,
                    but it comes from no_wb_reader_conflict *)
                    wb_get (get vWriteBuffer s) a = WbMissing /\
                    get vdisk s a = Some v0
                | POST d' hm' m' s_i' s' _:
-                   invariant delta d' m' s' /\
+                   invariant delta d' hm' m' s' /\
                    (* note that neither vdisk0 nor vdisk are modified *)
                    modified [( vCache; vDisk0 )] s s' /\
                    guar delta tid s s' /\
@@ -829,12 +830,12 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       SPEC App.delta, tid |-
                   {{ v0,
                    | PRE d hm m s_i s:
-                       invariant delta d m s /\
+                       invariant delta d hm m s /\
                        cache_get (get vCache s) a = Invalid /\
                        wb_get (get vWriteBuffer s) a = WbMissing /\
                        get vdisk s a = Some v0
                    | POST d' hm' m' s_i' s' r:
-                       invariant delta d' m' s' /\
+                       invariant delta d' hm' m' s' /\
                        modified [( vCache; vDisk0 )] s s' /\
                        cache_get (get vCache s') a = Clean v0 /\
                        guar delta tid s s' /\
@@ -958,10 +959,10 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       SPEC App.delta, tid |-
               {{ v0,
                | PRE d hm m s_i s:
-                   invariant delta d m s /\
+                   invariant delta d hm m s /\
                    get vdisk s a = Some v0
                | POST d' hm' m' s_i' s' r:
-                   invariant delta d' m' s' /\
+                   invariant delta d' hm' m' s' /\
                    get vdisk s' = upd (get vdisk s) a v /\
                    (* vCache, vDisk0 and vWriteBuffer are unconcerning since
                    they are cache-private variables; the point is that vdisk0
@@ -1164,9 +1165,9 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       SPEC App.delta, tid |-
               {{ (_:unit),
                | PRE d hm m s_i s:
-                   invariant delta d m s
+                   invariant delta d hm m s
                | POST d' hm' m' s_i' s' r:
-                   invariant delta d' m' s' /\
+                   invariant delta d' hm' m' s' /\
                    modified [( vCache; vDisk0; vWriteBuffer; vdisk0 )] s s' /\
                    get vdisk0 s' = get vdisk s /\
                    get vdisk s' = get vdisk s /\
@@ -1207,9 +1208,9 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     SPEC App.delta, tid |-
   {{ (_:unit),
    | PRE d hm m s_i s:
-       invariant delta d m s
+       invariant delta d hm m s
    | POST d' hm' m' s_i' s' _:
-       invariant delta d' m' s' /\
+       invariant delta d' hm' m' s' /\
        get vdisk s' = get vdisk0 s /\
        modified [(vWriteBuffer; vdisk)] s s' /\
        get vWriteBuffer s' = emptyWriteBuffer /\
@@ -1328,10 +1329,10 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       SPEC App.delta, tid |-
               {{ v,
                | PRE d hm m s_i s:
-                   invariant delta d m s /\
+                   invariant delta d hm m s /\
                    get vdisk s a = Some v
                | POST d' hm' m' s_i' s' r:
-                   invariant delta d' m' s' /\
+                   invariant delta d' hm' m' s' /\
                    guar delta tid s s' /\
                    modified [( vCache; vDisk0 )] s s' /\
                    (forall v', r = Some v' -> v' = v) /\
@@ -1384,12 +1385,12 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
         SPEC App.delta, tid |-
                     {{ v v0,
                      | PRE d hm m s_i s:
-                         invariant delta d m s /\
+                         invariant delta d hm m s /\
                          get vdisk s a = Some v /\
                          get vdisk s a' = Some v0 /\
                          guar delta tid s_i s
                      | POST d' hm' m' s_i' s' r:
-                         invariant delta d' m' s' /\
+                         invariant delta d' hm' m' s' /\
                          (r = true ->
                           get vdisk s' = upd (get vdisk s) a' v) /\
                          hm' = hm /\

@@ -60,9 +60,9 @@ Module App <: GlobalProtocol.
   Module St := CopyState.
   Definition Sigma := St.Sigma.
 
-  Definition copyInvariant d m s :=
+  Definition copyInvariant d hm m s :=
     cache_committed s /\
-    invariant CacheProtocol.delta d m s.
+    invariant CacheProtocol.delta d hm m s.
 
   Definition copyGuar tid (s s': abstraction Sigma) :=
     guar CacheProtocol.delta tid s s' /\
@@ -141,12 +141,13 @@ Module CacheSub <: CacheSubProtocol.
   Qed.
 
   Definition invariantRespectsPrivateVars :
-    forall d m s d' m' s',
-      invariant App.delta d m s ->
+    forall d hm m s d' hm' m' s',
+      invariant App.delta d hm m s ->
       modified [( CacheProtocol.vCache; CacheProtocol.vDisk0 )] s s' ->
       modified [( CacheProtocol.mCache )] m m' ->
-      invariant CacheProtocol.delta d' m' s' ->
-      invariant App.delta d' m' s'.
+      invariant CacheProtocol.delta d' hm' m' s' ->
+      hashmap_le hm hm' ->
+      invariant App.delta d' hm' m' s'.
   Proof.
     simpl; intros; auto.
     split; auto.
@@ -158,9 +159,11 @@ Module CacheSub <: CacheSubProtocol.
       fold vdisk vdisk0 vDisk0 in *.
     not_modified vdisk.
     not_modified vdisk0.
-    unfold id in *.
-    rewrite <- H4.
-    rewrite <- H5.
+    unfold id in *; simpl in *.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] =>
+             rewrite <- H
+           end.
     auto.
   Qed.
 
@@ -218,9 +221,9 @@ Theorem cache_abort_ok :
   SPEC App.delta, tid |-
 {{ (_:unit),
  | PRE d hm m s_i s:
-     invariant CacheProtocol.delta d m s
+     invariant CacheProtocol.delta d hm m s
  | POST d' hm' m' s_i' s' _:
-     invariant App.delta d' m' s' /\
+     invariant App.delta d' hm' m' s' /\
      get vdisk s' = get vdisk0 s /\
      guar CacheProtocol.delta tid s s' /\
      hm' = hm /\
@@ -253,8 +256,8 @@ Qed.
 
 Hint Resolve guar_refl.
 
-Lemma invariant_cache_committed : forall d m s,
-    invariant App.delta d m s ->
+Lemma invariant_cache_committed : forall d hm m s,
+    invariant App.delta d hm m s ->
     get vdisk s = get vdisk0 s.
 Proof.
   destruct 1; auto.
@@ -264,7 +267,7 @@ Hint Resolve invariant_cache_committed.
 
 Ltac simp_hook ::=
      match goal with
-     | [ H: invariant App.delta _ _ _ |- _ ] =>
+     | [ H: invariant App.delta _ _ _ _ |- _ ] =>
        learn that (invariant_cache_committed H)
      end ||
      (progress repeat not_modified vdisk) ||
@@ -274,12 +277,12 @@ Theorem copy_ok :
     SPEC App.delta, tid |-
                 {{ v v',
                  | PRE d hm m s_i s:
-                     invariant App.delta d m s /\
+                     invariant App.delta d hm m s /\
                      get vdisk s 0 = Some v /\
                      get vdisk s (tid+1) = Some v' /\
                      guar App.delta tid s_i s
                  | POST d' hm' m' s_i' s' r:
-                     invariant App.delta d' m' s' /\
+                     invariant App.delta d' hm' m' s' /\
                      (r = true ->
                       get vdisk s' = upd (get vdisk s) (tid+1) v) /\
                      (r = false ->
@@ -342,7 +345,6 @@ Proof.
   unshelve eapply cache_guar_tid_independent; eauto.
   apply destinations_readonly_vdisk_eq.
   congruence.
-  eapply hashmap_le_preorder; eauto.
 Qed.
 
 Hint Extern 1 {{copy; _}} => apply copy_ok : prog.
@@ -394,20 +396,20 @@ Theorem copy_retry1_ok :
     SPEC App.delta, tid |-
                 {{ v v',
                  | PRE d hm m s_i s:
-                     invariant App.delta d m s /\
+                     invariant App.delta d hm m s /\
                      get vdisk s 0 = Some v /\
                      get vdisk s (tid+1) = Some v' /\
                      guar App.delta tid s_i s
-                 | POST d'' hm' m'' s_i' s'' r:
-                     invariant App.delta d'' m'' s'' /\
+                 | POST d'' hm'' m'' s_i' s'' r:
+                     invariant App.delta d'' hm'' m'' s'' /\
                      (r = false ->
                       rely App.delta tid s s'') /\
                      (r = true ->
-                      exists d' m' s',
+                      exists d' hm' m' s',
                         rely App.delta tid s s' /\
-                        invariant App.delta d' m' s' /\
+                        invariant App.delta d' hm' m' s' /\
                         get vdisk s'' = upd (get vdisk s') (tid+1) v) /\
-                     hashmap_le hm hm' /\
+                     hashmap_le hm hm'' /\
                      guar App.delta tid s_i' s''
                 }} copy_retry1.
 Proof.
@@ -419,7 +421,7 @@ Proof.
 
   step.
   (* trivial rely *)
-  exists d, m, s.
+  exists d, hm, m, s.
   simplify; finish.
   apply star_refl.
   step.
@@ -434,7 +436,7 @@ Proof.
 
   eapply rely_trans; eauto.
 
-  exists d0, m0, s0; intuition eauto.
+  exists d0, hm0, m0, s0; intuition eauto.
   eapply hashmap_le_preorder; eauto.
 Qed.
 
@@ -452,20 +454,20 @@ Theorem copy_fuel_retry_ok : forall n,
     SPEC App.delta, tid |-
                 {{ v v',
                  | PRE d hm m s_i s:
-                     invariant App.delta d m s /\
+                     invariant App.delta d hm m s /\
                      get vdisk s 0 = Some v /\
                      get vdisk s (tid+1) = Some v' /\
                      guar App.delta tid s_i s
-                 | POST d'' hm' m'' s_i' s'' r:
-                     invariant App.delta d'' m'' s'' /\
+                 | POST d'' hm'' m'' s_i' s'' r:
+                     invariant App.delta d'' hm'' m'' s'' /\
                      (r = false ->
                       rely App.delta tid s s'') /\
                      (r = true ->
-                      exists d' m' s',
+                      exists d' hm' m' s',
                         rely App.delta tid s s' /\
-                        invariant App.delta d' m' s' /\
+                        invariant App.delta d' hm' m' s' /\
                         get vdisk s'' = upd (get vdisk s') (tid+1) v) /\
-                     hashmap_le hm hm' /\
+                     hashmap_le hm hm'' /\
                      guar App.delta tid s_i' s''
                 }} copy_fuel_retry n.
 Proof.
@@ -474,14 +476,14 @@ Proof.
     descend; simplify; finish.
     step.
 
-    exists d, m, s; intuition eauto.
+    exists d, hm, m, s; intuition eauto.
     apply star_refl.
   - simpl; step.
     descend; simplify; finish.
     step.
     step.
 
-    exists d, m, s; intuition eauto.
+    exists d, hm, m, s; intuition eauto.
     apply star_refl.
 
     step.
@@ -490,7 +492,7 @@ Proof.
     step.
     eapply rely_trans; eauto.
 
-    exists d', m', s'; intuition eauto.
+    exists d', hm', m', s'; intuition eauto.
     eapply rely_trans; eauto.
 
     eapply hashmap_le_preorder; eauto.

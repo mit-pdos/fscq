@@ -403,10 +403,10 @@ Qed.
 
 Lemma exec_yield : forall Sigma delta T tid d hm m s_i s out wchan (rx: prog Sigma T),
     exec delta tid (Yield wchan;; rx) (d, hm, m, s_i, s) out ->
-    invariant delta d m s ->
+    invariant delta d hm m s ->
     guar delta tid s_i s ->
     exists d' hm' m' s',
-      invariant delta d' m' s' /\
+      invariant delta d' hm' m' s' /\
       rely delta tid s s' /\
       hashmap_le hm hm' /\
       exec delta tid rx (d', hm', m', s', s') out.
@@ -428,10 +428,10 @@ Theorem wait_for_ok : forall Sigma (delta: Protocol Sigma)
   SPEC delta, tid |-
     {{ (_:unit),
      | PRE d hm m s_i s:
-       invariant delta d m s /\
+       invariant delta d hm m s /\
        guar delta tid s_i s
      | POST d' hm' m' s_i' s' r:
-       invariant delta d' m' s' /\
+       invariant delta d' hm' m' s' /\
        (exists H, test (get v m') = left H) /\
        rely delta tid s s' /\
        hashmap_le hm hm' /\
@@ -544,12 +544,12 @@ Theorem AcquireLock_ok : forall Sigma (delta: Protocol Sigma)
     SPEC delta, tid |-
     {{ (_:unit),
      | PRE d hm m s_i s:
-         invariant delta d m s /\
+         invariant delta d hm m s /\
          guar delta tid s_i s
      | POST d' hm' m'' s_i' s'' _:
          exists m' s',
            rely delta tid s s' /\
-           invariant delta d' m' s' /\
+           invariant delta d' hm' m' s' /\
            m'' = set l Locked m' /\
            s'' = up tid s' /\
            guar delta tid s_i' s' /\

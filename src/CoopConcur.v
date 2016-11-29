@@ -60,8 +60,7 @@ Section LogicDefinition.
   Definition memory (Sigma:State) := Hmem (mem_types Sigma).
   Definition abstraction (Sigma:State) := Hmem (abstraction_types Sigma).
 
-  (* TODO: need hashmap here as well *)
-  Definition Invariant (Sigma:State) := DISK -> memory Sigma -> abstraction Sigma -> Prop.
+  Definition Invariant (Sigma:State) := DISK -> hashmap -> memory Sigma -> abstraction Sigma -> Prop.
   Definition Relation (Sigma:State) := abstraction Sigma -> abstraction Sigma -> Prop.
 
   (** Protocol Sigma is the kind of all protocols over the state type
@@ -145,8 +144,8 @@ Section CoopConcur.
              (d, hm, m, s_i, s) (d', hm, m, s_i, s) tt
   | StepYield : forall d hm m s_i s,
       forall wchan d' hm' m' s',
-      invariant delta d m s ->
-      invariant delta d' m' s' ->
+      invariant delta d hm m s ->
+      invariant delta d' hm' m' s' ->
       guar delta tid s_i s ->
       rely delta tid s s' ->
       hashmap_le hm hm' ->
@@ -201,7 +200,7 @@ Section CoopConcur.
       d a = Some (v0, Some tid')  ->
       fail_step tid (Write a v) (d, hm, m, s0, s)
   | FailStepYieldInvariant : forall d hm m s0 s wchan,
-      (~invariant delta d m s) ->
+      (~invariant delta d hm m s) ->
       fail_step tid (Yield wchan) (d, hm, m, s0, s)
   | FailStepYieldGuar : forall d hm m s0 s wchan,
       (~guar delta tid s0 s) ->
@@ -246,7 +245,7 @@ Section CoopConcur.
                   eauto using StepStartRead ].
 
     Theorem step_fail_step_complete : forall tid T (p: prog T) st,
-        (forall d m s, {invariant delta d m s} + {~invariant delta d m s}) ->
+        (forall d hm m s, {invariant delta d hm m s} + {~invariant delta d hm m s}) ->
         (forall s s', {guar delta tid s s'} + {~guar delta tid s s'}) ->
         (exists T' (p1: prog T') p2, p = Bind p1 p2) \/
         (* can't recall why Ret isn't handled by step *)
@@ -263,7 +262,7 @@ Section CoopConcur.
           try solve [ left; eauto]; right;
             try solve [ cases ].
       - admit. (* not actually true - need to add or case for hash collision *)
-      - destruct (X d m s); eauto.
+      - destruct (X d hm m s); eauto.
         destruct (X0 s0 s); eauto.
         left; success_step.
         eapply StepYield; eauto.
@@ -654,9 +653,9 @@ Section CoopConcur.
 
   Theorem Yield_ok : forall wchan,
     tid |- {{ (_:unit),
-           | PRE d hm m s_i s: invariant delta d m s /\
+           | PRE d hm m s_i s: invariant delta d hm m s /\
                            guar delta tid s_i s
-           | POST d' hm' m' s_i' s' _: invariant delta d' m' s' /\
+           | POST d' hm' m' s_i' s' _: invariant delta d' hm' m' s' /\
                                        s_i' = s' /\
                                        hashmap_le hm hm' /\
                                        rely delta tid s s'

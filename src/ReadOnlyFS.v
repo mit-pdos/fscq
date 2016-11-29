@@ -13,13 +13,6 @@ Open Scope hlist_scope.
 Require Import GenSepN BFile Log SuperBlock.
 Require Import ConcurrentBridge.
 
-(** TODO:
-
-add mscs and fsxp to memory state and pass them to file system code from memory
-
-write the read-only invariant (factor out common part of specs) and protocol
-(trivial - fsxp and directory don't change) *)
-
 Module St <: GlobalState.
   Definition Sigma :=
     defState (mem_types ConcurrentCache.Sigma ++
@@ -85,13 +78,12 @@ Module CacheSubProtocol <: ConcurrentCache.CacheSubProtocol.
     (* this won't be so simple with additional state in Sigma *)
     Definition delta : Protocol Sigma.
       apply (defProtocol
-               (fun d m s =>
-                  invariant CacheProtocol.delta d m s /\
+               (fun d hm m s =>
+                  invariant CacheProtocol.delta d hm m s /\
                   let fsxp := get mFsxp m in
                   let mscs := get mMscs m in
                   let tree := get vDirTree s in
-                  (* TODO: eventually hm should be part of invariant *)
-                  exists ds hm ilist frees,
+                  exists ds ilist frees,
                     LOG.rep (FSLayout.FSXPLog fsxp) (SB.rep fsxp)
                             (LOG.NoTxn ds) (BFILE.MSLL mscs) hm
                             (lower_disk (get CacheProtocol.vdisk s)) /\
@@ -144,13 +136,26 @@ Module CacheSubProtocol <: ConcurrentCache.CacheSubProtocol.
     unmodified_var.
   Qed.
 
+  Lemma log_rep_hashmap_le : forall xp F ms st hm hm' d,
+      hashmap_le hm hm' ->
+      LOG.rep xp F st ms hm d -> LOG.rep xp F st ms hm' d.
+  Proof.
+    intros.
+    pred_apply.
+    apply LOG.rep_hashmap_subset.
+    eauto.
+  Qed.
+
+  Hint Resolve log_rep_hashmap_le.
+
   Definition invariantRespectsPrivateVars :
-    forall d m s d' m' s',
-      invariant App.delta d m s ->
+    forall d hm m s d' hm' m' s',
+      invariant App.delta d hm m s ->
       modified [( CacheProtocol.vCache; CacheProtocol.vDisk0 )] s s' ->
       modified [( CacheProtocol.mCache )] m m' ->
-      invariant CacheProtocol.delta d' m' s' ->
-      invariant App.delta d' m' s'.
+      invariant CacheProtocol.delta d' hm' m' s' ->
+      hashmap_le hm hm' ->
+      invariant App.delta d' hm' m' s'.
   Proof.
     simpl; intuition idtac.
     repeat deex.
