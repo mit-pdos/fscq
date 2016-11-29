@@ -22,6 +22,7 @@ Require Import Cache.
 Require Import ListUtils.
 Require Import AsyncDisk.
 Require Import Errno.
+Require Import DestructVarname.
 Import ListNotations.
 
 Set Implicit Arguments.

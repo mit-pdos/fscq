@@ -449,6 +449,8 @@ Module INODE.
     unfold Ind.rep_direct; cancel.
     rewrite Ind.indrep_0 by (compute; auto). cancel.
     apply Forall_nil.
+    repeat constructor.
+    eapply list_same_repeat.
   Qed.
 
 

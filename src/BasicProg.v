@@ -546,18 +546,13 @@ Proof.
       cancel.
       cancel.
 
-      3: intros; apply pimpl_refl.
+      2: intros; apply pimpl_refl.
 
       eapply pimpl_ok2.
-      apply H1; try omega.
+      eauto.
       intros.
-      eapply pimpl_ok2.
-      apply H7.
-      cancel.
       cancel.
 
-      eapply pimpl_ok2.
-      apply H0.
       replace (n + S i) with (S (n + i)) by omega.
       eauto.
     + cancel.
@@ -599,8 +594,6 @@ Proof.
   cancel.
   cancel.
   eapply pimpl_ok2.
-  eapply H3; eauto.
-  omega.
   eauto.
   replace (n + 0) with n by omega; auto.
 Qed.
