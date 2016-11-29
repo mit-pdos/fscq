@@ -837,10 +837,15 @@ Module AFS.
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]] *
         [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                        ilist' (BFILE.pick_balloc frees'  (MSAlloc mscs')) tree' ]] *
+                        ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
         [[ sz >= Datatypes.length (BFILE.BFData f) -> BFILE.treeseq_ilist_safe inum ilist ilist' ]] )
     XCRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+      exists d tree' f' ilist' frees',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
+      [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees')]]] *
+      [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
+      [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]]
     >} file_truncate fsxp inum sz mscs.
   Proof.
     unfold file_truncate; intros.
@@ -849,11 +854,19 @@ Module AFS.
     step.
     step.
     step.
+    step.
+    step.
+    step.
     xcrash_solve.
-    rewrite LOG.intact_idempred. xform_norm. cancel.
-    step.
-    step.
-    step.
+    {
+      or_r; cancel.
+      rewrite LOG.recover_any_idempred.
+      xform_norm; cancel.
+      xform_norm; cancel.
+      xform_norm; cancel.
+      xform_norm; cancel.
+      xform_norm; cancel.
+    }
     step.
     xcrash_solve.
     rewrite LOG.intact_idempred. xform_norm. cancel.
