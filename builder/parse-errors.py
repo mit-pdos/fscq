@@ -1,6 +1,9 @@
 #!/usr/bin/python
 
 import collections
+import smtplib
+import os
+from email.mime.text import MIMEText
 
 f = open("checkproofs-errors.txt")
 
@@ -27,7 +30,8 @@ for l in f.readlines():
     errors[err_file].append(current_error)
   current_error.append(l)
 
-print "<h1>Total errors: %d</h1>" % sum(len(errors[fn]) for fn in errors)
+total_errors = sum(len(errors[fn]) for fn in errors)
+print "<h1>Total errors: %d</h1>" % total_errors
 
 for fn in errors:
   errlist = errors[fn]
@@ -36,3 +40,19 @@ for fn in errors:
     print '<blockquote><pre style="border: 2px solid black; background-color: yellow;">'
     for l in e: print l,
     print "</pre></blockquote>"
+
+if total_errors > 0:
+  msgbody = "Files with proof errors:\n\n"
+  for fn in errors:
+    msgbody += "  %s (%d errors)\n" % (fn, len(errors[fn]))
+  msgbody += "\n"
+  msgbody += "Detailed error output:\n\n"
+  msgbody += "  http://coqdev.csail.mit.edu/runs/%s/checkproofs-errors.html" % os.path.basename(os.getcwd())
+  msg = MIMEText(msgbody)
+  msg['Subject'] = "%d FSCQ proof errors" % total_errors
+  msg['From'] = "FSCQ builder <fscq-builder@coqdev.csail.mit.edu>"
+  msg['To'] = "nickolai@csail.mit.edu,kaashoek@mit.edu,dmz@mit.edu,akonradi@mit.edu,tchajed@mit.edu,atalaymertileri@gmail.com"
+
+  s = smtplib.SMTP('outgoing.csail.mit.edu')
+  s.sendmail(msg['From'], msg['To'].split(','), msg.as_string())
+  s.quit()
