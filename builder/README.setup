@@ -27,6 +27,7 @@ add to /etc/nginx/sites-enabled/default under server {}:
         location /runs/ {
                 root /home/nickolai/builder;
                 autoindex on;
+                charset UTF-8;
         }
 
 add to crontab:
