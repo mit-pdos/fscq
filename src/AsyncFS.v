@@ -787,7 +787,15 @@ Module AFS.
         [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
      )
   XCRASH:hm'
-         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+    LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+    exists d tree' f' ilist' mscs',
+    LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
+    [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees)]]] *
+    [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
+    [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
+    [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
+                    ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
+    [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
   >} file_set_attr fsxp inum attr mscs.
   Proof.
     unfold file_set_attr; intros.
@@ -796,11 +804,20 @@ Module AFS.
     step.
     step.
     xcrash_solve.
-    rewrite LOG.intact_idempred; cancel.
+    {
+      rewrite LOG.recover_any_idempred; cancel.
+      or_r; cancel.
+      xform_norm; cancel.
+      xform_norm; cancel.
+      xform_norm; cancel.
+      xform_norm; cancel.
+      xform_norm; cancel.
+      eauto.
+    }
     xcrash_solve.
-    rewrite LOG.intact_idempred; cancel.
+    rewrite LOG.intact_idempred. xform_norm. cancel.
     xcrash_solve.
-    rewrite LOG.intact_idempred; cancel.
+    rewrite LOG.intact_idempred. xform_norm. cancel.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (file_set_attr _ _ _ _) _) => apply file_set_attr_ok : prog.
