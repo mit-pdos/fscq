@@ -2811,7 +2811,8 @@ Ltac compile_step :=
   || compile_split
   .
 
-Ltac compile := repeat compile_step.
+Ltac compile :=
+  unshelve (repeat compile_step); try exact nil.
 
 Example append_list_in_pair : sigT (fun p => forall (a x : nat) xs,
   EXTRACT Ret (a, x :: xs)
@@ -2879,7 +2880,6 @@ Example match_option : sigT (fun p => forall env (o : option W) (r0 : W),
   ).
 Proof.
   compile.
-  Unshelve. exact [].
 Defined.
 
 Example find_in_map : sigT (fun p => forall env (m : Map.t W) (f0 : W),
@@ -2892,7 +2892,6 @@ Example find_in_map : sigT (fun p => forall env (m : Map.t W) (f0 : W),
   {{ fun ret => 0 |->? * 1 ~> ret }} // env).
 Proof.
   intros. compile.
-  Unshelve. exact nil.
 Defined.
 
 Eval lazy in (projT1 find_in_map).
@@ -2904,7 +2903,6 @@ Example add_to_map : sigT (fun p => forall env m,
   {{ fun ret => 0 ~> ret }} // env).
 Proof.
   intros. compile.
-  Unshelve. exact nil.
 Defined.
 
 Example remove_from_map : sigT (fun p => forall env (m : Map.t W),
@@ -2914,7 +2912,6 @@ Example remove_from_map : sigT (fun p => forall env (m : Map.t W),
   {{ fun ret => 0 ~> ret }} // env).
 Proof.
   intros. compile.
-  Unshelve. exact nil.
 Defined.
 
 (*
@@ -2934,7 +2931,6 @@ Example micro_add_twice : sigT (fun p => forall x,
   {{ fun ret => 0 ~> ret }} // StringMap.empty _).
 Proof.
   compile.
-  Unshelve. exact nil.
 Defined.
 Eval lazy in projT1 micro_add_twice.
 
@@ -2945,7 +2941,6 @@ Example micro_add_use_twice : sigT (fun p => forall x,
   {{ fun ret => 0 ~> ret }} // StringMap.empty _).
 Proof.
   compile.
-  Unshelve. exact nil.
 Defined.
 Eval lazy in projT1 micro_add_use_twice.
 
@@ -2956,7 +2951,6 @@ Example compile_one_read : sigT (fun p =>
   {{ fun ret => 0 ~> ret }} // StringMap.empty _).
 Proof.
   compile.
-  Unshelve. exact nil.
 Defined.
 Eval lazy in projT1 (compile_one_read).
 
@@ -2972,7 +2966,6 @@ Example extract_swap_1_2 : forall env, sigT (fun p =>
 Proof.
   intros. unfold swap_prog.
   compile.
-  Unshelve. exact nil.
 Defined.
 Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
 
@@ -2981,7 +2974,6 @@ Lemma extract_swap_prog : forall env, sigT (fun p =>
 Proof.
   intros. unfold swap_prog.
   compile.
-  Unshelve. exact nil.
 Defined.
 Eval lazy in projT1 (extract_swap_prog (StringMap.empty _)).
 
@@ -2990,7 +2982,6 @@ Example extract_increment : forall env, sigT (fun p => forall i,
 Proof.
   intros.
   compile.
-  Unshelve. exact nil.
 Defined.
 Eval lazy in projT1 (extract_increment (StringMap.empty _)).
 
