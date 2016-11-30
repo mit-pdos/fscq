@@ -1911,11 +1911,11 @@ Proof.
   eauto using value_inj.
 Qed.
 
-Instance slice_default_value A B {Wa : GoWrapper A} {Wb : GoWrapper B}
+Instance pair_default_value A B {Wa : GoWrapper A} {Wb : GoWrapper B}
   {Da : DefaultValue A} {Db : DefaultValue B} : DefaultValue (A * B) := {| zeroval := (zeroval, zeroval) |}.
   destruct Da, Db. unfold wrap; simpl. repeat find_apply_lem_hyp default_zero'.
   repeat find_rewrite. reflexivity.
-Qed.
+Defined.
 
 Instance list_default_value A {W : GoWrapper A} : DefaultValue (list A) := {| zeroval := [] |}. auto. Defined.
 
@@ -1931,7 +1931,7 @@ Qed.
 
 Lemma CompileDup : forall env X (Wr : GoWrapper X) F (var var' : var) x,
   EXTRACT Ret x
-  {{ var ~> x * var' ~>? wrap_type * F }}
+  {{ var ~> x * var' ~>? X * F }}
     var' <~dup var
   {{ fun ret => var ~> x * var' ~> ret * F }} // env.
 Proof.
@@ -2252,17 +2252,17 @@ Proof.
 Admitted.
 
 Lemma CompileSplit :
-  forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar (a0 : A) (b0 : B) F (p : A * B),
+  forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar F (p : A * B),
     EXTRACT Ret tt
-    {{ avar ~> a0 * bvar ~> b0 * pvar ~> p * F }}
+    {{ avar ~>? A * bvar ~>? B * pvar ~> p * F }}
       Modify SplitPair (pvar, avar, bvar)
     {{ fun _ => avar ~> fst p * bvar ~> snd p * pvar |-> moved_value (wrap p) * F }} // env.
 Proof.
   intros; unfold ProgOk.
   inv_exec_progok.
   - repeat inv_exec.
-    repeat econstructor.
     eval_expr.
+    repeat econstructor.
     pred_solve.
   - inv_exec_progok.
   - inv_exec_progok.
@@ -2272,9 +2272,9 @@ Proof.
 Qed.
 
 Lemma CompileFst :
-  forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar (a0 : A) (b0 : B) F (p : A * B),
+  forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar F (p : A * B),
     EXTRACT Ret (fst p)
-    {{ avar ~> a0 * bvar ~> b0 * pvar ~> p * F }}
+    {{ avar ~>? A * bvar ~>? B * pvar ~> p * F }}
       Modify SplitPair (pvar, avar, bvar)
     {{ fun ret => avar ~> ret * bvar ~> snd p * pvar |-> moved_value (wrap p) * F }} // env.
 Proof.
@@ -2292,9 +2292,9 @@ Proof.
 Qed.
 
 Lemma CompileSnd :
-  forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar (a0 : A) (b0 : B) F (p : A * B),
+  forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar F (p : A * B),
     EXTRACT Ret (snd p)
-    {{ avar ~> a0 * bvar ~> b0 * pvar ~> p * F }}
+    {{ avar ~>? A * bvar ~>? B * pvar ~> p * F }}
       Modify SplitPair (pvar, avar, bvar)
     {{ fun ret => avar ~> fst p * bvar ~> ret * pvar |-> moved_value (wrap p) * F }} // env.
 Proof.
@@ -2395,25 +2395,25 @@ Proof.
 Qed.
 
 Lemma CompileMatchOption : forall env B {HB : GoWrapper B} X {HX : GoWrapper X} {D : DefaultValue B}
-  ovar avar bvar xvar (o : option B) (a0 : bool) (b0 : B) (x0 : X)
+  ovar avar bvar xvar (o : option B)
   (pnone : prog X) xpnone (psome : B -> prog X) xpsome (F : pred) C,
   (forall (b : B),
   EXTRACT (psome b)
-  {{ avar ~> true * bvar ~> b * ovar |-> moved_value (wrap o) * xvar ~> x0 * F }}
+  {{ avar ~> true * bvar ~> b * ovar |-> moved_value (wrap o) * F }}
     xpsome
-  {{ fun ret => xvar ~> ret * avar |->? * bvar |->? * ovar |->? * C }} // env) ->
+  {{ fun ret => xvar ~> ret * avar ~>? bool * bvar ~>? B * ovar ~>? option B * C }} // env) ->
   EXTRACT pnone
-  {{ avar ~> false * bvar ~> zeroval * ovar |-> moved_value (wrap o) * xvar ~> x0 * F }}
+  {{ avar ~> false * bvar ~> zeroval * ovar |-> moved_value (wrap o) * F }}
     xpnone
-  {{ fun ret => xvar ~> ret * avar |->? * bvar |->? * ovar |->? * C }} // env ->
+  {{ fun ret => xvar ~> ret * avar ~>? bool * bvar ~>? B * ovar ~>? option B * C }} // env ->
   EXTRACT (match o with
            | None => pnone
            | Some b => psome b
            end)
-  {{ ovar ~> o * avar ~> a0 * bvar ~> b0 * xvar ~> x0 * F }}
+  {{ ovar ~> o * avar ~>? bool * bvar ~>? B * F }}
     Modify SplitPair (ovar, avar, bvar) ;
     If Var avar Then xpsome Else xpnone EndIf
-  {{ fun ret => xvar ~> ret * avar |->? * bvar |->? * ovar |->? * C }} // env.
+  {{ fun ret => xvar ~> ret * avar ~>? bool * bvar ~>? B * ovar ~>? option B * C }} // env.
 Proof.
   intros.
   eapply extract_equiv_prog with (pr1 := Bind (Ret tt) (fun _ => _)).
@@ -2514,9 +2514,10 @@ Ltac Type_denote x :=
 Ltac compile_bind := match goal with
   | [ |- EXTRACT Bind ?p ?q {{ _ }} _ {{ _ }} // _ ] =>
     match type of p with
-    | prog ?T0 =>
+    | prog ?T_ =>
       let v := fresh "var" in
-      eapply CompileDeclare with (T := T0);
+      let Wr_ := constr:(ltac:(eauto with typeclass_instances) : GoWrapper T_) in
+      eapply CompileDeclare with (T := T_) (Wr := Wr_);
       intro v; intros; eapply CompileBind; intros
     end
   end.
@@ -2729,7 +2730,17 @@ Ltac compile_split := match goal with
     | Some (_, ?ppath) =>
       change (Ret a) with (Ret ppath)
     end
-  | [ |- EXTRACT Ret (fst ?p) {{ ?pre }} _ {{ _ }} // _ ] => fail
+  | [ |- EXTRACT Ret (fst ?p) {{ ?pre }} _ {{ _ }} // _ ] =>
+    let avar_ := var_mapping_to_ret in
+    match find_val p pre with
+    | Some ?pvar_ =>
+      let A_ := type of (fst p) in
+      let B_ := type of (snd p) in
+      do_declare B_ ltac:(fun bvar_ =>
+        eapply hoare_weaken;
+        [ eapply CompileFst with (A := A_) (B := B_) (avar := avar_) (bvar := bvar_) (pvar := pvar_)
+        | cancel_subset.. ])
+    end
   | [ |- EXTRACT Ret (snd ?p) {{ ?pre }} _ {{ _ }} // _ ] =>
     let bvar_ := var_mapping_to_ret in
     match find_val p pre with
@@ -2807,8 +2818,8 @@ Ltac compile_step :=
   || compile_add
   || compile_listop
   || compile_map_op
-  || compile_decompose
   || compile_split
+  || compile_decompose
   .
 
 Ltac compile :=
@@ -2868,6 +2879,71 @@ Proof.
   intros. refine {| zeroval := None |}. reflexivity.
 Defined.
 
+Require Import Cache.
+
+Class WrapByTransforming T := {
+  T' : Type;
+  WrT' : GoWrapper T';
+  transform : T -> T';
+  transform_inj : forall t1 t2 : T, transform t1 = transform t2 -> t1 = t2;
+}.
+
+Instance WrapByTransforming_cachestate : WrapByTransforming cachestate.
+  refine {|
+    transform := fun cs => (CSMap cs, CSMaxCount cs, CSEvict cs);
+  |}.
+  simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
+Defined.
+
+Instance GoWrapper_transform T {Tr : WrapByTransforming T} : GoWrapper T.
+  refine {| wrap_type := wrap_type;
+            wrap' := fun t => @wrap' _ (@WrT' _ Tr) (@transform _ Tr t) |}.
+  intros.
+  apply wrap_inj in H.
+  auto using transform_inj.
+Defined.
+
+Instance cachestate_default_value : DefaultValue cachestate := {| zeroval :=
+  {| CSMap := Go.Map.empty _; CSMaxCount := 0; CSEvict := tt |} |}.
+  unfold wrap, wrap', GoWrapper_transform, default_value. simpl.
+  (* TODO: can we prove map equality yet? *)
+  admit.
+Admitted.
+
+Theorem transform_pimpl : forall T {Tr : WrapByTransforming T} k (t : T),
+  (k |-> (@wrap _ (@GoWrapper_transform _ Tr) t) : pred) <=p=> k |-> (@wrap _ WrT' (transform t)).
+Proof.
+  intros.
+  reflexivity.
+Qed.
+
+Example compile_writeback : forall env, sigT (fun p => forall a cs,
+  EXTRACT BUFCACHE.writeback a cs
+  {{ 0 ~> a * 1 ~> cs }}
+    p
+  {{ fun ret => 0 |->? * 1 ~> ret }} // env).
+Proof.
+  unfold BUFCACHE.writeback.
+  intros.
+  compile_step.
+  eapply hoare_strengthen_pre. unfold pimpl_subset.
+  rewrite transform_pimpl. simpl. apply chop_any. reflexivity. (* TODO *)
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  destruct b; simpl. (* TODO *)
+  compile_step.
+  compile_step.
+  (* Whoops, where did [decls_pre] go? *)
+Abort.
 
 Example match_option : sigT (fun p => forall env (o : option W) (r0 : W),
   EXTRACT match o with
