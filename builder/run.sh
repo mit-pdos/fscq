@@ -16,5 +16,5 @@ script $D/make-out.txt -c 'make'
 script $D/checkproofs-out.txt -c 'make checkproofs J=24'
 cat $D/checkproofs-out.txt | grep -v '^Checking task ' > $D/checkproofs-errors.txt
 cd $D
-python ~/builder/parse-errors.py > checkproofs-errors.html
+python3 ~/builder/parse-errors.py
 rm -f $L
