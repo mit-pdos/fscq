@@ -142,6 +142,7 @@ Module Go.
   | MapRemove
   | MapFind
   | MapCardinality
+  | MapElements
   .
 
   Inductive value :=
@@ -327,6 +328,9 @@ Module Go.
     Definition map_remove_impl' tv m k : n_tuple 2 var_update :=
       (SetTo (Val (AddrMap tv) (Here (Map.remove k m))), Leave).
 
+    Definition map_elements_impl' tv (m : Map.t (type_denote tv)) : n_tuple 2 var_update :=
+      (Leave, SetTo (Val (Slice (Pair Num tv))
+        (Here (map (fun x => (Here (fst x), snd x)) (Map.elements m))))).
   End NiceImpls.
 
   Section NastyImpls.
@@ -427,6 +431,17 @@ Module Go.
       destruct k as [k | ]; [ | exact None].
       refine (Some (map_remove_impl' tv' m k)).
     Defined.
+
+    Definition map_elements_impl : op_impl 2.
+      refine (fun args => let '(Val tm m, Val tl l) := args in
+                        match tm with
+                        | AddrMap tm => fun m => _
+                        | _ => fun _ => None
+                        end m).
+      destruct (type_eq_dec tl (Slice (Pair Num tm))); [ | exact None].
+      destruct m as [m | ]; [ | exact None].
+      refine (Some (map_elements_impl' tm m)).
+    Defined.
   End NastyImpls.
 
   Definition impl_for (op : modify_op) : { n : nat & op_impl n } :=
@@ -441,6 +456,7 @@ Module Go.
     | MapRemove => existT _ _ map_remove_impl
     | MapFind => existT _ _ map_find_impl
     | MapCardinality => existT _ _ map_card_impl
+    | MapElements => existT _ _ map_elements_impl
     end.
 
   Definition op_arity (op : modify_op) : nat := projT1 (impl_for op).

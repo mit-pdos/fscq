@@ -1377,6 +1377,7 @@ Ltac unfold_expr :=
          map_remove_impl, map_remove_impl',
          map_find_impl, map_find_impl',
          map_card_impl, map_card_impl',
+         map_elements_impl, map_elements_impl',
          eval_test_m, eval_test_num, eval_test_bool,
          update_one, setconst_impl, duplicate_impl,
          sel, id, eval, eq_rect_r, eq_rect
@@ -1389,6 +1390,7 @@ Ltac unfold_expr :=
          map_remove_impl, map_remove_impl',
          map_find_impl, map_find_impl',
          map_card_impl, map_card_impl',
+         map_elements_impl, map_elements_impl',
          eval_test_m, eval_test_num, eval_test_bool,
          update_one, setconst_impl, duplicate_impl,
          sel, id, eval, eq_rect_r, eq_rect
@@ -1737,6 +1739,46 @@ Proof.
     repeat eexists; eauto. pred_solve.
   - contradiction H1.
     repeat econstructor; [ eval_expr; eauto..].
+Qed.
+
+Lemma map_elements_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m,
+  @okToUnify AT AEQ value (var ~> Map.elements m)
+  (var |-> Val (Slice (Pair Num wrap_type))
+         (Here (map (fun x => (Here (fst x), snd x))
+               (Map.elements (Map.map wrap' m))))).
+Proof.
+  intros.
+  unfold okToUnify.
+  unfold wrap; simpl wrap. repeat f_equal.
+  simpl wrap'. repeat f_equal.
+  rewrite MapUtils.AddrMap.map_elements_map_eq.
+  rewrite map_map. simpl. reflexivity.
+Qed.
+
+Local Hint Extern 1 (okToUnify (?var ~> Map.elements ?k ?m)
+  (?var |-> (Val _ (Here (map _ (Map.elements _))))))
+  => eapply map_elements_okToUnify : okToUnify.
+
+Local Hint Extern 1 (okToUnify (?var ~> Map.elements _)
+  (?var |-> Val _ (Here(map _
+   (MapUtils.AddrMap_List.Raw.map wrap' (MapUtils.AddrMap_List.this _))))))
+  => eapply map_elements_okToUnify : okToUnify.
+
+Lemma CompileMapElements : forall env F T {Wr : GoWrapper T} mvar m var (v0 : list (W * T)),
+  EXTRACT Ret (Go.Map.elements m)
+  {{ var ~> v0 * mvar ~> m * F }}
+    Go.Modify Go.MapElements (mvar, var)
+  {{ fun ret => var ~> ret * mvar ~> m * F }} // env.
+Proof.
+  unfold ProgOk.
+  repeat inv_exec_progok.
+  - eval_expr.
+    repeat eexists; eauto. pred_solve.
+  - eval_expr.
+    contradiction H1. repeat econstructor.
+    eval_expr. eauto.
+    eval_expr. eauto.
+    eval_expr. eauto.
 Qed.
 
 Lemma CompileForLoopBasic : forall L G (L' : GoWrapper L) v loopvar F
