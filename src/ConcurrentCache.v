@@ -733,6 +733,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                    invariant delta d' hm' m' s' /\
                    (* note that neither vdisk0 nor vdisk are modified *)
                    modified [( vCache; vDisk0 )] s s' /\
+                   modified [( mCache )] m m' /\
                    guar delta tid s s' /\
                    hm' = hm /\
                    s_i' = s_i
@@ -837,6 +838,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                    | POST d' hm' m' s_i' s' r:
                        invariant delta d' hm' m' s' /\
                        modified [( vCache; vDisk0 )] s s' /\
+                       modified [( mCache )] m m' /\
                        cache_get (get vCache s') a = Clean v0 /\
                        guar delta tid s s' /\
                        r = v0 /\
@@ -955,6 +957,16 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
 
   Ltac simp_hook ::= vdisk_const.
 
+  Lemma mCache_is_mcache_vars : forall t (v: var (mem_types App.Sigma) t),
+      HIn v [(mCache)] ->
+      HIn v [(mCache; mWriteBuffer)].
+  Proof.
+    intros.
+    inversion H; subst; repeat sigT_eq; clear H.
+    constructor.
+    inversion H1.
+  Qed.
+
   Theorem cache_write_ok : forall a v,
       SPEC App.delta, tid |-
               {{ v0,
@@ -968,6 +980,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                    they are cache-private variables; the point is that vdisk0
                    doesn't change *)
                    modified [(vCache; vDisk0; vWriteBuffer; vdisk)] s s' /\
+                   modified [(mCache; mWriteBuffer)] m m' /\
                    guar delta tid s s' /\
                    hm' = hm /\
                    s_i' = s_i
@@ -987,6 +1000,11 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     (happ [(vCache; vDisk0)] [(vWriteBuffer; vdisk)]).
     change [Cache; DISK; WriteBuffer; Disk] with ([Cache; DISK] ++ [WriteBuffer; Disk]).
     apply HIn_happ; eauto.
+    eapply modified_trans with m0.
+    eapply modified_reduce; eauto.
+    intros.
+    auto using mCache_is_mcache_vars.
+    solve_modified.
   Qed.
 
   Hint Extern 1 {{cache_write _ _; _}} => apply cache_write_ok : prog.
@@ -1169,6 +1187,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                | POST d' hm' m' s_i' s' r:
                    invariant delta d' hm' m' s' /\
                    modified [( vCache; vDisk0; vWriteBuffer; vdisk0 )] s s' /\
+                   modified [( mCache; mWriteBuffer )] m m' /\
                    get vdisk0 s' = get vdisk s /\
                    get vdisk s' = get vdisk s /\
                    guar delta tid s s' /\
@@ -1213,6 +1232,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
        invariant delta d' hm' m' s' /\
        get vdisk s' = get vdisk0 s /\
        modified [(vWriteBuffer; vdisk)] s s' /\
+       modified [(mWriteBuffer)] m m' /\
        get vWriteBuffer s' = emptyWriteBuffer /\
        guar delta tid s s' /\
        hm' = hm /\
@@ -1335,6 +1355,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
                    invariant delta d' hm' m' s' /\
                    guar delta tid s s' /\
                    modified [( vCache; vDisk0 )] s s' /\
+                   modified [( mCache )] m m' /\
                    (forall v', r = Some v' -> v' = v) /\
                    hm' = hm /\
                    s_i' = s_i

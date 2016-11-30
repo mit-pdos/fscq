@@ -35,6 +35,12 @@ Ltac is_not_learnt H :=
   | _ => idtac
   end.
 
+Ltac not_learnt P :=
+  lazymatch goal with
+  | [ H: @Learnt P |- _ ] => fail
+  | _ => idtac
+  end.
+
 Tactic Notation "learn" hyp(H) tactic(t) := learn_tac H t.
 Tactic Notation "learn" "that" constr(H) := learn_fact H.
 Tactic Notation "learn" "that" "simpl" constr(H) :=

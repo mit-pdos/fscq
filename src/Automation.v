@@ -1,11 +1,17 @@
 Require Import Hlist.
 Require Export ForwardChaining.
 
+Ltac destruct_ands :=
+  repeat match goal with
+         | [ H: _ /\ _ |- _ ] =>
+           destruct H
+         end.
+
 Ltac deex :=
   match goal with
   | [ H : exists (varname : _), _ |- _ ] =>
     let newvar := fresh varname in
-    destruct H as [newvar ?]; intuition subst
+    destruct H as [newvar ?]; destruct_ands; subst
   end.
 
 Ltac remove_duplicate :=
@@ -240,12 +246,6 @@ Ltac inv_prod :=
     inversion H; clear H; subst
   end.
 
-Ltac destruct_ands :=
-  repeat match goal with
-         | [ H: _ /\ _ |- _ ] =>
-           destruct H
-         end.
-
 (* lightweight intuition *)
 Ltac expand_propositional t :=
   repeat match goal with
@@ -290,3 +290,8 @@ Ltac head_symbol e :=
   | ?h _ => h
   | ?h => h
   end.
+
+Ltac descend :=
+  repeat match goal with
+         | |- exists _, _ => eexists
+         end.

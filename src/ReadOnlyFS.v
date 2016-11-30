@@ -68,6 +68,27 @@ Module CacheProj <: ConcurrentCache.CacheProj St.
   Defined.
 End CacheProj.
 
+Ltac prove_not_in :=
+  match goal with
+  | [ |- HIn _ _ -> False ] =>
+    solve [ intros;
+            repeat match goal with
+                   | [ H: HIn _ _ |- _ ] =>
+                     inversion H; subst; repeat sigT_eq; clear H
+                   end ]
+  end.
+
+Ltac unmodified_var :=
+  try match goal with
+      | [ H: modified _ ?l ?l' |- get _ ?l' = get _ ?l ] =>
+        symmetry; apply H
+      end;
+  try match goal with
+      | [ H: modified _ ?l ?l' |- get _ ?l = get _ ?l' ] =>
+        apply H
+      end;
+  prove_not_in.
+
 Module CacheSubProtocol <: ConcurrentCache.CacheSubProtocol.
   Module CacheProtocol := ConcurrentCache.MakeCacheProtocol St CacheProj.
 
@@ -83,12 +104,13 @@ Module CacheSubProtocol <: ConcurrentCache.CacheSubProtocol.
                   let fsxp := get mFsxp m in
                   let mscs := get mMscs m in
                   let tree := get vDirTree s in
-                  exists ds ilist frees,
+                  (exists ds ilist frees,
                     LOG.rep (FSLayout.FSXPLog fsxp) (SB.rep fsxp)
                             (LOG.NoTxn ds) (BFILE.MSLL mscs) hm
-                            (lower_disk (get CacheProtocol.vdisk s)) /\
+                            (lower_disk (get CacheProtocol.vdisk0 s)) /\
                     ((DIRTREE.rep fsxp emp tree ilist frees)
-                       @ list2nmem (ds!!))%pred /\
+                       @ list2nmem (ds!!))%pred) /\
+                  get CacheProtocol.vdisk s = get CacheProtocol.vdisk0 s /\
                     get vFsxp s = fsxp)
                (fun tid s s' => guar CacheProtocol.delta tid s s' /\
                              get vDirTree s' = get vDirTree s /\
@@ -106,24 +128,6 @@ Module CacheSubProtocol <: ConcurrentCache.CacheSubProtocol.
   Proof.
     constructor; simpl; intros; intuition idtac.
   Qed.
-
-  Ltac unmodified_var :=
-    try match goal with
-        | [ H: modified _ ?l ?l' |- get _ ?l' = get _ ?l ] =>
-          symmetry; apply H
-        end;
-    try match goal with
-        | [ H: modified _ ?l ?l' |- get _ ?l = get _ ?l' ] =>
-          apply H
-        end;
-    match goal with
-    | [ |- HIn _ _ -> False ] =>
-      solve [ intros;
-              repeat match goal with
-                     | [ H: HIn _ _ |- _ ] =>
-                       inversion H; subst; repeat sigT_eq; clear H
-                     end ]
-    end.
 
   Definition protocolRespectsPrivateVars :
     forall tid s s',
@@ -157,21 +161,172 @@ Module CacheSubProtocol <: ConcurrentCache.CacheSubProtocol.
       hashmap_le hm hm' ->
       invariant App.delta d' hm' m' s'.
   Proof.
-    simpl; intuition idtac.
-    repeat deex.
-    assert (get mFsxp m' = get mFsxp m) as Hfsxp by unmodified_var.
-    assert (get mMscs m' = get mMscs m) as Hmscs by unmodified_var.
-    assert (get CacheProtocol.vdisk s' = get CacheProtocol.vdisk s) as Hvdisk by unmodified_var.
-    assert (get vDirTree s' = get vDirTree s) as Htree by unmodified_var.
-    assert (get vFsxp s' = get vFsxp s) as Hvfsxp by unmodified_var.
+    simpl; intros; destruct_ands; repeat deex.
+    assert (get vDirTree s' = get vDirTree s) by unmodified_var.
+    assert (get mFsxp m' = get mFsxp m) by unmodified_var.
+    assert (get mMscs m' = get mMscs m) by unmodified_var.
+    assert (get vFsxp s' = get vFsxp s) by unmodified_var.
+    assert (get CacheProtocol.vdisk0 s' = get CacheProtocol.vdisk0 s) by unmodified_var.
+    assert (get CacheProtocol.vdisk s' = get CacheProtocol.vdisk s) by unmodified_var.
     unfold id in *; simpl in *.
-    rewrite !Hfsxp, !Hmscs, !Hvdisk, !Htree, !Hvfsxp in *.
     repeat match goal with
-           | |- exists _, _ => eexists
+           | [ H: get _ _ = get _ _ |- _ ] =>
+             rewrite H in *
            end.
+    intuition idtac.
+    descend.
     intuition eauto.
   Qed.
 
 End CacheSubProtocol.
 
 Module CFS := ConcurFS CacheSubProtocol.
+
+Import CacheSubProtocol CacheProtocol.
+Import CFS.Bridge.
+
+Ltac learn_unmodified :=
+  unfold id; simpl;
+  repeat match goal with
+         | [ H: modified _ ?l ?l' |- _ ] =>
+           let learn_unmodified_var v :=
+               try (
+                   not_learnt (get v l' = get v l);
+                   let Heq := fresh in
+                   assert (get v l' = get v l) as Heq by (symmetry; apply H; prove_not_in);
+                   pose proof (AlreadyLearnt Heq);
+                   unfold id in Heq; simpl in Heq) in
+           progress (learn_unmodified_var mFsxp;
+                     learn_unmodified_var vFsxp;
+                     learn_unmodified_var mMscs;
+                     learn_unmodified_var vDirTree;
+                     learn_unmodified_var CacheProtocol.vdisk;
+                     learn_unmodified_var CacheProtocol.vdisk0)
+         end.
+
+Definition read_fblock inum off :=
+  fsxp <- Get mFsxp;
+    mscs <- Get mMscs;
+    r <- CFS.read_fblock fsxp inum off mscs;
+    match r with
+    | Some r =>
+      let '(mscs', (v, _)) := r in
+      _ <- Assgn mMscs mscs';
+        _ <- ConcurrentCache.cache_commit;
+        Ret (value v)
+    | None =>
+      _ <- ConcurrentCache.cache_abort;
+      Ret None
+    end.
+
+Lemma exists_tuple : forall A B (P: A * B -> Prop) (b: B),
+    (exists (a: A), P (a, b)) ->
+    exists (a: A * B), P a.
+Proof.
+  intros.
+  deex.
+  exists (a, b); auto.
+Qed.
+
+Theorem read_fblock_ok : forall inum off,
+      SPEC App.delta, tid |-
+              {{ pathname f Fd vs,
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) /\
+                   (Fd * off |-> vs)%pred (list2nmem (BFILE.BFData f)) /\
+                   guar App.delta tid s_i s
+               | POST d' hm' m' s_i' s' r:
+                   invariant App.delta d' hm' m' s' /\
+                   match r with
+                   | Some r => True
+                   | None => guar App.delta tid s s'
+                   end /\
+                   hashmap_le hm hm'
+              }} read_fblock inum off.
+Proof.
+  intros.
+  step.
+  step.
+  step.
+
+  match goal with
+  | [ H: invariant App.delta _ _ _ _ |- _ ] =>
+    simpl in H; destruct_ands; repeat deex
+  end.
+  match goal with
+  | [ H: guar App.delta _ _ _ |- _ ] =>
+    simpl in H; destruct_ands; repeat deex
+  end.
+
+  Ltac next_evar name := match goal with
+                         | |- exists (_: _ * ?t), _ =>
+                           let name := fresh name in
+                           evar (name:t);
+                           apply (exists_tuple _ name);
+                           subst name
+                         end.
+  next_evar F_. next_evar frees. next_evar ilist.
+  next_evar vs. next_evar Fd. next_evar f.
+  next_evar pathname. next_evar tree. next_evar Ftop.
+  next_evar Fm.
+  evar (ds0: DiskSet.diskset); exists ds0; subst ds0.
+  simpl.
+
+  unfold project_disk, id in *; simpl.
+  intuition eauto.
+  replace (get vdisk s).
+  pred_apply; cancel; eauto.
+
+  step.
+  destruct p as [ mscs [v _] ].
+  step.
+  step;
+    try solve [ match goal with
+                | [ H: cacheI _ _ _ _ |- _ ] =>
+                  apply H
+                end ].
+  learn_unmodified.
+
+  step.
+  simpl.
+  learn_unmodified.
+  simpl_get_set_all.
+  repeat match goal with
+         | [ H: get _ _ = get _ _ |- _ ] =>
+           rewrite H
+         end.
+  intuition eauto.
+  descend.
+  intuition eauto.
+  pred_apply; cancel.
+  replace (get vDirTree s_i).
+  eauto.
+  congruence.
+
+  simpl; auto.
+  step;
+    try solve [ match goal with
+                | [ H: cacheI _ _ _ _ |- _ ] =>
+                  apply H
+                end ].
+  step.
+  learn_unmodified.
+  unfold id in *; simpl in *.
+  repeat match goal with
+         | [ H: get _ _ = get _ _ |- _ ] =>
+           rewrite H
+         end.
+  replace (get vDirTree s_i).
+  replace (get vFsxp s_i).
+  intuition idtac.
+  descend.
+  intuition eauto.
+  learn_unmodified.
+  unfold id in *; simpl in *.
+  simpl; intuition eauto.
+  eapply cacheR_preorder; eauto.
+  congruence.
+  congruence.
+Qed.

@@ -64,7 +64,7 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
   Definition file_get_attr fsxp inum mscs :=
     Bridge.compile (AFS.file_get_attr fsxp inum mscs).
 
-  Theorem concurrent_file_get_attr_ok : forall fsxp inum mscs,
+  Theorem file_get_attr_ok : forall fsxp inum mscs,
       Bridge.concur_hoare_double
         (fun a => Bridge.concurrent_spec (file_get_attr_spec fsxp inum mscs a))
         (file_get_attr fsxp inum mscs).
@@ -146,7 +146,7 @@ add %pred scopes to the pre/post/crash conditions
   Definition read_fblock fsxp inum off mscs :=
     Bridge.compile (AFS.read_fblock fsxp inum off mscs).
 
-  Theorem concurrent_read_fblock_ok : forall fsxp inum off mscs,
+  Theorem read_fblock_ok : forall fsxp inum off mscs,
       Bridge.concur_hoare_double
         (fun a => Bridge.concurrent_spec (read_fblock_spec fsxp inum off mscs a))
         (read_fblock fsxp inum off mscs).
@@ -155,5 +155,7 @@ add %pred scopes to the pre/post/crash conditions
     apply Bridge.compiler_correct.
     apply seq_read_fblock_ok.
   Qed.
+
+  Hint Extern 1 {{ read_fblock _ _ _ _; _}} => apply read_fblock_ok : prog.
 
 End ConcurFS.
