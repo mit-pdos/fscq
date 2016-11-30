@@ -228,7 +228,12 @@ Proof.
   exists (a, b); auto.
 Qed.
 
-Ltac ConcurrentCache.simp_hook ::= ConcurrentCache.vdisk_const || (progress learn_unmodified).
+Ltac ConcurrentCache.simp_hook ::=
+     progress learn_unmodified ||
+     match goal with
+     | [ H: context[get _ (set _ _ _) ] |- _ ] =>
+       is_not_learnt H; progress simpl_get_set_hyp H
+     end.
 
 Theorem read_fblock_ok : forall inum off,
       SPEC App.delta, tid |-
@@ -293,8 +298,7 @@ Proof.
   unfold cacheI.
   simpl_get_set.
 
-  time step. (* 45s *)
-  simpl_get_set_all.
+  time step. (* 50 *)
   repeat match goal with
          | [ H: get _ _ = get _ _ |- _ ] =>
            rewrite H
@@ -303,10 +307,7 @@ Proof.
   replace (get vDirTree s_i).
   intuition eauto.
   pred_apply; cancel.
-  simpl_get_set_all.
-  congruence.
 
-  simpl_get_set_all.
   match goal with
   | [ H: _ (lower_disk (get vdisk _)) |- _ ] =>
     apply emp_star in H;
@@ -314,7 +315,6 @@ Proof.
       destruct_ands
   end; congruence.
 
-  simpl_get_set_all.
   match goal with
   | [ H: _ (lower_disk (get vdisk _)) |- _ ] =>
     apply emp_star in H;
@@ -323,11 +323,6 @@ Proof.
   end; congruence.
 
   eapply cacheR_preorder; eauto.
-  repeat match goal with
-         | [ H: get _ _ = get _ _ |- _ ] =>
-           rewrite H
-         end.
-
   eapply cacheR_preorder; eauto.
 
   step.
