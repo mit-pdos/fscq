@@ -548,124 +548,58 @@ Module MapDefs (OT : UsualOrderedType) (M : S with Module E := OT).
       intuition.
   Qed.
 
+  Lemma map_elements_map_key_eq : forall V T (f : V -> T) m,
+    eqlistA (@Map.eq_key _) (Map.elements (Map.map f m))
+                             (map (fun x => (fst x, f (snd x))) (Map.elements m)).
+  Proof.
+    intros.
+    eapply sorted_nodup_eq with (ltA := @Map.lt_key _); eauto with *.
+    - split; intros.
+      rewrite InA_alt in *. destruct H as [x0]. exists x0. intuition.
+      destruct x0. eapply In_InA, Map.elements_2 in H1.
+      eapply MapFacts.map_mapsto_iff in H1. destruct H1.
+      intuition subst. eapply in_map_iff. eexists (_, _); simpl; intuition.
+      eapply Map.elements_1, InA_alt in H2. destruct H2. intuition.
+      destruct x1. unfold Map.eq_key_elt, Map.E.eq in *.
+      simpl in *. intuition congruence.
+      auto with *.
+      rewrite InA_alt in *. destruct H as [x0]. exists x0. intuition.
+      apply in_map_iff in H1.
+      destruct H1 as [[]], x, x0. simpl in H.
+      intuition. inversion H1; simpl in *; subst.
+      eapply In_InA, Map.elements_2, Map.map_1 with (f := f),
+        Map.elements_1, InA_alt in H2; eauto with *.
+      destruct H2 as [[]]. intuition idtac. inversion H2.
+      unfold Map.eq_key_elt, Map.E.eq in H2; simpl in *; intuition subst. auto.
+    - eapply Map.elements_3w.
+    - eapply nodup_map. apply Map.elements_3w.
+    - eapply Map.elements_3.
+    - apply sorted_map. unfold Map.lt_key, Map.E.lt. simpl.
+      apply Map.elements_3.
+    - apply eq_key_dec.
+    - intros. destruct (OT.compare (fst x) (fst y)); intuition eauto.
+  Qed.
+
   Lemma map_elements_map_eq : forall V T (f : V -> T) m,
     Map.elements (Map.map f m) = map (fun x => (fst x, f (snd x))) (Map.elements m).
   Proof.
     intros.
-  Search InA Map.elements.
-  Lemma sorted_nodup_eq : forall V l1 l2,
-    (forall x, In x l1 <-> In x l2) ->
-    NoDupA (@Map.eq_key V) l1 -> NoDupA (@Map.eq_key V) l2 ->
-    Sorted (Map.lt_key (elt:=V)) l1 -> Sorted (Map.lt_key (elt:=V)) l2 ->
-    l1 = l2.
-  Proof.
-    induction l1; destruct l2; intros; auto.
-    specialize (H p). simpl in H. intuition.
-    specialize (H a). simpl in H; intuition.
-    cut (a = p).
-    + intros. subst. f_equal.
-      eapply IHl1; try match goal with [H : _ |- _] => solve [inversion H; auto] end.
-      intro x. specialize (H x). simpl in H.
-      intuition; subst; eauto.
-      - exfalso. inversion H0; subst.
-        apply H9, InA_altdef.
-        apply Exists_exists.
-        eexists; intuition eauto. reflexivity.
-      - exfalso. inversion H0; subst.
-        apply H9, InA_altdef.
-        apply Exists_exists.
-        eexists; intuition eauto. reflexivity.
-      - exfalso. inversion H1; subst.
-        apply H9, InA_altdef.
-        apply Exists_exists.
-        eexists; intuition eauto. reflexivity.
-      - exfalso. inversion H1; subst.
-        apply H9, InA_altdef.
-        apply Exists_exists.
-        eexists; intuition eauto. reflexivity.
-    + destruct (Map.E.compare (fst a) (fst p)).
-      - specialize (H a). simpl in H.
-        assert (p = a \/ In a l2) by (intuition idtac).
-        destruct H4; auto.
-        eapply MapOrdProperties.O.Sort_In_cons_1 with (e' := a) in H3.
-        unfold MapOrdProperties.O.ltk in H3.
-        exfalso. eapply MapOrdProperties.ME.lt_not_gt; eauto.
-        unfold MapOrdProperties.O.eqk.
-        eapply In_InA; intuition auto.
-      - unfold Map.E.eq in e.
-        specialize (H p). simpl in H.
-        intuition auto.
-        all : inversion H0; subst; exfalso.
-        all : apply H9, InA_altdef.
-        all : apply Exists_exists.
-        all : eexists; intuition eauto.
-      - specialize (H p). simpl in H.
-        assert (a = p \/ In p l1) by (intuition idtac).
-        destruct H4; auto.
-        eapply MapOrdProperties.O.Sort_In_cons_1 with (e' := p) in H2.
-        unfold MapOrdProperties.O.ltk in H4.
-        exfalso. eapply MapOrdProperties.ME.lt_not_gt; eauto.
-        unfold MapOrdProperties.O.eqk.
-        eapply In_InA; intuition auto.
+    eapply eqlistA_eq with (R := @Map.eq_key_elt _).
+    unfold Map.eq_key_elt, Map.E.eq; intuition. destruct y.
+    simpl in *; congruence.
+    eapply eqlistA_strengthen; [ | | eapply map_elements_map_key_eq].
+    auto with *.
+    intros x y; destruct x, y; intros.
+    eapply Map.elements_2 in H.
+    rewrite InA_alt in H0. destruct H0.
+    unfold Map.eq_key_elt, Map.eq_key, Map.E.eq in *. simpl in *.
+    intuition subst.
+    apply in_map_iff in H3. destruct H3 as [[]]; intuition subst.
+    simpl in *.
+    eapply In_InA in H2. eapply M.elements_2, M.map_1 in H2.
+    eapply MapProperties.F.MapsTo_fun; eauto.
+    auto with *.
   Qed.
-    apply sorted_nodup_eq.
-    {
-      intros; destruct x; split; intros.
-      - eapply In_InA in H.
-        eapply Map.elements_2 in H.
-        eapply MapFacts.map_mapsto_iff in H. destruct H.
-        apply in_map_iff. exists (k, x).
-        intuition subst; auto.
-        apply Map.elements_1 in H1.
-        apply InA_alt in H1.
-        destruct H1; intuition.
-        unfold Map.eq_key_elt, Map.E.eq in H0.
-        destruct x0; simpl in *.
-        intuition subst; eauto.
-        eauto with *.
-      - apply in_map_iff in H.
-        destruct H, x. simpl in H.
-        intuition. inversion H0; subst.
-        eapply In_InA in H1.
-        apply Map.elements_2 in H1.
-        apply Map.map_1 with (f := f) in H1.
-        apply Map.elements_1 in H1.
-        apply InA_alt in H1.
-        destruct H1 as [[k0 t0] [H1 H2]].
-        unfold Map.eq_key_elt, Map.E.eq in H1.
-        simpl in H1; intuition subst. auto.
-        eauto with *.
-    }
-    apply Map.elements_3w.
-    unfold Map.eq_key, Map.E.eq.
-    Search NoDupA map.
-  Lemma nodup_map : forall A B (f : A -> B) r l,
-    NoDupA (fun x y => r (f x) (f y)) l -> NoDupA r (map f l).
-  Proof.
-    induction l; intros; simpl; auto.
-    inversion H; subst.
-    constructor; eauto.
-    rewrite InA_altdef in *.
-    rewrite Exists_exists in *.
-    intro H'. destruct H'. apply H2.
-    rewrite in_map_iff in *. intuition idtac.
-    destruct H1. intuition subst. eauto.
-  Qed.
-    apply nodup_map. simpl.
-    apply Map.elements_3w.
-    apply Map.elements_3.
-  Lemma sorted_map : forall A B (f : A -> B) r l,
-    Sorted (fun x y => r (f x) (f y)) l -> Sorted r (map f l).
-  Proof.
-    induction l; intros; simpl; auto.
-    inversion H; subst.
-    constructor; eauto.
-    inversion H3; subst; simpl; auto.
-  Qed.
-    apply sorted_map. unfold Map.lt_key, Map.E.lt. simpl.
-    apply Map.elements_3.
-  Qed.
-
 
   (* Coq bug : instance doesn't work well with section arguments *)
   Instance map_elements_proper {V} :

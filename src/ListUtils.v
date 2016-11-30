@@ -1,6 +1,6 @@
 Require Import List Omega.
 Import ListNotations.
-
+Require Import SetoidList.
 
 Set Implicit Arguments.
 
@@ -2356,4 +2356,91 @@ Proof.
   specialize (H x0); intuition.
   pose proof (H x); pose proof (H x0); intuition.
   firstorder; subst; intuition.
+Qed.
+
+Lemma sorted_nodup_eq : forall V l1 l2 (ltA eqA : V -> V -> Prop),
+  (forall x, InA eqA x l1 <-> InA eqA x l2) ->
+  Equivalence eqA ->
+  StrictOrder ltA ->
+  Proper (eqA ==> eqA ==> iff) ltA ->
+  NoDupA eqA l1 -> NoDupA eqA l2 ->
+  Sorted ltA l1 -> Sorted ltA l2 ->
+  (forall x y, {eqA x y} + {~eqA x y}) ->
+  (forall x y, ~eqA x y -> {ltA x y} + {ltA y x}) ->
+  eqlistA eqA l1 l2.
+Proof.
+  induction l1 as [|a l1]; destruct l2 as [|p l2]; intros; auto.
+  specialize (H p). rewrite InA_cons in H. exfalso. eapply InA_nil. intuition.
+  specialize (H a). rewrite InA_cons in H. exfalso. eapply InA_nil. intuition.
+  enough (eqA a p).
+  + constructor; auto.
+    eapply IHl1; [ | match goal with [H : _ |- _] => solve [inversion H; eauto] end..].
+    intro x. specialize (H x).
+    assert (forall x y, x = y -> eqA x y) by (intros; subst; apply eqarefl; auto).
+    repeat match goal with [H : NoDupA _ (_::_) |- _] => inversion H; subst; clear H end.
+    intuition; subst;
+    repeat match goal with
+    | [H : eqA _ _ |- _ ] => rewrite H in *; clear H
+    | [H : InA _ _ ?l, H' : InA _ _ (_::?l) -> ?P |- _ ] =>
+        let H'' := fresh in
+        assert P as H'' by (eauto using InA_cons_tl); clear H';
+        rename H'' into H'; inversion H'; subst
+    | _ => progress (intuition auto)
+    end.
+  + destruct (X a p); auto.
+    destruct (X0 _ _ n);
+      repeat match goal with
+      | _ => progress (intuition eauto)
+      | [H' : ltA ?x _ |- _ ] => specialize (H x); intuition auto
+      | [H : StrictOrder ?r |- _ ] => exfalso; solve [eapply StrictOrder_Asymmetric in H; eauto]
+      | [H : Equivalence _ |- _ ] => inversion H; solve [eauto]
+      | [H : HdRel _ ?y _, H' : ltA _ ?y |- _ ] => eapply InfA_alt in H; eauto
+      | [H : eqA _ _ |- _ ] => rewrite H in *; clear H
+      | [H : InA _ ?a (?a::?l) -> ?P |- _ ] =>
+          let H'' := fresh in
+          assert P as H'' by (apply H; apply InA_cons_hd; eapply eqarefl; eauto);
+          clear H; inversion H''; subst
+      | [H : Sorted _ (_::_) |- _ ] => inversion H; subst; clear H
+      end.
+Qed.
+
+Lemma nodup_map : forall A B (f : A -> B) r l,
+  NoDupA (fun x y => r (f x) (f y)) l -> NoDupA r (map f l).
+Proof.
+  induction l; intro H; simpl; auto.
+  inversion H; subst.
+  constructor; eauto.
+  rewrite InA_altdef in *.
+  rewrite Exists_exists in *.
+  intro H'. setoid_rewrite in_map_iff in H'.
+  destruct H' as [x [[x0]]].
+  intuition subst. eauto.
+Qed.
+
+Lemma sorted_map : forall A B (f : A -> B) r l,
+  Sorted (fun x y => r (f x) (f y)) l -> Sorted r (map f l).
+Proof.
+  induction l; intros; simpl; auto.
+  inversion H; subst.
+  constructor; eauto.
+  match goal with [H : _ |- _ ] => solve [inversion H; subst; simpl; auto] end.
+Qed.
+
+Lemma eqlistA_strengthen : forall T (R R' : T -> T -> Prop) l1 l2,
+  Equivalence R' ->
+  (forall x y, InA R' x l1 -> InA R' y l2 -> R x y -> R' x y) ->
+  eqlistA R l1 l2 -> eqlistA R' l1 l2.
+Proof.
+  induction l1; intros; inversion H1; eauto.
+  subst. constructor; eauto.
+  apply H0; eauto.
+  all: constructor; eapply Equivalence_Reflexive.
+Qed.
+
+Lemma eqlistA_eq : forall T (R : T -> T -> Prop) l1 l2,
+  (forall x y, R x y -> x = y) ->
+  eqlistA R l1 l2 -> l1 = l2.
+Proof.
+  induction l1; intros; inversion H0; auto.
+  f_equal; eauto.
 Qed.
