@@ -21,10 +21,19 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
     eapply H; eauto.
   Qed.
 
+  Local Ltac correct_compilation :=
+    intros; apply Bridge.compiler_correct;
+    unfold seq_hoare_double; intros;
+    apply corr2_exists;
+    SepAuto.hoare.
+
   (* Rough guide for translating specs manually:
 
+  - define prog_spec with parameters for each argument to the sequential program
   - copy type of exists from Check prog_ok and run
     s/(\(.*?\): *\(.*?\))/(\2) */g to change exists to a single product
+
+    in the same fun binder add (hm: hashmap) for the initial hashmap
   - copy type of exists again and run
     s/(\(.*?\) *: *\(.*?\))/\1,/g to get the names in a let binding
   - now copy the precondition
@@ -33,6 +42,17 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
   - copy the postcondition, with return variables now in scope
   - copy the crash condition inside a (fun hm')
   - add %pred scopes to the pre/post/crash conditions
+
+  For each program, we then define:
+  - prog, the compiled version of AFS.prog
+  - prog_ok, a concurrent spec for prog that just uses compiler_correct and
+    proves the spec computed from the Hoare quadruple is equivalent to the
+    existing spec (retrieved through the sequential automation).
+  - the standard Hint Extern in prog for the concurrent automation
+
+    These can all be defined by copy-pasting from another syscall prog2 and
+    running s/prog2/prog/g. The correct_compilation tactic proves the only new
+    theorem needed for each syscall.
    *)
 
   (*+ file_get_attr *)
@@ -65,19 +85,6 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
              ✶ ⟦⟦ exists l : list (word hashlen * {sz : addr & word sz}),
                     hashmap_subset l hm hm' ⟧⟧)%pred.
 
-  Lemma seq_file_get_attr_ok : forall fsxp inum mscs,
-      seq_hoare_double
-        (fun a => file_get_attr_spec fsxp inum mscs a)
-        (AFS.file_get_attr fsxp inum mscs).
-  Proof.
-    unfold seq_hoare_double, file_get_attr_spec; intros.
-
-    (* work around a bug triggered by cancel *)
-    apply corr2_exists; intros.
-
-    SepAuto.hoare.
-  Qed.
-
   Definition file_get_attr fsxp inum mscs :=
     Bridge.compile (AFS.file_get_attr fsxp inum mscs).
 
@@ -86,12 +93,10 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
         (fun a => Bridge.concurrent_spec (file_get_attr_spec fsxp inum mscs a))
         (file_get_attr fsxp inum mscs).
   Proof.
-    intros.
-    apply Bridge.compiler_correct.
-    apply seq_file_get_attr_ok.
+    correct_compilation.
   Qed.
 
-  Hint Extern 1 {{ file_get_attr_ok _ _ _; _}} => apply file_get_attr_ok : prog.
+  Hint Extern 0 {{ file_get_attr_ok _ _ _; _ }} => apply file_get_attr_ok : prog.
 
   (*+ read_fblock *)
 
@@ -129,19 +134,6 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
              ✶ ⟦⟦ exists l : list (word hashlen * {sz : addr & word sz}),
                     hashmap_subset l hm hm' ⟧⟧)%pred.
 
-  Lemma seq_read_fblock_ok : forall fsxp inum off mscs,
-      seq_hoare_double
-        (fun a => read_fblock_spec fsxp inum off mscs a)
-        (AFS.read_fblock fsxp inum off mscs).
-  Proof.
-    unfold seq_hoare_double; intros.
-
-    (* work around a bug triggered by cancel *)
-    apply corr2_exists; intros.
-
-    SepAuto.hoare.
-  Qed.
-
   Definition read_fblock fsxp inum off mscs :=
     Bridge.compile (AFS.read_fblock fsxp inum off mscs).
 
@@ -150,11 +142,45 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
         (fun a => Bridge.concurrent_spec (read_fblock_spec fsxp inum off mscs a))
         (read_fblock fsxp inum off mscs).
   Proof.
-    intros.
-    apply Bridge.compiler_correct.
-    apply seq_read_fblock_ok.
+    correct_compilation.
   Qed.
 
-  Hint Extern 1 {{ read_fblock _ _ _ _; _}} => apply read_fblock_ok : prog.
+  Hint Extern 0 {{ read_fblock _ _ _ _; _ }} => apply read_fblock_ok : prog.
+
+  Definition lookup_spec (fsxp : FSLayout.fs_xparams) (dnum : addr) (fnlist : list string) (mscs : BFile.BFILE.memstate) :=
+    fun (a: (DiskSet.diskset) * (pred) * (pred) * (DirTree.DIRTREE.dirtree) *
+          (list Inode.INODE.inode) * (list addr * list addr) * (pred)) (hm: hashmap) =>
+      let '(ds, Fm, Ftop, tree, ilist, frees, F_) := a in
+      SeqSpec
+        ((F_
+                ✶ (((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                       (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
+                     ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees) (GenSepN.list2nmem ds !!)
+                       ⟧⟧) ✶ ⟦⟦ DirTree.DIRTREE.dirtree_inum tree = dnum ⟧⟧)
+                   ✶ ⟦⟦ DirTree.DIRTREE.dirtree_isdir tree = true ⟧⟧))
+           ✶ ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
+        (fun (ret: BFile.BFILE.memstate * (option (addr * bool) * unit)) (hm': hashmap) =>
+           let '(mscs', (r, _)) := ret in
+           F_
+             ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                             (Log.LOG.NoTxn ds) (AFS.MSLL mscs') hm'
+                             ✶ ⟦⟦ r = DirTree.DIRTREE.find_name fnlist tree ⟧⟧)
+                  ✶ ⟦⟦ AFS.MSAlloc mscs' = AFS.MSAlloc mscs ⟧⟧))%pred
+        (fun hm' =>
+           (F_ ✶ Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds hm')
+             ✶ ⟦⟦ exists l : list (word hashlen * {sz : addr & word sz}), hashmap_subset l hm hm' ⟧⟧)%pred.
+
+  Definition lookup fsxp inum off mscs :=
+    Bridge.compile (AFS.lookup fsxp inum off mscs).
+
+  Theorem lookup_ok : forall fsxp inum off mscs,
+      Bridge.concur_hoare_double
+        (fun a => Bridge.concurrent_spec (lookup_spec fsxp inum off mscs a))
+        (lookup fsxp inum off mscs).
+  Proof.
+    correct_compilation.
+  Qed.
+
+  Hint Extern 0 {{ lookup _ _ _; _ }} => apply lookup_ok : prog.
 
 End ConcurFS.
