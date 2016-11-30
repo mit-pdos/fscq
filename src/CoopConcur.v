@@ -38,7 +38,7 @@ Notation DISK_PRED := (@pred addr nat_dec wr_set).
 
 Section LogicDefinition.
 
-  Definition Hmem (types: list Type) := @hlist Type id types.
+  Definition Hmem (types: list Type) := @hlist Type (fun T => T) types.
 
   (** State is the kind of all state types.
 

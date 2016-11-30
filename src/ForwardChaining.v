@@ -1,5 +1,10 @@
 Inductive Learnt {P:Prop} :=
-  | AlreadyLearnt (H:P).
+| AlreadyLearnt (H:P).
+
+Ltac add_learnt H :=
+  let P := type of H in
+  let P := eval simpl in P in
+      pose proof (@AlreadyLearnt P H).
 
 Ltac check_consistency :=
   try lazymatch goal with
@@ -9,24 +14,26 @@ Ltac check_consistency :=
 
 Local Ltac learn_tac H t :=
   let H' := fresh in
-  pose proof H as H';
+  let P := type of H in
+  let P := eval simpl in P in
+  pose proof (H:P) as H';
     t;
-    let P := type of H in
     lazymatch goal with
       | [ Hlearnt: @Learnt P |- _ ] =>
         fail 0 "already knew" P "through" Hlearnt
-      | _ => pose proof (AlreadyLearnt H)
+      | _ => pose proof (@AlreadyLearnt P H)
     end.
 
 Local Ltac learn_fact H :=
   let P := type of H in
+  let P := eval simpl in P in
   lazymatch goal with
     (* matching the type of H with the Learnt hypotheses means the
     learning fails even when the proposition is known by a different
     but unifiable type term *)
   | [ Hlearnt: @Learnt P |- _ ] =>
     fail 0 "already knew" P "through" Hlearnt
-  | _ => pose proof H; pose proof (AlreadyLearnt H)
+  | _ => pose proof (H:P); pose proof (@AlreadyLearnt P H)
   end.
 
 Ltac is_not_learnt H :=
@@ -36,6 +43,7 @@ Ltac is_not_learnt H :=
   end.
 
 Ltac not_learnt P :=
+  let P := eval simpl in P in
   lazymatch goal with
   | [ H: @Learnt P |- _ ] => fail
   | _ => idtac

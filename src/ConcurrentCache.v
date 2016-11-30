@@ -848,7 +848,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Proof.
     hoare.
     eapply wb_missing_disk_val in H2; eauto.
-    learn that simpl (cache_rep_eq ltac:(eauto) _ H0); repeat deex.
+    learn that simpl (cache_rep_eq ltac:(eauto) _ H1); repeat deex.
     do 2 eexists; simplify; finish.
     hoare.
     rewrite cache_add_get_eq; auto.
@@ -924,7 +924,7 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
   Proof.
     unfold cache_rep; intros.
     specialize (H a); simpl_match;
-      intuition auto; repeat deex.
+      intuition auto; repeat deex; intuition idtac.
   Qed.
 
   Hint Resolve cache_clean_vd0.
@@ -1097,13 +1097,13 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     specialize (H1 a);
       destruct matches in *;
       destruct_ands;
-      repeat deex;
+      repeat deex; intuition idtac;
       eauto;
       try congruence.
     intuition idtac;
       try congruence;
       destruct_ands;
-      repeat deex;
+      repeat deex; intuition idtac;
       eauto.
   Qed.
 

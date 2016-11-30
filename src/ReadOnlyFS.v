@@ -194,7 +194,7 @@ Ltac learn_unmodified :=
                    not_learnt (get v l' = get v l);
                    let Heq := fresh in
                    assert (get v l' = get v l) as Heq by (symmetry; apply H; prove_not_in);
-                   pose proof (AlreadyLearnt Heq);
+                   add_learnt Heq;
                    unfold id in Heq; simpl in Heq) in
            progress (learn_unmodified_var mFsxp;
                      learn_unmodified_var vFsxp;
@@ -227,6 +227,8 @@ Proof.
   deex.
   exists (a, b); auto.
 Qed.
+
+Ltac ConcurrentCache.simp_hook ::= ConcurrentCache.vdisk_const || (progress learn_unmodified).
 
 Theorem read_fblock_ok : forall inum off,
       SPEC App.delta, tid |-
@@ -285,73 +287,48 @@ Proof.
   step.
   destruct p as [ mscs [v _] ].
   step.
-  step;
-    try solve [ match goal with
-                | [ H: cacheI _ _ _ _ |- _ ] =>
-                  apply H
-                end ].
-  learn_unmodified.
-
   step.
-  simpl.
-  learn_unmodified.
+
+  unfold cacheI.
+  simpl_get_set.
+
+  time step. (* 45s *)
   simpl_get_set_all.
   repeat match goal with
          | [ H: get _ _ = get _ _ |- _ ] =>
            rewrite H
          end.
-  intuition eauto.
   descend.
+  replace (get vDirTree s_i).
   intuition eauto.
   pred_apply; cancel.
-  replace (get vDirTree s_i).
-  eauto.
-  congruence.
-
-  learn_unmodified.
-  congruence.
-
-  (* prove postcondition *)
-  learn_unmodified.
   simpl_get_set_all.
-  apply emp_star in H28.
-  apply sep_star_lift_apply in H28.
-  destruct_ands.
-  simpl; intuition idtac.
   congruence.
 
-  step;
-    try solve [ match goal with
-                | [ H: cacheI _ _ _ _ |- _ ] =>
-                  apply H
-                end ].
-  learn_unmodified.
-  unfold id in *; simpl in *.
+  simpl_get_set_all.
+  match goal with
+  | [ H: _ (lower_disk (get vdisk _)) |- _ ] =>
+    apply emp_star in H;
+      apply sep_star_lift_apply in H;
+      destruct_ands
+  end; congruence.
+
+  simpl_get_set_all.
+  match goal with
+  | [ H: _ (lower_disk (get vdisk _)) |- _ ] =>
+    apply emp_star in H;
+      apply sep_star_lift_apply in H;
+      destruct_ands
+  end; congruence.
+
   step.
-  learn_unmodified.
+  step.
   repeat match goal with
          | [ H: get _ _ = get _ _ |- _ ] =>
            rewrite H
          end.
   replace (get vDirTree s_i).
-  intuition idtac.
   descend.
   intuition eauto.
-
-  learn_unmodified.
-  congruence.
-
-  learn_unmodified.
-  congruence.
-
-  learn_unmodified.
-  congruence.
-
   eapply cacheR_preorder; eauto.
-
-  learn_unmodified.
-  congruence.
-
-  learn_unmodified.
-  congruence.
 Qed.
