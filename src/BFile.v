@@ -1608,19 +1608,21 @@ Module BFILE.
     let^ (ms, nr) <- getlen lxp ixp inum ms0;
     let^ (ms, r, ret) <- ForN i < nr
     Hashmap hm
-    Ghost [ bxp F Fm Fi crash m0 m flist f ilist frees ]
+    Ghost [ bxp F Fm Fi m0 m flist f ilist frees ]
     Loopvar [ ms pf ret ]
     Invariant
       LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
       [[[ m ::: (Fm * rep bxp ixp flist ilist frees) ]]] *
       [[[ flist ::: (Fi * inum |-> f) ]]] *
+      [[ MSAlloc ms = MSAlloc ms0 ]] *
       [[ ret = None ->
         pf = fold_left vfold (firstn i (map fst (BFData f))) v0 ]] *
       [[ ret = None ->
-        cond pf = false /\ MSAlloc ms = MSAlloc ms0 ]] *
+        cond pf = false ]] *
       [[ forall v, ret = Some v ->
         cond v = true ]]
-    OnCrash  crash
+    OnCrash
+      LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm
     Begin
       If (is_some ret) {
         Ret ^(ms, pf, ret)
@@ -1658,38 +1660,29 @@ Module BFILE.
     unfold read_cond.
     prestep. cancel.
     safestep. eauto.
-    prestep; norm. cancel. intuition simpl. eauto.
     step.
-    admit. (* where does this obligation come from? *)
-    sepauto. sepauto.
+    step.
+    step.
 
-    destruct a2; safestep.
-    admit. (* again crash => something *)
-    (* TODO: debug what changed about this proof due to monads.
+    eapply list2nmem_array_pick; eauto.
+    step.
+    step.
+    step.
 
-    Not especially concerning for now given that read_cond is never used. *)
-    (*
-    pred_apply; cancel.
-    safestep.
-    or_l; cancel; filldef; eauto.
-
-    safestep.
     rewrite firstn_S_selN_expand with (def := $0) by (rewrite map_length; auto).
     rewrite fold_left_app; simpl.
     erewrite selN_map; subst; auto.
     apply not_true_is_false; auto.
 
-    cancel.
-    safestep.
+    destruct a2.
+    step.
+    step.
     or_r; cancel.
     denote cond as Hx; rewrite firstn_oob in Hx; auto.
     rewrite map_length; auto.
     cancel.
-    apply LOG.rep_hashmap_subset; eauto.
-
     Unshelve. all: try easy. exact ($0, nil).
-    *)
-  Admitted.
+  Qed.
 
 
   Hint Extern 1 ({{_}} Bind (read_range _ _ _ _ _ _ _ _) _) => apply read_range_ok : prog.
