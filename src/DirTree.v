@@ -3076,24 +3076,6 @@ Module DIRTREE.
     eapply IAlloc.ino_valid_goodSize; eauto.
   Qed.
 
-  Lemma rename_safe_dest_exists : 
-    forall ilist1 ilist2 ilist3 frees1 frees2 frees3
-           srcpath srcname dstpath dstname dnum ents n l n' l' mvtree,
-    let pruned  := tree_prune n l srcpath srcname (TreeDir dnum ents) in
-    let deleted := update_subtree dstpath (TreeDir n' (delete_from_list dstname l')) pruned in
-    let grafted := tree_graft n' l' dstpath dstname mvtree pruned in
-    tree_names_distinct (TreeDir dnum ents) ->
-    tree_inodes_distinct (TreeDir dnum ents) ->
-    find_subtree srcpath (TreeDir dnum ents) = Some (TreeDir n l) ->
-    find_subtree dstpath pruned = Some (TreeDir n' l') ->
-    dirtree_safe ilist1 frees1 pruned ilist2 frees2 deleted ->
-    BFILE.ilist_safe ilist2 frees2 ilist3 frees3 ->
-    dirtree_safe ilist1 frees1 (TreeDir dnum ents) ilist3 frees3 grafted.
-  Proof.
-    cbn; intros.
-  Admitted.
-
-
   Lemma find_dirlist_in : forall name ents tree,
      find_dirlist name ents = Some tree ->
      In name (map fst ents).
@@ -3106,7 +3088,6 @@ Module DIRTREE.
     eapply IHents.
     destruct (string_dec s name); try congruence; eauto.
   Qed.
-
 
   Lemma find_dirlist_find_subtree_helper : forall ents tree name,
     find_dirlist name ents = Some tree ->
@@ -4027,14 +4008,50 @@ Module DIRTREE.
           destruct (pathname_decide_prefix srcpath pathname).
           -- (* srcpath is a prefix of pathname *)
             deex.
-            erewrite find_update_subtree_suffix in H6.
-            destruct suffix; try congruence.
-            
-          -- (* pathname has nothing in common with srcpath and dstpath *)
+            erewrite find_update_subtree_suffix in H6; eauto.
+            {
+              destruct suffix.
+              - rewrite app_nil_r in *. unfold find_subtree in H6; inversion H6.
+              - destruct (string_dec srcname s); subst.
+                + exfalso. eapply H10. exists suffix. rewrite <- app_assoc.
+                  f_equal.
+                + erewrite find_subtree_delete_ne' in H6.
+                  erewrite find_subtree_app; eauto.
+                  eapply tree_names_distinct_nodup; eauto.
+                  eapply tree_names_distinct_subtree; eauto.
+                  congruence.
+            }
+          -- destruct (pathname_decide_prefix pathname srcpath).
+            {
+              deex.
+              eapply find_subtree_app' in H1. deex; intuition.
+              destruct subtree_base; try congruence.
+              + unfold find_subtree in H13.
+                destruct suffix; try congruence.
+              + erewrite find_subtree_update_subtree_child in H6; eauto.
+                destruct suffix; unfold update_subtree in H6; try congruence.
+             }
+            (* pathname has nothing in common with srcpath and dstpath *)
             erewrite find_subtree_update_subtree_ne_path in H6; eauto.
             eapply pathname_prefix_neq; eauto.
             eapply pathname_prefix_neq; eauto.
-  
+  Qed.
+
+  Lemma rename_safe_dest_exists : 
+    forall ilist1 ilist2 ilist3 frees1 frees2 frees3
+           srcpath srcname dstpath dstname dnum ents n l n' l' mvtree,
+    let pruned  := tree_prune n l srcpath srcname (TreeDir dnum ents) in
+    let deleted := update_subtree dstpath (TreeDir n' (delete_from_list dstname l')) pruned in
+    let grafted := tree_graft n' l' dstpath dstname mvtree pruned in
+    tree_names_distinct (TreeDir dnum ents) ->
+    tree_inodes_distinct (TreeDir dnum ents) ->
+    find_subtree srcpath (TreeDir dnum ents) = Some (TreeDir n l) ->
+    find_subtree dstpath pruned = Some (TreeDir n' l') ->
+    dirtree_safe ilist1 frees1 pruned ilist2 frees2 deleted ->
+    BFILE.ilist_safe ilist2 frees2 ilist3 frees3 ->
+    dirtree_safe ilist1 frees1 (TreeDir dnum ents) ilist3 frees3 grafted.
+  Proof.
+    cbn; intros.
   Admitted.
 
 
