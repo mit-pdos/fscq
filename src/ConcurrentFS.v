@@ -21,6 +21,23 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
     eapply H; eauto.
   Qed.
 
+  (* Rough guide for translating specs manually:
+
+  - copy type of exists from Check prog_ok and run
+    s/(\(.*?\): *\(.*?\))/(\2) */g to change exists to a single product
+  - copy type of exists again and run
+    s/(\(.*?\) *: *\(.*?\))/\1,/g to get the names in a let binding
+  - now copy the precondition
+  - add a fun binding for the return; copy the type from the type of rx in the
+    spec, and then bind variables to handle the pair_args_helper
+  - copy the postcondition, with return variables now in scope
+  - copy the crash condition inside a (fun hm')
+  - add %pred scopes to the pre/post/crash conditions
+   *)
+
+  (*+ file_get_attr *)
+
+
   Definition file_get_attr_spec fsxp inum mscs :=
     fun (a: DiskSet.diskset * list string * pred * pred * DirTree.DIRTREE.dirtree * BFile.BFILE.bfile * list Inode.INODE.inode * (list addr * list addr) * pred) (hm: hashmap) =>
       let '(ds, pathname, Fm, Ftop, tree, f, ilist, frees, F_) := a in
@@ -74,27 +91,9 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
     apply seq_file_get_attr_ok.
   Qed.
 
-  (* translating spec:
+  Hint Extern 1 {{ file_get_attr_ok _ _ _; _}} => apply file_get_attr_ok : prog.
 
-copy type of exists from Check
-
-s/(\(.*?\): *\(.*?\))/(\2) */g to change exists to a single product
-
-copy type of exists again
-
-s/(\(.*?\) *: *\(.*?\))/\1,/g to get the names in a let binding
-
-now copy the precondition
-
-add a fun binding for the return; copy the type from the type of rx in the spec, and then bind variables to handle the pair_args_helper
-
-copy the postcondition, with return variables now in scope
-
-copy the crash condition inside a (fun hm')
-
-add %pred scopes to the pre/post/crash conditions
-
-   *)
+  (*+ read_fblock *)
 
   Definition read_fblock_spec (fsxp : FSLayout.fs_xparams) (inum off : addr)
              (mscs : BFile.BFILE.memstate) :=
