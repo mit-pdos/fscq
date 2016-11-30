@@ -27,10 +27,10 @@ Arguments possible_sync {AT AEQ} _ _.
     extensionality a.
     specialize (H a).
     destruct matches in *; intuition eauto;
-      repeat deex;
-      try congruence.
-    inversion H1; subst; eauto.
-    apply ListUtils.incl_in_nil in H3; subst; eauto.
+      repeat deex; intuition idtac;
+        try congruence.
+    inversion H; subst; eauto.
+    apply ListUtils.incl_in_nil in H2; subst; eauto.
   Qed.
 
   Lemma possible_sync_respects_upd : forall A AEQ (m m': @mem A AEQ _)
@@ -181,9 +181,11 @@ Theorem outcome_obs_le_trans : forall T (out out' out'': outcome T),
     outcome_obs_le out' out'' ->
     outcome_obs_le out out''.
 Proof.
-  destruct out, out'; intros; simpl in *; repeat deex; try congruence; eauto.
-  inversion H0; subst; eauto.
-  inversion H0; subst; eauto.
+  destruct out, out'; intros; simpl in *; repeat deex; try congruence; eauto;
+    match goal with
+    | [ H: @eq (outcome _) _ _ |- _ ] =>
+      inversion H; subst; eauto
+    end.
 Qed.
 
 Instance outcome_obs_le_preorder {T} : PreOrder (outcome_obs_le (T:=T)).
@@ -270,7 +272,7 @@ Proof.
     eexists; intuition eauto.
   - specialize (IHR1 _ H1); deex.
     simpl in *; deex.
-    specialize (IHR2 _ H5); deex.
+    specialize (IHR2 _ ltac:(eauto)); deex.
     eauto 10.
   - specialize (IHR _ H0); deex.
     simpl in *; subst.
@@ -292,18 +294,18 @@ Proof.
     simpl.
     eauto.
   - destruct out'0; simpl in *; repeat deex; try congruence.
-    inversion H5; subst.
+    inversion H4; subst.
     (* m ---> m0, m0 ~~> d', d' ---> out' <= out *)
-    eapply exec_eq_sync_later in H4; eauto; deex.
+    eapply exec_eq_sync_later in H3; eauto; deex.
     simpl in *; deex.
     assert (possible_sync (AEQ:=addr_eq_dec) d d') by eauto.
     eapply exec_eq_sync_later in H1; eauto; deex.
-    apply outcome_obs_ge_ok in H9.
+    apply outcome_obs_ge_ok in H8.
     eauto.
   - destruct out'; simpl in *; repeat deex; try congruence.
     eauto.
   - destruct out'; simpl in *; repeat deex; try congruence.
-    inversion H2; subst.
+    inversion H1; subst.
     eexists; intuition eauto.
     simpl; eauto.
 Qed.
@@ -590,10 +592,10 @@ Module PhysicalSemantics.
   Proof.
     unfold outcome_disk_R, outcome_disk_R_conv; split; intros;
       destruct out, out'; repeat deex; try congruence.
-    inversion H0; eauto.
-    inversion H0; eauto.
-    inversion H0; eauto.
-    inversion H0; eauto.
+    inversion H; eauto.
+    inversion H; eauto.
+    inversion H; eauto.
+    inversion H; eauto.
   Qed.
 
 
