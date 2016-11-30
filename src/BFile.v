@@ -760,7 +760,26 @@ Module BFILE.
         block_belong_to_file ilist1 bn inum off ->
         block_belong_to_file ilist2 bn inum off) /\
     (forall i def,
-        (inum <> i /\ i < Datatypes.length ilist1) -> selN ilist1 i def = selN ilist2 i def).
+        inum <> i -> selN ilist1 i def = selN ilist2 i def).
+
+  Lemma treeseq_ilist_safe_refl : forall inum ilist,
+    treeseq_ilist_safe inum ilist ilist.
+  Proof.
+    unfold treeseq_ilist_safe; intuition.
+  Qed.
+  Local Hint Resolve treeseq_ilist_safe_refl.
+
+  Lemma treeseq_ilist_safe_trans : forall inum ilist0 ilist1 ilist2,
+    treeseq_ilist_safe inum ilist0 ilist1 ->
+    treeseq_ilist_safe inum ilist1 ilist2 ->
+    treeseq_ilist_safe inum ilist0 ilist2.
+  Proof.
+    unfold treeseq_ilist_safe; intuition.
+    erewrite H2 by eauto.
+    erewrite H3 by eauto.
+    eauto.
+  Qed.
+  Local Hint Resolve treeseq_ilist_safe_trans.
 
   Theorem setattrs_ok : forall lxp bxps ixp inum a ms,
     {< F Fm Ff m0 m flist ilist frees f,
@@ -982,7 +1001,6 @@ Module BFILE.
     simplen'.
     intros.
     erewrite selN_updN_ne; eauto.
-    intuition.
   Qed.
 
 
@@ -1684,16 +1702,18 @@ Module BFILE.
       Ghost [ F Fm Fi m0 f ilist frees ]
       Loopvar [ ms ret ]
       Invariant
-        exists m' flist' ilist' frees' f',
+        exists m',
         LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms) hm *
-        [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees') ]]] *
-        [[[ flist' ::: (Fi * inum |-> f') ]]] *
-        [[ ret = OK tt ->
-          f' = mk_bfile ((BFData f) ++ synced_list (firstn i l)) (BFAttr f) ]] *
-        [[ MSAlloc ms = MSAlloc ms0 /\
-           ilist_safe ilist (pick_balloc frees (MSAlloc ms)) 
-                      ilist' (pick_balloc frees' (MSAlloc ms)) ]] *
-        [[ treeseq_ilist_safe inum ilist ilist' ]]
+        [[ MSAlloc ms = MSAlloc ms0 ]] *
+        ([[ isError ret ]] \/
+         exists flist' ilist' frees' f',
+         [[ ret = OK tt ]] *
+         [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees') ]]] *
+         [[[ flist' ::: (Fi * inum |-> f') ]]] *
+         [[  f' = mk_bfile ((BFData f) ++ synced_list (firstn i l)) (BFAttr f) ]] *
+         [[ ilist_safe ilist  (pick_balloc frees  (MSAlloc ms)) 
+                       ilist' (pick_balloc frees' (MSAlloc ms)) ]] *
+         [[ treeseq_ilist_safe inum ilist ilist' ]])
       OnCrash
         LOG.intact lxp F m0 hm
       Begin
@@ -1749,27 +1769,27 @@ Module BFILE.
     unfold grown; intros.
     safestep.
     unfold synced_list; simpl; rewrite app_nil_r.
-    eassign f; destruct f; auto.
-    eauto. eauto.
+    eassign f; destruct f.
+    eassign F_; cancel. cancel.
+    eauto.
 
     safestep.
+    apply list2nmem_arrayN_app; eauto.
     safestep.
-    safestep.
-    subst; simpl; apply list2nmem_arrayN_app; eauto.
-
-    (* TODO: fix proof for monadic loop break - should be
-    similar to Log.v's read_cond, but something is broken *)
-    (*
-    safestep; safestep.
-    or_l; cancel.
+    cancel.
+    or_r; cancel.
     erewrite firstn_S_selN_expand by omega.
     rewrite synced_list_app, <- app_assoc.
     unfold synced_list at 3; simpl; eauto.
-    denote (MSAlloc a = MSAlloc a0) as Heq; rewrite Heq in *.
+    denote (MSAlloc a = MSAlloc a2) as Heq; rewrite Heq in *.
     eapply ilist_safe_trans; eauto.
+    eapply treeseq_ilist_safe_trans; eauto.
 
     cancel.
+    cancel.
+
     safestep.
+    cancel.
     or_r; cancel.
     rewrite firstn_oob; auto.
     apply list2nmem_arrayN_app; auto.
@@ -1777,8 +1797,7 @@ Module BFILE.
 
     cancel.
     Unshelve. all: easy.
-    *)
-  Admitted.
+  Qed.
 
 
   Hint Extern 1 ({{_}} Bind (grown _ _ _ _ _ _) _) => apply grown_ok : prog.
