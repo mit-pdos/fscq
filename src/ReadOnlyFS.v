@@ -248,7 +248,8 @@ Theorem read_fblock_ok : forall inum off,
                               BFILE.MSAlloc (get mMscs m') = BFILE.MSAlloc (get mMscs m)
                    | None => guar App.delta tid s s'
                    end /\
-                   hashmap_le hm hm'
+                   hashmap_le hm hm' /\
+                   guar App.delta tid s_i' s'
               }} read_fblock inum off.
 Proof.
   intros.
@@ -321,6 +322,14 @@ Proof.
       destruct_ands
   end; congruence.
 
+  eapply cacheR_preorder; eauto.
+  repeat match goal with
+         | [ H: get _ _ = get _ _ |- _ ] =>
+           rewrite H
+         end.
+
+  eapply cacheR_preorder; eauto.
+
   step.
   step.
   repeat match goal with
@@ -330,5 +339,7 @@ Proof.
   replace (get vDirTree s_i).
   descend.
   intuition eauto.
+  eapply cacheR_preorder; eauto.
+  eapply cacheR_preorder; eauto.
   eapply cacheR_preorder; eauto.
 Qed.

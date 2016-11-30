@@ -109,12 +109,13 @@ Module MakeBridge (C:CacheSubProtocol).
          invariant delta d' hm' m' s' /\
          match r with
          | Some r => seq_spec_post (spec hm) r hm' (project_disk s')
-         | None => guar delta tid s s'
+         | None => True
          end /\
+         guar delta tid s s' /\
          hashmap_le hm hm' /\
          modified mcache_vars m m' /\
          modified cache_vars s s' /\
-         guar delta tid s_i' s').
+         s_i' = s_i).
 
   Ltac inv_exec' H :=
     inversion H; subst; repeat sigT_eq;
@@ -860,7 +861,7 @@ program via [compile], convert its spec to a concurrent spec via
         left.
         do 3 eexists; eauto.
       }
-      intuition; repeat deex; try congruence.
+      intuition; repeat deex; intuition idtac; try congruence.
       repeat match goal with
                [ H: @eq (Prog.outcome _) _ _ |- _ ] =>
                inversion H; clear H
@@ -872,8 +873,6 @@ program via [compile], convert its spec to a concurrent spec via
         eapply H in H'; eauto
       end.
       intuition auto.
-
-      eapply cacheR_preorder; eauto.
 
       specialize (H (Prog.Failed T)).
       match type of H with
@@ -927,7 +926,6 @@ program via [compile], convert its spec to a concurrent spec via
         end.
         subst.
         intuition eauto.
-        eapply cacheR_preorder; eauto.
       - (* failure if sequential isn't possible *)
         exfalso.
         specialize (H (Prog.Failed T)).
