@@ -238,9 +238,12 @@ Theorem read_fblock_ok : forall inum off,
                    (Fd * off |-> vs)%pred (list2nmem (BFILE.BFData f)) /\
                    guar App.delta tid s_i s
                | POST d' hm' m' s_i' s' r:
+                   let tree' := get vDirTree s' in
                    invariant App.delta d' hm' m' s' /\
+                   tree' = get vDirTree s /\
                    match r with
-                   | Some r => True
+                   | Some r => r = fst vs /\
+                              BFILE.MSAlloc (get mMscs m') = BFILE.MSAlloc (get mMscs m)
                    | None => guar App.delta tid s s'
                    end /\
                    hashmap_le hm hm'
@@ -305,28 +308,50 @@ Proof.
   eauto.
   congruence.
 
-  simpl; auto.
+  learn_unmodified.
+  congruence.
+
+  (* prove postcondition *)
+  learn_unmodified.
+  simpl_get_set_all.
+  apply emp_star in H28.
+  apply sep_star_lift_apply in H28.
+  destruct_ands.
+  simpl; intuition idtac.
+  congruence.
+
   step;
     try solve [ match goal with
                 | [ H: cacheI _ _ _ _ |- _ ] =>
                   apply H
                 end ].
-  step.
   learn_unmodified.
   unfold id in *; simpl in *.
+  step.
+  learn_unmodified.
   repeat match goal with
          | [ H: get _ _ = get _ _ |- _ ] =>
            rewrite H
          end.
   replace (get vDirTree s_i).
-  replace (get vFsxp s_i).
   intuition idtac.
   descend.
   intuition eauto.
+
   learn_unmodified.
-  unfold id in *; simpl in *.
-  simpl; intuition eauto.
-  eapply cacheR_preorder; eauto.
   congruence.
+
+  learn_unmodified.
+  congruence.
+
+  learn_unmodified.
+  congruence.
+
+  eapply cacheR_preorder; eauto.
+
+  learn_unmodified.
+  congruence.
+
+  learn_unmodified.
   congruence.
 Qed.
