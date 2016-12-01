@@ -50,8 +50,9 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
     existing spec (retrieved through the sequential automation).
   - the standard Hint Extern in prog for the concurrent automation
 
-    These can all be defined by copy-pasting from another syscall prog2 and
-    running s/prog2/prog/g. The correct_compilation tactic proves the only new
+    These can all essentially be defined by copy-pasting from another syscall
+    prog2 and running s/prog2/prog/g. However, note that the program parameters
+    ought to be renamed. The correct_compilation tactic proves the only new
     theorem needed for each syscall.
    *)
 
@@ -173,15 +174,15 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
   Definition lookup fsxp inum off mscs :=
     Bridge.compile (AFS.lookup fsxp inum off mscs).
 
-  Theorem lookup_ok : forall fsxp inum off mscs,
+  Theorem lookup_ok : forall fsxp dnum fnlist mscs,
       Bridge.concur_hoare_double
-        (fun a => Bridge.concurrent_spec (lookup_spec fsxp inum off mscs a))
-        (lookup fsxp inum off mscs).
+        (fun a => Bridge.concurrent_spec (lookup_spec fsxp dnum fnlist mscs a))
+        (lookup fsxp dnum fnlist mscs).
   Proof.
     correct_compilation.
   Qed.
 
-  Hint Extern 0 {{ lookup _ _ _; _ }} => apply lookup_ok : prog.
+  Hint Extern 0 {{ lookup _ _ _ _; _ }} => apply lookup_ok : prog.
 
   (* this is almost certainly the wrong definition (specific d0 and d' is too
   weak), but the definition actually used in the proof is also very strange *)
@@ -259,6 +260,84 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
     correct_compilation.
   Qed.
 
-  Hint Extern 0 {{ file_set_attr _ _ _; _ }} => apply file_set_attr_ok : prog.
+  Hint Extern 0 {{ file_set_attr _ _ _ _; _ }} => apply file_set_attr_ok : prog.
+
+  Definition file_truncate_spec fsxp inum sz mscs :=
+    fun (a: (DiskSet.diskset) * (pred) * (pred) * (DirTree.DIRTREE.dirtree) *
+          (list string) * (BFile.BFILE.bfile) * (list Inode.INODE.inode) *
+          (list addr * list addr) * (pred)) (hm: hashmap) =>
+      let '(ds, Fm, Ftop, tree, pathname, f, ilist, frees, F_) := a in
+      SeqSpec
+        ((F_ ✶
+             ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                           (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm ✶
+                           ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees) (GenSepN.list2nmem ds !!)
+              ⟧⟧) ✶
+                  ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree =
+                     Some (DirTree.DIRTREE.TreeFile inum f) ⟧⟧)) ✶
+                                                                 ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
+        (fun (ret: (BFile.BFILE.memstate * (bool * unit))) (hm': hashmap) =>
+           let '(mscs', (r, _)) := ret in
+           F_
+             ✶ (⟦⟦ AFS.MSAlloc mscs' = AFS.MSAlloc mscs ⟧⟧
+                  ✶ (⟦⟦ r = false ⟧⟧
+                       ✶ Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                       (Log.LOG.NoTxn ds) (AFS.MSLL mscs') hm'
+                       ⋁ ⟦⟦ r = true ⟧⟧
+                       ✶ (exists
+                             (d : LogReplay.diskstate) (tree' : DirTree.DIRTREE.dirtree)
+                             (f' : BFile.BFILE.bfile) (ilist' : list Inode.INODE.inode)
+                             (frees' : list addr * list addr),
+                             (((Log.LOG.rep (FSLayout.FSXPLog fsxp)
+                                            (SuperBlock.SB.rep fsxp) (Log.LOG.NoTxn (pushd d ds))
+                                            (AFS.MSLL mscs') hm'
+                                            ✶ ⟦⟦ (Fm
+                                                    ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist' frees')
+                                                   (GenSepN.list2nmem d) ⟧⟧)
+                                 ✶ ⟦⟦ tree' =
+                                      DirTree.DIRTREE.update_subtree pathname
+                                                                     (DirTree.DIRTREE.TreeFile inum f') tree ⟧⟧)
+                                ✶ ⟦⟦ f' =
+                                     {|
+                                       BFile.BFILE.BFData := ListUtils.setlen
+                                                               (BFile.BFILE.BFData f) sz
+                                                               ($ (0), nil);
+                                       BFile.BFILE.BFAttr := BFile.BFILE.BFAttr f |} ⟧⟧)
+                               ✶ ⟦⟦ DirTree.DIRTREE.dirtree_safe ilist
+                                                                 (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs'))
+                                                                 tree ilist'
+                                                                 (BFile.BFILE.pick_balloc frees' (AFS.MSAlloc mscs'))
+                                                                 tree' ⟧⟧))))%pred
+        (fun (hm': hashmap) =>
+           F_ ✶ postcrash_equivalent (Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds hm'
+                             ⋁ (exists
+                                   (d : LogReplay.diskstate) (tree' : DirTree.DIRTREE.dirtree)
+                                   (f' : BFile.BFILE.bfile) (ilist' : list Inode.INODE.inode)
+                                   (frees' : list addr * list addr),
+                                   ((Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                                                      (pushd d ds) hm'
+                                                      ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist' frees')
+                                                             (GenSepN.list2nmem d) ⟧⟧)
+                                      ✶ ⟦⟦ tree' =
+                                           DirTree.DIRTREE.update_subtree pathname
+                                                                          (DirTree.DIRTREE.TreeFile inum f') tree ⟧⟧)
+                                     ✶ ⟦⟦ f' =
+                                          {|
+                                            BFile.BFILE.BFData := ListUtils.setlen (BFile.BFILE.BFData f) sz
+                                                                                   ($ (0), nil);
+                                            BFile.BFILE.BFAttr := BFile.BFILE.BFAttr f |} ⟧⟧)))%pred.
+
+  Definition file_truncate fsxp inum sz mscs :=
+    Bridge.compile (AFS.file_truncate fsxp inum sz mscs).
+
+  Theorem file_truncate_ok : forall fsxp inum sz mscs,
+      Bridge.concur_hoare_double
+        (fun a => Bridge.concurrent_spec (file_truncate_spec fsxp inum sz mscs a))
+        (file_truncate fsxp inum sz mscs).
+  Proof.
+    correct_compilation.
+  Qed.
+
+  Hint Extern 0 {{ file_truncate _ _ _ _; _ }} => apply file_truncate_ok : prog.
 
 End ConcurFS.
