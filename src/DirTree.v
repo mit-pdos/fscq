@@ -1287,27 +1287,6 @@ Module DIRTREE.
     destruct (string_dec s a); eauto.
   Qed.
 
-  Theorem update_subtree_app : forall p0 p1 tree subtree t,
-    tree_names_distinct tree ->
-    find_subtree p0 tree = Some subtree ->
-    update_subtree (p0 ++ p1) t tree = update_subtree p0 (update_subtree p1 t subtree) tree.
-  Proof.
-    induction p0; simpl; intros.
-    congruence.
-    destruct tree; try congruence.
-    f_equal.
-    induction l; simpl in *; intros; try congruence.
-    destruct a0; simpl in *.
-    destruct (string_dec s a); subst; eauto.
-    - erewrite IHp0; eauto.
-      f_equal.
-      repeat rewrite update_subtree_notfound; eauto.
-      inversion H; inversion H4; eauto.
-      inversion H; inversion H4; eauto.
-    - f_equal.
-      eapply IHl; eauto.
-  Qed.
-
   Lemma find_subtree_extend: forall p1 p2 tree subtree,
       find_subtree p1 tree = Some subtree ->
       find_subtree p2 subtree = find_subtree (p1++p2) tree.
@@ -4898,6 +4877,20 @@ Module DIRTREE.
     destruct t; simpl; intros; congruence.
   Qed.
 
+  Lemma find_dirlist_same: forall name b ents subtree,
+    NoDup (name :: (map fst ents)) ->
+    find_dirlist name ((name, b) :: ents) = Some subtree ->
+    b = subtree.
+  Proof.
+  Admitted.
+
+  Lemma find_dirlist_ne: forall name1 name2 b ents,
+    NoDup (name2 :: (map fst ents)) ->
+    name1 <> name2 ->
+    find_dirlist name1 ((name2, b) :: ents) = find_dirlist name1 ents .
+  Proof.
+  Admitted.
+
   Lemma find_subtree_inum_present_subtree: forall name n l d,
     find_subtree [name] (TreeDir n l) = Some d ->
     In n (tree_inodes d) ->
@@ -4909,6 +4902,20 @@ Module DIRTREE.
     ~In x (l1++l2) -> (~In x l1) /\ (~In x l2).
   Proof.
   Admitted.
+
+
+  Lemma find_subtree_leaf_in' : forall path name n l subtree_base d,
+   find_subtree [name] (TreeDir n l) = Some subtree_base ->
+   find_subtree path subtree_base = Some d ->
+   In (dirtree_inum d) (dirlist_combine tree_inodes l).
+  Proof.
+  Admitted.
+
+  Lemma dirlist_combine_app: forall l (f : dirtree -> list addr) a,
+    dirlist_combine f (a::l) = dirlist_combine f [a] ++ (dirlist_combine f l).
+  Proof.
+  Admitted.
+
 
   Theorem find_subtree_inode_pathname_unique_dir : forall path1 path2 f1 f2 n l,
     tree_inodes_distinct (TreeDir n l) ->
@@ -4939,13 +4946,28 @@ Module DIRTREE.
         rewrite cons_app in H2.
         eapply find_subtree_app' in H2; eauto.
         deex.
-        inversion H.
-        eapply find_subtree_inum_present in H4 as H4'.
-        simpl in H3. rewrite <- H3 in *.
-        eapply find_subtree_inum_present_subtree in H2 as H2'; eauto.
-        eapply not_in_app in H6.
-        intuition.
-        admit.  (* exfalso: H9 and H8 and H2' *)
+        destruct (string_dec s0 s); subst.
+        --
+          erewrite find_subtree_dirlist in H2.
+          eapply find_dirlist_same in H2 as H2'; subst.
+          inversion H.
+          eapply find_subtree_inum_present in H4 as H4'.
+          simpl in H3. rewrite <- H3 in *.
+          eapply not_in_app in H6.
+          intuition.
+          inversion H0.
+          simpl in H7; eauto.
+        --
+          eapply find_subtree_leaf_in' in H4 as H4''; eauto.
+          inversion H.
+          simpl in H3. rewrite <- H3 in *. subst.
+          eapply not_in_app in H6.
+          intuition.
+          erewrite dirlist_combine_app in H4''.
+          eapply in_app_or in H4''.
+          intuition.
+          unfold dirlist_combine in H5.
+          rewrite app_nil_r in H5; try congruence.
       + destruct path2.
         -- 
           admit. (* similar to the case above *)
