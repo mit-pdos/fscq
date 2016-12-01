@@ -148,6 +148,8 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
 
   Hint Extern 0 {{ read_fblock _ _ _ _; _ }} => apply read_fblock_ok : prog.
 
+  (*+ lookup *)
+
   Definition lookup_spec (fsxp : FSLayout.fs_xparams) (dnum : addr) (fnlist : list string) (mscs : BFile.BFILE.memstate) :=
     fun (a: (DiskSet.diskset) * (pred) * (pred) * (DirTree.DIRTREE.dirtree) *
           (list Inode.INODE.inode) * (list addr * list addr) * (pred)) (hm: hashmap) =>
@@ -183,6 +185,8 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
   Qed.
 
   Hint Extern 0 {{ lookup _ _ _ _; _ }} => apply lookup_ok : prog.
+
+  (*+ file_set_attr *)
 
   (* this is almost certainly the wrong definition (specific d0 and d' is too
   weak), but the definition actually used in the proof is also very strange *)
@@ -262,6 +266,8 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
 
   Hint Extern 0 {{ file_set_attr _ _ _ _; _ }} => apply file_set_attr_ok : prog.
 
+  (*+ file_truncate *)
+
   Definition file_truncate_spec fsxp inum sz mscs :=
     fun (a: (DiskSet.diskset) * (pred) * (pred) * (DirTree.DIRTREE.dirtree) *
           (list string) * (BFile.BFILE.bfile) * (list Inode.INODE.inode) *
@@ -340,6 +346,8 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
 
   Hint Extern 0 {{ file_truncate _ _ _ _; _ }} => apply file_truncate_ok : prog.
 
+  (*+ update_fblock_d *)
+
   Definition update_fblock_d_spec fsxp inum off v mscs :=
     fun (a: (DiskSet.diskset) * (pred) * (pred) * (DirTree.DIRTREE.dirtree) *
            (list string) * (BFile.BFILE.bfile) * (pred) *
@@ -406,6 +414,8 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
 
   Hint Extern 0 {{ update_fblock_d _ _ _ _ _; _ }} => apply update_fblock_d_ok : prog.
 
+  (*+ file_sync *)
+
   Definition file_sync_spec fsxp inum mscs :=
     fun (a: (DiskSet.diskset) * (pred) * (pred) * (DirTree.DIRTREE.dirtree) *
           (list string) * (BFile.BFILE.bfile) * (list Inode.INODE.inode) *
@@ -465,5 +475,13 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
   Qed.
 
   Hint Extern 0 {{ file_sync _ _ _; _ }} => apply file_sync_ok : prog.
+
+  (*+ tree_sync *)
+
+  (*+ create *)
+
+  (*+ rename *)
+
+  (*+ delete *)
 
 End ConcurFS.
