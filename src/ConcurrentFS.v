@@ -406,4 +406,64 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
 
   Hint Extern 0 {{ update_fblock_d _ _ _ _ _; _ }} => apply update_fblock_d_ok : prog.
 
+  Definition file_sync_spec fsxp inum mscs :=
+    fun (a: (DiskSet.diskset) * (pred) * (pred) * (DirTree.DIRTREE.dirtree) *
+          (list string) * (BFile.BFILE.bfile) * (list Inode.INODE.inode) *
+          (list addr * list addr) * (pred)) (hm: hashmap) =>
+      let '(ds, Fm, Ftop, tree, pathname, f, ilist, frees, F_) := a in
+      SeqSpec
+        ((F_
+            ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                            (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
+                            ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees)
+                                   (GenSepN.list2nmem ds !!) ⟧⟧)
+                 ✶ ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree =
+                      Some (DirTree.DIRTREE.TreeFile inum f) ⟧⟧))
+           ✶ ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
+        (fun (ret: BFile.BFILE.memstate * unit) (hm': hashmap) =>
+           let '(mscs', _) := ret in
+           F_
+             ✶ (exists
+                   (ds' : DiskSet.diskset) (tree' : DirTree.DIRTREE.dirtree)
+                   (al : list addr),
+                   (((((⟦⟦ AFS.MSAlloc mscs' = AFS.MSAlloc mscs ⟧⟧
+                          ✶ Log.LOG.rep (FSLayout.FSXPLog fsxp)
+                          (SuperBlock.SB.rep fsxp)
+                          (Log.LOG.NoTxn ds') (AFS.MSLL mscs') hm')
+                         ✶ ⟦⟦ ds' = DiskSet.dssync_vecs ds al ⟧⟧)
+                        ✶ ⟦⟦ Datatypes.length al =
+                             Datatypes.length (BFile.BFILE.BFData f) /\
+                             (forall i : addr,
+                                 i < Datatypes.length al ->
+                                 BFile.BFILE.block_belong_to_file ilist
+                                                                  (ListUtils.selN al i 0) inum i) ⟧⟧)
+                       ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist frees)
+                              (GenSepN.list2nmem ds' !!) ⟧⟧)
+                      ✶ ⟦⟦ tree' =
+                           DirTree.DIRTREE.update_subtree pathname
+                                                          (DirTree.DIRTREE.TreeFile inum
+                                                                                    (BFile.BFILE.synced_file f)) tree ⟧⟧)
+                     ✶ ⟦⟦ DirTree.DIRTREE.dirtree_safe ilist
+                                                       (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs'))
+                                                       tree ilist
+                                                       (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs'))
+                                                       tree' ⟧⟧))%pred
+        (fun (hm': hashmap) =>
+           F_ * postcrash_equivalent
+                  (Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds
+                                    hm'))%pred.
+
+  Definition file_sync fsxp inum mscs :=
+    Bridge.compile (AFS.file_sync fsxp inum mscs).
+
+  Theorem file_sync_ok : forall fsxp inum mscs,
+      Bridge.concur_hoare_double
+        (fun a => Bridge.concurrent_spec (file_sync_spec fsxp inum mscs a))
+        (file_sync fsxp inum mscs).
+  Proof.
+    correct_compilation.
+  Qed.
+
+  Hint Extern 0 {{ file_sync _ _ _; _ }} => apply file_sync_ok : prog.
+
 End ConcurFS.
