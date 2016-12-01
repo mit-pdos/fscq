@@ -60,7 +60,7 @@ html.close()
 
 if total_errors > 0 or total_admits > 0:
   msgbody = "Files with proof errors or admits:\n\n"
-  for fn in {**errors, **admits}:
+  for fn in sorted({**errors, **admits}):
     msgbody += "  %s: %d errors, %d admits\n" % (fn, len(errors[fn]), admits[fn])
   msgbody += "\n"
   msgbody += "Detailed error output:\n\n"
