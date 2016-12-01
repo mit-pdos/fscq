@@ -5,7 +5,6 @@ Require ConcurrentCache.
 Require Import Specifications.
 Require Import String.
 Require Import Prog.
-Require Import PredCrash.
 Require Import AsyncFS.
 
 Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
@@ -187,7 +186,7 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
   (* this is almost certainly the wrong definition (specific d0 and d' is too
   weak), but the definition actually used in the proof is also very strange *)
   Definition postcrash_equivalent (P: PredCrash.rawpred) : PredCrash.rawpred :=
-    fun d => (exists d0 d', P d0 /\ possible_crash d0 d' /\ possible_crash d d').
+    fun d => (exists d0 d', P d0 /\ PredCrash.possible_crash d0 d' /\ PredCrash.possible_crash d d').
 
   Definition file_set_attr_spec fsxp inum attr mscs :=
     fun (a: (DiskSet.diskset) * (list string) * (@pred addr _ prog_valuset) * (@pred addr _ BFile.BFILE.bfile) * (DirTree.DIRTREE.dirtree) * (BFile.BFILE.bfile) * (list Inode.INODE.inode) * (list addr * list addr) * (@pred addr _ prog_valuset)) (hm: hashmap) =>
@@ -195,7 +194,7 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
       SeqSpec
         ((F_ ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
                              (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
-                             ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees) (GenSepN.list2nmem (latest ds))
+                             ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees) (GenSepN.list2nmem ds !!)
                 ⟧⟧)
                   ✶ ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree =
                        Some (DirTree.DIRTREE.TreeFile inum f) ⟧⟧)) ✶ ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
@@ -234,30 +233,23 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
   Definition file_set_attr fsxp inum off mscs :=
     Bridge.compile (AFS.file_set_attr fsxp inum off mscs).
 
-  Lemma sync_mem_is_possible_crash : forall m,
-      possible_crash m (sync_mem m).
+  Lemma xcrash_to_postcrash_equivalent : forall P P',
+      PredCrash.crash_xform P =p=> PredCrash.crash_xform P' ->
+                        P =p=> postcrash_equivalent P'.
   Proof.
-    unfold possible_crash, sync_mem; intros.
-    destruct (m a).
-    destruct p.
-    right; simpl; repeat eexists; eauto.
-    left; eauto.
+    intros.
+    unfold pimpl, postcrash_equivalent; intros.
+    assert (PredCrash.crash_xform P (sync_mem m)).
+    eexists; intuition eauto.
+    apply PredCrash.possible_crash_sync_mem.
+    pose proof (H _ H1).
+    unfold PredCrash.crash_xform in H2; deex.
+    exists m'.
+    exists (sync_mem m); intuition.
+    apply PredCrash.possible_crash_sync_mem.
   Qed.
 
-  Lemma only_crash_of_sync_mem : forall m m',
-      possible_crash (sync_mem m) m' ->
-      m' = sync_mem m.
-  Proof.
-    unfold possible_crash, sync_mem; intros.
-    extensionality a.
-    specialize (H a).
-    destruct (m a); intuition auto; repeat deex; try congruence.
-    destruct p.
-    inversion H.
-    destruct vs; inversion H3; subst; simpl in *.
-    intuition auto; subst.
-    eauto.
-  Qed.
+  Hint Resolve xcrash_to_postcrash_equivalent.
 
   Theorem file_set_attr_ok : forall fsxp inum off mscs,
       Bridge.concur_hoare_double
@@ -265,17 +257,6 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
         (file_set_attr fsxp inum off mscs).
   Proof.
     correct_compilation.
-
-    unfold pimpl, crash_xform, postcrash_equivalent; intros.
-    assert (crash_xform realcrash (sync_mem m)).
-    unfold crash_xform.
-    eexists; intuition eauto.
-    apply sync_mem_is_possible_crash.
-    pose proof (H _ H8).
-    unfold crash_xform in H9; deex.
-    exists m'.
-    exists (sync_mem m); intuition.
-    apply sync_mem_is_possible_crash.
   Qed.
 
   Hint Extern 0 {{ file_set_attr _ _ _; _ }} => apply file_set_attr_ok : prog.

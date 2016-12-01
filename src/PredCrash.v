@@ -58,14 +58,11 @@ Proof.
     intros; unfold possible_crash in *.
     destruct (H x).
     destruct H4; congruence.
-    repeat deex. unfold mem_union in H5.
-    rewrite H2 in H5. rewrite H3 in H5. congruence.
+    repeat deex; intuition idtac. unfold mem_union in H4.
+    simpl_match; congruence.
   - unfold mem_disjoint; intro; repeat deex.
-    case_eq (ma a); case_eq (mb a); intros.
+    destruct matches in *; try congruence.
     firstorder.
-    rewrite H1 in H3; congruence.
-    rewrite H4 in H2; congruence.
-    rewrite H4 in H2; congruence.
   - unfold possible_crash in *; intro a.
     case_eq (ma a); intros; [right|left]; auto.
     pose proof (mem_union_addr a H0 H1).
@@ -108,11 +105,9 @@ Proof.
   - destruct H1. repeat deex.
     rewrite H1 in *; rewrite H2 in *; rewrite H3 in *; rewrite H4 in *.
     right. do 2 eexists. intuition.
-  - repeat deex.
-    rewrite H1 in *; rewrite H2 in *.
+  - repeat deex; repeat simpl_match.
     right. do 2 eexists. intuition.
-  - repeat deex.
-    rewrite H1 in *; rewrite H3 in *; rewrite H4 in *.
+  - repeat deex; repeat simpl_match.
     right. do 2 eexists. intuition.
 Qed.
 
@@ -126,11 +121,12 @@ Proof.
   specialize (H0 a).
   intuition; repeat deex; try congruence.
   right; repeat eexists; intuition eauto.
-  rewrite H0 in H1.
-  inversion H1; subst; clear H1.
-  inversion H3.
-  simpl in H1; subst; auto.
-  inversion H1.
+  replace (mb a) in *;
+    match goal with
+    | [ H: Some _ = Some _ |- _ ] =>
+      inversion H; subst; clear H
+    end.
+  simpl in *; intuition auto; subst; eauto.
 Qed.
 
 
@@ -194,6 +190,16 @@ Proof.
   specialize (H a); intuition.
   right; repeat deex.
   eexists; eauto.
+Qed.
+
+Theorem possible_crash_sync_mem : forall m,
+    possible_crash m (sync_mem m).
+Proof.
+  unfold possible_crash, sync_mem; intros.
+  destruct (m a).
+  destruct p.
+  right; simpl; repeat eexists; eauto.
+  left; eauto.
 Qed.
 
 Theorem possible_crash_refl : forall m,
