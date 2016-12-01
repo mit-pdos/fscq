@@ -1287,6 +1287,27 @@ Module DIRTREE.
     destruct (string_dec s a); eauto.
   Qed.
 
+  Theorem update_subtree_app : forall p0 p1 tree subtree t,
+    tree_names_distinct tree ->
+    find_subtree p0 tree = Some subtree ->
+    update_subtree (p0 ++ p1) t tree = update_subtree p0 (update_subtree p1 t subtree) tree.
+  Proof.
+    induction p0; simpl; intros.
+    congruence.
+    destruct tree; try congruence.
+    f_equal.
+    induction l; simpl in *; intros; try congruence.
+    destruct a0; simpl in *.
+    destruct (string_dec s a); subst; eauto.
+    - erewrite IHp0; eauto.
+      f_equal.
+      repeat rewrite update_subtree_notfound; eauto.
+      inversion H; inversion H4; eauto.
+      inversion H; inversion H4; eauto.
+    - f_equal.
+      eapply IHl; eauto.
+  Qed.
+
   Lemma find_subtree_extend: forall p1 p2 tree subtree,
       find_subtree p1 tree = Some subtree ->
       find_subtree p2 subtree = find_subtree (p1++p2) tree.
