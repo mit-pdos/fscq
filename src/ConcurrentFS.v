@@ -340,4 +340,70 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
 
   Hint Extern 0 {{ file_truncate _ _ _ _; _ }} => apply file_truncate_ok : prog.
 
+  Definition update_fblock_d_spec fsxp inum off v mscs :=
+    fun (a: (DiskSet.diskset) * (pred) * (pred) * (DirTree.DIRTREE.dirtree) *
+           (list string) * (BFile.BFILE.bfile) * (pred) *
+           (BFile.BFILE.datatype) * (list addr * list addr) *
+           (list Inode.INODE.inode) * (pred)) (hm: hashmap) =>
+      let '(ds, Fm, Ftop, tree, pathname, f, Fd, vs, frees, ilist, F_) := a in
+      SeqSpec
+        ((F_
+            ✶ (((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                             (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
+                             ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees)
+                                    (GenSepN.list2nmem ds !!) ⟧⟧)
+                  ✶ ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree =
+                       Some (DirTree.DIRTREE.TreeFile inum f) ⟧⟧)
+                 ✶ ⟦⟦ (Fd ✶ off |-> vs) (GenSepN.list2nmem (BFile.BFILE.BFData f)) ⟧⟧))
+           ✶ ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
+        (fun (ret: BFile.BFILE.memstate * unit) (hm': hashmap) =>
+           let '(mscs', _) := ret in
+           F_
+             ✶ (exists
+                   (tree' : DirTree.DIRTREE.dirtree)
+                   (f' : BFile.BFILE.bfile) (ds0 ds' : DiskSet.diskset)
+                   (bn : addr),
+                   (((((((Log.LOG.rep (FSLayout.FSXPLog fsxp)
+                                      (SuperBlock.SB.rep fsxp)
+                                      (Log.LOG.NoTxn ds') (AFS.MSLL mscs') hm'
+                                      ✶ ⟦⟦ ds' = DiskSet.dsupd ds0 bn (v, vsmerge vs) /\
+                                           BFile.BFILE.diskset_was ds0 ds ⟧⟧)
+                           ✶ ⟦⟦ BFile.BFILE.block_belong_to_file ilist bn inum off
+                        ⟧⟧) ✶ ⟦⟦ AFS.MSAlloc mscs' = AFS.MSAlloc mscs ⟧⟧)
+                         ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist frees)
+                                (GenSepN.list2nmem ds' !!) ⟧⟧)
+                        ✶ ⟦⟦ tree' =
+                             DirTree.DIRTREE.update_subtree pathname
+                                                            (DirTree.DIRTREE.TreeFile inum f') tree ⟧⟧)
+                       ✶ ⟦⟦ (Fd ✶ off |-> (v, vsmerge vs))
+                              (GenSepN.list2nmem (BFile.BFILE.BFData f')) ⟧⟧)
+                      ✶ ⟦⟦ BFile.BFILE.BFAttr f' = BFile.BFILE.BFAttr f ⟧⟧)
+                     ✶ ⟦⟦ DirTree.DIRTREE.dirtree_safe ilist
+                                                       (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs'))
+                                                       tree ilist
+                                                       (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs'))
+                                                       tree' ⟧⟧))%pred
+        (fun (hm': hashmap) =>
+           F_ * postcrash_equivalent
+                  (Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds
+                                    hm'
+                                    ⋁ (exists bn : addr,
+                                          ⟦⟦ BFile.BFILE.block_belong_to_file ilist bn inum off ⟧⟧
+                                            ✶ Log.LOG.idempred (FSLayout.FSXPLog fsxp)
+                                            (SuperBlock.SB.rep fsxp)
+                                            (DiskSet.dsupd ds bn (v, vsmerge vs)) hm')))%pred.
+
+  Definition update_fblock_d fsxp inum off v mscs :=
+    Bridge.compile (AFS.update_fblock_d fsxp inum off v mscs).
+
+  Theorem update_fblock_d_ok : forall fsxp inum off v mscs,
+      Bridge.concur_hoare_double
+        (fun a => Bridge.concurrent_spec (update_fblock_d_spec fsxp inum off v mscs a))
+        (update_fblock_d fsxp inum off v mscs).
+  Proof.
+    correct_compilation.
+  Qed.
+
+  Hint Extern 0 {{ update_fblock_d _ _ _ _ _; _ }} => apply update_fblock_d_ok : prog.
+
 End ConcurFS.
