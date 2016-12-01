@@ -4898,14 +4898,76 @@ Module DIRTREE.
     destruct t; simpl; intros; congruence.
   Qed.
 
+  Lemma find_subtree_inum_present_subtree: forall name n l d,
+    find_subtree [name] (TreeDir n l) = Some d ->
+    In n (tree_inodes d) ->
+    In n (dirlist_combine tree_inodes l).
+  Proof.
+  Admitted.
+
+  Lemma not_in_app: forall (A : Type) (x: A) l1 l2,
+    ~In x (l1++l2) -> (~In x l1) /\ (~In x l2).
+  Proof.
+  Admitted.
+
+  Theorem find_subtree_inode_pathname_unique_dir : forall path1 path2 f1 f2 n l,
+    tree_inodes_distinct (TreeDir n l) ->
+    tree_names_distinct (TreeDir n l) ->
+    find_subtree path1 (TreeDir n l) = Some f1 ->
+    find_subtree path2 (TreeDir n l) = Some f2 -> 
+    dirtree_inum f1 = dirtree_inum f2 ->
+    path1 = path2.
+  Proof.
+    induction l; intros; subst.
+    - destruct path1.
+      destruct path2; subst; try congruence.
+      + unfold find_subtree in H1. inversion H1. clear H1.
+        rewrite cons_app in H2.
+        eapply find_subtree_app' in H2; eauto.
+        deex.
+        erewrite find_subtree_dirlist in H2.
+        unfold find_dirlist in H2; simpl. inversion H2.
+      + rewrite cons_app in H1.
+        eapply find_subtree_app' in H1; eauto.
+        deex.
+        erewrite find_subtree_dirlist in H4.
+        unfold find_dirlist in H4; simpl. inversion H4.
+    - destruct a.
+      destruct path1.
+      + destruct path2; try congruence.
+        inversion H1; subst. clear H1.
+        rewrite cons_app in H2.
+        eapply find_subtree_app' in H2; eauto.
+        deex.
+        inversion H.
+        eapply find_subtree_inum_present in H4 as H4'.
+        simpl in H3. rewrite <- H3 in *.
+        eapply find_subtree_inum_present_subtree in H2 as H2'; eauto.
+        eapply not_in_app in H6.
+        intuition.
+        admit.  (* exfalso: H9 and H8 and H2' *)
+      + destruct path2.
+        -- 
+          admit. (* similar to the case above *)
+        -- 
+          eapply IHl; eauto.
+          eapply tree_inodes_distinct_next in H; eauto.
+          eapply tree_names_distinct_next in H0; eauto.
+  Admitted.
+
   Theorem find_subtree_inode_pathname_unique : forall tree path1 path2 f1 f2,
     tree_inodes_distinct tree ->
     tree_names_distinct tree ->
     find_subtree path1 tree = Some f1 ->
-    find_subtree path2 tree = Some f2 ->
+    find_subtree path2 tree = Some f2 -> 
     dirtree_inum f1 = dirtree_inum f2 ->
     path1 = path2.
   Proof.
+    intros.
+    destruct tree.
+    - unfold tree_inodes_distinct in *.
+      admit.
+    - eapply find_subtree_inode_pathname_unique_dir; eauto.
   Admitted.
 
   Lemma find_subtree_update_subtree_same_inum : forall path1 path2 inum f f' tree,
@@ -4918,15 +4980,15 @@ Module DIRTREE.
 
 
   Lemma dirtree_safe_dupdate: forall old_tree old_free old_ilist tree ilist freelist inum f p bn off v,
-      DIRTREE.dirtree_safe old_ilist old_free old_tree ilist freelist tree ->
-      DIRTREE.find_subtree p tree = Some (DIRTREE.TreeFile inum f) ->
-      BFILE.block_belong_to_file ilist bn inum off ->
-       DIRTREE.dirtree_safe old_ilist old_free old_tree ilist freelist 
-        (DIRTREE.update_subtree p
-          (DIRTREE.TreeFile inum
-             {|
-             BFILE.BFData := (BFILE.BFData f) ⟦ off := v ⟧;
-             BFILE.BFAttr := BFILE.BFAttr f |}) tree).
+    DIRTREE.dirtree_safe old_ilist old_free old_tree ilist freelist tree ->
+    DIRTREE.find_subtree p tree = Some (DIRTREE.TreeFile inum f) ->
+    BFILE.block_belong_to_file ilist bn inum off ->
+     DIRTREE.dirtree_safe old_ilist old_free old_tree ilist freelist 
+      (DIRTREE.update_subtree p
+        (DIRTREE.TreeFile inum
+           {|
+           BFILE.BFData := (BFILE.BFData f) ⟦ off := v ⟧;
+           BFILE.BFAttr := BFILE.BFAttr f |}) tree).
   Proof.
     intros.
     unfold DIRTREE.dirtree_safe in *.
@@ -4943,6 +5005,7 @@ Module DIRTREE.
     specialize (H2 inum0 off0 bn0 p f H0 H4).
     eauto.
     erewrite find_subtree_update_subtree_ne_path in H3; eauto.
+    
   Qed.
 
   Lemma find_subtree_dir_after_update_subtree : forall base pn t num ents subtree,
