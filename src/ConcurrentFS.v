@@ -5,6 +5,7 @@ Require ConcurrentCache.
 Require Import Specifications.
 Require Import String.
 Require Import Prog.
+Require Import PredCrash.
 Require Import AsyncFS.
 
 Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
@@ -182,5 +183,101 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
   Qed.
 
   Hint Extern 0 {{ lookup _ _ _; _ }} => apply lookup_ok : prog.
+
+  (* this is almost certainly the wrong definition (specific d0 and d' is too
+  weak), but the definition actually used in the proof is also very strange *)
+  Definition postcrash_equivalent (P: PredCrash.rawpred) : PredCrash.rawpred :=
+    fun d => (exists d0 d', P d0 /\ possible_crash d0 d' /\ possible_crash d d').
+
+  Definition file_set_attr_spec fsxp inum attr mscs :=
+    fun (a: (DiskSet.diskset) * (list string) * (@pred addr _ prog_valuset) * (@pred addr _ BFile.BFILE.bfile) * (DirTree.DIRTREE.dirtree) * (BFile.BFILE.bfile) * (list Inode.INODE.inode) * (list addr * list addr) * (@pred addr _ prog_valuset)) (hm: hashmap) =>
+      let '(ds, pathname, Fm, Ftop, tree, f, ilist, frees, F_) := a in
+      SeqSpec
+        ((F_ ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                             (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
+                             ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees) (GenSepN.list2nmem (latest ds))
+                ⟧⟧)
+                  ✶ ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree =
+                       Some (DirTree.DIRTREE.TreeFile inum f) ⟧⟧)) ✶ ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
+        (fun (ret: BFile.BFILE.memstate * (bool * unit)) (hm': hashmap) =>
+           let '(mscs', (ok, _)) := ret in
+           F_
+             ✶ (⟦⟦ AFS.MSAlloc mscs' = AFS.MSAlloc mscs ⟧⟧
+                  ✶ (⟦⟦ ok = false ⟧⟧
+                       ✶ Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                       (Log.LOG.NoTxn ds) (AFS.MSLL mscs') hm'
+                       ⋁ ⟦⟦ ok = true ⟧⟧
+                       ✶ (exists (d : LogReplay.diskstate) (tree' : DirTree.DIRTREE.dirtree)
+                            (f' : BFile.BFILE.bfile) (ilist' : list Inode.INODE.inode),
+                             (((Log.LOG.rep (FSLayout.FSXPLog fsxp)
+                                            (SuperBlock.SB.rep fsxp) (Log.LOG.NoTxn (pushd d ds))
+                                            (AFS.MSLL mscs') hm'
+                                            ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist' frees)
+                                                   (GenSepN.list2nmem d) ⟧⟧)
+                                 ✶ ⟦⟦ tree' =
+                                      DirTree.DIRTREE.update_subtree pathname
+                                                                     (DirTree.DIRTREE.TreeFile inum f') tree ⟧⟧)
+                                ✶ ⟦⟦ f' =
+                                     {|
+                                       BFile.BFILE.BFData := BFile.BFILE.BFData f;
+                                       BFile.BFILE.BFAttr := attr |} ⟧⟧)
+                               ✶ ⟦⟦ DirTree.DIRTREE.dirtree_safe
+                                      ilist
+                                      (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs'))
+                                      tree ilist'
+                                      (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs'))
+                                      tree' ⟧⟧))))%pred
+        (fun hm' =>
+           F_ * postcrash_equivalent
+                  (Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds hm'))%pred.
+
+  Definition file_set_attr fsxp inum off mscs :=
+    Bridge.compile (AFS.file_set_attr fsxp inum off mscs).
+
+  Lemma sync_mem_is_possible_crash : forall m,
+      possible_crash m (sync_mem m).
+  Proof.
+    unfold possible_crash, sync_mem; intros.
+    destruct (m a).
+    destruct p.
+    right; simpl; repeat eexists; eauto.
+    left; eauto.
+  Qed.
+
+  Lemma only_crash_of_sync_mem : forall m m',
+      possible_crash (sync_mem m) m' ->
+      m' = sync_mem m.
+  Proof.
+    unfold possible_crash, sync_mem; intros.
+    extensionality a.
+    specialize (H a).
+    destruct (m a); intuition auto; repeat deex; try congruence.
+    destruct p.
+    inversion H.
+    destruct vs; inversion H3; subst; simpl in *.
+    intuition auto; subst.
+    eauto.
+  Qed.
+
+  Theorem file_set_attr_ok : forall fsxp inum off mscs,
+      Bridge.concur_hoare_double
+        (fun a => Bridge.concurrent_spec (file_set_attr_spec fsxp inum off mscs a))
+        (file_set_attr fsxp inum off mscs).
+  Proof.
+    correct_compilation.
+
+    unfold pimpl, crash_xform, postcrash_equivalent; intros.
+    assert (crash_xform realcrash (sync_mem m)).
+    unfold crash_xform.
+    eexists; intuition eauto.
+    apply sync_mem_is_possible_crash.
+    pose proof (H _ H8).
+    unfold crash_xform in H9; deex.
+    exists m'.
+    exists (sync_mem m); intuition.
+    apply sync_mem_is_possible_crash.
+  Qed.
+
+  Hint Extern 0 {{ file_set_attr _ _ _; _ }} => apply file_set_attr_ok : prog.
 
 End ConcurFS.
