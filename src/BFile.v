@@ -767,7 +767,6 @@ Module BFILE.
   Proof.
     unfold treeseq_ilist_safe; intuition.
   Qed.
-  Local Hint Resolve treeseq_ilist_safe_refl.
 
   Lemma treeseq_ilist_safe_trans : forall inum ilist0 ilist1 ilist2,
     treeseq_ilist_safe inum ilist0 ilist1 ->
@@ -779,7 +778,6 @@ Module BFILE.
     erewrite H3 by eauto.
     eauto.
   Qed.
-  Local Hint Resolve treeseq_ilist_safe_trans.
 
   Theorem setattrs_ok : forall lxp bxps ixp inum a ms,
     {< F Fm Ff m0 m flist ilist frees f,
@@ -1763,7 +1761,7 @@ Module BFILE.
     safestep.
     unfold synced_list; simpl; rewrite app_nil_r.
     eassign f; destruct f.
-    eassign F_; cancel. cancel.
+    eassign F_; cancel. or_r; cancel. eapply treeseq_ilist_safe_refl.
     eauto.
 
     safestep.
