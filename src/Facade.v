@@ -801,22 +801,22 @@ Qed.
 Ltac subset_cancel_one x :=
   match x with
   | (?x1 * ?x2)%pred => subset_cancel_one x1 || subset_cancel_one x2
-  | ?t =>
+  | ptsto ?A ?B =>
     match goal with
-    | [ |- _ =p=> ?Q ] =>
+    | [ |- ?P =p=> ?Q ] =>
       match Q with
+      | context [ptsto ?C] => (is_evar A; fail) || (is_evar C; fail) ||
+        unify A C; fail 3
       | context [?X] => is_evar X;
-        match t with
-        | ptsto ?a ?b =>
-          let H := fresh in set (H := X);
-          instantiate (1 := (ptsto a b * _)%pred) in (Value of H);
-          subst H; cancel
-        | ptsto ?k ?v =>
-          eapply pimpl_trans with (b := (_ * ptsto k v)%pred);
-          [> | apply pimpl_any_cancel; solve [cancel] ]; cancel
-        end
+        let H := fresh in set (H := X);
+        instantiate (1 := (ptsto A B * _)%pred) in (Value of H);
+        subst H; cancel
+      | context [?X] => is_evar X;
+        eapply pimpl_trans with (b := (_ * ptsto A B)%pred);
+        [> | apply pimpl_any_cancel; solve [cancel] ]; cancel
       end
     end
+  | _ => fail "unrecognized pred term"
   end.
 
 Ltac cancel_subset_step := try unfold any' at 1; match goal with
@@ -1408,7 +1408,8 @@ Ltac deex_hyp H :=
 Ltac extract_pred_apply_exists :=
   match goal with
   | [ H : _ ≲ _ |- _ ] =>
-    rewrite ?pimpl_exists_l_star_r, ?pimpl_exists_r_star_r in H;
+    repeat setoid_rewrite pimpl_exists_l_star_r in H;
+    repeat setoid_rewrite pimpl_exists_r_star_r in H;
       unfold pred_apply, exis in H; deex_hyp H; repeat deex_hyp H
   end.
 
@@ -2266,6 +2267,7 @@ Proof.
     pred_solve.
   - inv_exec_progok.
   - inv_exec_progok.
+    eval_expr.
     contradiction H1.
     repeat econstructor;
     [ eval_expr; eauto ..].
@@ -2286,6 +2288,7 @@ Proof.
     pred_solve.
   - inv_exec_progok.
   - inv_exec_progok.
+    eval_expr.
     contradiction H1.
     repeat econstructor;
     [ eval_expr; eauto ..].
@@ -2306,6 +2309,7 @@ Proof.
     pred_solve.
   - inv_exec_progok.
   - inv_exec_progok.
+    eval_expr.
     contradiction H1.
     repeat econstructor;
     [ eval_expr; eauto ..].
