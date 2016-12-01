@@ -120,12 +120,41 @@ Lemma dir2flatmem2_update_subtree_upd : forall fnlist tree inum f f',
 Proof.
   unfold dir2flatmem2; intros.
   apply functional_extensionality; intros.
-  destruct (list_eq_dec string_dec x fnlist); subst.
-  erewrite find_update_subtree; eauto.
-  rewrite upd_eq; auto.
-  (* XXX this next step uses a false theorem... *)
+  destruct (pathname_decide_prefix fnlist x); repeat deex; subst.
+  {
+    destruct suffix.
+    - rewrite app_nil_r in *.
+      erewrite find_update_subtree; eauto.
+      rewrite upd_eq; auto.
+    - rewrite upd_ne.
+      repeat erewrite find_subtree_app.
+      2: eauto.
+      2: erewrite find_update_subtree; eauto.
+      simpl; eauto.
+      rewrite <- app_nil_r with (l := fnlist) at 2.
+      intro H'. apply app_inv_head in H'. congruence.
+  }
+  destruct (pathname_decide_prefix x fnlist); repeat deex; subst.
+  {
+    destruct suffix.
+    - rewrite app_nil_r in *.
+      erewrite find_update_subtree; eauto.
+      rewrite upd_eq; auto.
+    - rewrite upd_ne.
+      case_eq (find_subtree x tree); intros.
+      destruct d.
+      + erewrite find_subtree_app in * by eauto; simpl in *; congruence.
+      + erewrite update_subtree_app by eauto. erewrite find_update_subtree by eauto.
+        simpl; auto.
+      + rewrite find_subtree_app_none in * by eauto; congruence.
+      + rewrite <- app_nil_r with (l := x) at 1.
+        intro H'. apply app_inv_head in H'. congruence.
+  }
   rewrite find_subtree_update_subtree_ne_path; eauto.
   rewrite upd_ne; auto.
+  contradict H1; subst; eauto. exists nil. rewrite app_nil_r. auto.
+  unfold pathname_prefix. contradict H1; deex. eauto.
+  unfold pathname_prefix. contradict H2; deex. eauto.
 Qed.
 
 (** This should be useful in carrying forward separation-logic facts
