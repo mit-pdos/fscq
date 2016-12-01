@@ -647,7 +647,19 @@ Theorem NEforall2_exists : forall T1 T2 (p p' : T1 -> T2 -> Prop) (f2 : T2 -> T2
   exists l1',
   NEforall2 p' l1' (d_map f2 l2).
 Proof.
-Admitted.
+  unfold NEforall2.
+  destruct l1, l2; simpl in *; intros.
+  generalize dependent l0.
+  induction l; intuition.
+  - inversion H2; subst; simpl in *.
+    edestruct H0; eauto.
+    exists (x, nil); simpl; intuition.
+  - inversion H2; subst; simpl in *.
+    edestruct H0; try apply H4.
+    edestruct IHl; eauto.
+    exists (fst x0, x :: snd x0); simpl.
+    intuition.
+Qed.
 
 Theorem NEforall2_d_map : forall T1 T2 A B (p : T1 -> T2 -> Prop) ( q : A -> B -> Prop) l1 (f1 : A -> T1) l2 (f2 : B -> T2),
   (forall a b n, a = nthd n l1 -> b = nthd n l2 -> q a b -> p (f1 a) (f2 b)) ->
@@ -740,7 +752,8 @@ Lemma NEforall2_latest: forall (T1 T2 : Type) (p : T1 -> T2 -> Prop) (l1 : nelis
 Proof.
   destruct l1; destruct l2; unfold NEforall2; intuition; simpl in *.
   unfold latest in *; simpl.
-Admitted.
+  inversion H1; subst; eauto.
+Qed.
 
 Definition list2nelist A def (l: list A) : nelist A :=
   match l with
