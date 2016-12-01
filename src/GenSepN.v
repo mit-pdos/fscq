@@ -1181,16 +1181,49 @@ Proof.
   firstorder.
 Qed.
 
-Theorem arrayN_ex_pred_except : forall V (l : list V) off v,
+Lemma arrayN_notindomain_before : forall V (l : list V) start off,
+  off < start ->
+  arrayN (@ptsto _ _ V) start l =p=> notindomain off.
+Proof.
+  induction l; simpl; intros.
+  apply emp_pimpl_notindomain.
+  eapply sep_star_notindomain.
+  eapply ptsto_notindomain; omega.
+  eauto.
+Qed.
+
+Lemma arrayN_notindomain_after : forall V (l : list V) start off,
+  start + length l <= off ->
+  arrayN (@ptsto _ _ V) start l =p=> notindomain off.
+Proof.
+  induction l; simpl; intros.
+  apply emp_pimpl_notindomain.
+  eapply sep_star_notindomain.
+  eapply ptsto_notindomain; omega.
+  eapply IHl; omega.
+Qed.
+
+Lemma arrayN_ex_notindomain : forall V (l : list V) off,
+  arrayN_ex (@ptsto _ _ V) l off ⇨⇨ notindomain off.
+Proof.
+  unfold arrayN_ex; intros.
+  apply sep_star_notindomain.
+  apply arrayN_notindomain_after.
+  rewrite firstn_length. simpl. apply Min.le_min_l.
+  apply arrayN_notindomain_before.
+  omega.
+Qed.
+
+Theorem arrayN_ex_pred_except : forall V (l : list V) off def,
+  off < length l ->
   arrayN_ex (@ptsto _ _ _) l off =p=>
-  pred_except (arrayN (@ptsto _ _ _) 0 l) off v.
+  pred_except (arrayN (@ptsto _ _ _) 0 l) off (selN l off def).
 Proof.
   intros.
-  destruct (lt_dec off (length l)).
-  - rewrite arrayN_except with (i := off) by omega.
-    admit.
-  - admit.
-Admitted.
+  rewrite arrayN_except with (i := off) by omega.
+  rewrite <- pred_except_sep_star_ptsto_notindomain; auto.
+  apply arrayN_ex_notindomain.
+Qed.
 
 Lemma arrayN_ex_frame_pimpl : forall V (l : list V) off v F,
   (F * off |-> v)%pred (list2nmem l) ->
@@ -1198,5 +1231,7 @@ Lemma arrayN_ex_frame_pimpl : forall V (l : list V) off v F,
 Proof.
   intros.
   eapply pimpl_trans; [ | eapply pred_except_ptsto_pimpl; eauto ].
+  eapply list2nmem_sel with (def := v) in H as H'; rewrite H'.
   apply arrayN_ex_pred_except.
+  eapply list2nmem_ptsto_bound; eauto.
 Qed.

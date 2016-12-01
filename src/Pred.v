@@ -2497,6 +2497,32 @@ Proof.
     unfold ptsto in H4; intuition.
 Qed.
 
+Theorem pred_except_sep_star_ptsto_notindomain : forall AT AEQ V (p : @pred AT AEQ V) a v,
+  (p =p=> notindomain a) ->
+  p =p=> pred_except (p * a |-> v) a v.
+Proof.
+  unfold pimpl, pred_except.
+  unfold_sep_star; intros; intuition; repeat deex.
+  - apply H; auto.
+  - exists m.
+    exists (Mem.insert empty_mem a v).
+    assert (mem_disjoint m (insert empty_mem a v)).
+    {
+      apply mem_disjoint_comm.
+      apply mem_disjoint_insert_l.
+      eapply mem_disjoint_empty_mem.
+      apply H; auto.
+    }
+    intuition eauto.
+    rewrite mem_union_comm by eauto.
+    rewrite <- mem_union_insert_comm; try reflexivity.
+    apply H; auto.
+    apply star_emp_pimpl.
+    apply ptsto_insert_disjoint.
+    apply emp_empty_mem.
+    reflexivity.
+Qed.
+
 Lemma ptsto_insert_disjoint_ne: forall AT AEQ V (F : @pred AT AEQ V) a v a' v' m,
   a <> a' ->
   m a' = None ->
@@ -2646,5 +2672,25 @@ Proof.
   erewrite H0; eauto.
 Qed.
 
+Lemma sep_star_notindomain : forall AT AEQ V (p q : @pred AT AEQ V) a,
+  p =p=> notindomain a ->
+  q =p=> notindomain a ->
+  p * q =p=> notindomain a.
+Proof.
+  unfold_sep_star.
+  unfold notindomain, pimpl.
+  intros; repeat deex.
+  unfold mem_union.
+  rewrite H by assumption.
+  rewrite H0 by assumption.
+  auto.
+Qed.
+
+Lemma ptsto_notindomain : forall AT AEQ V a a' v,
+  a <> a' ->
+  a |-> v =p=> (@notindomain AT AEQ V) a'.
+Proof.
+  unfold pimpl, ptsto, notindomain; intuition.
+Qed.
 
 Global Opaque pred.
