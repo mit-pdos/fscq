@@ -2906,9 +2906,11 @@ Defined.
 Instance cachestate_default_value : DefaultValue cachestate := {| zeroval :=
   {| CSMap := Go.Map.empty _; CSMaxCount := 0; CSEvict := tt |} |}.
   unfold wrap, wrap', GoWrapper_transform, default_value. simpl.
-  (* TODO: can we prove map equality yet? *)
-  admit.
-Admitted.
+  repeat f_equal.
+  apply MapUtils.addrmap_equal_eq.
+  apply MapUtils.AddrMap.map_empty.
+  auto with map.
+Defined.
 
 Theorem transform_pimpl : forall T {Tr : WrapByTransforming T} k (t : T),
   (k |-> (@wrap _ (@GoWrapper_transform _ Tr) t) : pred) <=p=> k |-> (@wrap _ WrT' (transform t)).
