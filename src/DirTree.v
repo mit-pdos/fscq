@@ -5091,15 +5091,6 @@ Module DIRTREE.
           inversion H; constructor; eauto.
   Qed.
 
-  Lemma find_subtree_update_subtree_same_inum : forall path1 path2 inum f f' tree,
-    tree_inodes_distinct tree ->
-    tree_names_distinct tree ->
-    find_subtree path1 (update_subtree path2 (TreeFile inum f) tree) = Some (TreeFile inum f') ->
-    path1 = path2.
-  Proof.
-  Admitted.
-
-
   Lemma dirtree_safe_dupdate: forall old_tree old_free old_ilist tree ilist freelist inum f p bn off v,
     DIRTREE.dirtree_safe old_ilist old_free old_tree ilist freelist tree ->
     DIRTREE.find_subtree p tree = Some (DIRTREE.TreeFile inum f) ->
