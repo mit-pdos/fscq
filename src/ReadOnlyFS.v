@@ -204,20 +204,27 @@ Ltac learn_unmodified :=
                      learn_unmodified_var CacheProtocol.vdisk0)
          end.
 
-Definition read_fblock inum off :=
+Definition wrap_syscall T (p: FSLayout.fs_xparams -> BFILE.memstate ->
+                              prog App.Sigma
+                                   (Exc (BFILE.memstate * (T * unit)))) :
+  prog App.Sigma (Exc T) :=
   fsxp <- Get mFsxp;
     mscs <- Get mMscs;
-    r <- CFS.read_fblock fsxp inum off mscs;
+    r <- p fsxp mscs;
     match r with
     | Some r =>
-      let '(mscs', (v, _)) := r in
+      let '(mscs', (r, _)) := r in
       _ <- Assgn mMscs mscs';
         _ <- ConcurrentCache.cache_commit;
-        Ret (value v)
+        Ret (value r)
     | None =>
       _ <- ConcurrentCache.cache_abort;
-      Ret None
+        Ret None
     end.
+
+Definition read_fblock inum off :=
+  wrap_syscall (fun fsxp mscs =>
+                  CFS.read_fblock fsxp inum off mscs).
 
 Lemma exists_tuple : forall A B (P: A * B -> Prop) (b: B),
     (exists (a: A), P (a, b)) ->
@@ -228,12 +235,33 @@ Proof.
   exists (a, b); auto.
 Qed.
 
+Ltac split_lifted_prop :=
+  match goal with
+  | [ H: _ (lower_disk (get vdisk _)) |- _ ] =>
+    repeat apply sep_star_assoc_2 in H;
+    apply sep_star_lift_apply in H;
+    destruct_ands
+  end.
+
 Ltac ConcurrentCache.simp_hook ::=
      progress learn_unmodified ||
+     split_lifted_prop ||
      match goal with
      | [ H: context[get _ (set _ _ _) ] |- _ ] =>
        is_not_learnt H; progress simpl_get_set_hyp H
      end.
+
+(* generic definition of transitivity from a preorder (with simplified type for
+eauto) *)
+Definition cacheR_trans tid :=
+  ltac:(
+    let p := constr:(@PreOrder_Transitive _ _ (@cacheR_preorder tid)) in
+    let P := type of p in
+    let P := eval simpl in P in
+        let P := eval unfold Transitive in P in
+            exact (p:P)).
+
+Hint Resolve cacheR_trans.
 
 Theorem read_fblock_ok : forall inum off,
       SPEC App.delta, tid |-
@@ -257,7 +285,7 @@ Theorem read_fblock_ok : forall inum off,
                    guar App.delta tid s_i' s'
               }} read_fblock inum off.
 Proof.
-  intros.
+  unfold read_fblock, wrap_syscall; intros.
   step.
   step.
   step.
@@ -298,7 +326,7 @@ Proof.
   unfold cacheI.
   simpl_get_set.
 
-  time step. (* 50 *)
+  step. (* 12s *)
   repeat match goal with
          | [ H: get _ _ = get _ _ |- _ ] =>
            rewrite H
@@ -308,23 +336,6 @@ Proof.
   intuition eauto.
   pred_apply; cancel.
 
-  match goal with
-  | [ H: _ (lower_disk (get vdisk _)) |- _ ] =>
-    apply emp_star in H;
-      apply sep_star_lift_apply in H;
-      destruct_ands
-  end; congruence.
-
-  match goal with
-  | [ H: _ (lower_disk (get vdisk _)) |- _ ] =>
-    apply emp_star in H;
-      apply sep_star_lift_apply in H;
-      destruct_ands
-  end; congruence.
-
-  eapply cacheR_preorder; eauto.
-  eapply cacheR_preorder; eauto.
-
   step.
   step.
   repeat match goal with
@@ -334,7 +345,81 @@ Proof.
   replace (get vDirTree s_i).
   descend.
   intuition eauto.
-  eapply cacheR_preorder; eauto.
-  eapply cacheR_preorder; eauto.
-  eapply cacheR_preorder; eauto.
+Qed.
+
+Definition file_get_attr inum :=
+  wrap_syscall (fun fsxp mscs =>
+                  CFS.file_get_attr fsxp inum mscs).
+
+Theorem file_get_attr_ok : forall inum,
+      SPEC App.delta, tid |-
+              {{ pathname f,
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) /\
+                   guar App.delta tid s_i s
+               | POST d' hm' m' s_i' s' r:
+                   let tree' := get vDirTree s' in
+                   invariant App.delta d' hm' m' s' /\
+                   tree' = get vDirTree s /\
+                   match r with
+                   | Some r => r = BFILE.BFAttr f /\
+                              BFILE.MSAlloc (get mMscs m') = BFILE.MSAlloc (get mMscs m)
+                   | None => guar App.delta tid s s'
+                   end /\
+                   hashmap_le hm hm' /\
+                   guar App.delta tid s_i' s'
+              }} file_get_attr inum.
+Proof.
+  unfold file_get_attr, wrap_syscall; intros.
+  step.
+  step.
+  step.
+
+  match goal with
+  | [ H: invariant App.delta _ _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  match goal with
+  | [ H: guar App.delta _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  destruct_ands; repeat deex.
+  (* exists_tuple breaks apart ds *)
+  destruct ds.
+
+  unfold project_disk.
+  repeat eapply exists_tuple; eexists; simpl.
+  intuition eauto.
+
+  replace (get vdisk s).
+  pred_apply; cancel; eauto.
+
+  step.
+  destruct matches; subst.
+  - step.
+    step.
+    unfold cacheI in *; simpl_get_set_all; intuition eauto.
+    step.
+
+    simpl in *.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] =>
+             rewrite H
+           end.
+    replace (get vDirTree s_i).
+    descend.
+    intuition eauto.
+    pred_apply; cancel.
+  - step.
+    step.
+    simpl in *.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] =>
+             rewrite H
+           end.
+    replace (get vDirTree s_i).
+    descend.
+    intuition eauto.
 Qed.

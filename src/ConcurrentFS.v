@@ -97,7 +97,7 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
     correct_compilation.
   Qed.
 
-  Hint Extern 0 {{ file_get_attr_ok _ _ _; _ }} => apply file_get_attr_ok : prog.
+  Hint Extern 0 {{ file_get_attr _ _ _; _ }} => apply file_get_attr_ok : prog.
 
   (*+ read_fblock *)
 
