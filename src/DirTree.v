@@ -5061,33 +5061,42 @@ Module DIRTREE.
   Admitted.
 
 
-  Lemma dirtree_safe_dupdate: forall old_tree old_free old_ilist tree ilist freelist inum f p bn off v,
-    DIRTREE.dirtree_safe old_ilist old_free old_tree ilist freelist tree ->
-    DIRTREE.find_subtree p tree = Some (DIRTREE.TreeFile inum f) ->
-    BFILE.block_belong_to_file ilist bn inum off ->
-     DIRTREE.dirtree_safe old_ilist old_free old_tree ilist freelist 
-      (DIRTREE.update_subtree p
-        (DIRTREE.TreeFile inum
-           {|
-           BFILE.BFData := (BFILE.BFData f) ⟦ off := v ⟧;
+  Lemma dirtree_safe_dupdate: forall old_tree old_free old_ilist tree ilist freelist inum f p off v,
+    tree_names_distinct tree ->
+    dirtree_safe old_ilist old_free old_tree ilist freelist tree ->
+    find_subtree p tree = Some (TreeFile inum f) ->
+    dirtree_safe old_ilist old_free old_tree ilist freelist
+      (update_subtree p (TreeFile inum
+        {| BFILE.BFData := (BFILE.BFData f) ⟦ off := v ⟧;
            BFILE.BFAttr := BFILE.BFAttr f |}) tree).
   Proof.
-    intros.
-    unfold DIRTREE.dirtree_safe in *.
-    unfold BFILE.ilist_safe in *.
-    destruct H.
-    split; eauto.
-    intros.
-    destruct (list_eq_dec string_dec pathname p); subst.
-    erewrite DIRTREE.find_update_subtree in H3; eauto.
-    inversion H3.
-    subst.
-    intuition.
-    specialize (H6 inum0 off0 bn0 H4).
-    specialize (H2 inum0 off0 bn0 p f H0 H4).
-    eauto.
-    erewrite find_subtree_update_subtree_ne_path in H3; eauto.
-    
+    unfold dirtree_safe; intuition.
+    destruct (pathname_decide_prefix pathname p); repeat deex.
+    {
+      destruct suffix; try rewrite app_nil_r in *.
+      - erewrite find_update_subtree in H0 by eauto. inversion H0; subst. eauto.
+      - case_eq (find_subtree pathname tree); intros. destruct d.
+        + erewrite find_subtree_app in H1 by eauto; simpl in *; congruence.
+        + erewrite find_subtree_app in H1 by eauto.
+          erewrite update_subtree_app in H0 by eauto.
+          erewrite find_update_subtree in H0 by eauto.
+          simpl in *; congruence.
+        + erewrite find_subtree_app_none in H1 by eauto; congruence.
+    }
+
+    destruct (pathname_decide_prefix p pathname); repeat deex.
+    {
+      exfalso.
+      destruct suffix; try rewrite app_nil_r in *.
+      apply H5. exists nil. rewrite app_nil_r; auto.
+      erewrite find_subtree_app in H0.
+      2: erewrite find_update_subtree; eauto.
+      simpl in *; congruence.
+    }
+
+    rewrite find_subtree_update_subtree_ne_path in H0; eauto.
+    unfold pathname_prefix. contradict H6; deex; eauto.
+    unfold pathname_prefix. contradict H5; deex; eauto.
   Qed.
 
   Lemma find_subtree_dir_after_update_subtree : forall base pn t num ents subtree,
