@@ -318,14 +318,13 @@ Section NonEmptyList.
   Qed.
 
 
-  (** The second non-empty list's is a subset, in
+  (** The second non-empty list is a subset, in
     * the same order, of the first non-empty list
     *)
   Inductive NEListSubset : nelist -> nelist -> Prop :=
   | NESubsetNil : forall d, NEListSubset (d, nil) (d, nil)
-  | NESubsetHead : forall ds d d',
-      NEListSubset ds (d, nil)
-      -> NEListSubset (pushd d' ds) (d', nil)
+  | NESubsetHead : forall ds d',
+      NEListSubset (pushd d' ds) (d', nil)
   | NESubsetIn : forall ds ds' d,
       NEListSubset ds ds'
       -> NEListSubset (pushd d ds) (pushd d ds')
@@ -362,7 +361,6 @@ Section NonEmptyList.
     constructor.
     replace (_, _) with (pushd t0 (t, l)) by auto.
     eapply NESubsetHead; eauto.
-    eapply nelist_subset_oldest.
   Qed.
 
   Lemma nelist_subset_oldest_latest' : forall l t,
@@ -388,6 +386,38 @@ Section NonEmptyList.
     eapply nelist_subset_oldest_latest'.
   Qed.
 
+  Lemma nelist_subset_popn1 : forall ds ds',
+    NEListSubset (popn 1 ds) ds' ->
+    NEListSubset ds ds'.
+  Proof.
+    unfold popn, nthd; intros.
+    destruct ds, ds'; simpl in *.
+    generalize dependent l0.
+    induction l.
+    - unfold cuttail in *; simpl in *; eauto.
+    - intros.
+      destruct l.
+      + unfold cuttail in *; simpl in *.
+        inversion H; subst.
+        replace (t, [t0]) with (pushd t0 (t, nil)) by reflexivity.
+        eapply NESubsetHead.
+      + replace (selN (a :: t1 :: l) (length (a :: t1 :: l) - 1) t) with (selN (t1 :: l) (length (t1 :: l) - 1) t) in H.
+        2: simpl; rewrite <- minus_n_O; eauto.
+        rewrite cuttail_cons in H by ( simpl; omega ).
+        inversion H; subst.
+        * replace (t, t0 :: t1 :: l) with (pushd t0 (t, t1 :: l)) by reflexivity.
+          eapply NESubsetHead.
+        * replace (t, a :: t1 :: l) with (pushd a (t, t1 :: l)) by reflexivity.
+          replace (fst ds', a :: snd ds') with (pushd a (fst ds', snd ds')) by reflexivity.
+          eapply NESubsetIn.
+          eapply IHl.
+          destruct ds, ds'; simpl in *; subst; eauto.
+        * replace (t, a :: t1 :: l) with (pushd a (t, t1 :: l)) by reflexivity.
+          eapply NESubsetNotIn.
+          eapply IHl.
+          destruct ds; simpl in *; subst; eauto.
+  Qed.
+
   Lemma nelist_subset_popn : forall n ds ds',
     NEListSubset (popn n ds) ds' ->
     NEListSubset ds ds'.
@@ -397,9 +427,8 @@ Section NonEmptyList.
     replace (S n) with (1 + n) in H by omega.
     rewrite <- popn_popn in H.
     apply IHn in H.
-    unfold popn, nthd in H.
-    destruct ds; simpl in *.
-  Admitted.
+    eapply nelist_subset_popn1; eauto.
+  Qed.
 
   Lemma nelist_subset_nthd_latest : forall n ds,
     n < length (snd ds) ->
@@ -417,6 +446,18 @@ Section NonEmptyList.
     omega.
   Qed.
 
+  Lemma nelist_subset_popn1' : forall ds ds',
+    NEListSubset ds ds' ->
+    NEListSubset ds (popn 1 ds').
+  Proof.
+    unfold popn, nthd; intros.
+    destruct ds, ds'; simpl in *.
+    generalize dependent l.
+    induction l0; intros.
+    - unfold cuttail in *; simpl in *; eauto.
+    - admit.
+  Admitted.
+
   Lemma nelist_subset_popn' : forall n ds ds',
     NEListSubset ds ds' ->
     NEListSubset ds (popn n ds').
@@ -426,7 +467,8 @@ Section NonEmptyList.
     replace (S n) with (1 + n) by omega.
     rewrite <- popn_popn.
     apply IHn.
-  Admitted.
+    eapply nelist_subset_popn1'; eauto.
+  Qed.
 
   Lemma pushd_length : forall ds d,
     length (snd (pushd d ds)) = S (length (snd ds)).
@@ -513,7 +555,6 @@ Section NonEmptyList.
     simpl in *.
     inversion H0; subst.
     exists (S (length (snd ds))); intuition.
-    rewrite nthd_0.
     setoid_rewrite nthd_pushd_latest; eauto.
 
     destruct (lt_dec n' (length (snd (pushd d ds'))));
