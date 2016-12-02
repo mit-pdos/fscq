@@ -1846,6 +1846,14 @@ Proof.
   inversion H; eauto.
 Qed.
 
+Lemma NoDup_remove_mid : forall A (a b c : list A),
+  NoDup (a ++ b ++ c) -> NoDup (a ++ c).
+Proof.
+  induction b using rev_ind; simpl; intros; eauto.
+  eapply NoDup_remove_1.
+  eapply IHb. rewrite <- app_assoc in H. eauto.
+Qed.
+
 Hint Resolve in_app_or.
 Hint Resolve in_or_app.
 
