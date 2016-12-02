@@ -423,3 +423,84 @@ Proof.
     descend.
     intuition eauto.
 Qed.
+
+Definition lookup dnum fnlist :=
+  wrap_syscall (fun fsxp mscs =>
+                  CFS.lookup fsxp dnum fnlist mscs).
+
+Theorem lookup_ok : forall dnum fnlist,
+    SPEC App.delta, tid |-
+                    {{ (_:unit),
+                     | PRE d hm m s_i s:
+                         let tree := get vDirTree s in
+                         invariant App.delta d hm m s /\
+                         DIRTREE.dirtree_inum tree = dnum /\
+                         DIRTREE.dirtree_isdir tree = true /\
+                         guar App.delta tid s_i s
+                     | POST d' hm' m' s_i' s' r:
+                         let tree' := get vDirTree s' in
+                         invariant App.delta d' hm' m' s' /\
+                         tree' = get vDirTree s /\
+                         match r with
+                         | Some r => r = DIRTREE.find_name fnlist tree' /\
+                                    BFILE.MSAlloc (get mMscs m') = BFILE.MSAlloc (get mMscs m)
+                         | None => guar App.delta tid s s'
+                         end /\
+                         hashmap_le hm hm' /\
+                         guar App.delta tid s_i' s'
+                    }} lookup dnum fnlist.
+Proof.
+  unfold lookup, wrap_syscall; intros.
+  (* this is a copy-pasted version of the file_get_attr_ok proof
+
+TODO: automate these proofs *)
+  step.
+  step.
+  step.
+
+  match goal with
+  | [ H: invariant App.delta _ _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  match goal with
+  | [ H: guar App.delta _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  destruct_ands; repeat deex.
+  (* exists_tuple breaks apart ds *)
+  destruct ds.
+
+  unfold project_disk.
+  repeat eapply exists_tuple; eexists; simpl.
+  intuition eauto.
+
+  replace (get vdisk s).
+  pred_apply; cancel; eauto.
+
+  step.
+  destruct matches; subst.
+  - step.
+    step.
+    unfold cacheI in *; simpl_get_set_all; intuition eauto.
+    step.
+
+    simpl in *.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] =>
+             rewrite H
+           end.
+    replace (get vDirTree s_i).
+    descend.
+    intuition eauto.
+    pred_apply; cancel.
+  - step.
+    step.
+    simpl in *.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] =>
+             rewrite H
+           end.
+    replace (get vDirTree s_i).
+    descend.
+    intuition eauto.
+Qed.
