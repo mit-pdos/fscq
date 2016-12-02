@@ -509,12 +509,35 @@ Section NonEmptyList.
     NEListSubset ds (popn 1 ds').
   Proof.
     unfold popn, nthd; intros.
-    destruct ds, ds'; simpl in *.
-    generalize dependent l.
-    induction l0; intros.
-    - unfold cuttail in *; simpl in *; eauto.
-    - admit.
-  Admitted.
+    apply nelist_list_subset in H.
+    apply nelist_list_subset; simpl.
+    generalize dependent H.
+    generalize (snd ds ++ [fst ds]); intros.
+    destruct ds'; simpl in *.
+    destruct l0.
+    - simpl in *; eauto.
+    - match goal with
+      | [ |- ListSubset l ?l' ] => replace l' with (t0 :: l0)
+      end.
+      + generalize dependent H. generalize (t0 :: l0). intros.
+        generalize dependent l1.
+        induction l; intros.
+        * inversion H. assert (@length T [] = length (l1 ++ [t])) by congruence.
+          rewrite app_length in *; simpl in *; omega.
+        * inversion H; subst.
+         -- destruct l1. apply list_subset_nil.
+            inversion H3; subst.
+            apply SubsetIn. eauto.
+         -- apply SubsetNotIn. eauto.
+      + unfold cuttail. simpl. rewrite <- minus_n_O.
+        induction l0 using rev_ind; simpl; auto.
+        rewrite app_length; simpl.
+        replace (length l0 + 1) with (S (length l0)) by omega.
+        rewrite selN_last by auto.
+        replace (t0 :: l0 ++ [x]) with ((t0 :: l0) ++ [x]) by reflexivity.
+        rewrite firstn_app by (simpl; auto).
+        auto.
+  Qed.
 
   Lemma nelist_subset_popn' : forall n ds ds',
     NEListSubset ds ds' ->
