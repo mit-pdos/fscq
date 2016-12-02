@@ -3150,3 +3150,11 @@ Proof.
   eapply IHoff; eauto.
   omega.
 Qed.
+
+
+Lemma not_in_app: forall (A : Type) (x: A) l1 l2,
+  ~In x (l1++l2) -> (~In x l1) /\ (~In x l2).
+Proof.
+  split; auto using in_or_app.
+Qed.
+

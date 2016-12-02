@@ -4898,12 +4898,6 @@ Module DIRTREE.
     destruct (string_dec name2 name1); try congruence.
   Qed.
 
-  Lemma not_in_app: forall (A : Type) (x: A) l1 l2,
-    ~In x (l1++l2) -> (~In x l1) /\ (~In x l2).
-  Proof.
-    split; auto using in_or_app.
-  Qed.
-
   Lemma dirlist_combine_app: forall l (f : dirtree -> list addr) a,
     dirlist_combine f (a::l) = dirlist_combine f [a] ++ (dirlist_combine f l).
   Proof.
