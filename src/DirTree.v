@@ -3160,6 +3160,7 @@ Module DIRTREE.
       apply IHl; eauto.
   Qed.
 
+
   Definition pathname_prefix p1 p2 :=
     (exists suffix : list string, p1 ++ suffix = p2).
 
@@ -4934,6 +4935,65 @@ Module DIRTREE.
     rewrite app_nil_r; eauto.
   Qed.
 
+  Lemma find_subtree_file_none: forall s suffix n b,
+    find_subtree (s::suffix) (TreeFile n b) = None.
+  Proof.
+    intros.
+    rewrite cons_app.
+    rewrite find_subtree_app_none; eauto.
+  Qed.
+
+  Lemma tree_inodes_distinct_elem: forall a n l subtree,
+    tree_inodes_distinct (TreeDir n l) ->
+    find_subtree [a] (TreeDir n l) = Some subtree ->
+    tree_inodes_distinct subtree.
+  Proof.
+    induction l; intros; subst.
+    - simpl in H0. inversion H0.
+    - destruct a0.
+      destruct (string_dec a s); subst.
+      + rewrite find_subtree_head in H0. inversion H0. subst. clear H0.
+        eapply tree_inodes_distinct_child in H; eauto.
+      + erewrite find_subtree_head_ne in H0.
+        eapply tree_inodes_distinct_next in H; eauto.
+        eauto.
+  Qed.
+
+  Lemma tree_inodes_distinct_subtree : forall path tree subtree,
+    tree_names_distinct tree ->
+    tree_inodes_distinct tree ->
+    find_subtree path tree = Some subtree ->
+    tree_inodes_distinct subtree.
+  Proof.
+    induction path; intros.
+    - simpl in H1. inversion H1. subst. eauto. 
+    - destruct tree.
+      + rewrite find_subtree_file_none in H1. inversion H1.
+      + destruct l.
+        -- 
+          simpl in H1. inversion H1.
+        -- 
+          destruct p.
+          destruct (string_dec a s); subst.
+          ++
+            rewrite cons_app in H1.
+            eapply find_subtree_app' in H1.
+            deex.
+            eapply tree_inodes_distinct_child in H0.
+            rewrite find_subtree_head in H2; eauto.
+            inversion H2. subst. clear H2.
+            eauto.
+          ++
+            rewrite cons_app in H1.
+            eapply find_subtree_app' in H1.
+            deex.
+            eapply IHpath in H3; eauto.
+            eapply tree_names_distinct_subtree; eauto.
+            rewrite find_subtree_head_ne in H2; eauto.
+            eapply tree_inodes_distinct_next in H0; eauto.
+            eapply tree_inodes_distinct_elem in H2; eauto.
+  Qed.
+
   Lemma leaf_in_inodes_parent : forall path name n l subtree_base d,
     tree_names_distinct (TreeDir n l) ->
     find_subtree [name] (TreeDir n l) = Some subtree_base ->
@@ -4960,38 +5020,21 @@ Module DIRTREE.
         rewrite find_subtree_head_ne in H0; eauto.
   Qed.
 
-  Lemma tree_inodes_not_distinct: forall n s d l f path s0,
-    tree_names_distinct (TreeDir n ((s, d) :: l)) ->
-    dirtree_inum (TreeDir n ((s, d) :: l)) = dirtree_inum f ->
-    find_subtree (s0 :: path) (TreeDir n ((s, d) :: l)) = Some f ->
-    ~tree_inodes_distinct (TreeDir n ((s, d) :: l)).
+  Lemma tree_inodes_not_distinct: forall l n s f suffix,
+    tree_names_distinct (TreeDir n l) ->
+    tree_inodes_distinct (TreeDir n l) ->
+    dirtree_inum (TreeDir n l) = dirtree_inum f ->
+    find_subtree (s :: suffix) (TreeDir n l) = Some f ->
+    False.
   Proof.
     intros.
-    rewrite cons_app in H1.
-    eapply find_subtree_app' in H1; eauto.
-    deex. 
-    destruct (string_dec s0 s); subst.
-    --
-      erewrite find_subtree_dirlist in H3.
-      eapply find_dirlist_same in H3 as H3'; subst.
-      eapply find_subtree_inum_present in H4 as H4'.
-      simpl in H0. rewrite <- H0 in *.
-      inversion H2.
-      eapply not_in_app in H6.
-      intuition.
-      inversion H.
-      simpl in H6; eauto.
-    --
-      eapply leaf_in_inodes_parent in H4 as H4''; eauto.
-      simpl in H0. rewrite <- H0 in *. subst.
-      inversion H2.
-      eapply not_in_app in H5.
-      intuition.
-      erewrite dirlist_combine_app in H4''.
-      eapply in_app_or in H4''.
-      intuition.
-      unfold dirlist_combine in H5.
-      rewrite app_nil_r in H5; try congruence.
+    rewrite cons_app in H2.
+    eapply find_subtree_app' in H2; eauto.
+    deex.
+    eapply leaf_in_inodes_parent in H4 as H4'; eauto.
+    rewrite <- H1 in H4'. simpl in H4'.
+    inversion H0.
+    eapply H6; eauto.
   Qed.
 
   Theorem find_subtree_inode_pathname_unique_dir : forall path1 path2 f1 f2 n l,
@@ -5002,38 +5045,49 @@ Module DIRTREE.
     dirtree_inum f1 = dirtree_inum f2 ->
     path1 = path2.
   Proof.
-    induction l; intros; subst.
-    - destruct path1.
-      destruct path2; subst; try congruence.
-      + unfold find_subtree in H1. inversion H1. clear H1.
-        rewrite cons_app in H2.
-        eapply find_subtree_app' in H2; eauto.
+    intros.
+    destruct (pathname_decide_prefix path1 path2).
+    - deex.
+      destruct suffix.
+      + rewrite app_nil_r in *; reflexivity.
+      + exfalso.
+        eapply find_subtree_app' in H2.
         deex.
-        erewrite find_subtree_dirlist in H2.
-        unfold find_dirlist in H2; simpl. inversion H2.
-      + rewrite cons_app in H1.
-        eapply find_subtree_app' in H1; eauto.
-        deex.
-        erewrite find_subtree_dirlist in H4.
-        unfold find_dirlist in H4; simpl. inversion H4.
-    - destruct a.
-      destruct path1.
-      + destruct path2; try congruence.
-        inversion H1; subst. clear H1.
-        exfalso. eapply tree_inodes_not_distinct in H; eauto.
-      + destruct path2.
-      -- 
-        inversion H2; subst. clear H2.
-        exfalso. eapply tree_inodes_not_distinct in H1; eauto.
-      -- {
-        destruct (string_dec s0 s); subst.
-        - destruct (string_dec s1 s); subst.
-          eapply IHl; eauto.
-          admit.
-          admit.
-          admit.
-        - admit.
-         }
+        rewrite H1 in H4. inversion H4; subst. clear H4.
+        destruct subtree_base; try congruence.
+        rewrite find_subtree_file_none in H5; eauto. inversion H5.
+        eapply tree_inodes_not_distinct in H5; eauto.
+        eapply tree_names_distinct_subtree; eauto.
+        eapply tree_inodes_distinct_subtree in H1 as H1'; eauto.
+     - destruct (pathname_decide_prefix path2 path1).
+      + deex.
+        destruct suffix.
+        ++ rewrite app_nil_r; auto.
+        ++ 
+          erewrite find_subtree_app in H1; eauto.
+          destruct f2; subst.
+          -- rewrite find_subtree_file_none in H1; eauto. inversion H1.
+          -- eapply tree_inodes_not_distinct in H1; eauto.
+             exfalso; auto.
+             eapply tree_names_distinct_subtree; eauto.
+             eapply tree_inodes_distinct_subtree; eauto.
+      + destruct path1.
+        ++ 
+          simpl in H1. inversion H1. subst. clear H1.
+          destruct path2.
+          simpl in H2. inversion H2. subst. eauto.
+          eapply tree_inodes_not_distinct in H2; eauto.
+          exfalso; eauto.
+        ++ 
+          destruct path2.
+          -- 
+            simpl in H2. inversion H2. subst. clear H2.
+            eapply tree_inodes_not_distinct in H1; eauto.
+            exfalso; eauto.
+          --
+            inversion H.
+            (* two different entries in l, but each subtree has inode#; contradiction. *)  
+            admit.
    Admitted.
 
 
@@ -5048,9 +5102,14 @@ Module DIRTREE.
     intros.
     destruct tree.
     - unfold tree_inodes_distinct in *.
-      admit.
+      destruct path1.
+      + destruct path2; eauto.
+        rewrite find_subtree_file_none in H2. inversion H2.
+      + destruct path2; eauto.
+        rewrite find_subtree_file_none in H1. inversion H1.
+        rewrite find_subtree_file_none in H1. inversion H1.
     - eapply find_subtree_inode_pathname_unique_dir; eauto.
-  Admitted.
+  Qed.
 
   Lemma find_subtree_update_subtree_same_inum : forall path1 path2 inum f f' tree,
     tree_inodes_distinct tree ->
