@@ -332,6 +332,64 @@ Section NonEmptyList.
       NEListSubset ds ds'
       -> NEListSubset (pushd d ds) ds'.
 
+  Inductive ListSubset (T : Type) : list T -> list T -> Prop :=
+  | SubsetNil : ListSubset nil nil
+  | SubsetIn : forall l1 l2 a, ListSubset l1 l2 -> ListSubset (a :: l1) (a :: l2)
+  | SubsetNotIn : forall l1 l2 a, ListSubset l1 l2 -> ListSubset (a :: l1) l2.
+  Hint Constructors ListSubset.
+
+  Lemma list_subset_nil : forall T (l : list T),
+    ListSubset l nil.
+  Proof.
+    induction l; eauto.
+  Qed.
+
+  Lemma nelist_list_subset : forall ds ds',
+    NEListSubset ds ds' <-> ListSubset (snd ds ++ [fst ds]) (snd ds' ++ [fst ds']).
+  Proof.
+    split; intros.
+    - induction H; simpl in *; eauto.
+      apply SubsetIn.
+      eapply list_subset_nil.
+    - destruct ds, ds'; simpl in *.
+      remember (l ++ [t]) as lt.
+      remember (l0 ++ [t0]) as lt0.
+      generalize dependent l.
+      generalize dependent l0.
+      generalize dependent t.
+      generalize dependent t0.
+      induction H; simpl in *; intros.
+      + assert (@length T [] = length (l ++ [t])) by congruence.
+        rewrite app_length in *; simpl in *; omega.
+      + destruct l.
+        * inversion Heqlt; subst.
+          inversion H; subst; simpl in *.
+          destruct l0.
+         -- inversion Heqlt0; subst. apply NESubsetNil.
+         -- assert (length [t] = length ((t1 :: l0) ++ [t0])) by congruence.
+            rewrite app_length in *; simpl in *; omega.
+        * inversion Heqlt; subst.
+          destruct l0.
+         -- inversion Heqlt0; subst.
+            replace (t, t0 :: l) with (pushd t0 (t, l)) by reflexivity.
+            apply NESubsetHead.
+         -- inversion Heqlt0; subst.
+            replace (t, t2 :: l) with (pushd t2 (t, l)) by reflexivity.
+            replace (t0, t2 :: l0) with (pushd t2 (t0, l0)) by reflexivity.
+            apply NESubsetIn.
+            eapply IHListSubset; eauto.
+      + destruct l.
+        * inversion Heqlt; subst.
+          inversion H.
+          assert (@length T [] = length (l0 ++ [t0])) by congruence.
+          rewrite app_length in *; simpl in *; omega.
+        * simpl in *.
+          inversion Heqlt; subst.
+          replace (t, t1 :: l) with (pushd t1 (t, l)) by reflexivity.
+          apply NESubsetNotIn.
+          eapply IHListSubset; eauto.
+  Qed.
+
   Lemma nelist_subset_equal : forall ds,
     NEListSubset ds ds.
   Proof.
