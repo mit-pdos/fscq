@@ -2529,7 +2529,9 @@ Module DIRTREE.
             let tree' := delete_from_dir name tree in
             [[ (Fm * rep fsxp Ftop tree' ilist' frees')%pred (list2nmem m') ]] *
             [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                            ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] )
+                            ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
+            [[ forall inum def', inum <> dnum -> In inum (tree_inodes tree) ->
+                 selN ilist inum def' = selN ilist' inum def' ]])
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
     >} delete fsxp dnum name mscs.
@@ -2585,6 +2587,7 @@ Module DIRTREE.
     apply dirlist_safe_delete; auto.
 
     (* case 2: is_dir: check empty *)
+    admit.  (* ilist ⟦ inum ⟧ = ilist' ⟦ inum ⟧ *)
     prestep.
     intros; norm'l.
     denote dirlist_pred as Hx; subst_bool.
@@ -2609,6 +2612,7 @@ Module DIRTREE.
     cancel. eauto. eauto. eauto.
     apply dirlist_safe_delete; auto.
 
+    admit.  (* ilist ⟦ inum ⟧ = ilist' ⟦ inum ⟧ *)
     step.
     step.
     cancel; auto.
@@ -2617,7 +2621,7 @@ Module DIRTREE.
     Unshelve.
     all: try exact addr_eq_dec.  6: eauto. all: eauto.
     auto using Build_balloc_xparams.
-  Qed.
+  Admitted.
 
 
   Theorem delete_ok : forall fsxp dnum name mscs,
@@ -2634,7 +2638,9 @@ Module DIRTREE.
                       (delete_from_dir name (TreeDir dnum tree_elem)) tree ]] *
             [[ (Fm * rep fsxp Ftop tree' ilist' frees')%pred (list2nmem m') ]] *
             [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                            ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] )
+                            ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
+            [[ forall inum def', inum <> dnum -> In inum (tree_inodes tree) ->
+                selN ilist inum def' = selN ilist' inum def' ]])
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
     >} delete fsxp dnum name mscs.
