@@ -4147,8 +4147,8 @@ Module DIRTREE.
           eapply pathname_prefix_neq; eauto.
           eapply pathname_prefix_neq with (path' := (dstpath++[dstname])); eauto.
           eapply pathname_prefix_neq; eauto.
-    - admit. (* BFILE.ilist_safe ilist1 frees1 ilist3 frees3 *)
-  Admitted.
+    - unfold dirtree_safe in *; eapply BFILE.ilist_safe_trans; intuition eauto.
+  Qed.
 
 
   Theorem rename_ok' : forall fsxp dnum srcpath srcname dstpath dstname mscs,
