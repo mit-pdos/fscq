@@ -1066,6 +1066,9 @@ Module AFS.
     step.
     subst; pimpl_crash; cancel.
     apply LOG.notxn_idempred.
+    step.
+    cancel.
+    apply LOG.notxn_idempred.
     apply LOG.intact_idempred.
     apply LOG.notxn_idempred.
   Qed.
@@ -1098,12 +1101,13 @@ Module AFS.
     step.
     step.
     step.
-    apply LOG.notxn_idempred.
+    (* XXX: prove crash condition using XCRASH *)
+    admit.
     step.
     apply LOG.notxn_idempred.
     apply LOG.intact_idempred.
     apply LOG.notxn_idempred.
-  Qed.
+  Admitted.
 
   Hint Extern 1 ({{_}} Bind (create _ _ _ _ ) _) => apply create_ok : prog.
 
@@ -1143,16 +1147,13 @@ Module AFS.
     step.
     step.
     step.
-    step.
-    step.
-    apply LOG.notxn_idempred.
-    step.
+    (* XXX: prove crash condition using XCRASH *)
+    admit.
     step.
     apply LOG.notxn_idempred.
-    step.
     apply LOG.intact_idempred.
     apply LOG.notxn_idempred.
-  Qed.
+  Admitted.
 
   Hint Extern 1 ({{_}} Bind (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
 
@@ -1163,12 +1164,12 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees) ]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
-    POST:hm RET:^(mscs', ok)
+    POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
      ([[ isError ok ]] *
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm   \/
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm'   \/
       [[ ok = OK tt ]] * exists d tree' ilist' frees',
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm *
+        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
         [[ tree' = DIRTREE.update_subtree pathname
                       (DIRTREE.delete_from_dir name (DIRTREE.TreeDir dnum tree_elem)) tree ]] *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
@@ -1176,8 +1177,8 @@ Module AFS.
                         ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
         [[ forall inum def', inum <> dnum -> In inum (tree_inodes tree) ->
              selN ilist inum def' = selN ilist' inum def' ]])
-    CRASH:hm
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm
+    CRASH:hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} delete fsxp dnum name mscs.
   Proof.
     unfold delete; intros.
@@ -1185,16 +1186,13 @@ Module AFS.
     step.
     step.
     step.
-    step.
-    step.
-    apply LOG.notxn_idempred.
-    step.
+    (* XXX: prove crash condition using XCRASH *)
+    admit.
     step.
     apply LOG.notxn_idempred.
-    step.
     apply LOG.intact_idempred.
     apply LOG.notxn_idempred.
-  Qed.
+  Admitted.
 
   Hint Extern 1 ({{_}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.
 
