@@ -2475,21 +2475,24 @@ Ltac do_declare T cont :=
   end.
 
 Ltac compile_match := match goal with
-  | [ |- EXTRACT match ?o:option with _ => _ end {{ ?pre }} _ {{ fun ret : ?X => ?post }} // _ ] =>
-    match find_val o pre with
-    | None =>
-      eapply extract_equiv_prog with (pr1 := Bind (Ret o) (fun x => _));
-      [ generalize o; intro; rewrite bind_left_id; apply prog_equiv_equivalence |]
-    | Some ?x =>
-      match var_mapping_to_ret with
-      | ?ret =>
-        do_declare bool ltac:(fun vara => simpl decls_pre; simpl decls_post;
-          do_declare X ltac:(fun varb =>
-            eapply hoare_weaken;
-            [ eapply CompileMatchOption with
-                (ovar := x) (avar := vara) (bvar := varb) (xvar := ret) | cancel_go.. ];
-            intros
-          ))
+  | [ |- EXTRACT match ?o with _ => _ end {{ ?pre }} _ {{ fun ret => ?post }} // _ ] =>
+    match type of o with
+    | option ?X =>
+      match find_val o pre with
+      | None =>
+        eapply extract_equiv_prog with (pr1 := Bind (Ret o) (fun x => _));
+        [ generalize o; intro; rewrite bind_left_id; apply prog_equiv_equivalence |]
+      | Some ?x =>
+        match var_mapping_to_ret with
+        | ?ret =>
+          do_declare bool ltac:(fun vara => simpl decls_pre; simpl decls_post;
+            do_declare X ltac:(fun varb =>
+              eapply hoare_weaken;
+              [ eapply CompileMatchOption with
+                  (ovar := x) (avar := vara) (bvar := varb) (xvar := ret) | cancel_go.. ];
+              intros
+            ))
+        end
       end
     end
   end.
@@ -2860,12 +2863,21 @@ Proof.
   compile_step.
   compile_step.
 (* TODO
+  (* TODO: Can't put [a0] in [?B0]. *)
+  instantiate (B0 := _ * snd (fst vars) ~>? nat).
+  cancel_go.
   compile_step.
+  (* TODO: Can't put [val] in [?F]. *)
+  instantiate (F := _ * snd (fst vars) ~>? nat).
+  cancel_go.
   compile_step.
+  (* TODO
   destruct b; simpl. (* TODO *)
+  compile_match.
   compile_step.
   compile_step.
-  (* Whoops, where did [decls_pre] go? *) *)
+  compile_step.
+*)
 Abort.
 
 Example match_option : sigT (fun p => forall env (o : option W) (r0 : W),
