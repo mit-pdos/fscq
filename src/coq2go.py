@@ -355,6 +355,8 @@ def gen_expr_assign_real(e, s):
       if pat['what'] == 'pat:constructor':
         s.append('case *%s:' % coqname(pat['name']))
         for idx, argname in enumerate(pat['argnames']):
+          if argname == '_':
+            continue
           s.append('  var %s CoqT = __typesw.A%d' % (coqname(argname), idx))
           s.append('  var _ = %s' % coqname(argname))
         body = gen_expr_assign(case['body'], s)
@@ -427,8 +429,13 @@ def gen_expr_assign_real(e, s):
 
   elif e['what'] == 'expr:let':
     v = gen_expr_assign(e['nameval'], s)
+    res = varname()
+    s.append('var %s CoqT' % res)
+    s.append('{')
     s.append('var %s CoqT = %s' % (coqname(e['name']), v))
-    return gen_expr_assign(e['body'], s)
+    s.append('%s = %s' % (res, gen_expr_assign(e['body'], s)))
+    s.append('}')
+    return res
 
   elif e['what'] == 'expr:axiom':
     s.append('panic("Axiom not realized")')

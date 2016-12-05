@@ -1,10 +1,13 @@
-OCAMLBUILD := ocamlbuild -use-ocamlfind -lib str -lib nums
-OCAMLINC   := -I codegen -I mllib -I ocamlfuse -package extunix
+OCAMLBUILD := env OCAMLPATH=$(shell pwd) ocamlbuild \
+	      -tag thread -tag debug -use-ocamlfind \
+	      -lib str -lib nums \
+	      -I codegen -I mllib -X ocamlfuse \
+	      -package extunix -package zarith -package ocamlfuse
 MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 				Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
 				OperationalSemantics \
-	      Hashmap HashmapProg \
-	      SepAuto Idempotent Errno \
+				Hashmap HashmapProg \
+				SepAuto Idempotent Errno \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
 	      MemPred Cache \
 	      FSLayout AsyncRecArray DiskLogHash \
@@ -12,13 +15,15 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      NEList DiskSet GroupLog Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
 	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \
-	      SuperBlock AsyncFS AsyncFSRecover TreeSeq DirUtil ExtrHaskellPrelude \
-	      Hlist Star RelationCombinators Variables MemClass \
+				Hlist Star RelationCombinators Variables MemClass \
 	      Locking Automation ForwardChaining \
 	      CoopConcur CoValid CoopConcurMonad CoopConcurAuto Protocols \
 	      DiskReaders MemCache WriteBuffer WriteBufferSet ConcurrentCache \
 				ConcurrentCopy Specifications ConcurrentBridge ConcurrentFS \
-				ReadOnlyFS
+				ReadOnlyFS \
+				SuperBlock AsyncFS AsyncFSRecover \
+	      ADestructPair DestructVarname ExtrHaskellPrelude \
+	      DirSep TreeSeq ProgMetatheory
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
@@ -32,13 +37,13 @@ ifeq (,$(shell $(GHC) --version | grep 'version 8.0' 2>/dev/null))
 	HSC2HS := /opt/ghc/8.0.1/bin/hsc2hs
 endif
 
+J	   ?= 1
 GHCARGS    := -O2 -threaded
 		# -prof -fprof-auto -rtsopts
 		# -eventlog
 HSLIB_FUSE := hscgen/Fuse.hs
 HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
 HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs hslib/ConcurInterp.hs
-J ?= 4
 
 OCAMLFUSE_ML	:= ocamlfuse/Result.ml \
 		   ocamlfuse/Unix_util.ml \
@@ -51,6 +56,7 @@ OCAMLFUSE_MLI	:= ocamlfuse/Fuse.mli \
 OCAMLFUSE_CMX	:= $(patsubst %.ml,%.cmx,$(OCAMLFUSE_ML))
 OCAMLFUSE_DEP	:= $(patsubst %.ml,%.d,$(OCAMLFUSE_ML)) \
 		   $(patsubst %.mli,%.di,$(OCAMLFUSE_MLI))
+OCAMLFUSE	:= ocamlfuse/Fuse.a ocamlfuse/Fuse.cmxa
 
 .PHONY: coq proof clean
 
@@ -79,14 +85,14 @@ ocamlfuse/libFuse_stubs.a: ocamlfuse/Fuse_bindings_stubs.o ocamlfuse/Unix_util_s
 %.cmi: %.mli
 	ocamlopt -I ocamlfuse -c -thread $<
 
-ocamlfuse/Fuse.cmxa: $(OCAMLFUSE_CMX) ocamlfuse/libFuse_stubs.a
+ocamlfuse/Fuse.cmxa ocamlfuse/Fuse.a: $(OCAMLFUSE_CMX) ocamlfuse/libFuse_stubs.a
 	ocamlopt -a -thread -linkall -cclib -lFuse_stubs -cclib -lfuse -cclib -lcamlidl -o $@ $(OCAMLFUSE_CMX)
 
-%: %.ml $(VS_ML)
+%: %.ml $(VS_ML) $(wildcard */*.ml) $(OCAMLFUSE)
 	rm -f $@
 	-mv codegen/Word.ml codegen/WordCoq.ml
 	-mv codegen/Word.mli codegen/WordCoq.mli
-	$(OCAMLBUILD) $(OCAMLINC) -no-links $@.native
+	$(OCAMLBUILD) -no-links $@.native
 	ln -s $(CURDIR)/_build/$@.native $@
 
 hscgen/%.hs: hslib/%.hsc
@@ -111,7 +117,7 @@ $(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractJSON )
 
 $(VS_VIO): coqbuild/Makefile.coq
-	( cd coqbuild && $(MAKE) -f Makefile.coq quick )
+	( cd coqbuild && $(MAKE) -j $(J) -f Makefile.coq quick )
 	@touch coqbuild/*.vio
 
 checkproofs: coqbuild/Makefile.coq

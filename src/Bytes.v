@@ -4,6 +4,7 @@ Require Import Eqdep_dec.
 Require Import AsyncDisk.
 Require Import List ListUtils.
 Require Import Omega.
+Require Import FunctionalExtensionality.
 Import EqNotations.
 
 Set Implicit Arguments.
@@ -115,18 +116,28 @@ Qed.
 Lemma bsplit_list_preserve: forall sz (b1 b2: bytes sz), b1 = b2 -> bsplit_list b1 = bsplit_list b2.
 Proof. intros. rewrite H. reflexivity. Qed.
 
-Theorem bytes2list2bytes: forall sz (b: bytes sz), exists H, 
+Theorem bytes2list2bytes: forall sz (b: bytes sz) H, 
 bcombine_list (bsplit_list b) = rew H in b.
-Proof. Admitted. (*  intros. exists (bsplit_list_len b).
+Proof.
+intros.
 induction sz; simpl.
-unfold bytes0.
-unfold word2bytes.
 eq_rect_simpl.
-rewrite word0; auto.
+unfold bytes0.
+simpl.
+rewrite word0.
+reflexivity.
 
-rewrite IHsz.
-repeat generalize_proof.
-Admitted. *)
+simpl in H.
+inversion H.
+rewrite IHsz with (H:= H1).
+destruct H1.
+unfold byte2bytes.
+simpl.
+unfold bsplit1_dep, bsplit2_dep; simpl.
+rewrite bcombine_bsplit.
+eq_rect_simpl.
+reflexivity.
+Qed.
 
 Notation "'valubytes'" := (Valulen.valubytes).
 Notation "'valubytes_is'" := (Valulen.valubytes_is).
@@ -143,7 +154,7 @@ Definition bytes2valu (v : bytes valubytes) : valu.
   exact v.
 Defined.
 
-Theorem valu2bytes2valu : forall v, valu2bytes (bytes2valu v) = v.
+Theorem bytes2valu2bytes : forall v, valu2bytes (bytes2valu v) = v.
 Proof.
   unfold valu2bytes, bytes2valu, eq_rec_r, eq_rec.
   intros.
@@ -157,7 +168,7 @@ Proof.
   reflexivity.
 Qed.
 
-Theorem bytes2valu2bytes : forall v, bytes2valu (valu2bytes v) = v.
+Theorem valu2bytes2valu : forall v, bytes2valu (valu2bytes v) = v.
 Proof.
   unfold valu2bytes, bytes2valu, eq_rec_r, eq_rec.
   intros.
@@ -174,3 +185,26 @@ Qed.
 Lemma valu2bytes_preserve: forall v1 v2, v1 = v2 -> valu2bytes v1 = valu2bytes v2.
 Proof. intros. rewrite H. reflexivity. Qed.
 
+Lemma bcombine_list_contr: forall a l, 
+bcombine (byte2bytes a) (bcombine_list l) = bcombine_list (a::l).
+Proof. intros; reflexivity. Qed.
+
+Lemma selN_O_bsplit_list: forall sz (bs: bytes (1 + sz)) def,
+selN (bsplit_list bs) 0 def = bsplit1 1 sz bs.
+Proof.
+intros.
+simpl.
+unfold bsplit1_dep.
+reflexivity.
+Qed.
+
+Lemma byte2bytes_eq: forall b,
+byte2bytes b = b.
+Proof.
+  intros.
+  unfold byte2bytes.
+  unfold word2bytes.
+  eq_rect_simpl.
+  reflexivity.
+Qed.
+  

@@ -340,7 +340,7 @@ Ltac solve_hashmap_subset :=
   | [ |- exists _, hashmap_subset _ _ _ ]
     => eexists; solve_hashmap_subset
   | [ |- hashmap_subset _ _ _ ]
-    => subst; solve [ solve_hashmap_subset_trans | repeat (eauto; econstructor) ]
+    => try subst; solve [ solve_hashmap_subset_trans | repeat (eauto; econstructor) ]
   end.
 
 Ltac solve_hashmap_subset' :=

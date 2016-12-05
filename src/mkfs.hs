@@ -5,6 +5,7 @@ import qualified AsyncFS
 import FSLayout
 import Disk
 import System.Environment
+import qualified Errno
 
 cachesize :: Integer
 cachesize = 100000
@@ -19,8 +20,8 @@ main = do
       putStrLn $ "Initializing file system"
       res <- I.run ds $ AsyncFS._AFS__mkfs cachesize 1 1 256
       case res of
-        Nothing -> error $ "mkfs failed"
-        Just (_, fsxp) ->
+        Errno.Err _ -> error $ "mkfs failed"
+        Errno.OK (_, fsxp) ->
           putStrLn $ "Initialization OK, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
 
       stats <- close_disk ds

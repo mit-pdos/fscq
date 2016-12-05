@@ -1,0 +1,27 @@
+below log:
+Cache.v
+AsyncRecArray
+SuperBlock
+DiskLogHash
+MemLog
+Log
+LogRecArray (6/10)
+
+above log:
+LogRecArray (4/10)
+Balloc
+BlockPtr
+Inode
+BFile
+FileRecArray
+Dir
+DirName
+DirTree
+AsyncFS
+AsyncFSRecover
+
+specs below log: 21+3+2+5+1+17+6 = 55 non-trivial crash invariants
+specs above log: 4+11+20+9+21+10+4+4+14+10 = 107 trivial crash invariants
+55 + 107 = 162 crash specs
+recovery specs (above log): 8 recovery specs
+162 + 8 = 170 total specs

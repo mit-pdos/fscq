@@ -15,5 +15,7 @@ Extract Inlined Constant Cache.eviction_init   => "Evict.eviction_init".
 Extract Inlined Constant Cache.eviction_update => "Evict.eviction_update".
 Extract Inlined Constant Cache.eviction_choose => "Evict.eviction_choose".
 
+Extract Inlined Constant Log.should_flushall => "Prelude.False".
+
 Cd "../codegen".
 Recursive Extraction Library AsyncFS.

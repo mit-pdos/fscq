@@ -3,6 +3,7 @@ Require Import Word WordAuto AsyncDisk Pred PredCrash GenSepN Array SepAuto.
 Require Import Rec Prog BasicProg Hoare RecArrayUtils Log.
 Require Import ProofIrrelevance.
 Require Import Inode BFile MemMatch.
+Require Import Errno.
 Import ListNotations EqNotations.
 
 Set Implicit Arguments.
@@ -274,17 +275,17 @@ Module FileRecArray (FRA : FileRASig).
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET: ^(ms', r) exists m', [[ MSAlloc ms' = MSAlloc ms ]] *
-         ([[ r = false ]] * 
+         ([[ isError r ]] * 
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
-          [[ r = true  ]] *
+          [[ r = OK tt  ]] *
           exists flist' f' ilist' frees',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist' frees') ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' (items ++ (updN block0 0 e)) ]]] *
           [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
-                              ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]])
-
+                              ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
+          [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] )
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} extend lxp bxp ixp inum e ms.
   Proof.
@@ -293,7 +294,7 @@ Module FileRecArray (FRA : FileRASig).
     safestep.
 
     or_l; safecancel.
-    or_r; norm; [ cancel | intuition; eauto ].
+    or_r. norm; [ cancel | intuition eauto ].
     simpl; pred_apply; norm; [ | intuition ].
     cancel; apply extend_ok_helper; auto.
     apply extend_item_valid; auto.
@@ -496,9 +497,9 @@ Module FileRecArray (FRA : FileRASig).
           [[[ RAData f ::: rep f items ]]] *
           [[[ items ::: Fe ]]]
     POST:hm' RET:^(ms', r) exists m', [[ MSAlloc ms' = MSAlloc ms ]] *
-         ([[ r = false ]] * 
+         ([[ isError r ]] * 
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
-          [[ r = true  ]] *
+          [[ r = OK tt ]] *
           exists flist' f' items' ilist' frees',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
           [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist' frees') ]]] *
@@ -508,7 +509,8 @@ Module FileRecArray (FRA : FileRASig).
                 arrayN (@ptsto _ addr_eq_dec _) (length items + 1) (repeat item0 (items_per_val - 1)) ]]] *
           [[ items' = items ++ (updN block0 0 e)  ]] *
           [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
-                              ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]])
+                              ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
+          [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]] )
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} extend_array lxp bxp ixp inum e ms.
   Proof.

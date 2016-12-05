@@ -1,16 +1,30 @@
+Install fusexmp from fuse-2.9.3/example.
+
+Build sv6's mailbench:
+
+  git clone git@g.csail.mit.edu:sv6 ~/proj/sv6
+  cd ~/proj/sv6
+  make HW=linux o.linux/bin/mail{bench,-deliver,-enqueue,-qman}
+
+Build fscq:
+
+  cd ../src
+  make
+
+Build xv6fs:
+
+  cd ../xv6
+  make
+
+Make sure /dev/sda3 is owned by the benchmark-running user
+(and not in use by anything else).
+
 How to run the benchmarks:
 
   ./make-git-repo.sh /tmp/fscq-bench
   ./run-bench.sh app-bench './app-bench.sh /tmp/fscq-bench /tmp/ft'
   ./run-bench.sh mailbench './mailbench.sh /home/nickolai/proj/sv6 /tmp/ft'
   ./run-bench.sh largefile './largefile-bench.sh /tmp/ft'
-
-Install fusexmp from fuse-2.9.3/example.
-
-Build sv6's mailbench:
-
-  cd ~/proj/sv6
-  make HW=linux o.linux/bin/mail{bench,-deliver,-enqueue,-qman}
 
 For crash testing:
 

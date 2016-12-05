@@ -140,7 +140,7 @@ Section MEMMATCH.
   Lemma mem_atrans_indomain : forall a1 x,
     indomain a1 m1 ->
     m1 a1 = x -> m2 (atrans a1) = x.
-  Proof.
+  Proof using MTrans AP1_ok.
     intros.
     apply AP1_ok in H.
     rewrite <- (MTrans H); auto.
@@ -149,7 +149,7 @@ Section MEMMATCH.
   Lemma mem_atrans_mem_except : forall a (ap : AP1 a),
     cond_bijective atrans AP1 AP2 ->
     mem_atrans atrans (mem_except m1 a) (mem_except m2 (atrans a)) AP1.
-  Proof.
+  Proof using MTrans AP1_ok.
     intros; unfold mem_atrans, mem_except; intro x.
     destruct (AEQ1 x a); destruct (AEQ2 (atrans x) (atrans a));
       subst; auto; try tauto.
@@ -165,7 +165,7 @@ Section MEMMATCH.
 
     Lemma mem_ainv_any : forall a (ap : AP2 a) x,
       m1 (ainv a) = x -> m2 a = x.
-    Proof.
+    Proof using MTrans HInv.
       intros.
       replace a with (atrans (ainv a)) by (apply HInv; auto).
       assert (AP1 (ainv a)) as Hx by (apply HInv; auto).
@@ -175,7 +175,7 @@ Section MEMMATCH.
     Lemma mem_atrans_inv_ptsto : forall a (ap : AP2 a) F v,
       (F * (ainv a) |-> v)%pred m1
       -> (any * a |-> v)%pred m2.
-    Proof.
+    Proof using MTrans HInv.
       intros.
       apply any_sep_star_ptsto.
       eapply mem_ainv_any; eauto.
@@ -184,14 +184,14 @@ Section MEMMATCH.
 
     Lemma mem_atrans_inv_notindomain : forall a (ap : AP2 a),
       notindomain (ainv a) m1 -> notindomain a m2.
-    Proof.
+    Proof using MTrans HInv.
       unfold notindomain; intros.
       eapply mem_ainv_any; eauto.
     Qed.
 
     Lemma mem_atrans_inv_indomain : forall a (ap : AP2 a),
       indomain (ainv a) m1 -> indomain a m2.
-    Proof.
+    Proof using MTrans HInv.
       unfold indomain; intros.
       destruct H; eexists.
       eapply mem_ainv_any; eauto.
@@ -199,7 +199,7 @@ Section MEMMATCH.
 
     Lemma mem_atrans_emp :
       emp m1 -> emp m2.
-    Proof.
+    Proof using MTrans HInv AP2_ok AP2_dec.
       unfold emp; intros.
       destruct (AP2_dec a).
 
@@ -216,7 +216,7 @@ Section MEMMATCH.
 
     Lemma mem_ainv_mem_except : forall a (ap : AP2 a),
       mem_atrans atrans (mem_except m1 (ainv a)) (mem_except m2 a) AP1.
-    Proof.
+    Proof using MTrans HInv AP1_ok.
       intros; unfold mem_atrans, mem_except; intro x.
       destruct (AEQ1 x (ainv a)); destruct (AEQ2 (atrans x) a);
         try subst; auto; try tauto.
@@ -231,7 +231,7 @@ Section MEMMATCH.
 
     Lemma mem_ainv_mem_upd : forall a v (ap : AP2 a),
       mem_atrans atrans (Mem.upd m1 (ainv a) v) (Mem.upd m2 a v) AP1.
-    Proof.
+    Proof using MTrans HInv.
       intros; unfold mem_atrans, Mem.upd; intro x.
       destruct (AEQ1 x (ainv a)); destruct (AEQ2 (atrans x) a); auto.
       contradict n; subst.

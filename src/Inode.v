@@ -24,6 +24,7 @@ Require Import FSLayout.
 Require Import AsyncDisk.
 Require Import BlockPtr.
 Require Import GenSepAuto.
+Require Import Errno.
 
 Import ListNotations.
 
@@ -47,12 +48,14 @@ Module INODE.
     ("unused", Rec.WordF 24)          (* reserved (permission bits) *)
   ]).
 
-  Definition NDirect := 9.
+  Definition NDirect := 7.
 
   Definition irectype : Rec.type := Rec.RecF ([
     ("len", Rec.WordF addrlen);     (* number of blocks *)
     ("attrs", iattrtype);           (* file attributes *)
     ("indptr", Rec.WordF addrlen);  (* indirect block pointer *)
+    ("dindptr", Rec.WordF addrlen); (* doubly-indirect block pointer *)
+    ("tindptr", Rec.WordF addrlen); (* triply-indirect block pointer *)
     ("blocks", Rec.ArrayF (Rec.WordF addrlen) NDirect)]).
 
 
@@ -93,15 +96,21 @@ Module INODE.
       compute; omega.
     Qed.
 
-    Definition IRLen    (x : irec) := Eval compute_rec in # ( x :-> "len").
-    Definition IRIndPtr (x : irec) := Eval compute_rec in # ( x :-> "indptr").
-    Definition IRBlocks (x : irec) := Eval compute_rec in ( x :-> "blocks").
-    Definition IRAttrs  (x : irec) := Eval compute_rec in ( x :-> "attrs").
+    Definition IRLen     (x : irec) := Eval compute_rec in # ( x :-> "len").
+    Definition IRIndPtr  (x : irec) := Eval compute_rec in # ( x :-> "indptr").
+    Definition IRDindPtr (x : irec) := Eval compute_rec in # ( x :-> "dindptr").
+    Definition IRTindPtr (x : irec) := Eval compute_rec in # ( x :-> "tindptr").
+    Definition IRBlocks  (x : irec) := Eval compute_rec in ( x :-> "blocks").
+    Definition IRAttrs   (x : irec) := Eval compute_rec in ( x :-> "attrs").
 
     Definition upd_len (x : irec) v  := Eval compute_rec in (x :=> "len" := $ v).
 
-    Definition upd_irec (x : irec) len ibptr dbns := Eval compute_rec in
-      (x :=> "len" := $ len :=> "indptr" := $ ibptr :=> "blocks" := dbns).
+    Definition upd_irec (x : irec) len ibptr dibptr tibptr dbns := Eval compute_rec in
+      (x :=> "len" := $ len
+         :=> "indptr" := $ ibptr
+         :=> "dindptr" := $ dibptr
+         :=> "tindptr" := $ tibptr
+         :=> "blocks" := dbns).
 
     (* getter/setter lemmas *)
     Fact upd_len_get_len : forall ir n,
@@ -114,39 +123,90 @@ Module INODE.
     Fact upd_len_get_ind : forall ir n, IRIndPtr (upd_len ir n) = IRIndPtr ir.
     Proof. intros; simpl; auto. Qed.
 
+    Fact upd_len_get_dind : forall ir n, IRDindPtr (upd_len ir n) = IRDindPtr ir.
+    Proof. intros; simpl; auto. Qed.
+
+    Fact upd_len_get_tind : forall ir n, IRTindPtr (upd_len ir n) = IRTindPtr ir.
+    Proof. intros; simpl; auto. Qed.
+
     Fact upd_len_get_blk : forall ir n, IRBlocks (upd_len ir n) = IRBlocks ir.
     Proof. intros; simpl; auto. Qed.
 
     Fact upd_len_get_iattr : forall ir n, IRAttrs (upd_len ir n) = IRAttrs ir.
     Proof. intros; simpl; auto. Qed.
 
-    Fact upd_irec_get_len : forall ir len ibptr dbns,
-      goodSize addrlen len -> IRLen (upd_irec ir len ibptr dbns) = len.
+    Fact upd_irec_get_len : forall ir len ibptr dibptr tibptr dbns,
+      goodSize addrlen len -> IRLen (upd_irec ir len ibptr dibptr tibptr dbns) = len.
     Proof.
       intros; cbn.
       rewrite wordToNat_natToWord_idempotent'; auto.
     Qed.
 
-    Fact upd_irec_get_ind : forall ir len ibptr dbns,
-      goodSize addrlen ibptr -> IRIndPtr (upd_irec ir len ibptr dbns) = ibptr.
+    Fact upd_irec_get_ind : forall ir len ibptr dibptr tibptr dbns,
+      goodSize addrlen ibptr -> IRIndPtr (upd_irec ir len ibptr dibptr tibptr dbns) = ibptr.
     Proof.
       intros; cbn.
       rewrite wordToNat_natToWord_idempotent'; auto.
     Qed.
 
-    Fact upd_irec_get_blk : forall ir len ibptr dbns, 
-      IRBlocks (upd_irec ir len ibptr dbns) = dbns.
+    Fact upd_irec_get_dind : forall ir len ibptr dibptr tibptr dbns,
+      goodSize addrlen dibptr -> IRDindPtr (upd_irec ir len ibptr dibptr tibptr dbns) = dibptr.
+    Proof.
+      intros; cbn.
+      rewrite wordToNat_natToWord_idempotent'; auto.
+    Qed.
+
+    Fact upd_irec_get_tind : forall ir len ibptr dibptr tibptr dbns,
+      goodSize addrlen tibptr -> IRTindPtr (upd_irec ir len ibptr dibptr tibptr dbns) = tibptr.
+    Proof.
+      intros; cbn.
+      rewrite wordToNat_natToWord_idempotent'; auto.
+    Qed.
+
+    Fact upd_irec_get_blk : forall ir len ibptr dibptr tibptr dbns,
+      IRBlocks (upd_irec ir len ibptr dibptr tibptr dbns) = dbns.
     Proof. intros; simpl; auto. Qed.
 
-    Fact upd_irec_get_iattr : forall ir len ibptr dbns, 
-      IRAttrs (upd_irec ir len ibptr dbns) = IRAttrs ir.
+    Fact upd_irec_get_iattr : forall ir len ibptr dibptr tibptr dbns,
+      IRAttrs (upd_irec ir len ibptr dibptr tibptr dbns) = IRAttrs ir.
     Proof. intros; simpl; auto. Qed.
+
+    Fact upd_irec_eq_upd_len : forall ir len, goodSize addrlen len ->
+      upd_len ir len = upd_irec ir len (IRIndPtr ir) (IRDindPtr ir) (IRTindPtr ir) (IRBlocks ir).
+    Proof.
+      intros; simpl. unfold upd_len.
+      unfold upd_irec, IRIndPtr, IRDindPtr, IRTindPtr, IRBlocks.
+      repeat rewrite natToWord_wordToNat. simpl.
+      repeat match goal with [|- context [fst ?x] ] => destruct x; simpl end.
+      reflexivity.
+    Qed.
+
+    Fact get_len_goodSize : forall ir, goodSize addrlen (IRLen ir).
+    Proof.
+      intros. apply wordToNat_good.
+    Qed.
+
+    Fact get_ind_goodSize : forall ir, goodSize addrlen (IRIndPtr ir).
+    Proof.
+      intros. apply wordToNat_good.
+    Qed.
+
+    Fact get_dind_goodSize : forall ir, goodSize addrlen (IRDindPtr ir).
+    Proof.
+      intros. apply wordToNat_good.
+    Qed.
+
+    Fact get_tind_goodSize : forall ir, goodSize addrlen (IRTindPtr ir).
+    Proof.
+      intros. apply wordToNat_good.
+    Qed.
 
   End BPtrSig.
 
   Module Ind := BlockPtr BPtrSig.
 
-  Definition NBlocks := NDirect + Ind.IndSig.items_per_val.
+  Definition NBlocks := let NIndirect := Ind.IndSig.items_per_val in
+    NDirect + NIndirect + NIndirect ^ 2 + NIndirect ^ 3.
 
   Definition items_per_val := IRecSig.items_per_val.
 
@@ -187,7 +247,7 @@ Module INODE.
   | UDev   (v : word 64)
   .
 
-  Definition iattr_upd (e : iattr) (a : iattrupd_arg) := Eval compute_rec in
+  Definition iattr_upd (e : iattr) (a : iattrupd_arg) : iattr := Eval compute_rec in
   match a with
   | UBytes v => (e :=> "bytes" := v)
   | UMTime v => (e :=> "mtime" := v)
@@ -221,10 +281,10 @@ Module INODE.
     let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
     let^ (ms, r) <- Ind.grow lxp bxp ir ($ bn) ms;
     match r with
-    | None => Ret ^(ms, false)
-    | Some ir' =>
+    | Err e => Ret ^(ms, Err e)
+    | OK ir' =>
         ms <- IRec.put_array lxp xp inum ir' ms;
-        Ret ^(ms, true)
+        Ret ^(ms, OK tt)
     end.
 
 
@@ -251,6 +311,18 @@ Module INODE.
 
 
   (************** Basic lemmas *)
+
+  Lemma rep_length_pimpl : forall bxp xp ilist,
+    rep bxp xp ilist =p=> rep bxp xp ilist * [[ length ilist = ((IRecSig.RALen xp) * IRecSig.items_per_val)%nat ]].
+  Proof.
+    unfold rep; intros.
+    norml; unfold stars; simpl.
+    rewrite IRec.items_length_ok_pimpl.
+    rewrite listmatch_length_pimpl.
+    cancel.
+    rewrite H5.
+    eauto.
+  Qed.
 
   Lemma irec_well_formed : forall Fm xp l i inum m,
     (Fm * IRec.rep xp l)%pred m
@@ -279,10 +351,10 @@ Module INODE.
     eapply irec_well_formed; eauto.
   Qed.
 
-  Lemma irec_blocks_length': forall m xp l inum Fm d d0 d1 d2 u,
+  Lemma irec_blocks_length': forall m xp l inum Fm len attrs ind dind tind blks u,
     (Fm * IRec.rep xp l)%pred m ->
-    (d, (d0, (d1, (d2, u)))) = selN l inum irec0 ->
-    length d2 = NDirect.
+    (len, (attrs, (ind, (dind, (tind, (blks, u)))))) = selN l inum irec0 ->
+    length blks = NDirect.
   Proof.
     intros.
     eapply IRec.item_wellforemd with (i := inum) in H.
@@ -294,8 +366,12 @@ Module INODE.
     BmapNBlocks bxp = BmapNBlocks bxp' ->
     rep bxp xp ilist <=p=> rep bxp' xp ilist.
   Proof.
-    unfold rep, inode_match, Ind.rep, Ind.indrep, BALLOC.bn_valid; intros.
-    split; rewrite H; reflexivity.
+    intros. unfold rep.
+    split; cancel; apply listmatch_piff_replace.
+    all : intros; unfold inode_match, BALLOC.bn_valid.
+    all : rewrite H; split; cancel.
+    all : unfold Ind.rep; cancel; eauto.
+    all : apply Ind.indrep_bxp_switch; auto.
   Qed.
 
   (**************  Automation *)
@@ -357,9 +433,48 @@ Module INODE.
 
   Arguments Rec.well_formed : simpl never.
 
+  Lemma inode_match_init_ok : forall bxp n,
+    emp =p=> listmatch (inode_match bxp) (repeat inode0 n) (repeat IRec.Defs.item0 n).
+  Proof.
+    induction n; simpl; intros.
+    unfold listmatch; cancel.
+    rewrite IHn.
+    unfold listmatch; cancel.
+    unfold inode_match.
+    rewrite Ind.rep_piff_direct by (cbn; omega).
+    rewrite sep_star_assoc.
+    apply sep_star_lift_r'.
+    apply pimpl_and_split.
+    unfold pimpl, lift; intros; auto.
+    unfold Ind.rep_direct; cancel.
+    rewrite Ind.indrep_0 by (compute; auto). cancel.
+    apply Forall_nil.
+    repeat constructor.
+    eapply list_same_repeat.
+  Qed.
 
 
   (********************** SPECs *)
+
+  Theorem init_ok : forall lxp bxp xp ms,
+    {< F Fm m0 m l,
+    PRE:hm 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (IXStart xp) l) ]]] *
+           [[ length l = (IXLen xp) /\ (IXStart xp) <> 0 ]]
+    POST:hm' RET:ms exists m',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           [[[ m' ::: (Fm * rep bxp xp (repeat inode0 ((IXLen xp) * IRecSig.items_per_val))) ]]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} init lxp xp ms.
+  Proof.
+    unfold init, rep.
+    step.
+    cbv; auto.
+    step.
+    apply inode_match_init_ok.
+  Qed.
+
 
   Theorem getlen_ok : forall lxp bxp xp inum ms,
     {< F Fm Fi m0 m ilist ino,
@@ -551,8 +666,10 @@ Module INODE.
     extract; seprewrite.
     step.
     step.
-    subst; unfold BPtrSig.upd_len, BPtrSig.IRLen.
-    irec_wf.
+    subst; unfold BPtrSig.upd_irec, BPtrSig.IRLen. simpl.
+    smash_rec_well_formed.
+    unfold Ind.rep in *. rewrite BPtrSig.upd_irec_get_blk in *.
+    destruct_lifts. auto.
     sepauto.
 
     safestep.
@@ -561,6 +678,10 @@ Module INODE.
     cancel.
     unfold inode_match, BPtrSig.upd_len, BPtrSig.IRLen; simpl.
     2: eauto.
+    cancel. unfold cuttail.
+    match goal with [H : context [Ind.rep _ ?x ?l] |- context [length ?l] ] =>
+      unfold Ind.rep in H; destruct_lift H; substl (length l)
+    end.
     cancel.
     apply forall_firstn; auto.
     cancel; auto.
@@ -581,9 +702,7 @@ Module INODE.
     apply direct_blocks_length in Hx.
     setoid_rewrite <- H0 in Hx.
     cbv in Hx; cbv in a.
-    cbv.
-    destruct a; repeat destruct p. destruct p0; destruct p.
-    intuition.
+    smash_rec_well_formed.
   Qed.
 
   Theorem grow_ok : forall lxp bxp xp inum bn ms,
@@ -595,8 +714,9 @@ Module INODE.
            [[[ m ::: (Fm * rep bxp xp ilist * BALLOC.rep bxp freelist) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
     POST:hm' RET:^(ms, r)
-           [[ r = false ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' \/
-           [[ r = true ]] * exists m' ilist' ino' freelist',
+           exists m',
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' \/
+           [[ r = OK tt ]] * exists ilist' ino' freelist',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOC.rep bxp freelist') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
@@ -630,7 +750,7 @@ Module INODE.
     Unshelve. all: eauto; exact emp.
   Qed.
 
-
+  Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_}} Bind (getlen _ _ _ _) _) => apply getlen_ok : prog.
   Hint Extern 1 ({{_}} Bind (getattrs _ _ _ _) _) => apply getattrs_ok : prog.
   Hint Extern 1 ({{_}} Bind (setattrs _ _ _ _ _) _) => apply setattrs_ok : prog.

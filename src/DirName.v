@@ -17,6 +17,7 @@ Require Import MemMatch.
 Require Import FunctionalExtensionality.
 Require Import ListUtils.
 Require Import AsyncDisk.
+Require Import Errno.
 Require List.
 
 Set Implicit Arguments.
@@ -505,7 +506,7 @@ Module SDIR.
       let^ (ms, r) <- DIR.unlink lxp ixp dnum (sname2wname name) ms;
       Ret ^(ms, r)
     } else {
-      Ret ^(ms, false)
+      Ret ^(ms, Err ENAMETOOLONG)
     }.
 
   Definition link lxp bxp ixp dnum name inum isdir ms :=
@@ -513,7 +514,7 @@ Module SDIR.
       let^ (ms, r) <- DIR.link lxp bxp ixp dnum (sname2wname name) inum isdir ms;
       Ret ^(ms, r)
     } else {
-      Ret ^(ms, false)
+      Ret ^(ms, Err ENAMETOOLONG)
     }.
 
   Definition readdir_trans (di : DIR.readent) :=
@@ -660,7 +661,7 @@ Module SDIR.
              rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees *
              [[ dmap' = mem_except dmap name ]] *
              [[ notindomain name dmap' ]] *
-             [[ r = true -> indomain name dmap ]] *
+             [[ r = OK tt -> indomain name dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} unlink lxp ixp dnum name ms.
@@ -690,9 +691,9 @@ Module SDIR.
              [[ goodSize addrlen inum ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
-           (([[ r = false ]] *
+           (([[ isError r ]] *
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
-        \/  ([[ r = true ]] *
+        \/  ([[ r = OK tt ]] *
              exists dmap' Fd ilist' frees',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
              rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' *
@@ -700,7 +701,8 @@ Module SDIR.
              [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (Fd dmap /\ notindomain name dmap) ]] *
              [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
-                                 ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] ))
+                                 ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
+             [[ BFILE.treeseq_ilist_safe dnum ilist ilist' ]] ))
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} link lxp bxp ixp dnum name inum isdir ms.
   Proof.

@@ -1,12 +1,12 @@
 Require Import Prog.
 Require Import Word AsyncDisk.
 Require Import Mem Pred PredCrash.
-Require Import Automation.
 
 Require Import FunctionalExtensionality.
 Require Import List.
 Require Import Arith.PeanoNat.
 Require Import RelationClasses.
+Require Import ListUtils.
 
 Set Implicit Arguments.
 
@@ -14,24 +14,27 @@ Arguments possible_sync {AT AEQ} _ _.
 Hint Resolve possible_sync_refl.
 Hint Resolve possible_sync_trans.
 
+Ltac inv_opt :=
+  repeat match goal with
+         | [ H: Some _ = Some _ |- _ ] =>
+           inversion H; subst; clear H
+         | [ H: Some _ = None |- _ ] =>
+           solve [ inversion H ]
+         | [ H: None = Some _ |- _ ] =>
+           solve [ inversion H ]
+         end.
+
+Ltac sigT_eq :=
+  match goal with
+  | [ H: @eq (sigT _) _ _ |- _ ] =>
+    apply ProofIrrelevance.ProofIrrelevanceTheory.EqdepTheory.inj_pair2 in H;
+    subst
+  end.
+
 Section StepPreSync.
 Arguments possible_sync {AT AEQ} _ _.
   Hint Constructors step.
   Hint Resolve ListUtils.incl_cons2.
-
-  Theorem possible_sync_after_sync : forall A AEQ (m m': @mem A AEQ _),
-      possible_sync (sync_mem m) m' ->
-      m' = sync_mem m.
-  Proof.
-    unfold possible_sync, sync_mem; intros.
-    extensionality a.
-    specialize (H a).
-    destruct matches in *; intuition eauto;
-      repeat deex; intuition idtac;
-        try congruence.
-    inversion H; subst; eauto.
-    apply ListUtils.incl_in_nil in H2; subst; eauto.
-  Qed.
 
   Lemma possible_sync_respects_upd : forall A AEQ (m m': @mem A AEQ _)
                                        a v l l',
@@ -56,11 +59,13 @@ Arguments possible_sync {AT AEQ} _ _.
   Proof.
     unfold possible_sync, sync_mem; intros.
     specialize (H a).
-    destruct matches; subst; intuition eauto;
+    destruct (m a) as [ [] | ];
+    destruct (m' a) as [ [] | ];
+      subst; intuition eauto;
       try congruence;
       repeat deex;
-      right;
-      cleanup.
+      inv_opt;
+      right.
     do 3 eexists; intuition eauto.
   Qed.
 
@@ -76,25 +81,24 @@ Arguments possible_sync {AT AEQ} _ _.
         possible_sync (AEQ:=Nat.eq_dec) m'2 m'''.
   Proof.
     intros.
-    inversion H0; subst; repeat sigT_eq; cleanup.
+    inversion H0; subst; repeat sigT_eq; eauto.
     - exists m; intuition eauto.
       specialize (H a); intuition auto; repeat deex; try congruence.
       assert (v = v0) by congruence; subst.
       eauto.
     - pose proof (H a); intuition auto; try congruence.
       repeat deex.
-      cleanup.
-      exists (upd m a (v0, v::l)).
-      intuition eauto.
-    - exists (sync_mem m).
+      assert (v = v1) by congruence.
+      assert (x = l') by congruence.
+      subst.
+      exists (upd m a (v0, v1::l)).
       intuition eauto.
     - pose proof (H a); intuition auto; try congruence.
       repeat deex.
-      cleanup.
+      eauto.
       exists (upd m a vs').
       destruct vs'.
       intuition eauto.
-    - exists m; intuition eauto.
   Qed.
 End StepPreSync.
 
@@ -181,11 +185,9 @@ Theorem outcome_obs_le_trans : forall T (out out' out'': outcome T),
     outcome_obs_le out' out'' ->
     outcome_obs_le out out''.
 Proof.
-  destruct out, out'; intros; simpl in *; repeat deex; try congruence; eauto;
-    match goal with
-    | [ H: @eq (outcome _) _ _ |- _ ] =>
-      inversion H; subst; eauto
-    end.
+  destruct out, out'; intros; simpl in *; repeat deex; try congruence; eauto.
+  inversion H0; subst; eauto.
+  inversion H0; subst; eauto.
 Qed.
 
 Instance outcome_obs_le_preorder {T} : PreOrder (outcome_obs_le (T:=T)).
@@ -272,7 +274,7 @@ Proof.
     eexists; intuition eauto.
   - specialize (IHR1 _ H1); deex.
     simpl in *; deex.
-    specialize (IHR2 _ ltac:(eauto)); deex.
+    specialize (IHR2 _ H5); deex.
     eauto 10.
   - specialize (IHR _ H0); deex.
     simpl in *; subst.
@@ -294,18 +296,18 @@ Proof.
     simpl.
     eauto.
   - destruct out'0; simpl in *; repeat deex; try congruence.
-    inversion H4; subst.
+    inversion H5; subst.
     (* m ---> m0, m0 ~~> d', d' ---> out' <= out *)
-    eapply exec_eq_sync_later in H3; eauto; deex.
+    eapply exec_eq_sync_later in H4; eauto; deex.
     simpl in *; deex.
     assert (possible_sync (AEQ:=addr_eq_dec) d d') by eauto.
     eapply exec_eq_sync_later in H1; eauto; deex.
-    apply outcome_obs_ge_ok in H8.
+    apply outcome_obs_ge_ok in H9.
     eauto.
   - destruct out'; simpl in *; repeat deex; try congruence.
     eauto.
   - destruct out'; simpl in *; repeat deex; try congruence.
-    inversion H1; subst.
+    inversion H2; subst.
     eexists; intuition eauto.
     simpl; eauto.
 Qed.
@@ -400,7 +402,10 @@ Proof.
              apply routcome_disk_R_conv_ok in H; progress simpl in H
            | [ H: possible_sync ?m ?m',
                   H': possible_crash ?m' ?m'' |- _ ] =>
-             learn that (possible_crash_possible_sync_trans H H')
+             lazymatch goal with
+             | [ H: possible_crash m m'' |- _ ] => fail
+             | _ => pose proof possible_crash_possible_sync_trans H H'
+             end
            | _ => progress subst
            | _ => deex
            end;
@@ -427,7 +432,7 @@ Module PhysicalSemantics.
   Theorem flush_disk_refl : forall d, flush_disk d d.
   Proof.
     unfold flush_disk; intros.
-    destruct matches.
+    destruct (d a) as [ [? ?] | ]; auto.
     exists (length l).
     rewrite firstn_all.
     eauto.
@@ -441,12 +446,12 @@ Module PhysicalSemantics.
     unfold flush_disk; intros.
     specialize (H a).
     specialize (H0 a).
-    destruct matches in *; repeat deex; try congruence.
-    rewrite H3 in H.
-    inversion H.
-    subst.
-    replace (d'' a).
-    rewrite firstn_firstn.
+    destruct (d a) as [ [? ?] | ];
+      destruct (d' a) as [ [? ?] | ];
+      repeat deex;
+      inv_opt;
+      try congruence.
+    rewrite firstn_firstn in H0.
     eauto.
   Qed.
 
@@ -511,7 +516,7 @@ Module PhysicalSemantics.
     extensionality a.
     specialize (H a).
     specialize (H0 a).
-    destruct matches in *; eauto.
+    destruct (d a) as [ [? ?] | ]; congruence.
   Qed.
 
   Definition outcome_disk_R (R: rawdisk -> rawdisk -> Prop) T (out out':outcome T) :=
@@ -538,7 +543,7 @@ Module PhysicalSemantics.
   Proof.
     unfold flush_disk; intros.
     specialize (H0 a).
-    simpl_match; eauto.
+    rewrite H in H0; eauto.
   Qed.
 
   Theorem outcome_obs_le_to_R : forall T (out out': outcome T),
@@ -546,7 +551,7 @@ Module PhysicalSemantics.
       outcome_disk_R possible_sync out out'.
   Proof.
     unfold outcome_obs_le, outcome_disk_R; split; intros;
-      destruct matches in *; eauto.
+      destruct out; eauto.
   Qed.
 
   (* We want to prove that using the non-deterministic crash (our actual
@@ -563,8 +568,8 @@ Module PhysicalSemantics.
       Exec.R flush_disk d hm p out ->
       exec d hm p out.
   Proof.
-    induction 1; simpl; intros; destruct_ands;
-      repeat deex; intuition eauto 10.
+    induction 1; simpl; intros;
+      intuition (repeat deex; eauto 10).
   Qed.
 
   Corollary pexec_to_exec : forall T (p: prog T) d hm out,
@@ -592,10 +597,10 @@ Module PhysicalSemantics.
   Proof.
     unfold outcome_disk_R, outcome_disk_R_conv; split; intros;
       destruct out, out'; repeat deex; try congruence.
-    inversion H; eauto.
-    inversion H; eauto.
-    inversion H; eauto.
-    inversion H; eauto.
+    inversion H0; eauto.
+    inversion H0; eauto.
+    inversion H0; eauto.
+    inversion H0; eauto.
   Qed.
 
 
@@ -616,11 +621,14 @@ Module PhysicalSemantics.
     unfold flush_disk, discard_buffers, possible_crash; intros.
     specialize (H a).
     specialize (H0 a).
-    destruct matches in *; repeat deex; try congruence.
+    destruct (d a) as [ [? ?] | ];
+      destruct (d' a) as [ [? ?] | ];
+      repeat deex;
+      inv_opt;
+      try congruence;
+      eauto.
     right.
-    rewrite H1 in H.
-    inversion H; subst.
-    repeat eexists; intuition eauto.
+    repeat eexists; eauto.
     apply diskval_firstn_in_list.
   Qed.
 
@@ -641,7 +649,10 @@ Module PhysicalSemantics.
                apply routcome_disk_R_conv_ok in H; progress simpl in H
              | [ H: flush_disk ?d ?d',
                     H' : discard_buffers ?d' ?d'' |- _ ] =>
-               learn that (discard_flush_is_crash H H')
+               lazymatch goal with
+               | [ H: possible_crash d d'' |- _ ] => fail
+               | _ => pose proof (discard_flush_is_crash H H')
+               end
              | _ => progress subst
              | _ => deex
              end;

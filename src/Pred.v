@@ -288,6 +288,20 @@ Proof.
   pose proof (H2 v0); firstorder.
 Qed.
 
+
+Lemma mem_disjoint_insert_l : forall (m1 m2 : @mem AT AEQ V) a v,
+  mem_disjoint m1 m2 ->
+  m2 a = None ->
+  mem_disjoint (insert m1 a v) m2.
+Proof.
+  unfold insert, mem_disjoint; intros.
+  contradict H; repeat deex.
+  destruct (AEQ a0 a) in H1; subst; try congruence.
+  destruct (m1 a) eqn:?;
+  exists a0; do 2 eexists; eauto.
+Qed.
+
+
 Theorem mem_union_comm:
   forall (m1 m2 : @mem AT AEQ V),
   mem_disjoint m1 m2 ->
@@ -345,6 +359,83 @@ Theorem mem_union_assoc:
 Proof.
   unfold mem_union, mem_disjoint; intros; apply functional_extensionality; intuition.
   destruct (m1 x); auto.
+Qed.
+
+Lemma mem_union_sel_none : forall (m1 m2 : @mem AT AEQ V) a,
+  m1 a = None ->
+  m2 a = None ->
+  mem_union m1 m2 a = None.
+Proof.
+  intros.
+  unfold mem_union.
+  destruct (m1 a); eauto.
+Qed.
+
+Lemma mem_union_none_sel : forall (m1 m2 : @mem AT AEQ V) a,
+  mem_union m1 m2 a = None ->
+  m1 a = None /\  m2 a = None.
+Proof.
+  unfold mem_union; intros.
+  destruct (m1 a) eqn:?; destruct (m2 a) eqn:?; intuition.
+  congruence.
+Qed.
+
+Lemma mem_union_sel_l : forall (m1 m2 : @mem AT AEQ V) a,
+  mem_disjoint m1 m2 ->
+  m2 a = None ->
+  mem_union m1 m2 a = m1 a.
+Proof.
+  intros.
+  unfold mem_union.
+  destruct (m1 a); eauto.
+Qed.
+
+Lemma mem_union_sel_r : forall (m1 m2 : @mem AT AEQ V) a,
+  mem_disjoint m1 m2 ->
+  m1 a = None ->
+  mem_union m1 m2 a = m2 a.
+Proof.
+  intros.
+  unfold mem_union.
+  destruct (m1 a); eauto.
+  congruence.
+Qed.
+
+Lemma mem_union_insert_comm : forall (m1 m2 : @mem AT AEQ V) a v,
+  m1 a = None ->
+  m2 a = None ->
+  insert (mem_union m1 m2) a v = mem_union (insert m1 a v) m2.
+Proof.
+  unfold mem_union; intros.
+  apply functional_extensionality; intros.
+  destruct (AEQ a x); subst.
+  repeat rewrite insert_eq; auto.
+  rewrite H; auto.
+  repeat rewrite insert_ne; auto.
+Qed.
+
+Lemma mem_disjoint_mem_union_split_l : forall (m1 m2 m3 : @mem AT AEQ V),
+  mem_disjoint m1 m3 ->
+  mem_disjoint m2 m3 ->
+  mem_disjoint (mem_union m1 m2) m3.
+Proof.
+  unfold mem_disjoint, mem_union; intuition repeat deex.
+  destruct (m1 a) eqn:?.
+  - inversion H2; subst.
+    apply H; do 3 eexists; intuition eauto.
+  - apply H0; do 3 eexists; intuition eauto.
+Qed.
+
+Lemma mem_disjoint_mem_union_split_r : forall (m1 m2 m3 : @mem AT AEQ V),
+  mem_disjoint m1 m2 ->
+  mem_disjoint m1 m3 ->
+  mem_disjoint m1 (mem_union m2 m3).
+Proof.
+  intros.
+  apply mem_disjoint_comm.
+  apply mem_disjoint_mem_union_split_l.
+  apply mem_disjoint_comm; auto.
+  apply mem_disjoint_comm; auto.
 Qed.
 
 Theorem sep_star_comm1:
@@ -785,6 +876,43 @@ Proof.
     congruence.
 Qed.
 
+Lemma ptsto_exact_domain : forall a v,
+  exact_domain (@ptsto AT AEQ V a v).
+Proof.
+  unfold exact_domain, ptsto; intuition.
+  destruct (AEQ a a0); subst; intuition; congruence.
+  destruct (AEQ a a0); subst; intuition; congruence.
+Qed.
+
+Lemma ptsto_exis_exact_domain : forall a,
+  @exact_domain AT AEQ V (a |->?).
+Proof.
+  unfold exact_domain, ptsto; intuition.
+  destruct H as [? [? ?] ].
+  destruct H0 as [? [? ?] ].
+  destruct (AEQ a a0); subst; intuition; congruence.
+  destruct H as [? [? ?] ].
+  destruct H0 as [? [? ?] ].
+  destruct (AEQ a a0); subst; intuition; congruence.
+Qed.
+
+Lemma ptsto_mem_is : forall a v,
+  @ptsto AT AEQ V a v (fun x => if (AEQ x a) then Some v else None).
+Proof.
+  unfold ptsto; intros; split; intros.
+  destruct (AEQ a a); congruence.
+  destruct (AEQ a' a); congruence.
+Qed.
+
+Lemma ptsto_exis_mem_is : forall a v,
+  (exists v, @ptsto AT AEQ V a v)%pred (fun x => if (AEQ x a) then Some v else None).
+Proof.
+  unfold ptsto, exis; intros.
+  exists v; split; intros.
+  destruct (AEQ a a); congruence.
+  destruct (AEQ a' a); congruence.
+Qed.
+
 Lemma ptsto_valid:
   forall a v F (m : @mem AT AEQ V),
   (a |-> v * F)%pred m
@@ -807,6 +935,13 @@ Proof.
   rewrite mem_disjoint_comm; eauto.
 Qed.
 
+Lemma ptsto_ne : forall (m : @mem AT AEQ V) a a' v,
+  (a |-> v)%pred m ->
+  a <> a' ->
+  m a' = None.
+Proof.
+  unfold ptsto; intuition.
+Qed.
 
 Lemma ptsto_upd_disjoint: forall V (F : @pred AT AEQ V) a v m,
   F m -> m a = None
@@ -848,7 +983,6 @@ Proof.
     destruct (AEQ a a); pred.
     destruct (AEQ a' a); pred.
 Qed.
-
 
 Lemma ptsto_upd:
   forall a v v0 F (m : @mem AT AEQ V),
@@ -1409,6 +1543,14 @@ Proof.
   destruct (AEQ x a); auto.
 Qed.
 
+Lemma mem_except_insert: forall (m : @mem AT AEQ V) a v,
+  mem_except (insert m a v) a = mem_except m a.
+Proof.
+  unfold mem_except, insert.
+  intros; apply functional_extensionality; intros.
+  destruct (AEQ x a); eauto.
+Qed.
+
 Theorem mem_except_none : forall (m : @mem AT AEQ V) a,
   m a = None ->
   mem_except m a = m.
@@ -1646,8 +1788,26 @@ Proof.
     firstorder.
     specialize (H1 x).
     specialize (H2 x).
-    destruct (m1 x); destruct (m1' x); destruct (m2 x); destruct (m2' x);
-      intuition eauto; try solve [ exfalso; eauto ].
+    case_eq (m1 x); case_eq (m1' x); case_eq (m2 x); case_eq (m2' x);
+      intuition eauto; repeat simpl_match;
+        try congruence; try solve [ exfalso; eauto ].
+Qed.
+
+Theorem exact_domain_disjoint_union' : forall (p : @pred AT AEQ V) m1 m2 m1' m2',
+  exact_domain p ->
+  mem_union m1 m2 = mem_union m1' m2' ->
+  mem_disjoint m1 m2 ->
+  mem_disjoint m1' m2' ->
+  p m2 ->
+  p m2' ->
+  m1 = m1' /\ m2 = m2'.
+Proof.
+  intros.
+  apply and_comm.
+  apply mem_disjoint_comm in H1.
+  apply mem_disjoint_comm in H2.
+  eapply exact_domain_disjoint_union; eauto.
+  setoid_rewrite mem_union_comm at 1 2; auto.
 Qed.
 
 Theorem septract_sep_star :
@@ -2279,6 +2439,22 @@ Qed.
 Definition pred_except AT AEQ V (F : @pred AT AEQ V) a v : @pred AT AEQ V :=
   fun m => m a = None /\ F (insert m a v).
 
+Instance pred_except_pimpl_proper {AT AEQ V} :
+  Proper (pimpl ==> eq ==> eq ==> pimpl) (@pred_except AT AEQ V).
+Proof.
+  intros F F' HF a a' Ha v v' Hv.
+  subst.
+  firstorder.
+Qed.
+
+Instance pred_except_piff_proper {AT AEQ V} :
+  Proper (piff ==> eq ==> eq ==> piff) (@pred_except AT AEQ V).
+Proof.
+  intros F F' HF a a' Ha v v' Hv.
+  subst.
+  firstorder.
+Qed.
+
 Lemma pred_except_mem_except : forall AT AEQ V (F : @pred AT AEQ V) m a v,
   F m -> m a = Some v -> (pred_except F a v) (mem_except m a).
 Proof.
@@ -2289,18 +2465,16 @@ Proof.
   apply mem_except_is_none.
 Qed.
 
-Lemma pred_except_ptsto : forall AT AEQ V (p : @pred AT AEQ V) a v,
-  (p =p=> a |-> v) ->
+Lemma pred_except_ptsto : forall AT AEQ V (p q : @pred AT AEQ V) a v,
+  (p =p=> q * a |-> v) ->
   (p =p=> pred_except p a v * a |-> v).
 Proof.
   intros; rewrite sep_star_comm.
   unfold pimpl; intros.
   assert (m a = Some v).
   specialize (H m H0).
-  apply ptsto_valid with (F := emp).
-  eapply pimpl_apply.
-  rewrite sep_star_comm.
-  rewrite <- emp_star; eauto.
+  eapply ptsto_valid.
+  eapply sep_star_comm.
   eauto.
   eapply mem_except_ptsto; auto.
   apply pred_except_mem_except; eauto.
@@ -2368,6 +2542,93 @@ Proof.
       congruence.
 Qed.
 
+Theorem pred_except_sep_star_ptsto' : forall AT AEQ V (p : @pred AT AEQ V) a v,
+  pred_except (p * a |-> v) a v =p=> p.
+Proof.
+  unfold pimpl, pred_except.
+  unfold_sep_star; intros; intuition; repeat deex.
+  assert (m = m1); try congruence.
+  apply functional_extensionality; intros.
+  destruct (AEQ x a); subst.
+  - rewrite H0.
+    case_eq (m1 a); intros; try auto.
+    exfalso.
+    apply H.
+    exists a. do 2 eexists. intuition eauto.
+    unfold ptsto in H4; intuition eauto.
+  - apply equal_f with (x0 := x) in H1.
+    rewrite insert_ne in H1 by auto.
+    rewrite H1.
+    unfold mem_union.
+    destruct (m1 x); auto.
+    unfold ptsto in H4; intuition.
+Qed.
+
+Theorem pred_except_sep_star_ptsto_notindomain : forall AT AEQ V (p : @pred AT AEQ V) a v,
+  (p =p=> notindomain a) ->
+  p =p=> pred_except (p * a |-> v) a v.
+Proof.
+  unfold pimpl, pred_except.
+  unfold_sep_star; intros; intuition; repeat deex.
+  - apply H; auto.
+  - exists m.
+    exists (Mem.insert empty_mem a v).
+    assert (mem_disjoint m (insert empty_mem a v)).
+    {
+      apply mem_disjoint_comm.
+      apply mem_disjoint_insert_l.
+      eapply mem_disjoint_empty_mem.
+      apply H; auto.
+    }
+    intuition eauto.
+    rewrite mem_union_comm by eauto.
+    rewrite <- mem_union_insert_comm; try reflexivity.
+    apply H; auto.
+    apply star_emp_pimpl.
+    apply ptsto_insert_disjoint.
+    apply emp_empty_mem.
+    reflexivity.
+Qed.
+
+Lemma ptsto_insert_disjoint_ne: forall AT AEQ V (F : @pred AT AEQ V) a v a' v' m,
+  a <> a' ->
+  m a' = None ->
+  (pred_except F a' v' * a |-> v)%pred m ->
+  (F * a |-> v)%pred (insert m a' v').
+Proof.
+  unfold_sep_star; unfold pred_except; intros.
+  repeat deex.
+  exists (insert m1 a' v'), m2; intuition.
+  apply mem_union_insert_comm; auto.
+  eapply mem_union_none_sel; eauto.
+  eapply mem_disjoint_insert_l; eauto.
+  eapply mem_union_none_sel; eauto.
+Qed.
+
+Lemma pred_except_ptsto_pimpl : forall AT AEQ V (m : @mem AT AEQ V) off v F,
+  (F * off |-> v)%pred m ->
+  pred_except (diskIs m) off v =p=> F.
+Proof.
+  unfold_sep_star.
+  unfold pimpl, diskIs, pred_except; intros.
+  repeat deex.
+  assert (m0 = m1); try congruence.
+  apply functional_extensionality; intros.
+  destruct (AEQ x off); subst.
+  - rewrite H1.
+    case_eq (m1 off); intros; auto.
+    exfalso.
+    apply H.
+    exists off. do 2 eexists.
+    intuition eauto.
+    unfold ptsto in H4; intuition eauto.
+  - eapply equal_f with (x0 := x) in H0.
+    rewrite insert_ne in H0 by auto.
+    rewrite H0.
+    unfold mem_union.
+    destruct (m1 x); auto.
+    unfold ptsto in H4; intuition.
+Qed.
 
 Lemma ptsto_upd_bwd_or :
   forall AT AEQ V F a v v' (m : @mem AT AEQ V),
@@ -2476,5 +2737,116 @@ Proof.
 Qed.
 
 End MemDomains.
+
+Lemma ptsto_insert_bwd :
+  forall AT AEQ V F a v v' (m : @mem AT AEQ V),
+  m a = None ->
+  (a  |-> v' * F)%pred (insert m a v) ->
+  F m.
+Proof.
+  intros.
+  apply ptsto_mem_except in H0.
+  rewrite mem_except_insert in H0.
+  rewrite mem_except_none in H0; auto.
+Qed.
+
+Lemma ptsto_insert_bwd_ne: forall AT AEQ V (F : @pred AT AEQ V) a v a' v' m,
+  a <> a' ->
+  m a' = None ->
+  (F * a |-> v)%pred (insert m a' v') ->
+  (pred_except F a' v' * a |-> v)%pred m.
+Proof.
+  unfold_sep_star; unfold pimpl, pred_except; intros.
+  repeat deex.
+  exists (mem_except m1 a').
+  exists m2.
+  intuition.
+  apply functional_extensionality; intros.
+  - apply equal_f with (x0 := x) in H2.
+    destruct (AEQ x a'); subst.
+    rewrite H0 in *.
+    rewrite mem_union_sel_none; auto.
+    apply mem_except_is_none.
+    unfold ptsto in H5.
+    destruct H5.
+    apply H5; eauto.
+    unfold mem_union in *.
+    rewrite mem_except_ne by auto.
+    rewrite <- H2.
+    rewrite insert_ne; auto.
+  - apply mem_disjoint_comm.
+    apply mem_disjoint_mem_except; eauto.
+    apply mem_disjoint_comm; auto.
+  - apply mem_except_is_none.
+  - assert (m1 = insert (mem_except m1 a') a' v').
+    apply functional_extensionality; intros.
+    apply equal_f with (x0 := x) in H2.
+    destruct (AEQ x a'); subst.
+    rewrite insert_eq in *; auto.
+    rewrite H2.
+    rewrite mem_union_sel_l; auto.
+    eapply ptsto_ne; eauto.
+    apply mem_except_is_none.
+    rewrite insert_ne; auto.
+    rewrite mem_except_ne; auto.
+    rewrite <- H4; auto.
+Qed.
+
+Lemma sep_star_split_l: forall AT AEQ V F (x: @pred AT AEQ V) y m,
+  (F * x * y)%pred m -> 
+  exists F1, (F1 * x)%pred m.
+Proof.
+  intros.
+  exists (F*y)%pred.
+  apply sep_star_assoc.
+  setoid_rewrite sep_star_comm.
+  apply sep_star_assoc.
+  eauto.
+Qed.
+
+Lemma pimpl_sep_star_split_l: forall AT AEQ V F1 F2 (x: @pred AT AEQ V) y m,
+    (F1 * x * y) %pred m ->
+    (F1 * y) =p=> F2 ->
+    (F1 * x) * y =p=> F2 * x.
+Proof.
+  intros.
+  erewrite sep_star_assoc_1.
+  setoid_rewrite sep_star_comm at 2.
+  erewrite sep_star_assoc_2.
+  erewrite H0; eauto.
+Qed.
+
+Lemma pimpl_sep_star_split_r: forall AT AEQ V F1 F2 (x: @pred AT AEQ V) y m,
+    (F1 * x * y) %pred m ->
+    (F1 * x) =p=> F2 ->
+    (F1 * y) * x =p=> F2 * y.
+Proof.
+  intros.
+  erewrite sep_star_assoc_1.
+  setoid_rewrite sep_star_comm at 2.
+  erewrite sep_star_assoc_2.
+  erewrite H0; eauto.
+Qed.
+
+Lemma sep_star_notindomain : forall AT AEQ V (p q : @pred AT AEQ V) a,
+  p =p=> notindomain a ->
+  q =p=> notindomain a ->
+  p * q =p=> notindomain a.
+Proof.
+  unfold_sep_star.
+  unfold notindomain, pimpl.
+  intros; repeat deex.
+  unfold mem_union.
+  rewrite H by assumption.
+  rewrite H0 by assumption.
+  auto.
+Qed.
+
+Lemma ptsto_notindomain : forall AT AEQ V a a' v,
+  a <> a' ->
+  a |-> v =p=> (@notindomain AT AEQ V) a'.
+Proof.
+  unfold pimpl, ptsto, notindomain; intuition.
+Qed.
 
 Global Opaque pred.

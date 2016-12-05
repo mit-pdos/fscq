@@ -1,19 +1,25 @@
 Set Implicit Arguments.
 
 Inductive Errno :=
-| EINVAL
+| ELOGOVERFLOW
 | ENOTDIR
 | EISDIR
 | ENOENT
 | EFBIG
 | ENAMETOOLONG
 | EEXIST
-| ENOSPC
+| ENOSPCBLOCK
+| ENOSPCINODE
 | ENOTEMPTY
-| EOVERFLOW.
+| EINVAL.
 
 Inductive res (T : Type) :=
 | OK : T -> res T
 | Err : Errno -> res T.
 
 Arguments Err {T} _.
+
+Inductive isError : forall {T : Type}, res T -> Prop :=
+| isErrorErr : forall T errno, @isError T (Err errno).
+
+Hint Constructors isError.

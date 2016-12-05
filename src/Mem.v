@@ -95,6 +95,17 @@ Section GenMem.
     destruct (m a); auto.
   Qed.
 
+  Theorem insert_repeat: forall m (a : A) (v v':V),
+    insert (insert m a v) a v' = insert m a v.
+  Proof.
+    intros; apply functional_extensionality; unfold insert at 1; intros.
+    destruct (AEQ a a); try congruence.
+    destruct (AEQ x a); auto.
+    subst. unfold insert; simpl.
+    destruct (AEQ a a); try congruence.
+    destruct (m a); auto.
+  Qed.
+
   Theorem upd_nop: forall m (a : A) (v : V),
     m a = Some v ->
     upd m a v = m.

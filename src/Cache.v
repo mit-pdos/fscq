@@ -2015,6 +2015,10 @@ Module BUFCACHE.
     cs <- end_sync cs;
     Ret cs.
 
+  Definition sync_all cs :=
+    cs <- sync_vecs_now 0 (map fst (Map.elements (CSMap cs))) cs;
+    Ret cs.
+
   Hint Extern 0 (okToUnify (arrayN ?pts ?a _) (arrayN ?pts ?a _)) => constructor : okToUnify.
 
   Theorem read_range_ok : forall A a nr vfold (a0 : A) cs,

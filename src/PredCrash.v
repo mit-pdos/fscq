@@ -811,6 +811,21 @@ Proof.
   apply incl_nil.
 Qed.
 
+Theorem possible_sync_after_sync : forall A AEQ (m m': @mem A AEQ _),
+    possible_sync (sync_mem m) m' ->
+    m' = sync_mem m.
+Proof.
+  unfold possible_sync, sync_mem; intros.
+  extensionality a.
+  specialize (H a).
+  destruct (m a) as [ [] | ];
+    intuition eauto;
+    repeat deex;
+    try congruence.
+  inversion H0; subst.
+  apply ListUtils.incl_in_nil in H2; subst; eauto.
+Qed.
+
 Theorem possible_sync_upd : forall AT AEQ (m : @mem AT AEQ _) a v l l',
   m a = Some (v, l) ->
   incl l' l ->

@@ -7,6 +7,8 @@ Require Import Hoare.
 Require Import Word.
 Require Import AsyncDisk.
 Require Import Hashmap.
+Require Import Errno.
+Require Import ADestructPair DestructVarname.
 
 Set Implicit Arguments.
 
@@ -47,229 +49,6 @@ Tactic Notation "eassign" constr(t) := eassign' t.
 
 (** * Helpers for keeping track of variable names *)
 
-Definition varname_type (_ : unit) := unit.
-Definition varname_val (_ : unit) := tt.
-Notation "'VARNAME' ( varname )" := (forall (varname : unit), varname_type varname).
-
-Ltac clear_varname :=
-  match goal with
-  | [ H: VARNAME(vn) |- _ ] => clear H
-  end.
-
-Ltac destruct_prod :=
-  match goal with
-  | [ v: valuset |- _ ] =>
-    let v0 := fresh v "_cur" in
-    let v1 := fresh v "_old" in
-    destruct v as [v0 v1]
-  | [ H: (VARNAME(vn) * ?b)%type |- _ ] => destruct H as [? ?vn]
-  | [ H: (?a * ?b)%type |- _ ] => destruct H
-  end.
-
-Lemma eexists_pair: forall A B p,
-  (exists (a:A) (b:B), p (a, b))
-  -> (exists (e:A*B), p e).
-Proof.
-  intros.
-  destruct H as [a H].
-  destruct H as [b H].
-  exists (a, b); auto.
-Qed.
-
-Theorem destruct_varname1_0 : forall AN A (p : AN * A),
-  exists an a, p = (an, a).
-Proof.
-  intros; destruct p; eauto.
-Qed.
-
-Theorem destruct_varname1_1 : forall AN A B (p : AN * A * B ),
-  exists an a b, p = (an, a, b).
-Proof.
-  intros; do 2 destruct p; eauto.
-Qed.
-
-Theorem destruct_varname1_2 : forall AN A B C (p : AN * A * B * C),
-  exists an a b c, p = (an, a, b, c).
-Proof.
-  intros; repeat destruct_prod; repeat eexists.
-Qed.
-
-Theorem destruct_varname1_4 : forall AN A B C D E (p : AN * A * B * C * D * E),
-  exists an a b c d e, p = (an, a, b, c, d, e).
-Proof.
-  intros; repeat destruct_prod; repeat eexists.
-Qed.
-
-Theorem destruct_varname1_8 : forall AN A B C D E F G (p : AN * A * B * C * D * E * F * G),
-  exists an a b c d e f g, p = (an, a, b, c, d, e, f, g).
-Proof.
-  intros; repeat destruct_prod; repeat eexists.
-Qed.
-
-Theorem destruct_varname2 : forall AN BN A B C (p : (AN * A) * ((BN * B) * C) ),
-  exists an a bn b c, p = ((an, a), ((bn, b), c)).
-Proof.
-  intros. repeat destruct_prod.
-  repeat eexists.
-Qed.
-
-Theorem destruct_varname3 : forall AN BN CN A B C D (p : (AN * A) * ((BN * B) * ((CN * C) * D))),
-  exists an a bn b cn c d, p = ((an, a), ((bn, b), ((cn, c), d))).
-Proof.
-  intros. repeat destruct_prod.
-  repeat eexists.
-Qed.
-
-Theorem destruct_varname4 : forall AN BN CN DN A B C D E 
-                  (p : (AN * A) * ((BN * B) * ((CN * C) * ((DN * D) * E)))),
-  exists an a bn b cn c dn d e, p = ((an, a), ((bn, b), ((cn, c), ((dn, d), e)))).
-Proof.
-  intros. repeat destruct_prod.
-  repeat eexists.
-Qed.
-
-Ltac destruct_varname1 :=
-  match goal with
-  | [ H : VARNAME (_) * _ |- _ ] => let Hx := fresh in
-      pose proof (destruct_varname1_0 H) as Hx;
-      match type of Hx with
-      | exists (_ : VARNAME (vn)) _, _ = _ =>
-        destruct Hx as [? [?vn Hx] ]
-      end
-  | [ H : VARNAME (_) * _ * _ |- _ ] => let Hx := fresh in
-      pose proof (destruct_varname1_1 H) as Hx;
-      match type of Hx with
-      | exists (_ : VARNAME (vn)) _ _, _ = _ =>
-        destruct Hx as [? [?vn [? Hx] ] ]
-      end
-  | [ H : VARNAME (_) * _ * _ * _ |- _ ] => let Hx := fresh in
-      pose proof (destruct_varname1_2 H) as Hx;
-      match type of Hx with
-      | exists (_ : VARNAME (vn)) _ _ _, _ = _ =>
-        destruct Hx as [? [?vn [? [? Hx] ] ] ]
-      end
-  | [ H : VARNAME (_) * _ * _ * _ * _ * _ |- _ ] => let Hx := fresh in
-      pose proof (destruct_varname1_4 H) as Hx;
-      match type of Hx with
-      | exists (_ : VARNAME (vn)) _ _ _ _ _, _ = _ =>
-        destruct Hx as [? [?vn [? [? [? [? Hx] ] ] ] ] ]
-      end
-  | [ H : VARNAME (_) * _ * _ * _ * _ * _ * _ * _ |- _ ] => let Hx := fresh in
-      pose proof (destruct_varname1_8 H) as Hx;
-      match type of Hx with
-      | exists (_ : VARNAME (vn)) _ _ _ _ _ _ _, _ = _ =>
-        destruct Hx as [? [?vn [? [? [? [? [? [? Hx] ] ] ] ] ] ] ]
-      end
-  end.
-
-Ltac destruct_varname2 :=
-  match goal with
-  | [ H : VARNAME (_) * _ * ((VARNAME (_) * _) * _) |- _ ] => let Hx := fresh in
-      pose proof (destruct_varname2 H) as Hx;
-      match type of Hx with
-      | exists (_ : VARNAME (vn1)) _ (_ : VARNAME (vn2)) _ _, _ = _ =>
-        destruct Hx as [? [?vn1 [? [?vn2 [? Hx] ] ] ] ]
-      end
-  end.
-
-Ltac destruct_varname3 :=
-  match goal with
-  | [ H : VARNAME (_) * _ * ((VARNAME (_) * _) * ((VARNAME (_) * _) * _)) |- _ ] => let Hx := fresh in
-      pose proof (destruct_varname3 H) as Hx;
-      match type of Hx with
-      | exists (_ : VARNAME (vn1)) _ (_ : VARNAME (vn2)) _ (_ : VARNAME (vn3)) _ _, _ = _ =>
-        destruct Hx as [? [?vn1 [? [?vn2 [? [?vn3 [? Hx] ] ] ] ] ] ]
-      end
-  end.
-
-Ltac destruct_varname4 :=
-  match goal with
-  | [ H : VARNAME (_) * _ * ((VARNAME (_) * _) * ((VARNAME (_) * _) * ((VARNAME (_) * _) * _))) |- _ ] =>
-      let Hx := fresh in
-      pose proof (destruct_varname4 H) as Hx;
-      match type of Hx with
-      | exists (_ : VARNAME (vn1)) _ (_ : VARNAME (vn2)) _ (_ : VARNAME (vn3)) _ (_ : VARNAME (vn4)) _ _ , _ = _ =>
-        destruct Hx as [? [?vn1 [? [?vn2 [? [?vn3 [? [?vn4 [? Hx] ] ] ] ] ] ] ] ]
-      end
-  end.
-
-Ltac destruct_varnames :=
-  repeat (( destruct_varname4 || destruct_varname3 || destruct_varname2 || destruct_varname1); subst).
-
-Theorem destruct_pair2 : forall A B (p : A * B),
-  exists a b, p = (a, b).
-Proof.
-  intros; destruct p; repeat eexists.
-Qed.
-
-Theorem destruct_pair4 : forall A B C D (p : A * B * C * D),
-  exists a b c d, p = (a, b, c, d).
-Proof.
-  intros; do 3 destruct p; repeat eexists.
-Qed.
-
-Theorem destruct_pair6 : forall A B C D E F (p : A * B * C * D * E * F),
-  exists a b c d e f, p = (a, b, c, d, e, f).
-Proof.
-  intros; do 5 destruct p; repeat eexists.
-Qed.
-
-Theorem destruct_pair8 : forall A B C D E F G H (p : A * B * C * D * E * F * G * H),
-  exists a b c d e f g h, p = (a, b, c, d, e, f, g, h).
-Proof.
-  intros; do 7 destruct p; repeat eexists.
-Qed.
-
-Ltac destruct_pair2 :=
-  match goal with
-  | [ H : _ * _ |- _ ] => first [ clear H || let Hx := fresh in
-      pose proof (destruct_pair2 H) as Hx;
-      match type of Hx with
-      | exists _ _, _ = _ =>
-        let H1 := fresh H "_1" in let H2 := fresh H "_2" in
-        destruct Hx as [H1 [H2 Hx] ]
-      end ]
-  end.
-
-Ltac destruct_pair4 :=
-  match goal with
-  | [ H : _ * _ * _ * _ |- _ ] => first [ clear H || let Hx := fresh in
-      pose proof (destruct_pair4 H) as Hx;
-      match type of Hx with
-      | exists _ _ _ _, _ = _ =>
-        destruct Hx as [? [? [? [? Hx] ] ] ]
-      end ]
-  end.
-
-Ltac destruct_pair6 :=
-  match goal with
-  | [ H : _ * _ * _ * _ * _ * _ |- _ ] => first [ clear H || let Hx := fresh in
-      pose proof (destruct_pair6 H) as Hx;
-      match type of Hx with
-      | exists _ _ _ _ _ _, _ = _ =>
-        destruct Hx as [? [? [? [? [? [? Hx] ] ] ] ] ]
-      end ]
-  end.
-
-
-Ltac destruct_pair8 :=
-  match goal with
-  | [ H : _ * _ * _ * _ * _ * _ * _ * _ |- _ ] => first [ clear H ||  let Hx := fresh in
-      pose proof (destruct_pair8 H) as Hx;
-      match type of Hx with
-      | exists _ _ _ _ _ _ _ _, _ = _ =>
-        destruct Hx as [? [? [? [? [? [? [? [? Hx] ] ] ] ] ] ] ]
-      end ]
-  end.
-
-Ltac destruct_pair_once :=
-  match goal with
-  | [ v: valuset |- _ ] =>
-    let v0 := fresh v "_cur" in
-    let v1 := fresh v "_old" in
-    destruct v as [v0 v1]
-  | _ => ( destruct_pair8 || destruct_pair6 || destruct_pair4 || destruct_pair2)
-  end; subst.
 
 Ltac destruct_pairs :=
   repeat (destruct_varnames; simpl in *; try destruct_pair_once).
@@ -1071,7 +850,12 @@ Ltac inv_option_eq' := repeat match goal with
   | [ H: None = Some _ |- _ ] => inversion H
   | [ H: Some _ = None |- _ ] => inversion H
   | [ H: Some _ = Some _ |- _ ] => inversion H; clear H
+  | [ H: OK _ = OK _ |- _ ] => inversion H; clear H
+  | [ H: Err _ = Err _ |- _ ] => inversion H; clear H
+  | [ H: OK _ = Err _ |- _ ] => inversion H
+  | [ H: Err _ = OK _ |- _ ] => inversion H
   | [ H: (_, _) = (_, _) |- _ ] => inversion H; clear H
+  | [ H: isError (OK _) |- _ ] => inversion H
   end.
 
 Ltac inv_option_eq := try ((progress inv_option_eq'); subst; eauto).

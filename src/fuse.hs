@@ -28,6 +28,7 @@ import qualified System.Process
 import qualified Data.List
 import AsyncDisk
 import Control.Monad
+import qualified Errno
 
 -- Handle type for open files; we will use the inode number
 type HT = Integer
@@ -93,8 +94,8 @@ run_fuse disk_fn fuse_args = do
       putStrLn $ "Initializing file system"
       res <- I.run ds $ AsyncFS._AFS__mkfs cachesize nDataBitmaps nInodeBitmaps nDescrBlocks
       case res of
-        Nothing -> error $ "mkfs failed"
-        Just (s, fsxp) -> do
+        Errno.Err _ -> error $ "mkfs failed"
+        Errno.OK (s, fsxp) -> do
           set_nblocks_disk ds $ fromIntegral $ coq_FSXPMaxBlock fsxp
           return (s, fsxp)
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
@@ -167,10 +168,39 @@ materializeCrashes idxref (lastgroup : othergroups) = do
   materializeCrashes idxref othergroups
   mapM_ (\lastsubset -> materializeFlushgroups idxref (lastsubset : othergroups)) $ writeSubsets lastgroup
 
+errnoToPosix :: Errno.Errno -> Errno
+errnoToPosix Errno.ELOGOVERFLOW = eIO
+errnoToPosix Errno.ENOTDIR      = eNOTDIR
+errnoToPosix Errno.EISDIR       = eISDIR
+errnoToPosix Errno.ENOENT       = eNOENT
+errnoToPosix Errno.EFBIG        = eFBIG
+errnoToPosix Errno.ENAMETOOLONG = eNAMETOOLONG
+errnoToPosix Errno.EEXIST       = eEXIST
+errnoToPosix Errno.ENOSPCBLOCK  = eNOSPC
+errnoToPosix Errno.ENOSPCINODE  = eNOSPC
+errnoToPosix Errno.ENOTEMPTY    = eNOTEMPTY
+errnoToPosix Errno.EINVAL       = eINVAL
+
+instance Show Errno.Errno where
+  show Errno.ELOGOVERFLOW = "ELOGOVERFLOW"
+  show Errno.ENOTDIR      = "ENOTDIR"
+  show Errno.EISDIR       = "EISDIR"
+  show Errno.ENOENT       = "ENOENT"
+  show Errno.EFBIG        = "EFBIG"
+  show Errno.ENAMETOOLONG = "ENAMETOOLONG"
+  show Errno.EEXIST       = "EEXIST"
+  show Errno.ENOSPCBLOCK  = "ENOSPCBLOCK"
+  show Errno.ENOSPCINODE  = "ENOSPCINODE"
+  show Errno.ENOTEMPTY    = "ENOTEMPTY"
+  show Errno.EINVAL       = "EINVAL"
+
+instance Show t => Show (Errno.Coq_res t) where
+  show (Errno.OK v) = show v
+  show (Errno.Err e) = show e
+
 fscqDestroy :: DiskState -> String -> FSrunner -> MVar Coq_fs_xparams -> IO ()
 fscqDestroy ds disk_fn fr m_fsxp  = withMVar m_fsxp $ \fsxp -> do
-  -- XXX need to also sync all file data (from WritebackCache)
-  _ <- fr $ AsyncFS._AFS__tree_sync fsxp
+  _ <- fr $ AsyncFS._AFS__umount fsxp
   stats <- close_disk ds
   print_stats stats
   case disk_fn of
@@ -228,15 +258,15 @@ fscqGetFileStat :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> IO (Either Err
 fscqGetFileStat fr m_fsxp (_:path)
   | path == "stats" = do
     ctx <- getFuseContext
-    return $ Right $ fileStat ctx _INODE__iattr0
+    return $ Right $ fileStat ctx $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
   | otherwise = withMVar m_fsxp $ \fsxp -> do
   debugStart "STAT" path
   nameparts <- return $ splitDirectories path
   (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   debugMore r
   case r of
-    Nothing -> return $ Left eNOENT
-    Just (inum, isdir)
+    Errno.Err e -> return $ Left $ errnoToPosix e
+    Errno.OK (inum, isdir)
       | isdir -> do
         ctx <- getFuseContext
         return $ Right $ dirStat ctx
@@ -253,8 +283,8 @@ fscqOpenDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
   (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   debugMore r
   case r of
-    Nothing -> return eNOENT
-    Just (_, isdir)
+    Errno.Err e -> return $ errnoToPosix e
+    Errno.OK (_, isdir)
       | isdir -> return eOK
       | otherwise -> return eNOTDIR
 fscqOpenDirectory _ _ "" = return eNOENT
@@ -267,8 +297,8 @@ fscqReadDirectory fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
   (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   debugMore r
   case r of
-    Nothing -> return $ Left $ eNOENT
-    Just (dnum, isdir)
+    Errno.Err e -> return $ Left $ errnoToPosix e
+    Errno.OK (dnum, isdir)
       | isdir -> do
         (files, ()) <- fr $ AsyncFS._AFS__readdir fsxp dnum
         files_stat <- mapM (mkstat fsxp ctx) files
@@ -294,8 +324,8 @@ fscqOpen fr m_fsxp (_:path) _ _
   (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   debugMore r
   case r of
-    Nothing -> return $ Left eNOENT
-    Just (inum, isdir)
+    Errno.Err e -> return $ Left $ errnoToPosix e
+    Errno.OK (inum, isdir)
       | isdir -> return $ Left eISDIR
       | otherwise -> return $ Right $ inum
 fscqOpen _ _ _ _ _ = return $ Left eIO
@@ -311,17 +341,17 @@ fscqCreate fr m_fsxp (_:path) entrytype _ _ = withMVar m_fsxp $ \fsxp -> do
   (rd, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) dirparts
   debugMore rd
   case rd of
-    Nothing -> return eNOENT
-    Just (dnum, isdir)
+    Errno.Err e -> return $ errnoToPosix e
+    Errno.OK (dnum, isdir)
       | isdir -> do
         (r, ()) <- case entrytype of
           RegularFile -> fr $ AsyncFS._AFS__create fsxp dnum filename
           Socket -> fr $ AsyncFS._AFS__mksock fsxp dnum filename
-          _ -> return (Nothing, ())
+          _ -> return (Errno.Err Errno.EINVAL, ())
         debugMore r
         case r of
-          Nothing -> return eNOSPC
-          Just _ -> return eOK
+          Errno.Err e -> return $ errnoToPosix e
+          Errno.OK _ -> return eOK
       | otherwise -> return eNOTDIR
 fscqCreate _ _ _ _ _ _ = return eOPNOTSUPP
 
@@ -332,14 +362,14 @@ fscqCreateDir fr m_fsxp (_:path) _ = withMVar m_fsxp $ \fsxp -> do
   (rd, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) dirparts
   debugMore rd
   case rd of
-    Nothing -> return eNOENT
-    Just (dnum, isdir)
+    Errno.Err e -> return $ errnoToPosix e
+    Errno.OK (dnum, isdir)
       | isdir -> do
         (r, ()) <- fr $ AsyncFS._AFS__mkdir fsxp dnum filename
         debugMore r
         case r of
-          Nothing -> return eNOSPC
-          Just _ -> return eOK
+          Errno.Err e -> return $ errnoToPosix e
+          Errno.OK _ -> return eOK
       | otherwise -> return eNOTDIR
 fscqCreateDir _ _ _ _ = return eOPNOTSUPP
 
@@ -350,14 +380,14 @@ fscqUnlink fr m_fsxp (_:path) = withMVar m_fsxp $ \fsxp -> do
   (rd, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) dirparts
   debugMore rd
   case rd of
-    Nothing -> return eNOENT
-    Just (dnum, isdir)
+    Errno.Err e -> return $ errnoToPosix e
+    Errno.OK (dnum, isdir)
       | isdir -> do
         (r, ()) <- fr $ AsyncFS._AFS__delete fsxp dnum filename
         debugMore r
         case r of
-          True -> return eOK
-          False -> return eIO
+          Errno.OK _ -> return eOK
+          Errno.Err e -> return $ errnoToPosix e
       | otherwise -> return eNOTDIR
 fscqUnlink _ _ _ = return eOPNOTSUPP
 
@@ -428,35 +458,30 @@ fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
   endpos <- return $ (fromIntegral offset) + (fromIntegral (BS.length bs))
   okspc <- if len < endpos then do
     (ok, _) <- fr $ AsyncFS._AFS__file_truncate fsxp inum ((endpos + 4095) `div` 4096)
-    if ok then
-      return True
-    else
-      return False
+    return ok
   else
-    return True
-  if okspc then do
-    r <- foldM (write_piece fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
-    case r of
-      WriteOK c -> do
-        okspc2 <- if len < endpos then do
-          (ok, _) <- fr $ AsyncFS._AFS__file_set_sz fsxp inum (W endpos)
-          if ok then
-            return True
+    return $ Errno.OK ()
+  case okspc of
+    Errno.OK _ -> do
+      r <- foldM (write_piece fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
+      case r of
+        WriteOK c -> do
+          okspc2 <- if len < endpos then do
+            (ok, _) <- fr $ AsyncFS._AFS__file_set_sz fsxp inum (W endpos)
+            return ok
           else
-            return False
-        else
-          return True
-        if okspc2 then
-          return $ Right c
-        else
-          return $ Left eNOSPC
-      WriteErr c ->
-        if c == 0 then
-          return $ Left eIO 
-        else
-          return $ Right c
-  else
-    return $ Left eNOSPC
+            return True
+          if okspc2 then
+              return $ Right c
+            else
+              return $ Left eNOSPC
+        WriteErr c ->
+          if c == 0 then
+            return $ Left eIO
+          else
+            return $ Right c
+    Errno.Err e -> do
+      return $ Left $ errnoToPosix e
   where
     write_piece _ _ (WriteErr c) _ = return $ WriteErr c
     write_piece fsxp init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
@@ -469,8 +494,8 @@ fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
                        $ BS.append piece_bs
                        $ BS.drop (fromIntegral $ off + cnt) old_bs
       wnew <- bs2i new_bs
-      _ <- fr $ AsyncFS._AFS__update_fblock_d fsxp inum blk (W wnew)
-      -- _ <- fr $ AsyncFS._AFS__update_fblock fsxp inum blk (W wnew)
+      -- _ <- fr $ AsyncFS._AFS__update_fblock_d fsxp inum blk (W wnew)
+      _ <- fr $ AsyncFS._AFS__update_fblock fsxp inum blk (W wnew)
       return $ WriteOK (c + (fromIntegral cnt))
 
 fscqSetFileSize :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileOffset -> IO Errno
@@ -480,8 +505,8 @@ fscqSetFileSize fr m_fsxp (_:path) size = withMVar m_fsxp $ \fsxp -> do
   (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   debugMore r
   case r of
-    Nothing -> return eNOENT
-    Just (inum, isdir)
+    Errno.Err e -> return $ errnoToPosix e
+    Errno.OK (inum, isdir)
       | isdir -> return eISDIR
       | otherwise -> do
         (ok, ()) <- fr $ AsyncFS._AFS__file_set_sz fsxp inum (W64 $ fromIntegral size)
@@ -518,8 +543,8 @@ fscqRename fr m_fsxp (_:src) (_:dst) = withMVar m_fsxp $ \fsxp -> do
   (r, ()) <- fr $ AsyncFS._AFS__rename fsxp (coq_FSXPRootInum fsxp) srcparts srcname dstparts dstname
   debugMore r
   case r of
-    True -> return eOK
-    False -> return eIO
+    Errno.OK _ -> return eOK
+    Errno.Err e -> return $ errnoToPosix e
 fscqRename _ _ _ _ = return eIO
 
 fscqChmod :: FilePath -> FileMode -> IO Errno
@@ -533,8 +558,8 @@ fscqSyncFile fr m_fsxp (_:path) syncType = withMVar m_fsxp $ \fsxp -> do
   (r, ()) <- fr $ AsyncFS._AFS__lookup fsxp (coq_FSXPRootInum fsxp) nameparts
   debugMore r
   case r of
-    Nothing -> return eNOENT
-    Just (inum, _) -> do
+    Errno.Err e -> return $ errnoToPosix e
+    Errno.OK (inum, _) -> do
       _ <- fr $ AsyncFS._AFS__file_sync fsxp inum
       case syncType of
         DataSync -> return eOK

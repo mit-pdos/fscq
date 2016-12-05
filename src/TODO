@@ -1,4 +1,3 @@
-- double-indirect blocks
 - deleting a file should free its data blocks
 - TRIM support (TRIM opcode randomizes block contents)
 - prove end-to-end theorem about mkfs
@@ -13,7 +12,6 @@
 - better automation support for stopping at well-defined points
 - use http://why.lri.fr/ or http://why3.lri.fr/ to integrate Z3 into Coq
 - use Canonical Structure for defaults
-- integrate error codes (Errno.v)
 - db transaction system (abort)
 - combine Verdi's Paxos with FSCQ for stable storage, prove end-to-end theorem
   under both network and node failures (how to combine different spec styles??)
@@ -22,11 +20,12 @@
 
 ===
 
-- eviction from GroupLog
-- prove AtomicCp
-- prove mkfs
-- prove that unlink never fails
+- dwrite without calling flushall in GroupLog
 
+- prove [umount_ok]
+
+- prove AtomicCp
+- prove that unlink never fails
 - clean up DirTree (no lists, update_subtree_helper, etc)
 - bring back ByteFile
 - high-performance extraction

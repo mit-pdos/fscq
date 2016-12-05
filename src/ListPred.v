@@ -259,8 +259,71 @@ Section LISTPRED.
       reflexivity.
   Qed.
 
+  Theorem listpred_emp : forall l,
+    (forall x, In x l -> prd x =p=> emp) ->
+    listpred l =p=> emp.
+  Proof.
+    induction l; intros.
+    rewrite listpred_nil; auto.
+    simpl.
+    rewrite H; intuition.
+    rewrite IHl. cancel.
+    intros.
+    rewrite H; intuition.
+  Qed.
+
+  Theorem listpred_emp_piff : forall l,
+    (forall x, In x l -> prd x <=p=> emp) ->
+    listpred l <=p=> emp.
+  Proof.
+    induction l; intros.
+    rewrite listpred_nil; auto.
+    simpl.
+    rewrite H; intuition.
+    rewrite IHl.
+    split; cancel.
+    intros.
+    rewrite H; intuition.
+  Qed.
+
 End LISTPRED.
 
+Theorem listpred_lift : forall T l AT AEQ V prd F G,
+  (forall x, In x l -> prd x <=p=> [[ F x ]] * G x) ->
+  @listpred T AT AEQ V prd l <=p=> [[ Forall F l ]] * listpred G l.
+Proof.
+  intros; induction l.
+  split; cancel.
+  simpl; rewrite H; intuition.
+  rewrite IHl.
+  split; cancel; inversion H1; auto.
+  intros.
+  apply H; intuition.
+Qed.
+
+Theorem listpred_unify : forall T l1 l2 AT AEQ V f F1 F2 m,
+    (forall Fa Fb a b, In a l1 -> In b l2 -> (Fa * f a)%pred m -> (Fb * f b)%pred m -> a = b) ->
+    (F1 * @listpred T AT AEQ V f l1)%pred m -> (F2 * listpred f l2)%pred m ->
+    length l1 = length l2 ->
+    l1 = l2.
+Proof.
+  induction l1; intros; destruct l2; simpl in *; auto; inversion H2.
+  f_equal.
+  eapply H; auto; match goal with [H : _ |- _] => solve [eapply pimpl_apply; [> | exact H]; cancel] end.
+  eapply IHl1; intros;
+  repeat match goal with
+    | [a : T, b : T |- ?a = ?b ] => eapply H
+    | [H : _ |- _] => solve [intuition | apply H | eapply pimpl_apply; [> | exact H]; cancel]
+  end.
+Qed.
+
+Lemma listpred_piff_replace : forall A B AT M l F G,
+  (forall x, In x l -> F x <=p=> G x) -> @listpred A B AT M F l <=p=> listpred G l.
+Proof.
+  induction l; intros; split; cancel.
+  rewrite IHl, H by auto; cancel.
+  rewrite IHl, H by (intuition; symmetry; auto); cancel.
+Qed.
 
 (* predicate over a pair of lists *)
 
@@ -421,6 +484,15 @@ Section LISTMATCH.
     repeat rewrite app_length; omega.
   Qed.
 
+  Theorem listmatch_app_rev : forall a1 b1 a2 b2,
+    length a1 = length b1 \/ length a2 = length b2 ->
+    listmatch (a1 ++ a2) (b1 ++ b2) =p=> listmatch a1 b1 * listmatch a2 b2.
+  Proof.
+    unfold listmatch; cancel;
+    repeat rewrite app_length in *;
+    repeat (omega || rewrite combine_app || apply listpred_app).
+  Qed.
+
   Theorem listmatch_split : forall a b n,
     listmatch a b <=p=> listmatch (firstn n a) (firstn n b) * listmatch (skipn n a) (skipn n b).
   Proof.
@@ -436,10 +508,109 @@ Section LISTMATCH.
     eapply skipn_firstn_length_eq; eauto.
   Qed.
 
+  Theorem listmatch_emp : forall l1 l2,
+    (forall x y, In x l1 -> In y l2 -> prd x y =p=> emp) ->
+    listmatch l1 l2 =p=> emp.
+  Proof.
+    intros.
+    unfold listmatch.
+    rewrite listpred_emp.
+    cancel.
+    intros; destruct x; simpl.
+    apply H; solve [eapply in_combine_l; eauto |eapply in_combine_r; eauto].
+  Qed.
+
+  Theorem listmatch_emp_piff : forall l1 l2,
+    (forall x y, In x l1 -> In y l2 -> prd x y <=p=> emp) ->
+    listmatch l1 l2 <=p=> [[ length l1 = length l2 ]].
+  Proof.
+    split.
+    rewrite listmatch_length_pimpl; cancel.
+    apply listmatch_emp; intuition.
+    rewrite H; auto.
+    unfold listmatch; rewrite listpred_emp_piff.
+    cancel.
+    intros; destruct x; simpl.
+    apply H; solve [eapply in_combine_l; eauto |eapply in_combine_r; eauto].
+  Qed.
+
+  Theorem listmatch_repeat_l : forall v n l2,
+    listmatch (repeat v n) l2 <=p=> [[ n = length l2 ]] * listpred (prd v) l2.
+  Proof.
+    unfold listmatch. intros.
+    rewrite repeat_length.
+    destruct (Nat.eq_dec n (length l2)); [> | split; cancel].
+    apply piff_star_l; subst.
+    induction l2; intros.
+    - rewrite combine_l_nil. split; cancel.
+    - simpl. rewrite IHl2. auto.
+  Qed.
+
+  Theorem listmatch_repeat_r : forall v n l1,
+    listmatch l1 (repeat v n) <=p=> [[ length l1 = n]] * listpred (fun x => prd x v) l1.
+  Proof.
+    unfold listmatch. intros.
+    rewrite repeat_length.
+    destruct (Nat.eq_dec n (length l1)); [> | split; cancel].
+    apply piff_star_l; subst.
+    induction l1; intros.
+    - rewrite combine_l_nil. split; cancel.
+    - simpl. rewrite IHl1. auto.
+  Qed.
+
 End LISTMATCH.
 
+Theorem listmatch_lift : forall A B AT AEQ V prd (l1 : list A) (l2 : list B) F P,
+  (forall x y, In x l1 -> In y l2 -> prd x y ⇦⇨ ⟦⟦ P x y ⟧⟧ ✶ F x y) ->
+  @listmatch A B AT AEQ V prd l1 l2 <=p=> [[ Forall2 P l1 l2]] * listmatch F l1 l2.
+Proof.
+  intros.
+  unfold listmatch.
+  rewrite listpred_lift.
+  split; cancel.
+  apply forall_forall2; eauto.
+  apply forall2_forall; eauto.
+  intros; simpl.
+  destruct x; simpl; auto.
+  apply H.
+  eapply in_combine_l; eauto.
+  eapply in_combine_r; eauto.
+Qed.
 
+Theorem listmatch_lift_l : forall A B AT AEQ V prd (l1 : list A) (l2 : list B) F P,
+  (forall x y, In x l1 -> In y l2 -> prd x y ⇦⇨ ⟦⟦ P x ⟧⟧ ✶ F x y) ->
+  @listmatch A B AT AEQ V prd l1 l2 <=p=> [[ Forall P l1 ]] * listmatch F l1 l2.
+Proof.
+  intros.
+  rewrite listmatch_lift with (P := fun x y => P x); eauto.
+  split; intros m HH; rewrite listmatch_length_pimpl in HH; pred_apply; cancel.
+  - erewrite <- map_fst_combine, <- Forall_map; eauto.
+    match goal with [H : Forall2 _ _ _ |- _] => apply forall2_forall in H end.
+    auto.
+  - apply forall_forall2; auto.
+    rewrite Forall_map.
+    rewrite map_fst_combine; auto.
+Qed.
 
+Lemma listmatch_piff_replace : forall A B AT T M l1 l2 F G,
+  (forall x y, In x l1 -> In y l2 -> F x y <=p=> G x y) -> @listmatch A B AT M T F l1 l2 <=p=> listmatch G l1 l2.
+Proof.
+  unfold listmatch; intros.
+  rewrite listpred_piff_replace.
+  split; cancel.
+  intros a; destruct a; intros HH; simpl; auto.
+  apply H; solve [eapply in_combine_l; eauto | eapply in_combine_r; eauto].
+Qed.
+
+Lemma arrayN_listpred_seq : forall V l st n,
+  length l = n ->
+  arrayN (@ptsto _ _ V) st l =p=> listpred (fun a => a |->?) (seq st n).
+Proof.
+  induction l; destruct n; simpl; intros; try omega; auto.
+  rewrite IHl.
+  cancel.
+  omega.
+Qed.
 
 
 Lemma listmatch_sym : forall AT AEQ V A B (al : list A) (bl : list B) f,
@@ -501,6 +672,79 @@ Proof.
   unfold pimpl in *; intros.
   eapply IHal; eauto.
   pred_apply; cancel.
+Qed.
+
+Theorem listmatch_lift_r : forall AT AEQ V A C l1 l2 f F P,
+  (forall x y, In x l1 -> In y l2 -> f x y <=p=> ([[ P y ]] * F x y)%pred) ->
+  @listmatch A C AT AEQ V f l1 l2 <=p=> [[ Forall P l2 ]] * listmatch F l1 l2.
+Proof.
+  intros.
+  rewrite listmatch_sym.
+  rewrite listmatch_lift_l.
+  split; cancel; eauto; try apply listmatch_sym.
+  simpl; auto.
+Qed.
+
+Lemma listmatch_unify : forall A B la lb l1 l2 AT AEQ V F1 F2 (f : A -> B -> @pred AT AEQ V) m,
+  (forall Fa Fb xa xb ya yb, In xa la -> In xb lb -> In ya l1 -> In yb l2 ->
+  (Fa * f xa ya)%pred m -> (Fb * f xb yb)%pred m -> (xa = xb /\ ya = yb)) ->
+  (F1 * listmatch f la l1)%pred m -> (F2 * listmatch f lb l2)%pred m ->
+  length la = length lb ->
+  la = lb /\ l1 = l2.
+Proof.
+  intros.
+  unfold listmatch in *.
+  repeat match goal with [H: context [lift_empty] |- _] => destruct_lift H end.
+  split.
+  1 : rewrite <- map_fst_combine with (a := la) (b := l1); auto.
+  1 : rewrite <- map_fst_combine with (a := lb) (b := l2); auto.
+  2 : rewrite <- map_snd_combine with (a := la) (b := l1); auto.
+  2 : rewrite <- map_snd_combine with (a := lb) (b := l2); auto.
+  all : f_equal; eapply listpred_unify; eauto.
+  all : repeat rewrite combine_length_eq2; try omega.
+  all : intros; destruct a, b; simpl in *.
+  all : edestruct H;
+        solve [eauto | subst; eauto |
+               eapply in_combine_l; eauto |
+               eapply in_combine_r; eauto ].
+Qed.
+
+Lemma listmatch_unify_r : forall A B l l1 l2 AT AEQ V F1 F2 (f : A -> B -> @pred AT AEQ V) m,
+  (forall Fa Fb x ya yb, In x l -> In ya l1 -> In yb l2 ->
+  (Fa * f x ya)%pred m -> (Fb * f x yb)%pred m -> (ya = yb)) ->
+  (F1 * listmatch f l l1)%pred m -> (F2 * listmatch f l l2)%pred m ->
+  l1 = l2.
+Proof.
+  induction l; intros; destruct l1, l2; auto.
+  all : unfold listmatch in *;
+        destruct_lift H0; destruct_lift H1;
+        match goal with
+        | [ H : 0 = S _ |- _] => inversion H
+        | [ H : S _ = 0 |- _] => inversion H
+        | [ |- _] => idtac
+        end.
+  f_equal; [> eapply H | eapply IHl]; intros;
+    try match goal with
+    | [ |- _ \/ _] => left; eauto
+    | [ |- _ = _ ] => eapply H
+    end; eauto.
+  all : match goal with
+  | [H : _ |- _] => solve [eapply pimpl_apply; [> | exact H]; cancel]
+  end.
+Qed.
+
+Lemma listmatch_unify_l : forall A B l la lb AT AEQ V F1 F2 (f : A -> B -> @pred AT AEQ V) m,
+  (forall Fa Fb xa xb y, In xa la -> In xb lb -> In y l ->
+  (Fa * f xa y)%pred m -> (Fb * f xb y)%pred m -> (xa = xb)) ->
+  (F1 * listmatch f la l)%pred m -> (F2 * listmatch f lb l)%pred m ->
+  la = lb.
+Proof.
+  intros.
+  rewrite listmatch_sym in H0.
+  rewrite listmatch_sym in H1.
+  eapply listmatch_unify_r; eauto.
+  intros.
+  eapply H; eauto.
 Qed.
 
 Theorem xform_listpred : forall V (l : list V) prd,

@@ -58,7 +58,10 @@ Inductive fail_step : forall T,
     fail_step m (Read a)
 | FailWrite : forall m a v,
     m a = None ->
-    fail_step m (Write a v).
+    fail_step m (Write a v)
+| FailTrim : forall m a,
+    m a = None ->
+    fail_step m (Trim a).
 
 Inductive crash_step : forall T, prog T -> Prop :=
 | CrashRead : forall a,

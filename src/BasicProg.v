@@ -42,14 +42,19 @@ Proof.
     eapply H4; eauto.
     pred_apply; cancel.
     eauto.
-    admit. (* m a |+> (dummy_cur, x) and m' a |+> (v, x'); equal using sync_addr_step *)
+    eapply ptsto_subset_valid' in H; deex.
+    unfold possible_sync in *.
+    destruct (H13 a).
+    intuition congruence.
+    repeat deex; simpl in *.
+    congruence.
   - exfalso.
     apply sep_star_comm in H. eapply ptsto_subset_valid in H. repeat deex.
     congruence.
   - right. repeat eexists; intuition eauto.
     eapply H3.
     pred_apply; cancel.
-Admitted.
+Qed.
 
 Hint Extern 1 ({{_}} Bind (Read _) _) => apply read_ok : prog.
 
@@ -66,14 +71,24 @@ Proof.
   inv_exec.
   - inv_exec' H9.
     eapply H4; eauto.
-    admit.
+    repeat apply sep_star_lift_apply'; eauto.
+
+    pose proof (ptsto_subset_valid' H); deex; eauto; simpl in *.
+    rewrite H1 in H14; inversion H14; subst; clear H14.
+
+    eapply sync_invariant_possible_sync; eauto.
+    eapply ptsto_subset_upd; eauto.
+    unfold vsmerge; simpl.
+    eapply incl_cons.
+    constructor; auto.
+    eapply incl_tl; eauto.
   - exfalso.
     apply sep_star_comm in H. eapply ptsto_subset_valid in H. repeat deex.
     congruence.
   - right. repeat eexists; intuition eauto.
     eapply H3.
     pred_apply; cancel.
-Admitted.
+Qed.
 
 Hint Extern 1 ({{_}} Bind (Write _ _) _) => apply write_ok : prog.
 
@@ -84,6 +99,19 @@ Lemma sync_invariant_sync_mem : forall F m,
 Proof.
   unfold sync_invariant; intros.
   eapply H; eauto using possible_sync_sync_mem.
+Qed.
+
+Theorem possible_sync_from_sync : forall A AEQ (m m': @Mem.mem A AEQ _),
+    possible_sync (sync_mem m) m' ->
+    m' = sync_mem m.
+Proof.
+  unfold possible_sync, sync_mem; intros.
+  extensionality a.
+  specialize (H a).
+  destruct (m a) as [ [? ?] | ];
+    intuition; repeat deex; try congruence.
+  inversion H0; subst.
+  apply incl_in_nil in H2; subst; eauto.
 Qed.
 
 Theorem sync_ok:
@@ -100,13 +128,9 @@ Proof.
   - inv_exec' H9.
     eapply H4; eauto.
 
-    apply possible_sync_after_sync in H13; subst.
-    apply sep_star_lift_apply'; auto.
-    apply sep_star_lift_apply'; auto.
-    apply sep_star_lift_apply'; auto.
-    apply pimpl_star_emp.
-    unfold sync_xform.
-    eexists; intuition eauto.
+    apply possible_sync_from_sync in H13; subst.
+    eapply pimpl_apply; [ | eapply sync_xform_pred_apply; pred_apply; reflexivity ].
+    cancel.
 Qed.
 
 Hint Extern 1 ({{_}} Bind Sync _) => apply sync_ok : prog.
@@ -129,8 +153,19 @@ Proof.
     apply sep_star_comm in H as H'. rewrite ptsto_subset_pimpl_ptsto_ex in H'. destruct_lift H'.
     apply ptsto_valid in H0.
     rewrite H0 in H1; inversion H1; subst.
-    admit.
-Admitted.
+
+    repeat apply sep_star_lift_apply'; eauto.
+    eapply sync_invariant_possible_sync; eauto.
+
+    eapply pimpl_apply.
+    2: eapply ptsto_subset_upd.
+    cancel.
+    eauto.
+    eapply incl_refl.
+  - exfalso.
+    apply sep_star_comm in H. eapply ptsto_subset_valid in H. repeat deex.
+    congruence.
+Qed.
 
 Hint Extern 1 ({{_}} Bind (Trim _) _) => apply trim_ok : prog.
 
@@ -511,6 +546,7 @@ Proof.
   - eapply pimpl_pre2; intros; repeat ( apply sep_star_lift_l; intros ).
     + simpl.
       unfold pimpl, lift; intros.
+
       eapply pimpl_ok2; monad_simpl.
       apply H1. omega. omega.
       intros.
@@ -518,15 +554,14 @@ Proof.
       eapply IHn.
       cancel.
       cancel.
-      eapply pimpl_ok2.
-      apply H1. omega. omega.
-      intros.
+
+      eapply H1; eauto; try omega.
+
       eapply pimpl_ok2; monad_simpl; eauto.
-      cancel.
+      2: intros; apply pimpl_refl.
+      intros; cancel.
       replace (n + S i) with (S (n + i)) by omega.
-      apply H0.
-      intros.
-      apply pimpl_refl.
+      eauto.
     + cancel.
 Qed.
 

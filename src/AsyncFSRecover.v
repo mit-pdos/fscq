@@ -150,8 +150,8 @@ Module AFS_RECOVER.
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
     POST:hm' RET:^(mscs', r)
-      [[ r = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
-      [[ r = true  ]] * exists d tree' f' ilist' frees',
+      [[ isError r ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+      [[ r = OK tt ]] * exists d tree' f' ilist' frees',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees')]]] *
         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
@@ -170,8 +170,13 @@ Module AFS_RECOVER.
          [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]])
      >>} file_truncate fsxp inum sz mscs >> recover cachesize.
   Proof.
-    recover_ro_ok.
+    unfold forall_helper; intros.
+    (* workaround an evar tracking bug by destructing before instantiating;
+     otherwise proof goes through but at Qed time the variable d, produced from
+     v, cannot be found. *)
     destruct v.
+    eexists; intros.
+    recover_ro_ok.
     cancel.
     eauto.
     safestep.  (* crucial to use safe version *)
@@ -192,8 +197,7 @@ Module AFS_RECOVER.
     repeat xform_deex_l.
     xform_dist.
     rewrite crash_xform_lift_empty.
-    norml. unfold stars; simpl. rewrite H8.
-    xform_dist. xform_deex_l.
+    norml. unfold stars; simpl. rewrite H9.
 
     - rewrite LOG.idempred_idem.
       norml; unfold stars; simpl.
@@ -208,45 +212,12 @@ Module AFS_RECOVER.
 
       intuition.
       simpl_idempred_r.
-      rewrite crash_xform_or_dist in *.
       auto.
 
       simpl_idempred_r.
-      or_l; cancel.
       rewrite <- LOG.before_crash_idempred.
-      auto.
-
-    - norml; unfold stars; simpl.
-      xform_deex_l. norml; unfold stars; simpl.
-      xform_deex_l. norml; unfold stars; simpl.
-      repeat xform_dist.
-      rewrite LOG.idempred_idem.
-      norml; unfold stars; simpl.
-      rewrite SB.crash_xform_rep.
       cancel.
-
-      prestep. norm. cancel.
-      recover_ro_ok.
-      cancel.
-      or_r.
-      safecancel; eauto.
-      reflexivity.
-
-      intuition.
-      simpl_idempred_r.
-      rewrite crash_xform_or_dist in *.
-      auto.
-
-      simpl_idempred_r.
-      or_r; cancel.
-      do 4 (xform_norm; cancel).
-      rewrite <- LOG.before_crash_idempred.
-      safecancel; eauto.
-      auto.
-      (* XXX: Goals proven, but getting
-       * "Error: No such section variable or assumption: d." *)
-  Admitted.
-
+  Qed.
 
   Theorem update_fblock_d_recover_ok : forall fsxp inum off v mscs,
     {<< ds Fm Ftop tree pathname f Fd vs frees ilist,

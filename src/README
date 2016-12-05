@@ -3,7 +3,7 @@ building Coq from source:
 
   git clone -b v8.5 https://github.com/coq/coq.git
 
-As one reference point, commit dda6d8f6 seems to produce a working
+As one reference point, commit eaa3f971 seems to produce a working
 version of Coq that builds fscq.
 
 To develop Coq code using CoqIDE, check out coqide.sh, which invokes
@@ -15,11 +15,12 @@ means running this as root:
 
   add-apt-repository ppa:hvr/ghc
   apt-get update
-  apt-get install ghc-8.0.1-prof
+  apt-get install ghc-8.0.1-prof cabal-install-1.24
 
   echo 'library-profiling: True' >> ~/.cabal/config
-  cabal user-config update
-  PATH=/opt/ghc/8.0.1/bin:$PATH cabal install cryptohash
+  /opt/cabal/1.24/bin/cabal user-config update
+  /opt/cabal/1.24/bin/cabal update
+  PATH=/opt/ghc/8.0.1/bin:$PATH /opt/cabal/1.24/bin/cabal install cryptohash
 
 You also need to install headers for FUSE:
 

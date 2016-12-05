@@ -1,0 +1,171 @@
+| filename         | theorem name                | nesting depth | dir rep_macro | log rep | crash invariant  | xcrash |
+| Cache.v          | writeback_ok                |             1 | no            | no      | Cache.rep        |        |
+| Cache.v          | evict_ok                    |             1 | no            | no      | Cache.rep        |        |
+| Cache.v          | maybe_evict_ok              |             0 | no            | no      | Cache.rep        |        |
+| Cache.v          | read_ok                     |             1 | no            | no      | Cache.rep        |        |
+| Cache.v          | begin_sync_ok               |             1 | no            | no      | Cache.rep        |        |
+| Cache.v          | end_sync_ok                 |             0 | no            | no      | Cache.rep        |        |
+| Cache.v          | sync_ok                     |             1 | no            | no      | Cache.rep        |        |
+| Cache.v          | sync_one_ok                 |             1 | no            | no      | Cache.rep        |        |
+| Cache.v          | sync_two_ok                 |             1 | no            | no      | Cache.rep        |        |
+| Cache.v          | init_recover_ok             |             1 | no            | no      | Cache.rep        |        |
+| Cache.v          | init_load_ok                |             0 | no            | no      | precondition     |        |
+| Cache.v          | write_ok                    |             1 | no            | no      | Cache.rep        | yes    |
+| Cache.v          | read_array_ok               |             1 | no            | no      | Cache.rep        |        |
+| Cache.v          | write_array_ok              |             1 | no            | no      | Cache.rep        | yes    |
+| Cache.v          | sync_array_ok               |             1 | no            | no      | Cache.rep        |        |
+| Cache.v          | read_range_ok               |             1 | no            | no      | Cache.rep        |        |
+| Cache.v          | write_range_ok              |             1 | no            | no      | Cache.rep        | yes    |
+| Cache.v          | sync_range_ok               |             1 | no            | no      | Cache.rep        |        |
+| Cache.v          | write_vecs_ok               |             1 | no            | no      | Cache.rep        | yes    |
+| Cache.v          | sync_vecs_ok                |             1 | no            | no      | Cache.rep        |        |
+| Cache.v          | sync_vecs_now_ok            |             1 | no            | no      | Cache.rep        |        |
+| AsyncRecArray.v  | read_all_ok                 |             1 | no            | no      | Cache.rep        |        |
+| AsyncRecArray.v  | write_aligned_ok            |             1 | no            | no      | Cache.rep        |        |
+| AsyncRecArray.v  | sync_aligned_ok             |             1 | no            | no      | Cache.rep        |        |
+| SuperBlock.v     | load_ok                     |             1 | no            | no      | Cache.rep        |        |
+| SuperBlock.v     | init_ok                     |             1 | no            | no      | Cache.rep        |        |
+| DiskLogHash.v    | write_ok                    |             1 | no            | no      | Cache.rep        | yes    |
+| DiskLogHash.v    | read_ok                     |             1 | no            | no      | Cache.rep        |        |
+| DiskLogHash.v    | sync_ok                     |             1 | no            | no      | Cache.rep        |        |
+| DiskLogHash.v    | sync_now_ok                 |             1 | no            | no      | Cache.rep        |        |
+| DiskLogHash.v    | init_ok                     |             1 | no            | no      | Cache.rep        |        |
+| MemLog.v         | dwrite_vecs_ok              |             1 | no            | yes     | Log.rep          |        |
+| Log.v            | abort_ok                    |             0 | no            | yes     | Log.rep          |        |
+| Log.v            | write_ok                    |             1 | no            | yes     | Log.rep          |        |
+| Log.v            | dwrite_ok                   |             1 | no            | yes     | recover_any      | yes    |
+| Log.v            | dsync_ok                    |             1 | no            | yes     | recover_any      |        |
+| Log.v            | flushall_ok                 |             0 | no            | yes     | recover_any      | yes    |
+| Log.v            | flushsync_ok                |             0 | no            | yes     | recover_any      | yes    |
+| Log.v            | flushall_noop_ok            |             0 | no            | yes     | recover_any      | yes    |
+| Log.v            | flushsync_noop_ok           |             0 | no            | yes     | recover_any      | yes    |
+| Log.v            | commit_ok                   |             0 | no            | yes     | recover_any      | yes    |
+| Log.v            | commit_ro_ok                |             0 | no            | yes     | Log.rep          |        |
+| Log.v            | read_array_ok               |             1 | no            | yes     | Log.rep          |        |
+| Log.v            | write_array_ok              |             1 | no            | yes     | Log.rep          |        |
+| Log.v            | read_range_ok               |             1 | no            | yes     | Log.rep          |        |
+| Log.v            | write_range_ok              |             1 | no            | yes     | Log.rep          |        |
+| Log.v            | read_cond_ok                |             1 | no            | yes     | Log.rep          |        |
+| Log.v            | dwrite_vecs_ok              |             1 | no            | yes     | recover_any      | yes    |
+| Log.v            | dsync_vecs_ok               |             1 | no            | yes     | recover_any      |        |
+| LogRecArray.v    | get_ok                      |             1 | no            | yes     | Log.rep          |        |
+| LogRecArray.v    | put_ok                      |             1 | no            | yes     |                  |        |
+| LogRecArray.v    | read_ok                     |             1 | no            | yes     | Log.rep          |        |
+| LogRecArray.v    | write_ok                    |             1 | no            | yes     |                  |        |
+| LogRecArray.v    | init_ok                     |             1 | no            | yes     |                  |        |
+| LogRecArray.v    | ifind_ok                    |             1 | no            | yes     | Log.rep          |        |
+| LogRecArray.v    | get_array_ok                |             2 | no            | yes     | Log.rep          |        |
+| LogRecArray.v    | put_array_ok                |             2 | no            | yes     |                  |        |
+| LogRecArray.v    | read_array_ok               |             2 | no            | yes     | Log.rep          |        |
+| LogRecArray.v    | ifind_array_ok              |             1 | no            | yes     | Log.rep          |        |
+| Balloc.v         | init_ok                     |             1 | no            | yes     |                  |        |
+| Balloc.v         | init_nofree_ok              |             1 | no            | yes     |                  |        |
+| Balloc.v         | steal_ok                    |             1 | no            | yes     |                  |        |
+| Balloc.v         | alloc_ok                    |             1 | no            | yes     |                  |        |
+| Balloc.v         | free_ok                     |             1 | no            | yes     |                  |        |
+| Balloc.v         | init_ok                     |             1 | no            | yes     |                  |        |
+| Balloc.v         | init_nofree_ok              |             1 | no            | yes     |                  |        |
+| Balloc.v         | steal_ok                    |             1 | no            | yes     |                  |        |
+| Balloc.v         | alloc_ok                    |             1 | no            | yes     |                  |        |
+| Balloc.v         | free_ok                     |             1 | no            | yes     |                  |        |
+| Balloc.v         | freevec_ok                  |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | indget_ok                   |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | indread_ok                  |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | indclear_all_ok             |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | indclear_aligned_ok         |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | update_block_ok             |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | indclear_from_aligned_ok    |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | indclear_to_aligned_ok      |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | indclear_multiple_blocks_ok |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | indclear_ok                 |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | indput_get_blocks_ok        |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | indrec_write_blind_ok       |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | indput_upd_if_necessary_ok  |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | indput_ok                   |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | get_ok                      |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | read_ok                     |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | indshrink_helper_ok         |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | indshrink_ok                |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | shrink_ok                   |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | indgrow_ok                  |             1 | no            | yes     |                  |        |
+| BlockPtr.v       | grow_ok                     |             1 | no            | yes     |                  |        |
+| Inode.v          | init_ok                     |             1 | no            | yes     |                  |        |
+| Inode.v          | getlen_ok                   |             2 | no            | yes     |                  |        |
+| Inode.v          | getattrs_ok                 |             2 | no            | yes     |                  |        |
+| Inode.v          | setattrs_ok                 |             2 | no            | yes     |                  |        |
+| Inode.v          | updattr_ok                  |             2 | no            | yes     |                  |        |
+| Inode.v          | getbnum_ok                  |             2 | no            | yes     |                  |        |
+| Inode.v          | getallbnum_ok               |             2 | no            | yes     |                  |        |
+| Inode.v          | shrink_ok                   |             2 | no            | yes     |                  |        |
+| Inode.v          | grow_ok                     |             2 | no            | yes     |                  |        |
+| BFile.v          | shuffle_allocs_ok           |             1 | no            | yes     |                  |        |
+| BFile.v          | init_ok                     |             1 | no            | yes     |                  |        |
+| BFile.v          | getlen_ok                   |             2 | no            | yes     | Log.rep          |        |
+| BFile.v          | getattrs_ok                 |             2 | no            | yes     | Log.rep          |        |
+| BFile.v          | setattrs_ok                 |             2 | no            | yes     |                  |        |
+| BFile.v          | updattr_ok                  |             2 | no            | yes     |                  |        |
+| BFile.v          | read_ok                     |             3 | no            | yes     | Log.rep          |        |
+| BFile.v          | write_ok                    |             3 | no            | yes     |                  |        |
+| BFile.v          | grow_ok                     |             3 | no            | yes     |                  |        |
+| BFile.v          | shrink_ok                   |             2 | no            | yes     |                  |        |
+| BFile.v          | sync_ok                     |             0 | no            | yes     | Log.recover_any  |        |
+| BFile.v          | sync_noop_ok                |             0 | no            | yes     | Log.recover_any  |        |
+| BFile.v          | dwrite_ok                   |             3 | no            | yes     | Log.recover_any  |        |
+| BFile.v          | datasync_ok                 |             2 | no            | yes     | Log.recover_any  |        |
+| BFile.v          | read_array_ok               |             3 | no            | yes     | Log.rep          |        |
+| BFile.v          | write_array_ok              |             3 | no            | yes     |                  |        |
+| BFile.v          | read_range_ok               |             3 | no            | yes     | Log.rep          |        |
+| BFile.v          | read_cond_ok                |             2 | no            | yes     | Log.rep          |        |
+| BFile.v          | grown_ok                    |             3 | no            | yes     |                  |        |
+| BFile.v          | truncate_ok                 |             2 | no            | yes     |                  |        |
+| BFile.v          | reset_ok                    |             2 | no            | yes     |                  |        |
+| FileRecArray.v   | get_ok                      |             3 | no            | yes     | Log.rep          |        |
+| FileRecArray.v   | put_ok                      |             3 | no            | yes     |                  |        |
+| FileRecArray.v   | extend_ok                   |             3 | no            | yes     |                  |        |
+| FileRecArray.v   | readall_ok                  |             3 | no            | yes     | Log.rep          |        |
+| FileRecArray.v   | init_ok                     |             2 | no            | yes     |                  |        |
+| FileRecArray.v   | ifind_ok                    |             3 | no            | yes     | Log.rep          |        |
+| FileRecArray.v   | get_array_ok                |             4 | no            | yes     | Log.rep          |        |
+| FileRecArray.v   | put_array_ok                |             4 | no            | yes     |                  |        |
+| FileRecArray.v   | extend_array_ok             |             4 | no            | yes     |                  |        |
+| FileRecArray.v   | ifind_array_ok              |             3 | no            | yes     | Log.rep          |        |
+| Dir.v            | lookup_ok                   |             1 | yes           | yes     | Log.rep          |        |
+| Dir.v            | readdir_ok                  |             1 | yes           | yes     | Log.rep          |        |
+| Dir.v            | unlink_ok                   |             1 | yes           | yes     |                  |        |
+| Dir.v            | link_ok                     |             1 | yes           | yes     |                  |        |
+| DirName.v        | lookup_ok                   |             1 | yes           | yes     | Log.rep          |        |
+| DirName.v        | readdir_ok                  |             1 | yes           | yes     | Log.rep          |        |
+| DirName.v        | unlink_ok                   |             1 | yes           | yes     |                  |        |
+| DirName.v        | link_ok                     |             1 | yes           | yes     |                  |        |
+| DirTree.v        | namei_ok                    |             1 | no            | yes     |                  |        |
+| DirTree.v        | mkdir_ok                    |             1 | no            | yes     |                  |        |
+| DirTree.v        | mkfile_ok                   |             1 | no            | yes     |                  |        |
+| DirTree.v        | delete_ok                   |             1 | no            | yes     |                  |        |
+| DirTree.v        | rename_ok                   |             1 | no            | yes     |                  |        |
+| DirTree.v        | read_ok                     |             2 | no            | yes     |                  |        |
+| DirTree.v        | dwrite_ok                   |             2 | no            | yes     | Log.recover_any  |        |
+| DirTree.v        | datasync_ok                 |             1 | no            | yes     | Log.recover_any  |        |
+| DirTree.v        | sync_ok                     |             1 | no            | yes     | Log.recover_any  |        |
+| DirTree.v        | sync_noop_ok                |             1 | no            | yes     | Log.recover_any  |        |
+| DirTree.v        | truncate_ok                 |             1 | no            | yes     |                  |        |
+| DirTree.v        | getlen_ok                   |             1 | no            | yes     |                  |        |
+| DirTree.v        | getattr_ok                  |             1 | no            | yes     |                  |        |
+| DirTree.v        | setattr_ok                  |             1 | no            | yes     |                  |        |
+| AsyncFS.v        | mkfs_ok                     |             0 | no            | no      | any              |        |
+| AsyncFS.v        | recover_ok                  |             0 | no            | yes     | Log.before_crash |        |
+| AsyncFS.v        | file_getattr_ok             |             1 | no            | yes     | Log.idempred     |        |
+| AsyncFS.v        | read_fblock_ok              |             2 | no            | yes     | Log.idempred     |        |
+| AsyncFS.v        | file_set_attr_ok            |             1 | no            | yes     | Log.idempred     |        |
+| AsyncFS.v        | file_truncate_ok            |             1 | no            | yes     | Log.idempred     |        |
+| AsyncFS.v        | update_fblock_d_ok          |             2 | no            | yes     | Log.idempred     |        |
+| AsyncFS.v        | create_ok                   |             1 | no            | yes     | Log.idempred     |        |
+| AsyncFS.v        | rename_ok                   |             1 | no            | yes     | Log.idempred     |        |
+| AsyncFS.v        | delete_ok                   |             1 | no            | yes     | Log.idempred     |        |
+| AsyncFSRecover.v | file_getattr_recover_ok     |             1 | no            | yes     | N/A              |        |
+| AsyncFSRecover.v | read_fblock_recover_ok      |             2 | no            | yes     | N/A              |        |
+| AsyncFSRecover.v | file_truncate_recover_ok    |             1 | no            | yes     | N/A              |        |
+| AsyncFSRecover.v | update_fblock_d_recover_ok  |             2 | no            | yes     | N/A              |        |
+| AsyncFSRecover.v | file_sync_recover_ok        |             1 | no            | yes     | N/A              |        |
+| AsyncFSRecover.v | lookup_recover_ok           |             1 | no            | yes     | N/A              |        |
+| AsyncFSRecover.v | create_recover_ok           |             1 | no            | yes     | N/A              |        |
+| AsyncFSRecover.v | rename_recover_ok           |             1 | no            | yes     | N/A              |        |
