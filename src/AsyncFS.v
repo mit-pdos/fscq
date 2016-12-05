@@ -1092,8 +1092,12 @@ Module AFS.
        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
        [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                        ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]])
-    CRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+    XCRASH:hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+      exists d inum tree' ilist' frees',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
+      [[ tree' = tree_graft dnum tree_elem pathname name (TreeFile inum BFILE.bfile0) tree ]] *
+      [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]]
     >} create fsxp dnum name mscs.
   Proof.
     unfold create; intros.
@@ -1101,13 +1105,19 @@ Module AFS.
     step.
     step.
     step.
-    (* XXX: prove crash condition using XCRASH *)
-    admit.
+    xcrash_solve.
+    or_r; cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    rewrite LOG.recover_any_idempred; cancel. pred_apply; cancel.
     step.
-    apply LOG.notxn_idempred.
-    apply LOG.intact_idempred.
-    apply LOG.notxn_idempred.
-  Admitted.
+    xcrash_solve. xform_norm. or_l. rewrite LOG.intact_idempred. cancel.
+    xcrash_solve. xform_norm. or_l. rewrite LOG.intact_idempred. cancel.
+    xcrash_solve. xform_norm. or_l. rewrite LOG.intact_idempred. cancel.
+  Qed.
 
   Hint Extern 1 ({{_}} Bind (create _ _ _ _ ) _) => apply create_ok : prog.
 
