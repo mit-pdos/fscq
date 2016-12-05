@@ -588,8 +588,10 @@ Module TREESEQ.
         rewrite <- H13.
         apply H12.
         intuition.
-        eapply BFILE.block_belong_to_file_inum_ok; eauto.
-
+        **
+          admit. (* not prefix *)
+        **
+          admit. (* not prefix *)
       * unfold treeseq_safe_bwd in *; simpl; intros.
         deex; intuition.
         erewrite find_subtree_update_subtree_ne_path in *; eauto.
@@ -608,11 +610,19 @@ Module TREESEQ.
         rewrite H12.
         apply H11.
         intuition.
-        rewrite <- H1.
-        eapply BFILE.block_belong_to_file_inum_ok; eauto.
-
+        **
+          admit. (* not prefix *)
+        **
+          admit. (* not prefix *)
       * eapply BFILE.ilist_safe_trans; eauto.
-  Qed.
+  Admitted.
+
+  Ltac xcrash_solve :=
+    repeat match goal with
+           | [ H: forall _ _ _,  _ =p=> (?crash _) |- _ =p=> (?crash _) ] => eapply pimpl_trans; try apply H; cancel
+           | [ |- crash_xform (LOG.rep _ _ _ _ _) =p=> _ ] => rewrite LOG.notxn_intact; cancel
+           | [ H: crash_xform ?rc =p=> _ |- crash_xform ?rc =p=> _ ] => rewrite H; xform_norm
+           end.
 
   Theorem treeseq_file_set_attr_ok : forall fsxp inum attr mscs,
   {< ds ts pathname Fm Ftop Ftree f,
@@ -634,7 +644,8 @@ Module TREESEQ.
         [[ ts' = pushd (mk_tree tree' ilist' (TSfree ts !!)) ts ]] *
         [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
         [[ (Ftree * pathname |-> File inum f')%pred (dir2flatmem2 tree') ]])
-  XCRASH:hm'
+   XCRASH:hm'
+            (* TODO: fix crash condition *)
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
   >} AFS.file_set_attr fsxp inum attr mscs.
   Proof.
@@ -670,7 +681,11 @@ Module TREESEQ.
     eapply dir2flatmem2_update_subtree.
     distinct_names'.
     eassumption.
-  Qed.
+
+    xcrash_solve.
+    eauto.
+    admit. (* need fixed crash condition with pushd case *)
+  Admitted.
 
   Theorem treeseq_file_grow_ok : forall fsxp inum newlen mscs,
   {< ds ts pathname Fm Ftop Ftree f,
@@ -730,7 +745,10 @@ Module TREESEQ.
 
     eapply dir2flatmem2_update_subtree; eauto.
     distinct_names'.
-  Qed.
+    xcrash_solve.
+    eauto.
+    admit. (* TODO: fix crash condition *)
+  Admitted.
 
   Lemma block_is_unused_xor_belong_to_file : forall F Ftop fsxp t m flag bn inum off,
     tree_rep F Ftop fsxp t m ->
@@ -829,7 +847,10 @@ Module TREESEQ.
       destruct (list_eq_dec string_dec pathname' pathname); subst.
       + erewrite find_update_subtree; eauto.
         rewrite H4 in H6; inversion H6. eauto.
-      + rewrite find_subtree_update_subtree_ne_path by auto; eauto.
+      + rewrite find_subtree_update_subtree_ne_path; eauto.
+        admit. (* names distinct - probably needs additional hypothesis *)
+        admit. (* not prefix *)
+        admit.
     - edestruct H2; eauto.
       left.
       intuition.
@@ -840,8 +861,11 @@ Module TREESEQ.
       destruct (list_eq_dec string_dec pathname' pathname); subst.
       + erewrite find_update_subtree; eauto.
         rewrite H4 in H6; inversion H6. eauto.
-      + rewrite find_subtree_update_subtree_ne_path by auto; eauto.
-  Qed.
+      + rewrite find_subtree_update_subtree_ne_path; eauto.
+        admit. (* names distinct *)
+        admit. (* not prefix *)
+        admit.
+  Admitted.
 
   Lemma treeseq_one_safe_dsupd_2 : forall tolder tnewest mscs mscs' pathname off v inum f,
     treeseq_one_safe tolder tnewest mscs ->
@@ -858,9 +882,12 @@ Module TREESEQ.
     - erewrite find_update_subtree in H; eauto.
       inversion H; subst.
       edestruct H2; eauto.
-    - rewrite find_subtree_update_subtree_ne_path in H by auto.
+    - rewrite find_subtree_update_subtree_ne_path in H.
       edestruct H2; eauto.
-  Qed.
+      admit. (* names distinct *)
+      admit. (* not prefix *)
+      admit.
+  Admitted.
 
   Lemma treeseq_one_safe_dsupd : forall tolder tnewest mscs mscs' pathname off v inum f,
     treeseq_one_safe tolder tnewest mscs ->
@@ -1031,17 +1058,25 @@ Module TREESEQ.
         (* a file *)
         rewrite H15 in H11.
         erewrite find_subtree_update_subtree_ne_path in H11; eauto.
+        admit. (* names distinct *)
+        admit. (* not prefix *)
+        admit.
         destruct H11.
         (* a directory *)
         rewrite H15 in H11; eauto.
         (* None *)
         rewrite H15 in H11; eauto.
+        admit. (* not prefix *)
+        admit.
       * unfold treeseq_safe_bwd in *; simpl; intros.
         deex; intuition.
         rewrite find_subtree_update_subtree_ne_path in *; eauto.
         case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
         destruct d.
         erewrite find_subtree_update_subtree_ne_path; eauto.
+        admit. (* names distinct *)
+        admit. (* not prefix *)
+        admit.
         specialize (H10 inum0 off0 bn0).
         edestruct H10.
         exists f'0.
@@ -1065,7 +1100,9 @@ Module TREESEQ.
           exists x.
           split; eauto.
           right; eauto.
-  Qed.
+        ** admit. (* not prefix *)
+        ** admit.
+  Admitted.
 
   Theorem treeseq_update_fblock_d_ok : forall fsxp inum off v mscs,
     {< ds ts Fm Ftop Ftree pathname f Fd vs,
@@ -2028,11 +2065,16 @@ Module TREESEQ.
         destruct d.
         rewrite H15 in H10.
         erewrite find_subtree_update_subtree_ne_path in H10; eauto.
+        admit. (* names distinct *)
+        admit. (* not prefix *)
+        admit.
         rewrite H15 in H10.
         deex; eauto.
         rewrite H15 in H10.
         deex; eauto.
         exists x; eauto.
+        admit. (* not prefix *)
+        admit. (* not prefix *)
         rewrite H0' in H14.
         exfalso.
         inversion H14.
@@ -2052,6 +2094,8 @@ Module TREESEQ.
         rewrite H15 in H10.
         deex; eauto.
         erewrite find_subtree_update_subtree_ne_path in H16; eauto.
+        admit. (* not prefix *)
+        admit.
         rewrite H0' in H15.
         exfalso.
         inversion H15.
@@ -2062,12 +2106,17 @@ Module TREESEQ.
         left.
         exists f0; eauto.
         right; eauto.
+        admit. (* names distinct *)
+        admit. (* not prefix *)
+        admit.
         (* directory *)
         case_eq (find_subtree pathname (TStree ts!!)); intros.
         destruct d.
         rewrite H15 in H10.
         deex.
         erewrite find_subtree_update_subtree_ne_path in H16; eauto.
+        admit. (* not prefix *)
+        admit.
         rewrite H0' in H15.
         exfalso.
         inversion H15.
@@ -2080,13 +2129,15 @@ Module TREESEQ.
         rewrite H15 in H10.
         deex.
         erewrite find_subtree_update_subtree_ne_path in H16; eauto.
+        admit. (* not prefix *)
+        admit. (* not prefix *)
         rewrite H0' in H15.
         exfalso.
         inversion H15.
         rewrite H0' in H15.
         exfalso.
         inversion H15.
-  Qed.
+  Admitted.
 
   Ltac distinct_inodes' :=
     repeat match goal with
@@ -2500,7 +2551,7 @@ Module TREESEQ.
       distinct_inodes'.
       distinct_names'.
       congruence.
-
+      admit.
     - unfold treeseq_safe_bwd.
       intros.
       left.
@@ -2520,13 +2571,15 @@ Module TREESEQ.
       subst.
       erewrite find_update_subtree in H9; eauto.
       congruence.
+      admit.
 
     - simpl.
       unfold dirtree_safe in *; intuition.
       rewrite H0 in *.
       rewrite <- surjective_pairing in H8.
       eauto.
-  Qed.
+    - admit. (* need an appropriate XCRASH condition *)
+  Admitted.
 
 
   Hint Extern 1 ({{_}} Bind (AFS.file_get_attr _ _ _) _) => apply treeseq_file_getattr_ok : prog.
