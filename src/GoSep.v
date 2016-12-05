@@ -25,7 +25,7 @@ Notation "k ~> v" := (k |-> (wrap v))%pred (at level 35) : pred_scope.
 
 Definition mem_of := ((fun m k => VarMap.find k m) : locals -> @Mem.mem var Nat.eq_dec Go.value).
 
-Notation "m ≲ p" := (mem_of m ## p * any) (at level 70).
+Notation "m ≲ p" := (mem_of m ## p) (at level 70).
 
 
 Notation "k ~>? T" := (exists val, k |-> Val (@wrap_type T _) val)%pred (at level 35) : pred_scope.

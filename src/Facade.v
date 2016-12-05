@@ -423,7 +423,6 @@ Fact sep_star_ptsto_some_find : forall l var val A,
   l ≲ (var |-> val * A) -> VarMap.find var l = Some val.
 Proof.
   intros.
-  find_eapply_lem_hyp sep_star_assoc_1.
   find_eapply_lem_hyp sep_star_ptsto_some.
   eauto.
 Qed.
@@ -455,7 +454,7 @@ Ltac extract_var_val_from H P s :=
 Ltac extract_var_val :=
   lazymatch goal with
   | [ H: ?s ≲ ?P |- _ ] => extract_var_val_from H P s
-  | [ H: (?P * any)%pred (mem_of ?s) |- _ ] => extract_var_val_from H P s
+  | [ H: (?P)%pred (mem_of ?s) |- _ ] => extract_var_val_from H P s
   end.
 
 Theorem eq_dec_eq :
@@ -504,15 +503,12 @@ Proof.
   unfold wrap in *; simpl in *.
   repeat find_inversion_safe.
   rewrite add_upd.
-  rewrite sep_star_assoc.
   eapply ptsto_upd.
-  rewrite sep_star_assoc in H.
   eassumption.
 
   contradiction H1.
   repeat eexists.
   eapply Go.StepModify.
-  rewrite sep_star_assoc in H.
   eapply sep_star_ptsto_some in H.
   unfold Go.sel; simpl.
   unfold mem_of in *.
@@ -755,88 +751,12 @@ Class DefaultValue T {Wrapper : GoWrapper T} :=
 
 Arguments DefaultValue T {Wrapper}.
 
-Definition pimpl_subset (P Q : pred) := P =p=> Q * any.
-
-Notation "p >p=> q" := (pimpl_subset p%pred q%pred) (right associativity, at level 90).
-
-
-Definition any' : pred := any.
-
 Definition prod' := prod.
 
-Lemma chop_any :
-  forall AT AEQ V (P Q : @Pred.pred AT AEQ V),
-    P =p=> Q ->
-    P =p=> Q * any.
-Proof.
-  intros.
-  rewrite H.
-  cancel.
-  eapply pimpl_any.
-Qed.
-
-Lemma pimpl_combine_any : forall AT AEQ V (p q : @Pred.pred AT AEQ V),
-  p =p=> q * any * any -> p =p=> q * any.
-Proof.
-  unfold pimpl in *.
-  intros.
-  unfold sep_star in *. rewrite sep_star_is in *.
-  unfold sep_star_impl in *.
-  forward_solve.
-  do 2 eexists.
-  split. apply mem_union_assoc; auto.
-  split; auto.
-  apply mem_disjoint_assoc_1; auto.
-Qed.
-
-Lemma pimpl_any_cancel : forall AT AEQ V (p q r: @Pred.pred AT AEQ V),
-  p =p=> r * any -> p * q =p=> r * any.
-Proof.
-  intros.
-  pose proof pimpl_any q.
-  pose proof pimpl_sep_star H H0.
-  eapply pimpl_combine_any; auto.
-Qed.
-
-Ltac subset_cancel_one x :=
-  match x with
-  | (?x1 * ?x2)%pred => subset_cancel_one x1 || subset_cancel_one x2
-  | ptsto ?A ?B =>
-    match goal with
-    | [ |- ?P =p=> ?Q ] =>
-      match Q with
-      | context [ptsto ?C] => (is_evar A; fail) || (is_evar C; fail) ||
-        unify A C; fail 3
-      | context [?X] => is_evar X;
-        let H := fresh in set (H := X);
-        instantiate (1 := (ptsto A B * _)%pred) in (Value of H);
-        subst H; cancel
-      | context [?X] => is_evar X;
-        eapply pimpl_trans with (b := (_ * ptsto A B)%pred);
-        [> | apply pimpl_any_cancel; solve [cancel] ]; cancel
-      end
-    end
-  | _ => fail "unrecognized pred term"
-  end.
-
-Ltac cancel_subset_step := try unfold any' at 1; match goal with
-| [ |- ?P =p=> ?Q ] =>
-    has_evar Q; subset_cancel_one P
-| [ |- _ =p=> ?Q ] =>
-    match Q with
-    | context[any] => (eapply chop_any || eapply pimpl_any); cancel
-    end
-end.
-
-(* TODO: less hackery *)
-Ltac cancel_subset :=
+Ltac cancel_go :=
   simpl in *;
-  unfold pimpl_subset;
-  fold any';
-  try unfold any' at 1;
   fold prod' in *;
-  cancel;
-  repeat cancel_subset_step.
+  cancel; cancel.
 
 Lemma ptsto_upd_disjoint' : forall (F : pred) a v m,
   F m -> m a = None
@@ -862,7 +782,7 @@ Ltac pred_solve_step := match goal with
     match P with
     | context [(a |-> ?x)%pred] =>
       eapply pimpl_apply with (p := (a |-> x * _)%pred);
-      [ cancel_subset | (eapply ptsto_upd_disjoint'; solve [eauto]) || eapply ptsto_upd ]
+      [ cancel_go | (eapply ptsto_upd_disjoint'; solve [eauto]) || eapply ptsto_upd ]
     | context [(@ptsto ?AT ?AEQ ?V a ?y)%pred] =>
       let H := fresh in
       assert (@okToUnify AT AEQ V (ptsto a y) (ptsto a x)) as H;
@@ -870,8 +790,8 @@ Ltac pred_solve_step := match goal with
     end
   | [ |- ( ?P )%pred (delete _ ?a) ] =>
     eapply ptsto_delete' with (F := P)
-  | [ H : _%pred ?t |- _%pred ?t ] => pred_apply; solve [cancel_subset]
-  | _ => solve [cancel_subset]
+  | [ H : _%pred ?t |- _%pred ?t ] => pred_apply; solve [cancel_go]
+  | _ => solve [cancel_go]
   end.
 
 Ltac pred_solve := progress (
@@ -979,13 +899,13 @@ Qed.
 Import Go.
 
 Lemma hoare_weaken_post : forall T env A (B1 B2 : T -> _) pr p,
-  (forall x, B1 x >p=> B2 x)%pred ->
+  (forall x, B1 x =p=> B2 x)%pred ->
   EXTRACT pr
   {{ A }} p {{ B1 }} // env ->
   EXTRACT pr
   {{ A }} p {{ B2 }} // env.
 Proof.
-  unfold ProgOk, pimpl_subset.
+  unfold ProgOk.
   intros.
   forwardauto H0.
   intuition subst.
@@ -994,32 +914,28 @@ Proof.
   unfold pred_apply in *.
   pred_apply.
   rewrite H.
-  rewrite sep_star_assoc.
-  rewrite pimpl_any with (p := (any * any)%pred).
   eauto.
   eauto.
   eauto.
 Qed.
 
 Lemma hoare_strengthen_pre : forall T env A1 A2 (B : T -> _) pr p,
-  (A2 >p=> A1)%pred ->
+  (A2 =p=> A1)%pred ->
   EXTRACT pr
   {{ A1 }} p {{ B }} // env ->
   EXTRACT pr
   {{ A2 }} p {{ B }} // env.
 Proof.
-  unfold ProgOk, pimpl_subset, pred_apply in *; intros.
-  rewrite H in H1.
-  apply sep_star_assoc in H1.
-  rewrite pimpl_any with (p := (any * any)%pred) in H1.
+  unfold ProgOk, pred_apply in *; intros.
+  apply H in H1.
   forward_solve.
 Qed.
 
 Lemma hoare_weaken : forall T env A1 A2 (B1 B2 : T -> _) pr p,
   EXTRACT pr
   {{ A1 }} p {{ B1 }} // env ->
-  (A2 >p=> A1)%pred ->
-  (forall x, B1 x >p=> B2 x)%pred ->
+  (A2 =p=> A1)%pred ->
+  (forall x, B1 x =p=> B2 x)%pred ->
   EXTRACT pr
   {{ A2 }} p {{ B2 }} // env.
 Proof.
@@ -1084,10 +1000,10 @@ Lemma CompileDeclareMany :
     {{ fun ret => B ret }} // env.
 Proof.
   induction decls; simpl; intros.
-  - eapply hoare_weaken; [ apply H | cancel_subset.. ].
+  - eapply hoare_weaken; [ apply H | cancel_go.. ].
   - destruct a. eapply CompileDeclare; eauto. intros.
     eapply IHdecls. intros.
-    eapply hoare_weaken; [ apply H | cancel_subset.. ].
+    eapply hoare_weaken; [ apply H | cancel_go.. ].
 Qed.
 
 Lemma CompileVar : forall env A var T (v : T) {H : GoWrapper T},
@@ -1155,7 +1071,7 @@ Qed.
 
 Instance progok_hoare_proper :
   forall T env pr,
-  Proper (@prog_equiv T ==> Basics.flip pimpl_subset ==> pointwise_relation _ pimpl_subset ==> Basics.impl) (@ProgOk T env pr).
+  Proper (@prog_equiv T ==> Basics.flip pimpl ==> pointwise_relation _ pimpl ==> Basics.impl) (@ProgOk T env pr).
 Proof.
   intros.
   intros pr1 pr2 Hpr A1 A2 Hpre B1 B2 Hpost H.
@@ -1607,7 +1523,7 @@ Qed.
 Ltac pred_cancel :=
   unfold pred_apply in *;
   match goal with
-  | [H : _ |- _] => eapply pimpl_apply; [> | exact H]; solve [cancel_subset]
+  | [H : _ |- _] => eapply pimpl_apply; [> | exact H]; solve [cancel_go]
   end.
 
 Lemma map_add_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m k (v : T),
@@ -1993,7 +1909,7 @@ Proof.
   eapply CompileRet with (T := nat).
   instantiate (var0 := v).
   eapply hoare_weaken_post; [ | eapply CompileAddInPlace1 with (avar := v) (bvar := va) ].
-  all : cancel_subset.
+  all : cancel_go.
 Qed.
 
 Lemma AddInPlaceLeftAfter : forall T (T' : GoWrapper T) (p : prog T) A xp env
@@ -2008,10 +1924,10 @@ Proof.
   eapply CompileAfter; eauto.
   intros.
   eapply hoare_weaken_post; [ | eapply CompileRet with (var0 := v) (v := x + a) ].
-  cancel_subset.
+  cancel_go.
   eapply hoare_weaken.
   eapply CompileAddInPlace1 with (avar := v) (bvar := va).
-  all: cancel_subset.
+  all: cancel_go.
 Qed.
 
 Lemma CompileFor : forall L G (L' : GoWrapper L) loopvar F
@@ -2044,27 +1960,27 @@ Proof.
   eapply CompileDeclare with (Wr := GoWrapper_Num). intro term.
   eapply hoare_strengthen_pre; [>
   | eapply DuplicateBefore with (x' := 0) (x := i); eauto].
-  cancel_subset.
+  cancel_go.
   eapply hoare_strengthen_pre; [>
   | eapply AddInPlaceLeftBefore with (a := n) (x := i); eauto ].
-  cancel_subset.
+  cancel_go.
   eapply hoare_strengthen_pre; [>
   | eapply hoare_weaken_post; [>
   | eapply CompileForLoopBasic with (t0 := t0) (loopvar := loopvar)] ].
-  cancel_subset.
-  cancel_subset.
+  cancel_go.
+  cancel_go.
   intros.
   eapply hoare_weaken_post; [>
   | eapply AddInPlaceLeftAfter with (a := 1) (x := x); eauto].
   rewrite Nat.add_1_r.
   instantiate (1 := fun x0 => (loopvar ~> x0 * term ~> (i + n) * _)%pred).
-  cancel_subset.
+  cancel_go.
   specialize (H t x v term one).
   eapply hoare_strengthen_pre. shelve.
   eapply hoare_weaken_post. shelve.
   eauto.
   Unshelve.
-  all : cancel_subset.
+  all : cancel_go.
 Qed.
 
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
@@ -2429,9 +2345,9 @@ Proof.
                                        | None => (false, zeroval)
                                        | Some b => (true, b)
                                        end)].
-    destruct o; simpl. cancel_subset.
+    destruct o; simpl. cancel_go.
     unfold wrap. simpl.
-    erewrite <- default_zero' by apply default_zero. cancel_subset.
+    erewrite <- default_zero' by apply default_zero. cancel_go.
   }
   destruct o; simpl in *.
   + unfold ProgOk; inv_exec_progok.
@@ -2538,13 +2454,13 @@ Ltac compile_const :=
     end;
       match var_mapping_to_ret with
       | ?x => eapply hoare_weaken;
-        [eapply CompileConst with (var0 := x) | cancel_subset..]
+        [eapply CompileConst with (var0 := x) | cancel_go..]
       end
   end.
 
 Ltac compile_ret := match goal with
   | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
-    eapply hoare_weaken_post; [ | eapply CompileSkip ]; [ cancel_subset ]
+    eapply hoare_weaken_post; [ | eapply CompileSkip ]; [ cancel_go ]
   end.
 
 Ltac do_declare T cont :=
@@ -2571,7 +2487,7 @@ Ltac compile_match := match goal with
           do_declare X ltac:(fun varb =>
             eapply hoare_weaken;
             [ eapply CompileMatchOption with
-                (ovar := x) (avar := vara) (bvar := varb) (xvar := ret) | cancel_subset.. ];
+                (ovar := x) (avar := vara) (bvar := varb) (xvar := ret) | cancel_go.. ];
             intros
           ))
       end
@@ -2584,7 +2500,7 @@ Ltac compile_read_write := match goal with
     match find_val a pre with
     | Some ?k =>
       eapply hoare_strengthen_pre; [| eapply hoare_weaken_post; [ |
-        eapply CompileRead with (avar := k) (vvar := retvar) ] ]; [ cancel_subset .. ]
+        eapply CompileRead with (avar := k) (vvar := retvar) ] ]; [ cancel_go .. ]
     end
   | [ |- EXTRACT Write ?a ?v {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val a pre with
@@ -2592,7 +2508,7 @@ Ltac compile_read_write := match goal with
       match find_val v pre with
       | Some ?kv =>
         eapply hoare_strengthen_pre; [ | eapply hoare_weaken_post; [ |
-          eapply CompileWrite with (avar := ka) (vvar := kv) ] ]; [ cancel_subset .. ]
+          eapply CompileWrite with (avar := ka) (vvar := kv) ] ]; [ cancel_go .. ]
       end
     end
   end.
@@ -2615,7 +2531,7 @@ Ltac compile_for := match goal with
             eapply hoare_strengthen_pre; [>
             | eapply hoare_weaken_post; [>
             | eapply CompileFor with (v := ki) (loopvar := kt0) (vn := kn)] ];
-            [> cancel_subset | cancel_subset | intros ]
+            [> cancel_go | cancel_go | intros ]
         end
       end
     end
@@ -2628,7 +2544,7 @@ Ltac compile_call := match goal with
         match find_val b pre with
           | Some ?kb =>
             eapply hoare_weaken_post; [ | eapply hoare_strengthen_pre; [ |
-              eapply H with (avar := ka) (bvar := kb) ] ]; [ cancel_subset .. ]
+              eapply H with (avar := ka) (bvar := kb) ] ]; [ cancel_go .. ]
         end
     end
   end.
@@ -2646,7 +2562,7 @@ Ltac compile_add := match goal with
               [ (unify retvar ka; eapply CompileAddInPlace1 with (avar := ka) (bvar := kb)) ||
                 (unify retvar kb; eapply CompileAddInPlace2 with (avar := ka) (bvar := kb)) ||
                 eapply CompileAdd with (avar := ka) (bvar := kb) (sumvar := retvar) | .. ];
-            [ cancel_subset .. ]
+            [ cancel_go .. ]
         end
     end
   end.
@@ -2660,7 +2576,7 @@ Ltac compile_listop := match goal with
             eapply hoare_weaken_post; [
             | eapply hoare_strengthen_pre;
               [ | eapply CompileAppend with (lvar := xs) (vvar := x) ] ];
-            [ cancel_subset .. ]
+            [ cancel_go .. ]
         end
     end
   end.
@@ -2674,7 +2590,7 @@ Ltac compile_map_op := match goal with
         match var_mapping_to_ret with
         | ?ret =>
           eapply hoare_weaken; [
-          eapply CompileMapFind with (mvar := varm) (kvar := vark) (vvar := ret) | cancel_subset..]
+          eapply CompileMapFind with (mvar := varm) (kvar := vark) (vvar := ret) | cancel_go..]
         end
       end
     end
@@ -2687,7 +2603,7 @@ Ltac compile_map_op := match goal with
         | Some ?varm =>
           eapply hoare_weaken; [
           eapply CompileMapAdd with (kvar := vark) (vvar := varv) (mvar := varm) |
-          cancel_subset..]
+          cancel_go..]
         end
       end
     end
@@ -2698,7 +2614,7 @@ Ltac compile_map_op := match goal with
       | Some ?varm =>
         eapply hoare_weaken; [
         eapply CompileMapRemove with (kvar := vark) (mvar := varm) |
-        cancel_subset..]
+        cancel_go..]
       end
     end
   end.
@@ -2743,7 +2659,7 @@ Ltac compile_split := match goal with
       do_declare B_ ltac:(fun bvar_ =>
         eapply hoare_weaken;
         [ eapply CompileFst with (A := A_) (B := B_) (avar := avar_) (bvar := bvar_) (pvar := pvar_)
-        | cancel_subset.. ])
+        | cancel_go.. ])
     end
   | [ |- EXTRACT Ret (snd ?p) {{ ?pre }} _ {{ _ }} // _ ] =>
     let bvar_ := var_mapping_to_ret in
@@ -2754,7 +2670,7 @@ Ltac compile_split := match goal with
       do_declare A_ ltac:(fun avar_ =>
         eapply hoare_weaken;
         [ eapply CompileSnd with (A := A_) (B := B_) (avar := avar_) (bvar := bvar_) (pvar := pvar_)
-        | cancel_subset.. ])
+        | cancel_go.. ])
     end
   end.
 
@@ -2833,7 +2749,7 @@ Example append_list_in_pair : sigT (fun p => forall (a x : nat) xs,
   EXTRACT Ret (a, x :: xs)
   {{ 0 ~> (a, xs) * 1 ~> x }}
     p
-  {{ fun ret => 0 ~> ret }} // StringMap.empty _).
+  {{ fun ret => 0 ~> ret * 1 ~>? nat }} // StringMap.empty _).
 Proof.
   compile_step.
   compile_step.
@@ -2847,8 +2763,8 @@ Proof.
   eapply hoare_weaken.
   evar (F : pred).
   apply (@CompileDup _ _ _ F var1 var0 a0).
-  cancel_subset.
-  cancel_subset.
+  cancel_go.
+  cancel_go.
 
   eapply hoare_weaken.
   pose proof CompileAppend.
@@ -2856,20 +2772,20 @@ Proof.
   evar (F : pred).
   specialize (H (StringMap.empty _) F nat _ var0 1 x a0). (* why is this necessary? *)
   eapply hoare_weaken. eapply H.
-  cancel_subset. intro; simpl. eapply chop_any. subst F.
+  cancel_go. intro; simpl. subst F.
   match goal with
   | [ |- ?l =p=> ?r ] => set (l_ := l)
   end.
   pattern x0 in l_.
   subst l_.
   reflexivity.
-  cancel_subset.
-  cancel_subset.
+  cancel_go.
+  cancel_go.
 
   eapply hoare_weaken.
   eapply CompileJoin with (A := nat) (B := list nat) (avar := snd vars) (bvar := var0) (pvar := 0).
-  cancel_subset.
-  cancel_subset.
+  cancel_go.
+  cancel_go.
   apply decls_pre_impl_post.
 
 Unshelve.
@@ -2932,8 +2848,8 @@ Proof.
   unfold BUFCACHE.writeback.
   intros.
   compile_step.
-  eapply hoare_strengthen_pre. unfold pimpl_subset.
-  rewrite transform_pimpl. simpl. apply chop_any. reflexivity. (* TODO *)
+  eapply hoare_strengthen_pre.
+  rewrite transform_pimpl. simpl. reflexivity. (* TODO *)
   compile_step.
   compile_step.
   compile_step.
@@ -2943,12 +2859,13 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
+(* TODO
   compile_step.
   compile_step.
   destruct b; simpl. (* TODO *)
   compile_step.
   compile_step.
-  (* Whoops, where did [decls_pre] go? *)
+  (* Whoops, where did [decls_pre] go? *) *)
 Abort.
 
 Example match_option : sigT (fun p => forall env (o : option W) (r0 : W),
