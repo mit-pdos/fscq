@@ -156,19 +156,25 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
       let '(ds, Fm, Ftop, tree, ilist, frees, F_) := a in
       SeqSpec
         ((F_
-                ✶ (((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
-                       (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
-                     ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees) (GenSepN.list2nmem ds !!)
-                       ⟧⟧) ✶ ⟦⟦ DirTree.DIRTREE.dirtree_inum tree = dnum ⟧⟧)
-                   ✶ ⟦⟦ DirTree.DIRTREE.dirtree_isdir tree = true ⟧⟧))
+            ✶ (((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                             (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
+                             ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees)
+                                    (GenSepN.list2nmem ds !!) ⟧⟧)
+                  ✶ ⟦⟦ DirTree.DIRTREE.dirtree_inum tree = dnum ⟧⟧)
+                 ✶ ⟦⟦ DirTree.DIRTREE.dirtree_isdir tree = true ⟧⟧))
            ✶ ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
-        (fun (ret: BFile.BFILE.memstate * (option (addr * bool) * unit)) (hm': hashmap) =>
+        (fun (ret: BFile.BFILE.memstate * (Errno.res (addr * bool) * unit)) (hm': hashmap) =>
            let '(mscs', (r, _)) := ret in
            F_
-             ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
-                             (Log.LOG.NoTxn ds) (AFS.MSLL mscs') hm'
-                             ✶ ⟦⟦ r = DirTree.DIRTREE.find_name fnlist tree ⟧⟧)
-                  ✶ ⟦⟦ AFS.MSAlloc mscs' = AFS.MSAlloc mscs ⟧⟧))%pred
+             ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp)
+                             (SuperBlock.SB.rep fsxp) (Log.LOG.NoTxn ds)
+                             (AFS.MSLL mscs') hm'
+                             ✶ ⟦⟦ Errno.isError r /\
+                                  None = DirTree.DIRTREE.find_name fnlist tree \/
+                                  (exists v : addr * bool,
+                                      (r = Errno.OK v /\
+                                       Some v = DirTree.DIRTREE.find_name fnlist tree)%type)
+                ⟧⟧) ✶ ⟦⟦ AFS.MSAlloc mscs' = AFS.MSAlloc mscs ⟧⟧))%pred
         (fun hm' =>
            (F_ ✶ Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds hm')
              ✶ ⟦⟦ exists l : list (word hashlen * {sz : addr & word sz}), hashmap_subset l hm hm' ⟧⟧)%pred.
@@ -197,12 +203,14 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
     fun (a: (DiskSet.diskset) * (list string) * (@pred addr _ prog_valuset) * (@pred addr _ BFile.BFILE.bfile) * (DirTree.DIRTREE.dirtree) * (BFile.BFILE.bfile) * (list Inode.INODE.inode) * (list addr * list addr) * (@pred addr _ prog_valuset)) (hm: hashmap) =>
       let '(ds, pathname, Fm, Ftop, tree, f, ilist, frees, F_) := a in
       SeqSpec
-        ((F_ ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
-                             (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
-                             ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees) (GenSepN.list2nmem ds !!)
-                ⟧⟧)
-                  ✶ ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree =
-                       Some (DirTree.DIRTREE.TreeFile inum f) ⟧⟧)) ✶ ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
+        ((F_
+            ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                            (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
+                            ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees)
+                                   (GenSepN.list2nmem ds !!) ⟧⟧)
+                 ✶ ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree =
+                      Some (DirTree.DIRTREE.TreeFile inum f) ⟧⟧))
+           ✶ ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
         (fun (ret: BFile.BFILE.memstate * (bool * unit)) (hm': hashmap) =>
            let '(mscs', (ok, _)) := ret in
            F_
@@ -211,29 +219,38 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
                        ✶ Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
                        (Log.LOG.NoTxn ds) (AFS.MSLL mscs') hm'
                        ⋁ ⟦⟦ ok = true ⟧⟧
-                       ✶ (exists (d : LogReplay.diskstate) (tree' : DirTree.DIRTREE.dirtree)
-                            (f' : BFile.BFILE.bfile) (ilist' : list Inode.INODE.inode),
-                             (((Log.LOG.rep (FSLayout.FSXPLog fsxp)
-                                            (SuperBlock.SB.rep fsxp) (Log.LOG.NoTxn (pushd d ds))
-                                            (AFS.MSLL mscs') hm'
-                                            ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist' frees)
-                                                   (GenSepN.list2nmem d) ⟧⟧)
-                                 ✶ ⟦⟦ tree' =
-                                      DirTree.DIRTREE.update_subtree pathname
-                                                                     (DirTree.DIRTREE.TreeFile inum f') tree ⟧⟧)
-                                ✶ ⟦⟦ f' =
-                                     {|
-                                       BFile.BFILE.BFData := BFile.BFILE.BFData f;
-                                       BFile.BFILE.BFAttr := attr |} ⟧⟧)
-                               ✶ ⟦⟦ DirTree.DIRTREE.dirtree_safe
-                                      ilist
-                                      (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs'))
-                                      tree ilist'
-                                      (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs'))
-                                      tree' ⟧⟧))))%pred
+                       ✶ (exists
+                             (d : LogReplay.diskstate) (tree' : DirTree.DIRTREE.dirtree)
+                             (f' : BFile.BFILE.bfile) (ilist' : list Inode.INODE.inode),
+                             ((((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                                             (Log.LOG.NoTxn (pushd d ds)) (AFS.MSLL mscs') hm'
+                                             ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist' frees)
+                                                    (GenSepN.list2nmem d) ⟧⟧)
+                                  ✶ ⟦⟦ tree' =
+                                       DirTree.DIRTREE.update_subtree pathname
+                                                                      (DirTree.DIRTREE.TreeFile inum f') tree ⟧⟧)
+                                 ✶ ⟦⟦ f' =
+                                      {|
+                                        BFile.BFILE.BFData := BFile.BFILE.BFData f;
+                                        BFile.BFILE.BFAttr := attr |} ⟧⟧)
+                                ✶ ⟦⟦ DirTree.DIRTREE.dirtree_safe ilist
+                                                                  (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs')) tree ilist'
+                                                                  (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs')) tree' ⟧⟧)
+                               ✶ ⟦⟦ BFile.BFILE.treeseq_ilist_safe inum ilist ilist' ⟧⟧))))%pred
         (fun hm' =>
            F_ * postcrash_equivalent
-                  (Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds hm'))%pred.
+                  (Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds hm'
+                                    ⋁ (exists
+                                          (d : LogReplay.diskstate) (tree' : DirTree.DIRTREE.dirtree) (f' : BFile.BFILE.bfile)
+                                          (ilist' : list Inode.INODE.inode) (mscs' : BFile.BFILE.memstate),
+                                          ((((Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) (pushd d ds) hm'
+                                                               ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist' frees) (GenSepN.list2nmem d) ⟧⟧)
+                                               ✶ ⟦⟦ tree' =
+                                                    DirTree.DIRTREE.update_subtree pathname (DirTree.DIRTREE.TreeFile inum f') tree ⟧⟧)
+                                              ✶ ⟦⟦ f' = {| BFile.BFILE.BFData := BFile.BFILE.BFData f; BFile.BFILE.BFAttr := attr |} ⟧⟧)
+                                             ✶ ⟦⟦ DirTree.DIRTREE.dirtree_safe ilist (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs'))
+                                                                               tree ilist' (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs')) tree' ⟧⟧)
+                                            ✶ ⟦⟦ BFile.BFILE.treeseq_ilist_safe inum ilist ilist' ⟧⟧)))%pred.
 
   Definition file_set_attr fsxp inum off mscs :=
     Bridge.compile (AFS.file_set_attr fsxp inum off mscs).
@@ -274,64 +291,59 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
           (list addr * list addr) * (pred)) (hm: hashmap) =>
       let '(ds, Fm, Ftop, tree, pathname, f, ilist, frees, F_) := a in
       SeqSpec
-        ((F_ ✶
-             ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
-                           (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm ✶
-                           ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees) (GenSepN.list2nmem ds !!)
-              ⟧⟧) ✶
-                  ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree =
-                     Some (DirTree.DIRTREE.TreeFile inum f) ⟧⟧)) ✶
-                                                                 ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
-        (fun (ret: (BFile.BFILE.memstate * (bool * unit))) (hm': hashmap) =>
+        ((F_
+            ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
+                            ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees) (GenSepN.list2nmem ds !!) ⟧⟧)
+                 ✶ ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree = Some (DirTree.DIRTREE.TreeFile inum f) ⟧⟧))
+           ✶ ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
+        (fun (ret: BFile.BFILE.memstate * (Errno.res unit * unit)) (hm': hashmap) =>
            let '(mscs', (r, _)) := ret in
            F_
              ✶ (⟦⟦ AFS.MSAlloc mscs' = AFS.MSAlloc mscs ⟧⟧
-                  ✶ (⟦⟦ r = false ⟧⟧
+                  ✶ (⟦⟦ Errno.isError r ⟧⟧
                        ✶ Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
                        (Log.LOG.NoTxn ds) (AFS.MSLL mscs') hm'
-                       ⋁ ⟦⟦ r = true ⟧⟧
+                       ⋁ ⟦⟦ r = Errno.OK tt ⟧⟧
                        ✶ (exists
                              (d : LogReplay.diskstate) (tree' : DirTree.DIRTREE.dirtree)
                              (f' : BFile.BFILE.bfile) (ilist' : list Inode.INODE.inode)
                              (frees' : list addr * list addr),
-                             (((Log.LOG.rep (FSLayout.FSXPLog fsxp)
-                                            (SuperBlock.SB.rep fsxp) (Log.LOG.NoTxn (pushd d ds))
-                                            (AFS.MSLL mscs') hm'
-                                            ✶ ⟦⟦ (Fm
-                                                    ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist' frees')
-                                                   (GenSepN.list2nmem d) ⟧⟧)
-                                 ✶ ⟦⟦ tree' =
-                                      DirTree.DIRTREE.update_subtree pathname
-                                                                     (DirTree.DIRTREE.TreeFile inum f') tree ⟧⟧)
-                                ✶ ⟦⟦ f' =
-                                     {|
-                                       BFile.BFILE.BFData := ListUtils.setlen
-                                                               (BFile.BFILE.BFData f) sz
-                                                               ($ (0), nil);
-                                       BFile.BFILE.BFAttr := BFile.BFILE.BFAttr f |} ⟧⟧)
-                               ✶ ⟦⟦ DirTree.DIRTREE.dirtree_safe ilist
-                                                                 (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs'))
-                                                                 tree ilist'
-                                                                 (BFile.BFILE.pick_balloc frees' (AFS.MSAlloc mscs'))
-                                                                 tree' ⟧⟧))))%pred
+                             ((((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                                             (Log.LOG.NoTxn (pushd d ds)) (AFS.MSLL mscs') hm'
+                                             ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist' frees')
+                                                    (GenSepN.list2nmem d) ⟧⟧)
+                                  ✶ ⟦⟦ tree' =
+                                       DirTree.DIRTREE.update_subtree pathname
+                                                                      (DirTree.DIRTREE.TreeFile inum f') tree ⟧⟧)
+                                 ✶ ⟦⟦ f' =
+                                      {|
+                                        BFile.BFILE.BFData := ListUtils.setlen (BFile.BFILE.BFData f) sz
+                                                                               ($ (0), nil);
+                                        BFile.BFILE.BFAttr := BFile.BFILE.BFAttr f |} ⟧⟧)
+                                ✶ ⟦⟦ DirTree.DIRTREE.dirtree_safe ilist
+                                                                  (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs')) tree ilist'
+                                                                  (BFile.BFILE.pick_balloc frees' (AFS.MSAlloc mscs')) tree' ⟧⟧)
+                               ✶ ⟦⟦ sz >= Datatypes.length (BFile.BFILE.BFData f) ->
+                                    BFile.BFILE.treeseq_ilist_safe inum ilist ilist' ⟧⟧))))%pred
         (fun (hm': hashmap) =>
-           F_ ✶ postcrash_equivalent (Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds hm'
-                             ⋁ (exists
-                                   (d : LogReplay.diskstate) (tree' : DirTree.DIRTREE.dirtree)
-                                   (f' : BFile.BFILE.bfile) (ilist' : list Inode.INODE.inode)
-                                   (frees' : list addr * list addr),
-                                   ((Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
-                                                      (pushd d ds) hm'
-                                                      ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist' frees')
-                                                             (GenSepN.list2nmem d) ⟧⟧)
-                                      ✶ ⟦⟦ tree' =
-                                           DirTree.DIRTREE.update_subtree pathname
-                                                                          (DirTree.DIRTREE.TreeFile inum f') tree ⟧⟧)
-                                     ✶ ⟦⟦ f' =
-                                          {|
-                                            BFile.BFILE.BFData := ListUtils.setlen (BFile.BFILE.BFData f) sz
-                                                                                   ($ (0), nil);
-                                            BFile.BFILE.BFAttr := BFile.BFILE.BFAttr f |} ⟧⟧)))%pred.
+           F_ ✶ postcrash_equivalent (
+                Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds hm' ⋁
+                                 (exists
+                                     (d : LogReplay.diskstate) (tree' : DirTree.DIRTREE.dirtree)
+                                     (f' : BFile.BFILE.bfile) (ilist' : list Inode.INODE.inode)
+                                     (frees' : list addr * list addr),
+                                     ((Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                                                        (pushd d ds) hm'
+                                                        ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist' frees')
+                                                               (GenSepN.list2nmem d) ⟧⟧)
+                                        ✶ ⟦⟦ tree' =
+                                             DirTree.DIRTREE.update_subtree pathname
+                                                                            (DirTree.DIRTREE.TreeFile inum f') tree ⟧⟧)
+                                       ✶ ⟦⟦ f' =
+                                            {|
+                                              BFile.BFILE.BFData := ListUtils.setlen (BFile.BFILE.BFData f) sz
+                                                                                     ($ (0), nil);
+                                              BFile.BFILE.BFAttr := BFile.BFILE.BFAttr f |} ⟧⟧)))%pred.
 
   Definition file_truncate fsxp inum sz mscs :=
     Bridge.compile (AFS.file_truncate fsxp inum sz mscs).
@@ -350,55 +362,43 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
 
   Definition update_fblock_d_spec fsxp inum off v mscs :=
     fun (a: (DiskSet.diskset) * (pred) * (pred) * (DirTree.DIRTREE.dirtree) *
-           (list string) * (BFile.BFILE.bfile) * (pred) *
-           (BFile.BFILE.datatype) * (list addr * list addr) *
-           (list Inode.INODE.inode) * (pred)) (hm: hashmap) =>
+          (list string) * (BFile.BFILE.bfile) * (pred) *
+          (BFile.BFILE.datatype) * (list addr * list addr) *
+          (list Inode.INODE.inode) * (pred)) (hm: hashmap) =>
       let '(ds, Fm, Ftop, tree, pathname, f, Fd, vs, frees, ilist, F_) := a in
       SeqSpec
         ((F_
-            ✶ (((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
-                             (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
-                             ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees)
-                                    (GenSepN.list2nmem ds !!) ⟧⟧)
-                  ✶ ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree =
-                       Some (DirTree.DIRTREE.TreeFile inum f) ⟧⟧)
+            ✶ (((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
+                             ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees) (GenSepN.list2nmem ds !!) ⟧⟧)
+                  ✶ ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree = Some (DirTree.DIRTREE.TreeFile inum f) ⟧⟧)
                  ✶ ⟦⟦ (Fd ✶ off |-> vs) (GenSepN.list2nmem (BFile.BFILE.BFData f)) ⟧⟧))
            ✶ ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
         (fun (ret: BFile.BFILE.memstate * unit) (hm': hashmap) =>
            let '(mscs', _) := ret in
            F_
              ✶ (exists
-                   (tree' : DirTree.DIRTREE.dirtree)
-                   (f' : BFile.BFILE.bfile) (ds0 ds' : DiskSet.diskset)
+                   (tree' : DirTree.DIRTREE.dirtree) (f' : BFile.BFILE.bfile) (ds' : DiskSet.diskset)
                    (bn : addr),
-                   (((((((Log.LOG.rep (FSLayout.FSXPLog fsxp)
-                                      (SuperBlock.SB.rep fsxp)
+                   (((((((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
                                       (Log.LOG.NoTxn ds') (AFS.MSLL mscs') hm'
-                                      ✶ ⟦⟦ ds' = DiskSet.dsupd ds0 bn (v, vsmerge vs) /\
-                                           BFile.BFILE.diskset_was ds0 ds ⟧⟧)
-                           ✶ ⟦⟦ BFile.BFILE.block_belong_to_file ilist bn inum off
-                        ⟧⟧) ✶ ⟦⟦ AFS.MSAlloc mscs' = AFS.MSAlloc mscs ⟧⟧)
-                         ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist frees)
-                                (GenSepN.list2nmem ds' !!) ⟧⟧)
+                                      ✶ ⟦⟦ ds' = DiskSet.dsupd ds bn (v, vsmerge vs) ⟧⟧)
+                           ✶ ⟦⟦ BFile.BFILE.block_belong_to_file ilist bn inum off ⟧⟧)
+                          ✶ ⟦⟦ AFS.MSAlloc mscs' = AFS.MSAlloc mscs ⟧⟧)
+                         ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist frees) (GenSepN.list2nmem ds' !!)
+                      ⟧⟧)
                         ✶ ⟦⟦ tree' =
-                             DirTree.DIRTREE.update_subtree pathname
-                                                            (DirTree.DIRTREE.TreeFile inum f') tree ⟧⟧)
-                       ✶ ⟦⟦ (Fd ✶ off |-> (v, vsmerge vs))
-                              (GenSepN.list2nmem (BFile.BFILE.BFData f')) ⟧⟧)
+                             DirTree.DIRTREE.update_subtree pathname (DirTree.DIRTREE.TreeFile inum f') tree ⟧⟧)
+                       ✶ ⟦⟦ (Fd ✶ off |-> (v, vsmerge vs)) (GenSepN.list2nmem (BFile.BFILE.BFData f')) ⟧⟧)
                       ✶ ⟦⟦ BFile.BFILE.BFAttr f' = BFile.BFILE.BFAttr f ⟧⟧)
                      ✶ ⟦⟦ DirTree.DIRTREE.dirtree_safe ilist
-                                                       (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs'))
-                                                       tree ilist
-                                                       (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs'))
-                                                       tree' ⟧⟧))%pred
+                                                       (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs')) tree ilist
+                                                       (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs')) tree' ⟧⟧))%pred
         (fun (hm': hashmap) =>
            F_ * postcrash_equivalent
-                  (Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds
-                                    hm'
+                  (Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds hm'
                                     ⋁ (exists bn : addr,
                                           ⟦⟦ BFile.BFILE.block_belong_to_file ilist bn inum off ⟧⟧
-                                            ✶ Log.LOG.idempred (FSLayout.FSXPLog fsxp)
-                                            (SuperBlock.SB.rep fsxp)
+                                            ✶ Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
                                             (DiskSet.dsupd ds bn (v, vsmerge vs)) hm')))%pred.
 
   Definition update_fblock_d fsxp inum off v mscs :=
@@ -524,48 +524,43 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
       let '(ds, pathname, Fm, Ftop, tree, tree_elem, ilist, frees, F_) := a in
       SeqSpec
         ((F_
-            ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
-                            (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
-                            ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees)
-                                   (GenSepN.list2nmem ds !!) ⟧⟧)
-                 ✶ ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree =
-                      Some (DirTree.DIRTREE.TreeDir dnum tree_elem) ⟧⟧))
+            ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
+                            ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees) (GenSepN.list2nmem ds !!) ⟧⟧)
+                 ✶ ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree = Some (DirTree.DIRTREE.TreeDir dnum tree_elem) ⟧⟧))
            ✶ ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
-        (fun (ret: BFile.BFILE.memstate * (option addr * unit)) (hm': hashmap) =>
+        (fun (ret: BFile.BFILE.memstate * (Errno.res addr * unit)) (hm': hashmap) =>
            let '(mscs', (r, _)) := ret in
            F_
              ✶ (⟦⟦ AFS.MSAlloc mscs' = AFS.MSAlloc mscs ⟧⟧
-                  ✶ (⟦⟦ r = None ⟧⟧
-                       ✶ Log.LOG.rep (FSLayout.FSXPLog fsxp)
-                       (SuperBlock.SB.rep fsxp) (Log.LOG.NoTxn ds)
-                       (AFS.MSLL mscs') hm'
+                  ✶ (⟦⟦ Errno.isError r ⟧⟧
+                       ✶ Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                       (Log.LOG.NoTxn ds) (AFS.MSLL mscs') hm'
                        ⋁ (exists inum : addr,
-                             ⟦⟦ r = Some inum ⟧⟧
+                             ⟦⟦ r = Errno.OK inum ⟧⟧
                                ✶ (exists
-                                     (d : LogReplay.diskstate)
-                                     (tree' : DirTree.DIRTREE.dirtree)
-                                     (ilist' : list Inode.INODE.inode)
-                                     (frees' : list addr * list addr),
-                                     ((Log.LOG.rep (FSLayout.FSXPLog fsxp)
-                                                   (SuperBlock.SB.rep fsxp)
-                                                   (Log.LOG.NoTxn (pushd d ds))
-                                                   (AFS.MSLL mscs') hm'
+                                     (d : LogReplay.diskstate) (tree' : DirTree.DIRTREE.dirtree)
+                                     (ilist' : list Inode.INODE.inode) (frees' : list addr * list addr),
+                                     ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                                                   (Log.LOG.NoTxn (pushd d ds)) (AFS.MSLL mscs') hm'
                                                    ✶ ⟦⟦ tree' =
-                                                        DirTree.DIRTREE.tree_graft dnum tree_elem
-                                                                                   pathname name
-                                                                                   (DirTree.DIRTREE.TreeFile inum
-                                                                                                             BFile.BFILE.bfile0) tree ⟧⟧)
-                                        ✶ ⟦⟦ (Fm
-                                                ✶ DirTree.DIRTREE.rep fsxp Ftop tree'
-                                                ilist' frees')
+                                                        DirTree.DIRTREE.tree_graft dnum tree_elem pathname name
+                                                                                   (DirTree.DIRTREE.TreeFile inum BFile.BFILE.bfile0) tree ⟧⟧)
+                                        ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist' frees')
                                                (GenSepN.list2nmem d) ⟧⟧)
                                        ✶ ⟦⟦ DirTree.DIRTREE.dirtree_safe ilist
-                                                                         (BFile.BFILE.pick_balloc frees
-                                                                                                  (AFS.MSAlloc mscs')) tree ilist'
-                                                                         (BFile.BFILE.pick_balloc frees'
-                                                                                                  (AFS.MSAlloc mscs')) tree' ⟧⟧)))))%pred
+                                                                         (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs')) tree ilist'
+                                                                         (BFile.BFILE.pick_balloc frees' (AFS.MSAlloc mscs')) tree' ⟧⟧)))))%pred
         (fun (hm': hashmap) =>
-           (F_ ✶ Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds hm'))%pred.
+           (F_ ✶ postcrash_equivalent
+               (Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds hm'
+                                 ⋁ (exists
+                                       (d : LogReplay.diskstate) (inum : addr) (tree' : DirTree.DIRTREE.dirtree)
+                                       (ilist' : list Inode.INODE.inode) (frees' : list addr * list addr),
+                                       (Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) (pushd d ds) hm'
+                                                         ✶ ⟦⟦ tree' =
+                                                              DirTree.DIRTREE.tree_graft dnum tree_elem pathname name
+                                                                                         (DirTree.DIRTREE.TreeFile inum BFile.BFILE.bfile0) tree ⟧⟧)
+                                         ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist' frees') (GenSepN.list2nmem d) ⟧⟧))))%pred.
 
   Definition create fsxp dnum name mscs :=
     Bridge.compile (AFS.create fsxp dnum name mscs).
@@ -590,25 +585,20 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
       let '(ds, Fm, Ftop, tree, cwd, tree_elem, ilist, frees, F_) := a in
       SeqSpec
         ((F_
-            ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
-                            (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
-                            ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees)
-                                   (GenSepN.list2nmem ds !!) ⟧⟧)
-                 ✶ ⟦⟦ DirTree.DIRTREE.find_subtree cwd tree =
-                      Some (DirTree.DIRTREE.TreeDir dnum tree_elem) ⟧⟧))
+            ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
+                            ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees) (GenSepN.list2nmem ds !!) ⟧⟧)
+                 ✶ ⟦⟦ DirTree.DIRTREE.find_subtree cwd tree = Some (DirTree.DIRTREE.TreeDir dnum tree_elem) ⟧⟧))
            ✶ ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
-        (fun (ret: BFile.BFILE.memstate * (bool * unit)) hm' =>
+        (fun (ret: BFile.BFILE.memstate * (Errno.res unit * unit)) hm' =>
            let '(mscs', (ok, _)) := ret in
            F_
              ✶ (⟦⟦ AFS.MSAlloc mscs' = AFS.MSAlloc mscs ⟧⟧
-                  ✶ (⟦⟦ ok = false ⟧⟧
-                       ✶ Log.LOG.rep (FSLayout.FSXPLog fsxp)
-                       (SuperBlock.SB.rep fsxp) (Log.LOG.NoTxn ds)
-                       (AFS.MSLL mscs') hm'
-                       ⋁ ⟦⟦ ok = true ⟧⟧
-                       ✶ AFS.rename_rep ds mscs' Fm fsxp Ftop tree tree_elem
-                       ilist frees cwd dnum srcpath srcname dstpath dstname
-                       hm')))%pred
+                  ✶ (⟦⟦ Errno.isError ok ⟧⟧
+                       ✶ Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                       (Log.LOG.NoTxn ds) (AFS.MSLL mscs') hm'
+                       ⋁ ⟦⟦ ok = Errno.OK tt ⟧⟧
+                       ✶ AFS.rename_rep ds mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath
+                       srcname dstpath dstname hm')))%pred
         (fun hm' =>
            F_ ✶ Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds hm')%pred.
 
@@ -635,44 +625,36 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
       let '(ds, pathname, Fm, Ftop, tree, tree_elem, frees, ilist, F_) := a in
       SeqSpec
         ((F_
-            ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
-                            (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
-                            ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees)
-                                   (GenSepN.list2nmem ds !!) ⟧⟧)
-                 ✶ ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree =
-                      Some (DirTree.DIRTREE.TreeDir dnum tree_elem) ⟧⟧))
+            ✶ ((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) (Log.LOG.NoTxn ds) (AFS.MSLL mscs) hm
+                            ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree ilist frees) (GenSepN.list2nmem ds !!) ⟧⟧)
+                 ✶ ⟦⟦ DirTree.DIRTREE.find_subtree pathname tree = Some (DirTree.DIRTREE.TreeDir dnum tree_elem) ⟧⟧))
            ✶ ⟦⟦ PredCrash.sync_invariant F_ ⟧⟧)%pred
-        (fun (ret: BFile.BFILE.memstate * (bool * unit)) (hm': hashmap) =>
+        (fun (ret: BFile.BFILE.memstate * (Errno.res unit * unit)) (hm': hashmap) =>
            let '(mscs', (ok, _)) := ret in
            F_
              ✶ (⟦⟦ AFS.MSAlloc mscs' = AFS.MSAlloc mscs ⟧⟧
-                  ✶ (⟦⟦ ok = false ⟧⟧
-                       ✶ Log.LOG.rep (FSLayout.FSXPLog fsxp)
-                       (SuperBlock.SB.rep fsxp) (Log.LOG.NoTxn ds)
-                       (AFS.MSLL mscs') hm'
-                       ⋁ ⟦⟦ ok = true ⟧⟧
+                  ✶ (⟦⟦ Errno.isError ok ⟧⟧
+                       ✶ Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                       (Log.LOG.NoTxn ds) (AFS.MSLL mscs') hm'
+                       ⋁ ⟦⟦ ok = Errno.OK tt ⟧⟧
                        ✶ (exists
-                             (d : LogReplay.diskstate)
-                             (tree' : DirTree.DIRTREE.dirtree)
-                             (ilist' : list Inode.INODE.inode)
-                             (frees' : list addr * list addr),
-                             ((Log.LOG.rep (FSLayout.FSXPLog fsxp)
-                                           (SuperBlock.SB.rep fsxp)
-                                           (Log.LOG.NoTxn (pushd d ds))
-                                           (AFS.MSLL mscs') hm'
-                                           ✶ ⟦⟦ tree' =
-                                                DirTree.DIRTREE.update_subtree pathname
-                                                                               (DirTree.DIRTREE.delete_from_dir name
-                                                                                                                (DirTree.DIRTREE.TreeDir dnum tree_elem))
-                                                                               tree ⟧⟧)
-                                ✶ ⟦⟦ (Fm
-                                        ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist'
-                                        frees') (GenSepN.list2nmem d) ⟧⟧)
-                               ✶ ⟦⟦ DirTree.DIRTREE.dirtree_safe ilist
-                                                                 (BFile.BFILE.pick_balloc frees
-                                                                                          (AFS.MSAlloc mscs')) tree ilist'
-                                                                 (BFile.BFILE.pick_balloc frees'
-                                                                                          (AFS.MSAlloc mscs')) tree' ⟧⟧))))%pred
+                             (d : LogReplay.diskstate) (tree' : DirTree.DIRTREE.dirtree)
+                             (ilist' : list Inode.INODE.inode) (frees' : list addr * list addr),
+                             (((Log.LOG.rep (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp)
+                                            (Log.LOG.NoTxn (pushd d ds)) (AFS.MSLL mscs') hm'
+                                            ✶ ⟦⟦ tree' =
+                                                 DirTree.DIRTREE.update_subtree pathname
+                                                                                (DirTree.DIRTREE.delete_from_dir name
+                                                                                                                 (DirTree.DIRTREE.TreeDir dnum tree_elem)) tree ⟧⟧)
+                                 ✶ ⟦⟦ (Fm ✶ DirTree.DIRTREE.rep fsxp Ftop tree' ilist' frees')
+                                        (GenSepN.list2nmem d) ⟧⟧)
+                                ✶ ⟦⟦ DirTree.DIRTREE.dirtree_safe ilist
+                                                                  (BFile.BFILE.pick_balloc frees (AFS.MSAlloc mscs')) tree ilist'
+                                                                  (BFile.BFILE.pick_balloc frees' (AFS.MSAlloc mscs')) tree' ⟧⟧)
+                               ✶ ⟦⟦ forall (inum : addr) (def' : Inode.INODE.inode),
+                                      inum <> dnum ->
+                                      List.In inum (DirTree.DIRTREE.tree_inodes tree) ->
+                                      ListUtils.selN ilist inum def' = ListUtils.selN ilist' inum def' ⟧⟧))))%pred
         (fun (hm': hashmap) =>
            (F_ ✶ Log.LOG.idempred (FSLayout.FSXPLog fsxp) (SuperBlock.SB.rep fsxp) ds hm'))%pred.
 

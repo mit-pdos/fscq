@@ -5,6 +5,7 @@ Require Import Protocols.
 Require Import ConcurrentFS.
 Require Import Rec.
 Require Import DirTree.
+Require Import Errno.
 
 Import Hlist.
 Import Hlist.HlistNotations.
@@ -442,7 +443,8 @@ Theorem lookup_ok : forall dnum fnlist,
                          invariant App.delta d' hm' m' s' /\
                          tree' = get vDirTree s /\
                          match r with
-                         | Some r => r = DIRTREE.find_name fnlist tree' /\
+                         | Some r => ((isError r /\ None = DIRTREE.find_name fnlist tree') \/
+                                     (exists v, r = OK v /\ Some v = DIRTREE.find_name fnlist tree')) /\
                                     BFILE.MSAlloc (get mMscs m') = BFILE.MSAlloc (get mMscs m)
                          | None => guar App.delta tid s s'
                          end /\
@@ -493,6 +495,13 @@ TODO: automate these proofs *)
     descend.
     intuition eauto.
     pred_apply; cancel.
+    pred_apply; cancel.
+    intuition idtac; repeat deex;
+      try solve [
+            left + right;
+            descend;
+            intuition eauto;
+            congruence ].
   - step.
     step.
     simpl in *.
