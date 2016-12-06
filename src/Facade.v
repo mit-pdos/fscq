@@ -752,11 +752,45 @@ Class DefaultValue T {Wrapper : GoWrapper T} :=
 Arguments DefaultValue T {Wrapper}.
 
 Definition prod' := prod.
+Definition exis' := exis.
 
-Ltac cancel_go :=
-  simpl in *;
-  fold prod' in *;
-  cancel; cancel.
+Hint Extern 0 (okToUnify (ptsto ?a _) (ptsto ?b _)) => unify a b; reflexivity : okToUnify.
+
+Inductive Declaration :=
+| Decl (T : Type) {Wr: GoWrapper T} {D : DefaultValue T}.
+
+Arguments Decl T {Wr} {D}.
+
+Import Go.
+
+Fixpoint n_tuple_unit n (T : Type) : Type :=
+  match n with
+  | 0 => unit
+  | S n' => n_tuple_unit n' T * T
+  end.
+
+Definition decls_pre (decls : list Declaration) (vars : n_tuple_unit (length decls) var) : pred.
+  induction decls; simpl in *.
+  - exact emp.
+  - destruct a.
+    exact ((snd vars |-> wrap zeroval * IHdecls (fst vars))%pred).
+Defined.
+
+Definition decls_post (decls : list Declaration) (vars : n_tuple_unit (length decls) var) : pred.
+  induction decls; simpl in *.
+  - exact emp.
+  - exact ((snd vars |->? * IHdecls (fst vars))%pred).
+Defined.
+
+Lemma decls_pre_impl_post :
+  forall decls vars,
+    decls_pre decls vars =p=> decls_post decls vars.
+Proof.
+  induction decls; simpl in *; intros.
+  - auto.
+  - destruct a.
+    cancel. auto.
+Qed.
 
 Lemma ptsto_upd_disjoint' : forall (F : pred) a v m,
   F m -> m a = None
@@ -766,6 +800,11 @@ Proof.
   eapply pred_apply_pimpl_proper; [ reflexivity | | eapply ptsto_upd_disjoint; eauto ].
   cancel.
 Qed.
+
+Ltac cancel_go :=
+  simpl in *;
+  fold prod' in *; fold exis' in *;
+  cancel; solve [unfold exis'; cancel; apply decls_pre_impl_post] || cancel.
 
 Lemma ptsto_delete' : forall a (F :pred) (m : mem),
   (a |->? * F)%pred m -> F (delete m a).
@@ -839,7 +878,7 @@ Proof.
   destruct out; intuition try discriminate; simpl in *.
   - find_apply_lem_hyp Declare_fail; repeat deex.
 
-    specialize (H var (r, var ->> Go.default_value wrap_type; l) hm).
+    specialize (H var0 (r, var0 ->> Go.default_value wrap_type; l) hm).
     forward H.
     {
       simpl. pred_solve.
@@ -858,7 +897,7 @@ Proof.
     + exfalso; eauto using Undeclare_fail, Go.Steps_ExecFailed.
 
   - do 2 inv_exec.
-    specialize (H var (r, var ->> Go.default_value wrap_type; l) hm).
+    specialize (H var0 (r, var0 ->> Go.default_value wrap_type; l) hm).
     forward H.
     {
       simpl. pred_solve.
@@ -876,7 +915,7 @@ Proof.
     pred_solve.
 
   - do 2 inv_exec.
-    specialize (H var (r, var ->> Go.default_value wrap_type; l) hm).
+    specialize (H var0 (r, var0 ->> Go.default_value wrap_type; l) hm).
     forward H.
     {
       simpl. pred_solve.
@@ -895,8 +934,6 @@ Proof.
       invc H5; [ invc H4 | invc H ].
       invc H6; [ invc H4 | invc H ].
 Qed.
-
-Import Go.
 
 Lemma hoare_weaken_post : forall T env A (B1 B2 : T -> _) pr p,
   (forall x, B1 x =p=> B2 x)%pred ->
@@ -940,41 +977,6 @@ Lemma hoare_weaken : forall T env A1 A2 (B1 B2 : T -> _) pr p,
   {{ A2 }} p {{ B2 }} // env.
 Proof.
   eauto using hoare_strengthen_pre, hoare_weaken_post.
-Qed.
-
-
-Inductive Declaration :=
-| Decl (T : Type) {Wr: GoWrapper T} {D : DefaultValue T}.
-
-Arguments Decl T {Wr} {D}.
-
-Fixpoint n_tuple_unit n (T : Type) : Type :=
-  match n with
-  | 0 => unit
-  | S n' => n_tuple_unit n' T * T
-  end.
-
-Definition decls_pre (decls : list Declaration) (vars : n_tuple_unit (length decls) var) : pred.
-  induction decls; simpl in *.
-  - exact emp.
-  - destruct a.
-    exact ((snd vars |-> wrap zeroval * IHdecls (fst vars))%pred).
-Defined.
-
-Definition decls_post (decls : list Declaration) (vars : n_tuple_unit (length decls) var) : pred.
-  induction decls; simpl in *.
-  - exact emp.
-  - exact ((snd vars |->? * IHdecls (fst vars))%pred).
-Defined.
-
-Lemma decls_pre_impl_post :
-  forall decls vars,
-    decls_pre decls vars =p=> decls_post decls vars.
-Proof.
-  induction decls; simpl in *; intros.
-  - auto.
-  - destruct a.
-    cancel. auto.
 Qed.
 
 Definition many_declares (decls : list Declaration) (xp : n_tuple_unit (length decls) var -> stmt) : stmt.
@@ -1084,7 +1086,7 @@ Proof.
   repeat intro.
   rewrite H in H2.
   setoid_rewrite H0.
-  edestruct H1; intuition eauto.
+  unshelve (edestruct H1); eauto.
 Defined.
 
 Lemma CompileSeq : forall T T' env A B (C : T -> _) p1 p2 x1 x2,
@@ -1172,8 +1174,7 @@ Lemma CompileBefore : forall T env A B (C : T -> _) p x1 x2,
   {{ C }} // env.
 Proof.
   intros.
-  eapply extract_equiv_prog.
-  instantiate (pr1 := Ret tt;; p).
+  eapply extract_equiv_prog with (pr1 := Ret tt;; p).
   eapply bind_left_id.
   eapply CompileSeq; eauto.
 Qed.
@@ -1236,6 +1237,28 @@ Proof.
 
   Unshelve.
   all: auto.
+Qed.
+
+Lemma CompileBindRet : forall A B (HA : GoWrapper A)
+  vara (a : A) (p : A -> prog B) xp xret X Y Z env,
+  EXTRACT (Ret a)
+  {{ vara ~>? A * X }}
+    xret
+  {{ fun ret => vara ~> ret * Y }} // env ->
+  EXTRACT (p a)
+  {{ vara ~> a * Y }}
+    xp
+  {{ Z }} // env ->
+  EXTRACT (Bind (Ret a) p)
+  {{ vara ~>? A * X }}
+    xret; xp
+  {{ Z }} // env.
+Proof.
+  intros.
+  eapply CompileBefore in H0.
+  rewrite bind_left_id.
+  eapply H0.
+  eapply CompileRet. eapply H.
 Qed.
 
 Lemma CompileIf : forall P Q {H1 : GoWrapper ({P}+{Q})}
@@ -1614,9 +1637,9 @@ Local Hint Extern 1 (okToUnify (?var ~> Map.find ?k ?m)
   (?var |-> (Val (Pair Bool wrap_type) (false, ?v))))
   => eapply map_find_none_okToUnify.
 
-Lemma CompileMapFind : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k (v0 : option T),
+Lemma CompileMapFind : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k,
   EXTRACT Ret (Go.Map.find k m)
-  {{ mvar ~> m * kvar ~> k * vvar ~> v0 * F }}
+  {{ mvar ~> m * kvar ~> k * vvar ~>? (option T) * F }}
     Go.Modify Go.MapFind (mvar, kvar, vvar)
   {{ fun ret => vvar ~> ret * mvar ~> m * kvar ~> k * F }} // env.
 Proof.
@@ -2395,6 +2418,11 @@ Ltac find_val v p :=
     | _ => constr:(@None var)
   end.
 
+Ltac find_val_fn v p cont :=
+  match p with
+    | context[?k ~> v] => cont k
+  end.
+
 Ltac var_mapping_to pred val :=
   lazymatch pred with
     | context[?var ~> val] => var
@@ -2415,30 +2443,42 @@ Ltac var_mapping_to_ret :=
       end
   end.
 
-Ltac Type_denote x :=
-  match x with
-  | W => Num
-  | bool => Bool
-  | valu => DiskBlock
-  | unit => EmptyStruct
-  | ?A * ?B =>
-    let ta := Type_denote A in
-    let tb := Type_denote B in
-    constr:(Pair ta tb)
-  | list ?A =>
-    let ta := Type_denote A in
-    constr:(Slice ta)
-  (* TODO add more types here *)
+Ltac do_declare T cont :=
+  lazymatch goal with
+  | [ |- EXTRACT _ {{ ?pre }} _ {{ _ }} // _ ] =>
+    lazymatch pre with
+    | context [decls_pre ?decls ?vars] =>
+      let decls' := fresh "decls" in
+      evar (decls' : list Declaration);
+      unify decls (Decl T :: decls'); subst decls';
+      cont (@snd (n_tuple_unit
+        (@Datatypes.length _ _) _) _ vars)
+    end
   end.
 
 Ltac compile_bind := match goal with
-  | [ |- EXTRACT Bind ?p ?q {{ _ }} _ {{ _ }} // _ ] =>
+  | [ |- EXTRACT Bind (Ret ?x_) ?p {{ _ }} _ {{ ?post }} // _ ] =>
+    match type of x_ with
+    | ?T_ =>
+      let Wr_ := constr:(ltac:(eauto with typeclass_instances) : GoWrapper T_) in
+      do_declare T_ ltac:(fun v_ =>
+        eapply hoare_strengthen_pre; [
+        | eapply CompileBindRet with (vara := v_) (a := x_)];
+        [ cancel_go | ..])
+    end
+  | [ |- EXTRACT Bind ?p ?q {{ _ }} _ {{ ?post }} // _ ] =>
     match type of p with
     | prog ?T_ =>
       let v := fresh "var" in
       let Wr_ := constr:(ltac:(eauto with typeclass_instances) : GoWrapper T_) in
-      eapply CompileDeclare with (T := T_) (Wr := Wr_);
-      intro v; intros; eapply CompileBind; intros
+      do_declare T_ ltac:(fun v_ =>
+        simpl decls_pre; simpl decls_post;
+        match goal with [ |- EXTRACT _ {{ _ }} _ {{ ?post' }} // _ ] =>
+          simpl decls_post; simpl decls_pre;
+          eapply hoare_strengthen_pre;
+          [| eapply CompileBind with (var0 := v_)];
+          [ cancel_go | intros .. ]
+        end)
     end
   end.
 
@@ -2461,16 +2501,15 @@ Ltac compile_const :=
 Ltac compile_ret := match goal with
   | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
     eapply hoare_weaken_post; [ | eapply CompileSkip ]; [ cancel_go ]
-  end.
-
-Ltac do_declare T cont :=
-  lazymatch goal with
-  | [ |- EXTRACT _ {{ ?pre }} _ {{ _ }} // _ ] =>
-    lazymatch pre with
-    | context [decls_pre ?decls ?vars] =>
-      let decls' := fresh "decls" in
-      evar (decls' : list Declaration);
-      unify decls (Decl T :: decls'); subst decls'; cont (snd vars)
+  | [ |- EXTRACT Ret ?x {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_val x pre with
+    | Some ?kx =>
+      match var_mapping_to_ret with
+      | ?kret => (unify kx kret; fail 2) ||
+        eapply hoare_weaken; [
+        eapply CompileDup with (var0 := kx) (var' := kret)
+        | cancel_go.. ]
+      end
     end
   end.
 
@@ -2574,12 +2613,19 @@ Ltac compile_listop := match goal with
   | [ |- EXTRACT Ret (?x :: ?xs) {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val x pre with
       | Some ?kx =>
-        match find_val xs pre with
-          | Some ?kxs =>
-            eapply hoare_weaken_post; [
-            | eapply hoare_strengthen_pre;
-              [ | eapply CompileAppend with (lvar := xs) (vvar := x) ] ];
-            [ cancel_go .. ]
+        match var_mapping_to_ret with
+          | ?kret =>
+            match find_val xs pre with
+              | Some ?kxs => (* ret var is tail var *)
+                unify kret kxs;
+                eapply hoare_weaken;
+                [ eapply CompileAppend with (lvar := kxs) (vvar := kx)
+                | cancel_go..]
+              | Some ?kxs => (* ret var is not tail var *)
+                eapply CompileBefore; [
+                  eapply CompileRet with (v := xs) (var0 := kret);
+                    simpl decls_pre |]
+            end
         end
     end
   end.
@@ -2677,6 +2723,34 @@ Ltac compile_split := match goal with
     end
   end.
 
+Ltac compile_join := match goal with
+  | [ |- EXTRACT Ret (?a_, ?b_) {{ ?pre }} _ {{ ?post }} // _ ] =>
+    match find_val a_ pre with
+    | None =>
+      let A_ := type of a_ in
+      eapply CompileBefore; [
+        do_declare A_ ltac:(fun x_ =>
+          eapply CompileRet with (v := a_) (var0 := x_);
+          simpl decls_pre) |]
+    | Some ?ka =>
+      match find_val b_ pre with
+      | None =>
+        let B_ := type of b_ in
+        eapply CompileBefore; [
+          do_declare B_ ltac:(fun x_ =>
+          eapply CompileRet with (v := b_) (var0 := x_);
+          simpl decls_pre) |]
+      | Some ?kb =>
+        match var_mapping_to_ret with
+        | ?kp =>
+          eapply hoare_weaken;
+          [ apply CompileJoin with (avar := ka) (bvar := kb) (pvar := kp)
+          | cancel_go..]
+        end
+      end
+    end
+end.
+
 Ltac compile_decompose := match goal with
   | [ |- EXTRACT Ret (?f ?a) {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val a pre with
@@ -2741,6 +2815,7 @@ Ltac compile_step :=
   || compile_add
   || compile_listop
   || compile_map_op
+  || compile_join
   || compile_split
   || compile_decompose
   .
@@ -2754,45 +2829,7 @@ Example append_list_in_pair : sigT (fun p => forall (a x : nat) xs,
     p
   {{ fun ret => 0 ~> ret * 1 ~>? nat }} // StringMap.empty _).
 Proof.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  eapply CompileBefore.
-  eapply CompileRet with (v := a0) (var0 := var0).
-  eapply hoare_weaken.
-  evar (F : pred).
-  apply (@CompileDup _ _ _ F var1 var0 a0).
-  cancel_go.
-  cancel_go.
-
-  eapply hoare_weaken.
-  pose proof CompileAppend.
-  simpl in *.
-  evar (F : pred).
-  specialize (H (StringMap.empty _) F nat _ var0 1 x a0). (* why is this necessary? *)
-  eapply hoare_weaken. eapply H.
-  cancel_go. intro; simpl. subst F.
-  match goal with
-  | [ |- ?l =p=> ?r ] => set (l_ := l)
-  end.
-  pattern x0 in l_.
-  subst l_.
-  reflexivity.
-  cancel_go.
-  cancel_go.
-
-  eapply hoare_weaken.
-  eapply CompileJoin with (A := nat) (B := list nat) (avar := snd vars) (bvar := var0) (pvar := 0).
-  cancel_go.
-  cancel_go.
-  apply decls_pre_impl_post.
-
-Unshelve.
-  exact [].
+  compile.
 Defined.
 Eval lazy in (projT1 append_list_in_pair).
 
