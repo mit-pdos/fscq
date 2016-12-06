@@ -223,10 +223,6 @@ Definition wrap_syscall T (p: FSLayout.fs_xparams -> BFILE.memstate ->
         Ret None
     end.
 
-Definition read_fblock inum off :=
-  wrap_syscall (fun fsxp mscs =>
-                  CFS.read_fblock fsxp inum off mscs).
-
 Lemma exists_tuple : forall A B (P: A * B -> Prop) (b: B),
     (exists (a: A), P (a, b)) ->
     exists (a: A * B), P a.
@@ -263,6 +259,25 @@ Definition cacheR_trans tid :=
             exact (p:P)).
 
 Hint Resolve cacheR_trans.
+
+(*+ wrapped syscalls *)
+
+Fixpoint fuel_retry T (p: prog App.Sigma (Exc T)) n : prog App.Sigma (Exc T) :=
+  match n with
+  | 0 => Ret None
+  | S n' => r <- p;
+             match r with
+             | Some v => Ret (Some v)
+             | None => _ <- Yield 0; fuel_retry p n'
+             end
+  end.
+
+Definition read_fblock inum off :=
+  wrap_syscall (fun fsxp mscs =>
+                  CFS.read_fblock fsxp inum off mscs).
+
+Definition read_fblock_retry inum off :=
+  fuel_retry (read_fblock inum off).
 
 Theorem read_fblock_ok : forall inum off,
       SPEC App.delta, tid |-
@@ -352,6 +367,9 @@ Definition file_get_attr inum :=
   wrap_syscall (fun fsxp mscs =>
                   CFS.file_get_attr fsxp inum mscs).
 
+Definition file_get_attr_retry inum :=
+  fuel_retry (file_get_attr inum).
+
 Theorem file_get_attr_ok : forall inum,
       SPEC App.delta, tid |-
               {{ pathname f,
@@ -428,6 +446,9 @@ Qed.
 Definition lookup dnum fnlist :=
   wrap_syscall (fun fsxp mscs =>
                   CFS.lookup fsxp dnum fnlist mscs).
+
+Definition lookup_retry dnum fnlist :=
+  fuel_retry (lookup dnum fnlist).
 
 Theorem lookup_ok : forall dnum fnlist,
     SPEC App.delta, tid |-
