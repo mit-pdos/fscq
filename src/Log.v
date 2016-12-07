@@ -275,9 +275,8 @@ Module LOG.
     mm <- GLog.init xp cs;
     Ret (mk_memstate vmap0 mm).
 
-  Definition begin (xp : log_xparams) ms :=
-    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
-    Ret (mk_memstate vmap0 mm).
+  Definition begin (xp : log_xparams) (ms : memstate) :=
+    Ret ms.
 
   Definition abort (xp : log_xparams) ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
@@ -362,6 +361,7 @@ Module LOG.
      inversion H; subst; simpl; clear H
   | [ |- Map.Empty vmap0 ] => apply Map.empty_1
   | [ |- map_valid vmap0 _ ] => apply map_valid_map0
+  | [ H : Map.Empty ?m |- map_valid ?m _ ] => apply map_valid_empty
   end; eauto.
 
   Local Hint Resolve KNoDup_map_elements.
@@ -404,7 +404,7 @@ Module LOG.
   Proof.
     unfold begin.
     hoare using dems.
-    pred_apply; cancel; dems.
+    rewrite replay_disk_empty; auto.
   Qed.
 
 
