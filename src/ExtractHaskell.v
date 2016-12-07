@@ -1,5 +1,6 @@
 Require Import ExtrHaskellPrelude.
 Require Import AsyncFS.
+Require Import DirectoryIsolatedFS.
 
 Extraction Language Haskell.
 
@@ -19,3 +20,4 @@ Extract Inlined Constant Log.should_flushall => "Prelude.False".
 
 Cd "../codegen".
 Recursive Extraction Library AsyncFS.
+Recursive Extraction Library DirectoryIsolatedFS.
