@@ -67,6 +67,8 @@ Module MLog.
   Definition MSCache (ms : memstate) := snd ms.
   Definition MSInLog (ms : memstate) := fst ms.
 
+  Definition readOnly (ms ms' : memstate) := (fst ms = fst ms').
+
   Inductive logstate :=
   | Synced  (na : nat) (d : diskstate)
   (* Synced state: both log and disk content are synced *)
@@ -538,7 +540,7 @@ Module MLog.
       << F, rep: xp (Synced na d) ms hm >> *
       [[[ d ::: exists F', (F' * a |-> vs) ]]]
     POST:hm' RET:^(ms', r)
-      << F, rep: xp (Synced na d) ms' hm' >> * [[ r = fst vs ]]
+      << F, rep: xp (Synced na d) ms' hm' >> * [[ r = fst vs ]] * [[ readOnly ms ms' ]]
     CRASH:hm'
       exists ms', << F, rep: xp (Synced na d) ms' hm' >>
     >} read xp a ms.
@@ -569,6 +571,8 @@ Module MLog.
     erewrite replay_disk_none_selN; try eassumption.
     eassign (vs_cur, vs_old); eauto.
     eexists. pred_apply; cancel.
+
+    reflexivity.
 
     pimpl_crash; cancel; eauto.
     erewrite DLog.rep_hashmap_subset; eauto.
