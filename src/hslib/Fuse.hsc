@@ -84,7 +84,7 @@ import System.IO.Error (catchIOError,ioeGetErrorString)
 
 #define FUSE_USE_VERSION 26
 
-#if defined MACFUSE || defined __FreeBSD__
+#if __APPLE__
 #include <sys/mount.h>
 #else
 #include <sys/statfs.h>
