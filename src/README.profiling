@@ -4,9 +4,9 @@ it's probably worth setting reallySync=False in hslib/Disk.hs.
 1) GHC's built-in profiling.
 
   Add the "-prof -fprof-auto -rtsopts" GHC arguments in Makefile.
-  Run "./fuse .. +RTS -p".
+  Run "./fscq .. +RTS -p".
   Run some workload, then unmount the file system.
-  Look at the profile in ./fuse.prof.
+  Look at the profile in ./fscq.prof.
 
 2) Eventlog.
 
@@ -16,7 +16,7 @@ it's probably worth setting reallySync=False in hslib/Disk.hs.
   Uncomment the Profile.progseq line in Extraction.v.
   Edit hslib/Profile.hs to specify which files to profile.
     Profiling all files is costly enough to strongly skew the results.
-  Run "./fuse .. +RTS -l-agu".
+  Run "./fscq .. +RTS -l-agu".
   Run some workload, then unmount the file system.
   Analyze the eventlog:
     % ghc-events show fuse.eventlog | ./analyze-events.py | sort -n
@@ -28,6 +28,6 @@ Example shell command to generate a profile:
 
   rm disk.img ; \
   ./mkfs disk.img ; \
-  ./fuse disk.img /tmp/ft +RTS -p ; \
+  ./fscq disk.img /tmp/ft +RTS -p ; \
   ( cd ~/proj/sv6/o.linux/bin && ./mailbench /tmp/ft 1 ) ; \
   fusermount -u /tmp/ft
