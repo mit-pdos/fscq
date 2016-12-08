@@ -269,59 +269,118 @@ Fixpoint fuel_retry T (p: prog App.Sigma (Exc T)) n : prog App.Sigma (Exc T) :=
              end
   end.
 
+Definition wrap_syscall_loop T p up := fuel_retry (wrap_syscall (T:=T) p up).
+Definition wrap_syscall'_loop p up := fuel_retry (wrap_syscall' p up).
+
 Definition file_get_attr inum :=
-  wrap_syscall (fun fsxp mscs =>
-                  CFS.file_get_attr fsxp inum mscs)
-               (fun tree => tree).
+  wrap_syscall_loop (fun fsxp mscs =>
+                       CFS.file_get_attr fsxp inum mscs)
+                    (fun tree => tree).
+
+Definition file_get_sz inum :=
+  wrap_syscall_loop (fun fsxp mscs =>
+                       CFS.file_get_sz fsxp inum mscs)
+                    (fun tree => tree).
 
 Definition read_fblock inum off :=
-  wrap_syscall (fun fsxp mscs =>
-                  CFS.read_fblock fsxp inum off mscs)
-               (fun tree => tree).
+  wrap_syscall_loop (fun fsxp mscs =>
+                       CFS.read_fblock fsxp inum off mscs)
+                    (fun tree => tree).
 
 Definition lookup dnum fnlist :=
-  wrap_syscall (fun fsxp mscs =>
-                  CFS.lookup fsxp dnum fnlist mscs)
-               (fun tree => tree).
+  wrap_syscall_loop (fun fsxp mscs =>
+                       CFS.lookup fsxp dnum fnlist mscs)
+                    (fun tree => tree).
 
 Definition file_set_attr inum attr :=
-  wrap_syscall (fun fsxp mscs =>
-                  CFS.file_set_attr fsxp inum attr mscs)
-               (* TODO: functional updates on directory trees *)
-               (fun tree => tree).
+  wrap_syscall_loop (fun fsxp mscs =>
+                       CFS.file_set_attr fsxp inum attr mscs)
+                    (* TODO: functional updates on directory trees *)
+                    (fun tree => tree).
 
 Definition file_truncate inum sz :=
-  wrap_syscall (fun fsxp mscs =>
-                  CFS.file_truncate fsxp inum sz mscs)
-               (fun tree => tree).
+  wrap_syscall_loop (fun fsxp mscs =>
+                       CFS.file_truncate fsxp inum sz mscs)
+                    (fun tree => tree).
 
 Definition update_fblock_d inum off v :=
-  wrap_syscall' (fun fsxp mscs =>
-                    CFS.update_fblock_d fsxp inum off v mscs)
-               (fun tree => tree).
+  wrap_syscall'_loop (fun fsxp mscs =>
+                        CFS.update_fblock_d fsxp inum off v mscs)
+                     (fun tree => tree).
 
 Definition file_sync inum :=
-  wrap_syscall' (fun fsxp mscs =>
-                  CFS.file_sync fsxp inum mscs)
-                (fun tree => tree).
+  wrap_syscall'_loop (fun fsxp mscs =>
+                        CFS.file_sync fsxp inum mscs)
+                     (fun tree => tree).
 
 Definition tree_sync :=
-  wrap_syscall' (CFS.tree_sync)
-                (* this is a complete spec - tree sync does not affect the
+  wrap_syscall'_loop (CFS.tree_sync)
+                     (* this is a complete spec - tree sync does not affect the
                 latest tree *)
-                (fun tree => tree).
+                     (fun tree => tree).
 
 Definition create dnum name :=
-  wrap_syscall (fun fsxp mscs =>
-                  CFS.create fsxp dnum name mscs)
-               (fun tree => tree).
+  wrap_syscall_loop (fun fsxp mscs =>
+                       CFS.create fsxp dnum name mscs)
+                    (fun tree => tree).
 
 Definition rename dnum srcpath srcname dstpath dstname :=
-  wrap_syscall (fun fsxp mscs =>
-                  CFS.rename fsxp dnum srcpath srcname dstpath dstname mscs)
-               (fun tree => tree).
+  wrap_syscall_loop (fun fsxp mscs =>
+                       CFS.rename fsxp dnum srcpath srcname dstpath dstname mscs)
+                    (fun tree => tree).
 
 Definition delete dnum name :=
-  wrap_syscall (fun fsxp mscs =>
-                  CFS.delete fsxp dnum name mscs)
-               (fun tree => tree).
+  wrap_syscall_loop (fun fsxp mscs =>
+                       CFS.delete fsxp dnum name mscs)
+                    (fun tree => tree).
+
+Definition umount :=
+  wrap_syscall'_loop (fun fsxp mscs =>
+                        CFS.umount fsxp mscs)
+                     (fun tree => tree).
+
+Definition mksock dnum name :=
+  wrap_syscall_loop (fun fsxp mscs =>
+                        CFS.mksock fsxp dnum name mscs)
+                    (fun tree => tree).
+
+Definition readdir dnum :=
+  wrap_syscall_loop (fun fsxp mscs =>
+                       CFS.readdir fsxp dnum mscs)
+                    (fun tree => tree ).
+
+Definition mkdir dnum name :=
+  wrap_syscall_loop (fun fsxp mscs =>
+                       CFS.mkdir fsxp dnum name mscs)
+                    (fun tree => tree ).
+
+Definition file_set_sz inum sz :=
+  wrap_syscall_loop (fun fsxp mscs =>
+                       CFS.file_set_sz fsxp inum sz mscs)
+                    (fun tree => tree ).
+
+Definition update_fblock inum off v :=
+  wrap_syscall_loop (fun fsxp mscs =>
+                       CFS.update_fblock fsxp inum off v mscs)
+                    (fun tree => tree ).
+
+Definition statfs :=
+  fsxp <- Get mFsxp;
+    mscs <- Get mMscs;
+    r <- CFS.statfs fsxp mscs;
+    match r with
+    | Some r =>
+      let '(mscs', (r1, (r2, _))) := r in
+      _ <- Assgn mMscs mscs';
+        _ <- ConcurrentCache.cache_commit;
+        Ret (value (r1, r2))
+    | None =>
+      _ <- ConcurrentCache.cache_abort;
+        Ret None
+    end.
+
+Definition init_fs fsxp mscs :=
+  _ <- Assgn mFsxp fsxp;
+    _ <- Assgn mMscs mscs;
+    _ <- var_update vFsxp (fun _ => fsxp);
+    Ret tt.

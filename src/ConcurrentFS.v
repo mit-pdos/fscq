@@ -671,4 +671,46 @@ Module ConcurFS (CacheSubProtocol:ConcurrentCache.CacheSubProtocol).
 
   Hint Extern 0 {{ delete _ _ _ _; _ }} => apply delete_ok : prog.
 
+  (*** Unproven programs *)
+
+  (*+ file_get_sz *)
+
+  Definition file_get_sz fsxp inum mscs :=
+    Bridge.compile (AFS.file_get_sz fsxp inum mscs).
+
+  (*+ umount *)
+
+  Definition umount fsxp mscs :=
+    Bridge.compile (AFS.umount fsxp mscs).
+
+  (*+ mksock *)
+
+  Definition mksock fsxp dnum name mscs :=
+    Bridge.compile (AFS.mksock fsxp dnum name mscs).
+
+  (*+ readdir *)
+
+  Definition readdir fsxp dnum mscs :=
+    Bridge.compile (AFS.readdir fsxp dnum mscs).
+
+  (*+ mkdir *)
+
+  Definition mkdir fsxp dnum name mscs :=
+    Bridge.compile (AFS.mkdir fsxp dnum name mscs).
+
+  (*+ file_set_sz *)
+
+  Definition file_set_sz fsxp inum sz mscs :=
+    Bridge.compile (AFS.file_set_sz fsxp inum sz mscs).
+
+  (*+ update_fblock *)
+
+  Definition update_fblock fsxp inum off v mscs :=
+    Bridge.compile (AFS.update_fblock fsxp inum off v mscs).
+
+  (*+ statfs *)
+
+  Definition statfs fsxp mscs :=
+    Bridge.compile (AFS.statfs fsxp mscs).
+
 End ConcurFS.
