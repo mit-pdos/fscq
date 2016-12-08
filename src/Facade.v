@@ -2904,6 +2904,16 @@ Instance cachestate_default_value : DefaultValue cachestate := {| zeroval :=
   auto with map.
 Defined.
 
+Instance addrmap_default_value : forall T {H: GoWrapper T}, DefaultValue (Map.t T).
+  intros.
+  apply Build_DefaultValue with (zeroval := Map.empty _).
+  unfold default_value, default_value', wrap, wrap'.
+  simpl. repeat f_equal.
+  apply MapUtils.addrmap_equal_eq.
+  apply MapUtils.AddrMap.map_empty.
+  eauto with map.
+Defined.
+
 Theorem transform_pimpl : forall T {Tr : WrapByTransforming T} k (t : T),
   (k |-> (@wrap _ (@GoWrapper_transform _ Tr) t) : pred) <=p=> k |-> (@wrap _ WrT' (transform t)).
 Proof.
@@ -2931,22 +2941,46 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-(* TODO
-  (* TODO: Can't put [a0] in [?B0]. *)
-  instantiate (B0 := _ * snd (fst vars) ~>? nat).
-  cancel_go.
-  compile_step.
-  (* TODO: Can't put [val] in [?F]. *)
-  instantiate (F := _ * snd (fst vars) ~>? nat).
-  cancel_go.
-  compile_step.
-  (* TODO
-  destruct b; simpl. (* TODO *)
-  compile_match.
   compile_step.
   compile_step.
+
+(*TODO compile_if in 'compile' tactic *)
+Ltac compile_if := match goal with
+  | [|- EXTRACT (if ?x_ then _ else _) {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_val x_ pre with
+    | None =>
+      eapply extract_equiv_prog with (pr1 := Bind (Ret x_) (fun x => if x then _ else _));
+      [ rewrite bind_left_id; apply prog_equiv_equivalence |]
+    | Some ?kx_ =>
+      eapply hoare_weaken; [eapply CompileIf with (varb := kx_)|
+      cancel_go..]
+    end
+  end.
   compile_step.
-*)
+  compile_if.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_if.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  (* TODO do the right thing here in compile_map_op *)
+  eapply CompileRet with (v := (CSMap cs)) (var0 := (snd (fst (fst (fst (fst (fst (fst (fst (fst (fst vars))))))))))).
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step. (* TODO rule for Ret false *)
+  {
+    eapply hoare_weaken.
+    eapply CompileRet', CompileSkip.
+    cancel_go. cancel_go.
+  }
+  compile_step.
+  compile_step.
+  (* TODO compile (Ret {| record |}) *)
 Abort.
 
 Example match_option : sigT (fun p => forall env (o : option W) (r0 : W),
