@@ -3154,6 +3154,7 @@ Example extract_call_swap :
     sigT (fun p =>
           EXTRACT call_swap {{ emp }} p {{ fun _ => emp }} // env).
 Proof.
+  unfold call_swap.
   intros.
   compile.
 Defined.
@@ -3179,7 +3180,9 @@ Example extract_rot3_prog :
           EXTRACT rot3_prog {{ emp }} p {{ fun _ => emp }} // env).
 Proof.
   intros.
-  compile.
+  unfold rot3_prog.
+  repeat (compile_step; try solve [unfold exis' at 3; cancel]). (* TODO something with cancel_go *)
+  Unshelve. compile.
 Defined.
 
 Example extract_rot3_prog_top :
