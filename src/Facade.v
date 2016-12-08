@@ -2550,6 +2550,14 @@ Ltac compile_match := match goal with
         end
       end
     end
+  | [|- EXTRACT (let (a_, b_) := ?p in _) {{ _ }} _ {{ _ }} // _ ] =>
+    let H := fresh "H" in
+    let a := fresh "p" in
+    let b := fresh "p" in
+    destruct p as [a  b] eqn:H;
+    assert (a = fst p) by (subst p; eauto);
+    assert (b = snd p) by (subst p; eauto);
+    clear H; subst a b
   end.
 
 Ltac compile_read_write := match goal with
