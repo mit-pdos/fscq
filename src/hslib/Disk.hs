@@ -146,7 +146,7 @@ sync_disk (S fd sr fl) = do
   bumpSync sr
   logFlush fl
   if reallySync then
-    fileSynchroniseDataOnly fd
+    fileSynchronise fd
   else
     return ()
 

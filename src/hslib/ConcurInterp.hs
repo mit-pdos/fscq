@@ -3,8 +3,6 @@ module ConcurInterp where
 import CoopConcur
 import Variables
 import Hlist
-import qualified Log
-import qualified FSLayout
 import qualified Disk
 import Word
 import Control.Exception as E
@@ -123,12 +121,10 @@ print_exception tid e = do
   putStrLn $ "[" ++ (show tid) ++ "] Exception: " ++ (show e)
   spin_forever
 
-type MSCS = (Bool, Log.LOG__Coq_memstate)
-type FSXP = FSLayout.Coq_fs_xparams
-
-init_concurrency :: VMap -> IO ConcurrentState
-init_concurrency m = do
-  vm <- newIORef m
+-- initialize the concurrent state with an empty variable map
+init_concurrency :: IO ConcurrentState
+init_concurrency = do
+  vm <- newIORef Data.Map.empty
   lock <- newMVar ()
   return $ CS vm lock
 

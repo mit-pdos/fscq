@@ -20,6 +20,8 @@ Section MemCache.
 
   Definition Cache : Type := Map.t cache_entry.
 
+  Definition empty_cache : Cache := Map.empty _.
+
   Variable (c:Cache).
 
   Definition cache_get a : cache_entry :=

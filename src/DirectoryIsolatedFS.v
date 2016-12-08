@@ -391,7 +391,8 @@ Definition statfs :=
     end.
 
 Definition init_fs fsxp mscs :=
-  _ <- Assgn mFsxp fsxp;
+  _ <- ConcurrentCache.cache_init;
+    _ <- Assgn mFsxp fsxp;
     _ <- Assgn mMscs mscs;
     _ <- var_update vFsxp (fun _ => fsxp);
     Ret tt.

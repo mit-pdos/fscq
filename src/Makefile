@@ -99,7 +99,7 @@ hscgen/%.hs: hslib/%.hsc
 	@mkdir -p $(@D)
 	$(HSC2HS) $< -o $@ --cflag=-D_FILE_OFFSET_BITS=64
 
-%: %.hs $(VS_HS) $(HSLIB_FUSE)
+%: %.hs $(VS_HS) $(HSLIB_FUSE) $(HSLIB_PRE) $(HSLIB_POST)
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
 	$(GHC) $(GHCARGS) $(HSLIB_FUSE)
 	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)

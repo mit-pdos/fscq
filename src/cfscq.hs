@@ -12,11 +12,9 @@ import System.Posix.IO
 import System.FilePath.Posix
 import Word
 import Disk
-import Prog
 import Fuse
 import Interpreter as SeqI
 import qualified CoopConcur
-import qualified Data.Map
 import Data.IORef
 -- import qualified Interpeter as SeqI
 import ConcurInterp as I
@@ -69,11 +67,6 @@ type FSrunner = forall a. CoopConcur.Coq_prog (Maybe a) -> IO a
 -- (ps, next tid)
 type SystemState = (ProgramState, IORef Int)
 
-init_mem :: FSXP -> MSCS -> VMap
-init_mem fsxp mscs = Data.Map.insert (hmember_to_int FS.mMscs) (Prog.unsafeCoerce mscs) $
-  Data.Map.insert (hmember_to_int FS.mFsxp) (Prog.unsafeCoerce fsxp) $
-  Data.Map.empty
-
 interpreter :: SystemState -> FSrunner
 interpreter (ps, m_tid) p = do
   tid <- readIORef m_tid
@@ -111,9 +104,10 @@ run_fuse disk_fn fuse_args = do
         Errno.OK (s, fsxp) -> do
           set_nblocks_disk ds $ fromIntegral $ coq_FSXPMaxBlock fsxp
           return (s, fsxp)
-  cs <- init_concurrency (init_mem fsxp s)
-  m_tid <- newIORef 0
+  cs <- init_concurrency
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
+  I.run (ds, cs) 0 (FS.init_fs fsxp s)
+  m_tid <- newIORef 1
   fuseRun "fscq" fuse_args (fscqFSOps disk_fn (ds, cs) (interpreter ((ds, cs), m_tid))) defaultExceptionHandler
 
 -- See the HFuse API docs at:

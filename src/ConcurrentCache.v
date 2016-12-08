@@ -195,6 +195,11 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
       _ <- var_update vWriteBuffer up;
       Ret tt.
 
+  Definition cache_init :=
+    _ <- Assgn mCache empty_cache;
+      _ <- Assgn mWriteBuffer emptyWriteBuffer;
+      Ret tt.
+
   (** Prepare to fill address a, locking the address and marking it
   invalid in the cache to signal the lock to concurrent threads. *)
   Definition prepare_fill a :=
