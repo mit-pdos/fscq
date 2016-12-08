@@ -804,7 +804,15 @@ Qed.
 Ltac cancel_go :=
   simpl in *;
   fold prod' in *; fold exis' in *;
-  cancel; solve [unfold exis'; cancel; apply decls_pre_impl_post] || cancel.
+  cancel;
+  (solve [
+    match goal with
+      | [|- (?PRE =p=> ?POST)] =>
+      set (H := POST);
+      unfold exis' in H; subst H; cancel
+    end; cancel |
+    unfold exis'; cancel; apply decls_pre_impl_post ])
+    || cancel.
 
 Lemma ptsto_delete' : forall a (F :pred) (m : mem),
   (a |->? * F)%pred m -> F (delete m a).
