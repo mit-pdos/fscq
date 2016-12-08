@@ -484,9 +484,9 @@ Ltac forward_solve_step :=
 Ltac forward_solve :=
   repeat forward_solve_step.
 
-Lemma CompileConst : forall env A var (v v0 : nat),
+Lemma CompileConst : forall env A var (v : nat),
   EXTRACT Ret v
-  {{ var ~> v0 * A }}
+  {{ var ~>? W * A }}
     var <~const v
   {{ fun ret => var ~> ret * A }} // env.
 Proof.
@@ -1436,9 +1436,9 @@ Qed.
 
 
 Lemma CompileAdd :
-  forall env F sumvar avar bvar (sum0 a b : nat),
+  forall env F sumvar avar bvar (a b : nat),
     EXTRACT Ret (a + b)
-    {{ sumvar ~> sum0 * avar ~> a * bvar ~> b * F }}
+    {{ sumvar ~>? W * avar ~> a * bvar ~> b * F }}
       Modify (ModifyNumOp Plus) (sumvar, avar, bvar)
     {{ fun ret => sumvar ~> ret * avar ~> a * bvar ~> b * F }} // env.
 Proof.
@@ -2255,9 +2255,9 @@ Proof.
 Qed.
 
 Lemma CompileJoin :
-  forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar (a : A) (b : B) pa pb F,
+  forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar (a : A) (b : B) F,
     EXTRACT Ret (a, b)
-    {{ avar ~> a * bvar ~> b * pvar |-> Val (Pair (@wrap_type _ HA) (@wrap_type _ HB)) (pa, pb) * F }}
+    {{ avar ~> a * bvar ~> b * pvar ~>? (A * B)%type * F }}
       Modify JoinPair (pvar, avar, bvar)
     {{ fun ret => avar |-> moved_value (wrap a) * bvar |-> moved_value (wrap b) * pvar ~> ret * F }} // env.
 Proof.
@@ -2268,6 +2268,7 @@ Proof.
     repeat econstructor.
     pred_solve.
   - contradiction H1.
+    eval_expr.
     repeat econstructor.
     eval_expr; eauto.
     eval_expr; eauto.
