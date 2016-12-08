@@ -12,6 +12,7 @@ _build
 /hstest
 /gotest
 /fscq
+/cfscq
 /mkfs
 /mlfuse
 /mlmkfs

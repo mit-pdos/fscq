@@ -292,6 +292,11 @@ Definition lookup dnum fnlist :=
                        CFS.lookup fsxp dnum fnlist mscs)
                     (fun tree => tree).
 
+Definition lookup_root fnlist :=
+  wrap_syscall_loop (fun fsxp mscs =>
+                       CFS.lookup fsxp (FSLayout.FSXPRootInum fsxp) fnlist mscs)
+                    (fun tree => tree).
+
 Definition file_set_attr inum attr :=
   wrap_syscall_loop (fun fsxp mscs =>
                        CFS.file_set_attr fsxp inum attr mscs)
@@ -327,6 +332,12 @@ Definition create dnum name :=
 Definition rename dnum srcpath srcname dstpath dstname :=
   wrap_syscall_loop (fun fsxp mscs =>
                        CFS.rename fsxp dnum srcpath srcname dstpath dstname mscs)
+                    (fun tree => tree).
+
+Definition rename_root srcpath srcname dstpath dstname :=
+  wrap_syscall_loop (fun fsxp mscs =>
+                       CFS.rename fsxp (FSLayout.FSXPRootInum fsxp)
+                                  srcpath srcname dstpath dstname mscs)
                     (fun tree => tree).
 
 Definition delete dnum name :=
@@ -373,7 +384,7 @@ Definition statfs :=
       let '(mscs', (r1, (r2, _))) := r in
       _ <- Assgn mMscs mscs';
         _ <- ConcurrentCache.cache_commit;
-        Ret (value (r1, r2))
+        Ret (value (r1, r2, fsxp))
     | None =>
       _ <- ConcurrentCache.cache_abort;
         Ret None
