@@ -1262,31 +1262,6 @@ Proof.
   eapply CompileRet. eapply H.
 Qed.
 
-Lemma CompileIf : forall P Q {H1 : GoWrapper ({P}+{Q})}
-                         T {H : GoWrapper T}
-                         A B env (pt pf : prog T) (cond : {P} + {Q}) xpt xpf xcond condvar,
-  EXTRACT pt
-  {{ A }}
-    xpt
-  {{ B }} // env ->
-  EXTRACT pf
-  {{ A }}
-    xpf
-  {{ B }} // env ->
-  EXTRACT Ret cond
-  {{ A }}
-    xcond
-  {{ fun ret => condvar ~> ret * A }} // env ->
-  EXTRACT if cond then pt else pf
-  {{ A }}
-   xcond ; If Var condvar Then xpt Else xpf EndIf
-  {{ B }} // env.
-Proof.
-  unfold ProgOk.
-  intuition.
-  econstructor. intuition.
-Admitted.
-
 Lemma CompileWeq : forall A (a b : valu) env xa xb retvar avar bvar,
   EXTRACT Ret a
   {{ A }}
@@ -1391,6 +1366,34 @@ Ltac eval_expr_step :=
     repeat find_inversion_safe.
 
 Ltac eval_expr := repeat eval_expr_step.
+
+Lemma CompileIf : forall V varb (b : bool)
+  (ptrue pfalse : prog V) xptrue xpfalse F G env,
+  EXTRACT ptrue
+  {{ varb ~> true * F }}
+    xptrue
+  {{ fun ret => G ret * varb ~>? bool }} // env ->
+  EXTRACT pfalse
+  {{ varb ~> false * F }}
+    xpfalse
+  {{ fun ret => G ret * varb ~>? bool }} // env ->
+  EXTRACT (if b then ptrue else pfalse)
+  {{ varb ~> b * F }}
+    If (Var varb) Then xptrue Else xpfalse EndIf
+  {{ fun ret => G ret * varb ~>? bool }} // env.
+Proof.
+  intros. unfold ProgOk.
+  inv_exec_progok.
+  all : inv_exec; try inv_exec; eval_expr;
+    try match goal with
+    [ H : context [ProgOk] |- _] =>
+      solve [edestruct H; forward_solve; pred_solve]
+    end.
+  all : contradiction H3;
+    repeat eexists; solve [
+    eapply StepIfTrue; eval_expr |
+    eapply StepIfFalse; eval_expr].
+Qed.
 
 Lemma CompileRead :
   forall env F avar vvar (v0 : valu) a,
