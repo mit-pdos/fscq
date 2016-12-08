@@ -2668,16 +2668,25 @@ Ltac compile_map_op := match goal with
       end
     end
   | [ |- EXTRACT Ret (Map.add ?k ?v ?m) {{ ?pre }} _ {{ fun ret : ?T => ?post }} // _ ] =>
-    match find_val k pre with
-    | Some ?vark =>
-      match find_val v pre with
-      | Some ?varv =>
-        match find_val m pre with
-        | Some ?varm =>
-          eapply hoare_weaken; [
-          eapply CompileMapAdd with (kvar := vark) (vvar := varv) (mvar := varm) |
-          cancel_go..]
+    match var_mapping_to_ret with
+    | ?retv =>
+      match find_val m pre with
+      | Some ?varm => unify retv varm; (* same variable *)
+        match find_val k pre with
+        | Some ?vark =>
+          match find_val v pre with
+          | Some ?varv =>
+            eapply hoare_weaken; [
+            eapply CompileMapAdd with (kvar := vark) (vvar := varv) (mvar := varm) |
+            cancel_go..]
+          end
         end
+      | Some ?varm => (* not the same variable *)
+        (unify retv varm; fail 2) ||
+        eapply CompileBefore; [
+        idtac m retv "TODO apply CompileRet"
+        (* TODO apply CompileRet *)
+        |]
       end
     end
   | [ |- EXTRACT Ret (Map.remove ?k ?m) {{ ?pre }} _ {{ fun ret : ?T => ?post }} // _ ] =>
