@@ -1141,7 +1141,8 @@ Proof.
   all: auto.
 Qed.
 
-Lemma CompileBindDiscard : forall T' env A (B : T' -> _) p f xp xf,
+Lemma CompileBindDiscard : forall T T' env A (B : T' -> _)
+  (p : prog T) (f : prog T') xp xf,
   EXTRACT p
   {{ A }}
     xp
@@ -1150,7 +1151,7 @@ Lemma CompileBindDiscard : forall T' env A (B : T' -> _) p f xp xf,
   {{ A }}
     xf
   {{ B }} // env ->
-  EXTRACT Bind p (fun (_ : T') => f)
+  EXTRACT Bind p (fun (_ : T) => f)
   {{ A }}
     xp; xf
   {{ B }} // env.
