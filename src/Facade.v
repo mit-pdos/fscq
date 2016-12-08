@@ -2471,6 +2471,8 @@ Ltac do_declare T cont :=
   end.
 
 Ltac compile_bind := match goal with
+  | [ |- EXTRACT Bind ?p (fun _ => ?q) {{ _ }} _ {{ _ }} // _ ] =>
+    eapply CompileSeq
   | [ |- EXTRACT Bind (Ret ?x_) ?p {{ _ }} _ {{ ?post }} // _ ] =>
     match type of x_ with
     | ?T_ =>
@@ -2816,7 +2818,6 @@ Ltac compile_decompose := match goal with
 Ltac compile_step :=
   match goal with
   | [ |- @sigT _ _ ] => eexists; intros; eapply CompileDeclareMany; intro
-  | _ => eapply CompileBindDiscard
   | _ => eapply decls_pre_impl_post
   end
   || compile_bind
