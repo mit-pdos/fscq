@@ -30,7 +30,11 @@ VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
 VS_HS      := codegen/AsyncFS.hs
 VS_ML      := codegen/AsyncFS.ml
 VS_JSON    := codegen/AsyncFS.json
-GHC 	   := stack exec ghc --
+GHC        := ghc
+ifeq (,$(shell $(GHC) --version | grep 'version 8.0' 2>/dev/null))
+		GHC := /opt/ghc/8.0.1/bin/ghc
+		HSC2HS := /opt/ghc/8.0.1/bin/hsc2hs
+endif
 HSC2HS	   := hsc2hs
 
 J	   ?= 1
