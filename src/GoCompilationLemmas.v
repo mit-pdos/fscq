@@ -1140,23 +1140,16 @@ Proof.
   eapply hoare_strengthen_pre; [>
   | eapply AddInPlaceLeftBefore with (a := n) (x := i); eauto ].
   cancel_go.
-  eapply hoare_strengthen_pre; [>
-  | eapply hoare_weaken_post; [>
-  | eapply CompileForLoopBasic with (t0 := t0) (loopvar := loopvar)] ].
-  cancel_go.
-  cancel_go.
+  eapply hoare_weaken; [>
+    eapply CompileForLoopBasic with (t0 := t0) (loopvar := loopvar)
+  | cancel_go..].
   intros.
   eapply hoare_weaken_post; [>
   | eapply AddInPlaceLeftAfter with (a := 1) (x := x); eauto].
   rewrite Nat.add_1_r.
-  instantiate (1 := fun x0 => (loopvar ~> x0 * term ~> (i + n) * _)%pred).
-  cancel_go.
-  specialize (H t x v term one).
-  eapply hoare_strengthen_pre. shelve.
-  eapply hoare_weaken_post. shelve.
-  eauto.
-  Unshelve.
-  all : cancel_go.
+  cancel_go. apply pimpl_refl.
+  eapply hoare_weaken; [>
+    eapply H | cancel_go..].
 Qed.
 
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
