@@ -4,7 +4,8 @@ COQDIR=$1
 BRANCH=$2
 BUILDNAME=$3
 
-PATH=$COQDIR:$PATH
+export PATH=$COQDIR:$PATH
+export TERM=dumb
 
 D=~/builder/runs/$(date +%s)
 mkdir -p $D
