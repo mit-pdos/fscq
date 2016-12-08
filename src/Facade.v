@@ -2020,17 +2020,18 @@ Qed.
 
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
   forall avar bvar,
-    forall a b, EXTRACT src a b
-           {{ avar ~> a * bvar ~> b }}
+    forall a b F, EXTRACT src a b
+           {{ avar ~> a * bvar ~> b * F }}
              Call [] name [avar; bvar]
-           {{ fun _ => avar |->? * bvar |->? (* TODO: could remember a & b if they are of aliasable type *) }} // env.
+           {{ fun _ => avar |->? * bvar |->? * F
+            (* TODO: could remember a & b if they are of aliasable type *) }} // env.
 
 
 (* TODO: generalize for all kinds of functions *)
 Lemma extract_voidfunc2_call :
   forall A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) arga argb arga_t argb_t env,
     forall and body ss,
-      (forall a b, EXTRACT src a b {{ arga ~> a * argb ~> b }} body {{ fun _ => arga |->? * argb |->? }} // env) ->
+      (forall a b F, EXTRACT src a b {{ arga ~> a * argb ~> b * F }} body {{ fun _ => arga |->? * argb |->? * F }} // env) ->
       StringMap.find name env = Some {|
                                     ParamVars := [(arga_t, arga); (argb_t, argb)];
                                     RetParamVars := [];
@@ -2042,8 +2043,8 @@ Lemma extract_voidfunc2_call :
       voidfunc2 name src env.
 Proof.
   unfold voidfunc2.
-  intros A B C WA WB name src arga argb arga_t argb_t env and body ss Hex Henv avar bvar a b.
-  specialize (Hex a b).
+  intros A B C WA WB name src arga argb arga_t argb_t env and body ss Hex Henv avar bvar a b F.
+  specialize (Hex a b F).
   intro.
   intros.
   intuition subst.
@@ -3031,7 +3032,8 @@ Defined.
 Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
 
 Lemma extract_swap_prog : forall env, sigT (fun p =>
-  forall a b, EXTRACT swap_prog a b {{ 0 ~> a * 1 ~> b }} p {{ fun _ => 0 |->? * 1 |->? }} // env).
+  forall a b F, EXTRACT swap_prog a b
+  {{ 0 ~> a * 1 ~> b * F }} p {{ fun _ => 0 |->? * 1 |->? * F}} // env).
 Proof.
   intros. unfold swap_prog.
   compile.
