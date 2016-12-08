@@ -3069,7 +3069,7 @@ Eval lazy in projT1 (extract_increment (StringMap.empty _)).
 Example extract_for_loop : forall env, sigT (fun p =>
   forall cnt nocrash crashed,
   EXTRACT (@ForN_ W W (fun i sum => Ret (sum + i)) 1 cnt nocrash crashed 0)
-  {{ 0 ~> 0 * 1 ~> cnt }} p {{ fun ret => 0 ~> ret }} // env).
+  {{ 0 ~> 0 * 1 ~> cnt }} p {{ fun ret => 0 ~> ret * 1 |->? }} // env).
 Proof.
   intros.
   compile.
