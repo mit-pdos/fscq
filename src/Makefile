@@ -38,8 +38,8 @@ endif
 HSC2HS	   := hsc2hs
 
 J	   ?= 1
-GHCARGS    := -O2 -threaded
-		# -prof -fprof-auto -rtsopts
+GHCARGS    := -O2 -threaded -rtsopts
+		# -prof -fprof-auto
 		# -eventlog
 HSLIB_FUSE := hscgen/Fuse.hs
 HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
