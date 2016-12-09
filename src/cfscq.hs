@@ -69,7 +69,7 @@ type FSrunner = forall a. CoopConcur.Coq_prog (Maybe a) -> IO a
 type SystemState = (ProgramState, IORef Int)
 
 interpreter :: SystemState -> FSrunner
-interpreter (ps@(_, cs), m_tid) p = do
+interpreter (ps, m_tid) p = do
   tid <- readIORef m_tid
   modifyIORef m_tid (+1)
   ret <- newEmptyMVar
