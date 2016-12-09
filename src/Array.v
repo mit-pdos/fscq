@@ -1408,6 +1408,8 @@ Section SubsetArray.
       specialize (H1 (S i)). simpl in H1. apply H1. omega.
   Qed.
 
+  Hint Resolve incl_refl.
+
   Lemma crash_xform_synced_arrayN_subset: forall l st,
     Forall (fun x => snd x = nil) l ->
     crash_xform (arrayN ptsto_subset st l) =p=> arrayN ptsto_subset st l.
