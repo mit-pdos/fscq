@@ -5705,6 +5705,29 @@ Module DIRTREE.
   Hint Extern 1 ({{_}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.
 
 
+  Lemma prune_graft_preserves_inodes : forall srcpath srcname srcnum srcents
+                                              dstpath dstname dstnum dstents
+                                              mvtree tree_elem dnum inum,
+    find_subtree srcpath (TreeDir dnum tree_elem) = Some (TreeDir srcnum srcents) ->
+    find_dirlist srcname srcents = Some mvtree ->
+    find_subtree dstpath (tree_prune srcnum srcents srcpath srcname (TreeDir dnum tree_elem)) =
+      Some (TreeDir dstnum dstents) ->
+    In inum (tree_inodes
+      (tree_graft dstnum dstents dstpath dstname mvtree
+        (tree_prune srcnum srcents srcpath srcname (TreeDir dnum tree_elem)))) ->
+    (In inum (tree_inodes
+        (update_subtree dstpath (TreeDir dstnum (delete_from_list dstname dstents))
+          (tree_prune srcnum srcents srcpath srcname (TreeDir dnum tree_elem)))) \/
+     (~ In inum
+       (tree_inodes (tree_prune srcnum srcents srcpath srcname (TreeDir dnum tree_elem))))).
+  Admitted.
+
+  Lemma tree_inodes_incl_delete_from_dir : forall pathname dnum tree_elem name pnum pelem,
+    find_subtree pathname (TreeDir dnum tree_elem) = Some (TreeDir pnum pelem) ->
+    incl (tree_inodes (update_subtree pathname (delete_from_dir name (TreeDir pnum pelem)) (TreeDir dnum tree_elem)))
+         (tree_inodes (TreeDir dnum tree_elem)).
+  Admitted.
+
   Theorem rename_ok' : forall fsxp dnum srcpath srcname dstpath dstname mscs,
     {< F mbase m Fm Ftop tree tree_elem ilist frees,
     PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) hm *
@@ -5724,7 +5747,7 @@ Module DIRTREE.
             [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                             ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
             [[ forall inum' def', inum' <> snum -> inum' <> dnum ->
-               In inum' (tree_inodes tree') ->
+               (In inum' (tree_inodes tree') \/ (~ In inum' (tree_inodes tree))) ->
                selN ilist inum' def' = selN ilist' inum' def' ]] )
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
@@ -5854,7 +5877,28 @@ Module DIRTREE.
     msalloc_eq.
     eapply rename_safe_dest_exists; eauto.
 
-    admit. (* maybe from ilist_safe *)
+    (* case 1: in the new tree *)
+    denote BFILE.treeseq_ilist_safe as Hsafe.
+    unfold BFILE.treeseq_ilist_safe in Hsafe; destruct Hsafe as [Hsafe0 Hsafe1].
+    rewrite <- Hsafe1 by auto.
+
+    denote (selN ilist _ _ = selN ilist' _ _) as Hi.
+    eapply Hi; eauto.
+
+    eapply prune_graft_preserves_inodes; eauto.
+
+    (* case 2: out of the original tree *)
+    denote BFILE.treeseq_ilist_safe as Hsafe.
+    unfold BFILE.treeseq_ilist_safe in Hsafe; destruct Hsafe as [Hsafe0 Hsafe1].
+    rewrite <- Hsafe1 by auto.
+
+    eapply H37; eauto.
+    right.
+    contradict H46.
+    unfold tree_prune in *.
+    eapply tree_inodes_incl_delete_from_dir in H46; eauto.
+    simpl in *; intuition.
+
     cancel.
 
     (* dst is None *)
@@ -5870,7 +5914,14 @@ Module DIRTREE.
     msalloc_eq.
     eapply rename_safe_dest_none; eauto.
     eapply notindomain_not_in_dirents; eauto.
-    admit. (* maybe from ilist_safe *)
+
+    denote BFILE.treeseq_ilist_safe as Hsafe.
+    unfold BFILE.treeseq_ilist_safe in Hsafe; destruct Hsafe as [Hsafe0 Hsafe1].
+    apply Hsafe1; auto.
+
+    denote BFILE.treeseq_ilist_safe as Hsafe.
+    unfold BFILE.treeseq_ilist_safe in Hsafe; destruct Hsafe as [Hsafe0 Hsafe1].
+    apply Hsafe1; auto.
 
     cancel.
     cancel; auto.
@@ -5880,7 +5931,7 @@ Module DIRTREE.
 
     Unshelve.
     all: try exact addr; try exact addr_eq_dec; eauto.
-  Admitted.
+  Qed.
 
 
   Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
