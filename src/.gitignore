@@ -7,6 +7,7 @@
 /codegen
 _build
 /disk.img
+/init-disk.img
 /Makefile.coq
 /fstest
 /hstest
