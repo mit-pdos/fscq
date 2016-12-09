@@ -15,9 +15,11 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      NEList DiskSet GroupLog Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
 	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \
-	      SuperBlock AsyncFS AsyncFSRecover \
+	      SuperBlock AsyncFS AsyncFSRecover VBConv AByteFile \
 	      ADestructPair DestructVarname ExtrHaskellPrelude \
-	      DirSep TreeSeq ProgMetatheory
+		  DirSep TreeSeq ProgMetatheory
+
+>>>>>>> f7a5333c7bd9627ff8b1e05b55e1771e98504a00
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))

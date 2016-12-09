@@ -68,17 +68,51 @@ end.
 
 Definition natlist2bytelist nl: list byte:= map (natToWord 8) nl.
 
-Print eq_rect.
-
 Definition bytelist2bytesvalubytes (bl: list byte) H: bytes valubytes:=
 	eq_rect (List.length bl) bytes (bcombine_list bl) valubytes H.
 
 Definition string2valu s H: valu:=
 	bytes2valu(bytelist2bytesvalubytes(natlist2bytelist(string2natlist s)) H).
 
-Definition	
+Definition divrndup a b:=
+match a mod b with
+| O => a/b
+| S _ => a/b + 1
+end.
+
+Fixpoint selpad {A} (l: list A) a pad:=
+match List.length l mod a with
+| O => l
+| S _ => (selpad (l ++ (pad::nil)) a pad)%list
+end.
 	
-Definiton writemessage fsxp tinum mscs mess;
+Definiton writemessage fsxp tinum mscs msg:=
+	let^ (ms, ret) <- ForN i < divrndup (length msg) valubytes
+      Hashmap hm
+      Ghost [ F Fm Fi m0 f ilist frees ]
+      Loopvar [ ms ret ]
+      Invariant
+        exists m' flist' ilist' frees' f',
+        LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms) hm *
+        [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees') ]]] *
+        [[[ flist' ::: (Fi * inum |-> f') ]]] *
+        [[ ret = OK tt ->
+          f' = mk_bfile ((BFData f) ++ synced_list (firstn i l)) (BFAttr f) ]] *
+        [[ MSAlloc ms = MSAlloc ms0 /\
+           ilist_safe ilist (pick_balloc frees (MSAlloc ms)) 
+                      ilist' (pick_balloc frees' (MSAlloc ms)) ]] *
+        [[ treeseq_ilist_safe inum ilist ilist' ]]
+      OnCrash
+        LOG.intact lxp F m0 hm
+      Begin
+        match ret with
+        | Err e => Ret ^(ms, ret)
+        | OK _ =>
+          let^ (ms, ok) <- grow lxp bxp ixp inum (selN l i $0) ms;
+          Ret ^(ms, ok)
+        end
+      Rof ^(ms0, OK tt);
+    Ret ^(ms, ret).
 
 Definition copyblock fsxp src_inum tinum mscs bn:=
     (*let^ (mscs, attr) <- AFS.file_get_attr fsxp src_inum mscs; *)
