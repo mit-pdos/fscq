@@ -3158,3 +3158,92 @@ Proof.
   split; auto using in_or_app.
 Qed.
 
+
+Lemma incl_app2r : forall T (l1 l2 l2' : list T),
+  incl l2 l2' ->
+  incl (l1 ++ l2) (l1 ++ l2').
+Proof.
+  intros.
+  eapply incl_app.
+  eapply incl_appl. eapply incl_refl.
+  eapply incl_appr. eauto.
+Qed.
+
+Lemma incl_app2l : forall T (l1' l1 l2 : list T),
+  incl l1 l1' ->
+  incl (l1 ++ l2) (l1' ++ l2).
+Proof.
+  intros.
+  eapply incl_app.
+  eapply incl_appl. eauto.
+  eapply incl_appr. eapply incl_refl.
+Qed.
+
+Lemma NoDup_incl_l : forall T (l1 l2 l2' : list T),
+  NoDup (l1 ++ l2) ->
+  NoDup l2' ->
+  incl l2' l2 ->
+  NoDup (l1 ++ l2').
+Proof.
+  induction l1; intros; eauto.
+  simpl.
+  inversion H; subst.
+  constructor; eauto.
+  contradict H4.
+  eapply In_incl; eauto.
+  eapply incl_app2r; eauto.
+Qed.
+
+Lemma NoDup_remove_inverse : forall T a (l' l : list T),
+  NoDup (l ++ l') -> ~ In a (l ++ l') -> NoDup (l ++ a :: l').
+Proof.
+  induction l; simpl; intros; eauto.
+  constructor; eauto.
+  inversion H; subst.
+  constructor.
+  - apply not_in_app in H3; destruct H3.
+    intro H'.
+    apply in_app_or in H'; destruct H'.
+    eauto.
+    rewrite cons_app in H3. apply in_app_or in H3. destruct H3.
+    simpl in *; intuition eauto.
+    eauto.
+  - eapply IHl; eauto.
+Qed.
+
+Lemma NoDup_incl_r : forall T (l2 l1 l1' : list T),
+  NoDup (l1 ++ l2) ->
+  NoDup l1' ->
+  incl l1' l1 ->
+  NoDup (l1' ++ l2).
+Proof.
+  induction l2; intros; eauto.
+  rewrite app_nil_r; eauto.
+
+  eapply NoDup_remove in H; intuition.
+  specialize (IHl2 _ _ H2 H0 H1).
+
+  eapply NoDup_remove_inverse; eauto.
+  contradict H3.
+  eapply In_incl.
+  eauto.
+  eapply incl_app2l; eauto.
+Qed.
+
+Lemma incl_cons2_inv : forall T (l1 l2 : list T) a,
+  ~ In a l1 ->
+  incl (a :: l1) (a :: l2) ->
+  incl l1 l2.
+Proof.
+  induction l1; simpl; intros.
+  apply incl_nil.
+  apply incl_cons.
+  edestruct (H0 a).
+  intuition.
+  intuition congruence.
+  eauto.
+  eapply IHl1 with (a := a0).
+  intuition.
+  intro; intro. apply H0.
+  inversion H1; subst; simpl; eauto.
+Qed.
