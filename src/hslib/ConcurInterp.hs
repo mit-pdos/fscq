@@ -66,6 +66,16 @@ finish_read (BackgroundReads pendings tid_reads) a tid = do
   let tid_reads' = Data.Map.delete tid tid_reads in
     return $ (v, BackgroundReads pendings' tid_reads')
 
+waitMVar :: MVar a -> IO ()
+waitMVar m = do
+  v <- takeMVar m
+  putMVar m v
+
+wait_tid_reads :: Int -> BackgroundReads -> IO ()
+wait_tid_reads tid (BackgroundReads _ tid_reads) = do
+  let pending_reads = findWithDefault [] tid tid_reads in
+    mapM_ waitMVar pending_reads
+
 data ConcurrentState =
   -- CS vm lock reads tid_reads
   CS !(IORef VMap) !(MVar ()) !(IORef BackgroundReads)
@@ -109,10 +119,11 @@ run_dcode (_, CS vm _ _) tid (Assgn a v) = do
 run_dcode _ tid (GetTID) = do
   debugmsg tid $ "GetTID"
   return . unsafeCoerce $ tid
-run_dcode (_, cs) tid (Yield wchan) = do
+run_dcode (_, cs@(CS _ _ m_reads)) tid (Yield wchan) = do
   debugmsg tid $ "Yield " ++ (show wchan)
-  -- ignore wchan for now
+  bg_reads <- readIORef m_reads
   release_global_lock cs
+  wait_tid_reads tid bg_reads
   acquire_global_lock cs
   return . unsafeCoerce $ ()
 run_dcode _ tid (Wakeup wchan) = do
