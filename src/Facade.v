@@ -2962,6 +2962,11 @@ Ltac compile_if := match goal with
   compile_step.
   compile_step.
   compile_if.
+  Focus 3. unfold exis'. cancel.
+  match goal with
+  | [ |- ?P =p=> ?Q ] => set Q
+  end.
+  pattern x in p. subst p. reflexivity.
   compile_step.
   compile_step.
   compile_step.
@@ -2980,8 +2985,94 @@ Ltac compile_if := match goal with
   }
   compile_step.
   compile_step.
-  (* TODO compile (Ret {| record |}) *)
-Abort.
+  eapply hoare_weaken.
+  eapply CompileRet' with (var0 := 1).
+  eapply hoare_weaken_post.
+  intros.
+  match goal with
+  | [ |- ?P =p=> ?Q ] => set (P)
+  end.
+  rewrite transform_pimpl. simpl.
+  subst p.
+  match goal with
+  | [ |- ?e _ =p=> ?Q ] => unify e (fun x : unit => Q)
+  end. reflexivity.
+  2: cancel_go.
+  2: cancel_go.
+  eapply CompileRet.
+  unfold prod'. (* TODO: prod' should never escape to this point! *)
+  compile_step.
+  compile_step.
+  compile_step.
+  eapply hoare_weaken.
+  eapply CompileRet' with (var0 := 1).
+  eapply hoare_weaken_post.
+  intros.
+  match goal with
+  | [ |- ?P =p=> ?Q ] => set (P)
+  end.
+  rewrite transform_pimpl. simpl.
+  subst p.
+  match goal with
+  | [ |- ?e _ =p=> ?Q ] => unify e (fun x : unit => Q)
+  end. reflexivity.
+  2: cancel_go.
+  2: cancel_go.
+  eapply CompileRet.
+  unfold prod'.
+  compile_step.
+  compile_step.
+  compile_step.
+  unfold exis'. cancel.
+  Axiom admit : False.
+ (* TODO: [CSMap cs] is gone! *) exfalso; apply admit.
+  eapply hoare_weaken.
+  eapply CompileRet' with (var0 := 1).
+  eapply hoare_weaken_post.
+  intros.
+  match goal with
+  | [ |- ?P =p=> ?Q ] => set (P)
+  end.
+  rewrite transform_pimpl. simpl.
+  subst p.
+  match goal with
+  | [ |- ?e _ =p=> ?Q ] => unify e (fun x : unit => Q)
+  end. reflexivity.
+  2: cancel_go.
+  2: cancel_go.
+  eapply CompileRet.
+  unfold prod'.
+  compile_step.
+  compile_step.
+  (* [compile_step] here works but takes >15 minutes... *)
+  match goal with
+  | |- EXTRACT Ret (?a_, ?b_)
+       {{ ?pre }}
+          _
+       {{ ?post }} // _ =>
+        match find_val a_ pre with
+        | Some ?ka =>
+            match find_val b_ pre with
+            | Some ?kb =>
+                match var_mapping_to_ret with
+                | ?kp =>
+                    eapply hoare_weaken;
+                     [ apply CompileJoin with
+                         (avar := ka) (bvar := kb) (pvar := kp)
+                     | .. ]
+                end
+            end
+        end
+  end.
+  simpl in *. fold prod' in *. cancel.
+  simpl in *. unfold exis' in *. cancel.
+  (* TODO: [CSMap cs] is gone! *) exfalso; apply admit.
+
+  Unshelve.
+  all: repeat constructor.
+  exact $0.
+Defined.
+Eval lazy in (projT1_sig compile_writeback).
 
 Example match_option : sigT (fun p => forall env (o : option W) (r0 : W),
   EXTRACT match o with
