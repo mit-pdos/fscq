@@ -3,10 +3,12 @@ module ConcurInterp where
 import CoopConcur
 import Variables
 import Hlist
+import Data.Maybe (fromJust)
 import qualified Disk
 import Word
 import Control.Exception as E
 import Control.Concurrent.MVar
+import Control.Concurrent (forkIO)
 import Data.Map
 import GHC.Prim
 import Data.IORef
@@ -36,18 +38,43 @@ get_var vm a =
     Nothing -> error $ "get of unset variable " ++ (show (hmember_to_int a))
 
 set_var :: VMap -> Variables.Coq_var a -> a -> VMap
-  -- TODO: implement
 set_var m a v = Data.Map.insert (hmember_to_int a) (unsafeCoerce v) m
 
+type PendingRead = MVar Coq_word
+type ThreadReads = [MVar Coq_word]
+
+data BackgroundReads =
+  BackgroundReads !(Data.Map.Map Integer PendingRead) !(Data.Map.Map Int ThreadReads)
+
+new_read :: Disk.DiskState -> BackgroundReads -> Integer -> Int -> IO BackgroundReads
+new_read ds (BackgroundReads pendings tid_reads) a tid = do
+  pending <- newEmptyMVar
+  _ <- forkIO $ do
+    val <- Disk.read_disk ds a
+    putMVar pending val
+  let pendings' = Data.Map.insert a pending pendings
+      tid_reads' = Data.Map.alter
+        (\v -> case v of
+            Nothing -> Just $ [pending]
+            Just tids -> Just $ tids ++ [pending]) tid tid_reads in
+    return $ BackgroundReads pendings' tid_reads'
+
+finish_read :: BackgroundReads -> Integer -> Int -> IO (Coq_word, BackgroundReads)
+finish_read (BackgroundReads pendings tid_reads) a tid = do
+  v <- takeMVar (fromJust . Data.Map.lookup a $ pendings)
+  let pendings' = Data.Map.delete a pendings
+  let tid_reads' = Data.Map.delete tid tid_reads in
+    return $ (v, BackgroundReads pendings' tid_reads')
+
 data ConcurrentState =
-  -- CS vm lock
-  CS !(IORef VMap) !(MVar ())
+  -- CS vm lock reads tid_reads
+  CS !(IORef VMap) !(MVar ()) !(IORef BackgroundReads)
 
 acquire_global_lock :: ConcurrentState -> IO ()
-acquire_global_lock (CS _ lock) = takeMVar lock
+acquire_global_lock (CS _ lock _) = takeMVar lock
 
 release_global_lock :: ConcurrentState -> IO ()
-release_global_lock (CS _ lock) = putMVar lock ()
+release_global_lock (CS _ lock _) = putMVar lock ()
 
 type ProgramState = (Disk.DiskState, ConcurrentState)
 
@@ -55,24 +82,27 @@ run_dcode :: ProgramState -> Int -> CoopConcur.Coq_prog a -> IO a
 run_dcode _ tid (Ret r) = do
   debugmsg tid $ "Done"
   return . unsafeCoerce $ r
-run_dcode _ tid (StartRead a) = do
+run_dcode (ds, CS _ _ m_reads) tid (StartRead a) = do
   debugmsg tid $ "StartRead " ++ (show a)
-  -- XXX start a read, somehow...
+  bg_reads <- readIORef m_reads
+  bg_reads' <- new_read ds bg_reads a tid
+  writeIORef m_reads bg_reads'
   return . unsafeCoerce $ ()
-run_dcode (ds, _) tid (FinishRead a) = do
+run_dcode (_, CS _ _ m_reads) tid (FinishRead a) = do
   debugmsg tid $ "FinishRead " ++ (show a)
-  -- XXX it would be nice if we didn't wait until the last minute to read..
-  val <- Disk.read_disk ds a
+  bg_reads <- readIORef m_reads
+  (val, bg_reads') <- finish_read bg_reads a tid
+  writeIORef m_reads bg_reads'
   return . unsafeCoerce $ val
 run_dcode (ds, _) tid (Write a v) = do
   debugmsg tid $ "Write " ++ (show a) ++ " " ++ (show v)
   Disk.write_disk ds a v
   return . unsafeCoerce $ ()
-run_dcode (_, CS vm _) tid (Get a) = do
+run_dcode (_, CS vm _ _) tid (Get a) = do
     debugmsg tid $ "Get " ++ (show (hmember_to_int a))
     m <- readIORef vm
     return . unsafeCoerce $ get_var m a
-run_dcode (_, CS vm _) tid (Assgn a v) = do
+run_dcode (_, CS vm _ _) tid (Assgn a v) = do
   debugmsg tid $ "Assgn " ++ (show (hmember_to_int a))
   modifyIORef vm (\m -> set_var m a v)
   return . unsafeCoerce $ ()
@@ -126,7 +156,8 @@ init_concurrency :: IO ConcurrentState
 init_concurrency = do
   vm <- newIORef Data.Map.empty
   lock <- newMVar ()
-  return $ CS vm lock
+  m_reads <- newIORef (BackgroundReads Data.Map.empty Data.Map.empty)
+  return $ CS vm lock m_reads
 
 run :: ProgramState -> Int -> CoopConcur.Coq_prog a -> IO a
 run ps tid p = E.catch (run_e ps tid p) (print_exception tid)
