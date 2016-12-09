@@ -380,7 +380,7 @@ Module BUFCACHE.
     rewrite map_add_dup_cardinal; auto.
     eexists; eapply MapFacts.find_mapsto_iff; eauto.
     rewrite map_add_cardinal. omega.
-    intuition deex.
+    intuition repeat deex.
     apply MapFacts.find_mapsto_iff in H0; congruence.
   Qed.
 
