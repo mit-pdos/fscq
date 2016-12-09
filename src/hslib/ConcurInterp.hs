@@ -15,7 +15,7 @@ import Data.IORef
 import qualified Crypto.Hash.SHA256 as SHA256
 
 verbose :: Bool
-verbose = True
+verbose = False
 
 debugmsg :: Int -> String -> IO ()
 debugmsg tid s =
