@@ -36,6 +36,10 @@ for l in f.readlines():
     err_file = l.split(" ")[1].split(":")[0]
     current_error = []
     errors[err_file].append(current_error)
+  if l.startswith("Error: File "):
+    err_file = l.split(" ")[2].split(":")[0]
+    current_error = []
+    errors[err_file].append(current_error)
   current_error.append(l)
 
 admits = collections.defaultdict(int)
