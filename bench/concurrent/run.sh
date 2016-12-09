@@ -11,7 +11,7 @@ $code/cfscq +RTS -N4 -RTS $img -f $mnt &
 sleep 1
 
 { time cp $mnt/large-10m $mnt/large-10m-copy;
- echo "done with large copy"; } &
+  echo "done with large copy"; } &
 large_pid=$!
 
 { time for i in $(seq 25); do
@@ -20,7 +20,7 @@ large_pid=$!
     done;
     echo "done with $i"
 done;
- echo "done with small copies"; } &
+  echo "done with small copies"; } &
 small_pid=$!
 
 wait $small_pid
