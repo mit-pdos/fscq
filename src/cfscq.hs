@@ -29,6 +29,7 @@ import qualified System.Process
 import qualified Data.List
 import AsyncDisk
 import Control.Monad
+import Control.Concurrent
 import qualified Errno
 
 -- Handle type for open files; we will use the inode number
@@ -68,13 +69,16 @@ type FSrunner = forall a. CoopConcur.Coq_prog (Maybe a) -> IO a
 type SystemState = (ProgramState, IORef Int)
 
 interpreter :: SystemState -> FSrunner
-interpreter (ps, m_tid) p = do
+interpreter (ps@(_, cs), m_tid) p = do
   tid <- readIORef m_tid
   modifyIORef m_tid (+1)
-  r <- I.run ps tid p
-  case r of
-    Just v -> return v
-    Nothing -> error $ "loop timed out in thread " ++ show tid
+  ret <- newEmptyMVar
+  _ <- forkIO $ do
+    r <- I.run ps tid p
+    case r of
+      Just v -> putMVar ret v
+      Nothing -> error $ "loop timed out in thread " ++ show tid
+  takeMVar ret
 
 main :: IO ()
 main = do
