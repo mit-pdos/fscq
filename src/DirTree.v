@@ -2820,12 +2820,6 @@ Module DIRTREE.
       apply IHl; eauto.
   Qed.
 
-  Lemma tree_inodes_update_subtree_incl : forall tree pathname subtree dnum elems,
-    find_subtree pathname tree = Some subtree ->
-    incl (tree_inodes (update_subtree pathname (TreeDir dnum elems) tree)) (dirlist_combine tree_inodes elems).
-  Proof.
-  Admitted.
-
   Definition rename fsxp dnum srcpath srcname dstpath dstname mscs :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
@@ -5674,10 +5668,8 @@ Module DIRTREE.
     erewrite find_subtree_app in *; eauto.
     eapply H12.
 
-    eapply In_incl.
-    2: eapply tree_inodes_update_subtree_incl.
-    eauto.
-    eauto.
+    eapply find_subtree_inum_present in H16; simpl in *.
+    intuition. exfalso; eauto.
 
     (* case 2: outside the directory *)
     eapply H9.
