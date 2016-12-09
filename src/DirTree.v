@@ -5599,6 +5599,23 @@ Module DIRTREE.
     - eapply tree_inodes_nodup_delete_from_list; eauto.
   Qed.
 
+  Lemma tree_inodes_find_subtree_incl : forall pathname t subtree,
+    find_subtree pathname t = Some subtree ->
+    incl (tree_inodes subtree) (tree_inodes t).
+  Proof.
+    induction pathname; simpl; intros.
+    congruence.
+    destruct t; simpl in *; try congruence.
+    induction l; simpl in *; try congruence.
+    destruct a0; simpl in *.
+    destruct (string_dec s a); subst.
+    - rewrite cons_app. apply incl_appr. apply incl_appl. eapply IHpathname. eauto.
+    - rewrite cons_app in *.
+      specialize (IHl H).
+      intro; intro. specialize (IHl _ H0).
+      apply in_app_or in IHl; intuition.
+  Qed.
+
   Theorem delete_ok : forall fsxp dnum name mscs,
     {< F mbase m pathname Fm Ftop tree tree_elem ilist frees,
     PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) hm *
@@ -5614,7 +5631,8 @@ Module DIRTREE.
             [[ (Fm * rep fsxp Ftop tree' ilist' frees')%pred (list2nmem m') ]] *
             [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                             ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
-            [[ forall inum def', inum <> dnum -> In inum (tree_inodes tree') ->
+            [[ forall inum def', inum <> dnum ->
+                 (In inum (tree_inodes tree') \/ (~ In inum (tree_inodes tree))) ->
                 selN ilist inum def' = selN ilist' inum def' ]])
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
@@ -5647,6 +5665,8 @@ Module DIRTREE.
     simpl. eapply incl_cons2.
     eapply tree_inodes_incl_delete_from_list.
 
+    (* case A: inum inside tree' *)
+
     repeat deex.
     destruct (pathname_decide_prefix pathname x); repeat deex.
 
@@ -5671,7 +5691,7 @@ Module DIRTREE.
     destruct H20.
     destruct H20.
 
-    eapply H7.
+    eapply H6.
     exists x0.
 
     edestruct find_subtree_before_prune_general; eauto.
@@ -5681,6 +5701,13 @@ Module DIRTREE.
     intuition eauto.
     erewrite find_subtree_app; eauto.
     intuition congruence.
+
+    (* case B: outside original tree *)
+    eapply H12; eauto.
+    right.
+    contradict H7; intuition eauto. exfalso; eauto.
+    eapply tree_inodes_find_subtree_incl; eauto.
+    simpl; intuition.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.
