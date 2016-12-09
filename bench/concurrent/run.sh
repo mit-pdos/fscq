@@ -14,8 +14,11 @@ sleep 1
  echo "done with large copy"; } &
 large_pid=$!
 
-{ time for i in $(seq 2500); do
-    cat $mnt/small-4k > /dev/null;
+{ time for i in $(seq 25); do
+    for j in $(seq 100); do
+        cat $mnt/small-4k > /dev/null
+    done;
+    echo "done with $i"
 done;
  echo "done with small copies"; } &
 small_pid=$!
