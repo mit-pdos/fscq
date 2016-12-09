@@ -927,7 +927,7 @@ Ltac cancel_with' t intuition_t :=
   | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
   end.
 
-Ltac cancel_with t := cancel_with' t auto.
+Ltac cancel_with t := cancel_with' t ltac:(auto with *).
 Ltac cancel := cancel_with idtac.
 
 (* fastest version of cancel, should always try this first *)
