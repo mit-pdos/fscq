@@ -295,9 +295,10 @@ Theorem read_fblock_ok : forall inum off,
                    match r with
                    | Some r => r = fst vs /\
                               BFILE.MSAlloc (get mMscs m') = BFILE.MSAlloc (get mMscs m)
-                   | None => guar App.delta tid s s'
+                   | None => True
                    end /\
                    hashmap_le hm hm' /\
+                   guar App.delta tid s s' /\
                    guar App.delta tid s_i' s'
               }} read_fblock inum off.
 Proof.
@@ -361,6 +362,130 @@ Proof.
   replace (get vDirTree s_i).
   descend.
   intuition eauto.
+Qed.
+
+Theorem ret_ok : forall Sigma (delta: Protocol Sigma) T (v: T),
+    SPEC delta, tid |-
+             {{ (_:unit),
+              | PRE d hm m s_i s: True
+              | POST d' hm' m' s_i' s' r:
+                  r = v /\
+                  d' = d /\
+                  hm' = hm /\
+                  m' = m /\
+                  s_i' = s_i /\
+                  s' = s
+             }} Ret v.
+Proof.
+  intros.
+  CoopConcurMonad.monad_simpl.
+  eapply valid_unfold; intros.
+  deex.
+  eapply H1 in H0; intuition eauto.
+Qed.
+
+Instance rely_preorder Sigma (delta: Protocol Sigma) tid : PreOrder (rely delta tid).
+Proof.
+  unfold rely; constructor; hnf; intros; eauto.
+  eapply Star.star_trans; eauto.
+Qed.
+
+Hint Extern 1 {{read_fblock _ _; _}} => apply read_fblock_ok : prog.
+
+Lemma others_guar_is_guar : forall s s' tid,
+    others (guar App.delta) tid s s' <->
+    guar App.delta tid s s'.
+Proof.
+  unfold others; simpl; split.
+  - intuition eauto; deex; eauto.
+  - intuition eauto.
+    exists (S tid); intuition eauto.
+    eapply n_Sn; eauto.
+Qed.
+
+Theorem rely_is_guar : forall s s' tid,
+    guar App.delta tid s s' ->
+    rely App.delta tid s s'.
+Proof.
+  unfold rely; intuition auto.
+  econstructor 2; [ | constructor ].
+  apply others_guar_is_guar; auto.
+Qed.
+
+Theorem guar_is_rely : forall s s' tid,
+    rely App.delta tid s s' ->
+    guar App.delta tid s s'.
+Proof.
+  induction 1; intuition eauto.
+
+  apply others_guar_is_guar in H.
+  eapply guar_preorder; eauto.
+Qed.
+
+Theorem read_fblock_retry_ok : forall inum off n,
+      SPEC App.delta, tid |-
+              {{ pathname f Fd vs,
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) /\
+                   (Fd * off |-> vs)%pred (list2nmem (BFILE.BFData f)) /\
+                   guar App.delta tid s_i s
+               | POST d' hm' m' s_i' s' r:
+                   let tree' := get vDirTree s' in
+                   invariant App.delta d' hm' m' s' /\
+                   tree' = get vDirTree s /\
+                   match r with
+                   | Some r => r = fst vs
+                   | None => True
+                   end /\
+                   rely App.delta tid s s' /\
+                   hashmap_le hm hm' /\
+                   guar App.delta tid s_i' s'
+              }} read_fblock_retry inum off n.
+Proof.
+  unfold read_fblock_retry.
+  induction n; simpl; intros.
+
+  eapply pimpl_ok; [ apply ret_ok | ]; intros; repeat deex.
+  exists tt; intuition eauto.
+  eapply pimpl_ok; [ apply H0 | ]; intros; intuition subst; eauto.
+  reflexivity.
+
+  step.
+  descend; intuition eauto.
+
+  step.
+  step.
+
+  eapply rely_is_guar; simpl; intuition eauto.
+
+  step.
+  eapply pimpl_ok; [ apply IHn | ]; intuition eauto.
+  simpl in *; subst.
+  repeat match goal with
+         | [ H: rely App.delta _ _ _ |- _ ] =>
+           apply guar_is_rely in H; simpl in H
+         end.
+  repeat deex.
+  repeat match goal with
+         | [ H: get _ _ = get _ _ |- _ ] =>
+           rewrite H in *
+         end.
+  descend; intuition (subst; eauto).
+
+  step.
+  destruct ret_0; intuition eauto.
+
+  eapply rely_preorder; eauto.
+  eapply rely_is_guar; eauto.
+  simpl; intuition eauto; try congruence.
+
+  eapply rely_preorder; eauto.
+  eapply rely_is_guar; simpl; intuition eauto; try congruence.
+
+  eapply hashmap_le_preorder; eauto.
+  eapply hashmap_le_preorder; eauto.
 Qed.
 
 Definition file_get_attr inum :=
