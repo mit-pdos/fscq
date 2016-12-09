@@ -71,20 +71,20 @@ Module RADefs (RA : RASig).
   Hint Rewrite val2word2val_id word2val2word_id Rec.of_to_id Rec.to_of_id : core.
 
   (** crush any small goals.  Do NOT use for big proofs! *)
-  Ltac t' := intros; autorewrite with core; autorewrite with core in *;
+  Ltac small_t' := intros; autorewrite with core; autorewrite with core in *;
              eauto; simpl in *; intuition; eauto.
-  Ltac t := repeat t'; subst; simpl; eauto.
+  Ltac small_t := repeat small_t'; subst; simpl; eauto.
 
   Theorem val2block2val_id : forall b, 
     Rec.well_formed b -> val2block (block2val b) = b.
   Proof.
-    unfold block2val, val2block; t.
+    unfold block2val, val2block; small_t.
   Qed.
 
   Theorem block2val2block_id : forall v,
     block2val (val2block v) = v.
   Proof.
-    unfold block2val, val2block; t.
+    unfold block2val, val2block; small_t.
   Qed.
 
   Local Hint Resolve val2block2val_id block2val2block_id Forall_forall: core.
@@ -96,11 +96,11 @@ Module RADefs (RA : RASig).
     Forall Rec.well_formed bl
     -> val2block (selN (map block2val bl) i $0) = selN bl i block0.
   Proof.
-    induction bl; intros; t.
+    induction bl; intros; small_t.
     destruct i; rewrite Forall_forall in *.
-    t; apply H; intuition.
+    small_t; apply H; intuition.
     apply IHbl; rewrite Forall_forall.
-    t; apply H; intuition.
+    small_t; apply H; intuition.
   Qed.
   Hint Rewrite val2block2val_selN_id.
 
@@ -137,7 +137,7 @@ Module RADefs (RA : RASig).
     rewrite <- (eq_rect_eq_dec eq_nat_dec).
     generalize dependent items_per_val.
     induction n; simpl; auto; intros.
-    erewrite <- IHn; t.
+    erewrite <- IHn; small_t.
     unfold Rec.of_word at 1 3.
     rewrite split1_zero.
     rewrite split2_zero; auto.
@@ -164,7 +164,7 @@ Module RADefs (RA : RASig).
     -> Forall (@Rec.well_formed itemtype) (setlen l n item0).
   Proof.
     intros; rewrite Forall_forall in *; intros.
-    destruct (setlen_In _ _ _ _ H0); t.
+    destruct (setlen_In _ _ _ _ H0); small_t.
   Qed.
 
   Local Hint Resolve setlen_wellformed : core.
@@ -203,8 +203,8 @@ Module RADefs (RA : RASig).
     Forall Rec.well_formed items
     -> Forall (@Rec.well_formed blocktype) (list_chunk' items items_per_val item0 nr).
   Proof.
-    induction nr; t.
-    apply Forall_cons; t.
+    induction nr; small_t.
+    apply Forall_cons; small_t.
   Qed.
 
   Theorem list_chunk_wellformed : forall items,
@@ -227,15 +227,15 @@ Module RADefs (RA : RASig).
   Lemma list_chunk_nil : forall  A sz (def : A),
     list_chunk nil sz def = nil.
   Proof.
-    unfold list_chunk; t.
-    rewrite divup_0; t.
+    unfold list_chunk; small_t.
+    rewrite divup_0; small_t.
   Qed.
 
   Lemma list_chunk'_Forall_length : forall A nr l sz (i0 : A),
     Forall (fun b => length b = sz) (list_chunk' l sz i0 nr).
   Proof.
-    induction nr; t.
-    apply Forall_cons; t.
+    induction nr; small_t.
+    apply Forall_cons; small_t.
   Qed.
 
   Lemma list_chunk_In_length : forall A l sz (i0 : A) x,
@@ -255,7 +255,7 @@ Module RADefs (RA : RASig).
     intros.
     destruct (lt_dec i (length (list_chunk l items_per_val item0))).
     eapply list_chunk_In_length; eauto.
-    rewrite selN_oob by t.
+    rewrite selN_oob by small_t.
     apply block0_wellformed.
   Qed.
   Hint Rewrite list_chunk_selN_length.
@@ -264,9 +264,9 @@ Module RADefs (RA : RASig).
     i < nr ->
     selN (list_chunk' l sz i0 nr) i b0 = setlen (skipn (i * sz) l) sz i0.
   Proof.
-    induction nr; t. inversion H.
-    destruct i. t.
-    erewrite IHnr by t.
+    induction nr; small_t. inversion H.
+    destruct i. small_t.
+    erewrite IHnr by small_t.
     rewrite skipn_skipn; simpl.
     f_equal; f_equal; omega.
   Qed.
@@ -279,8 +279,8 @@ Module RADefs (RA : RASig).
     unfold list_chunk; intros.
     destruct (lt_dec i (divup (length l) n)).
     apply list_chunk'_spec; auto.
-    rewrite selN_oob by t.
-    rewrite skipn_oob; t.
+    rewrite selN_oob by small_t.
+    rewrite skipn_oob; small_t.
   Qed.
 
   Lemma list_chunk_spec : forall l i,
@@ -378,9 +378,9 @@ Module RADefs (RA : RASig).
     n <= m ->
     firstn n (list_chunk' l i e0 m) = list_chunk' l i e0 n.
   Proof.
-    induction m; destruct n; t.
+    induction m; destruct n; small_t.
     inversion H.
-    rewrite IHm; t.
+    rewrite IHm; small_t.
   Qed.
 
   Hint Rewrite divup_mul Nat.mul_0_r Nat.mul_0_l.
@@ -389,10 +389,10 @@ Module RADefs (RA : RASig).
     n <> 0 -> length l >= i * n ->
     list_chunk (firstn (i * n) l) n e0 = firstn i (list_chunk l n e0).
   Proof.
-    unfold list_chunk; t.
-    rewrite Nat.min_l; t.
+    unfold list_chunk; small_t.
+    rewrite Nat.min_l; small_t.
     rewrite list_chunk'_firstn.
-    rewrite firstn_list_chunk'; t.
+    rewrite firstn_list_chunk'; small_t.
     apply divup_mul_ge; nia.
   Qed.
 
@@ -400,11 +400,11 @@ Module RADefs (RA : RASig).
     list_chunk (firstn (i * n) l) n e0 = firstn i (list_chunk l n e0).
   Proof.
     intros.
-    destruct (Nat.eq_dec n 0); t. t.
+    destruct (Nat.eq_dec n 0); small_t. small_t.
     destruct (le_lt_dec (i * n) (length l)).
-    apply list_chunk_firstn'; t.
+    apply list_chunk_firstn'; small_t.
     rewrite firstn_oob by nia.
-    rewrite firstn_oob; t.
+    rewrite firstn_oob; small_t.
     apply divup_le; nia.
   Qed.
 
@@ -414,9 +414,9 @@ Module RADefs (RA : RASig).
     -> firstn (i * items_per_val + items_per_val) l 
        = pre ++ (selN (list_chunk l items_per_val item0) i block0).
   Proof.
-    t; rewrite list_chunk_spec.
+    small_t; rewrite list_chunk_spec.
     rewrite firstn_sum_split; f_equal.
-    rewrite setlen_inbound; t.
+    rewrite setlen_inbound; small_t.
   Qed.
 
   Lemma firstn_setlen_firstn : forall A l m n (def : A),
@@ -435,7 +435,7 @@ Module RADefs (RA : RASig).
     list_chunk' (a ++ b) sz def (na + divup (length b) sz) =
     list_chunk' a sz def na ++ list_chunk' b sz def (divup (length b) sz).
   Proof.
-    induction na; t.
+    induction na; small_t.
     replace (a ++ b) with b; auto.
     rewrite length_nil with (l := a); auto; omega.
     repeat rewrite setlen_inbound by (autorewrite with lists; nia).
@@ -473,8 +473,8 @@ Module RADefs (RA : RASig).
      Forall Rec.well_formed (a ++ b)
      <-> Forall Rec.well_formed a /\ Forall Rec.well_formed b.
   Proof.
-    intros; repeat (try split; rewrite Forall_forall in *; t).
-    destruct (in_app_or a b x); t.
+    intros; repeat (try split; rewrite Forall_forall in *; small_t).
+    destruct (in_app_or a b x); small_t.
   Qed.
 
   Lemma nils_length : forall n,
@@ -589,9 +589,9 @@ Module RADefs (RA : RASig).
     length items = nr * items_per_val ->
     fold_left iunpack (ipack items) init = init ++ items.
   Proof.
-    induction nr; t.
+    induction nr; small_t.
     apply length_nil in H0; rewrite H0.
-    rewrite ipack_nil; simpl; t.
+    rewrite ipack_nil; simpl; small_t.
 
     erewrite <- firstn_skipn with (n := items_per_val) (l := items).
     rewrite ipack_app with (na := 1).

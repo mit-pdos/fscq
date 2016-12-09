@@ -497,15 +497,15 @@ Proof.
 Qed.
 
 (** crush any small goals.  Do NOT use for big proofs! *)
-Ltac t' := intros; autorewrite with core; autorewrite with core in *;
+Ltac small_t' := intros; autorewrite with core; autorewrite with core in *;
            eauto; simpl in *; intuition; eauto.
-Ltac t := repeat t'; subst; simpl; eauto.
+Ltac small_t := repeat small_t'; subst; simpl; eauto.
 
 Lemma forall_skipn: forall A n (l : list A) p,
   Forall p l -> Forall p (skipn n l).
 Proof.
-  induction n; t.
-  destruct l; t.
+  induction n; small_t.
+  destruct l; small_t.
   intros; apply IHn.
   eapply Forall_cons2; eauto.
 Qed.
