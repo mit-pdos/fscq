@@ -2417,6 +2417,54 @@ Module DIRTREE.
     pred_apply; cancel.
   Qed.
 
+  Lemma find_dirlist_same: forall ents name b subtree,
+    NoDup (name :: (map fst ents)) ->
+    find_dirlist name ((name, b) :: ents) = Some subtree ->
+    b = subtree.
+  Proof.
+    intros; cbn.
+    unfold find_dirlist in H0. 
+    destruct (string_dec name name); try congruence.
+  Qed.
+
+  Lemma find_dirlist_ne: forall name1 name2 b ents,
+    NoDup (name2 :: (map fst ents)) ->
+    name1 <> name2 ->
+    find_dirlist name1 ((name2, b) :: ents) = find_dirlist name1 ents .
+  Proof.
+    intros; cbn.
+    unfold find_dirlist in H0. 
+    destruct (string_dec name2 name1); try congruence.
+  Qed.
+
+  Lemma find_dirlist_in : forall name ents tree,
+     find_dirlist name ents = Some tree ->
+     In name (map fst ents).
+  Proof.
+    induction ents; simpl; intros; try congruence.
+    destruct a.
+    destruct (string_dec s name); subst.
+    left; auto.
+    right; simpl in *.
+    eapply IHents.
+    destruct (string_dec s name); try congruence; eauto.
+  Qed.
+
+  Lemma find_dirlist_find_subtree_helper : forall ents tree name,
+    find_dirlist name ents = Some tree ->
+    NoDup (map fst ents) ->
+    fold_right (find_subtree_helper (fun x => Some x) name) None ents = Some tree.
+  Proof.
+    induction ents; simpl; intros; auto.
+    destruct a; destruct (string_dec s name); subst.
+    - inversion H; inversion H0; subst; simpl in *.
+      destruct (string_dec name name); congruence.
+    - inversion H0; subst; simpl in *.
+      destruct (string_dec s name); subst.
+      contradict H3; eapply find_dirlist_in; eauto.
+      apply IHents; eauto.
+  Qed.
+
   Lemma dirlist_extract' : forall xp l name sub,
     find_dirlist name l = Some sub
     -> NoDup (map fst l)
@@ -2514,6 +2562,105 @@ Module DIRTREE.
     inversion H; auto.
   Qed.
 
+  Lemma dirlist_combine_app: forall l (f : dirtree -> list addr) a,
+    dirlist_combine f (a::l) = dirlist_combine f [a] ++ (dirlist_combine f l).
+  Proof.
+    intros. 
+    rewrite cons_app.
+    unfold dirlist_combine; subst; simpl.
+    destruct a.
+    rewrite app_nil_r; eauto.
+  Qed.
+
+  Lemma find_dirlist_tree_inodes: forall elem name d dnum,
+    tree_names_distinct (TreeDir dnum elem) ->
+    find_dirlist name elem = Some d ->
+    In (dirtree_inum d) (dirlist_combine tree_inodes elem).
+  Proof.
+    induction elem; intros.
+    - simpl in *. inversion H0.
+    - rewrite dirlist_combine_app.
+      destruct a.
+      destruct (string_dec s name); subst.
+      + rewrite in_app_iff.
+        left.
+        simpl in H0.
+        destruct (string_dec name name); try congruence; subst.
+        inversion H0; subst.
+        simpl.
+        rewrite app_nil_r; simpl.
+        unfold tree_inodes; simpl.
+        destruct d; subst; simpl.
+        left; eauto.
+        left; eauto.
+      + rewrite in_app_iff.
+        right.
+        eapply IHelem; eauto.
+        rewrite find_dirlist_ne in H0; eauto.
+        inversion H. simpl in H4. eauto.
+  Qed.
+
+  Lemma tree_inodes_distinct_delete: forall elem name dnum d n inum, 
+    tree_names_distinct (TreeDir dnum elem) ->
+    tree_inodes_distinct (TreeDir dnum elem) ->
+    find_dirlist name elem = Some d ->
+    dirtree_inum d = n ->
+    In inum (dirlist_combine tree_inodes (delete_from_list name elem)) ->
+    inum <> n.
+  Proof.
+    induction elem; intros.
+    - unfold find_dirlist in H1. inversion H1.
+    - destruct a.
+      destruct (string_dec name s); subst.
+      + 
+        unfold delete_from_list in H3.
+        unfold find_dirlist in H1.
+        destruct (string_dec s s); subst.
+        ++
+          inversion H1; subst. clear H1.
+          inversion H0.
+          eapply not_In_NoDup_app with (l2 := tree_inodes d) in H3.
+          intro; subst.
+          eapply H3.
+          destruct d; simpl.
+          left; eauto.
+          right; eauto.
+          simpl in H3.
+          destruct H3.
+          left; auto.
+          eapply NoDup_app_comm; eauto.
+        ++
+          rewrite dirlist_combine_app in H3.
+          eapply in_app_or in H3.
+          intuition.
+      + unfold delete_from_list in H3.
+        destruct (string_dec s name); try congruence.
+        rewrite dirlist_combine_app in H3.
+        eapply in_app_or in H3.
+        intuition.
+        ++  
+          eapply IHelem with (name := name); eauto.
+          rewrite find_dirlist_ne in H1; eauto.
+          inversion H1.
+          inversion H. simpl in H8; eauto.
+          simpl in H4.
+          rewrite app_nil_r in H4.
+          rewrite H2 in H4.
+          inversion  H0.
+          eapply not_In_NoDup_app with (l1 := tree_inodes d0) in H7; eauto.
+          rewrite find_dirlist_ne in H1; eauto.
+          eapply find_dirlist_tree_inodes in H1.
+          exfalso.
+          eapply H7; eauto.
+          inversion H. simpl in H11; eauto.
+          inversion H. simpl in H11; eauto.
+        ++  
+          eapply IHelem with (name := name); eauto.
+          rewrite find_dirlist_ne in H1; eauto.
+          inversion H. simpl in H7; eauto.
+          rewrite <- H2; eauto.
+  Qed.
+
   Hint Extern 0 (okToUnify (tree_dir_names_pred _ _ _) (tree_dir_names_pred _ _ _)) => constructor : okToUnify.
 
   Theorem delete_ok' : forall fsxp dnum name mscs,
@@ -2530,7 +2677,8 @@ Module DIRTREE.
             [[ (Fm * rep fsxp Ftop tree' ilist' frees')%pred (list2nmem m') ]] *
             [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                             ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
-            [[ forall inum def', inum <> dnum -> In inum (tree_inodes tree) ->
+            [[ forall inum def', inum <> dnum -> 
+                 In inum (tree_inodes tree') ->
                  selN ilist inum def' = selN ilist' inum def' ]])
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
@@ -2585,9 +2733,13 @@ Module DIRTREE.
     rewrite dirlist_pred_except_delete; eauto.
     cancel.
     apply dirlist_safe_delete; auto.
-
+    eapply find_dirlist_exists in H8 as H8'.
+    deex.
+    denote dirlist_combine as Hx.
+    eapply tree_inodes_distinct_delete in Hx as Hx'; eauto.
+    eassumption.
+ 
     (* case 2: is_dir: check empty *)
-    admit.  (* ilist ⟦ inum ⟧ = ilist' ⟦ inum ⟧ *)
     prestep.
     intros; norm'l.
     denote dirlist_pred as Hx; subst_bool.
@@ -2611,8 +2763,12 @@ Module DIRTREE.
     rewrite dir_names_delete with (dnum := dnum).
     cancel. eauto. eauto. eauto.
     apply dirlist_safe_delete; auto.
+    eapply find_dirlist_exists in H8 as H8'.
+    deex.
+    denote dirlist_combine as Hx.
+    eapply tree_inodes_distinct_delete in Hx as Hx'; eauto.
+    eassumption.
 
-    admit.  (* ilist ⟦ inum ⟧ = ilist' ⟦ inum ⟧ *)
     step.
     step.
     cancel; auto.
@@ -2621,8 +2777,14 @@ Module DIRTREE.
     Unshelve.
     all: try exact addr_eq_dec.  6: eauto. all: eauto.
     auto using Build_balloc_xparams.
-  Admitted.
+  Qed.
 
+  Lemma tree_inodes_update: forall pathname inum tree dnum elem elem',
+    In inum (tree_inodes (update_subtree pathname (TreeDir dnum elem') tree)) ->
+    find_subtree pathname tree = Some (TreeDir dnum elem) ->
+    In inum (dirlist_combine tree_inodes elem').
+  Proof.
+  Admitted.
 
   Theorem delete_ok : forall fsxp dnum name mscs,
     {< F mbase m pathname Fm Ftop tree tree_elem ilist frees,
@@ -2639,7 +2801,7 @@ Module DIRTREE.
             [[ (Fm * rep fsxp Ftop tree' ilist' frees')%pred (list2nmem m') ]] *
             [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                             ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
-            [[ forall inum def', inum <> dnum -> In inum (tree_inodes tree) ->
+            [[ forall inum def', inum <> dnum -> In inum (tree_inodes tree') ->
                 selN ilist inum def' = selN ilist' inum def' ]])
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
@@ -2653,6 +2815,9 @@ Module DIRTREE.
     rewrite <- subtree_absorb; eauto.
     cancel.
     eapply dirlist_safe_subtree; eauto.
+    specialize (H13 inum def' H4). 
+    intuition; try congruence.
+    eapply tree_inodes_update in H6; eauto.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.
@@ -3082,33 +3247,6 @@ Module DIRTREE.
     eapply IAlloc.ino_valid_goodSize; eauto.
   Qed.
 
-  Lemma find_dirlist_in : forall name ents tree,
-     find_dirlist name ents = Some tree ->
-     In name (map fst ents).
-  Proof.
-    induction ents; simpl; intros; try congruence.
-    destruct a.
-    destruct (string_dec s name); subst.
-    left; auto.
-    right; simpl in *.
-    eapply IHents.
-    destruct (string_dec s name); try congruence; eauto.
-  Qed.
-
-  Lemma find_dirlist_find_subtree_helper : forall ents tree name,
-    find_dirlist name ents = Some tree ->
-    NoDup (map fst ents) ->
-    fold_right (find_subtree_helper (fun x => Some x) name) None ents = Some tree.
-  Proof.
-    induction ents; simpl; intros; auto.
-    destruct a; destruct (string_dec s name); subst.
-    - inversion H; inversion H0; subst; simpl in *.
-      destruct (string_dec name name); congruence.
-    - inversion H0; subst; simpl in *.
-      destruct (string_dec s name); subst.
-      contradict H3; eapply find_dirlist_in; eauto.
-      apply IHents; eauto.
-  Qed.
 
   Lemma find_subtree_leaf_in : forall ents name tree dnum,
     In (name, tree) ents ->
@@ -3289,8 +3427,6 @@ Module DIRTREE.
       eapply IHpath; eauto.
       eapply find_subtree_update_trim_head; eauto.
   Qed.
-
-
 
   Lemma find_subtree_update_trim: forall p1 p2 a tree elem subtree d,
     find_subtree [a] tree = Some subtree ->
@@ -4150,7 +4286,6 @@ Module DIRTREE.
     - unfold dirtree_safe in *; eapply BFILE.ilist_safe_trans; intuition eauto.
   Qed.
 
-
   Theorem rename_ok' : forall fsxp dnum srcpath srcname dstpath dstname mscs,
     {< F mbase m Fm Ftop tree tree_elem ilist frees,
     PRE:hm LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) hm *
@@ -4170,6 +4305,7 @@ Module DIRTREE.
             [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                             ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
             [[ forall inum' def', inum' <> snum -> inum' <> dnum ->
+               In inum' (tree_inodes tree') ->
                selN ilist inum' def' = selN ilist' inum' def' ]] )
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
@@ -4280,7 +4416,7 @@ Module DIRTREE.
     pred_apply' Hinterm; cancel. eauto.
 
     (* now, get ready for link *)
-    destruct_branch; [ | step ].
+    destruct_branch; [ | step ]. 
     prestep; norml; inv_option_eq; clear_norm_goal.
     denote mvtree as Hx. assert (Hdel := Hx).
     setoid_rewrite subtree_extract in Hx at 2.
@@ -4298,6 +4434,7 @@ Module DIRTREE.
     eapply subtree_graft_absorb_delete; eauto.
     msalloc_eq.
     eapply rename_safe_dest_exists; eauto.
+
     admit. (* maybe from ilist_safe *)
     cancel.
 
@@ -4882,36 +5019,6 @@ Module DIRTREE.
     t = TreeFile (dirtree_inum t) (dirtree_file t).
   Proof.
     destruct t; simpl; intros; congruence.
-  Qed.
-
-  Lemma find_dirlist_same: forall ents name b subtree,
-    NoDup (name :: (map fst ents)) ->
-    find_dirlist name ((name, b) :: ents) = Some subtree ->
-    b = subtree.
-  Proof.
-    intros; cbn.
-    unfold find_dirlist in H0. 
-    destruct (string_dec name name); try congruence.
-  Qed.
-
-  Lemma find_dirlist_ne: forall name1 name2 b ents,
-    NoDup (name2 :: (map fst ents)) ->
-    name1 <> name2 ->
-    find_dirlist name1 ((name2, b) :: ents) = find_dirlist name1 ents .
-  Proof.
-    intros; cbn.
-    unfold find_dirlist in H0. 
-    destruct (string_dec name2 name1); try congruence.
-  Qed.
-
-  Lemma dirlist_combine_app: forall l (f : dirtree -> list addr) a,
-    dirlist_combine f (a::l) = dirlist_combine f [a] ++ (dirlist_combine f l).
-  Proof.
-    intros. 
-    rewrite cons_app.
-    unfold dirlist_combine; subst; simpl.
-    destruct a.
-    rewrite app_nil_r; eauto.
   Qed.
 
   Lemma find_subtree_file_none: forall s suffix n b,
