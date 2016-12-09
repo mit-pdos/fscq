@@ -809,5 +809,6 @@ Proof.
 	apply Nat.nlt_ge in H14; inversion H14.
 	rewrite H in H7; rewrite <- plus_n_O in H7; auto.
 	
+	
 	(* 2 Crash Conditions Left *)
 Admitted.

@@ -19,7 +19,6 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      ADestructPair DestructVarname ExtrHaskellPrelude \
 		  DirSep TreeSeq ProgMetatheory
 
->>>>>>> f7a5333c7bd9627ff8b1e05b55e1771e98504a00
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
