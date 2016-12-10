@@ -126,7 +126,7 @@ Proof.
     dependent induction m0; cbn;
       rewrite ?get_first, ?get_next;
       eauto.
-Admitted.
+Abort.
 
 Module Type GlobalState.
   Parameter Sigma:State.
