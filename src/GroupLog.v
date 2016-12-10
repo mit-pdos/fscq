@@ -62,6 +62,7 @@ Module GLog.
   Definition memstate := (mstate * cachestate)%type.
   Definition mk_memstate vm ts ll : memstate := 
     (mk_mstate vm ts (MLog.MSInLog ll), (MLog.MSCache ll)).
+  Definition mk_memstate0 := mk_mstate vmap0 nil vmap0.
 
   Definition MSCache (ms : memstate) := snd ms.
   Definition MSLL (ms : memstate) := MLog.mk_memstate (MSMLog (fst ms)) (snd ms).

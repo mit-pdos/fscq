@@ -41,7 +41,8 @@ Record fs_xparams := {
   FSXPBlockAlloc2 : balloc_xparams;
   FSXPInodeAlloc : balloc_xparams;
   FSXPRootInum : addr;
-  FSXPMaxBlock : addr
+  FSXPMaxBlock : addr;
+  FSXPMagic : addr
 }.
 
 Definition FSXPBlockAlloc fsxp :=
