@@ -2250,7 +2250,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
         rewrite indrep_n_length_pimpl with (indlvl := 1).
         rewrite indrep_n_length_pimpl with (indlvl := 2). cancel. rewrite mult_1_r in *.
         substl (NIndirect * NIndirect). substl NIndirect.
-        rewrite firstn_app. rewrite skipn_app_r. repeat rewrite skipn_app. rewrite firstn_app.
+        rewrite firstn_app2. rewrite skipn_app_r. repeat rewrite skipn_app. rewrite firstn_app2.
         cancel.
         all : try rewrite upd_range_length.
         all : auto.
@@ -2417,8 +2417,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
         indrep_n_tree_extract_lengths.
         or_r. cancel; autorewrite with core.
         rewrite <- skipn_skipn'.
-        rewrite firstn_app. rewrite skipn_app_l. rewrite skipn_oob. rewrite app_nil_l.
-        rewrite firstn_app. rewrite skipn_app_l. rewrite skipn_oob. rewrite app_nil_l.
+        rewrite firstn_app2. rewrite skipn_app_l. rewrite skipn_oob. rewrite app_nil_l.
+        rewrite firstn_app2. rewrite skipn_app_l. rewrite skipn_oob. rewrite app_nil_l.
         (* using `cancel` raises a Not_found exception here; don't know why *)
         rewrite sep_star_assoc. rewrite sep_star_comm with (p1 := indrep_n_tree 1 _ _ _). cancel_last.
         all : repeat rewrite app_length; try solve [auto | simpl; omega].

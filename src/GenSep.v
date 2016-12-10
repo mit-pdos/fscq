@@ -437,7 +437,7 @@ Proof.
       rewrite app_length; simpl; omega ).
   unfold sel.
   erewrite wordToNat_natToWord_bound with (bound:=b) by omega.
-  rewrite firstn_app by auto.
+  rewrite firstn_app2 by auto.
   replace (S (length l)) with (length (l ++ a :: nil)) by (rewrite app_length; simpl; omega).
   rewrite skipn_oob by omega; simpl.
   instantiate (y:=a).

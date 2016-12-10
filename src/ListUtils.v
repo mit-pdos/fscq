@@ -795,7 +795,7 @@ Proof.
 Qed.
 
 
-Lemma firstn_app: forall A n (l1 l2 : list A),
+Lemma firstn_app2: forall A n (l1 l2 : list A),
   n = length l1 -> firstn n (l1 ++ l2) = l1.
 Proof.
   induction n; destruct l1; intros; inversion H; auto; subst.
@@ -1011,7 +1011,7 @@ Lemma firstn_app_r : forall T i (b a : list T),
   firstn (length a + i) (a ++ b) = a ++ (firstn i b).
 Proof.
   induction i; firstorder.
-  rewrite firstn_app by omega.
+  rewrite firstn_app2 by omega.
   simpl; rewrite app_nil_r; auto.
 
   destruct b.
@@ -1217,7 +1217,7 @@ Proof.
   intros.
   rewrite firstn_sum_split.
   rewrite H.
-  rewrite firstn_app by reflexivity.
+  rewrite firstn_app2 by reflexivity.
   rewrite skipn_app.
   reflexivity.
 Qed.
@@ -1401,7 +1401,7 @@ Lemma concat_hom_subselect_skipn : forall A n off k (l: list (list A)) (def: lis
   assert (length a = k).
   apply H; apply in_cons_head.
   rewrite skipn_app_l by omega.
-  rewrite firstn_app.
+  rewrite firstn_app2.
   reflexivity.
   rewrite skipn_length; omega.
   destruct l; simpl.
@@ -1576,7 +1576,7 @@ Lemma removeN_tail: forall A (l : list A) a,
 Proof.
   intros; unfold removeN.
   rewrite skipn_oob.
-  rewrite firstn_app; firstorder.
+  rewrite firstn_app2; firstorder.
   rewrite app_length; simpl; omega.
 Qed.
 
@@ -1626,7 +1626,7 @@ Proof.
   rewrite app_length; simpl.
   rewrite removelast_app; simpl; try congruence.
   replace (length l + 1 - 1) with (length l) by omega.
-  rewrite firstn_app; auto.
+  rewrite firstn_app2; auto.
   rewrite app_nil_r; auto.
 Qed.
 
@@ -3016,7 +3016,7 @@ Proof.
   rewrite Nat.div_mul by auto.
   induction l; simpl; intros. auto.
   inversion H; subst.
-  f_equal. rewrite firstn_app; auto.
+  f_equal. rewrite firstn_app2; auto.
   rewrite <- seq_shift, map_map.
   simpl in *.
   rewrite <- IHl at 2 by auto.

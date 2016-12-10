@@ -4605,7 +4605,7 @@ eapply get_sublist_div_length; eauto; omega.
 eapply bfile_ge_block_off; eauto.
 
 rewrite firstn_updN.
-rewrite firstn_app.
+rewrite firstn_app2.
 reflexivity.
 symmetry; apply firstn_length_l.
 eapply bfile_ge_block_off; eauto.
@@ -7443,7 +7443,7 @@ remember (firstn
 rewrite updN_firstn_skipn.
 rewrite firstn_app_ge.
 rewrite app_comm_cons.
-rewrite firstn_app.
+rewrite firstn_app2.
 rewrite map_map.
 
 replace (fun x : list byteset => valuset2bytesets (bytesets2valuset x))

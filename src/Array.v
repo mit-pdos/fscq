@@ -295,7 +295,7 @@ Section PtstoArray.
     eapply isolateN_bwd with (i := (length l)) (default := v).
     rewrite app_length; simpl; omega.
 
-    rewrite firstn_app; auto.
+    rewrite firstn_app2; auto.
     rewrite selN_last; auto.
     rewrite skipn_oob; [ | rewrite app_length; simpl; omega ].
     unfold arrayN at 2; auto; apply emp_star_r.

@@ -535,7 +535,7 @@ Section NonEmptyList.
         replace (length l0 + 1) with (S (length l0)) by omega.
         rewrite selN_last by auto.
         replace (t0 :: l0 ++ [x]) with ((t0 :: l0) ++ [x]) by reflexivity.
-        rewrite firstn_app by (simpl; auto).
+        rewrite firstn_app2 by (simpl; auto).
         auto.
   Qed.
 
