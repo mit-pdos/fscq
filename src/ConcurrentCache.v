@@ -337,6 +337,8 @@ Module MakeConcurrentCache (C:CacheSubProtocol).
     match goal with
     | [ H: invariant delta _ _ _ _ |- _ ] =>
       learn that (unfold_invariant H)
+    | [ H: cacheI _ _ _ _ |- _ ] =>
+      learn that (unfold_invariant H)
     | [ H: guar delta _ _ _ |- _ ] =>
       learn that (unfold_protocol H)
     end.

@@ -294,6 +294,7 @@ Proof.
   hoare.
   eexists; simplify; finish.
   hoare. (* 20s *)
+
   assert (w = v).
   { match goal with
     | [ H: forall _, Some ?w = Some _ -> _ |- _ ] =>
@@ -332,9 +333,6 @@ Proof.
   split; eauto.
   unfold destinations_readonly; intros; unfolds.
   destruct H; unfold cache_committed in H; unfolds.
-  (* these replaces are unnecessary, they just show part of what's going on *)
-  replace (get vdisk s1).
-  replace (get vdisk s0).
   congruence.
 
   eapply rely_trans with s1; eauto.
@@ -342,8 +340,11 @@ Proof.
   eapply star_one_step.
   exists (tid+1); split; [ omega | ].
   split.
+  unfold delta in *; simpl in *.
+  Search s s0.
   unshelve eapply cache_guar_tid_independent; eauto.
   apply destinations_readonly_vdisk_eq.
+  simpl in *.
   congruence.
 Qed.
 
@@ -363,7 +364,7 @@ Lemma rely_destination_stable : forall tid (s s': abstraction App.Sigma),
 Proof.
   induction 1; intros; auto.
   unfold others in H; deex.
-  unfold App.delta, App.copyGuar in H2; simpl in *; destruct_ands.
+  unfold App.delta, App.copyGuar in H1; simpl in *; destruct_ands.
   rewrite IHstar.
   unfold TID in *.
   rewrite H2; auto.
@@ -376,7 +377,7 @@ Proof.
   induction 1; auto.
   rewrite IHstar.
   unfold others in H; deex.
-  unfold App.delta, App.copyGuar in H2; simpl in *; destruct_ands.
+  unfold App.delta, App.copyGuar in H1; simpl in *; destruct_ands.
   rewrite H2; auto.
 Qed.
 
