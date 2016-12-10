@@ -647,18 +647,13 @@ Module Rec.
       reflexivity.
 
     - destruct l; try omega.
-      unfold of_word; fold (@of_word ft).
-      unfold to_word; fold (@to_word ft).
-      replace ((fix word2arrayf (n : nat) (w0 : word (n * len ft)) {struct n} : 
-         list (data ft) :=
-           match n as n0 return (word (len (ArrayF ft n0)) -> data (ArrayF ft n0)) with
-           | 0 => fun _ : word (len (ArrayF ft 0)) => []
-           | S n' =>
-               fun w1 : word (len (ArrayF ft (S n'))) =>
-               of_word (split1 (len ft) (n' * len ft) w1)
-               :: word2arrayf n' (split2 (len ft) (n' * len ft) w1)
-           end w0) l (split2 (len ft) (l * len ft) w))
-        with (@of_word (ArrayF ft l) (split2 (len ft) (l * len ft) w)) by reflexivity.
+      unfold of_word; fold (@of_word ft). fold Init.Nat.mul. fold len.
+      unfold to_word; fold (@to_word ft). fold Init.Nat.mul. fold len.
+      fold recdata. fold data.
+      match goal with
+      | [ |- _ = match updN (_ :: ?x) _ _ with | nil => _ | v0 :: v' => _ end ] =>
+        replace (x) with (@of_word (ArrayF ft l) (split2 (len ft) (l * len ft) w)) by reflexivity
+      end.
       simpl.
 
       rewrite to_of_id.
@@ -708,6 +703,7 @@ Module Rec.
       rewrite <- (eq_rect_eq_dec eq_nat_dec). reflexivity.
 
       unfold to_word in IHidx; fold (@to_word ft) in IHidx; simpl in IHidx.
+      fold data in IHidx. fold len in IHidx. fold Init.Nat.mul in IHidx.
       erewrite <- IHidx.
 
       repeat rewrite eq_rect_split2.
