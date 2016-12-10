@@ -522,6 +522,7 @@ Module Rec.
       generalize (l * len ft - len ft - idx * len ft).
 
       intros.
+      fold len. fold Init.Nat.mul.
       f_equal.
       generalize dependent e0.
       generalize dependent e.
