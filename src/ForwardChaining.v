@@ -17,12 +17,14 @@ Local Ltac learn_tac H t :=
   let P := type of H in
   let P := eval simpl in P in
   pose proof (H:P) as H';
-    t;
-    lazymatch goal with
+  t;
+  let P := type of H in
+  let P := eval simpl in P in
+      lazymatch goal with
       | [ Hlearnt: @Learnt P |- _ ] =>
         fail 0 "already knew" P "through" Hlearnt
       | _ => pose proof (@AlreadyLearnt P H)
-    end.
+      end.
 
 Local Ltac learn_fact H :=
   let P := type of H in
