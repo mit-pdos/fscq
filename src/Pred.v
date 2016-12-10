@@ -170,6 +170,13 @@ Infix "✶" := sep_star (at level 80) : pred_scope.
 Infix "⋀" := and (at level 80) : pred_scope.
 Infix "⋁" := or (at level 85) : pred_scope.
 
+Ltac safedeex :=
+  match goal with
+  | [ H : exists (varname : _), _ |- _ ] =>
+    let newvar := fresh varname in
+    destruct H as [newvar ?]
+  end.
+
 Ltac deex :=
   match goal with
   | [ H : exists (varname : _), _ |- _ ] =>
