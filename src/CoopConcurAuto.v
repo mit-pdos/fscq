@@ -201,7 +201,7 @@ Proof.
   eexists; intuition eauto.
 
   step.
-  eapply diskIs_combine_upd in H; unfold diskIs in H.
+  eapply diskIs_combine_upd in H1; unfold diskIs in H1.
   auto.
 Qed.
 
@@ -227,7 +227,7 @@ Proof.
   do 2 eexists; intuition eauto.
 
   step.
-  eapply diskIs_combine_upd in H; unfold diskIs in H.
+  eapply diskIs_combine_upd in H1; unfold diskIs in H1.
   eauto.
 Qed.
 
@@ -252,7 +252,7 @@ Proof.
   eexists; intuition eauto.
 
   step.
-  eapply diskIs_combine_upd in H; unfold diskIs in H.
+  eapply diskIs_combine_upd in H1; unfold diskIs in H1.
   eauto.
 Qed.
 
@@ -468,7 +468,7 @@ Proof.
     destruct (test (get v m)) eqn:Htest.
     (* easy case - exit loop *)
     + apply bind_left_id in H0_0.
-      eapply H2; intuition eauto.
+      eapply H1; intuition eauto.
 
     + apply bind_assoc in H0_0.
       apply exec_yield in H0_0; eauto;
