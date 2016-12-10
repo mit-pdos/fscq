@@ -1789,6 +1789,7 @@ Proof.
     firstorder.
     specialize (H1 x).
     specialize (H2 x).
+    simpl in *.
     destruct (m1 x); destruct (m1' x); destruct (m2 x); destruct (m2' x); firstorder;
       exfalso; eauto.
 Qed.
