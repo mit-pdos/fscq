@@ -52,13 +52,17 @@ Section GetModify.
     a = a' ->
     cache_get (cache_add c a v) a' = v.
   Proof.
-  Admitted.
+    unfold cache_get, cache_add; intros.
+    rewrite MapFacts.add_eq_o; eauto.
+  Qed.
 
   Theorem cache_add_get_neq : forall c a a' v,
       a <> a' ->
       cache_get (cache_add c a v) a' = cache_get c a'.
   Proof.
-  Admitted.
+    unfold cache_get, cache_add; intros.
+    rewrite MapFacts.add_neq_o; eauto.
+  Qed.
 
 End GetModify.
 
@@ -105,9 +109,7 @@ Section RepTheorems.
       same_domain d vd.
   Proof.
     unfold same_domain, subset; split; intros;
-      match goal with
-      | [ v: const wr_set _ |- _ ] => destruct v
-      end; t; intuition; try deex; eauto.
+      t; intuition; try deex; eauto.
     destruct (vd a); (eauto || congruence).
     destruct (vd a); (eauto || congruence).
   Qed.

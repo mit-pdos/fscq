@@ -455,7 +455,7 @@ Proof.
   - exists nil, l; intuition.
   - intuition; repeat deex.
     exists (a0 :: l1), l2; intuition.
-    inversion H1; subst; eauto.
+    inversion H0; subst; eauto.
 Qed.
 
 Theorem in_nodup_map_split : forall A B (f: A -> B) l (a:A),
@@ -476,10 +476,11 @@ Proof.
     repeat deex.
     exists (a0 :: l1), l2; intuition.
     destruct H2; subst; eauto.
-    rewrite ?map_cons, ?map_app, ?map_cons in *.
+    rewrite ?map_cons, ?map_app in *; simpl in *; intuition eauto.
     rewrite H2 in *.
-    apply H3.
-    apply in_app_iff; eauto.
+    rewrite app_comm_cons in H at 1.
+    apply NoDup_remove in H; intuition eauto.
+    exfalso; eauto.
 Qed.
 
 Theorem upd_all_app_ignore : forall A AEQ V l1 l2
