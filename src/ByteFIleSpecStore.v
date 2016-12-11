@@ -2974,7 +2974,6 @@ replace (length data - (valubytes - off mod valubytes) + (valubytes - off mod va
 with (length data).
 rewrite skipn_oob. reflexivity.
 rewrite H7; apply le_n.
-Search plus minus.
 symmetry; apply Nat.sub_add.
 apply v_off_mod_v_le_length_data; eauto.
 rewrite Nat.mul_comm; apply Nat.mul_div_le.
@@ -3018,7 +3017,6 @@ rewrite skipn_length; auto.
 
 apply Nat.nlt_ge in H30.
 inversion H30.
-Search Nat.div 0 lt.
 apply Nat.div_small_iff in H15.
 rewrite skipn_length; apply Nat.lt_le_incl; auto.
 apply valubytes_ne_O.
@@ -8675,7 +8673,6 @@ Proof. (* CORRECT: Oct 4 *)
 	omega.
 	simpl.
 	omega.
-	Search le minus plus.
 	replace (length (ByFData fy) - length (ByFData fy) mod valubytes)
 		with ((valubytes * (length (ByFData fy) / valubytes) + length (ByFData fy) mod valubytes) - length (ByFData fy) mod valubytes).
 	rewrite Nat.add_sub.
@@ -8707,7 +8704,6 @@ Proof. (* CORRECT: Oct 4 *)
 	omega.
 	apply H13 in H12.
 	destruct (le_dec ((length (BFILE.BFData f) - 1) * valubytes) (1*valubytes)).
-	Search minus le 0.
 	replace ((length (BFILE.BFData f) - 1) * valubytes - 1 * valubytes) with 0.
 	simpl.
 	omega.
@@ -9008,7 +9004,6 @@ Proof. (* CORRECT: Oct 7 *)
 	
 	simpl.
 	rewrite firstn_length_l.
-	Search Nat.modulo minus.
 	rewrite Nat.mul_sub_distr_r.
 	erewrite <- bfile_bytefile_length_eq; eauto.
 	
@@ -9099,10 +9094,8 @@ Proof. (* CORRECT: Oct 7 *)
   rewrite firstn_length_l.
   reflexivity.
   
-  Search Nat.div mult Nat.modulo 0.
   erewrite <- bytefile_unified_byte_len; eauto.
   rewrite H22.
-  Search minus le.
   apply Nat.sub_le_mono_l.
   omega.
   
@@ -9180,7 +9173,6 @@ Proof. (* CORRECT: Oct 7 *)
   
   apply Nat.nlt_ge in H26.
   inversion H26.
-  Search Nat.div 0 lt.
   apply Nat.div_small_iff.
   apply valubytes_ne_O.
   auto.
@@ -9607,7 +9599,6 @@ remember (length (ByFData fy) / valubytes * valubytes) as x.
 rewrite Nat.div_mod with (x:=  length (ByFData fy)) (y:= valubytes).
 rewrite Heqx.
 
-Search lt plus 0.
 rewrite Nat.mul_comm; apply Nat.lt_add_pos_r.
 omega.
 apply valubytes_ne_O.
@@ -9676,7 +9667,6 @@ rewrite merge_bs_app.
 
 rewrite app_assoc.
 
-Search arrayN length app.
 apply list2nmem_arrayN_app'.
 rewrite app_length.
 rewrite firstn_length_l.
@@ -9688,7 +9678,6 @@ rewrite Nat.mul_comm; apply Nat.mul_div_le.
 apply valubytes_ne_O.
 rewrite Nat.mul_comm; apply Nat.mul_div_le.
 apply valubytes_ne_O.
-Search subset_invariant_bs merge_bs.
 
 replace (firstn (length (ByFData fy) mod valubytes)
            (valuset2bytesets (BFILE.BFData f) ⟦ length (ByFData fy) / valubytes ⟧))
@@ -9919,7 +9908,6 @@ rewrite merge_bs_length.
 rewrite list_zero_pad_length; simpl.
 rewrite pm_2_3_cancel.
 rewrite H5.
-Search lt plus 0.
 apply Nat.lt_add_pos_r; auto.
 simpl.
 
@@ -10093,7 +10081,6 @@ instantiate (1:= (mk_proto_bytefile ((PByFData pfy) ++ (map valuset2bytesets (sy
 	rewrite H5.
 	rewrite <- Nat.add_sub_assoc. 
 	apply plus_lt_compat_l.
-	Search lt minus 0.
 	apply Nat.sub_lt; auto.
 	remember (n / valubytes * valubytes) as x.
 	replace valubytes with (1*valubytes) by omega.

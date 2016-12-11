@@ -2183,7 +2183,6 @@ Lemma unified_bytefile_minus: forall f pfy ufy fy a,
 		 	eapply le_trans.
 		 	instantiate (1:= length (UByFData ufy) - valubytes).
 		 	omega.
-		 	Search UByFData ByFData.
 		 	rewrite H1.
 		 	rewrite H0.
 		 	rewrite H.

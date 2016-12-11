@@ -4854,7 +4854,6 @@ Module DIRTREE.
         left; simpl. rewrite app_nil_r.
         erewrite find_subtree_dirlist in H0; eauto.
         apply find_dirlist_same in H0 as H0'; subst.
-        Search find_subtree tree_inodes.
         eapply find_subtree_inum_present; eauto.
         inversion H.
         simpl in H5; eauto.

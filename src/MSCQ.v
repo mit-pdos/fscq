@@ -213,7 +213,6 @@ Proof.
     unfold NEforall.
     split.
     simpl.
-    Search treeseq_one_upd TREESEQ.tree_rep.
     unfold tree_rep.
     split.
     unfold tree_names_distinct.
@@ -222,8 +221,6 @@ Proof.
     left.
     exists (BFILE.mk_bfile (updN (BFILE.BFData tfile) bn (fst v0, vsmerge t0)) (BFILE.BFAttr tfile)).
     unfold tree_with_tmp.
-    Search dir2flatmem2 TStree.
-    Search tree_names_distinct TStree.
     
     simpl.
     eapply treeseq_upd_tree_rep.
