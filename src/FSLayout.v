@@ -67,7 +67,8 @@ Definition fs_xparams_ok xp :=
   balloc_xparams_ok (FSXPBlockAlloc2 xp) /\
   balloc_xparams_ok (FSXPInodeAlloc xp) /\
   goodSize addrlen (FSXPRootInum xp) /\
-  goodSize addrlen (FSXPMaxBlock xp).
+  goodSize addrlen (FSXPMaxBlock xp) /\
+  goodSize addrlen (FSXPMagic xp).
 
 Ltac xparams_ok := 
   match goal with 
