@@ -882,6 +882,7 @@ Module RADefs (RA : RASig).
     ifind_block cond vs start = Some r ->
     fst r < start + length vs.
   Proof.
+    fold Rec.data.
     induction vs; simpl; intros; try congruence.
     destruct (cond a) eqn: C.
     inversion H; simpl; omega.
