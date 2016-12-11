@@ -382,7 +382,7 @@ Module DIR.
     (forall i, i < length l -> negb (is_valid (selN l i dent0)) = false) ->
     listpred dmatch l dmap ->
     goodSize addrlen inum ->
-    listpred dmatch (l ++ updN (Dent.Defs.block0) 0 (mk_dent name inum isdir))
+    listpred dmatch (l ++ @updN (Rec.data Dent.RA.itemtype) (Dent.Defs.block0) 0 (mk_dent name inum isdir))
                     (Mem.upd dmap name (inum, isdir)).
   Proof.
     intros.
