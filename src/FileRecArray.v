@@ -519,6 +519,7 @@ Module FileRecArray (FRA : FileRASig).
     or_r; cancel.
 
     rewrite block0_repeat.
+    fold Rec.data.
     replace (updN (repeat item0 items_per_val) 0 e) with
             ([e] ++ (repeat item0 (items_per_val - 1))).
     replace (length items + 1) with (length (items ++ [e])).
