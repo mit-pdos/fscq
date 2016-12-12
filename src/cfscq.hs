@@ -268,8 +268,9 @@ fileStat ctx attr = FileStat
   , statStatusChangeTime = 0
   }
 
+-- should only retry once per read (miss) in a given system call, which shouldn't be too high
 retries :: Integer
-retries = 100000
+retries = 100
 
 fscqGetFileStat :: FSrunner -> FilePath -> IO (Either Errno FileStat)
 fscqGetFileStat fr (_:path)
