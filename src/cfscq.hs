@@ -10,6 +10,7 @@ import System.Posix.Types
 import System.Posix.Files
 import System.Posix.IO
 import System.FilePath.Posix
+import System.CPUTime
 import Word
 import Disk
 import Fuse
@@ -49,7 +50,9 @@ debug msg =
     return ()
 
 debugStart :: Show a => String -> a -> IO ()
-debugStart op msg = debug $ op ++ ": " ++ (show msg)
+debugStart op msg = do
+  t <- getCPUTime
+  debug $ op ++ " [" ++ show t ++ "]" ++ ": " ++ (show msg)
 
 debugMore :: Show a => a -> IO ()
 debugMore msg = debug $ " .. " ++ (show msg)
@@ -436,6 +439,7 @@ fscqRead ds fr (_:path) inum byteCount offset
       "Syncs:  " ++ (show s) ++ "\n"
     return $ Right statbuf
   | otherwise = do
+  debugStart "READ" (path, inum)
   wlen <- fr $ FS.file_get_sz inum retries
   len <- return $ fromIntegral $ wordToNat 64 wlen
   offset' <- return $ min offset len
@@ -466,7 +470,7 @@ data WriteState =
 
 fscqWrite :: FSrunner -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
 fscqWrite fr path inum bs offset = do
-  debugStart "WRITE" (path, inum)
+  debugStart "WRITE" (path, inum, BS.length bs)
   wlen <- fr $ FS.file_get_sz inum retries
   len <- return $ fromIntegral $ wordToNat 64 wlen
   endpos <- return $ (fromIntegral offset) + (fromIntegral (BS.length bs))

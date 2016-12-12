@@ -9,6 +9,7 @@ import Word
 import Control.Exception as E
 import Control.Concurrent.MVar
 import Control.Concurrent (forkIO)
+import System.CPUTime
 import Data.Map
 import GHC.Prim
 import Data.IORef
@@ -50,7 +51,11 @@ new_read :: Disk.DiskState -> BackgroundReads -> Integer -> Int -> IO Background
 new_read ds (BackgroundReads pendings tid_reads) a tid = do
   pending <- newEmptyMVar
   _ <- forkIO $ do
-    val <- Disk.read_disk ds a
+    t <- getCPUTime
+    debugmsg tid $ "ASYNC READ" ++ " [" ++ show t ++ "]" ++ ": starting read at  " ++ show a
+    val' <- Disk.read_disk ds a
+    val <- evaluate val'
+    debugmsg tid $ "ASYNC READ" ++ " [" ++ show t ++ "]" ++ ": finishing read at " ++ show a
     putMVar pending val
   let pendings' = Data.Map.insert a pending pendings
       tid_reads' = Data.Map.alter
@@ -60,11 +65,12 @@ new_read ds (BackgroundReads pendings tid_reads) a tid = do
     return $ BackgroundReads pendings' tid_reads'
 
 finish_read :: BackgroundReads -> Integer -> Int -> IO (Coq_word, BackgroundReads)
-finish_read (BackgroundReads pendings tid_reads) a tid = do
-  v <- takeMVar (fromJust . Data.Map.lookup a $ pendings)
-  let pendings' = Data.Map.delete a pendings
-  let tid_reads' = Data.Map.delete tid tid_reads in
-    return $ (v, BackgroundReads pendings' tid_reads')
+finish_read (BackgroundReads pendings tid_reads) a tid =
+  let m_read = fromJust . Data.Map.lookup a $ pendings in do
+    v <- takeMVar m_read
+    let pendings' = Data.Map.delete a pendings
+    let tid_reads' = Data.Map.delete tid tid_reads in
+      return $ (v, BackgroundReads pendings' tid_reads')
 
 waitMVar :: MVar a -> IO ()
 waitMVar m = do
