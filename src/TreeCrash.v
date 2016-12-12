@@ -79,12 +79,15 @@ Module DTCrash.
           inversion H4; subst.
           simpl; destruct (string_dec s s); try congruence.
         * edestruct IHl.
+
           eauto.
           eauto.
-          inversion H4. apply H5.
-          inversion H6; eauto.
+          all: try solve [ inversion H4; exact H5 ].
+          all: try solve [ inversion H6; eauto ].
+
           constructor. inversion H4; eauto.
           inversion H. inversion H8; eauto.
+
           exists x. intuition.
           simpl.
           inversion H4; subst. destruct (string_dec s a); try congruence.
