@@ -10,17 +10,10 @@ cp $code/init-disk.img $img
 $code/cfscq +RTS -N4 -RTS $img -f $mnt &
 sleep 1
 
-{ time cp $mnt/large-10m $mnt/large-10m-copy;
-  echo "done with large copy"; } &
+time $DIR/large-copy.sh &
 large_pid=$!
 
-{ time for i in $(seq 25); do
-    for j in $(seq 100); do
-        cat $mnt/small-4k > /dev/null
-    done;
-    echo "done with $i"
-done;
-  echo "done with small copies"; } &
+time $DIR/small-copies.sh &
 small_pid=$!
 
 wait $small_pid
