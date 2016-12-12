@@ -34,7 +34,7 @@ import qualified Errno
 type HT = Integer
 
 verboseFuse :: Bool
-verboseFuse = False
+verboseFuse = True
 
 cachesize :: Integer
 cachesize = 100000
@@ -422,12 +422,15 @@ fscqRead ds fr m_fsxp (_:path) inum byteCount offset
       "Syncs:  " ++ (show s) ++ "\n"
     return $ Right statbuf
   | otherwise = withMVar m_fsxp $ \fsxp -> do
+  debugStart "READ" (inum, path)
   (wlen, ()) <- fr $ AsyncFS._AFS__file_get_sz fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
   offset' <- return $ min offset len
   byteCount' <- return $ min byteCount $ (fromIntegral len) - (fromIntegral offset')
   pieces <- mapM (read_piece fsxp) $ compute_ranges offset' byteCount'
-  return $ Right $ BS.concat pieces
+  r <- return $ BS.concat pieces
+  debugMore $ BS.length r
+  return $ Right r
 
   where
     read_piece fsxp (BR blk off count) = do

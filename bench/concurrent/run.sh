@@ -17,7 +17,12 @@ fi
 
 cp $code/init-disk.img $img
 
-$code/$bin +RTS -N$ncores -RTS $img -f $mnt &
+extra_args=""
+if [ "$bin" = "fscq" ]; then
+  extra_args="-s"
+fi
+
+$code/$bin +RTS -N$ncores -RTS $img -f $extra_args $mnt &
 sleep 1
 
 time $DIR/large-copy.sh &

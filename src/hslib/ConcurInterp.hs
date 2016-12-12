@@ -18,10 +18,31 @@ import qualified Crypto.Hash.SHA256 as SHA256
 verbose :: Bool
 verbose = False
 
+timeReads :: Bool
+timeReads = False
+
 debugmsg :: Int -> String -> IO ()
 debugmsg tid s =
   if verbose then
     putStrLn $ "[" ++ (show tid) ++ "] " ++ s
+  else
+    return ()
+
+timingStart :: String -> IO Integer
+timingStart s =
+  if timeReads then do
+    t <- getCPUTime
+    putStrLn $ "[" ++ show t ++ "] " ++ s
+    return t
+  else
+    return 0
+
+timingFinish :: Integer -> String -> IO ()
+timingFinish start s =
+  if timeReads then do
+    t <- getCPUTime
+    let elapsed = (fromIntegral (t - start))/1e9 :: Float
+    putStrLn $ "[" ++ show t ++ "] " ++ s ++ " (" ++ show elapsed ++ "ms" ++ ")"
   else
     return ()
 
@@ -51,12 +72,11 @@ new_read :: Disk.DiskState -> BackgroundReads -> Integer -> Int -> IO Background
 new_read ds (BackgroundReads pendings tid_reads) a tid = do
   pending <- newEmptyMVar
   _ <- forkIO $ do
-    t <- getCPUTime
-    debugmsg tid $ "ASYNC READ" ++ " [" ++ show t ++ "]" ++ ": starting read at  " ++ show a
-    val' <- Disk.read_disk ds a
-    val <- evaluate val'
-    debugmsg tid $ "ASYNC READ" ++ " [" ++ show t ++ "]" ++ ": finishing read at " ++ show a
-    putMVar pending val
+    start <- timingStart $ "fetch from  " ++ show a
+    val <- Disk.read_disk ds a
+    val' <- evaluate val
+    timingFinish start $ "done with " ++ show a
+    putMVar pending val'
   let pendings' = Data.Map.insert a pending pendings
       tid_reads' = Data.Map.alter
         (\v -> case v of
@@ -67,7 +87,12 @@ new_read ds (BackgroundReads pendings tid_reads) a tid = do
 finish_read :: BackgroundReads -> Integer -> Int -> IO (Coq_word, BackgroundReads)
 finish_read (BackgroundReads pendings tid_reads) a tid =
   let m_read = fromJust . Data.Map.lookup a $ pendings in do
-    v <- takeMVar m_read
+    maybe_v <- tryTakeMVar m_read
+    v <- case maybe_v of
+           Just v -> return v
+           Nothing -> do
+             putStrLn $ "waiting for read at " ++ show a
+             takeMVar m_read
     let pendings' = Data.Map.delete a pendings
     let tid_reads' = Data.Map.delete tid tid_reads in
       return $ (v, BackgroundReads pendings' tid_reads')

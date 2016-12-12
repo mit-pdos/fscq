@@ -37,7 +37,7 @@ import qualified Errno
 type HT = Integer
 
 verboseFuse :: Bool
-verboseFuse = False
+verboseFuse = True
 
 cachesize :: Integer
 cachesize = 100000
@@ -446,7 +446,9 @@ fscqRead ds fr (_:path) inum byteCount offset
   offset' <- return $ min offset len
   byteCount' <- return $ min byteCount $ (fromIntegral len) - (fromIntegral offset')
   pieces <- mapM read_piece $ compute_ranges offset' byteCount'
-  return $ Right $ BS.concat pieces
+  r <- return $ BS.concat pieces
+  debugMore $ BS.length r
+  return $ Right r
 
   where
     read_piece (BR blk off count) = do
