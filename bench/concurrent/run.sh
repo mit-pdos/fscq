@@ -5,9 +5,19 @@ code=$DIR/../../src
 img=$code/disk.img
 mnt=/tmp/fscq
 
+bin=cfscq
+ncores=
+
+if [ -n "$1" ]; then
+  bin="$1"
+fi
+if [ -n "$2" ]; then
+  ncores="$2"
+fi
+
 cp $code/init-disk.img $img
 
-$code/cfscq +RTS -N4 -RTS $img -f $mnt &
+$code/$bin +RTS -N$ncores -RTS $img -f $mnt &
 sleep 1
 
 time $DIR/large-copy.sh &
