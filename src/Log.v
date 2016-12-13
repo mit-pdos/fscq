@@ -53,9 +53,15 @@ Module LOG.
   Definition memstate := (mstate * cachestate)%type.
   Definition mk_memstate mm (ll : GLog.memstate) : memstate := 
     (mk_mstate mm (fst ll), (snd ll)).
+  Definition mk_memstate0 (cs: cachestate) := (mk_mstate vmap0 GLog.mk_memstate0, cs).
 
   Definition MSCache (ms : memstate) := snd ms.
   Definition MSLL (ms : memstate) : GLog.memstate := (MSGLog (fst ms), (snd ms)).
+
+  Definition readOnly (ms ms' : memstate) :=
+    (GLog.readOnly (MSLL ms) (MSLL ms') /\
+     Map.Empty (MSTxn (fst ms)) /\
+     Map.Empty (MSTxn (fst ms'))).
 
 
   Inductive state :=
@@ -270,14 +276,61 @@ Module LOG.
     cancel.
   Qed.
 
+  Lemma readOnlyMapEmpty : forall ms,
+    (exists ms0, readOnly ms0 ms) -> Map.Empty (MSTxn (fst ms)).
+  Proof.
+    unfold readOnly; intros; deex; intuition.
+  Qed.
+
+  Hint Resolve readOnlyMapEmpty.
+
+  Theorem readOnlyLL : forall ms ms',
+    GLog.readOnly (MSLL ms) (MSLL ms') ->
+    Map.Empty (MSTxn (fst ms)) ->
+    Map.Empty (MSTxn (fst ms')) ->
+    readOnly ms ms'.
+  Proof.
+    firstorder.
+  Qed.
+
+  Hint Resolve readOnlyLL.
+
+  Theorem readOnlyLL' : forall ms mstxn' msll',
+    GLog.readOnly (MSLL ms) msll' ->
+    Map.Empty (MSTxn (fst ms)) ->
+    MSTxn (fst ms) = mstxn' ->
+    readOnly ms (mk_memstate mstxn' msll').
+  Proof.
+    intros; substl; eauto.
+  Qed.
+
+  Hint Resolve readOnlyLL'.
+
+  Theorem readOnly_refl : forall ms,
+    Map.Empty (MSTxn (fst ms)) ->
+    readOnly ms ms.
+  Proof.
+    intuition.
+  Qed.
+
+  Hint Resolve readOnly_refl.
+
+  Theorem readOnly_trans : forall ms ms' ms'',
+    readOnly ms ms' -> readOnly ms' ms'' -> readOnly ms ms''.
+  Proof.
+    unfold readOnly.
+    intuition congruence.
+  Qed.
+
+  Hint Resolve readOnly_trans.
+
 
   Definition init xp cs :=
     mm <- GLog.init xp cs;
     Ret (mk_memstate vmap0 mm).
 
-  Definition begin (xp : log_xparams) ms :=
-    let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
-    Ret (mk_memstate vmap0 mm).
+  Definition begin (xp : log_xparams) (ms : memstate) :=
+    Ret ms.
 
   Definition abort (xp : log_xparams) ms :=
     let '(cm, mm) := (MSTxn (fst ms), MSLL ms) in
@@ -362,6 +415,7 @@ Module LOG.
      inversion H; subst; simpl; clear H
   | [ |- Map.Empty vmap0 ] => apply Map.empty_1
   | [ |- map_valid vmap0 _ ] => apply map_valid_map0
+  | [ H : Map.Empty ?m |- map_valid ?m _ ] => apply map_valid_empty
   end; eauto.
 
   Local Hint Resolve KNoDup_map_elements.
@@ -397,14 +451,15 @@ Module LOG.
     PRE:hm
       rep xp F (NoTxn ds) ms hm
     POST:hm' RET:r
-      rep xp F (ActiveTxn ds ds!!) r hm'
+      rep xp F (ActiveTxn ds ds!!) r hm' *
+      [[ readOnly ms r ]]
     CRASH:hm'
       exists ms', rep xp F (NoTxn ds) ms' hm'
     >} begin xp ms.
   Proof.
     unfold begin.
     hoare using dems.
-    pred_apply; cancel; dems.
+    rewrite replay_disk_empty; auto.
   Qed.
 
 
@@ -413,7 +468,8 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds m) ms hm
     POST:hm' RET:r
-      rep xp F (NoTxn ds) r hm'
+      rep xp F (NoTxn ds) r hm' *
+      [[ (exists ms0, readOnly ms0 ms) -> readOnly ms r ]]
     CRASH:hm'
       exists ms', rep xp F (NoTxn ds) ms' hm'
     >} abort xp ms.
@@ -422,6 +478,7 @@ Module LOG.
     safestep.
     step using dems; subst; simpl.
     pred_apply; cancel.
+    eapply readOnlyLL; eauto; try reflexivity; simpl; dems.
     pimpl_crash; norm. cancel.
     eassign (mk_mstate vmap0 (MSGLog ms_1)).
     intuition; pred_apply; cancel.
@@ -434,7 +491,8 @@ Module LOG.
       rep xp F (ActiveTxn ds m) ms hm *
       [[[ m ::: Fm * a |-> v ]]]
     POST:hm' RET:^(ms', r)
-      rep xp F (ActiveTxn ds m) ms' hm' * [[ r = fst v ]]
+      rep xp F (ActiveTxn ds m) ms' hm' * [[ r = fst v ]] *
+      [[ (exists ms0, readOnly ms0 ms) -> readOnly ms ms' ]]
     CRASH:hm'
       exists ms', rep xp F (ActiveTxn ds m) ms' hm'
     >} read xp a ms.
@@ -665,7 +723,8 @@ Module LOG.
     PRE:hm
       rep xp F (ActiveTxn ds ds!!) ms hm
     POST:hm' RET:r
-      rep xp F (NoTxn ds) r hm'
+      rep xp F (NoTxn ds) r hm' *
+      [[ (exists ms0, readOnly ms0 ms) -> readOnly ms r ]]
     CRASH:hm'
       exists ms', rep xp F (NoTxn ds) ms' hm'
     >} commit_ro xp ms.
@@ -1206,7 +1265,8 @@ Module LOG.
           [[[ m ::: Fm * arrayP a vs ]]]
     POST:hm' RET:^(ms', r)
           rep xp F (ActiveTxn ds m) ms' hm' *
-          [[ r = fst (selN vs i ($0, nil)) ]]
+          [[ r = fst (selN vs i ($0, nil)) ]] *
+          [[ (exists ms0, readOnly ms0 ms) -> readOnly ms ms' ]]
     CRASH:hm' exists ms',
           rep xp F (ActiveTxn ds m) ms' hm'
     >} read_array xp a i ms.
@@ -1256,12 +1316,13 @@ Module LOG.
   Definition read_range A xp a nr (vfold : A -> valu -> A) v0 ms :=
     let^ (ms, r) <- ForN i < nr
     Hashmap hm
-    Ghost [ F Fm crash ds m vs ]
+    Ghost [ F Fm crash ds m vs ms0 ]
     Loopvar [ ms pf ]
     Invariant
       rep xp F (ActiveTxn ds m) ms hm *
       [[[ m ::: (Fm * arrayP a vs) ]]] *
-      [[ pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
+      [[ pf = fold_left vfold (firstn i (map fst vs)) v0 ]] *
+      [[ (exists ms00, readOnly ms00 ms0) -> readOnly ms0 ms ]]
     OnCrash  crash
     Begin
       let^ (ms, v) <- read_array xp a i ms;
@@ -1294,7 +1355,8 @@ Module LOG.
       [[[ m ::: (Fm * arrayP a vs) ]]]
     POST:hm' RET:^(ms', r)
       rep xp F (ActiveTxn ds m) ms' hm' *
-      [[ r = fold_left vfold (firstn nr (map fst vs)) v0 ]]
+      [[ r = fold_left vfold (firstn nr (map fst vs)) v0 ]] *
+      [[ (exists ms0, readOnly ms0 ms) -> readOnly ms ms' ]]
     CRASH:hm'
       exists ms', rep xp F (ActiveTxn ds m) ms' hm'
     >} read_range xp a nr vfold v0 ms.
@@ -1303,6 +1365,7 @@ Module LOG.
     safestep. auto.
     subst; pred_apply; cancel.
 
+    eapply readOnly_refl; eauto.
     eauto.
     safestep.
     unfold rep_inner; cancel.
@@ -1432,7 +1495,7 @@ Module LOG.
   Definition read_cond A xp a nr (vfold : A -> valu -> A) v0 (cond : A -> bool) ms :=
     let^ (ms, pf, ret) <- ForN i < nr
     Hashmap hm
-    Ghost [ F Fm crash ds m vs ]
+    Ghost [ F Fm crash ds m vs ms0 ]
     Loopvar [ ms pf ret ]
     Invariant
       rep xp F (ActiveTxn ds m) ms hm *
@@ -1442,7 +1505,8 @@ Module LOG.
       [[ forall v, ret = Some v ->
         cond v = true ]] *
       [[ ret = None ->
-        pf = fold_left vfold (firstn i (map fst vs)) v0 ]]
+        pf = fold_left vfold (firstn i (map fst vs)) v0 ]] *
+      [[ (exists ms00, readOnly ms00 ms0) -> readOnly ms0 ms ]]
     OnCrash  crash
     Begin
       If (is_some ret) {
@@ -1468,7 +1532,8 @@ Module LOG.
     POST:hm' RET:^(ms', r)
       rep xp F (ActiveTxn ds m) ms' hm' *
       ( exists v, [[ r = Some v /\ cond v = true ]] \/
-      [[ r = None /\ cond (fold_left vfold (firstn nr (map fst vs)) v0) = false ]])
+      [[ r = None /\ cond (fold_left vfold (firstn nr (map fst vs)) v0) = false ]]) *
+      [[ (exists ms0, readOnly ms0 ms) -> readOnly ms ms' ]]
     CRASH:hm'
       exists ms', rep xp F (ActiveTxn ds m) ms' hm'
     >} read_cond xp a nr vfold v0 cond ms.

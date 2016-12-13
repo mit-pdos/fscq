@@ -491,7 +491,7 @@ Proof.
   pred_apply.
   rewrite <- isolateN_bwd with (vs:=l++a::nil) (i:=length l) by
     ( rewrite app_length; simpl; omega ).
-  rewrite firstn_app by auto.
+  rewrite firstn_app2 by auto.
   replace (S (length l)) with (length (l ++ a :: nil)) by (rewrite app_length; simpl; omega).
   rewrite skipn_oob by omega; simpl.
   instantiate (1:=a).

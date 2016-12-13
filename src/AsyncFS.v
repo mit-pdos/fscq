@@ -75,13 +75,13 @@ Module AFS.
      1
      max_addr).
 
-  Lemma compute_xparams_ok : forall data_bitmaps inode_bitmaps log_descr_blocks,
+  Lemma compute_xparams_ok : forall data_bitmaps inode_bitmaps log_descr_blocks magic,
     goodSize addrlen (1 +
           data_bitmaps * valulen +
           inode_bitmaps * valulen / INODE.IRecSig.items_per_val +
           inode_bitmaps + data_bitmaps + data_bitmaps +
           1 + log_descr_blocks + log_descr_blocks * PaddedLog.DescSig.items_per_val) ->
-    fs_xparams_ok (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks).
+    fs_xparams_ok (compute_xparams data_bitmaps inode_bitmaps log_descr_blocks magic).
   Proof.
     unfold fs_xparams_ok.
     unfold log_xparams_ok, inode_xparams_ok, balloc_xparams_ok.
@@ -96,7 +96,7 @@ Module AFS.
   Import DIRTREE.
 
   Definition mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks :=
-    let fsxp := compute_xparams data_bitmaps inode_bitmaps log_descr_blocks in
+    let fsxp := compute_xparams data_bitmaps inode_bitmaps log_descr_blocks SB.magic_number in
     cs <- BUFCACHE.init_load cachesize;
     cs <- SB.init fsxp cs;
     mscs <- LOG.init (FSXPLog fsxp) cs;
@@ -352,8 +352,12 @@ Module AFS.
   Definition recover cachesize :=
     cs <- BUFCACHE.init_recover cachesize;
     let^ (cs, fsxp) <- SB.load cs;
-    mscs <- LOG.recover (FSXPLog fsxp) cs;
-    Ret ^(BFILE.mk_memstate true mscs, fsxp).
+    If (addr_eq_dec (FSXPMagic fsxp) SB.magic_number) {
+      mscs <- LOG.recover (FSXPLog fsxp) cs;
+      Ret (OK (BFILE.mk_memstate true mscs, fsxp))
+    } else {
+      Ret (Err EINVAL)
+    }.
 
   Definition file_get_attr fsxp inum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
@@ -537,12 +541,13 @@ Module AFS.
 
   Hint Extern 0 (okToUnify (LOG.rep_inner _ _ _ _) (LOG.rep_inner _ _ _ _)) => constructor : okToUnify.
 
+
   Theorem recover_ok : forall cachesize,
     {< fsxp cs ds,
      PRE:hm
        LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm *
        [[ cachesize <> 0 ]]
-     POST:hm' RET:^(ms, fsxp')
+     POST:hm' RET:r exists ms fsxp',
        [[ fsxp' = fsxp ]] * exists d n, [[ n <= length (snd ds) ]] *
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
@@ -569,6 +574,7 @@ Module AFS.
     pred_apply.
     apply sep_star_comm; eauto.
 
+    step.
     prestep. norm. cancel.
     unfold LOG.after_crash; norm. cancel.
     intuition simpl.
@@ -590,10 +596,18 @@ Module AFS.
     auto.
     intuition.
 
+    admit.
+(*
     prestep. norm. cancel.
     intuition simpl; eauto.
-
+*)
     xcrash.
+    prestep. norm. cancel.
+    eauto.
+    unfold LOG.rep.
+    admit.
+    intuition simpl; eauto.
+
     xcrash.
     unfold LOG.before_crash.
     denote or as Hor; apply sep_star_or_distr in Hor.
@@ -632,7 +646,7 @@ Module AFS.
     pred_apply.
     safecancel.
     Unshelve. all: eauto.
-  Qed.
+  Admitted.
 
   Hint Extern 1 ({{_}} Bind (recover _) _) => apply recover_ok : prog.
 

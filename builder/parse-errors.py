@@ -3,7 +3,13 @@
 import collections
 import smtplib
 import os
+import sys
 from email.mime.text import MIMEText
+
+if len(sys.argv) > 1:
+  build_name = ' ' + ' '.join(sys.argv[1:])
+else:
+  build_name = ''
 
 email_list = 'nickolai@csail.mit.edu,kaashoek@mit.edu,dmz@mit.edu,akonradi@mit.edu,tchajed@mit.edu,atalaymertileri@gmail.com'
 
@@ -28,6 +34,10 @@ for l in f.readlines():
     continue
   if l.startswith("File "):
     err_file = l.split(" ")[1].split(":")[0]
+    current_error = []
+    errors[err_file].append(current_error)
+  if l.startswith("Error: File "):
+    err_file = l.split(" ")[2].split(":")[0]
     current_error = []
     errors[err_file].append(current_error)
   current_error.append(l)
@@ -66,7 +76,7 @@ if total_errors > 0 or total_admits > 0:
   msgbody += "Detailed error output:\n\n"
   msgbody += "  http://coqdev.csail.mit.edu/runs/%s/checkproofs-errors.html" % os.path.basename(os.getcwd())
   msg = MIMEText(msgbody)
-  msg['Subject'] = "FSCQ: %d proof errors, %d admits" % (total_errors, total_admits)
+  msg['Subject'] = "FSCQ%s: %d proof errors, %d admits" % (build_name, total_errors, total_admits)
   msg['From'] = "FSCQ builder <fscq-builder@coqdev.csail.mit.edu>"
   msg['To'] = email_list
 

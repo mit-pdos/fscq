@@ -21,9 +21,10 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      DiskReaders MemCache WriteBuffer WriteBufferSet ConcurrentCache \
 				ConcurrentCopy Specifications ConcurrentBridge ConcurrentFS \
 				ReadOnlyFS DirectoryIsolatedFS \
-				SuperBlock AsyncFS AsyncFSRecover \
-	      ADestructPair DestructVarname ExtrHaskellPrelude \
-	      DirSep TreeSeq ProgMetatheory
+				SuperBlock AsyncFS AsyncFSRecover VBConv AByteFile \
+				ADestructPair DestructVarname ExtrHaskellPrelude \
+		  DirSep TreeSeq ProgMetatheory
+
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))

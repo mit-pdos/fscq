@@ -62,9 +62,26 @@ Module GLog.
   Definition memstate := (mstate * cachestate)%type.
   Definition mk_memstate vm ts ll : memstate := 
     (mk_mstate vm ts (MLog.MSInLog ll), (MLog.MSCache ll)).
+  Definition mk_memstate0 := mk_mstate vmap0 nil vmap0.
 
   Definition MSCache (ms : memstate) := snd ms.
   Definition MSLL (ms : memstate) := MLog.mk_memstate (MSMLog (fst ms)) (snd ms).
+
+  Definition readOnly (ms ms' : memstate) := (fst ms = fst ms').
+
+  Lemma readOnlyLL : forall ms ms',
+    MLog.readOnly (MSLL ms) (MSLL ms') ->
+    MSVMap (fst ms) = MSVMap (fst ms') ->
+    MSTxns (fst ms) = MSTxns (fst ms') ->
+    readOnly ms ms'.
+  Proof.
+    destruct ms as [m c]; destruct m.
+    destruct ms' as [m' c']; destruct m'.
+    unfold MLog.readOnly, readOnly; simpl; congruence.
+  Qed.
+
+  Hint Resolve readOnlyLL.
+
 
   Inductive state :=
   | Cached   (ds : diskset)
@@ -778,7 +795,7 @@ Module GLog.
       << F, rep: xp (Cached ds) ms hm >> *
       [[[ ds!! ::: exists F', (F' * a |-> vs) ]]]
     POST:hm' RET:^(ms', r)
-      << F, rep: xp (Cached ds) ms' hm' >> * [[ r = fst vs ]]
+      << F, rep: xp (Cached ds) ms' hm' >> * [[ r = fst vs ]] * [[ readOnly ms ms' ]]
     CRASH:hm'
       exists ms', << F, rep: xp (Cached ds) ms' hm' >>
     >} read xp a ms.

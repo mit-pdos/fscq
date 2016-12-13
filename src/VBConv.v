@@ -1300,7 +1300,6 @@ Proof.
   intros.
   rewrite le_minus_dist.
   rewrite <- Nat.add_sub_swap.
-  Search Nat.div minus.
   all: auto.
   remember (a+c) as x.
   apply Nat.mul_cancel_l with (p:= b).
@@ -1308,7 +1307,6 @@ Proof.
   replace (b * ((x - b) / b)) with ((x - b) - (x-b) mod b).
   rewrite Nat.mul_sub_distr_l.
   replace (b * (x / b)) with (x - x mod b).
-  Search minus Nat.modulo.
   rewrite modulo_eq.
   omega.
   all: auto.
@@ -1339,7 +1337,6 @@ Qed.
 		reflexivity.
 		replace (a - S c * b) with ((a - b) - c * b).
 		rewrite IHc.
-		Search Nat.modulo minus.
 		apply modulo_eq.
 		all: auto.
 		simpl in H0.
@@ -1468,7 +1465,6 @@ Proof.
   induction c; intros.
   inversion H1.
   destruct (lt_dec a b).
-  Search 0 Nat.modulo lt.
   apply Nat.mod_small_iff in l.
   rewrite l.
   unfold not; intros.

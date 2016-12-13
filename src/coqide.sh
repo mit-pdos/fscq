@@ -6,6 +6,7 @@
 #
 #   -async-proofs lazy
 #
-exec coqide -async-proofs-j ${COQIDE_JOBS:-1} \
+exec coqide -async-proofs lazy \
+            -async-proofs-j ${COQIDE_JOBS:-1} \
             -async-proofs-tac-j ${COQIDE_JOBS:-1} \
             -R coqbuild Fscq "$@"

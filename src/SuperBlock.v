@@ -19,6 +19,8 @@ Module SB.
 
   Local Hint Resolve goodSize_add_l goodSize_add_r.
 
+  Definition magic_number := 3932.  (* 0xF5C = FSC in C *)
+
   Definition superblock_type : Rec.type := Rec.RecF ([
       ("data_start",  Rec.WordF addrlen);
       ("log_header",  Rec.WordF addrlen);
@@ -39,7 +41,8 @@ Module SB.
       ("ianblocks",   Rec.WordF addrlen);
 
       ("root_inum",   Rec.WordF addrlen);
-      ("maxblock",    Rec.WordF addrlen)
+      ("maxblock",    Rec.WordF addrlen);
+      ("magic",       Rec.WordF addrlen)  
     ]).
 
   Definition superblock_padded : Rec.type := Rec.RecF ([
@@ -57,7 +60,7 @@ Module SB.
   Definition superblock_pad0 := @Rec.of_word superblock_padded (wzero _).
 
   Definition pickle_superblock (fsxp : fs_xparams) : word (Rec.len superblock_padded) :=
-    let (lxp, ixp, dbxp1, dbxp2, ibxp, rootinum, maxblock) := fsxp in
+    let (lxp, ixp, dbxp1, dbxp2, ibxp, rootinum, maxblock, magic) := fsxp in
     let sb := superblock0
       :=> "data_start"  := addr2w (DataStart lxp)
       :=> "log_header"  := addr2w (LogHeader lxp)
@@ -75,6 +78,7 @@ Module SB.
       :=> "ianblocks"   := addr2w (BmapNBlocks ibxp)
       :=> "root_inum"   := addr2w rootinum
       :=> "maxblock"    := addr2w maxblock
+      :=> "magic"       := addr2w magic
     in Rec.to_word (superblock_pad0 :=> "sb" := sb).
 
   Definition unpickle_superblock (sbp : word (Rec.len superblock_padded)) : fs_xparams :=
@@ -93,7 +97,8 @@ Module SB.
       # (sb :-> "iastart") # (sb :-> "ianblocks") in
     let rootinum := # (sb :-> "root_inum") in
     let maxblock := # (sb :-> "maxblock") in
-    Build_fs_xparams lxp ixp dbxp1 dbxp2 ibxp rootinum maxblock.
+    let magic := # (sb :-> "magic") in
+    Build_fs_xparams lxp ixp dbxp1 dbxp2 ibxp rootinum maxblock magic.
 
 
   Theorem pickle_unpickle_superblock : forall fsxp,

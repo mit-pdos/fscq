@@ -112,7 +112,8 @@ Definition rep (f:BFILE.bfile) (fy:bytefile) :=
     [[ bytefile_valid ufy fy ]] * 
     [[ ByFAttr fy = BFILE.BFAttr f ]] *
     [[ #(INODE.ABytes (ByFAttr fy)) = length (ByFData fy)]] *
-    [[ length (ByFData fy) > 0 -> length (ByFData fy) > (length (BFILE.BFData f) - 1) * valubytes ]]))))%pred.
+    [[ length (ByFData fy) > 0 -> length (ByFData fy) > (length (BFILE.BFData f) - 1) * valubytes ]] *
+    [[ length (ByFData fy) = 0 -> length (BFILE.BFData f) = 0]]))))%pred.
 
 Definition byte_belong_to_file ilist byn inum:=
     (exists bn, BFILE.block_belong_to_file ilist bn inum (byn/valubytes)) /\
@@ -2182,7 +2183,6 @@ Lemma unified_bytefile_minus: forall f pfy ufy fy a,
 		 	eapply le_trans.
 		 	instantiate (1:= length (UByFData ufy) - valubytes).
 		 	omega.
-		 	Search UByFData ByFData.
 		 	rewrite H1.
 		 	rewrite H0.
 		 	rewrite H.
@@ -2374,7 +2374,7 @@ Qed.
 		rewrite IHa; reflexivity.
 	Qed.
 	
-			Lemma pm_2_3_cancel: forall a b,
+Lemma pm_2_3_cancel: forall a b,
 	a + b - b = a.
 	Proof. intros; omega. Qed.
 	
@@ -2387,6 +2387,151 @@ Qed.
 	  intros; subst.
 	  apply list2nmem_arrayN_app; auto.
   Qed.
+
+
+Lemma list_zero_pad_nil_app: forall a b,
+list_zero_pad nil a ++ list_zero_pad nil b = list_zero_pad nil (a + b).
+Proof.
+	induction a; intros; simpl.
+	reflexivity.
+	rewrite list_zero_pad_expand.
+	rewrite app_assoc_reverse.
+	rewrite IHa.
+	symmetry; apply list_zero_pad_expand.
+Qed.
+	
+
+Lemma concat_map_valuset2bytesets_valu0: forall a,
+concat (map (fun x : valu => valuset2bytesets (x, nil))
+     (valu0_pad a)) =  merge_bs (list_zero_pad nil (a*valubytes)) nil.
+Proof.
+	induction a.
+	reflexivity.
+	simpl.
+	rewrite valuset2bytesets_valu0.
+	rewrite IHa.
+	rewrite merge_bs_nil_app.
+	rewrite list_zero_pad_nil_app.
+	reflexivity.
+Qed.
+
+Lemma Forall_map_vs2bs: forall l,
+Forall (fun sublist : list byteset => length sublist = valubytes)
+  (map valuset2bytesets l).
+Proof.
+	intros; rewrite Forall_forall; intros.
+	apply in_map_iff in H.
+	repeat destruct H.
+	apply valuset2bytesets_len.
+Qed.
+
+
+
+Lemma concat_hom_length_map_vs2bs: forall l,
+length (concat (map valuset2bytesets l)) = (length l) * valubytes.
+Proof.
+	intros.
+	rewrite concat_hom_length with (k:= valubytes).
+	rewrite map_length; reflexivity.
+	apply Forall_map_vs2bs.
+Qed.
+
+Lemma skipn_exact: forall A (l: list A),
+skipn (length l) l = nil.
+Proof.
+	intros; rewrite skipn_oob.
+	reflexivity.
+	apply le_n.
+Qed.
+
+ 
+Lemma bytefile_length_sub: forall fy a b,
+# (INODE.ABytes (ByFAttr fy)) = length (ByFData fy) ->
+ByFAttr fy = ($ a, b) ->
+goodSize addrlen a ->
+length (ByFData fy) = a.
+Proof.
+	intros; rewrite <- H; rewrite H0; simpl;
+	rewrite wordToNat_natToWord_idempotent'; auto.
+Qed.
+
+Lemma bsplit_list_0_list_zero_pad_eq: forall a,
+  	bsplit_list (natToWord (a * 8) 0) = list_zero_pad nil a.
+	Proof.
+		intros.
+		induction a.
+		reflexivity.
+		unfold natToWord in *.
+		simpl.
+		unfold bsplit1_dep, bsplit2_dep; simpl.
+		unfold bsplit1, bsplit2.
+		eq_rect_simpl.
+		simpl.
+		rewrite list_zero_pad_expand.
+		rewrite IHa.
+		simpl.
+		reflexivity.
+	Qed.
+		
+  Lemma valu2list_valu0:
+  valu2list valu0 = list_zero_pad nil valubytes.
+  Proof.
+    unfold valu0; simpl.
+    unfold valu2list.
+    rewrite bytes2valu2bytes.
+  	apply bsplit_list_0_list_zero_pad_eq.
+	Qed.
+  
+  Lemma valuset2bytesets_synced_list_valu0_pad_merge_bs_zero_pad_nil:
+  valuset2bytesets (valu0, nil) = merge_bs (list_zero_pad nil valubytes) nil.
+  Proof.
+  	unfold valuset2bytesets; simpl.
+  	rewrite v2b_rec_nil.
+  	rewrite l2b_cons_x_nil.
+	rewrite valu2list_valu0.
+	rewrite merge_bs_nil.
+	reflexivity.
+	symmetry; apply valu2list_len.
+	Qed.
+	
+	Lemma synced_list_map_nil_eq: forall (l:list valu),
+synced_list l = map (fun x => (x, nil)) l.
+Proof.
+	induction l.
+	unfold synced_list; reflexivity.
+	simpl.
+	unfold synced_list in *. simpl.
+	rewrite IHl; reflexivity.
+Qed.
+
+Lemma merge_bs_map_x_nil_eq: forall l,
+map (fun x : word 8 => (x, nil)) l = merge_bs l nil.
+Proof.
+	induction l.
+	reflexivity.
+	simpl.
+	rewrite IHl; reflexivity.
+Qed.
+
+Lemma valuset2bytesets_valu0: 
+	valuset2bytesets (valu0, nil) = merge_bs (list_zero_pad nil valubytes) nil.
+Proof.
+	unfold valuset2bytesets; simpl.
+	rewrite v2b_rec_nil.
+	rewrite l2b_cons_x_nil.
+	rewrite valu2list_valu0.
+	apply merge_bs_map_x_nil_eq.
+	symmetry; apply valu2list_len.
+Qed.
+
+Lemma merge_bs_nil_app: forall l1 l2,
+merge_bs l1 nil ++ merge_bs l2 nil = merge_bs (l1++l2) nil.
+Proof.
+	induction l1; intros; try reflexivity.
+	simpl.
+	rewrite IHl1.
+	reflexivity.
+Qed.
 
 
 

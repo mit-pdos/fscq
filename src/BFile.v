@@ -1141,7 +1141,6 @@ Module BFILE.
 
   Local Hint Extern 0 (okToUnify (listmatch _ _ _) (listmatch _ _ _)) => constructor : okToUnify.
 
-
   Theorem shrink_ok : forall lxp bxp ixp inum nr ms,
     {< F Fm Fi m0 m flist ilist frees f,
     PRE:hm
@@ -1155,7 +1154,9 @@ Module BFILE.
            [[ f' = mk_bfile (firstn ((length (BFData f)) - nr) (BFData f)) (BFAttr f) ]] *
            [[ MSAlloc ms = MSAlloc ms' /\
               ilist_safe ilist  (pick_balloc frees  (MSAlloc ms'))
-                         ilist' (pick_balloc frees' (MSAlloc ms')) ]]
+                         ilist' (pick_balloc frees' (MSAlloc ms')) ]] *
+           [[ forall inum' def', inum' <> inum -> 
+                selN ilist inum' def' = selN ilist' inum' def' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} shrink lxp bxp ixp inum nr ms.
   Proof.
@@ -1181,9 +1182,10 @@ Module BFILE.
       step.
       erewrite INODE.rep_bxp_switch by eassumption. cancel.
       sepauto.
+
       denote listmatch as Hx.
       setoid_rewrite listmatch_length_pimpl in Hx at 2.
-      prestep; norm. cancel. intuition simpl.
+      prestep; norm. cancel. eassign (ilist'). intuition simpl.  
       2: sepauto.
       pred_apply; cancel.
       erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ). cancel.
@@ -1205,7 +1207,10 @@ Module BFILE.
         rewrite selN_cuttail in *; auto.
       + unfold block_belong_to_file in *; intuition simpl.
         all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
-
+      + eapply list2nmem_array_updN in H18; eauto.
+        rewrite H18.
+        erewrite selN_updN_ne; eauto.
+      + eauto.
     - step.
       erewrite <- BALLOC.bn_valid_switch; eauto.
       rewrite INODE.inode_rep_bn_valid_piff in Hx; destruct_lift Hx.
@@ -1222,7 +1227,7 @@ Module BFILE.
       sepauto.
       denote listmatch as Hx.
       setoid_rewrite listmatch_length_pimpl in Hx at 2.
-      prestep; norm. cancel. intuition simpl.
+      prestep; norm. cancel. eassign (ilist'). intuition simpl.
       2: sepauto.
       pred_apply; cancel.
       cancel.
@@ -1244,6 +1249,10 @@ Module BFILE.
         rewrite selN_cuttail in *; auto.
       + unfold block_belong_to_file in *; intuition simpl.
         all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
+      + eapply list2nmem_array_updN in H18; eauto.
+        rewrite H18.
+        erewrite selN_updN_ne; eauto.
+      + eauto.
 
     Unshelve. easy. all: try exact bfile0.
   Qed.
@@ -1834,7 +1843,6 @@ Module BFILE.
       cancel.
   Qed.
 
-
   Theorem reset_ok : forall lxp bxp ixp inum ms,
     {< F Fm Fi m0 m flist ilist frees f,
     PRE:hm
@@ -1847,8 +1855,9 @@ Module BFILE.
            [[[ flist' ::: (Fi * inum |-> bfile0) ]]] *
            [[ MSAlloc ms = MSAlloc ms' /\ 
               ilist_safe ilist (pick_balloc frees (MSAlloc ms')) 
-                         ilist' (pick_balloc frees' (MSAlloc ms'))  ]]
-
+                         ilist' (pick_balloc frees' (MSAlloc ms'))  ]] *
+           [[ forall inum' def', inum' <> inum -> 
+                selN ilist inum' def' = selN ilist' inum' def' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} reset lxp bxp ixp inum ms.
   Proof.
@@ -1860,6 +1869,14 @@ Module BFILE.
     rewrite Nat.sub_diag; simpl; auto.
     denote (MSAlloc r_ = MSAlloc r_0) as Heq; rewrite Heq in *.
     eapply ilist_safe_trans; eauto.
+    unfold treeseq_ilist_safe in H16.
+    intuition.
+    assert (inum = inum' -> False).
+    intro; eapply H7; eauto.
+    specialize (H9 inum' def' H13).
+    rewrite <- H9.
+    specialize (H12 inum' def' H7).
+    rewrite H12;  eauto.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (truncate _ _ _ _ _ _) _) => apply truncate_ok : prog.

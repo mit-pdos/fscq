@@ -36,6 +36,7 @@ Definition cachemap := Map.t (valu * bool).  (* (valu, dirty flag) *)
 Record cachestate := mk_cs {
   CSMap : cachemap;
   CSMaxCount : nat;
+  CSCount : nat;
   CSEvict : eviction_state
 }.
 
@@ -46,23 +47,28 @@ Module BUFCACHE.
     match (Map.find a (CSMap cs)) with
     | Some (v, true) =>
       Write a v ;;
-      Ret (mk_cs (Map.add a (v, false) (CSMap cs)) (CSMaxCount cs) (CSEvict cs))
+      Ret (mk_cs (Map.add a (v, false) (CSMap cs)) (CSMaxCount cs) (CSCount cs) (CSEvict cs))
     | _ =>
       Ret cs
     end.
 
   Definition evict a (cs : cachestate) :=
     cs <- writeback a cs;
-    Ret (mk_cs (Map.remove a (CSMap cs)) (CSMaxCount cs) (CSEvict cs)).
+    match Map.find a (CSMap cs) with
+    | Some _ =>
+      Ret (mk_cs (Map.remove a (CSMap cs)) (CSMaxCount cs) (CSCount cs - 1) (CSEvict cs))
+    | None =>
+      Ret (mk_cs (Map.remove a (CSMap cs)) (CSMaxCount cs) (CSCount cs) (CSEvict cs))
+    end.
 
   Definition maybe_evict (cs : cachestate) :=
-    If (lt_dec (Map.cardinal (CSMap cs)) (CSMaxCount cs)) {
+    If (lt_dec (CSCount cs) (CSMaxCount cs)) {
       Ret cs
     } else {
       let (victim, evictor) := eviction_choose (CSEvict cs) in
       match (Map.find victim (CSMap cs)) with
       | Some _ =>
-        cs <- evict victim (mk_cs (CSMap cs) (CSMaxCount cs) evictor);
+        cs <- evict victim (mk_cs (CSMap cs) (CSMaxCount cs) (CSCount cs) evictor);
         Ret cs
       | None => (* evictor failed, evict first block *)
         match (Map.elements (CSMap cs)) with
@@ -81,13 +87,19 @@ Module BUFCACHE.
     | None =>
       v <- Read a;
       Ret ^(mk_cs (Map.add a (v, false) (CSMap cs))
-                 (CSMaxCount cs) (eviction_update (CSEvict cs) a), v)
+                 (CSMaxCount cs) (CSCount cs + 1) (eviction_update (CSEvict cs) a), v)
     end.
 
   Definition write a v (cs : cachestate) :=
     cs <- maybe_evict cs;
-    Ret (mk_cs (Map.add a (v, true) (CSMap cs))
-              (CSMaxCount cs) (eviction_update (CSEvict cs) a)).
+    match Map.find a (CSMap cs) with
+    | Some _ =>
+      Ret (mk_cs (Map.add a (v, true) (CSMap cs))
+                 (CSMaxCount cs) (CSCount cs) (eviction_update (CSEvict cs) a))
+    | None =>
+      Ret (mk_cs (Map.add a (v, true) (CSMap cs))
+                 (CSMaxCount cs) (CSCount cs + 1) (eviction_update (CSEvict cs) a))
+    end.
 
   Definition begin_sync (cs : cachestate) :=
     Ret cs.
@@ -101,7 +113,7 @@ Module BUFCACHE.
     Ret cs.
 
 
-  Definition cache0 sz := mk_cs (Map.empty _) sz eviction_init.
+  Definition cache0 sz := mk_cs (Map.empty _) sz 0 eviction_init.
 
   Definition init (cachesize : nat) :=
     Sync;;
@@ -123,7 +135,9 @@ Module BUFCACHE.
   (** rep invariant *)
 
   Definition size_valid cs :=
-    Map.cardinal (CSMap cs) <= CSMaxCount cs /\ CSMaxCount cs <> 0.
+    Map.cardinal (CSMap cs) = CSCount cs /\
+    Map.cardinal (CSMap cs) <= CSMaxCount cs /\
+    CSMaxCount cs <> 0.
 
   Definition addr_valid (d : rawdisk) (cm : cachemap) :=
     forall a, Map.In a cm -> d a <> None.
@@ -253,9 +267,24 @@ Module BUFCACHE.
 
   Lemma size_valid_remove : forall cs a,
     size_valid cs ->
-    size_valid (mk_cs (Map.remove a (CSMap cs)) (CSMaxCount cs) (CSEvict cs)).
+    Map.In a (CSMap cs) ->
+    size_valid (mk_cs (Map.remove a (CSMap cs)) (CSMaxCount cs) (CSCount cs - 1) (CSEvict cs)).
   Proof.
     unfold size_valid in *; intuition simpl.
+    rewrite map_remove_cardinal by eauto; congruence.
+    eapply le_trans.
+    apply map_cardinal_remove_le; auto.
+    auto.
+  Qed.
+
+  Lemma size_valid_remove_notin : forall cs a,
+    size_valid cs ->
+    ~ Map.In a (CSMap cs) ->
+    size_valid (mk_cs (Map.remove a (CSMap cs)) (CSMaxCount cs) (CSCount cs) (CSEvict cs)).
+  Proof.
+    unfold size_valid in *; intuition simpl.
+    rewrite Map.cardinal_1 in *.
+    rewrite map_remove_not_in_elements_eq by auto. auto.
     eapply le_trans.
     apply map_cardinal_remove_le; auto.
     auto.
@@ -362,25 +391,34 @@ Module BUFCACHE.
   Lemma size_valid_add_in : forall cs evictor vv v a,
     Map.find a (CSMap cs) = Some v ->
     size_valid cs ->
-    size_valid (mk_cs (Map.add a vv (CSMap cs)) (CSMaxCount cs) evictor).
+    size_valid (mk_cs (Map.add a vv (CSMap cs)) (CSMaxCount cs) (CSCount cs) evictor).
   Proof.
     unfold size_valid; intuition; simpl.
+    rewrite map_add_dup_cardinal; auto.
+    eexists; eapply MapFacts.find_mapsto_iff; eauto.
     rewrite map_add_dup_cardinal; auto.
     eexists; eapply MapFacts.find_mapsto_iff; eauto.
   Qed.
 
   Lemma size_valid_add : forall cs evictor vv a,
     Map.cardinal (CSMap cs) < CSMaxCount cs ->
+    Map.find a (CSMap cs) = None ->
     size_valid cs ->
-    size_valid (mk_cs (Map.add a vv (CSMap cs)) (CSMaxCount cs) evictor).
+    size_valid (mk_cs (Map.add a vv (CSMap cs)) (CSMaxCount cs) (CSCount cs + 1) evictor).
   Proof.
     unfold size_valid; intuition; simpl.
+
+    destruct (Map.find a0 (CSMap cs)) eqn:?; try congruence.
+    rewrite map_add_cardinal. omega.
+    intuition repeat deex.
+    apply MapFacts.find_mapsto_iff in H3; congruence.
+
     destruct (Map.find a0 (CSMap cs)) eqn:?.
     rewrite map_add_dup_cardinal; auto.
     eexists; eapply MapFacts.find_mapsto_iff; eauto.
     rewrite map_add_cardinal. omega.
-    intuition deex.
-    apply MapFacts.find_mapsto_iff in H0; congruence.
+    intuition repeat deex.
+    apply MapFacts.find_mapsto_iff in H3; congruence.
   Qed.
 
   Lemma addr_valid_add : forall d cm a vv v,
@@ -494,7 +532,7 @@ Module BUFCACHE.
       a |+> vs0
     POST RET:cs' exists v,
       ( [[ Map.find a (CSMap cs) = Some (v, true) /\
-         cs' = mk_cs (Map.add a (v, false) (CSMap cs)) (CSMaxCount cs) (CSEvict cs) ]] *
+         cs' = mk_cs (Map.add a (v, false) (CSMap cs)) (CSMaxCount cs) (CSCount cs) (CSEvict cs) ]] *
          a |+> (v, vsmerge vs0)) \/
       ( [[ (Map.find a (CSMap cs) = None \/
           exists v, Map.find a (CSMap cs) = Some (v, false)) /\ cs' = cs ]] * a |+> vs0 )
@@ -589,7 +627,13 @@ Module BUFCACHE.
     prestep; unfold rep; cancel.
 
     eapply addr_clean_cachepred_remove; eauto.
-    apply size_valid_remove; auto.
+    apply size_valid_remove; auto. eapply MapFacts.in_find_iff. congruence.
+    apply addr_valid_remove; auto.
+    eapply Map.remove_1; eauto.
+    eapply size_valid_remove_cardinal_ok; eauto.
+
+    eapply addr_clean_cachepred_remove; eauto.
+    apply size_valid_remove_notin; auto. eapply MapFacts.not_find_in_iff. congruence.
     apply addr_valid_remove; auto.
     eapply Map.remove_1; eauto.
     eapply size_valid_remove_cardinal_ok; eauto.
@@ -610,7 +654,7 @@ Module BUFCACHE.
   Proof.
     unfold maybe_evict; intros.
     step.
-    step.
+    unfold rep, size_valid in *; step.
 
     prestep; unfold rep; norml; unfold stars; simpl; clear_norm_goal.
 
@@ -713,18 +757,19 @@ Module BUFCACHE.
     unfold rep; cancel.
 
     prestep; unfold rep; norml; unfold stars; simpl; clear_norm_goal.
+
     edestruct ptsto_subset_valid'; eauto; intuition simpl in *.
     erewrite mem_pred_extract with (a := a) at 1 by eauto.
     unfold cachepred at 2.
-    destruct (Map.find a (CSMap r_)) eqn:Hm.
+    destruct (Map.find a (CSMap r_)) eqn:Hm; try congruence.
     destruct p; destruct b.
 
     (* found in cache, was dirty *)
     - cancel.
-      2: apply size_valid_add; eauto.
+      2: eapply size_valid_add_in; eauto.
       rewrite mem_pred_pimpl_except.
       2: intros; apply cachepred_add_invariant; eassumption.
-      rewrite <- mem_pred_absorb with (hm := d) (a := a) (v := (v, v0_cur :: x)).
+      rewrite <- mem_pred_absorb with (hm := d) (a := a) (v := (v, p_1 :: x)).
       unfold cachepred at 3.
       rewrite MapFacts.add_eq_o by reflexivity; safecancel.
       eassign v0; rewrite ptsto_subset_pimpl.
@@ -738,10 +783,10 @@ Module BUFCACHE.
 
     (* found in cache, was clean *)
     - cancel.
-      2: apply size_valid_add; eauto.
+      2: eapply size_valid_add_in; eauto.
       rewrite mem_pred_pimpl_except.
       2: intros; apply cachepred_add_invariant; eassumption.
-      rewrite <- mem_pred_absorb with (hm := d) (a := a) (v := (v, v0_cur :: x)).
+      rewrite <- mem_pred_absorb with (hm := d) (a := a) (v := (v, p_1 :: x)).
       unfold cachepred at 3.
       rewrite MapFacts.add_eq_o by reflexivity; safecancel.
       rewrite ptsto_subset_pimpl.
@@ -754,7 +799,12 @@ Module BUFCACHE.
       eapply incl_tran; eauto; apply incl_tl; apply incl_refl.
 
     (* not found in cache *)
-    - cancel.
+    - edestruct ptsto_subset_valid'; eauto; intuition simpl in *.
+      erewrite mem_pred_extract with (a := a) at 1 by eauto.
+      unfold cachepred at 2.
+      destruct (Map.find a (CSMap r_)) eqn:Hm; try congruence.
+
+      cancel.
       2: apply size_valid_add; eauto.
       rewrite mem_pred_pimpl_except.
       2: intros; apply cachepred_add_invariant; eassumption.

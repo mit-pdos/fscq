@@ -1,20 +1,14 @@
 #!/bin/sh -x
-PATH=/usr/local/bin:$PATH
 
 L=/run/lock/fscq-builder
 lockfile -r 0 $L || exit 0
 
-D=~/builder/runs/$(date +%s)
-mkdir -p $D
-exec >$D/run-out.txt 2>&1
+THISDIR=$(dirname $0)
 
-cd ~/builder/runs && ( ls | head -n -10 | xargs rm -rf )
-cd $D
-git clone git://g.csail.mit.edu/fscq-impl fscq
-cd fscq/src
-script $D/make-out.txt -c 'make'
-script $D/checkproofs-out.txt -c 'make checkproofs J=24'
-cat $D/checkproofs-out.txt | grep -v '^Checking task ' > $D/checkproofs-errors.txt
-cd $D
-python3 ~/builder/parse-errors.py
+$THISDIR/run-one.sh /usr/local/bin master master-coq85
+# $THISDIR/run-one.sh /usr/local/coq-v86/bin master master-coq86
+$THISDIR/run-one.sh /usr/local/coq-trunk/bin master master-coqtrunk
+$THISDIR/run-one.sh /usr/local/coq-v86/bin io-concur io-concur-coq86
+# $THISDIR/run-one.sh /usr/local/coq-trunk/bin io-concur io-concur-coqtrunk
+
 rm -f $L

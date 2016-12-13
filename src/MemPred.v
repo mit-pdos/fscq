@@ -323,12 +323,13 @@ Proof.
     destruct (AEQ a0 a); try solve [ exfalso; eauto ].
     destruct_lift H1.
     generalize dependent H1.
-    unfold_sep_star; intros. repeat deex.
+    unfold_sep_star; intros; repeat safedeex.
     inversion H3.
-    eapply IHdummy in H7; eauto.
-    unfold ptsto in H5; destruct H5.
-    unfold mem_union.
-    rewrite H10; eauto.
+    unfold ptsto, mem_union in H1.
+    intuition; subst.
+    match goal with
+    | [ H : forall _, _ -> m1 _ = None |- _ ] => rewrite H
+    end; eauto.
 Qed.
 
 

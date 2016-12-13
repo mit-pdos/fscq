@@ -918,16 +918,16 @@ Ltac cancel_with' t intuition_t :=
               | apply stars_or_right; cancel_with' t intuition_t ]
       | [ |- _ =p=> _ ] => cancel'
       end;
-  intuition intuition_t;
-  try ( pred_apply; cancel_with' t intuition_t);
-  try congruence;
-  try t;
-  unfold stars; simpl; inv_option_eq;
-  try match goal with
-  | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
-  end.
+  intuition ( intuition_t;
+    try ( pred_apply; cancel_with' t intuition_t);
+    try congruence;
+    try t;
+    unfold stars; simpl; inv_option_eq;
+    try match goal with
+    | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
+    end ).
 
-Ltac cancel_with t := cancel_with' t auto.
+Ltac cancel_with t := cancel_with' t ltac:(auto with *).
 Ltac cancel := cancel_with idtac.
 
 (* fastest version of cancel, should always try this first *)
