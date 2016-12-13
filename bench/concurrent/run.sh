@@ -6,20 +6,15 @@ img=$code/disk.img
 mnt=/tmp/fscq
 
 bin=cfscq
-ncores=
 
 if [ -n "$1" ]; then
   bin="$1"
   shift
 fi
-if [ -n "$1" ]; then
-  ncores="$1"
-  shift
-fi
 
 dd if=$code/init-disk.img of=$img bs=1M
 
-$code/$bin +RTS -N$ncores "$@" -RTS $img -f $extra_args $mnt &
+$code/$bin +RTS "$@" -RTS $img -f $extra_args $mnt &
 sleep 1
 
 time $DIR/large-copy.sh &
