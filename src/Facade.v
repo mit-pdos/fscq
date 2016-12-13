@@ -484,6 +484,174 @@ Ltac forward_solve_step :=
 Ltac forward_solve :=
   repeat forward_solve_step.
 
+Import Go.
+
+Ltac unfold_expr :=
+  match goal with
+  | [H : _ |- _ ] =>
+      progress (unfold is_false, is_true, eval_bool,
+         numop_impl', numop_impl,
+         split_pair_impl, split_pair_impl',
+         join_pair_impl, join_pair_impl',
+         map_add_impl, map_add_impl',
+         map_remove_impl, map_remove_impl',
+         map_find_impl, map_find_impl',
+         map_card_impl, map_card_impl',
+         map_elements_impl, map_elements_impl',
+         eval_test_m, eval_test_num, eval_test_bool,
+         update_one, setconst_impl, duplicate_impl,
+         sel, id, eval, eq_rect_r, eq_rect
+         in H); simpl in H
+  | _ => progress (unfold is_false, is_true, eval_bool,
+         numop_impl', numop_impl,
+         split_pair_impl, split_pair_impl',
+         join_pair_impl, join_pair_impl',
+         map_add_impl, map_add_impl',
+         map_remove_impl, map_remove_impl',
+         map_find_impl, map_find_impl',
+         map_card_impl, map_card_impl',
+         map_elements_impl, map_elements_impl',
+         eval_test_m, eval_test_num, eval_test_bool,
+         update_one, setconst_impl, duplicate_impl,
+         sel, id, eval, eq_rect_r, eq_rect
+         ); simpl
+  end.
+
+
+Ltac deex_hyp H :=
+  match type of H with
+  | exists varname, _ =>
+    let varname' := fresh varname in
+    destruct H as (varname', H); intuition subst
+  end.
+
+Ltac extract_pred_apply_exists :=
+  match goal with
+  | [ H : _ ≲ _ |- _ ] =>
+    repeat setoid_rewrite pimpl_exists_l_star_r in H;
+    repeat setoid_rewrite pimpl_exists_r_star_r in H;
+      unfold pred_apply, exis in H; deex_hyp H; repeat deex_hyp H
+  end.
+
+Ltac eval_expr_step :=
+    repeat extract_var_val;
+    repeat (destruct_pair + unfold_expr); simpl in *;
+    try extract_pred_apply_exists;
+    try subst;
+    match goal with
+    | [H : context [match ?e in (_ = _) return _ with _ => _ end] |- _ ]
+      => rewrite (proof_irrelevance _ e (eq_refl)) in H
+    | [H : context [eq_sym ?t] |- _ ]
+      => setoid_rewrite (proof_irrelevance _ t eq_refl) in H
+    | [e : ?x = _, H: context[match ?x with _ => _ end] |- _]
+      => rewrite e in H
+    | [e : ?x = _ |- context[match ?x with _ => _ end] ]
+      => rewrite e
+    | [H : context[if ?x then _ else _] |- _]
+      => let H' := fresh in destruct x eqn:H'; try omega
+    | [|- context[if ?x then _ else _] ]
+      => let H' := fresh in destruct x eqn:H'; try omega
+    | [H : context [match ?x with _ => _ end],
+       H': _ = ?x |- _]
+      => rewrite <- H' in H
+    | [H : context [match ?x with _ => _ end],
+       H': ?x = _ |- _]
+      => rewrite H' in H
+    | [H : context [match ?x with _ => _ end] |- _]
+      => let H' := fresh in destruct x eqn:H'
+    | [ |- context [match ?e in (_ = _) return _ with _ => _ end] ]
+      => rewrite (proof_irrelevance _ e (eq_refl))
+    | [ |- context [eq_sym ?t] ]
+      => setoid_rewrite (proof_irrelevance _ t eq_refl)
+    | [ |- context [match ?x with _ => _ end] ]
+      => let H' := fresh in destruct x eqn:H'
+    | _
+      => idtac
+    end; try solve [congruence | omega];
+    repeat find_inversion_safe.
+
+Ltac eval_expr := repeat eval_expr_step.
+
+
+Definition prod' := prod.
+Definition exis' := exis.
+
+Hint Extern 0 (okToUnify (ptsto ?a _) (ptsto ?b _)) => unify a b; reflexivity : okToUnify.
+
+
+Lemma ptsto_upd_disjoint' : forall (F : pred) a v m,
+  F m -> m a = None
+  -> (a |-> v * F)%pred (upd m a v).
+Proof.
+  intros.
+  eapply pred_apply_pimpl_proper; [ reflexivity | | eapply ptsto_upd_disjoint; eauto ].
+  cancel.
+Qed.
+
+Create HintDb cancel_go_finish.
+
+Ltac cancel_go :=
+  simpl in *;
+  fold prod' in *; fold exis' in *;
+  cancel;
+  (solve [
+    match goal with
+      | [|- (?PRE =p=> ?POST)] =>
+      set (H := POST);
+      unfold exis' in H; subst H; cancel
+    end; cancel |
+    unfold exis'; cancel; auto with cancel_go_finish ])
+    || cancel.
+
+Lemma ptsto_delete' : forall a (F :pred) (m : mem),
+  (a |->? * F)%pred m -> F (delete m a).
+Proof.
+  intros.
+  apply pimpl_exists_r_star_r in H.
+  unfold exis in H.
+  deex.
+  eapply ptsto_delete; eauto.
+Qed.
+
+Ltac pred_solve_step := match goal with
+  | [ |- ( ?P )%pred (upd _ ?a ?x) ] =>
+    match P with
+    | context [(a |-> ?x)%pred] =>
+      eapply pimpl_apply with (p := (a |-> x * _)%pred);
+      [ cancel_go | (eapply ptsto_upd_disjoint'; solve [eauto]) || eapply ptsto_upd ]
+    | context [(@ptsto ?AT ?AEQ ?V a ?y)%pred] =>
+      let H := fresh in
+      assert (@okToUnify AT AEQ V (ptsto a y) (ptsto a x)) as H;
+      [ eauto with okToUnify | rewrite H ]
+    end
+  | [ |- ( ?P )%pred (delete _ ?a) ] =>
+    eapply ptsto_delete' with (F := P)
+  | [ H : _%pred ?t |- _%pred ?t ] => pred_apply; solve [cancel_go]
+  | _ => solve [cancel_go]
+  end.
+
+Class DefaultValue T {Wrapper : GoWrapper T} :=
+  {
+    zeroval : T;
+    default_zero : wrap zeroval = Go.default_value wrap_type;
+  }.
+
+Arguments DefaultValue T {Wrapper}.
+
+
+Create HintDb pred_solve_rewrites.
+Hint Rewrite add_upd remove_delete : pred_solve_rewrites.
+(* Coq bug! This hangs:
+Hint Rewrite default_zero : pred_solve_rewrites.
+*)
+
+Ltac pred_solve := progress (
+  unfold pred_apply in *;
+  repeat pred_solve_step;
+  repeat (autorewrite with pred_solve_rewrites || rewrite ?default_zero);
+  repeat pred_solve_step).
+
+
 Lemma CompileConst : forall env A var (v : nat),
   EXTRACT Ret v
   {{ var ~>? W * A }}
@@ -493,28 +661,16 @@ Proof.
   unfold ProgOk.
   intros.
   inv_exec_progok.
+  eval_expr.
   do 2 eexists.
   intuition eauto.
-  unfold Go.sel, id, Go.update_one, Go.setconst_impl in *.
-  destruct vs0.
-  repeat extract_var_val.
-  repeat find_inversion_safe.
-  find_reverse_rewrite.
-  unfold wrap in *; simpl in *.
-  repeat find_inversion_safe.
-  rewrite add_upd.
-  eapply ptsto_upd.
-  eassumption.
+  pred_solve.
 
+  eval_expr.
   contradiction H1.
-  repeat eexists.
-  eapply Go.StepModify.
-  eapply sep_star_ptsto_some in H.
-  unfold Go.sel; simpl.
-  unfold mem_of in *.
-  rewrite H.
-  trivial.
-  all: simpl; reflexivity.
+  repeat econstructor; eauto.
+  eval_expr.
+  reflexivity.
 Qed.
 
 Lemma CompileRet : forall T {H: GoWrapper T} env A B var (v : T) p,
@@ -571,14 +727,14 @@ Proof.
   all: auto.
 Qed.
 
-Lemma CompileConst' : forall env A var (v v0 : nat),
+Lemma CompileConst' : forall env A var (v : nat),
   EXTRACT Ret tt
-  {{ var ~> v0 * A }}
+  {{ var ~>? nat * A }}
     var <~const v
   {{ fun _ => var ~> v * A }} // env.
 Proof.
   eauto using CompileRet, CompileConst.
-Qed.
+Qed. 
 
 Definition vars_subset V (subset set : VarMap.t V) := forall k, VarMap.find k set = None -> VarMap.find k subset = None.
 
@@ -679,7 +835,7 @@ Lemma subset_add_remove :
     vars_subset (VarMap.remove var m') m.
 Proof.
   unfold vars_subset; intros.
-  destruct (Nat.eq_dec k var).
+  destruct (Nat.eq_dec k var0).
   - eauto using VarMapFacts.remove_eq_o.
   - rewrite VarMapFacts.remove_neq_o; eauto.
     eapply H.
@@ -693,7 +849,7 @@ Lemma subset_replace :
     vars_subset (var ->> v; m) m.
 Proof.
   unfold vars_subset; intros.
-  destruct (Nat.eq_dec k var).
+  destruct (Nat.eq_dec k var0).
   - congruence.
   - rewrite VarMapFacts.add_neq_o; eauto.
 Qed.
@@ -704,7 +860,7 @@ Lemma subset_remove :
     vars_subset (VarMap.remove var m) m.
 Proof.
   unfold vars_subset; intros.
-  destruct (Nat.eq_dec k var).
+  destruct (Nat.eq_dec k var0).
   - eauto using VarMapFacts.remove_eq_o.
   - rewrite VarMapFacts.remove_neq_o; eauto.
 Qed.
@@ -743,25 +899,10 @@ Theorem prog_vars_decrease :
 Admitted.
 *)
 
-Class DefaultValue T {Wrapper : GoWrapper T} :=
-  {
-    zeroval : T;
-    default_zero : wrap zeroval = Go.default_value wrap_type;
-  }.
-
-Arguments DefaultValue T {Wrapper}.
-
-Definition prod' := prod.
-Definition exis' := exis.
-
-Hint Extern 0 (okToUnify (ptsto ?a _) (ptsto ?b _)) => unify a b; reflexivity : okToUnify.
-
 Inductive Declaration :=
 | Decl (T : Type) {Wr: GoWrapper T} {D : DefaultValue T}.
 
 Arguments Decl T {Wr} {D}.
-
-Import Go.
 
 Fixpoint n_tuple_unit n (T : Type) : Type :=
   match n with
@@ -791,61 +932,7 @@ Proof.
   - destruct a.
     cancel. auto.
 Qed.
-
-Lemma ptsto_upd_disjoint' : forall (F : pred) a v m,
-  F m -> m a = None
-  -> (a |-> v * F)%pred (upd m a v).
-Proof.
-  intros.
-  eapply pred_apply_pimpl_proper; [ reflexivity | | eapply ptsto_upd_disjoint; eauto ].
-  cancel.
-Qed.
-
-Ltac cancel_go :=
-  simpl in *;
-  fold prod' in *; fold exis' in *;
-  cancel;
-  (solve [
-    match goal with
-      | [|- (?PRE =p=> ?POST)] =>
-      set (H := POST);
-      unfold exis' in H; subst H; cancel
-    end; cancel |
-    unfold exis'; cancel; apply decls_pre_impl_post ])
-    || cancel.
-
-Lemma ptsto_delete' : forall a (F :pred) (m : mem),
-  (a |->? * F)%pred m -> F (delete m a).
-Proof.
-  intros.
-  apply pimpl_exists_r_star_r in H.
-  unfold exis in H.
-  deex.
-  eapply ptsto_delete; eauto.
-Qed.
-
-Ltac pred_solve_step := match goal with
-  | [ |- ( ?P )%pred (upd _ ?a ?x) ] =>
-    match P with
-    | context [(a |-> ?x)%pred] =>
-      eapply pimpl_apply with (p := (a |-> x * _)%pred);
-      [ cancel_go | (eapply ptsto_upd_disjoint'; solve [eauto]) || eapply ptsto_upd ]
-    | context [(@ptsto ?AT ?AEQ ?V a ?y)%pred] =>
-      let H := fresh in
-      assert (@okToUnify AT AEQ V (ptsto a y) (ptsto a x)) as H;
-      [ eauto with okToUnify | rewrite H ]
-    end
-  | [ |- ( ?P )%pred (delete _ ?a) ] =>
-    eapply ptsto_delete' with (F := P)
-  | [ H : _%pred ?t |- _%pred ?t ] => pred_apply; solve [cancel_go]
-  | _ => solve [cancel_go]
-  end.
-
-Ltac pred_solve := progress (
-  unfold pred_apply in *;
-  repeat pred_solve_step;
-  repeat rewrite ?add_upd, ?remove_delete, ?default_zero;
-  repeat pred_solve_step).
+Hint Resolve decls_pre_impl_post : cancel_go_finish.
 
 Lemma Declare_fail :
   forall env d s t xp,
@@ -868,6 +955,7 @@ Proof.
   + repeat inv_exec; auto.
   + contradiction H0. destruct st. repeat econstructor.
 Qed.
+
 
 Lemma CompileDeclare :
   forall env R T {Wr : GoWrapper T} {WrD : DefaultValue T} A B (p : prog R) xp,
@@ -1289,92 +1377,6 @@ Proof.
   intuition.
 Admitted.
 
-Ltac unfold_expr :=
-  match goal with
-  | [H : _ |- _ ] =>
-      progress (unfold is_false, is_true, eval_bool,
-         numop_impl', numop_impl,
-         split_pair_impl, split_pair_impl',
-         join_pair_impl, join_pair_impl',
-         map_add_impl, map_add_impl',
-         map_remove_impl, map_remove_impl',
-         map_find_impl, map_find_impl',
-         map_card_impl, map_card_impl',
-         map_elements_impl, map_elements_impl',
-         eval_test_m, eval_test_num, eval_test_bool,
-         update_one, setconst_impl, duplicate_impl,
-         sel, id, eval, eq_rect_r, eq_rect
-         in H); simpl in H
-  | _ => progress (unfold is_false, is_true, eval_bool,
-         numop_impl', numop_impl,
-         split_pair_impl, split_pair_impl',
-         join_pair_impl, join_pair_impl',
-         map_add_impl, map_add_impl',
-         map_remove_impl, map_remove_impl',
-         map_find_impl, map_find_impl',
-         map_card_impl, map_card_impl',
-         map_elements_impl, map_elements_impl',
-         eval_test_m, eval_test_num, eval_test_bool,
-         update_one, setconst_impl, duplicate_impl,
-         sel, id, eval, eq_rect_r, eq_rect
-         ); simpl
-  end.
-
-
-Ltac deex_hyp H :=
-  match type of H with
-  | exists varname, _ =>
-    let varname' := fresh varname in
-    destruct H as (varname', H); intuition subst
-  end.
-
-Ltac extract_pred_apply_exists :=
-  match goal with
-  | [ H : _ ≲ _ |- _ ] =>
-    repeat setoid_rewrite pimpl_exists_l_star_r in H;
-    repeat setoid_rewrite pimpl_exists_r_star_r in H;
-      unfold pred_apply, exis in H; deex_hyp H; repeat deex_hyp H
-  end.
-
-Ltac eval_expr_step :=
-    repeat extract_var_val;
-    repeat (destruct_pair + unfold_expr); simpl in *;
-    try extract_pred_apply_exists;
-    try subst;
-    match goal with
-    | [H : context [match ?e in (_ = _) return _ with _ => _ end] |- _ ]
-      => rewrite (proof_irrelevance _ e (eq_refl)) in H
-    | [H : context [eq_sym ?t] |- _ ]
-      => setoid_rewrite (proof_irrelevance _ t eq_refl) in H
-    | [e : ?x = _, H: context[match ?x with _ => _ end] |- _]
-      => rewrite e in H
-    | [e : ?x = _ |- context[match ?x with _ => _ end] ]
-      => rewrite e
-    | [H : context[if ?x then _ else _] |- _]
-      => let H' := fresh in destruct x eqn:H'; try omega
-    | [|- context[if ?x then _ else _] ]
-      => let H' := fresh in destruct x eqn:H'; try omega
-    | [H : context [match ?x with _ => _ end],
-       H': _ = ?x |- _]
-      => rewrite <- H' in H
-    | [H : context [match ?x with _ => _ end],
-       H': ?x = _ |- _]
-      => rewrite H' in H
-    | [H : context [match ?x with _ => _ end] |- _]
-      => let H' := fresh in destruct x eqn:H'
-    | [ |- context [match ?e in (_ = _) return _ with _ => _ end] ]
-      => rewrite (proof_irrelevance _ e (eq_refl))
-    | [ |- context [eq_sym ?t] ]
-      => setoid_rewrite (proof_irrelevance _ t eq_refl)
-    | [ |- context [match ?x with _ => _ end] ]
-      => let H' := fresh in destruct x eqn:H'
-    | _
-      => idtac
-    end; try solve [congruence | omega];
-    repeat find_inversion_safe.
-
-Ltac eval_expr := repeat eval_expr_step.
-
 Lemma CompileIf : forall V varb (b : bool)
   (ptrue pfalse : prog V) xptrue xpfalse F G env,
   EXTRACT ptrue
@@ -1460,11 +1462,11 @@ Proof.
   eval_expr.
   repeat econstructor.
   pred_solve.
-  contradiction H1.
-  repeat econstructor.
 
+  contradiction H1.
   eval_expr.
-  all: simpl; reflexivity.
+  repeat econstructor.
+  all: eval_expr; [reflexivity].
 Qed.
 
 Lemma CompileAddInPlace1 :
@@ -1482,10 +1484,9 @@ Proof.
   pred_solve.
 
   contradiction H1.
-  repeat econstructor.
-
   eval_expr.
-  all: simpl; reflexivity.
+  repeat econstructor.
+  all: eval_expr; [reflexivity].
 Qed.
 
 (* TODO: make it unnecessary to have all these separate lemmas *)
@@ -1502,11 +1503,11 @@ Proof.
   eval_expr.
   repeat econstructor.
   pred_solve.
-  contradiction H1.
-  repeat econstructor.
 
+  contradiction H1.
   eval_expr.
-  all: simpl; reflexivity.
+  repeat econstructor.
+  all: eval_expr; [reflexivity].
 Qed.
 
 Lemma CompileAppend :
@@ -1871,10 +1872,10 @@ Defined.
 
 Instance list_default_value A {W : GoWrapper A} : DefaultValue (list A) := {| zeroval := [] |}. auto. Defined.
 
-Lemma SetConstBefore : forall T (T' : GoWrapper T) (p : prog T) env xp v n (x : W) A B,
+Lemma SetConstBefore : forall T (T' : GoWrapper T) (p : prog T) env xp v n A B,
   EXTRACT p {{ v ~> n * A }} xp {{ B }} // env ->
   EXTRACT p
-    {{ v ~> x * A }}
+    {{ v ~>? nat * A }}
       v <~const n; xp
     {{ B }} // env.
 Proof.
@@ -1941,8 +1942,7 @@ Proof.
   intros.
   eapply CompileBefore; eauto.
   eapply hoare_weaken.
-  eapply CompileRet with (T := nat).
-  instantiate (var0 := v).
+  eapply CompileRet with (T := nat) (var0 := v).
   eapply hoare_weaken_post; [ | eapply CompileAddInPlace1 with (avar := v) (bvar := va) ].
   all : cancel_go.
 Qed.
@@ -1991,7 +1991,9 @@ Lemma CompileFor : forall L G (L' : GoWrapper L) loopvar F
 Proof.
   intros.
   eapply CompileDeclare with (Wr := GoWrapper_Num). intro one.
-  eapply SetConstBefore; eauto.
+  eapply hoare_strengthen_pre; [>
+  | eapply SetConstBefore; eauto ].
+  cancel_go.
   eapply CompileDeclare with (Wr := GoWrapper_Num). intro term.
   eapply hoare_strengthen_pre; [>
   | eapply DuplicateBefore with (x' := 0) (x := i); eauto].
@@ -2344,6 +2346,8 @@ Proof.
     repeat econstructor.
     eval_expr.
     pred_solve.
+    eapply pimpl_apply.
+    2: eapply ptsto_upd. 2: pred_apply; cancel_go. cancel_go.
   - inv_exec_progok.
   - inv_exec_progok.
     contradiction H1.
@@ -2832,6 +2836,18 @@ Ltac compile_decompose := match goal with
     end
   end.
 
+Ltac compile_if := match goal with
+  | [|- EXTRACT (if ?x_ then _ else _) {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_val x_ pre with
+    | None =>
+      eapply extract_equiv_prog with (pr1 := Bind (Ret x_) (fun x => if x then _ else _));
+      [ rewrite bind_left_id; apply prog_equiv_equivalence |]
+    | Some ?kx_ =>
+      eapply hoare_weaken; [eapply CompileIf with (varb := kx_)|
+      cancel_go..]
+    end
+  end.
+
 Ltac compile_step :=
   match goal with
   | [ |- @sigT _ _ ] => eexists; intros; eapply CompileDeclareMany; intro
@@ -2842,6 +2858,7 @@ Ltac compile_step :=
   || compile_ret
   || compile_match
   || compile_read_write
+  || compile_if
   || compile_for
   || compile_call
   || compile_add
@@ -2861,7 +2878,8 @@ Example append_list_in_pair : sigT (fun p => forall (a x : nat) xs,
     p
   {{ fun ret => 0 ~> ret * 1 ~>? nat }} // StringMap.empty _).
 Proof.
-  compile.
+  (* This is a simple example which already seems much slower than necessary *)
+  Time compile. (* 4.2 seconds *)
 Defined.
 Eval lazy in (projT1 append_list_in_pair).
 
@@ -2943,25 +2961,13 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-
-(*TODO compile_if in 'compile' tactic *)
-Ltac compile_if := match goal with
-  | [|- EXTRACT (if ?x_ then _ else _) {{ ?pre }} _ {{ _ }} // _ ] =>
-    match find_val x_ pre with
-    | None =>
-      eapply extract_equiv_prog with (pr1 := Bind (Ret x_) (fun x => if x then _ else _));
-      [ rewrite bind_left_id; apply prog_equiv_equivalence |]
-    | Some ?kx_ =>
-      eapply hoare_weaken; [eapply CompileIf with (varb := kx_)|
-      cancel_go..]
-    end
-  end.
-  compile_step.
-  compile_if.
   compile_step.
   compile_step.
   compile_step.
-  compile_if.
+  compile_step.
+  compile_step.
+  compile_step.
+  3: cancel_go.
   Focus 3. unfold exis'. cancel.
   match goal with
   | [ |- ?P =p=> ?Q ] => set Q
@@ -3022,10 +3028,13 @@ Ltac compile_if := match goal with
   unfold prod'.
   compile_step.
   compile_step.
-  compile_step.
+  (***********)
+  (* This [compile_step] takes >2 minutes *)
+  (***********)
+  Time compile_step.
   unfold exis'. cancel.
   Axiom admit : False.
- (* TODO: [CSMap cs] is gone! *) exfalso; apply admit.
+  (* TODO: [CSMap cs] is gone! *) exfalso; apply admit.
   eapply hoare_weaken.
   eapply CompileRet' with (var0 := 1).
   eapply hoare_weaken_post.
@@ -3071,6 +3080,7 @@ Ltac compile_if := match goal with
   Unshelve.
   all: repeat constructor.
   exact $0.
+(* This eats memory: *)
 Defined.
 Eval lazy in (projT1_sig compile_writeback).
 
