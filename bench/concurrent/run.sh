@@ -10,19 +10,16 @@ ncores=
 
 if [ -n "$1" ]; then
   bin="$1"
+  shift
 fi
-if [ -n "$2" ]; then
-  ncores="$2"
-fi
-
-cp $code/init-disk.img $img
-
-extra_args=""
-if [ "$bin" = "fscq" ]; then
-  extra_args="-s"
+if [ -n "$1" ]; then
+  ncores="$1"
+  shift
 fi
 
-$code/$bin +RTS -N$ncores -RTS $img -f $extra_args $mnt &
+dd if=$code/init-disk.img of=$img bs=1M
+
+$code/$bin +RTS -N$ncores "$@" -RTS $img -f $extra_args $mnt &
 sleep 1
 
 time $DIR/large-copy.sh &
