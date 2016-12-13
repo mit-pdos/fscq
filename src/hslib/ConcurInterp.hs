@@ -99,8 +99,9 @@ finish_read (BackgroundReads pendings tid_reads) a tid =
         Nothing -> do
           putStrLn $ "waiting for fetch " ++ show a;
           takeMVar m_read
-    when (length (Data.Map.findWithDefault [] tid tid_reads) > 1)
-      (error $ "tid " ++ show tid ++ " issued more than one read")
+    tid_addrs <- return $ Data.Map.findWithDefault [] tid tid_reads
+    when (length tid_addrs > 1)
+      (putStrLn $ show tid ++ " issued multiple reads: " ++ show tid_addrs)
     let pendings' = Data.Map.delete a pendings
     let tid_reads' = Data.Map.adjust (Data.List.delete a) tid tid_reads in
       return $ (v, BackgroundReads pendings' tid_reads')
