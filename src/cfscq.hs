@@ -37,7 +37,7 @@ import qualified Errno
 type HT = Integer
 
 verboseFuse :: Bool
-verboseFuse = True
+verboseFuse = False
 
 cachesize :: Integer
 cachesize = 100000
