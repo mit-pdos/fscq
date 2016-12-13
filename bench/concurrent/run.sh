@@ -15,17 +15,13 @@ fi
 
 #dd if=$code/init-disk.img of=$img bs=1M
 
-$code/$bin +RTS "$@" -RTS $img -f $extra_args $mnt &
-sleep 1
+# without -f fuse forks when the file system is ready
+$code/$bin +RTS "$@" -RTS $img $mnt
 
 time $DIR/large-copy.sh &
-large_pid=$!
 
 time $DIR/small-copies.sh &
-small_pid=$!
 
-wait $small_pid
-wait $large_pid
-
-sudo umount $mnt
 wait
+
+fusermount -u $mnt
