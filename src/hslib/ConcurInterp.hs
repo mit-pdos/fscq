@@ -9,6 +9,7 @@ import Word
 import Control.Exception as E
 import Control.Concurrent.MVar
 import Control.Concurrent (forkIO)
+import Control.Monad (when)
 import System.CPUTime
 import Data.Map
 import GHC.Prim
@@ -20,6 +21,9 @@ verbose = False
 
 timeReads :: Bool
 timeReads = False
+
+actuallyYield :: Bool
+actuallyYield = True
 
 debugmsg :: Int -> String -> IO ()
 debugmsg tid s =
@@ -154,9 +158,9 @@ run_dcode _ tid (GetTID) = do
 run_dcode (_, cs@(CS _ _ m_reads)) tid (Yield wchan) = do
   debugmsg tid $ "Yield " ++ (show wchan)
   bg_reads <- readIORef m_reads
-  release_global_lock cs
+  when actuallyYield $ release_global_lock cs
   wait_tid_reads tid bg_reads
-  acquire_global_lock cs
+  when actuallyYield $ acquire_global_lock cs
   return . unsafeCoerce $ ()
 run_dcode _ tid (Wakeup wchan) = do
   debugmsg tid $ "Wakeup " ++ (show wchan)
