@@ -294,7 +294,9 @@ Module DTCrash.
     - destruct st'; destruct st'0; simpl in *; try congruence.
       inversion H6. inversion H8. inversion H. inversion H4. inversion H5. subst; simpl in *.
       constructor; eauto.
-      eapply IHtree_ents. eauto. 2: eauto. congruence. 2: congruence. 2: eauto.
+      eapply IHtree_ents. eauto.
+      all: try match goal with | [ |- Forall2 _ _ _ ] => eauto end.
+      all: eauto.
       constructor; eauto.
       constructor; eauto.
   Qed.
