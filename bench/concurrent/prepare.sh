@@ -11,8 +11,8 @@ $code/mkfs $img
 $code/fscq $img -f $mnt &
 sleep 1
 
-dd if=/dev/urandom of=$mnt/large-10m bs=1k count=10000
-dd if=/dev/urandom of=$mnt/small-4k bs=1k count=4
+dd if=/dev/urandom of=$mnt/large-10m bs=1M count=10
+dd if=/dev/urandom of=$mnt/small-4k bs=1K count=4
 
 sudo umount $mnt
 # fscq binary should terminate
