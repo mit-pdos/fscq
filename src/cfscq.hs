@@ -100,8 +100,10 @@ run_fuse disk_fn fuse_args = do
   then
     do
       putStrLn $ "Recovering file system"
-      (s, (fsxp, ())) <- SeqI.run ds $ AsyncFS._AFS__recover cachesize
-      return (s, fsxp)
+      res <- SeqI.run ds $ AsyncFS._AFS__recover cachesize
+      case res of
+        Errno.Err _ -> error $ "recovery failed"
+        Errno.OK (s, fsxp) -> return (s, fsxp)
   else
     do
       putStrLn $ "Initializing file system"
