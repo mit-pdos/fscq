@@ -99,6 +99,10 @@ finish_read (BackgroundReads pendings tid_reads) a tid =
         Nothing -> do
           putStrLn $ "waiting for fetch " ++ show a;
           takeMVar m_read
+    -- it's possible for this address to be initiated by another tid, which is
+    -- waiting for it to finish before resuming; we will remove the reference to
+    -- this pending read, but if another thread has a reference to it
+    putMVar m_read v
     let pendings' = Data.Map.delete a pendings
     tid_addrs <- return $ Data.Map.findWithDefault [] tid tid_reads
     (tid_pendings, tid_dones) <- return $
