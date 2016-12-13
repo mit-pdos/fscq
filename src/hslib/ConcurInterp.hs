@@ -11,7 +11,7 @@ import Control.Concurrent.MVar
 import Control.Concurrent (forkIO)
 import Control.Monad (when)
 import System.CPUTime
-import Data.Map
+import qualified Data.Map
 import qualified Data.List
 import GHC.Prim
 import Data.IORef
@@ -99,11 +99,17 @@ finish_read (BackgroundReads pendings tid_reads) a tid =
         Nothing -> do
           putStrLn $ "waiting for fetch " ++ show a;
           takeMVar m_read
-    tid_addrs <- return $ Data.Map.findWithDefault [] tid tid_reads
-    when (length tid_addrs > 1)
-      (putStrLn $ show tid ++ " issued multiple reads: " ++ show tid_addrs)
     let pendings' = Data.Map.delete a pendings
-    let tid_reads' = Data.Map.adjust (Data.List.delete a) tid tid_reads in
+    tid_addrs <- return $ Data.Map.findWithDefault [] tid tid_reads
+    (tid_pendings, tid_dones) <- return $
+      Data.List.partition (`Data.Map.member` pendings') tid_addrs
+    when (length tid_pendings > 0) $ do
+      error $ show tid ++ " issued multiple pending reads: " ++ show tid_pendings
+    when (length tid_addrs > 1) $ do
+      -- this isn't an error, it just means we initiated some other reads that
+      -- have since finished due to other threads
+      debugmsg tid $ "left multiple reads: " ++ show tid_addrs
+    let tid_reads' = Data.Map.adjust (Data.List.\\ tid_dones) tid tid_reads in
       return $ (v, BackgroundReads pendings' tid_reads')
 
 waitMVar :: MVar a -> IO ()
@@ -113,7 +119,7 @@ waitMVar m = do
 
 wait_tid_reads :: Int -> BackgroundReads -> IO ()
 wait_tid_reads tid (BackgroundReads pendings tid_reads) = do
-  let pending_reads = findWithDefault [] tid tid_reads in
+  let pending_reads = Data.Map.findWithDefault [] tid tid_reads in
     mapM_ (\a -> case Data.Map.lookup a pendings of
               Just m -> waitMVar m
               Nothing -> return ()) pending_reads
