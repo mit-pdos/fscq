@@ -18,9 +18,9 @@ fi
 # without -f fuse forks when the file system is ready
 $code/$bin +RTS "$@" -RTS $img $mnt
 
-time $DIR/large-copy.sh &
+time $DIR/large-read.sh &
 
-time $DIR/small-copies.sh &
+time $DIR/small-reads.sh &
 
 wait
 

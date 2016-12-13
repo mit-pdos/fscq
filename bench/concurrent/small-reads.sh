@@ -8,3 +8,4 @@ for i in $(seq 25); do
   done;
   echo "done with $i/25"
 done
+echo "done with small reads"
