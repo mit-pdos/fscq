@@ -12,6 +12,7 @@ import Control.Concurrent (forkIO)
 import Control.Monad (when)
 import System.CPUTime
 import Data.Map
+import qualified Data.List
 import GHC.Prim
 import Data.IORef
 import qualified Crypto.Hash.SHA256 as SHA256
@@ -67,7 +68,7 @@ set_var :: VMap -> Variables.Coq_var a -> a -> VMap
 set_var m a v = Data.Map.insert (hmember_to_int a) (unsafeCoerce v) m
 
 type PendingRead = MVar Coq_word
-type ThreadReads = [MVar Coq_word]
+type ThreadReads = [Integer]
 
 data BackgroundReads =
   BackgroundReads !(Data.Map.Map Integer PendingRead) !(Data.Map.Map Int ThreadReads)
@@ -84,8 +85,8 @@ new_read ds (BackgroundReads pendings tid_reads) a tid = do
   let pendings' = Data.Map.insert a pending pendings
       tid_reads' = Data.Map.alter
         (\v -> case v of
-            Nothing -> Just $ [pending]
-            Just tids -> Just $ tids ++ [pending]) tid tid_reads in
+            Nothing -> Just $ [a]
+            Just tids -> Just $ tids ++ [a]) tid tid_reads in
     return $ BackgroundReads pendings' tid_reads'
 
 finish_read :: BackgroundReads -> Integer -> Int -> IO (Coq_word, BackgroundReads)
@@ -98,8 +99,10 @@ finish_read (BackgroundReads pendings tid_reads) a tid =
         Nothing -> do
           putStrLn $ "waiting for fetch " ++ show a;
           takeMVar m_read
+    when (length (Data.Map.findWithDefault [] tid tid_reads) > 1)
+      (error $ "tid " ++ show tid ++ " issued more than one read")
     let pendings' = Data.Map.delete a pendings
-    let tid_reads' = Data.Map.delete tid tid_reads in
+    let tid_reads' = Data.Map.adjust (Data.List.delete a) tid tid_reads in
       return $ (v, BackgroundReads pendings' tid_reads')
 
 waitMVar :: MVar a -> IO ()
@@ -108,9 +111,11 @@ waitMVar m = do
   putMVar m v
 
 wait_tid_reads :: Int -> BackgroundReads -> IO ()
-wait_tid_reads tid (BackgroundReads _ tid_reads) = do
+wait_tid_reads tid (BackgroundReads pendings tid_reads) = do
   let pending_reads = findWithDefault [] tid tid_reads in
-    mapM_ waitMVar pending_reads
+    mapM_ (\a -> case Data.Map.lookup a pendings of
+              Just m -> waitMVar m
+              Nothing -> return ()) pending_reads
 
 data ConcurrentState =
   -- CS vm lock reads tid_reads
