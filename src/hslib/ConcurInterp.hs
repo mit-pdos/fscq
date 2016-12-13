@@ -87,12 +87,13 @@ new_read ds (BackgroundReads pendings tid_reads) a tid = do
 finish_read :: BackgroundReads -> Integer -> Int -> IO (Coq_word, BackgroundReads)
 finish_read (BackgroundReads pendings tid_reads) a tid =
   let m_read = fromJust . Data.Map.lookup a $ pendings in do
-    maybe_v <- tryTakeMVar m_read
-    v <- case maybe_v of
-           Just v -> return v
-           Nothing -> do
-             putStrLn $ "waiting for read at " ++ show a
-             takeMVar m_read
+    v <- do
+      maybe_v <- tryTakeMVar m_read
+      case maybe_v of
+        Just v -> return v
+        Nothing -> do
+          putStrLn $ "waiting for fetch " ++ show a;
+          takeMVar m_read
     let pendings' = Data.Map.delete a pendings
     let tid_reads' = Data.Map.delete tid tid_reads in
       return $ (v, BackgroundReads pendings' tid_reads')
