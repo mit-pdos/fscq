@@ -3,5 +3,5 @@
 mnt=/tmp/fscq
 
 #cp $mnt/large-10m $mnt/large-10m-copy
-cat $mnt/large-10m > /dev/null
+cp $mnt/large-10m /tmp/large-10m
 echo "done with large copy"

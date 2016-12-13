@@ -2,7 +2,8 @@
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 code=$DIR/../../src
-img=$code/disk.img
+#img=$code/disk.img
+img=/dev/sdb1
 mnt=/tmp/fscq
 
 bin=cfscq
@@ -12,7 +13,7 @@ if [ -n "$1" ]; then
   shift
 fi
 
-dd if=$code/init-disk.img of=$img bs=1M
+#dd if=$code/init-disk.img of=$img bs=1M
 
 $code/$bin +RTS "$@" -RTS $img -f $extra_args $mnt &
 sleep 1
