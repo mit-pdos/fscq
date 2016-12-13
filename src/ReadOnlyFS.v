@@ -510,8 +510,9 @@ Theorem file_get_attr_ok : forall inum,
                    match r with
                    | Some r => r = BFILE.BFAttr f /\
                               BFILE.MSAlloc (get mMscs m') = BFILE.MSAlloc (get mMscs m)
-                   | None => guar App.delta tid s s'
+                   | None => True
                    end /\
+                   guar App.delta tid s s' /\
                    hashmap_le hm hm' /\
                    guar App.delta tid s_i' s'
               }} file_get_attr inum.
@@ -568,6 +569,73 @@ Proof.
     intuition eauto.
 Qed.
 
+Hint Extern 1 {{file_get_attr _; _}} => apply file_get_attr_ok : prog.
+
+Theorem file_get_attr_retry_ok : forall inum n,
+      SPEC App.delta, tid |-
+              {{ pathname f,
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) /\
+                   guar App.delta tid s_i s
+               | POST d' hm' m' s_i' s' r:
+                   let tree' := get vDirTree s' in
+                   invariant App.delta d' hm' m' s' /\
+                   tree' = get vDirTree s /\
+                   match r with
+                   | Some r => r = BFILE.BFAttr f
+                   | None => True
+                   end /\
+                   rely App.delta tid s s' /\
+                   hashmap_le hm hm' /\
+                   guar App.delta tid s_i' s'
+              }} file_get_attr_retry inum n.
+Proof.
+  unfold file_get_attr_retry.
+  induction n; simpl; intros.
+
+  eapply pimpl_ok; [ apply ret_ok | ]; intros; repeat deex.
+  exists tt; intuition eauto.
+  eapply pimpl_ok; [ apply H0 | ]; intros; intuition subst; eauto.
+  reflexivity.
+
+  step.
+  descend; intuition eauto.
+
+  step.
+  step.
+
+  eapply rely_is_guar; simpl; intuition eauto.
+
+  step.
+  eapply pimpl_ok; [ apply IHn | ]; intuition eauto.
+  simpl in *; subst.
+  repeat match goal with
+         | [ H: rely App.delta _ _ _ |- _ ] =>
+           apply guar_is_rely in H; simpl in H
+         end.
+  repeat deex.
+  repeat match goal with
+         | [ H: get _ _ = get _ _ |- _ ] =>
+           rewrite H in *
+         end.
+  descend; intuition (subst; eauto).
+
+  step.
+  destruct ret_0; intuition eauto.
+
+  eapply rely_preorder; eauto.
+  eapply rely_is_guar; eauto.
+  simpl; intuition eauto; try congruence.
+
+  eapply rely_preorder; eauto.
+  eapply rely_is_guar; simpl; intuition eauto; try congruence.
+
+  eapply hashmap_le_preorder; eauto.
+  eapply hashmap_le_preorder; eauto.
+Qed.
+
 Definition lookup dnum fnlist :=
   wrap_syscall (fun fsxp mscs =>
                   CFS.lookup fsxp dnum fnlist mscs).
@@ -592,8 +660,9 @@ Theorem lookup_ok : forall dnum fnlist,
                          | Some r => ((isError r /\ None = DIRTREE.find_name fnlist tree') \/
                                      (exists v, r = OK v /\ Some v = DIRTREE.find_name fnlist tree')) /\
                                     BFILE.MSAlloc (get mMscs m') = BFILE.MSAlloc (get mMscs m)
-                         | None => guar App.delta tid s s'
+                         | None => True
                          end /\
+                         guar App.delta tid s s' /\
                          hashmap_le hm hm' /\
                          guar App.delta tid s_i' s'
                     }} lookup dnum fnlist.
@@ -658,4 +727,76 @@ TODO: automate these proofs *)
     replace (get vDirTree s_i).
     descend.
     intuition eauto.
+Qed.
+
+Hint Extern 1 {{lookup _ _; _}} => apply lookup_ok : prog.
+
+Theorem lookup_retry_ok : forall dnum fnlist n,
+    SPEC App.delta, tid |-
+                    {{ (_:unit),
+                     | PRE d hm m s_i s:
+                         let tree := get vDirTree s in
+                         invariant App.delta d hm m s /\
+                         DIRTREE.dirtree_inum tree = dnum /\
+                         DIRTREE.dirtree_isdir tree = true /\
+                         guar App.delta tid s_i s
+                     | POST d' hm' m' s_i' s' r:
+                         let tree' := get vDirTree s' in
+                         invariant App.delta d' hm' m' s' /\
+                         tree' = get vDirTree s /\
+                         match r with
+                         | Some r => ((isError r /\ None = DIRTREE.find_name fnlist tree') \/
+                                     (exists v, r = OK v /\ Some v = DIRTREE.find_name fnlist tree'))
+                         | None => True
+                         end /\
+                         rely App.delta tid s s' /\
+                         hashmap_le hm hm' /\
+                         guar App.delta tid s_i' s'
+                    }} lookup_retry dnum fnlist n.
+Proof.
+  unfold lookup_retry.
+  induction n; simpl; intros.
+
+  eapply pimpl_ok; [ apply ret_ok | ]; intros; repeat deex.
+  exists tt; intuition eauto.
+  eapply pimpl_ok; [ apply H0 | ]; intros; intuition subst; eauto.
+  reflexivity.
+
+  step.
+  descend; intuition eauto.
+
+  step.
+  step.
+
+  eapply rely_is_guar; simpl; intuition eauto.
+
+  step.
+  eapply pimpl_ok; [ apply IHn | ]; intuition eauto.
+  simpl in *; subst.
+  repeat match goal with
+         | [ H: rely App.delta _ _ _ |- _ ] =>
+           apply guar_is_rely in H; simpl in H
+         end.
+  repeat deex.
+  repeat match goal with
+         | [ H: get _ _ = get _ _ |- _ ] =>
+           rewrite H in *
+         end.
+  descend; intuition (subst; eauto).
+
+  step.
+  destruct ret_0; intuition eauto.
+
+  eapply rely_preorder; eauto.
+  eapply rely_is_guar; eauto.
+  simpl; intuition eauto; try congruence.
+
+  eapply rely_preorder; eauto.
+  eapply rely_is_guar; simpl; intuition eauto; try congruence.
+
+  eapply rely_preorder; eauto.
+  eapply rely_is_guar; simpl; intuition eauto; try congruence.
+
+  eapply hashmap_le_preorder; eauto.
+  eapply hashmap_le_preorder; eauto.
 Qed.
