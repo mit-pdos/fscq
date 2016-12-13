@@ -21,7 +21,7 @@ verbose :: Bool
 verbose = False
 
 timeReads :: Bool
-timeReads = False
+timeReads = True
 
 actuallyYield :: Bool
 actuallyYield = True
