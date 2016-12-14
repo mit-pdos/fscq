@@ -366,10 +366,8 @@ Module AFS.
     Ret ^((MSAlloc ams, ms), attr).
 
   Definition file_get_sz fsxp inum ams :=
-    ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, attr) <- DIRTREE.getattr fsxp inum (MSAlloc ams, ms);
-    ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    Ret ^((MSAlloc ams, ms), INODE.ABytes attr).
+    let^ (ams, attr) <- file_get_attr fsxp inum ams;
+      Ret ^(ams, INODE.ABytes attr).
 
   Definition file_set_attr fsxp inum attr ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
@@ -693,6 +691,25 @@ Module AFS.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
+
+  Theorem file_get_sz_ok : forall fsxp inum mscs,
+  {< ds pathname Fm Ftop tree f ilist frees,
+  PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+         [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees) ]]] *
+         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+  POST:hm' RET:^(mscs',r)
+         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+         [[ r = INODE.ABytes (BFILE.BFAttr f) /\ MSAlloc mscs' = MSAlloc mscs ]]
+  CRASH:hm'
+         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+  >} file_get_sz fsxp inum mscs.
+  Proof.
+    unfold file_get_sz; intros.
+    step.
+    step.
+  Qed.
+
+  Hint Extern 1 ({{_}} Bind (file_get_sz _ _ _) _) => apply file_get_sz_ok : prog.
 
   Ltac xcrash_solve :=
     repeat match goal with
