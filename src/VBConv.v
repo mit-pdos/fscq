@@ -1354,15 +1354,7 @@ Qed.
 	b > c -> a > c -> a - c > a -b.
 	Proof. intros; omega. Qed.
 	
-		Lemma mod_minus_mod: forall a b,
-	b <> 0 ->
-	(a - a mod b) mod b = 0.
-	Proof.
-		intros.
-		rewrite mod_minus.
-		apply Nat.mod_mul.
-		all: auto.
-	Qed.
+
 	
 	Lemma div_lt_le: forall a b c,
 	b <> 0 ->
@@ -1371,13 +1363,13 @@ Qed.
 	Proof. Admitted.
 	
 	
-		Lemma n2w_id: forall a b sz,
-	a = b -> natToWord sz a = natToWord sz b.
-		Proof. intros; subst; reflexivity. Qed.
+Lemma n2w_id: forall a b sz,
+a = b -> natToWord sz a = natToWord sz b.
+	Proof. intros; subst; reflexivity. Qed.
 	
-	Lemma mod_minus: forall a b,
-	b <> 0 ->
-	a - a mod b = (a / b) * b.
+Lemma mod_minus: forall a b,
+b <> 0 ->
+a - a mod b = (a / b) * b.
 	Proof.
 	 intros.
 	 remember (a mod b) as x.
@@ -1387,6 +1379,16 @@ Qed.
 	 rewrite Nat.add_sub.
 	 apply Nat.mul_comm.
  Qed.
+ 
+Lemma mod_minus_mod: forall a b,
+b <> 0 ->
+(a - a mod b) mod b = 0.
+	Proof.
+		intros.
+		rewrite mod_minus.
+		apply Nat.mod_mul.
+		all: auto.
+	Qed.
  
  	
 Lemma lt_mp: forall a b c,

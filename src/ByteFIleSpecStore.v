@@ -9237,7 +9237,7 @@ Theorem grow_in_block_ok : forall lxp bxp ixp inum ms n,
            rep f' fy'  *
            [[[ (ByFData fy') ::: (Fd * arrayN (ptsto (V:= byteset))(length (ByFData fy)) (merge_bs (list_zero_pad nil n) garb)) ]]] *
            [[ length garb = n ]] *
-           [[ ByFAttr fy' = ($ (length (ByFData fy) + n), snd (ByFAttr fy)) ]])
+           [[ ByFAttr fy' = ($ (length (ByFData fy) + n), snd (BFILE.BFAttr f')) ]])
     XCRASH:hm'  LOG.intact lxp F m0 hm'
     >} grow_in_block lxp ixp inum ms n.
 Proof. 

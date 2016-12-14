@@ -1759,7 +1759,6 @@ Proof.
   replace (block_off + 1 - 1) with block_off by omega.
   rewrite concat_hom_selN with (k:= valubytes).
   erewrite selN_map with (default':= valuset0).
-  (* destruct (selN (BFILE.BFData f) block_off valuset0) eqn:D. *)
   unfold valuset2bytesets.
   erewrite selN_map.
   unfold byteset2list.
@@ -2058,7 +2057,20 @@ off < length (ByFData fy).
 Lemma bsplit_list_O_byte0: forall b l sz,
 bsplit_list (natToWord (sz * 8) 0) = b::l ->
 b = byte0.
-Proof. Admitted.
+Proof.
+  intros.
+  destruct sz.
+  inversion H.
+  simpl in H.
+  unfold bsplit1_dep, bsplit2_dep in H; simpl in H.
+  inversion H.
+  unfold bsplit1.
+  eq_rect_simpl.
+  unfold natToWord.
+  simpl.
+  unfold byte0.
+  reflexivity.
+Qed.
 
 Lemma unified_bytefile_bytefile_same: forall ufy fy,
 bytefile_valid ufy fy ->
@@ -2401,19 +2413,7 @@ Proof.
 Qed.
 	
 
-Lemma concat_map_valuset2bytesets_valu0: forall a,
-concat (map (fun x : valu => valuset2bytesets (x, nil))
-     (valu0_pad a)) =  merge_bs (list_zero_pad nil (a*valubytes)) nil.
-Proof.
-	induction a.
-	reflexivity.
-	simpl.
-	rewrite valuset2bytesets_valu0.
-	rewrite IHa.
-	rewrite merge_bs_nil_app.
-	rewrite list_zero_pad_nil_app.
-	reflexivity.
-Qed.
+
 
 Lemma Forall_map_vs2bs: forall l,
 Forall (fun sublist : list byteset => length sublist = valubytes)
@@ -2524,6 +2524,7 @@ Proof.
 	symmetry; apply valu2list_len.
 Qed.
 
+
 Lemma merge_bs_nil_app: forall l1 l2,
 merge_bs l1 nil ++ merge_bs l2 nil = merge_bs (l1++l2) nil.
 Proof.
@@ -2533,16 +2534,155 @@ Proof.
 	reflexivity.
 Qed.
 
+Lemma concat_map_valuset2bytesets_valu0: forall a,
+concat (map (fun x : valu => valuset2bytesets (x, nil))
+     (valu0_pad a)) =  merge_bs (list_zero_pad nil (a*valubytes)) nil.
+Proof.
+	induction a.
+	reflexivity.
+	simpl.
+	rewrite valuset2bytesets_valu0.
+	rewrite IHa.
+	rewrite merge_bs_nil_app.
+	rewrite list_zero_pad_nil_app.
+	reflexivity.
+Qed.
 
 
-(* Interface *)
+Lemma ge_1_gt_0: forall a, a > 0 -> a >= 1.
+Proof. intros; omega. Qed.
+
+Lemma mod_ge_0: forall a b c,
+a mod b > 0 ->
+b <> 0 ->
+a + c > 0.
+Proof.
+  intros.
+  apply mod_ne_0 in H; omega.
+Qed.
+
+Lemma mod_plus_minus_0: forall c b a,
+b <> 0 ->
+c > 0 ->
+(a + ((c * b) - a mod b)) mod b = 0.
+Proof.
+  intros.
+  rewrite Nat.add_sub_assoc.
+  rewrite Nat.add_sub_swap.
+  rewrite Nat.mod_add.
+  apply mod_minus_mod.
+  all: auto.
+  apply Nat.mod_le; auto.
+  destruct c; try omega.
+  simpl.
+  eapply le_trans.
+  apply mod_upper_bound_le'; eauto.
+  apply le_plus_l.
+Qed.
+
+Lemma div_ge_0: forall a b,
+b <> 0 ->
+a / b > 0 ->
+a > 0.
+Proof.
+  intros.
+  destruct a.
+  rewrite Nat.div_0_l in H0; auto.
+  omega.
+Qed.
+
+Lemma div_minus_ge_0: forall a b c,
+b <> 0 ->
+(a - c) / b > 0 ->
+a > c.
+Proof.
+  intros.
+  apply div_ge_0 in H0; auto.
+  omega.
+Qed.
+
+
+Lemma gt_0_ge_1: forall a, a > 0 <-> a >= 1.
+Proof. intros; split; omega. Qed.
+
+Lemma div_mod_0: forall a b,
+b<>0 -> a/b = 0 -> a mod b = 0 -> a = 0.
+Proof.
+  intros.
+  apply Nat.div_exact in H1; auto.
+  rewrite H0 in H1; simpl in H1.
+  rewrite Nat.mul_0_r in H1; auto.
+Qed.
+
+
+Lemma mod_plus_minus_1_0: forall a b,
+b<>0 ->
+(a + (b - a mod b)) mod b = 0.
+Proof.
+	intros.
+	replace (b - a mod b) with (1 * b - a mod b) by omega.
+	apply mod_plus_minus_0; eauto.
+Qed.
+
+Lemma goodSize_le: forall a b c d,
+goodSize a (b + c) ->
+(c < d -> False) ->
+ goodSize a (b + d).
+Proof.
+	intros.
+	eapply goodSize_trans.
+	2: eauto.
+	apply plus_le_compat_l.
+	apply Nat.nlt_ge in H0; apply H0.
+Qed.
+
+Lemma unified_bytefile_bytefile_same': forall f pfy ufy fy,
+proto_bytefile_valid f pfy ->
+unified_bytefile_valid pfy ufy ->
+bytefile_valid ufy fy ->
+length (ByFData fy) = length (BFILE.BFData f) * valubytes ->
+ByFData fy = UByFData ufy.
+Proof.
+  intros.
+  rewrite H1.
+  apply firstn_oob.
+  rewrite H2.
+  erewrite <- bfile_protobyte_len_eq; eauto.
+  erewrite unified_byte_protobyte_len; eauto.
+  eapply proto_len; eauto.
+Qed.
 
 
 
+Lemma f_pfy_selN_eq: forall f pfy i,
+proto_bytefile_valid f pfy ->
+i < length (BFILE.BFData f) ->
+valu2list (fst (selN (BFILE.BFData f) i valuset0)) = map fst (selN (PByFData pfy) i nil).
+Proof.
+	intros.
+	rewrite H.
+	rewrite selN_map with (default' := valuset0); auto.
+	rewrite mapfst_valuset2bytesets.
+	reflexivity.
+Qed.
 
-(* ------------------------------------------------------------------------------------- *)
-
-(* ------------------------------------------------------------------------------------ *)
-
-
-(* ------------------------------------------------------------------------------------- *)
+Lemma v2l_fst_bs2vs_map_fst_eq: forall bsl,
+bsl <> nil ->
+length bsl = valubytes ->
+map fst bsl = valu2list (fst (bytesets2valuset bsl)).
+Proof.
+	intros.
+	unfold bytesets2valuset.
+	unfold byteset2list; simpl.
+	destruct bsl eqn:D.
+	unfold not in H; destruct H; reflexivity.
+	simpl.
+	rewrite list2valu2list.
+	unfold selN'.
+	rewrite map_map; simpl.
+	reflexivity.
+	simpl.
+	rewrite map_length.
+	rewrite map_length.
+	simpl in H0; auto.
+Qed.
