@@ -122,7 +122,6 @@ Module CacheSubProtocol <: ConcurrentCache.CacheSubProtocol.
     Module St := St.
     Definition Sigma := St.Sigma.
 
-    (* this won't be so simple with additional state in Sigma *)
     Definition delta : Protocol Sigma.
       apply (defProtocol
                (fun d hm m s =>
@@ -141,13 +140,14 @@ Module CacheSubProtocol <: ConcurrentCache.CacheSubProtocol.
                (fun tid s s' => guar CacheProtocol.delta tid s s' /\
                              allowed (get vPathOwner s) tid (get vDirTree s) (get vDirTree s') /\
                              get vPathOwner s' = get vPathOwner s /\
-                             get vDirTree s' = get vDirTree s /\
                              get vFsxp s' = get vFsxp s)).
       intros; constructor; hnf; intros.
       intuition idtac; try apply guar_preorder.
       reflexivity.
       intuition idtac; try congruence.
       eapply guar_preorder; eauto.
+      replace (get vPathOwner y) with (get vPathOwner x) in *.
+      etransitivity; eauto.
     Defined.
   End App.
 
@@ -272,10 +272,153 @@ Fixpoint fuel_retry T (p: prog App.Sigma (Exc T)) n : prog App.Sigma (Exc T) :=
 Definition wrap_syscall_loop T p up := fuel_retry (wrap_syscall (T:=T) p up).
 Definition wrap_syscall'_loop p up := fuel_retry (wrap_syscall' p up).
 
+Lemma exists_tuple : forall A B (P: A * B -> Prop) (b: B),
+    (exists (a: A), P (a, b)) ->
+    exists (a: A * B), P a.
+Proof.
+  intros.
+  deex.
+  exists (a, b); auto.
+Qed.
+
+Ltac split_lifted_prop :=
+  match goal with
+  | [ H: _ (lower_disk (get vdisk _)) |- _ ] =>
+    repeat apply sep_star_assoc_2 in H;
+    apply sep_star_lift_apply in H;
+    destruct_ands
+  end.
+
+Ltac learn_unmodified :=
+  unfold id; simpl;
+  repeat match goal with
+         | [ H: modified _ ?l ?l' |- _ ] =>
+           let learn_unmodified_var v :=
+               try (
+                   not_learnt (get v l' = get v l);
+                   let Heq := fresh in
+                   assert (get v l' = get v l) as Heq by (symmetry; apply H; prove_not_in);
+                   add_learnt Heq;
+                   unfold id in Heq; simpl in Heq) in
+           progress (learn_unmodified_var mFsxp;
+                     learn_unmodified_var vFsxp;
+                     learn_unmodified_var mMscs;
+                     learn_unmodified_var vDirTree;
+                     learn_unmodified_var vPathOwner;
+                     learn_unmodified_var CacheProtocol.vdisk;
+                     learn_unmodified_var CacheProtocol.vdisk0)
+         end.
+
+Ltac ConcurrentCache.simp_hook ::=
+     progress learn_unmodified ||
+     split_lifted_prop ||
+     match goal with
+     | [ H: context[get _ (set _ _ _) ] |- _ ] =>
+       is_not_learnt H; progress simpl_get_set_hyp H
+     end.
+
+Definition file_get_attr1 inum :=
+  wrap_syscall (fun fsxp mscs =>
+                  CFS.file_get_attr fsxp inum mscs)
+               (fun tree => tree).
+
 Definition file_get_attr inum :=
   wrap_syscall_loop (fun fsxp mscs =>
                        CFS.file_get_attr fsxp inum mscs)
                     (fun tree => tree).
+
+Theorem file_get_attr1_ok : forall inum,
+      SPEC App.delta, tid |-
+              {{ pathname f,
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) /\
+                   guar App.delta tid s_i s
+               | POST d' hm' m' s_i' s' r:
+                   let tree' := get vDirTree s' in
+                   invariant App.delta d' hm' m' s' /\
+                   tree' = get vDirTree s /\
+                   match r with
+                   | Some r => r = BFILE.BFAttr f /\
+                              BFILE.MSAlloc (get mMscs m') = BFILE.MSAlloc (get mMscs m)
+                   | None => True
+                   end /\
+                   guar App.delta tid s s' /\
+                   hashmap_le hm hm' /\
+                   guar App.delta tid s_i' s'
+              }} file_get_attr1 inum.
+Proof.
+  unfold file_get_attr1, wrap_syscall; intros.
+  step.
+  step.
+  step.
+
+  match goal with
+  | [ H: invariant App.delta _ _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  match goal with
+  | [ H: guar App.delta _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  destruct_ands; repeat deex.
+  (* exists_tuple breaks apart ds *)
+  destruct ds.
+
+  unfold project_disk.
+  repeat eapply exists_tuple; eexists; simpl.
+  intuition eauto.
+
+  replace (get vdisk s).
+  pred_apply; cancel; eauto.
+
+  step.
+  destruct matches; subst.
+  - step.
+    step.
+    unfold cacheI in *; simpl_get_set_all; intuition eauto.
+    step.
+    step.
+    unfold cacheI in *; simpl_get_set_all; intuition eauto.
+
+    simpl in *.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] =>
+             rewrite H
+           end.
+    descend; intuition eauto.
+    pred_apply; cancel.
+
+    simpl_get_set_goal.
+    eapply cacheR_preorder; eauto.
+    simpl_get_set_goal.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+
+    eapply allowed_preorder; eauto.
+    replace (get vDirTree s).
+    replace (get vDirTree s0).
+    reflexivity.
+  - step.
+    step.
+
+    simpl in *.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] =>
+             rewrite H
+           end.
+    descend; intuition eauto.
+
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+
+    eapply allowed_preorder; eauto.
+    replace (get vDirTree s).
+    replace (get vDirTree s0).
+    reflexivity.
+Qed.
 
 Definition file_get_sz inum :=
   wrap_syscall_loop (fun fsxp mscs =>
