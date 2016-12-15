@@ -1,7 +1,7 @@
 Require Import List String.
 Require Import StringMap.
 Require Import Word Prog BasicProg Pred.
-Require Import GoSemantics GoHoare GoExtraction.
+Require Import GoSemantics GoHoare GoFacts GoExtraction.
 Import ListNotations.
 Import Go.
 
