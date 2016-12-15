@@ -440,11 +440,192 @@ Definition lookup_root fnlist :=
                        CFS.lookup fsxp (FSLayout.FSXPRootInum fsxp) fnlist mscs)
                     (fun tree => tree).
 
+Definition dirtree_alter_file inum (up:BFILE.bfile -> BFILE.bfile) :
+  DIRTREE.dirtree -> DIRTREE.dirtree :=
+  DIRTREE.alter_inum inum
+                     (fun subtree =>
+                        match subtree with
+                        | DIRTREE.TreeFile inum' f =>
+                          DIRTREE.TreeFile inum' (up f)
+                        | DIRTREE.TreeDir _ _ => subtree
+                        end).
+
+Definition file_set_attr1 inum attr :=
+  fsxp <- Get mFsxp;
+    mscs <- Get mMscs;
+    r <- CFS.file_set_attr fsxp inum attr mscs;
+    match r with
+    | Some r =>
+      let '(mscs', (r, _)) := r in
+      _ <- Assgn mMscs mscs';
+        _ <- ConcurrentCache.cache_commit;
+        _ <- if r
+            then var_update
+                   vDirTree
+                   (dirtree_alter_file
+                      inum
+                      (fun f => let 'BFILE.mk_bfile d _ := f in BFILE.mk_bfile d attr))
+
+            else Ret tt;
+        Ret (value r)
+    | None =>
+      _ <- ConcurrentCache.cache_abort;
+        Ret None
+    end.
+
 Definition file_set_attr inum attr :=
   wrap_syscall_loop (fun fsxp mscs =>
                        CFS.file_set_attr fsxp inum attr mscs)
                     (* TODO: functional updates on directory trees *)
                     (fun tree => tree).
+
+Ltac member_index_ne := match goal with
+                        | |- member_index ?v1 <> member_index ?v2 =>
+                          try unfold v1; try unfold v2;
+                          simpl;
+                          rewrite ?get_next, ?get_first;
+                          simpl;
+                          Omega.omega
+                        end.
+
+Theorem file_set_attr1_ok : forall inum attr,
+      SPEC App.delta, tid |-
+              {{ pathname f,
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) /\
+                   get vPathOwner s pathname = Some tid /\
+                   guar App.delta tid s_i s
+               | POST d' hm' m' s_i' s' r:
+                   let tree' := get vDirTree s' in
+                   invariant App.delta d' hm' m' s' /\
+                   match r with
+                   | Some r =>
+                     (r = true ->
+                      let f' := BFILE.mk_bfile (BFILE.BFData f) attr in
+                      tree' = DIRTREE.update_subtree
+                                pathname (DIRTREE.TreeFile inum f') (get vDirTree s)) /\
+
+                     (r = false -> tree' = get vDirTree s)
+                   | None => True
+                   end /\
+                   guar App.delta tid s s' /\
+                   hashmap_le hm hm' /\
+                   guar App.delta tid s_i' s'
+              }} file_set_attr1 inum attr.
+Proof.
+  unfold file_set_attr1, wrap_syscall; intros.
+  step.
+  step.
+  step.
+
+  match goal with
+  | [ H: invariant App.delta _ _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  match goal with
+  | [ H: guar App.delta _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  destruct_ands; repeat deex.
+  (* exists_tuple breaks apart ds *)
+  destruct ds.
+
+  unfold project_disk.
+  repeat eapply exists_tuple; eexists; simpl.
+  intuition eauto.
+
+  replace (get vdisk s).
+  pred_apply; cancel; eauto.
+
+  step.
+  destruct matches; subst.
+  - step.
+    step.
+    unfold cacheI in *; simpl_get_set_all; intuition eauto.
+    step.
+    step.
+    unfold cacheI in *; simpl_get_set_all;
+      rewrite ?get_set_other in * by member_index_ne;
+      intuition eauto.
+
+    descend; intuition idtac.
+
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    pred_apply; cancel.
+    admit. (* oops, disk sequences differ for some reason *)
+
+    (* TODO: the appropriate fact about DIRTREE.rep on the new dir tree is still
+    stuck inside a lifted prop, surrounded by a complicated pred or and mixed in
+    with LOG.rep and exists. *)
+    pred_apply.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    admit. (* again, why is this requiring the new directory tree rep be applied
+    to the old disk sequence? *)
+
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    admit. (* TODO: prove alter_inum produces same behavior as altering by the
+    right path *)
+
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    unfold cacheR; rewrite ?get_set_other by member_index_ne; try reflexivity.
+
+    admit. (* the critical property: changing this inum is allowed, first
+    because it's a pathname change, second because we assumed that this thread
+    owns this path *)
+
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    unfold cacheR; rewrite ?get_set_other by member_index_ne; try reflexivity.
+
+    admit. (* same argument on s_i *)
+
+  - step.
+    step.
+
+    unfold cacheI; simpl_get_set_all; intuition eauto.
+
+    step.
+
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    descend; intuition eauto.
+    pred_apply; cancel.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+
+    etransitivity; eauto.
+    replace (get vDirTree s).
+    replace (get vDirTree s0).
+    reflexivity.
+  - step.
+    step.
+
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    descend; intuition eauto.
+
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+
+    etransitivity; eauto.
+    replace (get vDirTree s).
+    replace (get vDirTree s0).
+    reflexivity.
+Admitted.
 
 Definition file_truncate inum sz :=
   wrap_syscall_loop (fun fsxp mscs =>
