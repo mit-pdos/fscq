@@ -6020,6 +6020,38 @@ Module DIRTREE.
 
   Hint Extern 1 ({{_}} Bind (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
 
+  Theorem alter_inum_to_alter_path : forall pathname tree subtree up,
+    tree_names_distinct tree ->
+    tree_inodes_distinct tree ->
+    find_subtree pathname tree = Some subtree ->
+    alter_inum (dirtree_inum subtree) up tree = alter_subtree pathname up tree.
+  Proof.
+    induction pathname; simpl; intros.
+    - inversion H1; subst; simpl.
+      destruct subtree; simpl; destruct (addr_eq_dec n n); congruence.
+    - destruct tree; simpl in *; try congruence.
+      induction l; simpl in *.
 
+(*
+
+      f_equal.
+      induction l; simpl in *; try congruence.
+      destruct a0; simpl in *.
+      destruct (string_dec s a); subst; eauto.
+      + erewrite IHpathname; eauto.
+        f_equal.
+        inversion H0. inversion H6.
+        rewrite update_subtree_notfound by eauto.
+        inversion H.
+        rewrite dirtree_update_inode_absent'; eauto.
+        apply find_subtree_inum_present in H1; simpl in *.
+        eapply tree_inodes_distinct_not_in_tail; eauto.
+      + rewrite dirtree_update_inode_absent.
+        rewrite IHl; eauto.
+        eapply tree_inodes_distinct_not_this_child with (pathname := a :: pathname).
+        2: apply H1.
+        eauto.
+*)
+  Admitted.
 
 End DIRTREE.
