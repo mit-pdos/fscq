@@ -639,8 +639,10 @@ Module DIRTREE.
     tree_dir_names_pred xp w (map (update_subtree_helper (update_subtree fnlist subtree') name) l).
   Proof.
     unfold tree_dir_names_pred; intros; split; cancel; eauto.
+    match goal with | [ H: SDIR.rep _ _ |- _ ] => clear H end.
     pred_apply.
     eapply tree_dir_names_pred'_update; eauto.
+    match goal with | [ H: SDIR.rep _ _ |- _ ] => clear H end.
     pred_apply.
     eapply tree_dir_names_pred'_update_inv; eauto.
   Qed.
