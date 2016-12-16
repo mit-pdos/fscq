@@ -39,23 +39,20 @@ import qualified Errno
 -- Handle type for open files; we will use the inode number
 type HT = Integer
 
-verboseFuse :: Bool
-verboseFuse = False
-
-debug :: String -> IO ()
-debug msg =
-  if verboseFuse then
+debug :: FscqOptions -> String -> IO ()
+debug opts msg =
+  if optVerboseFuse opts then
     putStrLn msg
   else
     return ()
 
-debugStart :: Show a => String -> a -> IO ()
-debugStart op msg = do
+debugStart :: Show a => FscqOptions -> String -> a -> IO ()
+debugStart opts op msg = do
   t <- getCPUTime
-  debug $ op ++ " [" ++ show t ++ "]" ++ ": " ++ (show msg)
+  debug opts $ op ++ " [" ++ show t ++ "]" ++ ": " ++ (show msg)
 
-debugMore :: Show a => a -> IO ()
-debugMore msg = debug $ " .. " ++ (show msg)
+debugMore :: Show a => FscqOptions -> a -> IO ()
+debugMore opts msg = debug opts $ " .. " ++ (show msg)
 
 -- File system configuration
 nDataBitmaps :: Integer
@@ -168,30 +165,30 @@ run_fuse opts disk_fn fuse_args = do
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
   I.run (interpOptions opts) (ds, cs) 0 (FS.init_fs fsxp s)
   m_tid <- newIORef 1
-  fuseRun "fscq" fuse_args (fscqFSOps disk_fn (ds, cs) (interpreter opts ((ds, cs), m_tid))) defaultExceptionHandler
+  fuseRun "fscq" fuse_args (fscqFSOps opts disk_fn (ds, cs) (interpreter opts ((ds, cs), m_tid))) defaultExceptionHandler
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html
-fscqFSOps :: String -> ProgramState -> FSrunner -> FuseOperations HT
-fscqFSOps fn (ds, _) fr = defaultFuseOps
-  { fuseGetFileStat = fscqGetFileStat fr
-  , fuseOpen = fscqOpen fr
-  , fuseCreateDevice = fscqCreate fr
-  , fuseCreateDirectory = fscqCreateDir fr
-  , fuseRemoveLink = fscqUnlink fr
-  , fuseRemoveDirectory = fscqUnlink fr
-  , fuseRead = fscqRead ds fr
-  , fuseWrite = fscqWrite fr
-  , fuseSetFileSize = fscqSetFileSize fr
-  , fuseOpenDirectory = fscqOpenDirectory fr
-  , fuseReadDirectory = fscqReadDirectory fr
+fscqFSOps :: FscqOptions -> String -> ProgramState -> FSrunner -> FuseOperations HT
+fscqFSOps opts fn (ds, _) fr = defaultFuseOps
+  { fuseGetFileStat = fscqGetFileStat opts fr
+  , fuseOpen = fscqOpen opts fr
+  , fuseCreateDevice = fscqCreate opts fr
+  , fuseCreateDirectory = fscqCreateDir opts fr
+  , fuseRemoveLink = fscqUnlink opts fr
+  , fuseRemoveDirectory = fscqUnlink opts fr
+  , fuseRead = fscqRead opts ds fr
+  , fuseWrite = fscqWrite opts fr
+  , fuseSetFileSize = fscqSetFileSize opts fr
+  , fuseOpenDirectory = fscqOpenDirectory opts fr
+  , fuseReadDirectory = fscqReadDirectory opts fr
   , fuseGetFileSystemStats = fscqGetFileSystemStats fr
   , fuseDestroy = fscqDestroy ds fn fr
   , fuseSetFileTimes = fscqSetFileTimes
-  , fuseRename = fscqRename fr
+  , fuseRename = fscqRename opts fr
   , fuseSetFileMode = fscqChmod
-  , fuseSynchronizeFile = fscqSyncFile fr
-  , fuseSynchronizeDirectory = fscqSyncDir fr
+  , fuseSynchronizeFile = fscqSyncFile opts fr
+  , fuseSynchronizeDirectory = fscqSyncDir opts fr
   }
 
 applyFlushgroup :: DiskState -> [(Integer, Coq_word)] -> IO ()
@@ -325,16 +322,16 @@ fileStat ctx attr = FileStat
 retries :: Integer
 retries = 100
 
-fscqGetFileStat :: FSrunner -> FilePath -> IO (Either Errno FileStat)
-fscqGetFileStat fr (_:path)
+fscqGetFileStat :: FscqOptions -> FSrunner -> FilePath -> IO (Either Errno FileStat)
+fscqGetFileStat opts fr (_:path)
   | path == "stats" = do
     ctx <- getFuseContext
     return $ Right $ fileStat ctx $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
   | otherwise = do
-    debugStart "STAT" path
+    debugStart opts "STAT" path
     nameparts <- return $ splitDirectories path
     r <- fr $ FS.lookup_root nameparts retries
-    debugMore r
+    debugMore opts r
     case r of
       Errno.Err e -> return $ Left $ errnoToPosix e
       Errno.OK (inum, isdir)
@@ -345,28 +342,28 @@ fscqGetFileStat fr (_:path)
           attr <- fr $ FS.file_get_attr inum retries
           ctx <- getFuseContext
           return $ Right $ fileStat ctx attr
-fscqGetFileStat _ _ = return $ Left eNOENT
+fscqGetFileStat _ _ _ = return $ Left eNOENT
 
-fscqOpenDirectory :: FSrunner -> FilePath -> IO Errno
-fscqOpenDirectory fr (_:path) = do
-  debugStart "OPENDIR" path
+fscqOpenDirectory :: FscqOptions -> FSrunner -> FilePath -> IO Errno
+fscqOpenDirectory opts fr (_:path) = do
+  debugStart opts "OPENDIR" path
   nameparts <- return $ splitDirectories path
   r <- fr $ FS.lookup_root nameparts retries
-  debugMore r
+  debugMore opts r
   case r of
     Errno.Err e -> return $ errnoToPosix e
     Errno.OK (_, isdir)
       | isdir -> return eOK
       | otherwise -> return eNOTDIR
-fscqOpenDirectory _ "" = return eNOENT
+fscqOpenDirectory _ _ "" = return eNOENT
 
-fscqReadDirectory :: FSrunner -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
-fscqReadDirectory fr (_:path) = do
-  debugStart "READDIR" path
+fscqReadDirectory :: FscqOptions -> FSrunner -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
+fscqReadDirectory opts fr (_:path) = do
+  debugStart opts "READDIR" path
   ctx <- getFuseContext
   nameparts <- return $ splitDirectories path
   r <- fr $ FS.lookup_root nameparts retries
-  debugMore r
+  debugMore opts r
   case r of
     Errno.Err e -> return $ Left $ errnoToPosix e
     Errno.OK (dnum, isdir)
@@ -384,33 +381,33 @@ fscqReadDirectory fr (_:path) = do
         attr <- fr $ FS.file_get_attr inum retries
         return $ (fn, fileStat ctx attr)
 
-fscqReadDirectory _ _ = return (Left (eNOENT))
+fscqReadDirectory _ _ _ = return (Left (eNOENT))
 
-fscqOpen :: FSrunner -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
-fscqOpen fr (_:path) _ _
+fscqOpen :: FscqOptions -> FSrunner -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
+fscqOpen opts fr (_:path) _ _
   | path == "stats" = return $ Right 0
   | otherwise = do
-  debugStart "OPEN" path
+  debugStart opts "OPEN" path
   nameparts <- return $ splitDirectories path
   r <- fr $ FS.lookup_root nameparts retries
-  debugMore r
+  debugMore opts r
   case r of
     Errno.Err e -> return $ Left $ errnoToPosix e
     Errno.OK (inum, isdir)
       | isdir -> return $ Left eISDIR
       | otherwise -> return $ Right $ inum
-fscqOpen _ _ _ _ = return $ Left eIO
+fscqOpen _ _ _ _ _ = return $ Left eIO
 
 splitDirsFile :: String -> ([String], String)
 splitDirsFile path = (init parts, last parts)
   where parts = splitDirectories path
 
-fscqCreate :: FSrunner -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
-fscqCreate fr (_:path) entrytype _ _ = do
-  debugStart "CREATE" path
+fscqCreate :: FscqOptions -> FSrunner -> FilePath -> EntryType -> FileMode -> DeviceID -> IO Errno
+fscqCreate opts fr (_:path) entrytype _ _ = do
+  debugStart opts "CREATE" path
   (dirparts, filename) <- return $ splitDirsFile path
   rd <- fr $ FS.lookup_root dirparts retries
-  debugMore rd
+  debugMore opts rd
   case rd of
     Errno.Err e -> return $ errnoToPosix e
     Errno.OK (dnum, isdir)
@@ -419,48 +416,48 @@ fscqCreate fr (_:path) entrytype _ _ = do
           RegularFile -> fr $ FS.create dnum filename retries
           Socket -> fr $ FS.mksock dnum filename retries
           _ -> return $ Errno.Err Errno.EINVAL
-        debugMore r
+        debugMore opts r
         case r of
           Errno.Err e -> return $ errnoToPosix e
           Errno.OK _ -> return eOK
       | otherwise -> return eNOTDIR
-fscqCreate _ _ _ _ _ = return eOPNOTSUPP
+fscqCreate _ _ _ _ _ _ = return eOPNOTSUPP
 
-fscqCreateDir :: FSrunner -> FilePath -> FileMode -> IO Errno
-fscqCreateDir fr (_:path) _ = do
-  debugStart "MKDIR" path
+fscqCreateDir :: FscqOptions -> FSrunner -> FilePath -> FileMode -> IO Errno
+fscqCreateDir opts fr (_:path) _ = do
+  debugStart opts "MKDIR" path
   (dirparts, filename) <- return $ splitDirsFile path
   rd <- fr $ FS.lookup_root dirparts retries
-  debugMore rd
+  debugMore opts rd
   case rd of
     Errno.Err e -> return $ errnoToPosix e
     Errno.OK (dnum, isdir)
       | isdir -> do
         r <- fr $ FS.mkdir dnum filename retries
-        debugMore r
+        debugMore opts r
         case r of
           Errno.Err e -> return $ errnoToPosix e
           Errno.OK _ -> return eOK
       | otherwise -> return eNOTDIR
-fscqCreateDir _ _ _ = return eOPNOTSUPP
+fscqCreateDir _ _ _ _ = return eOPNOTSUPP
 
-fscqUnlink :: FSrunner -> FilePath -> IO Errno
-fscqUnlink fr (_:path) = do
-  debugStart "UNLINK" path
+fscqUnlink :: FscqOptions -> FSrunner -> FilePath -> IO Errno
+fscqUnlink opts fr (_:path) = do
+  debugStart opts "UNLINK" path
   (dirparts, filename) <- return $ splitDirsFile path
   rd <- fr $ FS.lookup_root dirparts retries
-  debugMore rd
+  debugMore opts rd
   case rd of
     Errno.Err e -> return $ errnoToPosix e
     Errno.OK (dnum, isdir)
       | isdir -> do
         r <- fr $ FS.delete dnum filename retries
-        debugMore r
+        debugMore opts r
         case r of
           Errno.OK _ -> return eOK
           Errno.Err e -> return $ errnoToPosix e
       | otherwise -> return eNOTDIR
-fscqUnlink _ _ = return eOPNOTSUPP
+fscqUnlink _ _ _ = return eOPNOTSUPP
 
 -- Wrappers for converting Coq_word to/from ByteString, with
 -- the help of i2buf and buf2i from hslib/Disk.
@@ -482,8 +479,8 @@ compute_ranges :: FileOffset -> ByteCount -> [BlockRange]
 compute_ranges off count =
   compute_ranges_int (fromIntegral off) (fromIntegral count)
 
-fscqRead :: DiskState -> FSrunner -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
-fscqRead ds fr (_:path) inum byteCount offset
+fscqRead :: FscqOptions -> DiskState -> FSrunner -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno BS.ByteString)
+fscqRead opts ds fr (_:path) inum byteCount offset
   | path == "stats" = do
     Stats r w s <- get_stats ds
     clear_stats ds
@@ -493,14 +490,14 @@ fscqRead ds fr (_:path) inum byteCount offset
       "Syncs:  " ++ (show s) ++ "\n"
     return $ Right statbuf
   | otherwise = do
-  debugStart "READ" (path, inum)
+  debugStart opts "READ" (path, inum)
   wlen <- fr $ FS.file_get_sz inum retries
   len <- return $ fromIntegral $ wordToNat 64 wlen
   offset' <- return $ min offset len
   byteCount' <- return $ min byteCount $ (fromIntegral len) - (fromIntegral offset')
   pieces <- mapM read_piece $ compute_ranges offset' byteCount'
   r <- return $ BS.concat pieces
-  debugMore $ BS.length r
+  debugMore opts $ BS.length r
   return $ Right r
 
   where
@@ -509,7 +506,7 @@ fscqRead ds fr (_:path) inum byteCount offset
       bs <- i2bs w 4096
       return $ BS.take (fromIntegral count) $ BS.drop (fromIntegral off) bs
 
-fscqRead _ _ [] _ _ _ = do
+fscqRead _ _ _ [] _ _ _ = do
   return $ Left $ eIO
 
 compute_range_pieces :: FileOffset -> BS.ByteString -> [(BlockRange, BS.ByteString)]
@@ -524,9 +521,9 @@ data WriteState =
    WriteOK !ByteCount
  | WriteErr !ByteCount
 
-fscqWrite :: FSrunner -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
-fscqWrite fr path inum bs offset = do
-  debugStart "WRITE" (path, inum, BS.length bs)
+fscqWrite :: FscqOptions -> FSrunner -> FilePath -> HT -> BS.ByteString -> FileOffset -> IO (Either Errno ByteCount)
+fscqWrite opts fr path inum bs offset = do
+  debugStart opts "WRITE" (path, inum, BS.length bs)
   wlen <- fr $ FS.file_get_sz inum retries
   len <- return $ fromIntegral $ wordToNat 64 wlen
   endpos <- return $ (fromIntegral offset) + (fromIntegral (BS.length bs))
@@ -572,12 +569,12 @@ fscqWrite fr path inum bs offset = do
       _ <- fr $ FS.update_fblock inum blk (W wnew) retries
       return $ WriteOK (c + (fromIntegral cnt))
 
-fscqSetFileSize :: FSrunner -> FilePath -> FileOffset -> IO Errno
-fscqSetFileSize fr (_:path) size = do
-  debugStart "SETSIZE" (path, size)
+fscqSetFileSize :: FscqOptions -> FSrunner -> FilePath -> FileOffset -> IO Errno
+fscqSetFileSize opts fr (_:path) size = do
+  debugStart opts "SETSIZE" (path, size)
   nameparts <- return $ splitDirectories path
   r <- fr $ FS.lookup_root nameparts retries
-  debugMore r
+  debugMore opts r
   case r of
     Errno.Err e -> return $ errnoToPosix e
     Errno.OK (inum, isdir)
@@ -588,7 +585,7 @@ fscqSetFileSize fr (_:path) size = do
           return eOK
         else
           return eIO
-fscqSetFileSize _ _ _ = return eIO
+fscqSetFileSize _ _ _ _ = return eIO
 
 fscqGetFileSystemStats :: FSrunner -> String -> IO (Either Errno FileSystemStats)
 fscqGetFileSystemStats fr _ = do
@@ -608,28 +605,28 @@ fscqGetFileSystemStats fr _ = do
 fscqSetFileTimes :: FilePath -> EpochTime -> EpochTime -> IO Errno
 fscqSetFileTimes _ _ _ = return eOK
 
-fscqRename :: FSrunner -> FilePath -> FilePath -> IO Errno
-fscqRename fr (_:src) (_:dst) = do
-  debugStart "RENAME" (src, dst)
+fscqRename :: FscqOptions -> FSrunner -> FilePath -> FilePath -> IO Errno
+fscqRename opts fr (_:src) (_:dst) = do
+  debugStart opts "RENAME" (src, dst)
   (srcparts, srcname) <- return $ splitDirsFile src
   (dstparts, dstname) <- return $ splitDirsFile dst
   r <- fr $ FS.rename_root srcparts srcname dstparts dstname retries
-  debugMore r
+  debugMore opts r
   case r of
     Errno.OK _ -> return eOK
     Errno.Err e -> return $ errnoToPosix e
-fscqRename _ _ _ = return eIO
+fscqRename _ _ _ _ = return eIO
 
 fscqChmod :: FilePath -> FileMode -> IO Errno
 fscqChmod _ _ = do
   return eOK
 
-fscqSyncFile :: FSrunner -> FilePath -> SyncType -> IO Errno
-fscqSyncFile fr (_:path) syncType = do
-  debugStart "SYNC FILE" path
+fscqSyncFile :: FscqOptions -> FSrunner -> FilePath -> SyncType -> IO Errno
+fscqSyncFile opts fr (_:path) syncType = do
+  debugStart opts "SYNC FILE" path
   nameparts <- return $ splitDirectories path
   r <- fr $ FS.lookup_root nameparts retries
-  debugMore r
+  debugMore opts r
   case r of
     Errno.Err e -> return $ errnoToPosix e
     Errno.OK (inum, _) -> do
@@ -639,11 +636,11 @@ fscqSyncFile fr (_:path) syncType = do
         FullSync -> do
           _ <- fr $ FS.tree_sync retries
           return eOK
-fscqSyncFile _ _ _ = return eIO
+fscqSyncFile _ _ _ _ = return eIO
 
-fscqSyncDir :: FSrunner -> FilePath -> SyncType -> IO Errno
-fscqSyncDir fr (_:path) _ = do
-  debugStart "SYNC DIR" path
+fscqSyncDir :: FscqOptions -> FSrunner -> FilePath -> SyncType -> IO Errno
+fscqSyncDir opts fr (_:path) _ = do
+  debugStart opts "SYNC DIR" path
   _ <- fr $ FS.tree_sync retries
   return eOK
-fscqSyncDir _ _ _ = return eIO
+fscqSyncDir _ _ _ _ = return eIO
