@@ -42,9 +42,6 @@ type HT = Integer
 verboseFuse :: Bool
 verboseFuse = False
 
-cachesize :: Integer
-cachesize = 100000
-
 debug :: String -> IO ()
 debug msg =
   if verboseFuse then
@@ -87,8 +84,11 @@ interpreter opts (ps, m_tid) p = do
   takeMVar ret
 
 data FscqOptions = FscqOptions
-  { -- additional logging
-    optVerboseFuse :: Bool
+  {
+    -- sequential cache size
+  optCachesize :: Integer
+    -- additional logging
+  , optVerboseFuse :: Bool
   , optVerboseInterpret :: Bool
   , optTimeReads :: Bool
     -- enable/disable I/O concurrency
@@ -97,6 +97,8 @@ data FscqOptions = FscqOptions
 
 instance Options FscqOptions where
   defineOptions = pure FscqOptions
+    <*> simpleOption "cachesize" 100000
+    "Cache size for sequential file system"
     <*> simpleOption "verbose-fuse" False
     "Log each FUSE operation"
     <*> simpleOption "verbose-interpret" False
@@ -107,7 +109,7 @@ instance Options FscqOptions where
     "Enable/disable I/O concurrency: if false, yields do not give up the global lock."
 
 interpOptions :: FscqOptions -> InterpOptions
-interpOptions (FscqOptions _ verboseInterpret timeReads actuallyYield) =
+interpOptions (FscqOptions _ _ verboseInterpret timeReads actuallyYield) =
   InterpOptions verboseInterpret timeReads actuallyYield
 
 seqInterpOptions :: SeqI.Options
@@ -149,14 +151,14 @@ run_fuse opts disk_fn fuse_args = do
   then
     do
       putStrLn $ "Recovering file system"
-      res <- SeqI.run seqInterpOptions ds $ AsyncFS._AFS__recover cachesize
+      res <- SeqI.run seqInterpOptions ds $ AsyncFS._AFS__recover (optCachesize opts)
       case res of
         Errno.Err _ -> error $ "recovery failed"
         Errno.OK (s, fsxp) -> return (s, fsxp)
   else
     do
       putStrLn $ "Initializing file system"
-      res <- SeqI.run seqInterpOptions ds $ AsyncFS._AFS__mkfs cachesize nDataBitmaps nInodeBitmaps nDescrBlocks
+      res <- SeqI.run seqInterpOptions ds $ AsyncFS._AFS__mkfs (optCachesize opts) nDataBitmaps nInodeBitmaps nDescrBlocks
       case res of
         Errno.Err _ -> error $ "mkfs failed"
         Errno.OK (s, fsxp) -> do
