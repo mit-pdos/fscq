@@ -10,7 +10,9 @@ import System.Posix.Types
 import System.Posix.Files
 import System.Posix.IO
 import System.FilePath.Posix
+import System.IO
 import System.CPUTime
+import System.Exit
 import Word
 import Disk
 import Fuse
@@ -31,6 +33,7 @@ import qualified Data.List
 import AsyncDisk
 import Control.Monad
 import Control.Concurrent
+import Options
 import qualified Errno
 
 -- Handle type for open files; we will use the inode number
@@ -71,27 +74,70 @@ type FSrunner = forall a. CoopConcur.Coq_prog (Maybe a) -> IO a
 -- (ps, next tid)
 type SystemState = (ProgramState, IORef Int)
 
-interpreter :: SystemState -> FSrunner
-interpreter (ps, m_tid) p = do
+interpreter :: FscqOptions -> SystemState -> FSrunner
+interpreter opts (ps, m_tid) p = do
   tid <- readIORef m_tid
   modifyIORef m_tid (+1)
   ret <- newEmptyMVar
   _ <- forkIO $ do
-    r <- I.run ps tid p
+    r <- I.run (interpOptions opts) ps tid p
     case r of
       Just v -> putMVar ret v
       Nothing -> error $ "loop timed out in thread " ++ show tid
   takeMVar ret
 
+data FscqOptions = FscqOptions
+  { -- additional logging
+    optVerboseFuse :: Bool
+  , optVerboseInterpret :: Bool
+  , optTimeReads :: Bool
+    -- enable/disable I/O concurrency
+  , optActuallyYield :: Bool
+  } deriving (Show)
+
+instance Options FscqOptions where
+  defineOptions = pure FscqOptions
+    <*> simpleOption "verbose-fuse" False
+    "Log each FUSE operation"
+    <*> simpleOption "verbose-interpret" False
+    "Log each interpreter operation"
+    <*> simpleOption "time-reads" False
+    "Log timing for each disk red"
+    <*> simpleOption "yield" True
+    "Enable/disable I/O concurrency: if false, yields do not give up the global lock."
+
+interpOptions :: FscqOptions -> InterpOptions
+interpOptions (FscqOptions _ verboseInterpret timeReads actuallyYield) =
+  InterpOptions verboseInterpret timeReads actuallyYield
+
+-- Get parsed options and remaining arguments
+--
+-- Errors out if option parsing fails, and handles --help by printing options
+-- and exiting.
+getOptions :: IO (FscqOptions, [String])
+getOptions = do
+  args <- getArgs
+  let parsed = parseOptions args
+  case parsedOptions parsed of
+    Just opts -> return (opts, parsedArguments parsed)
+    Nothing -> case parsedError parsed of
+      Just err -> do
+        hPutStrLn stderr err
+        hPutStrLn stderr (parsedHelp parsed)
+        exitFailure
+      Nothing -> do
+        putStrLn (parsedHelp parsed)
+        exitSuccess
+
 main :: IO ()
 main = do
-  args <- getArgs
+  (opts, args) <- getOptions
   case args of
-    fn:rest -> run_fuse fn rest
+    fn:rest -> run_fuse opts fn rest
     _ -> putStrLn $ "Usage: fuse disk -f /tmp/ft"
 
-run_fuse :: String -> [String] -> IO()
-run_fuse disk_fn fuse_args = do
+run_fuse :: FscqOptions -> String -> [String] -> IO()
+run_fuse opts disk_fn fuse_args = do
   fileExists <- System.Directory.doesFileExist disk_fn
   ds <- case disk_fn of
     "/tmp/crashlog.img" -> init_disk_crashlog disk_fn
@@ -115,9 +161,9 @@ run_fuse disk_fn fuse_args = do
           return (s, fsxp)
   cs <- init_concurrency
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
-  I.run (ds, cs) 0 (FS.init_fs fsxp s)
+  I.run (interpOptions opts) (ds, cs) 0 (FS.init_fs fsxp s)
   m_tid <- newIORef 1
-  fuseRun "fscq" fuse_args (fscqFSOps disk_fn (ds, cs) (interpreter ((ds, cs), m_tid))) defaultExceptionHandler
+  fuseRun "fscq" fuse_args (fscqFSOps disk_fn (ds, cs) (interpreter opts ((ds, cs), m_tid))) defaultExceptionHandler
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html

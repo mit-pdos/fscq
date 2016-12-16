@@ -17,34 +17,30 @@ import GHC.Prim
 import Data.IORef
 import qualified Crypto.Hash.SHA256 as SHA256
 
-verbose :: Bool
-verbose = False
+data InterpOptions = InterpOptions
+  { logDebug :: Bool
+  , logReadTimings :: Bool
+  , releaseOnYield :: Bool }
 
-timeReads :: Bool
-timeReads = False
-
-actuallyYield :: Bool
-actuallyYield = True
-
-debugmsg :: Int -> String -> IO ()
-debugmsg tid s =
-  if verbose then
+debugmsg :: InterpOptions -> Int -> String -> IO ()
+debugmsg opts tid s =
+  if logDebug opts then
     putStrLn $ "[" ++ (show tid) ++ "] " ++ s
   else
     return ()
 
-timingStart :: String -> IO Integer
-timingStart s =
-  if timeReads then do
+timingStart :: InterpOptions -> String -> IO Integer
+timingStart opts s =
+  if logReadTimings opts then do
     t <- getCPUTime
     putStrLn $ "[" ++ show t ++ "] " ++ s
     return t
   else
     return 0
 
-timingFinish :: Integer -> String -> IO ()
-timingFinish start s =
-  if timeReads then do
+timingFinish :: InterpOptions -> Integer -> String -> IO ()
+timingFinish opts start s =
+  if logReadTimings opts then do
     t <- getCPUTime
     let elapsed = (fromIntegral (t - start))/1e9 :: Float
     putStrLn $ "[" ++ show t ++ "] " ++ s ++ " (" ++ show elapsed ++ "ms" ++ ")"
@@ -73,14 +69,14 @@ type ThreadReads = [Integer]
 data BackgroundReads =
   BackgroundReads !(Data.Map.Map Integer PendingRead) !(Data.Map.Map Int ThreadReads)
 
-new_read :: Disk.DiskState -> BackgroundReads -> Integer -> Int -> IO BackgroundReads
-new_read ds (BackgroundReads pendings tid_reads) a tid = do
+new_read :: InterpOptions -> Disk.DiskState -> BackgroundReads -> Integer -> Int -> IO BackgroundReads
+new_read opts ds (BackgroundReads pendings tid_reads) a tid = do
   pending <- newEmptyMVar
   _ <- forkIO $ do
-    start <- timingStart $ "fetch from  " ++ show a
+    start <- timingStart opts $ "fetch from  " ++ show a
     val <- Disk.read_disk ds a
     val' <- evaluate val
-    timingFinish start $ "done with " ++ show a
+    timingFinish opts start $ "done with " ++ show a
     putMVar pending val'
   let pendings' = Data.Map.insert a pending pendings
       tid_reads' = Data.Map.alter
@@ -89,8 +85,8 @@ new_read ds (BackgroundReads pendings tid_reads) a tid = do
             Just tids -> Just $ tids ++ [a]) tid tid_reads in
     return $ BackgroundReads pendings' tid_reads'
 
-finish_read :: BackgroundReads -> Integer -> Int -> IO (Coq_word, BackgroundReads)
-finish_read (BackgroundReads pendings tid_reads) a tid =
+finish_read :: InterpOptions -> BackgroundReads -> Integer -> Int -> IO (Coq_word, BackgroundReads)
+finish_read opts (BackgroundReads pendings tid_reads) a tid =
   let m_read = fromJust . Data.Map.lookup a $ pendings in do
     v <- do
       maybe_v <- tryTakeMVar m_read
@@ -112,7 +108,7 @@ finish_read (BackgroundReads pendings tid_reads) a tid =
     when (length tid_addrs > 1) $ do
       -- this isn't an error, it just means we initiated some other reads that
       -- have since finished due to other threads
-      debugmsg tid $ "left multiple reads: " ++ show tid_addrs
+      debugmsg opts tid $ "left multiple reads: " ++ show tid_addrs
     let tid_reads' = Data.Map.adjust (Data.List.\\ tid_dones) tid tid_reads in
       return $ (v, BackgroundReads pendings' tid_reads')
 
@@ -140,68 +136,68 @@ release_global_lock (CS _ lock _) = putMVar lock ()
 
 type ProgramState = (Disk.DiskState, ConcurrentState)
 
-run_dcode :: ProgramState -> Int -> CoopConcur.Coq_prog a -> IO a
-run_dcode _ tid (Ret r) = do
-  debugmsg tid $ "Done"
+run_dcode :: InterpOptions -> ProgramState -> Int -> CoopConcur.Coq_prog a -> IO a
+run_dcode opts _ tid (Ret r) = do
+  debugmsg opts tid $ "Done"
   return . unsafeCoerce $ r
-run_dcode (ds, CS _ _ m_reads) tid (StartRead a) = do
-  debugmsg tid $ "StartRead " ++ (show a)
+run_dcode opts (ds, CS _ _ m_reads) tid (StartRead a) = do
+  debugmsg opts tid $ "StartRead " ++ (show a)
   bg_reads <- readIORef m_reads
-  bg_reads' <- new_read ds bg_reads a tid
+  bg_reads' <- new_read opts ds bg_reads a tid
   writeIORef m_reads bg_reads'
   return . unsafeCoerce $ ()
-run_dcode (_, CS _ _ m_reads) tid (FinishRead a) = do
-  debugmsg tid $ "FinishRead " ++ (show a)
+run_dcode opts (_, CS _ _ m_reads) tid (FinishRead a) = do
+  debugmsg opts tid $ "FinishRead " ++ (show a)
   bg_reads <- readIORef m_reads
-  (val, bg_reads') <- finish_read bg_reads a tid
+  (val, bg_reads') <- finish_read opts bg_reads a tid
   writeIORef m_reads bg_reads'
   return . unsafeCoerce $ val
-run_dcode (ds, _) tid (Write a v) = do
-  debugmsg tid $ "Write " ++ (show a) ++ " " ++ (show v)
+run_dcode opts (ds, _) tid (Write a v) = do
+  debugmsg opts tid $ "Write " ++ (show a) ++ " " ++ (show v)
   Disk.write_disk ds a v
   return . unsafeCoerce $ ()
-run_dcode (_, CS vm _ _) tid (Get a) = do
-    debugmsg tid $ "Get " ++ (show (hmember_to_int a))
+run_dcode opts (_, CS vm _ _) tid (Get a) = do
+    debugmsg opts tid $ "Get " ++ (show (hmember_to_int a))
     m <- readIORef vm
     return . unsafeCoerce $ get_var m a
-run_dcode (_, CS vm _ _) tid (Assgn a v) = do
-  debugmsg tid $ "Assgn " ++ (show (hmember_to_int a))
+run_dcode opts (_, CS vm _ _) tid (Assgn a v) = do
+  debugmsg opts tid $ "Assgn " ++ (show (hmember_to_int a))
   modifyIORef vm (\m -> set_var m a v)
   return . unsafeCoerce $ ()
-run_dcode _ tid (GetTID) = do
-  debugmsg tid $ "GetTID"
+run_dcode opts _ tid (GetTID) = do
+  debugmsg opts tid $ "GetTID"
   return . unsafeCoerce $ tid
-run_dcode (_, cs@(CS _ _ m_reads)) tid (Yield wchan) = do
-  debugmsg tid $ "Yield " ++ (show wchan)
+run_dcode opts (_, cs@(CS _ _ m_reads)) tid (Yield wchan) = do
+  debugmsg opts tid $ "Yield " ++ (show wchan)
   bg_reads <- readIORef m_reads
-  when actuallyYield $ release_global_lock cs
+  when (releaseOnYield opts) $ release_global_lock cs
   wait_tid_reads tid bg_reads
-  when actuallyYield $ acquire_global_lock cs
+  when (releaseOnYield opts) $ acquire_global_lock cs
   return . unsafeCoerce $ ()
-run_dcode _ tid (Wakeup wchan) = do
-  debugmsg tid $ "Wakeup " ++ (show wchan)
+run_dcode opts _ tid (Wakeup wchan) = do
+  debugmsg opts tid $ "Wakeup " ++ (show wchan)
   return . unsafeCoerce $ ()
-run_dcode _ tid (GhostUpdate _) = do
-  debugmsg tid $ "GhostUpdate"
+run_dcode opts _ tid (GhostUpdate _) = do
+  debugmsg opts tid $ "GhostUpdate"
   return . unsafeCoerce $ ()
-run_dcode ps tid (Hash sz (W64 w)) =
-  run_dcode ps tid (Hash sz (W $ fromIntegral w))
-run_dcode _ tid (Hash sz (W w)) = do
-  debugmsg tid $ "Hash " ++ (show sz) ++ " " ++ (show w)
+run_dcode opts ps tid (Hash sz (W64 w)) =
+  run_dcode opts ps tid (Hash sz (W $ fromIntegral w))
+run_dcode opts _ tid (Hash sz (W w)) = do
+  debugmsg opts tid $ "Hash " ++ (show sz) ++ " " ++ (show w)
   wbs <- Disk.i2bs w $ fromIntegral $ (sz + 7) `div` 8
   h <- return $ SHA256.hash wbs
   ih <- Disk.bs2i h
   return $ unsafeCoerce $ W ih
-run_dcode ps tid (Bind p1 p2) = do
-  debugmsg tid $ "Bind"
-  r1 <- run_dcode ps tid p1
-  r2 <- run_dcode ps tid (p2 r1)
+run_dcode opts ps tid (Bind p1 p2) = do
+  debugmsg opts tid $ "Bind"
+  r1 <- run_dcode opts ps tid p1
+  r2 <- run_dcode opts ps tid (p2 r1)
   return . unsafeCoerce $ r2
 
-run_e :: ProgramState -> Int -> CoopConcur.Coq_prog a -> IO a
-run_e (ds, cs) tid p = do
+run_e :: InterpOptions -> ProgramState -> Int -> CoopConcur.Coq_prog a -> IO a
+run_e opts (ds, cs) tid p = do
   acquire_global_lock cs
-  ret <- run_dcode (ds, cs) tid p
+  ret <- run_dcode opts (ds, cs) tid p
   release_global_lock cs
   return ret
 
@@ -222,5 +218,5 @@ init_concurrency = do
   m_reads <- newIORef (BackgroundReads Data.Map.empty Data.Map.empty)
   return $ CS vm lock m_reads
 
-run :: ProgramState -> Int -> CoopConcur.Coq_prog a -> IO a
-run ps tid p = E.catch (run_e ps tid p) (print_exception tid)
+run :: InterpOptions -> ProgramState -> Int -> CoopConcur.Coq_prog a -> IO a
+run opts ps tid p = E.catch (run_e opts ps tid p) (print_exception tid)
