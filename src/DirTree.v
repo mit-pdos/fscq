@@ -5721,10 +5721,63 @@ Module DIRTREE.
        (tree_inodes (tree_prune srcnum srcents srcpath srcname (TreeDir dnum tree_elem))))).
   Admitted.
 
+  Lemma tree_inodes_cons: forall elem n s (d:dirtree),
+    tree_inodes (TreeDir n ((s,d):: elem)) = tree_inodes d ++ (tree_inodes (TreeDir n elem)).
+  Proof.
+  Admitted.
+
+  Lemma incl_app_commr: forall (A: Type) (l: list A) l1 l2,
+    incl l (l1++l2) -> incl l (l2++l1).
+  Proof.
+  Admitted.
+
   Lemma tree_inodes_incl_delete_from_dir : forall pathname dnum tree_elem name pnum pelem,
+    tree_names_distinct (TreeDir dnum tree_elem) ->
     find_subtree pathname (TreeDir dnum tree_elem) = Some (TreeDir pnum pelem) ->
     incl (tree_inodes (update_subtree pathname (delete_from_dir name (TreeDir pnum pelem)) (TreeDir dnum tree_elem)))
          (tree_inodes (TreeDir dnum tree_elem)).
+  Proof.
+    induction pathname; intros; subst.
+    - simpl in *. inversion H0; subst.  
+      eapply incl_cons2.
+      eapply tree_inodes_incl_delete_from_list; eauto.
+    - induction tree_elem; intros; subst.
+      + simpl. eapply incl_refl.
+      + destruct a0.
+        destruct (string_dec a s); subst.
+        ++ 
+          unfold update_subtree.
+          destruct (string_dec s s); subst; try congruence.
+          --
+            rewrite tree_inodes_cons.
+            rewrite map_cons; simpl.
+            destruct (string_dec s s); try congruence.
+            fold update_subtree.
+            rewrite update_subtree_notfound.
+            rewrite cons_app.
+            setoid_rewrite cons_app.
+            rewrite app_assoc.
+            rewrite app_assoc.
+            eapply incl_app2l.
+            eapply incl_app_commr.
+            eapply incl_app2r.
+            unfold delete_from_dir in IHpathname.
+            destruct d; try congruence.
+            admit.
+            eapply IHpathname; eauto.
+
+         ++
+          unfold update_subtree; simpl.
+          destruct (string_dec s a); subst; simpl; try congruence.
+          eapply incl_cons2.
+          eapply incl_app2r.
+          unfold tree_inodes in IHtree_elem.
+          destruct (update_subtree (a :: pathname)
+                      (delete_from_dir name (TreeDir pnum pelem))
+                      (TreeDir dnum tree_elem)); try congruence.
+          admit.
+          eapply IH.
+
   Admitted.
 
   Theorem rename_ok' : forall fsxp dnum srcpath srcname dstpath dstname mscs,

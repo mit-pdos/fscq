@@ -101,7 +101,7 @@ run_fuse disk_fn fuse_args = do
         Errno.OK (s, fsxp) -> do
           set_nblocks_disk ds $ fromIntegral $ coq_FSXPMaxBlock fsxp
           return (s, fsxp)
-  putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks"
+  putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks " ++ "magic " ++ (show $ coq_FSXPMagic fsxp)
   ref <- newIORef s
   m_fsxp <- newMVar fsxp
   fuseRun "fscq" fuse_args (fscqFSOps disk_fn ds (doFScall ds ref) m_fsxp) defaultExceptionHandler
