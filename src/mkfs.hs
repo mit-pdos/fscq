@@ -10,6 +10,9 @@ import qualified Errno
 cachesize :: Integer
 cachesize = 100000
 
+interpOptions :: I.Options
+interpOptions = I.Options False
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -18,7 +21,7 @@ main = do
     [fn] -> do
       ds <- init_disk fn
       putStrLn $ "Initializing file system"
-      res <- I.run ds $ AsyncFS._AFS__mkfs cachesize 1 1 256
+      res <- I.run interpOptions ds $ AsyncFS._AFS__mkfs cachesize 1 1 256
       case res of
         Errno.Err _ -> error $ "mkfs failed"
         Errno.OK (_, fsxp) ->

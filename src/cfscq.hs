@@ -16,7 +16,7 @@ import System.Exit
 import Word
 import Disk
 import Fuse
-import Interpreter as SeqI
+import qualified Interpreter as SeqI
 import qualified CoopConcur
 import Data.IORef
 -- import qualified Interpeter as SeqI
@@ -110,6 +110,9 @@ interpOptions :: FscqOptions -> InterpOptions
 interpOptions (FscqOptions _ verboseInterpret timeReads actuallyYield) =
   InterpOptions verboseInterpret timeReads actuallyYield
 
+seqInterpOptions :: SeqI.Options
+seqInterpOptions = SeqI.Options False
+
 -- Get parsed options and remaining arguments
 --
 -- Errors out if option parsing fails, and handles --help by printing options
@@ -146,14 +149,14 @@ run_fuse opts disk_fn fuse_args = do
   then
     do
       putStrLn $ "Recovering file system"
-      res <- SeqI.run ds $ AsyncFS._AFS__recover cachesize
+      res <- SeqI.run seqInterpOptions ds $ AsyncFS._AFS__recover cachesize
       case res of
         Errno.Err _ -> error $ "recovery failed"
         Errno.OK (s, fsxp) -> return (s, fsxp)
   else
     do
       putStrLn $ "Initializing file system"
-      res <- SeqI.run ds $ AsyncFS._AFS__mkfs cachesize nDataBitmaps nInodeBitmaps nDescrBlocks
+      res <- SeqI.run seqInterpOptions ds $ AsyncFS._AFS__mkfs cachesize nDataBitmaps nInodeBitmaps nDescrBlocks
       case res of
         Errno.Err _ -> error $ "mkfs failed"
         Errno.OK (s, fsxp) -> do
