@@ -4,12 +4,12 @@ Require Import PeanoNat String List.
 Require Import Relation_Operators Operators_Properties.
 Require Import Morphisms.
 Require Import VerdiTactics.
-Require Import Word Mem AsyncDisk Pred PredCrash Prog ProgMonad SepAuto.
+Require Import Word Mem AsyncDisk Pred PredCrash Prog ProgMonad.
 Require Import BasicProg.
 Require Import Gensym.
 Require Import Omega.
 Require Import GoSemantics.
-Require Import GoFacts GoHoare GoTactics2 GoCompilationLemmas.
+Require Import GoFacts GoHoare GoTactics2 GoCompilationLemmas GoSepAuto.
 
 Import ListNotations.
 

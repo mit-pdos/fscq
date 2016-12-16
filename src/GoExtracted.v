@@ -1,15 +1,13 @@
 Require Import List String.
 Require Import StringMap.
-Require Import Word Prog Pred SepAuto.
-Require Import GoSemantics GoFacts GoHoare GoCompilationLemmas GoExtraction GoTactics2.
+Require Import Word Prog Pred.
+Require Import GoSemantics GoFacts GoHoare GoCompilationLemmas GoExtraction GoSepAuto GoTactics2.
 Import ListNotations.
 Import Go.
 
 Open Scope pred_scope.
 
 Require Import Cache.
-
-Require Import GoSepAuto.
 
 Instance WrapByTransforming_cachestate : WrapByTransforming cachestate.
   refine {|
@@ -38,49 +36,6 @@ Instance addrmap_default_value : forall T {H: GoWrapper T}, DefaultValue (Map.t 
 Defined.
 
 
-Lemma okToCancel_ptsto_any : forall var val,
-  okToCancel (var |-> val : pred) (var |->?).
-Proof.
-  intros.
-  apply pimpl_exists_r. eauto.
-Qed.
-Hint Extern 0 (okToCancel (?var |-> ?val) (?var |->?)) =>
-  apply okToCancel_ptsto_any : okToCancel.
-
-Lemma okToCancel_ptsto_typed_any_typed : forall T {Wr : GoWrapper T} var (val : T),
-  okToCancel (var ~> val : pred) (var ~>? T).
-Proof.
-  intros.
-  apply pimpl_exists_r. eauto.
-Qed.
-Hint Extern 0 (okToCancel (?var ~> ?val) (exists val', ?var |-> Val _ val')) =>
-  apply okToCancel_ptsto_typed_any_typed : okToCancel.
-
-Lemma okToCancel_ptsto_any_typed : forall T {Wr : GoWrapper T} var val,
-  okToCancel (var |-> Val (@wrap_type T _) val : pred) (var ~>? T).
-Proof.
-  intros.
-  apply pimpl_exists_r. eauto.
-Qed.
-Hint Extern 0 (okToCancel (?var |-> Val _ _) (exists val', ?var |-> Val _ val')) =>
-  apply okToCancel_ptsto_any_typed : okToCancel.
-
-Lemma okToCancel_any_any : forall X var V,
-  okToCancel (exists x : X, var |-> V x : pred) (var |->?).
-Proof.
-  intros.
-  apply pimpl_exists_l; intros.
-  apply pimpl_exists_r. eauto.
-Qed.
-Hint Extern 0 (okToCancel (exists _, ?var |-> _) (?var |->?)) =>
-  apply okToCancel_any_any : okToCancel.
-
-(* TODO: too much of a hack? too slow? *)
-Hint Extern 0 (okToCancel (?var |-> _) (exists _, ?var |-> _)) =>
-  apply pimpl_exists_r; eexists; reflexivity : okToCancel.
-
-Hint Extern 0 (okToCancel (decls_pre ?decls ?vars) (decls_post ?decls ?vars)) =>
-  apply decls_pre_impl_post.
 
 Example compile_writeback : forall env, sigT (fun p => forall a cs,
   EXTRACT BUFCACHE.writeback a cs
@@ -90,7 +45,6 @@ Example compile_writeback : forall env, sigT (fun p => forall a cs,
 Proof.
   unfold BUFCACHE.writeback.
   intros.
-Ltac cancel_go ::= cancel.
   compile_step.
   eapply hoare_strengthen_pre.
   rewrite transform_pimpl. simpl. reflexivity. (* TODO *)
@@ -197,7 +151,7 @@ Ltac cancel_go ::= cancel.
 
   Unshelve.
   all: repeat constructor.
-Defined.
+Time Defined.
 
 Eval lazy in (projT1 (compile_writeback (StringMap.empty _))).
 

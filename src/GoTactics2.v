@@ -1,7 +1,7 @@
 Require Import ProofIrrelevance Eqdep_dec.
 Require Import Omega VerdiTactics.
 Require Import Mem Pred Hoare.
-Require Import SepAuto.
+Require Import GoSepAuto.
 Require Import GoSemantics GoHoare.
 Require Export GoTactics1.
 
@@ -197,8 +197,9 @@ Ltac eval_expr := repeat eval_expr_step.
 Definition prod' := prod.
 Definition exis' := exis.
 
-Hint Extern 0 (okToUnify (ptsto ?a _) (ptsto ?b _)) => unify a b; reflexivity : okToUnify.
+Hint Extern 0 (okToCancel (ptsto ?a _) (ptsto ?b _)) => unify a b; reflexivity : okToUnify.
 
+Local Open Scope pred_scope.
 
 Lemma ptsto_upd_disjoint' : forall (F : pred) a v m,
   F m -> m a = None
@@ -209,20 +210,49 @@ Proof.
   cancel.
 Qed.
 
-Create HintDb cancel_go_finish.
+Lemma okToCancel_ptsto_any : forall var val,
+  okToCancel (var |-> val : pred) (var |->?).
+Proof.
+  intros.
+  apply pimpl_exists_r. eauto.
+Qed.
+Hint Extern 0 (okToCancel (?var |-> ?val) (?var |->?)) =>
+  apply okToCancel_ptsto_any : okToCancel.
 
-Ltac cancel_go :=
-  simpl in *;
-  fold prod' in *; fold exis' in *;
-  cancel;
-  (solve [
-    match goal with
-      | [ |- (?P =p=> ?Q)] =>
-      set (H := Q);
-      unfold exis' in H; subst H; cancel
-    end; cancel |
-    unfold exis'; cancel; auto with cancel_go_finish ])
-    || cancel.
+Lemma okToCancel_ptsto_typed_any_typed : forall T {Wr : GoWrapper T} var (val : T),
+  okToCancel (var ~> val : pred) (var ~>? T).
+Proof.
+  intros.
+  apply pimpl_exists_r. eauto.
+Qed.
+
+Hint Extern 0 (okToCancel (?var ~> ?val) (exists val', ?var |-> Val _ val')) =>
+  apply okToCancel_ptsto_typed_any_typed : okToCancel.
+
+Lemma okToCancel_ptsto_any_typed : forall T {Wr : GoWrapper T} var val,
+  okToCancel (var |-> Val (@wrap_type T _) val : pred) (var ~>? T).
+Proof.
+  intros.
+  apply pimpl_exists_r. eauto.
+Qed.
+Hint Extern 0 (okToCancel (?var |-> Val _ _) (exists val', ?var |-> Val _ val')) =>
+  apply okToCancel_ptsto_any_typed : okToCancel.
+
+Lemma okToCancel_any_any : forall X var V,
+  okToCancel (exists x : X, var |-> V x : pred) (var |->?).
+Proof.
+  intros.
+  apply pimpl_exists_l; intros.
+  apply pimpl_exists_r. eauto.
+Qed.
+Hint Extern 0 (okToCancel (exists _, ?var |-> _) (?var |->?)) =>
+  apply okToCancel_any_any : okToCancel.
+
+(* TODO: too much of a hack? too slow? *)
+Hint Extern 0 (okToCancel (?var |-> _) (exists _, ?var |-> _)) =>
+  apply pimpl_exists_r; eexists; reflexivity : okToCancel.
+
+Ltac cancel_go := GoSepAuto.cancel.
 
 Lemma ptsto_delete' : forall a (F :pred) (m : mem),
   (a |->? * F)%pred m -> F (delete m a).
@@ -242,8 +272,8 @@ Ltac pred_solve_step := match goal with
       [ cancel_go | (eapply ptsto_upd_disjoint'; solve [eauto]) || eapply ptsto_upd ]
     | context [(@ptsto ?AT ?AEQ ?V a ?y)%pred] =>
       let H := fresh in
-      assert (@okToUnify AT AEQ V (ptsto a y) (ptsto a x)) as H;
-      [ eauto with okToUnify | rewrite H ]
+      assert (@okToCancel AT AEQ V (ptsto a y) (ptsto a x)) as H;
+      [ eauto with okToCancel | rewrite H ]
     end
   | [ |- ( ?P )%pred (delete _ ?a) ] =>
     eapply ptsto_delete' with (F := P)

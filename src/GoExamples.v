@@ -1,7 +1,7 @@
 Require Import List String.
 Require Import StringMap.
 Require Import Word Prog BasicProg Pred.
-Require Import GoSemantics GoHoare GoFacts GoExtraction.
+Require Import GoSemantics GoHoare GoFacts GoCompilationLemmas GoExtraction.
 Import ListNotations.
 Import Go.
 
@@ -162,6 +162,7 @@ Opaque swap_prog.
 Definition extract_swap_prog_corr env := projT2 (extract_swap_prog env).
 Hint Resolve extract_swap_prog_corr : extractions.
 
+Local Open Scope map_scope.
 
 Definition swap_env : Env :=
   ("swap" -s> {|
@@ -216,8 +217,7 @@ Example extract_rot3_prog :
 Proof.
   intros.
   unfold rot3_prog.
-  repeat (compile_step; try solve [unfold exis' at 3; cancel]). (* TODO something with cancel_go *)
-  Unshelve. compile.
+  compile.
 Defined.
 
 Example extract_rot3_prog_top :
@@ -343,9 +343,6 @@ Example swap_function : OperationalSpec :=
   |}.
 
 Definition empty_env : Env := StringMap.empty _.
-
-Definition swap_env : Env :=
-  StringMap.add "swap" swap_function empty_env.
 
 (* Corresponding Go:
 func swap(_0 Num, _1 Num) {

@@ -1,8 +1,8 @@
 Require Import Eqdep.
 Require Import PeanoNat Plus List.
-Require Import Word AsyncDisk Prog ProgMonad BasicProg Pred SepAuto.
+Require Import Word AsyncDisk Prog ProgMonad BasicProg Pred.
 Require Import StringMap.
-Require Import GoSemantics GoFacts GoHoare.
+Require Import GoSemantics GoFacts GoHoare GoSepAuto.
 Require Import GoTactics2.
 
 Import ListNotations.
@@ -153,6 +153,9 @@ Proof.
     cancel. auto.
 Qed.
 Hint Resolve decls_pre_impl_post : cancel_go_finish.
+
+Hint Extern 0 (okToCancel (decls_pre ?decls ?vars) (decls_post ?decls ?vars)) =>
+  apply decls_pre_impl_post.
 
 Local Open Scope map_scope.
 
@@ -717,65 +720,65 @@ Qed.
 
 
 
-Lemma map_add_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m k (v : T),
-  (@okToUnify AT AEQ value (var ~> Map.add k v m)
+Lemma map_add_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m k (v : T),
+  (@okToCancel AT AEQ value (var ~> Map.add k v m)
   (var |-> (Val (AddrMap wrap_type) (Here (Map.add k (wrap' v) (Map.map wrap' m))))))%pred.
 Proof.
-  intros. unfold okToUnify.
+  intros. unfold okToCancel.
   unfold wrap. simpl. repeat f_equal.
   eauto using MapUtils.addrmap_equal_eq,
     MoreAddrMapFacts.map_add_comm,
     MapUtils.AddrMap.MapFacts.Equal_refl.
 Qed.
 
-Hint Extern 1 (okToUnify (?var ~> Map.add ?k ?v ?m)
+Hint Extern 1 (okToCancel (?var ~> Map.add ?k ?v ?m)
   (?var |-> (Val (AddrMap wrap_type) (Here (Map.add ?k (wrap' ?v) (Map.map wrap' ?m))))))
-  => apply map_add_okToUnify.
+  => apply map_add_okToCancel.
 
 
-Lemma map_remove_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m k,
-  (@okToUnify AT AEQ value (var ~> Map.remove k m)
+Lemma map_remove_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m k,
+  (@okToCancel AT AEQ value (var ~> Map.remove k m)
   (var |-> (Val (AddrMap wrap_type) (Here (Map.remove k (Map.map wrap' m))))))%pred.
 Proof.
-  intros. unfold okToUnify.
+  intros. unfold okToCancel.
   unfold wrap. simpl. repeat f_equal.
   eauto using MapUtils.addrmap_equal_eq,
     MoreAddrMapFacts.map_remove_comm,
     MapUtils.AddrMap.MapFacts.Equal_refl.
 Qed.
 
-Local Hint Extern 1 (okToUnify (?var ~> Map.remove ?k ?m)
+Local Hint Extern 1 (okToCancel (?var ~> Map.remove ?k ?m)
   (?var |-> (Val (AddrMap wrap_type) (Here (Map.remove ?k (Map.map wrap' ?m))))))
-  => apply map_remove_okToUnify.
+  => apply map_remove_okToCancel.
 
 
-Lemma map_find_some_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m k v,
+Lemma map_find_some_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m k v,
   Map.find k (Map.map wrap' m) = Some v ->
-  (@okToUnify AT AEQ value (var ~> Map.find k m)
+  (@okToCancel AT AEQ value (var ~> Map.find k m)
   (var |-> Val (Pair Bool wrap_type) (true, v))).
 Proof.
-  intros. unfold okToUnify, wrap. simpl.
+  intros. unfold okToCancel, wrap. simpl.
   rewrite MapUtils.AddrMap.MapFacts.map_o in H.
   destruct Map.find; simpl in *; congruence.
 Qed.
 
-Lemma map_find_none_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m k,
+Lemma map_find_none_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m k,
   Map.find k (Map.map wrap' m) = None ->
-  (@okToUnify AT AEQ value (var ~> Map.find k m)
+  (@okToCancel AT AEQ value (var ~> Map.find k m)
   (var |-> Val (Pair Bool wrap_type) (false, default_value' wrap_type))).
 Proof.
-  intros. unfold okToUnify, wrap. simpl.
+  intros. unfold okToCancel, wrap. simpl.
   rewrite MapUtils.AddrMap.MapFacts.map_o in H.
   destruct Map.find; simpl in *; congruence.
 Qed.
 
-Local Hint Extern 1 (okToUnify (?var ~> Map.find ?k ?m)
+Local Hint Extern 1 (okToCancel (?var ~> Map.find ?k ?m)
   (?var |-> (Val (Pair Bool wrap_type) (true, ?v))))
-  => eapply map_find_some_okToUnify.
+  => eapply map_find_some_okToCancel.
 
-Local Hint Extern 1 (okToUnify (?var ~> Map.find ?k ?m)
+Local Hint Extern 1 (okToCancel (?var ~> Map.find ?k ?m)
   (?var |-> (Val (Pair Bool wrap_type) (false, ?v))))
-  => eapply map_find_none_okToUnify.
+  => eapply map_find_none_okToCancel.
 
 
 Lemma CompileMapAdd : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k (v : T),
@@ -826,18 +829,18 @@ Proof.
     [ eval_expr; eauto..]).
 Qed.
 
-Lemma map_cardinal_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m,
-  (@okToUnify AT AEQ value (var ~> Map.cardinal m)
+Lemma map_cardinal_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m,
+  (@okToCancel AT AEQ value (var ~> Map.cardinal m)
   (var |-> (Val Num (Here (Map.cardinal (Map.map wrap' m))))))%pred.
 Proof.
-  intros. unfold okToUnify.
+  intros. unfold okToCancel.
   unfold wrap. simpl. repeat f_equal. unfold id.
   eauto using MapUtils.AddrMap.map_cardinal_map_eq.
 Qed.
 
-Local Hint Extern 1 (okToUnify (?var ~> Map.cardinal ?m)
+Local Hint Extern 1 (okToCancel (?var ~> Map.cardinal ?m)
   (?var |-> (Val Num (Here (Map.cardinal (Map.map wrap' ?m))))))
-  => apply map_cardinal_okToUnify.
+  => apply map_cardinal_okToCancel.
 
 Lemma CompileMapCardinal : forall env F T {Wr : GoWrapper T} mvar m var (v0 : W),
   EXTRACT Ret (Go.Map.cardinal m)
@@ -853,28 +856,28 @@ Proof.
     repeat econstructor; [ eval_expr; eauto..].
 Qed.
 
-Lemma map_elements_okToUnify : forall AT AEQ {T} {Wr : GoWrapper T} var m,
-  @okToUnify AT AEQ value (var ~> Map.elements m)
+Lemma map_elements_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m,
+  @okToCancel AT AEQ value (var ~> Map.elements m)
   (var |-> Val (Slice (Pair Num wrap_type))
          (Here (map (fun x => (Here (fst x), snd x))
                (Map.elements (Map.map wrap' m))))).
 Proof.
   intros.
-  unfold okToUnify.
+  unfold okToCancel.
   unfold wrap; simpl wrap. repeat f_equal.
   simpl wrap'. repeat f_equal.
   rewrite MapUtils.AddrMap.map_elements_map_eq.
   rewrite map_map. simpl. reflexivity.
 Qed.
 
-Local Hint Extern 1 (okToUnify (?var ~> Map.elements ?k ?m)
+Local Hint Extern 1 (okToCancel (?var ~> Map.elements ?k ?m)
   (?var |-> (Val _ (Here (map _ (Map.elements _))))))
-  => eapply map_elements_okToUnify : okToUnify.
+  => eapply map_elements_okToCancel : okToCancel.
 
-Local Hint Extern 1 (okToUnify (?var ~> Map.elements _)
+Local Hint Extern 1 (okToCancel (?var ~> Map.elements _)
   (?var |-> Val _ (Here(map _
    (MapUtils.AddrMap_List.Raw.map wrap' (MapUtils.AddrMap_List.this _))))))
-  => eapply map_elements_okToUnify : okToUnify.
+  => eapply map_elements_okToCancel : okToCancel.
 
 Lemma CompileMapElements : forall env F T {Wr : GoWrapper T} mvar m var (v0 : list (W * T)),
   EXTRACT Ret (Go.Map.elements m)
@@ -1447,8 +1450,8 @@ Proof.
     [ eval_expr; eauto..].
 Qed.
 
-Lemma option_none_okToUnify : forall AT AEQ {T} {HT : GoWrapper T} {D : DefaultValue T} var,
-  @okToUnify AT AEQ value (var ~> None) (var |-> Val (Pair Bool wrap_type) (false, wrap' zeroval)).
+Lemma option_none_okToCancel : forall AT AEQ {T} {HT : GoWrapper T} {D : DefaultValue T} var,
+  @okToCancel AT AEQ value (var ~> None) (var |-> Val (Pair Bool wrap_type) (false, wrap' zeroval)).
 Proof.
   intros.
   unfold wrap. simpl.
@@ -1456,9 +1459,9 @@ Proof.
   reflexivity.
 Qed.
 
-Local Hint Extern 1 (okToUnify (?var ~> None)
+Local Hint Extern 1 (okToCancel (?var ~> None)
   (?var |-> Val (Pair Bool wrap_type) (false, wrap' zeroval)))
-  => apply option_none_okToUnify.
+  => apply option_none_okToCancel.
 
 Lemma CompileRetOptionNone : forall env B {HB: GoWrapper B} {D : DefaultValue B}
   avar pvar (p : bool * B) F,
