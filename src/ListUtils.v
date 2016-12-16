@@ -3175,24 +3175,20 @@ Proof.
 Qed.
 
 
+Hint Resolve incl_app incl_appl incl_appr incl_refl : incl_app.
+
 Lemma incl_app2r : forall T (l1 l2 l2' : list T),
   incl l2 l2' ->
   incl (l1 ++ l2) (l1 ++ l2').
 Proof.
-  intros.
-  eapply incl_app.
-  eapply incl_appl. eapply incl_refl.
-  eapply incl_appr. eauto.
+  eauto with incl_app.
 Qed.
 
 Lemma incl_app2l : forall T (l1' l1 l2 : list T),
   incl l1 l1' ->
   incl (l1 ++ l2) (l1' ++ l2).
 Proof.
-  intros.
-  eapply incl_app.
-  eapply incl_appl. eauto.
-  eapply incl_appr. eapply incl_refl.
+  eauto with incl_app.
 Qed.
 
 Lemma NoDup_incl_l : forall T (l1 l2 l2' : list T),
@@ -3262,4 +3258,170 @@ Proof.
   intuition.
   intro; intro. apply H0.
   inversion H1; subst; simpl; eauto.
+Qed.
+
+Lemma incl_cons_inv : forall T (a : T) l1 l2,
+  incl (a :: l1) l2 -> incl l1 l2.
+Proof.
+  unfold incl; intros.
+  apply H; intuition.
+Qed.
+
+Lemma incl_cons_inv' : forall T (a : T) l1 l2,
+  incl (a :: l1) l2 -> In a l2 /\ incl l1 l2.
+Proof.
+  unfold incl; intros.
+  intuition.
+Qed.
+
+Lemma incl_tl_inv : forall T l1 l2 (a : T),
+  incl l1 (a :: l2) ->
+  ~ In a l1 ->
+  incl l1 l2.
+Proof.
+  induction l1; simpl; intros.
+  - apply incl_nil.
+  - intuition.
+    apply incl_cons.
+    + specialize (H a).
+      simpl in *. intuition. exfalso; eauto.
+    + eapply IHl1; eauto.
+      eapply incl_cons_inv; eauto.
+Qed.
+
+
+Definition NoDupApp (T : Type) (l : list (list T)) := NoDup (concat l).
+
+Lemma NoDupApp_pick : forall T (l1 l2 l3 : list (list T)),
+  NoDupApp (l1 ++ l2 ++ l3) -> NoDupApp (l2 ++ l1 ++ l3).
+Proof.
+  unfold NoDupApp; intros; repeat rewrite concat_app in *.
+  rewrite app_assoc. apply NoDup_app_comm.
+  apply NoDup_3app_rev.
+  eauto.
+Qed.
+
+Lemma NoDupApp_cons_nil : forall T (l : list (list T)),
+  NoDupApp ([] :: l) <-> NoDupApp l.
+Proof.
+  firstorder.
+Qed.
+
+Lemma NoDupApp_cons : forall T a (l : list (list T)),
+  NoDupApp l ->
+  NoDup a ->
+  (forall x, In x a -> ~ In x (concat l)) ->
+  NoDupApp (a :: l).
+Proof.
+  induction a; simpl; intros.
+  apply NoDupApp_cons_nil; eauto.
+  constructor.
+  - intro H'.
+    apply in_app_or in H'; intuition.
+    + inversion H0; eauto.
+    + eapply H1; eauto.
+  - apply IHa; eauto.
+    inversion H0; eauto.
+Qed.
+
+Lemma NoDupApp_In : forall T a (l : list (list T)),
+  NoDupApp l ->
+  In a l ->
+  NoDup a.
+Proof.
+  induction l; simpl; intros.
+  firstorder.
+  intuition subst.
+  unfold NoDupApp in H; simpl in H.
+  eapply NoDup_app_l; eauto.
+  eapply IHl; eauto.
+  unfold NoDupApp in H; simpl in H.
+  eapply NoDup_app_r; eauto.
+Qed.
+
+Lemma incl_pick_inv : forall T (l1 l2 l : list T) x,
+  NoDup (x :: l1 ++ l2) ->
+  incl (l1 ++ x :: l2) (x :: l) ->
+  incl (l1 ++ l2) l.
+Proof.
+  intros.
+  unfold incl; intros.
+  specialize (H0 a).
+  edestruct H0; subst; eauto.
+
+  eapply in_app_or in H1.
+  eapply in_or_app.
+  intuition.
+
+  exfalso. inversion H. eauto.
+Qed.
+
+Lemma incl_pick_inv' : forall T (l1 l2 l : list T) x,
+  NoDup (x :: l) ->
+  incl (x :: l) (l1 ++ x :: l2) ->
+  incl l (l1 ++ l2).
+Proof.
+  intros.
+  unfold incl; intros.
+  specialize (H0 a).
+  simpl in *; intuition.
+  inversion H; subst.
+
+  eapply in_app_or in H0.
+  eapply in_or_app.
+  intuition.
+  inversion H3; intuition.
+  subst; exfalso; eauto.
+Qed.
+
+Lemma incl_concat' : forall T (x : list T) l,
+  In x l ->
+  incl x (concat l).
+Proof.
+  destruct x; simpl; intros.
+  apply incl_nil.
+
+  induction l; simpl; intros.
+  - exfalso; simpl in *; eauto.
+  - inversion H; subst.
+    apply incl_appl. apply incl_refl.
+    apply incl_appr. eauto.
+Qed.
+
+Lemma incl_concat : forall T (l1 l2 : list (list T)),
+  incl l1 l2 ->
+  incl (concat l1) (concat l2).
+Proof.
+  induction l1; simpl; intros.
+  - apply incl_nil.
+  - apply incl_cons_inv' in H; intuition.
+    eapply incl_app; eauto.
+    eapply incl_concat'; eauto.
+Qed.
+
+Theorem NoDupApp_incl : forall T (l2 l1 : list (list T)),
+  NoDupApp l1 ->
+  incl l2 l1 ->
+  NoDup l2 ->
+  NoDupApp l2.
+Proof.
+  induction l2; simpl; intros.
+  - constructor.
+  - specialize (H0 a) as H0'; simpl in *; intuition. clear H3.
+    apply in_split in H4. destruct H4. destruct H2. subst.
+    eapply incl_pick_inv' in H0 as H0'; eauto.
+    rewrite cons_app in H. apply NoDupApp_pick in H. simpl in H.
+    eapply NoDupApp_cons.
+
+    eapply IHl2; eauto.
+    eapply incl_tl; eauto.
+    inversion H1; eauto.
+    unfold NoDupApp in *; simpl in *. eapply NoDup_app_l; eauto.
+
+    intros; intro.
+    unfold NoDupApp in *; simpl in *.
+    eapply not_In_NoDup_app in H; eauto.
+    apply H.
+
+    eapply incl_concat in H0'. apply H0'. eauto.
 Qed.
