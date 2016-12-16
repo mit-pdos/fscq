@@ -5706,6 +5706,116 @@ Module DIRTREE.
   Hint Extern 1 ({{_}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.
 
 
+  Definition conflicting (p q : Prop) := (p -> ~ q) /\ (q -> ~ p).
+  Definition xor (p q : Prop) := (p /\ ~ q) \/ (q /\ ~ p).
+
+  Lemma tree_inodes_after_prune : forall srcpath t srcnum srcents srcname mvtree inum,
+    tree_inodes_distinct t ->
+    tree_names_distinct t ->
+    find_subtree srcpath t = Some (TreeDir srcnum srcents) ->
+    find_dirlist srcname srcents = Some mvtree ->
+    conflicting (In inum (tree_inodes mvtree))
+                (In inum (tree_inodes (tree_prune srcnum srcents srcpath srcname t))).
+  Proof.
+    induction srcpath; simpl; intros.
+    - inversion H1; subst; simpl in *.
+      admit.
+    - destruct t; simpl in *; try congruence.
+      induction l; simpl in *; try congruence.
+      destruct a0; simpl in *.
+      destruct (string_dec s a); subst.
+      + rewrite update_subtree_notfound in * by ( inversion H0; inversion H6; eauto ).
+        split; intros.
+        * edestruct IHsrcpath with (t := d) (inum := inum); eauto.
+          intuition.
+         -- admit.
+         -- apply in_app_or in H7; intuition.
+            eapply tree_inodes_find_subtree_incl with (pathname := srcpath ++ [srcname]) (t := d) in H3.
+            unfold tree_inodes_distinct in *; simpl in *.
+            inversion H.
+            eapply not_In_NoDup_app in H3; eauto.
+            erewrite find_subtree_app by eauto.
+            rewrite find_subtree_dirlist; eauto.
+        * admit.
+      + admit.
+  Admitted.
+
+  Lemma tree_inodes_after_graft : forall dstpath t dstnum dstents dstname mvtree inum,
+    NoDup (tree_inodes t ++ tree_inodes mvtree) ->
+    tree_names_distinct t ->
+    find_subtree dstpath t = Some (TreeDir dstnum dstents) ->
+    In inum (tree_inodes (tree_graft dstnum dstents dstpath dstname mvtree t)) ->
+    xor (In inum (tree_inodes mvtree))
+        (In inum (tree_inodes (tree_prune dstnum dstents dstpath dstname t))).
+  Proof.
+  Admitted.
+
+  Lemma tree_inodes_nodup_delete_from_list' : forall srcpath srcname srcents srcnum t mvtree top_extras,
+    forall (Hd : tree_names_distinct t),
+    find_subtree srcpath t = Some (TreeDir srcnum srcents) ->
+    find_dirlist srcname srcents = Some mvtree ->
+    NoDup (top_extras ++ tree_inodes t) ->
+    NoDup (top_extras ++ tree_inodes (tree_prune srcnum srcents srcpath srcname t) ++ tree_inodes mvtree).
+  Proof.
+    induction srcpath; simpl; intros.
+    - inversion H; clear H; subst.
+      simpl in *.
+
+      match goal with
+      | [ H : NoDup (top_extras ++ ?n :: ?x) |- NoDup (top_extras ++ ?n :: ?y) ] =>
+        cut (forall extra_inodes, NoDup (n :: extra_inodes ++ x) -> NoDup (n :: extra_inodes ++ y));
+        [ intro Hcut; specialize (Hcut top_extras);
+          rewrite cons_app with (l := app _ _);
+          apply NoDup_3app_rev; apply NoDup_app_comm; apply Hcut;
+          rewrite cons_app with (l := app _ _);
+          apply NoDup_3app_rev; apply NoDup_app_comm; rewrite <- app_assoc; eauto
+        | intros ]
+      end.
+
+      clear H1.
+      generalize dependent extra_inodes.
+      induction srcents; simpl in *; try congruence; intros.
+      destruct a.
+      destruct (string_dec s srcname); subst; simpl.
+      + inversion H0; clear H0; subst.
+        inversion H; subst; constructor; eauto.
+        intro; apply H2. apply in_or_app. apply in_app_or in H0. intuition. right.
+          apply in_app_or in H1. apply in_or_app. intuition.
+          eapply NoDup_3app_rev.
+          rewrite app_assoc. apply NoDup_app_comm. eauto.
+      + rewrite app_assoc. rewrite app_assoc. rewrite <- app_assoc.
+        eapply IHsrcents; eauto.
+        rewrite <- app_assoc. eauto.
+    - destruct t; simpl in *; try congruence.
+
+      match goal with
+      | [ H : NoDup (top_extras ++ ?n :: ?x) |- NoDup (top_extras ++ ?n :: ?y) ] =>
+        cut (forall extra_inodes, NoDup (n :: extra_inodes ++ x) -> NoDup (n :: extra_inodes ++ y));
+        [ intro Hcut; specialize (Hcut top_extras);
+          rewrite cons_app with (l := app _ _);
+          apply NoDup_3app_rev; apply NoDup_app_comm; apply Hcut;
+          rewrite cons_app with (l := app _ _);
+          apply NoDup_3app_rev; apply NoDup_app_comm; rewrite <- app_assoc; eauto
+        | intros ]
+      end.
+
+      clear H1.
+      generalize dependent extra_inodes.
+      induction l; simpl in *; try congruence; intros.
+      destruct a0; simpl in *.
+      destruct (string_dec s a); subst; simpl.
+      + rewrite update_subtree_notfound.
+        rewrite cons_app in H2. rewrite app_assoc in H2. rewrite app_assoc in H2. apply NoDup_app_comm in H2.
+        rewrite app_assoc in H2.
+        eapply IHsrcpath in H2; eauto.
+        unfold tree_prune in H2.
+        rewrite cons_app.
+        admit.
+
+        inversion Hd; inversion H5; eauto.
+      + admit.
+  Admitted.
+
   Lemma prune_graft_preserves_inodes : forall srcpath srcname srcnum srcents
                                               dstpath dstname dstnum dstents
                                               mvtree tree_elem dnum inum,
@@ -5723,8 +5833,16 @@ Module DIRTREE.
          (tree_prune srcnum srcents srcpath srcname (TreeDir dnum tree_elem)))) \/
      ~ In inum (tree_inodes (tree_prune srcnum srcents srcpath srcname (TreeDir dnum tree_elem)))).
   Proof.
-    
-  Admitted.
+    intros.
+    apply tree_inodes_after_graft in H4; eauto; unfold xor in H4.
+    intuition.
+    right; intros.
+    eapply tree_inodes_after_prune in H4.
+    6: eauto.
+    all: eauto.
+    2: eapply tree_names_distinct_prune_subtree'; eauto.
+    eapply tree_inodes_nodup_delete_from_list'; eauto.
+  Qed.
 
   Lemma incl_app_commr: forall (A: Type) (l: list A) l1 l2,
     incl l (l1++l2) -> incl l (l2++l1).

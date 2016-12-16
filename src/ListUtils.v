@@ -1878,6 +1878,22 @@ Proof.
   eapply IHl2; eapply NoDup_remove_1; eauto.
 Qed.
 
+Lemma NoDup_3app_rev : forall T (l1 l2 l3 : list T),
+  NoDup (l3 ++ l2 ++ l1) ->
+  NoDup (l1 ++ l2 ++ l3).
+Proof.
+  induction l1; simpl; intros.
+  rewrite app_nil_r in *. eapply NoDup_app_comm; eauto.
+  rewrite app_assoc in H. apply NoDup_app_comm in H. simpl in H.
+  inversion H; subst.
+  constructor.
+  - intro H'. apply H2.
+    apply in_or_app. apply in_app_or in H'. intuition. right.
+    apply in_or_app. apply in_app_or in H0. intuition.
+  - eapply IHl1.
+    apply NoDup_app_comm in H3. rewrite <- app_assoc in H3. eauto.
+Qed.
+
 Lemma in_map_fst_exists_snd : forall A B (l : list (A * B)) a,
   In a (map fst l) -> exists b, In (a, b) l.
 Proof.
