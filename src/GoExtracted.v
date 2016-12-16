@@ -211,7 +211,7 @@ Check
                                                           Modify JoinPair (1, var13, var2) EndIf)%go))))))))))))))).
 
 (* Equivalent Go:
-func writeback(a *big.Num, cs *CacheMap) {
+func writeback(a *big.Num, cs *CacheState) {
   var v pair_bool_pair_diskblock_bool
   var v0 map_pair_diskblock_bool
   var v1 pair_map_pair_diskblock_bool_bignum

@@ -118,6 +118,18 @@ Proof.
 Defined.
 Eval lazy in projT1 (extract_swap_1_2 (StringMap.empty _)).
 
+(*
+Declare DiskBlock
+  (fun var0 : nat =>
+   (DiskRead var0 (Var 0);
+    Declare DiskBlock
+      (fun var1 : nat =>
+       (DiskRead var1 (Var 1);
+        DiskWrite (Var 0) (Var var1);
+        DiskWrite (Var 1) (Var var0);
+        __)))%go)
+*)
+
 Lemma extract_swap_prog : forall env, sigT (fun p =>
   forall a b F, EXTRACT swap_prog a b
   {{ 0 ~> a * 1 ~> b * F }} p {{ fun _ => 0 |->? * 1 |->? * F}} // env).
@@ -144,17 +156,20 @@ Proof.
   compile.
 Defined.
 Eval lazy in projT1 (extract_for_loop (StringMap.empty _)).
-
 (*
-Declare DiskBlock
-  (fun var0 : nat =>
-   (DiskRead var0 (Var 0);
-    Declare DiskBlock
-      (fun var1 : nat =>
-       (DiskRead var1 (Var 1);
-        DiskWrite (Var 0) (Var var1);
-        DiskWrite (Var 1) (Var var0);
-        __)))%go)
+Declare Num
+ (fun var : W =>
+  (Modify (SetConst 1) var;
+   Declare Num
+     (fun one : W =>
+      (Modify (SetConst 1) one;
+       Declare Num
+         (fun term : W =>
+          (term <~dup var;
+           term <~num term + 1;
+           While (Var var < Var term)
+               0 <~num 0 + var;
+               var <~num var + one)))))%go)
 *)
 
 Opaque swap_prog.
@@ -229,21 +244,21 @@ Proof.
 Defined.
 Eval lazy in projT1 (extract_rot3_prog_top).
 (*
-(Declare Num
-   (fun var0 : W =>
-    (var0 <~ Const Num 1;
+Declare Num
+ (fun var : W =>
+  Declare Num
+    (fun var0 : W =>
      Declare Num
        (fun var1 : W =>
-        (var1 <~ Const Num 0;
-         Call [] "swap" [var1; var0]))));
- Declare Num
-   (fun var0 : W =>
-    (var0 <~ Const Num 2;
-     Declare Num
-       (fun var1 : W =>
-        (var1 <~ Const Num 1;
-         Call [] "swap" [var1; var0]))));
- __)%go
+        Declare Num
+          (fun var2 : W =>
+           (Modify (SetConst 1) var;
+            Modify (SetConst 0) var0;
+            Call [] "swap" [var0; var];
+            Modify (SetConst 2) var1;
+            Modify (SetConst 1) var2;
+            Call [] "swap" [var2; var1];
+            __)%go))))
 *)
 
 

@@ -283,7 +283,7 @@ Ltac pred_solve_step := match goal with
 
 Create HintDb pred_solve_rewrites.
 Hint Rewrite add_upd remove_delete : pred_solve_rewrites.
-(* Coq bug! This hangs:
+(* Doesn't seem to work.
 Hint Rewrite default_zero : pred_solve_rewrites.
 *)
 
