@@ -3344,13 +3344,47 @@ Proof.
   destruct (E x x0); omega.
 Qed.
 
-Lemma incl_count_rotate : forall T E (l1 l2 : list T) x,
-  incl_count E (l1 ++ [x]) l2 ->
-  incl_count E (x :: l1) l2.
+Module Type HIDDEN_APP.
+  Parameter app : forall {T : Type} (l1 l2 : list T), list T.
+  Axiom app_is : @app = List.app.
+End HIDDEN_APP.
+
+Module Hidden_App : HIDDEN_APP.
+  Definition app := List.app.
+  Theorem app_is : @app = List.app.
+    reflexivity.
+  Qed.
+End Hidden_App.
+
+Lemma incl_count_rotate_start : forall T E (l1 l2 : list T),
+  incl_count E (Hidden_App.app l1 nil) l2 ->
+  incl_count E l1 l2.
 Proof.
+  intros.
+  rewrite Hidden_App.app_is in *.
+  rewrite app_nil_r in *.
+  intros; eauto.
+Qed.
+
+Lemma incl_count_rotate_one : forall T E (l1 l1' l2 : list T) x,
+  incl_count E (Hidden_App.app l1 (l1' ++ [x])) l2 ->
+  incl_count E (Hidden_App.app (x :: l1) l1') l2.
+Proof.
+  rewrite Hidden_App.app_is.
   unfold incl_count; intros.
   specialize (H x0).
-  rewrite count_occ_app in *; simpl in *.
+  repeat rewrite count_occ_app in *; simpl in *.
+  destruct (E x x0); omega.
+Qed.
+
+Lemma incl_count_rotate_cons : forall T E (l1 l1' l2 : list T) x,
+  incl_count E (l1 ++ l1') l2 ->
+  incl_count E (Hidden_App.app (x :: l1) l1') (x :: l2).
+Proof.
+  rewrite Hidden_App.app_is.
+  unfold incl_count; intros.
+  specialize (H x0).
+  simpl.
   destruct (E x x0); omega.
 Qed.
 
@@ -3545,8 +3579,11 @@ Ltac nodupapp_build :=
     erewrite NoDupApp_start with (l := a :: b) in H by concat_build
   end.
 
+Ltac solve_incl_count_one :=
+  ( eapply incl_count_rotate_cons; simpl ) || ( eapply incl_count_rotate_one; solve_incl_count_one ).
+
 Ltac solve_incl_count :=
-  repeat ( eapply incl_count_cons || ( eapply incl_count_rotate; simpl ) );
+  repeat ( eapply incl_count_rotate_start; solve_incl_count_one );
   eapply incl_count_nil.
 
 Ltac nodupapp eq_dec :=
@@ -3560,3 +3597,11 @@ Proof.
   intros.
   nodupapp eq_nat_dec.
 Qed.
+
+Example nodupapp_fail : forall (a : list nat) b c d e,
+  NoDup (a ++ b ++ c ++ d :: e) ->
+  NoDup (b ++ d :: e ++ c ++ c).
+Proof.
+  intros.
+  Fail nodupapp eq_nat_dec.
+Abort.
