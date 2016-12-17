@@ -3290,6 +3290,77 @@ Proof.
 Qed.
 
 
+Definition incl_count T (E : forall (a b : T), {a=b}+{a<>b}) (l1 l2 : list T) :=
+  forall x, count_occ E l1 x <= count_occ E l2 x.
+
+Lemma count_occ_app : forall T E (l1 l2 : list T) x,
+  count_occ E (l1 ++ l2) x = count_occ E l1 x + count_occ E l2 x.
+Proof.
+  induction l1; simpl; intros; eauto.
+  repeat rewrite IHl1.
+  destruct (E a x); omega.
+Qed.
+
+Lemma count_occ_remove_ne : forall T E (l : list T) a b,
+  a <> b ->
+  count_occ E (remove E a l) b = count_occ E l b.
+Proof.
+  induction l; simpl; intros; eauto.
+  destruct (E a0 a); destruct (E a b); subst; try congruence; simpl.
+  rewrite IHl by eauto; omega.
+  destruct (E b b); try congruence.
+  rewrite IHl by eauto; omega.
+  destruct (E a b); try congruence.
+  rewrite IHl by eauto; omega.
+Qed.
+
+Lemma incl_count_incl : forall T E (l1 l2 : list T),
+  incl_count E l1 l2 ->
+  incl l1 l2.
+Proof.
+  unfold incl_count, incl; intros.
+  specialize (H a).
+  rewrite count_occ_In with (eq_dec := E) in *.
+  omega.
+Qed.
+
+Lemma incl_count_tl : forall T E (l1 l2 : list T) x,
+  incl_count E l1 l2 ->
+  incl_count E l1 (x :: l2).
+Proof.
+  unfold incl_count; intros.
+  specialize (H x0).
+  simpl.
+  destruct (E x x0); omega.
+Qed.
+
+Lemma incl_count_cons : forall T E (l1 l2 : list T) x,
+  incl_count E l1 l2 ->
+  incl_count E (x :: l1) (x :: l2).
+Proof.
+  unfold incl_count; intros.
+  specialize (H x0).
+  simpl.
+  destruct (E x x0); omega.
+Qed.
+
+Lemma incl_count_rotate : forall T E (l1 l2 : list T) x,
+  incl_count E (l1 ++ [x]) l2 ->
+  incl_count E (x :: l1) l2.
+Proof.
+  unfold incl_count; intros.
+  specialize (H x0).
+  rewrite count_occ_app in *; simpl in *.
+  destruct (E x x0); omega.
+Qed.
+
+Lemma incl_count_nil : forall T E (l : list T),
+  incl_count E [] l.
+Proof.
+  unfold incl_count; simpl; intros; omega.
+Qed.
+
+
 Definition NoDupApp (T : Type) (l : list (list T)) := NoDup (concat l).
 
 Lemma NoDupApp_pick : forall T (l1 l2 l3 : list (list T)),
@@ -3356,22 +3427,16 @@ Proof.
   exfalso. inversion H. eauto.
 Qed.
 
-Lemma incl_pick_inv' : forall T (l1 l2 l : list T) x,
-  NoDup (x :: l) ->
-  incl (x :: l) (l1 ++ x :: l2) ->
-  incl l (l1 ++ l2).
+Lemma incl_pick_inv' : forall T (E : forall a b, {a=b}+{a<>b}) (l1 l2 l : list T) x,
+  incl_count E (x :: l) (l1 ++ x :: l2) ->
+  incl_count E l (l1 ++ l2).
 Proof.
   intros.
-  unfold incl; intros.
-  specialize (H0 a).
-  simpl in *; intuition.
-  inversion H; subst.
-
-  eapply in_app_or in H0.
-  eapply in_or_app.
-  intuition.
-  inversion H3; intuition.
-  subst; exfalso; eauto.
+  unfold incl_count in *; intros.
+  specialize (H x0).
+  rewrite count_occ_app in *.
+  simpl in *.
+  destruct (E x x0); omega.
 Qed.
 
 Lemma incl_concat' : forall T (x : list T) l,
@@ -3399,23 +3464,23 @@ Proof.
     eapply incl_concat'; eauto.
 Qed.
 
-Theorem NoDupApp_incl : forall T (l2 l1 : list (list T)),
+Theorem NoDupApp_incl : forall T (E : forall (a b : T), {a=b}+{a<>b}) (l2 l1 : list (list T)),
   NoDupApp l1 ->
-  incl l2 l1 ->
-  NoDup l2 ->
+  incl_count (list_eq_dec E) l2 l1 ->
   NoDupApp l2.
 Proof.
   induction l2; simpl; intros.
   - constructor.
-  - specialize (H0 a) as H0'; simpl in *; intuition. clear H3.
-    apply in_split in H4. destruct H4. destruct H2. subst.
+  - apply incl_count_incl in H0 as Hi.
+    specialize (Hi a) as H0'; simpl in *; intuition. clear H2.
+
+    apply in_split in H3. destruct H3. destruct H1. subst.
     eapply incl_pick_inv' in H0 as H0'; eauto.
     rewrite cons_app in H. apply NoDupApp_pick in H. simpl in H.
     eapply NoDupApp_cons.
 
     eapply IHl2; eauto.
-    eapply incl_tl; eauto.
-    inversion H1; eauto.
+    eapply incl_count_tl; eauto.
     unfold NoDupApp in *; simpl in *. eapply NoDup_app_l; eauto.
 
     intros; intro.
@@ -3423,5 +3488,63 @@ Proof.
     eapply not_In_NoDup_app in H; eauto.
     apply H.
 
+    apply incl_count_incl in H0'.
     eapply incl_concat in H0'. apply H0'. eauto.
+Qed.
+
+
+(* Automation for solving goals about [NoDup]s of appended lists *)
+Lemma NoDupApp_start : forall T (l : list T) ls,
+  l = concat ls ->
+  NoDup l = NoDupApp ls.
+Proof.
+  intros; subst; reflexivity.
+Qed.
+
+Lemma concat_build_app : forall T (a b : list T) la lb,
+  a = concat la ->
+  b = concat lb ->
+  a ++ b = concat (la ++ lb).
+Proof.
+  intros; subst.
+  rewrite concat_app; auto.
+Qed.
+
+Lemma concat_build_nil : forall T,
+  @nil T = concat nil.
+Proof.
+  reflexivity.
+Qed.
+
+Lemma concat_build_one : forall T (x : list T),
+  x = concat [x].
+Proof.
+  intros. simpl. rewrite app_nil_r. auto.
+Qed.
+
+Ltac concat_build :=
+  repeat ( eapply concat_build_app || eapply concat_build_one ).
+
+Ltac nodupapp_build :=
+  repeat match goal with
+  | [ |- context[NoDup (?a ++ ?b)] ] =>
+    erewrite NoDupApp_start with (l := a ++ b) by concat_build
+  | [ H : context[NoDup (?a ++ ?b)] |- _ ] =>
+    erewrite NoDupApp_start with (l := a ++ b) in H by concat_build
+  end.
+
+Ltac solve_incl_count :=
+  repeat ( eapply incl_count_cons || ( eapply incl_count_rotate; simpl ) );
+  eapply incl_count_nil.
+
+Ltac nodupapp eq_dec :=
+  nodupapp_build;
+  eapply NoDupApp_incl with (E := eq_dec); [ eassumption | solve_incl_count ].
+
+Example nodupapp_5 : forall (a b c d e : list nat),
+  NoDup (a ++ b ++ c ++ d ++ e) ->
+  NoDup (b ++ d ++ e ++ a ++ c).
+Proof.
+  intros.
+  nodupapp eq_nat_dec.
 Qed.
