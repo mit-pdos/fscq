@@ -17,9 +17,8 @@ Extraction Blacklist String List Nat Array Bytes.
 Require Import ZArith.
 Extract Constant Pos.compare_cont => "fun c x y -> Big.compare_case c Lt Gt x y".
 
-Require Import Go.
-Require Import GoFunctions.
+Require Import GoExtracted.
 
 Cd "../codegen".
 
-Separate Extraction GoFunctions.
+Separate Extraction GoExtracted.
