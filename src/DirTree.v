@@ -5794,11 +5794,15 @@ Module DIRTREE.
         rewrite app_assoc in H2.
         eapply IHsrcpath in H2; eauto.
         unfold tree_prune in H2.
-        rewrite cons_app.
+        simpl in *.
         nodupapp.
         inversion Hd; inversion H5; eauto.
-      + admit.
-  Admitted.
+      + rewrite app_assoc in H2.
+        eapply IHl in H2; eauto.
+        nodupapp.
+  Grab Existential Variables.
+    all: exact addr_eq_dec.
+  Qed.
 
   Lemma prune_graft_preserves_inodes : forall srcpath srcname srcnum srcents
                                               dstpath dstname dstnum dstents
@@ -5825,7 +5829,7 @@ Module DIRTREE.
     6: eauto.
     all: eauto.
     2: eapply tree_names_distinct_prune_subtree'; eauto.
-    eapply tree_inodes_nodup_delete_from_list'; eauto.
+    eapply tree_inodes_nodup_delete_from_list' with (top_extras := nil); eauto.
   Qed.
 
   Lemma incl_app_commr: forall (A: Type) (l: list A) l1 l2,
