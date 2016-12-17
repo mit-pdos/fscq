@@ -1,4 +1,5 @@
 Require Import Eqdep.
+Require Import Morphisms.
 Require Import PeanoNat Plus List.
 Require Import Word AsyncDisk Prog ProgMonad BasicProg Pred.
 Require Import StringMap.
@@ -682,93 +683,73 @@ Proof.
   unfold ProgOk; intros.
   repeat extract_var_val.
   inv_exec_progok.
-  - find_apply_lem_hyp inj_pair2; subst.
-    simpl in *.
-    repeat find_rewrite.
-    unfold append_impl, append_impl', update_one, id in *.
-    repeat destruct_pair.
-    repeat find_inversion_safe.
-    simpl in *. subst.
-    rewrite ?eq_dec_eq in *.
-    repeat find_inversion_safe.
-    simpl in *.
-    rewrite ?eq_dec_eq in *.
-    repeat find_inversion_safe.
-    destruct (can_alias wrap_type); simpl in *.
-    + rewrite ?eq_dec_eq in *. simpl in *. find_inversion; simpl in *.
-      repeat eexists.
-      eauto.
-      pred_solve.
-    + rewrite ?eq_dec_eq in *; simpl in *.
-      find_inversion.
-      repeat econstructor.
-      pred_solve.
+  - eval_expr.
+    repeat eexists.
+    eauto.
+    pred_solve.
 
   - contradiction H1.
-    repeat eexists; econstructor.
-    unfold append_impl'. simpl.
-    (* TODO: this is a mess *)
-    all: unfold sel; simpl; repeat find_rewrite; try reflexivity; repeat (simpl; rewrite eq_dec_eq in * ); try reflexivity.
-    simpl.
-    rewrite ?eq_dec_eq in *.
-    simpl.
-    instantiate (1 := ltac:(destruct (can_alias wrap_type))).
-    destruct (can_alias wrap_type); simpl in *.
-    + rewrite ?eq_dec_eq; reflexivity.
-    + reflexivity.
+    repeat eexists; econstructor;
+      [ eval_expr; reflexivity.. ].
 Qed.
 
 
 
 Lemma map_add_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m k (v : T),
-  (@okToCancel AT AEQ value (var ~> Map.add k v m)
+  (@piff AT AEQ value (var ~> Map.add k v m)
   (var |-> (Val (AddrMap wrap_type) (Here (Map.add k (wrap' v) (Map.map wrap' m))))))%pred.
 Proof.
-  intros. unfold okToCancel.
-  unfold wrap. simpl. repeat f_equal.
+  intros. split;
+  unfold wrap; simpl;
+  match goal with
+  | [ |- ?P =p=> ?Q ] => replace Q with P; try reflexivity
+  end;
+  repeat f_equal;
   eauto using MapUtils.addrmap_equal_eq,
     MoreAddrMapFacts.map_add_comm,
-    MapUtils.AddrMap.MapFacts.Equal_refl.
+    MapUtils.AddrMap.MapFacts.Equal_refl, eq_sym.
 Qed.
 
 Hint Extern 1 (okToCancel (?var ~> Map.add ?k ?v ?m)
   (?var |-> (Val (AddrMap wrap_type) (Here (Map.add ?k (wrap' ?v) (Map.map wrap' ?m))))))
   => apply map_add_okToCancel.
 
+Hint Extern 1 (okToCancel 
+                 (?var |-> (Val (AddrMap wrap_type) (Here (Map.add ?k (wrap' ?v) (Map.map wrap' ?m)))))
+                 (?var ~> Map.add ?k ?v ?m))
+  => apply map_add_okToCancel.
 
 Lemma map_remove_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m k,
-  (@okToCancel AT AEQ value (var ~> Map.remove k m)
+  (@piff AT AEQ value (var ~> Map.remove k m)
   (var |-> (Val (AddrMap wrap_type) (Here (Map.remove k (Map.map wrap' m))))))%pred.
 Proof.
-  intros. unfold okToCancel.
-  unfold wrap. simpl. repeat f_equal.
+  intros. unfold wrap; simpl; split;
+  match goal with
+  | [ |- ?P =p=> ?Q ] => replace Q with P; try reflexivity
+  end;
+  repeat f_equal;
   eauto using MapUtils.addrmap_equal_eq,
     MoreAddrMapFacts.map_remove_comm,
-    MapUtils.AddrMap.MapFacts.Equal_refl.
+    MapUtils.AddrMap.MapFacts.Equal_refl, eq_sym.
 Qed.
 
 Local Hint Extern 1 (okToCancel (?var ~> Map.remove ?k ?m)
   (?var |-> (Val (AddrMap wrap_type) (Here (Map.remove ?k (Map.map wrap' ?m))))))
   => apply map_remove_okToCancel.
 
+Local Hint Extern 1 (okToCancel
+                       (?var |-> (Val (AddrMap wrap_type) (Here (Map.remove ?k (Map.map wrap' ?m)))))
+                       (?var ~> Map.remove ?k ?m))
+  => apply map_remove_okToCancel.
+
 
 Lemma map_find_some_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m k v,
   Map.find k (Map.map wrap' m) = Some v ->
-  (@okToCancel AT AEQ value (var ~> Map.find k m)
+  (@piff AT AEQ value (var ~> Map.find k m)
   (var |-> Val (Pair Bool wrap_type) (true, v))).
 Proof.
-  intros. unfold okToCancel, wrap. simpl.
-  rewrite MapUtils.AddrMap.MapFacts.map_o in H.
-  destruct Map.find; simpl in *; congruence.
-Qed.
-
-Lemma map_find_none_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m k,
-  Map.find k (Map.map wrap' m) = None ->
-  (@okToCancel AT AEQ value (var ~> Map.find k m)
-  (var |-> Val (Pair Bool wrap_type) (false, default_value' wrap_type))).
-Proof.
-  intros. unfold okToCancel, wrap. simpl.
-  rewrite MapUtils.AddrMap.MapFacts.map_o in H.
+  intros. unfold wrap; simpl; split;
+  rewrite MapUtils.AddrMap.MapFacts.map_o in H;
   destruct Map.find; simpl in *; congruence.
 Qed.
 
@@ -776,8 +757,27 @@ Local Hint Extern 1 (okToCancel (?var ~> Map.find ?k ?m)
   (?var |-> (Val (Pair Bool wrap_type) (true, ?v))))
   => eapply map_find_some_okToCancel.
 
+Local Hint Extern 1 (okToCancel (?var |-> (Val (Pair Bool wrap_type) (true, ?v)))
+                                (?var ~> Map.find ?k ?m))
+  => eapply map_find_some_okToCancel.
+
+
+Lemma map_find_none_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m k,
+  Map.find k (Map.map wrap' m) = None ->
+  (@piff AT AEQ value (var ~> Map.find k m)
+  (var |-> Val (Pair Bool wrap_type) (false, default_value' wrap_type))).
+Proof.
+  intros. unfold wrap; simpl; split;
+  rewrite MapUtils.AddrMap.MapFacts.map_o in H;
+  destruct Map.find; simpl in *; congruence.
+Qed.
+
 Local Hint Extern 1 (okToCancel (?var ~> Map.find ?k ?m)
   (?var |-> (Val (Pair Bool wrap_type) (false, ?v))))
+  => eapply map_find_none_okToCancel.
+
+Local Hint Extern 1 (okToCancel (?var |-> (Val (Pair Bool wrap_type) (false, ?v)))
+                                (?var ~> Map.find ?k ?m))
   => eapply map_find_none_okToCancel.
 
 
@@ -789,7 +789,8 @@ Lemma CompileMapAdd : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k (v : 
 Proof.
   unfold ProgOk.
   repeat inv_exec_progok.
-  - eval_expr; [ repeat eexists; eauto; pred_solve..].
+  - eval_expr. rewrite eq_dec_eq in *. simpl in *. repeat find_inversion. repeat eexists; eauto.
+    pred_solve.
   - eval_expr.
     repeat (contradiction H1;
     repeat econstructor; eauto;
@@ -822,6 +823,7 @@ Proof.
   repeat inv_exec_progok.
   - eval_expr.
     repeat eexists; eauto. pred_solve.
+    eauto with okToCancel.
     repeat eexists; eauto. pred_solve.
   - eval_expr.
     repeat (contradiction H1;
@@ -830,16 +832,23 @@ Proof.
 Qed.
 
 Lemma map_cardinal_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m,
-  (@okToCancel AT AEQ value (var ~> Map.cardinal m)
+  (@piff AT AEQ value (var ~> Map.cardinal m)
   (var |-> (Val Num (Here (Map.cardinal (Map.map wrap' m))))))%pred.
 Proof.
   intros. unfold okToCancel.
-  unfold wrap. simpl. repeat f_equal. unfold id.
+  unfold wrap. simpl.
+  match goal with
+  | [ |- ?P <=p=> ?Q ] => replace Q with P; try reflexivity
+  end.
+  repeat f_equal. unfold id.
   eauto using MapUtils.AddrMap.map_cardinal_map_eq.
 Qed.
 
 Local Hint Extern 1 (okToCancel (?var ~> Map.cardinal ?m)
   (?var |-> (Val Num (Here (Map.cardinal (Map.map wrap' ?m))))))
+  => apply map_cardinal_okToCancel.
+Local Hint Extern 1 (okToCancel (?var |-> (Val Num (Here (Map.cardinal (Map.map wrap' ?m)))))
+                                (?var ~> Map.cardinal ?m))
   => apply map_cardinal_okToCancel.
 
 Lemma CompileMapCardinal : forall env F T {Wr : GoWrapper T} mvar m var (v0 : W),
@@ -857,26 +866,36 @@ Proof.
 Qed.
 
 Lemma map_elements_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m,
-  @okToCancel AT AEQ value (var ~> Map.elements m)
+  @piff AT AEQ value (var ~> Map.elements m)
   (var |-> Val (Slice (Pair Num wrap_type))
          (Here (map (fun x => (Here (fst x), snd x))
                (Map.elements (Map.map wrap' m))))).
 Proof.
   intros.
   unfold okToCancel.
-  unfold wrap; simpl wrap. repeat f_equal.
-  simpl wrap'. repeat f_equal.
+  unfold wrap; simpl wrap; simpl wrap'.
+  match goal with
+  | [ |- ?P <=p=> ?Q ] => replace Q with P; try reflexivity
+  end.
+  repeat f_equal.
   rewrite MapUtils.AddrMap.map_elements_map_eq.
   rewrite map_map. simpl. reflexivity.
 Qed.
 
 Local Hint Extern 1 (okToCancel (?var ~> Map.elements ?k ?m)
-  (?var |-> (Val _ (Here (map _ (Map.elements _))))))
+                                (?var |-> (Val _ (Here (map _ (Map.elements _))))))
+  => eapply map_elements_okToCancel : okToCancel.
+Local Hint Extern 1 (okToCancel (?var |-> (Val _ (Here (map _ (Map.elements _)))))
+                                (?var ~> Map.elements ?k ?m))
   => eapply map_elements_okToCancel : okToCancel.
 
 Local Hint Extern 1 (okToCancel (?var ~> Map.elements _)
   (?var |-> Val _ (Here(map _
    (MapUtils.AddrMap_List.Raw.map wrap' (MapUtils.AddrMap_List.this _))))))
+  => eapply map_elements_okToCancel : okToCancel.
+Local Hint Extern 1 (okToCancel (?var |-> Val _ (Here (map _
+    (MapUtils.AddrMap_List.Raw.map wrap' (MapUtils.AddrMap_List.this _)))))
+                                (?var ~> Map.elements _))
   => eapply map_elements_okToCancel : okToCancel.
 
 Lemma CompileMapElements : forall env F T {Wr : GoWrapper T} mvar m var (v0 : list (W * T)),
@@ -1085,8 +1104,8 @@ Proof.
   eapply CompileBefore; eauto.
   eapply hoare_weaken.
   eapply CompileRet with (T := nat) (var0 := v).
-  eapply hoare_weaken_post; [ | eapply CompileAddInPlace1 with (avar := v) (bvar := va) ].
-  all : cancel_go.
+  eapply hoare_weaken_post; [ | eapply CompileAddInPlace1 with (avar := v) (bvar := va) ]; cancel_go.
+  all: cancel_go.
 Qed.
 
 Lemma AddInPlaceLeftAfter : forall T (T' : GoWrapper T) (p : prog T) A xp env
@@ -1159,28 +1178,29 @@ Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> 
   forall avar bvar,
     forall a b F, EXTRACT src a b
            {{ avar ~> a * bvar ~> b * F }}
-             Call [] name [avar; bvar]
+             Call 2 0 tt name (avar, bvar)
            {{ fun _ => avar |->? * bvar |->? * F
-            (* TODO: could remember a & b if they are of aliasable type *) }} // env.
+            (* TODO: could remember a & b if they are of passed by ref *) }} // env.
 
 
 (* TODO: generalize for all kinds of functions *)
 Lemma extract_voidfunc2_call :
   forall A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) arga argb arga_t argb_t env,
-    forall and body ss,
+    forall body ss,
       (forall a b F, EXTRACT src a b {{ arga ~> a * argb ~> b * F }} body {{ fun _ => arga |->? * argb |->? * F }} // env) ->
       StringMap.find name env = Some {|
-                                    ParamVars := [(arga_t, arga); (argb_t, argb)];
-                                    RetParamVars := [];
+                                    NumParamVars := 2;
+                                    NumRetParamVars := 0;
+                                    ParamVars := ((PassedByValue, arga_t), (PassedByValue, argb_t));
+                                    RetParamVars := tt;
                                     Body := body;
                                     (* ret_not_in_args := rnia; *)
-                                    args_no_dup := and;
                                     body_source := ss;
                                   |} ->
       voidfunc2 name src env.
 Proof.
   unfold voidfunc2.
-  intros A B C WA WB name src arga argb arga_t argb_t env and body ss Hex Henv avar bvar a b F.
+  intros A B C WA WB name src arga argb arga_t argb_t env body ss Hex Henv avar bvar a b F.
   specialize (Hex a b F).
   intro.
   intros.
@@ -1190,7 +1210,7 @@ Proof.
     invc H0.
     find_eapply_lem_hyp runsto_Steps.
     find_eapply_lem_hyp Steps_ExecFinished.
-    rewrite Henv in H4.
+    find_rewrite.
     find_inversion_safe.
     subst_definitions. unfold sel in *. simpl in *. unfold ProgOk in *.
     repeat eforward Hex.
@@ -1451,7 +1471,7 @@ Proof.
 Qed.
 
 Lemma option_none_okToCancel : forall AT AEQ {T} {HT : GoWrapper T} {D : DefaultValue T} var,
-  @okToCancel AT AEQ value (var ~> None) (var |-> Val (Pair Bool wrap_type) (false, wrap' zeroval)).
+  @piff AT AEQ value (var ~> None) (var |-> Val (Pair Bool wrap_type) (false, wrap' zeroval)).
 Proof.
   intros.
   unfold wrap. simpl.
@@ -1461,6 +1481,9 @@ Qed.
 
 Local Hint Extern 1 (okToCancel (?var ~> None)
   (?var |-> Val (Pair Bool wrap_type) (false, wrap' zeroval)))
+  => apply option_none_okToCancel.
+Local Hint Extern 1 (okToCancel (?var |-> Val (Pair Bool wrap_type) (false, wrap' zeroval))
+                                (?var ~> None))
   => apply option_none_okToCancel.
 
 Lemma CompileRetOptionNone : forall env B {HB: GoWrapper B} {D : DefaultValue B}

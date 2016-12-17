@@ -1,3 +1,4 @@
+Require Import Eqdep.
 Require Import List PeanoNat.
 Require Import Omega.
 Require Import Structures.OrderedTypeEx.

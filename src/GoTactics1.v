@@ -1,6 +1,6 @@
 Require Export VerdiTactics.
 Require Import Pred Hoare.
-Require Import SepAuto.
+Require Import GoSepAuto ADestructPair.
 Require Import GoSemantics.
 
 Ltac set_hyp_evars :=
@@ -17,6 +17,9 @@ Ltac invert_trivial H :=
       let H' := fresh in
       assert (a = b) as H' by exact (match H with eq_refl => eq_refl end); clear H; rename H' into H
   end.
+
+Ltac destruct_pairs :=
+  repeat (simpl in *; try destruct_pair_once).
 
 
 Lemma pair_inj :

@@ -60,10 +60,12 @@ Ltac unfold_expr :=
          numop_impl', numop_impl,
          split_pair_impl, split_pair_impl',
          join_pair_impl, join_pair_impl',
+         append_impl',
          map_add_impl, map_add_impl',
          map_remove_impl, map_remove_impl',
          map_find_impl, map_find_impl',
          map_card_impl, map_card_impl',
+         append_impl,
          map_elements_impl, map_elements_impl',
          eval_test_m, eval_test_num, eval_test_bool,
          update_one, setconst_impl, duplicate_impl,
@@ -73,10 +75,12 @@ Ltac unfold_expr :=
          numop_impl', numop_impl,
          split_pair_impl, split_pair_impl',
          join_pair_impl, join_pair_impl',
+         append_impl',
          map_add_impl, map_add_impl',
          map_remove_impl, map_remove_impl',
          map_find_impl, map_find_impl',
          map_card_impl, map_card_impl',
+         append_impl,
          map_elements_impl, map_elements_impl',
          eval_test_m, eval_test_num, eval_test_bool,
          update_one, setconst_impl, duplicate_impl,
@@ -272,8 +276,8 @@ Ltac pred_solve_step := match goal with
       [ cancel_go | (eapply ptsto_upd_disjoint'; solve [eauto]) || eapply ptsto_upd ]
     | context [(@ptsto ?AT ?AEQ ?V a ?y)%pred] =>
       let H := fresh in
-      assert (@okToCancel AT AEQ V (ptsto a y) (ptsto a x)) as H;
-      [ eauto with okToCancel | rewrite H ]
+      assert (@okToCancel AT AEQ V (ptsto a x) (ptsto a y)) as H;
+      [ eauto with okToCancel | rewrite <- H ]
     end
   | [ |- ( ?P )%pred (delete _ ?a) ] =>
     eapply ptsto_delete' with (F := P)
