@@ -42,15 +42,14 @@ GOCAML_ML := $(GOCAML_MOD:%=codegen/%.ml)
 
 all: codegen/fscq2go # this is just so "make" rebuilds the .vio files and is temporary
 
-codegen/big.ml codegen/fscq2go.ml: big.ml fscq2go.ml
-	cp big.ml fscq2go.ml ./codegen/
+codegen/%.ml: %.ml
+	ln -s ../$< $@
 
 $(GOCAML_ML): $(VS_VIO) coqbuild/ExtractGOcaml.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractGOcaml )
 
 codegen/fscq2go: $(GOCAML_ML) codegen/big.ml codegen/fscq2go.ml
 	rm -f $@ $@.native
-	cp fscq2go.ml codegen/
 	(cd codegen && ocamlbuild -lib nums fscq2go.native)
 	test -f $@.native && ln -s fscq2go.native $@
 
