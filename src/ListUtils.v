@@ -3357,7 +3357,7 @@ Module Hidden_App : HIDDEN_APP.
 End Hidden_App.
 
 Lemma incl_count_rotate_start : forall T E (l1 l2 : list T),
-  incl_count E (Hidden_App.app l1 nil) l2 ->
+  incl_count E l1 (Hidden_App.app l2 nil) ->
   incl_count E l1 l2.
 Proof.
   intros.
@@ -3366,9 +3366,9 @@ Proof.
   intros; eauto.
 Qed.
 
-Lemma incl_count_rotate_one : forall T E (l1 l1' l2 : list T) x,
-  incl_count E (Hidden_App.app l1 (l1' ++ [x])) l2 ->
-  incl_count E (Hidden_App.app (x :: l1) l1') l2.
+Lemma incl_count_rotate_one : forall T E (l1 l2 l2' : list T) x,
+  incl_count E l1 (Hidden_App.app l2 (l2' ++ [x])) ->
+  incl_count E l1 (Hidden_App.app (x :: l2) l2').
 Proof.
   rewrite Hidden_App.app_is.
   unfold incl_count; intros.
@@ -3377,9 +3377,9 @@ Proof.
   destruct (E x x0); omega.
 Qed.
 
-Lemma incl_count_rotate_cons : forall T E (l1 l1' l2 : list T) x,
-  incl_count E (l1 ++ l1') l2 ->
-  incl_count E (Hidden_App.app (x :: l1) l1') (x :: l2).
+Lemma incl_count_rotate_cons : forall T E (l1 l2 l2' : list T) x,
+  incl_count E l1 (l2 ++ l2') ->
+  incl_count E (x :: l1) (Hidden_App.app (x :: l2) l2').
 Proof.
   rewrite Hidden_App.app_is.
   unfold incl_count; intros.
@@ -3596,6 +3596,16 @@ Ltac nodupapp :=
 Example nodupapp_5 : forall (a : list nat) b c d e,
   NoDup (a ++ b ++ c ++ d :: e) ->
   NoDup (b ++ d :: e ++ a ++ c).
+Proof.
+  intros.
+  nodupapp.
+  Grab Existential Variables.
+  exact eq_nat_dec.
+Qed.
+
+Example nodupapp_3_5 : forall (a : list nat) b c d e,
+  NoDup (a ++ b ++ c ++ d :: e) ->
+  NoDup (b ++ d :: c).
 Proof.
   intros.
   nodupapp.
