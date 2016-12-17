@@ -5707,6 +5707,71 @@ Module DIRTREE.
   Definition conflicting (p q : Prop) := (p -> ~ q) /\ (q -> ~ p).
   Definition xor (p q : Prop) := (p /\ ~ q) \/ (q /\ ~ p).
 
+  Lemma NoDup_In_conflicting : forall T (l1 l2 : list T) x,
+    NoDup (l1 ++ l2) ->
+    conflicting (In x l1) (In x l2).
+  Proof.
+    unfold conflicting; split; intros; eapply not_In_NoDup_app; eauto.
+    eapply NoDup_app_comm; eauto.
+  Qed.
+
+  Lemma tree_inodes_after_prune' : forall srcpath t srcnum srcents srcname mvtree,
+    tree_names_distinct t ->
+    find_subtree srcpath t = Some (TreeDir srcnum srcents) ->
+    find_dirlist srcname srcents = Some mvtree ->
+    incl_count addr_eq_dec
+      (tree_inodes mvtree ++ tree_inodes (tree_prune srcnum srcents srcpath srcname t))
+      (tree_inodes t).
+  Proof.
+    induction srcpath; simpl; intros.
+    - inversion H0; clear H0; subst; simpl in *.
+
+      induction srcents; simpl in *; try congruence; intros.
+      destruct a.
+      destruct (string_dec s srcname).
+      + inversion H1; clear H1; subst.
+        rewrite cons_app. rewrite cons_app with (l := app _ _).
+        repeat rewrite app_assoc.
+        eauto with incl_count_app.
+
+      + simpl in *.
+        rewrite cons_app. rewrite cons_app with (l := app _ _).
+        rewrite app_assoc. eapply incl_count_trans. apply incl_count_app_comm. rewrite <- app_assoc.
+        eapply incl_count_trans. 2: apply incl_count_app_comm. rewrite <- app_assoc.
+        eapply incl_count_app_split. apply incl_count_refl.
+        eapply incl_count_trans. eapply incl_count_app_comm. rewrite <- app_assoc.
+        eapply incl_count_trans. apply IHsrcents; eauto.
+        eapply incl_count_trans. 2: apply incl_count_app_comm.
+        apply incl_count_refl.
+
+    - destruct t; simpl in *; try congruence.
+      induction l; simpl in *; try congruence.
+      destruct a0; simpl in *.
+      destruct (string_dec s a); subst.
+      + rewrite update_subtree_notfound in * by ( inversion H; inversion H5; eauto ).
+        eapply IHsrcpath in H1; clear IHsrcpath. 3: eauto. 2: eauto.
+        unfold tree_prune, delete_from_dir in *.
+
+        rewrite cons_app. rewrite cons_app with (l := app _ _).
+        eapply incl_count_trans. apply incl_count_app_comm. rewrite <- app_assoc.
+        apply incl_count_app_split. apply incl_count_refl. rewrite <- app_assoc.
+        eapply incl_count_trans. apply incl_count_app_comm. rewrite <- app_assoc.
+        eapply incl_count_trans. 2: apply incl_count_app_comm.
+        eapply incl_count_app_split. apply incl_count_refl.
+        eauto.
+
+      + clear IHsrcpath.
+        rewrite cons_app. rewrite cons_app with (l := app _ _).
+        rewrite app_assoc. eapply incl_count_trans. apply incl_count_app_comm. rewrite <- app_assoc.
+        eapply incl_count_trans. 2: apply incl_count_app_comm. rewrite <- app_assoc.
+        eapply incl_count_app_split. apply incl_count_refl.
+        eapply incl_count_trans. 2: apply incl_count_app_comm.
+        eapply incl_count_trans. 2: eapply IHl; eauto.
+        eapply incl_count_trans. apply incl_count_app_comm. rewrite <- app_assoc.
+        eapply incl_count_app_split. apply incl_count_refl.
+        apply incl_count_refl.
+  Qed.
+
   Lemma tree_inodes_after_prune : forall srcpath t srcnum srcents srcname mvtree inum,
     tree_inodes_distinct t ->
     tree_names_distinct t ->
@@ -5715,28 +5780,12 @@ Module DIRTREE.
     conflicting (In inum (tree_inodes mvtree))
                 (In inum (tree_inodes (tree_prune srcnum srcents srcpath srcname t))).
   Proof.
-    induction srcpath; simpl; intros.
-    - inversion H1; subst; simpl in *.
-      admit.
-    - destruct t; simpl in *; try congruence.
-      induction l; simpl in *; try congruence.
-      destruct a0; simpl in *.
-      destruct (string_dec s a); subst.
-      + rewrite update_subtree_notfound in * by ( inversion H0; inversion H6; eauto ).
-        split; intros.
-        * edestruct IHsrcpath with (t := d) (inum := inum); eauto.
-          intuition.
-         -- admit.
-         -- apply in_app_or in H7; intuition.
-            eapply tree_inodes_find_subtree_incl with (pathname := srcpath ++ [srcname]) (t := d) in H3.
-            unfold tree_inodes_distinct in *; simpl in *.
-            inversion H.
-            eapply not_In_NoDup_app in H3; eauto.
-            erewrite find_subtree_app by eauto.
-            rewrite find_subtree_dirlist; eauto.
-        * admit.
-      + admit.
-  Admitted.
+    intros.
+    eapply NoDup_In_conflicting.
+    unfold tree_inodes_distinct in *.
+    eapply tree_inodes_after_prune' in H2; eauto.
+    eapply NoDup_incl_count; eauto.
+  Qed.
 
   Lemma tree_inodes_after_graft : forall dstpath t dstnum dstents dstname mvtree inum,
     NoDup (tree_inodes t ++ tree_inodes mvtree) ->

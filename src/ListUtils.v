@@ -3394,6 +3394,46 @@ Proof.
   unfold incl_count; simpl; intros; omega.
 Qed.
 
+Lemma incl_count_trans : forall T E (l1 l2 l3 : list T),
+  incl_count E l1 l2 ->
+  incl_count E l2 l3 ->
+  incl_count E l1 l3.
+Proof.
+  unfold incl_count; intros.
+  specialize (H x).
+  specialize (H0 x).
+  omega.
+Qed.
+
+Lemma incl_count_refl : forall T E (l : list T),
+  incl_count E l l.
+Proof.
+  unfold incl_count; intros.
+  omega.
+Qed.
+
+Lemma incl_count_app_comm : forall T E (l1 l2 : list T),
+  incl_count E (l1 ++ l2) (l2 ++ l1).
+Proof.
+  unfold incl_count; intros.
+  repeat rewrite count_occ_app.
+  omega.
+Qed.
+
+Lemma incl_count_app_split : forall T E (l1 l1' l2 l2' : list T),
+  incl_count E l1 l1' ->
+  incl_count E l2 l2' ->
+  incl_count E (l1 ++ l2) (l1' ++ l2').
+Proof.
+  unfold incl_count; intros.
+  repeat rewrite count_occ_app.
+  specialize (H x).
+  specialize (H0 x).
+  omega.
+Qed.
+
+Hint Resolve incl_count_trans incl_count_refl incl_count_app_comm incl_count_app_split : incl_count_app.
+
 
 Definition NoDupApp (T : Type) (l : list (list T)) := NoDup (concat l).
 
@@ -3524,6 +3564,20 @@ Proof.
 
     apply incl_count_incl in H0'.
     eapply incl_concat in H0'. apply H0'. eauto.
+Qed.
+
+Lemma NoDup_incl_count : forall T E (l1 l2 : list T),
+  incl_count E l1 l2 ->
+  NoDup l2 ->
+  NoDup l1.
+Proof.
+  unfold incl_count.
+  intros.
+  rewrite (NoDup_count_occ E) in H0.
+  rewrite (NoDup_count_occ E); intros.
+  specialize (H x).
+  specialize (H0 x).
+  omega.
 Qed.
 
 
