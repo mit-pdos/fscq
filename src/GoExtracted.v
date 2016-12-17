@@ -65,25 +65,28 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  Focus 3. cancel. 
-  match goal with
-  | [ |- ?P =p=> ?Q ] => set Q
+  Focus 3. cancel.
+  apply pimpl_refl.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  match goal with [|- EXTRACT _ {{ ?var ~>? _ * _ }} _ {{ _ }} // _ ] =>
+    eapply CompileRet with (v := (CSMap cs)) (var0 := var)
   end.
-  pattern x in p. subst p. reflexivity.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  (* TODO do the right thing here in compile_map_op *)
-  eapply CompileRet with (v := (CSMap cs)) (var0 := (snd (fst (fst (fst (fst (fst (fst (fst (fst (fst vars))))))))))).
   compile_step.
   compile_step.
   compile_step.
   compile_step. (* TODO rule for Ret false *)
   {
-    eapply hoare_weaken.
-    eapply CompileRet' with (var0 := (snd (fst (fst (fst (fst (fst (fst (fst (fst (fst (fst (fst vars))))))))))))).
+    match goal with [|- EXTRACT _ {{ ?PRE }} _ {{ _ }} // _ ] =>
+      match PRE with
+      context [?var ~> false] =>
+        eapply hoare_weaken; [
+        eapply CompileRet' with (var0 := var) |..]
+      end
+    end.
     eapply CompileSkip.
     cancel_go. cancel_go.
   }
@@ -151,7 +154,7 @@ Proof.
 
   Unshelve.
   all: repeat constructor.
-Time Defined.
+Defined.
 
 Eval lazy in (projT1 (compile_writeback (StringMap.empty _))).
 
