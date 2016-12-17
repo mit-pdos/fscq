@@ -3510,6 +3510,14 @@ Proof.
   rewrite concat_app; auto.
 Qed.
 
+Lemma concat_build_cons : forall T a (b : list T) lb,
+  b = concat lb ->
+  a :: b = concat ([[a]] ++ lb).
+Proof.
+  intros; subst.
+  rewrite concat_app; auto.
+Qed.
+
 Lemma concat_build_nil : forall T,
   @nil T = concat nil.
 Proof.
@@ -3523,14 +3531,18 @@ Proof.
 Qed.
 
 Ltac concat_build :=
-  repeat ( eapply concat_build_app || eapply concat_build_one ).
+  repeat ( eapply concat_build_app || eapply concat_build_cons || eapply concat_build_one ).
 
 Ltac nodupapp_build :=
   repeat match goal with
   | [ |- context[NoDup (?a ++ ?b)] ] =>
     erewrite NoDupApp_start with (l := a ++ b) by concat_build
+  | [ |- context[NoDup (?a :: ?b)] ] =>
+    erewrite NoDupApp_start with (l := a :: b) by concat_build
   | [ H : context[NoDup (?a ++ ?b)] |- _ ] =>
     erewrite NoDupApp_start with (l := a ++ b) in H by concat_build
+  | [ H : context[NoDup (?a :: ?b)] |- _ ] =>
+    erewrite NoDupApp_start with (l := a :: b) in H by concat_build
   end.
 
 Ltac solve_incl_count :=
@@ -3541,9 +3553,9 @@ Ltac nodupapp eq_dec :=
   nodupapp_build;
   eapply NoDupApp_incl with (E := eq_dec); [ eassumption | solve_incl_count ].
 
-Example nodupapp_5 : forall (a b c d e : list nat),
-  NoDup (a ++ b ++ c ++ d ++ e) ->
-  NoDup (b ++ d ++ e ++ a ++ c).
+Example nodupapp_5 : forall (a : list nat) b c d e,
+  NoDup (a ++ b ++ c ++ d :: e) ->
+  NoDup (b ++ d :: e ++ a ++ c).
 Proof.
   intros.
   nodupapp eq_nat_dec.
