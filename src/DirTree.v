@@ -639,10 +639,8 @@ Module DIRTREE.
     tree_dir_names_pred xp w (map (update_subtree_helper (update_subtree fnlist subtree') name) l).
   Proof.
     unfold tree_dir_names_pred; intros; split; cancel; eauto.
-    match goal with | [ H: SDIR.rep _ _ |- _ ] => clear H end.
     pred_apply.
     eapply tree_dir_names_pred'_update; eauto.
-    match goal with | [ H: SDIR.rep _ _ |- _ ] => clear H end.
     pred_apply.
     eapply tree_dir_names_pred'_update_inv; eauto.
   Qed.
@@ -5764,11 +5762,7 @@ Module DIRTREE.
       match goal with
       | [ H : NoDup (top_extras ++ ?n :: ?x) |- NoDup (top_extras ++ ?n :: ?y) ] =>
         cut (forall extra_inodes, NoDup (n :: extra_inodes ++ x) -> NoDup (n :: extra_inodes ++ y));
-        [ intro Hcut; specialize (Hcut top_extras);
-          rewrite cons_app with (l := app _ _);
-          apply NoDup_3app_rev; apply NoDup_app_comm; apply Hcut;
-          rewrite cons_app with (l := app _ _);
-          apply NoDup_3app_rev; apply NoDup_app_comm; rewrite <- app_assoc; eauto
+        [ intro Hcut; specialize (Hcut top_extras); nodupapp
         | intros ]
       end.
 
@@ -5778,24 +5772,15 @@ Module DIRTREE.
       destruct a.
       destruct (string_dec s srcname); subst; simpl.
       + inversion H0; clear H0; subst.
-        inversion H; subst; constructor; eauto.
-        intro; apply H2. apply in_or_app. apply in_app_or in H0. intuition. right.
-          apply in_app_or in H1. apply in_or_app. intuition.
-          eapply NoDup_3app_rev.
-          rewrite app_assoc. apply NoDup_app_comm. eauto.
+        nodupapp.
       + rewrite app_assoc. rewrite app_assoc. rewrite <- app_assoc.
-        eapply IHsrcents; eauto.
-        rewrite <- app_assoc. eauto.
+        eapply IHsrcents; eauto. nodupapp.
     - destruct t; simpl in *; try congruence.
 
       match goal with
       | [ H : NoDup (top_extras ++ ?n :: ?x) |- NoDup (top_extras ++ ?n :: ?y) ] =>
         cut (forall extra_inodes, NoDup (n :: extra_inodes ++ x) -> NoDup (n :: extra_inodes ++ y));
-        [ intro Hcut; specialize (Hcut top_extras);
-          rewrite cons_app with (l := app _ _);
-          apply NoDup_3app_rev; apply NoDup_app_comm; apply Hcut;
-          rewrite cons_app with (l := app _ _);
-          apply NoDup_3app_rev; apply NoDup_app_comm; rewrite <- app_assoc; eauto
+        [ intro Hcut; specialize (Hcut top_extras); nodupapp
         | intros ]
       end.
 
@@ -5810,8 +5795,7 @@ Module DIRTREE.
         eapply IHsrcpath in H2; eauto.
         unfold tree_prune in H2.
         rewrite cons_app.
-        admit.
-
+        nodupapp.
         inversion Hd; inversion H5; eauto.
       + admit.
   Admitted.

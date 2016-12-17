@@ -3586,16 +3586,21 @@ Ltac solve_incl_count :=
   repeat ( eapply incl_count_rotate_start; solve_incl_count_one );
   eapply incl_count_nil.
 
-Ltac nodupapp eq_dec :=
+Hint Resolve NoDupApp_incl : nodupapp.
+Hint Extern 1 (incl_count _ _ _) => solve_incl_count : nodupapp.
+
+Ltac nodupapp :=
   nodupapp_build;
-  eapply NoDupApp_incl with (E := eq_dec); [ eassumption | solve_incl_count ].
+  eauto with nodupapp.
 
 Example nodupapp_5 : forall (a : list nat) b c d e,
   NoDup (a ++ b ++ c ++ d :: e) ->
   NoDup (b ++ d :: e ++ a ++ c).
 Proof.
   intros.
-  nodupapp eq_nat_dec.
+  nodupapp.
+  Grab Existential Variables.
+  exact eq_nat_dec.
 Qed.
 
 Example nodupapp_fail : forall (a : list nat) b c d e,
@@ -3603,5 +3608,5 @@ Example nodupapp_fail : forall (a : list nat) b c d e,
   NoDup (b ++ d :: e ++ c ++ c).
 Proof.
   intros.
-  Fail nodupapp eq_nat_dec.
+  nodupapp.
 Abort.
