@@ -251,3 +251,67 @@ func writeback(a *big.Num, cs *CacheMap) {
   }
 }
 *)
+
+Local Open Scope string_scope.
+Local Open Scope list_scope.
+Print BUFCACHE.writeback.
+Check compile_writeback.
+
+Ltac arglist pre var :=
+  match pre with
+  | context [var |-> @wrap ?T ?W ?val] =>
+    let X := arglist pre (S var) in
+    constr:(cons (pair (@wrap_type _ W) var) (X))
+  | _ => constr:(@nil (type * Go.var))
+  end.
+
+Ltac add_to_env name P env :=
+  match type of P with
+  | EXTRACT _ {{ ?PRE }} _ {{ fun ret : ?R => ?POST }} // _ =>
+    lazymatch constr:(fun ret : mark_ret R => (_:find_ret POST)) with
+    | (fun ret => ?rvar) =>
+      match PRE with
+      | context [?x ~> ?y] =>
+        let args_ := (arglist PRE 0) in
+        let x_ := fresh in
+        set (args := args_);
+        set (body := (projT1 (compile_writeback env)));
+        (* TODO get type of rvar *)
+        set (rvars := [(Num, rvar)]);
+        set (op := {|
+          ParamVars := args;
+          RetParamVars := rvars;
+          Body := body;
+          args_no_dup := ltac:(auto); body_source := ltac:(abstract (subst body; simpl; repeat econstructor));
+        |});
+        set (env' := StringMap.add name op env);
+        simpl in *; subst body; subst rvars; subst args; subst env;
+        rename env' into env; subst op
+      end
+    end
+  end.
+
+Ltac add_compiled_program name compiled env :=
+  let P := fresh in
+  let e_ := fresh in
+  let H := fresh in
+  destruct (compiled env) as [e_  P];
+  repeat match type of P with
+  forall x : ?X, ?y =>
+    let x_ := fresh "v" in
+    cut X; [intro x_; specialize (P x_) | solve [abstract (repeat econstructor)] ]
+  end;
+  add_to_env name P env;
+  (* Remove unnecessary variables *)
+  repeat match goal with
+  | [env := ?X, v : _ |- _] =>
+    clear v
+  end.
+
+Definition extract_env : Env.
+  pose (env := StringMap.empty OperationalSpec).
+  add_compiled_program "BUFCACHE.writeback" compile_writeback env.
+  (* TODO add more programs here *)
+
+  exact env.
+Defined.
