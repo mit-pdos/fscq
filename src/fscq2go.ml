@@ -15,51 +15,51 @@ let var_name var = "val" ^ (to_string var)
 (* mutable transcriber state *)
 module TranscriberState = struct
   type state = {
-    mutable go_structs: (string * Go.coq_type) list;
-    mutable struct_num: Big_int.big_int;
+    mutable go_types: (Go.coq_type * string) list;
+    mutable structs : (string * ((string * Go.coq_type) list)) list;
     mutable var_num: Big_int.big_int;
   }
 
-  let add_struct_type (ts : state) (p : Go.coq_type) =
-  (* TODO make sure p is not in the list *)
-    match p with
-    | Go.Pair (a, b) ->
-      let num = ts.struct_num in
-      let name = "struct" ^ (to_string num) in
-      let pair = (name, p) in
-      ts.struct_num <- succ ts.struct_num;
-      ts.go_structs <- pair :: ts.go_structs;
-      name
-    ;;
-
   let rec get_go_type (ts : state) (coq_go_type : Go.coq_type) =
-    match coq_go_type with
-    | Go.Num -> "*big.Int"
-    | Go.Bool -> "bool"
-    | Go.EmptyStruct -> "struct {}"
-    | Go.DiskBlock -> "*big.Int"
-    | Go.AddrMap (a) -> "AddrMap_" ^ (get_go_type ts a)
-    | Go.Pair (a, b) ->
-      try
-        fst (List.find (fun x -> snd x == coq_go_type) ts.go_structs)
-      with Not_found ->
-        add_struct_type ts coq_go_type
-  ;;
+    try
+      snd (List.find (fun x -> fst x = coq_go_type) ts.go_types)
+    with Not_found ->
+      match coq_go_type with
+      | Go.Num -> "Num"
+      | Go.Bool -> "Bool"
+      | Go.DiskBlock -> "Block"
+      | Go.EmptyStruct -> "Empty"
+      | Go.Pair (a, b) ->
+        let name = "pair_" ^ (get_go_type ts a) ^ "_" ^ (get_go_type ts b) in
+        ts.structs <- (name, [("fst", a); ("snd", b)]) :: ts.structs;
+        ts.go_types <- (coq_go_type, name) :: ts.go_types;
+        name
+      | Go.AddrMap (a) ->
+        let name = "AddrMap_" ^ (get_go_type ts a) in
+        ts.go_types <- (coq_go_type, name) :: ts.go_types;
+        name
 
   let get_new_var (ts : state) =
     ts.var_num <- succ ts.var_num;
     ts.var_num
-  ;;
+
+  let go_struct_defs (ts : state) =
+    List.map (fun x ->
+      "type " ^ (fst x) ^ " struct {" ^
+      String.concat "\n" (List.map (
+        fun y -> (fst y) ^ " " ^ get_go_type ts (snd y)) (snd x)) ^
+      "}\n"
+    ) ts.structs
 
   let make =
     {
-      go_structs = [];
-      struct_num = zero;
+      go_types = [];
+      structs = [];
       var_num = zero;
     }
 
-end;;
 
+end
 
 
 let rec go_expr expr =
@@ -67,7 +67,7 @@ let rec go_expr expr =
   | Go.Var (v) -> var_name v
   | Go.Const (gType, i) -> begin
       match gType with
-      | Go.Num -> 
+      | Go.Num ->
           let i = (Obj.magic i) in
           if (lt i (Big_int.power_int_positive_int 2 64)) then
                      "big.NewInt(" ^ to_string i ^ ")"
@@ -145,11 +145,18 @@ package fscq
 
 import (\"math/big\")
 
-func DiskRead(addr *big.Int) *big.Int { return big.NewInt(0) }
-func DiskWrite(val *big.Int, addr *big.Int) { }
-
 // end header
 "
+
+let go_type_decls ts =
+  "
+  type Num big.Int
+  type Bool bool
+  type Block DiskBlock
+  type Empty struct {}
+  " ^
+  String.concat "\n" (TranscriberState.go_struct_defs ts)
+  ^ "\n"
 
 let go_fns ts fn_map =
   String.concat "\n\n" (List.map (go_func ts) (StringMap.elements fn_map))
@@ -157,8 +164,11 @@ let go_fns ts fn_map =
 
 let  () =
   print_endline header;;
-  let ts = TranscriberState.make in
-  print_endline (go_fns ts GoExtracted.extract_env);;
+  print_endline "// type definitions\n";;
+  let ts = TranscriberState.make;;
+  let fns = (go_fns ts GoExtracted.extract_env);;
+  print_endline (go_type_decls ts);;
+  print_endline fns;;
   print_endline "func main() {}"
 
 
