@@ -139,7 +139,7 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
       let line = "if (" ^ s_expr ^ ")" in
       let t_text = go_stmt t ts in
       let f_text = go_stmt f ts in
-      line ^ "\n {\n" ^ t_text ^ "} else {\n" ^ f_text ^ "}\n"
+      line ^ " {\n" ^ t_text ^ "} else {\n" ^ f_text ^ "}\n"
   | Go.Call (rets, name, args) ->
       let go_args = List.map var_name args in
       let go_rets = List.map var_name rets in
