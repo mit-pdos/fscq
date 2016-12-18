@@ -17,6 +17,7 @@ module TranscriberState = struct
   type state = {
     mutable go_types: (Go.coq_type * string) list;
     mutable structs : (string * ((string * Go.coq_type) list)) list;
+    mutable maps : (string * Go.coq_type) list;
     mutable var_num: Big_int.big_int;
   }
 
@@ -36,6 +37,7 @@ module TranscriberState = struct
         name
       | Go.AddrMap (a) ->
         let name = "AddrMap_" ^ (get_go_type ts a) in
+        ts.maps <- (name, a) :: ts.maps;
         ts.go_types <- (coq_go_type, name) :: ts.go_types;
         name
 
@@ -44,13 +46,11 @@ module TranscriberState = struct
     ts.var_num <- succ ts.var_num;
     num
 
-  let go_struct_defs (ts : state) =
-    List.map (fun x ->
-      "type " ^ (fst x) ^ " struct {" ^
-      String.concat "\n" (List.map (
-        fun y -> (fst y) ^ " " ^ get_go_type ts (snd y)) (snd x)) ^
-      "}\n"
-    ) ts.structs
+  let go_struct_types (ts : state) =
+    ts.structs
+
+  let go_map_types (ts : state) =
+    ts.maps
 
   let set_min_var_num (ts : state) num =
     ts.var_num <- max num ts.var_num
@@ -59,6 +59,7 @@ module TranscriberState = struct
     {
       go_types = [];
       structs = [];
+      maps = [];
       var_num = zero;
     }
 
@@ -177,6 +178,25 @@ import (\"math/big\")
 // end header
 "
 
+let go_struct_defs ts =
+  List.map (fun x ->
+    "type " ^ (fst x) ^ " struct {" ^
+    String.concat "\n" (List.map (
+      fun y ->
+        let go_type = TranscriberState.get_go_type ts (snd y) in
+        (fst y) ^ " " ^ go_type
+      ) (snd x)) ^
+    "}\n"
+  ) (TranscriberState.go_struct_types ts)
+
+let go_map_defs ts =
+  let maps = TranscriberState.go_map_types ts in
+  List.map (fun x ->
+    let (type_name, v_type) = x in
+    let go_v_type = (TranscriberState.get_go_type ts v_type) in
+    "type " ^ type_name ^ " map[string]" ^ go_v_type
+  ) maps
+
 let go_type_decls ts =
   "
   type Num big.Int
@@ -184,12 +204,12 @@ let go_type_decls ts =
   type Block DiskBlock
   type Empty struct {}
   " ^
-  String.concat "\n" (TranscriberState.go_struct_defs ts)
+  String.concat "\n" (go_struct_defs ts) ^
+  String.concat "\n" (go_map_defs ts)
   ^ "\n"
 
 let go_fns ts fn_map =
   String.concat "\n\n" (List.map (go_func ts) (StringMap.elements fn_map))
-
 
 let  () =
   print_endline header;;
