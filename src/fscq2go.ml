@@ -99,7 +99,8 @@ let go_modify_op (ts : TranscriberState.state)
   " ^ v ^ ".snd = DeepCopy(val)
 }"
   | Go.DuplicateOp ->
-    "DuplicateOp // TODO"
+    let (dst, src) = Obj.magic args_tuple in
+    (var_name dst) ^ " = DeepCopy(" ^ (var_name src) ^ ")"
   | _ -> "Modify // TODO"
   ;;
 
