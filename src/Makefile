@@ -51,7 +51,7 @@ $(GOCAML_ML): $(VS_VIO) coqbuild/ExtractGOcaml.v
 
 codegen/fscq2go: $(GOCAML_ML) codegen/big.ml codegen/fscq2go.ml
 	rm -f $@ $@.native
-	(cd codegen && ocamlbuild -lib nums fscq2go.native)
+	(cd codegen && ocamlbuild -lib nums -lib str fscq2go.native)
 	test -f $@.native && ln -s fscq2go.native $@
 
 $(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v

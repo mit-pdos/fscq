@@ -12,6 +12,9 @@ let char_list_to_string (l : char list) =
 
 let var_name var = "val" ^ (to_string var)
 
+(* This is almost certainly not complete *)
+let sanitize = Str.global_replace (Str.regexp_string ".") "_"
+
 (* mutable transcriber state *)
 module TranscriberState = struct
   type state = {
@@ -161,7 +164,7 @@ let arg_pair_to_declaration (ts) (v : Go.coq_type * Go.var) =
 
 let go_func (ts : TranscriberState.state) (v : StringMap.key * Go.coq_OperationalSpec) =
   let (name_chars, op_spec) = v in
-  let name = char_list_to_string name_chars in
+  let name = sanitize (char_list_to_string name_chars) in
   let args = op_spec.coq_ParamVars in
   let ret = op_spec.coq_RetParamVars in
   let body = op_spec.coq_Body in
