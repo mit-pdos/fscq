@@ -65,18 +65,39 @@ module TranscriberState = struct
 
 end
 
+let go_num_const i =
+  if (lt i (Big_int.power_int_positive_int 2 64)) then
+     "big.NewInt(" ^ to_string i ^ ")"
+  else
+     "big_of_string(\"" ^ to_string i ^ "\")"
+
+let go_modify_op (ts : TranscriberState.state)
+                 (modify_op : Go.modify_op)
+                 (args_tuple : Go.var Go.n_tuple) =
+  match modify_op with
+  | Go.SplitPair ->
+    let ((pair, first), second) = Obj.magic args_tuple in
+    (var_name first) ^ " = " ^ (var_name pair) ^ ".fst\n" ^
+    (var_name second) ^ " = " ^ (var_name pair) ^ ".snd"
+  | Go.JoinPair ->
+    let ((pair, first), second) = Obj.magic args_tuple in
+    (var_name pair) ^ ".fst = " ^ (var_name first) ^ "\n" ^
+    (var_name pair) ^ ".snd = " ^ (var_name second)
+  | Go.MapAdd ->
+    "MapAdd // TODO"
+  | Go.MapFind ->
+    "MapFind // TODO"
+  | Go.DuplicateOp ->
+    "DuplicateOp // TODO"
+  | _ -> "Modify // TODO"
+  ;;
 
 let rec go_expr expr =
   match expr with
   | Go.Var (v) -> var_name v
   | Go.Const (gType, i) -> begin
       match gType with
-      | Go.Num ->
-          let i = (Obj.magic i) in
-          if (lt i (Big_int.power_int_positive_int 2 64)) then
-                     "big.NewInt(" ^ to_string i ^ ")"
-                  else
-                     "big_of_string(\"" ^ to_string i ^ "\")"
+      | Go.Num -> go_num_const (Obj.magic i)
       end
   | Go.TestE (test, a, b) ->
       let operator = match test with
@@ -120,9 +141,10 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
   | Go.DiskWrite (value, addr) ->
       "DiskWrite(" ^ go_expr value ^ ", " ^ go_expr addr ^ ")\n"
   | Go.Skip -> ""
+  | Go.While (ex, body) ->
+      "for " ^ (go_expr ex) ^ " {\n" ^ (go_stmt body ts) ^ "}\n"
   | Go.Modify (op, vars) ->
-      (* TODO emit correct modify operation *)
-      "Modify\n"
+    go_modify_op ts op vars ^ "\n"
 ;;
 
 let arg_pair_to_declaration (ts) (v : Go.coq_type * Go.var) =
