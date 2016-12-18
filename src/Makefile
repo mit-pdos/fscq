@@ -33,7 +33,7 @@ J	   ?= 1
 GOCAML_MOD := Ascii BinInt BinNat BinNums BinPos Datatypes \
 	            FMapAVL FMapList Int List0 Nat0 OrderedTypeEx OrderedType \
               Orders OrdersTac PeanoNat Specif String0 \
-							Go GoFunctions GoExamples StringMap
+							GoExtracted StringMap
 
 GOCAML_ML := $(GOCAML_MOD:%=codegen/%.ml)
 
@@ -46,6 +46,7 @@ codegen/%.ml: %.ml
 	ln -s ../$< $@
 
 $(GOCAML_ML): $(VS_VIO) coqbuild/ExtractGOcaml.v
+	mkdir -p codegen
 	( cd coqbuild && coqc -q -R . Fscq ExtractGOcaml )
 
 codegen/fscq2go: $(GOCAML_ML) codegen/big.ml codegen/fscq2go.ml
