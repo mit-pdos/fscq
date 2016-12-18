@@ -85,9 +85,16 @@ let go_modify_op (ts : TranscriberState.state)
     (var_name pair) ^ ".fst = " ^ (var_name first) ^ "\n" ^
     (var_name pair) ^ ".snd = " ^ (var_name second)
   | Go.MapAdd ->
-    "MapAdd // TODO"
+    let ((map, key), value) = Obj.magic args_tuple in
+    (var_name map) ^ "[" ^ (var_name key) ^ ".String()] = " ^ (var_name value)
   | Go.MapFind ->
-    "MapFind // TODO"
+    let ((map, key), rvar) = Obj.magic args_tuple in
+    let v = (var_name rvar) in
+"{
+  in_map, val := " ^ (var_name map) ^ "[" ^ (var_name key) ^ ".String()]
+  " ^ v ^ ".fst = in_map
+  " ^ v ^ ".snd = DeepCopy(val)
+}"
   | Go.DuplicateOp ->
     "DuplicateOp // TODO"
   | _ -> "Modify // TODO"
