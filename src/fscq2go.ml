@@ -40,8 +40,9 @@ module TranscriberState = struct
         name
 
   let get_new_var (ts : state) =
+    let num = ts.var_num in
     ts.var_num <- succ ts.var_num;
-    ts.var_num
+    num
 
   let go_struct_defs (ts : state) =
     List.map (fun x ->
@@ -50,6 +51,9 @@ module TranscriberState = struct
         fun y -> (fst y) ^ " " ^ get_go_type ts (snd y)) (snd x)) ^
       "}\n"
     ) ts.structs
+
+  let set_min_var_num (ts : state) num =
+    ts.var_num <- max num ts.var_num
 
   let make =
     {
@@ -131,10 +135,13 @@ let go_func (ts : TranscriberState.state) (v : StringMap.key * Go.coq_Operationa
   let args = op_spec.coq_ParamVars in
   let ret = op_spec.coq_RetParamVars in
   let body = op_spec.coq_Body in
+  let max_arg = List.fold_left max zero (List.map snd args) in
+  TranscriberState.set_min_var_num ts (succ max_arg);
+
   let go_body = go_stmt body ts in
 
   let args_list = (List.map (arg_pair_to_declaration ts) args) in
-  let ret_decls = (List.map (arg_pair_to_declaration ts) args) in
+  let ret_decls = (List.map (arg_pair_to_declaration ts) ret) in
   let pre = "func " ^ name ^ "(" ^ (String.concat ", " args_list) ^ ") " in
   let rets = "(" ^ (String.concat ", " ret_decls) ^ ")" in
   pre ^ rets ^ " {\n" ^ go_body ^ "\n" ^ "}"
