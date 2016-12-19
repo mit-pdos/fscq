@@ -1,10 +1,4 @@
-To build fscq, use a version of Coq v8.5; for now, this seems to mean
-building Coq from source:
-
-  git clone -b v8.5 https://github.com/coq/coq.git
-
-As one reference point, commit eaa3f971 seems to produce a working
-version of Coq that builds fscq.
+To build fscq, use Coq 8.5pl3.
 
 To develop Coq code using CoqIDE, check out coqide.sh, which invokes
 coqide with the appropriate arguments for spawning many parallel coqtop
