@@ -19,7 +19,7 @@ Module SB.
 
   Local Hint Resolve goodSize_add_l goodSize_add_r.
 
-  Definition magic_number := 3932.  (* 0xF5C = FSC in C *)
+  Definition magic_number := # (natToWord addrlen 3932).  (* 0xF5C = FSC in C *)
 
   Definition superblock_type : Rec.type := Rec.RecF ([
       ("data_start",  Rec.WordF addrlen);
@@ -145,6 +145,12 @@ Module SB.
     apply pickle_unpickle_superblock; auto.
   Qed.
 
+  Theorem goodSize_magic_number :
+    goodSize addrlen magic_number.
+  Proof.
+    unfold magic_number.
+    eapply wordToNat_natToWord_idempotent'_iff; eauto.
+  Qed.
 
   Definition rep (fsxp : fs_xparams) : rawpred :=
     ([[ fs_xparams_ok fsxp ]] * 0 |+> (v_pickle_superblock fsxp, nil))%pred.

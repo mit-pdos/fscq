@@ -76,6 +76,7 @@ Module AFS.
      max_addr).
 
   Lemma compute_xparams_ok : forall data_bitmaps inode_bitmaps log_descr_blocks magic,
+    goodSize addrlen magic ->
     goodSize addrlen (1 +
           data_bitmaps * valulen +
           inode_bitmaps * valulen / INODE.IRecSig.items_per_val +
@@ -248,6 +249,7 @@ Module AFS.
     unfold ptsto_subset in Hx at 1.
     safecancel.
     apply compute_xparams_ok.
+    apply SB.goodSize_magic_number.
     denote (length disk = _) as Heq; rewrite Heq in *; auto.
     auto.
 
