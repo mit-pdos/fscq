@@ -15,25 +15,74 @@ Open Scope hlist_scope.
 Require Import GenSepN BFile Log SuperBlock.
 Require Import ConcurrentBridge.
 
+Inductive PathOwner :=
+| ReadOnly
+| Owned (tid:TID)
+| Mixed.
+
+(* a <= b if b is more permissive than a; if b is allowed, then so is a *)
+Inductive owner_le : PathOwner -> PathOwner -> Prop :=
+| MixedTop : forall o, owner_le o Mixed
+| OwnerLeRefl : forall tid, owner_le (Owned tid) (Owned tid)
+| ReadOnlyBottom : forall o, owner_le ReadOnly o.
+
+Hint Constructors owner_le.
+
+Instance owner_le_preorder : PreOrder owner_le.
+Proof.
+  constructor; hnf; intros.
+  destruct x; eauto.
+  inversion H; subst; eauto.
+  inversion H0; subst; eauto.
+Qed.
+
+Definition owner_gt o o' := ~owner_le o' o.
+
+Theorem read_only_gt : forall tid,
+    owner_gt ReadOnly (Owned tid).
+Proof.
+  unfold owner_gt, not; intros.
+  inversion H; subst.
+Qed.
+
 (* A policy determining access for threads. Each directory can be written by at
 most one thread. *)
-Definition access_control : Type :=
-  list string -> option TID.
+Record access_control : Type :=
+  { path_owner : list string -> PathOwner;
+    path_owners_closed : forall path suffix,
+        owner_le (path_owner (path ++ suffix)) (path_owner path) }.
 
-(* Interpret a policy as allowing some tree modifications for thread tid. When
-the directory owners conflict over some subtree (eg, tid0 owns /foo but tid1
-owns /bar), the directory becomes effectively read-only. *)
-Definition allowed (path_owner: access_control)
+(* Interpret a policy as allowing some tree modifications for thread tid. When the actual owner is  *)
+Definition allowed (acl: access_control)
            (tid: TID) (tree tree': DIRTREE.dirtree) :=
-  forall path, path_owner path <> Some tid ->
+  forall path, owner_gt (path_owner acl path) (Owned tid) ->
           DIRTREE.find_subtree path tree' = DIRTREE.find_subtree path tree.
+
+Theorem allowed_subtree_update : forall acl path tid tree subtree,
+    (forall suffix, owner_le (Owned tid) (path_owner acl (path ++ suffix))) ->
+    DIRTREE.tree_names_distinct tree ->
+    allowed acl tid tree (DIRTREE.update_subtree path subtree tree).
+Proof.
+  unfold allowed, owner_gt; intros.
+  destruct (DIRTREE.pathname_decide_prefix path path0); repeat deex.
+  - contradiction H1.
+    apply H.
+  - destruct (DIRTREE.pathname_decide_prefix path0 path); repeat deex.
+    * contradiction H1.
+      pose proof (path_owners_closed acl path0 suffix).
+      specialize (H nil).
+      etransitivity; eauto.
+      rewrite List.app_nil_r; eauto.
+    * apply DIRTREE.find_subtree_update_subtree_ne_path;
+        eauto using DIRTREE.pathname_prefix_neq.
+Qed.
 
 Instance allowed_preorder path_owner tid : PreOrder (allowed path_owner tid).
 Proof.
   unfold allowed.
   constructor; hnf; intros; auto.
   rewrite H0 by auto; eauto.
-Defined.
+Qed.
 
 Module St <: GlobalState.
   Definition Sigma :=
@@ -44,7 +93,7 @@ Module St <: GlobalState.
              (abstraction_types ConcurrentCache.Sigma ++
                                 ((FSLayout.fs_xparams:Type)
                                    :: DIRTREE.dirtree
-                                   :: access_control
+                                   :: (access_control:Type)
                                    :: nil)).
 End St.
 
@@ -512,7 +561,7 @@ Theorem file_set_attr1_ok : forall inum attr,
                    let tree := get vDirTree s in
                    invariant App.delta d hm m s /\
                    DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) /\
-                   get vPathOwner s pathname = Some tid /\
+                   path_owner (get vPathOwner s) pathname = Owned tid /\
                    guar App.delta tid s_i s
                | POST d' hm' m' s_i' s' r:
                    let tree' := get vDirTree s' in
@@ -573,11 +622,9 @@ Proof.
     apply pred_lift_or in H22.
     intuition auto; try congruence.
     apply sep_star_comm in H70.
-    Search (_ * lift_empty _)%pred inside Pred.
     apply sep_star_lift_apply in H70; intuition idtac.
     unfold exis in H53; repeat deex.
     repeat split_lifted_prop.
-
 
     descend; intuition idtac.
     pred_apply; cancel.
