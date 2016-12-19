@@ -207,29 +207,62 @@ Module AFS_RECOVER.
     xform_dist.
     rewrite crash_xform_lift_empty.
     norml. unfold stars; simpl. rewrite H9.
-(*
-    old proof:
 
+    denote! (crash_xform F_ =p=> F_) as HFidem. rewrite HFidem.
+    xform_dist. norml; unfold stars; simpl.
     - rewrite LOG.idempred_idem.
       norml; unfold stars; simpl.
       rewrite SB.crash_xform_rep.
       cancel.
 
       prestep. norm. cancel.
-      recover_ro_ok.
+      or_l. norm. cancel. intuition eassumption.
+
+      intuition eauto.
+      apply sep_star_lift_l; intros; apply pimpl_refl.
+
+      apply sep_star_lift_l; intros.
+      norm; unfold stars; simpl.
       cancel.
-      or_l.
-      safecancel; eauto.
 
-      intuition.
-      simpl_idempred_r.
-      auto.
+      split. constructor.
+      split. constructor.
+      denote! (crash_xform realcrash =p=> crash_xform _) as Hcr.
+      rewrite Hcr; clear Hcr.
 
-      simpl_idempred_r.
+      rewrite <- LOG.before_crash_idempred. xform_dist. cancel.
+
+    - xform_norm.
+      rewrite LOG.idempred_idem.
+      norml; unfold stars; simpl.
+      rewrite SB.crash_xform_rep.
+      cancel.
+
+      prestep. norm. cancel.
+      or_r. norm. cancel. intuition idtac. 2: eauto. eauto.
+      pred_apply; cancel.
+
+      intuition eauto.
+      apply sep_star_lift_l; intros; apply pimpl_refl.
+
+      apply sep_star_lift_l; intros.
+      norm; unfold stars; simpl.
+      cancel.
+
+      split. constructor.
+      split. constructor.
+      denote! (crash_xform realcrash =p=> crash_xform _) as Hcr.
+      rewrite Hcr; clear Hcr.
+
+      xform_dist. or_r.
+      repeat ( progress xform_norm; cancel ).
       rewrite <- LOG.before_crash_idempred.
-      cancel.
-*)
-  Admitted.
+      unfold pushd; simpl; cancel.
+
+      pred_apply; cancel.
+  Grab Existential Variables.
+    all: try exact emp.
+  Qed.
 
   Theorem update_fblock_d_recover_ok : forall fsxp inum off v mscs,
     {<< ds Fm Ftop tree pathname f Fd vs frees ilist,
@@ -277,10 +310,10 @@ Module AFS_RECOVER.
       [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
     POST:hm' RET:^(mscs')
-      exists ds' tree' ds0 al,
+      exists ds' tree' al,
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
-        [[ ds' = dssync_vecs ds0 al /\ BFILE.diskset_was ds0 ds ]] *
-        [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist frees)]]] *
+        [[ ds' = dssync_vecs ds al ]] *
+        [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist frees)]]] *
         [[ tree' = update_subtree pathname (TreeFile inum  (BFILE.synced_file f)) tree ]]
     REC:hm' RET:r exists mscs fsxp,
       exists d,
