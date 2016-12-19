@@ -511,8 +511,7 @@ Module Go.
   | Seq : stmt -> stmt -> stmt
   | If : expr -> stmt -> stmt -> stmt
   | While : expr -> stmt -> stmt
-  | Call num_params num_ret_params
-         (retvars: n_tuple num_ret_params var) (* The caller's variables to get the return values *)
+  | Call num_params
          (f: label) (* The function to call *)
          (argvars: n_tuple num_params var) (* The caller's variables to pass in *)
   | Declare : type -> (var -> stmt) -> stmt
@@ -523,10 +522,9 @@ Module Go.
   (* InCall and Undeclare only appear at runtime *)
   | Undeclare : var -> stmt
   | InCall (s0: locals) (* The stack frame inside the function *)
-           num_params num_ret_params
+           num_params
            (paramstyles: n_tuple num_params param_style) (* Whether the parameters are by-value or by-ref *)
            (argvars: n_tuple num_params var) (* The caller's variables which it passed in *)
-           (retvars: n_tuple num_ret_params var) (* The caller's variables which will get the return values *)
            (p: stmt) (* The remaining body *).
 
   (* Program does not contain an InCall or Undeclare. Could probably be expressed directly if we had generics. *)
@@ -546,7 +544,7 @@ Module Go.
       forall cond body,
         source_stmt body ->
         source_stmt (While cond body)
-  | SCall : forall np nr retvars f argvars, source_stmt (Call np nr retvars f argvars)
+  | SCall : forall np f argvars, source_stmt (Call np f argvars)
   | SAssign : forall x e, source_stmt (Assign x e)
   | SModify : forall op vars, source_stmt (Modify op vars)
   | SDeclare :
@@ -714,10 +712,7 @@ Module Go.
     {
       (* Parameters are numbered in [0, NumParamVars). *)
       NumParamVars : nat;
-      (* Return parameters are numbered [NumParamVars, NumParamVars + NumRetParamVars). *)
-      NumRetParamVars : nat;
       ParamVars : n_tuple NumParamVars (param_style * type);
-      RetParamVars : n_tuple NumRetParamVars type;
       Body : stmt;
       body_source : source_stmt Body;
       (* TODO syntax_ok with is_actual_args_no_dup ? *)
@@ -805,22 +800,17 @@ Module Go.
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->
         runsto (DiskWrite ae ve) (d, s) (d', s)
-    | RunsToCall : forall spec retvars f argvars s s' s'' d d' argvals argvals' callee_s' retvals retvals',
+    | RunsToCall : forall spec f argvars s s' d d' argvals argvals' callee_s',
         StringMap.find f env = Some spec ->
-        source_stmt (Body spec) ->
+        source_stmt spec.(Body) ->
         collect (map_nt (sel s) argvars) = Some argvals ->
-        collect (map_nt (sel s) retvars) = Some retvals ->
-        values_well_typed (map_nt snd (ParamVars spec)) argvals = true ->
-        let param_names := seq_nt 0 (NumParamVars spec) in
-        let ret_param_names := seq_nt (NumParamVars spec) (NumRetParamVars spec) in
+        values_well_typed (map_nt snd spec.(ParamVars)) argvals = true ->
+        let param_names := seq_nt 0 spec.(NumParamVars) in
         let callee_s := add_many param_names argvals (VarMap.empty _) in
-        let callee_s := add_many ret_param_names (map_nt default_value (RetParamVars spec)) callee_s in
-        runsto (Body spec) (d, callee_s) (d', callee_s') ->
+        runsto spec.(Body) (d, callee_s) (d', callee_s') ->
         collect (map_nt (sel callee_s') param_names) = Some argvals' ->
-        collect (map_nt (sel callee_s') ret_param_names) = Some retvals' ->
-        update_many argvars argvals (map_nt ref_ret_update (combine_nt (map_nt fst (ParamVars spec)) argvals')) s = Some s' ->
-        update_many retvars retvals(map_nt SetTo retvals') s' = Some s'' ->
-        runsto (Call (NumParamVars spec) (NumRetParamVars spec) retvars f argvars) (d, s) (d', s'').
+        update_many argvars argvals (map_nt ref_ret_update (combine_nt (map_nt fst spec.(ParamVars)) argvals')) s = Some s' ->
+        runsto (Call spec.(NumParamVars) f argvars) (d, s) (d', s').
 
     Inductive step : state * stmt -> state * stmt -> Prop :=
     | StepSeq1 : forall a a' b st st',
@@ -879,34 +869,28 @@ Module Go.
         d' = upd d a (v, v0 :: v0s) ->
         step (d, s, DiskWrite ae ve) (d', s, Skip)
     | StepStartCall :
-        forall spec s retvars f argvars d argvals,
+        forall spec s f argvars d argvals,
           StringMap.find f env = Some spec ->
           source_stmt (Body spec) ->
           collect (map_nt (sel s) argvars) = Some argvals ->
-          values_well_typed (map_nt snd (ParamVars spec)) argvals = true ->
-          let param_names := seq_nt 0 (NumParamVars spec) in
-          let ret_param_names := seq_nt (NumParamVars spec) (NumRetParamVars spec) in
+          values_well_typed (map_nt snd spec.(ParamVars)) argvals = true ->
+          let param_names := seq_nt 0 spec.(NumParamVars) in
           let callee_s := add_many param_names argvals (VarMap.empty _) in
-          let callee_s := add_many ret_param_names (map_nt default_value (RetParamVars spec)) callee_s in
-          step (d, s, Call spec.(NumParamVars) spec.(NumRetParamVars) retvars f argvars)
-               (d, callee_s, InCall s spec.(NumParamVars) spec.(NumRetParamVars) (map_nt fst spec.(ParamVars))
-                                    argvars retvars spec.(Body))
+          step (d, s, Call spec.(NumParamVars) f argvars)
+               (d, callee_s, InCall s spec.(NumParamVars) (map_nt fst spec.(ParamVars))
+                                    argvars spec.(Body))
     | StepInCall :
-        forall st p st' p' s0 np nr styles argvars retvars,
+        forall st p st' p' s0 np styles argvars,
           step (st, p) (st', p') ->
-          step (st, InCall s0 np nr styles argvars retvars p)
-               (st', InCall s0 np nr styles argvars retvars p')
+          step (st, InCall s0 np styles argvars p)
+               (st', InCall s0 np styles argvars p')
     | StepEndCall :
-        forall callee_s' s s' s'' d numparams numretparams argvals argvals' retvals retvals' argstyles argvars retvars,
+        forall callee_s' s s' d numparams argvals argvals' argstyles argvars,
           collect (map_nt (sel s) argvars) = Some argvals ->
-          collect (map_nt (sel s) retvars) = Some retvals ->
           let param_names := seq_nt 0 numparams in
-          let ret_param_names := seq_nt numparams numretparams in
           collect (map_nt (sel callee_s') param_names) = Some argvals' ->
-          collect (map_nt (sel callee_s') ret_param_names) = Some retvals' ->
           update_many argvars argvals (map_nt ref_ret_update (combine_nt argstyles argvals')) s = Some s' ->
-          update_many retvars retvals (map_nt SetTo retvals') s' = Some s'' ->
-          step (d, callee_s', InCall s numparams numretparams argstyles argvars retvars Skip) (d, s'', Skip).
+          step (d, callee_s', InCall s numparams argstyles argvars Skip) (d, s', Skip).
 
     Inductive outcome :=
     | Failed
@@ -917,9 +901,9 @@ Module Go.
     | CrashSeq1 : forall a b,
         crash_step a ->
         crash_step (Seq a b)
-    | CrashInCall : forall s np nr styles args ret p,
+    | CrashInCall : forall s np styles args p,
         crash_step p ->
-        crash_step (InCall s np nr styles args ret p)
+        crash_step (InCall s np styles args p)
     | CrashRead : forall x a,
         crash_step (DiskRead x a)
     | CrashWrite : forall a v,
@@ -975,9 +959,9 @@ Module Go.
       end.
 
     Lemma steps_incall :
-      forall s0 np nr styles args ret st p st' p',
+      forall s0 np styles args st p st' p',
         step^* (st, p) (st', p') ->
-        step^* (st, InCall s0 np nr styles args ret p) (st', InCall s0 np nr styles args ret p').
+        step^* (st, InCall s0 np styles args p) (st', InCall s0 np styles args p').
     Proof.
       intros.
       prep_induction H; induction H; intros; subst.
@@ -1011,9 +995,9 @@ Module Go.
     eapply StepDiskRead.
     Hint Extern 1 (step (_, _, DiskWrite _ _) _) =>
     eapply StepDiskWrite.
-    Hint Extern 1 (step (_, Call _ _ _ _ _) _) =>
+    Hint Extern 1 (step (_, Call _ _ _) _) =>
     eapply StepStartCall.
-    Hint Extern 1 (step (_, InCall _ _ _ _ _ _ _) _) =>
+    Hint Extern 1 (step (_, InCall _ _ _ _ _) _) =>
     eapply StepEndCall.
 
     Theorem runsto_Steps :
@@ -1088,33 +1072,24 @@ Module Go.
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->
         runsto_InCall (DiskWrite ae ve) (d, s) (d', s)
-    | RunsToICCall : forall spec retvars f argvars s s' s'' d d' argvals argvals' callee_s' retvals retvals',
+    | RunsToICCall : forall spec f argvars s s' d d' argvals argvals' callee_s',
         StringMap.find f env = Some spec ->
         source_stmt (Body spec) ->
         collect (map_nt (sel s) argvars) = Some argvals ->
-        collect (map_nt (sel s) retvars) = Some retvals ->
-        values_well_typed (map_nt snd (ParamVars spec)) argvals = true ->
-        let param_names := seq_nt 0 (NumParamVars spec) in
-        let ret_param_names := seq_nt (NumParamVars spec) (NumRetParamVars spec) in
+        values_well_typed (map_nt snd spec.(ParamVars)) argvals = true ->
+        let param_names := seq_nt 0 spec.(NumParamVars) in
         let callee_s := add_many param_names argvals (VarMap.empty _) in
-        let callee_s := add_many ret_param_names (map_nt default_value (RetParamVars spec)) callee_s in
         runsto_InCall (Body spec) (d, callee_s) (d', callee_s') ->
         collect (map_nt (sel callee_s') param_names) = Some argvals' ->
-        collect (map_nt (sel callee_s') ret_param_names) = Some retvals' ->
         update_many argvars argvals (map_nt ref_ret_update (combine_nt (map_nt fst (ParamVars spec)) argvals')) s = Some s' ->
-        update_many retvars retvals (map_nt SetTo retvals') s' = Some s'' ->
-        runsto_InCall (Call (NumParamVars spec) (NumRetParamVars spec) retvars f argvars) (d, s) (d', s'')
-    | RunsToInCall : forall p callee_s callee_s' s s' s'' d d' numparams numretparams argvals argvals' retvals retvals' argstyles argvars retvars,
+        runsto_InCall (Call spec.(NumParamVars) f argvars) (d, s) (d', s')
+    | RunsToInCall : forall p callee_s callee_s' s s' d d' numparams argvals argvals' argstyles argvars,
           collect (map_nt (sel s) argvars) = Some argvals ->
-          collect (map_nt (sel s) retvars) = Some retvals ->
           let param_names := seq_nt 0 numparams in
-          let ret_param_names := seq_nt numparams numretparams in
           collect (map_nt (sel callee_s') param_names) = Some argvals' ->
-          collect (map_nt (sel callee_s') ret_param_names) = Some retvals' ->
           update_many argvars argvals (map_nt ref_ret_update (combine_nt argstyles argvals')) s = Some s' ->
-          update_many retvars retvals (map_nt SetTo retvals') s' = Some s'' ->
           runsto_InCall p (d, callee_s) (d', callee_s') ->
-          runsto_InCall (InCall s numparams numretparams argstyles argvars retvars p) (d, callee_s) (d', s'').
+          runsto_InCall (InCall s numparams argstyles argvars p) (d, callee_s) (d', s').
 
     Hint Constructors source_stmt.
 

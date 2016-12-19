@@ -1178,7 +1178,7 @@ Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> 
   forall avar bvar,
     forall a b F, EXTRACT src a b
            {{ avar ~> a * bvar ~> b * F }}
-             Call 2 0 tt name (avar, bvar)
+             Call 2 name (avar, bvar)
            {{ fun _ => avar |->? * bvar |->? * F
             (* TODO: could remember a & b if they are of passed by ref *) }} // env.
 
@@ -1190,11 +1190,8 @@ Lemma extract_voidfunc2_call :
       (forall a b F, EXTRACT src a b {{ arga ~> a * argb ~> b * F }} body {{ fun _ => arga |->? * argb |->? * F }} // env) ->
       StringMap.find name env = Some {|
                                     NumParamVars := 2;
-                                    NumRetParamVars := 0;
                                     ParamVars := ((PassedByValue, arga_t), (PassedByValue, argb_t));
-                                    RetParamVars := tt;
                                     Body := body;
-                                    (* ret_not_in_args := rnia; *)
                                     body_source := ss;
                                   |} ->
       voidfunc2 name src env.
