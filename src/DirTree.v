@@ -5789,6 +5789,148 @@ Module DIRTREE.
     eapply NoDup_incl_count; eauto.
   Qed.
 
+  Lemma update_subtree_notfound': forall path ents t n name,
+    find_subtree path t = Some (TreeDir n ents) ->
+    NoDup (map fst ents) ->
+    find_dirlist name ents = None ->
+    update_subtree path (delete_from_dir name (TreeDir n ents)) t = t.
+  Proof.
+  Admitted.
+
+  Lemma tree_graft_prune_in: forall dstpath dstents inum dstnum dstname subtree t,
+    tree_names_distinct t ->
+    find_subtree dstpath t = Some (TreeDir dstnum dstents) ->
+    In inum (tree_inodes (update_subtree dstpath 
+                           (add_to_dir dstname subtree (TreeDir dstnum dstents)) t)) ->
+    In inum (tree_inodes (update_subtree dstpath 
+                           (add_to_dir dstname subtree (TreeDir dstnum dstents))
+                             (update_subtree dstpath 
+                               (delete_from_dir dstname (TreeDir dstnum dstents)) t))).
+  Proof.
+    unfold add_to_dir, delete_from_dir.
+    intros.
+    destruct t.
+    - admit.
+    - { 
+        induction dstpath; intros; subst.
+        - simpl in *. eauto.
+        - induction dstents; intros; subst.
+          + simpl in *.
+            admit.
+          + destruct a0.
+            destruct (string_dec s dstname); subst.
+            destruct (string_dec dstname dstname); try congruence.
+      }
+  Admitted.
+
+  Lemma dirlist_combine_app': forall l1 l2 (f : dirtree -> list addr),
+    dirlist_combine f (l1 ++ l2) = dirlist_combine f l1 ++ dirlist_combine f l2.
+  Admitted.
+
+  Lemma tree_inodes_after_delete_from_list_in': forall dstents inum dstname,
+    NoDup (map fst dstents) ->
+    In inum (dirlist_combine tree_inodes (delete_from_list dstname dstents)) ->
+    In inum (dirlist_combine tree_inodes dstents).
+  Proof.
+    induction dstents; intros; eauto.
+    rewrite dirlist_combine_app.
+    destruct a.
+    destruct (string_dec dstname s); subst.
+    - simpl in H0.
+      destruct (string_dec s s); try congruence.
+      eapply in_or_app.
+      right; eauto.
+    - simpl in H0.
+      destruct (string_dec s dstname); try congruence.
+      rewrite dirlist_combine_app in H0.
+      eapply in_app_or in H0.
+      intuition.
+      eapply in_or_app.
+      right.
+      eapply IHdstents with (dstname := dstname); eauto.
+      inversion H; eauto.
+  Qed.
+
+
+  Lemma tree_inodes_after_delete_from_dir_in': forall dstpath inum dstents dstnum dstname dnum dents,
+    tree_names_distinct (TreeDir dnum dents) ->
+    find_subtree dstpath (TreeDir dnum dents) = Some (TreeDir dstnum dstents) ->
+    In inum (tree_inodes (update_subtree dstpath
+                (delete_from_dir dstname (TreeDir dstnum dstents)) (TreeDir dnum dents))) ->
+    In inum (tree_inodes (TreeDir dnum dents)).
+  Proof.
+    induction dstpath; intros; subst. 
+    - simpl in *. inversion H0.
+      simpl in *. subst.
+      intuition.
+      right.
+      eapply tree_inodes_after_delete_from_list_in' in H2; eauto.
+      inversion H; eauto.
+    - simpl in H1.
+      intuition.
+      + simpl. left; eauto.
+      + induction dents.
+        simpl in *. inversion H0.
+        destruct a0.
+        rewrite cons_app in H2.
+        rewrite map_app in H2.
+        rewrite dirlist_combine_app' in H2.
+        eapply in_app_or in H2.
+        intuition.
+        simpl in H1.
+        destruct (string_dec s a); subst.
+        rewrite app_nil_r in H1.
+        destruct d.
+        admit.
+        eapply IHdstpath; eauto.
+  Admitted.
+ 
+  Lemma tree_inodes_after_prune_in: forall inum dstpath dstents dstnum dstname t,
+    tree_names_distinct t ->
+    find_subtree dstpath t = Some (TreeDir dstnum dstents) ->
+    In inum (tree_inodes (tree_prune dstnum dstents dstpath dstname t)) ->
+    In inum (tree_inodes t).
+  Proof.
+    intros. 
+    destruct t.
+    - admit.
+    - eapply tree_inodes_after_delete_from_dir_in' in H1; eauto.
+  Qed.
+
+  Lemma tree_inodes_update_add_to_dir: forall inum dstpath dstname dstnum dstents subtree t d,
+    NoDup (tree_inodes t ++ tree_inodes subtree) ->
+    find_subtree dstpath t = Some d ->
+    In inum
+      (tree_inodes
+         (update_subtree dstpath
+            (add_to_dir dstname subtree (TreeDir dstnum dstents)) t)) ->
+    In inum (tree_inodes subtree) \/ In inum (tree_inodes t).
+  Proof.
+    intros.
+  Admitted.
+
+  Lemma tree_inodes_after_graft': forall dstpath dstents inum dstnum dstname subtree t,
+    tree_names_distinct t ->
+    NoDup (tree_inodes t ++ tree_inodes subtree) ->
+    find_subtree dstpath t = Some (TreeDir dstnum dstents) ->
+    In inum (tree_inodes (tree_graft dstnum dstents dstpath dstname subtree t)) ->
+    In inum (tree_inodes subtree) \/ In inum (tree_inodes (tree_prune dstnum dstents dstpath dstname t)).
+  Proof.
+    intros.
+    unfold tree_graft, tree_prune in *.
+    eapply tree_graft_prune_in in H2 as H2'; eauto.
+    eapply tree_inodes_update_add_to_dir in H2'; eauto.
+    unfold delete_from_dir.
+    (* first destruct if dstpath exists *)
+    eapply NoDup_incl_r with (l1 := (tree_inodes t)); eauto.
+    eapply NoDup_app_l in H0; eauto.
+    admit.
+
+    eapply tree_inodes_distinct_update_subtree; eauto.
+    unfold tree_inodes_distinct.
+    eapply NoDup_app_l in H0; eauto.
+  Admitted.    
+
   Lemma tree_inodes_after_graft : forall dstpath t dstnum dstents dstname mvtree inum,
     NoDup (tree_inodes t ++ tree_inodes mvtree) ->
     tree_names_distinct t ->
@@ -5797,7 +5939,21 @@ Module DIRTREE.
     xor (In inum (tree_inodes mvtree))
         (In inum (tree_inodes (tree_prune dstnum dstents dstpath dstname t))).
   Proof.
-  Admitted.
+    intros.
+    eapply NoDup_In_conflicting with (x := inum) in H as H'; eauto.
+    unfold conflicting in H'.
+    intuition.
+    eapply tree_inodes_after_graft' in H2 as H2'.
+    intuition.
+    + unfold xor.
+      left.
+      intuition.
+      eapply tree_inodes_after_prune_in in H4; eauto.
+     + unfold xor.
+      right.
+      intuition.
+      eapply tree_inodes_after_prune_in in H5; eauto.
+  Qed.
 
   Lemma tree_inodes_nodup_delete_from_list' : forall srcpath srcname srcents srcnum t mvtree top_extras,
     forall (Hd : tree_names_distinct t),
@@ -5817,7 +5973,7 @@ Module DIRTREE.
         | intros ]
       end.
 
-      clear H1.
+      vclear H1.
       generalize dependent extra_inodes.
       induction srcents; simpl in *; try congruence; intros.
       destruct a.
