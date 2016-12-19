@@ -212,10 +212,10 @@ Module AFS.
   Ltac equate_log_rep :=
     match goal with
     | [ r : BFILE.memstate,
-        H : context [ compute_xparams ?a1 ?a2 ?a3 ]
+        H : context [ compute_xparams ?a1 ?a2 ?a3 ?a4 ]
         |- LOG.rep ?xp ?F ?d ?ms _ =p=> LOG.rep ?xp' ?F' ?d' ?ms' _ * _ ] =>
         equate d d'; equate ms' (MSLL (BFILE.mk_memstate (MSAlloc r) ms));
-        equate xp' (FSXPLog (compute_xparams a1 a2 a3))
+        equate xp' (FSXPLog (compute_xparams a1 a2 a3 a4))
     end.
 
   Theorem mkfs_ok : forall cachesize data_bitmaps inode_bitmaps log_descr_blocks,
@@ -258,7 +258,7 @@ Module AFS.
     intuition simpl. pred_apply.
     (* split LHS into log region and data region *)
     erewrite arrayN_split at 1.
-    setoid_rewrite Nat.add_1_l.
+    simpl.
     rewrite sep_star_comm.
     apply sep_star_assoc.
 
