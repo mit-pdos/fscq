@@ -548,7 +548,8 @@ Module AFS.
        LOG.after_crash (FSXPLog fsxp) (SB.rep fsxp) ds cs hm *
        [[ cachesize <> 0 ]]
      POST:hm' RET:r exists ms fsxp',
-       [[ fsxp' = fsxp ]] * exists d n, [[ n <= length (snd ds) ]] *
+       [[ fsxp' = fsxp ]] * [[ r = OK (ms, fsxp') ]] *
+       exists d n, [[ n <= length (snd ds) ]] *
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
        [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
      XCRASH:hm'
@@ -596,17 +597,16 @@ Module AFS.
     auto.
     intuition.
 
-    admit.
-(*
-    prestep. norm. cancel.
+    prestep. norm.
+    2: intuition idtac.
+    cancel.
     intuition simpl; eauto.
-*)
+    intuition simpl; eauto.
+    intuition simpl; eauto.
+
     xcrash.
-    prestep. norm. cancel.
-    eauto.
-    unfold LOG.rep.
-    admit.
-    intuition simpl; eauto.
+    denote (SB.rep) as Hsb. rewrite SB.rep_magic_number in Hsb. destruct_lift Hsb.
+    step.
 
     xcrash.
     unfold LOG.before_crash.
@@ -646,7 +646,7 @@ Module AFS.
     pred_apply.
     safecancel.
     Unshelve. all: eauto.
-  Admitted.
+  Qed.
 
   Hint Extern 1 ({{_}} Bind (recover _) _) => apply recover_ok : prog.
 

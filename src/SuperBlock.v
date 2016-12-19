@@ -153,7 +153,9 @@ Module SB.
   Qed.
 
   Definition rep (fsxp : fs_xparams) : rawpred :=
-    ([[ fs_xparams_ok fsxp ]] * 0 |+> (v_pickle_superblock fsxp, nil))%pred.
+    ([[ fs_xparams_ok fsxp ]] *
+     [[ FSXPMagic fsxp = magic_number ]] *
+     0 |+> (v_pickle_superblock fsxp, nil))%pred.
 
   Definition load cs :=
     let^ (cs, v) <- BUFCACHE.read 0 cs;
@@ -185,7 +187,9 @@ Module SB.
     {< m F,
     PRE
       BUFCACHE.rep cs m * 
-      [[ fs_xparams_ok fsxp /\ (F * 0 |->?)%pred m ]] *
+      [[ fs_xparams_ok fsxp ]] *
+      [[ FSXPMagic fsxp = magic_number ]] *
+      [[ (F * 0 |->?)%pred m ]] *
       [[ sync_invariant F ]]
     POST RET:cs
       exists m',
@@ -213,7 +217,8 @@ Module SB.
   Proof.
     unfold rep; intros; split;
     rewrite crash_xform_sep_star_dist;
-    rewrite crash_xform_lift_empty.
+    rewrite crash_xform_sep_star_dist;
+    repeat rewrite crash_xform_lift_empty.
 
     rewrite crash_xform_ptsto_subset; cancel.
     rewrite ptsto_pimpl_ptsto_subset.
@@ -235,5 +240,11 @@ Module SB.
 
   Hint Resolve sync_invariant_rep.
   Hint Extern 0 (okToUnify (rep _) (rep _)) => constructor : okToUnify.
+
+  Theorem rep_magic_number : forall fsxp,
+    rep fsxp =p=> rep fsxp * [[ FSXPMagic fsxp = magic_number ]].
+  Proof.
+    unfold rep; intros; cancel.
+  Qed.
 
 End SB.
