@@ -3487,8 +3487,9 @@ Proof.
   specialize (H0 x).
   omega.
 Qed.
-Hint Resolve incl_count_trans incl_count_refl incl_count_app_comm incl_count_app_split : incl_count_app.
 
+Hint Resolve incl_count_trans incl_count_refl incl_count_app_comm incl_count_app_split : incl_count_app.
+Hint Resolve permutation_trans permutation_refl permutation_app_comm permutation_app_split : permutation_app.
 
 Definition NoDupApp (T : Type) (l : list (list T)) := NoDup (concat l).
 

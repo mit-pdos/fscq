@@ -5721,7 +5721,7 @@ Module DIRTREE.
     tree_names_distinct t ->
     find_subtree srcpath t = Some (TreeDir srcnum srcents) ->
     find_dirlist srcname srcents = Some mvtree ->
-    incl_count addr_eq_dec
+    permutation addr_eq_dec
       (tree_inodes mvtree ++ tree_inodes (tree_prune srcnum srcents srcpath srcname t))
       (tree_inodes t).
   Proof.
@@ -5734,17 +5734,17 @@ Module DIRTREE.
       + inversion H1; clear H1; subst.
         rewrite cons_app. rewrite cons_app with (l := app _ _).
         repeat rewrite app_assoc.
-        eauto with incl_count_app.
+        eauto with permutation_app.
 
       + simpl in *.
         rewrite cons_app. rewrite cons_app with (l := app _ _).
-        rewrite app_assoc. eapply incl_count_trans. apply incl_count_app_comm. rewrite <- app_assoc.
-        eapply incl_count_trans. 2: apply incl_count_app_comm. rewrite <- app_assoc.
-        eapply incl_count_app_split. apply incl_count_refl.
-        eapply incl_count_trans. eapply incl_count_app_comm. rewrite <- app_assoc.
-        eapply incl_count_trans. apply IHsrcents; eauto.
-        eapply incl_count_trans. 2: apply incl_count_app_comm.
-        apply incl_count_refl.
+        rewrite app_assoc. eapply permutation_trans. apply permutation_app_comm. rewrite <- app_assoc.
+        eapply permutation_trans. 2: apply permutation_app_comm. rewrite <- app_assoc.
+        eapply permutation_app_split. apply permutation_refl.
+        eapply permutation_trans. eapply permutation_app_comm. rewrite <- app_assoc.
+        eapply permutation_trans. apply IHsrcents; eauto.
+        eapply permutation_trans. 2: apply permutation_app_comm.
+        apply permutation_refl.
 
     - destruct t; simpl in *; try congruence.
       induction l; simpl in *; try congruence.
@@ -5755,23 +5755,23 @@ Module DIRTREE.
         unfold tree_prune, delete_from_dir in *.
 
         rewrite cons_app. rewrite cons_app with (l := app _ _).
-        eapply incl_count_trans. apply incl_count_app_comm. rewrite <- app_assoc.
-        apply incl_count_app_split. apply incl_count_refl. rewrite <- app_assoc.
-        eapply incl_count_trans. apply incl_count_app_comm. rewrite <- app_assoc.
-        eapply incl_count_trans. 2: apply incl_count_app_comm.
-        eapply incl_count_app_split. apply incl_count_refl.
+        eapply permutation_trans. apply permutation_app_comm. rewrite <- app_assoc.
+        apply permutation_app_split. apply permutation_refl. rewrite <- app_assoc.
+        eapply permutation_trans. apply permutation_app_comm. rewrite <- app_assoc.
+        eapply permutation_trans. 2: apply permutation_app_comm.
+        eapply permutation_app_split. apply permutation_refl.
         eauto.
 
       + clear IHsrcpath.
         rewrite cons_app. rewrite cons_app with (l := app _ _).
-        rewrite app_assoc. eapply incl_count_trans. apply incl_count_app_comm. rewrite <- app_assoc.
-        eapply incl_count_trans. 2: apply incl_count_app_comm. rewrite <- app_assoc.
-        eapply incl_count_app_split. apply incl_count_refl.
-        eapply incl_count_trans. 2: apply incl_count_app_comm.
-        eapply incl_count_trans. 2: eapply IHl; eauto.
-        eapply incl_count_trans. apply incl_count_app_comm. rewrite <- app_assoc.
-        eapply incl_count_app_split. apply incl_count_refl.
-        apply incl_count_refl.
+        rewrite app_assoc. eapply permutation_trans. apply permutation_app_comm. rewrite <- app_assoc.
+        eapply permutation_trans. 2: apply permutation_app_comm. rewrite <- app_assoc.
+        eapply permutation_app_split. apply permutation_refl.
+        eapply permutation_trans. 2: apply permutation_app_comm.
+        eapply permutation_trans. 2: eapply IHl; eauto.
+        eapply permutation_trans. apply permutation_app_comm. rewrite <- app_assoc.
+        eapply permutation_app_split. apply permutation_refl.
+        apply permutation_refl.
   Qed.
 
   Lemma tree_inodes_after_prune : forall srcpath t srcnum srcents srcname mvtree inum,
@@ -5786,6 +5786,7 @@ Module DIRTREE.
     eapply NoDup_In_conflicting.
     unfold tree_inodes_distinct in *.
     eapply tree_inodes_after_prune' in H2; eauto.
+    eapply permutation_incl_count in H2.
     eapply NoDup_incl_count; eauto.
   Qed.
 
