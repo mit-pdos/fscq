@@ -488,6 +488,23 @@ Ltac member_index_ne := match goal with
                           Omega.omega
                         end.
 
+Lemma pred_lift_or : forall A AEQ V (p q q': @pred A AEQ V) (P Q:Prop) m,
+    (p * (([[ P ]] * q) \/ ([[ Q ]] * q')))%pred m ->
+    (P /\ (p * q)%pred m) \/
+    (Q /\ (p * q')%pred m).
+Proof.
+  intros.
+  apply sep_star_or_distr in H.
+  unfold or in H.
+  destruct H; [ left | right ].
+  assert ((p * q * [[ P ]])%pred m).
+  pred_apply; cancel.
+  apply sep_star_lift_apply in H0; intuition.
+  assert ((p * q' * [[ Q ]])%pred m).
+  pred_apply; cancel.
+  apply sep_star_lift_apply in H0; intuition.
+Qed.
+
 Theorem file_set_attr1_ok : forall inum attr,
       SPEC App.delta, tid |-
               {{ pathname f,
@@ -549,35 +566,40 @@ Proof.
     unfold cacheI in *; simpl_get_set_all;
       rewrite ?get_set_other in * by member_index_ne;
       intuition eauto.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    apply star_emp_pimpl in H22.
+    apply pred_lift_or in H22.
+    intuition auto; try congruence.
+    apply sep_star_comm in H70.
+    Search (_ * lift_empty _)%pred inside Pred.
+    apply sep_star_lift_apply in H70; intuition idtac.
+    unfold exis in H53; repeat deex.
+    repeat split_lifted_prop.
+
 
     descend; intuition idtac.
-
-    repeat match goal with
-           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
-           end.
     pred_apply; cancel.
-    admit. (* oops, disk sequences differ for some reason *)
+    pred_apply; cancel.
 
-    (* TODO: the appropriate fact about DIRTREE.rep on the new dir tree is still
-    stuck inside a lifted prop, surrounded by a complicated pred or and mixed in
-    with LOG.rep and exists. *)
-    pred_apply.
-    repeat match goal with
-           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
-           end.
-    admit. (* again, why is this requiring the new directory tree rep be applied
-    to the old disk sequence? *)
+    instantiate (1 := frees).
+    instantiate (1 := x2).
+    admit. (* rewrite alter_inum to update_subtree *)
 
     repeat match goal with
            | [ H: get _ _ = get _ _ |- _ ] => rewrite H
            end.
-    admit. (* TODO: prove alter_inum produces same behavior as altering by the
-    right path *)
+    admit. (* prove alter_inum is same as update_subtree *)
 
     eapply cacheR_preorder; eauto.
     eapply cacheR_preorder; eauto.
     unfold cacheR; rewrite ?get_set_other by member_index_ne; try reflexivity.
 
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    replace (get vPathOwner s_i).
     admit. (* the critical property: changing this inum is allowed, first
     because it's a pathname change, second because we assumed that this thread
     owns this path *)
@@ -587,7 +609,12 @@ Proof.
     eapply cacheR_preorder; eauto.
     unfold cacheR; rewrite ?get_set_other by member_index_ne; try reflexivity.
 
-    admit. (* same argument on s_i *)
+    eapply allowed_preorder; eauto.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    replace (get vPathOwner s_i).
+    admit. (* same allowed property as above (for s_i) *)
 
   - step.
     step.
