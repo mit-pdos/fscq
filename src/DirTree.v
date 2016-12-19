@@ -1373,6 +1373,35 @@ Module DIRTREE.
     - destruct (string_dec s0 s); try congruence; eauto.
   Qed.
 
+  Lemma find_subtree_update_subtree_oob_general : forall base pn tree subtree subtree',
+    (~ exists suffix, pn = base ++ suffix) ->
+    find_subtree pn (update_subtree base subtree tree) = Some subtree' ->
+    exists subtree'',
+      find_subtree pn tree = Some subtree'' /\
+      dirtree_inum subtree'' = dirtree_inum subtree' /\
+      dirtree_isdir subtree'' = dirtree_isdir subtree'.
+  Proof.
+    induction base; simpl; intros.
+    contradict H; eauto.
+
+    destruct pn; simpl in *.
+    - eexists; intuition eauto.
+      destruct tree; destruct subtree'; simpl in *; try congruence.
+      destruct tree; destruct subtree'; simpl in *; try congruence.
+
+    - destruct tree; simpl in *; try congruence.
+      induction l; simpl in  *; try congruence.
+
+      destruct a0; simpl in *.
+      destruct (string_dec s0 a); destruct (string_dec s0 s); subst; simpl in *.
+      + destruct (string_dec s s); try congruence.
+        eapply IHbase; eauto.
+        intro H'. apply H. deex. eauto.
+      + destruct (string_dec a s); try congruence. eauto.
+      + destruct (string_dec s s); try congruence. eauto.
+      + destruct (string_dec s0 s); try congruence. eauto.
+  Qed.
+
   Theorem find_subtree_helper1 : forall pathname suffix tree subtree subtree' r,
     find_subtree pathname tree = Some subtree ->
     find_subtree (pathname ++ suffix) (update_subtree pathname subtree' tree) = Some r ->
@@ -6288,13 +6317,17 @@ Module DIRTREE.
             [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                             ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
             [[ forall inum' def', inum' <> srcnum -> inum' <> dstnum ->
+               In inum' (tree_inodes tree') ->
                selN ilist inum' def' = selN ilist' inum' def' ]] )
     CRASH:hm'
            LOG.intact fsxp.(FSXPLog) F mbase hm'
     >} rename fsxp dnum srcpath srcname dstpath dstname mscs.
   Proof.
     intros; eapply pimpl_ok2. apply rename_ok'.
-    unfold rep; cancel.
+
+    intros; norml; unfold stars; simpl.
+    rewrite rep_tree_distinct_impl in *.
+    unfold rep in *; cancel.
     rewrite subtree_extract; eauto. simpl. instantiate (tree_elem0:=tree_elem). cancel.
     step.
     apply pimpl_or_r; right. cancel; eauto.
@@ -6305,6 +6338,59 @@ Module DIRTREE.
     rewrite tree_graft_preserve_isdir; auto.
     rewrite tree_prune_preserve_isdir; auto.
     eapply dirlist_safe_subtree; eauto.
+
+    denote! (((Fm * BFILE.rep _ _ _ _ _) * IAlloc.rep _ _ _)%pred _) as Hm'.
+    eapply pimpl_apply in Hm'.
+    eapply rep_tree_names_distinct in Hm' as Hnames.
+    eapply rep_tree_inodes_distinct in Hm' as Hinodes.
+    2: unfold rep; cancel.
+    2: rewrite <- subtree_absorb.
+    2: cancel. 2: apply pimpl_refl. 2: eauto.
+    2: rewrite tree_graft_preserve_inum; auto.
+    2: rewrite tree_prune_preserve_inum; auto.
+    2: rewrite tree_graft_preserve_isdir; auto.
+    2: rewrite tree_prune_preserve_isdir; auto.
+
+    edestruct tree_inodes_pathname_exists. 3: eauto. all: eauto.
+    repeat deex.
+    destruct (pathname_decide_prefix pathname x); repeat deex.
+
+    (* case 1: inum inside tree' *)
+    erewrite find_subtree_app in *; eauto.
+
+    (* case 2: inum outside tree' *)
+    denote (selN ilist _ _ = selN ilist' _ _) as Hilisteq.
+    eapply Hilisteq; eauto.
+    right. intros.
+
+    denote ([[ tree_names_distinct _ ]]%pred) as Hlift. destruct_lift Hlift.
+    edestruct find_subtree_update_subtree_oob_general; eauto.
+    edestruct tree_inodes_pathname_exists with (tree := TreeDir dnum tree_elem) (inum := dirtree_inum subtree0) as [pn_conflict ?].
+    eapply tree_names_distinct_subtree; [ | eauto ]; eauto.
+    eapply tree_inodes_distinct_subtree; [ | | eauto ]; eauto.
+    simpl; intuition.
+
+    denote! (exists _, find_subtree _ _ = _ /\ dirtree_inum _ = dirtree_inum _) as Hx.
+    destruct Hx.
+
+    denote! (~ (exists _, _ = _ ++ _)) as Hsuffix.
+    eapply Hsuffix.
+    exists pn_conflict.
+
+    eapply find_subtree_inode_pathname_unique with (tree := tree).
+    eauto. eauto.
+
+    intuition eauto.
+    erewrite find_subtree_app by eauto; intuition eauto.
+    intuition congruence.
+
+  Grab Existential Variables.
+    all: try exact addr; try exact addr_eq_dec; eauto.
+    all: try exact None.
+    all: try exact emp.
+    all: try exact Mem.empty_mem.
+    all: try exact (FSXPInode fsxp).
+    all: try exact (FSXPBlockAlloc1 fsxp, FSXPBlockAlloc2 fsxp).
   Qed.
 
   Hint Extern 1 ({{_}} Bind (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
