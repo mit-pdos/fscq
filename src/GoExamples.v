@@ -182,10 +182,9 @@ Local Open Scope map_scope.
 Definition swap_env : Env :=
   ("swap" -s> {|
      NumParamVars := 2;
-     NumRetParamVars := 0;
      ParamVars := ((PassedByValue, Go.Num), (PassedByValue, Go.Num));
-     RetParamVars := tt; Body := projT1 (extract_swap_prog (StringMap.empty _));
-     (* ret_not_in_args := ltac:(auto); *) body_source := ltac:(repeat constructor);
+     Body := projT1 (extract_swap_prog (StringMap.empty _));
+     body_source := ltac:(repeat constructor);
    |}; (StringMap.empty _)).
 
 Lemma swap_func : voidfunc2 "swap" swap_prog swap_env.
@@ -364,19 +363,17 @@ Example rot3_function_body : stmt :=
     (var0 <~const 1;
      Declare Num (fun var1 =>
       (var1 <~const 0;
-       Call 2 0 tt "swap" (var1, var0)))));
+       Call 2 "swap" (var1, var0)))));
    Declare Num (fun var0 =>
     (var0 <~const 2;
      Declare Num (fun var1 =>
       (var1 <~const 1;
-       Call 2 0 tt "swap" (var1, var0))))))%go.
+       Call 2 "swap" (var1, var0))))))%go.
 
 Example rot3_function : FunctionSpec :=
   {|
     NumParamVars := 0;
-    NumRetParamVars := 0;
     ParamVars := tt;
-    RetParamVars := tt;
     Body := rot3_function_body;
     body_source := ltac:(repeat constructor);
   |}.
