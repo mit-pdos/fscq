@@ -1154,10 +1154,9 @@ Module AFS.
 
   Hint Extern 1 ({{_}} Bind (create _ _ _ _ ) _) => apply create_ok : prog.
 
-  Definition rename_rep ds mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname hm :=
-    (exists d tree' srcnum srcents dstnum dstents subtree pruned renamed ilist' frees',
-    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm *
-    [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
+  Definition rename_rep_inner d frees' ilist' tree' srcnum srcents subtree pruned dstnum dstents renamed mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname
+    : @pred addr addr_eq_dec valuset :=
+    ([[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
     [[ DIRTREE.find_subtree srcpath (DIRTREE.TreeDir dnum tree_elem) = Some (DIRTREE.TreeDir srcnum srcents) ]] *
     [[ DIRTREE.find_dirlist srcname srcents = Some subtree ]] *
     [[ pruned = DIRTREE.tree_prune srcnum srcents srcpath srcname (DIRTREE.TreeDir dnum tree_elem) ]] *
@@ -1167,8 +1166,14 @@ Module AFS.
     [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                     ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
     [[ forall inum' def', inum' <> srcnum -> inum' <> dstnum ->
-       selN ilist inum' def' = selN ilist' inum' def' ]]
-    ) %pred.
+       In inum' (tree_inodes tree') ->
+       selN ilist inum' def' = selN ilist' inum' def' ]])%pred.
+
+  Definition rename_rep ds mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname hm :=
+    (exists d tree' srcnum srcents dstnum dstents subtree pruned renamed ilist' frees',
+    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm *
+    rename_rep_inner d frees' ilist' tree' srcnum srcents subtree pruned dstnum dstents renamed mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname
+    )%pred.
 
   Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
     {< ds Fm Ftop tree cwd tree_elem ilist frees,
@@ -1181,22 +1186,25 @@ Module AFS.
      ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
       [[ ok = OK tt ]] * 
         rename_rep ds mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname hm')
-    CRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+    XCRASH:hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+      exists d tree' srcnum srcents dstnum dstents subtree pruned renamed ilist' frees' mscs',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
+      rename_rep_inner d frees' ilist' tree' srcnum srcents subtree pruned dstnum dstents renamed mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname
     >} rename fsxp dnum srcpath srcname dstpath dstname mscs.
   Proof.
-    unfold rename, rename_rep; intros.
+    unfold rename, rename_rep, rename_rep_inner; intros.
     step.
     step.
     step.
     step.
-    (* XXX: prove crash condition using XCRASH *)
-    admit.
+    xcrash. or_r. repeat ( cancel; progress xform_norm ).
+    rewrite LOG.recover_any_idempred; cancel. all: eauto.
     step.
-    apply LOG.notxn_idempred.
-    apply LOG.intact_idempred.
-    apply LOG.notxn_idempred.
-  Admitted.
+    xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
+    xcrash. or_l. rewrite LOG.intact_idempred. cancel.
+    xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
+  Qed.
 
   Hint Extern 1 ({{_}} Bind (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
 
@@ -1221,8 +1229,13 @@ Module AFS.
         [[ forall inum def', inum <> dnum -> In inum (tree_inodes tree) ->
            In inum (tree_inodes tree') ->
            selN ilist inum def' = selN ilist' inum def' ]])
-    CRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+    XCRASH:hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+      exists d tree' ilist' frees',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
+      [[ tree' = DIRTREE.update_subtree pathname
+                    (DIRTREE.delete_from_dir name (DIRTREE.TreeDir dnum tree_elem)) tree ]] *
+      [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]]
     >} delete fsxp dnum name mscs.
   Proof.
     unfold delete; intros.
@@ -1230,13 +1243,13 @@ Module AFS.
     step.
     step.
     step.
-    (* XXX: prove crash condition using XCRASH *)
-    admit.
+    xcrash. or_r. repeat ( cancel; progress xform_norm ).
+    rewrite LOG.recover_any_idempred; cancel.
     step.
-    apply LOG.notxn_idempred.
-    apply LOG.intact_idempred.
-    apply LOG.notxn_idempred.
-  Admitted.
+    xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
+    xcrash. or_l. rewrite LOG.intact_idempred. cancel.
+    xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
+  Qed.
 
   Hint Extern 1 ({{_}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.
 
