@@ -5789,147 +5789,112 @@ Module DIRTREE.
     eapply NoDup_incl_count; eauto.
   Qed.
 
-  Lemma update_subtree_notfound': forall path ents t n name,
-    find_subtree path t = Some (TreeDir n ents) ->
-    NoDup (map fst ents) ->
-    find_dirlist name ents = None ->
-    update_subtree path (delete_from_dir name (TreeDir n ents)) t = t.
-  Proof.
-  Admitted.
-
-  Lemma tree_graft_prune_in: forall dstpath dstents inum dstnum dstname subtree t,
+  Lemma tree_inodes_after_graft' : forall dstpath t dstnum dstents dstname mvtree,
     tree_names_distinct t ->
     find_subtree dstpath t = Some (TreeDir dstnum dstents) ->
-    In inum (tree_inodes (update_subtree dstpath 
-                           (add_to_dir dstname subtree (TreeDir dstnum dstents)) t)) ->
-    In inum (tree_inodes (update_subtree dstpath 
-                           (add_to_dir dstname subtree (TreeDir dstnum dstents))
-                             (update_subtree dstpath 
-                               (delete_from_dir dstname (TreeDir dstnum dstents)) t))).
+    permutation
+      addr_eq_dec
+      (tree_inodes (tree_graft dstnum dstents dstpath dstname mvtree t))
+      ((tree_inodes mvtree) ++
+       (tree_inodes (tree_prune dstnum dstents dstpath dstname t))).
   Proof.
-    unfold add_to_dir, delete_from_dir.
-    intros.
-    destruct t.
-    - admit.
-    - { 
-        induction dstpath; intros; subst.
-        - simpl in *. eauto.
-        - induction dstents; intros; subst.
-          + simpl in *.
-            admit.
-          + destruct a0.
-            destruct (string_dec s dstname); subst.
-            destruct (string_dec dstname dstname); try congruence.
-      }
-  Admitted.
-
-  Lemma dirlist_combine_app': forall l1 l2 (f : dirtree -> list addr),
-    dirlist_combine f (l1 ++ l2) = dirlist_combine f l1 ++ dirlist_combine f l2.
-  Admitted.
-
-  Lemma tree_inodes_after_delete_from_list_in': forall dstents inum dstname,
-    NoDup (map fst dstents) ->
-    In inum (dirlist_combine tree_inodes (delete_from_list dstname dstents)) ->
-    In inum (dirlist_combine tree_inodes dstents).
-  Proof.
-    induction dstents; intros; eauto.
-    rewrite dirlist_combine_app.
-    destruct a.
-    destruct (string_dec dstname s); subst.
-    - simpl in H0.
-      destruct (string_dec s s); try congruence.
-      eapply in_or_app.
-      right; eauto.
-    - simpl in H0.
-      destruct (string_dec s dstname); try congruence.
-      rewrite dirlist_combine_app in H0.
-      eapply in_app_or in H0.
-      intuition.
-      eapply in_or_app.
-      right.
-      eapply IHdstents with (dstname := dstname); eauto.
-      inversion H; eauto.
-  Qed.
-
-
-  Lemma tree_inodes_after_delete_from_dir_in': forall dstpath inum dstents dstnum dstname dnum dents,
-    tree_names_distinct (TreeDir dnum dents) ->
-    find_subtree dstpath (TreeDir dnum dents) = Some (TreeDir dstnum dstents) ->
-    In inum (tree_inodes (update_subtree dstpath
-                (delete_from_dir dstname (TreeDir dstnum dstents)) (TreeDir dnum dents))) ->
-    In inum (tree_inodes (TreeDir dnum dents)).
-  Proof.
-    induction dstpath; intros; subst. 
-    - simpl in *. inversion H0.
-      simpl in *. subst.
-      intuition.
-      right.
-      eapply tree_inodes_after_delete_from_list_in' in H2; eauto.
-      inversion H; eauto.
-    - simpl in H1.
-      intuition.
-      + simpl. left; eauto.
-      + induction dents.
-        simpl in *. inversion H0.
-        destruct a0.
-        rewrite cons_app in H2.
-        rewrite map_app in H2.
-        rewrite dirlist_combine_app' in H2.
-        eapply in_app_or in H2.
-        intuition.
-        simpl in H1.
-        destruct (string_dec s a); subst.
-        rewrite app_nil_r in H1.
-        destruct d.
-        admit.
+    unfold tree_graft, tree_prune.
+    induction dstpath; simpl; intros.
+    - inversion H0; clear H0; subst.
+      induction dstents; simpl; intros.
+      + rewrite app_nil_r. rewrite cons_app.
+        apply permutation_app_comm.
+      + destruct a.
+        destruct (string_dec s dstname); subst.
+        * simpl. rewrite cons_app. rewrite cons_app with (l := dirlist_combine _ _).
+          repeat rewrite app_assoc. apply permutation_app_split.
+          2: apply permutation_refl.
+          apply permutation_app_comm.
+        * simpl. rewrite cons_app. rewrite cons_app with (l := app _ _).
+          eapply permutation_trans. apply permutation_app_comm. rewrite <- app_assoc.
+          eapply permutation_trans. 2: rewrite app_assoc. 2: apply permutation_app_comm.
+          rewrite <- app_assoc.
+          apply permutation_app_split. apply permutation_refl.
+          eapply permutation_trans. apply permutation_app_comm.
+          eapply permutation_trans. 2: apply permutation_app_comm.
+          rewrite <- app_assoc.
+          eauto.
+    - destruct t; simpl in *; try congruence.
+      induction l; simpl in *; try congruence; intros.
+      destruct a0; simpl.
+      destruct (string_dec s a); subst; simpl in *.
+      + inversion H; inversion H4; subst.
+        repeat rewrite update_subtree_notfound by auto.
+        rewrite cons_app. rewrite cons_app with (l := app _ _).
+        eapply permutation_trans. 2: apply permutation_app_comm. rewrite <- app_assoc.
+        apply permutation_app_split. apply permutation_refl.
+        eapply permutation_trans. 2: apply permutation_app_comm. rewrite app_assoc.
+        apply permutation_app_split. 2: apply permutation_refl.
+        destruct (string_dec a a); try congruence.
         eapply IHdstpath; eauto.
-  Admitted.
- 
-  Lemma tree_inodes_after_prune_in: forall inum dstpath dstents dstnum dstname t,
-    tree_names_distinct t ->
-    find_subtree dstpath t = Some (TreeDir dstnum dstents) ->
-    In inum (tree_inodes (tree_prune dstnum dstents dstpath dstname t)) ->
-    In inum (tree_inodes t).
-  Proof.
-    intros. 
-    destruct t.
-    - admit.
-    - eapply tree_inodes_after_delete_from_dir_in' in H1; eauto.
+      + rewrite cons_app. rewrite cons_app with (l := app _ _).
+        eapply permutation_trans. apply permutation_app_comm. rewrite <- app_assoc.
+        rewrite app_assoc with (l := tree_inodes mvtree).
+        eapply permutation_trans. 2: apply permutation_app_comm. rewrite <- app_assoc.
+        apply permutation_app_split. apply permutation_refl.
+        eapply permutation_trans. apply permutation_app_comm.
+        eapply permutation_trans. 2: apply permutation_app_comm. rewrite <- app_assoc.
+        destruct (string_dec s a); try congruence.
+        eauto.
   Qed.
 
-  Lemma tree_inodes_update_add_to_dir: forall inum dstpath dstname dstnum dstents subtree t d,
-    NoDup (tree_inodes t ++ tree_inodes subtree) ->
-    find_subtree dstpath t = Some d ->
-    In inum
-      (tree_inodes
-         (update_subtree dstpath
-            (add_to_dir dstname subtree (TreeDir dstnum dstents)) t)) ->
-    In inum (tree_inodes subtree) \/ In inum (tree_inodes t).
-  Proof.
-    intros.
-  Admitted.
-
-  Lemma tree_inodes_after_graft': forall dstpath dstents inum dstnum dstname subtree t,
+  Lemma tree_inodes_tree_graft_incl_count : forall dstpath t dstnum dstents dstname mvtree,
     tree_names_distinct t ->
-    NoDup (tree_inodes t ++ tree_inodes subtree) ->
     find_subtree dstpath t = Some (TreeDir dstnum dstents) ->
-    In inum (tree_inodes (tree_graft dstnum dstents dstpath dstname subtree t)) ->
-    In inum (tree_inodes subtree) \/ In inum (tree_inodes (tree_prune dstnum dstents dstpath dstname t)).
+    incl_count addr_eq_dec
+      (tree_inodes (tree_graft dstnum dstents dstpath dstname mvtree t))
+      (tree_inodes t ++ tree_inodes mvtree).
   Proof.
-    intros.
-    unfold tree_graft, tree_prune in *.
-    eapply tree_graft_prune_in in H2 as H2'; eauto.
-    eapply tree_inodes_update_add_to_dir in H2'; eauto.
-    unfold delete_from_dir.
-    (* first destruct if dstpath exists *)
-    eapply NoDup_incl_r with (l1 := (tree_inodes t)); eauto.
-    eapply NoDup_app_l in H0; eauto.
-    admit.
-
-    eapply tree_inodes_distinct_update_subtree; eauto.
-    unfold tree_inodes_distinct.
-    eapply NoDup_app_l in H0; eauto.
-  Admitted.    
+    unfold tree_graft.
+    induction dstpath; simpl; intros.
+    - inversion H0; clear H0; subst.
+      induction dstents; simpl in *; intros.
+      rewrite app_nil_r. apply incl_count_refl.
+      destruct a.
+      destruct (string_dec s dstname); subst; simpl in *.
+      + apply incl_count_cons.
+        eapply incl_count_trans. 2: apply incl_count_app_comm.
+        eapply incl_count_app_split. apply incl_count_refl.
+        rewrite <- app_nil_l at 1.
+        eapply incl_count_app_split. 2: apply incl_count_refl.
+        apply incl_count_nil.
+      + rewrite cons_app. rewrite cons_app with (l := app _ _).
+        eapply incl_count_trans. apply incl_count_app_comm.
+        eapply incl_count_trans. 2: apply incl_count_app_comm.
+        repeat rewrite <- app_assoc.
+        eapply incl_count_app_split. apply incl_count_refl.
+        eapply incl_count_trans. apply incl_count_app_comm.
+        rewrite app_assoc. eapply incl_count_trans. 2: apply incl_count_app_comm.
+        eauto.
+    - destruct t; simpl in *; try congruence.
+      induction l; simpl in *; try congruence; intros.
+      destruct a0; simpl.
+      destruct (string_dec s a); subst; simpl in *.
+      + destruct (string_dec a a); try congruence.
+        inversion H. inversion H4. subst.
+        repeat rewrite update_subtree_notfound by auto.
+        rewrite cons_app. rewrite cons_app with (l := app _ _).
+        eapply incl_count_app_split. apply incl_count_refl.
+        eapply incl_count_trans. 2: apply incl_count_app_comm.
+        rewrite app_assoc. eapply incl_count_app_split. 2: apply incl_count_refl.
+        eapply incl_count_trans. 2: apply incl_count_app_comm.
+        eauto.
+      + rewrite cons_app. rewrite cons_app with (l := app _ _).
+        eapply incl_count_trans. apply incl_count_app_comm.
+        eapply incl_count_trans. 2: apply incl_count_app_comm.
+        repeat rewrite <- app_assoc.
+        eapply incl_count_app_split. apply incl_count_refl.
+        rewrite app_assoc.
+        eapply incl_count_trans. apply incl_count_app_comm.
+        eapply incl_count_trans. 2: apply incl_count_app_comm.
+        destruct (string_dec s a); try congruence.
+        eauto.
+  Qed.
 
   Lemma tree_inodes_after_graft : forall dstpath t dstnum dstents dstname mvtree inum,
     NoDup (tree_inodes t ++ tree_inodes mvtree) ->
@@ -5939,20 +5904,16 @@ Module DIRTREE.
     xor (In inum (tree_inodes mvtree))
         (In inum (tree_inodes (tree_prune dstnum dstents dstpath dstname t))).
   Proof.
-    intros.
-    eapply NoDup_In_conflicting with (x := inum) in H as H'; eauto.
-    unfold conflicting in H'.
+    unfold xor; intros.
+    pose proof (tree_inodes_after_graft' _ dstname mvtree H0 H1).
+    eapply NoDup_incl_count in H; [ | apply tree_inodes_tree_graft_incl_count; eauto ].
+    eapply NoDup_incl_count in H; [ | apply permutation_incl_count; apply permutation_comm; eauto ].
+    eapply NoDup_In_conflicting with (x := inum) in H as H'; unfold conflicting in *; intuition.
+    eapply In_incl in H2.
+    2: apply incl_count_incl with (E := addr_eq_dec).
+    2: apply permutation_incl_count; eauto.
+    apply in_app_or in H2.
     intuition.
-    eapply tree_inodes_after_graft' in H2 as H2'.
-    intuition.
-    + unfold xor.
-      left.
-      intuition.
-      eapply tree_inodes_after_prune_in in H4; eauto.
-     + unfold xor.
-      right.
-      intuition.
-      eapply tree_inodes_after_prune_in in H5; eauto.
   Qed.
 
   Lemma tree_inodes_nodup_delete_from_list' : forall srcpath srcname srcents srcnum t mvtree top_extras,
