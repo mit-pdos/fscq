@@ -1,5 +1,5 @@
 Require Import Eqdep.
-Require Import Morphisms.
+Require Import Morphisms Relation_Operators.
 Require Import PeanoNat Plus List.
 Require Import Word AsyncDisk Prog ProgMonad BasicProg Pred.
 Require Import StringMap.
@@ -1185,25 +1185,53 @@ Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> 
 
 (* TODO: generalize for all kinds of functions *)
 Lemma extract_voidfunc2_call :
-  forall A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) arga argb arga_t argb_t env,
+  forall A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) arga argb env,
     forall body ss,
       (forall a b F, EXTRACT src a b {{ arga ~> a * argb ~> b * F }} body {{ fun _ => arga |->? * argb |->? * F }} // env) ->
       StringMap.find name env = Some {|
                                     NumParamVars := 2;
-                                    ParamVars := ((PassedByValue, arga_t), (PassedByValue, argb_t));
+                                    ParamVars := ((PassedByValue, @wrap_type _ WA), (PassedByValue, @wrap_type _ WB));
                                     Body := body;
                                     body_source := ss;
                                   |} ->
       voidfunc2 name src env.
+Admitted.
+
+Lemma emp_empty :
+  emp (mem_of (VarMap.empty _)).
 Proof.
-  unfold voidfunc2.
-  intros A B C WA WB name src arga argb arga_t argb_t env body ss Hex Henv avar bvar a b F.
-  specialize (Hex a b F).
+  intro. auto.
+Qed.
+Hint Resolve emp_empty.
+
+Definition func2_val_ref A B {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog B) env :=
+  forall avar bvar,
+    forall a b F, EXTRACT src a b
+           {{ avar ~> a * bvar ~> b * F }}
+             Call 2 name (avar, bvar)
+           {{ fun ret => avar ~>? A * bvar ~> ret * F }} // env.
+
+
+Lemma extract_func2_val_ref_call :
+  forall A B {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog B) env,
+    forall body ss,
+      (forall a b, EXTRACT src a b {{ 0 ~> a * 1 ~> b }} body {{ fun ret => 0 ~>? A * 1 ~> ret }} // env) ->
+      StringMap.find name env = Some {|
+                                    NumParamVars := 2;
+                                    ParamVars := ((PassedByValue, @wrap_type _ WA), (PassedByRef, @wrap_type _ WB));
+                                    Body := body;
+                                    body_source := ss;
+                                  |} ->
+      func2_val_ref name src env.
+Proof.
+  unfold func2_val_ref.
+  intros A B WA WB name src env body ss Hex Henv avar bvar a b F.
+  specialize (Hex a b).
   intro.
   intros.
   intuition subst.
   - find_eapply_lem_hyp ExecFinished_Steps.
-    find_eapply_lem_hyp Steps_runsto.
+    find_eapply_lem_hyp Steps_runsto; [ | econstructor ].
     invc H0.
     find_eapply_lem_hyp runsto_Steps.
     find_eapply_lem_hyp Steps_ExecFinished.
@@ -1217,19 +1245,16 @@ Proof.
     simpl in *.
     do 2 eexists.
     intuition eauto.
-    break_match.
-    (*
-    eauto.
+    eval_expr.
+    pred_solve.
 
-    econstructor.
-    econstructor.
   - find_eapply_lem_hyp ExecCrashed_Steps.
     repeat deex.
     invc H1; [ solve [ invc H2 ] | ].
     invc H0.
-    rewrite Henv in H7.
-    find_inversion_safe. unfold sel in *. simpl in *.
-    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, s', bp') /\ p' = InCall s [arga; argb] [] [avar; bvar] [] bp').
+    find_rewrite.
+    eval_expr.
+    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, x, bp') /\ x0 = InCall s 2 (PassedByValue, PassedByRef) (avar, bvar) bp').
     {
       remember callee_s.
       clear callee_s Heqt.
@@ -1237,14 +1262,14 @@ Proof.
       prep_induction H3; induction H3; intros; subst.
       - find_inversion.
         eauto using rt1n_refl.
-      - invc H0.
+      - invc H0; repeat (find_eapply_lem_hyp inj_pair2; subst).
         + destruct st'.
           forwardauto IHclos_refl_trans_1n; deex.
           eauto using rt1n_front.
         + invc H3. invc H2. invc H.
     }
     deex.
-    eapply Steps_ExecCrashed in H1.
+    eapply Steps_ExecCrashed in H6.
     unfold ProgOk in *.
     repeat eforward Hex.
     forward Hex.
@@ -1255,15 +1280,23 @@ Proof.
     repeat deex.
     invc H1.
     + contradiction H3.
-      destruct st'. repeat eexists. econstructor; eauto.
-      unfold sel; simpl in *.
-      maps.
-      find_all_cases.
-      trivial.
+      destruct x. repeat eexists.
+      match goal with
+      | [ H : _ = Some ?spec |- _ ] => set spec in *
+      end.
+      eapply StepStartCall with (spec := f); eauto.
+      eval_expr; reflexivity.
+      eval_expr.
+
+      Unshelve.
+      eval_expr; pred_solve; auto.
+      subst_definitions.
+      eval_expr; pred_solve; auto.
+      
     + invc H2.
       rewrite Henv in H8.
-      find_inversion_safe. simpl in *.
-      assert (exists bp', (Go.step env)^* (d, callee_s, body) (st', bp') /\ p' = InCall s [arga; argb] [] [avar; bvar] [] bp').
+      eval_expr.
+      assert (exists bp', (Go.step env)^* (d, callee_s, body) (r, l, bp') /\ x0 = InCall s 2 (PassedByValue, PassedByRef) (avar, bvar) bp').
       {
         remember callee_s.
         clear callee_s Heqt.
@@ -1271,92 +1304,44 @@ Proof.
         prep_induction H4; induction H4; intros; subst.
         - find_inversion.
           eauto using rt1n_refl.
-        - invc H0.
-          + destruct st'0.
+        - invc H0; repeat (find_eapply_lem_hyp inj_pair2; subst). 
+          + destruct st'.
             forwardauto IHclos_refl_trans_1n; deex.
             eauto using rt1n_front.
           + invc H4. contradiction H1. auto. invc H.
       }
       deex.
-      eapply Steps_ExecFailed in H2.
+      eapply Steps_ExecFailed in H7.
+      unfold ProgOk in *.
+      repeat eforward Hex.
+      forward Hex. shelve.
+      solve [forward_solve].
+
+      intro.
+      unfold is_final in *; simpl in *; subst.
+      contradiction H3.
+      subst_definitions.
+      apply Steps_ExecFinished in H7.
       unfold ProgOk in *.
       repeat eforward Hex.
       forward Hex. shelve.
       forward_solve.
+      eval_expr.
+      repeat eexists. eapply StepEndCall; simpl; eauto.
+      eval_expr; reflexivity.
+      eval_expr; reflexivity.
+      eval_expr; reflexivity. 
+
       intuition.
       contradiction H3.
-      unfold is_final in *; simpl in *; subst.
-      destruct st'. repeat eexists. eapply StepEndCall; simpl; eauto.
-      intuition.
-      contradiction H3.
-      repeat deex; eauto.
+      repeat deex. repeat econstructor; eauto.
+      eapply StepInCall with (np := 2); eassumption.
 
   Unshelve.
-  * simpl in *.
-    maps.
-    find_all_cases.
-    find_inversion_safe.
-    maps.
-    find_all_cases.
-    find_inversion_safe.
-    eapply Forall_elements_remove_weaken.
-    eapply forall_In_Forall_elements.
-    intros.
-    destruct (Nat.eq_dec k argb).
-    subst. maps. find_inversion_safe.
-    find_copy_eapply_lem_hyp NoDup_bool_sound.
-    invc H.
-    assert (arga <> argb).
-    intro. subst. contradiction H2. constructor. auto.
-    maps.
-    intros. apply sumbool_to_bool_dec.
-    maps.
-  * (* argh *)
-    simpl in *.
-    subst_definitions.
-    maps.
-    find_all_cases.
-    find_inversion_safe.
-    maps.
-    eapply Forall_elements_remove_weaken.
-    eapply forall_In_Forall_elements.
-    intros.
-    destruct (Nat.eq_dec k argb).
-    subst. maps. find_inversion_safe.
-    find_copy_eapply_lem_hyp NoDup_bool_sound.
-    invc H.
-    assert (arga <> argb).
-    intro. subst. contradiction H8. constructor. auto.
-    find_cases avar s.
-    find_cases bvar s.
-    find_inversion_safe.
-    maps.
-    intros. apply sumbool_to_bool_dec.
-    maps.
-  * unfold sel in *; simpl in *.
-    subst_definitions.
-    simpl in *.
-    find_cases avar s.
-    find_cases bvar s.
-    find_inversion_safe.
-    maps.
-    rewrite He in *.
-    auto.
-    eapply Forall_elements_remove_weaken.
-    eapply forall_In_Forall_elements.
-    intros.
-    destruct (Nat.eq_dec k argb).
-    subst. maps. find_inversion_safe.
-    find_copy_eapply_lem_hyp NoDup_bool_sound.
-    invc H.
-    assert (arga <> argb).
-    intro. subst. contradiction H9. constructor. auto.
-    maps.
-    rewrite He0 in *. auto.
-    intros. apply sumbool_to_bool_dec.
-    maps.
-*)
-Admitted.
+  * subst_definitions. eval_expr. pred_solve. auto.
+  * exact hm.
+  * eval_expr. pred_solve. auto.
+Qed.
 
 Lemma CompileSplit :
   forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar F (p : A * B),
@@ -1501,8 +1486,6 @@ Proof.
     repeat econstructor.
     eval_expr.
     pred_solve.
-    eapply pimpl_apply.
-    2: eapply ptsto_upd. 2: pred_apply; cancel_go. cancel_go.
   - inv_exec_progok.
   - inv_exec_progok.
     contradiction H1.

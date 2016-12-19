@@ -57,6 +57,7 @@ Ltac unfold_expr :=
   match goal with
   | [H : _ |- _ ] =>
       progress (unfold is_false, is_true, eval_bool,
+         value_well_typed,
          numop_impl', numop_impl,
          split_pair_impl, split_pair_impl',
          join_pair_impl, join_pair_impl',
@@ -72,6 +73,7 @@ Ltac unfold_expr :=
          sel, id, eval, eq_rect_r, eq_rect
          in H); simpl in H
   | _ => progress (unfold is_false, is_true, eval_bool,
+         value_well_typed,
          numop_impl', numop_impl,
          split_pair_impl, split_pair_impl',
          join_pair_impl, join_pair_impl',
@@ -145,17 +147,20 @@ Ltac extract_var_val_from H P s :=
   end.
 
 Ltac extract_var_val :=
-  lazymatch goal with
+  match goal with
   | [ H: ?s ≲ ?P |- _ ] => extract_var_val_from H P s
   | [ H: (?P)%pred (mem_of ?s) |- _ ] => extract_var_val_from H P s
   end.
 
+Ltac extract_pred_apply_exists_in H :=
+  repeat setoid_rewrite pimpl_exists_l_star_r in H;
+  repeat setoid_rewrite pimpl_exists_r_star_r in H;
+    unfold pred_apply, exis in H; deex_hyp H; repeat deex_hyp H.
+
 Ltac extract_pred_apply_exists :=
   match goal with
-  | [ H : _ ≲ _ |- _ ] =>
-    repeat setoid_rewrite pimpl_exists_l_star_r in H;
-    repeat setoid_rewrite pimpl_exists_r_star_r in H;
-      unfold pred_apply, exis in H; deex_hyp H; repeat deex_hyp H
+  | [ H : _ ≲ _ |- _ ] => extract_pred_apply_exists_in H
+  | [ H : ?P (mem_of ?s) |- _ ] => extract_pred_apply_exists_in H
   end.
 
 Ltac eval_expr_step :=
@@ -212,6 +217,26 @@ Proof.
   intros.
   eapply pred_apply_pimpl_proper; [ reflexivity | | eapply ptsto_upd_disjoint; eauto ].
   cancel.
+Qed.
+
+Lemma ptsto_any_upd :
+  forall AT AEQ V a v F m,
+    (a |->? * F)%pred m -> (@ptsto AT AEQ V a v * F)%pred (Mem.upd m a v).
+Proof.
+  intros.
+  apply pimpl_exists_r_star_r in H.
+  unfold exis in H; deex_hyp H.
+  eauto using ptsto_upd.
+Qed.
+
+Lemma ptsto_typed_any_upd :
+  forall AT AEQ T {Wr : GoWrapper T} a v F m,
+    (a ~>? T * F)%pred m -> (a |-> Val wrap_type v * F)%pred (@Mem.upd AT _ AEQ m a (Val wrap_type v)).
+Proof.
+  intros.
+  apply pimpl_exists_r_star_r in H.
+  unfold exis in H; deex_hyp H.
+  eauto using ptsto_upd.
 Qed.
 
 Lemma okToCancel_ptsto_any : forall var val,
@@ -271,9 +296,12 @@ Qed.
 Ltac pred_solve_step := match goal with
   | [ |- ( ?P )%pred (upd _ ?a ?x) ] =>
     match P with
-    | context [(a |-> ?x)%pred] =>
-      eapply pimpl_apply with (p := (a |-> x * _)%pred);
-      [ cancel_go | (eapply ptsto_upd_disjoint'; solve [eauto]) || eapply ptsto_upd ]
+    | context [(a |-> _)%pred] =>
+      eapply pimpl_apply with (p := (a |-> _ * _)%pred);
+      [ cancel_go | (eapply ptsto_upd_disjoint'; [ | solve [eauto] ]) ||
+                    eapply ptsto_upd ||
+                    eapply ptsto_any_upd ||
+                    eapply ptsto_typed_any_upd ]
     | context [(@ptsto ?AT ?AEQ ?V a ?y)%pred] =>
       let H := fresh in
       assert (@okToCancel AT AEQ V (ptsto a x) (ptsto a y)) as H;
