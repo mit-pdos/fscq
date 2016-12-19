@@ -3293,6 +3293,9 @@ Qed.
 Definition incl_count T (E : forall (a b : T), {a=b}+{a<>b}) (l1 l2 : list T) :=
   forall x, count_occ E l1 x <= count_occ E l2 x.
 
+Definition permutation T (E : forall (a b : T), {a=b}+{a<>b}) (l1 l2 : list T) :=
+  forall x, count_occ E l1 x = count_occ E l2 x.
+
 Lemma count_occ_app : forall T E (l1 l2 : list T) x,
   count_occ E (l1 ++ l2) x = count_occ E l1 x + count_occ E l2 x.
 Proof.
@@ -3321,6 +3324,15 @@ Proof.
   unfold incl_count, incl; intros.
   specialize (H a).
   rewrite count_occ_In with (eq_dec := E) in *.
+  omega.
+Qed.
+
+Lemma permutation_incl_count : forall T E (l1 l2 : list T),
+  permutation E l1 l2 ->
+  incl_count E l1 l2.
+Proof.
+  unfold incl_count, permutation; intros.
+  specialize (H x).
   omega.
 Qed.
 
@@ -3412,11 +3424,55 @@ Proof.
   omega.
 Qed.
 
+Lemma permutation_trans : forall T E (l1 l2 l3 : list T),
+  permutation E l1 l2 ->
+  permutation E l2 l3 ->
+  permutation E l1 l3.
+Proof.
+  unfold permutation; intros.
+  specialize (H x).
+  specialize (H0 x).
+  omega.
+Qed.
+
+Lemma permutation_refl : forall T E (l : list T),
+  permutation E l l.
+Proof.
+  firstorder.
+Qed.
+
+Lemma permutation_comm : forall T E (l1 l2 : list T),
+  permutation E l1 l2 ->
+  permutation E l2 l1.
+Proof.
+  firstorder.
+Qed.
+
 Lemma incl_count_app_comm : forall T E (l1 l2 : list T),
   incl_count E (l1 ++ l2) (l2 ++ l1).
 Proof.
   unfold incl_count; intros.
   repeat rewrite count_occ_app.
+  omega.
+Qed.
+
+Lemma permutation_app_comm : forall T E (l1 l2 : list T),
+  permutation E (l1 ++ l2) (l2 ++ l1).
+Proof.
+  unfold permutation; intros.
+  repeat rewrite count_occ_app.
+  omega.
+Qed.
+
+Lemma permutation_app_split : forall T E (l1 l1' l2 l2' : list T),
+  permutation E l1 l1' ->
+  permutation E l2 l2' ->
+  permutation E (l1 ++ l2) (l1' ++ l2').
+Proof.
+  unfold permutation; intros.
+  repeat rewrite count_occ_app.
+  specialize (H x).
+  specialize (H0 x).
   omega.
 Qed.
 
@@ -3431,7 +3487,6 @@ Proof.
   specialize (H0 x).
   omega.
 Qed.
-
 Hint Resolve incl_count_trans incl_count_refl incl_count_app_comm incl_count_app_split : incl_count_app.
 
 
