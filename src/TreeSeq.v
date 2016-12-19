@@ -477,6 +477,46 @@ Module TREESEQ.
     intuition.
   Qed.
 
+  Lemma find_subtree_file_not_pathname_prefix : forall t pn1 pn2 inum1 f1 inum2 f2,
+    find_subtree pn1 t = Some (TreeFile inum1 f1) ->
+    find_subtree pn2 t = Some (TreeFile inum2 f2) ->
+    pn1 <> pn2 ->
+    ~ pathname_prefix pn1 pn2.
+  Proof.
+    intros. unfold pathname_prefix; intro.
+    deex.
+    erewrite find_subtree_app in H0 by eauto.
+    destruct suffix; simpl in *; try congruence.
+    rewrite app_nil_r in *; eauto.
+  Qed.
+
+  Lemma find_subtree_update_subtree_file_not_pathname_prefix_1 : forall t pn1 old pn2 inum1 f1 inum2 f2,
+    find_subtree pn2 (update_subtree pn1 (TreeFile inum1 f1) t) = Some (TreeFile inum2 f2) ->
+    find_subtree pn1 t = Some old ->
+    pn1 <> pn2 ->
+    ~ pathname_prefix pn1 pn2.
+  Proof.
+    unfold pathname_prefix; intros. intro; deex.
+    erewrite find_subtree_app in * by eauto.
+    destruct suffix; simpl in *; try congruence.
+    rewrite app_nil_r in *; eauto.
+  Qed.
+
+  Lemma find_subtree_update_subtree_file_not_pathname_prefix_2 : forall t pn1 old pn2 inum1 f1 inum2 f2,
+    find_subtree pn2 (update_subtree pn1 (TreeFile inum1 f1) t) = Some (TreeFile inum2 f2) ->
+    find_subtree pn1 t = Some old ->
+    pn1 <> pn2 ->
+    ~ pathname_prefix pn2 pn1.
+  Proof.
+    unfold pathname_prefix; intros. intro; deex.
+    case_eq (find_subtree pn2 t); intros.
+    destruct d.
+    erewrite find_subtree_app in * by eauto. destruct suffix; simpl in *; try congruence. rewrite app_nil_r in *; eauto.
+    erewrite find_subtree_update_subtree_child in * by eauto.
+    destruct suffix; simpl in *; try congruence. rewrite app_nil_r in *; eauto.
+    erewrite find_subtree_app_none in * by eauto. congruence.
+  Qed.
+
   Lemma treeseq_safe_pushd_update_subtree : forall Ftree ts pathname ilist' f f' inum  mscs pathname' free2,
     let tree' := {|
         TStree := update_subtree pathname
@@ -571,10 +611,11 @@ Module TREESEQ.
       intuition; simpl.
       (* we updated pathname, but pathname' is still safe, if it was safe. *)
       * unfold treeseq_safe_fwd in *; simpl.
+        intros; deex.
         erewrite find_subtree_update_subtree_ne_path; eauto.
         intros.
-        specialize (H7 inum0 off bn H8).
-        repeat deex.
+        edestruct H7; eauto.
+        intuition.
         eexists.
         intuition. eauto.
         destruct (addr_eq_dec inum inum0).
@@ -585,13 +626,21 @@ Module TREESEQ.
         **
         unfold BFILE.treeseq_ilist_safe in H4; intuition.
         unfold BFILE.block_belong_to_file.
-        rewrite <- H13.
-        apply H12.
+        rewrite <- H14.
+        apply H13.
         intuition.
         **
-          admit. (* not prefix *)
+          unfold pathname_prefix; intro; deex.
+          edestruct H7; eauto; intuition.
+          erewrite find_subtree_app in H12 by eauto.
+          destruct suffix; simpl in *; try congruence.
+          rewrite app_nil_r in *; eauto.
         **
-          admit. (* not prefix *)
+          unfold pathname_prefix; intro; deex.
+          edestruct H7; eauto; intuition.
+          erewrite find_subtree_app in Hfind by eauto.
+          destruct suffix; simpl in *; try congruence.
+          rewrite app_nil_r in *; eauto.
       * unfold treeseq_safe_bwd in *; simpl; intros.
         deex; intuition.
         erewrite find_subtree_update_subtree_ne_path in *; eauto.
@@ -611,11 +660,14 @@ Module TREESEQ.
         apply H11.
         intuition.
         **
-          admit. (* not prefix *)
+          unfold pathname_prefix; intro; deex.
+          erewrite find_subtree_app in * by eauto.
+          destruct suffix; simpl in *; try congruence.
+          rewrite app_nil_r in *; eauto.
         **
-          admit. (* not prefix *)
+          eapply find_subtree_update_subtree_file_not_pathname_prefix_2; eauto.
       * eapply BFILE.ilist_safe_trans; eauto.
-  Admitted.
+  Qed.
 
   Ltac xcrash_solve :=
     repeat match goal with
@@ -849,8 +901,9 @@ Module TREESEQ.
         rewrite H4 in H6; inversion H6. eauto.
       + rewrite find_subtree_update_subtree_ne_path; eauto.
         admit. (* names distinct - probably needs additional hypothesis *)
-        admit. (* not prefix *)
-        admit.
+
+        eapply find_subtree_file_not_pathname_prefix; eauto.
+        eapply find_subtree_file_not_pathname_prefix; eauto.
     - edestruct H2; eauto.
       left.
       intuition.
@@ -863,8 +916,9 @@ Module TREESEQ.
         rewrite H4 in H6; inversion H6. eauto.
       + rewrite find_subtree_update_subtree_ne_path; eauto.
         admit. (* names distinct *)
-        admit. (* not prefix *)
-        admit.
+
+        eapply find_subtree_file_not_pathname_prefix; eauto.
+        eapply find_subtree_file_not_pathname_prefix; eauto.
   Admitted.
 
   Lemma treeseq_one_safe_dsupd_2 : forall tolder tnewest mscs mscs' pathname off v inum f,
@@ -885,8 +939,9 @@ Module TREESEQ.
     - rewrite find_subtree_update_subtree_ne_path in H.
       edestruct H2; eauto.
       admit. (* names distinct *)
-      admit. (* not prefix *)
-      admit.
+
+      eapply find_subtree_update_subtree_file_not_pathname_prefix_1; eauto.
+      eapply find_subtree_update_subtree_file_not_pathname_prefix_2; eauto.
   Admitted.
 
   Lemma treeseq_one_safe_dsupd : forall tolder tnewest mscs mscs' pathname off v inum f,
@@ -1059,8 +1114,8 @@ Module TREESEQ.
         rewrite H15 in H11.
         erewrite find_subtree_update_subtree_ne_path in H11; eauto.
         admit. (* names distinct *)
-        admit. (* not prefix *)
-        admit.
+        deex. eapply find_subtree_update_subtree_file_not_pathname_prefix_1; eauto.
+        deex. eapply find_subtree_update_subtree_file_not_pathname_prefix_2; eauto.
         destruct H11.
         (* a directory *)
         rewrite H15 in H11; eauto.
@@ -1100,8 +1155,8 @@ Module TREESEQ.
           exists x.
           split; eauto.
           right; eauto.
-        ** admit. (* not prefix *)
-        ** admit.
+        ** eapply find_subtree_update_subtree_file_not_pathname_prefix_1; eauto.
+        ** eapply find_subtree_update_subtree_file_not_pathname_prefix_2; eauto.
   Admitted.
 
   Theorem treeseq_update_fblock_d_ok : forall fsxp inum off v mscs,
