@@ -1961,6 +1961,8 @@ Module TREESEQ.
     destruct H3; intuition.
     eapply treeseq_one_safe_dsupd_1; eauto.
 
+    admit.
+
     destruct H3; intuition.
     eexists.
     unfold treeseq_one_upd.
@@ -1968,7 +1970,7 @@ Module TREESEQ.
     erewrite find_update_subtree by eauto. reflexivity.
 
     distinct_names'.
-  Qed.
+  Admitted.
 
   Lemma tree_safe_file_sync: forall Fm Ftop fsxp mscs ds ts mscs' n al pathname inum f,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
@@ -2346,7 +2348,7 @@ Module TREESEQ.
     eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
     eassumption.
     step.
-    unfold AFS.rename_rep.
+    unfold AFS.rename_rep, AFS.rename_rep_inner.
     cancel.
     or_r.
 
@@ -2363,16 +2365,16 @@ Module TREESEQ.
     cancel.
     eapply treeseq_in_ds_pushd; eauto.
     unfold treeseq_one_safe; simpl.
-    rewrite H0 in H10.
+    rewrite H0 in H11.
     eassumption.
 
     eapply treeseq_safe_pushd; eauto.
     eapply NEforall_d_in'; intros.
-    eapply NEforall_d_in in H14; eauto.
+    eapply NEforall_d_in in H13; eauto.
     eapply treeseq_safe_trans; eauto.
 
     (* clear all goals mentioning x0 *)
-    clear H14 H17 x0.
+    clear H13 H15 x0.
 
     unfold treeseq_safe; intuition.
 
@@ -2384,10 +2386,10 @@ Module TREESEQ.
       eapply find_rename_oob; eauto.
 
       unfold BFILE.block_belong_to_file in *.
-      rewrite H9 in *; eauto.
+      rewrite H10 in *; eauto.
 
       intro. subst.
-      erewrite <- find_subtree_app in H16 by eassumption.
+      erewrite <- find_subtree_app in H17 by eassumption.
       assert (pathname' = cwd ++ srcbase).
       eapply find_subtree_inode_pathname_unique; eauto.
       distinct_inodes'.
@@ -2395,7 +2397,7 @@ Module TREESEQ.
       congruence.
 
       intro. subst.
-      eapply find_subtree_before_prune in H13.
+      eapply find_subtree_before_prune in H14.
       deex.
       erewrite <- find_subtree_app in H13 by eassumption.
       assert (pathname' = cwd ++ dstbase).
@@ -2408,6 +2410,7 @@ Module TREESEQ.
       2: eauto.
       distinct_names'.
       eauto.
+      admit.
     - unfold treeseq_safe_bwd in *.
       intros.
       left.
@@ -2416,15 +2419,15 @@ Module TREESEQ.
       eapply find_rename_oob'. 7: eauto.
       all: auto.
       unfold BFILE.block_belong_to_file in *.
-      rewrite H9 in *; eauto.
+      rewrite H10 in *; eauto.
 
       -- intro. subst.
         destruct (pathname_decide_prefix cwd pathname').
         + deex.
-          erewrite find_subtree_app in H17 by eauto.
-          eapply find_subtree_graft_subtree_oob' in H17.
+          erewrite find_subtree_app in H15 by eauto.
+          eapply find_subtree_graft_subtree_oob' in H15.
           2: eauto.
-          eapply find_subtree_prune_subtree_oob' in H17.
+          eapply find_subtree_prune_subtree_oob' in H15.
           2: eauto.
           assert (srcbase = suffix).
           eapply find_subtree_inode_pathname_unique; eauto.
@@ -2433,26 +2436,26 @@ Module TREESEQ.
           eapply find_subtree_tree_names_distinct; eauto.
           distinct_names'.
           congruence.
-          intro; apply H11.  apply pathname_prefix_trim; eauto.
+          intro; apply H9.  apply pathname_prefix_trim; eauto.
           intro; apply H12.  apply pathname_prefix_trim; eauto.
         + 
-          eapply find_subtree_update_subtree_oob' in H17.
+          eapply find_subtree_update_subtree_oob' in H15.
           assert (cwd++srcbase = pathname').
-          erewrite <- find_subtree_app in H16 by eauto.
+          erewrite <- find_subtree_app in H17 by eauto.
           eapply find_subtree_inode_pathname_unique; eauto.
           distinct_inodes'.
           distinct_names'.
-          contradiction H14; eauto.
+          contradiction H13; eauto.
           eauto.
       -- intro. subst.
        destruct (pathname_decide_prefix cwd pathname').
         + deex.
-          erewrite find_subtree_app in H17 by eauto.
-          eapply find_subtree_graft_subtree_oob' in H17.
+          erewrite find_subtree_app in H15 by eauto.
+          eapply find_subtree_graft_subtree_oob' in H15.
           2: eauto.
-          eapply find_subtree_prune_subtree_oob' in H17.
+          eapply find_subtree_prune_subtree_oob' in H15.
           2: eauto.
-          eapply find_subtree_before_prune in H13; eauto.
+          eapply find_subtree_before_prune in H14; eauto.
           deex.
           assert (dstbase = suffix).
           eapply find_subtree_inode_pathname_unique; eauto.
@@ -2463,25 +2466,27 @@ Module TREESEQ.
           congruence.
           eapply find_subtree_tree_names_distinct; eauto.
           distinct_names'.
-          intro; apply H11.  apply pathname_prefix_trim; eauto.
+          intro; apply H9.  apply pathname_prefix_trim; eauto.
           intro; apply H12.  apply pathname_prefix_trim; eauto.
         + 
-          eapply find_subtree_update_subtree_oob' in H17.
-          eapply find_subtree_before_prune in H13; eauto.
+          eapply find_subtree_update_subtree_oob' in H15.
+          eapply find_subtree_before_prune in H14; eauto.
           deex.
           assert (cwd++dstbase = pathname').
-          erewrite <- find_subtree_app in H13 by eauto.
+          erewrite <- find_subtree_app in H14 by eauto.
           eapply find_subtree_inode_pathname_unique; eauto.
           distinct_inodes'.
           distinct_names'.
-          contradiction H14; eauto.
+          contradiction H13; eauto.
           eapply find_subtree_tree_names_distinct; eauto.
           distinct_names'.
           eauto.
+      --
+        admit.
     - simpl.
       unfold dirtree_safe in *; intuition.
       rewrite H0 in *.
-      rewrite <- surjective_pairing in H14.
+      rewrite <- surjective_pairing in H13.
       eauto.
     - erewrite <- update_update_subtree_same.
       eapply dirents2mem2_update_subtree_one_name.
@@ -2505,12 +2510,12 @@ Module TREESEQ.
 
       3: erewrite find_update_subtree; eauto.
 
-      erewrite <- find_subtree_dirlist in H15.
-      erewrite <- find_subtree_app in H15 by eauto.
-      erewrite <- find_subtree_app in H15 by eauto.
-      erewrite dir2flatmem2_find_subtree_ptsto in H15.
+      erewrite <- find_subtree_dirlist in H16.
+      erewrite <- find_subtree_app in H16 by eauto.
+      erewrite <- find_subtree_app in H16 by eauto.
+      erewrite dir2flatmem2_find_subtree_ptsto in H16.
       3: pred_apply; cancel.
-      inversion H15; subst.
+      inversion H16; subst.
 
       erewrite dir2flatmem2_graft_upd; eauto.
 
@@ -2521,7 +2526,7 @@ Module TREESEQ.
       left.
       eapply find_subtree_prune_subtree_oob; eauto.
 
-      intro. eapply pathname_prefix_trim in H11.
+      intro. eapply pathname_prefix_trim in H9.
       eapply dirents2mem2_not_prefix.
       3: eauto.
       2: apply H4.
@@ -2540,7 +2545,8 @@ Module TREESEQ.
       eapply tree_names_distinct_prune_subtree'; eauto.
       eapply tree_names_distinct_subtree; eauto.
       distinct_names'.
-  Qed.
+  - admit. (* need an appropriate XCRASH condition *)
+  Admitted.
 
   (* restricted to deleting files *)
   Theorem treeseq_delete_ok : forall fsxp dnum name mscs,
