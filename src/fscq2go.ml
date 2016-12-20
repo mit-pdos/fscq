@@ -15,6 +15,29 @@ let var_name var = "val" ^ (to_string var)
 (* This is almost certainly not complete *)
 let sanitize = Str.global_replace (Str.regexp_string ".") "_"
 
+let rec call_args_tuple_to_list (nargs : big_int) (args_tuple : Obj.t) =
+  if eq nargs (zero)
+    then []
+  else if eq nargs (one)
+    then [Obj.magic args_tuple]
+  else
+    let (a, b) = Obj.magic args_tuple in
+    a :: (call_args_tuple_to_list (pred nargs) b)
+
+let rec function_args_tuple_to_list (nargs : big_int) (args_tuple) =
+  match nargs with
+  | zero -> []
+  | one -> [Obj.magic args_tuple]
+  | nargs -> let (a, b) = Obj.magic args_tuple in
+    a :: (function_args_tuple_to_list (pred nargs) b)
+
+let mapi_bignum (f : big_int -> 'a -> 'b) (l : 'a list) =
+  let rec x (i : big_int) l =
+    match l with
+    | [] -> []
+    | v :: l -> (f i v) :: (x (succ i) l)
+  in x zero l
+
 (* mutable transcriber state *)
 module TranscriberState = struct
   type state = {
@@ -141,13 +164,12 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
       let t_text = go_stmt t ts in
       let f_text = go_stmt f ts in
       line ^ " {\n" ^ t_text ^ "} else {\n" ^ f_text ^ "}\n"
-  | Go.Call (rets, name, args) ->
+  | Go.Call (nargs, name, args_tuple) ->
+      let args = call_args_tuple_to_list nargs args_tuple in
       let go_args = List.map var_name args in
-      let go_rets = List.map var_name rets in
       let go_name = char_list_to_string name in
       let call = go_name ^ "(" ^ (String.concat ", " go_args) ^ ")" in
-      let assign = if (List.length go_rets > 0) then (String.concat ", " go_rets) ^ " = " else "" in
-      assign ^ call ^ "\n"
+      call ^ "\n"
   | Go.DiskRead (var, expr) ->
       var_name var ^ " = DiskRead(" ^ go_expr expr ^ ")\n"
   | Go.DiskWrite (value, addr) ->
@@ -159,26 +181,23 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
     go_modify_op ts op vars ^ "\n"
 ;;
 
-let arg_pair_to_declaration (ts) (v : Go.coq_type * Go.var) =
-  let (arg_t, arg) = v in
-  var_name arg ^ " " ^ TranscriberState.get_go_type ts arg_t
+let arg_pair_to_declaration (ts) (arg_num : big_int) (v : Go.param_style * Go.coq_type) =
+  let (arg_style, arg_t) = v in
+  assert (arg_style == Go.PassedByRef);
+  var_name arg_num ^ " *" ^
+  (TranscriberState.get_go_type ts arg_t)
 
-let go_func (ts : TranscriberState.state) (v : StringMap.key * Go.coq_OperationalSpec) =
+let go_func (ts : TranscriberState.state) (v : StringMap.key * Go.coq_FunctionSpec) =
   let (name_chars, op_spec) = v in
   let name = sanitize (char_list_to_string name_chars) in
-  let args = op_spec.coq_ParamVars in
-  let ret = op_spec.coq_RetParamVars in
+  let nargs = op_spec.coq_NumParamVars in
+  let args = (call_args_tuple_to_list nargs op_spec.coq_ParamVars) in
   let body = op_spec.coq_Body in
-  let max_arg = List.fold_left max zero (List.map snd args) in
-  TranscriberState.set_min_var_num ts (succ max_arg);
-
+  TranscriberState.set_min_var_num ts (succ nargs);
   let go_body = go_stmt body ts in
-
-  let args_list = (List.map (arg_pair_to_declaration ts) args) in
-  let ret_decls = (List.map (arg_pair_to_declaration ts) ret) in
+  let args_list = (mapi_bignum (arg_pair_to_declaration ts) args) in
   let pre = "func " ^ name ^ "(" ^ (String.concat ", " args_list) ^ ") " in
-  let rets = "(" ^ (String.concat ", " ret_decls) ^ ")" in
-  pre ^ rets ^ " {\n" ^ go_body ^ "\n" ^ "}"
+  pre ^ "() {\n" ^ go_body ^ "\n" ^ "}"
 
 let header =
 "// generated header

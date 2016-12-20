@@ -257,12 +257,16 @@ Local Open Scope list_scope.
 Print BUFCACHE.writeback.
 Check compile_writeback.
 
-Ltac arglist pre var :=
+Ltac argtuple pre var :=
   match pre with
-  | context [var |-> @wrap ?T ?W ?val] =>
-    let X := arglist pre (S var) in
-    constr:(cons (pair (@wrap_type _ W) var) (X))
-  | _ => constr:(@nil (type * Go.var))
+  | context [var |-> @wrap ?T ?V ?val] =>
+    let X := argtuple pre (S var) in
+    let P := constr:(pair PassedByRef (@wrap_type _ V)) in
+    match X with
+    | (0, tt) => constr:(pair 1 P)
+    | (?count, ?X)  => constr:(pair (S count) (pair X P))
+    end
+  | _ => constr:(pair 0 tt)
   end.
 
 Ltac add_to_env name P env :=
@@ -272,21 +276,20 @@ Ltac add_to_env name P env :=
     | (fun ret => ?rvar) =>
       match PRE with
       | context [?x ~> ?y] =>
-        let args_ := (arglist PRE 0) in
-        let x_ := fresh in
-        set (args := args_);
-        set (body := (projT1 (compile_writeback env)));
-        (* TODO get type of rvar *)
-        set (rvars := [(Num, rvar)]);
-        set (op := {|
-          ParamVars := args;
-          RetParamVars := rvars;
-          Body := body;
-          args_no_dup := ltac:(auto); body_source := ltac:(abstract (subst body; simpl; repeat econstructor));
-        |});
-        set (env' := StringMap.add name op env);
-        simpl in *; subst body; subst rvars; subst args; subst env;
-        rename env' into env; subst op
+        match (argtuple PRE 0) with
+        | (?nargs, ?args) =>
+          let x_ := fresh in
+          set (body := (projT1 (compile_writeback env)));
+          set (op := {|
+            NumParamVars := nargs;
+            ParamVars := args;
+            Body := body;
+            body_source := ltac:((subst body; simpl; repeat econstructor));
+          |});
+          set (env' := StringMap.add name op env);
+          simpl in *; subst body; subst env;
+          rename env' into env; subst op
+        end
       end
     end
   end.
@@ -309,7 +312,7 @@ Ltac add_compiled_program name compiled env :=
   end.
 
 Definition extract_env : Env.
-  pose (env := StringMap.empty OperationalSpec).
+  pose (env := StringMap.empty FunctionSpec).
   add_compiled_program "BUFCACHE.writeback" compile_writeback env.
   (* TODO add more programs here *)
 
