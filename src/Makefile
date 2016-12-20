@@ -20,7 +20,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      CoopConcur CoValid CoopConcurMonad CoopConcurAuto Protocols \
 	      DiskReaders MemCache WriteBuffer WriteBufferSet ConcurrentCache \
 				ConcurrentCopy Specifications ConcurrentBridge ConcurrentFS \
-				ReadOnlyFS DirectoryIsolatedFS \
+				ReadOnlyFS DirTreeTheorem DirectoryIsolatedFS \
 				SuperBlock AsyncFS AsyncFSRecover VBConv AByteFile \
 				ADestructPair DestructVarname ExtrHaskellPrelude \
 		  DirSep TreeSeq ProgMetatheory

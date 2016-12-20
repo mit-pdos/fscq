@@ -5,6 +5,7 @@ Require Import Protocols.
 Require Import ConcurrentFS.
 Require Import Rec.
 Require Import DirTree.
+Require Import DirTreeTheorem.
 Require Import String.
 Require Import Errno.
 
@@ -554,6 +555,65 @@ Proof.
   apply sep_star_lift_apply in H0; intuition.
 Qed.
 
+Theorem alter_inum_to_alter_path' : forall pathname inum tree subtree,
+    DIRTREE.tree_names_distinct tree ->
+    DIRTREE.tree_inodes_distinct tree ->
+    DIRTREE.find_subtree pathname tree = Some subtree ->
+    DIRTREE.dirtree_inum subtree = inum ->
+    forall up, DIRTREE.alter_inum inum up tree = DIRTREE.alter_subtree pathname up tree.
+Proof.
+  intros; subst.
+  apply alter_inum_to_alter_path; auto.
+Qed.
+
+Lemma update_subtree_helper_already_found : forall inum rec l a d,
+    DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum ((a, d) :: l)) ->
+    List.map (DIRTREE.update_subtree_helper
+                rec a) l = l.
+Proof.
+  intros.
+  inversion H; subst; simpl in *.
+  inversion H3; subst.
+  clear H H3.
+  induction l; simpl in *; intros; auto.
+  unfold DIRTREE.update_subtree_helper at 1.
+  destruct a0; simpl in *.
+  destruct (string_dec s a); subst; eauto.
+  - exfalso; eauto.
+  - f_equal.
+    apply IHl; eauto.
+    rewrite List.Forall_forall; simpl; intros.
+    rewrite List.Forall_forall in H2.
+    apply H2; simpl.
+    intuition eauto.
+Qed.
+
+Lemma dirtree_alter_to_update : forall pathname subtree up tree,
+    DIRTREE.tree_names_distinct tree ->
+    DIRTREE.find_subtree pathname tree = Some subtree ->
+    DIRTREE.alter_subtree pathname up tree =
+    DIRTREE.update_subtree pathname (up subtree) tree.
+Proof.
+  induction pathname; simpl; intros.
+  inversion H0; subst; auto.
+  destruct tree; try congruence.
+  induction l; simpl in *; try congruence.
+  unfold DIRTREE.find_subtree_helper in H0 at 1.
+  destruct a0; simpl.
+  destruct (string_dec s a); subst; eauto.
+  f_equal.
+  f_equal.
+  f_equal; eauto.
+
+  erewrite ?update_subtree_helper_already_found by eauto; auto.
+
+  f_equal.
+  f_equal.
+
+  repeat specialize (IHl ltac:(eauto)).
+  inversion IHl; eauto.
+Qed.
+
 Theorem file_set_attr1_ok : forall inum attr,
       SPEC App.delta, tid |-
               {{ pathname f,
@@ -637,7 +697,33 @@ Proof.
     repeat match goal with
            | [ H: get _ _ = get _ _ |- _ ] => rewrite H
            end.
-    admit. (* prove alter_inum is same as update_subtree *)
+
+    unfold dirtree_alter_file.
+
+    erewrite alter_inum_to_alter_path'; eauto.
+    erewrite dirtree_alter_to_update; eauto; simpl.
+    destruct f; auto.
+
+    eapply DIRTREE.rep_tree_names_distinct; eauto.
+    match goal with
+    | [ H: DIRTREE.rep _ _ ?t _ _ ?m
+        |- (_ * DIRTREE.rep _ _ ?t _ _)%pred _ ] =>
+      pred_apply' H; cancel
+    end.
+
+    eapply DIRTREE.rep_tree_names_distinct; eauto.
+    match goal with
+    | [ H: DIRTREE.rep _ _ ?t _ _ ?m
+        |- (_ * DIRTREE.rep _ _ ?t _ _)%pred _ ] =>
+      pred_apply' H; cancel
+    end.
+
+    eapply DIRTREE.rep_tree_inodes_distinct; eauto.
+    match goal with
+    | [ H: DIRTREE.rep _ _ ?t _ _ ?m
+        |- (_ * DIRTREE.rep _ _ ?t _ _)%pred _ ] =>
+      pred_apply' H; cancel
+    end.
 
     eapply cacheR_preorder; eauto.
     eapply cacheR_preorder; eauto.
