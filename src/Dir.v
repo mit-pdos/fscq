@@ -611,5 +611,15 @@ Module DIR.
     subst; eauto.
   Qed.
 
-End DIR.
+  Theorem crash_rep : forall f f' m,
+    BFILE.file_crash f f' ->
+    rep f m ->
+    rep f' m.
+  Proof.
+    unfold rep; intros.
+    repeat deex.
+    eexists; intuition eauto.
+    eapply Dent.file_crash_rep; eauto.
+  Qed.
 
+End DIR.
