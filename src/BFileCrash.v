@@ -4,6 +4,12 @@ Require Import Pred.
 Require Import Array.
 Require Import AsyncDisk.
 Require Import FunctionalExtensionality.
+Require Import Morphisms.
+Require Import GenSepN.
+Require Import Arith.
+Require Import Omega.
+Require Import List.
+Require Import ListUtils.
 
 
 Import BFILE.
@@ -146,6 +152,33 @@ Qed.
 
 Lemma flist_crash_xform_exists : forall T p,
   flist_crash_xform (exists (x : T), p x) =p=> exists x, flist_crash_xform (p x).
+Proof.
+  firstorder.
+Qed.
+
+Lemma flist_crash_flist_crash_xform : forall f f' (P : @pred _ _ _),
+  flist_crash f f' ->
+  P (list2nmem f) ->
+  (flist_crash_xform P) (list2nmem f').
+Proof.
+  intros; unfold flist_crash_xform, possible_fmem_crash.
+  eexists; intuition eauto.
+  destruct (lt_dec a (length f)).
+  - right. unfold flist_crash in *.
+    do 2 eexists.
+    unfold list2nmem.
+    erewrite selN_map by omega.
+    erewrite selN_map by ( erewrite <- flist_crash_length by eauto; omega ).
+    intuition eauto.
+    eapply forall2_selN; auto.
+  - left. unfold list2nmem. repeat rewrite selN_oob; auto; rewrite map_length.
+    erewrite <- flist_crash_length by eauto. omega. omega.
+Grab Existential Variables.
+  all: exact BFILE.bfile0.
+Qed.
+
+Instance flist_crash_xform_pimpl_proper :
+  Proper (pimpl ==> pimpl) flist_crash_xform.
 Proof.
   firstorder.
 Qed.
