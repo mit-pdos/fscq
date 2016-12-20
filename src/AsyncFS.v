@@ -822,6 +822,7 @@ Module AFS.
   XCRASH:hm'
     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
     exists d tree' f' ilist' mscs',
+    [[ MSAlloc mscs' = MSAlloc mscs ]] *
     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
     [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees)]]] *
     [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
@@ -845,7 +846,6 @@ Module AFS.
       xform_norm; cancel.
       xform_norm; cancel.
       xform_norm; cancel.
-      eauto.
     }
     xcrash_solve.
     rewrite LOG.intact_idempred. xform_norm. cancel.

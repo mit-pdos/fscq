@@ -697,9 +697,21 @@ Module TREESEQ.
         [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
         [[ (Ftree * pathname |-> File inum f')%pred (dir2flatmem2 tree') ]])
    XCRASH:hm'
-            (* TODO: fix crash condition *)
-         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
-  >} AFS.file_set_attr fsxp inum attr mscs.
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+       exists d ds' ts' mscs' tree' ilist' f',
+         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+         [[ MSAlloc mscs' = MSAlloc mscs ]] *
+         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
+         [[ forall pathname',
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
+         [[ ds' = pushd d ds ]] *
+         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' (TSfree ts !!)) ]]] *
+         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts!!) ]] *
+         [[ ts' = pushd (mk_tree tree' ilist' (TSfree ts !!)) ts ]] *
+         [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
+         [[ (Ftree * pathname |-> File inum f')%pred (dir2flatmem2 tree') ]]
+    >} AFS.file_set_attr fsxp inum attr mscs.
   Proof.
     intros.
     eapply pimpl_ok2.
@@ -735,7 +747,6 @@ Module TREESEQ.
     eassumption.
 
     xcrash_solve.
-    eauto.
     admit. (* need fixed crash condition with pushd case *)
   Admitted.
 
@@ -2645,7 +2656,7 @@ Module TREESEQ.
       rewrite H0 in *.
       rewrite <- surjective_pairing in H8.
       eauto.
-    - admit. (* need an appropriate XCRASH condition *)
+    - admit. 
   Admitted.
 
 
