@@ -794,7 +794,20 @@ Module TREESEQ.
         [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
         [[ (Ftree * pathname |-> File inum f')%pred (dir2flatmem2 tree') ]])
   XCRASH:hm'
-    LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+       exists d ds' ts' mscs' tree' ilist' f' frees',
+         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+         [[ MSAlloc mscs' = MSAlloc mscs ]] *
+         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
+         [[ forall pathname',
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
+         [[ ds' = pushd d ds ]] *
+         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
+         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) newlen ($0, nil)) (BFILE.BFAttr f) ]] *
+         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts !!) ]] *
+         [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
+         [[ (Ftree * pathname |-> File inum f')%pred (dir2flatmem2 tree') ]]
   >} AFS.file_truncate fsxp inum newlen mscs.
   Proof.
     intros.
@@ -830,9 +843,29 @@ Module TREESEQ.
     eapply dir2flatmem2_update_subtree; eauto.
     distinct_names'.
     xcrash_solve.
-    eauto.
-    admit. (* TODO: fix crash condition *)
-  Admitted.
+    - xform_normr. cancel.
+    - or_r. cancel. repeat (progress xform_norm; cancel).
+      eapply treeseq_in_ds_pushd; eauto.
+      unfold treeseq_one_safe.
+      simpl in *.
+      rewrite H4 in *.
+      repeat rewrite <- surjective_pairing in *.
+      eassumption.
+      eapply treeseq_safe_pushd_update_subtree; eauto.
+      distinct_names'.
+      eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred.
+      distinct_inodes.
+      eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred.
+      rewrite DIRTREE.rep_length in Hpred; destruct_lift Hpred.
+      rewrite DIRTREE.rep_length in H6; destruct_lift H6.
+      congruence. 
+      unfold dirtree_safe in *.
+      repeat rewrite <- surjective_pairing in *.
+      rewrite H4 in *; eauto.
+      intuition.
+      eapply dir2flatmem2_update_subtree; eauto.
+      distinct_names'.
+  Qed.
 
   Lemma block_is_unused_xor_belong_to_file : forall F Ftop fsxp t m flag bn inum off,
     tree_rep F Ftop fsxp t m ->
