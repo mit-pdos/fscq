@@ -2612,6 +2612,7 @@ Module TREESEQ.
       distinct_names'.
       congruence.
       admit.
+      admit.
     - unfold treeseq_safe_bwd.
       intros.
       left.
@@ -2632,7 +2633,7 @@ Module TREESEQ.
       erewrite find_update_subtree in H9; eauto.
       congruence.
       admit.
-
+      admit.
     - simpl.
       unfold dirtree_safe in *; intuition.
       rewrite H0 in *.
