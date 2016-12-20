@@ -714,7 +714,7 @@ Module TREESEQ.
     >} AFS.file_set_attr fsxp inum attr mscs.
   Proof.
     intros.
-    eapply pimpl_ok2.
+    eapply pimpl_ok2. 
     eapply AFS.file_set_attr_ok.
     cancel.
     eapply treeseq_in_ds_tree_pred_latest in H6 as Hpred; eauto.
@@ -747,8 +747,29 @@ Module TREESEQ.
     eassumption.
 
     xcrash_solve.
-    admit. (* need fixed crash condition with pushd case *)
-  Admitted.
+    - xform_normr.
+      or_l. cancel.
+    - or_r. cancel. repeat (progress xform_norm; cancel).
+      eapply treeseq_in_ds_pushd; eauto.
+      unfold treeseq_one_safe.
+      simpl.
+      repeat rewrite <- surjective_pairing in *.
+      rewrite H4 in *; eauto.
+      eapply treeseq_in_ds_tree_pred_latest in H6 as Hpred.
+      eapply treeseq_safe_pushd_update_subtree; eauto.
+      distinct_names.
+      distinct_inodes.  
+      rewrite DIRTREE.rep_length in Hpred; destruct_lift Hpred.
+      rewrite DIRTREE.rep_length in H5; destruct_lift H5.
+      congruence.
+      unfold dirtree_safe in *.
+      repeat rewrite <- surjective_pairing in *.
+      rewrite H4 in *; eauto.
+      intuition.
+      eapply dir2flatmem2_update_subtree.
+      distinct_names'.
+      eassumption.
+  Qed.
 
   Theorem treeseq_file_grow_ok : forall fsxp inum newlen mscs,
   {< ds ts pathname Fm Ftop Ftree f,
