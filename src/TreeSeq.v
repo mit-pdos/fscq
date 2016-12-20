@@ -879,6 +879,7 @@ Module TREESEQ.
   Qed.
 
   Lemma treeseq_one_safe_dsupd_1 : forall tolder tnewest mscs mscs' pathname off v inum f,
+    tree_names_distinct (TStree tolder) ->
     treeseq_one_safe tolder tnewest mscs ->
     find_subtree pathname (TStree tnewest) = Some (TreeFile inum f) ->
     MSAlloc mscs' = MSAlloc mscs ->
@@ -886,10 +887,10 @@ Module TREESEQ.
   Proof.
     unfold treeseq_one_safe; intros.
     repeat rewrite treeseq_one_upd_alternative; simpl.
-    rewrite H1; clear H1 mscs'.
+    rewrite H2; clear H2 mscs'.
     unfold dirtree_safe in *; intuition.
     destruct (list_eq_dec string_dec pathname0 pathname); subst.
-    - edestruct H2; eauto.
+    - edestruct H3; eauto.
       left.
       intuition.
       repeat deex.
@@ -898,13 +899,11 @@ Module TREESEQ.
       destruct d; eauto.
       destruct (list_eq_dec string_dec pathname' pathname); subst.
       + erewrite find_update_subtree; eauto.
-        rewrite H4 in H6; inversion H6. eauto.
+        rewrite H5 in H7; inversion H7. eauto.
       + rewrite find_subtree_update_subtree_ne_path; eauto.
-        admit. (* names distinct - probably needs additional hypothesis *)
-
         eapply find_subtree_file_not_pathname_prefix; eauto.
         eapply find_subtree_file_not_pathname_prefix; eauto.
-    - edestruct H2; eauto.
+    - edestruct H3; eauto.
       left.
       intuition.
       repeat deex.
@@ -913,15 +912,14 @@ Module TREESEQ.
       destruct d; eauto.
       destruct (list_eq_dec string_dec pathname' pathname); subst.
       + erewrite find_update_subtree; eauto.
-        rewrite H4 in H6; inversion H6. eauto.
+        rewrite H5 in H7; inversion H7. eauto.
       + rewrite find_subtree_update_subtree_ne_path; eauto.
-        admit. (* names distinct *)
-
         eapply find_subtree_file_not_pathname_prefix; eauto.
         eapply find_subtree_file_not_pathname_prefix; eauto.
-  Admitted.
+  Qed.
 
   Lemma treeseq_one_safe_dsupd_2 : forall tolder tnewest mscs mscs' pathname off v inum f,
+    tree_names_distinct (TStree tnewest) ->
     treeseq_one_safe tolder tnewest mscs ->
     find_subtree pathname (TStree tnewest) = Some (TreeFile inum f) ->
     MSAlloc mscs' = MSAlloc mscs ->
@@ -929,22 +927,23 @@ Module TREESEQ.
   Proof.
     unfold treeseq_one_safe; intros.
     repeat rewrite treeseq_one_upd_alternative; simpl.
-    rewrite H0; simpl.
-    rewrite H1; clear H1 mscs'.
+    rewrite H1; simpl.
+    rewrite H2; clear H2 mscs'.
     unfold dirtree_safe in *; intuition.
     destruct (list_eq_dec string_dec pathname0 pathname); subst.
-    - erewrite find_update_subtree in H; eauto.
-      inversion H; subst.
+    - erewrite find_update_subtree in H0; eauto.
+      inversion H0; subst.
       edestruct H2; eauto.
-    - rewrite find_subtree_update_subtree_ne_path in H.
+    - rewrite find_subtree_update_subtree_ne_path in H0.
       edestruct H2; eauto.
-      admit. (* names distinct *)
-
+      eassumption.
       eapply find_subtree_update_subtree_file_not_pathname_prefix_1; eauto.
       eapply find_subtree_update_subtree_file_not_pathname_prefix_2; eauto.
-  Admitted.
+  Qed.
 
   Lemma treeseq_one_safe_dsupd : forall tolder tnewest mscs mscs' pathname off v inum f,
+    tree_names_distinct (TStree tolder) ->
+    tree_names_distinct (TStree tnewest) ->
     treeseq_one_safe tolder tnewest mscs ->
     find_subtree pathname (TStree tnewest) = Some (TreeFile inum f) ->
     MSAlloc mscs' = MSAlloc mscs ->
@@ -977,6 +976,12 @@ Module TREESEQ.
     eapply tree_rep_nth_upd; eauto.
     rewrite d_map_latest.
     eapply treeseq_one_safe_dsupd; eauto.
+    eapply DIRTREE.rep_tree_names_distinct.
+    eapply H7.
+    eapply NEforall2_latest in H1.
+    intuition.
+    eapply DIRTREE.rep_tree_names_distinct. 
+    eapply H4.
   Qed.
 
   Lemma treeseq_upd_safe_upd: forall Fm fsxp Ftop mscs Ftree ts ds n pathname pathname' f f' off v inum bn,
