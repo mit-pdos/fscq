@@ -2166,6 +2166,84 @@ Proof.
   constructor; auto.
 Qed.
 
+Lemma forall2_forall_l' : forall A B (la : list A) (lb : list B) P,
+  Forall2 P la lb -> Forall (fun a => exists b, P a b) la.
+Proof.
+  induction la; simpl; intros.
+  inversion H. constructor.
+  inversion H; subst.
+  constructor; eauto.
+Qed.
+
+Lemma forall2_forall_l : forall A B (la : list A) (lb : list B) P,
+  Forall2 (fun a b => P a) la lb -> Forall P la.
+Proof.
+  induction la; simpl; intros.
+  inversion H. constructor.
+  inversion H; subst.
+  constructor; eauto.
+Qed.
+
+Lemma forall2_forall_r' : forall A B (la : list A) (lb : list B) P,
+  Forall2 P la lb -> Forall (fun b => exists a, P a b) lb.
+Proof.
+  induction la; simpl; intros.
+  inversion H. constructor.
+  inversion H; subst.
+  constructor; eauto.
+Qed.
+
+Lemma forall2_forall_r : forall A B (la : list A) (lb : list B) P,
+  Forall2 (fun a b => P b) la lb -> Forall P lb.
+Proof.
+  induction la; simpl; intros.
+  inversion H. constructor.
+  inversion H; subst.
+  constructor; eauto.
+Qed.
+
+Lemma forall_forall2_l : forall A B (la : list A) (lb : list B) P,
+  length la = length lb -> Forall P la -> Forall2 (fun a b => P a) la lb.
+Proof.
+  induction la; simpl; intros; destruct lb; simpl in *; try congruence.
+  constructor.
+  inversion H0.
+  constructor; eauto.
+Qed.
+
+Lemma forall_forall2_r : forall A B (la : list A) (lb : list B) P,
+  length la = length lb -> Forall P lb -> Forall2 (fun a b => P b) la lb.
+Proof.
+  induction la; simpl; intros; destruct lb; simpl in *; try congruence.
+  constructor.
+  inversion H0.
+  constructor; eauto.
+Qed.
+
+Lemma forall2_impl : forall A B (la : list A) (lb : list B) (P Q : A -> B -> Prop),
+  Forall2 P la lb ->
+  Forall2 (fun a b => P a b -> Q a b) la lb ->
+  Forall2 Q la lb.
+Proof.
+  induction la; simpl; intros; destruct lb; simpl in *; try congruence.
+  constructor.
+  inversion H.
+  inversion H.
+  inversion H; subst.
+  inversion H0; subst.
+  constructor; eauto.
+Qed.
+
+Lemma forall2_lift : forall A B (la : list A) (lb : list B) (P : A -> B -> Prop),
+  (forall a b, P a b) ->
+  length la = length lb ->
+  Forall2 P la lb.
+Proof.
+  induction la; simpl; intros; destruct lb; simpl in *; try congruence.
+  constructor.
+  constructor; eauto.
+Qed.
+
 Lemma forall2_selN : forall A B (a : list A) (b : list B) P n ad bd,
   Forall2 P a b ->
   n < length a ->
