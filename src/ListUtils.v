@@ -496,6 +496,17 @@ Proof.
   apply in_cons; auto.
 Qed.
 
+Lemma Forall_combine_same : forall T T1 T2 (l : list T) P (f1 : T -> T1) (f2 : T -> T2),
+  Forall (fun x => P (f1 x, f2 x)) l ->
+  Forall P (combine (map f1 l) (map f2 l)).
+Proof.
+  induction l; simpl; intros.
+  - constructor.
+  - inversion H; subst.
+    constructor; auto.
+Qed.
+
+
 (** crush any small goals.  Do NOT use for big proofs! *)
 Ltac small_t' := intros; autorewrite with core; autorewrite with core in *;
            eauto; simpl in *; intuition; eauto.
@@ -1820,6 +1831,22 @@ Proof.
   rewrite IHl; auto.
 Qed.
 
+Lemma map_fst_map_eq : forall A B (ents : list (A * B)) C (f : B -> C),
+  map fst ents = map fst (map (fun e => (fst e, f (snd e))) ents).
+Proof.
+  induction ents; simpl; auto; intros.
+  f_equal.
+  apply IHents.
+Qed.
+
+Lemma map_snd_map_eq : forall A B (ents : list (A * B)) C (f : B -> C),
+  map snd (map (fun e => (fst e, f (snd e))) ents) = map f (map snd ents).
+Proof.
+  induction ents; simpl; auto; intros.
+  f_equal.
+  apply IHents.
+Qed.
+
 Lemma NoDup_skipn : forall A (l : list A) n,
   NoDup l -> NoDup (skipn n l).
 Proof.
@@ -2227,6 +2254,26 @@ Proof.
     replace (S n - 1) with n by omega; eauto.
     omega.
 Qed.
+
+Lemma Forall2_eq : forall T (l l' : list T),
+  Forall2 eq l l' -> l = l'.
+Proof.
+  induction l; simpl; intros.
+  inversion H; eauto.
+  inversion H; subst.
+  erewrite IHl; eauto.
+Qed.
+
+Lemma Forall2_to_map_eq : forall T U l l' (R : T -> T -> Prop) (f : T -> U),
+  (forall a b, R a b -> f a = f b) ->
+  Forall2 R l l' ->
+  map f l = map f l'.
+Proof.
+  intros.
+  apply Forall2_eq.
+  eapply forall2_map2_in; eauto.
+Qed.
+
 
 Definition cuttail A n (l : list A) := firstn (length l - n) l.
 
