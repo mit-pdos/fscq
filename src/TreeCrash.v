@@ -293,14 +293,146 @@ Module DTCrash.
     constructor; auto.
   Qed.
 
+  Theorem tree_crash_update_subtree' :
+    forall pn tree subtree tree' subtree',
+    tree_crash tree tree' ->
+    tree_crash subtree subtree' ->
+    tree_crash (update_subtree pn subtree tree) (update_subtree pn subtree' tree').
+  Proof.
+    induction pn; simpl; intros; eauto.
+    destruct tree; simpl in *.
+    - inversion H; subst. constructor; eauto.
+    - inversion H; subst. constructor; eauto.
+      + generalize dependent st'.
+        induction l; simpl; intros; destruct st'; simpl in *; try congruence.
+        inversion H; subst.
+        inversion H6; subst.
+        inversion H7; subst.
+        f_equal.
+        destruct a0; destruct p; simpl in *. rewrite H2 in *; clear H2.
+        destruct (string_dec s0 a); subst; simpl in *; auto.
+        apply IHl; try eassumption. constructor; eauto.
+      + generalize dependent st'.
+        induction l; simpl; intros; destruct st'; simpl in *; try congruence.
+        inversion H; subst.
+        inversion H6; subst.
+        inversion H7; subst.
+        constructor.
+        destruct a0; destruct p; simpl in *. rewrite H2 in *; clear H2.
+        destruct (string_dec s0 a); subst; simpl in *; auto.
+        eapply IHl; try eassumption. constructor; eauto.
+  Qed.
+
+  Theorem tree_crash_tree_names_distinct : forall t t',
+    tree_crash t t' ->
+    tree_names_distinct t ->
+    tree_names_distinct t'.
+  Proof.
+    induction t using dirtree_ind2; simpl in *; intros.
+    inversion H; constructor.
+    inversion H0; subst.
+    inversion H1; subst.
+    constructor; try congruence.
+    eapply forall_forall2_l in H; try ( eapply forall2_length; eauto ).
+    eapply forall_forall2_l in H5; try ( eapply forall2_length; eauto ).
+    eapply forall2_forall_r; try ( eapply forall2_length; eauto ).
+    eapply forall2_impl. apply H.
+    eapply forall2_impl. apply H5.
+    eapply forall2_impl. apply H6.
+    apply forall2_lift; try ( eapply forall2_length; eauto ).
+    intros; eauto.
+  Qed.
+
+  Theorem tree_crash_tree_inodes_permutation : forall t t',
+    tree_crash t t' ->
+    permutation addr_eq_dec (tree_inodes t) (tree_inodes t').
+  Proof.
+    induction t using dirtree_ind2; simpl; intros.
+    - inversion H; subst. constructor.
+    - inversion H0; subst.
+      generalize dependent st'.
+      induction tree_ents; intros; destruct st'; simpl in *; try congruence.
+      destruct a. destruct p.
+      inversion H5; subst.
+      inversion H; subst.
+      repeat rewrite cons_app with (l := app _ _).
+      eapply permutation_trans. apply permutation_app_comm. rewrite <- app_assoc.
+      eapply permutation_trans. 2: apply permutation_app_comm. rewrite <- app_assoc.
+      eapply permutation_app_split. eauto.
+      eapply permutation_trans. apply permutation_app_comm.
+      eapply permutation_trans. 2: apply permutation_app_comm.
+      eapply IHtree_ents; eauto.
+      constructor; eauto.
+      inversion H0; subst. inversion H10; subst. eauto.
+      inversion H0; subst. inversion H10; subst. eauto.
+  Qed.
+
+  Theorem tree_crash_tree_inodes_distinct : forall t t',
+    tree_crash t t' ->
+    tree_inodes_distinct t ->
+    tree_inodes_distinct t'.
+  Proof.
+    unfold tree_inodes_distinct; intros.
+    eapply NoDup_incl_count; eauto.
+    eapply permutation_incl_count.
+    apply permutation_comm.
+    eapply tree_crash_tree_inodes_permutation; eauto.
+  Qed.
+
   Theorem tree_crash_update_subtree :
-    forall tree subtree filename updated_tree_crashed,
-    tree_crash (update_subtree [filename] subtree tree) updated_tree_crashed ->
+    forall pn tree subtree updated_tree_crashed,
+    tree_names_distinct tree ->
+    tree_crash (update_subtree pn subtree tree) updated_tree_crashed ->
     exists tree_crashed subtree_crashed,
     tree_crash tree tree_crashed /\
     tree_crash subtree subtree_crashed /\
-    updated_tree_crashed = update_subtree [filename] subtree_crashed tree_crashed.
+    updated_tree_crashed = update_subtree pn subtree_crashed tree_crashed.
   Proof.
-  Admitted.
+    induction pn; simpl; intros.
+    {
+      edestruct (tree_crash_exists tree). do 2 eexists; intuition eauto.
+    }
+    destruct tree; simpl in *.
+    {
+      inversion H0; subst.
+      edestruct (tree_crash_exists subtree). do 2 eexists; intuition eauto.
+    }
+    inversion H0; clear H0; subst.
+    generalize dependent st'.
+    induction l; simpl; intros; destruct st'; simpl in *; try congruence.
+    {
+      edestruct (tree_crash_exists subtree). do 2 eexists; intuition eauto.
+      constructor; eauto. auto.
+    }
+    destruct a0; destruct p; simpl in *.
+    inversion H3; clear H3; subst.
+    inversion H5; clear H5; subst.
+    destruct (string_dec s a); subst; simpl in *.
+    {
+      clear IHl.
+      edestruct IHpn. 2: eauto. eauto. deex.
+      exists (TreeDir n ((a, x) :: st')). simpl. destruct (string_dec a a); try congruence. eexists.
+      inversion H. inversion H8. subst.
+      rewrite update_subtree_notfound with (l := l) in *; eauto.
+      intuition eauto.
+      constructor; simpl. f_equal; eauto. eauto.
+
+      rewrite update_subtree_notfound; eauto.
+      eapply tree_crash_tree_names_distinct in H.
+      2: eapply TCDir with (st' := (a, x) :: st').
+      inversion H. inversion H10; eauto.
+      simpl. f_equal. eauto.
+      constructor. eauto. eauto.
+    }
+    {
+      clear IHpn.
+      edestruct IHl; clear IHl; eauto. deex.
+      destruct x; simpl in *; try congruence.
+      exists (TreeDir n ((s, d0) :: l0)). eexists.
+      inversion H1; subst.
+      intuition eauto. constructor; simpl. f_equal. auto. constructor; eauto.
+      simpl. destruct (string_dec s a); try congruence.
+    }
+  Qed.
 
 End DTCrash.
