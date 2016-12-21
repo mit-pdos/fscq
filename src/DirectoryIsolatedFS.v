@@ -577,17 +577,6 @@ Proof.
   apply sep_star_lift_apply in H0; intuition.
 Qed.
 
-Theorem alter_inum_to_alter_path' : forall pathname inum tree subtree,
-    DIRTREE.tree_names_distinct tree ->
-    DIRTREE.tree_inodes_distinct tree ->
-    DIRTREE.find_subtree pathname tree = Some subtree ->
-    DIRTREE.dirtree_inum subtree = inum ->
-    forall up, DIRTREE.alter_inum inum up tree = DIRTREE.alter_subtree pathname up tree.
-Proof.
-  intros; subst.
-  apply alter_inum_to_alter_path; auto.
-Qed.
-
 Lemma update_subtree_helper_already_found : forall inum rec l a d,
     DIRTREE.tree_names_distinct (DIRTREE.TreeDir inum ((a, d) :: l)) ->
     List.map (DIRTREE.update_subtree_helper
@@ -733,7 +722,7 @@ Proof.
     pred_apply; cancel.
 
     unfold dirtree_alter_file.
-    erewrite alter_inum_to_alter_path' by eauto.
+    erewrite alter_inum_to_alter_path by eauto.
     erewrite dirtree_alter_to_update by eauto.
     destruct f; simpl.
     cancel.
@@ -743,7 +732,7 @@ Proof.
            end.
 
     unfold dirtree_alter_file.
-    erewrite alter_inum_to_alter_path' by eauto.
+    erewrite alter_inum_to_alter_path by eauto.
     erewrite dirtree_alter_to_update by eauto.
     destruct f; auto.
 
@@ -756,7 +745,7 @@ Proof.
            end.
     replace (get vPathOwner s_i).
     unfold dirtree_alter_file.
-    erewrite alter_inum_to_alter_path' by eauto.
+    erewrite alter_inum_to_alter_path by eauto.
     erewrite dirtree_alter_to_update by eauto.
     destruct f.
 
@@ -776,7 +765,7 @@ Proof.
            end.
     replace (get vPathOwner s_i).
     unfold dirtree_alter_file.
-    erewrite alter_inum_to_alter_path' by eauto.
+    erewrite alter_inum_to_alter_path by eauto.
     erewrite dirtree_alter_to_update by eauto.
     destruct f.
     eapply allowed_subtree_update_file; eauto.
