@@ -1183,7 +1183,7 @@ Module TREESEQ.
         (* a file *)
         rewrite H15 in H11.
         erewrite find_subtree_update_subtree_ne_path in H11; eauto.
-        admit. (* names distinct *)
+        eapply DIRTREE.rep_tree_names_distinct; eapply H8.
         deex. eapply find_subtree_update_subtree_file_not_pathname_prefix_1; eauto.
         deex. eapply find_subtree_update_subtree_file_not_pathname_prefix_2; eauto.
         destruct H11.
@@ -2010,6 +2010,11 @@ Module TREESEQ.
     assert (treeseq_one_safe y (nthd n ts) mscs').
     subst; eapply treeseq_one_safe_refl.
     remember H1 as H1'. clear HeqH1'. rewrite Heqy in H1'.
+
+    assert (tree_names_distinct (TStree y)) as Hydistinct.
+    rewrite Heqy.
+    distinct_names'.
+
     clear Heqy.
 
     assert (exists b0, find_subtree pathname (TStree y) = Some (TreeFile n0 b0) (* /\ map fst (BFILE.BFData b) = map fst (BFILE.BFData b0) *)).
@@ -2026,16 +2031,21 @@ Module TREESEQ.
     destruct H3; intuition.
     eapply treeseq_one_safe_dsupd_1; eauto.
 
-    admit.
-
     destruct H3; intuition.
+
+    unfold treeseq_one_upd.
+    rewrite H1; simpl.
+    eapply tree_names_distinct_update_subtree; eauto.
+    constructor.
+ 
+    destruct H3.
     eexists.
     unfold treeseq_one_upd.
     rewrite H1; simpl.
     erewrite find_update_subtree by eauto. reflexivity.
 
     distinct_names'.
-  Admitted.
+  Qed.
 
   Lemma tree_safe_file_sync: forall Fm Ftop fsxp mscs ds ts mscs' n al pathname inum f,
     find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
