@@ -108,7 +108,7 @@ Module BmapAlloc (Sig : AllocSig).
   Definition rep V xp (freelist : list addr) (freepred : @pred _ addr_eq_dec V) :=
     (exists bmap, Bmp.rep xp bmap *
      [[ freelist_bmap_equiv freelist bmap ]] *
-     [[ freepred =p=> listpred (fun a => a |->?) freelist ]] )%pred.
+     [[ freepred <=p=> listpred (fun a => a |->?) freelist ]] )%pred.
 
 
   Lemma freelist_bmap_equiv_remove_ok : forall bmap freelist a,
@@ -294,7 +294,7 @@ Module BmapAlloc (Sig : AllocSig).
     pred_apply; cancel.
     eapply freelist_bmap_equiv_remove_ok; eauto.
     eapply bmap_rep_length_ok2; eauto.
-    apply pimpl_refl.
+    apply piff_refl.
     denote freepred as Hp; rewrite Hp, listpred_remove.
     eassign bn; cancel.
 
@@ -326,7 +326,7 @@ Module BmapAlloc (Sig : AllocSig).
 
     or_r; cancel.
     eapply freelist_bmap_equiv_remove_ok; eauto.
-    apply pimpl_refl.
+    apply piff_refl.
     denote freepred as Hp; rewrite Hp, listpred_remove.
     eassign a_1; cancel.
 
@@ -357,6 +357,9 @@ Module BmapAlloc (Sig : AllocSig).
     eapply bmap_rep_length_ok2; eauto.
     apply freelist_bmap_equiv_add_ok; auto.
     eapply bmap_rep_length_ok2; eauto.
+    denote (freepred <=p=> _) as Hfp. apply Hfp.
+    Unshelve.
+    all: eauto.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
@@ -379,7 +382,7 @@ Module BmapAlloc (Sig : AllocSig).
   Qed.
 
   Lemma xform_rep_rawpred : forall xp l p,
-    crash_xform (rep xp l p) =p=> rep xp l (crash_xform p).
+    crash_xform (rep xp l p) =p=> rep xp l p * [[ crash_xform p =p=> p ]].
   Proof.
     unfold rep; intros.
     xform_norm.
@@ -707,6 +710,7 @@ Module BALLOC.
     xform_norm.
     rewrite Alloc.xform_rep_rawpred.
     cancel.
+    auto.
   Qed.
 
 End BALLOC.
@@ -817,4 +821,3 @@ Module IAlloc.
   Qed.
 
 End IAlloc.
-

@@ -20,6 +20,8 @@ Require Import AsyncDisk.
 Require Import DiskSet.
 Require Import DirTree.
 Require Import GenSepAuto.
+Require Import BFileCrash.
+Require Import Omega.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -37,13 +39,156 @@ Module DTCrash.
                Forall2 tree_crash (map snd st) (map snd st') ->
                tree_crash (TreeDir inum st) (TreeDir inum st').
 
-  Fixpoint remap_tree (flist : list bfile) (t : dirtree) :=
-    match t with
-    | TreeFile inum f => TreeFile inum (selN flist inum bfile0)
-    | TreeDir inum st =>
-         let st' := map (fun e => (fst e, remap_tree flist (snd e))) st in
-         TreeDir inum st'
-    end.
+  Theorem tree_crash_trans : forall t1 t2 t3,
+    tree_crash t1 t2 ->
+    tree_crash t2 t3 ->
+    tree_crash t1 t3.
+  Proof.
+    induction t1 using dirtree_ind2; simpl; intros.
+    inversion H; subst. inversion H0; subst. constructor. eapply file_crash_trans; eauto.
+    inversion H0; subst. inversion H1; subst. constructor. congruence.
+    generalize dependent st'. generalize dependent st'0.
+    induction tree_ents; simpl; intros.
+    - destruct st'; simpl in *; try congruence.
+    - destruct st'; destruct st'0; simpl in *; try congruence.
+      inversion H6. inversion H8. inversion H. inversion H4. inversion H5. subst; simpl in *.
+      constructor; eauto.
+      eapply IHtree_ents. eauto.
+      all: try match goal with | [ |- Forall2 _ _ _ ] => eauto end.
+      all: eauto.
+      constructor; eauto.
+      constructor; eauto.
+  Qed.
+
+  Lemma flist_crash_xform_dirlist_pred : forall tree_ents p,
+    Forall
+      (fun t => flist_crash_xform (p t) =p=> exists t', [[ tree_crash t t' ]] * p t')
+      (map snd tree_ents) ->
+    flist_crash_xform (dirlist_pred p tree_ents) =p=>
+      exists tree_ents',
+      [[ Forall2 tree_crash (map snd tree_ents) (map snd tree_ents') ]] *
+      [[ map fst tree_ents = map fst tree_ents' ]] *
+      dirlist_pred p tree_ents'.
+  Proof.
+    induction tree_ents; simpl; intros.
+    - rewrite flist_crash_xform_emp. cancel.
+      eassign (@nil (string * dirtree)); cancel.
+      constructor.
+      constructor.
+    - destruct a. rewrite flist_crash_xform_sep_star.
+      inversion H; subst.
+      rewrite H2.
+      rewrite IHtree_ents by eauto.
+      cancel.
+      eassign ((s, t') :: tree_ents').
+      cancel.
+      constructor; eauto.
+      simpl; congruence.
+  Qed.
+
+  Lemma tree_dir_names_pred'_unchanged : forall tree_ents tree_ents',
+    map fst tree_ents = map fst tree_ents' ->
+    map (fun e => dirtree_inum e) (map snd tree_ents) = map (fun e => dirtree_inum e) (map snd tree_ents') ->
+    map (fun e => dirtree_isdir e) (map snd tree_ents) = map (fun e => dirtree_isdir e) (map snd tree_ents') ->
+    tree_dir_names_pred' tree_ents =p=> tree_dir_names_pred' tree_ents'.
+  Proof.
+    induction tree_ents; intros; destruct tree_ents'; simpl in *; try congruence.
+    destruct a; destruct p; simpl in *.
+    inversion H; clear H.
+    inversion H0; clear H0.
+    inversion H1; clear H1.
+    subst.
+    rewrite IHtree_ents; eauto.
+  Qed.
+
+  Lemma flist_crash_xform_tree_dir_names_pred : forall tree_ents tree_ents' xp inum,
+    map fst tree_ents = map fst tree_ents' ->
+    map (fun e => dirtree_inum e) (map snd tree_ents) = map (fun e => dirtree_inum e) (map snd tree_ents') ->
+    map (fun e => dirtree_isdir e) (map snd tree_ents) = map (fun e => dirtree_isdir e) (map snd tree_ents') ->
+    flist_crash_xform (tree_dir_names_pred xp inum tree_ents) =p=>
+      tree_dir_names_pred xp inum tree_ents'.
+  Proof.
+    unfold tree_dir_names_pred; intros.
+    rewrite flist_crash_xform_exists. norml; unfold stars; simpl; clear_norm_goal.
+    rewrite flist_crash_xform_exists. norml; unfold stars; simpl; clear_norm_goal.
+    repeat rewrite flist_crash_xform_sep_star.
+    repeat rewrite flist_crash_xform_lift_empty.
+    rewrite flist_crash_xform_ptsto.
+    cancel.
+    eapply SDIR.crash_rep; eauto.
+    pred_apply.
+    apply tree_dir_names_pred'_unchanged; eauto.
+  Qed.
+
+  Lemma tree_crash_preserves_dirtree_inum : forall t t',
+    tree_crash t t' ->
+    dirtree_inum t = dirtree_inum t'.
+  Proof.
+    inversion 1; auto.
+  Qed.
+
+  Lemma tree_crash_preserves_dirtree_isdir : forall t t',
+    tree_crash t t' ->
+    dirtree_isdir t = dirtree_isdir t'.
+  Proof.
+    inversion 1; auto.
+  Qed.
+
+  Lemma flist_crash_xform_tree_pred : forall xp t,
+    flist_crash_xform (tree_pred xp t) =p=> exists t', [[ tree_crash t t' ]] * tree_pred xp t'.
+  Proof.
+    induction t using dirtree_ind2; simpl; intros.
+    - rewrite flist_crash_xform_sep_star.
+      rewrite flist_crash_xform_lift_empty.
+      rewrite flist_crash_xform_ptsto.
+      cancel.
+      2: constructor; eauto.
+      simpl; cancel.
+    - rewrite flist_crash_xform_sep_star.
+      rewrite flist_crash_xform_dirlist_pred by eauto.
+      cancel.
+      eassign (TreeDir inum tree_ents').
+      cancel.
+      apply flist_crash_xform_tree_dir_names_pred; eauto.
+      eapply Forall2_to_map_eq. apply tree_crash_preserves_dirtree_inum. eauto.
+      eapply Forall2_to_map_eq. apply tree_crash_preserves_dirtree_isdir. eauto.
+      constructor; eauto.
+  Qed.
+
+  Lemma flist_crash_xform_freelist : forall xp frees freepred,
+    IAlloc.Alloc.rep xp frees freepred =p=>
+      IAlloc.Alloc.rep xp frees freepred *
+      [[ flist_crash_xform freepred =p=> freepred ]].
+  Proof.
+    unfold IAlloc.Alloc.rep; intros.
+    cancel.
+    rewrite H1.
+    clear H1 H2 bmap.
+    induction frees; simpl.
+    rewrite flist_crash_xform_emp; auto.
+    rewrite flist_crash_xform_sep_star. rewrite flist_crash_xform_exists. rewrite IHfrees.
+    norml; unfold stars; simpl.
+    rewrite flist_crash_xform_ptsto. cancel.
+  Qed.
+
+  Lemma xform_tree_rep : forall xp F t ilist frees,
+    crash_xform (rep xp F t ilist frees) =p=> exists t',
+      [[ tree_crash t t' ]] * rep xp (flist_crash_xform F) t' ilist frees.
+  Proof.
+    unfold rep; intros.
+    xform_norm.
+    rewrite xform_rep.
+    rewrite IAlloc.xform_rep.
+    rewrite flist_crash_xform_freelist.
+    norml; unfold stars; simpl; clear_norm_goal.
+    eapply flist_crash_flist_crash_xform in H0; eauto.
+    apply flist_crash_xform_sep_star in H0. rewrite flist_crash_xform_sep_star in H0.
+    rewrite flist_crash_xform_tree_pred in H0.
+    destruct_lift H0.
+    cancel. eauto.
+    cancel. eauto.
+  Qed.
+
 
   Theorem tree_crash_find_name :
     forall fnlist t t' subtree,
@@ -118,118 +263,6 @@ Module DTCrash.
       subst; simpl; eauto.
   Qed.
 
-  Lemma map_fst_map_eq : forall A B (ents : list (A * B)) C (f : B -> C),
-    map fst ents = map fst (map (fun e => (fst e, f (snd e))) ents).
-  Proof.
-    induction ents; simpl; auto; intros.
-    f_equal.
-    apply IHents.
-  Qed.
-
-  Lemma map_snd_map_eq : forall A B (ents : list (A * B)) C (f : B -> C),
-    map snd (map (fun e => (fst e, f (snd e))) ents) = map f (map snd ents).
-  Proof.
-    induction ents; simpl; auto; intros.
-    f_equal.
-    apply IHents.
-  Qed.
-
-  Lemma Forall_combine_same : forall T T1 T2 (l : list T) P (f1 : T -> T1) (f2 : T -> T2),
-    Forall (fun x => P (f1 x, f2 x)) l ->
-    Forall P (combine (map f1 l) (map f2 l)).
-  Proof.
-    induction l; simpl; intros.
-    - constructor.
-    - inversion H; subst.
-      constructor; auto.
-  Qed.
-
-  Lemma tree_dir_names_pred_extract :
-    forall xp tree_ents s d,
-    In (s, d) tree_ents ->
-    exists F,
-    dirlist_pred (tree_pred xp) tree_ents =p=> F * tree_pred xp d.
-  Proof.
-    induction tree_ents; simpl; intros.
-    - exfalso; auto.
-    - destruct a.
-      inversion H; subst.
-      + eexists; cancel.
-      + edestruct IHtree_ents; eauto.
-        eexists.
-        rewrite H1. cancel.
-  Qed.
-
-
-  Lemma flist_crash_remap_tree_crash : forall xp fs fs' t F,
-    (F * tree_pred xp t)%pred (list2nmem fs) ->
-    flist_crash fs fs' ->
-    tree_crash t (remap_tree fs' t).
-  Proof.
-    induction t using dirtree_ind2; simpl; intros.
-    - constructor.
-      destruct_lift H.
-      eapply forall2_selN in H0.
-      erewrite <- list2nmem_sel with (l := fs) in H0.
-      eauto.
-      pred_apply; cancel.
-      eapply list2nmem_inbound; pred_apply; cancel.
-    - constructor; [ apply map_fst_map_eq | ].
-      rewrite map_snd_map_eq.
-      apply forall_forall2.
-      2: repeat rewrite map_length; auto.
-      rewrite map_map.
-      apply Forall_map in H.
-      rewrite Forall_forall in H.
-      apply Forall_combine_same.
-      apply Forall_forall; intros.
-      simpl.
-      destruct x; simpl in *.
-      edestruct tree_dir_names_pred_extract; eauto.
-      specialize (H (s, d) H2); simpl in H.
-      eapply H; eauto.
-      pred_apply.
-      rewrite H3. cancel.
-
-    Grab Existential Variables.
-    apply BFILE.bfile0.
-  Qed.
-
-
-  Lemma flist_crash_remap_tree_pred : forall xp fs fs' t F,
-    (F * tree_pred xp t)%pred (list2nmem fs) ->
-    flist_crash fs fs' ->
-    (F * tree_pred xp (remap_tree fs' t))%pred (list2nmem fs').
-  Proof.
-    induction t using dirtree_ind2; simpl; intros.
-    destruct_lift H.
-    apply sep_star_assoc.
-    apply sep_star_comm.
-    apply lift_impl; intros; auto.
-    unfold flist_crash in H0.
-    unfold file_crash in H0.
-  Admitted.
-
-
-  Local Hint Extern 0 (okToUnify (tree_pred _ _) (tree_pred _ _)) => constructor : okToUnify.
-
-  Lemma xform_tree_rep : forall xp F t ilist frees,
-    crash_xform (rep xp F t ilist frees) =p=> exists t',
-      [[ tree_crash t t' ]] * rep xp F t' ilist frees.
-  Proof.
-    unfold rep; intros.
-    xform_norm.
-    rewrite xform_rep.
-    rewrite IAlloc.xform_rep.
-    cancel.
-    eapply flist_crash_remap_tree_crash; eauto.
-    pred_apply; cancel.
-    eapply pimpl_trans. eauto.
-    2: eapply flist_crash_remap_tree_pred; eauto.
-    cancel.
-    pred_apply; cancel.
-  Qed.
-
   Theorem file_crash_exists : forall file, exists file',
     file_crash file file'.
   Proof.
@@ -260,45 +293,146 @@ Module DTCrash.
     constructor; auto.
   Qed.
 
+  Theorem tree_crash_update_subtree' :
+    forall pn tree subtree tree' subtree',
+    tree_crash tree tree' ->
+    tree_crash subtree subtree' ->
+    tree_crash (update_subtree pn subtree tree) (update_subtree pn subtree' tree').
+  Proof.
+    induction pn; simpl; intros; eauto.
+    destruct tree; simpl in *.
+    - inversion H; subst. constructor; eauto.
+    - inversion H; subst. constructor; eauto.
+      + generalize dependent st'.
+        induction l; simpl; intros; destruct st'; simpl in *; try congruence.
+        inversion H; subst.
+        inversion H6; subst.
+        inversion H7; subst.
+        f_equal.
+        destruct a0; destruct p; simpl in *. rewrite H2 in *; clear H2.
+        destruct (string_dec s0 a); subst; simpl in *; auto.
+        apply IHl; try eassumption. constructor; eauto.
+      + generalize dependent st'.
+        induction l; simpl; intros; destruct st'; simpl in *; try congruence.
+        inversion H; subst.
+        inversion H6; subst.
+        inversion H7; subst.
+        constructor.
+        destruct a0; destruct p; simpl in *. rewrite H2 in *; clear H2.
+        destruct (string_dec s0 a); subst; simpl in *; auto.
+        eapply IHl; try eassumption. constructor; eauto.
+  Qed.
+
+  Theorem tree_crash_tree_names_distinct : forall t t',
+    tree_crash t t' ->
+    tree_names_distinct t ->
+    tree_names_distinct t'.
+  Proof.
+    induction t using dirtree_ind2; simpl in *; intros.
+    inversion H; constructor.
+    inversion H0; subst.
+    inversion H1; subst.
+    constructor; try congruence.
+    eapply forall_forall2_l in H; try ( eapply forall2_length; eauto ).
+    eapply forall_forall2_l in H5; try ( eapply forall2_length; eauto ).
+    eapply forall2_forall_r; try ( eapply forall2_length; eauto ).
+    eapply forall2_impl. apply H.
+    eapply forall2_impl. apply H5.
+    eapply forall2_impl. apply H6.
+    apply forall2_lift; try ( eapply forall2_length; eauto ).
+    intros; eauto.
+  Qed.
+
+  Theorem tree_crash_tree_inodes_permutation : forall t t',
+    tree_crash t t' ->
+    permutation addr_eq_dec (tree_inodes t) (tree_inodes t').
+  Proof.
+    induction t using dirtree_ind2; simpl; intros.
+    - inversion H; subst. constructor.
+    - inversion H0; subst.
+      generalize dependent st'.
+      induction tree_ents; intros; destruct st'; simpl in *; try congruence.
+      destruct a. destruct p.
+      inversion H5; subst.
+      inversion H; subst.
+      repeat rewrite cons_app with (l := app _ _).
+      eapply permutation_trans. apply permutation_app_comm. rewrite <- app_assoc.
+      eapply permutation_trans. 2: apply permutation_app_comm. rewrite <- app_assoc.
+      eapply permutation_app_split. eauto.
+      eapply permutation_trans. apply permutation_app_comm.
+      eapply permutation_trans. 2: apply permutation_app_comm.
+      eapply IHtree_ents; eauto.
+      constructor; eauto.
+      inversion H0; subst. inversion H10; subst. eauto.
+      inversion H0; subst. inversion H10; subst. eauto.
+  Qed.
+
+  Theorem tree_crash_tree_inodes_distinct : forall t t',
+    tree_crash t t' ->
+    tree_inodes_distinct t ->
+    tree_inodes_distinct t'.
+  Proof.
+    unfold tree_inodes_distinct; intros.
+    eapply NoDup_incl_count; eauto.
+    eapply permutation_incl_count.
+    apply permutation_comm.
+    eapply tree_crash_tree_inodes_permutation; eauto.
+  Qed.
+
   Theorem tree_crash_update_subtree :
-    forall tree subtree filename updated_tree_crashed,
-    tree_crash (update_subtree [filename] subtree tree) updated_tree_crashed ->
+    forall pn tree subtree updated_tree_crashed,
+    tree_names_distinct tree ->
+    tree_crash (update_subtree pn subtree tree) updated_tree_crashed ->
     exists tree_crashed subtree_crashed,
     tree_crash tree tree_crashed /\
     tree_crash subtree subtree_crashed /\
-    updated_tree_crashed = update_subtree [filename] subtree_crashed tree_crashed.
+    updated_tree_crashed = update_subtree pn subtree_crashed tree_crashed.
   Proof.
-  Admitted.
+    induction pn; simpl; intros.
+    {
+      edestruct (tree_crash_exists tree). do 2 eexists; intuition eauto.
+    }
+    destruct tree; simpl in *.
+    {
+      inversion H0; subst.
+      edestruct (tree_crash_exists subtree). do 2 eexists; intuition eauto.
+    }
+    inversion H0; clear H0; subst.
+    generalize dependent st'.
+    induction l; simpl; intros; destruct st'; simpl in *; try congruence.
+    {
+      edestruct (tree_crash_exists subtree). do 2 eexists; intuition eauto.
+      constructor; eauto. auto.
+    }
+    destruct a0; destruct p; simpl in *.
+    inversion H3; clear H3; subst.
+    inversion H5; clear H5; subst.
+    destruct (string_dec s a); subst; simpl in *.
+    {
+      clear IHl.
+      edestruct IHpn. 2: eauto. eauto. deex.
+      exists (TreeDir n ((a, x) :: st')). simpl. destruct (string_dec a a); try congruence. eexists.
+      inversion H. inversion H8. subst.
+      rewrite update_subtree_notfound with (l := l) in *; eauto.
+      intuition eauto.
+      constructor; simpl. f_equal; eauto. eauto.
 
-  Theorem file_crash_trans : forall f1 f2 f3,
-    file_crash f1 f2 ->
-    file_crash f2 f3 ->
-    file_crash f1 f3.
-  Proof.
-    unfold file_crash; intros; repeat deex; simpl in *.
-    apply possible_crash_list_synced_list_eq in H1; subst.
-    eauto.
-  Qed.
-
-  Theorem tree_crash_trans : forall t1 t2 t3,
-    tree_crash t1 t2 ->
-    tree_crash t2 t3 ->
-    tree_crash t1 t3.
-  Proof.
-    induction t1 using dirtree_ind2; simpl; intros.
-    inversion H; subst. inversion H0; subst. constructor. eapply file_crash_trans; eauto.
-    inversion H0; subst. inversion H1; subst. constructor. congruence.
-    generalize dependent st'. generalize dependent st'0.
-    induction tree_ents; simpl; intros.
-    - destruct st'; simpl in *; try congruence.
-    - destruct st'; destruct st'0; simpl in *; try congruence.
-      inversion H6. inversion H8. inversion H. inversion H4. inversion H5. subst; simpl in *.
-      constructor; eauto.
-      eapply IHtree_ents. eauto.
-      all: try match goal with | [ |- Forall2 _ _ _ ] => eauto end.
-      all: eauto.
-      constructor; eauto.
-      constructor; eauto.
+      rewrite update_subtree_notfound; eauto.
+      eapply tree_crash_tree_names_distinct in H.
+      2: eapply TCDir with (st' := (a, x) :: st').
+      inversion H. inversion H10; eauto.
+      simpl. f_equal. eauto.
+      constructor. eauto. eauto.
+    }
+    {
+      clear IHpn.
+      edestruct IHl; clear IHl; eauto. deex.
+      destruct x; simpl in *; try congruence.
+      exists (TreeDir n ((s, d0) :: l0)). eexists.
+      inversion H1; subst.
+      intuition eauto. constructor; simpl. f_equal. auto. constructor; eauto.
+      simpl. destruct (string_dec s a); try congruence.
+    }
   Qed.
 
 End DTCrash.

@@ -764,5 +764,15 @@ Module SDIR.
     eexists; intuition; eauto.
   Qed.
 
+  Theorem crash_rep : forall f f' m,
+    BFILE.file_crash f f' ->
+    rep f m ->
+    rep f' m.
+  Proof.
+    unfold rep; intros.
+    repeat deex.
+    eexists; intuition eauto.
+    eapply DIR.crash_rep; eauto.
+  Qed.
 
 End SDIR.

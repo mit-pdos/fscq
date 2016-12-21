@@ -13,7 +13,8 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      FSLayout AsyncRecArray DiskLogHash \
 	      LogReplay MemLog ListPred GenSepN \
 	      NEList DiskSet GroupLog Log LogRecArray \
-	      Balloc BlockPtr GenSepAuto Inode BFile MemMatch FileRecArray \
+	      Balloc BlockPtr GenSepAuto Inode BFile BFileCrash \
+	      MemMatch FileRecArray \
 	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv AByteFile \
 	      ADestructPair DestructVarname ExtrHaskellPrelude \
