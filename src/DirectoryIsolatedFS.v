@@ -5,7 +5,6 @@ Require Import Protocols.
 Require Import ConcurrentFS.
 Require Import Rec.
 Require Import DirTree.
-Require Import DirTreeTheorem.
 Require Import String.
 Require Import Errno.
 
@@ -722,7 +721,7 @@ Proof.
     pred_apply; cancel.
 
     unfold dirtree_alter_file.
-    erewrite alter_inum_to_alter_path by eauto.
+    erewrite DIRTREE.alter_inum_to_alter_path by eauto.
     erewrite dirtree_alter_to_update by eauto.
     destruct f; simpl.
     cancel.
@@ -732,7 +731,7 @@ Proof.
            end.
 
     unfold dirtree_alter_file.
-    erewrite alter_inum_to_alter_path by eauto.
+    erewrite DIRTREE.alter_inum_to_alter_path by eauto.
     erewrite dirtree_alter_to_update by eauto.
     destruct f; auto.
 
@@ -745,7 +744,7 @@ Proof.
            end.
     replace (get vPathOwner s_i).
     unfold dirtree_alter_file.
-    erewrite alter_inum_to_alter_path by eauto.
+    erewrite DIRTREE.alter_inum_to_alter_path by eauto.
     erewrite dirtree_alter_to_update by eauto.
     destruct f.
 
@@ -765,7 +764,7 @@ Proof.
            end.
     replace (get vPathOwner s_i).
     unfold dirtree_alter_file.
-    erewrite alter_inum_to_alter_path by eauto.
+    erewrite DIRTREE.alter_inum_to_alter_path by eauto.
     erewrite dirtree_alter_to_update by eauto.
     destruct f.
     eapply allowed_subtree_update_file; eauto.
