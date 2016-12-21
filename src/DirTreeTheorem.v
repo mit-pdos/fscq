@@ -78,14 +78,13 @@ Proof.
     destruct subtree; simpl; destruct (addr_eq_dec n n); congruence.
   - destruct tree; simpl in *; try congruence.
     destruct (addr_eq_dec (dirtree_inum subtree) n); subst.
-    + (* new case: modifying a directory *)
-      exfalso.
+    + exfalso.
+      inversion H0; subst.
       induction l; simpl in *; try congruence.
-      destruct a0; simpl in *.
-      specialize (IHl ltac:(eauto) ltac:(eauto)).
+      destruct a0.
       unfold find_subtree_helper in H1 at 1.
       destruct (string_dec s a); subst; eauto.
-      admit.
+      apply IHl; eauto.
     + f_equal.
       induction l; simpl in *; try congruence.
       destruct a0; subst; eauto; simpl in *.
@@ -103,7 +102,7 @@ Proof.
         rewrite alter_inum_inode_absent; auto.
         eapply tree_inodes_distinct_not_this_subtree
         with (pathname := a :: pathname); simpl; eauto.
-Admitted.
+Qed.
 
 Theorem alter_inum_to_alter_path : forall pathname inum tree subtree,
     tree_names_distinct tree ->
