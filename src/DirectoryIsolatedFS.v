@@ -66,14 +66,36 @@ Theorem allowed_subtree_update : forall acl path tid tree subtree,
 Proof.
   unfold allowed, owner_gt; intros.
   destruct (DIRTREE.pathname_decide_prefix path path0); repeat deex.
-  - contradiction H1.
-    apply H.
+  - specialize (H suffix); congruence.
   - destruct (DIRTREE.pathname_decide_prefix path0 path); repeat deex.
-    * contradiction H1.
+    * specialize (H nil).
+      rewrite List.app_nil_r in *.
+      contradiction H1.
       pose proof (path_owners_closed acl path0 suffix).
-      specialize (H nil).
       etransitivity; eauto.
-      rewrite List.app_nil_r; eauto.
+    * apply DIRTREE.find_subtree_update_subtree_ne_path;
+        eauto using DIRTREE.pathname_prefix_neq.
+Qed.
+
+Theorem allowed_subtree_update_file : forall acl path tid tree inum attr data attr' data',
+    owner_le (Owned tid) (path_owner acl path) ->
+    DIRTREE.tree_names_distinct tree ->
+    DIRTREE.find_subtree path tree =
+    Some (DIRTREE.TreeFile inum (BFILE.mk_bfile attr data)) ->
+    allowed acl tid tree
+            (DIRTREE.update_subtree path
+                                    (DIRTREE.TreeFile inum (BFILE.mk_bfile attr' data')) tree).
+Proof.
+  unfold allowed, owner_gt; intros.
+  destruct (DIRTREE.pathname_decide_prefix path path0); repeat deex.
+  - destruct suffix.
+    rewrite List.app_nil_r in *; congruence.
+    erewrite ?DIRTREE.find_subtree_app by eauto; simpl.
+    auto.
+  - destruct (DIRTREE.pathname_decide_prefix path0 path); repeat deex.
+    * pose proof (path_owners_closed acl path0 suffix).
+      contradiction H2.
+      etransitivity; eauto.
     * apply DIRTREE.find_subtree_update_subtree_ne_path;
         eauto using DIRTREE.pathname_prefix_neq.
 Qed.
@@ -614,6 +636,27 @@ Proof.
   inversion IHl; eauto.
 Qed.
 
+Lemma dirtree_rep_tree_names_distinct : forall fsxp F tree ilist frees m,
+    DIRTREE.rep fsxp F tree ilist frees m ->
+    DIRTREE.tree_names_distinct tree.
+Proof.
+  intros.
+  eapply DIRTREE.rep_tree_names_distinct.
+  pred_apply' H; cancel.
+Qed.
+
+Lemma dirtree_rep_tree_inodes_distinct : forall fsxp F tree ilist frees m,
+    DIRTREE.rep fsxp F tree ilist frees m ->
+    DIRTREE.tree_inodes_distinct tree.
+Proof.
+  intros.
+  eapply DIRTREE.rep_tree_inodes_distinct.
+  pred_apply' H; cancel.
+Qed.
+
+Hint Resolve dirtree_rep_tree_names_distinct
+     dirtree_rep_tree_inodes_distinct.
+
 Theorem file_set_attr1_ok : forall inum attr,
       SPEC App.delta, tid |-
               {{ pathname f,
@@ -632,7 +675,6 @@ Theorem file_set_attr1_ok : forall inum attr,
                       let f' := BFILE.mk_bfile (BFILE.BFData f) attr in
                       tree' = DIRTREE.update_subtree
                                 pathname (DIRTREE.TreeFile inum f') (get vDirTree s)) /\
-
                      (r = false -> tree' = get vDirTree s)
                    | None => True
                    end /\
@@ -690,40 +732,20 @@ Proof.
     pred_apply; cancel.
     pred_apply; cancel.
 
-    instantiate (1 := frees).
-    instantiate (1 := x2).
-    admit. (* rewrite alter_inum to update_subtree *)
+    unfold dirtree_alter_file.
+    erewrite alter_inum_to_alter_path' by eauto.
+    erewrite dirtree_alter_to_update by eauto.
+    destruct f; simpl.
+    cancel.
 
     repeat match goal with
            | [ H: get _ _ = get _ _ |- _ ] => rewrite H
            end.
 
     unfold dirtree_alter_file.
-
-    erewrite alter_inum_to_alter_path'; eauto.
-    erewrite dirtree_alter_to_update; eauto; simpl.
+    erewrite alter_inum_to_alter_path' by eauto.
+    erewrite dirtree_alter_to_update by eauto.
     destruct f; auto.
-
-    eapply DIRTREE.rep_tree_names_distinct; eauto.
-    match goal with
-    | [ H: DIRTREE.rep _ _ ?t _ _ ?m
-        |- (_ * DIRTREE.rep _ _ ?t _ _)%pred _ ] =>
-      pred_apply' H; cancel
-    end.
-
-    eapply DIRTREE.rep_tree_names_distinct; eauto.
-    match goal with
-    | [ H: DIRTREE.rep _ _ ?t _ _ ?m
-        |- (_ * DIRTREE.rep _ _ ?t _ _)%pred _ ] =>
-      pred_apply' H; cancel
-    end.
-
-    eapply DIRTREE.rep_tree_inodes_distinct; eauto.
-    match goal with
-    | [ H: DIRTREE.rep _ _ ?t _ _ ?m
-        |- (_ * DIRTREE.rep _ _ ?t _ _)%pred _ ] =>
-      pred_apply' H; cancel
-    end.
 
     eapply cacheR_preorder; eauto.
     eapply cacheR_preorder; eauto.
@@ -733,9 +755,15 @@ Proof.
            | [ H: get _ _ = get _ _ |- _ ] => rewrite H
            end.
     replace (get vPathOwner s_i).
-    admit. (* the critical property: changing this inum is allowed, first
-    because it's a pathname change, second because we assumed that this thread
-    owns this path *)
+    unfold dirtree_alter_file.
+    erewrite alter_inum_to_alter_path' by eauto.
+    erewrite dirtree_alter_to_update by eauto.
+    destruct f.
+
+    eapply allowed_subtree_update_file; eauto.
+    simpl in *.
+    replace (path_owner (get vPathOwner s) pathname).
+    reflexivity.
 
     eapply cacheR_preorder; eauto.
     eapply cacheR_preorder; eauto.
@@ -747,8 +775,14 @@ Proof.
            | [ H: get _ _ = get _ _ |- _ ] => rewrite H
            end.
     replace (get vPathOwner s_i).
-    admit. (* same allowed property as above (for s_i) *)
-
+    unfold dirtree_alter_file.
+    erewrite alter_inum_to_alter_path' by eauto.
+    erewrite dirtree_alter_to_update by eauto.
+    destruct f.
+    eapply allowed_subtree_update_file; eauto.
+    simpl in *.
+    replace (path_owner (get vPathOwner s) pathname).
+    reflexivity.
   - step.
     step.
 
@@ -785,7 +819,7 @@ Proof.
     replace (get vDirTree s).
     replace (get vDirTree s0).
     reflexivity.
-Admitted.
+Qed.
 
 Definition file_truncate inum sz :=
   wrap_syscall_loop (fun fsxp mscs =>
