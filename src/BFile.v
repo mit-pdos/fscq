@@ -230,7 +230,7 @@ Module BFILE.
     unfold BALLOC.rep in H; destruct_lift H.
     unfold BALLOC.Alloc.rep in H; destruct_lift H.
     destruct flag; simpl in *.
-    - rewrite listpred_pick in H15 by eauto.
+    - destruct H15 as [H15 _]. rewrite listpred_pick in H15 by eauto.
       rewrite H15 in H.
       destruct_lift H.
       rewrite locked_eq in H3.
@@ -239,7 +239,7 @@ Module BFILE.
       pred_apply.
       destruct ((BFData files ⟦ inum ⟧) ⟦ off ⟧).
       cancel.
-    - rewrite listpred_pick in H17 by eauto.
+    - destruct H17 as [H17 _]. rewrite listpred_pick in H17 by eauto.
       rewrite H17 in H.
       destruct_lift H.
       rewrite locked_eq in H3.
