@@ -430,14 +430,18 @@ Module BFILE.
       denote listpred as Hx.
       assert (Hy := Hx).
       rewrite listpred_nodup_piff in Hy; [ | apply addr_eq_dec | apply ptsto_conflict ].
-      rewrite listpred_remove in Hy; [ | apply ptsto_conflict | eauto ].
+      assert (Hnodup := H). rewrite Hy in Hnodup; destruct_lift Hnodup.
+
+      rewrite listpred_remove_piff in Hy; [ | apply ptsto_conflict | eauto | eauto ].
       rewrite Hy in H.
       destruct_lift H.
       eapply pimpl_trans; [ apply pimpl_refl | | eapply list2nmem_updN; pred_apply; cancel ].
       unfold BALLOC.rep at 2. unfold BALLOC.Alloc.rep.
-      cancel; eauto.
-      eapply pimpl_trans; [ | eapply listpred_remove'; eauto; apply ptsto_conflict ].
-      cancel.
+
+      norm; unfold stars; simpl.
+      2: intuition eauto.
+      cancel. rewrite Hy. cancel.
+
     - unfold BALLOC.rep at 2 in H.
       unfold BALLOC.Alloc.rep in H.
       destruct_lift H.
@@ -445,14 +449,17 @@ Module BFILE.
       denote listpred as Hx.
       assert (Hy := Hx).
       rewrite listpred_nodup_piff in Hy; [ | apply addr_eq_dec | apply ptsto_conflict ].
-      rewrite listpred_remove in Hy; [ | apply ptsto_conflict | eauto ].
+      assert (Hnodup := H). rewrite Hy in Hnodup; destruct_lift Hnodup.
+
+      rewrite listpred_remove_piff in Hy; [ | apply ptsto_conflict | eauto | eauto ].
       rewrite Hy in H.
       destruct_lift H.
       eapply pimpl_trans; [ apply pimpl_refl | | eapply list2nmem_updN; pred_apply; cancel ].
       unfold BALLOC.rep at 3. unfold BALLOC.Alloc.rep.
-      cancel; eauto.
-      eapply pimpl_trans; [ | eapply listpred_remove'; eauto; apply ptsto_conflict ].
-      cancel.
+
+      norm; unfold stars; simpl.
+      2: intuition eauto.
+      cancel. rewrite Hy. cancel.
 
     Unshelve.
     all: apply addr_eq_dec.

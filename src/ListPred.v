@@ -242,6 +242,18 @@ Section LISTPRED.
       rewrite <- IHl. cancel. inversion H0. eauto. eauto.
   Qed.
 
+  Theorem listpred_remove_piff :
+    forall (dec : forall x y : T, {x = y} + {x <> y}) x l,
+    (forall (y : T) m', ~ (prd y * prd y)%pred m') ->
+    NoDup l ->
+    In x l ->
+    listpred l <=p=> prd x * listpred (remove dec x l).
+  Proof.
+    split.
+    eapply listpred_remove; eauto.
+    eapply listpred_remove'; eauto.
+  Qed.
+
   (**
    * For certain kinds of "complete" predicates, if two memories match
    * [listpred] over the same list, then the memories are equal.
