@@ -565,3 +565,25 @@ Proof.
 Qed.
 
 Hint Extern 1 {{ AcquireLock _ _ _; _ }} => apply AcquireLock_ok : prog.
+
+Theorem ret_ok : forall Sigma (delta: Protocol Sigma) T (v: T),
+    SPEC delta, tid |-
+             {{ (_:unit),
+              | PRE d hm m s_i s: True
+              | POST d' hm' m' s_i' s' r:
+                  r = v /\
+                  d' = d /\
+                  hm' = hm /\
+                  m' = m /\
+                  s_i' = s_i /\
+                  s' = s
+             }} Ret v.
+Proof.
+  intros.
+  CoopConcurMonad.monad_simpl.
+  eapply valid_unfold; intros.
+  deex.
+  eapply H1 in H0; intuition eauto.
+Qed.
+
+Hint Extern 1 {{ Ret _; _ }} => apply ret_ok : prog.

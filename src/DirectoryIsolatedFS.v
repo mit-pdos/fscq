@@ -545,10 +545,7 @@ Definition file_set_attr1 inum attr :=
     end.
 
 Definition file_set_attr inum attr :=
-  wrap_syscall_loop (fun fsxp mscs =>
-                       CFS.file_set_attr fsxp inum attr mscs)
-                    (* TODO: functional updates on directory trees *)
-                    (fun tree => tree).
+  fuel_retry (file_set_attr1 inum attr).
 
 Ltac member_index_ne := match goal with
                         | |- member_index ?v1 <> member_index ?v2 =>
@@ -808,6 +805,53 @@ Proof.
     replace (get vDirTree s0).
     reflexivity.
 Qed.
+
+Hint Extern 1 {{file_set_attr1 _ _; _}} => apply file_set_attr1_ok : prog.
+
+Theorem file_set_attr_ok : forall inum attr n,
+      SPEC App.delta, tid |-
+              {{ pathname f,
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) /\
+                   path_owner (get vPathOwner s) pathname = Owned tid /\
+                   guar App.delta tid s_i s
+               | POST d'' hm'' m'' s_i' s'' r:
+                   invariant App.delta d'' hm'' m'' s'' /\
+                   (exists d' hm' m' s',
+                     rely App.delta tid s s' /\
+                     invariant App.delta d' hm' m' s' /\
+                     guar App.delta tid s' s'' /\
+                     match r with
+                     | Some r =>
+                       (r = true ->
+                        let f' := BFILE.mk_bfile (BFILE.BFData f) attr in
+                        get vDirTree s'' =
+                        DIRTREE.update_subtree
+                          pathname (DIRTREE.TreeFile inum f') (get vDirTree s')) /\
+                       (r = false -> get vDirTree s'' = get vDirTree s')
+                     | None => True
+                     end) /\
+                   hashmap_le hm hm'' /\
+                   guar App.delta tid s_i' s''
+              }} file_set_attr inum attr n.
+Proof.
+  unfold file_set_attr.
+  induction n; simpl; intros.
+  - eapply pimpl_ok; [ apply ret_ok | ]; intros; repeat deex.
+    exists tt; intuition eauto.
+    eapply pimpl_ok; [ apply H0 | ]; intros; intuition subst; eauto.
+
+    descend; intuition eauto.
+    constructor.
+    reflexivity.
+  - step.
+    descend; intuition eauto.
+    step.
+    step.
+    descend; intuition eauto.
+Abort.
 
 Definition file_truncate inum sz :=
   wrap_syscall_loop (fun fsxp mscs =>
