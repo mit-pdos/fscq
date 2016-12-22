@@ -2121,6 +2121,11 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     rewrite H2.
     remember (Datatypes.length (BFILE.BFData x0)) as len; clear Heqlen.
     remember (ts !!) as y. rewrite Heqy at 1.
+
+    assert (tree_names_distinct (TStree y)) as Hydistinct.
+    rewrite Heqy.
+    distinct_names'.
+
     assert (treeseq_one_safe ts !! y mscs').
     subst; eapply treeseq_one_safe_refl.
     clear Heqy. clear H2.
@@ -2135,8 +2140,14 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     erewrite find_update_subtree; eauto.
 
     repeat deex.
-    eapply treeseq_one_safe_dsupd_2; eauto.
 
+    unfold treeseq_one_upd.
+    rewrite H; simpl.
+    eapply tree_names_distinct_update_subtree; eauto.
+    constructor.
+ 
+    repeat deex.
+    eapply treeseq_one_safe_dsupd_2; eauto.
     distinct_names'.
   Qed.
 
