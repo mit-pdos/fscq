@@ -2273,6 +2273,152 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     destruct t; auto.
   Qed.
 
+  Lemma treeseq_safe_fwd_ne: forall pathname pathname' n ts inum f,
+    pathname <> pathname' ->
+    tree_names_distinct (TStree ts !!) ->
+    tree_names_distinct (TStree (nthd n ts)) -> 
+    find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
+    treeseq_safe_fwd pathname ts !! (nthd n ts) ->
+    treeseq_safe_fwd pathname' ts !! (nthd n ts) ->
+    treeseq_safe_fwd pathname'
+      {|
+      TStree := match find_subtree pathname (TStree ts !!) with
+                | Some (TreeFile inum0 f0) =>
+                    update_subtree pathname
+                      (TreeFile inum0 (BFILE.synced_file f0)) (TStree ts !!)
+                | Some (TreeDir _ _) => TStree ts !!
+                | None => TStree ts !!
+                end;
+      TSilist := TSilist ts !!;
+      TSfree := TSfree ts !! |}
+      {|
+      TStree := match find_subtree pathname (TStree (nthd n ts)) with
+                | Some (TreeFile inum0 f0) =>
+                    update_subtree pathname
+                      (TreeFile inum0 (BFILE.synced_file f0))
+                      (TStree (nthd n ts))
+                | Some (TreeDir _ _) => TStree (nthd n ts)
+                | None => TStree (nthd n ts)
+                end;
+      TSilist := TSilist (nthd n ts);
+      TSfree := TSfree (nthd n ts) |}.
+  Proof.
+      unfold treeseq_safe_fwd in *; simpl in *; eauto. 
+      intros.
+      case_eq (find_subtree pathname (TStree ts!!)); intros.
+      destruct d.
+      specialize (H4 inum0 off bn).
+      edestruct H4.
+      case_eq (find_subtree pathname (TStree (nthd n ts))); intros.        
+      destruct d.
+      rewrite H7 in H5.
+      erewrite find_subtree_update_subtree_ne_path in H5; eauto.
+      deex. eapply find_subtree_update_subtree_file_not_pathname_prefix_1; eauto.
+      deex. eapply find_subtree_update_subtree_file_not_pathname_prefix_2; eauto.
+      rewrite H7 in H5.
+      deex; eauto.
+      rewrite H7 in H5.
+      deex; eauto.
+      intuition.
+      erewrite find_subtree_update_subtree_ne_path; eauto.
+      deex. eapply find_subtree_file_not_pathname_prefix with (pn1 := pathname) (pn2 := pathname'); eauto.
+      deex. eapply find_subtree_file_not_pathname_prefix with (pn1 := pathname') (pn2 := pathname) in H8; eauto.
+      rewrite H2 in H6.
+      exfalso.
+      inversion H6.
+      rewrite H2 in H6.
+      exfalso.
+      inversion H6.
+  Qed.
+
+  Lemma treeseq_safe_bwd_ne: forall pathname pathname' ts n inum f mscs,
+    pathname <> pathname' ->
+    tree_names_distinct (TStree ts !!) ->
+    tree_names_distinct (TStree (nthd n ts)) -> 
+    find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
+    treeseq_safe_bwd pathname (MSAlloc mscs) ts !! (nthd n ts) ->
+    treeseq_safe_bwd pathname' (MSAlloc mscs) ts !! (nthd n ts) ->
+    treeseq_safe_bwd pathname' (MSAlloc mscs)
+      {|
+      TStree := match find_subtree pathname (TStree ts !!) with
+                | Some (TreeFile inum0 f0) =>
+                    update_subtree pathname
+                      (TreeFile inum0 (BFILE.synced_file f0)) (TStree ts !!)
+                | Some (TreeDir _ _) => TStree ts !!
+                | None => TStree ts !!
+                end;
+      TSilist := TSilist ts !!;
+      TSfree := TSfree ts !! |}
+      {|
+      TStree := match find_subtree pathname (TStree (nthd n ts)) with
+                | Some (TreeFile inum0 f0) =>
+                    update_subtree pathname
+                      (TreeFile inum0 (BFILE.synced_file f0))
+                      (TStree (nthd n ts))
+                | Some (TreeDir _ _) => TStree (nthd n ts)
+                | None => TStree (nthd n ts)
+                end;
+      TSilist := TSilist (nthd n ts);
+      TSfree := TSfree (nthd n ts) |}.
+  Proof.
+        unfold treeseq_safe_bwd in *; simpl in *; eauto.
+        intros.
+        case_eq (find_subtree pathname (TStree (nthd n ts))); intros.        
+        destruct d.
+        erewrite find_subtree_update_subtree_ne_path; eauto.
+        specialize (H4 inum0 off bn).
+        edestruct H4.      
+        case_eq (find_subtree pathname (TStree ts!!)); intros.
+        destruct d.
+        rewrite H7 in H5.
+        deex; eauto.
+        erewrite find_subtree_update_subtree_ne_path in H8; eauto.
+        eapply find_subtree_update_subtree_file_not_pathname_prefix_1; eauto.
+        eapply find_subtree_update_subtree_file_not_pathname_prefix_2; eauto.
+        rewrite H2 in H7.
+        exfalso.
+        inversion H7.
+        rewrite H2 in H7.
+        exfalso.
+        inversion H7.
+        deex.
+        left.
+        exists f0; eauto.
+        right; eauto.
+        rewrite H2 in H5.
+        deex. eapply find_subtree_update_subtree_file_not_pathname_prefix_1; eauto.
+        rewrite H2 in H5.
+        deex. eapply find_subtree_update_subtree_file_not_pathname_prefix_2; eauto.
+        (* directory *)
+        case_eq (find_subtree pathname (TStree ts!!)); intros.
+        destruct d.
+        rewrite H7 in H5.
+        deex.
+        erewrite find_subtree_update_subtree_ne_path in H8; eauto.
+        eapply find_subtree_update_subtree_file_not_pathname_prefix_1; eauto.
+        eapply find_subtree_update_subtree_file_not_pathname_prefix_2; eauto.
+        rewrite H2 in H7.
+        exfalso.
+        inversion H7.
+        rewrite H2 in H7.
+        exfalso.
+        inversion H7.
+        (* None *)
+        case_eq (find_subtree pathname (TStree ts!!)); intros.
+        destruct d.
+        rewrite H7 in H5.
+        deex.
+        erewrite find_subtree_update_subtree_ne_path in H8; eauto.
+        eapply find_subtree_update_subtree_file_not_pathname_prefix_1; eauto.
+        eapply find_subtree_update_subtree_file_not_pathname_prefix_2; eauto.
+        rewrite H2 in H7.
+        exfalso.
+        inversion H7.
+        rewrite H2 in H7.
+        exfalso.
+        inversion H7.
+  Qed.
+
   Lemma treeseq_sync_safe_sync: forall Fm fsxp Ftop mscs Ftree ts ds n pathname pathname' f inum al,
     (Fm ✶ rep fsxp Ftop (update_subtree pathname (TreeFile inum (BFILE.synced_file f)) (TStree ts !!))
            (TSilist ts !!) (fst (TSfree ts !!), snd (TSfree ts !!)))%pred
@@ -2285,6 +2431,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     treeseq_safe pathname (MSAlloc mscs) ts !! (nthd n ts) ->
     tree_names_distinct (TStree ts !!) ->
     tree_inodes_distinct (TStree ts !!) ->
+    tree_rep Fm Ftop fsxp (nthd n ts) (list2nmem (nthd n ds)) ->
     treeseq_safe pathname' (MSAlloc mscs) 
       (treeseq_one_file_sync ts !! pathname)
       (treeseq_one_file_sync (nthd n ts) pathname).
@@ -2302,59 +2449,59 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
         case_eq (find_subtree pathname (TStree (nthd n ts))); intros; simpl.
         destruct d.
         -- (* a file *)
-          rewrite H9 in H11; simpl.
-          erewrite find_update_subtree in H11; eauto.
-          inversion H11.
-          subst n0; subst f0; clear H11.
+          rewrite H10 in H12; simpl.
+          erewrite find_update_subtree in H12; eauto.
+          inversion H12.
+          subst n0; subst f0; clear H12.
           edestruct H2.
           eexists b.
           intuition.
           intuition.
-          rewrite H13.
+          rewrite H14.
           exists (BFILE.synced_file x); eauto.
        -- (* a directory *)
-          rewrite H9 in H11; simpl.
+          rewrite H10 in H12; simpl.
           exfalso.
-          rewrite H9 in H11.
-          inversion H11.
+          rewrite H10 in H12.
+          inversion H12.
        -- (* None *)
-          rewrite H9 in H11; simpl.
+          rewrite H10 in H12; simpl.
           exfalso.
-          rewrite H9 in H11.
-          inversion H11.
+          rewrite H10 in H12.
+          inversion H12.
       + unfold treeseq_safe_bwd in *; intros; simpl in *.
-        destruct H9.
+        destruct H10.
         specialize (H4 inum0 off bn).
         case_eq (find_subtree pathname (TStree ts!!)); intros; simpl.
         destruct d.
         -- (* a file *)
-          rewrite H11 in H9; simpl.
-          erewrite find_update_subtree in H9; eauto.
+          rewrite H12 in H10; simpl.
+          erewrite find_update_subtree in H10; eauto.
           intuition.
-          inversion H12.
+          inversion H13.
           subst n0; subst x.
-          clear H12.
+          clear H13.
           edestruct H4.
           eexists b.
           intuition; eauto.
           deex.
-          rewrite H12.
+          rewrite H13.
           left.
           exists (BFILE.synced_file f0).
           erewrite find_update_subtree; eauto.
           right; eauto.
         -- (* a directory *)
-          rewrite H11 in H9.
+          rewrite H12 in H10.
           intuition.
           exfalso.
-          rewrite H12 in H11.
-          inversion H11.
+          rewrite H13 in H12.
+          inversion H12.
         -- (* None *)
-          rewrite H11 in H9.
+          rewrite H12 in H10.
           intuition.
           exfalso.
-          rewrite H12 in H11.
-          inversion H11.
+          rewrite H13 in H12.
+          inversion H12.
     - (* different pathnames, but pathname' is still safe, if it was safe. *)
       unfold treeseq_safe in *.
       unfold treeseq_pred in H3.
@@ -2362,90 +2509,12 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       2: eapply nthd_in_ds.
       intuition; simpl.
       + 
-        unfold treeseq_safe_fwd in *; simpl in *; eauto.
-        intros.
-        case_eq (find_subtree pathname (TStree ts!!)); intros.
-        destruct d.
-        erewrite find_subtree_update_subtree_ne_path; eauto.
-        specialize (H4 inum0 off bn).
-        edestruct H4.
-        case_eq (find_subtree pathname (TStree (nthd n ts))); intros.        
-        destruct d.
-        rewrite H15 in H10.
-        erewrite find_subtree_update_subtree_ne_path in H10; eauto.
-        admit. (* names distinct *)
-        admit. (* not prefix *)
-        admit.
-        rewrite H15 in H10.
-        deex; eauto.
-        rewrite H15 in H10.
-        deex; eauto.
-        exists x; eauto.
-        admit. (* not prefix *)
-        admit. (* not prefix *)
-        rewrite H0' in H14.
-        exfalso.
-        inversion H14.
-        rewrite H0' in H14.
-        exfalso.
-        inversion H14.
+        eapply treeseq_safe_fwd_ne; eauto.
+        eapply DIRTREE.rep_tree_names_distinct; eapply H7.
       + 
-        unfold treeseq_safe_bwd in *; simpl in *; eauto.
-        intros.
-        case_eq (find_subtree pathname (TStree (nthd n ts))); intros.        
-        destruct d.
-        erewrite find_subtree_update_subtree_ne_path; eauto.
-        specialize (H9 inum0 off bn).
-        edestruct H9.      
-        case_eq (find_subtree pathname (TStree ts!!)); intros.
-        destruct d.
-        rewrite H15 in H10.
-        deex; eauto.
-        erewrite find_subtree_update_subtree_ne_path in H16; eauto.
-        admit. (* not prefix *)
-        admit.
-        rewrite H0' in H15.
-        exfalso.
-        inversion H15.
-        rewrite H0' in H15.
-        exfalso.
-        inversion H15.
-        deex.
-        left.
-        exists f0; eauto.
-        right; eauto.
-        admit. (* names distinct *)
-        admit. (* not prefix *)
-        admit.
-        (* directory *)
-        case_eq (find_subtree pathname (TStree ts!!)); intros.
-        destruct d.
-        rewrite H15 in H10.
-        deex.
-        erewrite find_subtree_update_subtree_ne_path in H16; eauto.
-        admit. (* not prefix *)
-        admit.
-        rewrite H0' in H15.
-        exfalso.
-        inversion H15.
-        rewrite H0' in H15.
-        exfalso.
-        inversion H15.
-        (* None *)
-        case_eq (find_subtree pathname (TStree ts!!)); intros.
-        destruct d.
-        rewrite H15 in H10.
-        deex.
-        erewrite find_subtree_update_subtree_ne_path in H16; eauto.
-        admit. (* not prefix *)
-        admit. (* not prefix *)
-        rewrite H0' in H15.
-        exfalso.
-        inversion H15.
-        rewrite H0' in H15.
-        exfalso.
-        inversion H15.
-  Admitted.
+        eapply treeseq_safe_bwd_ne; eauto.
+        eapply DIRTREE.rep_tree_names_distinct; eapply H7.
+  Qed.
 
   Ltac distinct_inodes' :=
     repeat match goal with
@@ -2500,9 +2569,15 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     apply d_in_d_map in H8; deex; intuition.
     eapply NEforall_d_in in H6 as H6'; try eassumption.
     eapply d_in_nthd in H9 as H9'; deex.
+
     eapply treeseq_sync_safe_sync; eauto.
     distinct_names.
     distinct_inodes.
+
+    unfold treeseq_in_ds in H7.
+    eapply NEforall2_d_in  with (x := (nthd n ts)) in H7 as Hd'; eauto.
+    intuition.
+
     unfold ts_file_sync.
     rewrite d_map_latest.
     unfold treeseq_one_file_sync.
