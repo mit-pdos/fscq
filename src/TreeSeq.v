@@ -2704,12 +2704,10 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     unfold treeseq_one_safe in *.
     simpl in *.
 
+    rewrite H6; simpl.
     erewrite treeseq_latest.
     eapply dirtree_safe_refl.
     constructor.
-
-  Grab Existential Variables.
-    eauto.
   Qed.
 
   Theorem treeseq_rename_ok : forall fsxp dnum srcbase (srcname:string) dstbase dstname mscs,
