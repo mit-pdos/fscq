@@ -1000,7 +1000,17 @@ Module AFS.
         [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
                         ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
     XCRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+      exists ds' tree' al mscs',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+      [[ MSAlloc mscs' = MSAlloc mscs ]] *
+      [[ ds' = dssync_vecs ds al]] *
+      [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
+            BFILE.block_belong_to_file ilist (selN al i 0) inum i ]] *
+      [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist frees)]]] *
+      [[ tree' = update_subtree pathname (TreeFile inum  (BFILE.synced_file f)) tree ]] *
+      [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
+                      ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
    >} file_sync fsxp inum mscs.
   Proof.
     unfold file_sync; intros.
@@ -1016,15 +1026,16 @@ Module AFS.
       rewrite <- crash_xform_idem.
       rewrite LOG.crash_xform_intact_dssync_vecs_idempred.
       rewrite SB.crash_xform_rep; auto.
-
+      xcrash_solve.  xform_norm. or_l. cancel.
     - cancel.
       xcrash_solve.
       rewrite LOG.recover_any_idempred.
       cancel.
-
+      xcrash_solve.  xform_norm. or_l. cancel.
     - xcrash_solve.
       rewrite LOG.intact_idempred.
       cancel.
+      xcrash_solve.  xform_norm. or_l. cancel.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (file_sync _ _ _) _) => apply file_sync_ok : prog.
@@ -1039,7 +1050,11 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (ds!!, nil)) (MSLL mscs') hm' *
       [[ MSAlloc mscs' = negb (MSAlloc mscs) ]]
     XCRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+      exists ds' mscs',
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+      [[ ds' = (ds!!, nil) ]] *
+      [[ MSAlloc mscs' = negb (MSAlloc mscs) ]]
    >} tree_sync fsxp mscs.
   Proof.
     unfold tree_sync; intros.
