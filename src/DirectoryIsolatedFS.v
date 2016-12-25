@@ -661,7 +661,7 @@ Theorem file_set_attr1_ok : forall inum attr,
                       tree' = DIRTREE.update_subtree
                                 pathname (DIRTREE.TreeFile inum f') (get vDirTree s)) /\
                      (r = false -> tree' = get vDirTree s)
-                   | None => True
+                   | None => tree' = get vDirTree s
                    end /\
                    guar App.delta tid s s' /\
                    hashmap_le hm hm' /\
@@ -808,6 +808,34 @@ Qed.
 
 Hint Extern 1 {{file_set_attr1 _ _; _}} => apply file_set_attr1_ok : prog.
 
+Lemma find_subtree_preserved_other_allowed : forall pathname tree tree'
+                                               acl tid tid' subtree,
+    DIRTREE.find_subtree pathname tree = Some subtree ->
+    path_owner acl pathname = Owned tid ->
+    tid <> tid' ->
+    allowed acl tid' tree tree' ->
+    DIRTREE.find_subtree pathname tree' = Some subtree.
+Proof.
+  unfold allowed; intros.
+  rewrite H2; auto.
+  inversion 1; congruence.
+Qed.
+
+Lemma find_subtree_preserved_rely : forall pathname s s'
+                                      tid subtree,
+    DIRTREE.find_subtree pathname (get vDirTree s) = Some subtree ->
+    path_owner (get vPathOwner s) pathname = Owned tid ->
+    rely App.delta tid s s' ->
+    (path_owner (get vPathOwner s') pathname = Owned tid /\
+     DIRTREE.find_subtree pathname (get vDirTree s') = Some subtree).
+Proof.
+  unfold rely, others; intros.
+  induction H1; auto.
+  deex; simpl in *; destruct_ands.
+  apply IHstar; try congruence.
+  eapply find_subtree_preserved_other_allowed; eauto.
+Qed.
+
 Theorem file_set_attr_ok : forall inum attr n,
       SPEC App.delta, tid |-
               {{ pathname f,
@@ -850,7 +878,27 @@ Proof.
     descend; intuition eauto.
     step.
     step.
+    exists d, hm, m, s.
+    intuition eauto.
+    constructor.
+    step.
+    step.
     descend; intuition eauto.
+    eapply find_subtree_preserved_rely with (s:=s0); eauto.
+    simpl in *.
+    replace (get vDirTree s0); eauto.
+    simpl in *; congruence.
+
+    eapply find_subtree_preserved_rely with (s:=s0); eauto.
+    simpl in *.
+    replace (get vDirTree s0); eauto.
+    simpl in *; congruence.
+
+    reflexivity.
+
+    step.
+
+    (* rely goes from s0 to s1, s1 to s' *)
 Abort.
 
 Definition file_truncate inum sz :=
