@@ -86,6 +86,13 @@ Section LogicDefinition.
 
 End LogicDefinition.
 
+Instance rely_preorder Sigma delta tid : PreOrder (@rely Sigma delta tid).
+Proof.
+  constructor; hnf; intros.
+  apply star_refl.
+  eapply star_trans; eauto.
+Qed.
+
 Section CoopConcur.
   Set Default Proof Using "Type".
 

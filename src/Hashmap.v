@@ -373,7 +373,7 @@ Proof.
   constructor.
 Qed.
 
-Theorem hashmap_le_preorder : PreOrder hashmap_le.
+Instance hashmap_le_preorder : PreOrder hashmap_le.
 Proof.
   unfold hashmap_le.
   constructor; hnf; intros; eauto.

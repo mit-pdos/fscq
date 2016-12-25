@@ -836,6 +836,28 @@ Proof.
   eapply find_subtree_preserved_other_allowed; eauto.
 Qed.
 
+Lemma others_guar_const_dirtree : forall tid s s',
+    guar App.delta tid s s' ->
+    get vDirTree s' = get vDirTree s ->
+    others (guar App.delta) tid s s'.
+Proof.
+  unfold others; simpl; intros.
+  exists (S tid); intuition idtac.
+  eapply n_Sn; eauto.
+  rewrite H0.
+  reflexivity.
+Qed.
+
+Lemma rely_guar_const_dirtree : forall tid s s',
+    guar App.delta tid s s' ->
+    get vDirTree s' = get vDirTree s ->
+    rely App.delta tid s s'.
+Proof.
+  unfold rely; intros.
+  econstructor; eauto.
+  apply others_guar_const_dirtree; eauto.
+Qed.
+
 Theorem file_set_attr_ok : forall inum attr n,
       SPEC App.delta, tid |-
               {{ pathname f,
@@ -898,8 +920,16 @@ Proof.
 
     step.
 
-    (* rely goes from s0 to s1, s1 to s' *)
-Abort.
+    exists d', hm', m', s'.
+    intuition eauto.
+    etransitivity; eauto.
+    etransitivity; eauto.
+
+    apply rely_guar_const_dirtree; simpl in *; intuition eauto.
+
+    etransitivity; eauto.
+    etransitivity; eauto.
+Qed.
 
 Definition file_truncate inum sz :=
   wrap_syscall_loop (fun fsxp mscs =>
