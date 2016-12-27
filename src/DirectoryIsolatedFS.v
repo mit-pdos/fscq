@@ -106,6 +106,19 @@ Proof.
   rewrite H0 by auto; eauto.
 Qed.
 
+Lemma find_subtree_preserved_other_allowed : forall pathname tree tree'
+                                               acl tid tid' subtree,
+    DIRTREE.find_subtree pathname tree = Some subtree ->
+    path_owner acl pathname = Owned tid ->
+    tid <> tid' ->
+    allowed acl tid' tree tree' ->
+    DIRTREE.find_subtree pathname tree' = Some subtree.
+Proof.
+  unfold allowed; intros.
+  rewrite H2; auto.
+  inversion 1; congruence.
+Qed.
+
 Module St <: GlobalState.
   Definition Sigma :=
     defState (mem_types ConcurrentCache.Sigma ++
@@ -287,6 +300,53 @@ Module CFS := ConcurFS CacheSubProtocol.
 Import CacheSubProtocol CacheProtocol.
 Import CFS.Bridge.
 
+Lemma find_subtree_preserved_rely : forall pathname s s'
+                                      tid subtree,
+    DIRTREE.find_subtree pathname (get vDirTree s) = Some subtree ->
+    path_owner (get vPathOwner s) pathname = Owned tid ->
+    rely App.delta tid s s' ->
+    (path_owner (get vPathOwner s') pathname = Owned tid /\
+     DIRTREE.find_subtree pathname (get vDirTree s') = Some subtree).
+Proof.
+  unfold rely, others; intros.
+  induction H1; auto.
+  deex; simpl in *; destruct_ands.
+  apply IHstar; try congruence.
+  eapply find_subtree_preserved_other_allowed; eauto.
+Qed.
+
+Lemma others_guar_const_dirtree : forall tid s s',
+    guar App.delta tid s s' ->
+    get vDirTree s' = get vDirTree s ->
+    others (guar App.delta) tid s s'.
+Proof.
+  unfold others; simpl; intros.
+  exists (S tid); intuition idtac.
+  eapply n_Sn; eauto.
+  rewrite H0.
+  reflexivity.
+Qed.
+
+Lemma rely_guar_const_dirtree : forall tid s s',
+    guar App.delta tid s s' ->
+    get vDirTree s' = get vDirTree s ->
+    rely App.delta tid s s'.
+Proof.
+  unfold rely; intros.
+  econstructor; eauto.
+  apply others_guar_const_dirtree; eauto.
+Qed.
+
+Lemma path_owner_rely : forall tid s s',
+    rely App.delta tid s s' ->
+    get vPathOwner s' = get vPathOwner s.
+Proof.
+  unfold rely, others.
+  induction 1; intros; eauto.
+  deex; simpl in *; intuition idtac.
+  congruence.
+Qed.
+
 Definition wrap_syscall T (p: FSLayout.fs_xparams -> BFILE.memstate ->
                               prog App.Sigma
                                    (Exc (BFILE.memstate * (T * unit))))
@@ -386,6 +446,17 @@ Ltac ConcurrentCache.simp_hook ::=
      match goal with
      | [ H: context[get _ (set _ _ _) ] |- _ ] =>
        is_not_learnt H; progress simpl_get_set_hyp H
+     end ||
+     match goal with
+     | [ H: rely App.delta _ _ _ |- _ ] =>
+       learn that (path_owner_rely H)
+     end ||
+     match goal with
+     | [ H: context[abstraction_types St.Sigma] |- _ ] =>
+       is_not_learnt H;
+       simpl in H
+     | [ |- context[abstraction_types St.Sigma] ] =>
+       simpl
      end.
 
 Definition file_get_attr1 inum :=
@@ -394,9 +465,190 @@ Definition file_get_attr1 inum :=
                (fun tree => tree).
 
 Definition file_get_attr inum :=
+  fuel_retry (file_get_attr1 inum).
+
+Definition file_get_sz1 inum :=
+  wrap_syscall (fun fsxp mscs =>
+                  CFS.file_get_sz fsxp inum mscs)
+               (fun tree => tree).
+
+Definition file_get_sz inum :=
+  fuel_retry (file_get_sz1 inum).
+
+Definition read_fblock1 inum off :=
+  wrap_syscall (fun fsxp mscs =>
+                  CFS.read_fblock fsxp inum off mscs)
+               (fun tree => tree).
+
+Definition read_fblock inum off :=
+  fuel_retry (read_fblock1 inum off).
+
+Definition lookup1 dnum fnlist :=
+  wrap_syscall (fun fsxp mscs =>
+                  CFS.lookup fsxp dnum fnlist mscs)
+               (fun tree => tree).
+
+Definition lookup dnum fnlist :=
+  fuel_retry (lookup1 dnum fnlist).
+
+Definition lookup_root fnlist :=
   wrap_syscall_loop (fun fsxp mscs =>
-                       CFS.file_get_attr fsxp inum mscs)
+                       CFS.lookup fsxp (FSLayout.FSXPRootInum fsxp) fnlist mscs)
                     (fun tree => tree).
+
+Theorem read_fblock1_ok : forall inum off,
+      SPEC App.delta, tid |-
+              {{ pathname f Fd vs,
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) /\
+                   (Fd * off |-> vs)%pred (list2nmem (BFILE.BFData f)) /\
+                   guar App.delta tid s_i s
+               | POST d' hm' m' s_i' s' r:
+                   let tree' := get vDirTree s' in
+                   invariant App.delta d' hm' m' s' /\
+                   tree' = get vDirTree s /\
+                   match r with
+                   | Some r => r = fst vs /\
+                              BFILE.MSAlloc (get mMscs m') = BFILE.MSAlloc (get mMscs m)
+                   | None => True
+                   end /\
+                   guar App.delta tid s s' /\
+                   hashmap_le hm hm' /\
+                   guar App.delta tid s_i' s'
+              }} read_fblock1 inum off.
+Proof.
+  unfold read_fblock1, wrap_syscall; intros.
+  step.
+  step.
+  step.
+
+  match goal with
+  | [ H: invariant App.delta _ _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  match goal with
+  | [ H: guar App.delta _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  destruct_ands; repeat deex.
+  (* exists_tuple breaks apart ds *)
+  destruct ds.
+
+  unfold project_disk.
+  repeat eapply exists_tuple; eexists; simpl.
+  intuition eauto.
+
+  replace (get vdisk s).
+  pred_apply; cancel; eauto.
+
+  step.
+  destruct matches; subst.
+  - step.
+    step.
+    unfold cacheI in *; simpl_get_set_all; intuition eauto.
+    step.
+    step.
+    unfold cacheI in *; simpl_get_set_all; intuition eauto.
+
+    simpl in *.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] =>
+             rewrite H
+           end.
+    descend; intuition eauto.
+    pred_apply; cancel.
+
+    simpl_get_set_goal.
+    eapply cacheR_preorder; eauto.
+    simpl_get_set_goal.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+
+    eapply allowed_preorder; eauto.
+    replace (get vDirTree s).
+    replace (get vDirTree s0).
+    reflexivity.
+  - step.
+    step.
+
+    simpl in *.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] =>
+             rewrite H
+           end.
+    descend; intuition eauto.
+
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+
+    eapply allowed_preorder; eauto.
+    replace (get vDirTree s).
+    replace (get vDirTree s0).
+    reflexivity.
+Qed.
+
+Hint Extern 1 {{read_fblock1 _ _; _}} => apply read_fblock1_ok : prog.
+
+Theorem read_fblock_ok : forall inum off n,
+      SPEC App.delta, tid |-
+              {{ pathname f Fd vs,
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) /\
+                   path_owner (get vPathOwner s) pathname = Owned tid /\
+                   (Fd * off |-> vs)%pred (list2nmem (BFILE.BFData f)) /\
+                   guar App.delta tid s_i s
+               | POST d' hm' m' s_i' s' r:
+                   invariant App.delta d' hm' m' s' /\
+                   match r with
+                   | Some r => r = fst vs
+                   | None => True
+                   end /\
+                   rely App.delta tid s s' /\
+                   hashmap_le hm hm' /\
+                   guar App.delta tid s_i' s'
+              }} read_fblock inum off n.
+Proof.
+  unfold read_fblock.
+  induction n; simpl; intros.
+  - eapply pimpl_ok; [ apply ret_ok | ]; intros; repeat deex.
+    exists tt; intuition eauto.
+    eapply pimpl_ok; [ apply H0 | ]; intros; intuition subst; eauto.
+
+    descend; intuition eauto.
+    constructor.
+  - step.
+    descend; intuition eauto.
+    step.
+    step.
+
+    eapply rely_guar_const_dirtree; simpl;
+      intuition eauto.
+
+    step.
+    step.
+
+    descend; (intuition eauto); ConcurrentCache.simplify.
+    eapply find_subtree_preserved_rely with (s:=s0); eauto.
+    simpl; replace (get vDirTree s0); eauto.
+    simpl; congruence.
+    congruence.
+    congruence.
+
+    step.
+
+    etransitivity; eauto.
+    etransitivity; eauto.
+    eapply rely_guar_const_dirtree; simpl;
+      intuition eauto.
+
+    etransitivity; eauto.
+    etransitivity; eauto.
+Qed.
 
 Theorem file_get_attr1_ok : forall inum,
       SPEC App.delta, tid |-
@@ -490,26 +742,6 @@ Proof.
     replace (get vDirTree s0).
     reflexivity.
 Qed.
-
-Definition file_get_sz inum :=
-  wrap_syscall_loop (fun fsxp mscs =>
-                       CFS.file_get_sz fsxp inum mscs)
-                    (fun tree => tree).
-
-Definition read_fblock inum off :=
-  wrap_syscall_loop (fun fsxp mscs =>
-                       CFS.read_fblock fsxp inum off mscs)
-                    (fun tree => tree).
-
-Definition lookup dnum fnlist :=
-  wrap_syscall_loop (fun fsxp mscs =>
-                       CFS.lookup fsxp dnum fnlist mscs)
-                    (fun tree => tree).
-
-Definition lookup_root fnlist :=
-  wrap_syscall_loop (fun fsxp mscs =>
-                       CFS.lookup fsxp (FSLayout.FSXPRootInum fsxp) fnlist mscs)
-                    (fun tree => tree).
 
 Definition dirtree_alter_file inum (up:BFILE.bfile -> BFILE.bfile) :
   DIRTREE.dirtree -> DIRTREE.dirtree :=
@@ -807,56 +1039,6 @@ Proof.
 Qed.
 
 Hint Extern 1 {{file_set_attr1 _ _; _}} => apply file_set_attr1_ok : prog.
-
-Lemma find_subtree_preserved_other_allowed : forall pathname tree tree'
-                                               acl tid tid' subtree,
-    DIRTREE.find_subtree pathname tree = Some subtree ->
-    path_owner acl pathname = Owned tid ->
-    tid <> tid' ->
-    allowed acl tid' tree tree' ->
-    DIRTREE.find_subtree pathname tree' = Some subtree.
-Proof.
-  unfold allowed; intros.
-  rewrite H2; auto.
-  inversion 1; congruence.
-Qed.
-
-Lemma find_subtree_preserved_rely : forall pathname s s'
-                                      tid subtree,
-    DIRTREE.find_subtree pathname (get vDirTree s) = Some subtree ->
-    path_owner (get vPathOwner s) pathname = Owned tid ->
-    rely App.delta tid s s' ->
-    (path_owner (get vPathOwner s') pathname = Owned tid /\
-     DIRTREE.find_subtree pathname (get vDirTree s') = Some subtree).
-Proof.
-  unfold rely, others; intros.
-  induction H1; auto.
-  deex; simpl in *; destruct_ands.
-  apply IHstar; try congruence.
-  eapply find_subtree_preserved_other_allowed; eauto.
-Qed.
-
-Lemma others_guar_const_dirtree : forall tid s s',
-    guar App.delta tid s s' ->
-    get vDirTree s' = get vDirTree s ->
-    others (guar App.delta) tid s s'.
-Proof.
-  unfold others; simpl; intros.
-  exists (S tid); intuition idtac.
-  eapply n_Sn; eauto.
-  rewrite H0.
-  reflexivity.
-Qed.
-
-Lemma rely_guar_const_dirtree : forall tid s s',
-    guar App.delta tid s s' ->
-    get vDirTree s' = get vDirTree s ->
-    rely App.delta tid s s'.
-Proof.
-  unfold rely; intros.
-  econstructor; eauto.
-  apply others_guar_const_dirtree; eauto.
-Qed.
 
 Theorem file_set_attr_ok : forall inum attr n,
       SPEC App.delta, tid |-
