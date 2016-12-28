@@ -1007,10 +1007,6 @@ Proof.
   rewrite valubytes_is in n; omega.
 Qed.
 
-Lemma between_exists: forall a b c,
-a >= (b-1) * c -> a < b*c -> a = (b-1) * c + a mod c.
-Proof. Admitted.
-
 Lemma list_split_chunk_app_1: forall A a b (l l': list A) ,
 length l = a * b ->
 length l' = b ->
@@ -1573,22 +1569,6 @@ Proof.
 	symmetry; apply list_zero_pad_expand.
 Qed.
 
-	
-
-	Lemma mod_between_upper: forall a b c,
-		b <> 0 ->
-		a > (c - 1) * b ->
-		c * b >= a ->
-		a mod b = 0 ->
-		a = c * b.
-		Proof.
-			intros.
-			destruct (lt_dec a (c * b)).
-			apply Nat.lt_le_incl in H0 as H'.
-			apply between_exists in H'; auto.
-			omega.
-			omega.
-		Qed.
 		
 		Lemma lt_0_S: forall a,
 	a > 0 -> exists n, a = S n.
@@ -1631,3 +1611,63 @@ Qed.
 Lemma minus_le_0_eq: forall a b,
 a >= b -> a - b = 0 -> a = b.
 Proof. intros; omega. Qed.
+
+ Lemma lt_plus_minus_l: forall a b c,
+  c > 0 -> a < b + c -> a - b < c.
+Proof.  intros; omega. Qed.
+
+Lemma plus_minus_eq_le: forall a b c,
+  a >=  b -> a - b = c -> a = b + c.
+Proof. intros; omega. Qed.
+
+Lemma between_exists: forall b a c,
+a >= (b-1) * c -> a < b*c -> c<>0 -> a = (b-1) * c + a mod c.
+Proof.
+  intros b. induction b; intros.
+  simpl in H0; inversion H0.
+  destruct b.
+  simpl in *.
+  rewrite <- plus_n_O in H0.
+  symmetry; apply Nat.mod_small_iff; auto.
+  simpl.
+  simpl in IHb.
+  rewrite <- minus_n_O in IHb.
+  rewrite <- mod_subt.
+  rewrite <- Nat.add_assoc.
+  apply plus_minus_eq_le.
+  simpl in *.
+  eapply le_trans.
+  2:eauto.
+  apply le_plus_l.
+  simpl in *.
+  apply IHb.
+  apply Nat.le_add_le_sub_l in H.
+  auto.
+  simpl in *.
+  apply lt_plus_minus_l in H0.
+  auto.
+  destruct c; try omega.
+  simpl.
+  auto.
+  simpl in *.
+  apply Nat.lt_0_succ.
+  eapply le_trans.
+  2:eauto.
+  apply le_plus_l.
+Qed.
+
+
+Lemma mod_between_upper: forall a b c,
+	b <> 0 ->
+	a > (c - 1) * b ->
+	c * b >= a ->
+	a mod b = 0 ->
+	a = c * b.
+	Proof.
+		intros.
+		destruct (lt_dec a (c * b)).
+		apply Nat.lt_le_incl in H0 as H'.
+		apply between_exists in H'; auto.
+		omega.
+		omega.
+	Qed.

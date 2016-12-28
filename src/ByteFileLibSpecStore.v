@@ -1,3 +1,49 @@
+Require Import Prog ProgMonad.
+Require Import Log.
+Require Import BFile.
+Require Import Word.
+Require Import Omega.
+Require Import BasicProg.
+Require Import Bool.
+Require Import Pred PredCrash.
+Require Import DirName.
+Require Import Hoare.
+Require Import GenSepN.
+Require Import ListPred.
+Require Import SepAuto.
+Require Import Idempotent.
+Require Import Inode.
+Require Import List ListUtils.
+Require Import Balloc.
+Require Import Bytes.
+Require Import DirTree.
+Require Import Rec.
+Require Import Arith.
+Require Import Array.
+Require Import FSLayout.
+Require Import Cache.
+Require Import Errno.
+Require Import AsyncDisk.
+Require Import AsyncFS.
+Require Import GroupLog.
+Require Import DiskLogHash.
+Require Import SuperBlock.
+Require Import DiskSet.
+Require Import Lia.
+Require Import FunctionalExtensionality.
+Require Import VBConv.
+Require Import AByteFile.
+
+Set Implicit Arguments.
+
+Notation MSLL := BFILE.MSLL.
+Notation MSAlloc := BFILE.MSAlloc.
+Notation BFData := BFILE.BFData.
+
+Hint Resolve valubytes_ne_O.
+Hint Resolve valubytes_ge_O.
+
+
 Definition read_from_block fsxp inum ams block_off byte_off read_length :=
       let^ (ms1, first_block) <- AFS.read_fblock fsxp inum block_off ams;
       let data_init := (get_sublist (valu2list first_block) byte_off read_length) in
@@ -73,6 +119,38 @@ else
    let^ (ms1, data_first) <- read_from_block fsxp inum fms block_off byte_off first_read_length;   
    Ret ^(ms1, data_first)
 }.
+
+Definition read fsxp inum fms off len :=
+If (lt_dec 0 len)                        (* if read length > 0 *)
+{                    
+  let^ (ms1, fattr) <- AFS.file_get_attr fsxp inum fms;          (* get file length *)
+  let flen := # (INODE.ABytes fattr) in
+  If (lt_dec off flen)                   (* if offset is inside file *)
+  {                             
+      let block_off := off / valubytes in              (* calculate block offset *)
+      let byte_off := off mod valubytes in          (* calculate byte offset *)
+      If (lt_dec len (flen - off))
+      {
+        let^ (ms2, data) <- read_first fsxp inum ms1 block_off byte_off len;
+        Ret ^(ms2, data)
+      }
+      else
+      {
+        let len := (flen - off) in
+        let^ (ms2, data) <- read_first fsxp inum ms1 block_off byte_off len;
+        Ret ^(ms2, data)
+      }
+  } 
+  else                                                 (* if offset is not valid, return nil *)
+  {    
+    Ret ^(ms1, nil)
+  }
+} 
+else                                                   (* if read length is not valid, return nil *)
+{    
+  Ret ^(fms, nil)
+}.
+
 
 (* Specs *)
 
