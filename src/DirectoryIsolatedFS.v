@@ -884,6 +884,82 @@ Proof.
     reflexivity.
 Qed.
 
+Hint Extern 1 {{ delete1 _ _; _ }} => apply delete1_ok : prog.
+
+Theorem delete_ok : forall dnum name n,
+      SPEC App.delta, tid |-
+              {{ pathname tree_elem,
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) /\
+                   (forall suffix, owner_le (Owned tid)
+                                       (path_owner (get vPathOwner s) (pathname ++ suffix))) /\
+                   guar App.delta tid s_i s
+               | POST d'' hm'' m'' s_i' s'' r:
+                   invariant App.delta d'' hm'' m'' s'' /\
+                   (exists d' hm' m' s',
+                     rely App.delta tid s s' /\
+                     invariant App.delta d' hm' m' s' /\
+                     guar App.delta tid s' s'' /\
+                     let tree' := get vDirTree s'' in
+                     match r with
+                     | Some (OK _) =>
+                       let d := DIRTREE.TreeDir dnum tree_elem in
+                       let up := DIRTREE.delete_from_dir name d in
+                       tree' = DIRTREE.update_subtree pathname up (get vDirTree s')
+                     | _ => True
+                     end) /\
+                   hashmap_le hm hm'' /\
+                   guar App.delta tid s_i' s''
+              }} delete dnum name n.
+Proof.
+  unfold delete.
+  induction n; simpl; intros.
+  - eapply pimpl_ok; [ apply ret_ok | ]; intros; repeat deex.
+    exists tt; intuition eauto.
+    eapply pimpl_ok; [ apply H0 | ]; intros; intuition subst; eauto.
+
+    descend; intuition eauto.
+    constructor.
+    reflexivity.
+  - step.
+    descend; intuition eauto.
+    step.
+    step.
+    exists d, hm, m, s.
+    intuition eauto.
+    constructor.
+    destruct matches; subst; eauto.
+    step.
+    step.
+    descend; intuition eauto.
+    eapply find_subtree_preserved_rely with (s:=s0); eauto.
+    simpl in *.
+    replace (get vDirTree s0); eauto.
+    admit. (* oops, something is wrong with the permissions in the precondition
+    - retrying requires something stronger *)
+
+    assert (get vPathOwner s1 = get vPathOwner s) as Hacl.
+    simpl in *; congruence.
+    simpl in Hacl; rewrite Hacl; eauto.
+
+
+    reflexivity.
+
+    step.
+
+    exists d', hm', m', s'.
+    intuition eauto.
+    etransitivity; eauto.
+    etransitivity; eauto.
+
+    apply rely_guar_const_dirtree; simpl in *; intuition eauto.
+
+    etransitivity; eauto.
+    etransitivity; eauto.
+Abort.
+
 Theorem create1_ok : forall dnum name,
       SPEC App.delta, tid |-
               {{ pathname tree_elem,
