@@ -1040,6 +1040,8 @@ Proof.
     reflexivity.
 Qed.
 
+Hint Extern 1 {{ create1 _ _; _ }} => apply create1_ok : prog.
+
 Theorem update_fblock_d1_ok : forall inum off v,
       SPEC App.delta, tid |-
               {{ pathname f,
@@ -1201,7 +1203,7 @@ Proof.
     exact nil.
 Admitted.
 
-Hint Extern 1 {{ update_fblock_d1 _ _ _; _ }} => apply update_fblock_d1_ok.
+Hint Extern 1 {{ update_fblock_d1 _ _ _; _ }} => apply update_fblock_d1_ok : prog.
 
 Theorem update_fblock_d_ok : forall inum off v n,
       SPEC App.delta, tid |-
@@ -1461,7 +1463,7 @@ Proof.
     all: eauto.
 Qed.
 
-Hint Extern 1 {{file_truncate1 _ _; _}} => apply file_truncate1_ok.
+Hint Extern 1 {{file_truncate1 _ _; _}} => apply file_truncate1_ok : prog.
 
 Theorem file_truncate_ok : forall inum sz n,
       SPEC App.delta, tid |-
@@ -1639,7 +1641,7 @@ Proof.
     reflexivity.
 Qed.
 
-Hint Extern 1 {{lookup1 _ _; _}} => apply lookup1_ok.
+Hint Extern 1 {{lookup1 _ _; _}} => apply lookup1_ok : prog.
 
 Theorem lookup_ok : forall dnum fnlist n,
       SPEC App.delta, tid |-
