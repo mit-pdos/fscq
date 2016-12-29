@@ -123,7 +123,7 @@ Module MakeCacheProtocol (St:GlobalState) (Proj:CacheProj St).
     constructor; hnf; intuition eauto.
   Qed.
 
-  Theorem cacheR_preorder : forall tid,
+  Global Instance cacheR_preorder : forall tid,
       PreOrder (cacheR tid).
   Proof.
     unfold cacheR; intros.

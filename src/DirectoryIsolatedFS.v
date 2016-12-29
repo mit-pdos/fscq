@@ -347,6 +347,36 @@ Proof.
   congruence.
 Qed.
 
+Lemma root_readonly_guar : forall s s' tid,
+    path_owner (get vPathOwner s) nil = ReadOnly ->
+    guar App.delta tid s s' ->
+    get vDirTree s' = get vDirTree s.
+Proof.
+  simpl; intuition idtac.
+  specialize (H0 nil).
+  rewrite H in H0.
+  pose proof (@read_only_gt tid).
+  intuition.
+  inversion H5; eauto.
+Qed.
+
+Lemma root_readonly_rely : forall s s' tid,
+    path_owner (get vPathOwner s) nil = ReadOnly ->
+    rely App.delta tid s s' ->
+    get vDirTree s' = get vDirTree s.
+Proof.
+  unfold rely, others; intros.
+  assert (get vPathOwner s' = get vPathOwner s /\
+          get vDirTree s' = get vDirTree s).
+  induction H0; eauto.
+  deex.
+  pose proof (root_readonly_guar ltac:(eauto) ltac:(eauto)).
+  simpl in *; destruct_ands.
+  specialize (IHstar ltac:(congruence)).
+  intuition congruence.
+  intuition auto.
+Qed.
+
 Definition wrap_syscall T (p: FSLayout.fs_xparams -> BFILE.memstate ->
                               prog App.Sigma
                                    (Exc (BFILE.memstate * (T * unit))))
@@ -496,6 +526,180 @@ Definition lookup_root fnlist :=
                        CFS.lookup fsxp (FSLayout.FSXPRootInum fsxp) fnlist mscs)
                     (fun tree => tree).
 
+Theorem lookup1_ok : forall dnum fnlist,
+      SPEC App.delta, tid |-
+              {{ (_:unit),
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.dirtree_inum tree = dnum /\
+                   DIRTREE.dirtree_isdir tree = true  /\
+                   guar App.delta tid s_i s
+               | POST d' hm' m' s_i' s' r:
+                   let tree' := get vDirTree s' in
+                   invariant App.delta d' hm' m' s' /\
+                   tree' = get vDirTree s /\
+                   match r with
+                   | Some r =>
+                     (isError r /\ None = DIRTREE.find_name fnlist tree') \/
+                     (exists v, r = OK v /\ Some v = DIRTREE.find_name fnlist tree')%type /\
+                     BFILE.MSAlloc (get mMscs m') = BFILE.MSAlloc (get mMscs m)
+                   | None => True
+                   end /\
+                   guar App.delta tid s s' /\
+                   hashmap_le hm hm' /\
+                   guar App.delta tid s_i' s'
+              }} lookup1 dnum fnlist.
+Proof.
+  unfold lookup1, wrap_syscall; intros.
+  step.
+  step.
+  step.
+
+  match goal with
+  | [ H: invariant App.delta _ _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  match goal with
+  | [ H: guar App.delta _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  destruct_ands; repeat deex.
+  (* exists_tuple breaks apart ds *)
+  destruct ds.
+
+  unfold project_disk.
+  repeat eapply exists_tuple; eexists; simpl.
+  intuition eauto.
+
+  replace (get vdisk s).
+  pred_apply; cancel; eauto.
+
+  step.
+  destruct matches; subst.
+  - step.
+    step.
+    unfold cacheI in *; simpl_get_set_all; intuition eauto.
+    step.
+    step.
+    unfold cacheI in *; simpl_get_set_all; intuition eauto.
+
+    simpl in *.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] =>
+             rewrite H
+           end.
+    descend; intuition eauto.
+    pred_apply; cancel.
+    pred_apply; cancel.
+    (intuition idtac); [ left | right ]; intuition eauto;
+      try congruence.
+    deex; descend; intuition eauto || congruence.
+
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    simpl_get_set_goal.
+    eapply cacheR_preorder.
+    simpl_get_set_goal.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+
+    etransitivity; eauto.
+    replace (get vDirTree s).
+    replace (get vDirTree s0).
+    reflexivity.
+  - step.
+    step.
+
+    simpl in *.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] =>
+             rewrite H
+           end.
+    descend; intuition eauto.
+
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+
+    etransitivity; eauto.
+    replace (get vDirTree s).
+    replace (get vDirTree s0).
+    reflexivity.
+Qed.
+
+Hint Extern 1 {{lookup1 _ _; _}} => apply lookup1_ok.
+
+Theorem lookup_ok : forall dnum fnlist n,
+      SPEC App.delta, tid |-
+              {{ (_:unit),
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.dirtree_inum tree = dnum /\
+                   DIRTREE.dirtree_isdir tree = true  /\
+                   path_owner (get vPathOwner s) nil = ReadOnly /\
+                   guar App.delta tid s_i s
+               | POST d' hm' m' s_i' s' r:
+                   let tree' := get vDirTree s' in
+                   invariant App.delta d' hm' m' s' /\
+                   match r with
+                   | Some r =>
+                     (isError r /\ None = DIRTREE.find_name fnlist tree') \/
+                     (exists v, r = OK v /\ Some v = DIRTREE.find_name fnlist tree')%type
+                   | None => True
+                   end /\
+                   rely App.delta tid s s' /\
+                   hashmap_le hm hm' /\
+                   guar App.delta tid s_i' s'
+              }} lookup dnum fnlist n.
+Proof.
+  unfold lookup.
+  induction n; simpl; intros.
+  - eapply pimpl_ok; [ apply ret_ok | ]; intros; repeat deex.
+    exists tt; intuition eauto.
+    eapply pimpl_ok; [ apply H0 | ]; intros; intuition subst; eauto.
+
+    descend; intuition eauto.
+    constructor.
+  - step.
+    descend; intuition eauto.
+    step.
+    step.
+
+    intuition eauto.
+
+    eapply rely_guar_const_dirtree; simpl;
+      intuition eauto.
+
+    step.
+    step.
+
+    (* TODO: these properties require only that dnum is the root inode number
+    and that it remains a directory. These could be guaranteed by the protocol
+    but aren't expressible with the ACL tree except by making the whole tree
+    read-only *)
+    assert (get vDirTree s1 = get vDirTree s0).
+    eapply root_readonly_rely; eauto.
+    simpl in *; congruence.
+    simpl in *; congruence.
+
+    assert (get vDirTree s1 = get vDirTree s0).
+    eapply root_readonly_rely; eauto.
+    simpl in *; congruence.
+    simpl in *; congruence.
+
+    step.
+
+    etransitivity; eauto.
+    etransitivity; eauto.
+    eapply rely_guar_const_dirtree; simpl;
+      intuition eauto.
+
+    etransitivity; eauto.
+    etransitivity; eauto.
+Qed.
+
 Theorem read_fblock1_ok : forall inum off,
       SPEC App.delta, tid |-
               {{ pathname f Fd vs,
@@ -632,7 +836,7 @@ Proof.
     step.
     step.
 
-    descend; (intuition eauto); ConcurrentCache.simplify.
+    descend; intuition eauto.
     eapply find_subtree_preserved_rely with (s:=s0); eauto.
     simpl; replace (get vDirTree s0); eauto.
     simpl; congruence.
