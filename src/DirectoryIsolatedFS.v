@@ -728,6 +728,16 @@ Qed.
 Hint Resolve dirtree_rep_tree_names_distinct
      dirtree_rep_tree_inodes_distinct.
 
+Lemma owner_le_eq : forall o o',
+    o = o' ->
+    owner_le o o'.
+Proof.
+  intros; subst.
+  reflexivity.
+Qed.
+
+Hint Resolve owner_le_eq.
+
 Theorem delete1_ok : forall dnum name,
       SPEC App.delta, tid |-
               {{ pathname tree_elem,
@@ -735,7 +745,7 @@ Theorem delete1_ok : forall dnum name,
                    let tree := get vDirTree s in
                    invariant App.delta d hm m s /\
                    DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) /\
-                   (forall suffix, owner_le (Owned tid) (path_owner (get vPathOwner s) (pathname ++ suffix))) /\
+                   (forall suffix, path_owner (get vPathOwner s) (pathname ++ suffix) = Owned tid) /\
                    guar App.delta tid s_i s
                | POST d' hm' m' s_i' s' r:
                    let tree' := get vDirTree s' in
@@ -893,8 +903,7 @@ Theorem delete_ok : forall dnum name n,
                    let tree := get vDirTree s in
                    invariant App.delta d hm m s /\
                    DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) /\
-                   (forall suffix, owner_le (Owned tid)
-                                       (path_owner (get vPathOwner s) (pathname ++ suffix))) /\
+                   (forall suffix, path_owner (get vPathOwner s) (pathname ++ suffix) = Owned tid) /\
                    guar App.delta tid s_i s
                | POST d'' hm'' m'' s_i' s'' r:
                    invariant App.delta d'' hm'' m'' s'' /\
@@ -937,11 +946,12 @@ Proof.
     eapply find_subtree_preserved_rely with (s:=s0); eauto.
     simpl in *.
     replace (get vDirTree s0); eauto.
-    admit. (* oops, something is wrong with the permissions in the precondition
-    - retrying requires something stronger *)
+    replace pathname with (pathname ++ nil).
+    assert (get vPathOwner s0 = get vPathOwner s) as Hacl by (simpl in *; congruence).
+    simpl in *; rewrite Hacl; eauto.
+    apply List.app_nil_r.
 
-    assert (get vPathOwner s1 = get vPathOwner s) as Hacl.
-    simpl in *; congruence.
+    assert (get vPathOwner s1 = get vPathOwner s) as Hacl by (simpl in *; congruence).
     simpl in Hacl; rewrite Hacl; eauto.
 
 
@@ -958,7 +968,7 @@ Proof.
 
     etransitivity; eauto.
     etransitivity; eauto.
-Abort.
+Qed.
 
 Theorem create1_ok : forall dnum name,
       SPEC App.delta, tid |-
