@@ -751,7 +751,7 @@ Theorem delete1_ok : forall dnum name,
                    let tree' := get vDirTree s' in
                    invariant App.delta d' hm' m' s' /\
                    match r with
-                   | Some (OK inum) =>
+                   | Some (OK _) =>
                      let d := DIRTREE.TreeDir dnum tree_elem in
                      let up := DIRTREE.delete_from_dir name d in
                      tree' = DIRTREE.update_subtree pathname up (get vDirTree s)
@@ -977,7 +977,7 @@ Theorem create1_ok : forall dnum name,
                    let tree := get vDirTree s in
                    invariant App.delta d hm m s /\
                    DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) /\
-                   (forall suffix, owner_le (Owned tid) (path_owner (get vPathOwner s) (pathname ++ suffix))) /\
+                   (forall suffix, path_owner (get vPathOwner s) (pathname ++ suffix) = Owned tid) /\
                    guar App.delta tid s_i s
                | POST d' hm' m' s_i' s' r:
                    let tree' := get vDirTree s' in
@@ -1127,6 +1127,80 @@ Proof.
 Qed.
 
 Hint Extern 1 {{ create1 _ _; _ }} => apply create1_ok : prog.
+
+Theorem create_ok : forall dnum name n,
+      SPEC App.delta, tid |-
+              {{ pathname tree_elem,
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) /\
+                   (forall suffix, path_owner (get vPathOwner s) (pathname ++ suffix) = Owned tid) /\
+                   guar App.delta tid s_i s
+               | POST d'' hm'' m'' s_i' s'' r:
+                   invariant App.delta d'' hm'' m'' s'' /\
+                   (exists d' hm' m' s',
+                     rely App.delta tid s s' /\
+                     invariant App.delta d' hm' m' s' /\
+                     guar App.delta tid s' s'' /\
+                     let tree' := get vDirTree s'' in
+                     match r with
+                     | Some (OK inum) =>
+                       let f' := DIRTREE.TreeFile inum BFILE.bfile0 in
+                       tree' = DIRTREE.tree_graft dnum tree_elem pathname name f'
+                                                  (get vDirTree s')
+                     | _ => True
+                     end) /\
+                   hashmap_le hm hm'' /\
+                   guar App.delta tid s_i' s''
+              }} create dnum name n.
+Proof.
+  unfold create.
+  induction n; simpl; intros.
+  - eapply pimpl_ok; [ apply ret_ok | ]; intros; repeat deex.
+    exists tt; intuition eauto.
+    eapply pimpl_ok; [ apply H0 | ]; intros; intuition subst; eauto.
+
+    descend; intuition eauto.
+    constructor.
+    reflexivity.
+  - step.
+    descend; intuition eauto.
+    step.
+    step.
+    exists d, hm, m, s.
+    intuition eauto.
+    constructor.
+    destruct matches; subst; eauto.
+    step.
+    step.
+    descend; intuition eauto.
+    eapply find_subtree_preserved_rely with (s:=s0); eauto.
+    simpl in *.
+    replace (get vDirTree s0); eauto.
+    replace pathname with (pathname ++ nil).
+    assert (get vPathOwner s0 = get vPathOwner s) as Hacl by (simpl in *; congruence).
+    simpl in *; rewrite Hacl; eauto.
+    apply List.app_nil_r.
+
+    assert (get vPathOwner s1 = get vPathOwner s) as Hacl by (simpl in *; congruence).
+    simpl in Hacl; rewrite Hacl; eauto.
+
+
+    reflexivity.
+
+    step.
+
+    exists d', hm', m', s'.
+    intuition eauto.
+    etransitivity; eauto.
+    etransitivity; eauto.
+
+    apply rely_guar_const_dirtree; simpl in *; intuition eauto.
+
+    etransitivity; eauto.
+    etransitivity; eauto.
+Qed.
 
 Theorem update_fblock_d1_ok : forall inum off v,
       SPEC App.delta, tid |-
