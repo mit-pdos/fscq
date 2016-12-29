@@ -609,6 +609,30 @@ Definition create1 dnum name :=
 Definition create dnum name :=
   fuel_retry (create1 dnum name).
 
+Definition delete1 dnum name :=
+  fsxp <- Get mFsxp;
+    mscs <- Get mMscs;
+    r <- CFS.delete fsxp dnum name mscs;
+    match r with
+    | Some r =>
+      let '(mscs', (r, _)) := r in
+      _ <- Assgn mMscs mscs';
+        _ <- ConcurrentCache.cache_commit;
+        _ <- match r with
+            | OK _ =>
+              let up := DIRTREE.delete_from_dir name in
+              var_update vDirTree (DIRTREE.alter_inum dnum up)
+            | _ => Ret tt
+            end;
+        Ret (value r)
+    | None =>
+      _ <- ConcurrentCache.cache_abort;
+        Ret None
+    end.
+
+Definition delete dnum name :=
+  fuel_retry (delete1 dnum name).
+
 Ltac member_index_ne := match goal with
                         | |- member_index ?v1 <> member_index ?v2 =>
                           try unfold v1; try unfold v2;
@@ -703,6 +727,162 @@ Qed.
 
 Hint Resolve dirtree_rep_tree_names_distinct
      dirtree_rep_tree_inodes_distinct.
+
+Theorem delete1_ok : forall dnum name,
+      SPEC App.delta, tid |-
+              {{ pathname tree_elem,
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) /\
+                   (forall suffix, owner_le (Owned tid) (path_owner (get vPathOwner s) (pathname ++ suffix))) /\
+                   guar App.delta tid s_i s
+               | POST d' hm' m' s_i' s' r:
+                   let tree' := get vDirTree s' in
+                   invariant App.delta d' hm' m' s' /\
+                   match r with
+                   | Some (OK inum) =>
+                     let d := DIRTREE.TreeDir dnum tree_elem in
+                     let up := DIRTREE.delete_from_dir name d in
+                     tree' = DIRTREE.update_subtree pathname up (get vDirTree s)
+                   | _ => tree' = get vDirTree s
+                   end /\
+                   guar App.delta tid s s' /\
+                   hashmap_le hm hm' /\
+                   guar App.delta tid s_i' s'
+              }} delete1 dnum name.
+Proof.
+  unfold delete1, wrap_syscall; intros.
+  step.
+  step.
+  step.
+
+  match goal with
+  | [ H: invariant App.delta _ _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  match goal with
+  | [ H: guar App.delta _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  destruct_ands; repeat deex.
+  (* exists_tuple breaks apart ds *)
+  destruct ds.
+
+  unfold project_disk.
+  repeat eapply exists_tuple; eexists; simpl.
+  intuition eauto.
+
+  replace (get vdisk s).
+  pred_apply; cancel; eauto.
+
+  step.
+  destruct matches; subst.
+  - step.
+    step.
+    unfold cacheI in *; simpl_get_set_all; intuition eauto.
+    step.
+    step.
+    unfold cacheI in *; simpl_get_set_all;
+      rewrite ?get_set_other in * by member_index_ne;
+      intuition eauto.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    match goal with
+    | [ H: (emp * _)%pred (lower_disk (get vdisk s0)) |- _ ] =>
+      apply star_emp_pimpl in H
+    end; repeat split_lifted_prop.
+    unfold or in *; (intuition idtac); repeat split_lifted_prop;
+      try match goal with
+          | [ H: isError (OK _) |- _] =>
+            exfalso; inversion H
+          end.
+    unfold exis in *; repeat (deex || split_lifted_prop).
+    subst.
+
+    descend; intuition idtac.
+    pred_apply; cancel.
+    pred_apply; cancel.
+
+    unfold dirtree_alter_file.
+    erewrite DIRTREE.alter_inum_to_alter_path by eauto.
+    erewrite dirtree_alter_to_update by eauto.
+    cancel.
+
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    unfold dirtree_alter_file.
+    erewrite DIRTREE.alter_inum_to_alter_path by eauto.
+    erewrite dirtree_alter_to_update by eauto.
+    eauto.
+
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    unfold cacheR; rewrite ?get_set_other by member_index_ne; try reflexivity.
+
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    replace (get vPathOwner s_i).
+    unfold dirtree_alter_file.
+    erewrite DIRTREE.alter_inum_to_alter_path by eauto.
+    erewrite dirtree_alter_to_update by eauto.
+
+    eapply allowed_subtree_update; eauto.
+
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    unfold cacheR; rewrite ?get_set_other by member_index_ne; try reflexivity.
+
+    eapply allowed_preorder; eauto.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    replace (get vPathOwner s_i).
+    unfold dirtree_alter_file.
+    erewrite DIRTREE.alter_inum_to_alter_path by eauto.
+    erewrite dirtree_alter_to_update by eauto.
+    eapply allowed_subtree_update; eauto.
+  - step.
+    step.
+
+    unfold cacheI; simpl_get_set_all; intuition eauto.
+
+    step.
+
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    descend; intuition eauto.
+    pred_apply; cancel.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+
+    etransitivity; eauto.
+    replace (get vDirTree s).
+    replace (get vDirTree s0).
+    reflexivity.
+  - step.
+    step.
+
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    descend; intuition eauto.
+
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+
+    etransitivity; eauto.
+    replace (get vDirTree s).
+    replace (get vDirTree s0).
+    reflexivity.
+Qed.
 
 Theorem create1_ok : forall dnum name,
       SPEC App.delta, tid |-
@@ -2063,11 +2243,6 @@ Definition rename_root srcpath srcname dstpath dstname :=
   wrap_syscall_loop (fun fsxp mscs =>
                        CFS.rename fsxp (FSLayout.FSXPRootInum fsxp)
                                   srcpath srcname dstpath dstname mscs)
-                    (fun tree => tree).
-
-Definition delete dnum name :=
-  wrap_syscall_loop (fun fsxp mscs =>
-                       CFS.delete fsxp dnum name mscs)
                     (fun tree => tree).
 
 Definition umount :=
