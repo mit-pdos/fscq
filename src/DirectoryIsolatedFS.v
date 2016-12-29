@@ -564,6 +564,26 @@ Definition file_truncate1 inum sz :=
 Definition file_truncate inum sz :=
   fuel_retry (file_truncate1 inum sz).
 
+Definition listalter A (n: nat) (up: A -> A) (l: list A) : list A := l.
+
+Theorem listalter_frame : forall A n (l: list A) F up v0,
+    (F * n |-> v0)%pred (list2nmem l) ->
+    (F * n |-> up v0)%pred (list2nmem (listalter n up l)).
+Proof.
+Admitted.
+
+Definition update_fblock_d1 inum off v :=
+  wrap_syscall' (fun fsxp mscs =>
+                   CFS.update_fblock_d fsxp inum off v mscs)
+                (dirtree_alter_file
+                   inum
+                   (fun f => let 'BFILE.mk_bfile d attr := f in
+                          let d' := listalter off (fun vs => (v, vsmerge vs)) d in
+                          BFILE.mk_bfile d' attr)).
+
+Definition update_fblock_d inum off v :=
+  fuel_retry (update_fblock_d1 inum off v).
+
 Ltac member_index_ne := match goal with
                         | |- member_index ?v1 <> member_index ?v2 =>
                           try unfold v1; try unfold v2;
@@ -658,6 +678,244 @@ Qed.
 
 Hint Resolve dirtree_rep_tree_names_distinct
      dirtree_rep_tree_inodes_distinct.
+
+Theorem update_fblock_d1_ok : forall inum off v,
+      SPEC App.delta, tid |-
+              {{ pathname f,
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) /\
+                   path_owner (get vPathOwner s) pathname = Owned tid /\
+                   off < Datatypes.length (BFILE.BFData f) /\
+                   guar App.delta tid s_i s
+               | POST d' hm' m' s_i' s' r:
+                   let tree' := get vDirTree s' in
+                   invariant App.delta d' hm' m' s' /\
+                   match r with
+                   | Some _ =>
+                     let d' := listalter off (fun vs => (v, vsmerge vs)) (BFILE.BFData f) in
+                     let f' := BFILE.mk_bfile d' (BFILE.BFAttr f) in
+                     tree' = DIRTREE.update_subtree
+                               pathname (DIRTREE.TreeFile inum f') (get vDirTree s)
+                   | None => tree' = get vDirTree s
+                   end /\
+                   guar App.delta tid s s' /\
+                   hashmap_le hm hm' /\
+                   guar App.delta tid s_i' s'
+              }} update_fblock_d1 inum off v.
+Proof.
+  unfold update_fblock_d1, wrap_syscall; intros.
+  step.
+  step.
+  step.
+
+  match goal with
+  | [ H: invariant App.delta _ _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  match goal with
+  | [ H: guar App.delta _ _ _ |- _ ] =>
+    simpl in H
+  end.
+  destruct_ands; repeat deex.
+  (* exists_tuple breaks apart ds *)
+  destruct ds.
+
+  unfold project_disk.
+  repeat eapply exists_tuple; eexists; simpl.
+  intuition eauto.
+
+  replace (get vdisk s).
+  pred_apply; cancel; eauto.
+  apply list2nmem_ptsto_cancel; eauto.
+
+  step.
+  destruct matches; subst.
+  - step.
+    step.
+    unfold cacheI in *; simpl_get_set_all; intuition eauto.
+    step.
+
+    match goal with
+    | [ H: (emp * _)%pred (lower_disk (get vdisk s0)) |- _ ] =>
+      apply star_emp_pimpl in H
+    end.
+    unfold exis in *; repeat deex.
+    repeat split_lifted_prop; subst.
+    assert (x0 = BFILE.mk_bfile
+                    (listalter off (fun vs => (v, vsmerge vs)) (BFILE.BFData f))
+                    (BFILE.BFAttr x0)).
+    destruct x0; f_equal; auto; simpl in *.
+    admit. (* relate listalter to arrayN_ex and such *)
+
+    step.
+    unfold cacheI in *; simpl_get_set_all;
+      rewrite ?get_set_other in * by member_index_ne;
+      intuition eauto.
+
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+
+    unfold dirtree_alter_file.
+    erewrite DIRTREE.alter_inum_to_alter_path by eauto.
+    erewrite dirtree_alter_to_update by eauto.
+    destruct f; simpl.
+    descend; intuition idtac.
+    pred_apply.
+    match goal with
+    | [ |- (LOG.rep _ _ (LOG.NoTxn ?ds) _ _ =p=> LOG.rep _ _ (LOG.NoTxn _) _ _)%pred ] =>
+      instantiate (1:=ds)
+    end.
+    cancel.
+    pred_apply; cancel.
+    replace x0 at 1.
+    cancel.
+
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    unfold dirtree_alter_file.
+    erewrite DIRTREE.alter_inum_to_alter_path by eauto.
+    erewrite dirtree_alter_to_update by eauto.
+    destruct f; simpl; eauto.
+
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    unfold cacheR; rewrite ?get_set_other by member_index_ne; reflexivity.
+
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    replace (get vPathOwner s_i).
+    unfold dirtree_alter_file.
+    erewrite DIRTREE.alter_inum_to_alter_path by eauto.
+    erewrite dirtree_alter_to_update by eauto.
+    destruct f.
+
+    eapply allowed_subtree_update_file; eauto.
+    simpl in *.
+    replace (path_owner (get vPathOwner s) pathname).
+    reflexivity.
+
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    unfold cacheR; rewrite ?get_set_other by member_index_ne; reflexivity.
+
+    etransitivity; eauto.
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    replace (get vPathOwner s_i).
+    unfold dirtree_alter_file.
+    erewrite DIRTREE.alter_inum_to_alter_path by eauto.
+    erewrite dirtree_alter_to_update by eauto.
+    destruct f.
+
+    eapply allowed_subtree_update_file; eauto.
+    simpl in *.
+    replace (path_owner (get vPathOwner s) pathname).
+    reflexivity.
+  - step.
+    step.
+
+    repeat match goal with
+           | [ H: get _ _ = get _ _ |- _ ] => rewrite H
+           end.
+    descend; intuition eauto.
+
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+    eapply cacheR_preorder; eauto.
+
+    etransitivity; eauto.
+    replace (get vDirTree s).
+    replace (get vDirTree s0).
+    reflexivity.
+
+    Unshelve.
+    constructor; eauto.
+    exact nil.
+Admitted.
+
+Hint Extern 1 {{ update_fblock_d1 _ _ _; _ }} => apply update_fblock_d1_ok.
+
+Theorem update_fblock_d_ok : forall inum off v n,
+      SPEC App.delta, tid |-
+              {{ pathname f,
+               | PRE d hm m s_i s:
+                   let tree := get vDirTree s in
+                   invariant App.delta d hm m s /\
+                   DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) /\
+                   path_owner (get vPathOwner s) pathname = Owned tid /\
+                   off < Datatypes.length (BFILE.BFData f) /\
+                   guar App.delta tid s_i s
+               | POST d'' hm'' m'' s_i' s'' r:
+                   invariant App.delta d'' hm'' m'' s'' /\
+                   (exists d' hm' m' s',
+                     rely App.delta tid s s' /\
+                     invariant App.delta d' hm' m' s' /\
+                     guar App.delta tid s' s'' /\
+                     let tree' := get vDirTree s'' in
+                     match r with
+                     | Some _ =>
+                     let d' := listalter off (fun vs => (v, vsmerge vs)) (BFILE.BFData f) in
+                     let f' := BFILE.mk_bfile d' (BFILE.BFAttr f) in
+                     tree' = DIRTREE.update_subtree
+                               pathname (DIRTREE.TreeFile inum f') (get vDirTree s')
+                     | None => True
+                     end) /\
+                   hashmap_le hm hm'' /\
+                   guar App.delta tid s_i' s''
+              }} update_fblock_d inum off v n.
+Proof.
+  unfold update_fblock_d.
+  induction n; simpl; intros.
+  - eapply pimpl_ok; [ apply ret_ok | ]; intros; repeat deex.
+    exists tt; intuition eauto.
+    eapply pimpl_ok; [ apply H0 | ]; intros; intuition subst; eauto.
+
+    descend; intuition eauto.
+    constructor.
+    reflexivity.
+  - step.
+    descend; intuition eauto.
+    step.
+    step.
+    exists d, hm, m, s.
+    intuition eauto.
+    constructor.
+    destruct matches; subst; eauto.
+
+    step.
+    step.
+    descend; intuition eauto.
+    eapply find_subtree_preserved_rely with (s:=s0); eauto.
+    simpl in *.
+    replace (get vDirTree s0); eauto.
+    simpl in *; congruence.
+
+    eapply find_subtree_preserved_rely with (s:=s0); eauto.
+    simpl in *.
+    replace (get vDirTree s0); eauto.
+    simpl in *; congruence.
+
+    reflexivity.
+
+    step.
+
+    exists d', hm', m', s'.
+    intuition eauto.
+    etransitivity; eauto.
+    etransitivity; eauto.
+
+    apply rely_guar_const_dirtree; simpl in *; intuition eauto.
+
+    etransitivity; eauto.
+    etransitivity; eauto.
+Qed.
 
 Theorem file_truncate1_ok : forall inum sz,
       SPEC App.delta, tid |-
@@ -1603,11 +1861,6 @@ Proof.
     etransitivity; eauto.
     etransitivity; eauto.
 Qed.
-
-Definition update_fblock_d inum off v :=
-  wrap_syscall'_loop (fun fsxp mscs =>
-                        CFS.update_fblock_d fsxp inum off v mscs)
-                     (fun tree => tree).
 
 Definition file_sync inum :=
   wrap_syscall'_loop (fun fsxp mscs =>
