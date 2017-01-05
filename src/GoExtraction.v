@@ -97,8 +97,49 @@ Ltac compile_bind := match goal with
     end
   end.
 
-Ltac compile_const :=
-  lazymatch goal with
+Ltac compile_const := lazymatch goal with
+  | [ |- EXTRACT Ret true {{ ?pre }} _ {{ _ }} // _] =>
+    let rvar := var_mapping_to_ret in
+    match pre with
+    | context [rvar ~> _ ] =>
+      eapply hoare_weaken; [
+      eapply CompileTrueFromBool with (var0 := rvar) |
+      cancel_go..]
+    | context [?nvar ~> ?n] =>
+      lazymatch type of n with
+      | W =>
+        eapply hoare_weaken; [
+        eapply CompileTrueFromNum with (varn := nvar) (var0 := rvar) |
+        cancel_go..]
+      end
+    | _ =>
+      do_declare bool ltac:(fun bvar =>
+        eapply hoare_weaken; [
+        eapply CompileTrueFromOtherBool with (var0 := rvar) (varb := bvar) |
+        cancel_go..]
+      )
+    end
+  | [ |- EXTRACT Ret false {{ ?pre }} _ {{ _ }} // _] =>
+    let rvar := var_mapping_to_ret in
+    match pre with
+    | context [rvar ~> _ ] =>
+      eapply hoare_weaken; [
+      eapply CompileFalseFromBool with (var0 := rvar) |
+      cancel_go..]
+    | context [?nvar ~> ?n] =>
+      lazymatch type of n with
+      | W =>
+        eapply hoare_weaken; [
+        eapply CompileFalseFromNum with (varn := nvar) (var0 := rvar) |
+        cancel_go..]
+      end
+    | _ =>
+      do_declare bool ltac:(fun bvar =>
+        eapply hoare_weaken; [
+        eapply CompileFalseFromOtherBool with (var0 := rvar) (varb := bvar) |
+        cancel_go..]
+      )
+    end
   | [ |- EXTRACT Ret ?n {{ _ }} _ {{ _ }} // _] =>
     match goal with
     | [ x : _ |- _] =>
@@ -282,10 +323,10 @@ Ltac compile_map_op := match goal with
         end
       | Some ?varm => (* not the same variable *)
         (unify retv varm; fail 2) ||
-        eapply CompileBefore; [
-        idtac m retv "TODO apply CompileRet"
-        (* TODO apply CompileRet *)
-        |]
+        eapply extract_equiv_prog with (pr1 := Bind (Ret m) (fun m' => Ret (Map.add _ _ m'))); [
+          rewrite bind_left_id; reflexivity |];
+          eapply hoare_weaken; [
+          eapply CompileBindRet with (vara := retv) | cancel_go..]
       end
     end
   | [ |- EXTRACT Ret (Map.remove ?k ?m) {{ ?pre }} _ {{ fun ret : ?T => ?post }} // _ ] =>

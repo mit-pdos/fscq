@@ -65,49 +65,31 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  Focus 3. cancel.
-  apply pimpl_refl.
+  3: apply pimpl_refl. (* TODO *)
   compile_step.
   compile_step.
   compile_step.
   compile_step.
   compile_step.
-  match goal with [|- EXTRACT _ {{ ?var ~>? _ * _ }} _ {{ _ }} // _ ] =>
-    eapply CompileRet with (v := (CSMap cs)) (var0 := var)
-  end.
   compile_step.
   compile_step.
   compile_step.
-  compile_step. (* TODO rule for Ret false *)
-  {
-    match goal with [|- EXTRACT _ {{ ?PRE }} _ {{ _ }} // _ ] =>
-      match PRE with
-      context [?var ~> false] =>
-        eapply hoare_weaken; [
-        eapply CompileRet' with (var0 := var) |..]
-      end
-    end.
-    eapply CompileSkip.
-    cancel_go. cancel_go.
-  }
   compile_step.
   compile_step.
+  compile_step.
+  2 : apply pimpl_refl.
+  compile_map_op.
+  3 : apply pimpl_refl.
   compile_step.
   compile_step.
   eapply hoare_weaken.
   eapply CompileRet' with (var0 := 1).
+  2 : cancel_go.
+  2 : cancel_go.
   eapply hoare_weaken_post.
-  intros.
-  match goal with
-  | [ |- ?P =p=> ?Q ] => set (P)
-  end.
-  rewrite transform_pimpl. simpl.
-  subst p.
-  match goal with
-  | [ |- ?e _ =p=> ?Q ] => unify e (fun x : unit => Q)
-  end. reflexivity.
-  2: cancel_go.
-  2: cancel_go.
+  do 3 intro.
+  rewrite transform_pimpl. simpl transform.
+  exact H.
   eapply CompileRet.
   compile_step.
   compile_step.

@@ -55,6 +55,36 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma CompileTrueFromNum : forall env A var varn (n : W),
+  EXTRACT Ret true
+  {{ var ~>? bool * varn ~> n * A }}
+    var <~ (Go.TestE Go.Eq (Go.Var varn) (Go.Var varn))
+  {{ fun ret => var ~> ret * varn ~> n * A }} // env.
+Proof.
+  unfold ProgOk. intros.
+  inv_exec_progok; eval_expr.
+  repeat econstructor. pred_solve.
+  contradiction H1.
+  repeat eexists.
+  econstructor; eval_expr; [
+  reflexivity | eval_expr; eauto..].
+Qed.
+
+Lemma CompileFalseFromNum : forall env A var varn (n : W),
+  EXTRACT Ret false
+  {{ var ~>? bool * varn ~> n * A }}
+    var <~ (Go.TestE Go.Ne (Go.Var varn) (Go.Var varn))
+  {{ fun ret => var ~> ret * varn ~> n * A }} // env.
+Proof.
+  unfold ProgOk. intros.
+  inv_exec_progok; eval_expr.
+  repeat econstructor. pred_solve.
+  contradiction H1.
+  repeat eexists.
+  econstructor; eval_expr; [
+  reflexivity | eval_expr; eauto..].
+Qed.
+
 Lemma CompileRet : forall T {H: GoWrapper T} env A B var (v : T) p,
   EXTRACT Ret v
   {{ A }}
@@ -116,6 +146,66 @@ Lemma CompileConst' : forall env A var (v : nat),
   {{ fun _ => var ~> v * A }} // env.
 Proof.
   eauto using CompileRet, CompileConst.
+Qed.
+
+Lemma CompileTrueFromBool : forall env A var (b : bool),
+  EXTRACT Ret true
+  {{ var ~> b * A }}
+    var <~ (Go.TestE Go.Eq (Go.Var var) (Go.Var var))
+  {{ fun ret => var ~> ret * A }} // env.
+Proof.
+  unfold ProgOk. intros.
+  inv_exec_progok; eval_expr.
+  repeat econstructor. pred_solve.
+  contradiction H1.
+  repeat eexists.
+  econstructor; eval_expr; [
+  reflexivity | eval_expr; eauto..].
+Qed.
+
+Lemma CompileFalseFromBool : forall env A var (b : bool),
+  EXTRACT Ret false
+  {{ var ~> b * A }}
+    var <~ (Go.TestE Go.Ne (Go.Var var) (Go.Var var))
+  {{ fun ret => var ~> ret * A }} // env.
+Proof.
+  unfold ProgOk. intros.
+  inv_exec_progok; eval_expr.
+  repeat econstructor. pred_solve.
+  contradiction H1.
+  repeat eexists.
+  econstructor; eval_expr; [
+  reflexivity | eval_expr; eauto..].
+Qed.
+
+Lemma CompileTrueFromOtherBool : forall env A var varb (b : bool),
+  EXTRACT Ret true
+  {{ var ~>? bool * varb ~> b * A }}
+    var <~ (Go.TestE Go.Eq (Go.Var varb) (Go.Var varb))
+  {{ fun ret => var ~> ret * varb ~> b * A }} // env.
+Proof.
+  unfold ProgOk. intros.
+  inv_exec_progok; eval_expr.
+  repeat econstructor. pred_solve.
+  contradiction H1.
+  repeat eexists.
+  econstructor; eval_expr; [
+  reflexivity | eval_expr; eauto..].
+Qed.
+
+Lemma CompileFalseFromOtherBool : forall env A var varb (b : bool),
+  EXTRACT Ret false
+  {{ var ~>? bool * varb ~> b * A }}
+    var <~ (Go.TestE Go.Ne (Go.Var varb) (Go.Var varb))
+  {{ fun ret => var ~> ret * varb ~> b * A }} // env.
+Proof.
+  unfold ProgOk. intros.
+  inv_exec_progok; eval_expr.
+  repeat econstructor. pred_solve.
+  contradiction H1.
+  repeat eexists.
+  econstructor; eval_expr; [
+  reflexivity | eval_expr; eauto..].
 Qed.
 
 Import Go.
