@@ -70,24 +70,11 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  match goal with [|- EXTRACT _ {{ ?var ~>? _ * _ }} _ {{ _ }} // _ ] =>
-    eapply CompileRet with (v := (CSMap cs)) (var0 := var)
-  end.
   compile_step.
   compile_step.
   compile_step.
-  compile_step. (* TODO rule for Ret false *)
-  {
-    match goal with [|- EXTRACT _ {{ ?PRE }} _ {{ _ }} // _ ] =>
-      match PRE with
-      context [?var ~> false] =>
-        eapply hoare_weaken; [
-        eapply CompileRet' with (var0 := var) |..]
-      end
-    end.
-    eapply CompileSkip.
-    cancel_go. cancel_go.
-  }
+  compile_step.
+  compile_step.
   compile_step.
   compile_step.
   compile_step.
@@ -128,7 +115,7 @@ Proof.
   compile_step.
   compile_step.
   (***********)
-  (* This [compile_step] once took 2 minutes. Now it takes 3 seconds! *)
+  (* This [compile_step] once took 2 minutes. Now it takes 1.3 seconds! *)
   (***********)
   Time compile_step.
   eapply hoare_weaken.

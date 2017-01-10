@@ -132,7 +132,7 @@ Module Go.
   | TestE : test -> expr -> expr -> expr.
 
   Inductive modify_op :=
-  | SetConst (n : nat)
+  | SetConst {t} (v : type_denote t)
   | DuplicateOp
   | AppendOp
   | ModifyNumOp (nop : numop)
@@ -314,8 +314,8 @@ Module Go.
                              end))),
        Leave, Leave).
 
-    Definition setconst_impl (n : nat) : op_impl 1 :=
-      fun _ => Some (SetTo (Val Num (Here n))).
+    Definition setconst_impl t (v : type_denote t) : op_impl 1 :=
+      fun _ => Some (SetTo (Val t v)).
 
     Definition duplicate_impl : op_impl 2 :=
       fun args => let (_, a) := args in Some (SetTo a, Leave).
@@ -462,7 +462,7 @@ Module Go.
 
   Definition impl_for (op : modify_op) : { n : nat & op_impl n } :=
     match op with
-    | SetConst n => existT _ _ (setconst_impl n)
+    | @SetConst t v => existT _ _ (setconst_impl t v)
     | DuplicateOp => existT _ _ duplicate_impl
     | AppendOp => existT _ _ append_impl
     | ModifyNumOp nop => existT _ _ (numop_impl nop)
@@ -1258,7 +1258,7 @@ Notation "! x" := (x = 0)%go (at level 70, no associativity).
 Notation "A ; B" := (Go.Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : go_scope.
 Notation "x <~ y" := (Go.Assign x y) (at level 90) : go_scope.
 (* TODO: better syntax *)
-Notation "x <~const n" := (Go.Modify (Go.SetConst n) (x : Go.n_tuple 1 Go.var)) (at level 90): go_scope.
+Notation "x <~const v" := (Go.Modify (Go.SetConst v) (x : Go.n_tuple 1 Go.var)) (at level 90): go_scope.
 Notation "x <~dup y" := (Go.Modify Go.DuplicateOp (x, y)) (at level 90): go_scope.
 Notation "x <~num A * B" := (Go.Modify (Go.ModifyNumOp Go.Times) (x, A, B)) (at level 90): go_scope.
 Notation "x <~num A + B" := (Go.Modify (Go.ModifyNumOp Go.Plus ) (x, A, B)) (at level 90): go_scope.

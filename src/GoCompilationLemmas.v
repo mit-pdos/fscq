@@ -34,11 +34,11 @@ Proof.
 Qed.
 
 
-Lemma CompileConst : forall env A var (v : nat),
-  EXTRACT Ret v
-  {{ var ~>? W * A }}
-    var <~const v
-  {{ fun ret => var ~> ret * A }} // env.
+Lemma CompileConst : forall T {Wr: GoWrapper T} env A (v : Go.var) (val : T),
+  EXTRACT Ret val
+  {{ v ~>? T * A }}
+    v <~const (wrap' val)
+  {{ fun ret => v ~> ret * A }} // env.
 Proof.
   unfold ProgOk.
   intros.
@@ -108,11 +108,10 @@ Proof.
   Unshelve.
   all: auto.
 Qed.
-
-Lemma CompileConst' : forall env A var (v : nat),
+Lemma CompileConst' : forall T {Wr: GoWrapper T} env A var (v : T),
   EXTRACT Ret tt
-  {{ var ~>? nat * A }}
-    var <~const v
+  {{ var ~>? T * A }}
+    var <~const (wrap' v)
   {{ fun _ => var ~> v * A }} // env.
 Proof.
   eauto using CompileRet, CompileConst.
@@ -1068,11 +1067,11 @@ Proof.
 Qed.
 
 
-Lemma SetConstBefore : forall T (T' : GoWrapper T) (p : prog T) env xp v n A B,
-  EXTRACT p {{ v ~> n * A }} xp {{ B }} // env ->
+Lemma SetConstBefore : forall T {WrT : GoWrapper T} T' {WrT' : GoWrapper T'} (p : prog T) env xp v v0 A B,
+  EXTRACT p {{ v ~> v0 * A }} xp {{ B }} // env ->
   EXTRACT p
-    {{ v ~>? nat * A }}
-      v <~const n; xp
+    {{ v ~>? T' * A }}
+      v <~const (wrap' v0); xp
     {{ B }} // env.
 Proof.
   eauto using CompileBefore, CompileConst'.
@@ -1173,7 +1172,7 @@ Lemma CompileFor : forall L G (L' : GoWrapper L) loopvar F
   EXTRACT (@ForN_ L G pb i n nocrash oncrash t0)
   {{ loopvar ~> t0 * v ~> i * vn ~> n * F }}
     Declare Num (fun one => (
-      one <~const 1;
+      one <~const (wrap' 1);
       Declare Num (fun term => (
         Go.Modify (Go.DuplicateOp) (term, v);
         Go.Modify (Go.ModifyNumOp Go.Plus) (term, term, vn);

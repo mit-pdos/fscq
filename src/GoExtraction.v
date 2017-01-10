@@ -1,4 +1,4 @@
-Require Import ProofIrrelevance.
+
 Require Import Eqdep_dec.
 Require Import PeanoNat String List.
 Require Import Relation_Operators Operators_Properties.
@@ -108,7 +108,7 @@ Ltac compile_const :=
     end;
       match var_mapping_to_ret with
       | ?x => eapply hoare_weaken;
-        [eapply CompileConst with (var0 := x) | cancel_go..]
+        [eapply (@CompileConst _ _ _ _ x) | cancel_go..]
       end
   end.
 
@@ -265,14 +265,14 @@ Ltac compile_map_op := match goal with
         end
       end
     end
-  | [ |- EXTRACT Ret (Map.add ?k ?v ?m) {{ ?pre }} _ {{ fun ret : ?T => ?post }} // _ ] =>
+  | [ |- EXTRACT Ret (Map.add ?k ?v_ ?m) {{ ?pre }} _ {{ fun ret : ?T => ?post }} // _ ] =>
     match var_mapping_to_ret with
     | ?retv =>
       match find_val m pre with
       | Some ?varm => unify retv varm; (* same variable *)
         match find_val k pre with
         | Some ?vark =>
-          match find_val v pre with
+          match find_val v_ pre with
           | Some ?varv =>
             eapply hoare_weaken; [
             eapply CompileMapAdd with (kvar := vark) (vvar := varv) (mvar := varm) |
@@ -282,8 +282,7 @@ Ltac compile_map_op := match goal with
       | Some ?varm => (* not the same variable *)
         (unify retv varm; fail 2) ||
         eapply CompileBefore; [
-        idtac m retv "TODO apply CompileRet"
-        (* TODO apply CompileRet *)
+          eapply CompileRet with (v := m) (var0 := retv)
         |]
       end
     end
