@@ -65,8 +65,6 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  Focus 3. cancel.
-  apply pimpl_refl.
   compile_step.
   compile_step.
   compile_step.
