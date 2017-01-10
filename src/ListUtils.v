@@ -3316,6 +3316,26 @@ Proof.
   eauto with incl_app.
 Qed.
 
+Lemma incl_app_commr: forall (A: Type) (l: list A) l1 l2,
+  incl l (l1++l2) -> incl l (l2++l1).
+Proof.
+  unfold incl; intros.
+  eapply in_or_app.
+  specialize (H _ H0).
+  eapply in_app_or in H.
+  intuition.
+Qed.
+
+Lemma incl_app_comml: forall (A: Type) (l: list A) l1 l2,
+  incl (l1++l2) l -> incl (l2++l1) l.
+Proof.
+  unfold incl; intros.
+  apply H.
+  eapply in_or_app.
+  eapply in_app_or in H0.
+  intuition.
+Qed.
+
 Lemma NoDup_incl_l : forall T (l1 l2 l2' : list T),
   NoDup (l1 ++ l2) ->
   NoDup l2' ->
