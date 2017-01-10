@@ -112,6 +112,21 @@ Ltac compile_const :=
       end
   end.
 
+Ltac is_transformable v :=
+  let T := type of v in
+  let wr := constr:(_ : WrapByTransforming T) in idtac.
+
+Ltac transform_pre :=
+  match goal with
+  | [ |- EXTRACT _ {{ ?pre }} _ {{ _ }} // _ ] =>
+    match pre with
+    | context[?k ~> ?v] =>
+      is_transformable v;
+      eapply hoare_strengthen_pre; [
+        rewrite ?transform_pimpl; simpl; reflexivity | ]
+    end
+  end.
+
 Ltac compile_ret := match goal with
   | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
     eapply hoare_weaken_post; [ | eapply CompileSkip ]; [ cancel_go ]
@@ -125,6 +140,26 @@ Ltac compile_ret := match goal with
         | cancel_go.. ]
       end
     end
+  | [ |- EXTRACT Ret ?x {{ ?pre }} _ {{ _ }} // _ ] =>
+    is_transformable x;
+    let ret := var_mapping_to_ret in
+    eapply hoare_weaken; [
+      eapply CompileRet' with (var0 := 1);
+      eapply hoare_weaken_post; [
+        intros;
+        let P := fresh "P" in
+        match goal with
+        | [ |- ?P_ =p=> _ ] => set P_ as P
+        end; rewrite ?transform_pimpl; simpl; subst P;
+        let Q := fresh "Q" in
+        match goal with
+        | [ |- ?e ?x =p=> ?Q_ ] =>
+          set Q_ as Q;
+          pattern x in Q;
+          subst Q;
+          reflexivity
+        end
+      | eapply CompileRet ] | cancel_go | cancel_go ]
   end.
 
 Ltac compile_match := match goal with
@@ -436,14 +471,14 @@ Ltac compile_if := match goal with
       eapply extract_equiv_prog with (pr1 := Bind (Ret x_) (fun x => if x then _ else _));
       [ rewrite bind_left_id; apply prog_equiv_equivalence |]
     | Some ?kx_ =>
-      eapply hoare_weaken; [eapply CompileIf with (varb := kx_)|
-      cancel_go..]
+      eapply hoare_weaken; [eapply CompileIf with (varb := kx_) |
+      cancel_go..]; simpl
     end
   end.
 
 Ltac compile_step :=
   match goal with
-  | [ |- @sigT _ _ ] => eexists; intros; eapply CompileDeclareMany; intro
+  | [ |- @sigT _ _ ] => eexists; intros; eapply CompileDeclareMany; intro; transform_pre
   | _ => eapply decls_pre_impl_post
   end
   || compile_bind
