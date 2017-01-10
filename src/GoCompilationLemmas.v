@@ -125,37 +125,68 @@ Inductive Declaration :=
 
 Arguments Decl T {Wr} {D}.
 
-Fixpoint n_tuple_unit n (T : Type) : Type :=
+Fixpoint pair_vec n (T : Type) : Type :=
   match n with
   | 0 => unit
-  | S n' => n_tuple_unit n' T * T
+  | S n' => pair_vec n' T * T
   end.
 
-Definition decls_pre (decls : list Declaration) (vars : n_tuple_unit (length decls) var) : pred.
-  induction decls; simpl in *.
+Fixpoint pair_vec_nthl {n T} def m : pair_vec n T -> T :=
+  match n with
+  | 0 => fun _ => def
+  | S n' =>
+    match m with
+    | 0 => fun t => snd t
+    | S m' => fun t => pair_vec_nthl def m' (fst t)
+    end
+  end.
+
+Definition decls_pre (decls : list Declaration) {n} (vars : pair_vec n var) : nat -> pred.
+  induction decls; intro m.
   - exact emp.
   - destruct a.
-    exact ((snd vars |-> wrap zeroval * IHdecls (fst vars))%pred).
+    exact ((pair_vec_nthl 0 m vars |-> wrap zeroval * IHdecls (S m))%pred).
 Defined.
 
-Definition decls_post (decls : list Declaration) (vars : n_tuple_unit (length decls) var) : pred.
-  induction decls; simpl in *.
+Lemma decls_pre_shift : forall decls n vars var0 m,
+  @decls_pre decls (S n) (vars, var0) (S m) <=p=> @decls_pre decls n vars m.
+Proof.
+  induction decls.
+  - reflexivity.
+  - intros. destruct a. simpl.
+    split; cancel;
+    apply IHdecls.
+Qed.
+
+Definition decls_post (decls : list Declaration) {n} (vars : pair_vec n var) : nat -> pred.
+  induction decls; intro m.
   - exact emp.
-  - exact ((snd vars |->? * IHdecls (fst vars))%pred).
+  - exact ((pair_vec_nthl 0 m vars |->? * IHdecls (S m))%pred).
 Defined.
+
+Lemma decls_post_shift : forall decls n vars var0 m,
+  @decls_post decls (S n) (vars, var0) (S m) <=p=> @decls_post decls n vars m.
+Proof.
+  induction decls.
+  - reflexivity.
+  - intros. destruct a. simpl.
+    split; cancel;
+    apply IHdecls.
+Qed.
+
 
 Lemma decls_pre_impl_post :
-  forall decls vars,
-    decls_pre decls vars =p=> decls_post decls vars.
+  forall n decls vars m,
+    @decls_pre decls n vars m =p=> decls_post decls vars m.
 Proof.
-  induction decls; simpl in *; intros.
+  induction decls; intros.
   - auto.
   - destruct a.
     cancel. auto.
 Qed.
 Hint Resolve decls_pre_impl_post : cancel_go_finish.
 
-Hint Extern 0 (okToCancel (decls_pre ?decls ?vars) (decls_post ?decls ?vars)) =>
+Hint Extern 0 (okToCancel (decls_pre ?decls ?vars ?m) (decls_post ?decls ?vars ?m)) =>
   apply decls_pre_impl_post.
 
 Local Open Scope map_scope.
@@ -256,7 +287,7 @@ Proof.
       invc H6; [ invc H4 | invc H ].
 Qed.
 
-Definition many_declares (decls : list Declaration) (xp : n_tuple_unit (length decls) var -> stmt) : stmt.
+Definition many_declares (decls : list Declaration) (xp : pair_vec (length decls) var -> stmt) : stmt.
   induction decls; simpl in *.
   - exact (xp tt).
   - destruct a.
@@ -268,11 +299,11 @@ Defined.
 
 Lemma CompileDeclareMany :
   forall env T (decls : list Declaration) xp A B (p : prog T),
-    (forall vars : n_tuple_unit (length decls) var,
+    (forall vars : pair_vec (length decls) var,
        EXTRACT p
-       {{ decls_pre decls vars * A }}
+       {{ decls_pre decls vars 0 * A }}
          xp vars
-       {{ fun ret => decls_post decls vars * B ret }} // env) ->
+       {{ fun ret => decls_post decls vars 0 * B ret }} // env) ->
     EXTRACT p
     {{ A }}
       many_declares decls xp
@@ -283,6 +314,10 @@ Proof.
   - destruct a. eapply CompileDeclare; eauto. intros.
     eapply IHdecls. intros.
     eapply hoare_weaken; [ apply H | cancel_go.. ].
+    rewrite <- decls_pre_shift.
+    reflexivity.
+    rewrite decls_post_shift.
+    cancel.
 Qed.
 
 Lemma CompileVar : forall env A var T (v : T) {H : GoWrapper T},
@@ -1169,7 +1204,7 @@ Proof.
   eapply hoare_weaken_post; [>
   | eapply AddInPlaceLeftAfter with (a := 1) (x := x); eauto].
   rewrite Nat.add_1_r.
-  cancel_go. apply pimpl_refl.
+  cancel_go.
   eapply hoare_weaken; [>
     eapply H | cancel_go..].
 Qed.
@@ -1565,3 +1600,5 @@ Proof.
       contradiction H3.
       repeat eexists. apply StepIfFalse. eval_expr.
 Qed.
+
+Arguments pair_vec_nthl : simpl never.
