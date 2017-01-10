@@ -478,7 +478,7 @@ Ltac compile_if := match goal with
 
 Ltac compile_step :=
   match goal with
-  | [ |- @sigT _ _ ] => eexists; intros; eapply CompileDeclareMany; intro; transform_pre
+  | [ |- @sigT _ _ ] => eexists; intros; eapply CompileDeclareMany; intro; try transform_pre
   | _ => eapply decls_pre_impl_post
   end
   || compile_bind

@@ -13,8 +13,7 @@ Example append_list_in_pair : sigT (fun p => forall (a x : nat) xs,
     p
   {{ fun ret => 0 ~> ret * 1 ~>? nat }} // StringMap.empty _).
 Proof.
-  (* This is a simple example which already seems much slower than necessary *)
-  Time compile. (* 4.2 seconds *)
+  compile.
 Defined.
 Eval lazy in (projT1 append_list_in_pair).
 
@@ -312,8 +311,8 @@ Example swap_example : stmt :=
    Declare Num (fun b =>
    Declare DiskBlock (fun va =>
    Declare DiskBlock (fun vb =>
-     (a <~const 1;
-     b <~const 2;
+     (a <~const (wrap' 1);
+     b <~const (wrap' 2);
      DiskRead va (Var a);
      DiskRead vb (Var b);
      DiskWrite (Var a) (Var vb);
@@ -360,14 +359,14 @@ func swap(_0 Num, _1 Num) {
 
 Example rot3_function_body : stmt :=
   (Declare Num (fun var0 =>
-    (var0 <~const 1;
+    (var0 <~const (wrap' 1);
      Declare Num (fun var1 =>
-      (var1 <~const 0;
+      (var1 <~const (wrap' 0);
        Call 2 "swap" (var1, var0)))));
    Declare Num (fun var0 =>
-    (var0 <~const 2;
+    (var0 <~const (wrap' 2);
      Declare Num (fun var1 =>
-      (var1 <~const 1;
+      (var1 <~const (wrap' 1);
        Call 2 "swap" (var1, var0))))))%go.
 
 Example rot3_function : FunctionSpec :=
