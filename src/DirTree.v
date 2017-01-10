@@ -5594,6 +5594,38 @@ Module DIRTREE.
         apply incl_appr. apply incl_appr. apply incl_refl.
   Qed.
 
+  Lemma tree_inodes_distinct_update_subtree': forall pathname tree subtree d,
+    tree_names_distinct tree ->
+    find_subtree pathname tree = Some d ->
+    incl (tree_inodes subtree) (tree_inodes (update_subtree pathname subtree tree)).
+  Proof.
+    induction pathname; intros; subst; simpl.
+    - apply incl_refl.
+    - destruct tree.
+      + simpl in H0. exfalso. inversion H0.
+      + induction l; simpl; eauto.
+        -- 
+          simpl in H0. exfalso. inversion H0.
+        -- 
+          destruct a0; simpl in *.
+          {
+            destruct (string_dec s a); subst.
+            - rewrite update_subtree_notfound.
+              eapply IHpathname with (tree := d0) (subtree := subtree) in H0 as H0; eauto.
+              repeat rewrite cons_app with (l := app _ _).
+              eapply incl_appr; eauto.
+              eapply incl_appl; eauto.
+              inversion H. inversion H4. eauto.
+            - repeat rewrite cons_app with (l := app _ _).
+              Search incl app.
+              eapply incl_app_commr.
+              rewrite <- app_assoc.
+              eapply incl_appr; eauto.
+              eapply incl_app_commr.
+              eapply IHl; eauto.  
+          }
+  Qed.
+
   Lemma tree_inodes_incl_delete_from_list : forall name l,
     incl (dirlist_combine tree_inodes (delete_from_list name l))
          (dirlist_combine tree_inodes l).

@@ -2710,14 +2710,6 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     constructor.
   Qed.
 
-
-Lemma tree_inodes_in_update_subtree_child: forall pathname subtree inum tree d,
-  In inum (tree_inodes subtree) ->
-  find_subtree pathname tree = Some d ->
-  In inum (tree_inodes (update_subtree pathname subtree tree)).
-Proof.
-Admitted.
-
 Lemma tree_inodes_in_update_subtree_oob: forall dstpath dstnum dstents tree subtree suffix inum f,
   find_subtree dstpath tree = Some (TreeDir dstnum dstents) ->
   find_subtree suffix tree = Some (TreeFile inum f) ->
@@ -2731,6 +2723,10 @@ Lemma tree_inodes_in_add_to_dir: forall inum tree subtree dstname,
   tree_names_distinct tree ->
   In inum (tree_inodes tree) ->
   In inum (tree_inodes (add_to_dir dstname subtree tree)).
+Proof.
+  intros.
+  unfold add_to_dir.
+  destruct tree; eauto.
 Admitted.
 
 Lemma tree_inodes_in_prune_subtree_child: forall pn inum f srcnum srcents srcbase srcname 
@@ -2798,6 +2794,8 @@ Admitted.
       ++
         deex.
         eapply tree_inodes_in_update_subtree_child; eauto.
+        eapply tree_names_distinct_prune_subtree'; eauto.
+        eapply tree_names_distinct_subtree; eauto.
         destruct (pathname_decide_prefix [dstname] suffix0).
         -- 
           deex.
@@ -2823,6 +2821,8 @@ Admitted.
                 + deex.
                   erewrite find_subtree_app in H2; eauto.
                   eapply tree_inodes_in_update_subtree_child; eauto.
+                  eapply tree_names_distinct_subtree in H9; eauto.
+                  eapply tree_names_distinct_subtree; eauto.
                   destruct (pathname_decide_prefix [srcname] suffix1).
                   - deex.
                     rewrite <- app_assoc in H0.
