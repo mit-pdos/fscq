@@ -96,8 +96,7 @@ Ltac compile_bind := match goal with
     end
   end.
 
-Ltac compile_const :=
-  lazymatch goal with
+Ltac compile_const := lazymatch goal with
   | [ |- EXTRACT Ret ?n {{ _ }} _ {{ _ }} // _] =>
     match goal with
     | [ x : _ |- _] =>
@@ -316,9 +315,10 @@ Ltac compile_map_op := match goal with
         end
       | Some ?varm => (* not the same variable *)
         (unify retv varm; fail 2) ||
-        eapply CompileBefore; [
-          eapply CompileRet with (v := m) (var0 := retv)
-        |]
+        eapply extract_equiv_prog with (pr1 := Bind (Ret m) (fun m' => Ret (Map.add _ _ m'))); [
+          rewrite bind_left_id; reflexivity |];
+          eapply hoare_weaken; [
+          eapply CompileBindRet with (vara := retv) | cancel_go..]
       end
     end
   | [ |- EXTRACT Ret (Map.remove ?k ?m) {{ ?pre }} _ {{ fun ret : ?T => ?post }} // _ ] =>
