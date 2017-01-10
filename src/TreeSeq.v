@@ -2751,6 +2751,13 @@ Lemma tree_inodes_in_delete_from_dir_oob: forall pn srcnum srcents inum f srcnam
   In inum (tree_inodes (delete_from_dir srcname (TreeDir srcnum srcents))).
 Admitted.
 
+Lemma tree_inodes_in_delete_from_list_oob: forall pn srcnum srcents inum f srcname,
+  find_subtree pn (TreeDir srcnum srcents) = Some (TreeFile inum f) ->
+  (~ pathname_prefix [srcname] pn) -> 
+  In inum (tree_inodes (TreeDir srcnum srcents)) ->
+  In inum (tree_inodes (TreeDir srcnum (delete_from_list srcname srcents))).
+Admitted.
+
 (*
 Lemma find_subtree_delete_ne' : forall l suffix name name' n,
   NoDup (map fst l) ->
@@ -2761,10 +2768,9 @@ Admitted.
 *)
 
 
-  (* XXX we also know dstname points to a file, but maybe we don't care *)
-  (* tree_names_distinct in tree with rename? *)
   Lemma tree_inodes_rename_oob: forall pathname' cwd srcbase srcname dstbase dstname
        inum f  dnum tree_elem srcnum srcents srcfile dstnum dstents ts,
+    tree_names_distinct (TStree ts !!) ->
     (~ pathname_prefix (cwd ++ srcbase ++ [srcname]) pathname') ->
     (~ pathname_prefix (cwd ++ dstbase ++ [dstname]) pathname') ->
     find_subtree pathname' (TStree ts !!) = Some (TreeFile inum f) ->
@@ -2785,7 +2791,7 @@ Admitted.
     destruct (pathname_decide_prefix cwd pathname').
     + (* inside cwd: pathname' = cwd+suffix *)
       deex.
-      erewrite find_subtree_app in H1.
+      erewrite find_subtree_app in H2.
       2: eauto.
       eapply tree_inodes_in_update_subtree_child; eauto.
       destruct (pathname_decide_prefix dstbase suffix).
@@ -2795,42 +2801,37 @@ Admitted.
         destruct (pathname_decide_prefix [dstname] suffix0).
         -- 
           deex.
-          exfalso. eapply H0.
-          unfold pathname_prefix.
-          exists suffix. 
-          rewrite <- app_assoc.
-          f_equal.
-          rewrite <- app_assoc.
-          f_equal.
+          rewrite <- pathname_prefix_trim in H1.
+          rewrite <- pathname_prefix_trim in H1.
+          exfalso. eapply H1. apply pathname_prefix_head.
         -- (* pathname' inside cwd, dstbase, but not dstname *)
           eapply tree_inodes_in_add_to_dir.
-          admit.
+          eapply tree_names_distinct_prune_subtree in H6; eauto.
+          eapply tree_names_distinct_subtree; eauto.
           {
-            unfold tree_prune in H5.  
+            unfold tree_prune in H6.  
             destruct (pathname_decide_prefix dstbase srcbase).
             + deex.
               (* srcbase is below dstbase in tree *)
-              eapply find_subtree_app' in H3 as H3'; eauto.
+              eapply find_subtree_app' in H4 as H4'; eauto.
               deex.
-              erewrite find_subtree_update_subtree_child in H5; eauto.
-              inversion H5. clear H5.
-              erewrite find_subtree_app in H1; eauto.
+              erewrite find_subtree_update_subtree_child in H6; eauto.
+              inversion H6. clear H6.
+              erewrite find_subtree_app in H2; eauto.
               {
                 destruct (pathname_decide_prefix suffix suffix0).
                 + deex.
-                  erewrite find_subtree_app in H1; eauto.
+                  erewrite find_subtree_app in H2; eauto.
                   eapply tree_inodes_in_update_subtree_child; eauto.
                   destruct (pathname_decide_prefix [srcname] suffix1).
-                  - deex. 
-                    exfalso. apply H.
-                    unfold pathname_prefix. exists suffix0.
-                    rewrite <- app_assoc.
-                    f_equal.
-                    rewrite <- app_assoc.
-                    rewrite <- app_assoc.
-                    f_equal.
+                  - deex.
+                    rewrite <- app_assoc in H0.
+                    rewrite <- pathname_prefix_trim in H0. 
+                    rewrite <- pathname_prefix_trim in H0. 
+                    rewrite <- pathname_prefix_trim in H0. 
+                    exfalso. apply H0. apply pathname_prefix_head.
                   - eapply tree_inodes_in_delete_from_dir_oob; eauto.
-                    unfold pathname_prefix. intro. eapply H5. deex. eexists suffix0.
+                    unfold pathname_prefix. intro. eapply H6. deex. eexists suffix0.
                     eauto.
                     replace inum with (dirtree_inum ((TreeFile inum f))).
                     eapply find_subtree_inum_present; eauto.
@@ -2839,43 +2840,48 @@ Admitted.
                   replace inum with (dirtree_inum ((TreeFile inum f))).
                   eapply find_subtree_inum_present; eauto.
                   simpl; eauto.
-                  unfold pathname_prefix. intro. eapply H5. deex. eexists suffix1.
-                  eauto.
+                  eapply pathname_prefix_neq; eauto.
               }
             + destruct (pathname_decide_prefix srcbase dstbase).
               - (* dstbase is below srcbase in tree *)
                 deex.
-                rewrite <- app_assoc in H1.
-                erewrite find_subtree_app in H1; eauto.
-                erewrite find_subtree_app in H5; eauto.
+                rewrite <- app_assoc in H2.
+                erewrite find_subtree_app in H2; eauto.
+                erewrite find_subtree_app in H6; eauto.
                 destruct (pathname_decide_prefix [srcname] suffix).
-                deex. exfalso.  eapply H. unfold pathname_prefix. exists (suffix1++suffix0).
-                rewrite <- app_assoc. f_equal. rewrite <- app_assoc. rewrite <- app_assoc. f_equal.
+                deex.
+                rewrite <- app_assoc in H0.
+                rewrite <- pathname_prefix_trim in H0. 
+                rewrite <- pathname_prefix_trim in H0. 
+                rewrite <- app_assoc in H0.
+                exfalso. apply H0. apply pathname_prefix_head.
                 {
                   destruct suffix.
-                  + rewrite app_nil_l in *.
-                    simpl in H5.
-                    inversion H5.
-                    admit.
+                  + 
+                    rewrite app_nil_r in *.
+                    exfalso. apply H8. exists []. rewrite app_nil_r; eauto.
                   +
-                    erewrite find_subtree_delete_ne in H5.
-                    erewrite find_subtree_app in H1; eauto.
+                    erewrite find_subtree_delete_ne in H6.
+                    erewrite find_subtree_app in H2; eauto.
                     replace inum with (dirtree_inum ((TreeFile inum f))).
                     eapply find_subtree_inum_present; eauto.
                     simpl; eauto.
-                    admit.
-                    admit.
+                    eapply tree_names_distinct_subtree in H4; eauto.
+                    inversion H4; eauto.
+                    eapply tree_names_distinct_subtree; eauto.
+                    intro. eapply H9. eexists suffix. subst.
+                    rewrite cons_app; eauto.
                 }
               - (* srcpath and dstpath are unrelated *)
-                erewrite find_subtree_update_subtree_ne_path in H5.
-                erewrite find_subtree_app in H1; eauto.
+                erewrite find_subtree_update_subtree_ne_path in H6.
+                erewrite find_subtree_app in H2; eauto.
                 replace inum with (dirtree_inum ((TreeFile inum f))).
                 eapply find_subtree_inum_present; eauto.
                 simpl; eauto.
-                admit.
-                admit.
-                admit.
-          }
+                eapply tree_names_distinct_subtree; eauto.
+                eapply pathname_prefix_neq; eauto.
+                eapply pathname_prefix_neq; eauto.
+           }
       ++ 
         (* pathname' inside cwd, but outside of dstbase *)
         unfold tree_graft.
@@ -2885,9 +2891,26 @@ Admitted.
           destruct (pathname_decide_prefix srcbase suffix).
           + deex.
             erewrite find_subtree_app; eauto.
-            erewrite find_subtree_app in H1; eauto.
-            erewrite find_subtree_app in H1; eauto.
-            admit.
+            destruct (pathname_decide_prefix [srcname] suffix0).
+            deex.
+            rewrite <- pathname_prefix_trim in H0. 
+            rewrite <- pathname_prefix_trim in H0. 
+            exfalso. apply H0. apply pathname_prefix_head.
+            {
+              destruct suffix0.
+              + 
+                rewrite app_nil_r in *.
+                rewrite H4 in H2.
+                inversion H2.
+              +
+                erewrite find_subtree_delete_ne.
+                erewrite find_subtree_app in H2; eauto.
+                 eapply tree_names_distinct_subtree in H4; eauto.
+                inversion H4; eauto.
+                eapply tree_names_distinct_subtree; eauto.
+                intro. eapply H8. eexists suffix0. subst.
+                rewrite cons_app; eauto.
+            }
           + erewrite find_subtree_update_subtree_oob; eauto.
         }
         destruct (pathname_decide_prefix srcbase suffix).
@@ -2898,21 +2921,14 @@ Admitted.
           {
           destruct (pathname_decide_prefix [srcname] suffix0).
           + deex.
-            exfalso.
-            eapply H.
-            unfold pathname_prefix.
-            exists suffix.
-            rewrite <- app_assoc.
-            f_equal.
-            rewrite <- app_assoc.
-            reflexivity.
-          +
+            rewrite <- pathname_prefix_trim in H0. 
+            rewrite <- pathname_prefix_trim in H0. 
+            exfalso. apply H0. apply pathname_prefix_head.
+      +
             eapply tree_inodes_in_delete_from_dir_oob; eauto.
-            erewrite find_subtree_app in H1; eauto.
-            unfold pathname_prefix.
-            intro. deex. eapply H7.
-            exists suffix. reflexivity.
-            erewrite find_subtree_app in H1; eauto.
+            erewrite find_subtree_app in H2; eauto.
+            eapply pathname_prefix_neq; eauto.
+            erewrite find_subtree_app in H2; eauto.
             replace inum with (dirtree_inum ((TreeFile inum f))).
             eapply find_subtree_inum_present; eauto.
             simpl; eauto.
@@ -2923,20 +2939,16 @@ Admitted.
           replace inum with (dirtree_inum ((TreeFile inum f))).
           eapply find_subtree_inum_present; eauto.
           simpl; eauto.
-          unfold pathname_prefix.
-          intro. deex. eapply H7.
-          exists suffix0. reflexivity.
+          eapply pathname_prefix_neq; eauto.
         -- 
-          unfold pathname_prefix.
-          intro. deex. eapply H6.
-          exists suffix0. reflexivity.
+          eapply pathname_prefix_neq; eauto.
     + (* pathname' outside cwd *)
-      eapply find_subtree_update_subtree_oob in H1 as H1'.
+      eapply find_subtree_update_subtree_oob in H2 as H2'.
       replace inum with (dirtree_inum ((TreeFile inum f))).
       eapply find_subtree_inum_present; eauto.
       simpl; eauto.
       eassumption.
-  Admitted.
+  Qed.
 
 
   Theorem treeseq_rename_ok : forall fsxp dnum srcbase (srcname:string) dstbase dstname mscs,

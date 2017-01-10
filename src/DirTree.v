@@ -3296,6 +3296,26 @@ Module DIRTREE.
   Definition pathname_prefix p1 p2 :=
     (exists suffix : list string, p1 ++ suffix = p2).
 
+  Lemma pathname_prefix_head: forall n suffix,
+    pathname_prefix [n] ([n]++suffix).
+  Proof.
+    intros.
+    unfold pathname_prefix.
+    eexists suffix.
+    reflexivity.
+  Qed.
+
+  Lemma pathname_prefix_ex_falso: forall name suffix,
+    ~ pathname_prefix [name] suffix ->
+    (exists suffix0 : list string, suffix = [name] ++ suffix0) -> False.
+  Proof.
+    intros.
+    deex. exfalso.
+    eapply H.
+    unfold pathname_prefix.
+    exists suffix0; eauto.
+  Qed.
+
   Lemma pathname_prefix_neq: forall path path',
     ~ (exists suffix : list string, path = path' ++ suffix) ->
     ~ pathname_prefix path' path.
@@ -3800,16 +3820,6 @@ Module DIRTREE.
         eapply pathname_prefix_neq; eauto.
   Qed.
 
-  Lemma pathname_prefix_ex_falso: forall name suffix,
-    ~ pathname_prefix [name] suffix ->
-    (exists suffix0 : list string, suffix = [name] ++ suffix0) -> False.
-  Proof.
-    intros.
-    deex. exfalso.
-    eapply H.
-    unfold pathname_prefix.
-    exists suffix0; eauto.
-  Qed.
 
   Lemma find_subtree_add_to_dir_same: forall name suffix n subtree l,
     find_subtree (name :: suffix) (TreeDir n (add_to_list name subtree l)) =
