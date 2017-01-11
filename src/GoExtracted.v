@@ -35,8 +35,6 @@ Instance addrmap_default_value : forall T {H: GoWrapper T}, DefaultValue (Map.t 
   eauto with map.
 Defined.
 
-
-
 Example compile_writeback : forall env, sigT (fun p => forall a cs,
   EXTRACT BUFCACHE.writeback a cs
   {{ 0 ~> a * 1 ~> cs }}
@@ -47,6 +45,7 @@ Proof.
   intros.
   compile.
 Defined.
+
 
 Eval lazy in (projT1 (compile_writeback (StringMap.empty _))).
 
@@ -143,6 +142,40 @@ func writeback(a *big.Num, cs *CacheState) {
   }
 }
 *)
+
+Local Open Scope string_scope.
+
+Example compile_evict : forall env, sigT (fun p => forall a cs,
+  func2_val_ref "writeback" BUFCACHE.writeback env ->
+  EXTRACT BUFCACHE.evict a cs
+  {{ 0 ~> a * 1 ~> cs }}
+    p
+  {{ fun ret => 0 |->? * 1 ~> ret }} // env).
+Proof.
+  unfold BUFCACHE.evict.
+  intros.
+  compile_step.
+  compile_step.
+  eapply CompileBefore.
+  eapply CompileRet with (v := cs) (var0 := pair_vec_nthl 0 0 vars).
+  eapply hoare_weaken.
+  eapply CompileDup with (var0 := 1) (var' := pair_vec_nthl 0 0 vars).
+  cancel_go.
+  intros.
+  cancel_go.
+  do_declare nat ltac:(fun vara => idtac vara).
+  eapply CompileBefore.
+  eapply CompileRet with (v := a) (var0 := pair_vec_nthl 0 1 vars).
+  eapply hoare_weaken.
+  eapply CompileDup with (var0 := 0) (var' := pair_vec_nthl 0 1 vars).
+  cancel_go.
+  intros.
+  cancel_go.
+  compile.
+  compile.
+Defined.
+
+Eval lazy in (projT1 (compile_evict (StringMap.empty _))).
 
 Local Open Scope string_scope.
 Local Open Scope list_scope.

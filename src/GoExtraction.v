@@ -241,8 +241,16 @@ Ltac compile_call := match goal with
       | Some ?ka =>
         match find_val b pre with
           | Some ?kb =>
-            eapply hoare_weaken_post; [ | eapply hoare_strengthen_pre; [ |
-              eapply H with (avar := ka) (bvar := kb) ] ]; [ cancel_go .. ]
+            eapply hoare_weaken; [ eapply H with (avar := ka) (bvar := kb) | cancel_go .. ]
+        end
+    end
+  | [ H : func2_val_ref ?name ?f ?env |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // ?env ] =>
+    let retvar := var_mapping_to_ret in
+    match find_val a pre with
+      | Some ?ka =>
+        match find_val b pre with
+          | Some ?kb =>
+            eapply hoare_weaken; [ eapply H with (avar := ka) (bvar := kb) | cancel_go .. ]
         end
     end
   end.
@@ -300,36 +308,41 @@ Ltac compile_map_op := match goal with
       end
     end
   | [ |- EXTRACT Ret (Map.add ?k ?v_ ?m) {{ ?pre }} _ {{ fun ret : ?T => ?post }} // _ ] =>
-    match var_mapping_to_ret with
-    | ?retv =>
-      match find_val m pre with
-      | Some ?varm => unify retv varm; (* same variable *)
-        match find_val k pre with
-        | Some ?vark =>
-          match find_val v_ pre with
-          | Some ?varv =>
-            eapply hoare_weaken; [
-            eapply CompileMapAdd with (kvar := vark) (vvar := varv) (mvar := varm) |
-            cancel_go..]
-          end
-        end
-      | Some ?varm => (* not the same variable *)
-        (unify retv varm; fail 2) ||
-        eapply extract_equiv_prog with (pr1 := Bind (Ret m) (fun m' => Ret (Map.add _ _ m'))); [
-          rewrite bind_left_id; reflexivity |];
+    let retv := var_mapping_to_ret in
+    match find_val m pre with
+    | Some ?varm => unify retv varm; (* same variable *)
+      match find_val k pre with
+      | Some ?vark =>
+        match find_val v_ pre with
+        | Some ?varv =>
           eapply hoare_weaken; [
-          eapply CompileBindRet with (vara := retv) | cancel_go..]
+          eapply CompileMapAdd with (kvar := vark) (vvar := varv) (mvar := varm) |
+          cancel_go..]
+        end
       end
+    | Some ?varm => (* not the same variable *)
+      (unify retv varm; fail 2) ||
+      eapply extract_equiv_prog with (pr1 := Bind (Ret m) (fun m' => Ret (Map.add _ _ m'))); [
+        rewrite bind_left_id; reflexivity |];
+        eapply hoare_weaken; [
+        eapply CompileBindRet with (vara := retv) | cancel_go..]
     end
   | [ |- EXTRACT Ret (Map.remove ?k ?m) {{ ?pre }} _ {{ fun ret : ?T => ?post }} // _ ] =>
-    match find_val k pre with
-    | Some ?vark =>
-      match find_val m pre with
-      | Some ?varm =>
+    let retv := var_mapping_to_ret in
+    match find_val m pre with
+    | Some ?varm => unify retv varm; (* same variable *)
+      match find_val k pre with
+      | Some ?vark =>
         eapply hoare_weaken; [
         eapply CompileMapRemove with (kvar := vark) (mvar := varm) |
         cancel_go..]
       end
+    | Some ?varm => (* not the same variable *)
+      (unify retv varm; fail 2) ||
+      eapply extract_equiv_prog with (pr1 := Bind (Ret m) (fun m' => Ret (Map.remove _ m'))); [
+        rewrite bind_left_id; reflexivity |];
+        eapply hoare_weaken; [
+        eapply CompileBindRet with (vara := retv) | cancel_go..]
     end
   end.
 
@@ -478,7 +491,7 @@ Ltac compile_if := match goal with
 
 Ltac compile_step :=
   match goal with
-  | [ |- @sigT _ _ ] => eexists; intros; eapply CompileDeclareMany; intro; try transform_pre
+  | [ |- @sigT _ _ ] => eexists; intros; eapply CompileDeclareMany; intro
   | _ => eapply decls_pre_impl_post
   end
   || compile_bind
@@ -495,6 +508,7 @@ Ltac compile_step :=
   || compile_join
   || compile_split
   || compile_decompose
+  || transform_pre (* TODO: only do this when it should be useful *)
   .
 
 Ltac compile :=
