@@ -2882,7 +2882,9 @@ Admitted.
         eapply tree_inodes_in_update_subtree_oob with (suffix := suffix) (f := f); eauto.
         eapply tree_names_distinct_prune_subtree'; eauto.
         eapply tree_names_distinct_subtree; eauto.
-        admit.
+        eapply tree_inodes_distinct_prune; eauto.
+        eapply tree_names_distinct_subtree; eauto.
+        eapply tree_inodes_distinct_subtree; eauto.
         {
           unfold tree_prune.
           destruct (pathname_decide_prefix srcbase suffix).
@@ -2947,7 +2949,7 @@ Admitted.
       eapply find_subtree_inum_present; eauto.
       simpl; eauto.
       eassumption.
-  Admitted.
+  Qed.
 
 
   Theorem treeseq_rename_ok : forall fsxp dnum srcbase (srcname:string) dstbase dstname mscs,
