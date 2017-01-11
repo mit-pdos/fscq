@@ -4963,22 +4963,7 @@ Module DIRTREE.
             eapply tree_inodes_distinct_elem in H2; eauto.
   Qed.
 
-  Lemma tree_inodes_distinct_prune: forall srcbase dnum tree_elem srcnum srcents srcname,
-    tree_names_distinct (TreeDir dnum tree_elem) ->
-    tree_inodes_distinct (TreeDir dnum tree_elem) ->
-    find_subtree srcbase (TreeDir dnum tree_elem) = Some (TreeDir srcnum srcents) ->
-    tree_inodes_distinct
-      (tree_prune srcnum srcents srcbase srcname (TreeDir dnum tree_elem)).
-  Proof.
-    intros.
-    unfold tree_prune, delete_from_dir.
-    eapply tree_inodes_distinct_update_subtree; eauto.
-    eapply tree_inodes_distinct_delete_from_list; eauto.
-    eapply tree_inodes_distinct_subtree; eauto.
-    simpl.
-    eapply incl_cons2.
-    eapply tree_inodes_incl_delete_from_list; eauto.
-  Qed.
+
 
   Lemma leaf_in_inodes_parent : forall path name n l subtree_base d,
     tree_names_distinct (TreeDir n l) ->
@@ -5872,6 +5857,23 @@ Module DIRTREE.
       specialize (IHl H).
       intro; intro. specialize (IHl _ H0).
       apply in_app_or in IHl; intuition.
+  Qed.
+
+  Lemma tree_inodes_distinct_prune: forall srcbase dnum tree_elem srcnum srcents srcname,
+    tree_names_distinct (TreeDir dnum tree_elem) ->
+    tree_inodes_distinct (TreeDir dnum tree_elem) ->
+    find_subtree srcbase (TreeDir dnum tree_elem) = Some (TreeDir srcnum srcents) ->
+    tree_inodes_distinct
+      (tree_prune srcnum srcents srcbase srcname (TreeDir dnum tree_elem)).
+  Proof.
+    intros.
+    unfold tree_prune, delete_from_dir.
+    eapply tree_inodes_distinct_update_subtree; eauto.
+    eapply tree_inodes_distinct_delete_from_list; eauto.
+    eapply tree_inodes_distinct_subtree; eauto.
+    simpl.
+    eapply incl_cons2.
+    eapply tree_inodes_incl_delete_from_list; eauto.
   Qed.
 
   Theorem delete_ok : forall fsxp dnum name mscs,
