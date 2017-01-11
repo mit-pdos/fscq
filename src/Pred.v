@@ -2657,5 +2657,28 @@ Proof.
   erewrite H0; eauto.
 Qed.
 
+Lemma sep_star_shuffle_1 : forall AT AEQ V (p1 p2 p3 : @pred AT AEQ V),
+  (p1 * p3) * p2 =p=> p3 * (p1 * p2).
+Proof.
+  intros.
+  rewrite sep_star_assoc.
+  rewrite sep_star_comm.
+  rewrite sep_star_assoc.
+  apply pimpl_sep_star.
+  reflexivity.
+  apply sep_star_comm.
+Qed.
+
+Lemma sep_star_shuffle_2 : forall AT AEQ V (p1 p2 p3 : @pred AT AEQ V),
+  p3 * (p1 * p2) =p=> (p1 * p3) * p2.
+Proof.
+  intros.
+  rewrite sep_star_assoc.
+  rewrite sep_star_comm.
+  rewrite sep_star_assoc.
+  apply pimpl_sep_star.
+  reflexivity.
+  apply sep_star_comm.
+Qed.
 
 Global Opaque pred.

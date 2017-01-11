@@ -360,3 +360,63 @@ Ltac cancel :=
   try match goal with
   | [ |- emp * _ =p=> _ ] => eapply pimpl_trans; [ apply star_emp_pimpl |]
   end.
+
+Ltac find_cancellable x pred H :=
+  lazymatch pred with
+  | (?a * ?b)%pred =>
+    find_cancellable x a H || find_cancellable x b H
+  | ?y =>
+    assert (okToCancel y x) as H by (trivial with okToCancel)
+  end.
+
+Ltac pred_has x p :=
+  match p with
+  | (?a * ?b)%pred =>
+    pred_has x a + pred_has x b
+  | ?c => (is_evar c; fail 1) ||
+    unify x c
+  end.
+
+Ltac move_first_pre x :=
+  match goal with
+  |- ?pre =p=> ?post =>
+    match pre with
+    | (?a * ?b)%pred =>
+      pred_has x b;
+      eapply pimpl_trans; [apply sep_star_comm |]
+    | ((?a * ?b) * ?c)%pred =>
+      (pred_has x b;
+        eapply pimpl_trans; [apply sep_star_shuffle_1 |]) +
+      eapply pimpl_trans; [apply sep_star_assoc_1 |]
+    | _ => idtac
+    end
+  end.
+
+Ltac cancel_fast_normr :=
+  repeat match goal with
+  |- ?pre =p=> ?post =>
+    match post with
+    | ((?a * ?b) * ?c)%pred =>
+      eapply pimpl_trans; [| apply sep_star_assoc_2]
+    end
+  end.
+
+Ltac cancel_one_fast :=
+  cancel_fast_normr;
+  let H := fresh in
+  match goal with
+  |- ?pre =p=> ?post =>
+    match post with
+    | (?a * _)%pred =>
+      find_cancellable a pre H
+    end;
+    match type of H with
+    | okToCancel ?x ?y =>
+      repeat move_first_pre x;
+      apply pimpl_sep_star; [exact H | clear H]
+    end
+  end.
+
+Ltac cancel_go_fast :=
+  simpl; intros;
+  solve [repeat cancel_one_fast; apply pimpl_refl].
