@@ -142,7 +142,7 @@ Ltac compile_ret := match goal with
     is_transformable x;
     let ret := var_mapping_to_ret in
     eapply hoare_weaken; [
-      eapply CompileRet' with (var0 := 1);
+      eapply CompileRet' with (var0 := ret);
       eapply hoare_weaken_post; [
         intros;
         let P := fresh "P" in
@@ -248,8 +248,24 @@ Ltac compile_call := match goal with
     match find_val a pre with
       | Some ?ka =>
         match find_val b pre with
-          | Some ?kb =>
+        | Some ?kb =>
+          unify kb retvar; (* same variable *)
+          (* first, copy the first argument *)
+          match type of a with
+          | ?TA =>
+            do_declare TA ltac:(fun ka' =>
+                                  eapply CompileBefore; [ 
+                                    eapply CompileRet with (v := a) (var0 := ka');
+                                    eapply hoare_weaken; [
+                                      eapply CompileDup with (var0 := ka) (var' := ka') | cancel_go .. ] | ]);
             eapply hoare_weaken; [ eapply H with (avar := ka) (bvar := kb) | cancel_go .. ]
+          end
+        | Some ?kb =>
+          (unify kb retvar; fail 2)
+          || (* different variables *)
+          eapply CompileBefore; [
+            eapply CompileRet with (v := b) (var0 := retvar);
+            simpl decls_pre |]
         end
     end
   end.

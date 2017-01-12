@@ -915,9 +915,9 @@ Local Hint Extern 1 (okToCancel (?var |-> (Val Num (Here (Map.cardinal (Map.map 
                                 (?var ~> Map.cardinal ?m))
   => apply map_cardinal_okToCancel.
 
-Lemma CompileMapCardinal : forall env F T {Wr : GoWrapper T} mvar m var (v0 : W),
+Lemma CompileMapCardinal : forall env F T {Wr : GoWrapper T} mvar m var,
   EXTRACT Ret (Go.Map.cardinal m)
-  {{ var ~> v0 * mvar ~> m * F }}
+  {{ var ~>? nat * mvar ~> m * F }}
     Go.Modify Go.MapCardinality (mvar, var)
   {{ fun ret => var ~> ret * mvar ~> m * F }} // env.
 Proof.

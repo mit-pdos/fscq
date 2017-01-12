@@ -37,6 +37,7 @@ Defined.
 
 Local Open Scope string_scope.
 
+(*
 Example compile_writeback : forall env, sigT (fun p => forall a cs,
   EXTRACT BUFCACHE.writeback a cs
   {{ 0 ~> a * 1 ~> cs }}
@@ -145,6 +146,8 @@ func writeback(a *big.Num, cs *CacheState) {
 }
 *)
 
+*)
+
 Example compile_evict : forall env, sigT (fun p => forall a cs,
   func2_val_ref "writeback" BUFCACHE.writeback env ->
   EXTRACT BUFCACHE.evict a cs
@@ -154,24 +157,6 @@ Example compile_evict : forall env, sigT (fun p => forall a cs,
 Proof.
   unfold BUFCACHE.evict.
   intros.
-  compile_step.
-  compile_step.
-  eapply CompileBefore.
-  eapply CompileRet with (v := cs) (var0 := pair_vec_nthl 0 0 vars).
-  eapply hoare_weaken.
-  eapply CompileDup with (var0 := 1) (var' := pair_vec_nthl 0 0 vars).
-  cancel_go.
-  intros.
-  cancel_go.
-  do_declare nat ltac:(fun vara => idtac vara).
-  eapply CompileBefore.
-  eapply CompileRet with (v := a) (var0 := pair_vec_nthl 0 1 vars).
-  eapply hoare_weaken.
-  eapply CompileDup with (var0 := 0) (var' := pair_vec_nthl 0 1 vars).
-  cancel_go.
-  intros.
-  cancel_go.
-  compile.
   compile.
 Defined.
 
@@ -197,7 +182,35 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  (* TODO Map.cardinal *)
+  eapply hoare_weaken.
+  eapply CompileMapCardinal with (var0 := pair_vec_nthl 0 0 vars) (mvar := pair_vec_nthl 0 1 vars).
+  cancel_go.
+  cancel_go.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  simpl. (* TODO: most of the [simpl]s in GoExtraction.v right now are in the wrong spot -- could add a declarationn in another goal *)
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  (* TODO Map.elements *)
 Abort.
   
 
