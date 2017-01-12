@@ -335,6 +335,54 @@ Proof.
   all: econstructor.
 Defined.
 
+Transparent BUFCACHE.write.
+Example compile_write : forall env, sigT (fun p => forall a v cs,
+  func1_ref "maybe_evict" BUFCACHE.maybe_evict env ->
+  func2_val_ref "eviction_update" eviction_update' env ->
+  EXTRACT BUFCACHE.write a v cs
+  {{ 0 ~> a * 1 ~> v * 2 ~> cs }}
+    p
+  {{ fun ret => 0 ~>? addr * 1 ~>? valu * 2 ~> ret }} // env).
+Proof.
+  intros. unfold BUFCACHE.write.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  change (Ret (eviction_update ?s ?a)) with (eviction_update' a s).
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+
+  Unshelve.
+  all: econstructor.
+Defined.
+
 Local Open Scope string_scope.
 Local Open Scope list_scope.
 Print BUFCACHE.writeback.
