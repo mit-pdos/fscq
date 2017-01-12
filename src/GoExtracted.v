@@ -383,6 +383,33 @@ Proof.
   all: econstructor.
 Defined.
 
+Transparent BUFCACHE.begin_sync.
+Example compile_begin_sync : forall env, sigT (fun p => forall cs,
+  EXTRACT BUFCACHE.begin_sync cs
+  {{ 0 ~> cs }}
+    p
+  {{ fun ret => 0 ~> ret }} // env).
+Proof.
+  intros. unfold BUFCACHE.begin_sync.
+  (* TODO: make this not split & rejoin :P *)
+  compile.
+Defined.
+
+Eval lazy in projT1 (compile_begin_sync _).
+
+Transparent BUFCACHE.sync.
+Example compile_sync : forall env, sigT (fun p => forall a cs,
+  func2_val_ref "writeback" BUFCACHE.writeback env ->
+  EXTRACT BUFCACHE.sync a cs
+  {{ 0 ~> a * 1 ~> cs }}
+    p
+  {{ fun ret => 0 ~>? addr * 1 ~> ret }} // env).
+Proof.
+  intros. unfold BUFCACHE.sync.
+  compile.
+Defined.
+Eval lazy in projT1 (compile_sync _).
+
 Local Open Scope string_scope.
 Local Open Scope list_scope.
 Print BUFCACHE.writeback.
