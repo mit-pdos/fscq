@@ -1,6 +1,6 @@
 Require Import List String.
 Require Import StringMap.
-Require Import Word Prog Pred.
+Require Import Word Prog Pred AsyncDisk.
 Require Import GoSemantics GoFacts GoHoare GoCompilationLemmas GoExtraction GoSepAuto GoTactics2.
 Import ListNotations.
 Import Go.
@@ -248,11 +248,9 @@ Proof.
   compile.
 Defined.
 
-*)
 
 Transparent BUFCACHE.read.
 
-Require Import AsyncDisk.
 
 (* TODO *)
 Definition eviction_update' a s := Ret (eviction_update s a).
@@ -409,6 +407,33 @@ Proof.
   compile.
 Defined.
 Eval lazy in projT1 (compile_sync _).
+
+*)
+
+Transparent BUFCACHE.end_sync.
+Example compile_end_sync : forall env, sigT (fun p => forall cs,
+  EXTRACT BUFCACHE.end_sync cs
+  {{ 0 ~> cs }}
+    p
+  {{ fun ret => 0 ~> ret }} // env).
+Proof.
+  intros. unfold BUFCACHE.end_sync.
+  compile.
+Defined.
+
+
+Transparent BUFCACHE.init.
+Example compile_init : forall env, sigT (fun p => forall n,
+  EXTRACT BUFCACHE.init n
+  {{ 0 ~> n * 1 ~>? cachestate }}
+    p
+  {{ fun ret => 0 ~>? nat * 1 ~> ret }} // env).
+Proof.
+  intros. unfold BUFCACHE.init.
+  compile.
+  cancel_go.
+Defined.
+
 
 Local Open Scope string_scope.
 Local Open Scope list_scope.

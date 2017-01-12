@@ -213,6 +213,8 @@ Ltac compile_read_write := match goal with
           eapply CompileWrite with (avar := ka) (vvar := kv) ] ]; [ cancel_go .. ]
       end
     end
+  | [ |- EXTRACT Sync {{ ?pre }} _ {{ _ }} // _ ] =>
+    eapply CompileSync
   end.
 
 Ltac compile_for := match goal with
