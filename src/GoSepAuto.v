@@ -365,12 +365,12 @@ Ltac find_cancellable x pred H cont :=
   lazymatch pred with
   | (?a * ?b)%pred =>
     find_cancellable x a H
-      ltac:(fun y path => cont y constr:(true ::path)) ||
+      ltac:(fun y path => cont y (true ::path)) ||
     find_cancellable x b H
-      ltac:(fun y path => cont y constr:(false::path))
+      ltac:(fun y path => cont y (false::path))
   | ?y =>
     assert (okToCancel y x) as H by (trivial with okToCancel);
-    cont y constr:(@nil bool)
+    cont y (@nil bool)
   end.
 
 Ltac cancel_fast_normr :=
