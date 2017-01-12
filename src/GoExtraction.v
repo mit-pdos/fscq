@@ -273,6 +273,19 @@ Ltac compile_call := match goal with
             simpl decls_pre |]
         end
     end
+  | [ H : func1_ref ?name ?f ?env |- EXTRACT ?f ?a {{ ?pre }} _ {{ _ }} // ?env ] =>
+    let retvar := var_mapping_to_ret in
+    match find_val a pre with
+    | Some ?ka =>
+      unify ka retvar; (* same variable *)
+      eapply hoare_weaken; [ eapply H with (avar := ka) | cancel_go .. ]
+    | Some ?ka =>
+      (unify ka retvar; fail 2)
+      || (* different variables *)
+      eapply CompileBefore; [
+        eapply CompileRet with (v := a) (var0 := retvar);
+        simpl decls_pre |]
+    end
   end.
 
 Ltac compile_add := match goal with

@@ -146,7 +146,6 @@ func writeback(a *big.Num, cs *CacheState) {
 }
 *)
 
-*)
 
 Example compile_evict : forall env, sigT (fun p => forall a cs,
   func2_val_ref "writeback" BUFCACHE.writeback env ->
@@ -249,10 +248,96 @@ Proof.
   compile.
 Defined.
 
+*)
+
+Transparent BUFCACHE.read.
+
+Require Import AsyncDisk.
+
+(* TODO *)
+Definition eviction_update' a s := Ret (eviction_update s a).
+
+Example compile_read : forall env, sigT (fun p => forall a cs,
+  func1_ref "maybe_evict" BUFCACHE.maybe_evict env ->
+  func2_val_ref "eviction_update" eviction_update' env ->
+  EXTRACT BUFCACHE.read a cs
+  {{ 0 ~> a * 1 ~> cs * 2 ~>? (cachestate * (valu * unit)) }}
+    p
+  {{ fun ret => 0 |->? * 1 ~>? cachestate * 2 ~> ret }} // env).
+Proof.
+  intros. unfold BUFCACHE.read.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  cancel_go.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  (* TODO: copy here automatically. This is *the* standard mostly unavoidable copy *)
+  do_declare valu ltac:(fun ka' =>
+                          eapply CompileBefore; [ 
+                            eapply CompileRet with (v := a1) (var0 := ka');
+                            eapply hoare_weaken; [
+                              eapply CompileDup with (var0 := pair_vec_nthl 0 14 vars) (var' := ka') | cancel_go .. ] | ]).
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  change (Ret (eviction_update ?s ?a)) with (eviction_update' a s).
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  cancel_go.
+
+  Unshelve.
+  all: econstructor.
+Defined.
+
 Local Open Scope string_scope.
 Local Open Scope list_scope.
 Print BUFCACHE.writeback.
-Check compile_writeback.
 
 Ltac argtuple pre var :=
   match pre with
