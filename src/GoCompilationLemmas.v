@@ -757,7 +757,84 @@ Proof.
       [ eval_expr; reflexivity.. ].
 Qed.
 
-
+Lemma CompileUncons :
+  forall env T F G V {Wr: GoWrapper V} (lvar cvar xvar xsvar : var) (l : list V)
+    (pnil : prog T) pcons xpnil xpcons,
+    EXTRACT pnil
+    {{ lvar ~>? (list V) * cvar ~> false * xvar ~>? V * xsvar ~>? (list V) * F }}
+      xpnil
+    {{ G }} // env ->
+    (forall x xs, EXTRACT pcons x xs
+             {{ lvar ~>? (list V) * cvar ~> true * xvar ~> x * xsvar ~> xs * F }}
+               xpcons
+             {{ G }} // env) ->
+    EXTRACT match l with
+            | [] => pnil
+            | x :: xs => pcons x xs
+            end
+    {{ lvar ~> l * cvar ~>? bool * xvar ~>? V * xsvar ~>? (list V) * F }}
+      Modify Uncons (lvar, cvar, xvar, xsvar);
+      If Var cvar Then xpcons Else xpnil EndIf
+    {{ G }} // env.
+Proof.
+  intros; unfold ProgOk.
+  inv_exec_progok.
+  - do 5 inv_exec; try solve [ inv_exec ];
+    eval_expr; do 2 inv_exec; eval_expr;
+      try solve [
+            destruct (Nat.eq_dec lvar cvar);
+            rewrite ?VarMapFacts.add_neq_o, ?VarMapFacts.add_eq_o in * by auto;
+            try find_apply_lem_hyp some_inj;
+            try find_apply_lem_hyp value_inj;
+            discriminate ];
+      try match goal with
+            [ H : context [ProgOk] |- _] =>
+            solve [edestruct H; forward_solve; simpl; pred_solve]
+          end.
+  - do 5 inv_exec; try solve [ inv_exec ];
+    eval_expr; do 2 inv_exec; eval_expr;
+      try solve [
+            destruct (Nat.eq_dec lvar cvar);
+            rewrite ?VarMapFacts.add_neq_o, ?VarMapFacts.add_eq_o in * by auto;
+            try find_apply_lem_hyp some_inj;
+            try find_apply_lem_hyp value_inj;
+            discriminate ];
+      try match goal with
+            [ H : context [ProgOk] |- _] =>
+            solve [edestruct H; forward_solve; simpl; pred_solve]
+          end.
+  - inv_exec. inv_exec. inv_exec. inv_exec. inv_exec. inv_exec.
+    inv_exec. inv_exec;
+    eval_expr;
+      try solve [
+            destruct (Nat.eq_dec lvar cvar);
+            rewrite ?VarMapFacts.add_neq_o, ?VarMapFacts.add_eq_o in * by auto;
+            try find_apply_lem_hyp some_inj;
+            try find_apply_lem_hyp value_inj;
+            discriminate ];
+      try match goal with
+            [ H : context [ProgOk] |- _] =>
+            solve [edestruct H; forward_solve; simpl; pred_solve]
+          end.
+    contradiction H2.
+    destruct l; repeat eexists; [ eapply StepIfFalse | eapply StepIfTrue ].
+    eval_expr_step.
+    eval_expr_step.
+    eval_expr_step.
+    eval_expr_step.
+    eval_expr_step.
+    eval_expr_step.
+    eval_expr_step.
+    eval_expr_step.
+    rewrite ?eq_dec_eq in *; simpl in *.
+    repeat find_inversion_safe.
+    admit. (* TODO: too annoying (have to show cvar <> lvar, etc etc) *)
+    admit.
+    contradiction H2.
+    repeat eexists. eapply StepSeq2.
+    contradiction H3.
+    repeat eexists. econstructor. econstructor.
+Admitted.
 
 Lemma map_add_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m k (v : T),
   (@piff AT AEQ value (var ~> Map.add k v m)
@@ -962,9 +1039,9 @@ Local Hint Extern 1 (okToCancel (?var |-> Val _ (Here (map _
                                 (?var ~> Map.elements _))
   => eapply map_elements_okToCancel : okToCancel.
 
-Lemma CompileMapElements : forall env F T {Wr : GoWrapper T} mvar m var (v0 : list (W * T)),
+Lemma CompileMapElements : forall env F T {Wr : GoWrapper T} mvar m var,
   EXTRACT Ret (Go.Map.elements m)
-  {{ var ~> v0 * mvar ~> m * F }}
+  {{ var ~>? (list (W * T)) * mvar ~> m * F }}
     Go.Modify Go.MapElements (mvar, var)
   {{ fun ret => var ~> ret * mvar ~> m * F }} // env.
 Proof.

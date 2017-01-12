@@ -58,12 +58,17 @@ Ltac var_mapping_to_ret :=
 Ltac do_declare T cont :=
   lazymatch goal with
   | [ |- EXTRACT _ {{ ?pre }} _ {{ _ }} // _ ] =>
-    lazymatch pre with
-    | context [decls_pre ?decls ?vars ?m] =>
-      let decls' := fresh "decls" in
-      evar (decls' : list Declaration);
-      unify decls (Decl T :: decls'); subst decls';
-      cont (pair_vec_nthl 0 m vars)
+    let Pre := fresh "Pre" in
+    set pre as Pre; simpl in Pre; subst Pre;
+    lazymatch goal with
+    | [ |- EXTRACT _ {{ ?pre }} _ {{ _ }} // _ ] =>
+      lazymatch pre with
+      | context [decls_pre ?decls ?vars ?m] =>
+        let decls' := fresh "decls" in
+        evar (decls' : list Declaration);
+        unify decls (Decl T :: decls'); subst decls';
+        cont (pair_vec_nthl 0 m vars)
+      end
     end
   end.
 

@@ -210,9 +210,44 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  (* TODO Map.elements *)
-Abort.
-  
+  Ltac pattern_prog pat :=
+    match goal with
+    | [ |- ProgMonad.prog_equiv _ ?pr ] =>
+      let Pr := fresh "Pr" in
+      set pr as Pr;
+      pattern pat in Pr;
+      subst Pr
+    end.
+  eapply extract_equiv_prog. 
+  pattern_prog (MapUtils.AddrMap.Map.elements (CSMap cs)).
+  eapply ProgMonad.bind_left_id.
+  simpl.
+  compile_step.
+  compile_step.
+  eapply hoare_weaken.
+  eapply CompileMapElements with (mvar := pair_vec_nthl 0 1 vars) (var0 := pair_vec_nthl 0 14 vars).
+  cancel_go.
+  cancel_go.
+  simpl.
+  do_declare bool ltac:(fun cvar => idtac cvar).
+  simpl.
+  do_declare (nat * (word AsyncDisk.Valulen.valulen * bool))%type ltac:(fun xvar => idtac xvar).
+  simpl.
+  do_declare (list (nat * (word AsyncDisk.Valulen.valulen * bool))%type) ltac:(fun xsvar => idtac xsvar).
+  eapply hoare_weaken.
+  apply CompileUncons with (lvar := pair_vec_nthl 0 14 vars)
+                             (cvar := pair_vec_nthl 0 15 vars)
+                             (xvar := pair_vec_nthl 0 16 vars)
+                             (xsvar := pair_vec_nthl 0 17 vars).
+  3: cancel_go.
+  3: cancel_go.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  intros.
+  compile.
+Defined.
 
 Local Open Scope string_scope.
 Local Open Scope list_scope.

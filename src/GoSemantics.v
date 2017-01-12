@@ -135,6 +135,7 @@ Module Go.
   | SetConst {t} (v : type_denote t)
   | DuplicateOp
   | AppendOp
+  | Uncons
   | ModifyNumOp (nop : numop)
   | SplitPair
   | JoinPair
@@ -323,6 +324,12 @@ Module Go.
     Definition append_impl' t (l : list (type_denote t)) (a : type_denote t) : n_tuple 2 var_update :=
       (SetTo (Val (Slice t) (Here (a :: l))), Move).
 
+    Definition uncons_impl' t (l : list (type_denote t)) : n_tuple 4 var_update :=
+      (Move,
+       SetTo (Val Bool (match l with [] => false | _ => true end)),
+       SetTo (Val t (match l with [] => default_value' _ | x :: _ => x end)),
+       SetTo (Val (Slice t) (match l with [] => default_value' _ | _ :: xs => Here xs end))).
+
     Definition split_pair_impl' ta tb (a : type_denote ta) (b : type_denote tb) : n_tuple 3 var_update :=
       (Move, SetTo (Val ta a), SetTo (Val tb b)).
 
@@ -369,6 +376,16 @@ Module Go.
       rewrite e in l.
       destruct l as [ l | ]; [ | exact None ].
       refine (Some (append_impl' _ l a)).
+    Defined.
+
+    Definition uncons_impl : op_impl 4.
+      refine (fun args => let '(Val t1 l, _, _, _) := args in
+                       match t1 with
+                       | Slice t1' => fun l => _
+                       | _ => fun _ => None
+                       end l).
+      destruct l as [ l | ]; [ | exact None ].
+      refine (Some (uncons_impl' _ l)).
     Defined.
 
     Definition split_pair_impl : op_impl 3.
@@ -465,6 +482,7 @@ Module Go.
     | @SetConst t v => existT _ _ (setconst_impl t v)
     | DuplicateOp => existT _ _ duplicate_impl
     | AppendOp => existT _ _ append_impl
+    | Uncons => existT _ _ uncons_impl
     | ModifyNumOp nop => existT _ _ (numop_impl nop)
     | SplitPair => existT _ _ split_pair_impl
     | JoinPair => existT _ _ join_pair_impl
