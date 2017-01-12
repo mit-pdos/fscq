@@ -537,6 +537,7 @@ Module Go.
   | Modify : forall op : modify_op, n_tuple (op_arity op) var -> stmt
   | DiskRead : var -> expr -> stmt
   | DiskWrite : expr -> expr -> stmt
+  | DiskSync : stmt
   (* InCall and Undeclare only appear at runtime *)
   | Undeclare : var -> stmt
   | InCall (s0: locals) (* The stack frame inside the function *)
@@ -570,7 +571,8 @@ Module Go.
         (forall var, source_stmt (cont var)) ->
         source_stmt (Declare t cont)
   | SDiskRead : forall x a, source_stmt (DiskRead x a)
-  | SDiskWrite : forall a v, source_stmt (DiskWrite a v).
+  | SDiskWrite : forall a v, source_stmt (DiskWrite a v)
+  | SDiskSync : source_stmt (DiskSync).
 
   Hint Resolve andb_prop.
   Hint Resolve andb_true_intro.
@@ -818,6 +820,9 @@ Module Go.
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->
         runsto (DiskWrite ae ve) (d, s) (d', s)
+    | RunsToDiskSync : forall (d : rawdisk) d' s,
+        d' = sync_mem d ->
+        runsto DiskSync (d, s) (d', s)
     | RunsToCall : forall spec f argvars s s' d d' argvals argvals' callee_s',
         StringMap.find f env = Some spec ->
         source_stmt spec.(Body) ->
@@ -886,6 +891,9 @@ Module Go.
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->
         step (d, s, DiskWrite ae ve) (d', s, Skip)
+    | StepDiskSync : forall (d : rawdisk) d' s,
+        d' = sync_mem d ->
+        step (d, s, DiskSync) (d', s, Skip)
     | StepStartCall :
         forall spec s f argvars d argvals,
           StringMap.find f env = Some spec ->
@@ -1013,6 +1021,8 @@ Module Go.
     eapply StepDiskRead.
     Hint Extern 1 (step (_, _, DiskWrite _ _) _) =>
     eapply StepDiskWrite.
+    Hint Extern 1 (step (_, _, DiskSync) _) =>
+    eapply StepDiskSync.
     Hint Extern 1 (step (_, Call _ _ _) _) =>
     eapply StepStartCall.
     Hint Extern 1 (step (_, InCall _ _ _ _ _) _) =>
@@ -1090,6 +1100,9 @@ Module Go.
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->
         runsto_InCall (DiskWrite ae ve) (d, s) (d', s)
+    | RunsToICDiskSync : forall (d : rawdisk) d' s,
+        d' = sync_mem d ->
+        runsto_InCall DiskSync (d, s) (d', s)
     | RunsToICCall : forall spec f argvars s s' d d' argvals argvals' callee_s',
         StringMap.find f env = Some spec ->
         source_stmt (Body spec) ->

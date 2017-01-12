@@ -675,6 +675,21 @@ Proof.
   all : eval_expr; eauto.
 Qed.
 
+Lemma CompileSync : forall env F,
+  EXTRACT Sync
+  {{ F }}
+    DiskSync
+  {{ fun _ => F }} // env.
+Proof.
+  unfold ProgOk.
+  intros.
+  inv_exec_progok.
+  contradiction H1.
+  repeat eexists; eauto.
+  econstructor; eauto.
+Qed.
+
+
 
 Lemma CompileAdd :
   forall env F sumvar avar bvar (a b : nat),
