@@ -124,15 +124,6 @@ Proof.
   destruct a, b; invc H; GoWrapper_t.
 Defined.
 
-Instance GoWrapper_dec {P Q} : GoWrapper ({P} + {Q}).
-Proof.
-  refine {| wrap' := fun (v : {P} + {Q}) => if v then true else false;
-            wrap_type := Go.Bool |}.
-  intros.
-  destruct a1, a2; f_equal; try discriminate; apply proof_irrelevance.
-Qed.
-
-
 Instance GoWrapper_addrmap {T} {WT : GoWrapper T} : GoWrapper (Go.Map.t T).
 Proof.
   refine {| wrap_type := Go.AddrMap (@wrap_type _ WT);
@@ -202,6 +193,11 @@ Proof.
   reflexivity.
 Qed.
 
+Instance transform_dec {P Q} : WrapByTransforming ({P} + {Q}) :=
+  { T' := bool }.
+  - intros. destruct H; [ exact true | exact false ].
+  - intros. destruct t1, t2; f_equal; try discriminate; apply proof_irrelevance.
+Defined.
 
 Lemma extract_equiv_prog : forall T env A (B : T -> _) pr1 pr2 p,
   prog_equiv pr1 pr2 ->

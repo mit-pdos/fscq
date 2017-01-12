@@ -1,4 +1,3 @@
-
 Require Import Eqdep_dec.
 Require Import PeanoNat String List.
 Require Import Relation_Operators Operators_Properties.
@@ -477,7 +476,30 @@ Ltac compile_decompose := match goal with
     end
   end.
 
-Ltac compile_if := match goal with
+Ltac compile_if :=
+  unfold BasicProg.If_;
+  match goal with
+  | [|- EXTRACT (if Compare_dec.lt_dec ?a_ ?b_ then _ else _) {{ ?pre }} _ {{ _ }} // _ ] =>
+    match find_val a_ pre with
+    | None =>
+      eapply extract_equiv_prog; [
+        let arg := fresh "arg" in
+        set (arg := if Compare_dec.lt_dec a_ b_ then _ else _);
+        pattern a_ in arg; subst arg;
+        eapply bind_left_id | ]
+    | Some ?ka_ =>
+      match find_val b_ pre with
+      | None =>
+      eapply extract_equiv_prog; [
+        let arg := fresh "arg" in
+        set (arg := if Compare_dec.lt_dec a_ b_ then _ else _);
+        pattern b_ in arg; subst arg;
+        eapply bind_left_id | ]
+      | Some ?kb_ =>
+        eapply hoare_weaken; [eapply CompileIfLt with (vara := ka_) (varb := kb_) |
+                              cancel_go..]; simpl
+      end
+    end
   | [|- EXTRACT (if ?x_ then _ else _) {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val x_ pre with
     | None =>

@@ -35,6 +35,8 @@ Instance addrmap_default_value : forall T {H: GoWrapper T}, DefaultValue (Map.t 
   eauto with map.
 Defined.
 
+Local Open Scope string_scope.
+
 Example compile_writeback : forall env, sigT (fun p => forall a cs,
   EXTRACT BUFCACHE.writeback a cs
   {{ 0 ~> a * 1 ~> cs }}
@@ -143,8 +145,6 @@ func writeback(a *big.Num, cs *CacheState) {
 }
 *)
 
-Local Open Scope string_scope.
-
 Example compile_evict : forall env, sigT (fun p => forall a cs,
   func2_val_ref "writeback" BUFCACHE.writeback env ->
   EXTRACT BUFCACHE.evict a cs
@@ -176,6 +176,30 @@ Proof.
 Defined.
 
 Eval lazy in (projT1 (compile_evict (StringMap.empty _))).
+
+Example compile_maybe_evict : forall env, sigT (fun p => forall cs,
+  func2_val_ref "evict" BUFCACHE.evict env ->
+  EXTRACT BUFCACHE.maybe_evict cs
+  {{ 0 ~> cs }}
+    p
+  {{ fun ret => 0 ~> ret }} // env).
+Proof.
+  unfold BUFCACHE.maybe_evict.
+  intros.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  (* TODO Map.cardinal *)
+Abort.
+  
 
 Local Open Scope string_scope.
 Local Open Scope list_scope.
