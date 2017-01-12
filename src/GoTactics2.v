@@ -282,7 +282,7 @@ Hint Extern 0 (okToCancel (?var |-> _) (exists _, ?var |-> _)) =>
   apply pimpl_exists_r; eexists; reflexivity : okToCancel.
 
 Ltac cancel_go :=
-  GoSepAuto.cancel_go_fast ||
+  solve [GoSepAuto.cancel_go_fast] ||
   GoSepAuto.cancel; try apply pimpl_refl.
 
 Lemma ptsto_delete' : forall a (F :pred) (m : mem),
