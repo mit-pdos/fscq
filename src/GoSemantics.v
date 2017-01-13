@@ -520,10 +520,6 @@ Module Go.
   Definition is_true st e := eval_bool st e = Some true.
   Definition is_false st e := eval_bool st e = Some false.
 
-  Inductive param_style :=
-  | PassedByValue
-  | PassedByRef.
-
   Inductive stmt :=
   | Skip : stmt
   | Seq : stmt -> stmt -> stmt
@@ -542,7 +538,6 @@ Module Go.
   | Undeclare : var -> stmt
   | InCall (s0: locals) (* The stack frame inside the function *)
            num_params
-           (paramstyles: n_tuple num_params param_style) (* Whether the parameters are by-value or by-ref *)
            (argvars: n_tuple num_params var) (* The caller's variables which it passed in *)
            (p: stmt) (* The remaining body *).
 
@@ -732,7 +727,7 @@ Module Go.
     {
       (* Parameters are numbered in [0, NumParamVars). *)
       NumParamVars : nat;
-      ParamVars : n_tuple NumParamVars (param_style * type);
+      ParamVars : n_tuple NumParamVars type;
       Body : stmt;
       body_source : source_stmt Body;
       (* TODO syntax_ok with is_actual_args_no_dup ? *)
@@ -754,12 +749,6 @@ Module Go.
     Variable env : Env.
 
     Definition sel T m := fun k => VarMap.find k m : option T.
-
-    Definition ref_ret_update (p : param_style * value) : var_update :=
-      match p with
-      | (PassedByValue, _) => Move
-      | (PassedByRef, val) => SetTo val
-      end.
 
     Inductive runsto : stmt -> state -> state -> Prop :=
     | RunsToSkip : forall st,
@@ -827,12 +816,12 @@ Module Go.
         StringMap.find f env = Some spec ->
         source_stmt spec.(Body) ->
         collect (map_nt (sel s) argvars) = Some argvals ->
-        values_well_typed (map_nt snd spec.(ParamVars)) argvals = true ->
+        values_well_typed spec.(ParamVars) argvals = true ->
         let param_names := seq_nt 0 spec.(NumParamVars) in
         let callee_s := add_many param_names argvals (VarMap.empty _) in
         runsto spec.(Body) (d, callee_s) (d', callee_s') ->
         collect (map_nt (sel callee_s') param_names) = Some argvals' ->
-        update_many argvars argvals (map_nt ref_ret_update (combine_nt (map_nt fst spec.(ParamVars)) argvals')) s = Some s' ->
+        update_many argvars argvals (map_nt SetTo argvals') s = Some s' ->
         runsto (Call spec.(NumParamVars) f argvars) (d, s) (d', s').
 
     Inductive step : state * stmt -> state * stmt -> Prop :=
@@ -899,24 +888,23 @@ Module Go.
           StringMap.find f env = Some spec ->
           source_stmt (Body spec) ->
           collect (map_nt (sel s) argvars) = Some argvals ->
-          values_well_typed (map_nt snd spec.(ParamVars)) argvals = true ->
+          values_well_typed spec.(ParamVars) argvals = true ->
           let param_names := seq_nt 0 spec.(NumParamVars) in
           let callee_s := add_many param_names argvals (VarMap.empty _) in
           step (d, s, Call spec.(NumParamVars) f argvars)
-               (d, callee_s, InCall s spec.(NumParamVars) (map_nt fst spec.(ParamVars))
-                                    argvars spec.(Body))
+               (d, callee_s, InCall s spec.(NumParamVars) argvars spec.(Body))
     | StepInCall :
-        forall st p st' p' s0 np styles argvars,
+        forall st p st' p' s0 np argvars,
           step (st, p) (st', p') ->
-          step (st, InCall s0 np styles argvars p)
-               (st', InCall s0 np styles argvars p')
+          step (st, InCall s0 np argvars p)
+               (st', InCall s0 np argvars p')
     | StepEndCall :
-        forall callee_s' s s' d numparams argvals argvals' argstyles argvars,
+        forall callee_s' s s' d numparams argvals argvals' argvars,
           collect (map_nt (sel s) argvars) = Some argvals ->
           let param_names := seq_nt 0 numparams in
           collect (map_nt (sel callee_s') param_names) = Some argvals' ->
-          update_many argvars argvals (map_nt ref_ret_update (combine_nt argstyles argvals')) s = Some s' ->
-          step (d, callee_s', InCall s numparams argstyles argvars Skip) (d, s', Skip).
+          update_many argvars argvals (map_nt SetTo argvals') s = Some s' ->
+          step (d, callee_s', InCall s numparams argvars Skip) (d, s', Skip).
 
     Inductive outcome :=
     | Failed
@@ -927,9 +915,9 @@ Module Go.
     | CrashSeq1 : forall a b,
         crash_step a ->
         crash_step (Seq a b)
-    | CrashInCall : forall s np styles args p,
+    | CrashInCall : forall s np args p,
         crash_step p ->
-        crash_step (InCall s np styles args p)
+        crash_step (InCall s np args p)
     | CrashRead : forall x a,
         crash_step (DiskRead x a)
     | CrashWrite : forall a v,
@@ -985,9 +973,9 @@ Module Go.
       end.
 
     Lemma steps_incall :
-      forall s0 np styles args st p st' p',
+      forall s0 np args st p st' p',
         step^* (st, p) (st', p') ->
-        step^* (st, InCall s0 np styles args p) (st', InCall s0 np styles args p').
+        step^* (st, InCall s0 np args p) (st', InCall s0 np args p').
     Proof.
       intros.
       prep_induction H; induction H; intros; subst.
@@ -1025,7 +1013,7 @@ Module Go.
     eapply StepDiskSync.
     Hint Extern 1 (step (_, Call _ _ _) _) =>
     eapply StepStartCall.
-    Hint Extern 1 (step (_, InCall _ _ _ _ _) _) =>
+    Hint Extern 1 (step (_, InCall _ _ _ _) _) =>
     eapply StepEndCall.
 
     Theorem runsto_Steps :
@@ -1107,20 +1095,20 @@ Module Go.
         StringMap.find f env = Some spec ->
         source_stmt (Body spec) ->
         collect (map_nt (sel s) argvars) = Some argvals ->
-        values_well_typed (map_nt snd spec.(ParamVars)) argvals = true ->
+        values_well_typed spec.(ParamVars) argvals = true ->
         let param_names := seq_nt 0 spec.(NumParamVars) in
         let callee_s := add_many param_names argvals (VarMap.empty _) in
         runsto_InCall (Body spec) (d, callee_s) (d', callee_s') ->
         collect (map_nt (sel callee_s') param_names) = Some argvals' ->
-        update_many argvars argvals (map_nt ref_ret_update (combine_nt (map_nt fst (ParamVars spec)) argvals')) s = Some s' ->
+        update_many argvars argvals (map_nt SetTo argvals') s = Some s' ->
         runsto_InCall (Call spec.(NumParamVars) f argvars) (d, s) (d', s')
-    | RunsToInCall : forall p callee_s callee_s' s s' d d' numparams argvals argvals' argstyles argvars,
+    | RunsToInCall : forall p callee_s callee_s' s s' d d' numparams argvals argvals' argvars,
           collect (map_nt (sel s) argvars) = Some argvals ->
           let param_names := seq_nt 0 numparams in
           collect (map_nt (sel callee_s') param_names) = Some argvals' ->
-          update_many argvars argvals (map_nt ref_ret_update (combine_nt argstyles argvals')) s = Some s' ->
+          update_many argvars argvals (map_nt SetTo argvals') s = Some s' ->
           runsto_InCall p (d, callee_s) (d', callee_s') ->
-          runsto_InCall (InCall s numparams argstyles argvars p) (d, callee_s) (d', s').
+          runsto_InCall (InCall s numparams argvars p) (d, callee_s) (d', s').
 
     Hint Constructors source_stmt.
 
@@ -1275,7 +1263,7 @@ Module Go.
     Qed.
 
   End EnvSection.
-  
+
 End Go.
 
 Notation "A < B" := (Go.TestE Go.Lt A B) : go_scope.

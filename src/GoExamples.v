@@ -181,7 +181,7 @@ Local Open Scope map_scope.
 Definition swap_env : Env :=
   ("swap" -s> {|
      NumParamVars := 2;
-     ParamVars := ((PassedByValue, Go.Num), (PassedByValue, Go.Num));
+     ParamVars := (Go.Num, Go.Num);
      Body := projT1 (extract_swap_prog (StringMap.empty _));
      body_source := ltac:(repeat constructor);
    |}; (StringMap.empty _)).

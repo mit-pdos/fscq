@@ -1262,7 +1262,7 @@ Lemma extract_voidfunc2_call :
       (forall a b F, EXTRACT src a b {{ arga ~> a * argb ~> b * F }} body {{ fun _ => arga |->? * argb |->? * F }} // env) ->
       StringMap.find name env = Some {|
                                     NumParamVars := 2;
-                                    ParamVars := ((PassedByValue, @wrap_type _ WA), (PassedByValue, @wrap_type _ WB));
+                                    ParamVars := (@wrap_type _ WA, @wrap_type _ WB);
                                     Body := body;
                                     body_source := ss;
                                   |} ->
@@ -1290,7 +1290,7 @@ Lemma extract_func2_val_ref_call :
       (forall a b, EXTRACT src a b {{ 0 ~> a * 1 ~> b }} body {{ fun ret => 0 ~>? A * 1 ~> ret }} // env) ->
       StringMap.find name env = Some {|
                                     NumParamVars := 2;
-                                    ParamVars := ((PassedByValue, @wrap_type _ WA), (PassedByRef, @wrap_type _ WB));
+                                    ParamVars := (@wrap_type _ WA, @wrap_type _ WB);
                                     Body := body;
                                     body_source := ss;
                                   |} ->
@@ -1326,7 +1326,7 @@ Proof.
     invc H0.
     find_rewrite.
     eval_expr.
-    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, x, bp') /\ x0 = InCall s 2 (PassedByValue, PassedByRef) (avar, bvar) bp').
+    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, x, bp') /\ x0 = InCall s 2 (avar, bvar) bp').
     {
       remember callee_s.
       clear callee_s Heqt.
@@ -1368,7 +1368,7 @@ Proof.
     + invc H2.
       rewrite Henv in H8.
       eval_expr.
-      assert (exists bp', (Go.step env)^* (d, callee_s, body) (r, l, bp') /\ x0 = InCall s 2 (PassedByValue, PassedByRef) (avar, bvar) bp').
+      assert (exists bp', (Go.step env)^* (d, callee_s, body) (r, l, bp') /\ x0 = InCall s 2 (avar, bvar) bp').
       {
         remember callee_s.
         clear callee_s Heqt.
@@ -1428,7 +1428,7 @@ Lemma extract_func2_ref_val_call :
       (forall a b, EXTRACT src a b {{ 0 ~> a * 1 ~> b }} body {{ fun ret => 0 ~> ret * 1 ~>? B }} // env) ->
       StringMap.find name env = Some {|
                                     NumParamVars := 2;
-                                    ParamVars := ((PassedByRef, @wrap_type _ WA), (PassedByValue, @wrap_type _ WB));
+                                    ParamVars := (@wrap_type _ WA, @wrap_type _ WB);
                                     Body := body;
                                     body_source := ss;
                                   |} ->
@@ -1448,7 +1448,7 @@ Lemma extract_func1_ref_call :
       (forall a, EXTRACT src a {{ 0 ~> a }} body {{ fun ret => 0 ~> ret }} // env) ->
       StringMap.find name env = Some {|
                                     NumParamVars := 1;
-                                    ParamVars := (PassedByRef, @wrap_type _ WA);
+                                    ParamVars := (@wrap_type _ WA);
                                     Body := body;
                                     body_source := ss;
                                   |} ->
@@ -1484,7 +1484,7 @@ Proof.
     invc H0.
     find_rewrite.
     eval_expr.
-    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, x, bp') /\ x0 = InCall s 1 (PassedByRef) (avar) bp').
+    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, x, bp') /\ x0 = InCall s 1 (avar) bp').
     {
       remember callee_s.
       clear callee_s Heqt.
@@ -1526,7 +1526,7 @@ Proof.
     + invc H2.
       rewrite Henv in H8.
       eval_expr.
-      assert (exists bp', (Go.step env)^* (d, callee_s, body) (r, l, bp') /\ x0 = InCall s 1 (PassedByRef) (avar) bp').
+      assert (exists bp', (Go.step env)^* (d, callee_s, body) (r, l, bp') /\ x0 = InCall s 1 (avar) bp').
       {
         remember callee_s.
         clear callee_s Heqt.

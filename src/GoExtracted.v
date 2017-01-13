@@ -434,6 +434,9 @@ Proof.
   cancel_go.
 Defined.
 
+Require Import DiskLogHash.
+Goal True.
+let t := type of DiskLogHash.PaddedLog.Hdr.read in let t' := eval compute in t in idtac t'.
 
 Local Open Scope string_scope.
 Local Open Scope list_scope.
@@ -443,7 +446,7 @@ Ltac argtuple pre var :=
   match pre with
   | context [var |-> @wrap ?T ?V ?val] =>
     let X := argtuple pre (S var) in
-    let P := constr:(pair PassedByRef (@wrap_type _ V)) in
+    let P := constr:(@wrap_type _ V) in
     match X with
     | (0, tt) => constr:(pair 1 P)
     | (?count, ?X)  => constr:(pair (S count) (pair X P))
