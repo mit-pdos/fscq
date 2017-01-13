@@ -1,6 +1,4 @@
-- deleting a file should free its data blocks
 - TRIM support (TRIM opcode randomizes block contents)
-- prove end-to-end theorem about mkfs
 
 - extraction without Haskell
 - integrate into MirageOS unikernel by extracting to OCaml
