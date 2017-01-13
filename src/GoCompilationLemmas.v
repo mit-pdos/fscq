@@ -1341,7 +1341,7 @@ Proof.
         + invc H3. invc H2. invc H.
     }
     deex.
-    eapply Steps_ExecCrashed in H7.
+    eapply Steps_ExecCrashed in H6.
     unfold ProgOk in *.
     repeat eforward Hex.
     forward Hex.
@@ -1383,7 +1383,7 @@ Proof.
           + invc H4. contradiction H1. auto. invc H.
       }
       deex.
-      eapply Steps_ExecFailed in H8.
+      eapply Steps_ExecFailed in H7.
       unfold ProgOk in *.
       repeat eforward Hex.
       forward Hex. shelve.
@@ -1393,7 +1393,7 @@ Proof.
       unfold is_final in *; simpl in *; subst.
       contradiction H3.
       subst_definitions.
-      apply Steps_ExecFinished in H8.
+      apply Steps_ExecFinished in H7.
       unfold ProgOk in *.
       repeat eforward Hex.
       forward Hex. shelve.
@@ -1568,8 +1568,8 @@ Proof.
   Unshelve.
   * subst_definitions. eval_expr. pred_solve.
     auto.
+  * eval_expr.
   * eval_expr. pred_solve. auto.
-  * auto.
 Qed.
 
 Lemma CompileSplit :
