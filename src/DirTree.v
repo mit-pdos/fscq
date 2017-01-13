@@ -1305,6 +1305,13 @@ Module DIRTREE.
     Unshelve. all: eauto; exact unit.
   Qed.
 
+  Lemma find_subtree_nil: forall pn n,
+    pn <> nil ->
+    find_subtree pn (TreeDir n []) = None.
+  Proof.
+    intros.
+    induction pn; simpl in *; subst; try congruence.
+  Qed.
 
   Theorem find_subtree_app : forall p0 p1 tree subtree,
     find_subtree p0 tree = Some subtree ->
@@ -5801,6 +5808,91 @@ Module DIRTREE.
                 eapply pathname_prefix_neq; eauto.
           }
      }
+  Qed.
+
+  Lemma tree_inodes_in_add_to_dir_oob: forall pn inum tree subtree dstname f,
+    tree_names_distinct tree ->
+    tree_inodes_distinct tree ->
+    find_subtree pn tree = Some (TreeFile inum f) ->
+    (~pathname_prefix [dstname] pn) ->
+    In inum (tree_inodes (add_to_dir dstname subtree tree)).
+  Proof.
+    intros.
+    unfold add_to_dir.
+    destruct tree; eauto.
+    - destruct pn.
+      + simpl in *.
+        inversion H1; subst.
+        left; eauto.
+      + simpl in H1. inversion H1.
+    - simpl in *.
+      eapply find_subtree_inum_present in H1 as H1'; simpl in *.
+      intuition.
+      right.
+      induction l.
+      + 
+        destruct pn.
+        simpl in *. inversion H1.
+        rewrite find_subtree_nil in H1. inversion H1.
+        congruence.
+      + simpl in *.
+        destruct pn.
+        --
+          simpl in *. 
+          inversion H1.  
+        -- 
+          destruct a.
+          {
+          destruct (string_dec s dstname); subst.
+          + exfalso. eapply H2.
+            apply pathname_prefix_head.
+          + destruct (string_dec s0 dstname); subst.
+            eapply in_app_or in H3.
+            intuition.
+            {
+              rewrite find_subtree_head_ne_pn in H1; try congruence.
+              eapply find_subtree_inum_present in H1 as H1'.
+              simpl in *.
+              intuition. subst.
+              (* contradiction H0 and H4 *)
+              inversion H0.
+              exfalso. apply H6.
+              eapply in_or_app.
+              left; eauto.
+            }
+            {
+              rewrite dirlist_combine_app.
+              eapply in_or_app. right; eauto.
+            }
+            rewrite cons_app.
+            eapply in_or_app.
+            destruct (string_dec s0 s); subst; eauto.
+            ++ 
+              left.
+              rewrite find_subtree_head_pn in H1.
+              eapply find_subtree_inum_present in H1 as H1'.
+              simpl in H1'.
+              rewrite app_nil_r in *.
+              intuition. subst.
+              inversion H0.
+              exfalso. apply H6. eauto.
+              apply pathname_prefix_head.
+            ++ 
+              eapply in_app_or in H3.
+              eapply find_subtree_inum_present in H1 as H1'.
+              simpl in H1'.
+              intuition. subst.
+              right.
+              eapply IHl; eauto.
+              {
+                rewrite find_subtree_head_ne_pn in H1; try congruence.
+                eapply pathname_prefix_head_neq; eauto.
+              }
+              right.
+              eapply IHl; eauto.
+              rewrite find_subtree_head_ne_pn in H1; try congruence.
+              eapply pathname_prefix_head_neq; eauto.
+          }
   Qed.
 
   Lemma tree_inodes_incl_delete_from_list : forall name l,
