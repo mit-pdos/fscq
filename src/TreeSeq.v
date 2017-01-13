@@ -2743,6 +2743,17 @@ Lemma find_subtree_delete_ne' : forall l suffix name name' n,
 Admitted.
 *)
 
+Lemma tree_inodes_distinct_prune': forall dstbase dstnum dstents srcnum srcents srcbase srcname dnum tree_elem d,
+  tree_inodes_distinct (TreeDir dnum tree_elem) ->
+  find_subtree srcbase (TreeDir dnum tree_elem) = Some (TreeDir srcnum srcents) ->
+  find_subtree dstbase (TreeDir dnum tree_elem) = Some d ->
+  find_subtree dstbase
+       (tree_prune srcnum srcents srcbase srcname (TreeDir dnum tree_elem)) =
+     Some (TreeDir dstnum dstents) ->
+  tree_inodes_distinct (TreeDir dstnum dstents).
+Proof.
+Admitted.
+
   (* XXX generalize find_subtree_prune_subtree_oob' in DirTree.v *)
   Theorem find_subtree_prune_subtree_oob': forall pn num ents base name tree d,
     find_subtree base tree = Some (TreeDir num ents) ->
@@ -2791,7 +2802,9 @@ Admitted.
         eapply tree_inodes_in_add_to_dir_oob; eauto.
         eapply tree_names_distinct_prune_subtree in H7; eauto.
         eapply tree_names_distinct_subtree; eauto.
-        admit.
+        eapply find_subtree_app' in H3. deex.
+        eapply tree_inodes_distinct_prune' with (dstbase := dstbase); eauto.
+        eapply tree_inodes_distinct_subtree; eauto.
         erewrite find_subtree_app in H3; eauto.
         {
           eapply find_subtree_prune_subtree_oob'; eauto.
