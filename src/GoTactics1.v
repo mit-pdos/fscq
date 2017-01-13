@@ -64,11 +64,18 @@ Ltac find_inversion_safe :=
 Ltac find_inversion_go :=
   match goal with
   | [ H : Some ?x = Some ?y |- _ ] => apply some_inj in H; try (subst x || subst y)
-  | [ H : Go.Val ?ta ?a = Go.Val ?tb ?b |- _ ] =>
-    (unify ta tb; unify a b; fail 1) ||
-    assert (ta = tb) by (eapply Val_type_inj; eauto); try (subst ta || subst tb);
-    assert (a = b) by (eapply Go.value_inj; eauto); clear H; try (subst a || subst b)
+  | [H:Go.Val ?t ?a = Go.Val ?t ?b |- _ ] =>
+        (unify a b; fail 1) ||
+          assert (a = b) by (eapply (Go.value_inj H));
+         try (subst a || subst b);
+         try discriminate; try find_inversion_safe
   | [ H : Go.Here ?a = Go.Here ?b |- _ ] =>
     apply Here_inj in H; try (subst a || subst b)
-  | _ => find_inversion_safe
-  end.
+  | [ H: Go.Val ?ta _ = Go.Val ?tb _,
+      H':?ta = ?tb |- _ ] => fail 1 (* Don't bother if the equality exists *)
+  | [ H: Go.Val ?ta _ = Go.Val ?tb _ |- _ ] =>
+    (unify ta tb; fail 2) ||
+     (assert (ta = tb) by (eapply Val_type_inj; eauto);
+     try (subst ta || subst tb);
+     try discriminate; try find_inversion_safe)
+  end || find_inversion_safe.

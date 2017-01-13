@@ -50,9 +50,7 @@ Proof.
 
   eval_expr.
   contradiction H1.
-  repeat econstructor; eauto.
-  eval_expr.
-  reflexivity.
+  repeat econstructor; [eval_expr; eauto..].
 Qed.
 
 
@@ -382,6 +380,29 @@ Proof.
       forward_solve.
 Qed.
 
+Ltac exec_solve_step :=
+  lazymatch goal with
+  | [ H : ~Go.is_final _ |- _] =>
+    exfalso; solve [apply H; forward_solve]
+  | [ H : context [ProgOk _ ?p ?xp],
+      H': exec _ (pair _ ?p) _,
+      H'': context [Prog.exec _ _ ?xp] |- _ ] =>
+    fail
+  | [ H : context [ProgOk _ ?p],
+      H': exec _ (_, ?p) _ |- _ ] =>
+      let H1 := fresh in
+      let H2 := fresh in
+      let H3 := fresh in
+      edestruct H as [H1 [H2 H3] ]; [ | exact H' |..];
+      [simpl; solve [pred_solve] |..];
+      forward_solve
+  | _ => (inv_exec; eval_expr) ||
+         (eval_expr;
+         solve [
+           repeat eexists; eauto; pred_solve |
+           repeat econstructor; pred_solve
+         ])
+  end.
 
 Lemma CompileSeq : forall T T' env A B (C : T -> _) p1 p2 x1 x2,
   EXTRACT p1
@@ -591,12 +612,8 @@ Lemma CompileIf : forall V varb (b : bool)
   {{ fun ret => G ret * varb ~>? bool }} // env.
 Proof.
   intros. unfold ProgOk.
-  inv_exec_progok.
-  all : inv_exec; try inv_exec; eval_expr;
-    try match goal with
-    [ H : context [ProgOk] |- _] =>
-      solve [edestruct H; forward_solve; pred_solve]
-    end.
+  inv_exec_progok;
+    repeat exec_solve_step.
   all : contradiction H3;
     repeat eexists; solve [
     eapply StepIfTrue; eval_expr |
@@ -620,12 +637,8 @@ Lemma CompileIfLt :
     {{ fun ret => G ret }} // env.
 Proof.
   intros. unfold ProgOk.
-  inv_exec_progok.
-  all : inv_exec; try inv_exec; eval_expr;
-    try match goal with
-    [ H : context [ProgOk] |- _] =>
-      solve [edestruct H; forward_solve; pred_solve]
-    end.
+  inv_exec_progok;
+    repeat exec_solve_step.
   all : contradiction H3;
     repeat eexists; solve [
     eapply StepIfTrue; eval_expr |
@@ -641,17 +654,8 @@ Lemma CompileRead :
 Proof.
   unfold ProgOk.
   intros.
-  inv_exec_progok.
-  {
-    eval_expr.
-    repeat eexists; eauto.
-    pred_solve.
-  }
-  destruct (r a) as [p|] eqn:H'; eauto.
-  destruct p.
-  contradiction H1.
-  repeat econstructor; eauto.
-  all : eval_expr; eauto.
+  inv_exec_progok;
+    repeat exec_solve_step.
 Qed.
 
 Lemma CompileWrite : forall env F avar vvar a v,
@@ -662,17 +666,8 @@ Lemma CompileWrite : forall env F avar vvar a v,
 Proof.
   unfold ProgOk.
   intros.
-  inv_exec_progok.
-  {
-    eval_expr.
-    repeat eexists; eauto.
-  }
-  destruct (r a) as [p|] eqn:H'; eauto.
-  destruct p.
-  contradiction H1.
-  repeat eexists; eauto.
-  econstructor; eauto.
-  all : eval_expr; eauto.
+  inv_exec_progok;
+    repeat exec_solve_step.
 Qed.
 
 Lemma CompileSync : forall env F,
@@ -699,11 +694,8 @@ Lemma CompileAdd :
     {{ fun ret => sumvar ~> ret * avar ~> a * bvar ~> b * F }} // env.
 Proof.
   unfold ProgOk; intros.
-  destruct_pair; simpl in *.
-  inv_exec_progok.
-  eval_expr.
-  repeat econstructor.
-  pred_solve.
+  inv_exec_progok;
+    repeat exec_solve_step.
 
   contradiction H1.
   eval_expr.
@@ -719,11 +711,8 @@ Lemma CompileAddInPlace1 :
     {{ fun ret => avar ~> ret * bvar ~> b * F }} // env.
 Proof.
   unfold ProgOk; intros.
-  destruct_pair; simpl in *.
-  inv_exec_progok.
-  eval_expr.
-  repeat econstructor.
-  pred_solve.
+  inv_exec_progok;
+    repeat exec_solve_step.
 
   contradiction H1.
   eval_expr.
@@ -740,11 +729,8 @@ Lemma CompileAddInPlace2 :
     {{ fun ret => bvar ~> ret * avar ~> a * F }} // env.
 Proof.
   unfold ProgOk; intros.
-  destruct_pair; simpl in *.
-  inv_exec_progok.
-  eval_expr.
-  repeat econstructor.
-  pred_solve.
+  inv_exec_progok;
+    repeat exec_solve_step.
 
   contradiction H1.
   eval_expr.
@@ -760,16 +746,13 @@ Lemma CompileAppend :
   {{ fun ret => vvar |-> moved_value (wrap x) * lvar ~> ret * F }} // env.
 Proof.
   unfold ProgOk; intros.
-  repeat extract_var_val.
-  inv_exec_progok.
-  - eval_expr.
-    repeat eexists.
-    eauto.
-    pred_solve.
+  inv_exec_progok;
+    repeat exec_solve_step.
 
-  - contradiction H1.
-    repeat eexists; econstructor;
-      [ eval_expr; reflexivity.. ].
+  contradiction H1.
+  eval_expr.
+  repeat econstructor.
+  all: eval_expr; [reflexivity].
 Qed.
 
 Lemma CompileUncons :
@@ -792,64 +775,21 @@ Lemma CompileUncons :
       If Var cvar Then xpcons Else xpnil EndIf
     {{ G }} // env.
 Proof.
-  intros; unfold ProgOk.
-  inv_exec_progok.
-  - do 5 inv_exec; try solve [ inv_exec ];
-    eval_expr; do 2 inv_exec; eval_expr;
-      try solve [
-            destruct (Nat.eq_dec lvar cvar);
-            rewrite ?VarMapFacts.add_neq_o, ?VarMapFacts.add_eq_o in * by auto;
-            try find_apply_lem_hyp some_inj;
-            try find_apply_lem_hyp value_inj;
-            discriminate ];
-      try match goal with
-            [ H : context [ProgOk] |- _] =>
-            solve [edestruct H; forward_solve; simpl; pred_solve]
-          end.
-  - do 5 inv_exec; try solve [ inv_exec ];
-    eval_expr; do 2 inv_exec; eval_expr;
-      try solve [
-            destruct (Nat.eq_dec lvar cvar);
-            rewrite ?VarMapFacts.add_neq_o, ?VarMapFacts.add_eq_o in * by auto;
-            try find_apply_lem_hyp some_inj;
-            try find_apply_lem_hyp value_inj;
-            discriminate ];
-      try match goal with
-            [ H : context [ProgOk] |- _] =>
-            solve [edestruct H; forward_solve; simpl; pred_solve]
-          end.
-  - inv_exec. inv_exec. inv_exec. inv_exec. inv_exec. inv_exec.
-    inv_exec. inv_exec;
-    eval_expr;
-      try solve [
-            destruct (Nat.eq_dec lvar cvar);
-            rewrite ?VarMapFacts.add_neq_o, ?VarMapFacts.add_eq_o in * by auto;
-            try find_apply_lem_hyp some_inj;
-            try find_apply_lem_hyp value_inj;
-            discriminate ];
-      try match goal with
-            [ H : context [ProgOk] |- _] =>
-            solve [edestruct H; forward_solve; simpl; pred_solve]
-          end.
-    contradiction H2.
-    destruct l; repeat eexists; [ eapply StepIfFalse | eapply StepIfTrue ].
-    eval_expr_step.
-    eval_expr_step.
-    eval_expr_step.
-    eval_expr_step.
-    eval_expr_step.
-    eval_expr_step.
-    eval_expr_step.
-    eval_expr_step.
-    rewrite ?eq_dec_eq in *; simpl in *.
-    repeat find_inversion_safe.
-    admit. (* TODO: too annoying (have to show cvar <> lvar, etc etc) *)
-    admit.
-    contradiction H2.
-    repeat eexists. eapply StepSeq2.
-    contradiction H3.
-    repeat eexists. econstructor. econstructor.
-Admitted.
+  intros.
+  unfold ProgOk.
+  inv_exec_progok;
+    repeat exec_solve_step.
+  all : match goal with
+  | [H : context[step] |- _] =>
+    contradiction H;
+    repeat eexists;
+    solve [
+      eapply StepIfTrue; eval_expr |
+      eapply StepIfFalse; eval_expr |
+      repeat econstructor; [eval_expr; reflexivity..]
+    ]
+  end.
+Qed.
 
 Lemma map_add_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m k (v : T),
   (@piff AT AEQ value (var ~> Map.add k v m)
@@ -943,14 +883,12 @@ Lemma CompileMapAdd : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k (v : 
     Go.Modify Go.MapAdd (mvar, kvar, vvar)
   {{ fun ret => mvar ~> ret * kvar ~> k * vvar |-> moved_value (wrap v) * F }} // env.
 Proof.
-  unfold ProgOk.
-  repeat inv_exec_progok.
-  - eval_expr. rewrite eq_dec_eq in *. simpl in *. repeat find_inversion. repeat eexists; eauto.
-    pred_solve.
-  - eval_expr.
-    repeat (contradiction H1;
-    repeat econstructor; eauto;
-    [ eval_expr; eauto ..]).
+  unfold ProgOk; intros.
+  inv_exec_progok;
+    repeat exec_solve_step.
+  contradiction H1.
+  repeat econstructor; eauto;
+  [ eval_expr; eauto ..].
 Qed.
 
 
@@ -960,13 +898,12 @@ Lemma CompileMapRemove : forall env F T {Wr : GoWrapper T} mvar kvar m k,
     Go.Modify Go.MapRemove (mvar, kvar)
   {{ fun ret => mvar ~> ret * kvar ~> k * F }} // env.
 Proof.
-  unfold ProgOk.
-  repeat inv_exec_progok.
-  - eval_expr; [ repeat eexists; eauto; pred_solve..].
-  - eval_expr.
-    repeat (contradiction H1;
-    repeat econstructor; eauto;
-    [ eval_expr; eauto ..]).
+  unfold ProgOk; intros.
+  inv_exec_progok;
+    repeat exec_solve_step.
+  contradiction H1.
+  repeat econstructor; eauto;
+  [ eval_expr; eauto ..].
 Qed.
 
 Lemma CompileMapFind : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k,
@@ -975,16 +912,13 @@ Lemma CompileMapFind : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k,
     Go.Modify Go.MapFind (mvar, kvar, vvar)
   {{ fun ret => vvar ~> ret * mvar ~> m * kvar ~> k * F }} // env.
 Proof.
-  unfold ProgOk.
-  repeat inv_exec_progok.
-  - eval_expr.
-    repeat eexists; eauto. pred_solve.
-    eauto with okToCancel.
-    repeat eexists; eauto. pred_solve.
-  - eval_expr.
-    repeat (contradiction H1;
-    repeat econstructor;
-    [ eval_expr; eauto..]).
+  unfold ProgOk; intros.
+  inv_exec_progok.
+  exec_solve_step.
+  eval_expr.
+  repeat (contradiction H1;
+  repeat econstructor;
+  [ eval_expr; eauto..]).
 Qed.
 
 Lemma map_cardinal_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m,
@@ -1018,6 +952,7 @@ Proof.
   - eval_expr.
     repeat eexists; eauto. pred_solve.
   - contradiction H1.
+    eval_expr.
     repeat econstructor; [ eval_expr; eauto..].
 Qed.
 
@@ -1206,17 +1141,11 @@ Lemma CompileDup : forall env X (Wr : GoWrapper X) F (var var' : var) x,
   {{ fun ret => var ~> x * var' ~> ret * F }} // env.
 Proof.
   unfold ProgOk.
-  inv_exec_progok.
-  - repeat inv_exec.
-    eval_expr.
-    repeat econstructor.
-    pred_solve.
-  - repeat inv_exec.
-  - repeat inv_exec.
-    + exfalso; eauto.
-    + contradiction H1. eval_expr.
-      repeat econstructor;
-        [ eval_expr; eauto .. ].
+  inv_exec_progok;
+    repeat exec_solve_step.
+  contradiction H1. eval_expr.
+  repeat econstructor;
+    [ eval_expr; eauto .. ].
 Qed.
 
 Lemma DuplicateBefore : forall T (T' : GoWrapper T) X (X' : GoWrapper X)
@@ -1227,25 +1156,12 @@ Lemma DuplicateBefore : forall T (T' : GoWrapper T) X (X' : GoWrapper X)
       v <~dup v'; xp
     {{ B }} // env.
 Proof.
-  unfold ProgOk.
-  inv_exec_progok.
-  - do 5 inv_exec. inv_exec.
-    eval_expr.
-    edestruct H; forward_solve.
-    simpl. pred_solve.
-  - do 5 inv_exec; try solve [inv_exec].
-    eval_expr.
-    edestruct H; forward_solve.
-    simpl. pred_solve.
-  - inv_exec.
-    do 3 inv_exec; forward_solve.
-    inv_exec. inv_exec.
-    eval_expr.
-    edestruct H; forward_solve.
-    simpl. pred_solve.
-    contradiction H2.
-    repeat eexists; eauto.
-    do 2 econstructor; solve [eval_expr; eauto].
+  intros. unfold ProgOk.
+  inv_exec_progok;
+    repeat exec_solve_step.
+  contradiction H2.
+  repeat eexists; eauto.
+  do 2 econstructor; solve [eval_expr; eauto].
 Qed.
 
 Lemma AddInPlaceLeftBefore : forall T (T' : GoWrapper T) (p : prog T) B xp env
@@ -1425,7 +1341,7 @@ Proof.
         + invc H3. invc H2. invc H.
     }
     deex.
-    eapply Steps_ExecCrashed in H6.
+    eapply Steps_ExecCrashed in H7.
     unfold ProgOk in *.
     repeat eforward Hex.
     forward Hex.
@@ -1467,7 +1383,7 @@ Proof.
           + invc H4. contradiction H1. auto. invc H.
       }
       deex.
-      eapply Steps_ExecFailed in H7.
+      eapply Steps_ExecFailed in H8.
       unfold ProgOk in *.
       repeat eforward Hex.
       forward Hex. shelve.
@@ -1477,7 +1393,7 @@ Proof.
       unfold is_final in *; simpl in *; subst.
       contradiction H3.
       subst_definitions.
-      apply Steps_ExecFinished in H7.
+      apply Steps_ExecFinished in H8.
       unfold ProgOk in *.
       repeat eforward Hex.
       forward Hex. shelve.
@@ -1604,15 +1520,7 @@ Proof.
 
       Unshelve.
       eval_expr. pred_solve; auto.
-      apply star_emp_pimpl.
-      apply sep_star_comm.
-      find_rewrite; find_inversion_safe; eval_expr.
-      pred_solve. rewrite <- H3. eauto with okToCancel.
-      eval_expr; auto.
-      pred_solve.
-      apply star_emp_pimpl.
-      apply sep_star_comm.
-      find_rewrite; find_inversion_safe; eval_expr.
+      eval_expr.
       subst_definitions.
       pred_solve. eauto with okToCancel.
     + invc H2.
@@ -1659,16 +1567,9 @@ Proof.
 
   Unshelve.
   * subst_definitions. eval_expr. pred_solve.
-    apply star_emp_pimpl.
-    apply sep_star_comm.
-    find_rewrite; find_inversion_safe; eval_expr.
-    pred_solve. auto.
-  * exact hm.
-  * eval_expr. pred_solve.
-    apply star_emp_pimpl.
-    apply sep_star_comm.
-    find_rewrite; find_inversion_safe; eval_expr.
-    pred_solve. auto.
+    auto.
+  * eval_expr. pred_solve. auto.
+  * auto.
 Qed.
 
 Lemma CompileSplit :
@@ -1679,17 +1580,11 @@ Lemma CompileSplit :
     {{ fun _ => avar ~> fst p * bvar ~> snd p * pvar |-> moved_value (wrap p) * F }} // env.
 Proof.
   intros; unfold ProgOk.
-  inv_exec_progok.
-  - repeat inv_exec.
-    eval_expr.
-    repeat econstructor.
-    pred_solve.
-  - inv_exec_progok.
-  - inv_exec_progok.
-    eval_expr.
-    contradiction H1.
-    repeat econstructor;
-    [ eval_expr; eauto ..].
+  inv_exec_progok;
+    repeat exec_solve_step.
+  contradiction H1.
+  repeat econstructor;
+  [ eval_expr; eauto ..].
 Qed.
 
 Lemma CompileFst :
@@ -1700,17 +1595,12 @@ Lemma CompileFst :
     {{ fun ret => avar ~> ret * bvar ~> snd p * pvar |-> moved_value (wrap p) * F }} // env.
 Proof.
   intros; unfold ProgOk.
-  inv_exec_progok.
-  - repeat inv_exec.
-    repeat econstructor.
-    eval_expr.
-    pred_solve.
-  - inv_exec_progok.
-  - inv_exec_progok.
-    eval_expr.
-    contradiction H1.
-    repeat econstructor;
-    [ eval_expr; eauto ..].
+  inv_exec_progok;
+    repeat exec_solve_step.
+  eval_expr.
+  contradiction H1.
+  repeat econstructor;
+  [ eval_expr; eauto ..].
 Qed.
 
 Lemma CompileSnd :
@@ -1721,17 +1611,12 @@ Lemma CompileSnd :
     {{ fun ret => avar ~> fst p * bvar ~> ret * pvar |-> moved_value (wrap p) * F }} // env.
 Proof.
   intros; unfold ProgOk.
-  inv_exec_progok.
-  - repeat inv_exec.
-    repeat econstructor.
-    eval_expr.
-    pred_solve.
-  - inv_exec_progok.
-  - inv_exec_progok.
-    eval_expr.
-    contradiction H1.
-    repeat econstructor;
-    [ eval_expr; eauto ..].
+  inv_exec_progok;
+    repeat exec_solve_step.
+  eval_expr.
+  contradiction H1.
+  repeat econstructor;
+  [ eval_expr; eauto ..].
 Qed.
 
 Lemma CompileJoin :
@@ -1742,17 +1627,12 @@ Lemma CompileJoin :
     {{ fun ret => avar |-> moved_value (wrap a) * bvar |-> moved_value (wrap b) * pvar ~> ret * F }} // env.
 Proof.
   intros; unfold ProgOk.
-  repeat inv_exec_progok.
-  - repeat inv_exec.
-    eval_expr.
-    repeat econstructor.
-    pred_solve.
-  - contradiction H1.
-    eval_expr.
-    repeat econstructor.
-    eval_expr; eauto.
-    eval_expr; eauto.
-    eval_expr; eauto.
+  inv_exec_progok;
+    repeat exec_solve_step.
+  eval_expr.
+  contradiction H1.
+  repeat econstructor;
+  [eval_expr; eauto..].
 Qed.
 
 Hint Constructors source_stmt.
@@ -1766,18 +1646,13 @@ Lemma CompileRetOptionSome : forall env B {HB: GoWrapper B} {D : DefaultValue B}
                 avar |-> moved_value (wrap true) *
                 bvar |-> moved_value (wrap b) * F }} // env.
 Proof.
-  intros.
-  unfold ProgOk.
-  inv_exec_progok.
-  - repeat inv_exec.
-    repeat econstructor.
-    eval_expr.
-    pred_solve.
-  - inv_exec_progok.
-  - inv_exec_progok.
-    contradiction H1.
-    repeat econstructor;
-    [ eval_expr; eauto..].
+  intros; unfold ProgOk.
+  inv_exec_progok;
+    repeat exec_solve_step.
+  eval_expr.
+  contradiction H1.
+  repeat econstructor;
+  [eval_expr; eauto..].
 Qed.
 
 Lemma option_none_okToCancel : forall AT AEQ {T} {HT : GoWrapper T} {D : DefaultValue T} var,
@@ -1807,18 +1682,14 @@ Lemma CompileRetOptionNone : forall env B {HB: GoWrapper B} {D : DefaultValue B}
                 avar |-> moved_value (wrap false) * F }} // env.
 Proof.
   intros.
-  eapply CompileDeclare. intro bvar.
+  eapply CompileDeclare. intros.
   unfold ProgOk.
-  inv_exec_progok.
-  - repeat inv_exec.
-    repeat econstructor.
-    eval_expr.
-    pred_solve.
-  - inv_exec_progok.
-  - inv_exec_progok.
-    contradiction H1.
-    repeat econstructor;
-    [ eval_expr; eauto..].
+  inv_exec_progok;
+    repeat exec_solve_step.
+  eval_expr.
+  contradiction H1.
+  repeat econstructor;
+  [eval_expr; eauto..].
 Qed.
 
 Lemma CompileMatchOption : forall env B {HB : GoWrapper B} X {HX : GoWrapper X} {D : DefaultValue B}
@@ -1852,46 +1723,20 @@ Proof.
                                        | None => (false, zeroval)
                                        | Some b => (true, b)
                                        end)].
-    destruct o; simpl. cancel_go.
-    unfold wrap. simpl.
-    erewrite <- default_zero' by apply default_zero. cancel_go.
+    eval_expr; unfold wrap; cancel_go.
+    erewrite <- default_zero' by apply default_zero. reflexivity.
   }
   destruct o; simpl in *.
-  + unfold ProgOk; inv_exec_progok.
-    - inv_exec.
-      inv_exec; eval_expr.
-      edestruct H; eauto.
-      simpl. pred_solve.
-      forward_solve.
-    - inv_exec; inv_exec; eval_expr.
-      edestruct H; eauto.
-      simpl. pred_solve.
-      forward_solve.
-    - inv_exec.
-      inv_exec; eval_expr.
-      edestruct H; eauto.
-      simpl. pred_solve.
-      forward_solve.
-      contradiction H3.
-      repeat eexists. apply StepIfTrue. eval_expr.
+  + unfold ProgOk.
+    inv_exec_progok;
+      repeat exec_solve_step.
+    contradiction H3.
+    repeat eexists. apply StepIfTrue. eval_expr.
   + erewrite <- default_zero' in * by apply default_zero.
-    unfold ProgOk; inv_exec_progok.
-    - inv_exec.
-      inv_exec; eval_expr.
-      edestruct H0; eauto.
-      simpl. pred_solve.
-      forward_solve.
-    - inv_exec; inv_exec; eval_expr.
-      edestruct H0; eauto.
-      simpl. pred_solve.
-      forward_solve.
-    - inv_exec.
-      inv_exec; eval_expr.
-      edestruct H0; eauto.
-      simpl. pred_solve.
-      forward_solve.
-      contradiction H3.
-      repeat eexists. apply StepIfFalse. eval_expr.
+    unfold ProgOk.
+    inv_exec_progok; repeat exec_solve_step.
+    contradiction H3.
+    repeat eexists. apply StepIfFalse. eval_expr.
 Qed.
 
 Arguments pair_vec_nthl : simpl never.

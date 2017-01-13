@@ -163,46 +163,6 @@ Ltac extract_pred_apply_exists :=
   | [ H : ?P (mem_of ?s) |- _ ] => extract_pred_apply_exists_in H
   end.
 
-Ltac eval_expr_step :=
-    repeat extract_var_val;
-    repeat (destruct_pair + unfold_expr); simpl in *;
-    try extract_pred_apply_exists;
-    try subst;
-    match goal with
-    | [H : context [match ?e in (_ = _) return _ with _ => _ end] |- _ ]
-      => rewrite (proof_irrelevance _ e (eq_refl)) in H
-    | [H : context [eq_sym ?t] |- _ ]
-      => setoid_rewrite (proof_irrelevance _ t eq_refl) in H
-    | [e : ?x = _, H: context[match ?x with _ => _ end] |- _]
-      => rewrite e in H
-    | [e : ?x = _ |- context[match ?x with _ => _ end] ]
-      => rewrite e
-    | [H : context[if ?x then _ else _] |- _]
-      => let H' := fresh in destruct x eqn:H'; try omega
-    | [|- context[if ?x then _ else _] ]
-      => let H' := fresh in destruct x eqn:H'; try omega
-    | [H : context [match ?x with _ => _ end],
-       H': _ = ?x |- _]
-      => rewrite <- H' in H
-    | [H : context [match ?x with _ => _ end],
-       H': ?x = _ |- _]
-      => rewrite H' in H
-    | [H : context [match ?x with _ => _ end] |- _]
-      => let H' := fresh in destruct x eqn:H'
-    | [ |- context [match ?e in (_ = _) return _ with _ => _ end] ]
-      => rewrite (proof_irrelevance _ e (eq_refl))
-    | [ |- context [eq_sym ?t] ]
-      => setoid_rewrite (proof_irrelevance _ t eq_refl)
-    | [ |- context [match ?x with _ => _ end] ]
-      => let H' := fresh in destruct x eqn:H'
-    | _
-      => idtac
-    end; try solve [congruence | omega];
-    repeat find_inversion_wrap.
-
-Ltac eval_expr := repeat eval_expr_step.
-
-
 Definition prod' := prod.
 Definition exis' := exis.
 
@@ -306,8 +266,8 @@ Ltac pred_solve_step := match goal with
                     eapply ptsto_typed_any_upd ]
     | context [(@ptsto ?AT ?AEQ ?V a ?y)%pred] =>
       let H := fresh in
-      assert (@okToCancel AT AEQ V (ptsto a x) (ptsto a y)) as H;
-      [ eauto with okToCancel | rewrite <- H ]
+      assert (@okToCancel AT AEQ V (ptsto a x) (ptsto a y)) as H by (eauto with okToCancel);
+      rewrite <- H
     end
   | [ |- ( ?P )%pred (delete _ ?a) ] =>
     eapply ptsto_delete' with (F := P)
@@ -332,3 +292,69 @@ Ltac pred_cancel :=
   match goal with
   | [H : _ |- _] => eapply pimpl_apply; [> | exact H]; solve [cancel_go]
   end.
+
+
+Ltac pred_conflict_solve :=
+  match goal with
+  | [H : ?x = ?y,
+     H': context [ptsto ?x] |- _ ] =>
+     match goal with
+     | [H'' : context [ptsto ?y] |- _ ] =>
+      unify H' H'';
+      match type of H' with
+      | ?p ?m_ =>
+        rewrite H in H';
+        exfalso;
+        eapply ptsto_conflict_F with (a := y) (m := m_);
+        pred_apply; cancel_go
+      end
+    end
+  end.
+
+Ltac eval_expr_step :=
+    repeat (destruct_pair + unfold_expr); simpl in *;
+    try pred_conflict_solve;
+    try subst;
+    match goal with
+    | [H : context [match ?e in (_ = _) return _ with _ => _ end] |- _ ]
+      => rewrite (proof_irrelevance _ e (eq_refl)) in H
+    | [H : context [eq_sym ?t] |- _ ]
+      => setoid_rewrite (proof_irrelevance _ t eq_refl) in H
+    | [H : context [VarMap.find ?k (VarMap.add ?k' _ _)] |- _] =>
+      destruct (Nat.eq_dec k k'); [
+        rewrite VarMapFacts.add_eq_o in H by auto |
+        rewrite VarMapFacts.add_neq_o in H by auto ]
+    | [e : ?x = _, H: context[match ?x with _ => _ end] |- _]
+      => rewrite e in H
+    | [e : ?x = _ |- context[match ?x with _ => _ end] ]
+      => rewrite e
+    | [H : context[if ?x then _ else _] |- _]
+      => let H' := fresh in destruct x eqn:H'; try omega
+    | [|- context[if ?x then _ else _] ]
+      => let H' := fresh in destruct x eqn:H'; try omega
+    | [H : context [match ?x with _ => _ end],
+       H': _ = ?x |- _]
+      => rewrite <- H' in H
+    | [H : context [match ?x with _ => _ end],
+       H': ?x = _ |- _]
+      => rewrite H' in H
+    | [H : context [match ?x with _ => _ end] |- _]
+      => let H' := fresh in destruct x eqn:H'
+    | [ |- context [match ?e in (_ = _) return _ with _ => _ end] ]
+      => rewrite (proof_irrelevance _ e (eq_refl))
+    | [ |- context [eq_sym ?t] ]
+      => setoid_rewrite (proof_irrelevance _ t eq_refl)
+    | [ |- context [match ?x with _ => _ end] ]
+      => let H' := fresh in destruct x eqn:H'
+    | [x : value |- _ ] => destruct x
+    | [H : ?a = _, H' : context [?a] |- _ ] =>
+      rewrite H in H'
+    | _
+      => idtac
+    end; try solve [congruence | omega];
+    repeat find_inversion_wrap.
+
+Ltac eval_expr :=
+    try extract_pred_apply_exists;
+    repeat extract_var_val;
+    repeat eval_expr_step.
