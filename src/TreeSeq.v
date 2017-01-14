@@ -2890,7 +2890,12 @@ Admitted.
                   destruct subtree_base. simpl in H12. inversion H12. 
                   inversion H9.
                   intro. eapply H3.  unfold pathname_prefix in H5. deex.
-                  admit. (* s = dstname from H5, etc. *)
+                  rewrite <- cons_app in H5.
+                  rewrite cons_app in H5.
+                  rewrite <- app_assoc in H5.
+                  rewrite <- cons_app in H5.
+                  inversion H5. subst. clear H5.
+                  exfalso. eapply H2. apply pathname_prefix_head.
                 ++
                   (* XXX duplication with above case *)
                   eapply tree_inodes_in_add_to_dir_oob with (pn := suffix0); eauto.
