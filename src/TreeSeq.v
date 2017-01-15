@@ -2708,15 +2708,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
   Qed.
 
 
-  (* XXX generalize find_subtree_prune_subtree_oob' in DirTree.v *)
-  Theorem find_subtree_prune_subtree_oob': forall pn num ents base name tree d,
-    find_subtree base tree = Some (TreeDir num ents) ->
-    (~ pathname_prefix (base ++ [name]) pn) ->
-    find_subtree pn (tree_prune num ents base name tree) = Some d ->
-    find_subtree pn tree = Some d.
-  Proof.
-  Admitted.
-
+ 
   Lemma tree_inodes_rename_oob: forall pathname' cwd srcbase srcname dstbase dstname
        inum f  dnum tree_elem srcnum srcents srcfile dstnum dstents ts,
     tree_names_distinct (TStree ts !!) ->
@@ -3035,6 +3027,47 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       eassumption.
   Qed.
 
+ (* XXX generalize find_subtree_prune_subtree_oob' in DirTree.v *)
+  Theorem find_subtree_prune_subtree_oob': forall pn num ents base name tree d,
+    tree_names_distinct tree ->
+    find_subtree base tree = Some (TreeDir num ents) ->
+    pn <> base ->
+    (~ pathname_prefix (base ++ [name]) pn) ->
+    find_subtree pn (tree_prune num ents base name tree) = Some d ->
+    find_subtree pn tree = Some d.
+  Proof.
+    unfold tree_prune; intros.
+    destruct (pathname_decide_prefix base pn).
+    - deex.
+      erewrite find_subtree_app in H3; eauto.
+      destruct (pathname_decide_prefix [name] suffix).
+      + deex.
+        erewrite <- pathname_prefix_trim in H2.
+        exfalso. eapply H2. eapply pathname_prefix_head.
+      + destruct suffix.
+        -- exfalso. rewrite app_nil_r in *.  congruence.
+        -- 
+          erewrite find_subtree_delete_ne in H3.
+          erewrite find_subtree_app; eauto.
+          assert (tree_names_distinct (TreeDir num ents)).
+          eapply tree_names_distinct_subtree; eauto.
+          inversion H5; eauto.
+          intro. exfalso. eapply H4. subst. exists suffix.
+          rewrite cons_app. f_equal.
+    - eapply find_subtree_update_subtree_oob_general in H3; eauto.
+      deex.
+      destruct subtree''. 
+      + simpl in *. subst.
+        destruct d. simpl in *.
+        admit.  (* XXX does find_subtree_update_subtree_oob_general promise enough? *)
+        simpl in *.
+        exfalso; congruence.
+      + simpl in *. subst.
+        destruct d. simpl in *.
+        exfalso; congruence.
+        simpl in *.
+        admit.
+  Admitted.
 
   Theorem treeseq_rename_ok : forall fsxp dnum srcbase (srcname:string) dstbase dstname mscs,
     {< ds ts Fm Ftop Ftree cwd tree_elem srcnum dstnum srcfile dstfile,
