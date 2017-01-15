@@ -5895,6 +5895,64 @@ Module DIRTREE.
           }
   Qed.
 
+  Lemma tree_inodes_in_delete_from_list_oob: forall pn srcents inum f srcnum srcname,
+    tree_names_distinct (TreeDir srcnum srcents) ->
+    tree_inodes_distinct (TreeDir srcnum srcents) ->
+    find_subtree pn (TreeDir srcnum srcents) = Some (TreeFile inum f) ->
+    (~ pathname_prefix [srcname] pn) -> 
+    In inum (tree_inodes (TreeDir srcnum srcents)) ->
+    In inum (tree_inodes (TreeDir srcnum (delete_from_list srcname srcents))).
+  Proof.
+    induction pn; intros; subst.
+    inversion H1.
+    destruct (string_dec srcname a); subst.
+    exfalso. apply H2. apply pathname_prefix_head.
+    induction srcents.
+    simpl in *; eauto.
+    destruct a0.
+    simpl.
+    destruct (string_dec s srcname); subst.
+    - simpl in H3.
+      intuition; subst.
+      rewrite find_subtree_head_ne_pn in H1; eauto.
+      2: congruence.
+      eapply find_subtree_inum_present in H1 as H1'; eauto.
+    - right.
+      rewrite dirlist_combine_app.
+      eapply in_or_app.
+      destruct (string_dec a s); subst.
+      + rewrite find_subtree_head_pn in H1; eauto.
+        simpl in H1.
+        destruct (string_dec s s); try congruence. clear e.
+        left.
+        simpl. rewrite app_nil_r; eauto.
+        eapply find_subtree_inum_present in H1 as H1'; eauto.
+        eapply pathname_prefix_head.
+      + rewrite find_subtree_head_ne_pn in H1; eauto.
+        right.
+        edestruct IHsrcents; eauto.
+        eapply find_subtree_inum_present in H1 as H1'; eauto. 
+        eapply tree_inodes_not_distinct in H1; eauto.   
+        exfalso; eauto.
+        congruence.
+        intro. unfold pathname_prefix in H4.
+        deex.
+        inversion H4; congruence.
+  Qed.
+
+  Lemma tree_inodes_in_delete_from_dir_oob: forall pn srcents inum f srcnum srcname,
+    tree_names_distinct (TreeDir srcnum srcents) ->
+    tree_inodes_distinct (TreeDir srcnum srcents) ->
+    find_subtree pn (TreeDir srcnum srcents) = Some (TreeFile inum f) ->
+    (~ pathname_prefix [srcname] pn) -> 
+    In inum (tree_inodes (TreeDir srcnum srcents)) ->
+    In inum (tree_inodes (delete_from_dir srcname (TreeDir srcnum srcents))).
+  Proof.
+    intros.
+    unfold delete_from_dir in *.
+    eapply tree_inodes_in_delete_from_list_oob; eauto.
+  Qed.
+
   Lemma tree_inodes_incl_delete_from_list : forall name l,
     incl (dirlist_combine tree_inodes (delete_from_list name l))
          (dirlist_combine tree_inodes l).

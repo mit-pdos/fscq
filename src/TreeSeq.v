@@ -2708,41 +2708,6 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
   Qed.
 
 
-  
-Lemma tree_inodes_in_prune_subtree_child: forall pn inum f srcnum srcents srcbase srcname 
-    dnum tree_elem,
-  pathname_prefix srcbase pn ->
-  find_subtree pn (TreeDir dnum tree_elem) = Some (TreeFile inum f) ->
-  find_subtree srcbase (TreeDir dnum tree_elem) = Some (TreeDir srcnum srcents) ->
-  In inum (tree_inodes (delete_from_dir srcname (TreeDir srcnum srcents))) -> 
-  In inum
-   (tree_inodes
-     (tree_prune srcnum srcents srcbase srcname (TreeDir dnum tree_elem))).
-Admitted.
-
-Lemma tree_inodes_in_delete_from_dir_oob: forall pn srcnum srcents inum f srcname,
-  find_subtree pn (TreeDir srcnum srcents) = Some (TreeFile inum f) ->
-  (~ pathname_prefix [srcname] pn) -> 
-  In inum (tree_inodes (TreeDir srcnum srcents)) ->
-  In inum (tree_inodes (delete_from_dir srcname (TreeDir srcnum srcents))).
-Admitted.
-
-Lemma tree_inodes_in_delete_from_list_oob: forall pn srcnum srcents inum f srcname,
-  find_subtree pn (TreeDir srcnum srcents) = Some (TreeFile inum f) ->
-  (~ pathname_prefix [srcname] pn) -> 
-  In inum (tree_inodes (TreeDir srcnum srcents)) ->
-  In inum (tree_inodes (TreeDir srcnum (delete_from_list srcname srcents))).
-Admitted.
-
-(*
-Lemma find_subtree_delete_ne' : forall l suffix name name' n,
-  NoDup (map fst l) ->
-  name <> name' ->
-  find_subtree (name :: suffix) (TreeDir n (delete_from_list name' l)) = 
-    find_subtree (name :: suffix) (TreeDir n l).
-Admitted.
-*)
-
   (* XXX generalize find_subtree_prune_subtree_oob' in DirTree.v *)
   Theorem find_subtree_prune_subtree_oob': forall pn num ents base name tree d,
     find_subtree base tree = Some (TreeDir num ents) ->
@@ -3028,8 +2993,9 @@ Admitted.
         destruct (pathname_decide_prefix srcbase suffix).
         -- 
           deex.
-          eapply tree_inodes_in_prune_subtree_child; eauto.
-          unfold pathname_prefix. eexists suffix0; eauto.
+          unfold tree_prune.
+          eapply tree_inodes_in_update_subtree_child; eauto.
+          eapply tree_names_distinct_subtree; eauto.
           {
           destruct (pathname_decide_prefix [srcname] suffix0).
           + deex.
@@ -3038,6 +3004,11 @@ Admitted.
             exfalso. apply H1. apply pathname_prefix_head.
       +
             eapply tree_inodes_in_delete_from_dir_oob; eauto.
+            eapply tree_names_distinct_subtree in H5; eauto.
+            eapply tree_names_distinct_subtree; eauto.
+            eapply tree_inodes_distinct_subtree in H5; eauto.
+            eapply tree_names_distinct_subtree; eauto.
+            eapply tree_inodes_distinct_subtree; eauto.
             erewrite find_subtree_app in H3; eauto.
             eapply pathname_prefix_neq; eauto.
             erewrite find_subtree_app in H3; eauto.
