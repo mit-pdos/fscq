@@ -247,54 +247,48 @@ Module Go.
     Fixpoint n_tuple n T : Type :=
       match n with
       | 0 => unit
-      | 1 => T
-      | S n' => n_tuple n' T * T
+      | S n' => T * n_tuple n' T
       end.
     
-    Definition tupled_rev T (l : list T) : n_tuple (length l) T.
-      induction l.
-      - exact tt.
-      - simpl in *.
-        destruct l.
-        + exact a.
-        + simpl in *.
-          exact (IHl, a).
-    Defined.
+    Fixpoint tupled T (l : list T) : n_tuple (length l) T :=
+      match l return n_tuple (length l) T with
+      | [] => tt
+      | t :: l' => (t, tupled l')
+      end.
 
-    Definition map_nt {A B n} (f : A -> B) : n_tuple n A -> n_tuple n B.
-      induction n.
-      - exact (fun _ => tt).
-      - simpl in *; destruct n.
-        + exact f.
-        + apply split_pair_func; assumption.
-    Defined.
+    Fixpoint map_nt {A B n} (f : A -> B) : n_tuple n A -> n_tuple n B :=
+      match n return n_tuple n A -> n_tuple n B with
+      | 0 => fun _ => tt
+      | S n' => fun ts =>
+                 let '(t, ts') := ts in
+                 (f t, map_nt f ts')
+      end.
 
-    Definition collect {T n} : n_tuple n (option T) -> option (n_tuple n T).
-      induction n.
-      - exact (fun _ => Some tt).
-      - simpl in *; destruct n.
-        + exact id.
-        + intros [ts tl].
-          destruct tl; [ | exact None ].
-          destruct (IHn ts); [ | exact None ].
-          exact (Some (n0, t)).
-    Defined.
+    Fixpoint collect {T n} : n_tuple n (option T) -> option (n_tuple n T) :=
+      match n return n_tuple n (option T) -> option (n_tuple n T) with
+      | 0 => fun _ => Some tt
+      | S n' => fun ts =>
+                 let '(ot, ts') := ts in
+                 match ot, collect ts' with
+                 | Some t, Some cts => Some (t, cts)
+                 | _, _ => None
+                 end
+      end.
 
-    Definition combine_nt {A B n} : n_tuple n A -> n_tuple n B -> n_tuple n (A * B).
-      induction n; intros ta tb.
-      - exact tt.
-      - simpl in *; destruct n.
-        + exact (ta, tb).
-        + exact (IHn (fst ta) (fst tb), (snd ta, snd tb)).
-    Defined.
+    Fixpoint combine_nt {A B n} : n_tuple n A -> n_tuple n B -> n_tuple n (A * B) :=
+      match n return n_tuple n A -> n_tuple n B -> n_tuple n (A * B) with
+      | 0 => fun _ _ => tt
+      | S n' => fun tas tbs =>
+                 let '(ta, tas') := tas in
+                 let '(tb, tbs') := tbs in
+                 ((ta, tb), combine_nt tas' tbs')
+      end.
 
-    Definition seq_nt (start len : nat) : n_tuple len nat.
-      induction len.
-      - exact tt.
-      - simpl in *; destruct len.
-        + exact start.
-        + exact (IHlen, S (start + len)).
-    Defined.
+    Fixpoint seq_nt (start len : nat) : n_tuple len nat :=
+      match len with
+      | 0 => tt
+      | S len' => (start, seq_nt (S start) len')
+      end.
 
   End NTuple.
 
@@ -308,7 +302,7 @@ Module Go.
     Definition op_impl n := n_tuple n value -> option (n_tuple n var_update).
 
     Definition numop_impl' (op : numop) (a b : nat) : n_tuple 3 var_update :=
-      (SetTo (Val Num (Here (match op with
+      ^(SetTo (Val Num (Here (match op with
                              | Plus => a + b
                              | Minus => a - b
                              | Times => a * b
@@ -316,50 +310,50 @@ Module Go.
        Leave, Leave).
 
     Definition setconst_impl t (v : type_denote t) : op_impl 1 :=
-      fun _ => Some (SetTo (Val t v)).
+      fun _ => Some ^(SetTo (Val t v)).
 
     Definition duplicate_impl : op_impl 2 :=
-      fun args => let (_, a) := args in Some (SetTo a, Leave).
+      fun args => let '^(_, a) := args in Some ^(SetTo a, Leave).
 
     Definition append_impl' t (l : list (type_denote t)) (a : type_denote t) : n_tuple 2 var_update :=
-      (SetTo (Val (Slice t) (Here (a :: l))), Move).
+      ^(SetTo (Val (Slice t) (Here (a :: l))), Move).
 
     Definition uncons_impl' t (l : list (type_denote t)) : n_tuple 4 var_update :=
-      (Move,
+      ^(Move,
        SetTo (Val Bool (match l with [] => false | _ => true end)),
        SetTo (Val t (match l with [] => default_value' _ | x :: _ => x end)),
        SetTo (Val (Slice t) (match l with [] => default_value' _ | _ :: xs => Here xs end))).
 
     Definition split_pair_impl' ta tb (a : type_denote ta) (b : type_denote tb) : n_tuple 3 var_update :=
-      (Move, SetTo (Val ta a), SetTo (Val tb b)).
+      ^(Move, SetTo (Val ta a), SetTo (Val tb b)).
 
     Definition join_pair_impl' ta tb (va : type_denote ta) (vb : type_denote tb) : n_tuple 3 var_update :=
-      (SetTo (Val (Pair ta tb) (va, vb)), Move, Move).
+      ^(SetTo (Val (Pair ta tb) (va, vb)), Move, Move).
 
     Definition map_add_impl' tv m (k : addr) (v : type_denote tv) : n_tuple 3 var_update :=
-      (SetTo (Val (AddrMap tv) (Here (Map.add k v m))), Leave, Move).
+      ^(SetTo (Val (AddrMap tv) (Here (Map.add k v m))), Leave, Move).
 
     Definition map_card_impl' tv (m : Map.t (type_denote tv)) : n_tuple 2 var_update :=
-      (Leave, SetTo (Val Num (Here (Map.cardinal m)))).
+      ^(Leave, SetTo (Val Num (Here (Map.cardinal m)))).
 
     Definition map_find_impl' tv m (k : addr) : n_tuple 3 var_update :=
-      (Leave, Leave, SetTo (Val (Pair Bool tv) (match Map.find k m with
+      ^(Leave, Leave, SetTo (Val (Pair Bool tv) (match Map.find k m with
                                                  | Some x => (true, x)
                                                  | None => (false, default_value' tv)
                                                  end))).
 
     Definition map_remove_impl' tv m k : n_tuple 2 var_update :=
-      (SetTo (Val (AddrMap tv) (Here (Map.remove k m))), Leave).
+      ^(SetTo (Val (AddrMap tv) (Here (Map.remove k m))), Leave).
 
     Definition map_elements_impl' tv (m : Map.t (type_denote tv)) : n_tuple 2 var_update :=
-      (Leave, SetTo (Val (Slice (Pair Num tv))
+      ^(Leave, SetTo (Val (Slice (Pair Num tv))
         (Here (map (fun x => (Here (fst x), snd x)) (Map.elements m))))).
   End NiceImpls.
 
   Section NastyImpls.
 
     Definition numop_impl (op : numop) : op_impl 3 :=
-      fun args => let '(vo, va, vb) := args in
+      fun args => let '^(vo, va, vb) := args in
                match vo, va, vb with
                | Val Num _, Val Num (Here a), Val Num (Here b) =>
                  Some (numop_impl' op a b)
@@ -367,7 +361,7 @@ Module Go.
                end.
 
     Definition append_impl : op_impl 2.
-      refine (fun args => let '(Val t1 l, Val t2 a) := args in
+      refine (fun args => let '^(Val t1 l, Val t2 a) := args in
                        match t1 with
                        | Slice t1' => fun l => _
                        | _ => fun _ => None
@@ -379,7 +373,7 @@ Module Go.
     Defined.
 
     Definition uncons_impl : op_impl 4.
-      refine (fun args => let '(Val t1 l, _, _, _) := args in
+      refine (fun args => let '^(Val t1 l, _, _, _) := args in
                        match t1 with
                        | Slice t1' => fun l => _
                        | _ => fun _ => None
@@ -389,7 +383,7 @@ Module Go.
     Defined.
 
     Definition split_pair_impl : op_impl 3.
-      refine (fun args => let '(Val tp p, Val ta _, Val tb _) := args in
+      refine (fun args => let '^(Val tp p, Val ta _, Val tb _) := args in
                        match tp with
                        | Pair ta' tb' => fun p => _
                        | _ => fun _ => None
@@ -402,7 +396,7 @@ Module Go.
     Defined.
 
     Definition join_pair_impl : op_impl 3.
-      refine (fun args => let '(Val tp _, Val ta va, Val tb vb) := args in
+      refine (fun args => let '^(Val tp _, Val ta va, Val tb vb) := args in
                        match tp with
                        | Pair ta' tb' => fun va vb => _
                        | _ => fun _ _ => None
@@ -414,7 +408,7 @@ Module Go.
     Defined.
 
     Definition map_add_impl : op_impl 3.
-      refine (fun args => let '(Val tm m, Val tk k, Val tv v) := args in
+      refine (fun args => let '^(Val tm m, Val tk k, Val tv v) := args in
                         match tm with
                         | AddrMap tv' => fun m => _
                         | _ => fun _ => None
@@ -428,7 +422,7 @@ Module Go.
     Defined.
 
     Definition map_card_impl : op_impl 2.
-      refine (fun args => let '(Val tm m, Val tc c) := args in
+      refine (fun args => let '^(Val tm m, Val tc c) := args in
                         match tm with
                         | AddrMap tv' => fun m => _
                         | _ => fun _ => None
@@ -439,7 +433,7 @@ Module Go.
     Defined.
 
     Definition map_find_impl : op_impl 3.
-      refine (fun args => let '(Val tm m, Val tk k, Val tr r) := args in
+      refine (fun args => let '^(Val tm m, Val tk k, Val tr r) := args in
                         match tm with
                         | AddrMap tv' => fun m => _
                         | _ => fun _ => None
@@ -453,7 +447,7 @@ Module Go.
     Defined.
 
     Definition map_remove_impl : op_impl 2.
-      refine (fun args => let '(Val tm m, Val tk k) := args in
+      refine (fun args => let '^(Val tm m, Val tk k) := args in
                         match tm with
                         | AddrMap tv' => fun m => _
                         | _ => fun _ => None
@@ -466,7 +460,7 @@ Module Go.
     Defined.
 
     Definition map_elements_impl : op_impl 2.
-      refine (fun args => let '(Val tm m, Val tl l) := args in
+      refine (fun args => let '^(Val tm m, Val tl l) := args in
                         match tm with
                         | AddrMap tm => fun m => _
                         | _ => fun _ => None
@@ -599,15 +593,15 @@ Module Go.
       else false
     end.
 
-  Definition values_well_typed {n} :
-    forall (types : n_tuple n type) (values : n_tuple n value),
-      bool.
-    induction n; intros.
-    - exact true.
-    - simpl in *; destruct n.
-      + exact (value_well_typed types values).
-      + exact (value_well_typed (snd types) (snd values) && IHn (fst types) (fst values)).
-  Defined.
+  Fixpoint values_well_typed {n} :
+    forall (types : n_tuple n type) (values : n_tuple n value), bool :=
+    match n return forall (types : n_tuple n type) (values : n_tuple n value), bool with
+    | 0 => fun _ _ => true
+    | S n' => fun types values =>
+               let '(t, types') := types in
+               let '(v, values') := values in
+               value_well_typed t v && values_well_typed types' values'
+    end.
 
   Definition update_one key old (update : var_update) st :=
     match update with
@@ -620,29 +614,33 @@ Module Go.
     end.
 
   (* Update a scope for an operation *)
-  Definition update_many {n} :
+  Fixpoint update_many {n} :
     forall (keys : n_tuple n var) (old : n_tuple n value) (update : n_tuple n var_update) (st : VarMap.t value),
-      option (VarMap.t value).
-    induction n; intros.
-    - exact (Some st). (* n = 0 *)
-    - simpl in *; destruct n.
-      + exact (update_one keys old update st). (* n = 1 *)
-      + exact (let ost' := update_one (snd keys) (snd old) (snd update) st
-               in match ost' with
-                  | None => None
-                  | Some st' => IHn (fst keys) (fst old) (fst update) st'
-                  end). (* n > 1 *)
-  Defined.
+      option (VarMap.t value) :=
+    match n return 
+          forall (keys : n_tuple n var) (old : n_tuple n value) (update : n_tuple n var_update) (st : VarMap.t value),
+            option (VarMap.t value) with
+    | 0 => fun keys old update st => Some st
+    | S n' => fun keys old update st =>
+               let '(k, keys') := keys in
+               let '(o, old') := old in
+               let '(u, update') := update in
+               match update_many keys' old' update' st with
+               | None => None
+               | Some st' => update_one k o u st'
+               end
+    end.
 
-  Definition add_many {n} :
+  Fixpoint add_many {n} :
     forall (keys : n_tuple n var) (values : n_tuple n value) (st : VarMap.t value),
-      VarMap.t value.
-    induction n; intros.
-    - exact st.
-    - simpl in *; destruct n.
-      + exact (VarMap.add keys values st).
-      + exact (VarMap.add (snd keys) (snd values) (IHn (fst keys) (fst values) st)).
-  Defined.
+      VarMap.t value :=
+    match n with
+    | 0 => fun keys values st => st
+    | S n' => fun keys values st =>
+               let '(k, keys') := keys in
+               let '(v, values') := values in
+               VarMap.add k v (add_many keys' values' st)
+    end.
  
   Local Open Scope bool_scope.
 
@@ -1277,11 +1275,11 @@ Notation "! x" := (x = 0)%go (at level 70, no associativity).
 Notation "A ; B" := (Go.Seq A B) (at level 201, B at level 201, left associativity, format "'[v' A ';' '/' B ']'") : go_scope.
 Notation "x <~ y" := (Go.Assign x y) (at level 90) : go_scope.
 (* TODO: better syntax *)
-Notation "x <~const v" := (Go.Modify (Go.SetConst v) (x : Go.n_tuple 1 Go.var)) (at level 90): go_scope.
-Notation "x <~dup y" := (Go.Modify Go.DuplicateOp (x, y)) (at level 90): go_scope.
-Notation "x <~num A * B" := (Go.Modify (Go.ModifyNumOp Go.Times) (x, A, B)) (at level 90): go_scope.
-Notation "x <~num A + B" := (Go.Modify (Go.ModifyNumOp Go.Plus ) (x, A, B)) (at level 90): go_scope.
-Notation "x <~num A - B" := (Go.Modify (Go.ModifyNumOp Go.Minus) (x, A, B)) (at level 90): go_scope.
+Notation "x <~const v" := (Go.Modify (Go.SetConst v) ^(x)) (at level 90): go_scope.
+Notation "x <~dup y" := (Go.Modify Go.DuplicateOp ^(x, y)) (at level 90): go_scope.
+Notation "x <~num A * B" := (Go.Modify (Go.ModifyNumOp Go.Times) ^(x, A, B)) (at level 90): go_scope.
+Notation "x <~num A + B" := (Go.Modify (Go.ModifyNumOp Go.Plus ) ^(x, A, B)) (at level 90): go_scope.
+Notation "x <~num A - B" := (Go.Modify (Go.ModifyNumOp Go.Minus) ^(x, A, B)) (at level 90): go_scope.
 Notation "'__'" := (Go.Skip) : go_scope.
 Notation "'While' A B" := (Go.While A B) (at level 200, A at level 0, B at level 1000, format "'[v    ' 'While'  A '/' B ']'") : go_scope.
 Notation "'If' a 'Then' b 'Else' c 'EndIf'" := (Go.If a b c) (at level 200, a at level 1000, b at level 1000, c at level 1000) : go_scope.

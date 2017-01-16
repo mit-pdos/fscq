@@ -315,6 +315,8 @@ Ltac eval_expr_step :=
     repeat (destruct_pair + unfold_expr); simpl in *;
     try pred_conflict_solve;
     try subst;
+    repeat destruct_type unit;
+    clear_trivial_eq;
     match goal with
     | [H : context [match ?e in (_ = _) return _ with _ => _ end] |- _ ]
       => rewrite (proof_irrelevance _ e (eq_refl)) in H

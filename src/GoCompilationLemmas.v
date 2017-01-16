@@ -690,7 +690,7 @@ Lemma CompileAdd :
   forall env F sumvar avar bvar (a b : nat),
     EXTRACT Ret (a + b)
     {{ sumvar ~>? W * avar ~> a * bvar ~> b * F }}
-      Modify (ModifyNumOp Plus) (sumvar, avar, bvar)
+      Modify (ModifyNumOp Plus) ^(sumvar, avar, bvar)
     {{ fun ret => sumvar ~> ret * avar ~> a * bvar ~> b * F }} // env.
 Proof.
   unfold ProgOk; intros.
@@ -707,7 +707,7 @@ Lemma CompileAddInPlace1 :
   forall env F avar bvar (a b : nat),
     EXTRACT Ret (a + b)
     {{ avar ~> a * bvar ~> b * F }}
-      Modify (ModifyNumOp Plus) (avar, avar, bvar)
+      Modify (ModifyNumOp Plus) ^(avar, avar, bvar)
     {{ fun ret => avar ~> ret * bvar ~> b * F }} // env.
 Proof.
   unfold ProgOk; intros.
@@ -725,7 +725,7 @@ Lemma CompileAddInPlace2 :
   forall env F avar bvar (a b : nat),
     EXTRACT Ret (a + b)
     {{ avar ~> a * bvar ~> b * F }}
-      Modify (ModifyNumOp Plus) (bvar, avar, bvar)
+      Modify (ModifyNumOp Plus) ^(bvar, avar, bvar)
     {{ fun ret => bvar ~> ret * avar ~> a * F }} // env.
 Proof.
   unfold ProgOk; intros.
@@ -742,7 +742,7 @@ Lemma CompileAppend :
   forall env F T {Wr: GoWrapper T} (lvar vvar : var) (x : T) xs,
   EXTRACT Ret (x :: xs)
   {{ vvar ~> x * lvar ~> xs * F }}
-    Modify AppendOp (lvar, vvar)
+    Modify AppendOp ^(lvar, vvar)
   {{ fun ret => vvar |-> moved_value (wrap x) * lvar ~> ret * F }} // env.
 Proof.
   unfold ProgOk; intros.
@@ -771,7 +771,7 @@ Lemma CompileUncons :
             | x :: xs => pcons x xs
             end
     {{ lvar ~> l * cvar ~>? bool * xvar ~>? V * xsvar ~>? (list V) * F }}
-      Modify Uncons (lvar, cvar, xvar, xsvar);
+      Modify Uncons ^(lvar, cvar, xvar, xsvar);
       If Var cvar Then xpcons Else xpnil EndIf
     {{ G }} // env.
 Proof.
@@ -880,7 +880,7 @@ Local Hint Extern 1 (okToCancel (?var |-> (Val (Pair Bool wrap_type) (false, ?v)
 Lemma CompileMapAdd : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k (v : T),
   EXTRACT Ret (Go.Map.add k v m)
   {{ mvar ~> m * kvar ~> k * vvar ~> v * F }}
-    Go.Modify Go.MapAdd (mvar, kvar, vvar)
+    Go.Modify Go.MapAdd ^(mvar, kvar, vvar)
   {{ fun ret => mvar ~> ret * kvar ~> k * vvar |-> moved_value (wrap v) * F }} // env.
 Proof.
   unfold ProgOk; intros.
@@ -895,7 +895,7 @@ Qed.
 Lemma CompileMapRemove : forall env F T {Wr : GoWrapper T} mvar kvar m k,
   EXTRACT Ret (Go.Map.remove k m)
   {{ mvar ~> m * kvar ~> k * F }}
-    Go.Modify Go.MapRemove (mvar, kvar)
+    Go.Modify Go.MapRemove ^(mvar, kvar)
   {{ fun ret => mvar ~> ret * kvar ~> k * F }} // env.
 Proof.
   unfold ProgOk; intros.
@@ -909,7 +909,7 @@ Qed.
 Lemma CompileMapFind : forall env F T {Wr : GoWrapper T} mvar kvar vvar m k,
   EXTRACT Ret (Go.Map.find k m)
   {{ mvar ~> m * kvar ~> k * vvar ~>? (option T) * F }}
-    Go.Modify Go.MapFind (mvar, kvar, vvar)
+    Go.Modify Go.MapFind ^(mvar, kvar, vvar)
   {{ fun ret => vvar ~> ret * mvar ~> m * kvar ~> k * F }} // env.
 Proof.
   unfold ProgOk; intros.
@@ -944,7 +944,7 @@ Local Hint Extern 1 (okToCancel (?var |-> (Val Num (Here (Map.cardinal (Map.map 
 Lemma CompileMapCardinal : forall env F T {Wr : GoWrapper T} mvar m var,
   EXTRACT Ret (Go.Map.cardinal m)
   {{ var ~>? nat * mvar ~> m * F }}
-    Go.Modify Go.MapCardinality (mvar, var)
+    Go.Modify Go.MapCardinality ^(mvar, var)
   {{ fun ret => var ~> ret * mvar ~> m * F }} // env.
 Proof.
   unfold ProgOk.
@@ -992,7 +992,7 @@ Local Hint Extern 1 (okToCancel (?var |-> Val _ (Here (map _
 Lemma CompileMapElements : forall env F T {Wr : GoWrapper T} mvar m var,
   EXTRACT Ret (Go.Map.elements m)
   {{ var ~>? (list (W * T)) * mvar ~> m * F }}
-    Go.Modify Go.MapElements (mvar, var)
+    Go.Modify Go.MapElements ^(mvar, var)
   {{ fun ret => var ~> ret * mvar ~> m * F }} // env.
 Proof.
   unfold ProgOk.
@@ -1063,7 +1063,7 @@ Proof.
         { (* failure in loop *)
           find_eapply_lem_hyp Steps_ExecFinished.
           edestruct H; eauto. pred_cancel.
-          edestruct H4; eauto. simpl in *; repeat deex.
+          edestruct H3; eauto. simpl in *; repeat deex.
           destruct_pair; simpl in *.
           edestruct (IHn (S i));
             [> | | eapply Steps_ExecFailed; eauto |];
@@ -1169,7 +1169,7 @@ Lemma AddInPlaceLeftBefore : forall T (T' : GoWrapper T) (p : prog T) B xp env
   EXTRACT p {{ v ~> (x + a) * va ~> a * F }} xp {{ B }} // env ->
   EXTRACT p
   {{ v ~> x * va ~> a * F }}
-    Go.Modify (Go.ModifyNumOp Plus) (v, v, va); xp
+    Go.Modify (Go.ModifyNumOp Plus) ^(v, v, va); xp
   {{ B }} // env.
 Proof.
   intros.
@@ -1185,7 +1185,7 @@ Lemma AddInPlaceLeftAfter : forall T (T' : GoWrapper T) (p : prog T) A xp env
   EXTRACT p {{ A }} xp {{ fun ret => F ret * v ~> x * va ~> a }} // env ->
   EXTRACT p
   {{ A }}
-    xp; Go.Modify (Go.ModifyNumOp Plus) (v, v, va)
+    xp; Go.Modify (Go.ModifyNumOp Plus) ^(v, v, va)
   {{ fun ret => F ret * v ~> (x + a) * va ~> a }} // env.
 Proof.
   intros.
@@ -1212,11 +1212,11 @@ Lemma CompileFor : forall L G (L' : GoWrapper L) loopvar F
     Declare Num (fun one => (
       one <~const (wrap' 1);
       Declare Num (fun term => (
-        Go.Modify (Go.DuplicateOp) (term, v);
-        Go.Modify (Go.ModifyNumOp Go.Plus) (term, term, vn);
+        Go.Modify (Go.DuplicateOp) ^(term, v);
+        Go.Modify (Go.ModifyNumOp Go.Plus) ^(term, term, vn);
         Go.While (TestE Lt (Var v) (Var term)) (
           xpb v term one;
-          Go.Modify (Go.ModifyNumOp Go.Plus) (v, v, one)
+          Go.Modify (Go.ModifyNumOp Go.Plus) ^(v, v, one)
         )
       ))
     ))
@@ -1250,7 +1250,7 @@ Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> 
   forall avar bvar,
     forall a b F, EXTRACT src a b
            {{ avar ~> a * bvar ~> b * F }}
-             Call 2 name (avar, bvar)
+             Call 2 name ^(avar, bvar)
            {{ fun _ => avar |->? * bvar |->? * F
             (* TODO: could remember a & b if they are of passed by ref *) }} // env.
 
@@ -1262,7 +1262,7 @@ Lemma extract_voidfunc2_call :
       (forall a b F, EXTRACT src a b {{ arga ~> a * argb ~> b * F }} body {{ fun _ => arga |->? * argb |->? * F }} // env) ->
       StringMap.find name env = Some {|
                                     NumParamVars := 2;
-                                    ParamVars := (@wrap_type _ WA, @wrap_type _ WB);
+                                    ParamVars := ^(@wrap_type _ WA, @wrap_type _ WB);
                                     Body := body;
                                     body_source := ss;
                                   |} ->
@@ -1280,7 +1280,7 @@ Definition func2_val_ref A B {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -
   forall avar bvar,
     forall a b F, EXTRACT src a b
            {{ avar ~> a * bvar ~> b * F }}
-             Call 2 name (avar, bvar)
+             Call 2 name ^(avar, bvar)
            {{ fun ret => avar ~>? A * bvar ~> ret * F }} // env.
 
 
@@ -1290,7 +1290,7 @@ Lemma extract_func2_val_ref_call :
       (forall a b, EXTRACT src a b {{ 0 ~> a * 1 ~> b }} body {{ fun ret => 0 ~>? A * 1 ~> ret }} // env) ->
       StringMap.find name env = Some {|
                                     NumParamVars := 2;
-                                    ParamVars := (@wrap_type _ WA, @wrap_type _ WB);
+                                    ParamVars := ^(@wrap_type _ WA, @wrap_type _ WB);
                                     Body := body;
                                     body_source := ss;
                                   |} ->
@@ -1326,7 +1326,7 @@ Proof.
     invc H0.
     find_rewrite.
     eval_expr.
-    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, x, bp') /\ x0 = InCall s 2 (avar, bvar) bp').
+    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, x, bp') /\ x0 = InCall s 2 ^(avar, bvar) bp').
     {
       remember callee_s.
       clear callee_s Heqt.
@@ -1341,7 +1341,7 @@ Proof.
         + invc H3. invc H2. invc H.
     }
     deex.
-    eapply Steps_ExecCrashed in H6.
+    eapply Steps_ExecCrashed in H5.
     unfold ProgOk in *.
     repeat eforward Hex.
     forward Hex.
@@ -1368,7 +1368,7 @@ Proof.
     + invc H2.
       rewrite Henv in H8.
       eval_expr.
-      assert (exists bp', (Go.step env)^* (d, callee_s, body) (r, l, bp') /\ x0 = InCall s 2 (avar, bvar) bp').
+      assert (exists bp', (Go.step env)^* (d, callee_s, body) (r, l, bp') /\ x0 = InCall s 2 ^(avar, bvar) bp').
       {
         remember callee_s.
         clear callee_s Heqt.
@@ -1383,7 +1383,7 @@ Proof.
           + invc H4. contradiction H1. auto. invc H.
       }
       deex.
-      eapply Steps_ExecFailed in H7.
+      eapply Steps_ExecFailed in H6.
       unfold ProgOk in *.
       repeat eforward Hex.
       forward Hex. shelve.
@@ -1393,7 +1393,7 @@ Proof.
       unfold is_final in *; simpl in *; subst.
       contradiction H3.
       subst_definitions.
-      apply Steps_ExecFinished in H7.
+      apply Steps_ExecFinished in H6.
       unfold ProgOk in *.
       repeat eforward Hex.
       forward Hex. shelve.
@@ -1419,7 +1419,7 @@ Definition func2_ref_val A B {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -
   forall avar bvar,
     forall a b F, EXTRACT src a b
            {{ avar ~> a * bvar ~> b * F }}
-             Call 2 name (avar, bvar)
+             Call 2 name ^(avar, bvar)
            {{ fun ret => avar ~> ret * bvar ~>? B * F }} // env.
 
 Lemma extract_func2_ref_val_call :
@@ -1428,7 +1428,7 @@ Lemma extract_func2_ref_val_call :
       (forall a b, EXTRACT src a b {{ 0 ~> a * 1 ~> b }} body {{ fun ret => 0 ~> ret * 1 ~>? B }} // env) ->
       StringMap.find name env = Some {|
                                     NumParamVars := 2;
-                                    ParamVars := (@wrap_type _ WA, @wrap_type _ WB);
+                                    ParamVars := ^(@wrap_type _ WA, @wrap_type _ WB);
                                     Body := body;
                                     body_source := ss;
                                   |} ->
@@ -1439,7 +1439,7 @@ Definition func1_ref A {WA: GoWrapper A} name (src : A -> prog A) env :=
   forall avar,
     forall a F, EXTRACT src a
            {{ avar ~> a * F }}
-             Call 1 name (avar)
+             Call 1 name ^(avar)
            {{ fun ret => avar ~> ret * F }} // env.
 
 Lemma extract_func1_ref_call :
@@ -1448,7 +1448,7 @@ Lemma extract_func1_ref_call :
       (forall a, EXTRACT src a {{ 0 ~> a }} body {{ fun ret => 0 ~> ret }} // env) ->
       StringMap.find name env = Some {|
                                     NumParamVars := 1;
-                                    ParamVars := (@wrap_type _ WA);
+                                    ParamVars := ^(@wrap_type _ WA);
                                     Body := body;
                                     body_source := ss;
                                   |} ->
@@ -1484,7 +1484,7 @@ Proof.
     invc H0.
     find_rewrite.
     eval_expr.
-    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, x, bp') /\ x0 = InCall s 1 (avar) bp').
+    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, x, bp') /\ x0 = InCall s 1 ^(avar) bp').
     {
       remember callee_s.
       clear callee_s Heqt.
@@ -1499,7 +1499,7 @@ Proof.
         + invc H3. invc H2. invc H.
     }
     deex.
-    eapply Steps_ExecCrashed in H5.
+    eapply Steps_ExecCrashed in H4.
     unfold ProgOk in *.
     repeat eforward Hex.
     forward Hex.
@@ -1515,7 +1515,7 @@ Proof.
       | [ H : _ = Some ?spec |- _ ] => set spec in *
       end.
       eapply StepStartCall with (spec := f); eauto.
-      eval_expr. find_rewrite. reflexivity.
+      eval_expr. reflexivity.
       eval_expr.
 
       Unshelve.
@@ -1526,7 +1526,7 @@ Proof.
     + invc H2.
       rewrite Henv in H8.
       eval_expr.
-      assert (exists bp', (Go.step env)^* (d, callee_s, body) (r, l, bp') /\ x0 = InCall s 1 (avar) bp').
+      assert (exists bp', (Go.step env)^* (d, callee_s, body) (r, l, bp') /\ x0 = InCall s 1 ^(avar) bp').
       {
         remember callee_s.
         clear callee_s Heqt.
@@ -1541,7 +1541,7 @@ Proof.
           + invc H4. contradiction H1. auto. invc H.
       }
       deex.
-      eapply Steps_ExecFailed in H6.
+      eapply Steps_ExecFailed in H5.
       unfold ProgOk in *.
       repeat eforward Hex.
       forward Hex. shelve.
@@ -1551,13 +1551,15 @@ Proof.
       unfold is_final in *; simpl in *; subst.
       contradiction H3.
       subst_definitions.
-      apply Steps_ExecFinished in H6.
+      apply Steps_ExecFinished in H5.
       unfold ProgOk in *.
       repeat eforward Hex.
       forward Hex. shelve.
       forward_solve.
       eval_expr.
       repeat eexists. eapply StepEndCall; simpl; eauto.
+      eval_expr; reflexivity.
+      eval_expr; reflexivity.
       eval_expr; reflexivity.
 
       intuition.
@@ -1576,7 +1578,7 @@ Lemma CompileSplit :
   forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar F (p : A * B),
     EXTRACT Ret tt
     {{ avar ~>? A * bvar ~>? B * pvar ~> p * F }}
-      Modify SplitPair (pvar, avar, bvar)
+      Modify SplitPair ^(pvar, avar, bvar)
     {{ fun _ => avar ~> fst p * bvar ~> snd p * pvar |-> moved_value (wrap p) * F }} // env.
 Proof.
   intros; unfold ProgOk.
@@ -1591,7 +1593,7 @@ Lemma CompileFst :
   forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar F (p : A * B),
     EXTRACT Ret (fst p)
     {{ avar ~>? A * bvar ~>? B * pvar ~> p * F }}
-      Modify SplitPair (pvar, avar, bvar)
+      Modify SplitPair ^(pvar, avar, bvar)
     {{ fun ret => avar ~> ret * bvar ~> snd p * pvar |-> moved_value (wrap p) * F }} // env.
 Proof.
   intros; unfold ProgOk.
@@ -1607,7 +1609,7 @@ Lemma CompileSnd :
   forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar F (p : A * B),
     EXTRACT Ret (snd p)
     {{ avar ~>? A * bvar ~>? B * pvar ~> p * F }}
-      Modify SplitPair (pvar, avar, bvar)
+      Modify SplitPair ^(pvar, avar, bvar)
     {{ fun ret => avar ~> fst p * bvar ~> ret * pvar |-> moved_value (wrap p) * F }} // env.
 Proof.
   intros; unfold ProgOk.
@@ -1623,7 +1625,7 @@ Lemma CompileJoin :
   forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar (a : A) (b : B) F,
     EXTRACT Ret (a, b)
     {{ avar ~> a * bvar ~> b * pvar ~>? (A * B)%type * F }}
-      Modify JoinPair (pvar, avar, bvar)
+      Modify JoinPair ^(pvar, avar, bvar)
     {{ fun ret => avar |-> moved_value (wrap a) * bvar |-> moved_value (wrap b) * pvar ~> ret * F }} // env.
 Proof.
   intros; unfold ProgOk.
@@ -1641,7 +1643,7 @@ Lemma CompileRetOptionSome : forall env B {HB: GoWrapper B} {D : DefaultValue B}
   avar bvar pvar (b : B) (p : bool * B) F,
   EXTRACT Ret (Some b)
   {{ avar ~> true * bvar ~> b * pvar ~> p * F }}
-    Modify JoinPair (pvar, avar, bvar)
+    Modify JoinPair ^(pvar, avar, bvar)
   {{ fun ret => pvar ~> ret *
                 avar |-> moved_value (wrap true) *
                 bvar |-> moved_value (wrap b) * F }} // env.
@@ -1676,7 +1678,7 @@ Lemma CompileRetOptionNone : forall env B {HB: GoWrapper B} {D : DefaultValue B}
   EXTRACT Ret None
   {{ avar ~> false * pvar ~> p * F }}
     Declare wrap_type (fun bvar =>
-      Modify JoinPair (pvar, avar, bvar)
+      Modify JoinPair ^(pvar, avar, bvar)
     )
   {{ fun ret => pvar ~> ret *
                 avar |-> moved_value (wrap false) * F }} // env.
@@ -1709,7 +1711,7 @@ Lemma CompileMatchOption : forall env B {HB : GoWrapper B} X {HX : GoWrapper X} 
            | Some b => psome b
            end)
   {{ ovar ~> o * avar ~>? bool * bvar ~>? B * F }}
-    Modify SplitPair (ovar, avar, bvar) ;
+    Modify SplitPair ^(ovar, avar, bvar) ;
     If Var avar Then xpsome Else xpnone EndIf
   {{ fun ret => xvar ~> ret * avar ~>? bool * bvar ~>? B * ovar ~>? option B * C }} // env.
 Proof.

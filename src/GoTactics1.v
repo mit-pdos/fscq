@@ -18,6 +18,18 @@ Ltac invert_trivial H :=
       assert (a = b) as H' by exact (match H with eq_refl => eq_refl end); clear H; rename H' into H
   end.
 
+Ltac clear_trivial_eq :=
+  repeat match goal with
+         | [ H: ?x = ?y |- _ ] =>
+           let x := constr:(eq_refl : x = y) in
+           clear H
+         end.
+
+Ltac destruct_type T :=
+  match goal with
+  | [ H: T |- _ ] => destruct H
+  end.
+
 Ltac destruct_pairs :=
   repeat (simpl in *; try destruct_pair_once).
 
