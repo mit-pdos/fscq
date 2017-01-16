@@ -1240,6 +1240,162 @@ Proof.
     eapply H | cancel_go..].
 Qed.
 
+Record WrappedType :=
+  {
+    WrType : Type;
+    Wrapper : GoWrapper WrType;
+  }.
+
+Definition with_wrapper T {Wr : GoWrapper T} := {| WrType := T |}.
+Arguments with_wrapper T {Wr}.
+
+Instance WrapWrappedType (wt : WrappedType) : GoWrapper wt.(WrType).
+destruct wt.
+assumption.
+Defined.
+
+(* TODO: support passing arguments by reference *)
+Record ProgFunctionSig :=
+  {
+    FRet : WrappedType;
+    Args : list WrappedType;
+  }.
+
+Fixpoint arg_func_type (args : list WrappedType) T :=
+  match args with
+  | [] => T
+  | arg :: args' => arg.(WrType) -> arg_func_type args' T
+  end.
+
+Definition prog_function_type (sig : ProgFunctionSig) :=
+  arg_func_type sig.(Args) (prog sig.(FRet).(WrType)).
+
+Fixpoint arg_tuple (args : list WrappedType) : Type := 
+  match args with
+  | [] => unit
+  | arg :: args' => (arg.(WrType) * arg_tuple args')%type
+  end.
+
+Fixpoint argval_foralls (args : list WrappedType) :
+  forall (B : arg_tuple args -> Prop), Prop :=
+  match args return forall (B : arg_tuple args -> Prop), Prop with
+  | [] => fun B => B tt
+  | arg :: args' => fun B => forall argval : arg.(WrType), argval_foralls args' (fun argvals' => B (argval, argvals'))
+  end.
+
+Fixpoint do_call {args ret} : arg_func_type args ret -> arg_tuple args -> ret :=
+  match args return arg_func_type args ret -> arg_tuple args -> ret with
+  | [] => fun f _ => f
+  | arg :: args' => fun f argvals =>
+                     let '(argval, argvals') := argvals in
+                     @do_call args' ret (f argval) argvals'
+  end.
+
+Fixpoint args_pre args : forall (argvars : n_tuple (length args) var) (argvals : arg_tuple args), pred :=
+  match args return forall (argvars : n_tuple (length args) var) (argvals : arg_tuple args), pred with
+  | [] => fun _ _ => emp
+  | arg :: args' => fun argvars argvals =>
+                     let '(argvar, argvars') := argvars in
+                     let '(argval, argvals') := argvals in
+                     (argvar ~> argval * args_pre args' argvars' argvals')%pred
+  end.
+
+Fixpoint args_post args : forall (argvars : n_tuple (length args) var), pred :=
+  match args return forall (argvars : n_tuple (length args) var), pred with
+  | [] => fun _ => emp
+  | arg :: args' => fun argvars =>
+                     let '(argvar, argvars') := argvars in
+                     (argvar ~>? arg.(WrType) * args_post args' argvars')%pred
+  end.
+
+Fixpoint params_pre args n : forall (argvals : arg_tuple args), pred :=
+  match args return forall (argvals : arg_tuple args), pred with
+  | [] => fun _ => emp
+  | arg :: args' => fun argvals =>
+                     let '(argval, argvals') := argvals in
+                     (n ~> argval * params_pre args' (S n) argvals')%pred
+  end.
+
+Fixpoint params_post args n : pred :=
+  match args with
+  | [] => emp
+  | arg :: args' => (n ~>? arg.(WrType) * params_post args' (S n))%pred
+  end.
+
+
+Definition prog_func_call_lemma (sig : ProgFunctionSig) (name : String.string) (src : prog_function_type sig) env :=
+  forall retvar (argvars : n_tuple (length sig.(Args)) var) F,
+    argval_foralls
+      sig.(Args)
+      (fun argvals => EXTRACT do_call src argvals
+       {{ retvar ~>? sig.(FRet).(WrType) * args_pre sig.(Args) argvars argvals * F }}
+         Call (S (length sig.(Args))) name (retvar, argvars)
+       {{ fun retval => retvar ~> retval * args_post sig.(Args) argvars * F }} // env).
+
+Lemma extract_prog_func_call :
+  forall sig name src env,
+    forall body ss,
+      (argval_foralls sig.(Args)
+                      (fun argvals =>
+                         EXTRACT do_call src argvals
+                         {{ 0 ~>? sig.(FRet).(WrType) * params_pre sig.(Args) 1 argvals }}
+                           body
+                         {{ fun ret => 0 ~> ret * params_post sig.(Args) 1 }} // env)) ->
+      StringMap.find name env = Some {|
+                                    NumParamVars := S (length sig.(Args));
+                                    ParamVars := (@wrap_type _ sig.(FRet).(Wrapper),
+                                                  map_nt (fun WT => @wrap_type _ (Wrapper WT)) (tupled sig.(Args)));
+                                    Body := body;
+                                    body_source := ss;
+                                  |} ->
+      prog_func_call_lemma sig name src env.
+Admitted.
+
+Definition func2 A B R {WA: GoWrapper A} {WB: GoWrapper B} {WR: GoWrapper R} name (src : A -> B -> prog R) env :=
+  forall rvar avar bvar,
+    forall a b F, EXTRACT src a b
+           {{ rvar ~>? R * avar ~> a * bvar ~> b * F }}
+             Call 3 name ^(rvar, avar, bvar)
+           {{ fun ret => rvar ~> ret * avar ~>? A * bvar ~>? B * F }} // env.
+
+
+Lemma extract_func2_call :
+  forall A B R {WA: GoWrapper A} {WB: GoWrapper B} {WR: GoWrapper R} name (src : A -> B -> prog R) env,
+    forall body ss,
+      (forall a b, EXTRACT src a b {{ 0 ~>? R * 1 ~> a * 2 ~> b }} body {{ fun ret => 0 ~> ret * 1 ~>? A * 2 ~>? B }} // env) ->
+      StringMap.find name env = Some {|
+                                    NumParamVars := 3;
+                                    ParamVars := ^(@wrap_type _ WR, @wrap_type _ WA, @wrap_type _ WB);
+                                    Body := body;
+                                    body_source := ss;
+                                  |} ->
+      func2 name src env.
+Proof.
+  intros.
+  hnf.
+  intros.
+  set (args := [with_wrapper A; with_wrapper B]).
+  set (ret := with_wrapper R).
+  set (argvals := ^(a, b) : arg_tuple args).
+  change (arg_func_type args (prog R)) in src.
+  change (src a b) with (do_call src argvals).
+  pose proof (@extract_prog_func_call {| Args := args; Ret := ret |} name src env body ss).
+  forward H1.
+  {
+    simpl; intros.
+    eapply hoare_weaken.
+    eapply H.
+    cancel_go.
+    cancel_go.
+  }
+  simpl in H2.
+  intuition.
+  hnf in H1; simpl in H1.
+  eapply hoare_weaken.
+  apply H1.
+  cancel_go.
+  cancel_go.
+Qed.
 
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
   forall avar bvar,
