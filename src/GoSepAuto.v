@@ -11,7 +11,6 @@ Require Import ADestructPair DestructVarname.
 
 Set Implicit Arguments.
 
-
 (* Helpers for existential variables *)
 
 Ltac set_evars :=

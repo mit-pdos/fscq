@@ -1,6 +1,6 @@
 Require Import Eqdep.
 Require Import Morphisms Relation_Operators.
-Require Import PeanoNat Plus List.
+Require Import PeanoNat Plus String List.
 Require Import Word AsyncDisk Prog ProgMonad BasicProg Pred.
 Require Import StringMap.
 Require Import GoSemantics GoFacts GoHoare GoSepAuto.
@@ -123,31 +123,25 @@ Inductive Declaration :=
 
 Arguments Decl T {Wr} {D}.
 
-Fixpoint pair_vec n (T : Type) : Type :=
+Fixpoint nth_var {n} m : n_tuple n var -> var :=
   match n with
-  | 0 => unit
-  | S n' => pair_vec n' T * T
-  end.
-
-Fixpoint pair_vec_nthl {n T} def m : pair_vec n T -> T :=
-  match n with
-  | 0 => fun _ => def
+  | 0 => fun _ => 0
   | S n' =>
     match m with
-    | 0 => fun t => snd t
-    | S m' => fun t => pair_vec_nthl def m' (fst t)
+    | 0 => fun t => fst t
+    | S m' => fun t => nth_var m' (snd t)
     end
   end.
 
-Definition decls_pre (decls : list Declaration) {n} (vars : pair_vec n var) : nat -> pred.
+Definition decls_pre (decls : list Declaration) {n} (vars : n_tuple n var) : nat -> pred.
   induction decls; intro m.
   - exact emp.
   - destruct a.
-    exact ((pair_vec_nthl 0 m vars |-> wrap zeroval * IHdecls (S m))%pred).
+    exact ((nth_var m vars |-> wrap zeroval * IHdecls (S m))%pred).
 Defined.
 
 Lemma decls_pre_shift : forall decls n vars var0 m,
-  @decls_pre decls (S n) (vars, var0) (S m) <=p=> @decls_pre decls n vars m.
+  @decls_pre decls (S n) (var0, vars) (S m) <=p=> @decls_pre decls n vars m.
 Proof.
   induction decls.
   - reflexivity.
@@ -156,14 +150,14 @@ Proof.
     apply IHdecls.
 Qed.
 
-Definition decls_post (decls : list Declaration) {n} (vars : pair_vec n var) : nat -> pred.
+Definition decls_post (decls : list Declaration) {n} (vars : n_tuple n var) : nat -> pred.
   induction decls; intro m.
   - exact emp.
-  - exact ((pair_vec_nthl 0 m vars |->? * IHdecls (S m))%pred).
+  - exact ((nth_var m vars |->? * IHdecls (S m))%pred).
 Defined.
 
 Lemma decls_post_shift : forall decls n vars var0 m,
-  @decls_post decls (S n) (vars, var0) (S m) <=p=> @decls_post decls n vars m.
+  @decls_post decls (S n) (var0, vars) (S m) <=p=> @decls_post decls n vars m.
 Proof.
   induction decls.
   - reflexivity.
@@ -285,19 +279,19 @@ Proof.
       invc H6; [ invc H4 | invc H ].
 Qed.
 
-Definition many_declares (decls : list Declaration) (xp : pair_vec (length decls) var -> stmt) : stmt.
+Definition many_declares (decls : list Declaration) (xp : n_tuple (length decls) var -> stmt) : stmt.
   induction decls; simpl in *.
   - exact (xp tt).
   - destruct a.
     eapply (Declare wrap_type); intro var.
     apply IHdecls; intro.
     apply xp.
-    exact (X, var).
+    exact (var, X).
 Defined.
 
 Lemma CompileDeclareMany :
   forall env T (decls : list Declaration) xp A B (p : prog T),
-    (forall vars : pair_vec (length decls) var,
+    (forall vars : n_tuple (length decls) var,
        EXTRACT p
        {{ decls_pre decls vars 0 * A }}
          xp vars
@@ -1246,13 +1240,13 @@ Proof.
     eapply H | cancel_go..].
 Qed.
 
+
 Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
   forall avar bvar,
     forall a b F, EXTRACT src a b
            {{ avar ~> a * bvar ~> b * F }}
              Call 2 name ^(avar, bvar)
-           {{ fun _ => avar |->? * bvar |->? * F
-            (* TODO: could remember a & b if they are of passed by ref *) }} // env.
+           {{ fun _ => avar |->? * bvar |->? * F }} // env.
 
 
 (* TODO: generalize for all kinds of functions *)
@@ -1364,7 +1358,7 @@ Proof.
       eval_expr; pred_solve; auto.
       subst_definitions.
       eval_expr; pred_solve; auto.
-      
+
     + invc H2.
       rewrite Henv in H8.
       eval_expr.
@@ -1741,4 +1735,4 @@ Proof.
     repeat eexists. apply StepIfFalse. eval_expr.
 Qed.
 
-Arguments pair_vec_nthl : simpl never.
+Arguments nth_var : simpl never.

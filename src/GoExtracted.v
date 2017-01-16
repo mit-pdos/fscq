@@ -182,7 +182,7 @@ Proof.
   compile_step.
   compile_step.
   eapply hoare_weaken.
-  eapply CompileMapCardinal with (var0 := pair_vec_nthl 0 0 vars) (mvar := pair_vec_nthl 0 1 vars).
+  eapply CompileMapCardinal with (var0 := nth_var 0 vars) (mvar := nth_var 1 vars).
   cancel_go.
   cancel_go.
   compile_step.
@@ -224,7 +224,7 @@ Proof.
   compile_step.
   compile_step.
   eapply hoare_weaken.
-  eapply CompileMapElements with (mvar := pair_vec_nthl 0 1 vars) (var0 := pair_vec_nthl 0 14 vars).
+  eapply CompileMapElements with (mvar := nth_var 1 vars) (var0 := nth_var 14 vars).
   cancel_go.
   cancel_go.
   simpl.
@@ -234,10 +234,10 @@ Proof.
   simpl.
   do_declare (list (nat * (word AsyncDisk.Valulen.valulen * bool))%type) ltac:(fun xsvar => idtac xsvar).
   eapply hoare_weaken.
-  apply CompileUncons with (lvar := pair_vec_nthl 0 14 vars)
-                             (cvar := pair_vec_nthl 0 15 vars)
-                             (xvar := pair_vec_nthl 0 16 vars)
-                             (xsvar := pair_vec_nthl 0 17 vars).
+  apply CompileUncons with (lvar := nth_var 14 vars)
+                             (cvar := nth_var 15 vars)
+                             (xvar := nth_var 16 vars)
+                             (xsvar := nth_var 17 vars).
   3: cancel_go.
   3: cancel_go.
   compile_step.
@@ -311,7 +311,7 @@ Proof.
                           eapply CompileBefore; [ 
                             eapply CompileRet with (v := a1) (var0 := ka');
                             eapply hoare_weaken; [
-                              eapply CompileDup with (var0 := pair_vec_nthl 0 14 vars) (var' := ka') | cancel_go .. ] | ]).
+                              eapply CompileDup with (var0 := nth_var 14 vars) (var' := ka') | cancel_go .. ] | ]).
   compile_step.
   compile_step.
   compile_step.

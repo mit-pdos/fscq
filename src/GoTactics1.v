@@ -11,6 +11,7 @@ Ltac set_hyp_evars :=
     set (H := e) in *
   end.
 
+
 Ltac invert_trivial H :=
   match type of H with
     | ?con ?a = ?con ?b =>

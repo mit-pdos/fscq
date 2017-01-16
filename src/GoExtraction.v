@@ -67,7 +67,7 @@ Ltac do_declare T cont :=
         let decls' := fresh "decls" in
         evar (decls' : list Declaration);
         unify decls (Decl T :: decls'); subst decls';
-        cont (pair_vec_nthl 0 m vars)
+        cont (nth_var m vars)
       end
     end
   end.
