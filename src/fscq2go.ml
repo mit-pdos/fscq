@@ -18,18 +18,9 @@ let sanitize = Str.global_replace (Str.regexp_string ".") "_"
 let rec call_args_tuple_to_list (nargs : big_int) (args_tuple : Obj.t) =
   if eq nargs (zero)
     then []
-  else if eq nargs (one)
-    then [Obj.magic args_tuple]
   else
     let (a, b) = Obj.magic args_tuple in
     a :: (call_args_tuple_to_list (pred nargs) b)
-
-let rec function_args_tuple_to_list (nargs : big_int) (args_tuple) =
-  match nargs with
-  | zero -> []
-  | one -> [Obj.magic args_tuple]
-  | nargs -> let (a, b) = Obj.magic args_tuple in
-    a :: (function_args_tuple_to_list (pred nargs) b)
 
 let mapi_bignum (f : big_int -> 'a -> 'b) (l : 'a list) =
   let rec x (i : big_int) l =
@@ -103,18 +94,18 @@ let go_modify_op (ts : TranscriberState.state)
                  (args_tuple : Go.var Go.n_tuple) =
   match modify_op with
   | Go.SplitPair ->
-    let ((pair, first), second) = Obj.magic args_tuple in
+    let (pair, (first, (second, _))) = Obj.magic args_tuple in
     (var_name first) ^ " = " ^ (var_name pair) ^ ".fst\n" ^
     (var_name second) ^ " = " ^ (var_name pair) ^ ".snd"
   | Go.JoinPair ->
-    let ((pair, first), second) = Obj.magic args_tuple in
+    let (pair, (first, (second, _))) = Obj.magic args_tuple in
     (var_name pair) ^ ".fst = " ^ (var_name first) ^ "\n" ^
     (var_name pair) ^ ".snd = " ^ (var_name second)
   | Go.MapAdd ->
-    let ((map, key), value) = Obj.magic args_tuple in
+    let (map, (key, (value, _))) = Obj.magic args_tuple in
     (var_name map) ^ "[" ^ (var_name key) ^ ".String()] = " ^ (var_name value)
   | Go.MapFind ->
-    let ((map, key), rvar) = Obj.magic args_tuple in
+    let (map, (key, (rvar, _))) = Obj.magic args_tuple in
     let v = (var_name rvar) in
 "{
   in_map, val := " ^ (var_name map) ^ "[" ^ (var_name key) ^ ".String()]
@@ -122,7 +113,7 @@ let go_modify_op (ts : TranscriberState.state)
   " ^ v ^ ".snd = DeepCopy(val)
 }"
   | Go.DuplicateOp ->
-    let (dst, src) = Obj.magic args_tuple in
+    let (dst, (src, _)) = Obj.magic args_tuple in
     (var_name dst) ^ " = DeepCopy(" ^ (var_name src) ^ ")"
   | _ -> "Modify // TODO"
   ;;
