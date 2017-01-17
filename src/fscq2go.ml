@@ -29,6 +29,10 @@ let mapi_bignum (f : big_int -> 'a -> 'b) (l : 'a list) =
     | v :: l -> (f i v) :: (x (succ i) l)
   in x zero l
 
+let fail_unmatched fn_name =
+  print_endline ("Unmatched type in " ^ fn_name);
+  assert false
+
 (* mutable transcriber state *)
 module TranscriberState = struct
   type state = {
@@ -57,6 +61,8 @@ module TranscriberState = struct
         ts.maps <- (name, a) :: ts.maps;
         ts.go_types <- (coq_go_type, name) :: ts.go_types;
         name
+      | _ ->
+        fail_unmatched "get_go_type"
 
   let get_new_var (ts : state) =
     let num = ts.var_num in
@@ -115,7 +121,7 @@ let go_modify_op (ts : TranscriberState.state)
   | Go.DuplicateOp ->
     let (dst, (src, _)) = Obj.magic args_tuple in
     (var_name dst) ^ " = DeepCopy(" ^ (var_name src) ^ ")"
-  | _ -> "Modify // TODO"
+  | _ -> fail_unmatched "go_modify_op"
   ;;
 
 let rec go_expr expr =
@@ -170,6 +176,7 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
       "for " ^ (go_expr ex) ^ " {\n" ^ (go_stmt body ts) ^ "}\n"
   | Go.Modify (op, vars) ->
     go_modify_op ts op vars ^ "\n"
+  | _ -> fail_unmatched "go_stmt"
 ;;
 
 let arg_pair_to_declaration (ts) (arg_num : big_int) (v : Go.param_style * Go.coq_type) =
