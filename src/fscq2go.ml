@@ -184,9 +184,7 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
   | _ -> fail_unmatched "go_stmt"
 ;;
 
-let arg_pair_to_declaration (ts) (arg_num : big_int) (v : Go.param_style * Go.coq_type) =
-  let (arg_style, arg_t) = v in
-  assert (arg_style == Go.PassedByRef);
+let arg_pair_to_declaration (ts) (arg_num : big_int) (arg_t : Go.coq_type) =
   var_name arg_num ^ " *" ^
   (TranscriberState.get_go_type ts arg_t)
 
