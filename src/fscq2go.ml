@@ -172,10 +172,10 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
       let go_name = char_list_to_string name in
       let call = go_name ^ "(" ^ (String.concat ", " go_args) ^ ")" in
       call ^ "\n"
-  | Go.DiskRead (var, expr) ->
-      var_name var ^ " = DiskRead(" ^ go_expr expr ^ ")\n"
-  | Go.DiskWrite (value, addr) ->
-      "DiskWrite(" ^ go_expr value ^ ", " ^ go_expr addr ^ ")\n"
+  | Go.DiskRead (vvar, avar) ->
+      "DiskRead(" ^ (var_name vvar) ^ ", " ^ (var_name avar) ^ ")\n"
+  | Go.DiskWrite (vvar, avar) ->
+      "DiskWrite(" ^ (var_name vvar) ^ ", " ^ (var_name avar) ^ ")\n"
   | Go.Skip -> ""
   | Go.While (ex, body) ->
       "for " ^ (go_expr ex) ^ " {\n" ^ (go_stmt body ts) ^ "}\n"

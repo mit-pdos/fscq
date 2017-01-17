@@ -525,8 +525,8 @@ Module Go.
   | Declare : type -> (var -> stmt) -> stmt
   | Assign : var -> expr -> stmt
   | Modify : forall op : modify_op, n_tuple (op_arity op) var -> stmt
-  | DiskRead : var -> expr -> stmt
-  | DiskWrite : expr -> expr -> stmt
+  | DiskRead : var -> var -> stmt
+  | DiskWrite : var -> var -> stmt
   | DiskSync : stmt
   (* InCall and Undeclare only appear at runtime *)
   | Undeclare : var -> stmt
@@ -794,19 +794,19 @@ Module Go.
         projT2 (impl_for op) vs0 = Some vs ->
         Some s' = update_many vars vs0 vs s ->
         runsto (Modify op vars) (d, s) (d, s')
-    | RunsToDiskRead : forall x ae a d s s' v0 v vs,
-        VarMap.find x s = Some v0 -> (* variable must be declared *)
+    | RunsToDiskRead : forall dvar avar a d s s' v0 v vs,
+        VarMap.find dvar s = Some v0 -> (* dest variable must be declared *)
         type_of v0 = DiskBlock -> (* and have the correct type *)
-        eval s ae = Some (Val Num (Here a)) ->
+        VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
-        s' = VarMap.add x (Val DiskBlock (Here v)) s ->
-        runsto (DiskRead x ae) (d, s) (d, s')
-    | RunsToDiskWrite : forall ae a ve v (d : rawdisk) d' s v0 v0s,
-        eval s ae = Some (Val Num (Here a)) ->
-        eval s ve = Some (Val DiskBlock (Here v)) ->
+        s' = VarMap.add dvar (Val DiskBlock (Here v)) s ->
+        runsto (DiskRead dvar avar) (d, s) (d, s')
+    | RunsToDiskWrite : forall avar a vvar v (d : rawdisk) d' s v0 v0s,
+        VarMap.find vvar s = Some (Val DiskBlock (Here v)) -> (* src variable must have a diskblock *)
+        VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->
-        runsto (DiskWrite ae ve) (d, s) (d', s)
+        runsto (DiskWrite avar vvar) (d, s) (d', s)
     | RunsToDiskSync : forall (d : rawdisk) d' s,
         d' = sync_mem d ->
         runsto DiskSync (d, s) (d', s)
@@ -865,19 +865,19 @@ Module Go.
         projT2 (impl_for op) vs0 = Some vs ->
         Some s' = update_many vars vs0 vs s ->
         step (d, s, Modify op vars) (d, s', Skip)
-    | StepDiskRead : forall x ae a d s s' v v0 vs,
-        VarMap.find x s = Some v0 -> (* variable must be declared *)
+    | StepDiskRead : forall dvar avar a d s s' v v0 vs,
+        VarMap.find dvar s = Some v0 -> (* dest variable must be declared *)
         type_of v0 = DiskBlock -> (* and have the correct type *)
-        eval s ae = Some (Val Num (Here a)) ->
+        VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
-        s' = VarMap.add x (Val DiskBlock (Here v)) s ->
-        step (d, s, DiskRead x ae) (d, s', Skip)
-    | StepDiskWrite : forall ae a ve v d d' s v0 v0s,
-        eval s ae = Some (Val Num (Here a)) ->
-        eval s ve = Some (Val DiskBlock (Here v)) ->
+        s' = VarMap.add dvar (Val DiskBlock (Here v)) s ->
+        step (d, s, DiskRead dvar avar) (d, s', Skip)
+    | StepDiskWrite : forall avar a vvar v d d' s v0 v0s,
+        VarMap.find vvar s = Some (Val DiskBlock (Here v)) -> (* src variable must have a diskblock *)
+        VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->
-        step (d, s, DiskWrite ae ve) (d', s, Skip)
+        step (d, s, DiskWrite avar vvar) (d', s, Skip)
     | StepDiskSync : forall (d : rawdisk) d' s,
         d' = sync_mem d ->
         step (d, s, DiskSync) (d', s, Skip)
@@ -1073,19 +1073,19 @@ Module Go.
         projT2 (impl_for op) vs0 = Some vs ->
         Some s' = update_many vars vs0 vs s ->
         runsto_InCall (Modify op vars) (d, s) (d, s')
-    | RunsToICDiskRead : forall x ae a d s s' v v0 vs,
-        VarMap.find x s = Some v0 -> (* variable must be declared *)
+    | RunsToICDiskRead : forall dvar avar a d s s' v v0 vs,
+        VarMap.find dvar s = Some v0 -> (* dest variable must be declared *)
         type_of v0 = DiskBlock -> (* and have the correct type *)
-        eval s ae = Some (Val Num (Here a)) ->
+        VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
-        s' = VarMap.add x (Val DiskBlock (Here v)) s ->
-        runsto_InCall (DiskRead x ae) (d, s) (d, s')
-    | RunsToICDiskWrite : forall ae a ve v d d' s v0 v0s,
-        eval s ae = Some (Val Num (Here a)) ->
-        eval s ve = Some (Val DiskBlock (Here v)) ->
+        s' = VarMap.add dvar (Val DiskBlock (Here v)) s ->
+        runsto_InCall (DiskRead dvar avar) (d, s) (d, s')
+    | RunsToICDiskWrite : forall avar a vvar v d d' s v0 v0s,
+        VarMap.find vvar s = Some (Val DiskBlock (Here v)) -> (* src variable must have a diskblock *)
+        VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->
-        runsto_InCall (DiskWrite ae ve) (d, s) (d', s)
+        runsto_InCall (DiskWrite avar vvar) (d, s) (d', s)
     | RunsToICDiskSync : forall (d : rawdisk) d' s,
         d' = sync_mem d ->
         runsto_InCall DiskSync (d, s) (d', s)

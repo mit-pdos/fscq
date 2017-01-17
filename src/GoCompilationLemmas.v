@@ -643,25 +643,39 @@ Lemma CompileRead :
   forall env F avar vvar (v0 : valu) a,
     EXTRACT Read a
     {{ vvar ~> v0 * avar ~> a * F }}
-      DiskRead vvar (Var avar)
+      DiskRead vvar avar
     {{ fun ret => vvar ~> ret * avar ~> a * F }} // env.
 Proof.
   unfold ProgOk.
   intros.
   inv_exec_progok;
     repeat exec_solve_step.
+  match goal with
+  |- Prog.exec ?r _ (Read ?a) _ =>
+    destruct (r a) as [ [] |] eqn:H'; eauto
+  end.
+  contradiction H1.
+  repeat econstructor;
+    [eval_expr; eauto; reflexivity..].
 Qed.
 
 Lemma CompileWrite : forall env F avar vvar a v,
   EXTRACT Write a v
   {{ avar ~> a * vvar ~> v * F }}
-    DiskWrite (Var avar) (Var vvar)
+    DiskWrite avar vvar
   {{ fun _ => avar ~> a * vvar ~> v * F }} // env.
 Proof.
   unfold ProgOk.
   intros.
   inv_exec_progok;
     repeat exec_solve_step.
+  match goal with
+  |- Prog.exec ?r _ (Write ?a _) _ =>
+    destruct (r a) as [ [] |] eqn:H'; eauto
+  end.
+  contradiction H1.
+  repeat econstructor;
+    [eval_expr; eauto; reflexivity..].
 Qed.
 
 Lemma CompileSync : forall env F,
