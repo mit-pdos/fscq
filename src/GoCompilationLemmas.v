@@ -1393,7 +1393,7 @@ Proof.
   set (argvals := ^(a, b) : arg_tuple args).
   change (arg_func_type args (prog R)) in src.
   change (src a b) with (do_call src argvals).
-  pose proof (@extract_prog_func_call {| Args := args; Ret := ret |} name src env body ss).
+  pose proof (@extract_prog_func_call {| Args := args; FRet := ret |} name src env body ss).
   forward H1.
   {
     simpl; intros.
