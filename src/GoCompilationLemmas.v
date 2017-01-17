@@ -1376,7 +1376,10 @@ Definition func2 A B R {WA: GoWrapper A} {WB: GoWrapper B} {WR: GoWrapper R} nam
 Lemma extract_func2_call :
   forall A B R {WA: GoWrapper A} {WB: GoWrapper B} {WR: GoWrapper R} name (src : A -> B -> prog R) env,
     forall body ss,
-      (forall a b, EXTRACT src a b {{ 0 ~>? R * 1 ~> a * 2 ~> b }} body {{ fun ret => 0 ~> ret * 1 ~>? A * 2 ~>? B }} // env) ->
+      (forall a b, EXTRACT src a b
+              {{ 0 ~>? R * (1 ~> a * (2 ~> b * emp)) }}
+                body
+              {{ fun ret => 0 ~> ret * (1 ~>? A * (2 ~>? B * emp)) }} // env) ->
       StringMap.find name env = Some {|
                                     NumParamVars := 3;
                                     ParamVars := ^(@wrap_type _ WR, @wrap_type _ WA, @wrap_type _ WB);
@@ -1390,23 +1393,8 @@ Proof.
   intros.
   set (args := [with_wrapper A; with_wrapper B]).
   set (ret := with_wrapper R).
-  set (argvals := ^(a, b) : arg_tuple args).
-  change (arg_func_type args (prog R)) in src.
-  change (src a b) with (do_call src argvals).
-  pose proof (@extract_prog_func_call {| Args := args; FRet := ret |} name src env body ss).
-  forward H1.
-  {
-    simpl; intros.
-    eapply hoare_weaken.
-    eapply H.
-    cancel_go.
-    cancel_go.
-  }
-  simpl in H2.
-  intuition.
-  hnf in H1; simpl in H1.
   eapply hoare_weaken.
-  apply H1.
+  apply (@extract_prog_func_call {| Args := args; FRet := ret |} name src env body ss H); auto.
   cancel_go.
   cancel_go.
 Qed.
