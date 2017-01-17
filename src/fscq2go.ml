@@ -85,20 +85,27 @@ module TranscriberState = struct
       maps = [];
       var_num = zero;
     }
-
-
 end
 
-let go_num_const i =
-  if (lt i (Big_int.power_int_positive_int 2 64)) then
-     "big.NewInt(" ^ to_string i ^ ")"
-  else
-     "big_of_string(\"" ^ to_string i ^ "\")"
+let go_literal (t : Go.coq_type) value =
+  match t with
+  | Num ->
+    let i = Obj.magic value in
+    if (lt i (Big_int.power_int_positive_int 2 64)) then
+       "big.NewInt(" ^ to_string i ^ ")"
+    else
+       "big_of_string(\"" ^ to_string i ^ "\")"
+  | Bool -> if (Obj.magic value) then "true" else "false"
+  | _ -> fail_unmatched "go_literal"
+;;
 
 let go_modify_op (ts : TranscriberState.state)
                  (modify_op : Go.modify_op)
                  (args_tuple : Go.var Go.n_tuple) =
   match modify_op with
+  | Go.SetConst (t, value) ->
+    let (var, _) = Obj.magic args_tuple in
+    (var_name var) ^ " = " ^ (go_literal t value)
   | Go.SplitPair ->
     let (pair, (first, (second, _))) = Obj.magic args_tuple in
     (var_name first) ^ " = " ^ (var_name pair) ^ ".fst\n" ^
@@ -127,10 +134,8 @@ let go_modify_op (ts : TranscriberState.state)
 let rec go_expr expr =
   match expr with
   | Go.Var (v) -> var_name v
-  | Go.Const (gType, i) -> begin
-      match gType with
-      | Go.Num -> go_num_const (Obj.magic i)
-      end
+  | Go.Const (gType, value) ->
+      go_literal gType value
   | Go.TestE (test, a, b) ->
       let operator = match test with
       | Go.Eq -> "=="
