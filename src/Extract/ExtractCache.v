@@ -3,8 +3,8 @@ Require Import StringMap.
 Require Import Word Prog Pred AsyncDisk.
 Require Import GoSemantics GoFacts GoHoare GoCompilationLemmas GoExtraction GoSepAuto GoTactics2.
 Import ListNotations.
-Import Go.
 
+Import Go.
 Open Scope pred_scope.
 
 Require Import Cache.
@@ -37,122 +37,27 @@ Defined.
 
 Local Open Scope string_scope.
 
-(*
 Example compile_writeback : forall env, sigT (fun p => forall a cs,
   EXTRACT BUFCACHE.writeback a cs
   {{ 0 ~> a * 1 ~> cs }}
     p
-  {{ fun ret => 0 |->? * 1 ~> ret }} // env).
+  {{ fun ret => 0 ~>? MapUtils.AddrMap.Map.key * 1 ~> ret }} // env
+  /\ source_stmt p).
 Proof.
   unfold BUFCACHE.writeback.
   intros.
   compile.
 Defined.
 
-
 Eval lazy in (projT1 (compile_writeback (StringMap.empty _))).
-
-(* Outputs the following: *)
-Check
- Declare (Pair Bool (Pair DiskBlock Bool))
-         (fun var : W =>
-          Declare (AddrMap (Pair DiskBlock Bool))
-            (fun var0 : W =>
-             Declare (Pair (AddrMap (Pair DiskBlock Bool)) Num)
-               (fun var1 : W =>
-                Declare EmptyStruct
-                  (fun var2 : W =>
-                   Declare Num
-                     (fun var3 : W =>
-                      Declare Bool
-                        (fun var4 : W =>
-                         Declare (Pair DiskBlock Bool)
-                           (fun var5 : W =>
-                            Declare Bool
-                              (fun var6 : W =>
-                               Declare DiskBlock
-                                 (fun var7 : W =>
-                                  Declare (AddrMap (Pair DiskBlock Bool))
-                                    (fun var8 : W =>
-                                     Declare (Pair DiskBlock Bool)
-                                       (fun var9 : W =>
-                                        Declare Bool
-                                          (fun var10 : W =>
-                                           Declare (Pair (AddrMap (Pair DiskBlock Bool)) Num)
-                                             (fun var11 : W =>
-                                              Declare (Pair (AddrMap (Pair DiskBlock Bool)) Num)
-                                                (fun var12 : W =>
-                                                 Declare (Pair (AddrMap (Pair DiskBlock Bool)) Num)
-                                                   (fun var13 : W =>
-                                                    (Modify SplitPair (1, var1, var2);
-                                                     Modify SplitPair (var1, var0, var3);
-                                                     Modify MapFind (var0, 0, var);
-                                                     Modify SplitPair (var, var4, var5);
-                                                     If Var var4
-                                                     Then Modify SplitPair (var5, var7, var6);
-                                                          If Var var6
-                                                          Then DiskWrite (Var 0) (Var var7);
-                                                               var8 <~dup var0;
-                                                               __;
-                                                               Modify JoinPair (var9, var7, var10);
-                                                               __;
-                                                               Modify MapAdd (var8, 0, var9);
-                                                               Modify JoinPair (var11, var8, var3);
-                                                               Modify JoinPair (1, var11, var2)
-                                                          Else Modify JoinPair (var12, var0, var3);
-                                                               Modify JoinPair (1, var12, var2) EndIf
-                                                     Else Modify JoinPair (var13, var0, var3);
-                                                          Modify JoinPair (1, var13, var2) EndIf)%go))))))))))))))).
-
-(* Equivalent Go:
-func writeback(a *big.Num, cs *CacheState) {
-  var v pair_bool_pair_diskblock_bool
-  var v0 map_pair_diskblock_bool
-  var v1 pair_map_pair_diskblock_bool_bignum
-  var v2 struct{}
-  var v3 *big.Num
-  var v4 bool
-  var v5 pair_diskblock_bool
-  var v6 bool
-  var v7 *[BLOCK_SIZE]byte
-  var v8 map_pair_diskblock_bool
-  var v9 pair_disblock_bool
-  var v10 bool
-  var v11 pair_map_pair_diskblock_bool_bignum
-  var v12 pair_map_pair_diskblock_bool_bignum
-  var v13 pair_map_pair_diskblock_bool_bignum
-
-  v1, v2 = cs.fst, cs.snd
-  v0, v3 = v1.fst, v1.snd
-  v = MapFind(v0, a)
-  v4, v5 = v.fst, v.snd
-  if v4 {
-    v7, v6 = v5.fst, v5.snd
-    if v6 {
-      DiskWrite(a, v7)
-      v8 = CopyMap(v0)
-      v9.fst, v9.snd = v7, v10
-      MapAdd(v8, a, v9)
-      v11.fst, v11.snd = v8, v3
-      cs.fst, cs.snd = v11, v2
-    } else {
-      v12.fst, v12.snd = v0, v3
-      cs.fst, cs.snd = v12, v2
-    }
-  } else
-    v13.fst, v13.snd = v0, v3
-    cs.fst, cs.snd = v13, v2
-  }
-}
-*)
-
 
 Example compile_evict : forall env, sigT (fun p => forall a cs,
   func2_val_ref "writeback" BUFCACHE.writeback env ->
   EXTRACT BUFCACHE.evict a cs
   {{ 0 ~> a * 1 ~> cs }}
     p
-  {{ fun ret => 0 |->? * 1 ~> ret }} // env).
+  {{ fun ret => 0 |->? * 1 ~> ret }} // env
+  /\ source_stmt p).
 Proof.
   unfold BUFCACHE.evict.
   intros.
@@ -160,7 +65,7 @@ Proof.
 Defined.
 
 Eval lazy in (projT1 (compile_evict (StringMap.empty _))).
-
+(*
 Example compile_maybe_evict : forall env, sigT (fun p => forall cs,
   func2_val_ref "evict" BUFCACHE.evict env ->
   EXTRACT BUFCACHE.maybe_evict cs
@@ -182,7 +87,7 @@ Proof.
   compile_step.
   compile_step.
   eapply hoare_weaken.
-  eapply CompileMapCardinal with (var0 := nth_var 0 vars) (mvar := nth_var 1 vars).
+  eapply CompileMapCardinal with (var0 := pair_vec_nthl 0 0 vars) (mvar := pair_vec_nthl 0 1 vars).
   cancel_go.
   cancel_go.
   compile_step.
@@ -190,7 +95,7 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  simpl. (* TODO: most of the [simpl]s in GoExtraction.v right now are in the wrong spot -- could add a declarationn in another goal *)
+  simpl decls_pre. (* TODO: most of the [simpl]s in GoExtraction.v right now are in the wrong spot -- could add a declarationn in another goal *)
   compile_step.
   compile_step.
   compile_step.
@@ -220,24 +125,24 @@ Proof.
   eapply extract_equiv_prog. 
   pattern_prog (MapUtils.AddrMap.Map.elements (CSMap cs)).
   eapply ProgMonad.bind_left_id.
-  simpl.
+  simpl decls_pre.
   compile_step.
   compile_step.
   eapply hoare_weaken.
-  eapply CompileMapElements with (mvar := nth_var 1 vars) (var0 := nth_var 14 vars).
+  eapply CompileMapElements with (mvar := pair_vec_nthl 0 1 vars) (var0 := pair_vec_nthl 0 14 vars).
   cancel_go.
   cancel_go.
-  simpl.
+  simpl decls_pre.
   do_declare bool ltac:(fun cvar => idtac cvar).
-  simpl.
+  simpl decls_pre.
   do_declare (nat * (word AsyncDisk.Valulen.valulen * bool))%type ltac:(fun xvar => idtac xvar).
-  simpl.
+  simpl decls_pre.
   do_declare (list (nat * (word AsyncDisk.Valulen.valulen * bool))%type) ltac:(fun xsvar => idtac xsvar).
   eapply hoare_weaken.
-  apply CompileUncons with (lvar := nth_var 14 vars)
-                             (cvar := nth_var 15 vars)
-                             (xvar := nth_var 16 vars)
-                             (xsvar := nth_var 17 vars).
+  apply CompileUncons with (lvar := pair_vec_nthl 0 14 vars)
+                             (cvar := pair_vec_nthl 0 15 vars)
+                             (xvar := pair_vec_nthl 0 16 vars)
+                             (xsvar := pair_vec_nthl 0 17 vars).
   3: cancel_go.
   3: cancel_go.
   compile_step.
@@ -311,7 +216,7 @@ Proof.
                           eapply CompileBefore; [ 
                             eapply CompileRet with (v := a1) (var0 := ka');
                             eapply hoare_weaken; [
-                              eapply CompileDup with (var0 := nth_var 14 vars) (var' := ka') | cancel_go .. ] | ]).
+                              eapply CompileDup with (var0 := pair_vec_nthl 0 14 vars) (var' := ka') | cancel_go .. ] | ]).
   compile_step.
   compile_step.
   compile_step.
@@ -408,7 +313,6 @@ Proof.
 Defined.
 Eval lazy in projT1 (compile_sync _).
 
-*)
 
 Transparent BUFCACHE.end_sync.
 Example compile_end_sync : forall env, sigT (fun p => forall cs,
@@ -433,14 +337,10 @@ Proof.
   compile.
   cancel_go.
 Defined.
-
-Require Import DiskLogHash.
-Goal True.
-let t := type of DiskLogHash.PaddedLog.Hdr.read in let t' := eval compute in t in idtac t'.
+*)
 
 Local Open Scope string_scope.
 Local Open Scope list_scope.
-Print BUFCACHE.writeback.
 
 Ltac argtuple pre var :=
   match pre with
@@ -448,15 +348,14 @@ Ltac argtuple pre var :=
     let X := argtuple pre (S var) in
     let P := constr:(@wrap_type _ V) in
     match X with
-    | (0, tt) => constr:(pair 1 P)
-    | (?count, ?X)  => constr:(pair (S count) (pair X P))
+    | (?count, ?X)  => constr:(pair (S count) (pair P X))
     end
   | _ => constr:(pair 0 tt)
   end.
 
 Ltac add_to_env name P env :=
   match type of P with
-  | EXTRACT _ {{ ?PRE }} _ {{ fun ret : ?R => ?POST }} // _ =>
+  | EXTRACT _ {{ ?PRE }} ?body_ {{ fun ret : ?R => ?POST }} // _ =>
     lazymatch constr:(fun ret : mark_ret R => (_:find_ret POST)) with
     | (fun ret => ?rvar) =>
       match PRE with
@@ -464,12 +363,12 @@ Ltac add_to_env name P env :=
         match (argtuple PRE 0) with
         | (?nargs, ?args) =>
           let x_ := fresh in
-          set (body := (projT1 (compile_writeback env)));
+          set (body := body_);
           set (op := {|
             NumParamVars := nargs;
             ParamVars := args;
             Body := body;
-            body_source := ltac:((subst body; simpl; repeat econstructor));
+            body_source := ltac:(eauto);
           |});
           set (env' := StringMap.add name op env);
           simpl in *; subst body; subst env;
@@ -485,21 +384,99 @@ Ltac add_compiled_program name compiled env :=
   let H := fresh in
   destruct (compiled env) as [e_  P];
   repeat match type of P with
-  forall x : ?X, ?y =>
-    let x_ := fresh "v" in
-    cut X; [intro x_; specialize (P x_) | solve [abstract (repeat econstructor)] ]
-  end;
-  add_to_env name P env;
+  | forall x : ?X, ?y =>
+      let x_ := fresh "v" in
+      cut X; [intro x_; specialize (P x_) | solve [abstract (repeat econstructor)] ]
+  | func2_val_ref ?a ?b ?c -> ?y =>
+      let x_ := fresh "v" in
+    cut (func2_val_ref a b c); [intro x_; specialize (P x_) | clear P]
+  | Logic.and _ _ => destruct P
+  end ;
+  add_to_env name P env ;
   (* Remove unnecessary variables *)
   repeat match goal with
   | [env := ?X, v : _ |- _] =>
     clear v
-  end.
+  end;
+  (* preserve proof for solving func2_ref_val *)
+  pose proof compiled.
+
+Definition prog_of := projT1.
 
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).
-  add_compiled_program "BUFCACHE.writeback" compile_writeback env.
-  (* TODO add more programs here *)
-
+  add_compiled_program "writeback" compile_writeback env.
   exact env.
 Defined.
+
+
+(* Ltac add_compiled_program name compiled env ::=
+  let P := fresh in
+  let e_ := fresh in
+  let H := fresh in
+  destruct (compiled env) as [e_  P];
+  repeat match type of P with
+  | forall x : ?X, ?y =>
+      let x_ := fresh "v" in
+      cut X; [intro x_; specialize (P x_) | solve [abstract (repeat econstructor)] ]
+  | func2_val_ref ?a ?b ?c -> ?y =>
+      let x_ := fresh "v" in
+    cut (func2_val_ref a b c); [intro x_; specialize (P x_) | clear P]
+  | Logic.and _ _ => destruct P
+  end.
+  add_compiled_program "evict" compile_evict env.
+  Focus 2.
+  
+  
+  Ltac func2_val_ref := match goal with
+  | [H : context [ProgOk] |- func2_val_ref _ ?p ?env] =>
+    match type of H with
+    | context [sigT] =>
+      destruct (H env); clear H
+    | context [?q] => (is_evar q; fail 1) ||
+      unify p q;
+      eapply extract_func2_val_ref_call;
+      [ eapply H ||
+        (let H1 := fresh in
+        edestruct H as [H1 ]; eapply H1) |
+      ]
+    end
+  end.
+  Print func2_val_ref.
+  Print func2_ref_val.
+  func2_val_ref.
+  func2_val_ref.
+  Check extract_func2_val_ref_call.
+  subst_definitions.
+  Ltac map_find_step :=
+    match goal with
+    |- context [StringMap.find ?k (StringMap.add ?k' _ _)] =>
+      destruct (StringMap.E.eq_dec k k');
+      [rewrite StringMapFacts.add_eq_o by auto |
+       rewrite StringMapFacts.add_neq_o by auto];
+       try congruence
+    end.
+  map_find_step.
+  simpl.
+  congruence.
+  
+  
+      
+  eval_expr.
+  
+  
+  intros. edestruct a. eauto.
+  edestruct X.
+  eapply extract_func2_val_ref_call.
+  intros.
+  edestruct a.
+  eauto.
+  
+  apply p.
+  clear p.
+  subst env.
+  
+Search func2_val_ref.
+  unfold func2_val_ref.
+  (* TODO add more programs here *)
+  *)

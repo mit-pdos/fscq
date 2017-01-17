@@ -24,6 +24,21 @@ Local Open Scope pred.
 
 Import Go.
 
+Lemma source_stmt_many_declares: forall decls f,
+  (forall vars, source_stmt (f vars)) ->
+  source_stmt (many_declares decls f).
+Proof.
+  induction decls; intros.
+  - simpl in *; eauto.
+  - simpl.
+    break_match. econstructor.
+    eauto.
+Defined.
+
+Ltac source_stmt_step :=
+  apply source_stmt_many_declares ||
+  econstructor.
+
 Ltac find_val v p :=
   match p with
     | context[?k ~> v] => constr:(Some k)
@@ -549,7 +564,12 @@ Ltac compile_if :=
 
 Ltac compile_step :=
   match goal with
-  | [ |- @sigT _ _ ] => eexists; intros; eapply CompileDeclareMany; intro
+  | [ |- @sigT _ _ ] => eexists; intros;
+    match goal with
+    | [ |- _ /\ source_stmt _ ] => split; [ | shelve]
+    | _ => idtac
+    end;
+    eapply CompileDeclareMany; intro
   | _ => eapply decls_pre_impl_post
   end
   || compile_bind
@@ -570,4 +590,10 @@ Ltac compile_step :=
   .
 
 Ltac compile :=
-  unshelve (repeat compile_step); try exact nil.
+  unshelve (repeat compile_step);
+  match goal with
+  | [|- source_stmt _] =>
+    repeat source_stmt_step
+  | [|- list _] => exact nil
+  end.
+

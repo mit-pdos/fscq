@@ -14,29 +14,25 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv ADestructPair DestructVarname ExtrHaskellPrelude \
 	      DirSep TreeSeq \
 				MoreMapFacts StringMap VerdiTactics Gensym GoSemantics GoFacts \
-				GoTactics1 GoHoare GoTactics2 GoSepAuto GoCompilationLemmas GoExtraction GoExamples GoExtracted
+				GoTactics1 GoHoare GoTactics2 GoSepAuto GoCompilationLemmas GoExtraction GoExamples
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
-VS_HS      := codegen/AsyncFS.hs
-VS_ML      := codegen/AsyncFS.ml
-VS_JSON    := codegen/AsyncFS.json
-GHC 	   := ghc
-HSC2HS	   := hsc2hs
-ifeq (,$(shell $(GHC) --version | grep 'version 8.0' 2>/dev/null))
-	GHC := /opt/ghc/8.0.1/bin/ghc
-	HSC2HS := /opt/ghc/8.0.1/bin/hsc2hs
-endif
+
+EXTRACT_MODULES := ExtractCache \
+					ExtractGOcaml GoExtracted
+EXTRACT_VS 		:= $(EXTRACT_MODULES:%=Extract/%.v)
+EXTRACT_BUILD   := $(patsubst %.v,coqbuild/%.v,$(EXTRACT_VS))
+EXTRACT_VIO     := $(patsubst %.v,coqbuild/%.vio,$(EXTRACT_VS))
 
 J	   ?= 1
 
 GOCAML_MOD := Ascii BinInt BinNat BinNums BinPos Datatypes \
 	            FMapAVL FMapList Int List0 Nat0 OrderedTypeEx OrderedType \
               Orders OrdersTac PeanoNat Specif String0 \
-							GoExtracted StringMap
+				 StringMap
 
 GOCAML_ML := $(GOCAML_MOD:%=codegen/%.ml)
-
 
 .PHONY: coq proof clean
 
@@ -45,13 +41,16 @@ all: codegen/fscq2go # this is just so "make" rebuilds the .vio files and is tem
 codegen/%.ml: %.ml
 	ln -s ../$< $@
 
-$(GOCAML_ML): $(VS_VIO) coqbuild/ExtractGOcaml.v
-	mkdir -p codegen
-	( cd coqbuild && coqc -q -R . Fscq ExtractGOcaml )
+$(GOCAML_ML): $(VS_VIO) $(EXTRACT_VIO)
+	mkdir -p codegen/Extract
+	( cd coqbuild && coqc -q -R . Fscq Extract/ExtractGOcaml )
+
+$(GOPATH)/src/gobuild/cache.go:
+	true
 
 codegen/fscq2go: $(GOCAML_ML) codegen/big.ml codegen/fscq2go.ml
 	rm -f $@ $@.native
-	(cd codegen && ocamlbuild -lib nums -lib str fscq2go.native)
+	(cd codegen && ocamlbuild -cflag -g -lib nums -lib str fscq2go.native)
 	test -f $@.native && ln -s fscq2go.native $@
 
 $(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
@@ -71,14 +70,14 @@ parproof: $(VS_VIO)
 	( cd coqbuild && $(MAKE) -f Makefile.coq vio2vo J=$(J) )
 
 coqbuild/%.v: %.v
-	@mkdir -p coqbuild
-	ln -s ../$< $@
+	@mkdir -p $(dir $@)
+	ln -s $(abspath $<) $@
 
-coqbuild/Makefile.coq: Makefile $(VS_BUILD)
+coqbuild/Makefile.coq: Makefile $(VS_BUILD) $(EXTRACT_BUILD)
 	@mkdir -p codegen
 	@mkdir -p coqbuild
 	@ln -sf ../coqbuild codegen
-	( cd coqbuild && coq_makefile -R . Fscq $(VS) -o Makefile.coq )
+	( cd coqbuild && coq_makefile -R . Fscq $(VS) $(EXTRACT_VS) -o Makefile.coq )
 
 
 clean:
