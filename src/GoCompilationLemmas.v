@@ -335,33 +335,23 @@ Proof.
   - find_eapply_lem_hyp Go.ExecFinished_Steps. find_eapply_lem_hyp Go.Steps_Seq.
     intuition; repeat deex; try discriminate.
     find_eapply_lem_hyp Go.Steps_ExecFinished. find_eapply_lem_hyp Go.Steps_ExecFinished.
-    forwardauto H0; intuition.
-    forwardauto H3; repeat deex.
-    specialize (H1 x0).
     forward_solve.
 
   - find_eapply_lem_hyp Go.ExecCrashed_Steps. repeat deex. find_eapply_lem_hyp Go.Steps_Seq.
     intuition; repeat deex.
     + invc H5. find_eapply_lem_hyp Go.Steps_ExecCrashed; eauto.
       forward_solve.
-    + destruct x1. find_eapply_lem_hyp Go.Steps_ExecFinished. find_eapply_lem_hyp Go.Steps_ExecCrashed; eauto.
-      forwardauto H0; intuition.
-      forwardauto H3; repeat deex.
-      specialize (H1 x1).
+    + destruct_pair. find_eapply_lem_hyp Go.Steps_ExecFinished. find_eapply_lem_hyp Go.Steps_ExecCrashed; eauto.
       forward_solve.
 
   - find_eapply_lem_hyp Go.ExecFailed_Steps. repeat deex. find_eapply_lem_hyp Go.Steps_Seq.
     intuition; repeat deex.
     + eapply Go.Steps_ExecFailed in H5; eauto.
-      forward_solve.
-      unfold Go.is_final; simpl; intuition subst.
-      contradiction H6. eauto.
-      intuition. repeat deex.
-      contradiction H6. eauto.
-    + destruct x1. find_eapply_lem_hyp Go.Steps_ExecFinished. find_eapply_lem_hyp Go.Steps_ExecFailed; eauto.
-      forwardauto H0; intuition.
-      forwardauto H4; repeat deex.
-      specialize (H1 x1).
+      * forward_solve.
+      * unfold Go.is_final; simpl; intuition (subst; eauto).
+      * intuition. repeat deex.
+        intuition eauto.
+    + destruct_pair. find_eapply_lem_hyp Go.Steps_ExecFinished. find_eapply_lem_hyp Go.Steps_ExecFailed; eauto.
       forward_solve.
 Qed.
 
@@ -409,32 +399,23 @@ Proof.
   - find_eapply_lem_hyp ExecFinished_Steps. find_eapply_lem_hyp Steps_Seq.
     intuition; repeat deex; try discriminate.
     find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFinished.
-    (* [forward_solve] is not really good enough *)
-    forwardauto H. intuition.
-    forwardauto H2. repeat deex.
     forward_solve.
 
   - find_eapply_lem_hyp ExecCrashed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
     intuition; repeat deex.
     + invc H4. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
       forward_solve.
-    + destruct x3. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
-      forwardauto H. intuition.
-      forwardauto H2. repeat deex.
+    + destruct_pair. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
       forward_solve.
 
   - find_eapply_lem_hyp ExecFailed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
     intuition; repeat deex.
     + eapply Steps_ExecFailed in H4; eauto.
-      forward_solve.
-      unfold is_final; simpl; intuition subst.
-      contradiction H5.
-      repeat eexists. eauto.
-      intuition. repeat deex.
-      contradiction H5. eauto.
-    + destruct x3. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFailed; eauto.
-      forwardauto H. intuition.
-      forwardauto H3. repeat deex.
+      * forward_solve.
+      * unfold is_final; simpl; intuition (subst; eauto).
+      * intuition. repeat deex.
+        intuition eauto.
+    + destruct_pair. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFailed; eauto.
       forward_solve.
 
   Unshelve.
@@ -501,40 +482,27 @@ Proof.
   - find_eapply_lem_hyp ExecFinished_Steps. find_eapply_lem_hyp Steps_Seq.
     intuition; repeat deex; try discriminate.
     find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFinished.
-    (* [forward_solve] is not really good enough *)
-    forwardauto H. intuition.
-    forwardauto H2. repeat deex.
     forward_solve.
-    invc H8; repeat (find_apply_lem_hyp inj_pair2; subst); [ | invc H18 ]; eauto.
+    invc H8; repeat (find_apply_lem_hyp inj_pair2; subst); [ | solve_by_inversion ]; eauto.
 
   - find_eapply_lem_hyp ExecCrashed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
     intuition; repeat deex.
     + invc H4. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
       forward_solve.
-    + destruct x3. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
-      forwardauto H. intuition.
-      forwardauto H2. repeat deex.
+    + destruct_pair. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecCrashed; eauto.
       forward_solve.
-      invc H0.
-      repeat (find_apply_lem_hyp inj_pair2; subst).
-      invc H15.
+      invc H0; repeat (find_apply_lem_hyp inj_pair2; subst); solve_by_inversion.
 
   - find_eapply_lem_hyp ExecFailed_Steps. repeat deex. find_eapply_lem_hyp Steps_Seq.
     intuition; repeat deex.
     + eapply Steps_ExecFailed in H4; eauto.
+      * forward_solve.
+      * unfold is_final; simpl; intuition (subst; eauto).
+      * intuition. repeat deex.
+        intuition eauto.
+    + destruct_pair. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFailed; eauto.
       forward_solve.
-      unfold is_final; simpl; intuition subst.
-      contradiction H5.
-      repeat eexists. eauto.
-      intuition. repeat deex.
-      contradiction H5. eauto.
-    + destruct x3. find_eapply_lem_hyp Steps_ExecFinished. find_eapply_lem_hyp Steps_ExecFailed; eauto.
-      forwardauto H. intuition.
-      forwardauto H3. repeat deex.
-      forward_solve.
-      invc H10.
-      repeat (find_apply_lem_hyp inj_pair2; subst).
-      invc H15.
+      invc H10; repeat (find_apply_lem_hyp inj_pair2; subst); solve_by_inversion.
 
   Unshelve.
   all: auto.
