@@ -36,7 +36,7 @@ Lemma read_fails_not_present:
   forall env vvar avar (a : W) (v0 : valu) d s,
     VarMap.find avar s = Some (wrap a) ->
     VarMap.find vvar s = Some (wrap v0) ->
-    ~ (exists st' p', Go.step env (d, s, Go.DiskRead vvar (Go.Var avar)) (st', p')) ->
+    ~ (exists st' p', Go.step env (d, s, Go.DiskRead vvar avar) (st', p')) ->
     d a = None.
 Proof.
   intros.
@@ -53,7 +53,7 @@ Lemma write_fails_not_present:
   forall env vvar avar (a : W) (v : valu) d s,
     VarMap.find vvar s = Some (wrap v) ->
     VarMap.find avar s = Some (wrap a) ->
-    ~ (exists st' p', Go.step env (d, s, Go.DiskWrite (Go.Var avar) (Go.Var vvar)) (st', p')) ->
+    ~ (exists st' p', Go.step env (d, s, Go.DiskWrite avar vvar) (st', p')) ->
     d a = None.
 Proof.
   intros.
