@@ -31,6 +31,7 @@ Require Import Fscq.Hashmap.
 Require Import Errno.
 Require Import PeanoNat.
 Require Import Pred PredCrash.
+Require Import Rounding.
 
 Set Implicit Arguments.
 
@@ -74,18 +75,19 @@ Definition bfile2bytefile f len: bytefile:=
 unifiedbytefile2bytefile (protobytefile2unifiedbytefile (bfiledata2protobytefile (BFILE.BFData f))) len (BFILE.BFAttr f).
 
 Fixpoint upd_range {V} (m : @Mem.mem addr addr_eq_dec V) (a : addr) (l : list V) : @Mem.mem addr _ V :=
-		match l with
-		| nil => m
-		| h::t => upd_range (Mem.upd m a h) (a+1) t
-		end.
+match l with
+| nil => m
+| h::t => upd_range (Mem.upd m a h) (a+1) t
+end.
 
 
-Definition ext_opt T (ov: option T) def :=
+(* Definition ext_opt T (ov: option T) def :=
 match ov with
 | None => def
 | Some v => v
 end.
-
+ *)
+ 
 Definition some_strip {V} (o: option V) def: V :=
 match o with
 	| None => def
@@ -112,8 +114,7 @@ Definition rep (f:BFILE.bfile) (fy:bytefile) :=
     [[ bytefile_valid ufy fy ]] * 
     [[ ByFAttr fy = BFILE.BFAttr f ]] *
     [[ #(INODE.ABytes (ByFAttr fy)) = length (ByFData fy)]] *
-    [[ length (ByFData fy) > 0 -> length (ByFData fy) > (length (BFILE.BFData f) - 1) * valubytes ]] *
-    [[ length (ByFData fy) = 0 -> length (BFILE.BFData f) = 0]]))))%pred.
+    [[ (roundup (length (ByFData fy)) valubytes = (length (BFILE.BFData f)) * valubytes)%nat]]))))%pred.
 
 Definition byte_belong_to_file ilist byn inum:=
     (exists bn, BFILE.block_belong_to_file ilist bn inum (byn/valubytes)) /\
@@ -2686,3 +2687,17 @@ Proof.
 	rewrite map_length.
 	simpl in H0; auto.
 Qed.
+
+Lemma rep_sync_invariant: forall f fy F,
+sync_invariant F -> sync_invariant (AByteFile.rep f fy * F)%pred.
+Proof.
+  intros.
+  unfold AByteFile.rep.
+  apply sync_invariant_sep_star; auto.
+  unfold sync_invariant.
+  intros.
+  destruct_lift H1.
+  pred_apply; cancel; eauto.
+Qed.
+
+
