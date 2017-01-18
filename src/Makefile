@@ -38,10 +38,17 @@ GO_LIB_MOD	:= disk num util
 GO_LIB		:= $(GO_LIB_MOD:%=golib/%.go)
 GO_LIB_INST := $(patsubst golib/%.go,codegen/src/gofscq/%.go,$(GO_LIB))
 
+GO_EX		:= golib/fscq.go
+GO_EX_INST	:= $(patsubst golib/%.go,codegen/src/fscq/%.go,$(GO_EX))
+
 .PHONY: coq proof clean
 
  # this is just so "make" rebuilds the .vio files and is temporary
-all: $(GO_LIB_INST) codegen/src/gofscq/fscq.go
+all: fscq
+
+fscq: $(GO_LIB_INST) $(GO_EX_INST)
+	go install ./codegen/src/fscq
+	cp codegen/bin/fscq fscq
 
 codegen/%.ml: %.ml
 	ln -s ../$< $@
@@ -51,6 +58,9 @@ $(GOCAML_ML): $(VS_VIO) $(EXTRACT_VIO)
 	( cd coqbuild && coqc -q -R . Fscq Extract/ExtractGOcaml )
 
 codegen/src/gofscq/%.go : golib/%.go
+	ln -s $(abspath $<) $@
+
+codegen/src/fscq/%.go: golib/%.go
 	ln -s $(abspath $<) $@
 
 codegen/src/gofscq/fscq.go: codegen/fscq2go.native
