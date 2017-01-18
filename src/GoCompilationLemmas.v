@@ -65,18 +65,13 @@ Lemma CompileRet : forall T {H: GoWrapper T} env A B var (v : T) p,
   {{ fun _ => var ~> v * B }} // env.
 Proof.
   unfold ProgOk; intros.
-  forward_solve.
-  - invc H4;
-    repeat find_apply_lem_hyp inj_pair2; repeat subst;
-    eauto.
-    invc H14.
-  - invc H0.
-    repeat find_apply_lem_hyp inj_pair2; repeat subst.
-    invc H10.
-  - invc H5.
-    repeat find_apply_lem_hyp inj_pair2; repeat subst.
-    invc H10.
-
+  forward_solve;
+    repeat match goal with
+    | [H : exec _ _ (Ret _) _ |- _] =>
+        invc H;
+        repeat find_apply_lem_hyp inj_pair2; repeat subst; eauto
+    | [H : _ |- _ ] => solve [invc H]
+    end.
   Unshelve.
   all: auto.
 Qed.
@@ -92,21 +87,17 @@ Lemma CompileRet' : forall T {H: GoWrapper T} env A B var (v : T) p,
   {{ fun ret => var ~> ret * B }} // env.
 Proof.
   unfold ProgOk; intros.
-  forward_solve.
-  - invc H4;
-    repeat find_apply_lem_hyp inj_pair2; repeat subst;
-    eauto.
-    invc H14.
-  - invc H0.
-    repeat find_apply_lem_hyp inj_pair2; repeat subst.
-    invc H10.
-  - invc H5.
-    repeat find_apply_lem_hyp inj_pair2; repeat subst.
-    invc H10.
-
+  forward_solve;
+    repeat match goal with
+    | [H : exec _ _ (Ret _) _ |- _] =>
+        invc H;
+        repeat find_apply_lem_hyp inj_pair2; repeat subst; eauto
+    | [H : _ |- _ ] => solve [invc H]
+    end.
   Unshelve.
   all: auto.
 Qed.
+
 Lemma CompileConst' : forall T {Wr: GoWrapper T} env A var (v : T),
   EXTRACT Ret tt
   {{ var ~>? T * A }}
