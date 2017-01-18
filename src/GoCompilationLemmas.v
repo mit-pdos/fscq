@@ -641,13 +641,6 @@ Proof.
   intros.
   inv_exec_progok;
     repeat exec_solve_step.
-  match goal with
-  |- Prog.exec ?r _ (Read ?a) _ =>
-    destruct (r a) as [ [] |] eqn:H'; eauto
-  end.
-  contradiction H1.
-  repeat econstructor;
-    [eval_expr; eauto; reflexivity..].
 Qed.
 
 Lemma CompileWrite : forall env F avar vvar a v,
@@ -660,13 +653,6 @@ Proof.
   intros.
   inv_exec_progok;
     repeat exec_solve_step.
-  match goal with
-  |- Prog.exec ?r _ (Write ?a _) _ =>
-    destruct (r a) as [ [] |] eqn:H'; eauto
-  end.
-  contradiction H1.
-  repeat econstructor;
-    [eval_expr; eauto; reflexivity..].
 Qed.
 
 Lemma CompileSync : forall env F,
