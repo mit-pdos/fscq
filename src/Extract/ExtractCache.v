@@ -46,7 +46,8 @@ Example compile_writeback : forall env, sigT (fun p => forall a cs,
 Proof.
   unfold BUFCACHE.writeback.
   intros.
-  compile.
+  Print Ltac compile_step.
+  eexists; intros.
 Defined.
 
 Eval lazy in (projT1 (compile_writeback (StringMap.empty _))).
@@ -299,10 +300,14 @@ Proof.
 Defined.
 
 Eval lazy in projT1 (compile_begin_sync _).
+*)
 
 Transparent BUFCACHE.sync.
+
+Definition wbsig := Build_ProgFunctionSig (@Build_WrappedType cachemap) [with_wrapper addr; with_wrapper addr].
+
 Example compile_sync : forall env, sigT (fun p => forall a cs,
-  func2_val_ref "writeback" BUFCACHE.writeback env ->
+  prog_func_call_lemma  "writeback" BUFCACHE.writeback env ->
   EXTRACT BUFCACHE.sync a cs
   {{ 0 ~> a * 1 ~> cs }}
     p
@@ -337,7 +342,6 @@ Proof.
   compile.
   cancel_go.
 Defined.
-*)
 
 Local Open Scope string_scope.
 Local Open Scope list_scope.

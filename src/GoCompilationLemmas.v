@@ -1297,6 +1297,22 @@ Fixpoint argval_foralls (args : list WrappedType) :
   | arg :: args' => fun B => forall argval : arg.(WrType), argval_foralls args' (fun argvals' => B (argval, argvals'))
   end.
 
+Theorem argval_inst : forall (args : list WrappedType) (B : arg_tuple args -> Prop),
+    argval_foralls args B -> forall argvals : arg_tuple args, B argvals.
+Proof.
+  induction args; simpl; intros.
+  - destruct argvals. auto.
+  - destruct argvals.
+    specialize (IHargs (fun argvals' => B (w, argvals')) (H w)).
+    auto.
+Qed.
+
+Theorem argval_inst' : forall (args : list WrappedType) (B : arg_tuple args -> Prop),
+    (forall argvals : arg_tuple args, B argvals) -> argval_foralls args B.
+Proof.
+  induction args; simpl; auto.
+Qed.
+
 Fixpoint do_call {args ret} : arg_func_type args ret -> arg_tuple args -> ret :=
   match args return arg_func_type args ret -> arg_tuple args -> ret with
   | [] => fun f _ => f
@@ -1346,6 +1362,129 @@ Definition prog_func_call_lemma (sig : ProgFunctionSig) (name : String.string) (
          Call (S (length sig.(Args))) name (retvar, argvars)
        {{ fun retval => retvar ~> retval * args_post sig.(Args) argvars * F }} // env).
 
+Fixpoint to_list {T n} : n_tuple n T -> list T :=
+  match n with
+  | 0 => fun _ => []
+  | S n' => fun ts =>
+             let '(t, ts') := ts in
+             t :: to_list ts'
+  end.
+
+Fixpoint wrap_all args : arg_tuple args -> n_tuple (length args) value :=
+  match args return arg_tuple args -> n_tuple (length args) value with
+  | [] => fun _ => tt
+  | arg :: args' => fun argvals =>
+                     let '(argval, argvals') := argvals in
+                     (wrap argval, wrap_all args' argvals')
+  end.
+
+(* Somehow, all of the following proofs should have made much more use of separation logic *)
+
+Lemma args_pre_notin :
+  forall args argvars argvals F s v0,
+    (v0 |->? * args_pre args argvars argvals * F)%pred (mem_of s) ->
+    ~ In v0 (to_list argvars).
+Proof.
+  induction args; intuition.
+  destruct argvars, argvals.
+  simpl in *.
+  destruct H0; subst.
+  - eapply pimpl_apply in H.
+    eapply ptsto_conflict_F with (a := v0) in H; auto.
+    cancel_go.
+  - eapply pimpl_apply in H.
+    eapply IHargs with (argvals := a0); eauto.
+    cancel_go.
+Qed.
+
+Lemma args_pre_nodup :
+  forall args argvars argvals F s,
+    (args_pre args argvars argvals * F)%pred (mem_of s) ->
+    NoDup (to_list argvars).
+Proof.
+  induction args; intros.
+  - constructor.
+  - destruct argvars, argvals. simpl in *. constructor.
+    + eapply args_pre_notin; eauto.
+      pred_cancel.
+    + eapply IHargs.
+      eapply pimpl_apply in H.
+      eapply ptsto_delete with (a := v) in H.
+      rewrite <- remove_delete in H.
+      2: cancel_go.
+      eauto.
+Qed.
+
+Lemma collect_notin_remove :
+  forall n (v0 : var) (vars : n_tuple n var) (vals : n_tuple n value) (s : locals),
+    ~ In v0 (to_list vars) ->
+    collect (map_nt (fun k : VarMap.key => VarMap.find (elt:=value) k s) vars) = Some vals ->
+    collect (map_nt (fun k : VarMap.key => VarMap.find (elt:=value) k (VarMap.remove (elt:=value) v0 s)) vars)
+    = Some vals.
+Proof.
+  induction n; intros.
+  - eval_expr.
+  - eval_expr_step.
+    eval_expr_step.
+    eval_expr_step.
+    eapply IHn with (v0 := v0) in H2; eauto.
+    rewrite VarMapFacts.remove_neq_o in * by intuition.
+    eval_expr.
+Qed.
+
+Lemma collect_args_pre:
+  forall args (argvars : n_tuple (Datatypes.length args) var) (argvals : arg_tuple args)
+    (argvals' : n_tuple (Datatypes.length args) value) F s, 
+    (args_pre args argvars argvals * F)%pred (mem_of s) ->
+    collect (map_nt (fun k : VarMap.key => VarMap.find (elt:=value) k s) argvars) = Some argvals' ->
+    argvals' = wrap_all args argvals.
+Proof.
+  induction args; intros.
+  - destruct argvals'. reflexivity.
+  - eval_expr.
+    extract_var_val.
+    eval_expr.
+    f_equal.
+    generalize H; intros.
+    eapply pimpl_apply in H0.
+    eapply args_pre_notin with (v0 := v0) in H0.
+    2: cancel_go.
+    eapply pimpl_apply in H.
+    eapply ptsto_delete with (a := v0) in H.
+    2: cancel_go.
+    rewrite <- remove_delete in H.
+    eapply IHargs; eauto.
+
+    eapply collect_notin_remove; eauto.
+Qed.
+
+Lemma update_args:
+  forall args (argvars : n_tuple (Datatypes.length args) var)
+    (argvals : arg_tuple args)
+    (argvals' : n_tuple (Datatypes.length args) value)
+    (F : Pred.pred) (s : VarMap.t value)
+    (t : VarMap.t value),
+    update_many argvars (wrap_all args argvals) (map_nt SetTo argvals') s = Some t ->
+    (args_pre args argvars argvals ✶ F)%pred (mem_of s) ->
+    (args_post args argvars ✶ F)%pred (mem_of t).
+Proof.
+  induction args; intros.
+  - eval_expr.
+  - eval_expr.
+    pred_solve.
+    eapply pimpl_apply in H0.
+    eapply ptsto_delete with (a := v) in H0. rewrite <- remove_delete in H0.
+    2: cancel_go.
+    eapply IHargs in H0; eauto.
+    (* TODO *)
+Admitted.
+
+Ltac fold_pred_apply :=
+  repeat match goal with
+         | [ |- ?P ?m ] => change (pred_apply m P)
+         | [ H : ?P ?m |- _ ] => change (pred_apply m P) in H
+         end.
+
 Lemma extract_prog_func_call :
   forall sig name src env,
     forall body ss,
@@ -1363,6 +1502,141 @@ Lemma extract_prog_func_call :
                                     body_source := ss;
                                   |} ->
       prog_func_call_lemma sig name src env.
+Proof.
+  unfold prog_func_call_lemma.
+  intros sig name src env body ss Hex Henv retvar argvars F.
+  apply argval_inst'; intros.
+  apply argval_inst with (argvals := argvals) in Hex.
+  intro.
+  intros.
+  intuition subst.
+  - find_eapply_lem_hyp ExecFinished_Steps.
+    find_eapply_lem_hyp Steps_runsto; [ | econstructor ].
+    invc H0.
+    find_eapply_lem_hyp runsto_Steps.
+    find_eapply_lem_hyp Steps_ExecFinished.
+    find_rewrite.
+    find_inversion_safe.
+    subst_definitions. unfold sel in *. simpl in *. unfold ProgOk in *.
+    repeat eforward Hex.
+    forward Hex.
+    shelve.
+    forward_solve.
+    simpl in *.
+    do 2 eexists.
+    intuition eauto.
+    eval_expr.
+    find_apply_lem_hyp inj_pair2.
+    eval_expr.
+    pred_solve.
+    instantiate (1 := Val wrap_type x).
+    fold_pred_apply.
+    rewrite sep_star_comm.
+    apply sep_star_assoc.
+    rewrite sep_star_comm in H.
+    apply sep_star_assoc in H.
+    apply sep_star_comm in H.
+    eapply update_args; eauto.
+    assert (n0 = wrap_all (Args sig) argvals) by (eapply collect_args_pre; eauto); subst.
+    eassumption.
+
+  - find_eapply_lem_hyp ExecCrashed_Steps.
+    repeat deex.
+    invc H1; [ solve [ invc H2 ] | ].
+    invc H0.
+    find_rewrite.
+    eval_expr.
+    find_apply_lem_hyp inj_pair2.
+    eval_expr.
+    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, x, bp') /\ x0 = InCall s (S (length sig.(Args))) (retvar, argvars) bp').
+    {
+      remember callee_s.
+      clear callee_s Heqt.
+      generalize H3 H2. clear. intros.
+      prep_induction H3; induction H3; intros; subst.
+      - find_inversion.
+        eauto using rt1n_refl.
+      - invc H0; repeat (find_eapply_lem_hyp inj_pair2; subst).
+        + destruct st'.
+          forwardauto IHclos_refl_trans_1n; deex.
+          eauto using rt1n_front.
+        + invc H3. invc H2. invc H.
+    }
+    deex.
+    eapply Steps_ExecCrashed in H5.
+    unfold ProgOk in *.
+    repeat eforward Hex.
+    forward Hex.
+    shelve.
+    forward_solve.
+    invc H2. trivial.
+  - find_eapply_lem_hyp ExecFailed_Steps.
+    repeat deex.
+    invc H1.
+    + contradiction H3.
+      destruct x. repeat eexists.
+      match goal with
+      | [ H : _ = Some ?spec |- _ ] => set spec in *
+      end.
+      eapply StepStartCall with (spec := f); eauto.
+      (*
+      eval_expr; reflexivity.
+      eval_expr.
+
+      Unshelve.
+      eval_expr; pred_solve; auto.
+      subst_definitions.
+      eval_expr; pred_solve; auto.
+
+    + invc H2.
+      rewrite Henv in H8.
+      eval_expr.
+      assert (exists bp', (Go.step env)^* (d, callee_s, body) (r, l, bp') /\ x0 = InCall s 2 ^(avar, bvar) bp').
+      {
+        remember callee_s.
+        clear callee_s Heqt.
+        generalize H4 H0 H3. clear. intros.
+        prep_induction H4; induction H4; intros; subst.
+        - find_inversion.
+          eauto using rt1n_refl.
+        - invc H0; repeat (find_eapply_lem_hyp inj_pair2; subst).
+          + destruct st'.
+            forwardauto IHclos_refl_trans_1n; deex.
+            eauto using rt1n_front.
+          + invc H4. contradiction H1. auto. invc H.
+      }
+      deex.
+      eapply Steps_ExecFailed in H6.
+      unfold ProgOk in *.
+      repeat eforward Hex.
+      forward Hex. shelve.
+      solve [forward_solve].
+
+      intro.
+      unfold is_final in *; simpl in *; subst.
+      contradiction H3.
+      subst_definitions.
+      apply Steps_ExecFinished in H6.
+      unfold ProgOk in *.
+      repeat eforward Hex.
+      forward Hex. shelve.
+      forward_solve.
+      eval_expr.
+      repeat eexists. eapply StepEndCall; simpl; eauto.
+      eval_expr; reflexivity.
+      eval_expr; reflexivity.
+      eval_expr; reflexivity.
+
+      intuition.
+      contradiction H3.
+      repeat deex. repeat econstructor; eauto.
+      eapply StepInCall with (np := 2); eassumption.
+
+  Unshelve.
+  * subst_definitions. eval_expr. pred_solve. auto.
+  * exact hm.
+  * eval_expr. pred_solve. auto.
+*)
 Admitted.
 
 Definition func2 A B R {WA: GoWrapper A} {WB: GoWrapper B} {WR: GoWrapper R} name (src : A -> B -> prog R) env :=
