@@ -239,7 +239,7 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
   | Go.Call (nargs, name, args_tuple) ->
       let args = call_args_tuple_to_list nargs args_tuple in
       let go_args = List.map var_name args in
-      let go_name = char_list_to_string name in
+      let go_name = sanitize (char_list_to_string name) in
       let call = go_name ^ "(" ^ (String.concat ", " go_args) ^ ")" in
       call ^ "\n"
   | Go.DiskRead (vvar, avar) ->
