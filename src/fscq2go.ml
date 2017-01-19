@@ -191,6 +191,9 @@ let go_modify_op (ts : TranscriberState.state)
   " ^ v ^ ".snd = " ^ (deep_copy_ref v_type "val") ^ "
   }
 }"
+  | Go.MapRemove ->
+    let (map, (key, _)) = Obj.magic args_tuple in
+    "delete(*" ^ (var_name map) ^ ", " ^ (var_name key) ^ ".String())"
   | Go.DuplicateOp ->
     let (dst, (src, _)) = Obj.magic args_tuple in
     (var_name dst) ^ " = " ^ (var_name src) ^ ".DeepCopy()"
@@ -243,6 +246,8 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
       "DiskRead(" ^ (var_name vvar) ^ ", " ^ (var_name avar) ^ ")\n"
   | Go.DiskWrite (vvar, avar) ->
       "DiskWrite(" ^ (var_name vvar) ^ ", " ^ (var_name avar) ^ ")\n"
+  | Go.DiskSync ->
+      "DiskSync()\n"
   | Go.Skip -> ""
   | Go.While (ex, body) ->
       "for " ^ (go_expr ts ex) ^ " {\n" ^ (go_stmt body ts) ^ "}\n"
