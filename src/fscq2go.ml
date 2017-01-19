@@ -32,8 +32,7 @@ let mapi_bignum (f : big_int -> 'a -> 'b) (l : 'a list) =
   in x zero l
 
 let fail_unmatched fn_name =
-  print_endline ("Unmatched type in " ^ fn_name);
-  assert false
+  failwith ("Unmatched type in " ^ fn_name);
 
 (* mutable transcriber state *)
 module TranscriberState = struct
@@ -95,17 +94,39 @@ module TranscriberState = struct
     }
 end
 
-let go_literal (t : Go.coq_type) value =
+
+let rec go_literal (ts : TranscriberState.state) t x =
+  let join = String.concat ", " in
+  let go_type = TranscriberState.get_go_type ts t in
   match t with
-  | Num ->
-    let i = Obj.magic value in
-    if (lt i (Big_int.power_int_positive_int 2 64)) then
-       "big.NewInt(" ^ to_string i ^ ")"
-    else
-       "big_of_string(\"" ^ to_string i ^ "\")"
-  | Bool -> if (Obj.magic value) then "true" else "false"
-  | _ -> fail_unmatched "go_literal"
-;;
+  | Go.Num ->
+    (match Obj.magic x with
+     | Go.Here v -> to_string v
+     | Go.Moved -> "(moved)")
+  | Go.Bool -> if Obj.magic x then "true" else "false"
+  | Go.EmptyStruct -> "Empty{}"
+  | Go.DiskBlock ->
+    (match Obj.magic x with
+     | Go.Here v -> failwith "TODO: DiskBlock -> String"
+     | Go.Moved -> "(moved)")
+  | Go.Slice t1 ->
+    begin match Obj.magic x with
+     | Go.Here v -> join (map (go_literal ts t1) v)
+     | Go.Moved -> "(moved)"
+    end
+  | Go.Pair (t1, t2) ->
+    let p = Obj.magic x in
+    "(" ^ (go_literal ts t1 (fst p)) ^ ", " ^ (go_literal ts t2 (snd p)) ^ ")"
+  | Go.AddrMap t1 ->
+    match Obj.magic x with
+     | Go.Here v ->
+        go_type ^ "{" ^
+         (join
+             (List.map (fun x0 ->
+               let (k, t2) = x0 in
+               (to_string k) ^ " : " ^ (go_literal ts t1 t2))
+               (Go.Map.elements v))) ^ "}"
+     | Go.Moved -> "(moved)"
 
 let zero_val ts (t : Go.coq_type) =
   let go_type = (TranscriberState.get_go_type ts t) in
@@ -145,7 +166,7 @@ let go_modify_op (ts : TranscriberState.state)
   match modify_op with
   | Go.SetConst (t, value) ->
     let (var, _) = Obj.magic args_tuple in
-    (var_val_ref ts var) ^ " = " ^ (go_literal t value)
+    (var_val_ref ts var) ^ " = " ^ (go_literal ts t value)
   | Go.SplitPair ->
     let (pair, (first, (second, _))) = Obj.magic args_tuple in
     (var_name first) ^ ", " ^ (var_name second) ^ " = " ^
@@ -180,7 +201,7 @@ let rec go_expr ts expr =
   match expr with
   | Go.Var (v) -> var_val_ref ts v
   | Go.Const (gType, value) ->
-      go_literal gType value
+      go_literal ts gType value
   | Go.TestE (test, a, b) ->
       let operator = match test with
       | Go.Eq -> "=="
