@@ -46,8 +46,7 @@ Example compile_writeback : forall env, sigT (fun p => forall a cs,
 Proof.
   unfold BUFCACHE.writeback.
   intros.
-  Print Ltac compile_step.
-  eexists; intros.
+  compile.
 Defined.
 
 Eval lazy in (projT1 (compile_writeback (StringMap.empty _))).

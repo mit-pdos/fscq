@@ -566,7 +566,7 @@ Ltac compile_step :=
   match goal with
   | [ |- @sigT _ _ ] => eexists; intros;
     match goal with
-    | [ |- _ /\ source_stmt _ ] => split; [ | shelve]
+    | [ |- Logic.and _ (source_stmt _) ] => split; [ | shelve]
     | _ => idtac
     end;
     eapply CompileDeclareMany; intro
