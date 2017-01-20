@@ -86,11 +86,13 @@ Module Go.
   | Num
   | Bool
   | EmptyStruct
-  | DiskBlock
+  | Buffer : nat -> type
   | Slice : type -> type
   | Pair : type -> type -> type
   | AddrMap : type -> type
   .
+
+  Definition DiskBlock := Buffer valulen.
 
   Inductive movable T :=
   | Here (v : T)
@@ -105,7 +107,7 @@ Module Go.
     | Num => false
     | Bool => true
     | EmptyStruct => true
-    | DiskBlock => false
+    | Buffer _ => false
     | Slice _ => false
     | Pair t1 t2 => can_alias t1 && can_alias t2
     | AddrMap _ => false
@@ -116,14 +118,14 @@ Module Go.
     | Num => movable W
     | Bool => bool
     | EmptyStruct => unit
-    | DiskBlock => movable valu
+    | Buffer n => movable (word n)
     | Slice t' => movable (list (type_denote t')) (* kept in reverse order to make cons = append *)
     | Pair t1 t2 => type_denote t1 * type_denote t2
     | AddrMap vt => movable (Map.t (type_denote vt))
     end.
 
   Definition type_eq_dec : forall t1 t2 : type, {t1 = t2} + {t1 <> t2}.
-    decide equality.
+    repeat decide equality.
   Defined.
 
   Inductive expr :=
@@ -163,14 +165,12 @@ Module Go.
   Definition type_of (v : value) :=
     match v with Val t _ => t end.
 
-  Eval cbn in (type_denote Num).
-  
   Fixpoint default_value' (t : type) : type_denote t :=
     match t return type_denote t with
     | Num => Here 0
     | Bool => false
     | EmptyStruct => tt
-    | DiskBlock => Here $0
+    | Buffer _ => Here $0
     | Slice _ => Here nil
     | Pair t1 t2 => (default_value' t1, default_value' t2)
     | AddrMap vt => Here (Map.empty (type_denote vt))
@@ -184,7 +184,7 @@ Module Go.
     | Num => fun _ => Moved
     | Bool => fun old => old
     | EmptyStruct => fun old => old
-    | DiskBlock => fun _ => Moved
+    | Buffer _ => fun _ => Moved
     | Slice _ => fun _ => Moved
     | Pair t1 t2 =>
       fun old =>
