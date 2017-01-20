@@ -36,17 +36,25 @@ let fail_unmatched fn_name =
 
 (* mutable transcriber state *)
 module TranscriberState = struct
-  type state = {
-    mutable go_types: (Go.coq_type * string) list;
-    mutable structs : (string * ((string * Go.coq_type) list)) list;
-    mutable maps : (string * Go.coq_type) list;
+  type fn_state = {
     mutable var_num: Big_int.big_int;
     mutable vars : (Big_int.big_int * Go.coq_type) list;
   }
 
-  let rec get_go_type (ts : state) (coq_go_type : Go.coq_type) =
+  type global_state = {
+    mutable go_types: (Go.coq_type * string) list;
+    mutable structs : (string * ((string * Go.coq_type) list)) list;
+    mutable maps : (string * Go.coq_type) list;
+  }
+
+  type state = {
+    gstate : global_state;
+    fstate : fn_state;
+  }
+
+  let rec get_go_type (gs : global_state) (coq_go_type : Go.coq_type) =
     try
-      snd (List.find (fun x -> fst x = coq_go_type) ts.go_types)
+      snd (List.find (fun x -> fst x = coq_go_type) gs.go_types)
     with Not_found ->
       match coq_go_type with
       | Go.Num -> "Num"
@@ -54,50 +62,57 @@ module TranscriberState = struct
       | Go.DiskBlock -> "DiskBlock"
       | Go.EmptyStruct -> "Empty"
       | Go.Pair (a, b) ->
-        let name = "pair_" ^ (get_go_type ts a) ^ "_" ^ (get_go_type ts b) in
-        ts.structs <- (name, [("fst", a); ("snd", b)]) :: ts.structs;
-        ts.go_types <- (coq_go_type, name) :: ts.go_types;
+        let name = "pair_" ^ (get_go_type gs a) ^ "_" ^ (get_go_type gs b) in
+        gs.structs <- (name, [("fst", a); ("snd", b)]) :: gs.structs;
+        gs.go_types <- (coq_go_type, name) :: gs.go_types;
         name
       | Go.AddrMap (a) ->
-        let name = "AddrMap_" ^ (get_go_type ts a) in
-        ts.maps <- (name, a) :: ts.maps;
-        ts.go_types <- (coq_go_type, name) :: ts.go_types;
+        let name = "AddrMap_" ^ (get_go_type gs a) in
+        gs.maps <- (name, a) :: gs.maps;
+        gs.go_types <- (coq_go_type, name) :: gs.go_types;
         name
       | _ ->
         fail_unmatched "get_go_type"
 
   let get_new_var (ts : state) (t : Go.coq_type) =
-    let num = ts.var_num in
-    ts.var_num <- succ ts.var_num;
-    ts.vars <- (num, t) :: ts.vars;
+    let fstate = ts.fstate in
+    let num = fstate.var_num in
+    fstate.var_num <- succ num;
+    fstate.vars <- (num, t) :: fstate.vars;
     num
 
-  let go_struct_types (ts : state) =
-    ts.structs
+  let go_struct_types (gs : global_state) =
+    gs.structs
 
-  let go_map_types (ts : state) =
-    ts.maps
+  let go_map_types (gs : global_state) =
+    gs.maps
 
-  let set_min_var_num (ts : state) num =
-    ts.var_num <- max num ts.var_num
+  let make_new_fn (gs : global_state) num_args =
+    let fs = {
+      var_num = num_args;
+      vars = []
+    } in
+    {
+      gstate = gs;
+      fstate = fs;
+    }
 
   let get_var_type (ts : state) v =
-    snd (List.find (fun x -> Big_int.compare_big_int (fst x) v == 0) ts.vars)
+    snd (List.find (fun x -> Big_int.compare_big_int (fst x) v == 0)
+      ts.fstate.vars)
 
   let make =
     {
       go_types = [];
       structs = [];
       maps = [];
-      var_num = zero;
-      vars = [];
     }
 end
 
 
-let rec go_literal (ts : TranscriberState.state) t x =
+let rec go_literal (gs : TranscriberState.global_state) t x =
   let join = String.concat ", " in
-  let go_type = TranscriberState.get_go_type ts t in
+  let go_type = TranscriberState.get_go_type gs t in
   match t with
   | Go.Num ->
     (match Obj.magic x with
@@ -111,12 +126,12 @@ let rec go_literal (ts : TranscriberState.state) t x =
      | Go.Moved -> "(moved)")
   | Go.Slice t1 ->
     begin match Obj.magic x with
-     | Go.Here v -> join (map (go_literal ts t1) v)
+     | Go.Here v -> join (map (go_literal gs t1) v)
      | Go.Moved -> "(moved)"
     end
   | Go.Pair (t1, t2) ->
     let p = Obj.magic x in
-    "(" ^ (go_literal ts t1 (fst p)) ^ ", " ^ (go_literal ts t2 (snd p)) ^ ")"
+    "(" ^ (go_literal gs t1 (fst p)) ^ ", " ^ (go_literal gs t2 (snd p)) ^ ")"
   | Go.AddrMap t1 ->
     match Obj.magic x with
      | Go.Here v ->
@@ -124,12 +139,12 @@ let rec go_literal (ts : TranscriberState.state) t x =
          (join
              (List.map (fun x0 ->
                let (k, t2) = x0 in
-               (to_string k) ^ " : " ^ (go_literal ts t1 t2))
+               (to_string k) ^ " : " ^ (go_literal gs t1 t2))
                (Go.Map.elements v))) ^ "}"
      | Go.Moved -> "(moved)"
 
-let zero_val ts (t : Go.coq_type) =
-  let go_type = (TranscriberState.get_go_type ts t) in
+let zero_val gs (t : Go.coq_type) =
+  let go_type = (TranscriberState.get_go_type gs t) in
   "New_" ^ go_type ^ "()"
 
 (* mirror of Go.can_alias in GoSemantics.v *)
@@ -166,7 +181,7 @@ let go_modify_op (ts : TranscriberState.state)
   match modify_op with
   | Go.SetConst (t, value) ->
     let (var, _) = Obj.magic args_tuple in
-    (var_val_ref ts var) ^ " = " ^ (go_literal ts t value)
+    (var_val_ref ts var) ^ " = " ^ (go_literal ts.gstate t value)
   | Go.SplitPair ->
     let (pair, (first, (second, _))) = Obj.magic args_tuple in
     (var_name first) ^ ", " ^ (var_name second) ^ " = " ^
@@ -204,7 +219,7 @@ let rec go_expr ts expr =
   match expr with
   | Go.Var (v) -> var_val_ref ts v
   | Go.Const (gType, value) ->
-      go_literal ts gType value
+      go_literal ts.gstate gType value
   | Go.TestE (test, a, b) ->
       let operator = match test with
       | Go.Eq -> "=="
@@ -222,10 +237,10 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
       a_text ^ b_text
   | Go.Declare (gType, fn) ->
       let var = TranscriberState.get_new_var ts gType in
-      let go_type = TranscriberState.get_go_type ts gType in
+      let go_type = TranscriberState.get_go_type ts.gstate gType in
       let var_name = var_name var in
       let decl_type = if (can_alias gType) then  go_type else "*" ^ go_type in
-      let line = "var " ^ var_name ^ " " ^ decl_type ^ " = " ^ (zero_val ts gType) ^ "\n" in
+      let line = "var " ^ var_name ^ " " ^ decl_type ^ " = " ^ (zero_val ts.gstate gType) ^ "\n" in
       let text = go_stmt (fn var) ts in
       line ^ text
   | Go.Assign (var, expr) ->
@@ -256,21 +271,21 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
   | _ -> fail_unmatched "go_stmt"
 ;;
 
-let arg_pair_to_declaration (ts) (arg_num : big_int) (arg_t : Go.coq_type) =
+let arg_pair_to_declaration (ts : TranscriberState.state) (arg_num : big_int) (arg_t : Go.coq_type) =
   var_name arg_num ^ " *" ^
-  (TranscriberState.get_go_type ts arg_t)
+  (TranscriberState.get_go_type ts.gstate arg_t)
 
-let go_func (ts : TranscriberState.state) (v : StringMap.key * Go.coq_FunctionSpec) =
+let go_func (gs : TranscriberState.global_state) (v : StringMap.key * Go.coq_FunctionSpec) =
   let (name_chars, op_spec) = v in
   let name = sanitize (char_list_to_string name_chars) in
   let nargs = op_spec.coq_NumParamVars in
+  let ts = TranscriberState.make_new_fn gs nargs in
   let arg_ts = (call_args_tuple_to_list nargs op_spec.coq_ParamVars) in
   let body = op_spec.coq_Body in
-  TranscriberState.set_min_var_num ts (succ nargs);
   let go_body = go_stmt body ts in
   let args_list = (mapi_bignum (arg_pair_to_declaration ts) arg_ts) in
   let pre = "func " ^ name ^ "(" ^ (String.concat ", " args_list) ^ ") " in
-  pre ^ "() {\n" ^ go_body ^ "\n" ^ "}"
+  pre ^ "() {\n" ^ go_body ^ "}"
 
 let header =
 "// generated header
@@ -279,14 +294,14 @@ package fscq
 // end header
 "
 
-let go_struct_defs ts =
+let go_struct_defs gs =
   List.map (fun x ->
     let (t_name, fields) = x in
     "type " ^ t_name ^ " struct {" ^
     String.concat "\n" (List.map (
       fun y ->
         let (name, typ) = y in
-        let go_type = TranscriberState.get_go_type ts typ in
+        let go_type = TranscriberState.get_go_type gs typ in
         if (can_alias typ) then
           name ^ " " ^ go_type
         else
@@ -310,13 +325,13 @@ let go_struct_defs ts =
     String.concat "\n" (List.map (
       fun y ->
         let (name, typ) = y in
-        let go_type = TranscriberState.get_go_type ts typ in
+        let go_type = TranscriberState.get_go_type gs typ in
         "obj." ^ name ^ " = New_" ^ go_type ^ "()"
       ) fields)
     ^ "
     return obj
     }\n"
-  ) (TranscriberState.go_struct_types ts)
+  ) (TranscriberState.go_struct_types gs)
 
 let go_map_defs ts =
   let maps = TranscriberState.go_map_types ts in
@@ -343,9 +358,9 @@ let go_map_defs ts =
     }\n"
   ) maps
 
-let go_type_decls ts =
-  String.concat "\n" (go_struct_defs ts) ^
-  String.concat "\n" (go_map_defs ts)
+let go_type_decls gs =
+  String.concat "\n" (go_struct_defs gs) ^
+  String.concat "\n" (go_map_defs gs)
   ^ "\n"
 
 let go_fns ts fn_map =
@@ -354,8 +369,8 @@ let go_fns ts fn_map =
 let  () =
   print_endline header;;
   print_endline "// type definitions\n";;
-  let ts = TranscriberState.make;;
-  let fns = (go_fns ts GoExtracted.extract_env);;
-  print_endline (go_type_decls ts);;
+  let gs = TranscriberState.make;;
+  let fns = (go_fns gs GoExtracted.extract_env);;
+  print_endline (go_type_decls gs);;
   print_endline fns
 
