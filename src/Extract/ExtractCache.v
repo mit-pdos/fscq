@@ -37,6 +37,7 @@ Defined.
 
 Local Open Scope string_scope.
 
+(*
 Example compile_writeback : forall env, sigT (fun p => forall a cs,
   EXTRACT BUFCACHE.writeback a cs
   {{ 0 ~> a * 1 ~> cs }}
@@ -50,9 +51,10 @@ Proof.
 Defined.
 
 Eval lazy in (projT1 (compile_writeback (StringMap.empty _))).
+*)
 
 Example compile_evict : forall env, sigT (fun p => forall a cs,
-  func2_val_ref "writeback" BUFCACHE.writeback env ->
+  prog_func_call_lemma {| FArgs := [with_wrapper addr; with_wrapper cachestate]; FRet := with_wrapper cachestate |} "writeback" BUFCACHE.writeback env ->
   EXTRACT BUFCACHE.evict a cs
   {{ 0 ~> a * 1 ~> cs }}
     p
@@ -63,8 +65,8 @@ Proof.
   intros.
   compile.
 Defined.
-
 Eval lazy in (projT1 (compile_evict (StringMap.empty _))).
+
 (*
 Example compile_maybe_evict : forall env, sigT (fun p => forall cs,
   func2_val_ref "evict" BUFCACHE.evict env ->
@@ -303,10 +305,8 @@ Eval lazy in projT1 (compile_begin_sync _).
 
 Transparent BUFCACHE.sync.
 
-Definition wbsig := Build_ProgFunctionSig (@Build_WrappedType cachemap) [with_wrapper addr; with_wrapper addr].
-
 Example compile_sync : forall env, sigT (fun p => forall a cs,
-  prog_func_call_lemma  "writeback" BUFCACHE.writeback env ->
+  prog_func_call_lemma {| FRet := with_wrapper cachestate; FArgs := [with_wrapper addr; with_wrapper cachestate] |} "writeback" BUFCACHE.writeback env ->
   EXTRACT BUFCACHE.sync a cs
   {{ 0 ~> a * 1 ~> cs }}
     p
@@ -338,8 +338,10 @@ Example compile_init : forall env, sigT (fun p => forall n,
   {{ fun ret => 0 ~>? nat * 1 ~> ret }} // env).
 Proof.
   intros. unfold BUFCACHE.init.
-  compile.
+  repeat compile_step.
   cancel_go.
+  Unshelve.
+  exact nil.
 Defined.
 
 Local Open Scope string_scope.
@@ -356,6 +358,7 @@ Ltac argtuple pre var :=
   | _ => constr:(pair 0 tt)
   end.
 
+(*
 Ltac add_to_env name P env :=
   match type of P with
   | EXTRACT _ {{ ?PRE }} ?body_ {{ fun ret : ?R => ?POST }} // _ =>
@@ -405,7 +408,6 @@ Ltac add_compiled_program name compiled env :=
   pose proof compiled.
 
 Definition prog_of := projT1.
-
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).
   add_compiled_program "writeback" compile_writeback env.
@@ -413,7 +415,7 @@ Definition extract_env : Env.
 Defined.
 
 
-(* Ltac add_compiled_program name compiled env ::=
+ Ltac add_compiled_program name compiled env ::=
   let P := fresh in
   let e_ := fresh in
   let H := fresh in

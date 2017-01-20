@@ -9,6 +9,7 @@ Require Import GoTactics2.
 Import ListNotations.
 
 Set Implicit Arguments.
+Set Universe Polymorphism.
 
 
 Hint Constructors step fail_step crash_step exec.
@@ -529,6 +530,31 @@ Proof.
   eapply H0.
   eapply CompileRet. eapply H.
 Qed.
+
+Lemma SetVarBefore : forall T V {Wr : GoWrapper V} env P Q var val (p : prog T) x1 x2,
+    EXTRACT Ret val
+    {{ var ~>? V * P }}
+      x1
+    {{ fun ret => var ~> ret * P }} // env ->
+    EXTRACT p
+    {{ var ~> val * P }}
+      x2
+    {{ Q }} // env ->
+    EXTRACT p
+    {{ var ~>? V * P }}
+      x1; x2
+    {{ Q }} // env.
+Proof.
+  intros.
+  eapply hoare_weaken.
+  eapply CompileBefore.
+  eapply CompileRet with (v := val) (var0 := var0).
+  eassumption.
+  eassumption.
+  cancel_go.
+  cancel_go.
+Qed.
+
 
 Lemma CompileWeq : forall A (a b : valu) env xa xb retvar avar bvar,
   EXTRACT Ret a
@@ -1217,7 +1243,7 @@ Defined.
 Record ProgFunctionSig :=
   {
     FRet : WrappedType;
-    Args : list WrappedType;
+    FArgs : list WrappedType;
   }.
 
 Fixpoint arg_func_type (args : list WrappedType) T :=
@@ -1227,7 +1253,7 @@ Fixpoint arg_func_type (args : list WrappedType) T :=
   end.
 
 Definition prog_function_type (sig : ProgFunctionSig) :=
-  arg_func_type sig.(Args) (prog sig.(FRet).(WrType)).
+  arg_func_type sig.(FArgs) (prog sig.(FRet).(WrType)).
 
 Fixpoint arg_tuple (args : list WrappedType) : Type := 
   match args with
@@ -1299,13 +1325,13 @@ Fixpoint params_post args n : pred :=
 
 
 Definition prog_func_call_lemma (sig : ProgFunctionSig) (name : String.string) (src : prog_function_type sig) env :=
-  forall retvar (argvars : n_tuple (length sig.(Args)) var) F,
+  forall retvar (argvars : n_tuple (length sig.(FArgs)) var) F,
     argval_foralls
-      sig.(Args)
+      sig.(FArgs)
       (fun argvals => EXTRACT do_call src argvals
-       {{ retvar ~>? sig.(FRet).(WrType) * args_pre sig.(Args) argvars argvals * F }}
-         Call (S (length sig.(Args))) name (retvar, argvars)
-       {{ fun retval => retvar ~> retval * args_post sig.(Args) argvars * F }} // env).
+       {{ retvar ~>? sig.(FRet).(WrType) * args_pre sig.(FArgs) argvars argvals * F }}
+         Call (S (length sig.(FArgs))) name (retvar, argvars)
+       {{ fun retval => retvar ~> retval * args_post sig.(FArgs) argvars * F }} // env).
 
 Fixpoint to_list {T n} : n_tuple n T -> list T :=
   match n with
@@ -1433,16 +1459,16 @@ Ltac fold_pred_apply :=
 Lemma extract_prog_func_call :
   forall sig name src env,
     forall body ss,
-      (argval_foralls sig.(Args)
+      (argval_foralls sig.(FArgs)
                       (fun argvals =>
                          EXTRACT do_call src argvals
-                         {{ 0 ~>? sig.(FRet).(WrType) * params_pre sig.(Args) 1 argvals }}
+                         {{ 0 ~>? sig.(FRet).(WrType) * params_pre sig.(FArgs) 1 argvals }}
                            body
-                         {{ fun ret => 0 ~> ret * params_post sig.(Args) 1 }} // env)) ->
+                         {{ fun ret => 0 ~> ret * params_post sig.(FArgs) 1 }} // env)) ->
       StringMap.find name env = Some {|
-                                    NumParamVars := S (length sig.(Args));
+                                    NumParamVars := S (length sig.(FArgs));
                                     ParamVars := (@wrap_type _ sig.(FRet).(Wrapper),
-                                                  map_nt (fun WT => @wrap_type _ (Wrapper WT)) (tupled sig.(Args)));
+                                                  map_nt (fun WT => @wrap_type _ (Wrapper WT)) (tupled sig.(FArgs)));
                                     Body := body;
                                     body_source := ss;
                                   |} ->
@@ -1482,7 +1508,7 @@ Proof.
     apply sep_star_assoc in H.
     apply sep_star_comm in H.
     eapply update_args; eauto.
-    assert (n0 = wrap_all (Args sig) argvals) by (eapply collect_args_pre; eauto); subst.
+    assert (n0 = wrap_all (FArgs sig) argvals) by (eapply collect_args_pre; eauto); subst.
     eassumption.
 
   - find_eapply_lem_hyp ExecCrashed_Steps.
@@ -1493,7 +1519,7 @@ Proof.
     eval_expr.
     find_apply_lem_hyp inj_pair2.
     eval_expr.
-    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, x, bp') /\ x0 = InCall s (S (length sig.(Args))) (retvar, argvars) bp').
+    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, x, bp') /\ x0 = InCall s (S (length sig.(FArgs))) (retvar, argvars) bp').
     {
       remember callee_s.
       clear callee_s Heqt.
@@ -1583,367 +1609,6 @@ Proof.
   * eval_expr. pred_solve. auto.
 *)
 Admitted.
-
-Definition func2 A B R {WA: GoWrapper A} {WB: GoWrapper B} {WR: GoWrapper R} name (src : A -> B -> prog R) env :=
-  forall rvar avar bvar,
-    forall a b F, EXTRACT src a b
-           {{ rvar ~>? R * avar ~> a * bvar ~> b * F }}
-             Call 3 name ^(rvar, avar, bvar)
-           {{ fun ret => rvar ~> ret * avar ~>? A * bvar ~>? B * F }} // env.
-
-
-Lemma extract_func2_call :
-  forall A B R {WA: GoWrapper A} {WB: GoWrapper B} {WR: GoWrapper R} name (src : A -> B -> prog R) env,
-    forall body ss,
-      (forall a b, EXTRACT src a b
-              {{ 0 ~>? R * (1 ~> a * (2 ~> b * emp)) }}
-                body
-              {{ fun ret => 0 ~> ret * (1 ~>? A * (2 ~>? B * emp)) }} // env) ->
-      StringMap.find name env = Some {|
-                                    NumParamVars := 3;
-                                    ParamVars := ^(@wrap_type _ WR, @wrap_type _ WA, @wrap_type _ WB);
-                                    Body := body;
-                                    body_source := ss;
-                                  |} ->
-      func2 name src env.
-Proof.
-  intros.
-  hnf.
-  intros.
-  set (args := [with_wrapper A; with_wrapper B]).
-  set (ret := with_wrapper R).
-  eapply hoare_weaken.
-  apply (@extract_prog_func_call {| Args := args; FRet := ret |} name src env body ss H); auto.
-  cancel_go.
-  cancel_go.
-Qed.
-
-Definition voidfunc2 A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) env :=
-  forall avar bvar,
-    forall a b F, EXTRACT src a b
-           {{ avar ~> a * bvar ~> b * F }}
-             Call 2 name ^(avar, bvar)
-           {{ fun _ => avar |->? * bvar |->? * F }} // env.
-
-
-(* TODO: generalize for all kinds of functions *)
-Lemma extract_voidfunc2_call :
-  forall A B C {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog C) arga argb env,
-    forall body ss,
-      (forall a b F, EXTRACT src a b {{ arga ~> a * argb ~> b * F }} body {{ fun _ => arga |->? * argb |->? * F }} // env) ->
-      StringMap.find name env = Some {|
-                                    NumParamVars := 2;
-                                    ParamVars := ^(@wrap_type _ WA, @wrap_type _ WB);
-                                    Body := body;
-                                    body_source := ss;
-                                  |} ->
-      voidfunc2 name src env.
-Admitted.
-
-Lemma emp_empty :
-  emp (mem_of (VarMap.empty _)).
-Proof.
-  intro. auto.
-Qed.
-Hint Resolve emp_empty.
-
-Definition func2_val_ref A B {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog B) env :=
-  forall avar bvar,
-    forall a b F, EXTRACT src a b
-           {{ avar ~> a * bvar ~> b * F }}
-             Call 2 name ^(avar, bvar)
-           {{ fun ret => avar ~>? A * bvar ~> ret * F }} // env.
-
-
-Lemma extract_func2_val_ref_call :
-  forall A B {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog B) env,
-    forall body ss,
-      (forall a b, EXTRACT src a b {{ 0 ~> a * 1 ~> b }} body {{ fun ret => 0 ~>? A * 1 ~> ret }} // env) ->
-      StringMap.find name env = Some {|
-                                    NumParamVars := 2;
-                                    ParamVars := ^(@wrap_type _ WA, @wrap_type _ WB);
-                                    Body := body;
-                                    body_source := ss;
-                                  |} ->
-      func2_val_ref name src env.
-Proof.
-  unfold func2_val_ref.
-  intros A B WA WB name src env body ss Hex Henv avar bvar a b F.
-  specialize (Hex a b).
-  intro.
-  intros.
-  intuition subst.
-  - find_eapply_lem_hyp ExecFinished_Steps.
-    find_eapply_lem_hyp Steps_runsto; [ | econstructor ].
-    invc H0.
-    find_eapply_lem_hyp runsto_Steps.
-    find_eapply_lem_hyp Steps_ExecFinished.
-    find_rewrite.
-    find_inversion_safe.
-    subst_definitions. unfold sel in *. simpl in *. unfold ProgOk in *.
-    repeat eforward Hex.
-    forward Hex.
-    shelve.
-    forward_solve.
-    simpl in *.
-    do 2 eexists.
-    intuition eauto.
-    eval_expr.
-    pred_solve.
-
-  - find_eapply_lem_hyp ExecCrashed_Steps.
-    repeat deex.
-    invc H1; [ solve [ invc H2 ] | ].
-    invc H0.
-    find_rewrite.
-    eval_expr.
-    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, x, bp') /\ x0 = InCall s 2 ^(avar, bvar) bp').
-    {
-      remember callee_s.
-      clear callee_s Heqt.
-      generalize H3 H2. clear. intros.
-      prep_induction H3; induction H3; intros; subst.
-      - find_inversion.
-        eauto using rt1n_refl.
-      - invc H0; repeat (find_eapply_lem_hyp inj_pair2; subst).
-        + destruct st'.
-          forwardauto IHclos_refl_trans_1n; deex.
-          eauto using rt1n_front.
-        + invc H3. invc H2. invc H.
-    }
-    deex.
-    eapply Steps_ExecCrashed in H5.
-    unfold ProgOk in *.
-    repeat eforward Hex.
-    forward Hex.
-    shelve.
-    forward_solve.
-    invc H2. trivial.
-  - find_eapply_lem_hyp ExecFailed_Steps.
-    repeat deex.
-    invc H1.
-    + contradiction H3.
-      destruct x. repeat eexists.
-      match goal with
-      | [ H : _ = Some ?spec |- _ ] => set spec in *
-      end.
-      eapply StepStartCall with (spec := f); eauto.
-      eval_expr; reflexivity.
-      eval_expr.
-
-      Unshelve.
-      eval_expr; pred_solve; auto.
-      subst_definitions.
-      eval_expr; pred_solve; auto.
-
-    + invc H2.
-      rewrite Henv in H8.
-      eval_expr.
-      assert (exists bp', (Go.step env)^* (d, callee_s, body) (r, l, bp') /\ x0 = InCall s 2 ^(avar, bvar) bp').
-      {
-        remember callee_s.
-        clear callee_s Heqt.
-        generalize H4 H0 H3. clear. intros.
-        prep_induction H4; induction H4; intros; subst.
-        - find_inversion.
-          eauto using rt1n_refl.
-        - invc H0; repeat (find_eapply_lem_hyp inj_pair2; subst). 
-          + destruct st'.
-            forwardauto IHclos_refl_trans_1n; deex.
-            eauto using rt1n_front.
-          + invc H4. contradiction H1. auto. invc H.
-      }
-      deex.
-      eapply Steps_ExecFailed in H6.
-      unfold ProgOk in *.
-      repeat eforward Hex.
-      forward Hex. shelve.
-      solve [forward_solve].
-
-      intro.
-      unfold is_final in *; simpl in *; subst.
-      contradiction H3.
-      subst_definitions.
-      apply Steps_ExecFinished in H6.
-      unfold ProgOk in *.
-      repeat eforward Hex.
-      forward Hex. shelve.
-      forward_solve.
-      eval_expr.
-      repeat eexists. eapply StepEndCall; simpl; eauto.
-      eval_expr; reflexivity.
-      eval_expr; reflexivity.
-      eval_expr; reflexivity. 
-
-      intuition.
-      contradiction H3.
-      repeat deex. repeat econstructor; eauto.
-      eapply StepInCall with (np := 2); eassumption.
-
-  Unshelve.
-  * subst_definitions. eval_expr. pred_solve. auto.
-  * exact hm.
-  * eval_expr. pred_solve. auto.
-Qed.
-
-Definition func2_ref_val A B {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog A) env :=
-  forall avar bvar,
-    forall a b F, EXTRACT src a b
-           {{ avar ~> a * bvar ~> b * F }}
-             Call 2 name ^(avar, bvar)
-           {{ fun ret => avar ~> ret * bvar ~>? B * F }} // env.
-
-Lemma extract_func2_ref_val_call :
-  forall A B {WA: GoWrapper A} {WB: GoWrapper B} name (src : A -> B -> prog A) env,
-    forall body ss,
-      (forall a b, EXTRACT src a b {{ 0 ~> a * 1 ~> b }} body {{ fun ret => 0 ~> ret * 1 ~>? B }} // env) ->
-      StringMap.find name env = Some {|
-                                    NumParamVars := 2;
-                                    ParamVars := ^(@wrap_type _ WA, @wrap_type _ WB);
-                                    Body := body;
-                                    body_source := ss;
-                                  |} ->
-      func2_ref_val name src env.
-Admitted.
-
-Definition func1_ref A {WA: GoWrapper A} name (src : A -> prog A) env :=
-  forall avar,
-    forall a F, EXTRACT src a
-           {{ avar ~> a * F }}
-             Call 1 name ^(avar)
-           {{ fun ret => avar ~> ret * F }} // env.
-
-Lemma extract_func1_ref_call :
-  forall A {WA: GoWrapper A} name (src : A -> prog A) env,
-    forall body ss,
-      (forall a, EXTRACT src a {{ 0 ~> a }} body {{ fun ret => 0 ~> ret }} // env) ->
-      StringMap.find name env = Some {|
-                                    NumParamVars := 1;
-                                    ParamVars := ^(@wrap_type _ WA);
-                                    Body := body;
-                                    body_source := ss;
-                                  |} ->
-      func1_ref name src env.
-Proof.
-  unfold func2_val_ref.
-  intros A WA name src env body ss Hex Henv avar a F.
-  specialize (Hex a).
-  intro.
-  intros.
-  intuition subst.
-  - find_eapply_lem_hyp ExecFinished_Steps.
-    find_eapply_lem_hyp Steps_runsto; [ | econstructor ].
-    invc H0.
-    find_eapply_lem_hyp runsto_Steps.
-    find_eapply_lem_hyp Steps_ExecFinished.
-    find_rewrite.
-    find_inversion_safe.
-    subst_definitions. unfold sel in *. simpl in *. unfold ProgOk in *.
-    repeat eforward Hex.
-    forward Hex.
-    shelve.
-    forward_solve.
-    simpl in *.
-    do 2 eexists.
-    intuition eauto.
-    eval_expr.
-    pred_solve.
-
-  - find_eapply_lem_hyp ExecCrashed_Steps.
-    repeat deex.
-    invc H1; [ solve [ invc H2 ] | ].
-    invc H0.
-    find_rewrite.
-    eval_expr.
-    assert (exists bp', (Go.step env)^* (d, callee_s, body) (final_disk, x, bp') /\ x0 = InCall s 1 ^(avar) bp').
-    {
-      remember callee_s.
-      clear callee_s Heqt.
-      generalize H3 H2. clear. intros.
-      prep_induction H3; induction H3; intros; subst.
-      - find_inversion.
-        eauto using rt1n_refl.
-      - invc H0; repeat (find_eapply_lem_hyp inj_pair2; subst).
-        + destruct st'.
-          forwardauto IHclos_refl_trans_1n; deex.
-          eauto using rt1n_front.
-        + invc H3. invc H2. invc H.
-    }
-    deex.
-    eapply Steps_ExecCrashed in H4.
-    unfold ProgOk in *.
-    repeat eforward Hex.
-    forward Hex.
-    shelve.
-    forward_solve.
-    invc H2. trivial.
-  - find_eapply_lem_hyp ExecFailed_Steps.
-    repeat deex.
-    invc H1.
-    + contradiction H3.
-      destruct x. repeat eexists.
-      match goal with
-      | [ H : _ = Some ?spec |- _ ] => set spec in *
-      end.
-      eapply StepStartCall with (spec := f); eauto.
-      eval_expr. reflexivity.
-      eval_expr.
-
-      Unshelve.
-      eval_expr. pred_solve; auto.
-      eval_expr.
-      subst_definitions.
-      pred_solve. eauto with okToCancel.
-    + invc H2.
-      rewrite Henv in H8.
-      eval_expr.
-      assert (exists bp', (Go.step env)^* (d, callee_s, body) (r, l, bp') /\ x0 = InCall s 1 ^(avar) bp').
-      {
-        remember callee_s.
-        clear callee_s Heqt.
-        generalize H4 H0 H3. clear. intros.
-        prep_induction H4; induction H4; intros; subst.
-        - find_inversion.
-          eauto using rt1n_refl.
-        - invc H0; repeat (find_eapply_lem_hyp inj_pair2; subst). 
-          + destruct st'.
-            forwardauto IHclos_refl_trans_1n; deex.
-            eauto using rt1n_front.
-          + invc H4. contradiction H1. auto. invc H.
-      }
-      deex.
-      eapply Steps_ExecFailed in H5.
-      unfold ProgOk in *.
-      repeat eforward Hex.
-      forward Hex. shelve.
-      solve [forward_solve].
-
-      intro.
-      unfold is_final in *; simpl in *; subst.
-      contradiction H3.
-      subst_definitions.
-      apply Steps_ExecFinished in H5.
-      unfold ProgOk in *.
-      repeat eforward Hex.
-      forward Hex. shelve.
-      forward_solve.
-      eval_expr.
-      repeat eexists. eapply StepEndCall; simpl; eauto.
-      eval_expr; reflexivity.
-      eval_expr; reflexivity.
-      eval_expr; reflexivity.
-
-      intuition.
-      contradiction H3.
-      repeat deex. repeat econstructor; eauto.
-      eapply StepInCall with (np := 1); eassumption.
-
-  Unshelve.
-  * subst_definitions. eval_expr. pred_solve.
-    auto.
-  * eval_expr.
-  * eval_expr. pred_solve. auto.
-Qed.
 
 Lemma CompileSplit :
   forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar F (p : A * B),

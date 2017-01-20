@@ -9,6 +9,7 @@ Require Import GoSemantics.
 Require Import StringMap MoreMapFacts.
 
 Set Implicit Arguments.
+Set Universe Polymorphism.
 
 Module VarMapFacts := FMapFacts.WFacts_fun(Nat_as_OT)(VarMap).
 Module Import MoreVarMapFacts := MoreFacts_fun(Nat_as_OT)(VarMap).

@@ -256,53 +256,50 @@ Ltac compile_for := match goal with
     end
   end.
 
-Ltac compile_call := match goal with
-  | [ H : voidfunc2 ?name ?f ?env |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // ?env ] =>
-    match find_val a pre with
-      | Some ?ka =>
-        match find_val b pre with
-          | Some ?kb =>
-            eapply hoare_weaken; [ eapply H with (avar := ka) (bvar := kb) | cancel_go .. ]
-        end
-    end
-  | [ H : func2_val_ref ?name ?f ?env |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // ?env ] =>
+Ltac get_head E :=
+  match E with
+  | ?P _ _ _ _ _ _ _ _ _ _ _ => constr:(P)
+  | ?P _ _ _ _ _ _ _ _ _ _ => constr:(P)
+  | ?P _ _ _ _ _ _ _ _ _ => constr:(P)
+  | ?P _ _ _ _ _ _ _ _ => constr:(P)
+  | ?P _ _ _ _ _ _ _ => constr:(P)
+  | ?P _ _ _ _ _ _ => constr:(P)
+  | ?P _ _ _ _ _ => constr:(P)
+  | ?P _ _ _ _ => constr:(P)
+  | ?P _ _ _ => constr:(P)
+  | ?P _ _ => constr:(P)
+  | ?P _ => constr:(P)
+  | ?P => constr:(P)
+  end.
+
+Ltac declare_and_get val_ cont :=
+  let T := type of val_ in
+  do_declare T ltac:(fun var_ =>
+                       eapply hoare_weaken; [
+                         eapply SetVarBefore with (val := val_) (var0 := var_) | cancel_go.. ]; [ | cont var_ ]).
+Ltac declare_and_get_args' expr argvars cont :=
+  lazymatch expr with
+  | ?rest ?arg => declare_and_get arg ltac:(fun var_ => declare_and_get_args' rest (var_, argvars) cont)
+  | ?f => cont argvars
+  end.
+Ltac declare_and_get_args expr cont :=
+  declare_and_get_args' expr tt cont.
+
+Ltac compile_call :=
+  match goal with
+  | [ H : prog_func_call_lemma ?sig ?name ?f ?env |- EXTRACT ?expr {{ ?pre }} _ {{ _ }} // ?env ] =>
+    let hd := get_head expr in
+    unify f hd;
     let retvar := var_mapping_to_ret in
-    match find_val a pre with
-      | Some ?ka =>
-        match find_val b pre with
-        | Some ?kb =>
-          unify kb retvar; (* same variable *)
-          (* first, copy the first argument *)
-          match type of a with
-          | ?TA =>
-            do_declare TA ltac:(fun ka' =>
-                                  eapply CompileBefore; [ 
-                                    eapply CompileRet with (v := a) (var0 := ka');
-                                    eapply hoare_weaken; [
-                                      eapply CompileDup with (var0 := ka) (var' := ka') | cancel_go .. ] | ]);
-            eapply hoare_weaken; [ eapply H with (avar := ka) (bvar := kb) | cancel_go .. ]
-          end
-        | Some ?kb =>
-          (unify kb retvar; fail 2)
-          || (* different variables *)
-          eapply CompileBefore; [
-            eapply CompileRet with (v := b) (var0 := retvar);
-            simpl decls_pre |]
-        end
-    end
-  | [ H : func1_ref ?name ?f ?env |- EXTRACT ?f ?a {{ ?pre }} _ {{ _ }} // ?env ] =>
-    let retvar := var_mapping_to_ret in
-    match find_val a pre with
-    | Some ?ka =>
-      unify ka retvar; (* same variable *)
-      eapply hoare_weaken; [ eapply H with (avar := ka) | cancel_go .. ]
-    | Some ?ka =>
-      (unify ka retvar; fail 2)
-      || (* different variables *)
-      eapply CompileBefore; [
-        eapply CompileRet with (v := a) (var0 := retvar);
-        simpl decls_pre |]
-    end
+    declare_and_get_args expr ltac:(
+      fun argvars =>
+        let F := fresh "F" in
+        evar (F : pred);
+        let F_ := eval unfold F in F in
+            clear F; let H' := fresh "H" in
+                     generalize H; intro H';
+                     specialize (H' retvar argvars F_);
+                     eapply hoare_weaken; [ apply H' | cancel_go.. ] )
   end.
 
 Ltac compile_add := match goal with

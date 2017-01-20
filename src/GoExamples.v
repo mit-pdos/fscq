@@ -5,6 +5,8 @@ Require Import GoSemantics GoHoare GoFacts GoCompilationLemmas GoExtraction.
 Import ListNotations.
 Import Go.
 
+Set Universe Polymorphism.
+
 Local Open Scope string_scope.
 
 Example append_list_in_pair : sigT (fun p => forall (a x : nat) xs,
