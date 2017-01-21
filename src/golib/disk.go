@@ -23,3 +23,7 @@ func DiskWrite (addr *Num, val *DiskBlock) {
 	fmt.Println("DiskWrite %s -> %s", val.val.String(), addr.String())
     // TODO implement this
 }
+
+func DiskSync() {
+	fmt.Println("DiskSync")
+}
