@@ -45,6 +45,7 @@ module TranscriberState = struct
     mutable go_types: (Go.coq_type * string) list;
     mutable structs : (string * ((string * Go.coq_type) list)) list;
     mutable maps : (string * Go.coq_type) list;
+    mutable slices : (string * Go.coq_type) list;
   }
 
   type state = {
@@ -71,6 +72,11 @@ module TranscriberState = struct
         gs.maps <- (name, a) :: gs.maps;
         gs.go_types <- (coq_go_type, name) :: gs.go_types;
         name
+      | Slice (t) ->
+        let name ="Slice_" ^ (get_go_type gs t) in
+        gs.slices <- (name, t) :: gs.slices;
+        gs.go_types <- (coq_go_type, name) :: gs.go_types;
+        name
       | _ ->
         fail_unmatched "get_go_type"
 
@@ -86,6 +92,9 @@ module TranscriberState = struct
 
   let go_map_types (gs : global_state) =
     gs.maps
+
+  let go_slice_types (gs : global_state) =
+    gs.slices
 
   let make_new_fn (gs : global_state) num_args =
     let fs = {
@@ -106,6 +115,7 @@ module TranscriberState = struct
       go_types = [];
       structs = [];
       maps = [];
+      slices = [];
     }
 end
 
@@ -209,9 +219,60 @@ let go_modify_op (ts : TranscriberState.state)
   | Go.MapRemove ->
     let (map, (key, _)) = Obj.magic args_tuple in
     "delete(*" ^ (var_name map) ^ ", " ^ (var_name key) ^ ".String())"
+  | Go.MapCardinality ->
+    let (map, (dst, _)) = Obj.magic args_tuple in
+    (var_val_ref ts dst) ^ ".SetInt64(len(" ^ (var_val_ref ts map) ^ "))"
+  | Go.MapElements ->
+    let (map, (dst, _)) = Obj.magic args_tuple in
+    let v = (var_name dst) in
+    let m = (var_val_ref ts map) in
+    let v_type = match (TranscriberState.get_var_type ts map) with
+    | Go.AddrMap t -> t
+    in
+    let slice_t = (TranscriberState.get_var_type ts dst) in
+    let slice_go_t = (TranscriberState.get_go_type ts.gstate slice_t) in
+    "{
+      // MapElements
+      keys := make([]string, 0, len(" ^ m ^ "))
+      for k := range " ^ m ^ " {
+          keys = append(keys, k)
+      }
+      sort.Ints(keys)
+
+      " ^ v ^ " := make(" ^ slice_go_t ^ ", 0, len(" ^ m ^ "))
+      for  _, key := range keys {
+        k := big_of_string(key)
+        v := " ^ (deep_copy_ref v_type (m ^ "[key]")) ^"
+        p := New_" ^ slice_go_t ^ "()
+        p.fst = k
+        p.snd = v
+        " ^ v ^ " = append(v, p)
+      }
+    }"
   | Go.DuplicateOp ->
     let (dst, (src, _)) = Obj.magic args_tuple in
     (var_name dst) ^ " = " ^ (var_name src) ^ ".DeepCopy()"
+  | Go.AppendOp ->
+    let (lvar, (xvar, _)) = Obj.magic args_tuple in
+    (var_name lvar) ^ " = append(" ^ (var_name lvar) ^ ", " ^ (var_name xvar) ^ ")"
+  | Go.Uncons ->
+    let (lvar, (success_var, (xvar, (l'var, _)))) = Obj.magic args_tuple in
+    (* let el_t = TranscriberState.get_var_type ts xvar in *)
+    (* let el_go_t = TranscriberState.get_go_type ts el_t in *)
+    let l = (var_name lvar) in
+    let s = (var_val_ref ts success_var) in
+    let x = (var_name xvar) in
+    let l' = (var_name l'var) in
+    "{
+      // Uncons
+      if len(" ^ l ^ ") > 0 {
+        " ^ s ^ " = true
+        " ^ x ^ " = " ^ l ^ "[0]
+        " ^ l' ^ " = " ^ l ^ "[1:]
+      } else {
+        " ^ s ^ " = false
+      }
+    }"
   | _ -> fail_unmatched "go_modify_op"
   ;;
 
@@ -355,6 +416,28 @@ let go_map_defs ts =
     func New_" ^ type_name ^ " () *" ^ type_name ^ "{
     obj := make(" ^ type_name ^ ")\n
     return &obj
+    }\n"
+  ) maps
+
+let go_slice_defs ts =
+  let maps = TranscriberState.go_slice_types ts in
+  List.map (fun x ->
+    let (type_name, v_type) = x in
+    let go_v_type = (TranscriberState.get_go_type ts v_type) in
+    let go_v_type = (val_ref v_type go_v_type) in
+    "type " ^ type_name ^ " [] " ^ go_v_type ^
+    "
+
+    func (x " ^ type_name ^ ") DeepCopy () *" ^ type_name ^ "{
+    var newSlice " ^ type_name ^ "
+    for _, v := range x {
+        newSlice = append(newSlice, " ^ (deep_copy_ref v_type "v") ^ "
+    }
+    return newSlice
+    }
+
+    func New_" ^ type_name ^ " () *" ^ type_name ^ "{
+    return nil
     }\n"
   ) maps
 
