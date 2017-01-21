@@ -581,9 +581,10 @@ Ltac compile_step :=
   match goal with
   | [ |- @sigT _ _ ] => eexists; intros;
     match goal with
+    | [ |- Logic.and (source_stmt _) _ ] => split; [shelve | ]
     | [ |- Logic.and _ (source_stmt _) ] => split; [ | shelve]
     | _ => idtac
-    end;
+    end; intros;
     eapply CompileDeclareMany; intro
   | _ => eapply decls_pre_impl_post
   end
@@ -606,9 +607,10 @@ Ltac compile_step :=
 
 Ltac compile :=
   unshelve (repeat compile_step);
-  match goal with
+  try match goal with
   | [|- source_stmt _] =>
     repeat source_stmt_step
   | [|- list _] => exact nil
+  | [|- _ =p=> _ ] => cancel_go
   end.
 
