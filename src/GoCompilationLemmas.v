@@ -531,13 +531,13 @@ Proof.
   eapply CompileRet. eapply H.
 Qed.
 
-Lemma SetVarBefore : forall T V {Wr : GoWrapper V} env P Q var val (p : prog T) x1 x2,
+Lemma SetVarBefore : forall T V {Wr : GoWrapper V} env P P' Q var val (p : prog T) x1 x2,
     EXTRACT Ret val
     {{ var ~>? V * P }}
       x1
-    {{ fun ret => var ~> ret * P }} // env ->
+    {{ fun ret => var ~> ret * P' }} // env ->
     EXTRACT p
-    {{ var ~> val * P }}
+    {{ var ~> val * P' }}
       x2
     {{ Q }} // env ->
     EXTRACT p
@@ -1500,7 +1500,6 @@ Proof.
     find_apply_lem_hyp inj_pair2.
     eval_expr.
     pred_solve.
-    instantiate (1 := Val wrap_type x).
     fold_pred_apply.
     rewrite sep_star_comm.
     apply sep_star_assoc.

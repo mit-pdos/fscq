@@ -188,7 +188,7 @@ Definition swap_env : Env :=
      body_source := ltac:(repeat constructor);
    |}; (StringMap.empty _)).
 
-Lemma swap_func : voidfunc2 "swap" swap_prog swap_env.
+(* Lemma swap_func : voidfunc2 "swap" swap_prog swap_env.
 Proof.
   unfold voidfunc2.
   intros.
@@ -406,3 +406,4 @@ func rot3() {
 (***********************)
 Definition whole_env : Env :=
   StringMap.add "rot3" rot3_function swap_env.
+ *)

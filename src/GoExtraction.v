@@ -272,16 +272,34 @@ Ltac get_head E :=
   | ?P => constr:(P)
   end.
 
-Ltac declare_and_get val_ cont :=
+Ltac ensure_val_has_dup_and_get val_ cont :=
   let T := type of val_ in
-  do_declare T ltac:(fun var_ =>
-                       eapply hoare_weaken; [
-                         eapply SetVarBefore with (val := val_) (var0 := var_) | cancel_go.. ]; [ | cont var_ ]).
+  lazymatch goal with
+  |- EXTRACT _ {{ ?pre_ }} _ {{ _ }} // _ =>
+    lazymatch pre_ with
+    | context [?k1 ~> val_] =>
+      match pre_ with
+      | context [?k2 ~> val_ ] =>
+        try (unify k1 k2; fail 1); cont k2
+      | _ =>
+        do_declare T ltac:(fun var =>
+          eapply hoare_weaken; [
+          eapply SetVarBefore with (val := val_) (var0 := var) | cancel_go..]
+        )
+      end
+    | _ => do_declare T ltac:(fun var =>
+          eapply hoare_weaken; [
+          eapply SetVarBefore with (val := val_) (var0 := var) | cancel_go..]
+        )
+    end
+  end.
+
 Ltac declare_and_get_args' expr argvars cont :=
   lazymatch expr with
-  | ?rest ?arg => declare_and_get arg ltac:(fun var_ => declare_and_get_args' rest (var_, argvars) cont)
+  | ?rest ?arg => ensure_val_has_dup_and_get arg ltac:(fun var_ => declare_and_get_args' rest (var_, argvars) cont)
   | ?f => cont argvars
   end.
+  
 Ltac declare_and_get_args expr cont :=
   declare_and_get_args' expr tt cont.
 
