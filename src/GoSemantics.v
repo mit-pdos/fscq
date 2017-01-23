@@ -87,6 +87,7 @@ Module Go.
   | Bool
   | EmptyStruct
   | Buffer : nat -> type
+  | ImmutableBuffer : nat -> type
   | Slice : type -> type
   | Pair : type -> type -> type
   | AddrMap : type -> type
@@ -108,6 +109,7 @@ Module Go.
     | Bool => true
     | EmptyStruct => true
     | Buffer _ => false
+    | ImmutableBuffer _ => true
     | Slice _ => false
     | Pair t1 t2 => can_alias t1 && can_alias t2
     | AddrMap _ => false
@@ -119,6 +121,7 @@ Module Go.
     | Bool => bool
     | EmptyStruct => unit
     | Buffer n => movable (bytes n)
+    | ImmutableBuffer n => bytes n
     | Slice t' => movable (list (type_denote t')) (* kept in reverse order to make cons = append *)
     | Pair t1 t2 => type_denote t1 * type_denote t2
     | AddrMap vt => movable (Map.t (type_denote vt))
@@ -146,6 +149,7 @@ Module Go.
   | MapFind
   | MapCardinality
   | MapElements
+  | FreezeBuffer
   .
 
   Inductive value :=
@@ -171,6 +175,7 @@ Module Go.
     | Bool => false
     | EmptyStruct => tt
     | Buffer _ => Here $0
+    | ImmutableBuffer _ => $0
     | Slice _ => Here nil
     | Pair t1 t2 => (default_value' t1, default_value' t2)
     | AddrMap vt => Here (Map.empty (type_denote vt))
@@ -185,6 +190,7 @@ Module Go.
     | Bool => fun old => old
     | EmptyStruct => fun old => old
     | Buffer _ => fun _ => Moved
+    | ImmutableBuffer _ => fun old => old
     | Slice _ => fun _ => Moved
     | Pair t1 t2 =>
       fun old =>
@@ -348,6 +354,9 @@ Module Go.
     Definition map_elements_impl' tv (m : Map.t (type_denote tv)) : n_tuple 2 var_update :=
       ^(Leave, SetTo (Val (Slice (Pair Num tv))
         (Here (map (fun x => (Here (fst x), snd x)) (Map.elements m))))).
+
+    Definition freeze_buffer_impl' n (v : bytes n) : n_tuple 2 var_update :=
+      ^(SetTo (Val (ImmutableBuffer n) v), Move).
   End NiceImpls.
 
   Section NastyImpls.
@@ -469,6 +478,17 @@ Module Go.
       destruct m as [m | ]; [ | exact None].
       refine (Some (map_elements_impl' tm m)).
     Defined.
+
+    Definition freeze_buffer_impl : op_impl 2.
+      refine (fun args => let '^(Val td d, Val ts s) := args in
+                       match td, ts with
+                       | ImmutableBuffer nd, Buffer ns => fun d s => _
+                       | _, _ => fun _ _ => None
+                       end d s).
+      destruct (Nat.eq_dec nd ns); [ subst | exact None ].
+      destruct s as [s | ]; [ | exact None ].
+      exact (Some (freeze_buffer_impl' s)).
+    Defined.
   End NastyImpls.
 
   Definition impl_for (op : modify_op) : { n : nat & op_impl n } :=
@@ -485,6 +505,7 @@ Module Go.
     | MapFind => existT _ _ map_find_impl
     | MapCardinality => existT _ _ map_card_impl
     | MapElements => existT _ _ map_elements_impl
+    | FreezeBuffer => existT _ _ freeze_buffer_impl
     end.
 
   Definition op_arity (op : modify_op) : nat := projT1 (impl_for op).
