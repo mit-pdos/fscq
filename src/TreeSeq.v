@@ -1130,12 +1130,6 @@ Module TREESEQ.
        simpl in *. try congruence.
 
       + erewrite find_subtree_update_subtree_ne_path; eauto.
-        intro.
-        eapply H6.
-        unfold pathname_prefix in H10.
-        deex.
-        exists suffix.
-        reflexivity.
         eapply find_subtree_dir_not_pathname_prefix_2; eauto.
     }
     (* None *)
@@ -1154,12 +1148,6 @@ Module TREESEQ.
 
       + erewrite find_subtree_update_subtree_ne_path; eauto.
         eapply find_subtree_none_not_pathname_prefix_1; eauto.
-        intro.
-        eapply H6.
-        unfold pathname_prefix in H10.
-        deex.
-        exists suffix.
-        reflexivity.
     }
   Qed.
 
