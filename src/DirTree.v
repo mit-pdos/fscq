@@ -6346,6 +6346,39 @@ Module DIRTREE.
       eassumption.
   Qed.
 
+  Hint Resolve pathname_prefix_neq.
+
+  Lemma tree_inodes_in_delete_oob: forall pathname' base name inum f dnum dents tree,
+    tree_names_distinct tree ->
+    tree_inodes_distinct tree ->
+    (~ pathname_prefix (base ++ [name]) pathname') ->
+    find_subtree pathname' tree = Some (TreeFile inum f) ->
+    find_subtree base tree = Some (TreeDir dnum dents) ->
+    In inum
+      (tree_inodes
+         (update_subtree base (TreeDir dnum
+            (delete_from_list name dents)) tree)).
+  Proof.
+    intros.
+    destruct (pathname_decide_prefix base pathname').
+    - deex.
+      destruct suffix.
+      + rewrite app_nil_r in *. congruence.
+      + erewrite find_subtree_app in H2 by eauto.
+
+        eapply tree_inodes_in_update_subtree_child; eauto.
+        eapply tree_inodes_in_delete_from_list_oob; eauto.
+        eapply tree_names_distinct_subtree; eauto.
+        eapply tree_inodes_distinct_subtree; eauto.
+        rewrite pathname_prefix_trim; eauto.
+
+        replace inum with (dirtree_inum (TreeFile inum f)) by reflexivity.
+        eapply find_subtree_inum_present; eauto.
+
+    - eapply tree_inodes_in_update_subtree_oob; eauto.
+      replace inum with (dirtree_inum (TreeFile inum f)) by reflexivity.
+      eapply find_subtree_inum_present; eauto.
+  Qed.
 
   Theorem delete_ok : forall fsxp dnum name mscs,
     {< F mbase m pathname Fm Ftop tree tree_elem ilist frees,
