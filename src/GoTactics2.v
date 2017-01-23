@@ -243,7 +243,7 @@ Hint Extern 0 (okToCancel (?var |-> _) (exists _, ?var |-> _)) =>
 
 Ltac cancel_go :=
   solve [GoSepAuto.cancel_go_fast] ||
-  GoSepAuto.cancel; try apply pimpl_refl.
+  unfold var; GoSepAuto.cancel; try apply pimpl_refl.
 
 Lemma ptsto_delete' : forall a (F :pred) (m : mem),
   (a |->? * F)%pred m -> F (delete m a).

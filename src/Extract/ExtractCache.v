@@ -2,48 +2,21 @@ Require Import List String.
 Require Import StringMap.
 Require Import Word Prog Pred AsyncDisk.
 Require Import GoSemantics GoFacts GoHoare GoCompilationLemmas GoExtraction GoSepAuto GoTactics2.
+Require Import Wrappers.
 Import ListNotations.
 
 Import Go.
-Open Scope pred_scope.
-Open Scope type_scope.
 
 Require Import Cache.
-
-Instance WrapByTransforming_cachestate : WrapByTransforming cachestate.
-  refine {|
-    transform := fun cs => (CSMap cs, CSMaxCount cs, CSEvict cs);
-  |}.
-  simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
-Defined.
-
-Instance cachestate_default_value : DefaultValue cachestate := {| zeroval :=
-  {| CSMap := Go.Map.empty _; CSMaxCount := 0; CSEvict := tt |} |}.
-  unfold wrap, wrap', GoWrapper_transform, default_value. simpl.
-  repeat f_equal.
-  apply MapUtils.addrmap_equal_eq.
-  apply MapUtils.AddrMap.map_empty.
-  auto with map.
-Defined.
-
-Instance addrmap_default_value : forall T {H: GoWrapper T}, DefaultValue (Map.t T).
-  intros.
-  apply Build_DefaultValue with (zeroval := Map.empty _).
-  unfold default_value, default_value', wrap, wrap'.
-  simpl. repeat f_equal.
-  apply MapUtils.addrmap_equal_eq.
-  apply MapUtils.AddrMap.map_empty.
-  eauto with map.
-Defined.
 
 Local Open Scope string_scope.
 
 Example compile_writeback : sigT (fun p => source_stmt p /\
   forall env a cs,
   EXTRACT BUFCACHE.writeback a cs
-  {{ 0 ~> a * 1 ~> cs * 2 ~>? cachestate }}
+  {{ 0 ~>? cachestate * 1 ~> a * 2 ~> cs }}
     p
-  {{ fun ret => 0 ~>? MapUtils.AddrMap.Map.key * 1 ~>? cachestate * 2 ~> ret }} // env).
+  {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? cachestate }} // env).
 Proof.
   unfold BUFCACHE.writeback.
   compile.
@@ -54,9 +27,9 @@ Eval lazy in (projT1 compile_writeback).
 Example compile_evict : sigT (fun p => source_stmt p /\ forall env a cs,
   prog_func_call_lemma {| FArgs := [with_wrapper addr; with_wrapper cachestate]; FRet := with_wrapper cachestate |} "writeback" BUFCACHE.writeback env ->
   EXTRACT BUFCACHE.evict a cs
-  {{ 0 ~> a * 1 ~> cs * 2 ~>? cachestate }}
+  {{ 0 ~>? cachestate * 1 ~> a * 2 ~> cs }}
     p
-  {{ fun ret => 0 ~>? W * 1 ~>? cachestate * 2 ~> ret }} // env).
+  {{ fun ret => 0 ~> ret * 1 ~>? W * 2 ~>? cachestate }} // env).
 Proof.
   unfold BUFCACHE.evict.
   compile.
@@ -67,9 +40,9 @@ Eval lazy in (projT1 compile_evict).
 Example compile_maybe_evict : sigT (fun p => source_stmt p /\ forall env cs,
   prog_func_call_lemma {| FArgs := [with_wrapper addr; with_wrapper cachestate]; FRet := with_wrapper cachestate |} "evict" BUFCACHE.evict env ->
   EXTRACT BUFCACHE.maybe_evict cs
-  {{ 0 ~> cs * 1 ~>? cachestate }}
+  {{ 0 ~>? cachestate * 1 ~> cs }}
     p
-  {{ fun ret => 0 ~>? cachestate * 1 ~> ret }} // env).
+  {{ fun ret => 0 ~> ret * 1 ~>? cachestate }} // env).
 Proof.
   unfold BUFCACHE.maybe_evict.
   compile_step.
@@ -92,7 +65,6 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  cancel_go.
   simpl decls_pre. (* TODO: most of the [simpl]s in GoExtraction.v right now are in the wrong spot -- could add a declarationn in another goal *)
   compile_step.
   compile_step.
@@ -113,7 +85,6 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  cancel_go.
   Ltac pattern_prog pat :=
     match goal with
     | [ |- ProgMonad.prog_equiv _ ?pr ] =>
@@ -149,7 +120,6 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  cancel_go.
   intros.
   compile_step.
   compile_step.
@@ -160,7 +130,6 @@ Proof.
   compile_step.
   repeat compile_step.
   compile_step.
-  cancel_go.
   Unshelve. all: compile.
 Defined.
 
@@ -175,9 +144,9 @@ Defined.
 
 Example compile_eviction_update' : sigT (fun p => source_stmt p /\ forall env a s,
   EXTRACT eviction_update' a s
-  {{ 0 ~> a * 1 ~> s * 2 ~>? eviction_state }}
+  {{ 0 ~>? eviction_state * 1 ~> a * 2 ~> s }}
     p
-  {{ fun ret => 0 |->? * 1 |->? * 2 ~> ret }} // env).
+  {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? eviction_state }} // env).
 Proof.
   unfold eviction_update', eviction_update.
   compile.
@@ -193,9 +162,9 @@ Example compile_read : sigT (fun p => source_stmt p /\ forall env a cs,
   prog_func_call_lemma {| FArgs := [with_wrapper W; with_wrapper eviction_state]; FRet := with_wrapper eviction_state |}
     "eviction_update" eviction_update' env ->
   EXTRACT BUFCACHE.read a cs
-  {{ 0 ~> a * 1 ~> cs * 2 ~>? (cachestate * (valu * unit)) }}
+  {{ 0 ~>? (cachestate * (valu * unit)) * 1 ~> a * 2 ~> cs }}
     p
-  {{ fun ret => 0 |->? * 1 ~>? cachestate * 2 ~> ret }} // env).
+  {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? cachestate }} // env).
 Proof.
   unfold BUFCACHE.read.
   compile_step.
@@ -229,10 +198,6 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  cancel_go.
-  compile_step.
-  compile_step.
-  compile_step.
   compile_step.
   compile_step.
   compile_step.
@@ -241,7 +206,7 @@ Proof.
   compile_step.
   compile_step.
   match goal with
-  |- context [?k ~> a1] =>
+  |- context [(?k ~> a1)%pred] =>
     (* TODO: copy here automatically. This is *the* standard mostly unavoidable copy *)
     do_declare valu ltac:(fun ka' =>
                             eapply CompileBefore; [
@@ -249,6 +214,8 @@ Proof.
                               eapply hoare_weaken; [
                                 eapply CompileDup with (var0 := k) (var' := ka') | cancel_go .. ] | ])
   end.
+  compile_step.
+  compile_step.
   compile_step.
   compile_step.
   compile_step.
@@ -266,7 +233,6 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  cancel_go.
 
   Unshelve.
   all: compile.
@@ -280,9 +246,9 @@ Example compile_write : sigT (fun p => source_stmt p /\ forall env a v cs,
   prog_func_call_lemma {| FArgs := [with_wrapper W; with_wrapper eviction_state]; FRet := with_wrapper eviction_state |}
     "eviction_update" eviction_update' env ->
   EXTRACT BUFCACHE.write a v cs
-  {{ 0 ~> a * 1 ~> v * 2 ~> cs * 3 ~>? cachestate }}
+  {{ 0 ~>? cachestate * 1 ~> a * 2 ~> v * 3 ~> cs }}
     p
-  {{ fun ret => 0 ~>? addr * 1 ~>? valu * 2 ~>? cachestate * 3 ~> ret }} // env).
+  {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? valu * 3 ~>? cachestate }} // env).
 Proof.
   unfold BUFCACHE.write.
   compile_step.
@@ -320,11 +286,6 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  cancel_go.
-  cancel_fast_normr.
-  rewrite sep_star_comm.
-  apply pimpl_sep_star. cancel.
-  cancel_go.
 
   Unshelve.
   all: compile.
@@ -333,9 +294,9 @@ Defined.
 Transparent BUFCACHE.begin_sync.
 Example compile_begin_sync : sigT (fun p => source_stmt p /\ forall env cs,
   EXTRACT BUFCACHE.begin_sync cs
-  {{ 0 ~> cs * 1 ~>? cachestate }}
+  {{ 0 ~>? cachestate * 1 ~> cs }}
     p
-  {{ fun ret => 0 |->? * 1 ~> ret }} // env).
+  {{ fun ret => 0 ~> ret * 1 ~>? cachestate }} // env).
 Proof.
   intros. unfold BUFCACHE.begin_sync.
   (* TODO: make this not split & rejoin :P *)
@@ -349,9 +310,9 @@ Transparent BUFCACHE.sync.
 Example compile_sync : sigT (fun p => source_stmt p /\ forall env a cs,
   prog_func_call_lemma {| FRet := with_wrapper cachestate; FArgs := [with_wrapper addr; with_wrapper cachestate] |} "writeback" BUFCACHE.writeback env ->
   EXTRACT BUFCACHE.sync a cs
-  {{ 0 ~> a * 1 ~> cs * 2 ~>? cachestate }}
+  {{ 0 ~>? cachestate * 1 ~> a * 2 ~> cs }}
     p
-  {{ fun ret => 0 ~>? addr * 1 ~>? cachestate * 2 ~> ret }} // env).
+  {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? cachestate }} // env).
 Proof.
   unfold BUFCACHE.sync.
   compile_step.
@@ -362,7 +323,7 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  cancel. cancel_go.
+
   Unshelve.
   all : compile.
 Defined.
@@ -372,9 +333,9 @@ Eval lazy in projT1 (compile_sync).
 Transparent BUFCACHE.end_sync.
 Example compile_end_sync : sigT (fun p => source_stmt p /\ forall env cs,
   EXTRACT BUFCACHE.end_sync cs
-  {{ 0 ~> cs }}
+  {{ 0 ~>? cachestate * 1 ~> cs }}
     p
-  {{ fun ret => 0 ~> ret }} // env).
+  {{ fun ret => 0 ~> ret * 1 ~>? cachestate }} // env).
 Proof.
   unfold BUFCACHE.end_sync.
   compile.
@@ -384,9 +345,9 @@ Defined.
 Transparent BUFCACHE.init.
 Example compile_init : sigT (fun p => source_stmt p /\ forall env n,
   EXTRACT BUFCACHE.init n
-  {{ 0 ~> n * 1 ~>? cachestate }}
+  {{ 0 ~>? cachestate * 1 ~> n }}
     p
-  {{ fun ret => 0 ~>? nat * 1 ~> ret }} // env).
+  {{ fun ret => 0 ~> ret * 1 ~>? nat }} // env).
 Proof.
   unfold BUFCACHE.init.
   compile.
@@ -394,6 +355,7 @@ Defined.
 
 Local Open Scope string_scope.
 Local Open Scope list_scope.
+Local Open Scope pred_scope.
 
 Ltac argtuple pre var :=
   match pre with
