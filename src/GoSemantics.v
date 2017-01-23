@@ -1,4 +1,5 @@
-Require Import PeanoNat String List FMapAVL Structures.OrderedTypeEx.
+Require Import PeanoNat String List FMapAVL Structures.OrderedTypeEx Compare_dec.
+Require Import Omega.
 Require Import Relation_Operators Operators_Properties.
 Require Import Morphisms.
 Require Import StringMap MoreMapFacts.
@@ -86,8 +87,8 @@ Module Go.
   | Num
   | Bool
   | EmptyStruct
-  | Buffer : nat -> type
-  | ImmutableBuffer : nat -> type
+  | Buffer : nat -> type (* pointer to array in Go *)
+  | ImmutableBuffer : nat -> type (* byte slice in Go *)
   | Slice : type -> type
   | Pair : type -> type -> type
   | AddrMap : type -> type
@@ -149,7 +150,8 @@ Module Go.
   | MapFind
   | MapCardinality
   | MapElements
-  | FreezeBuffer
+  | FreezeBuffer (* destination, source *)
+  | SliceBuffer (from to : nat) (* destination, source *)
   .
 
   Inductive value :=
@@ -357,6 +359,12 @@ Module Go.
 
     Definition freeze_buffer_impl' n (v : bytes n) : n_tuple 2 var_update :=
       ^(SetTo (Val (ImmutableBuffer n) v), Move).
+
+    Definition slice_buffer_impl' before inside after (v : bytes (before + inside + after)) :
+      n_tuple 2 var_update :=
+      ^(SetTo (Val (ImmutableBuffer inside) (bsplit2 before inside (bsplit1 (before + inside) after v))),
+        Leave).
+
   End NiceImpls.
 
   Section NastyImpls.
@@ -489,6 +497,20 @@ Module Go.
       destruct s as [s | ]; [ | exact None ].
       exact (Some (freeze_buffer_impl' s)).
     Defined.
+
+    Definition slice_buffer_impl (from to : nat) : op_impl 2.
+      refine (fun args => let '^(Val td d, Val ts s) := args in
+                       match td, ts with
+                       | ImmutableBuffer nd, ImmutableBuffer ns => fun d s => _
+                       | _, _ => fun _ _ => None
+                       end d s).
+      destruct (le_dec from to); [ | exact None ].
+      destruct (le_dec to ns); [ | exact None ].
+      destruct (Nat.eq_dec nd (to - from)); [ subst | exact None ].
+      assert (ns = from + (to - from) + (ns - to)) by omega.
+      rewrite H in s.
+      exact (Some (slice_buffer_impl' from (to - from) (ns - to) s)).
+    Defined.
   End NastyImpls.
 
   Definition impl_for (op : modify_op) : { n : nat & op_impl n } :=
@@ -506,6 +528,7 @@ Module Go.
     | MapCardinality => existT _ _ map_card_impl
     | MapElements => existT _ _ map_elements_impl
     | FreezeBuffer => existT _ _ freeze_buffer_impl
+    | SliceBuffer from to => existT _ _ (slice_buffer_impl from to)
     end.
 
   Definition op_arity (op : modify_op) : nat := projT1 (impl_for op).
