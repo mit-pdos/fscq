@@ -9,7 +9,6 @@ Require Import GoTactics2.
 Import ListNotations.
 
 Set Implicit Arguments.
-Set Universe Polymorphism.
 
 
 Hint Constructors step fail_step crash_step exec.
@@ -1324,7 +1323,7 @@ Fixpoint params_post args n : pred :=
   end.
 
 
-Definition prog_func_call_lemma (sig : ProgFunctionSig) (name : String.string) (src : prog_function_type sig) env :=
+Polymorphic Definition prog_func_call_lemma (sig : ProgFunctionSig) (name : String.string) (src : prog_function_type sig) env :=
   forall retvar (argvars : n_tuple (length sig.(FArgs)) var) F,
     argval_foralls
       sig.(FArgs)
@@ -1456,7 +1455,7 @@ Ltac fold_pred_apply :=
          | [ H : ?P ?m |- _ ] => change (pred_apply m P) in H
          end.
 
-Lemma extract_prog_func_call :
+Polymorphic Lemma extract_prog_func_call :
   forall sig name src env,
     forall body ss,
       (argval_foralls sig.(FArgs)
