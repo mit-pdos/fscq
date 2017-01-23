@@ -3336,6 +3336,24 @@ Proof.
   intuition.
 Qed.
 
+Lemma incl_appl' : forall (A : Type) (l m n : list A),
+  incl (l ++ m) n -> incl l n.
+Proof.
+  unfold incl; intros.
+  eapply H.
+  eapply in_or_app.
+  eauto.
+Qed.
+
+Lemma incl_appr' : forall (A : Type) (l m n : list A),
+  incl (l ++ m) n -> incl m n.
+Proof.
+  unfold incl; intros.
+  eapply H.
+  eapply in_or_app.
+  eauto.
+Qed.
+
 Lemma NoDup_incl_l : forall T (l1 l2 l2' : list T),
   NoDup (l1 ++ l2) ->
   NoDup l2' ->
