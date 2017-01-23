@@ -2709,7 +2709,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
        [[ ok = OK tt ]] * exists d ds' ts' ilist' frees' tree',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
-        [[ forall pathname',
+       [[ forall pathname',
            ~ pathname_prefix (cwd ++ srcbase ++ [srcname]) pathname' ->
            ~ pathname_prefix (cwd ++ dstbase ++ [dstname]) pathname' ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
@@ -2720,7 +2720,20 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
        [[ (Ftree * (cwd ++ srcbase ++ [srcname]) |-> Nothing
                  * (cwd ++ dstbase ++ [dstname]) |-> File srcnum srcfile)%pred (dir2flatmem2 (TStree ts' !!)) ]])
     XCRASH:hm'
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+       exists d ds' ts' ilist' frees' tree' mscs',
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+       [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+       [[ forall pathname',
+           ~ pathname_prefix (cwd ++ srcbase ++ [srcname]) pathname' ->
+           ~ pathname_prefix (cwd ++ dstbase ++ [dstname]) pathname' ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
+       [[ ds' = (pushd d ds) ]] *
+       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
+       [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
+       [[ (Ftree * (cwd ++ srcbase ++ [srcname]) |-> Nothing
+                 * (cwd ++ dstbase ++ [dstname]) |-> File srcnum srcfile)%pred (dir2flatmem2 (TStree ts' !!)) ]]
    >} AFS.rename fsxp dnum srcbase srcname dstbase dstname mscs.
   Proof.
     intros.
@@ -2943,7 +2956,15 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       eapply tree_names_distinct_prune_subtree'; eauto.
       eapply tree_names_distinct_subtree; eauto.
       distinct_names'.
-  - admit. (* need an appropriate XCRASH condition *)
+    - unfold AFS.rename_rep_inner in *.
+      xcrash_solve.
+      or_l. cancel. xform_normr. cancel.
+      or_r. cancel. repeat (progress xform_norm; cancel).
+
+      admit.
+      admit.
+      admit.
+
   Admitted.
 
   (* restricted to deleting files *)
@@ -2970,8 +2991,23 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
                       (DIRTREE.delete_from_dir name (DIRTREE.TreeDir dnum tree_elem)) (TStree ts !!) ]] *
         [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
         [[ (Ftree * (pathname ++ [name]) |-> Nothing)%pred (dir2flatmem2 (TStree ts' !!)) ]]
-    CRASH:hm
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm
+    XCRASH:hm'
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+      exists d ds' ts' mscs' tree' ilist' frees',
+        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+        [[ MSAlloc mscs' = MSAlloc mscs ]] *
+        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
+        [[ forall pathname',
+           ~ pathname_prefix (pathname ++ [name]) pathname' ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
+           treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
+        [[ ds' = pushd d ds ]] *
+        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
+        [[ tree' = DIRTREE.update_subtree pathname
+                      (DIRTREE.delete_from_dir name (DIRTREE.TreeDir dnum tree_elem)) (TStree ts !!) ]] *
+        [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
+        [[ (Ftree * (pathname ++ [name]) |-> Nothing)%pred (dir2flatmem2 (TStree ts' !!)) ]]
+
     >} AFS.delete fsxp dnum name mscs.
   Proof.
     intros.
@@ -3066,7 +3102,14 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       rewrite <- surjective_pairing in H8.
       eauto.
 
-    - admit. 
+    - xcrash_solve.
+      or_l. cancel. xform_normr. cancel.
+      or_r. cancel. repeat (progress xform_norm; cancel).
+
+      admit.
+      admit.
+      admit.
+
   Admitted.
 
 
