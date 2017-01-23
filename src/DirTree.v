@@ -6029,7 +6029,7 @@ Module DIRTREE.
   Qed.
 
   Lemma tree_inodes_in_rename_oob: forall pathname' cwd srcbase srcname dstbase dstname
-       inum f  dnum tree_elem srcnum srcents srcfile dstnum dstents tree,
+       inum f dnum tree_elem srcnum srcents dstnum dstents tree movednum movedfile,
     tree_names_distinct tree ->
     tree_inodes_distinct tree ->
     (~ pathname_prefix (cwd ++ srcbase ++ [srcname]) pathname') ->
@@ -6037,14 +6037,14 @@ Module DIRTREE.
     find_subtree pathname' tree = Some (TreeFile inum f) ->
     find_subtree cwd tree = Some (TreeDir dnum tree_elem) ->
     find_subtree srcbase (TreeDir dnum tree_elem) = Some (TreeDir srcnum srcents) ->
-    find_dirlist srcname srcents = Some (TreeFile srcnum srcfile) ->
+    find_dirlist srcname srcents = Some (TreeFile movednum movedfile) ->
     find_subtree dstbase
           (tree_prune srcnum srcents srcbase srcname (TreeDir dnum tree_elem)) =
         Some (TreeDir dstnum dstents) ->
     In inum
       (tree_inodes
          (update_subtree cwd
-            (tree_graft dstnum dstents dstbase dstname (TreeFile srcnum srcfile)
+            (tree_graft dstnum dstents dstbase dstname (TreeFile movednum movedfile)
                (tree_prune srcnum srcents srcbase srcname
                   (TreeDir dnum tree_elem))) tree)).
   Proof.
