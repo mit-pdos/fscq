@@ -4,7 +4,7 @@ Require Import Morphisms.
 Require Import StringMap MoreMapFacts.
 Require Import Eqdep.
 Require Import VerdiTactics.
-Require Import Word.
+Require Import Word Bytes.
 Require Import Mem AsyncDisk PredCrash Prog.
 Require Import MapUtils.
 Import AddrMap.
@@ -92,7 +92,7 @@ Module Go.
   | AddrMap : type -> type
   .
 
-  Definition DiskBlock := Buffer valulen.
+  Definition DiskBlock := Buffer valubytes.
 
   Inductive movable T :=
   | Here (v : T)
@@ -118,7 +118,7 @@ Module Go.
     | Num => movable W
     | Bool => bool
     | EmptyStruct => unit
-    | Buffer n => movable (word n)
+    | Buffer n => movable (bytes n)
     | Slice t' => movable (list (type_denote t')) (* kept in reverse order to make cons = append *)
     | Pair t1 t2 => type_denote t1 * type_denote t2
     | AddrMap vt => movable (Map.t (type_denote vt))
@@ -799,13 +799,13 @@ Module Go.
         type_of v0 = DiskBlock -> (* and have the correct type *)
         VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
-        s' = VarMap.add dvar (Val DiskBlock (Here v)) s ->
+        s' = VarMap.add dvar (Val DiskBlock (Here (valu2bytes v))) s ->
         runsto (DiskRead dvar avar) (d, s) (d, s')
     | RunsToDiskWrite : forall avar a vvar v (d : rawdisk) d' s v0 v0s,
         VarMap.find vvar s = Some (Val DiskBlock (Here v)) -> (* src variable must have a diskblock *)
         VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
-        d' = upd d a (v, v0 :: v0s) ->
+        d' = upd d a (bytes2valu v, v0 :: v0s) ->
         runsto (DiskWrite avar vvar) (d, s) (d', s)
     | RunsToDiskSync : forall (d : rawdisk) d' s,
         d' = sync_mem d ->
@@ -870,13 +870,13 @@ Module Go.
         type_of v0 = DiskBlock -> (* and have the correct type *)
         VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
-        s' = VarMap.add dvar (Val DiskBlock (Here v)) s ->
+        s' = VarMap.add dvar (Val DiskBlock (Here (valu2bytes v))) s ->
         step (d, s, DiskRead dvar avar) (d, s', Skip)
     | StepDiskWrite : forall avar a vvar v d d' s v0 v0s,
         VarMap.find vvar s = Some (Val DiskBlock (Here v)) -> (* src variable must have a diskblock *)
         VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
-        d' = upd d a (v, v0 :: v0s) ->
+        d' = upd d a (bytes2valu v, v0 :: v0s) ->
         step (d, s, DiskWrite avar vvar) (d', s, Skip)
     | StepDiskSync : forall (d : rawdisk) d' s,
         d' = sync_mem d ->
@@ -1078,13 +1078,13 @@ Module Go.
         type_of v0 = DiskBlock -> (* and have the correct type *)
         VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
-        s' = VarMap.add dvar (Val DiskBlock (Here v)) s ->
+        s' = VarMap.add dvar (Val DiskBlock (Here (valu2bytes v))) s ->
         runsto_InCall (DiskRead dvar avar) (d, s) (d, s')
     | RunsToICDiskWrite : forall avar a vvar v d d' s v0 v0s,
         VarMap.find vvar s = Some (Val DiskBlock (Here v)) -> (* src variable must have a diskblock *)
         VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
-        d' = upd d a (v, v0 :: v0s) ->
+        d' = upd d a (bytes2valu v, v0 :: v0s) ->
         runsto_InCall (DiskWrite avar vvar) (d, s) (d', s)
     | RunsToICDiskSync : forall (d : rawdisk) d' s,
         d' = sync_mem d ->

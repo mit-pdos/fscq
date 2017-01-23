@@ -375,7 +375,7 @@ Ltac exec_solve_step :=
   | _ => (inv_exec; eval_expr) ||
          (eval_expr;
          solve [
-           repeat eexists; eauto; pred_solve |
+           repeat eexists; rewrite ?Bytes.valu2bytes2valu; eauto; pred_solve |
            repeat econstructor; pred_solve
          ])
   end.

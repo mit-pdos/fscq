@@ -3,7 +3,7 @@ Require Import PeanoNat List Structures.OrderedTypeEx.
 Require Import RelationClasses Morphisms.
 Require Import VerdiTactics GoTactics1.
 Require Import GoSemantics.
-Require Import Word Prog ProgMonad Pred AsyncDisk.
+Require Import Word Bytes Prog ProgMonad Pred AsyncDisk.
 
 Set Implicit Arguments.
 Unset Printing Implicit Defensive.
@@ -53,6 +53,24 @@ Create HintDb gowrapper discriminated.
 
 Hint Resolve wrap_inj : gowrapper.
 
+Lemma eq_rect_inj : forall A x P p1 p2 y e,
+    @eq_rect A x P p1 y e = @eq_rect A x P p2 y e -> p1 = p2.
+Proof.
+  unfold eq_rect; intros.
+  destruct e.
+  auto.
+Qed.
+
+Lemma valu2bytes_inj : forall a b,
+    valu2bytes a = valu2bytes b -> a = b.
+Proof.
+  intros.
+  eapply eq_rect_inj.
+  eassumption.
+Qed.
+Hint Resolve valu2bytes_inj : gowrapper.
+
+
 Ltac GoWrapper_finish :=
   solve [simpl; (f_equal + idtac); eauto using inj_pair2 with gowrapper].
 
@@ -79,7 +97,7 @@ Defined.
 
 Instance GoWrapper_valu : GoWrapper valu.
 Proof.
-  refine {| wrap' := Go.Here;
+  refine {| wrap' := fun v => Go.Here (valu2bytes v);
             wrap_type := Go.DiskBlock |}; GoWrapper_t.
 Defined.
 
@@ -146,7 +164,22 @@ Class DefaultValue T {Wrapper : GoWrapper T} :=
 Arguments DefaultValue T {Wrapper}.
 
 Instance num_default_value : DefaultValue nat := {| zeroval := 0 |}. auto. Defined.
-Instance valu_default_value : DefaultValue valu := {| zeroval := $0 |}. auto. Defined.
+
+Lemma word2bytes_zero : forall nbits nbytes e,
+    @word2bytes nbits nbytes e $0 = $0.
+Proof.
+  intros.
+  unfold word2bytes.
+  rewrite e.
+  reflexivity.
+Qed.
+
+Instance valu_default_value : DefaultValue valu := {| zeroval := $0 |}.
+  unfold wrap, wrap', GoWrapper_valu, Go.default_value. cbn.
+  repeat f_equal.
+  apply word2bytes_zero.
+Defined.
+
 Instance bool_default_value : DefaultValue bool := {| zeroval := false |}. auto. Defined.
 Instance emptystruct_default_value : DefaultValue unit := {| zeroval := tt |}. auto. Defined.
 
