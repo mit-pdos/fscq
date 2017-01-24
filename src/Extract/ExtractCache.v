@@ -93,7 +93,7 @@ Proof.
       pattern pat in Pr;
       subst Pr
     end.
-  eapply extract_equiv_prog. 
+  eapply extract_equiv_prog.
   pattern_prog (MapUtils.AddrMap.Map.elements (CSMap cs)).
   eapply ProgMonad.bind_left_id.
   simpl decls_pre.

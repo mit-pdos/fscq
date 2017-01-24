@@ -20,7 +20,7 @@ VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
 
 EXTRACT_MODULES := Wrappers \
-					ExtractCache \
+					ExtractCache ExtractDiskLogHash \
 					ExtractGOcaml GoExtracted
 EXTRACT_VS 		:= $(EXTRACT_MODULES:%=Extract/%.v)
 EXTRACT_BUILD   := $(patsubst %.v,coqbuild/%.v,$(EXTRACT_VS))

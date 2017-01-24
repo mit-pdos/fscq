@@ -145,7 +145,8 @@ Ltac transform_pre :=
     end
   end.
 
-Ltac compile_ret := match goal with
+Ltac compile_ret :=
+  match goal with
   | [ |- EXTRACT Ret tt {{ _ }} _ {{ _ }} // _ ] =>
     eapply hoare_weaken_post; [ | eapply CompileSkip ]; [ cancel_go ]
   | [ |- EXTRACT Ret ?x {{ ?pre }} _ {{ _ }} // _ ] =>
@@ -153,11 +154,15 @@ Ltac compile_ret := match goal with
     | Some ?kx =>
       match var_mapping_to_ret with
       | ?kret => (unify kx kret; fail 2) ||
-        eapply hoare_weaken; [
-        eapply CompileDup with (var0 := kx) (var' := kret)
-        | cancel_go.. ]
+                                        eapply hoare_weaken; [
+                  eapply CompileDup with (var0 := kx) (var' := kret)
+                | cancel_go.. ]
       end
     end
+  end.
+
+Ltac compile_ret_transformable :=
+  match goal with
   | [ |- EXTRACT Ret ?x {{ ?pre }} _ {{ _ }} // _ ] =>
     is_transformable x;
     let ret := var_mapping_to_ret in
@@ -601,6 +606,7 @@ Ltac compile_step :=
   || compile_map_op
   || compile_join
   || compile_split
+  || compile_ret_transformable
   || compile_decompose
   || transform_pre (* TODO: only do this when it should be useful *)
   .

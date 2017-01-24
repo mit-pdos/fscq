@@ -1,7 +1,8 @@
 Require Import FunctionalExtensionality ProofIrrelevance.
-Require Import PeanoNat List Structures.OrderedTypeEx.
+Require Import Nat PeanoNat List Structures.OrderedTypeEx.
 Require Import RelationClasses Morphisms.
-Require Import VerdiTactics GoTactics1.
+Require Import Rounding.
+Require Import Omega VerdiTactics GoTactics1.
 Require Import GoSemantics.
 Require Import Word Bytes Prog ProgMonad Pred AsyncDisk.
 
@@ -100,6 +101,23 @@ Proof.
   refine {| wrap' := fun v => Go.Here (valu2bytes v);
             wrap_type := Go.DiskBlock |}; GoWrapper_t.
 Defined.
+
+Instance GoWrapper_bytes n : GoWrapper (bytes n).
+Proof.
+  refine {| wrap' :=  Go.Here;
+            wrap_type := Go.Buffer n |}; GoWrapper_t.
+Defined.
+
+Instance GoWrapper_word nbits nbytes (e : nbytes * 8 = nbits) : GoWrapper (word nbits).
+Proof.
+  rewrite <- e.
+  refine {| wrap' :=  Go.Here;
+            wrap_type := Go.Buffer nbytes |}; GoWrapper_t.
+Defined.
+
+Hint Extern 2 (GoWrapper (word ?n)) =>
+apply GoWrapper_word with (nbytes := n / 8); auto;
+  ( apply mul_div; [ auto | omega ] ) : typeclass_instances.
 
 Instance GoWrapper_unit : GoWrapper unit.
 Proof.
@@ -202,6 +220,16 @@ Instance pair_default_value A B {Wa : GoWrapper A} {Wb : GoWrapper B}
 Defined.
 
 Instance list_default_value A {W : GoWrapper A} : DefaultValue (list A) := {| zeroval := [] |}. auto. Defined.
+Instance bytes_default_value n : DefaultValue (bytes n) := {| zeroval := $0 |}. auto. Defined.
+Instance word_default_value (nbits nbytes : nat) (e : nbytes * 8 = nbits) : @DefaultValue (word nbits) ltac:(eauto with typeclass_instances).
+  rewrite <- e.
+  econstructor.
+  reflexivity.
+Defined.
+
+Hint Extern 2 (DefaultValue (word ?n)) =>
+apply word_default_value with (nbytes := n / 8); auto;
+  ( apply mul_div; [ auto | omega ] ) : typeclass_instances.
 
 Class WrapByTransforming T := {
   T' : Type;
