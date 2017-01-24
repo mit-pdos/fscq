@@ -153,8 +153,6 @@ Proof.
   rewrite find_subtree_update_subtree_ne_path; eauto.
   rewrite upd_ne; auto.
   contradict H1; subst; eauto. exists nil. rewrite app_nil_r. auto.
-  unfold pathname_prefix. contradict H1; deex. eauto.
-  unfold pathname_prefix. contradict H2; deex. eauto.
 Qed.
 
 (** This should be useful in carrying forward separation-logic facts
