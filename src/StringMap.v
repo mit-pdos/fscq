@@ -42,9 +42,9 @@ Section CompSpec.
   Qed.
 End CompSpec.
 
-Implicit Arguments Comp_eq [A eq0 lt x y c].
-Implicit Arguments Comp_lt [A eq0 lt x y c].
-Implicit Arguments Comp_gt [A eq0 lt x y c].
+Arguments Comp_eq [A eq0 lt x y c].
+Arguments Comp_lt [A eq0 lt x y c].
+Arguments Comp_gt [A eq0 lt x y c].
 
 Theorem Nlt_irrefl' : forall n : N, n < n -> False.
   exact Nlt_irrefl.

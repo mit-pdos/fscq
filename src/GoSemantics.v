@@ -8,6 +8,7 @@ Require Import VerdiTactics.
 Require Import Word Bytes.
 Require Import Mem AsyncDisk PredCrash Prog.
 Require Import MapUtils.
+Require Import Bool.
 Import AddrMap.
 
 Import ListNotations.
@@ -693,8 +694,6 @@ Module Go.
     | nil => true
     | x :: xs => forallb (fun e => negb (eqb e x)) xs && NoDup_bool eqb xs
     end.
-
-  Require Import Bool.
 
   Lemma NoDup_bool_sound : forall A eqb, (forall a b : A, eqb a b = true <-> a = b) -> forall ls, NoDup_bool eqb ls = true -> NoDup ls.
     induction ls; simpl; intros.
