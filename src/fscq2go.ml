@@ -60,7 +60,7 @@ module TranscriberState = struct
       match coq_go_type with
       | Go.Num -> "Num"
       | Go.Bool -> "bool"
-      | Go.DiskBlock -> "DiskBlock"
+      | Go.Buffer n -> "[" ^ to_string n ^ "]byte"
       | Go.EmptyStruct -> "Empty"
       | Go.Pair (a, b) ->
         let name = "pair_" ^ (get_go_type gs a) ^ "_" ^ (get_go_type gs b) in
@@ -130,7 +130,7 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
      | Go.Moved -> "(moved)")
   | Go.Bool -> if Obj.magic x then "true" else "false"
   | Go.EmptyStruct -> "Empty{}"
-  | Go.DiskBlock ->
+  | Go.Buffer n ->
     (match Obj.magic x with
      | Go.Here v -> failwith "TODO: DiskBlock -> String"
      | Go.Moved -> "(moved)")
@@ -163,7 +163,7 @@ let rec can_alias (t : Go.coq_type) =
   | Num -> false
   | Bool -> true
   | EmptyStruct -> true
-  | DiskBlock -> false
+  | Buffer n -> false
   | Slice _ -> false
   | Pair (t1, t2) -> can_alias t1 && can_alias t2
   | AddrMap _ -> false
