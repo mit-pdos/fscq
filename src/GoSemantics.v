@@ -84,14 +84,14 @@ Module Go.
   Module Map := AddrMap.Map.
 
   Inductive type :=
-  | Num
-  | Bool
-  | EmptyStruct
-  | Buffer : nat -> type (* pointer to array in Go *)
-  | ImmutableBuffer : nat -> type (* byte slice in Go *)
-  | Slice : type -> type
-  | Pair : type -> type -> type
-  | AddrMap : type -> type
+  | Num (* In Go: *big.Int *)
+  | Bool (* In Go: bool *)
+  | EmptyStruct (* In Go: struct{} *)
+  | Buffer : nat -> type (* In Go: *[n]byte *)
+  | ImmutableBuffer : nat -> type (* In Go: []byte *)
+  | Slice : type -> type (* In Go: []<whatever> *)
+  | Pair : type -> type -> type (* In Go: struct{fst <whatever>; snd <whatever>}, I think? *)
+  | AddrMap : type -> type (* In Go: specialized map type *)
   .
 
   Definition DiskBlock := Buffer valubytes.

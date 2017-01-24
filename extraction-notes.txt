@@ -1,0 +1,11 @@
+Design decisions for the Go semantics and their "pretty printing" into Go:
+1. Disallow aliasing of mutable values. It's possible to have multiple variables containing the same immutable buffer or bool value, but you are never allowed to have multiple variables pointing to the same buffer or big int.
+2. Avoid making unnecessary runtime copies in Go. This means that, when possible, we should use moves rather than copies, and use pointers to pass around large values. (Right now we don't have a move op, but we'll want to add one.)
+3. Pass all arguments by reference, but have them behave otherwise identically inside the function.
+
+This leads to these corresponding requirements for the "pretty printer":
+1. Make sure to deep copy mutable values when a Dup operation happens.
+2. Use pointer types for large values (whether mutable or immutable) so that values can be moved without copying the whole thing. "large values" are things like arrays (e.g. "[4096]byte") and also big.Int, since e.g. Set() does a copy.
+3. To implement the semantics of passing arguments by reference, I see two options:
+  - Add an extra layer of pointer indirection on them (e.g. "bool" becomes "*bool" and "*[32]byte" becomes "**[32]byte"), and dereference every time parameter variables are used. Function signatures would look like "func(a *bool, b **[32]byte)" and be called like "foo(&x1, &x2)".
+  - Make all arguments be input arguments *and* output arguments; copy the input arguments to the output arguments at the end. Function signatures would look like "func foo(a bool, b *[32]byte) (a_ret bool, b_ret *[32]byte)" and be called like "x1, x2 = foo(x1, x2)".
