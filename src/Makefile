@@ -85,6 +85,7 @@ $(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
 $(VS_VIO) $(EXTRACT_VIO): coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -j $(J) -f Makefile.coq quick )
 	@touch coqbuild/*.vio
+	@touch coqbuild/Extract/*.vio
 
 checkproofs: coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -f Makefile.coq checkproofs J=$(J) )
