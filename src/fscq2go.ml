@@ -55,7 +55,7 @@ module TranscriberState = struct
 
   let rec get_go_type (gs : global_state) (coq_go_type : Go.coq_type) =
     try
-      snd (List.find (fun x -> fst x = coq_go_type) gs.go_types)
+      snd (List.find (fun x -> Go.type_eq_dec (fst x) coq_go_type) gs.go_types)
     with Not_found ->
       match coq_go_type with
       | Go.Num -> "Num"
@@ -158,16 +158,7 @@ let zero_val gs (t : Go.coq_type) =
   "New_" ^ go_type ^ "()"
 
 (* mirror of Go.can_alias in GoSemantics.v *)
-let rec can_alias (t : Go.coq_type) =
-  match t with
-  | Num -> false
-  | Bool -> true
-  | EmptyStruct -> true
-  | Buffer n -> false
-  | Slice _ -> false
-  | Pair (t1, t2) -> can_alias t1 && can_alias t2
-  | AddrMap _ -> false
-;;
+let can_alias  = Go.can_alias
 
 let val_ref gType varname =
   if (can_alias gType)

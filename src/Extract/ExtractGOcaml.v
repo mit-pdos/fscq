@@ -18,7 +18,8 @@ Require Import ZArith.
 Extract Constant Pos.compare_cont => "fun c x y -> Big.compare_case c Lt Gt x y".
 
 Require Import GoExtracted.
+Require Import GoSemantics.
 
 Cd "../codegen".
 
-Separate Extraction GoExtracted.
+Separate Extraction GoExtracted GoSemantics.
