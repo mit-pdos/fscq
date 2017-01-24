@@ -21,7 +21,7 @@ VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
 
 EXTRACT_MODULES := Wrappers \
 					ExtractCache ExtractDiskLogHash \
-					ExtractGOcaml GoExtracted
+					GoExtracted
 EXTRACT_VS 		:= $(EXTRACT_MODULES:%=Extract/%.v)
 EXTRACT_BUILD   := $(patsubst %.v,coqbuild/%.v,$(EXTRACT_VS))
 EXTRACT_VIO     := $(patsubst %.v,coqbuild/%.vio,$(EXTRACT_VS))
@@ -67,7 +67,7 @@ codegen/src/fscq/%.go: golib/%.go
 	@mkdir -p $(dir $@)
 	ln -s $(abspath $<) $@
 
-codegen/src/gofscq/fscq.go: codegen/fscq2go.native
+codegen/src/gofscq/fscq.go: codegen/fscq2go.native codegen/src/gofscq/
 	@mkdir -p $(dir $@)
 	$< > $@.tmp
 	mv $@.tmp $@
@@ -82,7 +82,7 @@ codegen/fscq2go.native: $(GOCAML_ML) codegen/big.ml codegen/fscq2go.ml
 $(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractJSON )
 
-$(VS_VIO): coqbuild/Makefile.coq
+$(VS_VIO) $(EXTRACT_VIO): coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -j $(J) -f Makefile.coq quick )
 	@touch coqbuild/*.vio
 
