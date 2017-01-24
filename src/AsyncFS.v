@@ -1204,6 +1204,7 @@ Module AFS.
     XCRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists d tree' srcnum srcents dstnum dstents subtree pruned renamed ilist' frees' mscs',
+      [[ MSAlloc mscs' = MSAlloc mscs ]] *
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
       rename_rep_inner d frees' ilist' tree' srcnum srcents subtree pruned dstnum dstents renamed mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname
     >} rename fsxp dnum srcpath srcname dstpath dstname mscs.

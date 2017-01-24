@@ -2723,6 +2723,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
        exists d ds' ts' ilist' frees' tree' mscs',
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
+       [[ MSAlloc mscs' = MSAlloc mscs ]] *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
        [[ forall pathname',
            ~ pathname_prefix (cwd ++ srcbase ++ [srcname]) pathname' ->
@@ -2758,6 +2759,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     2: distinct_names'.
 
     cancel.
+
     eapply treeseq_in_ds_pushd; eauto.
     unfold treeseq_one_safe; simpl.
     rewrite H0 in H11.
@@ -2961,7 +2963,12 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       or_l. cancel. xform_normr. cancel.
       or_r. cancel. repeat (progress xform_norm; cancel).
 
-      admit.
+      eapply treeseq_in_ds_pushd; eauto.
+      unfold treeseq_one_safe; simpl.
+      rewrite <- surjective_pairing in H11.
+      rewrite H0 in H11.
+      eassumption.
+
       admit.
       admit.
 
