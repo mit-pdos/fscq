@@ -1,6 +1,6 @@
 Require Import List String.
 Require Import StringMap.
-Require Import Word Prog BasicProg Pred.
+Require Import Word AsyncDisk Prog BasicProg Pred.
 Require Import GoSemantics GoHoare GoFacts GoCompilationLemmas GoExtraction.
 Import ListNotations.
 Import Go.
@@ -96,7 +96,7 @@ Eval lazy in projT1 micro_add_use_twice.
 
 Example compile_one_read : sigT (fun p =>
   EXTRACT Read 1
-  {{ 0 ~> $0 }}
+  {{ 0 ~> ($0 : valu) }}
     p
   {{ fun ret => 0 ~> ret }} // StringMap.empty _).
 Proof.
