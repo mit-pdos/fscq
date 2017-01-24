@@ -1,7 +1,7 @@
 Require Import Eqdep.
 Require Import Morphisms Relation_Operators.
 Require Import PeanoNat Plus String List.
-Require Import Word AsyncDisk Prog ProgMonad BasicProg Pred.
+Require Import Word Bytes AsyncDisk Prog ProgMonad BasicProg Pred.
 Require Import StringMap.
 Require Import GoSemantics GoFacts GoHoare GoSepAuto.
 Require Import GoTactics2.
@@ -554,25 +554,18 @@ Proof.
   cancel_go.
 Qed.
 
-
-Lemma CompileWeq : forall A (a b : valu) env xa xb retvar avar bvar,
-  EXTRACT Ret a
-  {{ A }}
-    xa
-  {{ fun ret => avar ~> ret * A }} // env ->
-  (forall (av : valu),
-  EXTRACT Ret b
-  {{ avar ~> av * A }}
-    xb
-  {{ fun ret => bvar ~> ret * avar ~> av * A }} // env) ->
-  EXTRACT Ret (weq a b)
-  {{ A }}
-    xa ; xb ; retvar <~ (Var avar = Var bvar)
-  {{ fun ret => retvar ~> ret * A }} // env.
+Lemma CompileFreeze : forall n (a : bytes n) env dvar svar F,
+    EXTRACT Ret a
+    {{ (exists a0, dvar |-> Val (ImmutableBuffer n) a0) * svar ~> a * F }}
+      Modify FreezeBuffer ^(dvar, svar)
+    {{ fun ret => dvar |-> Val (ImmutableBuffer n) ret * svar ~>? bytes n * F }} // env.
 Proof.
-  unfold ProgOk.
-  intuition.
-Admitted.
+  intros. unfold ProgOk.
+  inv_exec_progok;
+    repeat exec_solve_step.
+  all: contradiction H1; repeat eexists; eauto. econstructor; [ eval_expr; eauto .. ].
+Qed.
+
 
 Lemma CompileIf : forall V varb (b : bool)
   (ptrue pfalse : prog V) xptrue xpfalse F G env,
