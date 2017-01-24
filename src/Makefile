@@ -67,7 +67,7 @@ codegen/src/fscq/%.go: golib/%.go
 	@mkdir -p $(dir $@)
 	ln -s $(abspath $<) $@
 
-codegen/src/gofscq/fscq.go: codegen/fscq2go.native codegen/src/gofscq/
+codegen/src/gofscq/fscq.go: codegen/fscq2go.byte
 	@mkdir -p $(dir $@)
 	$< > $@.tmp
 	mv $@.tmp $@
@@ -78,6 +78,11 @@ codegen/fscq2go.native: $(GOCAML_ML) codegen/big.ml codegen/fscq2go.ml
 	rm -f $@
 	(cd codegen && ocamlbuild -cflag -g -lib nums -lib str -no-links fscq2go.native)
 	cp codegen/_build/fscq2go.native $@
+
+codegen/fscq2go.byte: $(GOCAML_ML) codegen/big.ml codegen/fscq2go.ml
+	rm -f $@
+	(cd codegen && ocamlbuild -cflag -g -tag debug -lib nums -lib str -no-links fscq2go.byte)
+	cp codegen/_build/fscq2go.byte $@
 
 $(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractJSON )
