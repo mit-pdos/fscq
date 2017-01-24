@@ -1,16 +1,19 @@
 package fscq
 
+import (
+)
+
 type Empty struct{}
 
 func (x Empty) DeepCopy() *Empty {
-	return &x
+    return &x
 }
 
 func New_bool() bool {
-	return false
+    return false
 }
 
 func New_Empty() Empty {
-	var e Empty
-	return e
+    var e Empty
+    return e
 }

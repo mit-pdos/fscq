@@ -3,24 +3,30 @@ package fscq
 import(
 	"math/big"
 	"fmt"
+	"bytes"
 	)
 
-type DiskBlock struct {
-	val big.Int
+type Buffer struct {
+	sz Num
+	val []byte
 }
 
-func (d DiskBlock) DeepCopy () *DiskBlock {
-	x := new(DiskBlock)
-	(*x).val = d.val
+func (d Buffer) DeepCopy () *Buffer {
+	x := new(Buffer)
+	(*x).sz = d.sz
+	copy((*x).val, d.val)
 	return x
 }
 
-func New_DiskBlock() *DiskBlock {
-	return new(DiskBlock)
+func New_Buffer(sz Num) *Buffer {
+	x := new(Buffer)
+	x.sz = sz
+	return x
 }
 
-func DiskWrite (addr *Num, val *DiskBlock) {
-	fmt.Println("DiskWrite %s -> %s", val.val.String(), addr.String())
+func DiskWrite (addr *big.Int, buf *Buffer) {
+	buffer := bytes.NewBuffer(buf.val)
+	fmt.Println("DiskWrite %s -> %s", buffer.String(), addr.String())
     // TODO implement this
 }
 

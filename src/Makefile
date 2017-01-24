@@ -35,7 +35,7 @@ GOCAML_MOD := Ascii BinInt BinNat BinNums BinPos Datatypes \
 
 GOCAML_ML := $(GOCAML_MOD:%=codegen/%.ml)
 
-GO_LIB_MOD	:= disk num util
+GO_LIB_MOD	:= disk map map_test num util
 GO_LIB		:= $(GO_LIB_MOD:%=golib/%.go)
 GO_LIB_INST := $(patsubst golib/%.go,codegen/src/gofscq/%.go,$(GO_LIB))
 
@@ -47,7 +47,8 @@ GO_EX_INST	:= $(patsubst golib/%.go,codegen/src/fscq/%.go,$(GO_EX))
  # this is just so "make" rebuilds the .vio files and is temporary
 all: fscq
 
-fscq: $(GO_LIB_INST) $(GO_EX_INST)
+fscq: $(GO_LIB_INST) $(GO_EX_INST) codegen/src/gofscq/fscq.go
+	go install ./codegen/src/gofscq
 	go install ./codegen/src/fscq
 	cp codegen/bin/fscq fscq
 
@@ -66,13 +67,15 @@ codegen/src/fscq/%.go: golib/%.go
 
 codegen/src/gofscq/fscq.go: codegen/fscq2go.native
 	@mkdir -p $(dir $@)
-	$< > $@
+	$< > $@.tmp
+	mv $@.tmp $@
 	gofmt $@ > $@.fmt
 	mv $@.fmt $@
 
 codegen/fscq2go.native: $(GOCAML_ML) codegen/big.ml codegen/fscq2go.ml
 	rm -f $@
-	(cd codegen && ocamlbuild -cflag -g -lib nums -lib str fscq2go.native)
+	(cd codegen && ocamlbuild -cflag -g -lib nums -lib str -no-links fscq2go.native)
+	cp codegen/_build/fscq2go.native $@
 
 $(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
 	( cd coqbuild && coqc -q -R . Fscq ExtractJSON )
