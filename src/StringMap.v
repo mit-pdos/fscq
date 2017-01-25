@@ -42,9 +42,9 @@ Section CompSpec.
   Qed.
 End CompSpec.
 
-Arguments Comp_eq [A eq0 lt x y c].
-Arguments Comp_lt [A eq0 lt x y c].
-Arguments Comp_gt [A eq0 lt x y c].
+Arguments Comp_eq [A eq0 lt x y c] _ _ _.
+Arguments Comp_lt [A eq0 lt x y c] _ _ _ _.
+Arguments Comp_gt [A eq0 lt x y c] _ _ _ _.
 
 Theorem Nlt_irrefl' : forall n : N, n < n -> False.
   exact Nlt_irrefl.
