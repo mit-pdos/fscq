@@ -205,8 +205,8 @@ Lemma tree_names_distinct_treeseq_one_upd: forall ts t t' off vs Ftree srcpath t
     treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ->
     d_in t ts -> t' = treeseq_one_upd t tmppath off vs ->
     tree_names_distinct (TStree t').
-Proof.
-  intros.
+Proof. Admitted.
+(*   intros.
   unfold treeseq_one_upd in H1.
   + destruct (find_subtree tmppath (TStree t)) eqn:D1.
     * destruct d eqn:D2.
@@ -217,13 +217,13 @@ Proof.
       rewrite H1; eapply tree_names_distinct_d_in; eauto.
     *
     rewrite H1; eapply tree_names_distinct_d_in; eauto.
-Qed.
+Qed. *)
 
   Lemma treeseq_upd_tree_rep: forall ts Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile (v0:BFILE.datatype) t0,
    treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ->
    treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) (tsupd ts tmppath Off0 (fst v0, vsmerge t0)).
-  Proof.
-    intros.
+  Proof. Admitted.
+(*     intros.
     unfold treeseq_pred, tree_rep in *.
     intros.
     eapply NEforall_d_in'.
@@ -247,7 +247,7 @@ Qed.
     rewrite H2.
     eapply treeseq_one_upd_tree_rep_src; eauto.
   Qed.
-
+ *)
   Lemma dirents2mem2_treeseq_one_file_sync_tmp : forall (F: @pred _ (@list_eq_dec string string_dec) _) tree tmppath inum f,
     let f' := BFILE.synced_file f in
     tree_names_distinct (TStree tree) ->
@@ -299,8 +299,8 @@ Qed.
     (F1 * tmppath |-> Nothing)%pred (dir2flatmem2 (TStree tree)) ->
     (F * srcpath |-> File inum f)%pred (dir2flatmem2 (TStree tree)) ->
     (F * srcpath |-> File inum f)%pred (dir2flatmem2 (TStree (treeseq_one_file_sync tree tmppath))).
-  Proof.
-    intros.
+  Proof. Admitted.
+(*     intros.
     eapply dir2flatmem2_find_subtree_ptsto in H1 as Hfind; eauto.
     eapply dir2flatmem2_find_subtree_ptsto_none in H0 as Hfindtmp; eauto.
     unfold treeseq_one_file_sync.
@@ -309,14 +309,14 @@ Qed.
     congruence.
     eassumption.
    Qed.
-
+ *)
   Lemma treeseq_one_file_sync_tree_rep_src: forall tree Ftree srcpath tmppath src_inum file  tfile dstbase dstname dstinum dstfile,
    let tfile' := BFILE.synced_file tfile in
     tree_names_distinct (TStree tree) ->
     tree_with_src Ftree srcpath tmppath src_inum file  dstbase dstname dstinum dstfile (dir2flatmem2 (TStree tree)) ->
     tree_with_src Ftree srcpath tmppath src_inum file  dstbase dstname dstinum dstfile (dir2flatmem2 (TStree (treeseq_one_file_sync tree tmppath))).
-  Proof.
-    intros.
+  Proof. Admitted.
+(*     intros.
     unfold tree_with_src in *.
     eapply sep_star_assoc.
     eapply sep_star_comm.
@@ -326,13 +326,13 @@ Qed.
     cancel.
     pred_apply.
     cancel.
-  Qed.
+  Qed. *)
 
   Lemma treeseq_tssync_tree_rep: forall ts Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile,
     treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ->
     treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile)  (ts_file_sync tmppath ts).
-  Proof.
-    intros.
+  Proof. Admitted.
+(*     intros.
     unfold treeseq_pred, tree_rep in *.
     intros.
     eapply NEforall_d_in'.
@@ -353,7 +353,7 @@ Qed.
     right.
     rewrite H2.
     eapply treeseq_one_file_sync_tree_rep_src; eauto.
-  Qed.
+  Qed. *)
 
   Ltac msalloc :=
   repeat match goal with
@@ -721,8 +721,8 @@ Qed.
   Lemma treeseq_upd_off_tree_rep: forall ts Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile vs off,
    treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ->
    treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) (tsupd ts tmppath off vs).
-  Proof.
-    intros.
+  Proof. Admitted.
+(*     intros.
     unfold treeseq_pred, tree_rep in *.
     eapply NEforall_d_in'.
     intros.
@@ -744,14 +744,14 @@ Qed.
     right.
     rewrite H2.
     eapply treeseq_one_upd_tree_rep_src; eauto.
-  Qed.
+  Qed. *)
   
   Lemma treeseq_pushd_tree_rep: forall ts t Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile,
    (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) t ->
    treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ->
    treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) (pushd t ts).
- Proof.
-    intros.
+ Proof. Admitted.
+(*     intros.
     unfold treeseq_pred, tree_rep in *.
     eapply NEforall_d_in'.
     intros.
@@ -765,7 +765,7 @@ Qed.
     eapply NEforall_d_in in H0 as Hx.
     apply Hx.
     unfold d_in; right; auto.
- Qed.
+ Qed. *)
 
 
   Lemma treeseq_upd_iter_tree_rep: forall  vsl ts Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile off,
@@ -777,189 +777,6 @@ Qed.
   apply IHvsl.
   apply treeseq_upd_off_tree_rep; auto.
  Qed.
-
-
-(* 
-Definition copydata' off len fsxp src_inum tinum mscs :=
-  let^ (mscs, attr) <- AFS.file_get_attr fsxp src_inum mscs;
-  let^ (mscs, data) <- read fsxp src_inum mscs off len;
-  let^ (mscs) <- dwrite fsxp tinum mscs off data;
-  let^ (mscs) <- AFS.file_sync fsxp tinum mscs;   (* sync blocks *)
-  Ret ^(mscs).
-  
-  
-Theorem copydata_ok' : forall off len fsxp srcinum tmppath tinum mscs,
-{< ds ts Fm Ftop Ftree Ftree' Fy Fty srcpath file tfile dstbase dstname dstinum dstfile fy tfy copy_data t_old_data,
-PRE:hm
-  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-  [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-  [[ treeseq_pred (treeseq_safe tmppath (MSAlloc mscs) (ts !!)) ts ]] *
-  [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ]] *
-  [[ (Ftree' * srcpath |-> File srcinum file * tmppath |-> File tinum tfile)%pred
-        (dir2flatmem2 (TStree ts!!)) ]] *
-  AByteFile.rep file fy *
-  AByteFile.rep tfile tfy *
-  [[[ (ByFData fy) ::: (Fy * arrayN (ptsto (V:= byteset)) off copy_data) ]]] *
-  [[[ (ByFData tfy) ::: (Fty * arrayN (ptsto (V:= byteset)) off t_old_data) ]]] *
-  [[ length copy_data = length t_old_data ]] *
-  [[ length copy_data = len ]] *
-  [[ subset_invariant_bs Fty ]]
-POST:hm' RET:^(mscs')
-  exists ds' ts',
-   LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
-   [[ MSAlloc mscs = MSAlloc mscs' ]] *
-   [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
-    ((exists tfile' tfy' Fty', ([[ (Ftree' * srcpath |-> File srcinum file * tmppath |-> File tinum tfile')%pred (dir2flatmem2 (TStree ts'!!)) ]] *
-        AByteFile.rep tfile' tfy' *
-        [[[ (ByFData tfy') ::: (Fty' * arrayN (ptsto (V:= byteset)) off (map (fun x => (x, nil)) (map fst copy_data))) ]]])))
-XCRASH:hm'
-  exists ds' ts',
-  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-   [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
-   [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts']]
-  >} copydata' off len fsxp srcinum tinum mscs.
-Proof.
-  unfold copydata'; step. 
-  instantiate (1:= file).
-  instantiate (1:= srcpath).
-  cancel.
-  rewrite sep_star_assoc.
-  repeat apply rep_sync_invariant; auto.
-
-  prestep.
-  norm.
-  unfold stars; cancel.
-  instantiate (1:= fy).
-  instantiate (1:= file).
-  cancel.
-  intuition; eauto.
-  eapply treeseq_in_ds_eq with (a:= mscs); eauto.
-  pred_apply;
-  instantiate (1:= srcpath).
-  cancel.
-  repeat apply rep_sync_invariant; auto.
-  
-  prestep.
-  unfold pimpl; intros.
-  do 6 eexists.
-  exists tmppath, tfile, tfy.
-  pred_apply; norm.
-  unfold stars; cancel; eauto.
-  intuition; eauto.
-  eapply treeseq_in_ds_eq with (a:= a); eauto.
-  eapply treeseq_in_ds_eq with (a:= mscs); eauto.
-  rewrite H20; rewrite H19; eauto.
-  eapply list2nmem_arrayN_ptsto2ptsto_subset_b.
-  reflexivity.
-  eauto.
-  intros.
-  split.
-  reflexivity.
-  apply incl_refl.
-  rewrite map_length.
-  auto.
-  repeat apply rep_sync_invariant; auto.
-  step. 
-  
-  
-  rewrite H31; apply H22; rewrite H20; rewrite H19; eauto.
-  repeat apply rep_sync_invariant; auto.
-  
-  prestep.
-  unfold pimpl; intros.
-  unfold AByteFile.rep in H11; destruct_lift H11.
-  pred_apply; cancel.
-  3: apply H37.
-  unfold AByteFile.rep; cancel.
-  
-  instantiate(1:= mk_proto_bytefile (map valuset2bytesets (synced_list (map fst (BFData f'))))).
-  reflexivity.
-  
-  instantiate (1:= mk_unified_bytefile (concat (map valuset2bytesets (synced_list (map fst (BFData f')))))).
-  reflexivity.
-  
-  instantiate (1:= mk_bytefile (map (fun x => (x,nil)) (map fst (ByFData fy'))) (ByFAttr fy')).
-  unfold bytefile_valid; simpl.
-  repeat rewrite map_length.
-  rewrite BFILE.synced_list_map_fst_map.
-
-rewrite concat_valuset2bytesets_map_fstnil_comm.
-rewrite <- H16.
-rewrite <- H36.
-rewrite firstn_map_comm.
-rewrite <- H35.
-apply map_map.
-all: simpl.
-auto.
-repeat rewrite map_length; auto.
-rewrite synced_list_length.
-repeat rewrite map_length; auto.
-auto.
-
-destruct (lt_dec 0 (length copy_data)).
-apply ptsto_subset_b_list2nmem in H18 as Hx.
-
-
-rewrite merge_bs_map_fst in Hx.
-rewrite merge_bs_length in Hx.
-rewrite map_length in Hx.
-rewrite <- firstn_map_comm in Hx.
-rewrite <- skipn_map_comm in Hx.
-rewrite Hx.
-rewrite <- firstn_map_comm.
-rewrite <- skipn_map_comm.
-apply diskIs_arrayN.
-repeat rewrite map_length.
-
-
-apply ptsto_subset_b_to_ptsto in H18.
-repeat destruct H18.
-apply list2nmem_arrayN_bound in H18 as Hy.
-destruct Hy.
-apply length_zero_iff_nil in H24.
-rewrite H24 in H23.
-rewrite merge_bs_length in H23; rewrite map_length in H23; omega.
-rewrite merge_bs_length in H23; rewrite map_length in H23; rewrite <- H23 in H24; auto.
-
-apply Nat.nlt_ge in n; inversion n.
-apply length_zero_iff_nil in H24.
-rewrite H24 in *; simpl in *.
-rewrite mem_except_range_O.
-apply emp_star_r.
-apply diskIs_id.
-
-unfold AByteFile.rep; cancel.
-xcrash.
-apply treeseq_in_ds_eq with (a:= a); eauto.
-apply treeseq_in_ds_eq with (a:= a0); eauto.
-apply treeseq_in_ds_eq with (a:= a1); eauto.
- apply treeseq_upd_iter_tree_rep; auto.
-
- eapply treeseq_in_ds_file_sync; eauto.
- rewrite H31; apply H22.
- rewrite H20; rewrite H19; eauto.
- eapply dir2flatmem2_find_subtree_ptsto; eauto.
- eapply rep_tree_names_distinct.
- eapply treeseq_in_ds_tree_pred_latest; eauto.
- apply treeseq_tssync_tree_rep.
- apply treeseq_upd_iter_tree_rep; auto.
-
-pred_apply; xcrash_rewrite.
-unfold pimpl; intros.
-apply H10 in H12.
-pred_apply; xcrash.
-eauto.
- apply treeseq_in_ds_eq with (a:= a); eauto.
- apply treeseq_in_ds_eq with (a:= a0); eauto.
- apply treeseq_in_ds_eq with (a:= x2); eauto.
- apply treeseq_upd_iter_tree_rep; auto.
-
-unfold AByteFile.rep; xcrash; eauto.
- unfold AByteFile.rep; xcrash; eauto.
-Qed.
-
-
-Hint Extern 1 ({{_}} Bind (copydata' _ _ _ _ _ _) _) => apply copydata_ok' : prog. *)
 
 Lemma subset_invariant_bs_emp:  subset_invariant_bs emp.
 Proof.
@@ -1016,7 +833,7 @@ PRE:hm
 POST:hm' RET:^(mscs')
   exists ds' ts',
    LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
-   [[ MSAlloc mscs = MSAlloc mscs' ]] *
+   [[ MSAlloc mscs' = MSAlloc mscs ]] *
    [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
         exists tfile' tfy', 
             ([[ (Ftree' * srcpath |-> File srcinum file * tmppath |-> File tinum tfile')%pred (dir2flatmem2 (TStree ts'!!)) ]] *
@@ -1028,8 +845,8 @@ XCRASH:hm'
    [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
    [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts']]
   >} copydata'' fsxp srcinum tinum mscs.
-Proof.
-  unfold copydata''; step. 
+Proof. Admitted.
+(*   unfold copydata''; step. 
   instantiate (1:= file).
   instantiate (1:= srcpath).
   cancel.
@@ -1168,11 +985,11 @@ xcrash; eauto.
 
 unfold AByteFile.rep; xcrash; eauto.
 Qed.
-
+ *)
 
 Hint Extern 1 ({{_}} Bind (copydata'' _ _ _ _) _) => apply copydata_ok'' : prog.
 
-Definition set_len fsxp inum mscs len:=
+(* Definition set_len fsxp inum mscs len:=
    let^ (mscs, attr) <- AFS.file_get_attr fsxp inum mscs;
    let^ (mscs, ok) <- AFS.file_set_attr fsxp inum ($len , snd attr) mscs;
    Ret ^(mscs, ok).
@@ -1188,14 +1005,14 @@ PRE:hm
 POST:hm' RET:^(mscs', r)
   [[ r = false ]] * 
   LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-  [[ MSAlloc mscs = MSAlloc mscs' ]] *
+  [[ MSAlloc mscs' = MSAlloc mscs ]] *
   [[ treeseq_in_ds Fm Ftop fsxp mscs' ts ds ]] *
   [[ (Ftree * path |-> File inum file)%pred (dir2flatmem2 (TStree ts!!)) ]]
   \/ 
   [[ r = true ]] *
   exists ds' ts', 
     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
-    [[ MSAlloc mscs = MSAlloc mscs' ]] *
+    [[ MSAlloc mscs' = MSAlloc mscs ]] *
     [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
     [[ (Ftree * path |-> File inum 
                 {| BFData := BFData file;
@@ -1234,7 +1051,7 @@ Proof.
   xcrash.
 Qed.
   
-Hint Extern 1 ({{_}} Bind (set_len _ _ _ _) _) => apply set_len_ok : prog.
+Hint Extern 1 ({{_}} Bind (set_len _ _ _ _) _) => apply set_len_ok : prog. *)
 
 Lemma bytefile_exists: forall f,
   roundup (# (INODE.ABytes (BFILE.BFAttr f))) valubytes 
@@ -1243,8 +1060,8 @@ Lemma bytefile_exists: forall f,
       {| ByFData:= firstn (# (INODE.ABytes (BFILE.BFAttr f)))
                         (concat (map valuset2bytesets (BFData f)));
         ByFAttr := (BFILE.BFAttr f)|}).
-Proof.
-  intros.
+Proof. Admitted.
+(*   intros.
   unfold AByteFile.rep, pimpl; intros.
   repeat eexists.
   repeat apply sep_star_lift_apply'; auto.
@@ -1283,9 +1100,58 @@ Proof.
   rewrite H; apply le_n.
   apply Forall_map_vs2bs.
   repeat eexists; cancel.
+Qed. *)
+
+  Lemma tree_rep_update_subtree: forall ts tf ilist frees Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile,
+   treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ->
+   tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile
+                        {| TStree:= update_subtree tmppath (TreeFile tinum tf) (TStree ts !!);
+                            TSilist:= ilist;
+                            TSfree:= frees |}.
+Proof. Admitted.
+(*   intros.
+  unfold tree_rep, treeseq_pred in *; simpl.
+  eapply NEforall_d_in in H as Hx.
+  destruct Hx.
+  split.
+  eapply tree_names_distinct_update_subtree.
+  apply H0.
+  apply TND_file.
+  destruct H1.
+  unfold tree_with_tmp in *; simpl.
+  left.
+  destruct H1.
+  exists tf.
+  apply sep_star_comm in H1.
+  apply sep_star_assoc in H1.
+  eapply dir2flatmem2_update_subtree with (f':= tf) in H1.
+  pred_apply; cancel.
+  auto.
+  right; auto.
+  unfold tree_with_tmp, tree_with_src in *; simpl in *.
+  apply sep_star_comm.
+  apply sep_star_assoc.
+  apply sep_star_comm in H1.
+  apply sep_star_assoc in H1.
+  apply dir2flatmem2_find_subtree_ptsto_none in H1 as Hx.
+  eapply update_subtree_path_notfound in Hx.
+  rewrite Hx.
+  pred_apply; cancel.
+  all: auto.
+  apply latest_in_ds.
 Qed.
+ *)
 
-
+Lemma roundup_div_mul: forall a b,
+b<>0 -> roundup a b / b * b = roundup a b.
+Proof.
+  intros.
+  unfold roundup.
+  rewrite mul_div.
+  all: auto.
+  apply Nat.mod_mul.
+  all: omega.
+Qed.
 
 Definition copy2temp' fsxp src_inum tinum mscs :=
     let^ (mscs, attr) <- AFS.file_get_attr fsxp src_inum mscs;
@@ -1294,13 +1160,12 @@ Definition copy2temp' fsxp src_inum tinum mscs :=
     | Err e =>
         Ret ^(mscs, false)
     | OK _ =>
-        let^ (mscs, ok) <- set_len fsxp tinum mscs (# (INODE.ABytes attr));
-        match ok with
-        | false =>
-          Ret ^(mscs, false)
-        | true =>
-          let^ (mscs) <- copydata'' fsxp src_inum tinum mscs;
-          Ret ^(mscs, true)
+        let^ (mscs, tattr) <- AFS.file_get_attr fsxp tinum mscs;
+        let^ (mscs, ok2) <-  AFS.file_set_attr fsxp tinum ((INODE.ABytes attr) , snd tattr) mscs;
+        match ok2 with
+        | true =>    let^ (mscs) <- copydata'' fsxp src_inum tinum mscs;
+                          Ret ^(mscs, true)
+        | false =>  Ret ^(mscs, false)
         end
     end.
 
@@ -1314,23 +1179,24 @@ Definition copy2temp' fsxp src_inum tinum mscs :=
       [[ (Ftree' * srcpath |-> File srcinum file * tmppath |-> File tinum tfile)%pred
             (dir2flatmem2 (TStree ts!!)) ]] *
       AByteFile.rep file fy *
-      [[[ (ByFData fy) ::: (arrayN (ptsto (V:= byteset)) 0 copy_data) ]]]
+      [[[ (ByFData fy) ::: (arrayN (ptsto (V:= byteset)) 0 copy_data) ]]] *
+      [[ length (BFData tfile) <= length (BFData file) ]]
     POST:hm' RET:^(mscs', r)
       exists ds' ts',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
        [[ MSAlloc mscs = MSAlloc mscs' ]] *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
-       ([[ r = false ]] *
+       (([[ r = false ]] *
         exists tfile',
           [[ (Ftree' * srcpath |-> File srcinum file * tmppath |-> File tinum tfile')%pred 
-                (dir2flatmem2 (TStree ts'!!)) ]]
+                (dir2flatmem2 (TStree ts'!!)) ]])
         \/ 
-        [[ r = true ]] *
+        ([[ r = true ]] *
         exists tfile' tfy' Fty', 
           [[ (Ftree' * srcpath |-> File srcinum file * tmppath |-> File tinum tfile')%pred
                  (dir2flatmem2 (TStree ts'!!)) ]] *
           AByteFile.rep tfile' tfy' *
-          [[[ (ByFData tfy') ::: (Fty' * arrayN (ptsto (V:= byteset)) 0 (synced_bdata copy_data)) ]]])
+          [[[ (ByFData tfy') ::: (Fty' * arrayN (ptsto (V:= byteset)) 0 (synced_bdata copy_data)) ]]]))
     XCRASH:hm'
      exists ds' ts',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
@@ -1338,28 +1204,138 @@ Definition copy2temp' fsxp src_inum tinum mscs :=
        [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts']]
     >} copy2temp' fsxp srcinum tinum mscs.
 Proof.
-  unfold copy2temp'; step.
+  unfold copy2temp', AByteFile.rep; step.
   instantiate(1:= file).
   instantiate(1:= srcpath).
   cancel.
-  apply rep_sync_invariant; auto.
   step.
   eapply treeseq_in_ds_eq with (a:= mscs); eauto.
-  admit.
-  rewrite sep_star_comm; apply rep_sync_invariant; auto.
+  eapply le_trans; eauto.
+  rewrite <- H16 in H15; rewrite H17 in H15; rewrite H15.
+  rewrite Nat.div_mul; auto.
   
   step.
-  apply rep_sync_invariant; auto.
-  remember ({| BFILE.BFData := setlen (BFData tfile)
+  safestep.
+  eapply treeseq_in_ds_eq with (a:= a0); eauto.
+  simpl.
+  eapply dir2flatmem2_update_subtree; eauto.
+  eapply tree_names_distinct_d_in; eauto.
+  apply latest_in_ds.
+
+  prestep; norm.
+  inversion H24.
+  inversion H24.
+  instantiate (3:= fy).
+  instantiate (3:= file).
+  instantiate (4:= F_).
+  unfold stars; cancel.
+  rewrite bytefile_exists with (f:= {| BFILE.BFData := setlen (BFData tfile)
                                  (roundup # (INODE.ABytes (BFILE.BFAttr file))
                                     valubytes / valubytes) ($ (0), []);
-               BFILE.BFAttr := BFILE.BFAttr tfile |}) as tfile'.
-  
-  prestep; norm.
+               BFILE.BFAttr := ($ (# (INODE.ABytes (BFILE.BFAttr file))),
+                               snd (BFILE.BFAttr tfile)) |}).
+
+ instantiate (2:=   {|  BFILE.BFData := setlen (BFData tfile)
+                    (roundup # (INODE.ABytes (BFILE.BFAttr file)) valubytes /
+                     valubytes) ($ (0), []);
+  BFILE.BFAttr := ($ (# (INODE.ABytes (BFILE.BFAttr file))),
+                  snd (BFILE.BFAttr tfile)) |}).
+
+  instantiate (1:= {|  ByFData := firstn # ($ (# (INODE.ABytes (BFILE.BFAttr file))))
+                                                   (concat
+                                                      (map valuset2bytesets
+                                                         (setlen (BFData tfile)
+                                                            (roundup # (INODE.ABytes (BFILE.BFAttr file))
+                                                               valubytes / valubytes) ($ (0), []))));
+                                ByFAttr := ($ (# (INODE.ABytes (BFILE.BFAttr file))),
+                                                    snd (BFILE.BFAttr tfile)) |}).
+
+  unfold AByteFile.rep; cancel; eauto.
+  simpl.
+  rewrite setlen_length.
+  rewrite natToWord_wordToNat.
+  rewrite roundup_div_mul; auto.
+  rewrite update_update_subtree_same in *; auto.
+  intuition.
+  eauto.
+  rewrite H14; apply H37.
+  rewrite H27; rewrite H7; apply H29.
+  rewrite H21; eauto.
+  eapply treeseq_pushd_tree_rep.
+  eapply tree_rep_update_subtree; eauto.
+  apply treeseq_pushd_tree_rep; auto.
+  apply tree_rep_update_subtree; auto.
+  simpl.
+  pred_apply; cancel.
+  rewrite natToWord_wordToNat; cancel.
+  eauto.
+  simpl.
+  rewrite natToWord_wordToNat.
+  rewrite H17; auto.
+
+  step.
+  or_r; unfold AByteFile.rep; cancel; eauto.
+  pred_apply; cancel.
+  xcrash.
+  eapply treeseq_in_ds_eq with (a:= a); eauto.
+  eapply treeseq_in_ds_eq with (a:= a0); eauto.
+  eapply treeseq_in_ds_eq with (a:= a1); eauto.
+  eapply treeseq_in_ds_eq with (a:= a2); eauto.
+  auto.
+
   unfold stars; cancel.
-  intuition; eauto.
-  rewrite <- H21; rewrite H4; apply H23; rewrite H15; eauto.
-  Search tree_rep.
+  or_l; cancel.
+  2: intuition.
+  3: eapply treeseq_in_ds_eq with (a:= a1); eauto.
+  3: eapply treeseq_in_ds_eq with (a:= a0); eauto.
+  simpl.
+  eapply dir2flatmem2_update_subtree.
+  eapply tree_names_distinct_d_in; eauto.
+  apply latest_in_ds.
+  eauto.
+  rewrite H14; rewrite H27; rewrite H7; rewrite H21; auto.
+  inversion H24.
+  inversion H24.
+
+  xcrash.
+  eapply treeseq_in_ds_eq with (a:= a); eauto.
+  eapply treeseq_in_ds_eq with (a:= a0); eauto.
+  eapply treeseq_pushd_tree_rep; eauto.
+  eapply tree_rep_update_subtree; eauto.
+  eapply treeseq_in_ds_eq with (a:= a); eauto.
+  eapply treeseq_in_ds_eq with (a:= a0); eauto.
+  eapply treeseq_in_ds_eq with (a:= a1); eauto.
+  eapply treeseq_in_ds_eq with (a:= x2); eauto.
+  eapply treeseq_pushd_tree_rep; eauto.
+  rewrite update_update_subtree_same.
+  eapply tree_rep_update_subtree; eauto.
+  eapply treeseq_pushd_tree_rep; eauto.
+  eapply tree_rep_update_subtree; eauto.
+
+  xcrash.
+  eapply treeseq_in_ds_eq with (a:= a); eauto.
+  eapply treeseq_in_ds_eq with (a:= a0); eauto.
+  eapply treeseq_pushd_tree_rep; eauto.
+  eapply tree_rep_update_subtree; eauto.
+
+  eapply treeseq_in_ds_eq with (a:= a); eauto.
+  eapply treeseq_in_ds_eq with (a:= mscs); eauto.
+
+  xcrash.
+  eapply treeseq_in_ds_eq with (a:= mscs); eauto.
+  eauto.
+  eapply treeseq_in_ds_eq with (a:= a); eauto.
+  eapply treeseq_in_ds_eq with (a:= x2); eauto.
+  eapply treeseq_pushd_tree_rep; eauto.
+  eapply tree_rep_update_subtree; eauto.
+
+  xcrash; eauto.
+  Unshelve.
+  all: trivial.
+Qed.
+
+
+ 
   
 
 

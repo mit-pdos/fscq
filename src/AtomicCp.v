@@ -237,6 +237,36 @@ Module ATOMICCP.
     split; eauto.
     eapply nthd_in_ds.
   Qed.
+  
+    Lemma tree_names_distinct_d_in: forall ts t Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile,
+    treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ->
+    d_in t ts ->
+    tree_names_distinct (TStree t).
+Proof.
+  intros.
+  eapply NEforall_d_in in H as Hx.
+  destruct Hx.
+  apply H1.
+  auto.
+Qed.
+
+Lemma tree_names_distinct_treeseq_one_upd: forall ts t t' off vs Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile,
+    treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ->
+    d_in t ts -> t' = treeseq_one_upd t tmppath off vs ->
+    tree_names_distinct (TStree t').
+Proof.
+  intros.
+  unfold treeseq_one_upd in H1.
+  + destruct (find_subtree tmppath (TStree t)) eqn:D1.
+    * destruct d eqn:D2.
+      rewrite H1; simpl.
+      eapply tree_names_distinct_update_subtree.
+      eapply tree_names_distinct_d_in; eauto.
+      apply TND_file.
+      rewrite H1; eapply tree_names_distinct_d_in; eauto.
+    *
+    rewrite H1; eapply tree_names_distinct_d_in; eauto.
+Qed.
 
   Lemma treeseq_upd_tree_rep: forall ts Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile (v0:BFILE.datatype) t0,
    treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ->
@@ -250,7 +280,7 @@ Module ATOMICCP.
     eapply tsupd_d_in_exists in H0.
     destruct H0.
     intuition.
-    admit.  (* XXX tree_name_distinct upd *)
+    eapply tree_names_distinct_treeseq_one_upd; eauto.
     eapply NEforall_d_in in H as Hx.
     2: instantiate (1 := x0); eauto.
     intuition.
@@ -265,7 +295,7 @@ Module ATOMICCP.
     right.
     rewrite H2.
     eapply treeseq_one_upd_tree_rep_src; eauto.
-  Admitted.
+  Qed.
 
   Lemma dirents2mem2_treeseq_one_file_sync_tmp : forall (F: @pred _ (@list_eq_dec string string_dec) _) tree tmppath inum f,
     let f' := BFILE.synced_file f in
@@ -347,6 +377,25 @@ Module ATOMICCP.
     cancel.
   Qed.
 
+Lemma tree_names_distinct_treeseq_one_file_sync: forall ts t t' Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile,
+    treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ->
+    d_in t ts -> t' = treeseq_one_file_sync t tmppath ->
+    tree_names_distinct (TStree t').
+Proof.
+  intros.
+  unfold treeseq_one_file_sync in H1.
+  + destruct (find_subtree tmppath (TStree t)) eqn:D1.
+    * destruct d eqn:D2.
+      rewrite H1; simpl.
+      eapply tree_names_distinct_update_subtree.
+      eapply tree_names_distinct_d_in; eauto.
+      apply TND_file.
+      rewrite H1; eapply tree_names_distinct_d_in; eauto.
+    *
+    rewrite H1; eapply tree_names_distinct_d_in; eauto.
+Qed.
+
+
   Lemma treeseq_tssync_tree_rep: forall ts Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile,
     treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ->
     treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile)  (ts_file_sync tmppath ts).
@@ -359,7 +408,7 @@ Module ATOMICCP.
     eapply tssync_d_in_exists in H0; eauto.
     destruct H0.
     intuition.
-    admit. (* XXX tree_names_distinct *)
+    eapply tree_names_distinct_treeseq_one_file_sync; eauto.
     eapply NEforall_d_in in H as Hx.
     2: instantiate (1 := x0); eauto.
     intuition.
@@ -372,7 +421,7 @@ Module ATOMICCP.
     right.
     rewrite H2.
     eapply treeseq_one_file_sync_tree_rep_src; eauto.
-  Admitted.
+  Qed.
 
   Ltac msalloc :=
   repeat match goal with
