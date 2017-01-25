@@ -210,7 +210,7 @@ let go_modify_op (ts : TranscriberState.state)
     let v_go_type = TranscriberState.get_go_type ts.gstate v_type in
     let v = (var_name rvar) in
 "{
-  in_map, val := (*AddrMap)(" ^ (var_name map) ^ ").Find(" ^ (var_name key) ^ ")
+  in_map, val := (*AddrMap)(" ^ (var_name map) ^ ").Find(*" ^ (var_name key) ^ ")
   " ^ v ^ ".fst = Bool(in_map)
   if in_map {
   " ^ v ^ ".snd = " ^ (deep_copy_ref v_type ("val.(" ^ v_go_type ^ ")")) ^ "
