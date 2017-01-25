@@ -39,6 +39,7 @@ module TranscriberState = struct
   type fn_state = {
     mutable var_num: Big_int.big_int;
     mutable vars : (Big_int.big_int * Go.coq_type) list;
+    nargs : Big_int.big_int;
   }
 
   type global_state = {
@@ -96,10 +97,11 @@ module TranscriberState = struct
   let go_slice_types (gs : global_state) =
     gs.slices
 
-  let make_new_fn (gs : global_state) num_args =
+  let make_new_fn (gs : global_state) nargs arg_types =
     let fs = {
-      var_num = num_args;
-      vars = []
+      nargs = nargs;
+      var_num = nargs;
+      vars = mapi_bignum (fun i x -> (i, x)) arg_types;
     } in
     {
       gstate = gs;
@@ -107,8 +109,14 @@ module TranscriberState = struct
     }
 
   let get_var_type (ts : state) v =
-    snd (List.find (fun x -> Big_int.compare_big_int (fst x) v == 0)
-      ts.fstate.vars)
+    try
+      snd (List.find (fun x -> Big_int.compare_big_int (fst x) v == 0)
+        ts.fstate.vars)
+    with Not_found ->
+      failwith ("couldn't find variable " ^ (to_string v))
+
+  let is_param_var (ts : state) v =
+    Big_int.compare_big_int v ts.fstate.nargs < 0
 
   let make =
     {
@@ -168,6 +176,11 @@ let zero_val gs (t : Go.coq_type) =
 (* mirror of Go.can_alias in GoSemantics.v *)
 let can_alias  = Go.can_alias
 
+let deep_copy_ref go_type var =
+  if (can_alias go_type)
+  then var
+  else var ^ ".DeepCopy()"
+
 let val_ref gType varname =
   if (can_alias gType)
   then
@@ -175,14 +188,17 @@ let val_ref gType varname =
   else
     "*" ^ varname
 
-let deep_copy_ref go_type var =
-  if (can_alias go_type)
-  then var
-  else var ^ ".DeepCopy()"
-
 let var_val_ref ts var =
   let gType = (TranscriberState.get_var_type ts var) in
-  val_ref gType (var_name var)
+  (if (can_alias gType) then "" else "*") ^
+  (if TranscriberState.is_param_var ts var then "*" else "") ^
+  (var_name var)
+
+let var_ref ts var =
+  let name = var_name var in
+  if TranscriberState.is_param_var ts var
+  then "(*" ^ name ^ ")"
+  else name
 
 let go_modify_op (ts : TranscriberState.state)
                  (modify_op : Go.modify_op)
@@ -193,24 +209,27 @@ let go_modify_op (ts : TranscriberState.state)
     (var_val_ref ts var) ^ " = " ^ (go_literal ts.gstate t value)
   | Go.SplitPair ->
     let (pair, (first, (second, _))) = Obj.magic args_tuple in
-    (var_name first) ^ ", " ^ (var_name second) ^ " = " ^
-      (var_name pair) ^ ".fst, " ^ (var_name pair) ^ ".snd"
+    let fst, snd = (var_ref ts first), (var_ref ts second) in
+    fst ^ ", " ^ snd ^ " = " ^
+      (var_ref ts pair) ^ ".fst, " ^ (var_ref ts pair) ^ ".snd
+      _, _ = " ^ fst ^ ", " ^ snd ^ "  // prevent 'unused' error"
   | Go.JoinPair ->
     let (pair, (first, (second, _))) = Obj.magic args_tuple in
-    (var_name pair) ^ ".fst, " ^ (var_name pair) ^ ".snd = " ^
-    (var_name first) ^ ", " ^ (var_name second)
+    (var_ref ts pair) ^ ".fst, " ^ (var_ref ts pair) ^ ".snd = " ^
+    (var_ref ts first) ^ ", " ^ (var_ref ts second)
   | Go.MapAdd ->
     let (map, (key, (value, _))) = Obj.magic args_tuple in
-    "(" ^ (var_val_ref ts map) ^ ")[" ^ (var_name key) ^ ".String()] = " ^ (var_name value)
+    "(*AddrMap)(" ^ (var_ref ts map) ^ ").Insert(" ^ (var_val_ref ts key) ^ ", " ^ (var_ref ts value) ^ ")"
   | Go.MapFind ->
     let (map, (key, (rvar, _))) = Obj.magic args_tuple in
     let v_type = match (TranscriberState.get_var_type ts map) with
     | Go.AddrMap t -> t
     in
     let v_go_type = TranscriberState.get_go_type ts.gstate v_type in
-    let v = (var_name rvar) in
+    let v = (var_ref ts rvar) in
 "{
-  in_map, val := (*AddrMap)(" ^ (var_name map) ^ ").Find(*" ^ (var_name key) ^ ")
+  in_map, val := (*AddrMap)(" ^ (var_ref ts map) ^ ").Find(*" ^ (var_ref ts key) ^ ")
+  _ = val  // prevent 'unused' error
   " ^ v ^ ".fst = Bool(in_map)
   if in_map {
   " ^ v ^ ".snd = " ^ (deep_copy_ref v_type ("val.(" ^ v_go_type ^ ")")) ^ "
@@ -218,14 +237,14 @@ let go_modify_op (ts : TranscriberState.state)
 }"
   | Go.MapRemove ->
     let (map, (key, _)) = Obj.magic args_tuple in
-    "(*AddrMap)(" ^ (var_name map) ^ ").Remove(" ^ (var_val_ref ts key) ^ ")"
+    "(*AddrMap)(" ^ (var_ref ts map) ^ ").Remove(" ^ (var_val_ref ts key) ^ ")"
   | Go.MapCardinality ->
     let (map, (dst, _)) = Obj.magic args_tuple in
-    (var_val_ref ts dst) ^ " = (*AddrMap)(" ^ (var_name map) ^ ").Cardinality()"
+    (var_val_ref ts dst) ^ " = (*AddrMap)(" ^ (var_ref ts map) ^ ").Cardinality()"
   | Go.MapElements ->
     let (map, (dst, _)) = Obj.magic args_tuple in
-    let v = (var_name dst) in
-    let m = (var_name map) in
+    let v = (var_ref ts dst) in
+    let m = (var_ref ts map) in
     let v_type = match (TranscriberState.get_var_type ts map) with
     | Go.AddrMap t -> t
     in
@@ -239,7 +258,7 @@ let go_modify_op (ts : TranscriberState.state)
       // MapElements
       pairs := (*AddrMap)(" ^ m ^ ").Elements()
       " ^ v ^ " := make(" ^ slice_go_t ^ ", 0, len(pairs))
-      for i, keyval := range pairs {
+      for _, keyval := range pairs {
         p := " ^ (zero_val ts.gstate slice_el_t) ^ "
         p.fst = keyval.key
         p.snd = " ^ (deep_copy_ref v_type ("keyval.val.(*" ^ v_go_type ^ ")")) ^ "
@@ -248,24 +267,25 @@ let go_modify_op (ts : TranscriberState.state)
     }"
   | Go.DuplicateOp ->
     let (dst, (src, _)) = Obj.magic args_tuple in
-    (var_name dst) ^ " = " ^ (var_name src) ^ ".DeepCopy()"
+    (var_ref ts dst) ^ " = " ^ (var_ref ts src) ^ ".DeepCopy()
+    _ = " ^ (var_ref ts dst) ^ "  // prevent 'unused' error"
   | Go.AppendOp ->
     let (lvar, (xvar, _)) = Obj.magic args_tuple in
-    (var_name lvar) ^ " = append(" ^ (var_name lvar) ^ ", " ^ (var_name xvar) ^ ")"
+    (var_ref ts lvar) ^ " = append(" ^ (var_ref ts lvar) ^ ", " ^ (var_ref ts xvar) ^ ")"
   | Go.Uncons ->
     let (lvar, (success_var, (xvar, (l'var, _)))) = Obj.magic args_tuple in
     (* let el_t = TranscriberState.get_var_type ts xvar in *)
     (* let el_go_t = TranscriberState.get_go_type ts el_t in *)
-    let l = (var_name lvar) in
+    let l = (var_val_ref ts lvar) in
     let s = (var_val_ref ts success_var) in
-    let x = (var_name xvar) in
-    let l' = (var_name l'var) in
+    let x = (var_ref ts xvar) in
+    let l' = (var_val_ref ts l'var) in
     "{
       // Uncons
       if len(" ^ l ^ ") > 0 {
         " ^ s ^ " = true
-        " ^ x ^ " = " ^ l ^ "[0]
-        " ^ l' ^ " = " ^ l ^ "[1:]
+        " ^ x ^ " = (" ^ l ^ ")[0]
+        " ^ l' ^ " = (" ^ l ^ ")[1:]
       } else {
         " ^ s ^ " = false
       }
@@ -307,9 +327,9 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
   | Go.Declare (gType, fn) ->
       let var = TranscriberState.get_new_var ts gType in
       let go_type = TranscriberState.get_go_type ts.gstate gType in
-      let var_name = var_name var in
+      let decl_name = var_ref ts var in
       let decl_type = if (can_alias gType) then  go_type else "*" ^ go_type in
-      let line = "var " ^ var_name ^ " " ^ decl_type ^ " = " ^ (zero_val ts.gstate gType) ^ "\n" in
+      let line = "var " ^ decl_name ^ " " ^ decl_type ^ " = " ^ (zero_val ts.gstate gType) ^ "\n" in
       let text = go_stmt (fn var) ts in
       line ^ text
   | Go.Assign (var, expr) ->
@@ -322,14 +342,14 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
       line ^ " {\n" ^ t_text ^ "} else {\n" ^ f_text ^ "}\n"
   | Go.Call (nargs, name, args_tuple) ->
       let args = call_args_tuple_to_list nargs args_tuple in
-      let go_args = List.map var_name args in
+      let go_args = List.map (fun v -> "&" ^ var_ref ts v) args in
       let go_name = sanitize (char_list_to_string name) in
       let call = go_name ^ "(" ^ (String.concat ", " go_args) ^ ")" in
       call ^ "\n"
   | Go.DiskRead (vvar, avar) ->
-      "DiskRead(" ^ (var_name vvar) ^ ", " ^ (var_name avar) ^ ")\n"
+      "DiskRead(" ^ (var_ref ts vvar) ^ ", " ^ (var_ref ts avar) ^ ")\n"
   | Go.DiskWrite (vvar, avar) ->
-      "DiskWrite(" ^ (var_name vvar) ^ ", " ^ (var_name avar) ^ ")\n"
+      "DiskWrite(" ^ (var_ref ts vvar) ^ ", " ^ (var_ref ts avar) ^ ")\n"
   | Go.DiskSync ->
       "DiskSync()\n"
   | Go.Skip -> ""
@@ -341,15 +361,16 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
 ;;
 
 let arg_pair_to_declaration (ts : TranscriberState.state) (arg_num : big_int) (arg_t : Go.coq_type) =
-  var_name arg_num ^ " *" ^
+  (var_name arg_num) ^ " " ^
+  (if (can_alias arg_t) then "" else "*") ^ " *" ^
   (TranscriberState.get_go_type ts.gstate arg_t)
 
 let go_func (gs : TranscriberState.global_state) (v : StringMap.key * Go.coq_FunctionSpec) =
   let (name_chars, op_spec) = v in
   let name = sanitize (char_list_to_string name_chars) in
   let nargs = op_spec.coq_NumParamVars in
-  let ts = TranscriberState.make_new_fn gs nargs in
   let arg_ts = (call_args_tuple_to_list nargs op_spec.coq_ParamVars) in
+  let ts = TranscriberState.make_new_fn gs nargs arg_ts in
   let body = op_spec.coq_Body in
   let go_body = go_stmt body ts in
   let args_list = (mapi_bignum (arg_pair_to_declaration ts) arg_ts) in
