@@ -24,8 +24,20 @@ func (n Num) SetInt64(v int64) {
 	((*big.Int) (&n)).SetInt64(v)
 }
 
-func test_lt_Num(l *Num, r *Num) bool {
-	return l.Cmp(r) < 0
+func test_eq_Num(l Num, r Num) Bool {
+	return Bool((&l).Cmp(&r) == 0)
+}
+
+func test_ne_Num(l Num, r Num) Bool {
+	return Bool((&l).Cmp(&r) != 0)
+}
+
+func test_lt_Num(l Num, r Num) Bool {
+	return Bool((&l).Cmp(&r) < 0)
+}
+
+func test_le_Num(l Num, r Num) Bool {
+	return Bool((&l).Cmp(&r) <= 0)
 }
 
 func big_of_i64 (num int64) Num {

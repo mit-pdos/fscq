@@ -273,18 +273,29 @@ let go_modify_op (ts : TranscriberState.state)
   | _ -> fail_unmatched "go_modify_op"
   ;;
 
+let go_expr_type ts expr =
+  match expr with
+  | Go.Var v -> TranscriberState.get_var_type ts v
+  | Go.Const (gType, _) -> gType
+  | Go.TestE _ -> Bool
+
 let rec go_expr ts expr =
   match expr with
   | Go.Var (v) -> var_val_ref ts v
   | Go.Const (gType, value) ->
       go_literal ts.gstate gType value
   | Go.TestE (test, a, b) ->
-      let operator = match test with
-      | Go.Eq -> "=="
-      | Go.Ne -> "!="
-      | Go.Lt -> "<"
-      | Go.Le -> "<="
-      in (go_expr ts a ^ " " ^ operator ^ " " ^ go_expr ts b)
+    let expr_t = go_expr_type ts a in
+    let go_type = TranscriberState.get_go_type ts.gstate expr_t in
+    let a_expr = go_expr ts a in
+    let b_expr = go_expr ts b in
+    let operator = match test with
+    | Go.Eq -> "eq"
+    | Go.Ne -> "ne"
+    | Go.Lt -> "lt"
+    | Go.Le -> "le"
+    in ("test_" ^ operator ^ "_" ^ go_type ^
+        "(" ^ a_expr ^ ", " ^ b_expr ^ ")")
 ;;
 
 let rec go_stmt stmt (ts : TranscriberState.state) =
