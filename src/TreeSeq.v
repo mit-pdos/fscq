@@ -2695,6 +2695,142 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     constructor.
   Qed.
 
+  Lemma treeseq_safe_rename: forall pathname' mscs cwd dstnum0 dstents 
+    dstbase dstname srcnum0 srcents srcbase srcname dnum tree_elem ts
+      frees'_1 frees'_2 ilist' subtree,
+    tree_names_distinct (TStree ts!!) ->
+    tree_inodes_distinct (TStree ts!!) ->
+    find_subtree cwd (TStree ts !!) = Some (TreeDir dnum tree_elem) ->
+    find_subtree srcbase (TreeDir dnum tree_elem) = Some (TreeDir srcnum0 srcents) ->
+    find_dirlist srcname srcents = Some subtree ->
+    find_subtree dstbase
+            (tree_prune srcnum0 srcents srcbase srcname (TreeDir dnum tree_elem)) =
+          Some (TreeDir dstnum0 dstents) ->
+    (forall inum' def', inum' <> srcnum0 -> inum' <> dstnum0 ->
+               In inum' (tree_inodes
+           (update_subtree cwd
+              (tree_graft dstnum0 dstents dstbase dstname subtree
+                 (tree_prune srcnum0 srcents srcbase srcname
+                    (TreeDir dnum tree_elem))) (TStree ts !!))) ->
+               selN (TSilist ts !!) inum' def' = selN ilist' inum' def') ->
+    (~pathname_prefix (cwd ++ srcbase ++ [srcname]) pathname') ->
+    (~pathname_prefix (cwd ++ dstbase ++ [dstname]) pathname') ->
+    dirtree_safe (TSilist ts !!)
+            (BFILE.pick_balloc (fst (TSfree ts !!), snd (TSfree ts !!))
+               (MSAlloc mscs)) (TStree ts !!) ilist'
+            (BFILE.pick_balloc (frees'_1, frees'_2) (MSAlloc mscs))
+            (update_subtree cwd
+               (tree_graft dstnum0 dstents dstbase dstname subtree
+                  (tree_prune srcnum0 srcents srcbase srcname
+                     (TreeDir dnum tree_elem))) (TStree ts !!)) ->
+    treeseq_safe pathname' (MSAlloc mscs)
+      {|
+      TStree := update_subtree cwd
+                  (tree_graft dstnum0 dstents dstbase dstname subtree
+                     (tree_prune srcnum0 srcents srcbase srcname
+                        (TreeDir dnum tree_elem))) (TStree ts !!);
+      TSilist := ilist';
+      TSfree := (frees'_1, frees'_2) |} ts !!.
+  Proof.
+    unfold treeseq_safe; intuition.
+
+    - unfold treeseq_safe_fwd.
+      intros; simpl.
+      deex.
+      exists f; eauto.
+      intuition.
+      eapply find_rename_oob; eauto.
+
+      unfold BFILE.block_belong_to_file in *.
+      rewrite H5 in *; eauto.
+
+      intro. subst.
+
+      erewrite <- find_subtree_app in H2 by eassumption.
+      assert (pathname' = cwd ++ srcbase).
+      eapply find_subtree_inode_pathname_unique; eauto.
+      congruence.
+
+      intro. subst.
+      eapply find_subtree_before_prune in H4.
+      deex.
+      erewrite <- find_subtree_app in H4 by eassumption.
+      assert (pathname' = cwd ++ dstbase).
+      eapply find_subtree_inode_pathname_unique; eauto.
+      congruence.
+      eapply find_subtree_tree_names_distinct; eauto.
+      eauto.
+
+      eapply tree_inodes_in_rename_oob; eauto.
+
+    - unfold treeseq_safe_bwd in *.
+      intros.
+      left.
+      repeat deex; intuition.
+      denote pathname' as Hp.
+      eexists f'; intuition; simpl in *.
+      eapply find_rename_oob'. 7: eauto.
+      all: auto.
+      unfold BFILE.block_belong_to_file in *.
+      rewrite H5 in *; eauto.
+      -- intro. subst.
+        destruct (pathname_decide_prefix cwd pathname').
+        + deex.
+          erewrite find_subtree_app in Hp by eauto.
+          eapply find_subtree_graft_subtree_oob' in Hp.
+          2: eauto.
+          eapply find_subtree_prune_subtree_oob' in Hp.
+          2: eauto.
+          assert (srcbase = suffix).
+          eapply find_subtree_inode_pathname_unique with (tree := (TreeDir dnum tree_elem)); eauto.
+          eapply find_subtree_tree_inodes_distinct; eauto.
+          eapply find_subtree_tree_names_distinct; eauto.
+          congruence.
+          intro; apply H6.  apply pathname_prefix_trim; eauto.
+          intro; apply H7.  apply pathname_prefix_trim; eauto.
+        + 
+          eapply find_subtree_update_subtree_oob' in Hp.
+          assert (cwd++srcbase = pathname').
+
+          erewrite <- find_subtree_app in H2 by eauto.
+          eapply find_subtree_inode_pathname_unique; eauto.
+          contradiction H9; eauto.
+          eauto.
+      -- intro. subst.
+       destruct (pathname_decide_prefix cwd pathname').
+        + deex.
+          erewrite find_subtree_app in Hp by eauto.
+          eapply find_subtree_graft_subtree_oob' in Hp.
+          2: eauto.
+          eapply find_subtree_prune_subtree_oob' in Hp.
+          2: eauto.
+          eapply find_subtree_before_prune in H4; eauto.
+          deex.
+          assert (dstbase = suffix).
+          eapply find_subtree_inode_pathname_unique with (tree := (TreeDir dnum tree_elem)); eauto.
+          eapply find_subtree_tree_inodes_distinct; eauto.
+          eapply find_subtree_tree_names_distinct; eauto.
+          congruence.
+          eapply find_subtree_tree_names_distinct; eauto.
+          intro; apply H6.  apply pathname_prefix_trim; eauto.
+          intro; apply H7.  apply pathname_prefix_trim; eauto.
+        + 
+          eapply find_subtree_update_subtree_oob' in Hp.
+          eapply find_subtree_before_prune in H4; eauto.
+          deex.
+          assert (cwd++dstbase = pathname').
+          erewrite <- find_subtree_app in H4 by eauto.
+          eapply find_subtree_inode_pathname_unique; eauto.
+          contradiction H9; eauto.
+          eapply find_subtree_tree_names_distinct; eauto.
+          eauto.
+      --
+        replace inum with (dirtree_inum (TreeFile inum f')) by reflexivity.
+        eapply find_subtree_inum_present; eauto.
+    - simpl.
+      unfold dirtree_safe in *; intuition.
+  Qed.
+
   Theorem treeseq_rename_ok : forall fsxp dnum srcbase (srcname:string) dstbase dstname mscs,
     {< ds ts Fm Ftop Ftree cwd tree_elem srcnum dstnum srcfile dstfile,
     PRE:hm
@@ -2773,134 +2909,11 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     (* clear all goals mentioning x0 *)
     clear H13 H15 x0.
 
-    unfold treeseq_safe; intuition.
+    eapply treeseq_safe_rename; eauto.
+    distinct_names'.
+    distinct_inodes'.
+    rewrite H0 in *; eauto.
 
-    - unfold treeseq_safe_fwd.
-      intros; simpl.
-      deex.
-      exists f; eauto.
-      intuition.
-      eapply find_rename_oob; eauto.
-
-      unfold BFILE.block_belong_to_file in *.
-      rewrite H10 in *; eauto.
-
-      intro. subst.
-      erewrite <- find_subtree_app in H17 by eassumption.
-      assert (pathname' = cwd ++ srcbase).
-      eapply find_subtree_inode_pathname_unique; eauto.
-      distinct_inodes'.
-      distinct_names'.
-      congruence.
-
-      intro. subst.
-      eapply find_subtree_before_prune in H14.
-      deex.
-      erewrite <- find_subtree_app in H13 by eassumption.
-      assert (pathname' = cwd ++ dstbase).
-      eapply find_subtree_inode_pathname_unique; eauto.
-      distinct_inodes'.
-      distinct_names'.
-      congruence.
-      distinct_names'.
-      eapply find_subtree_tree_names_distinct.
-      2: eauto.
-      distinct_names'.
-      eauto.
-
-      replace subtree with (TreeFile srcnum srcfile) in *.
-
-      eapply tree_inodes_in_rename_oob; eauto.
-      distinct_names'.
-      distinct_inodes'.
-
-      assert (find_subtree (cwd ++ srcbase ++ [srcname]) (TStree ts !!) = Some (TreeFile srcnum srcfile)).
-      eapply dir2flatmem2_find_subtree_ptsto.
-      distinct_names'.
-      pred_apply. cancel.
-      erewrite find_subtree_app in * by eauto.
-      erewrite find_subtree_app in * by eauto.
-      rewrite find_subtree_dirlist in *.
-      congruence.
-
-    - unfold treeseq_safe_bwd in *.
-      intros.
-      left.
-      repeat deex; intuition.
-      eexists f'; intuition; simpl in *.
-      eapply find_rename_oob'. 7: eauto.
-      all: auto.
-      unfold BFILE.block_belong_to_file in *.
-      rewrite H10 in *; eauto.
-
-      -- intro. subst.
-        destruct (pathname_decide_prefix cwd pathname').
-        + deex.
-          erewrite find_subtree_app in H15 by eauto.
-          eapply find_subtree_graft_subtree_oob' in H15.
-          2: eauto.
-          eapply find_subtree_prune_subtree_oob' in H15.
-          2: eauto.
-          assert (srcbase = suffix).
-          eapply find_subtree_inode_pathname_unique; eauto.
-          eapply find_subtree_tree_inodes_distinct; eauto.
-          distinct_inodes'.
-          eapply find_subtree_tree_names_distinct; eauto.
-          distinct_names'.
-          congruence.
-          intro; apply H9.  apply pathname_prefix_trim; eauto.
-          intro; apply H12.  apply pathname_prefix_trim; eauto.
-        + 
-          eapply find_subtree_update_subtree_oob' in H15.
-          assert (cwd++srcbase = pathname').
-          erewrite <- find_subtree_app in H17 by eauto.
-          eapply find_subtree_inode_pathname_unique; eauto.
-          distinct_inodes'.
-          distinct_names'.
-          contradiction H13; eauto.
-          eauto.
-      -- intro. subst.
-       destruct (pathname_decide_prefix cwd pathname').
-        + deex.
-          erewrite find_subtree_app in H15 by eauto.
-          eapply find_subtree_graft_subtree_oob' in H15.
-          2: eauto.
-          eapply find_subtree_prune_subtree_oob' in H15.
-          2: eauto.
-          eapply find_subtree_before_prune in H14; eauto.
-          deex.
-          assert (dstbase = suffix).
-          eapply find_subtree_inode_pathname_unique; eauto.
-          eapply find_subtree_tree_inodes_distinct; eauto.
-          distinct_inodes'.
-          eapply find_subtree_tree_names_distinct; eauto.
-          distinct_names'.
-          congruence.
-          eapply find_subtree_tree_names_distinct; eauto.
-          distinct_names'.
-          intro; apply H9.  apply pathname_prefix_trim; eauto.
-          intro; apply H12.  apply pathname_prefix_trim; eauto.
-        + 
-          eapply find_subtree_update_subtree_oob' in H15.
-          eapply find_subtree_before_prune in H14; eauto.
-          deex.
-          assert (cwd++dstbase = pathname').
-          erewrite <- find_subtree_app in H14 by eauto.
-          eapply find_subtree_inode_pathname_unique; eauto.
-          distinct_inodes'.
-          distinct_names'.
-          contradiction H13; eauto.
-          eapply find_subtree_tree_names_distinct; eauto.
-          distinct_names'.
-          eauto.
-      --
-        replace inum with (dirtree_inum (TreeFile inum f')) by reflexivity.
-        eapply find_subtree_inum_present; eauto.
-    - simpl.
-      unfold dirtree_safe in *; intuition.
-      rewrite H0 in *.
-      rewrite <- surjective_pairing in H13.
-      eauto.
     - erewrite <- update_update_subtree_same.
       eapply dirents2mem2_update_subtree_one_name.
       eapply pimpl_trans; [ reflexivity | | ].
@@ -2969,7 +2982,16 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       rewrite H0 in H11.
       eassumption.
 
-      admit.
+      eapply treeseq_safe_pushd; eauto.
+      eapply NEforall_d_in'; intros.
+      eapply NEforall_d_in in H12; eauto.
+      eapply treeseq_safe_trans; eauto.
+
+      eapply treeseq_safe_rename; eauto.
+      distinct_names'.
+      distinct_inodes'.
+      rewrite H0 in *; eauto.
+
       admit.
 
   Admitted.
