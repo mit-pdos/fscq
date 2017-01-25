@@ -52,3 +52,8 @@ func (n *Num) Increment() {
 	one := big.Int(big_of_i64(1))
 	(*big.Int)(n).Add((*big.Int)(n), &one)
 }
+
+func (n *Num) Decrement() {
+	one := big.Int(big_of_i64(1))
+	(*big.Int)(n).Sub((*big.Int)(n), &one)
+}

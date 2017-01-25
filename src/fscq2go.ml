@@ -199,45 +199,43 @@ let go_modify_op (ts : TranscriberState.state)
     let v_type = match (TranscriberState.get_var_type ts map) with
     | Go.AddrMap t -> t
     in
+    let v_go_type = TranscriberState.get_go_type ts.gstate v_type in
     let v = (var_name rvar) in
 "{
-  val, in_map := (*" ^ (var_name map) ^ ")[" ^ (var_name key) ^ ".String()]
+  in_map, val := (*AddrMap)(" ^ (var_name map) ^ ").Find(" ^ (var_name key) ^ ")
   " ^ v ^ ".fst = in_map
   if in_map {
-  " ^ v ^ ".snd = " ^ (deep_copy_ref v_type "val") ^ "
+  " ^ v ^ ".snd = " ^ (deep_copy_ref v_type ("val.(" ^ v_go_type ^ ")")) ^ "
   }
 }"
   | Go.MapRemove ->
     let (map, (key, _)) = Obj.magic args_tuple in
-    "delete(*" ^ (var_name map) ^ ", " ^ (var_name key) ^ ".String())"
+    "(*AddrMap)(" ^ (var_name map) ^ ").Remove(" ^ (var_val_ref ts key) ^ ")"
   | Go.MapCardinality ->
     let (map, (dst, _)) = Obj.magic args_tuple in
-    (var_val_ref ts dst) ^ ".SetInt64(len(" ^ (var_val_ref ts map) ^ "))"
+    (var_val_ref ts dst) ^ " = (*AddrMap)(" ^ (var_name map) ^ ").Cardinality()"
   | Go.MapElements ->
     let (map, (dst, _)) = Obj.magic args_tuple in
     let v = (var_name dst) in
-    let m = (var_val_ref ts map) in
+    let m = (var_name map) in
     let v_type = match (TranscriberState.get_var_type ts map) with
     | Go.AddrMap t -> t
     in
+    let v_go_type = TranscriberState.get_go_type ts.gstate v_type in
     let slice_t = (TranscriberState.get_var_type ts dst) in
     let slice_go_t = (TranscriberState.get_go_type ts.gstate slice_t) in
+    let slice_el_t = match slice_t with
+    | Go.Slice t -> t
+    in
     "{
       // MapElements
-      keys := make([]string, 0, len(" ^ m ^ "))
-      for k := range " ^ m ^ " {
-          keys = append(keys, k)
-      }
-      sort.Ints(keys)
-
-      " ^ v ^ " := make(" ^ slice_go_t ^ ", 0, len(" ^ m ^ "))
-      for  _, key := range keys {
-        k := big_of_string(key)
-        v := " ^ (deep_copy_ref v_type (m ^ "[key]")) ^"
-        p := New_" ^ slice_go_t ^ "()
-        p.fst = k
-        p.snd = v
-        " ^ v ^ " = append(v, p)
+      pairs := (*AddrMap)(" ^ m ^ ").Elements()
+      " ^ v ^ " := make(" ^ slice_go_t ^ ", 0, len(pairs))
+      for i, keyval := range pairs {
+        p := " ^ (zero_val ts.gstate slice_el_t) ^ "
+        p.fst = keyval.key
+        p.snd = " ^ (deep_copy_ref v_type ("keyval.val.(*" ^ v_go_type ^ ")")) ^ "
+        " ^ v ^ " = append(" ^ v ^ ", p)
       }
     }"
   | Go.DuplicateOp ->
@@ -377,8 +375,7 @@ let go_struct_defs gs =
     String.concat "\n" (List.map (
       fun y ->
         let (name, typ) = y in
-        let go_type = TranscriberState.get_go_type gs typ in
-        "obj." ^ name ^ " = New_" ^ go_type ^ "()"
+        "obj." ^ name ^ " = " ^ (zero_val gs typ)
       ) fields)
     ^ "
     return obj
@@ -393,20 +390,20 @@ let go_map_defs ts =
     let go_v_type = if (can_alias v_type)
                     then go_v_type
                     else "*" ^ go_v_type in
-    "type " ^ type_name ^ " map[string] " ^ go_v_type ^
+    "type " ^ type_name ^ " AddrMap  // " ^ go_v_type ^
     "
 
-    func (x " ^ type_name ^ ") DeepCopy () *" ^ type_name ^ "{
-    newMap := make(" ^ type_name ^ ")
-    for k,v := range x {
-      newMap[k] = " ^ (deep_copy_ref v_type "v") ^ "
+    func (x *" ^ type_name ^ ") DeepCopy () *" ^ type_name ^ "{
+    newMap := new(" ^ type_name ^ ")
+    for _, v := range (*AddrMap)(x).Elements() {
+      v_copy := " ^ (deep_copy_ref v_type ("v.val.(" ^ go_v_type ^ ")")) ^ "
+      (*AddrMap)(newMap).Insert(*v.key, v_copy)
     }
-    return &newMap
+    return newMap
     }
 
     func New_" ^ type_name ^ " () *" ^ type_name ^ "{
-    obj := make(" ^ type_name ^ ")\n
-    return &obj
+    return new(" ^ type_name ^ ")\n
     }\n"
   ) maps
 

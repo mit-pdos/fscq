@@ -11,22 +11,29 @@ type TreeNode struct {
 
     left *TreeNode
     right *TreeNode
-    count Num
 }
 
 type AddrMap struct {
     root *TreeNode
+    count Num
 }
 
-func (n *TreeNode) insert(newKey Num, newVal interface{}) *TreeNode {
+type MapVal interface {
+}
+
+type KeyValPair struct {
+    key *Num
+    val interface{}
+}
+
+func (n *TreeNode) insert(newKey Num, newVal interface{}) (*TreeNode, bool) {
     fmt.Println("inserting %v -> %v", newKey, newVal)
     if (n == nil) {
         newNode := TreeNode {
             key : newKey,
             val : newVal,
         }
-        (&newNode.count).Increment()
-        return &newNode
+        return &newNode, true
     }
 
     // TODO balance tree
@@ -34,27 +41,34 @@ func (n *TreeNode) insert(newKey Num, newVal interface{}) *TreeNode {
     case 0:
         // keys are identical
         n.val = newVal
+        return n, false
     case 1:
         // newKey > key
-        n.right = n.right.insert(newKey, newVal)
-        (&n.count).Increment()
+        right, success := n.right.insert(newKey, newVal)
+        n.right = right
+        return n, success
     case -1:
         // newKey < key
-        n.left = n.left.insert(newKey, newVal)
-        (&n.count).Increment()
+        left, success := n.left.insert(newKey, newVal)
+        n.left = left
+        return n, success
     }
 
-    return n
+    return n, false
 }
 
 
 func (m *AddrMap) Insert(key Num, val interface{}) {
-    m.root = m.root.insert(key, val)
+    root, success := m.root.insert(key, val)
+    m.root = root
+    if success {
+        (&m.count).Increment()
+    }
 }
 
 func (n *TreeNode) find(findKey Num) (bool, interface{}) {
     if n == nil {
-        return false, New_Empty()
+        return false, nil
     }
     switch cmp := findKey.Cmp(&n.key); cmp {
     case 0:
@@ -67,7 +81,7 @@ func (n *TreeNode) find(findKey Num) (bool, interface{}) {
         // findKey < key
         return n.left.find(findKey)
     }
-    return false, New_Empty()
+    return false, nil
 }
 
 func (m *AddrMap) Find(key Num) (bool, interface{}) {
@@ -75,41 +89,67 @@ func (m *AddrMap) Find(key Num) (bool, interface{}) {
 }
 
 func (m *AddrMap) Cardinality() Num {
-    if m.root == nil {
-        return big_of_i64(0)
-    } else {
-        return m.root.count
-    }
+    return m.count
 }
 
-func (n *TreeNode) TestCounts(T *testing.T) {
-    count := New_Num()
+func (n *TreeNode) getElements(slice []KeyValPair) []KeyValPair {
     if (n == nil) {
-        return
+        return slice
     }
 
-    n.left.TestCounts(T)
-    n.right.TestCounts(T)
+    slice = n.left.getElements(slice)
+    slice = append(slice, KeyValPair {&n.key, n.val})
+    slice = n.right.getElements(slice)
+    return slice
+}
 
-    count.Increment()
+func (m *AddrMap) Elements() []KeyValPair {
+    slice := m.root.getElements(nil)
+    return slice
+}
 
-    if (n.left != nil) {
-        count.Add(count, &n.left.count)
-        T.Logf("left: %v", n.left.count)
+func interpolate(left *TreeNode, right *TreeNode) *TreeNode {
+    if left == nil {
+        return right
+    } else if right == nil {
+        return left
     }
 
-    if (n.right != nil) {
-        count.Add(count, &n.right.count)
-        T.Logf("right: %v", n.right.count)
+    left.right = interpolate(left.right, right)
+    return left
+}
+
+func (n *TreeNode) remove(removeKey Num) (*TreeNode, bool) {
+    // TODO balance
+    if n == nil {
+        return nil, false
     }
+    var success bool
 
-    T.Logf("count of %v", count)
+    switch cmp := removeKey.Cmp(&n.key); cmp {
+    case 0:
+        // keys are identical
+        n = interpolate(n.left, n.right)
+        return n, true
+    case 1:
+        // removeKey > key
+        n.right, success = n.right.remove(removeKey)
+        return n, success
+    case -1:
+        // removeKey < key
+        n.left, success = n.left.remove(removeKey)
+        return n, success
+    }
+    return nil, false
+}
 
-    if (&n.count).Cmp(count) != 0 {
-        T.Error("expected %v, got %v", n.count, count)
+func (m *AddrMap) Remove(key Num) {
+    var success bool
+    m.root, success = m.root.remove(key)
+    if success {
+        (&m.count).Decrement()
     }
 }
 
 func (m *AddrMap) TestInvariants(T *testing.T) {
-    m.root.TestCounts(T)
 }
