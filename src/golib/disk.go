@@ -1,7 +1,6 @@
 package fscq
 
 import(
-	"math/big"
 	"fmt"
 	"bytes"
 	)
@@ -24,9 +23,14 @@ func New_Buffer(sz Num) *Buffer {
 	return x
 }
 
-func DiskWrite (addr *big.Int, buf *Buffer) {
+func DiskWrite (addr *Num, buf *Buffer) {
 	buffer := bytes.NewBuffer(buf.val)
-	fmt.Println("DiskWrite %s -> %s", buffer.String(), addr.String())
+	fmt.Println("DiskWrite %v -> %v", buffer, addr)
+    // TODO implement this
+}
+
+func DiskRead (dst *Buffer, addr *Num) {
+	fmt.Println("DiskRead -> %v", addr)
     // TODO implement this
 }
 

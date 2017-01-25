@@ -7,8 +7,8 @@ type Bool bool
 
 type Empty struct{}
 
-func (x Empty) DeepCopy() *Empty {
-    return &x
+func (x Empty) DeepCopy() Empty {
+    return x
 }
 
 func New_Bool() Bool {
