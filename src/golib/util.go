@@ -3,13 +3,15 @@ package fscq
 import (
 )
 
+type Bool bool
+
 type Empty struct{}
 
 func (x Empty) DeepCopy() *Empty {
     return &x
 }
 
-func New_bool() bool {
+func New_Bool() Bool {
     return false
 }
 

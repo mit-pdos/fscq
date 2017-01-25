@@ -59,8 +59,8 @@ module TranscriberState = struct
     with Not_found ->
       match coq_go_type with
       | Go.Num -> "Num"
-      | Go.Bool -> "bool"
-      | Go.Buffer n -> "[" ^ to_string n ^ "]byte"
+      | Go.Bool -> "Bool"
+      | Go.Buffer n -> "Buffer"
       | Go.EmptyStruct -> "Empty"
       | Go.Pair (a, b) ->
         let name = "pair_" ^ (get_go_type gs a) ^ "_" ^ (get_go_type gs b) in
@@ -126,7 +126,12 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
   match t with
   | Go.Num ->
     (match Obj.magic x with
-     | Go.Here v -> to_string v
+     | Go.Here v ->
+     if (lt v (Big_int.power_int_positive_int 2 64)) then
+        "big_of_i64(" ^ to_string v ^ ")"
+     else
+        "big_of_string(\"" ^ to_string v ^ "\")"
+
      | Go.Moved -> "(moved)")
   | Go.Bool -> if Obj.magic x then "true" else "false"
   | Go.EmptyStruct -> "Empty{}"
@@ -154,8 +159,11 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
      | Go.Moved -> "(moved)"
 
 let zero_val gs (t : Go.coq_type) =
-  let go_type = (TranscriberState.get_go_type gs t) in
-  "New_" ^ go_type ^ "()"
+  match t with
+  | Go.Buffer n -> "New_Buffer(" ^ (go_literal gs Num (Go.Here n)) ^ ")"
+  | _ ->
+    let go_type = (TranscriberState.get_go_type gs t) in
+    "New_" ^ go_type ^ "()"
 
 (* mirror of Go.can_alias in GoSemantics.v *)
 let can_alias  = Go.can_alias
@@ -203,7 +211,7 @@ let go_modify_op (ts : TranscriberState.state)
     let v = (var_name rvar) in
 "{
   in_map, val := (*AddrMap)(" ^ (var_name map) ^ ").Find(" ^ (var_name key) ^ ")
-  " ^ v ^ ".fst = in_map
+  " ^ v ^ ".fst = Bool(in_map)
   if in_map {
   " ^ v ^ ".snd = " ^ (deep_copy_ref v_type ("val.(" ^ v_go_type ^ ")")) ^ "
   }
@@ -297,7 +305,7 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
       (var_val_ref ts var) ^ " = " ^ (go_expr ts expr) ^ "\n"
   | Go.If (expr, t, f) ->
       let s_expr = go_expr ts expr in
-      let line = "if (" ^ s_expr ^ ")" in
+      let line = "if (bool(" ^ s_expr ^ "))" in
       let t_text = go_stmt t ts in
       let f_text = go_stmt f ts in
       line ^ " {\n" ^ t_text ^ "} else {\n" ^ f_text ^ "}\n"
