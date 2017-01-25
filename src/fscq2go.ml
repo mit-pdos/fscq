@@ -158,12 +158,12 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
   | Go.AddrMap t1 ->
     match Obj.magic x with
      | Go.Here v ->
-        go_type ^ "{" ^
+        go_type ^ "(AddrMap_literal(" ^
          (join
              (List.map (fun x0 ->
                let (k, t2) = x0 in
-               (to_string k) ^ " : " ^ (go_literal gs t1 t2))
-               (Go.Map.elements v))) ^ "}"
+               "LiteralKeyValPair{" ^ (to_string k) ^ ", " ^ (go_literal gs t1 t2) ^ "}")
+               (Go.Map.elements v))) ^ "))"
      | Go.Moved -> "(moved)"
 
 let zero_val gs (t : Go.coq_type) =

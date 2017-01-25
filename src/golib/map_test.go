@@ -112,3 +112,27 @@ func TestElements(T *testing.T) {
         T.Errorf("len(els) = %v != len(vals) = %v", len(els), len(vals))
     }
 }
+
+func TestLiteral(T *testing.T) {
+    m := new(AddrMap)
+    *m = AddrMap_literal(
+        LiteralKeyValPair{big_of_i64(10), "ten"},
+        LiteralKeyValPair{big_of_i64(30), "thirty"},
+    )
+
+    card := m.Cardinality()
+    expected := big_of_i64(2)
+    if card.Cmp(&expected) != 0 {
+        T.Errorf("expected size %v, got %v", expected, card)
+    }
+
+    is_found, _ := m.Find(big_of_i64(0))
+    if is_found {
+        T.Errorf("shouldn't have been able to find value %v", 0)
+    }
+
+    is_found, _ = m.Find(big_of_i64(10))
+    if !is_found {
+        T.Errorf("couldn't find value %v", 10)
+    }
+}

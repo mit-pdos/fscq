@@ -26,6 +26,12 @@ type KeyValPair struct {
     val interface{}
 }
 
+// Used only for AddrMap_literal
+type LiteralKeyValPair struct {
+    key Num
+    val interface{}
+}
+
 func (n *TreeNode) insert(newKey Num, newVal interface{}) (*TreeNode, bool) {
     fmt.Println("inserting %v -> %v", newKey, newVal)
     if (n == nil) {
@@ -149,6 +155,14 @@ func (m *AddrMap) Remove(key Num) {
     if success {
         (&m.count).Decrement()
     }
+}
+
+func AddrMap_literal(vals ...LiteralKeyValPair) AddrMap {
+    a := new(AddrMap)
+    for _, keyVal := range vals {
+        a.Insert(keyVal.key, keyVal.val)
+    }
+    return *a
 }
 
 func (m *AddrMap) TestInvariants(T *testing.T) {
