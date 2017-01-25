@@ -42,14 +42,16 @@ GO_LIB_INST := $(patsubst golib/%.go,codegen/src/gofscq/%.go,$(GO_LIB))
 GO_EX		:= golib/fscq.go
 GO_EX_INST	:= $(patsubst golib/%.go,codegen/src/fscq/%.go,$(GO_EX))
 
+GO := GOPATH=`pwd`/codegen/ go
+
 .PHONY: coq proof clean
 
  # this is just so "make" rebuilds the .vio files and is temporary
 all: fscq
 
 fscq: $(GO_LIB_INST) $(GO_EX_INST) codegen/src/gofscq/fscq.go
-	go install ./codegen/src/gofscq
-	go install ./codegen/src/fscq
+	$(GO) install ./codegen/src/gofscq
+	$(GO) install ./codegen/src/fscq
 	cp codegen/bin/fscq fscq
 
 codegen/%.ml: %.ml
