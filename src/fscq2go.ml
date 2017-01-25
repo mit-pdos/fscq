@@ -413,15 +413,15 @@ let go_slice_defs ts =
     let (type_name, v_type) = x in
     let go_v_type = (TranscriberState.get_go_type ts v_type) in
     let go_v_type = (val_ref v_type go_v_type) in
-    "type " ^ type_name ^ " [] " ^ go_v_type ^
+    "type " ^ type_name ^ " []" ^ go_v_type ^
     "
 
     func (x " ^ type_name ^ ") DeepCopy () *" ^ type_name ^ "{
     var newSlice " ^ type_name ^ "
     for _, v := range x {
-        newSlice = append(newSlice, " ^ (deep_copy_ref v_type "v") ^ "
+        newSlice = append(newSlice, " ^ (deep_copy_ref v_type "v") ^ ")
     }
-    return newSlice
+    return &newSlice
     }
 
     func New_" ^ type_name ^ " () *" ^ type_name ^ "{
@@ -431,6 +431,7 @@ let go_slice_defs ts =
 
 let go_type_decls gs =
   String.concat "\n" (go_struct_defs gs) ^
+  String.concat "\n" (go_slice_defs gs) ^
   String.concat "\n" (go_map_defs gs)
   ^ "\n"
 
