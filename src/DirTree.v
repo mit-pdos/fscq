@@ -6346,6 +6346,7 @@ Module DIRTREE.
       eassumption.
   Qed.
 
+  Hint Resolve pathname_prefix_neq.
 
   Theorem delete_ok : forall fsxp dnum name mscs,
     {< F mbase m pathname Fm Ftop tree tree_elem ilist frees,
