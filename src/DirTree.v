@@ -5721,7 +5721,6 @@ Module DIRTREE.
               eapply incl_appl; eauto.
               inversion H. inversion H4. eauto.
             - repeat rewrite cons_app with (l := app _ _).
-              Search incl app.
               eapply incl_app_commr.
               rewrite <- app_assoc.
               eapply incl_appr; eauto.
