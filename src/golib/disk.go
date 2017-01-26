@@ -31,6 +31,7 @@ func (d Buffer) DeepCopy () *Buffer {
 func New_Buffer(sz Num) *Buffer {
 	x := new(Buffer)
 	x.sz = sz
+	x.val = make([]byte, sz.Int64())
 	return x
 }
 
