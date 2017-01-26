@@ -91,15 +91,13 @@ Theorem extract_hdr_read :
   eapply ProgMonad.bind_left_id.
   compile_step.
   unfold PaddedLog.Hdr.val2hdr.
-  cbv beta iota delta [Rec.Rec.of_word Rec.Rec.len PaddedLog.Hdr.header_type  plus minus
+  cbv beta iota delta [Rec.Rec.of_word Rec.Rec.len PaddedLog.Hdr.header_type plus minus
                              addrlen hashlen wtl whd].
   compile_step.
   compile_step.
   compile_step.
   compile_step.
-  About PaddedLog.Hdr.plus_minus_header.
   Require Import ProgMonad.
-  About eq_rec.
   Lemma bind_f : forall A B C (a : A) (f : A -> B) (g : B -> prog C),
       prog_equiv (x <- Ret (f a); g x) (x' <- Ret a; g (f x')).
   Proof.
@@ -117,4 +115,6 @@ Theorem extract_hdr_read :
   compile_step.
   compile_step.
   (* Now, we have to actually call [split1] *)
+  eapply hoare_weaken.
+  (* eapply CompileSplit1. *)
 Abort.

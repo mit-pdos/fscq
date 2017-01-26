@@ -566,6 +566,35 @@ Proof.
   all: contradiction H1; repeat eexists; eauto. econstructor; [ eval_expr; eauto .. ].
 Qed.
 
+Lemma CompileSplit1 : forall sz1 sz2 bsz1 bsz2 (e1 : bsz1 * 8 = sz1) (e2 : bsz2 * 8 = sz2) 
+                        (buf : immut_word (sz1 + sz2)) env dvar svar F,
+    EXTRACT Ret (split1 sz1 sz2 buf : immut_word _)
+    {{ dvar ~>? immut_word sz1 * svar ~> buf * F }}
+      Modify (SliceBuffer 0 bsz1) ^(dvar, svar)
+    {{ fun ret => dvar ~> ret * svar ~> buf * F }} // env.
+Proof.
+  intros. unfold ProgOk.
+  inv_exec_progok.
+  repeat match goal with
+  | [ |- context[@GoWrapper_immut_word ?nbits ?nbytes ?e] ] =>
+    ((is_var e; fail 1) || idtac); set (e) in *
+  end.
+    exec_solve_step.
+    exec_solve_step.
+    exec_solve_step.
+    exec_solve_step.
+    repeat eexists.
+    econstructor.
+    pred_solve.
+    match goal with
+    | [ |- context[(dvar ~> ?a)%pred] ] => set (val1 := a)
+    end.
+    match goal with
+    | [ |- context[(Mem.upd _ dvar (Val _ ?a))%pred] ] => set (val2 := a)
+    end.
+    Import EqNotations.
+    assert (val1 = rew (Nat.sub_0_r _) in val2).
+Admitted.
 
 Lemma CompileIf : forall V varb (b : bool)
   (ptrue pfalse : prog V) xptrue xpfalse F G env,

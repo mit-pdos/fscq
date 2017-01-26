@@ -62,6 +62,7 @@ Proof.
   auto.
 Qed.
 
+
 Lemma valu2bytes_inj : forall a b,
     valu2bytes a = valu2bytes b -> a = b.
 Proof.
@@ -108,17 +109,57 @@ Proof.
             wrap_type := Go.Buffer n |}; GoWrapper_t.
 Defined.
 
+Create HintDb divisible discriminated.
+
+Hint Resolve Nat.mod_divide Nat.mod_divides Nat.divide_add_r : divisible.
+
+Lemma mul_divides : forall a b c,
+    a * b = c -> Nat.divide b c.
+Proof.
+  intros.
+  rewrite <- H.
+  apply Nat.divide_mul_r.
+  apply Nat.divide_refl.
+Qed.
+Hint Resolve mul_divides : divisible.
+
+Lemma mod_divide_1 : forall a b,
+    b <> 0 ->
+    Nat.divide b a -> a mod b = 0.
+Proof.
+  intros. apply Nat.mod_divide; auto.
+Qed.
+Hint Resolve mod_divide_1 : divisible.
+
 Instance GoWrapper_word nbits nbytes (e : nbytes * 8 = nbits) : GoWrapper (word nbits).
 Proof.
-  rewrite <- e.
-  refine {| wrap' :=  Go.Here;
-            wrap_type := Go.Buffer nbytes |}; GoWrapper_t.
+  unshelve refine {| wrap_type := Go.Buffer nbytes |}.
+  rewrite <- e. apply Go.Here.
+  intros.
+  destruct e.
+  simpl in *.
+  GoWrapper_t.
 Defined.
 
-Hint Extern 2 (GoWrapper (word ?n)) =>
+Hint Extern 3 (GoWrapper (word ?n)) =>
 apply GoWrapper_word with (nbytes := n / 8); auto;
-  ( apply mul_div; [ auto | omega ] ) : typeclass_instances.
+  ( apply mul_div; [ eauto with divisible | omega ] ) : typeclass_instances.
 
+Definition immut_word := word.
+
+Instance GoWrapper_immut_word nbits nbytes (e : nbytes * 8 = nbits) : GoWrapper (immut_word nbits).
+Proof.
+  unshelve refine {| wrap_type := Go.ImmutableBuffer nbytes |}.
+  rewrite <- e. apply id.
+  intros. destruct e.
+  simpl in *.
+  GoWrapper_t.
+Defined.
+
+Hint Extern 2 (GoWrapper (immut_word ?n)) =>
+apply GoWrapper_immut_word with (nbytes := n / 8); auto;
+  ( apply mul_div; [ eauto with divisible | omega ] ) : typeclass_instances.
+  
 Instance GoWrapper_unit : GoWrapper unit.
 Proof.
   refine {| wrap' := id;
@@ -221,7 +262,7 @@ Defined.
 
 Instance list_default_value A {W : GoWrapper A} : DefaultValue (list A) := {| zeroval := [] |}. auto. Defined.
 Instance bytes_default_value n : DefaultValue (bytes n) := {| zeroval := $0 |}. auto. Defined.
-Instance word_default_value (nbits nbytes : nat) (e : nbytes * 8 = nbits) : @DefaultValue (word nbits) ltac:(eauto with typeclass_instances).
+Instance word_default_value (nbits nbytes : nat) (e : nbytes * 8 = nbits) : @DefaultValue (word nbits) (GoWrapper_word _ e).
   rewrite <- e.
   econstructor.
   reflexivity.
