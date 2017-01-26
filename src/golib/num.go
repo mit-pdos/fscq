@@ -60,6 +60,10 @@ func (n *Num) Add (x *Num, y *Num) {
 	(*big.Int)(n).Add((*big.Int)(x), (*big.Int)(y))
 }
 
+func (n *Num) Multiply(x *Num, y *Num) {
+	(*big.Int)(n).Mul((*big.Int)(x), (*big.Int)(y))
+}
+
 func (n *Num) Increment() {
 	one := big.Int(Num_of_i64(1))
 	(*big.Int)(n).Add((*big.Int)(n), &one)
@@ -68,4 +72,8 @@ func (n *Num) Increment() {
 func (n *Num) Decrement() {
 	one := big.Int(Num_of_i64(1))
 	(*big.Int)(n).Sub((*big.Int)(n), &one)
+}
+
+func (n *Num) Int64() int64 {
+	return (*big.Int)(n).Int64()
 }

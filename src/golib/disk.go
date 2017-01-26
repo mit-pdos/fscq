@@ -11,9 +11,16 @@ type Buffer struct {
 	val []byte
 }
 
+type DiskStats struct {
+	reads Num
+	writes Num
+	syncs Num
+}
+
 const debug = false
 
 var disk_file *os.File
+var disk_stats *DiskStats
 
 func (d Buffer) DeepCopy () *Buffer {
 	x := new(Buffer)
@@ -36,6 +43,7 @@ func Init_disk(path string) {
 	}
 
 	disk_file = f
+	disk_stats = new(DiskStats)
 }
 
 func DiskWrite (addr *Num, buf *Buffer) {
@@ -43,6 +51,12 @@ func DiskWrite (addr *Num, buf *Buffer) {
 	if debug {
 		fmt.Println("DiskWrite %v -> %v", buffer, addr)
 	}
+	off := New_Num()
+	*off = Num_of_i64(4096)
+	off.Multiply(off, addr)
+
+	disk_file.WriteAt(buffer.val, off.Int64())
+	(&disk_stats.writes).Increment()
     // TODO implement this
 }
 
@@ -50,6 +64,8 @@ func DiskRead (dst *Buffer, addr *Num) {
 	if debug {
 		fmt.Println("DiskRead -> %v", addr)
 	}
+	(&disk_stats.reads).Increment()
+
     // TODO implement this
 }
 
