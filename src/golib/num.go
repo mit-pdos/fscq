@@ -40,13 +40,13 @@ func test_le_Num(l Num, r Num) Bool {
 	return Bool((&l).Cmp(&r) <= 0)
 }
 
-func big_of_i64 (num int64) Num {
+func Num_of_i64 (num int64) Num {
 	var x big.Int
 	x.SetInt64(num)
 	return Num(x)
 }
 
-func big_of_string (v string) Num {
+func Num_of_string (v string) Num {
 	n := new(big.Int)
 	n.SetString(v, 10)
 	return Num(*n)
@@ -61,11 +61,11 @@ func (n *Num) Add (x *Num, y *Num) {
 }
 
 func (n *Num) Increment() {
-	one := big.Int(big_of_i64(1))
+	one := big.Int(Num_of_i64(1))
 	(*big.Int)(n).Add((*big.Int)(n), &one)
 }
 
 func (n *Num) Decrement() {
-	one := big.Int(big_of_i64(1))
+	one := big.Int(Num_of_i64(1))
 	(*big.Int)(n).Sub((*big.Int)(n), &one)
 }

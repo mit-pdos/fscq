@@ -1,7 +1,6 @@
 package fscq
 
 import (
-    "fmt"
     "testing"
 )
 
@@ -33,7 +32,6 @@ type LiteralKeyValPair struct {
 }
 
 func (n *TreeNode) insert(newKey Num, newVal interface{}) (*TreeNode, bool) {
-    fmt.Println("inserting %v -> %v", newKey, newVal)
     if (n == nil) {
         newNode := TreeNode {
             key : newKey,

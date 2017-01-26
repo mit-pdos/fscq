@@ -64,8 +64,8 @@ module TranscriberState = struct
       | Go.Buffer n -> "Buffer"
       | Go.EmptyStruct -> "Empty"
       | Go.Pair (a, b) ->
-        let name = "pair_" ^ (get_go_type gs a) ^ "_" ^ (get_go_type gs b) in
-        gs.structs <- (name, [("fst", a); ("snd", b)]) :: gs.structs;
+        let name = "Pair_" ^ (get_go_type gs a) ^ "_" ^ (get_go_type gs b) in
+        gs.structs <- (name, [("Fst", a); ("Snd", b)]) :: gs.structs;
         gs.go_types <- (coq_go_type, name) :: gs.go_types;
         name
       | Go.AddrMap (a) ->
@@ -136,9 +136,9 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
     (match Obj.magic x with
      | Go.Here v ->
      if (lt v (Big_int.power_int_positive_int 2 64)) then
-        "big_of_i64(" ^ to_string v ^ ")"
+        "Num_of_i64(" ^ to_string v ^ ")"
      else
-        "big_of_string(\"" ^ to_string v ^ "\")"
+        "Num_of_string(\"" ^ to_string v ^ "\")"
 
      | Go.Moved -> "(moved)")
   | Go.Bool -> if Obj.magic x then "true" else "false"
@@ -211,11 +211,11 @@ let go_modify_op (ts : TranscriberState.state)
     let (pair, (first, (second, _))) = Obj.magic args_tuple in
     let fst, snd = (var_ref ts first), (var_ref ts second) in
     fst ^ ", " ^ snd ^ " = " ^
-      (var_ref ts pair) ^ ".fst, " ^ (var_ref ts pair) ^ ".snd
+      (var_ref ts pair) ^ ".Fst, " ^ (var_ref ts pair) ^ ".Snd
       _, _ = " ^ fst ^ ", " ^ snd ^ "  // prevent 'unused' error"
   | Go.JoinPair ->
     let (pair, (first, (second, _))) = Obj.magic args_tuple in
-    (var_ref ts pair) ^ ".fst, " ^ (var_ref ts pair) ^ ".snd = " ^
+    (var_ref ts pair) ^ ".Fst, " ^ (var_ref ts pair) ^ ".Snd = " ^
     (var_ref ts first) ^ ", " ^ (var_ref ts second)
   | Go.MapAdd ->
     let (map, (key, (value, _))) = Obj.magic args_tuple in
@@ -230,9 +230,9 @@ let go_modify_op (ts : TranscriberState.state)
 "{
   in_map, val := (*AddrMap)(" ^ (var_ref ts map) ^ ").Find(*" ^ (var_ref ts key) ^ ")
   _ = val  // prevent 'unused' error
-  " ^ v ^ ".fst = Bool(in_map)
+  " ^ v ^ ".Fst = Bool(in_map)
   if in_map {
-  " ^ v ^ ".snd = " ^ (deep_copy_ref v_type ("val.(" ^ v_go_type ^ ")")) ^ "
+  " ^ v ^ ".Snd = " ^ (deep_copy_ref v_type ("val.(" ^ (val_ref v_type v_go_type) ^ ")")) ^ "
   }
 }"
   | Go.MapRemove ->
@@ -260,8 +260,8 @@ let go_modify_op (ts : TranscriberState.state)
       " ^ v ^ " := make(" ^ slice_go_t ^ ", 0, len(pairs))
       for _, keyval := range pairs {
         p := " ^ (zero_val ts.gstate slice_el_t) ^ "
-        p.fst = keyval.key
-        p.snd = " ^ (deep_copy_ref v_type ("keyval.val.(*" ^ v_go_type ^ ")")) ^ "
+        p.Fst = keyval.key
+        p.Snd = " ^ (deep_copy_ref v_type ("keyval.val.(*" ^ v_go_type ^ ")")) ^ "
         " ^ v ^ " = append(" ^ v ^ ", p)
       }
     }"
