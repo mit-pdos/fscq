@@ -432,4 +432,78 @@ Proof.
   eapply dir2flatmem2_find_subtree_ptsto; eauto.
 Qed.
 
+Lemma dir2flatmem2_rename: forall Ftree cwd srcbase srcname dstbase dstname
+      dstnum0 dstents subtree srcnum0 srcents srcnum srcfile dstnum dstfile 
+      dnum tree_elem tree,
+  tree_names_distinct tree ->
+  tree_inodes_distinct tree ->
+  ((Ftree ✶ (cwd ++ srcbase ++ [srcname]) |-> File srcnum srcfile)
+    ✶ (cwd ++ dstbase ++ [dstname]) |-> File dstnum dstfile)%pred 
+      (dir2flatmem2 tree) ->
+  find_subtree cwd tree = Some (TreeDir dnum tree_elem) ->
+  find_subtree srcbase (TreeDir dnum tree_elem) = Some (TreeDir srcnum0 srcents) ->
+  find_dirlist srcname srcents = Some subtree ->
+  find_subtree dstbase
+          (tree_prune srcnum0 srcents srcbase srcname (TreeDir dnum tree_elem)) =
+        Some (TreeDir dstnum0 dstents) ->
+  ((Ftree ✶ (cwd ++ srcbase ++ [srcname]) |-> Nothing)
+   ✶ (cwd ++ dstbase ++ [dstname]) |-> File srcnum srcfile)%pred
+    (dir2flatmem2
+      (update_subtree cwd
+        (tree_graft dstnum0 dstents dstbase dstname subtree
+         (tree_prune srcnum0 srcents srcbase srcname
+            (TreeDir dnum tree_elem))) tree)).
+Proof.
+  intros.
+  erewrite <- update_update_subtree_same.
+  eapply dirents2mem2_update_subtree_one_name.
+  eapply pimpl_trans; [ reflexivity | | ].
+  2: eapply dirents2mem2_update_subtree_one_name.
+  5: eauto.
+  3: eapply dir2flatmem2_prune_delete with (name := srcname) (base := srcbase).
+  cancel.
+  pred_apply; cancel.
+  3: left.
+  3: erewrite <- find_subtree_app by eauto.
+  3: eapply dir2flatmem2_find_subtree_ptsto.
+
+  eapply tree_names_distinct_subtree; eauto.
+
+  eauto.
+  eauto.
+  pred_apply; cancel.
+  eauto.
+
+  3: erewrite find_update_subtree; eauto.
+
+  erewrite <- find_subtree_dirlist in H4.
+  erewrite <- find_subtree_app in H4 by eauto.
+  erewrite <- find_subtree_app in H4 by eauto.
+  erewrite dir2flatmem2_find_subtree_ptsto in H4.
+  3: pred_apply; cancel.
+  inversion H4; subst.
+
+  erewrite dir2flatmem2_graft_upd; eauto.
+
+  eapply tree_names_distinct_prune_subtree'; eauto.
+  eapply tree_names_distinct_subtree; eauto.
+
+  left.
+  eapply find_subtree_prune_subtree_oob; eauto.
+
+  intro. eapply pathname_prefix_trim in H6.
+  eapply dirents2mem2_not_prefix; eauto.
+  erewrite <- find_subtree_app by eauto.
+  erewrite dir2flatmem2_find_subtree_ptsto.
+  reflexivity. eauto.
+  pred_apply; cancel.
+  eauto.
+
+  eapply tree_names_distinct_update_subtree; eauto.
+  eapply tree_names_distinct_prune_subtree'; eauto.
+  eapply tree_names_distinct_subtree; eauto.
+Qed.
+
+
+
 Global Opaque dir2flatmem2.

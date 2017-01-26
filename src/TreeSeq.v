@@ -2831,6 +2831,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       unfold dirtree_safe in *; intuition.
   Qed.
 
+
   Theorem treeseq_rename_ok : forall fsxp dnum srcbase (srcname:string) dstbase dstname mscs,
     {< ds ts Fm Ftop Ftree cwd tree_elem srcnum dstnum srcfile dstfile,
     PRE:hm
@@ -2896,105 +2897,53 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
     cancel.
 
-    eapply treeseq_in_ds_pushd; eauto.
-    unfold treeseq_one_safe; simpl.
-    rewrite H0 in H11.
-    eassumption.
-
-    eapply treeseq_safe_pushd; eauto.
-    eapply NEforall_d_in'; intros.
-    eapply NEforall_d_in in H13; eauto.
-    eapply treeseq_safe_trans; eauto.
-
-    (* clear all goals mentioning x0 *)
-    clear H13 H15 x0.
-
-    eapply treeseq_safe_rename; eauto.
-    distinct_names'.
-    distinct_inodes'.
-    rewrite H0 in *; eauto.
-
-    - erewrite <- update_update_subtree_same.
-      eapply dirents2mem2_update_subtree_one_name.
-      eapply pimpl_trans; [ reflexivity | | ].
-      2: eapply dirents2mem2_update_subtree_one_name.
-      5: eauto.
-      3: eapply dir2flatmem2_prune_delete with (name := srcname) (base := srcbase).
-      cancel.
-      pred_apply; cancel.
-      3: left.
-      3: erewrite <- find_subtree_app by eauto.
-      3: eapply dir2flatmem2_find_subtree_ptsto.
-
-      eapply tree_names_distinct_subtree; eauto.
-      distinct_names'.
-
-      eauto.
-      distinct_names'.
-      pred_apply; cancel.
-      distinct_names'.
-
-      3: erewrite find_update_subtree; eauto.
-
-      erewrite <- find_subtree_dirlist in H16.
-      erewrite <- find_subtree_app in H16 by eauto.
-      erewrite <- find_subtree_app in H16 by eauto.
-      erewrite dir2flatmem2_find_subtree_ptsto in H16.
-      3: pred_apply; cancel.
-      inversion H16; subst.
-
-      erewrite dir2flatmem2_graft_upd; eauto.
-
-      eapply tree_names_distinct_prune_subtree'; eauto.
-      eapply tree_names_distinct_subtree; eauto.
-      distinct_names'.
-
-      left.
-      eapply find_subtree_prune_subtree_oob; eauto.
-
-      intro. eapply pathname_prefix_trim in H9.
-      eapply dirents2mem2_not_prefix.
-      3: eauto.
-      2: apply H4.
-      distinct_names'.
-
-      erewrite <- find_subtree_app by eauto.
-      erewrite dir2flatmem2_find_subtree_ptsto.
-      reflexivity.
-      distinct_names'.
-      pred_apply; cancel.
-      distinct_names'.
-
-      eapply tree_names_distinct_update_subtree.
-      distinct_names'.
-
-      eapply tree_names_distinct_prune_subtree'; eauto.
-      eapply tree_names_distinct_subtree; eauto.
-      distinct_names'.
-    - unfold AFS.rename_rep_inner in *.
-      xcrash_solve.
-      or_l. cancel. xform_normr. cancel.
-      or_r. cancel. repeat (progress xform_norm; cancel).
-
-      eapply treeseq_in_ds_pushd; eauto.
+    - eapply treeseq_in_ds_pushd; eauto.
       unfold treeseq_one_safe; simpl.
-      rewrite <- surjective_pairing in H11.
       rewrite H0 in H11.
       eassumption.
 
-      eapply treeseq_safe_pushd; eauto.
+    - eapply treeseq_safe_pushd; eauto.
       eapply NEforall_d_in'; intros.
-      eapply NEforall_d_in in H12; eauto.
+      eapply NEforall_d_in in H13; eauto.
       eapply treeseq_safe_trans; eauto.
+
+      (* clear all goals mentioning x0 *)
+      clear H13 H15 x0.
 
       eapply treeseq_safe_rename; eauto.
       distinct_names'.
       distinct_inodes'.
       rewrite H0 in *; eauto.
 
-      admit.
+    - eapply dir2flatmem2_rename; eauto.
+      distinct_names'.
+      distinct_inodes'.
 
-  Admitted.
+    - unfold AFS.rename_rep_inner in *.
+      xcrash_solve.
+      or_l. cancel. xform_normr. cancel.
+      or_r. cancel. repeat (progress xform_norm; cancel).
+
+      + eapply treeseq_in_ds_pushd; eauto.
+        unfold treeseq_one_safe; simpl.
+        rewrite <- surjective_pairing in H11.
+        rewrite H0 in H11.
+        eassumption.
+
+      + eapply treeseq_safe_pushd; eauto.
+        eapply NEforall_d_in'; intros.
+        eapply NEforall_d_in in H12; eauto.
+        eapply treeseq_safe_trans; eauto.
+
+        eapply treeseq_safe_rename; eauto.
+        distinct_names'.
+        distinct_inodes'.
+        rewrite H0 in *; eauto.
+
+      + eapply dir2flatmem2_rename; eauto.
+        distinct_names'.
+        distinct_inodes'.
+  Qed.
 
   (* restricted to deleting files *)
   Theorem treeseq_delete_ok : forall fsxp dnum name mscs,
