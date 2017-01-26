@@ -4257,7 +4257,7 @@ Module DIRTREE.
       eapply pathname_prefix_neq; eauto.
   Qed.
 
-  Lemma rename_safe_dest_none : 
+  Lemma dirtree_safe_rename_dest_none : 
     forall ilist1 ilist2 frees1 frees2 srcpath srcname dstpath dstname dnum ents n l n' l' mvtree,
     let pruned  := tree_prune n l srcpath srcname (TreeDir dnum ents) in
     let grafted := tree_graft n' l' dstpath dstname mvtree pruned in
@@ -4331,7 +4331,7 @@ Module DIRTREE.
           eapply pathname_prefix_neq; eauto.
   Qed.
 
-  Lemma rename_safe_dest_exists : 
+  Lemma dirtree_safe_rename_dest_exists : 
     forall ilist1 ilist2 ilist3 frees1 frees2 frees3
            srcpath srcname dstpath dstname dnum ents n l n' l' mvtree,
     let pruned  := tree_prune n l srcpath srcname (TreeDir dnum ents) in
@@ -6968,7 +6968,7 @@ Module DIRTREE.
     or_r; cancel; eauto.
     eapply subtree_graft_absorb_delete; eauto.
     msalloc_eq.
-    eapply rename_safe_dest_exists; eauto.
+    eapply dirtree_safe_rename_dest_exists; eauto.
 
     (* case 1: in the new tree *)
     denote BFILE.treeseq_ilist_safe as Hsafe.
@@ -7005,7 +7005,7 @@ Module DIRTREE.
     or_r; cancel; eauto.
     eapply subtree_graft_absorb; eauto.
     msalloc_eq.
-    eapply rename_safe_dest_none; eauto.
+    eapply dirtree_safe_rename_dest_none; eauto.
     eapply notindomain_not_in_dirents; eauto.
 
     denote BFILE.treeseq_ilist_safe as Hsafe.
