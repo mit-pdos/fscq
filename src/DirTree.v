@@ -4919,6 +4919,17 @@ Module DIRTREE.
     rewrite find_subtree_app_none; eauto.
   Qed.
 
+  Lemma find_subtree_file_dir_exfalso: forall pn n f d e,
+    find_subtree pn (TreeFile n f) = Some (TreeDir d e) ->
+    False.
+  Proof.
+    intros.
+    destruct pn.
+    simpl in *; try congruence.
+    rewrite find_subtree_file_none in H.
+    try congruence.
+  Qed.
+
   Lemma tree_inodes_distinct_elem: forall a n l subtree,
     tree_inodes_distinct (TreeDir n l) ->
     find_subtree [a] (TreeDir n l) = Some subtree ->
@@ -6026,6 +6037,38 @@ Module DIRTREE.
     simpl.
     eapply incl_cons2.
     eapply tree_inodes_incl_delete_from_list; eauto.
+  Qed.
+
+  Lemma tree_inodes_in_delete_oob: forall pathname' base name inum f dnum dents tree,
+    tree_names_distinct tree ->
+    tree_inodes_distinct tree ->
+    (~ pathname_prefix (base ++ [name]) pathname') ->
+    find_subtree pathname' tree = Some (TreeFile inum f) ->
+    find_subtree base tree = Some (TreeDir dnum dents) ->
+    In inum
+      (tree_inodes
+         (update_subtree base (TreeDir dnum
+            (delete_from_list name dents)) tree)).
+  Proof.
+    intros.
+    destruct (pathname_decide_prefix base pathname').
+    - deex.
+      destruct suffix.
+      + rewrite app_nil_r in *. congruence.
+      + erewrite find_subtree_app in H2 by eauto.
+
+        eapply tree_inodes_in_update_subtree_child; eauto.
+        eapply tree_inodes_in_delete_from_list_oob; eauto.
+        eapply tree_names_distinct_subtree; eauto.
+        eapply tree_inodes_distinct_subtree; eauto.
+        rewrite pathname_prefix_trim; eauto.
+
+        replace inum with (dirtree_inum (TreeFile inum f)) by reflexivity.
+        eapply find_subtree_inum_present; eauto.
+
+    - eapply tree_inodes_in_update_subtree_oob; eauto.
+      replace inum with (dirtree_inum (TreeFile inum f)) by reflexivity.
+      eapply find_subtree_inum_present; eauto.
   Qed.
 
   Lemma tree_inodes_in_rename_oob: forall pathname' cwd srcbase srcname dstbase dstname
