@@ -69,9 +69,20 @@ func DiskRead (dst *Buffer, addr *Num) {
 	if debug {
 		fmt.Println("DiskRead -> %v", addr)
 	}
+	off := New_Num()
+	*off = Num_of_i64(4096)
+	off.Multiply(off, addr)
+
+	n_bytes, err := disk_file.ReadAt(dst.val, off.Int64())
 	(&disk_stats.reads).Increment()
 
-    // TODO implement this
+	if n_bytes != 4096 {
+		os.Stderr.WriteString(fmt.Sprintf("read_disk: short read: %v @ %v", n_bytes, addr))
+	}
+
+	if err != nil {
+		os.Stderr.WriteString(fmt.Sprintf("read error: %v", err))
+	}
 }
 
 func DiskSync() {
