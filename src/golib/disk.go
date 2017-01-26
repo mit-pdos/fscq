@@ -23,8 +23,8 @@ var disk_stats *DiskStats
 
 func (d Buffer) DeepCopy () *Buffer {
 	x := new(Buffer)
-	(*x).sz = d.sz
-	copy((*x).val, d.val)
+	x.sz = d.sz
+	x.val = append(x.val, d.val...)
 	return x
 }
 
