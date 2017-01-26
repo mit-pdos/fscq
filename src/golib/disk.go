@@ -3,6 +3,7 @@ package fscq
 import(
 	"fmt"
 	"os"
+	"syscall"
 	)
 
 type Buffer struct {
@@ -16,7 +17,7 @@ type DiskStats struct {
 	syncs Num
 }
 
-const debug = false
+const debug = true
 
 var disk_file *os.File
 var disk_stats *DiskStats
@@ -48,7 +49,7 @@ func Init_disk(path string) {
 
 func DiskWrite (addr *Num, buf *Buffer) {
 	if debug {
-		fmt.Println("DiskWrite %v -> %v", buf, addr)
+		fmt.Printf("write(%v)\n", addr)
 	}
 	off := New_Num()
 	*off = Num_of_i64(4096)
@@ -58,17 +59,17 @@ func DiskWrite (addr *Num, buf *Buffer) {
 	(&disk_stats.writes).Increment()
 
 	if n_bytes != 4096 {
-		os.Stderr.WriteString(fmt.Sprintf("write_disk: short write: %v @ %v", n_bytes, addr))
+		os.Stderr.WriteString(fmt.Sprintf("write_disk: short write: %v @ %v\n", n_bytes, addr))
 	}
 
 	if err != nil {
-		os.Stderr.WriteString(fmt.Sprintf("write error: %v", err))
+		fmt.Fprintf(os.Stderr, "write error: %v", err)
 	}
 }
 
 func DiskRead (dst *Buffer, addr *Num) {
 	if debug {
-		fmt.Println("DiskRead -> %v", addr)
+		fmt.Printf("read(%v)\n", addr)
 	}
 	off := New_Num()
 	*off = Num_of_i64(4096)
@@ -78,14 +79,23 @@ func DiskRead (dst *Buffer, addr *Num) {
 	(&disk_stats.reads).Increment()
 
 	if n_bytes != 4096 {
-		os.Stderr.WriteString(fmt.Sprintf("read_disk: short read: %v @ %v", n_bytes, addr))
+		os.Stderr.WriteString(fmt.Sprintf("read_disk: short read: %v @ %v\n", n_bytes, off))
 	}
 
 	if err != nil {
-		os.Stderr.WriteString(fmt.Sprintf("read error: %v", err))
+		fmt.Fprintf(os.Stderr, "read error: %v\n", err)
 	}
 }
 
 func DiskSync() {
-	fmt.Println("DiskSync")
+	if debug {
+		fmt.Println("sync()")
+	}
+
+	(&disk_stats.syncs).Increment()
+	err := syscall.Fdatasync(int(disk_file.Fd()))
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sync error: %v\n", err)
+	}
 }

@@ -19,7 +19,7 @@ import Data.Word
 import Data.IORef
 
 verbose :: Bool
-verbose = False
+verbose = True
 
 reallySync :: Bool
 reallySync = True
