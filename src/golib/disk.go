@@ -3,12 +3,17 @@ package fscq
 import(
 	"fmt"
 	"bytes"
+	"os"
 	)
 
 type Buffer struct {
 	sz Num
 	val []byte
 }
+
+const debug = false
+
+var disk_file *os.File
 
 func (d Buffer) DeepCopy () *Buffer {
 	x := new(Buffer)
@@ -23,14 +28,28 @@ func New_Buffer(sz Num) *Buffer {
 	return x
 }
 
+func Init_disk(path string) {
+	f, err := os.OpenFile(path, os.O_RDWR, 0666)
+	if err != nil {
+		os.Stderr.WriteString("Couldn't open disk file")
+		os.Exit(1)
+	}
+
+	disk_file = f
+}
+
 func DiskWrite (addr *Num, buf *Buffer) {
 	buffer := bytes.NewBuffer(buf.val)
-	fmt.Println("DiskWrite %v -> %v", buffer, addr)
+	if debug {
+		fmt.Println("DiskWrite %v -> %v", buffer, addr)
+	}
     // TODO implement this
 }
 
 func DiskRead (dst *Buffer, addr *Num) {
-	fmt.Println("DiskRead -> %v", addr)
+	if debug {
+		fmt.Println("DiskRead -> %v", addr)
+	}
     // TODO implement this
 }
 
