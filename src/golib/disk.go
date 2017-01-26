@@ -2,7 +2,6 @@ package fscq
 
 import(
 	"fmt"
-	"bytes"
 	"os"
 	)
 
@@ -47,17 +46,23 @@ func Init_disk(path string) {
 }
 
 func DiskWrite (addr *Num, buf *Buffer) {
-	buffer := bytes.NewBuffer(buf.val)
 	if debug {
-		fmt.Println("DiskWrite %v -> %v", buffer, addr)
+		fmt.Println("DiskWrite %v -> %v", buf, addr)
 	}
 	off := New_Num()
 	*off = Num_of_i64(4096)
 	off.Multiply(off, addr)
 
-	disk_file.WriteAt(buffer.val, off.Int64())
+	n_bytes, err := disk_file.WriteAt(buf.val, off.Int64())
 	(&disk_stats.writes).Increment()
-    // TODO implement this
+
+	if n_bytes != 4096 {
+		os.Stderr.WriteString(fmt.Sprintf("write_disk: short write: %v @ %v", n_bytes, addr))
+	}
+
+	if err != nil {
+		os.Stderr.WriteString(fmt.Sprintf("write error: %v", err))
+	}
 }
 
 func DiskRead (dst *Buffer, addr *Num) {
