@@ -1247,11 +1247,17 @@ Module AFS.
            selN ilist inum def' = selN ilist' inum def' ]])
     XCRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-      exists d tree' ilist' frees',
+      exists d tree' ilist' frees' mscs',
+      [[ MSAlloc mscs' = MSAlloc mscs ]] *
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
       [[ tree' = DIRTREE.update_subtree pathname
                     (DIRTREE.delete_from_dir name (DIRTREE.TreeDir dnum tree_elem)) tree ]] *
-      [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]]
+      [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
+      [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
+                      ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
+      [[ forall inum def', inum <> dnum ->
+           (In inum (tree_inodes tree') \/ (~ In inum (tree_inodes tree))) ->
+          selN ilist inum def' = selN ilist' inum def' ]]
     >} delete fsxp dnum name mscs.
   Proof.
     unfold delete; intros.
