@@ -15,9 +15,9 @@ func New_Num() *Num {
 }
 
 func (n Num) DeepCopy() *Num {
-	x := new(Num)
-	*x = n
-	return x
+	x := new(big.Int)
+	x.Set((*big.Int)(&n))
+	return (*Num)(x)
 }
 
 func (n Num) SetInt64(v int64) {
