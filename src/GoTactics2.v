@@ -157,8 +157,8 @@ Ltac extract_var_val :=
   end.
 
 Ltac extract_pred_apply_exists_in H :=
-  repeat rewrite pimpl_exists_l_star_r in H;
-  repeat rewrite pimpl_exists_r_star_r in H;
+  repeat setoid_rewrite pimpl_exists_l_star_r in H;
+  repeat setoid_rewrite pimpl_exists_r_star_r in H;
     unfold pred_apply, exis in H; deex_hyp H; repeat deex_hyp H.
 
 Ltac extract_pred_apply_exists :=
