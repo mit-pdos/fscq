@@ -923,7 +923,7 @@ Qed.
 
 Lemma map_cardinal_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m,
   (@piff AT AEQ value (var ~> Map.cardinal m)
-  (var |-> (Val Num (Here (Map.cardinal (Map.map wrap' m))))))%pred.
+  (var |-> (Val Num (Map.cardinal (Map.map wrap' m)))))%pred.
 Proof.
   intros. unfold okToCancel.
   unfold wrap. simpl.
@@ -937,7 +937,7 @@ Qed.
 Local Hint Extern 1 (okToCancel (?var ~> Map.cardinal ?m)
   (?var |-> (Val Num (Here (Map.cardinal (Map.map wrap' ?m))))))
   => apply map_cardinal_okToCancel.
-Local Hint Extern 1 (okToCancel (?var |-> (Val Num (Here (Map.cardinal (Map.map wrap' ?m)))))
+Local Hint Extern 1 (okToCancel (?var |-> (Val Num (Map.cardinal (Map.map wrap' ?m))))
                                 (?var ~> Map.cardinal ?m))
   => apply map_cardinal_okToCancel.
 
@@ -959,8 +959,7 @@ Qed.
 Lemma map_elements_okToCancel : forall AT AEQ {T} {Wr : GoWrapper T} var m,
   @piff AT AEQ value (var ~> Map.elements m)
   (var |-> Val (Slice (Pair Num wrap_type))
-         (Here (map (fun x => (Here (fst x), snd x))
-               (Map.elements (Map.map wrap' m))))).
+         (Here (Map.elements (Map.map wrap' m)))).
 Proof.
   intros.
   unfold okToCancel.
@@ -970,22 +969,22 @@ Proof.
   end.
   repeat f_equal.
   rewrite MapUtils.AddrMap.map_elements_map_eq.
-  rewrite map_map. simpl. reflexivity.
+  reflexivity.
 Qed.
 
 Local Hint Extern 1 (okToCancel (?var ~> Map.elements ?k ?m)
-                                (?var |-> (Val _ (Here (map _ (Map.elements _))))))
+                                (?var |-> (Val _ (Here (Map.elements _)))))
   => eapply map_elements_okToCancel : okToCancel.
-Local Hint Extern 1 (okToCancel (?var |-> (Val _ (Here (map _ (Map.elements _)))))
+Local Hint Extern 1 (okToCancel (?var |-> (Val _ (Here (Map.elements _))))
                                 (?var ~> Map.elements ?k ?m))
   => eapply map_elements_okToCancel : okToCancel.
 
 Local Hint Extern 1 (okToCancel (?var ~> Map.elements _)
-  (?var |-> Val _ (Here(map _
-   (MapUtils.AddrMap_List.Raw.map wrap' (MapUtils.AddrMap_List.this _))))))
+  (?var |-> Val _ (Here
+   (MapUtils.AddrMap_List.Raw.map wrap' (MapUtils.AddrMap_List.this _)))))
   => eapply map_elements_okToCancel : okToCancel.
-Local Hint Extern 1 (okToCancel (?var |-> Val _ (Here (map _
-    (MapUtils.AddrMap_List.Raw.map wrap' (MapUtils.AddrMap_List.this _)))))
+Local Hint Extern 1 (okToCancel (?var |-> Val _ (Here
+    (MapUtils.AddrMap_List.Raw.map wrap' (MapUtils.AddrMap_List.this _))))
                                 (?var ~> Map.elements _))
   => eapply map_elements_okToCancel : okToCancel.
 

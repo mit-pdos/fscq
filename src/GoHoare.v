@@ -87,7 +87,7 @@ Ltac GoWrapper_t :=
 
 Instance GoWrapper_Num : GoWrapper W.
 Proof.
-  refine {| wrap' := Go.Here;
+  refine {| wrap' := id;
             wrap_type := Go.Num |}; GoWrapper_t.
 Defined.
 

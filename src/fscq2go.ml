@@ -133,14 +133,11 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
   let go_type = TranscriberState.get_go_type gs t in
   match t with
   | Go.Num ->
-    (match Obj.magic x with
-     | Go.Here v ->
-     if (lt v (Big_int.power_int_positive_int 2 64)) then
-        "Num_of_i64(" ^ to_string v ^ ")"
-     else
-        "Num_of_string(\"" ^ to_string v ^ "\")"
-
-     | Go.Moved -> "(moved)")
+    let v = Obj.magic x in
+    if (lt v (Big_int.power_int_positive_int 2 64)) then
+       "Num_of_i64(" ^ to_string v ^ ")"
+    else
+       failwith ("integer constant too big: " ^ to_string v)
   | Go.Bool -> if Obj.magic x then "true" else "false"
   | Go.EmptyStruct -> "Empty{}"
   | Go.Buffer n ->
@@ -168,7 +165,7 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
 
 let zero_val gs (t : Go.coq_type) =
   match t with
-  | Go.Buffer n -> "New_Buffer(" ^ (go_literal gs Num (Go.Here n)) ^ ")"
+  | Go.Buffer n -> "New_Buffer(" ^ (go_literal gs Num n) ^ ")"
   | _ ->
     let go_type = (TranscriberState.get_go_type gs t) in
     "New_" ^ go_type ^ "()"
@@ -228,7 +225,7 @@ let go_modify_op (ts : TranscriberState.state)
     let v_go_type = TranscriberState.get_go_type ts.gstate v_type in
     let v = (var_ref ts rvar) in
 "{
-  in_map, val := (*AddrMap)(" ^ (var_ref ts map) ^ ").Find(*" ^ (var_ref ts key) ^ ")
+  in_map, val := (*AddrMap)(" ^ (var_ref ts map) ^ ").Find(" ^ (var_ref ts key) ^ ")
   _ = val  // prevent 'unused' error
   " ^ v ^ ".Fst = Bool(in_map)
   if in_map {
@@ -329,9 +326,10 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
       let go_type = TranscriberState.get_go_type ts.gstate gType in
       let decl_name = var_ref ts var in
       let decl_type = if (can_alias gType) then  go_type else "*" ^ go_type in
-      let line = "var " ^ decl_name ^ " " ^ decl_type ^ " = " ^ (zero_val ts.gstate gType) ^ "\n" in
+      let decl_lines = "var " ^ decl_name ^ " " ^ decl_type ^ " = " ^ (zero_val ts.gstate gType) ^ "\n" ^
+                       "_ = " ^ decl_name ^ "\n" in
       let text = go_stmt (fn var) ts in
-      line ^ text
+      decl_lines ^ text
   | Go.Assign (var, expr) ->
       (var_val_ref ts var) ^ " = " ^ (go_expr ts expr) ^ "\n"
   | Go.If (expr, t, f) ->
@@ -437,7 +435,7 @@ let go_map_defs ts =
     newMap := new(" ^ type_name ^ ")
     for _, v := range (*AddrMap)(x).Elements() {
       v_copy := " ^ (deep_copy_ref v_type ("v.val.(" ^ go_v_type ^ ")")) ^ "
-      (*AddrMap)(newMap).Insert(*v.key, v_copy)
+      (*AddrMap)(newMap).Insert(v.key, v_copy)
     }
     return newMap
     }

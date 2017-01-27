@@ -47,12 +47,11 @@ func Init_disk(path string) {
 	disk_stats = new(DiskStats)
 }
 
-func DiskWrite(addr *Num, buf *Buffer) {
+func DiskWrite(addr Num, buf *Buffer) {
 	if debug {
 		fmt.Printf("write(%v)\n", addr)
 	}
-	off := New_Num()
-	*off = Num_of_i64(4096)
+	off := Num_of_i64(4096)
 	off.Multiply(off, addr)
 
 	n_bytes, err := disk_file.WriteAt(buf.val, off.Int64())
@@ -67,12 +66,11 @@ func DiskWrite(addr *Num, buf *Buffer) {
 	}
 }
 
-func DiskRead(dst *Buffer, addr *Num) {
+func DiskRead(dst *Buffer, addr Num) {
 	if debug {
 		fmt.Printf("read(%v)\n", addr)
 	}
-	off := New_Num()
-	*off = Num_of_i64(4096)
+	off := Num_of_i64(4096)
 	off.Multiply(off, addr)
 
 	n_bytes, err := disk_file.ReadAt(dst.val, off.Int64())

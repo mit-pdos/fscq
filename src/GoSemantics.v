@@ -107,7 +107,7 @@ Module Go.
 
   Fixpoint can_alias t :=
     match t with
-    | Num => false
+    | Num => true
     | Bool => true
     | EmptyStruct => true
     | Buffer _ => false
@@ -119,7 +119,7 @@ Module Go.
 
   Fixpoint type_denote (t : type) : Type :=
     match t with
-    | Num => movable W
+    | Num => W
     | Bool => bool
     | EmptyStruct => unit
     | Buffer n => movable (bytes n)
@@ -174,7 +174,7 @@ Module Go.
 
   Fixpoint default_value' (t : type) : type_denote t :=
     match t return type_denote t with
-    | Num => Here 0
+    | Num => 0
     | Bool => false
     | EmptyStruct => tt
     | Buffer _ => Here $0
@@ -189,7 +189,7 @@ Module Go.
 
   Fixpoint moved_value' (t : type) (old : type_denote t) : type_denote t :=
     match t return type_denote t -> type_denote t with
-    | Num => fun _ => Moved
+    | Num => fun old => old
     | Bool => fun old => old
     | EmptyStruct => fun old => old
     | Buffer _ => fun _ => Moved
@@ -311,11 +311,11 @@ Module Go.
     Definition op_impl n := n_tuple n value -> option (n_tuple n var_update).
 
     Definition numop_impl' (op : numop) (a b : nat) : n_tuple 3 var_update :=
-      ^(SetTo (Val Num (Here (match op with
+      ^(SetTo (Val Num (match op with
                              | Plus => a + b
                              | Minus => a - b
                              | Times => a * b
-                             end))),
+                             end)),
        Leave, Leave).
 
     Definition setconst_impl t (v : type_denote t) : op_impl 1 :=
@@ -343,7 +343,7 @@ Module Go.
       ^(SetTo (Val (AddrMap tv) (Here (Map.add k v m))), Leave, Move).
 
     Definition map_card_impl' tv (m : Map.t (type_denote tv)) : n_tuple 2 var_update :=
-      ^(Leave, SetTo (Val Num (Here (Map.cardinal m)))).
+      ^(Leave, SetTo (Val Num (Map.cardinal m))).
 
     Definition map_find_impl' tv m (k : addr) : n_tuple 3 var_update :=
       ^(Leave, Leave, SetTo (Val (Pair Bool tv) (match Map.find k m with
@@ -356,7 +356,7 @@ Module Go.
 
     Definition map_elements_impl' tv (m : Map.t (type_denote tv)) : n_tuple 2 var_update :=
       ^(Leave, SetTo (Val (Slice (Pair Num tv))
-        (Here (map (fun x => (Here (fst x), snd x)) (Map.elements m))))).
+        (Here (Map.elements m)))).
 
     Definition freeze_buffer_impl' n (v : bytes n) : n_tuple 2 var_update :=
       ^(SetTo (Val (ImmutableBuffer n) v), Move).
@@ -373,7 +373,7 @@ Module Go.
     Definition numop_impl (op : numop) : op_impl 3 :=
       fun args => let '^(vo, va, vb) := args in
                match vo, va, vb with
-               | Val Num _, Val Num (Here a), Val Num (Here b) =>
+               | Val Num _, Val Num a, Val Num b =>
                  Some (numop_impl' op a b)
                | _, _, _ => None
                end.
@@ -435,7 +435,6 @@ Module Go.
       destruct (type_eq_dec tv tv'); [ | exact None ].
       destruct m as [m | ]; [ | exact None ].
       subst tv' tk.
-      destruct k as [k | ]; [ | exact None ].
       refine (Some (map_add_impl' tv m k v)).
     Defined.
 
@@ -460,7 +459,6 @@ Module Go.
       destruct (type_eq_dec tr (Pair Bool tv')); [ | exact None ].
       subst tr tk.
       destruct m as [m | ]; [ | exact None].
-      destruct k as [k | ]; [ | exact None].
       refine (Some (map_find_impl' tv' m k)).
     Defined.
 
@@ -473,7 +471,6 @@ Module Go.
       destruct (type_eq_dec tk Num); [ | exact None ].
       subst tk.
       destruct m as [m | ]; [ | exact None].
-      destruct k as [k | ]; [ | exact None].
       refine (Some (map_remove_impl' tv' m k)).
     Defined.
 
@@ -536,7 +533,7 @@ Module Go.
 
   Definition eval_test_m (op : test) (oa ob : option value) : option value :=
     match oa, ob with
-    | Some (Val Num (Here a)), Some (Val Num (Here b)) => eval_test_num op a b
+    | Some (Val Num a), Some (Val Num b) => eval_test_num op a b
     | Some (Val Bool a), Some (Val Bool b) => eval_test_bool op a b
     | _, _ => None
     end.
@@ -840,13 +837,13 @@ Module Go.
     | RunsToDiskRead : forall dvar avar a d s s' v0 v vs,
         VarMap.find dvar s = Some v0 -> (* dest variable must be declared *)
         type_of v0 = DiskBlock -> (* and have the correct type *)
-        VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
+        VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
         s' = VarMap.add dvar (Val DiskBlock (Here (valu2bytes v))) s ->
         runsto (DiskRead dvar avar) (d, s) (d, s')
     | RunsToDiskWrite : forall avar a vvar v (d : rawdisk) d' s v0 v0s,
         VarMap.find vvar s = Some (Val DiskBlock (Here v)) -> (* src variable must have a diskblock *)
-        VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
+        VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
         d' = upd d a (bytes2valu v, v0 :: v0s) ->
         runsto (DiskWrite avar vvar) (d, s) (d', s)
@@ -911,13 +908,13 @@ Module Go.
     | StepDiskRead : forall dvar avar a d s s' v v0 vs,
         VarMap.find dvar s = Some v0 -> (* dest variable must be declared *)
         type_of v0 = DiskBlock -> (* and have the correct type *)
-        VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
+        VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
         s' = VarMap.add dvar (Val DiskBlock (Here (valu2bytes v))) s ->
         step (d, s, DiskRead dvar avar) (d, s', Skip)
     | StepDiskWrite : forall avar a vvar v d d' s v0 v0s,
         VarMap.find vvar s = Some (Val DiskBlock (Here v)) -> (* src variable must have a diskblock *)
-        VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
+        VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
         d' = upd d a (bytes2valu v, v0 :: v0s) ->
         step (d, s, DiskWrite avar vvar) (d', s, Skip)
@@ -1119,13 +1116,13 @@ Module Go.
     | RunsToICDiskRead : forall dvar avar a d s s' v v0 vs,
         VarMap.find dvar s = Some v0 -> (* dest variable must be declared *)
         type_of v0 = DiskBlock -> (* and have the correct type *)
-        VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
+        VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
         s' = VarMap.add dvar (Val DiskBlock (Here (valu2bytes v))) s ->
         runsto_InCall (DiskRead dvar avar) (d, s) (d, s')
     | RunsToICDiskWrite : forall avar a vvar v d d' s v0 v0s,
         VarMap.find vvar s = Some (Val DiskBlock (Here v)) -> (* src variable must have a diskblock *)
-        VarMap.find avar s = Some (Val Num (Here a)) -> (* addr variable must be a num *)
+        VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
         d' = upd d a (bytes2valu v, v0 :: v0s) ->
         runsto_InCall (DiskWrite avar vvar) (d, s) (d', s)

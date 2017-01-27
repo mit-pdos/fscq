@@ -21,7 +21,7 @@ type MapVal interface {
 }
 
 type KeyValPair struct {
-	key *Num
+	key Num
 	val interface{}
 }
 
@@ -41,7 +41,7 @@ func (n *TreeNode) insert(newKey Num, newVal interface{}) (*TreeNode, bool) {
 	}
 
 	// TODO balance tree
-	switch cmp := newKey.Cmp(&n.key); cmp {
+	switch cmp := newKey.Cmp(n.key); cmp {
 	case 0:
 		// keys are identical
 		n.val = newVal
@@ -73,7 +73,7 @@ func (n *TreeNode) find(findKey Num) (bool, interface{}) {
 	if n == nil {
 		return false, nil
 	}
-	switch cmp := findKey.Cmp(&n.key); cmp {
+	switch cmp := findKey.Cmp(n.key); cmp {
 	case 0:
 		// keys are identical
 		return true, n.val
@@ -101,7 +101,7 @@ func (n *TreeNode) getElements(slice []KeyValPair) []KeyValPair {
 	}
 
 	slice = n.left.getElements(slice)
-	slice = append(slice, KeyValPair{&n.key, n.val})
+	slice = append(slice, KeyValPair{n.key, n.val})
 	slice = n.right.getElements(slice)
 	return slice
 }
@@ -129,7 +129,7 @@ func (n *TreeNode) remove(removeKey Num) (*TreeNode, bool) {
 	}
 	var success bool
 
-	switch cmp := removeKey.Cmp(&n.key); cmp {
+	switch cmp := removeKey.Cmp(n.key); cmp {
 	case 0:
 		// keys are identical
 		n = interpolate(n.left, n.right)

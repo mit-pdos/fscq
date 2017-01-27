@@ -13,14 +13,14 @@ const cachesize = 100000
 var valulen = fscq.Num_of_i64(4096)
 
 func do_read(cs *fscq.Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty,
-	addr *fscq.Num) *fscq.Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty {
+	addr fscq.Num) *fscq.Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty {
 	ret := fscq.New_Pair_Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty_Pair_Buffer_Empty()
 	fscq.Read(&ret, &addr, &cs)
 	return ret.Fst
 }
 
 func do_write(cs *fscq.Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty,
-	addr *fscq.Num) *fscq.Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty {
+	addr fscq.Num) *fscq.Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty {
 	new_cs := fscq.New_Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty()
 	buf := fscq.New_Buffer(valulen)
 	fscq.Write(&new_cs, &addr, &buf, &cs)
@@ -28,7 +28,7 @@ func do_write(cs *fscq.Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty,
 }
 
 func do_sync(cs *fscq.Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty,
-	addr *fscq.Num) *fscq.Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty {
+	addr fscq.Num) *fscq.Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty {
 	new_cs := fscq.New_Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty()
 	fscq.Sync(&new_cs, &addr, &cs)
 	return new_cs
@@ -39,16 +39,13 @@ func exec_line(cs *fscq.Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty,
 	split := strings.Split(line, " ")
 	switch split[0] {
 	case "write":
-		addr := fscq.New_Num()
-		*addr = fscq.Num_of_string(split[1])
+		addr := fscq.Num_of_string(split[1])
 		return do_write(cs, addr)
 	case "read":
-		addr := fscq.New_Num()
-		*addr = fscq.Num_of_string(split[1])
+		addr := fscq.Num_of_string(split[1])
 		return do_read(cs, addr)
 	case "sync":
-		addr := fscq.New_Num()
-		*addr = fscq.Num_of_string(split[1])
+		addr := fscq.Num_of_string(split[1])
 		return do_sync(cs, addr)
 	}
 	return cs
@@ -66,8 +63,7 @@ func exec_input(cs *fscq.Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty) *fscq.Pai
 func run_test(disk string) {
 	fscq.Init_disk(disk)
 	cs := fscq.New_Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Empty()
-	cache_size := fscq.New_Num()
-	*cache_size = fscq.Num_of_i64(cachesize)
+	cache_size := fscq.Num_of_i64(cachesize)
 	fscq.Init(&cs, &cache_size)
 	cs = exec_input(cs)
 }

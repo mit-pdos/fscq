@@ -1,79 +1,89 @@
 package fscq
 
 import (
-	"math/big"
+	"strconv"
 )
 
-type Num big.Int
+type Num uint64
 
 func (n Num) String() string {
-	return ((*big.Int)(&n)).String()
+	return strconv.FormatUint(uint64(n), 10)
 }
 
-func New_Num() *Num {
-	return new(Num)
-}
-
-func (n Num) DeepCopy() *Num {
-	x := new(big.Int)
-	x.Set((*big.Int)(&n))
-	return (*Num)(x)
-}
-
-func (n Num) SetInt64(v int64) {
-	((*big.Int)(&n)).SetInt64(v)
+func New_Num() Num {
+	return 0
 }
 
 func test_eq_Num(l Num, r Num) Bool {
-	return Bool((&l).Cmp(&r) == 0)
+	return Bool(l == r)
 }
 
 func test_ne_Num(l Num, r Num) Bool {
-	return Bool((&l).Cmp(&r) != 0)
+	return Bool(l != r)
 }
 
 func test_lt_Num(l Num, r Num) Bool {
-	return Bool((&l).Cmp(&r) < 0)
+	return Bool(l < r)
 }
 
 func test_le_Num(l Num, r Num) Bool {
-	return Bool((&l).Cmp(&r) <= 0)
+	return Bool(l <= r)
+}
+
+func (num Num) DeepCopy() Num {
+	return num
 }
 
 func Num_of_i64(num int64) Num {
-	var x big.Int
-	x.SetInt64(num)
-	return Num(x)
+	return Num(num)
 }
 
-func Num_of_string(v string) Num {
-	n := new(big.Int)
-	n.SetString(v, 10)
-	return Num(*n)
+func Num_of_string(str string) Num {
+	n, err := strconv.ParseUint(str, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	return Num(n)
 }
 
-func (n *Num) Cmp(x *Num) int {
-	return (*big.Int)(n).Cmp((*big.Int)(x))
+func (n Num) Cmp(x Num) int {
+	if n < x {
+		return -1
+	} else if n > x {
+		return 1
+	} else {
+		return 0
+	}
 }
 
-func (n *Num) Add(x *Num, y *Num) {
-	(*big.Int)(n).Add((*big.Int)(x), (*big.Int)(y))
+func (n *Num) Add(x Num, y Num) {
+	*n = x + y
+	if *n < x {
+		panic("overflow")
+	}
 }
 
-func (n *Num) Multiply(x *Num, y *Num) {
-	(*big.Int)(n).Mul((*big.Int)(x), (*big.Int)(y))
+func (n *Num) Multiply(x Num, y Num) {
+	*n = x * y
+	if x != 0 && y != 0 && *n/x != y {
+		panic("overflow")
+	}
 }
 
 func (n *Num) Increment() {
-	one := big.Int(Num_of_i64(1))
-	(*big.Int)(n).Add((*big.Int)(n), &one)
+	*n += 1
+	if *n == 0 {
+		panic("overflow")
+	}
 }
 
 func (n *Num) Decrement() {
-	one := big.Int(Num_of_i64(1))
-	(*big.Int)(n).Sub((*big.Int)(n), &one)
+	if *n == 0 {
+		panic("overflow")
+	}
+	*n -= 1
 }
 
 func (n *Num) Int64() int64 {
-	return (*big.Int)(n).Int64()
+	return int64(*n)
 }
