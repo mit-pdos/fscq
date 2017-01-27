@@ -432,16 +432,17 @@ let go_map_defs ts =
     "
 
     func (x *" ^ type_name ^ ") DeepCopy () *" ^ type_name ^ "{
-    newMap := new(" ^ type_name ^ ")
+    newMap := make(" ^ type_name ^ ")
     for _, v := range (*AddrMap)(x).Elements() {
       v_copy := " ^ (deep_copy_ref v_type ("v.val.(" ^ go_v_type ^ ")")) ^ "
-      (*AddrMap)(newMap).Insert(v.key, v_copy)
+      (*AddrMap)(&newMap).Insert(v.key, v_copy)
     }
-    return newMap
+    return &newMap
     }
 
     func New_" ^ type_name ^ " () *" ^ type_name ^ "{
-    return new(" ^ type_name ^ ")\n
+      m := make(" ^ type_name ^ ")
+      return &m
     }\n"
   ) maps
 
