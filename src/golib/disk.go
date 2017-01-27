@@ -6,10 +6,7 @@ import (
 	"syscall"
 )
 
-type Buffer struct {
-	sz  Num
-	val []byte
-}
+type Buffer []byte
 
 type DiskStats struct {
 	reads  Num
@@ -23,17 +20,13 @@ var disk_file *os.File
 var disk_stats *DiskStats
 
 func (d Buffer) DeepCopy() *Buffer {
-	x := new(Buffer)
-	x.sz = d.sz
-	x.val = append(x.val, d.val...)
-	return x
+	buf := Buffer(append([]byte{}, d...))
+	return &buf
 }
 
 func New_Buffer(sz Num) *Buffer {
-	x := new(Buffer)
-	x.sz = sz
-	x.val = make([]byte, sz.Int64())
-	return x
+	buf := Buffer(make([]byte, sz.Int64()))
+	return &buf
 }
 
 func Init_disk(path string) {
@@ -54,7 +47,7 @@ func DiskWrite(addr Num, buf *Buffer) {
 	off := Num_of_i64(4096)
 	off.Multiply(off, addr)
 
-	n_bytes, err := disk_file.WriteAt(buf.val, off.Int64())
+	n_bytes, err := disk_file.WriteAt(*buf, off.Int64())
 	(&disk_stats.writes).Increment()
 
 	if n_bytes != 4096 {
@@ -73,7 +66,7 @@ func DiskRead(dst *Buffer, addr Num) {
 	off := Num_of_i64(4096)
 	off.Multiply(off, addr)
 
-	n_bytes, err := disk_file.ReadAt(dst.val, off.Int64())
+	n_bytes, err := disk_file.ReadAt(*dst, off.Int64())
 	(&disk_stats.reads).Increment()
 
 	if n_bytes != 4096 {
