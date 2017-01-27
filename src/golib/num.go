@@ -1,27 +1,27 @@
 package fscq
 
-import(
+import (
 	"math/big"
-	)
+)
 
 type Num big.Int
 
-func (n Num) String () string {
-	return ((*big.Int) (&n)).String()
+func (n Num) String() string {
+	return ((*big.Int)(&n)).String()
 }
 
 func New_Num() *Num {
 	return new(Num)
 }
 
-func (n Num) DeepCopy () *Num {
+func (n Num) DeepCopy() *Num {
 	x := new(Num)
 	*x = n
 	return x
 }
 
 func (n Num) SetInt64(v int64) {
-	((*big.Int) (&n)).SetInt64(v)
+	((*big.Int)(&n)).SetInt64(v)
 }
 
 func test_eq_Num(l Num, r Num) Bool {
@@ -40,23 +40,23 @@ func test_le_Num(l Num, r Num) Bool {
 	return Bool((&l).Cmp(&r) <= 0)
 }
 
-func Num_of_i64 (num int64) Num {
+func Num_of_i64(num int64) Num {
 	var x big.Int
 	x.SetInt64(num)
 	return Num(x)
 }
 
-func Num_of_string (v string) Num {
+func Num_of_string(v string) Num {
 	n := new(big.Int)
 	n.SetString(v, 10)
 	return Num(*n)
 }
 
-func (n *Num) Cmp (x *Num) int {
+func (n *Num) Cmp(x *Num) int {
 	return (*big.Int)(n).Cmp((*big.Int)(x))
 }
 
-func (n *Num) Add (x *Num, y *Num) {
+func (n *Num) Add(x *Num, y *Num) {
 	(*big.Int)(n).Add((*big.Int)(x), (*big.Int)(y))
 }
 

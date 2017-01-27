@@ -1,20 +1,20 @@
 package fscq
 
-import(
+import (
 	"fmt"
 	"os"
 	"syscall"
-	)
+)
 
 type Buffer struct {
-	sz Num
+	sz  Num
 	val []byte
 }
 
 type DiskStats struct {
-	reads Num
+	reads  Num
 	writes Num
-	syncs Num
+	syncs  Num
 }
 
 const debug = true
@@ -22,7 +22,7 @@ const debug = true
 var disk_file *os.File
 var disk_stats *DiskStats
 
-func (d Buffer) DeepCopy () *Buffer {
+func (d Buffer) DeepCopy() *Buffer {
 	x := new(Buffer)
 	x.sz = d.sz
 	x.val = append(x.val, d.val...)
@@ -47,7 +47,7 @@ func Init_disk(path string) {
 	disk_stats = new(DiskStats)
 }
 
-func DiskWrite (addr *Num, buf *Buffer) {
+func DiskWrite(addr *Num, buf *Buffer) {
 	if debug {
 		fmt.Printf("write(%v)\n", addr)
 	}
@@ -67,7 +67,7 @@ func DiskWrite (addr *Num, buf *Buffer) {
 	}
 }
 
-func DiskRead (dst *Buffer, addr *Num) {
+func DiskRead(dst *Buffer, addr *Num) {
 	if debug {
 		fmt.Printf("read(%v)\n", addr)
 	}

@@ -1,8 +1,8 @@
 package main
 
 import (
-	"gofscq"
 	"fmt"
+	"gofscq"
 )
 
 // Just for testing currently
