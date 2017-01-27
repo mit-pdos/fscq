@@ -21,7 +21,7 @@ VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
 
 EXTRACT_MODULES := Wrappers \
 					ExtractCache ExtractDiskLogHash \
-					GoExtracted ExtractGOcaml
+					GoExtracted
 EXTRACT_VS 		:= $(EXTRACT_MODULES:%=Extract/%.v)
 EXTRACT_BUILD   := $(patsubst %.v,coqbuild/%.v,$(EXTRACT_VS))
 EXTRACT_VIO     := $(patsubst %.v,coqbuild/%.vio,$(EXTRACT_VS))
@@ -75,7 +75,7 @@ go_hscache_test: $(GO_LIB_INST) $(GO_EX_INST) codegen/src/gofscq/fscq.go
 codegen/%.ml: %.ml
 	ln -s ../$< $@
 
-$(GOCAML_ML): $(VS_VIO) $(EXTRACT_VIO)
+$(GOCAML_ML): $(VS_VIO) $(EXTRACT_VIO) coqbuild/Extract/ExtractGOcaml.v
 	mkdir -p codegen/Extract
 	( cd coqbuild && coqc -q -R . Fscq Extract/ExtractGOcaml )
 
