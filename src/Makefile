@@ -18,7 +18,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv AByteFile \
 	      ADestructPair DestructVarname ExtrHaskellPrelude \
-		  DirSep TreeSeq ProgMetatheory
+		  DirSep TreeSeq ProgMetatheory BACHelper
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
