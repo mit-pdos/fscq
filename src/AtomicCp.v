@@ -30,11 +30,14 @@ Require Import SuperBlock.
 Require Import DiskSet.
 Require Import AsyncFS.
 Require Import String.
+Require Import DirTreeDef.
+Require Import DirTreeRep.
+Require Import DirTreeNames.
+Require Import DirTreeSafe.
 Require Import TreeCrash.
 Require Import TreeSeq.
 Require Import DirSep.
 
-Import DIRTREE.
 Import TREESEQ.
 Import DTCrash.
 Import ListNotations.
@@ -425,7 +428,7 @@ Qed.
 
   Ltac msalloc :=
   repeat match goal with
-      | [ H: MSAlloc _ = MSAlloc _ |- DIRTREE.dirtree_safe _ _ _ _ _ _ ]
+      | [ H: MSAlloc _ = MSAlloc _ |- dirtree_safe _ _ _ _ _ _ ]
        => rewrite H in *; clear H
   end.
 

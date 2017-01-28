@@ -34,32 +34,45 @@ Require Import Arith.
 Require Import Errno.
 Require Import List ListUtils.
 Require Import GenSepAuto.
+Require Import DirTreePath.
+Require Import DirTreeDef.
+Require Import DirTreeRep.
+Require Import DirTreePred.
+Require Import DirTreeNames.
+Require Import DirTreeInodes.
+Require Import DirTreeSafe.
+
 
 Import DIRTREE.
 Import ListNotations.
 
 Module TREESEQ.
 
-  (* a layer over AFS that provides the same functions but with treeseq and dirsep specs *)
+  (**
+   * A layer over AFS that provides the same functions but with treeseq
+   * and dirsep specs. This layer provides the treeseq_safe property (see below),
+   * which makes it easier for application writers to reason about the file system,
+   * compared to using the AFS specs directly.
+   *)
 
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
 
   Record treeseq_one := mk_tree {
-    TStree  : DIRTREE.dirtree;
+    TStree  : dirtree;
     TSilist : list INODE.inode;
     TSfree  : list addr * list addr
   }.
 
   Definition treeseq_one_safe t1 t2 mscs :=
-    DIRTREE.dirtree_safe (TSilist t1) (BFILE.pick_balloc (TSfree t1) (MSAlloc mscs)) (TStree t1)
+    dirtree_safe (TSilist t1) (BFILE.pick_balloc (TSfree t1) (MSAlloc mscs)) (TStree t1)
                          (TSilist t2) (BFILE.pick_balloc (TSfree t2) (MSAlloc mscs)) (TStree t2).
 
   Theorem treeseq_one_safe_refl : forall t mscs,
     treeseq_one_safe t t mscs.
   Proof.
     intros.
-    apply DIRTREE.dirtree_safe_refl.
+    apply dirtree_safe_refl.
   Qed.
 
   Theorem treeseq_one_safe_trans : forall t1 t2 t3 mscs,
@@ -68,13 +81,13 @@ Module TREESEQ.
     treeseq_one_safe t1 t3 mscs.
   Proof.
     unfold treeseq_one_safe; intros.
-    eapply DIRTREE.dirtree_safe_trans; eauto.
+    eapply dirtree_safe_trans; eauto.
   Qed.
 
   Definition treeseq := nelist treeseq_one.
 
   Definition tree_rep F Ftop fsxp t :=
-    (F * DIRTREE.rep fsxp Ftop (TStree t) (TSilist t) (TSfree t))%pred.
+    (F * rep fsxp Ftop (TStree t) (TSilist t) (TSfree t))%pred.
 
   Definition treeseq_in_ds F Ftop fsxp mscs (ts : treeseq) (ds : diskset) :=
     NEforall2
@@ -115,8 +128,8 @@ Module TREESEQ.
     intuition.
     unfold treeseq_one_safe in *; intuition.
     rewrite H2 in *.
-    eapply DIRTREE.dirtree_safe_trans; eauto.
-    eapply DIRTREE.dirtree_safe_refl.
+    eapply dirtree_safe_trans; eauto.
+    eapply dirtree_safe_refl.
   Qed.
 
   Definition treeseq_one_upd (t: treeseq_one) pathname off v :=
@@ -246,14 +259,14 @@ Module TREESEQ.
 
   Ltac distinct_names :=
     match goal with
-      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_names_distinct ?tree ] => 
-        eapply DIRTREE.rep_tree_names_distinct; eapply H
+      [ H: (_ * rep _ _ ?tree _ _)%pred (list2nmem _) |- tree_names_distinct ?tree ] => 
+        eapply rep_tree_names_distinct; eapply H
     end.
 
   Ltac distinct_inodes :=
     match goal with
-      [ H: (_ * DIRTREE.rep _ _ ?tree _ _)%pred (list2nmem _) |- DIRTREE.tree_inodes_distinct ?tree ] => 
-        eapply DIRTREE.rep_tree_inodes_distinct; eapply H
+      [ H: (_ * rep _ _ ?tree _ _)%pred (list2nmem _) |- tree_inodes_distinct ?tree ] => 
+        eapply rep_tree_inodes_distinct; eapply H
     end.
 
   Lemma tree_file_length_ok: forall F Ftop fsxp ilist frees d tree pathname off bn inum f,
@@ -263,7 +276,7 @@ Module TREESEQ.
       off < Datatypes.length (BFILE.BFData f).
   Proof.
     intros.
-    eapply DIRTREE.rep_tree_names_distinct in H as Hdistinct.
+    eapply rep_tree_names_distinct in H as Hdistinct.
     apply BFILE.block_belong_to_file_inum_ok in H1 as H1'.
 
     unfold rep in H.
@@ -350,12 +363,12 @@ Module TREESEQ.
 
   Ltac distinct_names' :=
     repeat match goal with
-      | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- DIRTREE.tree_names_distinct (TStree ?ts !!) ] => 
+      | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- tree_names_distinct (TStree ?ts !!) ] => 
         eapply treeseq_in_ds_tree_pred_latest in H as Hpred;
-        eapply DIRTREE.rep_tree_names_distinct; eapply Hpred
-      | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- DIRTREE.tree_names_distinct (TStree (nthd ?n ?ts)) ] => 
+        eapply rep_tree_names_distinct; eapply Hpred
+      | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- tree_names_distinct (TStree (nthd ?n ?ts)) ] => 
         eapply treeseq_in_ds_tree_pred_nth in H as Hpred;
-        eapply DIRTREE.rep_tree_names_distinct; eapply Hpred
+        eapply rep_tree_names_distinct; eapply Hpred
     end.
 
   Theorem treeseq_file_getattr_ok : forall fsxp inum mscs,
@@ -385,12 +398,12 @@ Module TREESEQ.
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ DIRTREE.dirtree_inum (TStree ts !!) = dnum ]] *
-      [[ DIRTREE.dirtree_isdir (TStree ts !!) = true ]]
+      [[ dirtree_inum (TStree ts !!) = dnum ]] *
+      [[ dirtree_isdir (TStree ts !!) = true ]]
     POST:hm' RET:^(mscs', r)
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-      [[ (isError r /\ None = DIRTREE.find_name fnlist (TStree ts !!)) \/
-         (exists v, r = OK v /\ Some v = DIRTREE.find_name fnlist (TStree ts !!))%type ]] *
+      [[ (isError r /\ None = find_name fnlist (TStree ts !!)) \/
+         (exists v, r = OK v /\ Some v = find_name fnlist (TStree ts !!))%type ]] *
       [[ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
      >} AFS.lookup fsxp dnum fnlist mscs.
@@ -713,8 +726,8 @@ Module TREESEQ.
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
         [[ ds' = pushd d ds ]] *
-        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' (TSfree ts !!)) ]]] *
-        [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts!!) ]] *
+        [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' (TSfree ts !!)) ]]] *
+        [[ tree' = update_subtree pathname (TreeFile inum f') (TStree ts!!) ]] *
         [[ ts' = pushd (mk_tree tree' ilist' (TSfree ts !!)) ts ]] *
         [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
         [[ (Ftree * pathname |-> File inum f')%pred (dir2flatmem2 tree') ]])
@@ -728,8 +741,8 @@ Module TREESEQ.
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
          [[ ds' = pushd d ds ]] *
-         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' (TSfree ts !!)) ]]] *
-         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts!!) ]] *
+         [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' (TSfree ts !!)) ]]] *
+         [[ tree' = update_subtree pathname (TreeFile inum f') (TStree ts!!) ]] *
          [[ ts' = pushd (mk_tree tree' ilist' (TSfree ts !!)) ts ]] *
          [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
          [[ (Ftree * pathname |-> File inum f')%pred (dir2flatmem2 tree') ]]
@@ -757,8 +770,8 @@ Module TREESEQ.
     eapply treeseq_safe_pushd_update_subtree; eauto.
     distinct_names.
     distinct_inodes.
-    rewrite DIRTREE.rep_length in Hpred; destruct_lift Hpred.
-    rewrite DIRTREE.rep_length in H10; destruct_lift H10.
+    rewrite rep_length in Hpred; destruct_lift Hpred.
+    rewrite rep_length in H10; destruct_lift H10.
     congruence.
 
     unfold dirtree_safe in *.
@@ -781,8 +794,8 @@ Module TREESEQ.
       eapply treeseq_safe_pushd_update_subtree; eauto.
       distinct_names.
       distinct_inodes.  
-      rewrite DIRTREE.rep_length in Hpred; destruct_lift Hpred.
-      rewrite DIRTREE.rep_length in H5; destruct_lift H5.
+      rewrite rep_length in Hpred; destruct_lift Hpred.
+      rewrite rep_length in H5; destruct_lift H5.
       congruence.
       unfold dirtree_safe in *.
       repeat rewrite <- surjective_pairing in *.
@@ -810,9 +823,9 @@ Module TREESEQ.
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
         [[ ds' = pushd d ds ]] *
-        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees')]]] *
+        [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees')]]] *
         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) newlen ($0, nil)) (BFILE.BFAttr f) ]] *
-        [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts !!) ]] *
+        [[ tree' = update_subtree pathname (TreeFile inum f') (TStree ts !!) ]] *
         [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
         [[ (Ftree * pathname |-> File inum f')%pred (dir2flatmem2 tree') ]])
   XCRASH:hm'
@@ -825,9 +838,9 @@ Module TREESEQ.
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
          [[ ds' = pushd d ds ]] *
-         [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
+         [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees') ]]] *
          [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) newlen ($0, nil)) (BFILE.BFAttr f) ]] *
-         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') (TStree ts !!) ]] *
+         [[ tree' = update_subtree pathname (TreeFile inum f') (TStree ts !!) ]] *
          [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
          [[ (Ftree * pathname |-> File inum f')%pred (dir2flatmem2 tree') ]]
   >} AFS.file_truncate fsxp inum newlen mscs.
@@ -854,8 +867,8 @@ Module TREESEQ.
     eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred.
     distinct_inodes.
     eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred.
-    rewrite DIRTREE.rep_length in Hpred; destruct_lift Hpred.
-    rewrite DIRTREE.rep_length in H12; destruct_lift H12.
+    rewrite rep_length in Hpred; destruct_lift Hpred.
+    rewrite rep_length in H12; destruct_lift H12.
     congruence. 
 
     unfold dirtree_safe in *.
@@ -878,8 +891,8 @@ Module TREESEQ.
       eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred.
       distinct_inodes.
       eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred.
-      rewrite DIRTREE.rep_length in Hpred; destruct_lift Hpred.
-      rewrite DIRTREE.rep_length in H6; destruct_lift H6.
+      rewrite rep_length in Hpred; destruct_lift Hpred.
+      rewrite rep_length in H6; destruct_lift H6.
       congruence. 
       unfold dirtree_safe in *.
       repeat rewrite <- surjective_pairing in *.
@@ -1063,11 +1076,11 @@ Module TREESEQ.
     eapply tree_rep_nth_upd; eauto.
     rewrite d_map_latest.
     eapply treeseq_one_safe_dsupd; eauto.
-    eapply DIRTREE.rep_tree_names_distinct.
+    eapply rep_tree_names_distinct.
     eapply H7.
     eapply NEforall2_latest in H1.
     intuition.
-    eapply DIRTREE.rep_tree_names_distinct. 
+    eapply rep_tree_names_distinct. 
     eapply H4.
   Qed.
 
@@ -1368,10 +1381,10 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
      intuition; simpl.
       *
         eapply seq_upd_safe_upd_fwd_ne; eauto.
-        eapply DIRTREE.rep_tree_names_distinct; eapply H8.
+        eapply rep_tree_names_distinct; eapply H8.
       * 
         eapply seq_upd_safe_upd_bwd_ne; eauto.
-        eapply DIRTREE.rep_tree_names_distinct; eapply H8.
+        eapply rep_tree_names_distinct; eapply H8.
   Qed.
 
   Theorem treeseq_update_fblock_d_ok : forall fsxp inum off v mscs,
@@ -1840,7 +1853,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
       3: eapply find_update_subtree; eauto.
 
-      eapply DIRTREE.rep_tree_inodes_distinct. eapply IHal.
+      eapply rep_tree_inodes_distinct. eapply IHal.
       {
         intros. specialize (H1 i).
         rewrite selN_app1 in H1 by omega.
@@ -1848,7 +1861,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       }
       rewrite app_length in *; omega.
 
-      eapply DIRTREE.rep_tree_names_distinct. eapply IHal.
+      eapply rep_tree_names_distinct. eapply IHal.
       {
         intros. specialize (H1 i).
         rewrite selN_app1 in H1 by omega.
@@ -1892,7 +1905,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     unfold tree_rep in H3.
     unfold rep in H3.
     destruct_lift H3.
-    rewrite DIRTREE.subtree_extract in H5 by eauto.
+    rewrite subtree_extract in H5 by eauto.
     simpl in *.
     eapply BFILE.block_belong_to_file_off_ok; eauto.
     eapply pimpl_apply; [ | exact H ]. cancel.
@@ -1913,7 +1926,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     unfold tree_rep in H3.
     unfold rep in H3.
     destruct_lift H3.
-    rewrite DIRTREE.subtree_extract in H5 by eauto.
+    rewrite subtree_extract in H5 by eauto.
     simpl in *.
     erewrite list2nmem_sel with (x := f).
     eapply BFILE.block_belong_to_file_bfdata_length; eauto.
@@ -2495,17 +2508,17 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       intuition; simpl.
       + 
         eapply treeseq_safe_fwd_ne; eauto.
-        eapply DIRTREE.rep_tree_names_distinct; eapply H7.
+        eapply rep_tree_names_distinct; eapply H7.
       + 
         eapply treeseq_safe_bwd_ne; eauto.
-        eapply DIRTREE.rep_tree_names_distinct; eapply H7.
+        eapply rep_tree_names_distinct; eapply H7.
   Qed.
 
   Ltac distinct_inodes' :=
     repeat match goal with
-      | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- DIRTREE.tree_inodes_distinct (TStree ?ts !!) ] => 
+      | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- tree_inodes_distinct (TStree ?ts !!) ] => 
         eapply treeseq_in_ds_tree_pred_latest in H as Hpred;
-        eapply DIRTREE.rep_tree_inodes_distinct; eapply Hpred
+        eapply rep_tree_inodes_distinct; eapply Hpred
     end.
 
   Theorem treeseq_file_sync_ok : forall fsxp inum mscs,
@@ -2837,7 +2850,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     PRE:hm
     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ DIRTREE.find_subtree cwd (TStree ts !!) = Some (DIRTREE.TreeDir dnum tree_elem) ]] *
+      [[ find_subtree cwd (TStree ts !!) = Some (TreeDir dnum tree_elem) ]] *
       [[ (Ftree * (cwd ++ srcbase ++ [srcname]) |-> File srcnum srcfile
                 * (cwd ++ dstbase ++ [dstname]) |-> File dstnum dstfile)%pred (dir2flatmem2 (TStree ts !!)) ]]
     POST:hm' RET:^(mscs', ok)
@@ -2852,7 +2865,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
        [[ ds' = (pushd d ds) ]] *
-       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
+       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees') ]]] *
        [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
        [[ (Ftree * (cwd ++ srcbase ++ [srcname]) |-> Nothing
                  * (cwd ++ dstbase ++ [dstname]) |-> File srcnum srcfile)%pred (dir2flatmem2 (TStree ts' !!)) ]])
@@ -2868,7 +2881,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
        [[ ds' = (pushd d ds) ]] *
-       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
+       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees') ]]] *
        [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
        [[ (Ftree * (cwd ++ srcbase ++ [srcname]) |-> Nothing
                  * (cwd ++ dstbase ++ [dstname]) |-> File srcnum srcfile)%pred (dir2flatmem2 (TStree ts' !!)) ]]
@@ -3062,7 +3075,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
-      [[ DIRTREE.find_subtree pathname (TStree ts !!) = Some (DIRTREE.TreeDir dnum tree_elem) ]] *
+      [[ find_subtree pathname (TStree ts !!) = Some (TreeDir dnum tree_elem) ]] *
       [[ (Ftree * ((pathname++[name])%list) |-> File finum file)%pred (dir2flatmem2 (TStree ts !!)) ]]
     POST:hm RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
@@ -3075,9 +3088,9 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
         [[ ds' = pushd d ds ]] *
-        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
-        [[ tree' = DIRTREE.update_subtree pathname
-                      (DIRTREE.delete_from_dir name (DIRTREE.TreeDir dnum tree_elem)) (TStree ts !!) ]] *
+        [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees') ]]] *
+        [[ tree' = update_subtree pathname
+                      (delete_from_dir name (TreeDir dnum tree_elem)) (TStree ts !!) ]] *
         [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
         [[ (Ftree * (pathname ++ [name]) |-> Nothing)%pred (dir2flatmem2 (TStree ts' !!)) ]]
     XCRASH:hm'
@@ -3091,9 +3104,9 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
         [[ ds' = pushd d ds ]] *
-        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]] *
-        [[ tree' = DIRTREE.update_subtree pathname
-                      (DIRTREE.delete_from_dir name (DIRTREE.TreeDir dnum tree_elem)) (TStree ts !!) ]] *
+        [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees') ]]] *
+        [[ tree' = update_subtree pathname
+                      (delete_from_dir name (TreeDir dnum tree_elem)) (TStree ts !!) ]] *
         [[ ts' = (pushd (mk_tree tree' ilist' frees') ts) ]] *
         [[ (Ftree * (pathname ++ [name]) |-> Nothing)%pred (dir2flatmem2 (TStree ts' !!)) ]]
 

@@ -15,7 +15,10 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      NEList DiskSet GroupLog Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile BFileCrash \
 	      MemMatch FileRecArray \
-	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \
+	      Dir DirName StringUtils TreeUtils \
+	      DirTreePath DirTreeDef DirTreePred DirTreeRep DirTreeSafe \
+	      DirTreeNames DirTreeInodes DirTree \
+	      TreeCrash \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv AByteFile \
 	      ADestructPair DestructVarname ExtrHaskellPrelude \
 		  DirSep TreeSeq ProgMetatheory BACHelper

@@ -1,4 +1,5 @@
 Require Import Pred.
+Require Import DirTreeDef.
 Require Import DirTree.
 Require Import String.
 Require Import Mem.
@@ -7,6 +8,8 @@ Require Import SepAuto.
 Require Import BFile.
 Require Import AsyncDisk.
 Require Import FunctionalExtensionality.
+Require Import DirTreeNames.
+Require Import DirTreeInodes.
 
 Import DIRTREE.
 Import ListNotations.
@@ -19,7 +22,7 @@ Inductive flatmem_entry :=
 | File : forall (inum : addr) (f : BFILE.bfile), flatmem_entry.
 
 Definition dir2flatmem2 (d : dirtree) : @mem _ (list_eq_dec string_dec) _ :=
-  fun pn => match DIRTREE.find_subtree pn d with
+  fun pn => match find_subtree pn d with
   | Some (TreeFile inum f) => Some (File inum f)
   | Some (TreeDir _ _) => Some Dir
   | None => Some Nothing
@@ -417,7 +420,7 @@ Qed.
 Lemma dir2flatmem2_delete_file: forall (F: @pred _ (@list_eq_dec string string_dec) _)
      tree name inum f basenum basedents base,
   tree_names_distinct tree ->
-  DIRTREE.find_subtree base tree = Some (DIRTREE.TreeDir basenum basedents) ->
+  find_subtree base tree = Some (TreeDir basenum basedents) ->
   (F * (base++[name])%list |-> File inum f)%pred (dir2flatmem2 tree) ->
   (F * (base++[name])%list |-> Nothing)%pred (dir2flatmem2 (update_subtree base (TreeDir basenum (delete_from_list name basedents)) tree)).
 Proof.

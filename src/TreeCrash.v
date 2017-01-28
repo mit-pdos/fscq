@@ -18,21 +18,23 @@ Require Import Array.
 Require Import FunctionalExtensionality.
 Require Import AsyncDisk.
 Require Import DiskSet.
-Require Import DirTree.
 Require Import GenSepAuto.
 Require Import BFileCrash.
 Require Import Omega.
+Require Import DirTreeDef.
+Require Import DirTreeRep.
+Require Import DirTreePred.
+Require Import DirTreeNames.
+Require Import DirTreeInodes.
+
 Import ListNotations.
 
 Set Implicit Arguments.
 
 Module DTCrash.
 
-  Import BFILE DIRTREE.
-
-
   Inductive tree_crash : dirtree -> dirtree -> Prop :=
-    | TCFile : forall inum f f', file_crash f f' ->
+    | TCFile : forall inum f f', BFILE.file_crash f f' ->
                tree_crash (TreeFile inum f) (TreeFile inum f')
     | TCDir  : forall inum st st',
                map fst st = map fst st' ->
@@ -177,7 +179,7 @@ Module DTCrash.
   Proof.
     unfold rep; intros.
     xform_norm.
-    rewrite xform_rep.
+    rewrite BFILE.xform_rep.
     rewrite IAlloc.xform_rep.
     rewrite flist_crash_xform_freelist.
     norml; unfold stars; simpl; clear_norm_goal.
@@ -264,11 +266,11 @@ Module DTCrash.
   Qed.
 
   Theorem file_crash_exists : forall file, exists file',
-    file_crash file file'.
+    BFILE.file_crash file file'.
   Proof.
-    unfold file_crash; intros.
+    unfold BFILE.file_crash; intros.
     eexists.
-    exists (map fst (BFData file)).
+    exists (map fst (BFILE.BFData file)).
     intuition.
     split; intros.
     rewrite map_length; eauto.
