@@ -18,6 +18,8 @@ Require Import List ListUtils.
 Require Import Balloc.
 Require Import Bytes.
 Require Import DirTree.
+Require Import DirTreeDef.
+Require Import DirTreeNames.
 Require Import Rec.
 Require Import Arith.
 Require Import Array.
@@ -39,7 +41,8 @@ Require Import TreeSeq.
 Require Import DirSep.
 Require Import Rounding.
 
-Import DIRTREE.
+Require Import DirTreeRep.  (* last so that rep is dirtree rep, and not bytefile *)
+
 
 Import DTCrash.
 Import TREESEQ.
@@ -499,8 +502,8 @@ Definition dwrite_middle_blocks fsxp inum mscs block_off num_of_full_blocks data
         Invariant 
         exists ds f' fy' tree,
           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-         [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees) ]]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f') ]] *
+         [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
+         [[ find_subtree pathname tree = Some (TreeFile inum f') ]] *
           AByteFile.rep f' fy' *
           [[[ (ByFData fy')::: (Ff * arrayN ptsto_subset_b ((block_off + i) * valubytes) (skipn (i * valubytes) old_data) *
           			arrayN ptsto_subset_b (block_off * valubytes) (merge_bs (firstn (i*valubytes) data) (firstn (i*valubytes) old_data)))]]] *
@@ -1355,7 +1358,7 @@ Proof.
 
   step.
   or_r; unfold AByteFile.rep; cancel; eauto.
-  pred_apply; cancel.
+  eauto.
   xcrash.
   eapply treeseq_in_ds_eq_general; eauto.
   auto.
