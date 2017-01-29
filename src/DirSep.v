@@ -8,6 +8,7 @@ Require Import SepAuto.
 Require Import BFile.
 Require Import AsyncDisk.
 Require Import FunctionalExtensionality.
+Require Import DirTreePath.
 Require Import DirTreeNames.
 Require Import DirTreeInodes.
 

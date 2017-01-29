@@ -22,6 +22,7 @@ Require Import GenSepAuto.
 Require Import Lock.
 Require Import Errno.
 Import ListNotations.
+Require Import DirTreePath.
 Require Import DirTreeDef.
 Require Import DirTreePred.
 Require Import DirTreeRep.
