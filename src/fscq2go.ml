@@ -266,6 +266,9 @@ let go_modify_op (ts : TranscriberState.state)
     let (dst, (src, _)) = Obj.magic args_tuple in
     (var_ref ts dst) ^ " = " ^ (var_ref ts src) ^ ".DeepCopy()
     _ = " ^ (var_ref ts dst) ^ "  // prevent 'unused' error"
+  | Go.MoveOp ->
+    let (dst, (src, _)) = Obj.magic args_tuple in
+    (var_ref ts dst) ^ " = " ^ (var_ref ts src)
   | Go.AppendOp ->
     let (lvar, (xvar, _)) = Obj.magic args_tuple in
     (var_ref ts lvar) ^ " = append(" ^ (var_ref ts lvar) ^ ", " ^ (var_ref ts xvar) ^ ")"

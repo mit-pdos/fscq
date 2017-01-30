@@ -1133,6 +1133,20 @@ Proof.
   eauto using CompileBefore, CompileConst'.
 Qed.
 
+Lemma CompileMove : forall env X (Wr : GoWrapper X) F (var var' : var) x,
+  EXTRACT Ret x
+  {{ var ~> x * var' ~>? X * F }}
+    var' <~move var
+  {{ fun ret => var |-> moved_value (wrap x) * var' ~> ret * F }} // env.
+Proof.
+  unfold ProgOk.
+  inv_exec_progok;
+    repeat exec_solve_step.
+  contradiction H1. eval_expr.
+  repeat econstructor;
+    [ eval_expr; eauto .. ].
+Qed.
+
 Lemma CompileDup : forall env X (Wr : GoWrapper X) F (var var' : var) x,
   EXTRACT Ret x
   {{ var ~> x * var' ~>? X * F }}
@@ -1321,12 +1335,13 @@ Fixpoint args_pre args : forall (argvars : n_tuple (length args) var) (argvals :
                      (argvar ~> argval * args_pre args' argvars' argvals')%pred
   end.
 
-Fixpoint args_post args : forall (argvars : n_tuple (length args) var), pred :=
-  match args return forall (argvars : n_tuple (length args) var), pred with
-  | [] => fun _ => emp
-  | arg :: args' => fun argvars =>
+Fixpoint args_post args : forall (argvars : n_tuple (length args) var) (argvals : arg_tuple args), pred :=
+  match args return forall (argvars : n_tuple (length args) var) (argvals : arg_tuple args), pred with
+  | [] => fun _ _ => emp
+  | arg :: args' => fun argvars argvals =>
                      let '(argvar, argvars') := argvars in
-                     (argvar ~>? arg.(WrType) * args_post args' argvars')%pred
+                     let '(argval, argvals') := argvals in
+                     (argvar |-> moved_value (wrap argval) * args_post args' argvars' argvals')%pred
   end.
 
 Fixpoint params_pre args n : forall (argvals : arg_tuple args), pred :=
@@ -1351,7 +1366,7 @@ Polymorphic Definition prog_func_call_lemma (sig : ProgFunctionSig) (name : Stri
       (fun argvals => EXTRACT do_call src argvals
        {{ retvar ~>? sig.(FRet).(WrType) * args_pre sig.(FArgs) argvars argvals * F }}
          Call (S (length sig.(FArgs))) name (retvar, argvars)
-       {{ fun retval => retvar ~> retval * args_post sig.(FArgs) argvars * F }} // env).
+       {{ fun retval => retvar ~> retval * args_post sig.(FArgs) argvars argvals * F }} // env).
 
 Fixpoint to_list {T n} : n_tuple n T -> list T :=
   match n with
@@ -1457,7 +1472,7 @@ Lemma update_args:
     (t : VarMap.t value),
     update_many argvars (wrap_all args argvals) (map_nt SetTo argvals') s = Some t ->
     (args_pre args argvars argvals ✶ F)%pred (mem_of s) ->
-    (args_post args argvars ✶ F)%pred (mem_of t).
+    (args_post args argvars argvals ✶ F)%pred (mem_of t).
 Proof.
   induction args; intros.
   - eval_expr.

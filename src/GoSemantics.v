@@ -141,6 +141,7 @@ Module Go.
   Inductive modify_op :=
   | SetConst {t} (v : type_denote t)
   | DuplicateOp
+  | MoveOp
   | AppendOp
   | Uncons
   | ModifyNumOp (nop : numop)
@@ -323,6 +324,9 @@ Module Go.
 
     Definition duplicate_impl : op_impl 2 :=
       fun args => let '^(_, a) := args in Some ^(SetTo a, Leave).
+
+    Definition move_impl : op_impl 2 :=
+      fun args => let '^(_, a) := args in Some ^(SetTo a, Move).
 
     Definition append_impl' t (l : list (type_denote t)) (a : type_denote t) : n_tuple 2 var_update :=
       ^(SetTo (Val (Slice t) (Here (a :: l))), Move).
@@ -515,6 +519,7 @@ Module Go.
     match op with
     | @SetConst t v => existT _ _ (setconst_impl t v)
     | DuplicateOp => existT _ _ duplicate_impl
+    | MoveOp => existT _ _ move_impl
     | AppendOp => existT _ _ append_impl
     | Uncons => existT _ _ uncons_impl
     | ModifyNumOp nop => existT _ _ (numop_impl nop)
@@ -1317,6 +1322,7 @@ Notation "x <~ y" := (Go.Assign x y) (at level 90) : go_scope.
 (* TODO: better syntax *)
 Notation "x <~const v" := (Go.Modify (Go.SetConst v) ^(x)) (at level 90): go_scope.
 Notation "x <~dup y" := (Go.Modify Go.DuplicateOp ^(x, y)) (at level 90): go_scope.
+Notation "x <~move y" := (Go.Modify Go.MoveOp ^(x, y)) (at level 90): go_scope.
 Notation "x <~num A * B" := (Go.Modify (Go.ModifyNumOp Go.Times) ^(x, A, B)) (at level 90): go_scope.
 Notation "x <~num A + B" := (Go.Modify (Go.ModifyNumOp Go.Plus ) ^(x, A, B)) (at level 90): go_scope.
 Notation "x <~num A - B" := (Go.Modify (Go.ModifyNumOp Go.Minus) ^(x, A, B)) (at level 90): go_scope.

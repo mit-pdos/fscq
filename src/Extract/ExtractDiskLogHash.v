@@ -79,12 +79,6 @@ Theorem extract_hdr_read :
   compile_step.
   compile_step.
   compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
   unfold pair_args_helper.
   eapply extract_equiv_prog. 
   pattern_prog (PaddedLog.Hdr.val2hdr (fst (snd a))).

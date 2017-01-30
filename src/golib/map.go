@@ -58,9 +58,9 @@ func (m *AddrMap) Remove(key Num) {
 }
 
 func AddrMap_literal(vals ...LiteralKeyValPair) AddrMap {
-	a := new(AddrMap)
+	a := make(AddrMap)
 	for _, keyVal := range vals {
 		a.Insert(keyVal.key, keyVal.val)
 	}
-	return *a
+	return a
 }

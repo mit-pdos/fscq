@@ -21,7 +21,6 @@ Proof.
   unfold BUFCACHE.writeback.
   compile.
 Defined.
-
 Eval lazy in (projT1 compile_writeback).
 
 Example compile_evict : sigT (fun p => source_stmt p /\ forall env a cs,
@@ -81,10 +80,6 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
   Ltac pattern_prog pat :=
     match goal with
     | [ |- ProgMonad.prog_equiv _ ?pr ] =>
@@ -100,7 +95,7 @@ Proof.
   compile_step.
   compile_step.
   eapply hoare_weaken.
-  eapply CompileMapElements with (mvar := nth_var 1 vars) (var0 := nth_var 15 vars).
+  eapply CompileMapElements with (mvar := nth_var 1 vars) (var0 := nth_var 13 vars).
   cancel_go.
   cancel_go.
   simpl decls_pre.
@@ -110,10 +105,10 @@ Proof.
   simpl decls_pre.
   do_declare (list (nat * (word AsyncDisk.Valulen.valulen * bool))%type) ltac:(fun xsvar => idtac xsvar).
   eapply hoare_weaken.
-  apply CompileUncons with (lvar := nth_var 15 vars)
-                             (cvar := nth_var 16 vars)
-                             (xvar := nth_var 17 vars)
-                             (xsvar := nth_var 18 vars).
+  apply CompileUncons with (lvar := nth_var 13 vars)
+                             (cvar := nth_var 14 vars)
+                             (xvar := nth_var 15 vars)
+                             (xsvar := nth_var 16 vars).
   3: cancel_go.
   3: cancel_go.
   compile_step.
@@ -229,10 +224,6 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
 
   Unshelve.
   all: compile.
@@ -282,10 +273,6 @@ Proof.
   change (Ret (eviction_update ?s ?a)) with (eviction_update' a s).
   compile_step.
   compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
 
   Unshelve.
   all: compile.
@@ -315,10 +302,6 @@ Example compile_sync : sigT (fun p => source_stmt p /\ forall env a cs,
   {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? cachestate }} // env).
 Proof.
   unfold BUFCACHE.sync.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
   compile_step.
   compile_step.
   compile_step.
