@@ -45,7 +45,7 @@ Proof.
   intuition.
   deex.
   contradiction H1.
-  destruct v1. repeat eexists. econstructor; eauto.
+  destruct v1. repeat eexists. econstructor; eauto. simpl.
   destruct (d a); eauto. contradiction H2. eauto.
 Qed.
 Hint Resolve read_fails_not_present.
@@ -62,7 +62,7 @@ Proof.
   intuition.
   deex.
   contradiction H1.
-  destruct v0. repeat eexists. econstructor; eauto. apply H.
+  destruct v0. repeat eexists. econstructor; eauto.
   destruct (d a); eauto. contradiction H2. eauto.
 Qed.
 Hint Resolve write_fails_not_present.

@@ -494,33 +494,29 @@ Ltac compile_join := match goal with
     end
 end.
 
+Ltac pattern_prog pat :=
+  eapply extract_equiv_prog; [
+    match goal with
+    | [ |- ProgMonad.prog_equiv _ ?pr ] =>
+      let Pr := fresh "Pr" in
+      set pr as Pr;
+      pattern pat in Pr;
+      subst Pr;
+      eapply bind_left_id
+    end | ].
+
 Ltac compile_decompose := match goal with
   | [ |- EXTRACT Ret (?f ?a) {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val a pre with
-      | None =>
-        eapply extract_equiv_prog; [
-            let arg := fresh "arg" in
-            set (arg := Ret (f a));
-            pattern a in arg; subst arg;
-            eapply bind_left_id | ]
+      | None => pattern_prog a
     end
    | [ |- EXTRACT Ret (?f ?a ?b) {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val a pre with
-      | None => 
-        eapply extract_equiv_prog; [
-            let arg := fresh "arg" in
-            set (arg := Ret (f a b));
-            pattern a in arg; subst arg;
-            eapply bind_left_id | ]
+      | None => pattern_prog a
     end
    | [ |- EXTRACT Ret (?f ?a ?b ?c) {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val a pre with
-      | None =>
-        eapply extract_equiv_prog; [
-            let arg := fresh "arg" in
-            set (arg := Ret (f a b c));
-            pattern a in arg; subst arg;
-            eapply bind_left_id | ]
+      | None => pattern_prog a
     end
   | [ |- EXTRACT ?f ?a {{ ?pre }} _ {{ _ }} // _ ] =>
     match f with
@@ -528,17 +524,15 @@ Ltac compile_decompose := match goal with
       | _ => idtac
     end;
     match find_val a pre with
-      | None =>
-        eapply extract_equiv_prog; [ eapply bind_left_id | ]
+      | None => pattern_prog a
     end
   | [ |- EXTRACT ?f ?a ?b {{ ?pre }} _ {{ _ }} // _ ] =>
+    match f with
+      | Ret => fail 2
+      | _ => idtac
+    end;
     match find_val a pre with
-    | None =>
-      eapply extract_equiv_prog; [
-        let arg := fresh "arg" in
-        set (arg := f a b);
-        pattern a in arg; subst arg;
-        eapply bind_left_id | ]
+    | None => pattern_prog a
     end
   end.
 

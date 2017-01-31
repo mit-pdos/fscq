@@ -88,14 +88,14 @@ Module Go.
   | Num (* In Go: *big.Int *)
   | Bool (* In Go: bool *)
   | EmptyStruct (* In Go: struct{} *)
-  | Buffer : nat -> type (* In Go: *[n]byte *)
+  | Buffer : nat -> type (* In Go: []byte *)
   | ImmutableBuffer : nat -> type (* In Go: []byte *)
   | Slice : type -> type (* In Go: []<whatever> *)
   | Pair : type -> type -> type (* In Go: struct{fst <whatever>; snd <whatever>}, I think? *)
   | AddrMap : type -> type (* In Go: specialized map type *)
   .
 
-  Definition DiskBlock := Buffer valubytes.
+  Definition DiskBlock := Buffer valulen.
 
   Inductive movable T :=
   | Here (v : T)
@@ -122,8 +122,8 @@ Module Go.
     | Num => W
     | Bool => bool
     | EmptyStruct => unit
-    | Buffer n => movable (bytes n)
-    | ImmutableBuffer n => bytes n
+    | Buffer n => movable (word n)
+    | ImmutableBuffer n => word n
     | Slice t' => movable (list (type_denote t')) (* kept in reverse order to make cons = append *)
     | Pair t1 t2 => type_denote t1 * type_denote t2
     | AddrMap vt => movable (Map.t (type_denote vt))
@@ -362,12 +362,12 @@ Module Go.
       ^(Leave, SetTo (Val (Slice (Pair Num tv))
         (Here (Map.elements m)))).
 
-    Definition freeze_buffer_impl' n (v : bytes n) : n_tuple 2 var_update :=
+    Definition freeze_buffer_impl' n (v : word n) : n_tuple 2 var_update :=
       ^(SetTo (Val (ImmutableBuffer n) v), Move).
 
-    Definition slice_buffer_impl' before inside after (v : bytes (before + inside + after)) :
+    Definition slice_buffer_impl' before inside after (v : word (before + inside + after)) :
       n_tuple 2 var_update :=
-      ^(SetTo (Val (ImmutableBuffer inside) (bsplit2 before inside (bsplit1 (before + inside) after v))),
+      ^(SetTo (Val (ImmutableBuffer inside) (split2 before inside (split1 (before + inside) after v))),
         Leave).
 
   End NiceImpls.
@@ -489,6 +489,13 @@ Module Go.
       refine (Some (map_elements_impl' tm m)).
     Defined.
 
+    Import Nat.
+    Definition divide_8_dec n : {(8 | n)} + {~ (8 | n)}.
+      case_eq (n mod 8); intros.
+      - left. apply mod_divide; auto.
+      - right. intro. apply mod_divide in H0; auto; congruence.
+    Defined.
+
     Definition freeze_buffer_impl : op_impl 2.
       refine (fun args => let '^(Val td d, Val ts s) := args in
                        match td, ts with
@@ -496,6 +503,7 @@ Module Go.
                        | _, _ => fun _ _ => None
                        end d s).
       destruct (Nat.eq_dec nd ns); [ subst | exact None ].
+      destruct (divide_8_dec ns); [ | exact None ].
       destruct s as [s | ]; [ | exact None ].
       exact (Some (freeze_buffer_impl' s)).
     Defined.
@@ -508,8 +516,11 @@ Module Go.
                        end d s).
       destruct (le_dec from to); [ | exact None ].
       destruct (le_dec to ns); [ | exact None ].
-      destruct (Nat.eq_dec nd (to - from)); [ subst | exact None ].
-      assert (ns = from + (to - from) + (ns - to)) by omega.
+      destruct (divide_8_dec nd); [ | exact None ].
+      destruct (divide_8_dec ns); [ | exact None ].
+      destruct (divide_8_dec to); [ | exact None ].
+      destruct (Nat.eq_dec (to - from) nd); [ subst | exact None ].
+      assert (ns = from + (to - from) + (ns - to)) by (abstract omega).
       rewrite H in s.
       exact (Some (slice_buffer_impl' from (to - from) (ns - to) s)).
     Defined.
@@ -844,13 +855,13 @@ Module Go.
         type_of v0 = DiskBlock -> (* and have the correct type *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
-        s' = VarMap.add dvar (Val DiskBlock (Here (valu2bytes v))) s ->
+        s' = VarMap.add dvar (Val DiskBlock (Here v)) s ->
         runsto (DiskRead dvar avar) (d, s) (d, s')
     | RunsToDiskWrite : forall avar a vvar v (d : rawdisk) d' s v0 v0s,
         VarMap.find vvar s = Some (Val DiskBlock (Here v)) -> (* src variable must have a diskblock *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
-        d' = upd d a (bytes2valu v, v0 :: v0s) ->
+        d' = upd d a (v, v0 :: v0s) ->
         runsto (DiskWrite avar vvar) (d, s) (d', s)
     | RunsToDiskSync : forall (d : rawdisk) d' s,
         d' = sync_mem d ->
@@ -915,13 +926,13 @@ Module Go.
         type_of v0 = DiskBlock -> (* and have the correct type *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
-        s' = VarMap.add dvar (Val DiskBlock (Here (valu2bytes v))) s ->
+        s' = VarMap.add dvar (Val DiskBlock (Here v)) s ->
         step (d, s, DiskRead dvar avar) (d, s', Skip)
     | StepDiskWrite : forall avar a vvar v d d' s v0 v0s,
         VarMap.find vvar s = Some (Val DiskBlock (Here v)) -> (* src variable must have a diskblock *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
-        d' = upd d a (bytes2valu v, v0 :: v0s) ->
+        d' = upd d a (v, v0 :: v0s) ->
         step (d, s, DiskWrite avar vvar) (d', s, Skip)
     | StepDiskSync : forall (d : rawdisk) d' s,
         d' = sync_mem d ->
@@ -1123,13 +1134,13 @@ Module Go.
         type_of v0 = DiskBlock -> (* and have the correct type *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
-        s' = VarMap.add dvar (Val DiskBlock (Here (valu2bytes v))) s ->
+        s' = VarMap.add dvar (Val DiskBlock (Here v)) s ->
         runsto_InCall (DiskRead dvar avar) (d, s) (d, s')
     | RunsToICDiskWrite : forall avar a vvar v d d' s v0 v0s,
         VarMap.find vvar s = Some (Val DiskBlock (Here v)) -> (* src variable must have a diskblock *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
-        d' = upd d a (bytes2valu v, v0 :: v0s) ->
+        d' = upd d a (v, v0 :: v0s) ->
         runsto_InCall (DiskWrite avar vvar) (d, s) (d', s)
     | RunsToICDiskSync : forall (d : rawdisk) d' s,
         d' = sync_mem d ->

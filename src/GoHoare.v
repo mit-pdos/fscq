@@ -99,14 +99,8 @@ Defined.
 
 Instance GoWrapper_valu : GoWrapper valu.
 Proof.
-  refine {| wrap' := fun v => Go.Here (valu2bytes v);
+  refine {| wrap' := fun v => Go.Here v;
             wrap_type := Go.DiskBlock |}; GoWrapper_t.
-Defined.
-
-Instance GoWrapper_bytes n : GoWrapper (bytes n).
-Proof.
-  refine {| wrap' :=  Go.Here;
-            wrap_type := Go.Buffer n |}; GoWrapper_t.
 Defined.
 
 Create HintDb divisible discriminated.
@@ -131,35 +125,22 @@ Proof.
 Qed.
 Hint Resolve mod_divide_1 : divisible.
 
-Instance GoWrapper_word nbits nbytes (e : nbytes * 8 = nbits) : GoWrapper (word nbits).
+Instance GoWrapper_word nbits : GoWrapper (word nbits).
 Proof.
-  unshelve refine {| wrap_type := Go.Buffer nbytes |}.
-  rewrite <- e. apply Go.Here.
-  intros.
-  destruct e.
-  simpl in *.
-  GoWrapper_t.
+  refine {| wrap' := Go.Here;
+            wrap_type := Go.Buffer nbits |}; GoWrapper_t.
 Defined.
-
-Hint Extern 3 (GoWrapper (word ?n)) =>
-apply GoWrapper_word with (nbytes := n / 8); auto;
-  ( apply mul_div; [ eauto with divisible | omega ] ) : typeclass_instances.
 
 Definition immut_word := word.
+Typeclasses Opaque immut_word.
 
-Instance GoWrapper_immut_word nbits nbytes (e : nbytes * 8 = nbits) : GoWrapper (immut_word nbits).
+Instance GoWrapper_immut_word nbits : GoWrapper (immut_word nbits).
 Proof.
-  unshelve refine {| wrap_type := Go.ImmutableBuffer nbytes |}.
-  rewrite <- e. apply id.
-  intros. destruct e.
-  simpl in *.
-  GoWrapper_t.
+  refine {| wrap' := id;
+            wrap_type := Go.ImmutableBuffer nbits |}; GoWrapper_t.
 Defined.
 
-Hint Extern 2 (GoWrapper (immut_word ?n)) =>
-apply GoWrapper_immut_word with (nbytes := n / 8); auto;
-  ( apply mul_div; [ eauto with divisible | omega ] ) : typeclass_instances.
-  
+
 Instance GoWrapper_unit : GoWrapper unit.
 Proof.
   refine {| wrap' := id;
@@ -236,7 +217,6 @@ Qed.
 Instance valu_default_value : DefaultValue valu := {| zeroval := $0 |}.
   unfold wrap, wrap', GoWrapper_valu, Go.default_value. cbn.
   repeat f_equal.
-  apply word2bytes_zero.
 Defined.
 
 Instance bool_default_value : DefaultValue bool := {| zeroval := false |}. auto. Defined.
@@ -262,15 +242,8 @@ Defined.
 
 Instance list_default_value A {W : GoWrapper A} : DefaultValue (list A) := {| zeroval := [] |}. auto. Defined.
 Instance bytes_default_value n : DefaultValue (bytes n) := {| zeroval := $0 |}. auto. Defined.
-Instance word_default_value (nbits nbytes : nat) (e : nbytes * 8 = nbits) : @DefaultValue (word nbits) (GoWrapper_word _ e).
-  rewrite <- e.
-  econstructor.
-  reflexivity.
-Defined.
-
-Hint Extern 2 (DefaultValue (word ?n)) =>
-apply word_default_value with (nbytes := n / 8); auto;
-  ( apply mul_div; [ auto | omega ] ) : typeclass_instances.
+Instance word_default_value nbits : DefaultValue (word nbits) := {| zeroval := $0 |}. auto. Defined.
+Instance immut_word_default_value nbits : DefaultValue (immut_word nbits) := {| zeroval := $0 |}. auto. Defined.
 
 Class WrapByTransforming T := {
   T' : Type;

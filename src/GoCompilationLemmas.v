@@ -554,46 +554,124 @@ Proof.
   cancel_go.
 Qed.
 
-Lemma CompileFreeze : forall n (a : bytes n) env dvar svar F,
+Lemma CompileFreeze : forall n (a : word n) env dvar svar F,
+    Nat.divide 8 n ->
     EXTRACT Ret a
     {{ (exists a0, dvar |-> Val (ImmutableBuffer n) a0) * svar ~> a * F }}
       Modify FreezeBuffer ^(dvar, svar)
-    {{ fun ret => dvar |-> Val (ImmutableBuffer n) ret * svar ~>? bytes n * F }} // env.
+    {{ fun ret : immut_word n => dvar ~> ret * svar ~>? word n * F }} // env.
 Proof.
   intros. unfold ProgOk.
   inv_exec_progok;
     repeat exec_solve_step.
-  all: contradiction H1; repeat eexists; eauto. econstructor; [ eval_expr; eauto .. ].
+  all: contradiction H2; repeat eexists; eauto. econstructor; [ eval_expr; eauto .. ].
 Qed.
 
-Lemma CompileSplit1 : forall sz1 sz2 bsz1 bsz2 (e1 : bsz1 * 8 = sz1) (e2 : bsz2 * 8 = sz2) 
-                        (buf : immut_word (sz1 + sz2)) env dvar svar F,
+Lemma CompileSplit1 : forall sz1 sz2 (buf : immut_word (sz1 + sz2)) env dvar svar F,
+    Nat.divide 8 sz1 -> Nat.divide 8 sz2 ->
     EXTRACT Ret (split1 sz1 sz2 buf : immut_word _)
     {{ dvar ~>? immut_word sz1 * svar ~> buf * F }}
-      Modify (SliceBuffer 0 bsz1) ^(dvar, svar)
+      Modify (SliceBuffer 0 sz1) ^(dvar, svar)
     {{ fun ret => dvar ~> ret * svar ~> buf * F }} // env.
 Proof.
   intros. unfold ProgOk.
   inv_exec_progok.
-  repeat match goal with
-  | [ |- context[@GoWrapper_immut_word ?nbits ?nbytes ?e] ] =>
-    ((is_var e; fail 1) || idtac); set (e) in *
-  end.
-    exec_solve_step.
-    exec_solve_step.
-    exec_solve_step.
-    exec_solve_step.
-    repeat eexists.
-    econstructor.
-    pred_solve.
-    match goal with
-    | [ |- context[(dvar ~> ?a)%pred] ] => set (val1 := a)
-    end.
-    match goal with
-    | [ |- context[(Mem.upd _ dvar (Val _ ?a))%pred] ] => set (val2 := a)
-    end.
+    progress exec_solve_step.
+    inv_exec.
+    try extract_pred_apply_exists; repeat extract_var_val.
+    progress eval_expr_step.
+    progress eval_expr_step.
+    progress eval_expr_step.
+    progress eval_expr_step.
+    progress eval_expr_step.
+    progress eval_expr_step.
+    progress eval_expr_step.
+    progress eval_expr_step.
     Import EqNotations.
-    assert (val1 = rew (Nat.sub_0_r _) in val2).
+    match type of H12 with
+    | match ?e with | Logic.eq_refl => ?f end ?x ?d = ?r =>
+      change ((eq_rect _ (fun y => word y -> Nat.divide 8 y -> option (var_update * (var_update * unit))) f _ e) x d = r) in H12
+    end.
+    Lemma rew_fun : forall A (x : A) (P : A -> Type) (Q : A -> Type) (y : A) (e : x = y) (f : Q x -> P x) (p : Q y),
+        (rew [fun x => Q x -> P x] e in f) p = rew e in f (rew <- e in p).
+    Proof.
+      intros.
+      destruct e.
+      simpl.
+      f_equal.
+    Qed.
+    Lemma rew_fun' : forall A (x : A) (P : Type) (Q : A -> Type) (y : A) (e : x = y) (f : Q x -> P) (p : Q y),
+        (rew [fun x => Q x -> P] e in f) p = f (rew <- e in p).
+    Proof.
+      intros.
+      destruct e.
+      simpl.
+      f_equal.
+    Qed.
+    rewrite rew_fun in H12.
+    rewrite rew_fun' in H12.
+    eval_expr.
+    inv_exec.
+    inv_exec.
+    eval_expr.
+    repeat econstructor; pred_solve.
+    eapply pimpl_apply.
+    2: eapply ptsto_upd.
+    match goal with
+    | [ |- context[(dvar |-> ?val)%pred] ] => replace val with (Val (ImmutableBuffer sz1) (split1 sz1 sz2 buf))
+    end.
+    cancel_go.
+    2: pred_solve.
+    admit.
+
+    progress exec_solve_step.
+    inv_exec.
+    try extract_pred_apply_exists; repeat extract_var_val.
+    progress eval_expr_step.
+    progress eval_expr_step.
+    progress eval_expr_step.
+    progress eval_expr_step.
+    progress eval_expr_step.
+    progress eval_expr_step.
+    progress eval_expr_step.
+    progress eval_expr_step.
+    match type of H12 with
+    | match ?e with | Logic.eq_refl => ?f end ?x ?d = ?r =>
+      change ((eq_rect _ (fun y => word y -> Nat.divide 8 y -> option (var_update * (var_update * unit))) f _ e) x d = r) in H12
+    end.
+    rewrite rew_fun in H12.
+    rewrite rew_fun' in H12.
+    eval_expr.
+    inv_exec.
+    inv_exec.
+    eval_expr.
+
+    exec_solve_step.
+    exec_solve_step.
+    exec_solve_step.
+    inv_exec.
+    inv_exec.
+    inv_exec.
+    contradiction H3.
+    auto.
+
+    all: contradiction H3; repeat eexists; eauto.
+    econstructor.
+    eval_expr. auto.
+    eval_expr.
+    match goal with
+    | [ |- match ?e with | Logic.eq_refl => ?f end ?x ?d = ?r ] =>
+      change ((eq_rect _ (fun y => word y -> Nat.divide 8 y -> option (var_update * (var_update * unit))) f _ e) x d = r)
+    end.
+    rewrite rew_fun.
+    rewrite rew_fun'.
+    match goal with
+    | [ |- context[(SetTo ?val)%pred] ] => replace val with (Val (ImmutableBuffer sz1) (split1 sz1 sz2 buf))
+    end.
+    reflexivity.
+    admit.
+    admit.
+    eval_expr. reflexivity.
 Admitted.
 
 Lemma CompileIf : forall V varb (b : bool)
@@ -668,6 +746,11 @@ Proof.
   intros.
   inv_exec_progok;
     repeat exec_solve_step.
+  eval_expr.
+  repeat extract_var_val.
+  eval_expr.
+  apply value_inj in H6.
+  exec_solve_step.
 Qed.
 
 Lemma CompileSync : forall env F,

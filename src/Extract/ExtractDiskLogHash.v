@@ -49,14 +49,6 @@ Theorem extract_hdr_read :
               p
             {{ fun ret => 0 ~> ret * 1 ~>? log_xparams * 2 ~>? cachestate }} // env).
   unfold PaddedLog.Hdr.read, PaddedLog.Hdr.LAHdr.
-  Ltac pattern_prog pat :=
-    match goal with
-    | [ |- ProgMonad.prog_equiv _ ?pr ] =>
-      let Pr := fresh "Pr" in
-      set pr as Pr;
-      pattern pat in Pr;
-      subst Pr
-    end.
   compile_step.
   compile_step.
   compile_step.
@@ -80,16 +72,18 @@ Theorem extract_hdr_read :
   compile_step.
   compile_step.
   unfold pair_args_helper.
-  eapply extract_equiv_prog. 
   pattern_prog (PaddedLog.Hdr.val2hdr (fst (snd a))).
-  eapply ProgMonad.bind_left_id.
   compile_step.
   unfold PaddedLog.Hdr.val2hdr.
   cbv beta iota delta [Rec.Rec.of_word Rec.Rec.len PaddedLog.Hdr.header_type plus minus
                              addrlen hashlen wtl whd].
   compile_step.
   compile_step.
-  compile_step.
+  do_declare (immut_word 768) ltac:(fun var => idtac var).
+  eapply hoare_weaken.
+  eapply CompileBindRet with (vara := nth_var 14 vars) (HA := GoWrapper_immut_word _).
+  3: cancel_go.
+  3: cancel_go.
   compile_step.
   Require Import ProgMonad.
   Lemma bind_f : forall A B C (a : A) (f : A -> B) (g : B -> prog C),
@@ -108,7 +102,37 @@ Theorem extract_hdr_read :
   compile_step.
   compile_step.
   compile_step.
+
+  (* First, freeze the buffer *)
+  pattern_prog (fst (snd a)).
+  do_declare (immut_word valulen) ltac:(fun var => idtac var).
+  eapply hoare_weaken.
+  eapply CompileBindRet with (vara := nth_var 19 vars) (a := fst (snd a)) (HA := GoWrapper_immut_word _).
+  3: cancel_go.
+  3: cancel_go.
+  eapply hoare_weaken.
+  apply CompileFreeze with (svar := nth_var 15 vars) (dvar := nth_var 19 vars).
+  rewrite valulen_is. exists (valulen_real / 8). reflexivity.
+  cancel_go.
+  cancel_go.
+
   (* Now, we have to actually call [split1] *)
   eapply hoare_weaken.
-  (* eapply CompileSplit1. *)
+  match goal with
+  | [ |- context[split1 ?sz1_ ?sz2_ ?buf_] ] =>
+    pose proof (@CompileSplit1 sz1_ sz2_ buf_ env (nth_var 14 vars) (nth_var 19 vars))
+  end.
+  apply H0.
+  exists (768 / 8). reflexivity.
+  apply Nat.divide_sub_r.
+  rewrite valulen_is. exists (valulen_real / 8). reflexivity.
+  exists (768 / 8). reflexivity.
+  match goal with
+  | [ |- context[wrap (@eq_rec_r ?A ?x ?P ?p ?y ?e)] ] =>
+    replace (wrap (@eq_rec_r A x P p y e)) with (wrap (fst (snd a) : immut_word _)) by admit (* TODO *)
+  end.
+  cancel_go.
+  cancel_go.
+
+  (* We did a split call! *)
 Abort.
