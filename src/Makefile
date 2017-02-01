@@ -23,6 +23,7 @@ EXTRACT_MODULES := Wrappers \
 					ExtractCache ExtractDiskLogHash \
 					ExtractBFile \
 					ExtractDirTree \
+					ExtractAsyncFS \
 					GoExtracted
 EXTRACT_VS 		:= $(EXTRACT_MODULES:%=Extract/%.v)
 EXTRACT_BUILD   := $(patsubst %.v,coqbuild/%.v,$(EXTRACT_VS))
