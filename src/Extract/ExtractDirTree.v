@@ -43,7 +43,9 @@ Proof.
   compile_step.
   compile_step.
 
-  (* This seems to run off into the woods unpacking all of [fsxp] *)
+  (* This seems to turn into an actual infinite loop; maybe a problem with extracting
+   * something out of a two-level record (log_xparams inside fs_xparams)?
+   *)
   (*
   repeat compile_step.
   *)
