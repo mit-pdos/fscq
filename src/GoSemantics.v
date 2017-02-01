@@ -87,6 +87,7 @@ Module Go.
   Inductive type :=
   | Num (* In Go: *big.Int *)
   | Bool (* In Go: bool *)
+  | String (* In Go: string *)
   | EmptyStruct (* In Go: struct{} *)
   | Buffer : nat -> type (* In Go: []byte *)
   | ImmutableBuffer : nat -> type (* In Go: []byte *)
@@ -109,6 +110,7 @@ Module Go.
     match t with
     | Num => true
     | Bool => true
+    | String => true
     | EmptyStruct => true
     | Buffer _ => false
     | ImmutableBuffer _ => true
@@ -121,6 +123,7 @@ Module Go.
     match t with
     | Num => W
     | Bool => bool
+    | String => string
     | EmptyStruct => unit
     | Buffer n => movable (word n)
     | ImmutableBuffer n => word n
@@ -177,6 +180,7 @@ Module Go.
     match t return type_denote t with
     | Num => 0
     | Bool => false
+    | String => ""%string
     | EmptyStruct => tt
     | Buffer _ => Here $0
     | ImmutableBuffer _ => $0
@@ -192,6 +196,7 @@ Module Go.
     match t return type_denote t -> type_denote t with
     | Num => fun old => old
     | Bool => fun old => old
+    | String => fun old => old
     | EmptyStruct => fun old => old
     | Buffer _ => fun _ => Moved
     | ImmutableBuffer _ => fun old => old

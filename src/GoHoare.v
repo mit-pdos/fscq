@@ -5,6 +5,7 @@ Require Import Rounding.
 Require Import Omega VerdiTactics GoTactics1.
 Require Import GoSemantics.
 Require Import Word Bytes Prog ProgMonad Pred AsyncDisk.
+Require Import String.
 
 Set Implicit Arguments.
 Unset Printing Implicit Defensive.
@@ -95,6 +96,12 @@ Instance GoWrapper_Bool : GoWrapper bool.
 Proof.
   refine {| wrap' := id;
             wrap_type := Go.Bool |}; GoWrapper_t.
+Defined.
+
+Instance GoWrapper_String : GoWrapper string.
+Proof.
+  refine {| wrap' := id;
+            wrap_type := Go.String |}; GoWrapper_t.
 Defined.
 
 Instance GoWrapper_valu : GoWrapper valu.
