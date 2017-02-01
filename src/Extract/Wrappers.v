@@ -39,3 +39,33 @@ Defined.
 Instance log_xparams_default_value : DefaultValue log_xparams := {| zeroval := Build_log_xparams 0 0 0 0 0 0 |}.
   auto.
 Defined.
+
+Instance WrapByTransforming_inode_xparams : WrapByTransforming inode_xparams.
+  refine {|
+    transform := fun xp => (IXStart xp, IXLen xp)
+  |}.
+  simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
+Defined.
+
+Instance inode_xparams_default_value : DefaultValue inode_xparams := {| zeroval := Build_inode_xparams 0 0 |}.
+  auto.
+Defined.
+
+Instance WrapByTransforming_balloc_xparams : WrapByTransforming balloc_xparams.
+  refine {|
+    transform := fun xp => (BmapStart xp, BmapNBlocks xp)
+  |}.
+  simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
+Defined.
+
+Instance balloc_xparams_default_value : DefaultValue balloc_xparams := {| zeroval := Build_balloc_xparams 0 0 |}.
+  auto.
+Defined.
+
+Instance WrapByTransforming_fs_xparams : WrapByTransforming fs_xparams.
+  refine {|
+    transform := fun xp => (FSXPLog xp, FSXPInode xp, FSXPBlockAlloc1 xp, FSXPBlockAlloc2 xp,
+                            FSXPInodeAlloc xp, FSXPRootInum xp, FSXPMaxBlock xp)
+  |}.
+  simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
+Defined.
