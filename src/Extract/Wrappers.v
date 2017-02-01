@@ -1,4 +1,4 @@
-Require Import Cache FSLayout.
+Require Import Cache FSLayout MemLog GroupLog Log BFile.
 Require Import GoSemantics GoHoare GoTactics1.
 
 Import Go.
@@ -17,6 +17,20 @@ Instance cachestate_default_value : DefaultValue cachestate := {| zeroval :=
   apply MapUtils.addrmap_equal_eq.
   apply MapUtils.AddrMap.map_empty.
   auto with map.
+Defined.
+
+Instance WrapByTransforming_GLog_mstate : WrapByTransforming GLog.mstate.
+  refine {|
+    transform := fun ms => (GLog.MSVMap ms, GLog.MSTxns ms, GLog.MSMLog ms);
+  |}.
+  simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
+Defined.
+
+Instance WrapByTransforming_LOG_mstate : WrapByTransforming LOG.mstate.
+  refine {|
+    transform := fun ms => (LOG.MSTxn ms, LOG.MSGLog ms);
+  |}.
+  simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
 Defined.
 
 Instance addrmap_default_value : forall T {H: GoWrapper T}, DefaultValue (Map.t T).
