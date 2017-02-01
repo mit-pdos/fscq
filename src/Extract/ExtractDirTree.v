@@ -13,6 +13,16 @@ Local Open Scope string_scope.
 
 Example compile_mkfile : sigT (fun p => source_stmt p /\
   forall env fsxp dnum name fms,
+  prog_func_call_lemma
+    {|
+      FArgs := [
+        with_wrapper _;
+        with_wrapper _;
+        with_wrapper _
+      ];
+      FRet := with_wrapper _
+    |}
+    "ialloc_alloc" Balloc.IAlloc.alloc env ->
   EXTRACT DIRTREE.mkfile fsxp dnum name fms
   {{ 0 ~>? (BFile.BFILE.memstate * (Errno.res addr * unit)) *
      1 ~> fsxp *
@@ -29,6 +39,7 @@ Proof.
   unfold DIRTREE.mkfile.
   compile_step.
   compile_step.
+  unfold DIRTREE.MSLL.  (* is this needed?  doesn't seem to help. *)
 
   (* The next step fails to find (WrapByTransforming BFILE.memstate).
      Why does it even search for that? *)
