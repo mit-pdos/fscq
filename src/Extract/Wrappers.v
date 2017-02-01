@@ -69,3 +69,32 @@ Instance WrapByTransforming_fs_xparams : WrapByTransforming fs_xparams.
   |}.
   simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
 Defined.
+
+Instance GoWrapper_errno : GoWrapper Errno.Errno.
+Proof.
+  refine {| wrap' := fun e => match e with
+                              | Errno.ELOGOVERFLOW => 1
+                              | Errno.ENOTDIR => 2
+                              | Errno.EISDIR => 3
+                              | Errno.ENOENT => 4
+                              | Errno.EFBIG => 5
+                              | Errno.ENAMETOOLONG => 6
+                              | Errno.EEXIST => 7
+                              | Errno.ENOSPCBLOCK => 8
+                              | Errno.ENOSPCINODE => 9
+                              | Errno.ENOTEMPTY => 10
+                              | Errno.EINVAL => 11
+                              end;
+            wrap_type := Go.Num |}.
+  destruct a1, a2; try congruence.
+Defined.
+
+Instance GoWrapper_errno_res {A} {WA : GoWrapper A} : GoWrapper (Errno.res A).
+Proof.
+  refine {| wrap' := fun o => match o with
+                              | Errno.Err x => (false, (Go.default_value' _, wrap' x))
+                              | Errno.OK x => (true, (wrap' x, Go.default_value' _)) end;
+            wrap_type := Go.Pair Go.Bool (Go.Pair (@wrap_type _ WA) (@wrap_type Errno.Errno _)) |}.
+  intros a b H.
+  destruct a, b; invc H; GoWrapper_t.
+Defined.
