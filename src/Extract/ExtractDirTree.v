@@ -36,15 +36,16 @@ Example compile_mkfile : sigT (fun p => source_stmt p /\
      3 ~>? string *
      4 ~>? BFile.BFILE.memstate }} // env).
 Proof.
-  unfold DIRTREE.mkfile.
+  unfold DIRTREE.mkfile, DIRTREE.MSLL.
   compile_step.
   compile_step.
-  unfold DIRTREE.MSLL.  (* is this needed?  doesn't seem to help. *)
+  compile_step.
+  compile_step.
+  compile_step.
 
-  (* The next step fails to find (WrapByTransforming BFILE.memstate).
-     Why does it even search for that? *)
-
+  (* This seems to run off into the woods unpacking all of [fsxp] *)
   (*
-  compile_step.
+  repeat compile_step.
   *)
+
 Admitted.

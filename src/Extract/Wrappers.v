@@ -3,6 +3,16 @@ Require Import GoSemantics GoHoare GoTactics1.
 
 Import Go.
 
+Instance addrmap_default_value : forall T {H: GoWrapper T}, DefaultValue (Map.t T).
+  intros.
+  apply Build_DefaultValue with (zeroval := Map.empty _).
+  unfold default_value, default_value', wrap, wrap'.
+  simpl. repeat f_equal.
+  apply MapUtils.addrmap_equal_eq.
+  apply MapUtils.AddrMap.map_empty.
+  eauto with map.
+Defined.
+
 Instance WrapByTransforming_cachestate : WrapByTransforming cachestate.
   refine {|
     transform := fun cs => (CSMap cs, CSMaxCount cs, CSEvict cs);
@@ -26,6 +36,22 @@ Instance WrapByTransforming_GLog_mstate : WrapByTransforming GLog.mstate.
   simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
 Defined.
 
+Instance GLog_mstate_default_value : DefaultValue GLog.mstate.
+  refine {|
+    zeroval := {|
+      GLog.MSVMap := zeroval;
+      GLog.MSTxns := zeroval;
+      GLog.MSMLog := zeroval
+    |}
+  |}.
+
+  pose proof (@default_zero LogReplay.valumap _ _).
+
+  repeat find_apply_lem_hyp default_zero'.
+  unfold wrap; simpl in *.
+  repeat find_rewrite. reflexivity.
+Defined.
+
 Instance WrapByTransforming_LOG_mstate : WrapByTransforming LOG.mstate.
   refine {|
     transform := fun ms => (LOG.MSTxn ms, LOG.MSGLog ms);
@@ -33,14 +59,24 @@ Instance WrapByTransforming_LOG_mstate : WrapByTransforming LOG.mstate.
   simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
 Defined.
 
-Instance addrmap_default_value : forall T {H: GoWrapper T}, DefaultValue (Map.t T).
-  intros.
-  apply Build_DefaultValue with (zeroval := Map.empty _).
-  unfold default_value, default_value', wrap, wrap'.
-  simpl. repeat f_equal.
-  apply MapUtils.addrmap_equal_eq.
-  apply MapUtils.AddrMap.map_empty.
-  eauto with map.
+Instance LOG_mstate_default_value : DefaultValue LOG.mstate.
+  refine {|
+    zeroval := {|
+      LOG.MSTxn := zeroval;
+      LOG.MSGLog := zeroval
+    |}
+  |}.
+
+  pose proof (@default_zero LogReplay.valumap _ _).
+  pose proof (@default_zero GLog.mstate _ _).
+
+  repeat find_apply_lem_hyp default_zero'.
+  unfold wrap; simpl in *.
+  repeat find_rewrite. reflexivity.
+Defined.
+
+Instance GoWrapper_LOG_memstate : GoWrapper LOG.memstate.
+  typeclasses eauto.
 Defined.
 
 Instance WrapByTransforming_log_xparams : WrapByTransforming log_xparams.
