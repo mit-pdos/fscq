@@ -120,6 +120,11 @@ Instance WrapByTransforming_fs_xparams : WrapByTransforming fs_xparams.
   simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
 Defined.
 
+Instance fs_xparams_default_value : DefaultValue fs_xparams :=
+  {| zeroval := Build_fs_xparams zeroval zeroval zeroval zeroval zeroval zeroval zeroval |}.
+  auto.
+Defined.
+
 Instance GoWrapper_errno : GoWrapper Errno.Errno.
 Proof.
   refine {| wrap' := fun e => match e with
