@@ -15,6 +15,38 @@ Instance GoWrapper_ialloc_item : GoWrapper IAlloc.Alloc.Bmp.Defs.item.
   typeclasses eauto.
 Defined.
 
+Example compile_IAlloc_ifind_avail : sigT (fun p => source_stmt p /\
+  forall env lxp xp ms,
+  EXTRACT IAlloc.Alloc.ifind_avail_nonzero lxp xp ms
+  {{ 0 ~>? (Log.LOG.memstate * (option (addr * IAlloc.Alloc.Bmp.Defs.item) * unit))
+   * 1 ~> lxp
+   * 2 ~> xp
+   * 3 ~> ms
+  }}
+    p
+  {{ fun ret => 0 ~> ret
+   * 1 ~>? FSLayout.log_xparams
+   * 2 ~>? IAlloc.Alloc.BmpSig.xparams
+   * 3 ~>? Log.LOG.memstate
+  }} // env).
+Proof.
+  unfold IAlloc.Alloc.ifind_avail_nonzero.
+  unfold IAlloc.Alloc.avail_nonzero.
+  unfold IAlloc.Alloc.Bmp.ifind.
+  unfold IAlloc.Alloc.BmpSig.RALen, IAlloc.Alloc.BmpSig.RAStart.
+  unfold IAlloc.Sig.BMPLen, IAlloc.Sig.BMPStart.
+  unfold pair_args_helper.
+
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+
+  (* doesn't break up [xp]? *)
+Admitted.
+
 Example compile_IAlloc_alloc : sigT (fun p => source_stmt p /\
   forall env lxp xp ms,
   prog_func_call_lemma
