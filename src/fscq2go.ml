@@ -127,6 +127,16 @@ module TranscriberState = struct
     }
 end
 
+let is_ptr_type (gType : Go.coq_type) =
+  match gType with
+  | Go.Num -> false
+  | Go.Bool -> false
+  | Go.EmptyStruct -> false
+  | Go.Buffer _ -> true
+  | Go.ImmutableBuffer _ -> true
+  | Go.Slice _ -> true
+  | Go.Pair _ -> false
+  | Go.AddrMap _ -> true
 
 let rec go_literal (gs : TranscriberState.global_state) t x =
   let join = String.concat ", " in
@@ -170,24 +180,19 @@ let zero_val gs (t : Go.coq_type) =
     let go_type = (TranscriberState.get_go_type gs t) in
     "New_" ^ go_type ^ "()"
 
-(* mirror of Go.can_alias in GoSemantics.v *)
-let can_alias  = Go.can_alias
-
-let deep_copy_ref go_type var =
-  if (can_alias go_type)
-  then var
-  else var ^ ".DeepCopy()"
+let do_deep_copy go_type src dst =
+  src ^ ".DeepCopy(" ^ dst ^ ")"
 
 let val_ref gType varname =
-  if (can_alias gType)
+  if (is_ptr_type gType)
   then
-    varname
-  else
     "*" ^ varname
+  else
+    varname
 
 let var_val_ref ts var =
   let gType = (TranscriberState.get_var_type ts var) in
-  (if (can_alias gType) then "" else "*") ^
+  (if (is_ptr_type gType) then "*" else "") ^
   (if TranscriberState.is_param_var ts var then "*" else "") ^
   (var_name var)
 
@@ -229,7 +234,7 @@ let go_modify_op (ts : TranscriberState.state)
   _ = val  // prevent 'unused' error
   " ^ v ^ ".Fst = Bool(in_map)
   if in_map {
-  " ^ v ^ ".Snd = " ^ (deep_copy_ref v_type ("val.(" ^ (val_ref v_type v_go_type) ^ ")")) ^ "
+  " ^ do_deep_copy v_type ("val.(" ^ (val_ref v_type v_go_type) ^ ")") ("&" ^ v ^ ".Snd") ^ "
   }
 }"
   | Go.MapRemove ->
@@ -251,6 +256,7 @@ let go_modify_op (ts : TranscriberState.state)
     let slice_el_t = match slice_t with
     | Go.Slice t -> t
     in
+    let val_cast_type = (val_ref v_type v_go_type) in
     "{
       // MapElements
       pairs := (*AddrMap)(" ^ m ^ ").Elements()
@@ -258,14 +264,16 @@ let go_modify_op (ts : TranscriberState.state)
       for _, keyval := range pairs {
         p := " ^ (zero_val ts.gstate slice_el_t) ^ "
         p.Fst = keyval.key
-        p.Snd = " ^ (deep_copy_ref v_type ("keyval.val.(*" ^ v_go_type ^ ")")) ^ "
+        " ^ do_deep_copy v_type ("keyval.val.(" ^ val_cast_type ^ ")") ("&p.Snd") ^ "
         " ^ v ^ " = append(" ^ v ^ ", p)
       }
     }"
   | Go.DuplicateOp ->
     let (dst, (src, _)) = Obj.magic args_tuple in
-    (var_ref ts dst) ^ " = " ^ (var_ref ts src) ^ ".DeepCopy()
-    _ = " ^ (var_ref ts dst) ^ "  // prevent 'unused' error"
+    let go_type = TranscriberState.get_var_type ts dst in
+    let source = var_ref ts src in
+    let destination = "&" ^ var_ref ts dst in
+    do_deep_copy go_type source destination
   | Go.MoveOp ->
     let (dst, (src, _)) = Obj.magic args_tuple in
     (var_ref ts dst) ^ " = " ^ (var_ref ts src)
@@ -328,7 +336,7 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
       let var = TranscriberState.get_new_var ts gType in
       let go_type = TranscriberState.get_go_type ts.gstate gType in
       let decl_name = var_ref ts var in
-      let decl_type = if (can_alias gType) then  go_type else "*" ^ go_type in
+      let decl_type = if (is_ptr_type gType) then "*" ^ go_type else go_type in
       let decl_lines = "var " ^ decl_name ^ " " ^ decl_type ^ " = " ^ (zero_val ts.gstate gType) ^ "\n" ^
                        "_ = " ^ decl_name ^ "\n" in
       let text = go_stmt (fn var) ts in
@@ -363,7 +371,7 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
 
 let arg_pair_to_declaration (ts : TranscriberState.state) (arg_num : big_int) (arg_t : Go.coq_type) =
   (var_name arg_num) ^ " " ^
-  (if (can_alias arg_t) then "" else "*") ^ " *" ^
+  (if (is_ptr_type arg_t) then "*" else "") ^ " *" ^
   (TranscriberState.get_go_type ts.gstate arg_t)
 
 let go_func (gs : TranscriberState.global_state) (v : StringMap.key * Go.coq_FunctionSpec) =
@@ -393,33 +401,31 @@ let go_struct_defs gs =
       fun y ->
         let (name, typ) = y in
         let go_type = TranscriberState.get_go_type gs typ in
-        if (can_alias typ) then
-          name ^ " " ^ go_type
-        else
+        if (is_ptr_type typ) then
           name ^ " *" ^ go_type
+        else
+          name ^ " " ^ go_type
       ) fields) ^
     "}
 
-    func (x " ^ t_name ^ ") DeepCopy () *" ^ t_name ^ "{
-    copy := new(" ^ t_name ^ ")\n" ^
+    func (x " ^ t_name ^ ") DeepCopy (dst *" ^ t_name ^ ") {
+    " ^
     String.concat "\n" (List.map (
       fun y ->
         let (name, typ) = y in
-          "copy." ^ name ^ " = " ^ (deep_copy_ref typ ("x." ^ name))
+          do_deep_copy typ ("x." ^ name) ("&dst." ^ name)
       ) fields)
     ^ "
-    return copy
     }
 
-    func New_" ^ t_name ^ " () *" ^ t_name ^ "{
-    obj := new(" ^ t_name ^ ")\n" ^
+    func New_" ^ t_name ^ " () " ^ t_name ^ "{
+    return " ^ t_name ^ " {\n" ^
     String.concat "\n" (List.map (
       fun y ->
         let (name, typ) = y in
-        "obj." ^ name ^ " = " ^ (zero_val gs typ)
+        name ^ ": " ^ (zero_val gs typ) ^ ","
       ) fields)
-    ^ "
-    return obj
+    ^ "}
     }\n"
   ) (TranscriberState.go_struct_types gs)
 
@@ -428,19 +434,18 @@ let go_map_defs ts =
   List.map (fun x ->
     let (type_name, v_type) = x in
     let go_v_type = (TranscriberState.get_go_type ts v_type) in
-    let go_v_type = if (can_alias v_type)
-                    then go_v_type
-                    else "*" ^ go_v_type in
+    let go_v_type = if (is_ptr_type v_type)
+                    then "*" ^ go_v_type
+                    else go_v_type in
     "type " ^ type_name ^ " AddrMap  // " ^ go_v_type ^
     "
 
-    func (x *" ^ type_name ^ ") DeepCopy () *" ^ type_name ^ "{
-    newMap := make(" ^ type_name ^ ")
+    func (x *" ^ type_name ^ ") DeepCopy (dst **" ^ type_name ^ ") {
     for _, v := range (*AddrMap)(x).Elements() {
-      v_copy := " ^ (deep_copy_ref v_type ("v.val.(" ^ go_v_type ^ ")")) ^ "
-      (*AddrMap)(&newMap).Insert(v.key, v_copy)
+      v_copy := " ^ (zero_val ts v_type) ^ "
+      " ^ (do_deep_copy v_type ("v.val.(" ^ go_v_type ^ ")") ("&v_copy")) ^ "
+      (*AddrMap)(*dst).Insert(v.key, v_copy)
     }
-    return &newMap
     }
 
     func New_" ^ type_name ^ " () *" ^ type_name ^ "{
@@ -458,12 +463,15 @@ let go_slice_defs ts =
     "type " ^ type_name ^ " []" ^ go_v_type ^
     "
 
-    func (x " ^ type_name ^ ") DeepCopy () *" ^ type_name ^ "{
+    func (x " ^ type_name ^ ") DeepCopy (dst *" ^ type_name ^ ") {
     var newSlice " ^ type_name ^ "
     for _, v := range x {
-        newSlice = append(newSlice, " ^ (deep_copy_ref v_type "v") ^ ")
+        v_copy := " ^ (zero_val ts v_type) ^ "
+        " ^ (do_deep_copy v_type "v" "&v_copy") ^ "
+        newSlice = append(newSlice, v_copy)
     }
-    return &newSlice
+    // TODO make this copy into dst if possible
+    *dst = newSlice
     }
 
     func New_" ^ type_name ^ " () *" ^ type_name ^ "{

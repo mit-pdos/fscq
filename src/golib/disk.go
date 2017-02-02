@@ -6,7 +6,10 @@ import (
 	"syscall"
 )
 
-type Buffer []byte
+type Buffer struct {
+	sz_bits int64
+	data []byte
+}
 
 type DiskStats struct {
 	reads  Num
@@ -19,14 +22,31 @@ const debug = true
 var disk_file *os.File
 var disk_stats *DiskStats
 
-func (d Buffer) DeepCopy() *Buffer {
-	buf := Buffer(append([]byte{}, d...))
-	return &buf
+func (d Buffer) DeepCopy(dst **Buffer) {
+	copy((*dst).data, d.data)
+
+	// fill uncopied portion with zeros
+	for i := len(d.data); i < len((*dst).data); i++ {
+		(*dst).data[i] = 0;
+	}
+
+	// append uncopied source data
+	start := len((*dst).data)
+	(*dst).data = append((*dst).data, d.data[start:]...)
+}
+
+func (d *Buffer) fill_to_size() {
+	bytes := (d.sz_bits + 7) / 8
+
+	for i := int64(len(d.data)); i < bytes; i++ {
+		d.data = append(d.data, 0)
+	}
 }
 
 func New_Buffer(sz Num) *Buffer {
-	buf := Buffer(make([]byte, sz.Int64()))
-	return &buf
+	buf := new(Buffer)
+	buf.sz_bits = sz.Int64()
+	return buf
 }
 
 func Init_disk(path string) {
@@ -47,7 +67,9 @@ func DiskWrite(addr Num, buf *Buffer) {
 	off := Num_of_i64(4096)
 	off.Multiply(off, addr)
 
-	n_bytes, err := disk_file.WriteAt(*buf, off.Int64())
+	buf.fill_to_size()
+
+	n_bytes, err := disk_file.WriteAt(buf.data, off.Int64())
 	(&disk_stats.writes).Increment()
 
 	if n_bytes != 4096 {
@@ -66,7 +88,9 @@ func DiskRead(dst *Buffer, addr Num) {
 	off := Num_of_i64(4096)
 	off.Multiply(off, addr)
 
-	n_bytes, err := disk_file.ReadAt(*dst, off.Int64())
+	dst.fill_to_size()
+
+	n_bytes, err := disk_file.ReadAt(dst.data, off.Int64())
 	(&disk_stats.reads).Increment()
 
 	if n_bytes != 4096 {

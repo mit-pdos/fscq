@@ -6,12 +6,16 @@ type Bool bool
 
 type Empty struct{}
 
-func (x Empty) DeepCopy() Empty {
-	return x
+func (x Empty) DeepCopy(dst *Empty) {
+	return
 }
 
 func New_Bool() Bool {
 	return false
+}
+
+func (b Bool) DeepCopy(dst *Bool) {
+	*dst = b
 }
 
 func New_Empty() Empty {

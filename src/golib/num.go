@@ -30,8 +30,8 @@ func test_le_Num(l Num, r Num) Bool {
 	return Bool(l <= r)
 }
 
-func (num Num) DeepCopy() Num {
-	return num
+func (num Num) DeepCopy(dst *Num) {
+	*dst = num
 }
 
 func Num_of_i64(num int64) Num {
