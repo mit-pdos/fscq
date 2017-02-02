@@ -78,8 +78,11 @@ Module BmapAlloc (Sig : AllocSig).
     ms <- Bmp.put lxp xp bn $0 ms;
     Ret ms.
 
+  Definition ifind_avail_nonzero lxp xp ms :=
+    Bmp.ifind lxp xp avail_nonzero ms.
+
   Definition alloc lxp xp ms :=
-    let^ (ms, r) <- Bmp.ifind lxp xp avail_nonzero ms;
+    let^ (ms, r) <- ifind_avail_nonzero lxp xp ms;
     match r with
     | None =>
         Ret ^(ms, None)
@@ -319,7 +322,7 @@ Module BmapAlloc (Sig : AllocSig).
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} alloc lxp xp ms.
   Proof.
-    unfold alloc, rep.
+    unfold alloc, ifind_avail_nonzero, rep.
     step.
     step.
     step.
