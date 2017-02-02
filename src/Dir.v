@@ -116,8 +116,14 @@ Module DIR.
 
   Definition lookup_f name de (_ : addr) := (is_valid de) && (name_is name de).
 
+  Definition ifind_lookup_f lxp ixp dnum name ms :=
+    Dent.ifind lxp ixp dnum (lookup_f name) ms.
+
+  Definition ifind_invalid lxp ixp dnum ms :=
+    Dent.ifind lxp ixp dnum (fun de _ => negb (is_valid de)) ms.
+
   Definition lookup lxp ixp dnum name ms :=
-    let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
+    let^ (ms, r) <- ifind_lookup_f lxp ixp dnum name ms;
     match r with
     | None => Ret ^(ms, None)
     | Some (_, de) => Ret ^(ms, Some (DEInum de, is_dir de))
@@ -131,7 +137,7 @@ Module DIR.
     Ret ^(ms, r).
 
   Definition unlink lxp ixp dnum name ms :=
-    let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
+    let^ (ms, r) <- ifind_lookup_f lxp ixp dnum name ms;
     match r with
     | None => Ret ^(ms, Err ENOENT)
     | Some (ix, _) =>
@@ -140,12 +146,12 @@ Module DIR.
     end.
 
   Definition link lxp bxp ixp dnum name inum isdir ms :=
-    let^ (ms, r) <- Dent.ifind lxp ixp dnum (lookup_f name) ms;
+    let^ (ms, r) <- ifind_lookup_f lxp ixp dnum name ms;
     match r with
     | Some _ => Ret ^(ms, Err EEXIST)
     | None =>
         let de := mk_dent name inum isdir in
-        let^ (ms, r) <- Dent.ifind lxp ixp dnum (fun de _ => negb (is_valid de)) ms;
+        let^ (ms, r) <- ifind_invalid lxp ixp dnum ms;
         match r with
         | Some (ix, _) =>
             ms <- Dent.put lxp ixp dnum ix de ms;
@@ -421,7 +427,7 @@ Module DIR.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} lookup lxp ixp dnum name ms.
   Proof.
-    unfold lookup, rep_macro, rep.
+    unfold lookup, ifind_lookup_f, rep_macro, rep.
     safestep.
     safestep.
     or_r; cancel.
@@ -465,7 +471,7 @@ Module DIR.
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} unlink lxp ixp dnum name ms.
   Proof.
-    unfold unlink, rep_macro, rep.
+    unfold unlink, ifind_lookup_f, rep_macro, rep.
     step.
     step.
 
@@ -509,7 +515,7 @@ Module DIR.
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} link lxp bxp ixp dnum name inum isdir ms.
   Proof.
-    unfold link, rep_macro, rep.
+    unfold link, ifind_lookup_f, ifind_invalid, rep_macro, rep.
     step.
     step.
 
