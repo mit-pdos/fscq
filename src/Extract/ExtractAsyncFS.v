@@ -11,20 +11,28 @@ Require Import AsyncFS.
 
 Local Open Scope string_scope.
 
+Instance q : GoWrapper
+   (FSLayout.log_xparams * FSLayout.inode_xparams * FSLayout.balloc_xparams).
+  typeclasses eauto.
+Defined.
+
+Instance qq : GoWrapper
+   (FSLayout.log_xparams * FSLayout.inode_xparams * FSLayout.balloc_xparams *
+    FSLayout.balloc_xparams * FSLayout.balloc_xparams * W).
+  typeclasses eauto.
+Defined.
+
 Example compile_file_get_sz : sigT (fun p => source_stmt p /\
   forall env fsxp inum ams,
-(*
   prog_func_call_lemma
     {|
       FArgs := [
-        with_wrapper _;
         with_wrapper _;
         with_wrapper _
       ];
       FRet := with_wrapper _
     |}
-    "ialloc_alloc" Balloc.IAlloc.alloc env ->
-*)
+    "log_begin" Log.LOG.begin env ->
   EXTRACT AFS.file_get_sz fsxp inum ams
   {{ 0 ~>? (bool * Log.LOG.memstate * (word 64 * unit)) *
      1 ~> fsxp *
@@ -36,9 +44,7 @@ Example compile_file_get_sz : sigT (fun p => source_stmt p /\
      2 ~>? addr *
      3 ~>? BFile.BFILE.memstate }} // env).
 Proof.
-  unfold AFS.file_get_sz, AFS.MSLL.
-  compile_step.
-  compile_step.
+  unfold AFS.file_get_sz, AFS.MSLL, pair_args_helper.
   compile_step.
   compile_step.
   compile_step.
@@ -51,6 +57,31 @@ Proof.
   transform_pre.
   compile_step.
 
-  (* compile_split should work here. *)
+  (* another automation failure? *)
+  (* why is it necessary to manually declare the typeclass instances above,
+   * [q] and [qq], when [typeclasses eauto] solves them just fine?
+   *)
+  compile_decompose.
+  compile_bind.
+  compile_decompose.
+  compile_bind.
+  compile_decompose.
+  compile_bind.
+  compile_decompose.
+  compile_bind.
+  compile_decompose.
+  compile_bind.
+  compile_split.
+  compile_split.
+  compile_split.
+  compile_split.
+  compile_split.
+  compile_split.
+
+  compile_step.
+  compile_step.
+
+  (* Fails to synthesize GoWrapper for [Rec.data] *)
+  (* compile_bind. *)
 
 Admitted.
