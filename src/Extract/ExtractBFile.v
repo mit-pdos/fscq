@@ -37,7 +37,7 @@ Example compile_getlen : sigT (fun p => source_stmt p /\
      3 ~>? nat *
      4 ~>? BFILE.memstate }} // env).
 Proof.
-  unfold BFILE.getlen, BFILE.MSLL, pair_args_helper.
+  unfold BFILE.getlen, BFILE.MSLL, BFILE.MSAlloc, BFILE.mk_memstate, pair_args_helper.
   compile_step.
   compile_step.
   compile_step.
@@ -52,9 +52,21 @@ Proof.
   compile_step.
   compile_step.
 
-  (* Stuck at extracting [Ret ms]? *)
-  (*
-  compile_step.
-  *)
+  (* XXX why isn't this working automatically? *)
+  (* tries to split up [a] to get [snd a], but we already have a variable with [snd a] in it. *)
+  eapply hoare_weaken.
+  eapply CompileMove with (var0 := nth_var 5 vars) (var' := nth_var 8 vars).
+  cancel_go.
+  cancel_go.
 
-Admitted.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+
+  Unshelve.
+  all: compile.
+Defined.
+
+Eval lazy in projT1 compile_getlen.
