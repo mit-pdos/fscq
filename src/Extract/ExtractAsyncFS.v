@@ -22,6 +22,19 @@ Instance qq : GoWrapper
   typeclasses eauto.
 Defined.
 
+Instance q3 : GoWrapper
+   (BFile.BFILE.memstate *
+    (Rec.Rec.data
+       (Rec.Rec.field_type
+          (Rec.Rec.FS "len" (Rec.Rec.WordF addrlen)
+             (Rec.Rec.FE
+                [("indptr", Rec.Rec.WordF addrlen);
+                ("blocks",
+                Rec.Rec.ArrayF (Rec.Rec.WordF addrlen) Inode.INODE.NDirect)]
+                "attrs" Inode.INODE.iattrtype))) * unit)).
+  typeclasses eauto.
+Defined.
+
 Example compile_file_get_sz : sigT (fun p => source_stmt p /\
   forall env fsxp inum ams,
   prog_func_call_lemma
@@ -33,6 +46,18 @@ Example compile_file_get_sz : sigT (fun p => source_stmt p /\
       FRet := with_wrapper _
     |}
     "log_begin" Log.LOG.begin env ->
+
+  prog_func_call_lemma
+    {|
+      FArgs := [
+        with_wrapper _;
+        with_wrapper _;
+        with_wrapper _
+      ];
+      FRet := with_wrapper _
+    |}
+    "dirtree_getattr" DirTree.DIRTREE.getattr env ->
+
   EXTRACT AFS.file_get_sz fsxp inum ams
   {{ 0 ~>? (bool * Log.LOG.memstate * (word 64 * unit)) *
      1 ~> fsxp *
@@ -80,8 +105,12 @@ Proof.
 
   compile_step.
   compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
 
-  (* Fails to synthesize GoWrapper for [Rec.data] *)
-  (* compile_bind. *)
+  (* super slow, something seems fishy.. *)
 
 Admitted.
