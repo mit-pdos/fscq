@@ -43,6 +43,8 @@ Proof.
   compile_step.
   compile_step.
 
+  compile_step. (* same issue as ExtractAsyncFS *)
+
   (* This seems to turn into an actual infinite loop; maybe a problem with extracting
    * something out of a two-level record (log_xparams inside fs_xparams)?
    *)

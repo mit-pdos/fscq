@@ -44,7 +44,11 @@ Proof.
   compile_step.
   compile_step.
 
-  (* doesn't break up [xp]? *)
+  (* why isn't this happening via [compile_step]? *)
+  transform_pre.
+  compile_step.
+
+  (* compile_split should work here.. *)
 Admitted.
 
 Example compile_IAlloc_alloc : sigT (fun p => source_stmt p /\
@@ -79,7 +83,7 @@ Proof.
   unfold IAlloc.alloc, IAlloc.Alloc.alloc, pair_args_helper.
   compile_step.
   compile_step.
-  compile_step.
+  compile_step. (* why does this step explode [xp] into pieces? *)
   compile_step.
   compile_step.
   compile_step.
@@ -96,5 +100,6 @@ Proof.
   compile_step.
   compile_step.
 
+  
   (* cannot reconstruct [xp]?? *)
 Admitted.

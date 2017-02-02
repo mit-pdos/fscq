@@ -45,12 +45,12 @@ Proof.
   compile_step.
   compile_step.
 
-  (* This also gets stuck in an infinite loop decomposing [FSLayout.FSXPLog fsxp]
-   * into its constituent components, even though we don't actually need to break
-   * it up..
-   *)
-  (*
-  repeat compile_step.
-  *)
+  (* why is [compile_step] breaking up [FSLayout.FSXPLog] in the return statement,
+      instead of breaking up [1 ~> fsxp]? *)
+
+  transform_pre.
+  compile_step.
+
+  (* compile_split should work here. *)
 
 Admitted.
