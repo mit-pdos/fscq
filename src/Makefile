@@ -21,7 +21,6 @@ VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
 
 EXTRACT_MODULES := Wrappers \
 		ExtractCache \
-		ExtractDiskLogHash \
 		ExtractBalloc \
 		ExtractBFile \
 		ExtractDirTree \
