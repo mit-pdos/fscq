@@ -1,7 +1,9 @@
 Require Import Cache FSLayout MemLog GroupLog Log BFile.
 Require Import GoSemantics GoHoare GoTactics1.
+Require Import List.
 
 Import Go.
+Import ListNotations.
 
 Instance addrmap_default_value : forall T {H: GoWrapper T}, DefaultValue (Map.t T).
   intros.
@@ -79,45 +81,68 @@ Instance GoWrapper_LOG_memstate : GoWrapper LOG.memstate.
   typeclasses eauto.
 Defined.
 
-Instance WrapByTransforming_log_xparams : WrapByTransforming log_xparams.
+Instance GoWrapper_log_xparams : GoWrapper log_xparams.
   refine {|
-    transform := fun xp => (DataStart xp, LogHeader xp, LogDescriptor xp, LogDescLen xp, LogData xp, LogLen xp)
+    wrap_type := Go.Struct [ Num; Num; Num; Num; Num; Num ];
+    wrap' := fun xp => (DataStart xp, (LogHeader xp, (LogDescriptor xp, (LogDescLen xp, (LogData xp, (LogLen xp, tt))))))
   |}.
-  simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
+  intros. repeat find_inversion_safe.
+  destruct a1, a2; f_equal; eapply wrap_inj; eauto.
 Defined.
 
 Instance log_xparams_default_value : DefaultValue log_xparams := {| zeroval := Build_log_xparams 0 0 0 0 0 0 |}.
   auto.
 Defined.
 
-Instance WrapByTransforming_inode_xparams : WrapByTransforming inode_xparams.
+Instance GoWrapper_inode_xparams : GoWrapper inode_xparams.
   refine {|
-    transform := fun xp => (IXStart xp, IXLen xp)
+    wrap_type := Go.Struct [ Num; Num ];
+    wrap' := fun xp => (IXStart xp, (IXLen xp, tt))
   |}.
-  simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
+  intros. repeat find_inversion_safe.
+  destruct a1, a2; f_equal; eapply wrap_inj; eauto.
 Defined.
 
 Instance inode_xparams_default_value : DefaultValue inode_xparams := {| zeroval := Build_inode_xparams 0 0 |}.
   auto.
 Defined.
 
-Instance WrapByTransforming_balloc_xparams : WrapByTransforming balloc_xparams.
+Instance GoWrapper_balloc_xparams : GoWrapper balloc_xparams.
   refine {|
-    transform := fun xp => (BmapStart xp, BmapNBlocks xp)
+    wrap_type := Go.Struct [ Num; Num ];
+    wrap' := fun xp => (BmapStart xp, (BmapNBlocks xp, tt))
   |}.
-  simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
+  intros. repeat find_inversion_safe.
+  destruct a1, a2; f_equal; eapply wrap_inj; eauto.
 Defined.
 
 Instance balloc_xparams_default_value : DefaultValue balloc_xparams := {| zeroval := Build_balloc_xparams 0 0 |}.
   auto.
 Defined.
 
-Instance WrapByTransforming_fs_xparams : WrapByTransforming fs_xparams.
+Instance GoWrapper_fs_xparams : GoWrapper fs_xparams.
   refine {|
-    transform := fun xp => (FSXPLog xp, FSXPInode xp, FSXPBlockAlloc1 xp, FSXPBlockAlloc2 xp,
-                            FSXPInodeAlloc xp, FSXPRootInum xp, FSXPMaxBlock xp)
+    wrap_type := Go.Struct [
+      @wrap_type log_xparams _;
+      @wrap_type inode_xparams _;
+      @wrap_type balloc_xparams _;
+      @wrap_type balloc_xparams _;
+      @wrap_type balloc_xparams _;
+      Num;
+      Num
+    ];
+    wrap' := fun xp =>
+      (wrap' (FSXPLog xp),
+      (wrap' (FSXPInode xp),
+      (wrap' (FSXPBlockAlloc1 xp),
+      (wrap' (FSXPBlockAlloc2 xp),
+      (wrap' (FSXPInodeAlloc xp),
+      (wrap' (FSXPRootInum xp),
+      (wrap' (FSXPMaxBlock xp), tt)))))))
   |}.
-  simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
+
+  intros. repeat find_inversion_safe.
+  destruct a1, a2; f_equal; eapply wrap_inj; eauto.
 Defined.
 
 Instance fs_xparams_default_value : DefaultValue fs_xparams :=
