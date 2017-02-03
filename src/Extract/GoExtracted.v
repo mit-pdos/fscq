@@ -3,6 +3,10 @@ Require Import GoSemantics.
 Require Import FMapFacts.
 
 Require Import ExtractCache.
+Require Import ExtractBalloc.
+Require Import ExtractAsyncFS.
+Require Import ExtractBFile.
+Require Import ExtractDirTree.
 
 About StringMap.fold.
 Print StringMap.
@@ -21,6 +25,10 @@ Ltac add_to_env env_extr :=
 Definition extract_env : Go.Env.
   pose (env := StringMap.empty Go.FunctionSpec).
   add_to_env ExtractCache.extract_env.
+  add_to_env ExtractBalloc.extract_env.
+  add_to_env ExtractAsyncFS.extract_env.
+  add_to_env ExtractBFile.extract_env.
+  add_to_env ExtractDirTree.extract_env.
   (* TODO add more environment definitions here *)
   exact env.
 Defined.

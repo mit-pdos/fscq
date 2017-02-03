@@ -20,6 +20,7 @@ VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
 
 EXTRACT_MODULES := Wrappers \
+	        EnvBuild \
 		ExtractCache \
 		ExtractBalloc \
 		ExtractBFile \

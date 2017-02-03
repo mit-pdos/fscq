@@ -2,7 +2,7 @@ Require Import List String.
 Require Import StringMap.
 Require Import Word Prog Pred AsyncDisk.
 Require Import GoSemantics GoFacts GoHoare GoCompilationLemmas GoExtraction GoSepAuto GoTactics2.
-Require Import Wrappers.
+Require Import Wrappers EnvBuild.
 Import ListNotations.
 
 Import Go.
@@ -70,3 +70,10 @@ Proof.
 Defined.
 
 Eval lazy in projT1 compile_getlen.
+
+Definition extract_env : Env.
+  pose (env := StringMap.empty FunctionSpec).
+  add_compiled_program "bfile_getlen" compile_getlen env.
+  (* TODO add more programs here *)
+  exact env.
+Defined.

@@ -2,7 +2,7 @@ Require Import List String.
 Require Import StringMap.
 Require Import Word Prog Pred AsyncDisk.
 Require Import GoSemantics GoFacts GoHoare GoCompilationLemmas GoExtraction GoSepAuto GoTactics2.
-Require Import Wrappers.
+Require Import Wrappers EnvBuild.
 Import ListNotations.
 
 Import Go.
@@ -53,3 +53,9 @@ Proof.
   *)
 
 Admitted.
+
+Definition extract_env : Env.
+  pose (env := StringMap.empty FunctionSpec).
+  (* TODO add more programs here *)
+  exact env.
+Defined.
