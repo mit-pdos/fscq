@@ -41,16 +41,50 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
+
+  (* [CompileSnd'] not automated yet *)
+  eapply hoare_weaken.
+  eapply CompileSnd' with (bvar := nth_var 1 vars) (pvar := 4).
+  cancel_go.
+  cancel_go.
+
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+
+  eapply hoare_weaken.
+  eapply CompileFst' with (avar := nth_var 3 vars) (pvar := 4).
+  cancel_go.
+  cancel_go.
+
+  compile_step.
+
+  eapply hoare_weaken.
+  eapply CompileFst' with (avar := nth_var 4 vars) (pvar := nth_var 0 vars).
+  cancel_go.
+  cancel_go.
+
   compile_step.
   compile_step.
   compile_step.
   compile_step.
   compile_step.
   compile_step.
+
+  eapply hoare_weaken.
+  eapply CompileSnd' with (bvar := nth_var 7 vars) (pvar := nth_var 0 vars).
+  cancel_go. cancel_go.
+  cancel_go.
+
   compile_step.
   compile_step.
   compile_step.
   compile_step.
+  compile_step.
+
+(* XXX old proof steps before [CompileFst'] and [CompileSnd']..
+
 
   (* XXX why isn't this working automatically? *)
   (* tries to split up [a] to get [snd a], but we already have a variable with [snd a] in it. *)
@@ -64,6 +98,7 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
+*)
 
   Unshelve.
   all: compile.
