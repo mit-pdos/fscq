@@ -94,6 +94,7 @@ Module Go.
   | Slice : type -> type (* In Go: []<whatever> *)
   | Pair : type -> type -> type (* In Go: struct{fst <whatever>; snd <whatever>}, I think? *)
   | AddrMap : type -> type (* In Go: specialized map type *)
+  | Struct : list (string * type) -> type (* In Go: struct with string-named fields *)
   .
 
   Definition DiskBlock := Buffer valulen.
@@ -117,7 +118,17 @@ Module Go.
     | Slice _ => false
     | Pair t1 t2 => can_alias t1 && can_alias t2
     | AddrMap _ => false
+    | Struct _ => false
     end.
+
+  Section TypeDenoteList.
+    Variable D : type -> Type.
+    Fixpoint type_denote_list (l : list (string * type)) : Type :=
+      match l with
+      | nil => unit
+      | (_, t) :: l => D t * type_denote_list l
+      end.
+  End TypeDenoteList.
 
   Fixpoint type_denote (t : type) : Type :=
     match t with
@@ -130,10 +141,79 @@ Module Go.
     | Slice t' => movable (list (type_denote t')) (* kept in reverse order to make cons = append *)
     | Pair t1 t2 => type_denote t1 * type_denote t2
     | AddrMap vt => movable (Map.t (type_denote vt))
+    | Struct l => movable (type_denote_list type_denote l)
     end.
 
-  Definition type_eq_dec : forall t1 t2 : type, {t1 = t2} + {t1 <> t2}.
-    repeat decide equality.
+  Section TypeInd2.
+    Variable P : type -> Prop.
+    Variable type_ind2' : forall (t : type), P t.
+    Variable type_ind2_struct : forall l, Forall P (map snd l) -> P (Struct l).
+
+    Fixpoint type_ind2_list (l : list (string * type)) : P (Struct l).
+      apply type_ind2_struct.
+      induction l; simpl.
+      constructor.
+      constructor.
+      apply type_ind2'.
+      apply IHl.
+    Defined.
+  End TypeInd2.
+
+  Fixpoint type_ind2 (P : type -> Prop)
+    (Hnum : P Num)
+    (Hbool : P Bool)
+    (Hstring : P String)
+    (Hemptystruct : P EmptyStruct)
+    (Hbuffer : forall n, P (Buffer n))
+    (Himmutablebuffer : forall n, P (ImmutableBuffer n))
+    (Hslice : forall t, P (Slice t))
+    (Hpair : forall p q, P (Pair p q))
+    (Haddrmap : forall t, P (AddrMap t))
+    (Hstruct : forall l, Forall P (map snd l) -> P (Struct l))
+    (t : type) {struct t} : P t.
+  Proof.
+    destruct t; auto.
+    apply type_ind2_list; auto.
+    apply type_ind2; auto.
+  Qed.
+
+  Section TypeEqList.
+    Variable EQ : forall (t1 t2 : type), {t1=t2} + {t1<>t2}.
+    Fixpoint type_eq_dec_list (l1 l2 : list (string * type)) : {l1=l2} + {l1<>l2}.
+      destruct l1, l2.
+      left; congruence.
+      right; congruence.
+      right; congruence.
+      destruct p, p0.
+      destruct (string_dec s s0).
+      destruct (EQ t t0).
+      destruct (type_eq_dec_list l1 l2).
+      left; congruence.
+      right; congruence.
+      right; congruence.
+      right; congruence.
+    Defined.
+  End TypeEqList.
+
+  Ltac type_eq_dec_decide :=
+    solve [ (left; congruence) || (right; congruence) ].
+
+  Fixpoint type_eq_dec (t1 t2 : type) : {t1 = t2} + {t1 <> t2}.
+  Proof.
+    generalize dependent t2.
+    induction t1; destruct t2; try type_eq_dec_decide.
+    destruct (addr_eq_dec n n0); type_eq_dec_decide.
+    destruct (addr_eq_dec n n0); type_eq_dec_decide.
+    destruct IHt1 with (t2 := t2); type_eq_dec_decide.
+    destruct IHt1_1 with (t2 := t2_1). destruct IHt1_2 with (t2 := t2_2).
+      type_eq_dec_decide.
+      type_eq_dec_decide.
+      type_eq_dec_decide.
+    destruct IHt1 with (t2 := t2); type_eq_dec_decide.
+    destruct type_eq_dec_list with (l1 := l) (l2 := l0).
+      exact type_eq_dec.
+      type_eq_dec_decide.
+      type_eq_dec_decide.
   Defined.
 
   Inductive expr :=
@@ -176,6 +256,16 @@ Module Go.
   Definition type_of (v : value) :=
     match v with Val t _ => t end.
 
+  Section DefaultValueList.
+    Variable V : forall (t : type), type_denote t.
+    Fixpoint default_value'_list (l : list (string * type)) : type_denote_list type_denote l :=
+      match l with
+      | nil => tt
+      | (_, t) :: l' =>
+        (V t, default_value'_list l')
+      end.
+  End DefaultValueList.
+
   Fixpoint default_value' (t : type) : type_denote t :=
     match t return type_denote t with
     | Num => 0
@@ -187,6 +277,7 @@ Module Go.
     | Slice _ => Here nil
     | Pair t1 t2 => (default_value' t1, default_value' t2)
     | AddrMap vt => Here (Map.empty (type_denote vt))
+    | Struct l => Here (default_value'_list default_value' l)
     end.
 
   Definition default_value (t : type) : value :=
@@ -206,6 +297,7 @@ Module Go.
         let '(v1, v2) := old
         in (moved_value' t1 v1, moved_value' t2 v2)
     | AddrMap vt => fun _ => Moved
+    | Struct _ => fun _ => Moved
     end old.
 
   Definition moved_value (old : value) : value :=
