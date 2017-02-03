@@ -202,6 +202,16 @@ Proof.
   exact (@wrap_inj _ WT).
 Defined.
 
+Instance GoWrapper_type_denote_wrap_type {t} : GoWrapper (Go.type_denote t).
+Proof.
+  case_eq t; intros;
+  match goal with
+  | [ H: t = ?tt |- _ ] =>
+    refine {| wrap' := id; wrap_type := tt |};
+    unfold id; auto
+  end.
+Defined.
+
 Class DefaultValue T {Wrapper : GoWrapper T} :=
   {
     zeroval : T;
