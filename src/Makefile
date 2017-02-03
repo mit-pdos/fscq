@@ -13,19 +13,20 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      Dir DirName StringUtils TreeUtils DirTree TreeCrash \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv ADestructPair DestructVarname ExtrHaskellPrelude \
 	      DirSep TreeSeq \
-				MoreMapFacts StringMap VerdiTactics Gensym GoSemantics GoFacts \
-				GoTactics1 GoHoare GoTactics2 GoSepAuto GoCompilationLemmas GoExtraction GoExamples
+	      MoreMapFacts StringMap VerdiTactics Gensym GoSemantics GoFacts \
+	      GoTactics1 GoHoare GoTactics2 GoSepAuto GoCompilationLemmas GoExtraction GoExamples
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))
 
 EXTRACT_MODULES := Wrappers \
-					ExtractCache ExtractDiskLogHash \
-					ExtractBalloc \
-					ExtractBFile \
-					ExtractDirTree \
-					ExtractAsyncFS \
-					GoExtracted
+		ExtractCache \
+		ExtractDiskLogHash \
+		ExtractBalloc \
+		ExtractBFile \
+		ExtractDirTree \
+		ExtractAsyncFS \
+		GoExtracted
 EXTRACT_VS 		:= $(EXTRACT_MODULES:%=Extract/%.v)
 EXTRACT_BUILD   := $(patsubst %.v,coqbuild/%.v,$(EXTRACT_VS))
 EXTRACT_VIO     := $(patsubst %.v,coqbuild/%.vio,$(EXTRACT_VS))
