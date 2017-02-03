@@ -94,7 +94,7 @@ Module Go.
   | Slice : type -> type (* In Go: []<whatever> *)
   | Pair : type -> type -> type (* In Go: struct{fst <whatever>; snd <whatever>}, I think? *)
   | AddrMap : type -> type (* In Go: specialized map type *)
-  | Struct : list (string * type) -> type (* In Go: struct with string-named fields *)
+  | Struct : list type -> type (* In Go: struct *)
   .
 
   Definition DiskBlock := Buffer valulen.
@@ -118,15 +118,25 @@ Module Go.
     | Slice _ => false
     | Pair t1 t2 => can_alias t1 && can_alias t2
     | AddrMap _ => false
-    | Struct _ => false
+    | Struct l => fold_right andb true (map can_alias l)
+    end.
+
+  Fixpoint type_list_nth (l : list type) (n : nat) : type :=
+    match l with
+    | nil => EmptyStruct
+    | t :: l' =>
+      match n with
+      | O => t
+      | S n' => type_list_nth l' n'
+      end
     end.
 
   Section TypeDenoteList.
     Variable D : type -> Type.
-    Fixpoint type_denote_list (l : list (string * type)) : Type :=
+    Fixpoint type_denote_list (l : list type) : Type :=
       match l with
       | nil => unit
-      | (_, t) :: l => D t * type_denote_list l
+      | t :: l' => D t * type_denote_list l'
       end.
   End TypeDenoteList.
 
@@ -141,15 +151,18 @@ Module Go.
     | Slice t' => movable (list (type_denote t')) (* kept in reverse order to make cons = append *)
     | Pair t1 t2 => type_denote t1 * type_denote t2
     | AddrMap vt => movable (Map.t (type_denote vt))
-    | Struct l => movable (type_denote_list type_denote l)
+    | Struct l => type_denote_list type_denote l
     end.
+
+  Definition type_denote_list_nth (l : list type) (n : nat) :=
+    type_denote (type_list_nth l n).
 
   Section TypeInd2.
     Variable P : type -> Prop.
     Variable type_ind2' : forall (t : type), P t.
-    Variable type_ind2_struct : forall l, Forall P (map snd l) -> P (Struct l).
+    Variable type_ind2_struct : forall l, Forall P l -> P (Struct l).
 
-    Fixpoint type_ind2_list (l : list (string * type)) : P (Struct l).
+    Fixpoint type_ind2_list (l : list type) : P (Struct l).
       apply type_ind2_struct.
       induction l; simpl.
       constructor.
@@ -169,7 +182,7 @@ Module Go.
     (Hslice : forall t, P (Slice t))
     (Hpair : forall p q, P (Pair p q))
     (Haddrmap : forall t, P (AddrMap t))
-    (Hstruct : forall l, Forall P (map snd l) -> P (Struct l))
+    (Hstruct : forall l, Forall P l -> P (Struct l))
     (t : type) {struct t} : P t.
   Proof.
     destruct t; auto.
@@ -177,43 +190,8 @@ Module Go.
     apply type_ind2; auto.
   Qed.
 
-  Section TypeEqList.
-    Variable EQ : forall (t1 t2 : type), {t1=t2} + {t1<>t2}.
-    Fixpoint type_eq_dec_list (l1 l2 : list (string * type)) : {l1=l2} + {l1<>l2}.
-      destruct l1, l2.
-      left; congruence.
-      right; congruence.
-      right; congruence.
-      destruct p, p0.
-      destruct (string_dec s s0).
-      destruct (EQ t t0).
-      destruct (type_eq_dec_list l1 l2).
-      left; congruence.
-      right; congruence.
-      right; congruence.
-      right; congruence.
-    Defined.
-  End TypeEqList.
-
-  Ltac type_eq_dec_decide :=
-    solve [ (left; congruence) || (right; congruence) ].
-
   Fixpoint type_eq_dec (t1 t2 : type) : {t1 = t2} + {t1 <> t2}.
-  Proof.
-    generalize dependent t2.
-    induction t1; destruct t2; try type_eq_dec_decide.
-    destruct (addr_eq_dec n n0); type_eq_dec_decide.
-    destruct (addr_eq_dec n n0); type_eq_dec_decide.
-    destruct IHt1 with (t2 := t2); type_eq_dec_decide.
-    destruct IHt1_1 with (t2 := t2_1). destruct IHt1_2 with (t2 := t2_2).
-      type_eq_dec_decide.
-      type_eq_dec_decide.
-      type_eq_dec_decide.
-    destruct IHt1 with (t2 := t2); type_eq_dec_decide.
-    destruct type_eq_dec_list with (l1 := l) (l2 := l0).
-      exact type_eq_dec.
-      type_eq_dec_decide.
-      type_eq_dec_decide.
+    repeat decide equality.
   Defined.
 
   Inductive expr :=
@@ -237,6 +215,8 @@ Module Go.
   | MapElements
   | FreezeBuffer (* destination, source *)
   | SliceBuffer (from to : nat) (* destination, source *)
+  | StructGet
+  | StructPut
   .
 
   Inductive value :=
@@ -258,10 +238,10 @@ Module Go.
 
   Section DefaultValueList.
     Variable V : forall (t : type), type_denote t.
-    Fixpoint default_value'_list (l : list (string * type)) : type_denote_list type_denote l :=
+    Fixpoint default_value'_list (l : list type) : type_denote_list type_denote l :=
       match l with
       | nil => tt
-      | (_, t) :: l' =>
+      | t :: l' =>
         (V t, default_value'_list l')
       end.
   End DefaultValueList.
@@ -277,13 +257,27 @@ Module Go.
     | Slice _ => Here nil
     | Pair t1 t2 => (default_value' t1, default_value' t2)
     | AddrMap vt => Here (Map.empty (type_denote vt))
-    | Struct l => Here (default_value'_list default_value' l)
+    | Struct l => default_value'_list default_value' l
     end.
 
   Definition default_value (t : type) : value :=
     Val t (default_value' t).
 
-  Fixpoint moved_value' (t : type) (old : type_denote t) : type_denote t :=
+  Section MovedValueList.
+    Variable M : forall t, type_denote t -> type_denote t.
+
+    Fixpoint moved_value'_list
+      (l : list type) (old : type_denote (Struct l)) {struct l} : type_denote (Struct l) :=
+      match l return type_denote (Struct l) -> type_denote (Struct l) with
+      | nil => fun _ => tt
+      | t :: l' =>
+        fun old =>
+          let '(v, vl) := old in
+          (M t v, moved_value'_list l' vl)
+      end old.
+  End MovedValueList.
+
+  Fixpoint moved_value' (t : type) (old : type_denote t) {struct t} : type_denote t :=
     match t return type_denote t -> type_denote t with
     | Num => fun old => old
     | Bool => fun old => old
@@ -294,10 +288,12 @@ Module Go.
     | Slice _ => fun _ => Moved
     | Pair t1 t2 =>
       fun old =>
-        let '(v1, v2) := old
-        in (moved_value' t1 v1, moved_value' t2 v2)
+        let '(v1, v2) := old in
+        (moved_value' t1 v1, moved_value' t2 v2)
     | AddrMap vt => fun _ => Moved
-    | Struct _ => fun _ => Moved
+    | Struct l =>
+      fun old =>
+        moved_value'_list moved_value' l old
     end old.
 
   Definition moved_value (old : value) : value :=
@@ -310,7 +306,7 @@ Module Go.
     intros.
     induction T; simpl in *; try congruence.
     destruct t; congruence.
-  Qed.
+  Admitted.
 
   Definition scope := VarMap.t type.
   Definition locals := VarMap.t value.
@@ -399,6 +395,28 @@ Module Go.
 
   End NTuple.
 
+  Fixpoint struct_selN (l : list type) (s : type_denote (Struct l)) (n : nat) : type_denote_list_nth l n :=
+    match l return type_denote (Struct l) -> type_denote_list_nth l n with
+    | nil => fun _ => tt
+    | t :: l' => fun s =>
+      let '(v, s') := s in
+      match n with
+      | O => v
+      | S n' => struct_selN l' s' n'
+      end
+    end s.
+
+  Fixpoint struct_updN (l : list type) (s : type_denote (Struct l)) (n : nat) (v : type_denote_list_nth l n) {struct l} : type_denote (Struct l) :=
+    match l return type_denote (Struct l) -> type_denote_list_nth l n -> type_denote (Struct l) with
+      | nil => fun _ _ => tt
+      | t :: l' => fun s v =>
+        let '(v', s') := s in
+        match n return type_denote_list_nth (t :: l') n -> type_denote (Struct (t :: l')) with
+        | O => fun v => (v, s')
+        | S n' => fun v => (v', struct_updN l' s' n' v)
+        end v
+      end s v.
+
   Section NiceImpls.
 
     Inductive var_update :=
@@ -466,6 +484,12 @@ Module Go.
       n_tuple 2 var_update :=
       ^(SetTo (Val (ImmutableBuffer inside) (split2 before inside (split1 (before + inside) after v))),
         Leave).
+
+    Definition struct_get_impl' (l : list type) (s : type_denote (Struct l)) (n : addr) : n_tuple 3 var_update :=
+      ^(Leave, Leave, SetTo (Val (type_list_nth l n) (struct_selN l s n))).
+
+    Definition struct_set_impl' (l : list type) (s : type_denote (Struct l)) (n : addr) (v : type_denote_list_nth l n) : n_tuple 3 var_update :=
+      ^(SetTo (Val (Struct l) (struct_updN l s n v)), Leave, Leave).
 
   End NiceImpls.
 
@@ -621,6 +645,31 @@ Module Go.
       rewrite H in s.
       exact (Some (slice_buffer_impl' from (to - from) (ns - to) s)).
     Defined.
+
+    Definition struct_get_impl : op_impl 3.
+      refine (fun args => let '^(Val ts s, Val tk k, Val tr r) := args in
+                        match ts with
+                        | Struct l => fun s => _
+                        | _ => fun _ => None
+                        end s).
+      destruct (type_eq_dec tk Num); [ subst | exact None].
+      destruct (type_eq_dec tr (type_list_nth l k)); [ subst | exact None ].
+      refine (Some _).
+      refine (struct_get_impl' l s k).
+    Defined.
+
+    Definition struct_set_impl : op_impl 3.
+      refine (fun args => let '^(Val ts s, Val tk k, Val tv v) := args in
+                        match ts with
+                        | Struct l => fun s => _
+                        | _ => fun _ => None
+                        end s).
+      destruct (type_eq_dec tk Num); [ subst | exact None ].
+      destruct (type_eq_dec tv (type_list_nth l k)); [ subst | exact None ].
+      refine (Some _).
+      refine (struct_set_impl' l s k v).
+    Defined.
+
   End NastyImpls.
 
   Definition impl_for (op : modify_op) : { n : nat & op_impl n } :=
@@ -640,6 +689,8 @@ Module Go.
     | MapElements => existT _ _ map_elements_impl
     | FreezeBuffer => existT _ _ freeze_buffer_impl
     | SliceBuffer from to => existT _ _ (slice_buffer_impl from to)
+    | StructGet => existT _ _ struct_get_impl
+    | StructSet => existT _ _ struct_set_impl
     end.
 
   Definition op_arity (op : modify_op) : nat := projT1 (impl_for op).
