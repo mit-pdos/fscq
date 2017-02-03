@@ -1759,6 +1759,32 @@ Proof.
   [ eval_expr; eauto ..].
 Qed.
 
+Lemma CompileFst' :
+  forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar pvar F (p : A * B),
+    EXTRACT Ret (fst p)
+    {{ avar ~>? A * pvar ~> p * F }}
+      Modify PairFst ^(pvar, avar)
+    {{ fun ret => avar ~> ret * pvar ~> (@moved_value' _ (wrap' (fst p)), snd p) * F }} // env.
+Proof.
+  intros; unfold ProgOk.
+  inv_exec_progok.
+
+  (* This seems messy because of the re-wrapping of [fst p].. *)
+Admitted.
+
+Lemma CompileSnd' :
+  forall env A B {HA: GoWrapper A} {HB: GoWrapper B} bvar pvar F (p : A * B),
+    EXTRACT Ret (snd p)
+    {{ bvar ~>? B * pvar ~> p * F }}
+      Modify PairSnd ^(pvar, bvar)
+    {{ fun ret => bvar ~> ret * pvar ~> (fst p, @moved_value' _ (wrap' (snd p))) * F }} // env.
+Proof.
+  intros; unfold ProgOk.
+  inv_exec_progok.
+
+  (* This seems messy because of the re-wrapping of [snd p].. *)
+Admitted.
+
 Lemma CompileJoin :
   forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar (a : A) (b : B) F,
     EXTRACT Ret (a, b)
