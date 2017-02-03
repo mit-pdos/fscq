@@ -204,6 +204,8 @@ Module Go.
   | ModifyNumOp (nop : numop)
   | SplitPair
   | JoinPair
+  | PairFst
+  | PairSnd
   | MapAdd
   | MapRemove
   | MapFind
@@ -404,6 +406,17 @@ Module Go.
       end
     end s.
 
+  Fixpoint struct_moveN (l : list type) (s : type_denote (Struct l)) (n : nat) {struct l} : type_denote (Struct l) :=
+    match l return type_denote (Struct l) -> type_denote (Struct l) with
+      | nil => fun _ => tt
+      | t :: l' => fun s =>
+        let '(v, s') := s in
+        match n with
+        | O => (moved_value' _ v, s')
+        | S n' => (v, struct_moveN l' s' n')
+        end
+      end s.
+
   Fixpoint struct_updN (l : list type) (s : type_denote (Struct l)) (n : nat) (v : type_denote_list_nth l n) {struct l} : type_denote (Struct l) :=
     match l return type_denote (Struct l) -> type_denote_list_nth l n -> type_denote (Struct l) with
       | nil => fun _ _ => tt
@@ -456,6 +469,12 @@ Module Go.
     Definition join_pair_impl' ta tb (va : type_denote ta) (vb : type_denote tb) : n_tuple 3 var_update :=
       ^(SetTo (Val (Pair ta tb) (va, vb)), Move, Move).
 
+    Definition pair_fst_impl' ta tb (a : type_denote ta) (b : type_denote tb) : n_tuple 2 var_update :=
+      ^(SetTo (Val (Pair ta tb) (moved_value' _ a, b)), SetTo (Val ta a)).
+
+    Definition pair_snd_impl' ta tb (a : type_denote ta) (b : type_denote tb) : n_tuple 2 var_update :=
+      ^(SetTo (Val (Pair ta tb) (a, moved_value' _ b)), SetTo (Val tb b)).
+
     Definition map_add_impl' tv m (k : addr) (v : type_denote tv) : n_tuple 3 var_update :=
       ^(SetTo (Val (AddrMap tv) (Here (Map.add k v m))), Leave, Move).
 
@@ -484,10 +503,10 @@ Module Go.
         Leave).
 
     Definition struct_get_impl' (l : list type) (s : type_denote (Struct l)) (n : addr) : n_tuple 3 var_update :=
-      ^(Leave, Leave, SetTo (Val (type_list_nth l n) (struct_selN l s n))).
+      ^(SetTo (Val (Struct l) (struct_moveN l s n)), Leave, SetTo (Val (type_list_nth l n) (struct_selN l s n))).
 
     Definition struct_set_impl' (l : list type) (s : type_denote (Struct l)) (n : addr) (v : type_denote_list_nth l n) : n_tuple 3 var_update :=
-      ^(SetTo (Val (Struct l) (struct_updN l s n v)), Leave, Leave).
+      ^(SetTo (Val (Struct l) (struct_updN l s n v)), Leave, Move).
 
   End NiceImpls.
 
@@ -546,6 +565,30 @@ Module Go.
       destruct (type_eq_dec tb' tb); [ | exact None ].
       subst.
       refine (Some (join_pair_impl' ta tb va vb)).
+    Defined.
+
+    Definition pair_fst_impl : op_impl 2.
+      refine (fun args => let '^(Val tp p, Val ta _) := args in
+                       match tp with
+                       | Pair ta' tb' => fun p => _
+                       | _ => fun _ => None
+                       end p).
+      refine (let '(a, b) := p in _).
+      destruct (type_eq_dec ta' ta); [ | exact None ].
+      subst.
+      refine (Some (pair_fst_impl' ta tb' a b)).
+    Defined.
+
+    Definition pair_snd_impl : op_impl 2.
+      refine (fun args => let '^(Val tp p, Val tb _) := args in
+                       match tp with
+                       | Pair ta' tb' => fun p => _
+                       | _ => fun _ => None
+                       end p).
+      refine (let '(a, b) := p in _).
+      destruct (type_eq_dec tb' tb); [ | exact None ].
+      subst.
+      refine (Some (pair_fst_impl' ta' tb a b)).
     Defined.
 
     Definition map_add_impl : op_impl 3.
@@ -680,6 +723,8 @@ Module Go.
     | ModifyNumOp nop => existT _ _ (numop_impl nop)
     | SplitPair => existT _ _ split_pair_impl
     | JoinPair => existT _ _ join_pair_impl
+    | PairFst => existT _ _ pair_fst_impl
+    | PairSnd => existT _ _ pair_snd_impl
     | MapAdd => existT _ _ map_add_impl
     | MapRemove => existT _ _ map_remove_impl
     | MapFind => existT _ _ map_find_impl
