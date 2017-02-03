@@ -1,4 +1,5 @@
 Require Import Eqdep.
+Require Import ProofIrrelevance Omega.
 Require Import Morphisms Relation_Operators.
 Require Import PeanoNat Plus String List.
 Require Import Word Bytes AsyncDisk Prog ProgMonad BasicProg Pred.
@@ -567,6 +568,25 @@ Proof.
   all: contradiction H2; repeat eexists; eauto. econstructor; [ eval_expr; eauto .. ].
 Qed.
 
+Import EqNotations.
+Lemma rew_fun : forall A (x : A) (P : A -> Type) (Q : A -> Type) (y : A) (e : x = y) (f : Q x -> P x) (p : Q y),
+    (rew [fun x => Q x -> P x] e in f) p = rew e in f (rew <- e in p).
+Proof.
+  intros.
+  destruct e.
+  simpl.
+  f_equal.
+Qed.
+
+Lemma rew_fun' : forall A (x : A) (P : Type) (Q : A -> Type) (y : A) (e : x = y) (f : Q x -> P) (p : Q y),
+    (rew [fun x => Q x -> P] e in f) p = f (rew <- e in p).
+Proof.
+  intros.
+  destruct e.
+  simpl.
+  f_equal.
+Qed.
+
 Lemma CompileSplit1 : forall sz1 sz2 (buf : immut_word (sz1 + sz2)) env dvar svar F,
     Nat.divide 8 sz1 -> Nat.divide 8 sz2 ->
     EXTRACT Ret (split1 sz1 sz2 buf : immut_word _)
@@ -576,7 +596,7 @@ Lemma CompileSplit1 : forall sz1 sz2 (buf : immut_word (sz1 + sz2)) env dvar sva
 Proof.
   intros. unfold ProgOk.
   inv_exec_progok.
-    progress exec_solve_step.
+  - progress exec_solve_step.
     inv_exec.
     try extract_pred_apply_exists; repeat extract_var_val.
     progress eval_expr_step.
@@ -585,35 +605,27 @@ Proof.
     progress eval_expr_step.
     progress eval_expr_step.
     progress eval_expr_step.
+    2 : solve [eval_expr].
     progress eval_expr_step.
     progress eval_expr_step.
-    Import EqNotations.
+    2, 3: solve [eval_expr].
+    progress eval_expr_step.
+    progress eval_expr_step.
+    progress eval_expr_step.
+    1, 2: solve [eval_expr].
+    progress eval_expr_step.
+    progress eval_expr_step.
+    progress eval_expr_step.
+    destruct Compare_dec.le_dec; try omega.
+    destruct Nat.eq_dec; try omega.
     match type of H12 with
     | match ?e with | Logic.eq_refl => ?f end ?x ?d = ?r =>
       change ((eq_rect _ (fun y => word y -> Nat.divide 8 y -> option (var_update * (var_update * unit))) f _ e) x d = r) in H12
     end.
-    Lemma rew_fun : forall A (x : A) (P : A -> Type) (Q : A -> Type) (y : A) (e : x = y) (f : Q x -> P x) (p : Q y),
-        (rew [fun x => Q x -> P x] e in f) p = rew e in f (rew <- e in p).
-    Proof.
-      intros.
-      destruct e.
-      simpl.
-      f_equal.
-    Qed.
-    Lemma rew_fun' : forall A (x : A) (P : Type) (Q : A -> Type) (y : A) (e : x = y) (f : Q x -> P) (p : Q y),
-        (rew [fun x => Q x -> P] e in f) p = f (rew <- e in p).
-    Proof.
-      intros.
-      destruct e.
-      simpl.
-      f_equal.
-    Qed.
     rewrite rew_fun in H12.
     rewrite rew_fun' in H12.
-    eval_expr.
-    inv_exec.
-    inv_exec.
-    eval_expr.
+    repeat find_inversion_safe.
+    repeat inv_exec.
     repeat econstructor; pred_solve.
     eapply pimpl_apply.
     2: eapply ptsto_upd.
@@ -622,56 +634,29 @@ Proof.
     end.
     cancel_go.
     2: pred_solve.
+    destruct t0; try congruence.
     admit.
-
-    progress exec_solve_step.
-    inv_exec.
-    try extract_pred_apply_exists; repeat extract_var_val.
-    progress eval_expr_step.
-    progress eval_expr_step.
-    progress eval_expr_step.
-    progress eval_expr_step.
-    progress eval_expr_step.
-    progress eval_expr_step.
-    progress eval_expr_step.
-    progress eval_expr_step.
-    match type of H12 with
-    | match ?e with | Logic.eq_refl => ?f end ?x ?d = ?r =>
-      change ((eq_rect _ (fun y => word y -> Nat.divide 8 y -> option (var_update * (var_update * unit))) f _ e) x d = r) in H12
-    end.
-    rewrite rew_fun in H12.
-    rewrite rew_fun' in H12.
+  - repeat inv_exec.
+  - repeat inv_exec.
+    exec_solve_step.
     eval_expr.
-    inv_exec.
-    inv_exec.
-    eval_expr.
-
-    exec_solve_step.
-    exec_solve_step.
-    exec_solve_step.
-    inv_exec.
-    inv_exec.
-    inv_exec.
     contradiction H3.
-    auto.
-
-    all: contradiction H3; repeat eexists; eauto.
-    econstructor.
-    eval_expr. auto.
-    eval_expr.
-    match goal with
-    | [ |- match ?e with | Logic.eq_refl => ?f end ?x ?d = ?r ] =>
-      change ((eq_rect _ (fun y => word y -> Nat.divide 8 y -> option (var_update * (var_update * unit))) f _ e) x d = r)
-    end.
-    rewrite rew_fun.
-    rewrite rew_fun'.
-    match goal with
-    | [ |- context[(SetTo ?val)%pred] ] => replace val with (Val (ImmutableBuffer sz1) (split1 sz1 sz2 buf))
-    end.
-    reflexivity.
-    admit.
-    admit.
+    repeat econstructor.
     eval_expr. reflexivity.
+    simpl.
+    repeat break_match.
+    rewrite rew_fun, rew_fun'.
+    f_equal.
+    unfold slice_buffer_impl'.
+    erewrite (proof_irrelevance _ (slice_buffer_impl_subproof _ _)).
+    reflexivity.
+    all : try solve [congruence | omega | exfalso; eauto using Nat.divide_add_r].
+    eval_expr.
+    reflexivity.
+    contradiction n.
+    f_equal. omega.
+Unshelve.
+    omega.
 Admitted.
 
 Lemma CompileIf : forall V varb (b : bool)
