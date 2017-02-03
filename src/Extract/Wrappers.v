@@ -31,11 +31,21 @@ Instance cachestate_default_value : DefaultValue cachestate := {| zeroval :=
   auto with map.
 Defined.
 
-Instance WrapByTransforming_GLog_mstate : WrapByTransforming GLog.mstate.
+Instance GoWrapper_GLog_mstate : GoWrapper GLog.mstate.
   refine {|
-    transform := fun ms => (GLog.MSVMap ms, GLog.MSTxns ms, GLog.MSMLog ms);
+    wrap_type := Go.Struct [
+      @wrap_type LogReplay.valumap _;
+      @wrap_type DiskSet.txnlist _;
+      @wrap_type MLog.mstate _
+    ];
+    wrap' := fun ms =>
+      (wrap' (GLog.MSVMap ms),
+      (wrap' (GLog.MSTxns ms),
+      (wrap' (GLog.MSMLog ms), tt)))
   |}.
-  simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
+
+  intros. repeat find_inversion_safe.
+  destruct a1, a2; f_equal; eapply wrap_inj; eauto.
 Defined.
 
 Instance GLog_mstate_default_value : DefaultValue GLog.mstate.
@@ -54,11 +64,19 @@ Instance GLog_mstate_default_value : DefaultValue GLog.mstate.
   repeat find_rewrite. reflexivity.
 Defined.
 
-Instance WrapByTransforming_LOG_mstate : WrapByTransforming LOG.mstate.
+Instance GoWrapper_LOG_mstate : GoWrapper LOG.mstate.
   refine {|
-    transform := fun ms => (LOG.MSTxn ms, LOG.MSGLog ms);
+    wrap_type := Go.Struct [
+      @wrap_type LogReplay.valumap _;
+      @wrap_type GLog.mstate _
+    ];
+    wrap' := fun ms =>
+      (wrap' (LOG.MSTxn ms),
+      (wrap' (LOG.MSGLog ms), tt))
   |}.
-  simpl; intros. repeat find_inversion_safe. destruct t1, t2; f_equal; auto.
+
+  intros. repeat find_inversion_safe.
+  destruct a1, a2; f_equal; eapply wrap_inj; eauto.
 Defined.
 
 Instance LOG_mstate_default_value : DefaultValue LOG.mstate.
