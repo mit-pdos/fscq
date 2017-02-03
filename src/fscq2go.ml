@@ -236,6 +236,16 @@ let go_modify_op (ts : TranscriberState.state)
     let (pair, (first, (second, _))) = Obj.magic args_tuple in
     (var_ref ts pair) ^ ".Fst, " ^ (var_ref ts pair) ^ ".Snd = " ^
     (var_ref ts first) ^ ", " ^ (var_ref ts second)
+  | Go.PairFst ->
+    let (pair, (first, _)) = Obj.magic args_tuple in
+    let fst = var_ref ts first in
+    fst ^ " = " ^ (var_ref ts pair) ^ ".Fst
+      _ = " ^ fst ^ " // prevent unused error"
+  | Go.PairSnd ->
+    let (pair, (second, _)) = Obj.magic args_tuple in
+    let snd = var_ref ts second in
+    snd ^ " = " ^ (var_ref ts pair) ^ ".Snd
+      _ = " ^ snd ^ " // prevent unused error"
   | Go.MapAdd ->
     let (map, (key, (value, _))) = Obj.magic args_tuple in
     "(*AddrMap)(" ^ (var_ref ts map) ^ ").Insert(" ^ (var_val_ref ts key) ^ ", " ^ (var_ref ts value) ^ ")"
