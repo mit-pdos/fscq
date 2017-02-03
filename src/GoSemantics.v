@@ -176,12 +176,12 @@ Module Go.
     (Hbuffer : forall n, P (Buffer n))
     (Himmutablebuffer : forall n, P (ImmutableBuffer n))
     (Hslice : forall t, P (Slice t))
-    (Hpair : forall p q, P (Pair p q))
+    (Hpair : forall p q, P p -> P q -> P (Pair p q))
     (Haddrmap : forall t, P (AddrMap t))
     (Hstruct : forall l, Forall P l -> P (Struct l))
     (t : type) {struct t} : P t.
   Proof.
-    destruct t; auto.
+    induction t; auto.
     apply type_ind2_list; auto.
     apply type_ind2; auto.
   Qed.
@@ -298,9 +298,13 @@ Module Go.
     moved_value' _ (moved_value' _ t) = moved_value' _ t.
   Proof.
     intros.
-    induction T; simpl in *; try congruence.
+    induction T using type_ind2; simpl in *; try congruence.
     destruct t; congruence.
-  Admitted.
+
+    induction l; simpl in *; try congruence.
+    destruct t; inversion H; subst.
+    f_equal; eauto.
+  Qed.
 
   Definition scope := VarMap.t type.
   Definition locals := VarMap.t value.
