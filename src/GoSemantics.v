@@ -88,7 +88,6 @@ Module Go.
   | Num (* In Go: *big.Int *)
   | Bool (* In Go: bool *)
   | String (* In Go: string *)
-  | EmptyStruct (* In Go: struct{} *)
   | Buffer : nat -> type (* In Go: []byte *)
   | ImmutableBuffer : nat -> type (* In Go: []byte *)
   | Slice : type -> type (* In Go: []<whatever> *)
@@ -112,7 +111,6 @@ Module Go.
     | Num => true
     | Bool => true
     | String => true
-    | EmptyStruct => true
     | Buffer _ => false
     | ImmutableBuffer _ => true
     | Slice _ => false
@@ -123,7 +121,7 @@ Module Go.
 
   Fixpoint type_list_nth (l : list type) (n : nat) : type :=
     match l with
-    | nil => EmptyStruct
+    | nil => Bool  (* dummy type for out-of-bounds struct accesses *)
     | t :: l' =>
       match n with
       | O => t
@@ -145,7 +143,6 @@ Module Go.
     | Num => W
     | Bool => bool
     | String => string
-    | EmptyStruct => unit
     | Buffer n => movable (word n)
     | ImmutableBuffer n => word n
     | Slice t' => movable (list (type_denote t')) (* kept in reverse order to make cons = append *)
@@ -176,7 +173,6 @@ Module Go.
     (Hnum : P Num)
     (Hbool : P Bool)
     (Hstring : P String)
-    (Hemptystruct : P EmptyStruct)
     (Hbuffer : forall n, P (Buffer n))
     (Himmutablebuffer : forall n, P (ImmutableBuffer n))
     (Hslice : forall t, P (Slice t))
@@ -251,7 +247,6 @@ Module Go.
     | Num => 0
     | Bool => false
     | String => ""%string
-    | EmptyStruct => tt
     | Buffer _ => Here $0
     | ImmutableBuffer _ => $0
     | Slice _ => Here nil
@@ -282,7 +277,6 @@ Module Go.
     | Num => fun old => old
     | Bool => fun old => old
     | String => fun old => old
-    | EmptyStruct => fun old => old
     | Buffer _ => fun _ => Moved
     | ImmutableBuffer _ => fun old => old
     | Slice _ => fun _ => Moved
@@ -397,7 +391,7 @@ Module Go.
 
   Fixpoint struct_selN (l : list type) (s : type_denote (Struct l)) (n : nat) : type_denote_list_nth l n :=
     match l return type_denote (Struct l) -> type_denote_list_nth l n with
-    | nil => fun _ => tt
+    | nil => fun _ => false
     | t :: l' => fun s =>
       let '(v, s') := s in
       match n with

@@ -62,7 +62,6 @@ module TranscriberState = struct
       | Go.Num -> "Num"
       | Go.Bool -> "Bool"
       | Go.Buffer n -> "Buffer"
-      | Go.EmptyStruct -> "Empty"
       | Go.Pair (a, b) ->
         let name = "Pair_" ^ (get_go_type gs a) ^ "_" ^ (get_go_type gs b) in
         gs.structs <- (name, [("Fst", a); ("Snd", b)]) :: gs.structs;
@@ -76,6 +75,11 @@ module TranscriberState = struct
       | Slice (t) ->
         let name ="Slice_" ^ (get_go_type gs t) in
         gs.slices <- (name, t) :: gs.slices;
+        gs.go_types <- (coq_go_type, name) :: gs.go_types;
+        name
+      | Go.Struct l ->
+        let name = "Struct_" ^ (String.concat "_" (List.map (get_go_type gs) l)) in
+        gs.structs <- (name, List.mapi (fun i t -> ("F" ^ string_of_int i, t)) l) :: gs.structs;
         gs.go_types <- (coq_go_type, name) :: gs.go_types;
         name
       | _ ->
@@ -131,12 +135,12 @@ let is_ptr_type (gType : Go.coq_type) =
   match gType with
   | Go.Num -> false
   | Go.Bool -> false
-  | Go.EmptyStruct -> false
   | Go.Buffer _ -> true
   | Go.ImmutableBuffer _ -> true
   | Go.Slice _ -> true
   | Go.Pair _ -> false
   | Go.AddrMap _ -> true
+  | Go.Struct _ -> false
 
 let rec go_literal (gs : TranscriberState.global_state) t x =
   let join = String.concat ", " in
@@ -149,7 +153,6 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
     else
        failwith ("integer constant too big: " ^ to_string v)
   | Go.Bool -> if Obj.magic x then "true" else "false"
-  | Go.EmptyStruct -> "Empty{}"
   | Go.Buffer n ->
     (match Obj.magic x with
      | Go.Here v -> failwith "TODO: DiskBlock -> String"
@@ -163,7 +166,7 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
     let p = Obj.magic x in
     "(" ^ (go_literal gs t1 (fst p)) ^ ", " ^ (go_literal gs t2 (snd p)) ^ ")"
   | Go.AddrMap t1 ->
-    match Obj.magic x with
+    (match Obj.magic x with
      | Go.Here v ->
         go_type ^ "(AddrMap_literal(" ^
          (join
@@ -172,6 +175,20 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
                "LiteralKeyValPair{" ^ (to_string k) ^ ", " ^ (go_literal gs t1 t2) ^ "}")
                (Go.Map.elements v))) ^ "))"
      | Go.Moved -> "(moved)"
+    )
+  | Go.Struct l ->
+    let x0 = Obj.magic x in
+    let rec struct_literal tl x =
+      (match tl with
+       | [] -> []
+       | t :: tl' ->
+         let vl = Obj.magic x in
+         match vl with
+         | [] -> []
+         | v :: vl' ->
+           (go_literal gs t v) :: struct_literal tl' vl'
+      ) in
+    go_type ^ "{" ^ (String.concat ", " (struct_literal l x0)) ^ "}"
 
 let zero_val gs (t : Go.coq_type) =
   match t with

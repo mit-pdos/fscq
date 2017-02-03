@@ -151,7 +151,7 @@ Defined.
 Instance GoWrapper_unit : GoWrapper unit.
 Proof.
   refine {| wrap' := id;
-            wrap_type := Go.EmptyStruct |}; GoWrapper_t.
+            wrap_type := Go.Struct nil |}; GoWrapper_t.
 Defined.
 
 Instance GoWrapper_pair {A B} {WA : GoWrapper A} {WB : GoWrapper B} : GoWrapper (A * B).
