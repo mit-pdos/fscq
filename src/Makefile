@@ -20,7 +20,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      DirTreeNames DirTreeInodes DirTree \
 	      TreeCrash \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv AByteFile \
-	      ADestructPair DestructVarname ExtrHaskellPrelude \
+	      ADestructPair DestructVarname ExtrHaskellPrelude ExtrHaskellMap \
 		  DirSep TreeSeq ProgMetatheory BACHelper
 
 VS         := $(MODULES:%=%.v)

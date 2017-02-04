@@ -1,4 +1,5 @@
 Require Import ExtrHaskellPrelude.
+Require Import ExtrHaskellMap.
 Require Import AsyncFS.
 
 Extraction Language Haskell.

@@ -11,6 +11,7 @@ import qualified Data.Char
 import qualified GHC.Prim
 import qualified Evict
 import qualified Profile
+import qualified Data.Map.Strict
 """
 
 filename = sys.argv[2]
