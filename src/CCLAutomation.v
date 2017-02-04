@@ -1,4 +1,4 @@
-Require Export CCL CCLPrimitives.
+Require Import CCLProg CCLPrimitives.
 Require Pred.
 
 Ltac destruct_st :=
