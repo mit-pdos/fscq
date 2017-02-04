@@ -36,10 +36,10 @@ Module Sigma.
     let (d, _, s, hm) := s in state d m s hm.
   Definition upd_disk St (s:Sigma St) (d':DISK -> DISK) :=
     let (d, m, s, hm) := s in state (d' d) m s hm.
-  Definition upd_st St (s:Sigma St) (s':Abstraction St -> Abstraction St) :=
+  Definition upd_s St (s:Sigma St) (s':Abstraction St -> Abstraction St) :=
     let (d, m, s, hm) := s in state d m (s' s) hm.
-  Definition upd_hm St (s:Sigma St) (hm':hashmap -> hashmap) :=
-    let (d, m, s, hm) := s in state d m s (hm' hm).
+  Definition upd_hm St (s:Sigma St) sz (buf: word sz) :=
+    let (d, m, s, hm) := s in state d m s (upd_hashmap' hm (hash_fwd buf) buf).
 End Sigma.
 
 Section CCL.
@@ -69,7 +69,7 @@ Section CCL.
   | StepAssgn : forall m',
       step tid sigma (Assgn m') (Sigma.set_mem sigma m') tt
   | StepGhostUpdate : forall up,
-      step tid sigma (GhostUpdate up) (Sigma.upd_st sigma (up tid)) tt
+      step tid sigma (GhostUpdate up) (Sigma.upd_s sigma (up tid)) tt
   | StepBeginRead : forall a v,
       Sigma.disk sigma a = Some (v, NoReader) ->
       step tid sigma (BeginRead a)
@@ -86,7 +86,7 @@ Section CCL.
       let h := hash_fwd buf in
       hash_safe (Sigma.hm sigma) h buf ->
       step tid sigma (@Hash sz buf)
-           (Sigma.upd_hm sigma (fun hm => upd_hashmap' hm h buf)) h.
+           (Sigma.upd_hm sigma buf) h.
 
   Inductive fail_step (sigma: Sigma St) :
     forall T, cprog T -> Prop :=
@@ -109,11 +109,11 @@ Section CCL.
       Sigma.disk sigma a = Some (v0, Pending) ->
       fail_step sigma (Write a v).
 
-  Inductive outcome A :=
-  | Finished (sigma_i sigma:Sigma St) (r:A)
+  Inductive outcome T :=
+  | Finished (sigma_i sigma:Sigma St) (r:T)
   | Error.
 
-  Arguments Error {A}.
+  Arguments Error {T}.
 
   Variable Guarantee : TID -> Sigma St -> Sigma St -> Prop.
 
@@ -126,7 +126,7 @@ Section CCL.
   | ExecRet : forall T (v:T) sigma_i sigma, exec tid (sigma_i, sigma) (Ret v) (Finished sigma_i sigma v)
   | ExecStep : forall T (p: cprog T) sigma_i sigma sigma' v,
       step tid sigma p sigma' v ->
-      exec tid (sigma_i, sigma) p (Finished sigma_i sigma v)
+      exec tid (sigma_i, sigma) p (Finished sigma_i sigma' v)
   | ExecFail : forall T (p: cprog T) sigma_i sigma,
       fail_step sigma p ->
       exec tid (sigma_i, sigma) p Error
@@ -178,7 +178,10 @@ Section CCL.
 
 End CCL.
 
+Arguments Error {St T}.
 Arguments Ret {St T} v.
+Arguments Get {St}.
+Arguments Yield {St}.
 
 (* Local Variables: *)
 (* company-coq-local-symbols: (("Sigma" . ?Σ) ("sigma" . ?σ) ("sigma'" . (?σ (Br . Bl) ?'))) *)
