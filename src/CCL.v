@@ -158,18 +158,19 @@ Section CCL.
                        | Error => False
                        end.
 
-  Record Spec A T :=
-    { precondition : A -> (Sigma St * Sigma St) -> Prop;
-      postcondition : A -> (Sigma St * Sigma St) ->
-                      (Sigma St * Sigma St) ->
+  Record SpecParams T :=
+    { precondition :  Prop;
+      postcondition : (Sigma St * Sigma St) ->
                       T -> Prop }.
+
+  Definition Spec A T := A -> (Sigma St * Sigma St) -> SpecParams T.
 
   Definition ReflectDouble tid A T T' (spec: Spec A T')
              (rx: T' -> cprog T) : SpecDouble T :=
     fun st donecond =>
-      exists a, precondition spec a st /\
+      exists a, precondition (spec a st) /\
            forall r, cprog_ok tid (fun st' donecond_rx =>
-                                postcondition spec a st st' r /\
+                                postcondition (spec a st) st' r /\
                                 donecond_rx = donecond) (rx r).
 
   Definition cprog_triple tid A T' (spec: Spec A T') (p: cprog T') :=
