@@ -222,6 +222,24 @@ Section Primitives.
     intuition eauto.
   Qed.
 
+  Theorem Ret_ok : forall tid T (v:T),
+      cprog_triple G tid
+                   (fun (_:unit) '(sigma_i, sigma) =>
+                      {| precondition := True;
+                         postcondition :=
+                           fun '(sigma_i', sigma') r =>
+                             sigma_i' = sigma_i /\
+                             sigma' = sigma /\
+                             r = v; |})
+                   (Ret v).
+  Proof.
+    begin_prim.
+    inv_bind; inv_exec.
+
+    eapply H2; eauto; simpl.
+    intuition eauto.
+  Qed.
+
   Theorem GhostUpdate_ok : forall tid up,
       cprog_triple G tid
                    (fun (_:unit) '(sigma_i, sigma) =>
@@ -265,6 +283,7 @@ Hint Extern 0 {{ Write _ _; _ }} => apply Write_ok : prog.
 Hint Extern 0 {{ Get; _ }} => apply Get_ok : prog.
 Hint Extern 0 {{ Assgn _; _ }} => apply Assgn_ok : prog.
 Hint Extern 0 {{ Hash _; _ }} => apply Hash_ok : prog.
+Hint Extern 0 {{ Ret _; _ }} => apply Ret_ok : prog.
 Hint Extern 0 {{ GhostUpdate _; _ }} => apply GhostUpdate_ok : prog.
 Hint Extern 0 {{ Yield; _ }} => apply Yield_ok : prog.
 
