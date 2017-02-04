@@ -27,7 +27,7 @@ Module Sigma.
     let (d, _, _, _) := s in d.
   Definition mem St (s:Sigma St) :=
     let (_, m, _, _) := s in m.
-  Definition st St (s:Sigma St) :=
+  Definition s St (s:Sigma St) :=
     let (_, _, s, _) := s in s.
   Definition hm St (s:Sigma St) :=
     let (_, _, _, hm) := s in hm.

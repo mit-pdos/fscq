@@ -23,6 +23,8 @@ Ltac simplify :=
   repeat destruct_st;
   repeat match goal with
          | [ H: _ /\ _ |- _ ] => destruct H
+         | [ |- exists (_:unit), _ ] => exists tt
+         | [ |- True /\ _ ] => split; [ exact I | ]
          | _ => subst
          end.
 
@@ -39,10 +41,40 @@ Ltac step :=
   match goal with
   | [ |- cprog_ok _ _ _ _ ] =>
     eapply cprog_ok_weaken; [
-      monad_simpl; (solve [ auto with prog ] ||
-                    match goal with
-                    | [ |- cprog_ok _ _ _ (Bind ?p _) ] =>
-                      fail "no spec for" p
-                    end) | ];
+      match goal with
+      | _ => monad_simpl; solve [ auto with prog ]
+      | _ => apply Ret_ok
+      | _ => monad_simpl;
+            lazymatch goal with
+            | [ |- cprog_ok _ _ _ (Bind ?p _) ] =>
+              fail "no spec for" p
+            | [ |- cprog_ok _ _ _ ?p ] =>
+              fail "no spec for" p
+            end
+      end | ];
     simplify
+  end.
+
+Ltac simpl_match :=
+  let repl_match_goal d d' :=
+      replace d with d';
+      lazymatch goal with
+      | [ |- context[match d' with _ => _ end] ] => fail
+      | _ => idtac
+      end in
+  let repl_match_hyp H d d' :=
+      replace d with d' in H;
+      lazymatch type of H with
+      | context[match d' with _ => _ end] => fail
+      | _ => idtac
+      end in
+  match goal with
+  | [ Heq: ?d = ?d' |- context[match ?d with _ => _ end] ] =>
+    repl_match_goal d d'
+  | [ Heq: ?d' = ?d |- context[match ?d with _ => _ end] ] =>
+    repl_match_goal d d'
+  | [ Heq: ?d = ?d', H: context[match ?d with _ => _ end] |- _ ] =>
+    repl_match_hyp H d d'
+  | [ Heq: ?d' = ?d, H: context[match ?d with _ => _ end] |- _ ] =>
+    repl_match_hyp H d d'
   end.
