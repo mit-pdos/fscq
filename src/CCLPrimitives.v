@@ -1,4 +1,4 @@
-Require Import CCL.
+Require Import CCLProg.
 Require Import Eqdep.
 Require Import Mem Pred.
 Require Import AsyncDisk.
@@ -96,15 +96,6 @@ Section Primitives.
     eapply H0; eauto.
     apply H; eauto.
   Qed.
-
-  Ltac monad_simpl :=
-    let rewrite_equiv H := eapply cprog_ok_respects_exec_equiv;
-                           [ solve [ apply H ] | ] in
-    repeat match goal with
-           | _ => rewrite_equiv monad_right_id
-           | _ => rewrite_equiv monad_left_id
-           | _ => rewrite_equiv monad_assoc
-           end.
 
   Ltac begin_prim :=
     unfold cprog_triple, ReflectDouble, cprog_ok; simpl; intros;

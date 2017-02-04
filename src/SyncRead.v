@@ -1,4 +1,4 @@
-Require Import CCLAutomation.
+Require Import CCL.
 Require Import AsyncDisk.
 Require Import FunctionalExtensionality.
 
