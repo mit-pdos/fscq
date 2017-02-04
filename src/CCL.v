@@ -10,43 +10,50 @@ Global Set Implicit Arguments.
 Inductive ReadState := Pending | NoReader.
 Notation DISK := (@mem addr addr_eq_dec (valu * ReadState)).
 
-Inductive Sigma Mem State :=
-| state (d:DISK) (m:Mem) (s:State) (hm:hashmap).
+(* Define the structure of the memory and ghost state. *)
+Record StateTypes:Type :=
+  defState {
+      Mem : Type;
+      Abstraction : Type; }.
+
+(* The states a program steps through. *)
+Inductive Sigma St :=
+| state (d:DISK) (m:Mem St) (s:Abstraction St) (hm:hashmap).
+
+Arguments state {St} d m s hm.
 
 Module Sigma.
-  Definition disk Mem State (s:Sigma Mem State) :=
+  Definition disk St (s:Sigma St) :=
     let (d, _, _, _) := s in d.
-  Definition mem Mem State (s:Sigma Mem State) :=
+  Definition mem St (s:Sigma St) :=
     let (_, m, _, _) := s in m.
-  Definition st Mem State (s:Sigma Mem State) :=
+  Definition st St (s:Sigma St) :=
     let (_, _, s, _) := s in s.
-  Definition hm Mem State (s:Sigma Mem State) :=
+  Definition hm St (s:Sigma St) :=
     let (_, _, _, hm) := s in hm.
 
-  Definition set_mem Mem State (s:Sigma Mem State) (m:Mem) :=
+  Definition set_mem St (s:Sigma St) (m:Mem St) :=
     let (d, _, s, hm) := s in state d m s hm.
-  Definition upd_disk Mem State (s:Sigma Mem State) (d':DISK -> DISK) :=
+  Definition upd_disk St (s:Sigma St) (d':DISK -> DISK) :=
     let (d, m, s, hm) := s in state (d' d) m s hm.
-  Definition upd_st Mem State (s:Sigma Mem State) (s':State -> State) :=
+  Definition upd_st St (s:Sigma St) (s':Abstraction St -> Abstraction St) :=
     let (d, m, s, hm) := s in state d m (s' s) hm.
-  Definition upd_hm Mem State (s:Sigma Mem State) (hm':hashmap -> hashmap) :=
+  Definition upd_hm St (s:Sigma St) (hm':hashmap -> hashmap) :=
     let (d, m, s, hm) := s in state d m s (hm' hm).
 End Sigma.
 
 Section CCL.
 
-  (** type of memory *)
-  Variable Mem:Type.
-  (* type of ghost state *)
-  Variable State:Type.
+  (** Type parameters for state. *)
+  Variable St:StateTypes.
 
   Definition TID := nat.
   Opaque TID.
 
   Inductive cprog : Type -> Type :=
-  | Get : cprog Mem
-  | Assgn (m:Mem) : cprog unit
-  | GhostUpdate (update: TID -> State -> State) : cprog unit
+  | Get : cprog (Mem St)
+  | Assgn (m:Mem St) : cprog unit
+  | GhostUpdate (update: TID -> Abstraction St -> Abstraction St) : cprog unit
   | BeginRead (a:addr) : cprog unit
   | WaitForRead (a:addr) : cprog valu
   | Write (a:addr) (v: valu) : cprog unit
@@ -55,8 +62,8 @@ Section CCL.
   | Ret T (v:T) : cprog T
   | Bind T T' (p: cprog T') (p': T' -> cprog T) : cprog T.
 
-  Inductive step (tid:TID) (sigma: Sigma Mem State) :
-    forall T, cprog T -> Sigma Mem State -> T -> Prop :=
+  Inductive step (tid:TID) (sigma: Sigma St) :
+    forall T, cprog T -> Sigma St -> T -> Prop :=
   | StepGet :
       step tid sigma Get sigma (Sigma.mem sigma)
   | StepAssgn : forall m',
@@ -81,7 +88,7 @@ Section CCL.
       step tid sigma (@Hash sz buf)
            (Sigma.upd_hm sigma (fun hm => upd_hashmap' hm h buf)) h.
 
-  Inductive fail_step (sigma: Sigma Mem State) :
+  Inductive fail_step (sigma: Sigma St) :
     forall T, cprog T -> Prop :=
   | FailStepBeginReadOob : forall a,
       Sigma.disk sigma a = None ->
@@ -103,19 +110,19 @@ Section CCL.
       fail_step sigma (Write a v).
 
   Inductive outcome A :=
-  | Finished (sigma_i sigma:Sigma Mem State) (r:A)
+  | Finished (sigma_i sigma:Sigma St) (r:A)
   | Error.
 
   Arguments Error {A}.
 
-  Variable Guarantee : TID -> Sigma Mem State -> Sigma Mem State -> Prop.
+  Variable Guarantee : TID -> Sigma St -> Sigma St -> Prop.
 
   Definition Rely tid :=
     clos_refl_trans _ (fun sigma sigma' =>
                          exists tid', tid <> tid' /\
                                  Guarantee tid sigma sigma').
 
-  Inductive exec (tid:TID) : forall T, (Sigma Mem State * Sigma Mem State) -> cprog T -> outcome T -> Prop :=
+  Inductive exec (tid:TID) : forall T, (Sigma St * Sigma St) -> cprog T -> outcome T -> Prop :=
   | ExecRet : forall T (v:T) sigma_i sigma, exec tid (sigma_i, sigma) (Ret v) (Finished sigma_i sigma v)
   | ExecStep : forall T (p: cprog T) sigma_i sigma sigma' v,
       step tid sigma p sigma' v ->
@@ -140,7 +147,7 @@ Section CCL.
       exec tid (sigma_i, sigma) Yield Error.
 
   Definition SpecDouble T :=
-    (Sigma Mem State * Sigma Mem State) -> (Sigma Mem State * Sigma Mem State -> T -> Prop) -> Prop.
+    (Sigma St * Sigma St) -> (Sigma St * Sigma St -> T -> Prop) -> Prop.
 
   Definition cprog_ok tid T (pre: SpecDouble T) (p: cprog T) :=
     forall st donecond out, pre st donecond ->
@@ -152,9 +159,9 @@ Section CCL.
                        end.
 
   Record Spec A T :=
-    { precondition : A -> (Sigma Mem State * Sigma Mem State) -> Prop;
-      postcondition : A -> (Sigma Mem State * Sigma Mem State) ->
-                      (Sigma Mem State * Sigma Mem State) ->
+    { precondition : A -> (Sigma St * Sigma St) -> Prop;
+      postcondition : A -> (Sigma St * Sigma St) ->
+                      (Sigma St * Sigma St) ->
                       T -> Prop }.
 
   Definition ReflectDouble tid A T T' (spec: Spec A T')
