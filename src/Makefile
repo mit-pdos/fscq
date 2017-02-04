@@ -3,7 +3,7 @@ OCAMLBUILD := env OCAMLPATH=$(shell pwd) ocamlbuild \
 	      -lib str -lib nums \
 	      -I codegen -I mllib -X ocamlfuse \
 	      -package extunix -package zarith -package ocamlfuse
-MODULES    := CCL \
+MODULES    := CCL CCLPrimitives \
               Lock Nomega Word WordAuto WordZ Bytes Rounding \
 				Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
 				OperationalSemantics \
