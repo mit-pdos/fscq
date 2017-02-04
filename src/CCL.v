@@ -45,7 +45,7 @@ End Sigma.
 Section CCL.
 
   (** Type parameters for state. *)
-  Variable St:StateTypes.
+  Context {St:StateTypes}.
 
   Definition TID := nat.
   Opaque TID.
@@ -179,10 +179,18 @@ Section CCL.
 
 End CCL.
 
+Notation "x <- p1 ; p2" := (Bind p1 (fun x => p2))
+                            (at level 60, right associativity).
+
+(* Use to give spec hints to the automation: the pattern should be
+
+Hint Extern 0 {{ Method _ _; _ }} => apply Method_ok.
+
+The number of underscores given in Method needs to be correct. *)
+Notation "{{ p ; '_' }}" := (cprog_ok _ _ _ (Bind p _)) (only parsing).
+
 Arguments Error {St T}.
 Arguments Ret {St T} v.
-Arguments Get {St}.
-Arguments Yield {St}.
 
 (* Local Variables: *)
 (* company-coq-local-symbols: (("Sigma" . ?Σ) ("sigma" . ?σ) ("sigma'" . (?σ (Br . Bl) ?'))) *)

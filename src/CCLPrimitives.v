@@ -3,13 +3,14 @@ Require Import Eqdep.
 Require Import Mem Pred.
 Require Import AsyncDisk.
 Require Import Word.
+Require Import FunctionalExtensionality.
 
 Section Primitives.
 
   Variable St:StateTypes.
   Variable G: TID -> Sigma St -> Sigma St -> Prop.
 
-  Theorem cprog_ok_weaken : forall T tid (pre pre': _ -> _ -> Prop) (p: cprog St T),
+  Theorem cprog_ok_weaken : forall T tid (pre pre': _ -> _ -> Prop) (p: cprog T),
       cprog_ok G tid pre p ->
       (forall st donecond, pre' st donecond -> pre st donecond) ->
       cprog_ok G tid pre' p.
@@ -20,7 +21,7 @@ Section Primitives.
     eapply H; eauto.
   Qed.
 
-  Definition exec_equiv T (p p': cprog St T) :=
+  Definition exec_equiv T (p p': cprog T) :=
     forall tid st out, exec G tid st p out <-> exec G tid st p' out.
 
   Hint Constructors exec.
@@ -57,7 +58,7 @@ Section Primitives.
       clear H
     end.
 
-  Theorem monad_right_id : forall T (p: cprog _ T),
+  Theorem monad_right_id : forall T (p: cprog T),
       exec_equiv (Bind p Ret) p.
   Proof.
     split; intros.
@@ -66,7 +67,7 @@ Section Primitives.
     - destruct out, st; eauto.
   Qed.
 
-  Theorem monad_left_id : forall T T' (p: T -> cprog _ T') v,
+  Theorem monad_left_id : forall T T' (p: T -> cprog T') v,
       exec_equiv (Bind (Ret v) p) (p v).
   Proof.
     split; intros.
@@ -77,14 +78,33 @@ Section Primitives.
   Qed.
 
   Theorem monad_assoc : forall T T' T''
-                          (p1: cprog _ T)
-                          (p2: T -> cprog _ T')
-                          (p3: T' -> cprog _ T''),
+                          (p1: cprog T)
+                          (p2: T -> cprog T')
+                          (p3: T' -> cprog T''),
       exec_equiv (Bind (Bind p1 p2) p3) (Bind p1 (fun x => Bind (p2 x) p3)).
   Proof.
     split; intros;
       repeat (inv_bind; eauto).
   Qed.
+
+  Theorem cprog_ok_respects_exec_equiv : forall T (p p': cprog T) tid pre,
+      exec_equiv p p' ->
+      cprog_ok G tid pre p' ->
+      cprog_ok G tid pre p.
+  Proof.
+    unfold cprog_ok, exec_equiv; intros.
+    eapply H0; eauto.
+    apply H; eauto.
+  Qed.
+
+  Ltac monad_simpl :=
+    let rewrite_equiv H := eapply cprog_ok_respects_exec_equiv;
+                           [ solve [ apply H ] | ] in
+    repeat match goal with
+           | _ => rewrite_equiv monad_right_id
+           | _ => rewrite_equiv monad_left_id
+           | _ => rewrite_equiv monad_assoc
+           end.
 
   Ltac begin_prim :=
     unfold cprog_triple, ReflectDouble, cprog_ok; simpl; intros;
@@ -108,7 +128,7 @@ Section Primitives.
                            fun '(sigma_i', sigma') _ =>
                              sigma_i' = sigma_i /\
                              sigma' = Sigma.upd_disk sigma (fun d => upd d a (v, Pending)); |})
-                   (BeginRead _ a).
+                   (BeginRead a).
   Proof.
     begin_prim.
     inv_bind; inv_exec.
@@ -129,7 +149,7 @@ Section Primitives.
                              sigma_i' = sigma_i /\
                              sigma' = Sigma.upd_disk sigma (fun d => upd d a (v, NoReader)) /\
                              r = v; |})
-                   (WaitForRead _ a).
+                   (WaitForRead a).
   Proof.
     begin_prim.
     inv_bind; inv_exec.
@@ -150,7 +170,7 @@ Section Primitives.
                            fun '(sigma_i', sigma') _ =>
                              sigma_i' = sigma_i /\
                              sigma' = Sigma.upd_disk sigma (fun d => upd d a (v, NoReader)); |})
-                   (Write _ a v).
+                   (Write a v).
   Proof.
     begin_prim.
     inv_bind; inv_exec.
@@ -185,7 +205,7 @@ Section Primitives.
                            fun '(sigma_i', sigma') _ =>
                              sigma_i' = sigma_i /\
                              sigma' = Sigma.set_mem sigma m'; |})
-                   (Assgn _ m').
+                   (Assgn m').
   Proof.
     begin_prim.
     inv_bind; inv_exec.
@@ -202,7 +222,7 @@ Section Primitives.
                            fun '(sigma_i', sigma') r =>
                              sigma_i' = sigma_i /\
                              sigma' = Sigma.upd_hm sigma buf; |})
-                   (Hash _ buf).
+                   (Hash buf).
   Proof.
     begin_prim.
     inv_bind; inv_exec.
@@ -219,7 +239,7 @@ Section Primitives.
                            fun '(sigma_i', sigma') _ =>
                              sigma_i' = sigma_i /\
                              sigma' = Sigma.upd_s sigma (up tid); |})
-                   (GhostUpdate _ up).
+                   (GhostUpdate up).
   Proof.
     begin_prim.
     inv_bind; inv_exec.
@@ -247,6 +267,15 @@ Section Primitives.
   Qed.
 
 End Primitives.
+
+Hint Extern 0 {{ BeginRead _; _ }} => apply BeginRead_ok : prog.
+Hint Extern 0 {{ WaitForRead _; _ }} => apply WaitForRead_ok : prog.
+Hint Extern 0 {{ Write _ _; _ }} => apply Write_ok : prog.
+Hint Extern 0 {{ Get; _ }} => apply Get_ok : prog.
+Hint Extern 0 {{ Assgn _; _ }} => apply Assgn_ok : prog.
+Hint Extern 0 {{ Hash _; _ }} => apply Hash_ok : prog.
+Hint Extern 0 {{ GhostUpdate _; _ }} => apply GhostUpdate_ok : prog.
+Hint Extern 0 {{ Yield; _ }} => apply Yield_ok : prog.
 
 (* Local Variables: *)
 (* company-coq-local-symbols: (("Sigma" . ?Σ) ("sigma" . ?σ) ("sigma'" . (?σ (Br . Bl) ?'))) *)
