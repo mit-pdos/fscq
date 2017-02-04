@@ -101,13 +101,13 @@ Section Primitives.
              end; try congruence.
 
   Theorem BeginRead_ok : forall tid a,
-      cprog_triple G tid {| precondition :=
-                              fun v '(sigma_i, sigma) =>
-                                Sigma.disk sigma a = Some (v, NoReader);
-                            postcondition :=
-                              fun v '(sigma_i, sigma) '(sigma_i', sigma') _ =>
-                                sigma_i' = sigma_i /\
-                                sigma' = Sigma.upd_disk sigma (fun d => upd d a (v, Pending)); |}
+      cprog_triple G tid
+                   (fun v '(sigma_i, sigma) =>
+                      {| precondition := Sigma.disk sigma a = Some (v, NoReader);
+                         postcondition :=
+                           fun '(sigma_i', sigma') _ =>
+                             sigma_i' = sigma_i /\
+                             sigma' = Sigma.upd_disk sigma (fun d => upd d a (v, Pending)); |})
                    (BeginRead _ a).
   Proof.
     begin_prim.
@@ -120,14 +120,15 @@ Section Primitives.
   Qed.
 
   Theorem WaitForRead_ok : forall tid a,
-      cprog_triple G tid {| precondition :=
-                              fun v '(sigma_i, sigma) =>
-                                Sigma.disk sigma a = Some (v, Pending);
-                            postcondition :=
-                              fun v '(sigma_i, sigma) '(sigma_i', sigma') r =>
-                                sigma_i' = sigma_i /\
-                                sigma' = Sigma.upd_disk sigma (fun d => upd d a (v, NoReader)) /\
-                                r = v; |}
+      cprog_triple G tid
+                   (fun v '(sigma_i, sigma) =>
+                      {| precondition :=
+                           Sigma.disk sigma a = Some (v, Pending);
+                         postcondition :=
+                           fun '(sigma_i', sigma') r =>
+                             sigma_i' = sigma_i /\
+                             sigma' = Sigma.upd_disk sigma (fun d => upd d a (v, NoReader)) /\
+                             r = v; |})
                    (WaitForRead _ a).
   Proof.
     begin_prim.
@@ -141,13 +142,14 @@ Section Primitives.
   Qed.
 
   Theorem Write_ok : forall tid a v,
-      cprog_triple G tid {| precondition :=
-                              fun v0 '(sigma_i, sigma) =>
-                                Sigma.disk sigma a = Some (v0, NoReader);
-                            postcondition :=
-                              fun v0 '(sigma_i, sigma) '(sigma_i', sigma') _ =>
-                                sigma_i' = sigma_i /\
-                                sigma' = Sigma.upd_disk sigma (fun d => upd d a (v, NoReader)); |}
+      cprog_triple G tid
+                   (fun v0 '(sigma_i, sigma) =>
+                      {| precondition :=
+                           Sigma.disk sigma a = Some (v0, NoReader);
+                         postcondition :=
+                           fun '(sigma_i', sigma') _ =>
+                             sigma_i' = sigma_i /\
+                             sigma' = Sigma.upd_disk sigma (fun d => upd d a (v, NoReader)); |})
                    (Write _ a v).
   Proof.
     begin_prim.
@@ -158,13 +160,14 @@ Section Primitives.
   Qed.
 
   Theorem Get_ok : forall tid,
-      cprog_triple G tid {| precondition :=
-                              fun (_:unit) _ => True;
-                            postcondition :=
-                              fun _ '(sigma_i, sigma) '(sigma_i', sigma') r =>
-                                sigma_i' = sigma_i /\
-                                sigma' = sigma /\
-                                r = Sigma.mem sigma; |}
+      cprog_triple G tid
+                   (fun (_:unit) '(sigma_i, sigma) =>
+                      {| precondition := True;
+                         postcondition :=
+                           fun  '(sigma_i', sigma') r =>
+                             sigma_i' = sigma_i /\
+                             sigma' = sigma /\
+                             r = Sigma.mem sigma; |})
                    Get.
   Proof.
     begin_prim.
@@ -175,12 +178,13 @@ Section Primitives.
   Qed.
 
   Theorem Assgn_ok : forall tid m',
-      cprog_triple G tid {| precondition :=
-                              fun (_:unit) _ => True;
-                            postcondition :=
-                              fun _ '(sigma_i, sigma) '(sigma_i', sigma') _ =>
-                                sigma_i' = sigma_i /\
-                                sigma' = Sigma.set_mem sigma m'; |}
+      cprog_triple G tid
+                   (fun (_:unit) '(sigma_i, sigma) =>
+                      {| precondition := True;
+                         postcondition :=
+                           fun '(sigma_i', sigma') _ =>
+                             sigma_i' = sigma_i /\
+                             sigma' = Sigma.set_mem sigma m'; |})
                    (Assgn _ m').
   Proof.
     begin_prim.
@@ -191,12 +195,13 @@ Section Primitives.
   Qed.
 
   Theorem Hash_ok : forall tid sz (buf: word sz),
-      cprog_triple G tid {| precondition :=
-                              fun (_:unit) _ => True;
-                            postcondition :=
-                              fun _ '(sigma_i, sigma) '(sigma_i', sigma') r =>
-                                sigma_i' = sigma_i /\
-                                sigma' = Sigma.upd_hm sigma buf; |}
+      cprog_triple G tid
+                   (fun (_:unit) '(sigma_i, sigma) =>
+                      {| precondition := True;
+                         postcondition :=
+                           fun '(sigma_i', sigma') r =>
+                             sigma_i' = sigma_i /\
+                             sigma' = Sigma.upd_hm sigma buf; |})
                    (Hash _ buf).
   Proof.
     begin_prim.
@@ -207,12 +212,13 @@ Section Primitives.
   Qed.
 
   Theorem GhostUpdate_ok : forall tid up,
-      cprog_triple G tid {| precondition :=
-                              fun (_:unit) _ => True;
-                            postcondition :=
-                              fun _ '(sigma_i, sigma) '(sigma_i', sigma') _ =>
-                                sigma_i' = sigma_i /\
-                                sigma' = Sigma.upd_s sigma (up tid); |}
+      cprog_triple G tid
+                   (fun (_:unit) '(sigma_i, sigma) =>
+                      {| precondition := True;
+                         postcondition :=
+                           fun '(sigma_i', sigma') _ =>
+                             sigma_i' = sigma_i /\
+                             sigma' = Sigma.upd_s sigma (up tid); |})
                    (GhostUpdate _ up).
   Proof.
     begin_prim.
@@ -223,12 +229,13 @@ Section Primitives.
   Qed.
 
   Theorem Yield_ok : forall tid,
-      cprog_triple G tid {| precondition :=
-                              fun (_:unit) '(sigma_i, sigma) => G tid sigma_i sigma ;
-                            postcondition :=
-                              fun _ '(sigma_i, sigma) '(sigma_i', sigma') _ =>
-                                Rely G tid sigma sigma' /\
-                                sigma_i' = sigma'; |}
+      cprog_triple G tid
+                   (fun (_:unit) '(sigma_i, sigma) =>
+                      {| precondition := G tid sigma_i sigma;
+                         postcondition :=
+                           fun '(sigma_i', sigma') _ =>
+                             Rely G tid sigma sigma' /\
+                             sigma_i' = sigma'; |})
                    Yield.
   Proof.
     begin_prim.
@@ -236,6 +243,7 @@ Section Primitives.
 
     eapply H2; eauto; simpl.
     intuition eauto.
+    eauto.
   Qed.
 
 End Primitives.
