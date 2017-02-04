@@ -178,6 +178,8 @@ Section CCL.
 
 End CCL.
 
+Arguments Ret {St T} v.
+
 (* Local Variables: *)
 (* company-coq-local-symbols: (("Sigma" . ?Σ) ("sigma" . ?σ) ("sigma'" . (?σ (Br . Bl) ?'))) *)
 (* End: *)
