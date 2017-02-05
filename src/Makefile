@@ -5,7 +5,7 @@ OCAMLBUILD := env OCAMLPATH=$(shell pwd) ocamlbuild \
 	      -package extunix -package zarith -package ocamlfuse
 MODULES    := CCLProg CCLPrimitives Automation CCLAutomation CCL \
 						  SyncRead \
-              MemCache WriteBuffer OptimisticCache \
+              MemCache WriteBuffer UpdList OptimisticCache \
 							Lock Nomega Word WordAuto WordZ Bytes Rounding \
 				Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
 				OperationalSemantics \
