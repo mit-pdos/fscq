@@ -521,6 +521,14 @@ Section OptimisticCache.
     | (a,v)::l' => upd (upd_all m l') a v
     end.
 
+  Lemma upd_all_incr_domain : forall AT AEQ V (m:@mem AT AEQ V) a ws,
+      (exists v, m a = Some v) ->
+      (exists v, upd_all m ws a = Some v).
+  Proof.
+    induction ws; intros; simpl; repeat deex; eauto.
+    destruct (AEQ a a1); subst; autorewrite with upd; eauto.
+  Qed.
+
   Theorem wb_rep_upd_all : forall wb vd0 vd,
       wb_rep vd0 wb vd ->
       vd = upd_all vd0 (wb_writes wb).
@@ -555,14 +563,14 @@ Section OptimisticCache.
   Admitted.
 
   Lemma cache_rep_add_dirty:
-    forall (d : DISK) (a : addr) (v v0 : valu) (c : Cache) (vd0 : Disk),
+    forall (d : DISK) (a : addr) (v : valu) (c : Cache) (vd0 : Disk),
       cache_get c a <> Invalid ->
+      (exists v0, vd0 a = Some v0) ->
       cache_rep d c vd0 ->
-      vd0 a = Some v0 ->
       cache_rep d (add_entry Dirty c a v) (upd vd0 a v).
   Proof.
-    unfold cache_rep; intros.
-    specialize (H0 a0).
+    unfold cache_rep; intros; repeat deex.
+    specialize (H1 a0).
     destruct (addr_eq_dec a a0); subst; simplify; intuition eauto.
     case_eq (cache_get c a0); intros; simpl_match; intuition.
     destruct b; repeat deex; intuition eauto.
@@ -592,23 +600,29 @@ Section OptimisticCache.
     unfold upd_with_buffer.
 
     erewrite wb_rep_upd_all by eauto.
-    clear H.
-    generalize (wb_writes wb); intros.
-
+    assert (forall a v, List.In (a,v) (wb_writes wb) ->
+                   wb_get wb a = Written v).
+    intros; apply wb_get_writes; auto.
+    generalize dependent (wb_writes wb); intros.
     induction l; simpl; eauto.
     destruct a as [a v].
+    pose proof (H1 a v); simpl in *.
+    match type of H3 with
+    | ?P -> _ => let HP := fresh in
+               assert P as HP by eauto;
+                 specialize (H3 HP);
+                 clear HP
+    end.
 
     eapply cache_rep_add_dirty; eauto.
-    intro.
+    - intro.
 
-    apply add_writes_same_invalid in H.
-    specialize (H2 a); intuition.
-    admit. (* need property that when a is in addrs(wb_writes), wb_get wb a =
-    Written v *)
-
-    admit. (* follows from above: when wb_get wb a = Written v, wb_rep gives vd0
-    is def at a *)
-  Admitted.
+      apply add_writes_same_invalid in H4.
+      specialize (H2 a); intuition.
+      congruence.
+    - specialize (H a); simpl_match; intuition eauto.
+      apply upd_all_incr_domain; auto.
+  Qed.
 
   Lemma CacheRep_abort:
     forall (wb : WriteBuffer) (d : DISK) (m : Mem St)
