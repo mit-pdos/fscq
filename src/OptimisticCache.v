@@ -88,11 +88,16 @@ Section OptimisticCache.
          | WbMissing => vd a = vd0 a
          end.
 
+  Definition no_pending_dirty (c: Cache) (wb: WriteBuffer) :=
+    forall a, cache_get c a = Invalid ->
+         wb_get wb a = WbMissing.
+
   Definition CacheRep wb (sigma:Sigma St) :=
     cache_rep (Sigma.disk sigma) (get_cache (Sigma.mem sigma))
               (get_vdisk0 (Sigma.s sigma)) /\
     wb_rep (get_vdisk0 (Sigma.s sigma)) wb
-           (get_vdisk (Sigma.s sigma)).
+           (get_vdisk (Sigma.s sigma)) /\
+    no_pending_dirty (get_cache (Sigma.mem sigma)) wb.
 
   Ltac solve_cache :=
     unfold CacheRep; intuition;
@@ -175,12 +180,13 @@ Section OptimisticCache.
   Lemma CacheRep_invalid:
     forall (wb : WriteBuffer) (a : addr) (sigma : Sigma St) (a0 : valu),
       CacheRep wb sigma ->
-      wb_get wb a = WbMissing ->
       get_vdisk (Sigma.s sigma) a = Some a0 ->
       cache_get (get_cache (Sigma.mem sigma)) a = Invalid ->
       Sigma.disk sigma a = Some (a0, Pending).
   Proof.
     solve_cache.
+    specialize (H4 a); intuition eauto.
+    simpl_match; congruence.
   Qed.
 
   Lemma CacheRep_missing:
@@ -228,9 +234,16 @@ Section OptimisticCache.
       destruct sigma; simpl in *.
       solve_cache.
 
-      specialize (H4 a').
-      destruct sigma; simpl in *.
-      eauto.
+      specialize (H0 a').
+      destruct sigma; simpl in *; eauto.
+
+    - destruct sigma; simpl in *.
+      rewrite (get_set_id (cache P)).
+
+      intros a'.
+      destruct (addr_eq_dec a a'); subst.
+      rewrite cache_get_add_eq; intuition eauto.
+      rewrite cache_get_add_neq; intuition eauto.
   Qed.
 
   Lemma CacheRep_mark_pending:
@@ -238,19 +251,25 @@ Section OptimisticCache.
       (s : Abstraction St) (hm : hashmap) (a0 : valu),
       CacheRep wb (state d m s hm) ->
       get_vdisk0 s a = Some a0 ->
+      wb_get wb a = WbMissing ->
       cache_get (get_cache m) a = Missing ->
       CacheRep wb
                (state (upd d a (a0, Pending)) (set_cache m (mark_pending (get_cache m) a))
                       s hm).
   Proof.
     unfold CacheRep; intuition; simpl in *.
-    intro a'.
-    rewrite (get_set_id (cache P)).
+    - intro a'.
+      rewrite (get_set_id (cache P)).
 
-    destruct (addr_eq_dec a a'); subst; autorewrite with upd.
-    rewrite cache_get_pending_eq; solve_cache.
+      destruct (addr_eq_dec a a'); subst; autorewrite with upd.
+      rewrite cache_get_pending_eq; solve_cache.
 
-    rewrite cache_get_pending_neq by auto; solve_cache.
+      rewrite cache_get_pending_neq by auto; solve_cache.
+    - rewrite (get_set_id (cache P)).
+      intro a'.
+      destruct (addr_eq_dec a a'); subst.
+      rewrite cache_get_pending_eq; intuition eauto.
+      rewrite cache_get_pending_neq; intuition eauto.
   Qed.
 
   Hint Resolve CacheRep_finish_read CacheRep_mark_pending.
@@ -312,7 +331,94 @@ Section OptimisticCache.
     intuition eauto.
   Qed.
 
+  Lemma CacheRep_clear_pending:
+    forall (wb : WriteBuffer) (a : addr) (d : DISK) (m : Mem St)
+      (s : Abstraction St) (hm : hashmap) (a0 : valu),
+      CacheRep wb (state d m s hm) ->
+      cache_get (get_cache m) a = Invalid ->
+      get_vdisk s a = Some a0 ->
+      CacheRep wb
+               (state (upd d a (a0, NoReader))
+                      (set_cache m (add_entry Clean (get_cache m) a a0)) s hm).
+  Proof.
+    unfold CacheRep; intuition; simpl in *.
+    - intro a'.
+      rewrite (get_set_id (cache P)).
+      destruct (addr_eq_dec a a'); subst.
+      rewrite cache_get_add_eq; intuition eauto.
+      specialize (H4 a'); intuition.
+      specialize (H a'); simpl_match.
+      congruence.
+      autorewrite with upd; eauto.
+
+      rewrite cache_get_add_neq; intuition eauto.
+      autorewrite with upd.
+      solve_cache.
+    - intro a'.
+      rewrite (get_set_id (cache P)).
+      destruct (addr_eq_dec a a'); subst.
+      rewrite cache_get_add_eq; intuition eauto.
+      rewrite cache_get_add_neq; intuition eauto.
+  Qed.
+
+  Hint Resolve CacheRep_clear_pending.
+
+  Definition ClearPending m wb a :=
+        (* TODO: factor just this part out of CacheRead *)
+    v <- WaitForRead a;
+      let c := get_cache m in
+      let c' := add_entry Clean c a v in
+      _ <- Assgn (set_cache m c');
+        Ret v.
+
+  Theorem ClearPending_ok : forall tid m wb a,
+      cprog_triple G tid
+                   (fun v0 '(sigma_i, sigma) =>
+                      {| precondition :=
+                           CacheRep wb sigma /\
+                           m = Sigma.mem sigma /\
+                           cache_get (get_cache m) a = Invalid /\
+                           get_vdisk (Sigma.s sigma) a = Some v0;
+                         postcondition :=
+                           fun '(sigma_i', sigma') r =>
+                             CacheRep wb sigma' /\
+                             Sigma.mem sigma' = set_cache (Sigma.mem sigma) (get_cache (Sigma.mem sigma')) /\
+                             cache_get (get_cache (Sigma.mem sigma')) a = Present v0 Clean /\
+                             Sigma.s sigma' = Sigma.s sigma /\
+                             r = v0 /\
+                             sigma_i' = sigma_i|})
+                   (ClearPending m wb a).
+  Proof.
+    unfold cprog_triple, ClearPending; intros.
+    step.
+
+    eexists; intuition eauto.
+
+    step.
+
+    intros; step.
+    intuition eauto.
+    destruct sigma; simpl in *; eauto.
+
+    destruct sigma; simpl in *.
+    rewrite (get_set_id (cache P)); auto.
+
+    destruct sigma; simpl in *.
+    rewrite (get_set_id (cache P)).
+    rewrite cache_get_add_eq; auto.
+
+    destruct sigma; simpl in *; auto.
+  Qed.
+
+  Hint Extern 0 {{ ClearPending _ _ _; _ }} => apply ClearPending_ok : prog.
+
   Definition CacheWrite wb a v : @cprog St _ :=
+    m <- Get;
+      _ <- match cache_get (get_cache m) a with
+          | Invalid => _ <- ClearPending m wb a;
+                        Ret tt
+          | _ => Ret tt
+          end;
     _ <- GhostUpdate (fun _ s => set_vdisk s (upd (get_vdisk s) a v));
     Ret (tt, wb_add wb a v).
 
@@ -322,29 +428,39 @@ Section OptimisticCache.
       (a0 : valu),
       CacheRep wb (state d m s hm) ->
       get_vdisk s a = Some a0 ->
+      cache_get (get_cache m) a <> Invalid ->
       CacheRep (wb_add wb a v) (state d m (set_vdisk s (upd (get_vdisk s) a v)) hm).
   Proof.
     unfold CacheRep; intuition; simpl in *.
-    unfold get_vdisk0, set_vdisk in *.
-    rewrite (vdisk_vdisk0_neq P).
-    eauto.
+    - unfold get_vdisk0, set_vdisk in *.
+      rewrite (vdisk_vdisk0_neq P).
+      eauto.
 
-    rewrite (vdisk_vdisk0_neq P).
-    fold (get_vdisk0 s) in *.
-    rewrite (get_set_g_id (vdisk P)).
-    intro a'.
-    destruct (addr_eq_dec a a'); subst; autorewrite with upd.
-    rewrite wb_get_add_eq; intuition eauto.
-    solve_cache.
-    case_eq (wb_get wb a'); intros; simpl_match;
-      intuition eauto.
-    exists a0; congruence.
+    - rewrite (vdisk_vdisk0_neq P).
+      fold (get_vdisk0 s) in *.
+      rewrite (get_set_g_id (vdisk P)).
+      intro a'.
+      destruct (addr_eq_dec a a'); subst; autorewrite with upd.
+      rewrite wb_get_add_eq; intuition eauto.
+      solve_cache.
+      case_eq (wb_get wb a'); intros; simpl_match;
+        intuition eauto.
+      exists a0; congruence.
 
-    rewrite wb_get_add_neq by auto; intuition eauto.
-    solve_cache.
+      rewrite wb_get_add_neq by auto; intuition eauto.
+      solve_cache.
+
+    - intro a'; intros.
+      destruct (addr_eq_dec a a'); subst.
+      congruence.
+
+      rewrite wb_get_add_neq by auto.
+      specialize (H4 a'); eauto.
   Qed.
 
   Hint Resolve CacheRep_write.
+
+  Hint Extern 2 (cache_get _ _ <> _) => congruence.
 
   Theorem CacheWrite_ok : forall tid wb a v,
       cprog_triple G tid
@@ -357,7 +473,7 @@ Section OptimisticCache.
                              CacheRep wb' sigma' /\
                              let vd' := upd (get_vdisk (Sigma.s sigma)) a v in
                              Sigma.s sigma' = set_vdisk (Sigma.s sigma) vd'  /\
-                             Sigma.mem sigma' = Sigma.mem sigma /\
+                             Sigma.mem sigma' = set_cache (Sigma.mem sigma) (get_cache (Sigma.mem sigma')) /\
                              get_vdisk (Sigma.s sigma') a = Some v /\
                              sigma_i' = sigma_i |})
                    (CacheWrite wb a v).
@@ -365,13 +481,51 @@ Section OptimisticCache.
     unfold cprog_triple, CacheWrite; intros.
     step.
 
-    intros; step.
+    intros m'.
+    case_eq (cache_get (get_cache m') a); intros.
 
-    destruct sigma; simpl in *.
+    step.
+    intros; step.
     intuition eauto.
+    destruct sigma; simpl in *; intuition eauto.
+
+    destruct sigma; simpl in *; auto.
+    destruct sigma; simpl in *; auto.
+    rewrite (set_get_id (cache P)); auto.
+    destruct sigma; simpl in *; auto.
 
     rewrite (get_set_g_id (vdisk P)).
     autorewrite with upd; auto.
+
+    step.
+    eexists; intuition eauto.
+    step.
+    intros; step.
+    intros; step.
+
+    destruct sigma; simpl in *; intuition eauto.
+
+    eapply CacheRep_write; eauto.
+    rewrite (get_set_id (cache P)).
+    rewrite cache_get_add_eq; congruence.
+
+    rewrite (get_set_id (cache P)); eauto.
+
+    rewrite (get_set_g_id (vdisk P));
+      autorewrite with upd;
+      eauto.
+
+    step.
+    intros; step.
+    intuition eauto.
+    destruct sigma; simpl in *; intuition eauto.
+    destruct sigma; simpl in *; intuition eauto.
+    destruct sigma; simpl in *; intuition eauto.
+    rewrite (set_get_id (cache P)); auto.
+    destruct sigma; simpl in *; intuition eauto.
+    rewrite (get_set_g_id (vdisk P));
+      autorewrite with upd;
+      auto.
   Qed.
 
   (* TODO: implement *)
@@ -384,9 +538,39 @@ Section OptimisticCache.
         _ <- GhostUpdate (fun _ s => set_vdisk0 s (get_vdisk s));
         Ret (tt, empty_writebuffer).
 
+  Definition CacheCommit_ok : forall tid wb,
+      cprog_triple G tid
+                   (fun (_:unit) '(sigma_i, sigma) =>
+                      {| precondition :=
+                           CacheRep wb sigma;
+                         postcondition :=
+                           fun '(sigma_i', sigma') '(_, wb') =>
+                             CacheRep wb' sigma' /\
+                             Sigma.mem sigma' = set_cache (Sigma.mem sigma) (get_cache (Sigma.mem sigma')) /\
+                             Sigma.s sigma' = set_vdisk0 (Sigma.s sigma) (get_vdisk (Sigma.s sigma)) /\
+                             sigma_i' = sigma_i |})
+                   (CacheCommit wb).
+  Proof.
+  Abort.
+
   Definition CacheAbort wb : @cprog St _ :=
     _ <- GhostUpdate (fun _ s => set_vdisk s (get_vdisk0 s));
     Ret (tt, empty_writebuffer).
+
+  Definition CacheAbort_ok : forall tid wb,
+      cprog_triple G tid
+                   (fun (_:unit) '(sigma_i, sigma) =>
+                      {| precondition :=
+                           CacheRep wb sigma;
+                         postcondition :=
+                           fun '(sigma_i', sigma') '(_, wb') =>
+                             CacheRep wb' sigma' /\
+                             Sigma.mem sigma' = set_cache (Sigma.mem sigma) (get_cache (Sigma.mem sigma')) /\
+                             Sigma.s sigma' = set_vdisk (Sigma.s sigma) (get_vdisk0 (Sigma.s sigma)) /\
+                             sigma_i' = sigma_i |})
+                   (CacheAbort wb).
+  Proof.
+  Abort.
 
 End OptimisticCache.
 
