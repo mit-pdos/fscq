@@ -5,7 +5,6 @@ Require Import AsyncDisk.
 
 Module Map := FMapAVL.Make(Nat_as_OT).
 Module MapFacts := WFacts_fun Nat_as_OT Map.
-(* Module MapProperties := WProperties_fun Nat_as_OT Map. *)
 
 Section MemCache.
 
