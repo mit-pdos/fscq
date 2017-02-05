@@ -5,27 +5,7 @@ Require Import AsyncDisk.
 Require Import Word.
 Require Import FunctionalExtensionality.
 
-Section Primitives.
-
-  Variable St:StateTypes.
-  Variable G: TID -> Sigma St -> Sigma St -> Prop.
-
-  Theorem cprog_ok_weaken : forall T tid (pre pre': _ -> _ -> Prop) (p: cprog T),
-      cprog_ok G tid pre p ->
-      (forall st donecond, pre' st donecond -> pre st donecond) ->
-      cprog_ok G tid pre' p.
-  Proof.
-    intros.
-    unfold cprog_ok; intros.
-    apply H0 in H1.
-    eapply H; eauto.
-  Qed.
-
-  Definition exec_equiv T (p p': cprog T) :=
-    forall tid st out, exec G tid st p out <-> exec G tid st p' out.
-
-  Hint Constructors exec.
-
+Module CCLTactics.
   Ltac inj_pair2 :=
     match goal with
     | [ H: existT ?P ?a _ = existT ?P ?a _ |- _ ] =>
@@ -57,6 +37,47 @@ Section Primitives.
           end;
       clear H
     end.
+
+  Local Ltac inv_cleanup H :=
+    inversion H; subst; repeat inj_pair2.
+
+  Ltac inv_exec' H :=
+    inv_cleanup H;
+    try match goal with
+        | [ H: step _ _ _ _ _ |- _ ] => inv_cleanup H
+        | [ H: fail_step _ _ |- _ ] => inv_cleanup H
+        end; try congruence.
+
+  Ltac inv_exec :=
+    match goal with
+    | [ H: exec _ _ _ _ (Finished _ _ _) |- _ ] => inv_exec' H
+    | [ H: exec _ _ _ _ Error |- _ ] => inv_exec' H
+    end.
+
+End CCLTactics.
+
+Import CCLTactics.
+
+Section Primitives.
+
+  Variable St:StateTypes.
+  Variable G: TID -> Sigma St -> Sigma St -> Prop.
+
+  Theorem cprog_ok_weaken : forall T tid (pre pre': _ -> _ -> Prop) (p: cprog T),
+      cprog_ok G tid pre p ->
+      (forall st donecond, pre' st donecond -> pre st donecond) ->
+      cprog_ok G tid pre' p.
+  Proof.
+    intros.
+    unfold cprog_ok; intros.
+    apply H0 in H1.
+    eapply H; eauto.
+  Qed.
+
+  Definition exec_equiv T (p p': cprog T) :=
+    forall tid st out, exec G tid st p out <-> exec G tid st p' out.
+
+  Hint Constructors exec.
 
   Theorem monad_right_id : forall T (p: cprog T),
       exec_equiv (Bind p Ret) p.
@@ -100,16 +121,6 @@ Section Primitives.
   Ltac begin_prim :=
     unfold cprog_triple, ReflectDouble, cprog_ok; simpl; intros;
     repeat deex.
-
-  Ltac inv_exec :=
-    let inv H := inversion H; subst; repeat inj_pair2 in
-    match goal with
-    | [ H: exec _ _ _ _ (Finished _ _ _) |- _ ] => inv H
-    | [ H: exec _ _ _ _ Error |- _ ] => inv H
-    end; try match goal with
-             | [ H: step _ _ _ _ _ |- _ ] => inv H
-             | [ H: fail_step _ _ |- _ ] => inv H
-             end; try congruence.
 
   Theorem BeginRead_ok : forall tid a,
       cprog_triple G tid
@@ -211,6 +222,8 @@ Section Primitives.
                       {| precondition := True;
                          postcondition :=
                            fun '(sigma_i', sigma') r =>
+                             r = hash_fwd buf /\
+                             hash_safe (Sigma.hm sigma) (hash_fwd buf) buf /\
                              sigma_i' = sigma_i /\
                              sigma' = Sigma.upd_hm sigma buf; |})
                    (Hash buf).
