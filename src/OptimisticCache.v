@@ -4,9 +4,7 @@ Require Import Mem Pred AsyncDisk.
 Require Import MemCache WriteBuffer.
 Require Import FunctionalExtensionality.
 
-Require List.
-Import List.ListNotations.
-Open Scope list_scope.
+Require Import UpdList.
 
 Definition Disk := @mem addr addr_eq_dec valu.
 
@@ -514,75 +512,6 @@ Section OptimisticCache.
 
   Hint Resolve no_pending_dirty_empty wb_rep_empty.
 
-  (* TODO: move to separate file *)
-  Fixpoint upd_all AT AEQ V (m: @mem AT AEQ V) (l: list (AT*V)) :=
-    match l with
-    | nil => m
-    | (a,v)::l' => upd (upd_all m l') a v
-    end.
-
-  Lemma upd_all_incr_domain : forall AT AEQ V (m:@mem AT AEQ V) a ws,
-      (exists v, m a = Some v) ->
-      (exists v, upd_all m ws a = Some v).
-  Proof.
-    induction ws; intros; simpl; repeat deex; eauto.
-    destruct (AEQ a a1); subst; autorewrite with upd; eauto.
-  Qed.
-
-  Lemma list_in_f : forall A B a b (f: A -> B) (l: list A),
-      List.In a l ->
-      b = f a ->
-      List.In b (List.map f l).
-  Proof.
-    induction l; simpl; intros; intuition (subst; eauto).
-  Qed.
-
-  Lemma upd_all_nodup_in : forall AT AEQ V (m:@mem AT AEQ V) ws a v,
-      List.NoDup (List.map fst ws) ->
-      List.In (a, v) ws ->
-      upd_all m ws a = Some v.
-  Proof.
-    induction ws; simpl; intros.
-    contradiction.
-
-    destruct a as [a' v'].
-    simpl in *.
-    inversion H; subst.
-    intuition eauto.
-    inversion H1; subst;
-      autorewrite with upd; auto.
-    destruct (AEQ a' a0); subst;
-      autorewrite with upd;
-      eauto.
-    exfalso; apply H3.
-    eapply list_in_f; eauto.
-  Qed.
-
-  Lemma upd_all_not_in : forall AT AEQ V (m:@mem AT AEQ V) ws a,
-      ~List.In a (List.map fst ws) ->
-      upd_all m ws a = m a.
-  Proof.
-    induction ws; simpl; intros; eauto.
-    destruct a as [a' v]; simpl in *.
-    intuition eauto.
-    autorewrite with upd; eauto.
-  Qed.
-
-  Lemma list_addr_in_dec : forall A B (AEQ:forall (a a':A), {a=a'}+{a<>a'})
-                             a (l: list (A * B)),
-      {v | List.In (a, v) l} + {~List.In a (List.map fst l)}.
-  Proof.
-    intros.
-    destruct (List.In_dec AEQ a (List.map fst l)); eauto.
-    left.
-    induction l; simpl in *.
-    contradiction.
-    destruct a0 as [a' v]; simpl in *.
-    destruct (AEQ a a'); subst; eauto.
-    destruct IHl; eauto.
-    intuition congruence.
-  Defined.
-
   Theorem wb_rep_upd_all_ext : forall wb vd0 (vd: Disk) (a: addr),
       wb_rep vd0 wb vd ->
       vd a = upd_all (AEQ:=addr_eq_dec) vd0 (wb_writes wb) a.
@@ -610,18 +539,14 @@ Section OptimisticCache.
 
         case_eq (wb_get wb a); intuition.
         specialize (H v0); intuition.
-        match goal with
-        | [ H: (_,_) = (_,_) |- _ ] =>
-          inversion H; subst; congruence
-        end.
+        congruence.
         erewrite upd_all_nodup_in by eauto.
         specialize (H0 a); simpl_match; intuition eauto.
 
-        destruct (list_addr_in_dec addr_eq_dec a l).
+        destruct (list_addr_in_dec addr_eq_dec a l);
+            autorewrite with upd.
         destruct s.
         specialize (H x); intuition; congruence.
-
-        rewrite upd_all_not_in by auto.
         specialize (H0 a); simpl_match; eauto.
   Qed.
 
@@ -660,6 +585,8 @@ Section OptimisticCache.
     congruence.
   Qed.
 
+  Hint Resolve upd_all_incr_domain.
+
   Lemma CacheRep_commit:
     forall (wb : WriteBuffer) (d : DISK) (m : Mem St)
       (s : Abstraction St) (hm : hashmap),
@@ -687,13 +614,11 @@ Section OptimisticCache.
     end.
 
     eapply cache_rep_add_dirty; eauto.
-    - intro.
-
-      apply add_writes_same_invalid in H4.
-      specialize (H2 a); intuition.
+    - intro Hinvalid.
+      apply add_writes_same_invalid in Hinvalid.
+      specialize (H2 a); intuition auto.
       congruence.
     - specialize (H a); simpl_match; intuition eauto.
-      apply upd_all_incr_domain; auto.
   Qed.
 
   Lemma CacheRep_abort:
