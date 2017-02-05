@@ -52,10 +52,15 @@ Section OptimisticCache.
   Hint Rewrite (vdisk_vdisk0_neq P) : get_set.
   Hint Rewrite (vdisk0_vdisk_neq P) : get_set.
 
+  Definition locally_modified (sigma sigma': Sigma St) :=
+    Sigma.mem sigma' = set_cache (Sigma.mem sigma) (get_cache (Sigma.mem sigma')) /\
+    Sigma.s sigma' = set_vdisk (set_vdisk0 (Sigma.s sigma) (get_vdisk0 (Sigma.s sigma')))
+                       (get_vdisk (Sigma.s sigma')).
+
   Ltac simplify :=
     subst;
     simpl;
-    autorewrite with get_set cache upd;
+    autorewrite with get_set cache upd in *;
     repeat simpl_match;
     auto.
 
@@ -344,6 +349,40 @@ Section OptimisticCache.
   (* prevent monad_simpl from unfolding for now *)
   Opaque ClearPending.
 
+  Ltac state_upd :=
+    simpl in *; subst;
+    autorewrite with get_set in *;
+    eauto.
+
+  Tactic Notation "state" "upd" constr(sigma) := destruct sigma; state_upd.
+  Tactic Notation "state" "upd" constr(sigma) "," constr(sigma') := destruct sigma, sigma'; state_upd.
+
+  Ltac prove_local_modify :=
+    match goal with
+    | [ |- locally_modified ?sigma ?sigma' ] =>
+      unfold locally_modified;
+      (try (is_var sigma; destruct sigma));
+      (try (is_var sigma'; destruct sigma'));
+      intuition idtac;
+      simpl in *;
+      subst;
+      autorewrite with get_set in *;
+      eauto; try congruence
+    end.
+
+  Hint Extern 2 (locally_modified ?sigma ?sigma') => prove_local_modify.
+
+  Ltac state_upd_ctx :=
+    match goal with
+    | [ sigma: Sigma St, sigma': Sigma St |- _ ] =>
+      state upd sigma, sigma'
+    | [ sigma: Sigma St |- _ ] =>
+      state upd sigma
+    end.
+
+  Hint Extern 2 (get_vdisk (Sigma.s _) = _) => state_upd_ctx.
+  Hint Extern 2 (get_vdisk0 (Sigma.s _) = _) => state_upd_ctx.
+
   Definition CacheRead_ok : forall tid wb a,
       cprog_triple G tid
                    (fun v0 '(sigma_i, sigma) =>
@@ -353,8 +392,9 @@ Section OptimisticCache.
                          postcondition :=
                            fun '(sigma_i', sigma') '(r, wb') =>
                              CacheRep wb' sigma' /\
-                             Sigma.mem sigma' = set_cache (Sigma.mem sigma) (get_cache (Sigma.mem sigma')) /\
-                             Sigma.s sigma' = Sigma.s sigma /\
+                             locally_modified sigma sigma' /\
+                             get_vdisk (Sigma.s sigma') = get_vdisk (Sigma.s sigma) /\
+                             get_vdisk0 (Sigma.s sigma') = get_vdisk0 (Sigma.s sigma) /\
                              match r with
                              | Some v => v = v0
                              | None => True
@@ -388,8 +428,9 @@ Section OptimisticCache.
     step.
     step.
 
-    destruct sigma; simpl in *; simplify.
     intuition eauto.
+
+    state upd sigma.
   Qed.
 
   Definition CacheWrite wb a v : @cprog St _ :=
@@ -438,10 +479,8 @@ Section OptimisticCache.
                          postcondition :=
                            fun '(sigma_i', sigma') '(_, wb') =>
                              CacheRep wb' sigma' /\
-                             let vd' := upd (get_vdisk (Sigma.s sigma)) a v in
-                             Sigma.s sigma' = set_vdisk (Sigma.s sigma) vd'  /\
-                             Sigma.mem sigma' = set_cache (Sigma.mem sigma) (get_cache (Sigma.mem sigma')) /\
-                             get_vdisk (Sigma.s sigma') a = Some v /\
+                             locally_modified sigma sigma' /\
+                             get_vdisk (Sigma.s sigma') = upd (get_vdisk (Sigma.s sigma)) a v  /\
                              sigma_i' = sigma_i |})
                    (CacheWrite wb a v).
   Proof.
@@ -454,11 +493,7 @@ Section OptimisticCache.
     step.
     step; simplify.
     intuition eauto.
-    destruct sigma; simpl in *; intuition eauto; simplify.
-
-    destruct sigma; simpl in *; auto; simplify.
-    destruct sigma; simpl in *; auto; simplify.
-    destruct sigma; simpl in *; auto; simplify.
+    state upd sigma.
 
     step.
     eexists; intuition eauto.
@@ -466,20 +501,14 @@ Section OptimisticCache.
     step.
     intuition eauto.
 
-    destruct sigma'; simpl in *; subst; intuition eauto.
-    destruct sigma'; simpl in *; subst; intuition eauto.
-    destruct sigma'; simpl in *; subst; intuition eauto.
-    destruct sigma'; simpl in *; subst; intuition eauto.
-    simplify.
+    state upd sigma, sigma'.
+    state upd sigma, sigma'.
 
     step.
     step.
+
     intuition eauto.
-    destruct sigma; simpl in *; intuition eauto.
-    destruct sigma; simpl in *; intuition eauto.
-    destruct sigma; simpl in *; intuition eauto.
-    simplify.
-    destruct sigma; simpl in *; intuition eauto; simplify.
+    state upd sigma.
   Qed.
 
   Fixpoint add_writes (c:Cache) (wrs: list (addr * valu)) :=
@@ -640,8 +669,9 @@ Section OptimisticCache.
                          postcondition :=
                            fun '(sigma_i', sigma') '(_, wb') =>
                              CacheRep wb' sigma' /\
-                             Sigma.mem sigma' = set_cache (Sigma.mem sigma) (get_cache (Sigma.mem sigma')) /\
-                             Sigma.s sigma' = set_vdisk0 (Sigma.s sigma) (get_vdisk (Sigma.s sigma)) /\
+                             locally_modified sigma sigma' /\
+                             get_vdisk0 (Sigma.s sigma') = get_vdisk (Sigma.s sigma) /\
+                             get_vdisk (Sigma.s sigma') = get_vdisk (Sigma.s sigma) /\
                              sigma_i' = sigma_i |})
                    (CacheCommit wb).
   Proof.
@@ -653,9 +683,11 @@ Section OptimisticCache.
     step.
 
     intuition eauto.
-    destruct sigma; simplify.
-    destruct sigma; simplify.
-    destruct sigma; simplify.
+    state upd sigma.
+
+    prove_local_modify.
+    rewrite (set_get_g_id (vdisk P)) by simplify.
+    auto.
   Qed.
 
   Definition CacheAbort wb : @cprog St _ :=
@@ -670,8 +702,9 @@ Section OptimisticCache.
                          postcondition :=
                            fun '(sigma_i', sigma') '(_, wb') =>
                              CacheRep wb' sigma' /\
-                             Sigma.mem sigma' = set_cache (Sigma.mem sigma) (get_cache (Sigma.mem sigma')) /\
-                             Sigma.s sigma' = set_vdisk (Sigma.s sigma) (get_vdisk0 (Sigma.s sigma)) /\
+                             locally_modified sigma sigma' /\
+                             get_vdisk (Sigma.s sigma') = get_vdisk0 (Sigma.s sigma) /\
+                             get_vdisk0 (Sigma.s sigma') = get_vdisk0 (Sigma.s sigma) /\
                              sigma_i' = sigma_i |})
                    (CacheAbort wb).
   Proof.
@@ -681,9 +714,7 @@ Section OptimisticCache.
     step.
 
     intuition eauto.
-    destruct sigma; simplify; eauto.
-    destruct sigma; simplify; eauto.
-    destruct sigma; simplify; eauto.
+    state upd sigma.
   Qed.
 
 End OptimisticCache.
