@@ -529,38 +529,110 @@ Section OptimisticCache.
     destruct (AEQ a a1); subst; autorewrite with upd; eauto.
   Qed.
 
-  Theorem wb_rep_upd_all : forall wb vd0 vd,
+  Lemma list_in_f : forall A B a b (f: A -> B) (l: list A),
+      List.In a l ->
+      b = f a ->
+      List.In b (List.map f l).
+  Proof.
+    induction l; simpl; intros; intuition (subst; eauto).
+  Qed.
+
+  Lemma upd_all_nodup_in : forall AT AEQ V (m:@mem AT AEQ V) ws a v,
+      List.NoDup (List.map fst ws) ->
+      List.In (a, v) ws ->
+      upd_all m ws a = Some v.
+  Proof.
+    induction ws; simpl; intros.
+    contradiction.
+
+    destruct a as [a' v'].
+    simpl in *.
+    inversion H; subst.
+    intuition eauto.
+    inversion H1; subst;
+      autorewrite with upd; auto.
+    destruct (AEQ a' a0); subst;
+      autorewrite with upd;
+      eauto.
+    exfalso; apply H3.
+    eapply list_in_f; eauto.
+  Qed.
+
+  Lemma upd_all_not_in : forall AT AEQ V (m:@mem AT AEQ V) ws a,
+      ~List.In a (List.map fst ws) ->
+      upd_all m ws a = m a.
+  Proof.
+    induction ws; simpl; intros; eauto.
+    destruct a as [a' v]; simpl in *.
+    intuition eauto.
+    autorewrite with upd; eauto.
+  Qed.
+
+  Lemma list_addr_in_dec : forall A B (AEQ:forall (a a':A), {a=a'}+{a<>a'})
+                             a (l: list (A * B)),
+      {v | List.In (a, v) l} + {~List.In a (List.map fst l)}.
+  Proof.
+    intros.
+    destruct (List.In_dec AEQ a (List.map fst l)); eauto.
+    left.
+    induction l; simpl in *.
+    contradiction.
+    destruct a0 as [a' v]; simpl in *.
+    destruct (AEQ a a'); subst; eauto.
+    destruct IHl; eauto.
+    intuition congruence.
+  Defined.
+
+  Theorem wb_rep_upd_all_ext : forall wb vd0 (vd: Disk) (a: addr),
       wb_rep vd0 wb vd ->
-      vd = upd_all vd0 (wb_writes wb).
+      vd a = upd_all (AEQ:=addr_eq_dec) vd0 (wb_writes wb) a.
   Proof.
     intro.
     assert (forall a v, wb_get wb a = Written v <-> List.In (a, v) (wb_writes wb)).
-    intros; apply wb_get_writes.
+    { intros; apply wb_get_writes. }
+    intros.
+    specialize (H a).
+    pose proof (wb_writes_nodup_addr wb).
+    move H1 at top.
     generalize dependent (wb_writes wb).
     induction l; intros; subst; simpl in *.
-    - extensionality a.
-      specialize (H0 a).
+    - specialize (H0 a).
       case_eq (wb_get wb a); intros; simpl_match; auto.
       exfalso.
       eapply H; eauto.
-    - destruct a as [a v].
-      extensionality a'.
+    - destruct a0 as [a' v].
       destruct (addr_eq_dec a a'); subst; autorewrite with upd.
-      + destruct (H a' v).
-        clear H1.
+      + destruct (H v) as [H' ?]; clear H'.
         intuition.
         specialize (H0 a'); simpl_match; intuition.
-      + match type of IHl with
-        | ?P -> _ => assert P
-        end.
-        intuition.
-        admit. (* do we need no duplicates in the writes? *)
-        admit.
+      + simpl in *.
+        inversion H1; subst; intuition.
 
-        intuition.
-        specialize (H2 _ _ ltac:(eauto)).
-        congruence.
-  Admitted.
+        case_eq (wb_get wb a); intuition.
+        specialize (H v0); intuition.
+        match goal with
+        | [ H: (_,_) = (_,_) |- _ ] =>
+          inversion H; subst; congruence
+        end.
+        erewrite upd_all_nodup_in by eauto.
+        specialize (H0 a); simpl_match; intuition eauto.
+
+        destruct (list_addr_in_dec addr_eq_dec a l).
+        destruct s.
+        specialize (H x); intuition; congruence.
+
+        rewrite upd_all_not_in by auto.
+        specialize (H0 a); simpl_match; eauto.
+  Qed.
+
+  Corollary wb_rep_upd_all : forall vd0 wb vd,
+      wb_rep vd0 wb vd ->
+      vd = upd_all vd0 (wb_writes wb).
+  Proof.
+    intros.
+    extensionality a.
+    apply wb_rep_upd_all_ext; auto.
+  Qed.
 
   Lemma cache_rep_add_dirty:
     forall (d : DISK) (a : addr) (v : valu) (c : Cache) (vd0 : Disk),

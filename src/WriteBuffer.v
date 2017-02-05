@@ -66,6 +66,26 @@ Section WriteBuffer.
       apply Map.find_1 in H1; simpl_match; auto.
   Qed.
 
+  Theorem wb_writes_nodup_addr : forall wb,
+      NoDup (map fst (wb_writes wb)).
+  Proof.
+    unfold wb_writes; intros.
+
+    pose proof (Map.elements_3w wb).
+    generalize dependent (Map.elements wb).
+    induction l; simpl; intros.
+    constructor.
+
+    inversion H; subst; eauto.
+    econstructor; eauto.
+    contradict H2.
+    clear IHl H H3.
+    induction l; simpl in *; intuition auto.
+    destruct a, a0; simpl in *; subst.
+    constructor.
+    reflexivity.
+  Qed.
+
 End WriteBuffer.
 
 Hint Rewrite wb_get_add_eq : cache.
