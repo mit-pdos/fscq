@@ -1,5 +1,7 @@
 Require Import MemCache.
 Require Import AsyncDisk.
+Require Import List.
+Require Import Automation.
 
 Section WriteBuffer.
 
@@ -39,6 +41,30 @@ Section WriteBuffer.
 
   Definition wb_writes wb : list (addr * valu) :=
     Map.elements wb.
+
+  Theorem wb_get_writes : forall wb a v,
+      wb_get wb a = Written v <->
+      In (a,v) (wb_writes wb).
+  Proof.
+    unfold wb_get, wb_writes.
+    split; intros.
+    - case_eq (Map.find (elt:=valu) a wb); intros;
+        simpl_match; try congruence.
+      inversion H; subst.
+      pose proof (MapFacts.elements_mapsto_iff wb a v).
+      apply MapFacts.find_mapsto_iff in H0; intuition.
+      apply SetoidList.InA_alt in H1; deex.
+      destruct y; cbn in *.
+      compute in *; intuition subst; auto.
+    - pose proof (MapFacts.elements_mapsto_iff wb a v); intuition.
+      clear H1.
+      match type of H2 with
+      | ?P -> _ => assert P
+      end.
+      apply SetoidList.In_InA; auto with typeclass_instances.
+      intuition.
+      apply Map.find_1 in H1; simpl_match; auto.
+  Qed.
 
 End WriteBuffer.
 

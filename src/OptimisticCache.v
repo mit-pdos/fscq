@@ -1,8 +1,8 @@
 Require Import CCL.
 
 Require Import Mem Pred AsyncDisk.
-
 Require Import MemCache WriteBuffer.
+Require Import FunctionalExtensionality.
 
 Require List.
 Import List.ListNotations.
@@ -487,7 +487,7 @@ Section OptimisticCache.
   Fixpoint add_writes (c:Cache) (wrs: list (addr * valu)) :=
     match wrs with
     | nil => c
-    | (a,v) :: wrs' => add_writes (add_entry Dirty c a v) wrs'
+    | (a,v) :: wrs' => add_entry Dirty (add_writes c wrs') a v
     end.
 
   Definition upd_with_buffer (c:Cache) (wb:WriteBuffer) :=
@@ -514,6 +514,72 @@ Section OptimisticCache.
 
   Hint Resolve no_pending_dirty_empty wb_rep_empty.
 
+  (* TODO: move to separate file *)
+  Fixpoint upd_all AT AEQ V (m: @mem AT AEQ V) (l: list (AT*V)) :=
+    match l with
+    | nil => m
+    | (a,v)::l' => upd (upd_all m l') a v
+    end.
+
+  Theorem wb_rep_upd_all : forall wb vd0 vd,
+      wb_rep vd0 wb vd ->
+      vd = upd_all vd0 (wb_writes wb).
+  Proof.
+    intro.
+    assert (forall a v, wb_get wb a = Written v <-> List.In (a, v) (wb_writes wb)).
+    intros; apply wb_get_writes.
+    generalize dependent (wb_writes wb).
+    induction l; intros; subst; simpl in *.
+    - extensionality a.
+      specialize (H0 a).
+      case_eq (wb_get wb a); intros; simpl_match; auto.
+      exfalso.
+      eapply H; eauto.
+    - destruct a as [a v].
+      extensionality a'.
+      destruct (addr_eq_dec a a'); subst; autorewrite with upd.
+      + destruct (H a' v).
+        clear H1.
+        intuition.
+        specialize (H0 a'); simpl_match; intuition.
+      + match type of IHl with
+        | ?P -> _ => assert P
+        end.
+        intuition.
+        admit. (* do we need no duplicates in the writes? *)
+        admit.
+
+        intuition.
+        specialize (H2 _ _ ltac:(eauto)).
+        congruence.
+  Admitted.
+
+  Lemma cache_rep_add_dirty:
+    forall (d : DISK) (a : addr) (v v0 : valu) (c : Cache) (vd0 : Disk),
+      cache_get c a <> Invalid ->
+      cache_rep d c vd0 ->
+      vd0 a = Some v0 ->
+      cache_rep d (add_entry Dirty c a v) (upd vd0 a v).
+  Proof.
+    unfold cache_rep; intros.
+    specialize (H0 a0).
+    destruct (addr_eq_dec a a0); subst; simplify; intuition eauto.
+    case_eq (cache_get c a0); intros; simpl_match; intuition.
+    destruct b; repeat deex; intuition eauto.
+    eauto.
+  Qed.
+
+  Lemma add_writes_same_invalid : forall ws c a,
+      cache_get (add_writes c ws) a = Invalid ->
+      cache_get c a = Invalid.
+  Proof.
+    induction ws; intros; simpl in *; auto.
+    destruct a as [a v].
+    destruct (addr_eq_dec a a0); subst;
+      autorewrite with cache in H; auto.
+    congruence.
+  Qed.
+
   Lemma CacheRep_commit:
     forall (wb : WriteBuffer) (d : DISK) (m : Mem St)
       (s : Abstraction St) (hm : hashmap),
@@ -523,7 +589,25 @@ Section OptimisticCache.
                       (set_vdisk0 s (get_vdisk s)) hm).
   Proof.
     unfold CacheRep; simpl; intuition; simplify.
-    admit.
+    unfold upd_with_buffer.
+
+    erewrite wb_rep_upd_all by eauto.
+    clear H.
+    generalize (wb_writes wb); intros.
+
+    induction l; simpl; eauto.
+    destruct a as [a v].
+
+    eapply cache_rep_add_dirty; eauto.
+    intro.
+
+    apply add_writes_same_invalid in H.
+    specialize (H2 a); intuition.
+    admit. (* need property that when a is in addrs(wb_writes), wb_get wb a =
+    Written v *)
+
+    admit. (* follows from above: when wb_get wb a = Written v, wb_rep gives vd0
+    is def at a *)
   Admitted.
 
   Lemma CacheRep_abort:
