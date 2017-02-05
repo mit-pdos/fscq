@@ -4,7 +4,9 @@ Require Pred.
 Ltac destruct_st :=
   match goal with
   | [ st: Sigma _ * Sigma _, H: context[let '(a, b) := ?st in _] |- _ ] =>
-    destruct st as [a b]; cbn [precondition postcondition] in *
+    let sigma_i := fresh "sigma_i" in
+    let sigma := fresh "sigma" in
+    (destruct st as [a b] || destruct st as [sigma_i sigma]); cbn [precondition postcondition] in *
   end.
 
 (* unfold ReflectDouble into primitive Hoare double statement *)
@@ -32,6 +34,8 @@ Ltac monad_simpl :=
   let rewrite_equiv H := eapply cprog_ok_respects_exec_equiv;
                          [ solve [ apply H ] | ] in
   repeat match goal with
+         (* TODO: apply these with pattern matching, to avoid unfolding
+         definitions in order to rewrite *)
          | _ => rewrite_equiv monad_right_id
          | _ => rewrite_equiv monad_left_id
          | _ => rewrite_equiv monad_assoc

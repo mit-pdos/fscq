@@ -47,6 +47,16 @@ Section OptimisticCache.
     | WbMissing => Ret (None)
     end.
 
+  Definition ClearPending m wb a :=
+    v <- WaitForRead a;
+      let c := get_cache m in
+      let c' := add_entry Clean c a v in
+      _ <- Assgn (set_cache m c');
+        (* note that v could also be added to the local write buffer (not
+           returned since it isn't modified), which should improve
+           performance *)
+        Ret v.
+
   Definition CacheRead wb a : @cprog St _ :=
     r <- BufferRead wb a;
       match r with
@@ -59,12 +69,8 @@ Section OptimisticCache.
                              let c' := mark_pending c a in
                              _ <- Assgn (set_cache m c');
                              Ret (None, wb)
-               | Invalid => v <- WaitForRead a;
-                             let c' := add_entry Clean c a v in
-                             _ <- Assgn (set_cache m c');
-                               (* note that v could also be added to the local
-                             write buffer, which should improve performance *)
-                               Ret (Some v, wb)
+               | Invalid => v <- ClearPending m wb a;
+                             Ret (Some v, wb)
                end
       end.
 
@@ -166,6 +172,38 @@ Section OptimisticCache.
   Qed.
 
   Hint Extern 0 {{ BufferRead _ _; _ }} => apply BufferRead_ok : prog.
+
+  Lemma CacheRep_clear_pending:
+    forall (wb : WriteBuffer) (a : addr) (d : DISK) (m : Mem St)
+      (s : Abstraction St) (hm : hashmap) (a0 : valu),
+      CacheRep wb (state d m s hm) ->
+      cache_get (get_cache m) a = Invalid ->
+      get_vdisk s a = Some a0 ->
+      CacheRep wb
+               (state (upd d a (a0, NoReader))
+                      (set_cache m (add_entry Clean (get_cache m) a a0)) s hm).
+  Proof.
+    unfold CacheRep; intuition; simpl in *.
+    - intro a'.
+      rewrite (get_set_id (cache P)).
+      destruct (addr_eq_dec a a'); subst.
+      rewrite cache_get_add_eq; intuition eauto.
+      specialize (H4 a'); intuition.
+      specialize (H a'); simpl_match.
+      congruence.
+      autorewrite with upd; eauto.
+
+      rewrite cache_get_add_neq; intuition eauto.
+      autorewrite with upd.
+      solve_cache.
+    - intro a'.
+      rewrite (get_set_id (cache P)).
+      destruct (addr_eq_dec a a'); subst.
+      rewrite cache_get_add_eq; intuition eauto.
+      rewrite cache_get_add_neq; intuition eauto.
+  Qed.
+
+  Hint Resolve CacheRep_clear_pending.
 
   Lemma CacheRep_present:
     forall (wb : WriteBuffer) (a : addr) (sigma : Sigma St) (a0 : valu),
@@ -274,103 +312,6 @@ Section OptimisticCache.
 
   Hint Resolve CacheRep_finish_read CacheRep_mark_pending.
 
-  Definition CacheRead_ok : forall tid wb a,
-      cprog_triple G tid
-                   (fun v0 '(sigma_i, sigma) =>
-                      {| precondition :=
-                           CacheRep wb sigma /\
-                           get_vdisk (Sigma.s sigma) a = Some v0;
-                         postcondition :=
-                           fun '(sigma_i', sigma') '(r, wb') =>
-                             CacheRep wb' sigma' /\
-                             Sigma.mem sigma' = set_cache (Sigma.mem sigma) (get_cache (Sigma.mem sigma')) /\
-                             Sigma.s sigma' = Sigma.s sigma /\
-                             match r with
-                             | Some v => v = v0
-                             | None => True
-                             end /\
-                             sigma_i' = sigma_i |})
-                   (CacheRead wb a).
-  Proof.
-    unfold cprog_triple, CacheRead; intros.
-
-    step.
-    eexists; intuition eauto.
-
-    destruct r; step.
-    rewrite (set_get_id (cache P)); auto.
-    intuition eauto.
-
-    intros m'.
-    case_eq (cache_get (get_cache m') a); intros.
-    step.
-
-    rewrite (set_get_id (cache P)); auto.
-    intuition eauto.
-
-    step.
-    eexists; intuition eauto.
-
-    step.
-    intros; step.
-    intuition eauto.
-
-    destruct sigma; simpl in *; eauto.
-    rewrite (get_set_id (cache P)); auto.
-
-    destruct sigma; simpl in *; eauto.
-
-    step.
-    eexists; intuition eauto.
-
-    step.
-    intros; step.
-
-    destruct sigma; simpl in *.
-    rewrite (get_set_id (cache P)).
-    intuition eauto.
-  Qed.
-
-  Lemma CacheRep_clear_pending:
-    forall (wb : WriteBuffer) (a : addr) (d : DISK) (m : Mem St)
-      (s : Abstraction St) (hm : hashmap) (a0 : valu),
-      CacheRep wb (state d m s hm) ->
-      cache_get (get_cache m) a = Invalid ->
-      get_vdisk s a = Some a0 ->
-      CacheRep wb
-               (state (upd d a (a0, NoReader))
-                      (set_cache m (add_entry Clean (get_cache m) a a0)) s hm).
-  Proof.
-    unfold CacheRep; intuition; simpl in *.
-    - intro a'.
-      rewrite (get_set_id (cache P)).
-      destruct (addr_eq_dec a a'); subst.
-      rewrite cache_get_add_eq; intuition eauto.
-      specialize (H4 a'); intuition.
-      specialize (H a'); simpl_match.
-      congruence.
-      autorewrite with upd; eauto.
-
-      rewrite cache_get_add_neq; intuition eauto.
-      autorewrite with upd.
-      solve_cache.
-    - intro a'.
-      rewrite (get_set_id (cache P)).
-      destruct (addr_eq_dec a a'); subst.
-      rewrite cache_get_add_eq; intuition eauto.
-      rewrite cache_get_add_neq; intuition eauto.
-  Qed.
-
-  Hint Resolve CacheRep_clear_pending.
-
-  Definition ClearPending m wb a :=
-        (* TODO: factor just this part out of CacheRead *)
-    v <- WaitForRead a;
-      let c := get_cache m in
-      let c' := add_entry Clean c a v in
-      _ <- Assgn (set_cache m c');
-        Ret v.
-
   Theorem ClearPending_ok : forall tid m wb a,
       cprog_triple G tid
                    (fun v0 '(sigma_i, sigma) =>
@@ -411,6 +352,60 @@ Section OptimisticCache.
   Qed.
 
   Hint Extern 0 {{ ClearPending _ _ _; _ }} => apply ClearPending_ok : prog.
+
+  (* prevent monad_simpl from unfolding for now *)
+  Opaque ClearPending.
+
+  Definition CacheRead_ok : forall tid wb a,
+      cprog_triple G tid
+                   (fun v0 '(sigma_i, sigma) =>
+                      {| precondition :=
+                           CacheRep wb sigma /\
+                           get_vdisk (Sigma.s sigma) a = Some v0;
+                         postcondition :=
+                           fun '(sigma_i', sigma') '(r, wb') =>
+                             CacheRep wb' sigma' /\
+                             Sigma.mem sigma' = set_cache (Sigma.mem sigma) (get_cache (Sigma.mem sigma')) /\
+                             Sigma.s sigma' = Sigma.s sigma /\
+                             match r with
+                             | Some v => v = v0
+                             | None => True
+                             end /\
+                             sigma_i' = sigma_i |})
+                   (CacheRead wb a).
+  Proof.
+    unfold cprog_triple, CacheRead; intros.
+
+    step.
+    eexists; intuition eauto.
+
+    destruct r; step.
+    rewrite (set_get_id (cache P)); auto.
+    intuition eauto.
+
+    intros m'.
+    case_eq (cache_get (get_cache m') a); intros.
+    step.
+
+    rewrite (set_get_id (cache P)); auto.
+    intuition eauto.
+
+    step.
+    eexists; intuition eauto.
+
+    step.
+    intuition eauto.
+
+    step.
+    eexists; intuition eauto.
+
+    step.
+    intros; step.
+
+    destruct sigma; simpl in *.
+    rewrite (get_set_id (cache P)).
+    intuition eauto.
+  Qed.
 
   Definition CacheWrite wb a v : @cprog St _ :=
     m <- Get;
@@ -501,16 +496,12 @@ Section OptimisticCache.
     eexists; intuition eauto.
     step.
     intros; step.
-    intros; step.
+    intuition eauto.
 
-    destruct sigma; simpl in *; intuition eauto.
-
-    eapply CacheRep_write; eauto.
-    rewrite (get_set_id (cache P)).
-    rewrite cache_get_add_eq; congruence.
-
-    rewrite (get_set_id (cache P)); eauto.
-
+    destruct sigma'; simpl in *; subst; intuition eauto.
+    destruct sigma'; simpl in *; subst; intuition eauto.
+    destruct sigma'; simpl in *; subst; intuition eauto.
+    destruct sigma'; simpl in *; subst; intuition eauto.
     rewrite (get_set_g_id (vdisk P));
       autorewrite with upd;
       eauto.
