@@ -38,3 +38,6 @@ Section WriteBuffer.
   Qed.
 
 End WriteBuffer.
+
+Hint Rewrite wb_get_add_eq : cache.
+Hint Rewrite wb_get_add_neq using (solve [ auto ]) : cache.

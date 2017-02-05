@@ -39,6 +39,16 @@ Section OptimisticCache.
   Definition get_vdisk0 := get_gvar (vdisk_committed P).
   Definition set_vdisk0 := set_gvar (vdisk_committed P).
 
+  Hint Rewrite (get_set_id (cache P)) using solve [ auto ] : get_set.
+  Hint Rewrite (set_get_id (cache P)) using solve [ auto ] : get_set.
+  Hint Rewrite (get_set_g_id (vdisk P)) using solve [ auto ] : get_set.
+
+  Ltac simplify :=
+    subst;
+    autorewrite with get_set cache upd;
+    repeat simpl_match;
+    auto.
+
   Implicit Types (c:Cache) (wb:WriteBuffer).
 
   Definition BufferRead wb a : @cprog St _ :=
@@ -183,24 +193,15 @@ Section OptimisticCache.
                (state (upd d a (a0, NoReader))
                       (set_cache m (add_entry Clean (get_cache m) a a0)) s hm).
   Proof.
-    unfold CacheRep; intuition; simpl in *.
+    unfold CacheRep; intuition; simpl in *; simplify.
     - intro a'.
-      rewrite (get_set_id (cache P)).
-      destruct (addr_eq_dec a a'); subst.
-      rewrite cache_get_add_eq; intuition eauto.
+      destruct (addr_eq_dec a a'); simplify.
       specialize (H4 a'); intuition.
       specialize (H a'); simpl_match.
       congruence.
-      autorewrite with upd; eauto.
-
-      rewrite cache_get_add_neq; intuition eauto.
-      autorewrite with upd.
       solve_cache.
     - intro a'.
-      rewrite (get_set_id (cache P)).
-      destruct (addr_eq_dec a a'); subst.
-      rewrite cache_get_add_eq; intuition eauto.
-      rewrite cache_get_add_neq; intuition eauto.
+      destruct (addr_eq_dec a a'); simplify.
   Qed.
 
   Hint Resolve CacheRep_clear_pending.
@@ -251,37 +252,25 @@ Section OptimisticCache.
                   (set_cache (Sigma.mem sigma)
                              (add_entry Clean (get_cache (Sigma.mem sigma)) a v0))).
   Proof.
-    unfold CacheRep; intuition.
+    unfold CacheRep; intuition; simplify.
 
     - intro a'.
-      destruct (addr_eq_dec a a'); subst; intros.
-      destruct sigma; simpl in *.
-      rewrite (get_set_id (cache P)).
-      rewrite cache_get_add_eq; intuition eauto.
+      destruct (addr_eq_dec a a'); subst; simplify.
+      destruct sigma; simpl in *; simplify; intuition eauto.
       solve_cache.
-      autorewrite with upd; eauto.
 
-      destruct sigma; simpl in *.
-      rewrite (get_set_id (cache P)).
-      rewrite cache_get_add_neq; intuition eauto.
+      destruct sigma; simpl in *; simplify.
       solve_cache.
-      autorewrite with upd; eauto.
-
     - intro a'.
-      destruct (addr_eq_dec a a'); subst; intros.
+      destruct (addr_eq_dec a a'); simplify.
       destruct sigma; simpl in *.
       solve_cache.
 
       specialize (H0 a').
       destruct sigma; simpl in *; eauto.
-
-    - destruct sigma; simpl in *.
-      rewrite (get_set_id (cache P)).
-
+    - destruct sigma; simpl in *; simplify.
       intros a'.
-      destruct (addr_eq_dec a a'); subst.
-      rewrite cache_get_add_eq; intuition eauto.
-      rewrite cache_get_add_neq; intuition eauto.
+      destruct (addr_eq_dec a a'); simplify.
   Qed.
 
   Lemma CacheRep_mark_pending:
@@ -295,19 +284,13 @@ Section OptimisticCache.
                (state (upd d a (a0, Pending)) (set_cache m (mark_pending (get_cache m) a))
                       s hm).
   Proof.
-    unfold CacheRep; intuition; simpl in *.
+    unfold CacheRep; intuition; simpl in *; simplify.
     - intro a'.
-      rewrite (get_set_id (cache P)).
-
-      destruct (addr_eq_dec a a'); subst; autorewrite with upd.
-      rewrite cache_get_pending_eq; solve_cache.
-
-      rewrite cache_get_pending_neq by auto; solve_cache.
-    - rewrite (get_set_id (cache P)).
-      intro a'.
-      destruct (addr_eq_dec a a'); subst.
-      rewrite cache_get_pending_eq; intuition eauto.
-      rewrite cache_get_pending_neq; intuition eauto.
+      destruct (addr_eq_dec a a'); simplify.
+      solve_cache.
+      solve_cache.
+    - intro a'.
+      destruct (addr_eq_dec a a'); simplify.
   Qed.
 
   Hint Resolve CacheRep_finish_read CacheRep_mark_pending.
@@ -341,14 +324,9 @@ Section OptimisticCache.
     intuition eauto.
     destruct sigma; simpl in *; eauto.
 
-    destruct sigma; simpl in *.
-    rewrite (get_set_id (cache P)); auto.
-
-    destruct sigma; simpl in *.
-    rewrite (get_set_id (cache P)).
-    rewrite cache_get_add_eq; auto.
-
-    destruct sigma; simpl in *; auto.
+    destruct sigma; simpl in *; simplify.
+    destruct sigma; simpl in *; simplify.
+    destruct sigma; simpl in *; simplify.
   Qed.
 
   Hint Extern 0 {{ ClearPending _ _ _; _ }} => apply ClearPending_ok : prog.
@@ -379,15 +357,13 @@ Section OptimisticCache.
     step.
     eexists; intuition eauto.
 
-    destruct r; step.
-    rewrite (set_get_id (cache P)); auto.
+    destruct r; step; simplify.
     intuition eauto.
 
     intros m'.
     case_eq (cache_get (get_cache m') a); intros.
-    step.
+    step; simplify.
 
-    rewrite (set_get_id (cache P)); auto.
     intuition eauto.
 
     step.
@@ -402,8 +378,7 @@ Section OptimisticCache.
     step.
     intros; step.
 
-    destruct sigma; simpl in *.
-    rewrite (get_set_id (cache P)).
+    destruct sigma; simpl in *; simplify.
     intuition eauto.
   Qed.
 
@@ -426,31 +401,23 @@ Section OptimisticCache.
       cache_get (get_cache m) a <> Invalid ->
       CacheRep (wb_add wb a v) (state d m (set_vdisk s (upd (get_vdisk s) a v)) hm).
   Proof.
-    unfold CacheRep; intuition; simpl in *.
+    unfold CacheRep; intuition; simpl in *; simplify.
     - unfold get_vdisk0, set_vdisk in *.
       rewrite (vdisk_vdisk0_neq P).
       eauto.
 
     - rewrite (vdisk_vdisk0_neq P).
       fold (get_vdisk0 s) in *.
-      rewrite (get_set_g_id (vdisk P)).
       intro a'.
-      destruct (addr_eq_dec a a'); subst; autorewrite with upd.
-      rewrite wb_get_add_eq; intuition eauto.
+      destruct (addr_eq_dec a a'); simplify.
       solve_cache.
       case_eq (wb_get wb a'); intros; simpl_match;
         intuition eauto.
       exists a0; congruence.
 
-      rewrite wb_get_add_neq by auto; intuition eauto.
       solve_cache.
-
     - intro a'; intros.
-      destruct (addr_eq_dec a a'); subst.
-      congruence.
-
-      rewrite wb_get_add_neq by auto.
-      specialize (H4 a'); eauto.
+      destruct (addr_eq_dec a a'); simplify.
   Qed.
 
   Hint Resolve CacheRep_write.
@@ -480,17 +447,13 @@ Section OptimisticCache.
     case_eq (cache_get (get_cache m') a); intros.
 
     step.
-    intros; step.
+    intros; step; simplify.
     intuition eauto.
-    destruct sigma; simpl in *; intuition eauto.
+    destruct sigma; simpl in *; intuition eauto; simplify.
 
-    destruct sigma; simpl in *; auto.
-    destruct sigma; simpl in *; auto.
-    rewrite (set_get_id (cache P)); auto.
-    destruct sigma; simpl in *; auto.
-
-    rewrite (get_set_g_id (vdisk P)).
-    autorewrite with upd; auto.
+    destruct sigma; simpl in *; auto; simplify.
+    destruct sigma; simpl in *; auto; simplify.
+    destruct sigma; simpl in *; auto; simplify.
 
     step.
     eexists; intuition eauto.
@@ -502,9 +465,7 @@ Section OptimisticCache.
     destruct sigma'; simpl in *; subst; intuition eauto.
     destruct sigma'; simpl in *; subst; intuition eauto.
     destruct sigma'; simpl in *; subst; intuition eauto.
-    rewrite (get_set_g_id (vdisk P));
-      autorewrite with upd;
-      eauto.
+    simplify.
 
     step.
     intros; step.
@@ -512,11 +473,8 @@ Section OptimisticCache.
     destruct sigma; simpl in *; intuition eauto.
     destruct sigma; simpl in *; intuition eauto.
     destruct sigma; simpl in *; intuition eauto.
-    rewrite (set_get_id (cache P)); auto.
-    destruct sigma; simpl in *; intuition eauto.
-    rewrite (get_set_g_id (vdisk P));
-      autorewrite with upd;
-      auto.
+    simplify.
+    destruct sigma; simpl in *; intuition eauto; simplify.
   Qed.
 
   (* TODO: implement *)
