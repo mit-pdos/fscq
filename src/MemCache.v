@@ -66,3 +66,8 @@ Section MemCache.
   Qed.
 
 End MemCache.
+
+Hint Rewrite cache_get_add_eq : cache.
+Hint Rewrite cache_get_add_neq using (solve [ auto ] ) : cache.
+Hint Rewrite cache_get_pending_eq : cache.
+Hint Rewrite cache_get_pending_neq using (solve [ auto ] ) : cache.
