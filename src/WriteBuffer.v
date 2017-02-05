@@ -21,7 +21,7 @@ Section WriteBuffer.
     | None => WbMissing
     end.
 
-  Definition wb_add wb a v :=
+  Definition wb_add wb a v : WriteBuffer :=
     Map.add a v wb.
 
   Theorem wb_get_add_eq : forall wb a v,

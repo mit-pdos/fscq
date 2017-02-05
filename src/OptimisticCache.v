@@ -12,13 +12,15 @@ Record mem_var St T :=
   { get_var : Mem St -> T;
     set_var : Mem St -> T -> Mem St;
     get_set_id : forall m v, get_var (set_var m v) = v;
-    set_get_id : forall m v, v = get_var m -> set_var m v = m}.
+    set_get_id : forall m v, v = get_var m -> set_var m v = m;
+    set_set : forall m v v', set_var (set_var m v) v' = set_var m v'; }.
 
 Record g_var St T :=
   { get_gvar : Abstraction St -> T;
     set_gvar : Abstraction St -> T -> Abstraction St;
     get_set_g_id : forall s v, get_gvar (set_gvar s v) = v;
-    set_get_g_id : forall s v, v = get_gvar s -> set_gvar s v = s}.
+    set_get_g_id : forall s v, v = get_gvar s -> set_gvar s v = s;
+    set_set_g : forall s v v', set_gvar (set_gvar s v) v' = set_gvar s v'; }.
 
 Record CacheParams St :=
   { cache: mem_var St Cache;
@@ -45,10 +47,13 @@ Section OptimisticCache.
 
   Hint Rewrite (get_set_id (cache P)) : get_set.
   Hint Rewrite (set_get_id (cache P)) using solve [ auto ] : get_set.
+  Hint Rewrite (set_set (cache P)) : get_set.
   Hint Rewrite (get_set_g_id (vdisk P)) : get_set.
   Hint Rewrite (set_get_g_id (vdisk P)) using solve [ auto ] : get_set.
+  Hint Rewrite (set_set_g (vdisk P)) : get_set.
   Hint Rewrite (get_set_g_id (vdisk_committed P)) : get_set.
   Hint Rewrite (set_get_g_id (vdisk_committed P)) using solve [ auto ] : get_set.
+  Hint Rewrite (set_set_g (vdisk_committed P)) : get_set.
   Hint Rewrite (vdisk_vdisk0_neq P) : get_set.
   Hint Rewrite (vdisk0_vdisk_neq P) : get_set.
 
@@ -56,6 +61,33 @@ Section OptimisticCache.
     Sigma.mem sigma' = set_cache (Sigma.mem sigma) (get_cache (Sigma.mem sigma')) /\
     Sigma.s sigma' = set_vdisk (set_vdisk0 (Sigma.s sigma) (get_vdisk0 (Sigma.s sigma')))
                        (get_vdisk (Sigma.s sigma')).
+
+  Theorem locally_modified_refl : forall sigma, locally_modified sigma sigma.
+  Proof.
+    unfold locally_modified.
+    destruct sigma; simpl in *; autorewrite with get_set; auto.
+  Qed.
+
+  Theorem locally_modified_hashmap : forall sigma sz buf,
+      locally_modified sigma (Sigma.upd_hm (sz:=sz) sigma buf).
+  Proof.
+    unfold locally_modified.
+    destruct sigma; simpl in *; autorewrite with get_set; auto.
+  Qed.
+
+  Theorem locally_modified_trans : forall sigma sigma' sigma'',
+      locally_modified sigma sigma' ->
+      locally_modified sigma' sigma'' ->
+      locally_modified sigma sigma''.
+  Proof.
+    unfold locally_modified.
+    destruct sigma, sigma', sigma''; simpl in *; autorewrite with get_set in *;
+      intuition auto.
+    rewrite H1 in *.
+    autorewrite with get_set in *; auto.
+
+    admit. (* should really have only one ghost var, to avoid distinctness issues *)
+  Admitted.
 
   Ltac simplify :=
     subst;
@@ -196,6 +228,77 @@ Section OptimisticCache.
     intuition eauto.
   Qed.
 
+  Lemma CacheRep_missing_wb : forall wb sigma a,
+      CacheRep wb sigma ->
+      get_vdisk (Sigma.s sigma) a = None ->
+      wb_get wb a = WbMissing.
+  Proof.
+    unfold CacheRep; intuition.
+    specialize (H a).
+    case_eq (wb_get wb a); intros; simpl_match; intuition eauto.
+    congruence.
+  Qed.
+
+  Lemma CacheRep_missing_cache : forall wb sigma a,
+      CacheRep wb sigma ->
+      get_vdisk (Sigma.s sigma) a = None ->
+      cache_get (get_cache (Sigma.mem sigma)) a = Missing.
+  Proof.
+    intros.
+    assert (wb_get wb a = WbMissing).
+    eapply CacheRep_missing_wb; eauto.
+    unfold CacheRep in *; intuition.
+    specialize (H a).
+    specialize (H2 a).
+    case_eq (cache_get (get_cache (Sigma.mem sigma)) a); intros;
+      repeat simpl_match; intuition eauto;
+        repeat deex;
+        congruence.
+  Qed.
+
+  Lemma CacheRep_missing_disk : forall wb sigma a,
+      CacheRep wb sigma ->
+      get_vdisk (Sigma.s sigma) a = None ->
+      Sigma.disk sigma a = None.
+  Proof.
+    intros.
+    assert (wb_get wb a = WbMissing).
+    eapply CacheRep_missing_wb; eauto.
+    assert (cache_get (get_cache (Sigma.mem sigma)) a = Missing).
+    eapply CacheRep_missing_cache; eauto.
+    unfold CacheRep in *; intuition.
+    specialize (H a).
+    specialize (H3 a).
+    repeat simpl_match.
+    rewrite <- H in H3; simpl_match; auto.
+  Qed.
+
+  Definition BufferRead_oob : forall tid wb a,
+      cprog_triple G tid
+                   (fun (_:unit) '(sigma_i, sigma) =>
+                      {| precondition :=
+                           CacheRep wb sigma /\
+                           get_vdisk (Sigma.s sigma) a = None;
+                         postcondition :=
+                           fun '(sigma_i', sigma') r =>
+                             sigma' = sigma /\
+                             r = None /\
+                             sigma_i' = sigma_i|})
+                   (BufferRead wb a).
+  Proof.
+    unfold cprog_triple, BufferRead; intros.
+
+    case_eq (wb_get wb a); intros.
+    step.
+    assert (wb_get wb a = WbMissing).
+    eapply CacheRep_missing_wb; eauto.
+    congruence.
+
+    step.
+    step.
+    intuition eauto.
+  Qed.
+
   Hint Extern 0 {{ BufferRead _ _; _ }} => apply BufferRead_ok : prog.
 
   Lemma CacheRep_clear_pending:
@@ -324,6 +427,7 @@ Section OptimisticCache.
                              Sigma.mem sigma' = set_cache (Sigma.mem sigma) (get_cache (Sigma.mem sigma')) /\
                              cache_get (get_cache (Sigma.mem sigma')) a = Present v0 Clean /\
                              Sigma.s sigma' = Sigma.s sigma /\
+                             Sigma.hm sigma' = Sigma.hm sigma /\
                              r = v0 /\
                              sigma_i' = sigma_i|})
                    (ClearPending m wb a).
@@ -339,6 +443,7 @@ Section OptimisticCache.
     intuition eauto.
     destruct sigma; simpl in *; eauto.
 
+    destruct sigma; simpl in *; simplify.
     destruct sigma; simpl in *; simplify.
     destruct sigma; simpl in *; simplify.
     destruct sigma; simpl in *; simplify.
@@ -382,6 +487,7 @@ Section OptimisticCache.
 
   Hint Extern 2 (get_vdisk (Sigma.s _) = _) => state_upd_ctx.
   Hint Extern 2 (get_vdisk0 (Sigma.s _) = _) => state_upd_ctx.
+  Hint Extern 2 (Sigma.hm _ = Sigma.hm _) => state_upd_ctx.
 
   Definition CacheRead_ok : forall tid wb a,
       cprog_triple G tid
@@ -395,6 +501,7 @@ Section OptimisticCache.
                              locally_modified sigma sigma' /\
                              get_vdisk (Sigma.s sigma') = get_vdisk (Sigma.s sigma) /\
                              get_vdisk0 (Sigma.s sigma') = get_vdisk0 (Sigma.s sigma) /\
+                             Sigma.hm sigma' = Sigma.hm sigma /\
                              match r with
                              | Some v => v = v0
                              | None => True
@@ -481,6 +588,8 @@ Section OptimisticCache.
                              CacheRep wb' sigma' /\
                              locally_modified sigma sigma' /\
                              get_vdisk (Sigma.s sigma') = upd (get_vdisk (Sigma.s sigma)) a v  /\
+                             get_vdisk0 (Sigma.s sigma') = get_vdisk0 (Sigma.s sigma) /\
+                             Sigma.hm sigma' = Sigma.hm sigma /\
                              sigma_i' = sigma_i |})
                    (CacheWrite wb a v).
   Proof.
@@ -672,6 +781,7 @@ Section OptimisticCache.
                              locally_modified sigma sigma' /\
                              get_vdisk0 (Sigma.s sigma') = get_vdisk (Sigma.s sigma) /\
                              get_vdisk (Sigma.s sigma') = get_vdisk (Sigma.s sigma) /\
+                             Sigma.hm sigma' = Sigma.hm sigma /\
                              sigma_i' = sigma_i |})
                    (CacheCommit wb).
   Proof.
@@ -705,6 +815,7 @@ Section OptimisticCache.
                              locally_modified sigma sigma' /\
                              get_vdisk (Sigma.s sigma') = get_vdisk0 (Sigma.s sigma) /\
                              get_vdisk0 (Sigma.s sigma') = get_vdisk0 (Sigma.s sigma) /\
+                             Sigma.hm sigma' = Sigma.hm sigma /\
                              sigma_i' = sigma_i |})
                    (CacheAbort wb).
   Proof.
