@@ -27,7 +27,9 @@ Ltac simplify :=
          | [ H: _ /\ _ |- _ ] => destruct H
          | [ |- exists (_:unit), _ ] => exists tt
          | [ |- True /\ _ ] => split; [ exact I | ]
-         | _ => subst
+         | [ a:unit |- _ ] => clear a
+         | _ => progress subst
+         | _ => progress intros
          end.
 
 Ltac monad_simpl :=

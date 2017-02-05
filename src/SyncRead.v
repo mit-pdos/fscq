@@ -32,7 +32,6 @@ Section SyncRead.
 
     step.
 
-    intuition eauto; subst.
     eexists; intuition eauto.
 
     (* need better way to simplify nested updates on Sigma *)

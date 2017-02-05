@@ -27,7 +27,9 @@ Record CacheParams St :=
     vdisk: g_var St Disk;
     vdisk_committed: g_var St Disk;
     vdisk_vdisk0_neq : forall s vd', get_gvar vdisk_committed (set_gvar vdisk s vd') =
-                                get_gvar vdisk_committed s }.
+                                get_gvar vdisk_committed s;
+    vdisk0_vdisk_neq : forall s vd', get_gvar vdisk (set_gvar vdisk_committed s vd') =
+                                get_gvar vdisk s; }.
 
 Section OptimisticCache.
 
@@ -43,12 +45,18 @@ Section OptimisticCache.
   Definition get_vdisk0 := get_gvar (vdisk_committed P).
   Definition set_vdisk0 := set_gvar (vdisk_committed P).
 
-  Hint Rewrite (get_set_id (cache P)) using solve [ auto ] : get_set.
+  Hint Rewrite (get_set_id (cache P)) : get_set.
   Hint Rewrite (set_get_id (cache P)) using solve [ auto ] : get_set.
-  Hint Rewrite (get_set_g_id (vdisk P)) using solve [ auto ] : get_set.
+  Hint Rewrite (get_set_g_id (vdisk P)) : get_set.
+  Hint Rewrite (set_get_g_id (vdisk P)) using solve [ auto ] : get_set.
+  Hint Rewrite (get_set_g_id (vdisk_committed P)) : get_set.
+  Hint Rewrite (set_get_g_id (vdisk_committed P)) using solve [ auto ] : get_set.
+  Hint Rewrite (vdisk_vdisk0_neq P) : get_set.
+  Hint Rewrite (vdisk0_vdisk_neq P) : get_set.
 
   Ltac simplify :=
     subst;
+    simpl;
     autorewrite with get_set cache upd;
     repeat simpl_match;
     auto.
@@ -364,7 +372,7 @@ Section OptimisticCache.
     destruct r; step; simplify.
     intuition eauto.
 
-    intros m'.
+    rename r into m'.
     case_eq (cache_get (get_cache m') a); intros.
     step; simplify.
 
@@ -380,7 +388,7 @@ Section OptimisticCache.
     eexists; intuition eauto.
 
     step.
-    intros; step.
+    step.
 
     destruct sigma; simpl in *; simplify.
     intuition eauto.
@@ -406,12 +414,7 @@ Section OptimisticCache.
       CacheRep (wb_add wb a v) (state d m (set_vdisk s (upd (get_vdisk s) a v)) hm).
   Proof.
     unfold CacheRep; intuition; simpl in *; simplify.
-    - unfold get_vdisk0, set_vdisk in *.
-      rewrite (vdisk_vdisk0_neq P).
-      eauto.
-
-    - rewrite (vdisk_vdisk0_neq P).
-      fold (get_vdisk0 s) in *.
+    - fold (get_vdisk0 s) in *.
       intro a'.
       destruct (addr_eq_dec a a'); simplify.
       solve_cache.
@@ -447,11 +450,11 @@ Section OptimisticCache.
     unfold cprog_triple, CacheWrite; intros.
     step.
 
-    intros m'.
+    rename r into m'.
     case_eq (cache_get (get_cache m') a); intros.
 
     step.
-    intros; step; simplify.
+    step; simplify.
     intuition eauto.
     destruct sigma; simpl in *; intuition eauto; simplify.
 
@@ -462,7 +465,7 @@ Section OptimisticCache.
     step.
     eexists; intuition eauto.
     step.
-    intros; step.
+    step.
     intuition eauto.
 
     destruct sigma'; simpl in *; subst; intuition eauto.
@@ -472,7 +475,7 @@ Section OptimisticCache.
     simplify.
 
     step.
-    intros; step.
+    step.
     intuition eauto.
     destruct sigma; simpl in *; intuition eauto.
     destruct sigma; simpl in *; intuition eauto.
@@ -497,6 +500,43 @@ Section OptimisticCache.
         _ <- GhostUpdate (fun _ s => set_vdisk0 s (get_vdisk s));
         Ret (tt, empty_writebuffer).
 
+  Lemma no_pending_dirty_empty : forall c,
+      no_pending_dirty c empty_writebuffer.
+  Proof.
+    unfold no_pending_dirty; eauto.
+  Qed.
+
+  Lemma wb_rep_empty : forall vd,
+      wb_rep vd empty_writebuffer vd.
+  Proof.
+    unfold wb_rep; intros; simpl; auto.
+  Qed.
+
+  Hint Resolve no_pending_dirty_empty wb_rep_empty.
+
+  Lemma CacheRep_commit:
+    forall (wb : WriteBuffer) (d : DISK) (m : Mem St)
+      (s : Abstraction St) (hm : hashmap),
+      CacheRep wb (state d m s hm) ->
+      CacheRep empty_writebuffer
+               (state d (set_cache m (upd_with_buffer (get_cache m) wb))
+                      (set_vdisk0 s (get_vdisk s)) hm).
+  Proof.
+    unfold CacheRep; simpl; intuition; simplify.
+    admit.
+  Admitted.
+
+  Lemma CacheRep_abort:
+    forall (wb : WriteBuffer) (d : DISK) (m : Mem St)
+      (s : Abstraction St) (hm : hashmap),
+      CacheRep wb (state d m s hm) ->
+      CacheRep empty_writebuffer (state d m (set_vdisk s (get_vdisk0 s)) hm).
+  Proof.
+    unfold CacheRep; simpl; intuition; simplify.
+  Qed.
+
+  Hint Resolve CacheRep_commit CacheRep_abort.
+
   Definition CacheCommit_ok : forall tid wb,
       cprog_triple G tid
                    (fun (_:unit) '(sigma_i, sigma) =>
@@ -510,7 +550,18 @@ Section OptimisticCache.
                              sigma_i' = sigma_i |})
                    (CacheCommit wb).
   Proof.
-  Abort.
+    unfold cprog_triple, CacheCommit; intros.
+
+    step.
+    step.
+    step.
+    step.
+
+    intuition eauto.
+    destruct sigma; simplify.
+    destruct sigma; simplify.
+    destruct sigma; simplify.
+  Qed.
 
   Definition CacheAbort wb : @cprog St _ :=
     _ <- GhostUpdate (fun _ s => set_vdisk s (get_vdisk0 s));
@@ -529,7 +580,16 @@ Section OptimisticCache.
                              sigma_i' = sigma_i |})
                    (CacheAbort wb).
   Proof.
-  Abort.
+    unfold cprog_triple, CacheAbort; intros.
+
+    step.
+    step.
+
+    intuition eauto.
+    destruct sigma; simplify; eauto.
+    destruct sigma; simplify; eauto.
+    destruct sigma; simplify; eauto.
+  Qed.
 
 End OptimisticCache.
 
