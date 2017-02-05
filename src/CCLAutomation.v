@@ -1,5 +1,5 @@
 Require Import CCLProg CCLPrimitives.
-Require Pred.
+Require Export Automation.
 
 Ltac destruct_st :=
   match goal with
@@ -14,13 +14,13 @@ Ltac unfold_double :=
   match goal with
   | [ H: ReflectDouble _ _ _ _ _ _ |- _ ] =>
     unfold ReflectDouble in H; simpl;
-    repeat Pred.deex
+    repeat deex
   | [ |- ReflectDouble _ _ _ _ _ _ ] =>
     unfold ReflectDouble; simpl
   end.
 
 Ltac simplify :=
-  intros; repeat Pred.deex;
+  intros; repeat deex;
   repeat unfold_double;
   repeat destruct_st;
   repeat match goal with
@@ -59,28 +59,4 @@ Ltac step :=
             end
       end | ];
     simplify
-  end.
-
-Ltac simpl_match :=
-  let repl_match_goal d d' :=
-      replace d with d';
-      lazymatch goal with
-      | [ |- context[match d' with _ => _ end] ] => fail
-      | _ => idtac
-      end in
-  let repl_match_hyp H d d' :=
-      replace d with d' in H;
-      lazymatch type of H with
-      | context[match d' with _ => _ end] => fail
-      | _ => idtac
-      end in
-  match goal with
-  | [ Heq: ?d = ?d' |- context[match ?d with _ => _ end] ] =>
-    repl_match_goal d d'
-  | [ Heq: ?d' = ?d |- context[match ?d with _ => _ end] ] =>
-    repl_match_goal d d'
-  | [ Heq: ?d = ?d', H: context[match ?d with _ => _ end] |- _ ] =>
-    repl_match_hyp H d d'
-  | [ Heq: ?d' = ?d, H: context[match ?d with _ => _ end] |- _ ] =>
-    repl_match_hyp H d d'
   end.
