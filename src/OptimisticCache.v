@@ -4,6 +4,10 @@ Require Import Mem Pred AsyncDisk.
 
 Require Import MemCache WriteBuffer.
 
+Require List.
+Import List.ListNotations.
+Open Scope list_scope.
+
 Definition Disk := @mem addr addr_eq_dec valu.
 
 Record mem_var St T :=
@@ -477,13 +481,19 @@ Section OptimisticCache.
     destruct sigma; simpl in *; intuition eauto; simplify.
   Qed.
 
-  (* TODO: implement *)
-  Definition add_writes (c:Cache) (wb:WriteBuffer) := c.
+  Fixpoint add_writes (c:Cache) (wrs: list (addr * valu)) :=
+    match wrs with
+    | nil => c
+    | (a,v) :: wrs' => add_writes (add_entry Dirty c a v) wrs'
+    end.
+
+  Definition upd_with_buffer (c:Cache) (wb:WriteBuffer) :=
+    add_writes c (wb_writes wb).
 
   Definition CacheCommit wb :=
     m <- Get;
       let c := get_cache m in
-      _ <- Assgn (set_cache m (add_writes c wb));
+      _ <- Assgn (set_cache m (upd_with_buffer c wb));
         _ <- GhostUpdate (fun _ s => set_vdisk0 s (get_vdisk s));
         Ret (tt, empty_writebuffer).
 
