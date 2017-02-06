@@ -5,7 +5,7 @@ Require Import FunctionalExtensionality.
 Section SyncRead.
 
   Variable St:StateTypes.
-  Variable G: TID -> Sigma St -> Sigma St -> Prop.
+  Variable G: Protocol St.
 
   Definition SyncRead a : @cprog St _ :=
     _ <- BeginRead a;
@@ -13,19 +13,18 @@ Section SyncRead.
       Ret v.
 
   Theorem SyncRead_ok : forall tid a,
-      cprog_triple G tid
-                   (fun v0 '(sigma_i, sigma) =>
-                      {| precondition :=
-                           Sigma.disk sigma a = Some (v0, NoReader);
-                         postcondition :=
-                           fun '(sigma_i', sigma') r =>
-                             sigma_i' = sigma_i /\
-                             sigma' = sigma /\
-                             r = v0; |})
-                   (SyncRead a).
+      cprog_spec G tid
+                 (fun v0 '(sigma_i, sigma) =>
+                    {| precondition :=
+                         Sigma.disk sigma a = Some (v0, NoReader);
+                       postcondition :=
+                         fun '(sigma_i', sigma') r =>
+                           sigma_i' = sigma_i /\
+                           sigma' = sigma /\
+                           r = v0; |})
+                 (SyncRead a).
   Proof.
-    unfold cprog_triple.
-    unfold SyncRead; intros.
+    unfold SyncRead.
     step.
 
     eexists; intuition eauto.
