@@ -3,8 +3,8 @@ Require Import Word.
 Require Import Mem Pred.
 Require Import PeanoNat.
 Require Import Hashmap.
-Require Import Eqdep.
 Require Import Relation_Operators.
+Require Automation.
 
 Global Set Implicit Arguments.
 
@@ -183,12 +183,7 @@ Arguments Ret {St T} v.
 Arguments Protocol St : clear implicits.
 
 Module CCLTactics.
-  Ltac inj_pair2 :=
-    match goal with
-    | [ H: existT ?P ?a _ = existT ?P ?a _ |- _ ] =>
-      apply inj_pair2 in H; subst
-    end.
-
+  Import Automation.
   Ltac inv_bind :=
     match goal with
     | [ H: exec _ _ _ (Bind _ _) _ |- _ ] =>

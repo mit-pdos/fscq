@@ -1,3 +1,5 @@
+Require Import Eqdep.
+
 Ltac safe_intuition :=
   repeat match goal with
          | [ H: _ /\ _ |- _ ] => destruct H
@@ -33,4 +35,10 @@ Ltac simpl_match :=
     repl_match_hyp H d d'
   | [ Heq: ?d' = ?d, H: context[match ?d with _ => _ end] |- _ ] =>
     repl_match_hyp H d d'
+  end.
+
+Ltac inj_pair2 :=
+  match goal with
+  | [ H: existT ?P ?a _ = existT ?P ?a _ |- _ ] =>
+    apply inj_pair2 in H; subst
   end.
