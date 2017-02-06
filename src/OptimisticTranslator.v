@@ -158,6 +158,7 @@ Section OptimisticTranslator.
     all: exact tt.
   Qed.
 
+  (* TODO: factor out seq_disk function from [sigma] to a [rawdisk] *)
   Theorem translate_simulation : forall T (p: prog T),
       forall tid sigma_i sigma out wb,
         CacheRep P wb sigma ->
@@ -166,24 +167,24 @@ Section OptimisticTranslator.
         | Finished sigma_i' sigma' r =>
           let (r, wb') := r in
           CacheRep P wb' sigma' /\
-          locally_modified P sigma sigma' /\
-          get_vdisk0 P (Sigma.s sigma') = get_vdisk0 P (Sigma.s sigma) /\
+           locally_modified P sigma sigma' /\
+           get_vdisk0 P (Sigma.s sigma') = get_vdisk0 P (Sigma.s sigma) /\
           match r with
           | Success v =>
             Prog.exec (add_buffers (get_vdisk P (Sigma.s sigma)))
-                      (Sigma.hm sigma) p
-                      (Prog.Finished (add_buffers (get_vdisk P (Sigma.s sigma')))
-                                     (Sigma.hm sigma') v)
+                       (Sigma.hm sigma) p
+                       (Prog.Finished (add_buffers (get_vdisk P (Sigma.s sigma')))
+                                      (Sigma.hm sigma') v)
           | Failed =>
-          (* cache miss: anything to say is common to the success case and is
-          outside this match *)
+            (* cache miss: just give consistency properties (listed outside
+            match) *)
             True
           end
-        | Error =>
-            Prog.exec (add_buffers (get_vdisk P (Sigma.s sigma)))
-                      (Sigma.hm sigma) p
-                      (Prog.Failed _)
-        end.
+        | Error => False
+        end \/
+        Prog.exec (add_buffers (get_vdisk P (Sigma.s sigma)))
+                  (Sigma.hm sigma) p
+                  (Prog.Failed _).
   Proof.
     induction p; simpl; intros.
     - CCLTactics.inv_ret; intuition eauto.
@@ -198,15 +199,12 @@ Section OptimisticTranslator.
         destruct v as [r wb']; intuition.
         destruct r; subst; CCLTactics.inv_ret;
           intuition eauto.
+        left; intuition eauto.
         eapply Prog.XStep; [ | eauto ].
         rewrite H2, H5. eauto.
       + (* error read *)
-        CCLTactics.inv_bind.
-
-        eapply CacheRead_fail_oob in H6; eauto.
-        congruence.
-
-        eauto.
+        right.
+        CCLTactics.inv_bind; eauto.
     - case_eq (get_vdisk P (Sigma.s sigma) a); intros.
       + CCLTactics.inv_bind;
           match goal with
@@ -216,21 +214,16 @@ Section OptimisticTranslator.
           end; simpl in *; intuition eauto.
         destruct v0 as [? wb']; intuition.
         CCLTactics.inv_ret; intuition eauto.
+        left; intuition eauto.
         eapply Prog.XStep.
         rewrite H5.
         eapply Prog.StepWrite; eauto.
         rewrite H2. rewrite add_buffers_upd.
         apply possible_sync_upd_nil.
       + (* error write *)
-        CCLTactics.inv_bind.
-
-        admit. (* CacheWrite doesn't actually fail when writing out-of-bounds,
-but it does break the CacheRep, so we can't prove the Finished case. Should be
-ok to reduce the number of failing cases, but this requires that the resulting
-execution be somewhat detached from the original. *)
-
-        eauto.
-    - CCLTactics.inv_ret; intuition eauto.
+        CCLTactics.inv_bind; eauto.
+    - left.
+      CCLTactics.inv_ret; intuition eauto.
       eapply Prog.XStep.
       econstructor.
       rewrite sync_mem_add_buffers; eauto.
@@ -241,6 +234,7 @@ execution be somewhat detached from the original. *)
           eapply spec_to_exec in H;
             eauto using Hash_ok
         end; simpl in *; intuition (subst; eauto).
+      left.
       CCLTactics.inv_ret; intuition eauto.
       unfold CacheRep; destruct sigma; eauto.
       apply locally_modified_hashmap.
@@ -251,21 +245,19 @@ execution be somewhat detached from the original. *)
     - CCLTactics.inv_bind.
       eapply IHp in H6; eauto.
       destruct v as [r wb']; intuition eauto.
-      destruct r; intuition eauto.
-      eapply H in H10; eauto.
-      destruct out.
-      destruct r as [r wb'']; intuition eauto.
-      eapply locally_modified_trans; eauto.
-      congruence.
-      destruct r; eauto.
-      eapply Prog.XBindFinish; eauto.
-      CCLTactics.inv_ret; intuition eauto.
-
-      eapply IHp in H4; eauto.
+      destruct r; try CCLTactics.inv_ret; intuition eauto.
+      + eapply H in H10; intuition eauto.
+        left.
+        destruct out; eauto.
+        destruct r as [r wb'']; intuition eauto.
+        eapply locally_modified_trans; eauto.
+        congruence.
+        destruct r; eauto.
+      + apply IHp in H4; intuition.
 
       Unshelve.
       all: exact tt.
-  Admitted.
+  Qed.
 
 End OptimisticTranslator.
 
