@@ -185,6 +185,7 @@ Section OptimisticTranslator.
           CacheRep P wb' sigma' /\
            locally_modified P sigma sigma' /\
            get_vdisk0 P (Sigma.s sigma') = get_vdisk0 P (Sigma.s sigma) /\
+           sigma_i' = sigma_i /\
           match r with
           | Success v =>
             Prog.exec (seq_disk sigma) (Sigma.hm sigma) p
@@ -271,6 +272,7 @@ Section OptimisticTranslator.
         destruct r as [r wb'']; intuition eauto.
         eapply locally_modified_trans; eauto.
         congruence.
+        congruence.
         destruct r; eauto.
       + apply IHp in H4; intuition.
 
@@ -280,9 +282,20 @@ Section OptimisticTranslator.
 
   Record SeqSpecParams T :=
     { seq_pre : Prop;
-      seq_post : rawdisk -> hashmap -> T -> Prop; }.
+      seq_post : rawdisk -> hashmap -> T -> Prop;
+      seq_crash : rawdisk -> hashmap -> Prop; }.
 
   Definition SeqSpec T := rawdisk -> hashmap -> SeqSpecParams T.
+
+  Definition prog_ok T (spec: SeqSpec T) (p: prog T) :=
+    forall d hm,
+      seq_pre (spec d hm) ->
+      forall out, Prog.exec d hm p out ->
+             match out with
+             | Prog.Finished d' hm' v => seq_post (spec d hm) d' hm' v
+             | Prog.Failed _ => False
+             | Prog.Crashed _ d' hm' => seq_crash (spec d hm) d' hm'
+             end.
 
   Definition translate_spec T (seq_spec: SeqSpec T) :
     WriteBuffer -> Spec unit (Result T * WriteBuffer) :=
@@ -302,11 +315,24 @@ Section OptimisticTranslator.
              sigma_i' = sigma_i |}.
 
   Theorem translate_ok : forall T (p: prog T) (spec: SeqSpec T) tid wb,
-      (* need a statement of sequential correctness; needs to be compatible with
-Hoare double Hoare.corr2, but for the purpose of this proof could be simpler. *)
+      prog_ok spec p ->
       cprog_triple G tid (translate_spec spec wb) (translate p wb).
   Proof.
-  Abort.
+    unfold prog_ok; intros.
+    apply triple_triple'_equiv; unfold cprog_triple'; intros.
+    destruct st.
+    eapply translate_simulation in H1; simpl in *; intuition eauto.
+    - (* concurrent execution finished *)
+      destruct out; eauto.
+      destruct r as [r wb']; intuition eauto.
+      destruct r; eauto.
+      eapply H in H7; eauto.
+    -
+      (* rather than showing something about concurrent execution, simulation
+      showed that the sequential program fails; rule out this possibility from
+      the spec and precondition *)
+      eapply H in H0; eauto; contradiction.
+  Qed.
 
 End OptimisticTranslator.
 
