@@ -1,4 +1,4 @@
-Require Import CCLProg CCLPrimitives.
+Require Import CCLProg CCLMonadLaws CCLHoareTriples CCLPrimitives.
 Require Export Automation.
 
 Ltac destruct_st :=
@@ -9,19 +9,8 @@ Ltac destruct_st :=
     (destruct st as [a b] || destruct st as [sigma_i sigma]); cbn [precondition postcondition] in *
   end.
 
-(* unfold ReflectDouble into primitive Hoare double statement *)
-Ltac unfold_double :=
-  match goal with
-  | [ H: ReflectDouble _ _ _ _ _ _ |- _ ] =>
-    unfold ReflectDouble in H; simpl;
-    repeat deex
-  | [ |- ReflectDouble _ _ _ _ _ _ ] =>
-    unfold ReflectDouble; simpl
-  end.
-
 Ltac simplify :=
   intros; repeat deex;
-  repeat unfold_double;
   repeat destruct_st;
   repeat match goal with
          | [ H: _ /\ _ |- _ ] => destruct H
@@ -44,7 +33,9 @@ Ltac monad_simpl :=
          end.
 
 Ltac step :=
+  intros;
   match goal with
+  | [ |- cprog_spec _ _ _ _ ] => unfold cprog_spec; step
   | [ |- cprog_ok _ _ _ _ ] =>
     eapply cprog_ok_weaken; [
       match goal with

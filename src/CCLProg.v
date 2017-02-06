@@ -3,6 +3,7 @@ Require Import Word.
 Require Import Mem Pred.
 Require Import PeanoNat.
 Require Import Hashmap.
+Require Import Eqdep.
 Require Import Relation_Operators.
 
 Global Set Implicit Arguments.
@@ -115,12 +116,14 @@ Section CCL.
 
   Arguments Error {T}.
 
-  Variable Guarantee : TID -> Sigma St -> Sigma St -> Prop.
+  Definition Protocol := TID -> Sigma St -> Sigma St -> Prop.
+  Variable Guarantee : Protocol.
 
-  Definition Rely tid :=
-    clos_refl_trans _ (fun sigma sigma' =>
-                         exists tid', tid <> tid' /\
-                                 Guarantee tid sigma sigma').
+  Definition Rely : Protocol :=
+    fun tid =>
+      clos_refl_trans _ (fun sigma sigma' =>
+                           exists tid', tid <> tid' /\
+                                   Guarantee tid sigma sigma').
 
   Inductive exec (tid:TID) : forall T, (Sigma St * Sigma St) -> cprog T -> outcome T -> Prop :=
   | ExecRet : forall T (v:T) sigma_i sigma, exec tid (sigma_i, sigma) (Ret v) (Finished sigma_i sigma v)
@@ -158,27 +161,9 @@ Section CCL.
                        | Error => False
                        end.
 
-  Record SpecParams T :=
-    { precondition :  Prop;
-      postcondition : (Sigma St * Sigma St) ->
-                      T -> Prop }.
-
-  Definition Spec A T := A -> (Sigma St * Sigma St) -> SpecParams T.
-
-  Definition ReflectDouble tid A T T' (spec: Spec A T')
-             (rx: T' -> cprog T) : SpecDouble T :=
-    fun st donecond =>
-      exists a, precondition (spec a st) /\
-           forall r, cprog_ok tid (fun st' donecond_rx =>
-                                postcondition (spec a st) st' r /\
-                                donecond_rx = donecond) (rx r).
-
-  Definition cprog_triple tid A T' (spec: Spec A T') (p: cprog T') :=
-    forall T (rx: _ -> cprog T),
-      cprog_ok tid (ReflectDouble tid spec rx) (Bind p rx).
-
 End CCL.
 
+(* TODO: make this support destructuring with recursive binders *)
 Notation "x <- p1 ; p2" := (Bind p1 (fun x => p2))
                             (at level 60, right associativity).
 
@@ -191,6 +176,58 @@ Notation "{{ p ; '_' }}" := (cprog_ok _ _ _ (Bind p _)) (only parsing).
 
 Arguments Error {St T}.
 Arguments Ret {St T} v.
+Arguments Protocol St : clear implicits.
+
+Module CCLTactics.
+  Ltac inj_pair2 :=
+    match goal with
+    | [ H: existT ?P ?a _ = existT ?P ?a _ |- _ ] =>
+      apply inj_pair2 in H; subst
+    end.
+
+  Ltac inv_bind :=
+    match goal with
+    | [ H: exec _ _ _ (Bind _ _) _ |- _ ] =>
+      inversion H; subst; repeat inj_pair2;
+      try match goal with
+          | [ H: step _ _ _ _ _ |- _ ] =>
+            solve [ inversion H ]
+          | [ H: fail_step _ _ |- _ ] =>
+            solve [ inversion H ]
+          end;
+      clear H
+    end.
+
+  Ltac inv_ret :=
+    match goal with
+    | [ H: exec _ _ _ (Ret _) _ |- _ ] =>
+      inversion H; subst; repeat inj_pair2;
+      try match goal with
+          | [ H: step _ _ (Ret _) _ _ |- _ ] =>
+            solve [ inversion H ]
+          | [ H: fail_step _ (Ret _) |- _ ] =>
+            solve [ inversion H ]
+          end;
+      clear H
+    end.
+
+  Local Ltac inv_cleanup H :=
+    inversion H; subst; repeat inj_pair2.
+
+  Ltac inv_exec' H :=
+    inv_cleanup H;
+    try match goal with
+        | [ H: step _ _ _ _ _ |- _ ] => inv_cleanup H
+        | [ H: fail_step _ _ |- _ ] => inv_cleanup H
+        end; try congruence.
+
+  Ltac inv_exec :=
+    match goal with
+    | [ H: exec _ _ _ _ (Finished _ _ _) |- _ ] => inv_exec' H
+    | [ H: exec _ _ _ _ Error |- _ ] => inv_exec' H
+    end.
+
+End CCLTactics.
 
 (* Local Variables: *)
 (* company-coq-local-symbols: (("Sigma" . ?Σ) ("sigma" . ?σ) ("sigma'" . (?σ (Br . Bl) ?'))) *)
