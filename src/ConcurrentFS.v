@@ -2,12 +2,16 @@ Require Import CCL.
 Require Import OptimisticCache WriteBuffer.
 Require Import OptimisticTranslator OptimisticFS.
 
-Import TreeSeq.TREESEQ BFile.BFILE FSLayout.
+Require AsyncFS.
+(* imports for DirTreeRep.rep *)
+Import FSLayout DirTreeDef Inode.INODE.
+(* import memstate *)
+Import BFile.BFILE.
 
 Record FSParams St :=
   { fs_cache : CacheParams St;
     fsmem: var (Mem St) memstate;
-    fstrees: var (Abstraction St) treeseq; }.
+    fstree: var (Abstraction St) dirtree; }.
 
 Section ConcurrentFS.
 
@@ -17,7 +21,7 @@ Section ConcurrentFS.
 
   Definition get_fsmem := get_var (fsmem FP).
   Definition set_fsmem := set_var (fsmem FP).
-  Definition upd_fstrees s update := set_var (fstrees FP) s (update (get_var (fstrees FP) s)).
+  Definition upd_fstree s update := set_var (fstree FP) s (update (get_var (fstree FP) s)).
 
   Definition guard {T} (r: Result T) : {exists v, r=Success v} + {r=Failed}.
     destruct r; eauto.
@@ -25,7 +29,7 @@ Section ConcurrentFS.
 
   Definition retry_syscall T
              (p: memstate -> @cprog St (Result (T * memstate) * WriteBuffer))
-             (update: TID -> treeseq -> treeseq)
+             (update: TID -> dirtree -> dirtree)
     : cprog (Result T) :=
     retry guard (m <- Get;
                    do '(r, wb) <- p (get_fsmem m);
@@ -34,7 +38,7 @@ Section ConcurrentFS.
                      _ <- CacheCommit (fs_cache FP) wb;
                        m <- Get;
                        _ <- Assgn (set_fsmem m ms');
-                       _ <- GhostUpdate (fun tid s => upd_fstrees s (update tid));
+                       _ <- GhostUpdate (fun tid s => upd_fstree s (update tid));
                        Ret (Success r)
                    | Failed =>
                      _ <- CacheAbort (fs_cache FP) wb;
