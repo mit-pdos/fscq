@@ -47,7 +47,7 @@ Require Import TreeSeq.
 Import TREESEQ.
 
 Require Import CCL.
-Require Import OptimisticCache OptimisticTranslator.
+Require Import OptimisticCache WriteBuffer OptimisticTranslator.
 
 Local Lemma corr2_exists : forall T A spec (p: prog T),
     (forall (a:A), Hoare.corr2 (fun hm done crash => spec hm done crash a) p) ->
@@ -65,14 +65,12 @@ Section OptimisticFS.
   Variable G:Protocol St.
   Variable P:CacheParams St.
 
-  Definition file_get_attr fsxp inum mscs :=
-    translate P (AFS.file_get_attr fsxp inum mscs).
-
   Definition framed_spec A T (spec: rawpred -> SeqSpec A T) : SeqSpec (A * rawpred) T :=
     fun '(a, F) => spec F a.
 
-  Definition translation_spec A T (spec: rawpred -> SeqSpec A T) (p: prog T) :=
-    forall tid wb, cprog_spec G tid (translate_spec P (framed_spec spec) wb) (translate P p wb).
+  Definition translation_spec A T (spec: rawpred -> SeqSpec A T)
+             (p: WriteBuffer -> cprog (Result T * WriteBuffer)) :=
+    forall tid wb, cprog_spec G tid (translate_spec P (framed_spec spec) wb) (p wb).
 
   Ltac spec_reflect :=
     unfold prog_spec; simpl;
@@ -92,6 +90,30 @@ Section OptimisticFS.
        hm at level 0, hm' at level 0, hm'c at level 0,
        a1 binder, an binder).
 
+  Ltac translate_lift p :=
+    lazymatch type of p with
+    | prog _ => exact (translate P p)
+    | ?A -> ?B =>
+      (* unfold p just to extract its first argument name *)
+      let p' := eval hnf in p in
+      match p' with
+        | (fun (name:_) => _) =>
+            let var := fresh name in
+            exact (fun (var:A) => ltac:(translate_lift (p var)))
+        | (fun (name:_) => _) =>
+            let var := fresh "a" in
+            exact (fun (var:A) => ltac:(translate_lift (p var)))
+      end
+    end.
+
+  Ltac translate_ok :=
+    unfold translation_spec, framed_spec; intros;
+    apply translate_ok;
+    apply prog_quadruple_spec_equiv;
+    spec_reflect.
+
+  Definition file_get_attr := ltac:(translate_lift AFS.file_get_attr).
+
   Definition file_getattr_ok : forall fsxp inum mscs,
       translation_spec
         (SPEC {< '(ds, ts, pathname, Fm, Ftop, Ftree, f),
@@ -104,12 +126,31 @@ Section OptimisticFS.
                              CRASH: hm'
                                       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
                                     >})
-        (AFS.file_get_attr fsxp inum mscs).
+        (file_get_attr fsxp inum mscs).
   Proof.
-    unfold translation_spec, framed_spec; intros.
-    apply translate_ok.
-    apply prog_quadruple_spec_equiv.
-    spec_reflect.
+    translate_ok.
+  Qed.
+
+  Definition lookup := ltac:(translate_lift AFS.lookup).
+
+  Theorem treeseq_lookup_ok: forall fsxp dnum fnlist mscs,
+      translation_spec
+        (SPEC {< '(ds, ts, Fm, Ftop),
+               PRE:hm
+                     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+                   [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
+                   [[ dirtree_inum (TStree ts !!) = dnum ]] *
+                   [[ dirtree_isdir (TStree ts !!) = true ]]
+                     POST:hm' RET:^(mscs', r)
+                              LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+                          [[ (isError r /\ None = find_name fnlist (TStree ts !!)) \/
+                             (exists v, r = OK v /\ Some v = find_name fnlist (TStree ts !!))%type ]] *
+                          [[ MSAlloc mscs' = MSAlloc mscs ]]
+                            CRASH:hm'  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+                                  >})
+        (lookup fsxp dnum fnlist mscs).
+  Proof.
+    translate_ok.
   Qed.
 
 End OptimisticFS.
