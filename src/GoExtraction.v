@@ -138,15 +138,11 @@ Ltac is_transformable v :=
   let T := type of v in
   let wr := constr:(_ : WrapByTransforming T) in idtac.
 
-Ltac transform_pre :=
-  match goal with
-  | [ |- EXTRACT _ {{ ?pre }} _ {{ _ }} // _ ] =>
-    match pre with
-    | context[?k ~> ?v] =>
-      is_transformable v;
-      eapply hoare_strengthen_pre; [
-        rewrite ?transform_pimpl; simpl; reflexivity | ]
-    end
+Ltac transform_includes v term :=
+  let y := constr:(transform v) in
+  let x := ltac:(eval simpl in y) in
+  match x with
+  | context [term] => idtac
   end.
 
 Ltac compile_ret :=
@@ -187,6 +183,13 @@ Ltac compile_ret_transformable :=
           reflexivity
         end
       | eapply CompileRet ] | cancel_go | cancel_go ]
+  | [ |- EXTRACT Ret ?x {{ ?pre }} _ {{ _ }} // _ ] =>
+    match pre with
+    | context [ (?k_ ~> ?v)%pred ] =>
+      transform_includes v x;
+      eapply hoare_strengthen_pre;
+        [ rewrite ?transform_pimpl with (k := k_); simpl; reflexivity | ]
+    end
   end.
 
 Ltac compile_match := match goal with
@@ -597,7 +600,6 @@ Ltac compile_step :=
   || compile_split
   || compile_ret_transformable
   || compile_decompose
-  || transform_pre (* TODO: only do this when it should be useful *)
   .
 
 Ltac compile :=
