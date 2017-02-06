@@ -110,6 +110,46 @@ Qed.
 
 Import Go.
 
+Require Import ProgMonad.
+Lemma bind_f : forall A B C (a : A) (f : A -> B) (g : B -> prog C),
+    prog_equiv (x <- Ret (f a); g x) (x' <- Ret a; g (f x')).
+Proof.
+  intros.
+  rewrite ?bind_left_id.
+  reflexivity.
+Qed.
+
+Instance GoWrapper_eq_rect A (x : A) P y (e : x = y) {Wr : GoWrapper (P y)} : GoWrapper (P x) := {}.
+  - exact wrap_type.
+  - intros.
+    rewrite e in X.
+    apply wrap'; assumption.
+  - simpl; intros.
+    find_apply_lem_hyp wrap_inj.
+    find_apply_lem_hyp eq_rect_inj.
+    assumption.
+Defined.
+
+Lemma CompileEqRect : forall A x P p y {Wr : GoWrapper (P y)} e rvar F xp env,
+    EXTRACT Ret p
+    {{ (exists v, rvar |-> Val (@wrap_type _ (GoWrapper_eq_rect A x P y e)) v) * F }}
+      xp
+    {{ fun ret => rvar |-> @wrap _ (GoWrapper_eq_rect A x P y e) ret * F }} // env ->
+    EXTRACT Ret (@eq_rect A x P p y e)
+    {{ rvar ~>? P y * F }}
+      xp
+    {{ fun ret => rvar ~> ret * F }} // env.
+Proof.
+  intros.
+  eapply CompileRet'.
+  eapply CompileRet in H.
+  eapply hoare_weaken.
+  apply H.
+  rewrite e.
+  reflexivity.
+  cancel_go.
+Qed.
+
 Inductive Declaration :=
 | Decl (T : Type) {Wr: GoWrapper T} {D : DefaultValue T}.
 
