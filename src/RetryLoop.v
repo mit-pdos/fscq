@@ -7,7 +7,7 @@ Section RetryLoop.
   Context {St:StateTypes}.
   Variable G:Protocol St.
 
-  Fixpoint retry_n T P Q (guard: T -> {P}+{Q}) (p: @cprog St T) n :=
+  Fixpoint retry_n {T P Q} (guard: forall (v:T), {P v}+{Q v}) (p: @cprog St T) n :=
     match n with
     | 0 => p
     | S n' => v <- p;
@@ -17,7 +17,7 @@ Section RetryLoop.
                  retry_n guard p n'
     end.
 
-  CoFixpoint retry T P Q (guard: T -> {P}+{Q}) (p: @cprog St T) :=
+  CoFixpoint retry {T P Q} (guard: forall (v:T), {P v}+{Q v}) (p: @cprog St T) :=
     v <- p; if guard v then Ret v else retry guard p.
 
   Definition prog_id T (p: @cprog St T) : cprog T :=
@@ -40,7 +40,7 @@ Section RetryLoop.
     destruct p; auto.
   Qed.
 
-  Lemma retry_unfold : forall T P Q (guard: T -> {P}+{Q}) p,
+  Lemma retry_unfold : forall T P Q (guard: forall (v:T), {P v}+{Q v}) p,
       retry guard p =
       v <- p; if guard v then Ret v else retry guard p.
   Proof.
@@ -52,7 +52,7 @@ Section RetryLoop.
     auto.
   Qed.
 
-  Theorem retry_exec : forall T P Q (guard: T -> {P}+{Q}) p,
+  Theorem retry_exec : forall T P Q (guard: forall (v:T), {P v}+{Q v}) p,
       forall tid st out, exec G tid st (retry guard p) out ->
                     (exists n, exec G tid st (retry_n guard p n) out) /\
                     match out with
@@ -73,7 +73,7 @@ Section RetryLoop.
         intuition eauto.
         exists 0; simpl; eauto.
       + rewrite retry_unfold in IHexec2.
-        specialize (IHexec2 guard p); intuition.
+        specialize (IHexec2 _ _ guard p); intuition.
         deex.
         exists (S n); simpl.
         eapply ExecBindFinish; eauto.
@@ -83,7 +83,7 @@ Section RetryLoop.
       exists 0; eauto.
   Qed.
 
-  Theorem retry_triple : forall T P Q (guard: T -> {P}+{Q}) p
+  Theorem retry_triple : forall T P Q (guard: forall (v:T), {P v}+{Q v}) p
                          A (spec: Spec A T) tid,
       (forall n, cprog_triple G tid spec (retry_n guard p n)) ->
       cprog_triple G tid (fun a st =>
@@ -100,7 +100,7 @@ Section RetryLoop.
     destruct out; intuition eauto.
   Qed.
 
-  Corollary retry_spec : forall T P Q (guard: T -> {P}+{Q}) p
+  Corollary retry_spec : forall T P Q (guard: forall (v:T), {P v}+{Q v}) p
                          A (spec: Spec A T) tid,
       (forall n, cprog_spec G tid spec (retry_n guard p n)) ->
       cprog_spec G tid (fun a st =>
