@@ -8,24 +8,16 @@ Require Import UpdList.
 
 Definition Disk := @mem addr addr_eq_dec valu.
 
-(* TODO: unify mem_var and g_var, parametrize on arbitrary type *)
-Record mem_var St T :=
-  { get_var : Mem St -> T;
-    set_var : Mem St -> T -> Mem St;
-    get_set_id : forall m v, get_var (set_var m v) = v;
-    set_get_id : forall m v, v = get_var m -> set_var m v = m;
-    set_set : forall m v v', set_var (set_var m v) v' = set_var m v'; }.
-
-Record g_var St T :=
-  { get_gvar : Abstraction St -> T;
-    set_gvar : Abstraction St -> T -> Abstraction St;
-    get_set_g_id : forall s v, get_gvar (set_gvar s v) = v;
-    set_get_g_id : forall s v, v = get_gvar s -> set_gvar s v = s;
-    set_set_g : forall s v v', set_gvar (set_gvar s v) v' = set_gvar s v'; }.
+Record var X T :=
+  { get_var : X -> T;
+    set_var : X -> T -> X;
+    get_set_id : forall x v, get_var (set_var x v) = v;
+    set_get_id : forall x v, v = get_var x -> set_var x v = x;
+    set_set : forall x v v', set_var (set_var x v) v' = set_var x v'; }.
 
 Record CacheParams St :=
-  { cache: mem_var St Cache;
-    vdisks: g_var St (Disk * Disk); }.
+  { cache: var (Mem St) Cache;
+    vdisks: var (Abstraction St) (Disk * Disk); }.
 
 Section OptimisticCache.
 
@@ -36,17 +28,17 @@ Section OptimisticCache.
 
   Definition get_cache := get_var (cache P).
   Definition set_cache := set_var (cache P).
-  Definition get_vdisk s := let '(_, vd) := get_gvar (vdisks P) s in vd.
-  Definition get_vdisk0 s := let '(vd0, _) := get_gvar (vdisks P) s in vd0.
-  Definition set_vdisks s vd0 vd := set_gvar (vdisks P) s (vd0, vd).
+  Definition get_vdisk s := let '(_, vd) := get_var (vdisks P) s in vd.
+  Definition get_vdisk0 s := let '(vd0, _) := get_var (vdisks P) s in vd0.
+  Definition set_vdisks s vd0 vd := set_var (vdisks P) s (vd0, vd).
 
   Hint Rewrite (get_set_id (cache P)) : get_set.
   Hint Rewrite (set_get_id (cache P)) using solve [ auto ] : get_set.
   Hint Rewrite (set_set (cache P)) : get_set.
 
-  Hint Rewrite (get_set_g_id (vdisks P)) : get_set.
-  Hint Rewrite (set_get_g_id (vdisks P)) using solve [ auto ] : get_set.
-  Hint Rewrite (set_set_g (vdisks P)) : get_set.
+  Hint Rewrite (get_set_id (vdisks P)) : get_set.
+  Hint Rewrite (set_get_id (vdisks P)) using solve [ auto ] : get_set.
+  Hint Rewrite (set_set (vdisks P)) : get_set.
 
   Lemma get_vdisk0_set : forall s vd0 vd,
       get_vdisk0 (set_vdisks s vd0 vd) = vd0.
@@ -68,7 +60,7 @@ Section OptimisticCache.
 
   Definition locally_modified (sigma sigma': Sigma St) :=
     Sigma.mem sigma' = set_cache (Sigma.mem sigma) (get_cache (Sigma.mem sigma')) /\
-    Sigma.s sigma' = set_gvar (vdisks P) (Sigma.s sigma) (get_gvar (vdisks P) (Sigma.s sigma')).
+    Sigma.s sigma' = set_var (vdisks P) (Sigma.s sigma) (get_var (vdisks P) (Sigma.s sigma')).
 
   Theorem locally_modified_refl : forall sigma, locally_modified sigma sigma.
   Proof.
