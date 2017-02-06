@@ -126,38 +126,6 @@ Section OptimisticTranslator.
     destruct (vd a); eauto.
   Qed.
 
-  Theorem CacheRead_fail_oob : forall sigma wb a,
-      CacheRep P wb sigma ->
-      get_vdisk P (Sigma.s sigma) a = None ->
-      forall tid sigma_i out, exec G tid (sigma_i, sigma) (CacheRead P wb a) out ->
-                         out = Error.
-  Proof.
-    unfold CacheRead; intros.
-    CCLTactics.inv_bind; eauto.
-    eapply spec_to_exec in H6;
-      eauto using BufferRead_oob;
-      simpl in *;
-      intuition eauto; subst.
-
-    CCLTactics.inv_bind; eauto.
-    CCLTactics.inv_exec; eauto.
-    erewrite CacheRep_missing_cache in H9 by eauto.
-
-    CCLTactics.inv_bind; eauto.
-    match goal with
-    | [ H: exec _ _ _ (BeginRead _) _ |- _ ] =>
-      CCLTactics.inv_exec' H; eauto
-    end.
-
-    assert (Sigma.disk sigma' a = None).
-    eapply CacheRep_missing_disk; eauto.
-
-    congruence.
-
-    Unshelve.
-    all: exact tt.
-  Qed.
-
   (* TODO: factor out seq_disk function from [sigma] to a [rawdisk] *)
   Theorem translate_simulation : forall T (p: prog T),
       forall tid sigma_i sigma out wb,
