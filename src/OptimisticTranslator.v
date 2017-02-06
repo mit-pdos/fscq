@@ -236,6 +236,36 @@ Section OptimisticTranslator.
       all: exact tt.
   Qed.
 
+  Record SeqSpecParams T :=
+    { seq_pre : Prop;
+      seq_post : rawdisk -> hashmap -> T -> Prop; }.
+
+  Definition SeqSpec T := rawdisk -> hashmap -> SeqSpecParams T.
+
+  Definition translate_spec T (seq_spec: SeqSpec T) :
+    WriteBuffer -> Spec unit (Result T * WriteBuffer) :=
+    fun wb _ '(sigma_i, sigma) =>
+      {| precondition :=
+           seq_pre (seq_spec (seq_disk sigma) (Sigma.hm sigma)) /\
+           CacheRep P wb sigma;
+         postcondition :=
+           fun '(sigma_i', sigma') '(r, wb) =>
+             CacheRep P wb sigma' /\
+             locally_modified P sigma sigma' /\
+             match r with
+             | Success v => seq_post (seq_spec (seq_disk sigma) (Sigma.hm sigma))
+                                 (seq_disk sigma') (Sigma.hm sigma') v
+             | Failed => True
+             end /\
+             sigma_i' = sigma_i |}.
+
+  Theorem translate_ok : forall T (p: prog T) (spec: SeqSpec T) tid wb,
+      (* need a statement of sequential correctness; needs to be compatible with
+Hoare double Hoare.corr2, but for the purpose of this proof could be simpler. *)
+      cprog_triple G tid (translate_spec spec wb) (translate p wb).
+  Proof.
+  Abort.
+
 End OptimisticTranslator.
 
 (* Local Variables: *)
