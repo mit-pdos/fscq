@@ -126,7 +126,13 @@ Section OptimisticTranslator.
     destruct (vd a); eauto.
   Qed.
 
-  (* TODO: factor out seq_disk function from [sigma] to a [rawdisk] *)
+  (* The relation between the concurrent state and the sequential disk state,
+  expressed as projecting the sequential disk from the concurrent state. The
+  sequential state also includes a hashmap, which can already be projected with
+  [Sigma.hm]. *)
+  Definition seq_disk sigma : rawdisk :=
+    add_buffers (get_vdisk P (Sigma.s sigma)).
+
   Theorem translate_simulation : forall T (p: prog T),
       forall tid sigma_i sigma out wb,
         CacheRep P wb sigma ->
@@ -139,21 +145,23 @@ Section OptimisticTranslator.
            get_vdisk0 P (Sigma.s sigma') = get_vdisk0 P (Sigma.s sigma) /\
           match r with
           | Success v =>
-            Prog.exec (add_buffers (get_vdisk P (Sigma.s sigma)))
-                       (Sigma.hm sigma) p
-                       (Prog.Finished (add_buffers (get_vdisk P (Sigma.s sigma')))
-                                      (Sigma.hm sigma') v)
+            Prog.exec (seq_disk sigma) (Sigma.hm sigma) p
+                      (Prog.Finished (seq_disk sigma') (Sigma.hm sigma') v)
           | Failed =>
             (* cache miss: just give consistency properties (listed outside
             match) *)
             True
           end
-        | Error => False
+        | Error =>
+          (* concurrent code will never just fail - we will prove in these cases
+          that the sequential program would have failed, to guarantee no new
+          error cases have to be added (all based on having the CacheRep already
+          hold) *)
+          False
         end \/
-        Prog.exec (add_buffers (get_vdisk P (Sigma.s sigma)))
-                  (Sigma.hm sigma) p
-                  (Prog.Failed _).
+        Prog.exec (seq_disk sigma) (Sigma.hm sigma) p (Prog.Failed _).
   Proof.
+    unfold seq_disk.
     induction p; simpl; intros.
     - CCLTactics.inv_ret; intuition eauto.
     - case_eq (get_vdisk P (Sigma.s sigma) a); intros.
@@ -169,7 +177,8 @@ Section OptimisticTranslator.
           intuition eauto.
         left; intuition eauto.
         eapply Prog.XStep; [ | eauto ].
-        rewrite H2, H5. eauto.
+        rewrite H2, H5.
+        eauto.
       + (* error read *)
         right.
         CCLTactics.inv_bind; eauto.
