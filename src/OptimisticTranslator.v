@@ -1,8 +1,11 @@
 Require Import Prog.
 Require Import CCL.
 Require Import AsyncDisk.
-Require Import OptimisticCache WriteBuffer.
+Require Import WriteBuffer.
 Require Import FunctionalExtensionality.
+Require Import SeqSpecs.
+
+Require Export OptimisticCache.
 
 Inductive Result T := Success (v:T) | Failed.
 Arguments Failed {T}.
@@ -212,54 +215,41 @@ Section OptimisticTranslator.
       all: exact tt.
   Qed.
 
-  (* TODO: move syntax for sequential specs to independent file *)
-  Record SeqSpecParams T :=
-    { seq_pre : rawdisk -> Prop;
-      seq_post : hashmap -> T -> rawdisk -> Prop;
-      seq_crash : hashmap -> rawdisk -> Prop; }.
-
-  Definition SeqSpec T := hashmap -> SeqSpecParams T.
-
-  Definition prog_ok T (spec: SeqSpec T) (p: prog T) :=
-    forall hm d,
-      seq_pre (spec hm) d ->
-      forall out, Prog.exec d hm p out ->
-             match out with
-             | Prog.Finished d' hm' v => seq_post (spec hm) hm' v d'
-             | Prog.Failed _ => False
-             | Prog.Crashed _ d' hm' => seq_crash (spec hm) hm' d'
-             end.
-
-  Definition translate_spec T (seq_spec: SeqSpec T) :
-    WriteBuffer -> Spec unit (Result T * WriteBuffer) :=
-    fun wb _ '(sigma_i, sigma) =>
+  Definition translate_spec A T (seq_spec: SeqSpec A T) :
+    WriteBuffer -> Spec (A * PredCrash.rawpred) (Result T * WriteBuffer) :=
+    fun wb '(a, F) '(sigma_i, sigma) =>
       {| precondition :=
-           seq_pre (seq_spec (Sigma.hm sigma)) (seq_disk sigma) /\
+           seq_pre (seq_spec a F (Sigma.hm sigma)) (seq_disk sigma) /\
+           PredCrash.sync_invariant F /\
            CacheRep P wb sigma;
          postcondition :=
            fun '(sigma_i', sigma') '(r, wb) =>
              CacheRep P wb sigma' /\
              locally_modified P sigma sigma' /\
              match r with
-             | Success v => seq_post (seq_spec (Sigma.hm sigma))
+             | Success v => seq_post (seq_spec a F (Sigma.hm sigma))
                                     (Sigma.hm sigma') v (seq_disk sigma')
              | Failed => True
              end /\
              sigma_i' = sigma_i |}.
 
-  Theorem translate_ok : forall T (p: prog T) (spec: SeqSpec T) tid wb,
-      prog_ok spec p ->
+  Theorem translate_ok : forall T (p: prog T) A (spec: SeqSpec A T) tid wb,
+      prog_quadruple spec p ->
       cprog_spec G tid (translate_spec spec wb) (translate p wb).
   Proof.
-    unfold prog_ok; intros.
+    unfold prog_quadruple; intros.
     apply triple_spec_equiv; unfold cprog_triple; intros.
     destruct st.
+    destruct a as [a F].
     eapply translate_simulation in H1; simpl in *; intuition eauto.
     - (* concurrent execution finished *)
       destruct out; eauto.
       destruct r as [r wb']; intuition eauto.
       destruct r; eauto.
-      eapply H in H7; eauto.
+      match goal with
+      | [ Hexec: Prog.exec _ _ p _ |- _ ] =>
+        eapply H in Hexec; eauto
+      end.
     -
       (* rather than showing something about concurrent execution, simulation
       showed that the sequential program fails; rule out this possibility from
