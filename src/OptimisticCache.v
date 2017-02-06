@@ -8,6 +8,7 @@ Require Import UpdList.
 
 Definition Disk := @mem addr addr_eq_dec valu.
 
+(* TODO: unify mem_var and g_var, parametrize on arbitrary type *)
 Record mem_var St T :=
   { get_var : Mem St -> T;
     set_var : Mem St -> T -> Mem St;
@@ -24,12 +25,7 @@ Record g_var St T :=
 
 Record CacheParams St :=
   { cache: mem_var St Cache;
-    vdisk: g_var St Disk;
-    vdisk_committed: g_var St Disk;
-    vdisk_vdisk0_neq : forall s vd', get_gvar vdisk_committed (set_gvar vdisk s vd') =
-                                get_gvar vdisk_committed s;
-    vdisk0_vdisk_neq : forall s vd', get_gvar vdisk (set_gvar vdisk_committed s vd') =
-                                get_gvar vdisk s; }.
+    vdisks: g_var St (Disk * Disk); }.
 
 Section OptimisticCache.
 
@@ -40,27 +36,39 @@ Section OptimisticCache.
 
   Definition get_cache := get_var (cache P).
   Definition set_cache := set_var (cache P).
-  Definition get_vdisk := get_gvar (vdisk P).
-  Definition set_vdisk := set_gvar (vdisk P).
-  Definition get_vdisk0 := get_gvar (vdisk_committed P).
-  Definition set_vdisk0 := set_gvar (vdisk_committed P).
+  Definition get_vdisk s := let '(_, vd) := get_gvar (vdisks P) s in vd.
+  Definition get_vdisk0 s := let '(vd0, _) := get_gvar (vdisks P) s in vd0.
+  Definition set_vdisks s vd0 vd := set_gvar (vdisks P) s (vd0, vd).
 
   Hint Rewrite (get_set_id (cache P)) : get_set.
   Hint Rewrite (set_get_id (cache P)) using solve [ auto ] : get_set.
   Hint Rewrite (set_set (cache P)) : get_set.
-  Hint Rewrite (get_set_g_id (vdisk P)) : get_set.
-  Hint Rewrite (set_get_g_id (vdisk P)) using solve [ auto ] : get_set.
-  Hint Rewrite (set_set_g (vdisk P)) : get_set.
-  Hint Rewrite (get_set_g_id (vdisk_committed P)) : get_set.
-  Hint Rewrite (set_get_g_id (vdisk_committed P)) using solve [ auto ] : get_set.
-  Hint Rewrite (set_set_g (vdisk_committed P)) : get_set.
-  Hint Rewrite (vdisk_vdisk0_neq P) : get_set.
-  Hint Rewrite (vdisk0_vdisk_neq P) : get_set.
+
+  Hint Rewrite (get_set_g_id (vdisks P)) : get_set.
+  Hint Rewrite (set_get_g_id (vdisks P)) using solve [ auto ] : get_set.
+  Hint Rewrite (set_set_g (vdisks P)) : get_set.
+
+  Lemma get_vdisk0_set : forall s vd0 vd,
+      get_vdisk0 (set_vdisks s vd0 vd) = vd0.
+  Proof.
+    intros.
+    unfold get_vdisk0, set_vdisks.
+    autorewrite with get_set; auto.
+  Qed.
+
+  Lemma get_vdisk_set : forall s vd0 vd,
+      get_vdisk (set_vdisks s vd0 vd) = vd.
+  Proof.
+    intros.
+    unfold get_vdisk, set_vdisks.
+    autorewrite with get_set; auto.
+  Qed.
+
+  Hint Rewrite get_vdisk0_set get_vdisk_set : get_set.
 
   Definition locally_modified (sigma sigma': Sigma St) :=
     Sigma.mem sigma' = set_cache (Sigma.mem sigma) (get_cache (Sigma.mem sigma')) /\
-    Sigma.s sigma' = set_vdisk (set_vdisk0 (Sigma.s sigma) (get_vdisk0 (Sigma.s sigma')))
-                       (get_vdisk (Sigma.s sigma')).
+    Sigma.s sigma' = set_gvar (vdisks P) (Sigma.s sigma) (get_gvar (vdisks P) (Sigma.s sigma')).
 
   Theorem locally_modified_refl : forall sigma, locally_modified sigma sigma.
   Proof.
@@ -86,8 +94,9 @@ Section OptimisticCache.
     rewrite H1 in *.
     autorewrite with get_set in *; auto.
 
-    admit. (* should really have only one ghost var, to avoid distinctness issues *)
-  Admitted.
+    rewrite H2 in *.
+    autorewrite with get_set in *; auto.
+  Qed.
 
   Ltac simplify :=
     subst;
@@ -208,7 +217,7 @@ Section OptimisticCache.
                            match r with
                            | Some v => v = v0
                            | None => get_vdisk0 (Sigma.s sigma) a = Some v0 /\
-                                     wb_get wb a = WbMissing
+                                    wb_get wb a = WbMissing
                            end /\
                            sigma_i' = sigma_i|})
                  (BufferRead wb a).
@@ -393,7 +402,7 @@ Section OptimisticCache.
   Ltac prove_local_modify :=
     match goal with
     | [ |- locally_modified ?sigma ?sigma' ] =>
-      unfold locally_modified;
+      unfold locally_modified, set_vdisks;
       (try (is_var sigma; destruct sigma));
       (try (is_var sigma'; destruct sigma'));
       intuition idtac;
@@ -474,7 +483,7 @@ Section OptimisticCache.
                           Ret tt
            | _ => Ret tt
            end;
-      _ <- GhostUpdate (fun _ s => set_vdisk s (upd (get_vdisk s) a v));
+      _ <- GhostUpdate (fun _ s => set_vdisks s (get_vdisk0 s) (upd (get_vdisk s) a v));
       Ret (tt, wb_add wb a v).
 
   Lemma CacheRep_write:
@@ -484,11 +493,10 @@ Section OptimisticCache.
       CacheRep wb (state d m s hm) ->
       get_vdisk s a = Some a0 ->
       cache_get (get_cache m) a <> Invalid ->
-      CacheRep (wb_add wb a v) (state d m (set_vdisk s (upd (get_vdisk s) a v)) hm).
+      CacheRep (wb_add wb a v) (state d m (set_vdisks s (get_vdisk0 s) (upd (get_vdisk s) a v)) hm).
   Proof.
     unfold CacheRep; intuition; simpl in *; simplify.
-    - fold (get_vdisk0 s) in *.
-      intro a'.
+    - intro a'.
       destruct (addr_eq_dec a a'); simplify.
       solve_cache.
       case_eq (wb_get wb a'); intros; simpl_match;
@@ -559,7 +567,7 @@ Section OptimisticCache.
     m <- Get;
       let c := get_cache m in
       _ <- Assgn (set_cache m (upd_with_buffer c wb));
-        _ <- GhostUpdate (fun _ s => set_vdisk0 s (get_vdisk s));
+        _ <- GhostUpdate (fun _ s => set_vdisks s (get_vdisk s) (get_vdisk s));
         Ret (tt, empty_writebuffer).
 
   Lemma no_pending_dirty_empty : forall c,
@@ -657,7 +665,7 @@ Section OptimisticCache.
       CacheRep wb (state d m s hm) ->
       CacheRep empty_writebuffer
                (state d (set_cache m (upd_with_buffer (get_cache m) wb))
-                      (set_vdisk0 s (get_vdisk s)) hm).
+                      (set_vdisks s (get_vdisk s) (get_vdisk s)) hm).
   Proof.
     unfold CacheRep; simpl; intuition; simplify.
     unfold upd_with_buffer.
@@ -685,16 +693,7 @@ Section OptimisticCache.
     - specialize (H a); simpl_match; intuition eauto.
   Qed.
 
-  Lemma CacheRep_abort:
-    forall (wb : WriteBuffer) (d : DISK) (m : Mem St)
-           (s : Abstraction St) (hm : hashmap),
-      CacheRep wb (state d m s hm) ->
-      CacheRep empty_writebuffer (state d m (set_vdisk s (get_vdisk0 s)) hm).
-  Proof.
-    unfold CacheRep; simpl; intuition; simplify.
-  Qed.
-
-  Hint Resolve CacheRep_commit CacheRep_abort.
+  Hint Resolve CacheRep_commit.
 
   Definition CacheCommit_ok : forall tid wb,
       cprog_spec G tid
@@ -719,15 +718,22 @@ Section OptimisticCache.
 
     intuition eauto.
     state upd sigma.
-
-    prove_local_modify.
-    rewrite (set_get_g_id (vdisk P)) by simplify.
-    auto.
   Qed.
 
   Definition CacheAbort wb : @cprog St _ :=
-    _ <- GhostUpdate (fun _ s => set_vdisk s (get_vdisk0 s));
+    _ <- GhostUpdate (fun _ s => set_vdisks s (get_vdisk0 s) (get_vdisk0 s));
       Ret (tt, empty_writebuffer).
+
+  Lemma CacheRep_abort:
+    forall (wb : WriteBuffer) (d : DISK) (m : Mem St)
+           (s : Abstraction St) (hm : hashmap),
+      CacheRep wb (state d m s hm) ->
+      CacheRep empty_writebuffer (state d m (set_vdisks s (get_vdisk0 s) (get_vdisk0 s)) hm).
+  Proof.
+    unfold CacheRep; simpl; intuition; simplify.
+  Qed.
+
+  Hint Resolve CacheRep_abort.
 
   Definition CacheAbort_ok : forall tid wb,
       cprog_spec G tid
