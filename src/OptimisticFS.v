@@ -68,13 +68,29 @@ Section OptimisticFS.
   Definition file_get_attr fsxp inum mscs :=
     translate P (AFS.file_get_attr fsxp inum mscs).
 
-  Definition translation_spec A T (spec: SeqSpec A T) (p: prog T) :=
-    forall tid wb, cprog_spec G tid (translate_spec P spec wb) (translate P p wb).
+  Definition framed_spec A T (spec: rawpred -> SeqSpec A T) : SeqSpec (A * rawpred) T :=
+    fun '(a, F) => spec F a.
+
+  Definition translation_spec A T (spec: rawpred -> SeqSpec A T) (p: prog T) :=
+    forall tid wb, cprog_spec G tid (translate_spec P (framed_spec spec) wb) (translate P p wb).
 
   Ltac spec_reflect :=
     unfold prog_spec; simpl;
     repeat (intros; apply corr2_exists);
     hoare.
+
+  Notation "'SPEC' {< a1 .. an , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm'c crash >}" :=
+    (fun F_ =>
+       (fun a1 => .. (fun an =>
+                     fun hm => {|
+                         seq_pre := (F_ * pre * [[ sync_invariant F_ ]])%pred;
+                         seq_post := fun hm' => post F_%pred;
+                         seq_crash := fun hm'c => (F_ * crash)%pred;
+                       |}
+                  ) .. ))
+      (at level 0,
+       hm at level 0, hm' at level 0, hm'c at level 0,
+       a1 binder, an binder).
 
   Definition file_getattr_ok : forall fsxp inum mscs,
       translation_spec
@@ -90,11 +106,10 @@ Section OptimisticFS.
                                     >})
         (AFS.file_get_attr fsxp inum mscs).
   Proof.
-    unfold translation_spec; intros.
+    unfold translation_spec, framed_spec; intros.
     apply translate_ok.
     apply prog_quadruple_spec_equiv.
     spec_reflect.
-    (* oh dear, the frame predicate has been lost *)
-  Abort.
+  Qed.
 
 End OptimisticFS.

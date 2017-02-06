@@ -216,18 +216,17 @@ Section OptimisticTranslator.
   Qed.
 
   Definition translate_spec A T (seq_spec: SeqSpec A T) :
-    WriteBuffer -> Spec (A * PredCrash.rawpred) (Result T * WriteBuffer) :=
-    fun wb '(a, F) '(sigma_i, sigma) =>
+    WriteBuffer -> Spec A (Result T * WriteBuffer) :=
+    fun wb a '(sigma_i, sigma) =>
       {| precondition :=
-           seq_pre (seq_spec a F (Sigma.hm sigma)) (seq_disk sigma) /\
-           PredCrash.sync_invariant F /\
+           seq_pre (seq_spec a (Sigma.hm sigma)) (seq_disk sigma) /\
            CacheRep P wb sigma;
          postcondition :=
            fun '(sigma_i', sigma') '(r, wb) =>
              CacheRep P wb sigma' /\
              locally_modified P sigma sigma' /\
              match r with
-             | Success v => seq_post (seq_spec a F (Sigma.hm sigma))
+             | Success v => seq_post (seq_spec a (Sigma.hm sigma))
                                     (Sigma.hm sigma') v (seq_disk sigma')
              | Failed => True
              end /\
@@ -240,7 +239,6 @@ Section OptimisticTranslator.
     unfold prog_quadruple; intros.
     apply triple_spec_equiv; unfold cprog_triple; intros.
     destruct st.
-    destruct a as [a F].
     eapply translate_simulation in H1; simpl in *; intuition eauto.
     - (* concurrent execution finished *)
       destruct out; eauto.

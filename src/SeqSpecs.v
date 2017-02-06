@@ -15,35 +15,33 @@ Record SeqSpecParams T :=
     seq_post : hashmap -> T -> rawdisk -> Prop;
     seq_crash : hashmap -> rawdisk -> Prop; }.
 
-(* a sequential spec is parametrized by some ghost state of type A, a frame
- predicate, and the initial hashmap state *)
-Definition SeqSpec A T := A -> PredCrash.rawpred -> hashmap -> SeqSpecParams T.
+(* a sequential spec is parametrized by some ghost state of type A and the
+initial hashmap state *)
+Definition SeqSpec A T := A -> hashmap -> SeqSpecParams T.
 
 Definition prog_quadruple A T (spec: SeqSpec A T) (p: prog T) :=
-  forall a F hm d,
-    seq_pre (spec a F hm) d ->
-    sync_invariant F ->
+  forall a hm d,
+    seq_pre (spec a hm) d ->
     forall out, Prog.exec d hm p out ->
            match out with
-           | Prog.Finished d' hm' v => seq_post (spec a F hm) hm' v d'
+           | Prog.Finished d' hm' v => seq_post (spec a hm) hm' v d'
            | Prog.Failed _ => False
-           | Prog.Crashed _ d' hm' => seq_crash (spec a F hm) hm' d' /\
+           | Prog.Crashed _ d' hm' => seq_crash (spec a hm) hm' d' /\
                                      (exists l, hashmap_subset l hm hm')
            end.
 
 Definition prog_spec A T (spec: SeqSpec A T) (p: prog T) :=
   forall T' (rx: T -> prog T'),
     Hoare.corr2 (fun hm donecond crashcond =>
-                   exists a F_,
-                     seq_pre (spec a F_ hm) *
-                     [[ sync_invariant F_ ]] *
+                   exists a,
+                     seq_pre (spec a hm) *
                      [[ forall r, Hoare.corr2
                                (fun hm' donecond_rx crashcond_rx =>
-                                  seq_post (spec a F_ hm) hm' r *
+                                  seq_post (spec a hm) hm' r *
                                   [[ donecond_rx = donecond ]] *
                                   [[ crashcond_rx = crashcond ]]) (rx r) ]] *
                      [[ forall hm_crash,
-                          seq_crash (spec a F_ hm) hm_crash *
+                          seq_crash (spec a hm) hm_crash *
                           [[ exists l, hashmap_subset l hm hm_crash ]] =p=>
                         crashcond hm_crash ]])%pred
                 (Prog.Bind p rx).
@@ -105,7 +103,7 @@ Proof.
   destruct out; eauto; try solve [ etransitivity; eauto ].
 Qed.
 
-Theorem prog_quadruple_spec_equiv : forall A T (spec: SeqSpec A T) (p: prog T),
+Theorem prog_quadruple_spec_equiv : forall A T (spec: SeqSpec (A*rawpred) T) (p: prog T),
     prog_spec spec p <->
     prog_quadruple spec p.
 Proof.
@@ -113,13 +111,13 @@ Proof.
   split; intros.
   - specialize (H _ Ret).
     unfold Hoare.corr2 at 1 in H.
-    specialize (H (fun hm' v d' => seq_post (spec a F hm) hm' v d')).
-    specialize (H (fun hm' d' => seq_crash (spec a F hm) hm' d')).
+    specialize (H (fun hm' v => seq_post (spec a hm) hm' v)).
+    specialize (H (fun hm' => (seq_crash (spec a hm) hm')%pred)).
     specialize (H d hm out).
     intuition eauto.
 
     edestruct H; repeat deex; intuition eauto.
-    + exists a, F.
+    + exists a.
 
       SepAuto.pred_apply; SepAuto.cancel.
 
@@ -137,7 +135,10 @@ Proof.
 
       SepAuto.cancel.
     + apply ProgMonad.bind_right_id; auto.
-    + eapply exec_hashmap_le in H2; eauto.
+    + match goal with
+      | [ H: exec _ _ _ (Crashed _ _ _) |- _ ] =>
+        eapply exec_hashmap_le in H; eauto
+      end.
   - unfold Hoare.corr2; intros.
     unfold exis in H0; repeat deex.
 
@@ -151,25 +152,12 @@ Proof.
           | [ H: fail_step  _ _ |- _ ] => solve [ inversion H ]
           | [ H: crash_step _ |- _ ] => solve [ inversion H ]
           end.
-    + eapply H in H10; eauto.
-      eapply H4 in H13; eauto.
+    + eapply H in H9; eauto.
+      eapply H4 in H12; eauto.
       SepAuto.pred_apply; SepAuto.cancel.
-    + eapply H in H9; eauto; contradiction.
-    + eapply H in H9; intuition eauto.
+    + eapply H in H8; eauto; contradiction.
+    + eapply H in H8; intuition eauto.
       right; repeat eexists; eauto.
       eapply H3.
       SepAuto.pred_apply; SepAuto.cancel.
 Qed.
-
-Notation "'SPEC' {< a1 .. an , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm'c crash >}" :=
-  (fun a1 => .. (fun an =>
-                (fun F_ =>
-                   fun hm => {|
-                       seq_pre := sep_star F_ pre%pred;
-                       seq_post := fun hm' => post F_%pred;
-                       seq_crash := fun hm'c => crash%pred;
-                     |}
-             )) .. )
-    (at level 0,
-     hm at level 0, hm' at level 0, hm'c at level 0,
-     a1 binder, an binder).
