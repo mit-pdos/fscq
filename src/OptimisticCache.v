@@ -1,6 +1,8 @@
 Require Import CCL.
 
 Require Import Mem Pred AsyncDisk.
+(* TODO: re-export WriteBuffer since it's part of external type signatures,
+remove the import from users of this file *)
 Require Import MemCache WriteBuffer.
 Require Import FunctionalExtensionality.
 
