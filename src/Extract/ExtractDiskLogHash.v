@@ -59,18 +59,6 @@ Theorem extract_hdr_read :
   compile_step.
   compile_step.
   compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
   unfold pair_args_helper.
   pattern_prog (PaddedLog.Hdr.val2hdr (fst (snd a))).
   compile_step.
@@ -81,7 +69,7 @@ Theorem extract_hdr_read :
   compile_step.
   do_declare (immut_word 768) ltac:(fun var => idtac var).
   eapply hoare_weaken.
-  eapply CompileBindRet with (vara := nth_var 14 vars) (HA := GoWrapper_immut_word _).
+  eapply CompileBindRet with (vara := nth_var 7 vars) (HA := GoWrapper_immut_word _).
   3: cancel_go.
   3: cancel_go.
   compile_step.
@@ -107,11 +95,11 @@ Theorem extract_hdr_read :
   pattern_prog (fst (snd a)).
   do_declare (immut_word valulen) ltac:(fun var => idtac var).
   eapply hoare_weaken.
-  eapply CompileBindRet with (vara := nth_var 19 vars) (a := fst (snd a)) (HA := GoWrapper_immut_word _).
+  eapply CompileBindRet with (vara := nth_var 12 vars) (a := fst (snd a)) (HA := GoWrapper_immut_word _).
   3: cancel_go.
   3: cancel_go.
   eapply hoare_weaken.
-  apply CompileFreeze with (svar := nth_var 15 vars) (dvar := nth_var 19 vars).
+  apply CompileFreeze with (svar := nth_var 8 vars) (dvar := nth_var 12 vars).
   rewrite valulen_is. exists (valulen_real / 8). reflexivity.
   cancel_go.
   cancel_go.
@@ -120,7 +108,7 @@ Theorem extract_hdr_read :
   eapply hoare_weaken.
   match goal with
   | [ |- context[split1 ?sz1_ ?sz2_ ?buf_] ] =>
-    pose proof (@CompileSplit1 sz1_ sz2_ buf_ env (nth_var 14 vars) (nth_var 19 vars))
+    pose proof (@CompileSplit1 sz1_ sz2_ buf_ env (nth_var 7 vars) (nth_var 12 vars))
   end.
   apply H0.
   exists (768 / 8). reflexivity.

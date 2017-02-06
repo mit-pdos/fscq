@@ -99,13 +99,12 @@ Instance GoWrapper_LOG_memstate : GoWrapper LOG.memstate.
   typeclasses eauto.
 Defined.
 
-Instance GoWrapper_log_xparams : GoWrapper log_xparams.
+Instance WrapByTransforming_log_xparams : WrapByTransforming log_xparams.
   refine {|
-    wrap_type := Go.Struct [ Num; Num; Num; Num; Num; Num ];
-    wrap' := fun xp => (DataStart xp, (LogHeader xp, (LogDescriptor xp, (LogDescLen xp, (LogData xp, (LogLen xp, tt))))))
+    transform := fun xp => (DataStart xp, (LogHeader xp, (LogDescriptor xp, (LogDescLen xp, (LogData xp, (LogLen xp, tt))))))
   |}.
   intros. repeat find_inversion_safe.
-  destruct a1, a2; f_equal; eapply wrap_inj; eauto.
+  destruct t1, t2; f_equal; eapply wrap_inj; eauto.
 Defined.
 
 Instance log_xparams_default_value : DefaultValue log_xparams := {| zeroval := Build_log_xparams 0 0 0 0 0 0 |}.
