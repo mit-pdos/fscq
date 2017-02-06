@@ -97,7 +97,7 @@ Ltac compile_bind := match goal with
   | [ |- EXTRACT Bind (Ret ?x_) ?p {{ _ }} _ {{ ?post }} // _ ] =>
     match type of x_ with
     | ?T_ =>
-      let Wr_ := constr:(ltac:(eauto with typeclass_instances) : GoWrapper T_) in
+      let Wr_ := constr:(ltac:(typeclasses eauto) : GoWrapper T_) in
       do_declare T_ ltac:(fun v_ =>
         eapply hoare_strengthen_pre; [
         | eapply CompileBindRet with (vara := v_) (a := x_)];
@@ -107,7 +107,7 @@ Ltac compile_bind := match goal with
     match type of p with
     | prog ?T_ =>
       let v := fresh "var" in
-      let Wr_ := constr:(ltac:(eauto with typeclass_instances) : GoWrapper T_) in
+      let Wr_ := constr:(ltac:(typeclasses eauto) : GoWrapper T_) in
       do_declare T_ ltac:(fun v_ =>
         simpl decls_pre; simpl decls_post;
         match goal with [ |- EXTRACT _ {{ _ }} _ {{ ?post' }} // _ ] =>
