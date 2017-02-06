@@ -45,74 +45,6 @@ Section OptimisticTranslator.
           | None => None
           end.
 
-  (* this is really the natural interpretation of a triple, directly as a
-  correctness statement - [cprog_triple] instead unquotes triple into a double
-  (with an arbitrary continuation) and then uses the double-based correctness
-  statement *)
-  (* TODO: this is basic metatheory, it should be elsewhere *)
-  (* TODO: [cprog_triple'] and [cprog_triple] need better names *)
-  Definition cprog_triple' A T tid (spec: Spec A T) (p: @cprog St T) :=
-    forall a st out,
-      precondition (spec a st) ->
-      exec G tid st p out ->
-      match out with
-      | Finished sigma_i' sigma' v => postcondition (spec a st) (sigma_i', sigma') v
-      | Error => False
-      end.
-
-  Theorem triple_triple'_equiv : forall A T tid (spec: Spec A T) (p: @cprog St T),
-      cprog_triple G tid spec p <->
-      cprog_triple' tid spec p.
-  Proof.
-    unfold cprog_triple, ReflectDouble, cprog_triple'.
-    split; intros.
-    - unfold cprog_ok at 1 in H.
-      specialize (H _ Ret st).
-      specialize (H (fun st' v => postcondition (spec a st) st' v)).
-      specialize (H out).
-
-      apply H.
-
-      exists a; intuition eauto.
-      unfold cprog_ok; intros.
-      CCLTactics.inv_ret; intuition (subst; eauto).
-
-      apply monad_right_id; auto.
-    - unfold cprog_ok at 1; intros; repeat deex.
-      CCLTactics.inv_bind.
-      match goal with
-      | [ Hexec: exec _ _ _ p _ |- _ ] =>
-        eapply H in Hexec; intuition eauto
-      end.
-      match goal with
-      | [ Hexec: exec _ _ _ (rx _) _ |- _ ] =>
-        eapply H2 in Hexec; intuition eauto
-      end.
-
-      match goal with
-      | [ Hexec: exec _ _ _ p _ |- _ ] =>
-        eapply H in Hexec; intuition eauto
-      end.
-  Qed.
-
-  Corollary spec_to_exec : forall tid A T (spec: Spec A T) a p,
-      cprog_triple G tid spec p ->
-      forall st out,
-      exec G tid st p out ->
-      precondition (spec a st) ->
-      match out with
-        | Finished sigma_i' sigma' v =>
-          postcondition (spec a st) (sigma_i', sigma') v
-        | Error => False
-      end.
-  Proof.
-    intros.
-    destruct (triple_triple'_equiv tid spec p); intuition.
-    match goal with
-    | [ H: cprog_triple' _ _ _ |- _ ] => eapply H; eauto
-    end.
-  Qed.
-
   Hint Resolve locally_modified_refl.
 
   Hint Resolve PredCrash.possible_sync_refl.
@@ -316,10 +248,10 @@ Section OptimisticTranslator.
 
   Theorem translate_ok : forall T (p: prog T) (spec: SeqSpec T) tid wb,
       prog_ok spec p ->
-      cprog_triple G tid (translate_spec spec wb) (translate p wb).
+      cprog_spec G tid (translate_spec spec wb) (translate p wb).
   Proof.
     unfold prog_ok; intros.
-    apply triple_triple'_equiv; unfold cprog_triple'; intros.
+    apply triple_spec_equiv; unfold cprog_triple; intros.
     destruct st.
     eapply translate_simulation in H1; simpl in *; intuition eauto.
     - (* concurrent execution finished *)
