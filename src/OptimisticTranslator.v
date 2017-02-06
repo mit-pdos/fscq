@@ -212,36 +212,37 @@ Section OptimisticTranslator.
       all: exact tt.
   Qed.
 
+  (* TODO: move syntax for sequential specs to independent file *)
   Record SeqSpecParams T :=
-    { seq_pre : Prop;
-      seq_post : rawdisk -> hashmap -> T -> Prop;
-      seq_crash : rawdisk -> hashmap -> Prop; }.
+    { seq_pre : rawdisk -> Prop;
+      seq_post : hashmap -> T -> rawdisk -> Prop;
+      seq_crash : hashmap -> rawdisk -> Prop; }.
 
-  Definition SeqSpec T := rawdisk -> hashmap -> SeqSpecParams T.
+  Definition SeqSpec T := hashmap -> SeqSpecParams T.
 
   Definition prog_ok T (spec: SeqSpec T) (p: prog T) :=
-    forall d hm,
-      seq_pre (spec d hm) ->
+    forall hm d,
+      seq_pre (spec hm) d ->
       forall out, Prog.exec d hm p out ->
              match out with
-             | Prog.Finished d' hm' v => seq_post (spec d hm) d' hm' v
+             | Prog.Finished d' hm' v => seq_post (spec hm) hm' v d'
              | Prog.Failed _ => False
-             | Prog.Crashed _ d' hm' => seq_crash (spec d hm) d' hm'
+             | Prog.Crashed _ d' hm' => seq_crash (spec hm) hm' d'
              end.
 
   Definition translate_spec T (seq_spec: SeqSpec T) :
     WriteBuffer -> Spec unit (Result T * WriteBuffer) :=
     fun wb _ '(sigma_i, sigma) =>
       {| precondition :=
-           seq_pre (seq_spec (seq_disk sigma) (Sigma.hm sigma)) /\
+           seq_pre (seq_spec (Sigma.hm sigma)) (seq_disk sigma) /\
            CacheRep P wb sigma;
          postcondition :=
            fun '(sigma_i', sigma') '(r, wb) =>
              CacheRep P wb sigma' /\
              locally_modified P sigma sigma' /\
              match r with
-             | Success v => seq_post (seq_spec (seq_disk sigma) (Sigma.hm sigma))
-                                 (seq_disk sigma') (Sigma.hm sigma') v
+             | Success v => seq_post (seq_spec (Sigma.hm sigma))
+                                    (Sigma.hm sigma') v (seq_disk sigma')
              | Failed => True
              end /\
              sigma_i' = sigma_i |}.
