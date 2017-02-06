@@ -51,7 +51,7 @@ Section CCL.
   Definition TID := nat.
   Opaque TID.
 
-  Inductive cprog : Type -> Type :=
+  CoInductive cprog : Type -> Type :=
   | Get : cprog (Mem St)
   | Assgn (m:Mem St) : cprog unit
   | GhostUpdate (update: TID -> Abstraction St -> Abstraction St) : cprog unit
@@ -224,6 +224,16 @@ Module CCLTactics.
     match goal with
     | [ H: exec _ _ _ _ (Finished _ _ _) |- _ ] => inv_exec' H
     | [ H: exec _ _ _ _ Error |- _ ] => inv_exec' H
+    end.
+
+  Ltac inv_step :=
+    match goal with
+    | [ H: step _ _ _ _ _ |- _ ] => inversion H; subst
+    end.
+
+  Ltac inv_fail_step :=
+    match goal with
+    | [ H: fail_step _ _ |- _ ] => inversion H; subst
     end.
 
 End CCLTactics.
