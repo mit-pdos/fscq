@@ -7,7 +7,8 @@ MODULES    := CCLProg CCLMonadLaws CCLHoareTriples CCLPrimitives \
               Automation CCLAutomation RetryLoop CCL \
 							SyncRead \
               MemCache WriteBuffer UpdList OptimisticCache \
-              SeqSpecs OptimisticTranslator OptimisticFS ConcurrentFS \
+              SeqSpecs OptimisticTranslator OptimisticFS \
+		          HomeDirProtocol ConcurrentFS \
 							Lock Nomega Word WordAuto WordZ Bytes Rounding \
 				Mem AsyncDisk Pred Prog ProgMonad PredCrash Hoare \
 				OperationalSemantics \

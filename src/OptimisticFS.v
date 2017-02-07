@@ -54,383 +54,387 @@ Require Import SeqSpecs.
 Require Import CCL.
 Require Import OptimisticCache WriteBuffer OptimisticTranslator.
 
-(* works around a Coq bug triggered by cancel by removing exists on the left
-hand side - not sure exactly what's wrong, but this avoids the problem *)
-Local Lemma corr2_exists : forall T A spec (p: prog T),
+Module OptFS.
+
+  (* works around a Coq bug triggered by cancel by removing exists on the left
+     hand side - not sure exactly what's wrong, but this avoids the problem *)
+  Local Lemma corr2_exists : forall T A spec (p: prog T),
     (forall (a:A), Hoare.corr2 (fun hm done crash => spec hm done crash a) p) ->
     Hoare.corr2 (fun hm done crash => exists a, spec hm done crash a)%pred p.
-Proof.
-  intros.
-  unfold Hoare.corr2; intros.
-  unfold exis in *; deex.
-  eapply H; eauto.
-Qed.
-
-Section OptimisticFS.
-
-  Context {St:StateTypes}.
-  Variable G:Protocol St.
-  Variable P:CacheParams St.
-
-  Definition framed_spec A T (spec: rawpred -> SeqSpec A T) : SeqSpec (A * rawpred) T :=
-    fun '(a, F) => spec F a.
-
-  Definition translation_spec A T (spec: rawpred -> SeqSpec A T)
-             (p: WriteBuffer -> cprog (Result T * WriteBuffer)) :=
-    forall tid wb, cprog_spec G tid (translate_spec P (framed_spec spec) wb) (p wb).
-
-  Ltac spec_reflect :=
-    unfold prog_spec; simpl;
-    repeat (intros; apply corr2_exists);
-    hoare.
-
-  Notation "'SPEC' {< a1 .. an , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm'c crash >}" :=
-    (fun F_ =>
-       (fun a1 => .. (fun an =>
-                     fun hm => {|
-                         seq_pre := (F_ * pre * [[ sync_invariant F_ ]])%pred;
-                         seq_post := fun hm' => post F_%pred;
-                         seq_crash := fun hm'c => (F_ * crash)%pred;
-                       |}
-                  ) .. ))
-      (at level 0,
-       hm at level 0, hm' at level 0, hm'c at level 0,
-       a1 binder, an binder).
-
-  Definition postcrash_equivalent (P: rawpred) : rawpred :=
-    fun d => exists d0 d', P d0 /\ possible_crash d0 d' /\ possible_crash d d'.
-
-  Notation "'SPEC' {< a1 .. an , 'PRE' : hm pre 'POST' : hm' post 'XCRASH' : hm'c crash >}" :=
-    (fun F_ =>
-       (fun a1 => .. (fun an =>
-                     fun hm => {|
-                         seq_pre := (F_ * pre * [[ sync_invariant F_ ]])%pred;
-                         seq_post := fun hm' => post F_%pred;
-                         seq_crash := fun hm'c => (F_ * postcrash_equivalent (crash))%pred;
-                       |}
-                  ) .. ))
-      (at level 0,
-       hm at level 0, hm' at level 0, hm'c at level 0,
-       a1 binder, an binder).
-
-  (* TODO: move to PredCrash *)
-  Theorem possible_crash_sync_mem : forall m,
-      possible_crash m (sync_mem m).
-  Proof.
-    unfold possible_crash, sync_mem; intros.
-    destruct (m a).
-    destruct p.
-    right; simpl; repeat eexists; eauto.
-    left; eauto.
-  Qed.
-
-  Lemma xcrash_to_postcrash_equivalent : forall F F',
-      crash_xform F =p=> crash_xform F' ->
-                        F =p=> postcrash_equivalent F'.
   Proof.
     intros.
-    unfold pimpl, postcrash_equivalent; intros.
-    assert (crash_xform F (sync_mem m)).
-    eexists; intuition eauto.
-    apply possible_crash_sync_mem.
-    pose proof (H _ H1).
-    unfold crash_xform in H2; deex.
-    exists m'.
-    exists (sync_mem m); intuition.
-    apply possible_crash_sync_mem.
+    unfold Hoare.corr2; intros.
+    unfold exis in *; deex.
+    eapply H; eauto.
   Qed.
 
-  Hint Resolve xcrash_to_postcrash_equivalent.
+  Section OptimisticFS.
 
-  Ltac translate_lift p :=
-    lazymatch type of p with
-    | prog _ => exact (translate P p)
-    | ?A -> ?B =>
-      (* unfold p just to extract its first argument name *)
-      let p' := eval hnf in p in
-      match p' with
-        | (fun (name:_) => _) =>
-            let var := fresh name in
-            exact (fun (var:A) => ltac:(translate_lift (p var)))
-        | (fun (name:_) => _) =>
-            let var := fresh "a" in
-            exact (fun (var:A) => ltac:(translate_lift (p var)))
-      end
-    end.
+    Context {St:StateTypes}.
+    Variable G:Protocol St.
+    Variable P:CacheParams St.
 
-  Ltac translate_ok :=
-    unfold translation_spec, framed_spec; intros;
-    apply translate_ok;
-    apply prog_quadruple_spec_equiv;
-    spec_reflect.
+    Definition framed_spec A T (spec: rawpred -> SeqSpec A T) : SeqSpec (A * rawpred) T :=
+      fun '(a, F) => spec F a.
 
-  Definition file_get_attr := ltac:(translate_lift AFS.file_get_attr).
+    Definition translation_spec A T (spec: rawpred -> SeqSpec A T)
+               (p: WriteBuffer -> cprog (Result T * WriteBuffer)) :=
+      forall tid wb, cprog_spec G tid (translate_spec P (framed_spec spec) wb) (p wb).
 
-  Definition file_getattr_ok : forall fsxp inum mscs,
-      translation_spec
-        (SPEC {< '(ds, pathname, Fm, Ftop, tree, f, ilist, frees),
-               PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                   [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
-                   [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
-                     POST:hm' RET:^(mscs',r)
-                              LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-                          [[ r = BFILE.BFAttr f /\ MSAlloc mscs' = MSAlloc mscs ]]
-                            CRASH:hm'
-                                    LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
-                                  >})
-        (file_get_attr fsxp inum mscs).
-  Proof.
-    translate_ok.
-  Qed.
+    Ltac spec_reflect :=
+      unfold prog_spec; simpl;
+      repeat (intros; apply corr2_exists);
+      hoare.
 
-  Definition lookup := ltac:(translate_lift AFS.lookup).
+    Notation "'SPEC' {< a1 .. an , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm'c crash >}" :=
+      (fun F_ =>
+         (fun a1 => .. (fun an =>
+                       fun hm => {|
+                           seq_pre := (F_ * pre * [[ sync_invariant F_ ]])%pred;
+                           seq_post := fun hm' => post F_%pred;
+                           seq_crash := fun hm'c => (F_ * crash)%pred;
+                         |}
+                    ) .. ))
+        (at level 0,
+         hm at level 0, hm' at level 0, hm'c at level 0,
+         a1 binder, an binder).
 
-  Theorem lookup_ok: forall fsxp dnum fnlist mscs,
-      translation_spec
-        (SPEC {< '(ds, Fm, Ftop, tree, ilist, frees),
-               PRE:hm
-                     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                   [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
-                   [[ dirtree_inum tree = dnum]] *
-                   [[ dirtree_isdir tree = true ]]
-                     POST:hm' RET:^(mscs', r)
-                              LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-                          [[ (isError r /\ None = find_name fnlist tree) \/
-                             (exists v, r = OK v /\ Some v = find_name fnlist tree)%type ]] *
-                          [[ MSAlloc mscs' = MSAlloc mscs ]]
-                            CRASH:hm'  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
-                                  >})
-        (lookup fsxp dnum fnlist mscs).
-  Proof.
-    translate_ok.
-  Qed.
+    Definition postcrash_equivalent (P: rawpred) : rawpred :=
+      fun d => exists d0 d', P d0 /\ possible_crash d0 d' /\ possible_crash d d'.
 
-  Definition read_fblock := ltac:(translate_lift AFS.read_fblock).
+    Notation "'SPEC' {< a1 .. an , 'PRE' : hm pre 'POST' : hm' post 'XCRASH' : hm'c crash >}" :=
+      (fun F_ =>
+         (fun a1 => .. (fun an =>
+                       fun hm => {|
+                           seq_pre := (F_ * pre * [[ sync_invariant F_ ]])%pred;
+                           seq_post := fun hm' => post F_%pred;
+                           seq_crash := fun hm'c => (F_ * postcrash_equivalent (crash))%pred;
+                         |}
+                    ) .. ))
+        (at level 0,
+         hm at level 0, hm' at level 0, hm'c at level 0,
+         a1 binder, an binder).
 
-  Theorem read_fblock_ok : forall fsxp inum off mscs,
-      translation_spec
-        (SPEC {< '(ds, Fm, Ftop, tree, pathname, f, Fd, vs, ilist, frees),
-               PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                   [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
-                   [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-                   [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
-                     POST:hm' RET:^(mscs', r)
-                              LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-                          [[ r = fst vs /\ MSAlloc mscs' = MSAlloc mscs ]]
-                            CRASH:hm'
-                                    LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
-                                  >})
-        (read_fblock fsxp inum off mscs).
-  Proof.
-    translate_ok.
-  Qed.
+    (* TODO: move to PredCrash *)
+    Theorem possible_crash_sync_mem : forall m,
+        possible_crash m (sync_mem m).
+    Proof.
+      unfold possible_crash, sync_mem; intros.
+      destruct (m a).
+      destruct p.
+      right; simpl; repeat eexists; eauto.
+      left; eauto.
+    Qed.
+
+    Lemma xcrash_to_postcrash_equivalent : forall F F',
+        crash_xform F =p=> crash_xform F' ->
+                          F =p=> postcrash_equivalent F'.
+    Proof.
+      intros.
+      unfold pimpl, postcrash_equivalent; intros.
+      assert (crash_xform F (sync_mem m)).
+      eexists; intuition eauto.
+      apply possible_crash_sync_mem.
+      pose proof (H _ H1).
+      unfold crash_xform in H2; deex.
+      exists m'.
+      exists (sync_mem m); intuition.
+      apply possible_crash_sync_mem.
+    Qed.
+
+    Hint Resolve xcrash_to_postcrash_equivalent.
+
+    Ltac translate_lift p :=
+      lazymatch type of p with
+      | prog _ => exact (translate P p)
+      | ?A -> ?B =>
+        (* unfold p just to extract its first argument name *)
+        let p' := eval hnf in p in
+            match p' with
+            | (fun (name:_) => _) =>
+              let var := fresh name in
+              exact (fun (var:A) => ltac:(translate_lift (p var)))
+            | (fun (name:_) => _) =>
+              let var := fresh "a" in
+              exact (fun (var:A) => ltac:(translate_lift (p var)))
+            end
+      end.
+
+    Ltac translate_ok :=
+      unfold translation_spec, framed_spec; intros;
+      apply translate_ok;
+      apply prog_quadruple_spec_equiv;
+      spec_reflect.
+
+    Definition file_get_attr := ltac:(translate_lift AFS.file_get_attr).
+
+    Definition file_getattr_ok : forall fsxp inum mscs,
+        translation_spec
+          (SPEC {< '(ds, pathname, Fm, Ftop, tree, f, ilist, frees),
+                 PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
+                     [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+                       POST:hm' RET:^(mscs',r)
+                                LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+                            [[ r = BFILE.BFAttr f /\ MSAlloc mscs' = MSAlloc mscs ]]
+                              CRASH:hm'
+                                      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+                                    >})
+          (file_get_attr fsxp inum mscs).
+    Proof.
+      translate_ok.
+    Qed.
+
+    Definition lookup := ltac:(translate_lift AFS.lookup).
+
+    Theorem lookup_ok: forall fsxp dnum fnlist mscs,
+        translation_spec
+          (SPEC {< '(ds, Fm, Ftop, tree, ilist, frees),
+                 PRE:hm
+                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
+                     [[ dirtree_inum tree = dnum]] *
+                     [[ dirtree_isdir tree = true ]]
+                       POST:hm' RET:^(mscs', r)
+                                LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+                            [[ (isError r /\ None = find_name fnlist tree) \/
+                               (exists v, r = OK v /\ Some v = find_name fnlist tree)%type ]] *
+                            [[ MSAlloc mscs' = MSAlloc mscs ]]
+                              CRASH:hm'  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+                                    >})
+          (lookup fsxp dnum fnlist mscs).
+    Proof.
+      translate_ok.
+    Qed.
+
+    Definition read_fblock := ltac:(translate_lift AFS.read_fblock).
+
+    Theorem read_fblock_ok : forall fsxp inum off mscs,
+        translation_spec
+          (SPEC {< '(ds, Fm, Ftop, tree, pathname, f, Fd, vs, ilist, frees),
+                 PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
+                     [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+                     [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
+                       POST:hm' RET:^(mscs', r)
+                                LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+                            [[ r = fst vs /\ MSAlloc mscs' = MSAlloc mscs ]]
+                              CRASH:hm'
+                                      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
+                                    >})
+          (read_fblock fsxp inum off mscs).
+    Proof.
+      translate_ok.
+    Qed.
 
 
-  Definition file_set_attr := ltac:(translate_lift AFS.file_set_attr).
+    Definition file_set_attr := ltac:(translate_lift AFS.file_set_attr).
 
-  Theorem file_set_attr_ok : forall fsxp inum attr mscs,
-      translation_spec
-        (SPEC {< '(ds, pathname, Fm, Ftop, tree, f, ilist, frees),
-               PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                   [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
-                   [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
-                     POST:hm' RET:^(mscs', ok)
-                              [[ MSAlloc mscs' = MSAlloc mscs ]] *
-                          ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
-                           [[ ok = true  ]] * exists d tree' f' ilist',
-                               LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
-                               [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees)]]] *
-                               [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-                               [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
-                               [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                                               ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
-                               [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
-                          )
-                            XCRASH:hm'
-                                     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-                                   exists d tree' f' ilist' mscs',
-                                     [[ MSAlloc mscs' = MSAlloc mscs ]] *
-                                     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
-                                     [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees)]]] *
-                                     [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-                                     [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
-                                     [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                                                     ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
-                                     [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
-                                     >})
-        (file_set_attr fsxp inum attr mscs).
-  Proof.
-    translate_ok.
-  Qed.
-
-  Definition file_truncate := ltac:(translate_lift AFS.file_truncate).
-
-  Theorem file_truncate_ok : forall fsxp inum sz mscs,
-      translation_spec
-        (SPEC {< '(ds, Fm, Ftop, tree, pathname, f, ilist, frees),
-               PRE:hm
-                     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                   [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees)]]] *
-                   [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
-                     POST:hm' RET:^(mscs', r)
-                              [[ MSAlloc mscs' = MSAlloc mscs ]] *
-                          ([[ isError r ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
-                           [[ r = OK tt ]] * exists d tree' f' ilist' frees',
-                               LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
-                               [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees')]]] *
-                               [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-                               [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]] *
-                               [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                                               ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
-                               [[ sz >= Datatypes.length (BFILE.BFData f) -> BFILE.treeseq_ilist_safe inum ilist ilist' ]] )
-                            XCRASH:hm'
-                                     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-                                   exists d tree' f' ilist' frees' mscs',
-                                     [[ MSAlloc mscs' = MSAlloc mscs ]] *
-                                     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
-                                     [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees')]]] *
-                                     [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-                                     [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]] *
-                                     [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                                                     ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
-                                     [[ sz >= Datatypes.length (BFILE.BFData f) -> BFILE.treeseq_ilist_safe inum ilist ilist' ]]
-                                     >})
-        (file_truncate fsxp inum sz mscs).
-  Proof.
-    translate_ok.
-  Qed.
-
-  Definition update_fblock_d := ltac:(translate_lift AFS.update_fblock_d).
-
-  Theorem update_fblock_d_ok : forall fsxp inum off v mscs,
-      translation_spec
-        (SPEC {< '(ds, Fm, Ftop, tree, pathname, f, Fd, vs, frees, ilist),
-               PRE:hm
-                     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                   [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees)]]] *
-                   [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
-                   [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
-                     POST:hm' RET:^(mscs')
-                              exists tree' f' ds' bn,
-                                LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
-                                [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
-                                [[ BFILE.block_belong_to_file ilist bn inum off ]] *
+    Theorem file_set_attr_ok : forall fsxp inum attr mscs,
+        translation_spec
+          (SPEC {< '(ds, pathname, Fm, Ftop, tree, f, ilist, frees),
+                 PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
+                     [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+                       POST:hm' RET:^(mscs', ok)
                                 [[ MSAlloc mscs' = MSAlloc mscs ]] *
-                                (* spec about files on the latest diskset *)
-                                [[[ ds'!! ::: (Fm  * rep fsxp Ftop tree' ilist frees) ]]] *
-                                [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-                                [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
-                                [[ BFILE.BFAttr f' = BFILE.BFAttr f ]] *
-                                [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
-                                                ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
-                                  XCRASH:hm'
-                                           LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-                                         exists bn, [[ BFILE.block_belong_to_file ilist bn inum off ]] *
-                                               LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (dsupd ds bn (v, vsmerge vs)) hm'
-                                               >})
-        (update_fblock_d fsxp inum off v mscs).
-  Proof.
-    translate_ok.
-  Qed.
+                            ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+                             [[ ok = true  ]] * exists d tree' f' ilist',
+                                 LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
+                                 [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees)]]] *
+                                 [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+                                 [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
+                                 [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
+                                                 ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
+                                 [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
+                            )
+                              XCRASH:hm'
+                                       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+                                     exists d tree' f' ilist' mscs',
+                                       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+                                       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
+                                       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees)]]] *
+                                       [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+                                       [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
+                                       [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
+                                                       ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
+                                       [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
+                                       >})
+          (file_set_attr fsxp inum attr mscs).
+    Proof.
+      translate_ok.
+    Qed.
 
-  Definition create := ltac:(translate_lift AFS.create).
+    Definition file_truncate := ltac:(translate_lift AFS.file_truncate).
 
-  Theorem create_ok : forall fsxp dnum name mscs,
-      translation_spec
-    (SPEC {< '(ds, pathname, Fm, Ftop, tree, tree_elem, ilist, frees),
-    PRE:hm
-      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
-      [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
-    POST:hm' RET:^(mscs',r)
-      [[ MSAlloc mscs' = MSAlloc mscs ]] *
-      ([[ isError r ]] *
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm'
-      \/ exists inum,
-       [[ r = OK inum ]] * exists d tree' ilist' frees',
-       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
-       [[ tree' = tree_graft dnum tree_elem pathname name (TreeFile inum BFILE.bfile0) tree ]] *
-       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees') ]]] *
-       [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                       ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]])
-    XCRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-      exists d inum tree' ilist' frees',
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
-      [[ tree' = tree_graft dnum tree_elem pathname name (TreeFile inum BFILE.bfile0) tree ]] *
-      [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees') ]]]
-      >})
-    (create fsxp dnum name mscs).
-  Proof.
-    translate_ok.
-  Qed.
+    Theorem file_truncate_ok : forall fsxp inum sz mscs,
+        translation_spec
+          (SPEC {< '(ds, Fm, Ftop, tree, pathname, f, ilist, frees),
+                 PRE:hm
+                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees)]]] *
+                     [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
+                       POST:hm' RET:^(mscs', r)
+                                [[ MSAlloc mscs' = MSAlloc mscs ]] *
+                            ([[ isError r ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+                             [[ r = OK tt ]] * exists d tree' f' ilist' frees',
+                                 LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
+                                 [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees')]]] *
+                                 [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+                                 [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]] *
+                                 [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
+                                                 ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
+                                 [[ sz >= Datatypes.length (BFILE.BFData f) -> BFILE.treeseq_ilist_safe inum ilist ilist' ]] )
+                              XCRASH:hm'
+                                       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+                                     exists d tree' f' ilist' frees' mscs',
+                                       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+                                       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
+                                       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees')]]] *
+                                       [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+                                       [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]] *
+                                       [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
+                                                       ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
+                                       [[ sz >= Datatypes.length (BFILE.BFData f) -> BFILE.treeseq_ilist_safe inum ilist ilist' ]]
+                                       >})
+          (file_truncate fsxp inum sz mscs).
+    Proof.
+      translate_ok.
+    Qed.
 
-  Definition rename := ltac:(translate_lift AFS.rename).
+    Definition update_fblock_d := ltac:(translate_lift AFS.update_fblock_d).
 
-  Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
-      translation_spec
-        (SPEC {< '(ds, Fm, Ftop, tree, cwd, tree_elem, ilist, frees),
-               PRE:hm
-                     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                   [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
-                   [[ find_subtree cwd tree = Some (TreeDir dnum tree_elem) ]]
-                     POST:hm' RET:^(mscs', ok)
-                              [[ MSAlloc mscs' = MSAlloc mscs ]] *
-                          ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
-                           [[ ok = OK tt ]] *
-                           rename_rep ds mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname hm')
-                            XCRASH:hm'
-                                     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-                                   exists d tree' srcnum srcents dstnum dstents subtree pruned renamed ilist' frees' mscs',
-                                     [[ MSAlloc mscs' = MSAlloc mscs ]] *
-                                     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
-                                     rename_rep_inner d frees' ilist' tree' srcnum srcents subtree pruned dstnum dstents renamed mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname
-                                     >})
-        (rename fsxp dnum srcpath srcname dstpath dstname mscs).
-  Proof.
-    translate_ok.
-  Qed.
+    Theorem update_fblock_d_ok : forall fsxp inum off v mscs,
+        translation_spec
+          (SPEC {< '(ds, Fm, Ftop, tree, pathname, f, Fd, vs, frees, ilist),
+                 PRE:hm
+                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees)]]] *
+                     [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
+                     [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
+                       POST:hm' RET:^(mscs')
+                                exists tree' f' ds' bn,
+                                  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
+                                  [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
+                                  [[ BFILE.block_belong_to_file ilist bn inum off ]] *
+                                  [[ MSAlloc mscs' = MSAlloc mscs ]] *
+                                  (* spec about files on the latest diskset *)
+                                  [[[ ds'!! ::: (Fm  * rep fsxp Ftop tree' ilist frees) ]]] *
+                                  [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+                                  [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
+                                  [[ BFILE.BFAttr f' = BFILE.BFAttr f ]] *
+                                  [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
+                                                  ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
+                                    XCRASH:hm'
+                                             LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+                                           exists bn, [[ BFILE.block_belong_to_file ilist bn inum off ]] *
+                                                      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (dsupd ds bn (v, vsmerge vs)) hm'
+                                                      >})
+          (update_fblock_d fsxp inum off v mscs).
+    Proof.
+      translate_ok.
+    Qed.
 
-  Definition delete := ltac:(translate_lift AFS.delete).
+    Definition create := ltac:(translate_lift AFS.create).
 
-  Theorem delete_ok : forall fsxp dnum name mscs,
-      translation_spec
-        (SPEC {< '(ds, pathname, Fm, Ftop, tree, tree_elem, frees, ilist),
-               PRE:hm
-                     LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-                   [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
-                   [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
-                     POST:hm' RET:^(mscs', ok)
-                              [[ MSAlloc mscs' = MSAlloc mscs ]] *
-                          ([[ isError ok ]] *
-                           LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm'   \/
-                           [[ ok = OK tt ]] * exists d tree' ilist' frees',
-                               LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
-                               [[ tree' = update_subtree pathname
-                                                         (delete_from_dir name (TreeDir dnum tree_elem)) tree ]] *
-                               [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees') ]]] *
-                               [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                                               ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
-                               [[ forall inum def', inum <> dnum -> In inum (tree_inodes tree) ->
-                                               In inum (tree_inodes tree') ->
-                                               selN ilist inum def' = selN ilist' inum def' ]])
-                            XCRASH:hm'
-                                     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-                                   exists d tree' ilist' frees' mscs',
-                                     [[ MSAlloc mscs' = MSAlloc mscs ]] *
-                                     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
-                                     [[ tree' = update_subtree pathname
-                                                               (delete_from_dir name (TreeDir dnum tree_elem)) tree ]] *
-                                     [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees') ]]] *
-                                     [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
-                                                     ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
-                                     [[ forall inum def', inum <> dnum ->
-                                                     (In inum (tree_inodes tree') \/ (~ In inum (tree_inodes tree))) ->
-                                                     selN ilist inum def' = selN ilist' inum def' ]]
-                                     >})
-        (delete fsxp dnum name mscs).
-  Proof.
-    translate_ok.
-  Qed.
+    Theorem create_ok : forall fsxp dnum name mscs,
+        translation_spec
+          (SPEC {< '(ds, pathname, Fm, Ftop, tree, tree_elem, ilist, frees),
+                 PRE:hm
+                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
+                     [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
+                       POST:hm' RET:^(mscs',r)
+                                [[ MSAlloc mscs' = MSAlloc mscs ]] *
+                            ([[ isError r ]] *
+                             LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm'
+                             \/ exists inum,
+                                [[ r = OK inum ]] * exists d tree' ilist' frees',
+                                  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
+                                  [[ tree' = tree_graft dnum tree_elem pathname name (TreeFile inum BFILE.bfile0) tree ]] *
+                                  [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees') ]]] *
+                                  [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
+                                                  ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]])
+                              XCRASH:hm'
+                                       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+                                     exists d inum tree' ilist' frees',
+                                       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
+                                       [[ tree' = tree_graft dnum tree_elem pathname name (TreeFile inum BFILE.bfile0) tree ]] *
+                                       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees') ]]]
+                                       >})
+          (create fsxp dnum name mscs).
+    Proof.
+      translate_ok.
+    Qed.
 
-End OptimisticFS.
+    Definition rename := ltac:(translate_lift AFS.rename).
+
+    Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
+        translation_spec
+          (SPEC {< '(ds, Fm, Ftop, tree, cwd, tree_elem, ilist, frees),
+                 PRE:hm
+                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
+                     [[ find_subtree cwd tree = Some (TreeDir dnum tree_elem) ]]
+                       POST:hm' RET:^(mscs', ok)
+                                [[ MSAlloc mscs' = MSAlloc mscs ]] *
+                            ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+                             [[ ok = OK tt ]] *
+                             rename_rep ds mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname hm')
+                              XCRASH:hm'
+                                       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+                                     exists d tree' srcnum srcents dstnum dstents subtree pruned renamed ilist' frees' mscs',
+                                       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+                                       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
+                                       rename_rep_inner d frees' ilist' tree' srcnum srcents subtree pruned dstnum dstents renamed mscs' Fm fsxp Ftop tree tree_elem ilist frees cwd dnum srcpath srcname dstpath dstname
+                                       >})
+          (rename fsxp dnum srcpath srcname dstpath dstname mscs).
+    Proof.
+      translate_ok.
+    Qed.
+
+    Definition delete := ltac:(translate_lift AFS.delete).
+
+    Theorem delete_ok : forall fsxp dnum name mscs,
+        translation_spec
+          (SPEC {< '(ds, pathname, Fm, Ftop, tree, tree_elem, frees, ilist),
+                 PRE:hm
+                       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
+                     [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
+                     [[ find_subtree pathname tree = Some (TreeDir dnum tree_elem) ]]
+                       POST:hm' RET:^(mscs', ok)
+                                [[ MSAlloc mscs' = MSAlloc mscs ]] *
+                            ([[ isError ok ]] *
+                             LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm'   \/
+                             [[ ok = OK tt ]] * exists d tree' ilist' frees',
+                                 LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
+                                 [[ tree' = update_subtree pathname
+                                                           (delete_from_dir name (TreeDir dnum tree_elem)) tree ]] *
+                                 [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees') ]]] *
+                                 [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
+                                                 ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
+                                 [[ forall inum def', inum <> dnum -> In inum (tree_inodes tree) ->
+                                                 In inum (tree_inodes tree') ->
+                                                 selN ilist inum def' = selN ilist' inum def' ]])
+                              XCRASH:hm'
+                                       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
+                                     exists d tree' ilist' frees' mscs',
+                                       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+                                       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
+                                       [[ tree' = update_subtree pathname
+                                                                 (delete_from_dir name (TreeDir dnum tree_elem)) tree ]] *
+                                       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees') ]]] *
+                                       [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
+                                                       ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
+                                       [[ forall inum def', inum <> dnum ->
+                                                       (In inum (tree_inodes tree') \/ (~ In inum (tree_inodes tree))) ->
+                                                       selN ilist inum def' = selN ilist' inum def' ]]
+                                       >})
+          (delete fsxp dnum name mscs).
+    Proof.
+      translate_ok.
+    Qed.
+
+  End OptimisticFS.
+
+End OptFS.
