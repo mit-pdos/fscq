@@ -213,8 +213,8 @@ Module Go.
   | MapElements
   | FreezeBuffer (* destination, source *)
   | SliceBuffer (from to : nat) (* destination, source *)
-  | StructGet
-  | StructPut
+  | StructGet (idx : nat)
+  | StructPut (idx : nat)
   .
 
   Inductive value :=
@@ -502,11 +502,11 @@ Module Go.
       ^(SetTo (Val (ImmutableBuffer inside) (split2 before inside (split1 (before + inside) after v))),
         Leave).
 
-    Definition struct_get_impl' (l : list type) (s : type_denote (Struct l)) (n : addr) : n_tuple 3 var_update :=
-      ^(SetTo (Val (Struct l) (struct_moveN l s n)), Leave, SetTo (Val (type_list_nth l n) (struct_selN l s n))).
+    Definition struct_get_impl' (l : list type) (s : type_denote (Struct l)) (n : addr) : n_tuple 2 var_update :=
+      ^(SetTo (Val (Struct l) (struct_moveN l s n)), SetTo (Val (type_list_nth l n) (struct_selN l s n))).
 
-    Definition struct_set_impl' (l : list type) (s : type_denote (Struct l)) (n : addr) (v : type_denote_list_nth l n) : n_tuple 3 var_update :=
-      ^(SetTo (Val (Struct l) (struct_updN l s n v)), Leave, Move).
+    Definition struct_set_impl' (l : list type) (s : type_denote (Struct l)) (n : addr) (v : type_denote_list_nth l n) : n_tuple 2 var_update :=
+      ^(SetTo (Val (Struct l) (struct_updN l s n v)), Move).
 
   End NiceImpls.
 
@@ -687,28 +687,26 @@ Module Go.
       exact (Some (slice_buffer_impl' from (to - from) (ns - to) s)).
     Defined.
 
-    Definition struct_get_impl : op_impl 3.
-      refine (fun args => let '^(Val ts s, Val tk k, Val tr r) := args in
+    Definition struct_get_impl (idx : nat) : op_impl 2.
+      refine (fun args => let '^(Val ts s, Val tr r) := args in
                         match ts with
                         | Struct l => fun s => _
                         | _ => fun _ => None
                         end s).
-      destruct (type_eq_dec tk Num); [ subst | exact None].
-      destruct (type_eq_dec tr (type_list_nth l k)); [ subst | exact None ].
+      destruct (type_eq_dec tr (type_list_nth l idx)); [ subst | exact None ].
       refine (Some _).
-      refine (struct_get_impl' l s k).
+      refine (struct_get_impl' l s idx).
     Defined.
 
-    Definition struct_set_impl : op_impl 3.
-      refine (fun args => let '^(Val ts s, Val tk k, Val tv v) := args in
+    Definition struct_set_impl (idx : nat) : op_impl 2.
+      refine (fun args => let '^(Val ts s, Val tv v) := args in
                         match ts with
                         | Struct l => fun s => _
                         | _ => fun _ => None
                         end s).
-      destruct (type_eq_dec tk Num); [ subst | exact None ].
-      destruct (type_eq_dec tv (type_list_nth l k)); [ subst | exact None ].
+      destruct (type_eq_dec tv (type_list_nth l idx)); [ subst | exact None ].
       refine (Some _).
-      refine (struct_set_impl' l s k v).
+      refine (struct_set_impl' l s idx v).
     Defined.
 
   End NastyImpls.
@@ -732,8 +730,8 @@ Module Go.
     | MapElements => existT _ _ map_elements_impl
     | FreezeBuffer => existT _ _ freeze_buffer_impl
     | SliceBuffer from to => existT _ _ (slice_buffer_impl from to)
-    | StructGet => existT _ _ struct_get_impl
-    | StructSet => existT _ _ struct_set_impl
+    | StructGet idx => existT _ _ (struct_get_impl idx)
+    | StructPut idx => existT _ _ (struct_set_impl idx)
     end.
 
   Definition op_arity (op : modify_op) : nat := projT1 (impl_for op).
