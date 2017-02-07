@@ -169,7 +169,7 @@ Notation "x <- p1 ; p2" := (Bind p1 (fun x => p2))
 exception exception at interp/topcontr.ml line 200 *)
 Notation "'do' x .. y <- p1 ; p2" := (Bind p1 (fun x => .. (fun y => p2) ..))
                                       (at level 60, right associativity,
-                                       x binder, y binder).
+                                       x binder, y binder, only parsing).
 
 (* Use to give spec hints to the automation: the pattern should be
 
