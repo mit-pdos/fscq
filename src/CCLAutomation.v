@@ -52,3 +52,18 @@ Ltac step :=
       end | ];
     simplify
   end.
+
+Ltac hoare :=
+  let finish :=
+      repeat match goal with
+             | [ |- exists _, _ ] => eexists
+             | _ => intuition eauto
+             end in
+  let check :=
+      try lazymatch goal with
+          | [ |- cprog_ok _ _ _ _ ] => idtac
+          | _ => fail 1
+          end in
+  let cleanup :=
+      try ((intuition auto); let n := numgoals in guard n <= 1) in
+  repeat (step; try (finish; check); cleanup).

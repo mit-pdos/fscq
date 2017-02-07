@@ -1,5 +1,4 @@
 Require Import CCL.
-Require Import OptimisticCache WriteBuffer.
 Require Import OptimisticTranslator OptimisticFS.
 
 Require AsyncFS.
