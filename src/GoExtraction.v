@@ -451,10 +451,16 @@ Ltac compile_split := match goal with
     | Some ?pvar_ =>
       let A_ := type of (fst p) in
       let B_ := type of (snd p) in
-      do_declare B_ ltac:(fun bvar_ =>
-        eapply hoare_weaken;
-        [ eapply CompileFst with (A := A_) (B := B_) (avar := avar_) (bvar := bvar_) (pvar := pvar_)
-        | cancel_go.. ])
+      match B_ with
+      | unit => eapply hoare_weaken;
+          [ eapply CompileSplitUnit with (avar := avar_) (pvar := pvar_)
+          | cancel_go..]
+      | _ =>
+        do_declare B_ ltac:(fun bvar_ =>
+          eapply hoare_weaken;
+          [ eapply CompileFst with (A := A_) (B := B_) (avar := avar_) (bvar := bvar_) (pvar := pvar_)
+          | cancel_go.. ])
+      end
     end
   | [ |- EXTRACT Ret (snd ?p) {{ ?pre }} _ {{ _ }} // _ ] =>
     let bvar_ := var_mapping_to_ret in
@@ -479,19 +485,25 @@ Ltac compile_join := match goal with
           eapply CompileRet with (v := a_) (var0 := x_);
           simpl decls_pre) |]
     | Some ?ka =>
-      match find_val b_ pre with
-      | None =>
+      match var_mapping_to_ret with
+      | ?kp =>
         let B_ := type of b_ in
-        eapply CompileBefore; [
-          do_declare B_ ltac:(fun x_ =>
-          eapply CompileRet with (v := b_) (var0 := x_);
-          simpl decls_pre) |]
-      | Some ?kb =>
-        match var_mapping_to_ret with
-        | ?kp =>
-          eapply hoare_weaken;
-          [ apply CompileJoin with (avar := ka) (bvar := kb) (pvar := kp)
+        match B_ with
+        | unit => eapply hoare_weaken;
+          [ eapply CompileJoinUnit with (avar := ka) (pvar := kp)
           | cancel_go..]
+        | _ =>
+          match find_val b_ pre with
+          | None =>
+            eapply CompileBefore; [
+              do_declare B_ ltac:(fun x_ =>
+              eapply CompileRet with (v := b_) (var0 := x_);
+              simpl decls_pre) |]
+          | Some ?kb =>
+              eapply hoare_weaken;
+              [ apply CompileJoin with (avar := ka) (bvar := kb) (pvar := kp)
+              | cancel_go..]
+          end
         end
       end
     end

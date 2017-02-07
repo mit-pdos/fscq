@@ -1841,6 +1841,38 @@ Proof.
   [eval_expr; eauto..].
 Qed.
 
+Lemma CompileSplitUnit :
+  forall env A {HA : GoWrapper A} avar pvar (a : A) F,
+    EXTRACT Ret (fst ^(a))
+    {{ avar ~>? A * pvar ~> ^(a) * F }}
+      Declare (@wrap_type _ GoWrapper_unit) (fun uvar =>
+        Modify SplitPair ^(pvar, avar, uvar)
+      )
+    {{ fun ret => avar ~> ret * pvar ~>? (A * unit) * F }} // env.
+Proof.
+  intros.
+  eapply CompileDeclare. intros.
+  eapply hoare_weaken.
+  eapply CompileFst.
+  all : cancel_go.
+Qed.
+
+Lemma CompileJoinUnit :
+  forall env A {HA : GoWrapper A} avar pvar (a : A) F,
+    EXTRACT Ret ^(a)
+    {{ avar ~> a * pvar ~>? (A * unit) * F }}
+      Declare (@wrap_type _ GoWrapper_unit) (fun uvar =>
+        Modify JoinPair ^(pvar, avar, uvar)
+      )
+    {{ fun ret => avar |-> moved_value (wrap a) * pvar ~> ret * F }} // env.
+Proof.
+  intros.
+  eapply CompileDeclare. intros.
+  eapply hoare_weaken.
+  eapply CompileJoin.
+  all : cancel_go.
+Qed.
+
 Hint Constructors source_stmt.
 
 Lemma CompileRetOptionSome : forall env B {HB: GoWrapper B} {D : DefaultValue B}
