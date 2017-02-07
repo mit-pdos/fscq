@@ -7,14 +7,14 @@ Section RetryLoop.
   Context {St:StateTypes}.
   Variable G:Protocol St.
 
-  Fixpoint retry_n {T P Q} (guard: forall (v:T), {P v}+{Q v}) (p: @cprog St T) n :=
+  Fixpoint retry_n {T P Q} (guard: forall (v:T), {P v}+{Q v}) (v0: T) (p: @cprog St T) n :=
     match n with
-    | 0 => p
+    | 0 => Ret v0
     | S n' => v <- p;
                if guard v then
                  Ret v
                else
-                 retry_n guard p n'
+                 retry_n guard v0 p n'
     end.
 
   CoFixpoint retry {T P Q} (guard: forall (v:T), {P v}+{Q v}) (p: @cprog St T) :=
@@ -54,7 +54,7 @@ Section RetryLoop.
 
   Theorem retry_exec : forall T P Q (guard: forall (v:T), {P v}+{Q v}) p,
       forall tid st out, exec G tid st (retry guard p) out ->
-                    (exists n, exec G tid st (retry_n guard p n) out) /\
+                    (exists n, forall v0, exec G tid st (retry_n guard v0 p n) out) /\
                     match out with
                     | Finished _ _ v => exists H, guard v = left H
                     | Error => True
@@ -71,21 +71,25 @@ Section RetryLoop.
     - case_eq (guard v); intros; replace (guard v) in *.
       + CCLTactics.inv_ret.
         intuition eauto.
-        exists 0; simpl; eauto.
+        exists 1; intros; simpl.
+        eapply ExecBindFinish; eauto.
+        replace (guard v).
+        eapply ExecRet; eauto.
       + rewrite retry_unfold in IHexec2.
         specialize (IHexec2 _ _ guard p); intuition.
         deex.
-        exists (S n); simpl.
+        exists (S n); intros; simpl.
         eapply ExecBindFinish; eauto.
         simpl_match; eauto.
     - inversion Heqc; repeat inj_pair2.
       intuition.
-      exists 0; eauto.
+      exists 1; simpl; intros.
+      eapply ExecBindFail; eauto.
   Qed.
 
-  Theorem retry_triple : forall T P Q (guard: forall (v:T), {P v}+{Q v}) p
+  Theorem retry_triple : forall T P Q (guard: forall (v:T), {P v}+{Q v}) v0 p
                          A (spec: Spec A T) tid,
-      (forall n, cprog_triple G tid spec (retry_n guard p n)) ->
+      (forall n, cprog_triple G tid spec (retry_n guard v0 p n)) ->
       cprog_triple G tid (fun a st =>
                             {| precondition := precondition (spec a st);
                                postcondition :=
@@ -96,24 +100,26 @@ Section RetryLoop.
   Proof.
     unfold cprog_triple; intros; simpl in *.
     apply retry_exec in H1; intuition; repeat deex.
+    specialize (H1 v0).
     eapply H in H1; eauto.
     destruct out; intuition eauto.
   Qed.
 
-  Theorem retry_triple' : forall T P Q (guard: forall (v:T), {P v}+{Q v}) p
+  Theorem retry_triple' : forall T P Q (guard: forall (v:T), {P v}+{Q v}) v0 p
                          A (spec: Spec A T) tid,
-      (forall n, cprog_triple G tid spec (retry_n guard p n)) ->
+      (forall n, cprog_triple G tid spec (retry_n guard v0 p n)) ->
       cprog_triple G tid spec (retry guard p).
   Proof.
     intros.
     unfold cprog_triple; intros; simpl in *.
     apply retry_exec in H1; intuition; repeat deex.
+    specialize (H1 v0).
     eapply H in H1; eauto.
   Qed.
 
-  Corollary retry_spec : forall T P Q (guard: forall (v:T), {P v}+{Q v}) p
+  Corollary retry_spec : forall T P Q (guard: forall (v:T), {P v}+{Q v}) v0 p
                          A (spec: Spec A T) tid,
-      (forall n, cprog_spec G tid spec (retry_n guard p n)) ->
+      (forall n, cprog_spec G tid spec (retry_n guard v0 p n)) ->
       cprog_spec G tid (fun a st =>
                             {| precondition := precondition (spec a st);
                                postcondition :=
@@ -124,20 +130,20 @@ Section RetryLoop.
   Proof.
     intros.
     apply triple_spec_equiv.
-    apply retry_triple; intros.
+    eapply retry_triple; intros.
     apply triple_spec_equiv.
     auto.
   Qed.
 
-  Corollary retry_spec' : forall T P Q (guard: forall (v:T), {P v}+{Q v}) p
+  Corollary retry_spec' : forall T P Q (guard: forall (v:T), {P v}+{Q v}) v0 p
                          A (spec: Spec A T) tid,
-      (forall n, cprog_spec G tid spec (retry_n guard p n)) ->
+      (forall n, cprog_spec G tid spec (retry_n guard v0 p n)) ->
       cprog_spec G tid spec (retry guard p).
   Proof.
     intros.
     intros.
     apply triple_spec_equiv.
-    apply retry_triple'; intros.
+    eapply retry_triple'; intros.
     apply triple_spec_equiv.
     auto.
   Qed.
