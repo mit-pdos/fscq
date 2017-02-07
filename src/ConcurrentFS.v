@@ -129,6 +129,19 @@ Section ConcurrentFS.
 
     Hint Extern 0 {{ OptFS.file_get_attr _ _ _ _ _; _ }} => apply OptFS.file_get_attr_ok : prog.
 
+    Ltac descend :=
+      repeat match goal with
+             | [ |- exists _, _ ] => eexists
+             end.
+
+    Lemma fstree_locally_modified : forall sigma sigma',
+        locally_modified sigma sigma' ->
+        get_fstree sigma' = get_fstree sigma.
+    Proof.
+      unfold get_fstree, locally_modified.
+      destruct sigma, sigma'; simpl; intuition congruence.
+    Qed.
+
     Theorem file_get_attr1_ok : forall inum tid mscs,
         cprog_spec fs_guarantee tid
                    (fun '(pathname, f) '(sigma_i, sigma) =>
@@ -146,7 +159,9 @@ Section ConcurrentFS.
                                fs_guarantee' wb' tid sigma_i'
                                              (Sigma.set_mem sigma' (set_fsmem (Sigma.mem sigma') mscs'))
                              | Failed =>
-                               fs_guarantee' wb' tid sigma_i' sigma'
+                               (* need to promise committed disk doesn't change *)
+                               locally_modified sigma sigma' /\
+                               CacheRep wb' sigma'
                              end
                       |}) (OptFS.file_get_attr _ fsxp inum mscs empty_writebuffer).
     Proof.
@@ -158,50 +173,42 @@ Section ConcurrentFS.
       unfold fs_guarantee, fs_guarantee', fs_invariant in *; intuition;
         repeat deex.
 
-      repeat eexists.
+      descend; intuition eauto.
       SepAuto.pred_apply; SepAuto.cancel; eauto.
-      apply H3. (* why is CacheRep getting unfolded? *)
-      apply H3.
 
-      intros.
       step.
-      destruct r; intuition eauto.
 
+      intuition eauto.
+      apply fstree_locally_modified; auto.
 
-      unfold get_fstree, locally_modified in *; fold St in *; intuition eauto.
-      congruence.
+      destruct a.
+      - (* translated code returned success *)
+        destruct v as (mscs' & (attr & u)); destruct u.
+        split_lift_prop; auto.
+        intuition eauto.
 
-      destruct r; intuition eauto.
-      split_lift_prop; auto.
-      destruct v.
-      destruct p; simpl in *; subst; intuition eauto.
+        destruct sigma, sigma'; simpl in *; eauto.
 
-      unfold CacheRep in *; destruct sigma, sigma'; simpl in *; intuition eauto.
+        fold St in *.
+        unfold locally_modified, get_fstree in *.
+        destruct sigma, sigma'; simpl in *; eauto.
+        exists ds, ilist, frees.
+        intuition eauto.
+        congruence.
 
-      unfold get_fstree, locally_modified in *; simpl in *; eauto.
-      destruct sigma, sigma'; simpl in *; auto.
+        unfold locally_modified, get_fstree in *.
+        destruct sigma, sigma' in *; simpl in *; intuition eauto.
+        etransitivity; eauto.
+        match goal with
+        | [ |- homedir_guarantee _ _ ?tree ?tree' ] =>
+          replace tree' with tree by congruence
+        end; reflexivity.
 
-      exists ds, ilist, frees.
-      repeat match goal with
-             | [ |- exists _, _ ] => eexists
-             end; intuition eauto.
-      congruence.
-
-      unfold get_fstree, locally_modified in *.
-      destruct sigma, sigma' in *; simpl in *; intuition eauto.
-      etransitivity; eauto.
-      match goal with
-      | [ |- homedir_guarantee _ _ ?tree ?tree' ] =>
-        replace tree' with tree by congruence
-      end; reflexivity.
-
-      unfold get_homedirs, set_fsmem, get_fstree, locally_modified in *.
-      destruct sigma_i, sigma, sigma' in *; simpl in *; intuition.
-      congruence.
-
-      subst; eauto.
-      (* TODO: much duplication with above, most likely *)
-    Admitted.
+        unfold get_homedirs, set_fsmem, get_fstree, locally_modified in *.
+        destruct sigma_i, sigma, sigma' in *; simpl in *; intuition.
+        congruence.
+      - intuition eauto.
+    Qed.
 
   End GetAttrCleanSpec.
 
@@ -235,34 +242,34 @@ Section ConcurrentFS.
 
       apply exists_tuple; do 2 eexists; simpl; intuition eauto.
 
-      destruct a.
-      destruct v.
-      step.
+      destruct a as [(mscs & (attr & u)) | ].
+      + step.
 
-      destruct p; intuition eauto.
-      subst.
-      unfold fs_guarantee', fs_invariant in H5; intuition eauto.
-      destruct sigma'; simpl in *; eauto.
+        intuition eauto.
 
-      step.
-      step.
-      step.
-      step.
-      intuition eauto.
+        unfold fs_guarantee', fs_invariant in H5; intuition eauto.
+        destruct sigma'; simpl in *; eauto.
 
-      admit. (* rely holds, despite storing new mscs *)
+        hoare.
+        intuition eauto.
+        admit. (* rely holds *)
+        admit. (* fstree unchanged *)
+      + hoare.
+        intuition eauto.
+        admit.
 
-      fold St in *.
-      unfold get_fstree, locally_modified, id in *.
-      destruct sigma, sigma', sigma0; simpl in *; intuition.
-      congruence.
+        hoare.
+        intuition eauto.
+        unfold Rely.
+        eapply Relation_Operators.rt_trans; eauto.
+        fold (Rely fs_guarantee tid sigma sigma0).
+        admit.
 
-      step.
-      unfold fs_guarantee', fs_invariant in *; intuition eauto; repeat deex.
-      eexists; intuition eauto.
+        admit.
+    - hoare.
+      apply exists_tuple; do 2 eexists; simpl; intuition eauto.
 
-      step.
-      intuition eauto.
+      destruct a as [(mscs & (attr & u)) | ].
   Abort.
 
 End ConcurrentFS.
