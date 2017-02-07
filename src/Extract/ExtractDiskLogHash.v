@@ -14,22 +14,6 @@ Require Import DiskLogHash.
 Import Go.
 Local Open Scope string_scope.
 
-(*
-Example compile_evict : forall env, sigT (fun p => forall a cs,
-  prog_func_call_lemma {| FArgs := [with_wrapper addr; with_wrapper cachestate]; FRet := with_wrapper cachestate |} "writeback" BUFCACHE.writeback env ->
-  EXTRACT BUFCACHE.evict a cs
-  {{ 0 ~> a * 1 ~> cs }}
-    p
-  {{ fun ret => 0 |->? * 1 ~> ret }} // env
-  /\ source_stmt p).
-Proof.
-  unfold BUFCACHE.evict.
-  intros.
-  compile.
-Defined.
-Eval lazy in (projT1 (compile_evict (StringMap.empty _))).
-*)
-
 Hint Extern 2 (GoWrapper (Rec.Rec.data _)) => simpl : typeclass_instances.
 
 Instance GoWrapper_log_hdr : GoWrapper PaddedLog.Hdr.header.
@@ -60,32 +44,6 @@ Theorem extract_hdr_read :
   compile_step.
   compile_step.
   unfold pair_args_helper.
-  pattern_prog (PaddedLog.Hdr.val2hdr (fst (snd a))).
-  compile_step.
-  unfold PaddedLog.Hdr.val2hdr.
-  cbv beta iota delta [Rec.Rec.of_word Rec.Rec.len PaddedLog.Hdr.header_type plus minus
-                             addrlen hashlen wtl whd].
-  compile_step.
-  compile_step.
-  do_declare (immut_word 768) ltac:(fun var => idtac var).
-  eapply hoare_weaken.
-  eapply CompileBindRet with (vara := nth_var 7 vars) (HA := GoWrapper_immut_word _).
-  3: cancel_go.
-  3: cancel_go.
-  compile_step.
-  Require Import ProgMonad.
-  Lemma bind_f : forall A B C (a : A) (f : A -> B) (g : B -> prog C),
-      prog_equiv (x <- Ret (f a); g x) (x' <- Ret a; g (f x')).
-  Proof.
-    intros.
-    rewrite ?bind_left_id.
-    reflexivity.
-  Qed.
-  (* We'll want the automation to keep punting [eq_rec*] down the line as much as possible *)
-  eapply extract_equiv_prog.
-  symmetry.
-  apply bind_f with (f := fun x => eq_rec_r word x PaddedLog.Hdr.plus_minus_header).
-  compile_step.
   compile_step.
   compile_step.
   compile_step.
@@ -93,34 +51,103 @@ Theorem extract_hdr_read :
 
   (* First, freeze the buffer *)
   pattern_prog (fst (snd a)).
+  Import Rec.
+  cbv [Rec.data Rec.field_type string_dec string_rec string_rect Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
+      sumbool_rec sumbool_rect Bool.bool_dec bool_rec bool_rect eq_rec_r eq_rec eq_rect eq_sym eq_ind_r eq_ind] in *.
+  compile_step.
+  compile_step.
+  pattern_prog (fst (snd a)).
   do_declare (immut_word valulen) ltac:(fun var => idtac var).
   eapply hoare_weaken.
-  eapply CompileBindRet with (vara := nth_var 12 vars) (a := fst (snd a)) (HA := GoWrapper_immut_word _).
+  eapply CompileBindRet with (A := immut_word valulen) (vara := nth_var 11 vars) (a := fst (snd a)).
   3: cancel_go.
   3: cancel_go.
+  
   eapply hoare_weaken.
-  apply CompileFreeze with (svar := nth_var 8 vars) (dvar := nth_var 12 vars).
+  apply CompileFreeze with (svar := nth_var 9 vars) (dvar := nth_var 11 vars).
   rewrite valulen_is. exists (valulen_real / 8). reflexivity.
   cancel_go.
   cancel_go.
+
+  (* Simplify the deserialization *)
+  unfold PaddedLog.Hdr.val2hdr.
+  set (X := fst (snd a)).
+  cbv beta iota delta [Rec.Rec.of_word Rec.Rec.len PaddedLog.Hdr.header_type plus minus
+                             addrlen hashlen wtl whd fst snd].
+  subst X.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  do_declare (immut_word 64) ltac:(fun var => idtac var).
+  eapply hoare_weaken.
+  eapply CompileBindRet with (A := immut_word 64) (vara := nth_var 15 vars).
+  3: solve [cancel_go].
+  3: solve [cancel_go].
+  
+  erewrite split1_iter.
 
   (* Now, we have to actually call [split1] *)
-  eapply hoare_weaken.
+  compile_step. (* TODO: this is unnecessary; we already have [fst (snd a)] in the pre *)
+  Focus 1.
+  match goal with
+  | |- context[@Bind (word ?n)] =>
+    do_declare (immut_word n)
+               ltac:(fun var =>
+                       eapply hoare_weaken; [ eapply CompileBindRet with (A := immut_word n) (vara := var) | solve [ cancel_go ] .. ])
+  end.
+  eapply CompileEqRect.
+  eapply CompileEqRect with (P := immut_word).
+  compile_step.
+  norm.
+  do 19 delay_one.
+  eapply cancel_one.
+  eapply PickFirst.
+
+  match goal with
+  | |- context [ ImmutableBuffer ?x ] => replace x with valulen
+  end.
+  reflexivity.
+  change (S ?x) with (1 + x).
+  repeat change (?x + S ?y) with (S x + y).
+  apply le_plus_minus. rewrite valulen_is; omega.
+  cancel'.
+  cancel.
+  Focus 1.
+  Lemma wrap_wrapper_eq_rect : forall A x P p y e {Wr : GoWrapper (P y)},
+      @wrap _ (GoWrapper_eq_rect A x P y e) p = @wrap _ Wr (@eq_rect A x P p y e).
+  Proof.
+    intros.
+    reflexivity.
+  Qed.
+  Lemma wrap_eq_rect : forall A x P p y e {Wr : forall xy, GoWrapper (P xy)},
+      wrap (@eq_rect A x P p y e) = wrap p.
+  Proof.
+    intros.
+    rewrite <- e.
+    reflexivity.
+  Qed.
+  repeat rewrite wrap_wrapper_eq_rect.
+  repeat rewrite wrap_eq_rect.
+  reflexivity.
+
   match goal with
   | [ |- context[split1 ?sz1_ ?sz2_ ?buf_] ] =>
-    pose proof (@CompileSplit1 sz1_ sz2_ buf_ env (nth_var 7 vars) (nth_var 12 vars))
+    pose proof (@CompileSplit1 sz1_ sz2_ buf_ env (nth_var 15 vars) (nth_var 16 vars))
   end.
+  eapply hoare_weaken.
   apply H0.
-  exists (768 / 8). reflexivity.
+  exists (64 / 8). reflexivity.
+  apply Nat.divide_add_r.
+  exists (704 / 8). reflexivity.
   apply Nat.divide_sub_r.
-  rewrite valulen_is. exists (valulen_real / 8). reflexivity.
+  Lemma valulen_div_8 : Nat.divide 8 valulen.
+    rewrite valulen_is. exists (valulen_real / 8). reflexivity.
+  Qed.
+  apply valulen_div_8.
   exists (768 / 8). reflexivity.
-  match goal with
-  | [ |- context[wrap (@eq_rec_r ?A ?x ?P ?p ?y ?e)] ] =>
-    replace (wrap (@eq_rec_r A x P p y e)) with (wrap (fst (snd a) : immut_word _)) by admit (* TODO *)
-  end.
   cancel_go.
   cancel_go.
 
-  (* We did a split call! *)
+  (* Now, do the [wordToNat] *)
 Abort.
