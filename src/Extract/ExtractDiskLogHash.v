@@ -142,4 +142,27 @@ Theorem extract_hdr_read :
   cancel_go.
 
   (* Now, do the [wordToNat] *)
+  lazymatch goal with
+  | |- EXTRACT _ {{ ?pre }} _ {{ _ }} // env =>
+    match goal with
+    | [ |- context[# ?b] ] =>
+      let rvar := var_mapping_to_ret in
+      match find_val b pre with
+      | Some ?bvar =>
+        pose proof (@CompileDeserializeNum bvar rvar)
+      end
+    end
+  end.
+  eapply hoare_weaken; [ apply H0 | .. ].
+  Focus 1.
+  (* [simpl] takes too long here. TODO: use a more specific [cbv] call *)
+  norml.
+  normr.
+  cbv [app].
+  cancel'.
+  intros; norml; normr; cbv [app].
+  cancel_one.
+  repeat delay_one.
+  eapply finish_frame.
+
 Abort.
