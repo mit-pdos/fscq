@@ -1,7 +1,6 @@
 Require Import Prog.
 Require Import CCL.
 Require Import AsyncDisk.
-Require Import WriteBuffer.
 Require Import FunctionalExtensionality.
 Require Import SeqSpecs.
 
@@ -12,22 +11,20 @@ Arguments Failed {T}.
 
 Section OptimisticTranslator.
 
-  Variable St:StateTypes.
-  Variable G:TID -> Sigma St -> Sigma St -> Prop.
-
-  Variable P:CacheParams St.
+  Variable OtherSt:StateTypes.
+  Variable G:TID -> Sigma (St OtherSt) -> Sigma (St OtherSt) -> Prop.
 
   Fixpoint translate T (p: prog T) :
-    WriteBuffer -> @cprog St (Result T * WriteBuffer) :=
+    WriteBuffer -> @cprog (St OtherSt) (Result T * WriteBuffer) :=
     fun wb => match p with
            | Prog.Ret v => Ret (Success v, wb)
-           | Prog.Read a => r <- CacheRead P wb a;
+           | Prog.Read a => r <- CacheRead wb a;
                              let '(v, wb) := r in
                              match v with
                              | Some v => Ret (Success v, wb)
                              | None => Ret (Failed, wb)
                              end
-           | Prog.Write a v => r <- CacheWrite P wb a v;
+           | Prog.Write a v => r <- CacheWrite wb a v;
                                 let '(_, wb) := r in
                                 Ret (Success tt, wb)
            | Prog.Sync => Ret (Success tt, wb)
@@ -49,7 +46,6 @@ Section OptimisticTranslator.
           end.
 
   Hint Resolve locally_modified_refl.
-
   Hint Resolve PredCrash.possible_sync_refl.
 
   Lemma add_buffers_eq : forall vd a v,
@@ -107,19 +103,19 @@ Section OptimisticTranslator.
   expressed as projecting the sequential disk from the concurrent state. The
   sequential state also includes a hashmap, which can already be projected with
   [Sigma.hm]. *)
-  Definition seq_disk sigma : rawdisk :=
-    add_buffers (get_vdisk P (Sigma.s sigma)).
+  Definition seq_disk (sigma: Sigma (St OtherSt)) : rawdisk :=
+    add_buffers (vdisk (Sigma.s sigma)).
 
   Theorem translate_simulation : forall T (p: prog T),
       forall tid sigma_i sigma out wb,
-        CacheRep P wb sigma ->
+        CacheRep wb sigma ->
         exec G tid (sigma_i, sigma) (translate p wb) out ->
         match out with
         | Finished sigma_i' sigma' r =>
           let (r, wb') := r in
-          CacheRep P wb' sigma' /\
-           locally_modified P sigma sigma' /\
-           get_vdisk0 P (Sigma.s sigma') = get_vdisk0 P (Sigma.s sigma) /\
+          CacheRep wb' sigma' /\
+           locally_modified sigma sigma' /\
+           vdisk_committed (Sigma.s sigma') = vdisk_committed (Sigma.s sigma) /\
            sigma_i' = sigma_i /\
           match r with
           | Success v =>
@@ -142,11 +138,11 @@ Section OptimisticTranslator.
     unfold seq_disk.
     induction p; simpl; intros.
     - CCLTactics.inv_ret; intuition eauto.
-    - case_eq (get_vdisk P (Sigma.s sigma) a); intros.
+    - case_eq (vdisk (Sigma.s sigma) a); intros.
       + (* non-error read *)
         CCLTactics.inv_bind;
           match goal with
-          | [ H: exec _ _ _ (CacheRead _ _ _) _ |- _ ] =>
+          | [ H: exec _ _ _ (CacheRead _ _) _ |- _ ] =>
             eapply spec_to_exec in H;
               eauto using CacheRead_ok
           end; simpl in *; intuition eauto.
@@ -160,10 +156,10 @@ Section OptimisticTranslator.
       + (* error read *)
         right.
         CCLTactics.inv_bind; eauto.
-    - case_eq (get_vdisk P (Sigma.s sigma) a); intros.
+    - case_eq (vdisk (Sigma.s sigma) a); intros.
       + CCLTactics.inv_bind;
           match goal with
-          | [ H: exec _ _ _ (CacheWrite _ _ _ _) _ |- _ ] =>
+          | [ H: exec _ _ _ (CacheWrite _ _ _) _ |- _ ] =>
             eapply spec_to_exec in H;
               eauto using CacheWrite_ok
           end; simpl in *; intuition eauto.
@@ -220,11 +216,11 @@ Section OptimisticTranslator.
     fun wb a '(sigma_i, sigma) =>
       {| precondition :=
            seq_pre (seq_spec a (Sigma.hm sigma)) (seq_disk sigma) /\
-           CacheRep P wb sigma;
+           CacheRep wb sigma;
          postcondition :=
            fun '(sigma_i', sigma') '(r, wb) =>
-             CacheRep P wb sigma' /\
-             locally_modified P sigma sigma' /\
+             CacheRep wb sigma' /\
+             locally_modified sigma sigma' /\
              match r with
              | Success v => seq_post (seq_spec a (Sigma.hm sigma))
                                     (Sigma.hm sigma') v (seq_disk sigma')
