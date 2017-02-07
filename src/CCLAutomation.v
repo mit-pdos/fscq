@@ -25,11 +25,12 @@ Ltac monad_simpl :=
   let rewrite_equiv H := eapply cprog_ok_respects_exec_equiv;
                          [ solve [ apply H ] | ] in
   repeat match goal with
-         (* TODO: apply these with pattern matching, to avoid unfolding
-         definitions in order to rewrite *)
-         | _ => rewrite_equiv monad_right_id
-         | _ => rewrite_equiv monad_left_id
-         | _ => rewrite_equiv monad_assoc
+         | [ |- cprog_ok _ _ _ (Bind _ (Ret _)) ] =>
+           rewrite_equiv monad_right_id
+         | [ |- cprog_ok _ _ _ (Bind (Ret _) _) ] =>
+           rewrite_equiv monad_left_id
+         | [ |- cprog_ok _ _ _ (Bind (Bind _ _) _) ] =>
+           rewrite_equiv monad_assoc
          end.
 
 Ltac step :=
