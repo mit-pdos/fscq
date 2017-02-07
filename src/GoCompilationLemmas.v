@@ -110,7 +110,6 @@ Qed.
 
 Import Go.
 
-Require Import ProgMonad.
 Lemma bind_f : forall A B C (a : A) (f : A -> B) (g : B -> prog C),
     prog_equiv (x <- Ret (f a); g x) (x' <- Ret a; g (f x')).
 Proof.
