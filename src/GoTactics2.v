@@ -173,6 +173,7 @@ Definition prod' := prod.
 Definition exis' := exis.
 
 Hint Extern 0 (okToCancel (ptsto ?a _) (ptsto ?b _)) => unify a b; reflexivity : okToUnify.
+Hint Extern 0 (okToCancel (ptsto ?a _) (ptsto ?a _)) => reflexivity : okToCancel.
 
 Local Open Scope pred_scope.
 
