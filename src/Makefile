@@ -26,6 +26,10 @@ EXTRACT_MODULES := Wrappers \
 		ExtractBFile \
 		ExtractDirTree \
 		ExtractAsyncFS \
+		ExtractInode \
+		ExtractLog \
+		ExtractGroupLog \
+		ExtractMemLog \
 		GoExtracted
 EXTRACT_VS 		:= $(EXTRACT_MODULES:%=Extract/%.v)
 EXTRACT_BUILD   := $(patsubst %.v,coqbuild/%.v,$(EXTRACT_VS))

@@ -7,6 +7,10 @@ Require Import ExtractBalloc.
 Require Import ExtractAsyncFS.
 Require Import ExtractBFile.
 Require Import ExtractDirTree.
+Require Import ExtractInode.
+Require Import ExtractLog.
+Require Import ExtractGroupLog.
+Require Import ExtractMemLog.
 
 About StringMap.fold.
 Print StringMap.
@@ -29,6 +33,10 @@ Definition extract_env : Go.Env.
   add_to_env ExtractAsyncFS.extract_env.
   add_to_env ExtractBFile.extract_env.
   add_to_env ExtractDirTree.extract_env.
+  add_to_env ExtractInode.extract_env.
+  add_to_env ExtractLog.extract_env.
+  add_to_env ExtractGroupLog.extract_env.
+  add_to_env ExtractMemLog.extract_env.
   (* TODO add more environment definitions here *)
   exact env.
 Defined.

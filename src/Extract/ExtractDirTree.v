@@ -54,6 +54,44 @@ Proof.
 
 Admitted.
 
+Example compile_getattr : sigT (fun p => source_stmt p /\
+  forall env fsxp inum fms,
+  prog_func_call_lemma
+    {|
+      FArgs := [
+        with_wrapper _;
+        with_wrapper _;
+        with_wrapper _;
+        with_wrapper _
+      ];
+      FRet := with_wrapper _
+    |}
+    "bfile_getattrs" BFile.BFILE.getattrs env ->
+  EXTRACT DIRTREE.getattr fsxp inum fms
+  {{ 0 ~>? (BFile.BFILE.memstate * (Errno.res addr * unit)) *
+     1 ~> fsxp *
+     2 ~> inum *
+     3 ~> fms }}
+    p
+  {{ fun ret => 0 ~> ret *
+     1 ~>? FSLayout.fs_xparams *
+     2 ~>? addr *
+     3 ~>? BFile.BFILE.memstate }} // env).
+Proof.
+  unfold DIRTREE.getattr, DIRTREE.MSLL.
+  compile_step.
+  compile_step.
+  compile_step.
+
+  (* This seems to turn into an actual infinite loop; maybe a problem with extracting
+   * something out of a two-level record (log_xparams inside fs_xparams)?
+   *)
+  (*
+  repeat compile_step.
+  *)
+
+Admitted.
+
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).
   (* TODO add more programs here *)
