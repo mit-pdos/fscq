@@ -149,6 +149,7 @@ Proof.
   cancel_go.
 Qed.
 
+
 Inductive Declaration :=
 | Decl (T : Type) {Wr: GoWrapper T} {D : DefaultValue T}.
 
@@ -418,6 +419,22 @@ Ltac exec_solve_step :=
            repeat econstructor; pred_solve
          ])
   end.
+
+Lemma CompileDeserializeNum : forall bvar rvar F env (b : immut_word 64),
+    EXTRACT Ret (wordToNat b)
+    {{ rvar ~>? nat * bvar ~> b * F }}
+      Modify DeserializeNum ^(rvar, bvar)
+    {{ fun ret => rvar ~> ret * bvar ~> b * F }} // env.
+Proof.
+  unfold ProgOk; intros.
+  inv_exec_progok;
+    repeat exec_solve_step.
+  all : match goal with
+        | [H : context[step] |- _] =>
+          contradiction H; eval_expr;
+            repeat econstructor; [ eval_expr; reflexivity .. ]
+        end.
+Qed.
 
 Lemma CompileSeq : forall T T' env A B (C : T -> _) p1 p2 x1 x2,
   EXTRACT p1

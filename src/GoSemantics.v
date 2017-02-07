@@ -215,6 +215,7 @@ Module Go.
   | SliceBuffer (from to : nat) (* destination, source *)
   | StructGet (idx : nat)
   | StructPut (idx : nat)
+  | DeserializeNum
   .
 
   Inductive value :=
@@ -508,6 +509,9 @@ Module Go.
     Definition struct_set_impl' (l : list type) (s : type_denote (Struct l)) (n : addr) (v : type_denote_list_nth l n) : n_tuple 2 var_update :=
       ^(SetTo (Val (Struct l) (struct_updN l s n v)), Move).
 
+    Definition deserialize_num_impl' (s : word 64) : n_tuple 2 var_update :=
+      ^(SetTo (Val Num (wordToNat s)), Leave).
+
   End NiceImpls.
 
   Section NastyImpls.
@@ -709,6 +713,18 @@ Module Go.
       refine (struct_set_impl' l s idx v).
     Defined.
 
+    Definition deserialize_num_impl : op_impl 2.
+      refine (fun args => let '^(Val td d, Val ts s) := args in
+                        match ts with
+                        | ImmutableBuffer n => fun s => _
+                        | _ => fun _ => None
+                        end s).
+      destruct (Nat.eq_dec n 64); [ subst | exact None ].
+      destruct (type_eq_dec td Num); [ subst | exact None ].
+      refine (Some _).
+      refine (deserialize_num_impl' s).
+    Defined.
+
   End NastyImpls.
 
   Definition impl_for (op : modify_op) : { n : nat & op_impl n } :=
@@ -732,6 +748,7 @@ Module Go.
     | SliceBuffer from to => existT _ _ (slice_buffer_impl from to)
     | StructGet idx => existT _ _ (struct_get_impl idx)
     | StructPut idx => existT _ _ (struct_set_impl idx)
+    | DeserializeNum => existT _ _ deserialize_num_impl
     end.
 
   Definition op_arity (op : modify_op) : nat := projT1 (impl_for op).

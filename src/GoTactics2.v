@@ -72,6 +72,7 @@ Ltac unfold_expr :=
          map_elements_impl, map_elements_impl',
          eval_test_m, eval_test_num, eval_test_bool,
          update_one, setconst_impl, duplicate_impl,
+         deserialize_num_impl, deserialize_num_impl',
          sel, id, eval, eq_rect_r, eq_rect
          in H); simpl in H
   | _ => progress (unfold is_false, is_true, eval_bool,
@@ -90,6 +91,7 @@ Ltac unfold_expr :=
          map_elements_impl, map_elements_impl',
          eval_test_m, eval_test_num, eval_test_bool,
          update_one, setconst_impl, duplicate_impl,
+         deserialize_num_impl, deserialize_num_impl',
          sel, id, eval, eq_rect_r, eq_rect
          ); simpl
   end.
