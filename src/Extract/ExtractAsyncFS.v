@@ -8,32 +8,85 @@ Import ListNotations.
 Import Go.
 
 Require Import AsyncFS.
+Require Import FSLayout.
 
 Local Open Scope string_scope.
 
-Instance q : GoWrapper
-   (FSLayout.log_xparams * FSLayout.inode_xparams * FSLayout.balloc_xparams).
-  typeclasses eauto.
+Instance qq : WrapByTransforming FSLayout.fs_xparams.
+  refine {| transform := fun x => (
+    FSXPLog x,
+    FSXPInode x,
+    FSXPBlockAlloc1 x,
+    FSXPBlockAlloc2 x,
+    FSXPInodeAlloc x,
+    FSXPRootInum x,
+    FSXPMaxBlock x) |}.
+  Transform_t.
 Defined.
 
-Instance qq : GoWrapper
-   (FSLayout.log_xparams * FSLayout.inode_xparams * FSLayout.balloc_xparams *
-    FSLayout.balloc_xparams * FSLayout.balloc_xparams * W).
-  typeclasses eauto.
-Defined.
+Ltac transform_ret := match goal with
+   | |- EXTRACT Ret ?x
+       {{ ?pre }}
+          _
+       {{ _ }} // _ =>
+        is_transformable x; idtac x;
+         (let ret := var_mapping_to_ret in
+          eapply hoare_weaken; idtac "ret" ret;
+           [ eapply CompileRet' with (var0 := ret); eapply hoare_weaken_post;
+              [ intros **;
+                 (let P := fresh "P" in
+                  match goal with
+                  | |- ?P_ ⇨⇨ _ => set (P := P_)
+                  end; rewrite ?transform_pimpl; simpl; subst P;
+                   (let Q := fresh "Q" in
+                    match goal with
+                    | |- ?e ?x ⇨⇨ ?Q_ =>
+                          set (Q := Q_); pattern x in Q; subst Q; reflexivity
+                    end))
+              | eapply CompileRet ]
+           | cancel_go
+           | cancel_go ])
+         end.
 
-Instance q3 : GoWrapper
-   (BFile.BFILE.memstate *
-    (Rec.Rec.data
-       (Rec.Rec.field_type
-          (Rec.Rec.FS "len" (Rec.Rec.WordF addrlen)
-             (Rec.Rec.FE
-                [("indptr", Rec.Rec.WordF addrlen);
-                ("blocks",
-                Rec.Rec.ArrayF (Rec.Rec.WordF addrlen) Inode.INODE.NDirect)]
-                "attrs" Inode.INODE.iattrtype))) * unit)).
-  typeclasses eauto.
-Defined.
+Ltac compile_ret_transformable ::=
+  match goal with
+  | |- EXTRACT Ret ?x
+       {{ ?pre }}
+          _
+       {{ _ }} // _ =>
+        match pre with
+        | context [ (?k_ ~> ?v)%pred ] =>
+            transform_includes v x; eapply hoare_strengthen_pre;
+             [ rewrite ?transform_pimpl with (k := k_); simpl; reflexivity
+             |  ]
+        end
+  end.
+
+Ltac do_duplicate x := match goal with
+  |- EXTRACT _ {{ ?pre }} _ {{ _ }} // _ =>
+    let src := find_val x pre in
+    eapply CompileBefore; [
+      let T := type of x in
+      do_declare T ltac:(fun v0 =>
+        eapply hoare_weaken; [
+          eapply CompileRet with (v := x) (var0 := v0) | cancel_go..];
+          match src with
+          | Some ?svar =>
+            eapply hoare_weaken; [eapply CompileDup with (var0 := svar) (var' := v0) | cancel_go..]
+          end
+      ) |]
+  end.
+
+Ltac dbg_find_pre x:= match goal with
+|- EXTRACT _ {{ ?pre }} _ {{ _ }} // _ =>
+  match pre with
+  | context [ptsto ?k ?y] =>
+    match y with
+    | context [x] =>
+      idtac k y; fail 1
+    end
+  end || idtac
+end.
 
 Example compile_file_get_sz : sigT (fun p => source_stmt p /\
   forall env fsxp inum ams,
@@ -69,51 +122,83 @@ Example compile_file_get_sz : sigT (fun p => source_stmt p /\
      2 ~>? addr *
      3 ~>? BFile.BFILE.memstate }} // env).
 Proof.
-  unfold AFS.file_get_sz, AFS.MSLL, pair_args_helper.
+  unfold AFS.file_get_sz, AFS.MSLL, pair_args_helper, BFile.BFILE.MSAlloc, Inode.INODE.ABytes.
+  change Log.LOG.commit_ro with Log.LOG.begin.
   compile_step.
   compile_step.
   compile_step.
+  solve [repeat compile_step].
   compile_step.
-  compile_step.
+  solve [repeat compile_step].
+  do_duplicate (FSXPLog fsxp). (* need this after the call *)
+  compile_call.
 
-  (* why is [compile_step] breaking up [FSLayout.FSXPLog] in the return statement,
-      instead of breaking up [1 ~> fsxp]? *)
-
-  transform_pre.
   compile_step.
-
-  (* another automation failure? *)
-  (* why is it necessary to manually declare the typeclass instances above,
-   * [q] and [qq], when [typeclasses eauto] solves them just fine?
-   *)
-  compile_decompose.
-  compile_bind.
-  compile_decompose.
-  compile_bind.
-  compile_decompose.
-  compile_bind.
-  compile_decompose.
-  compile_bind.
-  compile_decompose.
-  compile_bind.
-  compile_split.
-  compile_split.
-  compile_split.
-  compile_split.
-  compile_split.
-  compile_split.
+  compile_step.
+  solve [repeat compile_step].
+  compile_step.
+  transform_ret.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  do_duplicate (FSXPLog fsxp). (* need this after the call *)
+  solve [repeat compile_step].
+  solve [repeat compile_step].
+  solve [repeat compile_step].
+  solve [repeat compile_step].
+  solve [repeat compile_step].
+  solve [repeat compile_step].
+  compile_call.
 
   compile_step.
   compile_step.
   compile_step.
   compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
+  compile_split.
+  compile_split.
+  compile_call.
 
-  (* super slow, something seems fishy.. *)
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  (* TODO compile_split *should* just work here, but it doesn't *)
+match goal with
+  | |- EXTRACT Ret (fst ?p)
+       {{ ?pre }}
+          _
+       {{ _ }} // _ =>
+        idtac "HERE" p;
+         (let avar_ := var_mapping_to_ret in
+          match pre with
+          | context [ (?pvar_ ~> ?v)%pred ] =>
+            unify v (snd a0); idtac pvar_;
+               (let A_ := type of (fst p) in
+                let B_ := type of (snd p) in
+                do_declare B_
+                 ltac:((fun bvar_ =>
+                          eapply hoare_weaken;
+                           [ eapply CompileFst with
+                               (A := A_)
+                               (B := B_)
+                               (avar := avar_)
+                               (bvar := bvar_)
+                               (pvar := pvar_)
+                           | cancel_go.. ])))
+          end)
+end.
+  compile_split.
+  compile_join.
+  compile_join.
+Unshelve.
+  all : compile.
+Defined.
 
-Admitted.
+Eval lazy in (projT1 compile_file_get_sz).
 
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).
