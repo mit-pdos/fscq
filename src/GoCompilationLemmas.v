@@ -1841,9 +1841,9 @@ Proof.
 Qed.
 
 Lemma CompileSplitUnit :
-  forall env A {HA : GoWrapper A} avar pvar (a : A) F,
-    EXTRACT Ret (fst ^(a))
-    {{ avar ~>? A * pvar ~> ^(a) * F }}
+  forall env A {HA : GoWrapper A} avar pvar (a : A * unit) F,
+    EXTRACT Ret (fst a)
+    {{ avar ~>? A * pvar ~> a * F }}
       Declare (@wrap_type _ GoWrapper_unit) (fun uvar =>
         Modify SplitPair ^(pvar, avar, uvar)
       )
