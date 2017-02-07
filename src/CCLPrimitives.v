@@ -186,12 +186,12 @@ End Primitives.
 Hint Extern 0 {{ BeginRead _; _ }} => apply BeginRead_ok : prog.
 Hint Extern 0 {{ WaitForRead _; _ }} => apply WaitForRead_ok : prog.
 Hint Extern 0 {{ Write _ _; _ }} => apply Write_ok : prog.
-Hint Extern 0 {{ Get; _ }} => apply Get_ok : prog.
+Hint Extern 0 {{ @Get _; _ }} => apply @Get_ok : prog.
 Hint Extern 0 {{ Assgn _; _ }} => apply Assgn_ok : prog.
 Hint Extern 0 {{ Hash _; _ }} => apply Hash_ok : prog.
 Hint Extern 0 {{ Ret _; _ }} => apply Ret_ok : prog.
 Hint Extern 0 {{ GhostUpdate _; _ }} => apply GhostUpdate_ok : prog.
-Hint Extern 0 {{ Yield; _ }} => apply Yield_ok : prog.
+Hint Extern 0 {{ @Yield _; _ }} => apply @Yield_ok : prog.
 
 (* Local Variables: *)
 (* company-coq-local-symbols: (("Sigma" . ?Σ) ("sigma" . ?σ) ("sigma'" . (?σ (Br . Bl) ?'))) *)

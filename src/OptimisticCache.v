@@ -10,21 +10,24 @@ Require Export WriteBuffer.
 
 Definition Disk := @mem addr addr_eq_dec valu.
 
+(* TODO: move CacheMem and CacheAbstraction into section; fix implicit types if
+necessary *)
+
 (** a complete memory, consisting of the cache plus the memory in *)
 Inductive CacheMem St :=
   cacheMem { cache: Cache;
-             cache_rest_mem : Mem St; }.
+             cache_other_mem : Mem St; }.
 
-Arguments cacheMem {St} cache cache_rest_mem.
+Arguments cacheMem {St} cache cache_other_mem.
 
 (** a complete abstract state, consisting of the cache state plus the
 abstraction in St *)
 Inductive CacheAbstraction St :=
   cacheS { vdisk_committed: Disk;
            vdisk: Disk;
-           cache_rest_s: Abstraction St; }.
+           cache_other_s: Abstraction St; }.
 
-Arguments cacheS {St} vdisk_committed vdisk cache_rest_s.
+Arguments cacheS {St} vdisk_committed vdisk cache_other_s.
 
 Section OptimisticCache.
 
@@ -43,16 +46,16 @@ Section OptimisticCache.
   Implicit Types (m:Mem St) (s: Abstraction St).
 
   Definition set_cache m c : Mem St :=
-    cacheMem c (cache_rest_mem m).
+    cacheMem c (cache_other_mem m).
 
   Definition set_vdisk s vd : Abstraction St :=
-    cacheS (vdisk_committed s) vd (cache_rest_s s).
+    cacheS (vdisk_committed s) vd (cache_other_s s).
   Definition set_vdisk0 s vd0 : Abstraction St :=
-    cacheS vd0 (vdisk s) (cache_rest_s s).
+    cacheS vd0 (vdisk s) (cache_other_s s).
 
   Definition locally_modified (sigma sigma': Sigma St) :=
-    cache_rest_mem (Sigma.mem sigma') = cache_rest_mem (Sigma.mem sigma) /\
-    cache_rest_s (Sigma.s sigma') = cache_rest_s (Sigma.s sigma).
+    cache_other_mem (Sigma.mem sigma') = cache_other_mem (Sigma.mem sigma) /\
+    cache_other_s (Sigma.s sigma') = cache_other_s (Sigma.s sigma).
 
   Theorem locally_modified_refl : forall sigma, locally_modified sigma sigma.
   Proof.
@@ -108,16 +111,16 @@ Section OptimisticCache.
       match r with
       | Some v => Ret (Some v, wb)
       | None => m <- Get (St:=St);
-                  let c := cache m in
-                  match cache_get c a with
-                  | Present v _ => Ret (Some v, wb)
-                  | Missing => _ <- BeginRead a;
-                                 let c' := mark_pending c a in
-                                 _ <- Assgn (set_cache m c');
-                                   Ret (None, wb)
-                  | Invalid => v <- ClearPending m wb a;
-                                 Ret (Some v, wb)
-                  end
+                 let c := cache m in
+                 match cache_get c a with
+                 | Present v _ => Ret (Some v, wb)
+                 | Missing => _ <- BeginRead a;
+                               let c' := mark_pending c a in
+                               _ <- Assgn (set_cache m c');
+                                 Ret (None, wb)
+                 | Invalid => v <- ClearPending m wb a;
+                               Ret (Some v, wb)
+                 end
       end.
 
   Definition cache_rep (d: DISK) (c: Cache) (vd0: Disk) :=
@@ -142,7 +145,7 @@ Section OptimisticCache.
 
   Definition no_pending_dirty (c: Cache) (wb: WriteBuffer) :=
     forall a, cache_get c a = Invalid ->
-              wb_get wb a = WbMissing.
+         wb_get wb a = WbMissing.
 
   Definition CacheRep wb (sigma:Sigma St) :=
     cache_rep (Sigma.disk sigma) (cache (Sigma.mem sigma))
@@ -220,7 +223,7 @@ Section OptimisticCache.
 
   Lemma CacheRep_clear_pending:
     forall (wb : WriteBuffer) (a : addr) (d : DISK) (m : Mem St)
-           (s : Abstraction St) (hm : hashmap) (a0 : valu),
+      (s : Abstraction St) (hm : hashmap) (a0 : valu),
       CacheRep wb (state d m s hm) ->
       cache_get (cache m) a = Invalid ->
       vdisk s a = Some a0 ->
@@ -310,7 +313,7 @@ Section OptimisticCache.
 
   Lemma CacheRep_mark_pending:
     forall (wb : WriteBuffer) (a : addr) (d : DISK) (m : Mem St)
-           (s : Abstraction St) (hm : hashmap) (a0 : valu),
+      (s : Abstraction St) (hm : hashmap) (a0 : valu),
       CacheRep wb (state d m s hm) ->
       vdisk_committed s a = Some a0 ->
       wb_get wb a = WbMissing ->
@@ -427,17 +430,17 @@ Section OptimisticCache.
   Definition CacheWrite wb a v : @cprog St _ :=
     m <- Get (St:=St);
       _ <- match cache_get (cache m) a with
-           | Invalid => _ <- ClearPending m wb a;
-                          Ret tt
-           | _ => Ret tt
-           end;
+          | Invalid => _ <- ClearPending m wb a;
+                        Ret tt
+          | _ => Ret tt
+          end;
       _ <- GhostUpdate (fun _ s => set_vdisk s (upd (vdisk s) a v));
       Ret (tt, wb_add wb a v).
 
   Lemma CacheRep_write:
     forall (wb : WriteBuffer) (a : addr) (v : valu) (d : DISK)
-           (m : Mem St) (s : Abstraction St) (hm : hashmap)
-           (a0 : valu),
+      (m : Mem St) (s : Abstraction St) (hm : hashmap)
+      (a0 : valu),
       CacheRep wb (state d m s hm) ->
       vdisk s a = Some a0 ->
       cache_get (cache m) a <> Invalid ->
@@ -499,7 +502,7 @@ Section OptimisticCache.
       let c := cache m in
       _ <- Assgn (set_cache m (upd_with_buffer c wb));
         _ <- GhostUpdate (fun _ s => set_vdisk0 s (vdisk s));
-        Ret (tt, empty_writebuffer).
+        Ret tt.
 
   Lemma no_pending_dirty_empty : forall c,
       no_pending_dirty c empty_writebuffer.
@@ -592,7 +595,7 @@ Section OptimisticCache.
 
   Lemma CacheRep_commit:
     forall (wb : WriteBuffer) (d : DISK) (m : Mem St)
-           (s : Abstraction St) (hm : hashmap),
+      (s : Abstraction St) (hm : hashmap),
       CacheRep wb (state d m s hm) ->
       CacheRep empty_writebuffer
                (state d (set_cache m (upd_with_buffer (cache m) wb))
@@ -603,7 +606,7 @@ Section OptimisticCache.
 
     erewrite wb_rep_upd_all by eauto.
     assert (forall a v, List.In (a,v) (wb_writes wb) ->
-                        wb_get wb a = Written v).
+                   wb_get wb a = Written v).
     intros; apply wb_get_writes; auto.
     generalize dependent (wb_writes wb); intros.
     induction l; simpl; eauto.
@@ -632,8 +635,8 @@ Section OptimisticCache.
                     {| precondition :=
                          CacheRep wb sigma;
                        postcondition :=
-                         fun '(sigma_i', sigma') '(_, wb') =>
-                           CacheRep wb' sigma' /\
+                         fun '(sigma_i', sigma') _ =>
+                           CacheRep empty_writebuffer sigma' /\
                            locally_modified sigma sigma' /\
                            vdisk_committed (Sigma.s sigma') = vdisk (Sigma.s sigma) /\
                            vdisk (Sigma.s sigma') = vdisk (Sigma.s sigma) /\
@@ -645,13 +648,13 @@ Section OptimisticCache.
     hoare.
   Qed.
 
-  Definition CacheAbort wb : @cprog St _ :=
+  Definition CacheAbort : @cprog St _ :=
     _ <- GhostUpdate (fun _ s => set_vdisk s (vdisk_committed s));
-      Ret (tt, empty_writebuffer).
+      Ret tt.
 
   Lemma CacheRep_abort:
     forall (wb : WriteBuffer) (d : DISK) (m : Mem St)
-           (s : Abstraction St) (hm : hashmap),
+      (s : Abstraction St) (hm : hashmap),
       CacheRep wb (state d m s hm) ->
       CacheRep empty_writebuffer (state d m (set_vdisk s (vdisk_committed s)) hm).
   Proof.
@@ -660,20 +663,20 @@ Section OptimisticCache.
 
   Hint Resolve CacheRep_abort.
 
-  Definition CacheAbort_ok : forall tid wb,
+  Definition CacheAbort_ok : forall tid,
       cprog_spec G tid
-                 (fun (_:unit) '(sigma_i, sigma) =>
+                 (fun wb '(sigma_i, sigma) =>
                     {| precondition :=
                          CacheRep wb sigma;
                        postcondition :=
-                         fun '(sigma_i', sigma') '(_, wb') =>
-                           CacheRep wb' sigma' /\
+                         fun '(sigma_i', sigma') _ =>
+                           CacheRep empty_writebuffer sigma' /\
                            locally_modified sigma sigma' /\
                            vdisk (Sigma.s sigma') = vdisk_committed (Sigma.s sigma) /\
                            vdisk_committed (Sigma.s sigma') = vdisk_committed (Sigma.s sigma) /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            sigma_i' = sigma_i |})
-                 (CacheAbort wb).
+                 (CacheAbort).
   Proof.
     unfold CacheAbort.
     hoare.

@@ -100,6 +100,17 @@ Section RetryLoop.
     destruct out; intuition eauto.
   Qed.
 
+  Theorem retry_triple' : forall T P Q (guard: forall (v:T), {P v}+{Q v}) p
+                         A (spec: Spec A T) tid,
+      (forall n, cprog_triple G tid spec (retry_n guard p n)) ->
+      cprog_triple G tid spec (retry guard p).
+  Proof.
+    intros.
+    unfold cprog_triple; intros; simpl in *.
+    apply retry_exec in H1; intuition; repeat deex.
+    eapply H in H1; eauto.
+  Qed.
+
   Corollary retry_spec : forall T P Q (guard: forall (v:T), {P v}+{Q v}) p
                          A (spec: Spec A T) tid,
       (forall n, cprog_spec G tid spec (retry_n guard p n)) ->
@@ -114,6 +125,19 @@ Section RetryLoop.
     intros.
     apply triple_spec_equiv.
     apply retry_triple; intros.
+    apply triple_spec_equiv.
+    auto.
+  Qed.
+
+  Corollary retry_spec' : forall T P Q (guard: forall (v:T), {P v}+{Q v}) p
+                         A (spec: Spec A T) tid,
+      (forall n, cprog_spec G tid spec (retry_n guard p n)) ->
+      cprog_spec G tid spec (retry guard p).
+  Proof.
+    intros.
+    intros.
+    apply triple_spec_equiv.
+    apply retry_triple'; intros.
     apply triple_spec_equiv.
     auto.
   Qed.
