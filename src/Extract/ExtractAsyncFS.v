@@ -88,7 +88,49 @@ Ltac dbg_find_pre x:= match goal with
   end || idtac
 end.
 
-Example compile_file_get_sz : sigT (fun p => source_stmt p /\
+Fixpoint decls_pre (l : list Declaration) (n : nat) : pred :=
+  match l with
+  | [] => emp
+  | @Decl T Wr _ :: l0 => (n ~> zeroval ✶ decls_pre l0 (S n))%pred
+  end.
+
+Fixpoint decls_post (l : list Declaration) (n : nat) : pred :=
+  match l with
+  | [] => emp
+  | @Decl T Wr _ :: l0 => (n ~>? T * decls_post l0 (S n))%pred
+  end.
+
+Lemma decls_pre_impl_post :
+  forall decls n,
+    @decls_pre decls n =p=> decls_post decls n.
+Proof.
+  induction decls; intros.
+  - auto.
+  - destruct a.
+    cancel. auto.
+Qed.
+Hint Resolve decls_pre_impl_post : cancel_go_finish.
+
+Hint Extern 0 (okToCancel (decls_pre ?decls ?n) (decls_post ?decls ?n)) =>
+  apply decls_pre_impl_post.
+
+Ltac do_declare T cont ::=
+  lazymatch goal with
+  | [ |- EXTRACT _ {{ ?pre }} _ {{ _ }} // _ ] =>
+    simpl decls_pre;
+    lazymatch goal with
+    | [ |- EXTRACT _ {{ ?pre }} _ {{ _ }} // _ ] =>
+      lazymatch pre with
+      | context [decls_pre ?decls ?n] =>
+        let decls' := fresh "decls" in
+        evar (decls' : list Declaration);
+        unify decls (Decl T :: decls'); subst decls';
+        cont (n)
+      end
+    end
+  end.
+
+Example compile_file_get_sz : sigT (fun p => source_stmt p /\ exists vars,
   forall env fsxp inum ams,
   prog_func_call_lemma
     {|
@@ -115,17 +157,20 @@ Example compile_file_get_sz : sigT (fun p => source_stmt p /\
   {{ 0 ~>? (bool * Log.LOG.memstate * (word 64 * unit)) *
      1 ~> fsxp *
      2 ~> inum *
-     3 ~> ams }}
+     3 ~> ams * decls_pre vars 4}}
     p
   {{ fun ret => 0 ~> ret *
      1 ~>? FSLayout.fs_xparams *
      2 ~>? addr *
-     3 ~>? BFile.BFILE.memstate }} // env).
+     3 ~>? BFile.BFILE.memstate * decls_post vars 4}} // env).
 Proof.
+
   unfold AFS.file_get_sz, AFS.MSLL, pair_args_helper, BFile.BFILE.MSAlloc, Inode.INODE.ABytes.
   change Log.LOG.commit_ro with Log.LOG.begin.
+  eexists. split. shelve. eexists.
+  intros.
   compile_step.
-  compile_step.
+
   compile_step.
   solve [repeat compile_step].
   compile_step.
@@ -191,12 +236,18 @@ match goal with
                            | cancel_go.. ])))
           end)
 end.
-  compile_split.
-  compile_join.
-  compile_join.
+  compile_step.
+  compile_step.
+Ltac cancel_go ::=
+  unfold var; cancel; try apply pimpl_refl.
+  compile_step.
+
+  Check "finished construction for compile_file_get_sz".
 Unshelve.
   all : compile.
+  Check "finished script for compile_file_get_sz".
 Defined.
+Check "Defined compile_file_get_sz".
 
 Eval lazy in (projT1 compile_file_get_sz).
 
