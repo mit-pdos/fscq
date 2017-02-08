@@ -44,88 +44,7 @@ Example compile_maybe_evict : sigT (fun p => source_stmt p /\ forall env cs,
   {{ fun ret => 0 ~> ret * 1 ~>? cachestate }} // env).
 Proof.
   unfold BUFCACHE.maybe_evict.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  eapply hoare_weaken.
-  eapply CompileMapCardinal with (var0 := nth_var 0 vars) (mvar := nth_var 1 vars).
-  cancel_go.
-  cancel_go.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  simpl decls_pre. (* TODO: most of the [simpl]s in GoExtraction.v right now are in the wrong spot -- could add a declarationn in another goal *)
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  Ltac pattern_prog pat :=
-    match goal with
-    | [ |- ProgMonad.prog_equiv _ ?pr ] =>
-      let Pr := fresh "Pr" in
-      set pr as Pr;
-      pattern pat in Pr;
-      subst Pr
-    end.
-  eapply extract_equiv_prog.
-  pattern_prog (MapUtils.AddrMap.Map.elements (CSMap cs)).
-  eapply ProgMonad.bind_left_id.
-  simpl decls_pre.
-  compile_step.
-  compile_step.
-  eapply hoare_weaken.
-  eapply CompileMapElements with (mvar := nth_var 1 vars) (var0 := nth_var 13 vars).
-  cancel_go.
-  cancel_go.
-  simpl decls_pre.
-  do_declare bool ltac:(fun cvar => idtac cvar).
-  simpl decls_pre.
-  do_declare (nat * (word AsyncDisk.Valulen.valulen * bool))%type ltac:(fun xvar => idtac xvar).
-  simpl decls_pre.
-  do_declare (list (nat * (word AsyncDisk.Valulen.valulen * bool))%type) ltac:(fun xsvar => idtac xsvar).
-  eapply hoare_weaken.
-  apply CompileUncons with (lvar := nth_var 13 vars)
-                             (cvar := nth_var 14 vars)
-                             (xvar := nth_var 15 vars)
-                             (xsvar := nth_var 16 vars).
-  3: cancel_go.
-  3: cancel_go.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  intros.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  repeat compile_step.
-  compile_step.
-  compile_step.
-  repeat compile_step.
-  compile_step.
-  Unshelve. all: compile.
+  compile.
 Defined.
 
 Definition eviction_update' a s := Ret (eviction_update s a).
@@ -162,69 +81,20 @@ Example compile_read : sigT (fun p => source_stmt p /\ forall env a cs,
   {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? cachestate }} // env).
 Proof.
   unfold BUFCACHE.read.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  match goal with
-  |- context [(?k ~> a1)%pred] =>
-    (* TODO: copy here automatically. This is *the* standard mostly unavoidable copy *)
-    do_declare valu ltac:(fun ka' =>
-                            eapply CompileBefore; [
-                              eapply CompileRet with (v := a1) (var0 := ka');
-                              eapply hoare_weaken; [
-                                eapply CompileDup with (var0 := k) (var' := ka') | cancel_go .. ] | ])
+  repeat match goal with
+  (* TODO: copy here automatically. This is *the* standard mostly unavoidable copy *)
+  | [ |- EXTRACT (v <- Read _; _) {{ _ }} _ {{ _ }} // _ ] =>
+    compile_step; [
+      solve [repeat compile_step] |
+      match goal with
+      |- EXTRACT _ {{ ?vara ~> ?a * _ }} _ {{ _ }} // _ =>
+        do_duplicate a
+      end
+    ]
+  | [ |- EXTRACT (Ret (eviction_update ?a ?b)) {{ _ }} _ {{ _ }} // _ ] =>
+    change (Ret (eviction_update a b)) with (eviction_update' b a)
+  | _ => compile_step
   end.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  change (Ret (eviction_update ?s ?a)) with (eviction_update' a s).
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-
   Unshelve.
   all: compile.
 Defined.
@@ -242,37 +112,8 @@ Example compile_write : sigT (fun p => source_stmt p /\ forall env a v cs,
   {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? valu * 3 ~>? cachestate }} // env).
 Proof.
   unfold BUFCACHE.write.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  change (Ret (eviction_update ?s ?a)) with (eviction_update' a s).
-  compile_step.
-  compile_step.
+  repeat (progress change (Ret (eviction_update ?s ?a)) with (eviction_update' a s)
+       || compile_step).
 
   Unshelve.
   all: compile.
@@ -285,8 +126,7 @@ Example compile_begin_sync : sigT (fun p => source_stmt p /\ forall env cs,
     p
   {{ fun ret => 0 ~> ret * 1 ~>? cachestate }} // env).
 Proof.
-  intros. unfold BUFCACHE.begin_sync.
-  (* TODO: make this not split & rejoin :P *)
+  unfold BUFCACHE.begin_sync.
   compile.
 Defined.
 
@@ -302,13 +142,7 @@ Example compile_sync : sigT (fun p => source_stmt p /\ forall env a cs,
   {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? cachestate }} // env).
 Proof.
   unfold BUFCACHE.sync.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-
-  Unshelve.
-  all : compile.
+  compile.
 Defined.
 Eval lazy in projT1 (compile_sync).
 
@@ -335,10 +169,6 @@ Proof.
   unfold BUFCACHE.init.
   compile.
 Defined.
-
-Local Open Scope string_scope.
-Local Open Scope list_scope.
-Local Open Scope pred_scope.
 
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).

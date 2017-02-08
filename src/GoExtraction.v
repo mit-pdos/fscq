@@ -91,6 +91,20 @@ Ltac do_declare T cont :=
     end
   end.
 
+Ltac do_duplicate x := match goal with
+  |- EXTRACT _ {{ ?pre }} _ {{ _ }} // _ =>
+    match find_val x pre with
+    | Some ?svar =>
+      eapply CompileBefore; [
+        let T := type of x in
+        do_declare T ltac:(fun v0 =>
+          eapply hoare_weaken; [
+            eapply CompileRet with (v := x) (var0 := v0) | cancel_go..];
+              eapply hoare_weaken; [eapply CompileDup with (var0 := svar) (var' := v0) | cancel_go..]
+        ) |]
+    end
+  end.
+
 Ltac compile_bind := match goal with
   | [ |- EXTRACT Bind ?p (fun _ => ?q) {{ _ }} _ {{ _ }} // _ ] =>
     eapply CompileSeq
@@ -309,6 +323,17 @@ Ltac declare_and_get_args' expr argvars cont :=
 Ltac declare_and_get_args expr cont :=
   declare_and_get_args' expr tt cont.
 
+Ltac pattern_prog pat :=
+  eapply extract_equiv_prog; [
+    match goal with
+    | [ |- ProgMonad.prog_equiv _ ?pr ] =>
+      let Pr := fresh "Pr" in
+      set pr as Pr;
+      pattern pat in Pr;
+      subst Pr;
+      eapply bind_left_id
+    end | ].
+
 Ltac compile_call :=
   match goal with
   | [ H : prog_func_call_lemma ?sig ?name ?f ?env |- EXTRACT ?expr {{ ?pre }} _ {{ _ }} // ?env ] =>
@@ -395,6 +420,27 @@ Ltac compile_listop := match goal with
             end
         end
     end
+  | [ |- EXTRACT (match ?l with
+             | [] => _
+             | x :: xs => _ end) {{ ?pre }} _ {{ ?post }} // _ ] =>
+    match find_val l pre with
+    | Some ?varl =>
+      let Txs := type of l in
+      match type of l with
+      | list ?Tx =>
+        do_declare bool ltac:(fun varc =>
+          do_declare Tx ltac:(fun varx =>
+            do_declare Txs ltac:(fun varxs =>
+              eapply hoare_weaken; [
+              eapply CompileUncons with (lvar := varl) (cvar := varc) (xvar := varx) (xsvar := varxs); intros |
+              cancel_go..]
+            )
+          )
+        )
+      end
+    | None =>
+      pattern_prog l
+    end
   end.
 
 Ltac compile_map_op := match goal with
@@ -409,6 +455,22 @@ Ltac compile_map_op := match goal with
           eapply CompileMapFind with (mvar := varm) (kvar := vark) (vvar := ret) | cancel_go..]
         end
       end
+    end
+  | [ |- EXTRACT Ret (Map.cardinal ?m) {{ ?pre }} _ {{ fun ret : ?T => ?post }} // _ ] =>
+    let retv := var_mapping_to_ret in
+    match find_val m pre with
+    | Some ?varm =>
+      eapply hoare_weaken; [
+        eapply CompileMapCardinal with (mvar := varm) (var0 := retv)
+        | cancel_go..]
+    end
+  | [ |- EXTRACT Ret (Map.elements ?m) {{ ?pre }} _ {{ fun ret : ?T => ?post }} // _ ] =>
+    let retv := var_mapping_to_ret in
+    match find_val m pre with
+    | Some ?varm =>
+      eapply hoare_weaken; [
+        eapply CompileMapElements with (mvar := varm) (var0 := retv)
+        | cancel_go..]
     end
   | [ |- EXTRACT Ret (Map.add ?k ?v_ ?m) {{ ?pre }} _ {{ fun ret : ?T => ?post }} // _ ] =>
     let retv := var_mapping_to_ret in
@@ -543,17 +605,6 @@ Ltac compile_join := match goal with
       end
     end
 end.
-
-Ltac pattern_prog pat :=
-  eapply extract_equiv_prog; [
-    match goal with
-    | [ |- ProgMonad.prog_equiv _ ?pr ] =>
-      let Pr := fresh "Pr" in
-      set pr as Pr;
-      pattern pat in Pr;
-      subst Pr;
-      eapply bind_left_id
-    end | ].
 
 Ltac compile_decompose := match goal with
   | [ |- EXTRACT Ret (?f ?a) {{ ?pre }} _ {{ _ }} // _ ] =>

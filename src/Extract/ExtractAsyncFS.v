@@ -62,21 +62,6 @@ Ltac compile_ret_transformable ::=
         end
   end.
 
-Ltac do_duplicate x := match goal with
-  |- EXTRACT _ {{ ?pre }} _ {{ _ }} // _ =>
-    let src := find_val x pre in
-    eapply CompileBefore; [
-      let T := type of x in
-      do_declare T ltac:(fun v0 =>
-        eapply hoare_weaken; [
-          eapply CompileRet with (v := x) (var0 := v0) | cancel_go..];
-          match src with
-          | Some ?svar =>
-            eapply hoare_weaken; [eapply CompileDup with (var0 := svar) (var' := v0) | cancel_go..]
-          end
-      ) |]
-  end.
-
 Ltac dbg_find_pre x:= match goal with
 |- EXTRACT _ {{ ?pre }} _ {{ _ }} // _ =>
   match pre with
