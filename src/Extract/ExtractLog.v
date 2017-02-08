@@ -35,7 +35,8 @@ Proof.
   compile_decompose.
   compile_step.
   compile_step.
-  compile_step.
+  (* TODO: make automation choose [compile_ret_transform_part] here *)
+  compile_ret_transform_part.
   compile_step.
   compile_step.
   compile_step.
@@ -64,7 +65,7 @@ Example compile_read : sigT (fun p => source_stmt p /\
     |}
     "glog_read" GroupLog.GLog.read env ->
   EXTRACT LOG.read lxp a ms
-  {{ 0 ~>? (LOG.memstate * valu) *
+  {{ 0 ~>? (LOG.memstate * (valu * unit)) *
      1 ~> lxp *
      2 ~> a *
      3 ~> ms }}
@@ -89,9 +90,42 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
+  rewrite surjective_pairing with (p := ms) at 1.
   compile_step.
   compile_step.
-Admitted.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  unfold pair_args_helper.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_decompose.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  Unshelve.
+  all: try match goal with
+           | [|- source_stmt _] =>
+             repeat source_stmt_step
+           | [|- list _] => exact nil
+           | [|- _ =p=> _ ] => cancel_go
+           end.
+Qed.
 
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).
