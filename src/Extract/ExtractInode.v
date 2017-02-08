@@ -122,11 +122,32 @@ Example compile_irec_get : sigT (fun p => source_stmt p /\
      3 ~>? nat *
      4 ~>? Log.LOG.memstate }} // env).
 Proof.
-  unfold Inode.INODE.IRec.get, Log.LOG.read_array, pair_args_helper.
+  unfold Inode.INODE.IRec.get, INODE.IRecSig.RAStart, Log.LOG.read_array, pair_args_helper.
+  compile_step.
+  eapply extract_equiv_prog.
+  rewrite ProgMonad.bind_assoc.
+  reflexivity.
   compile_step.
   compile_step.
   compile_step.
   compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_split.
   compile_step.
   compile_step.
   compile_step.
