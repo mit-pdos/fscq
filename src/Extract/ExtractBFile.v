@@ -42,10 +42,6 @@ Proof.
   compile_step.
   compile_step.
 
-(* XXX something changed in the automation and the manual proof below no longer works *)
-
-(*
-
   (* [CompileSnd'] not automated yet *)
   eapply hoare_weaken.
   eapply CompileSnd' with (bvar := nth_var 1 vars) (pvar := 4).
@@ -84,31 +80,10 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  compile_step.
-  compile_step.
-
-(* XXX old proof steps before [CompileFst'] and [CompileSnd']..
-
-
-  (* XXX why isn't this working automatically? *)
-  (* tries to split up [a] to get [snd a], but we already have a variable with [snd a] in it. *)
-  eapply hoare_weaken.
-  eapply CompileMove with (var0 := nth_var 5 vars) (var' := nth_var 8 vars).
-  cancel_go.
-  cancel_go.
-
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-*)
-
+ 
   Unshelve.
   all: compile.
 Defined.
-*)
-Admitted.
 
 Example compile_getattrs : sigT (fun p => source_stmt p /\
   forall env lxp ixp inum ms,
