@@ -862,6 +862,57 @@ Proof.
   all: eval_expr; [reflexivity].
 Qed.
 
+Lemma CompileDivide :
+  forall env F rvar avar bvar (a b : nat),
+    EXTRACT Ret (a / b)
+    {{ rvar ~>? W * avar ~> a * bvar ~> b * F }}
+      Modify (ModifyNumOp Divide) ^(rvar, avar, bvar)
+    {{ fun ret => rvar ~> ret * avar ~> a * bvar ~> b * F }} // env.
+Proof.
+  unfold ProgOk; intros.
+  inv_exec_progok;
+    repeat exec_solve_step.
+
+  contradiction H1.
+  eval_expr.
+  repeat econstructor.
+  all: eval_expr; [reflexivity].
+Qed.
+
+Lemma CompileDivideInPlace1 :
+  forall env F avar bvar (a b : nat),
+    EXTRACT Ret (a / b)
+    {{ avar ~> a * bvar ~> b * F }}
+      Modify (ModifyNumOp Divide) ^(avar, avar, bvar)
+    {{ fun ret => avar ~> ret * bvar ~> b * F }} // env.
+Proof.
+  unfold ProgOk; intros.
+  inv_exec_progok;
+    repeat exec_solve_step.
+
+  contradiction H1.
+  eval_expr.
+  repeat econstructor.
+  all: eval_expr; [reflexivity].
+Qed.
+
+Lemma CompileDivideInPlace2 :
+  forall env F avar bvar (a b : nat),
+    EXTRACT Ret (a / b)
+    {{ avar ~> a * bvar ~> b * F }}
+      Modify (ModifyNumOp Divide) ^(bvar, avar, bvar)
+    {{ fun ret => bvar ~> ret * avar ~> a * F }} // env.
+Proof.
+  unfold ProgOk; intros.
+  inv_exec_progok;
+    repeat exec_solve_step.
+
+  contradiction H1.
+  eval_expr.
+  repeat econstructor.
+  all: eval_expr; [reflexivity].
+Qed.
+
 Lemma CompileAppend :
   forall env F T {Wr: GoWrapper T} (lvar vvar : var) (x : T) xs,
   EXTRACT Ret (x :: xs)

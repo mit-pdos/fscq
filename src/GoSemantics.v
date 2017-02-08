@@ -79,7 +79,8 @@ Module Go.
   Definition label := string.
   Definition var := nat.
 
-  Inductive numop := Plus | Minus | Times.
+  Inductive numop := Plus | Minus | Times | Divide.
+
   Inductive test := Eq | Ne | Lt | Le.
 
   Module Map := AddrMap.Map.
@@ -443,6 +444,7 @@ Module Go.
                              | Plus => a + b
                              | Minus => a - b
                              | Times => a * b
+                             | Divide => a / b
                              end)),
        Leave, Leave).
 
@@ -1541,6 +1543,7 @@ Notation "x <~const v" := (Go.Modify (Go.SetConst v) ^(x)) (at level 90): go_sco
 Notation "x <~dup y" := (Go.Modify Go.DuplicateOp ^(x, y)) (at level 90): go_scope.
 Notation "x <~move y" := (Go.Modify Go.MoveOp ^(x, y)) (at level 90): go_scope.
 Notation "x <~num A * B" := (Go.Modify (Go.ModifyNumOp Go.Times) ^(x, A, B)) (at level 90): go_scope.
+Notation "x <~num A / B" := (Go.Modify (Go.ModifyNumOp Go.Divide) ^(x, A, B)) (at level 90): go_scope.
 Notation "x <~num A + B" := (Go.Modify (Go.ModifyNumOp Go.Plus ) ^(x, A, B)) (at level 90): go_scope.
 Notation "x <~num A - B" := (Go.Modify (Go.ModifyNumOp Go.Minus) ^(x, A, B)) (at level 90): go_scope.
 Notation "'__'" := (Go.Skip) : go_scope.

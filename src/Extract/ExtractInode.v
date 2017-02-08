@@ -16,6 +16,7 @@ Instance z : GoWrapper (Rec.Rec.data INODE.IRecSig.itemtype).
   typeclasses eauto.
 Defined.
 
+(*
 Example compile_getattrs : sigT (fun p => source_stmt p /\
   forall env lxp ixp inum ms,
   prog_func_call_lemma
@@ -94,6 +95,7 @@ Proof.
            | [|- _ =p=> _ ] => cancel_go
            end.
 Qed.
+*)
 
 Example compile_irec_get : sigT (fun p => source_stmt p /\
   forall env lxp ixp inum ms,
@@ -121,6 +123,9 @@ Example compile_irec_get : sigT (fun p => source_stmt p /\
      4 ~>? Log.LOG.memstate }} // env).
 Proof.
   unfold Inode.INODE.IRec.get, Log.LOG.read_array, pair_args_helper.
+  compile_step.
+  compile_step.
+  compile_step.
   compile_step.
   compile_step.
   compile_step.
