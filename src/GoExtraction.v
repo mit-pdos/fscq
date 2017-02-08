@@ -164,6 +164,13 @@ Ltac compile_ret :=
 Ltac compile_ret_transformable :=
   match goal with
   | [ |- EXTRACT Ret ?x {{ ?pre }} _ {{ _ }} // _ ] =>
+    match pre with
+    | context [ (?k_ ~> ?v)%pred ] =>
+      transform_includes v x;
+      eapply hoare_strengthen_pre;
+        [ rewrite ?transform_pimpl with (k := k_); simpl; reflexivity | ]
+    end
+  | [ |- EXTRACT Ret ?x {{ ?pre }} _ {{ _ }} // _ ] =>
     is_transformable x;
     let ret := var_mapping_to_ret in
     eapply hoare_weaken; [
@@ -183,13 +190,6 @@ Ltac compile_ret_transformable :=
           reflexivity
         end
       | eapply CompileRet ] | cancel_go | cancel_go ]
-  | [ |- EXTRACT Ret ?x {{ ?pre }} _ {{ _ }} // _ ] =>
-    match pre with
-    | context [ (?k_ ~> ?v)%pred ] =>
-      transform_includes v x;
-      eapply hoare_strengthen_pre;
-        [ rewrite ?transform_pimpl with (k := k_); simpl; reflexivity | ]
-    end
   end.
 
 Ltac compile_match := match goal with

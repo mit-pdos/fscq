@@ -31,9 +31,25 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
+  (* TODO: make automation choose [compile_decompose] here *)
+  compile_decompose.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  simpl.
+  compile_step.
 
-  (* Infinite loop extracting [MSGLog (fst ms)] *)
-Admitted.
+  Unshelve.
+  all: try match goal with
+           | [|- source_stmt _] =>
+             repeat source_stmt_step
+           | [|- list _] => exact nil
+           | [|- _ =p=> _ ] => cancel_go
+           end.
+Qed.
 
 Example compile_read : sigT (fun p => source_stmt p /\
   forall env lxp a ms,
