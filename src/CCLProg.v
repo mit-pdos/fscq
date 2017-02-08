@@ -144,6 +144,7 @@ Section CCL.
   | ExecYield : forall sigma_i sigma sigma',
       Guarantee tid sigma_i sigma ->
       Rely tid sigma sigma' ->
+      hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') ->
       exec tid (sigma_i, sigma) Yield (Finished sigma' sigma' tt)
   | ExecYieldFail : forall sigma_i sigma,
       ~Guarantee tid sigma_i sigma ->

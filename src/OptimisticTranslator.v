@@ -1,4 +1,5 @@
 Require Import Prog.
+Require Import Hashmap.
 Require Import CCL.
 Require Import AsyncDisk.
 Require Import FunctionalExtensionality.
@@ -221,6 +222,8 @@ Section OptimisticTranslator.
            fun '(sigma_i', sigma') '(r, wb) =>
              CacheRep wb sigma' /\
              locally_modified sigma sigma' /\
+             vdisk_committed (Sigma.s sigma') = vdisk_committed (Sigma.s sigma) /\
+             hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
              match r with
              | Success v => seq_post (seq_spec a (Sigma.hm sigma))
                                     (Sigma.hm sigma') v (seq_disk sigma')
@@ -235,10 +238,13 @@ Section OptimisticTranslator.
     unfold prog_quadruple; intros.
     apply triple_spec_equiv; unfold cprog_triple; intros.
     destruct st.
+
+    pose proof (CCLHashExec.exec_hashmap_le H1).
     eapply translate_simulation in H1; simpl in *; intuition eauto.
     - (* concurrent execution finished *)
       destruct out; eauto.
       destruct r as [r wb']; intuition eauto.
+
       destruct r; eauto.
       match goal with
       | [ Hexec: Prog.exec _ _ p _ |- _ ] =>
