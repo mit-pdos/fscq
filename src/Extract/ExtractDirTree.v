@@ -70,15 +70,7 @@ Example compile_getattr : sigT (fun p => source_stmt p /\
     |}
     "bfile_getattrs" BFile.BFILE.getattrs env ->
   EXTRACT DIRTREE.getattr fsxp inum fms
-  {{ 0 ~>? (BFile.BFILE.memstate *
-   (Rec.Rec.data
-      (Rec.Rec.field_type
-         (Rec.Rec.FS "len" (Rec.Rec.WordF addrlen)
-            (Rec.Rec.FE
-               [("indptr", Rec.Rec.WordF addrlen);
-               ("blocks",
-               Rec.Rec.ArrayF (Rec.Rec.WordF addrlen) Inode.INODE.NDirect)]
-               "attrs" Inode.INODE.iattrtype))) * unit)) *
+  {{ 0 ~>? (BFile.BFILE.memstate * ((Rec.Rec.data Inode.INODE.iattrtype) * unit)) *
      1 ~> fsxp *
      2 ~> inum *
      3 ~> fms }}

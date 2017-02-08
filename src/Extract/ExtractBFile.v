@@ -115,12 +115,23 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-Admitted.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  eapply extract_equiv_prog with (pr1 := Ret (_, (snd a))).
+  destruct a as [ a [ d [] ] ]. reflexivity.
+  simpl Rec.Rec.data.
+  compile_step.
+  Unshelve. all : compile.
+Defined.
 
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).
   add_compiled_program "bfile_getlen" compile_getlen env.
-  (* add_compiled_program "bfile_getattrs" compile_getattrs env. *)
+  add_compiled_program "bfile_getattrs" compile_getattrs env.
   (* TODO add more programs here *)
   exact env.
 Defined.
