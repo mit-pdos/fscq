@@ -11,6 +11,8 @@ Require Import DirTree.
 
 Local Open Scope string_scope.
 
+Ltac compile_ret_transformable ::= fail.
+
 Example compile_mkfile : sigT (fun p => source_stmt p /\
   forall env fsxp dnum name fms,
   prog_func_call_lemma
@@ -68,7 +70,15 @@ Example compile_getattr : sigT (fun p => source_stmt p /\
     |}
     "bfile_getattrs" BFile.BFILE.getattrs env ->
   EXTRACT DIRTREE.getattr fsxp inum fms
-  {{ 0 ~>? (BFile.BFILE.memstate * (Errno.res addr * unit)) *
+  {{ 0 ~>? (BFile.BFILE.memstate *
+   (Rec.Rec.data
+      (Rec.Rec.field_type
+         (Rec.Rec.FS "len" (Rec.Rec.WordF addrlen)
+            (Rec.Rec.FE
+               [("indptr", Rec.Rec.WordF addrlen);
+               ("blocks",
+               Rec.Rec.ArrayF (Rec.Rec.WordF addrlen) Inode.INODE.NDirect)]
+               "attrs" Inode.INODE.iattrtype))) * unit)) *
      1 ~> fsxp *
      2 ~> inum *
      3 ~> fms }}
@@ -78,22 +88,44 @@ Example compile_getattr : sigT (fun p => source_stmt p /\
      2 ~>? addr *
      3 ~>? BFile.BFILE.memstate }} // env).
 Proof.
-  unfold DIRTREE.getattr, DIRTREE.MSLL.
+  unfold DIRTREE.getattr, DIRTREE.MSLL, pair_args_helper.
   compile_step.
   compile_step.
   compile_step.
-
-  (* This seems to turn into an actual infinite loop; maybe a problem with extracting
-   * something out of a two-level record (log_xparams inside fs_xparams)?
-   *)
-  (*
-  repeat compile_step.
-  *)
-
-Admitted.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  simpl Rec.Rec.data.
+  compile_step.
+  compile_step.
+  simpl Rec.Rec.data.
+  compile_step.
+  Unshelve. all : compile.
+Defined.
 
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).
+  add_compiled_program "dirtree_getattr" compile_getattr env.
   (* TODO add more programs here *)
   exact env.
 Defined.
