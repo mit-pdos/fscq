@@ -1321,4 +1321,13 @@ Set Implicit Arguments.
       assumption.
   Qed.
 
-
+  Theorem find_subtree_app_exists : forall base path t f,
+    find_subtree (base ++ path) t = Some f ->
+    exists d, find_subtree base t = Some d.
+  Proof.
+    induction base; simpl; intros; eauto.
+    destruct t; simpl in *; try congruence.
+    induction l; simpl; intros; simpl in *; try congruence.
+    destruct a0; simpl in *.
+    destruct (string_dec s a); eauto.
+  Qed.
