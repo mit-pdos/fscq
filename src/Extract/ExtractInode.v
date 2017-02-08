@@ -45,8 +45,55 @@ Proof.
   unfold INODE.getattrs, INODE.IRec.get_array, pair_args_helper.
   compile_step.
   compile_step.
-  (* rewrite ProgMonad.bind_right_id. ? *)
-Admitted.
+  eapply extract_equiv_prog.
+  rewrite ProgMonad.bind_right_id.
+  reflexivity.
+  compile_step.
+  Import Rec.
+  cbv [INODE.IRecSig.itemtype INODE.irectype INODE.iattrtype INODE.irec INODE.IRec.Defs.item
+       Rec.data Rec.field_type string_dec string_rec string_rect Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
+      sumbool_rec sumbool_rect Bool.bool_dec bool_rec bool_rect eq_rec_r eq_rec eq_rect eq_sym eq_ind_r eq_ind] in *.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  Ltac do_declare T cont ::=
+  lazymatch goal with
+  | |- EXTRACT _
+       {{ ?pre }}
+          _
+       {{ _ }} // _ =>
+         lazymatch goal with
+         | |- EXTRACT _
+              {{ ?pre }}
+                 _
+              {{ _ }} // _ =>
+           (* no simpl *)
+               lazymatch pre with
+               | context [ decls_pre ?decls ?vars ?m ] =>
+                   let decls' := fresh "decls" in
+                   evar ( decls' : list Declaration ); unify decls (Decl T :: decls'); subst decls';
+                    cont (nth_var m vars)
+               end
+         end
+  end.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  Unshelve.
+  all: try match goal with
+           | [|- source_stmt _] =>
+             repeat source_stmt_step
+           | [|- list _] => exact nil
+           | [|- _ =p=> _ ] => cancel_go
+           end.
+Qed.
 
 Example compile_irec_get : sigT (fun p => source_stmt p /\
   forall env lxp ixp inum ms,
