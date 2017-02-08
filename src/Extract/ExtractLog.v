@@ -50,7 +50,7 @@ Proof.
            | [|- list _] => exact nil
            | [|- _ =p=> _ ] => cancel_go
            end.
-Qed.
+Defined.
 
 Example compile_read : sigT (fun p => source_stmt p /\
   forall env lxp a ms,
@@ -125,7 +125,7 @@ Proof.
            | [|- list _] => exact nil
            | [|- _ =p=> _ ] => cancel_go
            end.
-Qed.
+Defined.
 
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).

@@ -55,6 +55,9 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
+  eapply extract_equiv_prog.
+  rewrite ProgMonad.bind_right_id.
+  reflexivity.
   compile_step.
   compile_step.
   compile_step.
@@ -75,10 +78,25 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
+  unfold pair_args_helper.
   compile_step.
   compile_step.
-  (* TODO: [a0] is not in scope of [?B]. Need to replace references to [a0] with generic [exists _, ...] *)
-Admitted.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+
+  Unshelve.
+  all: try match goal with
+           | [|- source_stmt _] =>
+             repeat source_stmt_step
+           | [|- list _] => exact nil
+           | [|- _ =p=> _ ] => cancel_go
+           end.
+Defined.
 
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).
