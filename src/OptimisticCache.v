@@ -682,6 +682,23 @@ Section OptimisticCache.
     hoare.
   Qed.
 
+  Lemma wb_rep_empty' : forall vd0 vd,
+      wb_rep vd0 empty_writebuffer vd ->
+      vd0 = vd.
+  Proof.
+    unfold wb_rep; simpl; intros.
+    extensionality a; eauto.
+  Qed.
+
+  Theorem CacheRep_empty : forall sigma,
+      CacheRep empty_writebuffer sigma ->
+      vdisk_committed (Sigma.s sigma) = vdisk (Sigma.s sigma).
+  Proof.
+    unfold CacheRep; intuition.
+    destruct sigma, s; simpl in *.
+    apply wb_rep_empty'; eauto.
+  Qed.
+
 End OptimisticCache.
 
 Arguments St OtherSt : clear implicits.
