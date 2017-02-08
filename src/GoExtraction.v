@@ -360,6 +360,22 @@ Ltac compile_divide := match goal with
     end
   end.
 
+Ltac compile_mod := match goal with
+  | [ |- EXTRACT Ret (?a mod ?b) {{ ?pre }} _ {{ _ }} // _ ] =>
+    let retvar := var_mapping_to_ret in
+    match find_val a pre with
+      | Some ?ka =>
+        match find_val b pre with
+          | Some ?kb =>
+            eapply hoare_weaken;
+              [ (unify retvar ka; eapply CompileModInPlace1 with (avar := ka) (bvar := kb)) ||
+                (unify retvar kb; eapply CompileModInPlace2 with (avar := ka) (bvar := kb)) ||
+                eapply CompileMod with (avar := ka) (bvar := kb) (rvar := retvar) | .. ];
+            [ cancel_go .. ]
+        end
+    end
+  end.
+
 Ltac compile_listop := match goal with
   | [ |- EXTRACT Ret (?x :: ?xs) {{ ?pre }} _ {{ _ }} // _ ] =>
     match find_val x pre with
@@ -626,6 +642,7 @@ Ltac compile_step :=
   || compile_call
   || compile_add
   || compile_divide
+  || compile_mod
   || compile_listop
   || compile_map_op
   || compile_join

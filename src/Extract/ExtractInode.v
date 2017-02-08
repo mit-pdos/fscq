@@ -156,6 +156,17 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  (* TODO: selN_val2block *)
 Admitted.
 
 Definition extract_env : Env.
