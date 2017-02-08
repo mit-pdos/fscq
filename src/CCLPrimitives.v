@@ -18,6 +18,8 @@ Section Primitives.
   Ltac prim :=
     begin_prim;
     inv_bind; inv_exec;
+    unfold ident in *;
+    repeat inj_pair2;
     repeat match goal with
            | [ H: context[let '(n, m) := ?a in _] |- _] =>
              destruct a; simpl in *; intuition eauto
@@ -122,7 +124,7 @@ Section Primitives.
     destruct sigma; simpl in *; eauto.
   Qed.
 
-  Theorem Get_ok : forall tid A i,
+  Theorem Get_ok : forall tid A (i: ident),
       cprog_spec G tid
                  (fun '(F, v) '(sigma_i, sigma) =>
                     {| precondition :=
@@ -154,7 +156,6 @@ Section Primitives.
                  (Assgn i v).
   Proof.
     prim.
-    inj_pair2.
     destruct sigma; simpl in *; eauto.
   Qed.
 

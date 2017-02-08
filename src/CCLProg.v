@@ -11,17 +11,20 @@ Global Set Implicit Arguments.
 Inductive ReadState := Pending | NoReader.
 Notation DISK := (@mem addr addr_eq_dec (valu * ReadState)).
 
-Inductive Var :=
-| val T (v:T)
+Polymorphic Inductive Var :=
+| val : forall T, T -> Var
 (* abstraction (ghost) variable *)
-| abs T (v:T).
+| abs : forall T, T -> Var.
 
 Definition ident := nat.
 Opaque ident.
 
+Notation heap := (@mem ident Nat.eq_dec Var).
+Notation heappred := (@pred ident Nat.eq_dec Var).
+
 (* The states a program steps through. *)
 Inductive Sigma :=
-| state (d:DISK) (m:@mem ident Nat.eq_dec Var) (hm:hashmap).
+| state (d:DISK) (m:heap) (hm:hashmap).
 
 Module Sigma.
   Definition disk (sigma:Sigma) :=
@@ -45,7 +48,7 @@ Section CCL.
   Opaque TID.
 
   CoInductive cprog : Type -> Type :=
-  | Alloc A (v0:A) : cprog ident
+  | Alloc A (v0:A) : cprog (ident)
   | Get A (i:ident) : cprog A
   | Assgn A (i:ident) (v:A) : cprog unit
   | GhostUpdate A (i:ident) (update: TID -> A -> A) : cprog unit
@@ -62,7 +65,7 @@ Section CCL.
   | StepAlloc : forall A (v0:A) i,
       Sigma.mem sigma i = None ->
       step tid sigma (Alloc v0) (Sigma.set_mem sigma i (val v0)) i
-  | StepGet : forall A i (v:A),
+  | StepGet : forall A (i: ident) (v:A),
       Sigma.mem sigma i = Some (val v) ->
       step tid sigma (Get A i) sigma v
   | StepAssgn : forall A i (v:A) (v0:A),
@@ -91,10 +94,10 @@ Section CCL.
 
   Inductive fail_step (sigma: Sigma) :
     forall T, cprog T -> Prop :=
-  | FailStepGetOob : forall A i,
+  | FailStepGetOob : forall A (i: ident),
       Sigma.mem sigma i = None ->
       fail_step sigma (Get A i)
-  | FailStepGetTy : forall A A' i (v0: A'),
+  | FailStepGetTy : forall A A' (i: ident) (v0: A'),
       Sigma.mem sigma i = Some (val v0) ->
       A <> A' ->
       fail_step sigma (Get A i)
