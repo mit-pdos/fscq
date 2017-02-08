@@ -362,3 +362,23 @@ Ltac solve_hash_list_rep :=
     => try (repeat eauto; econstructor)
   end.
 
+Definition hashmap_le hm hm' :=
+  exists l, hashmap_subset l hm hm'.
+
+Lemma hashmap_le_refl : forall hm,
+    hashmap_le hm hm.
+Proof.
+  intros.
+  exists nil.
+  constructor.
+Qed.
+
+Instance hashmap_le_preorder : RelationClasses.PreOrder hashmap_le.
+Proof.
+  unfold hashmap_le.
+  constructor; hnf; intros.
+  - apply hashmap_le_refl.
+  - destruct H, H0.
+    eexists.
+    eapply hashmap_subset_trans; eauto.
+Qed.

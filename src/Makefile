@@ -4,7 +4,7 @@ OCAMLBUILD := env OCAMLPATH=$(shell pwd) ocamlbuild \
 	      -I codegen -I mllib -X ocamlfuse \
 	      -package extunix -package zarith -package ocamlfuse
 MODULES    := CCLProg CCLMonadLaws CCLHoareTriples CCLPrimitives \
-              Automation CCLAutomation RetryLoop CCL \
+              CCLHashExec Automation CCLAutomation RetryLoop CCL \
 							SyncRead \
               MemCache WriteBuffer UpdList OptimisticCache \
               SeqSpecs OptimisticTranslator OptimisticFS \

@@ -2,6 +2,7 @@ Require Import CCLProg CCLMonadLaws CCLHoareTriples.
 Require Import Mem Pred.
 Require Import AsyncDisk.
 Require Import Word.
+Require Import Hashmap.
 Require Import FunctionalExtensionality.
 
 Import CCLTactics.
@@ -170,6 +171,7 @@ Section Primitives.
                        postcondition :=
                          fun '(sigma_i', sigma') _ =>
                            Rely G tid sigma sigma' /\
+                           hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
                            sigma_i' = sigma'; |})
                  Yield.
   Proof.

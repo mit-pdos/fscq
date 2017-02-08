@@ -57,28 +57,7 @@ Proof.
   inversion H5.
 Qed.
 
-Definition hashmap_le hm hm' :=
-  exists l, hashmap_subset l hm hm'.
-
-Lemma hashmap_le_refl : forall hm,
-    hashmap_le hm hm.
-Proof.
-  intros.
-  exists nil.
-  constructor.
-Qed.
-
 Hint Resolve hashmap_le_refl.
-
-Instance hashmap_le_preorder : RelationClasses.PreOrder hashmap_le.
-Proof.
-  unfold hashmap_le.
-  constructor; hnf; intros.
-  - auto.
-  - repeat deex.
-    eexists.
-    eapply hashmap_subset_trans; eauto.
-Qed.
 
 Lemma step_hashmap_le : forall T m hm (p: prog T) m' hm' v,
     step m hm p m' hm' v ->
