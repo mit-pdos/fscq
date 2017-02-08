@@ -129,5 +129,7 @@ Qed.
 
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).
+  add_compiled_program "log_begin" compile_begin env.
+  add_compiled_program "log_read" compile_read env.
   exact env.
 Defined.

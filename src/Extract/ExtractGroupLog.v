@@ -24,7 +24,7 @@ Example compile_read : sigT (fun p => source_stmt p /\
     |}
     "mlog_read" MemLog.MLog.read env ->
   EXTRACT GLog.read lxp a ms
-  {{ 0 ~>? (GLog.memstate * valu) *
+  {{ 0 ~>? (GLog.memstate * (valu * unit)) *
      1 ~> lxp *
      2 ~> a *
      3 ~> ms }}
@@ -35,6 +35,26 @@ Example compile_read : sigT (fun p => source_stmt p /\
      3 ~>? GLog.memstate }} // env).
 Proof.
   unfold GLog.read, GLog.MSLL, GLog.mk_memstate.
+  unfold MemLog.MLog.mk_memstate, MemLog.MLog.MSCache, MemLog.MLog.MSInLog.
+  unfold pair_args_helper.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  rewrite surjective_pairing with (p := ms) at 1.
   compile_step.
   compile_step.
   compile_step.
@@ -53,9 +73,25 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-Admitted.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+
+Unshelve.
+  all: compile.
+Defined.
 
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).
+  add_compiled_program "glog_read" compile_read env.
   exact env.
 Defined.

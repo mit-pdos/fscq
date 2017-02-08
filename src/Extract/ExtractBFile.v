@@ -119,7 +119,7 @@ Admitted.
 
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).
-  (* add_compiled_program "bfile_getlen" compile_getlen env. *)
+  add_compiled_program "bfile_getlen" compile_getlen env.
   (* add_compiled_program "bfile_getattrs" compile_getattrs env. *)
   (* TODO add more programs here *)
   exact env.
