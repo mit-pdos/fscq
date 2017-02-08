@@ -4,10 +4,9 @@ Require Import Automation.
 
 Section RetryLoop.
 
-  Context {St:StateTypes}.
-  Variable G:Protocol St.
+  Variable G:Protocol.
 
-  Fixpoint retry_n {T P Q} (guard: forall (v:T), {P v}+{Q v}) (v0: T) (p: @cprog St T) n :=
+  Fixpoint retry_n {T P Q} (guard: forall (v:T), {P v}+{Q v}) (v0: T) (p: cprog T) n :=
     match n with
     | 0 => Ret v0
     | S n' => v <- p;
@@ -17,14 +16,15 @@ Section RetryLoop.
                  retry_n guard v0 p n'
     end.
 
-  CoFixpoint retry {T P Q} (guard: forall (v:T), {P v}+{Q v}) (p: @cprog St T) :=
+  CoFixpoint retry {T P Q} (guard: forall (v:T), {P v}+{Q v}) (p: cprog T) :=
     v <- p; if guard v then Ret v else retry guard p.
 
-  Definition prog_id T (p: @cprog St T) : cprog T :=
+  Definition prog_id T (p: cprog T) : cprog T :=
     match p with
-    | Get => Get
-    | Assgn m => Assgn m
-    | GhostUpdate update => GhostUpdate update
+    | Alloc v0 => Alloc v0
+    | Get A i => Get A i
+    | Assgn i v => Assgn i v
+    | GhostUpdate i update => GhostUpdate i update
     | BeginRead a => BeginRead a
     | WaitForRead a => WaitForRead a
     | Write a v => Write a v
@@ -56,7 +56,7 @@ Section RetryLoop.
       forall tid st out, exec G tid st (retry guard p) out ->
                     (exists n, forall v0, exec G tid st (retry_n guard v0 p n) out) /\
                     match out with
-                    | Finished _ _ v => exists H, guard v = left H
+                    | Finished _ v => exists H, guard v = left H
                     | Error => True
                     end.
   Proof.

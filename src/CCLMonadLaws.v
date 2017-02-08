@@ -4,8 +4,7 @@ Import CCLTactics.
 
 Section MonadLaws.
 
-  Variable St:StateTypes.
-  Variable G:Protocol St.
+  Variable G:Protocol.
 
   Definition exec_equiv T (p p': cprog T) :=
     forall tid st out, exec G tid st p out <-> exec G tid st p' out.

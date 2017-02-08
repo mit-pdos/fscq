@@ -1,4 +1,5 @@
 Require Import CCLProg CCLMonadLaws CCLHoareTriples.
+Require Import Automation.
 Require Import Mem Pred.
 Require Import AsyncDisk.
 Require Import Word.
@@ -8,124 +9,173 @@ Import CCLTactics.
 
 Section Primitives.
 
-  Context {St:StateTypes}.
-  Variable G:Protocol St.
+  Variable G:Protocol.
 
   Ltac begin_prim :=
     unfold cprog_spec, cprog_ok; simpl; intros;
     repeat deex.
 
+  Ltac prim :=
+    begin_prim;
+    inv_bind; inv_exec;
+    repeat match goal with
+           | [ H: context[let '(n, m) := ?a in _] |- _] =>
+             destruct a; simpl in *; intuition eauto
+           | [ H: precondition {| precondition := _; postcondition := _ |} |- _ ] =>
+             simpl in *; intuition eauto
+           | [ H: context[exec _ _ _ _ _ -> _] |-
+               match ?out with
+               | Finished _ _ => _
+               | Error => _
+               end ] => eapply H; eauto; simpl; intuition eauto
+           | [ H: ?F (Sigma.mem ?sigma) |- ?F (Sigma.mem _) ] =>
+             solve [ destruct sigma; simpl in H; apply H ]
+           | [ |- Sigma.disk (Sigma.upd_disk ?sigma _) = _ ] =>
+             destruct sigma; simpl in *
+           | [ |- Sigma.hm _ = Sigma.hm ?sigma ] =>
+             solve [ destruct sigma; simpl in *; auto ]
+           | [ |- Sigma.disk _ = Sigma.disk ?sigma ] =>
+             solve [ destruct sigma; simpl in *; auto ]
+           | [ H: (_ * ?a |-> ?v)%pred _ |- _ ] =>
+             learn that (ptsto_valid' H)
+           | [ H: ?a = ?b, H': ?a = ?b' |- _ ] =>
+             rewrite H in *; clear H
+           | [ H: Some _ = Some _ |- _ ] =>
+             inversion H; subst; clear H
+           | _ => progress subst
+           | _ => auto; congruence
+           end.
+
+  Ltac break_tuple a n m :=
+    let n := fresh n in
+    let m := fresh m in
+    destruct a as [n m]; simpl in *.
+
   Theorem BeginRead_ok : forall tid a,
       cprog_spec G tid
-                 (fun v '(sigma_i, sigma) =>
-                    {| precondition := Sigma.disk sigma a = Some (v, NoReader);
+                 (fun '(F, v) '(sigma_i, sigma) =>
+                    {| precondition :=
+                         F (Sigma.mem sigma) /\
+                         Sigma.disk sigma a = Some (v, NoReader);
                        postcondition :=
                          fun '(sigma_i', sigma') _ =>
+                           F (Sigma.mem sigma') /\
                            sigma_i' = sigma_i /\
-                           sigma' = Sigma.upd_disk sigma (fun d => upd d a (v, Pending)); |})
+                           Sigma.hm sigma' = Sigma.hm sigma /\
+                           Sigma.disk sigma' = upd (Sigma.disk sigma) a (v, Pending); |})
                  (BeginRead a).
   Proof.
-    begin_prim.
-    inv_bind; inv_exec.
-
-    eapply H2; eauto; simpl.
-    intuition eauto.
-    (* why does congruence not solve this? *)
-    assert (v0 = a0) by congruence; subst; auto.
+    prim.
   Qed.
 
   Theorem WaitForRead_ok : forall tid a,
       cprog_spec G tid
-                 (fun v '(sigma_i, sigma) =>
+                 (fun '(F, v) '(sigma_i, sigma) =>
                     {| precondition :=
+                         F (Sigma.mem sigma) /\
                          Sigma.disk sigma a = Some (v, Pending);
                        postcondition :=
                          fun '(sigma_i', sigma') r =>
+                           F (Sigma.mem sigma') /\
                            sigma_i' = sigma_i /\
-                           sigma' = Sigma.upd_disk sigma (fun d => upd d a (v, NoReader)) /\
+                           Sigma.hm sigma' = Sigma.hm sigma /\
+                           Sigma.disk sigma' = upd (Sigma.disk sigma) a (v, NoReader) /\
                            r = v; |})
                  (WaitForRead a).
   Proof.
-    begin_prim.
-    inv_bind; inv_exec.
-
-    eapply H2; eauto; simpl.
-    intuition eauto.
-    (* why does congruence not solve this? *)
-    assert (v = a0) by congruence; subst; auto.
-    congruence.
+    prim.
   Qed.
 
   Theorem Write_ok : forall tid a v,
       cprog_spec G tid
-                 (fun v0 '(sigma_i, sigma) =>
+                 (fun '(F, v0) '(sigma_i, sigma) =>
                     {| precondition :=
+                         F (Sigma.mem sigma) /\
                          Sigma.disk sigma a = Some (v0, NoReader);
                        postcondition :=
                          fun '(sigma_i', sigma') _ =>
+                           F (Sigma.mem sigma') /\
                            sigma_i' = sigma_i /\
-                           sigma' = Sigma.upd_disk sigma (fun d => upd d a (v, NoReader)); |})
+                           Sigma.hm sigma' = Sigma.hm sigma /\
+                           Sigma.disk sigma' = upd (Sigma.disk sigma) a (v, NoReader); |})
                  (Write a v).
   Proof.
-    begin_prim.
-    inv_bind; inv_exec.
-
-    eapply H2; eauto; simpl.
-    intuition eauto.
+    prim.
   Qed.
 
-  Theorem Get_ok : forall tid,
+  Hint Resolve ptsto_upd_disjoint.
+
+  Theorem Alloc_ok : forall tid A (v0:A),
       cprog_spec G tid
-                 (fun (_:unit) '(sigma_i, sigma) =>
-                    {| precondition := True;
+                 (fun F '(sigma_i, sigma) =>
+                    {| precondition :=
+                         F (Sigma.mem sigma);
                        postcondition :=
-                         fun  '(sigma_i', sigma') r =>
-                           sigma_i' = sigma_i /\
-                           sigma' = sigma /\
-                           r = Sigma.mem sigma; |})
-                 Get.
+                         fun '(sigma_i', sigma') i =>
+                           (F * i |-> val v0)%pred (Sigma.mem sigma') /\
+                           Sigma.hm sigma' = Sigma.hm sigma /\
+                           Sigma.disk sigma' = Sigma.disk sigma /\
+                           sigma_i' = sigma_i; |})
+                 (Alloc v0).
   Proof.
-    begin_prim.
-    inv_bind; inv_exec.
-
-    eapply H2; eauto; simpl.
-    intuition eauto.
+    prim.
+    destruct sigma; simpl in *; eauto.
   Qed.
 
-  Theorem Assgn_ok : forall tid m',
+  Theorem Get_ok : forall tid A i,
       cprog_spec G tid
-                 (fun (_:unit) '(sigma_i, sigma) =>
-                    {| precondition := True;
+                 (fun '(F, v) '(sigma_i, sigma) =>
+                    {| precondition :=
+                         (F * i |-> val v)%pred (Sigma.mem sigma);
+                       postcondition :=
+                         fun '(sigma_i', sigma') r =>
+                           r = v /\
+                           sigma_i' = sigma_i /\
+                           sigma' = sigma; |})
+                 (Get A i).
+  Proof.
+    prim.
+    inj_pair2; auto.
+  Qed.
+
+  Hint Resolve ptsto_upd'.
+
+  Theorem Assgn_ok : forall tid A i (v:A),
+      cprog_spec G tid
+                 (fun '(F, v0) '(sigma_i, sigma) =>
+                    {| precondition :=
+                       (F * i |-> val (v0:A))%pred (Sigma.mem sigma);
                        postcondition :=
                          fun '(sigma_i', sigma') _ =>
+                           (F * i |-> val v)%pred (Sigma.mem sigma') /\
                            sigma_i' = sigma_i /\
-                           sigma' = Sigma.set_mem sigma m'; |})
-                 (Assgn m').
+                           Sigma.disk sigma' = Sigma.disk sigma /\
+                           Sigma.hm sigma' = Sigma.hm sigma; |})
+                 (Assgn i v).
   Proof.
-    begin_prim.
-    inv_bind; inv_exec.
-
-    eapply H2; eauto; simpl.
-    intuition eauto.
+    prim.
+    inj_pair2.
+    destruct sigma; simpl in *; eauto.
   Qed.
 
   Theorem Hash_ok : forall tid sz (buf: word sz),
       cprog_spec G tid
-                 (fun (_:unit) '(sigma_i, sigma) =>
-                    {| precondition := True;
+                 (fun F '(sigma_i, sigma) =>
+                    {| precondition := F (Sigma.mem sigma);
                        postcondition :=
                          fun '(sigma_i', sigma') r =>
+                           F (Sigma.mem sigma') /\
                            r = hash_fwd buf /\
                            hash_safe (Sigma.hm sigma) (hash_fwd buf) buf /\
+                           Sigma.hm sigma' = upd_hashmap' (Sigma.hm sigma) (hash_fwd buf) buf /\
+                           Sigma.disk sigma' = Sigma.disk sigma /\
                            sigma_i' = sigma_i /\
                            sigma' = Sigma.upd_hm sigma buf; |})
                  (Hash buf).
   Proof.
-    begin_prim.
-    inv_bind; inv_exec.
+    prim.
 
-    eapply H2; eauto; simpl.
-    intuition eauto.
+    destruct sigma; simpl in *; eauto.
   Qed.
 
   Theorem Ret_ok : forall tid T (v:T),
@@ -139,28 +189,25 @@ Section Primitives.
                            r = v; |})
                  (Ret v).
   Proof.
-    begin_prim.
-    inv_bind; inv_exec.
-
-    eapply H2; eauto; simpl.
-    intuition eauto.
+    prim.
   Qed.
 
-  Theorem GhostUpdate_ok : forall tid up,
+  Theorem GhostUpdate_ok : forall tid A i up,
       cprog_spec G tid
-                 (fun (_:unit) '(sigma_i, sigma) =>
-                    {| precondition := True;
+                 (fun '(F, v0) '(sigma_i, sigma) =>
+                    {| precondition :=
+                         (F * i |-> abs (v0:A))%pred (Sigma.mem sigma);
                        postcondition :=
                          fun '(sigma_i', sigma') _ =>
+                           (F * i |-> abs (up tid v0))%pred (Sigma.mem sigma') /\
                            sigma_i' = sigma_i /\
-                           sigma' = Sigma.upd_s sigma (up tid); |})
-                 (GhostUpdate up).
+                           Sigma.disk sigma' = Sigma.disk sigma /\
+                           Sigma.hm sigma' = Sigma.hm sigma; |})
+                 (GhostUpdate i up).
   Proof.
-    begin_prim.
-    inv_bind; inv_exec.
-
-    eapply H2; eauto; simpl.
-    intuition eauto.
+    prim.
+    inj_pair2.
+    destruct sigma; simpl in *; eauto.
   Qed.
 
   Theorem Yield_ok : forall tid,
@@ -173,12 +220,7 @@ Section Primitives.
                            sigma_i' = sigma'; |})
                  Yield.
   Proof.
-    begin_prim.
-    inv_bind; inv_exec.
-
-    eapply H2; eauto; simpl.
-    intuition eauto.
-    eauto.
+    prim.
   Qed.
 
 End Primitives.
@@ -186,11 +228,12 @@ End Primitives.
 Hint Extern 0 {{ BeginRead _; _ }} => apply BeginRead_ok : prog.
 Hint Extern 0 {{ WaitForRead _; _ }} => apply WaitForRead_ok : prog.
 Hint Extern 0 {{ Write _ _; _ }} => apply Write_ok : prog.
-Hint Extern 0 {{ @Get _; _ }} => apply @Get_ok : prog.
-Hint Extern 0 {{ Assgn _; _ }} => apply Assgn_ok : prog.
+Hint Extern 0 {{ Alloc _; _ }} => apply Alloc_ok : prog.
+Hint Extern 0 {{ Get _ _; _ }} => apply Get_ok : prog.
+Hint Extern 0 {{ Assgn _ _; _ }} => apply Assgn_ok : prog.
 Hint Extern 0 {{ Hash _; _ }} => apply Hash_ok : prog.
 Hint Extern 0 {{ Ret _; _ }} => apply Ret_ok : prog.
-Hint Extern 0 {{ GhostUpdate _; _ }} => apply GhostUpdate_ok : prog.
+Hint Extern 0 {{ GhostUpdate _ _; _ }} => apply GhostUpdate_ok : prog.
 Hint Extern 0 {{ @Yield _; _ }} => apply @Yield_ok : prog.
 
 (* Local Variables: *)
