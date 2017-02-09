@@ -238,7 +238,7 @@ Eval lazy in (projT1 compile_file_get_sz).
 
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).
-  add_compiled_program "asyncfs_file_get_sz" compile_get_file_sz env.
+  add_compiled_program "asyncfs_file_get_sz" compile_file_get_sz env.
   (* TODO add more programs here *)
   exact env.
 Defined.
