@@ -24,7 +24,7 @@ Defined.
 Eval lazy in (projT1 compile_writeback).
 
 Example compile_evict : sigT (fun p => source_stmt p /\ forall env a cs,
-  prog_func_call_lemma {| FArgs := [with_wrapper addr; with_wrapper cachestate]; FRet := with_wrapper cachestate |} "writeback" BUFCACHE.writeback env ->
+  prog_func_call_lemma {| FArgs := [with_wrapper addr; with_wrapper cachestate]; FRet := with_wrapper cachestate |} "cache_writeback" BUFCACHE.writeback env ->
   EXTRACT BUFCACHE.evict a cs
   {{ 0 ~>? cachestate * 1 ~> a * 2 ~> cs }}
     p
@@ -37,7 +37,7 @@ Defined.
 Eval lazy in (projT1 compile_evict).
 
 Example compile_maybe_evict : sigT (fun p => source_stmt p /\ forall env cs,
-  prog_func_call_lemma {| FArgs := [with_wrapper addr; with_wrapper cachestate]; FRet := with_wrapper cachestate |} "evict" BUFCACHE.evict env ->
+  prog_func_call_lemma {| FArgs := [with_wrapper addr; with_wrapper cachestate]; FRet := with_wrapper cachestate |} "cache_evict" BUFCACHE.evict env ->
   EXTRACT BUFCACHE.maybe_evict cs
   {{ 0 ~>? cachestate * 1 ~> cs }}
     p
@@ -72,9 +72,9 @@ Transparent BUFCACHE.read.
 
 Example compile_read : sigT (fun p => source_stmt p /\ forall env a cs,
   prog_func_call_lemma {| FArgs := [with_wrapper cachestate]; FRet := with_wrapper cachestate |}
-    "maybe_evict" BUFCACHE.maybe_evict env ->
+    "cache_maybe_evict" BUFCACHE.maybe_evict env ->
   prog_func_call_lemma {| FArgs := [with_wrapper W; with_wrapper eviction_state]; FRet := with_wrapper eviction_state |}
-    "eviction_update" eviction_update' env ->
+    "cache_eviction_update" eviction_update' env ->
   EXTRACT BUFCACHE.read a cs
   {{ 0 ~>? (cachestate * (valu * unit)) * 1 ~> a * 2 ~> cs }}
     p
@@ -103,9 +103,9 @@ Defined.
 Transparent BUFCACHE.write.
 Example compile_write : sigT (fun p => source_stmt p /\ forall env a v cs,
   prog_func_call_lemma {| FArgs := [with_wrapper cachestate]; FRet := with_wrapper cachestate |}
-    "maybe_evict" BUFCACHE.maybe_evict env ->
+    "cache_maybe_evict" BUFCACHE.maybe_evict env ->
   prog_func_call_lemma {| FArgs := [with_wrapper W; with_wrapper eviction_state]; FRet := with_wrapper eviction_state |}
-    "eviction_update" eviction_update' env ->
+    "cache_eviction_update" eviction_update' env ->
   EXTRACT BUFCACHE.write a v cs
   {{ 0 ~>? cachestate * 1 ~> a * 2 ~> v * 3 ~> cs }}
     p
@@ -135,7 +135,7 @@ Eval lazy in projT1 (compile_begin_sync).
 Transparent BUFCACHE.sync.
 
 Example compile_sync : sigT (fun p => source_stmt p /\ forall env a cs,
-  prog_func_call_lemma {| FRet := with_wrapper cachestate; FArgs := [with_wrapper addr; with_wrapper cachestate] |} "writeback" BUFCACHE.writeback env ->
+  prog_func_call_lemma {| FRet := with_wrapper cachestate; FArgs := [with_wrapper addr; with_wrapper cachestate] |} "cache_writeback" BUFCACHE.writeback env ->
   EXTRACT BUFCACHE.sync a cs
   {{ 0 ~>? cachestate * 1 ~> a * 2 ~> cs }}
     p
@@ -172,17 +172,16 @@ Defined.
 
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).
-  add_compiled_program "writeback" compile_writeback env.
-  add_compiled_program "evict" compile_evict env.
-  add_compiled_program "maybe_evict" compile_maybe_evict env.
-  add_compiled_program "eviction_update" compile_eviction_update' env.
-  add_compiled_program "read" compile_read env.
-  add_compiled_program "write" compile_write env.
-  add_compiled_program "sync" compile_sync env.
-  add_compiled_program "compile_end_sync" compile_end_sync env.
-  add_compiled_program "begin_sync" compile_begin_sync env.
-  add_compiled_program "end_sync" compile_end_sync env.
-  add_compiled_program "init" compile_init env.
+  add_compiled_program "cache_writeback" compile_writeback env.
+  add_compiled_program "cache_evict" compile_evict env.
+  add_compiled_program "cache_maybe_evict" compile_maybe_evict env.
+  add_compiled_program "cache_eviction_update" compile_eviction_update' env.
+  add_compiled_program "cache_read" compile_read env.
+  add_compiled_program "cache_write" compile_write env.
+  add_compiled_program "cache_sync" compile_sync env.
+  add_compiled_program "cache_begin_sync" compile_begin_sync env.
+  add_compiled_program "cache_end_sync" compile_end_sync env.
+  add_compiled_program "cache_init" compile_init env.
   (* TODO add more programs here *)
 
   exact env.
