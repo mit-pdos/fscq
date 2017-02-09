@@ -325,7 +325,25 @@ let go_modify_op (ts : TranscriberState.state)
         " ^ s ^ " = false
       }
     }"
-  | _ -> fail_unmatched "go_modify_op"
+  | Go.ModifyNumOp num_op -> (
+    let (dst_var, (a_var, (b_var, _))) = Obj.magic args_tuple in
+    let dst = (var_ref ts dst_var) in
+    let a = (var_ref ts a_var) in
+    let b = (var_ref ts b_var) in
+    match num_op with
+    | Go.Plus -> dst ^ " = " ^ a ^ " + " ^ b
+    | _ -> fail_unmatched "go_modify_op ModifyNumOp"
+    )
+  | Go.StructGet _ ->
+    fail_unmatched "go_modify_op StructGet"
+  | Go.StructPut _ ->
+    fail_unmatched "go_modify_op StructGet"
+  | Go.DeserializeNum ->
+    fail_unmatched "go_modify_op DeserializeNum"
+  | Go.FreezeBuffer ->
+    fail_unmatched "go_modify_op FreezeBuffer"
+  | Go.SliceBuffer (_, _) ->
+    fail_unmatched "go_modify_op SliceBuffer"
   ;;
 
 let go_expr_type ts expr =
