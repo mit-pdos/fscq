@@ -529,15 +529,15 @@ Module BUFCACHE.
 
   Theorem writeback_ok' : forall a cs,
     {< vs0,
-    PRE
+    PRE:hm
       a |+> vs0
-    POST RET:cs' exists v,
+    POST:hm' RET:cs' exists v,
       ( [[ Map.find a (CSMap cs) = Some (v, true) /\
          cs' = mk_cs (Map.add a (v, false) (CSMap cs)) (CSMaxCount cs) (CSCount cs) (CSEvict cs) ]] *
          a |+> (v, vsmerge vs0)) \/
       ( [[ (Map.find a (CSMap cs) = None \/
           exists v, Map.find a (CSMap cs) = Some (v, false)) /\ cs' = cs ]] * a |+> vs0 )
-    CRASH
+    CRASH:hm'
       a |+> vs0
     >} writeback a cs.
   Proof.
@@ -549,12 +549,12 @@ Module BUFCACHE.
 
   Theorem writeback_ok : forall a cs,
     {< d vs (F : rawpred),
-    PRE
+    PRE:hm
       rep cs d * [[ (F * a |+> vs)%pred d ]]
-    POST RET:cs'
+    POST:hm' RET:cs'
       rep cs' d * [[ addr_clean (CSMap cs') a ]] * 
       [[ Map.In a (CSMap cs) -> Map.In a (CSMap cs') ]]
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d
     >} writeback a cs.
   Proof.
@@ -613,13 +613,13 @@ Module BUFCACHE.
 
   Theorem evict_ok : forall a cs,
     {< d vs (F : rawpred),
-    PRE
+    PRE:hm
       rep cs d * [[ (F * a |+> vs)%pred d ]]
-    POST RET:cs'
+    POST:hm' RET:cs'
       rep cs' d *
       [[ ~ Map.In a (CSMap cs') ]] *
       [[ Map.In a (CSMap cs) -> Map.cardinal (CSMap cs') < CSMaxCount cs' ]]
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d
     >} evict a cs.
   Proof.
@@ -645,11 +645,11 @@ Module BUFCACHE.
 
   Theorem maybe_evict_ok : forall cs,
     {< d,
-    PRE
+    PRE:hm
       rep cs d
-    POST RET:cs
+    POST:hm' RET:cs
       rep cs d * [[ Map.cardinal (CSMap cs) < CSMaxCount cs ]]
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d
     >} maybe_evict cs.
   Proof.
@@ -696,11 +696,11 @@ Module BUFCACHE.
 
   Theorem read_ok : forall cs a,
     {< d (F : rawpred) v vs,
-    PRE
+    PRE:hm
       rep cs d * [[ (F * a |+> (v, vs))%pred d ]]
-    POST RET:^(cs, r)
+    POST:hm' RET:^(cs, r)
       rep cs d * [[ r = v ]]
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d
     >} read a cs.
   Proof.
@@ -744,12 +744,12 @@ Module BUFCACHE.
 
   Theorem write_ok' : forall cs a v,
     {< d (F : rawpred) v0,
-    PRE
+    PRE:hm
       rep cs d * [[ (F * a |+> v0)%pred d ]]
-    POST RET:cs
+    POST:hm' RET:cs
       exists d',
       rep cs d' * [[ (F * a |+> (v, vsmerge v0))%pred d' ]]
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d
     >} write a v cs.
   Proof.
@@ -1030,11 +1030,11 @@ Module BUFCACHE.
 
   Theorem begin_sync_ok : forall cs,
     {< d F,
-    PRE
+    PRE:hm
       rep cs d * [[ F d /\ sync_invariant F ]]
-    POST RET:cs exists d',
+    POST:hm' RET:cs exists d',
       synrep cs d d' * [[ F d' ]]
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d
     >} begin_sync cs.
   Proof.
@@ -1048,11 +1048,11 @@ Module BUFCACHE.
 
   Theorem end_sync_ok : forall cs,
     {< d0 d,
-    PRE
+    PRE:hm
       synrep cs d0 d
-    POST RET:cs
+    POST:hm' RET:cs
       rep cs d
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d0
     >} end_sync cs.
   Proof.
@@ -1078,14 +1078,14 @@ Module BUFCACHE.
 
   Theorem sync_ok' : forall cs a,
     {< d0 d (F F' : rawpred) v0 v',
-    PRE
+    PRE:hm
       synrep cs d0 d * [[ sync_invariant F ]] *
       [[ (F * a |+> v0)%pred d ]] *
       [[ (F' * a |+> v')%pred d0 ]]
-    POST RET:cs exists d,
+    POST:hm' RET:cs exists d,
       synrep cs d0 d *
       [[ (F * a |+> (fst v0, nil))%pred d ]]
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d0
     >} sync a cs.
   Proof.
@@ -1291,14 +1291,14 @@ Module BUFCACHE.
 
   Theorem sync_ok : forall cs a,
     {< d0 d (F : rawpred) v0,
-    PRE
+    PRE:hm
       synrep cs d0 d *
       [[ (F * a |+> v0)%pred d ]] *
       [[ sync_invariant F ]]
-    POST RET:cs exists d,
+    POST:hm' RET:cs exists d,
       synrep cs d0 d *
       [[ (F * a |+> (fst v0, nil))%pred d ]]
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d0
     >} sync a cs.
   Proof.
@@ -1331,12 +1331,12 @@ Module BUFCACHE.
 
   Theorem sync_one_ok : forall cs a,
     {< d (F : rawpred) v0,
-    PRE
+    PRE:hm
       rep cs d * [[ sync_invariant F /\ (F * a |+> v0)%pred d ]]
-    POST RET:cs
+    POST:hm' RET:cs
       exists d',
       rep cs d' * [[ (F * a |+> (fst v0, nil))%pred d' ]]
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d
     >} sync_one a cs.
   Proof.
@@ -1354,12 +1354,12 @@ Module BUFCACHE.
 
   Theorem sync_two_ok : forall cs a1 a2,
     {< d (F : rawpred) v1 v2,
-    PRE
+    PRE:hm
       rep cs d * [[ sync_invariant F /\ (F * a1 |+> v1 * a2 |+> v2)%pred d ]]
-    POST RET:cs
+    POST:hm' RET:cs
       exists d',
       rep cs d' * [[ (F * a1 |+> (fst v1, nil) * a2 |+> (fst v2, nil))%pred d' ]]
-    CRASH
+    CRASH:hm'
       exists cs' d, rep cs' d
     >} sync_two a1 a2 cs.
   Proof.
@@ -1747,12 +1747,12 @@ Module BUFCACHE.
 
   Theorem init_recover_ok : forall cachesize,
     {< d F,
-    PRE
+    PRE:hm
       exists cs, rep cs d *
       [[ F d ]] * [[ cachesize <> 0 ]]
-    POST RET:cs
+    POST:hm' RET:cs
       exists d', rep cs d' * [[ (crash_xform F) d' ]]
-    CRASH
+    CRASH:hm'
       exists cs, rep cs d
     >} init_recover cachesize.
   Proof.
@@ -1793,14 +1793,14 @@ Module BUFCACHE.
    *)
   Theorem init_load_ok : forall cachesize,
     {!< disk,
-    PRE
+    PRE:hm
       arrayS 0 disk *
       [[ cachesize <> 0 ]]
-    POST RET:cs
+    POST:hm' RET:cs
       exists d,
       rep cs d *
       [[ arrayS 0 disk d ]]
-    CRASH
+    CRASH:hm'
       arrayS 0 disk
     >!} init_load cachesize.
   Proof.
@@ -1839,12 +1839,12 @@ Module BUFCACHE.
 
   Theorem write_ok : forall cs a v,
     {< d (F : rawpred) v0,
-    PRE
+    PRE:hm
       rep cs d * [[ (F * a |+> v0)%pred d ]]
-    POST RET:cs
+    POST:hm' RET:cs
       exists d',
       rep cs d' * [[ (F * a |+> (v, vsmerge v0))%pred d' ]]
-    XCRASH
+    XCRASH:hm'
       exists cs' d', rep cs' d' *
       [[  (F * a |+> (v, vsmerge v0))%pred d' ]]
     >} write a v cs.
@@ -1880,11 +1880,11 @@ Module BUFCACHE.
 
   Theorem read_array_ok : forall a i cs,
     {< d F vs,
-    PRE
+    PRE:hm
       rep cs d * [[ (F * arrayN ptsto_subset a vs)%pred d ]] * [[ i < length vs ]]
-    POST RET:^(cs, v)
+    POST:hm' RET:^(cs, v)
       rep cs d * [[ v = fst (selN vs i ($0, nil)) ]]
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d
     >} read_array a i cs.
   Proof.
@@ -1927,12 +1927,12 @@ Module BUFCACHE.
 
   Theorem write_array_ok : forall a i v cs,
     {< d F vs,
-    PRE
+    PRE:hm
       rep cs d * [[ (F * arrayN ptsto_subset a vs)%pred d ]] * [[ i < length vs ]]
-    POST RET:cs
+    POST:hm' RET:cs
       exists d', rep cs d' *
       [[ (F * arrayN ptsto_subset a (vsupd vs i v))%pred d' ]]
-    XCRASH exists cs' d',
+    XCRASH:hm' exists cs' d',
       rep cs' d' *
       [[ (F * arrayN ptsto_subset a (vsupd vs i v))%pred d' ]]
     >} write_array a i v cs.
@@ -1959,14 +1959,14 @@ Module BUFCACHE.
 
   Theorem sync_array_ok : forall a i cs,
     {< d0 d (F : rawpred) vs,
-    PRE
+    PRE:hm
       synrep cs d0 d *
       [[ (F * arrayN ptsto_subset a vs)%pred d ]] * 
       [[ i < length vs /\ sync_invariant F ]]
-    POST RET:cs exists d',
+    POST:hm' RET:cs exists d',
       synrep cs d0 d' *
       [[ (F * arrayN ptsto_subset a (vssync vs i))%pred d' ]]
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d0
     >} sync_array a i cs.
   Proof.
@@ -2074,11 +2074,11 @@ Module BUFCACHE.
 
   Theorem read_range_ok : forall A a nr vfold (a0 : A) cs,
     {< d F vs,
-    PRE
+    PRE:hm
       rep cs d * [[ (F * arrayS a vs)%pred d ]] * [[ nr <= length vs ]]
-    POST RET:^(cs, r)
+    POST:hm' RET:^(cs, r)
       rep cs d * [[ r = fold_left vfold (firstn nr (map fst vs)) a0 ]]
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d
     >} read_range a nr vfold a0 cs.
   Proof.
@@ -2147,12 +2147,12 @@ Module BUFCACHE.
 
   Theorem write_range_ok : forall a l cs,
     {< d F vs,
-    PRE
+    PRE:hm
       rep cs d * [[ (F * arrayS a vs)%pred d ]] * [[ length l <= length vs ]]
-    POST RET:cs
+    POST:hm' RET:cs
       exists d', rep cs d' *
       [[ (F * arrayS a (vsupd_range vs l))%pred d' ]]
-    XCRASH
+    XCRASH:hm'
       exists cs' d', rep cs' d' *
       [[ (F * arrayS a (vsupd_range vs l))%pred d' ]]
     >} write_range a l cs.
@@ -2182,14 +2182,14 @@ Module BUFCACHE.
 
   Theorem sync_range_ok : forall a n cs,
     {< d d0 F vs,
-    PRE
+    PRE:hm
       synrep cs d0 d *
       [[ (F * arrayS a vs)%pred d ]] *
       [[ n <= length vs /\ sync_invariant F ]]
-    POST RET:cs
+    POST:hm' RET:cs
       exists d', synrep cs d0 d' *
       [[ (F * arrayS a (vssync_range vs n))%pred d' ]]
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d0
     >} sync_range a n cs.
   Proof.
@@ -2305,13 +2305,13 @@ Module BUFCACHE.
 
   Theorem write_vecs_ok : forall a l cs,
     {< d F vs,
-    PRE
+    PRE:hm
       rep cs d * [[ (F * arrayS a vs)%pred d ]] *
       [[ Forall (fun e => fst e < length vs) l ]]
-    POST RET:cs
+    POST:hm' RET:cs
       exists d', rep cs d' *
       [[ (F * arrayS a (vsupd_vecs vs l))%pred d' ]]
-    XCRASH
+    XCRASH:hm'
       exists cs' d', rep cs' d' *
       [[ (F * arrayS a (vsupd_vecs vs l))%pred d' ]]
     >} write_vecs a l cs.
@@ -2338,14 +2338,14 @@ Module BUFCACHE.
 
   Theorem sync_vecs_ok : forall a l cs,
     {< d d0 F vs,
-    PRE
+    PRE:hm
       synrep cs d0 d *
       [[ (F * arrayS a vs)%pred d ]] *
       [[ Forall (fun e => e < length vs) l /\ sync_invariant F ]]
-    POST RET:cs
+    POST:hm' RET:cs
       exists d', synrep cs d0 d' *
       [[ (F * arrayS a (vssync_vecs vs l))%pred d' ]]
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d0
     >} sync_vecs a l cs.
   Proof.
@@ -2364,14 +2364,14 @@ Module BUFCACHE.
 
   Theorem sync_vecs_now_ok : forall a l cs,
     {< d F vs,
-    PRE
+    PRE:hm
       rep cs d *
       [[ (F * arrayS a vs)%pred d ]] *
       [[ Forall (fun e => e < length vs) l /\ sync_invariant F ]]
-    POST RET:cs
+    POST:hm' RET:cs
       exists d', rep cs d' *
       [[ (F * arrayS a (vssync_vecs vs l))%pred d' ]]
-    CRASH
+    CRASH:hm'
       exists cs', rep cs' d
     >} sync_vecs_now a l cs.
   Proof.

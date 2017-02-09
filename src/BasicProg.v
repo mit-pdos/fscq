@@ -30,9 +30,9 @@ Hint Resolve sync_invariant_possible_sync.
 Theorem read_ok:
   forall (a:addr),
   {< v,
-  PRE        a |+> v
-  POST RET:r a |+> v * [[ r = (fst v) ]]
-  CRASH      a |+> v
+  PRE:hm         a |+> v
+  POST:hm' RET:r a |+> v * [[ r = (fst v) ]]
+  CRASH:hm'      a |+> v
   >} Read a.
 Proof.
   unfold corr2; intros.
@@ -61,9 +61,9 @@ Hint Extern 1 ({{_}} Bind (Read _) _) => apply read_ok : prog.
 Theorem write_ok:
   forall (a:addr) (v:valu),
   {< v0,
-  PRE        a |+> v0
-  POST RET:r a |+> (v, vsmerge v0)
-  CRASH      a |+> v0
+  PRE:hm         a |+> v0
+  POST:hm' RET:r a |+> (v, vsmerge v0)
+  CRASH:hm'      a |+> v0
   >} Write a v.
 Proof.
   unfold corr2; intros.
@@ -107,9 +107,9 @@ Qed.
 
 Theorem sync_ok:
   {!< F,
-  PRE        F * [[ sync_invariant F ]]
-  POST RET:r sync_xform F
-  CRASH      F
+  PRE:hm         F * [[ sync_invariant F ]]
+  POST:hm' RET:r sync_xform F
+  CRASH:hm'      F
   >!} Sync.
 Proof.
   unfold corr2; intros.
@@ -129,9 +129,9 @@ Hint Extern 1 ({{_}} Bind (@Sync _) _) => apply sync_ok : prog.
 Theorem trim_ok:
   forall (a:addr),
   {< v0,
-  PRE        a |+> v0
-  POST RET:r a |+>?
-  CRASH      a |+>?
+  PRE:hm         a |+> v0
+  POST:hm' RET:r a |+>?
+  CRASH:hm'      a |+>?
   >} Trim a.
 Proof.
   unfold corr2; intros.

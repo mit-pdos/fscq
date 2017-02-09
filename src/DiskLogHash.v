@@ -221,15 +221,15 @@ Module PaddedLog.
 
     Theorem write_ok : forall xp n cs,
     {< F d old,
-    PRE            BUFCACHE.rep cs d *
+    PRE:hm         BUFCACHE.rep cs d *
                    [[ hdr_goodSize n ]] *
                    [[ previous_length n = current_length old \/
                       previous_length old = current_length n ]] *
                    [[ (F * rep xp (Synced old))%pred d ]]
-    POST RET: cs
+    POST:hm' RET: cs
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * rep xp (Unsync n old))%pred d' ]]
-    XCRASH          exists cs' d', BUFCACHE.rep cs' d' * 
+    XCRASH:hm'     exists cs' d', BUFCACHE.rep cs' d' * 
                    [[ (F * rep xp (Unsync n old))%pred d' ]]
     >} write xp n cs.
     Proof.
@@ -243,13 +243,13 @@ Module PaddedLog.
 
     Theorem read_ok : forall xp cs,
     {< F d n,
-    PRE            BUFCACHE.rep cs d *
+    PRE:hm         BUFCACHE.rep cs d *
                    [[ (F * rep xp (Synced n))%pred d ]]
-    POST RET: ^(cs, r)
+    POST:hm' RET: ^(cs, r)
                    BUFCACHE.rep cs d *
                    [[ (F * rep xp (Synced n))%pred d ]] *
                    [[ r = n ]]
-    CRASH exists cs', BUFCACHE.rep cs' d
+    CRASH:hm' exists cs', BUFCACHE.rep cs' d
     >} read xp cs.
     Proof.
       unfold read.
@@ -263,13 +263,13 @@ Module PaddedLog.
 
     Theorem sync_ok : forall xp cs,
     {< F d0 d n old,
-    PRE            BUFCACHE.synrep cs d0 d *
+    PRE:hm         BUFCACHE.synrep cs d0 d *
                    [[ (F * rep xp (Unsync n old))%pred d ]] *
                    [[ sync_invariant F ]]
-    POST RET: cs
+    POST:hm' RET: cs
                    exists d', BUFCACHE.synrep cs d0 d' *
                    [[ (F * rep xp (Synced n))%pred d' ]]
-    CRASH  exists cs', BUFCACHE.rep cs' d0
+    CRASH:hm'  exists cs', BUFCACHE.rep cs' d0
     >} sync xp cs.
     Proof.
       unfold sync.
@@ -279,13 +279,13 @@ Module PaddedLog.
 
     Theorem sync_now_ok : forall xp cs,
     {< F d n old,
-    PRE            BUFCACHE.rep cs d *
+    PRE:hm         BUFCACHE.rep cs d *
                    [[ (F * rep xp (Unsync n old))%pred d ]] *
                    [[ sync_invariant F ]]
-    POST RET: cs
+    POST:hm' RET: cs
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * rep xp (Synced n))%pred d' ]]
-    CRASH  exists cs', BUFCACHE.rep cs' d
+    CRASH:hm'  exists cs', BUFCACHE.rep cs' d
     >} sync_now xp cs.
     Proof.
       unfold sync_now; intros.
@@ -294,14 +294,14 @@ Module PaddedLog.
 
     Theorem init_ok : forall xp cs,
     {< F d v0,
-    PRE            BUFCACHE.rep cs d *
+    PRE:hm         BUFCACHE.rep cs d *
                    [[ (F * (LAHdr xp) |+> v0)%pred d ]] *
                    [[ sync_invariant F ]]
-    POST RET: cs
+    POST:hm' RET: cs
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * rep xp (Synced ((0, 0), (0, 0),
                           (hash_fwd default_valu, hash_fwd default_valu))))%pred d' ]]
-    CRASH  any
+    CRASH:hm'  any
     >} init xp cs.
     Proof.
       unfold init, rep; intros.

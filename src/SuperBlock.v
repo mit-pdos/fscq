@@ -163,11 +163,11 @@ Module SB.
 
   Theorem load_ok : forall cs,
     {< m F fsxp,
-    PRE
+    PRE:hm
       BUFCACHE.rep cs m * [[ (F * rep fsxp)%pred m ]]
-    POST RET:^(cs',r)
+    POST:hm' RET:^(cs',r)
       BUFCACHE.rep cs' m * [[ r = fsxp ]]
-    CRASH
+    CRASH:hm'
       exists cs', BUFCACHE.rep cs' m
     >} load cs.
   Proof.
@@ -185,16 +185,16 @@ Module SB.
 
   Theorem init_ok : forall fsxp cs,
     {< m F,
-    PRE
+    PRE:hm
       BUFCACHE.rep cs m * 
       [[ fs_xparams_ok fsxp ]] *
       [[ FSXPMagic fsxp = magic_number ]] *
       [[ (F * 0 |->?)%pred m ]] *
       [[ sync_invariant F ]]
-    POST RET:cs
+    POST:hm' RET:cs
       exists m',
       BUFCACHE.rep cs m' * [[ (F * rep fsxp)%pred m' ]]
-    XCRASH
+    XCRASH:hm'
       exists cs' m' vs, BUFCACHE.rep cs' m' * 
       [[ (F * 0 |+> vs)%pred m' ]]
     >} init fsxp cs.

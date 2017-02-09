@@ -444,15 +444,15 @@ Module AsyncRecArray (RA : RASig).
 
   Theorem read_all_ok : forall xp count cs,
     {< F d items,
-    PRE            BUFCACHE.rep cs d *
+    PRE:hm         BUFCACHE.rep cs d *
                    [[ length items = (count * items_per_val)%nat /\
                       Forall Rec.well_formed items /\ xparams_ok xp ]] *
                    [[ (F * array_rep xp 0 (Synced items))%pred d ]]
-    POST RET:^(cs, r)
+    POST:hm' RET:^(cs, r)
                    BUFCACHE.rep cs d *
                    [[ (F * array_rep xp 0 (Synced items))%pred d ]] *
                    [[ r = items ]]
-    CRASH  exists cs', BUFCACHE.rep cs' d
+    CRASH:hm'  exists cs', BUFCACHE.rep cs' d
     >} read_all xp count cs.
   Proof.
     unfold read_all.
@@ -501,13 +501,13 @@ Module AsyncRecArray (RA : RASig).
 
   Theorem write_aligned_ok : forall xp start new cs,
     {< F d,
-    PRE            BUFCACHE.rep cs d *
+    PRE:hm         BUFCACHE.rep cs d *
                    [[ items_valid xp start new ]] *
                    [[ (F * avail_rep xp start (divup (length new) items_per_val))%pred d ]]
-    POST RET: cs
+    POST:hm' RET: cs
                    exists d', BUFCACHE.rep cs d' *
                    [[ (F * array_rep xp start (Unsync new))%pred d' ]]
-    XCRASH  exists cs' d',
+    XCRASH:hm'  exists cs' d',
                    BUFCACHE.rep cs' d' *
                    [[ (F * avail_rep xp start (divup (length new) items_per_val)) % pred d' ]]
     >} write_aligned xp start new cs.
@@ -590,14 +590,14 @@ Module AsyncRecArray (RA : RASig).
 
   Theorem sync_aligned_ok : forall xp start count cs,
     {< F d0 d items,
-    PRE            BUFCACHE.synrep cs d0 d * 
+    PRE:hm         BUFCACHE.synrep cs d0 d * 
                    [[ (F * array_rep xp start (Unsync items))%pred d ]] *
                    [[ length items = (count * items_per_val)%nat ]] *
                    [[ items_valid xp start items /\ sync_invariant F ]]
-    POST RET: cs
+    POST:hm' RET: cs
                    exists d', BUFCACHE.synrep cs d0 d' *
                    [[ (F * array_rep xp start (Synced items))%pred d' ]]
-    CRASH  exists cs', BUFCACHE.rep cs' d0
+    CRASH:hm'  exists cs', BUFCACHE.rep cs' d0
     >} sync_aligned xp start count cs.
   Proof.
     unfold sync_aligned.
