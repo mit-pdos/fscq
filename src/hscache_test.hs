@@ -15,6 +15,7 @@ import Log
 import FSLayout
 import AsyncFS
 import BFile
+import qualified Errno
 
 cachesize :: Integer
 cachesize = 100000
@@ -46,6 +47,14 @@ do_get_sz ds fsxp mscs inum = do
   (mscs, sz) <- I.run ds (_AFS__file_get_sz fsxp inum mscs)
   return mscs
 
+do_namei :: DiskState -> Coq_fs_xparams -> BFILE__Coq_memstate -> Integer -> [String] -> IO BFILE__Coq_memstate
+do_namei ds fsxp mscs dnum pn = do
+  (mscs, (inum, _)) <- I.run ds (_AFS__lookup fsxp dnum pn mscs)
+  -- case inum of
+  --   Errno.Err _ -> putStrLn $ "namei err"
+  --   Errno.OK (i, isdir) -> putStrLn $ "namei ok: " ++ (show i) ++ " isdir " ++ (show isdir)
+  return mscs
+
 exec_line :: DiskState -> Coq_cachestate -> String -> IO Coq_cachestate
 exec_line ds cs line = do
   case (splitOn " " line) of
@@ -67,6 +76,8 @@ exec_line_afs ds fsxp mscs line = do
   case (splitOn " " line) of
     "get_sz" : inum : _ ->
       do_get_sz ds fsxp mscs (read inum)
+    "namei" : dnum : pn ->
+      do_namei ds fsxp mscs (read dnum) pn
 
 exec_input :: DiskState -> Coq_cachestate -> IO Coq_cachestate
 exec_input ds cs = do
@@ -118,10 +129,11 @@ exec_input_afs ds fsxp cs = do
 run_test_afs :: String -> [String] -> IO()
 run_test_afs disk_fn args = do
   ds <- init_disk disk_fn
-  fsxp <- return $ _AFS__compute_xparams 1 1 1
-  cs <- I.run ds (_BUFCACHE__init_load cachesize)
-  mscs <- I.run ds (_LOG__init (coq_FSXPLog fsxp) cs)
-  mscs <- exec_input_afs ds fsxp (True, mscs)
+  -- fsxp <- return $ _AFS__compute_xparams 1 1 1
+  -- cs <- I.run ds (_BUFCACHE__init_load cachesize)
+  -- mscs <- I.run ds (_LOG__init (coq_FSXPLog fsxp) cs)
+  (mscs, (fsxp, ())) <- I.run ds (_AFS__recover cachesize)
+  mscs <- exec_input_afs ds fsxp mscs
   return ()
 
 
