@@ -42,6 +42,16 @@ do_log_read ds lxp mscs addr = do
   (mscs, block) <- I.run ds (_LOG__read lxp addr mscs)
   return mscs
 
+do_log_write :: DiskState -> Coq_log_xparams -> LOG__Coq_memstate -> Integer -> IO LOG__Coq_memstate
+do_log_write ds lxp mscs addr = do
+  mscs <- I.run ds (_LOG__write lxp addr (wzero _Valulen__valulen) mscs)
+  return mscs
+
+do_log_dwrite :: DiskState -> Coq_log_xparams -> LOG__Coq_memstate -> Integer -> IO LOG__Coq_memstate
+do_log_dwrite ds lxp mscs addr = do
+  mscs <- I.run ds (_LOG__dwrite lxp addr (wzero _Valulen__valulen) mscs)
+  return mscs
+
 do_get_sz :: DiskState -> Coq_fs_xparams -> BFILE__Coq_memstate -> Integer -> IO BFILE__Coq_memstate
 do_get_sz ds fsxp mscs inum = do
   (mscs, sz) <- I.run ds (_AFS__file_get_sz fsxp inum mscs)
@@ -53,6 +63,16 @@ do_namei ds fsxp mscs dnum pn = do
   -- case inum of
   --   Errno.Err _ -> putStrLn $ "namei err"
   --   Errno.OK (i, isdir) -> putStrLn $ "namei ok: " ++ (show i) ++ " isdir " ++ (show isdir)
+  return mscs
+
+do_file_write :: DiskState -> Coq_fs_xparams -> BFILE__Coq_memstate -> Integer -> IO BFILE__Coq_memstate
+do_file_write ds fsxp mscs inum = do
+  (mscs, _) <- I.run ds (_AFS__update_fblock_d fsxp inum 0 (wzero _Valulen__valulen) mscs)
+  return mscs
+
+do_file_read :: DiskState -> Coq_fs_xparams -> BFILE__Coq_memstate -> Integer -> IO BFILE__Coq_memstate
+do_file_read ds fsxp mscs inum = do
+  (mscs, _) <- I.run ds (_AFS__read_fblock fsxp inum 0 mscs)
   return mscs
 
 exec_line :: DiskState -> Coq_cachestate -> String -> IO Coq_cachestate
@@ -70,6 +90,10 @@ exec_line_log ds lxp mscs line = do
   case (splitOn " " line) of
     "log_read" : addr : _ ->
       do_log_read ds lxp mscs (read addr)
+    "log_write" : addr : _ ->
+      do_log_write ds lxp mscs (read addr)
+    "log_dwrite" : addr : _ ->
+      do_log_dwrite ds lxp mscs (read addr)
 
 exec_line_afs :: DiskState -> Coq_fs_xparams -> BFILE__Coq_memstate -> String -> IO BFILE__Coq_memstate
 exec_line_afs ds fsxp mscs line = do
@@ -78,6 +102,10 @@ exec_line_afs ds fsxp mscs line = do
       do_get_sz ds fsxp mscs (read inum)
     "namei" : dnum : pn ->
       do_namei ds fsxp mscs (read dnum) pn
+    "file_write" : inum : _ ->
+      do_file_write ds fsxp mscs (read inum)
+    "file_read" : inum : _ ->
+      do_file_read ds fsxp mscs (read inum)
 
 exec_input :: DiskState -> Coq_cachestate -> IO Coq_cachestate
 exec_input ds cs = do
