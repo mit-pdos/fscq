@@ -18,5 +18,9 @@ Extract Inlined Constant Cache.eviction_choose => "Evict.eviction_choose".
 
 Extract Inlined Constant Log.should_flushall => "Prelude.False".
 
+Extract Inlined Constant StringUtils.String_as_OT.string_compare =>
+  "(\x y -> if x Prelude.== y then Prelude.EQ else
+            if x Prelude.< y then Prelude.LT else Prelude.GT)".
+
 Cd "../codegen".
 Recursive Extraction Library AsyncFS.

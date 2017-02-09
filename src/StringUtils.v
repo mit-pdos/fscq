@@ -28,7 +28,7 @@ Proof.
   split;
   autorewrite_nat_compare;
   intuition.
-Qed.
+Defined.
 
 Module String_as_OT <: UsualOrderedType.
   Definition t := string.
@@ -185,18 +185,7 @@ Module String_as_OT <: UsualOrderedType.
 
   Definition eq_dec : forall (x y: string), { x = y } + { x <> y }.
   Proof.
-    intros;
-    destruct (string_compare x y) eqn:eq0;
-      first [
-          left;
-          apply Eq_eq;
-          solve [trivial]
-        | right;
-          unfold not;
-          rewrite Eq_eq_iff;
-          intros;
-          exfalso_from_equalities
-        ].
+    exact string_dec.
   Defined.
 
 End String_as_OT.
