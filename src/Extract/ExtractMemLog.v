@@ -100,5 +100,6 @@ Defined.
 
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).
+  add_compiled_program "mlog_read" compile_read env.
   exact env.
 Defined.
