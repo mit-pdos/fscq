@@ -11,6 +11,9 @@ import Prog
 import System.Environment
 import System.IO
 import Word
+import Log
+import FSLayout
+import AsyncFS
 
 cachesize :: Integer
 cachesize = 100000
@@ -32,15 +35,26 @@ do_sync :: DiskState -> Coq_cachestate -> Integer -> IO Coq_cachestate
 do_sync ds cs addr = do
   I.run ds (_BUFCACHE__sync addr cs)
 
+do_log_read :: DiskState -> Coq_log_xparams -> LOG__Coq_memstate -> Integer -> IO LOG__Coq_memstate
+do_log_read ds lxp mscs addr = do
+  (mscs, block) <- I.run ds (_LOG__read lxp addr mscs)
+  return mscs
+
 exec_line :: DiskState -> Coq_cachestate -> String -> IO Coq_cachestate
 exec_line ds cs line = do
   case (splitOn " " line) of
     "write" : addr : _ ->
       do_write ds cs (read addr)
     "read" : addr : _ ->
-          do_read ds cs (read addr)
+      do_read ds cs (read addr)
     "sync" : addr : _ ->
-          do_sync ds cs (read addr)
+      do_sync ds cs (read addr)
+
+exec_line_log :: DiskState -> Coq_log_xparams -> LOG__Coq_memstate -> String -> IO LOG__Coq_memstate
+exec_line_log ds lxp mscs line = do
+  case (splitOn " " line) of
+    "log_read" : addr : _ ->
+      do_log_read ds lxp mscs (read addr)
 
 exec_input :: DiskState -> Coq_cachestate -> IO Coq_cachestate
 exec_input ds cs = do
@@ -59,11 +73,32 @@ run_test disk_fn args = do
     cs <- exec_input ds cs
     return ()
 
+exec_input_log :: DiskState -> Coq_log_xparams -> LOG__Coq_memstate -> IO LOG__Coq_memstate
+exec_input_log ds lxp cs = do
+  done <- isEOF
+  if done
+    then return cs
+    else do
+      line <- getLine
+      cs <- exec_line_log ds lxp cs line
+      exec_input_log ds lxp cs
+
+run_test_log :: String -> [String] -> IO()
+run_test_log disk_fn args = do
+  ds <- init_disk disk_fn
+  fsxp <- return $ _AFS__compute_xparams 1 1 1
+  lxp <- return $ coq_FSXPLog fsxp
+  cs <- I.run ds (_BUFCACHE__init_load cachesize)
+  mscs <- I.run ds (_LOG__init lxp cs)
+  mscs <- exec_input_log ds (coq_FSXPLog fsxp) mscs
+  return ()
+
 
 main :: IO ()
 main = do
   args <- getArgs
   case args of
-    fn:rest -> run_test fn rest
+    -- fn:rest -> run_test fn rest
+    fn:rest -> run_test_log fn rest
     _ ->
       putStrLn $ "Usage: hscache_test disk"
