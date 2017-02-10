@@ -55,13 +55,13 @@ Notation "'RET' : ^( ra , .. , rb ) post" :=
   *)
 Notation "{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash crash >} p1" :=
   (forall T (rx: _ -> prog T), corr2
-   (fun vm hm done_ crash_ =>
+   (fun (vm : @mem _ addr_eq_dec _) hm done_ crash_ =>
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F_,
      F_ * pre *
      [[ sync_invariant F_ ]] *
      [[ forall r_ ,
-        {{ fun vm' hm' done'_ crash'_ =>
+        {{ fun (vm' : @mem _ addr_eq_dec _) hm' done'_ crash'_ =>
            post F_ r_ * [[ exists l, hashmap_subset l hm hm' ]] * [[ vm' = vm ]] *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
@@ -77,13 +77,13 @@ Notation "{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm_crash cras
 
 Notation "{< e1 .. e2 , 'PRE' :: vm , hm pre 'POST' :: vm' , hm' post 'CRASH' : hm_crash crash >} p1" :=
   (forall T (rx: _ -> prog T), corr2
-   (fun vm hm done_ crash_ =>
+   (fun (vm : @mem _ addr_eq_dec _) hm done_ crash_ =>
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F_,
      F_ * pre *
      [[ sync_invariant F_ ]] *
      [[ forall r_ ,
-        {{ fun vm' hm' done'_ crash'_ =>
+        {{ fun (vm' : @mem _ addr_eq_dec _) hm' done'_ crash'_ =>
            post F_ r_ * [[ exists l, hashmap_subset l hm hm' ]] *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
@@ -104,11 +104,11 @@ Notation "{< e1 .. e2 , 'PRE' :: vm , hm pre 'POST' :: vm' , hm' post 'CRASH' : 
  *)
 Notation "{!!< e1 .. e2 , 'PRE' : vm , hm pre 'POST' : vm' , hm' post 'CRASH' : hm_crash crash >!!} p1" :=
   (forall T (rx: _ -> prog T), corr2
-   (fun vm hm done_ crash_ =>
+   (fun (vm : @mem _ addr_eq_dec _) hm done_ crash_ =>
     (exis (fun e1 => .. (exis (fun e2 =>
      pre *
      [[ forall r_,
-        {{ fun vm' hm' done'_ crash'_ =>
+        {{ fun (vm' : @mem _ addr_eq_dec _) hm' done'_ crash'_ =>
            post emp r_ * [[ exists l, hashmap_subset l hm hm' ]] *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
@@ -124,11 +124,11 @@ Notation "{!!< e1 .. e2 , 'PRE' : vm , hm pre 'POST' : vm' , hm' post 'CRASH' : 
 
 Notation "{!< e1 .. e2 , 'PRE' : vm , hm pre 'POST' : vm' , hm' post 'CRASH' : hm_crash crash >!} p1" :=
   (forall T (rx: _ -> prog T), corr2
-   (fun vm hm done_ crash_ =>
+   (fun (vm : @mem _ addr_eq_dec _) hm done_ crash_ =>
     (exis (fun e1 => .. (exis (fun e2 =>
      pre *
      [[ forall r_,
-        {{ fun vm' hm' done'_ crash'_ =>
+        {{ fun (vm' : @mem _ addr_eq_dec _) hm' done'_ crash'_ =>
            post emp r_ * [[ exists l, hashmap_subset l hm hm' ]] *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
@@ -150,13 +150,13 @@ Notation "{!< e1 .. e2 , 'PRE' : vm , hm pre 'POST' : vm' , hm' post 'CRASH' : h
 
 Notation "{< e1 .. e2 , 'PRE' :: vm , hm pre 'POST' :: vm' , hm' post 'XCRASH' : hm_crash crash >} p1" :=
   (forall T (rx: _ -> prog T), corr2
-   (fun vm hm done_ crash_ =>
+   (fun (vm : @mem _ addr_eq_dec _) hm done_ crash_ =>
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F_,
      F_ * pre *
      [[ sync_invariant F_ ]] *
      [[ forall r_,
-        {{ fun vm' hm' done'_ crash'_ =>
+        {{ fun (vm' : @mem _ addr_eq_dec _) hm' done'_ crash'_ =>
            post F_ r_ * [[ exists l, hashmap_subset l hm hm' ]] *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
@@ -173,13 +173,13 @@ Notation "{< e1 .. e2 , 'PRE' :: vm , hm pre 'POST' :: vm' , hm' post 'XCRASH' :
 
 Notation "{< e1 .. e2 , 'PRE' : hm pre 'POST' : hm' post 'XCRASH' : hm_crash crash >} p1" :=
   (forall T (rx: _ -> prog T), corr2
-   (fun vm hm done_ crash_ =>
+   (fun (vm : @mem _ addr_eq_dec _) hm done_ crash_ =>
     (exis (fun e1 => .. (exis (fun e2 =>
      exists F_,
      F_ * pre *
      [[ sync_invariant F_ ]] *
      [[ forall r_,
-        {{ fun vm' hm' done'_ crash'_ =>
+        {{ fun (vm' : @mem _ addr_eq_dec _) hm' done'_ crash'_ =>
            post F_ r_ * [[ exists l, hashmap_subset l hm hm' ]] * [[ vm' = vm ]] *
            [[ done'_ = done_ ]] * [[ crash'_ = crash_ ]]
         }} rx r_ ]] *
