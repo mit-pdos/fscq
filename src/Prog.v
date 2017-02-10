@@ -31,6 +31,8 @@ Inductive outcome (T : Type) :=
   | Finished (m: rawdisk) (hm: hashmap) (v: T)
   | Crashed (m: rawdisk) (hm: hashmap).
 
+Implicit Type m : rawdisk.
+
 Inductive step : forall T,
     rawdisk -> hashmap -> prog T ->
     rawdisk -> hashmap -> T -> Prop :=
