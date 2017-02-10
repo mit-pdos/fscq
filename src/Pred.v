@@ -1083,6 +1083,40 @@ Proof.
     firstorder.
 Qed.
 
+Lemma ptsto_delete:
+  forall a v0 F (m : @mem AT AEQ V),
+  (a |-> v0 * F)%pred m ->
+  F (delete m a).
+Proof.
+  unfold delete; unfold_sep_star; intros; repeat deex.
+  match goal with
+  | [ |- F ?m ] => replace (m) with m2; eauto
+  end.
+  apply functional_extensionality; intro.
+  unfold mem_union; destruct (AEQ x a); eauto.
+  - subst.
+    unfold mem_disjoint in *.
+    case_eq (m2 a); intros; try congruence.
+    exfalso. apply H.
+    exists a. exists v0. exists v.
+    unfold ptsto in *; intuition.
+  - case_eq (m1 x); intros; try congruence.
+    unfold ptsto in *; intuition.
+    rewrite H4 in H0; eauto.
+    congruence.
+Qed.
+
+Lemma ptsto_delete':
+  forall a v0 F (m : @mem AT AEQ V),
+  (F * a |-> v0)%pred m ->
+  F (delete m a).
+Proof.
+  intros.
+  eapply ptsto_delete.
+  apply sep_star_comm.
+  eauto.
+Qed.
+
 Lemma any_sep_star_ptsto : forall a v (m : @mem AT AEQ V),
   m a = Some v -> (any * a |-> v)%pred m.
 Proof.

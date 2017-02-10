@@ -12,6 +12,7 @@ Require Import List.
 Require Import AsyncDisk.
 Require Import Hashmap.
 Require Import ListUtils.
+Require Import ProofIrrelevance.
 
 Set Implicit Arguments.
 
@@ -38,13 +39,13 @@ Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
-  - inv_exec' H9.
+  - inv_exec' H10.
     eapply H4; eauto.
     pred_apply; cancel.
     eauto.
     eapply ptsto_subset_valid' in H; deex.
     unfold possible_sync in *.
-    destruct (H13 a).
+    destruct (H15 a).
     intuition congruence.
     repeat deex; simpl in *.
     congruence.
@@ -69,12 +70,15 @@ Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
-  - inv_exec' H9.
+  - inv_exec' H10.
     eapply H4; eauto.
     repeat apply sep_star_lift_apply'; eauto.
 
     pose proof (ptsto_subset_valid' H); deex; eauto; simpl in *.
-    rewrite H1 in H14; inversion H14; subst; clear H14.
+    rewrite H1 in H16; inversion H16; subst; clear H16.
+
+    eapply pimpl_apply.
+    cancel.
 
     eapply sync_invariant_possible_sync; eauto.
     eapply ptsto_subset_upd; eauto.
@@ -107,18 +111,21 @@ Qed.
 
 Theorem sync_ok:
   {!< F,
-  PRE:hm         F * [[ sync_invariant F ]]
-  POST:hm' RET:r sync_xform F
-  CRASH:hm'      F
+  PRE:vm,hm          F * [[ sync_invariant F ]]
+  POST:vm',hm' RET:r sync_xform F * [[ vm' = vm ]]
+  CRASH:hm'          F
   >!} Sync.
 Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
-  - inv_exec' H9.
+  - inv_exec' H10.
     eapply H4; eauto.
 
-    apply possible_sync_from_sync in H13; subst.
+    eapply pimpl_apply.
+    cancel.
+
+    apply possible_sync_from_sync in H15; subst.
     eapply pimpl_apply; [ | eapply sync_xform_pred_apply; pred_apply; reflexivity ].
     cancel.
 Qed.
@@ -142,7 +149,7 @@ Proof.
     apply sep_star_comm in H as H'. rewrite ptsto_subset_pimpl_ptsto_ex in H'. destruct_lift H'.
     apply ptsto_valid in H0.
     rewrite H0 in H1; inversion H1; subst.
-    inv_exec' H9.
+    inv_exec' H10.
     destruct vs'.
 
     repeat apply sep_star_lift_apply'; eauto.
@@ -165,7 +172,7 @@ Theorem hash_ok:
   {< (_: unit),
   PRE:hm    emp
   POST:hm'
-    RET:h   emp *
+    RET:h     emp *
               [[ hash_safe hm h buf ]] *
               [[ h = hash_fwd buf ]] *
               [[ hm' = upd_hashmap' hm h buf ]]
@@ -175,7 +182,7 @@ Proof.
   unfold corr2; intros.
   destruct_lift H.
   inv_exec.
-  - inv_exec' H9.
+  - inv_exec' H10.
     eapply H4; eauto.
     pred_apply; cancel.
     eauto.
@@ -190,9 +197,9 @@ Definition If_ T P Q (b : {P} + {Q}) (p1 p2 : prog T) :=
 
 Theorem if_ok:
   forall T T' P Q (b : {P}+{Q}) (p1 p2 : prog T) (p': T -> prog T'),
-  {{ fun hm done crash => exists pre, pre
-   * [[ {{ fun hm' done' crash' => pre * [[P]] * [[ hm = hm' ]] * [[ done' = done ]] * [[ crash' = crash ]] }} Bind p1 p' ]]
-   * [[ {{ fun hm' done' crash' => pre * [[Q]] * [[ hm = hm' ]] * [[ done' = done ]] * [[ crash' = crash ]] }} Bind p2 p' ]]
+  {{ fun vm hm done crash => exists pre, pre
+   * [[ {{ fun vm' hm' done' crash' => pre * [[P]] * [[ hm = hm' ]] * [[ vm = vm' ]] * [[ done' = done ]] * [[ crash' = crash ]] }} Bind p1 p' ]]
+   * [[ {{ fun vm' hm' done' crash' => pre * [[Q]] * [[ hm = hm' ]] * [[ vm = vm' ]] * [[ done' = done ]] * [[ crash' = crash ]] }} Bind p2 p' ]]
   }} Bind (If_ b p1 p2) p'.
 Proof.
   unfold corr2, corr2, exis; intros; repeat deex.
@@ -240,7 +247,7 @@ Qed.
 
 Definition For_ (L : Type) (G : Type) (f : waddr -> L -> prog L)
                 (i n : waddr)
-                (nocrash : G -> waddr -> L -> hashmap -> rawpred)
+                (nocrash : G -> waddr -> L -> varmem -> hashmap -> rawpred)
                 (crashed : G -> hashmap -> rawpred)
                 (l : L) : prog L.
 Proof.
@@ -296,25 +303,25 @@ Theorem for_ok':
   forall T (n i : waddr)
          (L : Type) (G : Type)
          (f: waddr -> L -> prog L) (rx: L -> prog T)
-         (nocrash : G -> waddr -> L -> hashmap -> rawpred)
+         (nocrash : G -> waddr -> L -> varmem -> hashmap -> rawpred)
          (crashed : G -> hashmap -> rawpred)
          (li : L),
-  {{ fun hm done crash => exists F (g:G) hm', F * nocrash g i li hm
+  {{ fun vm hm done crash => exists F (g:G) hm', F * nocrash g i li vm hm
    * [[ exists l, hashmap_subset l hm' hm ]]
    * [[forall m lm rxm,
       (i <= m)%word ->
       (m < n ^+ i)%word ->
       (forall lSm,
-       {{ fun hm'' done' crash' => F * nocrash g (m ^+ $1) lSm hm'' *
+       {{ fun vm'' hm'' done' crash' => F * nocrash g (m ^+ $1) lSm vm'' hm'' *
           [[ exists l, hashmap_subset l hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
-      {{ fun hm'' done' crash' => F * nocrash g m lm hm'' *
+      {{ fun vm'' hm'' done' crash' => F * nocrash g m lm vm'' hm'' *
           [[ exists l, hashmap_subset l hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
       }} Bind (f m lm) rxm]]
    * [[forall lfinal,
-       {{ fun hm'' done' crash' => F * nocrash g (n ^+ i) lfinal hm'' *
+       {{ fun vm'' hm'' done' crash' => F * nocrash g (n ^+ i) lfinal vm'' hm'' *
           [[ exists l, hashmap_subset l hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
@@ -408,24 +415,24 @@ Theorem for_ok:
   forall T (n : waddr)
          (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> waddr -> L -> hashmap -> rawpred)
+         (nocrash : G -> waddr -> L -> varmem -> hashmap -> rawpred)
          (crashed : G -> hashmap -> rawpred)
          (li : L),
-  {{ fun hm done crash => exists F (g:G) hm', F * nocrash g $0 li hm
+  {{ fun vm hm done crash => exists F (g:G) hm', F * nocrash g $0 li vm hm
    * [[ exists l, hashmap_subset l hm' hm ]]
    * [[forall m lm rxm,
       (m < n)%word ->
       (forall lSm,
-       {{ fun hm'' done' crash' => F * nocrash g (m ^+ $1) lSm hm'' *
+       {{ fun vm'' hm'' done' crash' => F * nocrash g (m ^+ $1) lSm vm'' hm'' *
           [[ exists l, hashmap_subset l hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
-      {{ fun hm'' done' crash' => F * nocrash g m lm hm'' *
+      {{ fun vm'' hm'' done' crash' => F * nocrash g m lm vm'' hm'' *
           [[ exists l, hashmap_subset l hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
       }} Bind (f m lm) rxm]]
    * [[forall lfinal,
-       {{ fun hm'' done' crash' => F * nocrash g n lfinal hm'' *
+       {{ fun vm'' hm'' done' crash' => F * nocrash g n lfinal vm'' hm'' *
           [[ exists l, hashmap_subset l hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
@@ -454,7 +461,7 @@ Notation "'For' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' no
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun i =>
           (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
-           fun hm => nocrash%pred)) ..))
+           fun vm hm => nocrash%pred)) ..))
         )) .. ))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun hm => crashed%pred)) .. )))
@@ -472,7 +479,7 @@ Notation "'For' i < n 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] '
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun i =>
           (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
-           fun hm => nocrash%pred)) ..))
+           fun vm hm => nocrash%pred)) ..))
         )) .. ))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun hm => crashed%pred)) .. )))
@@ -483,7 +490,7 @@ Notation "'For' i < n 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] '
 
 Fixpoint ForN_  (L : Type) (G : Type) (f : nat -> L -> prog L)
                 (i n : nat)
-                (nocrash : G -> nat -> L -> hashmap -> rawpred)
+                (nocrash : G -> nat -> L -> varmem -> hashmap -> rawpred)
                 (crashed : G -> hashmap -> rawpred)
                 (l : L) : prog L :=
   match n with
@@ -496,25 +503,25 @@ Theorem forN_ok':
   forall T (n i : nat)
          (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> nat -> L -> hashmap -> pred)
+         (nocrash : G -> nat -> L -> varmem -> hashmap -> pred)
          (crashed : G -> hashmap -> pred)
          (li : L),
-  {{ fun hm done crash => exists F (g:G) hm', F * nocrash g i li hm
+  {{ fun vm hm done crash => exists F (g:G) hm', F * nocrash g i li vm hm
    * [[ exists l, hashmap_subset l hm' hm ]]
    * [[forall m lm rxm,
       i <= m ->
       m < n + i ->
       (forall lSm,
-       {{ fun hm'' done' crash' => F * nocrash g (S m) lSm hm'' *
+       {{ fun vm'' hm'' done' crash' => F * nocrash g (S m) lSm vm'' hm'' *
           [[ exists l, hashmap_subset l hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
-      {{ fun hm'' done' crash' => F * nocrash g m lm hm'' *
+      {{ fun vm'' hm'' done' crash' => F * nocrash g m lm vm'' hm'' *
           [[ exists l, hashmap_subset l hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
       }} Bind (f m lm) rxm]]
    * [[forall lfinal,
-       {{ fun hm'' done' crash' => F * nocrash g (n + i) lfinal hm'' *
+       {{ fun vm'' hm'' done' crash' => F * nocrash g (n + i) lfinal vm'' hm'' *
           [[ exists l, hashmap_subset l hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
@@ -562,24 +569,24 @@ Theorem forN_ok:
   forall (n : nat)
          T (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> nat -> L -> hashmap -> pred)
+         (nocrash : G -> nat -> L -> varmem -> hashmap -> pred)
          (crashed : G -> hashmap -> pred)
          (li : L),
-  {{ fun hm done crash => exists F (g:G) hm', F * nocrash g 0 li hm
+  {{ fun vm hm done crash => exists F (g:G) hm', F * nocrash g 0 li vm hm
    * [[ exists l, hashmap_subset l hm' hm ]]
    * [[forall m lm rxm,
       m < n ->
       (forall lSm,
-       {{ fun hm'' done' crash' => F * nocrash g (S m) lSm hm'' *
+       {{ fun vm'' hm'' done' crash' => F * nocrash g (S m) lSm vm'' hm'' *
           [[ exists l, hashmap_subset l hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rxm lSm) ->
-      {{ fun hm'' done' crash' => F * nocrash g m lm hm'' *
+      {{ fun vm'' hm'' done' crash' => F * nocrash g m lm vm'' hm'' *
           [[ exists l, hashmap_subset l hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
       }} Bind (f m lm) rxm]]
    * [[forall lfinal,
-       {{ fun hm'' done' crash' => F * nocrash g n lfinal hm'' *
+       {{ fun vm'' hm'' done' crash' => F * nocrash g n lfinal vm'' hm'' *
           [[ exists l, hashmap_subset l hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
@@ -609,7 +616,7 @@ Notation "'ForN' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' n
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun i =>
           (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
-           fun hm => nocrash%pred)) ..))
+           fun vm hm => nocrash%pred)) ..))
         )) .. ))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun hm => crashed%pred)) .. )))
@@ -627,7 +634,7 @@ Notation "'ForN' i < n 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun i =>
           (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
-           fun hm => nocrash%pred)) ..))
+           fun vm hm => nocrash%pred)) ..))
         )) .. ))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun hm => crashed%pred)) .. )))
@@ -640,7 +647,7 @@ Notation "'ForN' i < n 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 
 Fixpoint ForEach_ (ITEM : Type)
                 (L : Type) (G : Type) (f : ITEM -> L -> prog L)
                 (lst : list ITEM)
-                (nocrash : G -> list ITEM -> L -> hashmap -> rawpred)
+                (nocrash : G -> list ITEM -> L -> varmem -> hashmap -> rawpred)
                 (crashed : G -> hashmap -> rawpred)
                 (l : L) : prog L :=
   match lst with
@@ -654,24 +661,24 @@ Theorem foreach_ok:
   forall T ITEM (lst : list ITEM)
          (L : Type) (G : Type)
          f (rx: _ -> prog T)
-         (nocrash : G -> list ITEM -> L -> hashmap -> pred)
+         (nocrash : G -> list ITEM -> L -> varmem -> hashmap -> pred)
          (crashed : G -> hashmap -> pred)
          (li : L),
-  {{ fun hm done crash => exists F (g:G) hm', F * nocrash g lst li hm
+  {{ fun vm hm done crash => exists F (g:G) hm', F * nocrash g lst li vm hm
    * [[ exists l, hashmap_subset l hm' hm ]]
    * [[forall elem lst' lm rxm,
       (forall lSm,
-       {{ fun hm'' done' crash' => F * nocrash g lst' lSm hm'' *
+       {{ fun vm'' hm'' done' crash' => F * nocrash g lst' lSm vm'' hm'' *
           [[ exists l, hashmap_subset l hm' hm'' ]] *
           [[ done' = done ]]  * [[ crash' = crash ]]
        }} rxm lSm) ->
-      {{ fun hm'' done' crash' => F * nocrash g (elem :: lst') lm hm'' *
+      {{ fun vm'' hm'' done' crash' => F * nocrash g (elem :: lst') lm vm'' hm'' *
          [[ exists l, hashmap_subset l hm' hm'' ]] *
          [[ exists prefix, prefix ++ elem :: lst' = lst ]] *
          [[ done' = done ]] * [[ crash' = crash ]]
       }} Bind (f elem lm) rxm]]
    * [[forall lfinal,
-       {{ fun hm'' done' crash' => F * nocrash g nil lfinal hm'' *
+       {{ fun vm'' hm'' done' crash' => F * nocrash g nil lfinal vm'' hm'' *
           [[ exists l, hashmap_subset l hm' hm'' ]] *
           [[ done' = done ]] * [[ crash' = crash ]]
        }} rx lfinal]]
@@ -725,7 +732,7 @@ Notation "'ForEach' elem rest lst 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'I
         lst
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun rest => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
-         fun hm => nocrash%pred)) ..))  )) .. ))
+         fun vm hm => nocrash%pred)) ..))  )) .. ))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun hm => crashed%pred)) .. )))
   (at level 9, elem at level 0, rest at level 0,
@@ -738,7 +745,7 @@ Notation "'ForEach' elem rest lst 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ 
         lst
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun rest => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
-         fun hm => nocrash%pred)) ..))  )) .. ))
+         fun vm hm => nocrash%pred)) ..))  )) .. ))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun hm => crashed%pred)) .. )))
   (at level 9, elem at level 0, rest at level 0,
@@ -752,7 +759,7 @@ function terminates without breaking (otherwise the spec would equally
 apply to a loop that didn't do anything) *)
 Fixpoint ForNBreak_  (L : Type) (G : Type) (f : nat -> L -> prog (L+L))
                 (i n : nat)
-                (nocrash : G -> nat -> L -> hashmap -> rawpred)
+                (nocrash : G -> nat -> L -> varmem -> hashmap -> rawpred)
                 (crashed : G -> hashmap -> rawpred)
                 (l : L) : prog L :=
   match n with
@@ -766,3 +773,101 @@ Fixpoint ForNBreak_  (L : Type) (G : Type) (f : nat -> L -> prog (L+L))
 
 Definition Continue L (l:L) : L + L := inl l.
 Definition Break L (l:L) : L + L := inr l.
+
+
+Theorem var_get_ok:
+  forall (Tv : Type) (i : addr),
+  {< (x : Tv) (Fv : @pred _ addr_eq_dec _),
+  PRE::vm,hm          emp * [[ (Fv * i |-> Any x)%pred vm ]]
+  POST::vm',hm' RET:r emp * [[ r = x ]] * [[ vm' = vm ]]
+  CRASH:hm'           [[ False ]]
+  >} VarGet i.
+Proof.
+  unfold corr2; intros.
+  destruct_lift H.
+  inv_exec.
+  - inv_exec' H11.
+    eapply H4; eauto.
+    pred_apply; cancel.
+    eauto.
+    eapply ptsto_valid' in H6.
+    rewrite H6 in *.
+    inversion H17.
+    apply inj_pair2 in H1; eauto.
+  - exfalso.
+    eapply ptsto_valid' in H6.
+    congruence.
+  - exfalso.
+    eapply ptsto_valid' in H6.
+    congruence.
+Qed.
+
+Hint Extern 1 ({{_}} Bind (VarGet _) _) => apply var_get_ok : prog.
+
+Theorem var_set_ok:
+  forall (T : Type) (i : addr) (v : T),
+  {< v0 (Fv : @pred _ addr_eq_dec _),
+  PRE::vm,hm          emp * [[ (Fv * i |-> v0)%pred vm ]]
+  POST::vm',hm' RET:_ emp * [[ (Fv * i |-> Any v)%pred vm' ]]
+  CRASH:hm'           [[ False ]]
+  >} VarSet i v.
+Proof.
+  unfold corr2; intros.
+  destruct_lift H.
+  inv_exec.
+  - inv_exec' H11.
+    eapply H4; eauto.
+    pred_apply; cancel.
+    eauto.
+    eapply ptsto_upd'.
+    eauto.
+  - exfalso.
+    eapply ptsto_valid' in H6.
+    congruence.
+Qed.
+
+Hint Extern 1 ({{_}} Bind (VarSet _ _) _) => apply var_set_ok : prog.
+
+Theorem var_alloc_ok:
+  forall (T : Type) (v : T),
+  {< (Fv : @pred _ addr_eq_dec _),
+  PRE::vm,hm          emp * [[ Fv vm ]]
+  POST::vm',hm' RET:r emp * [[ (Fv * r |-> Any v)%pred vm' ]]
+  CRASH:hm'           [[ False ]]
+  >} VarAlloc v.
+Proof.
+  unfold corr2; intros.
+  destruct_lift H.
+  inv_exec.
+  inv_exec' H11.
+  eapply H4; eauto.
+  pred_apply; cancel.
+  eauto.
+  eapply ptsto_insert_disjoint; eauto.
+Qed.
+
+Hint Extern 1 ({{_}} Bind (VarAlloc _) _) => apply var_alloc_ok : prog.
+
+Theorem var_delete_ok:
+  forall (i : addr),
+  {< v (Fv : @pred _ addr_eq_dec _),
+  PRE::vm,hm          emp * [[ (Fv * i |-> v)%pred vm ]]
+  POST::vm',hm' RET:_ emp * [[ Fv vm' ]]
+  CRASH:hm'           [[ False ]]
+  >} VarDelete i.
+Proof.
+  unfold corr2; intros.
+  destruct_lift H.
+  inv_exec.
+  - inv_exec' H11.
+    eapply H4; eauto.
+    pred_apply; cancel.
+    eauto.
+    eapply ptsto_delete'.
+    pred_apply; cancel.
+  - exfalso.
+    eapply ptsto_valid' in H6.
+    congruence.
+Qed.
+
+Hint Extern 1 ({{_}} Bind (VarDelete _) _) => apply var_delete_ok : prog.

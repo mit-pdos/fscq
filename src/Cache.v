@@ -1793,13 +1793,14 @@ Module BUFCACHE.
    *)
   Theorem init_load_ok : forall cachesize,
     {!< disk,
-    PRE:hm
+    PRE:vm,hm
       arrayS 0 disk *
       [[ cachesize <> 0 ]]
-    POST:hm' RET:cs
+    POST:vm',hm' RET:cs
       exists d,
       rep cs d *
-      [[ arrayS 0 disk d ]]
+      [[ arrayS 0 disk d ]] *
+      [[ vm' = vm ]]
     CRASH:hm'
       arrayS 0 disk
     >!} init_load cachesize.

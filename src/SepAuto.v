@@ -951,9 +951,10 @@ Ltac cancel_by H :=
 
 Theorem nop_ok :
   forall T A v (rx : A -> prog T),
-  {{ fun hm done_ crash_ => exists F, F * [[ forall r_,
-    {{ fun hm' done' crash' => (fun r => F * [[ r = v ]]) r_ *
+  {{ fun vm hm done_ crash_ => exists F, F * [[ forall r_,
+    {{ fun vm' hm' done' crash' => (fun r => F * [[ r = v ]]) r_ *
                            [[ hm = hm' ]] *
+                           [[ vm = vm' ]] *
                            [[ done' = done_ ]] * [[ crash' = crash_ ]]}}
      rx r_ ]] * [[ F =p=> crash_ hm]] }} rx v.
 Proof.
