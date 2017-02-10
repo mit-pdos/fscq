@@ -10,15 +10,16 @@ Require Export WriteBuffer.
 
 Notation Disk := (@mem addr addr_eq_dec valu).
 
-Record CacheParams :=
-  { cache : ident;
-    vdisk : ident;
-    vdisk_committed : ident; }.
+(* TODO: move into Mem, get Pred to work again *)
+Opaque upd.
 
-Polymorphic Definition mem'@{i j} (AT:Type@{i}) (AEQ:EqDec AT) (V:Type@{j}) := AT -> option V.
-Polymorphic Definition pred'@{i j} (AT:Type@{i}) AEQ (V:Type@{j}) := @mem' AT AEQ V -> Prop.
-Polymorphic Definition ptsto'@{i j} (AT:Type@{i}) AEQ (V:Type@{j}) (a : AT) (v : V) : @pred' AT AEQ V :=
-  fun m => m a = Some v /\ forall a', a <> a' -> m a' = None.
+(* TODO: move CacheMem and CacheAbstraction into section; fix implicit types if
+necessary *)
+
+Record CacheParams :=
+  { cache: ident;
+    vdisk_committed: ident;
+    vdisk: ident; }.
 
 Section OptimisticCache.
 
@@ -48,38 +49,16 @@ Section OptimisticCache.
     forall a, cache_get c a = Invalid ->
          wb_get wb a = WbMissing.
 
-  Variable (P:CacheParams).
   Variable G:Protocol.
+  Variable P:CacheParams.
 
-  (*
   Definition CacheRep d wb (vd0 vd:Disk) : heappred :=
     (exists c, cache P |-> val c *
-          [[ cache_rep d c vd0 ]] *
-          [[ wb_rep vd0 wb vd ]] *
-          [[ no_pending_dirty c wb ]]
-    )%pred.
-*)
-
-  Set Printing Universes.
-
-  Definition CacheRep d wb (vd0 vd:Disk) : @pred ident PeanoNat.Nat.eq_dec Var :=
-    (exists c, cache P |-> val c *
+            vdisk_committed P |-> abs vd0 *
+            vdisk P |-> abs vd *
             [[ cache_rep d c vd ]] *
             [[ wb_rep vd0 wb vd ]] *
             [[ no_pending_dirty c wb ]]
-    )%pred.
-
-  Fail Definition CacheRep' wb (vd0 vd:Disk) : @pred' ident PeanoNat.Nat.eq_dec Var :=
-    (exists c, cache P |-> val c *
-            ptsto' (vdisk_committed P) (abs vd0) *
-            vdisk P |-> abs vd
-    )%pred.
-
-  Definition CacheRep'' d wb : @pred ident PeanoNat.Nat.eq_dec Var :=
-    (exists c vd0 vd, cache P |-> val c *
-                 [[ cache_rep d c vd ]] *
-                 [[ wb_rep vd0 wb vd ]] *
-                 [[ no_pending_dirty c wb ]]
     )%pred.
 
   Definition BufferRead wb a :=
@@ -158,6 +137,7 @@ Section OptimisticCache.
   Qed.
 
   Hint Extern 0 {{ BufferRead _ _; _ }} => apply BufferRead_ok : prog.
+
 
   Lemma CacheRep_clear_pending:
     forall (wb : WriteBuffer) (a : addr) (d : DISK) (m : Mem St)
@@ -499,6 +479,7 @@ Section OptimisticCache.
       vd = upd_all vd0 (wb_writes wb).
   Proof.
     intros.
+    apply mem_equal.
     extensionality a.
     apply wb_rep_upd_all_ext; auto.
   Qed.
@@ -618,6 +599,24 @@ Section OptimisticCache.
   Proof.
     unfold CacheAbort.
     hoare.
+  Qed.
+
+  Lemma wb_rep_empty' : forall vd0 vd,
+      wb_rep vd0 empty_writebuffer vd ->
+      vd0 = vd.
+  Proof.
+    unfold wb_rep; simpl; intros.
+    apply mem_equal.
+    extensionality a; eauto.
+  Qed.
+
+  Theorem CacheRep_empty : forall sigma,
+      CacheRep empty_writebuffer sigma ->
+      vdisk_committed (Sigma.s sigma) = vdisk (Sigma.s sigma).
+  Proof.
+    unfold CacheRep; intuition.
+    destruct sigma, s; simpl in *.
+    apply wb_rep_empty'; eauto.
   Qed.
 
 End OptimisticCache.

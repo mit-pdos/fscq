@@ -34,15 +34,19 @@ Proof.
   simpl in *.
   inversion H; subst.
   intuition eauto.
-  inversion H1; subst;
-    autorewrite with upd; auto.
-  destruct (AEQ a' a0); subst;
-    autorewrite with upd;
-    eauto.
-  contradict H3.
-  change a0 with (fst (a0, v)).
-  auto using in_map.
+  - inversion H1; subst; clear H1;
+      autorewrite with upd; auto.
+    destruct (AEQ a0 a0); try congruence.
+  - destruct (AEQ a0 a'); subst;
+      autorewrite with upd;
+      eauto.
+
+    contradict H3.
+    change a' with (fst (a', v)).
+    auto using in_map.
 Qed.
+
+Opaque upd.
 
 Theorem upd_all_not_in : forall AT AEQ V (m:@mem AT AEQ V) ws a,
     ~List.In a (List.map fst ws) ->
@@ -50,8 +54,7 @@ Theorem upd_all_not_in : forall AT AEQ V (m:@mem AT AEQ V) ws a,
 Proof.
   induction ws; simpl; intros; eauto.
   destruct a as [a' v]; simpl in *.
-  intuition eauto.
-  autorewrite with upd; eauto.
+  intuition eauto; autorewrite with upd; eauto.
 Qed.
 
 Lemma list_addr_in_dec : forall A B (AEQ:forall (a a':A), {a=a'}+{a<>a'})

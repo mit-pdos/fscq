@@ -1,5 +1,6 @@
 Require Import Prog.
 Require Import CCL.
+Require Import Mem.
 Require Import AsyncDisk.
 Require Import FunctionalExtensionality.
 Require Import SeqSpecs.
@@ -8,6 +9,8 @@ Require Export OptimisticCache.
 
 Inductive Result T := Success (v:T) | Failed.
 Arguments Failed {T}.
+
+Opaque upd.
 
 Section OptimisticTranslator.
 
@@ -40,33 +43,36 @@ Section OptimisticTranslator.
            end.
 
   Definition add_buffers (d: Disk) : rawdisk :=
-    fun a => match d a with
-          | Some v => Some (v, nil)
-          | None => None
-          end.
+    M (fun a => match d a with
+             | Some v => Some (v, nil)
+             | None => None
+             end).
 
   Hint Resolve locally_modified_refl.
   Hint Resolve PredCrash.possible_sync_refl.
+
+  Implicit Type (vd:Disk).
 
   Lemma add_buffers_eq : forall vd a v,
       vd a = Some v ->
       add_buffers vd a = Some (v, nil).
   Proof.
-    unfold add_buffers; intros; simpl_match; eauto.
+    unfold add_buffers; intros; simpl; simpl_match; eauto.
   Qed.
 
   Lemma add_buffers_none : forall vd a,
       vd a = None ->
       add_buffers vd a = None.
   Proof.
-    unfold add_buffers; intros; simpl_match; eauto.
+    unfold add_buffers; intros; simpl; simpl_match; eauto.
   Qed.
 
   Lemma add_buffers_upd : forall vd a v,
       add_buffers (Mem.upd vd a v) = Mem.upd (add_buffers vd) a (v, nil).
   Proof.
     unfold add_buffers; intros.
-    extensionality a'.
+    apply Pred.mem_equal.
+    extensionality a'; simpl.
     destruct (addr_eq_dec a a'); subst; autorewrite with upd; eauto.
   Qed.
 
@@ -95,7 +101,8 @@ Section OptimisticTranslator.
       sync_mem (AEQ:=addr_eq_dec) (add_buffers vd) = add_buffers vd.
   Proof.
     unfold sync_mem, add_buffers; intros.
-    extensionality a.
+    apply Pred.mem_equal.
+    extensionality a; simpl.
     destruct (vd a); eauto.
   Qed.
 
