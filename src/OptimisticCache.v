@@ -21,45 +21,47 @@ Record CacheParams :=
     vdisk_committed: ident;
     vdisk: ident; }.
 
+Definition cache_rep (d: DISK) c (vd0: Disk) :=
+  forall a, match cache_get c a with
+       | Present v dirty => vd0 a = Some v /\
+                           if dirty then exists v0, d a = Some (v0, NoReader)
+                           else d a = Some (v, NoReader)
+       | Invalid => exists v0, d a = Some (v0, Pending) /\
+                         vd0 a = Some v0
+       | Missing => match vd0 a with
+                   | Some v => d a = Some (v, NoReader)
+                   | None => d a = None
+                   end
+       end.
+
+Definition wb_rep (vd0: Disk) wb (vd: Disk) :=
+  forall a, match wb_get wb a with
+       | Written v => vd a = Some v /\
+                     exists v0, vd0 a = Some v0
+       | WbMissing => vd a = vd0 a
+       end.
+
+Definition no_pending_dirty c wb :=
+  forall a, cache_get c a = Invalid ->
+       wb_get wb a = WbMissing.
+
+
+Polymorphic Definition CacheRep P d wb (vd0 vd:Disk) : heap -> Prop :=
+  (exists c, cache P |-> val c *
+        vdisk_committed P |-> abs vd0 *
+        vdisk P |-> abs vd *
+        [[ cache_rep d c vd ]] *
+        [[ wb_rep vd0 wb vd ]] *
+        [[ no_pending_dirty c wb ]]
+  )%pred.
+
 Section OptimisticCache.
 
   Implicit Types (c:Cache) (wb:WriteBuffer).
 
-  Definition cache_rep (d: DISK) c (vd0: Disk) :=
-    forall a, match cache_get c a with
-         | Present v dirty => vd0 a = Some v /\
-                             if dirty then exists v0, d a = Some (v0, NoReader)
-                             else d a = Some (v, NoReader)
-         | Invalid => exists v0, d a = Some (v0, Pending) /\
-                           vd0 a = Some v0
-         | Missing => match vd0 a with
-                     | Some v => d a = Some (v, NoReader)
-                     | None => d a = None
-                     end
-         end.
-
-  Definition wb_rep (vd0: Disk) wb (vd: Disk) :=
-    forall a, match wb_get wb a with
-         | Written v => vd a = Some v /\
-                       exists v0, vd0 a = Some v0
-         | WbMissing => vd a = vd0 a
-         end.
-
-  Definition no_pending_dirty c wb :=
-    forall a, cache_get c a = Invalid ->
-         wb_get wb a = WbMissing.
-
   Variable G:Protocol.
   Variable P:CacheParams.
 
-  Definition CacheRep d wb (vd0 vd:Disk) : heappred :=
-    (exists c, cache P |-> val c *
-            vdisk_committed P |-> abs vd0 *
-            vdisk P |-> abs vd *
-            [[ cache_rep d c vd ]] *
-            [[ wb_rep vd0 wb vd ]] *
-            [[ no_pending_dirty c wb ]]
-    )%pred.
 
   Definition BufferRead wb a :=
     match wb_get wb a with
@@ -108,9 +110,7 @@ Section OptimisticCache.
       cprog_spec G tid
                  (fun '(F, vd0, vd, v0) '(sigma_i, sigma) =>
                     {| precondition :=
-                         (F * CacheRep (Sigma.disk sigma) wb vd0 vd)%pred (Sigma.mem sigma) /\
-                         (* Sigma.mem sigma (vdisk_committed P) = Some (abs vd0) /\
-                         Sigma.mem sigma (vdisk P) = Some (abs vd) /\ *)
+                         (F * CacheRep P (Sigma.disk sigma) wb vd0 vd)%pred (Sigma.mem sigma) /\
                          vd a = Some v0;
                        postcondition :=
                          fun '(sigma_i', sigma') r =>
