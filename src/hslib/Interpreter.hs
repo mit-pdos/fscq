@@ -52,6 +52,22 @@ run_dcode ds (Trim a) = do
   debugmsg $ "Trim " ++ (show a)
   Disk.trim_disk ds a
   return $ unsafeCoerce ()
+run_dcode ds (VarAlloc v) = do
+  debugmsg $ "VarAlloc"
+  i <- Disk.var_alloc ds v
+  return $ unsafeCoerce i
+run_dcode ds (VarGet i) = do
+  debugmsg $ "VarGet " ++ (show i)
+  val <- Disk.var_get ds i
+  return $ unsafeCoerce val
+run_dcode ds (VarSet i v) = do
+  debugmsg $ "VarSet " ++ (show i)
+  Disk.var_set ds i v
+  return $ unsafeCoerce ()
+run_dcode ds (VarDelete i) = do
+  debugmsg $ "VarDelete " ++ (show i)
+  Disk.var_delete ds i
+  return $ unsafeCoerce ()
 run_dcode ds (Hash sz (W64 w)) = run_dcode ds (Hash sz (W $ fromIntegral w))
 run_dcode _ (Hash sz (W w)) = do
   debugmsg $ "Hash " ++ (show sz) ++ " " ++ (show w)
