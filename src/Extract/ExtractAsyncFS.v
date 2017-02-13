@@ -76,13 +76,13 @@ end.
 Fixpoint decls_pre (l : list Declaration) (n : nat) : pred :=
   match l with
   | [] => emp
-  | @Decl T Wr _ :: l0 => (n ~> zeroval ✶ decls_pre l0 (S n))%pred
+  | @Decl T Wr :: l0 => (n ~>? T ✶ decls_pre l0 (S n))%pred
   end.
 
 Fixpoint decls_post (l : list Declaration) (n : nat) : pred :=
   match l with
   | [] => emp
-  | @Decl T Wr _ :: l0 => (n ~>? T * decls_post l0 (S n))%pred
+  | @Decl T Wr :: l0 => (n ~>? T * decls_post l0 (S n))%pred
   end.
 
 Lemma decls_pre_impl_post :
@@ -92,7 +92,7 @@ Proof.
   induction decls; intros.
   - auto.
   - destruct a.
-    cancel. auto.
+    cancel.
 Qed.
 Hint Resolve decls_pre_impl_post : cancel_go_finish.
 
@@ -190,6 +190,7 @@ Proof.
   compile_split.
   compile_call.
 
+  cbv [Inode.INODE.iattr Inode.INODE.iattrtype Rec.Rec.data].
   compile_step.
   compile_step.
   compile_step.
@@ -197,31 +198,6 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
-  (* TODO compile_split *should* just work here, but it doesn't *)
-match goal with
-  | |- EXTRACT Ret (fst ?p)
-       {{ ?pre }}
-          _
-       {{ _ }} // _ =>
-        idtac "HERE" p;
-         (let avar_ := var_mapping_to_ret in
-          match pre with
-          | context [ (?pvar_ ~> ?v)%pred ] =>
-            unify v (snd a0); idtac pvar_;
-               (let A_ := type of (fst p) in
-                let B_ := type of (snd p) in
-                do_declare B_
-                 ltac:((fun bvar_ =>
-                          eapply hoare_weaken;
-                           [ eapply CompileFst with
-                               (A := A_)
-                               (B := B_)
-                               (avar := avar_)
-                               (bvar := bvar_)
-                               (pvar := pvar_)
-                           | cancel_go.. ])))
-          end)
-end.
   compile_step.
   compile_step.
 Ltac cancel_go ::=

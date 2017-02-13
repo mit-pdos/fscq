@@ -57,6 +57,7 @@ Proof.
   eapply CompileFst' with (avar := nth_var 3 vars) (pvar := 4).
   cancel_go.
   cancel_go.
+  cancel_go.
 
   compile_step.
 
