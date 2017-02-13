@@ -94,12 +94,12 @@ Module BFILE.
 
   Definition sync lxp (ixp : INODE.IRecSig.xparams) fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
-    ms <- LOG.flushsync lxp ms;
+    ms <- LOG.flushall lxp ms;
     Ret (mk_memstate (negb al) ms).
 
   Definition sync_noop lxp (ixp : INODE.IRecSig.xparams) fms :=
     let '(al, ms) := (MSAlloc fms, MSLL fms) in
-    ms <- LOG.flushsync_noop lxp ms;
+    ms <- LOG.flushall_noop lxp ms;
     Ret (mk_memstate (negb al) ms).
 
   Definition pick_balloc A (a : A * A) (flag : bool) :=
