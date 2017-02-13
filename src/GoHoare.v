@@ -231,11 +231,6 @@ Proof.
   reflexivity.
 Qed.
 
-Instance valu_default_value : DefaultValue valu := {| zeroval := $0 |}.
-  unfold wrap, wrap', GoWrapper_valu, Go.default_value. cbn.
-  repeat f_equal.
-Defined.
-
 Instance bool_default_value : DefaultValue bool := {| zeroval := false |}. auto. Defined.
 Instance emptystruct_default_value : DefaultValue unit := {| zeroval := tt |}. auto. Defined.
 
@@ -258,8 +253,6 @@ Instance pair_default_value A B {Wa : GoWrapper A} {Wb : GoWrapper B}
 Defined.
 
 Instance list_default_value A {W : GoWrapper A} : DefaultValue (list A) := {| zeroval := [] |}. auto. Defined.
-Instance bytes_default_value n : DefaultValue (bytes n) := {| zeroval := $0 |}. auto. Defined.
-Instance word_default_value nbits : DefaultValue (word nbits) := {| zeroval := $0 |}. auto. Defined.
 Instance immut_word_default_value nbits : DefaultValue (immut_word nbits) := {| zeroval := $0 |}. auto. Defined.
 
 Class WrapByTransforming T := {

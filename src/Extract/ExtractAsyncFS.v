@@ -196,6 +196,7 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
+  compile_step.
   (* TODO compile_split *should* just work here, but it doesn't *)
 match goal with
   | |- EXTRACT Ret (fst ?p)

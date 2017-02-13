@@ -151,9 +151,9 @@ Qed.
 
 
 Inductive Declaration :=
-| Decl (T : Type) {Wr: GoWrapper T} {D : DefaultValue T}.
+| Decl (T : Type) {Wr: GoWrapper T}.
 
-Arguments Decl T {Wr} {D}.
+Arguments Decl T {Wr}.
 
 Fixpoint nth_var {n} m : n_tuple n var -> var :=
   match n with
@@ -169,7 +169,7 @@ Definition decls_pre (decls : list Declaration) {n} (vars : n_tuple n var) : nat
   induction decls; intro m.
   - exact emp.
   - destruct a.
-    exact ((nth_var m vars |-> wrap zeroval * IHdecls (S m))%pred).
+    exact ((nth_var m vars ~>? T * IHdecls (S m))%pred).
 Defined.
 
 Lemma decls_pre_shift : forall decls n vars var0 m,
@@ -238,6 +238,80 @@ Proof.
 Qed.
 
 Lemma CompileDeclare :
+  forall env R T {Wr : GoWrapper T} A B (p : prog R) xp,
+    (forall var,
+       EXTRACT p
+       {{ var |-> Val _ (default_value' wrap_type) * A }}
+         xp var
+       {{ fun ret => var |->? * B ret }} // env) ->
+    EXTRACT p
+    {{ A }}
+      Go.Declare wrap_type xp
+    {{ fun ret => B ret }} // env.
+Proof.
+  unfold ProgOk; intros.
+  repeat destruct_pair.
+  destruct out; intuition try discriminate; simpl in *.
+  - find_apply_lem_hyp Declare_fail; repeat deex.
+
+    specialize (H x (r, x ->> Go.default_value wrap_type; l) hm).
+    forward H.
+    {
+      simpl. pred_solve.
+    }
+    intuition idtac.
+    find_apply_lem_hyp Go.ExecFailed_Steps.
+    forward_solve.
+    find_apply_lem_hyp Go.Steps_Seq.
+    forward_solve.
+
+    + find_apply_lem_hyp Go.Steps_ExecFailed; eauto.
+      forward_solve.
+      cbv [snd Go.is_final]. intuition (subst; eauto).
+      forward_solve.
+
+    + exfalso; eauto using Undeclare_fail, Go.Steps_ExecFailed.
+
+  - do 2 inv_exec.
+    specialize (H var0 (r, var0 ->> Go.default_value wrap_type; l) hm).
+    forward H.
+    {
+      simpl. pred_solve.
+    }
+    destruct_pair.
+    find_inversion_safe.
+    find_eapply_lem_hyp Go.ExecFinished_Steps.
+    find_eapply_lem_hyp Go.Steps_Seq.
+    forward_solve.
+    repeat find_eapply_lem_hyp Go.Steps_ExecFinished.
+    invc H4. invc H. invc H5. invc H.
+    forward_solve.
+    simpl in *.
+    repeat eexists; eauto.
+    pred_solve.
+
+  - do 2 inv_exec.
+    specialize (H var0 (r, var0 ->> Go.default_value wrap_type; l) hm).
+    forward H.
+    {
+      simpl. pred_solve.
+    }
+    find_inversion_safe.
+    find_eapply_lem_hyp Go.ExecCrashed_Steps.
+    repeat deex; try discriminate.
+    find_eapply_lem_hyp Go.Steps_Seq.
+    intuition idtac.
+    + repeat deex.
+      invc H4.
+      eapply Go.Steps_ExecCrashed in H2; eauto.
+      simpl in *.
+      forward_solve.
+    + deex.
+      invc H5; [ invc H4 | invc H ].
+      invc H6; [ invc H4 | invc H ].
+Qed.
+
+Lemma CompileDeclareWrapDefault :
   forall env R T {Wr : GoWrapper T} {WrD : DefaultValue T} A B (p : prog R) xp,
     (forall var,
        EXTRACT p
@@ -337,7 +411,7 @@ Proof.
   - eapply hoare_weaken; [ apply H | cancel_go.. ].
   - destruct a. eapply CompileDeclare; eauto. intros.
     eapply IHdecls. intros.
-    eapply hoare_weaken; [ apply H | cancel_go.. ].
+    eapply hoare_weaken; [ apply H | unfold default_value; cancel_go.. ].
     rewrite <- decls_pre_shift.
     reflexivity.
     rewrite decls_post_shift.
@@ -355,9 +429,9 @@ Proof.
   inv_exec_progok.
 Qed.
 
-Lemma CompileBind : forall T T' {H: GoWrapper T} env A B (C : T' -> _) v0 p f xp xf var,
+Lemma CompileBind : forall T T' {H: GoWrapper T} env A B (C : T' -> _) p f xp xf var,
   EXTRACT p
-  {{ var ~> v0 * A }}
+  {{ var ~>? T * A }}
     xp
   {{ fun ret => var ~> ret * B }} // env ->
   (forall (a : T),
@@ -366,7 +440,7 @@ Lemma CompileBind : forall T T' {H: GoWrapper T} env A B (C : T' -> _) v0 p f xp
       xf
     {{ C }} // env) ->
   EXTRACT Bind p f
-  {{ var ~> v0 * A }}
+  {{ var ~>? T * A }}
     xp; xf
   {{ C }} // env.
 Proof.
@@ -765,9 +839,9 @@ Proof.
 Qed.
 
 Lemma CompileRead :
-  forall env F avar vvar (v0 : valu) a,
+  forall env F avar vvar a,
     EXTRACT Read a
-    {{ vvar ~> v0 * avar ~> a * F }}
+    {{ vvar ~>? valu * avar ~> a * F }}
       DiskRead vvar avar
     {{ fun ret => vvar ~> ret * avar ~> a * F }} // env.
 Proof.
@@ -775,6 +849,9 @@ Proof.
   intros.
   inv_exec_progok;
     repeat exec_solve_step.
+  extract_pred_apply_exists.
+  repeat econstructor. destruct (r a) eqn:Hm; auto.
+  contradiction H1; eval_expr; repeat econstructor; eauto.
 Qed.
 
 Lemma CompileWrite : forall env F avar vvar a v,
@@ -1392,7 +1469,7 @@ Lemma DuplicateBefore : forall T (T' : GoWrapper T) X (X' : GoWrapper X)
   (p : prog T) xp env v v' (x x' : X) A B,
   EXTRACT p {{ v ~> x * v' ~> x * A }} xp {{ B }} // env ->
   EXTRACT p
-    {{ v ~> x' * v' ~> x * A }}
+    {{ v ~>? X * v' ~> x * A }}
       v <~dup v'; xp
     {{ B }} // env.
 Proof.
@@ -1469,7 +1546,7 @@ Proof.
   cancel_go.
   eapply CompileDeclare with (Wr := GoWrapper_Num). intro term.
   eapply hoare_strengthen_pre; [>
-  | eapply DuplicateBefore with (x' := 0) (x := i); eauto].
+  | eapply DuplicateBefore with (x := i); eauto].
   cancel_go.
   eapply hoare_strengthen_pre; [>
   | eapply AddInPlaceLeftBefore with (a := n) (x := i); eauto ].
@@ -1886,6 +1963,21 @@ Proof.
   [ eval_expr; eauto ..].
 Qed.
 
+Lemma CompileSplit' :
+  forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar F (a : type_denote (@wrap_type _ HA)) (b : type_denote (@wrap_type _ HB)),
+    EXTRACT Ret tt
+    {{ avar ~>? A * bvar ~>? B * pvar |-> Val (Pair _ _) (a, b) * F }}
+      Modify SplitPair ^(pvar, avar, bvar)
+    {{ fun _ => avar |-> Val _ a * bvar |-> Val _ b * pvar |-> moved_value (Val (Pair _ _) (a, b)) * F }} // env.
+Proof.
+  intros; unfold ProgOk.
+  inv_exec_progok;
+    repeat exec_solve_step.
+  contradiction H1.
+  repeat econstructor;
+  [ eval_expr; eauto ..].
+Qed.
+
 Lemma CompileFst :
   forall env A B {HA: GoWrapper A} {HB: GoWrapper B} avar bvar pvar F (p : A * B),
     EXTRACT Ret (fst p)
@@ -1994,7 +2086,7 @@ Qed.
 
 Hint Constructors source_stmt.
 
-Lemma CompileRetOptionSome : forall env B {HB: GoWrapper B} {D : DefaultValue B}
+Lemma CompileRetOptionSome : forall env B {HB: GoWrapper B}
   avar bvar pvar (b : B) (p : bool * B) F,
   EXTRACT Ret (Some b)
   {{ avar ~> true * bvar ~> b * pvar ~> p * F }}
@@ -2028,7 +2120,7 @@ Local Hint Extern 1 (okToCancel (?var |-> Val (Pair Bool wrap_type) (false, wrap
                                 (?var ~> None))
   => apply option_none_okToCancel.
 
-Lemma CompileRetOptionNone : forall env B {HB: GoWrapper B} {D : DefaultValue B}
+Lemma CompileRetOptionNone : forall env B {HB: GoWrapper B}
   avar pvar (p : bool * B) F,
   EXTRACT Ret None
   {{ avar ~> false * pvar ~> p * F }}
@@ -2043,13 +2135,12 @@ Proof.
   unfold ProgOk.
   inv_exec_progok;
     repeat exec_solve_step.
-  eval_expr.
   contradiction H1.
   repeat econstructor;
   [eval_expr; eauto..].
 Qed.
 
-Lemma CompileMatchOption : forall env B {HB : GoWrapper B} X {HX : GoWrapper X} {D : DefaultValue B}
+Lemma CompileMatchOption : forall env B {HB : GoWrapper B} X {HX : GoWrapper X}
   ovar avar bvar xvar (o : option B)
   (pnone : prog X) xpnone (psome : B -> prog X) xpsome (F : pred) C,
   (forall (b : B),
@@ -2058,7 +2149,7 @@ Lemma CompileMatchOption : forall env B {HB : GoWrapper B} X {HX : GoWrapper X} 
     xpsome
   {{ fun ret => xvar ~> ret * avar ~>? bool * bvar ~>? B * ovar ~>? option B * C }} // env) ->
   EXTRACT pnone
-  {{ avar ~> false * bvar ~> zeroval * ovar |-> moved_value (wrap o) * F }}
+  {{ avar ~> false * bvar |-> default_value (@wrap_type _ HB) * ovar |-> moved_value (wrap o) * F }}
     xpnone
   {{ fun ret => xvar ~> ret * avar ~>? bool * bvar ~>? B * ovar ~>? option B * C }} // env ->
   EXTRACT (match o with
@@ -2076,12 +2167,16 @@ Proof.
   eapply CompileSeq.
   {
     eapply hoare_strengthen_pre;
-    [ | eapply CompileSplit with (p := match o with
-                                       | None => (false, zeroval)
-                                       | Some b => (true, b)
-                                       end)].
-    eval_expr; unfold wrap; cancel_go.
-    erewrite <- default_zero' by apply default_zero. reflexivity.
+      [ | eapply CompileSplit' with (HA := GoWrapper_Bool) (B := B)
+                                    (a := match o with
+                                          | None => false
+                                          | Some b => true
+                                          end)
+                                    (b := match o with
+                                          | None => default_value' (@wrap_type _ HB)
+                                          | Some b => wrap' b
+                                          end) ].
+    eval_expr; cancel_go.
   }
   destruct o; simpl in *.
   + unfold ProgOk.
@@ -2089,8 +2184,7 @@ Proof.
       repeat exec_solve_step.
     contradiction H3.
     repeat eexists. apply StepIfTrue. eval_expr.
-  + erewrite <- default_zero' in * by apply default_zero.
-    unfold ProgOk.
+  + unfold ProgOk.
     inv_exec_progok; repeat exec_solve_step.
     contradiction H3.
     repeat eexists. apply StepIfFalse. eval_expr.

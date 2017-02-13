@@ -251,7 +251,7 @@ Module Go.
     | Num => 0
     | Bool => false
     | String => ""%string
-    | Buffer _ => Here $0
+    | Buffer _ => Moved
     | ImmutableBuffer _ => $0
     | Slice _ => Here nil
     | Pair t1 t2 => (default_value' t1, default_value' t2)
