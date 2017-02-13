@@ -130,15 +130,14 @@ Qed.
 
 Hint Constructors hashmap_wf.
 
-Theorem exec_preserves_hashmap_wf : forall T (p: prog T) d vm hm d' vm' hm' v,
+Theorem exec_preserves_hashmap_wf : forall T (p: prog T) d hm d' hm' v,
     hashmap_wf hm ->
-    exec d vm hm p (Finished d' vm' hm' v) ->
+    exec d hm p (Finished d' hm' v) ->
     hashmap_wf hm'.
 Proof.
   intros.
-  remember (Finished d' vm' hm' v).
+  remember (Finished d' hm' v).
   generalize dependent d'.
-  generalize dependent vm'.
   generalize dependent hm'.
   generalize dependent v.
   induction H0; intros;
@@ -147,7 +146,7 @@ Proof.
           inversion H; subst; clear H
            end; eauto.
   match goal with
-  | [ H: step _ _ _ _ _ _ _ _ |- _ ] =>
+  | [ H: step _ _ _ _ _ _ |- _ ] =>
     inversion H; subst; eauto
   end.
   unfold upd_hashmap'; eauto.
@@ -156,12 +155,6 @@ Qed.
 Hint Resolve exec_preserves_hashmap_wf.
 Hint Resolve tt.
 
-(**
- * XXX [exec_progress] is no longer true because type equality is not
- * decidable for [VarGet].
- *)
-
-(*
 Theorem exec_progress : forall T (p: prog T) d hm,
     hashmap_wf hm ->
     (exists d' hm' v', exec d hm p (Finished d' hm' v')) \/
@@ -202,4 +195,3 @@ Proof.
     repeat deex.
     eauto 10.
 Qed.
-*)

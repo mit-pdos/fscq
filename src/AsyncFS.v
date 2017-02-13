@@ -226,7 +226,7 @@ Module AFS.
 
   Theorem mkfs_ok : forall cachesize data_bitmaps inode_bitmaps log_descr_blocks,
     {!!< disk,
-     PRE:vm,hm
+     PRE:hm
        arrayS 0 disk *
        [[ cachesize <> 0 /\ data_bitmaps <> 0 /\ inode_bitmaps <> 0 ]] *
        [[ data_bitmaps <= valulen * valulen /\ inode_bitmaps <= valulen * valulen ]] *
@@ -236,9 +236,8 @@ Module AFS.
           inode_bitmaps + data_bitmaps + data_bitmaps +
           1 + log_descr_blocks + log_descr_blocks * PaddedLog.DescSig.items_per_val ]] *
        [[ goodSize addrlen (length disk) ]]
-     POST:vm',hm' RET:r exists ms fsxp d,
+     POST:hm' RET:r exists ms fsxp d,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL ms) hm' *
-       [[ vm' = vm ]] *
        ( [[ isError r ]] \/ exists ilist frees,
          [[ r = OK (ms, fsxp) ]] *
          [[[ d ::: rep fsxp emp (TreeDir (FSXPRootInum fsxp) nil) ilist frees ]]] )

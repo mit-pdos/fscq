@@ -72,12 +72,12 @@ Arguments possible_sync {AT AEQ} _ _.
   Hint Resolve possible_sync_respects_upd.
   Hint Resolve possible_sync_respects_sync_mem.
 
-  Theorem step_presync : forall T (m m' m'' m''': rawdisk) vm hm (p: prog T) vm' hm' v,
+  Theorem step_presync : forall T (m m' m'' m''': rawdisk) hm (p: prog T) hm' v,
       possible_sync (AEQ:=Nat.eq_dec) m m' ->
-      step m' vm hm p m'' vm' hm' v ->
+      step m' hm p m'' hm' v ->
       possible_sync (AEQ:=Nat.eq_dec) m'' m''' ->
       exists (m'2: rawdisk),
-        step m vm hm p m'2 vm' hm' v /\
+        step m hm p m'2 hm' v /\
         possible_sync (AEQ:=Nat.eq_dec) m'2 m'''.
   Proof.
     intros.
@@ -104,32 +104,32 @@ End StepPreSync.
 
 Module Exec.
 
-  Inductive R {sync_R: rawdisk -> rawdisk -> Prop} : forall T, rawdisk -> varmem -> hashmap -> prog T -> outcome T -> Prop :=
-  | XRet : forall T m vm hm (v: T),
-      R m vm hm (Ret v) (Finished m vm hm v)
-  | XStep : forall T m vm hm (p: prog T) m' m'' vm' hm' v,
-      step m vm hm p m' vm' hm' v ->
+  Inductive R {sync_R: rawdisk -> rawdisk -> Prop} : forall T, rawdisk -> hashmap -> prog T -> outcome T -> Prop :=
+  | XRet : forall T m hm (v: T),
+      R m hm (Ret v) (Finished m hm v)
+  | XStep : forall T m hm (p: prog T) m' m'' hm' v,
+      step m hm p m' hm' v ->
       sync_R m' m'' ->
-      R m vm hm p (Finished m'' vm' hm' v)
-  | XBindFinish : forall m vm hm T (p1: prog T) m' vm' hm' (v: T)
+      R m hm p (Finished m'' hm' v)
+  | XBindFinish : forall m hm T (p1: prog T) m' hm' (v: T)
                     T' (p2: T -> prog T') out,
-      R m vm hm p1 (Finished m' vm' hm' v) ->
-      R m' vm' hm' (p2 v) out ->
-      R m vm hm (Bind p1 p2) out
-  | XBindFail : forall m vm hm T (p1: prog T)
+      R m hm p1 (Finished m' hm' v) ->
+      R m' hm' (p2 v) out ->
+      R m hm (Bind p1 p2) out
+  | XBindFail : forall m hm T (p1: prog T)
                   T' (p2: T -> prog T'),
-      R m vm hm p1 (Failed T) ->
-      R m vm hm (Bind p1 p2) (Failed T')
-  | XBindCrash : forall m vm hm T (p1: prog T) m' hm'
+      R m hm p1 (Failed T) ->
+      R m hm (Bind p1 p2) (Failed T')
+  | XBindCrash : forall m hm T (p1: prog T) m' hm'
                    T' (p2: T -> prog T'),
-      R m vm hm p1 (Crashed T m' hm') ->
-      R m vm hm (Bind p1 p2) (Crashed T' m' hm')
-  | XFail : forall m vm hm T (p: prog T),
-      fail_step m vm p ->
-      R m vm hm p (Failed T)
-  | XCrash : forall m vm hm T (p: prog T),
+      R m hm p1 (Crashed T m' hm') ->
+      R m hm (Bind p1 p2) (Crashed T' m' hm')
+  | XFail : forall m hm T (p: prog T),
+      fail_step m p ->
+      R m hm p (Failed T)
+  | XCrash : forall m hm T (p: prog T),
       crash_step p ->
-      R m vm hm p (Crashed T m hm).
+      R m hm p (Crashed T m hm).
 
   Arguments R sync_R {T} _ _ _ _.
 End Exec.
@@ -137,9 +137,9 @@ End Exec.
 Hint Constructors Exec.R.
 Hint Constructors exec.
 
-Theorem exec_is_exec_possible_sync : forall T (p: prog T) m vm hm out,
-    exec m vm hm p out <->
-    Exec.R possible_sync m vm hm p out.
+Theorem exec_is_exec_possible_sync : forall T (p: prog T) m hm out,
+    exec m hm p out <->
+    Exec.R possible_sync m hm p out.
 Proof.
   split; induction 1; eauto.
 Qed.
@@ -148,7 +148,7 @@ Qed.
 Definition outcome_obs_le T (out out': outcome T) : Prop :=
   match out with
   | Failed _ => out' = Failed T
-  | Finished d vm hm v => exists d', out' = Finished d' vm hm v /\
+  | Finished d hm v => exists d', out' = Finished d' hm v /\
                             possible_sync (AEQ:=addr_eq_dec) d d'
   | Crashed _ d hm => exists d', out' = Crashed T d' hm /\
                          possible_sync (AEQ:=addr_eq_dec) d d'
@@ -157,7 +157,7 @@ Definition outcome_obs_le T (out out': outcome T) : Prop :=
 Definition outcome_obs_ge T (out' out: outcome T) : Prop :=
   match out' with
   | Failed _ => out = Failed T
-  | Finished d' vm hm v => exists d, out = Finished d vm hm v /\
+  | Finished d' hm v => exists d, out = Finished d hm v /\
                              possible_sync (AEQ:=addr_eq_dec) d d'
   | Crashed _ d' hm => exists d, out = Crashed T d hm /\
                            possible_sync (AEQ:=addr_eq_dec) d d'
@@ -215,10 +215,10 @@ Hint Resolve ListUtils.incl_cons2.
 Hint Resolve incl_refl.
 Hint Resolve possible_sync_respects_sync_mem.
 
-Lemma step_sync_later : forall T (p: prog T) d d' d'' vm vm' hm hm' v,
+Lemma step_sync_later : forall T (p: prog T) d d' d'' hm hm' v,
     possible_sync d d' ->
-    step d' vm hm p d'' vm' hm' v ->
-    exists d'2, step d vm hm p d'2 vm' hm' v /\
+    step d' hm p d'' hm' v ->
+    exists d'2, step d hm p d'2 hm' v /\
            possible_sync (AEQ:=addr_eq_dec) d'2 d''.
 Proof.
   intros.
@@ -252,18 +252,18 @@ Qed.
 Hint Resolve possible_sync_not_in_domain.
 Hint Constructors fail_step.
 
-Lemma fail_step_sync_later  : forall T (p: prog T) d vm d',
-    fail_step d' vm p ->
+Lemma fail_step_sync_later  : forall T (p: prog T) d d',
+    fail_step d' p ->
     possible_sync d d' ->
-    fail_step d vm p.
+    fail_step d p.
 Proof.
   inversion 1; intros; subst; repeat sigT_eq; eauto.
 Qed.
 
-Theorem exec_eq_sync_later : forall T (p: prog T) d d' vm hm out,
-    Exec.R eq d' vm hm p out ->
+Theorem exec_eq_sync_later : forall T (p: prog T) d d' hm out,
+    Exec.R eq d' hm p out ->
     possible_sync d d' ->
-    exists out', Exec.R eq d vm hm p out' /\
+    exists out', Exec.R eq d hm p out' /\
             outcome_obs_ge out out'.
 Proof.
   intros.
@@ -286,9 +286,9 @@ Proof.
   - inversion H; subst; repeat sigT_eq; eauto 10.
 Qed.
 
-Theorem exec_sync_obs_irrelevant : forall T (p: prog T) d vm hm out,
-    Exec.R possible_sync d vm hm p out ->
-    exists out', Exec.R eq d vm hm p out' /\
+Theorem exec_sync_obs_irrelevant : forall T (p: prog T) d hm out,
+    Exec.R possible_sync d hm p out ->
+    exists out', Exec.R eq d hm p out' /\
             outcome_obs_le out' out.
 Proof.
   induction 1; intros; repeat deex; eauto.
@@ -315,31 +315,31 @@ Qed.
 Module ExecRecover.
 
   Inductive R
-            {exec: forall T, rawdisk -> varmem -> hashmap -> prog T -> outcome T -> Prop}
+            {exec: forall T, rawdisk -> hashmap -> prog T -> outcome T -> Prop}
             {possible_crash: rawdisk -> rawdisk -> Prop}
             (TF TR: Type)
-  : rawdisk -> varmem -> hashmap -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
-  | XRFail : forall m vm hm p1 p2,
-      exec _ m vm hm p1 (Failed TF)
-      -> R m vm hm p1 p2 (RFailed TF TR)
-  | XRFinished : forall m vm hm p1 p2 m' vm' hm' (v: TF),
-      exec _ m vm hm p1 (Finished m' vm' hm' v)
-      -> R m vm hm p1 p2 (RFinished TR m' vm' hm' v)
-  | XRCrashedFailed : forall m vm hm p1 p2 m' hm' m'r,
-      exec _ m vm hm p1 (Crashed TF m' hm')
+  : rawdisk -> hashmap -> prog TF -> prog TR -> recover_outcome TF TR -> Prop :=
+  | XRFail : forall m hm p1 p2,
+      exec _ m hm p1 (Failed TF)
+      -> R m hm p1 p2 (RFailed TF TR)
+  | XRFinished : forall m hm p1 p2 m' hm' (v: TF),
+      exec _ m hm p1 (Finished m' hm' v)
+      -> R m hm p1 p2 (RFinished TR m' hm' v)
+  | XRCrashedFailed : forall m hm p1 p2 m' hm' m'r,
+      exec _ m hm p1 (Crashed TF m' hm')
       -> possible_crash m' m'r
-      -> R (TF:=TR) m'r Mem.empty_mem hm' p2 p2 (RFailed TR TR)
-      -> R m vm hm p1 p2 (RFailed TF TR)
-  | XRCrashedFinished : forall m vm hm p1 p2 m' hm' m'r m'' vm'' hm'' (v: TR),
-      exec _ m vm hm p1 (Crashed TF m' hm')
+      -> R (TF:=TR) m'r hm' p2 p2 (RFailed TR TR)
+      -> R m hm p1 p2 (RFailed TF TR)
+  | XRCrashedFinished : forall m hm p1 p2 m' hm' m'r m'' hm'' (v: TR),
+      exec _ m hm p1 (Crashed TF m' hm')
       -> possible_crash m' m'r
-      -> R (TF:=TR) m'r Mem.empty_mem hm' p2 p2 (RFinished TR m'' vm'' hm'' v)
-      -> R m vm hm p1 p2 (RRecovered TF m'' vm'' hm'' v)
-  | XRCrashedRecovered : forall m vm hm p1 p2 m' hm' m'r m'' vm'' hm'' (v: TR),
-      exec _ m vm hm p1 (Crashed TF m' hm')
+      -> R (TF:=TR) m'r hm' p2 p2 (RFinished TR m'' hm'' v)
+      -> R m hm p1 p2 (RRecovered TF m'' hm'' v)
+  | XRCrashedRecovered : forall m hm p1 p2 m' hm' m'r m'' hm'' (v: TR),
+      exec _ m hm p1 (Crashed TF m' hm')
       -> possible_crash m' m'r
-      -> R (TF:=TR) m'r Mem.empty_mem hm' p2 p2 (RRecovered TR m'' vm'' hm'' v)
-      -> R m vm hm p1 p2 (RRecovered TF m'' vm'' hm'' v).
+      -> R (TF:=TR) m'r hm' p2 p2 (RRecovered TR m'' hm'' v)
+      -> R m hm p1 p2 (RRecovered TF m'' hm'' v).
 
 End ExecRecover.
 
@@ -348,9 +348,9 @@ Arguments ExecRecover.R exec possible_crash {TF TR} _ _ _ _ _.
 Definition routcome_disk_R (R: rawdisk -> rawdisk -> Prop)
            TF TR (out out': recover_outcome TF TR) :=
   match out with
-  | RFinished _ d vm hm v => exists d', out' = RFinished _ d' vm hm v /\
+  | RFinished _ d hm v => exists d', out' = RFinished _ d' hm v /\
                                R d d'
-  | RRecovered _ d vm hm v => exists d', out' = RRecovered _ d' vm hm v /\
+  | RRecovered _ d hm v => exists d', out' = RRecovered _ d' hm v /\
                                 R d d'
   | RFailed _ _ => out' = RFailed _ _
   end.
@@ -358,9 +358,9 @@ Definition routcome_disk_R (R: rawdisk -> rawdisk -> Prop)
 Definition routcome_disk_R_conv (R: rawdisk -> rawdisk -> Prop)
            TF TR (out' out: recover_outcome TF TR) :=
   match out' with
-  | RFinished _ d vm hm v => exists d', out = RFinished _ d' vm hm v /\
+  | RFinished _ d hm v => exists d', out = RFinished _ d' hm v /\
                                R d' d
-  | RRecovered _ d vm hm v => exists d', out = RRecovered _ d' vm hm v /\
+  | RRecovered _ d hm v => exists d', out = RRecovered _ d' hm v /\
                                 R d' d
   | RFailed _ _ => out = RFailed _ _
   end.
@@ -380,16 +380,16 @@ Qed.
 
 Hint Constructors ExecRecover.R exec_recover.
 
-Theorem exec_recover_is_R : forall TF TR d vm hm (p: prog TF) (r: prog TR) out,
-    exec_recover d vm hm p r out <->
-    ExecRecover.R exec possible_crash d vm hm p r out.
+Theorem exec_recover_is_R : forall TF TR d hm (p: prog TF) (r: prog TR) out,
+    exec_recover d hm p r out <->
+    ExecRecover.R exec possible_crash d hm p r out.
 Proof.
   split; induction 1; eauto.
 Qed.
 
-Theorem exec_recover_without_sync : forall TF TR d vm hm (p: prog TF) (r: prog TR) out,
-    ExecRecover.R (@Exec.R possible_sync) possible_crash d vm hm p r out ->
-    exists out', ExecRecover.R (@Exec.R eq) possible_crash d vm hm p r out' /\
+Theorem exec_recover_without_sync : forall TF TR d hm (p: prog TF) (r: prog TR) out,
+    ExecRecover.R (@Exec.R possible_sync) possible_crash d hm p r out ->
+    exists out', ExecRecover.R (@Exec.R eq) possible_crash d hm p r out' /\
             routcome_disk_R possible_sync out' out.
 Proof.
   induction 1; simpl;
@@ -521,15 +521,15 @@ Module PhysicalSemantics.
 
   Definition outcome_disk_R (R: rawdisk -> rawdisk -> Prop) T (out out':outcome T) :=
     match out with
-    | Finished d vm hm v => exists d', out' = Finished d' vm hm v /\
+    | Finished d hm v => exists d', out' = Finished d' hm v /\
                               R d d'
     | Crashed _ d hm => exists d', out' = Crashed _ d' hm /\
                            R d d'
     | Failed _ => out' = Failed _
     end.
 
-  Definition pexec T d vm hm (p: prog T) out :=
-    exists out', Exec.R flush_disk d vm hm p out' /\
+  Definition pexec T d hm (p: prog T) out :=
+    exists out', Exec.R flush_disk d hm p out' /\
           outcome_disk_R flush_disk out' out.
   Definition pexec_recover := @ExecRecover.R pexec discard_buffers.
 
@@ -564,17 +564,17 @@ Module PhysicalSemantics.
   get proof to go through need the write buffers in the real execution to be
   sensible *)
 
-  Lemma exec_flush_to_exec : forall T (p: prog T) d vm hm out,
-      Exec.R flush_disk d vm hm p out ->
-      exec d vm hm p out.
+  Lemma exec_flush_to_exec : forall T (p: prog T) d hm out,
+      Exec.R flush_disk d hm p out ->
+      exec d hm p out.
   Proof.
     induction 1; simpl; intros;
       intuition (repeat deex; eauto 10).
   Qed.
 
-  Corollary pexec_to_exec : forall T (p: prog T) d vm hm out,
-      pexec d vm hm p out ->
-      exists out', exec d vm hm p out' /\
+  Corollary pexec_to_exec : forall T (p: prog T) d hm out,
+      pexec d hm p out ->
+      exists out', exec d hm p out' /\
               outcome_disk_R flush_disk out' out.
   Proof.
     unfold pexec; intros; deex.
@@ -584,7 +584,7 @@ Module PhysicalSemantics.
   Definition outcome_disk_R_conv (R: rawdisk -> rawdisk -> Prop)
              T (out' out: outcome T) :=
    match out' with
-   | Finished m vm hm v => exists m', out = Finished m' vm hm v /\
+   | Finished m hm v => exists m', out = Finished m' hm v /\
                                R m' m
    | Crashed _ m hm => exists m', out = Crashed _ m' hm /\
                             R m' m
@@ -634,9 +634,9 @@ Module PhysicalSemantics.
 
   Hint Constructors exec_recover.
 
-  Theorem pexec_recover_to_exec_recover : forall TF TR (p: prog TF) (r: prog TR) d vm hm out,
-      pexec_recover d vm hm p r out ->
-      exists out', exec_recover d vm hm p r out' /\
+  Theorem pexec_recover_to_exec_recover : forall TF TR (p: prog TF) (r: prog TR) d hm out,
+      pexec_recover d hm p r out ->
+      exists out', exec_recover d hm p r out' /\
               routcome_disk_R possible_sync out' out.
   Proof.
     induction 1; simpl;

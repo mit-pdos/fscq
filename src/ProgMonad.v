@@ -12,7 +12,7 @@ Ltac inj_existT :=
 
 Ltac inv_step :=
   match goal with
-  | [ H: step _ _ _ _ _ _ _ _ |- _ ] =>
+  | [ H: step _ _ _ _ _ _ |- _ ] =>
     inversion H;
     repeat inj_existT;
     subst;
@@ -21,17 +21,17 @@ Ltac inv_step :=
 
 Ltac inv_fail_step :=
   try match goal with
-      | [ H: exec _ _ _ _ (Failed _) |- _ ] =>
+      | [ H: exec _ _ _ (Failed _) |- _ ] =>
         inversion H; repeat inj_existT; subst; clear H
       end;
   match goal with
-  | [ H: fail_step _ _ _ |- _ ] =>
+  | [ H: fail_step _ _ |- _ ] =>
     inversion H; subst; clear H
   end.
 
 Ltac inv_crash_step :=
   try match goal with
-      | [ H: exec _ _ _ _ (Crashed _ _ _) |- _ ] =>
+      | [ H: exec _ _ _ (Crashed _ _ _) |- _ ] =>
         inversion H; repeat inj_existT; subst; clear H
       end;
   match goal with
@@ -50,19 +50,19 @@ Ltac inv_exec' H :=
 
 Ltac inv_exec :=
   lazymatch goal with
-  | [ H: exec _ _ _ (Ret _) _ |- _ ] =>
+  | [ H: exec _ _ (Ret _) _ |- _ ] =>
     inv_exec' H
-  | [ H: exec _ _ _ (Bind _ _) _ |- _ ] =>
+  | [ H: exec _ _ (Bind _ _) _ |- _ ] =>
     inv_exec' H
-  | [ H: exec _ _ _ _ _ |- _ ] =>
+  | [ H: exec _ _ _ _ |- _ ] =>
     inv_exec' H
   end.
 
 Section MonadLaws.
 
   Definition prog_equiv T : prog T -> prog T -> Prop :=
-    fun p1 p2 => forall m vm hm out,
-        exec m vm hm p1 out <-> exec m vm hm p2 out.
+    fun p1 p2 => forall m hm out,
+        exec m hm p1 out <-> exec m hm p2 out.
 
   Arguments prog_equiv {T} _ _.
 
