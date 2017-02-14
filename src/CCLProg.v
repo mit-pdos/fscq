@@ -11,10 +11,15 @@ Global Set Implicit Arguments.
 Inductive ReadState := Pending | NoReader.
 Notation DISK := (@mem addr addr_eq_dec (valu * ReadState)).
 
-Polymorphic Inductive Var :=
+Inductive Var :=
 | val : forall T, T -> Var
 (* abstraction (ghost) variable *)
-| abs : forall T, T -> Var.
+| abs : forall T, T -> Var
+(* ghost variables that are memories
+
+We separate these out to avoid instantiating the T in the abs constructor with a
+memory, which causes universe consistency issues with having @mem _ _ Var. *)
+| absMem : forall A AEQ V, @mem A AEQ V -> Var.
 
 Definition ident := nat.
 Opaque ident.
@@ -52,6 +57,7 @@ Section CCL.
   | Get A (i:ident) : cprog A
   | Assgn A (i:ident) (v:A) : cprog unit
   | GhostUpdate A (i:ident) (update: TID -> A -> A) : cprog unit
+  | GhostUpdateMem A AEQ V (i:ident) (update: TID -> @mem A AEQ V -> @mem A AEQ V) : cprog unit
   | BeginRead (a:addr) : cprog unit
   | WaitForRead (a:addr) : cprog valu
   | Write (a:addr) (v: valu) : cprog unit
@@ -74,6 +80,9 @@ Section CCL.
   | StepGhostUpdate : forall A i (up: TID -> A -> A) v0,
       Sigma.mem sigma i = Some (abs v0) ->
       step tid sigma (GhostUpdate i up) (Sigma.set_mem sigma i (abs (up tid v0))) tt
+  | StepGhostUpdateMem : forall A AEQ V i (up: TID -> @mem A AEQ V -> @mem A AEQ V) m0,
+      Sigma.mem sigma i = Some (absMem m0) ->
+      step tid sigma (GhostUpdate i up) (Sigma.set_mem sigma i (absMem (up tid m0))) tt
   | StepBeginRead : forall a v,
       Sigma.disk sigma a = Some (v, NoReader) ->
       step tid sigma (BeginRead a)

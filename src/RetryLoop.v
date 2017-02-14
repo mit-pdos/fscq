@@ -19,20 +19,12 @@ Section RetryLoop.
   CoFixpoint retry {T P Q} (guard: forall (v:T), {P v}+{Q v}) (p: cprog T) :=
     v <- p; if guard v then Ret v else retry guard p.
 
-  Definition prog_id T (p: cprog T) : cprog T :=
-    match p with
-    | Alloc v0 => Alloc v0
-    | Get A i => Get A i
-    | Assgn i v => Assgn i v
-    | GhostUpdate i update => GhostUpdate i update
-    | BeginRead a => BeginRead a
-    | WaitForRead a => WaitForRead a
-    | Write a v => Write a v
-    | Hash buf => Hash buf
-    | Yield => Yield
-    | Ret v => Ret v
-    | Bind p p' => Bind p p'
-    end.
+  Definition prog_id T (p: cprog T) : cprog T.
+    destruct p eqn:Heqp;
+      match type of Heqp with
+      | _ = ?p => exact p
+      end.
+  Defined.
 
   Lemma prog_id_eq : forall T (p: cprog T),
       p = prog_id p.

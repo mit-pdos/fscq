@@ -15,11 +15,6 @@ Record CacheParams :=
     vdisk : ident;
     vdisk_committed : ident; }.
 
-Polymorphic Definition mem'@{i j} (AT:Type@{i}) (AEQ:EqDec AT) (V:Type@{j}) := AT -> option V.
-Polymorphic Definition pred'@{i j} (AT:Type@{i}) AEQ (V:Type@{j}) := @mem' AT AEQ V -> Prop.
-Polymorphic Definition ptsto'@{i j} (AT:Type@{i}) AEQ (V:Type@{j}) (a : AT) (v : V) : @pred' AT AEQ V :=
-  fun m => m a = Some v /\ forall a', a <> a' -> m a' = None.
-
 Section OptimisticCache.
 
   Implicit Types (c:Cache) (wb:WriteBuffer).
@@ -51,35 +46,13 @@ Section OptimisticCache.
   Variable (P:CacheParams).
   Variable G:Protocol.
 
-  (*
   Definition CacheRep d wb (vd0 vd:Disk) : heappred :=
     (exists c, cache P |-> val c *
+          vdisk_committed P |-> absMem vd0 *
+          vdisk P |-> absMem vd *
           [[ cache_rep d c vd0 ]] *
           [[ wb_rep vd0 wb vd ]] *
           [[ no_pending_dirty c wb ]]
-    )%pred.
-*)
-
-  Set Printing Universes.
-
-  Definition CacheRep d wb (vd0 vd:Disk) : @pred ident PeanoNat.Nat.eq_dec Var :=
-    (exists c, cache P |-> val c *
-            [[ cache_rep d c vd ]] *
-            [[ wb_rep vd0 wb vd ]] *
-            [[ no_pending_dirty c wb ]]
-    )%pred.
-
-  Fail Definition CacheRep' wb (vd0 vd:Disk) : @pred' ident PeanoNat.Nat.eq_dec Var :=
-    (exists c, cache P |-> val c *
-            ptsto' (vdisk_committed P) (abs vd0) *
-            vdisk P |-> abs vd
-    )%pred.
-
-  Definition CacheRep'' d wb : @pred ident PeanoNat.Nat.eq_dec Var :=
-    (exists c vd0 vd, cache P |-> val c *
-                 [[ cache_rep d c vd ]] *
-                 [[ wb_rep vd0 wb vd ]] *
-                 [[ no_pending_dirty c wb ]]
     )%pred.
 
   Definition BufferRead wb a :=
@@ -125,13 +98,22 @@ Section OptimisticCache.
     repeat deex;
     intuition eauto; try congruence.
 
+  Ltac simplify :=
+    repeat match goal with
+           | [ H: context[let (n, m) := ?a in _] |- _ ] =>
+             let n := fresh n in
+             let m := fresh m in
+             destruct a as [m n]
+           | _ => progress simpl in *
+           | _ => progress subst
+           | _ => intuition eauto
+           end.
+
   Definition BufferRead_ok : forall tid wb a,
       cprog_spec G tid
                  (fun '(F, vd0, vd, v0) '(sigma_i, sigma) =>
                     {| precondition :=
                          (F * CacheRep (Sigma.disk sigma) wb vd0 vd)%pred (Sigma.mem sigma) /\
-                         (* Sigma.mem sigma (vdisk_committed P) = Some (abs vd0) /\
-                         Sigma.mem sigma (vdisk P) = Some (abs vd) /\ *)
                          vd a = Some v0;
                        postcondition :=
                          fun '(sigma_i', sigma') r =>
@@ -147,15 +129,18 @@ Section OptimisticCache.
 
     case_eq (wb_get wb a); intros.
     step.
+    simplify.
 
     step.
-    intuition eauto.
+    simplify.
+    admit. (* need to extract props from CacheRep *)
 
     step.
+    simplify.
 
     step.
-    intuition eauto.
-  Qed.
+    simplify.
+  Admitted.
 
   Hint Extern 0 {{ BufferRead _ _; _ }} => apply BufferRead_ok : prog.
 
