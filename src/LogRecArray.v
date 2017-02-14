@@ -287,7 +287,7 @@ Module LogRecArray (RA : RASig).
     destruct a; cancel.
     match goal with
     | [ H: forall _, Some _ = Some _ -> _ |- _ ] =>
-      edestruct H10; eauto
+      edestruct H; eauto
     end.
     or_r; cancel.
     pimpl_crash.
