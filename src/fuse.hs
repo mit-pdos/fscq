@@ -434,9 +434,8 @@ fscqRead ds fr m_fsxp (_:path) inum byteCount offset
 
   where
     read_piece fsxp (BR blk off count) = do
-      (W w, ()) <- fr $ AsyncFS._AFS__read_fblock fsxp inum blk
-      bs <- i2bs w 4096
-      return $ BS.take (fromIntegral count) $ BS.drop (fromIntegral off) bs
+      (wbuf, ()) <- fr $ AsyncFS._AFS__read_fblock fsxp inum blk
+      return $ BS.take (fromIntegral count) $ BS.drop (fromIntegral off) $ w2bs wbuf 4096
 
 fscqRead _ _ _ [] _ _ _ = do
   return $ Left $ eIO
@@ -499,9 +498,8 @@ fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
           return $ BS.append (BS.take (fromIntegral off) old_bs)
                  $ BS.append piece_bs
                  $ BS.drop (fromIntegral $ off + cnt) old_bs
-      wnew <- bs2i new_bs
-      -- _ <- fr $ AsyncFS._AFS__update_fblock_d fsxp inum blk (W wnew)
-      _ <- fr $ AsyncFS._AFS__update_fblock fsxp inum blk (W wnew)
+      -- _ <- fr $ AsyncFS._AFS__update_fblock_d fsxp inum blk (WBS new_bs)
+      _ <- fr $ AsyncFS._AFS__update_fblock fsxp inum blk (WBS new_bs)
       return $ WriteOK (c + (fromIntegral cnt))
 
 fscqSetFileSize :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileOffset -> IO Errno

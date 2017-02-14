@@ -8,14 +8,11 @@ import System.Posix.IO
 import System.Posix.Unistd
 import System.Posix.Files
 import Word
-import qualified Data.ByteString as BS
 import qualified Data.ByteString.Internal as BSI
-import qualified GHC.Integer.GMP.Internals as GMPI
-import qualified Foreign.C.Types
 import GHC.Exts
+import Foreign.Ptr
 import Foreign.ForeignPtr
 import Foreign.Marshal.Alloc
-import Data.Word
 import Data.IORef
 import qualified Data.Map.Strict
 
@@ -78,31 +75,6 @@ logFlush (Just fl) = do
   FL writes flushed <- readIORef fl
   writeIORef fl $ FL [] (writes : flushed)
 
--- For a more efficient array implementation, perhaps worth checking out:
--- http://www.macs.hw.ac.uk/~hwloidl/hackspace/ghc-6.12-eden-gumsmp-MSA-IFL13/libraries/dph/dph-base/Data/Array/Parallel/Arr/BUArr.hs
-
--- Some notes on memory-efficient file IO in Haskell:
--- http://stackoverflow.com/questions/26333815/why-do-hgetbuf-hputbuf-etc-allocate-memory
-
--- Snippets of ByteArray# manipulation code from GHC's
--- testsuite/tests/lib/integer/integerGmpInternals.hs
-
-buf2i :: Int -> Word -> Ptr Word8 -> IO Integer
-buf2i (I# offset) (W# nbytes) (GHC.Exts.Ptr a) = do
-  GMPI.importIntegerFromAddr (plusAddr# a offset) nbytes 0#
-
-i2buf :: Integer -> Foreign.C.Types.CSize -> Ptr Word8 -> IO ()
-i2buf i nbytes (GHC.Exts.Ptr a) = do
-  _ <- BSI.memset (GHC.Exts.Ptr a) 0 nbytes
-  _ <- GMPI.exportIntegerToAddr i a 0#
-  return ()
-
-bs2i :: BS.ByteString -> IO Integer
-bs2i (BSI.PS fp offset len) = withForeignPtr fp $ buf2i offset $ fromIntegral len
-
-i2bs :: Integer -> Int -> IO BS.ByteString
-i2bs i nbytes = BSI.create nbytes $ i2buf i $ fromIntegral nbytes
-
 read_disk :: DiskState -> Integer -> IO Coq_word
 read_disk (S fd sr _ _) a = do
   debugmsg $ "read(" ++ (show a) ++ ")"
@@ -120,15 +92,21 @@ read_disk (S fd sr _ _) a = do
 
 write_disk :: DiskState -> Integer -> Coq_word -> IO ()
 write_disk _ _ (W64 _) = error "write_disk: short value"
-write_disk (S fd sr fl _) a (W v) = do
+
+write_disk s a (W w) = do
+  bs <- i2bs w 4096
+  write_disk s a (WBS bs)
+
+write_disk (S fd sr fl _) a (WBS bs) = do
   -- maybeCrash
   debugmsg $ "write(" ++ (show a) ++ ")"
   bumpWrite sr
-  logWrite fl a (W v)
-  allocaBytes 4096 $ \buf -> do
-    _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 4096*a
-    i2buf v 4096 buf
-    cc <- fdWriteBuf fd buf 4096
+  logWrite fl a (WBS bs)
+  _ <- fdSeek fd AbsoluteSeek $ fromIntegral $ 4096*a
+  (fp, offset, _) <- return $ BSI.toForeignPtr bs
+  withForeignPtr fp $ \buf -> do
+    bufoff <- return $ plusPtr buf offset
+    cc <- fdWriteBuf fd bufoff 4096
     if cc == 4096 then
       return ()
     else
