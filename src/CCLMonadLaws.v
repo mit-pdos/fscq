@@ -11,6 +11,7 @@ Section MonadLaws.
     forall tid st out, exec G tid st p out <-> exec G tid st p' out.
 
   Hint Constructors exec.
+  Hint Resolve ExecRet.
 
   Theorem monad_right_id : forall T (p: cprog T),
       exec_equiv (Bind p Ret) p.

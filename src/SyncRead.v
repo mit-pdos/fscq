@@ -16,6 +16,7 @@ Section SyncRead.
       cprog_spec G tid
                  (fun v0 '(sigma_i, sigma) =>
                     {| precondition :=
+                         Sigma.l sigma = WriteLock /\
                          Sigma.disk sigma a = Some (v0, NoReader);
                        postcondition :=
                          fun '(sigma_i', sigma') r =>
@@ -36,6 +37,8 @@ Section SyncRead.
     (* need better way to simplify nested updates on Sigma *)
     destruct sigma; simpl in *.
     autorewrite with upd; eauto.
+
+    destruct sigma; simpl in *; auto.
 
     step.
     intuition auto; simplify.

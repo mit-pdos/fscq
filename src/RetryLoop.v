@@ -29,7 +29,7 @@ Section RetryLoop.
     | WaitForRead a => WaitForRead a
     | Write a v => Write a v
     | Hash buf => Hash buf
-    | Yield => Yield
+    | SetLock l => SetLock l
     | Ret v => Ret v
     | Bind p p' => Bind p p'
     end.
@@ -65,15 +65,14 @@ Section RetryLoop.
     induction H; simpl; subst;
       try (rewrite retry_unfold in *;
            solve [ congruence ||
-                              CCLTactics.inv_step ||
-                              CCLTactics.inv_fail_step ]).
+                              CCLTactics.inv_step ]).
     inversion Heqc; repeat inj_pair2.
     - case_eq (guard v); intros; replace (guard v) in *.
       + CCLTactics.inv_ret.
         intuition eauto.
         exists 1; intros; simpl.
         eapply ExecBindFinish; eauto.
-        replace (guard v).
+        replace (guard v0).
         eapply ExecRet; eauto.
       + rewrite retry_unfold in IHexec2.
         specialize (IHexec2 _ _ guard p); intuition.

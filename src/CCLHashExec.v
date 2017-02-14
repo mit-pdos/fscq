@@ -19,18 +19,32 @@ Proof.
     | [ H: (_,_) = (_,_) |- _ ] =>
       inversion H; subst; clear H
     end; auto.
-  - reflexivity.
-  - CCLTactics.inv_step; subst; repeat inj_pair2;
+  - destruct sigma0.
+    destruct p;
       repeat match goal with
-             | [ sigma: Sigma St |- _ ] => destruct sigma; simpl
-             end;
-      try reflexivity.
+             | [ H: context[match ?d with | _ => _ end] |- _ ] =>
+               destruct d
+             | [ H: StepTo _ _ = StepTo _ _ |- _ ] =>
+               inversion H; subst; clear H
+             | [ |- hashmap_le ?a ?a ] => reflexivity
+             | _ => progress simpl in *
+             | _ => congruence
+             end.
+  - repeat match goal with
+           | [ sigma: Sigma St |- _ ] => destruct sigma; simpl in *
+           end;
+      try reflexivity;
+      eauto.
     unfold hashmap_le.
     eexists.
     econstructor; eauto.
     constructor.
   - destruct out; eauto.
     etransitivity; eauto.
+  - destruct sigma'; simpl in *.
+    eauto.
+  - destruct sigma0; simpl;
+      reflexivity.
 Qed.
 
 (* Local Variables: *)
