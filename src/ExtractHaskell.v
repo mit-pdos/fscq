@@ -11,6 +11,9 @@ Extraction Inline Prog.pair_args_helper.
 (* Uncomment the next line to enable eventlog-based profiling *)
 (* Extract Inlined Constant Prog.progseq => "Profile.progseq __FILE__ __LINE__". *)
 
+(* Variables are just integers in the interpreter *)
+Extract Inlined Constant Prog.vartype => "Prelude.Integer".
+
 (* Hook up our untrusted replacement policy. *)
 Extract Inlined Constant Cache.eviction_state  => "Evict.EvictionState".
 Extract Inlined Constant Cache.eviction_init   => "Evict.eviction_init".

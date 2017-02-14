@@ -786,7 +786,7 @@ Definition Break L (l:L) : L + L := inr l.
 
 
 Theorem var_get_ok:
-  forall (Tv : Type) (i : addr),
+  forall (Tv : Type) (i : vartype),
   {< (x : Tv) Fv,
   PRE::vm,hm          emp * [[ (Fv * i |-> Any x)%pred vm ]]
   POST::vm',hm' RET:r emp * [[ r = x ]] * [[ vm' = vm ]]
@@ -815,7 +815,7 @@ Qed.
 Hint Extern 1 ({{_}} Bind (VarGet _) _) => apply var_get_ok : prog.
 
 Theorem var_set_ok:
-  forall (T : Type) (i : addr) (v : T),
+  forall (T : Type) (i : vartype) (v : T),
   {< v0 Fv,
   PRE::vm,hm          emp * [[ (Fv * i |-> v0)%pred vm ]]
   POST::vm',hm' RET:_ emp * [[ (Fv * i |-> Any v)%pred vm' ]]
@@ -859,7 +859,7 @@ Qed.
 Hint Extern 1 ({{_}} Bind (VarAlloc _) _) => apply var_alloc_ok : prog.
 
 Theorem var_delete_ok:
-  forall (i : addr),
+  forall (i : vartype),
   {< v Fv,
   PRE::vm,hm          emp * [[ (Fv * i |-> v)%pred vm ]]
   POST::vm',hm' RET:_ emp * [[ Fv vm' ]]
