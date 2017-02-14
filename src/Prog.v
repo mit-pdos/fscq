@@ -14,6 +14,9 @@ Set Implicit Arguments.
 
 (** * The programming language *)
 
+Parameter vartype : Type.
+Parameter vartype_eq_dec : forall (x y : vartype), {x=y}+{x<>y}.
+
 (** single program *)
 Polymorphic Inductive var_value : Type :=
   | Any : forall (T : Type), T -> var_value.
@@ -24,10 +27,10 @@ Inductive prog : Type -> Type :=
   | Write (a: addr) (v: valu) : prog unit
   | Sync : prog unit
   | Trim (a: addr) : prog unit
-  | VarAlloc (T : Type) (v : T) : prog nat
-  | VarDelete (i : nat) : prog unit
-  | VarGet (i : nat) (T : Type) : prog T
-  | VarSet (i : nat) (T : Type) (v : T) : prog unit
+  | VarAlloc (T : Type) (v : T) : prog vartype
+  | VarDelete (i : vartype) : prog unit
+  | VarGet (i : vartype) (T : Type) : prog T
+  | VarSet (i : vartype) (T : Type) (v : T) : prog unit
   | Hash (sz: nat) (buf: word sz) : prog (word hashlen)
   | Bind T T' (p1: prog T) (p2: T -> prog T') : prog T'.
 
@@ -36,7 +39,7 @@ Arguments VarAlloc {T} v.
 Arguments VarGet i {T}.
 Arguments VarSet i {T} v.
 
-Definition varmem := @mem addr addr_eq_dec var_value.
+Definition varmem := @mem vartype vartype_eq_dec var_value.
 
 Inductive outcome (T : Type) :=
   | Failed

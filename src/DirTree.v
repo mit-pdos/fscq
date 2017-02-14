@@ -625,7 +625,7 @@ Module DIRTREE.
     eassumption.
 
     (* inum outside the original tree *)
-    eapply H31.
+    eapply H32.
     intro; subst.
     eapply H36.
     eapply find_dirlist_exists in H8 as H8'.
@@ -666,7 +666,7 @@ Module DIRTREE.
     eassumption.
 
     (* inum outside the original tree *)
-    eapply H33.
+    eapply H34.
     intro; subst.
     eapply H32.
     eapply find_dirlist_exists in H8 as H8'.
@@ -962,7 +962,8 @@ Module DIRTREE.
     rewrite <- subtree_absorb; eauto.
     cancel.
     eapply dirlist_safe_subtree; eauto.
-    specialize (H12 inum def' H4).
+    denote (dirlist_combine tree_inodes _) as Hx.
+    specialize (Hx inum def' H4).
     intuition; try congruence.
 
     destruct_lift H0.
@@ -984,7 +985,7 @@ Module DIRTREE.
 
     (* case 1: in the directory *)
     erewrite find_subtree_app in *; eauto.
-    eapply H12.
+    eapply H11.
 
     eapply find_subtree_inum_present in H16; simpl in *.
     intuition. exfalso; eauto.
@@ -1013,11 +1014,13 @@ Module DIRTREE.
     intuition congruence.
 
     (* case B: outside original tree *)
-    eapply H12; eauto.
+    eapply H11; eauto.
     right.
     contradict H7; intuition eauto. exfalso; eauto.
     eapply tree_inodes_find_subtree_incl; eauto.
     simpl; intuition.
+  Unshelve.
+    all: eauto.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.
@@ -1187,7 +1190,7 @@ Module DIRTREE.
     unfold BFILE.treeseq_ilist_safe in Hsafe; destruct Hsafe as [Hsafe0 Hsafe1].
     rewrite <- Hsafe1 by auto.
 
-    eapply H37; eauto.
+    eapply H36; eauto.
     right.
     contradict H46.
     unfold tree_prune in *.

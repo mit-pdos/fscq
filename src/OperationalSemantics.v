@@ -222,21 +222,19 @@ Lemma step_sync_later : forall T (p: prog T) d d' d'' vm vm' hm hm' v,
            possible_sync (AEQ:=addr_eq_dec) d'2 d''.
 Proof.
   intros.
-  inversion H0; subst; repeat sigT_eq.
+  inversion H0; subst; repeat sigT_eq; eauto.
   - (* Read *)
-    eapply possible_sync_in_domain in H8; eauto; deex.
+    eapply possible_sync_in_domain in H10; eauto; deex.
     eauto.
-  - eapply possible_sync_in_domain in H8; eauto; deex.
+  - eapply possible_sync_in_domain in H10; eauto; deex.
     eexists; split.
     constructor; eauto.
     eapply possible_sync_respects_upd; eauto.
-  - eauto.
   - destruct vs, vs'.
-    eapply possible_sync_in_domain in H8; eauto; deex.
+    eapply possible_sync_in_domain in H10; eauto; deex.
     eexists; split.
     econstructor; eauto.
     eapply possible_sync_respects_upd; eauto.
-  - eauto.
 Qed.
 
 Lemma possible_sync_not_in_domain : forall AT AEQ (d d': @mem AT AEQ _) a,
@@ -394,7 +392,7 @@ Theorem exec_recover_without_sync : forall TF TR d vm hm (p: prog TF) (r: prog T
 Proof.
   induction 1; simpl;
     repeat match goal with
-           | [ H: Exec.R possible_sync _ _ _ _ |- _ ] =>
+           | [ H: Exec.R possible_sync _ _ _ _ _ |- _ ] =>
              apply exec_sync_obs_irrelevant in H; simpl in H
            | [ H: outcome_obs_le _ _ |- _ ] =>
              apply outcome_obs_ge_ok in H; progress simpl in H
@@ -641,7 +639,7 @@ Module PhysicalSemantics.
   Proof.
     induction 1; simpl;
       repeat match goal with
-             | [ H: pexec _ _ _ _ |- _ ] =>
+             | [ H: pexec _ _ _ _ _ |- _ ] =>
                apply pexec_to_exec in H; simpl in H; deex
              | [ H: outcome_disk_R _ _ _ |- _ ] =>
                apply outcome_disk_R_conv_ok in H; progress simpl in H

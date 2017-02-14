@@ -458,11 +458,12 @@ Notation "'For' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' no
             (pair_args_helper (fun l2 (_:unit) => body))
           ..)))
         $0 n
+        (pair_args_helper (fun vm0 =>
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun i =>
           (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
-           fun vm hm => nocrash%pred)) ..))
-        )) .. ))
+           fun vm hm => ([[ vm = vm0 ]] * nocrash)%pred)) ..))
+        )) .. ))))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun hm => crashed%pred)) .. )))
   (at level 9, i at level 0, n at level 0,
@@ -476,11 +477,12 @@ Notation "'For' i < n 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] '
             (pair_args_helper (fun l2 (_:unit) => body))
           ..)))
         $0 n
+        (pair_args_helper (fun vm0 =>
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun i =>
           (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
-           fun vm hm => nocrash%pred)) ..))
-        )) .. ))
+           fun vm hm => ([[ vm = vm0 ]] * nocrash)%pred)) ..))
+        )) .. ))))
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun hm => crashed%pred)) .. )))
   (at level 9, i at level 0, n at level 0,
@@ -613,13 +615,15 @@ Notation "'ForN' i < n 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' n
             (pair_args_helper (fun l2 (_:unit) => body))
           ..)))
         0 n
+        (pair_args_helper (fun vm0 =>
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun i =>
           (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
-           fun vm hm => nocrash%pred)) ..))
-        )) .. ))
+           fun vm hm => ([[ vm = vm0 ]] * nocrash)%pred)) ..))
+        )) .. ))))
+        (pair_args_helper (fun vm0 =>
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
-         fun hm => crashed%pred)) .. )))
+         fun hm => crashed%pred)) .. )))))
   (at level 9, i at level 0, n at level 0,
    g1 closed binder, g2 closed binder,
    l1 closed binder, l2 closed binder,
@@ -631,13 +635,15 @@ Notation "'ForN' i < n 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 
             (pair_args_helper (fun l2 (_:unit) => body))
           ..)))
         0 n
+        (pair_args_helper (fun vm0 =>
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun i =>
           (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
-           fun vm hm => nocrash%pred)) ..))
-        )) .. ))
+           fun vm hm => ([[ vm = vm0 ]] * nocrash)%pred)) ..))
+        )) .. ))))
+        (pair_args_helper (fun vm0 =>
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
-         fun hm => crashed%pred)) .. )))
+         fun hm => crashed%pred)) .. )))))
   (at level 9, i at level 0, n at level 0,
    g1 closed binder, g2 closed binder,
    l1 closed binder, l2 closed binder,
@@ -730,11 +736,13 @@ Hint Extern 1 ({{_}} Bind (ForEach_ _ _ _ _ _) _) => apply foreach_ok : prog.
 Notation "'ForEach' elem rest lst 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (ForEach_ (fun elem => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => body)) ..)))
         lst
+        (pair_args_helper (fun vm0 =>
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun rest => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
-         fun vm hm => nocrash%pred)) ..))  )) .. ))
+         fun vm hm => ([[ vm = vm0 ]] * nocrash)%pred)) ..))  )) .. ))))
+        (pair_args_helper (fun vm0 =>
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
-         fun hm => crashed%pred)) .. )))
+         fun hm => crashed%pred)) .. )))))
   (at level 9, elem at level 0, rest at level 0,
    g1 closed binder, g2 closed binder,
    l1 closed binder, l2 closed binder,
@@ -743,11 +751,13 @@ Notation "'ForEach' elem rest lst 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'I
 Notation "'ForEach' elem rest lst 'Hashmap' hm 'Ghost' [ g1 .. g2 ] 'Loopvar' [ l1 .. l2 ] 'Invariant' nocrash 'OnCrash' crashed 'Begin' body 'Rof'" :=
   (ForEach_ (fun elem => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) => body)) ..)))
         lst
+        (pair_args_helper (fun vm0 =>
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
          fun rest => (pair_args_helper (fun l1 => .. (pair_args_helper (fun l2 (_:unit) =>
-         fun vm hm => nocrash%pred)) ..))  )) .. ))
+         fun vm hm => ([[ vm = vm0 ]] * nocrash)%pred)) ..))  )) .. ))))
+        (pair_args_helper (fun vm0 =>
         (pair_args_helper (fun g1 => .. (pair_args_helper (fun g2 (_:unit) =>
-         fun hm => crashed%pred)) .. )))
+         fun hm => crashed%pred)) .. )))))
   (at level 9, elem at level 0, rest at level 0,
    g1 closed binder, g2 closed binder,
    l1 closed binder, l2 closed binder,
@@ -776,7 +786,7 @@ Definition Break L (l:L) : L + L := inr l.
 
 
 Theorem var_get_ok:
-  forall (Tv : Type) (i : addr),
+  forall (Tv : Type) (i : vartype),
   {< (x : Tv) Fv,
   PRE::vm,hm          emp * [[ (Fv * i |-> Any x)%pred vm ]]
   POST::vm',hm' RET:r emp * [[ r = x ]] * [[ vm' = vm ]]
@@ -805,7 +815,7 @@ Qed.
 Hint Extern 1 ({{_}} Bind (VarGet _) _) => apply var_get_ok : prog.
 
 Theorem var_set_ok:
-  forall (T : Type) (i : addr) (v : T),
+  forall (T : Type) (i : vartype) (v : T),
   {< v0 Fv,
   PRE::vm,hm          emp * [[ (Fv * i |-> v0)%pred vm ]]
   POST::vm',hm' RET:_ emp * [[ (Fv * i |-> Any v)%pred vm' ]]
@@ -849,7 +859,7 @@ Qed.
 Hint Extern 1 ({{_}} Bind (VarAlloc _) _) => apply var_alloc_ok : prog.
 
 Theorem var_delete_ok:
-  forall (i : addr),
+  forall (i : vartype),
   {< v Fv,
   PRE::vm,hm          emp * [[ (Fv * i |-> v)%pred vm ]]
   POST::vm',hm' RET:_ emp * [[ Fv vm' ]]

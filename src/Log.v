@@ -1362,7 +1362,7 @@ Module LOG.
     >} read_range xp a nr vfold v0 ms.
   Proof.
     unfold read_range; intros.
-    safestep. auto.
+    safestep. auto. auto.
     subst; pred_apply; cancel.
 
     eapply readOnly_refl; eauto.

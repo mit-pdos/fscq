@@ -380,7 +380,7 @@ Module FileRecArray (FRA : FileRASig).
   Proof.
     unfold ifind, rep.
     safestep.
-    safestep. auto. auto. eauto.
+    safestep. auto. auto. eauto. eauto.
     safestep.
     safestep.
     safestep.

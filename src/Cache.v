@@ -2084,7 +2084,7 @@ Module BUFCACHE.
     >} read_range a nr vfold a0 cs.
   Proof.
     unfold read_range; intros.
-    safestep. auto.
+    safestep. auto. auto.
     safestep.
     step; subst.
 
@@ -2159,7 +2159,7 @@ Module BUFCACHE.
     >} write_range a l cs.
   Proof.
     unfold write_range; intros.
-    safestep. auto.
+    safestep. auto. auto.
     prestep; unfold rep; cancel.
 
     rewrite vsupd_range_length; try omega.
@@ -2318,7 +2318,7 @@ Module BUFCACHE.
     >} write_vecs a l cs.
   Proof.
     unfold write_vecs.
-    safestep. auto.
+    safestep. auto. auto.
     step.
     prestep; unfold rep; cancel.
 
@@ -2351,7 +2351,7 @@ Module BUFCACHE.
     >} sync_vecs a l cs.
   Proof.
     unfold sync_vecs; intros.
-    safestep. auto.
+    safestep. auto. auto.
     step.
     step.
     apply arrayN_unify.

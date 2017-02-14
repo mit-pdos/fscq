@@ -831,15 +831,16 @@ Module BFILE.
       intros.
       unfold block_belong_to_file in *.
       intuition.
-      eapply list2nmem_sel in H12 as H12'.
-      rewrite <- H12'; eauto.
-      eapply list2nmem_sel in H12 as H12'.
-      rewrite <- H12'; eauto.
+      denote arrayN_ex as Ha. eapply list2nmem_sel in Ha as Ha'.
+      rewrite <- Ha'; eauto.
+      denote arrayN_ex as Ha. eapply list2nmem_sel in Ha as Ha'.
+      rewrite <- Ha'; eauto.
 
       intuition.
       assert (inum < length ilist) by simplen'.
-      apply arrayN_except_upd in H12; auto.
-      apply list2nmem_array_eq in H12; subst.
+      denote arrayN_ex as Ha.
+      apply arrayN_except_upd in Ha; auto.
+      apply list2nmem_array_eq in Ha; subst.
       rewrite selN_updN_ne; auto.
   Qed.
 
@@ -1214,8 +1215,8 @@ Module BFILE.
         rewrite selN_cuttail in *; auto.
       + unfold block_belong_to_file in *; intuition simpl.
         all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
-      + eapply list2nmem_array_updN in H18; eauto.
-        rewrite H18.
+      + eapply list2nmem_array_updN in H19; eauto.
+        rewrite H19.
         erewrite selN_updN_ne; eauto.
       + eauto.
     - step.
@@ -1256,8 +1257,8 @@ Module BFILE.
         rewrite selN_cuttail in *; auto.
       + unfold block_belong_to_file in *; intuition simpl.
         all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
-      + eapply list2nmem_array_updN in H18; eauto.
-        rewrite H18.
+      + eapply list2nmem_array_updN in H19; eauto.
+        rewrite H19.
         erewrite selN_updN_ne; eauto.
       + eauto.
 
@@ -1597,7 +1598,7 @@ Module BFILE.
     >} read_range lxp ixp inum a nr vfold v0 ms.
   Proof.
     unfold read_range.
-    safestep. eauto.
+    safestep. eauto. eauto.
     step.
 
     assert (m1 < length vsl).
@@ -1673,7 +1674,7 @@ Module BFILE.
   Proof.
     unfold read_cond.
     prestep. cancel.
-    safestep. eauto.
+    safestep. eauto. eauto.
     step.
     step.
     step.
@@ -1778,7 +1779,7 @@ Module BFILE.
     unfold synced_list; simpl; rewrite app_nil_r.
     eassign f; destruct f.
     eassign F_; cancel. or_r; cancel. eapply treeseq_ilist_safe_refl.
-    eauto.
+    eauto. eauto.
 
     safestep.
     apply list2nmem_arrayN_app; eauto.
@@ -1876,14 +1877,18 @@ Module BFILE.
     rewrite Nat.sub_diag; simpl; auto.
     denote (MSAlloc r_ = MSAlloc r_0) as Heq; rewrite Heq in *.
     eapply ilist_safe_trans; eauto.
-    unfold treeseq_ilist_safe in H16.
+    denote treeseq_ilist_safe as Hts.
+    unfold treeseq_ilist_safe in Hts.
     intuition.
     assert (inum = inum' -> False).
     intro; eapply H7; eauto.
-    specialize (H9 inum' def' H13).
-    rewrite <- H9.
-    specialize (H12 inum' def' H7).
-    rewrite H12;  eauto.
+    denote (forall _ _, _ -> selN ilist' _ _ = selN ilist'0 _ _) as Hx.
+    rewrite <- Hx.
+    denote (forall _ _, _ -> selN ilist _ _ = selN ilist' _ _) as Hy.
+    rewrite Hy.
+    all: eauto.
+  Unshelve.
+    all: eauto.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (truncate _ _ _ _ _ _) _) => apply truncate_ok : prog.
