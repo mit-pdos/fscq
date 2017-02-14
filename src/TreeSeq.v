@@ -763,9 +763,9 @@ Module TREESEQ.
     unfold tree_rep.
     unfold treeseq_one_safe.
     simpl.
-    rewrite H4 in H12.
+    rewrite H in H12.
     eassumption.
-    rewrite H4 in *.
+    rewrite H in *.
     eapply treeseq_in_ds_tree_pred_latest in H6 as Hpred.
     eapply treeseq_safe_pushd_update_subtree; eauto.
     distinct_names.
@@ -860,7 +860,7 @@ Module TREESEQ.
     unfold tree_rep.
     unfold treeseq_one_safe.
     simpl in *.
-    rewrite H4 in H14.
+    rewrite H in H14.
     eassumption.
     eapply treeseq_safe_pushd_update_subtree; eauto.
     distinct_names'.
@@ -873,7 +873,7 @@ Module TREESEQ.
 
     unfold dirtree_safe in *.
     intuition.
-    rewrite H4 in H10; eauto.
+    rewrite H in H10; eauto.
 
     eapply dir2flatmem2_update_subtree; eauto.
     distinct_names'.
@@ -1482,9 +1482,9 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
            BFILE.BFAttr := BFILE.BFAttr f |}).
     destruct f'.
     f_equal.
-    simpl in H14.
-    eapply list2nmem_array_updN in H14.
-    rewrite H14.
+    simpl in H15.
+    eapply list2nmem_array_updN in H15.
+    rewrite H15.
     subst; eauto.
     eapply list2nmem_ptsto_bound in H5 as H5''; eauto.
     eauto.
@@ -2676,7 +2676,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     intuition.
     unfold treeseq_one_safe in *.
     simpl in *.
-    rewrite H9; simpl.
+    rewrite H10; simpl.
     erewrite treeseq_latest.
     eapply dirtree_safe_refl.
     constructor.
@@ -2912,7 +2912,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
     - eapply treeseq_in_ds_pushd; eauto.
       unfold treeseq_one_safe; simpl.
-      rewrite H0 in H11.
+      rewrite H in H11.
       eassumption.
 
     - eapply treeseq_safe_pushd; eauto.
@@ -2926,7 +2926,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       eapply treeseq_safe_rename; eauto.
       distinct_names'.
       distinct_inodes'.
-      rewrite H0 in *; eauto.
+      rewrite H in *; eauto.
 
     - eapply dir2flatmem2_rename; eauto.
       distinct_names'.
@@ -3124,13 +3124,13 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
     - eapply treeseq_in_ds_pushd; eauto.
       unfold treeseq_one_safe; simpl.
-      rewrite H0 in H13.
+      rewrite H in H13.
       eassumption.
 
     - eapply treeseq_safe_delete; eauto.
       distinct_names'.
       distinct_inodes'.
-      rewrite H0 in *.
+      rewrite H in *.
       eauto.
 
     - eapply dir2flatmem2_delete_file; eauto; distinct_names'.
