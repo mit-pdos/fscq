@@ -17,6 +17,7 @@ import Foreign.ForeignPtr
 import Foreign.Marshal.Alloc
 import Data.Word
 import Data.IORef
+import qualified Data.Map.Strict
 
 verbose :: Bool
 verbose = False
@@ -44,8 +45,11 @@ data FlushLog =
   -- The first list is the list of writes since the last flush
   -- The second list is the list of previous flushed write groups
 
+data VarStore =
+  VS (Data.Map.Strict.Map Integer Any) Integer
+
 data DiskState =
-  S !Fd !(IORef DiskStats) !(Maybe (IORef FlushLog))
+  S !Fd !(IORef DiskStats) !(Maybe (IORef FlushLog)) !(IORef VarStore)
 
 bumpRead :: IORef DiskStats -> IO ()
 bumpRead sr = do
@@ -100,7 +104,7 @@ i2bs :: Integer -> Int -> IO BS.ByteString
 i2bs i nbytes = BSI.create nbytes $ i2buf i $ fromIntegral nbytes
 
 read_disk :: DiskState -> Integer -> IO Coq_word
-read_disk (S fd sr _) a = do
+read_disk (S fd sr _ _) a = do
   debugmsg $ "read(" ++ (show a) ++ ")"
   bumpRead sr
   allocaBytes 4096 $ \buf -> do
@@ -116,7 +120,7 @@ read_disk (S fd sr _) a = do
 
 write_disk :: DiskState -> Integer -> Coq_word -> IO ()
 write_disk _ _ (W64 _) = error "write_disk: short value"
-write_disk (S fd sr fl) a (W v) = do
+write_disk (S fd sr fl _) a (W v) = do
   -- maybeCrash
   debugmsg $ "write(" ++ (show a) ++ ")"
   bumpWrite sr
@@ -132,7 +136,7 @@ write_disk (S fd sr fl) a (W v) = do
         error $ "write_disk: short write: " ++ (show cc) ++ " @ " ++ (show a)
 
 sync_disk :: DiskState -> IO ()
-sync_disk (S fd sr fl) = do
+sync_disk (S fd sr fl _) = do
   debugmsg $ "sync()"
 
   if debugSyncs then do
@@ -156,11 +160,11 @@ trim_disk _ a = do
   return ()
 
 clear_stats :: DiskState -> IO ()
-clear_stats (S _ sr _) = do
+clear_stats (S _ sr _ _) = do
   writeIORef sr $ Stats 0 0 0
 
 get_stats :: DiskState -> IO DiskStats
-get_stats (S _ sr _) = do
+get_stats (S _ sr _ _) = do
   s <- readIORef sr
   return s
 
@@ -168,35 +172,37 @@ init_disk :: FilePath -> IO DiskState
 init_disk disk_fn = do
   fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
   sr <- newIORef $ Stats 0 0 0
-  return $ S fd sr Nothing
+  vr <- newIORef $ VS Data.Map.Strict.empty 0
+  return $ S fd sr Nothing vr
 
 init_disk_crashlog :: FilePath -> IO DiskState
 init_disk_crashlog disk_fn = do
   fd <- openFd disk_fn ReadWrite (Just 0o666) defaultFileFlags
   sr <- newIORef $ Stats 0 0 0
   fl <- newIORef $ FL [] []
-  return $ S fd sr $ Just fl
+  vr <- newIORef $ VS Data.Map.Strict.empty 0
+  return $ S fd sr (Just fl) vr
 
 set_nblocks_disk :: DiskState -> Int -> IO ()
-set_nblocks_disk (S fd _ _) nblocks = do
+set_nblocks_disk (S fd _ _ _) nblocks = do
   setFdSize fd $ fromIntegral $ nblocks * 4096
   return ()
 
 close_disk :: DiskState -> IO DiskStats
-close_disk (S fd sr _) = do
+close_disk (S fd sr _ _) = do
   closeFd fd
   s <- readIORef sr
   return s
 
 get_flush_log :: DiskState -> IO [[(Integer, Coq_word)]]
-get_flush_log (S _ _ Nothing) = return []
-get_flush_log (S _ _ (Just fl)) = do
+get_flush_log (S _ _ Nothing _) = return []
+get_flush_log (S _ _ (Just fl) _) = do
   FL writes flushes <- readIORef fl
   return (writes : flushes)
 
 clear_flush_log :: DiskState -> IO [[(Integer, Coq_word)]]
-clear_flush_log (S _ _ Nothing) = return []
-clear_flush_log (S _ _ (Just fl)) = do
+clear_flush_log (S _ _ Nothing _) = return []
+clear_flush_log (S _ _ (Just fl) _) = do
   FL writes flushes <- readIORef fl
   writeIORef fl $ FL [] []
   return (writes : flushes)
@@ -207,3 +213,26 @@ print_stats (Stats r w s) = do
   putStrLn $ "Reads:  " ++ (show r)
   putStrLn $ "Writes: " ++ (show w)
   putStrLn $ "Syncs:  " ++ (show s)
+
+var_get :: DiskState -> Integer -> IO Any
+var_get (S _ _ _ vr) i = do
+  VS vs _ <- readIORef vr
+  case (Data.Map.Strict.lookup i vs) of
+    Just x -> return x
+    Nothing -> error "var_get of unset variable"
+
+var_set :: DiskState -> Integer -> Any -> IO ()
+var_set (S _ _ _ vr) i v = do
+  VS vs nextvar <- readIORef vr
+  writeIORef vr $ VS (Data.Map.Strict.insert i v vs) nextvar
+
+var_delete :: DiskState -> Integer -> IO ()
+var_delete (S _ _ _ vr) i = do
+  VS vs nextvar <- readIORef vr
+  writeIORef vr $ VS (Data.Map.Strict.delete i vs) nextvar
+
+var_alloc :: DiskState -> Any -> IO Integer
+var_alloc (S _ _ _ vr) v = do
+  VS vs nextvar <- readIORef vr
+  writeIORef vr $ VS (Data.Map.Strict.insert nextvar v vs) (nextvar + 1)
+  return nextvar
