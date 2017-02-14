@@ -688,7 +688,7 @@ Qed.
 Lemma CompileFreeze : forall n (a : word n) env dvar svar F,
     Nat.divide 8 n ->
     EXTRACT Ret a
-    {{ (exists a0, dvar |-> Val (ImmutableBuffer n) a0) * svar ~> a * F }}
+    {{ (exists a0, dvar |-> Val ImmutableBuffer a0) * svar ~> a * F }}
       Modify FreezeBuffer ^(dvar, svar)
     {{ fun ret : immut_word n => dvar ~> ret * svar ~>? word n * F }} // env.
 Proof.
@@ -717,77 +717,95 @@ Proof.
   f_equal.
 Qed.
 
+Require Import Rec.
+
+Lemma slice_buffer_existT_eq:
+  forall (low mid high : W) (buf : immut_word (low + (mid + high))) (l0 : low <= low + mid)
+    (l1 : low + mid <= low + (mid + high)),
+    existT (fun n : W => word n) (low + mid - low)
+           (Rec.middle low (low + mid - low) (low + (mid + high) - (low + mid))
+                       (eq_rec (low + (mid + high)) (fun ns : W => word ns) buf
+                               (low + (low + mid - low + (low + (mid + high) - (low + mid)))) (slice_buffer_impl_subproof l0 l1))) =
+    existT (fun n : W => word n) mid (Rec.middle low mid high buf).
+Proof.
+  intros low mid high buf l0 l1.
+  generalize (slice_buffer_impl_subproof l0 l1).
+  unfold eq_rec.
+  rewrite ?minus_plus.
+  replace (low + (mid + high) - (low + mid)) with high by omega.
+  intros.
+  repeat f_equal.
+  rewrite UIP_refl with (p := e).
+  reflexivity.
+Qed.
+
+Lemma CompileMiddle : forall low mid high (buf : immut_word (low + (mid + high))) env dvar svar lvar tvar F,
+    Nat.divide 8 low -> Nat.divide 8 mid -> Nat.divide 8 high ->
+    EXTRACT Ret (Rec.middle low mid high buf : immut_word _)
+    {{ dvar ~>? immut_word mid * svar ~> buf * lvar ~> low * tvar ~> (low + mid) * F }}
+       Modify SliceBuffer ^(dvar, svar, lvar, tvar)
+    {{ fun ret => dvar ~> ret * svar ~> buf * lvar ~> low * tvar ~> (low + mid) * F }} // env.
+Proof.
+  intros. unfold ProgOk.
+  inv_exec_progok.
+  - repeat exec_solve_step.
+    repeat econstructor.
+    pred_solve.
+    eapply pimpl_apply with (p := (dvar |-> _ * _)%pred).
+    2: apply ptsto_typed_any_upd with (Wr := GoWrapper_immut_word mid); pred_apply; cancel_go.
+    cancel_go.
+    unfold wrap, wrap_type, wrap', GoWrapper_immut_word.
+    match goal with
+    | |- _ |-> Val ?t ?a =p=> _ |-> Val ?t ?b =>
+      let H := fresh in assert (Val t a = Val t b) as H; [ | rewrite H; reflexivity ]
+    end.
+    f_equal.
+    apply slice_buffer_existT_eq.
+  - repeat exec_solve_step.
+  - repeat exec_solve_step.
+    all : match goal with
+          | [H : context[step] |- _] =>
+            contradiction H; eval_expr; repeat econstructor
+          end.
+    eval_expr; reflexivity.
+    eval_expr. rewrite slice_buffer_existT_eq. reflexivity.
+    contradiction n; eauto using Nat.divide_add_r.
+    contradiction n; eauto using Nat.divide_add_r.
+    eval_expr; reflexivity.
+Qed.
+
+Lemma middle_split1 : forall sz1 sz2 (w : word (sz1 + sz2)),
+    split1 sz1 sz2 w = Rec.middle 0 sz1 sz2 w.
+Proof.
+  reflexivity.
+Qed.
+
+Ltac comp_apply H := eapply hoare_weaken; [ eapply H; intros | cancel_go.. ].
+
+Create HintDb divide discriminated.
+
+Hint Resolve Nat.divide_0_r Nat.divide_add_r Nat.divide_mul_r Nat.divide_refl : divide.
+
+Ltac divisibility := eauto with divide.
+
 Lemma CompileSplit1 : forall sz1 sz2 (buf : immut_word (sz1 + sz2)) env dvar svar F,
     Nat.divide 8 sz1 -> Nat.divide 8 sz2 ->
     EXTRACT Ret (split1 sz1 sz2 buf : immut_word _)
     {{ dvar ~>? immut_word sz1 * svar ~> buf * F }}
-      Modify (SliceBuffer 0 sz1) ^(dvar, svar)
+      Declare Num (fun vzero =>
+        Declare Num (fun vsz1 =>
+          (vsz1 <~const (wrap' sz1);
+           Modify SliceBuffer ^(dvar, svar, vzero, vsz1))))
     {{ fun ret => dvar ~> ret * svar ~> buf * F }} // env.
 Proof.
-  intros. unfold ProgOk.
-  inv_exec_progok.
-  - progress exec_solve_step.
-    inv_exec.
-    try extract_pred_apply_exists; repeat extract_var_val.
-    progress eval_expr_step.
-    progress eval_expr_step.
-    progress eval_expr_step.
-    progress eval_expr_step.
-    progress eval_expr_step.
-    progress eval_expr_step.
-    2 : solve [eval_expr].
-    progress eval_expr_step.
-    progress eval_expr_step.
-    2, 3: solve [eval_expr].
-    progress eval_expr_step.
-    progress eval_expr_step.
-    progress eval_expr_step.
-    1, 2: solve [eval_expr].
-    progress eval_expr_step.
-    progress eval_expr_step.
-    progress eval_expr_step.
-    destruct Compare_dec.le_dec; try omega.
-    destruct Nat.eq_dec; try omega.
-    match type of H12 with
-    | match ?e with | Logic.eq_refl => ?f end ?x ?d = ?r =>
-      change ((eq_rect _ (fun y => word y -> Nat.divide 8 y -> option (var_update * (var_update * unit))) f _ e) x d = r) in H12
-    end.
-    rewrite rew_fun in H12.
-    rewrite rew_fun' in H12.
-    repeat find_inversion_safe.
-    repeat inv_exec.
-    repeat econstructor; pred_solve.
-    eapply pimpl_apply.
-    2: eapply ptsto_upd.
-    match goal with
-    | [ |- context[(dvar |-> ?val)%pred] ] => replace val with (Val (ImmutableBuffer sz1) (split1 sz1 sz2 buf))
-    end.
-    cancel_go.
-    2: pred_solve.
-    destruct t0; try congruence.
-    admit.
-  - repeat inv_exec.
-  - repeat inv_exec.
-    exec_solve_step.
-    eval_expr.
-    contradiction H3.
-    repeat econstructor.
-    eval_expr. reflexivity.
-    simpl.
-    repeat break_match.
-    rewrite rew_fun, rew_fun'.
-    f_equal.
-    unfold slice_buffer_impl'.
-    erewrite (proof_irrelevance _ (slice_buffer_impl_subproof _ _)).
-    reflexivity.
-    all : try solve [congruence | omega | exfalso; eauto using Nat.divide_add_r].
-    eval_expr.
-    reflexivity.
-    contradiction n.
-    f_equal. omega.
-Unshelve.
-    omega.
-Admitted.
+  intros.
+  do 2 (eapply hoare_weaken; [ eapply CompileDeclare with (Wr := GoWrapper_Num); intros | cancel_go..]).
+  comp_apply CompileBefore.
+  eapply CompileRet with (var0 := var1) (v := sz1).
+  comp_apply CompileConst.
+  rewrite middle_split1.
+  comp_apply CompileMiddle; divisibility.
+Qed.
 
 Lemma CompileIf : forall V varb (b : bool)
   (ptrue pfalse : prog V) xptrue xpfalse F G env,
@@ -867,8 +885,18 @@ Proof.
   eval_expr.
   repeat extract_var_val.
   eval_expr.
-  apply value_inj in H6.
+  find_apply_lem_hyp value_inj.
+  eval_expr.
+  find_apply_lem_hyp inj_pair2.
+  eval_expr.
   exec_solve_step.
+  destruct (r a) eqn:Ha.
+  contradiction H1. eval_expr; repeat econstructor.
+  cbv [wrap wrap' GoWrapper_word] in He0.
+  eassumption.
+  eassumption.
+  cbn. eassumption.
+  eauto.
 Qed.
 
 Lemma CompileSync : forall env F,

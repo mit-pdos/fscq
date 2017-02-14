@@ -5,7 +5,7 @@ Require Import Morphisms.
 Require Import StringMap MoreMapFacts.
 Require Import Eqdep.
 Require Import VerdiTactics.
-Require Import Word Bytes.
+Require Import Word Bytes Rec.
 Require Import Mem AsyncDisk PredCrash Prog.
 Require Import MapUtils.
 Require Import Bool.
@@ -89,15 +89,15 @@ Module Go.
   | Num (* In Go: *big.Int *)
   | Bool (* In Go: bool *)
   | String (* In Go: string *)
-  | Buffer : nat -> type (* In Go: []byte *)
-  | ImmutableBuffer : nat -> type (* In Go: []byte *)
+  | Buffer (* In Go: []byte *)
+  | ImmutableBuffer (* In Go: []byte *)
   | Slice : type -> type (* In Go: []<whatever> *)
   | Pair : type -> type -> type (* In Go: struct{fst <whatever>; snd <whatever>}, I think? *)
   | AddrMap : type -> type (* In Go: specialized map type *)
   | Struct : list type -> type (* In Go: struct *)
   .
 
-  Definition DiskBlock := Buffer valulen.
+  Definition DiskBlock := Buffer.
 
   Inductive movable T :=
   | Here (v : T)
@@ -112,8 +112,8 @@ Module Go.
     | Num => true
     | Bool => true
     | String => true
-    | Buffer _ => false
-    | ImmutableBuffer _ => true
+    | Buffer => false
+    | ImmutableBuffer => true
     | Slice _ => false
     | Pair t1 t2 => can_alias t1 && can_alias t2
     | AddrMap _ => false
@@ -144,8 +144,8 @@ Module Go.
     | Num => W
     | Bool => bool
     | String => string
-    | Buffer n => movable (word n)
-    | ImmutableBuffer n => word n
+    | Buffer => movable { n : nat & word n }
+    | ImmutableBuffer => { n : nat & word n }
     | Slice t' => movable (list (type_denote t')) (* kept in reverse order to make cons = append *)
     | Pair t1 t2 => type_denote t1 * type_denote t2
     | AddrMap vt => movable (Map.t (type_denote vt))
@@ -174,8 +174,8 @@ Module Go.
     (Hnum : P Num)
     (Hbool : P Bool)
     (Hstring : P String)
-    (Hbuffer : forall n, P (Buffer n))
-    (Himmutablebuffer : forall n, P (ImmutableBuffer n))
+    (Hbuffer : P Buffer)
+    (Himmutablebuffer : P ImmutableBuffer)
     (Hslice : forall t, P (Slice t))
     (Hpair : forall p q, P p -> P q -> P (Pair p q))
     (Haddrmap : forall t, P (AddrMap t))
@@ -213,7 +213,7 @@ Module Go.
   | MapCardinality
   | MapElements
   | FreezeBuffer (* destination, source *)
-  | SliceBuffer (from to : nat) (* destination, source *)
+  | SliceBuffer (* destination, source, from, to *)
   | StructGet (idx : nat)
   | StructPut (idx : nat)
   | DeserializeNum
@@ -251,8 +251,8 @@ Module Go.
     | Num => 0
     | Bool => false
     | String => ""%string
-    | Buffer _ => Moved
-    | ImmutableBuffer _ => $0
+    | Buffer => Moved
+    | ImmutableBuffer => existT _ _ WO
     | Slice _ => Here nil
     | Pair t1 t2 => (default_value' t1, default_value' t2)
     | AddrMap vt => Here (Map.empty (type_denote vt))
@@ -281,8 +281,8 @@ Module Go.
     | Num => fun old => old
     | Bool => fun old => old
     | String => fun old => old
-    | Buffer _ => fun _ => Moved
-    | ImmutableBuffer _ => fun old => old
+    | Buffer => fun _ => Moved
+    | ImmutableBuffer => fun old => old
     | Slice _ => fun _ => Moved
     | Pair t1 t2 =>
       fun old =>
@@ -499,12 +499,12 @@ Module Go.
         (Here (Map.elements m)))).
 
     Definition freeze_buffer_impl' n (v : word n) : n_tuple 2 var_update :=
-      ^(SetTo (Val (ImmutableBuffer n) v), Move).
+      ^(SetTo (Val ImmutableBuffer (existT _ _ v)), Move).
 
-    Definition slice_buffer_impl' before inside after (v : word (before + inside + after)) :
-      n_tuple 2 var_update :=
-      ^(SetTo (Val (ImmutableBuffer inside) (split2 before inside (split1 (before + inside) after v))),
-        Leave).
+    Definition slice_buffer_impl' before inside after (v : word (before + (inside + after))) :
+      n_tuple 4 var_update :=
+      ^(SetTo (Val ImmutableBuffer (existT _ _ (Rec.middle before inside after v))),
+        Leave, Leave, Leave).
 
     Definition struct_get_impl' (l : list type) (s : type_denote (Struct l)) (n : addr) : n_tuple 2 var_update :=
       ^(SetTo (Val (Struct l) (struct_moveN l s n)), SetTo (Val (type_list_nth l n) (struct_selN l s n))).
@@ -668,28 +668,31 @@ Module Go.
     Definition freeze_buffer_impl : op_impl 2.
       refine (fun args => let '^(Val td d, Val ts s) := args in
                        match td, ts with
-                       | ImmutableBuffer nd, Buffer ns => fun d s => _
+                       | ImmutableBuffer, Buffer => fun d s => _
                        | _, _ => fun _ _ => None
                        end d s).
-      destruct (Nat.eq_dec nd ns); [ subst | exact None ].
-      destruct (divide_8_dec ns); [ | exact None ].
       destruct s as [s | ]; [ | exact None ].
+      destruct d as [nd d].
+      destruct s as [ns s].
+      destruct (divide_8_dec ns); [ | exact None ].
       exact (Some (freeze_buffer_impl' s)).
     Defined.
 
-    Definition slice_buffer_impl (from to : nat) : op_impl 2.
-      refine (fun args => let '^(Val td d, Val ts s) := args in
-                       match td, ts with
-                       | ImmutableBuffer nd, ImmutableBuffer ns => fun d s => _
-                       | _, _ => fun _ _ => None
-                       end d s).
+    Definition slice_buffer_impl : op_impl 4.
+      refine (fun args => let '^(Val td d, Val ts s, Val tfrom from, Val tto to) := args in
+                       match td, ts, tfrom, tto with
+                       | ImmutableBuffer, ImmutableBuffer, Num, Num => fun d s from to => _
+                       | _, _, _, _ => fun _ _ _ _ => None
+                       end d s from to).
+      simpl in *.
+      destruct d as [nd d].
+      destruct s as [ns s].
       destruct (le_dec from to); [ | exact None ].
       destruct (le_dec to ns); [ | exact None ].
-      destruct (divide_8_dec nd); [ | exact None ].
       destruct (divide_8_dec ns); [ | exact None ].
+      destruct (divide_8_dec from); [ | exact None ].
       destruct (divide_8_dec to); [ | exact None ].
-      destruct (Nat.eq_dec (to - from) nd); [ subst | exact None ].
-      assert (ns = from + (to - from) + (ns - to)) by (abstract omega).
+      assert (ns = from + (to - from + (ns - to))) by (abstract omega).
       rewrite H in s.
       exact (Some (slice_buffer_impl' from (to - from) (ns - to) s)).
     Defined.
@@ -719,10 +722,12 @@ Module Go.
     Definition deserialize_num_impl : op_impl 2.
       refine (fun args => let '^(Val td d, Val ts s) := args in
                         match ts with
-                        | ImmutableBuffer n => fun s => _
+                        | ImmutableBuffer => fun s => _
                         | _ => fun _ => None
                         end s).
-      destruct (Nat.eq_dec n 64); [ subst | exact None ].
+      simpl in *.
+      destruct s as [ns s].
+      destruct (Nat.eq_dec ns 64); [ subst | exact None ].
       destruct (type_eq_dec td Num); [ subst | exact None ].
       refine (Some _).
       refine (deserialize_num_impl' s).
@@ -748,7 +753,7 @@ Module Go.
     | MapCardinality => existT _ _ map_card_impl
     | MapElements => existT _ _ map_elements_impl
     | FreezeBuffer => existT _ _ freeze_buffer_impl
-    | SliceBuffer from to => existT _ _ (slice_buffer_impl from to)
+    | SliceBuffer => existT _ _ slice_buffer_impl
     | StructGet idx => existT _ _ (struct_get_impl idx)
     | StructPut idx => existT _ _ (struct_set_impl idx)
     | DeserializeNum => existT _ _ deserialize_num_impl
@@ -1064,10 +1069,10 @@ Module Go.
         type_of v0 = DiskBlock -> (* and have the correct type *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
-        s' = VarMap.add dvar (Val DiskBlock (Here v)) s ->
+        s' = VarMap.add dvar (Val DiskBlock (Here (existT _ _ v))) s ->
         runsto (DiskRead dvar avar) (d, s) (d, s')
     | RunsToDiskWrite : forall avar a vvar v (d : rawdisk) d' s v0 v0s,
-        VarMap.find vvar s = Some (Val DiskBlock (Here v)) -> (* src variable must have a diskblock *)
+        VarMap.find vvar s = Some (Val DiskBlock (Here (existT _ _ v))) -> (* src variable must have a diskblock *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->
@@ -1135,10 +1140,10 @@ Module Go.
         type_of v0 = DiskBlock -> (* and have the correct type *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
-        s' = VarMap.add dvar (Val DiskBlock (Here v)) s ->
+        s' = VarMap.add dvar (Val DiskBlock (Here (existT _ _ v))) s ->
         step (d, s, DiskRead dvar avar) (d, s', Skip)
     | StepDiskWrite : forall avar a vvar v d d' s v0 v0s,
-        VarMap.find vvar s = Some (Val DiskBlock (Here v)) -> (* src variable must have a diskblock *)
+        VarMap.find vvar s = Some (Val DiskBlock (Here (existT _ _ v))) -> (* src variable must have a diskblock *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->
@@ -1343,10 +1348,10 @@ Module Go.
         type_of v0 = DiskBlock -> (* and have the correct type *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
-        s' = VarMap.add dvar (Val DiskBlock (Here v)) s ->
+        s' = VarMap.add dvar (Val DiskBlock (Here (existT _ _ v))) s ->
         runsto_InCall (DiskRead dvar avar) (d, s) (d, s')
     | RunsToICDiskWrite : forall avar a vvar v d d' s v0 v0s,
-        VarMap.find vvar s = Some (Val DiskBlock (Here v)) -> (* src variable must have a diskblock *)
+        VarMap.find vvar s = Some (Val DiskBlock (Here (existT _ _ v))) -> (* src variable must have a diskblock *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->

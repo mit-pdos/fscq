@@ -106,7 +106,7 @@ Defined.
 
 Instance GoWrapper_valu : GoWrapper valu.
 Proof.
-  refine {| wrap' := fun v => Go.Here v;
+  refine {| wrap' := fun v => Go.Here (existT _ _ v);
             wrap_type := Go.DiskBlock |}; GoWrapper_t.
 Defined.
 
@@ -134,8 +134,8 @@ Hint Resolve mod_divide_1 : divisible.
 
 Instance GoWrapper_word nbits : GoWrapper (word nbits).
 Proof.
-  refine {| wrap' := Go.Here;
-            wrap_type := Go.Buffer nbits |}; GoWrapper_t.
+  refine {| wrap' := fun v => Go.Here (existT _ _ v);
+            wrap_type := Go.Buffer |}; GoWrapper_t.
 Defined.
 
 Definition immut_word := word.
@@ -143,8 +143,8 @@ Typeclasses Opaque immut_word.
 
 Instance GoWrapper_immut_word nbits : GoWrapper (immut_word nbits).
 Proof.
-  refine {| wrap' := id;
-            wrap_type := Go.ImmutableBuffer nbits |}; GoWrapper_t.
+  refine {| wrap' := existT _ _;
+            wrap_type := Go.ImmutableBuffer |}; GoWrapper_t.
 Defined.
 
 
