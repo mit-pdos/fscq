@@ -397,6 +397,203 @@ Module BmapAlloc (Sig : AllocSig).
 
 End BmapAlloc.
 
+(* BmapAlloc with a list of free items to speed up allocation *)
+
+Module BmapAllocCache.
+
+   Module Sig <: AllocSig.
+    Definition xparams := balloc_xparams.
+    Definition BMPStart := BmapStart.
+    Definition BMPLen := BmapNBlocks.
+
+    (* should return an address that fits in addrlen (goodSize addrlen _).
+       valulen * valulen supports about 2^48 bytes of disk space *)
+    Definition xparams_ok xp := (BmapNBlocks xp) <= valulen * valulen.
+  End Sig.
+
+  Module Alloc := BmapAlloc Sig.
+  Module Defs := Alloc.Defs.
+
+  Definition BmapCacheType := list addr.
+
+  Definition memstate := (LOG.memstate * BmapCacheType)%type.
+  Definition freelist0 := (@nil addr).
+
+  Definition init lxp xp ms : prog memstate :=
+    fms <- Alloc.init lxp xp ms;
+    Ret (fms, freelist0).
+
+  Definition init_nofree lxp xp ms :=
+    fms <- Alloc.init_nofree lxp xp ms;
+    Ret (fms, freelist0).
+
+  Definition alloc lxp xp ms :=
+    match (snd ms) with
+    | nil =>
+      let^ (fms, r) <- Alloc.alloc lxp xp (fst ms);
+      Ret ^((fms, snd ms), r)
+    | bn :: freelist =>
+      fms <- Alloc.steal lxp xp bn (fst ms);
+      Ret ^((fms, freelist), Some bn)
+    end.
+
+  Definition free lxp xp bn ms :=
+    fms <- Alloc.free lxp xp bn (fst ms) ;
+    Ret ^(fms, bn ::(snd ms)).
+
+  Definition steal lxp xp bn (ms:memstate) :=
+    fms <- Alloc.steal lxp xp bn (fst ms);
+    Ret ^(fms, freelist0).
+
+  Definition freelist_bmap_equiv freelist bmap :=
+    forall a, a < length bmap -> (In a freelist <-> Alloc.Avail (selN bmap a $0)).
+
+  (* XXX Alloc.rep doesn't expose bmap *)
+  Definition rep V xp (freelist : BmapCacheType) (freepred : @pred _ addr_eq_dec V) :=
+    (exists bmap, Alloc.Bmp.rep xp bmap *
+     [[ freelist_bmap_equiv freelist bmap ]] *
+     [[ freepred <=p=> listpred (fun a => a |->?) freelist ]] )%pred.
+
+  Lemma freelist_bmap_equiv_remove_ok : forall bmap freelist a,
+    freelist_bmap_equiv freelist bmap ->
+    a < length bmap ->
+    freelist_bmap_equiv (remove addr_eq_dec a freelist) (updN bmap a $1).
+  Proof.
+    unfold freelist_bmap_equiv; split; intros.
+    destruct (addr_eq_dec a a0); subst.
+    rewrite selN_updN_eq by auto.
+    exfalso; eapply remove_In; eauto.
+    rewrite selN_updN_ne by auto.
+    apply H.
+    erewrite <- length_updN; eauto.
+    eapply remove_still_In; eauto.
+
+    destruct (addr_eq_dec a a0); subst.
+    contradict H2.
+    rewrite selN_updN_eq by auto.
+    discriminate.
+    apply remove_other_In; auto.
+    apply H.
+    erewrite <- length_updN; eauto.
+    erewrite <- selN_updN_ne; eauto.
+  Qed.
+
+  Lemma freelist_bmap_equiv_add_ok : forall bmap freelist a,
+    freelist_bmap_equiv freelist bmap ->
+    a < length bmap ->
+    freelist_bmap_equiv (a :: freelist) (updN bmap a $0).
+  Proof.
+    unfold freelist_bmap_equiv; split; intros.
+    destruct (addr_eq_dec a a0); subst.
+    rewrite selN_updN_eq by auto.
+    unfold Alloc.Avail; auto.
+    rewrite selN_updN_ne by auto.
+    apply H.
+    erewrite <- length_updN; eauto.
+    simpl in H2; destruct H2; auto; congruence.
+
+    destruct (addr_eq_dec a a0); subst; simpl; auto.
+    right; apply H.
+    erewrite <- length_updN; eauto.
+    erewrite <- selN_updN_ne; eauto.
+  Qed.
+
+  Lemma is_avail_in_freelist : forall a bmap freelist,
+    freelist_bmap_equiv freelist bmap ->
+    Alloc.is_avail (selN bmap a $0) = true ->
+    a < length bmap ->
+    In a freelist.
+  Proof.
+    unfold freelist_bmap_equiv, Alloc.is_avail, Alloc.Avail.
+    intros; apply H; auto.
+    destruct (Alloc.state_dec (selN bmap a $0)); auto; congruence.
+  Qed.
+
+  Lemma bmap_rep_length_ok1 : forall F xp bmap d a,
+    a < length bmap ->
+    (F * Alloc.Bmp.rep xp bmap)%pred d ->
+    a < Sig.BMPLen xp * valulen.
+  Proof.
+    unfold Alloc.Bmp.rep, Alloc.Bmp.items_valid; intros.
+    destruct_lift H0.
+    eapply lt_le_trans; eauto.
+    rewrite H6; auto.
+  Qed.
+
+  Lemma bmap_rep_length_ok2 : forall F xp bmap d a,
+    (F * Alloc.Bmp.rep xp bmap)%pred d ->
+    a < Sig.BMPLen xp * valulen ->
+    a < length bmap.
+  Proof.
+    unfold Alloc.Bmp.rep, Alloc.Bmp.items_valid; intros.
+    destruct_lift H.
+    eapply lt_le_trans; eauto.
+    rewrite H6; auto.
+  Qed.
+
+  Lemma avail_nonzero_is_avail : forall bmap i,
+    Alloc.avail_nonzero (selN bmap i $0) i = true ->
+    Alloc.is_avail (selN bmap i $0) = true.
+  Proof.
+    unfold Alloc.avail_nonzero; intros.
+    destruct (addr_eq_dec i 0); congruence.
+  Qed.
+
+  Lemma avail_nonzero_not_zero : forall bmap i,
+    Alloc.avail_nonzero (selN bmap i $0) i = true -> i <> 0.
+  Proof.
+    unfold Alloc.avail_nonzero; intros.
+    destruct (addr_eq_dec i 0); congruence.
+  Qed.
+
+  Local Hint Resolve avail_nonzero_is_avail avail_nonzero_not_zero.
+
+  Lemma freelist_bmap_equiv_init_ok : forall xp,
+    freelist_bmap_equiv (seq 0 (Sig.BMPLen xp * valulen))
+      (repeat Alloc.Bmp.Defs.item0 (Alloc.BmpSig.RALen xp * Alloc.BmpSig.items_per_val)).
+  Proof.
+    unfold freelist_bmap_equiv; split; intros.
+    - rewrite repeat_length in H.
+      rewrite repeat_selN; auto.
+      cbv; auto.
+    - rewrite repeat_length in H.
+      apply in_seq; intuition.
+  Qed.
+
+
+  Hint Extern 0 (okToUnify (listpred ?prd _ ) (listpred ?prd _)) => constructor : okToUn
+ify.
+
+  Theorem init_ok : forall V lxp xp ms,
+    {< F Fm m0 m bl,
+    PRE:hm
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (Sig.BMPStart xp) bl) ]]] *
+          [[ Sig.xparams_ok xp /\ Sig.BMPStart xp <> 0 /\ length bl = Sig.BMPLen xp ]]
+    POST:hm' RET:ms exists m' freepred,
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (fst ms) hm' *
+          [[[ m' ::: (Fm * @rep V xp (snd ms) freepred) ]]] *
+          [[ forall bn, bn < (Sig.BMPLen xp) * valulen -> In bn (snd ms) ]] *
+          [[ forall dl, length dl = ((Sig.BMPLen xp) * valulen)%nat ->
+               arrayN (@ptsto _ _ _) 0 dl =p=> freepred ]]
+    CRASH:hm' LOG.intact lxp F m0 hm'
+    >} init lxp xp ms.
+  Proof.
+    unfold init, rep, Alloc.rep; intros.
+    step.
+    step.
+(*
+    unfold Alloc.rep in *.
+    cancel.
+    eapply freelist_bmap_equiv_init_ok.
+    apply in_seq; intuition.
+    apply arrayN_listpred_seq; auto.
+*)
+  Abort.
+
+
+
+End BmapAllocCache.
 
 
 (* Specialize for actual on-disk-block allocation *)
