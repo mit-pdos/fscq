@@ -369,8 +369,24 @@ Ltac compile_add := match goal with
     end
   end.
 
+Ltac compile_subtract := match goal with
+  | [ |- EXTRACT Ret (?a - ?b) {{ ?pre }} _ {{ _ }} // _ ] =>
+    let retvar := var_mapping_to_ret in
+    match find_val a pre with
+      | Some ?ka =>
+        match find_val b pre with
+          | Some ?kb =>
+            eapply hoare_weaken;
+              [ (unify retvar ka; eapply CompileSubtractInPlace1 with (avar := ka) (bvar := kb)) ||
+                (unify retvar kb; eapply CompileSubtractInPlace2 with (avar := ka) (bvar := kb)) ||
+                eapply CompileSubtract with (avar := ka) (bvar := kb) (sumvar := retvar) | .. ];
+            [ cancel_go .. ]
+        end
+    end
+  end.
+
 Ltac compile_multiply := match goal with
-  | [ |- EXTRACT Ret (?a * ?b)%nat_scope {{ ?pre }} _ {{ _ }} // _ ] =>
+  | [ |- EXTRACT Ret (?a * ?b)%nat {{ ?pre }} _ {{ _ }} // _ ] =>
     let retvar := var_mapping_to_ret in
     match find_val a pre with
       | Some ?ka =>
@@ -708,6 +724,7 @@ Ltac compile_step :=
   || compile_for
   || compile_call
   || compile_add
+  || compile_subtract
   || compile_multiply
   || compile_divide
   || compile_mod

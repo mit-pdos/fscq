@@ -913,8 +913,6 @@ Proof.
   econstructor; eauto.
 Qed.
 
-
-
 Lemma CompileAdd :
   forall env F sumvar avar bvar (a b : nat),
     EXTRACT Ret (a + b)
@@ -955,6 +953,58 @@ Lemma CompileAddInPlace2 :
     EXTRACT Ret (a + b)
     {{ avar ~> a * bvar ~> b * F }}
       Modify (ModifyNumOp Plus) ^(bvar, avar, bvar)
+    {{ fun ret => bvar ~> ret * avar ~> a * F }} // env.
+Proof.
+  unfold ProgOk; intros.
+  inv_exec_progok;
+    repeat exec_solve_step.
+
+  contradiction H1.
+  eval_expr.
+  repeat econstructor.
+  all: eval_expr; [reflexivity].
+Qed.
+
+
+Lemma CompileSubtract :
+  forall env F sumvar avar bvar (a b : nat),
+    EXTRACT Ret (a - b)
+    {{ sumvar ~>? W * avar ~> a * bvar ~> b * F }}
+      Modify (ModifyNumOp Minus) ^(sumvar, avar, bvar)
+    {{ fun ret => sumvar ~> ret * avar ~> a * bvar ~> b * F }} // env.
+Proof.
+  unfold ProgOk; intros.
+  inv_exec_progok;
+    repeat exec_solve_step.
+
+  contradiction H1.
+  eval_expr.
+  repeat econstructor.
+  all: eval_expr; [reflexivity].
+Qed.
+
+Lemma CompileSubtractInPlace1 :
+  forall env F avar bvar (a b : nat),
+    EXTRACT Ret (a - b)
+    {{ avar ~> a * bvar ~> b * F }}
+      Modify (ModifyNumOp Minus) ^(avar, avar, bvar)
+    {{ fun ret => avar ~> ret * bvar ~> b * F }} // env.
+Proof.
+  unfold ProgOk; intros.
+  inv_exec_progok;
+    repeat exec_solve_step.
+
+  contradiction H1.
+  eval_expr.
+  repeat econstructor.
+  all: eval_expr; [reflexivity].
+Qed.
+
+Lemma CompileSubtractInPlace2 :
+  forall env F avar bvar (a b : nat),
+    EXTRACT Ret (a - b)
+    {{ avar ~> a * bvar ~> b * F }}
+      Modify (ModifyNumOp Minus) ^(bvar, avar, bvar)
     {{ fun ret => bvar ~> ret * avar ~> a * F }} // env.
 Proof.
   unfold ProgOk; intros.
