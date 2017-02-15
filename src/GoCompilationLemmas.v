@@ -967,6 +967,58 @@ Proof.
   all: eval_expr; [reflexivity].
 Qed.
 
+Lemma CompileMultiply :
+  forall env F rvar avar bvar (a b : nat),
+    EXTRACT Ret (a * b)
+    {{ rvar ~>? W * avar ~> a * bvar ~> b * F }}
+      Modify (ModifyNumOp Times) ^(rvar, avar, bvar)
+    {{ fun ret => rvar ~> ret * avar ~> a * bvar ~> b * F }} // env.
+Proof.
+  unfold ProgOk; intros.
+  inv_exec_progok;
+    repeat exec_solve_step.
+
+  contradiction H1.
+  eval_expr.
+  repeat econstructor.
+  all: eval_expr; [reflexivity].
+Qed.
+
+Lemma CompileMultiplyInPlace1 :
+  forall env F avar bvar (a b : nat),
+    EXTRACT Ret (a * b)
+    {{ avar ~> a * bvar ~> b * F }}
+      Modify (ModifyNumOp Times) ^(avar, avar, bvar)
+    {{ fun ret => avar ~> ret * bvar ~> b * F }} // env.
+Proof.
+  unfold ProgOk; intros.
+  inv_exec_progok;
+    repeat exec_solve_step.
+
+  contradiction H1.
+  eval_expr.
+  repeat econstructor.
+  all: eval_expr; [reflexivity].
+Qed.
+
+Lemma CompileMultiplyInPlace2 :
+  forall env F avar bvar (a b : nat),
+    EXTRACT Ret (a * b)
+    {{ avar ~> a * bvar ~> b * F }}
+      Modify (ModifyNumOp Times) ^(bvar, avar, bvar)
+    {{ fun ret => bvar ~> ret * avar ~> a * F }} // env.
+Proof.
+  unfold ProgOk; intros.
+  inv_exec_progok;
+    repeat exec_solve_step.
+
+  contradiction H1.
+  eval_expr.
+  repeat econstructor.
+  all: eval_expr; [reflexivity].
+Qed.
+
+
 Lemma CompileDivide :
   forall env F rvar avar bvar (a b : nat),
     EXTRACT Ret (a / b)
