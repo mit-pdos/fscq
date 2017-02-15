@@ -55,7 +55,8 @@ Section OptimisticCache.
 
   Definition locally_modified (sigma sigma': Sigma St) :=
     cache_other_mem (Sigma.mem sigma') = cache_other_mem (Sigma.mem sigma) /\
-    cache_other_s (Sigma.s sigma') = cache_other_s (Sigma.s sigma).
+    cache_other_s (Sigma.s sigma') = cache_other_s (Sigma.s sigma) /\
+    Sigma.l sigma' = Sigma.l sigma.
 
   Theorem locally_modified_refl : forall sigma, locally_modified sigma sigma.
   Proof.
@@ -106,7 +107,7 @@ Section OptimisticCache.
            performance *)
         Ret v.
 
-  Definition CacheRead wb a : @cprog St _ :=
+  Definition CacheRead wb a l : @cprog St _ :=
     r <- BufferRead wb a;
       match r with
       | Some v => Ret (Some v, wb)
@@ -114,12 +115,16 @@ Section OptimisticCache.
                  let c := cache m in
                  match cache_get c a with
                  | Present v _ => Ret (Some v, wb)
-                 | Missing => _ <- BeginRead a;
+                 | Missing => if CanWrite l then
+                               _ <- BeginRead a;
                                let c' := mark_pending c a in
                                _ <- Assgn (set_cache m c');
                                  Ret (None, wb)
-                 | Invalid => v <- ClearPending m wb a;
-                               Ret (Some v, wb)
+                             else Ret (None, wb)
+                 | Invalid => if CanWrite l then
+                               v <- ClearPending m wb a;
+                                 Ret (Some v, wb)
+                             else Ret (None, wb)
                  end
       end.
 
@@ -223,13 +228,13 @@ Section OptimisticCache.
 
   Lemma CacheRep_clear_pending:
     forall (wb : WriteBuffer) (a : addr) (d : DISK) (m : Mem St)
-      (s : Abstraction St) (hm : hashmap) (a0 : valu),
-      CacheRep wb (state d m s hm) ->
+      (s : Abstraction St) (hm : hashmap) l (a0 : valu),
+      CacheRep wb (state d m s hm l) ->
       cache_get (cache m) a = Invalid ->
       vdisk s a = Some a0 ->
       CacheRep wb
                (state (upd d a (a0, NoReader))
-                      (set_cache m (add_entry Clean (cache m) a a0)) s hm).
+                      (set_cache m (add_entry Clean (cache m) a a0)) s hm l).
   Proof.
     unfold CacheRep; intuition; simpl in *; simplify.
     - intro a'.
@@ -313,14 +318,14 @@ Section OptimisticCache.
 
   Lemma CacheRep_mark_pending:
     forall (wb : WriteBuffer) (a : addr) (d : DISK) (m : Mem St)
-      (s : Abstraction St) (hm : hashmap) (a0 : valu),
-      CacheRep wb (state d m s hm) ->
+      (s : Abstraction St) (hm : hashmap) l (a0 : valu),
+      CacheRep wb (state d m s hm l) ->
       vdisk_committed s a = Some a0 ->
       wb_get wb a = WbMissing ->
       cache_get (cache m) a = Missing ->
       CacheRep wb
                (state (upd d a (a0, Pending)) (set_cache m (mark_pending (cache m) a))
-                      s hm).
+                      s hm l).
   Proof.
     unfold CacheRep; intuition; simpl in *; simplify.
     - intro a'.
@@ -365,6 +370,7 @@ Section OptimisticCache.
   Hint Extern 2 (vdisk (Sigma.s _) = _) => state_upd_ctx.
   Hint Extern 2 (vdisk_committed (Sigma.s _) = _) => state_upd_ctx.
   Hint Extern 2 (Sigma.hm _ = Sigma.hm _) => state_upd_ctx.
+  Hint Extern 2 (Sigma.l _ = _) => state_upd_ctx.
   Hint Extern 2 (CacheRep _ _) => state_upd_ctx.
 
   Hint Resolve locally_modified_refl.
@@ -374,6 +380,7 @@ Section OptimisticCache.
                  (fun v0 '(sigma_i, sigma) =>
                     {| precondition :=
                          CacheRep wb sigma /\
+                         Sigma.l sigma = WriteLock /\
                          m = Sigma.mem sigma /\
                          cache_get (cache m) a = Invalid /\
                          vdisk (Sigma.s sigma) a = Some v0;
@@ -396,11 +403,13 @@ Section OptimisticCache.
 
   Hint Extern 0 {{ ClearPending _ _ _; _ }} => apply ClearPending_ok : prog.
 
-  Definition CacheRead_ok : forall tid wb a,
+  Definition CacheRead_ok : forall tid wb a l,
       cprog_spec G tid
                  (fun v0 '(sigma_i, sigma) =>
                     {| precondition :=
                          CacheRep wb sigma /\
+                         Sigma.l sigma = l /\
+                         ReadPermission l /\
                          vdisk (Sigma.s sigma) a = Some v0;
                        postcondition :=
                          fun '(sigma_i', sigma') '(r, wb') =>
@@ -414,7 +423,7 @@ Section OptimisticCache.
                            | None => True
                            end /\
                            sigma_i' = sigma_i |})
-                 (CacheRead wb a).
+                 (CacheRead wb a l).
   Proof.
     unfold CacheRead.
     hoare.
@@ -422,8 +431,15 @@ Section OptimisticCache.
     destruct r; step; simplify.
     intuition eauto.
 
+    intuition eauto.
     rename r into m'.
     case_eq (cache_get (cache m') a); intros;
+      hoare.
+
+    destruct (CanWrite (Sigma.l sigma));
+      hoare.
+
+    destruct (CanWrite (Sigma.l sigma));
       hoare.
   Qed.
 
@@ -439,12 +455,12 @@ Section OptimisticCache.
 
   Lemma CacheRep_write:
     forall (wb : WriteBuffer) (a : addr) (v : valu) (d : DISK)
-      (m : Mem St) (s : Abstraction St) (hm : hashmap)
+      (m : Mem St) (s : Abstraction St) (hm : hashmap) l
       (a0 : valu),
-      CacheRep wb (state d m s hm) ->
+      CacheRep wb (state d m s hm l) ->
       vdisk s a = Some a0 ->
       cache_get (cache m) a <> Invalid ->
-      CacheRep (wb_add wb a v) (state d m (set_vdisk s (upd (vdisk s) a v)) hm).
+      CacheRep (wb_add wb a v) (state d m (set_vdisk s (upd (vdisk s) a v)) hm l).
   Proof.
     unfold CacheRep; intuition; simpl in *; simplify.
     - intro a'.
@@ -463,11 +479,19 @@ Section OptimisticCache.
 
   Hint Extern 2 (cache_get _ _ <> _) => congruence.
 
+  Lemma locally_modified_lock_preserved : forall sigma sigma',
+      locally_modified sigma sigma' ->
+      Sigma.l sigma' = Sigma.l sigma.
+  Proof.
+    unfold locally_modified; intuition.
+  Qed.
+
   Theorem CacheWrite_ok : forall tid wb a v,
       cprog_spec G tid
                  (fun v0 '(sigma_i, sigma) =>
                     {| precondition :=
                          CacheRep wb sigma /\
+                         Sigma.l sigma = WriteLock /\
                          vdisk (Sigma.s sigma) a = Some v0;
                        postcondition :=
                          fun '(sigma_i', sigma') '(_, wb') =>
@@ -484,7 +508,10 @@ Section OptimisticCache.
     rename r into m'.
     case_eq (cache_get (cache m') a);
       hoare.
+    intuition.
+    erewrite locally_modified_lock_preserved; eauto.
 
+    hoare.
     state upd sigma, sigma'; intuition eauto.
   Qed.
 
@@ -595,11 +622,11 @@ Section OptimisticCache.
 
   Lemma CacheRep_commit:
     forall (wb : WriteBuffer) (d : DISK) (m : Mem St)
-      (s : Abstraction St) (hm : hashmap),
-      CacheRep wb (state d m s hm) ->
+      (s : Abstraction St) (hm : hashmap) lock,
+      CacheRep wb (state d m s hm lock) ->
       CacheRep empty_writebuffer
                (state d (set_cache m (upd_with_buffer (cache m) wb))
-                      (set_vdisk0 s (vdisk s)) hm).
+                      (set_vdisk0 s (vdisk s)) hm lock).
   Proof.
     unfold CacheRep; simpl; intuition; simplify.
     unfold upd_with_buffer.
@@ -633,7 +660,8 @@ Section OptimisticCache.
       cprog_spec G tid
                  (fun (_:unit) '(sigma_i, sigma) =>
                     {| precondition :=
-                         CacheRep wb sigma;
+                         CacheRep wb sigma /\
+                         Sigma.l sigma = WriteLock;
                        postcondition :=
                          fun '(sigma_i', sigma') _ =>
                            CacheRep empty_writebuffer sigma' /\
@@ -654,9 +682,9 @@ Section OptimisticCache.
 
   Lemma CacheRep_abort:
     forall (wb : WriteBuffer) (d : DISK) (m : Mem St)
-      (s : Abstraction St) (hm : hashmap),
-      CacheRep wb (state d m s hm) ->
-      CacheRep empty_writebuffer (state d m (set_vdisk s (vdisk_committed s)) hm).
+      (s : Abstraction St) (hm : hashmap) l,
+      CacheRep wb (state d m s hm l) ->
+      CacheRep empty_writebuffer (state d m (set_vdisk s (vdisk_committed s)) hm l).
   Proof.
     unfold CacheRep; simpl; intuition; simplify.
   Qed.
@@ -667,7 +695,17 @@ Section OptimisticCache.
       cprog_spec G tid
                  (fun wb '(sigma_i, sigma) =>
                     {| precondition :=
-                         CacheRep wb sigma;
+                         CacheRep wb sigma /\
+                         (* this is needed for the ghost update, but actually
+                         the current vdisk need not even be exposed and updated
+                         via ghost state, since it's unobservable to other
+                         threads (they need the writebuffer to make sense of
+                         it)
+
+                          the fix is to get rid of the vdisk ghost state, then
+                          remove this function entirely, and expose the current
+                          disk in CacheRep and cache specs only *)
+                         Sigma.l sigma = WriteLock;
                        postcondition :=
                          fun '(sigma_i', sigma') _ =>
                            CacheRep empty_writebuffer sigma' /\

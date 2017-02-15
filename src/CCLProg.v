@@ -26,9 +26,25 @@ Inductive ReadPermission : LockState -> Prop :=
 | ReadPermissionR : ReadPermission ReadLock
 | ReadPermissionW : ReadPermission WriteLock.
 
+Lemma read_perm_r_eq : forall l,
+    l = ReadLock ->
+    ReadPermission l.
+Proof.
+  intros; subst; constructor.
+Qed.
+
+Lemma read_perm_w_eq : forall l,
+    l = WriteLock ->
+    ReadPermission l.
+Proof.
+  intros; subst; constructor.
+Qed.
+
+Hint Resolve read_perm_r_eq read_perm_w_eq.
+
 Definition CanRead (l:LockState) : {ReadPermission l} + {l = Free}.
 Proof.
-  destruct l; eauto using ReadPermissionR, ReadPermissionW.
+  destruct l; eauto.
 Qed.
 
 Definition CanWrite (l:LockState) : {l = WriteLock} + {l <> WriteLock}.
@@ -52,7 +68,7 @@ Module Sigma.
     let (d, _, _, _, _) := sigma in d.
   Definition mem St (sigma:Sigma St) :=
     let (_, m, _, _, _) := sigma in m.
-  Definition sigma St (sigma:Sigma St) :=
+  Definition s St (sigma:Sigma St) :=
     let (_, _, s, _, _) := sigma in s.
   Definition hm St (sigma:Sigma St) :=
     let (_, _, _, hm, _) := sigma in hm.
