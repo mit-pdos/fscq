@@ -65,7 +65,7 @@ OCAMLFUSE	:= ocamlfuse/Fuse.a ocamlfuse/Fuse.cmxa
 
 .PHONY: coq proof clean
 
-all: fuse mkfs
+all: fscq mkfs
 
 -include $(OCAMLFUSE_DEP)
 
