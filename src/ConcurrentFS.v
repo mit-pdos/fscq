@@ -150,7 +150,8 @@ Section ConcurrentFS.
              (p: memstate ->
                  LockState -> WriteBuffer ->
                  @cprog St (Result (memstate * T) * WriteBuffer))
-             (update: dirtree -> dirtree) :=
+             (update: dirtree -> dirtree)
+    : cprog (SyscallResult T) :=
     retry guard
           (_ <- GetWriteLock;
              m <- Get;
@@ -187,7 +188,7 @@ Section ConcurrentFS.
       | SyscallFailed => Ret SyscallFailed
       end.
 
-  Definition file_get_attr inum : @cprog St _ :=
+  Definition file_get_attr inum :=
     retry_syscall (fun mscs => OptFS.file_get_attr _ fsxp inum mscs)
                   (fun tree => tree).
 
@@ -365,6 +366,15 @@ Section ConcurrentFS.
     congruence.
   Qed.
 
+  Lemma rely_trans : forall St (G: Protocol St) tid sigma sigma' sigma'',
+      Rely G tid sigma sigma' ->
+      Rely G tid sigma' sigma'' ->
+      Rely G tid sigma sigma''.
+  Proof.
+    unfold Rely; intros.
+    eapply Relation_Operators.rt_trans; eauto.
+  Qed.
+
   Theorem file_get_attr_ok : forall inum tid,
       cprog_spec fs_guarantee tid
                  (fun '(pathname, f) '(sigma_i, sigma) =>
@@ -376,140 +386,13 @@ Section ConcurrentFS.
                          fun '(sigma_i', sigma') r =>
                            Rely fs_guarantee tid sigma sigma' /\
                            match r with
-                           | Success (r, _) => r = BFILE.BFAttr f
-                           | Failed => True
+                           | Done (r, _) => r = BFILE.BFAttr f
+                           | _ => True
                            end /\
                            fs_guarantee tid sigma_i' sigma'
                     |}) (file_get_attr inum).
   Proof.
-    unfold file_get_attr, retry_syscall; intros.
-
-    eapply retry_spec' with (Failed).
-    simpl.
-    induction n; simpl.
-    - step.
-      step.
-      intuition eauto.
-      constructor.
-      exists (S tid); intuition.
-      unfold fs_guarantee in *; simpl in *; intuition eauto.
-      apply homedir_guar_preorder.
-    - step.
-      step.
-
-      match goal with
-      | [ H: fs_guarantee _ _ _ |- _ ] =>
-        unfold fs_guarantee, fs_invariant in H; intuition; repeat deex
-      end.
-
-      repeat apply exists_tuple; descend; simpl; intuition eauto.
-
-      destruct a as [(mscs & (attr & u)) | ].
-      + step.
-
-        intuition eauto.
-
-        hoare.
-        destruct (guard r); repeat deex.
-        step.
-
-        match goal with
-        | [ H: Success _ = Success _ |- _ ] =>
-          inversion H; subst; clear H
-        end.
-        split_lift_prop.
-        learning.
-
-        destruct sigma, sigma0, sigma'; simpl in *; simplify.
-        intuition eauto.
-
-        eapply fs_rely_same_fstree; unfold fs_invariant; intuition eauto.
-        simplify; subst; eauto.
-
-        unfold seq_disk, get_fstree in *; simpl in *.
-        congruence.
-
-        unfold get_homedirs in *; simpl in *; congruence.
-
-        unfold fs_guarantee; intuition eauto.
-        unfold fs_guarantee, fs_invariant in *; intuition eauto.
-        unfold fs_guarantee, fs_invariant in *; simplify; intuition eauto.
-        unfold seq_disk, get_fstree in *; simpl in *; congruence.
-
-        simplify.
-        unfold get_homedirs, get_fstree in *; simpl in *.
-        etransitivity; eauto.
-        congruence.
-
-        unfold get_homedirs in *; simpl in *; congruence.
-
-        subst.
-        step.
-        congruence.
-      + hoare.
-
-        apply and_copy.
-
-        unfold fs_guarantee; intuition eauto.
-        unfold fs_invariant in *; intuition eauto.
-        unfold fs_invariant, fs_guarantee in *; intuition eauto.
-
-        learning; simplify.
-        destruct sigma_i, sigma, sigma', sigma0 in *; simpl in *; subst; eauto.
-        unfold seq_disk in *; simpl in *; eauto.
-        congruence.
-
-        learning; simplify.
-        etransitivity; eauto.
-        match goal with
-        | [ |- homedir_guarantee _ _ ?tree ?tree' ] =>
-          replace tree with tree' by congruence; reflexivity
-        end.
-
-        learning; simplify.
-        unfold get_homedirs in *; simpl in *.
-        congruence.
-
-        step.
-        repeat apply exists_tuple; descend; simpl; intuition eauto.
-
-        eapply fs_guarantee_refl.
-        match goal with
-        | [ H: Rely fs_guarantee _ _ _ |- _ ] =>
-          eapply fs_rely_invariant in H; eauto
-        end.
-        unfold fs_guarantee in *; intuition eauto.
-
-        learning.
-        match goal with
-        | [ H: find_subtree (get_homedirs ?sigma ?tid ++ _) ?tree = Some _,
-               H': Rely fs_guarantee ?tid ?sigma' _ |- _ ] =>
-          replace (get_homedirs sigma tid) with (get_homedirs sigma' tid) in H by congruence;
-            replace tree with (get_fstree sigma') in H by congruence
-        end.
-
-        eapply rely_file_preserved; eauto.
-
-        step.
-        intuition eauto.
-
-        Lemma rely_trans : forall St (G: Protocol St) tid sigma sigma' sigma'',
-            Rely G tid sigma sigma' ->
-            Rely G tid sigma' sigma'' ->
-            Rely G tid sigma sigma''.
-        Proof.
-          unfold Rely; intros.
-          eapply Relation_Operators.rt_trans; eauto.
-        Qed.
-
-        eapply rely_trans; eauto.
-        eapply rely_trans; eauto.
-        eapply fs_rely_same_fstree; eauto.
-        unfold fs_invariant; intuition eauto.
-        unfold fs_guarantee in *; intuition eauto.
-        learning; congruence.
-        learning; congruence.
-  Qed.
+  Abort.
 
 End ConcurrentFS.
 
