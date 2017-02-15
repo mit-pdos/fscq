@@ -26,7 +26,7 @@ Example match_option : sigT (fun p => forall env (o : option W) (r0 : W),
   end
   {{ 0 ~> o * 1 ~> r0 }}
     p
-  {{ fun ret => 1 ~> ret * 0 |->? }} // env
+  {{ fun ret => 1 ~> ret * 0 ~>? option W }} // env
   ).
 Proof.
   compile.
@@ -39,7 +39,7 @@ Example find_in_map : sigT (fun p => forall env (m : Map.t W) (f0 : W),
     end)
   {{ 0 ~> m * 1 ~> f0}}
     p
-  {{ fun ret => 0 |->? * 1 ~> ret }} // env).
+  {{ fun ret => 0 ~>? Map.t W * 1 ~> ret }} // env).
 Proof.
   intros. compile.
 Defined.
@@ -146,12 +146,13 @@ Proof.
   intros.
   compile.
 Defined.
+
 Eval lazy in projT1 (extract_increment (StringMap.empty _)).
 
 Example extract_for_loop : forall env, sigT (fun p =>
   forall cnt nocrash crashed,
   EXTRACT (@ForN_ W W (fun i sum => Ret (sum + i)) 1 cnt nocrash crashed 0)
-  {{ 0 ~> 0 * 1 ~> cnt }} p {{ fun ret => 0 ~> ret * 1 |->? }} // env).
+  {{ 0 ~> 0 * 1 ~> cnt }} p {{ fun ret => 0 ~> ret * 1 ~>? W }} // env).
 Proof.
   intros.
   compile.

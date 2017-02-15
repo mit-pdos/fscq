@@ -185,7 +185,8 @@ Qed.
 Definition decls_post (decls : list Declaration) {n} (vars : n_tuple n var) : nat -> pred.
   induction decls; intro m.
   - exact emp.
-  - exact ((nth_var m vars |->? * IHdecls (S m))%pred).
+  - destruct a.
+    exact ((nth_var m vars ~>? T * IHdecls (S m))%pred).
 Defined.
 
 Lemma decls_post_shift : forall decls n vars var0 m,
@@ -1667,7 +1668,7 @@ Lemma CompileFor : forall L G (L' : GoWrapper L) loopvar F
         )
       ))
     ))
-  {{ fun ret => loopvar ~> ret * v |->? * vn |->? * F }} // env.
+  {{ fun ret => loopvar ~> ret * v ~>? W * vn ~>? W * F }} // env.
 Proof.
   intros.
   eapply CompileDeclare with (Wr := GoWrapper_Num). intro one.
