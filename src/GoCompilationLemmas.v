@@ -149,66 +149,6 @@ Proof.
   cancel_go.
 Qed.
 
-
-Inductive Declaration :=
-| Decl (T : Type) {Wr: GoWrapper T}.
-
-Arguments Decl T {Wr}.
-
-Fixpoint nth_var {n} m : n_tuple n var -> var :=
-  match n with
-  | 0 => fun _ => 0
-  | S n' =>
-    match m with
-    | 0 => fun t => fst t
-    | S m' => fun t => nth_var m' (snd t)
-    end
-  end.
-
-Definition decls_pre (decls : list Declaration) {n} (vars : n_tuple n var) : nat -> pred.
-  induction decls; intro m.
-  - exact emp.
-  - destruct a.
-    exact ((nth_var m vars ~>? T * IHdecls (S m))%pred).
-Defined.
-
-Lemma decls_pre_shift : forall decls n vars var0 m,
-  @decls_pre decls (S n) (var0, vars) (S m) <=p=> @decls_pre decls n vars m.
-Proof.
-  induction decls.
-  - reflexivity.
-  - intros. destruct a. simpl.
-    split; cancel;
-    apply IHdecls.
-Qed.
-
-Definition decls_post (decls : list Declaration) {n} (vars : n_tuple n var) : nat -> pred.
-  induction decls; intro m.
-  - exact emp.
-  - destruct a.
-    exact ((nth_var m vars ~>? T * IHdecls (S m))%pred).
-Defined.
-
-Lemma decls_post_shift : forall decls n vars var0 m,
-  @decls_post decls (S n) (var0, vars) (S m) <=p=> @decls_post decls n vars m.
-Proof.
-  induction decls.
-  - reflexivity.
-  - intros. destruct a. simpl.
-    split; cancel;
-    apply IHdecls.
-Qed.
-
-
-Lemma decls_pre_impl_post :
-  forall n decls vars m,
-    @decls_pre decls n vars m =p=> decls_post decls vars m.
-Proof.
-  induction decls; intros.
-  - auto.
-  - destruct a.
-    cancel. auto.
-Qed.
 Hint Resolve decls_pre_impl_post : cancel_go_finish.
 
 Hint Extern 0 (okToCancel (decls_pre ?decls ?vars ?m) (decls_post ?decls ?vars ?m)) =>
@@ -1694,20 +1634,6 @@ Proof.
     eapply H | cancel_go..].
 Qed.
 
-Record WrappedType :=
-  {
-    WrType : Type;
-    Wrapper : GoWrapper WrType;
-  }.
-
-Definition with_wrapper T {Wr : GoWrapper T} := {| WrType := T |}.
-Arguments with_wrapper T {Wr}.
-
-Instance WrapWrappedType (wt : WrappedType) : GoWrapper wt.(WrType).
-destruct wt.
-assumption.
-Defined.
-
 (* TODO: support passing arguments by reference *)
 Record ProgFunctionSig :=
   {
@@ -1724,59 +1650,12 @@ Fixpoint arg_func_type (args : list WrappedType) T :=
 Definition prog_function_type (sig : ProgFunctionSig) :=
   arg_func_type sig.(FArgs) (prog sig.(FRet).(WrType)).
 
-Fixpoint arg_tuple (args : list WrappedType) : Type := 
-  match args with
-  | [] => unit
-  | arg :: args' => (arg.(WrType) * arg_tuple args')%type
-  end.
-
-Fixpoint argval_foralls (args : list WrappedType) :
-  forall (B : arg_tuple args -> Prop), Prop :=
-  match args return forall (B : arg_tuple args -> Prop), Prop with
-  | [] => fun B => B tt
-  | arg :: args' => fun B => forall argval : arg.(WrType), argval_foralls args' (fun argvals' => B (argval, argvals'))
-  end.
-
-Theorem argval_inst : forall (args : list WrappedType) (B : arg_tuple args -> Prop),
-    argval_foralls args B -> forall argvals : arg_tuple args, B argvals.
-Proof.
-  induction args; simpl; intros.
-  - destruct argvals. auto.
-  - destruct argvals.
-    specialize (IHargs (fun argvals' => B (w, argvals')) (H w)).
-    auto.
-Qed.
-
-Theorem argval_inst' : forall (args : list WrappedType) (B : arg_tuple args -> Prop),
-    (forall argvals : arg_tuple args, B argvals) -> argval_foralls args B.
-Proof.
-  induction args; simpl; auto.
-Qed.
-
 Fixpoint do_call {args ret} : arg_func_type args ret -> arg_tuple args -> ret :=
   match args return arg_func_type args ret -> arg_tuple args -> ret with
   | [] => fun f _ => f
   | arg :: args' => fun f argvals =>
                      let '(argval, argvals') := argvals in
                      @do_call args' ret (f argval) argvals'
-  end.
-
-Fixpoint args_pre args : forall (argvars : n_tuple (length args) var) (argvals : arg_tuple args), pred :=
-  match args return forall (argvars : n_tuple (length args) var) (argvals : arg_tuple args), pred with
-  | [] => fun _ _ => emp
-  | arg :: args' => fun argvars argvals =>
-                     let '(argvar, argvars') := argvars in
-                     let '(argval, argvals') := argvals in
-                     (argvar ~> argval * args_pre args' argvars' argvals')%pred
-  end.
-
-Fixpoint args_post args : forall (argvars : n_tuple (length args) var) (argvals : arg_tuple args), pred :=
-  match args return forall (argvars : n_tuple (length args) var) (argvals : arg_tuple args), pred with
-  | [] => fun _ _ => emp
-  | arg :: args' => fun argvars argvals =>
-                     let '(argvar, argvars') := argvars in
-                     let '(argval, argvals') := argvals in
-                     (argvar |-> moved_value (wrap argval) * args_post args' argvars' argvals')%pred
   end.
 
 Fixpoint params_pre args n : forall (argvals : arg_tuple args), pred :=
