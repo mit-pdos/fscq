@@ -15,7 +15,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      NEList DiskSet GroupLog Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile BFileCrash \
 	      MemMatch FileRecArray \
-	      Dir DirName StringUtils TreeUtils \
+	      Dir DirName DirCache StringUtils TreeUtils \
 	      DirTreePath DirTreeDef DirTreePred DirTreeRep DirTreeSafe \
 	      DirTreeNames DirTreeInodes DirTree \
 	      TreeCrash \
