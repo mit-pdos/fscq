@@ -2,6 +2,7 @@ Require Import ExtrHaskellPrelude.
 Require Import ExtrHaskellMap.
 Require Import AsyncFS.
 Require Import StringUtils.
+Require ConcurrentFS.
 
 Extraction Language Haskell.
 
@@ -27,4 +28,4 @@ Extract Inlined Constant StringUtils.String_as_OT.string_compare =>
             if x Prelude.< y then Prelude.LT else Prelude.GT)".
 
 Cd "../codegen".
-Recursive Extraction Library AsyncFS.
+Recursive Extraction Library ConcurrentFS.

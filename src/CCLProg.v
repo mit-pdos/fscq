@@ -45,12 +45,12 @@ Hint Resolve read_perm_r_eq read_perm_w_eq.
 Definition CanRead (l:LockState) : {ReadPermission l} + {l = Free}.
 Proof.
   destruct l; eauto.
-Qed.
+Defined.
 
 Definition CanWrite (l:LockState) : {l = WriteLock} + {l <> WriteLock}.
 Proof.
   destruct l; left + right; congruence.
-Qed.
+Defined.
 
 Definition lock_dec (l l':LockState) : {l=l'}+{l<>l'}.
 Proof.
