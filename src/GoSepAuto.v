@@ -8,6 +8,9 @@ Require Import AsyncDisk.
 Require Import Hashmap.
 Require Import Errno.
 Require Import ADestructPair DestructVarname.
+Require Import VerdiTactics.
+Require Import GoSemantics.
+Require Import Orders PeanoNat.
 
 Set Implicit Arguments.
 
@@ -416,3 +419,467 @@ Ltac cancel_one_fast :=
 Ltac cancel_go_fast :=
   simpl; intros;
   repeat (try apply pimpl_refl; cancel_one_fast).
+
+Require Import GoHoare.
+Require Import Permutation.
+Import Permutation.
+
+Local Open Scope list_scope.
+Local Open Scope bool_scope.
+Local Open Scope go_scope.
+
+Section GoSepRefl.
+
+  Inductive Var {nlocals} {l : Go.n_tuple nlocals Go.var} :=
+  | Arg (a : Go.var)
+  | Local (a : nat)
+  .
+
+  Variable (nlocals : nat) (locals : Go.n_tuple nlocals Go.var).
+
+  Inductive Pts :=
+  | PtsTo (a : @Var _ locals) (t : Go.type) (x : Go.type_denote t)
+  | ExPtsTo (a : @Var _ locals) (t : Go.type)
+  | DeclsPre (l : list Declaration) (m : nat)
+  | DeclsPost (l : list Declaration) (m : nat)
+  .
+
+  Inductive Pred :=
+  | P (p : Pts)
+  | Star: Pred -> Pred -> Pred
+  | Emp
+  .
+
+  Definition leb_addr (vl vr : @Var _ locals) : bool :=
+    match (vl, vr) with
+    | (Arg nl, Arg nr) => Nat.leb nl nr
+    | (Arg _, _) => true
+    | (Local _, Arg _) => false
+    | (Local nl, Local nr) => Nat.leb nl nr
+    end.
+
+  Definition leb (pl pr : Pts) : bool :=
+    match (pl, pr) with
+    | (DeclsPre _ _, _) => true
+    | (DeclsPost _ _, _) => true
+    | (_, DeclsPre _ _) => false
+    | (_, DeclsPost _ _) => false
+    | (PtsTo a _ _, PtsTo b _ _) => leb_addr a b
+    | (PtsTo a _ _, ExPtsTo b _) => leb_addr a b
+    | (ExPtsTo a _, PtsTo b _ _) => leb_addr a b
+    | (ExPtsTo a _, ExPtsTo b _) => leb_addr a b
+    end.
+
+  Definition leb_prop pl pr :=
+    if leb pl pr then True else False.
+
+  Definition var_of (a : @Var _ locals) :=
+    match a with
+    | Arg a => a
+    | Local a => nth_var a locals
+    end.
+
+  Definition pred_of_pts (p : Pts) : pred :=
+    match p with
+    | PtsTo a t x => (var_of a |-> Go.Val t x)%pred
+    | ExPtsTo a t => (exists x : Go.type_denote t, var_of a |-> Go.Val t x)%pred
+    | DeclsPre l m => decls_pre l locals m
+    | DeclsPost l m => decls_post l locals m
+    end.
+
+  Fixpoint pred_of_star (p : Pred) : pred.
+    destruct p eqn:H.
+    exact (pred_of_pts p0).
+    refine (sep_star _ _).
+    exact (pred_of_star p0_1).
+    exact (pred_of_star p0_2).
+    exact emp.
+  Defined.
+
+  Fixpoint list_of (p : Pred) : list Pts := match p with
+    | P p0 => p0 :: nil
+    | Star p1 p2 => list_of p1 ++ list_of p2
+    | Emp => nil
+    end.
+
+  Fixpoint pred_of (l : list Pts) :=
+    match l with
+    | nil => emp
+    | a :: l => (pred_of_pts a * (pred_of l))%pred
+    end.
+
+  Definition var_eq (a b : @Var _ locals) : bool.
+    destruct a eqn:H, b eqn:H'.
+    exact (Nat.eqb a0 a1).
+    exact false.
+    exact false.
+    exact (Nat.eqb a0 a1).
+  Defined.
+
+  Definition cancels (l r : Pts) : bool.
+    refine (match (l, r) with
+    | (ExPtsTo a1 t1, ExPtsTo a2 t2) =>
+      (if var_eq a1 a2 then (if Go.type_eq_dec t1 t2 then true else false) else false)
+    | (PtsTo a1 t1 v1, ExPtsTo a2 t2) =>
+      (if var_eq a1 a2 then (if Go.type_eq_dec t1 t2 then true else false) else false)
+    | _ => false
+    end).
+  Defined.
+
+(* return Some l' after removing l; return None if l can't cancel with anything *)
+  Fixpoint remove (l : Pts) (yr : list Pts) : option (list Pts) :=
+    match yr with
+    | nil => None
+    | r :: yr => if cancels l r then Some yr else
+      match remove l yr with
+      | None => None
+      | Some l => Some (r :: l)
+      end
+    end.
+
+  Fixpoint cancel_some (l r : list Pts) : (list Pts * list Pts)%type :=
+    match l with
+    | nil => (nil, r)
+    | x :: l => match remove x r with
+      | Some r => cancel_some l r
+      | None => let lr := cancel_some l r in
+        (x :: fst lr, snd lr)
+      end
+    end.
+
+  Lemma list_of_app : forall l1 l2, pred_of l1 * pred_of l2 <=p=> pred_of (l1 ++ l2).
+  Proof.
+    induction l1; cbn; intros.
+    rewrite <- ?emp_star; auto.
+    rewrite sep_star_assoc.
+    split; apply pimpl_sep_star; solve [auto | apply IHl1].
+  Qed.
+
+  Fact pred_of_list_of : forall l, pred_of (list_of l) <=p=> pred_of_star l.
+  Proof.
+    induction l; simpl; auto.
+    rewrite sep_star_comm, <- emp_star. auto.
+    rewrite <- list_of_app.
+    split; eapply pimpl_sep_star; solve [apply IHl1 | apply IHl2].
+  Qed.
+
+  Lemma list_of_correct : forall l r, pred_of (list_of l) =p=> pred_of (list_of r) -> pred_of_star l =p=> pred_of_star r.
+  Proof.
+    intros.
+    repeat rewrite pred_of_list_of in H.
+    auto.
+  Qed.
+
+  Lemma pred_of_permutation : forall l1 l2, Permutation l1 l2 -> pred_of l2 =p=> pred_of l1.
+  Proof.
+    intros.
+    induction H; eauto; cbn.
+    eapply pimpl_sep_star; eauto.
+    repeat rewrite <- sep_star_assoc.
+    eapply pimpl_sep_star; eauto.
+    eapply sep_star_comm.
+  Qed.
+
+  Fact var_eq_eq : forall a b, var_eq a b = true -> a = b.
+  Proof.
+    destruct a, b; cbn; intros; try congruence.
+    all : eapply EqNat.beq_nat_true in H; congruence.
+  Qed.
+
+  Lemma cancels_valid : forall p q, cancels p q = true -> pred_of_pts p =p=> pred_of_pts q.
+  Proof.
+    unfold cancels. intros.
+    repeat break_match; try congruence; subst; cbn.
+    apply var_eq_eq in Heqb. subst.
+    do 2 intro.
+    eexists. apply H0.
+    apply var_eq_eq in Heqb. subst.
+    reflexivity.
+  Qed.
+
+  Lemma cancel_decls_pre_post : forall (l : list Declaration) (l1 l2 : list Pts) m,
+    pred_of l1 =p=> pred_of l2 ->
+    pred_of (DeclsPre l m :: l1) =p=> pred_of (DeclsPost l m :: l2).
+  Proof.
+    cbn. intros.
+    apply pimpl_sep_star; auto.
+  Qed.
+
+  Lemma remove_some : forall l x l',
+    remove x l = Some l' ->
+    pred_of (x :: l') =p=> pred_of l.
+  Proof.
+    induction l; simpl; intros; try congruence.
+    break_match.
+    find_inversion.
+    apply cancels_valid in Heqb.
+    apply pimpl_sep_star; auto.
+    break_match; try congruence.
+    find_inversion.
+    simpl in *.
+    rewrite sep_star_comm.
+    rewrite sep_star_assoc.
+    rewrite sep_star_comm with (p2 := pred_of_pts x).
+    rewrite IHl; auto.
+  Qed.
+
+   Lemma remove_none : forall l x r,
+    remove x r = None ->
+    cancel_some (x :: l) r = (x :: fst (cancel_some l r), snd (cancel_some l r)).
+  Proof.
+    induction l; simpl; intros;
+      rewrite H; simpl; reflexivity.
+  Qed.
+
+   Lemma cancel_some_nil_r : forall l,
+    cancel_some l nil = (l, nil).
+  Proof.
+    induction l; cbn.
+    congruence.
+    rewrite IHl. reflexivity.
+  Qed.
+
+
+  Theorem cancel_some_valid : forall l r,
+    let lr' := (cancel_some l r) in
+    fst lr' = snd lr' ->
+    pred_of l =p=> pred_of r.
+  Proof.
+    induction l; cbn -[cancels];
+      intros; subst; auto.
+    break_match.
+    - apply remove_some in Heqo.
+      eapply pimpl_trans; [ | eassumption].
+      apply pimpl_sep_star; auto.
+    - admit.
+  Admitted.
+
+  Section PredSort.
+    Fixpoint insert (p : Pts) (l : list Pts) : list Pts.
+      destruct l.
+      exact (p::nil).
+      refine (if leb p p0 then p :: p0 :: l else p0 :: insert p l).
+    Defined.
+
+    Lemma insert_permutation : forall x l, Permutation.Permutation (x :: l) (insert x l).
+    Proof.
+      induction l; simpl; auto.
+      destruct leb; auto.
+      eauto using perm_trans, perm_swap.
+    Qed.
+
+    (* dumb n^2 insertion sort *)
+    Definition sort (l : list Pts) : list Pts :=
+      List.fold_right insert nil l.
+
+    Theorem sort_permutation : forall l, Permutation.Permutation (sort l) l.
+    Proof.
+      induction l; simpl; auto.
+      eauto using insert_permutation, perm_trans, Permutation_sym.
+    Qed.
+  End PredSort.
+
+  Theorem sep_star_sort : forall l r,
+      pred_of (sort (list_of l)) =p=> pred_of (sort (list_of r)) ->
+      pred_of_star l =p=> pred_of_star r.
+  Proof.
+    intros.
+    apply list_of_correct.
+    eapply pimpl_trans.
+    eapply pred_of_permutation.
+    eapply sort_permutation.
+    eapply pimpl_trans.
+    eapply H.
+    eapply pred_of_permutation.
+    symmetry.
+    eapply sort_permutation.
+  Qed.
+End GoSepRefl.
+
+Import Go.
+
+Ltac get_locals :=
+  match goal with
+  |- ?a =p=> ?b =>
+    match a with
+    | context [ @nth_var ?nlocals _ ?locals ] =>
+      constr:(pair nlocals locals)
+    | context [ @decls_pre _ ?nlocals ?locals] =>
+      constr:(pair nlocals locals)
+    | context [ @decls_post _ ?nlocals ?locals] =>
+      constr:(pair nlocals locals)
+    | _ => constr:(pair 0 tt)
+    end
+  end.
+
+Ltac transform_pimpl_refl :=
+  match get_locals with
+  | (?nlocals, ?locals) =>
+    repeat match goal with
+    | [ |- context [(pred_of_star ?a * pred_of_star ?b)%pred] ] =>
+      change (pred_of_star ?a * pred_of_star ?b)%pred with (pred_of_star (Star a b))
+    | [ |- context [(exists x, nth_var ?a ?vars |-> Val ?t x)%pred] ] =>
+      change (exists x, nth_var a vars |-> Val t x)%pred with (pred_of_star (P (@ExPtsTo nlocals locals (Local a) t)))
+    | [ |- context [(nth_var ?a ?vars |-> Val ?t ?x)%pred] ] =>
+      change (nth_var a vars |-> Val t x)%pred with (pred_of_star (P (@PtsTo nlocals locals (Local a) t x)))
+    | [ |- context [(exists x, ?a |-> Val ?t x)%pred] ] =>
+      change (exists x, a |-> Val t x)%pred with (pred_of_star (P (@ExPtsTo nlocals locals (Arg a) t)))
+    | [ |- context [(?a |-> Val ?t ?x)%pred] ] =>
+      change (a |-> Val t x)%pred with (pred_of_star (P (@PtsTo nlocals locals (Arg a) t x)))
+    | [ |- context [decls_pre ?decls ?vars ?m] ] =>
+      change (decls_pre ?decls ?vars ?m) with (pred_of_star (P (@DeclsPre _ vars decls m)))
+    | [ |- context [decls_post ?decls ?vars ?m] ] =>
+      change (decls_post ?decls ?vars ?m) with (pred_of_star (P (@DeclsPost _ vars decls m)))
+    | [ |- context [emp] ] =>
+      change (emp) with (pred_of_star (@Emp nlocals locals))
+    end
+  end.
+
+Lemma type_eq_dec_refl : forall t, (if type_eq_dec t t then true else false) = true.
+Proof.
+  induction t; try reflexivity; cbn; intros.
+  all : destruct sumbool_rec; try congruence.
+Qed.
+
+Ltac cancel_refl :=
+  transform_pimpl_refl;
+  apply sep_star_sort;
+  simpl sort;
+  try apply cancel_decls_pre_post;
+  apply cancel_some_valid;
+  simpl cancel_some;
+  simpl type_eq_dec;
+  solve [
+    reflexivity |
+    unfold cancels;
+      repeat (try reflexivity; rewrite type_eq_dec_refl; simpl)
+  ].
+
+Example cancel_refl_one : forall v1 v2,
+  (@ptsto _ Nat.eq_dec _ 0 (Val Bool v1) * 1 |-> Val Num v2 * (exists x, 2 |-> Val Num x)) =p=>
+  (exists x, 1 |-> Val Num x) * 0 |-> Val Bool v1 * (exists x, 2 |-> Val Num x).
+Proof.
+  intros.
+  cancel_refl.
+Qed.
+
+Example cancel_refl_locals : forall n (l : n_tuple n var),
+  @ptsto _ Nat.eq_dec _ (nth_var 1 l) (Val Num 45) =p=> exists x, nth_var 1 l |-> Val Num x.
+Proof.
+  intros.
+  cancel_refl.
+Qed.
+
+Example cancel_refl_decls : forall n (locals : n_tuple n var) l v1 v2,
+  (@ptsto _ Nat.eq_dec _ 4 (Val Bool v1) * decls_pre l locals n * 1 |-> Val Num v2 * (exists x, 2 |-> Val Num x)) =p=>
+  (exists x, 1 |-> Val Num x) * 4 |-> Val Bool v1 * (exists x, 2 |-> Val Num x) * decls_post l locals n.
+Proof.
+  intros.
+  cancel_refl.
+Qed.
+
+Ltac get_list_of_preds stars :=
+  lazymatch stars with
+  | ((?a * ?b)%pred) =>
+    let ll := get_list_of_preds a in
+    let lr := get_list_of_preds b in
+    constr:(List.app ll lr)
+  | ?a => constr:(a :: nil)
+end.
+
+Ltac find_missing_preds pleft pright cont :=
+  lazymatch pleft with
+  | ((?a * ?b)%pred) =>
+    find_missing_preds a pright
+      ltac:(fun ll => find_missing_preds b pright
+        ltac:(fun lr =>
+          let l := constr:(List.app ll lr) in
+          cont l
+        )
+      )
+  | decls_pre ?l ?a ?b =>
+    lazymatch pright with
+    | context [decls_pre ?l] =>
+      let l := constr:(@nil pred) in cont l
+    | context [decls_post ?l] =>
+      let l := constr:(@nil pred) in cont l
+    | _ =>
+      let l := constr:(decls_pre l a b :: nil) in cont l
+    end
+  | decls_post ?l ?a ?b =>
+    lazymatch pright with
+    | context [decls_pre ?l] =>
+      let l := constr:(@nil pred) in cont l
+    | context [decls_post ?l] =>
+      let l := constr:(@nil pred) in cont l
+    | _ =>
+      let l := constr:(decls_pre l a b :: nil) in cont l
+    end
+  | context [ptsto ?a] =>
+    match pright with
+    | context [ptsto ?b] =>
+      unify a b;
+      let l := constr:(@nil pred) in cont l
+    | _ =>
+      let l := constr:(pleft :: nil) in cont l
+    end
+  | emp => let l := constr:(@nil pred) in cont l
+  end.
+
+Ltac star_of_preds preds :=
+  match preds with
+  | nil => constr:(emp)
+  | ?a :: nil => a
+  | ?a :: ?b :: ?l =>
+    let preds' := constr:(b :: l) in
+    let r := star_of_preds preds' in
+    constr:(sep_star r a)
+  end.
+
+Ltac instantiate_frame F preds :=
+  let star := star_of_preds preds in
+  unify F star.
+
+Ltac find_frame p cont :=
+  match p with
+  | (?a * ?b)%pred =>
+    find_frame a cont;
+    find_frame b cont
+  | ?y => is_evar y; cont y
+  | _ => idtac
+  end.
+
+Ltac norm_refl :=
+  simpl decls_pre; simpl decls_post; simpl args_pre; simpl args_post;
+  match goal with
+  |- ?a =p=> ?b =>
+    (find_missing_preds a b ltac:(fun missing' =>
+      let missing := eval simpl app in missing' in
+      find_frame b ltac:(fun F =>
+        instantiate_frame F missing
+    )) || find_missing_preds b a ltac:(fun missing' =>
+      let missing := eval simpl app in missing' in
+      find_frame a ltac:(fun F =>
+        instantiate_frame F missing
+    )))
+  end;
+  unfold wrap, moved_value, default_value; simpl.
+
+
+Example cancel_refl_frame : forall n (locals : n_tuple n var) l v1 v2, exists F,
+  (@ptsto _ Nat.eq_dec _ 4 (Val Bool v1) * decls_pre l locals n * 1 |-> Val Num v2 * (exists x, 2 |-> Val Num x)
+   * (exists x, 3 |-> Val Num x)) =p=>
+  (exists x, 1 |-> Val Num x) * 4 |-> Val Bool v1 * (exists x, 2 |-> Val Num x) * F.
+Proof.
+  intros. eexists.
+  norm_refl.
+  cancel_refl.
+Qed.
+
+Ltac cancel_go_refl :=
+  intros **; cbv beta; norm_refl;
+  (* generalize decls so we can use abstract *)
+  match goal with
+  |- context [decls_pre ?decls] => generalize dependent decls; intros
+  end;
+  abstract cancel_refl.

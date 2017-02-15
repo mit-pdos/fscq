@@ -249,6 +249,7 @@ Hint Extern 0 (okToCancel (?var |-> _) (exists _, ?var |-> _)) =>
   apply pimpl_exists_r; eexists; reflexivity : okToCancel.
 
 Ltac cancel_go :=
+  solve [GoSepAuto.cancel_go_refl] ||
   solve [GoSepAuto.cancel_go_fast] ||
   unfold var, default_value; GoSepAuto.cancel; try apply pimpl_refl.
 

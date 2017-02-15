@@ -1,6 +1,6 @@
 Require Export VerdiTactics.
 Require Import Pred Hoare.
-Require Import GoSepAuto ADestructPair.
+Require Import ADestructPair.
 Require Import GoSemantics.
 
 Ltac set_hyp_evars :=
