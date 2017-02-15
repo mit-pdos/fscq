@@ -122,13 +122,13 @@ Defined.
 Instance GoWrapper_fs_xparams : WrapByTransforming fs_xparams.
   refine {|
     transform := fun xp =>
-      (FSXPLog xp,
-      FSXPInode xp,
+      (FSXPInode xp,
       FSXPBlockAlloc1 xp,
       FSXPBlockAlloc2 xp,
       FSXPInodeAlloc xp,
       FSXPRootInum xp,
-      FSXPMaxBlock xp)
+      FSXPMaxBlock xp,
+      FSXPLog xp)
   |}.
   Transform_t.
 Defined.
