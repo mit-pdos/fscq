@@ -12,55 +12,56 @@ Set Implicit Arguments.
 some additional parameters that can apply to all three parts *)
 Record SeqSpecParams T :=
   { seq_pre : rawdisk -> Prop;
-    seq_post : hashmap -> T -> rawdisk -> Prop;
+    seq_post : varmem -> hashmap -> T -> rawdisk -> Prop;
     seq_crash : hashmap -> rawdisk -> Prop; }.
 
 (* a sequential spec is parametrized by some ghost state of type A and the
-initial hashmap state *)
-Definition SeqSpec A T := A -> hashmap -> SeqSpecParams T.
+initial hashmap/memory state *)
+Definition SeqSpec A T := A -> varmem -> hashmap -> SeqSpecParams T.
 
 Definition prog_quadruple A T (spec: SeqSpec A T) (p: prog T) :=
-  forall a hm d,
-    seq_pre (spec a hm) d ->
-    forall out, Prog.exec d hm p out ->
+  forall a hm vm d,
+    seq_pre (spec a vm hm) d ->
+    forall out, Prog.exec d vm hm p out ->
            match out with
-           | Prog.Finished d' hm' v => seq_post (spec a hm) hm' v d'
+           | Prog.Finished d' vm' hm' v => seq_post (spec a vm hm) vm' hm' v d'
            | Prog.Failed _ => False
-           | Prog.Crashed _ d' hm' => seq_crash (spec a hm) hm' d' /\
+           | Prog.Crashed _ d' hm' => seq_crash (spec a vm hm) hm' d' /\
                                      (exists l, hashmap_subset l hm hm')
            end.
 
 Definition prog_spec A T (spec: SeqSpec A T) (p: prog T) :=
   forall T' (rx: T -> prog T'),
-    Hoare.corr2 (fun hm donecond crashcond =>
+    Hoare.corr2 (fun vm hm donecond crashcond =>
                    exists a,
-                     seq_pre (spec a hm) *
+                     seq_pre (spec a vm hm) *
                      [[ forall r, Hoare.corr2
-                               (fun hm' donecond_rx crashcond_rx =>
-                                  seq_post (spec a hm) hm' r *
+                               (fun vm' hm' donecond_rx crashcond_rx =>
+                                  seq_post (spec a vm hm) vm' hm' r *
                                   [[ donecond_rx = donecond ]] *
                                   [[ crashcond_rx = crashcond ]]) (rx r) ]] *
                      [[ forall hm_crash,
-                          seq_crash (spec a hm) hm_crash *
+                          seq_crash (spec a vm hm) hm_crash *
                           [[ exists l, hashmap_subset l hm hm_crash ]] =p=>
                         crashcond hm_crash ]])%pred
                 (Prog.Bind p rx).
 
-Lemma exec_ret : forall T m hm (v:T) out,
-    exec m hm (Ret v) out ->
-    out = Finished m hm v.
+Lemma exec_ret : forall T m vm hm (v:T) out,
+    exec m vm hm (Ret v) out ->
+    out = Finished m vm hm v.
 Proof.
   intros.
-  inversion H; repeat inj_pair2; eauto.
-  inversion H5.
-  inversion H5.
-  inversion H5.
+  inversion H; repeat inj_pair2; eauto;
+    repeat match goal with
+           | [ H: _ |- _ ] =>
+             solve [ inversion H ]
+           end.
 Qed.
 
 Hint Resolve hashmap_le_refl.
 
-Lemma step_hashmap_le : forall T m hm (p: prog T) m' hm' v,
-    step m hm p m' hm' v ->
+Lemma step_hashmap_le : forall T m vm hm (p: prog T) m' vm' hm' v,
+    step m vm hm p m' vm' hm' v ->
     hashmap_le hm hm'.
 Proof.
   inversion 1; intros; repeat (subst; inj_pair2); eauto.
@@ -68,10 +69,10 @@ Proof.
   eauto using HS_nil, HS_cons.
 Qed.
 
-Theorem exec_hashmap_le : forall T m hm (p: prog T) out,
-    exec m hm p out ->
+Theorem exec_hashmap_le : forall T m vm hm (p: prog T) out,
+    exec m vm hm p out ->
     match out with
-    | Finished _ hm' _ => hashmap_le hm hm'
+    | Finished _ _ hm' _ => hashmap_le hm hm'
     | Crashed _ _ hm' => hashmap_le hm hm'
     | Failed _ => True
     end.
@@ -90,9 +91,9 @@ Proof.
   split; intros.
   - specialize (H _ Ret).
     unfold Hoare.corr2 at 1 in H.
-    specialize (H (fun hm' v => seq_post (spec a hm) hm' v)).
-    specialize (H (fun hm' => (seq_crash (spec a hm) hm')%pred)).
-    specialize (H d hm out).
+    specialize (H (fun vm' hm' v => seq_post (spec a vm hm) vm' hm' v)).
+    specialize (H (fun hm' => (seq_crash (spec a vm hm) hm')%pred)).
+    specialize (H d vm hm out).
     intuition eauto.
 
     edestruct H; repeat deex; intuition eauto.
@@ -107,7 +108,7 @@ Proof.
                apply sep_star_lift_apply in H; intuition eauto
              end; subst.
       match goal with
-      | [ H: exec _ _ (Ret _) _ |- _ ] =>
+      | [ H: exec _ _ _ (Ret _) _ |- _ ] =>
         apply exec_ret in H; subst
       end.
       eauto 10.
@@ -115,7 +116,7 @@ Proof.
       SepAuto.cancel.
     + apply ProgMonad.bind_right_id; auto.
     + match goal with
-      | [ H: exec _ _ _ (Crashed _ _ _) |- _ ] =>
+      | [ H: exec _ _ _ _ (Crashed _ _ _) |- _ ] =>
         eapply exec_hashmap_le in H; eauto
       end.
   - unfold Hoare.corr2; intros.
@@ -127,16 +128,22 @@ Proof.
            end; subst.
     inversion H1; repeat inj_pair2;
       try match goal with
-          | [ H: step _ _ _ _ _ _ |- _ ] => solve [ inversion H ]
-          | [ H: fail_step  _ _ |- _ ] => solve [ inversion H ]
+          | [ H: step _ _ _ _ _ _ _ _ |- _ ] => solve [ inversion H ]
+          | [ H: fail_step _ _ _ |- _ ] => solve [ inversion H ]
           | [ H: crash_step _ |- _ ] => solve [ inversion H ]
-          end.
-    + eapply H in H9; eauto.
-      eapply H4 in H12; eauto.
+          end;
+      repeat match goal with
+             | [ H: context[exec _ _ _ ?p _],
+                    Hexec: exec _ _ _ ?p _ |- _ ] =>
+               eapply H in Hexec; eauto
+             end;
+      try contradiction.
+    + match goal with
+      | [ Hexec: exec _ _ _ (rx _) _ |- _ ] =>
+        eapply H4 in Hexec; eauto
+      end.
       SepAuto.pred_apply; SepAuto.cancel.
-    + eapply H in H8; eauto; contradiction.
-    + eapply H in H8; intuition eauto.
-      right; repeat eexists; eauto.
+    + right; repeat eexists; intuition eauto.
       eapply H3.
       SepAuto.pred_apply; SepAuto.cancel.
 Qed.
