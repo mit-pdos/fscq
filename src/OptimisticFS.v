@@ -436,6 +436,18 @@ Module OptFS.
       translate_ok.
     Qed.
 
+    (* translate unverified syscalls for binary *)
+
+    Definition statfs := ltac:(translate_lift AFS.statfs).
+    Definition mkdir := ltac:(translate_lift AFS.mkdir).
+    Definition file_get_sz := ltac:(translate_lift AFS.file_get_sz).
+    Definition file_set_sz := ltac:(translate_lift AFS.file_set_sz).
+    Definition readdir := ltac:(translate_lift AFS.readdir).
+    Definition tree_sync := ltac:(translate_lift AFS.tree_sync).
+    Definition file_sync := ltac:(translate_lift AFS.file_sync).
+    Definition update_fblock := ltac:(translate_lift AFS.update_fblock).
+    Definition mksock := ltac:(translate_lift AFS.mksock).
+
   End OptimisticFS.
 
 End OptFS.

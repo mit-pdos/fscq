@@ -394,6 +394,78 @@ Section ConcurrentFS.
   Proof.
   Abort.
 
+  (* translate remaining system calls for extraction *)
+
+  Definition lookup dnum names :=
+    retry_syscall (fun mscs => OptFS.lookup _ fsxp dnum names mscs)
+                  (fun tree => tree).
+
+  Definition read_fblock inum off :=
+    retry_syscall (fun mscs => OptFS.read_fblock _ fsxp inum off mscs)
+                  (fun tree => tree).
+
+  Definition file_set_attr inum attr :=
+    retry_syscall (fun mscs => OptFS.file_set_attr _ fsxp inum attr mscs)
+                  (fun tree => tree).
+
+  Definition file_truncate inum sz :=
+    retry_syscall (fun mscs => OptFS.file_truncate _ fsxp inum sz mscs)
+                  (fun tree => tree).
+
+  Definition update_fblock_d inum off b :=
+    retry_syscall (fun mscs => OptFS.update_fblock_d _ fsxp inum off b mscs)
+                  (fun tree => tree).
+
+  Definition create dnum name :=
+    retry_syscall (fun mscs => OptFS.create _ fsxp dnum name mscs)
+                  (fun tree => tree).
+
+  Definition rename dnum srcpath srcname dstpath dstname :=
+    retry_syscall (fun mscs => OptFS.rename _ fsxp dnum srcpath srcname dstpath dstname mscs)
+                  (fun tree => tree).
+
+  Definition delete dnum name :=
+    retry_syscall (fun mscs => OptFS.delete _ fsxp dnum name mscs)
+                  (fun tree => tree).
+
+  (* wrap unverified syscalls *)
+
+  Definition statfs :=
+    retry_syscall (fun mscs => OptFS.statfs _ fsxp mscs)
+                  (fun tree => tree).
+
+  Definition mkdir dnum name :=
+    retry_syscall (fun mscs => OptFS.mkdir _ fsxp dnum name mscs)
+                  (fun tree => tree).
+
+  Definition file_get_sz inum :=
+    retry_syscall (fun mscs => OptFS.file_get_sz _ fsxp inum mscs)
+                  (fun tree => tree).
+
+  Definition file_set_sz inum sz :=
+    retry_syscall (fun mscs => OptFS.file_set_sz _ fsxp inum sz mscs)
+                  (fun tree => tree).
+
+  Definition readdir dnum :=
+    retry_syscall (fun mscs => OptFS.readdir _ fsxp dnum mscs)
+                  (fun tree => tree).
+
+  Definition tree_sync :=
+    retry_syscall (fun mscs => OptFS.tree_sync _ fsxp mscs)
+                  (fun tree => tree).
+
+  Definition file_sync inum :=
+    retry_syscall (fun mscs => OptFS.file_sync _ fsxp inum mscs)
+                  (fun tree => tree).
+
+  Definition update_fblock inum off b :=
+    retry_syscall (fun mscs => OptFS.update_fblock _ fsxp inum off b mscs)
+                  (fun tree => tree).
+
+  Definition mksock dnum name :=
+    retry_syscall (fun mscs => OptFS.mksock _ fsxp dnum name mscs)
+                  (fun tree => tree).
+
 End ConcurrentFS.
 
 (* Local Variables: *)
