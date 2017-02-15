@@ -48,7 +48,7 @@ GHCARGS    := -O2 -threaded
 		# -eventlog
 HSLIB_FUSE := hscgen/Fuse.hs
 HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
-HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs
+HSLIB_POST := hslib/Disk.hs hslib/Interpreter.hs hslib/ConcurInterp.hs
 
 OCAMLFUSE_ML	:= ocamlfuse/Result.ml \
 		   ocamlfuse/Unix_util.ml \

@@ -20,7 +20,7 @@ means running this as root:
   echo 'library-profiling: True' >> ~/.cabal/config
   /opt/cabal/1.24/bin/cabal user-config update
   /opt/cabal/1.24/bin/cabal update
-  PATH=/opt/ghc/8.0.1/bin:$PATH /opt/cabal/1.24/bin/cabal install cryptohash
+  PATH=/opt/ghc/8.0.1/bin:$PATH /opt/cabal/1.24/bin/cabal install cryptohash concurrent-extra
 
 You also need to install headers for FUSE:
 
