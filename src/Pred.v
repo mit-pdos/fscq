@@ -1717,7 +1717,7 @@ Proof.
   intros; destruct (m a) eqn:Heq.
   left; exists v; auto.
   right; auto.
-Qed.
+Defined.
 
 
 Theorem ptsto_mem_except : forall F a v (m : @mem AT AEQ V),
