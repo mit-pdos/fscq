@@ -59,8 +59,8 @@ Module OptFS.
   (* works around a Coq bug triggered by cancel by removing exists on the left
      hand side - not sure exactly what's wrong, but this avoids the problem *)
   Local Lemma corr2_exists : forall T A spec (p: prog T),
-    (forall (a:A), Hoare.corr2 (fun hm done crash => spec hm done crash a) p) ->
-    Hoare.corr2 (fun hm done crash => exists a, spec hm done crash a)%pred p.
+    (forall (a:A), Hoare.corr2 (fun vm hm done crash => spec vm hm done crash a) p) ->
+    Hoare.corr2 (fun vm hm done crash => exists a, spec vm hm done crash a)%pred p.
   Proof.
     intros.
     unfold Hoare.corr2; intros.
@@ -77,20 +77,21 @@ Module OptFS.
       fun '(a, F) => spec F a.
 
     Definition translation_spec A T (spec: rawpred -> SeqSpec A T)
-               (p: WriteBuffer -> cprog (Result T * WriteBuffer)) :=
-      forall tid wb, cprog_spec G tid (translate_spec (framed_spec spec) wb) (p wb).
+               (p: LockState -> WriteBuffer -> cprog (Result T * WriteBuffer)) :=
+      forall tid l wb, cprog_spec G tid (translate_spec (framed_spec spec) wb l) (p wb l).
 
     Ltac spec_reflect :=
       unfold prog_spec; simpl;
       repeat (intros; apply corr2_exists);
       SepAuto.hoare.
 
+
     Notation "'SPEC' {< a1 .. an , 'PRE' : hm pre 'POST' : hm' post 'CRASH' : hm'c crash >}" :=
       (fun F_ =>
          (fun a1 => .. (fun an =>
-                       fun hm => {|
+                       fun vm hm => {|
                            seq_pre := (F_ * pre * [[ sync_invariant F_ ]])%pred;
-                           seq_post := fun hm' => post F_%pred;
+                           seq_post := fun vm' hm' r => (post F_ r * [[vm' = vm]])%pred;
                            seq_crash := fun hm'c => (F_ * crash)%pred;
                          |}
                     ) .. ))
@@ -101,12 +102,13 @@ Module OptFS.
     Definition postcrash_equivalent (P: rawpred) : rawpred :=
       fun d => exists d0 d', P d0 /\ possible_crash d0 d' /\ possible_crash d d'.
 
+
     Notation "'SPEC' {< a1 .. an , 'PRE' : hm pre 'POST' : hm' post 'XCRASH' : hm'c crash >}" :=
       (fun F_ =>
          (fun a1 => .. (fun an =>
-                       fun hm => {|
+                       fun vm hm => {|
                            seq_pre := (F_ * pre * [[ sync_invariant F_ ]])%pred;
-                           seq_post := fun hm' => post F_%pred;
+                           seq_post := fun vm' hm' r => (post F_ r * [[vm' = vm]])%pred;
                            seq_crash := fun hm'c => (F_ * postcrash_equivalent (crash))%pred;
                          |}
                     ) .. ))

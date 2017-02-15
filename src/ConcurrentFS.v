@@ -108,32 +108,87 @@ Section ConcurrentFS.
     cacheS (St:={|Abstraction:=FsAbstraction|}) (vdisk_committed s) (vdisk s)
            (fsAbstraction (update (fstree fsS0)) (homedirs fsS0) other).
 
-  Definition guard {T} (r: Result T) : {exists v, r=Success v} + {r=Failed}.
+  Inductive SyscallResult {T} :=
+  | Done (v:T)
+  | TryAgain
+  | SyscallFailed.
+
+  Arguments SyscallResult T : clear implicits.
+
+  (* Execute p assuming it is read-only. This program could distinguish between
+  failures that require filling the cache [Failure (CacheMiss a)] and failures
+  that require upgrading to a write lock [Failure WriteRequired], but currently
+  does not do so. *)
+  Definition readonly_syscall T
+             (p: memstate ->
+                 LockState -> WriteBuffer ->
+                 @cprog St (Result (memstate * T) * WriteBuffer))
+    : cprog (SyscallResult T) :=
+    _ <- GetReadLock;
+      m <- Get;
+      (* for read-only syscalls, the returned write buffer is always the same
+       as the input *)
+      do '(r, _) <- p (get_fsmem m) ReadLock empty_writebuffer;
+      match r with
+      | Success (ms', r) => Ret (Done r)
+      | Failure e =>
+        match e with
+        | Unsupported => Ret SyscallFailed
+        | _ => _ <- ReleaseReadLock;
+                Ret TryAgain
+        end
+      end.
+
+  Definition guard {T} (r:SyscallResult T)
+    : {(exists v, r = Done v) \/ r = SyscallFailed}
+      + {r = TryAgain}.
+  Proof.
     destruct r; eauto.
   Defined.
 
+  Definition write_syscall T
+             (p: memstate ->
+                 LockState -> WriteBuffer ->
+                 @cprog St (Result (memstate * T) * WriteBuffer))
+             (update: dirtree -> dirtree) :=
+    retry guard
+          (_ <- GetWriteLock;
+             m <- Get;
+             do '(r, wb) <- p (get_fsmem m) WriteLock empty_writebuffer;
+             match r with
+             | Success (ms', r) =>
+               _ <- CacheCommit wb;
+                 _ <- Assgn (set_fsmem m ms');
+                 _ <- GhostUpdate (fun _ s => upd_fstree update s);
+                 Ret (Done r)
+             | Failure e =>
+               match e with
+               | CacheMiss a =>
+                 _ <- CacheAbort;
+                   _ <- Unlock;
+                   (* TODO: [Yield a] here when the noop Yield is added *)
+                   Ret TryAgain
+               | WriteRequired => (* unreachable - have write lock *)
+                 Ret SyscallFailed
+               | Unsupported =>
+                 Ret SyscallFailed
+               end
+             end).
+
   Definition retry_syscall T
-             (p: memstate -> @cprog St (Result (memstate * T) * WriteBuffer))
-             (update: dirtree -> dirtree)
-    : cprog (Result T) :=
-    retry guard (m <- Get;
-                   do '(r, wb) <- p (get_fsmem m);
-                   match r with
-                   | Success (ms', r) =>
-                     _ <- CacheCommit wb;
-                       m <- Get;
-                       _ <- Assgn (set_fsmem m ms');
-                       _ <- GhostUpdate (fun _ s => upd_fstree update s);
-                       Ret (Success r)
-                   | Failed =>
-                     _ <- CacheAbort;
-                       _ <- Yield;
-                       Ret Failed
-                   end).
+             (p: memstate ->
+                 LockState -> WriteBuffer ->
+                 @cprog St (Result (memstate * T) * WriteBuffer))
+             (update: dirtree -> dirtree) :=
+    r <- readonly_syscall p;
+      match r with
+      | Done v => Ret (Done v)
+      | TryAgain => write_syscall p update
+      | SyscallFailed => Ret SyscallFailed
+      end.
 
   Definition file_get_attr inum : @cprog St _ :=
-    retry_syscall (fun mscs =>
-                     OptFS.file_get_attr _ fsxp inum mscs empty_writebuffer)
+    retry_syscall (fun mscs => OptFS.file_get_attr _ fsxp inum mscs)
                   (fun tree => tree).
 
   Lemma exists_tuple : forall A B P,
@@ -209,14 +264,14 @@ Section ConcurrentFS.
     reflexivity.
   Qed.
 
-  Lemma seq_disk_set_fsmem : forall d m mscs s hm,
-      seq_disk (state d (set_fsmem m mscs) s hm) = seq_disk (state d m s hm).
+  Lemma seq_disk_set_fsmem : forall d m mscs s hm l,
+      seq_disk (state d (set_fsmem m mscs) s hm l) = seq_disk (state d m s hm l).
   Proof.
     reflexivity.
   Qed.
 
-  Lemma get_fstree_set_fsmem : forall d m mscs s hm,
-      get_fstree (state d (set_fsmem m mscs) s hm) = get_fstree (state d m s hm).
+  Lemma get_fstree_set_fsmem : forall d m mscs s hm l,
+      get_fstree (state d (set_fsmem m mscs) s hm l) = get_fstree (state d m s hm l).
   Proof.
     reflexivity.
   Qed.
@@ -232,13 +287,15 @@ Section ConcurrentFS.
            | _ => progress simpl
            end.
 
-  Theorem opt_file_get_attr_ok : forall inum mscs wb tid,
+  Theorem opt_file_get_attr_ok : forall inum mscs l wb tid,
       cprog_spec fs_guarantee tid
                  (fun '(pathname, f) '(sigma_i, sigma) =>
                     {| precondition :=
                          let tree := get_fstree sigma in
                          mscs = get_fsmem (Sigma.mem sigma) /\
                          CacheRep wb sigma /\
+                         Sigma.l sigma = l /\
+                         ReadPermission l /\
                          fs_rep (seq_disk sigma) tree mscs (Sigma.hm sigma) /\
                          find_subtree pathname tree = Some (TreeFile inum f);
                        postcondition :=
@@ -251,12 +308,16 @@ Section ConcurrentFS.
                            | Success (mscs', (r, _)) =>
                              r = BFILE.BFAttr f /\
                              fs_rep (seq_disk sigma') (get_fstree sigma) mscs' (Sigma.hm sigma')
-                           | Failed =>
+                           | Failure e =>
+                             match e with
+                             | WriteRequired => l = ReadLock
+                             | _ => True
+                             end /\
                              fs_rep (seq_disk sigma) (get_fstree sigma) mscs (Sigma.hm sigma') /\
                              get_fsmem (Sigma.mem sigma') = get_fsmem (Sigma.mem sigma)
                            end /\
                            sigma_i' = sigma_i; |})
-                 (OptFS.file_get_attr _ fsxp inum mscs wb).
+                 (OptFS.file_get_attr _ fsxp inum mscs l wb).
   Proof.
     prestep; step_using ltac:(apply OptFS.file_get_attr_ok).
 

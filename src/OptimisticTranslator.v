@@ -23,9 +23,9 @@ Section OptimisticTranslator.
   Variable OtherSt:StateTypes.
   Variable G:TID -> Sigma (St OtherSt) -> Sigma (St OtherSt) -> Prop.
 
-  Fixpoint translate l T (p: prog T) :
-    WriteBuffer -> @cprog (St OtherSt) (Result T * WriteBuffer) :=
-    fun wb => match p with
+  Fixpoint translate T (p: prog T) :
+    LockState -> WriteBuffer -> @cprog (St OtherSt) (Result T * WriteBuffer) :=
+    fun l wb => match p with
            | Prog.Ret v => Ret (Success v, wb)
            | Prog.Read a => r <- CacheRead wb a l;
                              let '(v, wb) := r in
@@ -42,10 +42,10 @@ Section OptimisticTranslator.
            | Prog.Sync => Ret (Success tt, wb)
            | Prog.Hash buf => v <- Hash buf;
                                Ret (Success v, wb)
-           | Prog.Bind p1 p2 => r <- translate l p1 wb;
+           | Prog.Bind p1 p2 => r <- translate p1 l wb;
                                  let '(r, wb) := r in
                                  match r with
-                                 | Success v => translate l (p2 v) wb
+                                 | Success v => translate (p2 v) l wb
                                  | Failure e => Ret (Failure e, wb)
                                  end
            (* unhandled programs - Trim and memory operations *)
@@ -119,12 +119,12 @@ Section OptimisticTranslator.
   Definition seq_disk (sigma: Sigma (St OtherSt)) : rawdisk :=
     add_buffers (vdisk (Sigma.s sigma)).
 
-  Theorem translate_simulation : forall l T (p: prog T),
-      forall tid sigma_i sigma out wb,
+  Theorem translate_simulation : forall T (p: prog T),
+      forall tid sigma_i sigma out l wb,
         CacheRep wb sigma ->
         Sigma.l sigma = l ->
         ReadPermission l ->
-        exec G tid (sigma_i, sigma) (translate l p wb) out ->
+        exec G tid (sigma_i, sigma) (translate p l wb) out ->
         match out with
         | Finished sigma_i' sigma' r =>
           let (r, wb') := r in
@@ -232,13 +232,13 @@ Section OptimisticTranslator.
       eauto.
     - CCLTactics.inv_bind.
       match goal with
-      | [ Hexec: exec _ _ _ (translate _ p _) _ |- _ ] =>
+      | [ Hexec: exec _ _ _ (translate p _ _) _ |- _ ] =>
         eapply IHp in Hexec; eauto
       end.
       destruct v as [r wb']; intuition eauto.
       destruct r; try CCLTactics.inv_ret; intuition eauto.
       + match goal with
-        | [ Hexec: exec _ _ _ (translate _ (p2 _) _) _ |- _ ] =>
+        | [ Hexec: exec _ _ _ (translate (p2 _) _ _) _ |- _ ] =>
           eapply H in Hexec; intuition eauto
         end.
         left.
@@ -251,7 +251,7 @@ Section OptimisticTranslator.
 
         auto using locally_modified_lock_preserved.
       + match goal with
-        | [ Hexec: exec _ _ _ (translate _ p _) _ |- _ ] =>
+        | [ Hexec: exec _ _ _ (translate p _ _) _ |- _ ] =>
           eapply IHp in Hexec; eauto
         end.
         intuition.
@@ -260,7 +260,7 @@ Section OptimisticTranslator.
       all: exact tt.
   Qed.
 
-  Definition translate_spec A T (seq_spec: SeqSpec A T) wb l :
+  Definition translate_spec A T (seq_spec: SeqSpec A T) l wb :
     Spec A (Result T * WriteBuffer) :=
     fun a '(sigma_i, sigma) =>
       {| precondition :=
@@ -287,7 +287,7 @@ Section OptimisticTranslator.
 
   Theorem translate_ok : forall T (p: prog T) A (spec: SeqSpec A T) tid wb l,
       prog_quadruple spec p ->
-      cprog_spec G tid (translate_spec spec wb l) (translate l p wb).
+      cprog_spec G tid (translate_spec spec l wb) (translate p l wb).
   Proof.
     unfold prog_quadruple; intros.
     apply triple_spec_equiv; unfold cprog_triple; intros.
