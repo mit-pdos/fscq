@@ -7,37 +7,49 @@ Require Import SeqSpecs.
 
 Require Export OptimisticCache.
 
-Inductive Result T := Success (v:T) | Failed.
-Arguments Failed {T}.
+Inductive OptimisticException :=
+| CacheMiss (a:addr)
+| Unsupported
+| WriteRequired.
+
+Inductive Result T :=
+| Success (v:T)
+| Failure (e:OptimisticException).
+
+Arguments Failure {T} e.
 
 Section OptimisticTranslator.
 
   Variable OtherSt:StateTypes.
   Variable G:TID -> Sigma (St OtherSt) -> Sigma (St OtherSt) -> Prop.
 
-  Fixpoint translate T (p: prog T) :
+  Fixpoint translate l T (p: prog T) :
     WriteBuffer -> @cprog (St OtherSt) (Result T * WriteBuffer) :=
     fun wb => match p with
            | Prog.Ret v => Ret (Success v, wb)
-           | Prog.Read a => r <- CacheRead wb a;
+           | Prog.Read a => r <- CacheRead wb a l;
                              let '(v, wb) := r in
                              match v with
                              | Some v => Ret (Success v, wb)
-                             | None => Ret (Failed, wb)
+                             | None => Ret (Failure (CacheMiss a), wb)
                              end
-           | Prog.Write a v => r <- CacheWrite wb a v;
-                                let '(_, wb) := r in
-                                Ret (Success tt, wb)
+           | Prog.Write a v => if CanWrite l then
+                                r <- CacheWrite wb a v;
+                                  let '(_, wb) := r in
+                                  Ret (Success tt, wb)
+                              else
+                                Ret (Failure WriteRequired, wb)
            | Prog.Sync => Ret (Success tt, wb)
            | Prog.Hash buf => v <- Hash buf;
                                Ret (Success v, wb)
-           | Prog.Bind p1 p2 => r <- translate p1 wb;
+           | Prog.Bind p1 p2 => r <- translate l p1 wb;
                                  let '(r, wb) := r in
                                  match r with
-                                 | Success v => translate (p2 v) wb
-                                 | Failed => Ret (Failed, wb)
+                                 | Success v => translate l (p2 v) wb
+                                 | Failure e => Ret (Failure e, wb)
                                  end
-           | Prog.Trim _ => Ret (Failed, wb)
+           (* unhandled programs - Trim and memory operations *)
+           | _ => Ret (Failure Unsupported, wb)
            end.
 
   Definition add_buffers (d: Disk) : rawdisk :=
@@ -107,10 +119,12 @@ Section OptimisticTranslator.
   Definition seq_disk (sigma: Sigma (St OtherSt)) : rawdisk :=
     add_buffers (vdisk (Sigma.s sigma)).
 
-  Theorem translate_simulation : forall T (p: prog T),
+  Theorem translate_simulation : forall l T (p: prog T),
       forall tid sigma_i sigma out wb,
         CacheRep wb sigma ->
-        exec G tid (sigma_i, sigma) (translate p wb) out ->
+        Sigma.l sigma = l ->
+        ReadPermission l ->
+        exec G tid (sigma_i, sigma) (translate l p wb) out ->
         match out with
         | Finished sigma_i' sigma' r =>
           let (r, wb') := r in
@@ -120,12 +134,15 @@ Section OptimisticTranslator.
            sigma_i' = sigma_i /\
           match r with
           | Success v =>
-            Prog.exec (seq_disk sigma) (Sigma.hm sigma) p
-                      (Prog.Finished (seq_disk sigma') (Sigma.hm sigma') v)
-          | Failed =>
-            (* cache miss: just give consistency properties (listed outside
-            match) *)
-            True
+            Prog.exec (seq_disk sigma) Mem.empty_mem (Sigma.hm sigma) p
+                      (Prog.Finished (seq_disk sigma') Mem.empty_mem (Sigma.hm sigma') v)
+          | Failure e =>
+            match e with
+            | WriteRequired => l = ReadLock
+            | _ => True
+            end
+          (* cache miss, unsupported operation, or need to upgrade lock: mostly
+            give consistency properties (listed outside match) *)
           end
         | Error =>
           (* concurrent code will never just fail - we will prove in these cases
@@ -134,16 +151,16 @@ Section OptimisticTranslator.
           hold) *)
           False
         end \/
-        Prog.exec (seq_disk sigma) (Sigma.hm sigma) p (Prog.Failed _).
+        Prog.exec (seq_disk sigma) Mem.empty_mem (Sigma.hm sigma) p (Prog.Failed _).
   Proof.
     unfold seq_disk.
-    induction p; simpl; intros.
-    - CCLTactics.inv_ret; intuition eauto.
+    induction p; simpl; intros;
+      try solve [ CCLTactics.inv_ret; intuition eauto ].
     - case_eq (vdisk (Sigma.s sigma) a); intros.
       + (* non-error read *)
         CCLTactics.inv_bind;
           match goal with
-          | [ H: exec _ _ _ (CacheRead _ _) _ |- _ ] =>
+          | [ H: exec _ _ _ (CacheRead _ _ _) _ |- _ ] =>
             eapply spec_to_exec in H;
               eauto using CacheRead_ok
           end; simpl in *; intuition eauto.
@@ -152,13 +169,18 @@ Section OptimisticTranslator.
           intuition eauto.
         left; intuition eauto.
         eapply Prog.XStep; [ | eauto ].
-        rewrite H2, H5.
+        match goal with
+        | [ H: Sigma.hm _ = Sigma.hm _,
+               H': vdisk _ = vdisk _ |- _ ] =>
+          rewrite H, H'
+        end.
         eauto.
       + (* error read *)
         right.
         CCLTactics.inv_bind; eauto.
     - case_eq (vdisk (Sigma.s sigma) a); intros.
-      + CCLTactics.inv_bind;
+      + destruct (CanWrite l).
+        CCLTactics.inv_bind;
           match goal with
           | [ H: exec _ _ _ (CacheWrite _ _ _) _ |- _ ] =>
             eapply spec_to_exec in H;
@@ -168,18 +190,32 @@ Section OptimisticTranslator.
         CCLTactics.inv_ret; intuition eauto.
         left; intuition eauto.
         eapply Prog.XStep.
-        rewrite H5.
+        match goal with
+        | [ H: Sigma.hm _ = Sigma.hm _ |- _ ] =>
+          rewrite H
+        end.
         eapply Prog.StepWrite; eauto.
-        rewrite H2. rewrite add_buffers_upd.
+        match goal with
+        | [ H: vdisk _ = _ |- _ ] =>
+          rewrite H
+        end.
+        rewrite add_buffers_upd.
         apply possible_sync_upd_nil.
+
+        CCLTactics.inv_ret; intuition eauto.
+        match goal with
+        | [ H: ReadPermission _ |- _ ] =>
+          inversion H; intuition eauto; try congruence
+        end.
       + (* error write *)
+        destruct (CanWrite l).
         CCLTactics.inv_bind; eauto.
+        CCLTactics.inv_ret; eauto.
     - left.
       CCLTactics.inv_ret; intuition eauto.
       eapply Prog.XStep.
       econstructor.
       rewrite sync_mem_add_buffers; eauto.
-    - CCLTactics.inv_ret; intuition eauto.
     - CCLTactics.inv_bind;
         match goal with
         | [ H: exec _ _ _ (Hash _) _ |- _ ] =>
@@ -195,10 +231,16 @@ Section OptimisticTranslator.
       destruct sigma; simpl in *.
       eauto.
     - CCLTactics.inv_bind.
-      eapply IHp in H6; eauto.
+      match goal with
+      | [ Hexec: exec _ _ _ (translate _ p _) _ |- _ ] =>
+        eapply IHp in Hexec; eauto
+      end.
       destruct v as [r wb']; intuition eauto.
       destruct r; try CCLTactics.inv_ret; intuition eauto.
-      + eapply H in H10; intuition eauto.
+      + match goal with
+        | [ Hexec: exec _ _ _ (translate _ (p2 _) _) _ |- _ ] =>
+          eapply H in Hexec; intuition eauto
+        end.
         left.
         destruct out; eauto.
         destruct r as [r wb'']; intuition eauto.
@@ -206,17 +248,25 @@ Section OptimisticTranslator.
         congruence.
         congruence.
         destruct r; eauto.
-      + apply IHp in H4; intuition.
+
+        auto using locally_modified_lock_preserved.
+      + match goal with
+        | [ Hexec: exec _ _ _ (translate _ p _) _ |- _ ] =>
+          eapply IHp in Hexec; eauto
+        end.
+        intuition.
 
       Unshelve.
       all: exact tt.
   Qed.
 
-  Definition translate_spec A T (seq_spec: SeqSpec A T) :
-    WriteBuffer -> Spec A (Result T * WriteBuffer) :=
-    fun wb a '(sigma_i, sigma) =>
+  Definition translate_spec A T (seq_spec: SeqSpec A T) wb l :
+    Spec A (Result T * WriteBuffer) :=
+    fun a '(sigma_i, sigma) =>
       {| precondition :=
-           seq_pre (seq_spec a (Sigma.hm sigma)) (seq_disk sigma) /\
+           seq_pre (seq_spec a Mem.empty_mem (Sigma.hm sigma)) (seq_disk sigma) /\
+           ReadPermission (Sigma.l sigma) /\
+           l = Sigma.l sigma /\
            CacheRep wb sigma;
          postcondition :=
            fun '(sigma_i', sigma') '(r, wb) =>
@@ -225,36 +275,45 @@ Section OptimisticTranslator.
              vdisk_committed (Sigma.s sigma') = vdisk_committed (Sigma.s sigma) /\
              hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
              match r with
-             | Success v => seq_post (seq_spec a (Sigma.hm sigma))
-                                    (Sigma.hm sigma') v (seq_disk sigma')
-             | Failed => True
+             | Success v => seq_post (seq_spec a Mem.empty_mem (Sigma.hm sigma))
+                                    Mem.empty_mem (Sigma.hm sigma') v (seq_disk sigma')
+             | Failure e =>
+               match e with
+               | WriteRequired => l = ReadLock
+               | _ => True
+               end
              end /\
              sigma_i' = sigma_i |}.
 
-  Theorem translate_ok : forall T (p: prog T) A (spec: SeqSpec A T) tid wb,
+  Theorem translate_ok : forall T (p: prog T) A (spec: SeqSpec A T) tid wb l,
       prog_quadruple spec p ->
-      cprog_spec G tid (translate_spec spec wb) (translate p wb).
+      cprog_spec G tid (translate_spec spec wb l) (translate l p wb).
   Proof.
     unfold prog_quadruple; intros.
     apply triple_spec_equiv; unfold cprog_triple; intros.
     destruct st.
 
     pose proof (CCLHashExec.exec_hashmap_le H1).
-    eapply translate_simulation in H1; simpl in *; intuition eauto.
+
+    simpl in *; intuition; subst.
+    eapply translate_simulation in H1; intuition eauto; subst.
     - (* concurrent execution finished *)
       destruct out; eauto.
       destruct r as [r wb']; intuition eauto.
 
       destruct r; eauto.
       match goal with
-      | [ Hexec: Prog.exec _ _ p _ |- _ ] =>
+      | [ Hexec: Prog.exec _ _ _ p _ |- _ ] =>
         eapply H in Hexec; eauto
       end.
     -
       (* rather than showing something about concurrent execution, simulation
       showed that the sequential program fails; rule out this possibility from
       the spec and precondition *)
-      eapply H in H0; eauto; contradiction.
+      match goal with
+      | [ Hexec: Prog.exec _ _ _ p _ |- _ ] =>
+        eapply H in Hexec; eauto
+      end; contradiction.
   Qed.
 
 End OptimisticTranslator.
