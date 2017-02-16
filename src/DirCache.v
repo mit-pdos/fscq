@@ -28,126 +28,74 @@ Require List.
 Set Implicit Arguments.
 
 
-Module CDIR.
+Module CacheOneDir.
 
-  Module dcache_key_as_OT <: UsualOrderedType.
-    Definition t := (addr * string)%type.
-    Definition eq := @eq t.
-    Definition eq_refl := @eq_refl t.
-    Definition eq_sym := @eq_sym t.
-    Definition eq_trans := @eq_trans t.
-    Definition lt (x y : t) :=
-      match x with
-      | (xa, xs) =>
-        match y with
-        | (ya, ys) => lt xa ya \/ (xa = ya /\ (String_as_OT.string_compare xs ys = Lt))
-        end
-      end.
-
-    Lemma lt_trans: forall x y z : t, lt x y -> lt y z -> lt x z.
-    Proof.
-      unfold lt; destruct x, y, z; intuition.
-      subst.
-      right; intuition.
-      eapply String_as_OT.lt_trans; eauto.
-    Qed.
-
-    Lemma lt_not_eq : forall x y : t, lt x y -> ~ eq x y.
-    Proof.
-      unfold lt, eq; destruct x, y; intuition.
-      inversion H0; subst; omega.
-      inversion H0; subst.
-      eapply String_as_OT.lt_not_eq; eauto.
-      reflexivity.
-    Qed.
-
-    Definition compare x y : Compare lt eq x y.
-      destruct (Nat_as_OT.compare (fst x) (fst y)); [ apply LT | | apply GT ].
-      2: destruct (String_as_OT.compare (snd x) (snd y)); [ apply LT | apply EQ | apply GT ].
-
-      all: unfold lt, eq, Nat_as_OT.lt, Nat_as_OT.eq, String_as_OT.lt, String_as_OT.eq in *.
-      all: destruct x, y; simpl in *.
-      all: intuition.
-      congruence.
-    Defined.
-
-    Definition eq_dec (a b : t) : {a = b} + {a <> b}.
-      destruct (addr_eq_dec (fst a) (fst b)).
-      destruct (string_dec (snd a) (snd b)).
-
-      all: destruct a, b; simpl in *.
-      left. congruence.
-      right. congruence.
-      right. congruence.
-    Defined.
-
-  End dcache_key_as_OT.
-
-  Module Dcache := FMapAVL.Make(dcache_key_as_OT).
-  Module DcacheDefs := MapDefs dcache_key_as_OT Dcache.
+  Module Dcache := FMapAVL.Make(String_as_OT).
+  Module DcacheDefs := MapDefs String_as_OT Dcache.
   Definition Dcache_type := Dcache.t (option (addr * bool)).
 
 
-  Definition memstate := (BFILE.memstate * Dcache_type)%type.
+  Definition empty_cache : Dcache_type := Dcache.empty _.
 
-  Definition init_cache ms : prog memstate :=
-    Ret (ms, Dcache.empty _).
-
-  Definition lookup lxp ixp dnum name (ms : memstate) :=
-    match Dcache.find (dnum, name) (snd ms) with
+  Definition lookup lxp ixp dnum name ms cache :=
+    match Dcache.find name cache with
     | None =>
-      let^ (fms, r) <- SDIR.lookup lxp ixp dnum name (fst ms);
-      Ret ^((fms, Dcache.add (dnum, name) r (snd ms)), r)
+      let^ (ms, r) <- SDIR.lookup lxp ixp dnum name ms;
+      Ret ^(ms, Dcache.add name r cache, r)
     | Some r =>
-      Ret ^(ms, r)
+      Ret ^(ms, cache, r)
     end.
 
-  Definition unlink lxp ixp dnum name (ms : memstate) :=
-    let^ (fms, r) <- SDIR.unlink lxp ixp dnum name (fst ms);
-    Ret ^((fms, Dcache.add (dnum, name) None (snd ms)), r).
+  Definition unlink lxp ixp dnum name ms (cache : Dcache_type) :=
+    let^ (ms, r) <- SDIR.unlink lxp ixp dnum name ms;
+    Ret ^(ms, Dcache.add name None cache, r).
 
-  Definition link lxp bxp ixp dnum name inum isdir ms :=
-    let^ (fms, r) <- SDIR.link lxp bxp ixp dnum name inum isdir (fst ms);
+  Definition link lxp bxp ixp dnum name inum isdir ms cache :=
+    let^ (ms, r) <- SDIR.link lxp bxp ixp dnum name inum isdir ms;
     match r with
-    | Err _ => Ret ^((fms, snd ms), r)
-    | OK _ => Ret ^((fms, Dcache.add (dnum, name) (Some (inum, isdir)) (snd ms)), r)
+    | Err _ => Ret ^(ms, cache, r)
+    | OK _ => Ret ^(ms, Dcache.add name (Some (inum, isdir)) cache, r)
     end.
 
-  Definition readdir lxp ixp dnum (ms : memstate) :=
-    let^ (fms, r) <- SDIR.readdir lxp ixp dnum (fst ms);
-    Ret ^((fms, snd ms), r).
+  Definition readdir lxp ixp dnum ms :=
+    let^ (ms, r) <- SDIR.readdir lxp ixp dnum ms;
+    Ret ^(ms, r).
 
 
-  Definition rep f (dsmap : @mem string string_dec (addr * bool)) (dnum : addr) (ms : memstate) : Prop :=
+  Definition rep f (dsmap : @mem string string_dec (addr * bool)) (cache : Dcache_type) : Prop :=
     SDIR.rep f dsmap /\
     forall name v,
-    Dcache.MapsTo (dnum, name) v (snd ms) -> dsmap name = v.
+    Dcache.MapsTo name v cache -> dsmap name = v.
 
-  Definition rep_macro Fi Fm m bxp ixp (inum : addr) dsmap ilist frees ms : @pred _ addr_eq_dec valuset :=
+  Definition rep_macro Fi Fm m bxp ixp (inum : addr) dsmap ilist frees cache : @pred _ addr_eq_dec valuset :=
     (exists flist f,
      [[[ m ::: Fm * BFILE.rep bxp ixp flist ilist frees ]]] *
      [[[ flist ::: Fi * inum |-> f ]]] *
-     [[ rep f dsmap inum ms ]] )%pred.
+     [[ rep f dsmap cache ]] )%pred.
 
   Local Hint Unfold rep rep_macro SDIR.rep_macro : hoare_unfold.
 
   Hint Resolve Dcache.find_2.
 
 
-  Theorem lookup_ok : forall lxp bxp ixp dnum name ms,
+  Notation MSLL := BFILE.MSLL.
+  Notation MSAlloc := BFILE.MSAlloc.
+
+  Theorem lookup_ok : forall lxp bxp ixp dnum name ms cache,
     {< F Fm Fi m0 m dmap ilist frees,
-    PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL (fst ms)) hm *
-           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms
-    POST:hm' RET:^(ms',r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL (fst ms')) hm' *
-           [[ BFILE.MSAlloc (fst ms') = BFILE.MSAlloc (fst ms) ]] *
+    PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees cache
+    POST:hm' RET:^(ms', cache', r)
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
+           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees cache' *
+           [[ MSAlloc ms' = MSAlloc ms ]] *
          ( [[ r = None /\ notindomain name dmap ]] \/
            exists inum isdir Fd,
            [[ r = Some (inum, isdir) /\
                    (Fd * name |-> (inum, isdir))%pred dmap ]])
-    CRASH:hm'  exists ms,
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms) hm'
-    >} lookup lxp ixp dnum name ms.
+    CRASH:hm'  exists ms',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
+    >} lookup lxp ixp dnum name ms cache.
   Proof.
     unfold lookup.
 
@@ -174,20 +122,40 @@ Module CDIR.
     eauto.
     step.
 
+    (* Prove that the new cache is valid *)
+    destruct (string_dec name0 name); subst.
+    {
+      eapply DcacheDefs.mapsto_add in H0.
+      unfold notindomain in *; congruence.
+    }
+    {
+      eapply Dcache.add_3 in H0; eauto.
+    }
+
+    destruct (string_dec name0 name); subst.
+    {
+      eapply DcacheDefs.mapsto_add in H0.
+      eapply ptsto_valid' in H8.
+      congruence.
+    }
+    {
+      eapply Dcache.add_3 in H0; eauto.
+    }
+
   Unshelve.
     all: eauto.
   Qed.
 
   Theorem readdir_ok : forall lxp bxp ixp dnum ms,
-    {< F Fm Fi m0 m dmap ilist frees,
-    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL (fst ms)) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms
+    {< F Fm Fi m0 m dmap ilist frees cache,
+    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees cache
     POST:hm' RET:^(ms', r)
-             LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL (fst ms')) hm' *
+             LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
              [[ listpred SDIR.readmatch r dmap ]] *
-             [[ BFILE.MSAlloc (fst ms') = BFILE.MSAlloc (fst ms) ]]
+             [[ MSAlloc ms' = MSAlloc ms ]]
     CRASH:hm'  exists ms',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL ms') hm'
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} readdir lxp ixp dnum ms.
   Proof.
     unfold readdir.
@@ -205,19 +173,19 @@ Module CDIR.
     step.
   Qed.
 
-  Theorem unlink_ok : forall lxp bxp ixp dnum name ms,
+  Theorem unlink_ok : forall lxp bxp ixp dnum name ms cache,
     {< F Fm Fi m0 m dmap ilist frees,
-    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL (fst ms)) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms
-    POST:hm' RET:^(ms', r) exists m' dmap',
-             LOG.rep lxp F (LOG.ActiveTxn m0 m') (BFILE.MSLL (fst ms')) hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees ms' *
+    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees cache
+    POST:hm' RET:^(ms', cache', r) exists m' dmap',
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
+             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees cache' *
              [[ dmap' = mem_except dmap name ]] *
              [[ notindomain name dmap' ]] *
              [[ r = OK tt -> indomain name dmap ]] *
-             [[ BFILE.MSAlloc (fst ms') = BFILE.MSAlloc (fst ms) ]]
+             [[ MSAlloc ms' = MSAlloc ms ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
-    >} unlink lxp ixp dnum name ms.
+    >} unlink lxp ixp dnum name ms cache.
   Proof.
     unfold unlink.
     intros.
@@ -241,31 +209,31 @@ Module CDIR.
     denote! (Dcache.MapsTo _ _ _) as Hx; apply Dcache.add_3 in Hx. eauto. congruence.
 
   Unshelve.
-    all: try exact (0, ""%string).
+    all: try exact ""%string.
     all: try exact (Dcache.empty _).
   Qed.
 
-  Theorem link_ok : forall lxp bxp ixp dnum name inum isdir ms,
+  Theorem link_ok : forall lxp bxp ixp dnum name inum isdir ms cache,
     {< F Fm Fi m0 m dmap ilist frees,
-    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (BFILE.MSLL (fst ms)) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms *
+    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees cache *
              [[ goodSize addrlen inum ]]
-    POST:hm' RET:^(ms', r) exists m',
-             [[ BFILE.MSAlloc (fst ms') = BFILE.MSAlloc (fst ms) ]] *
+    POST:hm' RET:^(ms', cache', r) exists m',
+             [[ MSAlloc ms' = MSAlloc ms ]] *
            (([[ isError r ]] *
-             LOG.rep lxp F (LOG.ActiveTxn m0 m') (BFILE.MSLL (fst ms')) hm')
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
         \/  ([[ r = OK tt ]] *
              exists dmap' Fd ilist' frees',
-             LOG.rep lxp F (LOG.ActiveTxn m0 m') (BFILE.MSLL (fst ms')) hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' ms' *
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
+             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' cache' *
              [[ dmap' = Mem.upd dmap name (inum, isdir) ]] *
              [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (Fd dmap /\ notindomain name dmap) ]] *
-             [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (BFILE.MSAlloc (fst ms')))
-                                 ilist' (BFILE.pick_balloc frees' (BFILE.MSAlloc (fst ms'))) ]] *
+             [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
+                                 ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
              [[ BFILE.treeseq_ilist_safe dnum ilist ilist' ]] ))
     CRASH:hm' LOG.intact lxp F m0 hm'
-    >} link lxp bxp ixp dnum name inum isdir ms.
+    >} link lxp bxp ixp dnum name inum isdir ms cache.
   Proof.
     unfold link.
     step.
@@ -284,7 +252,6 @@ Module CDIR.
     all: eauto.
     all: try exact (Dcache.empty _).
     all: try exact tt.
-    all: try exact (0, ""%string).
   Qed.
 
 
@@ -295,5 +262,4 @@ Module CDIR.
 
   Hint Extern 0 (okToUnify (rep ?f _ _ _) (rep ?f _ _ _)) => constructor : okToUnify.
 
-
-End CDIR.
+End CacheOneDir.
