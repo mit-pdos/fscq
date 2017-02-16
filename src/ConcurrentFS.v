@@ -115,15 +115,16 @@ Section ConcurrentFS.
 
   Arguments SyscallResult T : clear implicits.
 
+  Definition OptimisticProg T :=
+    memstate ->
+    LockState -> WriteBuffer ->
+    cprog (St:=St) (Result (memstate * T) * WriteBuffer).
+
   (* Execute p assuming it is read-only. This program could distinguish between
   failures that require filling the cache [Failure (CacheMiss a)] and failures
   that require upgrading to a write lock [Failure WriteRequired], but currently
   does not do so. *)
-  Definition readonly_syscall T
-             (p: memstate ->
-                 LockState -> WriteBuffer ->
-                 @cprog St (Result (memstate * T) * WriteBuffer))
-    : cprog (SyscallResult T) :=
+  Definition readonly_syscall T (p: OptimisticProg T) : cprog (SyscallResult T) :=
     _ <- GetReadLock;
       m <- Get;
       (* for read-only syscalls, the returned write buffer is always the same
@@ -146,12 +147,8 @@ Section ConcurrentFS.
     destruct r; eauto.
   Defined.
 
-  Definition write_syscall T
-             (p: memstate ->
-                 LockState -> WriteBuffer ->
-                 @cprog St (Result (memstate * T) * WriteBuffer))
-             (update: dirtree -> dirtree)
-    : cprog (SyscallResult T) :=
+  Definition write_syscall T (p: OptimisticProg T) (update: dirtree -> dirtree) :
+    cprog (SyscallResult T) :=
     retry guard
           (_ <- GetWriteLock;
              m <- Get;
@@ -177,17 +174,75 @@ Section ConcurrentFS.
                end
              end).
 
-  Definition retry_syscall T
-             (p: memstate ->
-                 LockState -> WriteBuffer ->
-                 @cprog St (Result (memstate * T) * WriteBuffer))
-             (update: dirtree -> dirtree) :=
+  Definition retry_syscall T (p: OptimisticProg T) (update: dirtree -> dirtree) :=
     r <- readonly_syscall p;
       match r with
       | Done v => Ret (Done v)
       | TryAgain => write_syscall p update
       | SyscallFailed => Ret SyscallFailed
       end.
+
+  Record FsSpecParams T :=
+    { fs_pre : Prop;
+      fs_post : memstate -> dirtree -> T -> Prop; }.
+
+  Definition FsSpec A T := memstate -> LockState -> A -> dirtree -> FsSpecParams T.
+
+  Definition fs_spec A T (fsspec: FsSpec A T) :
+    memstate -> LockState ->
+    Spec A (Result (memstate * T) * WriteBuffer) :=
+    fun mscs l a '(sigma_i, sigma) =>
+      {| precondition :=
+           mscs = get_fsmem (Sigma.mem sigma) /\
+           CacheRep empty_writebuffer sigma /\
+           Sigma.l sigma = l /\
+           ReadPermission l /\
+           fs_rep (seq_disk sigma) (get_fstree sigma) mscs (Sigma.hm sigma) /\
+           fs_pre (fsspec mscs l a (get_fstree sigma));
+         postcondition :=
+           fun '(sigma_i', sigma') '(r, wb') =>
+             CacheRep wb' sigma' /\
+             match r with
+             | Success (mscs', r) =>
+               fs_post (fsspec mscs l a (get_fstree sigma)) mscs' (get_fstree sigma') r
+             | Failure e =>
+               match e with
+               | WriteRequired => l = ReadLock
+               | _ => True
+               end /\
+               (* if we revert the disk, we can restore the fs_rep *)
+               fs_rep (add_buffers (vdisk_committed (Sigma.s sigma))) (get_fstree sigma') mscs (Sigma.hm sigma') /\
+               get_fsmem (Sigma.mem sigma') = get_fsmem (Sigma.mem sigma) /\
+               get_fstree sigma' = get_fstree sigma
+             end /\
+             sigma_i' = sigma_i; |}.
+
+  Definition readonly_spec A T (fsspec: FsSpec A T) tid :
+    Spec (St:=St) A (SyscallResult T) :=
+    fun a '(sigma_i, sigma) =>
+      {| precondition :=
+           fs_invariant sigma /\
+           fs_pre (fsspec (get_fsmem (Sigma.mem sigma)) ReadLock a (get_fstree sigma));
+         postcondition :=
+           fun '(sigma_i', sigma') r =>
+             Rely fs_guarantee tid sigma sigma' /\
+             Sigma.l sigma' = Free /\
+             match r with
+             | Done v => fs_post (fsspec (get_fsmem (Sigma.mem sigma)) ReadLock a (get_fstree sigma))
+                                (get_fsmem (Sigma.mem sigma')) (get_fstree sigma') v
+             | TryAgain => True (* can say something strong here: state hasn't
+               changed since we were read-only *)
+             | SyscallFailed => True
+             end |}.
+
+  Theorem readonly_syscall_ok : forall T (p: OptimisticProg T) A (fsspec: FsSpec A T) tid
+                                  mscs l,
+      cprog_triple fs_guarantee tid
+                   (fs_spec fsspec mscs l) (p mscs l empty_writebuffer) ->
+      cprog_triple fs_guarantee tid
+                   (readonly_spec fsspec tid) (readonly_syscall p).
+  Proof.
+  Abort.
 
   Definition file_get_attr inum :=
     retry_syscall (fun mscs => OptFS.file_get_attr _ fsxp inum mscs)
@@ -289,48 +344,12 @@ Section ConcurrentFS.
            | _ => progress simpl
            end.
 
-  Record FsSpecParams T :=
-    { fs_pre : Prop;
-      fs_post : memstate -> dirtree -> T -> Prop; }.
-
-  Definition FsSpec A T := A -> dirtree -> FsSpecParams T.
-
-  Definition fs_spec A T (fsspec: memstate -> LockState ->
-                                  FsSpec A T) :
-    memstate -> LockState ->
-    Spec A (Result (memstate * (T * unit)) * WriteBuffer) :=
-    fun mscs l a '(sigma_i, sigma) =>
-      {| precondition :=
-           mscs = get_fsmem (Sigma.mem sigma) /\
-           CacheRep empty_writebuffer sigma /\
-           Sigma.l sigma = l /\
-           ReadPermission l /\
-           fs_rep (seq_disk sigma) (get_fstree sigma) mscs (Sigma.hm sigma) /\
-           fs_pre (fsspec mscs l a (get_fstree sigma));
-         postcondition :=
-           fun '(sigma_i', sigma') '(r, wb') =>
-             CacheRep wb' sigma' /\
-             match r with
-             | Success (mscs', (r, _)) =>
-               fs_post (fsspec mscs l a (get_fstree sigma)) mscs' (get_fstree sigma') r
-             | Failure e =>
-               match e with
-               | WriteRequired => l = ReadLock
-               | _ => True
-               end /\
-               (* if we revert the disk, we can restore the fs_rep *)
-               fs_rep (add_buffers (vdisk_committed (Sigma.s sigma))) (get_fstree sigma') mscs (Sigma.hm sigma') /\
-               get_fsmem (Sigma.mem sigma') = get_fsmem (Sigma.mem sigma) /\
-               get_fstree sigma' = get_fstree sigma
-             end /\
-             sigma_i' = sigma_i; |}.
-
   Theorem opt_file_get_attr_ok : forall inum mscs l tid,
       cprog_spec fs_guarantee tid
                  (fs_spec (fun mscs l '(pathname, f) tree =>
                              {| fs_pre := find_subtree pathname tree = Some (TreeFile inum f);
                                 fs_post :=
-                                  fun mscs' tree' r =>
+                                  fun mscs' tree' '(r, _) =>
                                     (* TODO: assert mscs' is unnecessary to incorporate *)
                                     MSAlloc mscs' = MSAlloc mscs /\
                                     tree' = tree /\
