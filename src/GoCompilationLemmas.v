@@ -725,6 +725,16 @@ Ltac comp_apply H := eapply hoare_weaken; [ eapply H; intros | cancel_go.. ].
 
 Create HintDb divide discriminated.
 
+Import PeanoNat.
+Hint Extern 2 (Nat.divide 8 (S (S ?n2))) =>
+(exists ((S (S n2)) / 8); reflexivity) : divide.
+Hint Resolve Nat.divide_sub_r : divide.
+Lemma valulen_divide_8 : Nat.divide 8 valulen.
+Proof.
+  rewrite valulen_is. exists (valulen_real / 8). reflexivity.
+Qed.
+Hint Resolve valulen_divide_8 : divide.
+
 Hint Resolve Nat.divide_0_r Nat.divide_add_r Nat.divide_mul_r Nat.divide_refl : divide.
 
 Ltac divisibility := eauto with divide.

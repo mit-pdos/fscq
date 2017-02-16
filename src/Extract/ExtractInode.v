@@ -1,9 +1,10 @@
+Require Import Eqdep.
 Require Import List String.
 Require Import StringMap.
 Require Import Word Prog Pred AsyncDisk.
 Require Import GoSemantics GoFacts GoHoare GoCompilationLemmas GoExtraction GoSepAuto GoTactics2.
 Require Import Wrappers EnvBuild.
-Import ListNotations.
+Import ListNotations EqNotations.
 
 Import Go.
 
@@ -226,15 +227,6 @@ Proof.
 
   eapply hoare_weaken.
   apply CompileFreeze with (svar := nth_var 16 vars) (dvar := nth_var 23 vars).
-  Import PeanoNat.
-  Hint Extern 2 (Nat.divide 8 (S (S ?n2))) =>
-    (exists ((S (S n2)) / 8); reflexivity) : divide.
-  Hint Resolve Nat.divide_sub_r : divide.
-  Lemma valulen_divide_8 : Nat.divide 8 valulen.
-  Proof.
-    rewrite valulen_is. exists (valulen_real / 8). reflexivity.
-  Qed.
-  Hint Resolve valulen_divide_8 : divide.
   divisibility.
   cancel_go.
   cancel_go.
@@ -255,16 +247,6 @@ Proof.
   f_equal.
   unfold INODE.IRec.Defs.val2word.
   unfold eq_rec.
-  Import EqNotations.
-Theorem eq_rect_double : forall A P (a b c : A) (x : P a) (ab : a = b) (bc : b = c),
-  rew bc in rew ab in x = rew eq_trans ab bc in x.
-Proof.
-  intros.
-  destruct ab.
-  destruct bc.
-  simpl.
-  auto.
-Qed.
   rewrite eq_rect_double.
   match goal with
   | |- context[rew ?He in _] => let H := fresh in let Te := type of He in assert Te as H; [ | generalize He; rewrite <- H ]
@@ -274,13 +256,32 @@ Qed.
   reflexivity.
   intros.
   f_equal.
-  Require Import Eqdep.
   rewrite UIP_refl with (p := e).
   reflexivity.
   cancel'.
+  intros.
+  unfold INODE.IRec.Defs.val2word.
+  unfold eq_rec.
+  rewrite eq_rect_double.
+  match goal with
+  | |- context[wrap (rew ?He in ?x)] => replace (wrap (rew He in x)) with (wrap (fst (snd a) : immut_word _))
+  end.
   cancel_go.
-  admit. (* TODO: do equivalent rewrites as above in order to rewrite away references to variables
-     which [?Y] does not have in scope *)
+  cbv [wrap wrap' wrap_type GoWrapper_immut_word].
+  simpl.
+  match goal with
+  | |- context[rew ?He in _] => let H := fresh in let Te := type of He in assert Te as H; [ | generalize He; rewrite <- H ]
+  end.
+  rewrite INODE.IRecSig.blocksz_ok; simpl.
+  rewrite (Rec.word_selN_helper 1024 l) at 1.
+  reflexivity.
+  intros.
+  f_equal.
+  rewrite UIP_refl with (p := e).
+  reflexivity.
+
+  (* Oops, actually needed to compile the match rather than just doing a [break_match]... *)
+  
 Admitted.
 
 Definition extract_env : Env.

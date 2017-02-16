@@ -302,6 +302,17 @@ Proof.
   unshelve (edestruct H1); eauto.
 Defined.
 
+Import EqNotations.
+Theorem eq_rect_double : forall A P (a b c : A) (x : P a) (ab : a = b) (bc : b = c),
+  rew bc in rew ab in x = rew eq_trans ab bc in x.
+Proof.
+  intros.
+  destruct ab.
+  destruct bc.
+  simpl.
+  auto.
+Qed.
+
 (*
 Theorem extract_finish_equiv : forall A {H: GoWrapper A} scope cscope pr p,
   (forall d0,
