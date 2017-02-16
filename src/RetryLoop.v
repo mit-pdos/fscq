@@ -116,6 +116,70 @@ Section RetryLoop.
     eapply H in H1; eauto.
   Qed.
 
+  Definition invariant A T {P Q} (guard: forall (v:T), {P v}+{Q v})
+             (spec: Spec (St:=St) A T) :=
+    forall a st st' r,
+      postcondition (spec a st) st' r ->
+      (exists H, guard r = right H) ->
+      precondition (spec a st').
+
+  Definition postcondition_trans A T {P Q} (guard: forall (v:T), {P v}+{Q v})
+             (spec: Spec (St:=St) A T) :=
+    forall a st st' st'' r r',
+      postcondition (spec a st) st' r ->
+      (exists H, guard r = right H) ->
+      postcondition (spec a st') st'' r' ->
+      postcondition (spec a st) st'' r'.
+
+  Theorem retry_invariant_triple : forall T P Q (guard: forall (v:T), {P v}+{Q v}) p
+                              A (spec: Spec A T) tid,
+      invariant guard spec ->
+      postcondition_trans guard spec ->
+      cprog_triple G tid spec p ->
+      cprog_triple G tid spec (retry guard p).
+  Proof.
+    unfold invariant, postcondition_trans; intros;
+      unfold cprog_triple; intros.
+    generalize dependent a.
+    remember (retry guard p); rewrite retry_unfold in *.
+    induction H3; intros; simpl; subst;
+      try (rewrite retry_unfold in *;
+           solve [ congruence ||
+                              CCLTactics.inv_step ]).
+    - inversion Heqc; repeat inj_pair2.
+      case_eq (guard v); intros; replace (guard v) in *.
+      + CCLTactics.inv_ret.
+        match goal with
+        | [ Hexec: exec _ _ _ p _ |- _ ] =>
+          eapply H1 in Hexec; eauto
+        end.
+      + rewrite retry_unfold in IHexec2.
+        specialize (IHexec2 _ _ guard p spec); intuition.
+        match goal with
+        | [ Hexec: exec _ _ _ p _ |- _ ] =>
+          eapply H1 in Hexec; eauto
+        end.
+        destruct out; eauto 10.
+    - inversion Heqc; repeat inj_pair2.
+      match goal with
+      | [ Hexec: exec _ _ _ p _ |- _ ] =>
+        eapply H1 in Hexec; eauto
+      end.
+  Qed.
+
+  Theorem retry_invariant_spec : forall T P Q (guard: forall (v:T), {P v}+{Q v}) p
+                              A (spec: Spec A T) tid,
+      invariant guard spec ->
+      postcondition_trans guard spec ->
+      cprog_spec G tid spec p ->
+      cprog_spec G tid spec (retry guard p).
+  Proof.
+    intros.
+    apply triple_spec_equiv.
+    apply triple_spec_equiv in H1.
+    auto using retry_invariant_triple.
+  Qed.
+
   Corollary retry_spec : forall T P Q (guard: forall (v:T), {P v}+{Q v}) v0 p
                          A (spec: Spec A T) tid,
       (forall n, cprog_spec G tid spec (retry_n guard v0 p n)) ->
