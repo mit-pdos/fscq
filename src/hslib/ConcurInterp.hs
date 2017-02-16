@@ -56,7 +56,7 @@ run_dcode s (SetLock l) = do
     ReadLock -> RWL.acquireRead (lock s)
     WriteLock -> do
       RWL.acquireWrite (lock s)
-  writeIORef (has_writer s) True
+      writeIORef (has_writer s) True
   return $ unsafeCoerce ()
 run_dcode _ (BeginRead _) = do
   -- TODO: implement efficiently
