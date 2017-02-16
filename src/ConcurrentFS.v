@@ -289,39 +289,63 @@ Section ConcurrentFS.
            | _ => progress simpl
            end.
 
-  Theorem opt_file_get_attr_ok : forall inum mscs l wb tid,
+  Record FsSpecParams T :=
+    { fs_pre : Prop;
+      fs_post : memstate -> dirtree -> T -> Prop; }.
+
+  Definition FsSpec A T := A -> dirtree -> FsSpecParams T.
+
+  Definition fs_spec A T (fsspec: memstate -> LockState ->
+                                  FsSpec A T) :
+    memstate -> LockState ->
+    Spec A (Result (memstate * (T * unit)) * WriteBuffer) :=
+    fun mscs l a '(sigma_i, sigma) =>
+      {| precondition :=
+           mscs = get_fsmem (Sigma.mem sigma) /\
+           CacheRep empty_writebuffer sigma /\
+           Sigma.l sigma = l /\
+           ReadPermission l /\
+           fs_rep (seq_disk sigma) (get_fstree sigma) mscs (Sigma.hm sigma) /\
+           fs_pre (fsspec mscs l a (get_fstree sigma));
+         postcondition :=
+           fun '(sigma_i', sigma') '(r, wb') =>
+             CacheRep wb' sigma' /\
+             match r with
+             | Success (mscs', (r, _)) =>
+               fs_post (fsspec mscs l a (get_fstree sigma)) mscs' (get_fstree sigma') r
+             | Failure e =>
+               match e with
+               | WriteRequired => l = ReadLock
+               | _ => True
+               end /\
+               (* if we revert the disk, we can restore the fs_rep *)
+               fs_rep (add_buffers (vdisk_committed (Sigma.s sigma))) (get_fstree sigma') mscs (Sigma.hm sigma') /\
+               get_fsmem (Sigma.mem sigma') = get_fsmem (Sigma.mem sigma) /\
+               get_fstree sigma' = get_fstree sigma
+             end /\
+             sigma_i' = sigma_i; |}.
+
+  Theorem opt_file_get_attr_ok : forall inum mscs l tid,
       cprog_spec fs_guarantee tid
-                 (fun '(pathname, f) '(sigma_i, sigma) =>
-                    {| precondition :=
-                         let tree := get_fstree sigma in
-                         mscs = get_fsmem (Sigma.mem sigma) /\
-                         CacheRep wb sigma /\
-                         Sigma.l sigma = l /\
-                         ReadPermission l /\
-                         fs_rep (seq_disk sigma) tree mscs (Sigma.hm sigma) /\
-                         find_subtree pathname tree = Some (TreeFile inum f);
-                       postcondition :=
-                         fun '(sigma_i', sigma') '(r, wb') =>
-                           CacheRep wb' sigma' /\
-                           locally_modified sigma sigma' /\
-                           hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
-                           vdisk_committed (Sigma.s sigma') = vdisk_committed (Sigma.s sigma) /\
-                           match r with
-                           | Success (mscs', (r, _)) =>
-                             r = BFILE.BFAttr f /\
-                             fs_rep (seq_disk sigma') (get_fstree sigma) mscs' (Sigma.hm sigma')
-                           | Failure e =>
-                             match e with
-                             | WriteRequired => l = ReadLock
-                             | _ => True
-                             end /\
-                             fs_rep (seq_disk sigma) (get_fstree sigma) mscs (Sigma.hm sigma') /\
-                             get_fsmem (Sigma.mem sigma') = get_fsmem (Sigma.mem sigma)
-                           end /\
-                           sigma_i' = sigma_i; |})
-                 (OptFS.file_get_attr _ fsxp inum mscs l wb).
+                 (fs_spec (fun mscs l '(pathname, f) tree =>
+                             {| fs_pre := find_subtree pathname tree = Some (TreeFile inum f);
+                                fs_post :=
+                                  fun mscs' tree' r =>
+                                    (* TODO: assert mscs' is unnecessary to incorporate *)
+                                    MSAlloc mscs' = MSAlloc mscs /\
+                                    tree' = tree /\
+                                    r = BFILE.BFAttr f |}) mscs l)
+                 (OptFS.file_get_attr _ fsxp inum mscs l empty_writebuffer).
   Proof.
+    unfold fs_spec.
     prestep; step_using ltac:(apply OptFS.file_get_attr_ok).
+
+    match goal with
+    | [ H: context[let '(n, m) := ?a in _] |- _ ] =>
+      let n := fresh n in
+      let m := fresh m in
+      destruct a as [n m]
+    end; simpl in *.
 
     unfold fs_rep in *; intuition eauto; repeat deex.
     destruct ds.
@@ -333,12 +357,28 @@ Section ConcurrentFS.
 
     step.
     intuition eauto.
-    destruct a as [(mscs & (attr & u)) | ]; split_lift_prop; intuition eauto.
+    destruct a as [(mscs & (attr & u)) | ]; split_lift_prop; intuition eauto;
+      try (learning; congruence).
 
     descend; intuition eauto.
     eapply LOG.rep_hashmap_subset; eauto.
 
-    learning; congruence.
+    unfold seq_disk in *; simpl in *.
+    learning.
+    match goal with
+    | [ H: LOG.rep _ _ _ _ _ ?d |-
+        LOG.rep _ _ _ _ _ ?d' ] =>
+      replace d' with d by congruence;
+        apply H
+    end.
+
+    learning.
+    match goal with
+    | [ H: DirTreeRep.rep _ _ ?tree _ _ _ |-
+        DirTreeRep.rep _ _ ?tree' _ _ _ ] =>
+      replace tree' with tree by congruence;
+        apply H
+    end.
   Qed.
 
   Hint Extern 0 {{ OptFS.file_get_attr _ _ _ _ _; _ }} => apply opt_file_get_attr_ok : prog.
