@@ -417,7 +417,7 @@ Module BmapAllocCache.
   Definition BmapCacheType := list addr.
 
   Definition memstate := (LOG.memstate * BmapCacheType)%type.
-  Definition freelist0 := (@nil addr).
+  Definition freelist0 : BmapCacheType := (@nil addr).
 
   Definition init lxp xp fms : prog memstate :=
     fms <- Alloc.init lxp xp fms;
@@ -442,9 +442,8 @@ Module BmapAllocCache.
     Ret ^(fms, bn ::(snd ms)).
 
   Definition steal lxp xp bn (ms:memstate) :=
-    fms <- Alloc.steal lxp xp bn (fst ms);
-    Ret ^(fms, freelist0).
-
+    fms <- Alloc.steal lxp xp bn (fst ms) ;
+    Ret (fms, freelist0).
 
   Definition rep V xp freelist (freepred : @pred _ addr_eq_dec V) (ms:memstate) :=
     (Alloc.rep xp freelist freepred *
@@ -467,6 +466,64 @@ Module BmapAllocCache.
     step.
   Qed.
 
+  Theorem alloc_ok : forall V lxp xp (ms:memstate),
+    {< F Fm m0 m freelist freepred,
+    PRE:hm
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (fst ms) hm *
+          [[[ m ::: (Fm * @rep V xp freelist freepred ms) ]]]
+    POST:hm' RET:^(ms,r)
+          [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) (fst ms) hm'
+       \/ exists bn m' freepred',
+          [[ r = Some bn ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (fst ms) hm' *
+          [[[ m' ::: (Fm * @rep V xp (remove addr_eq_dec bn freelist) freepred' ms) ]]] *
+          [[ freepred =p=> freepred' * bn |->? ]] *
+          [[ bn <> 0 /\ bn < (Sig.BMPLen xp) * valulen ]] *
+          [[ In bn freelist ]]
+    CRASH:hm' LOG.intact lxp F m0 hm'
+    >} alloc lxp xp ms.
+  Proof.
+    unfold alloc, rep; intros.
+    destruct_branch.
+    prestep. norm. cancel.
+    eassign (F_).
+    eassign (F).
+    eassign (m0).
+    eassign (m).
+    cancel.
+    intuition.
+    pred_apply.
+    cancel.
+    step.
+    prestep. norm. cancel. 
+   eassign (F_).
+    eassign (F).
+    eassign (m0).
+    eassign (m).
+    cancel.
+    intuition.
+    pred_apply.
+(*
+    Focus 3.
+    prestep. norm. cancel.  *)
+  Admitted.
+
+  Theorem steal_ok : forall V lxp xp bn (ms:memstate),
+    {< F Fm m0 m freelist freepred,
+    PRE:hm
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (fst ms) hm *
+          [[[ m ::: (Fm * @rep V xp freelist freepred ms)]]] *
+          [[ In bn freelist /\ bn < (Sig.BMPLen xp) * valulen ]]
+    POST:hm' RET:ms' exists m' freepred',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (fst ms') hm' *
+          [[[ m' ::: (Fm * @rep V xp (remove addr_eq_dec bn freelist) freepred' ms') ]]] *
+          [[ freepred =p=> freepred' * bn |->? ]]
+    CRASH:hm' LOG.intact lxp F m0 hm'
+    >} steal lxp xp bn ms.
+  Proof.
+    unfold steal, rep; intros.
+    step.
+    step.
+  Qed.
 
 
 End BmapAllocCache.
