@@ -447,6 +447,7 @@ Module OptFS.
     Definition file_sync := ltac:(translate_lift AFS.file_sync).
     Definition update_fblock := ltac:(translate_lift AFS.update_fblock).
     Definition mksock := ltac:(translate_lift AFS.mksock).
+    Definition umount := ltac:(translate_lift AFS.umount).
 
   End OptimisticFS.
 

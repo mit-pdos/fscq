@@ -17,6 +17,8 @@ Section MemCache.
 
   Definition Cache:Type := Map.t cache_entry.
 
+  Definition empty_cache : Cache := Map.empty cache_entry.
+
   Implicit Types (c:Cache) (a:addr).
 
   Definition cache_get c a : cache_entry :=

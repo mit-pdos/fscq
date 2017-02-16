@@ -466,7 +466,22 @@ Section ConcurrentFS.
     retry_syscall (fun mscs => OptFS.mksock _ fsxp dnum name mscs)
                   (fun tree => tree).
 
+  Definition umount :=
+    retry_syscall (fun mscs => OptFS.umount _ fsxp mscs)
+                  (fun tree => tree).
+
 End ConcurrentFS.
+
+Definition OtherSt := {| Mem := unit; Abstraction := unit |}.
+
+Definition init (mscs: memstate) : @cprog (@St OtherSt) unit.
+  apply Assgn.
+  constructor; simpl.
+  exact MemCache.empty_cache.
+  constructor; simpl.
+  exact mscs.
+  exact tt.
+Defined.
 
 (* Local Variables: *)
 (* company-coq-local-symbols: (("Sigma" . ?Σ) ("sigma" . ?σ) ("sigma'" . (?σ (Br . Bl) ?'))) *)

@@ -70,9 +70,13 @@ run_dcode ds (Bind p1 p2) = do
   r2 <- run_dcode ds (p2 r1)
   return r2
 
-run :: Disk.DiskState -> CCLProg.Coq_cprog a -> IO a
-run ds p = do
-  m <- unsafeCoerce $ newIORef ()
-  lock_val <- RWL.new
-  has_writer_val <- newIORef False
-  run_dcode (ConcurState ds m lock_val has_writer_val) p
+newState :: Disk.DiskState -> IO ConcurState
+newState ds =
+  pure ConcurState
+  <*> return ds
+  <*> unsafeCoerce (newIORef ())
+  <*> RWL.new
+  <*> newIORef False
+
+run :: ConcurState -> CCLProg.Coq_cprog a -> IO a
+run s p = run_dcode s p
