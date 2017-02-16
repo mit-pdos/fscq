@@ -43,8 +43,8 @@ ifeq (,$(shell $(GHC) --version | grep 'version 8.0' 2>/dev/null))
 endif
 
 J	   ?= 1
-GHCARGS    := -O2 -threaded
-		# -prof -fprof-auto -rtsopts
+GHCARGS    := -O2 -threaded -rtsopts
+		# -prof -fprof-auto
 		# -eventlog
 HSLIB_FUSE := hscgen/Fuse.hs
 HSLIB_PRE  := hslib/Word.hs hslib/Evict.hs hslib/Profile.hs
@@ -104,7 +104,7 @@ hscgen/%.hs: hslib/%.hsc
 	@mkdir -p $(@D)
 	$(HSC2HS) $< -o $@ --cflag=-D_FILE_OFFSET_BITS=64
 
-%: %.hs $(VS_HS) $(HSLIB_FUSE)
+%: %.hs $(VS_HS) $(HSLIB_FUSE) $(HSLIB_POST)
 	test ! -f codegen/Word.hs || mv codegen/Word.hs codegen/.Word.hs
 	$(GHC) $(GHCARGS) $(HSLIB_FUSE)
 	$(GHC) $(GHCARGS) -Wall $(HSLIB_PRE)
