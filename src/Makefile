@@ -11,7 +11,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
 	      MemPred Cache \
 	      FSLayout AsyncRecArray DiskLogHash \
-	      LogReplay MemLog ListPred GenSepN \
+	      LogReplay MemLog ListPred GenSepN FMapMem \
 	      NEList DiskSet GroupLog Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile BFileCrash \
 	      MemMatch FileRecArray \
