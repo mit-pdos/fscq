@@ -8,6 +8,7 @@ Require Import AsyncDisk.
 Require Import Bytes.
 Require Import DiskSet.
 Require Import Pred.
+Import EqNotations.
 
 Set Implicit Arguments.
 
@@ -414,13 +415,89 @@ Proof.
   apply natToWord_wordToNat.
 Qed.
 
-Lemma list2valu2list: forall l, length l = valubytes -> valu2list (list2valu l) = l.
-Proof. Admitted.
+Lemma bytes_eq_to_word_eq : forall n m,
+    n = m ->
+    n * 8 = m * 8.
+Proof.
+  intros; subst; auto.
+Qed.
 
-  
+Lemma eq_rect_bytes_to_word : forall sz sz' (H: sz = sz') b,
+    rew [fun n => word (n * 8)] H in b = rew [fun n => word n] (bytes_eq_to_word_eq H) in b.
+Proof.
+  intros.
+  generalize (bytes_eq_to_word_eq H).
+  generalize_proof.
+  destruct H; intros.
+  eq_rect_simpl; auto.
+Qed.
+
+Theorem bcombine_0 : forall sz (b: bytes sz) (b': bytes 0) H,
+    eq_rect _ bytes (bcombine b b') _ H = b.
+Proof.
+  intros.
+  rewrite eq_rect_bytes_to_word.
+  unfold bcombine.
+  rewrite combine_n_0.
+  eq_rect_simpl; auto.
+Qed.
+
+Lemma list2valu2list: forall l, length l = valubytes -> valu2list (list2valu l) = l.
+Proof.
+  intros.
+  unfold valu2list, list2valu.
+  rewrite bytes2valu2bytes.
+
+  unfold bytes2valubytes.
+  destruct (le_dec (length l) valubytes); try omega.
+  simpl.
+
+  generalize_proof.
+  rewrite <- H.
+  rewrite Nat.sub_diag.
+  intros.
+
+  rewrite bcombine_0.
+  rewrite list2bytes2list; auto.
+Qed.
 
 Lemma valu2list2valu: forall v, list2valu (valu2list v) = v.
-Proof. Admitted.
+Proof.
+  unfold list2valu, valu2list; intros.
+
+  assert (length (bsplit_list (valu2bytes v)) = valubytes).
+  rewrite bsplit_list_len; auto.
+
+  unfold bytes2valu.
+  eq_rect_simpl.
+  rewrite eq_rect_bytes_to_word; eq_rect_simpl.
+  unshelve erewrite bytes2list2bytes; auto.
+
+  unfold bytes2valubytes.
+  match goal with
+  | [ |- context[match ?d with _ => _ end] ] =>
+    destruct d
+  end; try omega.
+
+  unfold bytes.
+  unfold bcombine.
+  repeat rewrite eq_rect_bytes_to_word; eq_rect_simpl.
+  repeat generalize_proof; intros.
+  destruct e.
+  simpl.
+  generalize_proof.
+  rewrite H, Nat.sub_diag; simpl.
+  rewrite combine_n_0.
+  intros.
+  eq_rect_simpl.
+  rewrite <- valu2bytes2valu.
+  unfold bytes2valu.
+  eq_rect_simpl.
+  rewrite eq_rect_bytes_to_word; eq_rect_simpl.
+  repeat generalize_proof; intros.
+  assert (e = e2) by (apply ProofIrrelevance.proof_irrelevance).
+  congruence.
+Qed.
 
 Lemma cons_simpl: forall A a (l l': list A), l = l' -> (a::l) = (a::l').
 Proof. intros; rewrite H; reflexivity. Qed.
