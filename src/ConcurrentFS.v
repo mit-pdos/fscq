@@ -76,11 +76,39 @@ Section ConcurrentFS.
     apply homedir_guar_preorder.
   Qed.
 
+  Lemma Rely_homedir_rely : forall tid sigma sigma',
+      Rely fs_guarantee tid sigma sigma' ->
+      homedir_rely tid (get_homedirs sigma) (get_fstree sigma) (get_fstree sigma') /\
+      get_homedirs sigma' = get_homedirs sigma.
+  Proof.
+    unfold fs_guarantee, homedir_guarantee, homedir_rely.
+    induction 1; intros; repeat deex; intuition (congruence || eauto).
+  Qed.
+
   Theorem fs_guarantee_refl : forall tid sigma,
       fs_invariant sigma ->
       fs_guarantee tid sigma sigma.
   Proof.
     unfold fs_guarantee; intuition.
+  Qed.
+
+  Lemma fs_guarantee_trans : forall tid sigma sigma' sigma'',
+      fs_guarantee tid sigma sigma' ->
+      fs_guarantee tid sigma' sigma'' ->
+      fs_guarantee tid sigma sigma''.
+  Proof.
+    unfold fs_guarantee; intuition eauto; try congruence.
+    etransitivity; eauto.
+    replace (get_homedirs sigma).
+    auto.
+  Qed.
+
+  Lemma fs_guarantee_set_l : forall tid sigma sigma' l,
+      fs_guarantee tid sigma sigma' ->
+      fs_guarantee tid sigma (Sigma.set_l sigma' l).
+  Proof.
+    unfold fs_guarantee, fs_invariant.
+    destruct sigma, sigma'; simpl in *; intuition.
   Qed.
 
   Theorem fs_rely_invariant : forall tid sigma sigma',
@@ -183,10 +211,12 @@ Section ConcurrentFS.
       end.
 
   Record FsSpecParams T :=
-    { fs_pre : Prop;
-      fs_post : memstate -> dirtree -> T -> Prop; }.
+    { fs_pre : dirtree -> Prop;
+      fs_post : T -> Prop;
+      fs_mscs_R : memstate -> memstate -> Prop;
+      fs_dirup : dirtree -> dirtree; }.
 
-  Definition FsSpec A T := memstate -> LockState -> A -> dirtree -> FsSpecParams T.
+  Definition FsSpec A T := A -> FsSpecParams T.
 
   Definition fs_spec A T (fsspec: FsSpec A T) :
     memstate -> LockState ->
@@ -198,51 +228,176 @@ Section ConcurrentFS.
            Sigma.l sigma = l /\
            ReadPermission l /\
            fs_rep (seq_disk sigma) (get_fstree sigma) mscs (Sigma.hm sigma) /\
-           fs_pre (fsspec mscs l a (get_fstree sigma));
+           fs_pre (fsspec a) (get_fstree sigma);
          postcondition :=
            fun '(sigma_i', sigma') '(r, wb') =>
              CacheRep wb' sigma' /\
+             Sigma.l sigma' = l /\
+             locally_modified sigma sigma' /\
+             vdisk_committed (Sigma.s sigma') = vdisk_committed (Sigma.s sigma) /\
+             (l = ReadLock -> vdisk (Sigma.s sigma') = vdisk (Sigma.s sigma)) /\
+             (l = ReadLock -> CacheRep empty_writebuffer sigma') /\
+             hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
              match r with
              | Success (mscs', r) =>
-               fs_post (fsspec mscs l a (get_fstree sigma)) mscs' (get_fstree sigma') r
+               fs_post (fsspec a) r /\
+               fs_mscs_R (fsspec a) mscs mscs' /\
+               fs_rep (seq_disk sigma') (fs_dirup (fsspec a) (get_fstree sigma')) mscs' (Sigma.hm sigma')
              | Failure e =>
-               match e with
-               | WriteRequired => l = ReadLock
-               | _ => True
-               end /\
+               (l = WriteLock -> e <> WriteRequired) /\
                (* if we revert the disk, we can restore the fs_rep *)
-               fs_rep (add_buffers (vdisk_committed (Sigma.s sigma))) (get_fstree sigma') mscs (Sigma.hm sigma') /\
+               fs_rep (add_buffers (vdisk_committed (Sigma.s sigma'))) (get_fstree sigma') mscs (Sigma.hm sigma') /\
                get_fsmem (Sigma.mem sigma') = get_fsmem (Sigma.mem sigma) /\
                get_fstree sigma' = get_fstree sigma
              end /\
              sigma_i' = sigma_i; |}.
+
+  Definition precondition_stable A T (fsspec: FsSpec A T) homes tid :=
+    forall a tree tree', fs_pre (fsspec a) tree ->
+                    homedir_rely tid homes tree tree' ->
+                    fs_pre (fsspec a) tree'.
+
+  Definition mscs_nocommit A T (fsspec: FsSpec A T) :=
+    forall a mscs mscs',
+      fs_mscs_R (fsspec a) mscs mscs' ->
+      (forall d tree hm, fs_rep d tree mscs' hm ->
+                    fs_rep d tree mscs hm).
+
+  Theorem mscs_nocommit_msalloc_eq : forall mscs mscs',
+      MSAlloc mscs' = MSAlloc mscs ->
+      (forall d tree hm, fs_rep d tree mscs' hm ->
+                    fs_rep d tree mscs hm).
+  Proof.
+    unfold fs_rep; intros; repeat deex.
+    exists ds, ilist, frees.
+    intuition.
+    (* doesn't appear true, but is needed to avoid committing state for read-only syscalls *)
+    (* TODO: prove an appropriate theorem for LOG.rep that avoids needing to
+    commit mscs (the mscs will change, due to the cache, but the LOG.rep should
+    remain true with the old one) *)
+  Abort.
+
+  Lemma precondition_stable_rely : forall A T (spec: FsSpec A T) tid a sigma sigma',
+      precondition_stable spec (get_homedirs sigma) tid ->
+      fs_pre (spec a) (get_fstree sigma) ->
+      Rely fs_guarantee tid sigma sigma' ->
+      fs_pre (spec a) (get_fstree sigma').
+  Proof.
+    unfold precondition_stable; intros.
+    eapply H in H0; eauto.
+    apply Rely_homedir_rely in H1; intuition.
+  Qed.
 
   Definition readonly_spec A T (fsspec: FsSpec A T) tid :
     Spec (St:=St) A (SyscallResult T) :=
     fun a '(sigma_i, sigma) =>
       {| precondition :=
            fs_invariant sigma /\
-           fs_pre (fsspec (get_fsmem (Sigma.mem sigma)) ReadLock a (get_fstree sigma));
+           Sigma.l sigma = Free /\
+           let tree := get_fstree sigma in
+           fs_pre (fsspec a) tree /\
+           precondition_stable fsspec (get_homedirs sigma) tid /\
+           mscs_nocommit fsspec;
          postcondition :=
            fun '(sigma_i', sigma') r =>
+             fs_invariant sigma' /\
              Rely fs_guarantee tid sigma sigma' /\
              Sigma.l sigma' = Free /\
              match r with
-             | Done v => fs_post (fsspec (get_fsmem (Sigma.mem sigma)) ReadLock a (get_fstree sigma))
-                                (get_fsmem (Sigma.mem sigma')) (get_fstree sigma') v
-             | TryAgain => True (* can say something strong here: state hasn't
-               changed since we were read-only *)
+             | Done v => fs_post (fsspec a) v
+             | TryAgain => True
              | SyscallFailed => True
              end |}.
 
-  Theorem readonly_syscall_ok : forall T (p: OptimisticProg T) A (fsspec: FsSpec A T) tid
-                                  mscs l,
-      cprog_triple fs_guarantee tid
-                   (fs_spec fsspec mscs l) (p mscs l empty_writebuffer) ->
-      cprog_triple fs_guarantee tid
-                   (readonly_spec fsspec tid) (readonly_syscall p).
+  Lemma fs_rep_hashmap_incr : forall vd tree mscs hm hm',
+      fs_rep vd tree mscs hm ->
+      hashmap_le hm hm' ->
+      fs_rep vd tree mscs hm'.
   Proof.
-  Abort.
+    unfold fs_rep; intros.
+    repeat deex.
+    exists ds, ilist, frees; intuition eauto.
+    eapply LOG.rep_hashmap_subset; eauto.
+  Qed.
+
+  Hint Resolve fs_rep_hashmap_incr.
+
+  Theorem readonly_syscall_ok : forall T (p: OptimisticProg T) A (fsspec: FsSpec A T) tid,
+      (forall mscs, cprog_spec fs_guarantee tid
+                          (fs_spec fsspec mscs ReadLock) (p mscs ReadLock empty_writebuffer)) ->
+      cprog_spec fs_guarantee tid
+                 (readonly_spec fsspec tid) (readonly_syscall p).
+  Proof.
+    intros.
+    unfold readonly_syscall.
+
+    step.
+    destruct st as [sigma_i sigma]; simpl in *.
+    intuition eauto.
+
+    step.
+    deex.
+    destruct sigma'; simpl; auto.
+
+    assert (fs_invariant sigma').
+    eapply fs_rely_invariant; eauto.
+
+    match goal with
+    | [ H: Rely fs_guarantee _ _ _ |- _ ] =>
+      pose proof H;
+        eapply precondition_stable_rely in H; eauto
+    end.
+
+    step_using ltac:(apply H).
+    eexists; simpl; intuition eauto.
+
+    unfold fs_invariant in *; intuition eauto.
+    destruct sigma'; simpl in *; eauto.
+    destruct sigma'; simpl in *; eauto.
+    unfold fs_invariant in *; intuition eauto.
+    destruct sigma'; simpl in *; eauto.
+    unfold get_fstree in *; destruct sigma'; simpl in *; eauto.
+
+    step.
+    intuition eauto.
+    match goal with
+    | [ u:unit |- _ ] => destruct u
+    end.
+
+    assert (fs_invariant (Sigma.set_l sigma0 Free)).
+    unfold fs_invariant, locally_modified, seq_disk, get_fstree, get_fsmem in *;
+      destruct sigma', sigma0; simpl in *; intuition eauto.
+    repeat match goal with
+           | [ H: _ = _ |- _ ] =>
+             progress rewrite H in *
+           end.
+    eauto.
+
+    assert (fs_guarantee tid sigma' (Sigma.set_l sigma0 Free)).
+    unfold fs_guarantee, get_homedirs, get_fstree, locally_modified in *;
+      destruct sigma', sigma0; simpl in *; intuition eauto.
+    match goal with
+    | [ |- homedir_guarantee _ _ ?tree ?tree' ] =>
+      replace tree' with tree by congruence;
+        reflexivity
+    end.
+    congruence.
+
+    assert (Rely fs_guarantee tid sigma (Sigma.set_l sigma0 Free)).
+    eapply Rely_trans; eauto.
+    constructor.
+    exists (S tid); intuition.
+
+    destruct a0 as [(mscs & r) | ].
+    step.
+    intuition eauto.
+    destruct sigma0; simpl; auto.
+
+    destruct e; step; intuition eauto.
+    destruct sigma0; simpl; auto.
+    destruct sigma0; simpl; auto.
+    destruct sigma0; simpl; auto.
+  Qed.
 
   Definition file_get_attr inum :=
     retry_syscall (fun mscs => OptFS.file_get_attr _ fsxp inum mscs)
@@ -302,6 +457,8 @@ Section ConcurrentFS.
              learn that (locally_modified_fsmem H)
            | [ H: locally_modified _ _ |- _ ] =>
              learn that (locally_modified_homedirs H)
+           | [ H: locally_modified _ _ |- _ ] =>
+             learn that (locally_modified_lock_preserved H)
            | [ H: CacheRep empty_writebuffer _ |- _ ] =>
              learn that (CacheRep_empty H)
            end.
@@ -346,14 +503,14 @@ Section ConcurrentFS.
 
   Theorem opt_file_get_attr_ok : forall inum mscs l tid,
       cprog_spec fs_guarantee tid
-                 (fs_spec (fun mscs l '(pathname, f) tree =>
-                             {| fs_pre := find_subtree pathname tree = Some (TreeFile inum f);
+                 (fs_spec (fun '(pathname, f) =>
+                             {| fs_pre :=
+                                  fun tree => find_subtree pathname tree = Some (TreeFile inum f);
                                 fs_post :=
-                                  fun mscs' tree' '(r, _) =>
-                                    (* TODO: assert mscs' is unnecessary to incorporate *)
-                                    MSAlloc mscs' = MSAlloc mscs /\
-                                    tree' = tree /\
-                                    r = BFILE.BFAttr f |}) mscs l)
+                                  fun '(r, _) => r = BFILE.BFAttr f;
+                                fs_mscs_R :=
+                                  fun mscs mscs' => MSAlloc mscs' = MSAlloc mscs;
+                                fs_dirup := fun tree => tree |}) mscs l)
                  (OptFS.file_get_attr _ fsxp inum mscs l empty_writebuffer).
   Proof.
     unfold fs_spec.
@@ -380,18 +537,29 @@ Section ConcurrentFS.
       try (learning; congruence).
 
     descend; intuition eauto.
-    eapply LOG.rep_hashmap_subset; eauto.
 
     unfold seq_disk in *; simpl in *.
     learning.
     match goal with
-    | [ H: LOG.rep _ _ _ _ _ ?d |-
-        LOG.rep _ _ _ _ _ ?d' ] =>
-      replace d' with d by congruence;
+    | [ H: DirTreeRep.rep _ _ ?tree _ _ _ |-
+        DirTreeRep.rep _ _ ?tree' _ _ _ ] =>
+      replace tree' with tree by congruence;
         apply H
     end.
 
+    subst.
+    congruence.
+
+    unfold seq_disk in *; simpl in *.
     learning.
+    descend; intuition eauto.
+    match goal with
+    | [ H: LOG.rep _ _ _ _ _ ?d |-
+        LOG.rep _ _ _ _ _ ?d' ] =>
+      replace d' with d by congruence
+    end.
+    eapply LOG.rep_hashmap_subset; eauto.
+
     match goal with
     | [ H: DirTreeRep.rep _ _ ?tree _ _ _ |-
         DirTreeRep.rep _ _ ?tree' _ _ _ ] =>

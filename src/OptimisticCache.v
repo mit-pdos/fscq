@@ -413,6 +413,7 @@ Section OptimisticCache.
                          vdisk (Sigma.s sigma) a = Some v0;
                        postcondition :=
                          fun '(sigma_i', sigma') '(r, wb') =>
+                           wb' = wb /\
                            CacheRep wb' sigma' /\
                            locally_modified sigma sigma' /\
                            vdisk (Sigma.s sigma') = vdisk (Sigma.s sigma) /\

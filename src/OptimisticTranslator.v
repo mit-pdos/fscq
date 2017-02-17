@@ -175,6 +175,7 @@ Section OptimisticTranslator.
           Sigma.l sigma' = l /\
           vdisk_committed (Sigma.s sigma') = vdisk_committed (Sigma.s sigma) /\
           (l = ReadLock -> vdisk (Sigma.s sigma') = vdisk (Sigma.s sigma)) /\
+          (l = ReadLock -> wb' = wb) /\
           sigma_i' = sigma_i /\
           match r with
           | Success v =>
@@ -210,6 +211,7 @@ Section OptimisticTranslator.
               eauto using CacheRead_ok
           end; simpl in *; intuition eauto.
         destruct v as [r wb']; intuition.
+        subst.
         destruct r; subst; CCLTactics.inv_ret;
           intuition eauto.
       + (* error read *)
@@ -226,6 +228,7 @@ Section OptimisticTranslator.
         destruct v0 as [? wb']; intuition.
         CCLTactics.inv_ret; intuition eauto.
         left; intuition eauto.
+        congruence.
         congruence.
 
         CCLTactics.inv_ret; intuition eauto.
@@ -257,6 +260,7 @@ Section OptimisticTranslator.
       destruct sigma; simpl; auto.
       destruct sigma; simpl; auto.
       destruct sigma; simpl; auto.
+      destruct sigma; simpl; auto.
 
       eapply exec_hash; auto; destruct sigma; simpl; eauto.
     - CCLTactics.inv_bind.
@@ -275,6 +279,7 @@ Section OptimisticTranslator.
         destruct r as [r wb'']; intuition eauto; try congruence.
         eapply locally_modified_trans; eauto.
         destruct r; eauto.
+
       + match goal with
         | [ Hexec: exec _ _ _ (translate p _ _) _ |- _ ] =>
           eapply IHp in Hexec; eauto
@@ -294,12 +299,13 @@ Section OptimisticTranslator.
            l = Sigma.l sigma /\
            CacheRep wb sigma;
          postcondition :=
-           fun '(sigma_i', sigma') '(r, wb) =>
-             CacheRep wb sigma' /\
+           fun '(sigma_i', sigma') '(r, wb') =>
+             CacheRep wb' sigma' /\
              locally_modified sigma sigma' /\
              Sigma.l sigma' = l /\
              vdisk_committed (Sigma.s sigma') = vdisk_committed (Sigma.s sigma) /\
-             l = ReadLock -> vdisk (Sigma.s sigma') = vdisk (Sigma.s sigma) /\
+             (l = ReadLock -> vdisk (Sigma.s sigma') = vdisk (Sigma.s sigma)) /\
+             (l = ReadLock -> CacheRep wb sigma') /\
              hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
              match r with
              | Success v => seq_post (seq_spec a Mem.empty_mem (Sigma.hm sigma))
@@ -326,7 +332,7 @@ Section OptimisticTranslator.
     eapply translate_simulation in H1; intuition eauto; subst.
     - (* concurrent execution finished *)
       destruct out; eauto.
-      destruct r as [r wb']; intuition eauto.
+      destruct r as [r wb']; intuition (subst; eauto).
 
       destruct r; eauto.
       match goal with

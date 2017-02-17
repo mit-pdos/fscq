@@ -116,6 +116,15 @@ Section CCL.
                            exists tid', tid <> tid' /\
                                    Guarantee tid sigma sigma').
 
+  Theorem Rely_trans : forall tid sigma sigma' sigma'',
+      Rely tid sigma sigma' ->
+      Rely tid sigma' sigma'' ->
+      Rely tid sigma sigma''.
+  Proof.
+    unfold Rely; intros.
+    eapply Relation_Operators.rt_trans; eauto.
+  Qed.
+
   Inductive StepOutcome T :=
   | StepTo (sigma':Sigma St) (v:T)
   | Fails
