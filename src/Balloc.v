@@ -22,6 +22,7 @@ Require Import GenSepN.
 Require Import WordAuto.
 Require Import FSLayout.
 Require Import AsyncDisk.
+Import ListUtils.
 
 Import ListNotations.
 
@@ -456,7 +457,6 @@ End BmapAlloc.
 
 (* BmapAlloc with a list of free items to speed up allocation *)
 
-(*
 
 Module BmapAllocCache.
 
@@ -509,10 +509,9 @@ Module BmapAllocCache.
     fms <- Alloc.steal lxp xp bn (MSLog ms) ;
     Ret (mk_memstate fms freelist0).
 
-Import ListUtils.
 
-  Definition rep V xp freelist (freepred : @pred _ addr_eq_dec V) cache :=
-    (Alloc.rep xp freelist freepred *
+  Definition rep V FP xp freelist (freepred : @pred _ addr_eq_dec V) cache :=
+    (Alloc.rep FP xp freelist freepred *
     [[incl_count addr_eq_dec cache freelist ]])%pred.
 
 (*
@@ -521,7 +520,7 @@ Import ListUtils.
       bn < (Sig.BMPLen xp) * valulen /\ 
       In bn freelist ]])%pred. *)
 
-  Theorem init_ok : forall V lxp xp (ms:memstate),
+  Theorem init_ok : forall V FP lxp xp (ms:memstate),
     {< F Fm m0 m bl,
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
@@ -529,7 +528,7 @@ Import ListUtils.
           [[ Sig.xparams_ok xp /\ Sig.BMPStart xp <> 0 /\ length bl = Sig.BMPLen xp ]]
     POST:hm' RET:ms exists m' freepred freelist,
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
-          [[[ m' ::: (Fm * @rep V xp freelist freepred (MSCache ms)) ]]]
+          [[[ m' ::: (Fm * @rep V FP xp freelist freepred (MSCache ms)) ]]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} init lxp xp (MSLog ms).
   Proof.
@@ -538,17 +537,17 @@ Import ListUtils.
     step.
   Qed.
 
-  Theorem alloc_ok : forall V lxp xp (ms:memstate),
+  Theorem alloc_ok : forall V FP lxp xp (ms:memstate),
     {< F Fm m0 m freelist freepred,
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
-          [[[ m ::: (Fm * @rep V xp freelist freepred (MSCache ms)) ]]]
+          [[[ m ::: (Fm * @rep V FP xp freelist freepred (MSCache ms)) ]]]
     POST:hm' RET:^(ms,r)
           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm'
        \/ exists bn m' freepred',
           [[ r = Some bn ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
-          [[[ m' ::: (Fm * @rep V xp (remove addr_eq_dec bn freelist) freepred' (MSCache ms)) ]]] *
-          [[ freepred =p=> freepred' * bn |->? ]] *
+          [[[ m' ::: (Fm * @rep V FP xp (remove addr_eq_dec bn freelist) freepred' (MSCache ms)) ]]] *
+          [[ freepred =p=> freepred' * (exists v, bn |-> v * [[ FP v ]]) ]] *
           [[ bn <> 0 /\ bn < (Sig.BMPLen xp) * valulen ]] *
           [[ In bn freelist ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
@@ -559,84 +558,41 @@ Import ListUtils.
     step.
     step.
     step.
-
-
-    Search In incl_count.
-
-    specialize (H8 n).
-    intuition.
-    specialize (H8 n).
-    intuition.
+    eapply incl_count_incl in H8.
+    eapply In_incl; eauto.
+    constructor. auto.
     step.
-    or_r.
-    cancel. 
-    eapply NoDup_cons_iff; eauto.
-    specialize (H8 bn). subst.
-    destruct H8. right. auto.
-    congruence.
-    specialize (H8 bn).
-    intuition.
-    specialize (H8 bn).
-    intuition.
-    destruct (addr_eq_dec n bn).
-    intros.  subst.
-    destruct H6. eauto.
-    exfalso. inversion H9. subst.
-    congruence.
-    intros. subst.
-    Search remove.
-    apply remove_other_In; eauto.
-    specialize (H8 n). subst; destruct H8.
-    left. auto. congruence.
-    specialize (H8 n).
-    intuition.
-    specialize (H8 n).
-    intuition.
-  Qed.
+    or_r. cancel.
 
-  Theorem free_ok : forall V lxp xp bn ms,
+  Admitted.
+
+  Theorem free_ok : forall V FP lxp xp bn ms,
     {< F Fm m0 m freelist freepred,
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
           [[ bn < (Sig.BMPLen xp) * valulen ]] *
-          [[[ m ::: (Fm * @rep V xp freelist freepred (MSCache ms)) ]]]
+          [[[ m ::: (Fm * @rep V FP xp freelist freepred (MSCache ms)) ]]]
     POST:hm' RET:ms exists m' freepred',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
-          [[[ m' ::: (Fm * @rep V xp (bn :: freelist) freepred' (MSCache ms)) ]]] *
-          [[ bn |->? * freepred =p=> freepred' ]]
+          [[[ m' ::: (Fm * @rep V FP xp (bn :: freelist) freepred' (MSCache ms)) ]]] *
+          [[ forall v, FP v -> bn |-> v * freepred =p=> freepred' ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} free lxp xp bn ms.
   Proof.
     unfold free, rep; intros.
     step.
     step.
-    specialize (H9 bn).
-    destruct (In_dec addr_eq_dec bn (MSCache ms)).
-    destruct H9. eauto.
-    intuition.
-    exfalso. admit. (* H and H0? *)
-    constructor; auto.
-    specialize (H9 bn).
-    subst.
-    destruct (In_dec addr_eq_dec 0 (MSCache ms)).
-    destruct H9. eauto. congruence.
-    admit.
-    subst.
-    admit.
-    specialize (H9 bn0).
-    destruct H9. intuition. intuition.
-    specialize (H9 bn0).  destruct H9. auto. intuition.
   Admitted.
 
-  Theorem steal_ok : forall V lxp xp bn (ms:memstate),
+  Theorem steal_ok : forall V FP lxp xp bn (ms:memstate),
     {< F Fm m0 m freelist freepred,
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
-          [[[ m ::: (Fm * @rep V xp freelist freepred (MSCache ms))]]] *
+          [[[ m ::: (Fm * @rep V FP xp freelist freepred (MSCache ms))]]] *
           [[ In bn freelist /\ bn < (Sig.BMPLen xp) * valulen ]]
     POST:hm' RET:ms' exists m' freepred',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms') hm' *
-          [[[ m' ::: (Fm * @rep V xp (remove addr_eq_dec bn freelist) freepred' (MSCache ms)) ]]] *
+          [[[ m' ::: (Fm * @rep V FP xp (remove addr_eq_dec bn freelist) freepred' (MSCache ms)) ]]] *
           [[ freepred =p=> freepred' * bn |->? ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} steal lxp xp bn ms.
@@ -648,7 +604,7 @@ Import ListUtils.
 
 
 End BmapAllocCache.
-*)
+
 
 
 (* Specialize for actual on-disk-block allocation *)
