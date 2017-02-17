@@ -529,13 +529,8 @@ Module BmapAllocCache.
 
   Definition rep V FP xp freelist (freepred : @pred _ addr_eq_dec V) cache :=
     (Alloc.rep FP xp freelist freepred *
-    [[incl_count addr_eq_dec cache freelist ]])%pred.
-
-(*
-    [[forall bn, In bn cache -> 
-      bn <> 0 /\ 
-      bn < (Sig.BMPLen xp) * valulen /\ 
-      In bn freelist ]])%pred. *)
+    [[ incl_count addr_eq_dec cache freelist ]] *
+    [[ forall bn, In bn cache -> bn <> 0 ]])%pred.
 
   Theorem init_ok : forall V FP lxp xp (ms:memstate),
     {< F Fm m0 m bl,
@@ -575,20 +570,40 @@ Module BmapAllocCache.
     step.
     step.
     step.
-    eapply incl_count_incl in H8.
-    eapply In_incl; eauto.
-    constructor. auto.
+    eapply In_incl.
+    2: eapply incl_count_incl; eauto.
+    constructor; auto.
     step.
     or_r. cancel.
 
+ 
+    (* XXX put in lemma *)
+    unfold Alloc.rep in H4.
+    destruct_lift H4.
+    unfold Alloc.freelist_bmap_equiv in *. intuition.
+    assert (In n freelist).
+    eapply In_incl;eauto.
+    constructor.
+    auto.
+    eapply Forall_forall in H5; eauto.
+    Search length Alloc.Bmp.rep.
+    rewrite Alloc.Bmp.items_length_ok_pimpl in H4.
+    destruct_lift H4.
+    unfold Alloc.BmpSig.RALen in *.
+    unfold Sig.BMPLen in *.
+    unfold Alloc.BmpSig.items_per_val in *.
+    unfold Alloc.Bmp.Defs.item in *. simpl in *.
+    omega.
   Admitted.
 
   Theorem free_ok : forall V FP lxp xp bn ms,
     {< F Fm m0 m freelist freepred,
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+          [[ bn <> 0 ]] *
           [[ bn < (Sig.BMPLen xp) * valulen ]] *
-          [[[ m ::: (Fm * @rep V FP xp freelist freepred (MSCache ms)) ]]]
+          [[[ m ::: (Fm * @rep V FP xp freelist freepred (MSCache ms)) ]]] *
+          [[ exists mx Fx, (Fx * freepred * bn |->?)%pred mx ]]
     POST:hm' RET:ms exists m' freepred',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
           [[[ m' ::: (Fm * @rep V FP xp (bn :: freelist) freepred' (MSCache ms)) ]]] *
@@ -599,7 +614,16 @@ Module BmapAllocCache.
     unfold free, rep; intros.
     step.
     step.
-  Admitted.
+  Qed.
+
+
+(*
+Lemma rep_impl_bn_ok: forall bn V FP xp freelist freepred,
+  Alloc.rep V FP xp freelist freepred ->
+  In bn freelist -> 
+  bn < (Sig.BMPLen xp) * valulen.
+Admitted.
+*)
 
   Theorem steal_ok : forall V FP lxp xp bn (ms:memstate),
     {< F Fm m0 m freelist freepred,
@@ -610,14 +634,14 @@ Module BmapAllocCache.
     POST:hm' RET:ms' exists m' freepred',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms') hm' *
           [[[ m' ::: (Fm * @rep V FP xp (remove addr_eq_dec bn freelist) freepred' (MSCache ms)) ]]] *
-          [[ freepred =p=> freepred' * bn |->? ]]
+          [[ freepred =p=> freepred' * (exists v, bn |-> v * [[ FP v ]]) ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} steal lxp xp bn ms.
   Proof.
     unfold steal, rep; intros.
     step.
     step.
-  Qed.
+  Admitted.
 
 
 End BmapAllocCache.
