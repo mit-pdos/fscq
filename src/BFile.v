@@ -40,10 +40,10 @@ the same as the inode attributes). *)
 
 Module BFILE.
 
-  Definition memstate := (bool * LOG.memstate)%type.
-  Definition mk_memstate a b : memstate := (a, b).
-  Definition MSAlloc (ms : memstate) := fst ms.   (* which block allocator to use? *)
-  Definition MSLL (ms : memstate) := snd ms.      (* lower-level state *)
+  Record memstate := mk_memstate {
+    MSAlloc : bool;         (* which block allocator to use? *)
+    MSLL : LOG.memstate     (* lower-level state *)
+  }.
 
 
   (* interface implementation *)
