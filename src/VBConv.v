@@ -1352,13 +1352,15 @@ Qed.
 	
 
 	
-	Lemma div_lt_le: forall a b c,
-	b <> 0 ->
-	a >= c ->
-	a / b >= c / b.
-	Proof. Admitted.
-	
-	
+  Lemma div_lt_le: forall a b c,
+      b <> 0 ->
+      a >= c ->
+      a / b >= c / b.
+  Proof.
+    intros.
+    apply Nat.div_le_mono; eauto.
+  Qed.
+
 Lemma n2w_id: forall a b sz,
 a = b -> natToWord sz a = natToWord sz b.
 	Proof. intros; subst; reflexivity. Qed.
@@ -1400,8 +1402,17 @@ a > (c - 1) * b ->
 a <= c * b ->
 a mod b > 0 ->
 a < c * b.
-	Proof. Admitted.
-	
+Proof.
+  intros.
+  destruct c; simpl in *; try omega.
+  rewrite Nat.sub_0_r in *.
+  destruct (Nat.eq_dec a (b + c * b)); try omega.
+  subst.
+  exfalso.
+  rewrite Nat.mod_add in H2 by auto.
+  rewrite Nat.mod_same in * by auto.
+  omega.
+Qed.
 
 Lemma list_zero_pad_length: forall a l,
 length (list_zero_pad l a) = length l + a.
