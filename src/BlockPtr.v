@@ -1524,31 +1524,36 @@ Module BlockPtr (BPtr : BlockPtrSig).
           step; try (rewrite natToWord_wordToNat; rewrite updN_selN_eq).
           rewrite indrep_n_helper_valid in * by auto. unfold IndRec.rep in *. destruct_lifts. auto.
          -- prestep. norm. cancel. cancel. repeat split.
-            pred_apply. norm; intuition.
+            pred_apply. norm; intuition eauto.
             instantiate (iblocks := updN _ _ _). cancel.
-            rewrite listmatch_updN_removeN. repeat rewrite indrep_n_helper_0. rewrite updN_selN_eq. cancel.
-            repeat rewrite repeat_selN.
-            repeat rewrite indrep_n_tree_0. cancel.
-            all : autorewrite with lists; try indrep_n_tree_bound; auto.
-            erewrite upd_range_concat_hom_small by (eauto; mult_nonzero; omega).
-            repeat f_equal.
-            rewrite indrep_n_helper_0 in *. destruct_lifts.
-            erewrite concat_hom_length in * by eauto.
-            rewrite listmatch_repeat_l in *.
-            rewrite listpred_extract in *. destruct_lifts.
-            rewrite indrep_n_tree_0 in *. destruct_lifts.
-            match goal with [H : _ |- _ ] => rewrite H end. rewrite upd_range_same. auto.
-            apply Nat.div_lt_upper_bound; auto. rewrite mult_comm. omega.
-            cancel. cancel. repeat split.
+            rewrite listmatch_updN_removeN. repeat rewrite indrep_n_helper_0. rewrite updN_selN_eq.
+
+            norm.
+            unfold stars; simpl.
+            rewrite (sep_star_comm _ emp).
+            rewrite star_emp_pimpl.
+            apply pimpl_sep_star.
+            cancel.
+
+            instantiate (3 := nil).
+            cancel.
+            intuition eauto.
+            all: autorewrite with lists; repeat indrep_n_tree_bound; auto.
+            erewrite upd_range_concat_hom_small by (eauto; mult_nonzero; omega); auto.
+
+            cancel.
+            cancel.
+            intuition auto.
             pred_apply. norm; intuition.
             instantiate (iblocks := updN _ _ _). cancel.
             rewrite listmatch_updN_removeN. repeat rewrite indrep_n_helper_0. cancel.
             rewrite updN_selN_eq. cancel.
+
             all : autorewrite with lists; try indrep_n_tree_bound; auto.
             erewrite upd_range_concat_hom_small by (eauto; mult_nonzero; omega).
             reflexivity.
          -- unfold IndRec.items_valid, IndSig.xparams_ok, IndSig.RAStart, IndSig.RALen, Rec.well_formed in *.
-              simpl in *. rewrite length_updN. intuition. omega.
+              simpl in *. rewrite length_updN. intuition.
          -- prestep. norm. cancel. cancel. repeat split.
             pred_apply. norm; intuition.
             instantiate (iblocks := updN _ _ _). cancel.
