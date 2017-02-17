@@ -807,6 +807,31 @@ Proof.
     eapply StepIfFalse; eval_expr].
 Qed.
 
+Lemma CompileIfLt' :
+  forall V vara varb (a b : nat)
+    (ptrue : _ -> prog V) (pfalse : _ -> prog V) xptrue xpfalse F G env,
+    (forall l0, EXTRACT ptrue l0
+      {{ vara ~> a * varb ~> b * F }}
+        xptrue
+      {{ fun ret => G ret }} // env) ->
+    (forall r0, EXTRACT pfalse r0
+      {{ vara ~> a * varb ~> b * F }}
+        xpfalse
+      {{ fun ret => G ret }} // env) ->
+    EXTRACT (match Compare_dec.lt_dec a b with | left l0 => ptrue l0 | right r0 => pfalse r0 end)
+    {{ vara ~> a * varb ~> b * F }}
+      If (TestE Lt (Var vara) (Var varb)) Then xptrue Else xpfalse EndIf
+    {{ fun ret => G ret }} // env.
+Proof.
+  intros. unfold ProgOk.
+  inv_exec_progok;
+    repeat exec_solve_step.
+  all : contradiction H3;
+    repeat eexists; solve [
+    eapply StepIfTrue; eval_expr |
+    eapply StepIfFalse; eval_expr].
+Qed.
+
 Lemma CompileRead :
   forall env F avar vvar a,
     EXTRACT Read a

@@ -202,13 +202,34 @@ Proof.
   unfold Rec.word_selN'.
   rewrite <- Rec.word_selN_shift_equiv.
   unfold Rec.word_selN.
-  break_match.
-  cbv [Rec.len plus mult]. fold Nat.add Nat.mul.
+  eapply extract_equiv_prog.
+  Lemma f_into_match : forall A B C D (e : {A} + {B}) (L : A -> C) (R : B -> C) (f : C -> D),
+      f (match e with | left l0 => L l0 | right r0 => R r0 end) =
+      match e with | left l0 => f (L l0) | right r0 => f (R r0) end.
+  Proof.
+    intros.
+    destruct e; reflexivity.
+  Qed.
+  rewrite f_into_match with (f := Ret).
+  reflexivity.
   Ltac make_value_exist v_ :=
     let T := type of v_ in
     eapply CompileBefore; [
       do_declare T ltac:(fun var => idtac var v_;
                            eapply CompileRet with (var0 := var) (v := v_)); repeat compile_step | ].
+  make_value_exist INODE.IRecSig.items_per_val.
+  make_value_exist (PeanoNat.Nat.modulo inum INODE.IRecSig.items_per_val).
+  eapply hoare_weaken; [ eapply (@CompileIfLt' _ (nth_var 22 vars) (nth_var 21 vars)); intros | cancel_go..].
+  Focus 2.
+
+  simpl.
+  eapply hoare_weaken.
+  eapply CompileConst with (v := nth_var 20 vars) (Wr := GoWrapper_immut_word 1024).
+  rewrite okToCancel_ptsto_typed_any_typed with (var0 := nth_var 16 vars).
+  cancel_go.
+  cancel_go.
+  
+  cbv [Rec.len plus mult]. fold Nat.add Nat.mul.
   lazymatch goal with
   | [ |- EXTRACT (Ret (?f ?a ?b ?c ?d)) {{ _ }} _ {{ _ }} // _ ] =>
     make_value_exist a
@@ -221,23 +242,23 @@ Proof.
   pattern_prog (fst (snd a)).
   do_declare (immut_word valulen) ltac:(fun var => idtac var).
   eapply hoare_weaken.
-  eapply CompileBindRet with (A := immut_word valulen) (vara := nth_var 23 vars) (a := fst (snd a)).
+  eapply CompileBindRet with (A := immut_word valulen) (vara := nth_var 25 vars) (a := fst (snd a)).
   3: cancel_go.
   3: cancel_go.
 
   eapply hoare_weaken.
-  apply CompileFreeze with (svar := nth_var 16 vars) (dvar := nth_var 23 vars).
+  apply CompileFreeze with (svar := nth_var 16 vars) (dvar := nth_var 25 vars).
   divisibility.
   cancel_go.
   cancel_go.
   eapply hoare_weaken.
-  eapply (@CompileMiddle _ _ _ _ env (nth_var 20 vars) (nth_var 23 vars) (nth_var 21 vars) (nth_var 22 vars)).
+  eapply (@CompileMiddle _ _ _ _ env (nth_var 20 vars) (nth_var 25 vars) (nth_var 23 vars) (nth_var 24 vars)).
   divisibility.
   divisibility.
   divisibility.
   cancel_go.
   norm.
-  do 26 delay_one.
+  do 28 delay_one.
   eapply cancel_one.
   eapply PickFirst.
   match goal with
@@ -252,7 +273,7 @@ Proof.
   | |- context[rew ?He in _] => let H := fresh in let Te := type of He in assert Te as H; [ | generalize He; rewrite <- H ]
   end.
   rewrite INODE.IRecSig.blocksz_ok; simpl.
-  rewrite (Rec.word_selN_helper 1024 l) at 1.
+  rewrite (Rec.word_selN_helper 1024 l0) at 1.
   reflexivity.
   intros.
   f_equal.
@@ -273,15 +294,16 @@ Proof.
   | |- context[rew ?He in _] => let H := fresh in let Te := type of He in assert Te as H; [ | generalize He; rewrite <- H ]
   end.
   rewrite INODE.IRecSig.blocksz_ok; simpl.
-  rewrite (Rec.word_selN_helper 1024 l) at 1.
+  rewrite (Rec.word_selN_helper 1024 l0) at 1.
   reflexivity.
   intros.
   f_equal.
   rewrite UIP_refl with (p := e).
   reflexivity.
+  Require Import PeanoNat.
+  apply Nat.mod_upper_bound.
+  apply INODE.IRec.Defs.items_per_val_not_0.
 
-  (* Oops, actually needed to compile the match rather than just doing a [break_match]... *)
-  
 Admitted.
 
 Definition extract_env : Env.
