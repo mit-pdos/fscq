@@ -416,50 +416,63 @@ Module BmapAllocCache.
 
   Definition BmapCacheType := list addr.
 
-  Definition memstate := (LOG.memstate * BmapCacheType)%type.
+  Record memstate := mk_memstate {
+    MSLog  : LOG.memstate;
+    MSCache   : BmapCacheType; 
+  }.
+
   Definition freelist0 : BmapCacheType := (@nil addr).
 
   Definition init lxp xp fms : prog memstate :=
     fms <- Alloc.init lxp xp fms;
-    Ret (fms, freelist0).
+    Ret (mk_memstate fms freelist0 ).
 
   Definition init_nofree lxp xp ms :=
     fms <- Alloc.init_nofree lxp xp ms;
-    Ret (fms, freelist0).
+    Ret (mk_memstate fms freelist0).
+
 
   Definition alloc lxp xp ms :=
-    match (snd ms) with
+    match (MSCache ms) with
     | nil =>
-      let^ (fms, r) <- Alloc.alloc lxp xp (fst ms);
-      Ret ^((fms, snd ms), r)
+      let^ (fms, r) <- Alloc.alloc lxp xp (MSLog ms);
+      Ret ^((mk_memstate fms (MSCache ms)), r)
     | bn :: freelist =>
-      fms <- Alloc.steal lxp xp bn (fst ms);
-      Ret ^((fms, freelist), Some bn)
+      fms <- Alloc.steal lxp xp bn (MSLog ms);
+      Ret ^((mk_memstate fms freelist), Some bn)
     end.
 
   Definition free lxp xp bn ms :=
-    fms <- Alloc.free lxp xp bn (fst ms) ;
-    Ret ^(fms, bn ::(snd ms)).
+    fms <- Alloc.free lxp xp bn (MSLog ms) ;
+    Ret (mk_memstate fms (bn ::(MSCache ms))).
 
   Definition steal lxp xp bn (ms:memstate) :=
-    fms <- Alloc.steal lxp xp bn (fst ms) ;
-    Ret (fms, freelist0).
+    fms <- Alloc.steal lxp xp bn (MSLog ms) ;
+    Ret (mk_memstate fms freelist0).
 
-  Definition rep V xp freelist (freepred : @pred _ addr_eq_dec V) (ms:memstate) :=
+Import ListUtils.
+
+  Definition rep V xp freelist (freepred : @pred _ addr_eq_dec V) cache :=
     (Alloc.rep xp freelist freepred *
-    [[forall bn, In bn (snd ms) -> In bn freelist ]])%pred.
+    [[incl_count addr_eq_dec cache freelist ]])%pred.
+
+(*
+    [[forall bn, In bn cache -> 
+      bn <> 0 /\ 
+      bn < (Sig.BMPLen xp) * valulen /\ 
+      In bn freelist ]])%pred. *)
 
   Theorem init_ok : forall V lxp xp (ms:memstate),
     {< F Fm m0 m bl,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (fst ms) hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
           [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (Sig.BMPStart xp) bl) ]]] *
           [[ Sig.xparams_ok xp /\ Sig.BMPStart xp <> 0 /\ length bl = Sig.BMPLen xp ]]
     POST:hm' RET:ms exists m' freepred freelist,
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (fst ms) hm' *
-          [[[ m' ::: (Fm * @rep V xp freelist freepred ms) ]]]
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+          [[[ m' ::: (Fm * @rep V xp freelist freepred (MSCache ms)) ]]]
     CRASH:hm' LOG.intact lxp F m0 hm'
-    >} init lxp xp (fst ms).
+    >} init lxp xp (MSLog ms).
   Proof.
     unfold init, rep; intros.
     step.
@@ -469,13 +482,13 @@ Module BmapAllocCache.
   Theorem alloc_ok : forall V lxp xp (ms:memstate),
     {< F Fm m0 m freelist freepred,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (fst ms) hm *
-          [[[ m ::: (Fm * @rep V xp freelist freepred ms) ]]]
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+          [[[ m ::: (Fm * @rep V xp freelist freepred (MSCache ms)) ]]]
     POST:hm' RET:^(ms,r)
-          [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) (fst ms) hm'
+          [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm'
        \/ exists bn m' freepred',
-          [[ r = Some bn ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (fst ms) hm' *
-          [[[ m' ::: (Fm * @rep V xp (remove addr_eq_dec bn freelist) freepred' ms) ]]] *
+          [[ r = Some bn ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+          [[[ m' ::: (Fm * @rep V xp (remove addr_eq_dec bn freelist) freepred' (MSCache ms)) ]]] *
           [[ freepred =p=> freepred' * bn |->? ]] *
           [[ bn <> 0 /\ bn < (Sig.BMPLen xp) * valulen ]] *
           [[ In bn freelist ]]
@@ -484,38 +497,87 @@ Module BmapAllocCache.
   Proof.
     unfold alloc, rep; intros.
     destruct_branch.
-    prestep. norm. cancel.
-    eassign (F_).
-    eassign (F).
-    eassign (m0).
-    eassign (m).
-    cancel.
-    intuition.
-    pred_apply.
-    cancel.
     step.
-    prestep. norm. cancel. 
-   eassign (F_).
-    eassign (F).
-    eassign (m0).
-    eassign (m).
-    cancel.
+    step.
+    step.
+
+
+    Search In incl_count.
+
+    specialize (H8 n).
     intuition.
-    pred_apply.
-(*
-    Focus 3.
-    prestep. norm. cancel.  *)
+    specialize (H8 n).
+    intuition.
+    step.
+    or_r.
+    cancel. 
+    eapply NoDup_cons_iff; eauto.
+    specialize (H8 bn). subst.
+    destruct H8. right. auto.
+    congruence.
+    specialize (H8 bn).
+    intuition.
+    specialize (H8 bn).
+    intuition.
+    destruct (addr_eq_dec n bn).
+    intros.  subst.
+    destruct H6. eauto.
+    exfalso. inversion H9. subst.
+    congruence.
+    intros. subst.
+    Search remove.
+    apply remove_other_In; eauto.
+    specialize (H8 n). subst; destruct H8.
+    left. auto. congruence.
+    specialize (H8 n).
+    intuition.
+    specialize (H8 n).
+    intuition.
+  Qed.
+
+  Theorem free_ok : forall V lxp xp bn ms,
+    {< F Fm m0 m freelist freepred,
+    PRE:hm
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+          [[ bn < (Sig.BMPLen xp) * valulen ]] *
+          [[[ m ::: (Fm * @rep V xp freelist freepred (MSCache ms)) ]]]
+    POST:hm' RET:ms exists m' freepred',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+          [[[ m' ::: (Fm * @rep V xp (bn :: freelist) freepred' (MSCache ms)) ]]] *
+          [[ bn |->? * freepred =p=> freepred' ]]
+    CRASH:hm' LOG.intact lxp F m0 hm'
+    >} free lxp xp bn ms.
+  Proof.
+    unfold free, rep; intros.
+    step.
+    step.
+    specialize (H9 bn).
+    destruct (In_dec addr_eq_dec bn (MSCache ms)).
+    destruct H9. eauto.
+    intuition.
+    exfalso. admit. (* H and H0? *)
+    constructor; auto.
+    specialize (H9 bn).
+    subst.
+    destruct (In_dec addr_eq_dec 0 (MSCache ms)).
+    destruct H9. eauto. congruence.
+    admit.
+    subst.
+    admit.
+    specialize (H9 bn0).
+    destruct H9. intuition. intuition.
+    specialize (H9 bn0).  destruct H9. auto. intuition.
   Admitted.
 
   Theorem steal_ok : forall V lxp xp bn (ms:memstate),
     {< F Fm m0 m freelist freepred,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (fst ms) hm *
-          [[[ m ::: (Fm * @rep V xp freelist freepred ms)]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+          [[[ m ::: (Fm * @rep V xp freelist freepred (MSCache ms))]]] *
           [[ In bn freelist /\ bn < (Sig.BMPLen xp) * valulen ]]
     POST:hm' RET:ms' exists m' freepred',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (fst ms') hm' *
-          [[[ m' ::: (Fm * @rep V xp (remove addr_eq_dec bn freelist) freepred' ms') ]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms') hm' *
+          [[[ m' ::: (Fm * @rep V xp (remove addr_eq_dec bn freelist) freepred' (MSCache ms)) ]]] *
           [[ freepred =p=> freepred' * bn |->? ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} steal lxp xp bn ms.
