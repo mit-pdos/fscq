@@ -181,6 +181,9 @@ Module BFILE.
     ms <- shuffle_allocs lxp bxps ms;
     Ret (mk_memstate true ms (BFcache.empty _)).
 
+  Definition recover ms :=
+    Ret (mk_memstate true ms (BFcache.empty _)).
+
   Definition cache_get inum fms :=
     let '(al, ms, cache) := (MSAlloc fms, MSLL fms, MSCache fms) in
     Ret ^(mk_memstate al ms cache, BFcache.find inum cache).

@@ -124,7 +124,7 @@ Module AFS.
         let^ (mscs, ok) <- LOG.commit (FSXPLog fsxp) mscs;
         If (bool_dec ok true) {
           mscs <- LOG.flushsync (FSXPLog fsxp) mscs;
-          Ret (OK ((BFILE.mk_memstate (MSAlloc ms) mscs), fsxp))
+          Ret (OK ((BFILE.mk_memstate (MSAlloc ms) mscs (MSCache ms)), fsxp))
         } else {
           Ret (Err ELOGOVERFLOW)
         }
@@ -241,7 +241,7 @@ Module AFS.
        [[ vm' = vm ]] *
        ( [[ isError r ]] \/ exists ilist frees,
          [[ r = OK (ms, fsxp) ]] *
-         [[[ d ::: rep fsxp emp (TreeDir (FSXPRootInum fsxp) nil) ilist frees ]]] )
+         [[[ d ::: rep fsxp emp (TreeDir (FSXPRootInum fsxp) nil) ilist frees ms ]]] )
      CRASH:hm'
        any
      >!!} mkfs cachesize data_bitmaps inode_bitmaps log_descr_blocks.
@@ -363,161 +363,162 @@ Module AFS.
     let^ (cs, fsxp) <- SB.load cs;
     If (addr_eq_dec (FSXPMagic fsxp) SB.magic_number) {
       mscs <- LOG.recover (FSXPLog fsxp) cs;
-      Ret (OK (BFILE.mk_memstate true mscs, fsxp))
+      mscs <- BFILE.recover mscs;
+      Ret (OK (mscs, fsxp))
     } else {
       Ret (Err EINVAL)
     }.
 
   Definition file_get_attr fsxp inum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, attr) <- DIRTREE.getattr fsxp inum (MSAlloc ams, ms);
+    let^ (ams, attr) <- DIRTREE.getattr fsxp inum (BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    Ret ^((MSAlloc ams, ms), attr).
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), attr).
 
   Definition file_get_sz fsxp inum ams :=
     let^ (ams, attr) <- file_get_attr fsxp inum ams;
-      Ret ^(ams, INODE.ABytes attr).
+    Ret ^(ams, INODE.ABytes attr).
 
   Definition file_set_attr fsxp inum attr ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    ams <- DIRTREE.setattr fsxp inum attr (MSAlloc ams, ms);
+    ams <- DIRTREE.setattr fsxp inum attr (BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams));
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-    Ret ^((MSAlloc ams, ms), ok).
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), ok).
 
   Definition file_set_sz fsxp inum sz ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    ams <- DIRTREE.updattr fsxp inum (INODE.UBytes sz) (MSAlloc ams, ms);
+    ams <- DIRTREE.updattr fsxp inum (INODE.UBytes sz) (BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams));
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-    Ret ^((MSAlloc ams, ms), ok).
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), ok).
 
   Definition read_fblock fsxp inum off ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, b) <- DIRTREE.read fsxp inum off (MSAlloc ams, ms);
+    let^ (ams, b) <- DIRTREE.read fsxp inum off (BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    Ret ^((MSAlloc ams, ms), b).
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), b).
 
   Definition file_truncate fsxp inum sz ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, ok) <- DIRTREE.truncate fsxp inum sz (MSAlloc ams, ms);
+    let^ (ams, ok) <- DIRTREE.truncate fsxp inum sz (BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams));
     match ok with
     | Err e =>
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-      Ret ^((MSAlloc ams, ms), Err e)
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), Err e)
     | OK _ =>
       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
       If (bool_dec ok true) {
-        Ret ^((MSAlloc ams, ms), OK tt)
+        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), OK tt)
       } else {
-        Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
+        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), Err ELOGOVERFLOW)
       }
     end.
 
   (* update an existing block directly.  XXX dwrite happens to sync metadata. *)
   Definition update_fblock_d fsxp inum off v ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    ams <- DIRTREE.dwrite fsxp inum off v (MSAlloc ams, ms);
+    ams <- DIRTREE.dwrite fsxp inum off v (BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    Ret ^((MSAlloc ams, ms)).
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams))).
 
   Definition update_fblock fsxp inum off v ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    ams <- DIRTREE.write fsxp inum off v (MSAlloc ams, ms);
+    ams <- DIRTREE.write fsxp inum off v (BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams));
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-    Ret ^((MSAlloc ams, ms), ok).
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), ok).
 
   (* sync only data blocks of a file. *)
   Definition file_sync fsxp inum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    ams <- DIRTREE.datasync fsxp inum (MSAlloc ams, ms);
+    ams <- DIRTREE.datasync fsxp inum (BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    Ret ^((MSAlloc ams, ms)).
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams))).
 
   Definition readdir fsxp dnum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, files) <- SDIR.readdir (FSXPLog fsxp) (FSXPInode fsxp) dnum (MSAlloc ams, ms);
+    let^ (ams, files) <- SDIR.readdir (FSXPLog fsxp) (FSXPInode fsxp) dnum (BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    Ret ^((MSAlloc ams, ms), files).
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), files).
 
   Definition create fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (MSAlloc ams, ms);
+    let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams));
     match oi with
       | Err e =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-          Ret ^((MSAlloc ams, ms), Err e)
+          Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), Err e)
       | OK inum =>
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
-          | true => Ret ^((MSAlloc ams, ms), OK inum)
-          | false => Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
+          | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), OK inum)
+          | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), Err ELOGOVERFLOW)
         end
     end.
 
   Definition mksock fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (MSAlloc ams, ms);
+    let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams));
     match oi with
       | Err e =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-        Ret ^((MSAlloc ams, ms), Err e)
+        Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), Err e)
       | OK inum =>
         ams <- BFILE.updattr (FSXPLog fsxp) (FSXPInode fsxp) inum (INODE.UType $1) ams;
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
-          | true => Ret ^((MSAlloc ams, ms), OK inum)
-          | false => Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
+          | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), OK inum)
+          | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), Err ELOGOVERFLOW)
         end
     end.
 
   Definition mkdir fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, oi) <- DIRTREE.mkdir fsxp dnum name (MSAlloc ams, ms);
+    let^ (ams, oi) <- DIRTREE.mkdir fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams));
     match oi with
       | Err e =>
         ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-          Ret ^((MSAlloc ams, ms), Err e)
+          Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), Err e)
       | OK inum =>
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
         match ok with
-          | true => Ret ^((MSAlloc ams, ms), OK inum)
-          | false => Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
+          | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), OK inum)
+          | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), Err ELOGOVERFLOW)
         end
     end.
 
   Definition delete fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, ok) <- DIRTREE.delete fsxp dnum name (MSAlloc ams, ms);
+    let^ (ams, ok) <- DIRTREE.delete fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams));
     match ok with
     | OK _ =>
        let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
        match ok with
-       | true => Ret ^((MSAlloc ams, ms), OK tt)
-       | false => Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
+       | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), OK tt)
+       | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), Err ELOGOVERFLOW)
        end
     | Err e =>
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-      Ret ^((MSAlloc ams, ms), Err e)
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), Err e)
     end.
 
   Definition lookup fsxp dnum names ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, r) <- DIRTREE.namei fsxp dnum names (MSAlloc ams, ms);
+    let^ (ams, r) <- DIRTREE.namei fsxp dnum names (BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    Ret ^((MSAlloc ams, ms), r).
+    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), r).
 
   Definition rename fsxp dnum srcpath srcname dstpath dstname ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
-    let^ (ams, r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname (MSAlloc ams, ms);
+    let^ (ams, r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname (BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams));
     match r with
     | OK _ =>
       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
       match ok with
-      | true => Ret ^((MSAlloc ams, ms), OK tt)
-      | false => Ret ^((MSAlloc ams, ms), Err ELOGOVERFLOW)
+      | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), OK tt)
+      | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), Err ELOGOVERFLOW)
       end
     | Err e =>
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
-      Ret ^((MSAlloc ams, ms), Err e)
+      Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSCache ams)), Err e)
     end.
 
   (* sync directory tree; will flush all outstanding changes to tree (but not dupdates to files) *)
@@ -677,11 +678,11 @@ Module AFS.
   Theorem file_getattr_ok : forall fsxp inum mscs,
   {< ds pathname Fm Ftop tree f ilist frees,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-         [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
+         [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] *
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
   POST:hm' RET:^(mscs',r)
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-         [[ r = BFILE.BFAttr f /\ MSAlloc mscs' = MSAlloc mscs ]]
+         [[ r = BFILE.BFAttr f /\ MSAlloc mscs' = MSAlloc mscs /\ MSCache mscs' = MSCache mscs ]]
   CRASH:hm'
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
   >} file_get_attr fsxp inum mscs.
@@ -704,11 +705,11 @@ Module AFS.
   Theorem file_get_sz_ok : forall fsxp inum mscs,
   {< ds pathname Fm Ftop tree f ilist frees,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-         [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
+         [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] *
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
   POST:hm' RET:^(mscs',r)
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-         [[ r = INODE.ABytes (BFILE.BFAttr f) /\ MSAlloc mscs' = MSAlloc mscs ]]
+         [[ r = INODE.ABytes (BFILE.BFAttr f) /\ MSAlloc mscs' = MSAlloc mscs /\ MSCache mscs' = MSCache mscs ]]
   CRASH:hm'
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
   >} file_get_sz fsxp inum mscs.
@@ -782,12 +783,12 @@ Module AFS.
   Theorem read_fblock_ok : forall fsxp inum off mscs,
     {< ds Fm Ftop tree pathname f Fd vs ilist frees,
     PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-           [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
+           [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] *
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
            [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(mscs', r)
            LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-           [[ r = fst vs /\ MSAlloc mscs' = MSAlloc mscs ]]
+           [[ r = fst vs /\ MSAlloc mscs' = MSAlloc mscs /\ MSCache mscs' = MSCache mscs ]]
     CRASH:hm'
            LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} read_fblock fsxp inum off mscs.
@@ -812,16 +813,17 @@ Module AFS.
   Theorem file_set_attr_ok : forall fsxp inum attr mscs,
   {< ds pathname Fm Ftop tree f ilist frees,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-         [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees) ]]] *
+         [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs) ]]] *
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
   POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+      [[ MSCache mscs' = MSCache mscs ]] *
      ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
       [[ ok = true  ]] * exists d tree' f' ilist',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
-        [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees)]]] *
+        [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees mscs')]]] *
         [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-        [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
+        [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr (BFILE.BFCache f) ]] *
         [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                         ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
         [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
@@ -831,9 +833,9 @@ Module AFS.
     exists d tree' f' ilist' mscs',
     [[ MSAlloc mscs' = MSAlloc mscs ]] *
     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
-    [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees)]]] *
+    [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees mscs')]]] *
     [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-    [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr ]] *
+    [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr (BFILE.BFCache f) ]] *
     [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                     ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
     [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
@@ -866,16 +868,16 @@ Module AFS.
     {< ds Fm Ftop tree pathname f ilist frees,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees)]]] *
+      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs)]]] *
       [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST:hm' RET:^(mscs', r)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
      ([[ isError r ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
       [[ r = OK tt ]] * exists d tree' f' ilist' frees',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
-        [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees')]]] *
+        [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs')]]] *
         [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-        [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]] *
+        [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) (BFILE.BFCache f) ]] *
         [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                         ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
         [[ sz >= Datatypes.length (BFILE.BFData f) -> BFILE.treeseq_ilist_safe inum ilist ilist' ]] )
@@ -883,10 +885,11 @@ Module AFS.
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists d tree' f' ilist' frees' mscs',
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+      [[ MSCache mscs' = MSCache mscs ]] *
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
-      [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees')]]] *
+      [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs')]]] *
       [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
-      [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]] *
+      [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) (BFILE.BFCache f) ]] *
       [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                         ilist' (BFILE.pick_balloc frees' (MSAlloc mscs')) tree' ]] *
       [[ sz >= Datatypes.length (BFILE.BFData f) -> BFILE.treeseq_ilist_safe inum ilist ilist' ]]
