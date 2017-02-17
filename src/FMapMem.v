@@ -70,6 +70,16 @@ Module MapMem (OT : UsualOrderedType) (M : S with Module E := OT).
         congruence.
     Qed.
 
+    Theorem mm_init :
+      @emp _ OT.eq_dec _ (mm (Map.empty _)).
+    Proof.
+      unfold emp, mm; intros.
+      case_eq (Map.find a (Map.empty V)); intros; auto.
+      apply M.find_2 in H.
+      exfalso.
+      eapply M.empty_1; eauto.
+    Qed.
+
     Theorem mm_add : forall m (F : @pred Map.key OT.eq_dec V) a v,
       Map.find a m = None ->
       F (mm m) ->

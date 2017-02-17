@@ -51,6 +51,7 @@ Definition Dcache_type := Dcache.t (option (addr * bool)).
 Module BFcache := FMapAVL.Make(Nat_as_OT).
 Module BFcacheDefs := MapDefs Nat_as_OT BFcache.
 Definition BFcache_type := BFcache.t Dcache_type.
+Module BFM := MapMem Nat_as_OT BFcache.
 
 Module BFILE.
 
@@ -213,12 +214,21 @@ Module BFILE.
     (listmatch (fun v a => a |-> v ) (BFData f) (map (@wordToNat _) (INODE.IBlocks i)) *
      [[ BFAttr f = INODE.IAttr i ]])%pred.
 
+  Definition cache_ptsto inum (oc : option Dcache_type) : @pred _ addr_eq_dec _ :=
+    ( match oc with
+      | None => emp
+      | Some c => inum |-> c
+      end )%pred.
+
+  Definition cache_rep mscache (flist : list bfile) (ilist : list INODE.inode) :=
+     arrayN cache_ptsto 0 (map BFCache flist) (BFM.mm _ mscache).
+
   Definition rep (bxps : balloc_xparams * balloc_xparams) ixp (flist : list bfile) ilist frees mscache :=
     (BALLOC.rep (fst bxps) (fst frees) *
      BALLOC.rep (snd bxps) (snd frees) *
      INODE.rep (fst bxps) ixp ilist *
      listmatch file_match flist ilist *
-     [[ forall inum, inum < length flist -> BFcache.find inum mscache = BFCache (selN flist inum bfile0) ]] *
+     [[ locked (cache_rep mscache flist ilist) ]] *
      [[ BmapNBlocks (fst bxps) = BmapNBlocks (snd bxps) ]]
     )%pred.
 
@@ -440,14 +450,16 @@ Module BFILE.
     rewrite selN_updN_eq by ( rewrite Heq; rewrite map_length; eauto ).
     cancel.
 
-    rewrite length_updN in *.
-    destruct (addr_eq_dec inum inum0); subst.
-    rewrite selN_updN_eq; eauto.
-    rewrite selN_updN_ne; eauto.
+    rewrite locked_eq in *; unfold cache_rep in *.
+    pred_apply.
+    rewrite map_updN.
+    erewrite selN_eq_updN_eq by ( erewrite selN_map; eauto; reflexivity ).
+    cancel.
 
-    Grab Existential Variables.
+  Grab Existential Variables.
     all: eauto.
-    exact BFILE.bfile0.
+    all: try exact BFILE.bfile0.
+    all: try exact None.
   Qed.
 
   Theorem rep_safe_unused: forall F bxps ixp flist ilist m frees mscache bn v flag,
@@ -587,6 +599,44 @@ Module BFILE.
 
   Hint Rewrite resolve_selN_bfile0 using reflexivity : defaults.
   Hint Rewrite resolve_selN_vs0 using reflexivity : defaults.
+
+  Lemma bfcache_init' : forall len start,
+    arrayN cache_ptsto start (map BFCache (repeat bfile0 len))
+      (BFM.mm Dcache_type (BFcache.empty Dcache_type)).
+  Proof.
+    induction len; simpl; intros.
+    eapply BFM.mm_init.
+    eapply pimpl_apply; [ | apply IHlen ].
+    cancel.
+  Qed.
+
+  Lemma bfcache_init : forall len ilist,
+    locked (cache_rep (BFcache.empty Dcache_type) (repeat bfile0 len) ilist).
+  Proof.
+    intros.
+    rewrite locked_eq.
+    unfold cache_rep.
+    eapply bfcache_init'.
+  Qed.
+
+  Lemma bfcache_upd : forall mscache inum flist ilist F f d a,
+    locked (cache_rep mscache flist ilist) ->
+    (F * inum |-> f)%pred (list2nmem flist) ->
+    locked (cache_rep mscache (updN flist inum {| BFData := d; BFAttr := a; BFCache := BFCache f |}) ilist).
+  Proof.
+    intros.
+    rewrite locked_eq in *.
+    unfold cache_rep in *.
+    rewrite map_updN; simpl.
+    eapply list2nmem_sel in H0 as H0'; rewrite H0'.
+    erewrite selN_eq_updN_eq; eauto.
+    erewrite selN_map; eauto.
+    simplen.
+  Unshelve.
+    exact None.
+  Qed.
+
+  Hint Resolve bfcache_init bfcache_upd.
 
   Ltac assignms :=
     match goal with
@@ -735,9 +785,6 @@ Module BFILE.
     prestep; unfold IAlloc.rep; cancel.
     apply file_match_init_ok.
 
-    rewrite repeat_selN'; simpl.
-    rewrite BFcacheDefs.MapFacts.empty_o; auto.
-
     substl (IXLen ixp).
     apply Rounding.div_lt_mul_lt; auto.
     rewrite Nat.div_small.
@@ -865,11 +912,11 @@ Module BFILE.
     sepauto.
     safestep.
     repeat extract. seprewrite.
-    2: sepauto.
-    2: eauto.
+    3: sepauto.
+    3: eauto.
     eapply listmatch_updN_selN; try omega.
     unfold file_match; cancel.
-
+    eauto.
     denote (list2nmem m') as Hm'.
     rewrite listmatch_length_pimpl in Hm'; destruct_lift Hm'.
     denote (list2nmem ilist') as Hilist'.
@@ -923,10 +970,11 @@ Module BFILE.
 
     safestep.
     repeat extract. seprewrite.
-    2: sepauto.
-    2: eauto.
+    3: sepauto.
+    3: eauto.
     eapply listmatch_updN_selN; try omega.
     unfold file_match; cancel.
+    eauto.
 
     denote (list2nmem m') as Hm'.
     rewrite listmatch_length_pimpl in Hm'; destruct_lift Hm'.
@@ -1110,7 +1158,7 @@ Module BFILE.
       step.
 
       or_r; cancel.
-      2: sepauto.
+      3: sepauto.
       seprewrite.
       rewrite listmatch_updN_removeN by simplen.
       unfold file_match; cancel.
@@ -1120,9 +1168,10 @@ Module BFILE.
       rewrite map_length; omega.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOC.bn_valid_goodSize; eauto.
+      eauto.
       apply list2nmem_app; eauto.
 
-      2: eapply grow_treeseq_ilist_safe in H24; eauto.
+      2: eapply grow_treeseq_ilist_safe in H25; eauto.
 
       2: cancel.
       2: or_l; cancel.
@@ -1169,9 +1218,10 @@ Module BFILE.
       rewrite map_length; omega.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOC.bn_valid_goodSize; eauto.
+      eauto.
       apply list2nmem_app; eauto.
 
-      2: eapply grow_treeseq_ilist_safe in H24; eauto.
+      2: eapply grow_treeseq_ilist_safe in H25; eauto.
 
       2: cancel.
       2: or_l; cancel.
