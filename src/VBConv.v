@@ -1621,41 +1621,18 @@ Lemma plus_minus_eq_le: forall a b c,
 Proof. intros; omega. Qed.
 
 Lemma between_exists: forall b a c,
-a >= (b-1) * c -> a < b*c -> c<>0 -> a = (b-1) * c + a mod c.
+    a >= (b-1) * c -> a < b*c -> c<>0 -> a = (b-1) * c + a mod c.
 Proof.
-  intros b. induction b; intros.
-  simpl in H0; inversion H0.
-  destruct b.
-  simpl in *.
-  rewrite <- plus_n_O in H0.
-  symmetry; apply Nat.mod_small_iff; auto.
-  simpl.
-  simpl in IHb.
-  rewrite <- minus_n_O in IHb.
-  rewrite <- mod_subt.
-  rewrite <- Nat.add_assoc.
-  apply plus_minus_eq_le.
-  simpl in *.
-  eapply le_trans.
-  2:eauto.
-  apply le_plus_l.
-  simpl in *.
-  apply IHb.
-  apply Nat.le_add_le_sub_l in H.
-  auto.
-  simpl in *.
-  apply lt_plus_minus_l in H0.
-  auto.
-  destruct c; try omega.
-  simpl.
-  auto.
-  simpl in *.
-  apply Nat.lt_0_succ.
-  eapply le_trans.
-  2:eauto.
-  apply le_plus_l.
-Qed.
+  intros.
+  destruct b; simpl in *.
+  inversion H0.
+  rewrite <- minus_n_O in *.
 
+  pose proof (Nat.le_exists_sub (b*c) a); intuition; deex.
+  rewrite Nat.mod_add by auto.
+  rewrite Nat.mod_small by omega.
+  omega.
+Qed.
 
 Lemma mod_between_upper: forall a b c,
 	b <> 0 ->
