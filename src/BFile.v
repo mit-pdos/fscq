@@ -179,6 +179,7 @@ Module BFILE.
   }.
 
   Definition bfile0 := mk_bfile nil attr0.
+  Definition freepred f := f = bfile0.
 
   Definition file_match f i : @pred _ addr_eq_dec datatype :=
     (listmatch (fun v a => a |-> v ) (BFData f) (map (@wordToNat _) (INODE.IBlocks i)) *
@@ -429,10 +430,18 @@ Module BFILE.
 
       denote listpred as Hx.
       assert (Hy := Hx).
-      rewrite listpred_nodup_piff in Hy; [ | apply addr_eq_dec | apply ptsto_conflict ].
+      rewrite listpred_nodup_piff in Hy; [ | apply addr_eq_dec | ].
+
+      2: intros; assert (~ (y |->? * y |->?)%pred m') as Hc by apply ptsto_conflict.
+      2: contradict Hc; pred_apply; cancel.
+
       assert (Hnodup := H). rewrite Hy in Hnodup; destruct_lift Hnodup.
 
-      rewrite listpred_remove_piff in Hy; [ | apply ptsto_conflict | eauto | eauto ].
+      rewrite listpred_remove_piff in Hy; [ | | eauto | eauto ].
+
+      2: intros; assert (~ (y |->? * y |->?)%pred m') as Hc by apply ptsto_conflict.
+      2: contradict Hc; pred_apply; cancel.
+
       rewrite Hy in H.
       destruct_lift H.
       eapply pimpl_trans; [ apply pimpl_refl | | eapply list2nmem_updN; pred_apply; cancel ].
@@ -448,10 +457,18 @@ Module BFILE.
 
       denote listpred as Hx.
       assert (Hy := Hx).
-      rewrite listpred_nodup_piff in Hy; [ | apply addr_eq_dec | apply ptsto_conflict ].
+      rewrite listpred_nodup_piff in Hy; [ | apply addr_eq_dec | ].
+
+      2: intros; assert (~ (y |->? * y |->?)%pred m') as Hc by apply ptsto_conflict.
+      2: contradict Hc; pred_apply; cancel.
+
       assert (Hnodup := H). rewrite Hy in Hnodup; destruct_lift Hnodup.
 
-      rewrite listpred_remove_piff in Hy; [ | apply ptsto_conflict | eauto | eauto ].
+      rewrite listpred_remove_piff in Hy; [ | | eauto | eauto ].
+
+      2: intros; assert (~ (y |->? * y |->?)%pred m') as Hc by apply ptsto_conflict.
+      2: contradict Hc; pred_apply; cancel.
+
       rewrite Hy in H.
       destruct_lift H.
       eapply pimpl_trans; [ apply pimpl_refl | | eapply list2nmem_updN; pred_apply; cancel ].
@@ -611,9 +628,11 @@ Module BFILE.
     POST:hm' RET:ms'  exists m' n frees freeinodes freeinode_pred,
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
            [[[ m' ::: (Fm * rep bxps ixp (repeat bfile0 n) (repeat INODE.inode0 n) frees * 
-                            @IAlloc.rep bfile ibxp freeinodes freeinode_pred) ]]] *
+                            @IAlloc.rep bfile freepred ibxp freeinodes freeinode_pred) ]]] *
            [[ n = ((IXLen ixp) * INODE.IRecSig.items_per_val)%nat /\ n > 1 ]] *
-           [[ forall dl, length dl = n -> arrayN (@ptsto _ _ _) 0 dl =p=> freeinode_pred ]]
+           [[ forall dl, length dl = n ->
+                         Forall freepred dl ->
+                         arrayN (@ptsto _ _ _) 0 dl =p=> freeinode_pred ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} init lxp bxps ibxp ixp ms.
   Proof.
@@ -694,7 +713,7 @@ Module BFILE.
     rewrite valulen_is.
     compute; omega.
 
-    denote (_ =p=> freepred) as Hx; apply Hx.
+    denote (_ =p=> freepred0) as Hx; apply Hx.
     substl (length dl); substl (IXLen ixp).
     apply Rounding.mul_div; auto.
     apply Nat.mod_divide; auto.

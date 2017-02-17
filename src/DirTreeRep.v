@@ -31,7 +31,7 @@ Set Implicit Arguments.
   Definition rep fsxp F tree ilist frees :=
     (exists bflist freeinodes freeinode_pred,
      BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist ilist frees *
-     IAlloc.rep fsxp freeinodes freeinode_pred *
+     IAlloc.rep BFILE.freepred fsxp freeinodes freeinode_pred *
      [[ (F * tree_pred fsxp tree * freeinode_pred)%pred (list2nmem bflist) ]]
     )%pred.
 
@@ -86,8 +86,8 @@ Set Implicit Arguments.
     pred_apply; cancel.
   Qed.
 
-  Lemma tree_pred_ino_goodSize : forall V F Fm xp tree m d frees prd,
-    (Fm * (@IAlloc.rep V xp frees prd))%pred m ->
+  Lemma tree_pred_ino_goodSize : forall F Fm xp tree m d frees prd,
+    (Fm * (IAlloc.rep BFILE.freepred xp frees prd))%pred m ->
     (F * tree_pred xp tree)%pred d ->
     goodSize addrlen (dirtree_inum tree).
   Proof.
