@@ -269,8 +269,8 @@ Module BFILE.
       pred_apply.
       destruct ((BFData files ⟦ inum ⟧) ⟦ off ⟧).
       cancel.
-    - destruct H18 as [H18 _]. rewrite listpred_pick in H18 by eauto.
-      rewrite H18 in H.
+    - destruct H19 as [H19 _]. rewrite listpred_pick in H19 by eauto.
+      rewrite H19 in H.
       destruct_lift H.
       rewrite locked_eq in H3.
       rewrite <- H3 in H; clear H3.

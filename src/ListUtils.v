@@ -3426,7 +3426,7 @@ Proof.
   induction l2; intros; eauto.
   rewrite app_nil_r; eauto.
 
-  eapply NoDup_remove in H; intuition.
+  eapply List.NoDup_remove in H; intuition.
   specialize (IHl2 _ _ H2 H0 H1).
 
   eapply NoDup_remove_inverse; eauto.
