@@ -304,6 +304,28 @@ Proof.
   apply Nat.mod_upper_bound.
   apply INODE.IRec.Defs.items_per_val_not_0.
 
+  eapply extract_equiv_prog.
+  erewrite ?split2_iter.
+  repeat change (match ?He in (_ = N) return (word N) with | eq_refl => ?x end) with (rew He in x).
+  rewrite ?eq_rect_double.
+  rewrite ?eq_rect_split1.
+  rewrite ?eq_rect_split2.
+  erewrite ?split2_split1.
+  erewrite ?split1_iter.
+  repeat change (match ?He in (_ = N) return (word N) with | eq_refl => ?x end) with (rew He in x).
+  progress rewrite ?eq_rect_split2.
+  erewrite ?split2_iter.
+  repeat change (match ?He in (_ = N) return (word N) with | eq_refl => ?x end) with (rew He in x).
+  rewrite ?eq_rect_double.
+  Lemma fold_Rec_middle : forall low mid high w,
+      split1 mid high (split2 low (mid + high) w) = Rec.middle low mid high w.
+  Proof.
+    reflexivity.
+  Qed.
+  rewrite ?fold_Rec_middle.
+  reflexivity.
+
+
 Admitted.
 
 Definition extract_env : Env.
