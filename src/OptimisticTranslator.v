@@ -119,6 +119,49 @@ Section OptimisticTranslator.
   Definition seq_disk (sigma: Sigma (St OtherSt)) : rawdisk :=
     add_buffers (vdisk (Sigma.s sigma)).
 
+  Hint Resolve locally_modified_lock_preserved.
+
+  Lemma exec_read : forall vd vd' m hm hm' a v,
+      vd = vd' ->
+      hm = hm' ->
+      vd a = Some v ->
+      Prog.exec (add_buffers vd) m hm
+                (Read a) (Prog.Finished (add_buffers vd') m hm' v).
+  Proof.
+    intros; subst.
+    eapply Prog.XStep; eauto.
+  Qed.
+
+  Hint Resolve exec_read.
+
+  Lemma exec_write : forall vd vd' m hm hm' a v v0,
+      vd a = Some v0 ->
+      vd' = Mem.upd vd a v ->
+      hm = hm' ->
+      Prog.exec (add_buffers vd) m hm
+                (Prog.Write a v) (Prog.Finished (add_buffers vd') m hm' tt).
+  Proof.
+    intros; subst.
+    eapply Prog.XStep.
+    eapply Prog.StepWrite; eauto.
+    rewrite add_buffers_upd.
+    apply possible_sync_upd_nil.
+  Qed.
+
+  Hint Resolve exec_write.
+
+  Lemma exec_hash : forall vd vd' m hm hm' sz (buf: Word.word sz),
+      vd = vd' ->
+      hash_safe hm (hash_fwd buf) buf ->
+      hm' = upd_hashmap' hm (hash_fwd buf) buf ->
+      Prog.exec (add_buffers vd) m hm
+                (Prog.Hash buf)
+                (Prog.Finished (add_buffers vd') m hm' (hash_fwd buf)).
+  Proof.
+    intros; subst.
+    eapply Prog.XStep; eauto.
+  Qed.
+
   Theorem translate_simulation : forall T (p: prog T),
       forall tid sigma_i sigma out l wb,
         CacheRep wb sigma ->
@@ -126,12 +169,13 @@ Section OptimisticTranslator.
         ReadPermission l ->
         exec G tid (sigma_i, sigma) (translate p l wb) out ->
         match out with
-        | Finished sigma_i' sigma' r =>
-          let (r, wb') := r in
+        | Finished sigma_i' sigma' (r, wb') =>
           CacheRep wb' sigma' /\
-           locally_modified sigma sigma' /\
-           vdisk_committed (Sigma.s sigma') = vdisk_committed (Sigma.s sigma) /\
-           sigma_i' = sigma_i /\
+          locally_modified sigma sigma' /\
+          Sigma.l sigma' = l /\
+          vdisk_committed (Sigma.s sigma') = vdisk_committed (Sigma.s sigma) /\
+          (l = ReadLock -> vdisk (Sigma.s sigma') = vdisk (Sigma.s sigma)) /\
+          sigma_i' = sigma_i /\
           match r with
           | Success v =>
             Prog.exec (seq_disk sigma) Mem.empty_mem (Sigma.hm sigma) p
@@ -155,7 +199,8 @@ Section OptimisticTranslator.
   Proof.
     unfold seq_disk.
     induction p; simpl; intros;
-      try solve [ CCLTactics.inv_ret; intuition eauto ].
+      try solve [ CCLTactics.inv_ret;
+                  intuition eauto ].
     - case_eq (vdisk (Sigma.s sigma) a); intros.
       + (* non-error read *)
         CCLTactics.inv_bind;
@@ -167,14 +212,6 @@ Section OptimisticTranslator.
         destruct v as [r wb']; intuition.
         destruct r; subst; CCLTactics.inv_ret;
           intuition eauto.
-        left; intuition eauto.
-        eapply Prog.XStep; [ | eauto ].
-        match goal with
-        | [ H: Sigma.hm _ = Sigma.hm _,
-               H': vdisk _ = vdisk _ |- _ ] =>
-          rewrite H, H'
-        end.
-        eauto.
       + (* error read *)
         right.
         CCLTactics.inv_bind; eauto.
@@ -189,23 +226,14 @@ Section OptimisticTranslator.
         destruct v0 as [? wb']; intuition.
         CCLTactics.inv_ret; intuition eauto.
         left; intuition eauto.
-        eapply Prog.XStep.
-        match goal with
-        | [ H: Sigma.hm _ = Sigma.hm _ |- _ ] =>
-          rewrite H
-        end.
-        eapply Prog.StepWrite; eauto.
-        match goal with
-        | [ H: vdisk _ = _ |- _ ] =>
-          rewrite H
-        end.
-        rewrite add_buffers_upd.
-        apply possible_sync_upd_nil.
+        congruence.
 
         CCLTactics.inv_ret; intuition eauto.
+        left; intuition.
+
         match goal with
         | [ H: ReadPermission _ |- _ ] =>
-          inversion H; intuition eauto; try congruence
+          inversion H; congruence
         end.
       + (* error write *)
         destruct (CanWrite l).
@@ -227,9 +255,10 @@ Section OptimisticTranslator.
       unfold CacheRep; destruct sigma; eauto.
       apply locally_modified_hashmap.
       destruct sigma; simpl; auto.
-      eapply Prog.XStep; eauto.
-      destruct sigma; simpl in *.
-      eauto.
+      destruct sigma; simpl; auto.
+      destruct sigma; simpl; auto.
+
+      eapply exec_hash; auto; destruct sigma; simpl; eauto.
     - CCLTactics.inv_bind.
       match goal with
       | [ Hexec: exec _ _ _ (translate p _ _) _ |- _ ] =>
@@ -243,13 +272,9 @@ Section OptimisticTranslator.
         end.
         left.
         destruct out; eauto.
-        destruct r as [r wb'']; intuition eauto.
+        destruct r as [r wb'']; intuition eauto; try congruence.
         eapply locally_modified_trans; eauto.
-        congruence.
-        congruence.
         destruct r; eauto.
-
-        auto using locally_modified_lock_preserved.
       + match goal with
         | [ Hexec: exec _ _ _ (translate p _ _) _ |- _ ] =>
           eapply IHp in Hexec; eauto
@@ -272,7 +297,9 @@ Section OptimisticTranslator.
            fun '(sigma_i', sigma') '(r, wb) =>
              CacheRep wb sigma' /\
              locally_modified sigma sigma' /\
+             Sigma.l sigma' = l /\
              vdisk_committed (Sigma.s sigma') = vdisk_committed (Sigma.s sigma) /\
+             l = ReadLock -> vdisk (Sigma.s sigma') = vdisk (Sigma.s sigma) /\
              hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
              match r with
              | Success v => seq_post (seq_spec a Mem.empty_mem (Sigma.hm sigma))
