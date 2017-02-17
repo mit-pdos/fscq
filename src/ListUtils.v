@@ -167,6 +167,16 @@ Proof.
   induction vs; destruct n; simpl; intuition; omega.
 Qed.
 
+Lemma selN_selN_def_eq : forall V vs n (def1 def2 : V),
+  n < length vs
+  -> selN vs n def1 = selN vs n def2.
+Proof.
+  induction vs; simpl; intros; try omega.
+  destruct n; auto.
+  eapply IHvs.
+  omega.
+Qed.
+
 Lemma selN_updN_eq_default : forall V vs n (v : V),
   selN (updN vs n v) n v = v.
 Proof.
@@ -2140,6 +2150,15 @@ Proof.
   try apply Forall_nil; inversion H;
   subst; firstorder.
   apply Forall_cons; firstorder.
+Qed.
+
+Lemma Forall_remove : forall A (l : list A) a P EQ,
+  Forall P l ->
+  Forall P (remove EQ a l).
+Proof.
+  induction l; simpl; intros; eauto.
+  inversion H; subst.
+  destruct (EQ a0 a); eauto.
 Qed.
 
 Lemma forall2_length : forall A B (a : list A) (b : list B) P,

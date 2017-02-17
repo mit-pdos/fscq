@@ -106,7 +106,8 @@ Module BmapAlloc (Sig : AllocSig).
     Ret ms.
 
   Definition freelist_bmap_equiv freelist bmap :=
-    forall a, a < length bmap -> (In a freelist <-> Avail (selN bmap a $0)).
+    Forall (fun a => a < length bmap) freelist /\
+    forall a, (In a freelist <-> Avail (selN bmap a $1)).
 
   Definition rep V FP xp (freelist : list addr) (freepred : @pred _ addr_eq_dec V) :=
     (exists bmap, Bmp.rep xp bmap *
@@ -120,21 +121,26 @@ Module BmapAlloc (Sig : AllocSig).
     freelist_bmap_equiv (remove addr_eq_dec a freelist) (updN bmap a $1).
   Proof.
     unfold freelist_bmap_equiv; split; intros.
+    eapply Forall_remove; intuition eauto.
+    eapply Forall_impl; try eassumption.
+    simpl; intros.
+    rewrite length_updN; eauto.
+
+    split; intuition; intros.
+
     destruct (addr_eq_dec a a0); subst.
     rewrite selN_updN_eq by auto.
     exfalso; eapply remove_In; eauto.
     rewrite selN_updN_ne by auto.
-    apply H.
-    erewrite <- length_updN; eauto.
+    apply H3.
     eapply remove_still_In; eauto.
 
     destruct (addr_eq_dec a a0); subst.
-    contradict H2.
+    contradict H1.
     rewrite selN_updN_eq by auto.
     discriminate.
     apply remove_other_In; auto.
-    apply H.
-    erewrite <- length_updN; eauto.
+    apply H3.
     erewrite <- selN_updN_ne; eauto.
   Qed.
 
@@ -143,30 +149,36 @@ Module BmapAlloc (Sig : AllocSig).
     a < length bmap ->
     freelist_bmap_equiv (a :: freelist) (updN bmap a $0).
   Proof.
-    unfold freelist_bmap_equiv; split; intros.
+    unfold freelist_bmap_equiv; split; intuition; intros.
+
+    constructor.
+    rewrite length_updN; eauto.
+
+    eapply Forall_impl; try eassumption.
+    simpl; intros.
+    rewrite length_updN; eauto.
+
     destruct (addr_eq_dec a a0); subst.
     rewrite selN_updN_eq by auto.
     unfold Avail; auto.
     rewrite selN_updN_ne by auto.
-    apply H.
-    erewrite <- length_updN; eauto.
-    simpl in H2; destruct H2; auto; congruence.
+    apply H2.
+    inversion H; congruence.
 
     destruct (addr_eq_dec a a0); subst; simpl; auto.
-    right; apply H.
-    erewrite <- length_updN; eauto.
+    right; apply H2.
     erewrite <- selN_updN_ne; eauto.
   Qed.
 
   Lemma is_avail_in_freelist : forall a bmap freelist,
     freelist_bmap_equiv freelist bmap ->
-    is_avail (selN bmap a $0) = true ->
+    is_avail (selN bmap a $1) = true ->
     a < length bmap ->
     In a freelist.
   Proof.
     unfold freelist_bmap_equiv, is_avail, Avail.
     intros; apply H; auto.
-    destruct (state_dec (selN bmap a $0)); auto; congruence.
+    destruct (state_dec (selN bmap a $1)); auto; congruence.
   Qed.
 
 
@@ -193,11 +205,13 @@ Module BmapAlloc (Sig : AllocSig).
   Qed.
 
   Lemma avail_nonzero_is_avail : forall bmap i,
+    i < length bmap ->
     avail_nonzero (selN bmap i $0) i = true ->
-    is_avail (selN bmap i $0) = true.
+    is_avail (selN bmap i $1) = true.
   Proof.
     unfold avail_nonzero; intros.
-    destruct (addr_eq_dec i 0); congruence.
+    destruct (addr_eq_dec i 0); try congruence.
+    erewrite selN_selN_def_eq by eassumption; eauto.
   Qed.
 
   Lemma avail_nonzero_not_zero : forall bmap i,
@@ -213,12 +227,28 @@ Module BmapAlloc (Sig : AllocSig).
     freelist_bmap_equiv (seq 0 (BMPLen xp * valulen))
       (repeat Bmp.Defs.item0 (BmpSig.RALen xp * BmpSig.items_per_val)).
   Proof.
-    unfold freelist_bmap_equiv; split; intros.
-    - rewrite repeat_length in H.
-      rewrite repeat_selN; auto.
+    unfold freelist_bmap_equiv; intuition; intros.
+    - eapply Forall_forall.
+      intros.
+      eapply in_seq in H.
+      rewrite repeat_length.
+      unfold BmpSig.items_per_val.
+      unfold BmpSig.RALen.
+      omega.
+    - rewrite repeat_selN; auto.
       cbv; auto.
-    - rewrite repeat_length in H.
-      apply in_seq; intuition.
+      eapply in_seq in H.
+      unfold BmpSig.items_per_val.
+      unfold BmpSig.RALen.
+      omega.
+    - apply in_seq; intuition.
+      destruct (lt_dec a (BMPLen xp * valulen)); try omega.
+      rewrite selN_oob in *.
+      cbv in *; congruence.
+      rewrite repeat_length.
+      unfold BmpSig.items_per_val.
+      unfold BmpSig.RALen.
+      omega.
   Qed.
 
 
@@ -266,11 +296,12 @@ Module BmapAlloc (Sig : AllocSig).
     unfold Bmp.items_valid; intuition.
     rewrite repeat_length; auto.
     step.
-    unfold freelist_bmap_equiv; split; intros.
+    unfold freelist_bmap_equiv; intuition; intros.
+    constructor.
     denote (In _ nil) as Hx; inversion Hx.
     denote (Avail _) as Hx; unfold Avail in Hx.
-    rewrite repeat_selN in Hx; inversion Hx.
-    rewrite repeat_length in *; auto.
+    rewrite repeat_selN' in *.
+    cbv in Hx. congruence.
     Unshelve.
     all: try exact $0; try exact tt.
   Qed.
@@ -281,7 +312,7 @@ Module BmapAlloc (Sig : AllocSig).
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
           [[[ m ::: (Fm * @rep V FP xp freelist freepred) ]]] *
-          [[ In bn freelist /\ bn < (BMPLen xp) * valulen ]]
+          [[ In bn freelist ]]
     POST:hm' RET:ms exists m' freepred',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
           [[[ m' ::: (Fm * @rep V FP xp (remove addr_eq_dec bn freelist) freepred') ]]] *
@@ -293,11 +324,24 @@ Module BmapAlloc (Sig : AllocSig).
     step.
     eapply bmap_rep_length_ok2; eauto.
 
+    unfold freelist_bmap_equiv in *; intuition.
+    denote! (Forall _ _) as Hf; eapply Forall_forall in Hf; eauto.
+    denote (Bmp.rep _ dummy) as Hr; eapply Bmp.items_length_ok in Hr.
+    unfold BmpSig.RALen, BmpSig.items_per_val, Bmp.Defs.item in *.
+    simpl in *; omega.
+
     prestep. norm. cancel.
     intuition simpl.
     pred_apply; cancel.
     eapply freelist_bmap_equiv_remove_ok; eauto.
     eapply bmap_rep_length_ok2; eauto.
+
+    unfold freelist_bmap_equiv in *; intuition.
+    denote! (Forall _ _) as Hf; eapply Forall_forall in Hf; eauto.
+    denote (Bmp.rep _ dummy) as Hr; eapply Bmp.items_length_ok in Hr.
+    unfold BmpSig.RALen, BmpSig.items_per_val, Bmp.Defs.item in *.
+    simpl in *; omega.
+
     apply piff_refl.
     denote freepred as Hp; rewrite Hp, listpred_remove.
     eassign bn; cancel.
@@ -307,6 +351,12 @@ Module BmapAlloc (Sig : AllocSig).
     contradict Hc; pred_apply; cancel.
     auto.
     eauto.
+
+  Unshelve.
+    all: try exact unit.
+    all: eauto.
+    all: try exact nil.
+    all: intros; try exact True.
   Qed.
 
   Theorem alloc_ok : forall V FP lxp xp ms,
@@ -339,6 +389,7 @@ Module BmapAlloc (Sig : AllocSig).
     intros.
     assert (~ (y |->? * y |->?)%pred m'0) as Hc by apply ptsto_conflict.
     contradict Hc; pred_apply; cancel.
+
     eapply is_avail_in_freelist; eauto.
     eapply avail_nonzero_not_zero; eauto.
     eapply bmap_rep_length_ok1; eauto.
