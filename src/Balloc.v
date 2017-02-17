@@ -112,6 +112,7 @@ Module BmapAlloc (Sig : AllocSig).
 
   Definition rep V FP xp (freelist : list addr) (freepred : @pred _ addr_eq_dec V) :=
     (exists bmap, Bmp.rep xp bmap *
+     [[ NoDup freelist ]] *
      [[ freelist_bmap_equiv freelist bmap ]] *
      [[ freepred <=p=> listpred (fun a => exists v, a |-> v * [[ FP v ]]) freelist ]] )%pred.
 
@@ -274,6 +275,7 @@ Module BmapAlloc (Sig : AllocSig).
     unfold init, rep; intros.
     step.
     step.
+    eapply seq_NoDup.
     apply freelist_bmap_equiv_init_ok.
     apply in_seq; intuition.
     apply arrayN_listpred_seq_fp; auto.
@@ -382,6 +384,7 @@ Module BmapAlloc (Sig : AllocSig).
     step.
 
     or_r; cancel.
+    eapply NoDup_remove; eauto.
     eapply freelist_bmap_equiv_remove_ok; eauto.
     apply piff_refl.
     denote freepred as Hp; rewrite Hp, listpred_remove.
@@ -403,7 +406,8 @@ Module BmapAlloc (Sig : AllocSig).
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
           [[ bn < (BMPLen xp) * valulen ]] *
-          [[[ m ::: (Fm * @rep V FP xp freelist freepred) ]]]
+          [[[ m ::: (Fm * @rep V FP xp freelist freepred) ]]] *
+          [[ exists mx Fx, (Fx * freepred * bn |->?)%pred mx ]]
     POST:hm' RET:ms exists m' freepred',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
           [[[ m' ::: (Fm * @rep V FP xp (bn :: freelist) freepred') ]]] *
@@ -415,6 +419,17 @@ Module BmapAlloc (Sig : AllocSig).
     hoare.
 
     eapply bmap_rep_length_ok2; eauto.
+
+    constructor; eauto.
+    intro Hin.
+    denote (freepred <=p=> _) as Hfp.
+    denote (Fx) as Hx.
+    rewrite Hfp in Hx.
+    erewrite listpred_pick in Hx by eauto.
+    destruct_lift Hx.
+    eapply ptsto_conflict_F with (m := mx) (a := bn).
+    pred_apply; cancel.
+
     apply freelist_bmap_equiv_add_ok; auto.
     eapply bmap_rep_length_ok2; eauto.
     denote (freepred <=p=> _) as Hfp. apply Hfp.
@@ -751,6 +766,7 @@ Module BALLOC.
   Proof.
     unfold free, rep, bn_valid.
     hoare.
+    exists (list2nmem m); pred_apply; cancel.
     rewrite H12; unfold FP; eauto.
   Qed.
 

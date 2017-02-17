@@ -103,9 +103,9 @@ Module DIR.
     (Dent.rep f delist)%pred (list2nmem (BFILE.BFData f)) /\
     listpred dmatch delist dmap.
 
-  Definition rep_macro Fm Fi m bxp ixp inum dmap ilist frees : (@pred _ addr_eq_dec valuset) :=
+  Definition rep_macro Fm Fi m bxp ixp inum dmap ilist frees ms : (@pred _ addr_eq_dec valuset) :=
     (exists flist f,
-    [[[ m ::: Fm * BFILE.rep bxp ixp flist ilist frees ]]] *
+    [[[ m ::: Fm * BFILE.rep bxp ixp flist ilist frees (BFILE.MSCache ms) ]]] *
     [[[ flist ::: Fi * inum |-> f ]]] *
     [[ rep f dmap ]])%pred.
 

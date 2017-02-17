@@ -8,7 +8,7 @@ Require Import Arith.
 Require Import List ListUtils.
 Require Import FunctionalExtensionality.
 Require Import AsyncDisk.
-Require Import DirName.
+Require Import DirCache.
 Require Import DirTreeDef.
 Require Import FSLayout.
 Require Import GenSepN.

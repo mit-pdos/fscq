@@ -2087,6 +2087,18 @@ Proof.
   simpl. intros. destruct H0; [left; auto | right; apply IHl; auto].
 Qed.
 
+Lemma NoDup_remove : forall T (l : list T) v EQ,
+  NoDup l ->
+  NoDup (remove EQ v l).
+Proof.
+  induction l; simpl; intros; eauto.
+  inversion H; subst.
+  destruct (EQ v a); eauto.
+  constructor; eauto.
+  contradict H2.
+  eapply remove_still_In; eauto.
+Qed.
+
 Lemma selN_cons_fold : forall A (a : A) l i def,
   match i with | O => a | S n' => selN l n' def end = selN (a :: l) i def.
 Proof.
