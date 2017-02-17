@@ -307,7 +307,8 @@ Section ConcurrentFS.
              | Done v => fs_post (fsspec a) v
              | TryAgain => True
              | SyscallFailed => True
-             end |}.
+             end /\
+             fs_guarantee tid sigma_i' sigma'|}.
 
   Lemma fs_rep_hashmap_incr : forall vd tree mscs hm hm',
       fs_rep vd tree mscs hm ->
@@ -382,6 +383,9 @@ Section ConcurrentFS.
         reflexivity
     end.
     congruence.
+
+    assert (fs_guarantee tid (Sigma.set_l sigma' ReadLock) (Sigma.set_l sigma0 Free)).
+    destruct sigma'; simpl in *; eauto.
 
     assert (Rely fs_guarantee tid sigma (Sigma.set_l sigma0 Free)).
     eapply Rely_trans; eauto.
