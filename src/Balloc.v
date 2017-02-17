@@ -299,6 +299,7 @@ Module BmapAlloc (Sig : AllocSig).
     unfold Bmp.items_valid; intuition.
     rewrite repeat_length; auto.
     step.
+    constructor.
     unfold freelist_bmap_equiv; intuition; intros.
     constructor.
     denote (In _ nil) as Hx; inversion Hx.
@@ -336,6 +337,7 @@ Module BmapAlloc (Sig : AllocSig).
     prestep. norm. cancel.
     intuition simpl.
     pred_apply; cancel.
+    eapply NoDup_remove; eauto.
     eapply freelist_bmap_equiv_remove_ok; eauto.
     eapply bmap_rep_length_ok2; eauto.
 
