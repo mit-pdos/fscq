@@ -108,7 +108,7 @@ Set Implicit Arguments.
   Fixpoint dirtree_update_inode t inum off v :=
     match t with
     | TreeFile inum' f => if (addr_eq_dec inum inum') then
-          let f' := BFILE.mk_bfile (updN (BFILE.BFData f) off v) (BFILE.BFAttr f) in (TreeFile inum f')
+          let f' := BFILE.mk_bfile (updN (BFILE.BFData f) off v) (BFILE.BFAttr f) (BFILE.BFCache f) in (TreeFile inum f')
           else (TreeFile inum' f)
     | TreeDir inum' ents =>
       TreeDir inum' (dirlist_update (fun t' => dirtree_update_inode t' inum off v) ents)

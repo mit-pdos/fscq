@@ -411,13 +411,15 @@ Module DIR.
 
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
+  Notation MSCache := BFILE.MSCache.
 
   Theorem lookup_ok : forall lxp bxp ixp dnum name ms,
     {< F Fm Fi m0 m dmap ilist frees,
     PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees
+           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms
     POST:hm' RET:^(ms',r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
+           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms' *
            [[ MSAlloc ms' = MSAlloc ms ]] *
          ( [[ r = None /\ notindomain name dmap ]] \/
            exists inum isdir Fd,
@@ -440,11 +442,12 @@ Module DIR.
   Theorem readdir_ok : forall lxp bxp ixp dnum ms,
     {< F Fm Fi m0 m dmap ilist frees,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms
     POST:hm' RET:^(ms',r)
              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
              [[ listpred readmatch r dmap ]] *
-             [[ MSAlloc ms' = MSAlloc ms ]]
+             [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSCache ms' = MSCache ms ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} readdir lxp ixp dnum ms.
@@ -460,10 +463,10 @@ Module DIR.
   Theorem unlink_ok : forall lxp bxp ixp dnum name ms,
     {< F Fm Fi m0 m dmap ilist frees,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms
     POST:hm' RET:^(ms', r) exists m' dmap',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees *
+             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees ms' *
              [[ dmap' = mem_except dmap name ]] *
              [[ notindomain name dmap' ]] *
              [[ r = OK tt -> indomain name dmap ]] *
@@ -497,15 +500,16 @@ Module DIR.
   Theorem link_ok : forall lxp bxp ixp dnum name inum isdir ms,
     {< F Fm Fi m0 m dmap ilist frees,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees *
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms *
              [[ goodSize addrlen inum ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
-           (([[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
+           (([[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
+             rep_macro Fm Fi m' bxp ixp dnum dmap ilist frees ms')
         \/  ([[ r = OK tt ]] * 
              exists dmap' Fd ilist' frees',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' *
+             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' ms' *
              [[ dmap' = Mem.upd dmap name (inum, isdir) ]] *
              [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (Fd dmap /\ notindomain name dmap) ]] *

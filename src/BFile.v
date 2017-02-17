@@ -1545,7 +1545,7 @@ Module BFILE.
   Hint Extern 1 ({{_}} Bind (datasync _ _ _ _) _) => apply datasync_ok : prog.
   Hint Extern 1 ({{_}} Bind (sync _ _ _) _) => apply sync_ok : prog.
   Hint Extern 1 ({{_}} Bind (sync_noop _ _ _) _) => apply sync_noop_ok : prog.
-  Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep _ _ _ _ _ _) (rep _ _ _ _ _ _)) => constructor : okToUnify.
 
 
   Definition read_array lxp ixp inum a i ms :=

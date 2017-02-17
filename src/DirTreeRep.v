@@ -28,16 +28,16 @@ Set Implicit Arguments.
    * in cases where [tree] is a subdirectory somewhere in the tree.
    *)
 
-  Definition rep fsxp F tree ilist frees :=
+  Definition rep fsxp F tree ilist frees ms :=
     (exists bflist freeinodes freeinode_pred,
-     BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist ilist frees *
+     BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist ilist frees ms *
      IAlloc.rep BFILE.freepred fsxp freeinodes freeinode_pred *
      [[ (F * tree_pred fsxp tree * freeinode_pred)%pred (list2nmem bflist) ]]
     )%pred.
 
-  Theorem rep_length : forall fsxp F tree ilist frees,
-    rep fsxp F tree ilist frees =p=>
-    (rep fsxp F tree ilist frees *
+  Theorem rep_length : forall fsxp F tree ilist frees ms,
+    rep fsxp F tree ilist frees ms =p=>
+    (rep fsxp F tree ilist frees ms *
      [[ length ilist = ((INODE.IRecSig.RALen (FSXPInode fsxp)) * INODE.IRecSig.items_per_val)%nat ]])%pred.
   Proof.
     unfold rep; intros.
@@ -46,10 +46,10 @@ Set Implicit Arguments.
     cancel.
   Qed.
 
-  Theorem dirtree_update_free : forall tree fsxp F F0 ilist freeblocks v bn m flag,
-    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
+  Theorem dirtree_update_free : forall tree fsxp F F0 ilist freeblocks ms v bn m flag,
+    (F0 * rep fsxp F tree ilist freeblocks ms)%pred (list2nmem m) ->
     BFILE.block_is_unused (BFILE.pick_balloc freeblocks flag) bn ->
-    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem (updN m bn v)).
+    (F0 * rep fsxp F tree ilist freeblocks ms)%pred (list2nmem (updN m bn v)).
   Proof.
     intros.
     unfold rep in *.
@@ -58,8 +58,8 @@ Set Implicit Arguments.
     cancel.
   Qed.
 
-  Theorem dirtree_rep_used_block_eq : forall pathname F0 tree fsxp F ilist freeblocks inum off bn m f,
-    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
+  Theorem dirtree_rep_used_block_eq : forall pathname F0 tree fsxp F ilist freeblocks ms inum off bn m f,
+    (F0 * rep fsxp F tree ilist freeblocks ms)%pred (list2nmem m) ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist bn inum off ->
     selN (BFILE.BFData f) off ($0, nil) = selN m bn ($0, nil).

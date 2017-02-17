@@ -51,8 +51,8 @@ Set Implicit Arguments.
       cancel.
   Qed.
 
-  Lemma rep_tree_names_distinct : forall tree F fsxp Ftop m ilist frees,
-    (F * rep fsxp Ftop tree ilist frees)%pred m ->
+  Lemma rep_tree_names_distinct : forall tree F fsxp Ftop m ilist frees ms,
+    (F * rep fsxp Ftop tree ilist frees ms)%pred m ->
     tree_names_distinct tree.
   Proof.
     unfold rep; intros.
@@ -1022,9 +1022,9 @@ Set Implicit Arguments.
   Qed.
 
  Theorem update_subtree_tree_graft: 
-    forall prefix name tree dnum tree_elem subtree subtree' F Ftop m fsxp ilist frees,
+    forall prefix name tree dnum tree_elem subtree subtree' F Ftop m fsxp ilist frees ms,
     (F * rep fsxp Ftop (update_subtree (prefix++[name]) subtree' 
-                        (tree_graft dnum tree_elem prefix name subtree tree)) ilist frees)%pred m -> 
+                        (tree_graft dnum tree_elem prefix name subtree tree)) ilist frees ms)%pred m -> 
     find_subtree prefix tree = Some (TreeDir dnum tree_elem) ->
     update_subtree (prefix++[name]) subtree' (tree_graft dnum tree_elem prefix name subtree tree) = 
             (tree_graft dnum tree_elem prefix name subtree' tree).
