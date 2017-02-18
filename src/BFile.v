@@ -2013,6 +2013,82 @@ Module BFILE.
   Hint Extern 1 ({{_}} Bind (reset _ _ _ _ _) _) => apply reset_ok : prog.
 
 
+  Lemma bfcache_find : forall c flist ilist inum f F,
+    locked (cache_rep c flist ilist) ->
+    (F * inum |-> f)%pred (list2nmem flist) ->
+    BFcache.find inum c = BFCache f.
+  Proof.
+    intros.
+    rewrite locked_eq in *.
+    unfold cache_rep in *.
+  Admitted.
+
+  Lemma bfcache_put : forall msc flist ilist inum c f F,
+    locked (cache_rep msc flist ilist) ->
+    (F * inum |-> f)%pred (list2nmem flist) ->
+    locked (cache_rep (BFcache.add inum c msc)
+                      (updN flist inum {| BFData := BFData f; BFAttr := BFAttr f; BFCache := Some c |})
+                      ilist).
+  Proof.
+  Admitted.
+
+  Theorem cache_get_ok : forall inum ms,
+    {< F Fm Fi m0 m lxp bxp ixp flist ilist frees f,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+           [[[ m ::: (Fm * rep bxp ixp flist ilist frees (MSCache ms)) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST:hm' RET:^(ms', r)
+           [[ ms' = ms ]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm *
+           [[ r = BFCache f ]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} cache_get inum ms.
+  Proof.
+    unfold cache_get, rep; intros.
+    step.
+    step.
+    destruct ms; reflexivity.
+    eapply bfcache_find; eauto.
+  Qed.
+
+  Theorem cache_put_ok : forall inum ms c,
+    {< F Fm Fi m0 m lxp bxp ixp flist ilist frees f,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+           [[[ m ::: (Fm * rep bxp ixp flist ilist frees (MSCache ms)) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST:hm' RET:ms'
+           exists f' flist',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm *
+           [[[ m ::: (Fm * rep bxp ixp flist' ilist frees (MSCache ms')) ]]] *
+           [[[ flist' ::: (Fi * inum |-> f') ]]] *
+           [[ f' = mk_bfile (BFData f) (BFAttr f) (Some c) ]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} cache_put inum c ms.
+  Proof.
+    unfold cache_put, rep; intros.
+    step.
+    prestep.
+    norm.
+    cancel.
+    intuition idtac.
+    2: eapply list2nmem_updN; eauto.
+    2: eauto.
+    pred_apply; cancel.
+    rewrite <- updN_selN_eq with (l := ilist) at 2.
+    eapply listmatch_updN_selN.
+    simplen.
+    simplen.
+    eapply list2nmem_sel in H5; rewrite H5.
+    unfold file_match; simpl.
+    eassign bfile0.
+    eassign INODE.inode0.
+    apply pimpl_refl.
+    eapply bfcache_put; eauto.
+  Qed.
+
+
   (** crash and recovery *)
 
   Definition FSynced f : Prop :=
