@@ -1267,6 +1267,7 @@ Module BFILE.
            [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees' (MSCache ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (firstn ((length (BFData f)) - nr) (BFData f)) (BFAttr f) (BFCache f) ]] *
+           [[ MSCache ms = MSCache ms' ]] *
            [[ MSAlloc ms = MSAlloc ms' /\
               ilist_safe ilist  (pick_balloc frees  (MSAlloc ms'))
                          ilist' (pick_balloc frees' (MSAlloc ms')) ]] *

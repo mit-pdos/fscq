@@ -326,6 +326,8 @@ Module FileRecArray (FRA : FileRASig).
     safestep.
     step.
 
+    msalloc_eq. cancel.
+
     rewrite synced_list_length, ipack_length; subst.
     unfold items_valid in *; intuition.
     substl (length items); rewrite divup_mul; auto.
@@ -360,6 +362,7 @@ Module FileRecArray (FRA : FileRASig).
     unfold init, rep.
     hoare.
 
+    msalloc_eq; cancel.
     subst; rewrite Nat.sub_diag; simpl.
     unfold list2nmem; simpl.
     apply emp_empty_mem.
@@ -389,7 +392,8 @@ Module FileRecArray (FRA : FileRASig).
   Proof.
     unfold ifind, rep.
     safestep.
-    safestep. auto. auto. eauto. eauto.
+    safestep. auto. msalloc_eq; cancel. eauto.
+    pred_apply; cancel. eauto.
     safestep.
     safestep.
     safestep.
