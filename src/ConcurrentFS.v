@@ -106,14 +106,6 @@ Section ConcurrentFS.
                      OptFS.file_get_attr _ fsxp inum mscs empty_writebuffer)
                   (fun tree => tree).
 
-  Lemma exists_tuple : forall A B P,
-      (exists a b, P (a, b)) ->
-      exists (a: A * B), P a.
-  Proof.
-    intros.
-    repeat deex; eauto.
-  Qed.
-
   Ltac split_lift_prop :=
     unfold Prog.pair_args_helper in *; simpl in *;
     repeat match goal with

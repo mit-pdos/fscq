@@ -70,3 +70,8 @@ Ltac learn_fact H :=
   end.
 
 Tactic Notation "learn" "that" constr(H) := learn_fact H.
+
+Ltac descend :=
+  repeat match goal with
+         | [ |- exists _, _ ] => eexists
+         end.

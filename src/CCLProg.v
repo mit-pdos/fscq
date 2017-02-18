@@ -235,30 +235,45 @@ Module CCLTactics.
       clear H
     end.
 
-  Local Ltac inv_cleanup H :=
-    inversion H; subst; repeat inj_pair2.
-
-  Ltac inv_exec' H :=
-    inv_cleanup H;
-    try match goal with
-        | [ H: step _ _ _ _ _ |- _ ] => inv_cleanup H
-        | [ H: fail_step _ _ |- _ ] => inv_cleanup H
-        end; try congruence.
-
-  Ltac inv_exec :=
+  Theorem GhostUpdate_step : forall tid sigma A AEQ V (m: @mem A AEQ V) i up sigma' v,
+      Sigma.mem sigma i = Some (absMem m) ->
+      step tid sigma (GhostUpdate i up) sigma' v ->
+      sigma' = Sigma.set_mem sigma i (absMem (up tid m)).
+  Proof.
+    inversion 2; try congruence; subst.
     match goal with
-    | [ H: exec _ _ _ _ (Finished _ _) |- _ ] => inv_exec' H
-    | [ H: exec _ _ _ _ Error |- _ ] => inv_exec' H
+    | [ H: Sigma.mem ?sigma ?i = Some _,
+           H': Sigma.mem ?sigma ?i = Some _ |- _ ] =>
+      rewrite H' in H;
+        inversion H; subst; repeat inj_pair2
     end.
+    auto.
+  Qed.
 
   Ltac inv_step :=
     match goal with
+    | [ H: step _ ?sigma (GhostUpdate ?i _) _ _,
+           H': Sigma.mem ?sigma ?i = Some (absMem _) |- _ ] =>
+      apply (GhostUpdate_step H') in H; subst
     | [ H: step _ _ _ _ _ |- _ ] => inversion H; subst
     end.
 
   Ltac inv_fail_step :=
     match goal with
     | [ H: fail_step _ _ |- _ ] => inversion H; subst
+    end.
+
+  Ltac inv_exec' H :=
+    inversion H; subst; repeat inj_pair2;
+    try inv_step;
+    try inv_fail_step;
+    repeat inj_pair2;
+    try congruence.
+
+  Ltac inv_exec :=
+    match goal with
+    | [ H: exec _ _ _ _ (Finished _ _) |- _ ] => inv_exec' H
+    | [ H: exec _ _ _ _ Error |- _ ] => inv_exec' H
     end.
 
 End CCLTactics.

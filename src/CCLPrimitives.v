@@ -30,6 +30,7 @@ Section Primitives.
                | Finished _ _ => _
                | Error => _
                end ] => eapply H; eauto; simpl; intuition eauto
+           | [ H: step _ _ (GhostUpdate _ _) _ _ |- _ ] => inv_step
            | [ H: ?F (Sigma.mem ?sigma) |- ?F (Sigma.mem _) ] =>
              solve [ destruct sigma; simpl in H; apply H ]
            | [ |- Sigma.disk (Sigma.upd_disk ?sigma _) = _ ] =>
@@ -193,21 +194,20 @@ Section Primitives.
     prim.
   Qed.
 
-  Theorem GhostUpdate_ok : forall tid A i up,
+  Theorem GhostUpdate_ok : forall tid A AEQ V i (up: TID -> @mem A AEQ V -> @mem A AEQ V),
       cprog_spec G tid
-                 (fun '(F, v0) '(sigma_i, sigma) =>
+                 (fun '(F, m0) '(sigma_i, sigma) =>
                     {| precondition :=
-                         (F * i |-> abs (v0:A))%pred (Sigma.mem sigma);
+                         (F * i |-> absMem m0)%pred (Sigma.mem sigma);
                        postcondition :=
                          fun '(sigma_i', sigma') _ =>
-                           (F * i |-> abs (up tid v0))%pred (Sigma.mem sigma') /\
+                           (F * i |-> absMem (up tid m0))%pred (Sigma.mem sigma') /\
                            sigma_i' = sigma_i /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma; |})
                  (GhostUpdate i up).
   Proof.
     prim.
-    inj_pair2.
     destruct sigma; simpl in *; eauto.
   Qed.
 
