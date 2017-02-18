@@ -447,6 +447,35 @@ Module BmapAlloc (Sig : AllocSig).
   Hint Extern 0 (okToUnify (rep _ _ _ _) (rep _ _ _ _)) => constructor : okToUnify.
 
 
+  Lemma rep_impl_bn_ok: forall F V FP xp freelist freepred m bn,
+    (F * @rep V FP xp freelist freepred)%pred (list2nmem m) ->
+    In bn freelist -> 
+    bn < (Sig.BMPLen xp) * valulen.
+  Proof.
+    intros.
+    unfold rep in H.
+    destruct_lift H.
+    unfold freelist_bmap_equiv in *. intuition.
+    eapply Forall_forall in H1; eauto.
+    rewrite Bmp.items_length_ok_pimpl in H.
+    destruct_lift H.
+    unfold BmpSig.RALen in *.
+    unfold BmpSig.items_per_val in *.
+    unfold Bmp.Defs.item in *. simpl in *.
+    omega.
+  Qed.
+
+  Lemma rep_impl_NoDup: forall F V FP xp freelist freepred m,
+    (F * @rep V FP xp freelist freepred)%pred (list2nmem m) ->
+    NoDup freelist.
+  Proof.
+    intros.
+    unfold rep in *.
+    destruct_lift H.
+    unfold freelist_bmap_equiv in *; eauto.
+  Qed.
+
+
   Lemma xform_rep : forall V FP xp l p,
     crash_xform (@rep V FP xp l p) <=p=> @rep V FP xp l p.
   Proof.
@@ -526,7 +555,6 @@ Module BmapAllocCache.
     fms <- Alloc.steal lxp xp bn (MSLog ms) ;
     Ret (mk_memstate fms freelist0).
 
-
   Definition rep V FP xp freelist (freepred : @pred _ addr_eq_dec V) cache :=
     (Alloc.rep FP xp freelist freepred *
     [[ incl_count addr_eq_dec cache freelist ]] *
@@ -548,6 +576,138 @@ Module BmapAllocCache.
     step.
     step.
   Qed.
+
+  Lemma incl_count_not_In: forall (T: Type) (E : forall a b : T, {a = b} + {a <> b}) (l1 : list T) x,
+      count_occ E l1 x <= 0 ->
+      ~In x l1.
+  Proof.
+    induction l1; intros.
+    - intro.
+      apply H0.
+    - apply not_in_cons.
+      intuition.
+      subst.
+      rewrite count_occ_cons_eq in H. omega. auto.
+      eapply IHl1; eauto.
+      destruct (E x a); subst.
+      + rewrite count_occ_cons_eq in H. omega. auto.
+      + exfalso.
+        eapply IHl1 with (x := x); eauto.
+        rewrite count_occ_cons_neq in H; eauto.
+  Qed.
+
+  Lemma incl_count_NoDup: forall (T: Type) (E : forall a b : T, {a = b} + {a <> b}) (l1 : list T),
+    NoDup l1 <->
+    forall x, count_occ E l1 x <= 1.
+  Proof.
+    split.
+    + induction l1; intros.
+      - unfold count_occ.
+        omega.
+      - destruct (E x a).
+        ++ rewrite count_occ_cons_eq; auto.
+          subst.
+          inversion H; subst.
+          assert (count_occ E l1 a = 0).
+          erewrite <- count_occ_not_In; eauto.
+          rewrite H0. omega.
+        ++ rewrite count_occ_cons_neq; eauto.
+          inversion H; subst.
+          apply IHl1; eauto.
+    + induction l1.
+      - constructor.
+      - constructor.
+        specialize (H a).
+        rewrite count_occ_cons_eq in H; auto.
+        eapply incl_count_not_In with (E:=E); eauto.
+        omega.
+        apply IHl1.
+        intro.
+        destruct (E x a); subst.
+        ++
+          specialize (H a). 
+          rewrite count_occ_cons_eq in H; auto.
+          omega.
+        ++
+          specialize (H x). 
+          rewrite count_occ_cons_neq in H; auto.
+   Qed.
+
+  Lemma incl_count_NoDup_impl_NoDup: forall (T: Type) (E : forall a b : T, {a = b} + {a <> b}) (l1 l2 : list T),
+    incl_count E l1 l2 ->
+    NoDup l2 ->
+    NoDup l1.
+  Proof.
+    intros.
+    eapply incl_count_NoDup with (E:= E); eauto.
+    intro.
+    eapply incl_count_NoDup with (E:= E) (x := x) in H0 as H0'; eauto.
+    unfold incl_count in H.
+    specialize (H x).
+    rewrite H0' in H; eauto.
+  Qed.
+
+  Lemma remove_cons_eq: forall (T: Type) 
+      (E : forall a b : T, {a = b} + {a <> b}) (l1: list T) a,
+    NoDup (a :: l1) ->
+    remove E a (a :: l1) = l1.
+  Proof.
+  Admitted.
+
+  Lemma remove_cons_neq: forall (T: Type) 
+      (E : forall a b : T, {a = b} + {a <> b}) (l1: list T) a b,
+    a <> b ->
+    remove E a (b :: l1) = remove E a l1.
+  Proof.
+  Admitted.
+
+  Lemma incl_count_cons': forall (T: Type) 
+      (E : forall a b : T, {a = b} + {a <> b}) (l1 l2: list T) n,
+    incl_count E (n::l1) (n::l2) ->
+    incl_count E l1 l2.
+  Proof.
+  Admitted.
+
+  Lemma incl_count_cons_NoDup_neq: forall (T: Type) 
+      (E : forall a b : T, {a = b} + {a <> b}) (l1 l2: list T) n a,
+    incl_count E (n::l2) (a::l1) ->
+    NoDup (a :: l1) ->
+    n <> a ->
+    incl_count E (n::l2) l1.
+  Proof.
+    intros.
+  Admitted.
+
+  Lemma incl_count_In: forall (T: Type) 
+      (E : forall a b : T, {a = b} + {a <> b}) (l1: list T) n l2,
+    incl_count E (n ::l2) l1 ->
+    In n l1.
+  Proof.
+  Admitted.
+
+  Lemma incl_count_remove_NoDup: forall (T: Type) 
+      (E : forall a b : T, {a = b} + {a <> b}) (l1: list T) n l2,
+    NoDup l1 -> 
+    incl_count E (n :: l2) l1 ->
+    incl_count E l2 (remove E n l1).
+  Proof. 
+    induction l1; intros.
+    - unfold incl_count in *.
+      simpl in *.
+      intro.
+      specialize (H0 x).
+      destruct (E n x); subst.
+      omega.
+      auto.
+    - destruct (E n a); subst.
+      ++ 
+        rewrite remove_cons_eq; eauto.
+        eapply incl_count_cons'; eauto.
+      ++ rewrite remove_cons_neq; eauto.
+        apply IHl1; eauto.
+        inversion H; eauto.
+        eapply incl_count_cons_NoDup_neq; eauto.
+  Qed. 
 
   Theorem alloc_ok : forall V FP lxp xp (ms:memstate),
     {< F Fm m0 m freelist freepred,
@@ -575,26 +735,15 @@ Module BmapAllocCache.
     constructor; auto.
     step.
     or_r. cancel.
-
- 
-    (* XXX put in lemma *)
-    unfold Alloc.rep in H4.
-    destruct_lift H4.
-    unfold Alloc.freelist_bmap_equiv in *. intuition.
-    assert (In n freelist).
-    eapply In_incl;eauto.
-    constructor.
-    auto.
-    eapply Forall_forall in H5; eauto.
-    Search length Alloc.Bmp.rep.
-    rewrite Alloc.Bmp.items_length_ok_pimpl in H4.
-    destruct_lift H4.
-    unfold Alloc.BmpSig.RALen in *.
-    unfold Sig.BMPLen in *.
-    unfold Alloc.BmpSig.items_per_val in *.
-    unfold Alloc.Bmp.Defs.item in *. simpl in *.
-    omega.
-  Admitted.
+    apply Alloc.rep_impl_NoDup in H4 as H4'; eauto.
+    apply incl_count_NoDup_impl_NoDup in H9 as H9'; eauto.
+    eapply incl_count_remove_NoDup; eauto.
+    specialize (H8 bn).  apply H8; auto.
+    specialize (H8 n).  apply H8; auto.
+    eapply Alloc.rep_impl_bn_ok with (freelist := freelist); eauto.
+    eapply incl_count_In; eauto.
+    eapply incl_count_In; eauto.
+  Qed.
 
   Theorem free_ok : forall V FP lxp xp bn ms,
     {< F Fm m0 m freelist freepred,
@@ -614,16 +763,7 @@ Module BmapAllocCache.
     unfold free, rep; intros.
     step.
     step.
-  Qed.
-
-
-(*
-Lemma rep_impl_bn_ok: forall bn V FP xp freelist freepred,
-  Alloc.rep V FP xp freelist freepred ->
-  In bn freelist -> 
-  bn < (Sig.BMPLen xp) * valulen.
-Admitted.
-*)
+  Admitted.
 
   Theorem steal_ok : forall V FP lxp xp bn (ms:memstate),
     {< F Fm m0 m freelist freepred,
