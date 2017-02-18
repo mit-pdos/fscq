@@ -304,28 +304,100 @@ Proof.
   apply Nat.mod_upper_bound.
   apply INODE.IRec.Defs.items_per_val_not_0.
 
+  cbv [Rec.of_word Rec.len INODE.IRecSig.itemtype INODE.irectype INODE.iattrtype INODE.NDirect
+             Rec.len Rec.data Rec.recdata Rec.field_type string_dec string_rec string_rect Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
+             plus minus mult
+             addrlen hashlen wtl whd
+             sumbool_rec sumbool_rect Bool.bool_dec bool_rec bool_rect eq_rec_r eq_rec eq_rect eq_sym eq_ind_r eq_ind] in *.
   eapply extract_equiv_prog.
-  erewrite ?split2_iter.
-  repeat change (match ?He in (_ = N) return (word N) with | eq_refl => ?x end) with (rew He in x).
-  rewrite ?eq_rect_double.
-  rewrite ?eq_rect_split1.
-  rewrite ?eq_rect_split2.
-  erewrite ?split2_split1.
-  erewrite ?split1_iter.
-  repeat change (match ?He in (_ = N) return (word N) with | eq_refl => ?x end) with (rew He in x).
-  progress rewrite ?eq_rect_split2.
-  erewrite ?split2_iter.
-  repeat change (match ?He in (_ = N) return (word N) with | eq_refl => ?x end) with (rew He in x).
-  rewrite ?eq_rect_double.
+  (* Split up the rewrites into separate goals to reduce proof term size *)
+
+  Ltac replace_parts p cont :=
+    idtac;
+    match p with
+    | (?a, ?b) =>
+      replace_parts a ltac:(replace_parts b cont)
+    | ?a :: ?b =>
+      replace_parts a ltac:(replace_parts b cont)
+    | ?a =>
+      (is_evar a; fail 1) ||
+                          let ta := type of a in
+                          let Ha := fresh in
+                          evar (Ha : ta);
+                          let Ha' := eval unfold Ha in Ha in
+                              clear Ha; replace a with Ha'; [ cont | ]
+    end.
+  match goal with
+  | |- ProgMonad.prog_equiv _ (Ret ?p) => replace_parts p ltac:(idtac "done")
+  end.
+  reflexivity.
+  reflexivity.
+  reflexivity.
+
   Lemma fold_Rec_middle : forall low mid high w,
       split1 mid high (split2 low (mid + high) w) = Rec.middle low mid high w.
   Proof.
     reflexivity.
   Qed.
-  rewrite ?fold_Rec_middle.
-  reflexivity.
 
+  Definition split1_iter' :
+    forall n1 n2 n3 Heq w,
+      split1 n1 n2 (split1 (n1 + n2) n3 w) =
+      split1 n1 (n2 + n3) (rew Heq in w) := split1_iter.
+  Definition split2_iter' :
+    forall n1 n2 n3 Heq w,
+      split2 n2 n3 (split2 n1 (n2 + n3) w) =
+      split2 (n1 + n2) n3 (rew Heq in w) := split2_iter.
+  Definition split2_split1' :
+    forall n1 n2 n3 Heq w,
+      split2 n1 n2 (split1 (n1 + n2) n3 w) =
+      split1 n2 n3
+             (split2 n1 (n2 + n3) (rew Heq in w)) := split2_split1.
+  Ltac rewrite_splits :=
+    repeat (repeat erewrite ?split2_iter', ?eq_rect_split2, ?eq_rect_double;
+            repeat erewrite ?split1_iter', ?eq_rect_split1, ?eq_rect_double;
+            repeat erewrite ?split2_split1', ?eq_rect_split1, ?eq_rect_split2, ?eq_rect_double); rewrite ?fold_Rec_middle.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
+  rewrite_splits; reflexivity.
 
+  match goal with
+  | |- context[@Rec.word_selN' ?ft ?l ?i ?w] =>
+    set (@Rec.word_selN' ft l i w)
+  end.
+  cbv [Rec.of_word Rec.len INODE.IRecSig.itemtype INODE.irectype INODE.iattrtype INODE.NDirect
+             Rec.len Rec.data Rec.recdata Rec.field_type string_dec string_rec string_rect Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
+             plus minus mult
+             addrlen hashlen wtl whd
+             sumbool_rec sumbool_rect Bool.bool_dec bool_rec bool_rect eq_sym eq_ind_r eq_ind] in *.
+  subst_definitions.
+  compile_step.
+  repeat change (decls_pre (@Decl ?T ?Wr :: ?decls') ?vars ?n)
+         with ((exists val_, nth_var n vars |-> Val (@wrap_type _ Wr) val_) * decls_pre decls' vars (S n))%pred.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  (* TODO: look inside the [eq_rect] to know what to look for in the precondition *)
 Admitted.
 
 Definition extract_env : Env.
