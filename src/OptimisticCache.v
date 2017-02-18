@@ -13,7 +13,6 @@ Notation Disk := (@mem addr addr_eq_dec valu).
 
 Record CacheParams :=
   { cache : ident;
-    vdisk : ident;
     vdisk_committed : ident; }.
 
 Section OptimisticCache.
@@ -50,7 +49,6 @@ Section OptimisticCache.
   Definition CacheRep d wb (vd0 vd:Disk) : heappred :=
     (exists c, cache P |-> val c *
           vdisk_committed P |-> absMem vd0 *
-          vdisk P |-> absMem vd *
           [[ cache_rep d c vd0 ]] *
           [[ wb_rep vd0 wb vd ]] *
           [[ no_pending_dirty c wb ]]
@@ -59,7 +57,7 @@ Section OptimisticCache.
   Lemma CacheRep_unfold : forall F m d wb vd0 vd,
       (F * CacheRep d wb vd0 vd)%pred m ->
       wb_rep vd0 wb vd /\
-      exists c, (F * cache P |-> val c * vdisk_committed P |-> absMem vd0 * vdisk P |-> absMem vd)%pred m /\
+      exists c, (F * cache P |-> val c * vdisk_committed P |-> absMem vd0)%pred m /\
            cache_rep d c vd0 /\
            no_pending_dirty c wb.
   Proof.
@@ -71,8 +69,7 @@ Section OptimisticCache.
 
   Lemma CacheRep_fold : forall F m d wb vd0 vd c,
       (F * cache P |-> val c *
-       vdisk_committed P |-> absMem vd0 *
-       vdisk P |-> absMem vd)%pred m ->
+       vdisk_committed P |-> absMem vd0)%pred m ->
       cache_rep d c vd0 ->
       wb_rep vd0 wb vd ->
       no_pending_dirty c wb ->
@@ -257,8 +254,7 @@ Section OptimisticCache.
                  (fun '(F, vd0, vd, v0) '(sigma_i, sigma) =>
                     {| precondition :=
                          (F * cache P |-> val c *
-                          vdisk_committed P |-> absMem vd0 *
-                          vdisk P |-> absMem vd)%pred (Sigma.mem sigma) /\
+                          vdisk_committed P |-> absMem vd0)%pred (Sigma.mem sigma) /\
                          cache_rep (Sigma.disk sigma) c vd0 /\
                          wb_rep vd0 wb vd /\
                          no_pending_dirty c wb /\
@@ -268,8 +264,7 @@ Section OptimisticCache.
                          fun '(sigma_i', sigma') r =>
                            (exists c',
                              (F * cache P |-> val c' *
-                              vdisk_committed P |-> absMem vd0 *
-                              vdisk P |-> absMem vd)%pred (Sigma.mem sigma') /\
+                              vdisk_committed P |-> absMem vd0)%pred (Sigma.mem sigma') /\
                              cache_rep (Sigma.disk sigma') c' vd0 /\
                              wb_rep vd0 wb vd /\
                              no_pending_dirty c' wb /\
@@ -382,7 +377,6 @@ Section OptimisticCache.
                         Ret tt
           | _ => Ret tt
           end;
-      _ <- GhostUpdateMem (vdisk P) (fun _ (vd:Disk) => upd vd a v);
       Ret (tt, wb_add wb a v).
 
   Lemma wb_rep_add:
@@ -436,12 +430,7 @@ Section OptimisticCache.
     unfold CacheWrite.
     hoare finish.
     rename r into c'.
-    destruct (cache_get c' a) eqn:?; hoare finish; simplify.
-    all: match goal with
-         | [ H: Sigma.disk _ = Sigma.disk _ |- _ ] =>
-           rewrite H in *
-         end;
-      finish.
+    destruct (cache_get c' a) eqn:?; hoare finish.
   Qed.
 
   Fixpoint add_writes (c:Cache) (wrs: list (addr * valu)) :=
@@ -454,10 +443,10 @@ Section OptimisticCache.
     add_writes c (wb_writes wb).
 
   Definition CacheCommit wb :=
-    m <- Get (St:=St);
-      let c := cache m in
-      _ <- Assgn (set_cache m (upd_with_buffer c wb));
-        _ <- GhostUpdate (fun _ s => set_vdisk0 s (vdisk s));
+    c <- Get _ (cache P);
+      _ <- Assgn (cache P) (upd_with_buffer c wb);
+      _ <- GhostUpdateMem (vdisk_committed P) (fun _ (vd0:Disk) =>
+                                                upd_all vd0 (wb_writes wb));
         Ret tt.
 
   Lemma no_pending_dirty_empty : forall c,
@@ -501,14 +490,13 @@ Section OptimisticCache.
 
         case_eq (wb_get wb a); intuition.
         specialize (H v0); intuition.
-        congruence.
         erewrite upd_all_nodup_in by eauto.
         specialize (H0 a); simpl_match; intuition eauto.
 
         destruct (list_addr_in_dec addr_eq_dec a l);
           autorewrite with upd.
         destruct s.
-        specialize (H x); intuition; congruence.
+        specialize (H x); intuition.
         specialize (H0 a); simpl_match; eauto.
   Qed.
 
@@ -544,11 +532,11 @@ Section OptimisticCache.
     destruct a as [a v].
     destruct (addr_eq_dec a a0); subst;
       autorewrite with cache in H; auto.
-    congruence.
   Qed.
 
   Hint Resolve upd_all_incr_domain.
 
+  (*
   Lemma CacheRep_commit:
     forall (wb : WriteBuffer) (d : DISK) (m : Mem St)
       (s : Abstraction St) (hm : hashmap),
@@ -584,24 +572,42 @@ Section OptimisticCache.
   Qed.
 
   Hint Resolve CacheRep_commit.
+*)
+
+  Lemma CacheRep_commit:
+    forall (wb : WriteBuffer) (vd0 vd : Disk) c d d',
+      wb_rep vd0 wb vd ->
+      cache_rep d c vd0 ->
+      d = d' ->
+      cache_rep d' (upd_with_buffer c wb) vd.
+  Proof.
+    intros; subst.
+    assert (forall a v, List.In (a,v) (wb_writes wb) ->
+                   wb_get wb a = Written v).
+    intros; apply wb_get_writes; auto.
+    generalize dependent (wb_writes wb); intros.
+    induction l; simpl; eauto.
+  Admitted.
+
+  Hint Resolve CacheRep_commit.
 
   Definition CacheCommit_ok : forall tid wb,
       cprog_spec G tid
-                 (fun (_:unit) '(sigma_i, sigma) =>
+                 (fun '(F, vd0, vd) '(sigma_i, sigma) =>
                     {| precondition :=
-                         CacheRep wb sigma;
+                         (F * CacheRep (Sigma.disk sigma) wb vd0 vd)%pred (Sigma.mem sigma);
                        postcondition :=
                          fun '(sigma_i', sigma') _ =>
-                           CacheRep empty_writebuffer sigma' /\
-                           locally_modified sigma sigma' /\
-                           vdisk_committed (Sigma.s sigma') = vdisk (Sigma.s sigma) /\
-                           vdisk (Sigma.s sigma') = vdisk (Sigma.s sigma) /\
+                           (F * CacheRep (Sigma.disk sigma') empty_writebuffer vd vd)%pred (Sigma.mem sigma') /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            sigma_i' = sigma_i |})
                  (CacheCommit wb).
   Proof.
     unfold CacheCommit.
-    hoare.
+    hoare finish.
+    finish.
+    SepAuto.pred_apply; SepAuto.cancel.
+    erewrite <- wb_rep_upd_all by eauto; auto.
   Qed.
 
   Definition CacheAbort : @cprog St _ :=
