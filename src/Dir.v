@@ -436,6 +436,8 @@ Module DIR.
     apply lookup_ptsto; auto.
     or_l; cancel.
     apply lookup_notindomain; auto.
+  Unshelve.
+    all: eauto.
   Qed.
 
 
@@ -479,8 +481,11 @@ Module DIR.
     step.
 
     apply Dent.Defs.item0_wellformed.
+    msalloc_eq. cancel.
+
     denote (lookup_f) as HH.
     pose proof (lookup_f_ok _ _ _ HH) as [Hx Hy].
+
     step.
 
     eexists; split; eauto.
@@ -494,6 +499,9 @@ Module DIR.
     rewrite <- notindomain_mem_eq; auto.
     eapply lookup_notindomain; eauto.
     eapply lookup_notindomain; eauto.
+
+  Unshelve.
+    all: easy.
   Qed.
 
 

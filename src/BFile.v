@@ -1044,7 +1044,8 @@ Module BFILE.
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: (Fd * off |-> (v, nil)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) off (v, nil)) (BFAttr f) (BFCache f) ]] *
-           [[ MSAlloc ms = MSAlloc ms' ]]
+           [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ MSCache ms = MSCache ms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} write lxp ixp inum off v ms.
   Proof.
@@ -1649,7 +1650,8 @@ Module BFILE.
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[[ (BFData f') ::: Fd * arrayN (@ptsto _ addr_eq_dec _) a (updN vsl i (v, nil)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) (a + i) (v, nil)) (BFAttr f) (BFCache f) ]] *
-           [[ MSAlloc ms = MSAlloc ms' ]]
+           [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ MSCache ms = MSCache ms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} write_array lxp ixp inum a i v ms.
   Proof.
@@ -2192,6 +2194,9 @@ Module BFILE.
     eapply bfcache_put; eauto.
   Qed.
 
+  Hint Extern 1 ({{_}} Bind (cache_get _ _) _) => apply cache_get_ok : prog.
+  Hint Extern 1 ({{_}} Bind (cache_put _ _ _) _) => apply cache_put_ok : prog.
+
 
   (** crash and recovery *)
 
@@ -2447,3 +2452,9 @@ Module BFILE.
   Qed.
 
 End BFILE.
+
+Ltac msalloc_eq :=
+  repeat match goal with
+  | [ H: BFILE.MSAlloc _ = BFILE.MSAlloc _ |- _ ] => rewrite H in *; clear H
+  | [ H: BFILE.MSCache _ = BFILE.MSCache _ |- _ ] => rewrite H in *; clear H
+  end.

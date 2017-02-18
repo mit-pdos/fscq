@@ -209,6 +209,7 @@ Module FileRecArray (FRA : FileRASig).
     (* [rewrite block2val_updN_val2block_equiv] somewhere *)
 
     rewrite synced_list_length, ipack_length; apply div_lt_divup; auto.
+    msalloc_eq. cancel.
     rewrite synced_list_length, ipack_length; apply div_lt_divup; auto.
     unfold items_valid in *; intuition auto.
 
