@@ -82,7 +82,7 @@ Section CCL.
       step tid sigma (GhostUpdate i up) (Sigma.set_mem sigma i (abs (up tid v0))) tt
   | StepGhostUpdateMem : forall A AEQ V i (up: TID -> @mem A AEQ V -> @mem A AEQ V) m0,
       Sigma.mem sigma i = Some (absMem m0) ->
-      step tid sigma (GhostUpdate i up) (Sigma.set_mem sigma i (absMem (up tid m0))) tt
+      step tid sigma (GhostUpdateMem i up) (Sigma.set_mem sigma i (absMem (up tid m0))) tt
   | StepBeginRead : forall a v,
       Sigma.disk sigma a = Some (v, NoReader) ->
       step tid sigma (BeginRead a)
@@ -235,12 +235,13 @@ Module CCLTactics.
       clear H
     end.
 
-  Theorem GhostUpdate_step : forall tid sigma A AEQ V (m: @mem A AEQ V) i up sigma' v,
-      Sigma.mem sigma i = Some (absMem m) ->
-      step tid sigma (GhostUpdate i up) sigma' v ->
-      sigma' = Sigma.set_mem sigma i (absMem (up tid m)).
+  Theorem GhostUpdate_step : forall tid sigma A i up sigma' u,
+      step tid sigma (GhostUpdate i up) sigma' u ->
+      (forall (v0: A),
+          Sigma.mem sigma i = Some (abs v0) ->
+          sigma' = Sigma.set_mem sigma i (abs (up tid v0))).
   Proof.
-    inversion 2; try congruence; subst.
+    inversion 1; try congruence; intros; subst.
     match goal with
     | [ H: Sigma.mem ?sigma ?i = Some _,
            H': Sigma.mem ?sigma ?i = Some _ |- _ ] =>
@@ -250,11 +251,33 @@ Module CCLTactics.
     auto.
   Qed.
 
+  Arguments GhostUpdate_step {tid sigma A i up sigma' u} H v0 H'.
+
+  Theorem GhostUpdateMem_step : forall tid sigma A AEQ V i up sigma' u,
+      step tid sigma (GhostUpdateMem i up) sigma' u ->
+      (forall (m: @mem A AEQ V), Sigma.mem sigma i = Some (absMem m) ->
+            sigma' = Sigma.set_mem sigma i (absMem (up tid m))).
+  Proof.
+    inversion 1; try congruence; intros; subst.
+    match goal with
+    | [ H: Sigma.mem ?sigma ?i = Some _,
+           H': Sigma.mem ?sigma ?i = Some _ |- _ ] =>
+      rewrite H' in H;
+        inversion H; subst; repeat inj_pair2
+    end.
+    auto.
+  Qed.
+
+  Arguments GhostUpdateMem_step {tid sigma A AEQ V i up sigma' u} H m H'.
+
   Ltac inv_step :=
     match goal with
     | [ H: step _ ?sigma (GhostUpdate ?i _) _ _,
-           H': Sigma.mem ?sigma ?i = Some (absMem _) |- _ ] =>
-      apply (GhostUpdate_step H') in H; subst
+           H': Sigma.mem ?sigma ?i = Some _ |- _ ] =>
+      pose proof (GhostUpdate_step H _ H'); clear H
+    | [ H: step _ ?sigma (GhostUpdateMem ?i _) _ _,
+           H': Sigma.mem ?sigma ?i = Some _ |- _ ] =>
+      pose proof (GhostUpdateMem_step H _ H'); clear H
     | [ H: step _ _ _ _ _ |- _ ] => inversion H; subst
     end.
 

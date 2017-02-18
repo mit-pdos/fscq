@@ -31,6 +31,7 @@ Section Primitives.
                | Error => _
                end ] => eapply H; eauto; simpl; intuition eauto
            | [ H: step _ _ (GhostUpdate _ _) _ _ |- _ ] => inv_step
+           | [ H: step _ _ (GhostUpdateMem _ _) _ _ |- _ ] => inv_step
            | [ H: ?F (Sigma.mem ?sigma) |- ?F (Sigma.mem _) ] =>
              solve [ destruct sigma; simpl in H; apply H ]
            | [ |- Sigma.disk (Sigma.upd_disk ?sigma _) = _ ] =>
@@ -194,7 +195,25 @@ Section Primitives.
     prim.
   Qed.
 
-  Theorem GhostUpdate_ok : forall tid A AEQ V i (up: TID -> @mem A AEQ V -> @mem A AEQ V),
+  Theorem GhostUpdate_ok : forall tid A i (up: TID -> A -> A),
+      cprog_spec G tid
+                 (fun '(F, v0) '(sigma_i, sigma) =>
+                    {| precondition :=
+                         (F * i |-> abs v0)%pred (Sigma.mem sigma);
+                       postcondition :=
+                         fun '(sigma_i', sigma') _ =>
+                           (F * i |-> abs (up tid v0))%pred (Sigma.mem sigma') /\
+                           sigma_i' = sigma_i /\
+                           Sigma.disk sigma' = Sigma.disk sigma /\
+                           Sigma.hm sigma' = Sigma.hm sigma; |})
+                 (GhostUpdate i up).
+  Proof.
+    prim.
+    repeat inj_pair2.
+    destruct sigma; simpl in *; eauto.
+  Qed.
+
+  Theorem GhostUpdateMem_ok : forall tid A AEQ V i (up: TID -> @mem A AEQ V -> @mem A AEQ V),
       cprog_spec G tid
                  (fun '(F, m0) '(sigma_i, sigma) =>
                     {| precondition :=
@@ -205,9 +224,10 @@ Section Primitives.
                            sigma_i' = sigma_i /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma; |})
-                 (GhostUpdate i up).
+                 (GhostUpdateMem i up).
   Proof.
     prim.
+    repeat inj_pair2.
     destruct sigma; simpl in *; eauto.
   Qed.
 
@@ -235,6 +255,7 @@ Hint Extern 0 {{ Assgn _ _; _ }} => apply Assgn_ok : prog.
 Hint Extern 0 {{ Hash _; _ }} => apply Hash_ok : prog.
 Hint Extern 0 {{ Ret _; _ }} => apply Ret_ok : prog.
 Hint Extern 0 {{ GhostUpdate _ _; _ }} => apply GhostUpdate_ok : prog.
+Hint Extern 0 {{ GhostUpdateMem _ _; _ }} => apply GhostUpdateMem_ok : prog.
 Hint Extern 0 {{ @Yield _; _ }} => apply @Yield_ok : prog.
 
 (* Local Variables: *)
