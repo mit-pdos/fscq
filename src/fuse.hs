@@ -17,7 +17,6 @@ import Fuse
 import Data.IORef
 import Interpreter as I
 import qualified AsyncFS
-import qualified Log
 import FSLayout
 import qualified DirName
 import System.Environment
@@ -29,6 +28,7 @@ import qualified Data.List
 import AsyncDisk
 import Control.Monad
 import qualified Errno
+import qualified BFile
 
 -- Handle type for open files; we will use the inode number
 type HT = Integer
@@ -60,7 +60,7 @@ nInodeBitmaps = 1
 nDescrBlocks :: Integer
 nDescrBlocks = 64
 
-type MSCS = (Bool, Log.LOG__Coq_memstate)
+type MSCS = BFile.BFILE__Coq_memstate
 type FSprog a = (MSCS -> Prog.Coq_prog (MSCS, a))
 type FSrunner = forall a. FSprog a -> IO a
 doFScall :: DiskState -> IORef MSCS -> FSrunner
