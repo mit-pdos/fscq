@@ -352,7 +352,8 @@ Section OptimisticCache.
                          vd a = Some v0;
                        postcondition :=
                          fun '(sigma_i', sigma') '(r, wb') =>
-                           (F * CacheRep (Sigma.disk sigma') wb vd0 vd)%pred (Sigma.mem sigma') /\
+                           (F * CacheRep (Sigma.disk sigma') wb' vd0 vd)%pred (Sigma.mem sigma') /\
+                           wb' = wb /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            match r with
                            | Some v => v = v0
