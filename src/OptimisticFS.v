@@ -70,15 +70,15 @@ Module OptFS.
 
   Section OptimisticFS.
 
-    Variable OtherSt:StateTypes.
-    Variable G:Protocol (St OtherSt).
+    Variable P:CacheParams.
+    Variable G:Protocol.
 
     Definition framed_spec A T (spec: rawpred -> SeqSpec A T) : SeqSpec (A * rawpred) T :=
       fun '(a, F) => spec F a.
 
     Definition translation_spec A T (spec: rawpred -> SeqSpec A T)
                (p: WriteBuffer -> cprog (Result T * WriteBuffer)) :=
-      forall tid wb, cprog_spec G tid (translate_spec (framed_spec spec) wb) (p wb).
+      forall tid wb, cprog_spec G tid (translate_spec P (framed_spec spec) wb) (p wb).
 
     Ltac spec_reflect :=
       unfold prog_spec; simpl;
@@ -145,7 +145,7 @@ Module OptFS.
 
     Ltac translate_lift p :=
       lazymatch type of p with
-      | prog _ => exact (translate OtherSt p)
+      | prog _ => exact (translate P p)
       | ?A -> ?B =>
         (* unfold p just to extract its first argument name *)
         let p' := eval hnf in p in
