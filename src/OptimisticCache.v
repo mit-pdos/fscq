@@ -536,60 +536,54 @@ Section OptimisticCache.
 
   Hint Resolve upd_all_incr_domain.
 
-  (*
-  Lemma CacheRep_commit:
-    forall (wb : WriteBuffer) (d : DISK) (m : Mem St)
-      (s : Abstraction St) (hm : hashmap),
-      CacheRep wb (state d m s hm) ->
-      CacheRep empty_writebuffer
-               (state d (set_cache m (upd_with_buffer (cache m) wb))
-                      (set_vdisk0 s (vdisk s)) hm).
+  Lemma wb_domain_committed : forall vd0 wb vd,
+      wb_rep vd0 wb vd ->
+      (forall a v, wb_get wb a = Written v ->
+              exists v0, vd0 a = Some v0).
   Proof.
-    unfold CacheRep; simpl; intuition; simplify.
-    unfold upd_with_buffer.
+    intros.
+    specialize (H a); simpl_match; intuition eauto.
+  Qed.
 
-    erewrite wb_rep_upd_all by eauto.
+  Lemma cache_rep_commit : forall vd0 c wb d,
+      cache_rep d c vd0 ->
+      (forall a v, wb_get wb a = Written v ->
+              exists v0, vd0 a = Some v0) ->
+      no_pending_dirty c wb ->
+      cache_rep d (upd_with_buffer c wb) (upd_all vd0 (wb_writes wb)).
+  Proof.
+    intros.
+    unfold upd_with_buffer.
     assert (forall a v, List.In (a,v) (wb_writes wb) ->
                    wb_get wb a = Written v).
     intros; apply wb_get_writes; auto.
     generalize dependent (wb_writes wb); intros.
     induction l; simpl; eauto.
     destruct a as [a v].
-    pose proof (H1 a v); simpl in *.
-    match type of H3 with
-    | ?P -> _ => let HP := fresh in
-               assert P as HP by eauto;
-                 specialize (H3 HP);
-                 clear HP
-    end.
+    pose proof (H2 a v); simpl in *; intuition.
 
     eapply cache_rep_add_dirty; eauto.
     - intro Hinvalid.
       apply add_writes_same_invalid in Hinvalid.
-      specialize (H2 a); intuition auto.
-      congruence.
-    - specialize (H a); simpl_match; intuition eauto.
+      specialize (H1 a); intuition congruence.
   Qed.
 
-  Hint Resolve CacheRep_commit.
-*)
-
-  Lemma CacheRep_commit:
+  (* express [cache_rep_commit] in a more automation-friendly form *)
+  Lemma cache_rep_commit_CacheRep :
     forall (wb : WriteBuffer) (vd0 vd : Disk) c d d',
-      wb_rep vd0 wb vd ->
       cache_rep d c vd0 ->
+      wb_rep vd0 wb vd ->
+      no_pending_dirty c wb ->
       d = d' ->
       cache_rep d' (upd_with_buffer c wb) vd.
   Proof.
     intros; subst.
-    assert (forall a v, List.In (a,v) (wb_writes wb) ->
-                   wb_get wb a = Written v).
-    intros; apply wb_get_writes; auto.
-    generalize dependent (wb_writes wb); intros.
-    induction l; simpl; eauto.
-  Admitted.
+    erewrite wb_rep_upd_all by eauto.
+    apply cache_rep_commit; auto.
+    eapply wb_domain_committed; eauto.
+  Qed.
 
-  Hint Resolve CacheRep_commit.
+  Hint Resolve cache_rep_commit_CacheRep.
 
   Definition CacheCommit_ok : forall tid wb,
       cprog_spec G tid
