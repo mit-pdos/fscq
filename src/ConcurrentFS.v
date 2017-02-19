@@ -14,86 +14,54 @@ Import Pred.
 Require Import HomeDirProtocol.
 Require Import RelationClasses.
 
+Record FsParams :=
+  { fsmem: ident;
+    fstree: ident;
+    fshomedirs: ident; }.
+
 Section ConcurrentFS.
 
-  Context {OtherSt:StateTypes}.
-
-  Record FsMem :=
-    fsMem { fsmem: memstate;
-            fs_other_mem: Mem OtherSt; }.
-
-  Record FsAbstraction :=
-    fsAbstraction { fstree: dirtree;
-                    homedirs: TID -> list string;
-                    fs_other_s : Abstraction OtherSt; }.
-
-  Definition St := OptimisticCache.St
-                     {| Mem := FsMem;
-                        Abstraction := FsAbstraction; |}.
-
   Variable fsxp: fs_xparams.
+  Variable CP:CacheParams.
+  Variable P:FsParams.
 
-  Definition get_fsmem (m: Mem St) :=
-    fsmem (cache_other_mem m).
-  Definition get_fstree (sigma: Sigma St) :=
-    fstree (cache_other_s (Sigma.s sigma)).
-  Definition get_homedirs (sigma: Sigma St) :=
-    homedirs (cache_other_s (Sigma.s sigma)).
-
-  Definition fs_invariant wb (sigma: Sigma St) :=
-    let tree := get_fstree sigma in
-    let mscs := get_fsmem (Sigma.mem sigma) in
-    CacheRep wb sigma /\
+  Definition fs_rep vd hm mscs tree :=
     exists ds ilist frees,
       LOG.rep (FSLayout.FSXPLog fsxp) (SB.rep fsxp)
-              (LOG.NoTxn ds) (MSLL mscs) (Sigma.hm sigma)
-              (seq_disk sigma) /\
+              (LOG.NoTxn ds) (MSLL mscs) hm (add_buffers vd) /\
       (DirTreeRep.rep fsxp Pred.emp tree ilist frees)
         (list2nmem (ds!!)).
 
-  Definition fs_guarantee' wb' tid (sigma sigma':Sigma St) :=
-    fs_invariant empty_writebuffer sigma /\
-    fs_invariant wb' sigma' /\
-    let tree := get_fstree sigma in
-    let tree' := get_fstree sigma' in
-    homedir_guarantee tid (get_homedirs sigma) tree tree' /\
-    get_homedirs sigma' = get_homedirs sigma.
+  Definition fs_invariant d hm tree (homedirs: TID -> list string) : heappred :=
+    (fstree P |-> val fstree *
+     fshomedirs P |-> abs homedirs *
+     exists mscs vd, CacheRep CP d empty_writebuffer vd vd *
+                fsmem P |-> val mscs *
+                [[ fs_rep vd hm mscs tree ]])%pred.
 
-  Definition fs_guarantee :=
-    fs_guarantee' empty_writebuffer.
+  Definition fs_guarantee tid (sigma sigma': Sigma) :=
+    exists tree tree' homedirs,
+      fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) /\
+      fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma') /\
+      homedir_guarantee tid homedirs tree tree'.
 
   (* TODO: eventually abstract away protocol *)
-
-  (* TODO: provide mem/abstraction setter/updater in cache, and here: callers
-  should not have to deal with listing out the other parts of these records *)
-
-  Definition set_fsmem (m: Mem St) fsm : Mem St :=
-    let other := fs_other_mem (cache_other_mem m) in
-    cacheMem (St:={|Mem:=FsMem|}) (cache m)
-             (fsMem fsm other).
-
-  Definition upd_fstree update (s: Abstraction St) : Abstraction St :=
-    let fsS0 := cache_other_s s in
-    let other := fs_other_s fsS0 in
-    cacheS (St:={|Abstraction:=FsAbstraction|}) (vdisk_committed s) (vdisk s)
-           (fsAbstraction (update (fstree fsS0)) (homedirs fsS0) other).
 
   Definition guard {T} (r: Result T) : {exists v, r=Success v} + {r=Failed}.
     destruct r; eauto.
   Defined.
 
   Definition retry_syscall T
-             (p: memstate -> @cprog St (Result (memstate * T) * WriteBuffer))
+             (p: memstate -> cprog (Result (memstate * T) * WriteBuffer))
              (update: dirtree -> dirtree)
     : cprog (Result T) :=
-    retry guard (m <- Get;
-                   do '(r, wb) <- p (get_fsmem m);
+    retry guard (ms <- Get _ (fsmem P);
+                   do '(r, wb) <- p ms;
                    match r with
                    | Success (ms', r) =>
-                     _ <- CacheCommit wb;
-                       m <- Get;
-                       _ <- Assgn (set_fsmem m ms');
-                       _ <- GhostUpdate (fun _ s => upd_fstree update s);
+                     _ <- CacheCommit CP wb;
+                       _ <- Assgn (fsmem P) ms';
+                       _ <- GhostUpdate (fstree P) (fun _ => update);
                        Ret (Success r)
                    | Failed =>
                      _ <- CacheAbort;
@@ -101,11 +69,13 @@ Section ConcurrentFS.
                        Ret Failed
                    end).
 
-  Definition file_get_attr inum : @cprog St _ :=
+  Definition file_get_attr inum :=
     retry_syscall (fun mscs =>
-                     OptFS.file_get_attr _ fsxp inum mscs empty_writebuffer)
+                     OptFS.file_get_attr CP fsxp inum mscs empty_writebuffer)
                   (fun tree => tree).
 
+  (* should just be destruct_lift *)
+  (*
   Ltac split_lift_prop :=
     unfold Prog.pair_args_helper in *; simpl in *;
     repeat match goal with
@@ -115,91 +85,70 @@ Section ConcurrentFS.
              apply sep_star_lift_apply in H
            | [ H : _ /\ _ |- _ ] => destruct H
            | _ => progress subst
-           end.
+           end. *)
 
   Section GetAttrCleanSpec.
 
     Hint Extern 0 {{ OptFS.file_get_attr _ _ _ _ _; _ }} => apply OptFS.file_get_attr_ok : prog.
 
-    Ltac descend :=
-      repeat match goal with
-             | [ |- exists _, _ ] => eexists
-             end.
-
-    Lemma fstree_locally_modified : forall sigma sigma',
-        locally_modified sigma sigma' ->
-        get_fstree sigma' = get_fstree sigma.
-    Proof.
-      unfold get_fstree, locally_modified.
-      destruct sigma, sigma'; simpl; intuition congruence.
-    Qed.
+    Ltac break_tuple :=
+      match goal with
+      | [ H: context[let (n, m) := ?a in _] |- _ ] =>
+        let n := fresh n in
+        let m := fresh m in
+        destruct a as [m n]; simpl in H
+      | [ |- context[let (n, m) := ?a in _] ] =>
+        let n := fresh n in
+        let m := fresh m in
+        destruct a as [m n]; simpl
+      end.
 
     Theorem file_get_attr1_ok : forall inum tid mscs,
         cprog_spec fs_guarantee tid
-                   (fun '(pathname, f) '(sigma_i, sigma) =>
+                   (fun '(F, vd0, vd, tree, pathname, f) '(sigma_i, sigma) =>
                       {| precondition :=
-                           fs_guarantee tid sigma_i sigma /\
-                           mscs = get_fsmem (Sigma.mem sigma) /\
-                           let tree := get_fstree sigma in
+                           (F * CacheRep CP (Sigma.disk sigma)
+                                         empty_writebuffer vd0 vd)%pred (Sigma.mem sigma) /\
+                           fs_rep vd (Sigma.hm sigma) mscs tree /\
                            find_subtree pathname tree = Some (TreeFile inum f);
                          postcondition :=
                            fun '(sigma_i', sigma') '(r, wb') =>
-                             get_fstree sigma' = get_fstree sigma /\
-                             match r with
-                             | Success (mscs', (r, _)) =>
-                               r = BFILE.BFAttr f /\
-                               fs_guarantee' wb' tid sigma_i'
-                                             (Sigma.set_mem sigma' (set_fsmem (Sigma.mem sigma') mscs'))
-                             | Failed =>
-                               (* need to promise committed disk doesn't change *)
-                               locally_modified sigma sigma' /\
-                               CacheRep wb' sigma'
-                             end
-                      |}) (OptFS.file_get_attr _ fsxp inum mscs empty_writebuffer).
+                             exists vd',
+                               (F * CacheRep CP (Sigma.disk sigma') wb' vd0 vd')%pred (Sigma.mem sigma') /\
+                               match r with
+                               | Success (mscs', (r, _)) =>
+                                 r = BFILE.BFAttr f /\
+                                 fs_rep vd' (Sigma.hm sigma') mscs' tree
+                               | Failed =>
+                                 fs_rep vd (Sigma.hm sigma') mscs tree
+                               end
+                      |}) (OptFS.file_get_attr CP fsxp inum mscs empty_writebuffer).
     Proof.
       intros.
       step.
 
       unfold OptFS.framed_spec, translate_spec; simpl.
-      repeat apply exists_tuple; simpl.
-      unfold fs_guarantee, fs_guarantee', fs_invariant in *; intuition;
-        repeat deex.
+      repeat apply exists_tuple.
+      repeat break_tuple; simpl in *.
+      unfold fs_rep in *; SepAuto.destruct_lifts; intuition;
+        repeat (deex || SepAuto.destruct_lifts).
 
       descend; intuition eauto.
       SepAuto.pred_apply; SepAuto.cancel; eauto.
 
       step.
+      repeat break_tuple; simpl in *; intuition;
+        repeat deex.
 
-      intuition eauto.
-      apply fstree_locally_modified; auto.
-
-      destruct a.
+      destruct a; simpl in *.
       - (* translated code returned success *)
-        destruct v as (mscs' & (attr & u)); destruct u.
-        split_lift_prop; auto.
-        intuition eauto.
-
-        destruct sigma, sigma'; simpl in *; eauto.
-
-        fold St in *.
-        unfold locally_modified, get_fstree in *.
-        destruct sigma, sigma'; simpl in *; eauto.
-        exists ds, ilist, frees.
-        intuition eauto.
-        congruence.
-
-        unfold locally_modified, get_fstree in *.
-        destruct sigma, sigma' in *; simpl in *; intuition eauto.
-        etransitivity; eauto.
-        match goal with
-        | [ |- homedir_guarantee _ _ ?tree ?tree' ] =>
-          replace tree' with tree by congruence
-        end; reflexivity.
-
-        unfold get_homedirs, set_fsmem, get_fstree, locally_modified in *.
-        destruct sigma_i, sigma, sigma' in *; simpl in *; intuition.
-        congruence.
-      - intuition eauto.
+        repeat break_tuple.
+        unfold Prog.pair_args_helper in *.
+        SepAuto.destruct_lifts; intuition eauto.
+        descend; intuition eauto.
+      - descend; intuition eauto.
+        descend; intuition eauto.
+        eapply LOG.rep_hashmap_subset; eauto.
     Qed.
 
   End GetAttrCleanSpec.

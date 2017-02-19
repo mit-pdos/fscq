@@ -99,6 +99,15 @@ Section OptimisticTranslator.
     destruct (vd a); eauto.
   Qed.
 
+  Lemma hashmap_le_refl_eq : forall hm hm',
+      hm = hm' ->
+      hashmap_le hm hm'.
+  Proof.
+    intros; subst; reflexivity.
+  Qed.
+
+  Hint Resolve hashmap_le_refl_eq.
+
   Lemma spec_to_exec' : forall tid A T (spec: Spec A T) (p: cprog T),
       cprog_spec G tid spec p ->
       forall st out, exec G tid st p out ->
@@ -160,6 +169,7 @@ Section OptimisticTranslator.
               (* cache miss: just give cache rep *)
               True
             end /\
+            hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
             sigma_i' = sigma_i
         | Error =>
           (* concurrent code will never just fail - we will prove in these cases
@@ -182,7 +192,7 @@ Section OptimisticTranslator.
         destruct st' as [sigma_i' sigma'].
         destruct v as [r wb']; intuition.
         destruct r; subst; CCLTactics.inv_ret;
-          intuition eauto.
+          intuition eauto 10.
         left; descend; intuition eauto.
         eapply Prog.XStep; [ | eauto ].
         replace (Sigma.hm sigma').
@@ -199,7 +209,7 @@ Section OptimisticTranslator.
         destruct st' as [sigma_i' sigma'].
         destruct v0 as [? wb']; intuition.
         CCLTactics.inv_ret; intuition eauto.
-        left; descend; intuition eauto.
+        left; descend; intuition eauto 10.
         eapply Prog.XStep.
         replace (Sigma.hm sigma').
         eapply Prog.StepWrite; eauto.
@@ -225,6 +235,8 @@ Section OptimisticTranslator.
       eapply Prog.XStep; eauto.
       destruct sigma; simpl in *.
       eauto.
+      destruct sigma; simpl.
+      hnf; eauto.
     - CCLTactics.inv_bind.
       eapply IHp in H6; eauto.
       destruct v as [r wb']; intuition eauto.
@@ -237,6 +249,7 @@ Section OptimisticTranslator.
         destruct r as [r wb'']; deex; intuition eauto.
         descend; intuition eauto.
         destruct r; eauto.
+        etransitivity; eauto.
       + eapply IHp in H5; intuition eauto.
   Qed.
 
@@ -255,6 +268,7 @@ Section OptimisticTranslator.
                                         (Sigma.hm sigma') v (add_buffers vd')
                  | Failed => True
                  end) /\
+             hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
              sigma_i' = sigma_i |}.
 
   Theorem translate_ok : forall T (p: prog T) A (spec: SeqSpec A T) tid wb,
