@@ -604,43 +604,27 @@ Section OptimisticCache.
     erewrite <- wb_rep_upd_all by eauto; auto.
   Qed.
 
-  Definition CacheAbort : @cprog St _ :=
-    _ <- GhostUpdate (fun _ s => set_vdisk s (vdisk_committed s));
-      Ret tt.
-
-  Lemma CacheRep_abort:
-    forall (wb : WriteBuffer) (d : DISK) (m : Mem St)
-      (s : Abstraction St) (hm : hashmap),
-      CacheRep wb (state d m s hm) ->
-      CacheRep empty_writebuffer (state d m (set_vdisk s (vdisk_committed s)) hm).
-  Proof.
-    unfold CacheRep; simpl; intuition; simplify.
-  Qed.
-
-  Hint Resolve CacheRep_abort.
+  Definition CacheAbort :=
+    Ret tt.
 
   Definition CacheAbort_ok : forall tid,
       cprog_spec G tid
-                 (fun wb '(sigma_i, sigma) =>
+                 (fun '(F, vd0, vd, wb) '(sigma_i, sigma) =>
                     {| precondition :=
-                         CacheRep wb sigma;
+                         (F * CacheRep (Sigma.disk sigma) wb vd0 vd)%pred (Sigma.mem sigma);
                        postcondition :=
                          fun '(sigma_i', sigma') _ =>
-                           CacheRep empty_writebuffer sigma' /\
-                           locally_modified sigma sigma' /\
-                           vdisk (Sigma.s sigma') = vdisk_committed (Sigma.s sigma) /\
-                           vdisk_committed (Sigma.s sigma') = vdisk_committed (Sigma.s sigma) /\
+                           (F * CacheRep (Sigma.disk sigma')
+                                         empty_writebuffer vd0 vd0)%pred (Sigma.mem sigma') /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            sigma_i' = sigma_i |})
                  (CacheAbort).
   Proof.
     unfold CacheAbort.
-    hoare.
+    hoare finish.
   Qed.
 
 End OptimisticCache.
-
-Arguments St OtherSt : clear implicits.
 
 (* Local Variables: *)
 (* company-coq-local-symbols: (("Sigma" . ?Σ) ("sigma" . ?σ) ("sigma'" . (?σ (Br . Bl) ?'))) *)
