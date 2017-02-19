@@ -50,11 +50,6 @@ Section Primitives.
            | _ => auto; congruence
            end.
 
-  Ltac break_tuple a n m :=
-    let n := fresh n in
-    let m := fresh m in
-    destruct a as [n m]; simpl in *.
-
   Theorem BeginRead_ok : forall tid a,
       cprog_spec G tid
                  (fun '(F, v) '(sigma_i, sigma) =>

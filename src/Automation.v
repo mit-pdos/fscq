@@ -71,7 +71,16 @@ Ltac learn_fact H :=
 
 Tactic Notation "learn" "that" constr(H) := learn_fact H.
 
+Lemma exists_tuple : forall A B P,
+    (exists a b, P (a, b)) ->
+    exists (a: A * B), P a.
+Proof.
+  intros.
+  repeat deex; eauto.
+Qed.
+
 Ltac descend :=
   repeat match goal with
+         | [ |- exists (_: _ * _), _ ] => apply exists_tuple
          | [ |- exists _, _ ] => eexists
          end.

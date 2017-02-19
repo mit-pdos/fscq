@@ -124,14 +124,6 @@ Section OptimisticCache.
     repeat deex;
     intuition eauto; try congruence.
 
-  Lemma exists_tuple : forall A B P,
-      (exists a b, P (a, b)) ->
-      exists (a: A * B), P a.
-  Proof.
-    intros.
-    repeat deex; eauto.
-  Qed.
-
   Ltac simplify :=
     repeat match goal with
            | [ H: context[let (n, m) := ?a in _] |- _ ] =>
