@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 module ConcurInterp where
 
 import CCLProg
@@ -22,9 +24,13 @@ data ConcurState = ConcurState
   , lock :: RWLock
   , has_writer :: IORef Bool }
 
+instance Show LockState where
+  show Free = "Free"
+  show ReadLock = "ReadLock"
+  show WriteLock = "WriteLock"
+
 run_dcode :: ConcurState -> CCLProg.Coq_cprog a -> IO a
 run_dcode _ (Ret r) = do
-  debugmsg $ "Done"
   return r
 run_dcode s (Assgn m) = do
   writeIORef (memory s) m
@@ -46,6 +52,7 @@ run_dcode _ (Hash sz (W w)) = do
   ih <- Disk.bs2i h
   return $ unsafeCoerce $ W ih
 run_dcode s (SetLock l) = do
+  debugmsg $ "SetLock " ++ show l
   case l of
     Free -> do
       writing <- readIORef (has_writer s)
@@ -60,12 +67,12 @@ run_dcode s (SetLock l) = do
   return $ unsafeCoerce ()
 run_dcode _ (BeginRead _) = do
   -- TODO: implement efficiently
+  debugmsg $ "BeginRead"
   return $ unsafeCoerce ()
 run_dcode s (WaitForRead a) = do
   val <- Disk.read_disk (disk s) a
   return $ unsafeCoerce val
 run_dcode ds (Bind p1 p2) = do
-  debugmsg $ "Bind"
   r1 <- run_dcode ds p1
   r2 <- run_dcode ds (p2 r1)
   return r2
