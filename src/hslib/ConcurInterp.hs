@@ -49,10 +49,10 @@ run_dcode s (SetLock l) = do
   case l of
     Free -> do
       writing <- readIORef (has_writer s)
+      writeIORef (has_writer s) False
       if writing
         then RWL.releaseWrite (lock s)
         else RWL.releaseRead (lock s)
-      writeIORef (has_writer s) False
     ReadLock -> RWL.acquireRead (lock s)
     WriteLock -> do
       RWL.acquireWrite (lock s)
