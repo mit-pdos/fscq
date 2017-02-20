@@ -97,6 +97,83 @@ Section ConcurrentFS.
 
   End InvariantUniqueness.
 
+  Theorem fs_rely_invariant : forall tid sigma sigma' tree homedirs,
+      fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
+      Rely fs_guarantee tid sigma sigma' ->
+      exists tree', fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma').
+  Proof.
+    unfold fs_guarantee; intros.
+    generalize dependent tree.
+    induction H0; intros; repeat deex; eauto.
+    assert (homedirs = homedirs0).
+    eapply fs_invariant_homedirs_unique; eauto.
+    subst.
+    eauto.
+    edestruct IHclos_refl_trans1; eauto.
+  Qed.
+
+  Lemma fs_rely_invariant' : forall tid sigma sigma',
+      Rely fs_guarantee tid sigma sigma' ->
+      forall tree homedirs,
+        fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
+        exists tree',
+          fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma').
+  Proof.
+    intros.
+    eapply fs_rely_invariant; eauto.
+  Qed.
+
+  Theorem fs_homedir_rely : forall tid sigma sigma' tree homedirs tree',
+      fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
+      Rely fs_guarantee tid sigma sigma' ->
+      fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma') ->
+      homedir_rely tid homedirs tree tree'.
+  Proof.
+    unfold fs_guarantee; intros.
+    generalize dependent tree'.
+    generalize dependent tree.
+    apply Operators_Properties.clos_rt_rt1n in H0.
+    induction H0; intros; repeat deex.
+    - assert (tree = tree').
+      eapply fs_invariant_tree_unique; eauto.
+      subst; reflexivity.
+    - assert (tree = tree0).
+      eapply fs_invariant_tree_unique with (m:=Sigma.mem x); eauto.
+      assert (homedirs = homedirs0).
+      eapply fs_invariant_homedirs_unique with (m:=Sigma.mem x); eauto.
+      subst.
+      match goal with
+      | [ H: homedir_guarantee _ _ _ _ |- _ ] =>
+        specialize (H _ ltac:(eauto))
+      end.
+      specialize (IHclos_refl_trans_1n _ ltac:(eauto) _ ltac:(eauto)).
+      unfold homedir_rely in *; congruence.
+  Qed.
+
+  Lemma fs_rely_preserves_subtree : forall tid sigma sigma' tree homedirs tree' path f,
+      find_subtree (homedirs tid ++ path) tree = Some f ->
+      fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
+      Rely fs_guarantee tid sigma sigma' ->
+      fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma') ->
+      find_subtree (homedirs tid ++ path) tree' = Some f.
+  Proof.
+    intros.
+    eapply fs_homedir_rely in H1; eauto.
+    unfold homedir_rely in H1.
+    eapply find_subtree_app' in H; repeat deex.
+    erewrite find_subtree_app; eauto.
+    congruence.
+  Qed.
+
+  Theorem fs_guarantee_refl : forall tid sigma homedirs,
+      (exists tree, fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma)) ->
+      fs_guarantee tid sigma sigma.
+  Proof.
+    intros; deex.
+    unfold fs_guarantee; descend; intuition eauto.
+    reflexivity.
+  Qed.
+
   Theorem fs_guarantee_trans : forall tid sigma sigma' sigma'',
       fs_guarantee tid sigma sigma' ->
       fs_guarantee tid sigma' sigma'' ->
@@ -239,7 +316,6 @@ Section ConcurrentFS.
            | _ => progress SepAuto.destruct_lifts
            | _ => progress simpl in *
            | _ => progress subst
-           | _ => solve [ SepAuto.pred_apply; SepAuto.cancel ]
            end.
 
   Ltac finish :=
@@ -248,7 +324,9 @@ Section ConcurrentFS.
            | [ |- Rely _ _ _ ] => etransitivity; [ solve [ eauto ] | ]
            | [ |- fs_guarantee _ _ _ ] => eapply fs_guarantee_trans; [ solve [ eauto ] | ]
            | [ |- fs_invariant _ _ _ _ _ ] => unfold fs_invariant
-           | [ |- ?g ] => has_evar g || reflexivity
+           | [ |- Rely _ ?tid ?sigma ?sigma ] => try (is_evar tid; instantiate (1 := 0));
+                                       reflexivity
+           | [ |- ?g ] => solve [ first [ has_evar g | reflexivity ] ]
            | [ |- exists _, _ ] => descend; simpl
            | [ |- (_ * _)%pred _ ] => solve [ SepAuto.pred_apply; SepAuto.cancel ]
            | [ |- _ /\ _ ] => progress intuition eauto
@@ -307,17 +385,26 @@ Section ConcurrentFS.
         step.
         unfold fs_guarantee; finish.
 
-        step.
-        (* TODO: why does this have tree rather than an existential tree'? the
-        tree will change arbitrarily from Rely sigma'0 sigma'1 *)
-        admit.
-        admit. (* fs_guarantee refl: need fs_invariant from Rely *)
+        CCLAutomation.step; simplify.
+        assert (fs_invariant (Sigma.disk sigma'0) (Sigma.hm sigma'0)
+                             tree homedirs (Sigma.mem sigma'0)) by finish.
+        lazymatch goal with
+        | [ H: Rely _ _ ?sigma ?sigma' |- _ ] =>
+          pose proof (fs_rely_invariant' H ltac:(eauto))
+        end.
+        simplify; finish.
+        eapply fs_rely_preserves_subtree; eauto.
+        simplify; eauto.
+
+        eapply fs_guarantee_refl.
+        eapply fs_rely_invariant; eauto.
+        finish.
 
         step.
         etransitivity; eauto.
         etransitivity; eauto.
         eapply fs_rely_sametree; finish.
-  Abort.
+  Qed.
 
 End ConcurrentFS.
 
