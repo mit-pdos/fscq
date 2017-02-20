@@ -97,6 +97,18 @@ Section ConcurrentFS.
 
   End InvariantUniqueness.
 
+  Ltac invariant_unique :=
+    repeat match goal with
+           | [ H: fs_invariant _ _ ?tree _ ?m,
+                  H': fs_invariant _ _ ?tree' _ ?m |- _ ] =>
+             first [ constr_eq tree tree'; fail 1 | assert (tree' = tree) by
+                         apply (fs_invariant_tree_unique H' H); subst ]
+           | [ H: fs_invariant _ _ _ ?homedirs ?m,
+                  H': fs_invariant _ _ _ ?homedirs' ?m |- _ ] =>
+             first [ constr_eq homedirs homedirs'; fail 1 | assert (homedirs' = homedirs) by
+                         apply (fs_invariant_homedirs_unique H' H); subst ]
+           end.
+
   Theorem fs_rely_invariant : forall tid sigma sigma' tree homedirs,
       fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
       Rely fs_guarantee tid sigma sigma' ->
@@ -105,9 +117,7 @@ Section ConcurrentFS.
     unfold fs_guarantee; intros.
     generalize dependent tree.
     induction H0; intros; repeat deex; eauto.
-    assert (homedirs = homedirs0).
-    eapply fs_invariant_homedirs_unique; eauto.
-    subst.
+    invariant_unique.
     eauto.
     edestruct IHclos_refl_trans1; eauto.
   Qed.
@@ -133,16 +143,9 @@ Section ConcurrentFS.
     generalize dependent tree'.
     generalize dependent tree.
     apply Operators_Properties.clos_rt_rt1n in H0.
-    induction H0; intros; repeat deex.
-    - assert (tree = tree').
-      eapply fs_invariant_tree_unique; eauto.
-      subst; reflexivity.
-    - assert (tree = tree0).
-      eapply fs_invariant_tree_unique with (m:=Sigma.mem x); eauto.
-      assert (homedirs = homedirs0).
-      eapply fs_invariant_homedirs_unique with (m:=Sigma.mem x); eauto.
-      subst.
-      match goal with
+    induction H0; intros; repeat deex; invariant_unique.
+    - reflexivity.
+    - match goal with
       | [ H: homedir_guarantee _ _ _ _ |- _ ] =>
         specialize (H _ ltac:(eauto))
       end.
@@ -180,13 +183,7 @@ Section ConcurrentFS.
       fs_guarantee tid sigma sigma''.
   Proof.
     unfold fs_guarantee; intuition.
-    repeat deex.
-
-    assert (homedirs = homedirs0).
-    eapply fs_invariant_homedirs_unique with (m:=Sigma.mem sigma'); eauto.
-    assert (tree = tree'0).
-    eapply fs_invariant_tree_unique with (m:=Sigma.mem sigma'); eauto.
-    subst.
+    repeat deex; invariant_unique.
 
     descend; intuition eauto.
     etransitivity; eauto.
