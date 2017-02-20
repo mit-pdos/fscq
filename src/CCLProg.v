@@ -3,7 +3,7 @@ Require Import Word.
 Require Import Mem Pred.
 Require Import PeanoNat.
 Require Import Hashmap.
-Require Import Relation_Operators.
+Require Import RelationClasses Relation_Operators.
 Require Automation.
 
 Global Set Implicit Arguments.
@@ -300,6 +300,13 @@ Module CCLTactics.
     end.
 
 End CCLTactics.
+
+Instance Rely_preorder G tid : PreOrder (Rely G tid).
+Proof.
+  constructor; hnf; intros.
+  abstract (eapply rt_refl).
+  abstract (eapply rt_trans; eauto).
+Defined.
 
 (* Local Variables: *)
 (* compval-coq-local-symbols: (("Sigma" . ?Σ) ("sigma" . ?σ) ("sigma'" . (?σ (Br . Bl) ?'))) *)

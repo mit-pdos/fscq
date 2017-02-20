@@ -12,7 +12,6 @@ Import GenSepN.
 Import Pred.
 
 Require Import HomeDirProtocol.
-Require Import RelationClasses.
 
 Record FsParams :=
   { fsmem: ident;
@@ -33,7 +32,7 @@ Section ConcurrentFS.
         (list2nmem (ds!!)).
 
   Definition fs_invariant d hm tree (homedirs: TID -> list string) : heappred :=
-    (fstree P |-> val fstree *
+    (fstree P |-> abs tree *
      fshomedirs P |-> abs homedirs *
      exists mscs vd, CacheRep CP d empty_writebuffer vd vd *
                 fsmem P |-> val mscs *
@@ -44,6 +43,77 @@ Section ConcurrentFS.
       fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) /\
       fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma') /\
       homedir_guarantee tid homedirs tree tree'.
+
+  Lemma fs_rely_sametree : forall tid sigma sigma' tree homedirs,
+      fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
+      fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree homedirs (Sigma.mem sigma') ->
+      Rely fs_guarantee tid sigma sigma'.
+  Proof.
+    intros.
+    constructor.
+    exists (S tid); intuition.
+    unfold fs_guarantee.
+    descend; intuition eauto.
+    reflexivity.
+  Qed.
+
+  Section InvariantUniqueness.
+
+    Ltac mem_eq m a v :=
+      match goal with
+      | [ H: context[ptsto a v] |- _ ] =>
+        let Hptsto := fresh in
+        assert ((exists F, F * a |-> v)%pred m) as Hptsto by
+              (SepAuto.pred_apply' H; SepAuto.cancel);
+        unfold exis in Hptsto; destruct Hptsto;
+        apply ptsto_valid' in Hptsto
+      end.
+
+    Lemma fs_invariant_tree_unique : forall d hm tree homedirs
+                                       d' hm' tree' homedirs' m,
+        fs_invariant d hm tree homedirs m ->
+        fs_invariant d' hm' tree' homedirs' m ->
+        tree = tree'.
+    Proof.
+      unfold fs_invariant; intros.
+      mem_eq m (fstree P) (abs tree).
+      mem_eq m (fstree P) (abs tree').
+      rewrite H1 in H2; inversion H2; inj_pair2.
+      auto.
+    Qed.
+
+    Lemma fs_invariant_homedirs_unique : forall d hm tree homedirs
+                                       d' hm' tree' homedirs' m,
+        fs_invariant d hm tree homedirs m ->
+        fs_invariant d' hm' tree' homedirs' m ->
+        homedirs = homedirs'.
+    Proof.
+      unfold fs_invariant; intros.
+      mem_eq m (fshomedirs P) (abs homedirs).
+      mem_eq m (fshomedirs P) (abs homedirs').
+      rewrite H1 in H2; inversion H2; inj_pair2.
+      auto.
+    Qed.
+
+  End InvariantUniqueness.
+
+  Theorem fs_guarantee_trans : forall tid sigma sigma' sigma'',
+      fs_guarantee tid sigma sigma' ->
+      fs_guarantee tid sigma' sigma'' ->
+      fs_guarantee tid sigma sigma''.
+  Proof.
+    unfold fs_guarantee; intuition.
+    repeat deex.
+
+    assert (homedirs = homedirs0).
+    eapply fs_invariant_homedirs_unique with (m:=Sigma.mem sigma'); eauto.
+    assert (tree = tree'0).
+    eapply fs_invariant_tree_unique with (m:=Sigma.mem sigma'); eauto.
+    subst.
+
+    descend; intuition eauto.
+    etransitivity; eauto.
+  Qed.
 
   (* TODO: eventually abstract away protocol *)
 
@@ -74,34 +144,21 @@ Section ConcurrentFS.
                      OptFS.file_get_attr CP fsxp inum mscs empty_writebuffer)
                   (fun tree => tree).
 
-  (* should just be destruct_lift *)
-  (*
-  Ltac split_lift_prop :=
-    unfold Prog.pair_args_helper in *; simpl in *;
-    repeat match goal with
-           | [ H: context[(emp * _)%pred] |- _ ] =>
-             apply star_emp_pimpl in H
-           | [ H: context[(_ * [[ _ ]])%pred] |- _ ] =>
-             apply sep_star_lift_apply in H
-           | [ H : _ /\ _ |- _ ] => destruct H
-           | _ => progress subst
-           end. *)
+  Ltac break_tuple :=
+    match goal with
+    | [ H: context[let (n, m) := ?a in _] |- _ ] =>
+      let n := fresh n in
+      let m := fresh m in
+      destruct a as [m n]; simpl in H
+    | [ |- context[let (n, m) := ?a in _] ] =>
+      let n := fresh n in
+      let m := fresh m in
+      destruct a as [m n]; simpl
+    end.
 
   Section GetAttrCleanSpec.
 
     Hint Extern 0 {{ OptFS.file_get_attr _ _ _ _ _; _ }} => apply OptFS.file_get_attr_ok : prog.
-
-    Ltac break_tuple :=
-      match goal with
-      | [ H: context[let (n, m) := ?a in _] |- _ ] =>
-        let n := fresh n in
-        let m := fresh m in
-        destruct a as [m n]; simpl in H
-      | [ |- context[let (n, m) := ?a in _] ] =>
-        let n := fresh n in
-        let m := fresh m in
-        destruct a as [m n]; simpl
-      end.
 
     Theorem file_get_attr1_ok : forall inum tid mscs,
         cprog_spec fs_guarantee tid
@@ -121,7 +178,8 @@ Section ConcurrentFS.
                                  fs_rep vd' (Sigma.hm sigma') mscs' tree
                                | Failed =>
                                  fs_rep vd (Sigma.hm sigma') mscs tree
-                               end
+                               end /\
+                               sigma_i' = sigma_i
                       |}) (OptFS.file_get_attr CP fsxp inum mscs empty_writebuffer).
     Proof.
       intros.
@@ -146,71 +204,119 @@ Section ConcurrentFS.
         unfold Prog.pair_args_helper in *.
         SepAuto.destruct_lifts; intuition eauto.
         descend; intuition eauto.
-      - descend; intuition eauto.
-        descend; intuition eauto.
+      - (* applying eauto strategically is much faster *)
+        descend; intuition idtac.
+        eauto.
+        descend; intuition idtac.
         eapply LOG.rep_hashmap_subset; eauto.
+        eauto.
     Qed.
 
   End GetAttrCleanSpec.
 
   Hint Extern 0 {{ OptFS.file_get_attr _ _ _ _ _; _ }} => apply file_get_attr1_ok : prog.
 
-  Hint Extern 0 {{ CacheCommit _; _ }} => apply CacheCommit_ok : prog.
+  Hint Extern 0 {{ CacheCommit _ _; _ }} => apply CacheCommit_ok : prog.
   Hint Extern 0 {{ CacheAbort; _ }} => apply CacheAbort_ok : prog.
+
+  Hint Extern 0 (SepAuto.okToUnify
+                   (CacheRep ?P ?d ?wb _ _)
+                   (CacheRep ?P ?d ?wb _ _)) => constructor : okToUnify.
+
+  Ltac simplify :=
+    repeat match goal with
+           | _ => break_tuple
+           | _ => deex
+           | [ H: _ /\ _ |- _ ] => destruct H
+           | [ H: Sigma.disk _ = Sigma.disk _ |- _ ] =>
+             progress rewrite H in *
+           | [ H: Sigma.hm _ = Sigma.hm _ |- _ ] =>
+             progress rewrite H in *
+           | [ H: Success _ = Success _ |- _ ] =>
+             inversion H; subst; clear H
+           | [ H: Failed = Success _ |- _ ] =>
+             exfalso; inversion H
+           | _ => progress SepAuto.destruct_lifts
+           | _ => progress simpl in *
+           | _ => progress subst
+           | _ => solve [ SepAuto.pred_apply; SepAuto.cancel ]
+           end.
+
+  Ltac finish :=
+    repeat match goal with
+           | [ |- cprog_ok _ _ _ _ ] => fail 1
+           | [ |- Rely _ _ _ ] => etransitivity; [ solve [ eauto ] | ]
+           | [ |- fs_guarantee _ _ _ ] => eapply fs_guarantee_trans; [ solve [ eauto ] | ]
+           | [ |- fs_invariant _ _ _ _ _ ] => unfold fs_invariant
+           | [ |- ?g ] => has_evar g || reflexivity
+           | [ |- exists _, _ ] => descend; simpl
+           | [ |- (_ * _)%pred _ ] => solve [ SepAuto.pred_apply; SepAuto.cancel ]
+           | [ |- _ /\ _ ] => progress intuition eauto
+           | _ => progress repeat match goal with
+                                 | [ H: Sigma.disk _ = Sigma.disk _ |- _ ] =>
+                                   rewrite H in *
+                                 | [ H: Sigma.hm _ = Sigma.hm _ |- _ ] =>
+                                   rewrite H in *
+                                 end
+           end.
+
+  Ltac step := CCLAutomation.step; simplify; finish.
 
   Theorem file_get_attr_ok : forall inum tid,
       cprog_spec fs_guarantee tid
-                 (fun '(pathname, f) '(sigma_i, sigma) =>
+                 (fun '(tree, homedirs, pathname, f) '(sigma_i, sigma) =>
                     {| precondition :=
-                         fs_guarantee tid sigma_i sigma /\
-                         let tree := get_fstree sigma in
-                         find_subtree pathname tree = Some (TreeFile inum f);
+                         (fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs) (Sigma.mem sigma) /\
+                         find_subtree (homedirs tid ++ pathname) tree = Some (TreeFile inum f) /\
+                         fs_guarantee tid sigma_i sigma;
                        postcondition :=
                          fun '(sigma_i', sigma') r =>
-                           Rely fs_guarantee tid sigma sigma' /\
-                           get_fstree sigma' = get_fstree sigma /\
-                           match r with
-                           | Success (r, _) => r = BFILE.BFAttr f
-                           | Failed => True
-                           end
+                           exists tree',
+                             Rely fs_guarantee tid sigma sigma' /\
+                             (fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs) (Sigma.mem sigma') /\
+                             fs_guarantee tid sigma_i' sigma' /\
+                             match r with
+                             | Success (r, _) => r = BFILE.BFAttr f
+                             | Failed => True
+                             end
                     |}) (file_get_attr inum).
   Proof.
     unfold file_get_attr, retry_syscall; intros.
 
-    eapply retry_spec'; induction n; simpl.
+    eapply retry_spec' with Failed; induction n; simpl.
     - step.
       step.
-
-      apply exists_tuple; do 2 eexists; simpl; intuition eauto.
+    - unfold fs_invariant in *.
+      step.
+      step.
 
       destruct a as [(mscs & (attr & u)) | ].
       + step.
+        step.
+        step.
+        step.
 
-        intuition eauto.
+        destruct (guard r); simplify.
+        step.
 
-        unfold fs_guarantee', fs_invariant in H5; intuition eauto.
-        destruct sigma'; simpl in *; eauto.
+        eapply fs_rely_sametree; finish.
+        unfold fs_guarantee; finish.
 
-        hoare.
-        intuition eauto.
-        admit. (* rely holds *)
-        admit. (* fstree unchanged *)
-      + hoare.
-        intuition eauto.
+        step.
+      + step.
+        step.
+        unfold fs_guarantee; finish.
+
+        step.
+        (* TODO: why does this have tree rather than an existential tree'? the
+        tree will change arbitrarily from Rely sigma'0 sigma'1 *)
         admit.
+        admit. (* fs_guarantee refl: need fs_invariant from Rely *)
 
-        hoare.
-        intuition eauto.
-        unfold Rely.
-        eapply Relation_Operators.rt_trans; eauto.
-        fold (Rely fs_guarantee tid sigma sigma0).
-        admit.
-
-        admit.
-    - hoare.
-      apply exists_tuple; do 2 eexists; simpl; intuition eauto.
-
-      destruct a as [(mscs & (attr & u)) | ].
+        step.
+        etransitivity; eauto.
+        etransitivity; eauto.
+        eapply fs_rely_sametree; finish.
   Abort.
 
 End ConcurrentFS.

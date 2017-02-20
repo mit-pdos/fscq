@@ -251,7 +251,7 @@ Hint Extern 0 {{ Hash _; _ }} => apply Hash_ok : prog.
 Hint Extern 0 {{ Ret _; _ }} => apply Ret_ok : prog.
 Hint Extern 0 {{ GhostUpdate _ _; _ }} => apply GhostUpdate_ok : prog.
 Hint Extern 0 {{ GhostUpdateMem _ _; _ }} => apply GhostUpdateMem_ok : prog.
-Hint Extern 0 {{ @Yield _; _ }} => apply @Yield_ok : prog.
+Hint Extern 0 {{ Yield; _ }} => apply @Yield_ok : prog.
 
 (* Local Variables: *)
 (* company-coq-local-symbols: (("Sigma" . ?Σ) ("sigma" . ?σ) ("sigma'" . (?σ (Br . Bl) ?'))) *)
