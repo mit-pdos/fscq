@@ -33,3 +33,4 @@ Makefile.coqproof
 *.cmi
 *.cmx
 *.cmxa
+*.prof
