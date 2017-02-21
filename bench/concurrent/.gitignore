@@ -1,3 +1,5 @@
 # compiled binaries
 /opens
 /stats
+*.prof
+perf.data
