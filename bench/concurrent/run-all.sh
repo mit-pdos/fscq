@@ -6,25 +6,25 @@ info() {
 
 info "open() on FSCQ"
 
-./run.sh ./seq-opens.sh fscq
+./run.sh ./seq-opens.sh fscq +RTS -N1 -RTS
 echo
 
-./run.sh ./par-opens.sh fscq
+./run.sh ./par-opens.sh fscq +RTS -N1 -RTS
 echo
 
 info "open() on CFSCQ"
 
-./run.sh ./seq-opens.sh cfscq
+./run.sh ./seq-opens.sh cfscq +RTS -N2 -RTS
 echo
 
-./run.sh ./par-opens.sh cfscq
+./run.sh ./par-opens.sh cfscq +RTS -N2 -RTS
 echo
 
 info "stat on FSCQ"
 
-./run.sh ./stats.sh fscq
+./run.sh ./stats.sh fscq +RTS -N1 -RTS
 echo
 
 info "stat on CFSCQ"
 
-./run.sh ./stats.sh cfscq
+./run.sh ./stats.sh cfscq +RTS -N2 -RTS

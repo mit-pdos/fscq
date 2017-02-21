@@ -26,7 +26,7 @@ shift
 
 fuse_opts='entry_timeout=0,negative_timeout=0,attr_timeout=0,remember=0,auto_unmount'
 
-$code/$bin "$@" +RTS -N2 -qg -RTS $img $mnt -f -o $fuse_opts 2>&1 >/dev/null &
+$code/$bin "$@" +RTS -qg -RTS $img $mnt -f -o $fuse_opts 2>&1 >/dev/null &
 sleep 1
 
 if ! df "$mnt/small-4k" 2>/dev/null >/dev/null; then
