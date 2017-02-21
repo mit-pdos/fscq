@@ -2,6 +2,7 @@ Require Import ExtrHaskellPrelude.
 Require Import ExtrHaskellMap.
 Require Import AsyncFS.
 Require Import StringUtils.
+Require DirName.
 Require ConcurrentFS.
 
 Extraction Language Haskell.
@@ -26,6 +27,8 @@ Extract Inlined Constant Log.should_flushall => "Prelude.False".
 Extract Inlined Constant StringUtils.String_as_OT.string_compare =>
   "(\x y -> if x Prelude.== y then Prelude.EQ else
             if x Prelude.< y then Prelude.LT else Prelude.GT)".
+
+Extract Inlined Constant DirName.ascii2byte => "Word.ascii2byte".
 
 Cd "../codegen".
 Recursive Extraction Library ConcurrentFS.
