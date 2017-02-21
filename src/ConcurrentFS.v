@@ -1,6 +1,7 @@
 Require Import CCL.
 Require Import Hashmap.
 Require Import OptimisticTranslator OptimisticFS.
+Require Import ConcurCompile.
 
 Require AsyncFS.
 (* imports for DirTreeRep.rep *)
@@ -629,7 +630,7 @@ Section ConcurrentFS.
   (* translate remaining system calls for extraction *)
 
   Definition lookup dnum names :=
-    retry_syscall (fun mscs => OptFS.lookup _ fsxp dnum names mscs)
+    retry_syscall (fun mscs => lookup _ fsxp dnum names mscs)
                   (fun tree => tree).
 
   Definition read_fblock inum off :=

@@ -59,6 +59,14 @@ Section ConcurCompile.
   Variable OtherSt:StateTypes.
   Variable G:Protocol (St OtherSt).
 
+  Inductive Compiled T (p: cprog T) :=
+  | ExtractionOf (p': cprog T) (pf: exec_equiv G p p').
+
+  Arguments ExtractionOf {T p} p' pf.
+
+  Definition compiled_prog T (p: cprog T) (c: Compiled p) :=
+    let 'ExtractionOf p' _ := c in p'.
+
   Fixpoint cForEach_ (ITEM : Type) (L : Type)
            (f : ITEM -> L -> WriteBuffer -> cprog (Result L * WriteBuffer))
            (lst : list ITEM)
@@ -90,13 +98,25 @@ Section ConcurCompile.
     destruct r as [ [? |] ?]; eauto.
   Qed.
 
-  Inductive Compiled T (p: cprog T) :=
-  | ExtractionOf (p': cprog T) (pf: exec_equiv G p p').
-
-  Arguments ExtractionOf {T p} p' pf.
-
-  Definition compiled_prog T (p: cprog T) (c: Compiled p) :=
-    let 'ExtractionOf p' _ := c in p'.
+  Lemma compile_forEach ITEM L p :
+    (forall lst l wb, Compiled (p lst l wb)) ->
+    (forall lst l wb, Compiled (@cForEach_ ITEM L p lst l wb)).
+  Proof.
+    intros.
+    unshelve refine (ExtractionOf (@cForEach_ ITEM L _ lst l wb) _);
+      intros.
+    destruct (X X0 X1 X2).
+    exact p'.
+    generalize dependent l.
+    generalize dependent wb.
+    induction lst; intros; simpl.
+    reflexivity.
+    destruct (X a l wb); simpl.
+    eapply exec_equiv_bind; intros; eauto.
+    destruct v.
+    destruct r; eauto.
+    reflexivity.
+  Defined.
 
   Lemma compile_equiv T (p p': cprog T) :
     exec_equiv G p p' ->
@@ -157,6 +177,31 @@ Section ConcurCompile.
     destruct r; eauto.
   Qed.
 
+  Ltac destruct_compiled :=
+    match goal with
+    | [ |- context[compiled_prog ?c] ] =>
+      destruct c
+    end.
+
+  Lemma compile_match_res T T' (p1: T -> _ -> _ -> cprog T') p2
+        (r: res T) (ls: LockState) (wb: WriteBuffer) :
+    (forall v ls wb, Compiled (p1 v ls wb)) ->
+    (forall e ls wb, Compiled (p2 e ls wb)) ->
+    Compiled (match r with
+              | OK v => p1 v
+              | Err e => p2 e
+              end ls wb).
+  Proof.
+    intros.
+    refine (ExtractionOf (match r with
+                          | OK v => fun ls wb => compiled_prog (X v ls wb)
+                          | Err e => fun ls wb => compiled_prog (X0 e ls wb)
+                          end ls wb) _).
+    destruct r;
+      destruct_compiled;
+      eauto.
+  Defined.
+
   Lemma compile_match_cT : forall T T' (p1: T -> WriteBuffer -> cprog T') p2 r,
       (forall v wb, Compiled (p1 v wb)) ->
       (forall e wb, Compiled (p2 e wb)) ->
@@ -176,7 +221,7 @@ Section ConcurCompile.
     destruct (X0 e w); simpl; eauto.
   Defined.
 
-  Definition lookup fsxp dnum names ams ls wb :
+  Definition CompiledLookup fsxp dnum names ams ls wb :
     Compiled (OptFS.lookup OtherSt fsxp dnum names ams ls wb).
   Proof.
     unfold OptFS.lookup; simpl.
@@ -184,9 +229,16 @@ Section ConcurCompile.
     monad_compile.
     rewrite translate_ForEach.
     apply compile_bind; intros.
-    apply compile_refl.
+    eapply compile_forEach; intros.
     unfold pair_args_helper; simpl.
 
+    rewrite translate_match_res; simpl.
+    eapply compile_match_res; intros; eauto.
+    apply compile_refl.
+
+    apply compile_refl.
+
+    unfold pair_args_helper; simpl.
     apply compile_bind; intros.
     apply compile_match_cT; intros.
     rewrite translate_match_res; simpl.
@@ -201,3 +253,7 @@ Section ConcurCompile.
   Defined.
 
 End ConcurCompile.
+
+Definition lookup OtherSt fsxp dnum names ams ls wb :=
+  compiled_prog (OtherSt:=OtherSt)
+                (CompiledLookup (fun _ _ _ => True) fsxp dnum names ams ls wb).
