@@ -504,17 +504,7 @@ End BmapAlloc.
 (* BmapAlloc with a list of free items to speed up allocation *)
 
 
-Module BmapAllocCache.
-
-   Module Sig <: AllocSig.
-    Definition xparams := balloc_xparams.
-    Definition BMPStart := BmapStart.
-    Definition BMPLen := BmapNBlocks.
-
-    (* should return an address that fits in addrlen (goodSize addrlen _).
-       valulen * valulen supports about 2^48 bytes of disk space *)
-    Definition xparams_ok xp := (BmapNBlocks xp) <= valulen * valulen.
-  End Sig.
+Module BmapAllocCache (Sig : AllocSig).
 
   Module Alloc := BmapAlloc Sig.
   Module Defs := Alloc.Defs.
@@ -532,10 +522,10 @@ Module BmapAllocCache.
     fms <- Alloc.init lxp xp fms;
     Ret (mk_memstate fms freelist0 ).
 
+  (* init with no free objects *)
   Definition init_nofree lxp xp ms :=
     fms <- Alloc.init_nofree lxp xp ms;
     Ret (mk_memstate fms freelist0).
-
 
   Definition alloc lxp xp ms :=
     match (MSCache ms) with
@@ -573,6 +563,23 @@ Module BmapAllocCache.
     >} init lxp xp (MSLog ms).
   Proof.
     unfold init, rep; intros.
+    step.
+    step.
+  Qed.
+
+  Theorem init_nofree_ok : forall V FP lxp xp (ms:memstate),
+    {< F Fm m0 m bl,
+    PRE:hm
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+          [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (Sig.BMPStart xp) bl) ]]] *
+          [[ Sig.xparams_ok xp /\ Sig.BMPStart xp <> 0 /\ length bl = Sig.BMPLen xp ]]
+    POST:hm' RET:ms exists m',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+          [[[ m' ::: (Fm * @rep V FP xp nil emp (MSCache ms)) ]]]
+    CRASH:hm' LOG.intact lxp F m0 hm'
+    >} init_nofree lxp xp (MSLog ms).
+  Proof.
+    unfold init_nofree, rep; intros.
     step.
     step.
   Qed.
@@ -879,6 +886,12 @@ Module BmapAllocCache.
     step.
   Admitted.
 
+  Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
+  Hint Extern 1 ({{_}} Bind (init_nofree _ _ _) _) => apply init_nofree_ok : prog.
+  Hint Extern 1 ({{_}} Bind (steal _ _ _ _) _) => apply steal_ok : prog.
+  Hint Extern 1 ({{_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
+  Hint Extern 1 ({{_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
+  Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
 
 End BmapAllocCache.
 
