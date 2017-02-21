@@ -27,6 +27,8 @@ Extract Inlined Constant StringUtils.String_as_OT.string_compare =>
   "(\x y -> if x Prelude.== y then Prelude.EQ else
             if x Prelude.< y then Prelude.LT else Prelude.GT)".
 
+Extract Inlined Constant DirName.ascii2byte => "Word.ascii2byte".
+
 Cd "../codegen".
 Recursive Extraction Library DirName.
 Recursive Extraction Library AsyncFS.

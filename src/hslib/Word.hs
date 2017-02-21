@@ -2,6 +2,7 @@
 
 module Word where
 
+import Data.Char
 import Data.Bits
 import Data.Word
 import GHC.Prim
@@ -27,6 +28,9 @@ bitmask = map (\x -> 2^x - 1) [(0::Int) ..]
 wrap :: Integer -> Integer -> Coq_word
 wrap 64 v = W64 $ fromIntegral v
 wrap nbits v = W $ (Data.Bits..&.) v (bitmask !! (fromIntegral nbits))
+
+ascii2byte :: Char -> Word.Coq_word
+ascii2byte c = W $ fromIntegral (ord c)
 
 weq :: Integer -> Coq_word -> Coq_word -> Bool
 weq _ (W x) (W y) = x == y
