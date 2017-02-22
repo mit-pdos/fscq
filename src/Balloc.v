@@ -1158,7 +1158,7 @@ Module BALLOCC.
   Hint Extern 1 ({{_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
   Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
 
-Module BALLOCC.
+End BALLOCC.
 
 
 (* Specialize for inode allocation *)
