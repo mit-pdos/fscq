@@ -222,17 +222,17 @@ func main() {
 	fs.Stop()
 
 	// columns:
-	// fs | operation | missing? | parallel? | kiters | time (s) | parallel speedup | us/op
+	// fs | operation | missing? | attr cache? | name cache? | neg name cache? | parallel? | kiters | time (s) | parallel speedup | us/op
 	timePerOp := elapsedMicros / float64(*kiters) / 1000
 	parallelSpeedup := 2 * seqMicros / elapsedMicros
-	printTsv(fs.ident, *operation, *missing, *parallel,
+	printTsv(fs.ident, *operation, *missing, *attr_cache, *name_cache, *neg_name_cache, *parallel,
 		*kiters,
 		elapsedMicros/1e6, parallelSpeedup,
 		timePerOp)
 
 	if *parallel {
 		seqTimePerOp := seqMicros / float64(*kiters) / 1000
-		printTsv(fs.ident, *operation, *missing, false,
+		printTsv(fs.ident, *operation, *missing, *attr_cache, *name_cache, *neg_name_cache, false,
 			*kiters,
 			seqMicros/1e6, 1.0,
 			seqTimePerOp)
