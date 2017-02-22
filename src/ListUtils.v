@@ -2099,6 +2099,41 @@ Proof.
   eapply remove_still_In; eauto.
 Qed.
 
+Lemma remove_cons_eq: forall (T: Type) 
+    (E : forall a b : T, {a = b} + {a <> b}) (l: list T) a,
+  NoDup (a :: l) ->
+  remove E a (a :: l) = l.
+Proof.
+  induction l; intros; subst.
+  - simpl. 
+    destruct (E a a); try congruence.
+  - unfold remove.
+    destruct (E a0 a0); subst; try congruence.
+    destruct (E a0 a); subst. try congruence.
+    + exfalso. inversion H.
+      apply H2. constructor; auto.
+    + unfold remove in IHl; simpl in IHl.
+      specialize (IHl a0). 
+      destruct (E a0 a0); subst; try congruence.
+      rewrite IHl; auto.
+      rewrite cons_app in H.
+      rewrite cons_app with (l := l) in H.
+      eapply NoDup_remove_mid in H; auto.
+Qed.
+
+Lemma remove_cons_neq: forall (T: Type) 
+    (E : forall a b : T, {a = b} + {a <> b}) (l: list T) a b,
+  a <> b ->
+  remove E a (b :: l) = b :: remove E a l.
+Proof.
+  induction l; intros; subst.
+  - simpl.
+    destruct (E a b); subst; try congruence.
+  - unfold remove.
+    destruct (E a0 b); subst; try congruence.
+Qed.
+
+
 Lemma selN_cons_fold : forall A (a : A) l i def,
   match i with | O => a | S n' => selN l n' def end = selN (a :: l) i def.
 Proof.
@@ -3511,6 +3546,108 @@ Proof.
   rewrite IHl by eauto; omega.
 Qed.
 
+
+Lemma incl_count_In: forall (T: Type) 
+    (E : forall a b : T, {a = b} + {a <> b}) (l1: list T) n l2,
+  incl_count E (n ::l2) l1 ->
+  In n l1.
+Proof.
+  intros.
+  unfold incl_count in *.
+  eapply count_occ_In with (eq_dec := E).
+  specialize (H n).
+  assert (count_occ E (n :: l2) n  >= 1).
+  erewrite count_occ_cons_eq with (l := l2); eauto.
+  omega.
+  omega.
+Qed.
+
+Lemma incl_count_not_In: forall (T: Type) (E : forall a b : T, {a = b} + {a <> b}) (l : list T) x,
+    count_occ E l x <= 0 ->
+    ~In x l.
+Proof.
+  induction l; intros.
+  - intro.
+    apply H0.
+  - apply not_in_cons.
+    intuition.
+    subst.
+    rewrite count_occ_cons_eq in H. omega. auto.
+    eapply IHl; eauto.
+    destruct (E x a); subst.
+    + rewrite count_occ_cons_eq in H. omega. auto.
+    + exfalso.
+      eapply IHl with (x := x); eauto.
+      rewrite count_occ_cons_neq in H; eauto.
+Qed.
+
+
+Lemma count_occ_NoDup: forall (T: Type) (E : forall a b : T, {a = b} + {a <> b}) (l : list T),
+  NoDup l <->
+  forall x, count_occ E l x <= 1.
+Proof.
+  split.
+  + induction l; intros.
+    - unfold count_occ.
+      omega.
+    - destruct (E x a).
+      ++ rewrite count_occ_cons_eq; auto.
+        subst.
+        inversion H; subst.
+        assert (count_occ E l a = 0).
+        erewrite <- count_occ_not_In; eauto.
+        rewrite H0. omega.
+      ++ rewrite count_occ_cons_neq; eauto.
+        inversion H; subst.
+        apply IHl; eauto.
+  + induction l.
+    - constructor.
+    - constructor.
+      specialize (H a).
+      rewrite count_occ_cons_eq in H; auto.
+      eapply incl_count_not_In with (E:=E); eauto.
+      omega.
+      apply IHl.
+      intro.
+      destruct (E x a); subst.
+      ++
+        specialize (H a). 
+        rewrite count_occ_cons_eq in H; auto.
+        omega.
+      ++
+        specialize (H x). 
+        rewrite count_occ_cons_neq in H; auto.
+ Qed.
+
+Lemma count_occ_NoDup_dec: forall (T: Type) (E : forall a b : T, {a = b} + {a <> b}) (l : list T) x,
+  NoDup l -> count_occ E l x = 0 \/ count_occ E l x = 1.
+Proof.
+  intros.
+  destruct (In_dec E x l).
+  + right.
+    eapply count_occ_NoDup with (E:= E) (x := x) in H.
+    assert (count_occ E l x > 0).
+    apply count_occ_In; eauto.
+    omega.
+  + left.
+    apply count_occ_not_In; auto.
+Qed.
+
+Lemma occ_count_NoDup_impl_NoDup: forall (T: Type) (E : forall a b : T, {a = b} + {a <> b}) (l1 l2 : list T),
+  incl_count E l1 l2 ->
+  NoDup l2 ->
+  NoDup l1.
+Proof.
+  intros.
+  eapply count_occ_NoDup with (E:= E); eauto.
+  intro.
+  eapply count_occ_NoDup with (E:= E) (x := x) in H0 as H0'; eauto.
+  unfold incl_count in H.
+  specialize (H x).
+  rewrite H0' in H; eauto.
+Qed.
+
+
 Lemma incl_count_incl : forall T E (l1 l2 : list T),
   incl_count E l1 l2 ->
   incl l1 l2.
@@ -3548,6 +3685,19 @@ Proof.
   specialize (H x0).
   simpl.
   destruct (E x x0); omega.
+Qed.
+
+Lemma incl_count_cons': forall (T: Type) 
+    (E : forall a b : T, {a = b} + {a <> b}) (l1 l2: list T) n,
+  incl_count E (n::l1) (n::l2) ->
+  incl_count E l1 l2.
+Proof.
+  unfold incl_count in *; intros.
+  specialize (H x).
+  rewrite cons_app in H.
+  rewrite cons_app with (l := l2) in H.
+  repeat rewrite count_occ_app in H.
+  omega.
 Qed.
 
 Module Type HIDDEN_APP.
@@ -3617,6 +3767,74 @@ Proof.
   unfold incl_count; intros.
   omega.
 Qed.
+
+Lemma count_occ_remove_NoDup_eq: forall (T: Type) 
+    (E : forall a b : T, {a = b} + {a <> b}) (l: list T) n,
+  NoDup l ->
+  count_occ E (remove E n l) n <= 0.
+Proof.
+  induction l; intros; subst.
+  + simpl in *. auto.
+  + destruct (E n  a); subst.
+    - rewrite remove_cons_eq; auto.
+      eapply count_occ_NoDup with (E := E) (x := a) in H as H'.
+      rewrite cons_app in H'.
+      rewrite count_occ_app in H'; auto.
+      simpl in H'.
+      destruct (E a a); subst; try congruence.
+      omega.
+    - rewrite remove_cons_neq; auto.
+      rewrite cons_app.
+      rewrite count_occ_app.
+      simpl.
+      destruct (E a n); subst; try congruence.
+      eapply IHl.
+      inversion H; auto.
+Qed.
+
+Lemma incl_count_remove_NoDup: forall (T: Type) 
+    (E : forall a b : T, {a = b} + {a <> b}) (l1: list T) n l2,
+  NoDup l1 -> 
+  NoDup (n :: l2) ->
+  incl_count E (n::l2) l1 ->
+  incl_count E l2 (remove E n l1).
+Proof. 
+  unfold incl_count in *; intros.
+  eapply count_occ_NoDup with (E := E) (x := x) in H as H'.    
+  eapply count_occ_NoDup with (E := E) (x := x) in H0 as H0'.    
+  rewrite cons_app in H0'.
+  rewrite count_occ_app in H0'.
+  destruct (E n x); subst.
+  - simpl in *.
+    destruct (E x x); subst; try congruence.
+    assert ( count_occ E (remove E x l1) x <= 0).
+    eapply count_occ_remove_NoDup_eq; auto.
+    omega.
+  - simpl in H0'.
+    destruct (E n x); subst; try congruence.
+    rewrite count_occ_remove_ne; auto.
+    specialize (H1 x).
+    rewrite cons_app in H1.
+    rewrite count_occ_app in H1.
+    simpl in H1.
+    destruct (E n x); subst; try congruence.  
+    omega.
+Qed.
+
+
+Lemma incl_count_add: forall (T: Type) 
+    (E : forall a b : T, {a = b} + {a <> b}) (l1 l2: list T) x,
+  incl_count E l1 l2 ->
+  incl_count E (x::l1) (x::l2).
+Proof.
+  unfold incl_count; intros.
+  specialize (H x0).
+  rewrite cons_app.
+  rewrite cons_app with (l := l2).
+  repeat rewrite count_occ_app.
+  omega.
+Qed.
+
 
 Lemma permutation_trans : forall T E (l1 l2 l3 : list T),
   permutation E l1 l2 ->
