@@ -7,6 +7,7 @@ import qualified Disk
 import Word
 import qualified Crypto.Hash.SHA256 as SHA256
 import Control.Monad (when)
+import Control.Concurrent.MVar
 import Control.Concurrent.ReadWriteLock as RWL
 import Data.IORef
 
@@ -20,7 +21,7 @@ type TID = Int
 
 data ConcurState = ConcurState
   { disk :: Disk.DiskState
-  , memory :: IORef Any
+  , memory :: MVar Any
   , lock :: RWLock
   , has_writer :: IORef Bool }
 
@@ -33,10 +34,10 @@ run_dcode :: ConcurState -> CCLProg.Coq_cprog a -> IO a
 run_dcode _ (Ret r) = do
   return r
 run_dcode s (Assgn m) = do
-  writeIORef (memory s) m
+  modifyMVar_ (memory s) (\_ -> return m)
   return $ unsafeCoerce ()
 run_dcode s (Get) = do
-  m <- readIORef (memory s)
+  m <- readMVar (memory s)
   return $ unsafeCoerce m
 run_dcode _ (GhostUpdate _) = do
   return $ unsafeCoerce ()
@@ -81,7 +82,7 @@ newState :: Disk.DiskState -> IO ConcurState
 newState ds =
   pure ConcurState
   <*> return ds
-  <*> unsafeCoerce (newIORef ())
+  <*> newMVar (unsafeCoerce ())
   <*> RWL.new
   <*> newIORef False
 
