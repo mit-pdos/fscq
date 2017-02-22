@@ -558,7 +558,11 @@ Module BmapAllocCache (Sig : AllocSig).
           [[ Sig.xparams_ok xp /\ Sig.BMPStart xp <> 0 /\ length bl = Sig.BMPLen xp ]]
     POST:hm' RET:ms exists m' freepred freelist,
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
-          [[[ m' ::: (Fm * @rep V FP xp freelist freepred (MSCache ms)) ]]]
+          [[[ m' ::: (Fm * @rep V FP xp freelist freepred (MSCache ms)) ]]] *
+          [[ forall bn, bn < (Sig.BMPLen xp) * valulen -> In bn freelist ]] *
+          [[ forall dl, length dl = ((Sig.BMPLen xp) * valulen)%nat ->
+               Forall FP dl ->
+               arrayN (@ptsto _ _ _) 0 dl =p=> freepred ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} init lxp xp (MSLog ms).
   Proof.
@@ -647,8 +651,8 @@ Module BmapAllocCache (Sig : AllocSig).
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
           [[[ m ::: (Fm * @rep V FP xp freelist freepred (MSCache ms))]]] *
           [[ In bn freelist /\ bn < (Sig.BMPLen xp) * valulen ]]
-    POST:hm' RET:ms' exists m' freepred',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms') hm' *
+    POST:hm' RET:ms exists m' freepred',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
           [[[ m' ::: (Fm * @rep V FP xp (remove addr_eq_dec bn freelist) freepred' (MSCache ms)) ]]] *
           [[ freepred =p=> freepred' * (exists v, bn |-> v * [[ FP v ]]) ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
@@ -657,7 +661,7 @@ Module BmapAllocCache (Sig : AllocSig).
     unfold steal, rep; intros.
     step.
     step.
-  Admitted.
+  Qed.
 
   Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_}} Bind (init_nofree _ _ _) _) => apply init_nofree_ok : prog.
@@ -997,6 +1001,164 @@ Module BALLOC.
 
 End BALLOC.
 
+
+Module BALLOCC.
+
+  Module Sig <: AllocSig.
+    Definition xparams := balloc_xparams.
+    Definition BMPStart := BmapStart.
+    Definition BMPLen := BmapNBlocks.
+
+    (* should return an address that fits in addrlen (goodSize addrlen _).
+       valulen * valulen supports about 2^48 bytes of disk space *)
+    Definition xparams_ok xp := (BmapNBlocks xp) <= valulen * valulen.
+  End Sig.
+
+  Module Alloc := BmapAllocCache Sig.
+  Module Defs := Alloc.Defs.
+
+  Definition alloc lxp xp ms :=
+    r <- Alloc.alloc lxp xp ms;
+    Ret r.
+
+  Definition free lxp xp bn ms :=
+    r <- Alloc.free lxp xp bn ms;
+    Ret r.
+
+  Definition steal lxp xp bn ms :=
+    r <- Alloc.steal lxp xp bn ms;
+    Ret r.
+
+  Definition init lxp xp ms :=
+    r <- Alloc.init lxp xp ms;
+    Ret r.
+
+  Definition init_nofree lxp xp ms :=
+    r <- Alloc.init_nofree lxp xp ms;
+    Ret r.
+
+  Definition bn_valid xp bn := bn <> 0 /\ bn < (BmapNBlocks xp) * valulen.
+
+  Definition FP (x : valuset) := True.
+
+  Definition rep xp (freeblocks : list addr) cache :=
+    ( exists freepred, freepred * Alloc.rep FP xp freeblocks freepred cache)%pred.
+
+
+  Theorem init_ok : forall lxp xp ms,
+    {< F Fm m0 m bl dl,
+    PRE:hm
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (Alloc.MSLog ms) hm *
+          [[[ m ::: (Fm * arrayN (@ptsto _ _ _) 0 dl
+                        * arrayN (@ptsto _ _ _) (BmapStart xp) bl) ]]] *
+          [[ (BmapNBlocks xp) <= valulen * valulen /\ BmapStart xp <> 0 ]] *
+          [[ length bl = BmapNBlocks xp /\ length dl = ((BmapNBlocks xp) * valulen)%nat ]]
+    POST:hm' RET:ms exists m' freeblocks,
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (Alloc.MSLog ms) hm' *
+          [[[ m' ::: (Fm * rep xp freeblocks (Alloc.MSCache ms)) ]]] *
+          [[ forall bn, bn < (BmapNBlocks xp) * valulen -> In bn freeblocks ]]
+    CRASH:hm' LOG.intact lxp F m0 hm'
+    >} init lxp xp (Alloc.MSLog ms).
+  Proof.
+    unfold init, rep; intros.
+    step.
+    step.
+  Qed.
+
+  Theorem init_nofree_ok : forall lxp xp ms,
+    {< F Fm m0 m bl,
+    PRE:hm
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (Alloc.MSLog ms) hm *
+          [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (BmapStart xp) bl) ]]] *
+          [[ (BmapNBlocks xp) <= valulen * valulen /\ BmapStart xp <> 0 ]] *
+          [[ length bl = BmapNBlocks xp ]]
+    POST:hm' RET:ms exists m',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (Alloc.MSLog ms) hm' *
+          [[[ m' ::: (Fm * rep xp nil (Alloc.MSCache ms)) ]]]
+    CRASH:hm' LOG.intact lxp F m0 hm'
+    >} init_nofree lxp xp (Alloc.MSLog ms).
+  Proof.
+    unfold init_nofree, rep; intros.
+    step.
+    step.
+  Qed.
+
+  Theorem steal_ok : forall lxp xp bn ms,
+    {< F Fm m0 m freeblocks,
+    PRE:hm
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (Alloc.MSLog ms) hm *
+          [[[ m ::: (Fm * rep xp freeblocks (Alloc.MSCache ms)) ]]] *
+          [[ bn_valid xp bn /\ In bn freeblocks ]]
+    POST:hm' RET:ms exists m',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (Alloc.MSLog ms) hm' *
+          [[[ m' ::: (Fm * bn |->? * 
+           rep xp (remove addr_eq_dec bn freeblocks) (Alloc.MSCache ms)) ]]]
+    CRASH:hm' LOG.intact lxp F m0 hm'
+    >} steal lxp xp bn ms.
+  Proof.
+    unfold steal, rep, bn_valid.
+    step.
+    prestep. norm. cancel.
+    intuition simpl.
+    pred_apply.
+    denote pimpl as Hx; rewrite Hx.
+    cancel; cancel.
+    eauto.
+    Unshelve . all: try exact addr_eq_dec; auto.
+  Qed.
+
+
+  Theorem alloc_ok : forall lxp xp ms,
+    {< F Fm m0 m freeblocks,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (Alloc.MSLog ms) hm *
+           [[[ m ::: (Fm * rep xp freeblocks (Alloc.MSCache ms)) ]]]
+    POST:hm' RET:^(ms, r)
+           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) (Alloc.MSLog ms) hm'
+        \/ exists bn m',
+           [[ r = Some bn ]] * [[ bn_valid xp bn ]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (Alloc.MSLog ms) hm' *
+           [[[ m' ::: (Fm * bn |->? * 
+            rep xp (remove addr_eq_dec bn freeblocks) (Alloc.MSCache ms)) ]]] *
+           [[ In bn freeblocks ]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} alloc lxp xp ms.
+  Proof.
+    unfold alloc, rep, bn_valid.
+    hoare.
+    match goal with
+    | [ H1 : (_ =p=> ?F * _)%pred, H2 : context [ ?F ] |- _ ] => rewrite H1 in H2
+    end.
+    or_r; cancel.
+  Qed.
+
+  Theorem free_ok : forall lxp xp bn ms,
+    {< F Fm m0 m freeblocks,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (Alloc.MSLog ms) hm *
+           [[ bn_valid xp bn ]] *
+           [[[ m ::: (Fm * rep xp freeblocks (Alloc.MSCache ms)* bn |->?) ]]]
+    POST:hm' RET:ms exists m',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (Alloc.MSLog ms) hm' *
+           [[[ m' ::: (Fm * rep xp (bn :: freeblocks) (Alloc.MSCache ms)) ]]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} free lxp xp bn ms.
+  Proof.
+    unfold free, rep, bn_valid.
+    hoare.
+    exists (list2nmem m); pred_apply; cancel.
+    rewrite H12; unfold FP; eauto.
+  Qed.
+
+
+  Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
+  Hint Extern 1 ({{_}} Bind (init_nofree _ _ _) _) => apply init_nofree_ok : prog.
+  Hint Extern 1 ({{_}} Bind (steal _ _ _ _) _) => apply steal_ok : prog.
+  Hint Extern 1 ({{_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
+  Hint Extern 1 ({{_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
+  Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
+
+Module BALLOCC.
 
 
 (* Specialize for inode allocation *)
