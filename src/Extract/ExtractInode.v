@@ -394,10 +394,99 @@ Proof.
          with ((exists val_, nth_var n vars |-> Val (@wrap_type _ Wr) val_) * decls_pre decls' vars (S n))%pred.
   compile_step.
   compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  (* TODO: look inside the [eq_rect] to know what to look for in the precondition *)
+  (* TODO: could just [compile_step] here except that it would declare Buffer rather than ImmutableBuffer *)
+  match goal with
+  | |- EXTRACT Ret (?a_, ?b_)
+       {{ ?pre }}
+          _
+       {{ ?post }} // _ =>
+        match find_val a_ pre with
+        | None =>
+            let A_ := type of (a_ : immut_word _) in
+            eapply CompileBefore;
+             [ do_declare A_
+                ltac:((fun x_ => eapply CompileRet with (v := a_ : immut_word _) (var0 := x_); simpl decls_pre))
+             |  ]
+        | Some ?ka =>
+            match var_mapping_to_ret with
+            | ?kp =>
+                let B_ := type of (b_ : immut_word _) in
+                match B_ with
+                | unit =>
+                    eapply hoare_weaken;
+                     [ eapply CompileJoinUnit with (avar := ka) (pvar := kp) | cancel_go.. ]
+                | _ =>
+                    match find_val b_ pre with
+                    | None =>
+                        eapply CompileBefore;
+                         [ do_declare B_
+                            ltac:((fun x_ =>
+                                     eapply CompileRet with (v := b_ : immut_word) (var0 := x_); simpl decls_pre))
+                         |  ]
+                    | Some ?kb =>
+                        eapply hoare_weaken;
+                         [ apply CompileJoin with (avar := ka) (bvar := kb) (pvar := kp)
+                         | cancel_go.. ]
+                    end
+                end
+            end
+        end
+  end.
+  Ltac real_val_in v :=
+    lazymatch v with
+    | rew ?H in ?v' => real_val_in v'
+    | _ => v
+    end.
+  Ltac find_val v p ::=
+       let v' := real_val_in v in
+       match p with
+       | context [ (?k ~> v')%pred ] => constr:(Some k)
+       | context [ (?k |-> Val _ (id v'))%pred ] => constr:(Some k)
+       | _ => constr:(@None var)
+       end.
+  Set Printing Depth 200.
+  Ltac ensure_value_exists v_ pre cont :=
+    let v' := real_val_in v_ in
+    idtac v_ "actually" v';
+    match find_val v_ pre with
+    | Some ?var => idtac var "ptsto" v_; cont var
+    | None =>
+      let T := type of v' in
+      do_declare T ltac:(fun var => eapply CompileBefore; [
+                                   eapply CompileRet with (var0 := var) (v := v'); repeat compile_step |
+                                   cont var ])
+    end.
+  Ltac compile_middle :=
+    lazymatch goal with
+    | [ |- EXTRACT Ret (Rec.middle ?low ?mid ?high ?buf) {{ ?pre }} _ {{ _ }} // ?env ] =>
+      let retvar := var_mapping_to_ret in
+      ensure_value_exists low pre ltac:(fun kfrom =>
+        ensure_value_exists (low + mid) pre ltac:(fun kto =>
+          ensure_value_exists buf pre ltac:(fun kbuf =>
+            eapply hoare_weaken;
+            [ eapply (@CompileMiddle low mid high buf env retvar kbuf kfrom kto) | cancel_go..])))
+    end.
+  change (fst (snd ^(fst a, fst (snd a)))) with (fst (snd a)).
+  Time compile_middle. (* 216 s *)
+  divisibility.
+  divisibility.
+  divisibility.
+  Focus 1.
+  match goal with
+  | |- context[wrap (rew ?He in ?x)] => replace (wrap (rew He in x)) with (wrap (x : immut_word _))
+  end.
+  cancel_go.
+
+  cbv [wrap wrap' wrap_type GoWrapper_immut_word].
+  simpl.
+  repeat f_equal.
+  match goal with
+  | |- context[rew ?He in _] => rewrite UIP_refl with (p := He)
+  end.
+  reflexivity.
+
+  (* One down, eight to go! :) *)
+
 Admitted.
 
 Definition extract_env : Env.
