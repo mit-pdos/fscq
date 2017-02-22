@@ -1,5 +1,5 @@
 # compiled binaries
-/opens
-/stats
+/fsops
 *.prof
 perf.data
+disk.img
