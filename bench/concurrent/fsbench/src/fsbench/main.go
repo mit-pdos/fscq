@@ -44,6 +44,10 @@ var fileSystems = []FileSystem{
 		binary:   "c-hellofs",
 		filename: "/tmp/hellofs/hello",
 		args:     helloArgs},
+	{ident: "fusexmp",
+		binary:   "passthrough",
+		filename: "/tmp/hellofs/etc/passwd",
+		args:     helloArgs},
 	{ident: "native",
 		binary:   "true",
 		filename: "/etc/passwd",
@@ -64,7 +68,7 @@ func (fs FileSystem) isFuse() bool {
 }
 
 func (fs FileSystem) isHaskell() bool {
-	return fs.isFuse() && fs.ident != "cfuse"
+	return fs.ident == "fscq" || fs.ident == "cfscq" || fs.ident == "hfuse"
 }
 
 type fuseOptions struct {
@@ -104,7 +108,11 @@ func (fs FileSystem) Launch(opts fuseOptions) {
 
 func (fs FileSystem) Stop() {
 	if fs.isFuse() {
-		cmd := exec.Command("fusermount", "-u", path.Dir(fs.filename))
+		dir := path.Dir(fs.filename)
+		if fs.ident == "fusexmp" {
+			dir = "/tmp/hellofs"
+		}
+		cmd := exec.Command("fusermount", "-u", dir)
 		err := cmd.Run()
 		if err != nil {
 			log.Fatal(fmt.Errorf("could not unmount: %v", err))
