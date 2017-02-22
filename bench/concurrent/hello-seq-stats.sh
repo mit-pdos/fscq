@@ -2,4 +2,4 @@
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-$DIR/xtime $DIR/stats /tmp/hellofs/hello 40
+$DIR/xtime $DIR/stats /tmp/hellofs/hello 100
