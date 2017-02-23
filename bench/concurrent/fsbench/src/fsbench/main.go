@@ -13,10 +13,6 @@ import (
 	"time"
 )
 
-// Example usage:
-// fsbench fscq open --missing --target=5s
-// fsbench hfuse stat --missing=false --kiters=10
-
 type FileSystem struct {
 	ident    string
 	binary   string
@@ -125,14 +121,14 @@ func (fs FileSystem) Stop() {
 }
 
 type workloadOptions struct {
-	operation string
-	missing   bool
-	kiters    int
+	operation    string
+	existingPath bool
+	kiters       int
 }
 
 func (fs FileSystem) RunWorkload(opts workloadOptions, parallel bool) time.Duration {
 	path := fs.filename
-	if opts.missing {
+	if !opts.existingPath {
 		path += "x"
 	}
 	copies := 1
@@ -176,7 +172,7 @@ func toMicros(d time.Duration) float64 {
 
 func main() {
 	operation := flag.String("op", "stat", "operation to perform (stat or open)")
-	missing := flag.Bool("missing", false, "if true, use a non-existent file")
+	existingPath := flag.Bool("exists", false, "operate on an existing file")
 	parallel := flag.Bool("parallel", false, "run operation in parallel")
 	kiters := flag.Int("kiters", 1, "thousands of iterations to run the operation")
 	attr_cache := flag.Bool("attr-cache", false, "enable fuse attribute cache")
@@ -211,16 +207,16 @@ func main() {
 	fs.Launch(fuseOpts)
 
 	opts := workloadOptions{
-		operation: *operation,
-		missing:   *missing,
-		kiters:    *kiters,
+		operation:    *operation,
+		existingPath: *existingPath,
+		kiters:       *kiters,
 	}
 
 	// warmup
 	fs.RunWorkload(workloadOptions{
-		operation: *operation,
-		missing:   *missing,
-		kiters:    1,
+		operation:    *operation,
+		existingPath: *existingPath,
+		kiters:       1,
 	}, false)
 
 	elapsedMicros := toMicros(fs.RunWorkload(opts, *parallel))
@@ -234,17 +230,17 @@ func main() {
 	fs.Stop()
 
 	// columns:
-	// fs | operation | missing? | attr cache? | name cache? | neg name cache? | parallel? | kiters | time (s) | parallel speedup | us/op
+	// fs | operation | existing? | attr cache? | name cache? | neg name cache? | parallel? | kiters | time (s) | parallel speedup | us/op
 	timePerOp := elapsedMicros / float64(*kiters) / 1000
 	parallelSpeedup := 2 * seqMicros / elapsedMicros
-	printTsv(fs.ident, *operation, *missing, *attr_cache, *name_cache, *neg_name_cache, *parallel,
+	printTsv(fs.ident, *operation, *existingPath, *attr_cache, *name_cache, *neg_name_cache, *parallel,
 		*kiters,
 		elapsedMicros/1e6, parallelSpeedup,
 		timePerOp)
 
 	if *parallel {
 		seqTimePerOp := seqMicros / float64(*kiters) / 1000
-		printTsv(fs.ident, *operation, *missing, *attr_cache, *name_cache, *neg_name_cache, false,
+		printTsv(fs.ident, *operation, *existingPath, *attr_cache, *name_cache, *neg_name_cache, false,
 			*kiters,
 			seqMicros/1e6, 1.0,
 			seqTimePerOp)
