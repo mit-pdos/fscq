@@ -75,6 +75,7 @@ type fuseOptions struct {
 	nameCache    bool
 	attrCache    bool
 	negNameCache bool
+	kernelCache  bool
 }
 
 func timeoutIfTrue(name string, toggle bool) string {
@@ -85,11 +86,15 @@ func timeoutIfTrue(name string, toggle bool) string {
 }
 
 func (o fuseOptions) optString() string {
-	return strings.Join([]string{"auto_unmount",
+	opts := strings.Join([]string{"auto_unmount",
 		timeoutIfTrue("entry_timeout", o.nameCache),
 		timeoutIfTrue("negative_timeout", o.negNameCache),
 		timeoutIfTrue("attr_timeout", o.attrCache),
 	}, ",")
+	if o.kernelCache {
+		opts += ",kernel_cache"
+	}
+	return opts
 }
 
 func (fs FileSystem) Launch(opts fuseOptions) {
@@ -178,6 +183,7 @@ func main() {
 	attr_cache := flag.Bool("attr-cache", false, "enable fuse attribute cache")
 	name_cache := flag.Bool("name-cache", false, "enable fuse entry (name) cache")
 	neg_name_cache := flag.Bool("neg-cache", false, "enable fuse negative (deleted) name cache")
+	kernel_cache := flag.Bool("kernel-cache", false, "enable kernel cache")
 
 	flag.Parse()
 
@@ -202,6 +208,7 @@ func main() {
 		nameCache:    *name_cache,
 		negNameCache: *neg_name_cache,
 		attrCache:    *attr_cache,
+		kernelCache:  *kernel_cache,
 	}
 
 	fs.Launch(fuseOpts)
@@ -230,17 +237,17 @@ func main() {
 	fs.Stop()
 
 	// columns:
-	// fs | operation | existing? | attr cache? | name cache? | neg name cache? | parallel? | kiters | time (s) | parallel speedup | us/op
+	// fs | operation | existing? | attr cache? | name cache? | neg name cache? | kernel cache? | parallel? | kiters | time (s) | parallel speedup | us/op
 	timePerOp := elapsedMicros / float64(*kiters) / 1000
 	parallelSpeedup := 2 * seqMicros / elapsedMicros
-	printTsv(fs.ident, *operation, *existingPath, *attr_cache, *name_cache, *neg_name_cache, *parallel,
+	printTsv(fs.ident, *operation, *existingPath, *attr_cache, *name_cache, *neg_name_cache, *kernel_cache, *parallel,
 		*kiters,
 		elapsedMicros/1e6, parallelSpeedup,
 		timePerOp)
 
 	if *parallel {
 		seqTimePerOp := seqMicros / float64(*kiters) / 1000
-		printTsv(fs.ident, *operation, *existingPath, *attr_cache, *name_cache, *neg_name_cache, false,
+		printTsv(fs.ident, *operation, *existingPath, *attr_cache, *name_cache, *neg_name_cache, *kernel_cache, false,
 			*kiters,
 			seqMicros/1e6, 1.0,
 			seqTimePerOp)
