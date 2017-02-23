@@ -118,6 +118,7 @@ func (fs FileSystem) Stop() {
 			dir = "/tmp/hellofs"
 		}
 		cmd := exec.Command("fusermount", "-u", dir)
+		cmd.Stderr = os.Stderr
 		err := cmd.Run()
 		if err != nil {
 			log.Fatal(fmt.Errorf("could not unmount: %v", err))
@@ -262,6 +263,7 @@ func main() {
 	}
 
 	fs.Launch(fuseOpts)
+	defer fs.Stop()
 
 	opts := workloadOptions{
 		operation:    *operation,
@@ -292,8 +294,6 @@ func main() {
 		elapsedTimeSec:  elapsedSec,
 		seqTimeSec:      seqSec,
 	}
-
-	fs.Stop()
 
 	printTsv(p.DataRow()...)
 	if *parallel {

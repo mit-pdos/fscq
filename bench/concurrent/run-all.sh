@@ -17,7 +17,7 @@ for kiters in 10 15 100; do
       for op in stat open; do
         for fs in hfuse cfuse hello fusexmp native; do
           for exists in "true" "false"; do
-            fsbench -op=$op -exists=$exists -parallel=true -kiters=$kiters -attr-cache=$cache1 -name-cache=$cache1 -neg-cache=$cache2 -kernel-cache=false $fs 2>&1
+            fsbench -op=$op -exists=$exists -parallel=true -kiters=$kiters -attr-cache=$cache1 -name-cache=$cache1 -neg-cache=$cache2 -kernel-cache=false $fs
           done
         done
       done
