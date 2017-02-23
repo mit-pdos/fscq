@@ -40,7 +40,7 @@ var fileSystems = []FileSystem{
 		binary:   "c-hellofs",
 		filename: "/tmp/hellofs/hello",
 		args:     helloArgs},
-	{ident: "hello",
+	{ident: "c-hello",
 		binary:   "hello",
 		filename: "/tmp/hellofs/hello",
 		args:     helloArgs},
@@ -130,6 +130,41 @@ type workloadOptions struct {
 	operation    string
 	existingPath bool
 	kiters       int
+}
+
+func min(a, b int) int {
+	if a <= b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a >= b {
+		return a
+	}
+	return b
+}
+
+// SearchWorkload runs a workload, varying kiters until the run takes at least targetMs milliseconds.
+// The input opts should specify the workload parameters and initial kiters for
+// the search. SearchWorkload returns the final duration and modifies the input
+// opts to have the final kiters.
+func (fs FileSystem) SearchWorkload(opts *workloadOptions, parallel bool, targetMs int) time.Duration {
+	targetTime := time.Duration(targetMs) * time.Millisecond
+	timeTaken := fs.RunWorkload(*opts, parallel)
+	for timeTaken < targetTime {
+		last := opts.kiters
+		// Predict required iterations
+		kiters := int(float64(last) * float64(targetTime) / float64(timeTaken))
+		// same policy as Go's testing/benchmark.go (see func (b *B) launch()): //
+		// run 1.2x the iterations we estimate, but don't grow by more than 100x last
+		// time and run at least one more iteration
+		opts.kiters = max(min(kiters+kiters/5, 100*last), last+1)
+		fmt.Println("trying", opts.kiters)
+		timeTaken = fs.RunWorkload(*opts, parallel)
+	}
+	return timeTaken
 }
 
 func (fs FileSystem) RunWorkload(opts workloadOptions, parallel bool) time.Duration {
@@ -226,6 +261,8 @@ func main() {
 	existingPath := flag.Bool("exists", false, "operate on an existing file")
 	parallel := flag.Bool("parallel", false, "run operation in parallel")
 	kiters := flag.Int("kiters", 1, "thousands of iterations to run the operation")
+	targetMs := flag.Int("target-ms", 0,
+		"search for iterations to run for at least this many ms (0 to disable search)")
 	attr_cache := flag.Bool("attr-cache", false, "enable fuse attribute cache")
 	name_cache := flag.Bool("name-cache", false, "enable fuse entry (name) cache")
 	neg_name_cache := flag.Bool("neg-cache", false, "enable fuse negative (deleted) name cache")
@@ -247,6 +284,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	if !(*operation == "stat" || *operation == "open") {
 		log.Fatal(fmt.Errorf("invalid operation %s: expected stat or open", *operation))
 	}
@@ -279,12 +317,17 @@ func main() {
 		kiters:       1,
 	}, false)
 
-	elapsedSec := toSec(fs.RunWorkload(opts, *parallel))
-	var seqSec float64
-	if *parallel {
-		seqSec = toSec(fs.RunWorkload(opts, false))
+	var elapsed time.Duration
+	if *targetMs > 0 {
+		elapsed = fs.SearchWorkload(&opts, *parallel, *targetMs)
 	} else {
-		seqSec = elapsedSec
+		elapsed = fs.RunWorkload(opts, *parallel)
+	}
+	var seqTime time.Duration
+	if *parallel {
+		seqTime = fs.RunWorkload(opts, false)
+	} else {
+		seqTime = elapsed
 	}
 
 	p := DataPoint{
@@ -292,8 +335,8 @@ func main() {
 		fuseOptions:     fuseOpts,
 		workloadOptions: opts,
 		parallel:        *parallel,
-		elapsedTimeSec:  elapsedSec,
-		seqTimeSec:      seqSec,
+		elapsedTimeSec:  toSec(elapsed),
+		seqTimeSec:      toSec(seqTime),
 	}
 
 	printTsv(p.DataRow()...)
