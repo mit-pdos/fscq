@@ -3,3 +3,4 @@
 *.prof
 perf.data
 disk.img
+/data.tsv
