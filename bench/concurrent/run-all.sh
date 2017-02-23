@@ -7,7 +7,7 @@ info() {
   echo -e "\e[34m$1\e[0m" 1>&2
 }
 
-echo -e "fs\toperation\texists\tattr_cache\tname_cache\tneg_name_cache\tkernel_cache\tparallel\tkiters\ttime\tspeedup\ttimePerOp"
+fsbench -print-header
 
 for kiters in 10 15 100; do
   info "${kiters}k iters"

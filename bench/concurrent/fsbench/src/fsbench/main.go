@@ -171,11 +171,56 @@ func printTsv(args ...interface{}) {
 	fmt.Print("\n")
 }
 
-func toMicros(d time.Duration) float64 {
-	return float64(d / time.Microsecond)
+func toSec(d time.Duration) float64 {
+	return float64(d) / float64(time.Second)
+}
+
+type DataPoint struct {
+	fsIdent string
+	fuseOptions
+	workloadOptions
+	parallel       bool
+	elapsedTimeSec float64
+	seqTimeSec     float64
+}
+
+func (p DataPoint) ParallelSpeedup() float64 {
+	return 2 * p.seqTimeSec / p.elapsedTimeSec
+}
+
+func (p DataPoint) MicrosPerOp() float64 {
+	return p.elapsedTimeSec / float64(p.kiters) * 1000
+}
+
+func (p DataPoint) SeqPoint() DataPoint {
+	return DataPoint{
+		p.fsIdent,
+		p.fuseOptions,
+		p.workloadOptions,
+		false,
+		p.seqTimeSec,
+		p.seqTimeSec,
+	}
+}
+
+var DataRowHeader = []interface{}{
+	"fs", "name_cache", "attr_cache", "neg_name_cache", "kernel_cache",
+	"operation", "exists", "kiters",
+	"parallel",
+	"timeSec", "seqTimeSec", "speedup", "usPerOp",
+}
+
+func (p DataPoint) DataRow() []interface{} {
+	return []interface{}{
+		p.fsIdent, p.nameCache, p.attrCache, p.negNameCache, p.kernelCache,
+		p.operation, p.existingPath, p.kiters,
+		p.parallel,
+		p.elapsedTimeSec, p.seqTimeSec, p.ParallelSpeedup(), p.MicrosPerOp(),
+	}
 }
 
 func main() {
+	print_header := flag.Bool("print-header", false, "just print a data header")
 	operation := flag.String("op", "stat", "operation to perform (stat or open)")
 	existingPath := flag.Bool("exists", false, "operate on an existing file")
 	parallel := flag.Bool("parallel", false, "run operation in parallel")
@@ -186,6 +231,11 @@ func main() {
 	kernel_cache := flag.Bool("kernel-cache", false, "enable kernel cache")
 
 	flag.Parse()
+
+	if *print_header {
+		printTsv(DataRowHeader...)
+		return
+	}
 
 	if flag.NArg() == 0 {
 		log.Fatal(fmt.Errorf("missing file system choice"))
@@ -226,31 +276,28 @@ func main() {
 		kiters:       1,
 	}, false)
 
-	elapsedMicros := toMicros(fs.RunWorkload(opts, *parallel))
-	var seqMicros float64
+	elapsedSec := toSec(fs.RunWorkload(opts, *parallel))
+	var seqSec float64
 	if *parallel {
-		seqMicros = toMicros(fs.RunWorkload(opts, false))
+		seqSec = toSec(fs.RunWorkload(opts, false))
 	} else {
-		seqMicros = elapsedMicros
+		seqSec = elapsedSec
+	}
+
+	p := DataPoint{
+		fsIdent:         fs.ident,
+		fuseOptions:     fuseOpts,
+		workloadOptions: opts,
+		parallel:        *parallel,
+		elapsedTimeSec:  elapsedSec,
+		seqTimeSec:      seqSec,
 	}
 
 	fs.Stop()
 
-	// columns:
-	// fs | operation | existing? | attr cache? | name cache? | neg name cache? | kernel cache? | parallel? | kiters | time (s) | parallel speedup | us/op
-	timePerOp := elapsedMicros / float64(*kiters) / 1000
-	parallelSpeedup := 2 * seqMicros / elapsedMicros
-	printTsv(fs.ident, *operation, *existingPath, *attr_cache, *name_cache, *neg_name_cache, *kernel_cache, *parallel,
-		*kiters,
-		elapsedMicros/1e6, parallelSpeedup,
-		timePerOp)
-
+	printTsv(p.DataRow()...)
 	if *parallel {
-		seqTimePerOp := seqMicros / float64(*kiters) / 1000
-		printTsv(fs.ident, *operation, *existingPath, *attr_cache, *name_cache, *neg_name_cache, *kernel_cache, false,
-			*kiters,
-			seqMicros/1e6, 1.0,
-			seqTimePerOp)
+		printTsv(p.SeqPoint().DataRow()...)
 	}
 	return
 }
