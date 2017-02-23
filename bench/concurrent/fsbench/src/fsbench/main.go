@@ -263,6 +263,7 @@ func main() {
 	}
 
 	fs.Launch(fuseOpts)
+	time.Sleep(100 * time.Millisecond)
 	defer fs.Stop()
 
 	opts := workloadOptions{
