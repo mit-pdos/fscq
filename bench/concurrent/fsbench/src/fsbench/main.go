@@ -109,6 +109,10 @@ func (fs FileSystem) Launch(opts fuseOptions) {
 	cmd := exec.Command(fs.binary, args...)
 	cmd.Stderr = os.Stderr
 	cmd.Run()
+	time.Sleep(10 * time.Millisecond)
+	if _, err := os.Stat(fs.filename); os.IsNotExist(err) {
+		log.Fatal(fmt.Errorf("failed to launch %s %s", fs.binary, strings.Join(args, " ")))
+	}
 }
 
 func (fs FileSystem) Stop() {
@@ -161,7 +165,6 @@ func (fs FileSystem) SearchWorkload(opts *workloadOptions, parallel bool, target
 		// run 1.2x the iterations we estimate, but don't grow by more than 100x last
 		// time and run at least one more iteration
 		opts.kiters = max(min(kiters+kiters/5, 100*last), last+1)
-		fmt.Println("trying", opts.kiters)
 		timeTaken = fs.RunWorkload(*opts, parallel)
 	}
 	return timeTaken
@@ -301,7 +304,6 @@ func main() {
 	}
 
 	fs.Launch(fuseOpts)
-	time.Sleep(100 * time.Millisecond)
 	defer fs.Stop()
 
 	opts := workloadOptions{
