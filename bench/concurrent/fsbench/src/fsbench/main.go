@@ -17,6 +17,7 @@ type FileSystem struct {
 	ident    string
 	binary   string
 	filename string
+	isFuse3  bool
 	args     []string
 }
 
@@ -39,10 +40,12 @@ var fileSystems = []FileSystem{
 	{ident: "c-hello",
 		binary:   "hello",
 		filename: "/tmp/hellofs/hello",
+		isFuse3:  true,
 		args:     helloArgs},
 	{ident: "fusexmp",
 		binary:   "passthrough",
 		filename: "/tmp/hellofs/etc/passwd",
+		isFuse3:  true,
 		args:     helloArgs},
 	{ident: "native",
 		binary:   "true",
@@ -82,7 +85,7 @@ func timeoutIfTrue(name string, toggle bool) string {
 }
 
 func (o fuseOptions) optString() string {
-	opts := strings.Join([]string{"auto_unmount",
+	opts := strings.Join([]string{
 		timeoutIfTrue("entry_timeout", o.nameCache),
 		timeoutIfTrue("negative_timeout", o.negNameCache),
 		timeoutIfTrue("attr_timeout", o.attrCache),
@@ -117,7 +120,11 @@ func (fs FileSystem) Stop() {
 		if fs.ident == "fusexmp" {
 			dir = "/tmp/hellofs"
 		}
-		cmd := exec.Command("fusermount3", "-u", dir)
+		mountCmd := "fusermount"
+		if fs.isFuse3 {
+			mountCmd = "fusermount3"
+		}
+		cmd := exec.Command(mountCmd, "-u", dir)
 		cmd.Stderr = os.Stderr
 		err := cmd.Run()
 		if err != nil {
@@ -308,7 +315,6 @@ func main() {
 	}
 
 	fs.Launch(fuseOpts)
-	defer fs.Stop()
 
 	opts := workloadOptions{
 		operation:    *operation,
@@ -335,6 +341,8 @@ func main() {
 	} else {
 		seqTime = elapsed
 	}
+
+	fs.Stop()
 
 	p := DataPoint{
 		fsIdent:         fs.ident,
