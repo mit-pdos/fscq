@@ -205,7 +205,7 @@ func (fs FileSystem) RunWorkload(opts workloadOptions, parallel bool) time.Durat
 			elapsedTime = timing
 		}
 	}
-	return time.Duration(int64(elapsedTime * 1e9))
+	return time.Duration(int64(elapsedTime))
 }
 
 func printTsv(args ...interface{}) {
