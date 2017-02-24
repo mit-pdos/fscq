@@ -70,11 +70,29 @@ func (fs FileSystem) isHaskell() bool {
 	return fs.ident == "fscq" || fs.ident == "cfscq" || fs.ident == "hfuse"
 }
 
+// A CpuSpec is a specification of CPUs in the form expected by taskset (numerical list,
+// separated by commas, including ranges)
+type CpuSpec string
+
 type fuseOptions struct {
 	nameCache    bool
 	attrCache    bool
 	negNameCache bool
 	kernelCache  bool
+	serverCpu    CpuSpec
+}
+
+func (id CpuSpec) isPin() bool {
+	return id != ""
+}
+
+func (id CpuSpec) Command(name string, args ...string) *exec.Cmd {
+	if !id.isPin() {
+		return exec.Command(name, args...)
+	}
+	tasksetArgs := []string{"-c", string(id), name}
+	args = append(tasksetArgs, args...)
+	return exec.Command("taskset", args...)
 }
 
 func timeoutIfTrue(name string, toggle bool) string {
@@ -105,7 +123,7 @@ func (fs FileSystem) Launch(opts fuseOptions) {
 	if fs.isHaskell() {
 		args = append(args, "+RTS", "-N2", "-RTS")
 	}
-	cmd := exec.Command(fs.binary, args...)
+	cmd := opts.serverCpu.Command(fs.binary, args...)
 	cmd.Stderr = os.Stderr
 	cmd.Run()
 	time.Sleep(10 * time.Millisecond)
@@ -135,8 +153,14 @@ func (fs FileSystem) Stop() {
 
 type workloadOptions struct {
 	operation    string
+	clientCpus   []CpuSpec
 	existingPath bool
 	kiters       int
+}
+
+func (opts workloadOptions) WithKiters(kiters int) workloadOptions {
+	opts.kiters = kiters
+	return opts
 }
 
 func min(a, b int) int {
@@ -187,8 +211,8 @@ func (fs FileSystem) RunWorkload(opts workloadOptions, parallel bool) time.Durat
 
 	done := make(chan float64)
 	for i := 0; i < copies; i++ {
-		go func() {
-			cmd := exec.Command("fsops", args...)
+		go func(spec CpuSpec) {
+			cmd := spec.Command("fsops", args...)
 			output, err := cmd.Output()
 			if err != nil {
 				log.Fatal(fmt.Errorf("could not run fsops: %v", err))
@@ -199,7 +223,7 @@ func (fs FileSystem) RunWorkload(opts workloadOptions, parallel bool) time.Durat
 				log.Fatal(fmt.Errorf("could not parse fsops output %s", outputNum))
 			}
 			done <- elapsedNs
-		}()
+		}(opts.clientCpus[i])
 	}
 	var elapsedTime float64
 	for i := 0; i < copies; i++ {
@@ -254,19 +278,37 @@ func (p DataPoint) SeqPoint() DataPoint {
 }
 
 var DataRowHeader = []interface{}{
-	"fs", "name_cache", "attr_cache", "neg_name_cache", "kernel_cache",
-	"operation", "exists", "kiters",
+	"fs", "name_cache", "attr_cache", "neg_name_cache", "kernel_cache", "server-cpu",
+	"operation", "client-cpus", "exists", "kiters",
 	"parallel",
 	"timeSec", "seqTimeSec", "speedup", "usPerOp",
 }
 
 func (p DataPoint) DataRow() []interface{} {
 	return []interface{}{
-		p.fsIdent, p.nameCache, p.attrCache, p.negNameCache, p.kernelCache,
-		p.operation, p.existingPath, p.kiters,
+		p.fsIdent, p.nameCache, p.attrCache, p.negNameCache, p.kernelCache, p.serverCpu,
+		p.operation, serializeCpuSpecs(p.clientCpus), p.existingPath, p.kiters,
 		p.parallel,
 		p.elapsedTimeSec, p.seqTimeSec, p.ParallelSpeedup(), p.MicrosPerOp(),
 	}
+}
+
+// parseCpuSpecs parses pipe-separated CPU specs
+func parseCpuSpecs(specsString string) []CpuSpec {
+	specs := strings.SplitN(specsString, "/", 2)
+	if len(specs) == 1 {
+		spec := CpuSpec(specs[0])
+		return []CpuSpec{spec, spec}
+	}
+	return []CpuSpec{CpuSpec(specs[0]), CpuSpec(specs[1])}
+}
+
+func serializeCpuSpecs(specs []CpuSpec) string {
+	var specStrings []string
+	for _, spec := range specs {
+		specStrings = append(specStrings, string(spec))
+	}
+	return strings.Join(specStrings, "/")
 }
 
 func main() {
@@ -282,9 +324,20 @@ func main() {
 	neg_name_cache := flag.Bool("neg-cache", false, "enable fuse negative (deleted) name cache")
 	kernel_cache := flag.Bool("kernel-cache", false, "enable kernel cache")
 
+	server_cpu := flag.String("server-cpu", "", "pin server to a cpu (empty string to not pin)")
+	client_cpus := flag.String("client-cpus", "",
+		"pin clients to cpus (when running in parallel, separate cpus with a slash\n"+
+			"or provide a single spec)")
+
 	flag.Parse()
 
 	if *print_header {
+		dataHeader := len(DataRowHeader)
+		dataRow := len(DataPoint{}.DataRow())
+		if dataRow != dataHeader {
+			log.Fatal(fmt.Errorf("data header len != data row len (%d != %d)",
+				dataHeader, dataRow))
+		}
 		printTsv(DataRowHeader...)
 		return
 	}
@@ -312,22 +365,20 @@ func main() {
 		negNameCache: *neg_name_cache,
 		attrCache:    *attr_cache,
 		kernelCache:  *kernel_cache,
+		serverCpu:    CpuSpec(*server_cpu),
 	}
 
 	fs.Launch(fuseOpts)
 
 	opts := workloadOptions{
 		operation:    *operation,
+		clientCpus:   parseCpuSpecs(*client_cpus),
 		existingPath: *existingPath,
 		kiters:       *kiters,
 	}
 
 	// warmup
-	fs.RunWorkload(workloadOptions{
-		operation:    *operation,
-		existingPath: *existingPath,
-		kiters:       1,
-	}, false)
+	fs.RunWorkload(opts.WithKiters(1), false)
 
 	var elapsed time.Duration
 	if *targetMs > 0 {

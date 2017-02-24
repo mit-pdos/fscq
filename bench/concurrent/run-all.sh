@@ -11,18 +11,15 @@ go install fsbench
 
 # fsbench -print-header
 
-for kernelcache in "false"; do
-  for cache1 in "false"; do
-    for cache2 in "false"; do
-      info "caches: {attr,name}=$cache1\tneg=$cache2\tkernel=$kernelcache"
-      for op in stat open; do
-        #for fs in hfuse c-hello fusexmp native; do
-        for fs in c-hello fusexmp native; do
-          for exists in "true" "false"; do
-            fsbench -target-ms=1000 -op=$op -exists=$exists -parallel=true -attr-cache=$cache1 -name-cache=$cache1 -neg-cache=$cache2 -kernel-cache=$kernelcache $fs
-          done
-        done
-      done
+cache1=false
+cache2=false
+kernelcache=false
+
+info "testing file systems"
+for op in stat open; do
+  for fs in fscq cfscq hfuse c-hello fusexmp native; do
+    for exists in "true" "false"; do
+      fsbench -target-ms=1000 -server-cpu=0 -client-cpus=1/2 -op=$op -exists=$exists -parallel=true -attr-cache=$cache1 -name-cache=$cache1 -neg-cache=$cache2 -kernel-cache=$kernelcache $fs
     done
   done
 done
