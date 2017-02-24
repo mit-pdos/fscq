@@ -642,6 +642,188 @@ Module BFILE.
     exact None.
   Qed.
 
+  Lemma cache_ptsto_none'' : forall l start m idx,
+    arrayN cache_ptsto start l m ->
+    idx < start ->
+    m idx = None.
+  Proof.
+    induction l; intros; eauto.
+    simpl in H.
+    eapply sep_star_none; intros; [ | | exact H ].
+    destruct a; simpl in *.
+    eapply ptsto_none; [ | eauto ]; omega.
+    eauto.
+    eapply IHl; eauto.
+  Qed.
+
+  Lemma cache_ptsto_none' : forall l start m idx def,
+    arrayN cache_ptsto start l m ->
+    idx < length l ->
+    selN l idx def = None ->
+    m (start + idx) = None.
+  Proof.
+    induction l; intros; eauto.
+    simpl in H.
+    eapply sep_star_none; eauto; intros.
+    destruct a; simpl in *.
+    eapply ptsto_none; [ | eauto ].
+    destruct idx; try omega; try congruence.
+    eauto.
+    destruct idx.
+    eapply cache_ptsto_none''; eauto; omega.
+    replace (start + S idx) with (S start + idx) by omega.
+    eapply IHl; eauto.
+    simpl in *; omega.
+  Qed.
+
+  Lemma cache_ptsto_none : forall l m idx def,
+    arrayN cache_ptsto 0 l m ->
+    idx < length l ->
+    selN l idx def = None ->
+    m idx = None.
+  Proof.
+    intros.
+    replace (idx) with (0 + idx) by omega.
+    eapply cache_ptsto_none'; eauto.
+  Qed.
+
+  Lemma cache_ptsto_none_find : forall l c idx def,
+    arrayN cache_ptsto 0 l (BFM.mm Dcache_type c) ->
+    idx < length l ->
+    selN l idx def = None ->
+    BFcache.find idx c = None.
+  Proof.
+    intros.
+    assert (BFM.mm Dcache_type c idx = None).
+    eapply cache_ptsto_none; eauto.
+    eauto.
+  Qed.
+
+  Lemma bfcache_find : forall c flist ilist inum f F,
+    locked (cache_rep c flist ilist) ->
+    (F * inum |-> f)%pred (list2nmem flist) ->
+    BFcache.find inum c = BFCache f.
+  Proof.
+    intros.
+    rewrite locked_eq in *.
+    unfold cache_rep in *.
+    eapply list2nmem_sel in H0 as H0'.
+    case_eq (BFCache f); intros.
+    - eapply arrayN_isolate with (i := inum) in H; [ | simplen ].
+      unfold cache_ptsto at 2 in H. simpl in H.
+      erewrite selN_map in H by simplen. rewrite <- H0' in H. rewrite H1 in H.
+      eapply BFM.mm_find; pred_apply; cancel.
+    - eapply cache_ptsto_none_find; eauto.
+      simplen.
+      erewrite selN_map by simplen.
+      rewrite <- H0'.
+      eauto.
+  Unshelve.
+    all: exact None.
+  Qed.
+
+  Lemma bfcache_put : forall msc flist ilist inum c f F,
+    locked (cache_rep msc flist ilist) ->
+    (F * inum |-> f)%pred (list2nmem flist) ->
+    locked (cache_rep (BFcache.add inum c msc)
+                      (updN flist inum {| BFData := BFData f; BFAttr := BFAttr f; BFCache := Some c |})
+                      ilist).
+  Proof.
+    intros.
+    rewrite locked_eq in *.
+    unfold cache_rep in *.
+    eapply list2nmem_sel in H0 as H0'.
+    case_eq (BFCache f); intros.
+    - eapply pimpl_apply.
+      2: eapply BFM.mm_replace.
+      rewrite arrayN_isolate with (i := inum) by simplen.
+      unfold cache_ptsto at 2; simpl.
+      erewrite selN_map by simplen. rewrite selN_updN_eq by simplen. cancel.
+      rewrite map_updN. rewrite firstn_updN_oob by omega.
+      rewrite skipn_updN by omega.
+      pred_apply.
+      rewrite arrayN_isolate with (i := inum) by simplen.
+      unfold cache_ptsto at 2.
+      erewrite selN_map by simplen. rewrite <- H0'. rewrite H1. cancel.
+    - eapply pimpl_apply.
+      2: eapply BFM.mm_add; eauto.
+      rewrite arrayN_isolate with (i := inum) by simplen.
+      rewrite arrayN_isolate with (i := inum) (vs := map _ _) by simplen.
+      rewrite map_updN. rewrite firstn_updN_oob by omega.
+      simpl; rewrite skipn_updN by omega.
+      cancel.
+      unfold cache_ptsto.
+      erewrite selN_map by simplen. rewrite H1.
+      rewrite selN_updN_eq by simplen.
+      cancel.
+      eapply cache_ptsto_none_find; eauto.
+      simplen.
+      erewrite selN_map by simplen.
+      rewrite <- H0'; eauto.
+  Unshelve.
+    all: try exact None.
+    all: eauto.
+  Qed.
+
+  Lemma bfcache_remove' : forall msc flist ilist inum f F,
+    locked (cache_rep msc flist ilist) ->
+    (F * inum |-> f)%pred (list2nmem flist) ->
+    locked (cache_rep (BFcache.remove inum msc)
+                      (updN flist inum {| BFData := BFData f; BFAttr := BFAttr f; BFCache := None |})
+                      ilist).
+  Proof.
+    intros.
+    rewrite locked_eq in *.
+    unfold cache_rep in *.
+    eapply list2nmem_sel in H0 as H0'.
+    case_eq (BFCache f); intros.
+    - eapply pimpl_apply.
+      2: eapply BFM.mm_remove.
+      rewrite arrayN_isolate with (i := inum) by simplen.
+      unfold cache_ptsto at 2; simpl.
+      erewrite selN_map by simplen. rewrite selN_updN_eq by simplen. cancel.
+      rewrite map_updN. rewrite firstn_updN_oob by omega.
+      rewrite skipn_updN by omega.
+      pred_apply.
+      rewrite arrayN_isolate with (i := inum) by simplen.
+      unfold cache_ptsto at 2.
+      erewrite selN_map by simplen. rewrite <- H0'. rewrite H1. cancel.
+      cancel.
+    - eapply pimpl_apply.
+      2: eapply BFM.mm_remove_none; eauto.
+      rewrite arrayN_isolate with (i := inum) by simplen.
+      rewrite arrayN_isolate with (i := inum) (vs := map _ _) by simplen.
+      rewrite map_updN. rewrite firstn_updN_oob by omega.
+      simpl; rewrite skipn_updN by omega.
+      cancel.
+      unfold cache_ptsto.
+      erewrite selN_map by simplen. rewrite H1.
+      rewrite selN_updN_eq by simplen.
+      cancel.
+      eapply cache_ptsto_none_find; eauto.
+      simplen.
+      erewrite selN_map by simplen.
+      rewrite <- H0'; eauto.
+  Unshelve.
+    all: try exact None.
+    all: eauto.
+  Qed.
+
+  Lemma bfcache_remove : forall msc flist ilist inum f F,
+    locked (cache_rep msc flist ilist) ->
+    (F * inum |-> f)%pred (list2nmem flist) ->
+    BFData f = nil ->
+    BFAttr f = attr0 ->
+    locked (cache_rep (BFcache.remove inum msc) (updN flist inum bfile0) ilist).
+  Proof.
+    intros.
+    eapply bfcache_remove' in H; eauto.
+    replace bfile0 with ({| BFData := BFData f; BFAttr := BFAttr f; BFCache := None |}); eauto.
+    rewrite H1.
+    rewrite H2.
+    reflexivity.
+  Qed.
+
   Hint Resolve bfcache_init bfcache_upd.
 
   Ltac assignms :=
@@ -1886,7 +2068,7 @@ Module BFILE.
     let^ (ms, sz) <- getlen lxp xp inum ms;
     ms <- shrink lxp bxp xp inum sz ms;
     ms <- setattrs lxp xp inum attr0 ms;
-    Ret ms.
+    Ret (mk_memstate (MSAlloc ms) (MSLL ms) (BFcache.remove inum (MSCache ms))).
 
 
   Theorem grown_ok : forall lxp bxp ixp inum l ms,
@@ -2040,129 +2222,6 @@ Module BFILE.
   Hint Extern 1 ({{_}} Bind (truncate _ _ _ _ _ _) _) => apply truncate_ok : prog.
   Hint Extern 1 ({{_}} Bind (reset _ _ _ _ _) _) => apply reset_ok : prog.
 
-
-  Lemma cache_ptsto_none'' : forall l start m idx,
-    arrayN cache_ptsto start l m ->
-    idx < start ->
-    m idx = None.
-  Proof.
-    induction l; intros; eauto.
-    simpl in H.
-    eapply sep_star_none; intros; [ | | exact H ].
-    destruct a; simpl in *.
-    eapply ptsto_none; [ | eauto ]; omega.
-    eauto.
-    eapply IHl; eauto.
-  Qed.
-
-  Lemma cache_ptsto_none' : forall l start m idx def,
-    arrayN cache_ptsto start l m ->
-    idx < length l ->
-    selN l idx def = None ->
-    m (start + idx) = None.
-  Proof.
-    induction l; intros; eauto.
-    simpl in H.
-    eapply sep_star_none; eauto; intros.
-    destruct a; simpl in *.
-    eapply ptsto_none; [ | eauto ].
-    destruct idx; try omega; try congruence.
-    eauto.
-    destruct idx.
-    eapply cache_ptsto_none''; eauto; omega.
-    replace (start + S idx) with (S start + idx) by omega.
-    eapply IHl; eauto.
-    simpl in *; omega.
-  Qed.
-
-  Lemma cache_ptsto_none : forall l m idx def,
-    arrayN cache_ptsto 0 l m ->
-    idx < length l ->
-    selN l idx def = None ->
-    m idx = None.
-  Proof.
-    intros.
-    replace (idx) with (0 + idx) by omega.
-    eapply cache_ptsto_none'; eauto.
-  Qed.
-
-  Lemma cache_ptsto_none_find : forall l c idx def,
-    arrayN cache_ptsto 0 l (BFM.mm Dcache_type c) ->
-    idx < length l ->
-    selN l idx def = None ->
-    BFcache.find idx c = None.
-  Proof.
-    intros.
-    assert (BFM.mm Dcache_type c idx = None).
-    eapply cache_ptsto_none; eauto.
-    eauto.
-  Qed.
-
-  Lemma bfcache_find : forall c flist ilist inum f F,
-    locked (cache_rep c flist ilist) ->
-    (F * inum |-> f)%pred (list2nmem flist) ->
-    BFcache.find inum c = BFCache f.
-  Proof.
-    intros.
-    rewrite locked_eq in *.
-    unfold cache_rep in *.
-    eapply list2nmem_sel in H0 as H0'.
-    case_eq (BFCache f); intros.
-    - eapply arrayN_isolate with (i := inum) in H; [ | simplen ].
-      unfold cache_ptsto at 2 in H. simpl in H.
-      erewrite selN_map in H by simplen. rewrite <- H0' in H. rewrite H1 in H.
-      eapply BFM.mm_find; pred_apply; cancel.
-    - eapply cache_ptsto_none_find; eauto.
-      simplen.
-      erewrite selN_map by simplen.
-      rewrite <- H0'.
-      eauto.
-  Unshelve.
-    all: exact None.
-  Qed.
-
-  Lemma bfcache_put : forall msc flist ilist inum c f F,
-    locked (cache_rep msc flist ilist) ->
-    (F * inum |-> f)%pred (list2nmem flist) ->
-    locked (cache_rep (BFcache.add inum c msc)
-                      (updN flist inum {| BFData := BFData f; BFAttr := BFAttr f; BFCache := Some c |})
-                      ilist).
-  Proof.
-    intros.
-    rewrite locked_eq in *.
-    unfold cache_rep in *.
-    eapply list2nmem_sel in H0 as H0'.
-    case_eq (BFCache f); intros.
-    - eapply pimpl_apply.
-      2: eapply BFM.mm_replace.
-      rewrite arrayN_isolate with (i := inum) by simplen.
-      unfold cache_ptsto at 2; simpl.
-      erewrite selN_map by simplen. rewrite selN_updN_eq by simplen. cancel.
-      rewrite map_updN. rewrite firstn_updN_oob by omega.
-      rewrite skipn_updN by omega.
-      pred_apply.
-      rewrite arrayN_isolate with (i := inum) by simplen.
-      unfold cache_ptsto at 2.
-      erewrite selN_map by simplen. rewrite <- H0'. rewrite H1. cancel.
-    - eapply pimpl_apply.
-      2: eapply BFM.mm_add; eauto.
-      rewrite arrayN_isolate with (i := inum) by simplen.
-      rewrite arrayN_isolate with (i := inum) (vs := map _ _) by simplen.
-      rewrite map_updN. rewrite firstn_updN_oob by omega.
-      simpl; rewrite skipn_updN by omega.
-      cancel.
-      unfold cache_ptsto.
-      erewrite selN_map by simplen. rewrite H1.
-      rewrite selN_updN_eq by simplen.
-      cancel.
-      eapply cache_ptsto_none_find; eauto.
-      simplen.
-      erewrite selN_map by simplen.
-      rewrite <- H0'; eauto.
-  Unshelve.
-    all: try exact None.
-    all: eauto.
-  Qed.
 
   Theorem cache_get_ok : forall inum ms,
     {< F Fm Fi m0 m lxp bxp ixp flist ilist frees f,

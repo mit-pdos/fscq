@@ -156,6 +156,21 @@ Module MapMem (OT : UsualOrderedType) (M : S with Module E := OT).
         congruence.
     Qed.
 
+    Theorem mm_remove_none : forall m (F : @pred Map.key OT.eq_dec V) a,
+      Map.find a m = None ->
+      F (mm m) ->
+      F (mm (Map.remove a m)).
+    Proof.
+      unfold mm; intros; repeat deex.
+      match goal with
+      | [ H: F ?m1 |- F ?m2 ] => replace m2 with m1; eauto; clear H
+      end.
+      apply functional_extensionality; intro.
+      destruct (OT.eq_dec x a); unfold OT.eq in *; subst.
+      - rewrite find_remove_eq; auto.
+      - rewrite find_remove_ne by auto; auto.
+    Qed.
+
     Theorem mm_find : forall m (F : @pred Map.key OT.eq_dec V) a v,
       (a |-> v * F)%pred (mm m) ->
       Map.find a m = Some v.
