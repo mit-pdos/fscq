@@ -121,7 +121,7 @@ func (fs FileSystem) Stop() {
 		if fs.ident == "fusexmp" {
 			dir = "/tmp/hellofs"
 		}
-		cmd := exec.Command("fusermount", "-u", dir)
+		cmd := exec.Command("fusermount3", "-u", dir)
 		cmd.Stderr = os.Stderr
 		err := cmd.Run()
 		if err != nil {
