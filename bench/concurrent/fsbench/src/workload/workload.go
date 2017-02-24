@@ -18,6 +18,21 @@ type Options struct {
 	Kiters              int
 }
 
+var DataHeader = []interface{}{
+	"operation",
+	"client-cpus",
+	"exists",
+	"disjoint-directories",
+	"kiters",
+}
+
+func (opts Options) DataRow() []interface{} {
+	clientCpuSpec := fmt.Sprintf("\"%s\"", pin.CpuSpec(opts.ClientCpus))
+	return []interface{}{
+		opts.Operation, clientCpuSpec, opts.ExistingPath, opts.DisjointDirectories, opts.Kiters,
+	}
+}
+
 func min(a, b int) int {
 	if a <= b {
 		return a

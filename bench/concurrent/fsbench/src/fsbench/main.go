@@ -41,23 +41,36 @@ func toMicros(d time.Duration) float64 {
 	return float64(d) / float64(time.Microsecond)
 }
 
-var DataRowHeader = []interface{}{
-	"fs", "name_cache", "attr_cache", "neg_name_cache", "kernel_cache", "server-cpu",
-	"operation", "client-cpus", "exists", "disjoint-directories", "kiters",
-	"parallel",
-	"timeSec", "opStdMicros", "seqTimeSec", "seqOpStdMicros",
-	"speedup", "usPerOp",
+func concat(lists ...[]interface{}) []interface{} {
+	var flat []interface{}
+	for _, list := range lists {
+		flat = append(flat, list...)
+	}
+	return flat
 }
 
+var DataHeader = concat(
+	[]interface{}{"fs"},
+	filesys.DataHeader,
+	workload.DataHeader,
+	[]interface{}{
+		"parallel",
+		"timeSec", "opStdMicros", "seqTimeSec", "seqOpStdMicros",
+		"speedup", "usPerOp",
+	},
+)
+
 func (p DataPoint) DataRow() []interface{} {
-	clientCpuSpec := fmt.Sprintf("\"%s\"", pin.CpuSpec(p.work.ClientCpus))
-	return []interface{}{
-		p.fsIdent, p.fs.NameCache, p.fs.AttrCache, p.fs.NegNameCache, p.fs.KernelCache, p.fs.ServerCpu,
-		p.work.Operation, clientCpuSpec, p.work.ExistingPath, p.work.DisjointDirectories, p.work.Kiters,
-		p.parallel,
-		toSec(p.result.Elapsed), toMicros(p.result.Stddev), toSec(p.seqResult.Elapsed), toMicros(p.seqResult.Stddev),
-		p.ParallelSpeedup(), p.MicrosPerOp(),
-	}
+	return concat(
+		[]interface{}{p.fsIdent},
+		p.fs.DataRow(),
+		p.work.DataRow(),
+		[]interface{}{
+			p.parallel,
+			toSec(p.result.Elapsed), toMicros(p.result.Stddev), toSec(p.seqResult.Elapsed), toMicros(p.seqResult.Stddev),
+			p.ParallelSpeedup(), p.MicrosPerOp(),
+		},
+	)
 }
 
 func printTsv(args ...interface{}) {
@@ -94,13 +107,13 @@ func main() {
 	flag.Parse()
 
 	if *print_header {
-		dataHeader := len(DataRowHeader)
+		dataHeader := len(DataHeader)
 		dataRow := len(DataPoint{}.DataRow())
 		if dataRow != dataHeader {
 			log.Fatal(fmt.Errorf("data header len != data row len (%d != %d)",
 				dataHeader, dataRow))
 		}
-		printTsv(DataRowHeader...)
+		printTsv(DataHeader...)
 		return
 	}
 
@@ -172,7 +185,7 @@ func main() {
 
 	if *readable_output {
 		row := p.DataRow()
-		for i, hdr := range DataRowHeader {
+		for i, hdr := range DataHeader {
 			value := row[i]
 			fmt.Printf("%-20s %v\n", hdr, value)
 		}

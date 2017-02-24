@@ -93,6 +93,16 @@ type Options struct {
 	ServerCpu    pin.Cpu
 }
 
+var DataHeader = []interface{}{
+	"name_cache", "attr_cache", "neg_name_cache", "kernel_cache", "server-cpu",
+}
+
+func (o Options) DataRow() []interface{} {
+	return []interface{}{
+		o.NameCache, o.AttrCache, o.NegNameCache, o.KernelCache, o.ServerCpu,
+	}
+}
+
 func timeoutIfTrue(name string, toggle bool) string {
 	if !toggle {
 		return fmt.Sprintf("%s=0", name)
