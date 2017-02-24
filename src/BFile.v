@@ -127,6 +127,28 @@ Module BFILE.
   Definition pick_balloc A (a : A * A) (flag : bool) :=
     if flag then fst a else snd a.
 
+  Definition upd_balloc A (a : A * A) (new : A) (flag : bool) :=
+    (if flag then new else fst a,
+     if flag then snd a else new).
+
+  Theorem pick_upd_balloc_negb : forall A flag p (new : A),
+    pick_balloc p flag = pick_balloc (upd_balloc p new (negb flag)) flag.
+  Proof.
+    destruct flag, p; intros; reflexivity.
+  Qed.
+
+  Theorem pick_negb_upd_balloc : forall A flag p (new : A),
+    pick_balloc p (negb flag) = pick_balloc (upd_balloc p new flag) (negb flag).
+  Proof.
+    destruct flag, p; intros; reflexivity.
+  Qed.
+
+  Theorem pick_upd_balloc_lift : forall A flag p (new : A),
+    new = pick_balloc (upd_balloc p new flag) flag.
+  Proof.
+    destruct flag, p; intros; reflexivity.
+  Qed.
+
   Definition grow lxp bxps ixp inum v fms :=
     let '(al, ms, cache) := (MSAlloc fms, MSLL fms, MSCache fms) in
     let^ (ms, len) <- INODE.getlen lxp ixp inum ms;
@@ -1352,21 +1374,23 @@ Module BFILE.
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} grow lxp bxp ixp inum v ms.
   Proof.
-    unfold grow, rep.
-    prestep; norml.
-    extract; seprewrite; subst.
+    unfold grow.
+    prestep; norml; unfold stars; simpl.
+    denote rep as Hr.
+    rewrite rep_alt_equiv with (msalloc := MSAlloc ms) in Hr.
+    unfold rep_alt in Hr; destruct_lift Hr.
+    extract. seprewrite; subst.
     denote removeN as Hx.
     setoid_rewrite listmatch_length_pimpl in Hx at 2.
     rewrite map_length in *.
-    destruct_lift Hx; safecancel.
-    eauto.
-
+    destruct_lift Hx. safecancel.
     sepauto.
+
     step.
 
     (* file size ok, do allocation *)
-    destruct (MSAlloc ms); simpl.
-    - step.
+    {
+      step.
       safestep.
       sepauto.
       step.
@@ -1374,8 +1398,14 @@ Module BFILE.
       eapply BALLOC.bn_valid_facts; eauto.
       step.
 
-      or_r; cancel.
+      or_r; safecancel.
+      rewrite rep_alt_equiv with (msalloc := MSAlloc ms); unfold rep_alt.
+      erewrite pick_upd_balloc_lift with (new := freelist') (flag := MSAlloc ms) (p := (frees_1, frees_2)) at 1.
+      rewrite pick_negb_upd_balloc with (new := freelist') (flag := MSAlloc ms) at 1.
+      unfold upd_balloc.
+      cancel.
       3: sepauto.
+      4: eauto.
       seprewrite.
       rewrite listmatch_updN_removeN by simplen.
       unfold file_match; cancel.
@@ -1385,6 +1415,7 @@ Module BFILE.
       rewrite map_length; omega.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOC.bn_valid_goodSize; eauto.
+      eapply bfcache_upd; eauto.
       eauto.
       apply list2nmem_app; eauto.
 
@@ -1398,7 +1429,9 @@ Module BFILE.
       apply arrayN_except_upd in Hilist'; eauto.
       apply list2nmem_array_eq in Hilist'; subst.
       unfold ilist_safe; intuition.
-      eapply incl_tran; eauto. eapply incl_remove.
+
+      destruct (MSAlloc ms); simpl in *; eapply incl_tran; eauto; eapply incl_remove.
+
       destruct (addr_eq_dec inum inum0); subst.
       + unfold block_belong_to_file in *; intuition.
         all: erewrite selN_updN_eq in * by eauto; simpl in *; eauto.
@@ -1413,59 +1446,10 @@ Module BFILE.
           subst. rewrite selN_app1 by omega. auto.
       + unfold block_belong_to_file in *; intuition.
         all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
+    }
 
-    - step.
-      safestep.
-      erewrite INODE.rep_bxp_switch by eassumption. cancel.
-      sepauto.
-
-      step.
-      eapply BALLOC.bn_valid_facts; eauto.
-      step.
-
-      or_r; cancel.
-      erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ). cancel.
-      2: sepauto.
-      seprewrite.
-      rewrite listmatch_updN_removeN by simplen.
-      unfold file_match; cancel.
-      rewrite map_app; simpl.
-      rewrite <- listmatch_app_tail.
-      cancel.
-      rewrite map_length; omega.
-      rewrite wordToNat_natToWord_idempotent'; auto.
-      eapply BALLOC.bn_valid_goodSize; eauto.
-      eauto.
-      apply list2nmem_app; eauto.
-
-      2: eapply grow_treeseq_ilist_safe in H25; eauto.
-
-      2: cancel.
-      2: or_l; cancel.
-
-      denote (list2nmem ilist') as Hilist'.
-      assert (inum < length ilist) by simplen'.
-      apply arrayN_except_upd in Hilist'; eauto.
-      apply list2nmem_array_eq in Hilist'; subst.
-      unfold ilist_safe; intuition.
-      eapply incl_tran; eauto. eapply incl_remove.
-      destruct (addr_eq_dec inum inum0); subst.
-      + unfold block_belong_to_file in *; intuition.
-        all: erewrite selN_updN_eq in * by eauto; simpl in *; eauto.
-        destruct (addr_eq_dec off (length (INODE.IBlocks (selN ilist inum0 INODE.inode0)))).
-        * right.
-          rewrite selN_last in * by auto.
-          subst. rewrite wordToNat_natToWord_idempotent'. eauto.
-          eapply BALLOC.bn_valid_goodSize; eauto.
-        * left.
-          rewrite app_length in *; simpl in *.
-          split. omega.
-          subst. rewrite selN_app1 by omega. auto.
-      + unfold block_belong_to_file in *; intuition.
-        all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
-
-    - step.
-    - cancel; eauto.
+    step.
+    cancel; eauto.
 
     Unshelve. all: easy.
   Qed.
