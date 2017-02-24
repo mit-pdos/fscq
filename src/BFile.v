@@ -870,6 +870,24 @@ Module BFILE.
     reflexivity.
   Qed.
 
+  Lemma rep_bfcache_remove : forall bxps ixp flist ilist frees mscache inum f F,
+    (F * inum |-> f)%pred (list2nmem flist) ->
+    rep bxps ixp flist ilist frees mscache =p=>
+    rep bxps ixp (updN flist inum {| BFData := BFData f; BFAttr := BFAttr f; BFCache := None |}) ilist frees
+      (BFcache.remove inum mscache).
+  Proof.
+    unfold rep; intros.
+    cancel.
+    2: eapply bfcache_remove'; eauto.
+    seprewrite.
+    erewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 2.
+    rewrite listmatch_length_pimpl; cancel.
+    eapply listmatch_updN_selN; try simplen.
+    unfold file_match; cancel.
+  Unshelve.
+    exact INODE.inode0.
+  Qed.
+
   Hint Resolve bfcache_init bfcache_upd.
 
   Ltac assignms :=
@@ -2190,16 +2208,20 @@ Module BFILE.
     unfold reset; intros.
     step.
     step.
+    msalloc_eq; cancel.
     step.
-    step.
+    safestep.
+    eapply rep_bfcache_remove; eauto.
+    simpl.
     rewrite Nat.sub_diag; simpl; auto.
+    eapply list2nmem_updN; eauto.
     denote (MSAlloc r_ = MSAlloc r_0) as Heq; rewrite Heq in *.
     eapply ilist_safe_trans; eauto.
     denote treeseq_ilist_safe as Hts.
     unfold treeseq_ilist_safe in Hts.
     intuition.
     assert (inum = inum' -> False).
-    intro; eapply H7; eauto.
+    intro; eapply H15; eauto.
     denote (forall _ _, _ -> selN ilist' _ _ = selN ilist'0 _ _) as Hx.
     rewrite <- Hx.
     denote (forall _ _, _ -> selN ilist _ _ = selN ilist' _ _) as Hy.
