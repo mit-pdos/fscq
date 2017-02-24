@@ -2243,7 +2243,7 @@ Module BFILE.
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:^(ms', r)
            [[ ms' = ms ]] *
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
            [[ r = BFCache f ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} cache_get inum ms.
@@ -2263,10 +2263,11 @@ Module BFILE.
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:ms'
            exists f' flist',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
            [[[ m ::: (Fm * rep bxp ixp flist' ilist frees (MSCache ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
-           [[ f' = mk_bfile (BFData f) (BFAttr f) (Some c) ]]
+           [[ f' = mk_bfile (BFData f) (BFAttr f) (Some c) ]] *
+           [[ MSAlloc ms = MSAlloc ms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} cache_put inum c ms.
   Proof.
