@@ -1476,15 +1476,19 @@ Module BFILE.
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} shrink lxp bxp ixp inum nr ms.
   Proof.
-    unfold shrink, rep.
-    step.
+    unfold shrink.
+    prestep; norml; unfold stars; simpl.
+    denote rep as Hr.
+    rewrite rep_alt_equiv with (msalloc := MSAlloc ms) in Hr.
+    unfold rep_alt in Hr; destruct_lift Hr.
+    cancel.
     sepauto.
     extract; seprewrite; subst; denote removeN as Hx.
     setoid_rewrite listmatch_length_pimpl in Hx at 2.
     rewrite map_length in *.
 
-    destruct (MSAlloc ms); simpl.
-    - step.
+    {
+      step.
       erewrite INODE.rep_bxp_switch in Hx by eassumption.
       rewrite INODE.inode_rep_bn_valid_piff in Hx; destruct_lift Hx.
       denote Forall as Hv; specialize (Hv inum); subst.
@@ -1495,69 +1499,42 @@ Module BFILE.
       rewrite skipn_map_comm; cancel.
       destruct_lift Hx; denote (length (BFData _)) as Heq.
 
-      step.
+      prestep.
+      norm.
+      cancel.
+      intuition.
+
+      pred_apply.
       erewrite INODE.rep_bxp_switch by eassumption. cancel.
       sepauto.
 
       denote listmatch as Hx.
       setoid_rewrite listmatch_length_pimpl in Hx at 2.
-      prestep; norm. cancel. eassign (ilist'). intuition simpl.  
-      2: sepauto.
-      pred_apply; cancel.
-      erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ). cancel.
-      seprewrite.
-      rewrite listmatch_updN_removeN by omega.
-      rewrite firstn_map_comm, Heq.
-      unfold file_match, cuttail; cancel; eauto.
-      2: eauto.
-
-      denote (list2nmem ilist') as Hilist'.
-      assert (inum < length ilist) by simplen.
-      apply arrayN_except_upd in Hilist'; eauto.
-      apply list2nmem_array_eq in Hilist'; subst.
-      unfold ilist_safe; intuition. left.
-      destruct (addr_eq_dec inum inum0); subst.
-      + unfold block_belong_to_file in *; intuition simpl.
-        all: erewrite selN_updN_eq in * by eauto; simpl in *; eauto.
-        rewrite cuttail_length in *. omega.
-        rewrite selN_cuttail in *; auto.
-      + unfold block_belong_to_file in *; intuition simpl.
-        all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
-      + eapply list2nmem_array_updN in H19; eauto.
-        rewrite H19.
-        erewrite selN_updN_ne; eauto.
-      + eauto.
-    - step.
-      erewrite <- BALLOC.bn_valid_switch; eauto.
-      rewrite INODE.inode_rep_bn_valid_piff in Hx; destruct_lift Hx.
-      denote Forall as Hv; specialize (Hv inum); subst.
-      rewrite <- Forall_map.
-      apply forall_skipn; apply Hv; eauto.
-
-      erewrite <- listmatch_ptsto_listpred.
-      setoid_rewrite listmatch_split at 2.
-      rewrite skipn_map_comm; cancel.
-      destruct_lift Hx; denote (length (BFData _)) as Heq.
-
-      step.
-      sepauto.
-      denote listmatch as Hx.
-      setoid_rewrite listmatch_length_pimpl in Hx at 2.
       prestep; norm. cancel. eassign (ilist'). intuition simpl.
       2: sepauto.
-      pred_apply; cancel.
+
+      rewrite rep_alt_equiv with (msalloc := MSAlloc ms); unfold rep_alt.
+      pred_apply.
+      erewrite pick_upd_balloc_lift with (new := freelist') (flag := negb (MSAlloc ms)) (p := (frees_1, frees_2)) at 1.
+      rewrite pick_upd_balloc_negb with (new := freelist') (flag := MSAlloc ms) at 1.
+      unfold upd_balloc.
+      erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ).
       cancel.
+
       seprewrite.
       rewrite listmatch_updN_removeN by omega.
       rewrite firstn_map_comm, Heq.
       unfold file_match, cuttail; cancel; eauto.
-      2: eauto.
+      eapply bfcache_upd; eauto.
+      3: eauto.
 
       denote (list2nmem ilist') as Hilist'.
       assert (inum < length ilist) by simplen.
       apply arrayN_except_upd in Hilist'; eauto.
       apply list2nmem_array_eq in Hilist'; subst.
-      unfold ilist_safe; intuition. left.
+      unfold ilist_safe; intuition.
+      destruct (MSAlloc ms); simpl in *; eapply incl_refl.
+      left.
       destruct (addr_eq_dec inum inum0); subst.
       + unfold block_belong_to_file in *; intuition simpl.
         all: erewrite selN_updN_eq in * by eauto; simpl in *; eauto.
@@ -1565,12 +1542,17 @@ Module BFILE.
         rewrite selN_cuttail in *; auto.
       + unfold block_belong_to_file in *; intuition simpl.
         all: erewrite selN_updN_ne in * by eauto; simpl; eauto.
-      + eapply list2nmem_array_updN in H19; eauto.
-        rewrite H19.
+      + eapply list2nmem_array_updN in H20; eauto.
+        rewrite H20.
         erewrite selN_updN_ne; eauto.
-      + eauto.
+      + pimpl_crash.
+        cancel.
+    }
 
-    Unshelve. easy. all: try exact bfile0.
+    pimpl_crash; cancel; eauto.
+
+  Unshelve.
+    easy. all: try exact bfile0.
   Qed.
 
   Theorem sync_ok : forall lxp ixp ms,
