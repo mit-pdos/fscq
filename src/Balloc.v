@@ -22,6 +22,8 @@ Require Import GenSepN.
 Require Import WordAuto.
 Require Import FSLayout.
 Require Import AsyncDisk.
+
+
 Import ListUtils.
 
 Import ListNotations.
@@ -670,8 +672,33 @@ Module BmapAllocCache (Sig : AllocSig).
   Hint Extern 1 ({{_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
   Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
 
-End BmapAllocCache.
+  Lemma xform_rep : forall V FP xp l ms p,
+    crash_xform (@rep V FP xp l ms p) <=p=> @rep V FP xp l ms p.
+  Proof.
+    unfold rep, Alloc.rep; intros; split.
+    xform_norm.
+    rewrite Alloc.Bmp.xform_rep; cancel.
+    cancel.
+    xform_normr.
+    cancel.
+    xform_normr.
+    rewrite Alloc.Bmp.xform_rep; cancel.
+  Qed.
 
+  Lemma xform_rep_rawpred : forall xp FP l ms p,
+    (forall a, crash_xform (exists v, a |-> v * [[ FP v ]]) =p=> exists v, a |-> v * [[ FP v ]]) ->
+    crash_xform (rep FP xp l p ms) =p=> (rep FP xp l p ms) * [[ crash_xform p =p=> p ]].
+  Proof.
+    unfold rep, Alloc.rep; intros.
+    xform_norm.
+    cancel.
+    rewrite Alloc.Bmp.xform_rep; cancel.
+    assumption.
+    rewrite H4.
+    rewrite xform_listpred_ptsto_fp; auto.
+  Qed.
+
+End BmapAllocCache.
 
 
 (* Specialize for actual on-disk-block allocation *)
@@ -1017,6 +1044,9 @@ Module BALLOCC.
   Module Alloc := BmapAllocCache Sig.
   Module Defs := Alloc.Defs.
 
+  Definition MSLog := Alloc.MSLog.
+  Definition MSCache := Alloc.MSCache.
+
   Definition alloc lxp xp ms :=
     r <- Alloc.alloc lxp xp ms;
     Ret r.
@@ -1048,19 +1078,19 @@ Module BALLOCC.
   Theorem init_ok : forall lxp xp ms,
     {< F Fm m0 m bl dl,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (Alloc.MSLog ms) hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
           [[[ m ::: (Fm * arrayN (@ptsto _ _ _) 0 dl
                         * arrayN (@ptsto _ _ _) (BmapStart xp) bl) ]]] *
           [[ (BmapNBlocks xp) <= valulen * valulen /\ BmapStart xp <> 0 ]] *
           [[ length bl = BmapNBlocks xp /\ length dl = ((BmapNBlocks xp) * valulen)%nat ]]
     POST:hm' RET:ms exists m' freeblocks,
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (Alloc.MSLog ms) hm' *
-          [[[ m' ::: (Fm * rep xp freeblocks (Alloc.MSCache ms)) ]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+          [[[ m' ::: (Fm * rep xp freeblocks (MSCache ms)) ]]] *
           [[ forall bn, bn < (BmapNBlocks xp) * valulen -> In bn freeblocks ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
-    >} init lxp xp (Alloc.MSLog ms).
+    >} init lxp xp (MSLog ms).
   Proof.
-    unfold init, rep; intros.
+    unfold init, rep, MSLog; intros.
     step.
     step.
   Qed.
@@ -1068,17 +1098,17 @@ Module BALLOCC.
   Theorem init_nofree_ok : forall lxp xp ms,
     {< F Fm m0 m bl,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (Alloc.MSLog ms) hm *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
           [[[ m ::: (Fm * arrayN (@ptsto _ _ _) (BmapStart xp) bl) ]]] *
           [[ (BmapNBlocks xp) <= valulen * valulen /\ BmapStart xp <> 0 ]] *
           [[ length bl = BmapNBlocks xp ]]
     POST:hm' RET:ms exists m',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (Alloc.MSLog ms) hm' *
-          [[[ m' ::: (Fm * rep xp nil (Alloc.MSCache ms)) ]]]
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+          [[[ m' ::: (Fm * rep xp nil (MSCache ms)) ]]]
     CRASH:hm' LOG.intact lxp F m0 hm'
-    >} init_nofree lxp xp (Alloc.MSLog ms).
+    >} init_nofree lxp xp (MSLog ms).
   Proof.
-    unfold init_nofree, rep; intros.
+    unfold init_nofree, rep, MSCache, MSLog; intros.
     step.
     step.
   Qed.
@@ -1086,17 +1116,17 @@ Module BALLOCC.
   Theorem steal_ok : forall lxp xp bn ms,
     {< F Fm m0 m freeblocks,
     PRE:hm
-          LOG.rep lxp F (LOG.ActiveTxn m0 m) (Alloc.MSLog ms) hm *
-          [[[ m ::: (Fm * rep xp freeblocks (Alloc.MSCache ms)) ]]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+          [[[ m ::: (Fm * rep xp freeblocks (MSCache ms)) ]]] *
           [[ bn_valid xp bn /\ In bn freeblocks ]]
     POST:hm' RET:ms exists m',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') (Alloc.MSLog ms) hm' *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
           [[[ m' ::: (Fm * bn |->? * 
-           rep xp (remove addr_eq_dec bn freeblocks) (Alloc.MSCache ms)) ]]]
+           rep xp (remove addr_eq_dec bn freeblocks) (MSCache ms)) ]]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} steal lxp xp bn ms.
   Proof.
-    unfold steal, rep, bn_valid.
+    unfold steal, rep, bn_valid, MSLog, MSCache.
     step.
     prestep. norm. cancel.
     intuition simpl.
@@ -1111,20 +1141,20 @@ Module BALLOCC.
   Theorem alloc_ok : forall lxp xp ms,
     {< F Fm m0 m freeblocks,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (Alloc.MSLog ms) hm *
-           [[[ m ::: (Fm * rep xp freeblocks (Alloc.MSCache ms)) ]]]
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+           [[[ m ::: (Fm * rep xp freeblocks (MSCache ms)) ]]]
     POST:hm' RET:^(ms, r)
-           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) (Alloc.MSLog ms) hm'
+           [[ r = None ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm'
         \/ exists bn m',
            [[ r = Some bn ]] * [[ bn_valid xp bn ]] *
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (Alloc.MSLog ms) hm' *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
            [[[ m' ::: (Fm * bn |->? * 
-            rep xp (remove addr_eq_dec bn freeblocks) (Alloc.MSCache ms)) ]]] *
+            rep xp (remove addr_eq_dec bn freeblocks) (MSCache ms)) ]]] *
            [[ In bn freeblocks ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} alloc lxp xp ms.
   Proof.
-    unfold alloc, rep, bn_valid.
+    unfold alloc, rep, bn_valid, MSLog, MSCache.
     hoare.
     match goal with
     | [ H1 : (_ =p=> ?F * _)%pred, H2 : context [ ?F ] |- _ ] => rewrite H1 in H2
@@ -1135,16 +1165,16 @@ Module BALLOCC.
   Theorem free_ok : forall lxp xp bn ms,
     {< F Fm m0 m freeblocks,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) (Alloc.MSLog ms) hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
            [[ bn_valid xp bn ]] *
-           [[[ m ::: (Fm * rep xp freeblocks (Alloc.MSCache ms)* bn |->?) ]]]
+           [[[ m ::: (Fm * rep xp freeblocks (MSCache ms)* bn |->?) ]]]
     POST:hm' RET:ms exists m',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') (Alloc.MSLog ms) hm' *
-           [[[ m' ::: (Fm * rep xp (bn :: freeblocks) (Alloc.MSCache ms)) ]]]
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+           [[[ m' ::: (Fm * rep xp (bn :: freeblocks) (MSCache ms)) ]]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} free lxp xp bn ms.
   Proof.
-    unfold free, rep, bn_valid.
+    unfold free, rep, bn_valid, MSLog, MSCache.
     hoare.
     exists (list2nmem m); pred_apply; cancel.
     rewrite H12; unfold FP; eauto.
@@ -1156,7 +1186,177 @@ Module BALLOCC.
   Hint Extern 1 ({{_}} Bind (steal _ _ _ _) _) => apply steal_ok : prog.
   Hint Extern 1 ({{_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
   Hint Extern 1 ({{_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
-  Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep ?xp _ _) (rep ?xp _ _)) => constructor : okToUnify.
+
+  Lemma sep_star_reorder_helper : forall a b c d : (@pred _ addr_eq_dec valuset),
+    ((a * b) * (c * d)) =p=> d * (a * b * c).
+  Proof.
+    intros; cancel.
+  Qed.
+
+
+  Definition freevec lxp xp l ms :=
+    let^ (ms) <- ForN i < length l
+    Hashmap hm
+    Ghost [ F Fm crash m0 freeblocks ]
+    Loopvar [ ms ]
+    Invariant
+      exists m', LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm *
+      [[[ m' ::: (Fm * rep xp (rev (firstn i l) ++ freeblocks) (MSCache ms)) *
+                       listpred (fun a => a |->?) (skipn i l) ]]]
+    OnCrash crash
+    Begin
+      ms <- free lxp xp (selN l i 0) ms;
+      Ret ^(ms)
+    Rof ^(ms);
+    Ret ms.
+
+  Require Import Cache.
+
+  Theorem freevec_ok : forall lxp xp l ms,
+    {< F Fm m0 m freeblocks,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+           [[ Forall (bn_valid xp) l ]] *
+           [[[ m ::: (Fm * rep xp freeblocks (MSCache ms) * listpred (fun a => a |->?) l ) ]]]
+    POST:hm' RET:ms exists m',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLog ms) hm' *
+           [[[ m' ::: (Fm * rep xp (rev l ++ freeblocks) (MSCache ms)) ]]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} freevec lxp xp l ms.
+  Proof.
+    unfold freevec.
+    step.
+
+    prestep; norml.
+    denote listpred as Hx.
+
+    destruct l.
+    denote (_ < _) as Hy; simpl in Hy; inversion Hy.
+    rewrite listpred_isolate with (i := 0) in Hx by (rewrite skipn_length; omega).
+    rewrite skipn_selN, Nat.add_0_r in Hx.
+
+    (*** extract the exis from |->? *)
+    apply sep_star_reorder_helper in Hx.
+    apply pimpl_exists_r_star_r in Hx; destruct Hx as [ [? ?] ?].
+    safecancel.
+    rewrite selN_cons_fold; apply Forall_selN; auto.
+    eauto.
+
+    step.
+    rewrite removeN_0_skipn; cancel.
+    rewrite selN_cons_fold.
+    replace ([n]) with (rev [n]) by auto.
+    rewrite <- rev_app_distr.
+    rewrite app_comm_cons, <- rev_unit.
+    rewrite <- firstn_S_selN by auto.
+    cancel.
+
+    step.
+    rewrite firstn_oob by auto.
+    rewrite skipn_oob by auto.
+    step.
+    erewrite <- LOG.intact_hashmap_subset; eauto.
+    Unshelve. all: eauto; try exact tt. exact (LOG.mk_memstate0 (BUFCACHE.cache0 0)).
+  Qed.
+
+  Hint Extern 1 ({{_}} Bind (freevec _ _ _ _) _) => apply freevec_ok : prog.
+
+
+  Lemma xparams_ok_goodSize : forall xp a,
+    Sig.xparams_ok xp ->
+    a < (BmapNBlocks xp) * valulen ->
+    goodSize addrlen a.
+  Proof.
+    unfold Sig.xparams_ok; intuition.
+    eapply goodSize_trans.
+    eapply Nat.lt_le_incl; eauto.
+    eapply goodSize_trans.
+    eapply mult_le_compat_r; eauto.
+    unfold goodSize.
+    replace addrlen with (16 + 16 + 16 + 16) by (compute; auto).
+    rewrite <- Nat.mul_1_r at 1.
+    repeat apply mult_pow2_bound; try apply valulen_bound.
+    apply one_lt_pow2.
+  Qed.
+
+  Lemma bn_valid_goodSize : forall F l m ms xp a,
+    (F * rep xp l ms)%pred m ->
+    bn_valid xp a ->
+    goodSize addrlen a.
+  Proof.
+    unfold rep, bn_valid.
+    unfold Alloc.rep, Alloc.Alloc.rep, Alloc.Alloc.Bmp.rep, Alloc.Alloc.Bmp.items_valid,
+       Alloc.Alloc.BmpSig.xparams_ok; intuition.
+    destruct_lift H.
+    eapply xparams_ok_goodSize; eauto.
+  Qed.
+
+  Lemma bn_valid_goodSize_pimpl : forall l xp ms,
+    rep xp l ms <=p=> [[ forall a, bn_valid xp a -> goodSize addrlen a ]] * rep xp l ms.
+  Proof.
+    intros; split.
+    unfold pimpl; intros.
+    pred_apply; cancel.
+    apply emp_star in H.
+    eapply bn_valid_goodSize; eauto.
+    cancel.
+  Qed.
+
+  Lemma bn_valid_facts : forall xp bn,
+    bn_valid xp bn -> bn <> 0 /\ bn < (BmapNBlocks xp) * valulen.
+  Proof.
+    unfold bn_valid; auto.
+  Qed.
+
+  Theorem bn_valid_roundtrip' : forall xp a,
+    Sig.xparams_ok xp ->
+    bn_valid xp a ->
+    bn_valid xp (# (natToWord addrlen a)).
+  Proof.
+    unfold bn_valid; intuition.
+    rewrite wordToNat_natToWord_idempotent' in H0; auto.
+    eapply xparams_ok_goodSize; eauto.
+    rewrite wordToNat_natToWord_idempotent'; auto.
+    eapply xparams_ok_goodSize; eauto.
+  Qed.
+
+  Theorem bn_valid_roundtrip : forall xp a F l ms m,
+    (F * rep xp l ms)%pred m ->
+    bn_valid xp a ->
+    bn_valid xp (# (natToWord addrlen a)).
+  Proof.
+    unfold rep, Alloc.rep, Alloc.Alloc.rep, Alloc.Alloc.Bmp.rep, Alloc.Alloc.Bmp.items_valid,
+       Alloc.Alloc.BmpSig.xparams_ok; intuition.
+    destruct_lift H.
+    apply bn_valid_roundtrip'; auto.
+  Qed.
+
+  Lemma bn_valid_switch : forall xp1 xp2,
+    BmapNBlocks xp1 = BmapNBlocks xp2 ->
+    bn_valid xp1 = bn_valid xp2.
+  Proof.
+    unfold bn_valid; intuition; auto.
+    rewrite H; auto.
+  Qed.
+
+  Definition items_per_val := Alloc.Alloc.BmpSig.items_per_val.
+
+
+  Theorem xform_rep : forall xp l ms,
+    crash_xform (rep xp l ms) =p=> rep xp l ms.
+  Proof.
+    unfold Alloc.rep, rep; intros.
+    xform_norm.
+    rewrite Alloc.xform_rep_rawpred.
+    cancel.
+    auto.
+    unfold FP; intros.
+    xform_norm.
+    rewrite crash_xform_ptsto.
+    cancel.
+  Qed.
+
 
 End BALLOCC.
 
