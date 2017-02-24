@@ -186,7 +186,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
    Definition indrep_n_helper bxp ibn iblocks :=
     (if (addr_eq_dec ibn 0)
       then [[ iblocks = repeat $0 NIndirect ]]
-      else [[ BALLOC.bn_valid bxp ibn ]] * IndRec.rep ibn iblocks
+      else [[ BALLOCC.bn_valid bxp ibn ]] * IndRec.rep ibn iblocks
     )%pred.
 
   (* indlvl = 0 if ibn is the address of an indirect block,
@@ -290,14 +290,14 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Local Hint Extern 1 (incl ?a ?b) => incl_solve.
 
   Theorem indrep_n_helper_valid : forall bxp bn l,
-    bn <> 0 -> indrep_n_helper bxp bn l <=p=> [[ BALLOC.bn_valid bxp bn ]] * IndRec.rep bn l.
+    bn <> 0 -> indrep_n_helper bxp bn l <=p=> [[ BALLOCC.bn_valid bxp bn ]] * IndRec.rep bn l.
   Proof.
     intros. unfold indrep_n_helper. destruct bn; try omega. simpl.
     split; cancel.
   Qed.
 
   Theorem indrep_n_tree_valid : forall indlvl bxp ir l,
-    ir <> 0 -> indrep_n_tree indlvl bxp ir l <=p=> indrep_n_tree indlvl bxp ir l * [[ BALLOC.bn_valid bxp ir ]].
+    ir <> 0 -> indrep_n_tree indlvl bxp ir l <=p=> indrep_n_tree indlvl bxp ir l * [[ BALLOCC.bn_valid bxp ir ]].
   Proof.
     destruct indlvl; intros; simpl.
     repeat rewrite indrep_n_helper_valid by auto. split; cancel.
@@ -353,7 +353,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     BmapNBlocks bxp = BmapNBlocks bxp' ->
     indrep_n_helper bxp ir iblocks <=p=> indrep_n_helper bxp' ir iblocks.
   Proof.
-    intros. unfold indrep_n_helper, BALLOC.bn_valid. rewrite H. reflexivity.
+    intros. unfold indrep_n_helper, BALLOCC.bn_valid. rewrite H. reflexivity.
   Qed.
 
   Theorem indrep_n_tree_bxp_switch : forall bxp bxp' indlvl ir l,
@@ -431,7 +431,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Theorem indrep_n_helper_pts_piff : forall bxp ir l,
     ir <> 0 -> indrep_n_helper bxp ir l <=p=> [[ length l = NIndirect ]] *
-                [[ BALLOC.bn_valid bxp ir ]] * ir |-> (IndRec.Defs.block2val l, []).
+                [[ BALLOCC.bn_valid bxp ir ]] * ir |-> (IndRec.Defs.block2val l, []).
   Proof.
     intros.
     unfold indrep_n_helper, IndRec.rep. destruct addr_eq_dec; try omega.
@@ -718,15 +718,15 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite indrep_n_tree_0. split; cancel.
   Qed.
 
-  Hint Extern 1 (BALLOC.bn_valid _ _) => match goal with
-    [H : context [indrep_n_helper _ ?ir] |- BALLOC.bn_valid _ ?ir] =>
+  Hint Extern 1 (BALLOCC.bn_valid _ _) => match goal with
+    [H : context [indrep_n_helper _ ?ir] |- BALLOCC.bn_valid _ ?ir] =>
     rewrite indrep_n_helper_valid in H by omega; destruct_lift H; auto end.
 
   Local Hint Extern 1 (goodSize _ _) => match goal with
   | [|- goodSize _ ?a] =>
     destruct (addr_eq_dec a 0); [> substl a; apply DiskLogHash.PaddedLog.goodSize_0 |];
     rewrite indrep_n_tree_valid with (ir := a) in * by auto; destruct_lifts;
-    eapply BALLOC.bn_valid_goodSize; eassumption
+    eapply BALLOCC.bn_valid_goodSize; eassumption
   end.
 
   Hint Rewrite le_plus_minus_r using auto.
@@ -865,7 +865,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Local Hint Extern 1 ({{_}} Bind (indread _ _ _ _ ) _) => apply indread_ok : prog.
   Opaque indread.
 
-  Fixpoint indclear_all indlvl lxp bxp root ms : prog (LOG.mstate * Cache.cachestate) :=
+  Fixpoint indclear_all indlvl lxp bxp root ms :=
     If (addr_eq_dec root 0) {
       Ret ms
     } else {
@@ -873,40 +873,46 @@ Module BlockPtr (BPtr : BlockPtrSig).
       ms <- match indlvl with
       | 0 => Ret ms
       | S indlvl' =>
-        let^ (ms, indbns) <- IndRec.read lxp root 1 ms;
-        let^ (ms) <- ForN i < NIndirect
+        let^ (lms, indbns) <- IndRec.read lxp root 1 (BALLOCC.MSLog ms);
+        let msn := BALLOCC.upd_memstate lms ms in
+        let^ (msn) <- ForN i < NIndirect
           Hashmap hm
           Ghost [ F Fm l_part bxp crash m0 freelist ]
-          Loopvar [ ms ]
+          Loopvar [ msn ]
           Invariant
-            exists m freelist' indbns' l_part', LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+            exists m freelist' indbns' l_part', 
+            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog msn) hm *
             [[ l_part' = repeat (repeat $0 N) i ++ skipn i l_part ]] *
             [[ indbns' = repeat $0 i ++ skipn i indbns ]] *
             [[[ m ::: Fm * listmatch (fun ibn' l' => indrep_n_tree indlvl' bxp (# ibn') l') indbns' l_part'
-                         * BALLOC.rep bxp freelist' ]]] * [[ incl freelist freelist' ]]
+                         * BALLOCC.rep bxp freelist' msn ]]] * [[ incl freelist freelist' ]]
           OnCrash crash
           Begin
-            ms <- indclear_all indlvl' lxp bxp #(selN indbns i $0) ms;
-            Ret ^(ms)
-          Rof ^(ms);
-          Ret ms
+            msn <- indclear_all indlvl' lxp bxp #(selN indbns i $0) msn;
+            Ret ^(msn)
+          Rof ^(msn);
+          Ret msn
       end;
-      BALLOC.free lxp bxp root ms
+      BALLOCC.free lxp bxp root ms
     }.
 
   Theorem indclear_all_ok : forall indlvl lxp bxp ir ms,
     let N := NIndirect ^ indlvl in
     {< F Fm m0 m l freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * indrep_n_tree indlvl bxp ir l * BALLOC.rep bxp freelist) ]]]
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
+           [[[ m ::: (Fm * indrep_n_tree indlvl bxp ir l * 
+              BALLOCC.rep bxp freelist ms) ]]]
     POST:hm' RET: ms
-           exists m' freelist' l', LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * indrep_n_tree indlvl bxp 0 l' * BALLOC.rep bxp freelist') ]]] *
+           exists m' freelist' l', 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
+           [[[ m' ::: (Fm * indrep_n_tree indlvl bxp 0 l' * 
+              BALLOCC.rep bxp freelist' ms) ]]] *
            [[ incl freelist freelist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} indclear_all indlvl lxp bxp ir ms.
     Proof.
+      unfold indclear_all.
       induction indlvl; simpl.
       + hoare.
         rewrite indrep_n_helper_pts_piff by auto.
@@ -950,11 +956,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
       Loopvar [ ms ]
       Invariant
         exists l_part' indbns' freelist' m,
-        LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+        LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
         [[ l_part' = upd_range l_part (start / N) i (repeat $0 N) ]] *
         [[ indbns' = upd_range indbns (start / N) i $0 ]] *
         [[[ m ::: Fm * listmatch (fun ibn' l' => indrep_n_tree indlvl bxp (# ibn') l') indbns' l_part' *
-                  BALLOC.rep bxp freelist' ]]] *
+                  BALLOCC.rep bxp freelist' ms ]]] *
         [[ incl freelist freelist' ]]
       OnCrash crash
       Begin
@@ -966,14 +972,15 @@ Module BlockPtr (BPtr : BlockPtrSig).
     let N := NIndirect ^ S indlvl in
     {< F Fm m0 m l_part freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
            [[[ m ::: (Fm * listmatch (fun ibn l => indrep_n_tree indlvl bxp (#ibn) l) indbns l_part
-                         * BALLOC.rep bxp freelist) ]]] *
+                         * BALLOCC.rep bxp freelist ms) ]]] *
            [[ start / N + len / N <= length l_part ]] * [[ Nat.divide N start ]] * [[ Nat.divide N len ]]
     POST:hm' RET:^(ms)
-           exists m' freelist' indbns' l_part', LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           exists m' freelist' indbns' l_part', 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
            [[[ m' ::: (Fm * listmatch (fun ibn l => indrep_n_tree indlvl bxp (#ibn) l) indbns' l_part'
-                          * BALLOC.rep bxp freelist') ]]] *
+                          * BALLOCC.rep bxp freelist' ms) ]]] *
            [[ indbns' = upd_range indbns (start / N) (len / N) $0 ]] *
            [[ l_part' = upd_range l_part (start / N) (len / N) (repeat $0 N) ]] *
            [[ incl freelist freelist' ]]
@@ -1004,33 +1011,37 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Definition update_block lxp bxp bn contents new ms :=
     If (list_eq_dec waddr_eq_dec new (repeat $0 NIndirect)) {
-      ms <- BALLOC.free lxp bxp bn ms;
+      ms <- BALLOCC.free lxp bxp bn ms;
       Ret ^(ms, 0)
     } else {
       If (list_eq_dec waddr_eq_dec contents new) {
         Ret ^(ms, bn)
       } else {
-        ms <- IndRec.write lxp bn new ms;
-        Ret ^(ms, bn)
+        lms <- IndRec.write lxp bn new (BALLOCC.MSLog ms);
+        Ret ^(BALLOCC.upd_memstate lms ms, bn)
       }
     }.
 
   Theorem update_block_ok : forall lxp bxp ir indbns indbns' ms,
     {< F Fm m0 m freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm * [[ BALLOC.bn_valid bxp ir ]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
+            [[ BALLOCC.bn_valid bxp ir ]] *
             [[ IndRec.items_valid ir indbns' ]] *
-           [[[ m ::: (Fm * indrep_n_helper bxp ir indbns) * BALLOC.rep bxp freelist ]]]
+           [[[ m ::: (Fm * indrep_n_helper bxp ir indbns) * 
+              BALLOCC.rep bxp freelist ms ]]]
     POST:hm' RET: ^(ms, ir')
-           exists m' freelist', LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * indrep_n_helper bxp ir' indbns' * BALLOC.rep bxp freelist') ]]] *
+           exists m' freelist', 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
+           [[[ m' ::: (Fm * indrep_n_helper bxp ir' indbns' * 
+              BALLOCC.rep bxp freelist' ms) ]]] *
            [[ incl freelist freelist' ]] *
            ([[ ir' = 0 ]] \/ [[ ir' = ir ]])
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} update_block lxp bxp ir indbns indbns' ms.
   Proof.
     unfold update_block.
-    hoare; unfold BALLOC.bn_valid in *; intuition.
+    hoare; unfold BALLOCC.bn_valid in *; intuition.
     - rewrite indrep_n_helper_pts_piff by auto. rewrite indrep_n_helper_0. cancel.
     - rewrite indrep_n_helper_valid by auto. cancel.
     - rewrite indrep_n_helper_valid by auto. cancel.
@@ -1048,7 +1059,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
       If (addr_eq_dec ragged_bn 0) {
         Ret ^(ms, iblocks)
       } else {
-        let^ (ms, indbns) <- IndRec.read lxp ragged_bn 1 ms;
+        let^ (lms, indbns) <- IndRec.read lxp ragged_bn 1 (BALLOCC.MSLog ms);
+        let ms := BALLOCC.upd_memstate lms ms in
         match indlvl with
         | 0 => 
           let indbns' := upd_range indbns 0 len $0 in
@@ -1069,14 +1081,15 @@ Module BlockPtr (BPtr : BlockPtrSig).
     let N := NIndirect ^ S indlvl in
     {< F Fm m0 m l_part freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
            [[[ m ::: (Fm * listmatch (fun ibn l => indrep_n_tree indlvl bxp (#ibn) l) indbns l_part
-                         * BALLOC.rep bxp freelist) ]]] *
+                         * BALLOCC.rep bxp freelist ms) ]]] *
            [[ start + len <= length (concat l_part) ]] * [[ Nat.divide N start ]] * [[ len < N ]]
     POST:hm' RET:^(ms, indbns')
-           exists m' freelist' l_part', LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           exists m' freelist' l_part', 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
            [[[ m' ::: (Fm * listmatch (fun ibn l => indrep_n_tree indlvl bxp (#ibn) l) indbns' l_part'
-                          * BALLOC.rep bxp freelist') ]]] *
+                          * BALLOCC.rep bxp freelist' ms) ]]] *
            [[ concat (l_part') = upd_range (concat l_part) start len $0 ]] *
            [[ incl freelist freelist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
@@ -1202,7 +1215,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
       If (addr_eq_dec ragged_bn 0) {
         Ret ^(ms, iblocks)
       } else {
-        let^ (ms, indbns) <- IndRec.read lxp ragged_bn 1 ms;
+        let^ (lms, indbns) <- IndRec.read lxp ragged_bn 1 (BALLOCC.MSLog ms);
+        let ms := BALLOCC.upd_memstate lms ms in
         match indlvl with
         | 0 =>
           let indbns' := upd_range indbns (start mod NIndirect) (NIndirect - (start mod NIndirect)) $0 in
@@ -1224,14 +1238,15 @@ Module BlockPtr (BPtr : BlockPtrSig).
     let N := NIndirect ^ S indlvl in
     {< F Fm m0 m l_part freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
            [[[ m ::: (Fm * listmatch (fun ibn l => indrep_n_tree indlvl bxp (#ibn) l) indbns l_part
-                         * BALLOC.rep bxp freelist) ]]] *
+                         * BALLOCC.rep bxp freelist ms) ]]] *
            [[ start <= length (concat l_part) ]]
     POST:hm' RET:^(ms, indbns')
-           exists m' freelist' l_part', LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           exists m' freelist' l_part', 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
            [[[ m' ::: (Fm * listmatch (fun ibn l => indrep_n_tree indlvl bxp (#ibn) l) indbns' l_part'
-                          * BALLOC.rep bxp freelist') ]]] *
+                          * BALLOCC.rep bxp freelist' ms) ]]] *
            [[ concat (l_part') = upd_range (concat l_part) start (roundup start N - start) $0 ]] *
            [[ incl freelist freelist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
@@ -1392,15 +1407,16 @@ Module BlockPtr (BPtr : BlockPtrSig).
     let N := NIndirect ^ S indlvl in
     {< F Fm m0 m l_part freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
            [[[ m ::: (Fm * listmatch (fun ibn l => indrep_n_tree indlvl bxp (#ibn) l) indbns l_part
-                         * BALLOC.rep bxp freelist) ]]] *
+                         * BALLOCC.rep bxp freelist ms) ]]] *
            [[ start <= length (concat l_part) ]] * [[ (N - start mod N) < len ]] *
            [[ start + len <= length (concat l_part) ]]
     POST:hm' RET:^(ms, indbns')
-           exists m' freelist' l_part', LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           exists m' freelist' l_part', 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
            [[[ m' ::: (Fm * listmatch (fun ibn l => indrep_n_tree indlvl bxp (#ibn) l) indbns' l_part'
-                          * BALLOC.rep bxp freelist') ]]] *
+                          * BALLOCC.rep bxp freelist' ms) ]]] *
            [[ concat (l_part') = upd_range (concat l_part) start len $0 ]] *
            [[ incl freelist freelist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
@@ -1454,7 +1470,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Local Hint Extern 1 ({{_}} Bind (indclear_multiple_blocks _ _ _ _ _ _ _) _) => apply indclear_multiple_blocks_ok : prog.
 
-  Fixpoint indclear indlvl lxp bxp (root : addr) start len ms : prog (LOG.mstate * Cache.cachestate * (addr * unit)) :=
+  Fixpoint indclear indlvl lxp bxp (root : addr) start len ms :=
     let N := NIndirect ^ indlvl in
     If (addr_eq_dec root 0) {
       Ret ^(ms, 0)
@@ -1462,7 +1478,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
       If (addr_eq_dec len 0) {
         Ret ^(ms, root)
       } else {
-        let^ (ms, indbns) <- IndRec.read lxp root 1 ms;
+        let^ (lms, indbns) <- IndRec.read lxp root 1 (BALLOCC.MSLog ms);
+        let ms := BALLOCC.upd_memstate lms ms in
         let^ (ms, indbns') <- match indlvl with
         | 0 =>
            Ret ^(ms, upd_range indbns start len $0)
@@ -1481,12 +1498,15 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Theorem indclear_ok : forall indlvl lxp bxp ir start len ms,
     {< F Fm m0 m l freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * indrep_n_tree indlvl bxp ir l * BALLOC.rep bxp freelist) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
+           [[[ m ::: (Fm * indrep_n_tree indlvl bxp ir l * 
+            BALLOCC.rep bxp freelist ms) ]]] *
            [[ start + len <= length l ]]
     POST:hm' RET:^(ms, ir')
-           exists m' freelist' l', LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * indrep_n_tree indlvl bxp ir' l' * BALLOC.rep bxp freelist') ]]] *
+           exists m' freelist' l', 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
+           [[[ m' ::: (Fm * indrep_n_tree indlvl bxp ir' l' * 
+              BALLOCC.rep bxp freelist' ms) ]]] *
            [[ incl freelist freelist' ]] * [[ l' = upd_range l start len $0 ]] *
            ([[ ir = ir' ]] \/ [[ ir' = 0 ]])
     CRASH:hm'  LOG.intact lxp F m0 hm'
@@ -1597,11 +1617,13 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Theorem indput_get_blocks_ok : forall P Q lxp (is_alloc : {P} + {Q}) ir ms,
     {< F Fm m0 m bxp indbns,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm * [[ BALLOC.bn_valid bxp ir ]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm * 
+           [[ BALLOCC.bn_valid bxp ir ]] *
            [[ P -> ir = 0 ]] * [[ Q -> ir <> 0 ]] *
            [[[ m ::: (Fm * indrep_n_helper bxp ir indbns) ]]]
     POST:hm' RET:^(ms, r)
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' * [[ r = indbns ]]
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' * 
+           [[ r = indbns ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} indput_get_blocks lxp is_alloc ir ms.
     Proof.
@@ -1630,8 +1652,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
           [[ IndRec.items_valid xp items ]] * [[ xp <> 0 ]] *
           [[[ m ::: Fm * arrayN (@ptsto _ addr_eq_dec _) xp [old] ]]]
-    POST:hm' RET:ms' exists m',
-          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms' hm' *
+    POST:hm' RET:ms exists m',
+          LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
           [[[ m' ::: Fm * IndRec.rep xp items ]]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} indrec_write_blind lxp xp items ms.
@@ -1658,16 +1680,18 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Theorem indput_upd_if_necessary_ok : forall lxp ir v indbns to_grow ms,
     {< F Fm m0 m bxp,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm * [[ BALLOC.bn_valid bxp ir ]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm * 
+           [[ BALLOCC.bn_valid bxp ir ]] *
            [[[ m ::: (Fm * indrep_n_helper bxp ir indbns) ]]]
     POST:hm' RET: ms
-           exists m' indbns', LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           exists m' indbns', 
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
            [[ indbns' = updN indbns to_grow ($ v) ]] *
            [[[ m' ::: (Fm * indrep_n_helper bxp ir indbns') ]]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} indput_upd_if_necessary lxp ir v indbns to_grow ms.
   Proof.
-    unfold indput_upd_if_necessary. unfold BALLOC.bn_valid.
+    unfold indput_upd_if_necessary. unfold BALLOCC.bn_valid.
     unfold indrec_write_blind.
     hoare.
     rewrite natToWord_wordToNat. rewrite updN_selN_eq. cancel.
@@ -1685,7 +1709,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
     let N := NIndirect ^ indlvl in
     let is_alloc := (addr_eq_dec root 0) in
     let^ (ms, ir) <- If (is_alloc) {
-        BALLOC.alloc lxp bxp ms
+        BALLOCC.alloc lxp bxp ms
       } else {
         Ret ^(ms, Some root)
       };
@@ -1693,22 +1717,23 @@ Module BlockPtr (BPtr : BlockPtrSig).
     | None => Ret ^(ms, 0)
     | Some ir =>
       match indlvl with
-      | 0 => ms <- If (is_alloc) {
-                     indrec_write_blind lxp ir ((repeat $0 NIndirect) ⟦ off := bn ⟧) ms
+      | 0 => lms <- If (is_alloc) {
+                      indrec_write_blind lxp ir ((repeat $0 NIndirect) ⟦ off := bn ⟧) (BALLOCC.MSLog ms)
                    } else {
-                     IndRec.put lxp ir off bn ms
+                      IndRec.put lxp ir off bn (BALLOCC.MSLog ms)
                    };
-        Ret ^(ms, ir)
+        Ret ^((BALLOCC.upd_memstate lms ms), ir)
       | S indlvl' =>
         let to_grow := off / N in
-        let^ (ms, indbns) <- indput_get_blocks lxp is_alloc ir ms;
+        let^ (lms, indbns) <- indput_get_blocks lxp is_alloc ir (BALLOCC.MSLog ms);
         let ir_to_grow := #(selN indbns to_grow $0) in
-        let^ (ms, v) <- indput indlvl' lxp bxp ir_to_grow (off mod N) bn ms;
+        let^ (ms, v) <- indput indlvl' lxp bxp ir_to_grow (off mod N) bn 
+                (BALLOCC.upd_memstate lms ms);
         If (addr_eq_dec v 0) {
           Ret ^(ms, 0)
         } else {
-          ms <- indput_upd_if_necessary lxp ir v indbns to_grow ms;
-          Ret ^(ms, ir)
+          lms <- indput_upd_if_necessary lxp ir v indbns to_grow (BALLOCC.MSLog ms);
+          Ret ^((BALLOCC.upd_memstate lms ms), ir)
         }
       end
     end.
@@ -1716,15 +1741,17 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Theorem indput_ok : forall indlvl lxp bxp ir off bn ms,
     {< F Fm m0 m l freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * indrep_n_tree indlvl bxp ir l * BALLOC.rep bxp freelist) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
+           [[[ m ::: (Fm * indrep_n_tree indlvl bxp ir l * 
+              BALLOCC.rep bxp freelist ms) ]]] *
            [[ off < length l ]]
     POST:hm' RET:^(ms, ir')
-           exists m', LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           exists m', LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
            ([[ ir' = 0 ]] \/
            exists freelist' l',
            [[ ir = 0 \/ ir = ir' ]] *
-           [[[ m' ::: (Fm * indrep_n_tree indlvl bxp ir' l' * BALLOC.rep bxp freelist') ]]] *
+           [[[ m' ::: (Fm * indrep_n_tree indlvl bxp ir' l' * 
+             BALLOCC.rep bxp freelist' ms) ]]] *
            [[ incl freelist' freelist ]] * [[ l' = updN l off bn ]])
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} indput indlvl lxp bxp ir off bn ms.
@@ -1733,12 +1760,12 @@ Module BlockPtr (BPtr : BlockPtrSig).
       + step.
         - hoare.
          -- unfold IndRec.items_valid, IndSig.RAStart, IndSig.RALen, IndSig.xparams_ok.
-            rewrite mult_1_l. unfold Rec.well_formed. simpl. unfold BALLOC.bn_valid in *.
+            rewrite mult_1_l. unfold Rec.well_formed. simpl. unfold BALLOCC.bn_valid in *.
             rewrite length_updN, repeat_length. intuition.
-         -- unfold BALLOC.bn_valid in *. intuition.
-         -- or_r. cancel. unfold BALLOC.bn_valid in *; intuition.
+         -- unfold BALLOCC.bn_valid in *. intuition.
+         -- or_r. cancel. unfold BALLOCC.bn_valid in *; intuition.
             rewrite indrep_n_helper_0. rewrite indrep_n_helper_valid by omega.
-            unfold BALLOC.bn_valid. cancel.
+            unfold BALLOCC.bn_valid. cancel.
         - hoare.
         --  rewrite indrep_n_helper_valid by omega. cancel.
         --  or_r. cancel.
@@ -1753,26 +1780,26 @@ Module BlockPtr (BPtr : BlockPtrSig).
           repeat rewrite repeat_selN. rewrite roundTrip_0.
           (* the spec given is for updates, not blind writes *)
           hoare.
-         -- unfold BALLOC.bn_valid in *.
+         -- unfold BALLOCC.bn_valid in *.
             unfold IndRec.items_valid, IndSig.xparams_ok, IndSig.RAStart, IndSig.RALen, Rec.well_formed.
             simpl. rewrite length_updN, repeat_length. intuition.
-         -- unfold BALLOC.bn_valid in *. intuition.
+         -- unfold BALLOCC.bn_valid in *. intuition.
          -- or_r.
           (* safecancel isn't safe enough, so do it manually - the long and short of it is that the
              listmatches get canceled before the indrep_n_helper, causing incorrect instantiation *)
             norm. cancel. repeat split; auto.
             pred_apply. norm; intuition. instantiate (iblocks := updN _ _ _). cancel.
-            unfold BALLOC.bn_valid in *; intuition.
+            unfold BALLOCC.bn_valid in *; intuition.
             rewrite indrep_n_helper_valid by omega. cancel.
             rewrite listmatch_updN_removeN.
             indrep_n_extract. cancel.
             rewrite repeat_selN, roundTrip_0. rewrite indrep_n_tree_0.
             rewrite wordToNat_natToWord_idempotent'. cancel.
-            eapply BALLOC.bn_valid_goodSize; eauto.
+            eapply BALLOCC.bn_valid_goodSize; eauto.
             rewrite indrep_n_tree_valid in * by auto. destruct_lifts. auto.
             all : try rewrite repeat_length.
             all : try solve [indrep_n_tree_bound].
-            unfold BALLOC.bn_valid. auto.
+            unfold BALLOCC.bn_valid. auto.
             erewrite Nat.div_mod with (x := off) at 1.
             rewrite plus_comm, mult_comm. rewrite updN_concat; auto.
             repeat f_equal.
@@ -1808,7 +1835,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
           all : try ((instantiate (iblocks := updN _ _ _) ||
                       instantiate (iblocks0 := updN _ _ _)); cancel).
           all : try (rewrite listmatch_updN_removeN by indrep_n_tree_bound; cancel).
-          all : try rewrite natToWord_wordToNat;
+          all: try rewrite natToWord_wordToNat;
                 try rewrite wordToNat_natToWord_idempotent'; (cancel || auto).
           all : erewrite Nat.div_mod with (x := off) at 1.
           all : try (rewrite plus_comm, mult_comm; rewrite updN_concat).
@@ -2147,11 +2174,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
     let start := fold_left plus (map (fun i => NIndirect ^ S i) (seq 0 indlvl)) 0 in
     {< F Fm m0 m l freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * indrep_n_tree indlvl bxp bn l * BALLOC.rep bxp freelist) ]]]
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
+           [[[ m ::: (Fm * indrep_n_tree indlvl bxp bn l * BALLOCC.rep bxp freelist ms) ]]]
     POST:hm' RET:^(ms, r)  exists m' freelist' l',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * indrep_n_tree indlvl bxp r l' * BALLOC.rep bxp freelist') ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
+           [[[ m' ::: (Fm * indrep_n_tree indlvl bxp r l' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[ l' = upd_range l (nl - start) (length l - (nl - start)) $0 ]] * [[ incl freelist freelist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} indshrink_helper indlvl lxp bxp bn nl ms.
@@ -2168,16 +2195,16 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Theorem indshrink_ok : forall lxp bxp ir nl ms,
     {< F Fm m0 m l0 l1 l2 freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm * [[ nl <= length (l0 ++ l1 ++ l2) ]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm * [[ nl <= length (l0 ++ l1 ++ l2) ]] *
            [[[ m ::: (Fm * indrep_n_tree 0 bxp (IRIndPtr ir) l0 *
                            indrep_n_tree 1 bxp (IRDindPtr ir) l1 *
-                           indrep_n_tree 2 bxp (IRTindPtr ir) l2 * BALLOC.rep bxp freelist) ]]]
+                           indrep_n_tree 2 bxp (IRTindPtr ir) l2 * BALLOCC.rep bxp freelist ms) ]]]
     POST:hm' RET:^(ms, indptr', dindptr', tindptr')
            exists m' freelist' l0' l1' l2',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
            [[[ m' ::: (Fm * indrep_n_tree 0 bxp indptr' l0' *
                             indrep_n_tree 1 bxp dindptr' l1' *
-                            indrep_n_tree 2 bxp tindptr' l2' * BALLOC.rep bxp freelist') ]]] *
+                            indrep_n_tree 2 bxp tindptr' l2' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[ l0' ++ l1' ++ l2' = upd_range (l0 ++ l1 ++ l2) nl (length (l0 ++ l1 ++ l2) - nl) $0 ]] *
            [[ incl freelist freelist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
@@ -2205,11 +2232,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Theorem shrink_ok : forall lxp bxp ir nr ms,
     {< F Fm m0 m l freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * rep bxp ir l * BALLOC.rep bxp freelist) ]]]
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
+           [[[ m ::: (Fm * rep bxp ir l * BALLOCC.rep bxp freelist ms) ]]]
     POST:hm' RET:^(ms, r)  exists m' freelist' l',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * rep bxp r l' * BALLOC.rep bxp freelist') ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
+           [[[ m' ::: (Fm * rep bxp r l' * BALLOCC.rep bxp freelist' ms) ]]] *
            exists ind dind tind dirl, [[ r = upd_irec ir ((IRLen ir) - nr) ind dind tind dirl ]] *
            [[ l' = firstn (IRLen ir - nr) l ]] *
            [[ incl freelist freelist' ]]
@@ -2315,19 +2342,19 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Theorem indgrow_ok : forall lxp bxp ir off bn ms,
     {< F Fm m0 m l0 l1 l2 freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
            [[ off < NBlocks - NDirect ]] * [[ bn <> $0 ]] *
            [[[ m ::: (Fm * indrep_n_tree 0 bxp (IRIndPtr ir) l0 *
                            indrep_n_tree 1 bxp (IRDindPtr ir) l1 *
-                           indrep_n_tree 2 bxp (IRTindPtr ir) l2 * BALLOC.rep bxp freelist) ]]]
+                           indrep_n_tree 2 bxp (IRTindPtr ir) l2 * BALLOCC.rep bxp freelist ms) ]]]
     POST:hm' RET:^(ms, v, indptr', dindptr', tindptr')
-           exists m', LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
+           exists m', LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
            ([[ v = 0 ]] \/ [[ v <> 0 ]] *
            exists freelist' l0' l1' l2',
            [[ updN (l0 ++ l1 ++ l2) off bn = l0' ++ l1' ++ l2' ]] *
            [[[ m' ::: (Fm * indrep_n_tree 0 bxp indptr' l0' *
                             indrep_n_tree 1 bxp dindptr' l1' *
-                            indrep_n_tree 2 bxp tindptr' l2' * BALLOC.rep bxp freelist') ]]] *
+                            indrep_n_tree 2 bxp tindptr' l2' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[ incl freelist' freelist ]])
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} indgrow lxp bxp ir off bn ms.
@@ -2351,15 +2378,15 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Theorem grow_ok : forall lxp bxp ir bn ms,
     {< F Fm m0 m l freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
            [[ length l < NBlocks ]] *
-           [[[ m ::: (Fm * rep bxp ir l * BALLOC.rep bxp freelist) ]]]
+           [[[ m ::: (Fm * rep bxp ir l * BALLOCC.rep bxp freelist ms) ]]]
     POST:hm' RET:^(ms, r)
            exists m',
-           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' \/
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' \/
            exists freelist' ir',
-           [[ r = OK ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * rep bxp ir' (l ++ [bn]) * BALLOC.rep bxp freelist') ]]] *
+           [[ r = OK ir' ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
+           [[[ m' ::: (Fm * rep bxp ir' (l ++ [bn]) * BALLOCC.rep bxp freelist' ms) ]]] *
            [[ IRAttrs ir' = IRAttrs ir /\ length (IRBlocks ir') = length (IRBlocks ir) ]] *
            [[ incl freelist' freelist ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'

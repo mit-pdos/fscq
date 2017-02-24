@@ -31,7 +31,6 @@ Import ListNotations.
 Set Implicit Arguments.
 
 
-
 Module INODE.
 
   (************* on-disk representation of inode *)
@@ -272,19 +271,19 @@ Module INODE.
     Ret ms.
 
   Definition shrink lxp bxp xp inum nr ms :=
-    let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
-    let^ (ms, ir') <- Ind.shrink lxp bxp ir nr ms;
-    ms <- IRec.put_array lxp xp inum ir' ms;
-    Ret ms.
+    let^ (lms, (ir : irec)) <- IRec.get_array lxp xp inum (BALLOCC.MSLog ms);
+    let^ (ms, ir') <- Ind.shrink lxp bxp ir nr (BALLOCC.upd_memstate lms ms);
+    lms <- IRec.put_array lxp xp inum ir' (BALLOCC.MSLog ms);
+    Ret (BALLOCC.upd_memstate lms ms).
 
   Definition grow lxp bxp xp inum bn ms :=
-    let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
-    let^ (ms, r) <- Ind.grow lxp bxp ir ($ bn) ms;
+    let^ (lms, (ir : irec)) <- IRec.get_array lxp xp inum (BALLOCC.MSLog ms);
+    let^ (ms, r) <- Ind.grow lxp bxp ir ($ bn) (BALLOCC.upd_memstate lms ms);
     match r with
     | Err e => Ret ^(ms, Err e)
     | OK ir' =>
-        ms <- IRec.put_array lxp xp inum ir' ms;
-        Ret ^(ms, OK tt)
+        lms <- IRec.put_array lxp xp inum ir' (BALLOCC.MSLog ms);
+        Ret ^((BALLOCC.upd_memstate lms ms), OK tt)
     end.
 
 
@@ -302,7 +301,7 @@ Module INODE.
 
   Definition inode_match bxp ino (ir : irec) := Eval compute_rec in
     ( [[ IAttr ino = (ir :-> "attrs") ]] *
-      [[ Forall (fun a => BALLOC.bn_valid bxp (# a) ) (IBlocks ino) ]] *
+      [[ Forall (fun a => BALLOCC.bn_valid bxp (# a) ) (IBlocks ino) ]] *
       Ind.rep bxp ir (IBlocks ino) )%pred.
 
   Definition rep bxp xp (ilist : list inode) := (
@@ -368,7 +367,7 @@ Module INODE.
   Proof.
     intros. unfold rep.
     split; cancel; apply listmatch_piff_replace.
-    all : intros; unfold inode_match, BALLOC.bn_valid.
+    all : intros; unfold inode_match, BALLOCC.bn_valid.
     all : rewrite H; split; cancel.
     all : unfold Ind.rep; cancel; eauto.
     all : apply Ind.indrep_bxp_switch; auto.
@@ -647,12 +646,12 @@ Module INODE.
   Theorem shrink_ok : forall lxp bxp xp inum nr ms,
     {< F Fm Fi m0 m ilist ino freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * rep bxp xp ilist * BALLOC.rep bxp freelist) ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
+           [[[ m ::: (Fm * rep bxp xp ilist * BALLOCC.rep bxp freelist ms) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
     POST:hm' RET:ms exists m' ilist' ino' freelist',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOC.rep bxp freelist') ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
+           [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ ino' = mk_inode (cuttail nr (IBlocks ino)) (IAttr ino) ]] *
            [[ incl freelist freelist' ]]
@@ -708,17 +707,17 @@ Module INODE.
   Theorem grow_ok : forall lxp bxp xp inum bn ms,
     {< F Fm Fi m0 m ilist ino freelist,
     PRE:hm
-           LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
            [[ length (IBlocks ino) < NBlocks ]] *
-           [[ BALLOC.bn_valid bxp bn ]] *
-           [[[ m ::: (Fm * rep bxp xp ilist * BALLOC.rep bxp freelist) ]]] *
+           [[ BALLOCC.bn_valid bxp bn ]] *
+           [[[ m ::: (Fm * rep bxp xp ilist * BALLOCC.rep bxp freelist ms) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
     POST:hm' RET:^(ms, r)
            exists m',
-           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' \/
+           [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' \/
            [[ r = OK tt ]] * exists ilist' ino' freelist',
-           LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOC.rep bxp freelist') ]]] *
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
+           [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino) ]] *
            [[ incl freelist' freelist ]]
@@ -744,7 +743,7 @@ Module INODE.
     cancel.
     substl (IAttr (selN ilist inum inode0)); eauto.
     apply Forall_app; auto.
-    eapply BALLOC.bn_valid_roundtrip; eauto.
+    eapply BALLOCC.bn_valid_roundtrip; eauto.
     cancel; auto.
 
     Unshelve. all: eauto; exact emp.
@@ -766,7 +765,7 @@ Module INODE.
   Lemma inode_rep_bn_valid_piff : forall bxp xp l,
     rep bxp xp l <=p=> rep bxp xp l *
       [[ forall inum, inum < length l ->
-         Forall (fun a => BALLOC.bn_valid bxp (# a) ) (IBlocks (selN l inum inode0)) ]].
+         Forall (fun a => BALLOCC.bn_valid bxp (# a) ) (IBlocks (selN l inum inode0)) ]].
   Proof.
     intros; split;
     unfold pimpl; intros; pred_apply;
