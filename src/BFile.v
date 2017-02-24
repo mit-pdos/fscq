@@ -1071,7 +1071,9 @@ Module BFILE.
     setoid_rewrite surjective_pairing at 2.
     cancel.
 
-    safestep; [ | sepauto .. ].
+    safestep.
+    5: eauto.
+    3: sepauto.
     setoid_rewrite <- updN_selN_eq with (l := ilist) (ix := inum) at 4.
     rewrite listmatch_updN_removeN by omega.
     unfold file_match at 3; cancel; eauto.
@@ -1079,6 +1081,8 @@ Module BFILE.
     rewrite listmatch_updN_removeN by omega.
     erewrite selN_map by omega; filldef.
     cancel.
+
+    eapply bfcache_upd; eauto.
     sepauto.
 
     pimpl_crash; cancel; auto.
