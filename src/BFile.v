@@ -250,6 +250,30 @@ Module BFILE.
     cancel.
   Qed.
 
+  Definition rep_alt (bxps : BALLOC.Alloc.BmpSig.xparams * BALLOC.Alloc.BmpSig.xparams)
+                     ixp (flist : list bfile) ilist frees mscache msalloc :=
+    (BALLOC.rep (pick_balloc bxps msalloc)        (pick_balloc frees msalloc) *
+     BALLOC.rep (pick_balloc bxps (negb msalloc)) (pick_balloc frees (negb msalloc)) *
+     INODE.rep (pick_balloc bxps msalloc) ixp ilist *
+     listmatch file_match flist ilist *
+     [[ locked (cache_rep mscache flist ilist) ]] *
+     [[ BmapNBlocks (pick_balloc bxps msalloc) = BmapNBlocks (pick_balloc bxps (negb msalloc)) ]]
+    )%pred.
+
+  Theorem rep_alt_equiv : forall bxps ixp flist ilist frees mscache msalloc,
+    rep bxps ixp flist ilist frees mscache <=p=> rep_alt bxps ixp flist ilist frees mscache msalloc.
+  Proof.
+    unfold rep, rep_alt; split; destruct msalloc; simpl.
+    - cancel.
+    - norml; unfold stars; simpl.
+      rewrite INODE.rep_bxp_switch at 1 by eauto.
+      cancel.
+    - cancel.
+    - norml; unfold stars; simpl.
+      rewrite INODE.rep_bxp_switch at 1 by eauto.
+      cancel.
+  Qed.
+
   Definition block_belong_to_file ilist bn inum off :=
     off < length (INODE.IBlocks (selN ilist inum INODE.inode0)) /\
     bn = # (selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0).
