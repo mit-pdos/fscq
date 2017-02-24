@@ -1640,7 +1640,9 @@ Module BFILE.
     destruct (list2nmem_arrayN_bound vsl _ Hx); subst; simpl in *; omega.
     rewrite isolateN_fwd with (i:=i) by auto.
     cancel.
-    Unshelve. eauto.
+  Unshelve.
+    eauto.
+    intros; exact emp.
   Qed.
 
 
