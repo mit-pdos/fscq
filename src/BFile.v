@@ -1673,7 +1673,9 @@ Module BFILE.
 
     step.
     rewrite <- isolateN_bwd_upd by auto; cancel.
-    Unshelve. eauto.
+  Unshelve.
+    eauto.
+    intros; exact emp.
   Qed.
 
 
