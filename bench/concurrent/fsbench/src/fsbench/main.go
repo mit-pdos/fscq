@@ -14,11 +14,12 @@ import (
 )
 
 type FileSystem struct {
-	ident    string
-	binary   string
-	filename string
-	isFuse3  bool
-	args     []string
+	ident             string
+	binary            string
+	filename          string
+	disjointFilenames []string
+	isFuse3           bool
+	args              []string
 }
 
 var fscqArgs = []string{"disk.img", "/tmp/fscq"}
@@ -28,11 +29,15 @@ var fileSystems = []FileSystem{
 	{ident: "fscq",
 		binary:   "fscq",
 		filename: "/tmp/fscq/small-4k",
-		args:     fscqArgs},
+		disjointFilenames: []string{"/tmp/fscq/dir1/file1",
+			"/tmp/fscq/dir2/file2"},
+		args: fscqArgs},
 	{ident: "cfscq",
 		binary:   "cfscq",
 		filename: "/tmp/fscq/small-4k",
-		args:     fscqArgs},
+		disjointFilenames: []string{"/tmp/fscq/dir1/file1",
+			"/tmp/fscq/dir2/file2"},
+		args: fscqArgs},
 	{ident: "hfuse",
 		binary:   "HelloFS",
 		filename: "/tmp/hellofs/hello",
@@ -45,12 +50,16 @@ var fileSystems = []FileSystem{
 	{ident: "fusexmp",
 		binary:   "passthrough",
 		filename: "/tmp/hellofs/etc/passwd",
-		isFuse3:  true,
-		args:     helloArgs},
+		disjointFilenames: []string{"/tmp/hellofs/etc/passwd",
+			"/tmp/hellofs/bin/true"},
+		isFuse3: true,
+		args:    helloArgs},
 	{ident: "native",
 		binary:   "true",
 		filename: "/etc/passwd",
-		args:     []string{}},
+		disjointFilenames: []string{"/etc/passwd",
+			"/bin/true"},
+		args: []string{}},
 }
 
 func parseIdent(s string) (FileSystem, error) {
@@ -70,9 +79,17 @@ func (fs FileSystem) isHaskell() bool {
 	return fs.ident == "fscq" || fs.ident == "cfscq" || fs.ident == "hfuse"
 }
 
+func (fs FileSystem) supportsDisjointDirectories() bool {
+	return len(fs.disjointFilenames) > 0
+}
+
 // A CpuSpec is a specification of CPUs in the form expected by taskset (numerical list,
 // separated by commas, including ranges)
 type CpuSpec string
+
+func (spec CpuSpec) String() string {
+	return fmt.Sprintf("\"%s\"", string(spec))
+}
 
 type fuseOptions struct {
 	nameCache    bool
@@ -152,10 +169,11 @@ func (fs FileSystem) Stop() {
 }
 
 type workloadOptions struct {
-	operation    string
-	clientCpus   []CpuSpec
-	existingPath bool
-	kiters       int
+	operation           string
+	clientCpus          []CpuSpec
+	existingPath        bool
+	disjointDirectories bool
+	kiters              int
 }
 
 func (opts workloadOptions) WithKiters(kiters int) workloadOptions {
@@ -177,62 +195,99 @@ func max(a, b int) int {
 	return b
 }
 
-// SearchWorkload runs a workload, varying kiters until the run takes at least targetMs milliseconds.
-// The input opts should specify the workload parameters and initial kiters for
-// the search. SearchWorkload returns the final duration and modifies the input
-// opts to have the final kiters.
-func (fs FileSystem) SearchWorkload(opts *workloadOptions, parallel bool, targetMs int) time.Duration {
-	targetTime := time.Duration(targetMs) * time.Millisecond
-	timeTaken := fs.RunWorkload(*opts, parallel)
-	for timeTaken < targetTime {
-		last := opts.kiters
-		// Predict required iterations
-		kiters := int(float64(last) * float64(targetTime) / float64(timeTaken))
-		// same policy as Go's testing/benchmark.go (see func (b *B) launch()): //
-		// run 1.2x the iterations we estimate, but don't grow by more than 100x last
-		// time and run at least one more iteration
-		opts.kiters = max(min(kiters+kiters/5, 100*last), last+1)
-		timeTaken = fs.RunWorkload(*opts, parallel)
-	}
-	return timeTaken
+type runResult struct {
+	totalNs    float64
+	iterStddev float64
 }
 
-func (fs FileSystem) RunWorkload(opts workloadOptions, parallel bool) time.Duration {
-	path := fs.filename
-	if !opts.existingPath {
-		path += "x"
-	}
+type WorkloadResult struct {
+	elapsed time.Duration
+	// stddev of per operation time
+	stddev time.Duration
+}
+
+func (fs FileSystem) RunWorkload(opts workloadOptions, parallel bool) WorkloadResult {
 	copies := 1
 	if parallel {
 		copies = 2
 	}
-
-	args := []string{opts.operation, path, strconv.Itoa(opts.kiters)}
-
-	done := make(chan float64)
+	var paths []string
 	for i := 0; i < copies; i++ {
-		go func(spec CpuSpec) {
-			cmd := spec.Command("fsops", args...)
-			output, err := cmd.Output()
+		path := fs.filename
+		if opts.disjointDirectories {
+			path = fs.disjointFilenames[i]
+		}
+		if !opts.existingPath {
+			path += "x"
+		}
+		paths = append(paths, path)
+	}
+
+	args := func(i int) []string {
+		return []string{opts.operation, paths[i], strconv.Itoa(opts.kiters)}
+	}
+
+	done := make(chan runResult)
+	for i := 0; i < copies; i++ {
+		go func(i int) {
+			cmd := opts.clientCpus[i].Command("fsops", args(i)...)
+			outputBytes, err := cmd.Output()
 			if err != nil {
 				log.Fatal(fmt.Errorf("could not run fsops: %v", err))
 			}
-			outputNum := strings.TrimRight(string(output), "\n")
-			elapsedNs, err := strconv.ParseFloat(outputNum, 64)
-			if err != nil {
-				log.Fatal(fmt.Errorf("could not parse fsops output %s", outputNum))
+			output := strings.TrimRight(string(outputBytes), "\n")
+			nums := strings.Split(output, " ")
+			if len(nums) != 2 {
+				log.Fatal(fmt.Errorf("unexpected fsops output %s", output))
 			}
-			done <- elapsedNs
-		}(opts.clientCpus[i])
+			elapsedNs, err := strconv.ParseFloat(nums[0], 64)
+			if err != nil {
+				log.Fatal(fmt.Errorf("could not parse fsops mean from %s", output))
+			}
+			iterStddev, err := strconv.ParseFloat(nums[1], 64)
+			if err != nil {
+				log.Fatal(fmt.Errorf("could not parse fsops stddev from %s", output))
+			}
+			done <- runResult{elapsedNs, iterStddev}
+		}(i)
 	}
 	var elapsedTime float64
+	var iterStddev float64
 	for i := 0; i < copies; i++ {
 		timing := <-done
-		if timing > elapsedTime {
-			elapsedTime = timing
+		if timing.totalNs > elapsedTime {
+			elapsedTime = timing.totalNs
+		}
+		// combine stddev by taking maximum, just to get a safe estimate
+		// (as opposed to correctly computing the stddev of all the samples)
+		if timing.iterStddev > iterStddev {
+			iterStddev = timing.iterStddev
 		}
 	}
-	return time.Duration(int64(elapsedTime))
+	return WorkloadResult{
+		time.Duration(int64(elapsedTime)),
+		time.Duration(int64(iterStddev)),
+	}
+}
+
+// SearchWorkload runs a workload, varying kiters until the run takes at least targetMs milliseconds.
+// The input opts should specify the workload parameters and initial kiters for
+// the search. SearchWorkload returns the final duration and modifies the input
+// opts to have the final kiters.
+func (fs FileSystem) SearchWorkload(opts *workloadOptions, parallel bool, targetMs int) WorkloadResult {
+	targetTime := time.Duration(targetMs) * time.Millisecond
+	result := fs.RunWorkload(*opts, parallel)
+	for result.elapsed < targetTime {
+		last := opts.kiters
+		// Predict required iterations
+		kiters := int(float64(last) * float64(targetTime) / float64(result.elapsed))
+		// same policy as Go's testing/benchmark.go (see func (b *B) launch()): //
+		// run 1.2x the iterations we estimate, but don't grow by more than 100x last
+		// time and run at least one more iteration
+		opts.kiters = max(min(kiters+kiters/5, 100*last), last+1)
+		result = fs.RunWorkload(*opts, parallel)
+	}
+	return result
 }
 
 func printTsv(args ...interface{}) {
@@ -249,21 +304,25 @@ func toSec(d time.Duration) float64 {
 	return float64(d) / float64(time.Second)
 }
 
+func toMicros(d time.Duration) float64 {
+	return float64(d) / float64(time.Microsecond)
+}
+
 type DataPoint struct {
 	fsIdent string
 	fuseOptions
 	workloadOptions
-	parallel       bool
-	elapsedTimeSec float64
-	seqTimeSec     float64
+	parallel  bool
+	result    WorkloadResult
+	seqResult WorkloadResult
 }
 
 func (p DataPoint) ParallelSpeedup() float64 {
-	return 2 * p.seqTimeSec / p.elapsedTimeSec
+	return float64(2*p.seqResult.elapsed) / float64(p.result.elapsed)
 }
 
 func (p DataPoint) MicrosPerOp() float64 {
-	return p.elapsedTimeSec / float64(p.kiters) * 1000
+	return float64(p.result.elapsed.Nanoseconds()) / 1000 / float64(p.kiters*1000)
 }
 
 func (p DataPoint) SeqPoint() DataPoint {
@@ -272,24 +331,27 @@ func (p DataPoint) SeqPoint() DataPoint {
 		p.fuseOptions,
 		p.workloadOptions,
 		false,
-		p.seqTimeSec,
-		p.seqTimeSec,
+		p.result,
+		p.result,
 	}
 }
 
 var DataRowHeader = []interface{}{
 	"fs", "name_cache", "attr_cache", "neg_name_cache", "kernel_cache", "server-cpu",
-	"operation", "client-cpus", "exists", "kiters",
+	"operation", "client-cpus", "exists", "disjoint-directories", "kiters",
 	"parallel",
-	"timeSec", "seqTimeSec", "speedup", "usPerOp",
+	"timeSec", "opStdMicros", "seqTimeSec", "seqOpStdMicros",
+	"speedup", "usPerOp",
 }
 
 func (p DataPoint) DataRow() []interface{} {
+	clientCpuSpec := fmt.Sprintf("\"%s\"", serializeCpuSpecs(p.clientCpus))
 	return []interface{}{
 		p.fsIdent, p.nameCache, p.attrCache, p.negNameCache, p.kernelCache, p.serverCpu,
-		p.operation, serializeCpuSpecs(p.clientCpus), p.existingPath, p.kiters,
+		p.operation, clientCpuSpec, p.existingPath, p.disjointDirectories, p.kiters,
 		p.parallel,
-		p.elapsedTimeSec, p.seqTimeSec, p.ParallelSpeedup(), p.MicrosPerOp(),
+		toSec(p.result.elapsed), toMicros(p.result.stddev), toSec(p.seqResult.elapsed), toMicros(p.seqResult.stddev),
+		p.ParallelSpeedup(), p.MicrosPerOp(),
 	}
 }
 
@@ -314,7 +376,9 @@ func serializeCpuSpecs(specs []CpuSpec) string {
 func main() {
 	print_header := flag.Bool("print-header", false, "just print a data header")
 	operation := flag.String("op", "stat", "operation to perform (stat or open)")
-	existingPath := flag.Bool("exists", false, "operate on an existing file")
+	existingPath := flag.Bool("exists", true, "operate on an existing file")
+	disjointDirectories := flag.Bool("disjoint-dirs", false,
+		"operate on disjoint directories (ignored if unsupported)")
 	parallel := flag.Bool("parallel", false, "run operation in parallel")
 	kiters := flag.Int("kiters", 1, "thousands of iterations to run the operation")
 	targetMs := flag.Int("target-ms", 0,
@@ -323,11 +387,12 @@ func main() {
 	name_cache := flag.Bool("name-cache", false, "enable fuse entry (name) cache")
 	neg_name_cache := flag.Bool("neg-cache", false, "enable fuse negative (deleted) name cache")
 	kernel_cache := flag.Bool("kernel-cache", false, "enable kernel cache")
-
 	server_cpu := flag.String("server-cpu", "", "pin server to a cpu (empty string to not pin)")
 	client_cpus := flag.String("client-cpus", "",
 		"pin clients to cpus (when running in parallel, separate cpus with a slash\n"+
 			"or provide a single spec)")
+
+	readable_output := flag.Bool("readable", false, "produce verbose, readable output")
 
 	flag.Parse()
 
@@ -356,6 +421,10 @@ func main() {
 		log.Fatal(fmt.Errorf("invalid operation %s: expected stat or open", *operation))
 	}
 
+	if *disjointDirectories && !fs.supportsDisjointDirectories() {
+		*disjointDirectories = false
+	}
+
 	if *parallel {
 		runtime.GOMAXPROCS(2)
 	}
@@ -371,26 +440,27 @@ func main() {
 	fs.Launch(fuseOpts)
 
 	opts := workloadOptions{
-		operation:    *operation,
-		clientCpus:   parseCpuSpecs(*client_cpus),
-		existingPath: *existingPath,
-		kiters:       *kiters,
+		operation:           *operation,
+		clientCpus:          parseCpuSpecs(*client_cpus),
+		existingPath:        *existingPath,
+		disjointDirectories: *disjointDirectories,
+		kiters:              *kiters,
 	}
 
 	// warmup
 	fs.RunWorkload(opts.WithKiters(1), false)
 
-	var elapsed time.Duration
+	var result WorkloadResult
 	if *targetMs > 0 {
-		elapsed = fs.SearchWorkload(&opts, *parallel, *targetMs)
+		result = fs.SearchWorkload(&opts, *parallel, *targetMs)
 	} else {
-		elapsed = fs.RunWorkload(opts, *parallel)
+		result = fs.RunWorkload(opts, *parallel)
 	}
-	var seqTime time.Duration
+	var seqResult WorkloadResult
 	if *parallel {
-		seqTime = fs.RunWorkload(opts, false)
+		seqResult = fs.RunWorkload(opts, false)
 	} else {
-		seqTime = elapsed
+		seqResult = result
 	}
 
 	fs.Stop()
@@ -400,13 +470,21 @@ func main() {
 		fuseOptions:     fuseOpts,
 		workloadOptions: opts,
 		parallel:        *parallel,
-		elapsedTimeSec:  toSec(elapsed),
-		seqTimeSec:      toSec(seqTime),
+		result:          result,
+		seqResult:       seqResult,
 	}
 
-	printTsv(p.DataRow()...)
-	if *parallel {
-		printTsv(p.SeqPoint().DataRow()...)
+	if *readable_output {
+		row := p.DataRow()
+		for i, hdr := range DataRowHeader {
+			value := row[i]
+			fmt.Printf("%-20s %v\n", hdr, value)
+		}
+	} else {
+		printTsv(p.DataRow()...)
+		if *parallel {
+			printTsv(p.SeqPoint().DataRow()...)
+		}
 	}
 	return
 }

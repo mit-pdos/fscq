@@ -16,10 +16,15 @@ cache2=false
 kernelcache=false
 
 info "testing file systems"
-for op in stat open; do
-  for fs in fscq cfscq hfuse c-hello fusexmp native; do
-    for exists in "true" "false"; do
-      fsbench -target-ms=1000 -server-cpu=0 -client-cpus=1/2 -op=$op -exists=$exists -parallel=true -attr-cache=$cache1 -name-cache=$cache1 -neg-cache=$cache2 -kernel-cache=$kernelcache $fs
+for op in stat; do
+  #for fs in fscq cfscq hfuse c-hello fusexmp native; do
+  for fs in fscq cfscq hfuse fusexmp native; do
+    for disjointdirs in "true" "false"; do
+      for exists in "true" "false"; do
+        for clientcpu in "0" "1/2"; do
+          fsbench -target-ms=1500 -server-cpu=0 -client-cpus=$clientcpu -op=$op -disjoint-dirs=$disjointdirs -exists=$exists -parallel=true -attr-cache=$cache1 -name-cache=$cache1 -neg-cache=$cache2 -kernel-cache=$kernelcache $fs
+        done
+      done
     done
   done
 done
