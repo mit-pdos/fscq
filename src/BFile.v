@@ -2302,7 +2302,7 @@ Module BFILE.
 
   Definition file_crash f f' : Prop :=
     exists vs, possible_crash_list (BFData f) vs /\
-    f' = mk_bfile (synced_list vs) (BFAttr f) (BFCache f).
+    f' = mk_bfile (synced_list vs) (BFAttr f) None.
 
   Definition flist_crash fl fl' : Prop :=
     Forall2 file_crash fl fl'.
@@ -2366,10 +2366,11 @@ Module BFILE.
   Lemma file_crash_synced : forall f f',
     file_crash f f' ->
     FSynced f ->
-    f = f'.
+    BFData f = BFData f' /\
+    BFAttr f = BFAttr f'.
   Proof.
-    unfold FSynced, file_crash; intuition.
-    destruct H; intuition subst; simpl.
+    unfold FSynced, file_crash; intros.
+    destruct H; intuition subst; simpl; eauto.
     destruct f; simpl in *.
     f_equal.
     eapply list_selN_ext.
@@ -2444,7 +2445,7 @@ Module BFILE.
   Lemma xform_rep : forall bxp ixp flist ilist frees mscache,
     crash_xform (rep bxp ixp flist ilist frees mscache) =p=> 
       exists flist', [[ flist_crash flist flist' ]] *
-      rep bxp ixp flist' ilist frees mscache.
+      rep bxp ixp flist' ilist frees (BFcache.empty _).
   Proof.
     unfold rep; intros.
     xform_norm.
@@ -2452,13 +2453,19 @@ Module BFILE.
     rewrite xform_file_list.
     cancel.
 
-    erewrite flist_crash_length in * by eauto.
-    rewrite H2 by eauto.
-    eapply forall2_selN with (n := inum) in H.
-    inversion H; intuition.
-    rewrite H5; simpl; eauto.
-    erewrite flist_crash_length in * by eauto.
+    rewrite locked_eq; unfold cache_rep.
+    denote cache_rep as Hc; clear Hc.
+    generalize dependent flist. generalize 0.
+    induction fs'; simpl in *; intros.
+    eapply BFM.mm_init.
+    denote flist_crash as Hx; inversion Hx; subst.
+    denote! (file_crash _ _) as Hy; inversion Hy; intuition subst.
+    simpl.
+    eapply pimpl_trans. apply pimpl_refl. 2: eapply IHfs'. cancel.
     eauto.
+
+  Unshelve.
+    all: eauto.
   Qed.
 
   Lemma xform_file_match_ptsto : forall F a vs f ino,
@@ -2486,7 +2493,7 @@ Module BFILE.
     (F * i |-> f)%pred (list2nmem fs) ->
     crash_xform (rep bxp ixp fs ilist frees mscache) =p=> 
       exists fs' f',  [[ flist_crash fs fs' ]] * [[ file_crash f f' ]] *
-      rep bxp ixp fs' ilist frees mscache *
+      rep bxp ixp fs' ilist frees (BFcache.empty _) *
       [[ (arrayN_ex (@ptsto _ addr_eq_dec _) fs' i * i |-> f')%pred (list2nmem fs') ]].
   Proof.
     unfold rep; intros.
@@ -2498,12 +2505,16 @@ Module BFILE.
     apply forall2_selN; eauto.
     eapply list2nmem_inbound; eauto.
 
-    erewrite flist_crash_length in * by eauto.
-    rewrite H3 by eauto.
-    eapply forall2_selN with (n := inum) in H0.
-    inversion H0; intuition.
-    rewrite H6; simpl; eauto.
-    erewrite flist_crash_length in * by eauto.
+    rewrite locked_eq; unfold cache_rep.
+    denote cache_rep as Hc; clear Hc.
+    denote list2nmem as Hc; clear Hc.
+    generalize dependent fs. generalize 0.
+    induction fs'; simpl in *; intros.
+    eapply BFM.mm_init.
+    denote! (flist_crash _ _) as Hx; inversion Hx; subst.
+    denote! (file_crash _ _) as Hy; inversion Hy; intuition subst.
+    simpl.
+    eapply pimpl_trans. apply pimpl_refl. 2: eapply IHfs'. cancel.
     eauto.
 
     apply list2nmem_ptsto_cancel.
@@ -2517,7 +2528,7 @@ Module BFILE.
     (Fd (list2nmem (BFData f))) ->
     crash_xform (rep bxp ixp fs ilist frees mscache) =p=>
       exists fs' f',  [[ flist_crash fs fs' ]] * [[ file_crash f f' ]] *
-      rep bxp ixp fs' ilist frees mscache *
+      rep bxp ixp fs' ilist frees (BFcache.empty _) *
       [[ (arrayN_ex (@ptsto _ addr_eq_dec _) fs' i * i |-> f')%pred (list2nmem fs') ]] *
       [[ (crash_xform Fd)%pred (list2nmem (BFData f')) ]].
   Proof.
@@ -2534,7 +2545,7 @@ Module BFILE.
     (Fd * off |-> vs)%pred (list2nmem (BFData f)) ->
     crash_xform (rep bxp ixp fs ilist frees mscache) =p=> 
       exists fs' f' v, [[ flist_crash fs fs' ]] * [[ file_crash f f' ]] *
-      rep bxp ixp fs' ilist frees mscache * [[ In v (vsmerge vs) ]] *
+      rep bxp ixp fs' ilist frees (BFcache.empty _) * [[ In v (vsmerge vs) ]] *
       [[ (arrayN_ex (@ptsto _ addr_eq_dec _) fs' ino * ino |-> f')%pred (list2nmem fs') ]] *
       [[ (crash_xform Fd * off |=> v)%pred (list2nmem (BFData f')) ]].
   Proof.
