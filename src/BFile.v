@@ -1976,6 +1976,8 @@ Module BFILE.
     step.
 
     - safestep.
+      msalloc_eq; cancel.
+      eauto.
       step.
       or_r; safecancel.
       rewrite setlen_inbound, Rounding.sub_sub_assoc by omega; auto.
@@ -1983,6 +1985,8 @@ Module BFILE.
       cancel.
 
     - safestep.
+      msalloc_eq; cancel.
+      eauto.
       apply list2nmem_array.
       step.
 
