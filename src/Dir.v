@@ -512,8 +512,7 @@ Module DIR.
              [[ goodSize addrlen inum ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
-           (([[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap ilist frees ms')
+           (([[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
         \/  ([[ r = OK tt ]] * 
              exists dmap' Fd ilist' frees',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
@@ -529,14 +528,16 @@ Module DIR.
   Proof.
     unfold link, ifind_lookup_f, ifind_invalid, rep_macro, rep.
     step.
-    step.
+    step; msalloc_eq.
+    cancel.
 
     denote lookup_f as Hx; apply lookup_notindomain in Hx as Hy.
-    step.
+    step; msalloc_eq.
 
     (* case 1: use avail entry *)
     cbv; tauto.
-    step.
+    cancel.
+    step; msalloc_eq.
     or_r; cancel; eauto.
     eexists; split; eauto.
     apply listpred_dmatch_mem_upd; auto.
@@ -547,13 +548,16 @@ Module DIR.
     cbv; tauto.
     cbv; tauto.
     cbv; tauto.
-    step.
+    cancel.
+
+    step; msalloc_eq.
     or_r; cancel; eauto.
     eexists; split; eauto.
     eapply listpred_dmatch_ext_mem_upd; eauto.
     eapply ptsto_upd_disjoint; eauto.
     eapply lookup_notindomain; eauto.
-    Unshelve. eauto.
+  Unshelve.
+    all: eauto.
   Qed.
 
 
