@@ -61,6 +61,12 @@ Module BFILE.
     MSCache : BFcache_type
   }.
 
+  Ltac msalloc_eq :=
+    repeat match goal with
+    | [ H: MSAlloc _ = MSAlloc _ |- _ ] => rewrite H in *; clear H
+    | [ H: MSCache _ = MSCache _ |- _ ] => rewrite H in *; clear H
+    end.
+
 
   (* interface implementation *)
 
@@ -1801,7 +1807,8 @@ Module BFILE.
   Proof.
     unfold read_cond.
     prestep. cancel.
-    safestep. eauto. eauto.
+    safestep. eauto. msalloc_eq; cancel. eauto. eauto.
+
     step.
     step.
     step.
@@ -1823,7 +1830,9 @@ Module BFILE.
     denote cond as Hx; rewrite firstn_oob in Hx; auto.
     rewrite map_length; auto.
     cancel.
-    Unshelve. all: try easy. exact ($0, nil).
+  Unshelve.
+    all: try easy.
+    try exact ($0, nil).
   Qed.
 
 
@@ -2465,9 +2474,3 @@ Module BFILE.
   Qed.
 
 End BFILE.
-
-Ltac msalloc_eq :=
-  repeat match goal with
-  | [ H: BFILE.MSAlloc _ = BFILE.MSAlloc _ |- _ ] => rewrite H in *; clear H
-  | [ H: BFILE.MSCache _ = BFILE.MSCache _ |- _ ] => rewrite H in *; clear H
-  end.
