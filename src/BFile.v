@@ -2560,3 +2560,5 @@ Module BFILE.
   Qed.
 
 End BFILE.
+
+Ltac msalloc_eq := BFILE.msalloc_eq.
