@@ -1573,6 +1573,8 @@ Module BFILE.
     rewrite listmatch_map_l; sepauto.
     sepauto.
 
+    eauto.
+
     seprewrite; apply eq_sym.
     eapply listmatch_length_r with (m := list2nmem ds!!).
     pred_apply; cancel.
@@ -1581,7 +1583,7 @@ Module BFILE.
     eassign (bxp_1, bxp_2); pred_apply; unfold rep, file_match.
     setoid_rewrite listmatch_isolate with (i := inum) at 3.
     repeat erewrite fst_pair by eauto.
-    cancel. simplen. simplen.
+    cancel. eauto. simplen. simplen.
     apply list2nmem_ptsto_cancel.
     seprewrite.
     erewrite listmatch_length_r with (m := list2nmem ds!!); eauto.
