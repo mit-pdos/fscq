@@ -1737,7 +1737,8 @@ Module BFILE.
     safestep.
     cancel.
     erewrite <- LOG.rep_hashmap_subset; eauto.
-    Unshelve. all: eauto; exact tt.
+  Unshelve.
+    all: eauto; try exact tt; intros; try exact emp.
   Qed.
 
 
