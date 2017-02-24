@@ -182,22 +182,30 @@ func (fs FileSystem) RunWorkload(opts workloadOptions, parallel bool) time.Durat
 
 	args := []string{opts.operation, path, strconv.Itoa(opts.kiters)}
 
-	start := time.Now()
-	done := make(chan bool)
+	done := make(chan float64)
 	for i := 0; i < copies; i++ {
 		go func() {
 			cmd := exec.Command("fsops", args...)
-			err := cmd.Run()
+			output, err := cmd.Output()
 			if err != nil {
 				log.Fatal(fmt.Errorf("could not run fsops: %v", err))
 			}
-			done <- true
+			outputNum := strings.TrimRight(string(output), "\n")
+			elapsedNs, err := strconv.ParseFloat(outputNum, 64)
+			if err != nil {
+				log.Fatal(fmt.Errorf("could not parse fsops output %s", outputNum))
+			}
+			done <- elapsedNs
 		}()
 	}
+	var elapsedTime float64
 	for i := 0; i < copies; i++ {
-		<-done
+		timing := <-done
+		if timing > elapsedTime {
+			elapsedTime = timing
+		}
 	}
-	return time.Now().Sub(start)
+	return time.Duration(int64(elapsedTime * 1e9))
 }
 
 func printTsv(args ...interface{}) {
