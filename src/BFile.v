@@ -1512,6 +1512,7 @@ Module BFILE.
     rewrite listmatch_updN_removeN by omega.
     cancel.
     eauto.
+    eauto.
     cancel.
 
     repeat xcrash_rewrite.
