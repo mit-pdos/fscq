@@ -598,14 +598,14 @@ Module BFILE.
     intros.
     apply block_belong_to_file_inum_ok in H0 as H0'.
     unfold block_belong_to_file, rep in *.
-    rewrite listmatch_extract with (i := inum) in H.
+    setoid_rewrite listmatch_extract with (i := inum) in H.
     unfold file_match at 2 in H.
-    rewrite listmatch_length_pimpl with (a := BFData _) in H.
+    setoid_rewrite listmatch_length_pimpl with (a := BFData _) in H.
     destruct_lift H.
     rewrite map_length in *.
     intuition.
     rewrite H12; eauto.
-    rewrite listmatch_length_pimpl in H.
+    setoid_rewrite listmatch_length_pimpl in H.
     destruct_lift H.
     rewrite H9. eauto.
   Qed.
