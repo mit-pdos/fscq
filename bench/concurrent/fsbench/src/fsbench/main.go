@@ -11,26 +11,20 @@ import (
 	"workload"
 )
 
-type DataPoint struct {
-	fsIdent   string
-	fs        filesys.Options
-	work      workload.Options
-	parallel  bool
-	result    workload.Result
-	seqResult workload.Result
+type DataPoints struct {
+	fsIdent  string
+	fs       filesys.Options
+	work     workload.Options
+	parallel bool
+	result   workload.Results
 }
 
-func (p DataPoint) ParallelSpeedup() float64 {
-	return float64(2*p.seqResult.Elapsed) / float64(p.result.Elapsed)
+func (p DataPoints) SpeedupOver(other DataPoints) float64 {
+	return float64(other.result.Elapsed()) / float64(p.result.Elapsed())
 }
 
-func (p DataPoint) MicrosPerOp() float64 {
-	return float64(p.result.Elapsed.Nanoseconds()) / 1000 / float64(p.work.Kiters*1000)
-}
-
-func (p DataPoint) SeqPoint() DataPoint {
-	p.parallel = false
-	return p
+func (p DataPoints) MicrosPerOp() float64 {
+	return float64(p.result.Elapsed().Nanoseconds()) / 1000 / float64(p.work.Kiters*1000)
 }
 
 func toSec(d time.Duration) float64 {
@@ -55,20 +49,43 @@ var DataHeader = concat(
 	workload.DataHeader,
 	[]interface{}{
 		"parallel",
-		"timeSec", "opStdMicros", "seqTimeSec", "seqOpStdMicros",
-		"speedup", "usPerOp",
+		"timeSec",
 	},
 )
 
-func (p DataPoint) DataRow() []interface{} {
+var ReadableDataHeader = concat(
+	DataHeader,
+	[]interface{}{
+		"us/op",
+	},
+)
+
+func (p DataPoints) dataRowPrefix() []interface{} {
 	return concat(
 		[]interface{}{p.fsIdent},
 		p.fs.DataRow(),
 		p.work.DataRow(),
 		[]interface{}{
 			p.parallel,
-			toSec(p.result.Elapsed), toMicros(p.result.Stddev), toSec(p.seqResult.Elapsed), toMicros(p.seqResult.Stddev),
-			p.ParallelSpeedup(), p.MicrosPerOp(),
+		},
+	)
+}
+
+func (p DataPoints) DataRow(i int) []interface{} {
+	return concat(
+		p.dataRowPrefix(),
+		[]interface{}{
+			toSec(p.result.IterTimes[i]),
+		},
+	)
+}
+
+func (p DataPoints) ReadableDataRow() []interface{} {
+	return concat(
+		p.dataRowPrefix(),
+		[]interface{}{
+			toSec(p.result.Elapsed()), // add average time
+			p.MicrosPerOp(),
 		},
 	)
 }
@@ -108,7 +125,9 @@ func main() {
 
 	if *print_header {
 		dataHeader := len(DataHeader)
-		dataRow := len(DataPoint{}.DataRow())
+		dataRow := len(DataPoints{result: workload.Results{
+			IterTimes: []time.Duration{0},
+		}}.DataRow(0))
 		if dataRow != dataHeader {
 			log.Fatal(fmt.Errorf("data header len != data row len (%d != %d)",
 				dataHeader, dataRow))
@@ -159,40 +178,49 @@ func main() {
 
 	opts.Warmup(fs)
 
-	var result workload.Result
-	if *targetMs > 0 {
-		result = opts.SearchWorkload(fs, *parallel, *targetMs)
-	} else {
-		result = opts.RunWorkload(fs, *parallel)
+	data := DataPoints{
+		fsIdent:  fs.Ident(),
+		fs:       fsOpts,
+		work:     opts,
+		parallel: *parallel,
 	}
-	var seqResult workload.Result
-	if *parallel {
-		seqResult = opts.RunWorkload(fs, false)
+
+	if *targetMs > 0 {
+		data.result = opts.SearchWorkload(fs, *parallel, *targetMs)
 	} else {
-		seqResult = result
+		data.result = opts.RunWorkload(fs, *parallel)
+	}
+
+	var seqData DataPoints
+	if *parallel {
+		seqData = DataPoints{
+			fsIdent:  fs.Ident(),
+			fs:       fsOpts,
+			work:     opts,
+			parallel: false,
+		}
+		seqData.result = opts.RunWorkload(fs, false)
 	}
 
 	fs.Stop()
 
-	p := DataPoint{
-		fsIdent:   fs.Ident(),
-		fs:        fsOpts,
-		work:      opts,
-		parallel:  *parallel,
-		result:    result,
-		seqResult: seqResult,
-	}
-
 	if *readable_output {
-		row := p.DataRow()
-		for i, hdr := range DataHeader {
+		row := data.ReadableDataRow()
+		for i, hdr := range ReadableDataHeader {
 			value := row[i]
 			fmt.Printf("%-20s %v\n", hdr, value)
 		}
-	} else {
-		printTsv(p.DataRow()...)
 		if *parallel {
-			printTsv(p.SeqPoint().DataRow()...)
+			fmt.Printf("%-20s %v\n", "speedup", 2*data.SpeedupOver(seqData))
+		}
+	} else {
+		for i := range data.result.IterTimes {
+			printTsv(data.DataRow(i)...)
+		}
+		if *parallel {
+			for i := range seqData.result.IterTimes {
+				printTsv(seqData.DataRow(i)...)
+			}
 		}
 	}
 	return

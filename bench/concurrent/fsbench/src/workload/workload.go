@@ -52,13 +52,25 @@ type runResult struct {
 	iterStddev float64
 }
 
-type Result struct {
-	Elapsed time.Duration
-	// stddev of per operation time
-	Stddev time.Duration
+type Results struct {
+	IterTimes []time.Duration
 }
 
-func (opts Options) RunWorkload(fs filesys.FileSystem, parallel bool) Result {
+func (r Results) Elapsed() time.Duration {
+	elapsed := time.Duration(0)
+	for _, time := range r.IterTimes {
+		elapsed += time
+	}
+	return elapsed
+}
+
+func (r *Results) Merge(other Results) {
+	if other.Elapsed() > r.Elapsed() {
+		r.IterTimes = other.IterTimes
+	}
+}
+
+func (opts Options) RunWorkload(fs filesys.FileSystem, parallel bool) Results {
 	copies := 1
 	if parallel {
 		copies = 2
@@ -81,7 +93,7 @@ func (opts Options) RunWorkload(fs filesys.FileSystem, parallel bool) Result {
 		return []string{opts.Operation, paths[i], strconv.Itoa(opts.Kiters)}
 	}
 
-	done := make(chan runResult)
+	done := make(chan Results)
 	for i := 0; i < copies; i++ {
 		go func(i int) {
 			cmd := opts.ClientCpus[i].Command("fsops", args(i)...)
@@ -90,38 +102,23 @@ func (opts Options) RunWorkload(fs filesys.FileSystem, parallel bool) Result {
 				log.Fatal(fmt.Errorf("could not run fsops: %v", err))
 			}
 			output := strings.TrimRight(string(outputBytes), "\n")
-			nums := strings.Split(output, " ")
-			if len(nums) != 2 {
-				log.Fatal(fmt.Errorf("unexpected fsops output %s", output))
+			nums := strings.Split(output, "\n")
+			var r Results
+			for _, num := range nums {
+				iterNs, err := strconv.ParseInt(num, 10, 64)
+				if err != nil {
+					log.Fatal(fmt.Errorf("could not parse iteration time %s", num))
+				}
+				r.IterTimes = append(r.IterTimes, time.Duration(iterNs))
 			}
-			elapsedNs, err := strconv.ParseFloat(nums[0], 64)
-			if err != nil {
-				log.Fatal(fmt.Errorf("could not parse fsops mean from %s", output))
-			}
-			iterStddev, err := strconv.ParseFloat(nums[1], 64)
-			if err != nil {
-				log.Fatal(fmt.Errorf("could not parse fsops stddev from %s", output))
-			}
-			done <- runResult{elapsedNs, iterStddev}
+			done <- r
 		}(i)
 	}
-	var elapsedTime float64
-	var iterStddev float64
+	var r Results
 	for i := 0; i < copies; i++ {
-		timing := <-done
-		if timing.totalNs > elapsedTime {
-			elapsedTime = timing.totalNs
-		}
-		// combine stddev by taking maximum, just to get a safe estimate
-		// (as opposed to correctly computing the stddev of all the samples)
-		if timing.iterStddev > iterStddev {
-			iterStddev = timing.iterStddev
-		}
+		r = <-done
 	}
-	return Result{
-		time.Duration(int64(elapsedTime)),
-		time.Duration(int64(iterStddev)),
-	}
+	return r
 }
 
 func (opts Options) Warmup(fs filesys.FileSystem) {
@@ -137,13 +134,13 @@ func (opts Options) Warmup(fs filesys.FileSystem) {
 // The input opts should specify the workload parameters and initial kiters for
 // the search. SearchWorkload returns the final duration and modifies the input
 // opts to have the final kiters.
-func (opts *Options) SearchWorkload(fs filesys.FileSystem, parallel bool, targetMs int) Result {
+func (opts *Options) SearchWorkload(fs filesys.FileSystem, parallel bool, targetMs int) Results {
 	targetTime := time.Duration(targetMs) * time.Millisecond
 	result := opts.RunWorkload(fs, parallel)
-	for result.Elapsed < targetTime {
+	for result.Elapsed() < targetTime {
 		last := opts.Kiters
 		// Predict required iterations
-		kiters := int(float64(last) * float64(targetTime) / float64(result.Elapsed))
+		kiters := int(float64(last) * float64(targetTime) / float64(result.Elapsed()))
 		// same policy as Go's testing/benchmark.go (see func (b *B) launch()): //
 		// run 1.2x the iterations we estimate, but don't grow by more than 100x last
 		// time and run at least one more iteration
