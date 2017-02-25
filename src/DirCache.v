@@ -234,71 +234,71 @@ Module CacheOneDir.
   Qed.
 
   Theorem readdir_ok : forall lxp bxp ixp dnum ms,
-    {< F Fm Fi m0 m dmap ilist frees,
+    {< F Fm Fi m0 m dmap ilist frees f,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms
     POST:hm' RET:^(ms', r)
              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
              [[ listpred SDIR.readmatch r dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
-             [[ MSCache ms' = MSCache ms ]]
+             [[ MSCache ms' = MSCache ms ]] *
+             [[ True ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} readdir lxp ixp dnum ms.
   Proof.
     unfold readdir.
-    intros.
-
-    ProgMonad.monad_simpl_one.
-    eapply pimpl_ok2; [ eauto with prog | ].
-    intros. unfold rep_macro, rep, SDIR.rep_macro. norm.
-    cancel.
-
-    intuition.
-    pred_apply; cancel.
-    pred_apply; cancel.
-    eauto.
-    step.
+    hoare.
   Qed.
 
   Theorem unlink_ok : forall lxp bxp ixp dnum name ms,
-    {< F Fm Fi m0 m dmap ilist frees,
+    {< F Fm Fi m0 m dmap ilist frees f,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms
-    POST:hm' RET:^(ms', r) exists m' dmap',
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms
+    POST:hm' RET:^(ms', r) exists m' dmap' f',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees ms' *
+             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees f' ms' *
              [[ dmap' = mem_except dmap name ]] *
              [[ notindomain name dmap' ]] *
              [[ r = OK tt -> indomain name dmap ]] *
-             [[ MSAlloc ms' = MSAlloc ms ]]
+             [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ True ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} unlink lxp ixp dnum name ms.
   Proof.
     unfold unlink.
-    intros.
+    hoare.
 
-    ProgMonad.monad_simpl_one.
-    eapply pimpl_ok2; [ eauto with prog | ].
-    intros. unfold rep_macro, rep, SDIR.rep_macro. norm.
-    cancel.
+    unfold mem_except.
+    eexists; intuition eauto.
+    destruct (string_dec name0 name); subst.
+    {
+      denote! (Dcache.MapsTo _ _ _) as Hm.
+      eapply DcacheDefs.mapsto_add in Hm.
+      subst_cache; eauto.
+    }
+    {
+      denote! (Dcache.MapsTo _ _ _) as Hm.
+      eapply Dcache.add_3 in Hm; subst_cache; eauto.
+    }
 
-    intuition.
-    pred_apply; cancel.
-    pred_apply; cancel.
-    eauto.
-
-    step.
-
-    unfold mem_except. destruct (string_dec name name0); subst.
-    denote! (Dcache.MapsTo _ _ _) as Hx; apply DcacheDefs.mapsto_add in Hx; subst.
-    destruct (string_dec name0 name0); congruence.
-    destruct (string_dec name0 name); try congruence.
-    denote! (Dcache.MapsTo _ _ _) as Hx; apply Dcache.add_3 in Hx. eauto. congruence.
+    unfold mem_except.
+    eexists; intuition eauto.
+    destruct (string_dec name0 name); subst.
+    {
+      denote! (Dcache.MapsTo _ _ _) as Hm.
+      eapply DcacheDefs.mapsto_add in Hm.
+      subst_cache; eauto.
+    }
+    {
+      denote! (Dcache.MapsTo _ _ _) as Hm.
+      eapply Dcache.add_3 in Hm; subst_cache; eauto.
+    }
 
   Unshelve.
     all: try exact ""%string.
     all: try exact (Dcache.empty _).
+    all: try exact empty_mem.
   Qed.
 
   Theorem link_ok : forall lxp bxp ixp dnum name inum isdir ms,
