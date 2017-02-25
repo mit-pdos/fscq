@@ -301,20 +301,28 @@ Module CacheOneDir.
     all: try exact empty_mem.
   Qed.
 
+  Lemma sdir_rep_cache : forall f c m,
+    SDIR.rep f m ->
+    SDIR.rep {| BFILE.BFData := BFILE.BFData f; BFILE.BFAttr := BFILE.BFAttr f; BFILE.BFCache := c |} m.
+  Proof.
+    unfold SDIR.rep, DIR.rep, DIR.Dent.rep, DIR.Dent.items_valid, DIR.Dent.RA.RALen; eauto.
+  Qed.
+
+  Hint Resolve sdir_rep_cache.
+
   Theorem link_ok : forall lxp bxp ixp dnum name inum isdir ms,
-    {< F Fm Fi m0 m dmap ilist frees,
+    {< F Fm Fi m0 m dmap ilist frees f,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms *
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms *
              [[ goodSize addrlen inum ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
            (([[ isError r ]] *
-             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap ilist frees ms')
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
         \/  ([[ r = OK tt ]] *
-             exists dmap' Fd ilist' frees',
+             exists dmap' Fd ilist' frees' f',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' ms' *
+             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' f' ms' *
              [[ dmap' = Mem.upd dmap name (inum, isdir) ]] *
              [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (Fd dmap /\ notindomain name dmap) ]] *
@@ -327,14 +335,46 @@ Module CacheOneDir.
     unfold link.
     step.
     step.
-    unfold rep in *.
-    or_r; norm. cancel.
-    intuition eauto.
+    step.
+    step.
 
-    denote! (Dcache.MapsTo _ _ _) as Hx.
-    destruct (string_dec name name0); subst; [ rewrite upd_eq by auto | rewrite upd_ne by auto ].
-    apply DcacheDefs.mapsto_add in Hx; congruence.
-    apply Dcache.add_3 in Hx; auto; congruence.
+    or_r; cancel.
+    eauto.
+
+    eexists; intuition eauto.
+    destruct (string_dec name0 name); subst.
+    {
+      try rewrite upd_eq by eauto.
+      denote! (Dcache.MapsTo _ _ _) as Hm.
+      eapply DcacheDefs.mapsto_add in Hm.
+      subst_cache; eauto.
+    }
+    {
+      try rewrite upd_ne by eauto.
+      denote! (Dcache.MapsTo _ _ _) as Hm.
+      eapply Dcache.add_3 in Hm; subst_cache; eauto.
+    }
+
+    step.
+    step.
+    step.
+
+    or_r; cancel.
+    eauto.
+
+    eexists; intuition eauto.
+    destruct (string_dec name0 name); subst.
+    {
+      try rewrite upd_eq by eauto.
+      denote! (Dcache.MapsTo _ _ _) as Hm.
+      eapply DcacheDefs.mapsto_add in Hm.
+      subst_cache; eauto.
+    }
+    {
+      try rewrite upd_ne by eauto.
+      denote! (Dcache.MapsTo _ _ _) as Hm.
+      eapply Dcache.add_3 in Hm; subst_cache; eauto.
+    }
 
   Unshelve.
     all: try exact unit.
