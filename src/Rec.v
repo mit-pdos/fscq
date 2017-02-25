@@ -447,18 +447,100 @@ Module Rec.
       apply IHl.
   Qed.
 
+  Definition middle (low mid high : nat) (w : word (low + (mid + high))) : word mid :=
+    split1 mid high (split2 low (mid+high) w).
+
+  Import EqNotations.
+  Fixpoint of_word_middle {ft : type} before after : word (before + (len ft + after)) -> data ft.
+    refine
+      match ft as ft return (word (before + (len ft + after)) -> data ft) with
+      | WordF n => fun w => middle before n after w
+      | ArrayF ft0 n as ft =>
+        (fix word2arrayf before' after' n w :=
+          match n as n return (word (before' + (len (ArrayF ft0 n) + after')) -> data (ArrayF ft0 n)) with
+          | 0 => fun _ => []
+          | S n' => fun w0 =>
+            (@of_word_middle ft0 before' (n' * len ft0 + after') (rew [fun n => word (before' + n)] _ in w0)) ::
+            (word2arrayf (before' + len ft0) after' n' (rew _ in w0))
+          end w) before after n
+      | RecF t =>
+        (fix word2rec before' after' (t : rectype) (w : word (before' + (len (RecF t) + after'))) : recdata t :=
+          match t as t return word (before' + (len (RecF t) + after')) -> recdata t with
+          | nil => fun _ => tt
+          | (_, ft) :: t' => fun w =>
+            (@of_word_middle ft before' (len (RecF t') + after') (rew [fun n => word (before' + n)] _ in w),
+             word2rec (before' + len ft) after' t' (rew _ in w))
+          end w) before after t
+      end; abstract (simpl; omega).
+  Defined.
+
+  Lemma split1_middle : forall before middle1 middle2 after (Heq : middle1 + middle2 + after = middle1 + (middle2 + after)) w,
+      split1 middle1 middle2 (middle before (middle1 + middle2) after w) =
+      middle before middle1 (middle2 + after) (rew [fun n => word (before + n)] Heq in w).
+  Proof.
+    unfold middle; intros.
+    rewrite split1_iter with (Heq := Heq).
+    f_equal.
+    revert w; rewrite Heq.
+    reflexivity.
+  Qed.
+
+  Lemma split2_middle : forall before middle1 middle2 after Heq w,
+      split2 middle1 middle2 (middle before (middle1 + middle2) after w) =
+      middle (before + middle1) middle2 after (rew Heq in w).
+  Proof.
+    unfold middle; intros.
+    rewrite split2_split1 with (Heq := eq_sym (plus_assoc _ _ _)).
+    revert w Heq; rewrite <- plus_assoc; simpl; intros.
+    rewrite split2_iter with (Heq := Heq).
+    reflexivity.
+  Qed.
+
+  Lemma of_word_middle_eq' : forall ft before after (w : word (before + (len ft + after))),
+      @of_word ft (Rec.middle before (len ft) after w) = of_word_middle before after w.
+  Proof.
+    einduction ft using type_rect_nest; simpl; intros.
+    - reflexivity.
+    - fold mult in *. fold len in *.
+      revert before after w. induction n; simpl; auto.
+      intros.
+      erewrite split1_middle.
+      erewrite split2_middle.
+      rewrite IHt.
+      repeat f_equal.
+      apply IHn.
+    - revert before after w.
+      apply IHt.
+    - simpl. reflexivity.
+    - simpl; intros.
+      erewrite split1_middle.
+      erewrite split2_middle.
+      rewrite IHt.
+      repeat f_equal.
+      apply IHt0.
+  Qed.
+
+  Lemma of_word_middle_eq : forall ft (w : word (len ft)) Heq,
+      @of_word ft w = of_word_middle 0 0 (rew [fun n => word (0 + n)] Heq in w).
+  Proof.
+    intros.
+    rewrite <- of_word_middle_eq'.
+    f_equal.
+    unfold middle.
+    unfold eq_rect_r.
+    simpl.
+    erewrite split1_0.
+    reflexivity.
+  Qed.
+
   Arguments of_word : simpl never.
   Arguments to_word : simpl never.
-
 
   (**
    * Efficient implementations for fetching or updating a single element from a
    * [word (len (ArrayF ft len))], without decoding/encoding the whole word to
    * and from the corresponding [list (data ft)].
    *)
-
-  Definition middle (low mid high : nat) (w : word (low + (mid + high))) : word mid :=
-    split1 mid high (split2 low (mid+high) w).
 
   Lemma word_selN_helper : forall idx l lenft, idx < l ->
     l * lenft = idx * lenft + (lenft + (l * lenft - lenft - idx * lenft)).
@@ -1309,6 +1391,7 @@ Module Rec.
     omega.
     simpl; nia.
   Qed.
+
 
 End Rec.
 
