@@ -278,7 +278,7 @@ Module BFILE.
     cancel.
   Qed.
 
-  Definition rep_alt (bxps : BALLOC.Alloc.BmpSig.xparams * BALLOC.Alloc.BmpSig.xparams)
+  Definition rep_alt (bxps : BALLOCC.Alloc.Alloc.BmpSig.xparams * BALLOCC.Alloc.Alloc.BmpSig.xparams)
                      ixp (flist : list bfile) ilist frees cms mscache msalloc :=
     (exists lms,
       BALLOCC.rep (pick_balloc bxps msalloc) (pick_balloc frees msalloc) (BALLOCC.mk_memstate lms (pick_balloc cms msalloc)) *
