@@ -880,10 +880,10 @@ Module BFILE.
     reflexivity.
   Qed.
 
-  Lemma rep_bfcache_remove : forall bxps ixp flist ilist frees mscache inum f F,
+  Lemma rep_bfcache_remove : forall bxps ixp flist ilist frees allocc mscache inum f F,
     (F * inum |-> f)%pred (list2nmem flist) ->
-    rep bxps ixp flist ilist frees mscache =p=>
-    rep bxps ixp (updN flist inum {| BFData := BFData f; BFAttr := BFAttr f; BFCache := None |}) ilist frees
+    rep bxps ixp flist ilist frees allocc mscache =p=>
+    rep bxps ixp (updN flist inum {| BFData := BFData f; BFAttr := BFAttr f; BFCache := None |}) ilist frees allocc
       (BFcache.remove inum mscache).
   Proof.
     unfold rep; intros.
