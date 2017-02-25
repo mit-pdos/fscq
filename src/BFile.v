@@ -1330,9 +1330,8 @@ Module BFILE.
     destruct_lift H; denote (_ <> 0) as Hx; subst.
     eapply Hx; eauto; omega.
     erewrite selN_map by omega; filldef.
-    setoid_rewrite surjective_pairing at 2.
+    setoid_rewrite surjective_pairing at 4.
     cancel.
-
     safestep.
     5: eauto.
     3: sepauto.
