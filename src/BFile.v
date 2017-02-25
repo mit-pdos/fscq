@@ -157,17 +157,17 @@ Module BFILE.
     let '(al, ms, alc, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSCache fms) in
     let^ (ms, len) <- INODE.getlen lxp ixp inum ms;
     If (lt_dec len INODE.NBlocks) {
-      let^ (ms, r) <- BALLOC.alloc lxp (pick_balloc bxps al) ms;
+      let^ (cms, r) <- BALLOCC.alloc lxp (pick_balloc bxps al) (BALLOCC.mk_memstate ms (pick_balloc alc al));
       match r with
-      | None => Ret ^(mk_memstate al ms alc cache, Err ENOSPCBLOCK)
+      | None => Ret ^(mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) al) cache, Err ENOSPCBLOCK)
       | Some bn =>
-           let^ (cms, succ) <- INODE.grow lxp (pick_balloc bxps al) ixp inum bn (BALLOCC.mk_memstate ms (pick_balloc alc al));
+           let^ (cms, succ) <- INODE.grow lxp (pick_balloc bxps al) ixp inum bn cms;
            match succ with
            | Err e =>
              Ret ^(mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) al) cache, Err e)
            | OK _ =>
-             ms <- LOG.write lxp bn v ms;
-             Ret ^(mk_memstate al  (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) al) cache, OK tt)
+             ms <- LOG.write lxp bn v (BALLOCC.MSLog cms);
+             Ret ^(mk_memstate al ms (upd_balloc alc (BALLOCC.MSCache cms) al) cache, OK tt)
            end
       end
     } else {
@@ -930,9 +930,9 @@ Module BFILE.
     step.
     step.
     step.
-    unfold BALLOC.bn_valid; split; auto.
+    unfold BALLOCC.bn_valid; split; auto.
     step.
-    unfold BALLOC.bn_valid; split; auto.
+    unfold BALLOCC.bn_valid; split; auto.
     substl (BmapNBlocks bxps_2); auto.
     step.
     apply remove_other_In.
@@ -1418,11 +1418,12 @@ Module BFILE.
     (* file size ok, do allocation *)
     {
       step.
+
       safestep.
       sepauto.
       step.
 
-      eapply BALLOC.bn_valid_facts; eauto.
+      eapply BALLOCC.bn_valid_facts; eauto.
       step.
 
       or_r; safecancel.
@@ -1441,7 +1442,7 @@ Module BFILE.
       cancel.
       rewrite map_length; omega.
       rewrite wordToNat_natToWord_idempotent'; auto.
-      eapply BALLOC.bn_valid_goodSize; eauto.
+      eapply BALLOCC.bn_valid_goodSize; eauto.
       eapply bfcache_upd; eauto.
       eauto.
       apply list2nmem_app; eauto.
@@ -1466,7 +1467,7 @@ Module BFILE.
         * right.
           rewrite selN_last in * by auto.
           subst. rewrite wordToNat_natToWord_idempotent'. eauto.
-          eapply BALLOC.bn_valid_goodSize; eauto.
+          eapply BALLOCC.bn_valid_goodSize; eauto.
         * left.
           rewrite app_length in *; simpl in *.
           split. omega.
@@ -2464,7 +2465,7 @@ Module BFILE.
   Proof.
     unfold rep; intros.
     xform_norm.
-    rewrite INODE.xform_rep, BALLOC.xform_rep, BALLOC.xform_rep.
+    rewrite INODE.xform_rep, BALLOCC.xform_rep, BALLOCC.xform_rep.
     rewrite xform_file_list.
     cancel.
 
@@ -2513,7 +2514,7 @@ Module BFILE.
   Proof.
     unfold rep; intros.
     xform_norm.
-    rewrite INODE.xform_rep, BALLOC.xform_rep, BALLOC.xform_rep.
+    rewrite INODE.xform_rep, BALLOCC.xform_rep, BALLOCC.xform_rep.
     rewrite xform_file_list.
     cancel.
     erewrite list2nmem_sel with (x := f) by eauto.
