@@ -389,6 +389,4 @@ Module CacheOneDir.
   Hint Extern 1 ({{_}} Bind (link _ _ _ _ _ _ _ _) _) => apply link_ok : prog.
   Hint Extern 1 ({{_}} Bind (readdir _ _ _ _) _) => apply readdir_ok : prog.
 
-  Hint Extern 0 (okToUnify (rep ?f _ _ _) (rep ?f _ _ _)) => constructor : okToUnify.
-
 End CacheOneDir.
