@@ -16,13 +16,15 @@ cache2=false
 kernelcache=false
 op=stat
 
-for fs in fscq cfscq hfuse c-hello fusexmp native; do
-#for fs in fscq cfscq native; do
+#for fs in fscq cfscq hfuse c-hello fusexmp native; do
+for fs in fscq cfscq native; do
   info "benchmarking $fs"
-  for disjointdirs in "true" "false"; do
-    for exists in "true" "false"; do
-      for clientcpu in "0" "1/1" "1/2"; do
-        fsbench -target-ms=3000 -server-cpu=0 -client-cpus=$clientcpu -op=$op -disjoint-dirs=$disjointdirs -exists=$exists -parallel=true -attr-cache=$cache1 -name-cache=$cache1 -neg-cache=$cache2 -kernel-cache=$kernelcache $fs
+  for disjointdirs in "false"; do
+    for exists in "true"; do
+      for clientcpu in "2/2" "3/3" "3/4"; do
+        for parallel in "false" "true"; do
+          fsbench -kiters=50 -server-cpu=1,2 -client-cpus=$clientcpu -op=$op -disjoint-dirs=$disjointdirs -exists=$exists -parallel=$parallel -attr-cache=$cache1 -name-cache=$cache1 -neg-cache=$cache2 -kernel-cache=$kernelcache $fs
+        done
       done
     done
   done

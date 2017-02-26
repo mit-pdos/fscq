@@ -194,17 +194,6 @@ func main() {
 		data.result = opts.RunWorkload(fs, *parallel)
 	}
 
-	var seqData DataPoints
-	if *parallel {
-		seqData = DataPoints{
-			fsIdent:  fs.Ident(),
-			fs:       fsOpts,
-			work:     opts,
-			parallel: false,
-		}
-		seqData.result = opts.RunWorkload(fs, false)
-	}
-
 	fs.Stop()
 
 	if *readable_output {
@@ -213,18 +202,24 @@ func main() {
 			value := row[i]
 			fmt.Printf("%-20s %v\n", hdr, value)
 		}
+		seqData := DataPoints{
+			fsIdent:  data.fsIdent,
+			fs:       data.fs,
+			work:     data.work,
+			parallel: false,
+			result:   opts.RunWorkload(fs, false),
+		}
 		if *parallel {
+			fs.Launch(fsOpts)
+			opts.Warmup(fs)
 			fmt.Printf("%-20s %v\n", "speedup", 2*data.SpeedupOver(seqData))
+			fs.Stop()
 		}
 	} else {
 		for i := range data.result.IterTimes {
 			printTsv(data.DataRow(i)...)
 		}
-		if *parallel {
-			for i := range seqData.result.IterTimes {
-				printTsv(seqData.DataRow(i)...)
-			}
-		}
 	}
+
 	return
 }
