@@ -49,6 +49,7 @@ var DataHeader = concat(
 	workload.DataHeader,
 	[]interface{}{
 		"parallel",
+		"run_idx",
 		"timeSec",
 	},
 )
@@ -75,6 +76,7 @@ func (p DataPoints) DataRow(i int) []interface{} {
 	return concat(
 		p.dataRowPrefix(),
 		[]interface{}{
+			i,
 			toSec(p.result.IterTimes[i]),
 		},
 	)
@@ -84,6 +86,7 @@ func (p DataPoints) ReadableDataRow() []interface{} {
 	return concat(
 		p.dataRowPrefix(),
 		[]interface{}{
+			0, // run index
 			toSec(p.result.Elapsed()), // add average time
 			p.MicrosPerOp(),
 		},
