@@ -108,33 +108,17 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     reflexivity.
   Qed.
 
+  Lemma bits_cons : forall sz b (w : word sz),
+    bits (WS b w) = (WS b WO) :: bits w.
+  Proof.
+    unfold bits, Rec.of_word. simpl. intros.
+      eq_rect_simpl; repeat f_equal;
+      erewrite ?whd_eq_rect_mul, ?wtl_eq_rect_mul;
+      reflexivity.
+  Qed.
+
   Definition has_avail (s : state) := if state_dec s then false else true.
   Definition avail_nonzero s i := if (addr_eq_dec i 0) then false else has_avail s.
-
-  Lemma whd_eq_rect_mul : forall n w Heq,
-    whd (eq_rect (S n) word w (S (n * 1)) Heq) =
-    whd w.
-  Proof.
-    intros.
-    generalize Heq.
-    replace (n * 1) with n by omega.
-    intros.
-    f_equal.
-    eq_rect_simpl.
-    reflexivity.
-  Qed.
-
-  Lemma wtl_eq_rect_mul : forall n w b Heq,
-    wtl (eq_rect (S n) word (WS b w) (S (n * 1)) Heq) =
-    eq_rect _ word w _ (eq_sym (Nat.mul_1_r _)).
-  Proof.
-    intros.
-    generalize Heq.
-    generalize (eq_sym (Nat.mul_1_r n)).
-    rewrite Nat.mul_1_r.
-    intros. eq_rect_simpl.
-    reflexivity.
-  Qed.
 
   Lemma HasAvail_has_0 : forall s, HasAvail s -> {i | i < length (bits s) /\ forall d, selN (bits s) i d = avail}.
   Proof.
@@ -143,12 +127,11 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     generalize Defs.itemsz.
     intros.
     rewrite bits_length.
-    unfold bits, Rec.of_word.
-    simpl.
-    induction s; simpl in *; intros.
-    congruence.
+    induction s; intros.
+    cbv in *. congruence.
+    rewrite bits_cons.
     destruct b.
-    + destruct (weq s (wones n)); try (congruence).
+    + destruct (weq s (wones n)); try (simpl in *; congruence).
       eapply IHs in n0.
       match goal with H : { x | _ } |- _ =>
         let y := fresh "i" in
@@ -159,12 +142,8 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
           intros d; rewrite <- (H' d)];
           clear H'
       end.
-      eq_rect_simpl.
-      rewrite wtl_eq_rect_mul.
       reflexivity.
     + exists 0.
-      eq_rect_simpl.
-      rewrite whd_eq_rect_mul.
       split; auto; omega.
     Qed.
 
@@ -260,8 +239,8 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     ms <- Bmp.write lxp xp (repeat full ((BMPLen xp) * BmpSig.items_per_val)) ms;
     Ret ms.
 
-  Definition to_bits (l : list state) : list bit :=
-    concat (map (@bits Defs.itemsz) l).
+  Definition to_bits {sz} (l : list (word sz)) : list bit :=
+    concat (map (@bits sz) l).
 
   Fixpoint rep_bit (n : nat) (b : word 1) : word n :=
     match n as n0 return (word n0) with
@@ -269,8 +248,8 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     | S n0 => WS (whd b) (rep_bit n0 b)
     end.
 
-  Lemma to_bits_length : forall (l : list state),
-    length (to_bits l) = length l * Defs.itemsz.
+  Lemma to_bits_length : forall sz (l : list (word sz)),
+    length (to_bits l) = length l * sz.
   Proof.
     unfold to_bits. intros.
     erewrite concat_hom_length, map_length.
@@ -419,25 +398,19 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
 
   Lemma bits_rep_bit : forall n x, bits (rep_bit n x) = repeat x n.
   Proof.
-    unfold bits.
-    eq_rect_simpl.
-    unfold Rec.of_word.
-    simpl.
-    induction n; intros; auto.
-    simpl.
-    f_equal.
-    rewrite whd_eq_rect_mul.
-    shatter_word x.
+    induction n; intros; simpl.
     reflexivity.
-    rewrite wtl_eq_rect_mul.
-    apply IHn.
+    rewrite bits_cons.
+    shatter_word x.
+    simpl.
+    congruence.
   Qed.
 
-  Lemma to_bits_set_bit : forall i ii bytes v d,
+  Lemma to_bits_set_bit : forall sz i ii (bytes : list (word sz)) v d,
     i < length bytes ->
-    ii < Defs.itemsz ->
+    ii < sz ->
     to_bits (updN bytes i (set_bit (selN bytes i d) v ii)) =
-    updN (to_bits bytes) (i * Defs.itemsz + ii) v.
+    updN (to_bits bytes) (i * sz + ii) v.
   Proof.
     intros.
     unfold to_bits.
@@ -466,15 +439,16 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     omega.
   Qed.
 
-  Theorem selN_to_bits : forall n l d,
-    selN (to_bits l) n d = selN (bits (selN l (n / Defs.itemsz) (rep_bit _ d))) (n mod Defs.itemsz) d.
+  Theorem selN_to_bits : forall sz n l d,
+    sz <> 0 ->
+    selN (to_bits l) n d = selN (bits (selN l (n / sz) (rep_bit sz d))) (n mod sz) d.
   Proof.
     intros.
-    destruct (lt_dec n (Defs.itemsz * length l)).
+    destruct (lt_dec n (sz * length l)).
     unfold to_bits.
-    rewrite <- selN_selN_hom with (k := Defs.itemsz); try (rewrite ?map_length, ?wbits_length; auto).
+    erewrite <- selN_selN_hom; try (rewrite ?map_length, ?wbits_length; eauto).
     erewrite selN_map; auto.
-    apply Nat.div_lt_upper_bound; compute; auto; omega.
+    apply Nat.div_lt_upper_bound; auto.
     apply Forall_map, Forall_forall; intros.
     rewrite bits_length; auto.
     rewrite selN_oob.
@@ -494,7 +468,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     unfold Avail.
     apply ifind_list_ok_bound in H0 as H1; simpl in H1.
     rewrite bits_length in *.
-    rewrite selN_to_bits.
+    rewrite selN_to_bits by auto.
     rewrite Nat.div_add_l by auto.
     rewrite Nat.div_small by auto.
     rewrite Nat.add_0_r.
@@ -534,7 +508,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     eq_rect_simpl.
     rewrite whd_eq_rect_mul.
     compute [natToWord].
-    rewrite wtl_eq_rect_mul.
+    erewrite wtl_eq_rect_mul.
     destruct n0; [reflexivity | apply IHn].
     omega.
   Qed.
@@ -550,7 +524,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
       rewrite to_bits_length.
       rewrite repeat_length.
       rewrite bits_len_rewrite. omega.
-    - rewrite selN_to_bits.
+    - rewrite selN_to_bits by auto.
       rewrite repeat_selN; auto.
       rewrite avail_item0.
       unfold Avail; auto.
@@ -638,7 +612,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     constructor.
     denote (In _ nil) as Hx; inversion Hx.
     denote (Avail _) as Hx; unfold Avail in Hx.
-    rewrite selN_to_bits in *.
+    rewrite selN_to_bits in * by auto.
     rewrite full_eq_repeat, repeat_selN', bits_rep_bit, repeat_selN' in Hx.
     cbv in Hx. congruence.
     Unshelve.
