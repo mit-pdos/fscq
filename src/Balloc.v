@@ -23,6 +23,7 @@ Require Import WordAuto.
 Require Import FSLayout.
 Require Import AsyncDisk.
 Require Import Cache.
+Require Import Rec.
 
 Import ListUtils.
 
@@ -42,60 +43,211 @@ Module Type AllocSig.
 
 End AllocSig.
 
+Module Type WordBMapSig.
+  Parameter word_size : addr.
+  Parameter word_size_ok : Nat.divide word_size valulen.
+  Theorem word_size_nonzero : word_size <> 0.
+  Proof.
+    intro H.
+    apply valulen_nonzero.
+    apply Nat.divide_0_l.
+    rewrite <- H.
+    apply word_size_ok.
+  Qed.
+End WordBMapSig.
 
-Module BmapAlloc (Sig : AllocSig).
-
+Module BmpWordSig (Sig : AllocSig) (WBSig : WordBMapSig) <: RASig.
   Import Sig.
+  Definition xparams := xparams.
+  Definition RAStart := BMPStart.
+  Definition RALen := BMPLen.
+  Definition xparams_ok := xparams_ok.
+  Definition itemtype := Rec.WordF WBSig.word_size.
+  Definition items_per_val := valulen / WBSig.word_size.
 
-  Module BmpSig <: RASig.
+  Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
+  Proof.
+    unfold items_per_val. simpl.
+    pose proof WBSig.word_size_nonzero.
+    rewrite Rounding.mul_div; try omega.
+    apply Nat.mod_divide; auto.
+    apply WBSig.word_size_ok.
+  Qed.
+End BmpWordSig.
 
-    Definition xparams := xparams.
-    Definition RAStart := BMPStart.
-    Definition RALen := BMPLen.
-    Definition xparams_ok := xparams_ok.
-
-    Definition itemtype := Rec.WordF 1.
-    Definition items_per_val := valulen.
-
-    Theorem blocksz_ok : valulen = Rec.len (Rec.ArrayF itemtype items_per_val).
-    Proof.
-      unfold items_per_val; simpl.
-      rewrite Nat.mul_1_r; auto.
-    Qed.
-
-  End BmpSig.
-
+Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
+  Module BmpSig := BmpWordSig Sig WBSig.
   Module Bmp := LogRecArray BmpSig.
   Module Defs := Bmp.Defs.
 
-  Definition state := Defs.item.
-  Definition state_dec := bit_dec.
+  Import Sig.
 
-  Definition Avail (s : state) : Prop := s = $0.
-  Definition InUse (s : state) : Prop := s = $1.
+  Definition state := word Defs.itemsz.
+  Definition full := wones Defs.itemsz.
+  Definition state_dec := weq full.
+  Definition bit := word 1.
+  Definition avail : bit := $0.
+  Definition inuse : bit := $1.
 
-  Definition is_avail (s : state) := if (state_dec s) then true else false.
-  Definition avail_nonzero s i := if (addr_eq_dec i 0) then false else is_avail s.
+  Definition Avail (b : bit) : Prop := b = avail.
+  Definition HasAvail (s : state) : Prop := s <> full.
+
+  Definition bits {sz} (s : word sz) : list bit.
+    apply (@Rec.of_word (Rec.ArrayF (Rec.WordF 1) sz)).
+    cbn. rewrite Nat.mul_1_r.
+    exact s.
+  Defined.
+
+  Lemma bits_length : forall sz (w : word sz), length (bits w) = sz.
+  Proof.
+    intros.
+    unfold bits.
+    pose proof (Rec.array_of_word_length (Rec.WordF 1)) as H.
+    simpl in H.
+    rewrite H.
+    reflexivity.
+  Qed.
+
+  Definition has_avail (s : state) := if state_dec s then false else true.
+  Definition avail_nonzero s i := if (addr_eq_dec i 0) then false else has_avail s.
+
+  Lemma whd_eq_rect_mul : forall n w Heq,
+    whd (eq_rect (S n) word w (S (n * 1)) Heq) =
+    whd w.
+  Proof.
+    intros.
+    generalize Heq.
+    replace (n * 1) with n by omega.
+    intros.
+    f_equal.
+    eq_rect_simpl.
+    reflexivity.
+  Qed.
+
+  Lemma wtl_eq_rect_mul : forall n w b Heq,
+    wtl (eq_rect (S n) word (WS b w) (S (n * 1)) Heq) =
+    eq_rect _ word w _ (eq_sym (Nat.mul_1_r _)).
+  Proof.
+    intros.
+    generalize Heq.
+    generalize (eq_sym (Nat.mul_1_r n)).
+    rewrite Nat.mul_1_r.
+    intros. eq_rect_simpl.
+    reflexivity.
+  Qed.
+
+  Lemma HasAvail_has_0 : forall s, HasAvail s -> {i | i < length (bits s) /\ forall d, selN (bits s) i d = avail}.
+  Proof.
+    unfold HasAvail.
+    unfold state, full.
+    generalize Defs.itemsz.
+    intros.
+    rewrite bits_length.
+    unfold bits, Rec.of_word.
+    simpl.
+    induction s; simpl in *; intros.
+    congruence.
+    destruct b.
+    + destruct (weq s (wones n)); try (congruence).
+      eapply IHs in n0.
+      match goal with H : { x | _ } |- _ =>
+        let y := fresh "i" in
+        let H' := fresh "H" in
+        destruct H as [y [? H'] ];
+        exists (S y);
+        split; [ omega |
+          intros d; rewrite <- (H' d)];
+          clear H'
+      end.
+      eq_rect_simpl.
+      rewrite wtl_eq_rect_mul.
+      reflexivity.
+    + exists 0.
+      eq_rect_simpl.
+      rewrite whd_eq_rect_mul.
+      split; auto; omega.
+    Qed.
+
+  Definition ifind_byte (s : state) : option (addr * bit) :=
+    ifind_list (fun (b : bit) (_ : addr) => if weq b avail then true else false) (bits s) 0.
+
+  Definition set_bit {sz} (s : word sz) (b : bit) (index : nat) : word sz.
+    set (f := @Rec.word_updN (Rec.WordF 1) sz index).
+    cbn in *.
+    refine (eq_rect (sz * 1) word _ sz (Nat.mul_1_r _)).
+    refine (f _ b).
+    rewrite Nat.mul_1_r.
+    exact s.
+  Defined.
+
+  Lemma bits_of_word : forall sz (w : word sz),
+    w = eq_rect _ word (@Rec.to_word (Rec.ArrayF (Rec.WordF 1) sz) (bits w)) sz (Nat.mul_1_r sz).
+  Proof.
+    intros.
+    unfold bits.
+    eq_rect_simpl.
+    rewrite Rec.to_of_id.
+    eq_rect_simpl.
+    reflexivity.
+  Qed.
+
+  Lemma bits_set_avail : forall sz (s : word sz) v n, n < sz ->
+    bits (set_bit s v n) = updN (bits s) n v.
+  Proof.
+    unfold set_bit, bits, bit.
+    intros.
+    rewrite (bits_of_word s).
+    eq_rect_simpl.
+    pose proof (Rec.word_updN_equiv (Rec.WordF 1)) as Ha.
+    simpl in Ha.
+    specialize (Ha sz n (@Rec.to_word (Rec.ArrayF (Rec.WordF 1) sz) (@bits sz s))).
+    change v with (@Rec.to_word (Rec.WordF 1) v) at 1.
+    rewrite Ha by auto.
+    rewrite Rec.of_to_id; auto.
+    unfold Rec.well_formed. split; auto.
+    rewrite length_updN.
+    rewrite Rec.of_to_id.
+    auto using bits_length.
+    apply Rec.of_word_well_formed.
+  Qed.
 
   Definition free lxp xp bn ms :=
-    ms <- Bmp.put lxp xp bn $0 ms;
+    let index := (bn / Defs.itemsz) in
+    let^ (ms, s) <- Bmp.get lxp xp index ms;
+    let s' := set_bit s avail (bn mod Defs.itemsz) in
+    ms <- Bmp.put lxp xp index s' ms;
     Ret ms.
 
+  (* Get the index of a byte with an available block *)
   Definition ifind_avail_nonzero lxp xp ms :=
-    Bmp.ifind lxp xp avail_nonzero ms.
+    let^ (ms, r) <- Bmp.ifind lxp xp avail_nonzero ms;
+    match r with
+    | None => Ret ^(ms, None)
+    | Some (bn, nonfull) =>
+      match ifind_byte nonfull with
+      | None =>
+        (* won't happen *) Ret ^(ms, None)
+      | Some (i, _) =>
+        Ret ^(ms, Some (bn, i, nonfull))
+      end
+    end.
 
   Definition alloc lxp xp ms :=
     let^ (ms, r) <- ifind_avail_nonzero lxp xp ms;
     match r with
     | None =>
         Ret ^(ms, None)
-    | Some (bn, _) =>
-        ms <- Bmp.put lxp xp bn $1 ms;
-        Ret ^(ms, Some bn)
+    | Some (bn, index, s) =>
+      let s' := set_bit s inuse index in
+        ms <- Bmp.put lxp xp bn s' ms;
+        Ret ^(ms, Some (bn * Defs.itemsz + index))
     end.
 
   Definition steal lxp xp bn ms :=
-    ms <- Bmp.put lxp xp bn $1 ms;
+    let index := (bn / Defs.itemsz) in
+    let^ (ms, s) <- Bmp.get lxp xp index ms;
+    let s' := set_bit s inuse (bn mod Defs.itemsz) in
+    ms <- Bmp.put lxp xp index s' ms;
     Ret ms.
 
   Definition init lxp xp ms :=
@@ -105,24 +257,47 @@ Module BmapAlloc (Sig : AllocSig).
   (* init with no free objects *)
   Definition init_nofree lxp xp ms :=
     ms <- Bmp.init lxp xp ms;
-    ms <- Bmp.write lxp xp (repeat $1 ((BMPLen xp) * valulen)) ms;
+    ms <- Bmp.write lxp xp (repeat full ((BMPLen xp) * BmpSig.items_per_val)) ms;
     Ret ms.
 
-  Definition freelist_bmap_equiv freelist bmap :=
+  Definition to_bits (l : list state) : list bit :=
+    concat (map (@bits Defs.itemsz) l).
+
+  Fixpoint rep_bit (n : nat) (b : word 1) : word n :=
+    match n as n0 return (word n0) with
+    | 0 => WO
+    | S n0 => WS (whd b) (rep_bit n0 b)
+    end.
+
+  Lemma to_bits_length : forall (l : list state),
+    length (to_bits l) = length l * Defs.itemsz.
+  Proof.
+    unfold to_bits. intros.
+    erewrite concat_hom_length, map_length.
+    reflexivity.
+    apply Forall_forall; intros.
+    rewrite in_map_iff in *.
+    deex. auto using bits_length.
+  Qed.
+
+  Opaque Nat.div Nat.modulo.
+  Local Hint Resolve WBSig.word_size_nonzero.
+  Local Hint Extern 1 (0 < _) => apply Nat.neq_0_lt_0.
+
+  Definition freelist_bmap_equiv freelist (bmap : list bit) :=
     Forall (fun a => a < length bmap) freelist /\
-    forall a, (In a freelist <-> Avail (selN bmap a $1)).
+    forall a, (In a freelist <-> Avail (selN bmap a inuse)).
 
   Definition rep V FP xp (freelist : list addr) (freepred : @pred _ addr_eq_dec V) :=
-    (exists bmap, Bmp.rep xp bmap *
+    (exists blist, Bmp.rep xp blist *
      [[ NoDup freelist ]] *
-     [[ freelist_bmap_equiv freelist bmap ]] *
+     [[ freelist_bmap_equiv freelist (to_bits blist) ]] *
      [[ freepred <=p=> listpred (fun a => exists v, a |-> v * [[ FP v ]]) freelist ]] )%pred.
-
 
   Lemma freelist_bmap_equiv_remove_ok : forall bmap freelist a,
     freelist_bmap_equiv freelist bmap ->
     a < length bmap ->
-    freelist_bmap_equiv (remove addr_eq_dec a freelist) (updN bmap a $1).
+    freelist_bmap_equiv (remove addr_eq_dec a freelist) (updN bmap a inuse).
   Proof.
     unfold freelist_bmap_equiv; split; intros.
     eapply Forall_remove; intuition eauto.
@@ -148,10 +323,32 @@ Module BmapAlloc (Sig : AllocSig).
     erewrite <- selN_updN_ne; eauto.
   Qed.
 
+  Lemma to_bits_updN_set_avail : forall (l : list state) bn v d,
+    bn / Defs.itemsz < length l ->
+    to_bits (updN l (bn / Defs.itemsz) (set_bit (selN l (bn / Defs.itemsz) d) v (bn mod Defs.itemsz))) =
+    updN (to_bits l) bn v.
+  Proof.
+    unfold to_bits.
+    intros.
+    pose proof (Nat.div_mod bn Defs.itemsz) as Hbn.
+    rewrite Hbn at 4 by auto.
+    rewrite plus_comm, mult_comm.
+    rewrite updN_concat; f_equal.
+    rewrite map_updN; f_equal.
+    rewrite bits_set_avail.
+    f_equal.
+    erewrite selN_map; auto.
+    apply Nat.mod_upper_bound; auto.
+    apply Nat.mod_upper_bound; auto.
+    apply Forall_forall; intros.
+    rewrite in_map_iff in H0. deex.
+    rewrite bits_length. auto.
+  Qed.
+
   Lemma freelist_bmap_equiv_add_ok : forall bmap freelist a,
     freelist_bmap_equiv freelist bmap ->
     a < length bmap ->
-    freelist_bmap_equiv (a :: freelist) (updN bmap a $0).
+    freelist_bmap_equiv (a :: freelist) (updN bmap a avail).
   Proof.
     unfold freelist_bmap_equiv; split; intuition; intros.
 
@@ -176,46 +373,143 @@ Module BmapAlloc (Sig : AllocSig).
 
   Lemma is_avail_in_freelist : forall a bmap freelist,
     freelist_bmap_equiv freelist bmap ->
-    is_avail (selN bmap a $1) = true ->
+    Avail (selN bmap a inuse) ->
     a < length bmap ->
     In a freelist.
   Proof.
-    unfold freelist_bmap_equiv, is_avail, Avail.
+    unfold freelist_bmap_equiv, Avail.
     intros; apply H; auto.
-    destruct (state_dec (selN bmap a $1)); auto; congruence.
   Qed.
 
+  Lemma bits_len_rewrite : forall xp, BmpSig.RALen xp * BmpSig.items_per_val * Defs.itemsz = BMPLen xp * valulen.
+  Proof.
+    intros.
+    unfold BmpSig.RALen.
+    rewrite BmpSig.blocksz_ok.
+    cbn [Rec.len BmpSig.itemtype].
+    auto using mult_assoc.
+  Qed.
 
-  Lemma bmap_rep_length_ok1 : forall F xp bmap d a,
-    a < length bmap ->
-    (F * Bmp.rep xp bmap)%pred d ->
+  Lemma bmap_rep_length_ok1 : forall F xp blist d a,
+    a < length (to_bits blist) ->
+    (F * Bmp.rep xp blist)%pred d ->
     a < BMPLen xp * valulen.
   Proof.
     unfold Bmp.rep, Bmp.items_valid; intros.
     destruct_lift H0.
     eapply lt_le_trans; eauto.
-    rewrite H6; auto.
+    rewrite to_bits_length.
+    setoid_rewrite H6.
+    rewrite bits_len_rewrite; auto.
   Qed.
 
   Lemma bmap_rep_length_ok2 : forall F xp bmap d a,
     (F * Bmp.rep xp bmap)%pred d ->
     a < BMPLen xp * valulen ->
-    a < length bmap.
+    a / Defs.itemsz < length bmap.
   Proof.
     unfold Bmp.rep, Bmp.items_valid; intros.
     destruct_lift H.
-    eapply lt_le_trans; eauto.
-    rewrite H6; auto.
+    apply Nat.div_lt_upper_bound; auto.
+    setoid_rewrite H6.
+    rewrite mult_comm.
+    rewrite bits_len_rewrite.
+    auto.
   Qed.
 
-  Lemma avail_nonzero_is_avail : forall bmap i,
+  Lemma bits_rep_bit : forall n x, bits (rep_bit n x) = repeat x n.
+  Proof.
+    unfold bits.
+    eq_rect_simpl.
+    unfold Rec.of_word.
+    simpl.
+    induction n; intros; auto.
+    simpl.
+    f_equal.
+    rewrite whd_eq_rect_mul.
+    shatter_word x.
+    reflexivity.
+    rewrite wtl_eq_rect_mul.
+    apply IHn.
+  Qed.
+
+  Lemma to_bits_set_bit : forall i ii bytes v d,
+    i < length bytes ->
+    ii < Defs.itemsz ->
+    to_bits (updN bytes i (set_bit (selN bytes i d) v ii)) =
+    updN (to_bits bytes) (i * Defs.itemsz + ii) v.
+  Proof.
+    intros.
+    unfold to_bits.
+    rewrite plus_comm.
+    rewrite updN_concat; auto.
+    rewrite map_updN.
+    erewrite selN_map by auto.
+    rewrite bits_set_avail by auto.
+    reflexivity.
+    apply Forall_forall.
+    intros.
+    rewrite in_map_iff in *.
+    deex; subst.
+    apply bits_length.
+  Qed.
+
+  Lemma bound_offset : forall a b c n,
+    a < b -> c < n ->
+    a * n + c < b * n.
+  Proof.
+    intros.
+    apply Rounding.div_lt_mul_lt.
+    omega.
+    rewrite Nat.div_add_l by omega.
+    rewrite Nat.div_small by omega.
+    omega.
+  Qed.
+
+  Theorem selN_to_bits : forall n l d,
+    selN (to_bits l) n d = selN (bits (selN l (n / Defs.itemsz) (rep_bit _ d))) (n mod Defs.itemsz) d.
+  Proof.
+    intros.
+    destruct (lt_dec n (Defs.itemsz * length l)).
+    unfold to_bits.
+    rewrite <- selN_selN_hom with (k := Defs.itemsz); try (rewrite ?map_length, ?wbits_length; auto).
+    erewrite selN_map; auto.
+    apply Nat.div_lt_upper_bound; compute; auto; omega.
+    apply Forall_map, Forall_forall; intros.
+    rewrite bits_length; auto.
+    rewrite selN_oob.
+    rewrite selN_oob with (n := _ / _).
+    rewrite bits_rep_bit.
+    rewrite repeat_selN'; auto.
+    apply Nat.div_le_lower_bound; solve [auto | omega].
+    rewrite to_bits_length, mult_comm. omega.
+  Qed.
+
+  Lemma avail_nonzero_is_avail : forall bmap i ii b d d',
     i < length bmap ->
-    avail_nonzero (selN bmap i $0) i = true ->
-    is_avail (selN bmap i $1) = true.
+    ifind_byte (selN bmap i d') = Some (ii, b) ->
+    Avail (selN (to_bits bmap) (i * Defs.itemsz + ii) d).
   Proof.
     unfold avail_nonzero; intros.
-    destruct (addr_eq_dec i 0); try congruence.
-    erewrite selN_selN_def_eq by eassumption; eauto.
+    unfold Avail.
+    apply ifind_list_ok_bound in H0 as H1; simpl in H1.
+    rewrite bits_length in *.
+    rewrite selN_to_bits.
+    rewrite Nat.div_add_l by auto.
+    rewrite Nat.div_small by auto.
+    rewrite Nat.add_0_r.
+    rewrite plus_comm.
+    rewrite Nat.mod_add by auto.
+    rewrite Nat.mod_small by auto.
+    apply ifind_list_ok_cond in H0 as H2.
+    simpl in *.
+    destruct weq; subst; try congruence.
+    eapply ifind_list_ok_item in H0.
+    simpl in *.
+    rewrite Nat.sub_0_r in *.
+    erewrite selN_inb with (d1 := d') in H0.
+    apply H0.
+    auto.
   Qed.
 
   Lemma avail_nonzero_not_zero : forall bmap i,
@@ -227,34 +521,53 @@ Module BmapAlloc (Sig : AllocSig).
 
   Local Hint Resolve avail_nonzero_is_avail avail_nonzero_not_zero.
 
+  Lemma avail_item0 : forall n d, n < Defs.itemsz -> Avail (selN (bits Bmp.Defs.item0) n d).
+  Proof.
+    unfold Bmp.Defs.item0, Defs.itemsz, BmpSig.itemtype.
+    simpl.
+    generalize WBSig.word_size.
+    induction n; simpl.
+    intros. inversion H.
+    intros.
+    unfold Rec.of_word.
+    fold Nat.mul.
+    eq_rect_simpl.
+    rewrite whd_eq_rect_mul.
+    compute [natToWord].
+    rewrite wtl_eq_rect_mul.
+    destruct n0; [reflexivity | apply IHn].
+    omega.
+  Qed.
+
   Lemma freelist_bmap_equiv_init_ok : forall xp,
     freelist_bmap_equiv (seq 0 (BMPLen xp * valulen))
-      (repeat Bmp.Defs.item0 (BmpSig.RALen xp * BmpSig.items_per_val)).
+      (to_bits (repeat Bmp.Defs.item0 (BmpSig.RALen xp * BmpSig.items_per_val))).
   Proof.
     unfold freelist_bmap_equiv; intuition; intros.
     - eapply Forall_forall.
       intros.
       eapply in_seq in H.
+      rewrite to_bits_length.
       rewrite repeat_length.
-      unfold BmpSig.items_per_val.
-      unfold BmpSig.RALen.
-      omega.
-    - rewrite repeat_selN; auto.
-      cbv; auto.
+      rewrite bits_len_rewrite. omega.
+    - rewrite selN_to_bits.
+      rewrite repeat_selN; auto.
+      rewrite avail_item0.
+      unfold Avail; auto.
+      apply Nat.mod_upper_bound; auto.
       eapply in_seq in H.
-      unfold BmpSig.items_per_val.
-      unfold BmpSig.RALen.
-      omega.
+      apply Nat.div_lt_upper_bound; auto.
+      rewrite mult_comm, bits_len_rewrite.
+      intuition idtac.
     - apply in_seq; intuition.
       destruct (lt_dec a (BMPLen xp * valulen)); try omega.
       rewrite selN_oob in *.
       cbv in *; congruence.
+      rewrite to_bits_length.
       rewrite repeat_length.
-      unfold BmpSig.items_per_val.
-      unfold BmpSig.RALen.
+      rewrite bits_len_rewrite.
       omega.
   Qed.
-
 
   Hint Extern 0 (okToUnify (listpred ?prd _ ) (listpred ?prd _)) => constructor : okToUnify.
 
@@ -283,6 +596,25 @@ Module BmapAlloc (Sig : AllocSig).
     apply arrayN_listpred_seq_fp; auto.
   Qed.
 
+  Lemma full_eq_repeat : full = rep_bit Defs.itemsz inuse.
+  Proof.
+    unfold full.
+    generalize Defs.itemsz.
+    induction n; simpl; f_equal; auto.
+  Qed.
+
+  Lemma ifind_byte_inb : forall l i n b d,
+    i < length l ->
+    ifind_byte (selN l i d) = Some (n, b) ->
+    n < Defs.itemsz.
+  Proof.
+    unfold ifind_byte.
+    intros.
+    apply ifind_list_ok_bound in H0.
+    rewrite bits_length in *.
+    simpl in *. auto.
+  Qed.
+
   Theorem init_nofree_ok : forall V FP lxp xp ms,
     {< F Fm m0 m bl,
     PRE:hm
@@ -306,12 +638,12 @@ Module BmapAlloc (Sig : AllocSig).
     constructor.
     denote (In _ nil) as Hx; inversion Hx.
     denote (Avail _) as Hx; unfold Avail in Hx.
-    rewrite repeat_selN' in *.
+    rewrite selN_to_bits in *.
+    rewrite full_eq_repeat, repeat_selN', bits_rep_bit, repeat_selN' in Hx.
     cbv in Hx. congruence.
     Unshelve.
-    all: try exact $0; try exact tt.
+    all: try exact avail; try exact tt.
   Qed.
-
 
   Theorem steal_ok : forall V FP lxp xp bn ms,
     {< F Fm m0 m freelist freepred,
@@ -326,28 +658,32 @@ Module BmapAlloc (Sig : AllocSig).
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} steal lxp xp bn ms.
   Proof.
-    unfold steal, rep; intros.
+    unfold steal, rep. intros.
     step.
-    eapply bmap_rep_length_ok2; eauto.
 
     unfold freelist_bmap_equiv in *; intuition.
     denote! (Forall _ _) as Hf; eapply Forall_forall in Hf; eauto.
     denote (Bmp.rep _ dummy) as Hr; eapply Bmp.items_length_ok in Hr.
-    unfold BmpSig.RALen, BmpSig.items_per_val, Bmp.Defs.item in *.
-    simpl in *; omega.
+    rewrite to_bits_length in *.
+    apply Nat.div_lt_upper_bound; auto.
+    rewrite mult_comm; auto.
 
-    prestep. norm. cancel.
-    intuition simpl.
-    pred_apply; cancel.
+    assert (bn / Defs.itemsz < length dummy).
+    unfold freelist_bmap_equiv in *; intuition.
+    denote! (Forall _ _) as Hf; eapply Forall_forall in Hf; eauto.
+    denote (Bmp.rep _ dummy) as Hr; eapply Bmp.items_length_ok in Hr.
+    rewrite to_bits_length in *.
+    apply Nat.div_lt_upper_bound; auto.
+    rewrite mult_comm; auto.
+
+    step.
+    safestep.
+
     eapply NoDup_remove; eauto.
+    rewrite to_bits_updN_set_avail by auto.
     eapply freelist_bmap_equiv_remove_ok; eauto.
-    eapply bmap_rep_length_ok2; eauto.
-
-    unfold freelist_bmap_equiv in *; intuition.
-    denote! (Forall _ _) as Hf; eapply Forall_forall in Hf; eauto.
-    denote (Bmp.rep _ dummy) as Hr; eapply Bmp.items_length_ok in Hr.
-    unfold BmpSig.RALen, BmpSig.items_per_val, Bmp.Defs.item in *.
-    simpl in *; omega.
+    rewrite to_bits_length.
+    apply Rounding.div_lt_mul_lt; auto.
 
     apply piff_refl.
     denote freepred as Hp; rewrite Hp, listpred_remove.
@@ -357,7 +693,6 @@ Module BmapAlloc (Sig : AllocSig).
     assert (~ (y |->? * y |->?)%pred m'0) as Hc by apply ptsto_conflict.
     contradict Hc; pred_apply; cancel.
     auto.
-    eauto.
 
   Unshelve.
     all: try exact unit.
@@ -387,21 +722,35 @@ Module BmapAlloc (Sig : AllocSig).
     step.
     step.
 
+    denote (ifind_byte _ = Some _) as Hb.
+    apply ifind_byte_inb in Hb as ?; auto.
     or_r; cancel.
     eapply NoDup_remove; eauto.
+    rewrite to_bits_set_bit; auto.
     eapply freelist_bmap_equiv_remove_ok; eauto.
+    rewrite to_bits_length; apply bound_offset; auto.
     apply piff_refl.
-    denote freepred as Hp; rewrite Hp, listpred_remove.
-    eassign a_1; cancel.
+    denote freepred as Hp. rewrite Hp, listpred_remove.
+    cancel.
 
     intros.
     assert (~ (y |->? * y |->?)%pred m'0) as Hc by apply ptsto_conflict.
     contradict Hc; pred_apply; cancel.
 
     eapply is_avail_in_freelist; eauto.
+    rewrite to_bits_length; apply bound_offset; auto.
+    denote (ifind_byte _ = Some _) as Hb.
+    apply ifind_byte_inb in Hb; auto.
     eapply avail_nonzero_not_zero; eauto.
+    rewrite Nat.eq_add_0, Nat.eq_mul_0 in *.
+    intuition (auto || exfalso; auto).
     eapply bmap_rep_length_ok1; eauto.
+    rewrite to_bits_length, length_updN.
+    apply bound_offset; auto.
     eapply is_avail_in_freelist; eauto.
+    rewrite to_bits_length; apply bound_offset; auto.
+    Unshelve.
+    all : solve [auto | exact full].
   Qed.
 
 
@@ -423,7 +772,7 @@ Module BmapAlloc (Sig : AllocSig).
     hoare.
 
     eapply bmap_rep_length_ok2; eauto.
-
+    eapply bmap_rep_length_ok2; eauto.
     constructor; eauto.
     intro Hin.
     denote (freepred <=p=> _) as Hfp.
@@ -434,7 +783,11 @@ Module BmapAlloc (Sig : AllocSig).
     eapply ptsto_conflict_F with (m := mx) (a := bn).
     pred_apply; cancel.
 
+    rewrite to_bits_updN_set_avail; auto.
     apply freelist_bmap_equiv_add_ok; auto.
+    rewrite to_bits_length.
+    apply Rounding.div_lt_mul_lt; auto.
+    eapply bmap_rep_length_ok2; eauto.
     eapply bmap_rep_length_ok2; eauto.
     denote (freepred <=p=> _) as Hfp. apply Hfp.
     Unshelve.
@@ -460,11 +813,18 @@ Module BmapAlloc (Sig : AllocSig).
     unfold freelist_bmap_equiv in *. intuition.
     eapply Forall_forall in H1; eauto.
     rewrite Bmp.items_length_ok_pimpl in H.
-    destruct_lift H.
-    unfold BmpSig.RALen in *.
-    unfold BmpSig.items_per_val in *.
-    unfold Bmp.Defs.item in *. simpl in *.
-    omega.
+    rewrite BmpSig.blocksz_ok.
+    simpl in *.
+    destruct_lifts.
+    rewrite to_bits_length in *.
+    unfold state in *.
+    cbn in *.
+    denote (length _ = _) as Ha.
+    rewrite Ha in *.
+    rewrite mult_assoc.
+    assumption.
+    Unshelve.
+    all : eauto; constructor.
   Qed.
 
   Lemma rep_impl_NoDup: forall F V FP xp freelist freepred m,
@@ -501,8 +861,30 @@ Module BmapAlloc (Sig : AllocSig).
   Qed.
 
 
-End BmapAlloc.
+End BmpWord.
 
+Module ByteBmap <: WordBMapSig.
+  Import Rec.
+
+  Definition word_size := 8.
+  Definition type := ArrayF (WordF 1) word_size.
+
+  Theorem word_size_ok : Nat.divide word_size valulen.
+  Proof.
+    rewrite valulen_is.
+    apply Nat.mod_divide; auto.
+    unfold word_size.
+    congruence.
+  Qed.
+
+  Theorem word_size_nonzero : word_size <> 0.
+  Proof.
+    compute; congruence.
+  Qed.
+
+End ByteBmap.
+
+Module BmapAlloc (Sig : AllocSig) := BmpWord Sig ByteBmap.
 
 (* BmapAlloc with a list of free items to speed up allocation *)
 
