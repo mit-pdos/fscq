@@ -129,7 +129,7 @@ func (fs FileSystem) Launch(opts Options) {
 		args = append(args, "-o", opts.optString())
 	}
 	if fs.isHaskell() {
-		args = append(args, "+RTS", "-N2", "-RTS")
+		args = append(args, "+RTS", "-A6G", "-qa", "-I0", "-N2", "-qg", "-RTS")
 	}
 	cmd := opts.ServerCpu.Command(fs.binary, args...)
 	cmd.Stderr = os.Stderr
