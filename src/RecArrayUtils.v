@@ -856,79 +856,9 @@ Module RADefs (RA : RASig).
     setoid_rewrite H; setoid_rewrite H0; auto.
   Qed.
 
-
   (* finding an element inside a block *)
-  Fixpoint ifind_block (cond : item -> addr -> bool) (vs : block) start : option (addr * item ) :=
-    match vs with
-    | nil => None
-    | x :: rest =>
-        if (cond x start) then Some (start, x)
-                          else ifind_block cond rest (S start)
-    end.
-
-
-  Lemma ifind_block_ok_mono : forall cond vs start r,
-    ifind_block cond vs start = Some r ->
-    fst r >= start.
-  Proof.
-    induction vs; simpl; intros; try congruence.
-    destruct (cond a) eqn: C.
-    inversion H; simpl; auto.
-    apply le_Sn_le.
-    apply IHvs; auto.
-  Qed.
-
-  Lemma ifind_block_ok_bound : forall cond vs start r,
-    ifind_block cond vs start = Some r ->
-    fst r < start + length vs.
-  Proof.
-    fold Rec.data.
-    induction vs; simpl; intros; try congruence.
-    destruct (cond a) eqn: C.
-    inversion H; simpl; omega.
-    replace (start + S (length vs)) with (S start + length vs) by omega.
-    apply IHvs; auto.
-  Qed.
-
-  Lemma ifind_block_ok_cond : forall cond vs start r,
-    ifind_block cond vs start = Some r ->
-    cond (snd r) (fst r) = true.
-  Proof.
-    induction vs; simpl; intros; try congruence.
-    destruct (cond a) eqn: C.
-    inversion H; simpl; auto.
-    eapply IHvs; eauto.
-  Qed.
-
-  Lemma ifind_block_ok_item : forall cond vs start r,
-    ifind_block cond vs start = Some r ->
-    selN vs ((fst r) - start) item0 = (snd r).
-  Proof.
-    induction vs; intros.
-    simpl in *; try congruence.
-    simpl in H; destruct (cond a) eqn: C.
-    inversion H; simpl; auto.
-    rewrite Nat.sub_diag; simpl; auto.
-    replace (fst r - start) with ((fst r - S start) + 1).
-    rewrite selN_cons, Nat.add_sub by omega.
-    apply IHvs; auto.
-    apply ifind_block_ok_mono in H; omega.
-  Qed.
-
-
-  Lemma ifind_block_ok_facts : forall cond vs start r,
-    ifind_block cond vs start = Some r ->
-    (fst r) >= start /\
-    (fst r) < start + length vs /\
-    cond (snd r) (fst r) = true /\
-    selN vs ((fst r) - start) item0 = (snd r).
-  Proof.
-    intros; intuition.
-    eapply ifind_block_ok_mono; eauto.
-    eapply ifind_block_ok_bound; eauto.
-    eapply ifind_block_ok_cond; eauto.
-    eapply ifind_block_ok_item; eauto.
-  Qed.
+  Definition ifind_block (cond : item -> addr -> bool) (vs : block) start : option (addr * item ) :=
+    ifind_list cond vs start.
 
   Lemma ifind_result_inbound :  forall len bn items cond r,
     Forall Rec.well_formed items ->
@@ -939,7 +869,7 @@ Module RADefs (RA : RASig).
     fst r < length items.
   Proof.
     intros.
-    apply ifind_block_ok_facts in H1 as [Hm [ Hb [ Hc Hi ] ] ].
+    apply ifind_list_ok_facts with (d := item0) in H1 as [Hm [ Hb [ Hc Hi ] ] ].
     apply list_chunk_wellformed in H.
     rewrite synced_list_selN in Hb; simpl in Hb.
     unfold ipack in *; rewrite val2block2val_selN_id in * by auto.
@@ -961,7 +891,7 @@ Module RADefs (RA : RASig).
     (snd r) = selN items (fst r) item0.
   Proof.
     intros.
-    apply ifind_block_ok_facts in H1 as [Hm [ Hb [ Hc Hi ] ] ].
+    apply ifind_list_ok_facts with (d := item0) in H1 as [Hm [ Hb [ Hc Hi ] ] ].
     rewrite <- Hi.
     rewrite synced_list_selN; simpl.
     apply list_chunk_wellformed in H.
@@ -977,20 +907,6 @@ Module RADefs (RA : RASig).
     eapply lt_le_trans; eauto.
     rewrite <- Nat.mul_sub_distr_r, <- Nat.mul_1_l at 1.
     apply Nat.mul_le_mono_r; omega.
-  Qed.
-
-  Lemma ifind_block_none : forall cond l start,
-    ifind_block cond l start = None ->
-    forall ix, ix < length l ->
-    cond (selN l ix item0) (start + ix) = false.
-  Proof.
-    induction l; simpl; intros; try omega.
-    destruct ix.
-    rewrite Nat.add_0_r.
-    destruct (cond a); congruence.
-    replace (start + S ix) with (S start + ix) by omega.
-    apply IHl; try omega.
-    destruct (cond a); congruence.
   Qed.
 
   Lemma ifind_block_none_progress : forall i ix items v cond len,
@@ -1016,7 +932,7 @@ Module RADefs (RA : RASig).
 
     rewrite <- ipack_selN_divmod; auto.
     rewrite Nat.div_mod with (x := ix) (y := items_per_val) at 3 by auto.
-    apply ifind_block_none.
+    apply ifind_list_none.
     replace (ix / items_per_val) with i.
     rewrite Nat.mul_comm.
     rewrite synced_list_selN in H0; simpl in H0; auto.

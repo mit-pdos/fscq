@@ -249,7 +249,7 @@ Module LogRecArray (RA : RASig).
   constructor : okToUnify.
 
   Hint Resolve
-       ifind_block_ok_cond
+       ifind_list_ok_cond
        ifind_result_inbound
        ifind_result_item_ok.
 

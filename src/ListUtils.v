@@ -3233,6 +3233,91 @@ Proof.
   rewrite skipn_app_r. auto.
 Qed.
 
+Section ifind_list.
+  Variable T : Type.
+  (* finding an element inside a block *)
+  Fixpoint ifind_list (cond : T -> nat -> bool) (vs : list T) start : option (nat * T ) :=
+    match vs with
+    | nil => None
+    | x :: rest =>
+        if (cond x start) then Some (start, x)
+                          else ifind_list cond rest (S start)
+    end.
+
+  Lemma ifind_list_ok_mono : forall cond vs start r,
+    ifind_list cond vs start = Some r ->
+    fst r >= start.
+  Proof.
+    induction vs; simpl; intros; try congruence.
+    destruct cond.
+    inversion H; simpl; auto.
+    apply le_Sn_le.
+    apply IHvs; auto.
+  Qed.
+
+  Lemma ifind_list_ok_bound : forall cond vs start r,
+    ifind_list cond vs start = Some r ->
+    fst r < start + length vs.
+  Proof.
+    induction vs; simpl; intros; try congruence.
+    destruct (cond a) eqn: C.
+    inversion H; simpl; omega.
+    replace (start + S (length vs)) with (S start + length vs) by omega.
+    apply IHvs; auto.
+  Qed.
+
+  Lemma ifind_list_ok_cond : forall cond vs start r,
+    ifind_list cond vs start = Some r ->
+    cond (snd r) (fst r) = true.
+  Proof.
+    induction vs; simpl; intros; try congruence.
+    destruct (cond a) eqn: C.
+    inversion H; simpl; auto.
+    eapply IHvs; eauto.
+  Qed.
+
+  Lemma ifind_list_ok_item : forall cond vs start r d,
+    ifind_list cond vs start = Some r ->
+    selN vs ((fst r) - start) d = (snd r).
+  Proof.
+    induction vs; simpl; intros; try congruence.
+    destruct cond.
+    inversion H; simpl; auto.
+    rewrite Nat.sub_diag; simpl; auto.
+    replace (fst r - start) with (S (fst r - S start)).
+    apply IHvs; auto.
+    apply ifind_list_ok_mono in H; omega.
+  Qed.
+
+  Lemma ifind_list_ok_facts : forall cond vs start r d,
+    ifind_list cond vs start = Some r ->
+    (fst r) >= start /\
+    (fst r) < start + length vs /\
+    cond (snd r) (fst r) = true /\
+    selN vs ((fst r) - start) d = (snd r).
+  Proof.
+    intros; intuition eauto using
+      ifind_list_ok_mono,
+      ifind_list_ok_bound,
+      ifind_list_ok_cond,
+      ifind_list_ok_item.
+  Qed.
+
+  Lemma ifind_list_none : forall cond l start d,
+    ifind_list cond l start = None ->
+    forall ix, ix < length l ->
+    cond (selN l ix d) (start + ix) = false.
+  Proof.
+    induction l; simpl; intros; try omega.
+    destruct ix.
+    rewrite Nat.add_0_r.
+    destruct cond; congruence.
+    rewrite <- plus_Snm_nSm.
+    apply IHl; try omega.
+    destruct (cond a); congruence.
+  Qed.
+End ifind_list.
+
 Inductive list_same {T : Type} (v : T) : list T -> Prop :=
 | ListSameNil : list_same v nil
 | ListSameCons : forall l, list_same v l -> list_same v (v :: l).

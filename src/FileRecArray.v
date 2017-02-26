@@ -401,7 +401,7 @@ Module FileRecArray (FRA : FileRASig).
 
     eapply ifind_length_ok; eauto.
     Hint Resolve
-         ifind_block_ok_cond
+         ifind_list_ok_cond
          ifind_result_inbound
          ifind_result_item_ok.
     unfold items_valid in *; intuition idtac.
