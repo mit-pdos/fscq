@@ -118,7 +118,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
   Qed.
 
   Definition has_avail (s : state) := if state_dec s then false else true.
-  Definition avail_nonzero s i := if (addr_eq_dec i 0) then false else has_avail s.
+  Definition avail_nonzero s i := if (addr_eq_dec i 0) then (has_avail (s ^| wone _)) else has_avail s.
 
   Lemma HasAvail_has_0 : forall s, HasAvail s -> {i | i < length (bits s) /\ forall d, selN (bits s) i d = avail}.
   Proof.
@@ -203,7 +203,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     match r with
     | None => Ret ^(ms, None)
     | Some (bn, nonfull) =>
-      match ifind_byte nonfull with
+      match ifind_byte (if addr_eq_dec bn 0 then (nonfull ^| wone _) else nonfull) with
       | None =>
         (* won't happen *) Ret ^(ms, None)
       | Some (i, _) =>
@@ -486,14 +486,75 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     auto.
   Qed.
 
-  Lemma avail_nonzero_not_zero : forall bmap i,
-    avail_nonzero (selN bmap i $0) i = true -> i <> 0.
+  Lemma bits_wor_wone : forall sz (w : word (S sz)),
+    bits (w ^| wone _) = inuse :: bits (wtl w).
   Proof.
-    unfold avail_nonzero; intros.
-    destruct (addr_eq_dec i 0); congruence.
+    intros.
+    destruct (shatter_word_S w); repeat deex.
+    rewrite wor_wone.
+    rewrite bits_cons.
+    reflexivity.
   Qed.
 
-  Local Hint Resolve avail_nonzero_is_avail avail_nonzero_not_zero.
+  Lemma avail_nonzero_first_is_avail : forall bmap ii b d d',
+    length bmap > 0 ->
+    ifind_byte (selN bmap 0 d' ^| wone _) = Some (ii, b) ->
+    Avail (selN (to_bits bmap) ii d).
+  Proof.
+    unfold ifind_byte.
+    unfold Defs.itemsz. simpl.
+    generalize (WBSig.word_size_nonzero).
+    generalize WBSig.word_size.
+    unfold avail_nonzero; intros.
+    unfold Avail.
+    denote (ifind_list _ _ _ = _) as Hl.
+    apply ifind_list_ok_bound in Hl as ?; simpl in *.
+    rewrite bits_length in *.
+    rewrite selN_to_bits by auto.
+    rewrite Nat.div_small by auto.
+    rewrite Nat.mod_small by auto.
+    apply ifind_list_ok_cond in Hl as ?.
+    simpl in *.
+    destruct weq; subst; try congruence.
+    eapply ifind_list_ok_item in Hl as ?.
+    simpl in *.
+    rewrite Nat.sub_0_r in *.
+    destruct n; try congruence.
+    rewrite bits_wor_wone in *.
+    destruct ii; simpl in H0.
+    compute [selN inuse avail natToWord mod2] in *. congruence.
+    match goal with |- context [selN ?l 0 ?d] =>
+      rewrite selN_inb with (d1 := d') (d2 := d) in H3;
+      pose proof (shatter_word_S (selN l 0 d)); repeat deex
+    end.
+    denote (selN _ _ _ = _) as Hx.
+    rewrite Hx in *.
+    rewrite bits_cons.
+    simpl in *.
+    erewrite selN_inb by (rewrite bits_length; omega). eauto.
+    Unshelve.
+    all : eauto; solve [exact nil | exact None].
+  Qed.
+
+  Lemma ifind_byte_first_not_zero : forall (w : state) b,
+    ifind_byte (w ^| wone _) = Some (0, b) -> False.
+  Proof.
+    unfold ifind_byte, state.
+    generalize (WBSig.word_size_nonzero).
+    unfold Defs.itemsz. simpl.
+    generalize WBSig.word_size.
+    intros n H' w b H.
+    eapply ifind_list_ok_cond in H as Ha.
+    eapply ifind_list_ok_item in H as Hb.
+    cbn in *.
+    destruct n; try congruence.
+    rewrite bits_wor_wone in *.
+    simpl in *.
+    destruct weq; compute in *; congruence.
+    Unshelve. eauto.
+  Qed.
+
+  Local Hint Resolve avail_nonzero_is_avail avail_nonzero_first_is_avail ifind_byte_first_not_zero.
 
   Lemma avail_item0 : forall n d, n < Defs.itemsz -> Avail (selN (bits Bmp.Defs.item0) n d).
   Proof.
@@ -577,14 +638,13 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     induction n; simpl; f_equal; auto.
   Qed.
 
-  Lemma ifind_byte_inb : forall l i n b d,
-    i < length l ->
-    ifind_byte (selN l i d) = Some (n, b) ->
+  Lemma ifind_byte_inb : forall x n b,
+    ifind_byte x = Some (n, b) ->
     n < Defs.itemsz.
   Proof.
     unfold ifind_byte.
     intros.
-    apply ifind_list_ok_bound in H0.
+    apply ifind_list_ok_bound in H.
     rewrite bits_length in *.
     simpl in *. auto.
   Qed.
@@ -712,16 +772,17 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     contradict Hc; pred_apply; cancel.
 
     eapply is_avail_in_freelist; eauto.
+    destruct addr_eq_dec; subst; eauto.
     rewrite to_bits_length; apply bound_offset; auto.
     denote (ifind_byte _ = Some _) as Hb.
-    apply ifind_byte_inb in Hb; auto.
-    eapply avail_nonzero_not_zero; eauto.
+    apply ifind_byte_inb in Hb as Hc; auto.
     rewrite Nat.eq_add_0, Nat.eq_mul_0 in *.
-    intuition (auto || exfalso; auto).
+    intuition (subst; exfalso; try destruct addr_eq_dec; eauto).
     eapply bmap_rep_length_ok1; eauto.
     rewrite to_bits_length, length_updN.
     apply bound_offset; auto.
     eapply is_avail_in_freelist; eauto.
+    destruct addr_eq_dec; subst; eauto.
     rewrite to_bits_length; apply bound_offset; auto.
     Unshelve.
     all : solve [auto | exact full].
