@@ -1379,15 +1379,6 @@ Module BFILE.
     erewrite selN_updN_ne; eauto.
   Qed.
 
-Lemma rep_rewrite: forall bxps frees lms lms' cm,
-  BALLOCC.rep bxps frees (BALLOCC.mk_memstate lms cm) =p=>
-  BALLOCC.rep bxps frees (BALLOCC.mk_memstate lms' cm).
-Proof.
-  intros.
-  unfold BALLOCC.mk_memstate, BALLOCC.rep.
-  cancel.
-Qed.
-
 
   Theorem grow_ok : forall lxp bxp ixp inum v ms,
     {< F Fm Fi Fd m0 m flist ilist frees f,
