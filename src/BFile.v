@@ -1379,6 +1379,15 @@ Module BFILE.
     erewrite selN_updN_ne; eauto.
   Qed.
 
+Lemma rep_rewrite: forall bxps frees lms lms' cm,
+  BALLOCC.rep bxps frees (BALLOCC.mk_memstate lms cm) =p=>
+  BALLOCC.rep bxps frees (BALLOCC.mk_memstate lms' cm).
+Proof.
+  intros.
+  unfold BALLOCC.mk_memstate, BALLOCC.rep.
+  cancel.
+Qed.
+
 
   Theorem grow_ok : forall lxp bxp ixp inum v ms,
     {< F Fm Fi Fd m0 m flist ilist frees f,
@@ -1427,11 +1436,19 @@ Module BFILE.
       step.
 
       or_r; safecancel.
+
       rewrite rep_alt_equiv with (msalloc := MSAlloc ms); unfold rep_alt.
       erewrite pick_upd_balloc_lift with (new := freelist') (flag := MSAlloc ms) (p := (frees_1, frees_2)) at 1.
       rewrite pick_negb_upd_balloc with (new := freelist') (flag := MSAlloc ms) at 1.
       unfold upd_balloc.
+
+      replace (a3) with (BALLOCC.mk_memstate (BALLOCC.MSLog a3) (BALLOCC.MSCache a3)) at 1 by (destruct a3; reflexivity).
+      setoid_rewrite pick_upd_balloc_lift with (new := (BALLOCC.MSCache a3) ) (flag := MSAlloc ms) at 1.
+      rewrite pick_negb_upd_balloc with (new := (BALLOCC.MSCache a3)) (flag := MSAlloc ms) at 1.
+      unfold upd_balloc.
+
       cancel.
+
       3: sepauto.
       4: eauto.
       seprewrite.
@@ -1440,6 +1457,7 @@ Module BFILE.
       rewrite map_app; simpl.
       rewrite <- listmatch_app_tail.
       cancel.
+
       rewrite map_length; omega.
       rewrite wordToNat_natToWord_idempotent'; auto.
       eapply BALLOCC.bn_valid_goodSize; eauto.
