@@ -395,6 +395,12 @@ Proof.
   apply (f_equal (@wtl _)) in H0; tauto.
 Qed.
 
+Fixpoint rep_bit (n : nat) (b : word 1) : word n :=
+  match n as n0 return (word n0) with
+  | 0 => WO
+  | S n0 => WS (whd b) (rep_bit n0 b)
+  end.
+
 
 (** Shattering **)
 

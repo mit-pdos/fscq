@@ -244,12 +244,6 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
   Definition to_bits {sz} (l : list (word sz)) : list bit :=
     concat (map (@bits sz) l).
 
-  Fixpoint rep_bit (n : nat) (b : word 1) : word n :=
-    match n as n0 return (word n0) with
-    | 0 => WO
-    | S n0 => WS (whd b) (rep_bit n0 b)
-    end.
-
   Lemma to_bits_length : forall sz (l : list (word sz)),
     length (to_bits l) = length l * sz.
   Proof.
