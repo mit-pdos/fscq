@@ -145,7 +145,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
       reflexivity.
     + exists 0.
       split; auto; omega.
-    Qed.
+    Defined.
 
   Definition ifind_byte (s : state) : option (addr * bit) :=
     ifind_list (fun (b : bit) (_ : addr) => if weq b avail then true else false) (bits s) 0.
