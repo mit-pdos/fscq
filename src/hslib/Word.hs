@@ -110,6 +110,10 @@ wzero :: Integer -> Coq_word
 wzero 64 = W64 0
 wzero _ = W 0
 
+wone :: Integer -> Coq_word
+wone 64 = W64 1
+wone _ = W 1
+
 zext :: Integer -> Coq_word -> Integer -> Coq_word
 zext _ (W w) _ = W w
 zext _ (W64 w) _ = W $ fromIntegral w

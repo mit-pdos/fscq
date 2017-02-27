@@ -120,6 +120,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
   Definition has_avail (s : state) := if state_dec s then false else true.
   Definition avail_nonzero s i := if (addr_eq_dec i 0) then (has_avail (s ^| wone _)) else has_avail s.
 
+(*
   Lemma HasAvail_has_0 : forall s, HasAvail s -> {i | i < length (bits s) /\ forall d, selN (bits s) i d = avail}.
   Proof.
     unfold HasAvail.
@@ -145,7 +146,8 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
       reflexivity.
     + exists 0.
       split; auto; omega.
-    Defined.
+  Defined.
+*)
 
   Definition ifind_byte (s : state) : option (addr * bit) :=
     ifind_list (fun (b : bit) (_ : addr) => if weq b avail then true else false) (bits s) 0.
