@@ -30,7 +30,7 @@ Set Implicit Arguments.
 
   Definition rep fsxp F tree ilist frees ms :=
     (exists bflist freeinodes freeinode_pred,
-     BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist ilist frees (BFILE.MSCache ms) *
+     BFILE.rep fsxp.(FSXPBlockAlloc) fsxp.(FSXPInode) bflist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) *
      IAlloc.rep BFILE.freepred fsxp freeinodes freeinode_pred *
      [[ (F * tree_pred fsxp tree * freeinode_pred)%pred (list2nmem bflist) ]]
     )%pred.
