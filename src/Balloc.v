@@ -1490,7 +1490,7 @@ Module BALLOCC.
   Definition rep xp (freeblocks : list addr) ms :=
     ( exists freepred, freepred * Alloc.rep FP xp freeblocks freepred ms)%pred.
 
-  Lemma rep_rewrite: forall bxps frees lms lms' cm,
+  Lemma rep_ignore_mslog_ok: forall bxps frees lms lms' cm,
     rep bxps frees (mk_memstate lms cm) =p=>
     rep bxps frees (mk_memstate lms' cm).
   Proof.

@@ -178,9 +178,9 @@ Module BFILE.
     let '(al, ms, alc, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSCache fms) in
     let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
     let l := map (@wordToNat _) (skipn ((length bns) - nr) bns) in
-    cms <- BALLOCC.freevec lxp (pick_balloc bxps (negb al)) l (BALLOCC.mk_memstate ms (pick_balloc alc al));
+    cms <- BALLOCC.freevec lxp (pick_balloc bxps (negb al)) l (BALLOCC.mk_memstate ms (pick_balloc alc (negb al)));
     cms <- INODE.shrink lxp (pick_balloc bxps (negb al)) ixp inum nr cms;
-    Ret (mk_memstate al ms alc cache).
+    Ret (mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) (negb al)) cache).
 
   Definition shuffle_allocs lxp bxps ms cms :=
     let^ (ms, cms) <- ForN i < (BmapNBlocks (fst bxps) * valulen)
@@ -1555,6 +1555,12 @@ Module BFILE.
       erewrite pick_upd_balloc_lift with (new := freelist') (flag := negb (MSAlloc ms)) (p := (frees_1, frees_2)) at 1.
       rewrite pick_upd_balloc_negb with (new := freelist') (flag := MSAlloc ms) at 1.
       unfold upd_balloc.
+
+      replace (r_0) with (BALLOCC.mk_memstate (BALLOCC.MSLog r_0) (BALLOCC.MSCache r_0)) at 1 by (destruct r_0; reflexivity).
+      setoid_rewrite pick_upd_balloc_lift with (new := (BALLOCC.MSCache r_0) ) (flag := negb (MSAlloc ms)) at 1.
+      rewrite pick_upd_balloc_negb with (new := (BALLOCC.MSCache r_0)) (flag := MSAlloc ms) at 1.
+      unfold upd_balloc.
+
       erewrite INODE.rep_bxp_switch by ( apply eq_sym; eassumption ).
       cancel.
 
