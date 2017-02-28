@@ -683,8 +683,10 @@ Module FileRecArray (FRA : FileRASig).
   Proof.
     unfold rep; intros.
     destruct_lift H0; subst.
-    erewrite <- BFILE.file_crash_synced with (f' := f'); eauto.
+    eapply BFILE.file_crash_synced in H.
+    intuition. rewrite <- H1.
     pred_apply; cancel.
+    unfold items_valid, RALen in *; intuition congruence.
     eapply BFILE.arrayN_synced_list_fsynced; eauto.
   Qed.
 
