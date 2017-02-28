@@ -15,6 +15,7 @@ type DataPoints struct {
 	fsIdent  string
 	fs       filesys.Options
 	work     workload.Options
+	workIdx  int
 	parallel bool
 	result   workload.Results
 }
@@ -48,6 +49,7 @@ var DataHeader = concat(
 	filesys.DataHeader,
 	workload.DataHeader,
 	[]interface{}{
+		"work_idx",
 		"parallel",
 		"run_idx",
 		"timeSec",
@@ -67,6 +69,7 @@ func (p DataPoints) dataRowPrefix() []interface{} {
 		p.fs.DataRow(),
 		p.work.DataRow(),
 		[]interface{}{
+			p.workIdx,
 			p.parallel,
 		},
 	)
@@ -111,6 +114,7 @@ func main() {
 		"operate on disjoint directories (ignored if unsupported)")
 	parallel := flag.Bool("parallel", false, "run operation in parallel")
 	kiters := flag.Int("kiters", 1, "thousands of iterations to run the operation")
+	work_iters := flag.Int("work_iters", 1, "repetitions of the entire workload")
 	targetMs := flag.Int("target-ms", 0,
 		"search for iterations to run for at least this many ms (0 to disable search)")
 	attr_cache := flag.Bool("attr-cache", false, "enable fuse attribute cache")
@@ -157,6 +161,10 @@ func main() {
 		*disjointDirectories = false
 	}
 
+	if *readable_output && *work_iters > 1 {
+		log.Fatal(fmt.Errorf("readable output does not support re-running workload"))
+	}
+
 	if *parallel {
 		runtime.GOMAXPROCS(2)
 	}
@@ -169,8 +177,6 @@ func main() {
 		ServerCpu:    pin.Cpu(*server_cpu),
 	}
 
-	fs.Launch(fsOpts)
-
 	opts := workload.Options{
 		Operation:           *operation,
 		ClientCpus:          pin.NewCpus(*client_cpus),
@@ -179,45 +185,55 @@ func main() {
 		Kiters:              *kiters,
 	}
 
-	opts.Warmup(fs)
+	var data_iters []DataPoints
 
-	data := DataPoints{
-		fsIdent:  fs.Ident(),
-		fs:       fsOpts,
-		work:     opts,
-		parallel: *parallel,
+	for i := 0; i < *work_iters; i++ {
+		fs.Launch(fsOpts)
+		opts.Warmup(fs)
+
+		data := DataPoints{
+			fsIdent:  fs.Ident(),
+			fs:       fsOpts,
+			work:     opts,
+			workIdx:  i,
+			parallel: *parallel,
+		}
+
+		if *targetMs > 0 {
+			data.result = opts.SearchWorkload(fs, *parallel, *targetMs)
+		} else {
+			data.result = opts.RunWorkload(fs, *parallel)
+		}
+
+		fs.Stop()
+		data_iters = append(data_iters, data)
 	}
-
-	if *targetMs > 0 {
-		data.result = opts.SearchWorkload(fs, *parallel, *targetMs)
-	} else {
-		data.result = opts.RunWorkload(fs, *parallel)
-	}
-
-	fs.Stop()
 
 	if *readable_output {
+		data := data_iters[0]
 		row := data.ReadableDataRow()
 		for i, hdr := range ReadableDataHeader {
 			value := row[i]
 			fmt.Printf("%-20s %v\n", hdr, value)
 		}
-		seqData := DataPoints{
-			fsIdent:  data.fsIdent,
-			fs:       data.fs,
-			work:     data.work,
-			parallel: false,
-			result:   opts.RunWorkload(fs, false),
-		}
 		if *parallel {
 			fs.Launch(fsOpts)
 			opts.Warmup(fs)
+			seqData := DataPoints{
+				fsIdent:  data.fsIdent,
+				fs:       data.fs,
+				work:     data.work,
+				parallel: false,
+				result:   opts.RunWorkload(fs, false),
+			}
 			fmt.Printf("%-20s %v\n", "speedup", 2*data.SpeedupOver(seqData))
 			fs.Stop()
 		}
 	} else {
-		for i := range data.result.IterTimes {
-			printTsv(data.DataRow(i)...)
+		for _, data := range data_iters {
+			for i := range data.result.IterTimes {
+				printTsv(data.DataRow(i)...)
+			}
 		}
 	}
 
