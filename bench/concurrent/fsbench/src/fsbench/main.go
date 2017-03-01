@@ -162,10 +162,6 @@ func main() {
 		log.Fatal(fmt.Errorf("invalid operation %s: expected stat or open", *operation))
 	}
 
-	if *disjointDirectories && !fs.SupportsDisjointDirectories() {
-		*disjointDirectories = false
-	}
-
 	if *readable_output && *work_iters > 1 {
 		log.Fatal(fmt.Errorf("readable output does not support re-running workload"))
 	}

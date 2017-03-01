@@ -80,9 +80,9 @@ func (opts Options) RunWorkload(fs filesys.FileSystem, parallel bool) Results {
 	for i := 0; i < copies; i++ {
 		var path string
 		if opts.DisjointDirectories {
-			path = fs.DisjointPath(i)
+			path = fs.Pathname(0)
 		} else {
-			path = fs.Pathname()
+			path = fs.Pathname(i)
 		}
 		if !opts.ExistingPath {
 			path += "x"
