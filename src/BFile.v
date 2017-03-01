@@ -1081,7 +1081,8 @@ Module BFILE.
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:^(ms',r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-           [[ r = length (BFData f) /\ MSAlloc ms = MSAlloc ms' /\ MSCache ms = MSCache ms' ]]
+           [[ r = length (BFData f) /\ MSAlloc ms = MSAlloc ms' /\ 
+              MSCache ms = MSCache ms' /\ MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} getlen lxp ixp inum ms.
