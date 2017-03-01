@@ -49,14 +49,14 @@ var fileSystems = []FileSystem{
 		binary:   "passthrough",
 		filename: "/tmp/hellofs/etc/passwd",
 		disjointFilenames: []string{"/tmp/hellofs/etc/passwd",
-			"/tmp/hellofs/bin/true"},
+			"/tmp/hellofs/usr/bin/true"},
 		isFuse3: true,
 		args:    helloArgs},
 	{ident: "native",
 		binary:   "true",
 		filename: "/etc/passwd",
 		disjointFilenames: []string{"/etc/passwd",
-			"/bin/true"},
+			"/usr/bin/true"},
 		args: []string{}},
 }
 
