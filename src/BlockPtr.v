@@ -2480,11 +2480,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
         rewrite <- skipn_skipn'.
         rewrite firstn_app2. rewrite skipn_app_l. rewrite skipn_oob. rewrite app_nil_l.
         rewrite firstn_app2. rewrite skipn_app_l. rewrite skipn_oob. rewrite app_nil_l.
-        (* using `cancel` raises a Not_found exception here; don't know why *)
-        rewrite sep_star_assoc. rewrite sep_star_comm with (p1 := indrep_n_tree 1 _ _ _). cancel_last.
+        (* `cancel` calls `simpl` which raises a Not_found exception here; don't know why *)
+        norm; repeat cancel_one; intuition cancel.
         all : repeat rewrite app_length; try solve [auto | simpl; omega].
        -- apply le_nblocks_goodSize. simpl. rewrite mult_1_r. omega.
-       -- substl l at 1. simpl.
+       -- substl l at 1. cbn.
           match goal with [H : updN _ _ _ = _ |- _] => rewrite <- H end.
           rewrite plus_comm. erewrite firstn_S_selN.
           repeat rewrite firstn_app_le by omega.
@@ -2492,7 +2492,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
           erewrite eq_trans with (x := _ - _); [> | reflexivity |].
           rewrite selN_updN_eq by omega. reflexivity.
           all : try rewrite app_length, length_updN; omega.
-       -- simpl.
+       -- cbn.
           match goal with [H : updN _ _ _ = _ |- _] => rewrite <- H end.
           denote list_same as Hls. rewrite skipn_app_r_ge in Hls by omega.
           rewrite skipn_app_r_ge by omega.
