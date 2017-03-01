@@ -40,6 +40,7 @@ Module DIRTREE.
 
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
+  Notation MSAllocC := BFILE.MSAllocC.
   Notation MSCache := BFILE.MSCache.
 
 
@@ -53,7 +54,7 @@ Module DIRTREE.
       Invariant
         LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs) hm *
         exists tree,
-        [[ (Fm * BFILE.rep bxp ixp bflist ilist freeblocks (MSCache mscs) *
+        [[ (Fm * BFILE.rep bxp ixp bflist ilist freeblocks (MSAllocC mscs) (MSCache mscs) *
             IAlloc.rep BFILE.freepred ibxp freeinodes freeinode_pred)%pred
            (list2nmem m) ]] *
         [[ (Ftop * tree_pred ibxp treetop * freeinode_pred)%pred (list2nmem bflist) ]] *
@@ -93,9 +94,9 @@ Module DIRTREE.
   Definition mkfile fsxp dnum name fms :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
-    let '(al, ms, cache) := (MSAlloc fms, MSLL fms, MSCache fms) in
+    let '(al, alc, ms, cache) := (MSAlloc fms, MSAllocC fms, MSLL fms, MSCache fms) in
     let^ (ms, oi) <- IAlloc.alloc lxp ibxp ms;
-    let fms := BFILE.mk_memstate al ms cache in
+    let fms := BFILE.mk_memstate al ms alc cache in
     match oi with
     | None => Ret ^(fms, Err ENOSPCINODE)
     | Some inum =>
@@ -113,9 +114,9 @@ Module DIRTREE.
   Definition mkdir fsxp dnum name fms :=
     let '(lxp, bxp, ibxp, ixp) := ((FSXPLog fsxp), (FSXPBlockAlloc fsxp),
                                    fsxp, (FSXPInode fsxp)) in
-    let '(al, ms, cache) := (MSAlloc fms, MSLL fms, MSCache fms) in
+    let '(al, alc, ms, cache) := (MSAlloc fms, MSAllocC fms, MSLL fms, MSCache fms) in
     let^ (ms, oi) <- IAlloc.alloc lxp ibxp ms;
-    let fms := BFILE.mk_memstate al ms cache in
+    let fms := BFILE.mk_memstate al ms alc cache in
     match oi with
     | None => Ret ^(fms, Err ENOSPCINODE)
     | Some inum =>
@@ -153,7 +154,7 @@ Module DIRTREE.
         match ok with
         | OK _ =>
           mscs' <- IAlloc.free lxp ibxp inum (MSLL mscs);
-          mscs <- BFILE.reset lxp bxp ixp inum (BFILE.mk_memstate (MSAlloc mscs) mscs' (MSCache mscs));
+          mscs <- BFILE.reset lxp bxp ixp inum (BFILE.mk_memstate (MSAlloc mscs) mscs' (MSAllocC mscs) (MSCache mscs));
           Ret ^(mscs, OK tt)
         | Err e =>
           Ret ^(mscs, Err e)
