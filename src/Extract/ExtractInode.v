@@ -12,6 +12,8 @@ Require Import Inode.
 
 Local Open Scope string_scope.
 
+Set Implicit Arguments.
+
 Instance z : GoWrapper (Rec.Rec.data INODE.IRecSig.itemtype).
   simpl.
   typeclasses eauto.
@@ -98,6 +100,187 @@ Proof.
 Qed.
 *)
 
+Definition eq_leibniz A B (f : A -> B) x y (e : x = y) : f x = f y.
+  destruct e.
+  reflexivity.
+Defined.
+
+Lemma eq_rect_leibniz : forall A B (f : A -> B) x y (e : x = y) P p,
+    rew [fun x0 => P (f x0)] e in p = rew [P] (eq_leibniz f e) in p.
+Proof.
+  intros.
+  destruct e.
+  reflexivity.
+Defined.
+
+Lemma okToCancel_eq_rect_immut_word : forall x y p (e : x = y) var,
+    ((var ~> rew [immut_word] e in p) : pred) <=p=> (var ~> p).
+Proof.
+  intros.
+  replace (wrap (rew [immut_word] e in p)) with (wrap p).
+  reflexivity.
+  revert p.
+  rewrite e.
+  intros.
+  cbv [wrap wrap' GoWrapper_immut_word].
+  reflexivity.
+Qed.
+Hint Extern 0 (okToCancel (?var ~> ?p) (?var ~> rew [immut_word] ?e in ?p)) =>
+  apply okToCancel_eq_rect_immut_word.
+Hint Extern 0 (okToCancel (?var ~> rew [immut_word] ?e in ?p) (?var ~> ?p)) =>
+  apply okToCancel_eq_rect_immut_word.
+
+Ltac real_val_in v :=
+  lazymatch v with
+  | rew ?H in ?v' => real_val_in v'
+  | _ => v
+  end.
+
+Ltac find_val' v p :=
+  match p with
+  | (?l * ?r)%pred =>
+    match find_val' v l with
+    | Some ?k => constr:(Some k)
+    | None => find_val' v r
+    end
+  | (?k ~> ?v_)%pred =>
+    let eq := constr:(eq_refl v_ : v_ = v) in
+    constr:(Some k)
+  | context [ (?k |-> Val _ (id ?v_))%pred ] =>
+    let eq := constr:(eq_refl v_ : v_ = v) in
+    constr:(Some k)
+  | _ => constr:(@None var)
+  end.
+
+Ltac find_val v p ::=
+     let v' := real_val_in v in
+     find_val' v' p.
+
+Ltac ensure_value_exists v_ pre cont :=
+  let v' := real_val_in v_ in
+  idtac v_ "actually" v';
+  match find_val v_ pre with
+  | Some ?var => idtac var "ptsto" v_; cont var
+  | None =>
+    let T := type of v' in
+    do_declare T ltac:(fun var => eapply CompileBefore; [
+                                 eapply CompileRet with (var0 := var) (v := v'); repeat compile_step |
+                                 cont var ])
+  end.
+
+Import Rec.
+Definition middle_immut : forall low mid high w, immut_word mid := Rec.middle.
+
+Ltac compile_middle :=
+  lazymatch goal with
+  | [ |- EXTRACT Ret (middle_immut ?low ?mid ?high ?buf) {{ ?pre }} _ {{ _ }} // ?env ] =>
+    let retvar := var_mapping_to_ret in
+    ensure_value_exists low pre ltac:(fun kfrom =>
+                                        ensure_value_exists (low + mid) pre ltac:(fun kto =>
+                                                                                    ensure_value_exists buf pre ltac:(fun kbuf =>
+                                                                                                                        eapply hoare_weaken;
+                                                                                                                        [ eapply (@CompileMiddle low mid high buf env retvar kbuf kfrom kto); try divisibility | intros; cbv beta; try rewrite okToCancel_eq_rect_immut_word; cancel_go..])))
+  end.
+
+Example compile_irec_of_word : sigT (fun p => source_stmt p /\
+  forall env (buf : immut_word (Rec.len INODE.IRecSig.itemtype)),
+    EXTRACT Ret (@Rec.of_word INODE.IRecSig.itemtype buf)
+    {{ 0 ~>? Rec.Rec.data INODE.IRecSig.itemtype *
+       1 ~> buf }}
+      p
+    {{ fun ret => 0 ~> ret * 1 ~> buf }} // env).
+Proof.                                             
+  compile_step.
+  erewrite Rec.of_word_middle_eq.
+  cbv [Rec.of_word_middle Rec.len INODE.IRecSig.itemtype INODE.irectype INODE.iattrtype INODE.NDirect
+             Rec.len Rec.data Rec.field_type string_dec string_rec string_rect Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
+             plus minus mult
+             addrlen hashlen wtl whd
+             sumbool_rec sumbool_rect Bool.bool_dec bool_rec bool_rect eq_rec_r eq_rec eq_sym eq_ind_r eq_ind] in *.
+  fold INODE.iattrtype.
+  change Rec.middle with middle_immut.
+  change word with immut_word.
+  change (fun n => immut_word n) with immut_word.
+  Ltac replace_parts p cont :=
+    idtac;
+    match p with
+    | (?a, ?b) =>
+      replace_parts a ltac:(replace_parts b cont)
+    | ?a :: ?b =>
+      replace_parts a ltac:(replace_parts b cont)
+    | ?a =>
+      (is_evar a; fail 1) ||
+                          let ta := type of a in
+                          let Ha := fresh in
+                          evar (Ha : ta);
+                          let Ha' := eval unfold Ha in Ha in
+                              clear Ha; replace a with Ha'; [ cont | ]
+    end.
+  eapply extract_equiv_prog.
+  match goal with
+  | |- ProgMonad.prog_equiv _ (Ret ?p) => replace_parts p ltac:(idtac "done")
+  end.
+  reflexivity.
+  reflexivity.
+  reflexivity.
+
+
+
+  Ltac simpl_rew :=
+    repeat match goal with
+           | |- context[rew [?P_] ?e_ in ?p_] =>
+             (unify P_ word; fail 1)
+             ||
+             rewrite eq_rect_leibniz with (P := immut_word) (e := e_)
+           end;
+    rewrite ?eq_rect_double;
+    match goal with
+    | |- context[rew [?P_] ?e_ in ?p_] =>
+      let te := type of e_ in
+      let He := fresh in
+      evar (He : te);
+      let He' := eval unfold He in He in
+          clear He; replace e_ with He'; [ | shelve ]
+    end.
+
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+  simpl_rew; reflexivity.
+    
+  compile_middle || compile_step.
+  compile_middle || compile_step.
+  compile_middle || compile_step.
+  compile_middle || compile_step.
+  compile_middle || compile_step.
+  compile_middle || compile_step.
+  compile_middle || compile_step.
+  compile_middle || compile_step.
+  compile_middle || compile_step.
+  compile_middle || compile_step.
+  compile_middle || compile_step.
+  compile_middle || compile_step.
+
+Admitted.
+
+(*
 Example compile_irec_get : sigT (fun p => source_stmt p /\
   forall env lxp ixp inum ms,
   prog_func_call_lemma
@@ -168,15 +351,16 @@ Proof.
   compile_step.
   compile_step.
   unfold INODE.IRec.Defs.selN_val2block.
-  Import Rec.
+  match goal with
+  | |- context[@Rec.word_selN' ?ft ?l ?i ?w] => pattern_prog (@Rec.word_selN' ft l i w)
+  end.
+  (*
   cbv [Rec.of_word Rec.len INODE.IRecSig.itemtype INODE.irectype INODE.iattrtype INODE.NDirect
              Rec.len Rec.data Rec.field_type string_dec string_rec string_rect Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
              plus minus mult
              addrlen hashlen wtl whd
              sumbool_rec sumbool_rect Bool.bool_dec bool_rec bool_rect eq_rec_r eq_rec eq_rect eq_sym eq_ind_r eq_ind] in *.
-  match goal with
-  | |- context[@Rec.word_selN' ?ft ?l ?i ?w] => pattern_prog (@Rec.word_selN' ft l i w)
-  end.
+*)
   Ltac do_declare T cont ::=
   lazymatch goal with
   | |- EXTRACT _
@@ -432,40 +616,6 @@ Proof.
             end
         end
   end.
-  Ltac real_val_in v :=
-    lazymatch v with
-    | rew ?H in ?v' => real_val_in v'
-    | _ => v
-    end.
-  Ltac find_val v p ::=
-       let v' := real_val_in v in
-       match p with
-       | context [ (?k ~> v')%pred ] => constr:(Some k)
-       | context [ (?k |-> Val _ (id v'))%pred ] => constr:(Some k)
-       | _ => constr:(@None var)
-       end.
-  Set Printing Depth 200.
-  Ltac ensure_value_exists v_ pre cont :=
-    let v' := real_val_in v_ in
-    idtac v_ "actually" v';
-    match find_val v_ pre with
-    | Some ?var => idtac var "ptsto" v_; cont var
-    | None =>
-      let T := type of v' in
-      do_declare T ltac:(fun var => eapply CompileBefore; [
-                                   eapply CompileRet with (var0 := var) (v := v'); repeat compile_step |
-                                   cont var ])
-    end.
-  Ltac compile_middle :=
-    lazymatch goal with
-    | [ |- EXTRACT Ret (Rec.middle ?low ?mid ?high ?buf) {{ ?pre }} _ {{ _ }} // ?env ] =>
-      let retvar := var_mapping_to_ret in
-      ensure_value_exists low pre ltac:(fun kfrom =>
-        ensure_value_exists (low + mid) pre ltac:(fun kto =>
-          ensure_value_exists buf pre ltac:(fun kbuf =>
-            eapply hoare_weaken;
-            [ eapply (@CompileMiddle low mid high buf env retvar kbuf kfrom kto) | cancel_go..])))
-    end.
   change (fst (snd ^(fst a, fst (snd a)))) with (fst (snd a)).
   Time compile_middle. (* 216 s *)
   divisibility.
@@ -494,3 +644,5 @@ Definition extract_env : Env.
   (* TODO add more programs here *)
   exact env.
 Defined.
+
+*)
