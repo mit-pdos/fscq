@@ -67,7 +67,7 @@ Module BFILE.
   Ltac msalloc_eq :=
     repeat match goal with
     | [ H: MSAlloc _ = MSAlloc _ |- _ ] => rewrite H in *; clear H
-    | [ H: MSAlloc _ = MSAllocC _ |- _ ] => rewrite H in *; clear H
+    | [ H: MSAllocC _ = MSAllocC _ |- _ ] => rewrite H in *; clear H
     | [ H: MSCache _ = MSCache _ |- _ ] => rewrite H in *; clear H
     end.
 
@@ -1262,7 +1262,8 @@ Module BFILE.
            [[[ (BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(ms', r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-           [[ r = fst vs /\ MSAlloc ms = MSAlloc ms' /\ MSCache ms = MSCache ms' ]]
+           [[ r = fst vs /\ MSAlloc ms = MSAlloc ms' /\ MSCache ms = MSCache ms' /\
+              MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} read lxp ixp inum off ms.
@@ -1851,7 +1852,9 @@ Module BFILE.
            [[ i < length vsl]]
     POST:hm' RET:^(ms', r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-           [[ r = fst (selN vsl i ($0, nil)) /\ MSAlloc ms = MSAlloc ms' /\ MSCache ms = MSCache ms' ]]
+           [[ r = fst (selN vsl i ($0, nil)) /\ 
+              MSAlloc ms = MSAlloc ms' /\ MSCache ms = MSCache ms' /\
+              MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} read_array lxp ixp inum a i ms.
@@ -1918,7 +1921,8 @@ Module BFILE.
       [[[ (BFData f) ::: Fd * arrayN (@ptsto _ addr_eq_dec _) a vsl ]]] *
       [[ pf = fold_left vfold (firstn i (map fst vsl)) v0 ]] *
       [[ MSAlloc ms = MSAlloc ms0 ]] *
-      [[ MSCache ms = MSCache ms0 ]]
+      [[ MSCache ms = MSCache ms0 ]] *
+      [[ MSAllocC ms = MSAllocC ms0 ]]
     OnCrash  crash
     Begin
       let^ (ms, v) <- read_array lxp ixp inum a i ms;
@@ -1980,6 +1984,7 @@ Module BFILE.
       [[[ flist ::: (Fi * inum |-> f) ]]] *
       [[ MSAlloc ms = MSAlloc ms0 ]] *
       [[ MSCache ms = MSCache ms0 ]] *
+      [[ MSAllocC ms = MSAllocC ms0 ]] *
       [[ ret = None ->
         pf = fold_left vfold (firstn i (map fst (BFData f))) v0 ]] *
       [[ ret = None ->
