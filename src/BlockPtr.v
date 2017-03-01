@@ -203,7 +203,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Hint Extern 0 (okToUnify (indrep_n_helper _ _ _) (indrep_n_helper _ _ _)) => constructor : okToUnify.
   Hint Extern 0 (okToUnify (indrep_n_tree _ _ _ _) (indrep_n_tree _ _ _ _ )) => constructor : okToUnify.
-  Local Hint Extern 0 (okToUnify (listmatch _ _ _) (listmatch _ _ _)) => constructor : okToUnify.
+  Local Hint Extern 0 (okToUnify (listmatch _ ?a _) (listmatch _ ?a _)) => constructor : okToUnify.
+  Local Hint Extern 0 (okToUnify (listmatch _ _ ?b) (listmatch _ _ ?b)) => constructor : okToUnify.
 
   (* Necessary to make subst work when there's a recursive term like:
      l = firstn (length l) ... *)
@@ -218,9 +219,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
 
   Fact divmod_n_zeros : forall n, fst (Nat.divmod n 0 0 0) = n.
   Proof.
-    intros.
-    pose proof Nat.div_1_r n.
-    unfold Nat.div in H. auto.
+    exact Nat.div_1_r.
   Qed.
 
   Hint Rewrite divmod_n_zeros using auto.
@@ -277,7 +276,9 @@ Module BlockPtr (BPtr : BlockPtrSig).
   end.
 
   Local Hint Extern 1 (Nat.divide ?a ?b) => divide_solve.
-  Local Hint Extern 0 (?a <= roundup ?a ?b) => apply roundup_ge; mult_nonzero.
+  Local Hint Extern 1 (?a <= roundup ?a ?b) => apply roundup_ge; mult_nonzero.
+  Local Hint Extern 1 (?a mod ?b < ?b) => apply Nat.mod_upper_bound; mult_nonzero.
+  Local Hint Resolve roundup_le.
 
   Ltac incl_solve := match goal with
     | [|- incl ?a ?a ] => apply incl_refl
@@ -326,26 +327,26 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite listmatch_emp in H by cancel.
     pred_apply; cancel.
     erewrite concat_hom_repeat; eauto.
-    repeat f_equal. rewrite repeat_length in *. omega.
+    repeat f_equal. rewrite repeat_length in *. auto.
     intros; simpl.
     destruct_lifts. erewrite repeat_spec with (y := x); eauto.
     rewrite IHindlvl. split; cancel.
     cancel.
     instantiate (iblocks := repeat $0 NIndirect).
+    instantiate (l_part := repeat (repeat $0 _) _).
     rewrite indrep_n_helper_0.
     rewrite listmatch_lift_r with (F := fun x y => emp) (P := fun y => length y = NIndirect ^ S indlvl).
     rewrite listmatch_emp_piff by auto.
     autorewrite with lists.
     cancel.
     apply Forall_repeat.
-    rewrite repeat_length. eauto.
-    rewrite repeat_length. eauto.
+    autorewrite with lists. reflexivity.
     intro x; intros.
-    erewrite repeat_spec with (y := x); eauto.
+    erewrite repeat_spec with (y := x) by eauto.
     rewrite IHindlvl. split; cancel. subst. autorewrite with lists. auto.
-    erewrite repeat_spec with(y := y); eauto.
-    erewrite concat_hom_repeat; autorewrite with lists.
-    rewrite plus_0_r. eauto.
+    eapply repeat_spec; eauto.
+    subst.
+    erewrite concat_hom_repeat; autorewrite with lists; auto.
     apply Forall_repeat. auto.
   Qed.
 
@@ -459,67 +460,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
     rewrite indrep_n_length_pimpl. split; cancel.
   Qed.
 
-  Lemma indrep_index_bound_helper : forall Fm off indlvl bxp bn iblocks l_part m,
-    off < length (concat l_part) ->
-    ((Fm * indrep_n_helper bxp bn iblocks) *
-          listmatch (fun ibn' (l' : list waddr) =>
-            indrep_n_tree indlvl bxp # (ibn') l') iblocks l_part)%pred m
-    -> off / (NIndirect * NIndirect ^ indlvl) < NIndirect.
-  Proof.
-    intros.
-    apply Nat.div_lt_upper_bound; mult_nonzero.
-    erewrite indrep_n_tree_length in * by eauto.
-    rewrite mult_comm; simpl in *. auto.
-  Qed.
-
-  Lemma indrep_index_length_helper_l : forall Fm off indlvl bxp bn iblocks l_part m,
-    off < length (concat l_part) ->
-    ((Fm * indrep_n_helper bxp bn iblocks) *
-          listmatch (fun ibn' (l' : list waddr) =>
-            indrep_n_tree indlvl bxp # (ibn') l') iblocks l_part)%pred m
-    -> off / (NIndirect * NIndirect ^ indlvl) < length (iblocks).
-  Proof.
-    intros.
-    rewrite indrep_n_helper_length_piff in *. destruct_lifts.
-    substl (length iblocks). eapply indrep_index_bound_helper; eauto.
-  Qed.
-
-  Lemma indrep_index_length_helper_l' : forall Fm Fm' off indlvl bxp bn iblocks l_part m,
-    off < length (concat l_part) ->
-    ((Fm * indrep_n_helper bxp bn iblocks) *
-          listmatch (fun ibn' l' => indrep_n_tree indlvl bxp # (ibn') l')
-          iblocks l_part * Fm')%pred m
-    -> off / (NIndirect * NIndirect ^ indlvl) < length (iblocks).
-  Proof.
-    intros. eapply indrep_index_length_helper_l; eauto.
-    eapply pimpl_apply; [> | exact H0]; cancel.
-  Qed.
-
-  Lemma indrep_index_length_helper_r : forall Fm off indlvl bxp bn iblocks l_part m,
-    off < length (concat l_part) ->
-    ((Fm * indrep_n_helper bxp bn iblocks) *
-          listmatch (fun ibn' (l' : list waddr) =>
-            indrep_n_tree indlvl bxp # (ibn') l') iblocks l_part)%pred m
-    -> off / (NIndirect * NIndirect ^ indlvl) < length l_part.
-  Proof.
-    intros.
-    rewrite listmatch_length_pimpl in *.
-    destruct_lifts.
-    substl (length l_part).
-    eapply indrep_index_length_helper_l; eauto.
-  Qed.
-
-  Lemma indrep_index_length_helper_r' : forall Fm Fm' off indlvl bxp bn iblocks l_part m,
-    off < length (concat l_part) ->
-    ((Fm * indrep_n_helper bxp bn iblocks) *
-          listmatch (fun ibn' (l' : list waddr) =>
-            indrep_n_tree indlvl bxp # (ibn') l') iblocks l_part * Fm')%pred m
-    -> off / (NIndirect * NIndirect ^ indlvl) < length l_part.
-  Proof.
-    intros. eapply indrep_index_length_helper_r; eauto.
-    eapply pimpl_apply; [> | exact H0]; cancel.
-  Qed.
-
   Lemma indrep_n_indlist_forall_length : forall F indlvl bxp ir l1 l2 m,
     ((F ✶ indrep_n_helper bxp ir l1)
         ✶ listmatch
@@ -596,9 +536,10 @@ Module BlockPtr (BPtr : BlockPtrSig).
     substl (concat l'). f_equal. f_equal.
     substl l''.
     erewrite eq_trans with (x := divup _ _ * _); [> | reflexivity|].
-    rewrite upd_range_upd_range; eauto. f_equal.
+    rewrite upd_range_upd_range by eauto. f_equal.
     rewrite Nat.mul_sub_distr_r.
     rewrite <- Nat.add_sub_swap. rewrite le_plus_minus_r. auto.
+    apply roundup_le. auto.
     all : eauto; autorewrite with core.
     all : ((apply roundup_le; auto) ||
            (apply roundup_ge; mult_nonzero) ||
@@ -671,13 +612,43 @@ Module BlockPtr (BPtr : BlockPtrSig).
         intros. simpl. rewrite IHindlvl. auto.
   Qed.
 
-  Ltac indrep_n_tree_bound := solve [
-        eapply indrep_index_length_helper_l; eauto; omega  |
-        eapply indrep_index_length_helper_l'; eauto; omega |
-        eapply indrep_index_length_helper_r; eauto; omega  |
-        eapply indrep_index_length_helper_r'; eauto; omega |
-        eapply indrep_index_bound_helper; eauto; omega |
-        eapply indrep_index_bound_helper'; eauto; omega].
+  Hint Rewrite Nat.mul_1_r.
+
+  Ltac indrep_n_tree_bound_step :=
+    match goal with
+    | [ |- _ ] => reflexivity
+    | [ |- _ ] => assumption
+    | [ |- Forall _ _ ] => auto
+    | [ H : context [IndRec.Defs.item] |- _ ] => unfold IndRec.Defs.item in *; simpl Rec.data in *
+    | [ |- context [IndRec.Defs.item] ] => unfold IndRec.Defs.item in *; simpl Rec.data in *
+    | [ |- _ ] => progress autorewrite with core lists
+    | [ |- ?a * ?b = ?c * ?b ] => rewrite Nat.mul_cancel_r by mult_nonzero
+    | [ |- ?a * ?b = ?b * ?c ] => rewrite mult_comm with (n := b) (m := c)
+    | [ |- ?b * ?a = ?b * ?c ] => rewrite mult_comm with (n := b) (m := a)
+    | [ H : ?a < ?b * ?c |- ?a < ?d * ?c] => assert (d = b); [ | congruence ]
+    | [ H : context [indrep_n_tree _ _ _ ?l] |- context [length ?l] ] =>
+      rewrite indrep_n_tree_length in H; destruct_lift H
+    | [ |- ?off / ?N < ?N' ] => apply Nat.div_lt_upper_bound; [ mult_nonzero |]
+    | [ |- ?off < ?N * NIndirect] => rewrite mult_comm
+    | [ H : context [indrep_n_helper _ _ ?l] |- context [length ?l] ] =>
+      replace (length l) with NIndirect in * by (rewrite indrep_n_helper_length_piff in H; destruct_lift H; auto)
+    | [ H : context [indrep_n_helper _ _ ?l], H' : context [length ?l] |- _ ] =>
+      replace (length l) with NIndirect in * by (rewrite indrep_n_helper_length_piff in H; destruct_lift H; auto)
+    | [ H : context [listmatch _ ?a ?b] |- context [length ?b] ] =>
+      replace (length b) with (length a) in * by (rewrite listmatch_length_pimpl in H; destruct_lift H; auto)
+    | [ H : context [listmatch _ ?a ?b], H' : context [length ?b] |- _ ] =>
+      replace (length b) with (length a) in * by (rewrite listmatch_length_pimpl in H; destruct_lift H; auto)
+    | [ H : context [lift_empty _] |- _ ] => progress destruct_lift H
+    | [ H : context [length (concat ?l)] |- _ ] => erewrite concat_hom_length in H by eauto
+    | [ |- context [length (concat _)] ] => rewrite concat_hom_length by eauto
+    | [ |- _ ] => omega
+    end.
+
+  Ltac indrep_n_tree_bound :=
+    match goal with
+    | [l : list _ |- context [?x] ] => is_evar x; unify x l; indrep_n_tree_bound
+    | _ => repeat indrep_n_tree_bound_step
+  end.
 
   Ltac indrep_n_extract := match goal with
     | [|- context [listmatch _ ?l] ] =>
@@ -688,12 +659,6 @@ Module BlockPtr (BPtr : BlockPtrSig).
     | [|- context [selN ?l ?n] ] => rewrite listmatch_isolate with (i := n) (a := l);
         autorewrite with lists in *; try omega; try erewrite snd_pair by eauto
   end.
-
-  Ltac cancel_last := match goal with
-    | [|- _ * ?a =p=> _ * ?a] =>  (apply pimpl_sep_star; [> solve [cancel] | apply pimpl_refl]) || fail 2
-    | [|- (_ * _) * _ =p=> _ ] => rewrite sep_star_comm; (solve [cancel_last] || fail 2)
-    | [|- _ * (_ * _) =p=> _ ] => repeat rewrite <- sep_star_assoc; (solve [cancel_last] || fail 2)
-    end.
 
   Ltac indrep_n_tree_extract_lengths :=
     repeat match goal with [H : context [indrep_n_tree _ _ _ ?x] |- _] =>
@@ -733,6 +698,34 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Local Hint Extern 1 (?a mod ?b < ?b) => apply Nat.mod_bound_pos; mult_nonzero.
   Local Hint Extern 1 (0 < ?n - ?m) => (apply Nat.lt_add_lt_sub_r; simpl; auto).
 
+  Local Hint Resolve repeat_selN'.
+  Local Hint Extern 1 (Forall (fun x => length x = _) _) => eapply indrep_n_indlist_forall_length.
+
+  Lemma IndRec_items_valid_repeat : forall bn x,
+    bn <> 0 -> IndRec.items_valid bn (repeat x NIndirect).
+  Proof.
+    unfold IndRec.items_valid, IndSig.RAStart, IndSig.RALen, IndSig.xparams_ok.
+    simpl. intros. autorewrite with lists. auto.
+  Qed.
+
+  Local Hint Resolve IndRec_items_valid_repeat IndRec.items_valid_updN IndRec.items_valid_upd_range.
+  Local Hint Extern 1 (Rec.well_formed _) => unfold Rec.well_formed; cbn.
+
+  Lemma indrep_n_helper_items_valid : forall bxp bn l,
+    bn <> 0 ->
+    indrep_n_helper bxp bn l <=p=> [[ IndRec.items_valid bn l]] * indrep_n_helper bxp bn l.
+  Proof.
+    intros.
+    rewrite indrep_n_helper_length_piff.
+    unfold IndRec.items_valid, IndSig.xparams_ok, IndSig.RALen, IndSig.RAStart, IndRec.Defs.item.
+    split; cancel.
+  Qed.
+
+  Local Hint Extern 1 (IndRec.items_valid _ _) => match goal with
+    [H : context [indrep_n_helper _ ?bn] |- IndRec.items_valid ?bn _] =>
+    rewrite indrep_n_helper_items_valid in H; destruct_lift H end.
+
+
   (************* n-indirect program *)
 
   Fixpoint indget (indlvl : nat) lxp (bn : addr) off ms :=
@@ -762,13 +755,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
   Proof.
     induction indlvl; simpl.
     + repeat safestep; autorewrite with core; eauto.
-      rewrite indrep_n_helper_0 in *. destruct_lifts.
-      rewrite repeat_selN; auto. rewrite repeat_length in *. auto.
+      rewrite indrep_n_helper_0 in *. destruct_lifts. auto.
       rewrite indrep_n_helper_valid by omega. cancel.
-    + repeat safestep; autorewrite with core; try eassumption.
+    + repeat safestep; autorewrite with core; try eassumption; clear IHindlvl.
       - erewrite indrep_n_tree_length in * by eauto.
-        erewrite indrep_n_tree_repeat by eauto.
-        rewrite repeat_selN; eauto.
+        erewrite indrep_n_tree_repeat; eauto.
       - indrep_n_tree_bound.
       - rewrite indrep_n_helper_valid by omega.
         cancel.
@@ -776,18 +767,13 @@ Module BlockPtr (BPtr : BlockPtrSig).
         unfold IndRec.Defs.item; simpl. cancel.
         all : indrep_n_tree_bound.
       - match goal with [H : context [indrep_n_helper] |-_] => assert (HH := H) end.
-        eapply lt_le_trans. apply Nat.mod_bound_pos; mult_nonzero; omega.
-        apply Nat.eq_le_incl.
+        match goal with |- ?a mod ?n < ?b => replace b with n; auto end.
         rewrite listmatch_extract in HH; autorewrite with lists in *.
         rewrite indrep_n_length_pimpl in HH.
         destruct_lift HH. eauto.
         indrep_n_tree_bound.
-      - apply selN_selN_hom.
-        eapply indrep_n_indlist_forall_length; eauto.
-        rewrite listmatch_length_pimpl, indrep_n_helper_length_piff in *; autorewrite with lists in *.
-        destruct_lifts.
-        rewrite mult_comm.
-        apply div_lt_mul_lt; solve [indrep_n_tree_bound | mult_nonzero].
+      - apply selN_selN_hom; eauto.
+        indrep_n_tree_bound.
       Unshelve.
       exact $0.
   Qed.
@@ -848,18 +834,20 @@ Module BlockPtr (BPtr : BlockPtrSig).
       - rewrite indrep_n_helper_length_piff. cancel.
         rewrite firstn_oob by (unfold IndRec.Defs.item in *; simpl in *; omega).
         indrep_n_extract. cancel.
-        rewrite listmatch_length_pimpl in *. destruct_lifts. omega.
+        indrep_n_tree_bound.
       - rewrite indrep_n_helper_length_piff, listmatch_length_pimpl in *; destruct_lifts.
         rewrite concat_hom_firstn by eauto.
         match goal with [|- context [selN ?l ?n ?d] ] =>
           replace (selN l n d) with (concat [selN l n d]) by (simpl; rewrite app_nil_r; auto)
         end. rewrite <- concat_app.
         rewrite <- firstn_plusone_selN by omega.
-        erewrite <- concat_hom_firstn by eauto. rewrite plus_comm. simpl. auto.
+        erewrite <- concat_hom_firstn by eauto.
+        rewrite plus_comm. simpl. auto.
       - apply firstn_oob.
         erewrite indrep_n_tree_length by eauto. auto.
       - apply LOG.rep_hashmap_subset; eauto.
-    Grab Existential Variables. all : eauto; split; solve [eauto | exact ($0)].
+    Grab Existential Variables.
+      all : eauto; split.
   Qed.
 
   Local Hint Extern 1 ({{_}} Bind (indread _ _ _ _ ) _) => apply indread_ok : prog.
@@ -923,25 +911,25 @@ Module BlockPtr (BPtr : BlockPtrSig).
         rewrite indrep_n_helper_length_piff in *. destruct_lifts.
         unfold IndRec.Defs.item in *; simpl in *. rewrite firstn_oob by omega.
         step.
-        step.
-        rewrite listmatch_app_rev by (repeat rewrite repeat_length; auto).
-        rewrite listmatch_extract with (i := 0) (a := skipn _ _).
-        repeat rewrite skipn_selN, plus_0_r. cancel.
-        rewrite skipn_length. omega.
-        step.
-        rewrite indrep_n_tree_0. cancel.
-        unfold listmatch. simpl. rewrite indrep_n_tree_0. cancel.
-        rewrite combine_app by (repeat rewrite repeat_length; auto).
-        rewrite listpred_app. unfold removeN.
-        repeat rewrite skipn_skipn. cancel.
-        repeat rewrite app_length. repeat rewrite repeat_length.
-        unfold removeN in *. repeat rewrite skipn_skipn in *. simpl in *. omega.
-        step.
-        rewrite indrep_n_helper_pts_piff by auto. cancel.
-        step.
-        rewrite skipn_oob, app_nil_r by omega. rewrite indrep_n_helper_0.
-        cancel.
-        apply LOG.intact_hashmap_subset. eauto.
+        - step.
+          rewrite listmatch_app_rev by (autorewrite with lists; auto).
+          rewrite listmatch_extract with (i := 0) (a := skipn _ _).
+          repeat rewrite skipn_selN, plus_0_r. cancel.
+          rewrite skipn_length. omega.
+          step.
+          rewrite indrep_n_tree_0. cancel.
+          unfold listmatch. simpl. rewrite indrep_n_tree_0. cancel.
+          rewrite combine_app by (autorewrite with lists; auto).
+          rewrite listpred_app. unfold removeN.
+          repeat rewrite skipn_skipn. cancel.
+          autorewrite with lists in *.
+          unfold removeN in *. repeat rewrite skipn_skipn in *. simpl in *. omega.
+        - step.
+          rewrite indrep_n_helper_pts_piff by auto. cancel.
+          step.
+          rewrite skipn_oob, app_nil_r by omega. rewrite indrep_n_helper_0.
+          cancel.
+        - eauto using LOG.intact_hashmap_subset.
     Grab Existential Variables.
     all : eauto; split.
   Qed.
@@ -994,16 +982,16 @@ Module BlockPtr (BPtr : BlockPtrSig).
       cancel; hoare.
       - rewrite listmatch_extract.
         repeat rewrite upd_range_selN_oob. cancel.
-        all : repeat rewrite upd_range_length; omega.
+        all : autorewrite with lists; omega.
       - rewrite listmatch_updN_removeN. rewrite roundTrip_0.
         repeat rewrite indrep_n_tree_0. cancel.
         repeat rewrite removeN_upd_range_l.
         rewrite plus_comm. repeat rewrite removeN_upd_range_r.
         erewrite <- removeN_upd_range_mid with (l := indbns).
         erewrite <- removeN_upd_range_mid with (l := l_part). cancel.
-        all : repeat rewrite upd_range_length; omega.
+        all : autorewrite with lists; omega.
       - cancel.
-        apply LOG.intact_hashmap_subset. eauto.
+        eauto using LOG.intact_hashmap_subset.
     Grab Existential Variables. all : eauto; split.
   Qed.
 
@@ -1101,34 +1089,39 @@ Module BlockPtr (BPtr : BlockPtrSig).
       simpl in H'. rewrite H' in *. destruct_lifts. rewrite mult_1_r in *.
       prestep. norml.
       assert (start / NIndirect < length l_part).
-        erewrite concat_hom_length in * by eauto.
-        apply Nat.div_lt_upper_bound; auto. rewrite mult_comm. omega.
-      rewrite listmatch_length_pimpl in *. destruct_lifts.
+        indrep_n_tree_bound. rewrite mult_comm. omega.
+      assert (start / NIndirect < length indbns).
+        indrep_n_tree_bound. rewrite mult_comm. omega.
       cancel.
       - hoare.
         rewrite listmatch_extract in *.
-        match goal with [H : # _ = _ |- _] => rewrite H in * end. rewrite indrep_n_helper_0 in *.
+        denote (# _ = _) as Ha. rewrite Ha in *.
+        rewrite indrep_n_helper_0 in *.
         destruct_lifts.
         erewrite upd_range_concat_hom_start_aligned by (eauto; omega).
-        match goal with [H : _ = _ |- _] => rewrite H end.
+        denote (selN _ _ _ = repeat _ _) as Hb. rewrite Hb.
         rewrite upd_range_same by omega.
-        erewrite selN_eq_updN_eq; eauto. omega.
+        erewrite selN_eq_updN_eq; eauto.
+        auto.
       - step.
         indrep_n_extract; try omega. rewrite indrep_n_helper_valid by eauto. cancel.
         rewrite firstn_oob. hoare.
-       -- rewrite listmatch_extract in *. rewrite indrep_n_helper_valid in * by eauto.
-          destruct_lifts. auto. omega.
-       -- unfold IndRec.items_valid, IndSig.xparams_ok, IndSig.RALen, IndSig.RAStart.
-          rewrite listmatch_extract in *. rewrite indrep_n_helper_length_piff in * by eauto.
-          destruct_lifts. rewrite upd_range_length.
-          intuition. all : try rewrite plus_0_r; solve [eauto | omega].
-       -- indrep_n_extract; try omega. cancel.
-       -- rewrite listmatch_updN_removeN. cancel. all: omega.
-       -- erewrite upd_range_concat_hom_start_aligned by (eauto; omega). auto.
-       -- rewrite natToWord_wordToNat. rewrite listmatch_updN_removeN by (eauto; omega). cancel.
-       -- erewrite upd_range_concat_hom_start_aligned by (eauto; omega). auto.
-       -- rewrite listmatch_extract in *. rewrite indrep_n_helper_length_piff in *.
-          destruct_lifts. apply Nat.eq_le_incl. autorewrite with core. eauto.
+        * match goal with |- context [selN ?l ?ind ?d] =>
+            rewrite listmatch_extract with (a := l) (i := ind) (ad := d) in * by omega
+          end. auto.
+        * match goal with |- context [selN ?l ?ind ?d] =>
+            rewrite listmatch_extract with (a := l) (i := ind) (ad := d) in * by omega
+          end. eauto.
+        * indrep_n_extract; try omega. cancel.
+        * rewrite listmatch_updN_removeN. cancel. all: omega.
+        * erewrite upd_range_concat_hom_start_aligned by (eauto; omega). auto.
+        * rewrite natToWord_wordToNat. rewrite listmatch_updN_removeN by (eauto; omega). cancel.
+        * erewrite upd_range_concat_hom_start_aligned by (eauto; omega). auto.
+        * match goal with |- context [selN ?l ?ind ?d] =>
+            rewrite listmatch_extract with (b := l) (i := ind) (bd := d) in * by omega
+          end. rewrite indrep_n_helper_length_piff in *.
+          destruct_lifts.
+          denote (length (selN _ _ _) = _) as Ha. rewrite Ha.
           omega.
     + unfold indclear_from_aligned. fold indclear_from_aligned.
       prestep. norml.
@@ -1137,71 +1130,88 @@ Module BlockPtr (BPtr : BlockPtrSig).
       cancel; [> solve [hoare] |].
       prestep. norml.
       assert (start / (NIndirect ^ S (S indlvl)) < length l_part); simpl in *.
-        erewrite concat_hom_length in * by eauto.
-        apply Nat.div_lt_upper_bound; auto. rewrite mult_comm. omega.
-      rewrite listmatch_length_pimpl in *. destruct_lifts.
-      cancel. step.
-      rewrite listmatch_extract in *.
-      match goal with [H : # _ = _ |- _] => rewrite H in * end. destruct_lifts.
-      rewrite indrep_n_helper_0 in *. destruct_lifts.
-      rewrite listmatch_repeat_l in *.
-      rewrite listpred_indrep_n_tree_0 in *. destruct_lifts.
-      erewrite upd_range_concat_hom_start_aligned by (eauto; omega).
-      match goal with [H : selN _ _ _ = _ |- _] => rewrite H end.
-      match goal with [H : Forall _ ?L |- _] =>
-        erewrite concat_hom_repeat with (l := L) in * by eauto end.
-      rewrite upd_range_same by omega.
-      erewrite selN_eq_updN_eq; eauto. omega.
+        indrep_n_tree_bound. rewrite mult_comm. omega.
+      assert (start / (NIndirect ^ S (S indlvl)) < length indbns); simpl in *.
+        indrep_n_tree_bound. rewrite mult_comm. omega.
+      cancel.
+      step.
+      {
+        rewrite listmatch_extract in *.
+        denote (# _ = _) as Ha. rewrite Ha in *.
+        destruct_lifts.
+        rewrite indrep_n_helper_0 in *.
+        destruct_lifts.
+        rewrite listmatch_repeat_l in *.
+        rewrite listpred_indrep_n_tree_0 in *. destruct_lifts.
+        erewrite upd_range_concat_hom_start_aligned by (eauto; omega).
+        denote (selN _ _ _ = _) as Hs. rewrite Hs.
+        denote (Forall _ _) as Hf. rewrite (concat_hom_repeat _ _ Hf) in *.
+        rewrite upd_range_same by omega.
+        erewrite selN_eq_updN_eq; eauto.
+        omega.
+      }
       match goal with [|- context [selN ?L ?N] ] => 
-        rewrite listmatch_extract with (a := L) (i := N) in * end. destruct_lifts.
-      step. rewrite indrep_n_helper_valid by eauto. cancel.
+        rewrite listmatch_extract with (a := L) (i := N) in * by omega end.
+      destruct_lifts.
+      step.
+      { rewrite indrep_n_helper_valid by eauto. cancel. }
       rewrite firstn_oob.
       match goal with [H : context [listmatch _ ?l] |- context [?c = ?l] ] =>
         rewrite listmatch_length_pimpl with (a := l) in H;
         rewrite indrep_n_helper_length_piff in H; destruct_lift H end.
-      step. rewrite Nat.div_mul by auto.
-      rewrite Nat.div_0_l by auto. simpl in *.
-      apply Nat.div_le_upper_bound; mult_nonzero. rewrite mult_comm.
-      apply Nat.lt_le_incl. congruence.
-      safestep. rewrite Nat.div_0_l by auto. rewrite Nat.div_mul by auto. cancel.
-      rewrite mult_comm. rewrite <- Nat.div_mod by auto.
-      erewrite concat_hom_length by eauto. rewrite upd_range_length.
-      apply Nat.lt_le_incl. congruence.
       step.
-      unfold IndRec.items_valid, IndSig.xparams_ok, IndSig.RAStart, IndSig.RALen.
-      rewrite mult_1_l. intuition.
-      match goal with [H : context [listmatch _ ?l] |- context [length ?l] ] =>
-        rewrite listmatch_length_pimpl with (a := l) in H; destruct_lift H;
-        substl (length l) end.
-      match goal with [H : context [concat ?l] |- context [length ?l] ] =>
-        apply f_equal with (f := @length _) in H; erewrite concat_hom_length in H; eauto end.
-      rewrite upd_range_length in *.
-      erewrite concat_hom_length in * by eauto.
-      rewrite upd_range_length in *; mult_nonzero.
-      rewrite Nat.mul_cancel_r in *; mult_nonzero. congruence.
+      {
+        rewrite Nat.div_mul, Nat.div_0_l by auto. simpl in *.
+        apply Nat.div_le_upper_bound; mult_nonzero. rewrite mult_comm.
+        apply Nat.lt_le_incl. congruence.
+      }
+      safestep.
+      { rewrite Nat.div_0_l, Nat.div_mul by auto. cancel. }
+      {
+        rewrite mult_comm, <- Nat.div_mod by auto.
+        erewrite concat_hom_length by eauto.
+        autorewrite with lists.
+        apply Nat.lt_le_incl. congruence.
+      }
       step.
+      {
+        unfold IndRec.items_valid, IndSig.xparams_ok, IndSig.RAStart, IndSig.RALen.
+        rewrite mult_1_l. intuition.
+        match goal with [H : context [listmatch _ ?l] |- context [length ?l] ] =>
+          rewrite listmatch_length_pimpl with (a := l) in H; destruct_lift H;
+          substl (length l) end.
+        match goal with [H : context [concat ?l] |- context [length ?l] ] =>
+          apply f_equal with (f := @length _) in H; erewrite concat_hom_length in H; eauto end.
+        autorewrite with lists in *.
+        erewrite concat_hom_length in * by eauto.
+        rewrite upd_range_length in *.
+        rewrite Nat.mul_cancel_r in * by mult_nonzero. congruence.
+      }
+      step; clear IHindlvl.
       - rewrite indrep_n_helper_0. cancel.
-        rewrite listmatch_updN_removeN. cancel. rewrite indrep_n_helper_0. cancel.
-        omega. omega.
+        rewrite listmatch_updN_removeN. cancel.
+        rewrite indrep_n_helper_0. cancel.
+        all: omega.
       - erewrite upd_range_concat_hom_start_aligned by (eauto; omega).
         repeat f_equal.
-        do 2 match goal with [H : _ = _ |- _] => rewrite H end.
-        rewrite concat_hom_upd_range by eauto. simpl.
-        rewrite upd_range_upd_range; simpl; rewrite mult_comm; rewrite <- Nat.div_mod; auto.
+        denote (concat _ = _) as Hc. rewrite Hc.
+        denote (selN _ _ _ = _) as Hs. rewrite Hs.
+        rewrite concat_hom_upd_range by eauto. cbn -[Nat.div Nat.modulo].
+        autorewrite with lists. simpl.
+        rewrite mult_comm, <- Nat.div_mod; auto.
       - rewrite natToWord_wordToNat. rewrite listmatch_updN_removeN. cancel.
-        omega. omega.
-      - match goal with [H : _ = _ |- _] => rewrite H end.
+        all: omega.
+      - denote (concat _ = _) as Hc. rewrite Hc.
         symmetry. erewrite upd_range_concat_hom_start_aligned by (eauto; mult_nonzero; omega).
         rewrite concat_hom_upd_range; eauto.
         rewrite upd_range_upd_range; eauto.
-        rewrite mult_comm with (n := len / _), <- Nat.div_mod by auto.
-        simpl. repeat f_equal. eassumption.
+        repeat f_equal; eauto.
+        rewrite mult_comm with (n := len / _), <- Nat.div_mod; auto.
       - cancel.
       - unfold IndRec.Defs.item in *. simpl in *.
         rewrite indrep_n_helper_length_piff in *. destruct_lifts. omega.
-      - omega.
     Grab Existential Variables.
-    all : eauto; exact $0.
+    all : intros; solve [exact unit | exact nil | exact $ 0 | exact 0 | exact True].
   Qed.
 
   Hint Extern 1 ({{_}} Bind (indclear_from_aligned _ _ _ _ _ _ _) _) => apply indclear_from_aligned_ok : prog.
@@ -1256,8 +1266,10 @@ Module BlockPtr (BPtr : BlockPtrSig).
     intros.
     + simpl in *. subst N. rewrite mult_1_r in *.
       step. hoare.
-      unfold roundup. rewrite divup_eq_div by auto.
-      rewrite mul_div by auto. autorewrite with core. rewrite upd_range_0. auto.
+      {
+        unfold roundup. rewrite divup_eq_div by auto.
+        rewrite mul_div by auto. autorewrite with core lists. auto.
+      }
       rewrite (listmatch_indrep_n_tree_forall_length 0) in *.
       destruct_lifts. rewrite mult_1_r in *.
       rewrite listmatch_length_pimpl in *. destruct_lifts.
@@ -1268,51 +1280,55 @@ Module BlockPtr (BPtr : BlockPtrSig).
         edestruct le_lt_eq_dec; [> | eauto |]; eauto.
         subst. rewrite Nat.mod_mul in * by auto. intuition.
       step.
-      rewrite roundup_eq by auto. rewrite minus_plus by auto.
-      rewrite listmatch_extract in *.
-      match goal with [H : # _ = _ |- _] => rewrite H in * end. rewrite indrep_n_helper_0 in *.
-      destruct_lifts. erewrite upd_range_concat_hom_small; eauto.
-      erewrite selN_eq_updN_eq. auto.
-      match goal with [H : _ = _ |- _] => rewrite H end. rewrite upd_range_same. eauto.
-      all : autorewrite with core; auto with *.
-      rewrite <- roundup_eq by auto.
-      erewrite concat_hom_length in * by eauto.
-      apply roundup_le. omega.
+      {
+        rewrite roundup_eq, minus_plus by auto.
+        rewrite listmatch_extract in *.
+        denote (# _ = _) as Hn. rewrite Hn in *. rewrite indrep_n_helper_0 in *.
+        destruct_lifts. erewrite upd_range_concat_hom_small; eauto.
+        erewrite selN_eq_updN_eq. auto.
+        denote (selN _ _ _ = _) as Hs. rewrite Hs.
+        all : autorewrite with core lists; auto with *; eauto.
+        rewrite <- roundup_eq by auto.
+        erewrite concat_hom_length in * by eauto.
+        apply roundup_le. omega.
+      }
       indrep_n_extract. rewrite indrep_n_helper_valid by eassumption. cancel.
       rewrite firstn_oob.
       hoare.
-      - rewrite listmatch_extract in *. rewrite indrep_n_helper_valid in * by eauto.
-        destruct_lifts. auto. omega.
-      - unfold IndRec.items_valid, IndSig.xparams_ok, IndSig.RALen, IndSig.RAStart.
-        rewrite listmatch_extract in *. rewrite indrep_n_helper_length_piff in * by eauto.
-        destruct_lifts. rewrite upd_range_length. rewrite plus_0_r. intuition; eauto. omega.
+      - match goal with [|- context [selN ?L ?N ?d] ] =>
+          rewrite listmatch_extract with (a := L) (i := N) (ad := d) in * by omega
+        end. eauto.
+      - match goal with [|- context [selN ?L ?N ?d] ] =>
+          rewrite listmatch_extract with (a := L) (i := N) (ad := d) in * by omega
+        end. eauto.
       - indrep_n_extract. cancel.
       - rewrite listmatch_updN_removeN. cancel. all: omega.
       - rewrite roundup_eq by auto. rewrite minus_plus.
         erewrite upd_range_concat_hom_small; eauto.
         all : autorewrite with core; eauto.
         rewrite <- roundup_eq by auto.
-        erewrite concat_hom_length in * by eauto.
-        apply roundup_le. auto.
+        erewrite concat_hom_length in *; eauto.
         apply Nat.lt_add_lt_sub_r. simpl. apply Nat.mod_upper_bound; auto.
       - rewrite natToWord_wordToNat. rewrite listmatch_updN_removeN by (eauto; omega). cancel.
       - rewrite roundup_eq by auto. rewrite minus_plus.
         erewrite upd_range_concat_hom_small; eauto.
         rewrite <- roundup_eq by auto.
-        erewrite concat_hom_length in * by eauto.
-        apply roundup_le. auto.
+        erewrite concat_hom_length in * by eauto. auto.
         rewrite le_plus_minus_r; auto.
         apply Nat.lt_add_lt_sub_r. simpl. apply Nat.mod_upper_bound; auto.
-      - rewrite listmatch_extract in *. rewrite indrep_n_helper_length_piff in *.
-        destruct_lifts. autorewrite with core. apply Nat.eq_le_incl. eassumption.
-        omega.
+      - match goal with [|- context [selN ?L ?N ?d] ] =>
+          rewrite listmatch_extract with (b := L) (i := N) (bd := d) in * by omega
+        end. rewrite indrep_n_helper_length_piff in *.
+        destruct_lifts. autorewrite with core. apply Nat.eq_le_incl. assumption.
     + unfold indclear_to_aligned. fold indclear_to_aligned.
       prestep. norml.
       pose proof listmatch_indrep_n_tree_forall_length (S indlvl) as H'.
       simpl in H'. rewrite H' in *. destruct_lifts.
       cancel. hoare.
-      unfold roundup. rewrite divup_eq_div by auto. rewrite mul_div by mult_nonzero.
-      autorewrite with core. auto.
+      {
+        unfold roundup. rewrite divup_eq_div by auto. rewrite mul_div by mult_nonzero.
+        autorewrite with core. auto.
+      }
       prestep. norml.
       rewrite listmatch_length_pimpl in *. destruct_lifts.
       assert (start / (NIndirect ^ S (S indlvl)) < length l_part); simpl in *.
@@ -1321,51 +1337,62 @@ Module BlockPtr (BPtr : BlockPtrSig).
         edestruct le_lt_eq_dec; [> | eauto |]; eauto.
         subst. rewrite Nat.mod_mul in * by auto. intuition.
       cancel. step.
-      rewrite roundup_eq by auto. rewrite minus_plus by auto.
-      rewrite listmatch_extract in *. destruct_lifts.
-      erewrite upd_range_concat_hom_small; eauto.
-      match goal with [H : # _ = _ |- _] => rewrite H in * end.
-      rewrite indrep_n_helper_0 in *. destruct_lifts.
-      rewrite listmatch_repeat_l in *.
-      rewrite listpred_indrep_n_tree_0 in *. destruct_lifts.
-      erewrite selN_eq_updN_eq. auto.
-      match goal with [H : selN _ _ _ = _ |- _] => rewrite H end.
-      match goal with [H : Forall _ ?L |- _] => erewrite concat_hom_repeat with (l := L) in * by eauto end.
-      rewrite upd_range_same by omega. eauto.
-      all : autorewrite with core; auto with *.
-      erewrite concat_hom_length in * by eauto.
-      rewrite <- roundup_eq by auto. apply roundup_le. congruence.
-      mult_nonzero.
-      rewrite listmatch_extract in *. simpl in *. destruct_lifts.
-      step. rewrite indrep_n_helper_valid by eauto. cancel.
+      {
+        rewrite roundup_eq, minus_plus by auto.
+        rewrite listmatch_extract in *. destruct_lifts.
+        erewrite upd_range_concat_hom_small; eauto.
+        denote (# _ = 0) as Hn. rewrite Hn in *.
+        rewrite indrep_n_helper_0 in *. destruct_lifts.
+        rewrite listmatch_repeat_l in *.
+        rewrite listpred_indrep_n_tree_0 in *. destruct_lifts.
+        erewrite selN_eq_updN_eq. auto.
+        denote (selN _ _ _ = _) as Hs. rewrite Hs.
+        erewrite concat_hom_repeat in * by eauto.
+        rewrite upd_range_same by omega. eauto.
+        all : autorewrite with core; mult_nonzero; auto with *.
+        erewrite concat_hom_length in * by eauto.
+        rewrite <- roundup_eq; auto.
+      }
+      match goal with [|- context [selN ?L ?N ?d] ] =>
+        rewrite listmatch_extract with (a := L) (i := N) (ad := d) in * by omega
+      end. simpl in *. destruct_lifts.
+      step.
+      { rewrite indrep_n_helper_valid by eauto. cancel. }
       rewrite firstn_oob.
       match goal with [H : context [listmatch _ ?l] |- context [?c = ?l] ] =>
         rewrite listmatch_length_pimpl with (a := l) in H;
         rewrite indrep_n_helper_length_piff in H; destruct_lift H end.
       step.
-      erewrite concat_hom_length by eauto.
-      eapply le_trans; [> | apply mult_le_compat_r]. eauto. omega.
+      {
+        erewrite concat_hom_length by eauto.
+        eapply le_trans; [> | apply mult_le_compat_r]. eauto. omega.
+      }
       safestep.
-      unfold roundup. rewrite <- Nat.mul_sub_distr_r. repeat rewrite Nat.div_mul by auto.
-      autorewrite with core.
-      match goal with [H : context [concat ?l] |- context [length ?l] ] =>
-        apply f_equal with (f := @length _) in H; erewrite concat_hom_length in H; eauto end.
-      rewrite upd_range_length in *; autorewrite with core; auto with *.
-      erewrite concat_hom_length in * by eauto.
-      rewrite Nat.mul_cancel_r in *; mult_nonzero. omega.
-      apply divup_le. rewrite mult_comm. eauto.
+      {
+        unfold roundup. rewrite <- Nat.mul_sub_distr_r. repeat rewrite Nat.div_mul by auto.
+        autorewrite with core.
+        match goal with [H : context [concat ?l] |- context [length ?l] ] =>
+          apply f_equal with (f := @length _) in H; erewrite concat_hom_length in H; eauto end.
+        rewrite upd_range_length in *; autorewrite with core; auto with *.
+        erewrite concat_hom_length in * by eauto.
+        rewrite Nat.mul_cancel_r in *; mult_nonzero. omega.
+        apply divup_le. rewrite mult_comm. eauto.
+      }
       step.
-      unfold IndRec.items_valid, IndSig.xparams_ok, IndSig.RAStart, IndSig.RALen.
-      rewrite mult_1_l.
-      match goal with [H : context [listmatch _ ?l] |- context [length (upd_range ?l _ _ _)] ] =>
-        rewrite listmatch_length_pimpl with (a := l) in H; destruct_lift H end.
-      match goal with [H : concat ?l = upd_range _ _ _ _ |- _] =>
-        apply f_equal with (f := @length _) in H; erewrite concat_hom_length in H;
-        rewrite upd_range_length in H; eauto end.
-      erewrite concat_hom_length in * by eauto.
-      rewrite Nat.mul_cancel_r in *; mult_nonzero.
-      rewrite upd_range_length in *. intuition; omega.
-      step.
+      {
+        unfold IndRec.items_valid, IndSig.xparams_ok, IndSig.RAStart, IndSig.RALen.
+        rewrite mult_1_l.
+        match goal with [H : context [listmatch _ ?l] |- context [length (upd_range ?l _ _ _)] ] =>
+          rewrite listmatch_length_pimpl with (a := l) in H; destruct_lift H end.
+        denote (concat _ = upd_range _ _ _ _) as Hc.
+        apply f_equal with (f := @length _) in Hc.
+        erewrite concat_hom_length in Hc by eauto.
+        autorewrite with lists in *.
+        erewrite concat_hom_length in * by eauto.
+        rewrite Nat.mul_cancel_r in *; mult_nonzero.
+        intuition; omega.
+      }
+      step; clear IHindlvl.
       - rewrite indrep_n_helper_0. cancel.
         rewrite listmatch_updN_removeN. cancel. rewrite indrep_n_helper_0. cancel.
         unfold roundup. rewrite <- Nat.mul_sub_distr_r.
@@ -1386,8 +1413,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
       - cancel.
       - rewrite indrep_n_helper_length_piff in *. destruct_lifts.
         unfold IndRec.Defs.item in *. simpl in *. omega.
-      - omega.
-    Grab Existential Variables. all : eauto; exact $0.
+    Unshelve.
+    all : intros; try solve [exact unit | exact nil | exact $0 | constructor].
   Qed.
 
   Local Hint Extern 1 ({{_}} Bind (indclear_to_aligned _ _ _ _ _ _) _) => apply indclear_to_aligned_ok : prog.
@@ -1427,7 +1454,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
     hoare.
     + repeat rewrite Nat.div_mul by mult_nonzero.
       eapply le_trans. apply div_add_distr_le.
-      match goal with [H : concat _ = _ |- _] => apply f_equal with (f := @length _) in H end.
+      denote (concat _ = _) as Hc.
+      apply f_equal with (f := @length _) in Hc.
       rewrite upd_range_length in *.
       repeat erewrite concat_hom_length in * by eauto.
       rewrite Nat.mul_cancel_r in * by mult_nonzero.
@@ -1439,10 +1467,11 @@ Module BlockPtr (BPtr : BlockPtrSig).
         rewrite <- plus_assoc. autorewrite with core; solve [congruence | omega].
     + autorewrite with core; auto.
     + repeat rewrite Nat.div_mul by auto. cancel.
-    + erewrite concat_hom_length by auto. rewrite upd_range_length.
+    + erewrite concat_hom_length by auto. autorewrite with lists.
       rewrite mult_comm with (m := _ * _ ^ _).
-      rewrite <- plus_assoc. rewrite <- Nat.div_mod by auto.
-      match goal with [H : concat _ = _ |- _] => apply f_equal with (f := @length _) in H end.
+      rewrite <- plus_assoc, <- Nat.div_mod by auto.
+      denote (concat _ = _) as Hc.
+      apply f_equal with (f := @length _) in Hc.
       rewrite upd_range_length in *.
       repeat erewrite concat_hom_length in * by eauto.
       rewrite Nat.mul_cancel_r in * by mult_nonzero.
@@ -1456,16 +1485,17 @@ Module BlockPtr (BPtr : BlockPtrSig).
       set (N := _ * _ ^ _) in *.
       rewrite le_plus_minus_r in * by auto.
       rewrite roundup_round in *.
-      rewrite upd_range_upd_range in *.
-      rewrite mult_comm with (m := N) in *.
-      rewrite <- Nat.div_mod in * by mult_nonzero.
-      repeat match goal with [H : concat ?l = _ |- context [concat ?l] ] => rewrite H end.
+      match goal with H: concat _ = _, H' : concat _ = _ |- _ => rewrite H, H' end.
+      autorewrite with lists.
+      rewrite mult_comm with (m := N), <- Nat.div_mod by mult_nonzero.
       erewrite <- le_plus_minus_r with (m := roundup start N) at 2.
       rewrite upd_range_upd_range. f_equal.
       destruct (addr_eq_dec (start mod N) 0).
       - unfold roundup. rewrite divup_eq_div by auto. rewrite mul_div by mult_nonzero. omega.
-      - rewrite roundup_eq by mult_nonzero. rewrite minus_plus. omega.
+      - rewrite roundup_eq by mult_nonzero. autorewrite with core; omega.
       - auto.
+    Unshelve.
+      all : solve [exact unit | exact nil].
   Qed.
 
   Local Hint Extern 1 ({{_}} Bind (indclear_multiple_blocks _ _ _ _ _ _ _) _) => apply indclear_multiple_blocks_ok : prog.
@@ -1517,87 +1547,93 @@ Module BlockPtr (BPtr : BlockPtrSig).
         rewrite indrep_n_helper_length_piff, indrep_n_helper_0 in *. destruct_lifts.
         rewrite upd_range_same. auto.
         rewrite indrep_n_helper_valid by auto. cancel.
-        all : try (rewrite indrep_n_helper_length_piff in *;
-                   repeat match goal with [H : context [lift_empty (length _ = _)] |- _ ] => destruct_lift H end;
-                   unfold IndRec.Defs.item in *; simpl in *;
-                   rewrite firstn_oob in * by omega).
-        all : try cancel; auto.
-        unfold IndRec.items_valid, IndSig.xparams_ok, IndSig.RAStart, IndSig.RALen, Rec.well_formed in *.
-        simpl in *. rewrite upd_range_length by omega. intuition.
+        all : match goal with H : _ |- _ =>
+          rewrite indrep_n_helper_length_piff in H;
+          destruct_lift H;
+          unfold IndRec.Defs.item in *; simpl in *; rewrite firstn_oob by omega;
+          try cancel; auto
+        end.
       + simpl.
-        step. step. rewrite indrep_n_helper_0 in *. destruct_lifts.
-        rewrite listmatch_repeat_l in *. rewrite listpred_indrep_n_tree_0 in *.
-        destruct_lifts. erewrite concat_hom_repeat by eauto.
-        rewrite upd_range_same. auto.
         step. step.
-        step. rewrite indrep_n_helper_valid by auto. cancel.
+        {
+          rewrite indrep_n_helper_0 in *. destruct_lifts.
+          rewrite listmatch_repeat_l in *. rewrite listpred_indrep_n_tree_0 in *.
+          destruct_lifts. erewrite concat_hom_repeat by eauto.
+          autorewrite with lists. reflexivity.
+        }
+        step. solve [step].
+        step.
+        { rewrite indrep_n_helper_valid by auto. cancel. }
         rewrite indrep_n_helper_length_piff in *. destruct_lifts.
-        unfold IndRec.Defs.item in *; simpl in *. rewrite firstn_oob by omega.
+        unfold IndRec.Defs.item in *; simpl in *.
+        rewrite firstn_oob by omega.
         step.
         - safestep.
           indrep_n_extract; solve [cancel | indrep_n_tree_bound].
           match goal with [H : context [listmatch _ _ ?l] |- context [selN ?l ?n] ] =>
-            rewrite listmatch_extract with (i := n) in H; try indrep_n_tree_bound
+            rewrite listmatch_extract with (i := n) in H
           end.
           indrep_n_tree_extract_lengths.
-          match goal with [H : length _ = _ |- _ ] => rewrite H end. omega.
-          step; try (rewrite natToWord_wordToNat; rewrite updN_selN_eq).
-          rewrite indrep_n_helper_valid in * by auto. unfold IndRec.rep in *. destruct_lifts. auto.
-         -- prestep. norm. cancel. cancel. repeat split.
+          denote (length _ = _) as Hl. rewrite Hl. omega.
+          indrep_n_tree_bound.
+          safestep; rewrite ?natToWord_wordToNat, ?updN_selN_eq.
+          eauto.
+          * prestep. norm. cancel. or_r. cancel.
+            rewrite indrep_n_helper_0 in *.
+            destruct_lifts.
+            intuition auto.
             pred_apply. norm; intuition eauto.
             instantiate (iblocks := updN _ _ _). cancel.
-            rewrite listmatch_updN_removeN. repeat rewrite indrep_n_helper_0. rewrite updN_selN_eq.
-
-            norm.
-            unfold stars; simpl.
-            rewrite (sep_star_comm _ emp).
-            rewrite star_emp_pimpl.
-            apply pimpl_sep_star.
-            cancel.
-
-            instantiate (3 := nil).
-            cancel.
-            intuition eauto.
-            all: autorewrite with lists; repeat indrep_n_tree_bound; auto.
-            erewrite upd_range_concat_hom_small by (eauto; mult_nonzero; omega); auto.
-
-            cancel.
-            cancel.
+            match goal with |- context [removeN ?l ?i_] =>
+              rewrite listmatch_updN_removeN with (a := l) (i := i_)
+            end. cancel.
+            rewrite updN_selN_eq.
+            rewrite indrep_n_helper_0; cancel.
+            indrep_n_tree_bound.
+            indrep_n_tree_bound.
+            erewrite upd_range_concat_hom_small by (eauto; mult_nonzero; omega). auto.
+            auto.
+            cancel. or_l. cancel.
+            intuition auto.
+            pred_apply. norm; intuition.
+            instantiate (iblocks := updN _ _ _). cancel.
+            match goal with |- context [removeN ?l ?i_] =>
+              rewrite listmatch_updN_removeN with (a := l) (i := i_)
+            end. cancel.
+            rewrite updN_selN_eq. cancel.
+            indrep_n_tree_bound.
+            indrep_n_tree_bound.
+            erewrite upd_range_concat_hom_small by (eauto; mult_nonzero; omega). auto.
+            auto.
+          * cancel.
+          * prestep. norm. cancel. cancel. intuition auto.
+            pred_apply. norm; intuition.
+            instantiate (iblocks := updN _ _ _). cancel.
+            rewrite listmatch_updN_removeN. repeat rewrite indrep_n_helper_0. cancel.
+            indrep_n_tree_bound.
+            indrep_n_tree_bound.
+            erewrite upd_range_concat_hom_small by (eauto; mult_nonzero; omega).
+            auto.
+            auto.
+            cancel. cancel.
             intuition auto.
             pred_apply. norm; intuition.
             instantiate (iblocks := updN _ _ _). cancel.
             rewrite listmatch_updN_removeN. repeat rewrite indrep_n_helper_0. cancel.
-            rewrite updN_selN_eq. cancel.
-
-            all : autorewrite with lists; try indrep_n_tree_bound; auto.
+            indrep_n_tree_bound.
+            indrep_n_tree_bound.
             erewrite upd_range_concat_hom_small by (eauto; mult_nonzero; omega).
-            reflexivity.
-         -- unfold IndRec.items_valid, IndSig.xparams_ok, IndSig.RAStart, IndSig.RALen, Rec.well_formed in *.
-              simpl in *. rewrite length_updN. intuition.
-         -- prestep. norm. cancel. cancel. repeat split.
-            pred_apply. norm; intuition.
-            instantiate (iblocks := updN _ _ _). cancel.
-            rewrite listmatch_updN_removeN. repeat rewrite indrep_n_helper_0. cancel.
-            all : autorewrite with lists; try indrep_n_tree_bound; auto.
-            erewrite upd_range_concat_hom_small by (eauto; mult_nonzero; omega).
-            reflexivity.
-            cancel. cancel.
-            repeat split.
-            pred_apply. norm; intuition.
-            instantiate (iblocks := updN _ _ _). cancel.
-            rewrite listmatch_updN_removeN. repeat rewrite indrep_n_helper_0. cancel.
-            all : autorewrite with lists; try indrep_n_tree_bound; auto.
-            erewrite upd_range_concat_hom_small by (eauto; mult_nonzero; omega).
-            reflexivity.
-         -- cancel.
+            auto.
+            auto.
+          * cancel.
+          * cancel.
       - hoare.
         unfold IndRec.items_valid, IndSig.xparams_ok, IndSig.RAStart, IndSig.RALen, Rec.well_formed.
-        simpl. intuition.
-        erewrite listmatch_length_pimpl in *.
-        repeat match goal with [H : context [lift_empty (length _ = _)] |- _ ] =>
-          destruct_lift H end.
+        simpl. intuition auto.
         match goal with [H : concat _ = _|- _] => apply f_equal with (f := @length _) in H end.
-        rewrite upd_range_length in *. repeat erewrite concat_hom_length in * by eauto.
+        indrep_n_tree_bound.
+        autorewrite with lists in *.
+        indrep_n_tree_bound.
         rewrite Nat.mul_cancel_r in * by mult_nonzero.
         unfold IndRec.Defs.item. simpl. omega.
     Grab Existential Variables.
@@ -1632,9 +1668,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
       destruct addr_eq_dec; try omega. cancel.
       apply firstn_oob.
       unfold IndRec.rep, IndRec.items_valid, IndSig.RALen in *.
-      destruct addr_eq_dec; destruct_lifts.
-      rewrite repeat_length. omega.
-      omega.
+      destruct addr_eq_dec; destruct_lifts; autorewrite with lists; omega.
     Qed.
 
   Local Hint Extern 0 ({{_}} Bind (indput_get_blocks _ _ _ _) _) => apply indput_get_blocks_ok : prog.
@@ -1759,69 +1793,65 @@ Module BlockPtr (BPtr : BlockPtrSig).
       induction indlvl; intros; simpl.
       + step.
         - hoare.
-         -- unfold IndRec.items_valid, IndSig.RAStart, IndSig.RALen, IndSig.xparams_ok.
-            rewrite mult_1_l. unfold Rec.well_formed. simpl. unfold BALLOCC.bn_valid in *.
-            rewrite length_updN, repeat_length. intuition.
-         -- unfold BALLOCC.bn_valid in *. intuition.
-         -- or_r. cancel. unfold BALLOCC.bn_valid in *; intuition.
+          * unfold BALLOCC.bn_valid in *. intuition auto.
+          * unfold BALLOCC.bn_valid in *. intuition auto.
+          * or_r. cancel. unfold BALLOCC.bn_valid in *; intuition.
             rewrite indrep_n_helper_0. rewrite indrep_n_helper_valid by omega.
             unfold BALLOCC.bn_valid. cancel.
         - hoare.
-        --  rewrite indrep_n_helper_valid by omega. cancel.
-        --  or_r. cancel.
+          * rewrite indrep_n_helper_valid by omega. cancel.
+          * or_r. cancel.
             rewrite indrep_n_helper_valid in * by omega. cancel.
             match goal with [H : context [?P] |- ?P] => destruct_lift H end. auto.
       + step.
         - step. safestep.
-          rewrite repeat_selN. rewrite indrep_n_helper_0, indrep_n_tree_0. cancel.
-          indrep_n_tree_bound.
-          rewrite repeat_length. apply Nat.mod_bound_pos; mult_nonzero; omega.
-          unfold indput_upd_if_necessary. 
-          repeat rewrite repeat_selN. rewrite roundTrip_0.
+          { rewrite repeat_selN'. rewrite indrep_n_helper_0, indrep_n_tree_0. cancel. }
+          { rewrite repeat_length. apply Nat.mod_bound_pos; mult_nonzero. omega. }
           (* the spec given is for updates, not blind writes *)
+          unfold indput_upd_if_necessary.
+          repeat rewrite repeat_selN'. rewrite roundTrip_0.
           hoare.
-         -- unfold BALLOCC.bn_valid in *.
-            unfold IndRec.items_valid, IndSig.xparams_ok, IndSig.RAStart, IndSig.RALen, Rec.well_formed.
-            simpl. rewrite length_updN, repeat_length. intuition.
-         -- unfold BALLOCC.bn_valid in *. intuition.
-         -- or_r.
-          (* safecancel isn't safe enough, so do it manually - the long and short of it is that the
-             listmatches get canceled before the indrep_n_helper, causing incorrect instantiation *)
-            norm. cancel. repeat split; auto.
-            pred_apply. norm; intuition. instantiate (iblocks := updN _ _ _). cancel.
-            unfold BALLOCC.bn_valid in *; intuition.
-            rewrite indrep_n_helper_valid by omega. cancel.
-            rewrite listmatch_updN_removeN.
-            indrep_n_extract. cancel.
-            rewrite repeat_selN, roundTrip_0. rewrite indrep_n_tree_0.
+          * unfold BALLOCC.bn_valid in *. intuition auto.
+          * unfold BALLOCC.bn_valid in *. intuition auto.
+          * or_r.
+            safecancel.
+            unfold BALLOCC.bn_valid in *.
+            rewrite indrep_n_helper_valid by intuition auto.
+            cancel.
+            match goal with |- context[updN ?l ?i_] =>
+              rewrite listmatch_isolate with (a := l) (i := i_), listmatch_updN_removeN
+            end. rewrite repeat_selN'.
+            rewrite indrep_n_tree_0.
             rewrite wordToNat_natToWord_idempotent'. cancel.
-            eapply BALLOCC.bn_valid_goodSize; eauto.
-            rewrite indrep_n_tree_valid in * by auto. destruct_lifts. auto.
-            all : try rewrite repeat_length.
+            rewrite indrep_n_tree_valid in * by auto.
+            destruct_lifts.
+            eauto using BALLOCC.bn_valid_goodSize.
             all : try solve [indrep_n_tree_bound].
-            unfold BALLOCC.bn_valid. auto.
-            erewrite Nat.div_mod with (x := off) at 1.
-            rewrite plus_comm, mult_comm. rewrite updN_concat; auto.
-            repeat f_equal.
-            match goal with [H : context [?l] |- context [selN ?l] ] =>
-              rewrite listmatch_extract with (b := l) in H
-            end. rewrite repeat_selN in *. rewrite roundTrip_0, indrep_n_tree_0 in *.
-            destruct_lifts. eauto.
-            all : try rewrite repeat_length.
-            all : try solve [indrep_n_tree_bound].
-            apply Nat.mod_bound_pos; mult_nonzero; omega.
-            mult_nonzero.
+            cbv; auto.
+            reflexivity.
             auto.
-         -- indrep_n_tree_bound.
-         -- cancel.
-         -- or_l. cancel.
-        - monad_simpl. simpl.
-          step.
+            match goal with |- context [updN ?l ?i] =>
+              replace (repeat _ _) with (selN l i nil)
+            end. erewrite <- updN_concat.
+            rewrite plus_comm, mult_comm.
+            rewrite <- Nat.div_mod by mult_nonzero. reflexivity.
+            auto.
+            auto.
+            rewrite indrep_n_helper_0 in *.
+            match goal with H : _ |- context [selN ?l ?I ?d] =>
+              rewrite listmatch_isolate with (b := l) (i := I) (bd := d), repeat_selN' in H
+            end.
+            rewrite indrep_n_tree_0 in *.
+            destruct_lifts. auto.
+            indrep_n_tree_bound.
+            indrep_n_tree_bound.
+          * cancel.
+          * or_l. cancel.
+        - step.
           safestep.
           indrep_n_extract; solve [cancel | indrep_n_tree_bound].
-          eapply lt_le_trans.
-          apply Nat.mod_bound_pos; mult_nonzero; omega.
-          apply Nat.eq_le_incl. symmetry. apply Forall_selN. eauto.
+          match goal with |- ?a mod ?b < ?c => replace c with b; auto end.
+          symmetry. apply Forall_selN. eauto.
           indrep_n_tree_bound.
           match goal with [H : context [indrep_n_helper] |- _] =>
             pose proof H; rewrite indrep_n_helper_length_piff,
@@ -1830,17 +1860,16 @@ Module BlockPtr (BPtr : BlockPtrSig).
           hoare.
           all : try solve [cancel].
           all : or_r; norm; try solve [cancel].
-          all : repeat (split; try reflexivity); auto.
+          all : intuition auto.
           all : try (pred_apply; norm; intuition).
           all : try ((instantiate (iblocks := updN _ _ _) ||
                       instantiate (iblocks0 := updN _ _ _)); cancel).
           all : try (rewrite listmatch_updN_removeN by indrep_n_tree_bound; cancel).
           all: try rewrite natToWord_wordToNat;
                 try rewrite wordToNat_natToWord_idempotent'; (cancel || auto).
-          all : erewrite Nat.div_mod with (x := off) at 1.
-          all : try (rewrite plus_comm, mult_comm; rewrite updN_concat).
+          all : erewrite <- updN_concat.
+          all : try solve [rewrite plus_comm, mult_comm, <- Nat.div_mod; auto].
           all : auto.
-          all : apply Nat.mod_bound_pos; mult_nonzero; omega.
     Grab Existential Variables. all : auto; solve [exact nil | exact $0].
   Qed.
 
