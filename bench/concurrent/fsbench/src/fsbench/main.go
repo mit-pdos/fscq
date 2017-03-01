@@ -7,6 +7,7 @@ import (
 	"log"
 	"pin"
 	"runtime"
+	"strings"
 	"time"
 	"workload"
 )
@@ -126,6 +127,9 @@ func main() {
 	client_cpus := flag.String("client-cpus", "",
 		"pin clients to cpus (when running in parallel, separate cpus with a slash\n"+
 			"or provide a single spec)")
+	rts_opts := flag.String("rts-opts", "",
+		"space-separated arguments to pass to fuse server in +RTS -RTS")
+	warmup := flag.Bool("warmup", true, "warmup file system with 1000 untimed iterations")
 
 	readable_output := flag.Bool("readable", false, "produce verbose, readable output")
 
@@ -170,12 +174,18 @@ func main() {
 		runtime.GOMAXPROCS(2)
 	}
 
+	var rtsOpts []string
+	if *rts_opts != "" {
+		rtsOpts = strings.Split(*rts_opts, " ")
+	}
+
 	fsOpts := filesys.Options{
 		NameCache:    *name_cache,
 		NegNameCache: *neg_name_cache,
 		AttrCache:    *attr_cache,
 		KernelCache:  *kernel_cache,
 		ServerCpu:    pin.Cpu(*server_cpu),
+		RtsOpts:      rtsOpts,
 	}
 
 	opts := workload.Options{
@@ -191,7 +201,9 @@ func main() {
 
 	for i := 0; i < *work_iters; i++ {
 		fs.Launch(fsOpts)
-		opts.Warmup(fs)
+		if *warmup {
+			opts.Warmup(fs)
+		}
 
 		data := DataPoints{
 			fsIdent:  fs.Ident(),

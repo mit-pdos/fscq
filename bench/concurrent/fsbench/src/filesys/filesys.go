@@ -91,15 +91,20 @@ type Options struct {
 	NegNameCache bool
 	KernelCache  bool
 	ServerCpu    pin.Cpu
+	RtsOpts      []string
 }
 
 var DataHeader = []interface{}{
-	"name_cache", "attr_cache", "neg_name_cache", "kernel_cache", "server-cpu",
+	"name_cache", "attr_cache", "neg_name_cache", "kernel_cache",
+	"server-cpu",
+	"rts-opts",
 }
 
 func (o Options) DataRow() []interface{} {
 	return []interface{}{
-		o.NameCache, o.AttrCache, o.NegNameCache, o.KernelCache, o.ServerCpu,
+		o.NameCache, o.AttrCache, o.NegNameCache, o.KernelCache,
+		o.ServerCpu,
+		fmt.Sprintf("\"%s\"", strings.Join(o.RtsOpts, " ")),
 	}
 }
 
@@ -129,7 +134,9 @@ func (fs FileSystem) Launch(opts Options) {
 		args = append(args, "-o", opts.optString())
 	}
 	if fs.isHaskell() {
-		args = append(args, "+RTS", "-A6G", "-qa", "-I0", "-N2", "-qg", "-RTS")
+		args = append(args, "+RTS", "-A6G", "-qa", "-I0", "-N2", "-qg")
+		args = append(args, opts.RtsOpts...)
+		args = append(args, "-RTS")
 	}
 	cmd := opts.ServerCpu.Command(fs.binary, args...)
 	cmd.Stderr = os.Stderr
