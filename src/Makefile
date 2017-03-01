@@ -59,7 +59,7 @@ OCAMLFUSE	:= ocamlfuse/Fuse.a ocamlfuse/Fuse.cmxa
 
 .PHONY: coq proof clean
 
-all: fuse mkfs
+all: fscq mkfs
 
 -include $(OCAMLFUSE_DEP)
 
@@ -149,7 +149,7 @@ gotest: $(patsubst %.json,%/main.go,$(wildcard codegen/*.json))
 
 clean:
 	rm -rf codegen coqbuild _build fstest hstest gotest disk.img \
-	       fuse mkfs *.o *.hi ocamlfuse/*.d ocamlfuse/*.di \
+	       fscq mkfs *.o *.hi ocamlfuse/*.d ocamlfuse/*.di \
 	       ocamlfuse/*.cmi ocamlfuse/*.cmx ocamlfuse/*.cmo \
 	       ocamlfuse/*.o ocamlfuse/Fuse_bindings_stubs.c \
 	       ocamlfuse/Fuse_bindings.h ocamlfuse/Fuse_bindings.ml \
