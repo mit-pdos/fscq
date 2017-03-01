@@ -44,14 +44,14 @@ run_dcode _ (GhostUpdate _) = do
 run_dcode s (Write a v) = do
   Disk.write_disk (disk s) a v
   return $ unsafeCoerce ()
-run_dcode s (Hash sz (W64 w)) =
-  run_dcode s (Hash sz (W $ fromIntegral w))
-run_dcode _ (Hash sz (W w)) = do
-  debugmsg $ "Hash " ++ (show sz) ++ " " ++ (show w)
-  wbs <- Disk.i2bs w $ fromIntegral $ (sz + 7) `div` 8
-  h <- return $ SHA256.hash wbs
-  ih <- Disk.bs2i h
-  return $ unsafeCoerce $ W ih
+run_dcode ds (Hash sz (W64 w)) = run_dcode ds (Hash sz (W $ fromIntegral w))
+run_dcode ds (Hash sz (W w)) = do
+  debugmsg $ "Hash " ++ (show sz) ++ " W " ++ (show w)
+  bs <- Word.i2bs w $ fromIntegral $ (sz + 7) `div` 8
+  run_dcode ds $ Hash sz (WBS bs)
+run_dcode _ (Hash sz (WBS bs)) = do
+  debugmsg $ "Hash " ++ (show sz) ++ " BS " ++ (show bs)
+  return $ unsafeCoerce $ WBS $ SHA256.hash bs
 run_dcode s (SetLock l) = do
   debugmsg $ "SetLock " ++ show l
   case l of
