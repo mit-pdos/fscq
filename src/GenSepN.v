@@ -562,11 +562,11 @@ Proof.
 Qed.
 
 
-Definition arrayN_ex A pts (vs : list A) i :=
+Definition arrayN_ex A VP pts (vs : list A) i : @pred _ _ VP :=
   (arrayN pts 0 (firstn i vs) *
    arrayN pts (i + 1) (skipn (S i) vs))%pred.
 
-Lemma arrayN_ex_one: forall V pts (l : list V),
+Lemma arrayN_ex_one: forall V VP (pts : _ -> _ -> @pred _ _ VP) (l : list V),
     List.length l = 1 ->
     arrayN_ex pts l 0 <=p=> emp.
 Proof.
@@ -691,7 +691,7 @@ Proof.
   congruence.
 Qed.
 
-Lemma arrayN_combine' : forall A pts (a b : list A) start,
+Lemma arrayN_combine' : forall A VP (pts : _ -> _ -> @pred _ _ VP) (a b : list A) start,
   arrayN pts start a * arrayN pts (start + length a) b <=p=> arrayN pts start (a ++ b).
 Proof.
   induction a; simpl; intros.
@@ -703,7 +703,7 @@ Proof.
     apply IHa.
 Qed.
 
-Lemma arrayN_combine : forall A pts (a b : list A) start off,
+Lemma arrayN_combine : forall A VP (pts : _ -> _ -> @pred _ _ VP) (a b : list A) start off,
   off = start + length a ->
   arrayN pts start a * arrayN pts off b <=p=> arrayN pts start (a ++ b).
 Proof.

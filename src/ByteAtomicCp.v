@@ -17,7 +17,8 @@ Require Import Inode.
 Require Import List ListUtils.
 Require Import Balloc.
 Require Import Bytes.
-Require Import DirTree.
+Require Import DirTree DirTreeDef DirTreeInodes.
+Require Import DirTreePred DirTreeNames DirTreePath DirTreeSafe.
 Require Import Rec.
 Require Import Arith.
 Require Import Array.
@@ -69,6 +70,8 @@ Hint Resolve valubytes_ge_O.
 
   Opaque LOG.idempred.
   Opaque crash_xform.
+  
+
 
 Definition atomic_cp fsxp src_inum dstbase dstname mscs :=
     let^ (mscs, r) <- AFS.create fsxp the_dnum temp_fn mscs;
@@ -136,10 +139,9 @@ Proof.
                       TSfree:= (frees'_1, frees'_2) |}).
   apply H14.
   unfold treeseq_one_safe; simpl.
-  rewrite <- H; apply H15.
+  rewrite <- H0; apply H15.
   auto.
   
-  Search tree_graft.
   admit.
   eapply treeseq_pushd_tree_rep; eauto.
   inversion H4.

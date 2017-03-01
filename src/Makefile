@@ -17,17 +17,17 @@ MODULES    := CCLProg CCLMonadLaws CCLHoareTriples CCLPrimitives \
 	      BasicProg ListUtils MapUtils Array Rec RecArrayUtils \
 	      MemPred Cache \
 	      FSLayout AsyncRecArray DiskLogHash \
-	      LogReplay MemLog ListPred GenSepN \
+	      LogReplay MemLog ListPred GenSepN FMapMem \
 	      NEList DiskSet GroupLog Log LogRecArray \
 	      Balloc BlockPtr GenSepAuto Inode BFile BFileCrash \
 	      MemMatch FileRecArray \
-	      Dir DirName StringUtils TreeUtils \
+	      Dir DirName DirCache StringUtils TreeUtils \
 	      DirTreePath DirTreeDef DirTreePred DirTreeRep DirTreeSafe \
 	      DirTreeNames DirTreeInodes DirTree \
 	      TreeCrash \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv AByteFile \
 	      ADestructPair DestructVarname ExtrHaskellPrelude ExtrHaskellMap \
-		  DirSep TreeSeq ProgMetatheory BACHelper
+	      DirSep ProgMetatheory TreeSeq ## BACHelper
 
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
@@ -156,7 +156,7 @@ gotest: $(patsubst %.json,%/main.go,$(wildcard codegen/*.json))
 
 clean:
 	rm -rf codegen coqbuild _build fstest hstest gotest disk.img \
-	       fuse mkfs *.o *.hi ocamlfuse/*.d ocamlfuse/*.di \
+	       fscq mkfs *.o *.hi ocamlfuse/*.d ocamlfuse/*.di \
 	       ocamlfuse/*.cmi ocamlfuse/*.cmx ocamlfuse/*.cmo \
 	       ocamlfuse/*.o ocamlfuse/Fuse_bindings_stubs.c \
 	       ocamlfuse/Fuse_bindings.h ocamlfuse/Fuse_bindings.ml \

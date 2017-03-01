@@ -8,6 +8,7 @@ Require Import AsyncDisk.
 Require Import Bytes.
 Require Import DiskSet.
 Require Import Pred.
+Import EqNotations.
 
 Set Implicit Arguments.
 
@@ -414,13 +415,89 @@ Proof.
   apply natToWord_wordToNat.
 Qed.
 
-Lemma list2valu2list: forall l, length l = valubytes -> valu2list (list2valu l) = l.
-Proof. Admitted.
+Lemma bytes_eq_to_word_eq : forall n m,
+    n = m ->
+    n * 8 = m * 8.
+Proof.
+  intros; subst; auto.
+Qed.
 
-  
+Lemma eq_rect_bytes_to_word : forall sz sz' (H: sz = sz') b,
+    rew [fun n => word (n * 8)] H in b = rew [fun n => word n] (bytes_eq_to_word_eq H) in b.
+Proof.
+  intros.
+  generalize (bytes_eq_to_word_eq H).
+  generalize_proof.
+  destruct H; intros.
+  eq_rect_simpl; auto.
+Qed.
+
+Theorem bcombine_0 : forall sz (b: bytes sz) (b': bytes 0) H,
+    eq_rect _ bytes (bcombine b b') _ H = b.
+Proof.
+  intros.
+  rewrite eq_rect_bytes_to_word.
+  unfold bcombine.
+  rewrite combine_n_0.
+  eq_rect_simpl; auto.
+Qed.
+
+Lemma list2valu2list: forall l, length l = valubytes -> valu2list (list2valu l) = l.
+Proof.
+  intros.
+  unfold valu2list, list2valu.
+  rewrite bytes2valu2bytes.
+
+  unfold bytes2valubytes.
+  destruct (le_dec (length l) valubytes); try omega.
+  simpl.
+
+  generalize_proof.
+  rewrite <- H.
+  rewrite Nat.sub_diag.
+  intros.
+
+  rewrite bcombine_0.
+  rewrite list2bytes2list; auto.
+Qed.
 
 Lemma valu2list2valu: forall v, list2valu (valu2list v) = v.
-Proof. Admitted.
+Proof.
+  unfold list2valu, valu2list; intros.
+
+  assert (length (bsplit_list (valu2bytes v)) = valubytes).
+  rewrite bsplit_list_len; auto.
+
+  unfold bytes2valu.
+  eq_rect_simpl.
+  rewrite eq_rect_bytes_to_word; eq_rect_simpl.
+  unshelve erewrite bytes2list2bytes; auto.
+
+  unfold bytes2valubytes.
+  match goal with
+  | [ |- context[match ?d with _ => _ end] ] =>
+    destruct d
+  end; try omega.
+
+  unfold bytes.
+  unfold bcombine.
+  repeat rewrite eq_rect_bytes_to_word; eq_rect_simpl.
+  repeat generalize_proof; intros.
+  destruct e.
+  simpl.
+  generalize_proof.
+  rewrite H, Nat.sub_diag; simpl.
+  rewrite combine_n_0.
+  intros.
+  eq_rect_simpl.
+  rewrite <- valu2bytes2valu.
+  unfold bytes2valu.
+  eq_rect_simpl.
+  rewrite eq_rect_bytes_to_word; eq_rect_simpl.
+  repeat generalize_proof; intros.
+  assert (e = e2) by (apply ProofIrrelevance.proof_irrelevance).
+  congruence.
+Qed.
 
 Lemma cons_simpl: forall A a (l l': list A), l = l' -> (a::l) = (a::l').
 Proof. intros; rewrite H; reflexivity. Qed.
@@ -1352,13 +1429,15 @@ Qed.
 	
 
 	
-	Lemma div_lt_le: forall a b c,
-	b <> 0 ->
-	a >= c ->
-	a / b >= c / b.
-	Proof. Admitted.
-	
-	
+  Lemma div_lt_le: forall a b c,
+      b <> 0 ->
+      a >= c ->
+      a / b >= c / b.
+  Proof.
+    intros.
+    apply Nat.div_le_mono; eauto.
+  Qed.
+
 Lemma n2w_id: forall a b sz,
 a = b -> natToWord sz a = natToWord sz b.
 	Proof. intros; subst; reflexivity. Qed.
@@ -1400,8 +1479,17 @@ a > (c - 1) * b ->
 a <= c * b ->
 a mod b > 0 ->
 a < c * b.
-	Proof. Admitted.
-	
+Proof.
+  intros.
+  destruct c; simpl in *; try omega.
+  rewrite Nat.sub_0_r in *.
+  destruct (Nat.eq_dec a (b + c * b)); try omega.
+  subst.
+  exfalso.
+  rewrite Nat.mod_add in H2 by auto.
+  rewrite Nat.mod_same in * by auto.
+  omega.
+Qed.
 
 Lemma list_zero_pad_length: forall a l,
 length (list_zero_pad l a) = length l + a.
@@ -1621,41 +1709,18 @@ Lemma plus_minus_eq_le: forall a b c,
 Proof. intros; omega. Qed.
 
 Lemma between_exists: forall b a c,
-a >= (b-1) * c -> a < b*c -> c<>0 -> a = (b-1) * c + a mod c.
+    a >= (b-1) * c -> a < b*c -> c<>0 -> a = (b-1) * c + a mod c.
 Proof.
-  intros b. induction b; intros.
-  simpl in H0; inversion H0.
-  destruct b.
-  simpl in *.
-  rewrite <- plus_n_O in H0.
-  symmetry; apply Nat.mod_small_iff; auto.
-  simpl.
-  simpl in IHb.
-  rewrite <- minus_n_O in IHb.
-  rewrite <- mod_subt.
-  rewrite <- Nat.add_assoc.
-  apply plus_minus_eq_le.
-  simpl in *.
-  eapply le_trans.
-  2:eauto.
-  apply le_plus_l.
-  simpl in *.
-  apply IHb.
-  apply Nat.le_add_le_sub_l in H.
-  auto.
-  simpl in *.
-  apply lt_plus_minus_l in H0.
-  auto.
-  destruct c; try omega.
-  simpl.
-  auto.
-  simpl in *.
-  apply Nat.lt_0_succ.
-  eapply le_trans.
-  2:eauto.
-  apply le_plus_l.
-Qed.
+  intros.
+  destruct b; simpl in *.
+  inversion H0.
+  rewrite <- minus_n_O in *.
 
+  pose proof (Nat.le_exists_sub (b*c) a); intuition; deex.
+  rewrite Nat.mod_add by auto.
+  rewrite Nat.mod_small by omega.
+  omega.
+Qed.
 
 Lemma mod_between_upper: forall a b c,
 	b <> 0 ->

@@ -624,6 +624,19 @@ Proof.
   omega.
 Qed.
 
+Lemma arrayN_listpred_seq_fp : forall V FP l st n,
+  length l = n ->
+  Forall FP l ->
+  arrayN (@ptsto _ _ V) st l =p=> listpred (fun a => exists v, a |-> v * [[ FP v ]]) (seq st n).
+Proof.
+  induction l; destruct n; simpl; intros; try omega; auto.
+  inversion H0; subst.
+  rewrite IHl; auto.
+  cancel.
+  replace (length l + 0) with n by omega.
+  cancel.
+Qed.
+
 
 Lemma listmatch_sym : forall AT AEQ V A B (al : list A) (bl : list B) f,
   (@listmatch _ _ AT AEQ V) f al bl <=p=>
@@ -859,6 +872,21 @@ Proof.
   rewrite crash_xform_ptsto_exis, IHl.
   auto.
 Qed.
+
+Lemma xform_listpred_ptsto_fp : forall FP,
+  (forall a, crash_xform (exists v, a |-> v * [[ FP v ]]) =p=> exists v, a |-> v * [[ FP v ]]) ->
+  forall l,
+  crash_xform (listpred (fun a => exists v, a |-> v * [[ FP v ]]) l) =p=>
+               listpred (fun a => exists v, a |-> v * [[ FP v ]]) l.
+Proof.
+  induction l; simpl.
+  rewrite crash_invariant_emp; auto.
+  xform_dist.
+  rewrite H.
+  rewrite IHl.
+  cancel.
+Qed.
+
 
 Lemma xform_listmatch_ptsto : forall al vl,
   crash_xform (listmatch (fun v a => a |-> v) vl al) =p=>

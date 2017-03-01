@@ -395,6 +395,12 @@ Proof.
   apply (f_equal (@wtl _)) in H0; tauto.
 Qed.
 
+Fixpoint rep_bit (n : nat) (b : word 1) : word n :=
+  match n as n0 return (word n0) with
+  | 0 => WO
+  | S n0 => WS (whd b) (rep_bit n0 b)
+  end.
+
 
 (** Shattering **)
 
@@ -773,6 +779,29 @@ Proof.
   generalize dependent Heq.
   rewrite <- Heq'; simpl; intros.
   rewrite <- (eq_rect_eq_dec eq_nat_dec).
+  reflexivity.
+Qed.
+
+Lemma whd_eq_rect_mul : forall n w Heq,
+  whd (eq_rect (S n) word w (S (n * 1)) Heq) =
+  whd w.
+Proof.
+  intros.
+  generalize Heq.
+  replace (n * 1) with n by auto.
+  intros.
+  eq_rect_simpl.
+  reflexivity.
+Qed.
+
+Lemma wtl_eq_rect_mul : forall n w b Heq Heq',
+  wtl (eq_rect (S n) word (WS b w) (S (n * 1)) Heq) =
+  eq_rect _ word w _ Heq'.
+Proof.
+  intros.
+  generalize Heq.
+  rewrite <- Heq'.
+  intros. eq_rect_simpl.
   reflexivity.
 Qed.
 
@@ -1956,6 +1985,42 @@ Proof.
   simpl; f_equal.
   rewrite xorb_assoc_reverse; auto.
   rewrite IHsz.
+  reflexivity.
+Qed.
+
+Lemma wor_wone : forall sz (w : word sz) b,
+  WS b w ^| wone _ = WS true w.
+Proof.
+  intros.
+  compute [wone natToWord wor]. simpl.
+  fold natToWord.
+  change (natToWord sz 0) with (wzero sz).
+  rewrite orb_true_r.
+  rewrite wor_comm, wor_wzero.
+  reflexivity.
+Qed.
+
+Lemma wand_wone : forall sz (w : word sz) b,
+  WS b w ^& wone _ = WS b (wzero _).
+Proof.
+  intros.
+  compute [wone natToWord wand]. simpl.
+  fold natToWord.
+  change (natToWord sz 0) with (wzero sz).
+  rewrite andb_true_r.
+  rewrite wand_comm, wand_wzero.
+  reflexivity.
+Qed.
+
+Lemma wxor_wone : forall sz (w : word sz) b,
+  wxor (WS b w) (wone _) = WS (negb b) w.
+Proof.
+  intros.
+  compute [wone natToWord wxor]. simpl.
+  fold natToWord.
+  change (natToWord sz 0) with (wzero sz).
+  rewrite xorb_true_r.
+  rewrite wxor_comm, wxor_wzero.
   reflexivity.
 Qed.
 

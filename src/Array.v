@@ -16,8 +16,8 @@ Set Default Proof Using "Type".
 
 Section GenArray.
 
-  Variable V : Type.
-  Variable pts : addr -> V -> @pred addr addr_eq_dec V.
+  Variable V VP : Type.
+  Variable pts : addr -> V -> @pred addr addr_eq_dec VP.
 
   Infix "|-?->" := pts (at level 35) : pred_scope.
 

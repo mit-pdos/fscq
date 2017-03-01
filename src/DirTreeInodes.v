@@ -156,7 +156,7 @@ Import ListNotations.
     tree_names_distinct tree ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     off < length (BFILE.BFData f) ->
-    let f' := BFILE.mk_bfile (updN (BFILE.BFData f) off v) (BFILE.BFAttr f) in
+    let f' := BFILE.mk_bfile (updN (BFILE.BFData f) off v) (BFILE.BFAttr f) (BFILE.BFCache f) in
     dirtree_update_inode tree inum off v =
     update_subtree pathname (TreeFile inum f') tree.
   Proof.
@@ -214,8 +214,8 @@ Import ListNotations.
         eauto.
   Qed.
 
-  Lemma rep_tree_inodes_distinct : forall tree F fsxp Ftop m ilist frees,
-    (F * rep fsxp Ftop tree ilist frees)%pred m ->
+  Lemma rep_tree_inodes_distinct : forall tree F fsxp Ftop m ilist frees ms,
+    (F * rep fsxp Ftop tree ilist frees ms)%pred m ->
     tree_inodes_distinct tree.
   Proof.
     unfold rep, tree_inodes_distinct; intros.
@@ -1537,13 +1537,13 @@ Import ListNotations.
         + eapply IHl; eauto.
   Qed.
 
-  Lemma rep_tree_distinct_impl : forall fsxp Ftop tree ilist frees,
-    rep fsxp Ftop tree ilist frees =p=> rep fsxp Ftop tree ilist frees *
+  Lemma rep_tree_distinct_impl : forall fsxp Ftop tree ilist frees ms,
+    rep fsxp Ftop tree ilist frees ms =p=> rep fsxp Ftop tree ilist frees ms *
       [[ tree_names_distinct tree ]] *
       [[ tree_inodes_distinct tree ]].
   Proof.
     unfold pimpl; intros.
-    assert ((emp * rep fsxp Ftop tree ilist frees)%pred m) by ( pred_apply; cancel ).
+    assert ((emp * rep fsxp Ftop tree ilist frees ms)%pred m) by ( pred_apply; cancel ).
     eapply rep_tree_names_distinct in H0 as H0'.
     eapply rep_tree_inodes_distinct in H0 as H0''.
     pred_apply; cancel.
@@ -1630,11 +1630,11 @@ Import ListNotations.
           inversion H; constructor; eauto.
   Qed.
 
-  Theorem dirtree_update_block : forall pathname F0 tree fsxp F ilist freeblocks inum off v bn m f,
-    (F0 * rep fsxp F tree ilist freeblocks)%pred (list2nmem m) ->
+  Theorem dirtree_update_block : forall pathname F0 tree fsxp F ilist freeblocks ms inum off v bn m f,
+    (F0 * rep fsxp F tree ilist freeblocks ms)%pred (list2nmem m) ->
     find_subtree pathname tree = Some (TreeFile inum f) ->
     BFILE.block_belong_to_file ilist bn inum off ->
-    (F0 * rep fsxp F (dirtree_update_inode tree inum off v) ilist freeblocks)%pred (list2nmem (updN m bn v)).
+    (F0 * rep fsxp F (dirtree_update_inode tree inum off v) ilist freeblocks ms)%pred (list2nmem (updN m bn v)).
   Proof.
     intros.
     apply rep_tree_names_distinct in H as Hnames.

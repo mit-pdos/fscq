@@ -2735,4 +2735,25 @@ Proof.
   unfold pimpl, ptsto, notindomain; intuition.
 Qed.
 
+Lemma sep_star_none : forall AT AEQ V (p q : @pred AT AEQ V) a,
+  (forall m, p m -> m a = None) ->
+  (forall m, q m -> m a = None) ->
+  forall m, (p * q)%pred m ->
+  m a = None.
+Proof.
+  unfold_sep_star. intros. repeat deex.
+  unfold mem_union.
+  case_eq (m1 a); eauto; intros.
+  contradict H2.
+  rewrite H; eauto; congruence.
+Qed.
+
+Lemma ptsto_none : forall AT AEQ V a a' v (m : @mem AT AEQ V),
+  a <> a' ->
+  (a |-> v)%pred m ->
+  m a' = None.
+Proof.
+  unfold ptsto; intuition.
+Qed.
+
 Global Opaque pred.

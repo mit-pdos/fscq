@@ -103,9 +103,9 @@ Module DIR.
     (Dent.rep f delist)%pred (list2nmem (BFILE.BFData f)) /\
     listpred dmatch delist dmap.
 
-  Definition rep_macro Fm Fi m bxp ixp inum dmap ilist frees : (@pred _ addr_eq_dec valuset) :=
+  Definition rep_macro Fm Fi m bxp ixp inum dmap ilist frees ms : (@pred _ addr_eq_dec valuset) :=
     (exists flist f,
-    [[[ m ::: Fm * BFILE.rep bxp ixp flist ilist frees ]]] *
+    [[[ m ::: Fm * BFILE.rep bxp ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) ]]] *
     [[[ flist ::: Fi * inum |-> f ]]] *
     [[ rep f dmap ]])%pred.
 
@@ -411,13 +411,15 @@ Module DIR.
 
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
+  Notation MSCache := BFILE.MSCache.
 
   Theorem lookup_ok : forall lxp bxp ixp dnum name ms,
     {< F Fm Fi m0 m dmap ilist frees,
     PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees
+           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms
     POST:hm' RET:^(ms',r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
+           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms' *
            [[ MSAlloc ms' = MSAlloc ms ]] *
          ( [[ r = None /\ notindomain name dmap ]] \/
            exists inum isdir Fd,
@@ -434,17 +436,20 @@ Module DIR.
     apply lookup_ptsto; auto.
     or_l; cancel.
     apply lookup_notindomain; auto.
+  Unshelve.
+    all: eauto.
   Qed.
 
 
   Theorem readdir_ok : forall lxp bxp ixp dnum ms,
     {< F Fm Fi m0 m dmap ilist frees,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms
     POST:hm' RET:^(ms',r)
              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
              [[ listpred readmatch r dmap ]] *
-             [[ MSAlloc ms' = MSAlloc ms ]]
+             [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSCache ms' = MSCache ms ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} readdir lxp ixp dnum ms.
@@ -460,10 +465,10 @@ Module DIR.
   Theorem unlink_ok : forall lxp bxp ixp dnum name ms,
     {< F Fm Fi m0 m dmap ilist frees,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms
     POST:hm' RET:^(ms', r) exists m' dmap',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees *
+             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees ms' *
              [[ dmap' = mem_except dmap name ]] *
              [[ notindomain name dmap' ]] *
              [[ r = OK tt -> indomain name dmap ]] *
@@ -476,8 +481,11 @@ Module DIR.
     step.
 
     apply Dent.Defs.item0_wellformed.
+    msalloc_eq. cancel.
+
     denote (lookup_f) as HH.
     pose proof (lookup_f_ok _ _ _ HH) as [Hx Hy].
+
     step.
 
     eexists; split; eauto.
@@ -491,13 +499,16 @@ Module DIR.
     rewrite <- notindomain_mem_eq; auto.
     eapply lookup_notindomain; eauto.
     eapply lookup_notindomain; eauto.
+
+  Unshelve.
+    all: easy.
   Qed.
 
 
   Theorem link_ok : forall lxp bxp ixp dnum name inum isdir ms,
     {< F Fm Fi m0 m dmap ilist frees,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees *
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms *
              [[ goodSize addrlen inum ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
@@ -505,7 +516,7 @@ Module DIR.
         \/  ([[ r = OK tt ]] * 
              exists dmap' Fd ilist' frees',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' *
+             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' ms' *
              [[ dmap' = Mem.upd dmap name (inum, isdir) ]] *
              [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
              [[ (Fd dmap /\ notindomain name dmap) ]] *
@@ -517,14 +528,16 @@ Module DIR.
   Proof.
     unfold link, ifind_lookup_f, ifind_invalid, rep_macro, rep.
     step.
-    step.
+    step; msalloc_eq.
+    cancel.
 
     denote lookup_f as Hx; apply lookup_notindomain in Hx as Hy.
-    step.
+    step; msalloc_eq.
 
     (* case 1: use avail entry *)
     cbv; tauto.
-    step.
+    cancel.
+    step; msalloc_eq.
     or_r; cancel; eauto.
     eexists; split; eauto.
     apply listpred_dmatch_mem_upd; auto.
@@ -535,13 +548,16 @@ Module DIR.
     cbv; tauto.
     cbv; tauto.
     cbv; tauto.
-    step.
+    cancel.
+
+    step; msalloc_eq.
     or_r; cancel; eauto.
     eexists; split; eauto.
     eapply listpred_dmatch_ext_mem_upd; eauto.
     eapply ptsto_upd_disjoint; eauto.
     eapply lookup_notindomain; eauto.
-    Unshelve. eauto.
+  Unshelve.
+    all: eauto.
   Qed.
 
 
