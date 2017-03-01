@@ -23,7 +23,7 @@ for fs in fscq cfscq native; do
     for exists in "true"; do
       for clientcpu in "2/2" "3/3" "3/4"; do
         for parallel in "false" "true"; do
-          fsbench -work_iters=10 -kiters=10 -server-cpu=1,2 -client-cpus=$clientcpu -op=$op -disjoint-dirs=$disjointdirs -exists=$exists -parallel=$parallel -attr-cache=$cache1 -name-cache=$cache1 -neg-cache=$cache2 -kernel-cache=$kernelcache $fs
+          fsbench -work_iters=12 -reps=1 -iters=100 -server-cpu=1,2 -client-cpus=$clientcpu -op=$op -disjoint-dirs=$disjointdirs -exists=$exists -parallel=$parallel -attr-cache=$cache1 -name-cache=$cache1 -neg-cache=$cache2 -kernel-cache=$kernelcache $fs
         done
       done
     done

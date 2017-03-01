@@ -25,7 +25,7 @@ func (p DataPoints) SpeedupOver(other DataPoints) float64 {
 }
 
 func (p DataPoints) MicrosPerOp() float64 {
-	return float64(p.result.Elapsed().Nanoseconds()) / 1000 / float64(p.work.Kiters*1000)
+	return float64(p.result.Elapsed().Nanoseconds()) / 1000 / float64(p.work.NumOperations())
 }
 
 func toSec(d time.Duration) float64 {
@@ -113,7 +113,8 @@ func main() {
 	disjointDirectories := flag.Bool("disjoint-dirs", false,
 		"operate on disjoint directories (ignored if unsupported)")
 	parallel := flag.Bool("parallel", false, "run operation in parallel")
-	kiters := flag.Int("kiters", 1, "thousands of iterations to run the operation")
+	reps := flag.Int("reps", 1000, "repetitions to use per iteration")
+	iters := flag.Int("iters", 1, "number of iterations (of reps) to run the operation")
 	work_iters := flag.Int("work_iters", 1, "repetitions of the entire workload")
 	targetMs := flag.Int("target-ms", 0,
 		"search for iterations to run for at least this many ms (0 to disable search)")
@@ -182,7 +183,8 @@ func main() {
 		ClientCpus:          pin.NewCpus(*client_cpus),
 		ExistingPath:        *existingPath,
 		DisjointDirectories: *disjointDirectories,
-		Kiters:              *kiters,
+		Reps:                *reps,
+		Iters:               *iters,
 	}
 
 	var data_iters []DataPoints

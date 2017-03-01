@@ -15,7 +15,12 @@ type Options struct {
 	ClientCpus          []pin.Cpu
 	ExistingPath        bool
 	DisjointDirectories bool
-	Kiters              int
+	Reps                int
+	Iters               int
+}
+
+func (opts Options) NumOperations() int {
+	return opts.Iters * opts.Reps
 }
 
 var DataHeader = []interface{}{
@@ -23,13 +28,15 @@ var DataHeader = []interface{}{
 	"client-cpus",
 	"exists",
 	"disjoint-directories",
-	"kiters",
+	"reps",
+	"iters",
 }
 
 func (opts Options) DataRow() []interface{} {
 	clientCpuSpec := fmt.Sprintf("\"%s\"", pin.CpuSpec(opts.ClientCpus))
 	return []interface{}{
-		opts.Operation, clientCpuSpec, opts.ExistingPath, opts.DisjointDirectories, opts.Kiters,
+		opts.Operation, clientCpuSpec, opts.ExistingPath, opts.DisjointDirectories,
+		opts.Reps, opts.Iters,
 	}
 }
 
@@ -64,12 +71,6 @@ func (r Results) Elapsed() time.Duration {
 	return elapsed
 }
 
-func (r *Results) Merge(other Results) {
-	if other.Elapsed() > r.Elapsed() {
-		r.IterTimes = other.IterTimes
-	}
-}
-
 func (opts Options) RunWorkload(fs filesys.FileSystem, parallel bool) Results {
 	copies := 1
 	if parallel {
@@ -90,7 +91,7 @@ func (opts Options) RunWorkload(fs filesys.FileSystem, parallel bool) Results {
 	}
 
 	args := func(i int) []string {
-		return []string{opts.Operation, paths[i], strconv.Itoa(opts.Kiters)}
+		return []string{opts.Operation, paths[i], strconv.Itoa(opts.Reps), strconv.Itoa(opts.Iters)}
 	}
 
 	done := make(chan Results)
@@ -122,7 +123,8 @@ func (opts Options) RunWorkload(fs filesys.FileSystem, parallel bool) Results {
 }
 
 func (opts Options) Warmup(fs filesys.FileSystem) {
-	opts.Kiters = 1
+	opts.Reps = 1000
+	opts.Iters = 1
 	parallel := false
 	if opts.DisjointDirectories {
 		parallel = true
@@ -130,7 +132,7 @@ func (opts Options) Warmup(fs filesys.FileSystem) {
 	opts.RunWorkload(fs, parallel)
 }
 
-// SearchWorkload runs a workload, varying kiters until the run takes at least targetMs milliseconds.
+// SearchWorkload runs a workload, varying iters until the run takes at least targetMs milliseconds.
 // The input opts should specify the workload parameters and initial kiters for
 // the search. SearchWorkload returns the final duration and modifies the input
 // opts to have the final kiters.
@@ -138,13 +140,13 @@ func (opts *Options) SearchWorkload(fs filesys.FileSystem, parallel bool, target
 	targetTime := time.Duration(targetMs) * time.Millisecond
 	result := opts.RunWorkload(fs, parallel)
 	for result.Elapsed() < targetTime {
-		last := opts.Kiters
+		last := opts.Reps
 		// Predict required iterations
-		kiters := int(float64(last) * float64(targetTime) / float64(result.Elapsed()))
+		iters := int(float64(last) * float64(targetTime) / float64(result.Elapsed()))
 		// same policy as Go's testing/benchmark.go (see func (b *B) launch()): //
 		// run 1.2x the iterations we estimate, but don't grow by more than 100x last
 		// time and run at least one more iteration
-		opts.Kiters = max(min(kiters+kiters/5, 100*last), last+1)
+		opts.Iters = max(min(iters+iters/5, 100*last), last+1)
 		result = opts.RunWorkload(fs, parallel)
 	}
 	return result
