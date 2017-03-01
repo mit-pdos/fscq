@@ -1,4 +1,4 @@
-Require Import DirName.
+Require Import DirCache.
 Require Import Balloc.
 Require Import Prog ProgMonad.
 Require Import BasicProg.
@@ -32,6 +32,7 @@ Require Import DirTreeInodes.
 
 Set Implicit Arguments.
 
+Module SDIR := CacheOneDir.
 
 Module DIRTREE.
 

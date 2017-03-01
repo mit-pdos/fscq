@@ -6,7 +6,7 @@ Require Import Omega.
 Require Import BasicProg.
 Require Import Bool.
 Require Import Pred PredCrash.
-Require Import DirName.
+Require Import DirCache.
 Require Import Hoare.
 Require Import GenSepN.
 Require Import ListPred.
