@@ -205,18 +205,21 @@ func main() {
 			opts.Warmup(fs)
 		}
 
+		var results workload.Results
+
+		if *targetMs > 0 {
+			results = opts.SearchWorkload(fs, *parallel, *targetMs)
+		} else {
+			results = opts.RunWorkload(fs, *parallel)
+		}
+
 		data := DataPoints{
 			fsIdent:  fs.Ident(),
 			fs:       fsOpts,
 			work:     opts,
 			workIdx:  i,
 			parallel: *parallel,
-		}
-
-		if *targetMs > 0 {
-			data.result = opts.SearchWorkload(fs, *parallel, *targetMs)
-		} else {
-			data.result = opts.RunWorkload(fs, *parallel)
+			result:   results,
 		}
 
 		fs.Stop()

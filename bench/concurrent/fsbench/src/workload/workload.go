@@ -135,12 +135,12 @@ func (opts Options) Warmup(fs filesys.FileSystem) {
 // SearchWorkload runs a workload, varying iters until the run takes at least targetMs milliseconds.
 // The input opts should specify the workload parameters and initial kiters for
 // the search. SearchWorkload returns the final duration and modifies the input
-// opts to have the final kiters.
+// opts to have the final iters.
 func (opts *Options) SearchWorkload(fs filesys.FileSystem, parallel bool, targetMs int) Results {
 	targetTime := time.Duration(targetMs) * time.Millisecond
 	result := opts.RunWorkload(fs, parallel)
 	for result.Elapsed() < targetTime {
-		last := opts.Reps
+		last := opts.Iters
 		// Predict required iterations
 		iters := int(float64(last) * float64(targetTime) / float64(result.Elapsed()))
 		// same policy as Go's testing/benchmark.go (see func (b *B) launch()): //
