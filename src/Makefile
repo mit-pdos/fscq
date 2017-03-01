@@ -44,6 +44,7 @@ endif
 
 J	   ?= 1
 GHCARGS    := -O2 -threaded -rtsopts
+		# -ticky -ticky-dyn-thunk -ticky-allocd
 		# -prof -fprof-auto
 		# -eventlog
 HSLIB_FUSE := hscgen/Fuse.hs
