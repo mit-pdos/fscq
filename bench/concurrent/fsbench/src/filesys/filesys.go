@@ -134,7 +134,13 @@ func (fs FileSystem) Launch(opts Options) {
 		args = append(args, "-o", opts.optString())
 	}
 	if fs.isHaskell() {
-		args = append(args, "+RTS", "-A6G", "-qa", "-I0", "-N2", "-qg")
+		args = append(args, "+RTS",
+			"-N2", "-qa", // parallel, pin to cores (use OS affinity)
+			// GC options:
+			// "-qg", // disable parallel GC
+			// "-A6G", // large initial allocation area (avoids needs for most GC)
+			// "-I0",  // disable idle GC (default: idle after 0.3s)
+		)
 		args = append(args, opts.RtsOpts...)
 		args = append(args, "-RTS")
 	}
