@@ -93,6 +93,14 @@ Module LogRecArray (RA : RASig).
     apply Forall_wellformed_updN; auto.
   Qed.
 
+  Lemma items_valid_upd_range : forall xp items len a v,
+    items_valid xp items ->
+    Rec.well_formed v ->
+    items_valid xp (upd_range items a len v).
+  Proof.
+    induction len; simpl; intros; auto using items_valid_updN.
+  Qed.
+
   Lemma ifind_length_ok : forall xp i items,
     i < RALen xp ->
     items_valid xp items ->

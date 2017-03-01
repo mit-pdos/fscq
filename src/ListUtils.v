@@ -2687,6 +2687,8 @@ Proof.
   Unshelve. eauto.
 Qed.
 
+Hint Rewrite upd_range_0 upd_range_length upd_range_selN upd_range_nil upd_range_same : lists.
+
 Lemma forall_upd_range : forall T l start len (v : T) f,
   Forall f l -> f v -> Forall f (upd_range l start len v).
 Proof.
@@ -2737,6 +2739,8 @@ Proof.
   induction len; simpl; intros. auto.
   rewrite IHlen. auto.
 Qed.
+
+Hint Rewrite upd_range_upd_range upd_range_hd : lists.
 
 Lemma upd_range_app_l : forall T l1 l2 start len (v : T),
   start + len <= length l1 ->
