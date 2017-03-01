@@ -38,7 +38,7 @@ int main(int argc, char *argv[]) {
   int reps = atoi(reps_s);
   int iters = atoi(iters_s);
   if (reps <= 0 || iters <= 0) {
-    fprintf(stderr, "kiters and reps should be above 0\n");
+    fprintf(stderr, "reps %s and iters %s should be above 0\n", reps_s, iters_s);
     return 1;
   }
 
