@@ -1721,7 +1721,7 @@ Module BFILE.
 
     step.
     erewrite selN_map by omega; filldef.
-    setoid_rewrite surjective_pairing at 2. cancel.
+    setoid_rewrite surjective_pairing at 4. cancel.
 
     prestep. norm. cancel.
     intuition simpl.
