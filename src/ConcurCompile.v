@@ -221,34 +221,45 @@ Section ConcurCompile.
     destruct (X0 e w); simpl; eauto.
   Defined.
 
+  Ltac compile :=
+    match goal with
+    | [ |- Compiled (Bind (Ret _) _) ] =>
+      eapply compile_equiv; [ solve [ apply monad_left_id ] | ]
+    | [ |- Compiled (Bind (Bind _ _) _) ] =>
+      eapply compile_equiv; [ solve [ apply monad_assoc ] | ]
+    | [ |- Compiled (Bind _ _) ] =>
+      apply compile_bind; intros
+    | [ |- Compiled (Ret _)] =>
+      apply compile_refl
+    | [ |- Compiled (translate _ (ForEach_ _ _ _ _ _) _ _) ] =>
+      rewrite translate_ForEach
+    | [ |- Compiled (translate _ (match _ with
+                                 | OK _ => _
+                                 | Err _ => _
+                                 end) _ _) ] =>
+      rewrite translate_match_res
+    | [ |- Compiled (cForEach_ _ _ _ _) ] =>
+      apply compile_forEach; intros
+    | [ |- Compiled (match _ with
+                    | OK _ => _
+                    | Err _ => _
+                    end _ _) ] =>
+      apply compile_match_res; intros; eauto
+    | [ |- Compiled (match _ with
+                    | _ => _
+                    end) ] =>
+      apply compile_match_cT; intros; eauto
+    | _ => progress (unfold pair_args_helper; simpl)
+    end.
+
   Definition CompiledLookup fsxp dnum names ams ls wb :
     Compiled (OptFS.lookup OtherSt fsxp dnum names ams ls wb).
   Proof.
     unfold OptFS.lookup; simpl.
 
-    monad_compile.
-    rewrite translate_ForEach.
-    apply compile_bind; intros.
-    eapply compile_forEach; intros.
-    unfold pair_args_helper; simpl.
+    repeat compile.
 
-    rewrite translate_match_res; simpl.
-    eapply compile_match_res; intros; eauto.
-    apply compile_refl.
-
-    apply compile_refl.
-
-    unfold pair_args_helper; simpl.
-    apply compile_bind; intros.
-    apply compile_match_cT; intros.
-    rewrite translate_match_res; simpl.
-    simpl.
-    apply compile_refl.
-    apply compile_refl.
-
-    apply compile_match_cT; intros.
-    monad_compile.
-    apply compile_refl.
+    (* TODO: if statements *)
     apply compile_refl.
   Defined.
 
