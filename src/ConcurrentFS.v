@@ -413,7 +413,7 @@ Section ConcurrentFS.
   Qed.
 
   Definition file_get_attr inum :=
-    retry_syscall (fun mscs => OptFS.file_get_attr _ fsxp inum mscs)
+    retry_syscall (fun mscs => file_get_attr _ fsxp inum mscs)
                   (fun tree => tree).
 
   Lemma exists_tuple : forall A B P,

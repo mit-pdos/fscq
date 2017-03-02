@@ -177,6 +177,20 @@ Section ConcurCompile.
     destruct r; eauto.
   Qed.
 
+  Lemma translate_match_opt : forall T T' (p1: T -> prog T') (p2: prog T') r,
+      translate OtherSt (match r with
+                         | Some r => p1 r
+                         | None => p2
+                         end) =
+      match r with
+      | Some r => translate OtherSt (p1 r)
+      | None => translate OtherSt p2
+      end.
+  Proof.
+    intros.
+    destruct r; eauto.
+  Qed.
+
   Ltac destruct_compiled :=
     match goal with
     | [ |- context[compiled_prog ?c] ] =>
@@ -196,6 +210,25 @@ Section ConcurCompile.
     refine (ExtractionOf (match r with
                           | OK v => fun ls wb => compiled_prog (X v ls wb)
                           | Err e => fun ls wb => compiled_prog (X0 e ls wb)
+                          end ls wb) _).
+    destruct r;
+      destruct_compiled;
+      eauto.
+  Defined.
+
+  Lemma compile_match_opt T T' (p1: T -> _ -> _ -> cprog T') p2
+        (r: option T) (ls: LockState) (wb: WriteBuffer) :
+    (forall v ls wb, Compiled (p1 v ls wb)) ->
+    (forall ls wb, Compiled (p2 ls wb)) ->
+    Compiled (match r with
+              | Some v => p1 v
+              | None => p2
+              end ls wb).
+  Proof.
+    intros.
+    refine (ExtractionOf (match r with
+                          | Some v => fun ls wb => compiled_prog (X v ls wb)
+                          | None => fun ls wb => compiled_prog (X0 ls wb)
                           end ls wb) _).
     destruct r;
       destruct_compiled;
@@ -229,8 +262,6 @@ Section ConcurCompile.
       eapply compile_equiv; [ solve [ apply monad_assoc ] | ]
     | [ |- Compiled (Bind _ _) ] =>
       apply compile_bind; intros
-    | [ |- Compiled (Ret _)] =>
-      apply compile_refl
     | [ |- Compiled (translate _ (ForEach_ _ _ _ _ _) _ _) ] =>
       rewrite translate_ForEach
     | [ |- Compiled (translate _ (match _ with
@@ -238,6 +269,11 @@ Section ConcurCompile.
                                  | Err _ => _
                                  end) _ _) ] =>
       rewrite translate_match_res
+    | [ |- Compiled (translate _ (match _ with
+                                 | Some _ => _
+                                 | None => _
+                                 end) _ _) ] =>
+      rewrite translate_match_opt
     | [ |- Compiled (cForEach_ _ _ _ _) ] =>
       apply compile_forEach; intros
     | [ |- Compiled (match _ with
@@ -246,9 +282,18 @@ Section ConcurCompile.
                     end _ _) ] =>
       apply compile_match_res; intros; eauto
     | [ |- Compiled (match _ with
+                    | Some _ => _
+                    | None => _
+                    end _ _) ] =>
+      apply compile_match_opt; intros; eauto
+    | [ |- Compiled (match _ with
                     | _ => _
                     end) ] =>
       apply compile_match_cT; intros; eauto
+    | [ |- Compiled (Ret _)] =>
+      apply compile_refl
+    | [ |- Compiled (CacheRead _ _ _)] =>
+      apply compile_refl
     | _ => progress (unfold pair_args_helper; simpl)
     end.
 
@@ -263,8 +308,47 @@ Section ConcurCompile.
     apply compile_refl.
   Defined.
 
+  Ltac head_symbol e :=
+    match e with
+    | ?h _ _ _ _ _ _ _ _ => h
+    | ?h _ _ _ _ _ _ _ => h
+    | ?h _ _ _ _ _ _ => h
+    | ?h _ _ _ _ _ => h
+    | ?h _ _ _ _ => h
+    | ?h _ _ _ => h
+    | ?h _ _ => h
+    | ?h _ => h
+    end.
+
+  Ltac comp_unfold :=
+    match goal with
+    | [ |- Compiled (translate _ ?p _ _) ] =>
+      let h := head_symbol p in
+      unfold h
+    end.
+
+  Transparent BUFCACHE.read_array.
+  Transparent BUFCACHE.read.
+
+  Definition CompiledGetAttr fsxp inum ams ls wb :
+    Compiled (OptFS.file_get_attr OtherSt fsxp inum ams ls wb).
+  Proof.
+    unfold OptFS.file_get_attr; simpl.
+    repeat (compile || comp_unfold).
+
+    apply compile_refl.
+    apply compile_refl.
+    apply compile_refl.
+  Defined.
+
 End ConcurCompile.
+
+Definition G {OtherSt} : Protocol (St OtherSt) := fun _ _ _ => True.
 
 Definition lookup OtherSt fsxp dnum names ams ls wb :=
   compiled_prog (OtherSt:=OtherSt)
-                (CompiledLookup (fun _ _ _ => True) fsxp dnum names ams ls wb).
+                (CompiledLookup G fsxp dnum names ams ls wb).
+
+Definition file_get_attr OtherSt fsxp inum ams ls wb :=
+  compiled_prog (OtherSt:=OtherSt)
+                (CompiledGetAttr G fsxp inum ams ls wb).
