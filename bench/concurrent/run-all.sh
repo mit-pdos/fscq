@@ -21,10 +21,10 @@ for fs in fscq cfscq native; do
   info "benchmarking $fs"
   for disjointdirs in "false"; do
     for exists in "true"; do
-      for clientcpu in "2/2" "3/4"; do
+      for clientcpu in "2/2" "3/3" "3/4"; do
         for parallel in "false" "true"; do
-          for rtsopts in "-qg -A6G -I0" "-qg"; do
-            reps="1"
+          for rtsopts in "-I0" "-A6G -I0"; do
+            reps="5"
             if [ "$fs" = "native" ]; then
               reps="100"
             fi
