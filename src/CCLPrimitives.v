@@ -192,19 +192,19 @@ Section Primitives.
   Qed.
 
   Definition GetReadLock : @cprog St _ :=
-    SetLock ReadLock.
+    SetLock Free ReadLock.
 
   Definition GetWriteLock : @cprog St _ :=
-    SetLock WriteLock.
+    SetLock Free WriteLock.
 
   Definition UpgradeReadLock : @cprog St _ :=
-    SetLock WriteLock.
+    SetLock ReadLock WriteLock.
 
   Definition ReleaseReadLock : @cprog St _ :=
-    SetLock Free.
+    SetLock ReadLock Free.
 
   Definition Unlock : @cprog St _ :=
-    SetLock Free.
+    SetLock WriteLock Free.
 
   Theorem GetReadLock_ok : forall tid,
       cprog_spec G tid
