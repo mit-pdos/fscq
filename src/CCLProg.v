@@ -103,7 +103,8 @@ Section CCL.
   | WaitForRead (a:addr) : cprog valu
   | Write (a:addr) (v: valu) : cprog unit
   | Hash sz (buf: word sz) : cprog (word hashlen)
-  | SetLock (l:LockState) : cprog unit
+  (* SetLock returns the new state to support trying to upgrade read -> write *)
+  | SetLock (l:LockState) : cprog LockState
   | Ret T (v:T) : cprog T
   | Bind T T' (p: cprog T') (p': T' -> cprog T) : cprog T.
 
@@ -164,8 +165,10 @@ Section CCL.
                   else Fails
     | SetLock l' => if lock_dec (Sigma.l sigma) ReadLock then
                      if lock_dec l' Free then
-                       StepTo (Sigma.set_l sigma Free) tt
-                     else Fails
+                       StepTo (Sigma.set_l sigma Free) Free
+                     else if lock_dec l' ReadLock
+                          then Fails
+                          else NonDet
                    else NonDet
     | Ret v => StepTo sigma v
     | _ => NonDet
@@ -197,17 +200,24 @@ Section CCL.
   | ExecBindFail : forall T T' (p: cprog T') (p': T' -> cprog T) sigma_i sigma,
       exec tid (sigma_i, sigma) p Error ->
       exec tid (sigma_i, sigma) (Bind p p') Error
-  | ExecLock : forall sigma_i sigma l' sigma',
+  | ExecWriteLock : forall sigma_i sigma l' sigma',
       Sigma.l sigma = Free ->
       Rely tid sigma sigma' ->
       hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') ->
       let sigma' := Sigma.set_l sigma' l' in
-      exec tid (sigma_i, sigma) (SetLock l') (Finished sigma' sigma' tt)
+      exec tid (sigma_i, sigma) (SetLock l') (Finished sigma' sigma' l')
+  | ExecUpgradeLockSuccess : forall sigma_i sigma,
+      Sigma.l sigma = ReadLock ->
+      let sigma' := Sigma.set_l sigma WriteLock in
+      exec tid (sigma_i, sigma) (SetLock WriteLock) (Finished sigma_i sigma' WriteLock)
+  | ExecUpgradeLockFail : forall sigma_i sigma,
+      Sigma.l sigma = ReadLock ->
+      exec tid (sigma_i, sigma) (SetLock WriteLock) (Finished sigma_i sigma ReadLock)
   | ExecRelease : forall sigma_i sigma,
       Sigma.l sigma = WriteLock ->
       Guarantee tid sigma_i sigma ->
       let sigma' := Sigma.set_l sigma Free in
-      exec tid (sigma_i, sigma) (SetLock Free) (Finished sigma' sigma' tt)
+      exec tid (sigma_i, sigma) (SetLock Free) (Finished sigma' sigma' Free)
   | ExecReleaseFail : forall sigma_i sigma,
       Sigma.l sigma = WriteLock ->
       ~Guarantee tid sigma_i sigma ->

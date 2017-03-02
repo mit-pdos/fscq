@@ -197,6 +197,9 @@ Section Primitives.
   Definition GetWriteLock : @cprog St _ :=
     SetLock WriteLock.
 
+  Definition UpgradeReadLock : @cprog St _ :=
+    SetLock WriteLock.
+
   Definition ReleaseReadLock : @cprog St _ :=
     SetLock Free.
 
@@ -247,6 +250,29 @@ Section Primitives.
     destruct sigma'0; simpl; eauto.
   Qed.
 
+  Theorem UpgradeReadLock_ok : forall tid,
+      cprog_spec G tid
+                 (fun (_:unit) '(sigma_i, sigma) =>
+                    {| precondition := Sigma.l sigma = ReadLock;
+                       postcondition :=
+                         fun '(sigma_i', sigma') l' =>
+                           match l' with
+                           | ReadLock => sigma' = sigma
+                           | WriteLock => sigma' = Sigma.set_l sigma WriteLock
+                           | Free => False
+                           end; |})
+                 UpgradeReadLock.
+  Proof.
+    begin_prim.
+    inv_bind; inv_exec.
+
+    eapply H2; eauto.
+    intuition eauto.
+
+    eapply H2; eauto.
+    intuition eauto.
+  Qed.
+
   Theorem ReleaseReadLock_ok : forall tid,
       cprog_spec G tid
                  (fun (_:unit) '(sigma_i, sigma) =>
@@ -294,6 +320,7 @@ Hint Extern 0 {{ Ret _; _ }} => apply Ret_ok : prog.
 Hint Extern 0 {{ GhostUpdate _; _ }} => apply GhostUpdate_ok : prog.
 Hint Extern 0 {{ GetReadLock; _ }} => apply GetReadLock_ok : prog.
 Hint Extern 0 {{ GetWriteLock; _ }} => apply GetWriteLock_ok : prog.
+Hint Extern 0 {{ UpgradeReadLock; _ }} => apply UpgradeReadLock_ok : prog.
 Hint Extern 0 {{ ReleaseReadLock; _ }} => apply ReleaseReadLock_ok : prog.
 Hint Extern 0 {{ Unlock; _ }} => apply Unlock_ok : prog.
 
