@@ -9,7 +9,6 @@ import qualified Crypto.Hash.SHA256 as SHA256
 import Control.Monad (when)
 import Control.Concurrent.MVar
 import Control.Concurrent.ReadWriteLock as RWL
-import Data.IORef
 
 verbose :: Bool
 verbose = False
@@ -22,8 +21,7 @@ type TID = Int
 data ConcurState = ConcurState
   { disk :: Disk.DiskState
   , memory :: MVar Any
-  , lock :: RWLock
-  , has_writer :: IORef Bool }
+  , lock :: RWLock }
 
 instance Show LockState where
   show Free = "Free"
@@ -52,20 +50,26 @@ run_dcode ds (Hash sz (W w)) = do
 run_dcode _ (Hash sz (WBS bs)) = do
   debugmsg $ "Hash " ++ (show sz) ++ " BS " ++ (show bs)
   return $ unsafeCoerce $ WBS $ SHA256.hash bs
-run_dcode s (SetLock l) = do
-  debugmsg $ "SetLock " ++ show l
-  case l of
-    Free -> do
-      writing <- readIORef (has_writer s)
-      writeIORef (has_writer s) False
-      if writing
-        then RWL.releaseWrite (lock s)
-        else RWL.releaseRead (lock s)
-    ReadLock -> RWL.acquireRead (lock s)
-    WriteLock -> do
+run_dcode s (SetLock l l') = do
+  debugmsg $ "SetLock " ++ show l ++ " " ++ show l'
+  l'' <- case (l, l') of
+    (Free, ReadLock) -> do
+      RWL.acquireRead (lock s)
+      return l'
+    (Free, WriteLock) -> do
       RWL.acquireWrite (lock s)
-      writeIORef (has_writer s) True
-  return $ unsafeCoerce ()
+      return l'
+    (ReadLock, Free) -> do
+      RWL.releaseRead (lock s)
+      return l'
+    (WriteLock, Free) -> do
+      RWL.releaseWrite (lock s)
+      return l'
+    (ReadLock, WriteLock) -> do
+      b <- RWL.tryAcquireWrite (lock s)
+      if b then return l' else return ReadLock
+    (_, _) -> error $ "SetLock used incorrectly: " ++ show l ++ " " ++ show l'
+  return $ unsafeCoerce l''
 run_dcode _ (BeginRead _) = do
   -- TODO: implement efficiently
   debugmsg $ "BeginRead"
@@ -84,7 +88,6 @@ newState ds =
   <*> return ds
   <*> newMVar (unsafeCoerce ())
   <*> RWL.new
-  <*> newIORef False
 
 run :: ConcurState -> CCLProg.Coq_cprog a -> IO a
 run s p = run_dcode s p
