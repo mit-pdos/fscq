@@ -159,10 +159,18 @@ Section ConcurrentFS.
       (* for read-only syscalls, the returned write buffer is always the same
        as the input *)
       do '(r, _) <- p (get_fsmem m) ReadLock empty_writebuffer;
-      _ <- ReleaseReadLock;
       match r with
-      | Success (ms', r) => Ret (Done r)
+      | Success (ms', r) =>
+        l' <- UpgradeReadLock;
+          if lock_dec l' WriteLock then
+            _ <- Assgn (set_fsmem m ms');
+              _ <- Unlock;
+              Ret (Done r)
+          else
+            _ <- ReleaseReadLock;
+            Ret TryAgain
       | Failure e =>
+        _ <- ReleaseReadLock;
         match e with
         | Unsupported => Ret SyscallFailed
         | _ => Ret TryAgain
