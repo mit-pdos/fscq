@@ -1163,6 +1163,7 @@ Module BFILE.
            [[[ m' ::: (Fm * rep bxps ixp flist' ilist' frees allocc (MSCache ms')) ]]] *
            [[[ flist' ::: (Ff * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) a (BFCache f) ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]] *
            [[ MSAlloc ms = MSAlloc ms' /\
               let free := pick_balloc frees (MSAlloc ms') in
               ilist_safe ilist free ilist' free ]] *
@@ -2245,7 +2246,14 @@ Module BFILE.
     step.
     msalloc_eq; cancel.
     step.
-    safestep.
+    safestep. 
+
+    destruct (r_).
+    destruct (r_0).
+    simpl in *.
+    subst.
+    destruct (MSAllocC1). simpl in *.
+
     eapply rep_bfcache_remove; eauto.
     simpl.
     rewrite Nat.sub_diag; simpl; auto.
@@ -2256,7 +2264,7 @@ Module BFILE.
     unfold treeseq_ilist_safe in Hts.
     intuition.
     assert (inum = inum' -> False).
-    intro; eapply H15; eauto.
+    intro; eapply H18; eauto.
     denote (forall _ _, _ -> selN ilist' _ _ = selN ilist'0 _ _) as Hx.
     rewrite <- Hx.
     denote (forall _ _, _ -> selN ilist _ _ = selN ilist' _ _) as Hy.
