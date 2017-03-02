@@ -851,7 +851,10 @@ fuseRun prog args ops handler =
             case cmd of
               Nothing -> fail ""
               Just (Nothing, _, _) -> fail "Usage error: mount point required"
-              Just (Just mountPt, _, foreground) -> fuseMainReal foreground ops handler pArgs mountPt))
+              Just (Just mountPt, multiThreaded, foreground) ->
+                if multiThreaded
+                   then fuseMainReal foreground ops handler pArgs mountPt
+                else fail "Single threaded execution is not supported"))
        ((\errStr -> when (not $ null errStr) (putStrLn errStr) >> exitFailure) . ioeGetErrorString)
 
 -----------------------------------------------------------------------------
