@@ -1310,7 +1310,8 @@ Module BFILE.
            [[[ (BFData f') ::: (Fd * off |-> (v, nil)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) off (v, nil)) (BFAttr f) (BFCache f) ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
-           [[ MSCache ms = MSCache ms' ]]
+           [[ MSCache ms = MSCache ms' ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} write lxp ixp inum off v ms.
   Proof.
@@ -1889,7 +1890,8 @@ Module BFILE.
            [[[ (BFData f') ::: Fd * arrayN (@ptsto _ addr_eq_dec _) a (updN vsl i (v, nil)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) (a + i) (v, nil)) (BFAttr f) (BFCache f) ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
-           [[ MSCache ms = MSCache ms' ]]
+           [[ MSCache ms = MSCache ms' ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} write_array lxp ixp inum a i v ms.
   Proof.
