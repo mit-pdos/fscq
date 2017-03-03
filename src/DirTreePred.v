@@ -268,7 +268,8 @@ Set Implicit Arguments.
     (F * name |-> (inum, true))%pred dmap
     -> tree_dir_names_pred' l dmap
     -> dirlist_pred (tree_pred xp) l =p=>
-       exists F s, F * tree_pred xp (TreeDir inum s).
+       exists F s, F * tree_pred xp (TreeDir inum s) *
+       [[ forall dnum, find_subtree [name] (TreeDir dnum l) = Some (TreeDir inum s) ]].
   Proof.
     induction l; intros.
     - simpl in *. apply ptsto_valid' in H. congruence.
@@ -276,6 +277,11 @@ Set Implicit Arguments.
       + apply ptsto_mem_except in H0 as H0'.
         rewrite IHl. cancel.
         eassign s0; eassign inum; cancel.
+
+        apply sep_star_comm in H.
+        pose proof (ptsto_diff_ne H0 H).
+        destruct (string_dec s name). exfalso. apply H2; eauto. congruence. eauto.
+
         2: eauto.
         apply sep_star_comm in H.
         pose proof (ptsto_diff_ne H0 H).
@@ -287,9 +293,11 @@ Set Implicit Arguments.
         * apply ptsto_valid in H0. apply ptsto_valid' in H.
           rewrite H in H0. inversion H0. subst.
           cancel. instantiate (s0 := l0). cancel.
+          destruct (string_dec s s); congruence.
         * apply ptsto_mem_except in H0. simpl.
           rewrite IHl. cancel.
           eassign s0; eassign inum; cancel.
+          destruct (string_dec s name); try congruence; eauto.
           2: eauto.
           apply sep_star_comm. eapply ptsto_mem_except_exF; eauto.
           pred_apply; cancel.
@@ -299,7 +307,8 @@ Set Implicit Arguments.
     (F * name |-> (inum, false))%pred dmap
     -> tree_dir_names_pred' l dmap
     -> dirlist_pred (tree_pred xp) l =p=>
-       exists F bfile, F * tree_pred xp (TreeFile inum bfile).
+       exists F bfile, F * tree_pred xp (TreeFile inum bfile) *
+       [[ forall dnum, find_subtree [name] (TreeDir dnum l) = Some (TreeFile inum bfile) ]].
   Proof.
     induction l; intros.
     - simpl in *. apply ptsto_valid' in H. congruence.
@@ -307,12 +316,21 @@ Set Implicit Arguments.
       + destruct (string_dec name s); subst.
         * apply ptsto_valid in H0. apply ptsto_valid' in H.
           rewrite H in H0; inversion H0. subst. cancel.
+          destruct (string_dec s s); congruence.
         * apply ptsto_mem_except in H0.
-          rewrite IHl with (inum:=inum). cancel. 2: eauto.
+          rewrite IHl with (inum:=inum). cancel.
+          destruct (string_dec s name); try congruence; eauto.
+          2: eauto.
           apply sep_star_comm. eapply ptsto_mem_except_exF.
-          pred_apply; cancel. apply pimpl_refl. auto.
+          pred_apply; cancel. congruence.
       + apply ptsto_mem_except in H0 as H0'.
-        rewrite IHl with (inum:=inum). cancel. 2: eauto.
+        rewrite IHl with (inum:=inum). cancel.
+
+        apply sep_star_comm in H.
+        pose proof (ptsto_diff_ne H0 H).
+        destruct (string_dec s name). exfalso. apply H2; eauto. congruence. eauto.
+
+        2: eauto.
         apply sep_star_comm in H.
         pose proof (ptsto_diff_ne H0 H).
         destruct (string_dec name s). exfalso. apply H1; eauto.
