@@ -10,6 +10,11 @@ import (
 // list, separated by commas, including ranges)
 type Cpu string
 
+type CpuSpecs struct {
+	specsString string
+	parsed      []Cpu
+}
+
 func (spec Cpu) String() string {
 	return fmt.Sprintf("\"%s\"", string(spec))
 }
@@ -28,19 +33,19 @@ func (id Cpu) Command(name string, args ...string) *exec.Cmd {
 }
 
 // NewCpus parses pipe-separated CPU specs
-func NewCpus(specsString string, parallel int) []Cpu {
-	specs := strings.SplitN(specsString, "/", parallel)
+func NewCpus(specsString string, parallel int) CpuSpecs {
+	specs := strings.Split(specsString, "/")
 	var cpus []Cpu
 	for i := 0; i < parallel; i++ {
 		cpus = append(cpus, Cpu(specs[i%len(specs)]))
 	}
-	return cpus
+	return CpuSpecs{specsString, cpus}
 }
 
-func CpuSpec(specs []Cpu) string {
-	var specStrings []string
-	for _, spec := range specs {
-		specStrings = append(specStrings, string(spec))
-	}
-	return strings.Join(specStrings, "/")
+func (specs CpuSpecs) Spec() string {
+	return specs.specsString
+}
+
+func (specs CpuSpecs) Cpu(i int) Cpu {
+	return specs.parsed[i]
 }

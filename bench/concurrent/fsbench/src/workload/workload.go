@@ -4,6 +4,7 @@ import (
 	"filesys"
 	"fmt"
 	"log"
+	"os"
 	"pin"
 	"strconv"
 	"strings"
@@ -12,7 +13,7 @@ import (
 
 type Options struct {
 	Operation           string
-	ClientCpus          []pin.Cpu
+	ClientCpus          pin.CpuSpecs
 	ExistingPath        bool
 	DisjointDirectories bool
 	Reps                int
@@ -33,7 +34,7 @@ var DataHeader = []interface{}{
 }
 
 func (opts Options) DataRow() []interface{} {
-	clientCpuSpec := fmt.Sprintf("\"%s\"", pin.CpuSpec(opts.ClientCpus))
+	clientCpuSpec := fmt.Sprintf("\"%s\"", opts.ClientCpus.Spec())
 	return []interface{}{
 		opts.Operation, clientCpuSpec, opts.ExistingPath, opts.DisjointDirectories,
 		opts.Reps, opts.Iters,
@@ -93,7 +94,8 @@ func (opts Options) RunWorkload(fs filesys.FileSystem, parallel int) Results {
 	done := make(chan Results)
 	for i := 0; i < parallel; i++ {
 		go func(i int) {
-			cmd := opts.ClientCpus[i].Command("fsops", args(i)...)
+			cmd := opts.ClientCpus.Cpu(i).Command("fsops", args(i)...)
+			cmd.Stderr = os.Stderr
 			outputBytes, err := cmd.Output()
 			if err != nil {
 				log.Fatal(fmt.Errorf("could not run fsops: %v", err))
