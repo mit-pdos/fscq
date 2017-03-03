@@ -92,6 +92,13 @@ Module CacheOneDir.
 
   Local Hint Unfold rep rep_macro SDIR.rep_macro : hoare_unfold.
 
+  Lemma rep_mem_eq : forall f m1 m2,
+    rep f m1 -> rep f m2 -> m1 = m2.
+  Proof.
+    unfold rep; intuition.
+    eapply SDIR.rep_mem_eq; eauto.
+  Qed.
+
   Hint Resolve Dcache.find_2.
 
   (* re-export for compatibility with SDIR *)
