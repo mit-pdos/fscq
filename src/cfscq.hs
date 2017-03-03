@@ -23,8 +23,6 @@ import FSLayout
 import qualified DirName
 import System.Environment
 import Inode
-import Control.Concurrent.MVar
-import Control.Concurrent (forkIO)
 import Text.Printf
 import qualified System.Process
 import qualified Data.List
@@ -71,14 +69,11 @@ st = CCLProg.Coq_defState
 
 doFScall :: I.ConcurState -> FSrunner
 doFScall s p = do
-  ret <- newEmptyMVar
-  _ <- forkIO $ do
-    r <- I.run s p
-    case r of
-      CFS.Done v -> putMVar ret v
-      CFS.TryAgain -> error $ "system call loop failed?"
-      CFS.SyscallFailed -> error $ "system call failed"
-  takeMVar ret
+  r <- I.run s p
+  case r of
+    CFS.Done v -> return v
+    CFS.TryAgain -> error $ "system call loop failed?"
+    CFS.SyscallFailed -> error $ "system call failed"
 
 main :: IO ()
 main = do

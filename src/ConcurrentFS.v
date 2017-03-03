@@ -161,14 +161,10 @@ Section ConcurrentFS.
       do '(r, _) <- p (get_fsmem m) ReadLock empty_writebuffer;
       match r with
       | Success (ms', r) =>
-        l' <- UpgradeReadLock;
-          if lock_dec l' WriteLock then
-            _ <- Assgn (set_fsmem m ms');
-              _ <- Unlock;
-              Ret (Done r)
-          else
-            _ <- ReleaseReadLock;
-            Ret TryAgain
+          _ <- ReleaseReadLock;
+            (* unsafely write memory to populate cache *)
+        _ <- Assgn (set_fsmem m ms');
+          Ret (Done r)
       | Failure e =>
         _ <- ReleaseReadLock;
         match e with
