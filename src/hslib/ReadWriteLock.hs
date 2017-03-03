@@ -94,7 +94,7 @@ import Control.Monad           ( (>>=), fail )
 -- from concurrent-extra (this package):
 import           Control.Concurrent.Lock ( Lock )
 import qualified Control.Concurrent.Lock as Lock
-    ( new, newAcquired, acquire, release, wait )
+    ( new, newAcquired, tryAcquire, acquire, release, wait )
 
 -------------------------------------------------------------------------------
 -- Read Write Lock
@@ -286,10 +286,15 @@ tryUpgradeRead (RWLock {state, readLock, writeLock}) = mask_ $ do
   st <- takeMVar state
   case st of
     Free   -> return True
-    Read 1 -> do Lock.acquire writeLock
-                 Lock.release readLock
-                 putMVar state Write
-                 return True
+    Read 1 -> do
+      success <- Lock.tryAcquire writeLock
+      if success then
+        do Lock.release readLock
+           putMVar state Write
+           return True
+      else
+        do putMVar state st
+           return False
     Write -> do putMVar state st
                 return True
     _      -> do putMVar state st
