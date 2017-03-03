@@ -695,8 +695,7 @@ Module SDIR.
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
            (([[ isError r ]] *
-             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-             rep_macro Fm Fi m' bxp ixp dnum dmap ilist frees ms')
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
         \/  ([[ r = OK tt ]] *
              exists dmap' Fd ilist' frees',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
