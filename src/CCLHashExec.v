@@ -18,7 +18,14 @@ Proof.
     match goal with
     | [ H: (_,_) = (_,_) |- _ ] =>
       inversion H; subst; clear H
-    end; auto.
+    end; auto;
+      repeat match goal with
+             | [ x := _ |- _ ] => subst x
+             | [ |- hashmap_le (Sigma.hm _) (Sigma.hm _) ] =>
+               repeat match goal with
+                      | [ sigma: Sigma St |- _ ] => destruct sigma
+                      end; simpl in *; reflexivity
+             end.
   - destruct sigma0.
     destruct p;
       repeat match goal with
@@ -43,8 +50,6 @@ Proof.
     etransitivity; eauto.
   - destruct sigma'; simpl in *.
     eauto.
-  - destruct sigma0; simpl;
-      reflexivity.
 Qed.
 
 (* Local Variables: *)
