@@ -105,7 +105,8 @@ Module FileRecArray (FRA : FileRASig).
               /\ (fst st) < length items
               /\ snd st = selN items (fst st) item0 ]] *
       [[ MSAlloc ms = MSAlloc ms0 ]] *
-      [[ MSCache ms = MSCache ms0 ]]
+      [[ MSCache ms = MSCache ms0 ]] *
+      [[ MSAllocC ms = MSAllocC ms0 ]] 
     OnCrash  crash
     Begin
         If (is_some ret) {
@@ -163,7 +164,8 @@ Module FileRecArray (FRA : FileRASig).
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-          [[ r = selN items ix item0 /\ MSAlloc ms' = MSAlloc ms /\ MSCache ms' = MSCache ms ]]
+          [[ r = selN items ix item0 /\ MSAlloc ms' = MSAlloc ms /\ 
+            MSCache ms' = MSCache ms /\ MSAllocC ms' = MSAllocC ms]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} get lxp ixp inum ix ms.
@@ -359,7 +361,6 @@ Module FileRecArray (FRA : FileRASig).
           [[[ RAData f' ::: emp ]]] *
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
-          [[ MSAllocC ms' = MSAllocC ms ]] *
           [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
                               ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
