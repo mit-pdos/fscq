@@ -161,6 +161,8 @@ Module CacheOneDir.
 
     step.
     step.
+    destruct (r_); subst; simpl in *. cancel.
+
     eexists; intuition eauto.
 
     (* Prove that the new cache is valid *)
@@ -176,6 +178,8 @@ Module CacheOneDir.
     }
 
     step.
+    destruct (r_); subst; simpl in *. cancel.
+
     eexists; intuition eauto.
     destruct (string_dec name0 name); subst.
     {
@@ -199,7 +203,7 @@ Module CacheOneDir.
 
     step.
     step.
-
+    destruct (r_); subst; simpl in *. cancel.
     eexists; intuition eauto.
     destruct (string_dec name0 name); subst.
     {
@@ -213,6 +217,7 @@ Module CacheOneDir.
     }
 
     step.
+    destruct (r_); subst; simpl in *. cancel.
 
     eexists; intuition eauto.
     destruct (string_dec name0 name); subst.
@@ -272,8 +277,12 @@ Module CacheOneDir.
     unfold unlink.
     hoare.
 
+    destruct (r_); simpl in *. subst. cancel.
+
     unfold mem_except.
     eexists; intuition eauto.
+
+
     destruct (string_dec name0 name); subst.
     {
       denote! (Dcache.MapsTo _ _ _) as Hm.
@@ -284,6 +293,8 @@ Module CacheOneDir.
       denote! (Dcache.MapsTo _ _ _) as Hm.
       eapply Dcache.add_3 in Hm; subst_cache; eauto.
     }
+
+    destruct (r_); simpl in *. subst. cancel.
 
     unfold mem_except.
     eexists; intuition eauto.
@@ -341,6 +352,8 @@ Module CacheOneDir.
     step.
     step.
 
+    destruct (r_); simpl in *. subst. cancel.
+
     or_r; cancel.
     eauto.
 
@@ -361,6 +374,8 @@ Module CacheOneDir.
     step.
     step.
     step.
+
+    destruct (r_); simpl in *. subst. cancel.
 
     or_r; cancel.
     eauto.
