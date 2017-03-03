@@ -62,6 +62,7 @@ module ReadWriteLock
   , waitWrite
     -- **Non-blocking
   , tryAcquireWrite
+  , tryUpgradeRead
   , tryWithWrite
   ) where
 
@@ -73,7 +74,7 @@ module ReadWriteLock
 -- from base:
 import Control.Applicative     ( liftA2, liftA3 )
 import Control.Concurrent.MVar ( MVar, newMVar, takeMVar, putMVar )
-import Control.Exception       ( bracket_, onException )
+import Control.Exception       ( bracket_, onException, mask, mask_ )
 import Control.Monad           ( return, (>>) )
 import Data.Bool               ( Bool(False, True) )
 import Data.Eq                 ( Eq, (==) )
@@ -94,9 +95,6 @@ import Control.Monad           ( (>>=), fail )
 import           Control.Concurrent.Lock ( Lock )
 import qualified Control.Concurrent.Lock as Lock
     ( new, newAcquired, acquire, release, wait )
-
-import Utils ( mask, mask_ )
-
 
 -------------------------------------------------------------------------------
 -- Read Write Lock
@@ -275,6 +273,25 @@ tryAcquireWrite (RWLock {state, writeLock}) = mask_ $ do
     Free   -> do Lock.acquire writeLock
                  putMVar state Write
                  return True
+    _      -> do putMVar state st
+                 return False
+
+{-|
+Try to upgrade a read lock to a write lock; non blocking.
+Acquires the write lock and returns 'True' if no other thread is reading or
+writing. Otherwise returns 'False'.
+-}
+tryUpgradeRead :: RWLock -> IO Bool
+tryUpgradeRead (RWLock {state, readLock, writeLock}) = mask_ $ do
+  st <- takeMVar state
+  case st of
+    Free   -> return True
+    Read 1 -> do Lock.acquire writeLock
+                 Lock.release readLock
+                 putMVar state Write
+                 return True
+    Write -> do putMVar state st
+                return True
     _      -> do putMVar state st
                  return False
 
