@@ -120,6 +120,7 @@ Module CacheOneDir.
     step.
     step.
     step.
+    destruct (r_). subst. simpl in *. cancel.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (get_dcache _ _) _) => apply get_dcache_ok : prog.
