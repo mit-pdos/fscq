@@ -8,14 +8,15 @@ Require Import Arith.
 Require Import List ListUtils.
 Require Import FunctionalExtensionality.
 Require Import AsyncDisk.
-Require Import DirName.
+Require Import DirCache.
 Require Import DirTreeDef.
 Require Import FSLayout.
 Require Import GenSepN.
 Require Import SepAuto.
 
-
 Import ListNotations.
+
+Module SDIR := CacheOneDir.
 
 Set Implicit Arguments.
 
@@ -1142,9 +1143,3 @@ Set Implicit Arguments.
     pred_apply; cancel.
     apply dir_names_pred_add_delete; auto.
   Qed.
-
-
-
-
-
-
