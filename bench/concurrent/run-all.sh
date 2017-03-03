@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./run-all.sh > data.tsv
+# Usage: ./run-all.sh | xz > data.tsv.xz
 # progress info is output on stderr
 
 info() {
