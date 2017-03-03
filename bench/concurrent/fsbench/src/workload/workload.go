@@ -71,18 +71,14 @@ func (r Results) Elapsed() time.Duration {
 	return elapsed
 }
 
-func (opts Options) RunWorkload(fs filesys.FileSystem, parallel bool) Results {
-	copies := 1
-	if parallel {
-		copies = 2
-	}
+func (opts Options) RunWorkload(fs filesys.FileSystem, parallel int) Results {
 	var paths []string
-	for i := 0; i < copies; i++ {
+	for i := 0; i < parallel; i++ {
 		var path string
 		if opts.DisjointDirectories {
-			path = fs.Pathname(0)
-		} else {
 			path = fs.Pathname(i)
+		} else {
+			path = fs.Pathname(0)
 		}
 		if !opts.ExistingPath {
 			path += "x"
@@ -95,7 +91,7 @@ func (opts Options) RunWorkload(fs filesys.FileSystem, parallel bool) Results {
 	}
 
 	done := make(chan Results)
-	for i := 0; i < copies; i++ {
+	for i := 0; i < parallel; i++ {
 		go func(i int) {
 			cmd := opts.ClientCpus[i].Command("fsops", args(i)...)
 			outputBytes, err := cmd.Output()
@@ -116,7 +112,7 @@ func (opts Options) RunWorkload(fs filesys.FileSystem, parallel bool) Results {
 		}(i)
 	}
 	var r Results
-	for i := 0; i < copies; i++ {
+	for i := 0; i < parallel; i++ {
 		r = <-done
 	}
 	return r
@@ -125,10 +121,9 @@ func (opts Options) RunWorkload(fs filesys.FileSystem, parallel bool) Results {
 func (opts Options) Warmup(fs filesys.FileSystem) {
 	opts.Reps = 1000
 	opts.Iters = 1
-	parallel := false
-	if opts.DisjointDirectories {
-		parallel = true
-	}
+	// TODO: really should go through all the filenames in fs and warm each
+	// individually
+	parallel := 1
 	opts.RunWorkload(fs, parallel)
 }
 
@@ -136,7 +131,7 @@ func (opts Options) Warmup(fs filesys.FileSystem) {
 // The input opts should specify the workload parameters and initial kiters for
 // the search. SearchWorkload returns the final duration and modifies the input
 // opts to have the final iters.
-func (opts *Options) SearchWorkload(fs filesys.FileSystem, parallel bool, targetMs int) Results {
+func (opts *Options) SearchWorkload(fs filesys.FileSystem, parallel int, targetMs int) Results {
 	targetTime := time.Duration(targetMs) * time.Millisecond
 	result := opts.RunWorkload(fs, parallel)
 	for result.Elapsed() < targetTime {

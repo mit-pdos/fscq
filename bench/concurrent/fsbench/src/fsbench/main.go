@@ -17,7 +17,7 @@ type DataPoints struct {
 	fs       filesys.Options
 	work     workload.Options
 	workIdx  int
-	parallel bool
+	parallel int
 	result   workload.Results
 }
 
@@ -113,7 +113,7 @@ func main() {
 	existingPath := flag.Bool("exists", true, "operate on an existing file")
 	disjointDirectories := flag.Bool("disjoint-dirs", false,
 		"operate on disjoint directories (ignored if unsupported)")
-	parallel := flag.Bool("parallel", false, "run operation in parallel")
+	parallel := flag.Int("parallel", 1, "number of parallel clients")
 	reps := flag.Int("reps", 1000, "repetitions to use per iteration")
 	iters := flag.Int("iters", 1, "number of iterations (of reps) to run the operation")
 	work_iters := flag.Int("work_iters", 1, "repetitions of the entire workload")
@@ -166,9 +166,7 @@ func main() {
 		log.Fatal(fmt.Errorf("readable output does not support re-running workload"))
 	}
 
-	if *parallel {
-		runtime.GOMAXPROCS(2)
-	}
+	runtime.GOMAXPROCS(*parallel)
 
 	var rtsOpts []string
 	if *rts_opts != "" {
@@ -186,7 +184,7 @@ func main() {
 
 	opts := workload.Options{
 		Operation:           *operation,
-		ClientCpus:          pin.NewCpus(*client_cpus),
+		ClientCpus:          pin.NewCpus(*client_cpus, *parallel),
 		ExistingPath:        *existingPath,
 		DisjointDirectories: *disjointDirectories,
 		Reps:                *reps,
@@ -229,17 +227,17 @@ func main() {
 			value := row[i]
 			fmt.Printf("%-20s %v\n", hdr, value)
 		}
-		if *parallel {
+		if *parallel > 1 {
 			fs.Launch(fsOpts)
 			opts.Warmup(fs)
 			seqData := DataPoints{
 				fsIdent:  data.fsIdent,
 				fs:       data.fs,
 				work:     data.work,
-				parallel: false,
-				result:   opts.RunWorkload(fs, false),
+				parallel: 1,
+				result:   opts.RunWorkload(fs, 1),
 			}
-			fmt.Printf("%-20s %v\n", "speedup", 2*data.SpeedupOver(seqData))
+			fmt.Printf("%-20s %v\n", "speedup", (float64(*parallel) * data.SpeedupOver(seqData)))
 			fs.Stop()
 		}
 	} else {

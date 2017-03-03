@@ -28,13 +28,13 @@ func (id Cpu) Command(name string, args ...string) *exec.Cmd {
 }
 
 // NewCpus parses pipe-separated CPU specs
-func NewCpus(specsString string) []Cpu {
-	specs := strings.SplitN(specsString, "/", 2)
-	if len(specs) == 1 {
-		spec := Cpu(specs[0])
-		return []Cpu{spec, spec}
+func NewCpus(specsString string, parallel int) []Cpu {
+	specs := strings.SplitN(specsString, "/", parallel)
+	var cpus []Cpu
+	for i := 0; i < parallel; i++ {
+		cpus = append(cpus, Cpu(specs[i%len(specs)]))
 	}
-	return []Cpu{Cpu(specs[0]), Cpu(specs[1])}
+	return cpus
 }
 
 func CpuSpec(specs []Cpu) string {
