@@ -100,6 +100,7 @@ Module CacheOneDir.
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
   Notation MSCache := BFILE.MSCache.
+  Notation MSAllocC := BFILE.MSAllocC.
 
   Theorem get_dcache_ok : forall dnum ms,
     {< F Fm Fi m0 m dmap ilist frees lxp ixp bxp f,
@@ -110,6 +111,7 @@ Module CacheOneDir.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
            [[ MSAlloc ms' = MSAlloc ms ]] *
+           [[ MSAllocC ms' = MSAllocC ms ]] *
            [[ BFILE.BFCache f' = Some cache ]]
     CRASH:hm'
            LOG.intact lxp F m0 hm'
@@ -140,6 +142,7 @@ Module CacheOneDir.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
            [[ MSAlloc ms' = MSAlloc ms ]] *
+           [[ MSAllocC ms' = MSAllocC ms ]] *
          ( [[ r = None /\ notindomain name dmap ]] \/
            exists inum isdir Fd,
            [[ r = Some (inum, isdir) /\
@@ -250,6 +253,7 @@ Module CacheOneDir.
              [[ listpred SDIR.readmatch r dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSCache ms' = MSCache ms ]] *
+             [[ MSAllocC ms' = MSAllocC ms ]] *
              [[ True ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
@@ -270,6 +274,7 @@ Module CacheOneDir.
              [[ notindomain name dmap' ]] *
              [[ r = OK tt -> indomain name dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSAllocC ms' = MSAllocC ms ]] *
              [[ True ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} unlink lxp ixp dnum name ms.
@@ -331,6 +336,7 @@ Module CacheOneDir.
              [[ goodSize addrlen inum ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSAllocC ms' = MSAllocC ms ]] *
            (([[ isError r ]] *
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
         \/  ([[ r = OK tt ]] *
