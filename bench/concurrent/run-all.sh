@@ -15,7 +15,7 @@ cache1=false
 cache2=false
 kernelcache=false
 op=stat
-iters=100
+iters=200
 servercpu="0,1"
 
 #for fs in fscq cfscq hfuse c-hello fusexmp native; do
@@ -23,14 +23,15 @@ for fs in fscq cfscq native; do
   info "benchmarking $fs"
   for disjointdirs in "false"; do
     for exists in "true"; do
-      for clientcpu in "0/0" "2/2" "2/3"; do
-        for parallel in "false" "true"; do
+      for clientcpu in "0/0" "2/3"; do
+        for parallel in 1 2; do
+          #for rtsopts in "-N2 -qg -A1G -I0" "-N2 -A1G -I0" "-N2 -qg -I0" "-N2 -I0"; do
           for rtsopts in "-N2 -qg -A1G -I0"; do
             reps="5"
             if [ "$fs" = "native" ]; then
               reps="100"
             fi
-            fsbench -work_iters=30 -reps=$reps -iters=$iters -rts-opts="$rtsopts" -server-cpu=$servercpu -client-cpus=$clientcpu -op=$op -disjoint-dirs=$disjointdirs -exists=$exists -parallel=$parallel -attr-cache=$cache1 -name-cache=$cache1 -neg-cache=$cache2 -kernel-cache=$kernelcache $fs
+            fsbench -work_iters=20 -reps=$reps -iters=$iters -rts-opts="$rtsopts" -server-cpu=$servercpu -client-cpus=$clientcpu -op=$op -disjoint-dirs=$disjointdirs -exists=$exists -parallel=$parallel -attr-cache=$cache1 -name-cache=$cache1 -neg-cache=$cache2 -kernel-cache=$kernelcache $fs
           done
         done
       done
