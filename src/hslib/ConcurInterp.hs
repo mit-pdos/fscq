@@ -8,7 +8,7 @@ import Word
 import qualified Crypto.Hash.SHA256 as SHA256
 import Control.Monad (when)
 import Control.Concurrent.MVar
-import Control.Concurrent.ReadWriteLock as RWL
+import ReadWriteLock as RWL
 
 verbose :: Bool
 verbose = False
@@ -66,7 +66,7 @@ run_dcode s (SetLock l l') = do
       RWL.releaseWrite (lock s)
       return l'
     (ReadLock, WriteLock) -> do
-      b <- RWL.tryAcquireWrite (lock s)
+      b <- RWL.tryUpgradeRead (lock s)
       if b then return l' else return ReadLock
     (_, _) -> error $ "SetLock used incorrectly: " ++ show l ++ " " ++ show l'
   return $ unsafeCoerce l''
