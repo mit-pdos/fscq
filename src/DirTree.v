@@ -591,7 +591,7 @@ Module DIRTREE.
     all: eauto.
   Qed.
 
-  Hint Extern 0 (okToUnify (rep _ _ _ _ _) (rep _ _ _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep _ _ _ _ _ _) (rep _ _ _ _ _ _)) => constructor : okToUnify.
 
 
   (* same as previous one, but use tree_graft *)
