@@ -99,10 +99,16 @@ Module CacheOneDir.
     eapply SDIR.rep_mem_eq; eauto.
   Qed.
 
-  Hint Resolve Dcache.find_2.
+  Theorem bfile0_empty : rep BFILE.bfile0 empty_mem.
+  Proof.
+    unfold rep; intuition.
+    apply SDIR.bfile0_empty.
+    eexists. intuition.
+    apply DcacheDefs.MapProperties.F.empty_mapsto_iff in H.
+    exfalso; eauto.
+  Qed.
 
-  (* re-export for compatibility with SDIR *)
-  Definition bfile0_empty := DirName.SDIR.bfile0_empty.
+  Hint Resolve Dcache.find_2.
 
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
