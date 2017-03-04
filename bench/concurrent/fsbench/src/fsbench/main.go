@@ -237,6 +237,7 @@ func main() {
 				parallel: 1,
 				result:   opts.RunWorkload(fs, 1),
 			}
+			fmt.Printf("%-20s %v\n", "seq us/op", seqData.MicrosPerOp())
 			fmt.Printf("%-20s %v\n", "speedup", (float64(*parallel) * data.SpeedupOver(seqData)))
 			fs.Stop()
 		}
