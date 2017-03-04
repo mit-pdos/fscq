@@ -780,20 +780,21 @@ Module DIRTREE.
     rewrite dirlist_pred_except_delete; eauto.
     rewrite dir_names_delete with (dnum := dnum).
     cancel. eauto. eauto. eauto.
+    reflexivity.
     apply dirlist_safe_delete; auto.
 
     (* inum inside the new modified tree *)
-    eapply find_dirlist_exists in H8 as H8'.
+    eapply find_dirlist_exists in H9 as H9'.
     deex.
     denote dirlist_combine as Hx.
     eapply tree_inodes_distinct_delete in Hx as Hx'; eauto.
     eassumption.
 
     (* inum outside the original tree *)
-    eapply H34.
+    eapply H37.
     intro; subst.
-    eapply H32.
-    eapply find_dirlist_exists in H8 as H8'.
+    eapply H38.
+    eapply find_dirlist_exists with (inum := a0) in H9 as H9'. 
     deex.
     eapply find_dirlist_tree_inodes; eauto.
     eassumption.
@@ -865,6 +866,7 @@ Module DIRTREE.
     rewrite subtree_extract; eauto. cancel.
     eauto.
     step.
+    destruct (r_); simpl in *. subst. cancel.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
 
