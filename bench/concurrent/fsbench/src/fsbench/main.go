@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"pin"
-	"runtime"
 	"strings"
 	"time"
 	"workload"
@@ -189,8 +188,6 @@ func main() {
 	if !(*operation == "stat" || *operation == "open") {
 		log.Fatal(fmt.Errorf("invalid operation %s: expected stat or open", *operation))
 	}
-
-	runtime.GOMAXPROCS(*parallel)
 
 	var rtsOpts []string
 	if *rts_opts != "" {
