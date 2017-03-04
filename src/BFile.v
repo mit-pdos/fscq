@@ -2670,6 +2670,13 @@ Module BFILE.
     omega.
   Qed.
 
+  Lemma freepred_bfile0 : freepred bfile0.
+  Proof.
+    unfold freepred; eauto.
+  Qed.
+
+  Hint Resolve freepred_bfile0.
+
 End BFILE.
 
 Ltac msalloc_eq := BFILE.msalloc_eq.

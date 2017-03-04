@@ -156,9 +156,9 @@ Module DIRTREE.
         let^ (mscs, ok) <- SDIR.unlink lxp ixp dnum name mscs;
         match ok with
         | OK _ =>
+          mscs <- BFILE.reset lxp bxp ixp inum mscs;
           mscs' <- IAlloc.free lxp ibxp inum (MSLL mscs);
-          mscs <- BFILE.reset lxp bxp ixp inum (BFILE.mk_memstate (MSAlloc mscs) mscs' (MSAllocC mscs) (MSCache mscs));
-          Ret ^(mscs, OK tt)
+          Ret ^(BFILE.mk_memstate (MSAlloc mscs) mscs' (MSAllocC mscs) (MSCache mscs), OK tt)
         | Err e =>
           Ret ^(mscs, Err e)
         end
@@ -691,6 +691,8 @@ Module DIRTREE.
     safecancel. 2: eauto.
     unfold SDIR.rep_macro.
     cancel; eauto.
+
+    denote! (_ (list2nmem m)) as Hm0; rewrite <- locked_eq in Hm0.
     step.
     step.
     step.
@@ -698,21 +700,25 @@ Module DIRTREE.
     (* unlink *)
     step.
 
-    (* is_file: prepare for free *)
+    (* is_file: prepare for reset *)
+    prestep. norml.
     denote dirlist_pred as Hx.
     erewrite dirlist_extract with (inum := a0) in Hx; eauto.
     destruct_lift Hx.
     destruct dummy4; simpl in *; try congruence; subst.
     denote dirlist_pred_except as Hx; destruct_lift Hx; auto.
-    step.
+    cancel.
 
-    (* prepare for reset *)
+    (* is_file: prepare for free *)
+    prestep. norml.
     denote dirlist_pred as Hx.
     erewrite dirlist_extract with (inum := n) in Hx; eauto.
     destruct_lift Hx.
     destruct dummy4; simpl in *; try congruence; subst.
     denote dirlist_pred_except as Hx; destruct_lift Hx; auto.
-    step.
+    cancel.
+    unfold IAlloc.rep; cancel.
+    exists (list2nmem flist); eexists; pred_apply; cancel.
 
     (* post conditions *)
     step.
@@ -721,23 +727,33 @@ Module DIRTREE.
     rewrite dir_names_delete with (dnum := dnum); eauto.
     rewrite dirlist_pred_except_delete; eauto.
     cancel.
+    eauto.
     apply dirlist_safe_delete; auto.
 
     (* inum inside the new modified tree *)
-    eapply find_dirlist_exists in H8 as H8'.
+    denote! (tree_dir_names_pred' _ _) as Hy.
+    eapply find_dirlist_exists in Hy as Hy'.
     deex.
     denote dirlist_combine as Hx.
     eapply tree_inodes_distinct_delete in Hx as Hx'; eauto.
     eassumption.
 
     (* inum outside the original tree *)
-    eapply H32.
+    denote! (forall _ _, (_ = _ -> False) -> _ = _) as Hz.
+    eapply Hz.
     intro; subst.
-    eapply H36.
-    eapply find_dirlist_exists in H8 as H8'.
+    denote! (In _ _ -> False) as Hq.
+    eapply Hq.
+    denote ((name |-> (n, false))%pred) as Hy.
+    eapply find_dirlist_exists in Hy as Hy'.
     deex.
     eapply find_dirlist_tree_inodes; eauto.
     eassumption.
+
+    cancel.
+    cancel.
+    cancel.
+    cancel.
 
     (* case 2: is_dir: check empty *)
     prestep.
@@ -750,8 +766,10 @@ Module DIRTREE.
     step.
     step.
     step.
+    msalloc_eq. cancel.
     step.
     step.
+    exists (list2nmem flist'). eexists. pred_apply. cancel.
     step.
 
     (* post conditions *)
