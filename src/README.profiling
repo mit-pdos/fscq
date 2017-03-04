@@ -24,6 +24,15 @@ it's probably worth setting reallySync=False in hslib/Disk.hs.
   See http://www.well-typed.com/blog/86/ and
       https://ghc.haskell.org/trac/ghc/wiki/EventLog
 
+3) Ticky-ticky profiling.
+
+  Add the "-ticky -ticky-dyn-thunk -ticky-allocd" GHC arguments in Makefile.
+  Run "./fscq ... +RTS -rfscq.ticky".
+  Run some workload, then unmount the file system.
+  Look at the profile in ./fscq.ticky.
+
+  See https://ghc.haskell.org/trac/ghc/wiki/Debugging/TickyTicky
+
 Example shell command to generate a profile:
 
   rm disk.img ; \
