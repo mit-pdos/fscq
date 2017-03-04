@@ -31,6 +31,10 @@ it's probably worth setting reallySync=False in hslib/Disk.hs.
   Run some workload, then unmount the file system.
   Look at the profile in ./fscq.ticky.
 
+  To sort profile by which functions allocate the most:
+
+    cat fscq.ticky | grep main@main | sort -nk2
+
   See https://ghc.haskell.org/trac/ghc/wiki/Debugging/TickyTicky
 
 Example shell command to generate a profile:
