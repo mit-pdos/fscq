@@ -562,11 +562,7 @@ Module DIRTREE.
     destruct_branch; [ | step ].
     prestep; norml; inv_option_eq.
 
-    denote dirlist_pred as Hx; denote (pimpl dummy1) as Hy.
-    rewrite Hy in Hx; destruct_lift Hx.
     cancel.
-    step.
-
     or_r; cancel.
     eapply dirname_not_in; eauto.
 
@@ -574,6 +570,8 @@ Module DIRTREE.
     cancel.
     unfold tree_dir_names_pred.
     cancel; eauto.
+    denote (dummy1 =p=> _) as Hx; rewrite Hx.
+    unfold BFILE.freepred.
     rewrite dirlist_pred_split; simpl; cancel.
     apply tree_dir_names_pred'_app; simpl.
     apply sep_star_assoc; apply emp_star_r.
@@ -582,10 +580,13 @@ Module DIRTREE.
     eapply dirlist_safe_subtree; eauto.
     msalloc_eq.
     eapply dirlist_safe_mkfile; eauto.
-    eapply BFILE.ilist_safe_trans; eauto.
+
+    pred_apply.
+    denote (dummy1 =p=> _) as Hx; rewrite Hx; unfold BFILE.freepred.
+    cancel.
+
     eapply dirname_not_in; eauto.
 
-    step.
     Unshelve.
     all: eauto.
   Qed.
