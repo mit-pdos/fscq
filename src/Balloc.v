@@ -1111,6 +1111,14 @@ Module BmapAllocCache (Sig : AllocSig).
     rewrite xform_listpred_ptsto_fp; auto.
   Qed.
 
+  Lemma rep_clear_mscache_ok : forall V FP bxps frees freepred lms cm,
+    @rep V FP bxps frees freepred (mk_memstate lms cm) =p=>
+    @rep V FP bxps frees freepred (mk_memstate lms freelist0).
+  Proof.
+    unfold rep; intros.
+    cancel.
+  Qed.
+
 End BmapAllocCache.
 
 
@@ -1496,6 +1504,17 @@ Module BALLOCC.
   Proof.
     intros.
     unfold mk_memstate, rep.
+    cancel.
+  Qed.
+
+  Lemma rep_clear_mscache_ok : forall bxps frees lms cm,
+    rep bxps frees (mk_memstate lms cm) =p=>
+    rep bxps frees (mk_memstate lms Alloc.freelist0).
+  Proof.
+    intros.
+    unfold mk_memstate, rep.
+    cancel.
+    rewrite Alloc.rep_clear_mscache_ok.
     cancel.
   Qed.
 
