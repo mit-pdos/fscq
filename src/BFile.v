@@ -2645,6 +2645,31 @@ Module BFILE.
     Transparent vsmerge.
   Qed.
 
+  Lemma flist_crash_clear_caches : forall f f',
+    flist_crash f f' ->
+    clear_caches f' = f'.
+  Proof.
+    unfold flist_crash, clear_caches, clear_cache.
+    induction f; simpl; intros.
+    - inversion H; subst; eauto.
+    - inversion H; subst; eauto.
+      simpl.
+      rewrite IHf by eauto; f_equal.
+      inversion H2; intuition subst; simpl; eauto.
+  Qed.
+
+  Lemma freepred_file_crash : forall f f',
+    file_crash f f' -> freepred f -> freepred f'.
+  Proof.
+    unfold file_crash, freepred, bfile0; intros.
+    deex.
+    f_equal.
+    simpl in *.
+    eapply possible_crash_list_length in H1.
+    destruct vs; simpl in *; eauto.
+    omega.
+  Qed.
+
 End BFILE.
 
 Ltac msalloc_eq := BFILE.msalloc_eq.
