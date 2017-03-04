@@ -101,36 +101,6 @@ Proof.
 Qed.
 *)
 
-Definition eq_leibniz A B (f : A -> B) x y (e : x = y) : f x = f y.
-  destruct e.
-  reflexivity.
-Defined.
-
-Lemma eq_rect_leibniz : forall A B (f : A -> B) x y (e : x = y) P p,
-    rew [fun x0 => P (f x0)] e in p = rew [P] (eq_leibniz f e) in p.
-Proof.
-  intros.
-  destruct e.
-  reflexivity.
-Defined.
-
-Lemma okToCancel_eq_rect_immut_word : forall x y p (e : x = y) var,
-    ((var ~> rew [immut_word] e in p) : pred) <=p=> (var ~> p).
-Proof.
-  intros.
-  replace (wrap (rew [immut_word] e in p)) with (wrap p).
-  reflexivity.
-  revert p.
-  rewrite e.
-  intros.
-  cbv [wrap wrap' GoWrapper_immut_word].
-  reflexivity.
-Qed.
-Hint Extern 0 (okToCancel (?var ~> ?p) (?var ~> rew [immut_word] ?e in ?p)) =>
-  apply okToCancel_eq_rect_immut_word.
-Hint Extern 0 (okToCancel (?var ~> rew [immut_word] ?e in ?p) (?var ~> ?p)) =>
-  apply okToCancel_eq_rect_immut_word.
-
 Ltac real_val_in v :=
   lazymatch v with
   | rew ?H in ?v' => real_val_in v'
@@ -176,13 +146,6 @@ Ltac compile_middle :=
   end.
 
 Require Import PeanoNat.
-Lemma source_stmt_many_declares : forall decls cont,
-    (forall vars, source_stmt (cont vars)) ->
-    source_stmt (many_declares decls cont).
-Proof.
-  induction decls; eauto; intros.
-  destruct a; econstructor; eauto.
-Qed.
 
 Example compile_irec_get : sigT (fun p => source_stmt p /\
   forall env lxp ixp inum ms,
