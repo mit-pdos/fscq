@@ -108,6 +108,19 @@ Module CacheOneDir.
     exfalso; eauto.
   Qed.
 
+  Theorem crash_rep : forall f f' m,
+    BFILE.file_crash f f' ->
+    rep f m ->
+    rep f' m.
+  Proof.
+    unfold rep; intuition.
+    eapply SDIR.crash_rep; eauto.
+    inversion H; intuition subst; simpl.
+    eexists; intuition.
+    apply DcacheDefs.MapProperties.F.empty_mapsto_iff in H0.
+    exfalso; eauto.
+  Qed.
+
   Hint Resolve Dcache.find_2.
 
   Notation MSLL := BFILE.MSLL.
