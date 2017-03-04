@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"workload"
+
+	"github.com/montanaflynn/stats"
 )
 
 type DataPoints struct {
@@ -64,6 +66,8 @@ var ReadableDataHeader = concat(
 	},
 )
 
+// produce data row from beginning until parallel (excluding information for a
+// particular row, namely idx and time)
 func (p DataPoints) dataRowPrefix() []interface{} {
 	return concat(
 		[]interface{}{p.fsIdent},
@@ -95,6 +99,30 @@ func (p DataPoints) ReadableDataRow() []interface{} {
 			p.MicrosPerOp(),
 		},
 	)
+}
+
+func summarizeDataPoints(ps []DataPoints) (header []interface{}, data []interface{}) {
+	header = concat(
+		[]interface{}{
+			"work_iters",
+			"us/op std",
+			"us/op mean",
+			"us/op min",
+			"us/op median",
+		},
+	)
+
+	var times []float64
+	for _, p := range ps {
+		times = append(times, p.MicrosPerOp())
+	}
+	timeMean, _ := stats.Mean(times)
+	timeMedian, _ := stats.Median(times)
+	timeMin, _ := stats.Min(times)
+	timeStd, _ := stats.StandardDeviationPopulation(times)
+	data = append(data, len(ps), timeStd, timeMean, timeMin, timeMedian)
+
+	return
 }
 
 func printTsv(args ...interface{}) {
@@ -162,10 +190,6 @@ func main() {
 		log.Fatal(fmt.Errorf("invalid operation %s: expected stat or open", *operation))
 	}
 
-	if *readable_output && *work_iters > 1 {
-		log.Fatal(fmt.Errorf("readable output does not support re-running workload"))
-	}
-
 	runtime.GOMAXPROCS(*parallel)
 
 	var rtsOpts []string
@@ -222,8 +246,15 @@ func main() {
 
 	if *readable_output {
 		data := data_iters[0]
+		var header []interface{}
+		header = append(header, ReadableDataHeader...)
 		row := data.ReadableDataRow()
-		for i, hdr := range ReadableDataHeader {
+		if *work_iters > 1 {
+			extraHeader, extraRow := summarizeDataPoints(data_iters)
+			header = append(header, extraHeader...)
+			row = append(row, extraRow...)
+		}
+		for i, hdr := range header {
 			value := row[i]
 			fmt.Printf("%-20s %v\n", hdr, value)
 		}
