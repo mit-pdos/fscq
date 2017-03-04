@@ -121,7 +121,7 @@ func (opts Options) RunWorkload(fs filesys.FileSystem, parallel int) Results {
 }
 
 func (opts Options) Warmup(fs filesys.FileSystem) {
-	opts.Reps = 1000
+	opts.Reps = 5
 	opts.Iters = 1
 	// TODO: really should go through all the filenames in fs and warm each
 	// individually
