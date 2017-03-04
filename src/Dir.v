@@ -412,6 +412,7 @@ Module DIR.
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
   Notation MSCache := BFILE.MSCache.
+  Notation MSAllocC := BFILE.MSAllocC.
 
   Theorem lookup_ok : forall lxp bxp ixp dnum name ms,
     {< F Fm Fi m0 m dmap ilist frees,
@@ -421,6 +422,7 @@ Module DIR.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms' *
            [[ MSAlloc ms' = MSAlloc ms ]] *
+           [[ MSAllocC ms' = MSAllocC ms ]] *
          ( [[ r = None /\ notindomain name dmap ]] \/
            exists inum isdir Fd,
            [[ r = Some (inum, isdir) /\
@@ -449,7 +451,8 @@ Module DIR.
              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
              [[ listpred readmatch r dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
-             [[ MSCache ms' = MSCache ms ]]
+             [[ MSCache ms' = MSCache ms ]] *
+             [[ MSAllocC ms' = MSAllocC ms ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} readdir lxp ixp dnum ms.
@@ -472,7 +475,8 @@ Module DIR.
              [[ dmap' = mem_except dmap name ]] *
              [[ notindomain name dmap' ]] *
              [[ r = OK tt -> indomain name dmap ]] *
-             [[ MSAlloc ms' = MSAlloc ms ]]
+             [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSAllocC ms' = MSAllocC ms ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} unlink lxp ixp dnum name ms.
   Proof.
@@ -512,6 +516,7 @@ Module DIR.
              [[ goodSize addrlen inum ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSAllocC ms' = MSAllocC ms ]] *
            (([[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
         \/  ([[ r = OK tt ]] * 
              exists dmap' Fd ilist' frees',
