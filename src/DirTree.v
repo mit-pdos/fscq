@@ -108,7 +108,6 @@ Module DIRTREE.
       let^ (fms, ok) <- SDIR.link lxp bxp ixp dnum name inum false fms;
       match ok with
       | OK _ =>
-        fms <- BFILE.reset lxp bxp ixp inum fms;
         Ret ^(fms, OK (inum : addr))
       | Err e =>
         Ret ^(fms, Err e)
@@ -128,7 +127,6 @@ Module DIRTREE.
       let^ (fms, ok) <- SDIR.link lxp bxp ixp dnum name inum true fms;
       match ok with
       | OK _ =>
-        fms <- BFILE.reset lxp bxp ixp inum fms;
         Ret ^(fms, OK (inum : addr))
       | Err e =>
         Ret ^(fms, Err e)
@@ -475,23 +473,20 @@ Module DIRTREE.
     destruct_branch; [ | step ].
     prestep; norml; inv_option_eq.
 
-    denote dirlist_pred as Hx; denote (pimpl dummy1) as Hy.
-    rewrite Hy in Hx; destruct_lift Hx.
     cancel.
-    step.
     or_r; cancel.
 
     unfold tree_dir_names_pred at 1. cancel; eauto.
+    denote (dummy1 =p=> _) as Hx. rewrite Hx.
     unfold tree_dir_names_pred; cancel.
+    denote (BFILE.freepred _) as Hy. unfold BFILE.freepred in Hy. subst.
     apply SDIR.bfile0_empty.
     apply emp_empty_mem.
     apply sep_star_comm. apply ptsto_upd_disjoint. auto. auto.
 
     msalloc_eq.
     eapply dirlist_safe_mkdir; auto.
-    eapply BFILE.ilist_safe_trans; eauto.
 
-    step.
     Unshelve.
     all: try eauto; exact emp; try exact nil; try exact empty_mem; try exact BFILE.bfile0.
   Qed.
