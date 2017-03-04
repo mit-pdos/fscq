@@ -163,7 +163,6 @@ Ltac ensure_value_exists v_ pre cont :=
   end.
 
 Import Rec.
-Definition middle_immut : forall low mid high w, immut_word mid := Rec.middle.
 
 Ltac compile_middle :=
   lazymatch goal with
@@ -176,162 +175,13 @@ Ltac compile_middle :=
                                                                                                                         [ eapply (@CompileMiddle low mid high buf env retvar kbuf kfrom kto); try divisibility | intros; cbv beta; try rewrite okToCancel_eq_rect_immut_word; cancel_go..])))
   end.
 
-Fixpoint go_rec_type (t : Rec.type) : type :=
-  match t with
-  | Rec.WordF n => ImmutableBuffer
-  | Rec.ArrayF t' n => Slice (go_rec_type t')
-  | Rec.RecF fs =>
-    (fix rec_type fs :=
-       match fs with
-       | [] => Struct []
-       | (_, f) :: fs' => Pair (go_rec_type f) (rec_type fs')
-       end) fs
-  end.
-
-(* These match:
-Eval cbv in (@wrap_type _ z).
-Eval cbv in (go_rec_type INODE.IRecSig.itemtype).
-*)
-
-Instance GoWrapper_rec t : GoWrapper (Rec.data t).
-  einduction t using Rec.type_rect_nest; simpl.
-  - change word with immut_word. typeclasses eauto.
-  - typeclasses eauto.
-  - apply IHt0.
-  - simpl; typeclasses eauto.
-  - simpl in *; typeclasses eauto.
-Defined.
-
-Lemma GoWrapper_rec_go_rec_type : forall t, @wrap_type _ (GoWrapper_rec t) = go_rec_type t.
-Proof.
-  einduction t using Rec.type_rect_nest; simpl; auto.
-  - rewrite <- IHt0; reflexivity.
-  - apply IHt0.
-  - reflexivity.
-  - simpl in *.
-    rewrite <- IHt0.
-    rewrite <- IHt1.
-    reflexivity.
-Qed.
-
-Fixpoint go_of_word (t : Rec.type) (vdst vsrc : var) (from : nat) : stmt :=
-  match t with
-  | Rec.WordF n =>
-    Declare Num (fun vfrom =>
-      Declare Num (fun vto =>
-        (Modify (@SetConst Num from) ^(vfrom); Modify (@SetConst Num (from + n)) ^(vto);
-         Modify SliceBuffer ^(vdst, vsrc, vfrom, vto))))
-  | Rec.ArrayF t' n =>
-    (fix array_of_word n from :=
-       match n with
-       | O => Modify (@SetConst (Slice (go_rec_type t')) (Here [])) ^(vdst)
-       | S n' =>
-         Declare (go_rec_type t') (fun vt' =>
-           (array_of_word n' from;
-            go_of_word t' vt' vsrc from;
-            Modify AppendOp ^(vdst, vt')))
-       end) n from
-  | Rec.RecF fs =>
-    (fix rec_of_word fs vdst from :=
-       match fs with
-       | [] => Modify (@SetConst (Struct []) tt) ^(vdst)
-       | (_, f) :: fs' =>
-         Declare (go_rec_type f) (fun vf =>
-           Declare (go_rec_type (Rec.RecF fs')) (fun vfs' =>
-             (go_of_word f vf vsrc from;
-              rec_of_word fs' vfs' (from + Rec.len f);
-              Modify JoinPair ^(vdst, vf, vfs')
-              )))
-       end) fs vdst from
-  end%go.
-
-Lemma source_stmt_go_of_word : forall t vsrc vdst from,
-    source_stmt (go_of_word t vdst vsrc from).
-Proof.
-  intros t vsrc.
-  induction t using Rec.type_rect_nest
-  with (Q := fun rt =>
-               forall vdst from, source_stmt ((fix rec_of_word fs vdst from :=
-       match fs with
-       | [] => Modify (@SetConst (Struct []) tt) ^(vdst)
-       | (_, f) :: fs' =>
-         Declare (go_rec_type f) (fun vf =>
-           Declare (go_rec_type (Rec.RecF fs')) (fun vfs' =>
-             (go_of_word f vf vsrc from;
-              rec_of_word fs' vfs' (from + Rec.len f);
-              Modify JoinPair ^(vdst, vf, vfs')
-              )))%go
-       end) rt vdst from)); simpl; intros.
-  - eauto.
-  - induction n; eauto.
-  - eapply IHt.
-  - eauto.
-  - eauto.
-Qed.
-
 Require Import PeanoNat.
-
-Fixpoint byte_aligned (t : Rec.type) : Prop :=
-  match t with
-  | Rec.WordF n => Nat.divide 8 n
-  | Rec.ArrayF t' n => byte_aligned t'
-  | Rec.RecF fs =>
-    (fix fields_aligned fs :=
-       match fs with
-       | [] => True
-       | (_, f) :: fs' =>
-         byte_aligned f /\ fields_aligned fs'
-       end) fs
-  end%go.
-
-Lemma compile_of_word' : forall (t : Rec.type) (vdst vsrc : var) before after (buf : immut_word (before + (Rec.len t + after))) env F,
-    byte_aligned t ->
-    Nat.divide 8 before ->
-    Nat.divide 8 after ->
-    EXTRACT Ret (@Rec.of_word_middle t before after buf)
-    {{ vdst ~>? Rec.data t * vsrc ~> buf * F }}
-      go_of_word t vdst vsrc before
-    {{ fun ret => vdst ~> ret * vsrc ~> buf * F }} // env.
+Lemma source_stmt_many_declares : forall decls cont,
+    (forall vars, source_stmt (cont vars)) ->
+    source_stmt (many_declares decls cont).
 Proof.
-  einduction t using Rec.type_rect_nest; simpl; intros.
-  - pose proof (@CompileDeclare env (word n) nat _) as Hc.
-    eapply Hc; intros.
-    eapply Hc; intros.
-    eapply hoare_weaken.
-    eapply CompileBefore.
-    eapply hoare_weaken; [ let H' := fresh in pose proof (@CompileConst' nat _ env) as H'; eapply H' | cancel_go.. ].
-    2: cancel_go.
-    2: cancel_go.
-    eapply CompileBefore.
-    eapply hoare_weaken; [ let H' := fresh in pose proof (@CompileConst' nat _ env) as H'; eapply H' | cancel_go.. ].
-    fold plus.
-    eapply hoare_weaken; [ eapply CompileMiddle; eauto | cancel_go.. ].
-  - induction n; simpl.
-    eapply hoare_weaken.
-    evar (F' : pred).
-    pose proof (@CompileConst (list (Rec.data t0)) _ env F' vdst []).
-    subst F'.
-    simpl in H2.
-Admitted.
-
-Lemma compile_of_word : forall (t : Rec.type) (vdst vsrc : var) (buf : immut_word (Rec.len t)) env F,
-    byte_aligned t ->
-    EXTRACT Ret (@Rec.of_word t buf)
-    {{ vdst ~>? Rec.data t * vsrc ~> buf * F }}
-      go_of_word t vdst vsrc 0
-    {{ fun ret => vdst ~> ret * vsrc ~> buf * F }} // env.
-Proof.
-  intros.
-  erewrite Rec.of_word_middle_eq.
-  eapply hoare_weaken.
-  eapply compile_of_word'; try divisibility.
-  rewrite okToCancel_eq_rect_immut_word.
-  reflexivity.
-  intros; cbv beta.
-  rewrite okToCancel_eq_rect_immut_word.
-  reflexivity.
-  Unshelve.
-  eapply plus_n_O.
+  induction decls; eauto; intros.
+  destruct a; econstructor; eauto.
 Qed.
 
 Example compile_irec_get : sigT (fun p => source_stmt p /\
@@ -563,9 +413,54 @@ Ltac cancel_go ::=
   cancel_go_fast.
 
   change (fst ^(fst a, fst (snd a))) with (fst a).
+  Hint Extern 0 (okToCancel (exists val', ?var |-> Val _ val')%pred (exists val', ?var |-> Val _ val')%pred) =>
+  reflexivity : okToCancel.
   compile_join.
-  (* Oops, something went slightly wrong somewhere, I think *)
-Admitted.
+
+  (* TODO: reflexive cancellation doesn't work here because computing [cancel_some] takes forever *)
+  simpl decls_post.
+  cbv beta.
+  norml; normr; cbv [app].
+  eapply cancel_one.
+  do 19 eapply PickLater; eapply PickFirst.
+  apply pimpl_exists_r; simpl; eauto.
+  eapply cancel_one.
+  do 13 eapply PickLater; eapply PickFirst.
+  apply pimpl_exists_r. (* [simpl] takes forever here *)
+  cbv [moved_value wrap wrap_type GoWrapper_pair GoWrapper_rec GoWrapper_immut_word Rec.type_rect_nest
+      GoWrapper_unit INODE.IRecSig.itemtype INODE.irectype INODE.iattrtype list_rect].
+  eexists. reflexivity.
+
+  cancel_one.
+
+  eapply cancel_one.
+  eapply PickFirst.
+  apply pimpl_exists_r. (* [simpl] takes forever here *)
+  cbv [moved_value wrap wrap_type GoWrapper_pair GoWrapper_rec GoWrapper_immut_word Rec.type_rect_nest
+      GoWrapper_unit INODE.IRecSig.itemtype INODE.irectype INODE.iattrtype list_rect].
+  eexists. reflexivity.
+
+  repeat cancel_one.
+
+  eapply cancel_one.
+  eapply PickFirst.
+  apply pimpl_exists_r. (* [simpl] takes forever here *)
+  cbv [moved_value wrap wrap_type GoWrapper_pair GoWrapper_rec GoWrapper_immut_word Rec.type_rect_nest
+      GoWrapper_unit INODE.IRecSig.itemtype INODE.irectype INODE.iattrtype list_rect].
+  eexists. reflexivity.
+
+  unfold stars. cancel.
+
+  Unshelve.
+  eauto.
+  
+
+  apply source_stmt_many_declares; intro.
+  repeat econstructor.
+
+  exact [].
+
+Defined. (* Anomaly: Uncaught exception Not_found. *)
 
 
 
