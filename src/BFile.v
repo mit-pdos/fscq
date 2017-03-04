@@ -71,6 +71,12 @@ Module BFILE.
     | [ H: MSCache _ = MSCache _ |- _ ] => rewrite H in *; clear H
     end.
 
+  Definition ms_empty sz := mk_memstate
+    true
+    (LOG.mk_memstate0 (Cache.BUFCACHE.cache0 sz))
+    (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0)
+    (BFcache.empty _).
+
 
   (* interface implementation *)
 
@@ -301,6 +307,39 @@ Module BFILE.
     - norml; unfold stars; simpl.
       rewrite INODE.rep_bxp_switch at 1 by eauto.
       cancel.
+  Qed.
+
+  Definition clear_cache bf := mk_bfile (BFData bf) (BFAttr bf) None.
+  Definition clear_caches bflist := map clear_cache bflist.
+
+  Theorem rep_clear_freelist : forall bxps ixp flist ilist frees allocc mscache,
+    rep bxps ixp flist ilist frees allocc mscache =p=>
+    rep bxps ixp flist ilist frees (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0) mscache.
+  Proof.
+    unfold rep; intros; cancel.
+    rewrite <- BALLOCC.rep_clear_mscache_ok. cancel.
+    rewrite <- BALLOCC.rep_clear_mscache_ok. cancel.
+  Qed.
+
+  Theorem rep_clear_bfcache : forall bxps ixp flist ilist frees allocc mscache,
+    rep bxps ixp flist ilist frees allocc mscache =p=>
+    rep bxps ixp (clear_caches flist) ilist frees allocc (BFcache.empty Dcache_type).
+  Proof.
+    unfold rep; intros; cancel.
+    unfold clear_caches.
+    rewrite listmatch_map_l.
+    unfold file_match, clear_cache; simpl.
+    reflexivity.
+
+    rewrite locked_eq.
+    unfold cache_rep, clear_caches, clear_cache.
+    rewrite map_map; simpl.
+    clear H2.
+    generalize 0.
+    induction flist; simpl; intros.
+    apply BFM.mm_init.
+    specialize (IHflist (S n)).
+    pred_apply; cancel.
   Qed.
 
   Definition block_belong_to_file ilist bn inum off :=
