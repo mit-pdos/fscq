@@ -1735,6 +1735,7 @@ Module BFILE.
            [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
            [[ block_belong_to_file ilist bn inum off ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]] *
            (* spec about files on the latest diskset *)
            [[[ ds'!! ::: (Fm  * rep bxp ixp flist' ilist frees allocc (MSCache ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
@@ -1816,6 +1817,7 @@ Module BFILE.
            [[[ ds'!! ::: (Fm * rep bxp ixp flist' ilist free allocc (MSCache ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> synced_file f) ]]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]] *
            [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
               BFILE.block_belong_to_file ilist (selN al i 0) inum i ]]
     CRASH:hm' LOG.recover_any lxp F ds hm'

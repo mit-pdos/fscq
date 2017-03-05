@@ -865,11 +865,16 @@ Module DIRTREE.
     eapply list2nmem_inbound; eauto.
     rewrite subtree_extract; eauto. cancel.
     eauto.
-    step.
+    safestep.
+    reflexivity.
+    eauto.
+    3: reflexivity.
+    4: reflexivity.
     destruct (r_); simpl in *. subst. cancel.
+    pred_apply. cancel.
     rewrite <- subtree_absorb; eauto. cancel.
     eapply find_subtree_inum_valid; eauto.
-
+    eassumption.
     eapply dirlist_safe_subtree; eauto.
     apply dirtree_safe_file.
   Qed.
@@ -899,7 +904,11 @@ Module DIRTREE.
     safestep.
     rewrite subtree_extract; eauto. cancel.
     step.
-    rewrite <- subtree_absorb; eauto. cancel.
+    eassign (flist').
+    destruct (r_); simpl in *. subst. cancel.
+
+    rewrite <- subtree_absorb; eauto. 
+    pred_apply. cancel.
     eapply find_subtree_inum_valid; eauto.
 
     eapply dirlist_safe_subtree; eauto.
@@ -1030,7 +1039,6 @@ Module DIRTREE.
            [[ (Fm * rep fsxp Ftop tree' ilist' frees mscs')%pred (list2nmem m') ]] *
            [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
            [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr (BFILE.BFCache f) ]] *
-           [[ MSCache mscs' = MSCache mscs ]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]] *
            [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                            ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
@@ -1042,8 +1050,13 @@ Module DIRTREE.
     unfold setattr, rep.
     step.
     rewrite subtree_extract; eauto. cancel.
-    step.
-    rewrite <- subtree_absorb; eauto. cancel.
+    safestep.
+    eassign (flist').
+    destruct (r_); simpl in *. subst. cancel.
+    3: reflexivity.
+    2: reflexivity.
+    rewrite <- subtree_absorb; eauto.
+    pred_apply; cancel.
     eapply find_subtree_inum_valid; eauto.
     eapply dirlist_safe_subtree; eauto.
     apply dirtree_safe_file_trans; auto.
@@ -1222,8 +1235,7 @@ Module DIRTREE.
     destruct_lift Hsub.
     denote (_ |-> _)%pred as Hsub.
 
-    safecancel. 2: eauto.
-    unfold SDIR.rep_macro.
+    safecancel.
     cancel; eauto.
 
     (* unlink src *)
