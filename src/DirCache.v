@@ -362,7 +362,6 @@ Module CacheOneDir.
              [[ goodSize addrlen inum ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
-             [[ MSAllocC ms' = MSAllocC ms ]] *
            (([[ isError r ]] *
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
         \/  ([[ r = OK tt ]] *
