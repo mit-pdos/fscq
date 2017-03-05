@@ -294,7 +294,7 @@ Proof.
 Qed.
 
 Ltac cancel' := repeat (cancel_one || delay_one);
-                try solve [ unfold stars at 2 3; simpl;
+                try solve [ unfold stars at 2 3; cbv [pred_fold_left fold_left];
                   match goal with
                   | [ |- stars nil * ?P =p=> ?Q] =>
                     match P with
@@ -308,7 +308,9 @@ Ltac norml := eapply start_normalizing_left; [ flatten | ].
 
 Ltac normr := eapply start_normalizing_right; [ flatten | ].
 
-Ltac norm := simpl; norml; normr; simpl.
+Ltac cancel_simpl := simpl.
+
+Ltac norm := cancel_simpl; norml; normr; cancel_simpl.
 
 Ltac inv_option_eq' := repeat match goal with
   | [ H: None = None |- _ ] => clear H
@@ -744,11 +746,17 @@ Qed.
 Ltac cancel_refl :=
   transform_pimpl_refl;
   apply sep_star_sort;
-  simpl sort;
+  cbv [sort fold_right insert leb leb_addr list_of app Nat.leb];
   try apply cancel_decls_pre_post;
   apply cancel_some_valid;
-  simpl cancel_some;
-  simpl type_eq_dec;
+  repeat match goal with (* Not actually necessary for any goals I've encountered *)
+         | |- context[PtsTo ?var ?t ?val] => (is_var val; fail 1)
+                                           ||
+                                           let V := fresh "val" in
+                                           pose (V := val); change val with V
+         end;
+  cbv [cancel_some remove cancels var_eq Nat.eqb type_eq_dec False_ind sumbool_rec sumbool_rect
+       list_rec list_rect eq_ind_r eq_ind eq_rect eq_rec type_rec type_rect Datatypes.length fst snd];
   solve [
     reflexivity |
     unfold cancels;
@@ -863,7 +871,7 @@ Ltac norm_refl :=
         instantiate_frame F missing
     )))
   end;
-  unfold wrap, moved_value, default_value; simpl.
+  unfold wrap, moved_value, default_value; cancel_simpl.
 
 
 Example cancel_refl_frame : forall n (locals : n_tuple n var) l v1 v2, exists F,

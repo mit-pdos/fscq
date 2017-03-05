@@ -147,6 +147,14 @@ Ltac compile_middle :=
 
 Require Import PeanoNat.
 
+Lemma f_into_match : forall A B C D (e : {A} + {B}) (L : A -> C) (R : B -> C) (f : C -> D),
+    f (match e with | left l0 => L l0 | right r0 => R r0 end) =
+    match e with | left l0 => f (L l0) | right r0 => f (R r0) end.
+Proof.
+  intros.
+  destruct e; reflexivity.
+Qed.
+
 Example compile_irec_get : sigT (fun p => source_stmt p /\
   forall env lxp ixp inum ms,
   prog_func_call_lemma
@@ -248,18 +256,13 @@ Proof.
          end
   end.
   do_declare (immut_word 1024) ltac:(fun var => idtac var).
-  eapply hoare_weaken; [ eapply CompileBindRet with (HA := GoWrapper_immut_word 1024) (vara := nth_var 20 vars) | cancel_go.. ].
+  eapply hoare_strengthen_pre; [ | eapply CompileBindRet with (HA := GoWrapper_immut_word 1024) (vara := nth_var 20 vars) ].
+  cancel_go.
+
   unfold Rec.word_selN'.
   rewrite <- Rec.word_selN_shift_equiv.
   unfold Rec.word_selN.
   eapply extract_equiv_prog.
-  Lemma f_into_match : forall A B C D (e : {A} + {B}) (L : A -> C) (R : B -> C) (f : C -> D),
-      f (match e with | left l0 => L l0 | right r0 => R r0 end) =
-      match e with | left l0 => f (L l0) | right r0 => f (R r0) end.
-  Proof.
-    intros.
-    destruct e; reflexivity.
-  Qed.
   rewrite f_into_match with (f := Ret).
   reflexivity.
   Ltac make_value_exist v_ :=
@@ -269,16 +272,19 @@ Proof.
                            eapply CompileRet with (var0 := var) (v := v_)); repeat compile_step | ].
   make_value_exist INODE.IRecSig.items_per_val.
   make_value_exist (PeanoNat.Nat.modulo inum INODE.IRecSig.items_per_val).
-  eapply hoare_weaken; [ eapply (@CompileIfLt' _ (nth_var 22 vars) (nth_var 21 vars)); intros | cancel_go..].
-  Focus 2.
+  eapply hoare_strengthen_pre; [ | eapply (@CompileIfLt' _ (nth_var 22 vars) (nth_var 21 vars)); intros ].
+  cancel_go.
 
+  Focus 2.
   simpl.
   eapply hoare_weaken.
   eapply CompileConst with (v := nth_var 20 vars) (Wr := GoWrapper_immut_word 1024).
-  rewrite okToCancel_ptsto_typed_any_typed with (var0 := nth_var 16 vars).
+  (* We need to forget the value in this case of the [if] so that the other case can also satisfy the
+     same postcondition *)
+  instantiate (1 := (nth_var 16 vars ~>? valu * _)%pred).
   cancel_go.
   cancel_go.
-  
+
   cbv [Rec.len plus mult]. fold Nat.add Nat.mul Rec.len.
   Ltac cancel_go ::= cancel_go_fast.
   lazymatch goal with
@@ -290,7 +296,7 @@ Proof.
   | [ |- EXTRACT (Ret (?f ?a ?b ?c ?d)) {{ _ }} _ {{ _ }} // _ ] =>
     make_value_exist (a + b)
   end.
-  
+
   (* Freeze the buffer *)
   pattern_prog (fst (snd a)).
   do_declare (immut_word valulen) ltac:(fun var => idtac var).
@@ -311,12 +317,11 @@ Proof.
   divisibility.
 Ltac cancel_go ::=
   solve [GoSepAuto.cancel_go_refl] ||
-  solve [GoSepAuto.cancel_go_fast] ||
-  unfold var, default_value; GoSepAuto.cancel; try apply pimpl_refl.
-  cancel_go.
+  (idtac "refl failed"; solve [GoSepAuto.cancel_go_fast] ||
+   (idtac "fast failed"; unfold var, default_value; GoSepAuto.cancel; try apply pimpl_refl)).
   norm.
-  do 28 delay_one.
   eapply cancel_one.
+  eapply PickLater.
   eapply PickFirst.
   match goal with
   | |- okToCancel (nth_var _ vars |-> ?a) (nth_var _ vars |-> ?b) => let H := fresh in assert (a = b) as H; [ | rewrite H ]
@@ -336,41 +341,23 @@ Ltac cancel_go ::=
   f_equal.
   rewrite UIP_refl with (p := e).
   reflexivity.
-  cancel'.
-  intros.
-  unfold INODE.IRec.Defs.val2word.
-  unfold eq_rec.
-  rewrite eq_rect_double.
-  match goal with
-  | |- context[wrap (rew ?He in ?x)] => replace (wrap (rew He in x)) with (wrap (fst (snd a) : immut_word _))
-  end.
-  cancel_go.
-  cbv [wrap wrap' wrap_type GoWrapper_immut_word].
-  simpl.
-  match goal with
-  | |- context[rew ?He in _] => let H := fresh in let Te := type of He in assert Te as H; [ | generalize He; rewrite <- H ]
-  end.
-  rewrite INODE.IRecSig.blocksz_ok; simpl.
-  rewrite (Rec.word_selN_helper 1024 l0) at 1.
   reflexivity.
-  intros.
-  f_equal.
-  rewrite UIP_refl with (p := e).
-  reflexivity.
-  unfold stars; simpl.
-  reflexivity.
-  cancel_go.
-  Require Import PeanoNat.
+  cbv [stars fold_left pred_fold_left app].
+
+  cancel_go_refl.
+  cancel_go_refl.
+
   apply Nat.mod_upper_bound.
   apply INODE.IRec.Defs.items_per_val_not_0.
 
   eapply hoare_weaken.
   eapply compile_of_word with (vsrc := nth_var 20 vars) (vdst := nth_var 14 vars).
   repeat (simpl; unfold addrlen; (constructor || divisibility)).
+
   cancel_go.
   cancel_go.
 
-  (* TODO: [cancel_go_refl] and [cancel_go_fasts] take forever here because they [simpl]. *)
+  (* TODO: [cancel_go_refl] and [cancel_go_fast] take forever here because they [simpl]. *)
   Ltac cancel_go ::= intros **; cbv beta; repeat (try apply pimpl_refl; cancel_one_fast).
   compile_join.
   cancel_go_fast.
@@ -415,9 +402,6 @@ Ltac cancel_go ::=
   unfold stars. cancel.
 
   Unshelve.
-  eauto.
-  
-
   apply source_stmt_many_declares; intro.
   repeat econstructor.
 
