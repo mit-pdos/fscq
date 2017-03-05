@@ -12,12 +12,14 @@ import (
 )
 
 type FileSystem struct {
-	ident     string
-	binary    string
-	mntPoint  string
-	filenames []string
-	isFuse3   bool
-	args      []string
+	ident          string
+	binary         string
+	mntPoint       string
+	filenames      []string
+	isFuse3        bool
+	isHaskell      bool
+	parsesOwnFlags bool
+	args           []string
 }
 
 var fscqMnt = "/tmp/fscq"
@@ -31,6 +33,7 @@ func fscqFs(name string) FileSystem {
 			path.Join(fscqMnt, "dir1/file1"),
 			path.Join(fscqMnt, "dir2/file2"),
 		},
+		isHaskell: true,
 		//filenames: []string{
 		//	path.Join(fscqMnt, "a/b/c/d/e/f/file"),
 		//	path.Join(fscqMnt, "a____/b____/c____/d____/e____/f____/file"),
@@ -48,6 +51,7 @@ var fileSystems = []FileSystem{
 		binary:    "HelloFS",
 		mntPoint:  helloMnt,
 		filenames: []string{path.Join(helloMnt, "hello")},
+		isHaskell: true,
 		args:      []string{helloMnt}},
 	{ident: "c-hello",
 		binary:    "hello",
@@ -56,11 +60,19 @@ var fileSystems = []FileSystem{
 		isFuse3:   true,
 		args:      []string{helloMnt}},
 	{ident: "fusexmp",
-		binary: "passthrough",
+		binary:   "passthrough",
+		mntPoint: helloMnt,
 		filenames: []string{"/tmp/hellofs/etc/passwd",
 			"/tmp/hellofs/usr/bin/true"},
 		isFuse3: true,
 		args:    []string{helloMnt}},
+	{ident: "slowfs",
+		binary:         "slowfs",
+		mntPoint:       "/tmp/slowfs",
+		filenames:      []string{"/tmp/slowfs/default"},
+		isHaskell:      true,
+		parsesOwnFlags: true,
+		args:           []string{"/tmp/slowfs"}},
 	{ident: "native",
 		binary: "true",
 		filenames: []string{"/etc/passwd",
@@ -85,10 +97,6 @@ func (fs FileSystem) isFuse() bool {
 	return fs.ident != "native"
 }
 
-func (fs FileSystem) isHaskell() bool {
-	return fs.ident == "fscq" || fs.ident == "cfscq" || fs.ident == "hfuse"
-}
-
 type Options struct {
 	NameCache    bool
 	AttrCache    bool
@@ -96,6 +104,7 @@ type Options struct {
 	KernelCache  bool
 	ServerCpu    pin.Cpu
 	RtsOpts      []string
+	FsFlags      []string
 }
 
 var DataHeader = []interface{}{
@@ -133,17 +142,21 @@ func (o Options) optString() string {
 
 func (fs FileSystem) Launch(opts Options) {
 	var args []string
+	args = append(args, opts.FsFlags...)
 	args = append(args, fs.args...)
-	if fs.isFuse() {
-		args = append(args, "-o", opts.optString())
-	}
-	if fs.isHaskell() {
+	if fs.isHaskell {
 		args = append(args, "+RTS")
 		// GC options:
 		// "-A6G", // large initial allocation area (avoids needs for most GC)
 		// "-I0",  // disable idle GC (default: idle after 0.3s)
 		args = append(args, opts.RtsOpts...)
 		args = append(args, "-RTS")
+	}
+	if fs.isFuse() {
+		if fs.parsesOwnFlags {
+			args = append(args, "--")
+		}
+		args = append(args, "-o", opts.optString())
 	}
 	cmd := opts.ServerCpu.Command(fs.binary, args...)
 	cmd.Stderr = os.Stderr

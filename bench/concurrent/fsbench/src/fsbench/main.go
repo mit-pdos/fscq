@@ -156,6 +156,8 @@ func main() {
 			"or provide a single spec)")
 	rts_opts := flag.String("rts-opts", "",
 		"space-separated arguments to pass to fuse server in +RTS -RTS")
+	fs_flags := flag.String("fs-opts", "",
+		"space-separated arguments to pass to filesystem")
 	warmup := flag.Bool("warmup", true, "warmup file system with 1000 untimed iterations")
 
 	readable_output := flag.Bool("readable", false, "produce verbose, readable output")
@@ -194,6 +196,11 @@ func main() {
 		rtsOpts = strings.Split(*rts_opts, " ")
 	}
 
+	var fsFlags []string
+	if *fs_flags != "" {
+		fsFlags = strings.Split(*fs_flags, " ")
+	}
+
 	fsOpts := filesys.Options{
 		NameCache:    *name_cache,
 		NegNameCache: *neg_name_cache,
@@ -201,6 +208,7 @@ func main() {
 		KernelCache:  *kernel_cache,
 		ServerCpu:    pin.Cpu(*server_cpu),
 		RtsOpts:      rtsOpts,
+		FsFlags:      fsFlags,
 	}
 
 	opts := workload.Options{
