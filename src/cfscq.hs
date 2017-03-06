@@ -30,12 +30,16 @@ import AsyncDisk
 import Control.Monad
 import qualified Errno
 import ShowErrno
+import System.Clock
 
 -- Handle type for open files; we will use the inode number
 type HT = Integer
 
 verboseFuse :: Bool
 verboseFuse = False
+
+verboseTiming :: Bool
+verboseTiming = True
 
 cachesize :: Integer
 cachesize = 100000
@@ -66,6 +70,22 @@ type FSrunner = forall a. FSprog (CFS.SyscallResult a) -> IO a
 
 st :: StateTypes
 st = CCLProg.Coq_defState
+
+elapsedTime :: TimeSpec -> IO ()
+elapsedTime start = do
+  end <- getTime Monotonic
+  let elapsedNanos = toNanoSecs $ diffTimeSpec start end
+      elapsedMicros = (fromIntegral elapsedNanos)/1e3 :: Float in
+    putStrLn $ "took " ++ show elapsedMicros ++ "us"
+
+timeAction :: IO a -> IO a
+timeAction io = if verboseTiming then
+  do
+    start <- getTime Monotonic
+    r <- io
+    elapsedTime start
+    return r
+  else io
 
 doFScall :: I.ConcurState -> FSrunner
 doFScall s p = do
@@ -238,8 +258,13 @@ fscqGetFileStat fr fsxp (_:path)
   | path == "stats" = do
     ctx <- getFuseContext
     return $ Right $ fileStat ctx $ _INODE__iattr_upd _INODE__iattr0 $ INODE__UBytes $ W 4096
-  | otherwise = do
+  | otherwise = timeAction $ do
   debugStart "STAT" path
+  -- tid <- myThreadId
+  -- (processor, _) <- threadCapability tid
+  -- bound <- isCurrentThreadBound
+  -- putStrLn $ show tid ++ " capability: " ++ show processor ++
+  --   if bound then " (bound)" else ""
   nameparts <- return $ splitDirectories path
   (r, ()) <- fr $ CFS.lookup st fsxp (coq_FSXPRootInum fsxp) nameparts
   debugMore r
@@ -297,7 +322,7 @@ fscqReadDirectory _ _ _ = return (Left (eNOENT))
 fscqOpen :: FSrunner -> Coq_fs_xparams -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
 fscqOpen fr fsxp (_:path) _ _
   | path == "stats" = return $ Right 0
-  | otherwise = do
+  | otherwise = timeAction $ do
   debugStart "OPEN" path
   nameparts <- return $ splitDirectories path
   (r, ()) <- fr $ CFS.lookup st fsxp (coq_FSXPRootInum fsxp) nameparts

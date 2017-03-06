@@ -30,6 +30,7 @@ import Control.Monad
 import qualified Errno
 import ShowErrno
 import qualified BFile
+import System.Clock
 
 -- Handle type for open files; we will use the inode number
 type HT = Integer
@@ -61,14 +62,23 @@ nInodeBitmaps = 1
 nDescrBlocks :: Integer
 nDescrBlocks = 64
 
+elapsedTime :: TimeSpec -> IO String
+elapsedTime start = do
+  end <- getTime Monotonic
+  let elapsedNanos = toNanoSecs $ diffTimeSpec start end
+      elapsedMicros = (fromIntegral elapsedNanos)/1e3 :: Float in
+    return $ show elapsedMicros ++ "us"
+
 type MSCS = BFile.BFILE__Coq_memstate
 type FSprog a = (MSCS -> Prog.Coq_prog (MSCS, a))
 type FSrunner = forall a. FSprog a -> IO a
-doFScall :: DiskState -> IORef MSCS -> FSrunner
+doFScall :: DiskState -> MVar MSCS -> FSrunner
 doFScall ds ref f = do
-  s <- readIORef ref
+  -- start <- getTime Monotonic
+  s <- takeMVar ref
   (s', r) <- I.run ds $ f s
-  writeIORef ref s'
+  putMVar ref s'
+  -- elapsed <- elapsedTime start
   return r
 
 main :: IO ()
@@ -103,7 +113,7 @@ run_fuse disk_fn fuse_args = do
           set_nblocks_disk ds $ fromIntegral $ coq_FSXPMaxBlock fsxp
           return (s, fsxp)
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks " ++ "magic " ++ (show $ coq_FSXPMagic fsxp)
-  ref <- newIORef s
+  ref <- newMVar s
   m_fsxp <- newMVar fsxp
   fuseRun "fscq" fuse_args (fscqFSOps disk_fn ds (doFScall ds ref) m_fsxp) defaultExceptionHandler
 
