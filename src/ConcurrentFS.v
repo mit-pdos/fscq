@@ -168,7 +168,7 @@ Section ConcurrentFS.
                   Ret tt
               else
                 _ <- ReleaseReadLock;
-          Ret tt;
+                Ret tt;
           Ret (Done r)
       | Failure e =>
         _ <- ReleaseReadLock;

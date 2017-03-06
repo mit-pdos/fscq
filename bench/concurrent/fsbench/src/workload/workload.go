@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"pin"
 	"strconv"
 	"strings"
@@ -127,6 +128,8 @@ func (opts Options) Warmup(fs filesys.FileSystem) {
 	// individually
 	parallel := 1
 	opts.RunWorkload(fs, parallel)
+	cmd := exec.Command("df", fs.Pathname(0))
+	cmd.Run()
 }
 
 // SearchWorkload runs a workload, varying iters until the run takes at least targetMs milliseconds.

@@ -7,7 +7,8 @@ import qualified Disk
 import Word
 import qualified Crypto.Hash.SHA256 as SHA256
 import Control.Monad (when)
-import Control.Concurrent.MVar
+-- import Control.Concurrent.MVar
+import Data.IORef
 import ReadWriteLock as RWL
 
 verbose :: Bool
@@ -20,8 +21,9 @@ type TID = Int
 
 data ConcurState = ConcurState
   { disk :: Disk.DiskState
-  , memory :: MVar Any
-  , lock :: RWLock }
+  , memory :: IORef Any
+  , lock :: RWLock
+  , shouldUpdateMem :: IORef Bool }
 
 instance Show LockState where
   show Free = "Free"
@@ -32,10 +34,10 @@ run_dcode :: ConcurState -> CCLProg.Coq_cprog a -> IO a
 run_dcode _ (Ret r) = do
   return r
 run_dcode s (Assgn m) = do
-  modifyMVar_ (memory s) (\_ -> return m)
+  writeIORef (memory s) m
   return $ unsafeCoerce ()
 run_dcode s (Get) = do
-  m <- readMVar (memory s)
+  m <- readIORef (memory s)
   return $ unsafeCoerce m
 run_dcode _ (GhostUpdate _) = do
   return $ unsafeCoerce ()
@@ -54,20 +56,23 @@ run_dcode s (SetLock l l') = do
   debugmsg $ "SetLock " ++ show l ++ " " ++ show l'
   l'' <- case (l, l') of
     (Free, ReadLock) -> do
-      RWL.acquireRead (lock s)
+      -- RWL.acquireRead (lock s)
       return l'
     (Free, WriteLock) -> do
       RWL.acquireWrite (lock s)
       return l'
     (ReadLock, Free) -> do
-      RWL.releaseRead (lock s)
+      -- RWL.releaseRead (lock s)
       return l'
     (WriteLock, Free) -> do
       RWL.releaseWrite (lock s)
       return l'
     (ReadLock, WriteLock) -> do
-      b <- RWL.tryUpgradeRead (lock s)
-      if b then return l' else return ReadLock
+      doUpdate <- readIORef (shouldUpdateMem s)
+      if doUpdate then do
+        RWL.acquireWrite (lock s)
+        return WriteLock
+      else return ReadLock
     (_, _) -> error $ "SetLock used incorrectly: " ++ show l ++ " " ++ show l'
   return $ unsafeCoerce l''
 run_dcode _ (BeginRead _) = do
@@ -86,8 +91,9 @@ newState :: Disk.DiskState -> IO ConcurState
 newState ds =
   pure ConcurState
   <*> return ds
-  <*> newMVar (unsafeCoerce ())
+  <*> newIORef (unsafeCoerce ())
   <*> RWL.new
+  <*> newIORef True
 
 run :: ConcurState -> CCLProg.Coq_cprog a -> IO a
 run s p = run_dcode s p

@@ -129,12 +129,12 @@ run_fuse disk_fn fuse_args = do
   putStrLn $ "Starting file system, " ++ (show $ coq_FSXPMaxBlock fsxp) ++ " blocks " ++ "magic " ++ (show $ coq_FSXPMagic fsxp)
   s <- I.newState ds
   I.run s (CFS.init mscs0)
-  fuseRun "fscq" fuse_args (fscqFSOps disk_fn ds (doFScall s) fsxp) defaultExceptionHandler
+  fuseRun "cfscq" fuse_args (fscqFSOps disk_fn ds (doFScall s) s fsxp) defaultExceptionHandler
 
 -- See the HFuse API docs at:
 -- https://hackage.haskell.org/package/HFuse-0.2.1/docs/System-Fuse.html
-fscqFSOps :: String -> DiskState -> FSrunner -> Coq_fs_xparams -> FuseOperations HT
-fscqFSOps fn ds fr fsxp = defaultFuseOps
+fscqFSOps :: String -> DiskState -> FSrunner -> I.ConcurState -> Coq_fs_xparams -> FuseOperations HT
+fscqFSOps fn ds fr s fsxp = defaultFuseOps
   { fuseGetFileStat = fscqGetFileStat fr fsxp
   , fuseOpen = fscqOpen fr fsxp
   , fuseCreateDevice = fscqCreate fr fsxp
@@ -146,7 +146,7 @@ fscqFSOps fn ds fr fsxp = defaultFuseOps
   , fuseSetFileSize = fscqSetFileSize fr fsxp
   , fuseOpenDirectory = fscqOpenDirectory fr fsxp
   , fuseReadDirectory = fscqReadDirectory fr fsxp
-  , fuseGetFileSystemStats = fscqGetFileSystemStats fr fsxp
+  , fuseGetFileSystemStats = fscqGetFileSystemStats fr s fsxp
   , fuseDestroy = fscqDestroy ds fn fr fsxp
   , fuseSetFileTimes = fscqSetFileTimes
   , fuseRename = fscqRename fr fsxp
@@ -523,8 +523,11 @@ fscqSetFileSize fr fsxp (_:path) size = do
           return eIO
 fscqSetFileSize _ _ _ _ = return eIO
 
-fscqGetFileSystemStats :: FSrunner -> Coq_fs_xparams -> String -> IO (Either Errno FileSystemStats)
-fscqGetFileSystemStats fr fsxp _ = do
+fscqGetFileSystemStats :: FSrunner -> I.ConcurState -> Coq_fs_xparams -> String -> IO (Either Errno FileSystemStats)
+fscqGetFileSystemStats fr s fsxp _ = do
+  b <- readIORef (I.shouldUpdateMem s)
+  putStrLn $ "setting should update mem to " ++ show (not b)
+  writeIORef (I.shouldUpdateMem s) (not b)
   (freeblocks, (freeinodes, ())) <- fr $ CFS.statfs st fsxp
   block_bitmaps <- return $ coq_BmapNBlocks $ coq_FSXPBlockAlloc1 fsxp
   inode_bitmaps <- return $ coq_BmapNBlocks $ coq_FSXPInodeAlloc fsxp
