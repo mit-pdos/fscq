@@ -407,8 +407,10 @@ Ltac cancel_go ::=
 
   exact [].
 
-Defined. (* Anomaly: Uncaught exception Not_found. *)
+Defined.
 
+Set Printing Depth 500.
+Eval lazy in (projT1 compile_irec_get).
 
 
 Definition extract_env : Env.
