@@ -151,6 +151,8 @@ func main() {
 	neg_name_cache := flag.Bool("neg-cache", false, "enable fuse negative (deleted) name cache")
 	kernel_cache := flag.Bool("kernel-cache", false, "enable kernel cache")
 	server_cpu := flag.String("server-cpu", "", "pin server to a cpu (empty string to not pin)")
+	seq_server_cpu := flag.String("seq-server-cpu", "",
+		"for parallel speedup (under -readable), use this cpu affinity for the server instead (defaults to using -server-cpu)")
 	client_cpus := flag.String("client-cpus", "",
 		"pin clients to cpus (when running in parallel, separate cpus with a slash\n"+
 			"or provide a single spec)")
@@ -264,8 +266,13 @@ func main() {
 			fmt.Printf("%-20s %v\n", hdr, value)
 		}
 		if *parallel > 1 {
+			if *seq_server_cpu != "" {
+				fsOpts.ServerCpu = pin.Cpu(*seq_server_cpu)
+			}
 			fs.Launch(fsOpts)
-			opts.Warmup(fs)
+			if *warmup {
+				opts.Warmup(fs)
+			}
 			seqData := DataPoints{
 				fsIdent:  data.fsIdent,
 				fs:       data.fs,
