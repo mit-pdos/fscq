@@ -805,8 +805,11 @@ Module DIRTREE.
     cancel; auto.
 
     Unshelve.
-    all: try exact addr_eq_dec.  6: eauto. all: eauto.
-    auto using Build_balloc_xparams.
+    all: try match goal with | [ |- DirTreePred.SDIR.rep _ _ ] => eauto end.
+    all: try exact addr_eq_dec.  all: try exact unit.  all: eauto.
+    all: try exact nil.
+    all: try exact string_dec.
+    exact (Build_balloc_xparams 0 0, Build_balloc_xparams 0 0).
   Qed.
 
 
