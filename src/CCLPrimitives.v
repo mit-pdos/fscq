@@ -165,6 +165,7 @@ Section Primitives.
                        postcondition :=
                          fun '(sigma_i', sigma') r =>
                            sigma' = sigma /\
+                           sigma_i' = sigma_i /\
                            r = v0; |})
                  (Get A i).
   Proof.

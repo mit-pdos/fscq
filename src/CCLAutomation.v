@@ -33,18 +33,14 @@ Ltac monad_simpl :=
            rewrite_equiv monad_assoc
          end.
 
-Ltac prestep :=
+Ltac step :=
   intros;
   match goal with
-  | [ |- cprog_spec _ _ _ _ ] => unfold cprog_spec; intros
-  | [ |- cprog_ok _ _ _ _ ] => idtac
-  | [ |- _ ] => fail "not a cprog_ok goal"
-  end.
-
-Ltac step_using t :=
+  | [ |- cprog_spec _ _ _ _ ] => unfold cprog_spec; step
+  | [ |- cprog_ok _ _ _ _ ] =>
     eapply cprog_ok_weaken; [
       match goal with
-      | _ => monad_simpl; solve [ t ]
+      | _ => monad_simpl; solve [ auto with prog ]
       | _ => apply Ret_ok
       | _ => monad_simpl;
             lazymatch goal with
@@ -54,16 +50,10 @@ Ltac step_using t :=
               fail "no spec for" p
             end
       end | ];
-    simplify.
+    simplify
+  end.
 
-Ltac step := prestep; step_using ltac:(auto with prog).
-
-Ltac hoare :=
-  let finish :=
-      repeat match goal with
-             | [ |- exists _, _ ] => eexists
-             | _ => intuition eauto
-             end in
+Ltac hoare finisher :=
   let check :=
       try lazymatch goal with
           | [ |- cprog_ok _ _ _ _ ] => idtac
@@ -71,4 +61,4 @@ Ltac hoare :=
           end in
   let cleanup :=
       try ((intuition auto); let n := numgoals in guard n <= 1) in
-  repeat (step; try (finish; check); cleanup).
+  repeat (step; try (finisher; check); cleanup).
