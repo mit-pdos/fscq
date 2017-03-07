@@ -1063,6 +1063,7 @@ Module DIRTREE.
     eapply find_subtree_inum_valid; eauto.
     eapply dirlist_safe_subtree; eauto.
     apply dirtree_safe_file_trans; auto.
+    eauto.
   Qed.
 
 
