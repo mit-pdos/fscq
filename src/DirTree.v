@@ -1262,8 +1262,8 @@ Module DIRTREE.
     rewrite tree_prune_preserve_isdir; auto.
 
     (* fold back predicate for the pruned tree in hypothesis as well  *)
-    denote (list2nmem flist) as Hinterm.
-    apply helper_reorder_sep_star_1 in Hinterm.
+    denote (list2nmem flist0) as Hinterm.
+    apply helper_reorder_sep_star_2 in Hinterm.
     erewrite subtree_prune_absorb in Hinterm; eauto.
     2: apply dir_names_pred_delete'; auto.
     apply helper_reorder_sep_star_2 in Hinterm.
