@@ -253,7 +253,7 @@ Section OptimisticCache.
       cprog_spec G tid
                  (fun '(F, vd0, vd, v0) '(sigma_i, sigma) =>
                     {| precondition :=
-                         ((F:heappred) * cache P |-> val c *
+                         (F * cache P |-> val c *
                           vdisk_committed P |-> absMem vd0)%pred (Sigma.mem sigma) /\
                          cache_rep (Sigma.disk sigma) c vd0 /\
                          wb_rep vd0 wb vd /\

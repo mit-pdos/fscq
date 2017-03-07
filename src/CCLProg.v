@@ -66,8 +66,8 @@ Inductive Var :=
 Definition ident := nat.
 Opaque ident.
 
-Definition heap := @mem ident Nat.eq_dec Var.
-Definition heappred := @pred ident Nat.eq_dec Var.
+Notation heap := (@mem ident Nat.eq_dec Var).
+Notation heappred := (@pred ident Nat.eq_dec Var).
 
 (* The states a program steps through. *)
 Inductive Sigma :=

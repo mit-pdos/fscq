@@ -144,7 +144,7 @@ Section Primitives.
                          Sigma.l sigma = WriteLock;
                        postcondition :=
                          fun '(sigma_i', sigma') i =>
-                           ((F:heappred) * i |-> val v)%pred (Sigma.mem sigma') /\
+                           (F * i |-> val v)%pred (Sigma.mem sigma') /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.l sigma' = Sigma.l sigma /\
@@ -160,7 +160,7 @@ Section Primitives.
       cprog_spec G tid
                  (fun '(F, v0) '(sigma_i, sigma) =>
                     {| precondition :=
-                         ((F:heappred) * i |-> val (v0:A))%pred (Sigma.mem sigma) /\
+                         (F * i |-> val (v0:A))%pred (Sigma.mem sigma) /\
                          ReadPermission (Sigma.l sigma);
                        postcondition :=
                          fun '(sigma_i', sigma') r =>
@@ -179,7 +179,7 @@ Section Primitives.
       cprog_spec G tid
                  (fun '(F, v0) '(sigma_i, sigma) =>
                     {| precondition :=
-                         ((F:heappred) * i |-> val (v0:A))%pred (Sigma.mem sigma) /\
+                         (F * i |-> val (v0:A))%pred (Sigma.mem sigma) /\
                          Sigma.l sigma = WriteLock;
                        postcondition :=
                          fun '(sigma_i', sigma') _ =>
@@ -234,7 +234,7 @@ Section Primitives.
       cprog_spec G tid
                  (fun '(F, v0) '(sigma_i, sigma) =>
                     {| precondition :=
-                         ((F:heappred) * i |-> abs (v0:A))%pred (Sigma.mem sigma) /\
+                         (F * i |-> abs (v0:A))%pred (Sigma.mem sigma) /\
                          Sigma.l sigma = WriteLock;
                        postcondition :=
                          fun '(sigma_i', sigma') _ =>
@@ -255,7 +255,7 @@ Section Primitives.
       cprog_spec G tid
                  (fun '(F, m0) '(sigma_i, sigma) =>
                     {| precondition :=
-                         ((F:heappred) * i |-> absMem (m0:@mem A AEQ V))%pred (Sigma.mem sigma) /\
+                         (F * i |-> absMem (m0:@mem A AEQ V))%pred (Sigma.mem sigma) /\
                          Sigma.l sigma = WriteLock;
                        postcondition :=
                          fun '(sigma_i', sigma') _ =>
