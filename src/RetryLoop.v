@@ -4,10 +4,9 @@ Require Import Automation.
 
 Section RetryLoop.
 
-  Context {St:StateTypes}.
-  Variable G:Protocol St.
+  Variable G:Protocol.
 
-  Fixpoint retry_n {T P Q} (guard: forall (v:T), {P v}+{Q v}) (v0: T) (p: @cprog St T) n :=
+  Fixpoint retry_n {T P Q} (guard: forall (v:T), {P v}+{Q v}) (v0: T) (p: cprog T) n :=
     match n with
     | 0 => Ret v0
     | S n' => v <- p;
@@ -17,10 +16,10 @@ Section RetryLoop.
                  retry_n guard v0 p n'
     end.
 
-  CoFixpoint retry {T P Q} (guard: forall (v:T), {P v}+{Q v}) (p: @cprog St T) :=
+  CoFixpoint retry {T P Q} (guard: forall (v:T), {P v}+{Q v}) (p: cprog T) :=
     v <- p; if guard v then Ret v else retry guard p.
 
-  Definition prog_id T (p: @cprog St T) : @cprog St T.
+  Definition prog_id T (p: cprog T) : cprog T.
     remember p as p'.
     destruct p; match type of Heqp' with
                 | _ = ?p => exact p
@@ -110,14 +109,14 @@ Section RetryLoop.
   Qed.
 
   Definition invariant A T {P Q} (guard: forall (v:T), {P v}+{Q v})
-             (spec: Spec (St:=St) A T) :=
+             (spec: Spec A T) :=
     forall a st st' r,
       postcondition (spec a st) st' r ->
       (exists H, guard r = right H) ->
       precondition (spec a st').
 
   Definition postcondition_trans A T {P Q} (guard: forall (v:T), {P v}+{Q v})
-             (spec: Spec (St:=St) A T) :=
+             (spec: Spec A T) :=
     forall a st st' st'' r r',
       postcondition (spec a st) st' r ->
       (exists H, guard r = right H) ->

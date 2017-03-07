@@ -4,15 +4,14 @@ Import CCLTactics.
 
 Section HoareTriples.
 
-  Context {St:StateTypes}.
-  Variables G:Protocol St.
+  Variables G:Protocol.
 
   Record SpecParams T :=
     { precondition :  Prop;
-      postcondition : (Sigma St * Sigma St) ->
+      postcondition : (Sigma * Sigma) ->
                       T -> Prop }.
 
-  Definition Spec A T := A -> (Sigma St * Sigma St) -> SpecParams T.
+  Definition Spec A T := A -> (Sigma * Sigma) -> SpecParams T.
 
   Definition cprog_spec tid A T' (spec: Spec A T') (p: cprog T') :=
     forall T (rx: _ -> cprog T),
@@ -40,7 +39,7 @@ Section HoareTriples.
   correctness statement - [cprog_spec] instead unquotes triple into a double
   (with an arbitrary continuation) and then uses the double-based correctness
   statement *)
-  Definition cprog_triple A T tid (spec: Spec A T) (p: @cprog St T) :=
+  Definition cprog_triple A T tid (spec: Spec A T) (p: @cprog T) :=
     forall a st out,
       precondition (spec a st) ->
       exec G tid st p out ->
@@ -49,7 +48,7 @@ Section HoareTriples.
       | Error => False
       end.
 
-  Theorem triple_spec_equiv : forall A T tid (spec: Spec A T) (p: @cprog St T),
+  Theorem triple_spec_equiv : forall A T tid (spec: Spec A T) (p: @cprog T),
       cprog_spec tid spec p <->
       cprog_triple tid spec p.
   Proof.
@@ -103,3 +102,7 @@ Section HoareTriples.
   Qed.
 
 End HoareTriples.
+
+(* Local Variables: *)
+(* company-coq-local-symbols: (("Sigma" . ?Σ) ("sigma" . ?σ) ("sigma'" . (?σ (Br . Bl) ?'))) *)
+(* End: *)

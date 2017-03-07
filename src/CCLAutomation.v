@@ -3,7 +3,7 @@ Require Export Automation.
 
 Ltac destruct_st :=
   match goal with
-  | [ st: Sigma _ * Sigma _, H: context[let '(a, b) := ?st in _] |- _ ] =>
+  | [ st: Sigma * Sigma, H: context[let '(a, b) := ?st in _] |- _ ] =>
     let sigma_i := fresh "sigma_i" in
     let sigma := fresh "sigma" in
     (destruct st as [a b] || destruct st as [sigma_i sigma]); cbn [precondition postcondition] in *

@@ -2,7 +2,7 @@ Require Import CCLProg.
 Require Import Hashmap.
 Require Import Automation.
 
-Theorem exec_hashmap_le : forall St T (p: @cprog St T)
+Theorem exec_hashmap_le : forall T (p: cprog T)
                             G tid sigma_i sigma out,
     exec G tid (sigma_i, sigma) p out ->
     match out with
@@ -23,7 +23,7 @@ Proof.
              | [ x := _ |- _ ] => subst x
              | [ |- hashmap_le (Sigma.hm _) (Sigma.hm _) ] =>
                repeat match goal with
-                      | [ sigma: Sigma St |- _ ] => destruct sigma
+                      | [ sigma: Sigma |- _ ] => destruct sigma
                       end; simpl in *; reflexivity
              end.
   - destruct sigma0.
@@ -38,7 +38,7 @@ Proof.
              | _ => congruence
              end.
   - repeat match goal with
-           | [ sigma: Sigma St |- _ ] => destruct sigma; simpl in *
+           | [ sigma: Sigma |- _ ] => destruct sigma; simpl in *
            end;
       try reflexivity;
       eauto.

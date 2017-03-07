@@ -4,8 +4,7 @@ Import CCLTactics.
 
 Section MonadLaws.
 
-  Variable St:StateTypes.
-  Variable G:Protocol St.
+  Variable G:Protocol.
 
   Definition exec_equiv T (p p': cprog T) :=
     forall tid st out, exec G tid st p out <-> exec G tid st p' out.
@@ -56,7 +55,7 @@ End MonadLaws.
 
 Require Import RelationClasses.
 
-Instance exec_equiv_Equiv St G T : Equivalence (@exec_equiv St G T).
+Instance exec_equiv_Equiv G T : Equivalence (@exec_equiv G T).
 Proof.
   unfold exec_equiv.
   constructor; hnf; intros;
@@ -68,7 +67,7 @@ Proof.
     intuition eauto.
 Defined.
 
-Lemma exec_equiv_bind : forall St (G: Protocol St)
+Lemma exec_equiv_bind : forall (G: Protocol)
                           T T' (p1 p1': cprog T') (p2 p2': T' -> cprog T),
     exec_equiv G p1 p1' ->
     (forall v, exec_equiv G (p2 v) (p2' v)) ->

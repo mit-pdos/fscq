@@ -11,12 +11,6 @@ Global Set Implicit Arguments.
 Inductive ReadState := Pending | NoReader.
 Notation DISK := (@mem addr addr_eq_dec (valu * ReadState)).
 
-(* Define the structure of the memory and ghost state. *)
-Record StateTypes:Type :=
-  defState {
-      Mem : Type;
-      Abstraction : Type; }.
-
 Inductive LockState :=
 | Free
 | ReadLock
@@ -57,48 +51,59 @@ Proof.
   decide equality.
 Defined.
 
-(* The states a program steps through. *)
-Inductive Sigma St :=
-| state (d:DISK) (m:Mem St) (s:Abstraction St) (hm:hashmap) (l:LockState).
+Inductive Var :=
+(* materialized memory variables *)
+| val : forall T, T -> Var
+(* abstraction (ghost) variables *)
+| abs : forall T, T -> Var
+(* ghost variables that are memories
 
-Arguments state {St} d m s hm l.
+ We separate these into their own constructor to avoid instantiating the T in
+ the bas constructor with a memory, which causes universe consistency issues
+ with also using @mem _ _ Var. *)
+| absMem : forall A AEQ V, @mem A AEQ V -> Var.
+
+Definition ident := nat.
+Opaque ident.
+
+Definition heap := @mem ident Nat.eq_dec Var.
+Definition heappred := @pred ident Nat.eq_dec Var.
+
+(* The states a program steps through. *)
+Inductive Sigma :=
+| state (d:DISK) (m:heap) (hm:hashmap) (l:LockState).
 
 Module Sigma.
-  Definition disk St (sigma:Sigma St) :=
-    let (d, _, _, _, _) := sigma in d.
-  Definition mem St (sigma:Sigma St) :=
-    let (_, m, _, _, _) := sigma in m.
-  Definition s St (sigma:Sigma St) :=
-    let (_, _, s, _, _) := sigma in s.
-  Definition hm St (sigma:Sigma St) :=
-    let (_, _, _, hm, _) := sigma in hm.
-  Definition l St (sigma:Sigma St) :=
-    let (_, _, _, _, l) := sigma in l.
+  Definition disk (sigma:Sigma) :=
+    let (d, _, _, _) := sigma in d.
+  Definition mem (sigma:Sigma) : heap :=
+    let (_, m, _, _) := sigma in m.
+  Definition hm (sigma:Sigma) :=
+    let (_, _, hm, _) := sigma in hm.
+  Definition l (sigma:Sigma) :=
+    let (_, _, _, l) := sigma in l.
 
-  Definition set_mem St (sigma:Sigma St) (m:Mem St) :=
-    let (d, _, s, hm, l) := sigma in state d m s hm l.
-  Definition upd_disk St (sigma:Sigma St) (d':DISK -> DISK) :=
-    let (d, m, s, hm, l) := sigma in state (d' d) m s hm l.
-  Definition upd_s St (sigma:Sigma St) (s':Abstraction St -> Abstraction St) :=
-    let (d, m, s, hm, l) := sigma in state d m (s' s) hm l.
-  Definition upd_hm St (sigma:Sigma St) sz (buf: word sz) :=
-    let (d, m, s, hm, l) := sigma in state d m s (upd_hashmap' hm (hash_fwd buf) buf) l.
-  Definition set_l St (sigma:Sigma St) l :=
-    let (d, m, s, hm, _) := sigma in state d m s hm l.
+  Definition set_mem (sigma:Sigma) (m:heap) :=
+    let (d, _, hm, l) := sigma in state d m hm l.
+  Definition upd_disk (sigma:Sigma) (d':DISK -> DISK) :=
+    let (d, m, hm, l) := sigma in state (d' d) m hm l.
+  Definition upd_hm (sigma:Sigma) sz (buf: word sz) :=
+    let (d, m, hm, l) := sigma in state d m (upd_hashmap' hm (hash_fwd buf) buf) l.
+  Definition set_l (sigma:Sigma) l :=
+    let (d, m, hm, _) := sigma in state d m hm l.
 End Sigma.
 
 Section CCL.
-
-  (** Type parameters for state. *)
-  Context {St:StateTypes}.
 
   Definition TID := nat.
   Opaque TID.
 
   CoInductive cprog : Type -> Type :=
-  | Get : cprog (Mem St)
-  | Assgn (m:Mem St) : cprog unit
-  | GhostUpdate (update: TID -> Abstraction St -> Abstraction St) : cprog unit
+  | Alloc A (v:A) : cprog ident
+  | Get A (i:ident) : cprog A
+  | Assgn A (i:ident) (v:A) : cprog unit
+  | GhostUpdate A (i:ident) (update: TID -> A -> A) : cprog unit
+  | GhostUpdateMem A AEQ V (i:ident) (update: TID -> @mem A AEQ V -> @mem A AEQ V) : cprog unit
   | BeginRead (a:addr) : cprog unit
   | WaitForRead (a:addr) : cprog valu
   | Write (a:addr) (v: valu) : cprog unit
@@ -108,7 +113,7 @@ Section CCL.
   | Ret T (v:T) : cprog T
   | Bind T T' (p: cprog T') (p': T' -> cprog T) : cprog T.
 
-  Definition Protocol := TID -> Sigma St -> Sigma St -> Prop.
+  Definition Protocol := TID -> Sigma -> Sigma -> Prop.
   Variable Guarantee : Protocol.
 
   Definition Rely : Protocol :=
@@ -127,21 +132,40 @@ Section CCL.
   Qed.
 
   Inductive StepOutcome T :=
-  | StepTo (sigma':Sigma St) (v:T)
+  | StepTo (sigma':Sigma) (v:T)
   | Fails
   | NonDet.
 
   Arguments Fails {T}.
   Arguments NonDet {T}.
 
-  Definition step_dec tid (sigma: Sigma St) T (p: cprog T) : StepOutcome T :=
+  Definition step_dec (sigma: Sigma) T (p: cprog T) : StepOutcome T :=
     match p with
-    | Get => if CanRead (Sigma.l sigma) then StepTo sigma (Sigma.mem sigma)
-            else Fails
-    | Assgn m' => if CanWrite (Sigma.l sigma) then StepTo (Sigma.set_mem sigma m') tt
+    | Alloc v => NonDet
+    | Get A i => if CanRead (Sigma.l sigma) then
+                  match Sigma.mem sigma i with
+                  | Some (val _) => NonDet (* still need to check type *)
+                  | _ => Fails
+                  end
+              else Fails
+    | Assgn i v => if CanWrite (Sigma.l sigma) then
+                    match Sigma.mem sigma i with
+                    | Some (val _) => NonDet (* still need to check type *)
+                    | _ => Fails
+                    end
                   else Fails
-    | GhostUpdate up => if CanWrite (Sigma.l sigma) then StepTo (Sigma.upd_s sigma (up tid)) tt
-                       else Fails
+    | GhostUpdate i up => if CanWrite (Sigma.l sigma) then
+                           match Sigma.mem sigma i with
+                           | Some (abs _) => NonDet (* still need to check type *)
+                           | _ => Fails
+                           end
+                         else Fails
+    | GhostUpdateMem i up => if CanWrite (Sigma.l sigma) then
+                           match Sigma.mem sigma i with
+                           | Some (absMem _) => NonDet (* still need to check type *)
+                           | _ => Fails
+                           end
+                         else Fails
     | BeginRead a => if CanWrite (Sigma.l sigma) then
                       match Sigma.disk sigma a with
                       | Some (v, NoReader) =>
@@ -177,17 +201,17 @@ Section CCL.
     end.
 
   Inductive outcome T :=
-  | Finished (sigma_i sigma:Sigma St) (r:T)
+  | Finished (sigma_i sigma:Sigma) (r:T)
   | Error.
 
   Arguments Error {T}.
 
-  Inductive exec (tid:TID) : forall T, (Sigma St * Sigma St) -> cprog T -> outcome T -> Prop :=
+  Inductive exec (tid:TID) : forall T, (Sigma * Sigma) -> cprog T -> outcome T -> Prop :=
   | ExecStepDec : forall T (p: cprog T) sigma_i sigma sigma' v,
-      step_dec tid sigma p = StepTo sigma' v ->
+      step_dec sigma p = StepTo sigma' v ->
       exec tid (sigma_i, sigma) p (Finished sigma_i sigma' v)
   | ExecStepDecFail : forall T (p: cprog T) sigma_i sigma,
-      step_dec tid sigma p = Fails ->
+      step_dec sigma p = Fails ->
       exec tid (sigma_i, sigma) p Error
   | ExecHash : forall sigma_i sigma sz buf,
       let h := hash_fwd buf in
@@ -217,6 +241,40 @@ Section CCL.
       Sigma.l sigma = ReadLock ->
       exec tid (sigma_i, sigma) (SetLock ReadLock WriteLock)
            (Finished sigma_i sigma ReadLock)
+  | ExecAlloc : forall sigma_i sigma A (v:A) i,
+      Sigma.mem sigma i = None ->
+      let sigma' := Sigma.set_mem sigma (upd (Sigma.mem sigma) i (val v)) in
+      exec tid (sigma_i, sigma) (Alloc v)
+           (Finished sigma_i sigma' i)
+  | ExecGet : forall sigma_i sigma A i (v:A),
+      Sigma.mem sigma i = Some (val v) ->
+      exec tid (sigma_i, sigma) (Get A i)
+           (Finished sigma_i sigma v)
+  | ExecGetFail : forall sigma_i sigma A A' i (v:A'),
+      A <> A' ->
+      Sigma.mem sigma i = Some (val v) ->
+      exec tid (sigma_i, sigma) (Get A i) Error
+  | ExecAssgn : forall sigma_i sigma A i (v:A) (v0:A),
+      Sigma.mem sigma i = Some (val v0) ->
+      let sigma' := Sigma.set_mem sigma (upd (Sigma.mem sigma) i (val v)) in
+      exec tid (sigma_i, sigma) (Assgn i v)
+           (Finished sigma_i sigma' tt)
+  | ExecAssgnFail : forall sigma_i sigma A i (v:A) A' (v0:A'),
+      A <> A' ->
+      Sigma.mem sigma i = Some (val v0) ->
+      exec tid (sigma_i, sigma) (Assgn i v) Error
+  (* ghost updates don't fail (no reason to, at least without some consistency
+  proof) *)
+  | ExecGhostUpdate : forall sigma_i sigma A i up (v0:A),
+      Sigma.mem sigma i = Some (abs v0) ->
+      let sigma' := Sigma.set_mem sigma (upd (Sigma.mem sigma) i (abs (up tid v0))) in
+      exec tid (sigma_i, sigma) (GhostUpdate i up)
+           (Finished sigma_i sigma' tt)
+  | ExecGhostUpdateMem : forall sigma_i sigma A AEQ V i up (m0:@mem A AEQ V),
+      Sigma.mem sigma i = Some (absMem m0) ->
+      let sigma' := Sigma.set_mem sigma (upd (Sigma.mem sigma) i (absMem (up tid m0))) in
+      exec tid (sigma_i, sigma) (GhostUpdateMem i up)
+           (Finished sigma_i sigma' tt)
   | ExecRelease : forall sigma_i sigma,
       Sigma.l sigma = WriteLock ->
       Guarantee tid sigma_i sigma ->
@@ -236,7 +294,7 @@ Section CCL.
   Qed.
 
   Definition SpecDouble T :=
-    (Sigma St * Sigma St) -> (Sigma St * Sigma St -> T -> Prop) -> Prop.
+    (Sigma* Sigma) -> (Sigma * Sigma -> T -> Prop) -> Prop.
 
   Definition cprog_ok tid T (pre: SpecDouble T) (p: cprog T) :=
     forall st donecond out, pre st donecond ->
@@ -264,16 +322,15 @@ Hint Extern 0 {{ Method _ _; _ }} => apply Method_ok.
 The number of underscores given in Method needs to be correct. *)
 Notation "{{ p ; '_' }}" := (cprog_ok _ _ _ (Bind p _)) (only parsing).
 
-Arguments Error {St T}.
-Arguments Ret {St T} v.
-Arguments Protocol St : clear implicits.
+Arguments Error {T}.
+Arguments Ret {T} v.
 
 Module CCLTactics.
   Import Automation.
 
   Ltac inv_step :=
     match goal with
-    | [ H: step_dec _ _ _ = _ |- _ ] =>
+    | [ H: step_dec _ _ = _ |- _ ] =>
       simpl in H; inversion H; subst; clear H
     end.
 
@@ -290,7 +347,7 @@ Module CCLTactics.
     | [ H: exec _ _ _ (Ret _) _ |- _ ] =>
       inversion H; subst; repeat inj_pair2;
       try match goal with
-          | [ H: step_dec _ _ (Ret _) = _ |- _ ] =>
+          | [ H: step_dec _ (Ret _) = _ |- _ ] =>
             simpl in H; inversion H; subst; clear H
           end;
       clear H
@@ -302,11 +359,12 @@ Module CCLTactics.
   Ltac inv_exec' H :=
     inv_cleanup H;
     try match goal with
-        | [ H: step_dec _ _ _ = _ |- _ ] =>
+        | [ H: step_dec _ _ = _ |- _ ] =>
           simpl in H;
           repeat match goal with
                  | [ H: context[match ?d with _ => _ end] |- _ ] =>
-                   destruct d; try congruence;
+                   let H := fresh in
+                   destruct d eqn:H; subst; try congruence;
                    let n := numgoals in guard n <= 1
                  end
         end;
