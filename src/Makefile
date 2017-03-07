@@ -14,7 +14,7 @@ MODULES    := Lock Nomega Word WordAuto WordZ Bytes Rounding \
 	      SuperBlock AsyncFS AsyncFSRecover VBConv ADestructPair DestructVarname ExtrHaskellPrelude \
 	      DirSep TreeSeq \
 	      MoreMapFacts StringMap VerdiTactics Gensym GoSemantics GoFacts \
-	      GoTactics1 GoHoare GoTactics2 GoSepAuto GoCompilationLemmas GoExtraction GoExamples
+	      GoTactics1 GoHoare GoTactics2 GoSepAuto GoCompilationLemmas GoOfWord GoExtraction GoExamples
 VS         := $(MODULES:%=%.v)
 VS_BUILD   := $(patsubst %.v,coqbuild/%.v,$(VS))
 VS_VIO	   := $(patsubst %.v,coqbuild/%.vio,$(VS))

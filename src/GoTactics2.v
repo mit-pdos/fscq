@@ -248,6 +248,9 @@ Hint Extern 0 (okToCancel (exists _, ?var |-> _) (?var |->?)) =>
 Hint Extern 0 (okToCancel (?var |-> _) (exists _, ?var |-> _)) =>
   apply pimpl_exists_r; eexists; reflexivity : okToCancel.
 
+Hint Extern 0 (okToCancel (exists val', ?var |-> Val _ val')%pred (exists val', ?var |-> Val _ val')%pred) =>
+  reflexivity : okToCancel.
+
 Ltac cancel_go :=
   solve [GoSepAuto.cancel_go_refl] ||
   (idtac "cancel_refl failed"; solve [GoSepAuto.cancel_go_fast] ||

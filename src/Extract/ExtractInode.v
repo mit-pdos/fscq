@@ -2,7 +2,7 @@ Require Import Eqdep.
 Require Import List String.
 Require Import StringMap.
 Require Import Word Prog Pred AsyncDisk.
-Require Import GoSemantics GoFacts GoHoare GoCompilationLemmas GoExtraction GoSepAuto GoTactics2.
+Require Import GoSemantics GoFacts GoHoare GoCompilationLemmas GoExtraction GoSepAuto GoTactics2 GoOfWord.
 Require Import Wrappers EnvBuild.
 Import ListNotations EqNotations.
 
@@ -146,6 +146,7 @@ Ltac compile_middle :=
   end.
 
 Require Import PeanoNat.
+
 
 Lemma f_into_match : forall A B C D (e : {A} + {B}) (L : A -> C) (R : B -> C) (f : C -> D),
     f (match e with | left l0 => L l0 | right r0 => R r0 end) =
@@ -363,8 +364,6 @@ Ltac cancel_go ::=
   cancel_go_fast.
 
   change (fst ^(fst a, fst (snd a))) with (fst a).
-  Hint Extern 0 (okToCancel (exists val', ?var |-> Val _ val')%pred (exists val', ?var |-> Val _ val')%pred) =>
-  reflexivity : okToCancel.
   compile_join.
 
   (* TODO: reflexive cancellation doesn't work here because computing [cancel_some] takes forever *)
