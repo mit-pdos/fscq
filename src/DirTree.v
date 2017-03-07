@@ -1427,7 +1427,7 @@ Module DIRTREE.
     rewrite tree_prune_preserve_isdir; auto.
     eapply dirlist_safe_subtree; eauto.
 
-    denote! (((Fm * BFILE.rep _ _ _ _ _) * IAlloc.rep _ _ _)%pred _) as Hm'.
+    denote! (((Fm * BFILE.rep _ _ _ _ _ _ _) * IAlloc.rep _ _ _ _)%pred _) as Hm'.
     eapply pimpl_apply in Hm'.
     eapply rep_tree_names_distinct in Hm' as Hnames.
     eapply rep_tree_inodes_distinct in Hm' as Hinodes.
