@@ -1221,6 +1221,8 @@ Module DIRTREE.
     unfold tree_dir_names_pred; cancel.
     all: eauto.
 
+    denote! (_ (list2nmem m)) as Hm0; rewrite <- locked_eq in Hm0.
+
     (* lookup srcname, isolate src directory before cancel *)
     destruct_branch; [ | step ].
     destruct_branch; destruct_branch; [ | step ].
@@ -1233,7 +1235,9 @@ Module DIRTREE.
 
     denote find_subtree as Htree; assert (Hx := Htree).
     apply subtree_extract with (xp := fsxp) in Hx.
-    assert (Hsub := Horig); rewrite Hx in Hsub; clear Hx.
+    denote tree_dir_names_pred as Hy; assert (Hsub := Hy).
+    eapply pimpl_trans in Hsub; [ | | eapply pimpl_sep_star; [ apply pimpl_refl | apply Hx ] ];
+      [ | cancel ]. clear Hx.
     destruct x; simpl in *; subst; try congruence.
     unfold tree_dir_names_pred in Hsub.
     destruct_lift Hsub.
