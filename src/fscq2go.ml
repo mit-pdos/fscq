@@ -14,7 +14,7 @@ let var_name var = "val" ^ (to_string var)
 (* This is almost certainly not complete *)
 let sanitize x =
   let x = Str.global_replace (Str.regexp_string ".") "_" x in
-  let x = capitalize x in
+  let x = capitalize_ascii x in
   x
 
 let rec call_args_tuple_to_list (nargs : big_int) (args_tuple : Obj.t) =
@@ -61,7 +61,7 @@ module TranscriberState = struct
       match coq_go_type with
       | Go.Num -> "Num"
       | Go.Bool -> "Bool"
-      | Go.Buffer n -> "Buffer"
+      | Go.Buffer -> "Buffer"
       | Go.Pair (a, b) ->
         let name = "Pair_" ^ (get_go_type gs a) ^ "_" ^ (get_go_type gs b) in
         gs.structs <- (name, [("Fst", a); ("Snd", b)]) :: gs.structs;
@@ -135,12 +135,13 @@ let is_ptr_type (gType : Go.coq_type) =
   match gType with
   | Go.Num -> false
   | Go.Bool -> false
-  | Go.Buffer _ -> true
-  | Go.ImmutableBuffer _ -> true
+  | Go.Buffer -> true
+  | Go.ImmutableBuffer -> true
   | Go.Slice _ -> true
   | Go.Pair _ -> false
   | Go.AddrMap _ -> true
   | Go.Struct _ -> false
+  | Go.String -> false
 
 let rec go_literal (gs : TranscriberState.global_state) t x =
   let join = String.concat ", " in
@@ -153,9 +154,13 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
     else
        failwith ("integer constant too big: " ^ to_string v)
   | Go.Bool -> if Obj.magic x then "true" else "false"
-  | Go.Buffer n ->
+  | Go.Buffer ->
     (match Obj.magic x with
-     | Go.Here v -> failwith "TODO: DiskBlock -> String"
+     | Go.Here v -> failwith "TODO: Buffer -> String"
+     | Go.Moved -> "(moved)")
+  | Go.ImmutableBuffer ->
+    (match Obj.magic x with
+     | Go.Here v -> failwith "TODO: ImmutableBuffer -> String"
      | Go.Moved -> "(moved)")
   | Go.Slice t1 ->
     begin match Obj.magic x with
@@ -192,7 +197,7 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
 
 let zero_val gs (t : Go.coq_type) =
   match t with
-  | Go.Buffer n -> "New_Buffer(" ^ (go_literal gs Num n) ^ ")"
+  | Go.Buffer -> "New_Buffer(0)"
   | _ ->
     let go_type = (TranscriberState.get_go_type gs t) in
     "New_" ^ go_type ^ "()"
@@ -342,7 +347,7 @@ let go_modify_op (ts : TranscriberState.state)
     fail_unmatched "go_modify_op DeserializeNum"
   | Go.FreezeBuffer ->
     fail_unmatched "go_modify_op FreezeBuffer"
-  | Go.SliceBuffer (_, _) ->
+  | Go.SliceBuffer ->
     fail_unmatched "go_modify_op SliceBuffer"
   ;;
 
