@@ -365,7 +365,7 @@ Section ConcurCompile.
   Ltac compile :=
     match goal with
 
-      (* monad laws *)
+    (* monad laws *)
     | [ |- Compiled (Bind (Ret _) _) ] =>
       eapply compile_equiv; [ solve [ apply monad_left_id ] | ]
     | [ |- Compiled (Bind (Bind _ _) _) ] =>
@@ -378,12 +378,21 @@ Section ConcurCompile.
       rewrite translate_ForEach
     | [ |- Compiled (translate _ (ForN_ _ _ _ _ _ _) _ _) ] =>
       rewrite translate_ForN
-    | [ |- Compiled (translate _ (match _ with | _ => _ end) _ _) ] =>
+    | [ |- Compiled (translate _ (match _ with
+                                 | OK _ => _
+                                 | Err _ => _
+                                 end) _ _) ] =>
       rewrite translate_match_res
-    | [ |- Compiled (translate _ (match _ with | _ => _ end) _ _) ] =>
+    | [ |- Compiled (translate _ (match _ with
+                                 | Some _ => _
+                                 | None => _
+                                 end) _ _) ] =>
       rewrite translate_match_opt
-    | [ |- Compiled (translate _ (match _ with | _ => _ end) _ _) ] =>
-      rewrite translate_match_sumbool
+    | [ |- Compiled (translate _ (match ?r with
+                                 | left _ => ?p1
+                                 | right _ => ?p2
+                                 end) _ _) ] =>
+      rewrite (translate_match_sumbool p1 p2 r)
     | [ |- Compiled (translate _ (let (_, _) := _ in _) _ _) ] =>
       rewrite translate_destruct_prod
 
