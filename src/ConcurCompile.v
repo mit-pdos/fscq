@@ -56,8 +56,8 @@ Transparent LOG.commit_ro.
 
 Section ConcurCompile.
 
-  Variable OtherSt:StateTypes.
-  Variable G:Protocol (St OtherSt).
+  Variable CP:CacheParams.
+  Variable G:Protocol.
 
   Inductive Compiled T (p: cprog T) :=
   | ExtractionOf (p': cprog T) (pf: exec_equiv G p p').
@@ -70,7 +70,7 @@ Section ConcurCompile.
   Fixpoint cForEach_ (ITEM : Type) (L : Type)
            (f : ITEM -> L -> WriteBuffer -> cprog (Result L * WriteBuffer))
            (lst : list ITEM)
-           (l : L) : WriteBuffer -> cprog (St:=St OtherSt) (Result L * WriteBuffer) :=
+           (l : L) : WriteBuffer -> cprog (Result L * WriteBuffer) :=
     fun wb =>
       match lst with
       | nil => Ret (Success l, wb)
@@ -85,8 +85,8 @@ Section ConcurCompile.
 
   Lemma translate_ForEach : forall ITEM L G p lst
                               nocrash crashed l ls,
-      translate OtherSt (@ForEach_ ITEM L G p lst nocrash crashed l) ls =
-      cForEach_ (fun i l => translate OtherSt (p i l) ls) lst l.
+      translate CP (@ForEach_ ITEM L G p lst nocrash crashed l) ls =
+      cForEach_ (fun i l => translate CP (p i l) ls) lst l.
   Proof.
     intros.
     extensionality wb.
@@ -121,7 +121,7 @@ Section ConcurCompile.
   Fixpoint cForN_ (L : Type)
            (f : nat -> L -> WriteBuffer -> cprog (Result L * WriteBuffer))
            (i n: nat) (l: L)
-    : WriteBuffer -> cprog (St:=St OtherSt) (Result L * WriteBuffer) :=
+    : WriteBuffer -> cprog (Result L * WriteBuffer) :=
     fun wb =>
       match n with
       | O => Ret (Success l, wb)
@@ -136,8 +136,8 @@ Section ConcurCompile.
 
   Lemma translate_ForN : forall L G p i n
                            nocrash crashed l ls,
-      translate OtherSt (@ForN_ L G p i n nocrash crashed l) ls =
-      cForN_ (fun i l => translate OtherSt (p i l) ls) i n l.
+      translate CP (@ForN_ L G p i n nocrash crashed l) ls =
+      cForN_ (fun i l => translate CP (p i l) ls) i n l.
   Proof.
     intros.
     extensionality wb.
@@ -217,13 +217,13 @@ Section ConcurCompile.
   Defined.
 
   Lemma translate_match_res : forall T T' (p1: T -> prog T') (p2: Errno -> prog T') r,
-      translate OtherSt (match r with
+      translate CP (match r with
                          | OK r => p1 r
                          | Err e => p2 e
                          end) =
       match r with
-      | OK r => translate OtherSt (p1 r)
-      | Err e => translate OtherSt (p2 e)
+      | OK r => translate CP (p1 r)
+      | Err e => translate CP (p2 e)
       end.
   Proof.
     intros.
@@ -231,13 +231,13 @@ Section ConcurCompile.
   Qed.
 
   Lemma translate_match_opt : forall T T' (p1: T -> prog T') (p2: prog T') r,
-      translate OtherSt (match r with
+      translate CP (match r with
                          | Some r => p1 r
                          | None => p2
                          end) =
       match r with
-      | Some r => translate OtherSt (p1 r)
-      | None => translate OtherSt p2
+      | Some r => translate CP (p1 r)
+      | None => translate CP p2
       end.
   Proof.
     intros.
@@ -245,13 +245,13 @@ Section ConcurCompile.
   Qed.
 
   Lemma translate_match_sumbool : forall P Q T' (p1: prog T') (p2: prog T') (r:{P}+{Q}),
-      translate OtherSt (match r with
+      translate CP (match r with
                          | left _ => p1
                          | right _ => p2
                          end) =
       match r with
-      | left _ => translate OtherSt p1
-      | right _ => translate OtherSt p2
+      | left _ => translate CP p1
+      | right _ => translate CP p2
       end.
   Proof.
     intros.
@@ -259,9 +259,9 @@ Section ConcurCompile.
   Qed.
 
   Lemma translate_destruct_prod : forall A B T' (p: A -> B -> prog T') (r:A*B),
-      translate OtherSt (let (a, b) := r in p a b) =
+      translate CP (let (a, b) := r in p a b) =
       let (a, b) := r in
-      translate OtherSt (p a b).
+      translate CP (p a b).
   Proof.
     intros.
     destruct r; eauto.
@@ -452,7 +452,7 @@ Section ConcurCompile.
   Qed.
 
   Definition CompiledLookup fsxp dnum names ams ls wb :
-    Compiled (OptFS.lookup OtherSt fsxp dnum names ams ls wb).
+    Compiled (OptFS.lookup CP fsxp dnum names ams ls wb).
   Proof.
     unfold OptFS.lookup.
 
@@ -461,7 +461,7 @@ Section ConcurCompile.
   Defined.
 
   Definition CompiledGetAttr fsxp inum ams ls wb :
-    Compiled (OptFS.file_get_attr OtherSt fsxp inum ams ls wb).
+    Compiled (OptFS.file_get_attr CP fsxp inum ams ls wb).
   Proof.
     unfold OptFS.file_get_attr; simpl.
     repeat compile;
@@ -470,12 +470,10 @@ Section ConcurCompile.
 
 End ConcurCompile.
 
-Definition G {OtherSt} : Protocol (St OtherSt) := fun _ _ _ => True.
+Definition G : Protocol := fun _ _ _ => True.
 
-Definition lookup OtherSt fsxp dnum names ams ls wb :=
-  compiled_prog (OtherSt:=OtherSt)
-                (CompiledLookup G fsxp dnum names ams ls wb).
+Definition lookup CP fsxp dnum names ams ls wb :=
+  compiled_prog (CompiledLookup CP G fsxp dnum names ams ls wb).
 
-Definition file_get_attr OtherSt fsxp inum ams ls wb :=
-  compiled_prog (OtherSt:=OtherSt)
-                (CompiledGetAttr G fsxp inum ams ls wb).
+Definition file_get_attr CP fsxp inum ams ls wb :=
+  compiled_prog (CompiledGetAttr CP G fsxp inum ams ls wb).
