@@ -92,14 +92,41 @@ Module CacheOneDir.
 
   Local Hint Unfold rep rep_macro SDIR.rep_macro : hoare_unfold.
 
-  Hint Resolve Dcache.find_2.
+  Lemma rep_mem_eq : forall f m1 m2,
+    rep f m1 -> rep f m2 -> m1 = m2.
+  Proof.
+    unfold rep; intuition.
+    eapply SDIR.rep_mem_eq; eauto.
+  Qed.
 
-  (* re-export for compatibility with SDIR *)
-  Definition bfile0_empty := DirName.SDIR.bfile0_empty.
+  Theorem bfile0_empty : rep BFILE.bfile0 empty_mem.
+  Proof.
+    unfold rep; intuition.
+    apply SDIR.bfile0_empty.
+    eexists. intuition.
+    apply DcacheDefs.MapProperties.F.empty_mapsto_iff in H.
+    exfalso; eauto.
+  Qed.
+
+  Theorem crash_rep : forall f f' m,
+    BFILE.file_crash f f' ->
+    rep f m ->
+    rep f' m.
+  Proof.
+    unfold rep; intuition.
+    eapply SDIR.crash_rep; eauto.
+    inversion H; intuition subst; simpl.
+    eexists; intuition.
+    apply DcacheDefs.MapProperties.F.empty_mapsto_iff in H0.
+    exfalso; eauto.
+  Qed.
+
+  Hint Resolve Dcache.find_2.
 
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
   Notation MSCache := BFILE.MSCache.
+  Notation MSAllocC := BFILE.MSAllocC.
 
   Theorem get_dcache_ok : forall dnum ms,
     {< F Fm Fi m0 m dmap ilist frees lxp ixp bxp f,
@@ -110,6 +137,7 @@ Module CacheOneDir.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
            [[ MSAlloc ms' = MSAlloc ms ]] *
+           [[ MSAllocC ms' = MSAllocC ms ]] *
            [[ BFILE.BFCache f' = Some cache ]]
     CRASH:hm'
            LOG.intact lxp F m0 hm'
@@ -120,6 +148,7 @@ Module CacheOneDir.
     step.
     step.
     step.
+    destruct (r_). subst. simpl in *. cancel.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (get_dcache _ _) _) => apply get_dcache_ok : prog.
@@ -139,6 +168,7 @@ Module CacheOneDir.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
            [[ MSAlloc ms' = MSAlloc ms ]] *
+           [[ MSAllocC ms' = MSAllocC ms ]] *
          ( [[ r = None /\ notindomain name dmap ]] \/
            exists inum isdir Fd,
            [[ r = Some (inum, isdir) /\
@@ -160,6 +190,8 @@ Module CacheOneDir.
 
     step.
     step.
+    destruct (r_); subst; simpl in *. cancel.
+
     eexists; intuition eauto.
 
     (* Prove that the new cache is valid *)
@@ -175,6 +207,8 @@ Module CacheOneDir.
     }
 
     step.
+    destruct (r_); subst; simpl in *. cancel.
+
     eexists; intuition eauto.
     destruct (string_dec name0 name); subst.
     {
@@ -198,7 +232,7 @@ Module CacheOneDir.
 
     step.
     step.
-
+    destruct (r_); subst; simpl in *. cancel.
     eexists; intuition eauto.
     destruct (string_dec name0 name); subst.
     {
@@ -212,6 +246,7 @@ Module CacheOneDir.
     }
 
     step.
+    destruct (r_); subst; simpl in *. cancel.
 
     eexists; intuition eauto.
     destruct (string_dec name0 name); subst.
@@ -244,6 +279,7 @@ Module CacheOneDir.
              [[ listpred SDIR.readmatch r dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSCache ms' = MSCache ms ]] *
+             [[ MSAllocC ms' = MSAllocC ms ]] *
              [[ True ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
@@ -264,6 +300,7 @@ Module CacheOneDir.
              [[ notindomain name dmap' ]] *
              [[ r = OK tt -> indomain name dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSAllocC ms' = MSAllocC ms ]] *
              [[ True ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} unlink lxp ixp dnum name ms.
@@ -271,8 +308,12 @@ Module CacheOneDir.
     unfold unlink.
     hoare.
 
+    destruct (r_); simpl in *. subst. cancel.
+
     unfold mem_except.
     eexists; intuition eauto.
+
+
     destruct (string_dec name0 name); subst.
     {
       denote! (Dcache.MapsTo _ _ _) as Hm.
@@ -283,6 +324,8 @@ Module CacheOneDir.
       denote! (Dcache.MapsTo _ _ _) as Hm.
       eapply Dcache.add_3 in Hm; subst_cache; eauto.
     }
+
+    destruct (r_); simpl in *. subst. cancel.
 
     unfold mem_except.
     eexists; intuition eauto.
@@ -340,6 +383,8 @@ Module CacheOneDir.
     step.
     step.
 
+    destruct (r_); simpl in *. subst. cancel.
+
     or_r; cancel.
     eauto.
 
@@ -360,6 +405,8 @@ Module CacheOneDir.
     step.
     step.
     step.
+
+    destruct (r_); simpl in *. subst. cancel.
 
     or_r; cancel.
     eauto.

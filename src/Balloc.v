@@ -1111,6 +1111,14 @@ Module BmapAllocCache (Sig : AllocSig).
     rewrite xform_listpred_ptsto_fp; auto.
   Qed.
 
+  Lemma rep_clear_mscache_ok : forall V FP bxps frees freepred lms cm,
+    @rep V FP bxps frees freepred (mk_memstate lms cm) =p=>
+    @rep V FP bxps frees freepred (mk_memstate lms freelist0).
+  Proof.
+    unfold rep; intros.
+    cancel.
+  Qed.
+
 End BmapAllocCache.
 
 
@@ -1499,6 +1507,17 @@ Module BALLOCC.
     cancel.
   Qed.
 
+  Lemma rep_clear_mscache_ok : forall bxps frees lms cm,
+    rep bxps frees (mk_memstate lms cm) =p=>
+    rep bxps frees (mk_memstate lms Alloc.freelist0).
+  Proof.
+    intros.
+    unfold mk_memstate, rep.
+    cancel.
+    rewrite Alloc.rep_clear_mscache_ok.
+    cancel.
+  Qed.
+
   Theorem init_ok : forall lxp xp ms,
     {< F Fm m0 m bl dl,
     PRE:hm
@@ -1822,7 +1841,7 @@ Module IAlloc.
   Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
   Hint Extern 1 ({{_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
-  Hint Extern 0 (okToUnify (rep ?xp _ _) (rep ?xp _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep ?xp _ _ _) (rep ?xp _ _ _)) => constructor : okToUnify.
 
   Definition xform_rep := Alloc.xform_rep.
 

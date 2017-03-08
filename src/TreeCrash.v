@@ -29,6 +29,8 @@ Require Import DirTreeInodes.
 
 Import ListNotations.
 
+Module SDIR := DirCache.CacheOneDir.
+
 Set Implicit Arguments.
 
 Module DTCrash.
@@ -157,25 +159,30 @@ Module DTCrash.
       constructor; eauto.
   Qed.
 
-  Lemma flist_crash_xform_freelist : forall xp frees freepred,
-    IAlloc.Alloc.rep xp frees freepred =p=>
-      IAlloc.Alloc.rep xp frees freepred *
+  Lemma flist_crash_xform_freelist : forall (FP : BFILE.bfile -> Prop) xp frees freepred,
+    (forall f f', BFILE.file_crash f f' -> FP f -> FP f') ->
+    IAlloc.Alloc.rep FP xp frees freepred =p=>
+      IAlloc.Alloc.rep FP xp frees freepred *
       [[ flist_crash_xform freepred =p=> freepred ]].
   Proof.
     unfold IAlloc.Alloc.rep; intros.
     cancel.
-    rewrite H1.
-    clear H1 H2 bmap.
+    rewrite H2.
+    clear H2 H3 blist.
     induction frees; simpl.
     rewrite flist_crash_xform_emp; auto.
-    rewrite flist_crash_xform_sep_star. rewrite flist_crash_xform_exists. rewrite IHfrees.
+    rewrite flist_crash_xform_sep_star. rewrite flist_crash_xform_exists.
+    rewrite IHfrees.
     norml; unfold stars; simpl.
-    rewrite flist_crash_xform_ptsto. cancel.
+    rewrite flist_crash_xform_sep_star.
+    rewrite flist_crash_xform_lift_empty.
+    rewrite flist_crash_xform_ptsto. cancel. eauto.
+    inversion H4; eauto.
   Qed.
 
-  Lemma xform_tree_rep : forall xp F t ilist frees,
-    crash_xform (rep xp F t ilist frees) =p=> exists t',
-      [[ tree_crash t t' ]] * rep xp (flist_crash_xform F) t' ilist frees.
+  Lemma xform_tree_rep : forall xp F t ilist frees ms sz,
+    crash_xform (rep xp F t ilist frees ms) =p=> exists t',
+      [[ tree_crash t t' ]] * rep xp (flist_crash_xform F) t' ilist frees (BFILE.ms_empty sz).
   Proof.
     unfold rep; intros.
     xform_norm.
@@ -187,8 +194,14 @@ Module DTCrash.
     apply flist_crash_xform_sep_star in H0. rewrite flist_crash_xform_sep_star in H0.
     rewrite flist_crash_xform_tree_pred in H0.
     destruct_lift H0.
-    cancel. eauto.
-    cancel. eauto.
+    unfold IAlloc.rep; cancel.
+    rewrite <- BFILE.rep_clear_freelist.
+    rewrite <- BFILE.rep_clear_bfcache.
+    cancel.
+    eauto.
+    erewrite BFILE.flist_crash_clear_caches by eauto.
+    pred_apply; cancel. eauto.
+    intros; eapply BFILE.freepred_file_crash; eauto.
   Qed.
 
 

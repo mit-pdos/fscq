@@ -71,6 +71,12 @@ Module BFILE.
     | [ H: MSCache _ = MSCache _ |- _ ] => rewrite H in *; clear H
     end.
 
+  Definition ms_empty sz := mk_memstate
+    true
+    (LOG.mk_memstate0 (Cache.BUFCACHE.cache0 sz))
+    (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0)
+    (BFcache.empty _).
+
 
   (* interface implementation *)
 
@@ -301,6 +307,39 @@ Module BFILE.
     - norml; unfold stars; simpl.
       rewrite INODE.rep_bxp_switch at 1 by eauto.
       cancel.
+  Qed.
+
+  Definition clear_cache bf := mk_bfile (BFData bf) (BFAttr bf) None.
+  Definition clear_caches bflist := map clear_cache bflist.
+
+  Theorem rep_clear_freelist : forall bxps ixp flist ilist frees allocc mscache,
+    rep bxps ixp flist ilist frees allocc mscache =p=>
+    rep bxps ixp flist ilist frees (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0) mscache.
+  Proof.
+    unfold rep; intros; cancel.
+    rewrite <- BALLOCC.rep_clear_mscache_ok. cancel.
+    rewrite <- BALLOCC.rep_clear_mscache_ok. cancel.
+  Qed.
+
+  Theorem rep_clear_bfcache : forall bxps ixp flist ilist frees allocc mscache,
+    rep bxps ixp flist ilist frees allocc mscache =p=>
+    rep bxps ixp (clear_caches flist) ilist frees allocc (BFcache.empty Dcache_type).
+  Proof.
+    unfold rep; intros; cancel.
+    unfold clear_caches.
+    rewrite listmatch_map_l.
+    unfold file_match, clear_cache; simpl.
+    reflexivity.
+
+    rewrite locked_eq.
+    unfold cache_rep, clear_caches, clear_cache.
+    rewrite map_map; simpl.
+    clear H2.
+    generalize 0.
+    induction flist; simpl; intros.
+    apply BFM.mm_init.
+    specialize (IHflist (S n)).
+    pred_apply; cancel.
   Qed.
 
   Definition block_belong_to_file ilist bn inum off :=
@@ -1163,6 +1202,7 @@ Module BFILE.
            [[[ m' ::: (Fm * rep bxps ixp flist' ilist' frees allocc (MSCache ms')) ]]] *
            [[[ flist' ::: (Ff * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) a (BFCache f) ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]] *
            [[ MSAlloc ms = MSAlloc ms' /\
               let free := pick_balloc frees (MSAlloc ms') in
               ilist_safe ilist free ilist' free ]] *
@@ -1309,7 +1349,8 @@ Module BFILE.
            [[[ (BFData f') ::: (Fd * off |-> (v, nil)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) off (v, nil)) (BFAttr f) (BFCache f) ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
-           [[ MSCache ms = MSCache ms' ]]
+           [[ MSCache ms = MSCache ms' ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} write lxp ixp inum off v ms.
   Proof.
@@ -1694,6 +1735,7 @@ Module BFILE.
            [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
            [[ block_belong_to_file ilist bn inum off ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]] *
            (* spec about files on the latest diskset *)
            [[[ ds'!! ::: (Fm  * rep bxp ixp flist' ilist frees allocc (MSCache ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
@@ -1775,6 +1817,7 @@ Module BFILE.
            [[[ ds'!! ::: (Fm * rep bxp ixp flist' ilist free allocc (MSCache ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> synced_file f) ]]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]] *
            [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
               BFILE.block_belong_to_file ilist (selN al i 0) inum i ]]
     CRASH:hm' LOG.recover_any lxp F ds hm'
@@ -1888,7 +1931,8 @@ Module BFILE.
            [[[ (BFData f') ::: Fd * arrayN (@ptsto _ addr_eq_dec _) a (updN vsl i (v, nil)) ]]] *
            [[ f' = mk_bfile (updN (BFData f) (a + i) (v, nil)) (BFAttr f) (BFCache f) ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
-           [[ MSCache ms = MSCache ms' ]]
+           [[ MSCache ms = MSCache ms' ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} write_array lxp ixp inum a i v ms.
   Proof.
@@ -2245,7 +2289,14 @@ Module BFILE.
     step.
     msalloc_eq; cancel.
     step.
-    safestep.
+    safestep. 
+
+    destruct (r_).
+    destruct (r_0).
+    simpl in *.
+    subst.
+    destruct (MSAllocC1). simpl in *.
+
     eapply rep_bfcache_remove; eauto.
     simpl.
     rewrite Nat.sub_diag; simpl; auto.
@@ -2256,7 +2307,7 @@ Module BFILE.
     unfold treeseq_ilist_safe in Hts.
     intuition.
     assert (inum = inum' -> False).
-    intro; eapply H15; eauto.
+    intro; eapply H18; eauto.
     denote (forall _ _, _ -> selN ilist' _ _ = selN ilist'0 _ _) as Hx.
     rewrite <- Hx.
     denote (forall _ _, _ -> selN ilist _ _ = selN ilist' _ _) as Hy.
@@ -2302,7 +2353,8 @@ Module BFILE.
            [[[ m ::: (Fm * rep bxp ixp flist' ilist frees allocc (MSCache ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) (BFAttr f) (Some c) ]] *
-           [[ MSAlloc ms = MSAlloc ms' ]]
+           [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} cache_put inum c ms.
   Proof.
@@ -2594,6 +2646,38 @@ Module BFILE.
     cancel; eauto.
     Transparent vsmerge.
   Qed.
+
+  Lemma flist_crash_clear_caches : forall f f',
+    flist_crash f f' ->
+    clear_caches f' = f'.
+  Proof.
+    unfold flist_crash, clear_caches, clear_cache.
+    induction f; simpl; intros.
+    - inversion H; subst; eauto.
+    - inversion H; subst; eauto.
+      simpl.
+      rewrite IHf by eauto; f_equal.
+      inversion H2; intuition subst; simpl; eauto.
+  Qed.
+
+  Lemma freepred_file_crash : forall f f',
+    file_crash f f' -> freepred f -> freepred f'.
+  Proof.
+    unfold file_crash, freepred, bfile0; intros.
+    deex.
+    f_equal.
+    simpl in *.
+    eapply possible_crash_list_length in H1.
+    destruct vs; simpl in *; eauto.
+    omega.
+  Qed.
+
+  Lemma freepred_bfile0 : freepred bfile0.
+  Proof.
+    unfold freepred; eauto.
+  Qed.
+
+  Hint Resolve freepred_bfile0.
 
 End BFILE.
 

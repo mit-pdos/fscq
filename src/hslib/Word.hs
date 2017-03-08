@@ -38,12 +38,7 @@ weq _ (W x) (W64 y) = (fromIntegral x) == y
 weq _ (W64 x) (W y) = x == (fromIntegral y)
 weq _ (W64 x) (W64 y) = x == y
 weq _ (WBS x) (WBS y) = x == y
-weq sz x (WBS y) = unsafePerformIO $ do
-  w <- bs2i y
-  return $ weq sz x (W w)
-weq sz (WBS x) y = unsafePerformIO $ do
-  w <- bs2i x
-  return $ weq sz (W w) y
+weq sz x y = weq sz (unbs x) (unbs y)
 
 wlt_dec :: Integer -> Coq_word -> Coq_word -> Bool
 wlt_dec _ (W x) (W y) = x < y
@@ -95,6 +90,7 @@ wand _ (W x) (W y) = W $ (Data.Bits..&.) x y
 wand _ (W x) (W64 y) = W64 $ (Data.Bits..&.) (fromIntegral x) y
 wand _ (W64 x) (W y) = W64 $ (Data.Bits..&.) x (fromIntegral y)
 wand _ (W64 x) (W64 y) = W64 $ (Data.Bits..&.) x y
+wand sz x y = wand sz (unbs x) (unbs y)
 
 wor :: Integer -> Coq_word -> Coq_word -> Coq_word
 wor _ (W x) (W y) = W $ (Data.Bits..|.) x y
@@ -133,6 +129,7 @@ split1 sz1 _ (W (S# i))
   | sz1 >= 64 = W $ S# i
 split1 sz1 _ (W w) = wrap sz1 w
 split1 sz1 sz2 (W64 w) = split1 sz1 sz2 (W $ fromIntegral w)
+split1 sz1 sz2 w = split1 sz2 sz2 (unbs w)
 
 split2 :: Integer -> Integer -> Coq_word -> Coq_word
 -- split2 sz1 sz2 (W (Jp# (BN# ba)))
@@ -142,6 +139,7 @@ split2 :: Integer -> Integer -> Coq_word -> Coq_word
 --       (I# sz2#) -> W $ importIntegerFromByteArray ba (int2Word# sz1#) (int2Word# sz2#) 0#
 split2 sz1 _ (W w) = W $ w `Data.Bits.shiftR` (fromIntegral sz1)
 split2 sz1 sz2 (W64 w) = split2 sz1 sz2 (W $ fromIntegral w)
+split2 sz1 sz2 w = split2 sz1 sz2 (unbs w)
 
 combine :: Integer -> Coq_word -> Integer -> Coq_word -> Coq_word
 combine sz1 (W w1) _ (W w2) = W $ w1 + (w2 `Data.Bits.shiftL` (fromIntegral sz1))
@@ -153,12 +151,7 @@ combine sz1 w1 sz2 (WBS b2) | sz1 `rem` 8 == 0 =
   combine sz1 (WBS $ w2bs w1 $ (fromIntegral sz1) `quot` 8) sz2 (WBS b2)
 combine sz1 (WBS b1) sz2 w2 | sz2 `rem` 8 == 0 =
   combine sz1 (WBS b1) sz2 (WBS $ w2bs w2 $ (fromIntegral sz2) `quot` 8)
-combine sz1 w1 sz2 (WBS b2) = unsafePerformIO $ do
-  w <- bs2i b2
-  return $ combine sz1 w1 sz2 (W w)
-combine sz1 (WBS b1) sz2 w2 = unsafePerformIO $ do
-  w <- bs2i b1
-  return $ combine sz1 (W w) sz2 w2
+combine sz1 w1 sz2 w2 = combine sz1 (unbs w1) sz2 (unbs w2)
 
 maxShift :: Integer
 maxShift = fromIntegral (maxBound :: Int)
@@ -168,12 +161,16 @@ wlshift sz w1 s -- handle shifts larger than maxShift recursively
     | s > maxShift = wlshift sz (wlshift sz w1 maxShift) (s - maxShift)
 wlshift _  (W w1) s = W $ w1 `Data.Bits.shiftL` (fromIntegral s)
 wlshift _ (W64 w1) w2 = W64 $ w1 `Data.Bits.shiftL` (fromIntegral w2)
+wlshift sz (WBS bs) s | s `rem` 8 == 0 = WBS $ BS.take (fromIntegral $ (sz - s) `quot` 8) bs
+wlshift sz w s = wlshift sz (unbs w) s
 
 wrshift :: Integer ->  Coq_word -> Integer -> Coq_word
 wrshift sz w1 s -- handle shifts larger than maxShift recursively
     | s > maxShift = wrshift sz (wrshift sz w1 maxShift) (s - maxShift)
-wrshift _  (W w1) s = W $ w1 `Data.Bits.shiftR` (fromIntegral s)
+wrshift _ (W w1) s = W $ w1 `Data.Bits.shiftR` (fromIntegral s)
 wrshift _ (W64 w1) w2 = W64 $ w1 `Data.Bits.shiftR` (fromIntegral w2)
+wrshift _ (WBS bs) s | s `rem` 8 == 0 = WBS $ BS.drop (fromIntegral $ s `quot` 8) bs
+wrshift sz w s = wrshift sz (unbs w) s
 
 wnot :: Integer -> Coq_word -> Coq_word
 wnot _ (W w) = W $ complement w
@@ -228,3 +225,8 @@ w2bs :: Coq_word -> Int -> BS.ByteString
 w2bs (W64 w) nbytes = w2bs (W $ fromIntegral w) nbytes
 w2bs (W w) nbytes = i2bs' w nbytes
 w2bs (WBS bs) _ = bs
+
+unbs :: Coq_word -> Coq_word
+unbs (W w) = W w
+unbs (W64 w) = W64 w
+unbs (WBS bs) = W $ bs2i' bs

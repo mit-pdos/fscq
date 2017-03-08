@@ -251,9 +251,9 @@ Set Implicit Arguments.
   Qed.
 
 
-  Theorem dirlist_safe_mkfile : forall ilist freeblocks ilist' freeblocks' frees ms
+  Theorem dirlist_safe_mkfile : forall ilist freeblocks ilist' freeblocks' frees msc ms
                                       dnum tree_elem name inum m flist' bxp ixp F Fm,
-   (Fm * BFILE.rep bxp ixp flist' ilist' frees ms)%pred m ->
+   (Fm * BFILE.rep bxp ixp flist' ilist' frees msc ms)%pred m ->
    (F * inum |-> BFILE.bfile0 )%pred (list2nmem flist') ->
     BFILE.ilist_safe ilist  freeblocks ilist' freeblocks' ->
     tree_names_distinct (TreeDir dnum tree_elem) ->
