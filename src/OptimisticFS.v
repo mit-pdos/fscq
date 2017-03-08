@@ -154,7 +154,7 @@ Module OptFS.
             | (fun (name:_) => _) =>
               let var := fresh name in
               exact (fun (var:A) => ltac:(translate_lift (p var)))
-            | (fun (name:_) => _) =>
+            | (fun _ => _) =>
               let var := fresh "a" in
               exact (fun (var:A) => ltac:(translate_lift (p var)))
             end
