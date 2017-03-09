@@ -1479,6 +1479,8 @@ Module DIRTREE.
     all: try exact Mem.empty_mem.
     all: try exact (FSXPInode fsxp).
     all: try exact (FSXPBlockAlloc1 fsxp, FSXPBlockAlloc2 fsxp).
+    all: try exact (BFM.Map.empty _).
+    all: intros; try exact True.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
