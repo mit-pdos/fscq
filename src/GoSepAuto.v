@@ -528,24 +528,16 @@ Section GoSepRefl.
     end).
   Defined.
 
-(* return Some l' after removing l; return None if l can't cancel with anything *)
-  Fixpoint remove (l : Pts) (yr : list Pts) : option (list Pts) :=
-    match yr with
-    | nil => None
-    | r :: yr => if cancels l r then Some yr else
-      match remove l yr with
-      | None => None
-      | Some l => Some (r :: l)
-      end
-    end.
-
   Fixpoint cancel_some (l r : list Pts) : (list Pts * list Pts)%type :=
     match l with
     | nil => (nil, r)
-    | x :: l => match remove x r with
-      | Some r => cancel_some l r
-      | None => let lr := cancel_some l r in
-        (x :: fst lr, snd lr)
+    | x :: l =>
+      match r with
+      | nil => (x :: l, nil)
+      | y :: r =>
+        let lr := cancel_some l r in
+        if cancels x y then lr
+        else (x :: fst lr, y :: snd lr)
       end
     end.
 
@@ -607,40 +599,11 @@ Section GoSepRefl.
     apply pimpl_sep_star; auto.
   Qed.
 
-  Lemma remove_some : forall l x l',
-    remove x l = Some l' ->
-    pred_of (x :: l') =p=> pred_of l.
-  Proof.
-    induction l; simpl; intros; try congruence.
-    break_match.
-    find_inversion.
-    apply cancels_valid in Heqb.
-    apply pimpl_sep_star; auto.
-    break_match; try congruence.
-    find_inversion.
-    simpl in *.
-    rewrite sep_star_comm.
-    rewrite sep_star_assoc.
-    rewrite sep_star_comm with (p2 := pred_of_pts x).
-    rewrite IHl; auto.
-  Qed.
-
-   Lemma remove_none : forall l x r,
-    remove x r = None ->
-    cancel_some (x :: l) r = (x :: fst (cancel_some l r), snd (cancel_some l r)).
-  Proof.
-    induction l; simpl; intros;
-      rewrite H; simpl; reflexivity.
-  Qed.
-
    Lemma cancel_some_nil_r : forall l,
     cancel_some l nil = (l, nil).
   Proof.
-    induction l; cbn.
-    congruence.
-    rewrite IHl. reflexivity.
+    induction l; cbn; congruence.
   Qed.
-
 
   Theorem cancel_some_valid : forall l r,
     let lr' := (cancel_some l r) in
@@ -649,12 +612,13 @@ Section GoSepRefl.
   Proof.
     induction l; cbn -[cancels];
       intros; subst; auto.
-    break_match.
-    - apply remove_some in Heqo.
-      eapply pimpl_trans; [ | eassumption].
-      apply pimpl_sep_star; auto.
-    - admit.
-  Admitted.
+    break_match; simpl in *.
+    - congruence.
+    - repeat break_match; try congruence; simpl in *.
+      find_eapply_lem_hyp cancels_valid.
+      cancel. eauto.
+      find_inversion. cancel. eauto.
+  Qed.
 
   Section PredSort.
     Fixpoint insert (p : Pts) (l : list Pts) : list Pts.
