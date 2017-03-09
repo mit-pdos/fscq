@@ -678,26 +678,39 @@ Ltac get_locals :=
     end
   end.
 
+Ltac transform_addr nlocals locals x :=
+  lazymatch x with
+  | nth_var ?a ?vars => constr:(@Local nlocals locals a)
+  | ?x => constr:(@Arg nlocals locals x)
+  end.
+
+Ltac transform_pred nlocals locals p :=
+  lazymatch p with
+  | sep_star ?a ?b =>
+    let a' := transform_pred nlocals locals a in
+    let b' := transform_pred nlocals locals b in
+    constr:(Star a' b')
+  | (exists x, ?a |-> Val ?t x)%pred =>
+    let a' := transform_addr nlocals locals a in
+    constr:(P (@ExPtsTo nlocals locals a' t))
+  | (?a |-> Val ?t ?x)%pred =>
+    let a' := transform_addr nlocals locals a in
+    constr:(P (@PtsTo nlocals locals a' t x))
+  | emp => constr:(@Emp nlocals locals)
+  | decls_pre ?decls ?vars ?m =>
+    constr:(P (@DeclsPre _ vars decls m))
+  | decls_post ?decls ?vars ?m =>
+    constr:(P (@DeclsPost _ vars decls m))
+  end.
+
 Ltac transform_pimpl_refl :=
   match get_locals with
   | (?nlocals, ?locals) =>
-    repeat match goal with
-    | [ |- context [(pred_of_star ?a * pred_of_star ?b)%pred] ] =>
-      change (pred_of_star ?a * pred_of_star ?b)%pred with (pred_of_star (Star a b))
-    | [ |- context [(exists x, nth_var ?a ?vars |-> Val ?t x)%pred] ] =>
-      change (exists x, nth_var a vars |-> Val t x)%pred with (pred_of_star (P (@ExPtsTo nlocals locals (Local a) t)))
-    | [ |- context [(nth_var ?a ?vars |-> Val ?t ?x)%pred] ] =>
-      change (nth_var a vars |-> Val t x)%pred with (pred_of_star (P (@PtsTo nlocals locals (Local a) t x)))
-    | [ |- context [(exists x, ?a |-> Val ?t x)%pred] ] =>
-      change (exists x, a |-> Val t x)%pred with (pred_of_star (P (@ExPtsTo nlocals locals (Arg a) t)))
-    | [ |- context [(?a |-> Val ?t ?x)%pred] ] =>
-      change (a |-> Val t x)%pred with (pred_of_star (P (@PtsTo nlocals locals (Arg a) t x)))
-    | [ |- context [decls_pre ?decls ?vars ?m] ] =>
-      change (decls_pre ?decls ?vars ?m) with (pred_of_star (P (@DeclsPre _ vars decls m)))
-    | [ |- context [decls_post ?decls ?vars ?m] ] =>
-      change (decls_post ?decls ?vars ?m) with (pred_of_star (P (@DeclsPost _ vars decls m)))
-    | [ |- context [emp] ] =>
-      change (emp) with (pred_of_star (@Emp nlocals locals))
+    match goal with |- ?pre =p=> ?post =>
+      let pre' := transform_pred nlocals locals pre in
+      let post' := transform_pred nlocals locals post in
+      change pre with (pred_of_star pre');
+      change post with (pred_of_star post')
     end
   end.
 
