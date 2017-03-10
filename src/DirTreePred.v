@@ -227,6 +227,30 @@ Set Implicit Arguments.
       cancel. rewrite IHa. cancel.
   Qed.
 
+  Theorem subtree_fold : forall xp fnlist tree subtree,
+    find_subtree fnlist tree = Some subtree ->
+    tree_pred_except xp fnlist tree * tree_pred xp subtree =p=> tree_pred xp tree.
+  Proof.
+    induction fnlist; simpl; intros.
+    - inversion H; subst. cancel.
+    - destruct tree; try discriminate; simpl.
+      rewrite dir_names_distinct at 1.
+      cancel.
+      induction l; simpl in *; try discriminate.
+      destruct a0; simpl in *.
+      destruct (string_dec s a); subst.
+      + rewrite sep_star_assoc_2.
+        rewrite sep_star_comm with (p1 := tree_pred xp subtree).
+        rewrite IHfnlist; eauto.
+        cancel.
+        apply dirlist_pred_except_notfound; eauto.
+        inversion H4; eauto.
+      + cancel.
+        rewrite sep_star_comm.
+        eapply H0.
+        inversion H4; eauto.
+  Qed.
+
   Theorem subtree_extract : forall xp fnlist tree subtree,
     find_subtree fnlist tree = Some subtree ->
     tree_pred xp tree =p=> tree_pred_except xp fnlist tree * tree_pred xp subtree.
