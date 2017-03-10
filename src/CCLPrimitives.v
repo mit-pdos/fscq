@@ -156,45 +156,7 @@ Section Primitives.
     eapply ptsto_upd_disjoint; eauto.
   Qed.
 
-  Theorem Get_ok : forall tid A i,
-      cprog_spec G tid
-                 (fun '(F, v0) '(sigma_i, sigma) =>
-                    {| precondition :=
-                         (F * i |-> val (v0:A))%pred (Sigma.mem sigma) /\
-                         ReadPermission (Sigma.l sigma);
-                       postcondition :=
-                         fun '(sigma_i', sigma') r =>
-                           sigma' = sigma /\
-                           sigma_i' = sigma_i /\
-                           r = v0; |})
-                 (Get A i).
-  Proof.
-    prim.
-
-    inj_pair2; auto.
-    inv_exec; eauto.
-  Qed.
-
-  Theorem Assgn_ok : forall tid A i (v:A),
-      cprog_spec G tid
-                 (fun '(F, v0) '(sigma_i, sigma) =>
-                    {| precondition :=
-                         (F * i |-> val (v0:A))%pred (Sigma.mem sigma) /\
-                         Sigma.l sigma = WriteLock;
-                       postcondition :=
-                         fun '(sigma_i', sigma') _ =>
-                           (F * i |-> val v)%pred (Sigma.mem sigma') /\
-                           sigma_i' = sigma_i /\
-                           Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.disk sigma' = Sigma.disk sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
-                 (Assgn i v).
-  Proof.
-    prim.
-    inj_pair2.
-    destruct sigma; simpl in *; eauto.
-    eauto using ptsto_upd'.
-  Qed.
+  (* TODO: some ReadTxn and AssgnTxn theorems *)
 
   Theorem Hash_ok : forall tid sz (buf: word sz),
       cprog_spec G tid
@@ -228,48 +190,6 @@ Section Primitives.
                  (Ret v).
   Proof.
     prim.
-  Qed.
-
-  Theorem GhostUpdate_ok : forall tid A i up,
-      cprog_spec G tid
-                 (fun '(F, v0) '(sigma_i, sigma) =>
-                    {| precondition :=
-                         (F * i |-> abs (v0:A))%pred (Sigma.mem sigma) /\
-                         Sigma.l sigma = WriteLock;
-                       postcondition :=
-                         fun '(sigma_i', sigma') _ =>
-                           (F * i |-> abs (up tid v0))%pred (Sigma.mem sigma') /\
-                           sigma_i' = sigma_i /\
-                           Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.disk sigma' = Sigma.disk sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
-                 (GhostUpdate i up).
-  Proof.
-    prim.
-    inj_pair2.
-    destruct sigma; simpl in *.
-    eauto using ptsto_upd'.
-  Qed.
-
-  Theorem GhostUpdateMem_ok : forall tid A AEQ V i up,
-      cprog_spec G tid
-                 (fun '(F, m0) '(sigma_i, sigma) =>
-                    {| precondition :=
-                         (F * i |-> absMem (m0:@mem A AEQ V))%pred (Sigma.mem sigma) /\
-                         Sigma.l sigma = WriteLock;
-                       postcondition :=
-                         fun '(sigma_i', sigma') _ =>
-                           (F * i |-> absMem (up tid m0))%pred (Sigma.mem sigma') /\
-                           sigma_i' = sigma_i /\
-                           Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.disk sigma' = Sigma.disk sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
-                 (GhostUpdateMem i up).
-  Proof.
-    prim.
-    repeat inj_pair2.
-    destruct sigma; simpl in *.
-    eauto using ptsto_upd'.
   Qed.
 
   Definition GetReadLock :=
@@ -374,12 +294,8 @@ Hint Extern 0 {{ BeginRead _; _ }} => apply BeginRead_ok : prog.
 Hint Extern 0 {{ WaitForRead _; _ }} => apply WaitForRead_ok : prog.
 Hint Extern 0 {{ Write _ _; _ }} => apply Write_ok : prog.
 Hint Extern 0 {{ Alloc _; _ }} => apply Alloc_ok : prog.
-Hint Extern 0 {{ Get _ _; _ }} => apply Get_ok : prog.
-Hint Extern 0 {{ Assgn _ _; _ }} => apply Assgn_ok : prog.
 Hint Extern 0 {{ Hash _; _ }} => apply Hash_ok : prog.
 Hint Extern 0 {{ Ret _; _ }} => apply Ret_ok : prog.
-Hint Extern 0 {{ GhostUpdate _ _; _ }} => apply GhostUpdate_ok : prog.
-Hint Extern 0 {{ GhostUpdateMem _ _; _ }} => apply GhostUpdateMem_ok : prog.
 Hint Extern 0 {{ GetReadLock; _ }} => apply GetReadLock_ok : prog.
 Hint Extern 0 {{ GetWriteLock; _ }} => apply GetWriteLock_ok : prog.
 Hint Extern 0 {{ UpgradeReadLock; _ }} => apply UpgradeReadLock_ok : prog.
