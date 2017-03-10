@@ -13,33 +13,7 @@ Notation DISK := (@mem addr addr_eq_dec (valu * ReadState)).
 
 Inductive LockState :=
 | Free
-| ReadLock
 | WriteLock.
-
-Inductive ReadPermission : LockState -> Prop :=
-| ReadPermissionR : ReadPermission ReadLock
-| ReadPermissionW : ReadPermission WriteLock.
-
-Lemma read_perm_r_eq : forall l,
-    l = ReadLock ->
-    ReadPermission l.
-Proof.
-  intros; subst; constructor.
-Qed.
-
-Lemma read_perm_w_eq : forall l,
-    l = WriteLock ->
-    ReadPermission l.
-Proof.
-  intros; subst; constructor.
-Qed.
-
-Hint Resolve read_perm_r_eq read_perm_w_eq.
-
-Definition CanRead (l:LockState) : {ReadPermission l} + {l = Free}.
-Proof.
-  destruct l; eauto.
-Defined.
 
 Definition CanWrite (l:LockState) : {l = WriteLock} + {l <> WriteLock}.
 Proof.
@@ -128,8 +102,7 @@ Section CCL.
   | WaitForRead (a:addr) : cprog valu
   | Write (a:addr) (v: valu) : cprog unit
   | Hash sz (buf: word sz) : cprog (word hashlen)
-  (* SetLock returns the new state to support trying to upgrade read -> write *)
-  | SetLock (l:LockState) (l':LockState) : cprog LockState
+  | SetLock (l:LockState) (l':LockState) : cprog unit
   | Ret T (v:T) : cprog T
   | Bind T T' (p: cprog T') (p': T' -> cprog T) : cprog T.
 
@@ -239,10 +212,8 @@ Section CCL.
   Definition step_dec (sigma: Sigma) T (p: cprog T) : StepOutcome T :=
     match p with
     | Alloc v => NonDet
-    | ReadTxn tx => if CanRead (Sigma.l sigma) then
-                     if rtxn_in_domain_dec tx (Sigma.mem sigma)
-                     then NonDet (* still need to check type *)
-                     else Fails
+    | ReadTxn tx => if rtxn_in_domain_dec tx (Sigma.mem sigma)
+                   then NonDet (* still need to check type *)
                    else Fails
     | AssgnTxn tx => if CanWrite (Sigma.l sigma) then
                         if wtxn_in_domain_dec tx (Sigma.mem sigma)
@@ -271,12 +242,7 @@ Section CCL.
                     end
                   else Fails
     | SetLock l l' => if lock_dec (Sigma.l sigma) l then
-                       if lock_dec (Sigma.l sigma) ReadLock then
-                         if lock_dec l' Free then
-                           StepTo (Sigma.set_l sigma Free) Free
-                         else if lock_dec l' ReadLock
-                              then Fails
-                              else NonDet
+                       if lock_dec l l' then Fails
                        else NonDet
                      else Fails
     | Ret v => StepTo sigma v
@@ -352,21 +318,12 @@ Section CCL.
   | ExecBindFail : forall T T' (p: cprog T') (p': T' -> cprog T) sigma_i sigma,
       exec tid (sigma_i, sigma) p Error ->
       exec tid (sigma_i, sigma) (Bind p p') Error
-  | ExecWriteLock : forall sigma_i sigma l' sigma',
+  | ExecWriteLock : forall sigma_i sigma sigma',
       Sigma.l sigma = Free ->
       Rely tid sigma sigma' ->
       hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') ->
-      let sigma' := Sigma.set_l sigma' l' in
-      exec tid (sigma_i, sigma) (SetLock Free l') (Finished sigma' sigma' l')
-  | ExecUpgradeLockSuccess : forall sigma_i sigma,
-      Sigma.l sigma = ReadLock ->
-      let sigma' := Sigma.set_l sigma WriteLock in
-      exec tid (sigma_i, sigma) (SetLock ReadLock WriteLock)
-           (Finished sigma_i sigma' WriteLock)
-  | ExecUpgradeLockFail : forall sigma_i sigma,
-      Sigma.l sigma = ReadLock ->
-      exec tid (sigma_i, sigma) (SetLock ReadLock WriteLock)
-           (Finished sigma_i sigma ReadLock)
+      let sigma' := Sigma.set_l sigma' WriteLock in
+      exec tid (sigma_i, sigma) (SetLock Free WriteLock) (Finished sigma' sigma' tt)
   | ExecAlloc : forall sigma_i sigma A (v:A) i,
       Sigma.mem sigma i = None ->
       let sigma' := Sigma.set_mem sigma (upd (Sigma.mem sigma) i (val v)) in
@@ -391,7 +348,7 @@ Section CCL.
       Sigma.l sigma = WriteLock ->
       Guarantee tid sigma_i sigma ->
       let sigma' := Sigma.set_l sigma Free in
-      exec tid (sigma_i, sigma) (SetLock WriteLock Free) (Finished sigma' sigma' Free)
+      exec tid (sigma_i, sigma) (SetLock WriteLock Free) (Finished sigma' sigma' tt)
   | ExecReleaseFail : forall sigma_i sigma,
       Sigma.l sigma = WriteLock ->
       ~Guarantee tid sigma_i sigma ->

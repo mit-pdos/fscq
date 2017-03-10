@@ -125,17 +125,6 @@ Section Primitives.
     prim.
   Qed.
 
-  Lemma read_permission_not_free : forall l,
-      ReadPermission l ->
-      l = Free ->
-      False.
-  Proof.
-    intros; subst.
-    inversion H.
-  Qed.
-
-  Hint Resolve read_permission_not_free.
-
   Theorem Alloc_ok : forall tid A (v:A),
       cprog_spec G tid
                  (fun F '(sigma_i, sigma) =>
@@ -192,37 +181,11 @@ Section Primitives.
     prim.
   Qed.
 
-  Definition GetReadLock :=
-    SetLock Free ReadLock.
-
   Definition GetWriteLock :=
     SetLock Free WriteLock.
 
-  Definition UpgradeReadLock :=
-    SetLock ReadLock WriteLock.
-
-  Definition ReleaseReadLock :=
-    SetLock ReadLock Free.
-
   Definition Unlock :=
     SetLock WriteLock Free.
-
-  Theorem GetReadLock_ok : forall tid,
-      cprog_spec G tid
-                 (fun (_:unit) '(sigma_i, sigma) =>
-                    {| precondition := Sigma.l sigma = Free;
-                       postcondition :=
-                         fun '(sigma_i', sigma'') _ =>
-                           exists sigma', Rely G tid sigma sigma' /\
-                                 sigma'' = Sigma.set_l sigma' ReadLock /\
-                                 hashmap_le (Sigma.hm sigma) (Sigma.hm sigma'') /\
-                                 sigma_i' = sigma''; |})
-                 GetReadLock.
-  Proof.
-    prim.
-    eexists; intuition eauto.
-    destruct sigma'0; simpl; eauto.
-  Qed.
 
   Theorem GetWriteLock_ok : forall tid,
       cprog_spec G tid
@@ -243,35 +206,6 @@ Section Primitives.
 
   (* TODO: change these to separation logic style specs *)
 
-  Theorem UpgradeReadLock_ok : forall tid,
-      cprog_spec G tid
-                 (fun (_:unit) '(sigma_i, sigma) =>
-                    {| precondition := Sigma.l sigma = ReadLock;
-                       postcondition :=
-                         fun '(sigma_i', sigma') l' =>
-                           match l' with
-                           | ReadLock => sigma' = sigma
-                           | WriteLock => sigma' = Sigma.set_l sigma WriteLock
-                           | Free => False
-                           end; |})
-                 UpgradeReadLock.
-  Proof.
-    prim.
-  Qed.
-
-  Theorem ReleaseReadLock_ok : forall tid,
-      cprog_spec G tid
-                 (fun (_:unit) '(sigma_i, sigma) =>
-                    {| precondition := Sigma.l sigma = ReadLock;
-                       postcondition :=
-                         fun '(sigma_i', sigma') _ =>
-                           sigma' = Sigma.set_l sigma Free /\
-                           sigma_i' = sigma_i; |})
-                 ReleaseReadLock.
-  Proof.
-    prim.
-  Qed.
-
   Theorem Unlock_ok : forall tid,
       cprog_spec G tid
                  (fun (_:unit) '(sigma_i, sigma) =>
@@ -284,8 +218,6 @@ Section Primitives.
                  Unlock.
   Proof.
     prim.
-    destruct (lock_dec (Sigma.l sigma) WriteLock); try congruence.
-    destruct (lock_dec (Sigma.l sigma) ReadLock); try congruence.
   Qed.
 
 End Primitives.
@@ -296,10 +228,7 @@ Hint Extern 0 {{ Write _ _; _ }} => apply Write_ok : prog.
 Hint Extern 0 {{ Alloc _; _ }} => apply Alloc_ok : prog.
 Hint Extern 0 {{ Hash _; _ }} => apply Hash_ok : prog.
 Hint Extern 0 {{ Ret _; _ }} => apply Ret_ok : prog.
-Hint Extern 0 {{ GetReadLock; _ }} => apply GetReadLock_ok : prog.
 Hint Extern 0 {{ GetWriteLock; _ }} => apply GetWriteLock_ok : prog.
-Hint Extern 0 {{ UpgradeReadLock; _ }} => apply UpgradeReadLock_ok : prog.
-Hint Extern 0 {{ ReleaseReadLock; _ }} => apply ReleaseReadLock_ok : prog.
 Hint Extern 0 {{ Unlock; _ }} => apply Unlock_ok : prog.
 
 (* Local Variables: *)
