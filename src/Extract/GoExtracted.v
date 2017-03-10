@@ -8,6 +8,7 @@ Require Import ExtractAsyncFS.
 Require Import ExtractBFile.
 Require Import ExtractDirTree.
 Require Import ExtractInode.
+Require Import ExtractInodeGetLen.
 Require Import ExtractLog.
 Require Import ExtractGroupLog.
 Require Import ExtractMemLog.
