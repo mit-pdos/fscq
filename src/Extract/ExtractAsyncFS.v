@@ -83,6 +83,7 @@ Proof.
   simpl Rec.Rec.data in *.
   compile_step.
 
+  change Log.LOG.commit_ro with Log.LOG.begin.
   solve [repeat compile_step].
 
   cbv [Inode.INODE.iattr Inode.INODE.iattrtype Rec.Rec.data].
