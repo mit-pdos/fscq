@@ -34,6 +34,7 @@ Definition extract_env : Go.Env.
   add_to_env ExtractBFile.extract_env.
   add_to_env ExtractDirTree.extract_env.
   add_to_env ExtractInode.extract_env.
+  add_to_env ExtractInodeGetLen.extract_env.
   add_to_env ExtractLog.extract_env.
   add_to_env ExtractGroupLog.extract_env.
   add_to_env ExtractMemLog.extract_env.

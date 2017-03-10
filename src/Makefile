@@ -27,6 +27,7 @@ EXTRACT_MODULES := Wrappers \
 		ExtractDirTree \
 		ExtractAsyncFS \
 		ExtractInode \
+		ExtractInodeGetLen \
 		ExtractLog \
 		ExtractGroupLog \
 		ExtractMemLog \
