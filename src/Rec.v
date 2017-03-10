@@ -40,7 +40,7 @@ Module Rec.
 
   Fixpoint data (t : type) : Type :=
     match t with
-    | WordF l => word l
+    | WordF l => immut_word l
     | ArrayF t' _ => list (data t')
     | RecF rt =>
       (fix recdata (t : list (string * type)) : Type :=
@@ -1392,6 +1392,17 @@ Module Rec.
     simpl; nia.
   Qed.
 
+  Fixpoint mut_data (t : type) : Type :=
+    match t with
+    | WordF l => word l
+    | ArrayF t' _ => list (data t')
+    | RecF rt =>
+      (fix recdata (t : list (string * type)) : Type :=
+        match t with
+        | [] => unit
+        | (_, ft) :: t' => data ft * recdata t'
+        end%type) rt
+    end.
 
 End Rec.
 

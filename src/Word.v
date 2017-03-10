@@ -2973,3 +2973,5 @@ Proof.
   intros.
   exact H.
 Qed.
+
+Definition immut_word := word.

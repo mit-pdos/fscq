@@ -21,7 +21,16 @@ Fixpoint go_rec_type (t : Rec.type) : type :=
 
 Instance GoWrapper_rec t : GoWrapper (Rec.data t).
   einduction t using Rec.type_rect_nest; simpl.
-  - change word with immut_word. typeclasses eauto.
+  - typeclasses eauto.
+  - typeclasses eauto.
+  - apply IHt0.
+  - simpl; typeclasses eauto.
+  - simpl in *; typeclasses eauto.
+Defined.
+
+Instance GoWrapper_mut_rec t : GoWrapper (Rec.mut_data t).
+  einduction t using Rec.type_rect_nest; simpl.
+  - typeclasses eauto.
   - typeclasses eauto.
   - apply IHt0.
   - simpl; typeclasses eauto.

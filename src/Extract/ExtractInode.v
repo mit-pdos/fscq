@@ -1,8 +1,9 @@
 Require Import Eqdep.
+
 Require Import List String.
 Require Import StringMap.
 Require Import Word Prog Pred AsyncDisk.
-Require Import GoSemantics GoFacts GoHoare GoCompilationLemmas GoExtraction GoSepAuto GoTactics2 GoOfWord.
+Require Import GoSemantics GoFacts GoHoare GoCompilationLemmas GoExtraction GoSepAuto GoTactics2.
 Require Import Wrappers EnvBuild.
 Import ListNotations EqNotations.
 
@@ -14,13 +15,8 @@ Local Open Scope string_scope.
 
 Set Implicit Arguments.
 
-Instance z : GoWrapper (Rec.Rec.data INODE.IRecSig.itemtype).
-  simpl.
-  change word with immut_word.
-  typeclasses eauto.
-Defined.
+Require Import GoOfWord.
 
-(*
 Example compile_getattrs : sigT (fun p => source_stmt p /\
   forall env lxp ixp inum ms,
   prog_func_call_lemma
@@ -47,42 +43,15 @@ Example compile_getattrs : sigT (fun p => source_stmt p /\
      3 ~>? nat *
      4 ~>? Log.LOG.memstate }} // env).
 Proof.
-  unfold INODE.getattrs, INODE.IRec.get_array, pair_args_helper.
+  unfold INODE.getattrs, INODE.irec, INODE.IRec.Defs.item, INODE.IRec.get_array, pair_args_helper.
+  Import Rec.
+  Local Arguments Rec.data : simpl never.
   compile_step.
   compile_step.
   eapply extract_equiv_prog.
   rewrite ProgMonad.bind_right_id.
   reflexivity.
   compile_step.
-  Import Rec.
-  cbv [INODE.IRecSig.itemtype INODE.irectype INODE.iattrtype INODE.irec INODE.IRec.Defs.item
-       Rec.data Rec.field_type string_dec string_rec string_rect Ascii.ascii_dec Ascii.ascii_rec Ascii.ascii_rect
-      sumbool_rec sumbool_rect Bool.bool_dec bool_rec bool_rect eq_rec_r eq_rec eq_rect eq_sym eq_ind_r eq_ind] in *.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  compile_step.
-  Ltac do_declare T cont ::=
-  lazymatch goal with
-  | |- EXTRACT _
-       {{ ?pre }}
-          _
-       {{ _ }} // _ =>
-         lazymatch goal with
-         | |- EXTRACT _
-              {{ ?pre }}
-                 _
-              {{ _ }} // _ =>
-           (* no simpl *)
-               lazymatch pre with
-               | context [ decls_pre ?decls ?vars ?m ] =>
-                   let decls' := fresh "decls" in
-                   evar ( decls' : list Declaration ); unify decls (Decl T :: decls'); subst decls';
-                    cont (nth_var m vars)
-               end
-         end
-  end.
   compile_step.
   compile_step.
   compile_step.
@@ -91,6 +60,12 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+  compile_step.
+
   Unshelve.
   all: try match goal with
            | [|- source_stmt _] =>
@@ -98,8 +73,9 @@ Proof.
            | [|- list _] => exact nil
            | [|- _ =p=> _ ] => cancel_go
            end.
-Qed.
-*)
+Defined.
+
+Local Arguments Rec.data : simpl nomatch.
 
 Ltac real_val_in v :=
   lazymatch v with
@@ -324,28 +300,14 @@ Ltac cancel_go ::=
   eapply cancel_one.
   eapply PickLater.
   eapply PickFirst.
-  match goal with
-  | |- okToCancel (nth_var _ vars |-> ?a) (nth_var _ vars |-> ?b) => let H := fresh in assert (a = b) as H; [ | rewrite H ]
-  end.
-  cbv [wrap wrap' wrap_type GoWrapper_immut_word].
-  f_equal.
   unfold INODE.IRec.Defs.val2word.
   unfold eq_rec.
-  rewrite eq_rect_double.
-  match goal with
-  | |- context[rew ?He in _] => let H := fresh in let Te := type of He in assert Te as H; [ | generalize He; rewrite <- H ]
-  end.
-  rewrite INODE.IRecSig.blocksz_ok; simpl.
-  rewrite (Rec.word_selN_helper 1024 l0) at 1.
-  reflexivity.
-  intros.
-  f_equal.
-  rewrite UIP_refl with (p := e).
-  reflexivity.
+  rewrite okToCancel_eq_rect_immut_word.
+  rewrite okToCancel_eq_rect_immut_word.
   reflexivity.
   cbv [stars fold_left pred_fold_left app].
 
-  cancel_go_refl.
+  cancel_go_fast.
   cancel_go_refl.
 
   apply Nat.mod_upper_bound.
@@ -414,6 +376,7 @@ Eval lazy in (projT1 compile_irec_get).
 
 Definition extract_env : Env.
   pose (env := StringMap.empty FunctionSpec).
-  (* TODO add more programs here *)
+  add_compiled_program "irec_get" compile_irec_get env.
+  add_compiled_program "inode_getattrs" compile_getattrs env.
   exact env.
 Defined.

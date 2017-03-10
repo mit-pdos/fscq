@@ -138,7 +138,6 @@ Proof.
             wrap_type := Go.Buffer |}; GoWrapper_t.
 Defined.
 
-Definition immut_word := word.
 Typeclasses Opaque immut_word.
 
 Instance GoWrapper_immut_word nbits : GoWrapper (immut_word nbits).
