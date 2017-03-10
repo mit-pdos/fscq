@@ -1458,10 +1458,11 @@ Qed.
     cancel.
     Unshelve.
     all: try exact addr; try exact addr_eq_dec; eauto.
-    all: try exact addr_eq_dec.  all: try exact unit.  all: eauto.
     all: try exact nil.
     all: try exact string_dec.
-    exact (Build_balloc_xparams 0 0, Build_balloc_xparams 0 0).
+    all: try exact (Build_balloc_xparams 0 0, Build_balloc_xparams 0 0).
+    all: try exact (BFM.Map.empty _).
+    all: try exact (FSXPInode fsxp).
   Qed.
 
   Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
