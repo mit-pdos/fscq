@@ -48,7 +48,7 @@ Example compile_file_get_sz : sigT (fun p => source_stmt p /\
     "dirtree_getattr" DirTree.DIRTREE.getattr env ->
 
   EXTRACT AFS.file_get_sz fsxp inum ams
-  {{ 0 ~>? (bool * Log.LOG.memstate * (word 64 * unit)) *
+  {{ 0 ~>? (bool * Log.LOG.memstate * (immut_word 64 * unit)) *
      1 ~> fsxp *
      2 ~> inum *
      3 ~> ams }}
