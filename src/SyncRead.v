@@ -19,15 +19,14 @@ Section SyncRead.
 
   Theorem SyncRead_ok : forall tid a,
       cprog_spec G tid
-                 (fun '(F, v0) '(sigma_i, sigma) =>
+                 (fun '(F, v0) sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          Sigma.l sigma = WriteLock /\
                          Sigma.disk sigma a = Some (v0, NoReader);
                        postcondition :=
-                         fun '(sigma_i', sigma') r =>
+                         fun sigma' r =>
                            F (Sigma.mem sigma') /\
-                           sigma_i' = sigma_i /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            r = v0; |})
@@ -48,7 +47,7 @@ Section SyncRead.
              end; intuition.
     descend; simpl; intuition eauto.
 
-    replace (Sigma.disk sigma').
+    replace (Sigma.disk st0).
     autorewrite with upd; eauto.
     congruence.
 
@@ -57,8 +56,9 @@ Section SyncRead.
              | [ H: context[let '(n, m) := ?a in _] |- _ ] =>
                break_tuple a n m
              end; intuition; try congruence.
-    replace (Sigma.disk sigma0).
-    replace (Sigma.disk sigma').
+    (* TODO: why the names st and not those used in the spec? what changed? *)
+    replace (Sigma.disk st1).
+    replace (Sigma.disk st0).
 
     extensionality a'.
     destruct (addr_eq_dec a a'); subst;

@@ -242,15 +242,19 @@ Section CCL.
                     end
                   else Fails
     | SetLock l l' => if lock_dec (Sigma.l sigma) l then
-                       if lock_dec l l' then Fails
-                       else NonDet
+                       match l, l' with
+                       | Free, Free => Fails
+                       | Free, WriteLock => NonDet
+                       | WriteLock, Free => StepTo (Sigma.set_l sigma Free) tt
+                       | WriteLock, WriteLock => Fails
+                       end
                      else Fails
     | Ret v => StepTo sigma v
     | _ => NonDet
     end.
 
   Inductive outcome T :=
-  | Finished (sigma_i sigma:Sigma) (r:T)
+  | Finished (sigma:Sigma) (r:T)
   | Error.
 
   Arguments Error {T}.
@@ -301,73 +305,64 @@ Section CCL.
   (* TODO: what to do with sigma_i? might be unnecessary (!) since writes follow
   the protocol; write locks are just used to preclude other writers *)
 
-  Inductive exec (tid:TID) : forall T, (Sigma * Sigma) -> cprog T -> outcome T -> Prop :=
-  | ExecStepDec : forall T (p: cprog T) sigma_i sigma sigma' v,
+  Inductive exec (tid:TID) : forall T, Sigma -> cprog T -> outcome T -> Prop :=
+  | ExecStepDec : forall T (p: cprog T) sigma sigma' v,
       step_dec sigma p = StepTo sigma' v ->
-      exec tid (sigma_i, sigma) p (Finished sigma_i sigma' v)
-  | ExecStepDecFail : forall T (p: cprog T) sigma_i sigma,
+      exec tid sigma p (Finished sigma' v)
+  | ExecStepDecFail : forall T (p: cprog T) sigma,
       step_dec sigma p = Fails ->
-      exec tid (sigma_i, sigma) p Error
-  | ExecHash : forall sigma_i sigma sz buf,
+      exec tid sigma p Error
+  | ExecHash : forall sigma sz buf,
       let h := hash_fwd buf in
       hash_safe (Sigma.hm sigma) h buf ->
-      exec tid (sigma_i, sigma) (@Hash sz buf) (Finished sigma_i
-                                                     (Sigma.upd_hm sigma buf) h)
+      exec tid sigma (@Hash sz buf) (Finished (Sigma.upd_hm sigma buf) h)
   | ExecBindFinish : forall T T' (p: cprog T') (p': T' -> cprog T)
-                       sigma_i sigma sigma_i' sigma' v out,
-      exec tid (sigma_i, sigma) p (Finished sigma_i' sigma' v) ->
-      exec tid (sigma_i', sigma') (p' v) out ->
-      exec tid (sigma_i, sigma) (Bind p p') out
-  | ExecBindFail : forall T T' (p: cprog T') (p': T' -> cprog T) sigma_i sigma,
-      exec tid (sigma_i, sigma) p Error ->
-      exec tid (sigma_i, sigma) (Bind p p') Error
-  | ExecWriteLock : forall sigma_i sigma sigma',
+                       sigma sigma' v out,
+      exec tid sigma p (Finished sigma' v) ->
+      exec tid sigma' (p' v) out ->
+      exec tid sigma (Bind p p') out
+  | ExecBindFail : forall T T' (p: cprog T') (p': T' -> cprog T) sigma,
+      exec tid sigma p Error ->
+      exec tid sigma (Bind p p') Error
+  | ExecWriteLock : forall sigma sigma',
       Sigma.l sigma = Free ->
       Rely tid sigma sigma' ->
       hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') ->
       let sigma' := Sigma.set_l sigma' WriteLock in
-      exec tid (sigma_i, sigma) (SetLock Free WriteLock) (Finished sigma' sigma' tt)
-  | ExecAlloc : forall sigma_i sigma A (v:A) i,
+      exec tid sigma (SetLock Free WriteLock) (Finished sigma' tt)
+  | ExecAlloc : forall sigma A (v:A) i,
       Sigma.mem sigma i = None ->
       let sigma' := Sigma.set_mem sigma (upd (Sigma.mem sigma) i (val v)) in
-      exec tid (sigma_i, sigma) (Alloc v)
-           (Finished sigma_i sigma' i)
-  | ExecReadTxn : forall sigma_i sigma A (txn:read_transaction A) v sigma',
+      exec tid sigma (Alloc v)
+           (Finished sigma' i)
+  | ExecReadTxn : forall sigma A (txn:read_transaction A) v sigma',
       rtxn_step txn (Sigma.mem sigma) v ->
       Rely tid sigma sigma' ->
-      exec tid (sigma_i, sigma) (ReadTxn txn)
-           (Finished sigma_i sigma' v)
-  | ExecReadTxnFail : forall sigma_i sigma A (txn:read_transaction A),
+      hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') ->
+      exec tid sigma (ReadTxn txn)
+           (Finished sigma' v)
+  | ExecReadTxnFail : forall sigma A (txn:read_transaction A),
       rtxn_error txn (Sigma.mem sigma) ->
-      exec tid (sigma_i, sigma) (ReadTxn txn) Error
-  | ExecAssgnTxn : forall sigma_i sigma A (txn:write_transaction A) h',
+      exec tid sigma (ReadTxn txn) Error
+  | ExecAssgnTxn : forall sigma A (txn:write_transaction A) h',
       Sigma.l sigma = WriteLock ->
       wtxn_step txn (Sigma.mem sigma) h' ->
       let sigma' := Sigma.set_mem sigma h' in
       Guarantee tid sigma sigma' ->
-      exec tid (sigma_i, sigma) (AssgnTxn txn)
-           (Finished sigma_i sigma' tt)
-  | ExecAssgnTxnProtocolError : forall sigma_i sigma A (txn:write_transaction A) h',
+      exec tid sigma (AssgnTxn txn)
+           (Finished sigma' tt)
+  | ExecAssgnTxnProtocolError : forall sigma A (txn:write_transaction A) h',
       Sigma.l sigma = WriteLock ->
       wtxn_step txn (Sigma.mem sigma) h' ->
       let sigma' := Sigma.set_mem sigma h' in
       ~Guarantee tid sigma sigma' ->
-      exec tid (sigma_i, sigma) (AssgnTxn txn) Error
-  | ExecAssgnTxnTyError : forall sigma_i sigma A (txn:write_transaction A),
+      exec tid sigma (AssgnTxn txn) Error
+  | ExecAssgnTxnTyError : forall sigma A (txn:write_transaction A),
       wtxn_error txn (Sigma.mem sigma) ->
-      exec tid (sigma_i, sigma) (AssgnTxn txn) Error
-  | ExecRelease : forall sigma_i sigma,
-      Sigma.l sigma = WriteLock ->
-      Guarantee tid sigma_i sigma ->
-      let sigma' := Sigma.set_l sigma Free in
-      exec tid (sigma_i, sigma) (SetLock WriteLock Free) (Finished sigma' sigma' tt)
-  | ExecReleaseFail : forall sigma_i sigma,
-      Sigma.l sigma = WriteLock ->
-      ~Guarantee tid sigma_i sigma ->
-      exec tid (sigma_i, sigma) (SetLock WriteLock Free) Error.
+      exec tid sigma (AssgnTxn txn) Error.
 
-  Theorem ExecRet : forall tid T (v:T) sigma_i sigma,
-      exec tid (sigma_i, sigma) (Ret v) (Finished sigma_i sigma v).
+  Theorem ExecRet : forall tid T (v:T) sigma,
+      exec tid sigma (Ret v) (Finished sigma v).
   Proof.
     intros.
     eapply ExecStepDec.
@@ -375,14 +370,14 @@ Section CCL.
   Qed.
 
   Definition SpecDouble T :=
-    (Sigma* Sigma) -> (Sigma * Sigma -> T -> Prop) -> Prop.
+    Sigma -> (Sigma -> T -> Prop) -> Prop.
 
   Definition cprog_ok tid T (pre: SpecDouble T) (p: cprog T) :=
     forall st donecond out, pre st donecond ->
                        exec tid st p out ->
                        match out with
-                       | Finished sigma_i' sigma' v =>
-                         donecond (sigma_i', sigma') v
+                       | Finished sigma' v =>
+                         donecond sigma' v
                        | Error => False
                        end.
 
@@ -457,7 +452,7 @@ Module CCLTactics.
 
   Ltac inv_exec :=
     match goal with
-    | [ H: exec _ _ _ _ (Finished _ _ _) |- _ ] => inv_exec' H
+    | [ H: exec _ _ _ _ (Finished _ _) |- _ ] => inv_exec' H
     | [ H: exec _ _ _ _ Error |- _ ] => inv_exec' H
     end.
 

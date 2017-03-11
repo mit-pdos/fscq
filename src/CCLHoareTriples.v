@@ -8,10 +8,10 @@ Section HoareTriples.
 
   Record SpecParams T :=
     { precondition :  Prop;
-      postcondition : (Sigma * Sigma) ->
+      postcondition : Sigma ->
                       T -> Prop }.
 
-  Definition Spec A T := A -> (Sigma * Sigma) -> SpecParams T.
+  Definition Spec A T := A -> Sigma -> SpecParams T.
 
   Definition cprog_spec tid A T' (spec: Spec A T') (p: cprog T') :=
     forall T (rx: _ -> cprog T),
@@ -44,7 +44,7 @@ Section HoareTriples.
       precondition (spec a st) ->
       exec G tid st p out ->
       match out with
-      | Finished sigma_i' sigma' v => postcondition (spec a st) (sigma_i', sigma') v
+      | Finished sigma' v => postcondition (spec a st) sigma' v
       | Error => False
       end.
 
@@ -89,8 +89,8 @@ Section HoareTriples.
       exec G tid st p out ->
       precondition (spec a st) ->
       match out with
-        | Finished sigma_i' sigma' v =>
-          postcondition (spec a st) (sigma_i', sigma') v
+        | Finished sigma' v =>
+          postcondition (spec a st) sigma' v
         | Error => False
       end.
   Proof.

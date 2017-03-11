@@ -48,7 +48,7 @@ Section RetryLoop.
       forall tid st out, exec G tid st (retry guard p) out ->
                     (exists n, forall v0, exec G tid st (retry_n guard v0 p n) out) /\
                     match out with
-                    | Finished _ _ v => exists H, guard v = left H
+                    | Finished _ v => exists H, guard v = left H
                     | Error => True
                     end.
   Proof.

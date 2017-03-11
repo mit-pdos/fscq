@@ -34,7 +34,7 @@ Section Primitives.
       simpl in *; intuition eauto
     | [ H: context[exec _ _ _ _ _ -> _] |-
         match ?out with
-        | Finished _ _ _ => _
+        | Finished _ _ => _
         | Error => _
         end ] => eapply H; eauto; simpl; intuition eauto
     | [ H: ?F (Sigma.mem ?sigma) |- ?F (Sigma.mem _) ] =>
@@ -69,15 +69,14 @@ Section Primitives.
 
   Theorem BeginRead_ok : forall tid a,
       cprog_spec G tid
-                 (fun '(F, v) '(sigma_i, sigma) =>
+                 (fun '(F, v) sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          Sigma.disk sigma a = Some (v, NoReader) /\
                          Sigma.l sigma = WriteLock;
                        postcondition :=
-                         fun '(sigma_i', sigma') _ =>
+                         fun sigma' _ =>
                            F (Sigma.mem sigma') /\
-                           sigma_i' = sigma_i /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.l sigma' = Sigma.l sigma /\
                            Sigma.disk sigma' = upd (Sigma.disk sigma) a (v, Pending); |})
@@ -88,15 +87,14 @@ Section Primitives.
 
   Theorem WaitForRead_ok : forall tid a,
       cprog_spec G tid
-                 (fun '(F, v) '(sigma_i, sigma) =>
+                 (fun '(F, v) sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          Sigma.disk sigma a = Some (v, Pending) /\
                          Sigma.l sigma = WriteLock;
                        postcondition :=
-                         fun '(sigma_i', sigma') r =>
+                         fun sigma' r =>
                            F (Sigma.mem sigma') /\
-                           sigma_i' = sigma_i /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.l sigma' = Sigma.l sigma /\
                            Sigma.disk sigma' = upd (Sigma.disk sigma) a (v, NoReader) /\
@@ -108,15 +106,14 @@ Section Primitives.
 
   Theorem Write_ok : forall tid a v,
       cprog_spec G tid
-                 (fun '(F, v0) '(sigma_i, sigma) =>
+                 (fun '(F, v0) sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          Sigma.disk sigma a = Some (v0, NoReader) /\
                          Sigma.l sigma = WriteLock;
                        postcondition :=
-                         fun '(sigma_i', sigma') _ =>
+                         fun sigma' _ =>
                            F (Sigma.mem sigma') /\
-                           sigma_i' = sigma_i /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.disk sigma' =  upd (Sigma.disk sigma) a (v, NoReader) /\
                            Sigma.l sigma' = Sigma.l sigma; |})
@@ -127,21 +124,20 @@ Section Primitives.
 
   Theorem Alloc_ok : forall tid A (v:A),
       cprog_spec G tid
-                 (fun F '(sigma_i, sigma) =>
+                 (fun F sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          Sigma.l sigma = WriteLock;
                        postcondition :=
-                         fun '(sigma_i', sigma') i =>
+                         fun sigma' i =>
                            (F * i |-> val v)%pred (Sigma.mem sigma') /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma /\
-                           sigma_i' = sigma_i; |})
+                           Sigma.l sigma' = Sigma.l sigma; |})
                  (Alloc v).
   Proof.
     prim.
-    destruct sigma; simpl in *.
+    destruct st; simpl in *.
     eapply ptsto_upd_disjoint; eauto.
   Qed.
 
@@ -149,31 +145,29 @@ Section Primitives.
 
   Theorem Hash_ok : forall tid sz (buf: word sz),
       cprog_spec G tid
-                 (fun F '(sigma_i, sigma) =>
+                 (fun F sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma);
                        postcondition :=
-                         fun '(sigma_i', sigma') r =>
+                         fun sigma' r =>
                            F (Sigma.mem sigma') /\
                            r = hash_fwd buf /\
                            hash_safe (Sigma.hm sigma) (hash_fwd buf) buf /\
-                           sigma_i' = sigma_i /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = upd_hashmap' (Sigma.hm sigma) (hash_fwd buf) buf /\
                            Sigma.l sigma' = Sigma.l sigma; |})
                  (Hash buf).
   Proof.
     prim.
-    destruct sigma; eauto.
+    destruct st; eauto.
   Qed.
 
   Theorem Ret_ok : forall tid T (v:T),
       cprog_spec G tid
-                 (fun (_:unit) '(sigma_i, sigma) =>
+                 (fun (_:unit) sigma =>
                     {| precondition := True;
                        postcondition :=
-                         fun '(sigma_i', sigma') r =>
-                           sigma_i' = sigma_i /\
+                         fun sigma' r =>
                            sigma' = sigma /\
                            r = v; |})
                  (Ret v).
@@ -189,14 +183,13 @@ Section Primitives.
 
   Theorem GetWriteLock_ok : forall tid,
       cprog_spec G tid
-                 (fun (_:unit) '(sigma_i, sigma) =>
+                 (fun (_:unit) sigma =>
                     {| precondition := Sigma.l sigma = Free;
                        postcondition :=
-                         fun '(sigma_i', sigma'') _ =>
+                         fun sigma'' _ =>
                            exists sigma', Rely G tid sigma sigma' /\
                                  sigma'' = Sigma.set_l sigma' WriteLock /\
-                                 hashmap_le (Sigma.hm sigma) (Sigma.hm sigma'') /\
-                                 sigma_i' = sigma''; |})
+                                 hashmap_le (Sigma.hm sigma) (Sigma.hm sigma''); |})
                  GetWriteLock.
   Proof.
     prim.
@@ -208,13 +201,11 @@ Section Primitives.
 
   Theorem Unlock_ok : forall tid,
       cprog_spec G tid
-                 (fun (_:unit) '(sigma_i, sigma) =>
-                    {| precondition := Sigma.l sigma = WriteLock /\
-                                       G tid sigma_i sigma;
+                 (fun (_:unit) sigma =>
+                    {| precondition := Sigma.l sigma = WriteLock;
                        postcondition :=
-                         fun '(sigma_i', sigma') _ =>
-                           sigma' = Sigma.set_l sigma Free /\
-                           sigma_i' = sigma'; |})
+                         fun sigma' _ =>
+                           sigma' = Sigma.set_l sigma Free; |})
                  Unlock.
   Proof.
     prim.
