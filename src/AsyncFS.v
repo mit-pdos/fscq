@@ -1185,6 +1185,8 @@ Module AFS.
     xform_norm; cancel.
     xform_norm; cancel.
     xform_norm; cancel.
+    xform_norm; safecancel.
+    2: reflexivity. cancel.
     rewrite LOG.recover_any_idempred; cancel. pred_apply; cancel.
     step.
     xcrash_solve. xform_norm. or_l. rewrite LOG.intact_idempred. cancel.
@@ -1239,8 +1241,22 @@ Module AFS.
     step.
     step.
     step.
-    xcrash. or_r. repeat ( cancel; progress xform_norm ).
-    rewrite LOG.recover_any_idempred; cancel. all: eauto.
+    xcrash. or_r. cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm; cancel.
+    xform_norm; safecancel.
+    rewrite LOG.recover_any_idempred.  cancel. 
+    2: pred_apply; cancel.
+    all: eauto.
     step.
     xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
     xcrash. or_l. rewrite LOG.intact_idempred. cancel.
