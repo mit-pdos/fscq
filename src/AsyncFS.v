@@ -715,7 +715,7 @@ Module AFS.
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
   POST:hm' RET:^(mscs',r)
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-         [[ r = INODE.ABytes (BFILE.BFAttr f) /\ MSAlloc mscs' = MSAlloc mscs /\ MSCache mscs' = MSCache mscs ]]
+         [[ r = INODE.ABytes (BFILE.BFAttr f) /\ MSAlloc mscs' = MSAlloc mscs ]]
   CRASH:hm'
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
   >} file_get_sz fsxp inum mscs.
@@ -794,7 +794,7 @@ Module AFS.
            [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(mscs', r)
            LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-           [[ r = fst vs /\ MSAlloc mscs' = MSAlloc mscs /\ MSCache mscs' = MSCache mscs ]]
+           [[ r = fst vs /\ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'
            LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} read_fblock fsxp inum off mscs.
@@ -823,7 +823,6 @@ Module AFS.
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
   POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-      [[ MSCache mscs' = MSCache mscs ]] *
      ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
       [[ ok = true  ]] * exists d tree' f' ilist',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
@@ -860,13 +859,16 @@ Module AFS.
       xform_norm; cancel.
       xform_norm; cancel.
       xform_norm; cancel.
-      xform_norm; cancel.
+      xform_norm; safecancel.
+      2: reflexivity.
+      eauto.
     }
     xcrash_solve.
     rewrite LOG.intact_idempred. xform_norm. cancel.
     xcrash_solve.
     rewrite LOG.intact_idempred. xform_norm. cancel.
   Qed.
+
 
   Hint Extern 1 ({{_}} Bind (file_set_attr _ _ _ _) _) => apply file_set_attr_ok : prog.
 
@@ -891,7 +893,6 @@ Module AFS.
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists d tree' f' ilist' frees' mscs',
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-      [[ MSCache mscs' = MSCache mscs ]] *
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (pushd d ds) hm' *
       [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs')]]] *
       [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
@@ -914,7 +915,15 @@ Module AFS.
     {
       or_r; cancel.
       rewrite LOG.recover_any_idempred.
-      cancel. repeat (progress xform_norm; cancel).
+      cancel. 
+      xform_norm; cancel.
+      xform_norm; cancel.
+      xform_norm; cancel.
+      xform_norm; cancel.
+      xform_norm; cancel.
+      xform_norm; safecancel.
+      2: reflexivity.
+      eauto.
     }
     step.
     xcrash_solve.
