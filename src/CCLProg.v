@@ -298,6 +298,9 @@ Section CCL.
       wtxn_step txn (upd h i (absMem (f m0))) h'' ->
       wtxn_step (WCons (AbsUpd i f) txn) h h''.
 
+  (* TODO: what to do with sigma_i? might be unnecessary (!) since writes follow
+  the protocol; write locks are just used to preclude other writers *)
+
   Inductive exec (tid:TID) : forall T, (Sigma * Sigma) -> cprog T -> outcome T -> Prop :=
   | ExecStepDec : forall T (p: cprog T) sigma_i sigma sigma' v,
       step_dec sigma p = StepTo sigma' v ->
@@ -329,19 +332,26 @@ Section CCL.
       let sigma' := Sigma.set_mem sigma (upd (Sigma.mem sigma) i (val v)) in
       exec tid (sigma_i, sigma) (Alloc v)
            (Finished sigma_i sigma' i)
-  | ExecReadTxn : forall sigma_i sigma A (txn:read_transaction A) v,
+  | ExecReadTxn : forall sigma_i sigma A (txn:read_transaction A) v sigma',
       rtxn_step txn (Sigma.mem sigma) v ->
+      Rely tid sigma sigma' ->
       exec tid (sigma_i, sigma) (ReadTxn txn)
-           (Finished sigma_i sigma v)
+           (Finished sigma_i sigma' v)
   | ExecReadTxnFail : forall sigma_i sigma A (txn:read_transaction A),
       rtxn_error txn (Sigma.mem sigma) ->
       exec tid (sigma_i, sigma) (ReadTxn txn) Error
   | ExecAssgnTxn : forall sigma_i sigma A (txn:write_transaction A) h',
       wtxn_step txn (Sigma.mem sigma) h' ->
       let sigma' := Sigma.set_mem sigma h' in
+      Guarantee tid sigma sigma' ->
       exec tid (sigma_i, sigma) (AssgnTxn txn)
            (Finished sigma_i sigma' tt)
-  | ExecAssgnTxnFail : forall sigma_i sigma A (txn:write_transaction A),
+  | ExecAssgnTxnProtocolError : forall sigma_i sigma A (txn:write_transaction A) h',
+      wtxn_step txn (Sigma.mem sigma) h' ->
+      let sigma' := Sigma.set_mem sigma h' in
+      ~Guarantee tid sigma sigma' ->
+      exec tid (sigma_i, sigma) (AssgnTxn txn) Error
+  | ExecAssgnTxnTyError : forall sigma_i sigma A (txn:write_transaction A),
       wtxn_error txn (Sigma.mem sigma) ->
       exec tid (sigma_i, sigma) (AssgnTxn txn) Error
   | ExecRelease : forall sigma_i sigma,
