@@ -808,6 +808,24 @@ Set Implicit Arguments.
     intros; cancel.
   Qed.
 
+  Lemma helper_reorder_sep_star_3: forall AT AEQ V (a b c d e : @pred AT AEQ V),
+      (((a ✶ b) ✶ c) ✶ d) ✶ e =p=> (a * e) * b * c * d.
+  Proof.
+    intros; cancel.
+  Qed.
+
+  Lemma helper_reorder_sep_star_4: forall AT AEQ V (a b c d: @pred AT AEQ V),
+      ((a ✶ b) ✶ c) ✶ d  =p=> (d * a) * (b * c).
+  Proof.
+    intros; cancel.
+  Qed.
+
+  Lemma helper_reorder_sep_star_5: forall AT AEQ V (a b c d : @pred AT AEQ V),
+      ((a * b) * c) * d =p=> ((a * d) * c) * b.
+  Proof.
+    intros; cancel.
+  Qed.
+
   Lemma notindomain_not_in_dirents : forall ents name dsmap,
     tree_dir_names_pred' ents dsmap
     -> notindomain name dsmap
