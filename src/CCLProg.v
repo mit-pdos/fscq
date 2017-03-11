@@ -341,12 +341,14 @@ Section CCL.
       rtxn_error txn (Sigma.mem sigma) ->
       exec tid (sigma_i, sigma) (ReadTxn txn) Error
   | ExecAssgnTxn : forall sigma_i sigma A (txn:write_transaction A) h',
+      Sigma.l sigma = WriteLock ->
       wtxn_step txn (Sigma.mem sigma) h' ->
       let sigma' := Sigma.set_mem sigma h' in
       Guarantee tid sigma sigma' ->
       exec tid (sigma_i, sigma) (AssgnTxn txn)
            (Finished sigma_i sigma' tt)
   | ExecAssgnTxnProtocolError : forall sigma_i sigma A (txn:write_transaction A) h',
+      Sigma.l sigma = WriteLock ->
       wtxn_step txn (Sigma.mem sigma) h' ->
       let sigma' := Sigma.set_mem sigma h' in
       ~Guarantee tid sigma sigma' ->
