@@ -2321,6 +2321,23 @@ Module BFILE.
   Hint Extern 1 ({{_}} Bind (reset _ _ _ _ _) _) => apply reset_ok : prog.
 
 
+  Theorem recover_ok : forall ms,
+    {< F ds lxp,
+    PRE:hm  LOG.rep lxp F (LOG.NoTxn ds) ms hm
+    POST:hm' RET:ms'
+      LOG.rep lxp F (LOG.NoTxn ds) (MSLL ms') hm' *
+      [[ ms = (MSLL ms') ]]
+    CRASH:hm' LOG.rep lxp F (LOG.NoTxn ds) ms hm (* \/
+       LOG.before_crash (FSXPLog fsxp) (SB.rep fsxp) ds hm' *)
+    >} recover ms.
+  Proof.
+    unfold recover; intros.
+    step.
+    step.
+  Qed.
+
+  Hint Extern 1 ({{_}} Bind (recover _ ) _) => apply recover_ok : prog.
+
   Theorem cache_get_ok : forall inum ms,
     {< F Fm Fi m0 m lxp bxp ixp flist ilist frees allocc f,
     PRE:hm
