@@ -1,9 +1,11 @@
 Require Import CCL.
 
 Require Import Mem AsyncDisk.
-Require Import MemCache.
 Require Import FunctionalExtensionality.
 Require Import UpdList.
+
+(* re-export MemCache since Cache appears in external type signatures *)
+Require Export MemCache.
 
 Require SepAuto.
 
@@ -68,21 +70,18 @@ Section OptimisticCache.
       let c' := add_entry Clean c a v in
         Ret (v, c').
 
-  Definition CacheRead_nofill c a :=
+  Definition CacheRead c a l :=
     match cache_get c a with
     | Present v _ => Ret (Some v, c)
-    | Missing => Ret (None, c)
-    | Invalid => Ret (None, c)
-    end.
-
-  Definition CacheRead_fill c a :=
-    match cache_get c a with
-    | Present v _ => Ret (Some v, c)
-    | Missing => _ <- BeginRead a;
+    | Missing => if CanWrite l then
+                  _ <- BeginRead a;
                   let c' := mark_pending c a in
                   Ret (None, c')
-    | Invalid => do '(v,c) <- ClearPending c a;
-                  Ret (Some v, c)
+                else Ret (None, c)
+    | Invalid => if CanWrite l then
+                  do '(v,c) <- ClearPending c a;
+                    Ret (Some v, c)
+                else Ret (None, c)
     end.
 
   Ltac solve_cache :=
@@ -159,31 +158,66 @@ Section OptimisticCache.
     solve_cache.
   Qed.
 
-  Hint Resolve CacheRep_present_val.
+  Lemma CacheRep_missing_val:
+    forall (c : Cache) (a : addr),
+      cache_get c a = Missing ->
+      forall (vd : Disk) (v0 : valu),
+        vd a = Some v0 ->
+        forall d : DISK, CacheRep d c vd -> d a = Some (v0, NoReader).
+  Proof.
+    solve_cache.
+  Qed.
 
-  Definition CacheRead_nofill_ok : forall tid c a,
+  Hint Resolve CacheRep_present_val CacheRep_missing_val.
+
+  Lemma CacheRep_start_fill:
+    forall (c : Cache) (a : addr),
+      cache_get c a = Missing ->
+      forall (vd : Disk) (v0 : valu),
+        vd a = Some v0 ->
+        forall d : DISK,
+          CacheRep d c vd ->
+          forall d' : DISK, d' = upd d a (v0, Pending) ->
+                       CacheRep d' (mark_pending c a) vd.
+  Proof.
+    unfold CacheRep, cache_rep; intros; subst.
+    specialize (H1 a0).
+    destruct (addr_eq_dec a a0); subst;
+      autorewrite with cache upd;
+      solve_cache.
+  Qed.
+
+  Hint Resolve CacheRep_start_fill.
+
+  Definition CacheRead_ok : forall tid c a l,
       cprog_spec G tid
                  (fun '(F, d, vd, v0) sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          CacheRep d c vd /\
+                         (l = WriteLock -> d = Sigma.disk sigma) /\
+                         Sigma.l sigma = l /\
                          vd a = Some v0;
                        postcondition :=
                          fun sigma' '(r, c') =>
-                           F (Sigma.mem sigma) /\
-                           CacheRep d c' vd /\
-                           c' = c /\
-                           Sigma.hm sigma' = Sigma.hm sigma /\
+                           F (Sigma.mem sigma') /\
+                           let d' := if CanWrite l
+                                     then Sigma.disk sigma'
+                                     else d in
+                           CacheRep d' c' vd /\
+                           (l = Free -> c' = c) /\
                            match r with
                            | Some v => v = v0
                            | None => True
                            end /\
+                           Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.l sigma' = Sigma.l sigma |})
-                 (CacheRead_nofill c a).
+                 (CacheRead c a l).
   Proof.
-    unfold CacheRead_nofill.
+    unfold CacheRead.
     intros.
-    destruct (cache_get c a) eqn:?; hoare finish.
+    destruct (cache_get c a) eqn:?, (CanWrite l) eqn:?;
+             hoare finish.
   Qed.
 
   Definition CacheWrite c a v :=

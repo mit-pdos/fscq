@@ -302,9 +302,6 @@ Section CCL.
       wtxn_step txn (upd h i (absMem (f m0))) h'' ->
       wtxn_step (WCons (AbsUpd i f) txn) h h''.
 
-  (* TODO: what to do with sigma_i? might be unnecessary (!) since writes follow
-  the protocol; write locks are just used to preclude other writers *)
-
   Inductive exec (tid:TID) : forall T, Sigma -> cprog T -> outcome T -> Prop :=
   | ExecStepDec : forall T (p: cprog T) sigma sigma' v,
       step_dec sigma p = StepTo sigma' v ->

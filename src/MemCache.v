@@ -27,10 +27,10 @@ Section MemCache.
     | None => Missing
     end.
 
-  Definition mark_pending c a :=
+  Definition mark_pending c a : Cache :=
     Map.add a Invalid c.
 
-  Definition add_entry f c a v :=
+  Definition add_entry f c a v : Cache :=
     Map.add a (Present v f) c.
 
   Hint Rewrite MapFacts.add_eq_o using (solve [ auto ]).
