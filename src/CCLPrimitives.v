@@ -175,6 +175,19 @@ Section Primitives.
     prim.
   Qed.
 
+  Theorem Ret_general_ok : forall tid T (v:T) A (spec: Spec A T),
+      (forall a sigma, precondition (spec a sigma) -> postcondition (spec a sigma) sigma v) ->
+      cprog_spec G tid spec (Ret v).
+  Proof.
+    unfold cprog_spec, cprog_ok; intros.
+    deex.
+    inv_exec' H1; inv_ret.
+    match goal with
+    | [ Hexec: exec _ _ _ (rx _) _ |- _ ] =>
+      eapply H2 in Hexec; eauto
+    end.
+  Qed.
+
   Definition GetWriteLock :=
     SetLock Free WriteLock.
 
@@ -218,7 +231,6 @@ Hint Extern 0 {{ WaitForRead _; _ }} => apply WaitForRead_ok : prog.
 Hint Extern 0 {{ Write _ _; _ }} => apply Write_ok : prog.
 Hint Extern 0 {{ Alloc _; _ }} => apply Alloc_ok : prog.
 Hint Extern 0 {{ Hash _; _ }} => apply Hash_ok : prog.
-Hint Extern 0 {{ Ret _; _ }} => apply Ret_ok : prog.
 Hint Extern 0 {{ GetWriteLock; _ }} => apply GetWriteLock_ok : prog.
 Hint Extern 0 {{ Unlock; _ }} => apply Unlock_ok : prog.
 

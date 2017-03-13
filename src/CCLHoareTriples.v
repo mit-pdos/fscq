@@ -101,7 +101,30 @@ Section HoareTriples.
     end.
   Qed.
 
+  Theorem spec_respects_exec_equiv : forall A T (p p': cprog T) tid (spec: Spec A T),
+      exec_equiv G p p' ->
+      cprog_spec tid spec p' ->
+      cprog_spec tid spec p.
+  Proof.
+    unfold cprog_spec; intros.
+    eapply cprog_ok_respects_exec_equiv; eauto.
+    eapply exec_equiv_bind; eauto.
+    reflexivity.
+  Qed.
+
 End HoareTriples.
+
+Ltac spec_monad_simpl :=
+  let rewrite_equiv H := eapply spec_respects_exec_equiv;
+                         [ solve [ apply H ] | ] in
+  repeat match goal with
+         | [ |- cprog_spec _ _ _ (Bind _ (Ret _)) ] =>
+           rewrite_equiv monad_right_id
+         | [ |- cprog_spec _ _ _ (Bind (Ret _) _) ] =>
+           rewrite_equiv monad_left_id
+         | [ |- cprog_spec _ _ _ (Bind (Bind _ _) _) ] =>
+           rewrite_equiv monad_assoc
+         end.
 
 (* Local Variables: *)
 (* company-coq-local-symbols: (("Sigma" . ?Σ) ("sigma" . ?σ) ("sigma'" . (?σ (Br . Bl) ?'))) *)

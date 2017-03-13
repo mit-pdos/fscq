@@ -53,6 +53,7 @@ Qed.
 
 Ltac descend :=
   repeat match goal with
+         | [ |- exists (_:unit), _ ] => exists tt
          | [ |- exists (_: _ * _), _ ] => apply exists_tuple
          | [ |- exists _, _ ] => eexists
          end.
