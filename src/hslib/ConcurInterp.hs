@@ -7,8 +7,6 @@ import qualified Disk
 import Word
 import qualified Crypto.Hash.SHA256 as SHA256
 import Control.Monad (when)
-import Control.Monad.STM
-import Control.Concurrent.STM.TVar
 import Control.Concurrent.MVar
 import Data.IORef
 import qualified Data.Map.Strict as Map
@@ -21,7 +19,7 @@ debugmsg s = when verbose $ putStrLn s
 
 type TID = Int
 
-type Heap = Map.Map Coq_ident (TVar Any)
+type Heap = Map.Map Coq_ident Any
 
 data ConcurState = ConcurState
   { disk :: Disk.DiskState
@@ -32,24 +30,17 @@ instance Show LockState where
   show Free = "Free"
   show WriteLock = "WriteLock"
 
-interp_rtxn :: Coq_read_transaction a -> Heap -> STM a
-interp_rtxn RDone _ = return . unsafeCoerce $ ()
+interp_rtxn :: Coq_read_transaction a -> Heap -> a
+interp_rtxn RDone _ = unsafeCoerce ()
 interp_rtxn (RCons i txn) h =
   case Map.lookup i h of
     Nothing -> error $ "missing variable " ++ show i
-    Just var -> do
-      v <- readTVar var
-      rest <- interp_rtxn txn h
-      return . unsafeCoerce $ (v, rest)
+    Just v -> unsafeCoerce $ (v, interp_rtxn txn h)
 
-interp_wtxn :: Coq_write_transaction a -> Heap -> STM ()
-interp_wtxn WDone _ = return ()
+interp_wtxn :: Coq_write_transaction a -> Heap -> Heap
+interp_wtxn WDone h = h
 interp_wtxn (WCons (NewVal i v) txn) h =
-  case Map.lookup i h of
-    Nothing -> error $ "write to unallocated variable " ++ show i
-    Just var -> do
-      writeTVar var v
-      interp_wtxn txn h
+  Map.insert i v (interp_wtxn txn h)
   -- skip ghost updates
 interp_wtxn (WCons (AbsUpd _ _) txn) h = interp_wtxn txn h
 interp_wtxn (WCons (AbsMemUpd _ _ _) txn) h = interp_wtxn txn h
@@ -58,20 +49,20 @@ run_dcode :: ConcurState -> CCLProg.Coq_cprog a -> IO a
 run_dcode _ (Ret r) = do
   return r
 run_dcode s (Alloc v) = do
-  var <- atomically $ newTVar (unsafeCoerce v)
   i <- atomicModifyIORef (memory s) $ \h ->
     let (maxIdent,_) = Map.findMax h
         i = maxIdent+1
-        h' = Map.insert i var h in
+        h' = Map.insert i v h in
         (h', i)
   return $ unsafeCoerce i
 run_dcode s (ReadTxn txn) = do
   h <- readIORef (memory s)
-  r <- atomically $ interp_rtxn txn h
+  r <- return $ interp_rtxn txn h
   return $ unsafeCoerce r
 run_dcode s (AssgnTxn txn) = do
-  h <- readIORef (memory s)
-  atomically $ interp_wtxn txn h
+  atomicModifyIORef (memory s) $ \h ->
+    let h' = interp_wtxn txn h in
+      (h', ())
   return $ unsafeCoerce ()
 run_dcode s (Write a v) = do
   Disk.write_disk (disk s) a v
@@ -104,11 +95,9 @@ run_dcode ds (Bind p1 p2) = do
   return r2
 
 newState :: Disk.DiskState -> IO ConcurState
-newState ds = do
-  dummyVar <- atomically $ newTVar (unsafeCoerce ())
-  pure ConcurState
+newState ds = pure ConcurState
     <*> return ds
-    <*> newIORef (Map.fromList [(0, dummyVar)])
+    <*> newIORef (Map.fromList [(0, unsafeCoerce ())])
     <*> newMVar ()
 
 run :: ConcurState -> CCLProg.Coq_cprog a -> IO a
