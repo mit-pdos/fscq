@@ -221,10 +221,11 @@ Section ConcurrentFS.
        as the input *)
       do '(r, _) <- p mscs Free c;
       match r with
-      | Success (ms', r) =>
-        (* TODO: if FSCQ code tells us to, restart with write lock to commit
-        memstate *)
-        Ret (Done r)
+      | Success f (ms', r) =>
+        match f with
+        | NoChange => Ret (Done r)
+        | Modified => Ret TryAgain
+        end
       | Failure e =>
         match e with
         | Unsupported => Ret SyscallFailed
@@ -246,7 +247,7 @@ Section ConcurrentFS.
              do '(c, mscs) <- Read2 Cache (cache P) memstate (fsmem P);
              do '(r, c) <- p mscs WriteLock c;
              match r with
-             | Success (ms', r) =>
+             | Success _ (ms', r) =>
                _ <- Assgn2_mem_abs (Make_assgn2
                                      (cache P) c
                                      (fsmem P) ms'
@@ -305,7 +306,7 @@ Section ConcurrentFS.
                (l = Free -> vd' = vd) /\
                (l = Free -> c' = c) /\
                match r with
-               | Success (mscs', r) =>
+               | Success _ (mscs', r) =>
                  fs_post (fsspec a) r /\
                  fs_rep vd' (Sigma.hm sigma') mscs' (fs_dirup (fsspec a) tree)
                | Failure e =>

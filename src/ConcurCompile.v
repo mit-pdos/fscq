@@ -72,12 +72,13 @@ Section ConcurCompile.
            (l : L) : Cache -> cprog (Result L * Cache) :=
     fun c =>
       match lst with
-      | nil => Ret (Success l, c)
+      | nil => Ret (Success NoChange l, c)
       | elem :: lst' =>
         ret <- f elem l c;
           let '(r, c') := ret in
           match r with
-          | Success l' => cForEach_ f lst' l' c'
+          | Success mf l' => do '(r, c') <- cForEach_ f lst' l' c';
+                              Ret (modified_or mf r, c')
           | Failure e => Ret (Failure e, c')
           end
       end.
@@ -95,6 +96,7 @@ Section ConcurCompile.
     f_equal.
     extensionality r.
     destruct r as [ [? |] ?]; eauto.
+    rewrite IHlst; auto.
   Qed.
 
   Lemma compile_forEach ITEM L p :
@@ -114,6 +116,8 @@ Section ConcurCompile.
     eapply exec_equiv_bind; intros; eauto.
     destruct v.
     destruct r; eauto.
+    apply exec_equiv_bind; intros; eauto.
+    reflexivity.
     reflexivity.
   Defined.
 
@@ -123,12 +127,13 @@ Section ConcurCompile.
     : Cache -> cprog (Result L * Cache) :=
     fun c =>
       match n with
-      | O => Ret (Success l, c)
+      | O => Ret (Success NoChange l, c)
       | S n' =>
         ret <- f i l c;
           let '(r, c') := ret in
           match r with
-          | Success l' => cForN_ f (S i) n' l' c'
+          | Success mf l' => do '(r, c') <- cForN_ f (S i) n' l' c';
+                              Ret (modified_or mf r, c')
           | Failure e => Ret (Failure e, c')
           end
       end.
@@ -147,6 +152,7 @@ Section ConcurCompile.
     f_equal.
     extensionality r.
     destruct r as [ [? |] ?]; eauto.
+    rewrite IHn; eauto.
   Qed.
 
   Lemma compile_forN L p :
@@ -167,6 +173,8 @@ Section ConcurCompile.
     eapply exec_equiv_bind; intros; eauto.
     destruct v.
     destruct r; eauto.
+    eapply exec_equiv_bind; intros; eauto.
+    reflexivity.
     reflexivity.
   Defined.
 
@@ -333,13 +341,13 @@ Section ConcurCompile.
       (forall v c, Compiled (p1 v c)) ->
       (forall e c, Compiled (p2 e c)) ->
       Compiled (match r with
-                | (Success v, c) => p1 v c
+                | (Success _ v, c) => p1 v c
                 | (Failure e, c) => p2 e c
                 end).
   Proof.
     intros.
     exists (match r with
-       | (Success v, c) => compiled_prog (X v c)
+       | (Success _ v, c) => compiled_prog (X v c)
        | (Failure e, c) => compiled_prog (X0 e c)
        end).
     destruct r.

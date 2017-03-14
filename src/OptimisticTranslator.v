@@ -12,11 +12,21 @@ Inductive OptimisticException :=
 | Unsupported
 | WriteRequired.
 
-Inductive Result T :=
-| Success (v:T)
-| Failure (e:OptimisticException).
+Inductive ModifiedFlag := NoChange | Modified.
 
+Inductive Result T :=
+| Success (f:ModifiedFlag) (v:T)
+| Failure (e:OptimisticException).
 Arguments Failure {T} e.
+
+Definition modified_or T (f1:ModifiedFlag) (r:Result T) : Result T :=
+  match f1 with
+  | NoChange => r
+  | Modified => match r with
+               | Success _ v => Success Modified v
+               | Failure e => Failure e
+               end
+  end.
 
 Section OptimisticTranslator.
 
@@ -25,23 +35,26 @@ Section OptimisticTranslator.
   Fixpoint translate T (p: prog T) :
     LockState -> Cache -> cprog (Result T * Cache) :=
     fun l c => match p with
-           | Prog.Ret v => Ret (Success v, c)
+           | Prog.Ret v => Ret (Success NoChange v, c)
+           | Prog.AlertModified => Ret (Success Modified tt, c)
            | Prog.Read a => do '(v, c) <- CacheRead c a l;
                              match v with
-                             | Some v => Ret (Success v, c)
+                             | Some v => Ret (Success NoChange v, c)
                              | None => Ret (Failure (CacheMiss a), c)
                              end
            | Prog.Write a v => if CanWrite l then
                                 do '(_, c) <- CacheWrite c a v;
-                                  Ret (Success tt, c)
+                                  Ret (Success NoChange tt, c)
                               else
                                 Ret (Failure WriteRequired, c)
-           | Prog.Sync => Ret (Success tt, c)
+           | Prog.Sync => Ret (Success NoChange tt, c)
            | Prog.Hash buf => v <- Hash buf;
-                               Ret (Success v, c)
+                               Ret (Success NoChange v, c)
            | Prog.Bind p1 p2 => do '(r, c) <- translate p1 l c;
                                  match r with
-                                 | Success v => translate (p2 v) l c
+                                 | Success f v =>
+                                   do '(r', c') <- translate (p2 v) l c;
+                                     Ret (modified_or f r', c')
                                  | Failure e => Ret (Failure e, c)
                                  end
            (* unhandled programs - Trim and memory operations *)
@@ -228,7 +241,7 @@ Section OptimisticTranslator.
           (l = Free -> vd' = vd) /\
           (l = Free -> c' = c) /\
           match r with
-          | Success v =>
+          | Success _ v =>
             Prog.exec (add_buffers vd) Mem.empty_mem (Sigma.hm sigma) p
                       (Prog.Finished (add_buffers vd') Mem.empty_mem (Sigma.hm sigma') v)
           | Failure e =>
@@ -305,18 +318,27 @@ Section OptimisticTranslator.
       destruct v as [r c']; intuition eauto.
       deex; intuition eauto.
       destruct r; try CCLTactics.inv_ret; intuition eauto.
-      + match goal with
+      + CCLTactics.inv_bind;
+          try match goal with
+              | [ H: context[let '(a, b) := ?p in _] |- _ ] =>
+                let a := fresh a in
+                let b := fresh b in
+                destruct p as [a b]
+              end;
+          try CCLTactics.inv_ret;
+          match goal with
           | [ Hexec: exec _ _ _ (translate (p2 _) _ _) _ |- _ ] =>
             eapply H in Hexec; intuition eauto
-        end.
+          end.
         left.
-        destruct out; eauto.
-        destruct r as [r c'']; deex; intuition eauto.
+        deex; intuition eauto.
         exists vd'0.
         destruct (Sigma.l sigma); simpl in *; intuition (subst; eauto);
           try congruence.
-        destruct r; eauto.
-        destruct r; eauto.
+        destruct f, r'; simpl; eauto.
+        destruct f, r'; simpl; eauto.
+        destruct (Sigma.l sigma); simpl in *; intuition (subst; eauto);
+          try congruence.
         destruct (Sigma.l sigma); simpl in *; intuition (subst; eauto);
           try congruence.
       + left; eauto 10.
@@ -346,8 +368,8 @@ Section OptimisticTranslator.
                  (l = Free -> c' = c) /\
                  hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
                  match r with
-                 | Success v => seq_post (seq_spec a Mem.empty_mem (Sigma.hm sigma))
-                                        Mem.empty_mem (Sigma.hm sigma') v (add_buffers vd')
+                 | Success _ v => seq_post (seq_spec a Mem.empty_mem (Sigma.hm sigma))
+                                          Mem.empty_mem (Sigma.hm sigma') v (add_buffers vd')
                  | Failure e =>
                    match e with
                    | WriteRequired => l = Free
