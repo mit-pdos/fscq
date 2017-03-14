@@ -7,9 +7,11 @@ import qualified Disk
 import Word
 import qualified Crypto.Hash.SHA256 as SHA256
 import Control.Monad (when)
--- import Control.Concurrent.MVar
+import Control.Monad.STM
+import Control.Concurrent.STM.TVar
+import Control.Concurrent.MVar
 import Data.IORef
-import ReadWriteLock as RWL
+import qualified Data.Map.Strict as Map
 
 verbose :: Bool
 verbose = False
@@ -19,27 +21,56 @@ debugmsg s = when verbose $ putStrLn s
 
 type TID = Int
 
+type Heap = Map.Map Coq_ident (TVar Any)
+
 data ConcurState = ConcurState
   { disk :: Disk.DiskState
-  , memory :: IORef Any
-  , lock :: RWLock
-  , shouldUpdateMem :: IORef Bool }
+  , memory :: IORef Heap
+  , lock :: MVar () }
 
 instance Show LockState where
   show Free = "Free"
-  show ReadLock = "ReadLock"
   show WriteLock = "WriteLock"
+
+interp_rtxn :: Coq_read_transaction a -> Heap -> STM a
+interp_rtxn RDone _ = return . unsafeCoerce $ ()
+interp_rtxn (RCons i txn) h =
+  case Map.lookup i h of
+    Nothing -> error $ "missing variable " ++ show i
+    Just var -> do
+      v <- readTVar var
+      rest <- interp_rtxn txn h
+      return . unsafeCoerce $ (v, rest)
+
+interp_wtxn :: Coq_write_transaction a -> Heap -> STM ()
+interp_wtxn WDone _ = return ()
+interp_wtxn (WCons (NewVal i v) txn) h =
+  case Map.lookup i h of
+    Nothing -> error $ "write to unallocated variable " ++ show i
+    Just var -> do
+      writeTVar var v
+      interp_wtxn txn h
+  -- skip ghost updates
+interp_wtxn (WCons (AbsUpd _ _) txn) h = interp_wtxn txn h
+interp_wtxn (WCons (AbsMemUpd _ _ _) txn) h = interp_wtxn txn h
 
 run_dcode :: ConcurState -> CCLProg.Coq_cprog a -> IO a
 run_dcode _ (Ret r) = do
   return r
-run_dcode s (Assgn m) = do
-  writeIORef (memory s) m
+run_dcode s (Alloc v) = do
+  var <- atomically $ newTVar (unsafeCoerce v)
+  atomicModifyIORef (memory s) $ \h ->
+    let (i,_) = Map.findMax h
+        h' = Map.insert (i+1) var h in
+        (h', ())
   return $ unsafeCoerce ()
-run_dcode s (Get) = do
-  m <- readIORef (memory s)
-  return $ unsafeCoerce m
-run_dcode _ (GhostUpdate _) = do
+run_dcode s (ReadTxn txn) = do
+  h <- readIORef (memory s)
+  r <- atomically $ interp_rtxn txn h
+  return $ unsafeCoerce r
+run_dcode s (AssgnTxn txn) = do
+  h <- readIORef (memory s)
+  atomically $ interp_wtxn txn h
   return $ unsafeCoerce ()
 run_dcode s (Write a v) = do
   Disk.write_disk (disk s) a v
@@ -54,27 +85,11 @@ run_dcode _ (Hash sz (WBS bs)) = do
   return $ unsafeCoerce $ WBS $ SHA256.hash bs
 run_dcode s (SetLock l l') = do
   debugmsg $ "SetLock " ++ show l ++ " " ++ show l'
-  l'' <- case (l, l') of
-    (Free, ReadLock) -> do
-      -- RWL.acquireRead (lock s)
-      return l'
-    (Free, WriteLock) -> do
-      RWL.acquireWrite (lock s)
-      return l'
-    (ReadLock, Free) -> do
-      -- RWL.releaseRead (lock s)
-      return l'
-    (WriteLock, Free) -> do
-      RWL.releaseWrite (lock s)
-      return l'
-    (ReadLock, WriteLock) -> do
-      doUpdate <- readIORef (shouldUpdateMem s)
-      if doUpdate then do
-        RWL.acquireWrite (lock s)
-        return WriteLock
-      else return ReadLock
+  case (l, l') of
+    (Free, WriteLock) -> takeMVar (lock s)
+    (WriteLock, Free) -> putMVar (lock s) ()
     (_, _) -> error $ "SetLock used incorrectly: " ++ show l ++ " " ++ show l'
-  return $ unsafeCoerce l''
+  return $ unsafeCoerce l'
 run_dcode _ (BeginRead _) = do
   -- TODO: implement efficiently
   debugmsg $ "BeginRead"
@@ -88,12 +103,12 @@ run_dcode ds (Bind p1 p2) = do
   return r2
 
 newState :: Disk.DiskState -> IO ConcurState
-newState ds =
+newState ds = do
+  dummyVar <- atomically $ newTVar (unsafeCoerce ())
   pure ConcurState
-  <*> return ds
-  <*> newIORef (unsafeCoerce ())
-  <*> RWL.new
-  <*> newIORef True
+    <*> return ds
+    <*> newIORef (Map.fromList [(0, dummyVar)])
+    <*> newMVar ()
 
 run :: ConcurState -> CCLProg.Coq_cprog a -> IO a
 run s p = run_dcode s p
