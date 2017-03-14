@@ -511,12 +511,12 @@ Definition init (mscs: memstate) : cprog FsParams :=
   cacheId <- Alloc empty_cache;
     memstateId <- Alloc mscs;
     Ret {|
-        cache:= cacheId;
-        fsmem:= cacheId;
+        cache:=cacheId;
+        fsmem:=memstateId;
 
-        vdisk:= absId;
-        fstree:= absId;
-        fshomedirs:= absId; |}.
+        vdisk:=absId;
+        fstree:=absId;
+        fshomedirs:=absId; |}.
 
 (* Local Variables: *)
 (* company-coq-local-symbols: (("Sigma" . ?Σ) ("sigma" . ?σ) ("sigma'" . (?σ (Br . Bl) ?'))) *)

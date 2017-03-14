@@ -59,11 +59,12 @@ run_dcode _ (Ret r) = do
   return r
 run_dcode s (Alloc v) = do
   var <- atomically $ newTVar (unsafeCoerce v)
-  atomicModifyIORef (memory s) $ \h ->
-    let (i,_) = Map.findMax h
-        h' = Map.insert (i+1) var h in
-        (h', ())
-  return $ unsafeCoerce ()
+  i <- atomicModifyIORef (memory s) $ \h ->
+    let (maxIdent,_) = Map.findMax h
+        i = maxIdent+1
+        h' = Map.insert i var h in
+        (h', i)
+  return $ unsafeCoerce i
 run_dcode s (ReadTxn txn) = do
   h <- readIORef (memory s)
   r <- atomically $ interp_rtxn txn h
