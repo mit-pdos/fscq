@@ -17,10 +17,10 @@ Set Implicit Arguments.
 Parameter vartype : Type.
 Parameter vartype_eq_dec : forall (x y : vartype), {x=y}+{x<>y}.
 
-(** single program *)
-Polymorphic Inductive var_value : Type :=
+Inductive var_value : Type :=
   | Any : forall (T : Type), T -> var_value.
 
+(** single program *)
 Inductive prog : Type -> Type :=
   | Ret T (v: T) : prog T
   | Read (a: addr) : prog valu
@@ -123,8 +123,6 @@ Inductive exec : forall T, rawdisk -> varmem -> hashmap -> prog T -> outcome T -
 | XBindFail : forall m vm hm T (p1: prog T)
                 T' (p2: T -> prog T'),
     exec m vm hm p1 (Failed T) ->
-    (* note p2 need not execute at all if p1 fails, a form of lazy
-    evaluation *)
     exec m vm hm (Bind p1 p2) (Failed T')
 | XBindCrash : forall m vm hm T (p1: prog T) m' hm'
                  T' (p2: T -> prog T'),
