@@ -68,6 +68,9 @@ run_dcode ds (VarDelete i) = do
   debugmsg $ "VarDelete " ++ (show i)
   Disk.var_delete ds i
   return $ unsafeCoerce ()
+run_dcode _ (AlertModified) = do
+  debugmsg $ "AlertModified"
+  return $ unsafeCoerce ()
 run_dcode ds (Hash sz (W64 w)) = run_dcode ds (Hash sz (W $ fromIntegral w))
 run_dcode ds (Hash sz (W w)) = do
   debugmsg $ "Hash " ++ (show sz) ++ " W " ++ (show w)
