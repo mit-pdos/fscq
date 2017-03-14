@@ -86,6 +86,7 @@ Module BUFCACHE.
     match Map.find a (CSMap cs) with
     | Some (v, dirty) => Ret ^(cs, v)
     | None =>
+      AlertModified;;
       v <- Read a;
       Ret ^(mk_cs (Map.add a (v, false) (CSMap cs))
                  (CSMaxCount cs) (CSCount cs + 1) (eviction_update (CSEvict cs) a), v)

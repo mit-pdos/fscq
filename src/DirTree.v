@@ -284,6 +284,7 @@ Module DIRTREE.
      * same, and without this lock-up, we end up with several distinct facts
      * about the same memory.
      *)
+  
     all: denote! (_ (list2nmem m)) as Hm0; rewrite <- locked_eq in Hm0.
 
     destruct_branch.
@@ -1216,17 +1217,27 @@ Module DIRTREE.
     subst; simpl in *.
     denote tree_dir_names_pred as Hx; assert (Horig := Hx).
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
-    cancel.  instantiate (tree := TreeDir dnum tree_elem).
+    cancel.  
+
+    (* BFILE.rep in post condition of namei doesn't unify with  BFILE.rep in context, 
+       because namei may change cache content and promises a new BFILE.rep in its post
+       condition, which we should use from now on. Should we clear the old BFILE.rep? *)
+    denote! (_ (list2nmem m)) as Hm0; rewrite <- locked_eq in Hm0.
+
+    instantiate (tree := TreeDir dnum tree_elem).
     unfold rep; simpl.
     unfold tree_dir_names_pred; cancel.
     all: eauto.
 
-    denote! (_ (list2nmem m)) as Hm0; rewrite <- locked_eq in Hm0.
-
     (* lookup srcname, isolate src directory before cancel *)
     destruct_branch; [ | step ].
     destruct_branch; destruct_branch; [ | step ].
+
     prestep; norm'l.
+
+    (* lock the old BFILE.rep again, but not the new one. *)
+    denote! ( (Fm * BFILE.rep _ _ _ _ _ _ (MSCache mscs) * _)%pred (list2nmem m)) as Hm0; rewrite <- locked_eq in Hm0.
+
     intuition; inv_option_eq; repeat deex; destruct_pairs.
     denote find_name as Htree.
     apply eq_sym in Htree.
@@ -1244,10 +1255,13 @@ Module DIRTREE.
     denote (_ |-> _)%pred as Hsub.
 
     safecancel.
-    cancel; eauto.
+    cancel. 2: eauto.
 
     (* unlink src *)
     step.
+
+    (* lock an old BFILE.rep *)
+    denote! ( ((Fm * BFILE.rep _ _ _ _ _  _ (MSCache a)) * _)%pred (list2nmem m)) as Hm1; rewrite <- locked_eq in Hm1.
 
     (* namei for dstpath, find out pruning subtree before step *)
     denote (tree_dir_names_pred' l0 _) as Hx1.
@@ -1272,6 +1286,10 @@ Module DIRTREE.
     (* lookup dstname *)
     destruct_branch; [ | step ].
     destruct_branch; destruct_branch; [ | step ].
+
+    (* lock an old BFILE.rep; we have a new one from namei *)
+    denote! ( (_* BFILE.rep _ _ _ _ _ _ (MSCache a0) )%pred (list2nmem m)) as Hm2; rewrite <- locked_eq in Hm2.
+
     prestep; norm'l.
     intuition; inv_option_eq; repeat deex; destruct_pairs.
 
@@ -1280,14 +1298,17 @@ Module DIRTREE.
     apply find_name_exists in Hpruned.
     destruct Hpruned. intuition.
 
+    denote (list2nmem dummy9) as Hinterm1.
     denote find_subtree as Hpruned; assert (Hx := Hpruned).
     apply subtree_extract with (xp := fsxp) in Hx.
-    assert (Hdst := Hinterm); rewrite Hx in Hdst; clear Hx.
+    assert (Hdst := Hinterm1); rewrite Hx in Hdst; clear Hx.
     destruct x; simpl in *; subst; try congruence; inv_option_eq.
     unfold tree_dir_names_pred in Hdst.
     destruct_lift Hdst.
 
     safecancel. eauto.
+
+    denote! ( (Fm * _ * BFILE.rep _ _ _ _ _ _ (MSCache a4))%pred (list2nmem m')) as Hm3; rewrite <- locked_eq in Hm3.
 
     (* grafting back *)
     destruct_branch.
@@ -1301,12 +1322,24 @@ Module DIRTREE.
     pose proof (ptsto_subtree_exists _ Hx3 Hx4) as Hx.
     destruct Hx; intuition.
 
+    denote! ( ((Fm * BFILE.rep _ _ _ _ _ (MSAllocC a1) _) * _)%pred (list2nmem m')) as Hm4; rewrite <- locked_eq in Hm4.
+
     (* must unify [find_subtree] in [delete]'s precondition with
        the root tree node.  have to do this manually *)
     unfold rep; norm. cancel. intuition.
     pred_apply; norm. cancel. intuition.
     eassign (tree_prune v_1 l0 srcpath srcname (TreeDir dnum tree_elem)).
-    pred_apply' Hinterm; cancel. eauto.
+    (* it would have been nice if we could have used Hinterm, as the old
+       proof did, but flist has changed because of caching, and we need to
+       use the latest flist and fold things back together again. *)
+    2: eauto.
+    pred_apply.
+    cancel.
+    rewrite helper_reorder_sep_star_3.
+    rewrite fold_back_dir_pred; eauto.
+    rewrite helper_reorder_sep_star_4.
+    rewrite subtree_fold; eauto. 
+    cancel.
 
     (* now, get ready for link *)
     destruct_branch; [ | step ]. 
@@ -1315,10 +1348,13 @@ Module DIRTREE.
     setoid_rewrite subtree_extract in Hx at 2.
     2: subst; eapply find_update_subtree; eauto.
     simpl in Hx; unfold tree_dir_names_pred in Hx; destruct_lift Hx.
+
+    denote! ( _ (list2nmem m')) as Hm5; rewrite <- locked_eq in Hm5.
     cancel.
     eauto.
 
     eapply tree_pred_ino_goodSize; eauto.
+
     pred_apply' Hdel; cancel.
 
     safestep.
@@ -1343,11 +1379,11 @@ Module DIRTREE.
     unfold BFILE.treeseq_ilist_safe in Hsafe; destruct Hsafe as [Hsafe0 Hsafe1].
     rewrite <- Hsafe1 by auto.
 
-    eapply H36; eauto.
+    eapply H42; eauto.
     right.
-    contradict H46.
+    contradict H51.
     unfold tree_prune in *.
-    eapply tree_inodes_incl_delete_from_dir in H46; eauto.
+    eapply tree_inodes_incl_delete_from_dir in H51; eauto.
     simpl in *; intuition.
 
     cancel.
@@ -1356,11 +1392,13 @@ Module DIRTREE.
     safestep.
     safestep.
     eapply tree_pred_ino_goodSize; eauto.
-    pred_apply' Hinterm; cancel.
+    pred_apply' H40; cancel.   (* Hinterm as above *)
 
     safestep.
     or_l; cancel.
     or_r; cancel; eauto.
+
+    rewrite helper_reorder_sep_star_5.
     eapply subtree_graft_absorb; eauto.
     msalloc_eq.
     eapply dirtree_safe_rename_dest_none; eauto.
@@ -1378,10 +1416,13 @@ Module DIRTREE.
     cancel; auto.
 
     cancel.
-    cancel; auto.
-
     Unshelve.
     all: try exact addr; try exact addr_eq_dec; eauto.
+    all: try exact nil.
+    all: try exact string_dec.
+    all: try exact (Build_balloc_xparams 0 0, Build_balloc_xparams 0 0).
+    all: try exact (BFM.Map.empty _).
+    all: try exact (FSXPInode fsxp).
   Qed.
 
   Theorem rename_ok : forall fsxp dnum srcpath srcname dstpath dstname mscs,
@@ -1479,6 +1520,8 @@ Module DIRTREE.
     all: try exact Mem.empty_mem.
     all: try exact (FSXPInode fsxp).
     all: try exact (FSXPBlockAlloc1 fsxp, FSXPBlockAlloc2 fsxp).
+    all: try exact (BFM.Map.empty _).
+    all: intros; try exact True.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
