@@ -14,6 +14,7 @@ Import Pred.
 
 Require Import HomeDirProtocol.
 Require Import RelationClasses.
+Require Import ConcurCompile.
 
 Record FsParams :=
   { cache: ident; (* : Cache *)
@@ -382,7 +383,7 @@ Section ConcurrentFS.
   Abort.
 
   Definition file_get_attr inum :=
-    retry_syscall (fun mscs => OptFS.file_get_attr fsxp inum mscs)
+    retry_syscall (fun mscs => file_get_attr fsxp inum mscs)
                   (fun tree => tree).
 
   Lemma exists_tuple : forall A B P,
@@ -429,7 +430,7 @@ Section ConcurrentFS.
   (* translate remaining system calls for extraction *)
 
   Definition lookup dnum names :=
-    retry_syscall (fun mscs => OptFS.lookup fsxp dnum names mscs)
+    retry_syscall (fun mscs => lookup fsxp dnum names mscs)
                   (fun tree => tree).
 
   Definition read_fblock inum off :=
