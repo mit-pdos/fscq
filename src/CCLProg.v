@@ -78,9 +78,9 @@ Section CCL.
 
   Inductive heapupd : Type -> Type :=
   | NewVal : forall T, ident -> T -> heapupd T
-  | AbsUpd : forall T, ident -> (T -> T) -> heapupd T
+  | AbsUpd : forall T, ident -> (TID -> T -> T) -> heapupd T
   | AbsMemUpd : forall A AEQ V,
-      ident -> (@mem A AEQ V -> @mem A AEQ V) ->
+      ident -> (TID -> @mem A AEQ V -> @mem A AEQ V) ->
       heapupd (@mem A AEQ V).
 
   Definition upd_ident T (hup: heapupd T) : ident :=
@@ -284,23 +284,23 @@ Section CCL.
       wtxn_error txn h ->
       wtxn_error (WCons up txn) h.
 
-  Inductive wtxn_step : forall T (txn: write_transaction T), heap -> heap -> Prop :=
-  | wtxn_step_done : forall h, wtxn_step WDone h h
+  Inductive wtxn_step (tid:TID) : forall T (txn: write_transaction T), heap -> heap -> Prop :=
+  | wtxn_step_done : forall h, wtxn_step tid WDone h h
   | wtxn_step_val_cons : forall A i (v0 v':A)
                            A' (txn: write_transaction A') h h'',
       h i = Some (val v0) ->
-      wtxn_step txn (upd h i (val v')) h'' ->
-      wtxn_step (WCons (NewVal i v') txn) h h''
+      wtxn_step tid txn (upd h i (val v')) h'' ->
+      wtxn_step tid (WCons (NewVal i v') txn) h h''
   | wtxn_step_val_abs : forall A i (v0:A) f
                           A' (txn: write_transaction A') h h'',
       h i = Some (abs v0) ->
-      wtxn_step txn (upd h i (abs (f v0))) h'' ->
-      wtxn_step (WCons (AbsUpd i f) txn) h h''
+      wtxn_step tid txn (upd h i (abs (f tid v0))) h'' ->
+      wtxn_step tid (WCons (AbsUpd i f) txn) h h''
   | wtxn_step_val_absmem : forall A AEQ V i (m0:@mem A AEQ V) f
                              A' (txn: write_transaction A') h h'',
       h i = Some (absMem m0) ->
-      wtxn_step txn (upd h i (absMem (f m0))) h'' ->
-      wtxn_step (WCons (AbsUpd i f) txn) h h''.
+      wtxn_step tid txn (upd h i (absMem (f tid m0))) h'' ->
+      wtxn_step tid (WCons (AbsUpd i f) txn) h h''.
 
   Inductive exec (tid:TID) : forall T, Sigma -> cprog T -> outcome T -> Prop :=
   | ExecStepDec : forall T (p: cprog T) sigma sigma' v,
@@ -343,14 +343,14 @@ Section CCL.
       exec tid sigma (ReadTxn txn) Error
   | ExecAssgnTxn : forall sigma A (txn:write_transaction A) h',
       Sigma.l sigma = WriteLock ->
-      wtxn_step txn (Sigma.mem sigma) h' ->
+      wtxn_step tid txn (Sigma.mem sigma) h' ->
       let sigma' := Sigma.set_mem sigma h' in
       Guarantee tid sigma sigma' ->
       exec tid sigma (AssgnTxn txn)
            (Finished sigma' tt)
   | ExecAssgnTxnProtocolError : forall sigma A (txn:write_transaction A) h',
       Sigma.l sigma = WriteLock ->
-      wtxn_step txn (Sigma.mem sigma) h' ->
+      wtxn_step tid txn (Sigma.mem sigma) h' ->
       let sigma' := Sigma.set_mem sigma h' in
       ~Guarantee tid sigma sigma' ->
       exec tid sigma (AssgnTxn txn) Error

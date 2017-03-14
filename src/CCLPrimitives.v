@@ -214,7 +214,39 @@ Section Primitives.
            end; eauto.
   Qed.
 
-  (* TODO: an AssgnTxn helper theorem *)
+  Record Assgn2_txn :=
+    Make_assgn2 {
+        var1: ident;
+        var1T: Type;
+        val1: var1T;
+
+        var2: ident;
+        var2T: Type;
+        val2: var2T;
+
+        abs1: ident;
+        abs1A: Type;
+        abs1AEQ: EqDec abs1A;
+        abs1V: Type;
+        abs1Up: TID ->
+                @mem abs1A abs1AEQ abs1V ->
+                @mem abs1A abs1AEQ abs1V;
+
+        abs2: ident;
+        abs2T: Type;
+        abs2Up: TID->
+                abs2T -> abs2T
+      }.
+
+  Definition Assgn2_mem_abs (txn:Assgn2_txn) :=
+    let vars := WCons (NewVal (var1 txn) (val1 txn))
+                      (WCons (NewVal (var2 txn) (val2 txn)) WDone) in
+    let txn := WCons (AbsMemUpd (abs1 txn) (abs1Up txn))
+                     (WCons (AbsUpd (abs2 txn) (abs2Up txn))
+                            vars) in
+    AssgnTxn txn.
+
+  (* TODO: theorem for Assgn2_mem_abs *)
 
   Theorem Hash_ok : forall tid sz (buf: word sz),
       cprog_spec G tid
