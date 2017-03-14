@@ -141,7 +141,80 @@ Section Primitives.
     eapply ptsto_upd_disjoint; eauto.
   Qed.
 
-  (* TODO: some ReadTxn and AssgnTxn theorems *)
+  Definition Read2 A i1 B i2 : cprog (A*B) :=
+    do '(a, (b, _)) <- ReadTxn (RCons A i1 (RCons B i2 RDone));
+      Ret (a, b).
+
+  Lemma rtxn_step2 : forall A B i1 i2 a a' b b' u h,
+      rtxn_step (RCons A i1 (RCons B i2 RDone)) h (a, (b, u)) ->
+      h i1 = Some (val a') ->
+      h i2 = Some (val b') ->
+      a = a' /\ b = b'.
+  Proof.
+    intros.
+    repeat match goal with
+           | [ H: rtxn_step _ _ _ |- _ ] =>
+             inversion H; repeat inj_pair2; clear H
+           | [ H: (_, _) = (_, _) |- _ ] =>
+             inversion H; subst; clear H
+           | [ H: Some _ = Some _ |- _ ] =>
+             inversion H; subst; clear H
+           | [ H: _ = _ |- _ ] => rewrite H in *
+           | _ => inj_pair2
+           end.
+    auto.
+  Qed.
+
+  Theorem Read2_ok : forall tid A B i1 i2,
+      cprog_spec G tid
+                 (fun '(F, a0, b0) sigma =>
+                    {| precondition :=
+                         (F * i1 |-> val a0 * i2 |-> val b0)%pred (Sigma.mem sigma);
+                       postcondition :=
+                         fun sigma' '(a, b) =>
+                           a = a0 /\
+                           b = b0 /\
+                           Rely G tid sigma sigma' /\
+                           hashmap_le (Sigma.hm sigma) (Sigma.hm sigma')
+                    |})
+                 (Read2 A i1 B i2).
+  Proof.
+    prim; try inv_ret.
+    apply sep_star_comm in H.
+    apply sep_star_assoc_2 in H.
+    pose proof (ptsto_valid' H).
+    match goal with
+      | [ H: exec _ _ _ (ReadTxn _) _ |- _ ] =>
+        inv_exec' H
+    end.
+    match goal with
+    | [ H: rtxn_step _ _ _ |- _ ] =>
+      eapply rtxn_step2 in H; eauto
+    end; intuition; subst.
+
+    apply sep_star_comm in H.
+    apply sep_star_assoc_2 in H.
+    pose proof (ptsto_valid' H).
+    match goal with
+      | [ H: exec _ _ _ (ReadTxn _) _ |- _ ] =>
+        inv_exec' H
+    end.
+    clear H6.
+    apply (f (val a :: val b :: nil))%list.
+    repeat (constructor; eauto).
+
+    repeat match goal with
+           | [ H: rtxn_error _ _ |- _ ] =>
+             inversion H; repeat inj_pair2; clear H
+           | [ H: Some _ = Some _ |- _ ] =>
+             inversion H; subst; clear H
+           | [ H: _ = _ |- _ ] =>
+             rewrite H in *
+           | _ => inj_pair2
+           end; eauto.
+  Qed.
+
+  (* TODO: an AssgnTxn helper theorem *)
 
   Theorem Hash_ok : forall tid sz (buf: word sz),
       cprog_spec G tid
@@ -230,6 +303,7 @@ Hint Extern 0 {{ BeginRead _; _ }} => apply BeginRead_ok : prog.
 Hint Extern 0 {{ WaitForRead _; _ }} => apply WaitForRead_ok : prog.
 Hint Extern 0 {{ Write _ _; _ }} => apply Write_ok : prog.
 Hint Extern 0 {{ Alloc _; _ }} => apply Alloc_ok : prog.
+Hint Extern 0 {{ Read2 _ _; _ }} => apply Read2_ok : prog.
 Hint Extern 0 {{ Hash _; _ }} => apply Hash_ok : prog.
 Hint Extern 0 {{ GetWriteLock; _ }} => apply GetWriteLock_ok : prog.
 Hint Extern 0 {{ Unlock; _ }} => apply Unlock_ok : prog.
