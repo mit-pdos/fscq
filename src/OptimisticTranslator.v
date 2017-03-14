@@ -206,6 +206,10 @@ Section OptimisticTranslator.
 
   Hint Extern 2 (_ = _ -> _ = _) => intros; congruence.
 
+  (* workaround https://coq.inria.fr/bugs/show_bug.cgi?id=5394 (congruence does
+  a [repeat intro], which unfolds CacheRep) *)
+  Opaque CacheRep.
+
   Theorem translate_simulation : forall T (p: prog T),
       forall tid sigma (F: heappred) d vd out l c,
         F (Sigma.mem sigma) ->
@@ -288,10 +292,9 @@ Section OptimisticTranslator.
       left.
 
       destruct (Sigma.l sigma); simpl in *; intuition subst;
-        CCLTactics.inv_ret; descend; intuition eauto.
+        CCLTactics.inv_ret; descend; (intuition eauto); try congruence.
       eapply Prog.XStep; eauto.
       replace (Sigma.hm sigma'0); eauto.
-      replace (Sigma.disk sigma'0); eauto.
       replace (Sigma.hm sigma'0); eauto.
 
     - CCLTactics.inv_bind.

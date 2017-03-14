@@ -56,7 +56,6 @@ Transparent LOG.commit_ro.
 
 Section ConcurCompile.
 
-  Variable CP:CacheParams.
   Variable G:Protocol.
 
   Inductive Compiled T (p: cprog T) :=
@@ -68,30 +67,30 @@ Section ConcurCompile.
     let 'ExtractionOf p' _ := c in p'.
 
   Fixpoint cForEach_ (ITEM : Type) (L : Type)
-           (f : ITEM -> L -> WriteBuffer -> cprog (Result L * WriteBuffer))
+           (f : ITEM -> L -> Cache -> cprog (Result L * Cache))
            (lst : list ITEM)
-           (l : L) : WriteBuffer -> cprog (Result L * WriteBuffer) :=
-    fun wb =>
+           (l : L) : Cache -> cprog (Result L * Cache) :=
+    fun c =>
       match lst with
-      | nil => Ret (Success l, wb)
+      | nil => Ret (Success l, c)
       | elem :: lst' =>
-        ret <- f elem l wb;
-          let '(r, wb') := ret in
+        ret <- f elem l c;
+          let '(r, c') := ret in
           match r with
-          | Success l' => cForEach_ f lst' l' wb'
-          | Failure e => Ret (Failure e, wb')
+          | Success l' => cForEach_ f lst' l' c'
+          | Failure e => Ret (Failure e, c')
           end
       end.
 
   Lemma translate_ForEach : forall ITEM L G p lst
                               nocrash crashed l ls,
-      translate CP (@ForEach_ ITEM L G p lst nocrash crashed l) ls =
-      cForEach_ (fun i l => translate CP (p i l) ls) lst l.
+      translate (@ForEach_ ITEM L G p lst nocrash crashed l) ls =
+      cForEach_ (fun i l => translate (p i l) ls) lst l.
   Proof.
     intros.
-    extensionality wb.
+    extensionality c.
     generalize dependent l.
-    generalize dependent wb.
+    generalize dependent c.
     induction lst; simpl; intros; eauto.
     f_equal.
     extensionality r.
@@ -99,19 +98,19 @@ Section ConcurCompile.
   Qed.
 
   Lemma compile_forEach ITEM L p :
-    (forall lst l wb, Compiled (p lst l wb)) ->
-    (forall lst l wb, Compiled (@cForEach_ ITEM L p lst l wb)).
+    (forall lst l c, Compiled (p lst l c)) ->
+    (forall lst l c, Compiled (@cForEach_ ITEM L p lst l c)).
   Proof.
     intros.
-    unshelve refine (ExtractionOf (@cForEach_ ITEM L _ lst l wb) _);
+    unshelve refine (ExtractionOf (@cForEach_ ITEM L _ lst l c) _);
       intros.
     destruct (X X0 X1 X2).
     exact p'.
     generalize dependent l.
-    generalize dependent wb.
+    generalize dependent c.
     induction lst; intros; simpl.
     reflexivity.
-    destruct (X a l wb); simpl.
+    destruct (X a l c); simpl.
     eapply exec_equiv_bind; intros; eauto.
     destruct v.
     destruct r; eauto.
@@ -119,30 +118,30 @@ Section ConcurCompile.
   Defined.
 
   Fixpoint cForN_ (L : Type)
-           (f : nat -> L -> WriteBuffer -> cprog (Result L * WriteBuffer))
+           (f : nat -> L -> Cache -> cprog (Result L * Cache))
            (i n: nat) (l: L)
-    : WriteBuffer -> cprog (Result L * WriteBuffer) :=
-    fun wb =>
+    : Cache -> cprog (Result L * Cache) :=
+    fun c =>
       match n with
-      | O => Ret (Success l, wb)
+      | O => Ret (Success l, c)
       | S n' =>
-        ret <- f i l wb;
-          let '(r, wb') := ret in
+        ret <- f i l c;
+          let '(r, c') := ret in
           match r with
-          | Success l' => cForN_ f (S i) n' l' wb'
-          | Failure e => Ret (Failure e, wb')
+          | Success l' => cForN_ f (S i) n' l' c'
+          | Failure e => Ret (Failure e, c')
           end
       end.
 
   Lemma translate_ForN : forall L G p i n
                            nocrash crashed l ls,
-      translate CP (@ForN_ L G p i n nocrash crashed l) ls =
-      cForN_ (fun i l => translate CP (p i l) ls) i n l.
+      translate (@ForN_ L G p i n nocrash crashed l) ls =
+      cForN_ (fun i l => translate (p i l) ls) i n l.
   Proof.
     intros.
-    extensionality wb.
+    extensionality c.
     generalize dependent l.
-    generalize dependent wb.
+    generalize dependent c.
     generalize dependent i.
     induction n; simpl; intros; eauto.
     f_equal.
@@ -151,20 +150,20 @@ Section ConcurCompile.
   Qed.
 
   Lemma compile_forN L p :
-    (forall i l wb, Compiled (p i l wb)) ->
-    (forall i n l wb, Compiled (@cForN_ L p i n l wb)).
+    (forall i l c, Compiled (p i l c)) ->
+    (forall i n l c, Compiled (@cForN_ L p i n l c)).
   Proof.
     intros.
-    unshelve refine (ExtractionOf (@cForN_ L _ i n l wb) _);
+    unshelve refine (ExtractionOf (@cForN_ L _ i n l c) _);
       intros.
     destruct (X H X0 X1).
     exact p'.
     generalize dependent i.
     generalize dependent l.
-    generalize dependent wb.
+    generalize dependent c.
     induction n; intros; simpl.
     reflexivity.
-    destruct (X i l wb); simpl.
+    destruct (X i l c); simpl.
     eapply exec_equiv_bind; intros; eauto.
     destruct v.
     destruct r; eauto.
@@ -217,13 +216,13 @@ Section ConcurCompile.
   Defined.
 
   Lemma translate_match_res : forall T T' (p1: T -> prog T') (p2: Errno -> prog T') r,
-      translate CP (match r with
+      translate (match r with
                          | OK r => p1 r
                          | Err e => p2 e
                          end) =
       match r with
-      | OK r => translate CP (p1 r)
-      | Err e => translate CP (p2 e)
+      | OK r => translate (p1 r)
+      | Err e => translate (p2 e)
       end.
   Proof.
     intros.
@@ -231,13 +230,13 @@ Section ConcurCompile.
   Qed.
 
   Lemma translate_match_opt : forall T T' (p1: T -> prog T') (p2: prog T') r,
-      translate CP (match r with
+      translate (match r with
                          | Some r => p1 r
                          | None => p2
                          end) =
       match r with
-      | Some r => translate CP (p1 r)
-      | None => translate CP p2
+      | Some r => translate (p1 r)
+      | None => translate p2
       end.
   Proof.
     intros.
@@ -245,13 +244,13 @@ Section ConcurCompile.
   Qed.
 
   Lemma translate_match_sumbool : forall P Q T' (p1: prog T') (p2: prog T') (r:{P}+{Q}),
-      translate CP (match r with
+      translate (match r with
                          | left _ => p1
                          | right _ => p2
                          end) =
       match r with
-      | left _ => translate CP p1
-      | right _ => translate CP p2
+      | left _ => translate p1
+      | right _ => translate p2
       end.
   Proof.
     intros.
@@ -259,9 +258,9 @@ Section ConcurCompile.
   Qed.
 
   Lemma translate_destruct_prod : forall A B T' (p: A -> B -> prog T') (r:A*B),
-      translate CP (let (a, b) := r in p a b) =
+      translate (let (a, b) := r in p a b) =
       let (a, b) := r in
-      translate CP (p a b).
+      translate (p a b).
   Proof.
     intros.
     destruct r; eauto.
@@ -274,79 +273,79 @@ Section ConcurCompile.
     end.
 
   Lemma compile_match_res T T' (p1: T -> _ -> _ -> cprog T') p2
-        (r: res T) (ls: LockState) (wb: WriteBuffer) :
-    (forall v ls wb, Compiled (p1 v ls wb)) ->
-    (forall e ls wb, Compiled (p2 e ls wb)) ->
+        (r: res T) (ls: LockState) (c: Cache) :
+    (forall v ls c, Compiled (p1 v ls c)) ->
+    (forall e ls c, Compiled (p2 e ls c)) ->
     Compiled (match r with
               | OK v => p1 v
               | Err e => p2 e
-              end ls wb).
+              end ls c).
   Proof.
     intros.
     refine (ExtractionOf (match r with
-                          | OK v => fun ls wb => compiled_prog (X v ls wb)
-                          | Err e => fun ls wb => compiled_prog (X0 e ls wb)
-                          end ls wb) _).
+                          | OK v => fun ls c => compiled_prog (X v ls c)
+                          | Err e => fun ls c => compiled_prog (X0 e ls c)
+                          end ls c) _).
     destruct r;
       destruct_compiled;
       eauto.
   Defined.
 
   Lemma compile_match_opt T T' (p1: T -> _ -> _ -> cprog T') p2
-        (r: option T) (ls: LockState) (wb: WriteBuffer) :
-    (forall v ls wb, Compiled (p1 v ls wb)) ->
-    (forall ls wb, Compiled (p2 ls wb)) ->
+        (r: option T) (ls: LockState) (c: Cache) :
+    (forall v ls c, Compiled (p1 v ls c)) ->
+    (forall ls c, Compiled (p2 ls c)) ->
     Compiled (match r with
               | Some v => p1 v
               | None => p2
-              end ls wb).
+              end ls c).
   Proof.
     intros.
     refine (ExtractionOf (match r with
-                          | Some v => fun ls wb => compiled_prog (X v ls wb)
-                          | None => fun ls wb => compiled_prog (X0 ls wb)
-                          end ls wb) _).
+                          | Some v => fun ls c => compiled_prog (X v ls c)
+                          | None => fun ls c => compiled_prog (X0 ls c)
+                          end ls c) _).
     destruct r;
       destruct_compiled;
       eauto.
   Defined.
 
   Lemma compile_match_sumbool P Q T' (p1:  _ -> _ -> cprog T') p2
-        (r: {P}+{Q}) (ls: LockState) (wb: WriteBuffer) :
-    (forall ls wb, Compiled (p1 ls wb)) ->
-    (forall ls wb, Compiled (p2 ls wb)) ->
+        (r: {P}+{Q}) (ls: LockState) (c: Cache) :
+    (forall ls c, Compiled (p1 ls c)) ->
+    (forall ls c, Compiled (p2 ls c)) ->
     Compiled (match r with
               | left _ => p1
               | right _ => p2
-              end ls wb).
+              end ls c).
   Proof.
     intros.
     refine (ExtractionOf (match r with
-                          | left _ => fun ls wb => compiled_prog (X ls wb)
-                          | right _ => fun ls wb => compiled_prog (X0 ls wb)
-                          end ls wb) _).
+                          | left _ => fun ls c => compiled_prog (X ls c)
+                          | right _ => fun ls c => compiled_prog (X0 ls c)
+                          end ls c) _).
     destruct r;
       destruct_compiled;
       eauto.
   Defined.
 
-  Lemma compile_match_cT : forall T T' (p1: T -> WriteBuffer -> cprog T') p2 r,
-      (forall v wb, Compiled (p1 v wb)) ->
-      (forall e wb, Compiled (p2 e wb)) ->
+  Lemma compile_match_cT : forall T T' (p1: T -> Cache -> cprog T') p2 r,
+      (forall v c, Compiled (p1 v c)) ->
+      (forall e c, Compiled (p2 e c)) ->
       Compiled (match r with
-                | (Success v, wb) => p1 v wb
-                | (Failure e, wb) => p2 e wb
+                | (Success v, c) => p1 v c
+                | (Failure e, c) => p2 e c
                 end).
   Proof.
     intros.
     exists (match r with
-       | (Success v, wb) => compiled_prog (X v wb)
-       | (Failure e, wb) => compiled_prog (X0 e wb)
+       | (Success v, c) => compiled_prog (X v c)
+       | (Failure e, c) => compiled_prog (X0 e c)
        end).
     destruct r.
     destruct r.
-    destruct (X v w); simpl; eauto.
-    destruct (X0 e w); simpl; eauto.
+    destruct (X v c); simpl; eauto.
+    destruct (X0 e c); simpl; eauto.
   Defined.
 
   Lemma compile_destruct_prod : forall A B T' (p: A -> B -> cprog T') (r:A*B),
@@ -460,8 +459,8 @@ Section ConcurCompile.
     destruct p; auto.
   Qed.
 
-  Definition CompiledLookup fsxp dnum names ams ls wb :
-    Compiled (OptFS.lookup CP fsxp dnum names ams ls wb).
+  Definition CompiledLookup fsxp dnum names ams ls c :
+    Compiled (OptFS.lookup fsxp dnum names ams ls c).
   Proof.
     unfold OptFS.lookup.
 
@@ -469,8 +468,8 @@ Section ConcurCompile.
       apply compile_refl.
   Defined.
 
-  Definition CompiledGetAttr fsxp inum ams ls wb :
-    Compiled (OptFS.file_get_attr CP fsxp inum ams ls wb).
+  Definition CompiledGetAttr fsxp inum ams ls c :
+    Compiled (OptFS.file_get_attr fsxp inum ams ls c).
   Proof.
     unfold OptFS.file_get_attr; simpl.
     repeat compile;
@@ -481,8 +480,8 @@ End ConcurCompile.
 
 Definition G : Protocol := fun _ _ _ => True.
 
-Definition lookup CP fsxp dnum names ams ls wb :=
-  compiled_prog (CompiledLookup CP G fsxp dnum names ams ls wb).
+Definition lookup fsxp dnum names ams ls c :=
+  compiled_prog (CompiledLookup G fsxp dnum names ams ls c).
 
-Definition file_get_attr CP fsxp inum ams ls wb :=
-  compiled_prog (CompiledGetAttr CP G fsxp inum ams ls wb).
+Definition file_get_attr fsxp inum ams ls c :=
+  compiled_prog (CompiledGetAttr G fsxp inum ams ls c).
