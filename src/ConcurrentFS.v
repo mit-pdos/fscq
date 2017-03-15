@@ -46,15 +46,45 @@ Section ConcurrentFS.
        fsmem P |-> val mscs *
        [[ fs_rep vd hm mscs tree ]])%pred.
 
+  Theorem fs_invariant_unfold : forall d hm tree homedirs h,
+      fs_invariant d hm tree homedirs h ->
+      exists c vd mscs,
+        (fstree P |-> abs tree * fshomedirs P |-> abs homedirs *
+         cache P |-> val c *
+         vdisk P |-> absMem vd *
+         fsmem P |-> val mscs)%pred h /\
+        CacheRep d c vd /\
+        fs_rep vd hm mscs tree.
+  Proof.
+    unfold fs_invariant; intros.
+    SepAuto.destruct_lifts.
+    descend; intuition eauto.
+  Qed.
+
+  Theorem fs_invariant_refold : forall tree homedirs d c vd hm mscs h,
+      (fstree P |-> abs tree * fshomedirs P |-> abs homedirs *
+       cache P |-> val c *
+       vdisk P |-> absMem vd *
+       fsmem P |-> val mscs)%pred h ->
+      CacheRep d c vd ->
+      fs_rep vd hm mscs tree ->
+      fs_invariant d hm tree homedirs h.
+  Proof.
+    unfold fs_invariant; intros.
+    SepAuto.pred_apply; SepAuto.cancel.
+  Qed.
+
   Definition fs_guarantee tid (sigma sigma':Sigma) :=
     exists tree tree' homedirs,
       fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) /\
       fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma') /\
-      homedir_guarantee tid homedirs tree tree'.
+      homedir_guarantee tid homedirs tree tree' /\
+      Sigma.l sigma' = Sigma.l sigma.
 
   Theorem fs_rely_same_fstree : forall tid sigma sigma' tree homedirs,
       fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
       fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree homedirs (Sigma.mem sigma') ->
+      Sigma.l sigma' = Sigma.l sigma ->
       Rely fs_guarantee tid sigma sigma'.
   Proof.
     intros.
@@ -163,6 +193,15 @@ Section ConcurrentFS.
       unfold homedir_rely in *; congruence.
   Qed.
 
+  Theorem fs_lock_rely : forall tid sigma sigma',
+      Rely fs_guarantee tid sigma sigma' ->
+      Sigma.l sigma' = Sigma.l sigma.
+  Proof.
+    unfold fs_guarantee; intros.
+    apply Operators_Properties.clos_rt_rt1n in H.
+    induction H; intros; repeat deex; congruence.
+  Qed.
+
   Lemma fs_rely_preserves_subtree : forall tid sigma sigma' tree homedirs tree' path f,
       find_subtree (homedirs tid ++ path) tree = Some f ->
       fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
@@ -197,6 +236,7 @@ Section ConcurrentFS.
 
     descend; intuition eauto.
     etransitivity; eauto.
+    congruence.
   Qed.
 
   Inductive SyscallResult {T} :=
@@ -211,27 +251,33 @@ Section ConcurrentFS.
     LockState -> Cache ->
     cprog (Result (memstate * T) * Cache).
 
+  Definition readCacheMem : cprog (Cache * memstate) :=
+    Read2 Cache (cache P) memstate (fsmem P).
+
   (* Execute p assuming it is read-only. This program could distinguish between
   failures that require filling the cache [Failure (CacheMiss a)] and failures
   that require upgrading to a write lock [Failure WriteRequired], but currently
   does not do so. This would be useful to help the interpreter schedule reads
   (by waiting on address a before re-scheduling, for example). *)
   Definition readonly_syscall T (p: OptimisticProg T) : cprog (SyscallResult T) :=
-    do '(c, mscs) <- Read2 Cache (cache P) memstate (fsmem P);
+    do '(c, mscs) <- readCacheMem;
       (* for read-only syscalls, the returned write buffer is always the same
        as the input *)
       do '(r, _) <- p mscs Free c;
       match r with
       | Success f (ms', r) =>
-        match f with
-        | NoChange => Ret (Done r)
-        | Modified => Ret TryAgain
-        end
+        (* while slightly more awkward to write, this exposes the structure
+        without having to destruct f, helping factor out the common parts of the
+        proof *)
+        Ret (match f with
+             | NoChange => Done r
+             | Modified => TryAgain
+             end)
       | Failure e =>
-        match e with
-        | Unsupported => Ret SyscallFailed
-        | _ => Ret TryAgain
-        end
+        Ret (match e with
+             | Unsupported => SyscallFailed
+             | _ => TryAgain
+             end)
       end.
 
   Definition guard {T} (r:SyscallResult T)
@@ -373,13 +419,73 @@ Section ConcurrentFS.
 
   Hint Resolve fs_rep_hashmap_incr.
 
-  Theorem readonly_syscall_ok : forall T (p: OptimisticProg T) A (fsspec: FsSpec A T) c tid,
-      (forall mscs, cprog_spec fs_guarantee tid
+  Definition readCacheMem_ok : forall tid,
+      cprog_spec fs_guarantee tid
+                 (fun '(tree, homedirs) sigma =>
+                    {| precondition :=
+                         fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) /\
+                         Sigma.l sigma = Free;
+                       postcondition :=
+                         fun sigma' '(c, mscs) =>
+                           exists tree',
+                             fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma') /\
+                             hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
+                             Rely fs_guarantee tid sigma sigma' /\
+                             homedir_rely tid homedirs tree tree' /\
+                             (* mscs and c come from fs_invariant on sigma *)
+                             (exists vd, CacheRep (Sigma.disk sigma) c vd /\
+                                   fs_rep vd (Sigma.hm sigma') mscs tree) /\
+                             Sigma.l sigma' = Sigma.l sigma |})
+                 readCacheMem.
+  Proof.
+    unfold readCacheMem; intros.
+    step.
+    destruct a as (tree & homedirs); simpl in *; intuition.
+    match goal with
+    | [ H: fs_invariant _ _ _ _ _ |- _ ] =>
+      pose proof (fs_invariant_unfold H); repeat deex
+    end.
+    descend; simpl in *; intuition eauto.
+    SepAuto.pred_apply; SepAuto.cancel.
+
+    step.
+    intuition.
+    edestruct fs_rely_invariant; eauto.
+    descend; intuition eauto.
+    eapply fs_homedir_rely; eauto.
+    eapply fs_lock_rely; eauto.
+  Qed.
+
+  Hint Extern 1 {{ readCacheMem; _ }} => apply readCacheMem_ok : prog.
+
+  Theorem readonly_syscall_ok : forall T (p: OptimisticProg T) A (fsspec: FsSpec A T) tid,
+      (forall mscs c, cprog_spec fs_guarantee tid
                           (fs_spec fsspec mscs Free c)
                           (p mscs Free c)) ->
       cprog_spec fs_guarantee tid
                  (readonly_spec fsspec tid) (readonly_syscall p).
   Proof.
+    unfold readonly_syscall, readonly_spec; intros.
+    step.
+    destruct a as ((tree & homedirs) & a); simpl in *; intuition.
+    descend; simpl; intuition eauto.
+
+    monad_simpl.
+    eapply cprog_ok_weaken; [ eapply H | ]; simplify.
+    deex.
+    match goal with
+    | [ H: fs_invariant _ _ _ _ _ |- _ ] =>
+      pose proof (fs_invariant_unfold H); repeat deex
+    end.
+    descend; simpl in *; (intuition eauto); try congruence.
+
+    destruct a1 as [f [mscs' r] | e].
+    step; simplify; intuition (subst; eauto); try congruence.
+
+    eapply fs_invariant_refold.
+    (* if we really want to prove this using the fact that almost nothing
+    changed when p ran, then need a stronger postcondition - could guarantee
+    Sigma.disk doesn't evolve while p is running, might be sufficient *)
   Abort.
 
   Definition file_get_attr inum :=
