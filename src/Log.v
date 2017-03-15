@@ -1816,6 +1816,31 @@ Module LOG.
     all: simpl; auto.
   Qed.
 
+  Lemma crash_xform_cached_before: forall fsxp F d hm ms ds n,
+    n <= length (snd ds) ->
+    crash_xform (diskIs (list2nmem (nthd n ds))) (list2nmem d) ->
+    crash_xform (rep (FSXPLog fsxp) F (LOG.NoTxn (d, [])) ms hm)
+        =p=> crash_xform (before_crash (FSXPLog fsxp) F ds hm).
+  Proof.
+    intros.
+    unfold rep, before_crash, rep_inner.
+    xform_norm. cancel.
+    xform_norm. cancel.
+    xform_norm. norm.
+    cancel.
+    intuition simpl; eauto.
+    pred_apply.
+    norm.
+    cancel.
+    2: eauto.
+    unfold GLog.rep.
+    intros. norm.
+    cancel.
+    rewrite MLog.rep_synced_pimpl.
+    cancel.
+    intuition simpl; auto.
+  Qed.
+
 
 End LOG.
 

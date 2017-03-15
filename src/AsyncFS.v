@@ -617,26 +617,9 @@ Module AFS.
     intuition simpl; eauto.
     intuition simpl; eauto.
     intuition simpl; eauto.
-
     xcrash.
-    unfold LOG.rep, LOG.before_crash, LOG.rep_inner.
-    xform_norm. cancel.
-    xform_norm. cancel.
-    xform_norm. norm.
-    cancel.
-    intuition simpl; eauto.
-    pred_apply.
-    norm.
-    cancel.
-    2: eauto.
 
-    unfold GLog.rep.
-    intros. norm.
-    cancel.
-Require Import MemLog.
-    rewrite MLog.rep_synced_pimpl.
-    cancel.
-    intuition simpl; auto.
+    eapply LOG.crash_xform_cached_before; eauto.
 
     xcrash.
 
