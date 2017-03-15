@@ -52,6 +52,8 @@ Ltac inv_exec :=
   lazymatch goal with
   | [ H: exec _ _ _ (Ret _) _ |- _ ] =>
     inv_exec' H
+  | [ H: exec _ _ _ (AlertModified) _ |- _ ] =>
+    inv_exec' H
   | [ H: exec _ _ _ (Bind _ _) _ |- _ ] =>
     inv_exec' H
   | [ H: exec _ _ _ _ _ |- _ ] =>
@@ -70,6 +72,15 @@ Section MonadLaws.
 
   Theorem bind_left_id : forall T T' v (p: T -> prog T'),
       Bind (Ret v) p ~= p v.
+  Proof.
+    split; intros.
+    - inv_exec.
+      inv_exec; eauto.
+    - eauto.
+  Qed.
+
+  Theorem bind_left_alert_modified : forall T' (p: unit -> prog T'),
+      Bind (AlertModified) p ~= p tt.
   Proof.
     split; intros.
     - inv_exec.
@@ -115,6 +126,9 @@ Ltac monad_simpl_one :=
   | [ |- {{_}} Bind (Ret _) _ ] =>
     eapply corr2_equivalence;
     [ | apply bind_left_id ]
+  | [ |- {{_}} Bind (AlertModified) _ ] =>
+    eapply corr2_equivalence;
+    [ | apply bind_left_alert_modified ]
   | [ |- {{_}} Bind _ Ret ] =>
     eapply corr2_equivalence;
     [ | apply bind_right_id ]

@@ -17,10 +17,10 @@ Set Implicit Arguments.
 Parameter vartype : Type.
 Parameter vartype_eq_dec : forall (x y : vartype), {x=y}+{x<>y}.
 
-(** single program *)
-Polymorphic Inductive var_value : Type :=
+Inductive var_value : Type :=
   | Any : forall (T : Type), T -> var_value.
 
+(** single program *)
 Inductive prog : Type -> Type :=
   | Ret T (v: T) : prog T
   | Read (a: addr) : prog valu
@@ -31,6 +31,7 @@ Inductive prog : Type -> Type :=
   | VarDelete (i : vartype) : prog unit
   | VarGet (i : vartype) (T : Type) : prog T
   | VarSet (i : vartype) (T : Type) (v : T) : prog unit
+  | AlertModified : prog unit
   | Hash (sz: nat) (buf: word sz) : prog (word hashlen)
   | Bind T T' (p1: prog T) (p2: T -> prog T') : prog T'.
 
@@ -111,6 +112,8 @@ Inductive crash_step : forall T, prog T -> Prop :=
 Inductive exec : forall T, rawdisk -> varmem -> hashmap -> prog T -> outcome T -> Prop :=
 | XRet : forall T m vm hm (v: T),
     exec m vm hm (Ret v) (Finished m vm hm v)
+| XAlertModified : forall m vm hm,
+    exec m vm hm (AlertModified) (Finished m vm hm tt)
 | XStep : forall T m vm hm (p: prog T) m' m'' vm' hm' v,
     step m vm hm p m' vm' hm' v ->
     possible_sync m' m'' ->
@@ -123,8 +126,6 @@ Inductive exec : forall T, rawdisk -> varmem -> hashmap -> prog T -> outcome T -
 | XBindFail : forall m vm hm T (p1: prog T)
                 T' (p2: T -> prog T'),
     exec m vm hm p1 (Failed T) ->
-    (* note p2 need not execute at all if p1 fails, a form of lazy
-    evaluation *)
     exec m vm hm (Bind p1 p2) (Failed T')
 | XBindCrash : forall m vm hm T (p1: prog T) m' hm'
                  T' (p2: T -> prog T'),
