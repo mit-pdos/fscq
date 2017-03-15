@@ -4,6 +4,7 @@ Require Import Mem Pred.
 Require Import PeanoNat.
 Require Import Hashmap.
 Require Import Relation_Operators.
+Require Import RelationClasses.
 Require Automation.
 
 Global Set Implicit Arguments.
@@ -115,12 +116,9 @@ Section CCL.
                            exists tid', tid <> tid' /\
                                    Guarantee tid sigma sigma').
 
-  Theorem Rely_trans : forall tid sigma sigma' sigma'',
-      Rely tid sigma sigma' ->
-      Rely tid sigma' sigma'' ->
-      Rely tid sigma sigma''.
+  Global Instance Rely_trans tid : Transitive (Rely tid).
   Proof.
-    unfold Rely; intros.
+    unfold Rely, Transitive; hnf; intros.
     eapply Relation_Operators.rt_trans; eauto.
   Qed.
 

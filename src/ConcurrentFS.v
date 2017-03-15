@@ -393,14 +393,16 @@ Section ConcurrentFS.
            precondition_stable fsspec homedirs tid;
          postcondition :=
            fun sigma' r =>
-             (fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree homedirs) (Sigma.mem sigma') /\
-             Rely fs_guarantee tid sigma sigma' /\
-             Sigma.l sigma' = Free /\
-             match r with
-             | Done v => fs_post (fsspec a) v
-             | TryAgain => True
-             | SyscallFailed => True
-             end |}.
+             exists tree',
+               (fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs) (Sigma.mem sigma') /\
+               Rely fs_guarantee tid sigma sigma' /\
+               homedir_rely tid homedirs tree tree' /\
+               Sigma.l sigma' = Free /\
+               match r with
+               | Done v => fs_post (fsspec a) v
+               | TryAgain => True
+               | SyscallFailed => True
+               end |}.
 
   Lemma fs_rep_hashmap_incr : forall vd tree mscs hm hm',
       fs_rep vd hm mscs tree ->
@@ -476,13 +478,42 @@ Section ConcurrentFS.
     descend; simpl in *; (intuition eauto); try congruence.
 
     destruct a1 as [f [mscs' r] | e].
-    step; simplify; intuition (subst; eauto); try congruence.
+    step; simplify; intuition subst.
+    unfold translated_postcondition in *; intuition; subst.
+    descend; intuition (subst; eauto); try congruence.
+    repeat match goal with
+           | [ H: _ = _ |- _ ] =>
+             rewrite H in *
+           end.
+    unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto.
 
-    eapply fs_invariant_refold.
-    (* if we really want to prove this using the fact that almost nothing
-    changed when p ran, then need a stronger postcondition - could guarantee
-    Sigma.disk doesn't evolve while p is running, might be sufficient *)
-  Abort.
+    etransitivity; eauto.
+    eapply fs_rely_same_fstree; eauto.
+    repeat match goal with
+           | [ H: _ = _ |- _ ] =>
+             rewrite H in *
+           end.
+    unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto.
+    destruct f; eauto.
+
+    step; simplify; intuition subst.
+    unfold translated_postcondition in *; intuition; subst.
+    descend; intuition (subst; eauto); try congruence.
+    repeat match goal with
+           | [ H: _ = _ |- _ ] =>
+             rewrite H in *
+           end.
+    unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto.
+
+    etransitivity; eauto.
+    eapply fs_rely_same_fstree; eauto.
+    repeat match goal with
+           | [ H: _ = _ |- _ ] =>
+             rewrite H in *
+           end.
+    unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto.
+    destruct e; eauto.
+  Qed.
 
   Definition file_get_attr inum :=
     retry_syscall (fun mscs => file_get_attr fsxp inum mscs)

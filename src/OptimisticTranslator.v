@@ -228,6 +228,7 @@ Section OptimisticTranslator.
     CacheRep d' c' vd' /\
     (l = Free -> vd' = vd) /\
     (l = Free -> c' = c) /\
+    (l = Free -> Sigma.disk sigma' = Sigma.disk sigma) /\
     hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
     Sigma.l sigma' = Sigma.l sigma.
 
@@ -300,7 +301,7 @@ Section OptimisticTranslator.
           end; intuition eauto.
         destruct v as [r c']; intuition.
         destruct r; subst; CCLTactics.inv_ret;
-          intuition eauto 10.
+          left; descend; intuition eauto.
       + (* error read *)
         right.
         CCLTactics.inv_bind; eauto.

@@ -201,11 +201,10 @@ Section OptimisticCache.
                        postcondition :=
                          fun sigma' '(r, c') =>
                            F (Sigma.mem sigma') /\
-                           let d' := if CanWrite l
-                                     then Sigma.disk sigma'
-                                     else d in
+                           let d' := if CanWrite l then Sigma.disk sigma' else d in
                            CacheRep d' c' vd /\
                            (l = Free -> c' = c) /\
+                           (l = Free -> Sigma.disk sigma' = Sigma.disk sigma) /\
                            match r with
                            | Some v => v = v0
                            | None => True
