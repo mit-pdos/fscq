@@ -2327,8 +2327,7 @@ Module BFILE.
     POST:hm' RET:ms'
       LOG.rep lxp F (LOG.NoTxn ds) (MSLL ms') hm' *
       [[ ms = (MSLL ms') ]]
-    CRASH:hm' LOG.rep lxp F (LOG.NoTxn ds) ms hm (* \/
-       LOG.before_crash (FSXPLog fsxp) (SB.rep fsxp) ds hm' *)
+    CRASH:hm' LOG.rep lxp F (LOG.NoTxn ds) ms hm'
     >} recover ms.
   Proof.
     unfold recover; intros.
