@@ -347,11 +347,7 @@ Section ConcurrentFS.
            fun sigma' '(r, c') =>
              exists vd',
                F (Sigma.mem sigma') /\
-               let d' := if CanWrite l then Sigma.disk sigma' else d in
-               CacheRep d' c' vd' /\
-               Sigma.l sigma' = Sigma.l sigma /\
-               (l = Free -> vd' = vd) /\
-               (l = Free -> c' = c) /\
+               translated_postcondition l d sigma c vd sigma' c' vd' /\
                match r with
                | Success _ (mscs', r) =>
                  fs_post (fsspec a) r /\

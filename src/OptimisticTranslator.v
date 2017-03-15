@@ -223,6 +223,32 @@ Section OptimisticTranslator.
   a [repeat intro], which unfolds CacheRep) *)
   Opaque CacheRep.
 
+  Definition translated_postcondition l d sigma c vd sigma' c' vd' :=
+    let d' := if CanWrite l then Sigma.disk sigma' else d in
+    CacheRep d' c' vd' /\
+    (l = Free -> vd' = vd) /\
+    (l = Free -> c' = c) /\
+    hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
+    Sigma.l sigma' = Sigma.l sigma.
+
+  Lemma hashmap_le_refl_eq : forall hm hm',
+      hm = hm' ->
+      hashmap_le hm hm'.
+  Proof.
+    intros; subst; reflexivity.
+  Qed.
+
+  Lemma hashmap_le_upd : forall hm hm' sz (buf: Word.word sz),
+      hm' = upd_hashmap' hm (hash_fwd buf) buf ->
+      hash_safe hm (hash_fwd buf) buf ->
+      hashmap_le hm hm'.
+  Proof.
+    intros; subst.
+    unfold hashmap_le; eexists; eauto using HS_nil, HS_cons.
+  Qed.
+
+  Hint Resolve hashmap_le_refl_eq hashmap_le_upd.
+
   Theorem translate_simulation : forall T (p: prog T),
       forall tid sigma (F: heappred) d vd out l c,
         F (Sigma.mem sigma) ->
@@ -235,11 +261,7 @@ Section OptimisticTranslator.
         | Finished sigma' (r, c') =>
           exists vd',
           F (Sigma.mem sigma') /\
-          let d' := if CanWrite l then Sigma.disk sigma' else d in
-          CacheRep d' c' vd' /\
-          Sigma.l sigma' = Sigma.l sigma /\
-          (l = Free -> vd' = vd) /\
-          (l = Free -> c' = c) /\
+          translated_postcondition l d sigma c vd sigma' c' vd' /\
           match r with
           | Success _ v =>
             Prog.exec (add_buffers vd) Mem.empty_mem (Sigma.hm sigma) p
@@ -261,6 +283,7 @@ Section OptimisticTranslator.
         end \/
         Prog.exec (add_buffers vd) Mem.empty_mem (Sigma.hm sigma) p (Prog.Failed _).
   Proof.
+    unfold translated_postcondition.
     induction p; simpl; intros;
       try solve [ CCLTactics.inv_ret;
                   match goal with
@@ -335,7 +358,9 @@ Section OptimisticTranslator.
         exists vd'0.
         destruct (Sigma.l sigma); simpl in *; intuition (subst; eauto);
           try congruence.
+        etransitivity; eauto.
         destruct f, r'; simpl; eauto.
+        etransitivity; eauto.
         destruct f, r'; simpl; eauto.
         destruct (Sigma.l sigma); simpl in *; intuition (subst; eauto);
           try congruence.
@@ -361,12 +386,7 @@ Section OptimisticTranslator.
            fun sigma' '(r, c') =>
              (exists vd',
                  F (Sigma.mem sigma') /\
-                 let d' := if CanWrite l then Sigma.disk sigma' else d in
-                 CacheRep d' c' vd' /\
-                 Sigma.l sigma' = Sigma.l sigma /\
-                 (l = Free -> vd' = vd) /\
-                 (l = Free -> c' = c) /\
-                 hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
+                 translated_postcondition l d sigma c vd sigma' c' vd' /\
                  match r with
                  | Success _ v => seq_post (seq_spec a Mem.empty_mem (Sigma.hm sigma))
                                           Mem.empty_mem (Sigma.hm sigma') v (add_buffers vd')
@@ -384,8 +404,6 @@ Section OptimisticTranslator.
     unfold prog_quadruple; intros.
     apply triple_spec_equiv; unfold cprog_triple; intros.
     rename st into sigma.
-
-    pose proof (CCLHashExec.exec_hashmap_le H1).
 
     simpl in *; intuition; subst.
     destruct a as (((a & F) & d) & vd); simpl in *.
