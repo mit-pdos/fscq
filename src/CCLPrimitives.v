@@ -309,18 +309,22 @@ Section Primitives.
     destruct sigma'0; simpl; eauto.
   Qed.
 
-  (* TODO: change these to separation logic style specs *)
-
   Theorem Unlock_ok : forall tid,
       cprog_spec G tid
-                 (fun (_:unit) sigma =>
-                    {| precondition := Sigma.l sigma = WriteLock;
+                 (fun F sigma =>
+                    {| precondition :=
+                         F (Sigma.mem sigma) /\
+                         Sigma.l sigma = WriteLock;
                        postcondition :=
                          fun sigma' _ =>
-                           sigma' = Sigma.set_l sigma Free; |})
+                           F (Sigma.mem sigma') /\
+                           Sigma.disk sigma' = Sigma.disk sigma /\
+                           Sigma.hm sigma' = Sigma.hm sigma /\
+                           Sigma.l sigma' = Free; |})
                  Unlock.
   Proof.
     prim.
+    destruct st; simpl; auto.
   Qed.
 
 End Primitives.
