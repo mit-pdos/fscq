@@ -16,7 +16,6 @@ Require Export OptimisticTranslator.
 
 Record FsParams :=
   { cache: ident; (* : Cache *)
-    vdisk: ident; (* : Disk *)
     fsmem: ident; (* : memsstate *)
     fstree: ident; (* : dirtree *)
     fshomedirs: ident; (* thread_homes *)
@@ -39,7 +38,6 @@ Section FilesystemProtocol.
      fshomedirs P |-> abs homedirs *
      exists c vd mscs,
        cache P |-> val c *
-       vdisk P |-> absMem vd *
        [[ CacheRep d c vd ]] *
        fsmem P |-> val mscs *
        [[ fs_rep vd hm mscs tree ]])%pred.
@@ -49,7 +47,6 @@ Section FilesystemProtocol.
       exists c vd mscs,
         (fstree P |-> abs tree * fshomedirs P |-> abs homedirs *
          cache P |-> val c *
-         vdisk P |-> absMem vd *
          fsmem P |-> val mscs)%pred h /\
         CacheRep d c vd /\
         fs_rep vd hm mscs tree.
@@ -62,14 +59,13 @@ Section FilesystemProtocol.
   Theorem fs_invariant_refold : forall tree homedirs d c vd hm mscs h,
       (fstree P |-> abs tree * fshomedirs P |-> abs homedirs *
        cache P |-> val c *
-       vdisk P |-> absMem vd *
        fsmem P |-> val mscs)%pred h ->
       CacheRep d c vd ->
       fs_rep vd hm mscs tree ->
       fs_invariant d hm tree homedirs h.
   Proof.
     unfold fs_invariant; intros.
-    SepAuto.pred_apply; SepAuto.cancel.
+    SepAuto.pred_apply; SepAuto.cancel; eauto.
   Qed.
 
   Definition fs_guarantee tid (sigma sigma':Sigma) :=

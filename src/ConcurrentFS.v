@@ -68,14 +68,10 @@ Section ConcurrentFS.
              do '(r, c) <- p mscs WriteLock c;
              match r with
              | Success _ (ms', r) =>
-               _ <- Assgn2_mem_abs (Make_assgn2
-                                     (cache P) c
-                                     (fsmem P) ms'
-
-                                     (* TODO: how do we incorporate the new
-                                 cache into the virtual disk? *)
-                                     (vdisk P) (fun _ (vd:Disk) => vd)
-                                     (fstree P) (fun _ => update));
+               _ <- Assgn2_abs (Make_assgn2
+                                 (cache P) c
+                                 (fsmem P) ms'
+                                 (fstree P) (fun _ => update));
                  _ <- Unlock;
                  Ret (Done r)
              | Failure e =>
@@ -217,7 +213,6 @@ Section ConcurrentFS.
       pose proof (fs_invariant_unfold H); repeat deex
     end.
     descend; simpl in *; intuition eauto.
-    SepAuto.pred_apply; SepAuto.cancel.
 
     step.
     intuition.
@@ -229,11 +224,12 @@ Section ConcurrentFS.
 
   Hint Extern 1 {{ readCacheMem; _ }} => apply readCacheMem_ok : prog.
 
-  Lemma CacheRep_disk_eq : forall d d' c,
+  Lemma CacheRep_disk_eq : forall d d' c vd,
       d = d' ->
-      pimpl (AEQ:=PeanoNat.Nat.eq_dec) (CacheRep d' c) (CacheRep d c).
+      CacheRep d' c vd ->
+      CacheRep d c vd.
   Proof.
-    intros; subst; reflexivity.
+    intros; subst; auto.
   Qed.
 
   Hint Resolve CacheRep_disk_eq.
@@ -404,7 +400,6 @@ Definition init (fsxp: fs_xparams) (mscs: memstate) : cprog FsParams :=
         fsmem:=memstateId;
         fsxp:=fsxp;
 
-        vdisk:=absId;
         fstree:=absId;
         fshomedirs:=absId; |}.
 
