@@ -1,4 +1,5 @@
 Require Import CCL.
+Require Import Hashmap.
 Require Import FSLayout.
 
 Require AsyncFS.
@@ -231,6 +232,17 @@ Section FilesystemProtocol.
     descend; intuition eauto.
     etransitivity; eauto.
     congruence.
+  Qed.
+
+  Theorem fs_rep_hashmap_incr : forall vd tree mscs hm hm',
+      fs_rep vd hm mscs tree ->
+      hashmap_le hm hm' ->
+      fs_rep vd hm' mscs tree.
+  Proof.
+    unfold fs_rep; intros.
+    repeat deex.
+    exists ds, ilist, frees; intuition eauto.
+    eapply LOG.rep_hashmap_subset; eauto.
   Qed.
 
 End FilesystemProtocol.

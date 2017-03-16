@@ -5,7 +5,7 @@ Require Import FSProtocol.
 Require Import OptimisticFS.
 Require Import ConcurCompile.
 
-Import FSLayout Log BFile.
+Import FSLayout BFile.
 
 Section ConcurrentFS.
 
@@ -34,7 +34,7 @@ Section ConcurrentFS.
   (by waiting on address a before re-scheduling, for example). *)
   Definition readonly_syscall T (p: OptimisticProg T) : cprog (SyscallResult T) :=
     do '(c, mscs) <- readCacheMem;
-      (* for read-only syscalls, the returned write buffer is always the same
+      (* for read-only syscalls, the returned cache is always the same
        as the input *)
       do '(r, _) <- p mscs Free c;
       (* while slightly more awkward to write, this exposes the structure
@@ -152,50 +152,20 @@ Section ConcurrentFS.
     descend; intuition eauto using fs_homedir_rely.
   Qed.
 
-  Definition readonly_spec A T (fsspec: FsSpec A T) tid :
-    Spec _ (SyscallResult T) :=
-    fun '(tree, homedirs, a) sigma =>
-      {| precondition :=
-           (fs_invariant P (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs) (Sigma.mem sigma) /\
-           Sigma.l sigma = Free /\
-           fs_pre (fsspec a) tree /\
-           precondition_stable fsspec homedirs tid;
-         postcondition :=
-           fun sigma' r =>
-             exists tree',
-               (fs_invariant P (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs) (Sigma.mem sigma') /\
-               Rely G tid sigma sigma' /\
-               homedir_rely tid homedirs tree tree' /\
-               Sigma.l sigma' = Free /\
-               match r with
-               | Done v => fs_post (fsspec a) v
-               | TryAgain => True
-               | SyscallFailed => True
-               end |}.
-
-  Lemma fs_rep_hashmap_incr : forall vd tree mscs hm hm',
-      fs_rep P vd hm mscs tree ->
-      hashmap_le hm hm' ->
-      fs_rep P vd hm' mscs tree.
-  Proof.
-    unfold fs_rep; intros.
-    repeat deex.
-    exists ds, ilist, frees; intuition eauto.
-    eapply LOG.rep_hashmap_subset; eauto.
-  Qed.
-
   Hint Resolve fs_rep_hashmap_incr.
 
   Definition readCacheMem_ok : forall tid,
       cprog_spec G tid
                  (fun '(tree, homedirs) sigma =>
                     {| precondition :=
-                         fs_invariant P (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) /\
+                         fs_invariant P (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs
+                                      (Sigma.mem sigma) /\
                          Sigma.l sigma = Free;
                        postcondition :=
                          fun sigma' '(c, mscs) =>
                            exists tree',
-                             fs_invariant P (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma') /\
+                             fs_invariant P (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs
+                                          (Sigma.mem sigma') /\
                              hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
                              Rely G tid sigma sigma' /\
                              homedir_rely tid homedirs tree tree' /\
@@ -226,22 +196,42 @@ Section ConcurrentFS.
 
   Lemma CacheRep_disk_eq : forall d d' c vd,
       d = d' ->
-      CacheRep d' c vd ->
-      CacheRep d c vd.
+      CacheRep d' c vd -> CacheRep d c vd.
   Proof.
     intros; subst; auto.
   Qed.
 
   Hint Resolve CacheRep_disk_eq.
 
-  Theorem readonly_syscall_ok : forall T (p: OptimisticProg T) A (fsspec: FsSpec A T) tid,
+  Theorem readonly_syscall_ok : forall T (p: OptimisticProg T) A
+                                  (fsspec: FsSpec A T) tid,
       (forall mscs c, cprog_spec G tid
                             (fs_spec fsspec mscs Free c)
                             (p mscs Free c)) ->
       cprog_spec G tid
-                 (readonly_spec fsspec tid) (readonly_syscall p).
+                 (fun '(tree, homedirs, a) sigma =>
+                    {| precondition :=
+                         (fs_invariant P (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs)
+                           (Sigma.mem sigma) /\
+                         Sigma.l sigma = Free /\
+                         fs_pre (fsspec a) tree /\
+                         precondition_stable fsspec homedirs tid;
+                       postcondition :=
+                         fun sigma' r =>
+                           exists tree',
+                             (fs_invariant P (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs)
+                               (Sigma.mem sigma') /\
+                             Rely G tid sigma sigma' /\
+                             homedir_rely tid homedirs tree tree' /\
+                             Sigma.l sigma' = Free /\
+                             match r with
+                             | Done v => fs_post (fsspec a) v
+                             | TryAgain => True
+                             | SyscallFailed => True
+                             end |})
+                 (readonly_syscall p).
   Proof.
-    unfold readonly_syscall, readonly_spec; intros.
+    unfold readonly_syscall; intros.
     step.
     destruct a as ((tree & homedirs) & a); simpl in *; intuition.
     descend; simpl; intuition eauto.
@@ -268,29 +258,6 @@ Section ConcurrentFS.
     destruct_goal_matches; intuition auto.
   Qed.
 
-  Definition file_get_attr inum :=
-    retry_syscall (fun mscs => file_get_attr (fsxp P) inum mscs)
-                  (fun tree => tree).
-
-  Lemma exists_tuple : forall A B P,
-      (exists a b, P (a, b)) ->
-      exists (a: A * B), P a.
-  Proof.
-    intros.
-    repeat deex; eauto.
-  Qed.
-
-  Ltac split_lift_prop :=
-    unfold Prog.pair_args_helper in *; simpl in *;
-    repeat match goal with
-           | [ H: context[(emp * _)%pred] |- _ ] =>
-             apply star_emp_pimpl in H
-           | [ H: context[(_ * [[ _ ]])%pred] |- _ ] =>
-             apply sep_star_lift_apply in H
-           | [ H : _ /\ _ |- _ ] => destruct H
-           | _ => progress subst
-           end.
-
   Theorem opt_file_get_attr_ok : forall inum mscs l tid c,
       cprog_spec G tid
                  (fs_spec (fun '(pathname, f) =>
@@ -301,7 +268,7 @@ Section ConcurrentFS.
                                 fs_dirup := fun tree => tree |}) mscs l c)
                  (OptFS.file_get_attr (fsxp P) inum mscs l c).
   Proof.
-  Admitted.
+  Abort.
 
   Lemma and_copy : forall (P Q:Prop),
       P ->
@@ -311,7 +278,11 @@ Section ConcurrentFS.
     eauto.
   Qed.
 
-  (* translate remaining system calls for extraction *)
+  (* translate all system calls for extraction *)
+
+  Definition file_get_attr inum :=
+    retry_syscall (fun mscs => file_get_attr (fsxp P) inum mscs)
+                  (fun tree => tree).
 
   Definition lookup dnum names :=
     retry_syscall (fun mscs => lookup (fsxp P) dnum names mscs)
