@@ -477,9 +477,11 @@ Section ConcurrentFS.
     destruct a as ((tree & homedirs) & a); simpl in *; intuition.
     descend; simpl; intuition eauto.
 
+    (* TODO: in stoic-seplogic had a variant of step that took a custom tactic
+    to find the spec, which would reduce this to something like step'
+    ltac:(eapply H). *)
     monad_simpl.
     eapply cprog_ok_weaken; [ eapply H | ]; simplify.
-    deex.
     match goal with
     | [ H: fs_invariant _ _ _ _ _ |- _ ] =>
       pose proof (fs_invariant_unfold H); repeat deex

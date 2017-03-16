@@ -1,22 +1,13 @@
 Require Import CCLProg CCLMonadLaws CCLHoareTriples CCLPrimitives.
 Require Export Automation.
 
-Ltac destruct_st :=
-  match goal with
-  | [ st: Sigma * Sigma, H: context[let '(a, b) := ?st in _] |- _ ] =>
-    let sigma_i := fresh "sigma_i" in
-    let sigma := fresh "sigma" in
-    (destruct st as [a b] || destruct st as [sigma_i sigma]); cbn [precondition postcondition] in *
-  end.
-
 Ltac simplify :=
-  intros; repeat deex;
-  repeat destruct_st;
   repeat match goal with
          | [ H: _ /\ _ |- _ ] => destruct H
          | [ |- exists (_:unit), _ ] => exists tt
          | [ |- True /\ _ ] => split; [ exact I | ]
          | [ a:unit |- _ ] => clear a
+         | _ => progress deex
          | _ => progress subst
          | _ => progress intros
          end.
