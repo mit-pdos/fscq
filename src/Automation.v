@@ -37,6 +37,43 @@ Ltac simpl_match :=
     repl_match_hyp H d d'
   end.
 
+Ltac destruct_matches_in e :=
+  lazymatch e with
+  | context[match ?d with | _ => _ end] =>
+    destruct_matches_in d
+  | _ => destruct e eqn:?; intros
+  end.
+
+Ltac destruct_all_matches :=
+  repeat (try match goal with
+              | [ |- context[match ?d with | _ => _ end] ] =>
+                destruct_matches_in d
+              | [ H: context[match ?d with | _ => _ end] |- _ ] =>
+                destruct_matches_in d
+              end);
+  subst;
+  try congruence;
+  auto.
+
+Ltac destruct_nongoal_matches :=
+  repeat (try simpl_match;
+          try match goal with
+              | [ H: context[match ?d with | _ => _ end] |- _ ] =>
+                destruct_matches_in d
+              end);
+  subst;
+  try congruence;
+  auto.
+
+Ltac destruct_goal_matches :=
+  repeat (try simpl_match;
+           match goal with
+           | [ |- context[match ?d with | _ => _ end] ] =>
+              destruct_matches_in d
+           end);
+  try congruence;
+  auto.
+
 Ltac inj_pair2 :=
   match goal with
   | [ H: existT ?P ?a _ = existT ?P ?a _ |- _ ] =>
