@@ -184,6 +184,10 @@ Section ConcurrentFS.
     end.
     descend; simpl in *; intuition eauto.
 
+    match goal with
+    | [ H: Sigma.l _ = Free |- _ ] =>
+      rewrite H; simpl
+    end.
     step.
     intuition.
     edestruct fs_rely_invariant; eauto.

@@ -174,7 +174,10 @@ Section Primitives.
                          fun sigma' '(a, b) =>
                            a = a0 /\
                            b = b0 /\
-                           Rely G tid sigma sigma' /\
+                           (if CanWrite (Sigma.l sigma) then
+                             sigma' = sigma
+                           else
+                             Rely G tid sigma sigma') /\
                            hashmap_le (Sigma.hm sigma) (Sigma.hm sigma')
                     |})
                  (Read2 A i1 B i2).
@@ -191,6 +194,7 @@ Section Primitives.
     | [ H: rtxn_step _ _ _ |- _ ] =>
       eapply rtxn_step2 in H; eauto
     end; intuition; subst.
+    destruct (Sigma.l st); simpl; intuition auto.
 
     apply sep_star_comm in H.
     apply sep_star_assoc_2 in H.
