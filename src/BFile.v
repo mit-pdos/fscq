@@ -1143,13 +1143,14 @@ Module BFILE.
   Qed.
 
   Theorem getattrs_ok : forall lxp bxp ixp inum ms,
-    {< F Fm Fi m0 m flist ilist allocc frees f,
+    {< F Fm Fi m0 m flist ilist frees f,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-           [[[ m ::: (Fm * rep bxp ixp flist ilist  frees allocc (MSCache ms)) ]]] *
+           [[[ m ::: (Fm * rep bxp ixp flist ilist  frees (MSAllocC ms) (MSCache ms)) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:^(ms',r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
+           [[[ m ::: (Fm * rep bxp ixp flist ilist  frees (MSAllocC ms') (MSCache ms')) ]]] *
            [[ r = BFAttr f /\ MSAlloc ms = MSAlloc ms' /\ MSCache ms = MSCache ms' ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'

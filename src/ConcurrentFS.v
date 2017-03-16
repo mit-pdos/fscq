@@ -109,6 +109,7 @@ Section ConcurrentFS.
       {| precondition :=
            F (Sigma.mem sigma) /\
            CacheRep d c vd /\
+           (l = WriteLock -> d = Sigma.disk sigma) /\
            fs_rep P vd (Sigma.hm sigma) mscs tree /\
            fs_pre (fsspec a) tree /\
            Sigma.l sigma = l;
@@ -212,7 +213,7 @@ Section ConcurrentFS.
                         | _ => descend
                         end;
                  simpl in *; subst;
-                 (intuition eauto); try congruence.
+                 (intuition (try eassumption; eauto)); try congruence.
 
   Lemma fs_rep_same_disk_incr_hashmap : forall d d' hm hm' tree homedirs h,
       d' = d ->
@@ -271,6 +272,17 @@ Section ConcurrentFS.
     destruct_goal_matches; intuition auto.
   Qed.
 
+  Hint Extern 1 {{ OptFS.file_get_attr _ _ _ _ _; _ }} => apply OptFS.file_get_attr_ok : prog.
+
+  Lemma translated_post_hashmap_le : forall l d sigma c vd sigma' c' vd',
+      translated_postcondition l d sigma c vd sigma' c' vd' ->
+      hashmap_le (Sigma.hm sigma) (Sigma.hm sigma').
+  Proof.
+    unfold translated_postcondition; intuition.
+  Qed.
+
+  Hint Resolve translated_post_hashmap_le.
+
   Theorem opt_file_get_attr_ok : forall inum mscs l tid c,
       cprog_spec G tid
                  (fs_spec (fun '(pathname, f) =>
@@ -281,14 +293,28 @@ Section ConcurrentFS.
                                 fs_dirup := fun tree => tree |}) mscs l c)
                  (OptFS.file_get_attr (fsxp P) inum mscs l c).
   Proof.
-  Abort.
+    unfold fs_spec; intros.
+    step.
+    unfold Prog.pair_args_helper in *.
+    repeat match goal with
+           | [ H: context[let '(a, b) := ?p in _] |- _ ] =>
+             let a := fresh a in
+             let b := fresh b in
+             destruct p as [a b]
+           end; simpl in *; intuition.
+    match goal with
+    | [ H: fs_rep _ _ _ _ _ |- _ ] =>
+      unfold fs_rep in H; simplify
+    end.
+    destruct frees.
+    finish.
+    SepAuto.pred_apply; SepAuto.cancel; eauto.
 
-  Lemma and_copy : forall (P Q:Prop),
-      P ->
-      (P -> Q) ->
-      P /\ Q.
-  Proof.
-    eauto.
+    step; finish.
+    destruct_goal_matches; SepAuto.destruct_lifts; finish.
+    unfold fs_rep; finish.
+
+    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
   Qed.
 
   (* translate all system calls for extraction *)

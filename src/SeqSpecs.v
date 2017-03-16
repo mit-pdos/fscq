@@ -58,13 +58,11 @@ Proof.
            end.
 Qed.
 
-Hint Resolve hashmap_le_refl.
-
 Lemma step_hashmap_le : forall T m vm hm (p: prog T) m' vm' hm' v,
     step m vm hm p m' vm' hm' v ->
     hashmap_le hm hm'.
 Proof.
-  inversion 1; intros; repeat (subst; inj_pair2); eauto.
+  inversion 1; intros; repeat (subst; inj_pair2); eauto using hashmap_le_refl.
   unfold hashmap_le.
   eauto using HS_nil, HS_cons.
 Qed.
@@ -77,7 +75,7 @@ Theorem exec_hashmap_le : forall T m vm hm (p: prog T) out,
     | Failed _ => True
     end.
 Proof.
-  induction 1; intros; eauto.
+  induction 1; intros; eauto using hashmap_le_refl.
 
   eapply step_hashmap_le; eauto.
   destruct out; eauto; try solve [ etransitivity; eauto ].

@@ -307,7 +307,7 @@ Section OptimisticTranslator.
         CCLTactics.inv_bind; eauto.
 
     - destruct l; simpl in *; intuition idtac.
-      + CCLTactics.inv_ret; eauto 10.
+      + CCLTactics.inv_ret; eauto 10 using hashmap_le_refl.
       + case_eq (vd a); intros.
         * CCLTactics.inv_bind;
             match goal with
@@ -392,10 +392,7 @@ Section OptimisticTranslator.
                  | Success _ v => seq_post (seq_spec a Mem.empty_mem (Sigma.hm sigma))
                                           Mem.empty_mem (Sigma.hm sigma') v (add_buffers vd')
                  | Failure e =>
-                   match e with
-                   | WriteRequired => l = Free
-                   | _ => True
-                   end
+                   Sigma.l sigma = WriteLock -> e <> WriteRequired
                  end) |}.
 
   Theorem translate_ok : forall T (p: prog T) A (spec: SeqSpec A T) tid c l,
@@ -418,6 +415,8 @@ Section OptimisticTranslator.
       | [ Hexec: Prog.exec _ _ _ p _ |- _ ] =>
         eapply H in Hexec; eauto 10
       end.
+      eexists; intuition eauto.
+      subst; congruence.
     -
       (* rather than showing something about concurrent execution, simulation
       showed that the sequential program fails; rule out this possibility from

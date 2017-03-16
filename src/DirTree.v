@@ -1018,7 +1018,8 @@ Module DIRTREE.
            [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs ]]] *
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST:hm' RET:^(mscs',r)
-           LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs') hm' *
+             LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs') hm' *
+         [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs' ]]] *
            [[ MSCache mscs' = MSCache mscs ]] *
            [[ r = BFILE.BFAttr f /\ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'
