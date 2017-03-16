@@ -107,6 +107,8 @@ Module Exec.
   Inductive R {sync_R: rawdisk -> rawdisk -> Prop} : forall T, rawdisk -> varmem -> hashmap -> prog T -> outcome T -> Prop :=
   | XRet : forall T m vm hm (v: T),
       R m vm hm (Ret v) (Finished m vm hm v)
+  | XAlertModified : forall m vm hm,
+      R m vm hm (AlertModified) (Finished m vm hm tt)
   | XStep : forall T m vm hm (p: prog T) m' m'' vm' hm' v,
       step m vm hm p m' vm' hm' v ->
       sync_R m' m'' ->
@@ -267,7 +269,8 @@ Proof.
   intros.
   generalize dependent d.
   induction H; subst; intros; simpl.
-  - eexists; intuition eauto; simpl; eauto.
+  - eauto 10.
+  - eauto 10.
   - eapply step_sync_later in H0; eauto; deex.
     eexists; intuition eauto.
   - specialize (IHR1 _ H1); deex.
