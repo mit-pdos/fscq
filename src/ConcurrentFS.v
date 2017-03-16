@@ -264,21 +264,21 @@ Section ConcurrentFS.
       (* for read-only syscalls, the returned write buffer is always the same
        as the input *)
       do '(r, _) <- p mscs Free c;
-      match r with
-      | Success f (ms', r) =>
-        (* while slightly more awkward to write, this exposes the structure
-        without having to destruct f, helping factor out the common parts of the
-        proof *)
-        Ret (match f with
+      (* while slightly more awkward to write, this exposes the structure
+      without having to destruct r or f, helping factor out the common parts of
+      the proof *)
+      Ret (match r with
+           | Success f (ms', r) =>
+             match f with
              | NoChange => Done r
              | Modified => TryAgain
-             end)
-      | Failure e =>
-        Ret (match e with
+             end
+           | Failure e =>
+             match e with
              | Unsupported => SyscallFailed
              | _ => TryAgain
-             end)
-      end.
+             end
+           end).
 
   Definition guard {T} (r:SyscallResult T)
     : {(exists v, r = Done v) \/ r = SyscallFailed}
@@ -456,6 +456,15 @@ Section ConcurrentFS.
 
   Hint Extern 1 {{ readCacheMem; _ }} => apply readCacheMem_ok : prog.
 
+  Lemma CacheRep_disk_eq : forall d d' c,
+      d = d' ->
+      pimpl (AEQ:=PeanoNat.Nat.eq_dec) (CacheRep d' c) (CacheRep d c).
+  Proof.
+    intros; subst; reflexivity.
+  Qed.
+
+  Hint Resolve CacheRep_disk_eq.
+
   Theorem readonly_syscall_ok : forall T (p: OptimisticProg T) A (fsspec: FsSpec A T) tid,
       (forall mscs c, cprog_spec fs_guarantee tid
                           (fs_spec fsspec mscs Free c)
@@ -477,42 +486,15 @@ Section ConcurrentFS.
     end.
     descend; simpl in *; (intuition eauto); try congruence.
 
-    destruct a1 as [f [mscs' r] | e].
     step; simplify; intuition subst.
     unfold translated_postcondition in *; intuition; subst.
     descend; intuition (subst; eauto); try congruence.
-    repeat match goal with
-           | [ H: _ = _ |- _ ] =>
-             rewrite H in *
-           end.
     unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto.
 
     etransitivity; eauto.
     eapply fs_rely_same_fstree; eauto.
-    repeat match goal with
-           | [ H: _ = _ |- _ ] =>
-             rewrite H in *
-           end.
     unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto.
-    destruct f; eauto.
-
-    step; simplify; intuition subst.
-    unfold translated_postcondition in *; intuition; subst.
-    descend; intuition (subst; eauto); try congruence.
-    repeat match goal with
-           | [ H: _ = _ |- _ ] =>
-             rewrite H in *
-           end.
-    unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto.
-
-    etransitivity; eauto.
-    eapply fs_rely_same_fstree; eauto.
-    repeat match goal with
-           | [ H: _ = _ |- _ ] =>
-             rewrite H in *
-           end.
-    unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto.
-    destruct e; eauto.
+    destruct_goal_matches; intuition auto.
   Qed.
 
   Definition file_get_attr inum :=
