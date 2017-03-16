@@ -203,6 +203,25 @@ Section ConcurrentFS.
 
   Hint Resolve CacheRep_disk_eq.
 
+  Ltac finish := repeat match goal with
+                        | [ |- _ /\ _ ] => split; trivial
+                        | _ => descend
+                        end;
+                 simpl in *; subst;
+                 (intuition eauto); try congruence.
+
+  Lemma fs_rep_same_disk_incr_hashmap : forall d d' hm hm' tree homedirs h,
+      d' = d ->
+      hashmap_le hm hm' ->
+      fs_invariant P d hm tree homedirs h ->
+      fs_invariant P d' hm' tree homedirs h.
+  Proof.
+    unfold fs_invariant; intros.
+    SepAuto.pred_apply; SepAuto.cancel; eauto.
+  Qed.
+
+  Hint Resolve fs_rep_same_disk_incr_hashmap.
+
   Theorem readonly_syscall_ok : forall T (p: OptimisticProg T) A
                                   (fsspec: FsSpec A T) tid,
       (forall mscs c, cprog_spec G tid
@@ -233,28 +252,18 @@ Section ConcurrentFS.
   Proof.
     unfold readonly_syscall; intros.
     step.
-    destruct a as ((tree & homedirs) & a); simpl in *; intuition.
-    descend; simpl; intuition eauto.
+    destruct a as ((tree & homedirs) & a); finish.
 
-    (* TODO: in stoic-seplogic had a variant of step that took a custom tactic
-    to find the spec, which would reduce this to something like step'
-    ltac:(eapply H). *)
     monad_simpl.
-    eapply cprog_ok_weaken; [ eapply H | ]; simplify.
-    match goal with
-    | [ H: fs_invariant _ _ _ _ _ _ |- _ ] =>
-      pose proof (fs_invariant_unfold H); repeat deex
-    end.
-    descend; simpl in *; (intuition eauto); try congruence.
+    eapply cprog_ok_weaken;
+      [ eapply H | ]; simplify; finish.
 
-    step; simplify; intuition subst.
-    unfold translated_postcondition in *; intuition; subst.
-    descend; intuition (subst; eauto); try congruence.
-    unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto.
+    step.
+    unfold translated_postcondition in *; simplify.
+    finish.
 
     etransitivity; eauto.
     eapply fs_rely_same_fstree; eauto.
-    unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto.
     destruct_goal_matches; intuition auto.
   Qed.
 

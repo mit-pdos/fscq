@@ -3,6 +3,11 @@ Require Import Eqdep.
 Ltac safe_intuition :=
   repeat match goal with
          | [ H: _ /\ _ |- _ ] => destruct H
+         | [ H: ?P -> _ |- _ ] =>
+           let t := type of P in
+           match t with
+           | Prop => specialize (H ltac:(trivial))
+           end
          | _ => progress subst
          end.
 
