@@ -483,6 +483,19 @@ Module BlockPtr (BPtr : BlockPtrSig).
     cancel.
   Qed.
 
+  Lemma indrep_index_bound_helper : forall Fm off indlvl bxp bn iblocks l_part m,
+      off < length (concat l_part) ->
+      ((Fm * indrep_n_helper bxp bn iblocks) *
+       listmatch (fun ibn' (l' : list waddr) =>
+                    indrep_n_tree indlvl bxp # (ibn') l') iblocks l_part)%pred m
+      -> off / (NIndirect * NIndirect ^ indlvl) < NIndirect.
+  Proof.
+    intros.
+    apply Nat.div_lt_upper_bound; mult_nonzero.
+    erewrite indrep_n_tree_length in * by eauto.
+    rewrite mult_comm; simpl in *. auto.
+  Qed.
+
   Lemma indrep_index_bound_helper' : forall Fm Fm' off indlvl bxp bn iblocks l_part m,
     off < length (concat l_part) ->
     ((Fm * indrep_n_helper bxp bn iblocks) *
@@ -1308,14 +1321,12 @@ Module BlockPtr (BPtr : BlockPtrSig).
         all : autorewrite with core; eauto.
         rewrite <- roundup_eq by auto.
         erewrite concat_hom_length in *; eauto.
-        apply Nat.lt_add_lt_sub_r. simpl. apply Nat.mod_upper_bound; auto.
       - rewrite natToWord_wordToNat. rewrite listmatch_updN_removeN by (eauto; omega). cancel.
       - rewrite roundup_eq by auto. rewrite minus_plus.
         erewrite upd_range_concat_hom_small; eauto.
         rewrite <- roundup_eq by auto.
         erewrite concat_hom_length in * by eauto. auto.
         rewrite le_plus_minus_r; auto.
-        apply Nat.lt_add_lt_sub_r. simpl. apply Nat.mod_upper_bound; auto.
       - match goal with [|- context [selN ?L ?N ?d] ] =>
           rewrite listmatch_extract with (b := L) (i := N) (bd := d) in * by omega
         end. rewrite indrep_n_helper_length_piff in *.

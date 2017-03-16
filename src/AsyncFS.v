@@ -319,14 +319,12 @@ Module AFS.
     denote (freeinode_pred =p=> _) as Hz.
 
     rewrite <- Hy in Hz.
-
-(*
- by (apply repeat_length with (x := BFILE.bfile0)).  *)
+    2: apply repeat_length with (x := BFILE.bfile0).
 
     assert (1 < length (repeat BFILE.bfile0 (inode_bitmaps * valulen
        / INODE.IRecSig.items_per_val * INODE.IRecSig.items_per_val))) as Hlen.
     rewrite repeat_length; omega.
-    apply arrayN_ex_ptsto_exis in Hz; auto.
+    apply arrayN_ex_ptsto_exis in Hz; auto.  (* include ⟦⟦ BFILE.freepred v ⟧⟧ in lemma? *)
     rewrite <- Hz.
     pose proof (list2nmem_ptsto_cancel BFILE.bfile0 _ Hlen).
     pred_apply; unfold tree_dir_names_pred.
@@ -620,10 +618,12 @@ Module AFS.
     intuition simpl; eauto.
     intuition simpl; eauto.
     intuition simpl; eauto.
+    xcrash.
 
-    admit.
+    eapply LOG.crash_xform_cached_before; eauto.
 
     xcrash.
+
     denote (SB.rep) as Hsb. rewrite SB.rep_magic_number in Hsb. destruct_lift Hsb.
 
     step.
@@ -666,7 +666,7 @@ Module AFS.
     pred_apply.
     safecancel.
     Unshelve. all: eauto.
-  Admitted.
+  Qed.
 
   Hint Extern 1 ({{_}} Bind (recover _) _) => apply recover_ok : prog.
 

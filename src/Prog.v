@@ -17,7 +17,7 @@ Set Implicit Arguments.
 Parameter vartype : Type.
 Parameter vartype_eq_dec : forall (x y : vartype), {x=y}+{x<>y}.
 
-Inductive var_value : Type :=
+Polymorphic Inductive var_value : Type :=
   | Any : forall (T : Type), T -> var_value.
 
 (** single program *)
