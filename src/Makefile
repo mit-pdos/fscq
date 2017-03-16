@@ -64,7 +64,7 @@ OCAMLFUSE_DEP	:= $(patsubst %.ml,%.d,$(OCAMLFUSE_ML)) \
 		   $(patsubst %.mli,%.di,$(OCAMLFUSE_MLI))
 OCAMLFUSE	:= ocamlfuse/Fuse.a ocamlfuse/Fuse.cmxa
 
-.PHONY: coq proof clean
+.PHONY: vio proof clean
 
 all: cfscq fscq mkfs
 
@@ -125,6 +125,8 @@ $(VS_JSON): $(VS_VIO) coqbuild/ExtractJSON.v
 $(VS_VIO): coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -j $(J) -f Makefile.coq quick )
 	@touch coqbuild/*.vio
+
+vio: $(VS_VIO)
 
 checkproofs: coqbuild/Makefile.coq
 	( cd coqbuild && $(MAKE) -f Makefile.coq checkproofs J=$(J) )
