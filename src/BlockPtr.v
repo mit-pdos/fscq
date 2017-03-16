@@ -483,6 +483,19 @@ Module BlockPtr (BPtr : BlockPtrSig).
     cancel.
   Qed.
 
+  Lemma indrep_index_bound_helper : forall Fm off indlvl bxp bn iblocks l_part m,
+      off < length (concat l_part) ->
+      ((Fm * indrep_n_helper bxp bn iblocks) *
+       listmatch (fun ibn' (l' : list waddr) =>
+                    indrep_n_tree indlvl bxp # (ibn') l') iblocks l_part)%pred m
+      -> off / (NIndirect * NIndirect ^ indlvl) < NIndirect.
+  Proof.
+    intros.
+    apply Nat.div_lt_upper_bound; mult_nonzero.
+    erewrite indrep_n_tree_length in * by eauto.
+    rewrite mult_comm; simpl in *. auto.
+  Qed.
+
   Lemma indrep_index_bound_helper' : forall Fm Fm' off indlvl bxp bn iblocks l_part m,
     off < length (concat l_part) ->
     ((Fm * indrep_n_helper bxp bn iblocks) *
