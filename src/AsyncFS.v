@@ -148,73 +148,6 @@ Module AFS.
     intros; omega.
   Qed.
 
-  Lemma arrayN_ptsto_mem_disjoint : forall V a l st m m' v,
-    arrayN (@ptsto _ _ V) st l m ->
-    (a |-> v)%pred m' ->
-    a < st \/ a >= st + length l ->
-    mem_disjoint m m'.
-  Proof.
-    intros.
-    unfold ptsto in H0; unfold mem_disjoint; intuition repeat deex.
-    - destruct (addr_eq_dec a a0); subst.
-      eapply arrayN_oob_lt in H; eauto; congruence.
-      specialize (H4 _ n); congruence.
-    - destruct (addr_eq_dec a a0); subst.
-      eapply arrayN_oob' with (i := a0 - st) in H; try omega.
-      replace (st + (a0 - st)) with a0 in H by omega; congruence.
-      specialize (H4 _ n); congruence.
-  Qed.
-
-  Lemma arrayN_ex_mem_disjoint : forall V l a m m' v,
-    arrayN_ex (@ptsto _ _ V) l a m ->
-    (a |-> v)%pred m' ->
-    mem_disjoint m m'.
-  Proof.
-    unfold arrayN_ex; intros.
-    destruct (lt_dec a (length l)).
-    - unfold sep_star in H; rewrite sep_star_is in H; unfold sep_star_impl in H.
-      repeat deex.
-      apply mem_disjoint_mem_union_split_l.
-      + eapply arrayN_ptsto_mem_disjoint.
-        pred_apply; cancel.
-        eauto.
-        right.
-        rewrite firstn_length_l; omega.
-      + eapply arrayN_ptsto_mem_disjoint.
-        pred_apply; cancel.
-        eauto.
-        omega.
-    - rewrite firstn_oob, skipn_oob in H by omega; simpl in H.
-      eapply arrayN_ptsto_mem_disjoint.
-      pred_apply; cancel.
-      eauto.
-      intuition omega.
-  Qed.
-
-  Lemma arrayN_ex_ptsto_exis : forall V l a p,
-    (arrayN (@ptsto _ _ V) 0 l =p=> p * a |->?) ->
-    a < length l ->
-    (arrayN_ex (@ptsto _ _ V) l a =p=> p).
-  Proof.
-    intros.
-    destruct l.
-    simpl in H0; inversion H0.
-    rewrite arrayN_except with (def := v) in H; eauto.
-    generalize H; unfold_sep_star; unfold pimpl; intros.
-    edestruct H1.
-    exists m; eexists.
-    intuition simpl.
-    2: apply ptsto_mem_is.
-    eapply arrayN_ex_mem_disjoint; eauto.
-    apply ptsto_mem_is.
-    repeat deex.
-    assert (x = m); subst; auto.
-    edestruct (exact_domain_disjoint_union'); eauto.
-    apply ptsto_exis_exact_domain.
-    eapply arrayN_ex_mem_disjoint; eauto.
-    apply ptsto_mem_is.
-    apply ptsto_exis_mem_is.
-  Qed.
 
   Ltac equate_log_rep :=
     match goal with
@@ -309,9 +242,10 @@ Module AFS.
     (* LOG.flushsync *)
     step.
     step.
+
     rewrite latest_pushd.
     equate_log_rep.
-    cancel.
+    cancel. simpl.
     unfold rep, IAlloc.rep; or_r.
     cancel.
     denote (_ =p=> freeinode_pred) as Hy.
@@ -320,17 +254,21 @@ Module AFS.
     rewrite <- Hy in Hz.
     2: apply repeat_length with (x := BFILE.bfile0).
 
+
     assert (1 < length (repeat BFILE.bfile0 (inode_bitmaps * valulen
        / INODE.IRecSig.items_per_val * INODE.IRecSig.items_per_val))) as Hlen.
     rewrite repeat_length; omega.
-    apply arrayN_ex_ptsto_exis in Hz; auto.  (* include ⟦⟦ BFILE.freepred v ⟧⟧ in lemma? *)
-    rewrite <- Hz.
+
+    specialize (Hz _ (list2nmem_array _)).
+    pred_apply; cancel.
     pose proof (list2nmem_ptsto_cancel BFILE.bfile0 _ Hlen).
-    pred_apply; unfold tree_dir_names_pred.
+    unfold tree_dir_names_pred.
     cancel.
-    rewrite repeat_selN by auto.
-    apply SDIR.bfile0_empty.
+    unfold BFILE.freepred in *. subst.
+    apply DirTreePred.SDIR.bfile0_empty.
     apply emp_empty_mem.
+    eapply Forall_repeat.
+    eauto.
 
     (* failure cases *)
     apply pimpl_any.
