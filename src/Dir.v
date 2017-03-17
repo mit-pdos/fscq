@@ -146,20 +146,15 @@ Module DIR.
     end.
 
   Definition link lxp bxp ixp dnum name inum isdir ms :=
-    let^ (ms, r) <- ifind_lookup_f lxp ixp dnum name ms;
+    let de := mk_dent name inum isdir in
+    let^ (ms, r) <- ifind_invalid lxp ixp dnum ms;
     match r with
-    | Some _ => Ret ^(ms, Err EEXIST)
+    | Some (ix, _) =>
+        ms <- Dent.put lxp ixp dnum ix de ms;
+        Ret ^(ms, OK tt)
     | None =>
-        let de := mk_dent name inum isdir in
-        let^ (ms, r) <- ifind_invalid lxp ixp dnum ms;
-        match r with
-        | Some (ix, _) =>
-            ms <- Dent.put lxp ixp dnum ix de ms;
-            Ret ^(ms, OK tt)
-        | None =>
-            let^ (ms, ok) <- Dent.extend lxp bxp ixp dnum de ms;
-            Ret ^(ms, ok)
-        end
+        let^ (ms, ok) <- Dent.extend lxp bxp ixp dnum de ms;
+        Ret ^(ms, ok)
     end.
 
 

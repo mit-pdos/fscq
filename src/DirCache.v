@@ -64,14 +64,20 @@ Module CacheOneDir.
     Ret ^(ms, r).
 
   Definition link lxp bxp ixp dnum name inum isdir ms :=
-    let^ (ms, cache) <- get_dcache dnum ms;
-    let^ (ms, r) <- SDIR.link lxp bxp ixp dnum name inum isdir ms;
-    match r with
-    | Err _ =>
-      Ret ^(ms, r)
-    | OK _ =>
-      ms <- BFILE.cache_put dnum (Dcache.add name (Some (inum, isdir)) cache) ms;
-      Ret ^(ms, r)
+    let^ (ms, lookup_res) <- lookup lxp ixp dnum name ms;
+    match lookup_res with
+    | Some _ =>
+      Ret ^(ms, Err EEXIST)
+    | None =>
+      let^ (ms, cache) <- get_dcache dnum ms;
+      let^ (ms, r) <- SDIR.link lxp bxp ixp dnum name inum isdir ms;
+      match r with
+      | Err _ =>
+        Ret ^(ms, r)
+      | OK _ =>
+        ms <- BFILE.cache_put dnum (Dcache.add name (Some (inum, isdir)) cache) ms;
+        Ret ^(ms, r)
+      end
     end.
 
   Definition readdir lxp ixp dnum ms :=
