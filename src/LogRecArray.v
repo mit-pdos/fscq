@@ -1,6 +1,10 @@
 Require Import Eqdep_dec Arith Omega List ListUtils Rounding Psatz.
 Require Import Word WordAuto AsyncDisk Pred PredCrash GenSepN Array SepAuto.
 Require Import Rec Prog BasicProg Hoare RecArrayUtils Log.
+Require Import FMapAVL FMapMem.
+Require Import MapUtils.
+Require Import Structures.OrderedType.
+Require Import Structures.OrderedTypeEx.
 Import ListNotations.
 
 Set Implicit Arguments.
@@ -581,3 +585,59 @@ Module LogRecArray (RA : RASig).
 
 End LogRecArray.
 
+
+Module LogRecArrayCache (RA : RASig).
+
+  Module LRA := LogRecArray RA.
+  Import RA LRA.Defs.
+
+  Module Cache := FMapAVL.Make(Nat_as_OT).
+  Module CacheDefs := MapDefs Nat_as_OT Cache.
+  Definition Cache_type := Cache.t item.
+  Module M := MapMem Nat_as_OT Cache.
+  Definition cache0 : Cache_type := Cache.empty item.
+
+  Definition cache_ptsto i (v : item) : @pred _ addr_eq_dec _ :=
+    ( i |-> v \/ emp )%pred.
+
+  Definition cache_rep (items : itemlist) (c : Cache_type) :=
+     arrayN cache_ptsto 0 items (M.mm _ c).
+
+  Definition rep xp (items : itemlist) c :=
+    ( LRA.rep xp items * [[ cache_rep items c ]] )%pred.
+
+  Definition get lxp xp ix cache ms :=
+    match Cache.find ix cache with
+    | Some v =>
+      Ret ^(cache, ms, v)
+    | None =>
+      let^ (ms, v) <- LRA.get lxp xp ix ms;
+      Ret ^(Cache.add ix v cache, ms, v)
+    end.
+
+  Definition put lxp xp ix item cache ms :=
+    ms <- LRA.put lxp xp ix item ms;
+    Ret ^(Cache.add ix item cache, ms).
+
+  Definition read := LRA.read.
+  Definition write := LRA.write.
+  Definition init := LRA.init.
+  Definition ifind := LRA.ifind.
+
+  Definition get_array lxp xp ix cache ms :=
+    r <- get lxp xp ix cache ms;
+    Ret r.
+
+  Definition put_array lxp xp ix item cache ms :=
+    r <- put lxp xp ix item cache ms;
+    Ret r.
+
+  Definition read_array lxp xp nblocks ms :=
+    r <- read lxp xp nblocks ms;
+    Ret r.
+
+  Definition ifind_array lxp xp cond ms :=
+    r <- ifind lxp xp cond ms;
+    Ret r.
+
+End LogRecArrayCache.
