@@ -1740,12 +1740,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
     unfold indrec_write_blind.
     hoare.
     rewrite natToWord_wordToNat. rewrite updN_selN_eq. cancel.
-    unfold IndRec.items_valid, IndSig.xparams_ok, IndSig.RAStart, IndSig.RALen.
-    unfold Rec.well_formed. simpl. intuition.
-    rewrite length_updN. rewrite indrep_n_helper_length_piff in *. destruct_lifts.
-    omega.
-    rewrite indrep_n_helper_valid by omega. cancel.
-    rewrite indrep_n_helper_valid by omega. cancel.
+    unfold indrep_n_helper. destruct (addr_eq_dec ir 0); try congruence. cancel.
+    unfold indrep_n_helper. destruct (addr_eq_dec ir 0); try congruence. cancel.
   Qed.
 
   Local Hint Extern 1 ({{_}} Bind (indput_upd_if_necessary _ _ _ _ _ _) _) => apply indput_upd_if_necessary_ok : prog.
