@@ -62,6 +62,7 @@ Module BFILE.
     MSLL : LOG.memstate;    (* lower-level state *)
     MSAllocC: (BALLOCC.BmapCacheType * BALLOCC.BmapCacheType);
     MSIAllocC : IAlloc.BmapCacheType;
+    MSICache : INODE.IRec.Cache_type;
     MSCache : BFcache_type
   }.
 
@@ -78,6 +79,7 @@ Module BFILE.
     (LOG.mk_memstate0 (Cache.BUFCACHE.cache0 sz))
     (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0)
     IAlloc.Alloc.freelist0
+    INODE.IRec.cache0
     (BFcache.empty _).
 
   Definition MSIAlloc ms :=
@@ -86,58 +88,58 @@ Module BFILE.
   (* interface implementation *)
 
   Definition getlen lxp ixp inum fms :=
-    let '(al, ms, alc, ialc, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSCache fms) in
-    let^ (ms, n) <- INODE.getlen lxp ixp inum ms;
-    Ret ^(mk_memstate al ms alc ialc cache, n).
+    let '(al, ms, alc, ialc, icache, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms) in
+    let^ (icache, ms, n) <- INODE.getlen lxp ixp inum icache ms;
+    Ret ^(mk_memstate al ms alc ialc icache cache, n).
 
   Definition getattrs lxp ixp inum fms :=
-    let '(al, ms, alc, ialc, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSCache fms) in
-    let^ (ms, n) <- INODE.getattrs lxp ixp inum ms;
-    Ret ^(mk_memstate al ms alc ialc cache, n).
+    let '(al, ms, alc, ialc, icache, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms) in
+    let^ (icache, ms, n) <- INODE.getattrs lxp ixp inum icache ms;
+    Ret ^(mk_memstate al ms alc ialc icache cache, n).
 
   Definition setattrs lxp ixp inum a fms :=
-    let '(al, ms, alc, ialc, cache) := (MSAlloc fms, MSLL fms,  MSAllocC fms, MSIAllocC fms, MSCache fms) in
-    ms <- INODE.setattrs lxp ixp inum a ms;
-    Ret (mk_memstate al ms alc ialc cache).
+    let '(al, ms, alc, ialc, icache, cache) := (MSAlloc fms, MSLL fms,  MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms) in
+    let^ (icache, ms) <- INODE.setattrs lxp ixp inum a icache ms;
+    Ret (mk_memstate al ms alc ialc icache cache).
 
   Definition updattr lxp ixp inum kv fms :=
-    let '(al, ms, alc, ialc, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSCache fms) in
-    ms <- INODE.updattr lxp ixp inum kv ms;
-    Ret (mk_memstate al ms alc ialc cache).
+    let '(al, ms, alc, ialc, icache, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms) in
+    let^ (icache, ms) <- INODE.updattr lxp ixp inum kv icache ms;
+    Ret (mk_memstate al ms alc ialc icache cache).
 
   Definition read lxp ixp inum off fms :=
-    let '(al, ms, alc, ialc, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSCache fms) in
-    let^ (ms, bn) <-INODE.getbnum lxp ixp inum off ms;
+    let '(al, ms, alc, ialc, icache, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms) in
+    let^ (icache, ms, bn) <-INODE.getbnum lxp ixp inum off icache ms;
     let^ (ms, v) <- LOG.read lxp (# bn) ms;
-    Ret ^(mk_memstate al ms alc ialc cache, v).
+    Ret ^(mk_memstate al ms alc ialc icache cache, v).
 
   Definition write lxp ixp inum off v fms :=
-    let '(al, ms, alc, ialc, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSCache fms) in
-    let^ (ms, bn) <-INODE.getbnum lxp ixp inum off ms;
+    let '(al, ms, alc, ialc, icache, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms) in
+    let^ (icache, ms, bn) <-INODE.getbnum lxp ixp inum off icache ms;
     ms <- LOG.write lxp (# bn) v ms;
-    Ret (mk_memstate al ms alc ialc cache).
+    Ret (mk_memstate al ms alc ialc icache cache).
 
   Definition dwrite lxp ixp inum off v fms :=
-    let '(al, ms, alc, ialc, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSCache fms) in
-    let^ (ms, bn) <- INODE.getbnum lxp ixp inum off ms;
+    let '(al, ms, alc, ialc, icache, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms) in
+    let^ (icache, ms, bn) <- INODE.getbnum lxp ixp inum off icache ms;
     ms <- LOG.dwrite lxp (# bn) v ms;
-    Ret (mk_memstate al ms alc ialc cache).
+    Ret (mk_memstate al ms alc ialc icache cache).
 
   Definition datasync lxp ixp inum fms :=
-    let '(al, ms, alc, ialc, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSCache fms) in
-    let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
+    let '(al, ms, alc, ialc, icache, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms) in
+    let^ (icache, ms, bns) <- INODE.getallbnum lxp ixp inum icache ms;
     ms <- LOG.dsync_vecs lxp (map (@wordToNat _) bns) ms;
-    Ret (mk_memstate al ms alc ialc cache).
+    Ret (mk_memstate al ms alc ialc icache cache).
 
   Definition sync lxp (ixp : INODE.IRecSig.xparams) fms :=
-    let '(al, ms, alc, ialc, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSCache fms) in
+    let '(al, ms, alc, ialc, icache, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms) in
     ms <- LOG.flushall lxp ms;
-    Ret (mk_memstate (negb al) ms alc ialc cache).
+    Ret (mk_memstate (negb al) ms alc ialc icache cache).
 
   Definition sync_noop lxp (ixp : INODE.IRecSig.xparams) fms :=
-    let '(al, ms, alc, ialc, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSCache fms) in
+    let '(al, ms, alc, ialc, icache, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms) in
     ms <- LOG.flushall_noop lxp ms;
-    Ret (mk_memstate (negb al) ms alc ialc cache).
+    Ret (mk_memstate (negb al) ms alc ialc icache cache).
 
   Definition pick_balloc A (a : A * A) (flag : bool) :=
     if flag then fst a else snd a.
@@ -165,33 +167,33 @@ Module BFILE.
   Qed.
 
   Definition grow lxp bxps ixp inum v fms :=
-    let '(al, ms, alc, ialc, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSCache fms) in
-    let^ (ms, len) <- INODE.getlen lxp ixp inum ms;
+    let '(al, ms, alc, ialc, icache, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms) in
+    let^ (icache, ms, len) <- INODE.getlen lxp ixp inum icache ms;
     If (lt_dec len INODE.NBlocks) {
       let^ (cms, r) <- BALLOCC.alloc lxp (pick_balloc bxps al) (BALLOCC.mk_memstate ms (pick_balloc alc al));
       match r with
-      | None => Ret ^(mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) al) ialc cache, Err ENOSPCBLOCK)
+      | None => Ret ^(mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) al) ialc icache cache, Err ENOSPCBLOCK)
       | Some bn =>
-           let^ (cms, succ) <- INODE.grow lxp (pick_balloc bxps al) ixp inum bn cms;
+           let^ (icache, cms, succ) <- INODE.grow lxp (pick_balloc bxps al) ixp inum bn icache cms;
            match succ with
            | Err e =>
-             Ret ^(mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) al) ialc cache, Err e)
+             Ret ^(mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) al) ialc icache cache, Err e)
            | OK _ =>
              ms <- LOG.write lxp bn v (BALLOCC.MSLog cms);
-             Ret ^(mk_memstate al ms (upd_balloc alc (BALLOCC.MSCache cms) al) ialc cache, OK tt)
+             Ret ^(mk_memstate al ms (upd_balloc alc (BALLOCC.MSCache cms) al) ialc icache cache, OK tt)
            end
       end
     } else {
-      Ret ^(mk_memstate al ms alc ialc cache, Err EFBIG)
+      Ret ^(mk_memstate al ms alc ialc icache cache, Err EFBIG)
     }.
 
   Definition shrink lxp bxps ixp inum nr fms :=
-    let '(al, ms, alc, ialc, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSCache fms) in
-    let^ (ms, bns) <- INODE.getallbnum lxp ixp inum ms;
+    let '(al, ms, alc, ialc, icache, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms) in
+    let^ (icache, ms, bns) <- INODE.getallbnum lxp ixp inum icache ms;
     let l := map (@wordToNat _) (skipn ((length bns) - nr) bns) in
     cms <- BALLOCC.freevec lxp (pick_balloc bxps (negb al)) l (BALLOCC.mk_memstate ms (pick_balloc alc (negb al)));
-    cms <- INODE.shrink lxp (pick_balloc bxps (negb al)) ixp inum nr cms;
-    Ret (mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) (negb al)) ialc cache).
+    let^ (icache, cms) <- INODE.shrink lxp (pick_balloc bxps (negb al)) ixp inum nr icache cms;
+    Ret (mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) (negb al)) ialc icache cache).
 
   Definition shuffle_allocs lxp bxps ms cms :=
     let^ (ms, cms) <- ForN i < (BmapNBlocks (fst bxps) * valulen)
@@ -223,18 +225,18 @@ Module BFILE.
     ialc_ms <- IAlloc.init lxp bixp (BALLOCC.MSLog scms);
     ms <- INODE.init lxp ixp (IAlloc.Alloc.MSLog ialc_ms);
     let^ (ms, cms) <- shuffle_allocs lxp bxps ms (BALLOCC.MSCache scms, BALLOCC.MSCache fcms);
-    Ret (mk_memstate true ms cms (IAlloc.MSCache ialc_ms) (BFcache.empty _)).
+    Ret (mk_memstate true ms cms (IAlloc.MSCache ialc_ms) INODE.IRec.cache0 (BFcache.empty _)).
 
   Definition recover ms :=
-    Ret (mk_memstate true ms (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0) IAlloc.Alloc.freelist0 (BFcache.empty _)).
+    Ret (mk_memstate true ms (BALLOCC.Alloc.freelist0, BALLOCC.Alloc.freelist0) IAlloc.Alloc.freelist0 INODE.IRec.cache0 (BFcache.empty _)).
 
   Definition cache_get inum fms :=
-    let '(al, ms, alc, ialc, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSCache fms) in
-    Ret ^(mk_memstate al ms alc ialc cache, BFcache.find inum cache).
+    let '(al, ms, alc, ialc, icache, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms) in
+    Ret ^(mk_memstate al ms alc ialc icache cache, BFcache.find inum cache).
 
   Definition cache_put inum dc fms :=
-    let '(al, ms, alc, ialc, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSCache fms) in
-    Ret (mk_memstate al ms alc ialc (BFcache.add inum dc cache)).
+    let '(al, ms, alc, ialc, icache, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms) in
+    Ret (mk_memstate al ms alc ialc icache (BFcache.add inum dc cache)).
 
 
   (* rep invariants *)
@@ -266,11 +268,11 @@ Module BFILE.
   Definition cache_rep mscache (flist : list bfile) (ilist : list INODE.inode) :=
      arrayN cache_ptsto 0 (map BFCache flist) (BFM.mm _ mscache).
 
-  Definition rep (bxps : balloc_xparams * balloc_xparams) ixp (flist : list bfile) ilist frees cms mscache :=
+  Definition rep (bxps : balloc_xparams * balloc_xparams) ixp (flist : list bfile) ilist frees cms mscache icache :=
     (exists lms, 
      BALLOCC.rep (fst bxps) (fst frees) (BALLOCC.mk_memstate lms (fst cms)) *
      BALLOCC.rep (snd bxps) (snd frees) (BALLOCC.mk_memstate lms (snd cms)) *
-     INODE.rep (fst bxps) ixp ilist *
+     INODE.rep (fst bxps) ixp ilist icache *
      listmatch file_match flist ilist *
      [[ locked (cache_rep mscache flist ilist) ]] *
      [[ BmapNBlocks (fst bxps) = BmapNBlocks (snd bxps) ]]
@@ -1985,7 +1987,7 @@ Module BFILE.
     Loopvar [ ms pf ]
     Invariant
       LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-      [[[ m ::: (Fm * rep bxp ixp flist ilist frees allocc (MSCache ms)) ]]] *
+      [[[ m ::: (Fm * rep bxp ixp flist ilist frees allocc (MSCache ms) (MSICache ms)) ]]] *
       [[[ flist ::: (Fi * inum |-> f) ]]] *
       [[[ (BFData f) ::: Fd * arrayN (@ptsto _ addr_eq_dec _) a vsl ]]] *
       [[ pf = fold_left vfold (firstn i (map fst vsl)) v0 ]] *
@@ -2005,7 +2007,7 @@ Module BFILE.
     {< F Fm Fi Fd m0 m flist ilist frees allocc f vsl,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-           [[[ m ::: (Fm * rep bxp ixp flist ilist frees allocc (MSCache ms)) ]]] *
+           [[[ m ::: (Fm * rep bxp ixp flist ilist frees allocc (MSCache ms) (MSICache ms)) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: Fd * arrayN (@ptsto _ addr_eq_dec _) a vsl ]]] *
            [[ nr <= length vsl]]
@@ -2052,7 +2054,7 @@ Module BFILE.
     Loopvar [ ms pf ret ]
     Invariant
       LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-      [[[ m ::: (Fm * rep bxp ixp flist ilist frees allocc (MSCache ms)) ]]] *
+      [[[ m ::: (Fm * rep bxp ixp flist ilist frees allocc (MSCache ms) (MSICache ms)) ]]] *
       [[[ flist ::: (Fi * inum |-> f) ]]] *
       [[ MSAlloc ms = MSAlloc ms0 ]] *
       [[ MSCache ms = MSCache ms0 ]] *
@@ -2151,7 +2153,7 @@ Module BFILE.
         ([[ isError ret ]] \/
          exists flist' ilist' frees' f',
          [[ ret = OK tt ]] *
-         [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees' (MSAllocC ms) (MSCache ms)) ]]] *
+         [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees' (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
          [[[ flist' ::: (Fi * inum |-> f') ]]] *
          [[  f' = mk_bfile ((BFData f) ++ synced_list (firstn i l)) (BFAttr f) (BFCache f) ]] *
          [[ ilist_safe ilist  (pick_balloc frees  (MSAlloc ms)) 
@@ -2185,7 +2187,7 @@ Module BFILE.
     let^ (ms, sz) <- getlen lxp xp inum ms;
     ms <- shrink lxp bxp xp inum sz ms;
     ms <- setattrs lxp xp inum attr0 ms;
-    Ret (mk_memstate (MSAlloc ms) (MSLL ms) (MSAllocC ms) (MSIAllocC ms) (BFcache.remove inum (MSCache ms))).
+    Ret (mk_memstate (MSAlloc ms) (MSLL ms) (MSAllocC ms) (MSIAllocC ms) (MSICache ms) (BFcache.remove inum (MSCache ms))).
 
 
   Theorem grown_ok : forall lxp bxp ixp inum l ms,

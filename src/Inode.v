@@ -77,7 +77,7 @@ Module INODE.
 
   End IRecSig.
 
-  Module IRec := LogRecArray IRecSig.
+  Module IRec := LogRecArrayCache IRecSig.
   Hint Extern 0 (okToUnify (IRec.rep _ _) (IRec.rep _ _)) => constructor : okToUnify.
 
 
@@ -217,9 +217,9 @@ Module INODE.
     ms <- IRec.init lxp xp ms;
     Ret ms.
 
-  Definition getlen lxp xp inum ms := Eval compute_rec in
-    let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
-    Ret ^(ms, # (ir :-> "len" )).
+  Definition getlen lxp xp inum cache ms := Eval compute_rec in
+    let^ (cache, ms, (ir : irec)) <- IRec.get_array lxp xp inum cache ms;
+    Ret ^(cache, ms, # (ir :-> "len" )).
 
   (* attribute getters *)
 
@@ -228,14 +228,14 @@ Module INODE.
   Definition AType   (a : iattr) := Eval cbn in ( a :-> "itype" ).
   Definition ADev    (a : iattr) := Eval cbn in ( a :-> "dev" ).
 
-  Definition getattrs lxp xp inum ms := Eval compute_rec in
-    let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
-    Ret ^(ms, (i :-> "attrs")).
+  Definition getattrs lxp xp inum cache ms := Eval compute_rec in
+    let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;
+    Ret ^(cache, ms, (i :-> "attrs")).
 
-  Definition setattrs lxp xp inum attr ms := Eval compute_rec in
-    let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
-    ms <- IRec.put_array lxp xp inum (i :=> "attrs" := attr) ms;
-    Ret ms.
+  Definition setattrs lxp xp inum attr cache ms := Eval compute_rec in
+    let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;
+    let^ (cache, ms) <- IRec.put_array lxp xp inum (i :=> "attrs" := attr) cache ms;
+    Ret ^(cache, ms).
 
   (* For updattr : a convenient way for setting individule attribute *)
 
@@ -254,36 +254,36 @@ Module INODE.
   | UDev   v => (e :=> "dev"   := v)
   end.
 
-  Definition updattr lxp xp inum a ms := Eval compute_rec in
-    let^ (ms, (i : irec)) <- IRec.get_array lxp xp inum ms;
-    ms <- IRec.put_array lxp xp inum (i :=> "attrs" := (iattr_upd (i :-> "attrs") a)) ms;
-    Ret ms.
+  Definition updattr lxp xp inum a cache ms := Eval compute_rec in
+    let^ (cache, ms, (i : irec)) <- IRec.get_array lxp xp inum cache ms;
+    let^ (cache, ms) <- IRec.put_array lxp xp inum (i :=> "attrs" := (iattr_upd (i :-> "attrs") a)) cache ms;
+    Ret ^(cache, ms).
 
 
-  Definition getbnum lxp xp inum off ms :=
-    let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
-    ms <- Ind.get lxp ir off ms;
-    Ret ms.
+  Definition getbnum lxp xp inum off cache ms :=
+    let^ (cache, ms, (ir : irec)) <- IRec.get_array lxp xp inum cache ms;
+    let^ (ms, r) <- Ind.get lxp ir off ms;
+    Ret ^(cache, ms, r).
 
-  Definition getallbnum lxp xp inum ms :=
-    let^ (ms, (ir : irec)) <- IRec.get_array lxp xp inum ms;
-    ms <- Ind.read lxp ir ms;
-    Ret ms.
+  Definition getallbnum lxp xp inum cache ms :=
+    let^ (cache, ms, (ir : irec)) <- IRec.get_array lxp xp inum cache ms;
+    let^ (ms, r) <- Ind.read lxp ir ms;
+    Ret ^(cache, ms, r).
 
-  Definition shrink lxp bxp xp inum nr ms :=
-    let^ (lms, (ir : irec)) <- IRec.get_array lxp xp inum (BALLOCC.MSLog ms);
+  Definition shrink lxp bxp xp inum nr cache ms :=
+    let^ (cache, lms, (ir : irec)) <- IRec.get_array lxp xp inum cache (BALLOCC.MSLog ms);
     let^ (ms, ir') <- Ind.shrink lxp bxp ir nr (BALLOCC.upd_memstate lms ms);
-    lms <- IRec.put_array lxp xp inum ir' (BALLOCC.MSLog ms);
-    Ret (BALLOCC.upd_memstate lms ms).
+    let^ (cache, lms) <- IRec.put_array lxp xp inum ir' cache (BALLOCC.MSLog ms);
+    Ret ^(cache, (BALLOCC.upd_memstate lms ms)).
 
-  Definition grow lxp bxp xp inum bn ms :=
-    let^ (lms, (ir : irec)) <- IRec.get_array lxp xp inum (BALLOCC.MSLog ms);
+  Definition grow lxp bxp xp inum bn cache ms :=
+    let^ (cache, lms, (ir : irec)) <- IRec.get_array lxp xp inum cache (BALLOCC.MSLog ms);
     let^ (ms, r) <- Ind.grow lxp bxp ir ($ bn) (BALLOCC.upd_memstate lms ms);
     match r with
-    | Err e => Ret ^(ms, Err e)
+    | Err e => Ret ^(cache, ms, Err e)
     | OK ir' =>
-        lms <- IRec.put_array lxp xp inum ir' (BALLOCC.MSLog ms);
-        Ret ^((BALLOCC.upd_memstate lms ms), OK tt)
+        let^ (cache, lms) <- IRec.put_array lxp xp inum ir' cache (BALLOCC.MSLog ms);
+        Ret ^(cache, (BALLOCC.upd_memstate lms ms), OK tt)
     end.
 
 
@@ -304,15 +304,15 @@ Module INODE.
       [[ Forall (fun a => BALLOCC.bn_valid bxp (# a) ) (IBlocks ino) ]] *
       Ind.rep bxp ir (IBlocks ino) )%pred.
 
-  Definition rep bxp xp (ilist : list inode) := (
-     exists reclist, IRec.rep xp reclist *
+  Definition rep bxp xp (ilist : list inode) cache := (
+     exists reclist, IRec.rep xp reclist cache *
      listmatch (inode_match bxp) ilist reclist)%pred.
 
 
   (************** Basic lemmas *)
 
-  Lemma rep_length_pimpl : forall bxp xp ilist,
-    rep bxp xp ilist =p=> rep bxp xp ilist * [[ length ilist = ((IRecSig.RALen xp) * IRecSig.items_per_val)%nat ]].
+  Lemma rep_length_pimpl : forall bxp xp ilist cache,
+    rep bxp xp ilist cache =p=> rep bxp xp ilist cache * [[ length ilist = ((IRecSig.RALen xp) * IRecSig.items_per_val)%nat ]].
   Proof.
     unfold rep; intros.
     norml; unfold stars; simpl.
@@ -323,8 +323,8 @@ Module INODE.
     eauto.
   Qed.
 
-  Lemma irec_well_formed : forall Fm xp l i inum m,
-    (Fm * IRec.rep xp l)%pred m
+  Lemma irec_well_formed : forall Fm xp l i inum m cache,
+    (Fm * IRec.rep xp l cache)%pred m
     -> i = selN l inum irec0
     -> Rec.well_formed i.
   Proof.
@@ -341,8 +341,8 @@ Module INODE.
     repeat destruct d0; repeat destruct p; intuition.
   Qed.
 
-  Lemma irec_blocks_length: forall m xp l inum Fm,
-    (Fm * IRec.rep xp l)%pred m ->
+  Lemma irec_blocks_length: forall m xp l inum Fm cache,
+    (Fm * IRec.rep xp l cache)%pred m ->
     length (selN l inum irec0 :-> "blocks") = NDirect.
   Proof.
     intros.
@@ -350,8 +350,8 @@ Module INODE.
     eapply irec_well_formed; eauto.
   Qed.
 
-  Lemma irec_blocks_length': forall m xp l inum Fm len attrs ind dind tind blks u,
-    (Fm * IRec.rep xp l)%pred m ->
+  Lemma irec_blocks_length': forall m xp l inum Fm len attrs ind dind tind blks u cache,
+    (Fm * IRec.rep xp l cache)%pred m ->
     (len, (attrs, (ind, (dind, (tind, (blks, u)))))) = selN l inum irec0 ->
     length blks = NDirect.
   Proof.
@@ -361,9 +361,9 @@ Module INODE.
     unfold Rec.well_formed in H; simpl in H; intuition.
   Qed.
 
-  Theorem rep_bxp_switch : forall bxp bxp' xp ilist,
+  Theorem rep_bxp_switch : forall bxp bxp' xp ilist cache,
     BmapNBlocks bxp = BmapNBlocks bxp' ->
-    rep bxp xp ilist <=p=> rep bxp' xp ilist.
+    rep bxp xp ilist cache <=p=> rep bxp' xp ilist cache.
   Proof.
     intros. unfold rep.
     split; cancel; apply listmatch_piff_replace.
@@ -424,8 +424,8 @@ Module INODE.
     match goal with
       | [ H : ?p %pred ?mm |- length ?d = NDirect ] =>
       match p with
-        | context [ IRec.rep ?xp ?ll ] => 
-          eapply irec_blocks_length' with (m := mm) (l := ll) (xp := xp); eauto;
+        | context [ IRec.rep ?xp ?ll ?cc ] => 
+          eapply irec_blocks_length' with (m := mm) (l := ll) (cache := cc) (xp := xp); eauto;
           pred_apply; cancel
       end
     end.

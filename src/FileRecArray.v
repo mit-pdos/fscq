@@ -83,6 +83,7 @@ Module FileRecArray (FRA : FileRASig).
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
   Notation MSAllocC := BFILE.MSAllocC.
+  Notation MSICache := BFILE.MSICache.
   Notation MSCache := BFILE.MSCache.
 
   (* find the first item that satisfies cond *)
@@ -94,7 +95,7 @@ Module FileRecArray (FRA : FileRASig).
     Loopvar [ ms ret ]
     Invariant
       LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-      [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms)) ]]] *
+      [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
       [[[ flist ::: (Fi * inum |-> f) ]]] *
       [[[ RAData f ::: rep f items ]]] *
       [[ ret = None ->

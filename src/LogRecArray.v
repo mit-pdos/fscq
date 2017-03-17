@@ -589,6 +589,7 @@ End LogRecArray.
 Module LogRecArrayCache (RA : RASig).
 
   Module LRA := LogRecArray RA.
+  Module Defs := LRA.Defs.
   Import RA LRA.Defs.
 
   Module Cache := FMapAVL.Make(Nat_as_OT).
