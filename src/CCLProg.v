@@ -170,7 +170,7 @@ Section CCL.
                         (txn: write_transaction),
       h i = Some (abs v) ->
       write_set_allocd h txn ->
-      write_set_allocd h (WCons (AbsUpd i f) txn).
+      write_set_allocd h (WCons (AbsMemUpd i f) txn).
 
   Hint Constructors write_set_allocd.
 
@@ -291,7 +291,7 @@ Section CCL.
                              (txn: write_transaction) h h'',
       h i = Some (absMem m0) ->
       wtxn_step tid txn (upd h i (absMem (f tid m0))) h'' ->
-      wtxn_step tid (WCons (AbsUpd i f) txn) h h''.
+      wtxn_step tid (WCons (AbsMemUpd i f) txn) h h''.
 
   Inductive exec (tid:TID) : forall T, Sigma -> cprog T -> outcome T -> Prop :=
   | ExecStepDec : forall T (p: cprog T) sigma sigma' v,
