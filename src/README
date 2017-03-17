@@ -34,7 +34,7 @@ To run the fuse fscq:
 
   mkdir /tmp/fscq
   ./mkfs disk.img
-  ./fuse disk.img -f /tmp/fscq &
+  ./fscq disk.img -f /tmp/fscq &
 
 To use fscq:
 
