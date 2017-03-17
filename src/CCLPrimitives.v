@@ -240,7 +240,49 @@ Section Primitives.
     let txn := WCons (AbsUpd (abs1 txn) (abs1Up txn)) vars in
     AssgnTxn txn.
 
-  (* TODO: theorem for Assgn2_mem_abs *)
+  Lemma wtxn_step_assgn2_var : forall i__a A (a: A) i__b B (b: B) tid (h h':heap),
+      wtxn_step tid (WCons (NewVal i__a a)
+                                  (WCons (NewVal i__b b) WDone)) h h' ->
+      h' = upd (upd h i__a (val a)) i__b (val b).
+  Proof.
+    intros.
+    repeat match goal with
+           | [ H: wtxn_step _ _ _ _ |- _ ] =>
+             inversion H; subst; repeat inj_pair2
+           end.
+    auto.
+  Qed.
+
+  Lemma wtxn_step_assgn2 : forall i__g G1 (g0:G1) (up: TID -> G1 -> G1) tid (h h':heap),
+      h i__g = Some (abs g0) ->
+      wtxn_step tid (WCons (AbsUpd i__g up) WDone) h h' ->
+      h' = upd h i__g (abs (up tid g0)).
+  Proof.
+  Abort.
+
+  Theorem Assgn2_abs_ok : forall tid txn,
+      cprog_spec G tid
+                 (fun '(F, a0, b0, g) sigma =>
+                    {| precondition :=
+                         (F *
+                          var1 txn |-> val (a0: var1T txn) *
+                          var2 txn |-> val (b0: var2T txn) *
+                          abs1 txn |-> abs g)%pred (Sigma.mem sigma) /\
+                         Sigma.l sigma = WriteLock;
+                       postcondition :=
+                         fun sigma' _ =>
+                           (F *
+                            var1 txn |-> abs (val1 txn) *
+                            var2 txn |-> abs (val2 txn) *
+                            abs1 txn |-> abs (abs1Up txn tid g))%pred (Sigma.mem sigma') /\
+                           Sigma.hm sigma' = Sigma.hm sigma /\
+                           Sigma.disk sigma' = Sigma.disk sigma /\
+                           Sigma.l sigma' = Sigma.l sigma; |})
+                 (Assgn2_abs txn).
+  Proof.
+    begin_prim; inv_bind.
+    inv_exec; unfold ident in *; repeat inj_pair2.
+  Admitted.
 
   Theorem Hash_ok : forall tid sz (buf: word sz),
       cprog_spec G tid
@@ -334,6 +376,7 @@ Hint Extern 0 {{ WaitForRead _; _ }} => apply WaitForRead_ok : prog.
 Hint Extern 0 {{ Write _ _; _ }} => apply Write_ok : prog.
 Hint Extern 0 {{ Alloc _; _ }} => apply Alloc_ok : prog.
 Hint Extern 0 {{ Read2 _ _ _ _; _ }} => apply Read2_ok : prog.
+Hint Extern 0 {{ Assgn2_abs _; _ }} => apply Assgn2_abs_ok : prog.
 Hint Extern 0 {{ Hash _; _ }} => apply Hash_ok : prog.
 Hint Extern 0 {{ GetWriteLock; _ }} => apply GetWriteLock_ok : prog.
 Hint Extern 0 {{ Unlock; _ }} => apply Unlock_ok : prog.

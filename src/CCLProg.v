@@ -26,7 +26,7 @@ Proof.
   decide equality.
 Defined.
 
-Inductive Var :=
+Polymorphic Inductive Var :=
 (* materialized memory variables *)
 | val : forall T, T -> Var
 (* abstraction (ghost) variables *)
@@ -77,28 +77,21 @@ Section CCL.
   | RDone : read_transaction unit
   | RCons : forall T, ident -> forall T', read_transaction T' -> read_transaction (T*T').
 
-  Inductive heapupd : Type -> Type :=
-  | NewVal : forall T, ident -> T -> heapupd T
-  | AbsUpd : forall T, ident -> (TID -> T -> T) -> heapupd T
+  Inductive heapupd : Type :=
+  | NewVal : forall T, ident -> T -> heapupd
+  | AbsUpd : forall T, ident -> (TID -> T -> T) -> heapupd
   | AbsMemUpd : forall A AEQ V,
       ident -> (TID -> @mem A AEQ V -> @mem A AEQ V) ->
-      heapupd (@mem A AEQ V).
+      heapupd.
 
-  Definition upd_ident T (hup: heapupd T) : ident :=
-    match hup with
-    | NewVal i _ => i
-    | AbsUpd i _ => i
-    | AbsMemUpd i _ => i
-    end.
-
-  Inductive write_transaction : Type -> Type :=
-  | WDone : write_transaction unit
-  | WCons : forall T, heapupd T -> forall T', write_transaction T' -> write_transaction (T*T').
+  Inductive write_transaction : Type :=
+  | WDone : write_transaction
+  | WCons : heapupd -> write_transaction -> write_transaction.
 
   CoInductive cprog : Type -> Type :=
   | Alloc A (v:A) : cprog ident
   | ReadTxn A (tx:read_transaction A) : cprog A
-  | AssgnTxn A (tx:write_transaction A) : cprog unit
+  | AssgnTxn (tx:write_transaction) : cprog unit
   | BeginRead (a:addr) : cprog unit
   | WaitForRead (a:addr) : cprog valu
   | Write (a:addr) (v: valu) : cprog unit
@@ -162,22 +155,22 @@ Section CCL.
       inv_read_set_vals; eauto.
   Defined.
 
-  Inductive write_set_allocd (h:heap) : forall T, write_transaction T -> Prop :=
+  Inductive write_set_allocd (h:heap) : write_transaction -> Prop :=
   | WriteSetValDone : write_set_allocd h WDone
-  | WriteSetValCons : forall A A' i (v:A') v' A'' (txn: write_transaction A''),
+  | WriteSetValCons : forall A A' i (v:A') (v':A) (txn: write_transaction),
       h i = Some (val v) ->
       write_set_allocd h txn ->
-      write_set_allocd h (WCons (T:=A) (NewVal i v') txn)
-  | WriteSetAbsCons : forall A A' i (v:A') f
-                        A'' (txn: write_transaction A''),
+      write_set_allocd h (WCons (NewVal i v') txn)
+  | WriteSetAbsCons : forall A A' i (v:A') (f: TID -> A -> A)
+                        (txn: write_transaction),
       h i = Some (abs v) ->
       write_set_allocd h txn ->
-      write_set_allocd h (WCons (T:=A) (AbsUpd i f) txn)
-  | WriteSetAbsMemCons : forall A AEQ V A' i (v:A') f
-                        A'' (txn: write_transaction A''),
+      write_set_allocd h (WCons (AbsUpd i f) txn)
+  | WriteSetAbsMemCons : forall A AEQ V A' i (v:A') (f: TID -> @mem A AEQ V -> @mem A AEQ V)
+                        (txn: write_transaction),
       h i = Some (abs v) ->
       write_set_allocd h txn ->
-      write_set_allocd h (WCons (T:=@mem A AEQ V) (AbsUpd i f) txn).
+      write_set_allocd h (WCons (AbsUpd i f) txn).
 
   Hint Constructors write_set_allocd.
 
@@ -190,13 +183,13 @@ Section CCL.
   Ltac t' := try solve [ left; repeat deex; eauto ];
              try (right; repeat deex; intros; inv_write_set_allocd; congruence).
 
-  Fixpoint wtxn_in_domain_dec A (txn:write_transaction A) (h:heap) {struct txn} :
+  Fixpoint wtxn_in_domain_dec (txn:write_transaction) (h:heap) {struct txn} :
     {write_set_allocd h txn} + {~write_set_allocd h txn}.
   Proof.
     unfold not in *.
     destruct txn.
     - left; eauto.
-    - destruct (wtxn_in_domain_dec T' txn h); t'.
+    - destruct (wtxn_in_domain_dec txn h); t'.
       destruct h0;
         match goal with
         | [ i: ident |- _ ] =>
@@ -273,29 +266,29 @@ Section CCL.
       rtxn_error txn h ->
       rtxn_error (RCons A i txn) h.
 
-  Inductive wtxn_error : forall T (txn:write_transaction T), heap -> Prop :=
-  | wtxn_step_error_here : forall A1 A2 i (v:A1) (up:heapupd A2) h A' (txn: write_transaction A'),
+  Inductive wtxn_error : forall (txn:write_transaction), heap -> Prop :=
+  | wtxn_step_error_here : forall A1 A2 i (v0:A1) (v:A2) h (txn: write_transaction),
       A1 <> A2 ->
-      h i = Some (val v) ->
-      wtxn_error (WCons up txn) h
-  | wtxn_step_error_later : forall A (up:heapupd A) h A' (txn: write_transaction A'),
+      h i = Some (val v0) ->
+      wtxn_error (WCons (NewVal i v) txn) h
+  | wtxn_step_error_later : forall (up:heapupd) h (txn: write_transaction),
       wtxn_error txn h ->
       wtxn_error (WCons up txn) h.
 
-  Inductive wtxn_step (tid:TID) : forall T (txn: write_transaction T), heap -> heap -> Prop :=
+  Inductive wtxn_step (tid:TID) : forall (txn: write_transaction), heap -> heap -> Prop :=
   | wtxn_step_done : forall h, wtxn_step tid WDone h h
   | wtxn_step_val_cons : forall A i (v0 v':A)
-                           A' (txn: write_transaction A') h h'',
+                           (txn: write_transaction) h h'',
       h i = Some (val v0) ->
       wtxn_step tid txn (upd h i (val v')) h'' ->
       wtxn_step tid (WCons (NewVal i v') txn) h h''
   | wtxn_step_val_abs : forall A i (v0:A) f
-                          A' (txn: write_transaction A') h h'',
+                          (txn: write_transaction) h h'',
       h i = Some (abs v0) ->
       wtxn_step tid txn (upd h i (abs (f tid v0))) h'' ->
       wtxn_step tid (WCons (AbsUpd i f) txn) h h''
   | wtxn_step_val_absmem : forall A AEQ V i (m0:@mem A AEQ V) f
-                             A' (txn: write_transaction A') h h'',
+                             (txn: write_transaction) h h'',
       h i = Some (absMem m0) ->
       wtxn_step tid txn (upd h i (absMem (f tid m0))) h'' ->
       wtxn_step tid (WCons (AbsUpd i f) txn) h h''.
@@ -340,20 +333,20 @@ Section CCL.
   | ExecReadTxnFail : forall sigma A (txn:read_transaction A),
       rtxn_error txn (Sigma.mem sigma) ->
       exec tid sigma (ReadTxn txn) Error
-  | ExecAssgnTxn : forall sigma A (txn:write_transaction A) h',
+  | ExecAssgnTxn : forall sigma (txn:write_transaction) h',
       Sigma.l sigma = WriteLock ->
       wtxn_step tid txn (Sigma.mem sigma) h' ->
       let sigma' := Sigma.set_mem sigma h' in
       Guarantee tid sigma sigma' ->
       exec tid sigma (AssgnTxn txn)
            (Finished sigma' tt)
-  | ExecAssgnTxnProtocolError : forall sigma A (txn:write_transaction A) h',
+  | ExecAssgnTxnProtocolError : forall sigma (txn:write_transaction) h',
       Sigma.l sigma = WriteLock ->
       wtxn_step tid txn (Sigma.mem sigma) h' ->
       let sigma' := Sigma.set_mem sigma h' in
       ~Guarantee tid sigma sigma' ->
       exec tid sigma (AssgnTxn txn) Error
-  | ExecAssgnTxnTyError : forall sigma A (txn:write_transaction A),
+  | ExecAssgnTxnTyError : forall sigma (txn:write_transaction),
       wtxn_error txn (Sigma.mem sigma) ->
       exec tid sigma (AssgnTxn txn) Error.
 
