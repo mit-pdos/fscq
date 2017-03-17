@@ -73,6 +73,9 @@ run_dcode ds (Hash sz (W w)) = do
   debugmsg $ "Hash " ++ (show sz) ++ " W " ++ (show w)
   bs <- Word.i2bs w $ fromIntegral $ (sz + 7) `div` 8
   run_dcode ds $ Hash sz (WBS bs)
+run_dcode _ AlertModified = do
+  debugmsg $ "AlertModified"
+  return $ unsafeCoerce ()
 run_dcode _ (Hash sz (WBS bs)) = do
   debugmsg $ "Hash " ++ (show sz) ++ " BS " ++ (show bs)
   return $ unsafeCoerce $ WBS $ SHA256.hash bs
