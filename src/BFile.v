@@ -1010,9 +1010,9 @@ Module BFILE.
               data_bitmaps <= valulen * valulen /\
              inode_bitmaps <= valulen * valulen
            ]]
-    POST:hm' RET:ms'  exists m' n frees allocc freeinodes freeinode_pred,
+    POST:hm' RET:ms'  exists m' n frees freeinodes freeinode_pred,
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-           [[[ m' ::: (Fm * rep bxps ixp (repeat bfile0 n) (repeat INODE.inode0 n) allocc frees (MSCache ms') * 
+           [[[ m' ::: (Fm * rep bxps ixp (repeat bfile0 n) (repeat INODE.inode0 n) frees (MSAllocC ms') (MSCache ms') * 
                             @IAlloc.rep bfile freepred ibxp freeinodes freeinode_pred) ]]] *
            [[ n = ((IXLen ixp) * INODE.IRecSig.items_per_val)%nat /\ n > 1 ]] *
            [[ forall dl, length dl = n ->
