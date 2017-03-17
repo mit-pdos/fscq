@@ -2182,8 +2182,17 @@ Module BFILE.
       Ret ^(ms, ok)
     }.
 
-
+  (* inlined version of reset' that calls Inode.reset *)
   Definition reset lxp bxp xp inum ms :=
+    let^ (fms, sz) <- getlen lxp xp inum ms;
+    let '(al, ms, alc, ialc, icache, cache) := (MSAlloc fms, MSLL fms, MSAllocC fms, MSIAllocC fms, MSICache fms, MSCache fms) in
+    let^ (icache, ms, bns) <- INODE.getallbnum lxp xp inum icache ms;
+    let l := map (@wordToNat _) (skipn ((length bns) - sz) bns) in
+    cms <- BALLOCC.freevec lxp (pick_balloc bxp (negb al)) l (BALLOCC.mk_memstate ms (pick_balloc alc (negb al)));
+    let^ (icache, cms) <- INODE.reset lxp (pick_balloc bxp (negb al)) xp inum sz attr0 icache cms;
+    Ret (mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) (negb al)) ialc icache cache).
+
+  Definition reset' lxp bxp xp inum ms :=
     let^ (ms, sz) <- getlen lxp xp inum ms;
     ms <- shrink lxp bxp xp inum sz ms;
     ms <- setattrs lxp xp inum attr0 ms;
