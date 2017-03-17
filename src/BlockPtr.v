@@ -2058,13 +2058,13 @@ Module BlockPtr (BPtr : BlockPtrSig).
     let nl := (ol - nr) in
     If (le_dec ol NDirect) {
       Ret ^(ms, upd_irec ir nl (IRIndPtr ir) (IRDindPtr ir) (IRTindPtr ir)
-                         (upd_range (IRBlocks ir) nl (NDirect - nl) $0))
+                         (upd_range_fast (IRBlocks ir) nl (NDirect - nl) $0))
     } else {
       let ol' := ol - NDirect in
       let nl' := nl - NDirect in
       let^ (ms, indptr, dindptr, tindptr) <- indshrink lxp bxp ir nl' ms;
       Ret ^(ms, upd_irec ir nl indptr dindptr tindptr
-                         (upd_range (IRBlocks ir) nl (NDirect - nl) $0))
+                         (upd_range_fast (IRBlocks ir) nl (NDirect - nl) $0))
     }.
 
   Definition indgrow lxp bxp ir off bn ms :=

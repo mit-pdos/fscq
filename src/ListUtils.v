@@ -2548,6 +2548,25 @@ Fixpoint upd_range {T} l start len (v : T) :=
   | S len' => updN (upd_range l (S start) len' v) start v
   end.
 
+Fixpoint upd_range_fast {T} vs start len (v : T) :=
+  match vs with
+  | nil => nil
+  | v' :: vs' =>
+    match start with
+    | S start' => v' :: upd_range_fast vs' start' len v
+    | O =>
+      match len with
+      | O => v' :: vs'
+      | S len' => v :: upd_range_fast vs' O len' v
+      end
+    end
+  end.
+
+Theorem upd_range_fast_eq : forall T vs start len (v : T),
+  upd_range_fast vs start len v = upd_range vs start len v.
+Proof.
+Admitted.
+
 Lemma upd_range_0 : forall T l start (v : T),
   upd_range l start 0 v = l.
 Proof.
