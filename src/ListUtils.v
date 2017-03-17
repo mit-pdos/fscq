@@ -2562,11 +2562,6 @@ Fixpoint upd_range_fast {T} vs start len (v : T) :=
     end
   end.
 
-Theorem upd_range_fast_eq : forall T vs start len (v : T),
-  upd_range_fast vs start len v = upd_range vs start len v.
-Proof.
-Admitted.
-
 Lemma upd_range_0 : forall T l start (v : T),
   upd_range l start 0 v = l.
 Proof.
@@ -2625,6 +2620,27 @@ Proof.
   Unshelve.
   eauto.
 Qed.
+
+Theorem upd_range_fast_eq_upd_range' : forall T (l: list T) start len v,
+    start + len <= length l ->
+    upd_range_fast l start len v = upd_range' l start len v.
+Proof.
+  unfold upd_range'.
+  induction l; simpl; intros.
+  - assert (start = 0) by omega.
+    assert (len = 0) by omega.
+    subst; auto.
+  - destruct start, len; simpl.
+    unfold upd_range'; simpl; auto.
+    erewrite IHl; eauto; try omega.
+    erewrite IHl; eauto; try omega.
+    erewrite IHl; eauto; try omega.
+Qed.
+
+Theorem upd_range_fast_eq : forall T vs start len (v : T),
+    upd_range_fast vs start len v = upd_range vs start len v.
+Proof.
+Admitted.
 
 Lemma upd_range_concat_hom_small : forall T l start len (v : T) k d,
   start + len <= length (concat l) ->
