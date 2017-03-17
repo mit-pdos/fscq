@@ -80,6 +80,8 @@ Module BFILE.
     IAlloc.Alloc.freelist0
     (BFcache.empty _).
 
+  Definition MSIAlloc ms :=
+    IAlloc.mk_memstate (MSLL ms) (MSIAllocC ms).
 
   (* interface implementation *)
 
@@ -219,7 +221,7 @@ Module BFILE.
     fcms <- BALLOCC.init_nofree lxp (snd bxps) ms;
     scms <- BALLOCC.init lxp (fst bxps) (BALLOCC.MSLog fcms);
     ialc_ms <- IAlloc.init lxp bixp (BALLOCC.MSLog scms);
-    ms <- INODE.init lxp ixp (IAlloc.MSLog ialc_ms);
+    ms <- INODE.init lxp ixp (IAlloc.Alloc.MSLog ialc_ms);
     let^ (ms, cms) <- shuffle_allocs lxp bxps ms (BALLOCC.MSCache scms, BALLOCC.MSCache fcms);
     Ret (mk_memstate true ms cms (IAlloc.MSCache ialc_ms) (BFcache.empty _)).
 
@@ -945,7 +947,7 @@ Module BFILE.
   Ltac assignms :=
     match goal with
     [ fms : memstate |- LOG.rep _ _ _ ?ms _ =p=> LOG.rep _ _ _ (MSLL ?e) _ ] =>
-      is_evar e; eassign (mk_memstate (MSAlloc fms) ms (MSAllocC fms) (MSCache fms)); simpl; eauto
+      is_evar e; eassign (mk_memstate (MSAlloc fms) ms (MSAllocC fms) (MSIAllocC fms) (MSCache fms)); simpl; eauto
     end.
 
   Local Hint Extern 1 (LOG.rep _ _ _ ?ms _  =p=> LOG.rep _ _ _ (MSLL ?e) _ ) => assignms.
@@ -1016,7 +1018,7 @@ Module BFILE.
     POST:hm' RET:ms'  exists m' n frees freeinodes freeinode_pred,
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
            [[[ m' ::: (Fm * rep bxps ixp (repeat bfile0 n) (repeat INODE.inode0 n) frees (MSAllocC ms') (MSCache ms') * 
-                            @IAlloc.rep bfile freepred ibxp freeinodes freeinode_pred) ]]] *
+                            @IAlloc.rep bfile freepred ibxp freeinodes freeinode_pred (MSIAlloc ms')) ]]] *
            [[ n = ((IXLen ixp) * INODE.IRecSig.items_per_val)%nat /\ n > 1 ]] *
            [[ forall dl, length dl = n ->
                          Forall freepred dl ->
@@ -1123,8 +1125,11 @@ Module BFILE.
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:^(ms',r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-           [[ r = length (BFData f) /\ MSAlloc ms = MSAlloc ms' /\ 
-              MSCache ms = MSCache ms' /\ MSAllocC ms = MSAllocC ms' ]]
+           [[ r = length (BFData f) ]] *
+           [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ MSCache ms = MSCache ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} getlen lxp ixp inum ms.
@@ -1153,7 +1158,10 @@ Module BFILE.
            [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:^(ms',r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-           [[ r = BFAttr f /\ MSAlloc ms = MSAlloc ms' /\ MSCache ms = MSCache ms' ]]
+           [[ r = BFAttr f ]] *
+           [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
+           [[ MSCache ms = MSCache ms' ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} getattrs lxp ixp inum ms.
@@ -1206,6 +1214,7 @@ Module BFILE.
            [[[ flist' ::: (Ff * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) a (BFCache f) ]] *
            [[ MSAllocC ms = MSAllocC ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSAlloc ms = MSAlloc ms' /\
               let free := pick_balloc frees (MSAlloc ms') in
               ilist_safe ilist free ilist' free ]] *
@@ -1264,6 +1273,7 @@ Module BFILE.
            [[[ m' ::: (Fm * rep bxps ixp flist' ilist' frees allocc (MSCache ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) (INODE.iattr_upd (BFAttr f) kv) (BFCache f) ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSAlloc ms = MSAlloc ms' /\
               let free := pick_balloc frees (MSAlloc ms') in
               ilist_safe ilist free ilist' free ]]
@@ -1306,6 +1316,7 @@ Module BFILE.
            [[[ (BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(ms', r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ r = fst vs /\ MSAlloc ms = MSAlloc ms' /\ MSCache ms = MSCache ms' /\
               MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  exists ms',
@@ -1353,6 +1364,7 @@ Module BFILE.
            [[ f' = mk_bfile (updN (BFData f) off (v, nil)) (BFAttr f) (BFCache f) ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
            [[ MSCache ms = MSCache ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} write lxp ixp inum off v ms.
@@ -1433,7 +1445,8 @@ Module BFILE.
            [[[ m ::: (Fm * rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms)) ]]] *
            [[[ flist ::: (Fi * inum |-> f) ]]] *
            [[[ (BFData f) ::: Fd ]]]
-    POST:hm' RET:^(ms', r) [[ MSAlloc ms = MSAlloc ms' /\ MSCache ms = MSCache ms' ]] * exists m',
+    POST:hm' RET:^(ms', r) [[ MSAlloc ms = MSAlloc ms' /\ MSCache ms = MSCache ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] * exists m',
            [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
            [[ r = OK tt  ]] * exists flist' ilist' frees' f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
@@ -1551,6 +1564,7 @@ Module BFILE.
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (firstn ((length (BFData f)) - nr) (BFData f)) (BFAttr f) (BFCache f) ]] *
            [[ MSCache ms = MSCache ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSAlloc ms = MSAlloc ms' /\
               ilist_safe ilist  (pick_balloc frees  (MSAlloc ms'))
                          ilist' (pick_balloc frees' (MSAlloc ms')) ]] *
@@ -1653,6 +1667,7 @@ Module BFILE.
       LOG.rep lxp F (LOG.NoTxn (ds!!, nil)) (MSLL ms') hm' *
       [[ MSAlloc ms' = negb (MSAlloc ms) ]] *
       [[ MSCache ms' = MSCache ms ]] *
+      [[ MSIAllocC ms = MSIAllocC ms' ]] *
       [[ MSAllocC ms' = MSAllocC ms]]
     XCRASH:hm'
       LOG.recover_any lxp F ds hm'
@@ -1672,6 +1687,7 @@ Module BFILE.
       LOG.rep lxp F (LOG.NoTxn ds) (MSLL ms') hm' *
       [[ MSAlloc ms' = negb (MSAlloc ms) ]] *
       [[ MSCache ms' = MSCache ms ]] *
+      [[ MSIAllocC ms = MSIAllocC ms' ]] *
       [[ MSAllocC ms' = MSAllocC ms]]
     XCRASH:hm'
       LOG.recover_any lxp F ds hm'
@@ -1739,6 +1755,7 @@ Module BFILE.
            [[ block_belong_to_file ilist bn inum off ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
            [[ MSAllocC ms = MSAllocC ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
            (* spec about files on the latest diskset *)
            [[[ ds'!! ::: (Fm  * rep bxp ixp flist' ilist frees allocc (MSCache ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
@@ -1821,6 +1838,7 @@ Module BFILE.
            [[[ flist' ::: (Fi * inum |-> synced_file f) ]]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
            [[ MSAllocC ms = MSAllocC ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
               BFILE.block_belong_to_file ilist (selN al i 0) inum i ]]
     CRASH:hm' LOG.recover_any lxp F ds hm'
@@ -1899,9 +1917,11 @@ Module BFILE.
            [[ i < length vsl]]
     POST:hm' RET:^(ms', r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-           [[ r = fst (selN vsl i ($0, nil)) /\ 
-              MSAlloc ms = MSAlloc ms' /\ MSCache ms = MSCache ms' /\
-              MSAllocC ms = MSAllocC ms' ]]
+           [[ r = fst (selN vsl i ($0, nil)) ]] *
+           [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ MSCache ms = MSCache ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} read_array lxp ixp inum a i ms.
@@ -1935,6 +1955,7 @@ Module BFILE.
            [[ f' = mk_bfile (updN (BFData f) (a + i) (v, nil)) (BFAttr f) (BFCache f) ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
            [[ MSCache ms = MSCache ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} write_array lxp ixp inum a i v ms.
@@ -1970,6 +1991,7 @@ Module BFILE.
       [[ pf = fold_left vfold (firstn i (map fst vsl)) v0 ]] *
       [[ MSAlloc ms = MSAlloc ms0 ]] *
       [[ MSCache ms = MSCache ms0 ]] *
+      [[ MSIAllocC ms = MSIAllocC ms0 ]] *
       [[ MSAllocC ms = MSAllocC ms0 ]]
     OnCrash  crash
     Begin
@@ -1992,6 +2014,7 @@ Module BFILE.
            [[ r = fold_left vfold (firstn nr (map fst vsl)) v0 ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
            [[ MSCache ms = MSCache ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
@@ -1999,7 +2022,7 @@ Module BFILE.
   Proof.
     unfold read_range.
     safestep. eauto. eauto.
-    step.
+    safestep.
 
     assert (m1 < length vsl).
     denote (arrayN _ a vsl) as Hx.
@@ -2009,6 +2032,7 @@ Module BFILE.
     rewrite firstn_S_selN_expand with (def := $0) by (rewrite map_length; auto).
     rewrite fold_left_app; simpl.
     erewrite selN_map; subst; auto.
+    cancel.
 
     safestep.
     cancel.
@@ -2032,6 +2056,7 @@ Module BFILE.
       [[[ flist ::: (Fi * inum |-> f) ]]] *
       [[ MSAlloc ms = MSAlloc ms0 ]] *
       [[ MSCache ms = MSCache ms0 ]] *
+      [[ MSIAllocC ms = MSIAllocC ms0 ]] *
       [[ MSAllocC ms = MSAllocC ms0 ]] *
       [[ ret = None ->
         pf = fold_left vfold (firstn i (map fst (BFData f))) v0 ]] *
@@ -2069,6 +2094,7 @@ Module BFILE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
            [[ MSAlloc ms = MSAlloc ms' ]] *
            [[ MSCache ms = MSCache ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSAllocC ms = MSAllocC ms' ]] *
            ( exists v, 
              [[ r = Some v /\ cond v = true ]] \/
@@ -2121,6 +2147,7 @@ Module BFILE.
         LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms) hm *
         [[ MSAlloc ms = MSAlloc ms0 ]] *
         [[ MSCache ms = MSCache ms0 ]] *
+        [[ MSIAllocC ms = MSIAllocC ms0 ]] *
         ([[ isError ret ]] \/
          exists flist' ilist' frees' f',
          [[ ret = OK tt ]] *
@@ -2171,6 +2198,7 @@ Module BFILE.
     POST:hm' RET:^(ms', r)
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSCache ms' = MSCache ms ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
            exists m',
            [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
            [[ r = OK tt  ]] * exists flist' ilist' frees' f',
@@ -2200,7 +2228,7 @@ Module BFILE.
     erewrite firstn_S_selN_expand by omega.
     rewrite synced_list_app, <- app_assoc.
     unfold synced_list at 3; simpl; eauto.
-    denote (MSAlloc a = MSAlloc a2) as Heq; rewrite Heq in *.
+    msalloc_eq.
     eapply ilist_safe_trans; eauto.
     eapply treeseq_ilist_safe_trans; eauto.
 
@@ -2230,6 +2258,7 @@ Module BFILE.
     POST:hm' RET:^(ms', r)
            [[ MSAlloc ms = MSAlloc ms' ]] *
            [[ MSCache ms = MSCache ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
            exists m',
            [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
            [[ r = OK tt  ]] * exists flist' ilist' frees' f',
@@ -2279,6 +2308,7 @@ Module BFILE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
            [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> bfile0) ]]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSAlloc ms = MSAlloc ms' /\ 
               ilist_safe ilist (pick_balloc frees (MSAlloc ms')) 
                          ilist' (pick_balloc frees' (MSAlloc ms'))  ]] *
@@ -2292,7 +2322,7 @@ Module BFILE.
     step.
     msalloc_eq; cancel.
     step.
-    safestep. 
+    safestep.
 
     destruct (r_).
     destruct (r_0).
@@ -2310,7 +2340,7 @@ Module BFILE.
     unfold treeseq_ilist_safe in Hts.
     intuition.
     assert (inum = inum' -> False).
-    intro; eapply H18; eauto.
+    eauto.
     denote (forall _ _, _ -> selN ilist' _ _ = selN ilist'0 _ _) as Hx.
     rewrite <- Hx.
     denote (forall _ _, _ -> selN ilist _ _ = selN ilist' _ _) as Hy.
@@ -2373,6 +2403,7 @@ Module BFILE.
            [[[ flist' ::: (Fi * inum |-> f') ]]] *
            [[ f' = mk_bfile (BFData f) (BFAttr f) (Some c) ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSAllocC ms = MSAllocC ms' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} cache_put inum c ms.
