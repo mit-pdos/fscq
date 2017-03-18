@@ -289,7 +289,7 @@ Module FileRecArray (FRA : FileRASig).
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
           [[ Rec.well_formed e ]] *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms)) ]]] *
+          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET: ^(ms', r) exists m',
@@ -301,7 +301,7 @@ Module FileRecArray (FRA : FileRASig).
           [[ r = OK tt  ]] *
           exists flist' f' ilist' frees',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-          [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms')) ]]] *
+          [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms')) ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' (items ++ (updN block0 0 e)) ]]] *
           [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
@@ -363,7 +363,7 @@ Module FileRecArray (FRA : FileRASig).
     {< F Fm Fi m0 m flist f ilist frees,
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms)) ]]] *
+          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:ms' exists m' flist' f' ilist' frees',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
