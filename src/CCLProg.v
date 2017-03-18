@@ -326,8 +326,9 @@ Section CCL.
   | ExecReadTxn : forall sigma A (txn:read_transaction A) v sigma',
       rtxn_step txn (Sigma.mem sigma) v ->
       (Sigma.l sigma = WriteLock -> sigma' = sigma) ->
-      (Sigma.l sigma = Free -> Rely tid sigma sigma') ->
-      hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') ->
+      (Sigma.l sigma = Free -> Rely tid sigma sigma' /\
+                      hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
+                      Sigma.l sigma' = Sigma.l sigma) ->
       exec tid sigma (ReadTxn txn)
            (Finished sigma' v)
   | ExecReadTxnFail : forall sigma A (txn:read_transaction A),

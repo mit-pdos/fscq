@@ -44,6 +44,8 @@ Proof.
     etransitivity; eauto.
   - destruct sigma'; simpl in *.
     eauto.
+  - destruct (Sigma.l sigma); intuition subst.
+    reflexivity.
 Qed.
 
 (* Local Variables: *)

@@ -194,7 +194,7 @@ Section ConcurrentFS.
     edestruct fs_rely_invariant; eauto.
     descend; intuition eauto.
     eapply fs_homedir_rely; eauto.
-    eapply fs_lock_rely; eauto.
+    congruence.
   Qed.
 
   Hint Extern 1 {{ readCacheMem; _ }} => apply readCacheMem_ok : prog.

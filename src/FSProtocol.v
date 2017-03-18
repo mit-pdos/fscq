@@ -73,13 +73,11 @@ Section FilesystemProtocol.
     exists tree tree' homedirs,
       fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) /\
       fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma') /\
-      homedir_guarantee tid homedirs tree tree' /\
-      Sigma.l sigma' = Sigma.l sigma.
+      homedir_guarantee tid homedirs tree tree'.
 
   Theorem fs_rely_same_fstree : forall tid sigma sigma' tree homedirs,
       fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
       fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree homedirs (Sigma.mem sigma') ->
-      Sigma.l sigma' = Sigma.l sigma ->
       Rely fs_guarantee tid sigma sigma'.
   Proof.
     intros.
@@ -188,15 +186,6 @@ Section FilesystemProtocol.
       unfold homedir_rely in *; congruence.
   Qed.
 
-  Theorem fs_lock_rely : forall tid sigma sigma',
-      Rely fs_guarantee tid sigma sigma' ->
-      Sigma.l sigma' = Sigma.l sigma.
-  Proof.
-    unfold fs_guarantee; intros.
-    apply Operators_Properties.clos_rt_rt1n in H.
-    induction H; intros; repeat deex; congruence.
-  Qed.
-
   Lemma fs_rely_preserves_subtree : forall tid sigma sigma' tree homedirs tree' path f,
       find_subtree (homedirs tid ++ path) tree = Some f ->
       fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
@@ -231,7 +220,6 @@ Section FilesystemProtocol.
 
     descend; intuition eauto.
     etransitivity; eauto.
-    congruence.
   Qed.
 
   Theorem fs_rep_hashmap_incr : forall vd tree mscs hm hm',

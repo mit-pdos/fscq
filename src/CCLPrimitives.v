@@ -179,44 +179,47 @@ Section Primitives.
                              sigma' = sigma
                            else
                              Rely G tid sigma sigma') /\
-                           hashmap_le (Sigma.hm sigma) (Sigma.hm sigma')
+                           hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
+                           Sigma.l sigma' = Sigma.l sigma;
                     |})
                  (Read2 A i1 B i2).
   Proof.
     prim; try inv_ret.
-    apply sep_star_comm in H.
-    apply sep_star_assoc_2 in H.
-    pose proof (ptsto_valid' H).
-    match goal with
+    - apply sep_star_comm in H.
+      apply sep_star_assoc_2 in H.
+      pose proof (ptsto_valid' H).
+      match goal with
       | [ H: exec _ _ _ (ReadTxn _) _ |- _ ] =>
         inv_exec' H
-    end.
-    match goal with
-    | [ H: rtxn_step _ _ _ |- _ ] =>
-      eapply rtxn_step2 in H; eauto
-    end; intuition; subst.
-    destruct (Sigma.l st); simpl; intuition auto.
-
-    apply sep_star_comm in H.
-    apply sep_star_assoc_2 in H.
-    pose proof (ptsto_valid' H).
-    match goal with
+      end.
+      match goal with
+      | [ H: rtxn_step _ _ _ |- _ ] =>
+        eapply rtxn_step2 in H; eauto
+      end; intuition; subst.
+      destruct (Sigma.l st); simpl; intuition auto.
+      destruct (Sigma.l st); simpl; intuition subst.
+      reflexivity.
+      destruct (Sigma.l st) eqn:?; intuition (subst; eauto).
+    - apply sep_star_comm in H.
+      apply sep_star_assoc_2 in H.
+      pose proof (ptsto_valid' H).
+      match goal with
       | [ H: exec _ _ _ (ReadTxn _) _ |- _ ] =>
         inv_exec' H
-    end.
-    clear H6.
-    apply (f (val a :: val b :: nil))%list.
-    repeat (constructor; eauto).
+      end.
+      clear H6.
+      apply (f (val a :: val b :: nil))%list.
+      repeat (constructor; eauto).
 
-    repeat match goal with
-           | [ H: rtxn_error _ _ |- _ ] =>
-             inversion H; repeat inj_pair2; clear H
-           | [ H: Some _ = Some _ |- _ ] =>
-             inversion H; subst; clear H
-           | [ H: _ = _ |- _ ] =>
-             rewrite H in *
-           | _ => inj_pair2
-           end; eauto.
+      repeat match goal with
+             | [ H: rtxn_error _ _ |- _ ] =>
+               inversion H; repeat inj_pair2; clear H
+             | [ H: Some _ = Some _ |- _ ] =>
+               inversion H; subst; clear H
+             | [ H: _ = _ |- _ ] =>
+               rewrite H in *
+             | _ => inj_pair2
+             end; eauto.
   Qed.
 
   Record Assgn2_txn :=
