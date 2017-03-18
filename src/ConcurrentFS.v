@@ -60,11 +60,15 @@ Section ConcurrentFS.
     destruct r; eauto.
   Defined.
 
+  Definition startLocked :=
+    _ <- GetWriteLock;
+      do '(c, mscs) <- Read2 Cache (cache P) memstate (fsmem P);
+      Ret (c, mscs).
+
   Definition write_syscall T (p: OptimisticProg T) (update: dirtree -> dirtree) :
     cprog (SyscallResult T) :=
     retry guard
-          (_ <- GetWriteLock;
-             do '(c, mscs) <- Read2 Cache (cache P) memstate (fsmem P);
+          (do '(c, mscs) <- startLocked;
              do '(r, c) <- p mscs WriteLock c;
              match r with
              | Success _ (ms', r) =>
@@ -75,16 +79,16 @@ Section ConcurrentFS.
                  _ <- Unlock;
                  Ret (Done r)
              | Failure e =>
-               match e with
-               | CacheMiss a =>
-                   _ <- Unlock;
-                   (* TODO: [Yield a] here when the noop Yield is added *)
-                   Ret TryAgain
-               | WriteRequired => (* unreachable - have write lock *)
-                 Ret SyscallFailed
-               | Unsupported =>
-                 Ret SyscallFailed
-               end
+               _ <- Unlock;
+                 Ret (match e with
+                      | CacheMiss a =>
+                        (* TODO: [Yield a] here when the noop Yield is added *)
+                        TryAgain
+                      | WriteRequired => (* unreachable - have write lock *)
+                        SyscallFailed
+                      | Unsupported =>
+                        SyscallFailed
+                      end)
              end).
 
   Definition retry_syscall T (p: OptimisticProg T) (update: dirtree -> dirtree) :=
@@ -315,6 +319,51 @@ Section ConcurrentFS.
     unfold fs_rep; finish.
 
     eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
+  Qed.
+
+  Definition startLocked_ok : forall tid,
+      cprog_spec G tid
+                 (fun '(tree, homedirs) sigma =>
+                    {| precondition :=
+                         fs_invariant P (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs
+                                      (Sigma.mem sigma) /\
+                         Sigma.l sigma = Free;
+                       postcondition :=
+                         fun sigma' '(c, mscs) =>
+                           exists tree',
+                             fs_invariant P (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs
+                                          (Sigma.mem sigma') /\
+                             (* redundant with fs_invariant but specifies which
+                             cache and mscs achieve the CacheRep, for passing to
+                             the optimistic syscall precondition *)
+                             (exists vd',
+                                 CacheRep (Sigma.disk sigma') c vd' /\
+                                 fs_rep P vd' (Sigma.hm sigma') mscs tree') /\
+                             hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
+                             Rely G tid sigma sigma' /\
+                             homedir_rely tid homedirs tree tree' /\
+                             Sigma.l sigma' = WriteLock; |})
+                 startLocked.
+  Proof.
+    unfold startLocked; intros.
+    step.
+    destruct a as (tree & homedirs); simpl in *; intuition.
+
+    step; simplify.
+    edestruct fs_rely_invariant; eauto.
+    destruct sigma'; simpl in *.
+    match goal with
+    | [ H: fs_invariant _ _ _ _ _ _ |- _ ] =>
+      pose proof (fs_invariant_unfold H); repeat deex
+    end.
+    descend; simpl in *; intuition eauto.
+
+    step.
+    intuition auto.
+    descend; intuition eauto.
+    eapply Rely_trans; eauto.
+    eapply fs_rely_same_fstree; eauto.
+    eapply fs_homedir_rely; eauto.
   Qed.
 
   (* translate all system calls for extraction *)
