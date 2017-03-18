@@ -470,7 +470,7 @@ Module INODE.
            [[ length l = (IXLen xp) /\ (IXStart xp) <> 0 ]]
     POST:hm' RET:ms exists m',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * rep bxp xp (repeat inode0 ((IXLen xp) * IRecSig.items_per_val))) ]]]
+           [[[ m' ::: (Fm * rep bxp xp (repeat inode0 ((IXLen xp) * IRecSig.items_per_val)) (IRec.Cache.empty _)) ]]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} init lxp xp ms.
   Proof.
@@ -478,27 +478,29 @@ Module INODE.
     step.
     cbv; auto.
     step.
+    unfold IRec.rep. cancel.
     apply inode_match_init_ok.
+    apply IRec.cache_rep_empty.
   Qed.
 
-
-  Theorem getlen_ok : forall lxp bxp xp inum ms,
+  Theorem getlen_ok : forall lxp bxp xp inum cache ms,
     {< F Fm Fi m0 m ilist ino,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
+           [[[ m ::: (Fm * rep bxp xp ilist cache) ]]] *
            [[[ ilist ::: Fi * inum |-> ino ]]]
-    POST:hm' RET:^(ms,r)
+    POST:hm' RET:^(cache', ms,r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
+           [[[ m ::: (Fm * rep bxp xp ilist cache') ]]] *
            [[ r = length (IBlocks ino) ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
-    >} getlen lxp xp inum ms.
+    >} getlen lxp xp inum cache ms.
   Proof.
     unfold getlen, rep; pose proof irec0.
     safestep.
     sepauto.
-    safestep.
+    step.
 
     extract.
     denote Ind.rep as Hx; unfold Ind.rep in Hx; destruct_lift Hx.
@@ -506,48 +508,49 @@ Module INODE.
   Qed.
 
 
-  Theorem getattrs_ok : forall lxp bxp xp inum ms,
+  Theorem getattrs_ok : forall lxp bxp xp inum cache ms,
     {< F Fm Fi m0 m ilist ino,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
+           [[[ m ::: (Fm * rep bxp xp ilist cache) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm' RET:^(ms,r)
+    POST:hm' RET:^(cache',ms,r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
+           [[[ m ::: (Fm * rep bxp xp ilist cache') ]]] *
            [[ r = IAttr ino ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
-    >} getattrs lxp xp inum ms.
+    >} getattrs lxp xp inum cache ms.
   Proof.
     unfold getattrs, rep.
     safestep.
     sepauto.
 
-    safestep.
+    step.
     extract.
     seprewrite; subst; eauto.
   Qed.
 
 
-  Theorem setattrs_ok : forall lxp bxp xp inum attr ms,
+  Theorem setattrs_ok : forall lxp bxp xp inum attr cache ms,
     {< F Fm Fi m0 m ilist ino,
     PRE:hm 
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
+           [[[ m ::: (Fm * rep bxp xp ilist cache) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm' RET:ms exists m' ilist' ino',
+    POST:hm' RET:^(cache',ms) exists m' ilist' ino',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * rep bxp xp ilist') ]]] *
+           [[[ m' ::: (Fm * rep bxp xp ilist' cache') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ ino' = mk_inode (IBlocks ino) attr ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
-    >} setattrs lxp xp inum attr ms.
+    >} setattrs lxp xp inum attr cache ms.
   Proof.
     unfold setattrs, rep.
     safestep.
     sepauto.
 
-    safestep.
+    step.
     irec_wf.
     sepauto.
 
@@ -564,19 +567,19 @@ Module INODE.
   Qed.
 
 
-  Theorem updattr_ok : forall lxp bxp xp inum kv ms,
+  Theorem updattr_ok : forall lxp bxp xp inum kv cache ms,
     {< F Fm Fi m0 m ilist ino,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
+           [[[ m ::: (Fm * rep bxp xp ilist cache) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm' RET:ms exists m' ilist' ino',
+    POST:hm' RET:^(cache',ms) exists m' ilist' ino',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * rep bxp xp ilist') ]]] *
+           [[[ m' ::: (Fm * rep bxp xp ilist' cache') ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ ino' = mk_inode (IBlocks ino) (iattr_upd (IAttr ino) kv) ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
-    >} updattr lxp xp inum kv ms.
+    >} updattr lxp xp inum kv cache ms.
   Proof.
     unfold updattr, rep.
     safestep.
@@ -599,19 +602,20 @@ Module INODE.
   Qed.
 
 
-  Theorem getbnum_ok : forall lxp bxp xp inum off ms,
+  Theorem getbnum_ok : forall lxp bxp xp inum off cache ms,
     {< F Fm Fi m0 m ilist ino,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
            [[ off < length (IBlocks ino) ]] *
-           [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
+           [[[ m ::: (Fm * rep bxp xp ilist cache) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm' RET:^(ms, r)
+    POST:hm' RET:^(cache', ms, r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
+           [[[ m ::: (Fm * rep bxp xp ilist cache') ]]] *
            [[ r = selN (IBlocks ino) off $0 ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
-    >} getbnum lxp xp inum off ms.
+    >} getbnum lxp xp inum off cache ms.
   Proof.
     unfold getbnum, rep.
     safestep.
@@ -621,22 +625,25 @@ Module INODE.
     extract; seprewrite.
     cancel.
     step.
+    rewrite listmatch_isolate with (a := ilist) (i := inum) by omega.
+    unfold inode_match. cancel.
     cancel.
   Qed.
 
 
-  Theorem getallbnum_ok : forall lxp bxp xp inum ms,
+  Theorem getallbnum_ok : forall lxp bxp xp inum cache ms,
     {< F Fm Fi m0 m ilist ino,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
-           [[[ m ::: (Fm * rep bxp xp ilist) ]]] *
+           [[[ m ::: (Fm * rep bxp xp ilist cache) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm' RET:^(ms, r)
+    POST:hm' RET:^(cache', ms, r)
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
+           [[[ m ::: (Fm * rep bxp xp ilist cache') ]]] *
            [[ r = (IBlocks ino) ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) ms' hm'
-    >} getallbnum lxp xp inum ms.
+    >} getallbnum lxp xp inum cache ms.
   Proof.
     unfold getallbnum, rep.
     safestep.
@@ -646,24 +653,26 @@ Module INODE.
     extract; seprewrite.
     cancel.
     step.
+    rewrite listmatch_isolate with (a := ilist) (i := inum) by omega.
+    unfold inode_match. cancel.
     cancel.
   Qed.
 
 
-  Theorem shrink_ok : forall lxp bxp xp inum nr ms,
+  Theorem shrink_ok : forall lxp bxp xp inum nr cache ms,
     {< F Fm Fi m0 m ilist ino freelist,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
-           [[[ m ::: (Fm * rep bxp xp ilist * BALLOCC.rep bxp freelist ms) ]]] *
+           [[[ m ::: (Fm * rep bxp xp ilist cache * BALLOCC.rep bxp freelist ms) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm' RET:ms exists m' ilist' ino' freelist',
+    POST:hm' RET:^(cache', ms) exists m' ilist' ino' freelist',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
-           [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOCC.rep bxp freelist' ms) ]]] *
+           [[[ m' ::: (Fm * rep bxp xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ ino' = mk_inode (cuttail nr (IBlocks ino)) (IAttr ino) ]] *
            [[ incl freelist freelist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
-    >} shrink lxp bxp xp inum nr ms.
+    >} shrink lxp bxp xp inum nr cache ms.
   Proof.
     unfold shrink, rep.
     safestep.
@@ -671,6 +680,8 @@ Module INODE.
 
     extract; seprewrite.
     step.
+    rewrite listmatch_isolate with (a := ilist) (i := inum) by omega.
+    unfold inode_match. cancel.
     step.
     subst; unfold BPtrSig.upd_irec, BPtrSig.IRLen. simpl.
     smash_rec_well_formed.
@@ -695,13 +706,13 @@ Module INODE.
   Qed.
 
 
-  Lemma grow_wellformed : forall (a : BPtrSig.irec) inum reclist F1 F2 F3 F4 m xp,
-    ((((F1 * IRec.rep xp reclist) * F2) * F3) * F4)%pred m ->
+  Lemma grow_wellformed : forall (a : BPtrSig.irec) inum reclist cache F1 F2 F3 F4 m xp,
+    ((((F1 * IRec.rep xp reclist cache) * F2) * F3) * F4)%pred m ->
     length (BPtrSig.IRBlocks a) = length (BPtrSig.IRBlocks (selN reclist inum irec0)) ->
     inum < length reclist ->
     Rec.well_formed a.
   Proof.
-    unfold IRec.rep, IRec.items_valid; intros.
+    unfold IRec.rep, IRec.LRA.rep, IRec.LRA.items_valid; intros.
     destruct_lift H.
     denote Forall as Hx.
     apply Forall_selN with (i := inum) (def := irec0) in Hx; auto.
@@ -711,25 +722,25 @@ Module INODE.
     smash_rec_well_formed.
   Qed.
 
-  Theorem grow_ok : forall lxp bxp xp inum bn ms,
+  Theorem grow_ok : forall lxp bxp xp inum bn cache ms,
     {< F Fm Fi m0 m ilist ino freelist,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
            [[ length (IBlocks ino) < NBlocks ]] *
            [[ BALLOCC.bn_valid bxp bn ]] *
-           [[[ m ::: (Fm * rep bxp xp ilist * BALLOCC.rep bxp freelist ms) ]]] *
+           [[[ m ::: (Fm * rep bxp xp ilist cache * BALLOCC.rep bxp freelist ms) ]]] *
            [[[ ilist ::: (Fi * inum |-> ino) ]]]
-    POST:hm' RET:^(ms, r)
+    POST:hm' RET:^(cache', ms, r)
            exists m',
            [[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' \/
            [[ r = OK tt ]] * exists ilist' ino' freelist',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
-           [[[ m' ::: (Fm * rep bxp xp ilist' * BALLOCC.rep bxp freelist' ms) ]]] *
+           [[[ m' ::: (Fm * rep bxp xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
            [[ ino' = mk_inode ((IBlocks ino) ++ [$ bn]) (IAttr ino) ]] *
            [[ incl freelist' freelist ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
-    >} grow lxp bxp xp inum bn ms.
+    >} grow lxp bxp xp inum bn cache ms.
   Proof.
     unfold grow, rep.
     safestep.
@@ -737,6 +748,8 @@ Module INODE.
 
     extract; seprewrite.
     step.
+    rewrite listmatch_isolate with (a := ilist) (i := inum) by omega.
+    unfold inode_match. cancel.
     step.
     eapply grow_wellformed; eauto.
     sepauto.

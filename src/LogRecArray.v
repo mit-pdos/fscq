@@ -853,6 +853,6 @@ Module LogRecArrayCache (RA : RASig).
   Hint Extern 1 ({{_}} Bind (get_array _ _ _ _ _) _) => apply get_array_ok : prog.
   Hint Extern 1 ({{_}} Bind (put_array _ _ _ _ _ _) _) => apply put_array_ok : prog.
 
-  Hint Extern 0 (okToUnify (rep ?xp _ _ _) (rep ?xp _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep ?xp _ _) (rep ?xp _ _)) => constructor : okToUnify.
 
 End LogRecArrayCache.
