@@ -165,6 +165,8 @@ Module OptFS.
       apply prog_quadruple_spec_equiv;
       spec_reflect.
 
+    Set Default Proof Using "G".
+
     Definition file_get_attr := ltac:(translate_lift AFS.file_get_attr).
 
     Definition file_get_attr_ok : forall fsxp inum mscs,
