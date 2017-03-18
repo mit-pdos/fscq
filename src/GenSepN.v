@@ -582,10 +582,10 @@ Proof.
   congruence.
 Qed.
 
-Theorem arrayN_except : forall V vs (def : V) i,
+Theorem arrayN_except : forall V vs (def : V) i (pts: _ -> _ -> @pred _ _ V),
   i < length vs
-  -> arrayN (@ptsto _ eq_nat_dec V) 0 vs <=p=> 
-    (arrayN_ex (@ptsto _ eq_nat_dec V) vs i) * (i |-> selN vs i def).
+  -> arrayN pts 0 vs <=p=>
+    (arrayN_ex pts vs i) * (pts i (selN vs i def)).
 Proof.
   intros; unfold arrayN_ex.
   erewrite arrayN_isolate with (default := def); eauto.
@@ -613,6 +613,27 @@ Proof.
   unfold arrayN_ex; intros; autorewrite with core lists;
   split; simpl; rewrite skipn_updN; eauto.
 Qed.
+
+Theorem arrayN_mem_upd_none : forall V vs i m (v d : V) (p : nat -> V -> pred),
+  m i = None ->
+  i < length vs ->
+  arrayN_ex p vs i m ->
+  p i (selN vs i d) (fun a => if eq_nat_dec a i then Some v else None) ->
+  arrayN p 0 vs (Mem.upd m i v).
+Proof.
+  intros.
+  edestruct arrayN_except as [_ H']; eauto; apply H'; clear H'.
+  unfold_sep_star.
+  repeat eexists; eauto.
+  cbv [Mem.upd mem_union].
+  apply functional_extensionality.
+  intros x. destruct eq_nat_dec; subst.
+  destruct m; congruence.
+  destruct (m x); congruence.
+  intro; repeat deex.
+  destruct eq_nat_dec; congruence.
+Qed.
+
 
 Theorem list2nmem_array_pick : forall V l (def : V) i,
   i < length l
