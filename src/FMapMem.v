@@ -181,6 +181,17 @@ Module MapMem (OT : UsualOrderedType) (M : S with Module E := OT).
       apply mem_union_addr; eauto.
     Qed.
 
+    Theorem mm_add_upd: forall k v m,
+    mm (Map.add k v m) = Mem.upd (mm m) k v.
+    Proof.
+      unfold Mem.upd, mm.
+      intros.
+      apply functional_extensionality. intros.
+      destruct OT.eq_dec.
+      erewrite M.find_1; [|apply M.add_1]; congruence.
+      rewrite find_add_ne; congruence.
+    Qed.
+
   End MapMemSec.
 
 End MapMem.
