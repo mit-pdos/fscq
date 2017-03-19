@@ -2279,7 +2279,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} shrink lxp bxp ir nr ms.
   Proof.
-    unfold shrink.
+    unfold shrink. intros.
+    repeat rewrite upd_range_fast_eq.
     prestep; norml.
     denote rep as Hx. unfold rep in Hx. destruct_lifts.
     cancel.

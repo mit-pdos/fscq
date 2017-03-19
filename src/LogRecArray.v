@@ -708,7 +708,7 @@ Module LogRecArrayCache (RA : RASig).
     inversion H. eauto.
     rewrite mem_union_sel_none in H; try congruence.
     apply mem_union_sel_none.
-    eapply arrayN_cache_ptsto_oob_lt; eauto. omega.
+    eapply arrayN_cache_ptsto_oob; eauto. omega.
     eapply arrayN_cache_ptsto_oob; eauto.
     rewrite firstn_length_l; omega.
   Qed.
