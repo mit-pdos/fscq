@@ -37,7 +37,7 @@ interp_rtxn (RCons i txn) h =
     Nothing -> error $ "missing variable " ++ show i
     Just v -> unsafeCoerce $ (v, interp_rtxn txn h)
 
-interp_wtxn :: Coq_write_transaction a -> Heap -> Heap
+interp_wtxn :: Coq_write_transaction -> Heap -> Heap
 interp_wtxn WDone h = h
 interp_wtxn (WCons (NewVal i v) txn) h =
   Map.insert i v (interp_wtxn txn h)
