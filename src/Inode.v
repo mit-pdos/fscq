@@ -326,8 +326,8 @@ Module INODE.
     rewrite IRec.items_length_ok_pimpl.
     rewrite listmatch_length_pimpl.
     cancel.
-    rewrite H5.
-    eauto.
+    cbn in *.
+    congruence.
   Qed.
 
   Lemma irec_well_formed : forall Fm xp l i inum m cache,
@@ -782,8 +782,8 @@ Module INODE.
   Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
 
 
-  Lemma inode_rep_bn_valid_piff : forall bxp xp l,
-    rep bxp xp l <=p=> rep bxp xp l *
+  Lemma inode_rep_bn_valid_piff : forall bxp xp l c,
+    rep bxp xp l c <=p=> rep bxp xp l c *
       [[ forall inum, inum < length l ->
          Forall (fun a => BALLOCC.bn_valid bxp (# a) ) (IBlocks (selN l inum inode0)) ]].
   Proof.
@@ -793,8 +793,8 @@ Module INODE.
     extract at inum; auto.
   Qed.
 
-  Lemma inode_rep_bn_nonzero_pimpl : forall bxp xp l,
-    rep bxp xp l =p=> rep bxp xp l *
+  Lemma inode_rep_bn_nonzero_pimpl : forall bxp xp l c,
+    rep bxp xp l c =p=> rep bxp xp l c *
       [[ forall inum off, inum < length l ->
          off < length (IBlocks (selN l inum inode0)) ->
          # (selN (IBlocks (selN l inum inode0)) off $0) <> 0 ]].
@@ -819,8 +819,8 @@ Module INODE.
   Qed.
 
 
-  Theorem xform_rep : forall bxp xp l,
-    crash_xform (rep bxp xp l) <=p=> rep bxp xp l.
+  Theorem xform_rep : forall bxp xp l c,
+    crash_xform (rep bxp xp l c) <=p=> rep bxp xp l c.
   Proof.
     unfold rep; intros; split.
     xform_norm.

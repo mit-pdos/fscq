@@ -653,6 +653,37 @@ Module LogRecArrayCache (RA : RASig).
   Hint Extern 1 ({{_}} Bind (write _ _ _ _) _) => apply write_ok : prog.
   Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
 
+  Lemma item_wellformed : forall F xp m i l cache,
+    (F ✶ rep xp l cache)%pred m ->
+    Rec.well_formed (selN l i item0).
+  Proof.
+    unfold rep.
+    intros.
+    destruct_lifts.
+    eauto using LRA.item_wellformed.
+  Qed.
+
+  Lemma items_length_ok_pimpl : forall xp l cache,
+    rep xp l cache =p=>
+    [[ length l = (RALen xp * items_per_val)%nat ]] ✶ rep xp l cache.
+  Proof.
+    unfold rep.
+    intros xp l c m H.
+    rewrite LRA.items_length_ok_pimpl in H.
+    pred_apply.
+    cancel.
+  Qed.
+
+  Lemma xform_rep : forall xp l c,
+    crash_xform (rep xp l c) <=p=> rep xp l c.
+  Proof.
+    unfold rep.
+    intros.
+    xform_norm.
+    rewrite LRA.xform_rep.
+    split; cancel.
+  Qed.
+
   Lemma cache_rep_empty : forall l,
     cache_rep l (Cache.empty _).
   Proof.
