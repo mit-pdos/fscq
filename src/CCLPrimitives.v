@@ -222,6 +222,86 @@ Section Primitives.
              end; eauto.
   Qed.
 
+  Definition Assgn1 (i:ident) A (v:A) :=
+    AssgnTxn (WCons (NewVal i v) WDone).
+
+  Lemma wtxn_step_assgn1 : forall i A (v:A) tid (h h':heap),
+      wtxn_step tid (WCons (NewVal i v) WDone) h h' ->
+      h' = upd h i (val v).
+  Proof.
+    intros.
+    repeat match goal with
+           | [ H: wtxn_step _ _ _ _ |- _ ] =>
+             inversion H; subst; clear H; repeat inj_pair2
+           end; auto.
+  Qed.
+
+  Theorem Assgn1_ok : forall tid i A (v:A),
+      cprog_spec G tid
+                 (fun '(F, v0) sigma =>
+                    {| precondition :=
+                         (F * i |-> val (v0: A))%pred (Sigma.mem sigma) /\
+                         Sigma.l sigma = WriteLock /\
+                         (forall sigma',
+                           (F * i |-> val v)%pred (Sigma.mem sigma') ->
+                           Sigma.hm sigma' = Sigma.hm sigma ->
+                           Sigma.disk sigma' = Sigma.disk sigma ->
+                           Sigma.l sigma' = Sigma.l sigma ->
+                           G tid sigma sigma');
+                       postcondition :=
+                         fun sigma' _ =>
+                           (F * i |-> val v)%pred (Sigma.mem sigma') /\
+                           Sigma.hm sigma' = Sigma.hm sigma /\
+                           Sigma.disk sigma' = Sigma.disk sigma /\
+                           Sigma.l sigma' = Sigma.l sigma; |})
+                 (Assgn1 i v).
+  Proof.
+    begin_prim; inv_bind.
+    inv_exec; unfold ident in *; repeat inj_pair2.
+    - destruct a as (F & v0); simpl in *; intuition eauto.
+      match goal with
+        | [ H: wtxn_step _ _ _ _ |- _ ] =>
+          apply wtxn_step_assgn1 in H
+      end; subst.
+      subst sigma'0.
+      destruct st; simpl in *.
+      eapply H1; eauto; simpl; intuition.
+      eapply ptsto_upd'; eauto.
+    - destruct a as (F & v0); simpl in *; intuition eauto.
+      pose proof (ptsto_valid' H0).
+      inv_exec.
+      clear H4.
+      apply f.
+      econstructor; eauto.
+      constructor.
+
+      match goal with
+        | [ H: wtxn_step _ _ _ _ |- _ ] =>
+          apply wtxn_step_assgn1 in H
+      end; subst.
+      subst sigma'.
+      destruct st; simpl in *; subst.
+      match goal with
+      | [ H: ~G _ _ _ |- _ ] =>
+        apply H8
+      end.
+      eapply H3; eauto; simpl.
+      eapply ptsto_upd'; eauto.
+
+      repeat match goal with
+             | [ H: wtxn_error _ _ |- _ ] =>
+               inversion H; subst; clear H; repeat inj_pair2
+             end.
+      repeat match goal with
+             | [ H: _ = _ |- _ ] =>
+               progress rewrite H in *
+             | [ H: Some _ = Some _ |- _ ] =>
+               inversion H; subst; clear H
+             | _ => inj_pair2
+             end.
+      eauto.
+  Qed.
+
   Record Assgn2_txn :=
     Make_assgn2 {
         var1: ident;
@@ -449,6 +529,7 @@ Hint Extern 0 {{ WaitForRead _; _ }} => apply WaitForRead_ok : prog.
 Hint Extern 0 {{ Write _ _; _ }} => apply Write_ok : prog.
 Hint Extern 0 {{ Alloc _; _ }} => apply Alloc_ok : prog.
 Hint Extern 0 {{ Read2 _ _ _ _; _ }} => apply Read2_ok : prog.
+Hint Extern 0 {{ Assgn1 _ _; _ }} => apply Assgn1_ok : prog.
 Hint Extern 0 {{ Assgn2_abs _; _ }} => apply Assgn2_abs_ok : prog.
 Hint Extern 0 {{ Hash _; _ }} => apply Hash_ok : prog.
 Hint Extern 0 {{ GetWriteLock; _ }} => apply GetWriteLock_ok : prog.

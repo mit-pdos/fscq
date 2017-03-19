@@ -79,18 +79,18 @@ Section ConcurrentFS.
                  _ <- Unlock;
                  Ret (Done r)
              | Failure e =>
-               _ <- Unlock;
-                 Ret (match e with
-                      | CacheMiss a =>
-                        (* TODO: need to update c (with new single-assignment
-                        primitive) *)
-                        (* TODO: [Yield a] here when the noop Yield is added *)
-                        TryAgain
-                      | WriteRequired => (* unreachable - have write lock *)
-                        SyscallFailed
-                      | Unsupported =>
-                        SyscallFailed
-                      end)
+                 match e with
+                 | CacheMiss a =>
+                   _ <- Assgn1 (cache P) c;
+                     _ <- Unlock;
+                     (* TODO: [Yield a] here when the noop Yield is added *)
+                     Ret TryAgain
+                 | WriteRequired => (* unreachable - have write lock *)
+                   Ret SyscallFailed
+                 | Unsupported =>
+                   _ <- Unlock;
+                     Ret SyscallFailed
+                 end
              end).
 
   Definition retry_syscall T (p: OptimisticProg T) (update: dirtree -> dirtree) :=
