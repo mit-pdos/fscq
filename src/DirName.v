@@ -545,12 +545,12 @@ Module SDIR.
       Ret ^(ms, Err ENAMETOOLONG)
     }.
 
-  Definition link lxp bxp ixp dnum name inum isdir ms :=
+  Definition link lxp bxp ixp dnum name inum isdir ix0 ms :=
     If (Bool.bool_dec (is_valid_sname name) true) {
-      let^ (ms, r) <- DIR.link lxp bxp ixp dnum (sname2wname name) inum isdir ms;
-      Ret ^(ms, r)
+      let^ (ms, ix, r) <- DIR.link lxp bxp ixp dnum (sname2wname name) inum isdir ix0 ms;
+      Ret ^(ms, ix, r)
     } else {
-      Ret ^(ms, Err ENAMETOOLONG)
+      Ret ^(ms, 0, Err ENAMETOOLONG)
     }.
 
   Definition readdir_trans (di : DIR.readent) :=

@@ -51,7 +51,7 @@ Definition Dcache_type := Dcache.t (option (addr * bool)).
 
 Module BFcache := FMapAVL.Make(Nat_as_OT).
 Module BFcacheDefs := MapDefs Nat_as_OT BFcache.
-Definition BFcache_type := BFcache.t Dcache_type.
+Definition BFcache_type := BFcache.t (Dcache_type * addr).
 Module BFM := MapMem Nat_as_OT BFcache.
 
 Module BFILE.
@@ -249,7 +249,7 @@ Module BFILE.
   Record bfile := mk_bfile {
     BFData : list datatype;
     BFAttr : attr;
-    BFCache : option Dcache_type
+    BFCache : option (Dcache_type * addr)
   }.
 
   Definition bfile0 := mk_bfile nil attr0 None.
@@ -259,11 +259,17 @@ Module BFILE.
     (listmatch (fun v a => a |-> v ) (BFData f) (map (@wordToNat _) (INODE.IBlocks i)) *
      [[ BFAttr f = INODE.IAttr i ]])%pred.
 
-  Definition cache_ptsto inum (oc : option Dcache_type) : @pred _ addr_eq_dec _ :=
+  Definition cache_ptsto inum (oc : option (Dcache_type * addr)) : @pred _ addr_eq_dec _ :=
     ( match oc with
       | None => emp
       | Some c => inum |-> c
       end )%pred.
+
+  Definition filter_cache (f : bfile ) :=
+    match BFCache f with
+    | Some v => Some (fst v)
+    | None => None
+    end.
 
   Definition cache_rep mscache (flist : list bfile) (ilist : list INODE.inode) :=
      arrayN cache_ptsto 0 (map BFCache flist) (BFM.mm _ mscache).

@@ -145,18 +145,35 @@ Module DIR.
         Ret ^(ms, OK tt)
     end.
 
-  Definition link lxp bxp ixp dnum name inum isdir ms :=
+  Definition link' lxp bxp ixp dnum name inum isdir ms :=
     let de := mk_dent name inum isdir in
     let^ (ms, r) <- ifind_invalid lxp ixp dnum ms;
     match r with
     | Some (ix, _) =>
         ms <- Dent.put lxp ixp dnum ix de ms;
-        Ret ^(ms, OK tt)
+        Ret ^(ms, ix+1, OK tt)
     | None =>
         let^ (ms, ok) <- Dent.extend lxp bxp ixp dnum de ms;
-        Ret ^(ms, ok)
+        Ret ^(ms, 0, ok)
     end.
 
+  Definition link lxp bxp ixp dnum name inum isdir ix0 ms :=
+    let de := mk_dent name inum isdir in
+    let^ (ms, len) <- BFILE.getlen lxp ixp inum ms;
+    If (lt_dec ix0 (len * Dent.RA.items_per_val)) {
+      let^ (ms, res) <- Dent.get lxp ixp dnum ix0 ms;
+      match (is_valid res) with
+      | true =>
+        let^ (ms, ix, r0) <- link' lxp bxp ixp dnum name inum isdir ms;
+        Ret ^(ms, ix, r0)
+      | false => 
+        ms <- Dent.put lxp ixp dnum ix0 de ms;
+        Ret ^(ms, ix0+1, OK tt)
+      end
+    } else {
+      let^ (ms, ix, r0) <- link' lxp bxp ixp dnum name inum isdir ms;
+      Ret ^(ms, ix, r0)
+    }.
 
   (*************  basic lemmas  *)
 

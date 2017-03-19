@@ -36,22 +36,22 @@ Module CacheOneDir.
     let^ (ms, ocache) <- BFILE.cache_get dnum ms;
     match ocache with
     | None =>
-      ms <- BFILE.cache_put dnum (Dcache.empty _) ms;
-      Ret ^(ms, Dcache.empty _)
+      ms <- BFILE.cache_put dnum (Dcache.empty _, 0) ms;
+      Ret ^(ms, (Dcache.empty _, 0))
     | Some r =>
       Ret ^(ms, r)
     end.
 
   Definition init dnum ms :=
-    BFILE.cache_put dnum (Dcache.empty _) ms.
+    BFILE.cache_put dnum (Dcache.empty _, 0) ms.
 
   Definition lookup lxp ixp dnum name ms :=
     let^ (ms, cache) <- get_dcache dnum ms;
-    match Dcache.find name cache with
+    match Dcache.find name (fst cache) with
     | None =>
       AlertModified;;
       let^ (ms, r) <- SDIR.lookup lxp ixp dnum name ms;
-      ms <- BFILE.cache_put dnum (Dcache.add name r cache) ms;
+      ms <- BFILE.cache_put dnum (Dcache.add name r (fst cache), 0) ms;
       Ret ^(ms, r)
     | Some r =>
       Ret ^(ms, r)
@@ -60,7 +60,7 @@ Module CacheOneDir.
   Definition unlink lxp ixp dnum name ms :=
     let^ (ms, cache) <- get_dcache dnum ms;
     let^ (ms, r) <- SDIR.unlink lxp ixp dnum name ms;
-    ms <- BFILE.cache_put dnum (Dcache.add name None cache) ms;
+    ms <- BFILE.cache_put dnum (Dcache.add name None (fst cache), 0) ms;
     Ret ^(ms, r).
 
   Definition link lxp bxp ixp dnum name inum isdir ms :=
@@ -70,12 +70,12 @@ Module CacheOneDir.
       Ret ^(ms, Err EEXIST)
     | None =>
       let^ (ms, cache) <- get_dcache dnum ms;
-      let^ (ms, r) <- SDIR.link lxp bxp ixp dnum name inum isdir ms;
+      let^ (ms, ix, r) <- SDIR.link lxp bxp ixp dnum name inum isdir (snd cache) ms;
       match r with
       | Err _ =>
         Ret ^(ms, r)
       | OK _ =>
-        ms <- BFILE.cache_put dnum (Dcache.add name (Some (inum, isdir)) cache) ms;
+        ms <- BFILE.cache_put dnum (Dcache.add name (Some (inum, isdir)) (fst cache), ix) ms;
         Ret ^(ms, r)
       end
     end.
@@ -87,9 +87,9 @@ Module CacheOneDir.
 
   Definition rep f (dsmap : @mem string string_dec (addr * bool)) : Prop :=
     SDIR.rep f dsmap /\
-    exists cache, (BFILE.BFCache f = Some cache \/ BFILE.BFCache f = None /\ cache = Dcache.empty _) /\
+    exists cache, (BFILE.BFCache f = Some cache \/ BFILE.BFCache f = None /\ cache = (Dcache.empty _, 0)) /\
     forall name v,
-    Dcache.MapsTo name v cache -> dsmap name = v.
+    Dcache.MapsTo name v (fst cache) -> dsmap name = v.
 
   Definition rep_macro Fi Fm m bxp ixp (inum : addr) dsmap ilist frees f ms : @pred _ addr_eq_dec valuset :=
     (exists flist,
