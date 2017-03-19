@@ -336,7 +336,7 @@ Module INODE.
     -> Rec.well_formed i.
   Proof.
     intros; subst.
-    eapply IRec.item_wellforemd; eauto.
+    eapply IRec.item_wellformed; eauto.
   Qed.
 
   Lemma direct_blocks_length: forall (i : irec),
@@ -363,7 +363,7 @@ Module INODE.
     length blks = NDirect.
   Proof.
     intros.
-    eapply IRec.item_wellforemd with (i := inum) in H.
+    eapply IRec.item_wellformed with (i := inum) in H.
     setoid_rewrite <- H0 in H.
     unfold Rec.well_formed in H; simpl in H; intuition.
   Qed.

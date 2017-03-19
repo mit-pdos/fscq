@@ -613,26 +613,26 @@ Module FileRecArray (FRA : FileRASig).
   Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
 
 
-  Lemma items_wellforemd : forall F xp l m,
+  Lemma items_wellformed : forall F xp l m,
     (F * rep xp l)%pred m -> Forall Rec.well_formed l.
   Proof.
     unfold rep, items_valid; intuition.
     destruct_lift H; auto.
   Qed.
 
-  Lemma items_wellforemd_pimpl : forall xp l,
+  Lemma items_wellformed_pimpl : forall xp l,
     rep xp l =p=> [[ Forall Rec.well_formed l ]] * rep xp l.
   Proof.
     unfold rep, items_valid; cancel.
   Qed.
 
-  Lemma item_wellforemd : forall F xp m l i,
+  Lemma item_wellformed : forall F xp m l i,
     (F * rep xp l)%pred m -> Rec.well_formed (selN l i item0).
   Proof.
     intros.
     destruct (lt_dec i (length l)).
     apply Forall_selN; auto.
-    eapply items_wellforemd; eauto.
+    eapply items_wellformed; eauto.
     rewrite selN_oob by omega.
     apply item0_wellformed.
   Qed.
