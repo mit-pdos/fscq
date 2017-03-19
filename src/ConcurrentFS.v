@@ -181,7 +181,7 @@ Section ConcurrentFS.
                                     fs_rep P vd (Sigma.hm sigma') mscs tree) /\
                              Sigma.l sigma' = Sigma.l sigma |})
                  readCacheMem.
-  Proof.
+  Proof using Type.
     unfold readCacheMem; intros.
     step.
     destruct a as (tree & homedirs); simpl in *; intuition.
@@ -260,7 +260,7 @@ Section ConcurrentFS.
                              | SyscallFailed => True
                              end |})
                  (readonly_syscall p).
-  Proof.
+  Proof using Type.
     unfold readonly_syscall; intros.
     step.
     destruct a as ((tree & homedirs) & a); finish.
@@ -298,7 +298,7 @@ Section ConcurrentFS.
                                   fun '(r, _) => r = BFILE.BFAttr f;
                                 fs_dirup := fun tree => tree |}) mscs l c)
                  (OptFS.file_get_attr (fsxp P) inum mscs l c).
-  Proof.
+  Proof using Type.
     unfold fs_spec; intros.
     step.
     unfold Prog.pair_args_helper in *.
@@ -346,7 +346,7 @@ Section ConcurrentFS.
                              homedir_rely tid homedirs tree tree' /\
                              Sigma.l sigma' = WriteLock; |})
                  startLocked.
-  Proof.
+  Proof using Type.
     unfold startLocked; intros.
     step.
     destruct a as (tree & homedirs); simpl in *; intuition.
@@ -401,7 +401,7 @@ Section ConcurrentFS.
                              | SyscallFailed => True
                              end |})
                  (write_syscall p update).
-  Proof.
+  Proof using Type.
     unfold write_syscall; intros.
     apply retry_spec' with SyscallFailed.
     induction n; simpl; intros.
