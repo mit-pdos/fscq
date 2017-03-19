@@ -470,7 +470,7 @@ Module INODE.
            [[ length l = (IXLen xp) /\ (IXStart xp) <> 0 ]]
     POST:hm' RET:ms exists m',
            LOG.rep lxp F (LOG.ActiveTxn m0 m') ms hm' *
-           [[[ m' ::: (Fm * rep bxp xp (repeat inode0 ((IXLen xp) * IRecSig.items_per_val)) (IRec.Cache.empty _)) ]]]
+           [[[ m' ::: (Fm * rep bxp xp (repeat inode0 ((IXLen xp) * IRecSig.items_per_val)) (IRec.cache0)) ]]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} init lxp xp ms.
   Proof.
@@ -770,16 +770,16 @@ Module INODE.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
-  Hint Extern 1 ({{_}} Bind (getlen _ _ _ _) _) => apply getlen_ok : prog.
-  Hint Extern 1 ({{_}} Bind (getattrs _ _ _ _) _) => apply getattrs_ok : prog.
-  Hint Extern 1 ({{_}} Bind (setattrs _ _ _ _ _) _) => apply setattrs_ok : prog.
-  Hint Extern 1 ({{_}} Bind (updattr _ _ _ _ _) _) => apply updattr_ok : prog.
-  Hint Extern 1 ({{_}} Bind (getbnum _ _ _ _ _) _) => apply getbnum_ok : prog.
-  Hint Extern 1 ({{_}} Bind (getallbnum _ _ _ _) _) => apply getallbnum_ok : prog.
-  Hint Extern 1 ({{_}} Bind (grow _ _ _ _ _ _) _) => apply grow_ok : prog.
-  Hint Extern 1 ({{_}} Bind (shrink _ _ _ _ _ _) _) => apply shrink_ok : prog.
+  Hint Extern 1 ({{_}} Bind (getlen _ _ _ _ _) _) => apply getlen_ok : prog.
+  Hint Extern 1 ({{_}} Bind (getattrs _ _ _ _ _) _) => apply getattrs_ok : prog.
+  Hint Extern 1 ({{_}} Bind (setattrs _ _ _ _ _ _) _) => apply setattrs_ok : prog.
+  Hint Extern 1 ({{_}} Bind (updattr _ _ _ _ _ _) _) => apply updattr_ok : prog.
+  Hint Extern 1 ({{_}} Bind (getbnum _ _ _ _ _ _) _) => apply getbnum_ok : prog.
+  Hint Extern 1 ({{_}} Bind (getallbnum _ _ _ _ _) _) => apply getallbnum_ok : prog.
+  Hint Extern 1 ({{_}} Bind (grow _ _ _ _ _ _ _) _) => apply grow_ok : prog.
+  Hint Extern 1 ({{_}} Bind (shrink _ _ _ _ _ _ _) _) => apply shrink_ok : prog.
 
-  Hint Extern 0 (okToUnify (rep _ _ _) (rep _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep _ _ _ _) (rep _ _ _ _)) => constructor : okToUnify.
 
 
   Lemma inode_rep_bn_valid_piff : forall bxp xp l c,
