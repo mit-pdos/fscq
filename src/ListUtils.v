@@ -2637,11 +2637,6 @@ Proof.
     erewrite IHl; eauto; try omega.
 Qed.
 
-Theorem upd_range_fast_eq : forall T vs start len (v : T),
-    upd_range_fast vs start len v = upd_range vs start len v.
-Proof.
-Admitted.
-
 Lemma upd_range_concat_hom_small : forall T l start len (v : T) k d,
   start + len <= length (concat l) ->
   Forall (fun l' => length l' = k) l ->
@@ -2773,6 +2768,27 @@ Proof.
   generalize dependent l.
   induction len; simpl; intros. auto.
   rewrite IHlen. auto.
+Qed.
+
+Lemma upd_range_fast_len_0 : forall T vs start (v : T),
+  upd_range_fast vs start 0 v = vs.
+Proof.
+  induction vs; cbn; intros; auto.
+  destruct start; f_equal; auto.
+Qed.
+
+Theorem upd_range_fast_eq : forall T vs start len (v : T),
+    upd_range_fast vs start len v = upd_range vs start len v.
+Proof.
+  induction vs; cbn; intros.
+  rewrite upd_range_nil. auto.
+  destruct start, len; cbn; auto.
+  rewrite upd_range_hd.
+  cbn; f_equal; auto.
+  rewrite upd_range_fast_len_0. auto.
+  rewrite upd_range_hd. cbn.
+  f_equal.
+  rewrite IHvs. reflexivity.
 Qed.
 
 Hint Rewrite upd_range_upd_range upd_range_hd : lists.
