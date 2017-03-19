@@ -82,6 +82,8 @@ Section ConcurrentFS.
                _ <- Unlock;
                  Ret (match e with
                       | CacheMiss a =>
+                        (* TODO: need to update c (with new single-assignment
+                        primitive) *)
                         (* TODO: [Yield a] here when the noop Yield is added *)
                         TryAgain
                       | WriteRequired => (* unreachable - have write lock *)
@@ -364,6 +366,138 @@ Section ConcurrentFS.
     eapply Rely_trans; eauto.
     eapply fs_rely_same_fstree; eauto.
     eapply fs_homedir_rely; eauto.
+  Qed.
+
+  Hint Extern 1 {{ startLocked; _ }} => apply startLocked_ok : prog.
+
+  Theorem write_syscall_ok : forall T (p: OptimisticProg T) A
+                               (fsspec: FsSpec A T) update tid,
+      (forall mscs c, cprog_spec G tid
+                            (fs_spec fsspec mscs WriteLock c)
+                            (p mscs WriteLock c)) ->
+      cprog_spec G tid
+                 (fun '(tree, homedirs, a) sigma =>
+                    {| precondition :=
+                         (fs_invariant P (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs)
+                           (Sigma.mem sigma) /\
+                         Sigma.l sigma = Free /\
+                         fs_pre (fsspec a) tree /\
+                         precondition_stable fsspec homedirs tid /\
+                         update = fs_dirup (fsspec a) /\
+                         (forall tree0, homedir_rely tid homedirs
+                                                tree0
+                                                (update tree0));
+                       postcondition :=
+                         fun sigma' r =>
+                           exists tree' tree'',
+                             (fs_invariant P (Sigma.disk sigma') (Sigma.hm sigma') tree'' homedirs)
+                               (Sigma.mem sigma') /\
+                             homedir_rely tid homedirs tree tree' /\
+                             Sigma.l sigma' = Free /\
+                             match r with
+                             | Done v => fs_post (fsspec a) v /\
+                                        tree'' = fs_dirup (fsspec a) tree'
+                             | TryAgain => tree'' = tree'
+                             | SyscallFailed => True
+                             end |})
+                 (write_syscall p update).
+  Proof.
+    unfold write_syscall; intros.
+    apply retry_spec' with SyscallFailed.
+    induction n; simpl; intros.
+    - step.
+      destruct a as ((tree & homedirs) & a); simpl in *.
+      descend; intuition eauto.
+    - step.
+      destruct a as ((tree & homedirs) & a); simpl in *.
+      descend; simpl in *; intuition eauto.
+
+      monad_simpl.
+      eapply cprog_ok_weaken;
+        [ eapply H | ]; simplify; finish.
+
+      destruct a1.
+      destruct v as [ms' r].
+      step; simpl.
+      unfold translated_postcondition in *; simpl in *; intuition eauto.
+      match goal with
+      | [ H: fs_invariant _ _ _ _ _ _ |- _ ] =>
+        pose proof (fs_invariant_unfold H); repeat deex
+      end.
+      descend; simpl in *; intuition eauto.
+      unfold fs_invariant in *; SepAuto.pred_apply; SepAuto.cancel.
+      congruence.
+      match goal with
+      | |- G _ _ _ =>
+        (* use homedir_rely and maintained fs_invariant *)
+        admit
+      end.
+
+      step.
+      descend; simpl in *; intuition eauto.
+      congruence.
+
+      step.
+      descend; simpl in *; intuition eauto.
+
+      destruct (guard r0); simpl.
+      step.
+      intuition trivial.
+      (* exists tree', (fs_dirup (fsspec a) tree'). *)
+      descend; intuition eauto.
+      unfold fs_invariant; SepAuto.pred_apply; time SepAuto.cancel.
+      (* cancel takes 40s *)
+      eauto.
+      congruence.
+      descend; intuition eauto.
+      congruence.
+
+      subst; simpl.
+      step.
+      descend; simpl in *; intuition eauto.
+      congruence.
+
+      step.
+      unfold translated_postcondition in *; intuition eauto.
+      descend; simpl in *; intuition eauto.
+      congruence.
+
+      step.
+      simpl; intuition auto.
+      destruct r; simpl.
+      step.
+      + destruct e; try discriminate.
+      + step.
+        destruct e; try discriminate.
+        descend; simpl in *; intuition idtac.
+        repeat match goal with
+               | [ H: _ = _ |- _ ] =>
+                 progress rewrite H in *
+               end.
+        instantiate (1 := homedirs).
+        instantiate (1 := tree').
+        unfold fs_invariant in *; SepAuto.pred_apply; SepAuto.cancel.
+        admit. (* need to update the cache for this to be using the in-memory
+        cache *)
+        eauto.
+        eauto.
+        eauto.
+
+        step.
+        intuition auto.
+        destruct r; try solve [ descend; intuition (subst; eauto) ].
+        exists tree'0, tree''; intuition (subst; eauto).
+        etransitivity; eauto.
+        subst.
+        exists tree'0, tree'0; intuition (subst; eauto).
+        etransitivity; eauto.
+      + step.
+        destruct e; try discriminate; intuition auto.
+        descend; intuition eauto.
+        repeat match goal with
+               | [ H: _ = _ |- _ ] =>
+                 progress rewrite H in *
+               end.
   Qed.
 
   (* translate all system calls for extraction *)

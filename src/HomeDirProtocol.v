@@ -24,3 +24,9 @@ Proof.
   specialize (H0 tid').
   intuition congruence.
 Defined.
+
+Instance homedir_rely_preorder tid homes : PreOrder (homedir_rely tid homes).
+Proof.
+  unfold homedir_rely.
+  constructor; hnf; intros; congruence.
+Defined.
