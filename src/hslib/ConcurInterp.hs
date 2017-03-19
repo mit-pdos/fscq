@@ -54,17 +54,21 @@ run_dcode s (Alloc v) = do
         i = maxIdent+1
         h' = Map.insert i v h in
         (h', i)
+  debugmsg $ "Alloc -> " ++ show i
   return $ unsafeCoerce i
 run_dcode s (ReadTxn txn) = do
+  debugmsg $ "ReadTxn"
   h <- readIORef (memory s)
   r <- return $ interp_rtxn txn h
   return $ unsafeCoerce r
 run_dcode s (AssgnTxn txn) = do
+  debugmsg $ "AssgnTxn"
   atomicModifyIORef (memory s) $ \h ->
     let h' = interp_wtxn txn h in
       (h', ())
   return $ unsafeCoerce ()
 run_dcode s (Write a v) = do
+  debugmsg $ "Write " ++ show a ++ " " ++ show v
   Disk.write_disk (disk s) a v
   return $ unsafeCoerce ()
 run_dcode ds (Hash sz (W64 w)) = run_dcode ds (Hash sz (W $ fromIntegral w))
@@ -87,6 +91,7 @@ run_dcode _ (BeginRead _) = do
   debugmsg $ "BeginRead"
   return $ unsafeCoerce ()
 run_dcode s (WaitForRead a) = do
+  debugmsg $ "WaitForRead " ++ show a
   val <- Disk.read_disk (disk s) a
   return $ unsafeCoerce val
 run_dcode ds (Bind p1 p2) = do
