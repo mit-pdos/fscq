@@ -59,8 +59,8 @@ Module CacheOneDir.
 
   Definition unlink lxp ixp dnum name ms :=
     let^ (ms, cache) <- get_dcache dnum ms;
-    let^ (ms, r) <- SDIR.unlink lxp ixp dnum name ms;
-    ms <- BFILE.cache_put dnum (Dcache.add name None (fst cache), 0) ms;
+    let^ (ms, ix, r) <- SDIR.unlink lxp ixp dnum name ms;
+    ms <- BFILE.cache_put dnum (Dcache.add name None (fst cache), ix) ms;
     Ret ^(ms, r).
 
   Definition link lxp bxp ixp dnum name inum isdir ms :=

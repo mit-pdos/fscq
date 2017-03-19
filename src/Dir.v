@@ -139,10 +139,10 @@ Module DIR.
   Definition unlink lxp ixp dnum name ms :=
     let^ (ms, r) <- ifind_lookup_f lxp ixp dnum name ms;
     match r with
-    | None => Ret ^(ms, Err ENOENT)
+    | None => Ret ^(ms, 0, Err ENOENT)
     | Some (ix, _) =>
         ms <- Dent.put lxp ixp dnum ix dent0 ms;
-        Ret ^(ms, OK tt)
+        Ret ^(ms, ix, OK tt)
     end.
 
   Definition link' lxp bxp ixp dnum name inum isdir ms :=
