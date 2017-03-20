@@ -44,7 +44,7 @@ func Num_of_ImmutableBuffer(buf ImmutableBuffer) Num {
 	if len(buf.data) != 8 {
 		log.Panicf("tried to make uint64 out of buffer of length %d", len(buf.data))
 	}
-	return Num(binary.LittleEndian.Uint64(buf))
+	return Num(binary.BigEndian.Uint64(buf))
 }
 
 func Num_of_string(str string) Num {

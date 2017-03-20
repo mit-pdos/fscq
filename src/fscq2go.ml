@@ -2,6 +2,7 @@ open Big
 open String
 open List
 
+open Word
 open GoSemantics
 open StringMap
 
@@ -137,12 +138,52 @@ let is_ptr_type (gType : Go.coq_type) =
   | Go.Num -> false
   | Go.Bool -> false
   | Go.Buffer -> true
-  | Go.ImmutableBuffer -> true
-  | Go.Slice _ -> true
+  | Go.ImmutableBuffer -> false
+  | Go.Slice _ -> false
   | Go.Pair _ -> false
-  | Go.AddrMap _ -> true
+  | Go.AddrMap _ -> false
   | Go.Struct _ -> false
   | Go.String -> false
+
+(* LSB first *)
+let word_to_bits (w : word) = []
+(*
+  let rec word_to_bits' acc w =
+    match w with
+    | WO -> acc
+    | WS (b, _, w') -> word_to_bits' (b :: acc) w'
+  in word_to_bits' [] w
+  *)
+
+
+let b2i b = if b then 1 else 0
+
+(* LSB first *)
+let rec bits_to_int (bits : bool list) : int =
+  match bits with
+  | [] -> 0
+  | false :: bits' -> 2 * bits_to_int bits'
+  | true :: bits' -> 1 + 2 * bits_to_int bits'
+
+let bits_to_byte bits = Char.chr (bits_to_int bits)
+
+let rec chunk n xs =
+  let rec take k xs ys = match k, xs with
+    | 0, _ -> List.rev ys :: chunk n xs
+    | _, [] -> if ys = [] then [] else [ys]
+    | _, x::xs' -> take (k - 1) xs' (x::ys)
+  in take n xs []
+
+(* LSB first *)
+let word_to_bytes (w : word) =
+  let bits = word_to_bits w in
+  if length bits mod 8 == 0
+  then map bits_to_byte (chunk 8 bits)
+  else failwith "word length not divisible by 8"
+
+let buf_literal (buf_bytes : char list) =
+  let join = String.concat ", " in
+  "[]byte{" ^ join (map (fun b -> string_of_int (Char.code b)) buf_bytes) ^ "}"
 
 let rec go_literal (gs : TranscriberState.global_state) t x =
   let join = String.concat ", " in
@@ -161,11 +202,11 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
      | Go.Moved -> "(moved)")
   | Go.ImmutableBuffer ->
     (match Obj.magic x with
-     | Go.Here v -> failwith "TODO: ImmutableBuffer -> String"
-     | Go.Moved -> "(moved)")
+     | Go.Here v -> buf_literal (word_to_bytes v)
+     | Go.Moved -> "ImmutableBuffer(nil)")
   | Go.Slice t1 ->
     begin match Obj.magic x with
-     | Go.Here v -> join (map (go_literal gs t1) v)
+     | Go.Here v -> go_type ^ "{" ^ join (map (go_literal gs t1) v) ^ "}"
      | Go.Moved -> "(moved)"
     end
   | Go.Pair (t1, t2) ->
@@ -198,7 +239,6 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
 
 let zero_val gs (t : Go.coq_type) =
   match t with
-  | Go.Buffer -> "New_Buffer(0)"
   | _ ->
     let go_type = (TranscriberState.get_go_type gs t) in
     "New_" ^ go_type ^ "()"
@@ -254,7 +294,7 @@ let go_modify_op (ts : TranscriberState.state)
       _ = " ^ snd ^ " // prevent unused error"
   | Go.MapAdd ->
     let (map, (key, (value, _))) = Obj.magic args_tuple in
-    "(*AddrMap)(" ^ (var_ref ts map) ^ ").Insert(" ^ (var_val_ref ts key) ^ ", " ^ (var_ref ts value) ^ ")"
+    "AddrMap(" ^ (var_ref ts map) ^ ").Insert(" ^ (var_val_ref ts key) ^ ", " ^ (var_ref ts value) ^ ")"
   | Go.MapFind ->
     let (map, (key, (rvar, _))) = Obj.magic args_tuple in
     let v_type = match (TranscriberState.get_var_type ts map) with
@@ -263,7 +303,7 @@ let go_modify_op (ts : TranscriberState.state)
     let v_go_type = TranscriberState.get_go_type ts.gstate v_type in
     let v = (var_ref ts rvar) in
 "{
-  in_map, val := (*AddrMap)(" ^ (var_ref ts map) ^ ").Find(" ^ (var_ref ts key) ^ ")
+  in_map, val := AddrMap(" ^ (var_ref ts map) ^ ").Find(" ^ (var_ref ts key) ^ ")
   _ = val  // prevent 'unused' error
   " ^ v ^ ".Fst = Bool(in_map)
   if in_map {
@@ -272,10 +312,10 @@ let go_modify_op (ts : TranscriberState.state)
 }"
   | Go.MapRemove ->
     let (map, (key, _)) = Obj.magic args_tuple in
-    "(*AddrMap)(" ^ (var_ref ts map) ^ ").Remove(" ^ (var_val_ref ts key) ^ ")"
+    "AddrMap(" ^ (var_ref ts map) ^ ").Remove(" ^ (var_val_ref ts key) ^ ")"
   | Go.MapCardinality ->
     let (map, (dst, _)) = Obj.magic args_tuple in
-    (var_val_ref ts dst) ^ " = (*AddrMap)(" ^ (var_ref ts map) ^ ").Cardinality()"
+    (var_val_ref ts dst) ^ " = AddrMap(" ^ (var_ref ts map) ^ ").Cardinality()"
   | Go.MapElements ->
     let (map, (dst, _)) = Obj.magic args_tuple in
     let v = (var_ref ts dst) in
@@ -292,7 +332,7 @@ let go_modify_op (ts : TranscriberState.state)
     let val_cast_type = (val_ref v_type v_go_type) in
     "{
       // MapElements
-      pairs := (*AddrMap)(" ^ m ^ ").Elements()
+      pairs := AddrMap(" ^ m ^ ").Elements()
       " ^ v ^ " := make(" ^ slice_go_t ^ ", 0, len(pairs))
       for _, keyval := range pairs {
         p := " ^ (zero_val ts.gstate slice_el_t) ^ "
@@ -357,14 +397,14 @@ let go_modify_op (ts : TranscriberState.state)
       let (dst_var, (src_var, _)) = Obj.magic args_tuple in
       let dst = var_ref ts dst_var in
       let src = var_ref ts src_var in
-      dst ^ " = " ^ src
+      dst ^ " = ImmutableBuffer(*" ^ src ^ ")"
   | Go.SliceBuffer ->
       let (dst_var, (src_var, (from_var, (to_var, _)))) = Obj.magic args_tuple in
       let dst = var_ref ts dst_var in
       let src = var_ref ts src_var in
       let from = var_ref ts from_var in
       let to_ = var_ref ts to_var in
-      dst ^ " = " ^ src ^ "[" ^ from ^ ":" ^ to_ ^ "]"
+      dst ^ " = ImmutableBuffer([]byte(" ^ src ^ ")[" ^ from ^ ":" ^ to_ ^ "])"
   ;;
 
 let go_expr_type ts expr =
@@ -506,17 +546,16 @@ let go_map_defs ts =
     "type " ^ type_name ^ " AddrMap  // " ^ go_v_type ^
     "
 
-    func (x *" ^ type_name ^ ") DeepCopy (dst **" ^ type_name ^ ") {
-    for _, v := range (*AddrMap)(x).Elements() {
+    func (x " ^ type_name ^ ") DeepCopy (dst *" ^ type_name ^ ") { /* TODO clear dst */
+    for _, v := range AddrMap(x).Elements() {
       v_copy := " ^ (zero_val ts v_type) ^ "
       " ^ (do_deep_copy v_type ("v.val.(" ^ go_v_type ^ ")") ("&v_copy")) ^ "
-      (*AddrMap)(*dst).Insert(v.key, v_copy)
+      AddrMap(*dst).Insert(v.key, v_copy)
     }
     }
 
-    func New_" ^ type_name ^ " () *" ^ type_name ^ "{
-      m := make(" ^ type_name ^ ")
-      return &m
+    func New_" ^ type_name ^ " () " ^ type_name ^ "{
+      return make(" ^ type_name ^ ")
     }\n"
   ) maps
 
@@ -540,7 +579,7 @@ let go_slice_defs ts =
     *dst = newSlice
     }
 
-    func New_" ^ type_name ^ " () *" ^ type_name ^ "{
+    func New_" ^ type_name ^ " () " ^ type_name ^ "{
     return nil
     }\n"
   ) maps

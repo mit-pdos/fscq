@@ -98,7 +98,7 @@ codegen/src/fscq/%.go: golib/%.go
 	@mkdir -p $(dir $@)
 	ln -s $(abspath $<) $@
 
-codegen/src/gofscq/fscq.go: codegen/fscq2go.byte
+codegen/src/gofscq/fscq.go: codegen/fscq2go.native
 	@mkdir -p $(dir $@)
 	$< > $@.tmp
 	mv $@.tmp $@

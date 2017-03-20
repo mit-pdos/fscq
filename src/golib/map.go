@@ -31,30 +31,30 @@ type LiteralKeyValPair struct {
 	val interface{}
 }
 
-func (m *AddrMap) Insert(key Num, val interface{}) {
-	(*m)[key] = val
+func (m AddrMap) Insert(key Num, val interface{}) {
+	m[key] = val
 }
 
-func (m *AddrMap) Find(key Num) (bool, interface{}) {
-	val, ok := (*m)[key]
+func (m AddrMap) Find(key Num) (bool, interface{}) {
+	val, ok := m[key]
 	return ok, val
 }
 
-func (m *AddrMap) Cardinality() Num {
-	return Num(len(*m))
+func (m AddrMap) Cardinality() Num {
+	return Num(len(m))
 }
 
-func (m *AddrMap) Elements() []KeyValPair {
+func (m AddrMap) Elements() []KeyValPair {
 	var elements KeyValPairs
-	for k, v := range *m {
+	for k, v := range m {
 		elements = append(elements, KeyValPair{k, v})
 	}
 	sort.Sort(elements)
 	return elements
 }
 
-func (m *AddrMap) Remove(key Num) {
-	delete(*m, key)
+func (m AddrMap) Remove(key Num) {
+	delete(m, key)
 }
 
 func AddrMap_literal(vals ...LiteralKeyValPair) AddrMap {

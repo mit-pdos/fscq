@@ -24,17 +24,14 @@ const debug = true
 var disk_file *os.File
 var disk_stats *DiskStats
 
-func (d Buffer) DeepCopy(dst **Buffer) {
-	copy((*dst).data, d.data)
+func (d *Buffer) DeepCopy(dst **Buffer) {
+	// TODO: don't always allocate
+	**dst = Buffer{d.sz_bits, append([]byte{}, d.data...)}
+}
 
-	// fill uncopied portion with zeros
-	for i := len(d.data); i < len((*dst).data); i++ {
-		(*dst).data[i] = 0
-	}
-
-	// append uncopied source data
-	start := len((*dst).data)
-	(*dst).data = append((*dst).data, d.data[start:]...)
+func (d ImmutableBuffer) DeepCopy(dst *ImmutableBuffer) {
+	// TODO: don't always allocate
+	*dst = ImmutableBuffer{d.sz_bits, append([]byte{}, d.data...)}
 }
 
 func (d *Buffer) fill_to_size() {
@@ -45,10 +42,12 @@ func (d *Buffer) fill_to_size() {
 	}
 }
 
-func New_Buffer(sz Num) *Buffer {
-	buf := new(Buffer)
-	buf.sz_bits = sz.Int64()
-	return buf
+func New_Buffer() *Buffer {
+	return &Buffer{}
+}
+
+func New_ImmutableBuffer() ImmutableBuffer {
+	return ImmutableBuffer{}
 }
 
 func Init_disk(path string) {
