@@ -157,9 +157,15 @@ Module DIR.
         Ret ^(ms, 0, ok)
     end.
 
+  (* link without hint *)
+  Definition link'' lxp bxp ixp dnum name inum isdir (ix0:addr) ms :=
+    let^ (ms, ix, r0) <- link' lxp bxp ixp dnum name inum isdir ms;
+    Ret ^(ms, ix, r0).
+
+  (* link with hint *)
   Definition link lxp bxp ixp dnum name inum isdir ix0 ms :=
     let de := mk_dent name inum isdir in
-    let^ (ms, len) <- BFILE.getlen lxp ixp inum ms;
+    let^ (ms, len) <- BFILE.getlen lxp ixp dnum ms;
     If (lt_dec ix0 (len * Dent.RA.items_per_val)) {
       let^ (ms, res) <- Dent.get lxp ixp dnum ix0 ms;
       match (is_valid res) with
@@ -171,8 +177,11 @@ Module DIR.
         Ret ^(ms, ix0+1, OK tt)
       end
     } else {
+(* calling extend here slows down performance drastically.
+        let^ (ms, ok) <- Dent.extend lxp bxp ixp dnum de ms;
+        Ret ^(ms, ix0+1, ok)  *)
       let^ (ms, ix, r0) <- link' lxp bxp ixp dnum name inum isdir ms;
-      Ret ^(ms, ix, r0)
+      Ret ^(ms, ix, r0) 
     }.
 
   (*************  basic lemmas  *)

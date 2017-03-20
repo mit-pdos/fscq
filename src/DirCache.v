@@ -51,7 +51,7 @@ Module CacheOneDir.
     | None =>
       AlertModified;;
       let^ (ms, r) <- SDIR.lookup lxp ixp dnum name ms;
-      ms <- BFILE.cache_put dnum (Dcache.add name r (fst cache), 0) ms;
+      ms <- BFILE.cache_put dnum (Dcache.add name r (fst cache), (snd cache)) ms;
       Ret ^(ms, r)
     | Some r =>
       Ret ^(ms, r)

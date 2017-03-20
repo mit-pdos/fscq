@@ -7,6 +7,7 @@ Require Import Mem.
 Require Import PredCrash.
 Require Import AsyncDisk.
 Require Import Word.
+Require Import String.
 
 Import ListNotations.
 
@@ -32,6 +33,7 @@ Inductive prog : Type -> Type :=
   | VarGet (i : vartype) (T : Type) : prog T
   | VarSet (i : vartype) (T : Type) (v : T) : prog unit
   | AlertModified : prog unit
+  | Debug (s: string) (n: nat) : prog unit
   | Hash (sz: nat) (buf: word sz) : prog (word hashlen)
   | Bind T T' (p1: prog T) (p2: T -> prog T') : prog T'.
 
