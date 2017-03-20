@@ -2142,9 +2142,9 @@ Qed.
 Hint Constructors source_stmt.
 
 Lemma CompileRetOptionSome : forall env B {HB: GoWrapper B}
-  avar bvar pvar (b : B) (p : bool * B) F,
+  avar bvar pvar (b : B) F,
   EXTRACT Ret (Some b)
-  {{ avar ~> true * bvar ~> b * pvar ~> p * F }}
+  {{ avar ~> true * bvar ~> b * pvar ~>? (bool * B) * F }}
     Modify JoinPair ^(pvar, avar, bvar)
   {{ fun ret => pvar ~> ret *
                 avar |-> moved_value (wrap true) *
@@ -2176,9 +2176,9 @@ Local Hint Extern 1 (okToCancel (?var |-> Val (Pair Bool wrap_type) (false, wrap
   => apply option_none_okToCancel.
 
 Lemma CompileRetOptionNone : forall env B {HB: GoWrapper B}
-  avar pvar (p : bool * B) F,
+  avar pvar F,
   EXTRACT Ret None
-  {{ avar ~> false * pvar ~> p * F }}
+  {{ avar ~> false * pvar ~>? (bool * B) * F }}
     Declare wrap_type (fun bvar =>
       Modify JoinPair ^(pvar, avar, bvar)
     )
