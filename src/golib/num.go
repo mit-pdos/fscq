@@ -1,6 +1,8 @@
 package fscq
 
 import (
+	"encoding/binary"
+	"log"
 	"strconv"
 )
 
@@ -38,6 +40,13 @@ func Num_of_i64(num int64) Num {
 	return Num(num)
 }
 
+func Num_of_ImmutableBuffer(buf ImmutableBuffer) Num {
+	if len(buf.data) != 8 {
+		log.Panicf("tried to make uint64 out of buffer of length %d", len(buf.data))
+	}
+	return Num(binary.LittleEndian.Uint64(buf))
+}
+
 func Num_of_string(str string) Num {
 	n, err := strconv.ParseUint(str, 10, 64)
 	if err != nil {
@@ -63,11 +72,28 @@ func (n *Num) Add(x Num, y Num) {
 	}
 }
 
+func (n *Num) Subtract(x Num, y Num) {
+	// Saturating subtraction
+	if x < y {
+		*n = 0
+	} else {
+		*n = x - y
+	}
+}
+
 func (n *Num) Multiply(x Num, y Num) {
 	*n = x * y
 	if x != 0 && y != 0 && *n/x != y {
 		panic("overflow")
 	}
+}
+
+func (n *Num) Divide(x Num, y Num) {
+	*n = x / y
+}
+
+func (n *Num) Modulo(x Num, y Num) {
+	*n = x % y
 }
 
 func (n *Num) Increment() {

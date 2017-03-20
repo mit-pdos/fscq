@@ -337,15 +337,21 @@ let go_modify_op (ts : TranscriberState.state)
     let a = (var_ref ts a_var) in
     let b = (var_ref ts b_var) in
     match num_op with
-    | Go.Plus -> dst ^ " = " ^ a ^ " + " ^ b
-    | _ -> fail_unmatched "go_modify_op ModifyNumOp"
+    | Go.Plus -> dst ^ ".Add(" ^ a ^ ", " ^ b ^ ")"
+    | Go.Minus -> dst ^ ".Subtract(" ^ a ^ ", " ^ b ^ ")"
+    | Go.Times -> dst ^ ".Multiply(" ^ a ^ ", " ^ b ^ ")"
+    | Go.Divide -> dst ^ ".Divide(" ^ a ^ ", " ^ b ^ ")"
+    | Go.Modulo -> dst ^ ".Modulo(" ^ a ^ ", " ^ b ^ ")"
     )
   | Go.StructGet _ ->
     fail_unmatched "go_modify_op StructGet"
   | Go.StructPut _ ->
     fail_unmatched "go_modify_op StructGet"
   | Go.DeserializeNum ->
-    fail_unmatched "go_modify_op DeserializeNum"
+      let (dst_var, (src_var, _)) = Obj.magic args_tuple in
+      let dst = var_ref ts dst_var in
+      let src = var_ref ts src_var in
+      dst ^ " = Num_of_ImmutableBuffer(" ^ src ^ ")"
   | Go.FreezeBuffer ->
     fail_unmatched "go_modify_op FreezeBuffer"
   | Go.SliceBuffer ->
