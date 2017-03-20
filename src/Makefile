@@ -31,6 +31,7 @@ EXTRACT_MODULES := Wrappers \
 		ExtractLog \
 		ExtractGroupLog \
 		ExtractMemLog \
+		ExtractRecArrayUtils \
 		GoExtracted
 EXTRACT_VS 		:= $(EXTRACT_MODULES:%=Extract/%.v)
 EXTRACT_BUILD   := $(patsubst %.v,coqbuild/%.v,$(EXTRACT_VS))
