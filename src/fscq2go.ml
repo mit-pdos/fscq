@@ -353,9 +353,18 @@ let go_modify_op (ts : TranscriberState.state)
       let src = var_ref ts src_var in
       dst ^ " = Num_of_ImmutableBuffer(" ^ src ^ ")"
   | Go.FreezeBuffer ->
-    fail_unmatched "go_modify_op FreezeBuffer"
+      (* Noop! *)
+      let (dst_var, (src_var, _)) = Obj.magic args_tuple in
+      let dst = var_ref ts dst_var in
+      let src = var_ref ts src_var in
+      dst ^ " = " ^ src
   | Go.SliceBuffer ->
-    fail_unmatched "go_modify_op SliceBuffer"
+      let (dst_var, (src_var, (from_var, (to_var, _)))) = Obj.magic args_tuple in
+      let dst = var_ref ts dst_var in
+      let src = var_ref ts src_var in
+      let from = var_ref ts from_var in
+      let to_ = var_ref ts to_var in
+      dst ^ " = " ^ src ^ "[" ^ from ^ ":" ^ to_ ^ "]"
   ;;
 
 let go_expr_type ts expr =
