@@ -8,8 +8,10 @@ import (
 
 type Buffer struct {
 	sz_bits int64
-	data []byte
+	data    []byte
 }
+
+type ImmutableBuffer Buffer
 
 type DiskStats struct {
 	reads  Num
@@ -27,7 +29,7 @@ func (d Buffer) DeepCopy(dst **Buffer) {
 
 	// fill uncopied portion with zeros
 	for i := len(d.data); i < len((*dst).data); i++ {
-		(*dst).data[i] = 0;
+		(*dst).data[i] = 0
 	}
 
 	// append uncopied source data

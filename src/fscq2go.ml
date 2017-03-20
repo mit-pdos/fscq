@@ -62,6 +62,7 @@ module TranscriberState = struct
       | Go.Num -> "Num"
       | Go.Bool -> "Bool"
       | Go.Buffer -> "Buffer"
+      | Go.ImmutableBuffer -> "ImmutableBuffer"
       | Go.Pair (a, b) ->
         let name = "Pair_" ^ (get_go_type gs a) ^ "_" ^ (get_go_type gs b) in
         gs.structs <- (name, [("Fst", a); ("Snd", b)]) :: gs.structs;
