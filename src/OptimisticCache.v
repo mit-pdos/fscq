@@ -86,10 +86,20 @@ Section OptimisticCache.
 
   Ltac solve_cache :=
     unfold CacheRep; intuition;
-    repeat match goal with
-           | [ a: addr, H: cache_rep _ _ _ |- _ ] =>
-             specialize (H a)
-           end;
+    try match goal with
+        | [ H: cache_rep _ _ _ |- cache_rep _ _ _ ] =>
+          unfold cache_rep in *;
+          let a' := fresh "a'" in
+          intro a';
+          specialize (H a');
+          match goal with
+          | [ a: addr, a': addr |- _ ] =>
+            destruct (addr_eq_dec a a'); subst;
+            autorewrite with cache upd
+          end
+        | [ a: addr, H: cache_rep _ _ _ |- _ ] =>
+          specialize (H a)
+        end;
     repeat simpl_match;
     repeat deex;
     intuition eauto; try congruence.
@@ -115,11 +125,7 @@ Section OptimisticCache.
       d' = upd d a (v0, NoReader) ->
       CacheRep d' (add_entry Clean c a v0) vd.
   Proof.
-    unfold CacheRep, cache_rep; intros.
-    specialize (H a0).
-    destruct (addr_eq_dec a a0); subst;
-      autorewrite with cache upd;
-      solve_cache.
+    solve_cache.
   Qed.
 
   Hint Resolve CacheRep_finish_read.
@@ -180,11 +186,7 @@ Section OptimisticCache.
           forall d' : DISK, d' = upd d a (v0, Pending) ->
                        CacheRep d' (mark_pending c a) vd.
   Proof.
-    unfold CacheRep, cache_rep; intros; subst.
-    specialize (H1 a0).
-    destruct (addr_eq_dec a a0); subst;
-      autorewrite with cache upd;
-      solve_cache.
+    solve_cache.
   Qed.
 
   Hint Resolve CacheRep_start_fill.
@@ -236,12 +238,8 @@ Section OptimisticCache.
         vd a = Some v1 ->
         CacheRep d (add_entry Dirty c a v) (upd vd a v).
   Proof.
-    unfold CacheRep, cache_rep; intros.
-    specialize (H0 a0).
-    destruct (addr_eq_dec a a0); subst;
-      autorewrite with cache upd;
-      solve_cache.
-    destruct (cache_get c a0) eqn:Hcache;
+    solve_cache.
+    destruct (cache_get c a') eqn:Hcache;
       intuition eauto.
     destruct b; eauto.
   Qed.
