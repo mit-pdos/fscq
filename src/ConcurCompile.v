@@ -67,9 +67,9 @@ Section ConcurCompile.
     let 'ExtractionOf p' _ := c in p'.
 
   Fixpoint cForEach_ (ITEM : Type) (L : Type)
-           (f : ITEM -> L -> Cache -> cprog (Result L * Cache))
+           (f : ITEM -> L -> CacheSt -> cprog (Result L * CacheSt))
            (lst : list ITEM)
-           (l : L) : Cache -> cprog (Result L * Cache) :=
+           (l : L) : CacheSt -> cprog (Result L * CacheSt) :=
     fun c =>
       match lst with
       | nil => Ret (Success NoChange l, c)
@@ -83,10 +83,10 @@ Section ConcurCompile.
           end
       end.
 
-  Lemma translate_ForEach : forall ITEM L G p lst
+  Lemma translate'_ForEach : forall ITEM L G p lst
                               nocrash crashed l ls,
-      translate (@ForEach_ ITEM L G p lst nocrash crashed l) ls =
-      cForEach_ (fun i l => translate (p i l) ls) lst l.
+      translate' (@ForEach_ ITEM L G p lst nocrash crashed l) ls =
+      cForEach_ (fun i l => translate' (p i l) ls) lst l.
   Proof.
     intros.
     extensionality c.
@@ -122,9 +122,9 @@ Section ConcurCompile.
   Defined.
 
   Fixpoint cForN_ (L : Type)
-           (f : nat -> L -> Cache -> cprog (Result L * Cache))
+           (f : nat -> L -> CacheSt -> cprog (Result L * CacheSt))
            (i n: nat) (l: L)
-    : Cache -> cprog (Result L * Cache) :=
+    : CacheSt -> cprog (Result L * CacheSt) :=
     fun c =>
       match n with
       | O => Ret (Success NoChange l, c)
@@ -138,10 +138,10 @@ Section ConcurCompile.
           end
       end.
 
-  Lemma translate_ForN : forall L G p i n
+  Lemma translate'_ForN : forall L G p i n
                            nocrash crashed l ls,
-      translate (@ForN_ L G p i n nocrash crashed l) ls =
-      cForN_ (fun i l => translate (p i l) ls) i n l.
+      translate' (@ForN_ L G p i n nocrash crashed l) ls =
+      cForN_ (fun i l => translate' (p i l) ls) i n l.
   Proof.
     intros.
     extensionality c.
@@ -223,52 +223,52 @@ Section ConcurCompile.
     reflexivity.
   Defined.
 
-  Lemma translate_match_res : forall T T' (p1: T -> prog T') (p2: Errno -> prog T') r,
-      translate (match r with
+  Lemma translate'_match_res : forall T T' (p1: T -> prog T') (p2: Errno -> prog T') r,
+      translate' (match r with
                          | OK r => p1 r
                          | Err e => p2 e
                          end) =
       match r with
-      | OK r => translate (p1 r)
-      | Err e => translate (p2 e)
+      | OK r => translate' (p1 r)
+      | Err e => translate' (p2 e)
       end.
   Proof.
     intros.
     destruct r; eauto.
   Qed.
 
-  Lemma translate_match_opt : forall T T' (p1: T -> prog T') (p2: prog T') r,
-      translate (match r with
+  Lemma translate'_match_opt : forall T T' (p1: T -> prog T') (p2: prog T') r,
+      translate' (match r with
                          | Some r => p1 r
                          | None => p2
                          end) =
       match r with
-      | Some r => translate (p1 r)
-      | None => translate p2
+      | Some r => translate' (p1 r)
+      | None => translate' p2
       end.
   Proof.
     intros.
     destruct r; eauto.
   Qed.
 
-  Lemma translate_match_sumbool : forall P Q T' (p1: prog T') (p2: prog T') (r:{P}+{Q}),
-      translate (match r with
+  Lemma translate'_match_sumbool : forall P Q T' (p1: prog T') (p2: prog T') (r:{P}+{Q}),
+      translate' (match r with
                          | left _ => p1
                          | right _ => p2
                          end) =
       match r with
-      | left _ => translate p1
-      | right _ => translate p2
+      | left _ => translate' p1
+      | right _ => translate' p2
       end.
   Proof.
     intros.
     destruct r; eauto.
   Qed.
 
-  Lemma translate_destruct_prod : forall A B T' (p: A -> B -> prog T') (r:A*B),
-      translate (let (a, b) := r in p a b) =
+  Lemma translate'_destruct_prod : forall A B T' (p: A -> B -> prog T') (r:A*B),
+      translate' (let (a, b) := r in p a b) =
       let (a, b) := r in
-      translate (p a b).
+      translate' (p a b).
   Proof.
     intros.
     destruct r; eauto.
@@ -380,28 +380,28 @@ Section ConcurCompile.
     | [ |- Compiled (Bind _ _) ] =>
       apply compile_bind; intros
 
-    (* push translate inside functions *)
-    | [ |- Compiled (translate _ (ForEach_ _ _ _ _ _) _ _) ] =>
-      rewrite translate_ForEach
-    | [ |- Compiled (translate _ (ForN_ _ _ _ _ _ _) _ _) ] =>
-      rewrite translate_ForN
-    | [ |- Compiled (translate _ (match _ with
+    (* push translate' inside functions *)
+    | [ |- Compiled (translate' _ (ForEach_ _ _ _ _ _) _ _) ] =>
+      rewrite translate'_ForEach
+    | [ |- Compiled (translate' _ (ForN_ _ _ _ _ _ _) _ _) ] =>
+      rewrite translate'_ForN
+    | [ |- Compiled (translate' _ (match _ with
                                  | OK _ => _
                                  | Err _ => _
                                  end) _ _) ] =>
-      rewrite translate_match_res
-    | [ |- Compiled (translate _ (match _ with
+      rewrite translate'_match_res
+    | [ |- Compiled (translate' _ (match _ with
                                  | Some _ => _
                                  | None => _
                                  end) _ _) ] =>
-      rewrite translate_match_opt
-    | [ |- Compiled (translate _ (match ?r with
+      rewrite translate'_match_opt
+    | [ |- Compiled (translate' _ (match ?r with
                                  | left _ => ?p1
                                  | right _ => ?p2
                                  end) _ _) ] =>
-      rewrite (translate_match_sumbool p1 p2 r)
-    | [ |- Compiled (translate _ (let (_, _) := _ in _) _ _) ] =>
-      rewrite translate_destruct_prod
+      rewrite (translate'_match_sumbool p1 p2 r)
+    | [ |- Compiled (translate' _ (let (_, _) := _ in _) _ _) ] =>
+      rewrite translate'_destruct_prod
 
     (* compile specific constructs *)
     | [ |- Compiled (cForEach_ _ _ _ _) ] =>
@@ -444,7 +444,7 @@ Section ConcurCompile.
 
   Ltac comp_unfold :=
     match goal with
-    | [ |- Compiled (translate _ ?p _ _) ] =>
+    | [ |- Compiled (translate' _ ?p _ _) ] =>
       let h := head_symbol p in
       unfold h
     end.
