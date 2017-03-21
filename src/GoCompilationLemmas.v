@@ -2257,6 +2257,147 @@ Proof.
     repeat eexists. apply StepIfFalse. eval_expr.
 Qed.
 
+Section Concrete.
+  (* Compilation lemmas for where variables have concrete values *)
+
+  Lemma CompileWhileFalseNoOp : forall A var0 xbody env,
+    EXTRACT (Ret tt)
+    {{ var0 ~> false * A }}
+      Go.While (Var var0) xbody
+    {{ fun ret => var0 ~> false * A }} // env.
+  Proof.
+    unfold ProgOk.
+    inv_exec_progok.
+    repeat exec_solve_step.
+    repeat exec_solve_step.
+    repeat exec_solve_step.
+    contradiction H1.
+    repeat eexists.
+    apply StepWhileFalse.
+    eval_expr.
+  Qed.
+
+  Lemma CompileUnconsNil : forall T (W : GoWrapper T) A lvar cvar xvar xsvar env,
+    EXTRACT (Ret tt)
+    {{ lvar ~> @nil T * cvar ~>? bool * xvar ~>? T * xsvar ~>? list T * A }}
+      Modify Uncons ^(lvar, cvar, xvar, xsvar)
+    {{ fun _ => lvar |-> Val (Slice wrap_type) Moved * cvar ~> false * xvar ~>? T * xsvar ~> @nil T * A}} // env.
+  Proof.
+    unfold ProgOk.
+    inv_exec_progok.
+    repeat exec_solve_step.
+    repeat exec_solve_step.
+    repeat exec_solve_step.
+    contradiction H1.
+    repeat eexists.
+    eapply StepModify;
+    [eval_expr; eauto..].
+  Qed.
+
+  Lemma CompileUnconsCons : forall T (W : GoWrapper T) A lvar cvar xvar xsvar (x : T) xs env,
+    EXTRACT (Ret tt)
+    {{ lvar ~> (x :: xs) * cvar ~>? bool * xvar ~>? T * xsvar ~>? list T * A }}
+      Modify Uncons ^(lvar, cvar, xvar, xsvar)
+    {{ fun _ => lvar |-> Val (Slice wrap_type) Moved * cvar ~> true * xvar ~> x * xsvar ~> xs * A}} // env.
+  Proof.
+    unfold ProgOk.
+    inv_exec_progok.
+    repeat exec_solve_step.
+    repeat exec_solve_step.
+    repeat exec_solve_step.
+    contradiction H1.
+    repeat eexists.
+    eapply StepModify;
+    [eval_expr; eauto..].
+  Qed.
+
+  Lemma CompileWhileTrueOnce : forall A B var0 xp env,
+    EXTRACT (Ret tt)
+    {{ var0 ~> true * A }}
+      xp;
+      Go.While (Var var0) xp
+    {{ fun _ => B }} // env ->
+    EXTRACT (Ret tt)
+    {{ var0 ~> true * A }}
+      Go.While (Var var0) xp
+    {{ fun _ => B }} // env.
+  Proof.
+    intros. unfold ProgOk.
+    inv_exec_progok.
+    inv_exec.
+    repeat exec_solve_step.
+    repeat exec_solve_step.
+    repeat exec_solve_step.
+    contradiction H2.
+    repeat eexists.
+    apply StepWhileTrue.
+    eval_expr.
+  Qed.
+
+  Lemma CompileIfFalse : forall T A B (p : prog T) px qx var0 env,
+    EXTRACT p {{ var0 ~> false * A }} px {{ B }} // env ->
+    EXTRACT p
+    {{ var0 ~> false * A }}
+      If (Var var0) Then qx Else px EndIf
+    {{ B }} // env.
+  Proof.
+    unfold ProgOk.
+    inv_exec_progok.
+    inv_exec.
+    inv_exec; eval_expr.
+    edestruct H; eauto.
+    cbn; eauto.
+    forward_solve.
+    inv_exec.
+    inv_exec; eval_expr.
+    edestruct H; eauto.
+    cbn; eauto.
+    forward_solve.
+    inv_exec.
+    inv_exec.
+    inv_exec; eval_expr.
+    edestruct H; eauto.
+    cbn; eauto.
+    forward_solve.
+    contradiction H2.
+    repeat eexists.
+    eapply StepIfFalse.
+    eval_expr.
+  Qed.
+
+  Lemma CompileIfTrue : forall T A B (p : prog T) px qx var0 env,
+    EXTRACT p {{ var0 ~> true * A }} px {{ B }} // env ->
+    EXTRACT p
+    {{ var0 ~> true * A }}
+      If (Var var0) Then px Else qx EndIf
+    {{ B }} // env.
+  Proof.
+    unfold ProgOk.
+    inv_exec_progok.
+    inv_exec.
+    inv_exec; eval_expr.
+    edestruct H; eauto.
+    cbn; eauto.
+    forward_solve.
+    inv_exec.
+    inv_exec; eval_expr.
+    edestruct H; eauto.
+    cbn; eauto.
+    forward_solve.
+    inv_exec.
+    inv_exec.
+    inv_exec; eval_expr.
+    edestruct H; eauto.
+    cbn; eauto.
+    forward_solve.
+    contradiction H2.
+    repeat eexists.
+    eapply StepIfTrue.
+    eval_expr.
+  Qed.
+
+End Concrete.
+
 Definition middle_immut : forall low mid high w, immut_word mid := Rec.middle.
 
 Arguments nth_var : simpl never.
