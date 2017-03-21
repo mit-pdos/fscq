@@ -449,8 +449,31 @@ Section ConcurrentFS.
       (* cancel takes 40s *)
       eauto.
       congruence.
-      descend; intuition eauto.
+      discriminate.
+
+      step; simplify; finish.
+      destruct e; try solve [ step; exfalso; eauto ].
+
+      step; simplify.
+      unfold translated_postcondition in *; simpl in *; intuition eauto.
+      match goal with
+      | [ H: fs_invariant _ _ _ _ _ (Sigma.mem st1) |- _ ] =>
+        pose proof (fs_invariant_unfold H); repeat deex
+      end.
+      descend; simpl in *; intuition eauto.
+      unfold fs_invariant in *; SepAuto.pred_apply; SepAuto.cancel.
       congruence.
+      unfold G, fs_guarantee.
+      repeat match goal with
+             | [ H: _ = _ |- _ ] =>
+               progress rewrite H in *
+             end.
+      exists tree', tree', homedirs.
+      intuition auto.
+      unfold fs_invariant; SepAuto.pred_apply.
+      Search (Sigma.disk st0).
+      Search (Sigma.disk st1).
+      descend; intuition eauto.
 
       subst; simpl.
       step.

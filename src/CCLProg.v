@@ -211,6 +211,9 @@ Section CCL.
                         then NonDet (* still need to check type *)
                         else Fails
                       else Fails
+    (* TODO: disk operations require guarantee proofs, too, but somehow
+    separable from memory protocol (disk operations not observable until
+    unlock, while writes are immediately visible) *)
     | BeginRead a => if CanWrite (Sigma.l sigma) then
                       match Sigma.disk sigma a with
                       | Some (v, NoReader) =>
