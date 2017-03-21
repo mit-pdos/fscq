@@ -35,12 +35,23 @@ Section OptimisticCache.
   Definition CacheRep d c (vd:Disk) :=
     cache_rep d c vd.
 
+  Lemma CacheRep_fold : forall d c vd,
+      cache_rep d c vd ->
+      CacheRep d c vd.
+  Proof.
+    auto.
+  Qed.
+
+  Hint Resolve CacheRep_fold.
+
   Ltac simplify :=
     repeat match goal with
            | [ H: context[let (n, m) := ?a in _] |- _ ] =>
              let n := fresh n in
              let m := fresh m in
              destruct a as [m n]
+           | [ H: CacheRep _ _ _ |- _ ] =>
+             unfold CacheRep in H
            | [ |- exists (_: _ * _), _ ] => apply exists_tuple
            | [ H: (_, _) = (_, _) |- _ ] =>
              inversion H; subst; clear H
@@ -85,7 +96,7 @@ Section OptimisticCache.
     end.
 
   Ltac solve_cache :=
-    unfold CacheRep; intuition;
+    intuition;
     try match goal with
         | [ H: cache_rep _ _ _ |- cache_rep _ _ _ ] =>
           unfold cache_rep in *;
@@ -106,29 +117,29 @@ Section OptimisticCache.
 
   Hint Extern 3 (_ = _) => congruence.
 
-  Lemma CacheRep_invalid:
+  Lemma cache_rep_invalid:
     forall (c : Cache) (a : addr) d (vd : Disk) (v0 : valu),
-      CacheRep d c vd ->
+      cache_rep d c vd ->
       cache_get c a = Invalid ->
       vd a = Some v0 -> d a = Some (v0, Pending).
   Proof.
     solve_cache.
   Qed.
 
-  Hint Resolve CacheRep_invalid.
+  Hint Resolve cache_rep_invalid.
 
-  Lemma CacheRep_finish_read:
+  Lemma cache_rep_finish_read:
     forall (c : Cache) (a : addr) d d' (vd : Disk) (v0 : valu),
-      CacheRep d c vd ->
+      cache_rep d c vd ->
       vd a = Some v0 ->
       cache_get c a = Invalid ->
       d' = upd d a (v0, NoReader) ->
-      CacheRep d' (add_entry Clean c a v0) vd.
+      cache_rep d' (add_entry Clean c a v0) vd.
   Proof.
     solve_cache.
   Qed.
 
-  Hint Resolve CacheRep_finish_read.
+  Hint Resolve cache_rep_finish_read.
 
   Theorem ClearPending_ok : forall tid c a,
       cprog_spec G tid
@@ -155,41 +166,41 @@ Section OptimisticCache.
 
   Hint Extern 0 {{ ClearPending _ _; _ }} => apply ClearPending_ok : prog.
 
-  Lemma CacheRep_present_val:
+  Lemma cache_rep_present_val:
     forall (c : Cache) (a : addr) (v : valu) (b : DirtyBit),
       cache_get c a = Present v b ->
       forall (d : DISK) (vd : Disk) (v0 : valu),
-        CacheRep d c vd -> vd a = Some v0 -> v = v0.
+        cache_rep d c vd -> vd a = Some v0 -> v = v0.
   Proof.
     solve_cache.
   Qed.
 
-  Lemma CacheRep_missing_val:
+  Lemma cache_rep_missing_val:
     forall (c : Cache) (a : addr),
       cache_get c a = Missing ->
       forall (vd : Disk) (v0 : valu),
         vd a = Some v0 ->
-        forall d : DISK, CacheRep d c vd -> d a = Some (v0, NoReader).
+        forall d : DISK, cache_rep d c vd -> d a = Some (v0, NoReader).
   Proof.
     solve_cache.
   Qed.
 
-  Hint Resolve CacheRep_present_val CacheRep_missing_val.
+  Hint Resolve cache_rep_present_val cache_rep_missing_val.
 
-  Lemma CacheRep_start_fill:
+  Lemma cache_rep_start_fill:
     forall (c : Cache) (a : addr),
       cache_get c a = Missing ->
       forall (vd : Disk) (v0 : valu),
         vd a = Some v0 ->
         forall d : DISK,
-          CacheRep d c vd ->
+          cache_rep d c vd ->
           forall d' : DISK, d' = upd d a (v0, Pending) ->
-                       CacheRep d' (mark_pending c a) vd.
+                       cache_rep d' (mark_pending c a) vd.
   Proof.
     solve_cache.
   Qed.
 
-  Hint Resolve CacheRep_start_fill.
+  Hint Resolve cache_rep_start_fill.
 
   Definition CacheRead_ok : forall tid c a l,
       cprog_spec G tid
@@ -230,13 +241,13 @@ Section OptimisticCache.
       let c' := add_entry Dirty c a v in
       Ret (tt, c').
 
-  Lemma CacheRep_dirty_write:
+  Lemma cache_rep_dirty_write:
     forall (c : Cache) (a : addr) (v : valu),
       cache_get c a <> Invalid ->
       forall (vd : Disk) (v1 : valu) d,
-        CacheRep d c vd ->
+        cache_rep d c vd ->
         vd a = Some v1 ->
-        CacheRep d (add_entry Dirty c a v) (upd vd a v).
+        cache_rep d (add_entry Dirty c a v) (upd vd a v).
   Proof.
     solve_cache.
     destruct (cache_get c a') eqn:Hcache;
@@ -244,7 +255,7 @@ Section OptimisticCache.
     destruct b; eauto.
   Qed.
 
-  Hint Resolve CacheRep_dirty_write.
+  Hint Resolve cache_rep_dirty_write.
   Hint Extern 2 (cache_get _ _ <> _) => congruence.
 
   Theorem CacheWrite_ok : forall tid c a v,
