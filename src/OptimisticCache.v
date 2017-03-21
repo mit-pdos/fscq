@@ -475,6 +475,7 @@ Section OptimisticCache.
                          fun sigma' c =>
                            F (Sigma.mem sigma') /\
                            cache_rep d c vd /\
+                           c = cache cs /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.l sigma' = Sigma.l sigma; |})
@@ -497,6 +498,7 @@ Section OptimisticCache.
                          fun sigma' c =>
                            F (Sigma.mem sigma') /\
                            cache_rep d c vd0 /\
+                           c = old_cache cs /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.l sigma' = Sigma.l sigma; |})
@@ -528,6 +530,8 @@ Section OptimisticCache.
                          fun sigma' cs =>
                            F (Sigma.mem sigma') /\
                            CacheRep d cs vd vd /\
+                           cache cs = c /\
+                           old_cache cs = c /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.l sigma' = Sigma.l sigma; |})

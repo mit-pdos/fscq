@@ -32,7 +32,7 @@ Section OptimisticTranslator.
 
   Variable G:TID -> Sigma -> Sigma -> Prop.
 
-  Fixpoint translate T (p: prog T) :
+  Fixpoint translate' T (p: prog T) :
     LockState -> CacheSt -> cprog (Result T * CacheSt) :=
     fun l cs => match p with
            | Prog.Ret v => Ret (Success NoChange v, cs)
@@ -50,10 +50,10 @@ Section OptimisticTranslator.
            | Prog.Sync => Ret (Success NoChange tt, cs)
            | Prog.Hash buf => v <- Hash buf;
                                Ret (Success NoChange v, cs)
-           | Prog.Bind p1 p2 => do '(r, cs) <- translate p1 l cs;
+           | Prog.Bind p1 p2 => do '(r, cs) <- translate' p1 l cs;
                                  match r with
                                  | Success f v =>
-                                   do '(r', cs') <- translate (p2 v) l cs;
+                                   do '(r', cs') <- translate' (p2 v) l cs;
                                      Ret (modified_or f r', cs')
                                  | Failure e => Ret (Failure e, cs)
                                  end
@@ -261,7 +261,7 @@ Section OptimisticTranslator.
         CacheRep d cs vd0 vd ->
         (l = WriteLock -> d = Sigma.disk sigma) ->
         Sigma.l sigma = l ->
-        exec G tid sigma (translate p l cs) out ->
+        exec G tid sigma (translate' p l cs) out ->
         match out with
         | Finished sigma' (r, cs') =>
           exists vd',
@@ -269,6 +269,7 @@ Section OptimisticTranslator.
           let d' := if CanWrite l then Sigma.disk sigma' else d in
           CacheRep d' cs' vd0 vd' /\
           translated_postcondition l d sigma (cache cs) vd sigma' (cache cs') vd' /\
+          (l = Free -> cs' = cs) /\
           match r with
           | Success _ v =>
             Prog.exec (add_buffers vd) Mem.empty_mem (Sigma.hm sigma) p
@@ -313,7 +314,7 @@ Section OptimisticTranslator.
         CCLTactics.inv_bind; eauto.
 
     - destruct l; simpl in *; intuition idtac.
-      + CCLTactics.inv_ret; left; descend; eauto 10 using hashmap_le_refl.
+      + CCLTactics.inv_ret; left; descend; intuition eauto using hashmap_le_refl.
       + case_eq (vd a); intros.
         * CCLTactics.inv_bind;
             match goal with
@@ -343,7 +344,7 @@ Section OptimisticTranslator.
 
     - CCLTactics.inv_bind.
       match goal with
-      | [ Hexec: exec _ _ _ (translate _ _ _) _ |- _ ] =>
+      | [ Hexec: exec _ _ _ (translate' _ _ _) _ |- _ ] =>
         eapply IHp in Hexec; eauto
       end.
       destruct v as [r c']; intuition eauto.
@@ -358,7 +359,7 @@ Section OptimisticTranslator.
               end;
           try CCLTactics.inv_ret;
           match goal with
-          | [ Hexec: exec _ _ _ (translate (p2 _) _ _) _ |- _ ] =>
+          | [ Hexec: exec _ _ _ (translate' (p2 _) _ _) _ |- _ ] =>
             eapply H in Hexec; intuition eauto
           end.
         left.
@@ -374,14 +375,14 @@ Section OptimisticTranslator.
           try congruence.
         destruct (Sigma.l sigma); simpl in *; intuition (subst; eauto);
           try congruence.
-      + left; eauto 10.
+      + left; descend; intuition eauto.
       + match goal with
-        | [ Hexec: exec _ _ _ (translate _ _ _) _ |- _ ] =>
+        | [ Hexec: exec _ _ _ (translate' _ _ _) _ |- _ ] =>
           eapply IHp in Hexec; intuition eauto
         end.
   Qed.
 
-  Definition translate_spec A T (seq_spec: SeqSpec A T) l cs :
+  Definition translate'_spec A T (seq_spec: SeqSpec A T) l cs :
     Spec _ (Result T * CacheSt) :=
     fun '(a, F, d, vd0, vd) sigma =>
       {| precondition :=
@@ -394,7 +395,10 @@ Section OptimisticTranslator.
            fun sigma' '(r, cs') =>
              (exists vd',
                  F (Sigma.mem sigma') /\
+                 let d' := if CanWrite l then Sigma.disk sigma' else d in
+                 CacheRep d' cs' vd0 vd' /\
                  translated_postcondition l d sigma (cache cs) vd sigma' (cache cs') vd' /\
+                 (l = Free -> cs' = cs) /\
                  match r with
                  | Success _ v => seq_post (seq_spec a Mem.empty_mem (Sigma.hm sigma))
                                           Mem.empty_mem (Sigma.hm sigma') v (add_buffers vd')
@@ -402,9 +406,9 @@ Section OptimisticTranslator.
                    Sigma.l sigma = WriteLock -> e <> WriteRequired
                  end) |}.
 
-  Theorem translate_ok : forall T (p: prog T) A (spec: SeqSpec A T) tid cs l,
+  Theorem translate'_ok : forall T (p: prog T) A (spec: SeqSpec A T) tid cs l,
       prog_quadruple spec p ->
-      cprog_spec G tid (translate_spec spec l cs) (translate p l cs).
+      cprog_spec G tid (translate'_spec spec l cs) (translate' p l cs).
   Proof.
     unfold prog_quadruple; intros.
     apply triple_spec_equiv; unfold cprog_triple; intros.
@@ -432,6 +436,75 @@ Section OptimisticTranslator.
       | [ Hexec: Prog.exec _ _ _ p _ |- _ ] =>
         eapply H in Hexec; eauto
       end; contradiction.
+  Qed.
+
+  Definition translate_spec A T (seq_spec: SeqSpec A T) l c :
+    Spec _ (Result T * Cache) :=
+    fun '(a, F, d, vd) sigma =>
+      {| precondition :=
+           F (Sigma.mem sigma) /\
+           cache_rep d c vd /\
+           (l = WriteLock -> d = Sigma.disk sigma) /\
+           seq_pre (seq_spec a Mem.empty_mem (Sigma.hm sigma)) (add_buffers vd) /\
+           Sigma.l sigma = l;
+         postcondition :=
+           fun sigma' '(r, c') =>
+             (exists vd',
+                 F (Sigma.mem sigma') /\
+                 translated_postcondition l d sigma c vd sigma' c' vd' /\
+                 match r with
+                 | Success _ v => seq_post (seq_spec a Mem.empty_mem (Sigma.hm sigma))
+                                          Mem.empty_mem (Sigma.hm sigma') v (add_buffers vd')
+                 | Failure e =>
+                   (Sigma.l sigma = WriteLock -> e <> WriteRequired) /\
+                   vd' = vd
+                 end) |}.
+
+  Definition translate T (p: prog T) l c :=
+    cs <- CacheInit c;
+    do '(r, cs) <- translate' p l cs;
+      match r with
+      | Success _ _ =>
+        c <- CacheCommit cs;
+          Ret (r, c)
+      | Failure _ =>
+        c <- CacheAbort cs;
+          Ret (r, c)
+      end.
+
+  Hint Extern 1 {{ CacheInit _; _ }} => apply CacheInit_ok : prog.
+  Hint Extern 1 {{ CacheCommit _; _ }} => apply CacheCommit_ok : prog.
+  Hint Extern 1 {{ CacheAbort _; _ }} => apply CacheAbort_ok : prog.
+
+  Ltac norm_eq :=
+    repeat match goal with
+           | [ H: _ = _ |- _ ] =>
+             progress rewrite H in *
+           | _ => progress subst
+           end.
+
+  Theorem translate_ok : forall T (p: prog T) A (spec: SeqSpec A T) tid c l,
+      prog_quadruple spec p ->
+      cprog_spec G tid (translate_spec spec l c) (translate p l c).
+  Proof.
+    unfold translate, translate_spec; intros.
+    step; simpl in *.
+    destruct a as (((a & F) & d) & vd).
+    descend; simpl in *; intuition eauto.
+
+    monad_simpl.
+    eapply cprog_ok_weaken; [ eapply translate'_ok; eauto | ];
+      intros; simplify.
+    unfold translate'_spec.
+    descend; simpl in *; (intuition eauto); norm_eq; eauto.
+
+    destruct a0; step;
+      descend; simpl in *; intuition eauto.
+    step; intuition; descend; intuition (norm_eq; eauto).
+    unfold translated_postcondition in *; intuition (norm_eq; eauto).
+
+    step; intuition; descend; intuition (norm_eq; eauto).
+    unfold translated_postcondition in *; intuition (norm_eq; eauto).
   Qed.
 
 End OptimisticTranslator.
