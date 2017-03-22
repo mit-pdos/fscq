@@ -404,7 +404,7 @@ let go_modify_op (ts : TranscriberState.state)
       let src = var_ref ts src_var in
       let from = var_ref ts from_var in
       let to_ = var_ref ts to_var in
-      dst ^ " = ImmutableBuffer([]byte(" ^ src ^ ")[" ^ from ^ ":" ^ to_ ^ "])"
+      dst ^ " = ImmutableBuffer([]byte(" ^ src ^ ")[" ^ from ^ "/8 :" ^ to_ ^ "/8])"
   ;;
 
 let go_expr_type ts expr =
