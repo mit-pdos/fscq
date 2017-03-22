@@ -234,7 +234,7 @@ Section OptimisticCache.
 
   Theorem ClearPending_ok : forall tid cs a,
       cprog_spec G tid
-                 (fun '(F, vd0, vd, v0) sigma =>
+                 (fun '(F, vd0, vd, v0) '(ExecState d_i sigma) =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          CacheRep (Sigma.disk sigma) cs vd0 vd /\
@@ -242,13 +242,14 @@ Section OptimisticCache.
                          vd a = Some v0 /\
                          Sigma.l sigma = WriteLock;
                        postcondition :=
-                         fun sigma' '(r, cs') =>
+                         fun '(ExecState d_i' sigma') '(r, cs') =>
                            F (Sigma.mem sigma') /\
                            CacheRep (Sigma.disk sigma') cs' vd0 vd /\
                            cache_get (cache cs') a = Present v0 Clean /\
                            r = v0 /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           d_i' = d_i ; |})
                  (ClearPending cs a).
   Proof.
     unfold ClearPending.
@@ -332,7 +333,7 @@ Section OptimisticCache.
 
   Theorem StartFill_ok : forall tid cs a,
       cprog_spec G tid
-                 (fun '(F, vd0, vd, v0) sigma =>
+                 (fun '(F, vd0, vd, v0) '(ExecState d_i sigma) =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          CacheRep (Sigma.disk sigma) cs vd0 vd /\
@@ -340,12 +341,13 @@ Section OptimisticCache.
                          vd a = Some v0 /\
                          Sigma.l sigma = WriteLock;
                        postcondition :=
-                         fun sigma' cs' =>
+                         fun '(ExecState d_i' sigma') cs' =>
                            F (Sigma.mem sigma') /\
                            CacheRep (Sigma.disk sigma') cs' vd0 vd /\
                            cache_get (cache cs') a = Invalid /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           d_i' = d_i; |})
                  (StartFill cs a).
   Proof.
     unfold StartFill.
@@ -369,7 +371,7 @@ Section OptimisticCache.
 
   Definition CacheRead_ok : forall tid cs a l,
       cprog_spec G tid
-                 (fun '(F, d, vd0, vd, v0) sigma =>
+                 (fun '(F, d, vd0, vd, v0) '(ExecState d_i sigma) =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          CacheRep d cs vd0 vd /\
@@ -377,7 +379,7 @@ Section OptimisticCache.
                          Sigma.l sigma = l /\
                          vd a = Some v0;
                        postcondition :=
-                         fun sigma' '(r, cs') =>
+                         fun '(ExecState d_i' sigma') '(r, cs') =>
                            F (Sigma.mem sigma') /\
                            let d' := if CanWrite l then Sigma.disk sigma' else d in
                            CacheRep d' cs' vd0 vd /\
@@ -388,7 +390,8 @@ Section OptimisticCache.
                            | None => True
                            end /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           d_i' = d_i |})
                  (CacheRead cs a l).
   Proof.
     unfold CacheRead.
@@ -443,18 +446,19 @@ Section OptimisticCache.
 
   Theorem CacheWrite_ok : forall tid cs a v,
       cprog_spec G tid
-                 (fun '(F, vd0, vd, v0) sigma =>
+                 (fun '(F, vd0, vd, v0) '(ExecState d_i sigma) =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          CacheRep (Sigma.disk sigma) cs vd0 vd /\
                          vd a = Some v0 /\
                          Sigma.l sigma = WriteLock;
                        postcondition :=
-                         fun sigma' '(_, cs') =>
+                         fun '(ExecState d_i' sigma') '(_, cs') =>
                            F (Sigma.mem sigma') /\
                            CacheRep (Sigma.disk sigma') cs' vd0 (upd vd a v) /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           d_i' = d_i ; |})
                  (CacheWrite cs a v).
   Proof.
     unfold CacheWrite.
@@ -467,18 +471,19 @@ Section OptimisticCache.
 
   Theorem CacheCommit_ok : forall tid cs,
       cprog_spec G tid
-                 (fun '(F, d, vd0, vd) sigma =>
+                 (fun '(F, d, vd0, vd) '(ExecState d_i sigma) =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          CacheRep d cs vd0 vd;
                        postcondition :=
-                         fun sigma' c =>
+                         fun '(ExecState d_i' sigma') c =>
                            F (Sigma.mem sigma') /\
                            cache_rep d c vd /\
                            c = cache cs /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           d_i' = d_i ; |})
                  (CacheCommit cs).
   Proof.
     unfold CacheCommit.
@@ -490,18 +495,19 @@ Section OptimisticCache.
 
   Theorem CacheAbort_ok : forall tid cs,
       cprog_spec G tid
-                 (fun '(F, d, vd0, vd) sigma =>
+                 (fun '(F, d, vd0, vd) '(ExecState d_i sigma) =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          CacheRep d cs vd0 vd;
                        postcondition :=
-                         fun sigma' c =>
+                         fun '(ExecState d_i' sigma') c =>
                            F (Sigma.mem sigma') /\
                            cache_rep d c vd0 /\
                            c = old_cache cs /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           d_i' = d_i ; |})
                  (CacheAbort cs).
   Proof.
     unfold CacheAbort.
@@ -522,19 +528,20 @@ Section OptimisticCache.
 
   Theorem CacheInit_ok : forall tid c,
       cprog_spec G tid
-                 (fun '(F, d, vd) sigma =>
+                 (fun '(F, d, vd) '(ExecState d_i sigma) =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          cache_rep d c vd;
                        postcondition :=
-                         fun sigma' cs =>
+                         fun '(ExecState d_i' sigma') cs =>
                            F (Sigma.mem sigma') /\
                            CacheRep d cs vd vd /\
                            cache cs = c /\
                            old_cache cs = c /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           d_i' = d_i ; |})
                  (CacheInit c).
   Proof.
     unfold CacheInit.

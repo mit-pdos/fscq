@@ -19,17 +19,18 @@ Section SyncRead.
 
   Theorem SyncRead_ok : forall tid a,
       cprog_spec G tid
-                 (fun '(F, v0) sigma =>
+                 (fun '(F, v0) '(ExecState d_i sigma) =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          Sigma.l sigma = WriteLock /\
                          Sigma.disk sigma a = Some (v0, NoReader);
                        postcondition :=
-                         fun sigma' r =>
+                         fun '(ExecState d_i' sigma') r =>
                            F (Sigma.mem sigma') /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
-                           r = v0; |})
+                           r = v0 /\
+                           d_i' = d_i ; |})
                  (SyncRead a).
   Proof.
     unfold SyncRead.
@@ -37,17 +38,25 @@ Section SyncRead.
       repeat match goal with
              | [ H: context[let '(n, m) := ?a in _] |- _ ] =>
                break_tuple a n m
-             end; intuition.
+             | [ H: context[ let 'ExecState d_i sigma := ?st in _ ] |- _ ] =>
+               let d_i := fresh d_i in
+               let sigma := fresh sigma in
+               destruct st as [d_i sigma]
+             end; simpl in *; intuition.
     descend; simpl; intuition eauto.
 
     step;
       repeat match goal with
              | [ H: context[let '(n, m) := ?a in _] |- _ ] =>
                break_tuple a n m
+             | [ H: context[ let 'ExecState d_i sigma := ?st in _ ] |- _ ] =>
+               let d_i := fresh d_i in
+               let sigma := fresh sigma in
+               destruct st as [d_i sigma]
              end; intuition.
     descend; simpl; intuition eauto.
 
-    replace (Sigma.disk st0).
+    replace (Sigma.disk sigma').
     autorewrite with upd; eauto.
     congruence.
 
@@ -55,10 +64,13 @@ Section SyncRead.
       repeat match goal with
              | [ H: context[let '(n, m) := ?a in _] |- _ ] =>
                break_tuple a n m
-             end; intuition; try congruence.
-    (* TODO: why the names st and not those used in the spec? what changed? *)
-    replace (Sigma.disk st1).
-    replace (Sigma.disk st0).
+             | [ H: context[ let 'ExecState d_i sigma := ?st in _ ] |- _ ] =>
+               let d_i := fresh d_i in
+               let sigma := fresh sigma in
+               destruct st as [d_i sigma]
+             end; intuition; subst; try congruence.
+    replace (Sigma.disk sigma'0).
+    replace (Sigma.disk sigma').
 
     extensionality a'.
     destruct (addr_eq_dec a a'); subst;

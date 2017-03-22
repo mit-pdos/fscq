@@ -256,20 +256,21 @@ Section OptimisticTranslator.
   Hint Resolve cache_rep_from_CacheRep.
 
   Theorem translate_simulation : forall T (p: prog T),
-      forall tid sigma (F: heappred) d vd0 vd out l cs,
+      forall tid d_i sigma (F: heappred) d vd0 vd out l cs,
         F (Sigma.mem sigma) ->
         CacheRep d cs vd0 vd ->
         (l = WriteLock -> d = Sigma.disk sigma) ->
         Sigma.l sigma = l ->
-        exec G tid sigma (translate' p l cs) out ->
+        exec G tid (ExecState d_i sigma) (translate' p l cs) out ->
         match out with
-        | Finished sigma' (r, cs') =>
+        | Finished (ExecState d_i' sigma') (r, cs') =>
           exists vd',
           F (Sigma.mem sigma') /\
           let d' := if CanWrite l then Sigma.disk sigma' else d in
           CacheRep d' cs' vd0 vd' /\
           translated_postcondition l d sigma (cache cs) vd sigma' (cache cs') vd' /\
           (l = Free -> cs' = cs) /\
+          d_i' = d_i /\
           match r with
           | Success _ v =>
             Prog.exec (add_buffers vd) Mem.empty_mem (Sigma.hm sigma) p
@@ -336,11 +337,11 @@ Section OptimisticTranslator.
       left.
 
       destruct (Sigma.l sigma); simpl in *; intuition subst;
-        CCLTactics.inv_ret; descend; (intuition eauto); try congruence.
+        CCLTactics.inv_ret; descend; (intuition eauto); subst; try congruence.
       eapply Prog.XStep; eauto.
-      replace (Sigma.hm sigma'0); eauto.
-      replace (Sigma.disk sigma'0); eauto.
-      replace (Sigma.hm sigma'0); eauto.
+      replace (Sigma.hm sigma'); eauto.
+      replace (Sigma.disk sigma'); eauto.
+      replace (Sigma.hm sigma'); eauto.
 
     - CCLTactics.inv_bind.
       match goal with
@@ -348,6 +349,7 @@ Section OptimisticTranslator.
         eapply IHp in Hexec; eauto
       end.
       destruct v as [r c']; intuition eauto.
+      destruct st' as [d_i' sigma'].
       deex; intuition eauto.
       destruct r; try CCLTactics.inv_ret; intuition eauto.
       + CCLTactics.inv_bind;
@@ -384,7 +386,7 @@ Section OptimisticTranslator.
 
   Definition translate'_spec A T (seq_spec: SeqSpec A T) l cs :
     Spec _ (Result T * CacheSt) :=
-    fun '(a, F, d, vd0, vd) sigma =>
+    fun '(a, F, d, vd0, vd) '(ExecState d_i sigma) =>
       {| precondition :=
            F (Sigma.mem sigma) /\
            CacheRep d cs vd0 vd /\
@@ -392,13 +394,14 @@ Section OptimisticTranslator.
            seq_pre (seq_spec a Mem.empty_mem (Sigma.hm sigma)) (add_buffers vd) /\
            Sigma.l sigma = l;
          postcondition :=
-           fun sigma' '(r, cs') =>
+           fun '(ExecState d_i' sigma') '(r, cs') =>
              (exists vd',
                  F (Sigma.mem sigma') /\
                  let d' := if CanWrite l then Sigma.disk sigma' else d in
                  CacheRep d' cs' vd0 vd' /\
                  translated_postcondition l d sigma (cache cs) vd sigma' (cache cs') vd' /\
                  (l = Free -> cs' = cs) /\
+                 d_i' = d_i /\
                  match r with
                  | Success _ v => seq_post (seq_spec a Mem.empty_mem (Sigma.hm sigma))
                                           Mem.empty_mem (Sigma.hm sigma') v (add_buffers vd')
@@ -412,13 +415,12 @@ Section OptimisticTranslator.
   Proof.
     unfold prog_quadruple; intros.
     apply triple_spec_equiv; unfold cprog_triple; intros.
-    rename st into sigma.
-
-    simpl in *; intuition; subst.
+    destruct st as [d_i sigma].
     destruct a as ((((a & F) & d) & vd0) & vd); simpl in *.
     eapply translate_simulation in H1; intuition (subst; eauto).
     - (* concurrent execution finished *)
       destruct out; eauto.
+      destruct sigma0 as [d_i' sigma'].
       destruct r as [r cs']; deex; intuition (subst; eauto).
 
       destruct r; eauto 10.
@@ -440,7 +442,7 @@ Section OptimisticTranslator.
 
   Definition translate_spec A T (seq_spec: SeqSpec A T) l c :
     Spec _ (Result T * Cache) :=
-    fun '(a, F, d, vd) sigma =>
+    fun '(a, F, d, vd) '(ExecState d_i sigma) =>
       {| precondition :=
            F (Sigma.mem sigma) /\
            cache_rep d c vd /\
@@ -448,10 +450,11 @@ Section OptimisticTranslator.
            seq_pre (seq_spec a Mem.empty_mem (Sigma.hm sigma)) (add_buffers vd) /\
            Sigma.l sigma = l;
          postcondition :=
-           fun sigma' '(r, c') =>
+           fun '(ExecState d_i' sigma') '(r, c') =>
              (exists vd',
                  F (Sigma.mem sigma') /\
                  translated_postcondition l d sigma c vd sigma' c' vd' /\
+                 d_i' = d_i /\
                  match r with
                  | Success _ v => seq_post (seq_spec a Mem.empty_mem (Sigma.hm sigma))
                                           Mem.empty_mem (Sigma.hm sigma') v (add_buffers vd')
@@ -489,6 +492,7 @@ Section OptimisticTranslator.
   Proof.
     unfold translate, translate_spec; intros.
     step; simpl in *.
+    destruct st as [d_i sigma].
     destruct a as (((a & F) & d) & vd).
     descend; simpl in *; intuition eauto.
 
@@ -496,15 +500,30 @@ Section OptimisticTranslator.
     eapply cprog_ok_weaken; [ eapply translate'_ok; eauto | ];
       intros; simplify.
     unfold translate'_spec.
-    descend; simpl in *; (intuition eauto); norm_eq; eauto.
+    descend; simpl in *.
+    destruct st as [d_i' sigma']; simpl;
+      (intuition eauto); norm_eq; eauto.
 
     destruct a0; step;
-      descend; simpl in *; intuition eauto.
-    step; intuition; descend; intuition (norm_eq; eauto).
-    unfold translated_postcondition in *; intuition (norm_eq; eauto).
+      match goal with
+      | [ H: context[let 'ExecState d_i sigma' := ?st in _ ] |- _ ] =>
+        let d_i := fresh d_i in
+        let sigma' := fresh sigma' in
+        destruct st as [d_i sigma']
+      end.
+    repeat deex.
+    descend; simpl in *; intuition eauto.
 
     step; intuition; descend; intuition (norm_eq; eauto).
-    unfold translated_postcondition in *; intuition (norm_eq; eauto).
+    destruct st as [d_i' sigma'''].
+    descend; unfold translated_postcondition in *; intuition (norm_eq; eauto).
+
+    repeat deex.
+    descend; simpl in *; intuition eauto.
+
+    step; intuition.
+    destruct st as [d_i' sigma''']; intuition eauto.
+    descend; unfold translated_postcondition in *; intuition (norm_eq; eauto).
   Qed.
 
 End OptimisticTranslator.
