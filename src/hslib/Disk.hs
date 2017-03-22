@@ -15,6 +15,7 @@ import Foreign.ForeignPtr
 import Foreign.Marshal.Alloc
 import Data.IORef
 import qualified Data.Map.Strict
+import System.CPUTime.Rdtsc
 
 verbose :: Bool
 verbose = False
@@ -127,8 +128,12 @@ sync_disk (S fd sr fl _) = do
 
   bumpSync sr
   logFlush fl
-  if reallySync then
+  if reallySync then do
+    t1 <- rdtsc
     fileSynchronise fd
+    t2 <- rdtsc
+    putStrLn ("Cost of fileSynchronize:    " ++ show (t2 - t1))
+    return ()
   else
     return ()
 

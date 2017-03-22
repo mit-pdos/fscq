@@ -34,6 +34,7 @@ Inductive prog : Type -> Type :=
   | VarSet (i : vartype) (T : Type) (v : T) : prog unit
   | AlertModified : prog unit
   | Debug (s: string) (n: nat) : prog unit
+  | Rdtsc: prog nat
   | Hash (sz: nat) (buf: word sz) : prog (word hashlen)
   | Bind T T' (p1: prog T) (p2: T -> prog T') : prog T'.
 

@@ -469,7 +469,10 @@ Module AFS.
 
   (* sync directory tree; will flush all outstanding changes to tree (but not dupdates to files) *)
   Definition tree_sync fsxp ams :=
+    t1 <- Rdtsc ;
     ams <- DIRTREE.sync fsxp ams;
+    t2 <- Rdtsc ;
+    Debug "tree_sync" (t2-t1) ;;
     Ret ^(ams).
 
   Definition tree_sync_noop fsxp ams :=

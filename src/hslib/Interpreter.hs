@@ -4,6 +4,8 @@ import Prog
 import qualified Disk
 import Word
 import qualified Crypto.Hash.SHA256 as SHA256
+import System.CPUTime.Rdtsc
+
 -- import qualified System.Exit
 -- import qualified System.Random
 
@@ -77,8 +79,11 @@ run_dcode _ AlertModified = do
   debugmsg $ "AlertModified"
   return $ unsafeCoerce ()
 run_dcode _ (Debug s n) = do
-  putStrLn $ s ++ (show n)
+  putStrLn $ s ++ " " ++ (show n)
   return $ unsafeCoerce ()
+run_dcode _ (Rdtsc) = do
+  r <- rdtsc
+  return $ unsafeCoerce r
 run_dcode _ (Hash sz (WBS bs)) = do
   debugmsg $ "Hash " ++ (show sz) ++ " BS " ++ (show bs)
   return $ unsafeCoerce $ WBS $ SHA256.hash bs
