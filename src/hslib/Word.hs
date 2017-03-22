@@ -12,6 +12,8 @@ data Coq_word =
     W Integer
   | W64 !Word64
 
+type Coq_immut_word = Coq_word
+
 -- Memoize bitmasks for wrap
 bitmask :: [Integer]
 bitmask = map (\x -> 2^x - 1) [(0::Int) ..]

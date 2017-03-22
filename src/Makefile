@@ -64,7 +64,7 @@ GO_LIB_MOD	:= disk map map_test num util
 GO_LIB		:= $(GO_LIB_MOD:%=golib/%.go)
 GO_LIB_INST := $(patsubst golib/%.go,codegen/src/gofscq/%.go,$(GO_LIB))
 
-GO_EX		:= golib/fscq.go golib/hscache-test.go
+GO_EX		:= golib/fscq.go golib/hscache-test.go golib/getsz_bench.go
 GO_EX_INST	:= $(patsubst golib/%.go,codegen/src/fscq/%.go,$(GO_EX))
 
 GO := GOPATH=`pwd`/codegen/ go
@@ -82,6 +82,10 @@ go_hscache_test: $(GO_LIB_INST) $(GO_EX_INST) codegen/src/gofscq/fscq.go
 	$(GO) install ./codegen/src/gofscq
 	$(GO) build codegen/src/fscq/hscache-test.go
 	mv hscache-test go_hscache_test
+
+getsz_bench: $(GO_LIB_INST) $(GO_EX_INST) codegen/src/gofscq/fscq.go
+	$(GO) install ./codegen/src/gofscq
+	$(GO) build codegen/src/fscq/getsz_bench.go
 
 codegen/%.ml: %.ml
 	ln -s ../$< $@
