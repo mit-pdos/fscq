@@ -316,10 +316,14 @@ Module AFS.
     }.
 
   Definition file_get_attr fsxp inum ams :=
+    t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, attr) <- DIRTREE.getattr fsxp inum (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), attr).
+    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), attr);
+    t2 <- Rdtsc ;
+    Debug "truncate" (t2-t1) ;;
+    Ret r.
 
   Definition file_get_sz fsxp inum ams :=
     let^ (ams, attr) <- file_get_attr fsxp inum ams;
@@ -344,11 +348,11 @@ Module AFS.
     Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), b).
 
   Definition file_truncate fsxp inum sz ams :=
+    t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, ok) <- DIRTREE.truncate fsxp inum sz (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
-    match ok with
+    r <- match ok with
     | Err e =>
-      ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
       Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
     | OK _ =>
       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
@@ -357,7 +361,10 @@ Module AFS.
       } else {
         Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
       }
-    end.
+    end;
+    t2 <- Rdtsc ;
+    Debug "truncate" (t2-t1) ;;
+    Ret r.
 
   (* update an existing block directly.  XXX dwrite happens to sync metadata. *)
   Definition update_fblock_d fsxp inum off v ams :=
@@ -367,10 +374,14 @@ Module AFS.
     Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams))).
 
   Definition update_fblock fsxp inum off v ams :=
+    t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.write fsxp inum off v (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
     let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), ok).
+    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), ok);
+    t2 <- Rdtsc ;
+    Debug "update_fblock" (t2-t1) ;;
+    Ret r.
 
   (* sync only data blocks of a file. *)
   Definition file_sync fsxp inum ams :=
@@ -386,11 +397,12 @@ Module AFS.
     Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), files).
 
   Definition create fsxp dnum name ams :=
+    t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, oi) <- DIRTREE.mkfile fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
-    match oi with
+    r <- match oi with
       | Err e =>
-        ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
+          ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
           Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
       | OK inum =>
         let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
@@ -398,7 +410,10 @@ Module AFS.
           | true => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), OK inum)
           | false => Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err ELOGOVERFLOW)
         end
-    end.
+     end;
+     t2 <- Rdtsc ;
+     Debug "create" (t2-t1) ;;
+     Ret r.
 
   Definition mksock fsxp dnum name ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
@@ -447,10 +462,14 @@ Module AFS.
     end.
 
   Definition lookup fsxp dnum names ams :=
+    t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, r) <- DIRTREE.namei fsxp dnum names (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), r).
+    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), r);
+    t2 <- Rdtsc ;
+    Debug "lookup" (t2-t1) ;;
+    Ret r.
 
   Definition rename fsxp dnum srcpath srcname dstpath dstname ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
