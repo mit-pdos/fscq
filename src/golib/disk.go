@@ -23,11 +23,11 @@ var disk_stats *DiskStats
 
 func (d *Buffer) DeepCopy(dst **Buffer) {
 	// TODO: don't always allocate
-	**dst = append([]byte{}, *d...)
+	tmp := append([]byte{}, *d...)
+	*dst = (*Buffer)(&tmp)
 }
 
 func (d ImmutableBuffer) DeepCopy(dst *ImmutableBuffer) {
-	// TODO: don't always allocate
 	*dst = d
 }
 

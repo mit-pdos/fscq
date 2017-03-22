@@ -237,12 +237,6 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
       ) in
     go_type ^ "{" ^ (String.concat ", " (struct_literal l x0)) ^ "}"
 
-let zero_val gs (t : Go.coq_type) =
-  match t with
-  | _ ->
-    let go_type = (TranscriberState.get_go_type gs t) in
-    "New_" ^ go_type ^ "()"
-
 let do_deep_copy go_type src dst =
   src ^ ".DeepCopy(" ^ dst ^ ")"
 
@@ -275,9 +269,7 @@ let go_modify_op (ts : TranscriberState.state)
   | Go.SplitPair ->
     let (pair, (first, (second, _))) = Obj.magic args_tuple in
     let fst, snd = (var_ref ts first), (var_ref ts second) in
-    fst ^ ", " ^ snd ^ " = " ^
-      (var_ref ts pair) ^ ".Fst, " ^ (var_ref ts pair) ^ ".Snd
-      _, _ = " ^ fst ^ ", " ^ snd ^ "  // prevent 'unused' error"
+    fst ^ ", " ^ snd ^ " = " ^ (var_ref ts pair) ^ ".Fst, " ^ (var_ref ts pair) ^ ".Snd"
   | Go.JoinPair ->
     let (pair, (first, (second, _))) = Obj.magic args_tuple in
     (var_ref ts pair) ^ ".Fst, " ^ (var_ref ts pair) ^ ".Snd = " ^
@@ -285,13 +277,11 @@ let go_modify_op (ts : TranscriberState.state)
   | Go.PairFst ->
     let (pair, (first, _)) = Obj.magic args_tuple in
     let fst = var_ref ts first in
-    fst ^ " = " ^ (var_ref ts pair) ^ ".Fst
-      _ = " ^ fst ^ " // prevent unused error"
+    fst ^ " = " ^ (var_ref ts pair) ^ ".Fst"
   | Go.PairSnd ->
     let (pair, (second, _)) = Obj.magic args_tuple in
     let snd = var_ref ts second in
-    snd ^ " = " ^ (var_ref ts pair) ^ ".Snd
-      _ = " ^ snd ^ " // prevent unused error"
+    snd ^ " = " ^ (var_ref ts pair) ^ ".Snd"
   | Go.MapAdd ->
     let (map, (key, (value, _))) = Obj.magic args_tuple in
     "AddrMap(" ^ (var_ref ts map) ^ ").Insert(" ^ (var_val_ref ts key) ^ ", " ^ (var_ref ts value) ^ ")"
@@ -335,7 +325,7 @@ let go_modify_op (ts : TranscriberState.state)
       pairs := AddrMap(" ^ m ^ ").Elements()
       " ^ v ^ " := make(" ^ slice_go_t ^ ", 0, len(pairs))
       for _, keyval := range pairs {
-        p := " ^ (zero_val ts.gstate slice_el_t) ^ "
+        var p " ^ TranscriberState.get_go_type ts.gstate slice_el_t ^ "
         p.Fst = keyval.key
         " ^ do_deep_copy v_type ("keyval.val.(" ^ val_cast_type ^ ")") ("&p.Snd") ^ "
         " ^ v ^ " = append(" ^ v ^ ", p)
@@ -443,7 +433,7 @@ let rec go_stmt stmt (ts : TranscriberState.state) =
       let go_type = TranscriberState.get_go_type ts.gstate gType in
       let decl_name = var_ref ts var in
       let decl_type = if (is_ptr_type gType) then "*" ^ go_type else go_type in
-      let decl_lines = "var " ^ decl_name ^ " " ^ decl_type ^ " = " ^ (zero_val ts.gstate gType) ^ "\n" ^
+      let decl_lines = "var " ^ decl_name ^ " " ^ decl_type ^ "\n" ^
                        "_ = " ^ decl_name ^ "\n" in
       let text = go_stmt (fn var) ts in
       decl_lines ^ text
@@ -522,16 +512,6 @@ let go_struct_defs gs =
           do_deep_copy typ ("x." ^ name) ("&dst." ^ name)
       ) fields)
     ^ "
-    }
-
-    func New_" ^ t_name ^ " () " ^ t_name ^ "{
-    return " ^ t_name ^ " {\n" ^
-    String.concat "\n" (List.map (
-      fun y ->
-        let (name, typ) = y in
-        name ^ ": " ^ (zero_val gs typ) ^ ","
-      ) fields)
-    ^ "}
     }\n"
   ) (TranscriberState.go_struct_types gs)
 
@@ -548,14 +528,10 @@ let go_map_defs ts =
 
     func (x " ^ type_name ^ ") DeepCopy (dst *" ^ type_name ^ ") { /* TODO clear dst */
     for _, v := range AddrMap(x).Elements() {
-      v_copy := " ^ (zero_val ts v_type) ^ "
+      var v_copy " ^ go_v_type ^ "
       " ^ (do_deep_copy v_type ("v.val.(" ^ go_v_type ^ ")") ("&v_copy")) ^ "
       AddrMap(*dst).Insert(v.key, v_copy)
     }
-    }
-
-    func New_" ^ type_name ^ " () " ^ type_name ^ "{
-      return nil
     }\n"
   ) maps
 
@@ -571,16 +547,12 @@ let go_slice_defs ts =
     func (x " ^ type_name ^ ") DeepCopy (dst *" ^ type_name ^ ") {
     var newSlice " ^ type_name ^ "
     for _, v := range x {
-        v_copy := " ^ (zero_val ts v_type) ^ "
+        var v_copy " ^ go_v_type ^ "
         " ^ (do_deep_copy v_type "v" "&v_copy") ^ "
         newSlice = append(newSlice, v_copy)
     }
     // TODO make this copy into dst if possible
     *dst = newSlice
-    }
-
-    func New_" ^ type_name ^ " () " ^ type_name ^ "{
-    return nil
     }\n"
   ) maps
 
