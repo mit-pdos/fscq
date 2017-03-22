@@ -26,7 +26,7 @@ int main(int argc, char *argv[])
     exit(1);
   }
   for (i = 0; i < N; i++) {
-    sprintf(name, "%s/d/f%d", argv[1], 0);
+    sprintf(name, "%s/d/f%d", argv[1], i);
     if((fd = open(name, O_RDWR | O_CREAT | O_TRUNC, S_IRWXU)) < 0) {
       printf("%s: create %s failed %s\n", argv[0], name, strerror(errno));
       exit(1);
