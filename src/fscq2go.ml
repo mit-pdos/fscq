@@ -198,8 +198,8 @@ let rec go_literal (gs : TranscriberState.global_state) t x =
   | Go.Bool -> if Obj.magic x then "true" else "false"
   | Go.Buffer ->
     (match Obj.magic x with
-     | Go.Here v -> failwith "TODO: Buffer -> String"
-     | Go.Moved -> "(moved)")
+     | Go.Here v -> "(*Buffer)(&" ^ buf_literal (word_to_bytes v) ^ ")"
+     | Go.Moved -> "nil")
   | Go.ImmutableBuffer ->
     (match Obj.magic x with
      | Go.Here v -> buf_literal (word_to_bytes v)
@@ -271,7 +271,7 @@ let go_modify_op (ts : TranscriberState.state)
   match modify_op with
   | Go.SetConst (t, value) ->
     let (var, _) = Obj.magic args_tuple in
-    (var_val_ref ts var) ^ " = " ^ (go_literal ts.gstate t value)
+    (var_ref ts var) ^ " = " ^ (go_literal ts.gstate t value)
   | Go.SplitPair ->
     let (pair, (first, (second, _))) = Obj.magic args_tuple in
     let fst, snd = (var_ref ts first), (var_ref ts second) in

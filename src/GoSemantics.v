@@ -1064,9 +1064,8 @@ Module Go.
         projT2 (impl_for op) vs0 = Some vs ->
         Some s' = update_many vars vs0 vs s ->
         runsto (Modify op vars) (d, s) (d, s')
-    | RunsToDiskRead : forall dvar avar a d s s' v0 v vs,
-        VarMap.find dvar s = Some v0 -> (* dest variable must be declared *)
-        type_of v0 = DiskBlock -> (* and have the correct type *)
+    | RunsToDiskRead : forall dvar avar a d s s' b0 v vs,
+        VarMap.find dvar s = Some (Val Buffer (Here b0)) -> (* dest variable must exist as a buffer *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
         s' = VarMap.add dvar (Val DiskBlock (Here (existT _ _ v))) s ->
@@ -1135,9 +1134,8 @@ Module Go.
         projT2 (impl_for op) vs0 = Some vs ->
         Some s' = update_many vars vs0 vs s ->
         step (d, s, Modify op vars) (d, s', Skip)
-    | StepDiskRead : forall dvar avar a d s s' v v0 vs,
-        VarMap.find dvar s = Some v0 -> (* dest variable must be declared *)
-        type_of v0 = DiskBlock -> (* and have the correct type *)
+    | StepDiskRead : forall dvar avar a d s s' v b0 vs,
+        VarMap.find dvar s = Some (Val Buffer (Here b0)) -> (* dest variable must exist as a buffer *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
         s' = VarMap.add dvar (Val DiskBlock (Here (existT _ _ v))) s ->
@@ -1343,9 +1341,8 @@ Module Go.
         projT2 (impl_for op) vs0 = Some vs ->
         Some s' = update_many vars vs0 vs s ->
         runsto_InCall (Modify op vars) (d, s) (d, s')
-    | RunsToICDiskRead : forall dvar avar a d s s' v v0 vs,
-        VarMap.find dvar s = Some v0 -> (* dest variable must be declared *)
-        type_of v0 = DiskBlock -> (* and have the correct type *)
+    | RunsToICDiskRead : forall dvar avar a d s s' v b0 vs,
+        VarMap.find dvar s = Some (Val Buffer (Here b0)) -> (* dest variable must exist as a buffer *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v, vs) ->
         s' = VarMap.add dvar (Val DiskBlock (Here (existT _ _ v))) s ->

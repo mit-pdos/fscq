@@ -82,23 +82,25 @@ Example compile_read : sigT (fun p => source_stmt p /\ forall env a cs,
 Proof.
   unfold BUFCACHE.read.
   repeat match goal with
-  (* TODO: copy here automatically. This is *the* standard mostly unavoidable copy *)
-  | [ |- EXTRACT (v <- Read _; _) {{ _ }} _ {{ _ }} // _ ] =>
-    compile_step; [
-      solve [repeat compile_step] |
-      match goal with
-      |- EXTRACT _ {{ ?vara ~> ?a * _ }} _ {{ _ }} // _ =>
-        do_duplicate a
-      end
-    ]
-  | [ |- EXTRACT (Ret (eviction_update ?a ?b)) {{ _ }} _ {{ _ }} // _ ] =>
-    change (Ret (eviction_update a b)) with (eviction_update' b a)
-  | _ => compile_step
-  end.
+         (* TODO: copy here automatically. This is *the* standard mostly unavoidable copy *)
+         | [ |- EXTRACT (v <- Read _; _) {{ _ }} _ {{ _ }} // _ ] =>
+           compile_step; [
+             match goal with
+               |- EXTRACT _ {{ ?vara ~>? ?T * _ }} _ {{ _ }} // _ =>
+               eapply CompileBefore; [
+                 eapply CompileRet with (var0 := vara) (v := ($0 : word 0)) | ]; solve [repeat compile_step]
+             end |
+             match goal with
+               |- EXTRACT _ {{ ?vara ~> ?a * _ }} _ {{ _ }} // _ =>
+               do_duplicate a
+             end ]
+         | [ |- EXTRACT (Ret (eviction_update ?a ?b)) {{ _ }} _ {{ _ }} // _ ] =>
+           change (Ret (eviction_update a b)) with (eviction_update' b a)
+         | _ => compile_step
+         end.
   Unshelve.
   all: compile.
 Defined.
-
 
 Transparent BUFCACHE.write.
 Example compile_write : sigT (fun p => source_stmt p /\ forall env a v cs,

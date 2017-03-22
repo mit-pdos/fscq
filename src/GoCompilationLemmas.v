@@ -845,7 +845,7 @@ Qed.
 Lemma CompileRead :
   forall env F avar vvar a,
     EXTRACT Read a
-    {{ vvar ~>? valu * avar ~> a * F }}
+    {{ (exists buf, vvar |-> Val Buffer (Here buf)) * avar ~> a * F }}
       DiskRead vvar avar
     {{ fun ret => vvar ~> ret * avar ~> a * F }} // env.
 Proof.
@@ -857,6 +857,18 @@ Proof.
   repeat econstructor. destruct (r a) eqn:Hm; auto.
   contradiction H1; eval_expr; repeat econstructor; eauto.
 Qed.
+
+
+Lemma okToCancel_bufval : forall bvar n (bval : word n),
+  (bvar ~> bval : pred) =p=> (exists bval0, bvar |-> Val Buffer (Here bval0)).
+Proof.
+  intros.
+  apply pimpl_exists_r.
+  eexists; intro; intros; apply H.
+Qed.
+
+Hint Extern 0 (okToCancel (?bvar ~> ?bval) (exists bval0, ?bvar |-> Val Buffer (Here bval0)))%pred =>
+  apply okToCancel_bufval.
 
 Lemma CompileWrite : forall env F avar vvar a v,
   EXTRACT Write a v

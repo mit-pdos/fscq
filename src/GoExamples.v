@@ -94,6 +94,7 @@ Proof.
 Defined.
 Eval lazy in projT1 micro_add_use_twice.
 
+
 Example compile_one_read : sigT (fun p =>
   EXTRACT Read 1
   {{ 0 ~> ($0 : valu) }}
@@ -104,6 +105,7 @@ Proof.
 Defined.
 Eval lazy in projT1 (compile_one_read).
 
+
 Definition swap_prog a b :=
   va <- Read a;
   vb <- Read b;
@@ -111,6 +113,7 @@ Definition swap_prog a b :=
   Write b va;;
   Ret tt.
 
+(*
 Example extract_swap_1_2 : forall env, sigT (fun p =>
   EXTRACT swap_prog 1 2 {{ emp }} p {{ fun _ => emp }} // env).
 Proof.
@@ -180,6 +183,7 @@ Definition extract_swap_prog_corr env := projT2 (extract_swap_prog env).
 Hint Resolve extract_swap_prog_corr : extractions.
 
 Local Open Scope map_scope.
+
 
 Definition swap_env : Env :=
   ("swap" -s> {|
@@ -408,3 +412,7 @@ func rot3() {
 Definition whole_env : Env :=
   StringMap.add "rot3" rot3_function swap_env.
  *)
+
+
+
+*)
