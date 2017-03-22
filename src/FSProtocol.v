@@ -16,7 +16,7 @@ Require Export HomeDirProtocol.
 Require Export OptimisticTranslator.
 
 Record FsParams :=
-  { cache: ident; (* : Cache *)
+  { ccache: ident; (* : Cache *)
     fsmem: ident; (* : memsstate *)
     fstree: ident; (* : dirtree *)
     fshomedirs: ident; (* thread_homes *)
@@ -38,8 +38,8 @@ Section FilesystemProtocol.
     (fstree P |-> abs tree *
      fshomedirs P |-> abs homedirs *
      exists c vd mscs,
-       cache P |-> val c *
-       [[ CacheRep d c vd ]] *
+       ccache P |-> val c *
+       [[ cache_rep d c vd ]] *
        fsmem P |-> val mscs *
        [[ fs_rep vd hm mscs tree ]])%pred.
 
@@ -47,9 +47,9 @@ Section FilesystemProtocol.
       fs_invariant d hm tree homedirs h ->
       exists c vd mscs,
         (fstree P |-> abs tree * fshomedirs P |-> abs homedirs *
-         cache P |-> val c *
+         ccache P |-> val c *
          fsmem P |-> val mscs)%pred h /\
-        CacheRep d c vd /\
+        cache_rep d c vd /\
         fs_rep vd hm mscs tree.
   Proof.
     unfold fs_invariant; intros.
@@ -59,9 +59,9 @@ Section FilesystemProtocol.
 
   Theorem fs_invariant_refold : forall tree homedirs d c vd hm mscs h,
       (fstree P |-> abs tree * fshomedirs P |-> abs homedirs *
-       cache P |-> val c *
+       ccache P |-> val c *
        fsmem P |-> val mscs)%pred h ->
-      CacheRep d c vd ->
+      cache_rep d c vd ->
       fs_rep vd hm mscs tree ->
       fs_invariant d hm tree homedirs h.
   Proof.

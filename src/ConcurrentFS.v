@@ -7,6 +7,8 @@ Require Import ConcurCompile.
 
 Import FSLayout BFile.
 
+Import OptimisticCache.
+
 Section ConcurrentFS.
 
   Variable P:FsParams.
@@ -25,7 +27,7 @@ Section ConcurrentFS.
     cprog (Result (memstate * T) * Cache).
 
   Definition readCacheMem : cprog (Cache * memstate) :=
-    Read2 Cache (cache P) memstate (fsmem P).
+    Read2 Cache (ccache P) memstate (fsmem P).
 
   (* Execute p assuming it is read-only. This program could distinguish between
   failures that require filling the cache [Failure (CacheMiss a)] and failures
@@ -62,7 +64,7 @@ Section ConcurrentFS.
 
   Definition startLocked :=
     _ <- GetWriteLock;
-      do '(c, mscs) <- Read2 Cache (cache P) memstate (fsmem P);
+      do '(c, mscs) <- Read2 Cache (ccache P) memstate (fsmem P);
       Ret (c, mscs).
 
   Definition write_syscall T (p: OptimisticProg T) (update: dirtree -> dirtree) :
@@ -73,7 +75,7 @@ Section ConcurrentFS.
              match r with
              | Success _ (ms', r) =>
                _ <- Assgn2_abs (Make_assgn2
-                                 (cache P) c
+                                 (ccache P) c
                                  (fsmem P) ms'
                                  (fstree P) (fun _ => update));
                  _ <- Unlock;
@@ -81,7 +83,7 @@ Section ConcurrentFS.
              | Failure e =>
                  match e with
                  | CacheMiss a =>
-                   _ <- Assgn1 (cache P) c;
+                   _ <- Assgn1 (ccache P) c;
                      _ <- Unlock;
                      (* TODO: [Yield a] here when the noop Yield is added *)
                      Ret TryAgain
@@ -114,7 +116,7 @@ Section ConcurrentFS.
     fun mscs l c '(F, d, vd, tree, a) sigma =>
       {| precondition :=
            F (Sigma.mem sigma) /\
-           CacheRep d c vd /\
+           cache_rep d c vd /\
            (l = WriteLock -> d = Sigma.disk sigma) /\
            fs_rep P vd (Sigma.hm sigma) mscs tree /\
            fs_pre (fsspec a) tree /\
@@ -130,7 +132,18 @@ Section ConcurrentFS.
                  fs_rep P vd' (Sigma.hm sigma') mscs' (fs_dirup (fsspec a) tree)
                | Failure e =>
                  (l = WriteLock -> e <> WriteRequired) /\
-                 fs_rep P vd (Sigma.hm sigma') mscs tree
+                 vd = vd' /\
+                 (* at this point we've broken the fs_invariant because the disk
+                 has changed without updating the cache, and now other threads
+                 observe an inconsistent state if they read the cache; updating
+                 the disk requires immediately updating the in-memory cache
+
+                 a proper solution to putting a protocol on disk operations
+                 would create the appropriate burden on the cache to guarantee
+                 that starting the read is safe - it's actually not unless
+                 there's also an atomic write to memory, even though the cache
+                 doesn't realize it's in memory and globally shared *)
+                 fs_rep P vd' (Sigma.hm sigma') mscs tree
                end /\
                hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') ; |}.
 
@@ -177,7 +190,7 @@ Section ConcurrentFS.
                              Rely G tid sigma sigma' /\
                              homedir_rely tid homedirs tree tree' /\
                              (* mscs and c come from fs_invariant on sigma *)
-                             (exists vd, CacheRep (Sigma.disk sigma) c vd /\
+                             (exists vd, cache_rep (Sigma.disk sigma) c vd /\
                                     fs_rep P vd (Sigma.hm sigma') mscs tree) /\
                              Sigma.l sigma' = Sigma.l sigma |})
                  readCacheMem.
@@ -205,14 +218,14 @@ Section ConcurrentFS.
 
   Hint Extern 1 {{ readCacheMem; _ }} => apply readCacheMem_ok : prog.
 
-  Lemma CacheRep_disk_eq : forall d d' c vd,
+  Lemma cache_rep_disk_eq : forall d d' c vd,
       d = d' ->
-      CacheRep d' c vd -> CacheRep d c vd.
+      cache_rep d' c vd -> cache_rep d c vd.
   Proof.
     intros; subst; auto.
   Qed.
 
-  Hint Resolve CacheRep_disk_eq.
+  Hint Resolve cache_rep_disk_eq.
 
   Ltac finish := repeat match goal with
                         | [ |- _ /\ _ ] => split; trivial
@@ -332,15 +345,12 @@ Section ConcurrentFS.
                          Sigma.l sigma = Free;
                        postcondition :=
                          fun sigma' '(c, mscs) =>
-                           exists tree',
-                             fs_invariant P (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs
-                                          (Sigma.mem sigma') /\
-                             (* redundant with fs_invariant but specifies which
-                             cache and mscs achieve the CacheRep, for passing to
-                             the optimistic syscall precondition *)
-                             (exists vd',
-                                 CacheRep (Sigma.disk sigma') c vd' /\
-                                 fs_rep P vd' (Sigma.hm sigma') mscs tree') /\
+                           exists vd' tree',
+                             (fstree P |-> abs tree' * fshomedirs P |-> abs homedirs *
+                              ccache P |-> val c * fsmem P |-> val mscs)%pred (Sigma.mem sigma') /\
+                             cache_rep (Sigma.disk sigma') c vd' /\
+                             fs_rep P vd' (Sigma.hm sigma') mscs tree' /\
+                             fs_guarantee P tid sigma' sigma' /\
                              hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
                              Rely G tid sigma sigma' /\
                              homedir_rely tid homedirs tree tree' /\
@@ -362,7 +372,12 @@ Section ConcurrentFS.
 
     step.
     intuition auto.
+    descend; simpl in *; intuition eauto.
+
+    unfold fs_guarantee; simpl.
     descend; intuition eauto.
+    reflexivity.
+
     eapply Rely_trans; eauto.
     eapply fs_rely_same_fstree; eauto.
     eapply fs_homedir_rely; eauto.
@@ -452,76 +467,22 @@ Section ConcurrentFS.
       discriminate.
 
       step; simplify; finish.
-      destruct e; try solve [ step; exfalso; eauto ].
-
-      step; simplify.
-      unfold translated_postcondition in *; simpl in *; intuition eauto.
-      match goal with
-      | [ H: fs_invariant _ _ _ _ _ (Sigma.mem st1) |- _ ] =>
-        pose proof (fs_invariant_unfold H); repeat deex
-      end.
-      descend; simpl in *; intuition eauto.
-      unfold fs_invariant in *; SepAuto.pred_apply; SepAuto.cancel.
-      congruence.
-      unfold G, fs_guarantee.
-      repeat match goal with
-             | [ H: _ = _ |- _ ] =>
-               progress rewrite H in *
-             end.
-      exists tree', tree', homedirs.
-      intuition auto.
-      unfold fs_invariant; SepAuto.pred_apply.
-      Search (Sigma.disk st0).
-      Search (Sigma.disk st1).
-      descend; intuition eauto.
-
-      subst; simpl.
-      step.
-      descend; simpl in *; intuition eauto.
-      congruence.
-
-      step.
-      unfold translated_postcondition in *; intuition eauto.
-      descend; simpl in *; intuition eauto.
-      congruence.
-
-      step.
-      simpl; intuition auto.
-      destruct r; simpl.
-      step.
-      + destruct e; try discriminate.
-      + step.
-        destruct e; try discriminate.
-        descend; simpl in *; intuition idtac.
-        repeat match goal with
-               | [ H: _ = _ |- _ ] =>
-                 progress rewrite H in *
-               end.
-        instantiate (1 := homedirs).
-        instantiate (1 := tree').
+      destruct e eqn:Hexceq; try solve [ step; exfalso; eauto ].
+      + (* cache miss *)
+        step; simplify.
+        unfold translated_postcondition in *; simpl in *; intuition eauto.
+        descend; simpl in *; intuition eauto.
         unfold fs_invariant in *; SepAuto.pred_apply; SepAuto.cancel.
-        admit. (* need to update the cache for this to be using the in-memory
-        cache *)
-        eauto.
-        eauto.
-        eauto.
-
-        step.
-        intuition auto.
-        destruct r; try solve [ descend; intuition (subst; eauto) ].
-        exists tree'0, tree''; intuition (subst; eauto).
-        etransitivity; eauto.
-        subst.
-        exists tree'0, tree'0; intuition (subst; eauto).
-        etransitivity; eauto.
-      + step.
-        destruct e; try discriminate; intuition auto.
-        descend; intuition eauto.
+        congruence.
+        unfold G, fs_guarantee.
         repeat match goal with
                | [ H: _ = _ |- _ ] =>
                  progress rewrite H in *
                end.
-  Qed.
+        exists tree', tree', homedirs.
+        intuition auto.
+        unfold fs_invariant; SepAuto.pred_apply.
+  Abort.
 
   (* translate all system calls for extraction *)
 
@@ -612,7 +573,7 @@ Definition init (fsxp: fs_xparams) (mscs: memstate) : cprog FsParams :=
   cacheId <- Alloc empty_cache;
     memstateId <- Alloc mscs;
     Ret {|
-        cache:=cacheId;
+        ccache:=cacheId;
         fsmem:=memstateId;
         fsxp:=fsxp;
 
