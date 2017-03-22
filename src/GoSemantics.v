@@ -255,7 +255,7 @@ Module Go.
     | ImmutableBuffer => existT _ _ WO
     | Slice _ => Here nil
     | Pair t1 t2 => (default_value' t1, default_value' t2)
-    | AddrMap vt => Here (Map.empty (type_denote vt))
+    | AddrMap vt => Moved
     | Struct l => default_value'_list default_value' l
     end.
 

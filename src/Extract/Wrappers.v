@@ -11,28 +11,11 @@ Ltac Transform_t := abstract (intros;
   | [ |- ?a = ?b ] => destruct a, b; simpl in *
   end).
 
-Instance addrmap_default_value : forall T {H: GoWrapper T}, DefaultValue (Map.t T).
-  intros.
-  apply Build_DefaultValue with (zeroval := Map.empty _).
-  unfold default_value, default_value', wrap, wrap'.
-  simpl. repeat f_equal.
-  apply MapUtils.addrmap_equal_eq.
-  apply MapUtils.AddrMap.map_empty.
-  eauto with map.
-Defined.
-
 Instance WrapByTransforming_cachestate : WrapByTransforming cachestate.
   refine {|
     transform := fun cs => (CSMap cs, CSMaxCount cs, CSEvict cs);
   |}.
   Transform_t.
-Defined.
-
-Instance cachestate_default_value : DefaultValue cachestate := {| zeroval :=
-  {| CSMap := Go.Map.empty _; CSMaxCount := 0; CSEvict := tt |} |}.
-  unfold wrap, wrap', GoWrapper_transform, default_value. simpl.
-  repeat f_equal.
-  eauto using MapUtils.addrmap_equal_eq, MapUtils.AddrMap.map_empty with map.
 Defined.
 
 Instance GoWrapper_GLog_mstate : WrapByTransforming GLog.mstate.
@@ -45,22 +28,6 @@ Instance GoWrapper_GLog_mstate : WrapByTransforming GLog.mstate.
   Transform_t.
 Defined.
 
-Instance GLog_mstate_default_value : DefaultValue GLog.mstate.
-  refine {|
-    zeroval := {|
-      GLog.MSVMap := zeroval;
-      GLog.MSTxns := zeroval;
-      GLog.MSMLog := zeroval
-    |}
-  |}.
-
-  pose proof (@default_zero LogReplay.valumap _ _).
-
-  repeat find_apply_lem_hyp default_zero'.
-  unfold wrap; simpl in *.
-  repeat find_rewrite. reflexivity.
-Defined.
-
 Instance GoWrapper_LOG_mstate : WrapByTransforming LOG.mstate.
   refine {|
     transform := fun ms =>
@@ -68,22 +35,6 @@ Instance GoWrapper_LOG_mstate : WrapByTransforming LOG.mstate.
       LOG.MSGLog ms)
   |}.
   Transform_t.
-Defined.
-
-Instance LOG_mstate_default_value : DefaultValue LOG.mstate.
-  refine {|
-    zeroval := {|
-      LOG.MSTxn := zeroval;
-      LOG.MSGLog := zeroval
-    |}
-  |}.
-
-  pose proof (@default_zero LogReplay.valumap _ _).
-  pose proof (@default_zero GLog.mstate _ _).
-
-  repeat find_apply_lem_hyp default_zero'.
-  unfold wrap; simpl in *.
-  repeat find_rewrite. reflexivity.
 Defined.
 
 Instance WrapByTransforming_log_xparams : WrapByTransforming log_xparams.

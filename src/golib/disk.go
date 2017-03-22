@@ -28,7 +28,7 @@ func (d *Buffer) DeepCopy(dst **Buffer) {
 
 func (d ImmutableBuffer) DeepCopy(dst *ImmutableBuffer) {
 	// TODO: don't always allocate
-	*dst = append([]byte{}, d...)
+	*dst = d
 }
 
 func New_Buffer() *Buffer {

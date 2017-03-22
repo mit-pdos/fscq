@@ -555,7 +555,7 @@ let go_map_defs ts =
     }
 
     func New_" ^ type_name ^ " () " ^ type_name ^ "{
-      return make(" ^ type_name ^ ")
+      return nil
     }\n"
   ) maps
 
