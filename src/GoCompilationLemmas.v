@@ -420,6 +420,47 @@ Proof.
       forward_solve.
 Qed.
 
+Lemma CompileBind' : forall T T' env A B (C : T' -> _) p f xp xf,
+  EXTRACT p
+  {{ A }}
+    xp
+  {{ B }} // env ->
+  (forall (a : T),
+    EXTRACT f a
+    {{ B a }}
+      xf
+    {{ C }} // env) ->
+  EXTRACT Bind p f
+  {{ A }}
+    xp; xf
+  {{ C }} // env.
+Proof.
+  unfold ProgOk.
+  intuition subst.
+
+  - find_eapply_lem_hyp Go.ExecFinished_Steps. find_eapply_lem_hyp Go.Steps_Seq.
+    intuition; repeat deex; try discriminate.
+    find_eapply_lem_hyp Go.Steps_ExecFinished. find_eapply_lem_hyp Go.Steps_ExecFinished.
+    forward_solve.
+
+  - find_eapply_lem_hyp Go.ExecCrashed_Steps. repeat deex. find_eapply_lem_hyp Go.Steps_Seq.
+    intuition; repeat deex.
+    + inv_exec. find_eapply_lem_hyp Go.Steps_ExecCrashed; eauto.
+      forward_solve.
+    + destruct_pair. find_eapply_lem_hyp Go.Steps_ExecFinished. find_eapply_lem_hyp Go.Steps_ExecCrashed; eauto.
+      forward_solve.
+
+  - find_eapply_lem_hyp Go.ExecFailed_Steps. repeat deex. find_eapply_lem_hyp Go.Steps_Seq.
+    intuition; repeat deex.
+    + eapply Go.Steps_ExecFailed in H4; eauto.
+      * forward_solve.
+      * unfold Go.is_final; simpl; intuition (subst; eauto).
+      * intuition. repeat deex.
+        intuition eauto.
+    + destruct_pair. find_eapply_lem_hyp Go.Steps_ExecFinished. find_eapply_lem_hyp Go.Steps_ExecFailed; eauto.
+      forward_solve.
+Qed.
+
 Ltac exec_solve_step :=
   lazymatch goal with
   | [ H : ~Go.is_final _ |- _] =>
