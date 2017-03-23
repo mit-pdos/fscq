@@ -49,7 +49,7 @@ Module CacheOneDir.
     ms <- BFILE.cache_put dnum (ocache, 0) ms;
     Ret ^(ms, (ocache, 0)).
 
-  Definition get_dcache (lxp:FSLayout.log_xparams) (ixp:Inode.INODE.IRecSig.xparams) dnum ms :=
+  Definition get_dcache' (lxp:FSLayout.log_xparams) (ixp:Inode.INODE.IRecSig.xparams) dnum ms :=
     let^ (ms, ocache) <- BFILE.cache_get dnum ms;
     match ocache with
     | None =>
@@ -59,7 +59,7 @@ Module CacheOneDir.
       Ret ^(ms, r)
     end.
 
-  Definition get_dcache' lxp ixp dnum ms :=
+  Definition get_dcache lxp ixp dnum ms :=
     let^ (ms, ocache) <- BFILE.cache_get dnum ms;
     match ocache with
     | None =>
@@ -69,7 +69,7 @@ Module CacheOneDir.
       Ret ^(ms, r)
     end.
 
-  Definition lookup' lxp ixp dnum name ms :=
+  Definition lookup lxp ixp dnum name ms :=
     let^ (ms, cache) <- get_dcache lxp ixp dnum ms;
     match Dcache.find name (fst cache) with
     | None =>
@@ -78,7 +78,7 @@ Module CacheOneDir.
       Ret ^(ms, r)
     end.
 
-   Definition lookup lxp ixp dnum name ms :=
+   Definition lookup' lxp ixp dnum name ms :=
      let^ (ms, cache) <- get_dcache lxp ixp dnum ms;
      match Dcache.find name (fst cache) with
      | None =>
