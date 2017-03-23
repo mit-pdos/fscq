@@ -2248,6 +2248,44 @@ Proof.
   [eval_expr; eauto..].
 Qed.
 
+Lemma CompileIsSome : forall T {W : GoWrapper T} {D : DefaultValue T} ovar (o : option T) varr F env,
+  EXTRACT (Ret (is_some o))
+  {{ ovar ~> o * varr ~>? bool * F }}
+    Declare wrap_type (fun tvar => (
+    Modify SplitPair ^(ovar, varr, tvar);
+    Modify JoinPair ^(ovar, varr, tvar)))
+  {{ fun ret => varr ~> ret * ovar ~> o * F }} // env.
+Proof.
+  intros.
+  eapply CompileDeclare; intros tvar.
+  eapply CompileBefore.
+  eapply hoare_weaken.
+  eapply CompileSplit with (A := bool) (p := match o with | Some x => (_, _) | None => (_, _) end).
+  destruct o.
+  cbv [wrap wrap' GoWrapper_option GoWrapper_pair id]. cancel_go.
+  cancel_go.
+  cbv [wrap wrap' GoWrapper_option id].
+  cancel_go.
+  rewrite default_zero'; eauto.
+  apply default_zero.
+  cancel_go.
+  unfold ProgOk.
+  inv_exec_progok.
+  repeat exec_solve_step.
+  repeat exec_solve_step.
+  repeat exec_solve_step.
+  contradiction H1.
+  repeat econstructor.
+  eval_expr; eauto.
+  eval_expr; eauto.
+  eval_expr; eauto.
+  contradiction H1.
+  repeat econstructor.
+  eval_expr; eauto.
+  eval_expr; eauto.
+  eval_expr; eauto.
+Qed.
+
 Lemma CompileMatchOption : forall env B {HB : GoWrapper B} X {HX : GoWrapper X}
   ovar avar bvar xvar (o : option B)
   (pnone : prog X) xpnone (psome : B -> prog X) xpsome (F : pred) C,
