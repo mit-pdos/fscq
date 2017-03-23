@@ -2293,11 +2293,11 @@ Lemma CompileMatchOption : forall env B {HB : GoWrapper B} X {HX : GoWrapper X}
   EXTRACT (psome b)
   {{ avar ~> true * bvar ~> b * ovar |-> moved_value (wrap o) * F }}
     xpsome
-  {{ fun ret => xvar ~> ret * avar ~>? bool * bvar ~>? B * ovar ~>? option B * C }} // env) ->
+  {{ fun ret => xvar ~> ret * avar ~>? bool * bvar ~>? B * ovar ~>? option B * C ret }} // env) ->
   EXTRACT pnone
   {{ avar ~> false * bvar |-> default_value (@wrap_type _ HB) * ovar |-> moved_value (wrap o) * F }}
     xpnone
-  {{ fun ret => xvar ~> ret * avar ~>? bool * bvar ~>? B * ovar ~>? option B * C }} // env ->
+  {{ fun ret => xvar ~> ret * avar ~>? bool * bvar ~>? B * ovar ~>? option B * C ret }} // env ->
   EXTRACT (match o with
            | None => pnone
            | Some b => psome b
@@ -2305,7 +2305,7 @@ Lemma CompileMatchOption : forall env B {HB : GoWrapper B} X {HX : GoWrapper X}
   {{ ovar ~> o * avar ~>? bool * bvar ~>? B * F }}
     Modify SplitPair ^(ovar, avar, bvar) ;
     If Var avar Then xpsome Else xpnone EndIf
-  {{ fun ret => xvar ~> ret * avar ~>? bool * bvar ~>? B * ovar ~>? option B * C }} // env.
+  {{ fun ret => xvar ~> ret * avar ~>? bool * bvar ~>? B * ovar ~>? option B * C ret }} // env.
 Proof.
   intros.
   eapply extract_equiv_prog with (pr1 := Bind (Ret tt) (fun _ => _)).
