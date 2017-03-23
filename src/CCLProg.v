@@ -46,26 +46,30 @@ Notation heappred := (@pred ident Nat.eq_dec Var).
 
 (* The states a program steps through. *)
 Inductive Sigma :=
-| state (d:DISK) (m:heap) (hm:hashmap) (l:LockState).
+| state (d_i: DISK) (d:DISK) (m:heap) (hm:hashmap) (l:LockState).
 
 Module Sigma.
+  Definition init_disk (sigma:Sigma) :=
+    let (d_i, _, _, _, _) := sigma in d_i.
   Definition disk (sigma:Sigma) :=
-    let (d, _, _, _) := sigma in d.
+    let (_, d, _, _, _) := sigma in d.
   Definition mem (sigma:Sigma) : heap :=
-    let (_, m, _, _) := sigma in m.
+    let (_, _, m, _, _) := sigma in m.
   Definition hm (sigma:Sigma) :=
-    let (_, _, hm, _) := sigma in hm.
+    let (_, _, _, hm, _) := sigma in hm.
   Definition l (sigma:Sigma) :=
-    let (_, _, _, l) := sigma in l.
+    let (_, _, _, _, l) := sigma in l.
 
+  Definition set_init_disk (sigma:Sigma) (d_i:DISK) :=
+    let (_, d, m, hm, l) := sigma in state d_i d m hm l.
   Definition set_mem (sigma:Sigma) (m:heap) :=
-    let (d, _, hm, l) := sigma in state d m hm l.
+    let (d_i, d, _, hm, l) := sigma in state d_i d m hm l.
   Definition upd_disk (sigma:Sigma) (d':DISK -> DISK) :=
-    let (d, m, hm, l) := sigma in state (d' d) m hm l.
+    let (d_i, d, m, hm, l) := sigma in state d_i (d' d) m hm l.
   Definition upd_hm (sigma:Sigma) sz (buf: word sz) :=
-    let (d, m, hm, l) := sigma in state d m (upd_hashmap' hm (hash_fwd buf) buf) l.
+    let (d_i, d, m, hm, l) := sigma in state d_i d m (upd_hashmap' hm (hash_fwd buf) buf) l.
   Definition set_l (sigma:Sigma) l :=
-    let (d, m, hm, _) := sigma in state d m hm l.
+    let (d_i, d, m, hm, _) := sigma in state d_i d m hm l.
 End Sigma.
 
 Section CCL.
@@ -211,9 +215,6 @@ Section CCL.
                         then NonDet (* still need to check type *)
                         else Fails
                       else Fails
-    (* TODO: disk operations require guarantee proofs, too, but somehow
-    separable from memory protocol (disk operations not observable until
-    unlock, while writes are immediately visible) *)
     | BeginRead a => if CanWrite (Sigma.l sigma) then
                       match Sigma.disk sigma a with
                       | Some (v, NoReader) =>
@@ -239,19 +240,13 @@ Section CCL.
                        match l, l' with
                        | Free, Free => Fails
                        | Free, WriteLock => NonDet
-                       | WriteLock, Free => StepTo (Sigma.set_l sigma Free) tt
+                       | WriteLock, Free => NonDet (* requires guarantee proof *)
                        | WriteLock, WriteLock => Fails
                        end
                      else Fails
     | Ret v => StepTo sigma v
     | _ => NonDet
     end.
-
-  Inductive outcome T :=
-  | Finished (sigma:Sigma) (r:T)
-  | Error.
-
-  Arguments Error {T}.
 
   Inductive rtxn_step : forall T (txn:read_transaction T), heap -> T -> Prop :=
   | rtxn_step_done : forall h, rtxn_step RDone h tt
@@ -296,6 +291,18 @@ Section CCL.
       wtxn_step tid txn (upd h i (absMem (f tid m0))) h'' ->
       wtxn_step tid (WCons (AbsMemUpd i f) txn) h h''.
 
+  Inductive outcome T :=
+  | Finished (sigma:Sigma) (r:T)
+  | Error.
+
+  Arguments Error {T}.
+
+  Inductive guarantee_exec tid sigma sigma' T (v: T) : outcome T -> Prop :=
+  | GuaranteeMet : Guarantee tid sigma sigma' ->
+                   guarantee_exec tid sigma sigma' v (Finished sigma' v)
+  | GuaranteeNotMet : ~Guarantee tid sigma sigma' ->
+                      guarantee_exec tid sigma sigma' v Error.
+
   Inductive exec (tid:TID) : forall T, Sigma -> cprog T -> outcome T -> Prop :=
   | ExecStepDec : forall T (p: cprog T) sigma sigma' v,
       step_dec sigma p = StepTo sigma' v ->
@@ -308,58 +315,58 @@ Section CCL.
       hash_safe (Sigma.hm sigma) h buf ->
       exec tid sigma (@Hash sz buf) (Finished (Sigma.upd_hm sigma buf) h)
   | ExecBindFinish : forall T T' (p: cprog T') (p': T' -> cprog T)
-                       sigma sigma' v out,
-      exec tid sigma p (Finished sigma' v) ->
-      exec tid sigma' (p' v) out ->
-      exec tid sigma (Bind p p') out
-  | ExecBindFail : forall T T' (p: cprog T') (p': T' -> cprog T) sigma,
-      exec tid sigma p Error ->
-      exec tid sigma (Bind p p') Error
+                       st st' v out,
+      exec tid st p (Finished st' v) ->
+      exec tid st' (p' v) out ->
+      exec tid st (Bind p p') out
+  | ExecBindFail : forall T T' (p: cprog T') (p': T' -> cprog T) st,
+      exec tid st p Error ->
+      exec tid st (Bind p p') Error
   | ExecWriteLock : forall sigma sigma',
       Sigma.l sigma = Free ->
       Rely tid sigma sigma' ->
       hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') ->
+      Sigma.init_disk sigma' = Sigma.disk sigma' ->
       let sigma' := Sigma.set_l sigma' WriteLock in
       exec tid sigma (SetLock Free WriteLock) (Finished sigma' tt)
+  | ExecUnlock : forall sigma out,
+      Sigma.l sigma = WriteLock ->
+      let sigma' := Sigma.set_l (Sigma.set_init_disk sigma (Sigma.disk sigma)) Free in
+      guarantee_exec tid sigma sigma' tt out ->
+      exec tid sigma (SetLock WriteLock Free) out
   | ExecAlloc : forall sigma A (v:A) i,
       Sigma.mem sigma i = None ->
       let sigma' := Sigma.set_mem sigma (upd (Sigma.mem sigma) i (val v)) in
-      exec tid sigma (Alloc v)
-           (Finished sigma' i)
+      exec tid sigma (Alloc v) (Finished sigma' i)
   | ExecReadTxn : forall sigma A (txn:read_transaction A) v sigma',
       rtxn_step txn (Sigma.mem sigma) v ->
       (Sigma.l sigma = WriteLock -> sigma' = sigma) ->
       (Sigma.l sigma = Free -> Rely tid sigma sigma' /\
                       hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
+                      Sigma.init_disk sigma' = Sigma.disk sigma' /\
                       Sigma.l sigma' = Sigma.l sigma) ->
       exec tid sigma (ReadTxn txn)
            (Finished sigma' v)
   | ExecReadTxnFail : forall sigma A (txn:read_transaction A),
       rtxn_error txn (Sigma.mem sigma) ->
       exec tid sigma (ReadTxn txn) Error
-  | ExecAssgnTxn : forall sigma (txn:write_transaction) h',
+  | ExecAssgnTxn : forall sigma (txn:write_transaction) h' out,
       Sigma.l sigma = WriteLock ->
       wtxn_step tid txn (Sigma.mem sigma) h' ->
       let sigma' := Sigma.set_mem sigma h' in
-      Guarantee tid sigma sigma' ->
-      exec tid sigma (AssgnTxn txn)
-           (Finished sigma' tt)
-  | ExecAssgnTxnProtocolError : forall sigma (txn:write_transaction) h',
-      Sigma.l sigma = WriteLock ->
-      wtxn_step tid txn (Sigma.mem sigma) h' ->
-      let sigma' := Sigma.set_mem sigma h' in
-      ~Guarantee tid sigma sigma' ->
-      exec tid sigma (AssgnTxn txn) Error
+      guarantee_exec tid sigma sigma' tt out ->
+      exec tid sigma (AssgnTxn txn) out
   | ExecAssgnTxnTyError : forall sigma (txn:write_transaction),
       wtxn_error txn (Sigma.mem sigma) ->
       exec tid sigma (AssgnTxn txn) Error.
 
-  Theorem ExecRet : forall tid T (v:T) sigma,
-      exec tid sigma (Ret v) (Finished sigma v).
+  Theorem ExecRet : forall tid T (v:T) st,
+      exec tid st (Ret v) (Finished st v).
   Proof.
     intros.
+    destruct st.
     eapply ExecStepDec.
-    auto.
+    reflexivity.
   Qed.
 
   Definition SpecDouble T :=
@@ -422,6 +429,12 @@ Module CCLTactics.
       clear H
     end.
 
+  Ltac inv_guarantee :=
+    match goal with
+    | [ H: guarantee_exec _ _ _ _ _ _ |- _ ] =>
+      inversion H; subst; clear H
+    end.
+
   Local Ltac inv_cleanup H :=
     inversion H; subst; repeat inj_pair2.
 
@@ -437,6 +450,7 @@ Module CCLTactics.
                    let n := numgoals in guard n <= 1
                  end
         end;
+    try inv_guarantee;
     repeat match goal with
            | [ H: StepTo _ _ = StepTo _ _ |- _ ] =>
              inversion H; subst; clear H

@@ -46,6 +46,8 @@ Section Primitives.
       solve [ destruct sigma; simpl in *; auto ]
     | [ |- Sigma.disk _ = Sigma.disk ?sigma ] =>
       solve [ destruct sigma; simpl in *; auto ]
+    | [ |- Sigma.init_disk _ = Sigma.init_disk ?sigma ] =>
+      solve [ destruct sigma; simpl in *; auto ]
     | [ |- Sigma.l _ = Sigma.l ?sigma ] =>
       solve [ destruct sigma; simpl in *; auto ]
     | [ H: (_ * ?a |-> ?v)%pred _ |- _ ] =>
@@ -80,7 +82,8 @@ Section Primitives.
                            F (Sigma.mem sigma') /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.l sigma' = Sigma.l sigma /\
-                           Sigma.disk sigma' = upd (Sigma.disk sigma) a (v, Pending); |})
+                           Sigma.disk sigma' = upd (Sigma.disk sigma) a (v, Pending) /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma ; |})
                  (BeginRead a).
   Proof.
     prim.
@@ -99,7 +102,8 @@ Section Primitives.
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.l sigma' = Sigma.l sigma /\
                            Sigma.disk sigma' = upd (Sigma.disk sigma) a (v, NoReader) /\
-                           r = v; |})
+                           r = v /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma ; |})
                  (WaitForRead a).
   Proof.
     prim.
@@ -117,7 +121,8 @@ Section Primitives.
                            F (Sigma.mem sigma') /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.disk sigma' =  upd (Sigma.disk sigma) a (v, NoReader) /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma ; |})
                  (Write a v).
   Proof.
     prim.
@@ -134,7 +139,8 @@ Section Primitives.
                            (F * i |-> val v)%pred (Sigma.mem sigma') /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
                  (Alloc v).
   Proof.
     prim.
@@ -178,10 +184,10 @@ Section Primitives.
                            (if CanWrite (Sigma.l sigma) then
                              sigma' = sigma
                            else
-                             Rely G tid sigma sigma') /\
+                             Rely G tid sigma sigma' /\
+                             Sigma.init_disk sigma' = Sigma.disk sigma') /\
                            hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
-                           Sigma.l sigma' = Sigma.l sigma;
-                    |})
+                           Sigma.l sigma' = Sigma.l sigma ; |})
                  (Read2 A i1 B i2).
   Proof.
     prim; try inv_ret.
@@ -246,6 +252,7 @@ Section Primitives.
                            (F * i |-> val v)%pred (Sigma.mem sigma') ->
                            Sigma.hm sigma' = Sigma.hm sigma ->
                            Sigma.disk sigma' = Sigma.disk sigma ->
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma ->
                            Sigma.l sigma' = Sigma.l sigma ->
                            G tid sigma sigma');
                        postcondition :=
@@ -253,17 +260,22 @@ Section Primitives.
                            (F * i |-> val v)%pred (Sigma.mem sigma') /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
                  (Assgn1 i v).
   Proof.
     begin_prim; inv_bind.
     inv_exec; unfold ident in *; repeat inj_pair2.
+    repeat match goal with
+           | [ u: unit |- _ ] =>
+             destruct u
+           | [ x := _ |- _ ] => subst x
+           end.
     - destruct a as (F & v0); simpl in *; intuition eauto.
       match goal with
         | [ H: wtxn_step _ _ _ _ |- _ ] =>
           apply wtxn_step_assgn1 in H
       end; subst.
-      subst sigma'0.
       destruct st; simpl in *.
       eapply H1; eauto; simpl; intuition.
       eapply ptsto_upd'; eauto.
@@ -283,7 +295,7 @@ Section Primitives.
       destruct st; simpl in *; subst.
       match goal with
       | [ H: ~G _ _ _ |- _ ] =>
-        apply H8
+        apply H
       end.
       eapply H3; eauto; simpl.
       eapply ptsto_upd'; eauto.
@@ -374,7 +386,8 @@ Section Primitives.
                             abs1 txn |-> abs (abs1Up txn tid g))%pred (Sigma.mem sigma') /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
                  (Assgn2_abs txn).
   Proof.
     begin_prim; inv_bind.
@@ -387,7 +400,7 @@ Section Primitives.
       | [ H: wtxn_step _ _ _ _ |- _ ] =>
         eapply wtxn_step_assgn2 in H; eauto; subst
     end.
-    subst sigma'0.
+    subst sigma'.
     eapply H1; eauto.
     destruct st; simpl in *; intuition eauto.
     repeat (match goal with
@@ -449,7 +462,8 @@ Section Primitives.
                            hash_safe (Sigma.hm sigma) (hash_fwd buf) buf /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = upd_hashmap' (Sigma.hm sigma) (hash_fwd buf) buf /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
                  (Hash buf).
   Proof.
     prim.
@@ -463,7 +477,8 @@ Section Primitives.
                        postcondition :=
                          fun sigma' r =>
                            sigma' = sigma /\
-                           r = v; |})
+                           r = v /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
                  (Ret v).
   Proof.
     prim.
@@ -496,12 +511,13 @@ Section Primitives.
                          fun sigma'' _ =>
                            exists sigma', Rely G tid sigma sigma' /\
                                  sigma'' = Sigma.set_l sigma' WriteLock /\
-                                 hashmap_le (Sigma.hm sigma) (Sigma.hm sigma''); |})
+                                 hashmap_le (Sigma.hm sigma) (Sigma.hm sigma'') /\
+                                 Sigma.init_disk sigma' = Sigma.disk sigma'; |})
                  GetWriteLock.
   Proof.
     prim.
     eexists; intuition eauto.
-    destruct sigma'0; simpl; eauto.
+    destruct sigma'; simpl; eauto.
   Qed.
 
   Theorem Unlock_ok : forall tid,
@@ -509,17 +525,27 @@ Section Primitives.
                  (fun F sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
-                         Sigma.l sigma = WriteLock;
+                         Sigma.l sigma = WriteLock /\
+                         (forall sigma',
+                             F (Sigma.mem sigma') ->
+                             Sigma.disk sigma' = Sigma.disk sigma ->
+                             Sigma.init_disk sigma' = Sigma.disk sigma ->
+                             Sigma.hm sigma' = Sigma.hm sigma ->
+                             Sigma.l sigma' = Free ->
+                             G tid sigma sigma');
                        postcondition :=
                          fun sigma' _ =>
                            F (Sigma.mem sigma') /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Free; |})
+                           Sigma.l sigma' = Free /\
+                           Sigma.init_disk sigma' = Sigma.disk sigma'; |})
                  Unlock.
   Proof.
     prim.
     destruct st; simpl; auto.
+    destruct st; simpl; auto.
+    destruct st; simpl in *; eauto.
   Qed.
 
 End Primitives.

@@ -248,7 +248,8 @@ Section OptimisticCache.
                            cache_get (cache cs') a = Present v0 Clean /\
                            r = v0 /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
                  (ClearPending cs a).
   Proof.
     unfold ClearPending.
@@ -345,7 +346,8 @@ Section OptimisticCache.
                            CacheRep (Sigma.disk sigma') cs' vd0 vd /\
                            cache_get (cache cs') a = Invalid /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
                  (StartFill cs a).
   Proof.
     unfold StartFill.
@@ -388,7 +390,8 @@ Section OptimisticCache.
                            | None => True
                            end /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
                  (CacheRead cs a l).
   Proof.
     unfold CacheRead.
@@ -454,7 +457,8 @@ Section OptimisticCache.
                            F (Sigma.mem sigma') /\
                            CacheRep (Sigma.disk sigma') cs' vd0 (upd vd a v) /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
                  (CacheWrite cs a v).
   Proof.
     unfold CacheWrite.
@@ -478,7 +482,8 @@ Section OptimisticCache.
                            c = cache cs /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
                  (CacheCommit cs).
   Proof.
     unfold CacheCommit.
@@ -501,7 +506,8 @@ Section OptimisticCache.
                            c = old_cache cs /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
                  (CacheAbort cs).
   Proof.
     unfold CacheAbort.
@@ -534,7 +540,8 @@ Section OptimisticCache.
                            old_cache cs = c /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma; |})
+                           Sigma.l sigma' = Sigma.l sigma /\
+                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
                  (CacheInit c).
   Proof.
     unfold CacheInit.

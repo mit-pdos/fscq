@@ -192,7 +192,8 @@ Section ConcurrentFS.
                              (* mscs and c come from fs_invariant on sigma *)
                              (exists vd, cache_rep (Sigma.disk sigma) c vd /\
                                     fs_rep P vd (Sigma.hm sigma') mscs tree) /\
-                             Sigma.l sigma' = Sigma.l sigma |})
+                             Sigma.l sigma' = Sigma.l sigma /\
+                             Sigma.init_disk sigma' = Sigma.disk sigma'; |})
                  readCacheMem.
   Proof using Type.
     unfold readCacheMem; intros.
@@ -267,6 +268,7 @@ Section ConcurrentFS.
                              Rely G tid sigma sigma' /\
                              homedir_rely tid homedirs tree tree' /\
                              Sigma.l sigma' = Free /\
+                             Sigma.init_disk sigma' = Sigma.disk sigma' /\
                              match r with
                              | Done v => fs_post (fsspec a) v
                              | TryAgain => True
@@ -354,7 +356,8 @@ Section ConcurrentFS.
                              hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
                              Rely G tid sigma sigma' /\
                              homedir_rely tid homedirs tree tree' /\
-                             Sigma.l sigma' = WriteLock; |})
+                             Sigma.l sigma' = WriteLock /\
+                             Sigma.init_disk sigma' = Sigma.disk sigma' ; |})
                  startLocked.
   Proof using Type.
     unfold startLocked; intros.
@@ -409,6 +412,7 @@ Section ConcurrentFS.
                                (Sigma.mem sigma') /\
                              homedir_rely tid homedirs tree tree' /\
                              Sigma.l sigma' = Free /\
+                             Sigma.init_disk sigma' = Sigma.disk sigma' /\
                              match r with
                              | Done v => fs_post (fsspec a) v /\
                                         tree'' = fs_dirup (fsspec a) tree'

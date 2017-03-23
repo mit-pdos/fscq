@@ -226,7 +226,8 @@ Section OptimisticTranslator.
     (l = Free -> c' = c) /\
     (l = Free -> Sigma.disk sigma' = Sigma.disk sigma) /\
     hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
-    Sigma.l sigma' = Sigma.l sigma.
+    Sigma.l sigma' = Sigma.l sigma /\
+    Sigma.init_disk sigma' = Sigma.init_disk sigma.
 
   Lemma hashmap_le_refl_eq : forall hm hm',
       hm = hm' ->
@@ -338,9 +339,9 @@ Section OptimisticTranslator.
       destruct (Sigma.l sigma); simpl in *; intuition subst;
         CCLTactics.inv_ret; descend; (intuition eauto); try congruence.
       eapply Prog.XStep; eauto.
-      replace (Sigma.hm sigma'0); eauto.
-      replace (Sigma.disk sigma'0); eauto.
-      replace (Sigma.hm sigma'0); eauto.
+      replace (Sigma.hm sigma'); eauto.
+      replace (Sigma.disk sigma'); eauto.
+      replace (Sigma.hm sigma'); eauto.
 
     - CCLTactics.inv_bind.
       match goal with
