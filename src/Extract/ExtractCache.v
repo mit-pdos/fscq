@@ -102,6 +102,20 @@ Proof.
   all: compile.
 Defined.
 
+Transparent BUFCACHE.read_array.
+
+Example compile_read_array : sigT (fun p => source_stmt p /\  forall env a i cs,
+  prog_func_call_lemma {| FArgs := [with_wrapper _ ; with_wrapper _]; FRet := with_wrapper _ |}
+    "cache_read" BUFCACHE.read env ->
+  EXTRACT BUFCACHE.read_array a i cs
+  {{ 0 ~>? (cachestate * (valu * unit)) * 1 ~> a * 2 ~> i * 3 ~> cs }}
+    p
+  {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? W * 3 ~>? cachestate }} // env).
+Proof.
+  unfold BUFCACHE.read_array.
+  compile.
+Defined.
+
 Transparent BUFCACHE.write.
 Example compile_write : sigT (fun p => source_stmt p /\ forall env a v cs,
   prog_func_call_lemma {| FArgs := [with_wrapper cachestate]; FRet := with_wrapper cachestate |}
@@ -179,6 +193,7 @@ Definition extract_env : Env.
   add_compiled_program "cache_maybe_evict" compile_maybe_evict env.
   add_compiled_program "cache_eviction_update" compile_eviction_update' env.
   add_compiled_program "cache_read" compile_read env.
+  add_compiled_program "cache_read_array" compile_read_array env.
   add_compiled_program "cache_write" compile_write env.
   add_compiled_program "cache_sync" compile_sync env.
   add_compiled_program "cache_begin_sync" compile_begin_sync env.
