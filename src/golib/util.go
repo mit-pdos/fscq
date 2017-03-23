@@ -30,3 +30,7 @@ func test_eq_Bool(l Bool, r Bool) Bool {
 func test_ne_Bool(l Bool, r Bool) Bool {
 	return Bool(bool(l) != bool(r))
 }
+
+func test_and_Bool(l Bool, r Bool) Bool {
+	return Bool(bool(l) && bool(r))
+}

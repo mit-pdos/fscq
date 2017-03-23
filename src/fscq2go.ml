@@ -418,6 +418,7 @@ let rec go_expr ts expr =
     | Go.Ne -> "ne"
     | Go.Lt -> "lt"
     | Go.Le -> "le"
+    | Go.And -> "and"
     in ("test_" ^ operator ^ "_" ^ go_type ^
         "(" ^ a_expr ^ ", " ^ b_expr ^ ")")
 ;;

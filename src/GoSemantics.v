@@ -81,7 +81,7 @@ Module Go.
 
   Inductive numop := Plus | Minus | Times | Divide | Modulo.
 
-  Inductive test := Eq | Ne | Lt | Le.
+  Inductive test := Eq | Ne | Lt | Le | And.
 
   Module Map := AddrMap.Map.
 
@@ -321,12 +321,13 @@ Module Go.
     | Ne => if Nat.eq_dec a b then Some (Val Bool false) else Some (Val Bool true)
     | Lt => if Compare_dec.lt_dec a b then Some (Val Bool true) else Some (Val Bool false)
     | Le => if Compare_dec.le_dec a b then Some (Val Bool true) else Some (Val Bool false)
+    | And => None
     end.
-
   Definition eval_test_bool (op : test) a b :=
     match op with
     | Eq => if Bool.bool_dec a b then Some (Val Bool true) else Some (Val Bool false)
     | Ne => if Bool.bool_dec a b then Some (Val Bool false) else Some (Val Bool true)
+    | And => if a then Some (Val Bool b) else Some (Val Bool false)
     | _ => None
     end.
 
