@@ -8,10 +8,10 @@ Section HoareTriples.
 
   Record SpecParams T :=
     { precondition :  Prop;
-      postcondition : State ->
+      postcondition : Sigma ->
                       T -> Prop }.
 
-  Definition Spec A T := A -> State -> SpecParams T.
+  Definition Spec A T := A -> Sigma -> SpecParams T.
 
   Definition cprog_spec tid A T' (spec: Spec A T') (p: cprog T') :=
     forall T (rx: _ -> cprog T),

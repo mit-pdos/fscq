@@ -113,7 +113,7 @@ Section ConcurrentFS.
   Definition fs_spec A T (fsspec: FsSpec A T) :
     memstate -> LockState -> Cache ->
     Spec _ (Result (memstate * T) * Cache) :=
-    fun mscs l c '(F, d, vd, tree, a) '(ExecState d_i sigma) =>
+    fun mscs l c '(F, d, vd, tree, a) sigma =>
       {| precondition :=
            F (Sigma.mem sigma) /\
            cache_rep d c vd /\
@@ -122,11 +122,10 @@ Section ConcurrentFS.
            fs_pre (fsspec a) tree /\
            Sigma.l sigma = l;
          postcondition :=
-           fun '(ExecState d_i' sigma') '(r, c') =>
+           fun sigma' '(r, c') =>
              exists vd',
                F (Sigma.mem sigma') /\
                translated_postcondition l d sigma c vd sigma' c' vd' /\
-               d_i' = d_i /\
                match r with
                | Success _ (mscs', r) =>
                  fs_post (fsspec a) r /\
@@ -177,30 +176,28 @@ Section ConcurrentFS.
 
   Definition readCacheMem_ok : forall tid,
       cprog_spec G tid
-                 (fun '(tree, homedirs) '(ExecState d_i sigma) =>
+                 (fun '(tree, homedirs) sigma =>
                     {| precondition :=
                          fs_invariant P (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs
                                       (Sigma.mem sigma) /\
                          Sigma.l sigma = Free;
                        postcondition :=
-                         fun '(ExecState d_i' sigma') '(c, mscs) =>
-                           d_i' = d_i /\
-                           Rely G tid sigma sigma' /\
-                           (exists tree',
-                               fs_invariant P (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs
-                                            (Sigma.mem sigma') /\
-                               homedir_rely tid homedirs tree tree' /\
-                               (* mscs and c come from fs_invariant on sigma *)
-                               (exists vd, cache_rep (Sigma.disk sigma) c vd /\
-                                      fs_rep P vd (Sigma.hm sigma') mscs tree)) /\
-                           hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
-                           Sigma.l sigma' = Sigma.l sigma |})
+                         fun sigma' '(c, mscs) =>
+                           exists tree',
+                             fs_invariant P (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs
+                                          (Sigma.mem sigma') /\
+                             hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
+                             Rely G tid sigma sigma' /\
+                             homedir_rely tid homedirs tree tree' /\
+                             (* mscs and c come from fs_invariant on sigma *)
+                             (exists vd, cache_rep (Sigma.disk sigma) c vd /\
+                                    fs_rep P vd (Sigma.hm sigma') mscs tree) /\
+                             Sigma.l sigma' = Sigma.l sigma |})
                  readCacheMem.
   Proof using Type.
     unfold readCacheMem; intros.
     step.
-    destruct a as (tree & homedirs).
-    destruct st as [d_i sigma]; simpl in *; intuition.
+    destruct a as (tree & homedirs); simpl in *; intuition.
     match goal with
     | [ H: fs_invariant _ _ _ _ _ _ |- _ ] =>
       pose proof (fs_invariant_unfold H); repeat deex
@@ -212,8 +209,7 @@ Section ConcurrentFS.
       rewrite H; simpl
     end.
     step.
-    destruct st as [d_i' sigma'].
-    intuition; subst.
+    intuition.
     edestruct fs_rely_invariant; eauto.
     descend; intuition eauto.
     eapply fs_homedir_rely; eauto.
@@ -256,7 +252,7 @@ Section ConcurrentFS.
                             (fs_spec fsspec mscs Free c)
                             (p mscs Free c)) ->
       cprog_spec G tid
-                 (fun '(tree, homedirs, a) '(ExecState d_i sigma) =>
+                 (fun '(tree, homedirs, a) sigma =>
                     {| precondition :=
                          (fs_invariant P (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs)
                            (Sigma.mem sigma) /\
@@ -264,34 +260,29 @@ Section ConcurrentFS.
                          fs_pre (fsspec a) tree /\
                          precondition_stable fsspec homedirs tid;
                        postcondition :=
-                         fun '(ExecState d_i' sigma') r =>
-                           (exists tree',
-                               (fs_invariant P (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs)
-                                 (Sigma.mem sigma') /\
-                               homedir_rely tid homedirs tree tree') /\
-                           Rely G tid sigma sigma' /\
-                           d_i' = d_i /\
-                           Sigma.l sigma' = Free /\
-                           match r with
-                           | Done v => fs_post (fsspec a) v
-                           | TryAgain => True
-                           | SyscallFailed => True
-                           end |})
+                         fun sigma' r =>
+                           exists tree',
+                             (fs_invariant P (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs)
+                               (Sigma.mem sigma') /\
+                             Rely G tid sigma sigma' /\
+                             homedir_rely tid homedirs tree tree' /\
+                             Sigma.l sigma' = Free /\
+                             match r with
+                             | Done v => fs_post (fsspec a) v
+                             | TryAgain => True
+                             | SyscallFailed => True
+                             end |})
                  (readonly_syscall p).
   Proof using Type.
     unfold readonly_syscall; intros.
     step.
-    destruct a as ((tree & homedirs) & a).
-    destruct st as [d_i sigma].
-    finish.
+    destruct a as ((tree & homedirs) & a); finish.
 
     monad_simpl.
     eapply cprog_ok_weaken;
-      [ eapply H | ].
-    destruct st as [d_i' sigma']; simplify; finish.
+      [ eapply H | ]; simplify; finish.
 
     step.
-    destruct st as [d_i' sigma'']; simpl in *.
     unfold translated_postcondition in *; simplify.
     finish.
 
@@ -329,10 +320,6 @@ Section ConcurrentFS.
              let a := fresh a in
              let b := fresh b in
              destruct p as [a b]
-           | [ H: context[let 'ExecState d_i sigma := ?st in _] |- _ ] =>
-             let d_i := fresh d_i in
-             let sigma := fresh sigma in
-             destruct st as [d_i sigma]
            end; simpl in *; intuition.
     match goal with
     | [ H: fs_rep _ _ _ _ _ |- _ ] =>
@@ -342,8 +329,7 @@ Section ConcurrentFS.
     finish.
     SepAuto.pred_apply; SepAuto.cancel; eauto.
 
-    step.
-    destruct st as [d_i' sigma']; simplify; finish.
+    step; finish.
     destruct_goal_matches; SepAuto.destruct_lifts; finish.
     unfold fs_rep; finish.
 
@@ -352,14 +338,13 @@ Section ConcurrentFS.
 
   Definition startLocked_ok : forall tid,
       cprog_spec G tid
-                 (fun '(tree, homedirs) '(ExecState d_i sigma) =>
+                 (fun '(tree, homedirs) sigma =>
                     {| precondition :=
                          fs_invariant P (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs
                                       (Sigma.mem sigma) /\
                          Sigma.l sigma = Free;
                        postcondition :=
-                         fun '(ExecState d_i' sigma') '(c, mscs) =>
-                           d_i' = Sigma.disk sigma' /\
+                         fun sigma' '(c, mscs) =>
                            exists vd' tree',
                              (fstree P |-> abs tree' * fshomedirs P |-> abs homedirs *
                               ccache P |-> val c * fsmem P |-> val mscs)%pred (Sigma.mem sigma') /\
@@ -374,14 +359,11 @@ Section ConcurrentFS.
   Proof using Type.
     unfold startLocked; intros.
     step.
-    destruct a as (tree & homedirs).
-    destruct st as [d_i sigma'].
-    simpl in *; intuition.
+    destruct a as (tree & homedirs); simpl in *; intuition.
 
-    step.
-    destruct st as [d_i' sigma'']; simplify.
+    step; simplify.
     edestruct fs_rely_invariant; eauto.
-    destruct sigma'0; simpl in *.
+    destruct sigma'; simpl in *.
     match goal with
     | [ H: fs_invariant _ _ _ _ _ _ |- _ ] =>
       pose proof (fs_invariant_unfold H); repeat deex
@@ -389,7 +371,6 @@ Section ConcurrentFS.
     descend; simpl in *; intuition eauto.
 
     step.
-    destruct st as [d_i' sigma'']; simplify.
     intuition auto.
     descend; simpl in *; intuition eauto.
 
@@ -410,7 +391,7 @@ Section ConcurrentFS.
                             (fs_spec fsspec mscs WriteLock c)
                             (p mscs WriteLock c)) ->
       cprog_spec G tid
-                 (fun '(tree, homedirs, a) '(ExecState d_i sigma) =>
+                 (fun '(tree, homedirs, a) sigma =>
                     {| precondition :=
                          (fs_invariant P (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs)
                            (Sigma.mem sigma) /\
@@ -422,9 +403,7 @@ Section ConcurrentFS.
                                                 tree0
                                                 (update tree0));
                        postcondition :=
-                         fun '(ExecState d_i' sigma') r =>
-                           (* TODO: when proof is more stable, add
-                             d_i' = Sigma.disk sigma' *)
+                         fun sigma' r =>
                            exists tree' tree'',
                              (fs_invariant P (Sigma.disk sigma') (Sigma.hm sigma') tree'' homedirs)
                                (Sigma.mem sigma') /\
@@ -442,23 +421,19 @@ Section ConcurrentFS.
     apply retry_spec' with SyscallFailed.
     induction n; simpl; intros.
     - step.
-      destruct a as ((tree & homedirs) & a).
-      destruct st as [d_i sigma]; simpl in *.
+      destruct a as ((tree & homedirs) & a); simpl in *.
       descend; intuition eauto.
     - step.
-      destruct a as ((tree & homedirs) & a).
-      destruct st as [d_i sigma]; simpl in *; simpl in *.
+      destruct a as ((tree & homedirs) & a); simpl in *.
       descend; simpl in *; intuition eauto.
 
       monad_simpl.
       eapply cprog_ok_weaken;
-        [ eapply H | ].
-      destruct st as [d_i' sigma']; simplify; finish.
+        [ eapply H | ]; simplify; finish.
 
       destruct a1.
       destruct v as [ms' r].
       step; simpl.
-      destruct st as [d_i' sigma'']; simplify.
       unfold translated_postcondition in *; simpl in *; intuition eauto.
       match goal with
       | [ H: fs_invariant _ _ _ _ _ _ |- _ ] =>
@@ -474,20 +449,14 @@ Section ConcurrentFS.
       end.
 
       step.
-      destruct st as [d_i' sigma''']; simplify.
       descend; simpl in *; intuition eauto.
       congruence.
-      (* not exactly sure what's going on here, but there's some new G
-      obligation *)
-      admit.
 
       step.
-      destruct st as [d_i' sigma'''']; simplify.
       descend; simpl in *; intuition eauto.
 
       destruct (guard r0); simpl.
       step.
-      destruct st as [d_i'' sigma''''']; simplify.
       intuition trivial.
       (* exists tree', (fs_dirup (fsspec a) tree'). *)
       descend; intuition eauto.
@@ -497,12 +466,10 @@ Section ConcurrentFS.
       congruence.
       discriminate.
 
-      step.
-      destruct st as [d_i' sigma''''']; simplify; finish.
-      destruct e eqn:Hexceq; try solve [ step; destruct st; simpl in *; simplify; exfalso; eauto ].
+      step; simplify; finish.
+      destruct e eqn:Hexceq; try solve [ step; exfalso; eauto ].
       + (* cache miss *)
-        step.
-        destruct st as [d_i' sigma'''''']; simplify.
+        step; simplify.
         unfold translated_postcondition in *; simpl in *; intuition eauto.
         descend; simpl in *; intuition eauto.
         unfold fs_invariant in *; SepAuto.pred_apply; SepAuto.cancel.
@@ -514,53 +481,7 @@ Section ConcurrentFS.
                end.
         exists tree', tree', homedirs.
         intuition auto.
-        destruct sigma''''''; simpl.
-        (* norm and manual cancel|eauto is much faster than cancel *)
-        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
-          [ SepAuto.cancel | intuition eauto ].
-        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
-          [ SepAuto.cancel | intuition eauto ].
-        repeat match goal with
-               | [ H: _ = _ |- _ ] =>
-                 progress rewrite H in *
-               end.
-        (* still not quite right: the Assgn1 cache uses the old disk before and
-        is only correct according to the new disk; other threads must be
-        insensitive to either disk since they're not going to read from any
-        address *)
-        admit.
-        reflexivity.
-
-        step.
-        destruct st as [d_i' sigma''''''']; simplify.
-        unfold translated_postcondition in *; simpl in *; intuition eauto.
-        descend; simpl in *; intuition eauto.
-        congruence.
-        unfold G, fs_guarantee.
-        repeat match goal with
-               | [ H: _ = _ |- _ ] =>
-                 progress rewrite H in *
-               end.
-        exists tree', tree', homedirs.
-        intuition auto.
-        destruct sigma'''''''; simpl in *; subst.
-        (* norm and manual cancel|eauto is much faster than cancel *)
-        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
-          [ SepAuto.cancel | intuition eauto ].
-        (* there's some similar issue of which disk to prove protocol steps for
-        here, for the unlock I believe *)
-        admit.
-        (* norm and manual cancel|eauto is much faster than cancel *)
-        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
-          [ SepAuto.cancel | intuition eauto ].
-        reflexivity.
-
-        step.
-        destruct st as [d_i' sigma'''''''']; simplify.
-        unfold translated_postcondition in *; simpl in *; intuition eauto.
-        descend; simpl in *; intuition eauto.
-        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
-          [ SepAuto.cancel | intuition eauto ].
+        unfold fs_invariant; SepAuto.pred_apply.
   Abort.
 
   (* translate all system calls for extraction *)

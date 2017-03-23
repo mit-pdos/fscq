@@ -70,18 +70,17 @@ Section Primitives.
 
   Theorem BeginRead_ok : forall tid a,
       cprog_spec G tid
-                 (fun '(F, v) '(ExecState d_i sigma) =>
+                 (fun '(F, v) sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          Sigma.disk sigma a = Some (v, NoReader) /\
                          Sigma.l sigma = WriteLock;
                        postcondition :=
-                         fun '(ExecState d_i' sigma') _ =>
+                         fun sigma' _ =>
                            F (Sigma.mem sigma') /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.l sigma' = Sigma.l sigma /\
-                           Sigma.disk sigma' = upd (Sigma.disk sigma) a (v, Pending) /\
-                           d_i' = d_i; |})
+                           Sigma.disk sigma' = upd (Sigma.disk sigma) a (v, Pending); |})
                  (BeginRead a).
   Proof.
     prim.
@@ -89,19 +88,18 @@ Section Primitives.
 
   Theorem WaitForRead_ok : forall tid a,
       cprog_spec G tid
-                 (fun '(F, v) '(ExecState d_i sigma) =>
+                 (fun '(F, v) sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          Sigma.disk sigma a = Some (v, Pending) /\
                          Sigma.l sigma = WriteLock;
                        postcondition :=
-                         fun '(ExecState d_i' sigma') r =>
+                         fun sigma' r =>
                            F (Sigma.mem sigma') /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.l sigma' = Sigma.l sigma /\
                            Sigma.disk sigma' = upd (Sigma.disk sigma) a (v, NoReader) /\
-                           r = v /\
-                           d_i' = d_i; |})
+                           r = v; |})
                  (WaitForRead a).
   Proof.
     prim.
@@ -109,18 +107,17 @@ Section Primitives.
 
   Theorem Write_ok : forall tid a v,
       cprog_spec G tid
-                 (fun '(F, v0) '(ExecState d_i sigma) =>
+                 (fun '(F, v0) sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          Sigma.disk sigma a = Some (v0, NoReader) /\
                          Sigma.l sigma = WriteLock;
                        postcondition :=
-                         fun '(ExecState d_i' sigma') _ =>
+                         fun sigma' _ =>
                            F (Sigma.mem sigma') /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.disk sigma' =  upd (Sigma.disk sigma) a (v, NoReader) /\
-                           Sigma.l sigma' = Sigma.l sigma /\
-                           d_i' = d_i; |})
+                           Sigma.l sigma' = Sigma.l sigma; |})
                  (Write a v).
   Proof.
     prim.
@@ -128,21 +125,20 @@ Section Primitives.
 
   Theorem Alloc_ok : forall tid A (v:A),
       cprog_spec G tid
-                 (fun F '(ExecState d_i sigma) =>
+                 (fun F sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          Sigma.l sigma = WriteLock;
                        postcondition :=
-                         fun '(ExecState d_i' sigma') i =>
+                         fun sigma' i =>
                            (F * i |-> val v)%pred (Sigma.mem sigma') /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Sigma.l sigma /\
-                           d_i' = d_i; |})
+                           Sigma.l sigma' = Sigma.l sigma; |})
                  (Alloc v).
   Proof.
     prim.
-    destruct sigma; simpl in *.
+    destruct st; simpl in *.
     eapply ptsto_upd_disjoint; eauto.
   Qed.
 
@@ -172,11 +168,11 @@ Section Primitives.
 
   Theorem Read2_ok : forall tid A B i1 i2,
       cprog_spec G tid
-                 (fun '(F, a0, b0) '(ExecState d_i sigma) =>
+                 (fun '(F, a0, b0) sigma =>
                     {| precondition :=
                          (F * i1 |-> val a0 * i2 |-> val b0)%pred (Sigma.mem sigma);
                        postcondition :=
-                         fun '(ExecState d_i' sigma') '(a, b) =>
+                         fun sigma' '(a, b) =>
                            a = a0 /\
                            b = b0 /\
                            (if CanWrite (Sigma.l sigma) then
@@ -184,14 +180,12 @@ Section Primitives.
                            else
                              Rely G tid sigma sigma') /\
                            hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
-                           Sigma.l sigma' = Sigma.l sigma /\
-                           d_i' = d_i; |})
+                           Sigma.l sigma' = Sigma.l sigma;
+                    |})
                  (Read2 A i1 B i2).
   Proof.
     prim; try inv_ret.
-    destruct st as [d_i0 sigma]; simpl in *.
-    - pose proof (ptsto_valid' H).
-      apply sep_star_comm in H.
+    - apply sep_star_comm in H.
       apply sep_star_assoc_2 in H.
       pose proof (ptsto_valid' H).
       match goal with
@@ -202,20 +196,18 @@ Section Primitives.
       | [ H: rtxn_step _ _ _ |- _ ] =>
         eapply rtxn_step2 in H; eauto
       end; intuition; subst.
-      destruct (Sigma.l sigma); simpl; intuition auto.
-      destruct (Sigma.l sigma); simpl; intuition subst.
+      destruct (Sigma.l st); simpl; intuition auto.
+      destruct (Sigma.l st); simpl; intuition subst.
       reflexivity.
-      destruct (Sigma.l sigma) eqn:?; intuition (subst; eauto).
-    - destruct st as [d_i0 sigma]; simpl in *.
-      pose proof (ptsto_valid' H).
-      apply sep_star_comm in H.
+      destruct (Sigma.l st) eqn:?; intuition (subst; eauto).
+    - apply sep_star_comm in H.
       apply sep_star_assoc_2 in H.
       pose proof (ptsto_valid' H).
       match goal with
       | [ H: exec _ _ _ (ReadTxn _) _ |- _ ] =>
         inv_exec' H
       end.
-      clear H3.
+      clear H6.
       apply (f (val a :: val b :: nil))%list.
       repeat (constructor; eauto).
 
@@ -246,45 +238,39 @@ Section Primitives.
 
   Theorem Assgn1_ok : forall tid i A (v:A),
       cprog_spec G tid
-                 (fun '(F, v0) '(ExecState d_i sigma) =>
+                 (fun '(F, v0) sigma =>
                     {| precondition :=
                          (F * i |-> val (v0: A))%pred (Sigma.mem sigma) /\
                          Sigma.l sigma = WriteLock /\
                          (forall sigma',
                            (F * i |-> val v)%pred (Sigma.mem sigma') ->
                            Sigma.hm sigma' = Sigma.hm sigma ->
-                           Sigma.disk sigma' = d_i ->
+                           Sigma.disk sigma' = Sigma.disk sigma ->
                            Sigma.l sigma' = Sigma.l sigma ->
-                           G tid (Sigma.upd_disk sigma (fun _ => d_i)) sigma');
+                           G tid sigma sigma');
                        postcondition :=
-                         fun '(ExecState d_i' sigma') _ =>
+                         fun sigma' _ =>
                            (F * i |-> val v)%pred (Sigma.mem sigma') /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
-                           Sigma.l sigma' = Sigma.l sigma /\
-                           d_i' = d_i ; |})
+                           Sigma.l sigma' = Sigma.l sigma; |})
                  (Assgn1 i v).
   Proof.
     begin_prim; inv_bind.
     inv_exec; unfold ident in *; repeat inj_pair2.
-    repeat match goal with
-           | [ u: unit |- _ ] => destruct u
-           end.
     - destruct a as (F & v0); simpl in *; intuition eauto.
       match goal with
         | [ H: wtxn_step _ _ _ _ |- _ ] =>
           apply wtxn_step_assgn1 in H
       end; subst.
-      inv_guarantee.
-      eapply H1; eauto.
-      destruct sigma; simpl; eauto.
-      intuition eauto.
+      subst sigma'0.
+      destruct st; simpl in *.
+      eapply H1; eauto; simpl; intuition.
       eapply ptsto_upd'; eauto.
-    - destruct st as [d_i sigma].
-      destruct a as (F & v0); simpl in *; intuition eauto.
+    - destruct a as (F & v0); simpl in *; intuition eauto.
       pose proof (ptsto_valid' H0).
       inv_exec.
-      clear H6.
+      clear H4.
       apply f.
       econstructor; eauto.
       constructor.
@@ -293,14 +279,11 @@ Section Primitives.
         | [ H: wtxn_step _ _ _ _ |- _ ] =>
           apply wtxn_step_assgn1 in H
       end; subst.
-      repeat match goal with
-             | [ x := _ |- _ ] => subst x
-             end; simpl in *.
-      inv_guarantee.
-      destruct sigma; simpl in *.
+      subst sigma'.
+      destruct st; simpl in *; subst.
       match goal with
       | [ H: ~G _ _ _ |- _ ] =>
-        apply H; simpl
+        apply H8
       end.
       eapply H3; eauto; simpl.
       eapply ptsto_upd'; eauto.
@@ -367,7 +350,7 @@ Section Primitives.
 
   Theorem Assgn2_abs_ok : forall tid txn,
       cprog_spec G tid
-                 (fun '(F, a0, b0, g) '(ExecState d_i sigma) =>
+                 (fun '(F, a0, b0, g) sigma =>
                     {| precondition :=
                          (F *
                           var1 txn |-> val (a0: var1T txn) *
@@ -380,58 +363,42 @@ Section Primitives.
                             var2 txn |-> val (val2 txn) *
                             abs1 txn |-> abs (abs1Up txn tid g))%pred (Sigma.mem sigma') ->
                            Sigma.hm sigma' = Sigma.hm sigma ->
-                           Sigma.disk sigma' = d_i ->
+                           Sigma.disk sigma' = Sigma.disk sigma ->
                            Sigma.l sigma' = Sigma.l sigma ->
-                           G tid (Sigma.upd_disk sigma (fun _ => d_i)) sigma');
+                           G tid sigma sigma');
                        postcondition :=
-                         fun '(ExecState d_i' sigma') _ =>
+                         fun sigma' _ =>
                            (F *
                             var1 txn |-> val (val1 txn) *
                             var2 txn |-> val (val2 txn) *
                             abs1 txn |-> abs (abs1Up txn tid g))%pred (Sigma.mem sigma') /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
-                           Sigma.l sigma' = Sigma.l sigma /\
-                           d_i' = d_i ; |})
+                           Sigma.l sigma' = Sigma.l sigma; |})
                  (Assgn2_abs txn).
   Proof.
     begin_prim; inv_bind.
     inv_exec; unfold ident in *; repeat inj_pair2.
-    repeat match goal with
-           | [ x := _ |- _ ] => subst x
-           end.
     destruct a as (((F & a0) & b0) & g); simpl in *;
       intuition.
-    assert (Sigma.mem sigma (abs1 txn) = Some (abs g)) by
-        (eapply ptsto_valid'; eauto).
+    assert (Sigma.mem st (abs1 txn) = Some (abs g)).
+    eapply ptsto_valid'; eauto.
     match goal with
       | [ H: wtxn_step _ _ _ _ |- _ ] =>
         eapply wtxn_step_assgn2 in H; eauto; subst
     end.
-
-    inv_exec.
-    repeat match goal with
-           | [ x := _ |- _ ] => subst x
-           end; simpl in *.
-    inv_guarantee.
-    match goal with
-      | [ H: wtxn_step _ _ _ _ |- _ ] =>
-        eapply wtxn_step_assgn2 in H; eauto; subst
-    end.
-
+    subst sigma'0.
     eapply H1; eauto.
-    destruct sigma; simpl in *; intuition eauto.
+    destruct st; simpl in *; intuition eauto.
     repeat (match goal with
             | _ => solve [ pred_apply; cancel ]
             | _ => eapply ptsto_upd
             | _ => rotate1
-           end).
+            end).
 
     destruct a as (((F & a0) & b0) & g); simpl in *;
       intuition.
-    destruct st as [d_i sigma]; simpl in *; intuition.
-    inv_exec; simpl in *.
-
+    inv_exec.
     clear H4.
     apply f.
     repeat econstructor.
@@ -439,22 +406,19 @@ Section Primitives.
     eapply ptsto_valid; pred_apply; cancel.
     eapply ptsto_valid; pred_apply; cancel.
 
-    repeat match goal with
-           | [ x := _ |- _ ] => subst x
-           end; simpl in *.
-    inv_guarantee.
     match goal with
     | [ H: ~ G _ _ _ |- _ ] =>
       apply H
     end.
-    assert (Sigma.mem sigma (abs1 txn) = Some (abs g)) by
-        (eapply ptsto_valid'; eauto).
+    assert (Sigma.mem st (abs1 txn) = Some (abs g)).
+    eapply ptsto_valid'; eauto.
+    subst sigma'.
+    destruct st; simpl in *.
+    eapply H3; eauto.
     match goal with
       | [ H: wtxn_step _ _ _ _ |- _ ] =>
         eapply wtxn_step_assgn2 in H; eauto; subst
     end.
-    destruct sigma; simpl in *.
-    eapply H3; eauto.
     repeat (match goal with
             | _ => solve [ pred_apply; cancel ]
             | _ => eapply ptsto_upd
@@ -465,50 +429,48 @@ Section Primitives.
            | [ H: wtxn_error _ _ |- _ ] =>
              inversion H; subst; clear H; repeat inj_pair2
            end.
-    assert (Sigma.mem sigma (var1 txn) = Some (val a0)).
+    assert (Sigma.mem st (var1 txn) = Some (val a0)).
     eapply ptsto_valid'; pred_apply; cancel.
     congruence.
-    assert (Sigma.mem sigma (var2 txn) = Some (val b0)).
+    assert (Sigma.mem st (var2 txn) = Some (val b0)).
     eapply ptsto_valid'; pred_apply; cancel.
     congruence.
   Qed.
 
   Theorem Hash_ok : forall tid sz (buf: word sz),
       cprog_spec G tid
-                 (fun F '(ExecState d_i sigma) =>
+                 (fun F sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma);
                        postcondition :=
-                         fun '(ExecState d_i' sigma') r =>
+                         fun sigma' r =>
                            F (Sigma.mem sigma') /\
                            r = hash_fwd buf /\
                            hash_safe (Sigma.hm sigma) (hash_fwd buf) buf /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = upd_hashmap' (Sigma.hm sigma) (hash_fwd buf) buf /\
-                           Sigma.l sigma' = Sigma.l sigma /\
-                           d_i' = d_i ; |})
+                           Sigma.l sigma' = Sigma.l sigma; |})
                  (Hash buf).
   Proof.
     prim.
-    destruct sigma; eauto.
+    destruct st; eauto.
   Qed.
 
   Theorem Ret_ok : forall tid T (v:T),
       cprog_spec G tid
-                 (fun (_:unit) '(ExecState d_i sigma) =>
+                 (fun (_:unit) sigma =>
                     {| precondition := True;
                        postcondition :=
-                         fun '(ExecState d_i' sigma') r =>
+                         fun sigma' r =>
                            sigma' = sigma /\
-                           r = v /\
-                           d_i' = d_i; |})
+                           r = v; |})
                  (Ret v).
   Proof.
     prim.
   Qed.
 
   Theorem Ret_general_ok : forall tid T (v:T) A (spec: Spec A T),
-      (forall a st, precondition (spec a st) -> postcondition (spec a st) st v) ->
+      (forall a sigma, precondition (spec a sigma) -> postcondition (spec a sigma) sigma v) ->
       cprog_spec G tid spec (Ret v).
   Proof.
     unfold cprog_spec, cprog_ok; intros.
@@ -528,48 +490,36 @@ Section Primitives.
 
   Theorem GetWriteLock_ok : forall tid,
       cprog_spec G tid
-                 (fun (_:unit) '(ExecState d_i sigma) =>
+                 (fun (_:unit) sigma =>
                     {| precondition := Sigma.l sigma = Free;
                        postcondition :=
-                         fun '(ExecState d_i' sigma'') _ =>
+                         fun sigma'' _ =>
                            exists sigma', Rely G tid sigma sigma' /\
                                  sigma'' = Sigma.set_l sigma' WriteLock /\
-                                 hashmap_le (Sigma.hm sigma) (Sigma.hm sigma'') /\
-                                 d_i' =  Sigma.disk sigma'' ; |})
+                                 hashmap_le (Sigma.hm sigma) (Sigma.hm sigma''); |})
                  GetWriteLock.
   Proof.
     prim.
     eexists; intuition eauto.
-    destruct sigma'; simpl; eauto.
+    destruct sigma'0; simpl; eauto.
   Qed.
 
   Theorem Unlock_ok : forall tid,
       cprog_spec G tid
-                 (fun F '(ExecState d_i sigma) =>
+                 (fun F sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
-                         Sigma.l sigma = WriteLock /\
-                         (* need a guarantee obligation *)
-                         (forall sigma',
-                             F (Sigma.mem sigma') ->
-                             Sigma.disk sigma' = Sigma.disk sigma ->
-                             Sigma.hm sigma' = Sigma.hm sigma ->
-                             Sigma.l sigma' = Sigma.l sigma ->
-                             G tid (Sigma.upd_disk sigma (fun _ => d_i)) sigma');
+                         Sigma.l sigma = WriteLock;
                        postcondition :=
-                         fun '(ExecState d_i' sigma') _ =>
+                         fun sigma' _ =>
                            F (Sigma.mem sigma') /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Free /\
-                           d_i' = Sigma.disk sigma' ; |})
+                           Sigma.l sigma' = Free; |})
                  Unlock.
   Proof.
     prim.
-    inv_guarantee.
-    destruct sigma; simpl in *; intuition auto.
-
-    inv_guarantee; simpl in *; intuition auto.
+    destruct st; simpl; auto.
   Qed.
 
 End Primitives.
