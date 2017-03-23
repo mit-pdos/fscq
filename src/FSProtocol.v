@@ -27,6 +27,8 @@ Section FilesystemProtocol.
 
   Variable P:FsParams.
 
+  Set Default Proof Using "P".
+
   Definition fs_rep vd hm mscs tree :=
     exists ds ilist frees,
       LOG.rep (FSLayout.FSXPLog (fsxp P)) (SB.rep (fsxp P))
