@@ -27,6 +27,9 @@ import System.CPUTime.Rdtsc
 verbose :: Bool
 verbose = False
 
+output :: Bool
+output = False
+
 debugmsg :: String -> IO ()
 debugmsg s =
   if verbose then
@@ -79,11 +82,13 @@ run_dcode _ AlertModified = do
   debugmsg $ "AlertModified"
   return $ unsafeCoerce ()
 run_dcode _ (Debug s n) = do
-  putStrLn $ s ++ " " ++ (show n)
-  return $ unsafeCoerce ()
+  if output then do
+    putStrLn $ s ++ " " ++ (show n)
+    return $ unsafeCoerce ()
+  else
+    return $ unsafeCoerce ()
 run_dcode _ (Rdtsc) = do
-  r <- rdtsc
-  return $ unsafeCoerce r
+  return $ unsafeCoerce rdtsc
 run_dcode _ (Hash sz (WBS bs)) = do
   debugmsg $ "Hash " ++ (show sz) ++ " BS " ++ (show bs)
   return $ unsafeCoerce $ WBS $ SHA256.hash bs
