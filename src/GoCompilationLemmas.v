@@ -2343,20 +2343,84 @@ Qed.
 Section Concrete.
   (* Compilation lemmas for where variables have concrete values *)
 
-  Lemma CompileWhileFalseNoOp : forall A var0 xbody env,
+  Fact is_true_false_conflict : forall l ex, is_true l ex -> is_false l ex -> False.
+  Proof.
+    cbv [is_true is_false].
+    intros; congruence.
+  Qed.
+
+  Lemma CompileWhileTrueOnce : forall T (p : prog T) A B xp ex env,
+    (forall l, l ≲ A -> is_true l ex) ->
+    EXTRACT p
+    {{ A }}
+      xp;
+      Go.While ex xp
+    {{ B }} // env ->
+    EXTRACT p
+    {{ A }}
+      Go.While ex xp
+    {{ B }} // env.
+  Proof.
+    intros. unfold ProgOk.
+    inv_exec_progok.
+    inv_exec.
+    inv_exec.
+    edestruct H0; forward_solve; eauto.
+    exfalso; eauto using is_true_false_conflict.
+    inv_exec; inv_exec.
+    edestruct H0; forward_solve; eauto.
+    exfalso; eauto using is_true_false_conflict.
+    repeat inv_exec.
+    inv_exec. inv_exec.
+    edestruct H0; forward_solve; eauto.
+    exfalso; eauto using is_true_false_conflict.
+    edestruct H0; forward_solve.
+    Unshelve. all : eauto.
+  Qed.
+
+  Lemma CompileWhileFalseNoOp : forall A xp ex env,
+    (forall l, l ≲ A -> is_false l ex) ->
+    EXTRACT (Ret tt)
+    {{ A }}
+      Go.While ex xp
+    {{ fun _ => A }} // env.
+  Proof.
+    unfold ProgOk.
+    inv_exec_progok.
+    repeat (inv_exec; try solve [exfalso; eauto using is_true_false_conflict | repeat eexists; eauto]).
+    repeat (inv_exec; try solve [exfalso; eauto using is_true_false_conflict | repeat eexists; eauto]).
+    repeat (inv_exec; try solve [exfalso; eauto using is_true_false_conflict | repeat eexists; eauto]).
+    contradiction H2.
+    repeat eexists.
+    eapply StepWhileFalse.
+    eauto.
+  Qed.
+
+  Lemma CompileWhileVarFalseNoOp : forall A var0 xbody env,
     EXTRACT (Ret tt)
     {{ var0 ~> false * A }}
       Go.While (Var var0) xbody
     {{ fun ret => var0 ~> false * A }} // env.
   Proof.
-    unfold ProgOk.
-    inv_exec_progok.
-    repeat exec_solve_step.
-    repeat exec_solve_step.
-    repeat exec_solve_step.
-    contradiction H1.
-    repeat eexists.
-    apply StepWhileFalse.
+    intros.
+    eapply CompileWhileFalseNoOp.
+    intros. eval_expr.
+  Qed.
+
+  Lemma CompileWhileVarTrueOnce : forall A B var0 xp env,
+    EXTRACT (Ret tt)
+    {{ var0 ~> true * A }}
+      xp;
+      Go.While (Var var0) xp
+    {{ fun _ => B }} // env ->
+    EXTRACT (Ret tt)
+    {{ var0 ~> true * A }}
+      Go.While (Var var0) xp
+    {{ fun _ => B }} // env.
+  Proof.
+    intros.
+    eapply CompileWhileTrueOnce; eauto.
+    intros.
     eval_expr.
   Qed.
 
@@ -2394,29 +2458,6 @@ Section Concrete.
     [eval_expr; eauto..].
   Qed.
 
-  Lemma CompileWhileTrueOnce : forall A B var0 xp env,
-    EXTRACT (Ret tt)
-    {{ var0 ~> true * A }}
-      xp;
-      Go.While (Var var0) xp
-    {{ fun _ => B }} // env ->
-    EXTRACT (Ret tt)
-    {{ var0 ~> true * A }}
-      Go.While (Var var0) xp
-    {{ fun _ => B }} // env.
-  Proof.
-    intros. unfold ProgOk.
-    inv_exec_progok.
-    inv_exec.
-    repeat exec_solve_step.
-    repeat exec_solve_step.
-    repeat exec_solve_step.
-    contradiction H2.
-    repeat eexists.
-    apply StepWhileTrue.
-    eval_expr.
-  Qed.
-
   Lemma CompileIfFalse : forall T A B (p : prog T) px qx var0 env,
     EXTRACT p {{ var0 ~> false * A }} px {{ B }} // env ->
     EXTRACT p
@@ -2428,20 +2469,14 @@ Section Concrete.
     inv_exec_progok.
     inv_exec.
     inv_exec; eval_expr.
-    edestruct H; eauto.
-    cbn; eauto.
-    forward_solve.
+    edestruct H; forward_solve; eauto.
     inv_exec.
     inv_exec; eval_expr.
-    edestruct H; eauto.
-    cbn; eauto.
-    forward_solve.
+    edestruct H; forward_solve; eauto.
     inv_exec.
     inv_exec.
     inv_exec; eval_expr.
-    edestruct H; eauto.
-    cbn; eauto.
-    forward_solve.
+    edestruct H; forward_solve; eauto.
     contradiction H2.
     repeat eexists.
     eapply StepIfFalse.
@@ -2459,20 +2494,14 @@ Section Concrete.
     inv_exec_progok.
     inv_exec.
     inv_exec; eval_expr.
-    edestruct H; eauto.
-    cbn; eauto.
-    forward_solve.
+    edestruct H; forward_solve; eauto.
     inv_exec.
     inv_exec; eval_expr.
-    edestruct H; eauto.
-    cbn; eauto.
-    forward_solve.
+    edestruct H; forward_solve; eauto.
     inv_exec.
     inv_exec.
     inv_exec; eval_expr.
-    edestruct H; eauto.
-    cbn; eauto.
-    forward_solve.
+    edestruct H; forward_solve; eauto.
     contradiction H2.
     repeat eexists.
     eapply StepIfTrue.

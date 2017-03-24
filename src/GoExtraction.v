@@ -806,9 +806,18 @@ Ltac extract_step_flow := match goal with
   | [|- EXTRACT (Ret tt) {{ ?pre }} While (Var ?v) _ {{ _ }} // _ ] =>
     match pre with
     | context [(v ~> true)%pred] =>
-      eapply hoare_weaken; [ eapply CompileWhileTrueOnce | cancel_go..]
+      eapply hoare_weaken; [ eapply CompileWhileVarTrueOnce | cancel_go..]
     | context [(v ~> false)%pred] =>
-      eapply hoare_weaken; [ eapply CompileWhileFalseNoOp | cancel_go..]
+      eapply hoare_weaken; [ eapply CompileWhileVarFalseNoOp | cancel_go..]
+    end
+  | [|- EXTRACT (Ret tt) {{ ?pre }} While ?ex _ {{ _ }} // _ ] =>
+    match goal with
+    | [ |- _] =>
+      assert (forall l : locals, l ≲ pre -> is_true l ex) by (intros; eval_expr);
+      eapply hoare_weaken; [ eapply CompileWhileTrueOnce | cancel_go..]; [ solve [intros; eval_expr] | ..]
+    | [ |- _] =>
+      assert (forall l : locals, l ≲ pre -> is_false l ex) by (intros; eval_expr);
+      eapply hoare_weaken; [ eapply CompileWhileFalseNoOp | cancel_go..]; [ solve [intros; eval_expr] | ..]
     end
   | [|- EXTRACT (Ret tt) {{ ?pre }} If (Var ?v) Then _ Else _ EndIf {{ _ }} // _ ] =>
     match pre with
