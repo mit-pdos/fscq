@@ -746,3 +746,127 @@ Ltac compile :=
   | [|- _ =p=> _ ] => cancel_go
   end.
 
+Ltac make_wrapper t := lazymatch t with
+  | @wrap_type _ ?H => H
+  | Slice ?t =>
+    let W := make_wrapper t in
+    constr:(@GoWrapper_list _ W)
+  | Pair ?a ?b =>
+    let Wa := make_wrapper a in
+    let Wb := make_wrapper b in
+    constr:(@GoWrapper_pair _ _ Wa Wb)
+  | ?T =>
+    let T' := eval cbn in (type_denote T) in
+    constr:(ltac:(typeclasses eauto) : GoWrapper T')
+  end.
+
+Ltac extract_step_declare name := match goal with
+  | [ Wr : GoWrapper _ |- EXTRACT _ {{ _ }} Declare _ _ {{ _ }} // _ ] =>
+    eapply CompileDeclare with (Wr := Wr); intros name
+  | [ |- EXTRACT _ {{ _ }} Declare ?T_ _ {{ _ }} // _ ] =>
+    let Wr_ := make_wrapper T_ in
+    eapply CompileDeclare with (Wr := Wr_); intros name
+  end.
+
+Ltac extract_step_modify := match goal with
+  | [|- EXTRACT (Ret tt) {{ _ }} Modify (SetConst ?x) ^(?v0) {{ _ }} // _ ] =>
+    eapply CompileRet with (v := x) (var0 := v0);
+    let T := type of x in
+    let Wr_ := constr:(ltac:(typeclasses eauto) : GoWrapper T) in
+    eapply hoare_weaken; [eapply CompileConst with (Wr := Wr_) | cancel_go..]
+  | [|- EXTRACT (Ret tt) {{ ?pre }} Modify MoveOp ^(?dst, ?src) {{ _ }} // _ ] =>
+    match pre with
+    | context [(src ~> ?x)%pred] =>
+      eapply CompileRet with (var0 := dst) (v := x);
+      eapply hoare_weaken; [ eapply CompileMove | cancel_go..]
+    end
+  | [|- EXTRACT (Ret tt) {{ ?pre }} Modify DuplicateOp ^(?dst, ?src) {{ _ }} // _ ] =>
+    match pre with
+    | context [(src ~> ?x)%pred] =>
+      eapply CompileRet with (var0 := dst) (v := x);
+      eapply hoare_weaken; [ eapply CompileDup | cancel_go..]
+    end
+  | [|- EXTRACT (Ret tt) {{ ?pre }} Modify Uncons ^(?lvar_, ?cvar_, ?xvar_, ?lvar'_) {{ _ }} // _ ] =>
+    match pre with
+    | context [(lvar_ ~> @nil ?T_)%pred] =>
+      eapply hoare_weaken; [
+        eapply CompileUnconsNil with (T := T_) |
+        cancel_go..
+      ]
+    | context [(lvar_ ~> (?a :: ?l))%pred] =>
+      eapply hoare_weaken; [
+        let T_ := type of a in
+        eapply CompileUnconsCons with (T := T_) (x := a) (xs := l) |
+        cancel_go..
+      ]
+    end
+  end.
+
+Ltac extract_step_flow := match goal with
+  | [|- EXTRACT (Ret tt) {{ ?pre }} While (Var ?v) _ {{ _ }} // _ ] =>
+    match pre with
+    | context [(v ~> true)%pred] =>
+      eapply hoare_weaken; [ eapply CompileWhileTrueOnce | cancel_go..]
+    | context [(v ~> false)%pred] =>
+      eapply hoare_weaken; [ eapply CompileWhileFalseNoOp | cancel_go..]
+    end
+  | [|- EXTRACT (Ret tt) {{ ?pre }} If (Var ?v) Then _ Else _ EndIf {{ _ }} // _ ] =>
+    match pre with
+    | context [(v ~> true)%pred] =>
+      eapply hoare_weaken; [ eapply CompileIfTrue | cancel_go..]
+    | context [(v ~> false)%pred] =>
+      eapply hoare_weaken; [ eapply CompileIfFalse | cancel_go..]
+    end
+  | [|- EXTRACT (Ret tt) {{ _ }} Skip {{ _ }} // _ ] =>
+    eapply CompileSkip
+  end.
+
+Ltac extract_step :=
+  extract_step_modify    ||
+  extract_step_flow      ||
+  match goal with
+  | [|- EXTRACT _ {{ _ }} Seq _ _ {{ _ }} // _ ] =>
+    eapply CompileBefore
+  end.
+
+(* this is effectively an inlined subroutine; the actual value only matters during extraction *)
+Lemma CompileRetSome : forall T {WT : GoWrapper T} xvar rvar,
+  sigT (fun xp => Logic.and (source_stmt xp) (
+  forall A (x : T) env,
+  EXTRACT Ret (Some x)
+    {{ xvar ~> x * rvar ~>? (option T) * A }}
+      xp
+    {{ fun ret => rvar ~> ret * xvar ~>? T * A }} // env)).
+Proof.
+  intros.
+  repeat compile_step.
+  do_declare bool ltac:(fun x => set (avar := x)).
+  eapply CompileBefore.
+  eapply CompileRet with (v := true) (var0 := avar).
+  subst_definitions.
+  compile_step.
+  eapply hoare_weaken.
+  eapply CompileRetOptionSome with (pvar := rvar) (avar := avar) (bvar := xvar).
+  all : subst_definitions; cancel_go.
+  Unshelve. all: compile.
+Defined.
+
+Lemma CompileRetNone : forall T {W : GoWrapper T} rvar,
+  sigT (fun xp => Logic.and (source_stmt xp) (
+  forall A env,
+  EXTRACT Ret (@None T)
+    {{ rvar ~>? (option T) * A }}
+      xp
+    {{ fun ret => rvar ~> ret * A }} // env)).
+Proof.
+  intros.
+  eexists. split. shelve. intros.
+  eapply CompileDeclare with (T := bool).
+  intros avar.
+  eapply hoare_weaken; [ eapply CompileRetOptionNone with (pvar := rvar) (avar := avar)
+    | cancel_go..].
+  Unshelve. compile.
+Defined.
+
+Opaque CompileRetSome.
+Opaque CompileRetNone.
