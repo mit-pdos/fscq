@@ -11,12 +11,6 @@ Section SyncRead.
       v <- WaitForRead a;
       Ret v.
 
-  Ltac break_tuple a n m :=
-    let n := fresh n in
-    let m := fresh m in
-    destruct a as [n m];
-    simpl in *.
-
   Theorem SyncRead_ok : forall tid a,
       cprog_spec G tid
                  (fun '(F, v0) sigma =>
@@ -33,29 +27,18 @@ Section SyncRead.
                  (SyncRead a).
   Proof.
     unfold SyncRead.
-    step;
-      repeat match goal with
-             | [ H: context[let '(n, m) := ?a in _] |- _ ] =>
-               break_tuple a n m
-             end; intuition.
+    step; simpl in *; safe_intuition.
     descend; simpl; intuition eauto.
 
-    step;
-      repeat match goal with
-             | [ H: context[let '(n, m) := ?a in _] |- _ ] =>
-               break_tuple a n m
-             end; intuition.
+    step; simpl in *; safe_intuition.
     descend; simpl; intuition eauto.
 
     replace (Sigma.disk st0).
     autorewrite with upd; eauto.
     congruence.
 
-    step;
-      repeat match goal with
-             | [ H: context[let '(n, m) := ?a in _] |- _ ] =>
-               break_tuple a n m
-             end; intuition; try congruence.
+    step; simpl in *; intuition eauto.
+    congruence.
     (* TODO: why the names st and not those used in the spec? what changed? *)
     replace (Sigma.disk st1).
     replace (Sigma.disk st0).

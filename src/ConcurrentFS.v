@@ -196,8 +196,7 @@ Section ConcurrentFS.
                  readCacheMem.
   Proof using Type.
     unfold readCacheMem; intros.
-    step.
-    destruct a as (tree & homedirs); simpl in *; intuition.
+    step; simpl in *; safe_intuition.
     match goal with
     | [ H: fs_invariant _ _ _ _ _ _ _ |- _ ] =>
       pose proof (fs_invariant_unfold_exists_disk H); repeat deex
@@ -209,7 +208,7 @@ Section ConcurrentFS.
       rewrite H; simpl
     end.
     step.
-    intuition.
+    intuition trivial.
     edestruct fs_rely_invariant; eauto.
     descend; intuition eauto.
     eapply fs_homedir_rely; eauto.
@@ -273,8 +272,8 @@ Section ConcurrentFS.
                  (readonly_syscall p).
   Proof using Type.
     unfold readonly_syscall; intros.
-    step.
-    destruct a as ((tree & homedirs) & a); finish.
+    step; simpl in *; safe_intuition.
+    finish.
 
     monad_simpl.
     eapply cprog_ok_weaken;
@@ -324,14 +323,8 @@ Section ConcurrentFS.
                  (OptFS.file_get_attr (fsxp P) inum mscs l c).
   Proof using Type.
     unfold fs_spec; intros.
-    step.
+    step; simpl in *; safe_intuition.
     unfold Prog.pair_args_helper in *.
-    repeat match goal with
-           | [ H: context[let '(a, b) := ?p in _] |- _ ] =>
-             let a := fresh a in
-             let b := fresh b in
-             destruct p as [a b]
-           end; simpl in *; intuition.
     match goal with
     | [ H: fs_rep _ _ _ _ _ |- _ ] =>
       unfold fs_rep in H; simplify
@@ -378,8 +371,7 @@ Section ConcurrentFS.
                  GetWriteLock.
   Proof using Type.
     intros.
-    step.
-    destruct a as (tree & homedirs); simpl in *; intuition.
+    step; finish.
 
     step.
     intuition trivial.
@@ -411,8 +403,7 @@ Section ConcurrentFS.
                  startLocked.
   Proof using Type.
     unfold startLocked; intros.
-    step.
-    destruct a as (tree & homedirs); simpl in *; intuition.
+    step; finish.
 
     step; simplify.
     edestruct fs_rely_invariant; eauto.

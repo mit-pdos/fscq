@@ -443,8 +443,7 @@ Module CCLTactics.
           simpl in H;
           repeat match goal with
                  | [ H: context[match ?d with _ => _ end] |- _ ] =>
-                   let H := fresh in
-                   destruct d eqn:H; subst; try congruence;
+                   destruct d eqn:?; subst; try congruence;
                    let n := numgoals in guard n <= 1
                  end
         end;

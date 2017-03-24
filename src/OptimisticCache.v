@@ -74,10 +74,6 @@ Section OptimisticCache.
 
   Ltac simplify :=
     repeat match goal with
-           | [ H: context[let (n, m) := ?a in _] |- _ ] =>
-             let n := fresh n in
-             let m := fresh m in
-             destruct a as [m n]
            | [ H: CacheRep _ _ _ _ |- _ ] =>
              unfold CacheRep in H
            | [ |- exists (_: _ * _), _ ] => apply exists_tuple
@@ -86,7 +82,8 @@ Section OptimisticCache.
            | [ H: exists _, _ |- _ ] => deex
            | _ => progress simpl in *
            | _ => progress subst
-           | _ => progress simpl_match
+           | _ => simpl_match
+           | _ => break_tuple
            | _ => progress autorewrite with upd cache in *
            | _ => intuition eauto
            end.
@@ -231,6 +228,21 @@ Section OptimisticCache.
   Qed.
 
   Hint Resolve caches_consistent_clean_entries.
+
+  Ltac simplify ::=
+    repeat match goal with
+           | [ H: CacheRep _ _ _ _ |- _ ] =>
+             unfold CacheRep in H
+           | [ |- exists (_: _ * _), _ ] => apply exists_tuple
+           | [ H: (_, _) = (_, _) |- _ ] =>
+             inversion H; subst; clear H
+           | [ H: exists _, _ |- _ ] => deex
+           | _ => progress simpl in *
+           | _ => progress subst
+           | _ => simpl_match
+           | _ => progress autorewrite with upd cache in *
+           | _ => intuition eauto
+           end.
 
   Theorem ClearPending_ok : forall tid cs a,
       cprog_spec G tid

@@ -9,6 +9,7 @@ Ltac simplify :=
          | [ a:unit |- _ ] => clear a
          | _ => progress deex
          | _ => progress subst
+         | _ => break_tuple
          | _ => progress safe_intuition
          | _ => progress intros
          end.

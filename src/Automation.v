@@ -100,6 +100,18 @@ Ltac descend :=
          | [ |- exists _, _ ] => eexists
          end.
 
+Ltac break_tuple :=
+  simpl; match goal with
+  | [ H: context[let '(n, m) := ?p in _] |- _ ] =>
+    let n := fresh n in
+    let m := fresh m in
+    destruct p as [n m]; simpl in H
+  | [ |- context[let '(n, m) := ?p in _] ] =>
+    let n := fresh n in
+    let m := fresh m in
+    destruct p as [n m]; simpl
+  end.
+
 Inductive Learnt {P:Prop} :=
 | AlreadyLearnt (H:P).
 

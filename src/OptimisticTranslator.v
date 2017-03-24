@@ -411,23 +411,23 @@ Section OptimisticTranslator.
       prog_quadruple spec p ->
       cprog_spec G tid (translate'_spec spec l cs) (translate' p l cs).
   Proof.
-    unfold prog_quadruple; intros.
+    unfold prog_quadruple, translate'_spec; intros.
     apply triple_spec_equiv; unfold cprog_triple; intros.
     rename st into sigma.
 
     simpl in *; intuition; subst.
-    destruct a as ((((a & F) & d) & vd0) & vd); simpl in *.
+    repeat break_tuple; simpl in *.
     eapply translate_simulation in H1; intuition (subst; eauto).
     - (* concurrent execution finished *)
       destruct out; eauto.
-      destruct r as [r cs']; deex; intuition (subst; eauto).
+      repeat break_tuple; deex; intuition (subst; eauto).
 
-      destruct r; eauto 10.
+      destruct r0; eauto 10.
       match goal with
       | [ Hexec: Prog.exec _ _ _ p _ |- _ ] =>
         eapply H in Hexec; eauto 10
       end.
-      eexists; intuition eauto.
+      descend; intuition eauto.
       subst; congruence.
     -
       (* rather than showing something about concurrent execution, simulation
@@ -489,8 +489,7 @@ Section OptimisticTranslator.
       cprog_spec G tid (translate_spec spec l c) (translate p l c).
   Proof.
     unfold translate, translate_spec; intros.
-    step; simpl in *.
-    destruct a as (((a & F) & d) & vd).
+    step; repeat break_tuple; simpl in *.
     descend; simpl in *; intuition eauto.
 
     monad_simpl.
