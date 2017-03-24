@@ -322,7 +322,7 @@ Module AFS.
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
     r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), attr);
     t2 <- Rdtsc ;
-    Debug "truncate" (t2-t1) ;;
+    Debug "get_attr" (t2-t1) ;;
     Ret r.
 
   Definition file_get_sz fsxp inum ams :=
