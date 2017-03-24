@@ -392,10 +392,14 @@ Module AFS.
 
   (* sync only data blocks of a file. *)
   Definition file_sync fsxp inum ams :=
+    t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     ams <- DIRTREE.datasync fsxp inum (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
     ms <- LOG.commit_ro (FSXPLog fsxp) (MSLL ams);
-    Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams))).
+    r <- Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)));
+    t2 <- Rdtsc ;
+    Debug "file_sync" (t2-t1) ;;
+    Ret r.
 
   Definition readdir fsxp dnum ams :=
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
