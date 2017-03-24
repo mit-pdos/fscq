@@ -336,7 +336,7 @@ Module BFILE.
 
   Theorem rep_clear_bfcache : forall bxps ixp flist ilist frees allocc mscache icache,
     rep bxps ixp flist ilist frees allocc mscache icache =p=>
-    rep bxps ixp (clear_caches flist) ilist frees allocc (BFcache.empty Dcache_type) icache.
+    rep bxps ixp (clear_caches flist) ilist frees allocc (BFcache.empty _) icache.
   Proof.
     unfold rep; intros; cancel.
     unfold clear_caches.
@@ -716,7 +716,7 @@ Module BFILE.
 
   Lemma bfcache_init' : forall len start,
     arrayN cache_ptsto start (map BFCache (repeat bfile0 len))
-      (BFM.mm Dcache_type (BFcache.empty Dcache_type)).
+      (BFM.mm _ (BFcache.empty _)).
   Proof.
     induction len; simpl; intros.
     eapply BFM.mm_init.
@@ -725,7 +725,7 @@ Module BFILE.
   Qed.
 
   Lemma bfcache_init : forall len ilist,
-    locked (cache_rep (BFcache.empty Dcache_type) (repeat bfile0 len) ilist).
+    locked (cache_rep (BFcache.empty _) (repeat bfile0 len) ilist).
   Proof.
     intros.
     rewrite locked_eq.
@@ -796,13 +796,13 @@ Module BFILE.
   Qed.
 
   Lemma cache_ptsto_none_find : forall l c idx def,
-    arrayN cache_ptsto 0 l (BFM.mm Dcache_type c) ->
+    arrayN cache_ptsto 0 l (BFM.mm _ c) ->
     idx < length l ->
     selN l idx def = None ->
     BFcache.find idx c = None.
   Proof.
     intros.
-    assert (BFM.mm Dcache_type c idx = None).
+    assert (BFM.mm _ c idx = None).
     eapply cache_ptsto_none; eauto.
     eauto.
   Qed.
