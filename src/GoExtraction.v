@@ -699,7 +699,7 @@ Ltac compile_if :=
       eapply extract_equiv_prog with (pr1 := Bind (Ret x_) (fun x => if x then _ else _));
       [ rewrite bind_left_id; apply prog_equiv_equivalence |]
     | Some ?kx_ =>
-      eapply hoare_weaken; [eapply CompileIf with (varb := kx_) |
+      eapply hoare_weaken; [eapply CompileIfBool with (varb := kx_) || eapply CompileIf with (varb := kx_) |
       cancel_go..]; simpl
     end
   end.

@@ -808,8 +808,7 @@ Proof.
   comp_apply CompileMiddle; divisibility.
 Qed.
 
-
-Lemma CompileIf : forall V varb (b : bool)
+Lemma CompileIf : forall P Q V varb (b : {P} + {Q})
   (ptrue pfalse : prog V) xptrue xpfalse F G env,
   EXTRACT ptrue
   {{ varb ~> true * F }}
@@ -825,6 +824,31 @@ Lemma CompileIf : forall V varb (b : bool)
   {{ fun ret => G ret * varb ~>? bool }} // env.
 Proof.
   intros. unfold ProgOk.
+  inv_exec_progok;
+    repeat exec_solve_step.
+  all : contradiction H3;
+    repeat eexists; solve [
+    eapply StepIfTrue; eval_expr |
+    eapply StepIfFalse; eval_expr].
+Qed.
+
+Lemma CompileIfBool : forall V varb (b : bool)
+  (ptrue pfalse : prog V) xptrue xpfalse F G env,
+  EXTRACT ptrue
+  {{ varb ~> true * F }}
+    xptrue
+  {{ fun ret => G ret * varb ~>? bool }} // env ->
+  EXTRACT pfalse
+  {{ varb ~> false * F }}
+    xpfalse
+  {{ fun ret => G ret * varb ~>? bool }} // env ->
+  EXTRACT (if b then ptrue else pfalse)
+  {{ varb ~> b * F }}
+    If (Var varb) Then xptrue Else xpfalse EndIf
+  {{ fun ret => G ret * varb ~>? bool }} // env.
+Proof.
+  intros.
+  unfold ProgOk;
   inv_exec_progok;
     repeat exec_solve_step.
   all : contradiction H3;

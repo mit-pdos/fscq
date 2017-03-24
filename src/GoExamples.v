@@ -285,7 +285,7 @@ Example micro_swap2 : sigT (fun p =>
 Proof.
   compile.
 
-  eapply hoare_weaken_post; [ | eapply CompileIf with (condvar := "c0") (retvar := "r") ];
+  eapply hoare_weaken_post; [ | eapply CompileIfBool with (condvar := "c0") (retvar := "r") ];
     try match_scopes; maps.
 
   apply GoWrapper_unit.
