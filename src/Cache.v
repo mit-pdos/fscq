@@ -2049,15 +2049,16 @@ Module BUFCACHE.
     Ret cs.
 
   Definition sync_vecs a l cs :=
-    let^ (cs) <- ForN i < length l
+    let^ (cs) <- ForEach i irest l
     Ghost [ F crash vs d0 ]
     Loopvar [ cs ]
     Invariant
-      exists d', synrep cs d0 d' *
-      [[ (F * arrayN ptsto_subset a (vssync_vecs vs (firstn i l)))%pred d' ]]
+      exists d' iprefix, synrep cs d0 d' *
+      [[ iprefix ++ irest = l ]] *
+      [[ (F * arrayN ptsto_subset a (vssync_vecs vs iprefix))%pred d' ]]
     OnCrash crash
     Begin
-      cs <- sync_array a (selN l i 0) cs;
+      cs <- sync_array a i cs;
       Ret ^(cs)
     Rof ^(cs);
     Ret cs.
