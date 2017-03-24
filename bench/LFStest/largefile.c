@@ -582,5 +582,5 @@ int ioSize;				/* # of bytes per I/O operation */
 void 
 usage()
 {
-    fprintf ( stderr, "Usage:  largefile [-s file_size] [-i IO_size] test_directory\n" );
+    fprintf ( stderr, "Usage:  largefile [-f file_size] [-i IO_size] test_directory\n" );
 }
