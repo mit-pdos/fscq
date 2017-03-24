@@ -224,6 +224,28 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
         Ret ^(ms, Some (bn * Defs.itemsz + index))
     end.
 
+  Fixpoint bits_to_freelist (l : list bit) (start : addr) : list addr :=
+    match l with
+    | nil => nil
+    | b :: l' =>
+      let freelist' := bits_to_freelist l' (S start) in
+      if (weq b inuse) then freelist' else
+      if (addr_eq_dec start 0) then freelist' else start :: freelist'
+    end.
+
+  Definition word_to_freelist {sz} (b : word sz) (start : addr) : list addr :=
+    bits_to_freelist (bits b) start.
+
+  Fixpoint itemlist_to_freelist {sz} (bs : list (word sz)) (start : addr) : list addr :=
+    match bs with
+    | nil => nil
+    | b :: bs' => (word_to_freelist b start) ++ (itemlist_to_freelist bs' (start + sz))
+    end.
+
+  Definition get_free_blocks lxp xp ms :=
+    let^ (ms, r) <- Bmp.read lxp xp (BMPLen xp) ms;
+    Ret ^(ms, itemlist_to_freelist r 0).
+
   Definition steal lxp xp bn ms :=
     let index := (bn / Defs.itemsz) in
     let^ (ms, s) <- Bmp.get lxp xp index ms;
@@ -943,13 +965,19 @@ Module BmapAllocCache (Sig : AllocSig).
     Ret (mk_memstate fms freelist0).
 
   Definition alloc lxp xp ms :=
-    match (MSCache ms) with
+    let^ (fms, freelist) <- match (MSCache ms) with
     | nil =>
-      let^ (fms, r) <- Alloc.alloc lxp xp (MSLog ms);
-      Ret ^((mk_memstate fms (MSCache ms)), r)
-    | bn :: freelist =>
+      let^ (fms, freelist) <- Alloc.get_free_blocks lxp xp (MSLog ms);
+      Ret ^(fms, freelist)
+    | _ =>
+      Ret ^(MSLog ms, MSCache ms)
+    end;
+    match freelist with
+    | nil =>
+      Ret ^((mk_memstate fms freelist), None)
+    | bn :: freelist' =>
       fms <- Alloc.steal lxp xp bn (MSLog ms);
-      Ret ^((mk_memstate fms freelist), Some bn)
+      Ret ^((mk_memstate fms freelist'), Some bn)
     end.
 
   Definition free lxp xp bn ms :=
