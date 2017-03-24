@@ -21,15 +21,17 @@ Set Implicit Arguments.
 
 
 Definition hash_list h values :=
-  let^ (hash) <- ForN i < length values
+  let^ (hash) <- ForEach item items_rest values
   Hashmap hm'
   Ghost [ l crash ]
   Loopvar [ hash ]
   Invariant
-    [[ hash_list_rep (rev (firstn i values) ++ l) hash hm' ]]
+    exists items_prefix,
+    [[ values = items_prefix ++ items_rest ]] *
+    [[ hash_list_rep (rev items_prefix ++ l) hash hm' ]]
   OnCrash crash
   Begin
-    hash <- Hash (Word.combine (selN values i default_valu) hash);
+    hash <- Hash2 item hash;
     Ret ^(hash)
   Rof ^(h);
   Ret hash.

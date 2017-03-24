@@ -36,6 +36,7 @@ Inductive prog : Type -> Type :=
   | Debug (s: string) (n: nat) : prog unit
   | Rdtsc: prog nat
   | Hash (sz: nat) (buf: word sz) : prog (word hashlen)
+  | Hash2 (sz1 sz2: nat) (buf1 : word sz1) (buf2 : word sz2) : prog (word hashlen)
   | Bind T T' (p1: prog T) (p2: T -> prog T') : prog T'.
 
 Arguments Ret {T} v.
@@ -68,6 +69,11 @@ Inductive step : forall T,
     hash_safe hm h buf ->
     hash_fwd buf = h ->
     step m vm hm (Hash buf) m vm (upd_hashmap' hm h buf) h
+| StepHash2 : forall m sz1 sz2 (buf1 : word sz1) (buf2 : word sz2) (buf : word (sz1 + sz2)) h vm hm,
+    buf = Word.combine buf1 buf2 ->
+    hash_safe hm h buf ->
+    hash_fwd buf = h ->
+    step m vm hm (Hash2 buf1 buf2) m vm (upd_hashmap' hm h buf) h
 | StepVarAlloc : forall T d v vm i hm,
     vm i = None ->
     step d vm hm (@VarAlloc T v) d (insert vm i (@Any T v)) hm i
