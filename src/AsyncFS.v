@@ -454,9 +454,10 @@ Module AFS.
     end.
 
   Definition delete fsxp dnum name ams :=
+    t1 <- Rdtsc;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, ok) <- DIRTREE.delete fsxp dnum name (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
-    match ok with
+    res <- match ok with
     | OK _ =>
        let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
        match ok with
@@ -466,7 +467,10 @@ Module AFS.
     | Err e =>
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
       Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
-    end.
+    end;
+    t2 <- Rdtsc;
+    Debug "delete" (t2-t1);;
+    Ret res.
 
   Definition lookup fsxp dnum names ams :=
     t1 <- Rdtsc ;
@@ -479,9 +483,10 @@ Module AFS.
     Ret r.
 
   Definition rename fsxp dnum srcpath srcname dstpath dstname ams :=
+    t1 <- Rdtsc;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
     let^ (ams, r) <- DIRTREE.rename fsxp dnum srcpath srcname dstpath dstname (BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams));
-    match r with
+    res <- match r with
     | OK _ =>
       let^ (ms, ok) <- LOG.commit (FSXPLog fsxp) (MSLL ams);
       match ok with
@@ -491,7 +496,10 @@ Module AFS.
     | Err e =>
       ms <- LOG.abort (FSXPLog fsxp) (MSLL ams);
       Ret ^((BFILE.mk_memstate (MSAlloc ams) ms (MSAllocC ams) (MSIAllocC ams) (MSICache ams) (MSCache ams)), Err e)
-    end.
+    end;
+    t2 <- Rdtsc;
+    Debug "rename" (t2-t1);;
+    Ret res.
 
   (* sync directory tree; will flush all outstanding changes to tree (but not dupdates to files) *)
   Definition tree_sync fsxp ams :=
