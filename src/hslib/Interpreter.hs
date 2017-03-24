@@ -28,10 +28,10 @@ verbose :: Bool
 verbose = False
 
 output :: Bool
-output = True
+output = False
 
 timing :: Bool
-timing = True
+timing = False
 
 debugmsg :: String -> IO ()
 debugmsg s =

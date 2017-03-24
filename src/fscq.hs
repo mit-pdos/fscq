@@ -563,7 +563,7 @@ fscqSyncFile fr m_fsxp (_:path) syncType = withMVar m_fsxp $ \fsxp -> do
   case r of
     Errno.Err e -> return $ errnoToPosix e
     Errno.OK (inum, _) -> do
-      -- _ <- fr $ AsyncFS._AFS__file_sync fsxp inum
+      _ <- fr $ AsyncFS._AFS__file_sync fsxp inum
       case syncType of
         DataSync -> return eOK
         FullSync -> do
