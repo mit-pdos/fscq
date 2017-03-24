@@ -3,7 +3,8 @@ module Interpreter where
 import Prog
 import qualified Disk
 import Word
-import qualified Crypto.Hash.SHA256 as SHA256
+-- import qualified Crypto.Hash.SHA256 as SHA256
+import qualified Data.Digest.CRC32 as CRC32
 import System.CPUTime.Rdtsc
 
 -- import qualified System.Exit
@@ -98,7 +99,7 @@ run_dcode _ (Rdtsc) = do
     return $ unsafeCoerce ()
 run_dcode _ (Hash sz (WBS bs)) = do
   debugmsg $ "Hash " ++ (show sz) ++ " BS " ++ (show bs)
-  return $ unsafeCoerce $ WBS $ SHA256.hash bs
+  return $ unsafeCoerce $ W $ fromIntegral $ CRC32.crc32 bs
 run_dcode ds (Bind p1 p2) = do
   debugmsg $ "Bind"
   r1 <- run_dcode ds p1
