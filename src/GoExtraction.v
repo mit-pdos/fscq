@@ -877,5 +877,86 @@ Proof.
   Unshelve. compile.
 Defined.
 
+Lemma CompileForWithBreak : forall (L G : Type) (L' : GoWrapper L)
+   P Q (isFinished : forall t, {P t} + {Q t}) fRet loopvar ivar nvar contv pb xpb xFinished F env,
+  (forall x, fRet x = x) ->
+  (forall (t : L) (i vn vterm : W) onev termv,
+    EXTRACT (BasicProg.If_ (isFinished t) (Ret false) (Ret true))
+    {{ loopvar ~> t * ivar ~> i * nvar ~> vn * contv ~> true * onev ~> 1 * termv ~> vterm * F }}
+       xFinished onev termv
+    {{ fun ret => loopvar ~> t * ivar ~> i * nvar ~> vn * contv ~> ret * onev ~> 1 * termv ~> vterm * F }} // env) ->
+  (forall (t : L) (i vn vterm : W) onev termv, (exists q, isFinished t = right q) ->
+    EXTRACT pb i t
+    {{ loopvar ~> t * ivar ~> i * nvar ~> vn * contv ~> true * onev ~> 1 * termv ~> vterm * F }}
+       xpb onev termv
+    {{ fun ret : L => loopvar ~> ret * ivar ~> i * nvar ~> vn * contv ~> true * onev ~> 1 * termv ~> vterm * F }} // env) ->
+  forall n i t0
+   (nocrash : G -> W -> L -> hashmap -> PredCrash.rawpred)
+   (oncrash : G -> hashmap -> PredCrash.rawpred),
+  EXTRACT BasicProg.ForN_ (fun i t => BasicProg.If_ (isFinished t) (Ret (fRet t)) (pb i t)) i n nocrash oncrash t0
+  {{ loopvar ~> t0 * ivar ~> i * nvar ~> n * contv ~> (if isFinished t0 then false else true) * F }}
+    Declare Num (fun one => (
+    Declare Num (fun termv => (
+    Modify (@SetConst Num 1) ^(one);
+    Modify DuplicateOp ^(termv, ivar);
+    Modify (ModifyNumOp Plus) ^(termv, termv, nvar);
+    While (Go.TestE And (Var contv) (Var ivar < Var termv)) (
+      xpb one termv;
+      xFinished one termv;
+      Modify (ModifyNumOp Plus) ^(ivar, ivar, one)
+    )))))
+  {{ fun ret => loopvar ~> ret * nvar ~> n * ivar ~>? W * contv ~>? bool * F }} // env.
+Proof.
+  intros.
+  extract_step_declare one.
+  extract_step_declare term.
+  eapply hoare_strengthen_pre with (A1 := (term ~>? W * one ~>? W * _)%pred).
+  cancel_go.
+  repeat extract_step.
+  eapply CompileRet with (var0 := term) (v := i + n).
+  eapply hoare_weaken; [ eapply CompileAddInPlace1 | cancel_go..].
+  generalize dependent i. revert t0.
+  generalize n at 3 4.
+  generalize dependent n.
+  induction n; cbn; intros.
+  + eapply hoare_weaken; [ eapply CompileRet' with (var0 := loopvar) | cancel_go..].
+    extract_step.
+  + destruct isFinished eqn:Hf.
+    - unfold BasicProg.If_.
+      eapply extract_equiv_prog with (pr1 := Ret t0).
+      rewrite ProgMonad.bind_left_id.
+      {
+        denote (fRet _ = _) as Hfr.
+        repeat match goal with Hfr : forall x : L, fRet x = x, H: _ |- _ => lazymatch type of H with
+          | context [t0] => fail
+          | _ => clear H
+        end end.
+        rewrite Hfr.
+        revert i. induction n; cbn; intros;
+        rewrite ?Hf, ?Hfr, ?ProgMonad.bind_left_id; eauto.
+        reflexivity.
+      }
+      eapply hoare_weaken; [ eapply CompileRet' with (var0 := loopvar) | cancel_go..].
+      extract_step.
+    - eapply hoare_weaken; [ eapply CompileWhileTrueOnce | cancel_go..].
+      intros. eval_expr.
+      unfold BasicProg.If_ at 1.
+      eapply hoare_weaken; [ eapply CompileBind' | cancel_go..].
+      eapply hoare_weaken; [ eapply CompileAfter; eauto | cancel_go..].
+      intros. cbn.
+      eapply CompileBefore.
+      eapply CompileRet with (v := if isFinished r then false else true) (var0 := contv).
+      eapply extract_equiv_prog with (pr1 := BasicProg.If_ (isFinished r) (Ret false) (Ret true)).
+      cbv; break_match; auto.
+      eapply hoare_weaken; [ eauto | cancel_go..].
+      eapply hoare_weaken; [ eapply CompileRet with (var0 := ivar) (v := i + 1) | cancel_go..].
+      eapply hoare_weaken; [ eapply CompileAddInPlace1 | cancel_go..].
+      intros.
+      eapply hoare_weaken; eauto.
+      repeat rewrite ?PeanoNat.Nat.add_succ_r, <- ?plus_n_O.
+      cancel_go.
+  Unshelve. all: eauto.
+Qed.
+
 Opaque CompileRetSome.
 Opaque CompileRetNone.
