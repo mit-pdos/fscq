@@ -474,6 +474,7 @@ Module RADefs (RA : RASig).
 
   (* reps *)
   Definition ipack items := map block2val (list_chunk items items_per_val item0).
+  Definition nopad_ipack items := map block2val (nopad_list_chunk items items_per_val).
 
   Definition iunpack (r : itemlist) (v : valu) : itemlist :=
     r ++ (val2block v).

@@ -1636,7 +1636,7 @@ Module PaddedLog.
     let '(_, (ndesc, ndata), (h_addr, h_valu)) := nr in
     let '(nndesc, nndata) := ((ndesc_log log), (ndata_log log)) in
     If (loglen_valid_dec xp (ndesc + nndesc) (ndata + nndata)) {
-      h_addr <- hash_list h_addr (DescDefs.ipack (map ent_addr log));
+      h_addr <- hash_list h_addr (DescDefs.nopad_ipack (map ent_addr log));
       h_valu <- hash_list h_valu (vals_nonzero log);
       cs <- Desc.write_aligned xp ndesc (map ent_addr log) cs;
       cs <- Data.write_aligned xp ndata (map ent_valu log) cs;
