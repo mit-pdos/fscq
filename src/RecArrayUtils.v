@@ -179,9 +179,18 @@ Module RADefs (RA : RASig).
     | O => []
     end.
 
+  Fixpoint nopad_list_chunk' {A} (l : list A) (sz : nat) (nr : nat) : list (list A) :=
+    match nr with
+    | S n => firstn sz l :: (nopad_list_chunk' (skipn sz l) sz n)
+    | O => []
+    end.
+
   (** cut list l into chunks of lists of length sz, pad the tailing list with default value def *)
   Definition list_chunk {A} l sz def : list (list A) :=
     list_chunk' l sz def (divup (length l) sz).
+
+  Definition nopad_list_chunk {A} l sz : list (list A) :=
+    nopad_list_chunk' l sz (divup (length l) sz).
 
   Lemma list_chunk'_length: forall A nr l sz (def : A),
       length (list_chunk' l sz def nr) = nr.
