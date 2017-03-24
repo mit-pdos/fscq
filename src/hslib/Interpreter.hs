@@ -28,10 +28,10 @@ verbose :: Bool
 verbose = False
 
 output :: Bool
-output = False
+output = True
 
 timing :: Bool
-timing = False
+timing = True
 
 debugmsg :: String -> IO ()
 debugmsg s =
@@ -91,11 +91,11 @@ run_dcode _ (Debug s n) = do
   else
     return $ unsafeCoerce ()
 run_dcode _ (Rdtsc) = do
-  if timing then 
-    return $ unsafeCoerce rdtsc
+  if timing then do
+    r <- rdtsc
+    return $ unsafeCoerce r
   else
     return $ unsafeCoerce ()
-
 run_dcode _ (Hash sz (WBS bs)) = do
   debugmsg $ "Hash " ++ (show sz) ++ " BS " ++ (show bs)
   return $ unsafeCoerce $ WBS $ SHA256.hash bs
