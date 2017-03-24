@@ -326,8 +326,7 @@ Section CCL.
       Sigma.l sigma = Free ->
       Rely tid sigma sigma' ->
       hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') ->
-      Sigma.init_disk sigma' = Sigma.disk sigma' ->
-      let sigma' := Sigma.set_l sigma' WriteLock in
+      let sigma' := Sigma.set_l (Sigma.set_init_disk sigma' (Sigma.disk sigma')) WriteLock in
       exec tid sigma (SetLock Free WriteLock) (Finished sigma' tt)
   | ExecUnlock : forall sigma out,
       Sigma.l sigma = WriteLock ->
@@ -343,7 +342,6 @@ Section CCL.
       (Sigma.l sigma = WriteLock -> sigma' = sigma) ->
       (Sigma.l sigma = Free -> Rely tid sigma sigma' /\
                       hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
-                      Sigma.init_disk sigma' = Sigma.disk sigma' /\
                       Sigma.l sigma' = Sigma.l sigma) ->
       exec tid sigma (ReadTxn txn)
            (Finished sigma' v)

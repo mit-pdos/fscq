@@ -184,8 +184,7 @@ Section Primitives.
                            (if CanWrite (Sigma.l sigma) then
                              sigma' = sigma
                            else
-                             Rely G tid sigma sigma' /\
-                             Sigma.init_disk sigma' = Sigma.disk sigma') /\
+                             Rely G tid sigma sigma') /\
                            hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
                            Sigma.l sigma' = Sigma.l sigma ; |})
                  (Read2 A i1 B i2).
@@ -510,13 +509,13 @@ Section Primitives.
                        postcondition :=
                          fun sigma'' _ =>
                            exists sigma', Rely G tid sigma sigma' /\
-                                 sigma'' = Sigma.set_l sigma' WriteLock /\
-                                 hashmap_le (Sigma.hm sigma) (Sigma.hm sigma'') /\
-                                 Sigma.init_disk sigma' = Sigma.disk sigma'; |})
+                                 sigma'' = Sigma.set_init_disk (Sigma.set_l sigma' WriteLock) (Sigma.disk sigma') /\
+                                 hashmap_le (Sigma.hm sigma) (Sigma.hm sigma''); |})
                  GetWriteLock.
   Proof.
     prim.
     eexists; intuition eauto.
+    destruct sigma'; simpl; eauto.
     destruct sigma'; simpl; eauto.
   Qed.
 

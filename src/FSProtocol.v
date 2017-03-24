@@ -36,22 +36,22 @@ Section FilesystemProtocol.
       (DirTreeRep.rep (fsxp P) Pred.emp tree ilist frees mscs)
         (list2nmem (ds!!)).
 
-  Definition fs_invariant d hm tree (homedirs: thread_homes) : heappred :=
+  Definition fs_invariant d_i d hm tree (homedirs: thread_homes) : heappred :=
     (fstree P |-> abs tree *
      fshomedirs P |-> abs homedirs *
      exists c vd mscs,
        ccache P |-> val c *
-       [[ cache_rep d c vd ]] *
+       [[ cache_rep d c vd \/ cache_rep d_i c vd ]] *
        fsmem P |-> val mscs *
        [[ fs_rep vd hm mscs tree ]])%pred.
 
-  Theorem fs_invariant_unfold : forall d hm tree homedirs h,
-      fs_invariant d hm tree homedirs h ->
+  Theorem fs_invariant_unfold : forall d_i d hm tree homedirs h,
+      fs_invariant d_i d hm tree homedirs h ->
       exists c vd mscs,
         (fstree P |-> abs tree * fshomedirs P |-> abs homedirs *
          ccache P |-> val c *
          fsmem P |-> val mscs)%pred h /\
-        cache_rep d c vd /\
+        (cache_rep d c vd \/ cache_rep d_i c vd) /\
         fs_rep vd hm mscs tree.
   Proof.
     unfold fs_invariant; intros.
@@ -59,13 +59,54 @@ Section FilesystemProtocol.
     descend; intuition eauto.
   Qed.
 
-  Theorem fs_invariant_refold : forall tree homedirs d c vd hm mscs h,
+  Theorem fs_invariant_unfold_exists_disk : forall d_i d hm tree homedirs h,
+      fs_invariant d_i d hm tree homedirs h ->
+      exists d c vd mscs,
+        (fstree P |-> abs tree * fshomedirs P |-> abs homedirs *
+         ccache P |-> val c *
+         fsmem P |-> val mscs)%pred h /\
+        (cache_rep d c vd) /\
+        fs_rep vd hm mscs tree.
+  Proof.
+    intros.
+    edestruct fs_invariant_unfold; repeat deex; descend;
+      intuition eauto.
+  Qed.
+
+  Theorem fs_invariant_unfold_same_disk : forall d_i d hm tree homedirs h,
+      fs_invariant d_i d hm tree homedirs h ->
+      d_i = d ->
+      exists c vd mscs,
+        (fstree P |-> abs tree * fshomedirs P |-> abs homedirs *
+         ccache P |-> val c *
+         fsmem P |-> val mscs)%pred h /\
+        (cache_rep d c vd) /\
+        fs_rep vd hm mscs tree.
+  Proof.
+    intros; subst.
+    edestruct fs_invariant_unfold; repeat deex; descend;
+      intuition eauto.
+  Qed.
+
+  Theorem fs_invariant_refold1 : forall tree homedirs d_i d c vd hm mscs h,
+      (fstree P |-> abs tree * fshomedirs P |-> abs homedirs *
+       ccache P |-> val c *
+       fsmem P |-> val mscs)%pred h ->
+      cache_rep d_i c vd ->
+      fs_rep vd hm mscs tree ->
+      fs_invariant d_i d hm tree homedirs h.
+  Proof.
+    unfold fs_invariant; intros.
+    SepAuto.pred_apply; SepAuto.cancel; eauto.
+  Qed.
+
+  Theorem fs_invariant_refold2 : forall tree homedirs d_i d c vd hm mscs h,
       (fstree P |-> abs tree * fshomedirs P |-> abs homedirs *
        ccache P |-> val c *
        fsmem P |-> val mscs)%pred h ->
       cache_rep d c vd ->
       fs_rep vd hm mscs tree ->
-      fs_invariant d hm tree homedirs h.
+      fs_invariant d_i d hm tree homedirs h.
   Proof.
     unfold fs_invariant; intros.
     SepAuto.pred_apply; SepAuto.cancel; eauto.
@@ -73,13 +114,13 @@ Section FilesystemProtocol.
 
   Definition fs_guarantee tid (sigma sigma':Sigma) :=
     exists tree tree' homedirs,
-      fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) /\
-      fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma') /\
+      fs_invariant (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) /\
+      fs_invariant (Sigma.init_disk sigma') (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma') /\
       homedir_guarantee tid homedirs tree tree'.
 
   Theorem fs_rely_same_fstree : forall tid sigma sigma' tree homedirs,
-      fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
-      fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree homedirs (Sigma.mem sigma') ->
+      fs_invariant (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
+      fs_invariant (Sigma.init_disk sigma') (Sigma.disk sigma') (Sigma.hm sigma') tree homedirs (Sigma.mem sigma') ->
       Rely fs_guarantee tid sigma sigma'.
   Proof.
     intros.
@@ -102,10 +143,10 @@ Section FilesystemProtocol.
         apply ptsto_valid' in Hptsto
       end.
 
-    Lemma fs_invariant_tree_unique : forall d hm tree homedirs
-                                       d' hm' tree' homedirs' m,
-        fs_invariant d hm tree homedirs m ->
-        fs_invariant d' hm' tree' homedirs' m ->
+    Lemma fs_invariant_tree_unique : forall d_i d hm tree homedirs
+                                       d_i' d' hm' tree' homedirs' m,
+        fs_invariant d_i d hm tree homedirs m ->
+        fs_invariant d_i' d' hm' tree' homedirs' m ->
         tree = tree'.
     Proof.
       unfold fs_invariant; intros.
@@ -115,10 +156,10 @@ Section FilesystemProtocol.
       auto.
     Qed.
 
-    Lemma fs_invariant_homedirs_unique : forall d hm tree homedirs
-                                       d' hm' tree' homedirs' m,
-        fs_invariant d hm tree homedirs m ->
-        fs_invariant d' hm' tree' homedirs' m ->
+    Lemma fs_invariant_homedirs_unique : forall d_i d hm tree homedirs
+                                       d_i' d' hm' tree' homedirs' m,
+        fs_invariant d_i d hm tree homedirs m ->
+        fs_invariant d_i' d' hm' tree' homedirs' m ->
         homedirs = homedirs'.
     Proof.
       unfold fs_invariant; intros.
@@ -132,22 +173,22 @@ Section FilesystemProtocol.
 
   Ltac invariant_unique :=
     repeat match goal with
-           | [ H: fs_invariant _ _ ?tree _ ?m,
-                  H': fs_invariant _ _ ?tree' _ ?m |- _ ] =>
+           | [ H: fs_invariant _ _ _ ?tree _ ?m,
+                  H': fs_invariant _ _ _ ?tree' _ ?m |- _ ] =>
              first [ constr_eq tree tree'; fail 1 |
                      assert (tree' = tree) by
                          apply (fs_invariant_tree_unique H' H); subst ]
-           | [ H: fs_invariant _ _ _ ?homedirs ?m,
-                  H': fs_invariant _ _ _ ?homedirs' ?m |- _ ] =>
+           | [ H: fs_invariant _ _ _ _ ?homedirs ?m,
+                  H': fs_invariant _ _ _ _ ?homedirs' ?m |- _ ] =>
              first [ constr_eq homedirs homedirs'; fail 1 |
                      assert (homedirs' = homedirs) by
                          apply (fs_invariant_homedirs_unique H' H); subst ]
            end.
 
   Theorem fs_rely_invariant : forall tid sigma sigma' tree homedirs,
-      fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
+      fs_invariant (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
       Rely fs_guarantee tid sigma sigma' ->
-      exists tree', fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma').
+      exists tree', fs_invariant (Sigma.init_disk sigma') (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma').
   Proof.
     unfold fs_guarantee; intros.
     generalize dependent tree.
@@ -160,18 +201,18 @@ Section FilesystemProtocol.
   Lemma fs_rely_invariant' : forall tid sigma sigma',
       Rely fs_guarantee tid sigma sigma' ->
       forall tree homedirs,
-        fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
+        fs_invariant (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
         exists tree',
-          fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma').
+          fs_invariant (Sigma.init_disk sigma') (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma').
   Proof.
     intros.
     eapply fs_rely_invariant; eauto.
   Qed.
 
   Theorem fs_homedir_rely : forall tid sigma sigma' tree homedirs tree',
-      fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
+      fs_invariant (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
       Rely fs_guarantee tid sigma sigma' ->
-      fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma') ->
+      fs_invariant (Sigma.init_disk sigma') (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma') ->
       homedir_rely tid homedirs tree tree'.
   Proof.
     unfold fs_guarantee; intros.
@@ -190,9 +231,9 @@ Section FilesystemProtocol.
 
   Lemma fs_rely_preserves_subtree : forall tid sigma sigma' tree homedirs tree' path f,
       find_subtree (homedirs tid ++ path) tree = Some f ->
-      fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
+      fs_invariant (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
       Rely fs_guarantee tid sigma sigma' ->
-      fs_invariant (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma') ->
+      fs_invariant (Sigma.init_disk sigma') (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma') ->
       find_subtree (homedirs tid ++ path) tree' = Some f.
   Proof.
     intros.
@@ -204,7 +245,7 @@ Section FilesystemProtocol.
   Qed.
 
   Theorem fs_guarantee_refl : forall tid sigma homedirs,
-      (exists tree, fs_invariant (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma)) ->
+      (exists tree, fs_invariant (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma)) ->
       fs_guarantee tid sigma sigma.
   Proof.
     intros; deex.
@@ -236,3 +277,7 @@ Section FilesystemProtocol.
   Qed.
 
 End FilesystemProtocol.
+
+(* Local Variables: *)
+(* company-coq-local-symbols: (("Sigma" . ?Σ) ("sigma" . ?σ) ("sigma'" . (?σ (Br . Bl) ?'))) *)
+(* End: *)
