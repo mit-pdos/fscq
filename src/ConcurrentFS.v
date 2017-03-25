@@ -81,18 +81,17 @@ Section ConcurrentFS.
                  _ <- Unlock;
                  Ret (Done r)
              | Failure e =>
-                 match e with
-                 | CacheMiss a =>
-                   _ <- Assgn1 (ccache P) c;
-                     _ <- Unlock;
-                     (* TODO: [Yield a] here when the noop Yield is added *)
-                     Ret TryAgain
-                 | WriteRequired => (* unreachable - have write lock *)
-                   Ret SyscallFailed
-                 | Unsupported =>
-                   _ <- Unlock;
-                     Ret SyscallFailed
-                 end
+               _ <- Assgn1 (ccache P) c;
+                 _ <- Unlock;
+                 Ret (match e with
+                      | CacheMiss a =>
+                        (* TODO: [Yield a] here when the noop Yield is added *)
+                        TryAgain
+                      | WriteRequired => (* unreachable - have write lock *)
+                        SyscallFailed
+                      | Unsupported =>
+                        SyscallFailed
+                      end)
              end).
 
   Definition retry_syscall T (p: OptimisticProg T) (update: dirtree -> dirtree) :=
@@ -437,6 +436,18 @@ Section ConcurrentFS.
 
   Hint Extern 1 {{ startLocked; _ }} => apply startLocked_ok : prog.
 
+  Lemma free_l_not_locked : forall tid l l',
+      local_l tid l = Locked ->
+      l = l' ->
+      l' = Free ->
+      False.
+  Proof.
+    intros; subst; simpl in *.
+    congruence.
+  Qed.
+
+  Hint Resolve free_l_not_locked.
+
   Theorem write_syscall_ok : forall T (p: OptimisticProg T) A
                                (fsspec: FsSpec A T) update tid,
       (forall mscs c, cprog_spec G tid
@@ -480,67 +491,118 @@ Section ConcurrentFS.
       eapply cprog_ok_weaken;
         [ eapply H | ]; simplify; finish.
 
+      (* destruct return value of optimistic program *)
       destruct a1.
-      destruct v as [ms' r].
-      step; simpl.
-      unfold translated_postcondition in *; simpl in *; intuition eauto.
-      descend; simpl in *; intuition eauto.
-      SepAuto.pred_apply; SepAuto.cancel.
+      + (* returned successfully *)
+        destruct v as [ms' r].
 
-      repeat match goal with
-             | [ H: _ = _ |- _ ] =>
-               progress rewrite H in *
-             end.
-      eauto using local_locked.
-
-      match goal with
-      | |- G _ _ _ =>
-        (* use homedir_rely and maintained fs_invariant *)
-        admit
-      end.
-
-      step.
-      descend; simpl in *; intuition eauto.
-      repeat match goal with
-             | [ H: _ = _ |- _ ] =>
-               progress rewrite H in *
-             end.
-      eauto using local_locked.
-      match goal with
-      | |- G _ _ _ =>
-        (* use homedir_rely and maintained fs_invariant *)
-        admit
-      end.
-
-      step.
-      simpl; intuition trivial.
-
-      destruct (guard r0); simpl.
-      step.
-      intuition trivial.
-      descend; intuition eauto.
-      unfold fs_invariant; SepAuto.pred_apply; time SepAuto.cancel.
-      (* cancel takes 80 *)
-      eauto.
-      congruence.
-      discriminate.
-
-      step; simplify; finish.
-      destruct e eqn:Hexceq; try solve [ step; exfalso; eauto ].
-      + (* cache miss *)
-        step; simplify.
+        (* Assgn2_abs *)
+        step; simpl.
         unfold translated_postcondition in *; simpl in *; intuition eauto.
         descend; simpl in *; intuition eauto.
-        unfold fs_invariant in *; SepAuto.pred_apply; SepAuto.cancel.
-        congruence.
-        unfold G, fs_guarantee.
+        SepAuto.pred_apply; SepAuto.cancel.
+
         repeat match goal with
                | [ H: _ = _ |- _ ] =>
                  progress rewrite H in *
                end.
+        eauto using local_locked.
+
+        match goal with
+        | |- G _ _ _ =>
+          (* use homedir_rely and maintained fs_invariant *)
+          admit
+        end.
+
+        (* unlock *)
+        step.
+        descend; simpl in *; intuition eauto.
+        repeat match goal with
+               | [ H: _ = _ |- _ ] =>
+                 progress rewrite H in *
+               end.
+        eauto using local_locked.
+        match goal with
+        | |- G _ _ _ =>
+          (* use homedir_rely and maintained fs_invariant *)
+          admit
+        end.
+
+        step.
+        simpl; intuition trivial.
+
+        (* next iteration of loop *)
+        destruct (guard r0); simpl.
+        * (* succeeded, return *)
+          step.
+          intuition trivial; try discriminate.
+          descend; intuition eauto.
+          unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
+            [ SepAuto.cancel | intuition eauto ].
+          congruence.
+        * (* need to try again *)
+          step; discriminate.
+      + (* optimistic system call returned an error *)
+        (* update cache *)
+        step; simplify.
+        unfold translated_postcondition in *; simpl in *; intuition eauto.
+        descend; simpl in *; intuition eauto.
+        unfold fs_invariant in *; SepAuto.pred_apply; SepAuto.cancel.
+        repeat match goal with
+               | [ H: _ = _ |- _ ] =>
+                 rewrite H in *
+               end.
+        eauto using local_locked.
+
+        (* need to show that the assignment follows the protocol *)
+        unfold G, fs_guarantee.
         exists tree', tree', homedirs.
-        intuition auto.
-        unfold fs_invariant; SepAuto.pred_apply.
+        split.
+        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
+          [ SepAuto.cancel | intuition eauto ].
+        (* don't need to show disks match up since we have the lock *)
+        exfalso; eauto.
+
+        intuition eauto.
+        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
+          [ SepAuto.cancel | intuition eauto ].
+        (* don't need to show disks match up since we still have the lock *)
+        exfalso; eapply free_l_not_locked; eauto; try congruence.
+        congruence.
+        reflexivity.
+
+        (* unlock after updating cache *)
+        step; simplify.
+        descend; simpl in *; intuition eauto.
+        repeat match goal with
+               | [ H: _ = _ |- _ ] =>
+                 rewrite H in *
+               end.
+        eauto using local_locked.
+        (* proving G here re-does work: Assgn1 of cache needs a spec
+          guaranteeing the invariant *)
+        unfold G, fs_guarantee.
+        exists tree', tree', homedirs.
+        split.
+        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
+          [ SepAuto.cancel | intuition eauto ].
+        (* don't need to show disks match up since we have the lock *)
+        exfalso; eapply free_l_not_locked; eauto; try congruence.
+        congruence.
+
+        intuition.
+        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
+          [ SepAuto.cancel | intuition eauto ].
+        (* finally do need to show disks are the same *)
+        congruence.
+        congruence.
+
+        (* now we return an appropriate value *)
+        step; simplify.
+        simpl; intuition.
+
+        (* need to loop around depending on guard r (in particular, will stop on
+        SyscallFailed) *)
   Abort.
 
   (* translate all system calls for extraction *)
