@@ -1,5 +1,6 @@
 Require Import CCLProg.
 Require Import CCLHoareTriples.
+Require Import CCLAutomation.
 Require Import Automation.
 
 Section RetryLoop.
@@ -203,4 +204,38 @@ Section RetryLoop.
     auto.
   Qed.
 
+  Theorem retry_n_induction : forall T P Q (guard : forall (v:T), {P v}+{Q v}) v0 p
+                                A (spec: Spec A T) tid,
+      cprog_spec G tid spec (Ret v0) ->
+      cprog_spec G tid spec p ->
+      (forall a sigma r sigma' H, postcondition (spec a sigma) sigma' r ->
+                     guard r = right H ->
+                     precondition (spec a sigma')) ->
+      (forall a sigma0 sigma r sigma' r' H, postcondition (spec a sigma0) sigma r ->
+                               guard r = right H ->
+                               postcondition (spec a sigma) sigma' r' ->
+                               postcondition (spec a sigma0) sigma' r') ->
+      (forall n, cprog_spec G tid spec (retry_n guard v0 p n)).
+  Proof.
+    intros.
+    induction n; simpl; eauto.
+    unfold cprog_spec; intros.
+    eapply cprog_ok_weaken; [ monad_simpl; now eauto | ].
+    intros; deex.
+    descend; intuition eauto.
+    destruct (guard r) eqn:?.
+    - eapply cprog_ok_weaken; [ monad_simpl; now eauto | ].
+      intuition subst.
+    - eapply cprog_ok_weaken; [ monad_simpl; now eauto | ].
+      intuition subst.
+      descend; intuition eauto.
+
+      eapply cprog_ok_weaken; [ monad_simpl; now eauto | ].
+      intuition eauto.
+  Qed.
+
 End RetryLoop.
+
+(* Local Variables: *)
+(* company-coq-local-symbols: (("Sigma" . ?Σ) ("sigma" . ?σ) ("sigma'" . (?σ (Br . Bl) ?'))) *)
+(* End: *)
