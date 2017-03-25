@@ -67,6 +67,11 @@ Section ConcurrentFS.
       do '(c, mscs) <- Read2 Cache (ccache P) memstate (fsmem P);
       Ret (c, mscs).
 
+  (* finish up a rolled back system call by updating the cache and unlocking *)
+  Definition finishRollback (c: Cache) :=
+    _ <- Assgn1 (ccache P) c;
+      Unlock.
+
   Definition write_syscall T (p: OptimisticProg T) (update: dirtree -> dirtree) :
     cprog (SyscallResult T) :=
     retry guard
@@ -81,8 +86,7 @@ Section ConcurrentFS.
                  _ <- Unlock;
                  Ret (Done r)
              | Failure e =>
-               _ <- Assgn1 (ccache P) c;
-                 _ <- Unlock;
+               _ <- finishRollback c;
                  Ret (match e with
                       | CacheMiss a =>
                         (* TODO: [Yield a] here when the noop Yield is added *)
@@ -132,16 +136,6 @@ Section ConcurrentFS.
                | Failure e =>
                  (l = Locked -> e <> WriteRequired) /\
                  vd = vd' /\
-                 (* at this point we've broken the fs_invariant because the disk
-                 has changed without updating the cache, and now other threads
-                 observe an inconsistent state if they read the cache; updating
-                 the disk requires immediately updating the in-memory cache
-
-                 a proper solution to putting a protocol on disk operations
-                 would create the appropriate burden on the cache to guarantee
-                 that starting the read is safe - it's actually not unless
-                 there's also an atomic write to memory, even though the cache
-                 doesn't realize it's in memory and globally shared *)
                  fs_rep P vd' (Sigma.hm sigma') mscs tree
                end /\
                hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') ; |}.
@@ -356,39 +350,6 @@ Section ConcurrentFS.
 
   Hint Resolve fs_invariant_free_to_owned.
 
-  Definition GetWriteLock_fs_ok : forall tid,
-      cprog_spec G tid
-                 (fun '(tree, homedirs) sigma =>
-                    {| precondition :=
-                         fs_inv(P, sigma, tree, homedirs) /\
-                         local_l tid (Sigma.l sigma) = Unacquired;
-                       postcondition :=
-                         fun sigma' _ =>
-                           exists tree',
-                             fs_inv(P, sigma, tree', homedirs) /\
-                             Rely G tid sigma sigma' /\
-                             homedir_rely tid homedirs tree tree' /\
-                             local_l tid (Sigma.l sigma') = Locked /\
-                             Sigma.init_disk sigma' = Sigma.disk sigma' ; |})
-                 GetWriteLock.
-  Proof using Type.
-    intros.
-    step; finish.
-
-    step.
-    intuition trivial.
-    edestruct fs_rely_invariant; eauto.
-    destruct sigma'; simpl in *; subst.
-
-    descend; intuition eauto.
-    etransitivity; eauto.
-    eapply fs_rely_same_fstree; simpl; eauto.
-    reflexivity.
-    destruct (tid_eq_dec tid tid); congruence.
-  Qed.
-
-  (* Hint Extern 0 {{ GetWriteLock; _ }} => apply GetWriteLock_fs_ok : prog. *)
-
   Definition startLocked_ok : forall tid,
       cprog_spec G tid
                  (fun '(tree, homedirs) sigma =>
@@ -436,6 +397,8 @@ Section ConcurrentFS.
 
   Hint Extern 1 {{ startLocked; _ }} => apply startLocked_ok : prog.
 
+  Hint Resolve local_locked.
+
   Lemma free_l_not_locked : forall tid l l',
       local_l tid l = Locked ->
       l = l' ->
@@ -447,6 +410,61 @@ Section ConcurrentFS.
   Qed.
 
   Hint Resolve free_l_not_locked.
+
+  Definition finishRollback_ok : forall tid c,
+      cprog_spec G tid
+                 (fun '(c0, mscs, vd, tree, homedirs) sigma =>
+                    {| precondition :=
+                         (fstree P |-> abs tree * fshomedirs P |-> abs homedirs *
+                          ccache P |-> val c0 * fsmem P |-> val (mscs:memstate))%pred (Sigma.mem sigma) /\
+                         (* existing cache applies to d_i *)
+                         cache_rep (Sigma.init_disk sigma) c0 vd /\
+                         (* new cache is for the new disk, at the same virtual disk *)
+                         cache_rep (Sigma.disk sigma) c vd /\
+                         fs_rep P vd (Sigma.hm sigma) mscs tree /\
+                         local_l tid (Sigma.l sigma) = Locked;
+                       postcondition :=
+                         fun sigma' _ =>
+                           fs_inv (P, sigma', tree, homedirs) /\
+                           hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
+                           local_l tid (Sigma.l sigma') = Unacquired; |})
+                 (finishRollback c).
+  Proof using Type.
+    unfold finishRollback; intros.
+    step; finish.
+    SepAuto.pred_apply; SepAuto.cancel.
+    unfold G, fs_guarantee.
+    descend; intuition eauto.
+    unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto; try congruence.
+    exfalso; eauto.
+
+    unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto; try congruence.
+    exfalso; eauto.
+    reflexivity.
+
+    step; finish.
+    repeat match goal with
+           | [ H: _ = _ |- _ ] =>
+             rewrite H in *
+           end; eauto.
+
+    unfold G, fs_guarantee.
+    descend; intuition eauto.
+    unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto; try congruence.
+    exfalso; eauto.
+    unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto; try congruence.
+    reflexivity.
+
+    step; finish.
+    unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto; try congruence.
+
+    repeat match goal with
+           | [ H: _ = _ |- _ ] =>
+             rewrite H in *
+           end; reflexivity.
+  Qed.
+
+  Hint Extern 1 {{ finishRollback _; _ }} => apply finishRollback_ok : prog.
 
   Theorem write_syscall_ok : forall T (p: OptimisticProg T) A
                                (fsspec: FsSpec A T) update tid,
@@ -461,8 +479,8 @@ Section ConcurrentFS.
                          fs_pre (fsspec a) tree /\
                          precondition_stable fsspec homedirs tid /\
                          update = fs_dirup (fsspec a) /\
-                         (forall tree0, homedir_rely tid homedirs
-                                                tree0 (update tree0));
+                         (forall tree0, homedir_guarantee tid homedirs
+                                                     tree0 (update tree0));
                        postcondition :=
                          fun sigma' r =>
                            exists tree' tree'',
@@ -484,6 +502,7 @@ Section ConcurrentFS.
     induction n; simpl; intros.
     - step; simpl.
       descend; intuition eauto.
+      reflexivity.
     - step.
       descend; simpl in *; intuition eauto.
 
@@ -508,11 +527,19 @@ Section ConcurrentFS.
                end.
         eauto using local_locked.
 
-        match goal with
-        | |- G _ _ _ =>
-          (* use homedir_rely and maintained fs_invariant *)
-          admit
-        end.
+        unfold G, fs_guarantee.
+        descend; intuition eauto.
+        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
+          [ SepAuto.cancel | intuition eauto ].
+        exfalso; eauto.
+        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
+          [ SepAuto.cancel | intuition eauto ].
+        repeat match goal with
+               | [ H: _ = _ |- _ ] =>
+                 progress rewrite H in *
+               end.
+        exfalso; eauto.
+        congruence.
 
         (* unlock *)
         step.
@@ -521,12 +548,23 @@ Section ConcurrentFS.
                | [ H: _ = _ |- _ ] =>
                  progress rewrite H in *
                end.
-        eauto using local_locked.
-        match goal with
-        | |- G _ _ _ =>
-          (* use homedir_rely and maintained fs_invariant *)
-          admit
-        end.
+        eauto.
+        unfold G, fs_guarantee.
+        exists (fs_dirup (fsspec a0) tree'), (fs_dirup (fsspec a0) tree').
+        descend; intuition eauto.
+        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
+          [ SepAuto.cancel | intuition eauto ].
+        repeat match goal with
+               | [ H: _ = _ |- _ ] =>
+                 progress rewrite H in *
+               end.
+        exfalso; eauto.
+        congruence.
+        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
+          [ SepAuto.cancel | intuition eauto ].
+        congruence.
+        congruence.
+        reflexivity.
 
         step.
         simpl; intuition trivial.
@@ -545,57 +583,20 @@ Section ConcurrentFS.
       + (* optimistic system call returned an error *)
         (* update cache *)
         step; simplify.
+
+        descend; simpl in *; intuition eauto.
+        repeat match goal with
+               | [ H: _ = _ |- _ ] =>
+                 rewrite H in *
+               end.
         unfold translated_postcondition in *; simpl in *; intuition eauto.
-        descend; simpl in *; intuition eauto.
-        unfold fs_invariant in *; SepAuto.pred_apply; SepAuto.cancel.
+        unfold translated_postcondition in *; simpl in *; intuition eauto.
+        unfold translated_postcondition in *; simpl in *; intuition eauto.
         repeat match goal with
                | [ H: _ = _ |- _ ] =>
                  rewrite H in *
-               end.
-        eauto using local_locked.
-
-        (* need to show that the assignment follows the protocol *)
-        unfold G, fs_guarantee.
-        exists tree', tree', homedirs.
-        split.
-        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
-          [ SepAuto.cancel | intuition eauto ].
-        (* don't need to show disks match up since we have the lock *)
-        exfalso; eauto.
-
-        intuition eauto.
-        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
-          [ SepAuto.cancel | intuition eauto ].
-        (* don't need to show disks match up since we still have the lock *)
-        exfalso; eapply free_l_not_locked; eauto; try congruence.
-        congruence.
-        reflexivity.
-
-        (* unlock after updating cache *)
-        step; simplify.
-        descend; simpl in *; intuition eauto.
-        repeat match goal with
-               | [ H: _ = _ |- _ ] =>
-                 rewrite H in *
-               end.
-        eauto using local_locked.
-        (* proving G here re-does work: Assgn1 of cache needs a spec
-          guaranteeing the invariant *)
-        unfold G, fs_guarantee.
-        exists tree', tree', homedirs.
-        split.
-        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
-          [ SepAuto.cancel | intuition eauto ].
-        (* don't need to show disks match up since we have the lock *)
-        exfalso; eapply free_l_not_locked; eauto; try congruence.
-        congruence.
-
-        intuition.
-        unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
-          [ SepAuto.cancel | intuition eauto ].
-        (* finally do need to show disks are the same *)
-        congruence.
-        congruence.
+               end; eauto.
+        unfold translated_postcondition in *; simpl in *; intuition eauto.
 
         (* now we return an appropriate value *)
         step; simplify.
@@ -603,7 +604,33 @@ Section ConcurrentFS.
 
         (* need to loop around depending on guard r (in particular, will stop on
         SyscallFailed) *)
-  Abort.
+        destruct (guard r) eqn:? .
+        step; simplify.
+        intuition trivial.
+        descend; intuition eauto.
+        destruct e; auto.
+        intuition; repeat deex; try discriminate.
+
+        step; simplify.
+        descend; simpl in *; intuition eauto.
+        (* error must be a cache miss if we're trying again *)
+        destruct e; try discriminate.
+
+        step; simplify.
+        intuition trivial.
+        destruct r; intuition; subst.
+        exists tree'0, (fs_dirup (fsspec a0) tree'0).
+        descend; simpl in *; intuition eauto.
+        etransitivity; eauto.
+
+        exists tree'0.
+        descend; simpl in *; intuition eauto.
+        etransitivity; eauto.
+
+        exists tree'0.
+        descend; simpl in *; intuition eauto.
+        etransitivity; eauto.
+  Qed.
 
   (* translate all system calls for extraction *)
 
