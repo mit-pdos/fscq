@@ -278,6 +278,25 @@ Section FilesystemProtocol.
     eapply LOG.rep_hashmap_subset; eauto.
   Qed.
 
+  Lemma fs_invariant_free : forall d_i d hm tree homedirs h,
+      fs_invariant Free d_i d hm tree homedirs h ->
+      d_i = d.
+  Proof.
+    unfold fs_invariant; intros.
+    SepAuto.destruct_lifts; intuition.
+  Qed.
+
+  Lemma fs_invariant_free_to_owned : forall tid d_i d hm tree homedirs h,
+      fs_invariant Free d_i d hm tree homedirs h ->
+      fs_invariant (Owned tid) d d hm tree homedirs h.
+  Proof.
+    intros.
+    unfold fs_invariant in *.
+    SepAuto.destruct_lifts; intuition subst.
+    SepAuto.pred_apply; SepAuto.cancel; eauto.
+    SepAuto.pred_apply; SepAuto.cancel; eauto.
+  Qed.
+
 End FilesystemProtocol.
 
 (* re-export this notation with the P parameter *)

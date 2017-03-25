@@ -145,26 +145,6 @@ Section ConcurrentFS.
                     homedir_rely tid homes tree tree' ->
                     fs_pre (fsspec a) tree'.
 
-  Lemma precondition_stable_rely_fwd : forall A T (spec: FsSpec A T) tid a
-                                     sigma tree homedirs sigma',
-      precondition_stable spec homedirs tid ->
-      fs_inv(P, sigma, tree, homedirs) ->
-      Rely G tid sigma sigma' ->
-      fs_pre (spec a) tree ->
-      exists tree',
-        fs_inv(P, sigma', tree', homedirs) /\
-        homedir_rely tid homedirs tree tree' /\
-        fs_pre (spec a) tree'.
-  Proof.
-    unfold precondition_stable; intros.
-    match goal with
-    | [ H: fs_invariant _ _ _ _ _ _ _ _,
-           H': Rely _ _ _ _ |- _ ] =>
-      pose proof (fs_rely_invariant H H')
-    end; deex.
-    descend; intuition eauto using fs_homedir_rely.
-  Qed.
-
   Hint Resolve fs_rep_hashmap_incr.
 
   Definition readCacheMem_ok : forall tid,
@@ -182,7 +162,7 @@ Section ConcurrentFS.
                              homedir_rely tid homedirs tree tree' /\
                              (* mscs and c come from fs_invariant on sigma *)
                              (exists d vd, cache_rep d c vd /\
-                                    fs_rep P vd (Sigma.hm sigma') mscs tree) /\
+                                      fs_rep P vd (Sigma.hm sigma') mscs tree) /\
                              local_l tid (Sigma.l sigma') = local_l tid (Sigma.l sigma); |})
                  readCacheMem.
   Proof using Type.
@@ -272,7 +252,7 @@ Section ConcurrentFS.
     unfold translated_postcondition in *; simplify.
     intuition.
     descend; intuition (norm_eq; eauto).
-      eauto using fs_rep_same_disk_incr_hashmap.
+    eauto using fs_rep_same_disk_incr_hashmap.
 
     etransitivity; eauto.
     eapply fs_rely_same_fstree; norm_eq; eauto.
@@ -393,8 +373,6 @@ Section ConcurrentFS.
 
   Hint Extern 1 {{ startLocked; _ }} => apply startLocked_ok : prog.
 
-  Hint Resolve local_locked.
-
   Lemma free_l_not_locked : forall tid l l',
       local_l tid l = Locked ->
       l = l' ->
@@ -405,7 +383,7 @@ Section ConcurrentFS.
     congruence.
   Qed.
 
-  Hint Resolve free_l_not_locked.
+  Hint Resolve local_locked free_l_not_locked.
 
   Definition finishRollback_ok : forall tid c,
       cprog_spec G tid
@@ -456,7 +434,7 @@ Section ConcurrentFS.
   Hint Extern 1 {{ finishRollback _; _ }} => apply finishRollback_ok : prog.
 
   Theorem write_syscall_ok' : forall T (p: OptimisticProg T) A
-                               (fsspec: FsSpec A T) update tid,
+                                (fsspec: FsSpec A T) update tid,
       (forall mscs c, cprog_spec G tid
                             (fs_spec fsspec tid mscs Locked c)
                             (p mscs Locked c)) ->
