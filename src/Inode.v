@@ -380,6 +380,19 @@ Module INODE.
     all : apply Ind.indrep_bxp_switch; auto.
   Qed.
 
+  Lemma rep_upd_attrs: forall bxp ir iblocks (attr : iattr),
+    Ind.rep bxp ir iblocks <=p=> Ind.rep bxp (ir :=> "attrs" := attr) iblocks.
+  Proof.
+    intros.
+    cbn in *.
+    split; apply Ind.rep_keep_blocks.
+    all: repeat match goal with
+    | [ |- context [fst ?p] ] => destruct p; cbn
+    | [ |- context [snd ?p] ] => destruct p; cbn
+    end.
+    all: reflexivity.
+  Qed.
+
   (**************  Automation *)
 
   Fact resolve_selN_irec0 : forall l i d,
@@ -705,6 +718,52 @@ Module INODE.
     Unshelve. exact IRec.Defs.item0.
   Qed.
 
+  Theorem reset_ok : forall lxp bxp xp inum nr attr cache ms,
+    {< F Fm Fi m0 m ilist ino freelist,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (BALLOCC.MSLog ms) hm *
+           [[[ m ::: (Fm * rep bxp xp ilist cache * BALLOCC.rep bxp freelist ms) ]]] *
+           [[[ ilist ::: (Fi * inum |-> ino) ]]]
+    POST:hm' RET:^(cache', ms) exists m' ilist' ino' freelist',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
+           [[[ m' ::: (Fm * rep bxp xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
+           [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
+           [[ ino' = mk_inode (cuttail nr (IBlocks ino)) attr ]] *
+           [[ incl freelist freelist' ]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} reset lxp bxp xp inum nr attr cache ms.
+  Proof.
+    unfold reset, rep.
+    safestep.
+    sepauto.
+
+    extract; seprewrite.
+    step.
+    rewrite listmatch_isolate with (a := ilist) (i := inum) by omega.
+    unfold inode_match. cancel.
+    step.
+    subst; unfold BPtrSig.upd_irec, BPtrSig.IRLen. simpl.
+    smash_rec_well_formed.
+    repeat match goal with |- let (_, _) := ?y in _ => destruct y; intuition idtac end.
+    unfold Ind.rep in *. rewrite BPtrSig.upd_irec_get_blk in *.
+    destruct_lifts. auto.
+    sepauto.
+
+    safestep.
+    2: sepauto.
+    2: eauto.
+    rewrite listmatch_updN_removeN by omega.
+    unfold inode_match, BPtrSig.upd_len, BPtrSig.IRLen; simpl.
+    rewrite <- rep_upd_attrs.
+    unfold cuttail.
+    match goal with [H : context [Ind.rep _ ?x ?l] |- context [length ?l] ] =>
+      unfold Ind.rep in H; destruct_lift H; substl (length l)
+    end.
+    cancel.
+    auto using forall_firstn.
+    cancel; auto.
+    Unshelve. exact IRec.Defs.item0.
+  Qed.
 
   Lemma grow_wellformed : forall (a : BPtrSig.irec) inum reclist cache F1 F2 F3 F4 m xp,
     ((((F1 * IRec.rep xp reclist cache) * F2) * F3) * F4)%pred m ->
@@ -778,6 +837,7 @@ Module INODE.
   Hint Extern 1 ({{_}} Bind (getallbnum _ _ _ _ _) _) => apply getallbnum_ok : prog.
   Hint Extern 1 ({{_}} Bind (grow _ _ _ _ _ _ _) _) => apply grow_ok : prog.
   Hint Extern 1 ({{_}} Bind (shrink _ _ _ _ _ _ _) _) => apply shrink_ok : prog.
+  Hint Extern 1 ({{_}} Bind (reset _ _ _ _ _ _ _ _) _) => apply reset_ok : prog.
 
   Hint Extern 0 (okToUnify (rep _ _ _ _) (rep _ _ _ _)) => constructor : okToUnify.
 

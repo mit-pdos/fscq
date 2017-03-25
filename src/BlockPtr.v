@@ -1999,6 +1999,22 @@ Module BlockPtr (BPtr : BlockPtrSig).
           repeat rewrite firstn_repeat by lia; f_equal; lia.
   Qed.
 
+  Lemma rep_keep_blocks : forall bxp ir ir' l,
+    IRIndPtr ir = IRIndPtr ir' ->
+    IRDindPtr ir = IRDindPtr ir' ->
+    IRTindPtr ir = IRTindPtr ir' ->
+    IRLen ir = IRLen ir' ->
+    IRBlocks ir = IRBlocks ir' ->
+    rep bxp ir l =p=> rep bxp ir' l.
+  Proof.
+    intros.
+    unfold rep, indrep.
+    repeat match goal with H : _ = _ |- _ =>
+      rewrite H in *; clear H
+    end.
+    reflexivity.
+  Qed.
+
   Theorem xform_indrep : forall xp ir l,
     crash_xform (indrep xp ir l) <=p=> indrep xp ir l.
   Proof.
