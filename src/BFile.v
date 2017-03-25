@@ -446,6 +446,23 @@ Module BFILE.
       eauto.
   Qed.
 
+  Theorem ilist_safe_upd_nil : forall ilist frees i off,
+    INODE.IBlocks i = nil ->
+    ilist_safe ilist frees (updN ilist off i) frees.
+  Proof.
+    intros.
+    destruct (lt_dec off (length ilist)).
+    - unfold ilist_safe, block_belong_to_file.
+      intuition auto.
+      apply incl_refl.
+      destruct (addr_eq_dec off inum); subst.
+      rewrite selN_updN_eq in * by auto.
+      rewrite H in *; cbn in *; omega.
+      rewrite selN_updN_ne in * by auto.
+      intuition auto.
+    - rewrite updN_oob by omega; auto.
+  Qed.
+
   Lemma block_belong_to_file_inum_ok : forall ilist bn inum off,
     block_belong_to_file ilist bn inum off ->
     inum < length ilist.
@@ -873,11 +890,11 @@ Module BFILE.
     all: eauto.
   Qed.
 
-  Lemma bfcache_remove' : forall msc flist ilist inum f F,
+  Lemma bfcache_remove' : forall msc flist ilist inum f d a F,
     locked (cache_rep msc flist ilist) ->
     (F * inum |-> f)%pred (list2nmem flist) ->
     locked (cache_rep (BFcache.remove inum msc)
-                      (updN flist inum {| BFData := BFData f; BFAttr := BFAttr f; BFCache := None |})
+                      (updN flist inum {| BFData := d; BFAttr := a; BFCache := None |})
                       ilist).
   Proof.
     intros.
@@ -951,6 +968,33 @@ Module BFILE.
   Qed.
 
   Hint Resolve bfcache_init bfcache_upd.
+
+  Lemma file_match_length_piff : forall i f,
+    file_match f i <=p=> [[ length (INODE.IBlocks i) = length (BFData f) ]] * file_match f i.
+  Proof.
+    split; do 2 intro; pred_apply; cancel.
+    unfold file_match in *.
+    rewrite listmatch_length_pimpl in *.
+    destruct_lifts.
+    rewrite map_length in *.
+    auto.
+  Qed.
+
+  Lemma listmatch_file_match_length_pimpl : forall i ilist flist,
+    listmatch file_match flist ilist =p=> listmatch file_match flist ilist *
+    [[ length (INODE.IBlocks (selN ilist i INODE.inode0)) = length (BFData (selN flist i bfile0)) ]].
+  Proof.
+    intros.
+    do 2 intro.
+    enough (length flist = length ilist).
+    pred_apply.
+    destruct (lt_dec i (length flist)).
+    rewrite listmatch_isolate by (eauto || omega).
+    rewrite file_match_length_piff.
+    cancel. eauto.
+    repeat rewrite selN_oob by omega. cancel.
+    eapply listmatch_length; eauto.
+  Qed.
 
   Ltac assignms :=
     match goal with
@@ -1567,7 +1611,10 @@ Module BFILE.
     Unshelve. all: easy.
   Qed.
 
-  Local Hint Extern 0 (okToUnify (listmatch _ _ _) (listmatch _ _ _)) => constructor : okToUnify.
+  Local Hint Extern 0 (okToUnify (listmatch _ _ ?a) (listmatch _ _ ?a)) => constructor : okToUnify.
+  Local Hint Extern 0 (okToUnify (listmatch _ ?a _) (listmatch _ ?a _)) => constructor : okToUnify.
+  Local Hint Extern 0 (okToUnify (listmatch _ _ (?f _ _)) (listmatch _ _ (?f _ _))) => constructor : okToUnify.
+  Local Hint Extern 0 (okToUnify (listmatch _ (?f _ _) _) (listmatch _ (?f _ _) _)) => constructor : okToUnify.
 
   Theorem shrink_ok : forall lxp bxp ixp inum nr ms,
     {< F Fm Fi m0 m flist ilist frees f,
@@ -2223,7 +2270,7 @@ Module BFILE.
     let l := map (@wordToNat _) (skipn ((length bns) - sz) bns) in
     cms <- BALLOCC.freevec lxp (pick_balloc bxp (negb al)) l (BALLOCC.mk_memstate ms (pick_balloc alc (negb al)));
     let^ (icache, cms) <- INODE.reset lxp (pick_balloc bxp (negb al)) xp inum sz attr0 icache cms;
-    Ret (mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) (negb al)) ialc icache cache).
+    Ret (mk_memstate al (BALLOCC.MSLog cms) (upd_balloc alc (BALLOCC.MSCache cms) (negb al)) ialc icache (BFcache.remove inum cache)).
 
   Definition reset' lxp bxp xp inum ms :=
     let^ (ms, sz) <- getlen lxp xp inum ms;
@@ -2342,7 +2389,7 @@ Module BFILE.
       cancel.
   Qed.
 
-  Theorem reset_ok : forall lxp bxp ixp inum ms,
+  Theorem reset'_ok : forall lxp bxp ixp inum ms,
     {< F Fm Fi m0 m flist ilist frees f,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
@@ -2353,15 +2400,15 @@ Module BFILE.
            [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms')) ]]] *
            [[[ flist' ::: (Fi * inum |-> bfile0) ]]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] *
-           [[ MSAlloc ms = MSAlloc ms' /\ 
-              ilist_safe ilist (pick_balloc frees (MSAlloc ms')) 
+           [[ MSAlloc ms = MSAlloc ms' /\
+              ilist_safe ilist (pick_balloc frees (MSAlloc ms'))
                          ilist' (pick_balloc frees' (MSAlloc ms'))  ]] *
-           [[ forall inum' def', inum' <> inum -> 
+           [[ forall inum' def', inum' <> inum ->
                 selN ilist inum' def' = selN ilist' inum' def' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
-    >} reset lxp bxp ixp inum ms.
+    >} reset' lxp bxp ixp inum ms.
   Proof.
-    unfold reset; intros.
+    unfold reset'; intros.
     step.
     step.
     msalloc_eq; cancel.
@@ -2392,6 +2439,101 @@ Module BFILE.
     all: eauto.
   Unshelve.
     all: eauto.
+  Qed.
+
+
+
+  Theorem reset_ok : forall lxp bxp ixp inum ms,
+    {< F Fm Fi m0 m flist ilist frees f,
+    PRE:hm
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+           [[[ m ::: (Fm * rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
+           [[[ flist ::: (Fi * inum |-> f) ]]]
+    POST:hm' RET:ms' exists m' flist' ilist' frees',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
+           [[[ m' ::: (Fm * rep bxp ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms')) ]]] *
+           [[[ flist' ::: (Fi * inum |-> bfile0) ]]] *
+           [[ MSIAllocC ms = MSIAllocC ms' ]] *
+           [[ MSAlloc ms = MSAlloc ms' ]] *
+           [[ ilist_safe ilist  (pick_balloc frees  (MSAlloc ms'))
+                         ilist' (pick_balloc frees' (MSAlloc ms')) ]] *
+           [[ forall inum' def', inum' <> inum -> 
+                selN ilist inum' def' = selN ilist' inum' def' ]]
+    CRASH:hm'  LOG.intact lxp F m0 hm'
+    >} reset lxp bxp ixp inum ms.
+  Proof.
+    unfold reset; intros.
+    step.
+    unfold rep in *.
+    step; msalloc_eq.
+    sepauto.
+    destruct MSAlloc; cbn; step; msalloc_eq.
+    rewrite INODE.rep_bxp_switch in * by eassumption.
+    1, 4:
+      rewrite INODE.inode_rep_bn_valid_piff in *; destruct_lifts;
+      rewrite <- Forall_map;
+      apply forall_skipn; solve [intuition sepauto].
+    1, 3: erewrite <- listmatch_ptsto_listpred;
+      rewrite listmatch_extract with (i := inum) (a := flist) by sepauto;
+      unfold file_match at 2;
+      setoid_rewrite listmatch_split at 2;
+      rewrite <- skipn_map_comm; cancel.
+    + prestep; norm. cancel.
+      intuition eauto.
+      2: eapply list2nmem_ptsto_cancel; sepauto.
+      pred_apply.
+      erewrite INODE.rep_bxp_switch by eassumption.
+      cancel.
+      unfold cuttail.
+      seprewrite.
+      match goal with H: _ |- _ =>
+        rewrite listmatch_file_match_length_pimpl with (ilist := ilist) (i := inum) in H; destruct_lift H
+      end.
+      denote (length _ = length _) as Hx.
+      rewrite Hx in *; setoid_rewrite Hx.
+      rewrite Nat.sub_diag in *.
+      prestep. norm. safecancel.
+      instantiate (ilist' := updN _ _ _).
+      intuition idtac.
+      2 : sepauto.
+      pred_apply.
+      erewrite INODE.rep_bxp_switch by (apply eq_sym; eassumption).
+      unfold file_match; cbn; cancel.
+      rewrite listmatch_updN_removeN; [ cancel | sepauto..].
+      eapply bfcache_remove'; sepauto.
+      apply ilist_safe_upd_nil; auto.
+      rewrite selN_updN_ne; auto.
+      eauto.
+      cancel.
+    + prestep; norm. cancel.
+      intuition eauto.
+      2: eapply list2nmem_ptsto_cancel; sepauto.
+      pred_apply.
+      erewrite INODE.rep_bxp_switch by eassumption.
+      cancel.
+      unfold cuttail.
+      seprewrite.
+      match goal with H: _ |- _ =>
+        rewrite listmatch_file_match_length_pimpl with (ilist := ilist) (i := inum) in H; destruct_lift H
+      end.
+      denote (length _ = length _) as Hx.
+      rewrite Hx in *; setoid_rewrite Hx.
+      rewrite Nat.sub_diag in *.
+      prestep. norm. safecancel.
+      instantiate (ilist' := updN _ _ _).
+      intuition idtac.
+      2 : sepauto.
+      pred_apply.
+      unfold file_match; cbn; cancel.
+      rewrite listmatch_updN_removeN; [ cancel | sepauto..].
+      eapply bfcache_remove'; sepauto.
+      apply ilist_safe_upd_nil; auto.
+      rewrite selN_updN_ne; auto.
+      eauto.
+      cancel.
+  Unshelve.
+    all : try easy.
+    all : solve [ exact bfile0 | intros; exact emp | exact nil].
   Qed.
 
   Hint Extern 1 ({{_}} Bind (truncate _ _ _ _ _ _) _) => apply truncate_ok : prog.

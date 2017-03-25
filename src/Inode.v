@@ -728,6 +728,7 @@ Module INODE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m') (BALLOCC.MSLog ms) hm' *
            [[[ m' ::: (Fm * rep bxp xp ilist' cache' * BALLOCC.rep bxp freelist' ms) ]]] *
            [[[ ilist' ::: (Fi * inum |-> ino') ]]] *
+           [[ ilist' = updN ilist inum ino' ]] *
            [[ ino' = mk_inode (cuttail nr (IBlocks ino)) attr ]] *
            [[ incl freelist freelist' ]]
     CRASH:hm'  LOG.intact lxp F m0 hm'
@@ -751,7 +752,7 @@ Module INODE.
 
     safestep.
     2: sepauto.
-    2: eauto.
+    2, 3: eauto.
     rewrite listmatch_updN_removeN by omega.
     unfold inode_match, BPtrSig.upd_len, BPtrSig.IRLen; simpl.
     rewrite <- rep_upd_attrs.
