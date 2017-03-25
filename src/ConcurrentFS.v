@@ -155,17 +155,17 @@ Section ConcurrentFS.
   Lemma precondition_stable_rely_fwd : forall A T (spec: FsSpec A T) tid a
                                      sigma tree homedirs sigma',
       precondition_stable spec homedirs tid ->
-      fs_invariant P (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs (Sigma.mem sigma) ->
+      fs_inv(P, sigma, tree, homedirs) ->
       Rely G tid sigma sigma' ->
       fs_pre (spec a) tree ->
       exists tree',
-        fs_invariant P (Sigma.init_disk sigma') (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs (Sigma.mem sigma') /\
+        fs_inv(P, sigma', tree', homedirs) /\
         homedir_rely tid homedirs tree tree' /\
         fs_pre (spec a) tree'.
   Proof.
     unfold precondition_stable; intros.
     match goal with
-    | [ H: fs_invariant _ _ _ _ _ _ _,
+    | [ H: fs_invariant _ _ _ _ _ _ _ _,
            H': Rely _ _ _ _ |- _ ] =>
       pose proof (fs_rely_invariant H H')
     end; deex.
@@ -178,14 +178,12 @@ Section ConcurrentFS.
       cprog_spec G tid
                  (fun '(tree, homedirs) sigma =>
                     {| precondition :=
-                         fs_invariant P (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs
-                                      (Sigma.mem sigma) /\
+                         fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired;
                        postcondition :=
                          fun sigma' '(c, mscs) =>
                            exists tree',
-                             fs_invariant P (Sigma.init_disk sigma') (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs
-                                          (Sigma.mem sigma') /\
+                             fs_inv(P, sigma', tree', homedirs) /\
                              hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
                              Rely G tid sigma sigma' /\
                              homedir_rely tid homedirs tree tree' /\
@@ -198,7 +196,7 @@ Section ConcurrentFS.
     unfold readCacheMem; intros.
     step; simpl in *; safe_intuition.
     match goal with
-    | [ H: fs_invariant _ _ _ _ _ _ _ |- _ ] =>
+    | [ H: fs_invariant _ _ _ _ _ _ _ _ |- _ ] =>
       pose proof (fs_invariant_unfold_exists_disk H); repeat deex
     end.
     descend; simpl in *; intuition eauto.
@@ -233,11 +231,11 @@ Section ConcurrentFS.
                  simpl in *; subst;
                  (intuition (try eassumption; eauto)); try congruence.
 
-  Lemma fs_rep_same_disk_incr_hashmap : forall d_i d d' hm hm' tree homedirs h,
+  Lemma fs_rep_same_disk_incr_hashmap : forall l d_i d d' hm hm' tree homedirs h,
       d' = d ->
       hashmap_le hm hm' ->
-      fs_invariant P d_i d hm tree homedirs h ->
-      fs_invariant P d_i d' hm' tree homedirs h.
+      fs_invariant P l d_i d hm tree homedirs h ->
+      fs_invariant P l d_i d' hm' tree homedirs h.
   Proof.
     unfold fs_invariant; intros.
     SepAuto.pred_apply; SepAuto.cancel; eauto.
@@ -251,16 +249,14 @@ Section ConcurrentFS.
       cprog_spec G tid
                  (fun '(tree, homedirs, a) sigma =>
                     {| precondition :=
-                         (fs_invariant P (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs)
-                           (Sigma.mem sigma) /\
+                         fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired /\
                          fs_pre (fsspec a) tree /\
                          precondition_stable fsspec homedirs tid;
                        postcondition :=
                          fun sigma' r =>
                            exists tree',
-                             (fs_invariant P (Sigma.init_disk sigma') (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs)
-                               (Sigma.mem sigma') /\
+                             fs_inv(P, sigma', tree', homedirs) /\
                              Rely G tid sigma sigma' /\
                              homedir_rely tid homedirs tree tree' /\
                              local_l tid (Sigma.l sigma') = Unacquired /\
@@ -340,18 +336,37 @@ Section ConcurrentFS.
     eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
   Qed.
 
+  Lemma fs_invariant_free : forall d_i d hm tree homedirs h,
+      fs_invariant P Free d_i d hm tree homedirs h ->
+      d_i = d.
+  Proof.
+    unfold fs_invariant; intros.
+    SepAuto.destruct_lifts; intuition.
+  Qed.
+
+  Lemma fs_invariant_free_to_owned : forall tid d_i d hm tree homedirs h,
+      fs_invariant P Free d_i d hm tree homedirs h ->
+      fs_invariant P (Owned tid) d d hm tree homedirs h.
+  Proof.
+    intros.
+    unfold fs_invariant in *.
+    SepAuto.destruct_lifts; intuition subst.
+    SepAuto.pred_apply; SepAuto.cancel; eauto.
+    SepAuto.pred_apply; SepAuto.cancel; eauto.
+  Qed.
+
+  Hint Resolve fs_invariant_free_to_owned.
+
   Definition GetWriteLock_fs_ok : forall tid,
       cprog_spec G tid
                  (fun '(tree, homedirs) sigma =>
                     {| precondition :=
-                         fs_invariant P (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs
-                                      (Sigma.mem sigma) /\
+                         fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired;
                        postcondition :=
                          fun sigma' _ =>
                            exists tree',
-                             fs_invariant P (Sigma.init_disk sigma') (Sigma.disk sigma') (Sigma.hm sigma') tree' homedirs
-                                          (Sigma.mem sigma') /\
+                             fs_inv(P, sigma, tree', homedirs) /\
                              Rely G tid sigma sigma' /\
                              homedir_rely tid homedirs tree tree' /\
                              local_l tid (Sigma.l sigma') = Locked /\
@@ -365,15 +380,21 @@ Section ConcurrentFS.
     intuition trivial.
     edestruct fs_rely_invariant; eauto.
     destruct sigma'; simpl in *; subst.
+
     descend; intuition eauto.
-  Abort.
+    etransitivity; eauto.
+    eapply fs_rely_same_fstree; simpl; eauto.
+    reflexivity.
+    destruct (tid_eq_dec tid tid); congruence.
+  Qed.
+
+  (* Hint Extern 0 {{ GetWriteLock; _ }} => apply GetWriteLock_fs_ok : prog. *)
 
   Definition startLocked_ok : forall tid,
       cprog_spec G tid
                  (fun '(tree, homedirs) sigma =>
                     {| precondition :=
-                         fs_invariant P (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs
-                                      (Sigma.mem sigma) /\
+                         fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired;
                        postcondition :=
                          fun sigma' '(c, mscs) =>
@@ -382,7 +403,6 @@ Section ConcurrentFS.
                               ccache P |-> val c * fsmem P |-> val mscs)%pred (Sigma.mem sigma') /\
                              cache_rep (Sigma.disk sigma') c vd' /\
                              fs_rep P vd' (Sigma.hm sigma') mscs tree' /\
-                             fs_guarantee P tid sigma' sigma' /\
                              hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
                              Rely G tid sigma sigma' /\
                              homedir_rely tid homedirs tree tree' /\
@@ -395,57 +415,55 @@ Section ConcurrentFS.
 
     step; simplify.
     edestruct fs_rely_invariant; eauto.
-    destruct sigma'; simpl in *.
+    assert (Sigma.init_disk sigma' = Sigma.disk sigma').
+    replace (Sigma.l sigma') in *.
+    eapply fs_invariant_free; eauto.
+
+    destruct sigma'; simpl in *; subst.
     match goal with
-    | [ H: fs_invariant _ _ _ _ _ _ _ |- _ ] =>
-      pose proof (fs_invariant_unfold H); repeat deex
-    end;
-      descend; simpl in *; intuition eauto.
+    | [ H: fs_invariant _ _ _ _ _ _ _ _ |- _ ] =>
+      pose proof (fs_invariant_unfold_same_disk H); intuition; repeat deex
+    end; descend; simpl in *; intuition eauto.
 
     step.
-    intuition auto.
+    intuition trivial.
+    destruct (tid_eq_dec tid tid); try congruence; simpl in *; subst; simpl in *.
+    destruct (tid_eq_dec tid tid); try congruence.
     descend; simpl in *; intuition eauto.
-
-    unfold fs_guarantee; simpl.
-    descend; intuition eauto.
-    (* reflexivity.
-
-    eapply Rely_trans; eauto.
-    eapply fs_rely_same_fstree; eauto.
-    eapply fs_homedir_rely; eauto. *)
-  Abort.
+    etransitivity; eauto.
+    eapply fs_rely_same_fstree; simpl; eauto.
+    eapply fs_homedir_rely; eauto.
+  Qed.
 
   Hint Extern 1 {{ startLocked; _ }} => apply startLocked_ok : prog.
 
   Theorem write_syscall_ok : forall T (p: OptimisticProg T) A
                                (fsspec: FsSpec A T) update tid,
       (forall mscs c, cprog_spec G tid
-                            (fs_spec fsspec mscs WriteLock c)
-                            (p mscs WriteLock c)) ->
+                            (fs_spec fsspec tid mscs Locked c)
+                            (p mscs Locked c)) ->
       cprog_spec G tid
                  (fun '(tree, homedirs, a) sigma =>
                     {| precondition :=
-                         (fs_invariant P (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs)
-                           (Sigma.mem sigma) /\
-                         Sigma.l sigma = Free /\
+                         fs_inv(P, sigma, tree, homedirs) /\
+                         local_l tid (Sigma.l sigma) = Unacquired /\
                          fs_pre (fsspec a) tree /\
                          precondition_stable fsspec homedirs tid /\
                          update = fs_dirup (fsspec a) /\
                          (forall tree0, homedir_rely tid homedirs
-                                                tree0
-                                                (update tree0));
+                                                tree0 (update tree0));
                        postcondition :=
                          fun sigma' r =>
                            exists tree' tree'',
-                             (fs_invariant P (Sigma.disk sigma') (Sigma.hm sigma') tree'' homedirs)
-                               (Sigma.mem sigma') /\
+                             fs_inv(P, sigma', tree'', homedirs) /\
                              homedir_rely tid homedirs tree tree' /\
-                             Sigma.l sigma' = Free /\
-                             Sigma.init_disk sigma' = Sigma.disk sigma' /\
+                             local_l tid (Sigma.l sigma') = Unacquired /\
                              match r with
                              | Done v => fs_post (fsspec a) v /\
-                                        tree'' = fs_dirup (fsspec a) tree'
-                             | TryAgain => tree'' = tree'
+                                        tree'' = fs_dirup (fsspec a) tree' /\
+                                        Sigma.init_disk sigma' = Sigma.disk sigma'
+                             | TryAgain => tree'' = tree' /\
+                                          Sigma.init_disk sigma' = Sigma.disk sigma'
                              | SyscallFailed => True
                              end |})
                  (write_syscall p update).
@@ -453,11 +471,9 @@ Section ConcurrentFS.
     unfold write_syscall; intros.
     apply retry_spec' with SyscallFailed.
     induction n; simpl; intros.
-    - step.
-      destruct a as ((tree & homedirs) & a); simpl in *.
+    - step; simpl.
       descend; intuition eauto.
     - step.
-      destruct a as ((tree & homedirs) & a); simpl in *.
       descend; simpl in *; intuition eauto.
 
       monad_simpl.
@@ -468,13 +484,15 @@ Section ConcurrentFS.
       destruct v as [ms' r].
       step; simpl.
       unfold translated_postcondition in *; simpl in *; intuition eauto.
-      match goal with
-      | [ H: fs_invariant _ _ _ _ _ _ |- _ ] =>
-        pose proof (fs_invariant_unfold H); repeat deex
-      end.
       descend; simpl in *; intuition eauto.
-      unfold fs_invariant in *; SepAuto.pred_apply; SepAuto.cancel.
-      congruence.
+      SepAuto.pred_apply; SepAuto.cancel.
+
+      repeat match goal with
+             | [ H: _ = _ |- _ ] =>
+               progress rewrite H in *
+             end.
+      eauto using local_locked.
+
       match goal with
       | |- G _ _ _ =>
         (* use homedir_rely and maintained fs_invariant *)
@@ -483,18 +501,26 @@ Section ConcurrentFS.
 
       step.
       descend; simpl in *; intuition eauto.
-      congruence.
+      repeat match goal with
+             | [ H: _ = _ |- _ ] =>
+               progress rewrite H in *
+             end.
+      eauto using local_locked.
+      match goal with
+      | |- G _ _ _ =>
+        (* use homedir_rely and maintained fs_invariant *)
+        admit
+      end.
 
       step.
-      descend; simpl in *; intuition eauto.
+      simpl; intuition trivial.
 
       destruct (guard r0); simpl.
       step.
       intuition trivial.
-      (* exists tree', (fs_dirup (fsspec a) tree'). *)
       descend; intuition eauto.
       unfold fs_invariant; SepAuto.pred_apply; time SepAuto.cancel.
-      (* cancel takes 40s *)
+      (* cancel takes 80 *)
       eauto.
       congruence.
       discriminate.
