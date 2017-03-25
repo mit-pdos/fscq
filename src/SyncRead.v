@@ -11,18 +11,21 @@ Section SyncRead.
       v <- WaitForRead a;
       Ret v.
 
+  Hint Resolve local_locked.
+
   Theorem SyncRead_ok : forall tid a,
       cprog_spec G tid
                  (fun '(F, v0) sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
-                         Sigma.l sigma = WriteLock /\
+                         local_l tid (Sigma.l sigma) = Locked /\
                          Sigma.disk sigma a = Some (v0, NoReader);
                        postcondition :=
                          fun sigma' r =>
                            F (Sigma.mem sigma') /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
+                           Sigma.l sigma' = Sigma.l sigma /\
                            r = v0; |})
                  (SyncRead a).
   Proof.
@@ -35,7 +38,7 @@ Section SyncRead.
 
     replace (Sigma.disk st0).
     autorewrite with upd; eauto.
-    congruence.
+    replace (Sigma.l st0); eauto.
 
     step; simpl in *; intuition eauto.
     congruence.
@@ -46,6 +49,8 @@ Section SyncRead.
     extensionality a'.
     destruct (addr_eq_dec a a'); subst;
       autorewrite with upd; auto.
+
+    congruence.
   Qed.
 
 End SyncRead.

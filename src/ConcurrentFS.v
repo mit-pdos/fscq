@@ -23,7 +23,7 @@ Section ConcurrentFS.
 
   Definition OptimisticProg T :=
     memstate ->
-    LockState -> Cache ->
+    LocalLock -> Cache ->
     cprog (Result (memstate * T) * Cache).
 
   Definition readCacheMem : cprog (Cache * memstate) :=
@@ -38,7 +38,7 @@ Section ConcurrentFS.
     do '(c, mscs) <- readCacheMem;
       (* for read-only syscalls, the returned cache is always the same
        as the input *)
-      do '(r, _) <- p mscs Free c;
+      do '(r, _) <- p mscs Unacquired c;
       (* while slightly more awkward to write, this exposes the structure
       without having to destruct r or f, helping factor out the common parts of
       the proof *)
@@ -71,7 +71,7 @@ Section ConcurrentFS.
     cprog (SyscallResult T) :=
     retry guard
           (do '(c, mscs) <- startLocked;
-             do '(r, c) <- p mscs WriteLock c;
+             do '(r, c) <- p mscs Locked c;
              match r with
              | Success _ (ms', r) =>
                _ <- Assgn2_abs (Make_assgn2
@@ -110,17 +110,17 @@ Section ConcurrentFS.
 
   Definition FsSpec A T := A -> FsSpecParams T.
 
-  Definition fs_spec A T (fsspec: FsSpec A T) :
-    memstate -> LockState -> Cache ->
+  Definition fs_spec A T (fsspec: FsSpec A T) tid :
+    memstate -> LocalLock -> Cache ->
     Spec _ (Result (memstate * T) * Cache) :=
     fun mscs l c '(F, d, vd, tree, a) sigma =>
       {| precondition :=
            F (Sigma.mem sigma) /\
            cache_rep d c vd /\
-           (l = WriteLock -> d = Sigma.disk sigma) /\
+           (l = Locked -> d = Sigma.disk sigma) /\
            fs_rep P vd (Sigma.hm sigma) mscs tree /\
            fs_pre (fsspec a) tree /\
-           Sigma.l sigma = l;
+           local_l tid (Sigma.l sigma) = l;
          postcondition :=
            fun sigma' '(r, c') =>
              exists vd',
@@ -131,7 +131,7 @@ Section ConcurrentFS.
                  fs_post (fsspec a) r /\
                  fs_rep P vd' (Sigma.hm sigma') mscs' (fs_dirup (fsspec a) tree)
                | Failure e =>
-                 (l = WriteLock -> e <> WriteRequired) /\
+                 (l = Locked -> e <> WriteRequired) /\
                  vd = vd' /\
                  (* at this point we've broken the fs_invariant because the disk
                  has changed without updating the cache, and now other threads
@@ -180,7 +180,7 @@ Section ConcurrentFS.
                     {| precondition :=
                          fs_invariant P (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs
                                       (Sigma.mem sigma) /\
-                         Sigma.l sigma = Free;
+                         local_l tid (Sigma.l sigma) = Unacquired;
                        postcondition :=
                          fun sigma' '(c, mscs) =>
                            exists tree',
@@ -192,7 +192,7 @@ Section ConcurrentFS.
                              (* mscs and c come from fs_invariant on sigma *)
                              (exists d vd, cache_rep d c vd /\
                                     fs_rep P vd (Sigma.hm sigma') mscs tree) /\
-                             Sigma.l sigma' = Sigma.l sigma; |})
+                             local_l tid (Sigma.l sigma') = local_l tid (Sigma.l sigma); |})
                  readCacheMem.
   Proof using Type.
     unfold readCacheMem; intros.
@@ -204,7 +204,7 @@ Section ConcurrentFS.
     descend; simpl in *; intuition eauto.
 
     match goal with
-    | [ H: Sigma.l _ = Free |- _ ] =>
+    | [ H: local_l _ (Sigma.l _) = Unacquired |- _ ] =>
       rewrite H; simpl
     end.
     step.
@@ -246,14 +246,14 @@ Section ConcurrentFS.
   Theorem readonly_syscall_ok : forall T (p: OptimisticProg T) A
                                   (fsspec: FsSpec A T) tid,
       (forall mscs c, cprog_spec G tid
-                            (fs_spec fsspec mscs Free c)
-                            (p mscs Free c)) ->
+                            (fs_spec fsspec tid mscs Unacquired c)
+                            (p mscs Unacquired c)) ->
       cprog_spec G tid
                  (fun '(tree, homedirs, a) sigma =>
                     {| precondition :=
                          (fs_invariant P (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs)
                            (Sigma.mem sigma) /\
-                         Sigma.l sigma = Free /\
+                         local_l tid (Sigma.l sigma) = Unacquired /\
                          fs_pre (fsspec a) tree /\
                          precondition_stable fsspec homedirs tid;
                        postcondition :=
@@ -263,7 +263,7 @@ Section ConcurrentFS.
                                (Sigma.mem sigma') /\
                              Rely G tid sigma sigma' /\
                              homedir_rely tid homedirs tree tree' /\
-                             Sigma.l sigma' = Free /\
+                             local_l tid (Sigma.l sigma') = Unacquired /\
                              match r with
                              | Done v => fs_post (fsspec a) v
                              | TryAgain => True
@@ -319,7 +319,7 @@ Section ConcurrentFS.
                                   fun tree => find_subtree pathname tree = Some (TreeFile inum f);
                                 fs_post :=
                                   fun '(r, _) => r = BFILE.BFAttr f;
-                                fs_dirup := fun tree => tree |}) mscs l c)
+                                fs_dirup := fun tree => tree |}) tid mscs l c)
                  (OptFS.file_get_attr (fsxp P) inum mscs l c).
   Proof using Type.
     unfold fs_spec; intros.
@@ -340,25 +340,13 @@ Section ConcurrentFS.
     eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
   Qed.
 
-  Lemma fs_invariant_forward_init_disk : forall d_i d hm tree homedirs h,
-      fs_invariant P d_i d hm tree homedirs h ->
-      fs_invariant P d d hm tree homedirs h.
-  Proof.
-    unfold fs_invariant; intros.
-  (* this isn't true: the invariant might be using d_i and ignoring d; we
-      can rule this out by knowing that whenever the lock is released the disks
-      collapse; the invariant itself could state this if the lock were the
-      global state (Free | Owned tid), or maybe it can be folded into the
-      semantics *)
-  Abort.
-
   Definition GetWriteLock_fs_ok : forall tid,
       cprog_spec G tid
                  (fun '(tree, homedirs) sigma =>
                     {| precondition :=
                          fs_invariant P (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs
                                       (Sigma.mem sigma) /\
-                         Sigma.l sigma = Free;
+                         local_l tid (Sigma.l sigma) = Unacquired;
                        postcondition :=
                          fun sigma' _ =>
                            exists tree',
@@ -366,7 +354,7 @@ Section ConcurrentFS.
                                           (Sigma.mem sigma') /\
                              Rely G tid sigma sigma' /\
                              homedir_rely tid homedirs tree tree' /\
-                             Sigma.l sigma' = WriteLock /\
+                             local_l tid (Sigma.l sigma') = Locked /\
                              Sigma.init_disk sigma' = Sigma.disk sigma' ; |})
                  GetWriteLock.
   Proof using Type.
@@ -376,7 +364,7 @@ Section ConcurrentFS.
     step.
     intuition trivial.
     edestruct fs_rely_invariant; eauto.
-    destruct sigma'; simpl in *.
+    destruct sigma'; simpl in *; subst.
     descend; intuition eauto.
   Abort.
 
@@ -386,7 +374,7 @@ Section ConcurrentFS.
                     {| precondition :=
                          fs_invariant P (Sigma.init_disk sigma) (Sigma.disk sigma) (Sigma.hm sigma) tree homedirs
                                       (Sigma.mem sigma) /\
-                         Sigma.l sigma = Free;
+                         local_l tid (Sigma.l sigma) = Unacquired;
                        postcondition :=
                          fun sigma' '(c, mscs) =>
                            exists vd' tree',
@@ -398,7 +386,7 @@ Section ConcurrentFS.
                              hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
                              Rely G tid sigma sigma' /\
                              homedir_rely tid homedirs tree tree' /\
-                             Sigma.l sigma' = WriteLock /\
+                             local_l tid (Sigma.l sigma') = Locked /\
                              Sigma.init_disk sigma' = Sigma.disk sigma' ; |})
                  startLocked.
   Proof using Type.

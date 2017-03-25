@@ -48,7 +48,7 @@ Section HashExec.
       etransitivity; eauto.
     - destruct sigma'; simpl in *.
       eauto.
-    - destruct (Sigma.l sigma); intuition (subst; eauto).
+    - destruct (local_l tid (Sigma.l sigma)); intuition (subst; eauto).
   Qed.
 
 End HashExec.

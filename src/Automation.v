@@ -76,6 +76,7 @@ Ltac destruct_goal_matches :=
            | [ |- context[match ?d with | _ => _ end] ] =>
               destruct_matches_in d
            end);
+  subst;
   try congruence;
   auto.
 

@@ -17,12 +17,13 @@ Section Primitives.
     unfold cprog_spec, cprog_ok; simpl; intros;
     repeat deex.
 
-  Lemma if_CanWrite : forall A (a a':A) l,
-      l = WriteLock ->
-      (if CanWrite l then a else a') = a.
+  Lemma if_CanWrite : forall A (a a':A) tid l,
+      l = Owned tid ->
+      (if local_l tid l then a else a') = a.
   Proof.
     intros.
     subst; simpl; auto.
+    destruct (tid_eq_dec tid tid); simpl; congruence.
   Qed.
 
   Hint Rewrite if_CanWrite using (solve [ auto ]) : locks.
@@ -73,7 +74,7 @@ Section Primitives.
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          Sigma.disk sigma a = Some (v, NoReader) /\
-                         Sigma.l sigma = WriteLock;
+                         Sigma.l sigma = Owned tid;
                        postcondition :=
                          fun sigma' _ =>
                            F (Sigma.mem sigma') /\
@@ -92,7 +93,7 @@ Section Primitives.
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          Sigma.disk sigma a = Some (v, Pending) /\
-                         Sigma.l sigma = WriteLock;
+                         Sigma.l sigma = Owned tid;
                        postcondition :=
                          fun sigma' r =>
                            F (Sigma.mem sigma') /\
@@ -112,7 +113,7 @@ Section Primitives.
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          Sigma.disk sigma a = Some (v0, NoReader) /\
-                         Sigma.l sigma = WriteLock;
+                         Sigma.l sigma = Owned tid;
                        postcondition :=
                          fun sigma' _ =>
                            F (Sigma.mem sigma') /\
@@ -130,7 +131,7 @@ Section Primitives.
                  (fun F sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
-                         Sigma.l sigma = WriteLock;
+                         Sigma.l sigma = Owned tid;
                        postcondition :=
                          fun sigma' i =>
                            (F * i |-> val v)%pred (Sigma.mem sigma') /\
@@ -176,9 +177,9 @@ Section Primitives.
       b = b' /\
       Sigma.mem sigma i1 = Some (val a) /\
       Sigma.mem sigma i2 = Some (val b) /\
-      (if CanWrite (Sigma.l sigma) then sigma' = sigma else Rely G tid sigma sigma') /\
+      (if local_l tid (Sigma.l sigma) then sigma' = sigma else Rely G tid sigma sigma') /\
       hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
-      Sigma.l sigma' = Sigma.l sigma.
+      local_l tid (Sigma.l sigma') = local_l tid (Sigma.l sigma).
   Proof.
     intros.
     pose proof (ptsto_valid' H).
@@ -190,11 +191,8 @@ Section Primitives.
     | [ H: rtxn_step _ _ _ |- _ ] =>
       eapply rtxn_step2 in H; eauto
     end.
-    intuition; subst.
-    destruct (Sigma.l sigma); simpl; intuition (subst; eauto).
-    destruct (Sigma.l sigma); simpl; intuition (subst; eauto).
+    destruct_all_matches; intuition eauto.
     reflexivity.
-    destruct (Sigma.l sigma) eqn:?; simpl; intuition (subst; eauto).
   Qed.
 
   Theorem Read2_ok : forall tid A B i1 i2,
@@ -206,12 +204,10 @@ Section Primitives.
                          fun sigma' '(a, b) =>
                            a = a0 /\
                            b = b0 /\
-                           (if CanWrite (Sigma.l sigma) then
-                             sigma' = sigma
-                           else
-                             Rely G tid sigma sigma') /\
+                           (if local_l tid (Sigma.l sigma) then sigma' = sigma
+                            else Rely G tid sigma sigma') /\
                            hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
-                           Sigma.l sigma' = Sigma.l sigma ; |})
+                           local_l tid (Sigma.l sigma') = local_l tid (Sigma.l sigma) ; |})
                  (Read2 A i1 B i2).
   Proof.
     prim; try inv_ret;
@@ -257,12 +253,14 @@ Section Primitives.
            end; auto.
   Qed.
 
+  Opaque wtxn_in_domain_dec.
+
   Theorem Assgn1_ok : forall tid i A (v:A),
       cprog_spec G tid
                  (fun '(F, v0) sigma =>
                     {| precondition :=
                          (F * i |-> val (v0: A))%pred (Sigma.mem sigma) /\
-                         Sigma.l sigma = WriteLock /\
+                         Sigma.l sigma = Owned tid /\
                          (forall sigma',
                              (F * i |-> val v)%pred (Sigma.mem sigma') ->
                              Sigma.hm sigma' = Sigma.hm sigma ->
@@ -289,11 +287,8 @@ Section Primitives.
       eapply H1; eauto; simpl; intuition.
       eapply ptsto_upd'; eauto.
     - inv_exec; repeat simplify_step.
-      + match goal with
-        | [ H: _ = right _ |- _ ] =>
-          clear H
-        end.
-        apply f.
+      + destruct_all_matches.
+        apply n.
         econstructor; eauto.
         constructor.
       + match goal with
@@ -375,7 +370,7 @@ Section Primitives.
                           var1 txn |-> val (a0: var1T txn) *
                           var2 txn |-> val (b0: var2T txn) *
                           abs1 txn |-> abs g)%pred (Sigma.mem sigma) /\
-                         Sigma.l sigma = WriteLock /\
+                         Sigma.l sigma = Owned tid /\
                          (forall sigma',
                            (F *
                             var1 txn |-> val (val1 txn) *
@@ -413,10 +408,8 @@ Section Primitives.
               | _ => rotate1
               end).
     - inv_exec; repeat simplify_step.
-      + match goal with
-        | [ H: _ = right _ |- _ ] => clear H
-        end.
-        apply f.
+      + destruct_all_matches.
+        apply n.
         repeat econstructor.
         eapply ptsto_valid; pred_apply; cancel.
         eapply ptsto_valid; pred_apply; cancel.
@@ -449,6 +442,8 @@ Section Primitives.
         eapply ptsto_valid'; pred_apply; cancel.
         congruence.
   Qed.
+
+  Transparent wtxn_in_domain_dec.
 
   Theorem Hash_ok : forall tid sz (buf: word sz),
       cprog_spec G tid
@@ -497,19 +492,21 @@ Section Primitives.
   Qed.
 
   Definition GetWriteLock :=
-    SetLock Free WriteLock.
+    SetLock Unacquired Locked.
 
   Definition Unlock :=
-    SetLock WriteLock Free.
+    SetLock Locked Unacquired.
 
   Theorem GetWriteLock_ok : forall tid,
       cprog_spec G tid
                  (fun (_:unit) sigma =>
-                    {| precondition := Sigma.l sigma = Free;
+                    {| precondition :=
+                         local_l tid (Sigma.l sigma) = Unacquired;
                        postcondition :=
                          fun sigma'' _ =>
                            exists sigma', Rely G tid sigma sigma' /\
-                                 sigma'' = Sigma.set_init_disk (Sigma.set_l sigma' WriteLock) (Sigma.disk sigma') /\
+                                 Sigma.l sigma' = Free /\
+                                 sigma'' = Sigma.set_init_disk (Sigma.set_l sigma' (Owned tid)) (Sigma.disk sigma') /\
                                  hashmap_le (Sigma.hm sigma) (Sigma.hm sigma''); |})
                  GetWriteLock.
   Proof.
@@ -523,7 +520,7 @@ Section Primitives.
                  (fun F sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
-                         Sigma.l sigma = WriteLock /\
+                         Sigma.l sigma = Owned tid /\
                          (forall sigma',
                              F (Sigma.mem sigma') ->
                              Sigma.disk sigma' = Sigma.disk sigma ->
@@ -536,11 +533,12 @@ Section Primitives.
                            F (Sigma.mem sigma') /\
                            Sigma.disk sigma' = Sigma.disk sigma /\
                            Sigma.hm sigma' = Sigma.hm sigma /\
-                           Sigma.l sigma' = Free /\
+                           local_l tid (Sigma.l sigma') = Unacquired /\
                            Sigma.init_disk sigma' = Sigma.disk sigma'; |})
                  Unlock.
   Proof.
     prim.
+    unfold local_l in *; destruct_all_matches.
     destruct st; simpl; auto.
   Qed.
 

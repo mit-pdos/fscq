@@ -76,8 +76,8 @@ Module OptFS.
       fun '(a, F) => spec F a.
 
     Definition translation_spec A T (spec: rawpred -> SeqSpec A T)
-               (p: LockState -> Cache -> cprog (Result T * Cache)) :=
-      forall tid l c, cprog_spec G tid (translate_spec (framed_spec spec) c l) (p c l).
+               (p: LocalLock -> Cache -> cprog (Result T * Cache)) :=
+      forall tid l c, cprog_spec G tid (translate_spec (framed_spec spec) tid l c) (p l c).
 
     Ltac spec_reflect :=
       unfold prog_spec; simpl;

@@ -90,6 +90,7 @@ Section OptimisticCache.
 
   Ltac finisher :=
     descend;
+    simpl in *;
     repeat match goal with
            | [ |- ?F (Sigma.mem _) ] =>
              solve [ SepAuto.pred_apply; SepAuto.cancel ]
@@ -113,14 +114,14 @@ Section OptimisticCache.
       let c' := mark_pending (cache cs) a in
       Ret (caches c0' c').
 
-  Definition CacheRead cs a l :=
+  Definition CacheRead cs a (l: LocalLock) :=
     match cache_get (cache cs) a with
     | Present v _ => Ret (Some v, cs)
-    | Missing => if CanWrite l then
+    | Missing => if l then
                   cs <- StartFill cs a;
                     Ret (None, cs)
                 else Ret (None, cs)
-    | Invalid => if CanWrite l then
+    | Invalid => if l then
                   do '(v,cs) <- ClearPending cs a;
                     Ret (Some v, cs)
                 else Ret (None, cs)
@@ -252,7 +253,7 @@ Section OptimisticCache.
                          CacheRep (Sigma.disk sigma) cs vd0 vd /\
                          cache_get (cache cs) a = Invalid /\
                          vd a = Some v0 /\
-                         Sigma.l sigma = WriteLock;
+                         Sigma.l sigma = Owned tid;
                        postcondition :=
                          fun sigma' '(r, cs') =>
                            F (Sigma.mem sigma') /\
@@ -351,7 +352,7 @@ Section OptimisticCache.
                          CacheRep (Sigma.disk sigma) cs vd0 vd /\
                          cache_get (cache cs) a = Missing /\
                          vd a = Some v0 /\
-                         Sigma.l sigma = WriteLock;
+                         Sigma.l sigma = Owned tid;
                        postcondition :=
                          fun sigma' cs' =>
                            F (Sigma.mem sigma') /\
@@ -381,22 +382,24 @@ Section OptimisticCache.
 
   Hint Resolve cache_rep_present_val.
 
+  Hint Resolve local_locked.
+
   Definition CacheRead_ok : forall tid cs a l,
       cprog_spec G tid
                  (fun '(F, d, vd0, vd, v0) sigma =>
                     {| precondition :=
                          F (Sigma.mem sigma) /\
                          CacheRep d cs vd0 vd /\
-                         (l = WriteLock -> d = Sigma.disk sigma) /\
-                         Sigma.l sigma = l /\
+                         (l = Locked -> d = Sigma.disk sigma) /\
+                         local_l tid (Sigma.l sigma) = l /\
                          vd a = Some v0;
                        postcondition :=
                          fun sigma' '(r, cs') =>
                            F (Sigma.mem sigma') /\
-                           let d' := if CanWrite l then Sigma.disk sigma' else d in
+                           let d' := if l then Sigma.disk sigma' else d in
                            CacheRep d' cs' vd0 vd /\
-                           (l = Free -> cs' = cs) /\
-                           (l = Free -> Sigma.disk sigma' = Sigma.disk sigma) /\
+                           (l = Unacquired -> cs' = cs) /\
+                           (l = Unacquired -> Sigma.disk sigma' = Sigma.disk sigma) /\
                            match r with
                            | Some v => v = v0
                            | None => True
@@ -408,8 +411,8 @@ Section OptimisticCache.
   Proof.
     unfold CacheRead.
     intros.
-    destruct (cache_get (cache cs) a) eqn:?, (CanWrite l) eqn:?;
-             hoare finish.
+    destruct (cache_get (cache cs) a) eqn:?, l;
+      hoare finish.
   Qed.
 
   Definition CacheWrite cs a v :=
@@ -463,7 +466,7 @@ Section OptimisticCache.
                          F (Sigma.mem sigma) /\
                          CacheRep (Sigma.disk sigma) cs vd0 vd /\
                          vd a = Some v0 /\
-                         Sigma.l sigma = WriteLock;
+                         Sigma.l sigma = Owned tid;
                        postcondition :=
                          fun sigma' '(_, cs') =>
                            F (Sigma.mem sigma') /\

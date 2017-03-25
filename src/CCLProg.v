@@ -12,18 +12,38 @@ Global Set Implicit Arguments.
 Inductive ReadState := Pending | NoReader.
 Notation DISK := (@mem addr addr_eq_dec (valu * ReadState)).
 
+Definition TID := nat.
+Opaque TID.
+
+Definition tid_eq_dec : forall (tid1 tid2:TID), {tid1=tid2}+{tid1<>tid2} :=
+  addr_eq_dec.
+
 Inductive LockState :=
-| Free
-| WriteLock.
+| Owned (tid:TID)
+| Free.
 
-Definition CanWrite (l:LockState) : {l = WriteLock} + {l <> WriteLock}.
-Proof.
-  destruct l; left + right; congruence.
-Defined.
+Inductive LocalLock :=
+| Locked
+| Unacquired.
 
-Definition lock_dec (l l':LockState) : {l=l'}+{l<>l'}.
+Definition local_l tid (l:LockState) : LocalLock :=
+  match l with
+  | Free => Unacquired
+  | Owned tid' => if tid_eq_dec tid tid' then Locked else Unacquired
+  end.
+
+Lemma local_locked : forall tid l,
+    local_l tid l = Locked ->
+    l = Owned tid.
 Proof.
-  decide equality.
+  unfold local_l; intros.
+  destruct l; simpl in *; try congruence.
+  destruct (tid_eq_dec tid tid0); subst; congruence.
+Qed.
+
+Definition lock_dec : forall (l l':LocalLock), {l=l'} + {l<>l'}.
+Proof.
+  destruct l, l'; left + right; abstract congruence.
 Defined.
 
 Polymorphic Inductive Var :=
@@ -74,9 +94,6 @@ End Sigma.
 
 Section CCL.
 
-  Definition TID := nat.
-  Opaque TID.
-
   Inductive read_transaction : Type -> Type :=
   | RDone : read_transaction unit
   | RCons : forall T, ident -> forall T', read_transaction T' -> read_transaction (T*T').
@@ -100,7 +117,7 @@ Section CCL.
   | WaitForRead (a:addr) : cprog valu
   | Write (a:addr) (v: valu) : cprog unit
   | Hash sz (buf: word sz) : cprog (word hashlen)
-  | SetLock (l:LockState) (l':LockState) : cprog unit
+  | SetLock (l:LocalLock) (l':LocalLock) : cprog unit
   | Ret T (v:T) : cprog T
   | Bind T T' (p: cprog T') (p': T' -> cprog T) : cprog T.
 
@@ -184,8 +201,8 @@ Section CCL.
       inversion H; subst; clear H; repeat Automation.inj_pair2
     end.
 
-  Ltac t' := try solve [ left; repeat deex; eauto ];
-             try (right; repeat deex; intros; inv_write_set_allocd; congruence).
+  Ltac t' := try abstract (left; repeat deex; solve [ eauto ]);
+             try abstract (right; repeat deex; intros; inv_write_set_allocd; congruence).
 
   Fixpoint wtxn_in_domain_dec (txn:write_transaction) (h:heap) {struct txn} :
     {write_set_allocd h txn} + {~write_set_allocd h txn}.
@@ -204,46 +221,46 @@ Section CCL.
         end.
   Defined.
 
-  Definition step_dec (sigma: Sigma) T (p: cprog T) : StepOutcome T :=
+  Definition step_dec tid (sigma: Sigma) T (p: cprog T) : StepOutcome T :=
     match p with
     | Alloc v => NonDet
     | ReadTxn tx => if rtxn_in_domain_dec tx (Sigma.mem sigma)
                    then NonDet (* still need to check type *)
                    else Fails
-    | AssgnTxn tx => if CanWrite (Sigma.l sigma) then
-                        if wtxn_in_domain_dec tx (Sigma.mem sigma)
-                        then NonDet (* still need to check type *)
-                        else Fails
+    | AssgnTxn tx => if local_l tid (Sigma.l sigma) then
+                      if wtxn_in_domain_dec tx (Sigma.mem sigma)
+                      then NonDet (* still need to check type *)
                       else Fails
-    | BeginRead a => if CanWrite (Sigma.l sigma) then
+                    else Fails
+    | BeginRead a => if local_l tid (Sigma.l sigma) then
                       match Sigma.disk sigma a with
                       | Some (v, NoReader) =>
                         StepTo (Sigma.upd_disk sigma (fun d => upd d a (v, Pending))) tt
                       | _ => Fails
                       end
                     else Fails
-    | WaitForRead a => if CanWrite (Sigma.l sigma) then
+    | WaitForRead a => if local_l tid (Sigma.l sigma) then
                         match Sigma.disk sigma a with
                         | Some (v, Pending) =>
                           StepTo (Sigma.upd_disk sigma (fun d => upd d a (v, NoReader))) v
                         | _ => Fails
                         end
                       else Fails
-    | Write a v => if CanWrite (Sigma.l sigma) then
+    | Write a v => if local_l tid (Sigma.l sigma) then
                     match Sigma.disk sigma a with
                     | Some (_, NoReader) =>
                       StepTo (Sigma.upd_disk sigma (fun d => upd d a (v, NoReader))) tt
                     | _ => Fails
                     end
                   else Fails
-    | SetLock l l' => if lock_dec (Sigma.l sigma) l then
+    | SetLock l l' => if lock_dec (local_l tid (Sigma.l sigma)) l then
                        match l, l' with
-                       | Free, Free => Fails
-                       | Free, WriteLock => NonDet
-                       | WriteLock, Free => NonDet (* requires guarantee proof *)
-                       | WriteLock, WriteLock => Fails
+                       | Unacquired, Unacquired => Fails
+                       | Unacquired, Locked => NonDet
+                       | Locked, Unacquired => NonDet (* requires guarantee proof *)
+                       | Locked, Locked => Fails
                        end
-                     else Fails
+                     else Fails (* caller didn't know its lock status *)
     | Ret v => StepTo sigma v
     | _ => NonDet
     end.
@@ -305,10 +322,10 @@ Section CCL.
 
   Inductive exec (tid:TID) : forall T, Sigma -> cprog T -> outcome T -> Prop :=
   | ExecStepDec : forall T (p: cprog T) sigma sigma' v,
-      step_dec sigma p = StepTo sigma' v ->
+      step_dec tid sigma p = StepTo sigma' v ->
       exec tid sigma p (Finished sigma' v)
   | ExecStepDecFail : forall T (p: cprog T) sigma,
-      step_dec sigma p = Fails ->
+      step_dec tid sigma p = Fails ->
       exec tid sigma p Error
   | ExecHash : forall sigma sz buf,
       let h := hash_fwd buf in
@@ -323,33 +340,36 @@ Section CCL.
       exec tid st p Error ->
       exec tid st (Bind p p') Error
   | ExecWriteLock : forall sigma sigma',
-      Sigma.l sigma = Free ->
+      local_l tid (Sigma.l sigma) = Unacquired ->
       Rely tid sigma sigma' ->
       hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') ->
-      let sigma' := Sigma.set_l (Sigma.set_init_disk sigma' (Sigma.disk sigma')) WriteLock in
-      exec tid sigma (SetLock Free WriteLock) (Finished sigma' tt)
+      (* other threads need to release the lock before we can acquire it *)
+      Sigma.l sigma' = Free ->
+      let sigma' := Sigma.set_l (Sigma.set_init_disk sigma' (Sigma.disk sigma')) (Owned tid) in
+      exec tid sigma (SetLock Unacquired Locked) (Finished sigma' tt)
   | ExecUnlock : forall sigma out,
-      Sigma.l sigma = WriteLock ->
+      Sigma.l sigma = Owned tid ->
       let sigma' := Sigma.set_l (Sigma.set_init_disk sigma (Sigma.disk sigma)) Free in
       guarantee_exec tid sigma sigma' tt out ->
-      exec tid sigma (SetLock WriteLock Free) out
+      exec tid sigma (SetLock Locked Unacquired) out
   | ExecAlloc : forall sigma A (v:A) i,
       Sigma.mem sigma i = None ->
       let sigma' := Sigma.set_mem sigma (upd (Sigma.mem sigma) i (val v)) in
       exec tid sigma (Alloc v) (Finished sigma' i)
   | ExecReadTxn : forall sigma A (txn:read_transaction A) v sigma',
       rtxn_step txn (Sigma.mem sigma) v ->
-      (Sigma.l sigma = WriteLock -> sigma' = sigma) ->
-      (Sigma.l sigma = Free -> Rely tid sigma sigma' /\
-                      hashmap_le (Sigma.hm sigma) (Sigma.hm sigma') /\
-                      Sigma.l sigma' = Sigma.l sigma) ->
-      exec tid sigma (ReadTxn txn)
-           (Finished sigma' v)
+      (if local_l tid (Sigma.l sigma) then sigma' = sigma
+       else Rely tid sigma sigma' /\
+            (* this is essentially the lock protocol: local views of the lock do
+            not change due to other threads *)
+            local_l tid (Sigma.l sigma') = local_l tid (Sigma.l sigma) /\
+            hashmap_le (Sigma.hm sigma) (Sigma.hm sigma')) ->
+      exec tid sigma (ReadTxn txn) (Finished sigma' v)
   | ExecReadTxnFail : forall sigma A (txn:read_transaction A),
       rtxn_error txn (Sigma.mem sigma) ->
       exec tid sigma (ReadTxn txn) Error
   | ExecAssgnTxn : forall sigma (txn:write_transaction) h' out,
-      Sigma.l sigma = WriteLock ->
+      Sigma.l sigma = Owned tid ->
       wtxn_step tid txn (Sigma.mem sigma) h' ->
       let sigma' := Sigma.set_mem sigma h' in
       guarantee_exec tid sigma sigma' tt out ->
@@ -404,7 +424,7 @@ Module CCLTactics.
 
   Ltac inv_step :=
     match goal with
-    | [ H: step_dec _ _ = _ |- _ ] =>
+    | [ H: step_dec _ _ _ = _ |- _ ] =>
       simpl in H; inversion H; subst; clear H
     end.
 
@@ -421,7 +441,7 @@ Module CCLTactics.
     | [ H: exec _ _ _ (Ret _) _ |- _ ] =>
       inversion H; subst; repeat inj_pair2;
       try match goal with
-          | [ H: step_dec _ (Ret _) = _ |- _ ] =>
+          | [ H: step_dec _ _ (Ret _) = _ |- _ ] =>
             simpl in H; inversion H; subst; clear H
           end;
       clear H
@@ -439,7 +459,7 @@ Module CCLTactics.
   Ltac inv_exec' H :=
     inv_cleanup H;
     try match goal with
-        | [ H: step_dec _ _ = _ |- _ ] =>
+        | [ H: step_dec _ _ _ = _ |- _ ] =>
           simpl in H;
           repeat match goal with
                  | [ H: context[match ?d with _ => _ end] |- _ ] =>
