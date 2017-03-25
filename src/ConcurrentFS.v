@@ -455,7 +455,7 @@ Section ConcurrentFS.
 
   Hint Extern 1 {{ finishRollback _; _ }} => apply finishRollback_ok : prog.
 
-  Theorem write_syscall_ok : forall T (p: OptimisticProg T) A
+  Theorem write_syscall_ok' : forall T (p: OptimisticProg T) A
                                (fsspec: FsSpec A T) update tid,
       (forall mscs c, cprog_spec G tid
                             (fs_spec fsspec tid mscs Locked c)
@@ -585,6 +585,49 @@ Section ConcurrentFS.
         exists tree'0.
         descend; simpl in *; intuition eauto.
         etransitivity; eauto.
+  Qed.
+
+  (* remove TryAgain from postcondition due to infinite retry *)
+  Theorem write_syscall_ok : forall T (p: OptimisticProg T) A
+                               (fsspec: FsSpec A T) update tid,
+      (forall mscs c, cprog_spec G tid
+                            (fs_spec fsspec tid mscs Locked c)
+                            (p mscs Locked c)) ->
+      cprog_spec G tid
+                 (fun '(tree, homedirs, a) sigma =>
+                    {| precondition :=
+                         fs_inv(P, sigma, tree, homedirs) /\
+                         local_l tid (Sigma.l sigma) = Unacquired /\
+                         fs_pre (fsspec a) tree /\
+                         precondition_stable fsspec homedirs tid /\
+                         update = fs_dirup (fsspec a) /\
+                         (forall tree0, homedir_guarantee tid homedirs
+                                                     tree0 (update tree0));
+                       postcondition :=
+                         fun sigma' r =>
+                           exists tree' tree'',
+                             fs_inv(P, sigma', tree'', homedirs) /\
+                             homedir_rely tid homedirs tree tree' /\
+                             local_l tid (Sigma.l sigma') = Unacquired /\
+                             match r with
+                             | Done v => fs_post (fsspec a) v /\
+                                        tree'' = fs_dirup (fsspec a) tree' /\
+                                        Sigma.init_disk sigma' = Sigma.disk sigma'
+                             | TryAgain => False
+                             | SyscallFailed => True
+                             end |})
+                 (write_syscall p update).
+  Proof using Type.
+    intros.
+    apply write_syscall_ok' with (update:=update) in H.
+    apply retry_upgrade_spec in H.
+    unfold cprog_spec; intros.
+    eapply cprog_ok_weaken; [ eauto | ].
+    simplify; descend; simpl in *; intuition eauto.
+    step.
+    intuition trivial.
+    descend; intuition eauto.
+    destruct r; (intuition eauto); discriminate.
   Qed.
 
   (* translate all system calls for extraction *)

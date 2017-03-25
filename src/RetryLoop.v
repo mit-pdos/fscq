@@ -191,6 +191,33 @@ Section RetryLoop.
     auto.
   Qed.
 
+  Theorem retry_upgrade_spec : forall T P Q (guard: forall (v:T), {P v}+{Q v}) p
+                                 A (spec: Spec A T) tid,
+      cprog_spec G tid spec (retry guard p) ->
+      cprog_spec G tid (fun a sigma =>
+                          {| precondition := precondition (spec a sigma);
+                             postcondition :=
+                               fun sigma' v =>
+                                 postcondition (spec a sigma) sigma' v /\
+                                 exists H, guard v = left H |})
+                 (retry guard p).
+  Proof.
+    intros.
+    apply triple_spec_equiv in H.
+    apply triple_spec_equiv.
+    unfold cprog_triple in *; simpl; intros.
+    match goal with
+      | [ Hexec: exec _ _ _ (retry _ _) _ |- _ ] =>
+        pose proof Hexec;
+          eapply retry_exec in Hexec; intuition eauto
+    end.
+    match goal with
+      | [ Hexec: exec _ _ _ (retry _ _) _ |- _ ] =>
+        eapply H in Hexec; eauto
+    end.
+    destruct out; eauto.
+  Qed.
+
   Corollary retry_spec' : forall T P Q (guard: forall (v:T), {P v}+{Q v}) v0 p
                          A (spec: Spec A T) tid,
       (forall n, cprog_spec G tid spec (retry_n guard v0 p n)) ->
