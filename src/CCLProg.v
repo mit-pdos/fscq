@@ -118,6 +118,8 @@ Section CCL.
   | Write (a:addr) (v: valu) : cprog unit
   | Hash sz (buf: word sz) : cprog (word hashlen)
   | SetLock (l:LocalLock) (l':LocalLock) : cprog unit
+  (* no-op to indicate interest in reading a *)
+  | YieldTillReady (a:addr) : cprog unit
   | Ret T (v:T) : cprog T
   | Bind T T' (p: cprog T') (p': T' -> cprog T) : cprog T.
 
@@ -261,6 +263,7 @@ Section CCL.
                        | Locked, Locked => Fails
                        end
                      else Fails (* caller didn't know its lock status *)
+    | YieldTillReady _ => StepTo sigma tt
     | Ret v => StepTo sigma v
     | _ => NonDet
     end.

@@ -72,6 +72,12 @@ Section ConcurrentFS.
     _ <- Assgn1 (ccache P) c;
       Unlock.
 
+  Definition yieldOnMiss (e:OptimisticException) : cprog unit :=
+    match e with
+    | CacheMiss a => YieldTillReady a
+    | _ => Ret tt
+    end.
+
   Definition write_syscall T (p: OptimisticProg T) (update: dirtree -> dirtree) :
     cprog (SyscallResult T) :=
     retry guard
@@ -87,9 +93,9 @@ Section ConcurrentFS.
                  Ret (Done r)
              | Failure e =>
                _ <- finishRollback c;
+                 _ <- yieldOnMiss e;
                  Ret (match e with
                       | CacheMiss a =>
-                        (* TODO: [Yield a] here when the noop Yield is added *)
                         TryAgain
                       | WriteRequired => (* unreachable - have write lock *)
                         SyscallFailed
@@ -433,6 +439,20 @@ Section ConcurrentFS.
 
   Hint Extern 1 {{ finishRollback _; _ }} => apply finishRollback_ok : prog.
 
+  Theorem yieldOnMiss_ok : forall tid e,
+      cprog_spec G tid
+                 (fun (_:unit) sigma =>
+                    {| precondition := True;
+                       postcondition :=
+                         fun sigma' r => sigma' = sigma /\ r = tt; |})
+                 (yieldOnMiss e).
+  Proof.
+    unfold yieldOnMiss; intros.
+    destruct e; step; finish.
+  Qed.
+
+  Hint Extern 1 {{ yieldOnMiss _; _ }} => apply yieldOnMiss_ok : prog.
+
   Theorem write_syscall_ok' : forall T (p: OptimisticProg T) A
                                 (fsspec: FsSpec A T) update tid,
       (forall mscs c, cprog_spec G tid
@@ -534,6 +554,9 @@ Section ConcurrentFS.
 
         descend; unfold translated_postcondition in *;
           simpl in *; intuition (norm_eq; eauto).
+
+        (* skip over yieldOnMiss *)
+        step; finish.
 
         (* now we return an appropriate value *)
         step; simplify; finish.

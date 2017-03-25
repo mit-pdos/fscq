@@ -471,9 +471,21 @@ Section Primitives.
                        postcondition :=
                          fun sigma' r =>
                            sigma' = sigma /\
-                           r = v /\
-                           Sigma.init_disk sigma' = Sigma.init_disk sigma; |})
+                           r = v; |})
                  (Ret v).
+  Proof.
+    prim.
+  Qed.
+
+  Theorem YieldTillReady_ok : forall tid a,
+      cprog_spec G tid
+                 (fun (_:unit) sigma =>
+                    {| precondition := True;
+                       postcondition :=
+                         fun sigma' r =>
+                           sigma' = sigma /\
+                           r = tt; |})
+                 (YieldTillReady a).
   Proof.
     prim.
   Qed.
@@ -553,6 +565,7 @@ Hint Extern 0 {{ Assgn1 _ _; _ }} => apply Assgn1_ok : prog.
 Hint Extern 0 {{ Assgn2_abs _; _ }} => apply Assgn2_abs_ok : prog.
 Hint Extern 0 {{ Hash _; _ }} => apply Hash_ok : prog.
 Hint Extern 0 {{ GetWriteLock; _ }} => apply GetWriteLock_ok : prog.
+Hint Extern 0 {{ YieldTillReady _; _ }} => apply YieldTillReady_ok : prog.
 Hint Extern 0 {{ Unlock; _ }} => apply Unlock_ok : prog.
 
 (* Local Variables: *)

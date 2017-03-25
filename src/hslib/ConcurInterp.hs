@@ -94,6 +94,10 @@ run_dcode s (WaitForRead a) = do
   debugmsg $ "WaitForRead " ++ show a
   val <- Disk.read_disk (disk s) a
   return $ unsafeCoerce val
+run_dcode _ (YieldTillReady a) = do
+  debugmsg $ "YieldTillReady " ++ show a
+  -- TODO: integrate with background reads from BeginRead
+  return $ unsafeCoerce ()
 run_dcode ds (Bind p1 p2) = do
   r1 <- run_dcode ds p1
   r2 <- run_dcode ds (p2 r1)
