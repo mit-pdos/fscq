@@ -943,10 +943,6 @@ Module BFILE.
   Proof.
     intros.
     eapply bfcache_remove' in H; eauto.
-    replace bfile0 with ({| BFData := BFData f; BFAttr := BFAttr f; BFCache := None |}); eauto.
-    rewrite H1.
-    rewrite H2.
-    reflexivity.
   Qed.
 
   Lemma rep_bfcache_remove : forall bxps ixp flist ilist frees allocc mscache icache inum f F,
