@@ -271,22 +271,13 @@ Section ConcurrentFS.
     step.
     unfold translated_postcondition in *; simplify.
     intuition.
-    descend; intuition eauto.
-    repeat match goal with
-           | [ H: _ = _ |- _ ] =>
-             progress rewrite H in *
-           end;
+    descend; intuition (norm_eq; eauto).
       eauto using fs_rep_same_disk_incr_hashmap.
 
     etransitivity; eauto.
-    eapply fs_rely_same_fstree; eauto.
-    repeat match goal with
-           | [ H: _ = _ |- _ ] =>
-             progress rewrite H in *
-           end;
-      eauto using fs_rep_same_disk_incr_hashmap.
+    eapply fs_rely_same_fstree; norm_eq; eauto.
+    eauto using fs_rep_same_disk_incr_hashmap.
 
-    congruence.
     destruct_goal_matches; intuition auto.
   Qed.
 
@@ -350,6 +341,13 @@ Section ConcurrentFS.
 
   Hint Resolve fs_invariant_free_to_owned.
 
+  Lemma if_eq_tid : forall tid T (x y:T),
+      (if tid_eq_dec tid tid then x else y) = x.
+  Proof.
+    intros.
+    destruct (tid_eq_dec tid tid); congruence.
+  Qed.
+
   Definition startLocked_ok : forall tid,
       cprog_spec G tid
                  (fun '(tree, homedirs) sigma =>
@@ -385,10 +383,8 @@ Section ConcurrentFS.
       pose proof (fs_invariant_unfold_same_disk H); intuition; repeat deex
     end; descend; simpl in *; intuition eauto.
 
-    step.
+    step; rewrite ?if_eq_tid in *; simplify.
     intuition trivial.
-    destruct (tid_eq_dec tid tid); try congruence; simpl in *; subst; simpl in *.
-    destruct (tid_eq_dec tid tid); try congruence.
     descend; simpl in *; intuition eauto.
     etransitivity; eauto.
     eapply fs_rely_same_fstree; simpl; eauto.
@@ -442,11 +438,7 @@ Section ConcurrentFS.
     exfalso; eauto.
     reflexivity.
 
-    step; finish.
-    repeat match goal with
-           | [ H: _ = _ |- _ ] =>
-             rewrite H in *
-           end; eauto.
+    step; finish; norm_eq; eauto.
 
     unfold G, fs_guarantee.
     descend; intuition eauto.
@@ -458,10 +450,7 @@ Section ConcurrentFS.
     step; finish.
     unfold fs_invariant; SepAuto.pred_apply; SepAuto.cancel; eauto; try congruence.
 
-    repeat match goal with
-           | [ H: _ = _ |- _ ] =>
-             rewrite H in *
-           end; reflexivity.
+    norm_eq; reflexivity.
   Qed.
 
   Hint Extern 1 {{ finishRollback _; _ }} => apply finishRollback_ok : prog.
@@ -518,47 +507,31 @@ Section ConcurrentFS.
         (* Assgn2_abs *)
         step; simpl.
         unfold translated_postcondition in *; simpl in *; intuition eauto.
-        descend; simpl in *; intuition eauto.
+        descend; simpl in *; intuition (norm_eq; eauto).
         SepAuto.pred_apply; SepAuto.cancel.
-
-        repeat match goal with
-               | [ H: _ = _ |- _ ] =>
-                 progress rewrite H in *
-               end.
-        eauto using local_locked.
 
         unfold G, fs_guarantee.
         descend; intuition eauto.
         unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
           [ SepAuto.cancel | intuition eauto ].
-        exfalso; eauto.
+        norm_eq; exfalso; eauto.
         unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
           [ SepAuto.cancel | intuition eauto ].
-        repeat match goal with
-               | [ H: _ = _ |- _ ] =>
-                 progress rewrite H in *
-               end.
+        norm_eq.
         exfalso; eauto.
         congruence.
 
         (* unlock *)
         step.
         descend; simpl in *; intuition eauto.
-        repeat match goal with
-               | [ H: _ = _ |- _ ] =>
-                 progress rewrite H in *
-               end.
+        norm_eq.
         eauto.
         unfold G, fs_guarantee.
         exists (fs_dirup (fsspec a0) tree'), (fs_dirup (fsspec a0) tree').
         descend; intuition eauto.
         unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
           [ SepAuto.cancel | intuition eauto ].
-        repeat match goal with
-               | [ H: _ = _ |- _ ] =>
-                 progress rewrite H in *
-               end.
-        exfalso; eauto.
+        norm_eq; exfalso; eauto.
         congruence.
         unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
           [ SepAuto.cancel | intuition eauto ].
@@ -566,15 +539,12 @@ Section ConcurrentFS.
         congruence.
         reflexivity.
 
-        step.
-        simpl; intuition trivial.
+        step; finish.
 
         (* next iteration of loop *)
         destruct (guard r0); simpl.
         * (* succeeded, return *)
-          step.
-          intuition trivial; try discriminate.
-          descend; intuition eauto.
+          step; finish.
           unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
             [ SepAuto.cancel | intuition eauto ].
           congruence.
@@ -584,35 +554,20 @@ Section ConcurrentFS.
         (* update cache *)
         step; simplify.
 
-        descend; simpl in *; intuition eauto.
-        repeat match goal with
-               | [ H: _ = _ |- _ ] =>
-                 rewrite H in *
-               end.
-        unfold translated_postcondition in *; simpl in *; intuition eauto.
-        unfold translated_postcondition in *; simpl in *; intuition eauto.
-        unfold translated_postcondition in *; simpl in *; intuition eauto.
-        repeat match goal with
-               | [ H: _ = _ |- _ ] =>
-                 rewrite H in *
-               end; eauto.
-        unfold translated_postcondition in *; simpl in *; intuition eauto.
+        descend; unfold translated_postcondition in *;
+          simpl in *; intuition (norm_eq; eauto).
 
         (* now we return an appropriate value *)
-        step; simplify.
-        simpl; intuition.
+        step; simplify; finish.
 
         (* need to loop around depending on guard r (in particular, will stop on
         SyscallFailed) *)
         destruct (guard r) eqn:? .
-        step; simplify.
-        intuition trivial.
-        descend; intuition eauto.
+        step; finish.
         destruct e; auto.
         intuition; repeat deex; try discriminate.
 
-        step; simplify.
-        descend; simpl in *; intuition eauto.
+        step; finish.
         (* error must be a cache miss if we're trying again *)
         destruct e; try discriminate.
 

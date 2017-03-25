@@ -466,13 +466,6 @@ Section OptimisticTranslator.
   Hint Extern 1 {{ CacheCommit _; _ }} => apply CacheCommit_ok : prog.
   Hint Extern 1 {{ CacheAbort _; _ }} => apply CacheAbort_ok : prog.
 
-  Ltac norm_eq :=
-    repeat match goal with
-           | [ H: _ = _ |- _ ] =>
-             progress rewrite H in *
-           | _ => progress subst
-           end.
-
   Theorem translate_ok : forall T (p: prog T) A (spec: SeqSpec A T) tid c l,
       prog_quadruple spec p ->
       cprog_spec G tid (translate_spec spec tid l c) (translate p l c).

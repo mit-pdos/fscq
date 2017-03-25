@@ -129,3 +129,10 @@ Ltac learn_fact H :=
   end.
 
 Tactic Notation "learn" "that" constr(H) := learn_fact H.
+
+Ltac norm_eq :=
+  repeat match goal with
+         | [ H: ?a = ?a |- _ ] => clear H
+         | [ H: _ = _ |- _ ] =>
+           progress rewrite H in *
+         end.
