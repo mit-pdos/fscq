@@ -26,9 +26,9 @@ data ConcurState = ConcurState
   , memory :: IORef Heap
   , lock :: MVar () }
 
-instance Show LockState where
-  show Free = "Free"
-  show WriteLock = "WriteLock"
+instance Show LocalLock where
+  show Unacquired = "Unacquired"
+  show Locked = "Locked"
 
 interp_rtxn :: Coq_read_transaction a -> Heap -> a
 interp_rtxn RDone _ = unsafeCoerce ()
@@ -82,8 +82,8 @@ run_dcode _ (Hash sz (WBS bs)) = do
 run_dcode s (SetLock l l') = do
   debugmsg $ "SetLock " ++ show l ++ " " ++ show l'
   case (l, l') of
-    (Free, WriteLock) -> takeMVar (lock s)
-    (WriteLock, Free) -> putMVar (lock s) ()
+    (Unacquired, Locked) -> takeMVar (lock s)
+    (Locked, Unacquired) -> putMVar (lock s) ()
     (_, _) -> error $ "SetLock used incorrectly: " ++ show l ++ " " ++ show l'
   return $ unsafeCoerce l'
 run_dcode _ (BeginRead _) = do
