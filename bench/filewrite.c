@@ -132,7 +132,7 @@ int main(int argc, char *argv[])
   makefile();
   gettimeofday ( &after, NULL );
 
-  time = time + (after.tv_sec - before.tv_sec) * 1000000 +
+  time = (after.tv_sec - before.tv_sec) * 1000000 +
 	(after.tv_usec - before.tv_usec);
   tput = ((float) (FILESIZE/1024) /  (time / 1000000.0));
   printf("makefile %d MB %ld usec throughput %5.1f KB/s\n", FILESIZE/(1024*1024), time, tput);
@@ -143,7 +143,7 @@ int main(int argc, char *argv[])
   writefile();
   gettimeofday ( &after, NULL );
   
-  time = time + (after.tv_sec - before.tv_sec) * 1000000 +
+  time = (after.tv_sec - before.tv_sec) * 1000000 +
 	(after.tv_usec - before.tv_usec);
   tput = ((float) (FILESIZE/1024) /  (time / 1000000.0));
   printf("writefile %d MB %ld usec throughput %5.1f KB/s\n", FILESIZE/(1024*1024), time, tput);
