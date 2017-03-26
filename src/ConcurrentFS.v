@@ -79,7 +79,7 @@ Section ConcurrentFS.
     | _ => Ret tt
     end.
 
-  Definition write_syscall T (p: OptimisticProg T) (update: dirtree -> dirtree) :
+  Definition write_syscall T (p: OptimisticProg T) (update: T -> dirtree -> dirtree) :
     cprog (SyscallResult T) :=
     retry guard
           (do '(c, mscs) <- startLocked;
@@ -89,7 +89,7 @@ Section ConcurrentFS.
                _ <- Assgn2_abs (Make_assgn2
                                  (ccache P) c
                                  (fsmem P) ms'
-                                 (fstree P) (fun _ => update));
+                                 (fstree P) (fun (_:TID) => update r));
                  _ <- Unlock;
                  Ret (Done r)
              | Failure e =>
@@ -105,7 +105,7 @@ Section ConcurrentFS.
                       end)
              end).
 
-  Definition retry_syscall T (p: OptimisticProg T) (update: dirtree -> dirtree) :=
+  Definition retry_syscall T (p: OptimisticProg T) (update: T -> dirtree -> dirtree) :=
     r <- readonly_syscall p;
       match r with
       | Done v => Ret (Done v)
@@ -394,8 +394,10 @@ Section ConcurrentFS.
                          fs_pre (fsspec a) tree /\
                          precondition_stable fsspec homedirs tid /\
                          update = fs_dirup (fsspec a) /\
-                         (forall tree0, homedir_guarantee tid homedirs
-                                                     tree0 (update tree0));
+                         (forall r tree0,
+                             fs_post (fsspec a) r ->
+                             homedir_guarantee tid homedirs
+                                               tree0 (update r tree0));
                        postcondition :=
                          fun sigma' r =>
                            exists tree' tree'',
@@ -404,7 +406,7 @@ Section ConcurrentFS.
                              local_l tid (Sigma.l sigma') = Unacquired /\
                              match r with
                              | Done v => fs_post (fsspec a) v /\
-                                        tree'' = fs_dirup (fsspec a) tree' /\
+                                        tree'' = fs_dirup (fsspec a) v tree' /\
                                         Sigma.init_disk sigma' = Sigma.disk sigma'
                              | TryAgain => tree'' = tree' /\
                                           Sigma.init_disk sigma' = Sigma.disk sigma'
@@ -453,7 +455,7 @@ Section ConcurrentFS.
         norm_eq.
         eauto.
         unfold G, fs_guarantee.
-        exists (fs_dirup (fsspec a0) tree'), (fs_dirup (fsspec a0) tree').
+        exists (fs_dirup (fsspec a0) r tree'), (fs_dirup (fsspec a0) r tree').
         descend; intuition eauto.
         unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
           [ SepAuto.cancel | intuition eauto ].
@@ -503,7 +505,7 @@ Section ConcurrentFS.
         step; simplify.
         intuition trivial.
         destruct r; intuition; subst.
-        exists tree'0, (fs_dirup (fsspec a0) tree'0).
+        exists tree'0, (fs_dirup (fsspec a0) v tree'0).
         descend; simpl in *; intuition eauto.
         etransitivity; eauto.
 
@@ -530,8 +532,10 @@ Section ConcurrentFS.
                          fs_pre (fsspec a) tree /\
                          precondition_stable fsspec homedirs tid /\
                          update = fs_dirup (fsspec a) /\
-                         (forall tree0, homedir_guarantee tid homedirs
-                                                     tree0 (update tree0));
+                         (forall r tree0,
+                             fs_post (fsspec a) r ->
+                             homedir_guarantee tid homedirs
+                                               tree0 (update r tree0));
                        postcondition :=
                          fun sigma' r =>
                            exists tree' tree'',
@@ -540,7 +544,7 @@ Section ConcurrentFS.
                              local_l tid (Sigma.l sigma') = Unacquired /\
                              match r with
                              | Done v => fs_post (fsspec a) v /\
-                                        tree'' = fs_dirup (fsspec a) tree' /\
+                                        tree'' = fs_dirup (fsspec a) v tree' /\
                                         Sigma.init_disk sigma' = Sigma.disk sigma'
                              | TryAgain => False
                              | SyscallFailed => True
@@ -563,81 +567,81 @@ Section ConcurrentFS.
 
   Definition file_get_attr inum :=
     retry_syscall (fun mscs => file_get_attr (fsxp P) inum mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition lookup dnum names :=
     retry_syscall (fun mscs => lookup (fsxp P) dnum names mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition read_fblock inum off :=
     retry_syscall (fun mscs => OptFS.read_fblock (fsxp P) inum off mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition file_set_attr inum attr :=
     retry_syscall (fun mscs => OptFS.file_set_attr (fsxp P) inum attr mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition file_truncate inum sz :=
     retry_syscall (fun mscs => OptFS.file_truncate (fsxp P) inum sz mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition update_fblock_d inum off b :=
     retry_syscall (fun mscs => OptFS.update_fblock_d (fsxp P) inum off b mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition create dnum name :=
     retry_syscall (fun mscs => OptFS.create (fsxp P) dnum name mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition rename dnum srcpath srcname dstpath dstname :=
     retry_syscall (fun mscs => OptFS.rename (fsxp P) dnum srcpath srcname dstpath dstname mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition delete dnum name :=
     retry_syscall (fun mscs => OptFS.delete (fsxp P) dnum name mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   (* wrap unverified syscalls *)
 
   Definition statfs :=
     retry_syscall (fun mscs => OptFS.statfs (fsxp P) mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition mkdir dnum name :=
     retry_syscall (fun mscs => OptFS.mkdir (fsxp P) dnum name mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition file_get_sz inum :=
     retry_syscall (fun mscs => OptFS.file_get_sz (fsxp P) inum mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition file_set_sz inum sz :=
     retry_syscall (fun mscs => OptFS.file_set_sz (fsxp P) inum sz mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition readdir dnum :=
     retry_syscall (fun mscs => OptFS.readdir (fsxp P) dnum mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition tree_sync :=
     retry_syscall (fun mscs => OptFS.tree_sync (fsxp P) mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition file_sync inum :=
     retry_syscall (fun mscs => OptFS.file_sync (fsxp P) inum mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition update_fblock inum off b :=
     retry_syscall (fun mscs => OptFS.update_fblock (fsxp P) inum off b mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition mksock dnum name :=
     retry_syscall (fun mscs => OptFS.mksock (fsxp P) dnum name mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
   Definition umount :=
     retry_syscall (fun mscs => OptFS.umount (fsxp P) mscs)
-                  (fun tree => tree).
+                  (fun _ tree => tree).
 
 End ConcurrentFS.
 
