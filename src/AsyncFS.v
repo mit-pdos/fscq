@@ -373,7 +373,7 @@ Module AFS.
     Debug "truncate" (t2-t1) ;;
     Ret r.
 
-  (* update an existing block directly.  XXX dwrite happens to sync metadata. *)
+  (* update an existing block of an *existing* file with bypassing the log *)
   Definition update_fblock_d fsxp inum off v ams :=
     t1 <- Rdtsc ;
     ms <- LOG.begin (FSXPLog fsxp) (MSLL ams);
