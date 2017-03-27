@@ -385,6 +385,34 @@ Section ConcurrentFS.
 
   Hint Extern 1 {{ yieldOnMiss _; _ }} => apply yieldOnMiss_ok : prog.
 
+  Definition same_fs_update tid homedirs tree T (update update': T -> dirtree -> dirtree) :=
+    forall r tree', homedir_rely tid homedirs tree tree' ->
+               DirTreeNames.tree_names_distinct tree' ->
+               DirTreeInodes.tree_inodes_distinct tree' ->
+               update r tree' = update' r tree'.
+
+  Lemma fs_rep_tree_names_distinct : forall vd hm mscs tree,
+      fs_rep P vd hm mscs tree ->
+      DirTreeNames.tree_names_distinct tree.
+  Proof.
+    unfold fs_rep; unfold exis; intros;
+      repeat deex.
+    eapply DirTreeNames.rep_tree_names_distinct with (F:=emp).
+    apply pimpl_star_emp; eauto.
+  Qed.
+
+  Lemma fs_rep_tree_inodes_distinct : forall vd hm mscs tree,
+      fs_rep P vd hm mscs tree ->
+      DirTreeInodes.tree_inodes_distinct tree.
+  Proof.
+    unfold fs_rep; unfold exis; intros;
+      repeat deex.
+    eapply DirTreeInodes.rep_tree_inodes_distinct with (F:=emp).
+    apply pimpl_star_emp; eauto.
+  Qed.
+
+  Hint Resolve fs_rep_tree_names_distinct fs_rep_tree_inodes_distinct.
+
   Theorem write_syscall_ok' : forall T (p: OptimisticProg T) A
                                 (fsspec: FsSpec A T) update tid,
       (forall mscs c, cprog_spec G tid
@@ -397,8 +425,7 @@ Section ConcurrentFS.
                          local_l tid (Sigma.l sigma) = Unacquired /\
                          fs_pre (fsspec a) (homedirs tid) tree /\
                          precondition_stable fsspec homedirs tid /\
-                         (forall r tree', homedir_rely tid homedirs tree tree' ->
-                                     update r tree' = fs_dirup (fsspec a) r tree') /\
+                         same_fs_update tid homedirs tree update (fs_dirup (fsspec a)) /\
                          (forall r tree',
                              fs_post (fsspec a) r ->
                              homedir_guarantee tid homedirs
@@ -453,7 +480,7 @@ Section ConcurrentFS.
         norm_eq.
         exfalso; eauto.
         match goal with
-        | [ H: context[update _ _ = _] |- _ ] =>
+        | [ H: same_fs_update _ _ _ _ _ |- _ ] =>
           erewrite H; eauto
         end.
         congruence.
@@ -466,8 +493,8 @@ Section ConcurrentFS.
         unfold G, fs_guarantee.
         exists (fs_dirup (fsspec a0) r tree'), (fs_dirup (fsspec a0) r tree').
         match goal with
-        | [ H: context[update _ _ = _] |- _ ] =>
-          erewrite H in * by eauto
+        | [ H: same_fs_update _ _ _ _ _ |- _ ] =>
+          erewrite H in *; eauto
         end.
         descend; intuition eauto.
         unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
@@ -487,8 +514,8 @@ Section ConcurrentFS.
         * (* succeeded, return *)
           step; finish.
           match goal with
-          | [ H: context[update _ _ = _] |- _ ] =>
-            erewrite H in * by eauto
+          | [ H: same_fs_update _ _ _ _ _ |- _ ] =>
+            erewrite H in *; eauto
           end.
           unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
             [ SepAuto.cancel | intuition eauto ].
@@ -518,11 +545,12 @@ Section ConcurrentFS.
         step; finish.
         (* error must be a cache miss if we're trying again *)
         destruct e; try discriminate.
+        unfold same_fs_update; intros.
         match goal with
-        | [ H: context[update _ _ = _] |- _ ] =>
-          erewrite H in * by (etransitivity; eauto)
+        | [ H: same_fs_update _ _ _ _ _ |- _ ] =>
+          erewrite H in *; eauto
         end.
-        eauto.
+        etransitivity; eauto.
 
         step; simplify.
         intuition trivial.
@@ -553,8 +581,7 @@ Section ConcurrentFS.
                          local_l tid (Sigma.l sigma) = Unacquired /\
                          fs_pre (fsspec a) (homedirs tid) tree /\
                          precondition_stable fsspec homedirs tid /\
-                         (forall r tree', homedir_rely tid homedirs tree tree' ->
-                                     update r tree' = fs_dirup (fsspec a) r tree') /\
+                         same_fs_update tid homedirs tree update (fs_dirup (fsspec a)) /\
                          (forall r tree',
                              fs_post (fsspec a) r ->
                              homedir_guarantee tid homedirs
@@ -730,15 +757,12 @@ Section ConcurrentFS.
     intuition eauto.
     eapply homedir_rely_preserves_subtrees; eauto.
 
-    destruct a; auto.
+    unfold same_fs_update; intros.
+    destruct_goal_matches.
     unfold dirtree_alter_file.
     eapply homedir_rely_preserves_subtrees in H3; eauto.
     erewrite DirTreeInodes.alter_inum_to_alter_path; eauto.
     erewrite DirTreeNames.alter_to_update; eauto; simpl; auto.
-    (* distinctness conditions on tree - can be maintained due to fs_inv  *)
-    admit.
-    admit.
-    admit.
 
     destruct a; try reflexivity.
     admit. (* dirtree_guarantee allows updating inside homedirs (obvious after
