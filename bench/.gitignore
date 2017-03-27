@@ -2,3 +2,5 @@
 /*-*.blktrace
 /testsync
 /atomic-create
+/filesync
+/filewrite

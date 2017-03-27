@@ -3,7 +3,11 @@ module Interpreter where
 import Prog
 import qualified Disk
 import Word
-import qualified Crypto.Hash.SHA256 as SHA256
+import Data.Word
+-- import qualified Crypto.Hash.SHA256 as SHA256
+import qualified Data.Digest.CRC32 as CRC32
+import System.CPUTime.Rdtsc
+
 -- import qualified System.Exit
 -- import qualified System.Random
 
@@ -25,12 +29,25 @@ import qualified Crypto.Hash.SHA256 as SHA256
 verbose :: Bool
 verbose = False
 
+output :: Bool
+output = False
+
+timing :: Bool
+timing = False
+
 debugmsg :: String -> IO ()
 debugmsg s =
   if verbose then
     putStrLn s
   else
     return ()
+
+crc32_word_update :: Word32 -> Integer -> Coq_word -> IO Word32
+crc32_word_update c sz (W w) = do
+  bs <- Word.i2bs w $ fromIntegral $ (sz + 7) `div` 8
+  crc32_word_update c sz (WBS bs)
+crc32_word_update c sz (W64 w) = crc32_word_update c sz $ W $ fromIntegral w
+crc32_word_update c _ (WBS bs) = return $ CRC32.crc32Update c bs
 
 run_dcode :: Disk.DiskState -> Prog.Coq_prog a -> IO a
 run_dcode _ (Ret r) = do
@@ -68,17 +85,30 @@ run_dcode ds (VarDelete i) = do
   debugmsg $ "VarDelete " ++ (show i)
   Disk.var_delete ds i
   return $ unsafeCoerce ()
-run_dcode _ (AlertModified) = do
+run_dcode _ AlertModified = do
   debugmsg $ "AlertModified"
   return $ unsafeCoerce ()
-run_dcode ds (Hash sz (W64 w)) = run_dcode ds (Hash sz (W $ fromIntegral w))
-run_dcode ds (Hash sz (W w)) = do
-  debugmsg $ "Hash " ++ (show sz) ++ " W " ++ (show w)
-  bs <- Word.i2bs w $ fromIntegral $ (sz + 7) `div` 8
-  run_dcode ds $ Hash sz (WBS bs)
-run_dcode _ (Hash sz (WBS bs)) = do
-  debugmsg $ "Hash " ++ (show sz) ++ " BS " ++ (show bs)
-  return $ unsafeCoerce $ WBS $ SHA256.hash bs
+run_dcode _ (Debug s n) = do
+  if output then do
+    putStrLn $ s ++ " " ++ (show n)
+    return $ unsafeCoerce ()
+  else
+    return $ unsafeCoerce ()
+run_dcode _ (Rdtsc) = do
+  if timing then do
+    r <- rdtsc
+    return $ unsafeCoerce r
+  else
+    return $ unsafeCoerce ()
+run_dcode _ (Hash sz w) = do
+  debugmsg $ "Hash " ++ (show sz)
+  c <- crc32_word_update 0 sz w
+  return $ unsafeCoerce $ W $ fromIntegral c
+run_dcode _ (Hash2 sz1 sz2 w1 w2) = do
+  debugmsg $ "Hash2 " ++ (show sz1) ++ " " ++ (show sz2)
+  c1 <- crc32_word_update 0 sz1 w1
+  c2 <- crc32_word_update c1 sz2 w2
+  return $ unsafeCoerce $ W $ fromIntegral c2
 run_dcode ds (Bind p1 p2) = do
   debugmsg $ "Bind"
   r1 <- run_dcode ds p1

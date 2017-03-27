@@ -85,7 +85,7 @@ Definition vsmerge (vs : valuset) : list valu := fst vs :: snd vs.
 
 
 (* Hashing *)
-Definition hashlen := 256.
+Definition hashlen := 32.
 Parameter hash_fwd : forall sz, word sz -> word hashlen.
 Definition default_valu : valu := $0.
 Definition default_hash := hash_fwd default_valu.

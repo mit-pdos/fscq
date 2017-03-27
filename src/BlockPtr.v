@@ -1740,12 +1740,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
     unfold indrec_write_blind.
     hoare.
     rewrite natToWord_wordToNat. rewrite updN_selN_eq. cancel.
-    unfold IndRec.items_valid, IndSig.xparams_ok, IndSig.RAStart, IndSig.RALen.
-    unfold Rec.well_formed. simpl. intuition.
-    rewrite length_updN. rewrite indrep_n_helper_length_piff in *. destruct_lifts.
-    omega.
-    rewrite indrep_n_helper_valid by omega. cancel.
-    rewrite indrep_n_helper_valid by omega. cancel.
+    unfold indrep_n_helper. destruct (addr_eq_dec ir 0); try congruence. cancel.
+    unfold indrep_n_helper. destruct (addr_eq_dec ir 0); try congruence. cancel.
   Qed.
 
   Local Hint Extern 1 ({{_}} Bind (indput_upd_if_necessary _ _ _ _ _ _) _) => apply indput_upd_if_necessary_ok : prog.
@@ -2003,6 +1999,22 @@ Module BlockPtr (BPtr : BlockPtrSig).
           repeat rewrite firstn_repeat by lia; f_equal; lia.
   Qed.
 
+  Lemma rep_keep_blocks : forall bxp ir ir' l,
+    IRIndPtr ir = IRIndPtr ir' ->
+    IRDindPtr ir = IRDindPtr ir' ->
+    IRTindPtr ir = IRTindPtr ir' ->
+    IRLen ir = IRLen ir' ->
+    IRBlocks ir = IRBlocks ir' ->
+    rep bxp ir l =p=> rep bxp ir' l.
+  Proof.
+    intros.
+    unfold rep, indrep.
+    repeat match goal with H : _ = _ |- _ =>
+      rewrite H in *; clear H
+    end.
+    reflexivity.
+  Qed.
+
   Theorem xform_indrep : forall xp ir l,
     crash_xform (indrep xp ir l) <=p=> indrep xp ir l.
   Proof.
@@ -2062,13 +2074,13 @@ Module BlockPtr (BPtr : BlockPtrSig).
     let nl := (ol - nr) in
     If (le_dec ol NDirect) {
       Ret ^(ms, upd_irec ir nl (IRIndPtr ir) (IRDindPtr ir) (IRTindPtr ir)
-                         (upd_range (IRBlocks ir) nl (NDirect - nl) $0))
+                         (upd_range_fast (IRBlocks ir) nl (NDirect - nl) $0))
     } else {
       let ol' := ol - NDirect in
       let nl' := nl - NDirect in
       let^ (ms, indptr, dindptr, tindptr) <- indshrink lxp bxp ir nl' ms;
       Ret ^(ms, upd_irec ir nl indptr dindptr tindptr
-                         (upd_range (IRBlocks ir) nl (NDirect - nl) $0))
+                         (upd_range_fast (IRBlocks ir) nl (NDirect - nl) $0))
     }.
 
   Definition indgrow lxp bxp ir off bn ms :=
@@ -2283,7 +2295,8 @@ Module BlockPtr (BPtr : BlockPtrSig).
     CRASH:hm'  LOG.intact lxp F m0 hm'
     >} shrink lxp bxp ir nr ms.
   Proof.
-    unfold shrink.
+    unfold shrink. intros.
+    repeat rewrite upd_range_fast_eq.
     prestep; norml.
     denote rep as Hx. unfold rep in Hx. destruct_lifts.
     cancel.

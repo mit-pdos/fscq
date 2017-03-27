@@ -105,7 +105,7 @@ Module DIR.
 
   Definition rep_macro Fm Fi m bxp ixp inum dmap ilist frees ms : (@pred _ addr_eq_dec valuset) :=
     (exists flist f,
-    [[[ m ::: Fm * BFILE.rep bxp ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) ]]] *
+    [[[ m ::: Fm * BFILE.rep bxp ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) ]]] *
     [[[ flist ::: Fi * inum |-> f ]]] *
     [[ rep f dmap ]])%pred.
 
@@ -139,29 +139,50 @@ Module DIR.
   Definition unlink lxp ixp dnum name ms :=
     let^ (ms, r) <- ifind_lookup_f lxp ixp dnum name ms;
     match r with
-    | None => Ret ^(ms, Err ENOENT)
+    | None => Ret ^(ms, 0, Err ENOENT)
     | Some (ix, _) =>
         ms <- Dent.put lxp ixp dnum ix dent0 ms;
-        Ret ^(ms, OK tt)
+        Ret ^(ms, ix, OK tt)
     end.
 
-  Definition link lxp bxp ixp dnum name inum isdir ms :=
-    let^ (ms, r) <- ifind_lookup_f lxp ixp dnum name ms;
+  Definition link' lxp bxp ixp dnum name inum isdir ms :=
+    let de := mk_dent name inum isdir in
+    let^ (ms, r) <- ifind_invalid lxp ixp dnum ms;
     match r with
-    | Some _ => Ret ^(ms, Err EEXIST)
+    | Some (ix, _) =>
+        ms <- Dent.put lxp ixp dnum ix de ms;
+        Ret ^(ms, ix+1, OK tt)
     | None =>
-        let de := mk_dent name inum isdir in
-        let^ (ms, r) <- ifind_invalid lxp ixp dnum ms;
-        match r with
-        | Some (ix, _) =>
-            ms <- Dent.put lxp ixp dnum ix de ms;
-            Ret ^(ms, OK tt)
-        | None =>
-            let^ (ms, ok) <- Dent.extend lxp bxp ixp dnum de ms;
-            Ret ^(ms, ok)
-        end
+        let^ (ms, ok) <- Dent.extend lxp bxp ixp dnum de ms;
+        Ret ^(ms, 0, ok)
     end.
 
+  (* link without hint *)
+  Definition link'' lxp bxp ixp dnum name inum isdir (ix0:addr) ms :=
+    let^ (ms, ix, r0) <- link' lxp bxp ixp dnum name inum isdir ms;
+    Ret ^(ms, ix, r0).
+
+  (* link with hint *)
+  Definition link lxp bxp ixp dnum name inum isdir ix0 ms :=
+    let de := mk_dent name inum isdir in
+    let^ (ms, len) <- BFILE.getlen lxp ixp dnum ms;
+    If (lt_dec ix0 (len * Dent.RA.items_per_val)) {
+      let^ (ms, res) <- Dent.get lxp ixp dnum ix0 ms;
+      match (is_valid res) with
+      | true =>
+        let^ (ms, ix, r0) <- link' lxp bxp ixp dnum name inum isdir ms;
+        Ret ^(ms, ix, r0)
+      | false => 
+        ms <- Dent.put lxp ixp dnum ix0 de ms;
+        Ret ^(ms, ix0+1, OK tt)
+      end
+    } else {
+(* calling extend here slows down performance drastically.
+        let^ (ms, ok) <- Dent.extend lxp bxp ixp dnum de ms;
+        Ret ^(ms, ix0+1, ok)  *)
+      let^ (ms, ix, r0) <- link' lxp bxp ixp dnum name inum isdir ms;
+      Ret ^(ms, ix, r0) 
+    }.
 
   (*************  basic lemmas  *)
 

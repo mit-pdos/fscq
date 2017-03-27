@@ -83,7 +83,9 @@ Module FileRecArray (FRA : FileRASig).
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
   Notation MSAllocC := BFILE.MSAllocC.
+  Notation MSICache := BFILE.MSICache.
   Notation MSCache := BFILE.MSCache.
+  Notation MSIAllocC := BFILE.MSIAllocC.
 
   (* find the first item that satisfies cond *)
   Definition ifind lxp ixp inum (cond : item -> addr -> bool) ms0 :=
@@ -94,7 +96,7 @@ Module FileRecArray (FRA : FileRASig).
     Loopvar [ ms ret ]
     Invariant
       LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-      [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms)) ]]] *
+      [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
       [[[ flist ::: (Fi * inum |-> f) ]]] *
       [[[ RAData f ::: rep f items ]]] *
       [[ ret = None ->
@@ -106,6 +108,7 @@ Module FileRecArray (FRA : FileRASig).
               /\ snd st = selN items (fst st) item0 ]] *
       [[ MSAlloc ms = MSAlloc ms0 ]] *
       [[ MSCache ms = MSCache ms0 ]] *
+      [[ MSIAllocC ms = MSIAllocC ms0 ]] *
       [[ MSAllocC ms = MSAllocC ms0 ]] 
     OnCrash  crash
     Begin
@@ -164,8 +167,11 @@ Module FileRecArray (FRA : FileRASig).
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-          [[ r = selN items ix item0 /\ MSAlloc ms' = MSAlloc ms /\ 
-            MSCache ms' = MSCache ms /\ MSAllocC ms' = MSAllocC ms]]
+          [[ r = selN items ix item0 ]] *
+          [[ MSAlloc ms' = MSAlloc ms ]] *
+          [[ MSCache ms' = MSCache ms ]] *
+          [[ MSIAllocC ms' = MSIAllocC ms ]] *
+          [[ MSAllocC ms' = MSAllocC ms]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} get lxp ixp inum ix ms.
@@ -203,6 +209,7 @@ Module FileRecArray (FRA : FileRASig).
           [[[ RAData f' ::: rep f' (updN items ix e) ]]] *
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
+          [[ MSIAllocC ms' = MSIAllocC ms ]] *
           [[ MSAllocC ms' = MSAllocC ms ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} put lxp ixp inum ix e ms.
@@ -282,18 +289,19 @@ Module FileRecArray (FRA : FileRASig).
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
           [[ Rec.well_formed e ]] *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms)) ]]] *
+          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]] *
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET: ^(ms', r) exists m',
          [[ MSAlloc ms' = MSAlloc ms ]] *
          [[ MSCache ms' = MSCache ms ]] *
+         [[ MSIAllocC ms' = MSIAllocC ms ]] *
          ([[ isError r ]] * 
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
           [[ r = OK tt  ]] *
           exists flist' f' ilist' frees',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
-          [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms')) ]]] *
+          [[[ m' ::: (Fm * BFILE.rep bxp ixp flist' ilist' frees' (MSAllocC ms') (MSCache ms') (MSICache ms')) ]]] *
           [[[ flist' ::: (Fi * inum |-> f') ]]] *
           [[[ RAData f' ::: rep f' (items ++ (updN block0 0 e)) ]]] *
           [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
@@ -323,8 +331,11 @@ Module FileRecArray (FRA : FileRASig).
           [[[ RAData f ::: rep f items ]]]
     POST:hm' RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-          [[ r = items /\ MSAlloc ms' = MSAlloc ms /\ MSCache ms' = MSCache ms  /\
-            MSAllocC ms' = MSAllocC ms ]]
+          [[ r = items ]] *
+          [[ MSAlloc ms' = MSAlloc ms ]] *
+          [[ MSCache ms' = MSCache ms ]] *
+          [[ MSIAllocC ms' = MSIAllocC ms ]] *
+          [[ MSAllocC ms' = MSAllocC ms ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} readall lxp ixp inum ms.
@@ -352,7 +363,7 @@ Module FileRecArray (FRA : FileRASig).
     {< F Fm Fi m0 m flist f ilist frees,
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
-          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms)) ]]] *
+          [[[ m ::: (Fm * BFILE.rep bxp ixp flist ilist frees (MSAllocC ms) (MSCache ms) (MSICache ms)) ]]] *
           [[[ flist ::: (Fi * inum |-> f) ]]]
     POST:hm' RET:ms' exists m' flist' f' ilist' frees',
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
@@ -361,6 +372,7 @@ Module FileRecArray (FRA : FileRASig).
           [[[ RAData f' ::: emp ]]] *
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
+          [[ MSIAllocC ms' = MSIAllocC ms ]] *
           [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
                               ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
@@ -388,6 +400,7 @@ Module FileRecArray (FRA : FileRASig).
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
           [[ MSAllocC ms' = MSAllocC ms ]] *
+          [[ MSIAllocC ms' = MSIAllocC ms ]] *
         ( [[ r = None /\ forall i, i < length items ->
                          cond (selN items i item0) i = false  ]]
           \/ exists st,
@@ -469,8 +482,11 @@ Module FileRecArray (FRA : FileRASig).
           [[[ items ::: Fe * ix |-> e ]]]
     POST:hm' RET:^(ms', r)
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
-          [[ r = e /\ MSAlloc ms' = MSAlloc ms /\ MSCache ms' = MSCache ms /\
-            MSAllocC ms' = MSAllocC ms]]
+          [[ r = e ]] *
+          [[ MSAlloc ms' = MSAlloc ms ]] *
+          [[ MSCache ms' = MSCache ms ]] *
+          [[ MSIAllocC ms' = MSIAllocC ms ]] *
+          [[ MSAllocC ms' = MSAllocC ms]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} get_array lxp ixp inum ix ms.
@@ -500,7 +516,8 @@ Module FileRecArray (FRA : FileRASig).
           [[[ items' ::: Fe * ix |-> e ]]] *
           [[ items' = updN items ix e ]] *
           [[ MSAlloc ms' = MSAlloc ms ]] *
-          [[ MSCache ms' = MSCache ms ]] * 
+          [[ MSCache ms' = MSCache ms ]] *
+          [[ MSIAllocC ms' = MSIAllocC ms ]] *
           [[ MSAllocC ms' = MSAllocC ms ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} put_array lxp ixp inum ix e ms.
@@ -523,6 +540,7 @@ Module FileRecArray (FRA : FileRASig).
     POST:hm' RET:^(ms', r) exists m',
          [[ MSAlloc ms' = MSAlloc ms ]] *
          [[ MSCache ms' = MSCache ms ]] *
+         [[ MSIAllocC ms' = MSIAllocC ms ]] *
          ([[ isError r ]] * 
           LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' \/
           [[ r = OK tt ]] *
@@ -569,7 +587,8 @@ Module FileRecArray (FRA : FileRASig).
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
           [[ MSAlloc ms' = MSAlloc ms ]] *
           [[ MSCache ms' = MSCache ms ]] *
-          [[ MSAllocC ms' = MSAllocC ms ]] * 
+          [[ MSAllocC ms' = MSAllocC ms ]] *
+          [[ MSIAllocC ms' = MSIAllocC ms ]] *
         ( [[ r = None    /\ forall i, i < length items ->
                             cond (selN items i item0) i = false ]] \/
           exists st,
@@ -594,26 +613,26 @@ Module FileRecArray (FRA : FileRASig).
   Hint Extern 0 (okToUnify (rep ?xp _) (rep ?xp _)) => constructor : okToUnify.
 
 
-  Lemma items_wellforemd : forall F xp l m,
+  Lemma items_wellformed : forall F xp l m,
     (F * rep xp l)%pred m -> Forall Rec.well_formed l.
   Proof.
     unfold rep, items_valid; intuition.
     destruct_lift H; auto.
   Qed.
 
-  Lemma items_wellforemd_pimpl : forall xp l,
+  Lemma items_wellformed_pimpl : forall xp l,
     rep xp l =p=> [[ Forall Rec.well_formed l ]] * rep xp l.
   Proof.
     unfold rep, items_valid; cancel.
   Qed.
 
-  Lemma item_wellforemd : forall F xp m l i,
+  Lemma item_wellformed : forall F xp m l i,
     (F * rep xp l)%pred m -> Rec.well_formed (selN l i item0).
   Proof.
     intros.
     destruct (lt_dec i (length l)).
     apply Forall_selN; auto.
-    eapply items_wellforemd; eauto.
+    eapply items_wellformed; eauto.
     rewrite selN_oob by omega.
     apply item0_wellformed.
   Qed.

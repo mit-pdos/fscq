@@ -2548,6 +2548,20 @@ Fixpoint upd_range {T} l start len (v : T) :=
   | S len' => updN (upd_range l (S start) len' v) start v
   end.
 
+Fixpoint upd_range_fast {T} vs start len (v : T) :=
+  match vs with
+  | nil => nil
+  | v' :: vs' =>
+    match start with
+    | S start' => v' :: upd_range_fast vs' start' len v
+    | O =>
+      match len with
+      | O => v' :: vs'
+      | S len' => v :: upd_range_fast vs' O len' v
+      end
+    end
+  end.
+
 Lemma upd_range_0 : forall T l start (v : T),
   upd_range l start 0 v = l.
 Proof.
@@ -2605,6 +2619,22 @@ Proof.
     all : simpl; omega.
   Unshelve.
   eauto.
+Qed.
+
+Theorem upd_range_fast_eq_upd_range' : forall T (l: list T) start len v,
+    start + len <= length l ->
+    upd_range_fast l start len v = upd_range' l start len v.
+Proof.
+  unfold upd_range'.
+  induction l; simpl; intros.
+  - assert (start = 0) by omega.
+    assert (len = 0) by omega.
+    subst; auto.
+  - destruct start, len; simpl.
+    unfold upd_range'; simpl; auto.
+    erewrite IHl; eauto; try omega.
+    erewrite IHl; eauto; try omega.
+    erewrite IHl; eauto; try omega.
 Qed.
 
 Lemma upd_range_concat_hom_small : forall T l start len (v : T) k d,
@@ -2738,6 +2768,27 @@ Proof.
   generalize dependent l.
   induction len; simpl; intros. auto.
   rewrite IHlen. auto.
+Qed.
+
+Lemma upd_range_fast_len_0 : forall T vs start (v : T),
+  upd_range_fast vs start 0 v = vs.
+Proof.
+  induction vs; cbn; intros; auto.
+  destruct start; f_equal; auto.
+Qed.
+
+Theorem upd_range_fast_eq : forall T vs start len (v : T),
+    upd_range_fast vs start len v = upd_range vs start len v.
+Proof.
+  induction vs; cbn; intros.
+  rewrite upd_range_nil. auto.
+  destruct start, len; cbn; auto.
+  rewrite upd_range_hd.
+  cbn; f_equal; auto.
+  rewrite upd_range_fast_len_0. auto.
+  rewrite upd_range_hd. cbn.
+  f_equal.
+  rewrite IHvs. reflexivity.
 Qed.
 
 Hint Rewrite upd_range_upd_range upd_range_hd : lists.

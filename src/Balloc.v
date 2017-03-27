@@ -224,6 +224,28 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
         Ret ^(ms, Some (bn * Defs.itemsz + index))
     end.
 
+  Fixpoint bits_to_freelist (l : list bit) (start : addr) : list addr :=
+    match l with
+    | nil => nil
+    | b :: l' =>
+      let freelist' := bits_to_freelist l' (S start) in
+      if (weq b inuse) then freelist' else
+      if (addr_eq_dec start 0) then freelist' else start :: freelist'
+    end.
+
+  Definition word_to_freelist {sz} (b : word sz) (start : addr) : list addr :=
+    bits_to_freelist (bits b) start.
+
+  Fixpoint itemlist_to_freelist {sz} (bs : list (word sz)) (start : addr) : list addr :=
+    match bs with
+    | nil => nil
+    | b :: bs' => (word_to_freelist b start) ++ (itemlist_to_freelist bs' (start + sz))
+    end.
+
+  Definition get_free_blocks lxp xp ms :=
+    let^ (ms, r) <- Bmp.read lxp xp (BMPLen xp) ms;
+    Ret ^(ms, itemlist_to_freelist r 0).
+
   Definition steal lxp xp bn ms :=
     let index := (bn / Defs.itemsz) in
     let^ (ms, s) <- Bmp.get lxp xp index ms;
@@ -943,13 +965,19 @@ Module BmapAllocCache (Sig : AllocSig).
     Ret (mk_memstate fms freelist0).
 
   Definition alloc lxp xp ms :=
-    match (MSCache ms) with
+    let^ (fms, freelist) <- match (MSCache ms) with
     | nil =>
-      let^ (fms, r) <- Alloc.alloc lxp xp (MSLog ms);
-      Ret ^((mk_memstate fms (MSCache ms)), r)
-    | bn :: freelist =>
+      let^ (fms, freelist) <- Alloc.get_free_blocks lxp xp (MSLog ms);
+      Ret ^(fms, freelist)
+    | _ =>
+      Ret ^(MSLog ms, MSCache ms)
+    end;
+    match freelist with
+    | nil =>
+      Ret ^((mk_memstate fms freelist), None)
+    | bn :: freelist' =>
       fms <- Alloc.steal lxp xp bn (MSLog ms);
-      Ret ^((mk_memstate fms freelist), Some bn)
+      Ret ^((mk_memstate fms freelist'), Some bn)
     end.
 
   Definition free lxp xp bn ms :=
@@ -1817,8 +1845,13 @@ Module IAlloc.
     Definition xparams_ok xp := (BMPLen xp) <= valulen * valulen.
   End Sig.
 
-  Module Alloc := BmapAlloc Sig.
+  Module Alloc := BmapAllocCache Sig.
   Module Defs := Alloc.Defs.
+
+  Definition BmapCacheType := Alloc.BmapCacheType.
+  Definition MSLog := Alloc.MSLog.
+  Definition MSCache := Alloc.MSCache.
+  Definition mk_memstate := Alloc.mk_memstate.
 
   Definition init := Alloc.init.
 
@@ -1836,7 +1869,7 @@ Module IAlloc.
 
   Definition free_ok := Alloc.free_ok.
 
-  Definition items_per_val := Alloc.BmpSig.items_per_val.
+  Definition items_per_val := Alloc.Alloc.BmpSig.items_per_val.
 
   Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
@@ -1862,20 +1895,20 @@ Module IAlloc.
     apply one_lt_pow2.
   Qed.
 
-  Lemma ino_valid_goodSize : forall V FP F l m xp a prd,
-    (F * @rep V FP xp l prd)%pred m ->
+  Lemma ino_valid_goodSize : forall V FP F l m xp a prd allocc,
+    (F * @rep V FP xp l prd allocc)%pred m ->
     ino_valid xp a ->
     goodSize addrlen a.
   Proof.
     unfold rep, ino_valid.
-    unfold Alloc.rep, Alloc.Bmp.rep, Alloc.Bmp.items_valid,
-       Alloc.BmpSig.xparams_ok; intuition.
+    unfold Alloc.rep, Alloc.Alloc.rep, Alloc.Alloc.Bmp.rep, Alloc.Alloc.Bmp.items_valid,
+       Alloc.Alloc.BmpSig.xparams_ok; intuition.
     destruct_lift H.
     eapply xparams_ok_goodSize; eauto.
   Qed.
 
-  Lemma ino_valid_goodSize_pimpl : forall V FP l xp p,
-    @rep V FP xp l p <=p=> [[ forall a, ino_valid xp a -> goodSize addrlen a ]] * rep FP xp l p.
+  Lemma ino_valid_goodSize_pimpl : forall V FP l xp p allocc,
+    @rep V FP xp l p allocc <=p=> [[ forall a, ino_valid xp a -> goodSize addrlen a ]] * rep FP xp l p allocc.
   Proof.
     intros; split.
     unfold pimpl; intros.
@@ -1895,13 +1928,13 @@ Module IAlloc.
     eapply xparams_ok_goodSize; eauto.
   Qed.
 
-  Theorem ino_valid_roundtrip : forall V FP xp a F l m p,
-    (F * @rep V FP xp l p)%pred m ->
+  Theorem ino_valid_roundtrip : forall V FP xp a F l m p allocc,
+    (F * @rep V FP xp l p allocc)%pred m ->
     ino_valid xp a ->
     ino_valid xp (# (natToWord addrlen a)).
   Proof.
-    unfold rep, Alloc.rep, Alloc.Bmp.rep, Alloc.Bmp.items_valid,
-       Alloc.BmpSig.xparams_ok; intuition.
+    unfold rep, Alloc.rep, Alloc.Alloc.rep, Alloc.Alloc.Bmp.rep, Alloc.Alloc.Bmp.items_valid,
+       Alloc.Alloc.BmpSig.xparams_ok; intuition.
     destruct_lift H.
     apply ino_valid_roundtrip'; auto.
   Qed.

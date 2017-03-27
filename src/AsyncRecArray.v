@@ -495,7 +495,7 @@ Module AsyncRecArray (RA : RASig).
   (** write items from a given block index, 
       slots following the items will be cleared *)
   Definition write_aligned xp start (items: itemlist) cs :=
-    let chunks := list_chunk items items_per_val item0 in
+    let chunks := nopad_list_chunk items items_per_val in
     cs <- BUFCACHE.write_range ((RAStart xp) + start) (map block2val chunks) cs;
     Ret cs.
 

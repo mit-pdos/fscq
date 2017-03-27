@@ -477,7 +477,6 @@ withStructFuse pFuseChan pArgs ops handler f =
       mkRead       wrapRead       >>= (#poke struct fuse_operations, read)       pOps 
       mkWrite      wrapWrite      >>= (#poke struct fuse_operations, write)      pOps 
       mkStatFS     wrapStatFS     >>= (#poke struct fuse_operations, statfs)     pOps
-      mkFlush      wrapFlush      >>= (#poke struct fuse_operations, flush)      pOps
       mkRelease    wrapRelease    >>= (#poke struct fuse_operations, release)    pOps 
       mkFSync      wrapFSync      >>= (#poke struct fuse_operations, fsync)      pOps
       -- TODO: Implement these

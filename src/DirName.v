@@ -69,6 +69,11 @@ Proof.
   destruct x3; destruct x4; destruct x5; destruct x6; reflexivity.
 Qed.
 
+Fact ascii2byte_zero : ascii2byte zero = $0.
+Proof.
+  reflexivity.
+Qed.
+
 Fixpoint name2padstring (nbytes : nat) (name : word (nbytes * 8)) : string.
   destruct nbytes.
   refine EmptyString.
@@ -196,6 +201,33 @@ Qed.
 Definition string2name nbytes s := padstring2name nbytes (string_pad nbytes s).
 Definition name2string nbytes name := string_unpad (name2padstring nbytes name).
 
+Fixpoint string2name' (nbytes : nat) (s : string) : word (nbytes * 8).
+  destruct nbytes.
+  refine ($0).
+  destruct s.
+  refine ($0).
+  refine (combine (ascii2byte a) (string2name' nbytes s)).
+Defined.
+
+Theorem string2name_string2name' : forall nbytes s, string2name nbytes s = string2name' nbytes s.
+Proof.
+  unfold string2name.
+  induction nbytes; simpl; eauto.
+  intros.
+  destruct s; simpl.
+  - clear IHnbytes.
+    induction nbytes; simpl.
+    rewrite ascii2byte_zero; reflexivity.
+    rewrite IHnbytes.
+    rewrite ascii2byte_zero.
+    repeat match goal with
+    | [ |- context[natToWord ?len 0] ] => replace (natToWord len 0) with (wzero len) by reflexivity
+    end.
+    rewrite combine_wzero.
+    reflexivity.
+  - f_equal; eauto.
+Qed.
+
 Theorem string2name2string : forall nbytes s,
   length s <= nbytes
   -> nozero s
@@ -299,7 +331,7 @@ Module SDIR.
         length s <= namelen -> nozero s -> sname_valid s
     .
 
-  Definition sname2wname := string2name namelen.
+  Definition sname2wname := string2name' namelen.
   Definition wname2sname := name2string namelen.
 
   Lemma wname_valid_sname_valid : forall x,
@@ -316,7 +348,9 @@ Module SDIR.
   Proof.
     intros; inversion H.
     constructor.
-    unfold sname2wname, string2name.
+    unfold sname2wname.
+    rewrite <- string2name_string2name'.
+    unfold string2name.
     rewrite padstring2name2padstring.
     apply stringpad_wellformed; auto.
     apply string_pad_length.
@@ -327,10 +361,12 @@ Module SDIR.
   Proof.
     split; [split | split ].
     apply wname_valid_sname_valid; auto.
+    unfold sname2wname; rewrite <- string2name_string2name'.
     apply name2string2name.
     inversion H; auto.
     apply sname_valid_wname_valid; auto.
     inversion H.
+    unfold sname2wname; rewrite <- string2name_string2name'.
     apply string2name2string; auto.
   Qed.
 
@@ -503,18 +539,18 @@ Module SDIR.
 
   Definition unlink lxp ixp dnum name ms :=
     If (Bool.bool_dec (is_valid_sname name) true) {
-      let^ (ms, r) <- DIR.unlink lxp ixp dnum (sname2wname name) ms;
-      Ret ^(ms, r)
+      let^ (ms, ix, r) <- DIR.unlink lxp ixp dnum (sname2wname name) ms;
+      Ret ^(ms, ix, r)
     } else {
-      Ret ^(ms, Err ENAMETOOLONG)
+      Ret ^(ms, 0, Err ENAMETOOLONG)
     }.
 
-  Definition link lxp bxp ixp dnum name inum isdir ms :=
+  Definition link lxp bxp ixp dnum name inum isdir ix0 ms :=
     If (Bool.bool_dec (is_valid_sname name) true) {
-      let^ (ms, r) <- DIR.link lxp bxp ixp dnum (sname2wname name) inum isdir ms;
-      Ret ^(ms, r)
+      let^ (ms, ix, r) <- DIR.link lxp bxp ixp dnum (sname2wname name) inum isdir ix0 ms;
+      Ret ^(ms, ix, r)
     } else {
-      Ret ^(ms, Err ENAMETOOLONG)
+      Ret ^(ms, 0, Err ENAMETOOLONG)
     }.
 
   Definition readdir_trans (di : DIR.readent) :=
@@ -533,7 +569,7 @@ Module SDIR.
 
   Definition rep_macro Fi Fm m bxp ixp (inum : addr) dsmap ilist frees ms : @pred _ addr_eq_dec valuset :=
     (exists flist f,
-     [[[ m ::: Fm * BFILE.rep bxp ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) ]]] *
+     [[[ m ::: Fm * BFILE.rep bxp ixp flist ilist frees (BFILE.MSAllocC ms) (BFILE.MSCache ms) (BFILE.MSICache ms) ]]] *
      [[[ flist ::: Fi * inum |-> f ]]] *
      [[ rep f dsmap ]] )%pred.
 
