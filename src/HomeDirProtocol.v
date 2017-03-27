@@ -30,3 +30,15 @@ Proof.
   unfold homedir_rely.
   constructor; hnf; intros; congruence.
 Defined.
+
+Lemma homedir_rely_preserves_subtrees : forall homedirs tid path tree tree' f,
+    find_subtree (homedirs tid ++ path) tree = Some f ->
+    homedir_rely tid homedirs tree tree' ->
+    find_subtree (homedirs tid ++ path) tree' = Some f.
+Proof.
+  unfold homedir_rely; intros.
+  eapply find_subtree_app' in H.
+  destruct H as [subtree_base ?]; intuition.
+  erewrite find_subtree_app; eauto.
+  congruence.
+Qed.

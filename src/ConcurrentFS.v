@@ -118,9 +118,9 @@ Section ConcurrentFS.
       end.
 
   Definition precondition_stable A T (fsspec: FsSpec A T) homes tid :=
-    forall a tree tree', fs_pre (fsspec a) tree ->
+    forall a tree tree', fs_pre (fsspec a) (homes tid) tree ->
                     homedir_rely tid homes tree tree' ->
-                    fs_pre (fsspec a) tree'.
+                    fs_pre (fsspec a) (homes tid) tree'.
 
   Hint Resolve fs_rep_hashmap_incr.
 
@@ -201,7 +201,7 @@ Section ConcurrentFS.
                     {| precondition :=
                          fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired /\
-                         fs_pre (fsspec a) tree /\
+                         fs_pre (fsspec a) (homedirs tid) tree /\
                          precondition_stable fsspec homedirs tid;
                        postcondition :=
                          fun sigma' r =>
@@ -395,7 +395,7 @@ Section ConcurrentFS.
                     {| precondition :=
                          fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired /\
-                         fs_pre (fsspec a) tree /\
+                         fs_pre (fsspec a) (homedirs tid) tree /\
                          precondition_stable fsspec homedirs tid /\
                          update = fs_dirup (fsspec a) /\
                          (forall r tree0,
@@ -533,7 +533,7 @@ Section ConcurrentFS.
                     {| precondition :=
                          fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired /\
-                         fs_pre (fsspec a) tree /\
+                         fs_pre (fsspec a) (homedirs tid) tree /\
                          precondition_stable fsspec homedirs tid /\
                          update = fs_dirup (fsspec a) /\
                          (forall r tree0,
@@ -577,7 +577,7 @@ Section ConcurrentFS.
                     {| precondition :=
                          fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired /\
-                         fs_pre (fsspec a) tree /\
+                         fs_pre (fsspec a) (homedirs tid) tree /\
                          (forall r tree, fs_dirup (fsspec a) r tree = tree) /\
                          precondition_stable fsspec homedirs tid;
                        postcondition :=
@@ -623,9 +623,49 @@ Section ConcurrentFS.
   Qed.
 
   (* translate all system calls for extraction *)
+  (* TODO: add real directory updates to modifying system calls (ie, those that
+  use [write_syscall]'s) *)
 
   Definition file_get_attr inum :=
     retry_readonly_syscall (fun mscs => file_get_attr (fsxp P) inum mscs).
+
+  Theorem file_get_attr_ok : forall tid inum,
+      cprog_spec G tid
+                 (fun '(tree, homedirs, pathname, f) sigma =>
+                    {| precondition :=
+                         fs_inv(P, sigma, tree, homedirs) /\
+                         local_l tid (Sigma.l sigma) = Unacquired /\
+                         find_subtree (homedirs tid ++ pathname) tree = Some (TreeFile inum f);
+                       postcondition :=
+                         fun sigma' r =>
+                           exists tree',
+                             fs_inv(P, sigma', tree', homedirs) /\
+                             homedir_rely tid homedirs tree tree' /\
+                             local_l tid (Sigma.l sigma') = Unacquired /\
+                             match r with
+                             | Done (attr, _) => attr = BFILE.BFAttr f
+                             | TryAgain => False
+                             | SyscallFailed => True
+                             end |})
+                 (file_get_attr inum).
+  Proof.
+    unfold file_get_attr; intros.
+    unfold cprog_spec; intros;
+      eapply cprog_ok_weaken;
+      [ monad_simpl; eapply retry_readonly_syscall_ok;
+        eauto using opt_file_get_attr_ok | ];
+      simplify; finish.
+    unfold precondition_stable; simplify; simpl.
+    eapply homedir_rely_preserves_subtrees; eauto.
+  Qed.
+
+  Definition file_set_attr inum attr :=
+    write_syscall (fun mscs => OptFS.file_set_attr (fsxp P) inum attr mscs)
+                  (fun _ tree => tree).
+
+  Definition create dnum name :=
+    write_syscall (fun mscs => OptFS.create (fsxp P) dnum name mscs)
+                  (fun _ tree => tree).
 
   Definition lookup dnum names :=
     retry_readonly_syscall (fun mscs => lookup (fsxp P) dnum names mscs).
@@ -633,22 +673,12 @@ Section ConcurrentFS.
   Definition read_fblock inum off :=
     retry_readonly_syscall (fun mscs => OptFS.read_fblock (fsxp P) inum off mscs).
 
-  (* TODO: add real directory updates to these modifying system calls *)
-
-  Definition file_set_attr inum attr :=
-    write_syscall (fun mscs => OptFS.file_set_attr (fsxp P) inum attr mscs)
-                  (fun _ tree => tree).
-
   Definition file_truncate inum sz :=
     write_syscall (fun mscs => OptFS.file_truncate (fsxp P) inum sz mscs)
                   (fun _ tree => tree).
 
   Definition update_fblock_d inum off b :=
     write_syscall (fun mscs => OptFS.update_fblock_d (fsxp P) inum off b mscs)
-                  (fun _ tree => tree).
-
-  Definition create dnum name :=
-    write_syscall (fun mscs => OptFS.create (fsxp P) dnum name mscs)
                   (fun _ tree => tree).
 
   Definition rename dnum srcpath srcname dstpath dstname :=

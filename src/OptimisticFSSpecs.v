@@ -8,8 +8,13 @@ Import Errno.
 Import BFile.
 Import OptimisticCache.
 
+(* TODO: FsSpecs must allow the precondition to refer to the homedirs/tid, so
+that the pathnames can be restricted to fall within the current thread's home
+directory; it might be good enough to give them access to only (homedirs
+tid). *)
+
 Record FsSpecParams T :=
-  { fs_pre : dirtree -> Prop;
+  { fs_pre : list string -> dirtree -> Prop;
     fs_post : T -> Prop;
     (* update may use the return value *)
     fs_dirup : T -> dirtree -> dirtree; }.
@@ -23,13 +28,13 @@ Section FsSpecs.
   Definition fs_spec A T (fsspec: FsSpec A T) tid :
     memstate -> LocalLock -> Cache ->
     Spec _ (Result (memstate * T) * Cache) :=
-    fun mscs l c '(F, d, vd, tree, a) sigma =>
+    fun mscs l c '(F, homedir, d, vd, tree, a) sigma =>
       {| precondition :=
            F (Sigma.mem sigma) /\
            cache_rep d c vd /\
            (l = Locked -> d = Sigma.disk sigma) /\
            fs_rep P vd (Sigma.hm sigma) mscs tree /\
-           fs_pre (fsspec a) tree /\
+           fs_pre (fsspec a) homedir tree /\
            local_l tid (Sigma.l sigma) = l;
          postcondition :=
            fun sigma' '(r, c') =>
@@ -67,7 +72,8 @@ Section FsSpecs.
       cprog_spec G tid
                  (fs_spec (fun '(pathname, f) =>
                              {| fs_pre :=
-                                  fun tree => find_subtree pathname tree = Some (TreeFile inum f);
+                                  fun homedir tree =>
+                                    find_subtree (homedir ++ pathname) tree = Some (TreeFile inum f);
                                 fs_post :=
                                   fun '(r, _) => r = BFILE.BFAttr f;
                                 fs_dirup := fun _ tree => tree |}) tid mscs l c)
@@ -95,7 +101,8 @@ Section FsSpecs.
       cprog_spec G tid
                  (fs_spec (fun '(pathname, f) =>
                              {| fs_pre :=
-                                  fun tree => find_subtree pathname tree = Some (TreeFile inum f);
+                                  fun homedir tree =>
+                                    find_subtree (homedir ++ pathname) tree = Some (TreeFile inum f);
                                 fs_post :=
                                   fun '(_, _) => True;
                                 fs_dirup :=
@@ -132,7 +139,9 @@ Section FsSpecs.
       cprog_spec G tid
                  (fs_spec (fun '(pathname, tree_elem) =>
                              {| fs_pre :=
-                                  fun tree => find_subtree pathname tree = Some (TreeDir dnum tree_elem);
+                                  fun homedir tree =>
+                                    exists path, pathname = (homedir ++ path)%list /\
+                                    find_subtree pathname tree = Some (TreeDir dnum tree_elem);
                                 fs_post :=
                                   fun '(_, _) => True;
                                 fs_dirup :=
