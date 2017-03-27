@@ -470,6 +470,7 @@ Module DIR.
              rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms
     POST:hm' RET:^(ms',r)
              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms' *
              [[ listpred readmatch r dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSCache ms' = MSCache ms ]] *
@@ -480,7 +481,7 @@ Module DIR.
   Proof.
     unfold readdir, rep_macro, rep.
     safestep.
-    safestep.
+    step.
     apply readmatch_ok.
   Qed.
 
