@@ -1037,4 +1037,51 @@ Set Implicit Arguments.
     eauto.
   Qed.
 
+  Lemma update_subtree_helper_already_found : forall inum rec l a d,
+      tree_names_distinct (TreeDir inum ((a, d) :: l)) ->
+      List.map (update_subtree_helper rec a) l = l.
+  Proof.
+    intros.
+    inversion H; subst; simpl in *.
+    inversion H3; subst.
+    clear H H3.
+    induction l; simpl in *; intros; auto.
+    unfold update_subtree_helper at 1.
+    destruct a0; simpl in *.
+    destruct (string_dec s a); subst; eauto.
+    - exfalso; eauto.
+    - f_equal.
+      apply IHl; eauto.
+      rewrite List.Forall_forall; simpl; intros.
+      rewrite List.Forall_forall in H2.
+      apply H2; simpl.
+      intuition eauto.
+      intuition.
+      inversion H5; eauto.
+  Qed.
 
+  Lemma alter_to_update : forall pathname subtree up tree,
+      tree_names_distinct tree ->
+      find_subtree pathname tree = Some subtree ->
+      alter_subtree pathname up tree =
+      update_subtree pathname (up subtree) tree.
+  Proof.
+    induction pathname; simpl; intros.
+    inversion H0; subst; auto.
+    destruct tree; try congruence.
+    induction l; simpl in *; try congruence.
+    unfold find_subtree_helper in H0 at 1.
+    destruct a0; simpl.
+    destruct (string_dec s a); subst; eauto.
+    f_equal.
+    f_equal.
+    f_equal; eauto.
+
+    erewrite ?update_subtree_helper_already_found by eauto; auto.
+
+    f_equal.
+    f_equal.
+
+    repeat specialize (IHl ltac:(eauto)).
+    inversion IHl; eauto.
+  Qed.

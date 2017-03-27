@@ -9,7 +9,6 @@ Require Import OptimisticFSSpecs.
 Require Import ConcurCompile.
 
 Import FSLayout BFile.
-Import DirTree.
 
 Import OptimisticCache.
 
@@ -398,11 +397,12 @@ Section ConcurrentFS.
                          local_l tid (Sigma.l sigma) = Unacquired /\
                          fs_pre (fsspec a) (homedirs tid) tree /\
                          precondition_stable fsspec homedirs tid /\
-                         update = fs_dirup (fsspec a) /\
-                         (forall r tree0,
+                         (forall r tree', homedir_rely tid homedirs tree tree' ->
+                                     update r tree' = fs_dirup (fsspec a) r tree') /\
+                         (forall r tree',
                              fs_post (fsspec a) r ->
                              homedir_guarantee tid homedirs
-                                               tree0 (update r tree0));
+                                               tree' (update r tree'));
                        postcondition :=
                          fun sigma' r =>
                            exists tree' tree'',
@@ -452,6 +452,10 @@ Section ConcurrentFS.
           [ SepAuto.cancel | intuition eauto ].
         norm_eq.
         exfalso; eauto.
+        match goal with
+        | [ H: context[update _ _ = _] |- _ ] =>
+          erewrite H; eauto
+        end.
         congruence.
 
         (* unlock *)
@@ -461,6 +465,10 @@ Section ConcurrentFS.
         eauto.
         unfold G, fs_guarantee.
         exists (fs_dirup (fsspec a0) r tree'), (fs_dirup (fsspec a0) r tree').
+        match goal with
+        | [ H: context[update _ _ = _] |- _ ] =>
+          erewrite H in * by eauto
+        end.
         descend; intuition eauto.
         unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
           [ SepAuto.cancel | intuition eauto ].
@@ -478,6 +486,10 @@ Section ConcurrentFS.
         destruct (guard r0); simpl.
         * (* succeeded, return *)
           step; finish.
+          match goal with
+          | [ H: context[update _ _ = _] |- _ ] =>
+            erewrite H in * by eauto
+          end.
           unfold fs_invariant; SepAuto.pred_apply; SepAuto.norm;
             [ SepAuto.cancel | intuition eauto ].
           congruence.
@@ -506,6 +518,11 @@ Section ConcurrentFS.
         step; finish.
         (* error must be a cache miss if we're trying again *)
         destruct e; try discriminate.
+        match goal with
+        | [ H: context[update _ _ = _] |- _ ] =>
+          erewrite H in * by (etransitivity; eauto)
+        end.
+        eauto.
 
         step; simplify.
         intuition trivial.
@@ -536,11 +553,12 @@ Section ConcurrentFS.
                          local_l tid (Sigma.l sigma) = Unacquired /\
                          fs_pre (fsspec a) (homedirs tid) tree /\
                          precondition_stable fsspec homedirs tid /\
-                         update = fs_dirup (fsspec a) /\
-                         (forall r tree0,
+                         (forall r tree', homedir_rely tid homedirs tree tree' ->
+                                     update r tree' = fs_dirup (fsspec a) r tree') /\
+                         (forall r tree',
                              fs_post (fsspec a) r ->
                              homedir_guarantee tid homedirs
-                                               tree0 (update r tree0));
+                                               tree' (update r tree'));
                        postcondition :=
                          fun sigma' r =>
                            exists tree' tree'',
@@ -606,9 +624,6 @@ Section ConcurrentFS.
     - eapply cprog_ok_weaken;
       [ monad_simpl; eapply write_syscall_ok; eauto | ];
       simplify; finish.
-      extensionality r.
-      extensionality tree0.
-      eauto.
 
       step; finish.
       destruct r; intuition subst.
@@ -715,10 +730,15 @@ Section ConcurrentFS.
     intuition eauto.
     eapply homedir_rely_preserves_subtrees; eauto.
 
-    extensionality r; simplify.
-    extensionality tree'; simplify.
-    destruct b; auto.
-    admit. (* dirtree_alter_file to update_subtree *)
+    destruct a; auto.
+    unfold dirtree_alter_file.
+    eapply homedir_rely_preserves_subtrees in H3; eauto.
+    erewrite DirTreeInodes.alter_inum_to_alter_path; eauto.
+    erewrite DirTreeNames.alter_to_update; eauto; simpl; auto.
+    (* distinctness conditions on tree - can be maintained due to fs_inv  *)
+    admit.
+    admit.
+    admit.
 
     destruct a; try reflexivity.
     admit. (* dirtree_guarantee allows updating inside homedirs (obvious after
