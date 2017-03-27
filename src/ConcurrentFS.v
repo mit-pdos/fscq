@@ -1,3 +1,5 @@
+Require Import FunctionalExtensionality.
+
 Require Import CCL.
 Require Import Hashmap.
 
@@ -105,11 +107,13 @@ Section ConcurrentFS.
                       end)
              end).
 
-  Definition retry_syscall T (p: OptimisticProg T) (update: T -> dirtree -> dirtree) :=
+  (* to finish up read-only syscalls if they want to update the memory, we have
+  to run them under write_syscall *)
+  Definition retry_readonly_syscall T (p: OptimisticProg T) :=
     r <- readonly_syscall p;
       match r with
       | Done v => Ret (Done v)
-      | TryAgain => write_syscall p update
+      | TryAgain => write_syscall p (fun _ tree => tree)
       | SyscallFailed => Ret SyscallFailed
       end.
 
@@ -410,7 +414,7 @@ Section ConcurrentFS.
                                         Sigma.init_disk sigma' = Sigma.disk sigma'
                              | TryAgain => tree'' = tree' /\
                                           Sigma.init_disk sigma' = Sigma.disk sigma'
-                             | SyscallFailed => True
+                             | SyscallFailed => tree'' = tree'
                              end |})
                  (write_syscall p update).
   Proof using Type.
@@ -547,7 +551,7 @@ Section ConcurrentFS.
                                         tree'' = fs_dirup (fsspec a) v tree' /\
                                         Sigma.init_disk sigma' = Sigma.disk sigma'
                              | TryAgain => False
-                             | SyscallFailed => True
+                             | SyscallFailed => tree'' = tree'
                              end |})
                  (write_syscall p update).
   Proof using Type.
@@ -563,84 +567,135 @@ Section ConcurrentFS.
     destruct r; (intuition eauto); discriminate.
   Qed.
 
+  Theorem retry_readonly_syscall_ok : forall T (p: OptimisticProg T) A
+                               (fsspec: FsSpec A T) tid,
+      (forall mscs c l, cprog_spec G tid
+                              (fs_spec P fsspec tid mscs l c)
+                              (p mscs l c)) ->
+      cprog_spec G tid
+                 (fun '(tree, homedirs, a) sigma =>
+                    {| precondition :=
+                         fs_inv(P, sigma, tree, homedirs) /\
+                         local_l tid (Sigma.l sigma) = Unacquired /\
+                         fs_pre (fsspec a) tree /\
+                         (forall r tree, fs_dirup (fsspec a) r tree = tree) /\
+                         precondition_stable fsspec homedirs tid;
+                       postcondition :=
+                         fun sigma' r =>
+                           exists tree',
+                             fs_inv(P, sigma', tree', homedirs) /\
+                             homedir_rely tid homedirs tree tree' /\
+                             local_l tid (Sigma.l sigma') = Unacquired /\
+                             match r with
+                             | Done v => fs_post (fsspec a) v
+                             | TryAgain => False
+                             | SyscallFailed => True
+                             end |})
+                 (retry_readonly_syscall p).
+  Proof.
+    unfold retry_readonly_syscall; intros.
+
+    unfold cprog_spec; intros.
+    eapply cprog_ok_weaken;
+      [ monad_simpl; eapply readonly_syscall_ok; eauto | ];
+      simplify; finish.
+
+    destruct r.
+    - step; finish.
+    - eapply cprog_ok_weaken;
+      [ monad_simpl; eapply write_syscall_ok; eauto | ];
+      simplify; finish.
+      extensionality r.
+      extensionality tree0.
+      eauto.
+
+      step; finish.
+      destruct r; intuition subst.
+      match goal with
+      | [ H: context[fs_dirup (fsspec _)] |- _ ] =>
+        rewrite H
+      end.
+      etransitivity; eauto.
+      etransitivity; eauto.
+
+      destruct_goal_matches; intuition eauto.
+    - step; finish.
+  Qed.
+
   (* translate all system calls for extraction *)
 
   Definition file_get_attr inum :=
-    retry_syscall (fun mscs => file_get_attr (fsxp P) inum mscs)
-                  (fun _ tree => tree).
+    retry_readonly_syscall (fun mscs => file_get_attr (fsxp P) inum mscs).
 
   Definition lookup dnum names :=
-    retry_syscall (fun mscs => lookup (fsxp P) dnum names mscs)
-                  (fun _ tree => tree).
+    retry_readonly_syscall (fun mscs => lookup (fsxp P) dnum names mscs).
 
   Definition read_fblock inum off :=
-    retry_syscall (fun mscs => OptFS.read_fblock (fsxp P) inum off mscs)
-                  (fun _ tree => tree).
+    retry_readonly_syscall (fun mscs => OptFS.read_fblock (fsxp P) inum off mscs).
+
+  (* TODO: add real directory updates to these modifying system calls *)
 
   Definition file_set_attr inum attr :=
-    retry_syscall (fun mscs => OptFS.file_set_attr (fsxp P) inum attr mscs)
+    write_syscall (fun mscs => OptFS.file_set_attr (fsxp P) inum attr mscs)
                   (fun _ tree => tree).
 
   Definition file_truncate inum sz :=
-    retry_syscall (fun mscs => OptFS.file_truncate (fsxp P) inum sz mscs)
+    write_syscall (fun mscs => OptFS.file_truncate (fsxp P) inum sz mscs)
                   (fun _ tree => tree).
 
   Definition update_fblock_d inum off b :=
-    retry_syscall (fun mscs => OptFS.update_fblock_d (fsxp P) inum off b mscs)
+    write_syscall (fun mscs => OptFS.update_fblock_d (fsxp P) inum off b mscs)
                   (fun _ tree => tree).
 
   Definition create dnum name :=
-    retry_syscall (fun mscs => OptFS.create (fsxp P) dnum name mscs)
+    write_syscall (fun mscs => OptFS.create (fsxp P) dnum name mscs)
                   (fun _ tree => tree).
 
   Definition rename dnum srcpath srcname dstpath dstname :=
-    retry_syscall (fun mscs => OptFS.rename (fsxp P) dnum srcpath srcname dstpath dstname mscs)
+    write_syscall (fun mscs => OptFS.rename (fsxp P) dnum srcpath srcname dstpath dstname mscs)
                   (fun _ tree => tree).
 
   Definition delete dnum name :=
-    retry_syscall (fun mscs => OptFS.delete (fsxp P) dnum name mscs)
+    write_syscall (fun mscs => OptFS.delete (fsxp P) dnum name mscs)
                   (fun _ tree => tree).
 
   (* wrap unverified syscalls *)
 
   Definition statfs :=
-    retry_syscall (fun mscs => OptFS.statfs (fsxp P) mscs)
-                  (fun _ tree => tree).
+    retry_readonly_syscall (fun mscs => OptFS.statfs (fsxp P) mscs).
 
   Definition mkdir dnum name :=
-    retry_syscall (fun mscs => OptFS.mkdir (fsxp P) dnum name mscs)
+    write_syscall (fun mscs => OptFS.mkdir (fsxp P) dnum name mscs)
                   (fun _ tree => tree).
 
   Definition file_get_sz inum :=
-    retry_syscall (fun mscs => OptFS.file_get_sz (fsxp P) inum mscs)
-                  (fun _ tree => tree).
+    retry_readonly_syscall (fun mscs => OptFS.file_get_sz (fsxp P) inum mscs).
 
   Definition file_set_sz inum sz :=
-    retry_syscall (fun mscs => OptFS.file_set_sz (fsxp P) inum sz mscs)
+    write_syscall (fun mscs => OptFS.file_set_sz (fsxp P) inum sz mscs)
                   (fun _ tree => tree).
 
   Definition readdir dnum :=
-    retry_syscall (fun mscs => OptFS.readdir (fsxp P) dnum mscs)
-                  (fun _ tree => tree).
+    retry_readonly_syscall (fun mscs => OptFS.readdir (fsxp P) dnum mscs).
 
   Definition tree_sync :=
-    retry_syscall (fun mscs => OptFS.tree_sync (fsxp P) mscs)
+    write_syscall (fun mscs => OptFS.tree_sync (fsxp P) mscs)
                   (fun _ tree => tree).
 
   Definition file_sync inum :=
-    retry_syscall (fun mscs => OptFS.file_sync (fsxp P) inum mscs)
+    write_syscall (fun mscs => OptFS.file_sync (fsxp P) inum mscs)
                   (fun _ tree => tree).
 
   Definition update_fblock inum off b :=
-    retry_syscall (fun mscs => OptFS.update_fblock (fsxp P) inum off b mscs)
+    write_syscall (fun mscs => OptFS.update_fblock (fsxp P) inum off b mscs)
                   (fun _ tree => tree).
 
   Definition mksock dnum name :=
-    retry_syscall (fun mscs => OptFS.mksock (fsxp P) dnum name mscs)
+    write_syscall (fun mscs => OptFS.mksock (fsxp P) dnum name mscs)
                   (fun _ tree => tree).
 
   Definition umount :=
-    retry_syscall (fun mscs => OptFS.umount (fsxp P) mscs)
+    write_syscall (fun mscs => OptFS.umount (fsxp P) mscs)
                   (fun _ tree => tree).
 
 End ConcurrentFS.
