@@ -815,7 +815,9 @@ Module AFS.
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
   POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-     ([[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+       [[ ok = false ]] *
+       (LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+        [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] \/
       [[ ok = true  ]] * exists d tree' f' ilist',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
         [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees mscs')]]] *
@@ -1149,7 +1151,8 @@ Module AFS.
     POST:hm' RET:^(mscs',r)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
       ([[ isError r ]] *
-        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm'
+       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]]
       \/ exists inum,
        [[ r = OK inum ]] * exists d tree' ilist' frees',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
