@@ -2017,6 +2017,21 @@ Proof.
   rewrite app_nil_r; auto.
 Qed.
 
+Lemma selN_map_eq: forall T T' (f : T -> T') (l l' : list T) d,
+  (forall i, f (selN l i d) = f (selN l' i d)) ->
+  length l = length l' ->
+  map f l = map f l'.
+Proof.
+  induction l; cbn; intros.
+  rewrite length_nil; auto.
+  autorewrite with list. auto.
+  destruct l'; cbn in *. omega.
+  rewrite (H 0).
+  f_equal; auto.
+  eapply IHl.
+  intros i. apply (H (S i)).
+  omega.
+Qed.
 
 Lemma combine_repeat : forall A B n (a : A) (b : B),
   combine (repeat a n) (repeat b n) = repeat (a, b) n.

@@ -189,6 +189,7 @@ Module RADefs (RA : RASig).
   Definition list_chunk {A} l sz def : list (list A) :=
     list_chunk' l sz def (divup (length l) sz).
 
+  (** cut list l into chunks of lists of length sz, don't pad the tailing list *)
   Definition nopad_list_chunk {A} l sz : list (list A) :=
     nopad_list_chunk' l sz (divup (length l) sz).
 
@@ -207,6 +208,19 @@ Module RADefs (RA : RASig).
   Qed.
   Hint Rewrite list_chunk_length : core.
 
+  Lemma nopad_list_chunk'_length: forall A nr (l : list A) sz,
+    length (nopad_list_chunk' l sz nr) = nr.
+  Proof.
+    induction nr; simpl; auto.
+  Qed.
+
+  Lemma nopad_list_chunk_length : forall A (l : list A) sz,
+    length (nopad_list_chunk l sz) = divup (length l) sz.
+  Proof.
+    unfold nopad_list_chunk; intros.
+    apply nopad_list_chunk'_length.
+  Qed.
+  Hint Rewrite nopad_list_chunk_length : core.
 
   Theorem list_chunk'_wellformed : forall nr items,
     Forall Rec.well_formed items
@@ -297,6 +311,29 @@ Module RADefs (RA : RASig).
     = setlen (skipn (i * items_per_val) l) items_per_val item0.
   Proof.
     intros; apply list_chunk_spec'; eauto.
+  Qed.
+
+  Lemma nopad_list_chunk'_spec: forall A nr i (l : list A) sz (b0 : list A),
+    i < nr ->
+    selN (nopad_list_chunk' l sz nr) i b0 = firstn sz (skipn (i * sz) l).
+  Proof.
+    induction nr; cbn; intros.
+    omega.
+    destruct i; cbn; auto.
+    rewrite IHnr by omega.
+    rewrite plus_comm.
+    rewrite skipn_skipn.
+    reflexivity.
+  Qed.
+
+  Lemma nopad_list_chunk_spec: forall l i,
+    i < divup (length l) items_per_val ->
+    selN (nopad_list_chunk l items_per_val) i block0 =
+    firstn items_per_val (skipn (i * items_per_val) l).
+  Proof.
+    unfold nopad_list_chunk.
+    intros.
+    rewrite nopad_list_chunk'_spec; auto.
   Qed.
 
   Lemma list_chunk'_skipn_1: forall A n l k (e0 : A),
@@ -502,6 +539,15 @@ Module RADefs (RA : RASig).
     setoid_rewrite list_chunk_length; auto.
   Qed.
 
+  Lemma nopad_ipack_length : forall (l : itemlist),
+    length (nopad_ipack l) = divup (length l) items_per_val.
+  Proof.
+    unfold nopad_ipack; cbn.
+    intros.
+    rewrite map_length.
+    rewrite nopad_list_chunk_length; auto.
+  Qed.
+
   Lemma ipack_app: forall na a b,
     length a = na * items_per_val ->
     ipack (a ++ b) = ipack a ++ ipack b.
@@ -590,6 +636,31 @@ Module RADefs (RA : RASig).
     intros.
     rewrite Forall_forall in *; intros.
     apply H; eapply in_skipn_in; eauto.
+  Qed.
+
+  Lemma to_word_setlen: forall n (l : Rec.data (Rec.ArrayF itemtype n)),
+    length l < n ->
+    @Rec.to_word (Rec.ArrayF itemtype n) (setlen l n (Rec.of_word $0)) = Rec.to_word l.
+  Proof.
+    cbn; intros.
+    rewrite setlen_oob by omega.
+    generalize dependent itemtype.
+    induction n; cbn; intros.
+    f_equal. auto using app_nil_r.
+    destruct l; cbn in *;
+      repeat rewrite Rec.cons_to_word;
+      repeat rewrite Rec.to_of_id.
+    clear IHn. clear H.
+    induction n; cbn.
+    unfold Rec.to_word.
+    rewrite combine_wzero.
+    reflexivity.
+    rewrite Rec.cons_to_word, Rec.to_of_id.
+    rewrite IHn.
+    rewrite combine_wzero.
+    reflexivity.
+    f_equal.
+    apply IHn. omega.
   Qed.
 
   Local Hint Resolve Forall_append well_formed_firstn well_formed_skipn.
@@ -730,6 +801,28 @@ Module RADefs (RA : RASig).
     instantiate (1:=length l).
     apply fold_left_iunpack_length.
     auto.
+  Qed.
+
+  Lemma ipack_nopad_ipack_eq : forall x,
+    ipack x = nopad_ipack x.
+  Proof.
+    unfold ipack, nopad_ipack.
+    intros.
+    eapply selN_map_eq; cbn; intros.
+    destruct (lt_dec i (divup (length x) items_per_val)).
+    - rewrite list_chunk_spec.
+      rewrite nopad_list_chunk_spec by auto.
+      unfold block2val, blocktype in *.
+      destruct (lt_dec (length x - i * items_per_val) items_per_val).
+      rewrite to_word_setlen.
+      rewrite firstn_oob; auto.
+      all: rewrite ?skipn_length; auto.
+      cbv in *; omega.
+      rewrite setlen_inbound; auto.
+      rewrite skipn_length; omega.
+    - repeat rewrite selN_oob by (autorewrite with core; apply Nat.le_ngt; eauto).
+      reflexivity.
+    - autorewrite with core. auto.
   Qed.
 
   Lemma mod_lt_length_firstn_skipn : forall A ix (l : list A),
