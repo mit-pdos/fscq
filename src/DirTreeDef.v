@@ -99,6 +99,36 @@ Set Implicit Arguments.
       end
     end.
 
+  Fixpoint alter_subtree (fnlist : list string) (subtree : dirtree -> dirtree) (tree : dirtree) :=
+    match fnlist with
+    | nil => subtree tree
+    | name :: rest =>
+      match tree with
+      | TreeFile _ _ => tree
+      | TreeDir inum ents =>
+        TreeDir inum (map (update_subtree_helper (alter_subtree rest subtree) name) ents)
+      end
+    end.
+
+  Theorem update_subtree_as_alter : forall fnlist subtree,
+      alter_subtree fnlist (fun _ => subtree) =
+      update_subtree fnlist subtree.
+  Proof.
+    induction fnlist; simpl; intros; eauto.
+    rewrite IHfnlist; eauto.
+  Qed.
+
+  Fixpoint alter_inum inum (subtree: dirtree -> dirtree) tree : dirtree :=
+    match tree with
+    | TreeFile inum' _ => if addr_eq_dec inum inum' then subtree tree else tree
+    | TreeDir inum' ents =>
+      if addr_eq_dec inum inum' then subtree tree
+      else TreeDir inum'
+                   (map (fun ent => let '(name, item) := ent in
+                                 (name, alter_inum inum subtree item)) ents)
+    end.
+
+
   Fixpoint delete_from_list (name : string) (ents : list (string * dirtree)) :=
     match ents with
     | nil => nil

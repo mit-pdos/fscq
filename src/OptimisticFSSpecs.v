@@ -102,7 +102,8 @@ Section FsSpecs.
                  (fs_spec (fun '(pathname, f) =>
                              {| fs_pre :=
                                   fun homedir tree =>
-                                    find_subtree (homedir ++ pathname) tree = Some (TreeFile inum f);
+                                    (exists path, pathname = (homedir ++ path)%list) /\
+                                    find_subtree pathname tree = Some (TreeFile inum f);
                                 fs_post :=
                                   fun '(_, _) => True;
                                 fs_dirup :=
@@ -140,7 +141,7 @@ Section FsSpecs.
                  (fs_spec (fun '(pathname, tree_elem) =>
                              {| fs_pre :=
                                   fun homedir tree =>
-                                    exists path, pathname = (homedir ++ path)%list /\
+                                    (exists path, pathname = (homedir ++ path)%list) /\
                                     find_subtree pathname tree = Some (TreeDir dnum tree_elem);
                                 fs_post :=
                                   fun '(_, _) => True;

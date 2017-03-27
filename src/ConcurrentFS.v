@@ -9,6 +9,7 @@ Require Import OptimisticFSSpecs.
 Require Import ConcurCompile.
 
 Import FSLayout BFile.
+Import DirTree.
 
 Import OptimisticCache.
 
@@ -659,9 +660,74 @@ Section ConcurrentFS.
     eapply homedir_rely_preserves_subtrees; eauto.
   Qed.
 
+  Definition dirtree_alter_file inum (up:BFILE.bfile -> BFILE.bfile)
+    : dirtree -> dirtree :=
+    alter_inum inum (fun subtree =>
+                       match subtree with
+                       | TreeFile inum' f =>
+                         TreeFile inum' (up f)
+                       | TreeDir _ _ => subtree
+                       end).
+
   Definition file_set_attr inum attr :=
     write_syscall (fun mscs => OptFS.file_set_attr (fsxp P) inum attr mscs)
-                  (fun _ tree => tree).
+                  (fun '(b, _) tree =>
+                     match b with
+                     | true => dirtree_alter_file
+                                inum (fun f => BFILE.mk_bfile (BFILE.BFData f) attr (BFILE.BFCache f))
+                                tree
+                     | false => tree
+                     end).
+
+  Theorem file_set_attr_ok : forall tid inum attr,
+      cprog_spec G tid
+                 (fun '(tree, homedirs, pathname, f) sigma =>
+                    {| precondition :=
+                         fs_inv(P, sigma, tree, homedirs) /\
+                         local_l tid (Sigma.l sigma) = Unacquired /\
+                         find_subtree (homedirs tid ++ pathname) tree = Some (TreeFile inum f);
+                       postcondition :=
+                         fun sigma' r =>
+                           exists tree' tree'',
+                             fs_inv(P, sigma', tree'', homedirs) /\
+                             homedir_rely tid homedirs tree tree' /\
+                             local_l tid (Sigma.l sigma') = Unacquired /\
+                             match r with
+                             | Done (b, _) =>
+                               match b with
+                               | true =>
+                                 let f' := BFILE.mk_bfile (BFILE.BFData f) attr (BFILE.BFCache f) in
+                                 tree'' = update_subtree (homedirs tid ++ pathname) (TreeFile inum f') tree'
+                               | false => tree'' = tree'
+                               end
+                             | TryAgain => False
+                             | SyscallFailed => tree'' = tree'
+                             end |})
+                 (file_set_attr inum attr).
+  Proof.
+    unfold file_set_attr; intros.
+    unfold cprog_spec; intros;
+      eapply cprog_ok_weaken;
+      [ monad_simpl; eapply write_syscall_ok;
+        eauto using opt_file_set_attr_ok | ];
+      simplify; finish.
+    unfold precondition_stable; simplify; simpl.
+    intuition eauto.
+    eapply homedir_rely_preserves_subtrees; eauto.
+
+    extensionality r; simplify.
+    extensionality tree'; simplify.
+    destruct b; auto.
+    admit. (* dirtree_alter_file to update_subtree *)
+
+    destruct a; try reflexivity.
+    admit. (* dirtree_guarantee allows updating inside homedirs (obvious after
+    changing to update_subtree) *)
+
+    step; finish.
+    destruct r; intuition eauto.
+    destruct_goal_matches; subst; eauto.
+  Admitted.
 
   Definition create dnum name :=
     write_syscall (fun mscs => OptFS.create (fsxp P) dnum name mscs)
