@@ -164,8 +164,97 @@ Module CacheOneDir.
 
   Hint Resolve Dcache.find_2.
 
-  Theorem get_dcache_ok : forall dnum ms,
-    {< F Fm Fi m0 m dmap ilist frees lxp ixp bxp f,
+  Lemma readmatch_neq: forall F a b m,
+    (F * SDIR.readmatch a * SDIR.readmatch b)%pred m ->
+    fst a <> fst b.
+  Proof.
+    unfold_sep_star.
+    unfold SDIR.readmatch, ptsto.
+    destruct a, b; cbn.
+    intros. repeat deex.
+    apply mem_disjoint_union in H.
+    contradiction H.
+    eauto.
+  Qed.
+
+  Lemma fill_cache_add_comm : forall entries a cache F,
+    F * listpred SDIR.readmatch (a :: entries) =p=>
+    F * listpred SDIR.readmatch (a :: entries) *
+    [[ Dcache.Equal (fill_cache (a :: entries) cache)
+      (Dcache.add (fst a) (Some (snd a)) (fill_cache entries cache)) ]].
+  Proof.
+    unfold Dcache.Equal; simpl.
+    induction entries; intros; simpl.
+    cancel.
+    do 2 intro; pred_apply; cancel.
+    enough (fst a <> fst a0).
+    all : repeat match goal with
+    | _ => reflexivity
+    | [ H: _ |- _ ] => rewrite H; clear H
+    | [ |- context [Dcache.find ?k1 (Dcache.add ?k2 _ _)] ] =>
+      progress (rewrite ?DcacheDefs.MapFacts.add_eq_o,
+                       ?DcacheDefs.MapFacts.add_neq_o by auto)
+      || destruct (string_dec k1 k2); subst
+    | [ |- context [Dcache.find _ (fill_cache _ (Dcache.add (fst ?a) _ _))] ] =>
+      eapply pimpl_trans in H as ?; [ | | apply (IHentries a)]; try cancel; destruct_lifts
+    end.
+    eapply readmatch_neq with (m := m).
+    pred_apply; cancel.
+  Qed.
+
+  Lemma fill_cache_correct: forall entries name v dmap,
+    Dcache.MapsTo name v (fst (fill_cache entries (Dcache.empty _), 0)) ->
+    listpred SDIR.readmatch entries dmap ->
+    dmap name = v.
+  Proof.
+    induction entries; cbn; intros.
+    rewrite DcacheDefs.MapFacts.empty_mapsto_iff in *.
+    intuition.
+    eapply pimpl_trans in H0; [ | | apply fill_cache_add_comm with (F := emp)]; try cancel.
+    destruct_lifts.
+    rewrite H3 in H.
+    revert H0.
+    unfold_sep_star. unfold SDIR.readmatch at 1, ptsto.
+    intros. repeat deex.
+    destruct (string_dec name a_1); subst.
+    apply DcacheDefs.mapsto_add in H; subst.
+    apply mem_union_addr; auto.
+    apply Dcache.add_3 in H; eauto.
+    rewrite mem_union_sel_r; auto.
+  Qed.
+
+  Theorem init_cache_ok : forall bxp lxp ixp dnum ms,
+    {< F Fm Fi m0 m dmap ilist frees f,
+    PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms
+    POST:hm' RET:^(ms', cache)
+           exists f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
+           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
+           [[ MSAlloc ms' = MSAlloc ms ]] *
+           [[ MSAllocC ms' = MSAllocC ms ]]
+    CRASH:hm'
+           LOG.intact lxp F m0 hm'
+    >} init_cache lxp ixp dnum ms.
+  Proof.
+    unfold init_cache, rep_macro.
+    step.
+    step.
+    step.
+    msalloc_eq. cancel.
+    eexists. split.
+    left. reflexivity.
+    eauto using fill_cache_correct.
+    step.
+    step.
+    msalloc_eq. cancel.
+    eexists. split.
+    left. reflexivity.
+    eauto using fill_cache_correct.
+  Qed.
+
+  Theorem get_dcache_ok : forall lxp ixp dnum ms,
+    {< F Fm Fi m0 m dmap ilist frees bxp f,
     PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms
     POST:hm' RET:^(ms', cache)
@@ -177,10 +266,11 @@ Module CacheOneDir.
            [[ BFILE.BFCache f' = Some cache ]]
     CRASH:hm'
            LOG.intact lxp F m0 hm'
-    >} get_dcache dnum ms.
+    >} get_dcache lxp ixp dnum ms.
   Proof.
     unfold get_dcache, rep_macro.
     step.
+    destruct a0.
     step.
     step.
     step.
