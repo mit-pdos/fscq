@@ -203,7 +203,7 @@ Module CacheOneDir.
   Qed.
 
   Lemma fill_cache_correct: forall entries name v dmap,
-    Dcache.MapsTo name v (fst (fill_cache entries (Dcache.empty _), 0)) ->
+    Dcache.MapsTo name v (fill_cache entries (Dcache.empty _)) ->
     listpred SDIR.readmatch entries dmap ->
     dmap name = v.
   Proof.
@@ -231,6 +231,7 @@ Module CacheOneDir.
            exists f',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
+           [[ BFILE.BFCache f' = Some cache ]] *
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]]
     CRASH:hm'
@@ -253,6 +254,8 @@ Module CacheOneDir.
     eauto using fill_cache_correct.
   Qed.
 
+  Hint Extern 1 ({{_}} Bind (init_cache _ _ _ _) _) => apply init_cache_ok : prog.
+
   Theorem get_dcache_ok : forall lxp ixp dnum ms,
     {< F Fm Fi m0 m dmap ilist frees bxp f,
     PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
@@ -270,11 +273,10 @@ Module CacheOneDir.
   Proof.
     unfold get_dcache, rep_macro.
     step.
-    destruct a0.
     step.
     step.
     step.
-    destruct (r_). subst. simpl in *. cancel.
+    Unshelve. all: eauto.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (get_dcache _ _) _) => apply get_dcache_ok : prog.
