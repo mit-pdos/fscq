@@ -4,6 +4,7 @@ Require Import Hashmap.
 Require Import OptimisticFS.
 Require Import FSProtocol.
 
+Import Errno.
 Import BFile.
 Import OptimisticCache.
 
@@ -120,13 +121,55 @@ Section FsSpecs.
     step; finish.
     destruct_goal_matches; SepAuto.destruct_lifts; finish.
     unfold or in *; intuition; SepAuto.destruct_lifts; try discriminate.
-    unfold fs_rep; finish.
-
     unfold or in *; intuition; SepAuto.destruct_lifts; try discriminate.
-    (* AFS.file_set_attr_ok is too weak: needs to re-prove DIRTREE.rep *)
-    admit.
-
+    unfold fs_rep; finish.
     eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
-  Admitted.
+  Qed.
+
+  Hint Extern 1 {{ OptFS.create _ _ _ _ _ _; _ }} => apply OptFS.create_ok : prog.
+
+  Theorem opt_create_ok : forall G dnum name mscs l tid c,
+      cprog_spec G tid
+                 (fs_spec (fun '(pathname, tree_elem) =>
+                             {| fs_pre :=
+                                  fun tree => find_subtree pathname tree = Some (TreeDir dnum tree_elem);
+                                fs_post :=
+                                  fun '(_, _) => True;
+                                fs_dirup :=
+                                  fun '(r, _) tree =>
+                                    match r  with
+                                    | OK inum =>
+                                      tree_graft dnum tree_elem pathname name (TreeFile inum BFILE.bfile0) tree
+                                    | _ => tree
+                                    end; |}) tid mscs l c)
+                 (OptFS.create (fsxp P) dnum name mscs l c).
+  Proof.
+    unfold fs_spec; intros.
+    step; simpl in *; safe_intuition.
+    unfold Prog.pair_args_helper in *.
+    match goal with
+    | [ H: fs_rep _ _ _ _ _ |- _ ] =>
+      unfold fs_rep in H; simplify
+    end.
+    destruct frees; finish.
+    SepAuto.pred_apply; SepAuto.cancel; eauto.
+
+    step; finish.
+    destruct_goal_matches; SepAuto.destruct_lifts;
+      unfold or in *; intuition;
+        repeat match goal with
+               | [ H: isError _ |- _ ] =>
+                 inversion H; subst; clear H
+               | [ H: OK _ = OK _ |- _ ] =>
+                 inversion H; subst; clear H
+               | [ H: Err _ = OK _ |- _ ] =>
+                 exfalso; inversion H
+               | _ => unfold exis in *; deex
+               | _ => progress SepAuto.destruct_lifts
+               end.
+    unfold fs_rep; finish.
+    unfold fs_rep; finish.
+    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
+  Qed.
 
 End FsSpecs.
