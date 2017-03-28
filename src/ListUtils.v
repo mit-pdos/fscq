@@ -2527,6 +2527,30 @@ Proof.
   omega.
 Qed.
 
+Lemma cuttail_app_one: forall T (l : list T) n i d,
+  n < length l ->
+  i = length l - S n ->
+  cuttail (S n) l ++ [selN l i d] = cuttail n l.
+Proof.
+  unfold cuttail.
+  intros; subst.
+  destruct (length l) eqn:?. omega.
+  rewrite Nat.sub_succ, Nat.sub_succ_l by omega.
+  erewrite firstn_S_selN; auto.
+  omega.
+Qed.
+
+Lemma cuttail_concat_hom: forall T (l : list (list T)) n k,
+  (Forall (fun x => length x = k) l) ->
+  cuttail (n * k) (concat l) = concat (cuttail n l).
+Proof.
+  unfold cuttail; intros.
+  erewrite concat_hom_length by eauto.
+  rewrite <- Nat.mul_sub_distr_r.
+  rewrite concat_hom_firstn by eauto.
+  reflexivity.
+Qed.
+
 Lemma incl_cons2 : forall T (a b : list T) (v : T), 
   incl a b
   -> incl (v :: a) (v :: b).

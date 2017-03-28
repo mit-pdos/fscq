@@ -803,19 +803,20 @@ Module BlockPtr (BPtr : BlockPtrSig).
         | 0 => Ret ^(ms, indbns)
         | S indlvl' =>
           let N := (NIndirect ^ (S indlvl')) in
-          r <- ForN i < NIndirect
+          r <- ForEach b indbns' indbns
             Hashmap hm
             Ghost [ F Fm iblocks l_part l bxp crash m0 m ]
             Loopvar [ ms r ]
             Invariant
+              exists remlen, [[ remlen = length indbns' ]] *
               LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
               [[[ m ::: Fm * indrep_n_helper bxp ir iblocks *
                         listmatch (fun ibn' l' => indrep_n_tree indlvl' bxp (# ibn') l')
                           iblocks l_part ]]] *
-              [[ r = firstn (i * (NIndirect ^ indlvl)) l ]]
+              [[ r = cuttail (remlen * (NIndirect ^ indlvl)) l ]]
             OnCrash crash
             Begin
-              let^ (ms, v) <- indread indlvl' lxp #(selN indbns i IndRec.Defs.item0) ms;
+              let^ (ms, v) <- indread indlvl' lxp (# b) ms;
               Ret ^(ms, r ++ v)
             Rof ^(ms, nil);
             Ret r
@@ -844,20 +845,27 @@ Module BlockPtr (BPtr : BlockPtrSig).
     + hoare.
       - erewrite indrep_n_tree_repeat; eauto. auto.
       - rewrite indrep_n_helper_valid by omega. cancel.
-      - rewrite indrep_n_helper_length_piff. cancel.
-        rewrite firstn_oob by (unfold IndRec.Defs.item in *; simpl in *; omega).
-        indrep_n_extract. cancel.
+      - rewrite firstn_oob by indrep_n_tree_bound.
+        unfold cuttail. rewrite sub_le_eq_0; auto.
+        erewrite concat_hom_length by eauto.
         indrep_n_tree_bound.
-      - rewrite indrep_n_helper_length_piff, listmatch_length_pimpl in *; destruct_lifts.
-        rewrite concat_hom_firstn by eauto.
-        match goal with [|- context [selN ?l ?n ?d] ] =>
-          replace (selN l n d) with (concat [selN l n d]) by (simpl; rewrite app_nil_r; auto)
-        end. rewrite <- concat_app.
-        rewrite <- firstn_plusone_selN by omega.
-        erewrite <- concat_hom_firstn by eauto.
-        rewrite plus_comm. simpl. auto.
-      - apply firstn_oob.
-        erewrite indrep_n_tree_length by eauto. auto.
+      - rewrite firstn_oob in * by indrep_n_tree_bound; subst.
+        rewrite listmatch_extract.
+        rewrite selN_app2.
+        rewrite sub_le_eq_0 by reflexivity; cbn [selN].
+        cancel.
+        all : autorewrite with list; cbn; omega.
+      - rewrite firstn_oob in * by indrep_n_tree_bound; subst.
+        rewrite listmatch_length_pimpl in *; destruct_lifts.
+        rewrite indrep_n_helper_length_piff in *; destruct_lifts.
+        autorewrite with list in *; cbn [length] in *.
+        rewrite <- (Nat.mul_1_l (NIndirect * NIndirect ^ indlvl)) at 1.
+        rewrite <- Nat.mul_add_distr_r.
+        repeat rewrite cuttail_concat_hom by eauto.
+        erewrite concat_build_app with (lb := [_]) by
+          (cbn [concat]; autorewrite with list; eauto).
+        rewrite cuttail_app_one by omega; auto.
+      - rewrite cuttail_0. auto.
       - apply LOG.rep_hashmap_subset; eauto.
     Grab Existential Variables.
       all : eauto; split.
