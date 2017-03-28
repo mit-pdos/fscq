@@ -11,7 +11,7 @@
 /* Measure creating a large file and overwriting that file */
 
 #define WSIZE 4096
-#define FILESIZE 10 * 1024 * 1024
+#define FILESIZE 50 * 1024 * 1024
 #define NAMESIZE 100
 
 static char name[NAMESIZE];
@@ -103,7 +103,7 @@ int writefile()
       printf("%s: write %s failed %s\n", prog, name, strerror(errno));
       exit(1);
     }
-    if ((i * WSIZE) % (1024 * 1024) == 0) {
+    if ((i * WSIZE) % (10 * 1024 * 1024) == 0) {
       if (fdatasync(fd) < 0) {
 	  printf("%s: fsync %s failed %s\n", prog, name, strerror(errno));
 	  exit(1);
@@ -124,6 +124,11 @@ int main(int argc, char *argv[])
   struct timeval after;
   float tput;
 
+  if (argc != 2) {
+    printf("Usage: %s basedir\n", argv[0]);
+    exit(-1);
+  }
+  
   prog = argv[0];
   dir = argv[1];
   sprintf(name, "%s/d", dir);

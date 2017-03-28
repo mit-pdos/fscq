@@ -54,6 +54,8 @@ Ltac inv_exec :=
     inv_exec' H
   | [ H: exec _ _ _ (AlertModified) _ |- _ ] =>
     inv_exec' H
+  | [ H: exec _ _ _ (Debug _ _) _ |- _ ] =>
+    inv_exec' H
   | [ H: exec _ _ _ (Bind _ _) _ |- _ ] =>
     inv_exec' H
   | [ H: exec _ _ _ _ _ |- _ ] =>
@@ -81,6 +83,15 @@ Section MonadLaws.
 
   Theorem bind_left_alert_modified : forall T' (p: unit -> prog T'),
       Bind (AlertModified) p ~= p tt.
+  Proof.
+    split; intros.
+    - inv_exec.
+      inv_exec; eauto.
+    - eauto.
+  Qed.
+
+  Theorem bind_left_debug : forall T' (p: unit -> prog T') s a,
+      Bind (Debug s a) p ~= p tt.
   Proof.
     split; intros.
     - inv_exec.
@@ -129,6 +140,9 @@ Ltac monad_simpl_one :=
   | [ |- {{_}} Bind (AlertModified) _ ] =>
     eapply corr2_equivalence;
     [ | apply bind_left_alert_modified ]
+  | [ |- {{_}} Bind (Debug _ _) _ ] =>
+    eapply corr2_equivalence;
+    [ | apply bind_left_debug ]
   | [ |- {{_}} Bind _ Ret ] =>
     eapply corr2_equivalence;
     [ | apply bind_right_id ]
