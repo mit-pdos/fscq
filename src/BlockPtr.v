@@ -803,7 +803,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
         | 0 => Ret ^(ms, indbns)
         | S indlvl' =>
           let N := (NIndirect ^ (S indlvl')) in
-          r <- ForEach b indbns' indbns
+          r <- ForEach b indbns' (rev indbns)
             Hashmap hm
             Ghost [ F Fm iblocks l_part l bxp crash m0 m ]
             Loopvar [ ms r ]
@@ -817,7 +817,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
             OnCrash crash
             Begin
               let^ (ms, v) <- indread indlvl' lxp (# b) ms;
-              Ret ^(ms, r ++ v)
+              Ret ^(ms, v ++ r)
             Rof ^(ms, nil);
             Ret r
       end
