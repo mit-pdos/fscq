@@ -13,17 +13,17 @@ Import FSLayout BFile.
 
 Import OptimisticCache.
 
+Inductive SyscallResult {T} :=
+| Done (v:T)
+| TryAgain
+| SyscallFailed.
+
+Arguments SyscallResult T : clear implicits.
+
 Section ConcurrentFS.
 
   Variable P:FsParams.
   Definition G := fs_guarantee P.
-
-  Inductive SyscallResult {T} :=
-  | Done (v:T)
-  | TryAgain
-  | SyscallFailed.
-
-  Arguments SyscallResult T : clear implicits.
 
   Definition OptimisticProg T :=
     memstate ->
