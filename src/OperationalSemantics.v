@@ -109,6 +109,10 @@ Module Exec.
       R m vm hm (Ret v) (Finished m vm hm v)
   | XAlertModified : forall m vm hm,
       R m vm hm (AlertModified) (Finished m vm hm tt)
+  | XDebug : forall m vm hm s a,
+      R m vm hm (Debug s a) (Finished m vm hm tt)
+  | XRdtsc : forall m vm hm t,
+      R m vm hm (Rdtsc) (Finished m vm hm t)
   | XStep : forall T m vm hm (p: prog T) m' m'' vm' hm' v,
       step m vm hm p m' vm' hm' v ->
       sync_R m' m'' ->
@@ -269,6 +273,8 @@ Proof.
   intros.
   generalize dependent d.
   induction H; subst; intros; simpl.
+  - eauto 10.
+  - eauto 10.
   - eauto 10.
   - eauto 10.
   - eapply step_sync_later in H0; eauto; deex.

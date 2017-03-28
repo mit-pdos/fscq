@@ -835,7 +835,8 @@ Module GLog.
         [[ log_valid ents ds!! ]]
     POST:hm' RET:^(ms', r)
         ([[ r = false /\ length ents > LogLen xp ]] *
-          << F, rep: xp (Cached ds) ms' hm' >>)
+         << F, rep: xp (Cached ds) ms' hm' >> *
+        [[ ms' = ms ]])
      \/ ([[ r = true  ]] *
           << F, rep: xp (Cached (pushd (replay_disk ents (latest ds)) ds)) ms' hm' >>)
     CRASH:hm'

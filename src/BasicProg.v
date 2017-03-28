@@ -190,6 +190,24 @@ Qed.
 
 Hint Extern 1 ({{_}} Bind (Hash _) _) => apply hash_ok : prog.
 
+Theorem rdtsc_ok:
+  {< (_: unit),
+  PRE:hm    emp
+  POST:hm'
+    RET:t     emp * [[ hm' = hm ]]
+  CRASH:hm' emp * [[ hm' = hm ]]
+  >} Rdtsc.
+Proof.
+  unfold corr2; intros.
+  destruct_lift H.
+  inv_exec.
+  - inv_exec' H10.
+    eapply H4; eauto.
+    pred_apply; cancel.
+Qed.
+
+Hint Extern 1 ({{_}} Bind (Rdtsc) _) => apply rdtsc_ok : prog.
+
 (** program equivalence and monad laws *)
 
 Definition If_ T P Q (b : {P} + {Q}) (p1 p2 : prog T) :=

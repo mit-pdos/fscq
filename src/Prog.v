@@ -123,6 +123,10 @@ Inductive exec : forall T, rawdisk -> varmem -> hashmap -> prog T -> outcome T -
     exec m vm hm (Ret v) (Finished m vm hm v)
 | XAlertModified : forall m vm hm,
     exec m vm hm (AlertModified) (Finished m vm hm tt)
+| XDebug : forall m vm hm s a,
+    exec m vm hm (Debug s a) (Finished m vm hm tt)
+| XRdtsc : forall m vm hm t,
+    exec m vm hm (Rdtsc) (Finished m vm hm t)
 | XStep : forall T m vm hm (p: prog T) m' m'' vm' hm' v,
     step m vm hm p m' vm' hm' v ->
     possible_sync m' m'' ->
