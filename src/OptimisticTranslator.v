@@ -37,6 +37,8 @@ Section OptimisticTranslator.
     fun l cs => match p with
            | Prog.Ret v => Ret (Success NoChange v, cs)
            | Prog.AlertModified => Ret (Success Modified tt, cs)
+           | Prog.Debug _ _ => Ret (Success NoChange tt, cs)
+           | Prog.Rdtsc => Ret (Success NoChange 0, cs)
            | Prog.Read a => do '(v, cs) <- CacheRead cs a l;
                              match v with
                              | Some v => Ret (Success NoChange v, cs)
