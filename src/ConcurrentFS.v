@@ -413,6 +413,39 @@ Section ConcurrentFS.
 
   Hint Resolve fs_rep_tree_names_distinct fs_rep_tree_inodes_distinct.
 
+  Definition allowed_fs_update tid homedirs tree T (post: T -> Prop) (update: T -> dirtree -> dirtree) :=
+    forall r tree',
+      homedir_rely tid homedirs tree tree' ->
+      post r ->
+      DirTreeNames.tree_names_distinct tree' ->
+      DirTreeInodes.tree_inodes_distinct tree' ->
+      homedir_guarantee tid homedirs tree' (update r tree').
+
+  Lemma allowed_fs_update_apply : forall tid homedirs tree T (post: T -> Prop) update r tree',
+      allowed_fs_update tid homedirs tree post update ->
+      homedir_rely tid homedirs tree tree' ->
+      post r ->
+      DirTreeNames.tree_names_distinct tree' ->
+      DirTreeInodes.tree_inodes_distinct tree' ->
+      homedir_guarantee tid homedirs tree' (update r tree').
+  Proof.
+    unfold allowed_fs_update; eauto.
+  Qed.
+
+  Lemma is_allowed_fs_update : forall tid homedirs tree T (post: T -> Prop) update,
+      (forall r tree',
+          homedir_rely tid homedirs tree tree' ->
+          post r ->
+          DirTreeNames.tree_names_distinct tree' ->
+          DirTreeInodes.tree_inodes_distinct tree' ->
+          homedir_guarantee tid homedirs tree' (update r tree')) ->
+      allowed_fs_update tid homedirs tree post update.
+  Proof.
+    unfold allowed_fs_update; eauto.
+  Qed.
+
+  Opaque allowed_fs_update.
+
   Theorem write_syscall_ok' : forall T (p: OptimisticProg T) A
                                 (fsspec: FsSpec A T) update tid,
       (forall mscs c, cprog_spec G tid
@@ -426,10 +459,7 @@ Section ConcurrentFS.
                          fs_pre (fsspec a) (homedirs tid) tree /\
                          precondition_stable fsspec homedirs tid /\
                          same_fs_update tid homedirs tree update (fs_dirup (fsspec a)) /\
-                         (forall r tree',
-                             fs_post (fsspec a) r ->
-                             homedir_guarantee tid homedirs
-                                               tree' (update r tree'));
+                         allowed_fs_update tid homedirs tree (fs_post (fsspec a)) update;
                        postcondition :=
                          fun sigma' r =>
                            exists tree' tree'',
@@ -484,6 +514,7 @@ Section ConcurrentFS.
           erewrite H; eauto
         end.
         congruence.
+        eapply allowed_fs_update_apply; eauto.
 
         (* unlock *)
         step.
@@ -551,6 +582,9 @@ Section ConcurrentFS.
           erewrite H in *; eauto
         end.
         etransitivity; eauto.
+        eapply is_allowed_fs_update; intros; eauto.
+        eapply allowed_fs_update_apply; eauto.
+        etransitivity; eauto.
 
         step; simplify.
         intuition trivial.
@@ -582,10 +616,7 @@ Section ConcurrentFS.
                          fs_pre (fsspec a) (homedirs tid) tree /\
                          precondition_stable fsspec homedirs tid /\
                          same_fs_update tid homedirs tree update (fs_dirup (fsspec a)) /\
-                         (forall r tree',
-                             fs_post (fsspec a) r ->
-                             homedir_guarantee tid homedirs
-                                               tree' (update r tree'));
+                         allowed_fs_update tid homedirs tree (fs_post (fsspec a)) update;
                        postcondition :=
                          fun sigma' r =>
                            exists tree' tree'',
@@ -638,7 +669,7 @@ Section ConcurrentFS.
                              | SyscallFailed => True
                              end |})
                  (retry_readonly_syscall p).
-  Proof.
+  Proof using Type.
     unfold retry_readonly_syscall; intros.
 
     unfold cprog_spec; intros.
@@ -651,6 +682,7 @@ Section ConcurrentFS.
     - eapply cprog_ok_weaken;
       [ monad_simpl; eapply write_syscall_ok; eauto | ];
       simplify; finish.
+      eapply is_allowed_fs_update; intros; reflexivity.
 
       step; finish.
       destruct r; intuition subst.
@@ -727,6 +759,7 @@ Section ConcurrentFS.
                     {| precondition :=
                          fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired /\
+                         homedir_disjoint homedirs tid /\
                          find_subtree (homedirs tid ++ pathname) tree = Some (TreeFile inum f);
                        postcondition :=
                          fun sigma' r =>
@@ -764,14 +797,17 @@ Section ConcurrentFS.
     erewrite DirTreeInodes.alter_inum_to_alter_path; eauto.
     erewrite DirTreeNames.alter_to_update; eauto; simpl; auto.
 
-    destruct a; try reflexivity.
-    admit. (* dirtree_guarantee allows updating inside homedirs (obvious after
-    changing to update_subtree) *)
+    eapply is_allowed_fs_update; intros.
+    destruct_goal_matches.
+    unfold dirtree_alter_file.
+    eapply homedir_rely_preserves_subtrees in H3; eauto.
+    erewrite DirTreeInodes.alter_inum_to_alter_path; eauto.
+    eapply alter_homedir_rely; eauto.
 
     step; finish.
     destruct r; intuition eauto.
     destruct_goal_matches; subst; eauto.
-  Admitted.
+  Qed.
 
   Definition create dnum name :=
     write_syscall (fun mscs => OptFS.create (fsxp P) dnum name mscs)

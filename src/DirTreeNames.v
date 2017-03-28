@@ -1085,3 +1085,49 @@ Set Implicit Arguments.
     repeat specialize (IHl ltac:(eauto)).
     inversion IHl; eauto.
   Qed.
+
+ Lemma alter_subtree_path_notfound: forall p tree up,
+    tree_names_distinct tree ->
+    find_subtree p tree = None ->
+    alter_subtree p up tree = tree.
+  Proof.
+    induction p; intros; subst.
+    - simpl in *. exfalso. inversion H0.
+    - destruct tree; simpl; eauto.
+      f_equal.
+      induction l; subst; simpl; eauto.
+      destruct a0.
+      destruct (string_dec a s); subst.
+      simpl.
+      destruct (string_dec s s); try congruence.
+      rewrite update_subtree_notfound; eauto.
+      erewrite IHp; eauto.
+      simpl in H0.
+      destruct (string_dec s s) in H0; try congruence.
+      eapply tree_names_distinct_nodup in H.
+      simpl in H.
+      inversion H; eauto.
+      simpl.
+      destruct (string_dec s a); try congruence.
+      f_equal.
+      eapply IHl.
+      eapply tree_name_distinct_rest in H; eauto.
+      simpl in H0.
+      destruct (string_dec s a) in H0; try congruence.
+      simpl; eauto.
+  Qed.
+
+  Lemma find_prefix_alter : forall prefix path tree subtree up,
+      find_subtree prefix tree = Some subtree ->
+      find_subtree prefix (alter_subtree (prefix ++ path) up tree) =
+      Some (alter_subtree path up subtree).
+  Proof.
+    induction prefix; simpl; intros.
+    inversion H; auto.
+    destruct tree; try congruence.
+    induction l; simpl in *; try congruence.
+    destruct a0; simpl in *.
+    destruct (string_dec s a) eqn:?; subst; simpl in *;
+      rewrite Heqs0;
+      eauto.
+  Qed.
