@@ -2353,15 +2353,19 @@ Module BUFCACHE.
     >} sync_vecs a l cs.
   Proof.
     unfold sync_vecs; intros.
-    safestep. auto. auto.
     step.
-    step.
-    apply arrayN_unify.
-    apply vssync_vecs_progress; omega.
-    step.
-    rewrite firstn_oob; auto.
+    apply app_nil_l.
     cancel.
-    Unshelve. all: eauto; try exact tt.
+    step.
+    rewrite vssync_vecs_length.
+    eapply Forall_inv with (P := fun x => x < length vs).
+    eauto using forall_app_l.
+    step.
+    apply cons_nil_app.
+    rewrite vssync_vecs_app; cancel.
+    step.
+    rewrite app_nil_r. cancel.
+    Unshelve. all: eauto; constructor.
   Qed.
 
 

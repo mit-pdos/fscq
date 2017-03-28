@@ -604,6 +604,7 @@ Module SDIR.
   Notation MSAlloc := BFILE.MSAlloc.
   Notation MSCache := BFILE.MSCache.
   Notation MSAllocC := BFILE.MSAllocC.
+  Notation MSICache := BFILE.MSICache.
 
 
   Theorem lookup_ok : forall lxp bxp ixp dnum name ms,
@@ -679,6 +680,7 @@ Module SDIR.
              rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms
     POST:hm' RET:^(ms', r)
              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms' *
              [[ listpred readmatch r dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSAllocC ms' = MSAllocC ms ]] *
@@ -689,7 +691,7 @@ Module SDIR.
   Proof.
     unfold readdir.
     safestep. eauto.
-    safestep.
+    step.
     eapply readdir_trans_addr_ok; eauto.
   Qed.
 

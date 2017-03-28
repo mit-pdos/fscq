@@ -483,6 +483,25 @@ Module AsyncRecArray (RA : RASig).
     simplen.
   Qed.
 
+  Lemma vsupd_range_nopad_unsync_array : forall xp start (items : itemlist) old_vs,
+    items_valid xp start items ->
+    length old_vs = divup (length items) items_per_val ->
+    arrayS (RAStart xp + start) (vsupd_range old_vs (nopad_ipack items))
+      =p=> unsync_array xp start items.
+  Proof.
+    unfold vsupd_range, unsync_array, rep_common, eqlen.
+    intros.
+    rewrite nopad_ipack_length in *.
+    rewrite firstn_oob by omega.
+    rewrite skipn_oob by omega.
+    cancel.
+    apply arrayN_unify.
+    rewrite app_nil_r.
+    f_equal.
+    auto using ipack_nopad_ipack_eq.
+    autorewrite with core list. auto.
+  Qed.
+
   Lemma write_aligned_length_helper : forall n l,
     n <= length (map block2val (list_chunk l items_per_val item0)) ->
     n <= divup (length l) items_per_val.
@@ -514,14 +533,13 @@ Module AsyncRecArray (RA : RASig).
   Proof.
     unfold write_aligned, avail_rep.
     step.
-    simplen.
+    cbn. simplen.
     step.
-    setoid_rewrite vsupd_range_unsync_array; auto.
-    simplen.
-
+    apply vsupd_range_nopad_unsync_array; auto.
     xcrash.
     rewrite vsupd_range_length; auto.
-    simplen; rewrite Nat.min_l; eauto.
+    simplen.
+    setoid_rewrite nopad_list_chunk_length; auto.
   Qed.
 
 

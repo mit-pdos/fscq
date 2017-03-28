@@ -118,12 +118,11 @@ Module CacheOneDir.
     let^ (ms, r) <- SDIR.readdir lxp ixp dnum ms;
     Ret ^(ms, r).
 
-
   Definition rep f (dsmap : @mem string string_dec (addr * bool)) : Prop :=
     SDIR.rep f dsmap /\
-    exists cache, (BFILE.BFCache f = Some cache \/ BFILE.BFCache f = None /\ cache = (Dcache.empty _, 0)) /\
-    forall name v,
-    Dcache.MapsTo name v (fst cache) -> dsmap name = v.
+    (BFILE.BFCache f = None \/ exists cache, (BFILE.BFCache f = Some cache) /\
+    (forall name v, Dcache.find name (fst cache) = Some v -> dsmap name = v) /\
+     (forall name, Dcache.find name (fst cache) = None -> dsmap name = None)).
 
   Definition rep_macro Fi Fm m bxp ixp (inum : addr) dsmap ilist frees f ms : @pred _ addr_eq_dec valuset :=
     (exists flist,
@@ -136,17 +135,14 @@ Module CacheOneDir.
   Lemma rep_mem_eq : forall f m1 m2,
     rep f m1 -> rep f m2 -> m1 = m2.
   Proof.
-    unfold rep; intuition.
-    eapply SDIR.rep_mem_eq; eauto.
+    unfold rep.
+    intuition eauto using SDIR.rep_mem_eq.
   Qed.
 
   Theorem bfile0_empty : rep BFILE.bfile0 empty_mem.
   Proof.
     unfold rep; intuition.
     apply SDIR.bfile0_empty.
-    eexists. intuition.
-    apply DcacheDefs.MapProperties.F.empty_mapsto_iff in H.
-    exfalso; eauto.
   Qed.
 
   Theorem crash_rep : forall f f' m,
@@ -157,15 +153,119 @@ Module CacheOneDir.
     unfold rep; intuition.
     eapply SDIR.crash_rep; eauto.
     inversion H; intuition subst; simpl.
-    eexists; intuition.
-    apply DcacheDefs.MapProperties.F.empty_mapsto_iff in H0.
-    exfalso; eauto.
+    intuition auto.
+    eapply SDIR.crash_rep; eauto.
+    cbv [BFILE.file_crash] in *.
+    repeat deex.
+    intuition auto.
   Qed.
 
   Hint Resolve Dcache.find_2.
 
-  Theorem get_dcache_ok : forall dnum ms,
-    {< F Fm Fi m0 m dmap ilist frees lxp ixp bxp f,
+  Lemma readmatch_neq: forall F a b m,
+    (F * SDIR.readmatch a * SDIR.readmatch b)%pred m ->
+    fst a <> fst b.
+  Proof.
+    unfold_sep_star.
+    unfold SDIR.readmatch, ptsto.
+    destruct a, b; cbn.
+    intros. repeat deex.
+    apply mem_disjoint_union in H.
+    contradiction H.
+    eauto.
+  Qed.
+
+  Lemma fill_cache_add_comm : forall entries a cache F,
+    F * listpred SDIR.readmatch (a :: entries) =p=>
+    F * listpred SDIR.readmatch (a :: entries) *
+    [[ Dcache.Equal (fill_cache (a :: entries) cache)
+      (Dcache.add (fst a) (Some (snd a)) (fill_cache entries cache)) ]].
+  Proof.
+    unfold Dcache.Equal; simpl.
+    induction entries; intros; simpl.
+    cancel.
+    do 2 intro; pred_apply; cancel.
+    enough (fst a <> fst a0).
+    all : repeat match goal with
+    | _ => reflexivity
+    | [ H: _ |- _ ] => rewrite H; clear H
+    | [ |- context [Dcache.find ?k1 (Dcache.add ?k2 _ _)] ] =>
+      progress (rewrite ?DcacheDefs.MapFacts.add_eq_o,
+                       ?DcacheDefs.MapFacts.add_neq_o by auto)
+      || destruct (string_dec k1 k2); subst
+    | [ |- context [Dcache.find _ (fill_cache _ (Dcache.add (fst ?a) _ _))] ] =>
+      eapply pimpl_trans in H as ?; [ | | apply (IHentries a)]; try cancel; destruct_lifts
+    end.
+    eapply readmatch_neq with (m := m).
+    pred_apply; cancel.
+  Qed.
+
+  Lemma fill_cache_correct: forall entries dmap,
+    let cache := (fill_cache entries (Dcache.empty _)) in
+    listpred SDIR.readmatch entries dmap ->
+    (forall name v, Dcache.find name cache = Some v -> dmap name = v) /\
+    (forall name, Dcache.find name cache = None -> dmap name = None).
+  Proof.
+    induction entries; cbn; intros.
+    intuition congruence.
+    eapply pimpl_trans in H; [ | | apply fill_cache_add_comm with (F := emp)]; try cancel.
+    destruct_lifts.
+    revert H.
+    unfold_sep_star. unfold SDIR.readmatch at 1, ptsto.
+    intros. repeat deex.
+    rewrite H2 in H0.
+    destruct (string_dec name a_1); subst.
+    rewrite DcacheDefs.MapFacts.add_eq_o in H0; subst; auto.
+    cbn in *.
+    rewrite mem_union_sel_l; try congruence.
+    eauto using mem_disjoint_either.
+    rewrite DcacheDefs.MapFacts.add_neq_o in H0; eauto.
+    rewrite mem_union_sel_r; eauto.
+    edestruct IHentries; eauto.
+    rewrite H2 in *.
+    destruct (string_dec name a_1); subst.
+    rewrite DcacheDefs.MapFacts.add_eq_o in * by auto.
+    congruence.
+    rewrite mem_union_sel_r by eauto.
+    rewrite DcacheDefs.MapFacts.add_neq_o in * by auto.
+    edestruct IHentries; eauto.
+  Qed.
+
+  Theorem init_cache_ok : forall bxp lxp ixp dnum ms,
+    {< F Fm Fi m0 m dmap ilist frees f,
+    PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms
+    POST:hm' RET:^(ms', cache)
+           exists f',
+           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
+           rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
+           [[ BFILE.BFCache f' = Some cache ]] *
+           [[ MSAlloc ms' = MSAlloc ms ]] *
+           [[ MSAllocC ms' = MSAllocC ms ]]
+    CRASH:hm'
+           LOG.intact lxp F m0 hm'
+    >} init_cache lxp ixp dnum ms.
+  Proof.
+    unfold init_cache, rep_macro.
+    step.
+    step.
+    step.
+    msalloc_eq. cancel.
+    right.
+    repeat eexists; intuition eauto;
+      edestruct fill_cache_correct; eauto.
+    step.
+    step.
+    msalloc_eq. cancel.
+    right.
+    repeat eexists; intuition eauto;
+      edestruct fill_cache_correct; eauto.
+  Qed.
+
+  Hint Extern 1 ({{_}} Bind (init_cache _ _ _ _) _) => apply init_cache_ok : prog.
+
+  Theorem get_dcache_ok : forall lxp ixp dnum ms,
+    {< F Fm Fi m0 m dmap ilist frees bxp f,
     PRE:hm LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms
     POST:hm' RET:^(ms', cache)
@@ -177,17 +277,17 @@ Module CacheOneDir.
            [[ BFILE.BFCache f' = Some cache ]]
     CRASH:hm'
            LOG.intact lxp F m0 hm'
-    >} get_dcache dnum ms.
+    >} get_dcache lxp ixp dnum ms.
   Proof.
     unfold get_dcache, rep_macro.
     step.
     step.
     step.
     step.
-    destruct (r_). subst. simpl in *. cancel.
+    Unshelve. all: eauto.
   Qed.
 
-  Hint Extern 1 ({{_}} Bind (get_dcache _ _) _) => apply get_dcache_ok : prog.
+  Hint Extern 1 ({{_}} Bind (get_dcache _ _ _ _) _) => apply get_dcache_ok : prog.
 
   Ltac subst_cache :=
     repeat match goal with
@@ -223,87 +323,21 @@ Module CacheOneDir.
     destruct o; [ or_r | or_l ]; cancel.
     apply any_sep_star_ptsto. subst_cache; eauto.
     unfold notindomain. subst_cache; eauto.
+    repeat ( denote! (SDIR.rep _ _) as Hx; clear Hx ).
+    or_l; cancel.
+    unfold notindomain. subst_cache; eauto.
 
     step.
-    step.
-    destruct (r_); subst; simpl in *. cancel.
-
-    eexists; intuition eauto.
-
-    (* Prove that the new cache is valid *)
-    destruct (string_dec name0 name); subst.
-    {
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply DcacheDefs.mapsto_add in Hm.
-      unfold notindomain in *; congruence.
-    }
-    {
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply Dcache.add_3 in Hm; subst_cache; eauto.
-    }
-
-    step.
-    destruct (r_); subst; simpl in *. cancel.
-
-    eexists; intuition eauto.
-    destruct (string_dec name0 name); subst.
-    {
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply DcacheDefs.mapsto_add in Hm.
-      denote! (_ dmap) as Hd.
-      eapply ptsto_valid' in Hd.
-      congruence.
-    }
-    {
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply Dcache.add_3 in Hm; subst_cache; eauto.
-    }
-
-    step.
-
     repeat ( denote! (SDIR.rep _ _) as Hx; clear Hx ).
     destruct o; [ or_r | or_l ]; cancel.
     apply any_sep_star_ptsto. subst_cache; eauto.
     unfold notindomain. subst_cache; eauto.
-
-    step.
-    step.
-    destruct (r_); subst; simpl in *. cancel.
-    eexists; intuition eauto.
-    destruct (string_dec name0 name); subst.
-    {
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply DcacheDefs.mapsto_add in Hm.
-      subst_cache; eauto.
-    }
-    {
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply Dcache.add_3 in Hm; subst_cache; eauto.
-    }
-
-    step.
-    destruct (r_); subst; simpl in *. cancel.
-
-    eexists; intuition eauto.
-    destruct (string_dec name0 name); subst.
-    {
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply DcacheDefs.mapsto_add in Hm.
-      denote! (_ dmap) as Hd.
-      eapply ptsto_valid' in Hd.
-      congruence.
-    }
-    {
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply Dcache.add_3 in Hm; subst_cache; eauto.
-    }
+    repeat ( denote! (SDIR.rep _ _) as Hx; clear Hx ).
+    or_l; cancel.
+    unfold notindomain. subst_cache; eauto.
 
   Unshelve.
-    all: try exact unit.
     all: eauto.
-    all: intros.
-    all: try exact tt.
-    all: try exact (Dcache.empty unit).
   Qed.
 
   Theorem readdir_ok : forall lxp bxp ixp dnum ms,
