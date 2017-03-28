@@ -182,4 +182,53 @@ Section FsSpecs.
     eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
   Qed.
 
+  Hint Extern 1 {{ OptFS.file_truncate _ _ _ _ _ _; _ }} => apply OptFS.file_truncate_ok : prog.
+
+  Theorem opt_file_truncate_ok : forall G inum sz mscs l tid c,
+      cprog_spec G tid
+                 (fs_spec (fun '(pathname, f) =>
+                             {| fs_pre :=
+                                  fun homedir tree =>
+                                    (exists path, pathname = (homedir ++ path)%list) /\
+                                    find_subtree pathname tree = Some (TreeFile inum f);
+                                fs_post :=
+                                  fun '(_, _) => True;
+                                fs_dirup :=
+                                  fun '(r, _) tree =>
+                                    match r with
+                                    | OK _ =>
+                                      let f' := BFILE.mk_bfile (ListUtils.setlen (BFILE.BFData f) sz ((Word.natToWord _ 0), nil)) (BFILE.BFAttr f) (BFILE.BFCache f) in
+                                      update_subtree pathname (TreeFile inum f') tree
+                                    | Err _ => tree
+                                    end; |}) tid mscs l c)
+                 (OptFS.file_truncate (fsxp P) inum sz mscs l c).
+  Proof using Type.
+    unfold fs_spec; intros.
+    step; simpl in *; safe_intuition.
+    unfold Prog.pair_args_helper in *.
+    match goal with
+    | [ H: fs_rep _ _ _ _ _ |- _ ] =>
+      unfold fs_rep in H; simplify
+    end.
+    destruct frees; finish.
+    SepAuto.pred_apply; SepAuto.cancel; eauto.
+
+    step; finish.
+    destruct_goal_matches; SepAuto.destruct_lifts;
+      unfold or in *; intuition;
+        repeat match goal with
+               | [ H: isError _ |- _ ] =>
+                 inversion H; subst; clear H
+               | [ H: OK _ = OK _ |- _ ] =>
+                 inversion H; subst; clear H
+               | [ H: Err _ = OK _ |- _ ] =>
+                 exfalso; inversion H
+               | _ => unfold exis in *; deex
+               | _ => progress SepAuto.destruct_lifts
+               end.
+    unfold fs_rep; finish.
+    unfold fs_rep; finish.
+    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
+  Qed.
+
 End FsSpecs.

@@ -887,15 +887,76 @@ Section ConcurrentFS.
     destruct_goal_matches; subst; eauto.
   Qed.
 
+  Definition file_truncate inum sz :=
+    write_syscall (fun mscs => OptFS.file_truncate (fsxp P) inum sz mscs)
+                  (fun '(r, _) tree =>
+                     match r with
+                     | OK _ => dirtree_alter_file
+                                inum (fun f => BFILE.mk_bfile (ListUtils.setlen (BFILE.BFData f) sz ((Word.natToWord _ 0), nil)) (BFILE.BFAttr f) (BFILE.BFCache f))
+                                tree
+                     | Err _ => tree
+                     end).
+
+  Theorem file_truncate_ok : forall tid inum sz,
+      cprog_spec G tid
+                 (fun '(tree, homedirs, pathname, f) sigma =>
+                    {| precondition :=
+                         fs_inv(P, sigma, tree, homedirs) /\
+                         local_l tid (Sigma.l sigma) = Unacquired /\
+                         homedir_disjoint homedirs tid /\
+                         find_subtree (homedirs tid ++ pathname) tree = Some (TreeFile inum f);
+                       postcondition :=
+                         fun sigma' r =>
+                           exists tree' tree'',
+                             fs_inv(P, sigma', tree'', homedirs) /\
+                             homedir_rely tid homedirs tree tree' /\
+                             local_l tid (Sigma.l sigma') = Unacquired /\
+                             match r with
+                             | Done (r, _) =>
+                               match r with
+                               | OK _ =>
+                                 let f' := BFILE.mk_bfile (ListUtils.setlen (BFILE.BFData f) sz ((Word.natToWord _ 0), nil)) (BFILE.BFAttr f) (BFILE.BFCache f) in
+                                 tree'' = update_subtree (homedirs tid ++ pathname) (TreeFile inum f') tree'
+                               | Err _ => tree'' = tree'
+                               end
+                             | TryAgain => False
+                             | SyscallFailed => tree'' = tree'
+                             end |})
+                 (file_truncate inum sz).
+  Proof.
+    unfold file_truncate; intros.
+    unfold cprog_spec; intros;
+      eapply cprog_ok_weaken;
+      [ monad_simpl; eapply write_syscall_ok;
+        eauto using opt_file_truncate_ok | ];
+      simplify; finish.
+    unfold precondition_stable; simplify; simpl.
+    intuition eauto.
+    eapply homedir_rely_preserves_subtrees; eauto.
+
+    unfold same_fs_update; intros.
+    destruct_goal_matches.
+    eapply homedir_rely_preserves_subtrees in H3; eauto.
+    unfold dirtree_alter_file.
+    erewrite DirTreeInodes.alter_inum_to_alter_path; eauto.
+    erewrite DirTreeNames.alter_to_update; eauto; simpl; auto.
+
+    eapply is_allowed_fs_update; intros.
+    destruct_goal_matches.
+    eapply homedir_rely_preserves_subtrees in H3; eauto.
+    unfold dirtree_alter_file.
+    eapply homedir_guarantee_alter; eauto.
+
+    step; finish.
+    destruct r; intuition eauto.
+    destruct_goal_matches; subst; eauto.
+  Qed.
+
   Definition lookup dnum names :=
     retry_readonly_syscall (fun mscs => lookup (fsxp P) dnum names mscs).
 
   Definition read_fblock inum off :=
     retry_readonly_syscall (fun mscs => OptFS.read_fblock (fsxp P) inum off mscs).
-
-  Definition file_truncate inum sz :=
-    write_syscall (fun mscs => OptFS.file_truncate (fsxp P) inum sz mscs)
-                  (fun _ tree => tree).
 
   Definition update_fblock_d inum off b :=
     write_syscall (fun mscs => OptFS.update_fblock_d (fsxp P) inum off b mscs)

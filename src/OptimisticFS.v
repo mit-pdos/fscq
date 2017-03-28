@@ -279,7 +279,8 @@ Module OptFS.
                      [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
                        POST:hm' RET:^(mscs', r)
                                 [[ MSAlloc mscs' = MSAlloc mscs ]] *
-                            ([[ isError r ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
+                            ([[ isError r ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+                             [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] \/
                              [[ r = OK tt ]] * exists d tree' f' ilist' frees',
                                  LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
                                  [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees' mscs')]]] *
