@@ -813,7 +813,7 @@ Module BlockPtr (BPtr : BlockPtrSig).
               [[[ m ::: Fm * indrep_n_helper bxp ir iblocks *
                         listmatch (fun ibn' l' => indrep_n_tree indlvl' bxp (# ibn') l')
                           iblocks l_part ]]] *
-              [[ r = cuttail (remlen * (NIndirect ^ indlvl)) l ]]
+              [[ r = skipn (remlen * (NIndirect ^ indlvl)) l ]]
             OnCrash crash
             Begin
               let^ (ms, v) <- indread indlvl' lxp (# b) ms;
@@ -846,26 +846,28 @@ Module BlockPtr (BPtr : BlockPtrSig).
       - erewrite indrep_n_tree_repeat; eauto. auto.
       - rewrite indrep_n_helper_valid by omega. cancel.
       - rewrite firstn_oob by indrep_n_tree_bound.
-        unfold cuttail. rewrite sub_le_eq_0; auto.
+        autorewrite with list.
+        rewrite skipn_oob; auto.
         erewrite concat_hom_length by eauto.
         indrep_n_tree_bound.
       - rewrite firstn_oob in * by indrep_n_tree_bound; subst.
+        rewrite rev_eq_iff, rev_app_distr in *; cbn [rev] in *; subst.
         rewrite listmatch_extract.
+        rewrite selN_app1.
         rewrite selN_app2.
         rewrite sub_le_eq_0 by reflexivity; cbn [selN].
         cancel.
         all : autorewrite with list; cbn; omega.
       - rewrite firstn_oob in * by indrep_n_tree_bound; subst.
+        rewrite rev_eq_iff, rev_app_distr in *; cbn [rev] in *; subst.
         rewrite listmatch_length_pimpl in *; destruct_lifts.
         rewrite indrep_n_helper_length_piff in *; destruct_lifts.
         autorewrite with list in *; cbn [length] in *.
         rewrite <- (Nat.mul_1_l (NIndirect * NIndirect ^ indlvl)) at 1.
         rewrite <- Nat.mul_add_distr_r.
-        repeat rewrite cuttail_concat_hom by eauto.
-        erewrite concat_build_app with (lb := [_]) by
-          (cbn [concat]; autorewrite with list; eauto).
-        rewrite cuttail_app_one by omega; auto.
-      - rewrite cuttail_0. auto.
+        repeat erewrite concat_hom_skipn by eauto.
+        erewrite skipn_selN_skipn with (off := length _) by omega.
+        reflexivity.
       - apply LOG.rep_hashmap_subset; eauto.
     Grab Existential Variables.
       all : eauto; split.

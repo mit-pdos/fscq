@@ -3116,6 +3116,13 @@ Proof.
   reflexivity.
 Qed.
 
+Lemma rev_eq_iff : forall T (l l' : list T),
+  l = rev l' <-> rev l = l'.
+Proof.
+  split; intros; apply f_equal with (f := @rev T) in H;
+    rewrite rev_involutive in *; auto.
+Qed.
+
 Lemma NoDup_app_not_In : forall A (l : list A) (a : A),
   NoDup (l ++ [a]) -> ~ In a l.
 Proof.
