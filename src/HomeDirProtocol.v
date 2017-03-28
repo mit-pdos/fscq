@@ -72,7 +72,7 @@ Proof.
       congruence.
 Qed.
 
-Theorem alter_homedir_rely : forall homes tid path tree up,
+Theorem alter_homedir_guarantee : forall homes tid path tree up,
     homedir_disjoint homes tid ->
     DirTreeNames.tree_names_distinct tree ->
     homedir_guarantee tid homes tree (alter_subtree (homes tid ++ path) up tree).

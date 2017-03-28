@@ -7,6 +7,7 @@ Require Import FSProtocol.
 Require Import OptimisticFS.
 Require Import OptimisticFSSpecs.
 Require Import ConcurCompile.
+Require Import Errno.
 
 Import FSLayout BFile.
 
@@ -734,6 +735,20 @@ Section ConcurrentFS.
     eapply homedir_rely_preserves_subtrees; eauto.
   Qed.
 
+  Lemma homedir_guarantee_alter : forall tid homedirs tree inum path up f,
+      find_subtree (homedirs tid ++ path) tree = Some f ->
+      dirtree_inum f = inum ->
+      homedir_disjoint homedirs tid ->
+      DirTreeInodes.tree_inodes_distinct tree ->
+      DirTreeNames.tree_names_distinct tree ->
+      homedir_guarantee tid homedirs tree
+                        (alter_inum inum up tree).
+  Proof.
+    intros.
+    erewrite DirTreeInodes.alter_inum_to_alter_path; eauto.
+    eapply alter_homedir_guarantee; eauto.
+  Qed.
+
   Definition dirtree_alter_file inum (up:BFILE.bfile -> BFILE.bfile)
     : dirtree -> dirtree :=
     alter_inum inum (fun subtree =>
@@ -799,10 +814,9 @@ Section ConcurrentFS.
 
     eapply is_allowed_fs_update; intros.
     destruct_goal_matches.
-    unfold dirtree_alter_file.
     eapply homedir_rely_preserves_subtrees in H3; eauto.
-    erewrite DirTreeInodes.alter_inum_to_alter_path; eauto.
-    eapply alter_homedir_rely; eauto.
+    unfold dirtree_alter_file.
+    eapply homedir_guarantee_alter; eauto.
 
     step; finish.
     destruct r; intuition eauto.
@@ -811,7 +825,67 @@ Section ConcurrentFS.
 
   Definition create dnum name :=
     write_syscall (fun mscs => OptFS.create (fsxp P) dnum name mscs)
-                  (fun _ tree => tree).
+                  (fun '(r, _) tree =>
+                     match r with
+                     | OK inum =>
+                       let f := TreeFile inum BFILE.bfile0 in
+                       tree_graft_alter dnum name f tree
+                     | _ => tree
+                     end).
+
+  Theorem create_ok : forall tid dnum name,
+      cprog_spec G tid
+                 (fun '(tree, homedirs, pathname, tree_elem) sigma =>
+                    {| precondition :=
+                         fs_inv(P, sigma, tree, homedirs) /\
+                         local_l tid (Sigma.l sigma) = Unacquired /\
+                         homedir_disjoint homedirs tid /\
+                         find_subtree (homedirs tid ++ pathname) tree = Some (TreeDir dnum tree_elem);
+                       postcondition :=
+                         fun sigma' r =>
+                           exists tree' tree'',
+                             fs_inv(P, sigma', tree'', homedirs) /\
+                             homedir_rely tid homedirs tree tree' /\
+                             local_l tid (Sigma.l sigma') = Unacquired /\
+                             match r with
+                             | Done (r, _) =>
+                               match r with
+                               | OK inum =>
+                                 let f := TreeFile inum BFILE.bfile0 in
+                                 tree'' = tree_graft dnum tree_elem (homedirs tid ++ pathname) name f tree'
+                               | _ => tree'' = tree'
+                               end
+                             | TryAgain => False
+                             | SyscallFailed => tree'' = tree'
+                             end |})
+                 (create dnum name).
+  Proof.
+    unfold create; intros.
+    unfold cprog_spec; intros;
+      eapply cprog_ok_weaken;
+      [ monad_simpl; eapply write_syscall_ok;
+        eauto using opt_create_ok | ];
+      simplify; finish.
+    unfold precondition_stable; simplify; simpl.
+    intuition eauto.
+    eapply homedir_rely_preserves_subtrees; eauto.
+
+    unfold same_fs_update; intros.
+    destruct_goal_matches.
+    eapply homedir_rely_preserves_subtrees in H3; eauto.
+    erewrite DirTreeInodes.tree_graft_alter_to_tree_graft by eauto;
+      reflexivity.
+
+    eapply is_allowed_fs_update; intros.
+    destruct_goal_matches.
+    eapply homedir_rely_preserves_subtrees in H3; eauto.
+    unfold tree_graft_alter.
+    eapply homedir_guarantee_alter; eauto.
+
+    step; finish.
+    destruct r; intuition eauto.
+    destruct_goal_matches; subst; eauto.
+  Qed.
 
   Definition lookup dnum names :=
     retry_readonly_syscall (fun mscs => lookup (fsxp P) dnum names mscs).

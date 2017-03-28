@@ -1835,3 +1835,15 @@ Import ListNotations.
     intros; subst.
     apply alter_inum_to_alter_path'; auto.
   Qed.
+
+  Theorem tree_graft_alter_to_tree_graft : forall dnum dents dstpath dstname subtree tree,
+      tree_names_distinct tree ->
+      tree_inodes_distinct tree ->
+      find_subtree dstpath tree = Some (TreeDir dnum dents) ->
+      tree_graft_alter dnum dstname subtree tree =
+      tree_graft dnum dents dstpath dstname subtree tree.
+  Proof.
+    unfold tree_graft, tree_graft_alter; intros.
+    erewrite alter_inum_to_alter_path; eauto.
+    erewrite alter_to_update; eauto.
+  Qed.

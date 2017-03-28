@@ -181,6 +181,11 @@ Set Implicit Arguments.
     let new := add_to_dir dstname subtree (TreeDir dnum dents) in
     update_subtree dstpath new tree.
 
+  (** graft [subtree] onto dnum at [dstname] in [tree]
+   *)
+  Definition tree_graft_alter dnum dstname subtree tree :=
+    alter_inum dnum (fun dir => add_to_dir dstname subtree dir) tree.
+
   Lemma update_subtree_notfound : forall name l f,
     ~ In name (map fst l) ->
     map (update_subtree_helper f name) l = l.
