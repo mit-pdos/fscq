@@ -298,7 +298,7 @@ Module GLog.
       Ret (mk_memstate vmap0 nil mm)
     } else {
       ms <- flushall_nomerge xp ms;
-      Ret ms
+      Ret (mk_memstate vmap0 nil mm)
     }.
 
   Definition flushsync xp ms :=
