@@ -36,15 +36,23 @@ Proof.
   constructor; hnf; intros; congruence.
 Defined.
 
+Lemma homedir_rely_preserves_homedir : forall homes homedir tid tree tree',
+    find_subtree (homes tid) tree = Some homedir ->
+    homedir_rely tid homes tree tree' ->
+    find_subtree (homes tid) tree' = Some homedir.
+Proof.
+  unfold homedir_rely; intros.
+  congruence.
+Qed.
+
 Lemma homedir_rely_preserves_subtrees : forall homes tid path tree tree' f,
     find_subtree (homes tid ++ path) tree = Some f ->
     homedir_rely tid homes tree tree' ->
     find_subtree (homes tid ++ path) tree' = Some f.
 Proof.
-  unfold homedir_rely; intros.
+  intros.
   eapply find_subtree_app' in H; repeat deex.
-  erewrite find_subtree_app; eauto.
-  congruence.
+  erewrite find_subtree_app; eauto using homedir_rely_preserves_homedir.
 Qed.
 
 Definition directories_disjoint (path1 path2: list string) :=

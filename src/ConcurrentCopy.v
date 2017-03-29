@@ -44,15 +44,34 @@ Section ConcurrentCopy.
                  simpl in *; subst;
                  (intuition (try eassumption; eauto)); try congruence.
 
+  Lemma update_graft_to_single_graft:
+    forall (dnum : nat) (dstname : string) (homedir : dirtree)
+      (dpath : list string) (dents : list (string * dirtree))
+      (f' f0 : dirtree),
+      find_subtree dpath homedir = Some (TreeDir dnum dents) ->
+      update_subtree (dpath ++ dstname :: nil) f'
+                     (tree_graft dnum dents dpath dstname f0 homedir) =
+      tree_graft dnum dents dpath dstname f' homedir.
+  Proof.
+    intros.
+    unfold tree_graft.
+    simpl.
+    erewrite DirTreeNames.update_subtree_app; swap 1 3; swap 2 3.
+    erewrite find_update_subtree; eauto.
+    rewrite update_update_subtree_same.
+    simpl.
+  Admitted.
+
   Theorem copy_ok : forall inum dnum dstname tid,
       cprog_spec (fs_guarantee P) tid
-                 (fun '(tree, homedirs, fpath, dpath, f, dents) sigma =>
+                 (fun '(tree, homedirs, homedir, fpath, dpath, f, dents) sigma =>
                     {| precondition :=
                          fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired /\
                          homedir_disjoint homedirs tid /\
-                         find_subtree (homedirs tid ++ fpath) tree = Some (TreeFile inum f) /\
-                         find_subtree (homedirs tid ++ dpath) tree = Some (TreeDir dnum dents);
+                         find_subtree (homedirs tid) tree = Some homedir /\
+                         find_subtree fpath homedir = Some (TreeFile inum f) /\
+                         find_subtree dpath homedir = Some (TreeDir dnum dents);
                        postcondition :=
                          fun sigma' r =>
                            exists tree',
@@ -63,7 +82,9 @@ Section ConcurrentCopy.
                                match r with
                                | Some inum' =>
                                  let f' := BFILE.mk_bfile nil (BFILE.BFAttr f) (BFILE.BFCache BFILE.bfile0) in
-                                 find_subtree (homedirs tid ++ dpath ++ dstname :: nil) tree' = Some (TreeFile inum' f')
+                                 let homedir' :=
+                                     tree_graft dnum dents dpath dstname (TreeFile inum' f') homedir in
+                                 find_subtree (homedirs tid) tree' = Some homedir'
                                | None => True
                                end
                              | TryAgain => False
@@ -75,22 +96,14 @@ Section ConcurrentCopy.
     step; finish.
 
     destruct r; destruct_goal_matches; try (step; finish).
-    eapply homedir_rely_preserves_subtrees; eauto.
 
     destruct r; destruct_goal_matches; try (step; finish).
-    instantiate (2 := (dpath ++ dstname :: nil)%list).
-    rewrite List.app_assoc.
     eapply find_subtree_tree_graft; eauto.
-    eapply homedir_rely_preserves_subtrees; eauto.
-    etransitivity; eauto.
 
     destruct r; destruct_goal_matches; try (step; finish).
-    eapply find_update_subtree; eauto.
-    eapply homedir_rely_preserves_subtrees; eauto.
-    rewrite List.app_assoc.
-    eapply find_subtree_tree_graft; eauto.
-    eapply homedir_rely_preserves_subtrees; eauto.
-    etransitivity; eauto.
+    replace (find_subtree (homedirs tid) tree'1).
+    f_equal.
+    apply update_graft_to_single_graft; auto.
 
     Grab Existential Variables.
     all: auto.

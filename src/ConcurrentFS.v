@@ -705,18 +705,30 @@ Section ConcurrentFS.
   Definition file_get_attr inum :=
     retry_readonly_syscall (fun mscs => file_get_attr (fsxp P) inum mscs).
 
+  Lemma find_subtree_app' : forall prefix path tree subtree o_dir,
+      find_subtree prefix tree = Some subtree ->
+      find_subtree path subtree = o_dir ->
+      find_subtree (prefix ++ path) tree = o_dir.
+  Proof.
+    intros.
+    erewrite find_subtree_app; eauto.
+  Qed.
+
+  Hint Resolve find_subtree_app'.
+
   Theorem file_get_attr_ok : forall tid inum,
       cprog_spec G tid
-                 (fun '(tree, homedirs, pathname, f) sigma =>
+                 (fun '(tree, homedirs, homedir, pathname, f) sigma =>
                     {| precondition :=
                          fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired /\
-                         find_subtree (homedirs tid ++ pathname) tree = Some (TreeFile inum f);
+                         find_subtree (homedirs tid) tree = Some (homedir) /\
+                         find_subtree pathname homedir = Some (TreeFile inum f);
                        postcondition :=
                          fun sigma' r =>
                            exists tree',
                              fs_inv(P, sigma', tree', homedirs) /\
-                             homedir_rely tid homedirs tree tree' /\
+                             find_subtree (homedirs tid) tree' = Some homedir /\
                              local_l tid (Sigma.l sigma') = Unacquired /\
                              match r with
                              | Done (attr, _) => attr = BFILE.BFAttr f
@@ -731,8 +743,11 @@ Section ConcurrentFS.
       [ monad_simpl; eapply retry_readonly_syscall_ok;
         eauto using opt_file_get_attr_ok | ];
       simplify; finish.
+
     unfold precondition_stable; simplify; simpl.
     eapply homedir_rely_preserves_subtrees; eauto.
+
+    step; finish.
   Qed.
 
   Lemma homedir_guarantee_alter : forall tid homedirs tree inum path up f,
@@ -768,30 +783,34 @@ Section ConcurrentFS.
                      | false => tree
                      end).
 
+
+  Hint Resolve homedir_rely_preserves_homedir.
+
   Theorem file_set_attr_ok : forall tid inum attr,
       cprog_spec G tid
-                 (fun '(tree, homedirs, pathname, f) sigma =>
+                 (fun '(tree, homedirs, homedir, pathname, f) sigma =>
                     {| precondition :=
                          fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired /\
                          homedir_disjoint homedirs tid /\
-                         find_subtree (homedirs tid ++ pathname) tree = Some (TreeFile inum f);
+                         find_subtree (homedirs tid) tree = Some homedir /\
+                         find_subtree pathname homedir = Some (TreeFile inum f);
                        postcondition :=
                          fun sigma' r =>
-                           exists tree' tree'',
-                             fs_inv(P, sigma', tree'', homedirs) /\
-                             homedir_rely tid homedirs tree tree' /\
+                           exists tree',
+                             fs_inv(P, sigma', tree', homedirs) /\
                              local_l tid (Sigma.l sigma') = Unacquired /\
                              match r with
                              | Done (b, _) =>
                                match b with
                                | true =>
                                  let f' := BFILE.mk_bfile (BFILE.BFData f) attr (BFILE.BFCache f) in
-                                 tree'' = update_subtree (homedirs tid ++ pathname) (TreeFile inum f') tree'
-                               | false => tree'' = tree'
+                                 let homedir' := update_subtree pathname (TreeFile inum f') homedir in
+                                 find_subtree (homedirs tid) tree' = Some homedir'
+                               | false => find_subtree (homedirs tid) tree' = Some homedir
                                end
                              | TryAgain => False
-                             | SyscallFailed => tree'' = tree'
+                             | SyscallFailed => find_subtree (homedirs tid) tree' = Some homedir
                              end |})
                  (file_set_attr inum attr).
   Proof.
@@ -808,19 +827,21 @@ Section ConcurrentFS.
     unfold same_fs_update; intros.
     destruct_goal_matches.
     unfold dirtree_alter_file.
-    eapply homedir_rely_preserves_subtrees in H3; eauto.
+    eapply homedir_rely_preserves_subtrees in H4; eauto.
     erewrite DirTreeInodes.alter_inum_to_alter_path; eauto.
     erewrite DirTreeNames.alter_to_update; eauto; simpl; auto.
 
     eapply is_allowed_fs_update; intros.
     destruct_goal_matches.
-    eapply homedir_rely_preserves_subtrees in H3; eauto.
+    eapply homedir_rely_preserves_subtrees in H4; eauto.
     unfold dirtree_alter_file.
     eapply homedir_guarantee_alter; eauto.
 
     step; finish.
-    destruct r; intuition eauto.
-    destruct_goal_matches; subst; eauto.
+    destruct r; intuition (subst; eauto).
+    destruct_goal_matches; eauto.
+    eapply homedir_rely_preserves_homedir in H6; eauto.
+    erewrite find_subtree_update_subtree_child; eauto.
   Qed.
 
   Definition create dnum name :=
@@ -835,28 +856,29 @@ Section ConcurrentFS.
 
   Theorem create_ok : forall tid dnum name,
       cprog_spec G tid
-                 (fun '(tree, homedirs, pathname, tree_elem) sigma =>
+                 (fun '(tree, homedirs, homedir, pathname, tree_elem) sigma =>
                     {| precondition :=
                          fs_inv(P, sigma, tree, homedirs) /\
                          local_l tid (Sigma.l sigma) = Unacquired /\
                          homedir_disjoint homedirs tid /\
-                         find_subtree (homedirs tid ++ pathname) tree = Some (TreeDir dnum tree_elem);
+                         find_subtree (homedirs tid) tree = Some homedir /\
+                         find_subtree pathname homedir = Some (TreeDir dnum tree_elem);
                        postcondition :=
                          fun sigma' r =>
-                           exists tree' tree'',
-                             fs_inv(P, sigma', tree'', homedirs) /\
-                             homedir_rely tid homedirs tree tree' /\
+                           exists tree',
+                             fs_inv(P, sigma', tree', homedirs) /\
                              local_l tid (Sigma.l sigma') = Unacquired /\
                              match r with
                              | Done (r, _) =>
                                match r with
                                | OK inum =>
                                  let f := TreeFile inum BFILE.bfile0 in
-                                 tree'' = tree_graft dnum tree_elem (homedirs tid ++ pathname) name f tree'
-                               | _ => tree'' = tree'
+                                 let homedir' := tree_graft dnum tree_elem pathname name f homedir in
+                                 find_subtree (homedirs tid) tree' = Some homedir'
+                               | _ => find_subtree (homedirs tid) tree' = Some homedir
                                end
                              | TryAgain => False
-                             | SyscallFailed => tree'' = tree'
+                             | SyscallFailed => find_subtree (homedirs tid) tree' = Some homedir
                              end |})
                  (create dnum name).
   Proof.
@@ -872,19 +894,23 @@ Section ConcurrentFS.
 
     unfold same_fs_update; intros.
     destruct_goal_matches.
-    eapply homedir_rely_preserves_subtrees in H3; eauto.
+    eapply homedir_rely_preserves_subtrees in H4; eauto.
     erewrite DirTreeInodes.tree_graft_alter_to_tree_graft by eauto;
       reflexivity.
 
     eapply is_allowed_fs_update; intros.
     destruct_goal_matches.
-    eapply homedir_rely_preserves_subtrees in H3; eauto.
+    eapply homedir_rely_preserves_subtrees in H4; eauto.
     unfold tree_graft_alter.
     eapply homedir_guarantee_alter; eauto.
 
     step; finish.
-    destruct r; intuition eauto.
-    destruct_goal_matches; subst; eauto.
+    destruct r; intuition (subst; eauto).
+    destruct_goal_matches; eauto.
+
+    eapply homedir_rely_preserves_homedir in H6; eauto.
+    unfold tree_graft.
+    erewrite find_subtree_update_subtree_child; eauto.
   Qed.
 
   Definition file_truncate inum sz :=
