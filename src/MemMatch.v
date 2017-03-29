@@ -242,6 +242,15 @@ Section MEMMATCH.
       erewrite cond_inv_rewrite_left; eauto.
     Qed.
 
+    Lemma mem_atrans_cond_inv : mem_atrans ainv m2 m1 AP2.
+    Proof using HInv MTrans.
+      cbv [mem_atrans cond_inverse cond_left_inverse cond_right_inverse] in *.
+      destruct HInv as [_ H'].
+      intros a ?; specialize (H' a).
+      rewrite MTrans by intuition.
+      f_equal. intuition.
+    Qed.
+
   End MEMMATCH_INVERSION.
 
 End MEMMATCH.
