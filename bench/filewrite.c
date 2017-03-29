@@ -104,7 +104,7 @@ int writefile()
       exit(1);
     }
     if ((i * WSIZE) % (10 * 1024 * 1024) == 0) {
-      if (fdatasync(fd) < 0) {
+      if (fsync(fd) < 0) {
 	  printf("%s: fsync %s failed %s\n", prog, name, strerror(errno));
 	  exit(1);
 	}
