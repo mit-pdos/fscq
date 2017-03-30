@@ -10,7 +10,7 @@
 
 /* Measure creating a large file and overwriting that file */
 
-#define WSIZE 4096
+#define WSIZE (16 * 4096)
 #define FILESIZE 50 * 1024 * 1024
 #define NAMESIZE 100
 
