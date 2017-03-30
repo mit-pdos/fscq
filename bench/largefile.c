@@ -69,6 +69,9 @@ int makefile()
     printf("%s: fsync %s failed %s\n", prog, name, strerror(errno));
     exit(1);
   }
+
+  lseek(fd, SEEK_SET, 0);
+  write(fd, buf, WSIZE);
   close(fd);
   
   fd = open(".", O_DIRECTORY | O_RDONLY);
