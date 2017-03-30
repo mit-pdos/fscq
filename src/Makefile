@@ -6,7 +6,7 @@ OCAMLBUILD := env OCAMLPATH=$(shell pwd) ocamlbuild \
 MODULES    := CCLProg CCLMonadLaws CCLHoareTriples CCLPrimitives \
               CCLHashExec Automation CCLAutomation RetryLoop CCL \
 							SyncRead \
-              MemCache WriteBuffer UpdList OptimisticCache \
+              MemCache UpdList OptimisticCache \
               SeqSpecs OptimisticTranslator OptimisticFS ConcurCompile \
 		          HomeDirProtocol FSProtocol OptimisticFSSpecs ConcurrentFS \
 							ConcurrentCopy \
