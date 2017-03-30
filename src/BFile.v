@@ -47,7 +47,7 @@ the same as the inode attributes). *)
 
 Module Dcache := FMapAVL.Make(String_as_OT).
 Module DcacheDefs := MapDefs String_as_OT Dcache.
-Definition Dcache_type := Dcache.t (option (addr * bool)).
+Definition Dcache_type := Dcache.t (addr * bool).
 
 Module BFcache := FMapAVL.Make(Nat_as_OT).
 Module BFcacheDefs := MapDefs Nat_as_OT BFcache.

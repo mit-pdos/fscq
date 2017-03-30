@@ -37,15 +37,17 @@ Module CacheOneDir.
 
   Definition empty_cache : Dcache_type := Dcache.empty _.
 
-  Fixpoint fill_cache (files: (list (string * (addr * bool)))) ocache : Dcache_type  :=
+  Fixpoint fill_cache' (files: (list (string * (addr * bool)))) ocache : Dcache_type  :=
     match files with
     | nil => ocache
-    | f::files' => fill_cache files' (Dcache.add (fst f) (Some (snd f)) ocache)
+    | f::files' => fill_cache' files' (Dcache.add (fst f) (snd f) ocache)
     end.
+
+  Definition fill_cache files := fill_cache' files empty_cache.
 
   Definition init_cache lxp ixp dnum ms :=
     let^ (ms, files) <- SDIR.readdir lxp ixp dnum ms;
-    let ocache := fill_cache files (Dcache.empty _) in
+    let ocache := fill_cache files in
     ms <- BFILE.cache_put dnum (ocache, 0) ms;
     Ret ^(ms, (ocache, 0)).
 
@@ -71,31 +73,30 @@ Module CacheOneDir.
 
   Definition lookup lxp ixp dnum name ms :=
     let^ (ms, cache) <- get_dcache lxp ixp dnum ms;
-    match Dcache.find name (fst cache) with
-    | None =>
-      Ret ^(ms, None)
-    | Some r =>
-      Ret ^(ms, r)
-    end.
-
-   Definition lookup' lxp ixp dnum name ms :=
-     let^ (ms, cache) <- get_dcache lxp ixp dnum ms;
-     match Dcache.find name (fst cache) with
-     | None =>
-       AlertModified;;
-       let^ (ms, r) <- SDIR.lookup lxp ixp dnum name ms;
-       ms <- BFILE.cache_put dnum (Dcache.add name r (fst cache), (snd cache)) ms;
-       Ret ^(ms, r)
-     | Some r =>
-       Ret ^(ms, r)
-     end.
-
+    let r := Dcache.find name (fst cache) in
+    Ret ^(ms, r).
 
   Definition unlink lxp ixp dnum name ms :=
     let^ (ms, cache) <- get_dcache lxp ixp dnum ms;
-    let^ (ms, ix, r) <- SDIR.unlink lxp ixp dnum name ms;
-    ms <- BFILE.cache_put dnum (Dcache.add name None (fst cache), ix) ms;
-    Ret ^(ms, r).
+    match (Dcache.find name (fst cache)) with
+    | None => Ret ^(ms, Err ENOENT)
+    | Some _ =>
+      let^ (ms, ix, r) <- SDIR.unlink lxp ixp dnum name ms;
+      ms <- BFILE.cache_put dnum (Dcache.remove name (fst cache), ix) ms;
+      Ret ^(ms, r)
+    end.
+
+  (* link assuming no name conflict *)
+  Definition link' lxp bxp ixp dnum name inum isdir ms :=
+    let^ (ms, cache) <- get_dcache lxp ixp dnum ms;
+    let^ (ms, ix, r) <- SDIR.link lxp bxp ixp dnum name inum isdir (snd cache) ms;
+    match r with
+    | Err _ =>
+      Ret ^(ms, r)
+    | OK _ =>
+      ms <- BFILE.cache_put dnum (Dcache.add name (inum, isdir) (fst cache), ix) ms;
+      Ret ^(ms, r)
+    end.
 
   Definition link lxp bxp ixp dnum name inum isdir ms :=
     let^ (ms, lookup_res) <- lookup lxp ixp dnum name ms;
@@ -103,15 +104,8 @@ Module CacheOneDir.
     | Some _ =>
       Ret ^(ms, Err EEXIST)
     | None =>
-      let^ (ms, cache) <- get_dcache lxp ixp dnum ms;
-      let^ (ms, ix, r) <- SDIR.link lxp bxp ixp dnum name inum isdir (snd cache) ms;
-      match r with
-      | Err _ =>
-        Ret ^(ms, r)
-      | OK _ =>
-        ms <- BFILE.cache_put dnum (Dcache.add name (Some (inum, isdir)) (fst cache), ix) ms;
-        Ret ^(ms, r)
-      end
+      let^ (ms, r) <- link' lxp bxp ixp dnum name inum isdir ms;
+      Ret ^(ms, r)
     end.
 
   Definition readdir lxp ixp dnum ms :=
@@ -120,9 +114,8 @@ Module CacheOneDir.
 
   Definition rep f (dsmap : @mem string string_dec (addr * bool)) : Prop :=
     SDIR.rep f dsmap /\
-    (BFILE.BFCache f = None \/ exists cache, (BFILE.BFCache f = Some cache) /\
-    (forall name v, Dcache.find name (fst cache) = Some v -> dsmap name = v) /\
-     (forall name, Dcache.find name (fst cache) = None -> dsmap name = None)).
+    (forall cache hint, BFILE.BFCache f = Some (cache, hint) ->
+    forall name, Dcache.find name cache = dsmap name).
 
   Definition rep_macro Fi Fm m bxp ixp (inum : addr) dsmap ilist frees f ms : @pred _ addr_eq_dec valuset :=
     (exists flist,
@@ -175,11 +168,11 @@ Module CacheOneDir.
     eauto.
   Qed.
 
-  Lemma fill_cache_add_comm : forall entries a cache F,
+  Lemma fill_cache'_add_comm : forall entries a cache F,
     F * listpred SDIR.readmatch (a :: entries) =p=>
     F * listpred SDIR.readmatch (a :: entries) *
-    [[ Dcache.Equal (fill_cache (a :: entries) cache)
-      (Dcache.add (fst a) (Some (snd a)) (fill_cache entries cache)) ]].
+    [[ Dcache.Equal (fill_cache' (a :: entries) cache)
+      (Dcache.add (fst a) (snd a) (fill_cache' entries cache)) ]].
   Proof.
     unfold Dcache.Equal; simpl.
     induction entries; intros; simpl.
@@ -193,7 +186,7 @@ Module CacheOneDir.
       progress (rewrite ?DcacheDefs.MapFacts.add_eq_o,
                        ?DcacheDefs.MapFacts.add_neq_o by auto)
       || destruct (string_dec k1 k2); subst
-    | [ |- context [Dcache.find _ (fill_cache _ (Dcache.add (fst ?a) _ _))] ] =>
+    | [ |- context [Dcache.find _ (fill_cache' _ (Dcache.add (fst ?a) _ _))] ] =>
       eapply pimpl_trans in H as ?; [ | | apply (IHentries a)]; try cancel; destruct_lifts
     end.
     eapply readmatch_neq with (m := m).
@@ -201,35 +194,30 @@ Module CacheOneDir.
   Qed.
 
   Lemma fill_cache_correct: forall entries dmap,
-    let cache := (fill_cache entries (Dcache.empty _)) in
+    let cache := (fill_cache entries) in
     listpred SDIR.readmatch entries dmap ->
-    (forall name v, Dcache.find name cache = Some v -> dmap name = v) /\
-    (forall name, Dcache.find name cache = None -> dmap name = None).
+    forall name, Dcache.find name cache = dmap name.
   Proof.
+    unfold fill_cache.
     induction entries; cbn; intros.
     intuition congruence.
-    eapply pimpl_trans in H; [ | | apply fill_cache_add_comm with (F := emp)]; try cancel.
+    eapply pimpl_trans in H; [ | | apply fill_cache'_add_comm with (F := emp)]; try cancel.
     destruct_lifts.
     revert H.
     unfold_sep_star. unfold SDIR.readmatch at 1, ptsto.
-    intros. repeat deex.
-    rewrite H2 in H0.
-    destruct (string_dec name a_1); subst.
-    rewrite DcacheDefs.MapFacts.add_eq_o in H0; subst; auto.
-    cbn in *.
-    rewrite mem_union_sel_l; try congruence.
-    eauto using mem_disjoint_either.
-    rewrite DcacheDefs.MapFacts.add_neq_o in H0; eauto.
+    intros. repeat deex; cbn in *.
+    rewrite H2.
+    rewrite DcacheDefs.MapFacts.add_o.
+    destruct string_dec; subst.
+    erewrite mem_union_addr; eauto.
     rewrite mem_union_sel_r; eauto.
-    edestruct IHentries; eauto.
-    rewrite H2 in *.
-    destruct (string_dec name a_1); subst.
-    rewrite DcacheDefs.MapFacts.add_eq_o in * by auto.
-    congruence.
-    rewrite mem_union_sel_r by eauto.
-    rewrite DcacheDefs.MapFacts.add_neq_o in * by auto.
-    edestruct IHentries; eauto.
   Qed.
+
+  Ltac subst_cache :=
+    repeat match goal with
+    | [ H : Some _ = Some _ |- _ ] => inversion H; clear H; subst
+    | [ H1 : BFILE.BFCache ?f = _ , H2 : BFILE.BFCache ?F = _ |- _ ] => rewrite H1 in H2
+    end.
 
   Theorem init_cache_ok : forall bxp lxp ixp dnum ms,
     {< F Fm Fi m0 m dmap ilist frees f,
@@ -247,19 +235,10 @@ Module CacheOneDir.
     >} init_cache lxp ixp dnum ms.
   Proof.
     unfold init_cache, rep_macro.
-    step.
-    step.
-    step.
+    hoare.
     msalloc_eq. cancel.
-    right.
-    repeat eexists; intuition eauto;
-      edestruct fill_cache_correct; eauto.
-    step.
-    step.
-    msalloc_eq. cancel.
-    right.
-    repeat eexists; intuition eauto;
-      edestruct fill_cache_correct; eauto.
+    cbn in *. subst_cache.
+    eauto using fill_cache_correct.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (init_cache _ _ _ _) _) => apply init_cache_ok : prog.
@@ -280,20 +259,11 @@ Module CacheOneDir.
     >} get_dcache lxp ixp dnum ms.
   Proof.
     unfold get_dcache, rep_macro.
-    step.
-    step.
-    step.
-    step.
+    hoare.
     Unshelve. all: eauto.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (get_dcache _ _ _ _) _) => apply get_dcache_ok : prog.
-
-  Ltac subst_cache :=
-    repeat match goal with
-    | [ H : Some _ = Some _ |- _ ] => inversion H; clear H; subst
-    | [ H1 : BFILE.BFCache ?f = _ , H2 : BFILE.BFCache ?F = _ |- _ ] => rewrite H1 in H2
-    end.
 
   Theorem lookup_ok : forall lxp bxp ixp dnum name ms,
     {< F Fm Fi m0 m dmap ilist frees f,
@@ -315,30 +285,20 @@ Module CacheOneDir.
     >} lookup lxp ixp dnum name ms.
   Proof.
     unfold lookup.
-
-    step.
-    step.
+    hoare.
 
     repeat ( denote! (SDIR.rep _ _) as Hx; clear Hx ).
-    destruct o; [ or_r | or_l ]; cancel.
-    apply any_sep_star_ptsto. subst_cache; eauto.
-    unfold notindomain. subst_cache; eauto.
-    repeat ( denote! (SDIR.rep _ _) as Hx; clear Hx ).
-    or_l; cancel.
-    unfold notindomain. subst_cache; eauto.
-
-    step.
-    repeat ( denote! (SDIR.rep _ _) as Hx; clear Hx ).
-    destruct o; [ or_r | or_l ]; cancel.
-    apply any_sep_star_ptsto. subst_cache; eauto.
-    unfold notindomain. subst_cache; eauto.
-    repeat ( denote! (SDIR.rep _ _) as Hx; clear Hx ).
-    or_l; cancel.
-    unfold notindomain. subst_cache; eauto.
-
+    subst_cache.
+    denote (Dcache.find) as Hf.
+    denote (BFILE.BFCache _ = _) as Hb.
+    erewrite Hf in * by eauto.
+    destruct (dmap name) eqn:?; [ or_r | or_l ]; cancel; eauto.
+    eauto using any_sep_star_ptsto.
   Unshelve.
-    all: eauto.
+    all: repeat (solve [eauto] || constructor).
   Qed.
+
+  Hint Extern 1 ({{_}} Bind (lookup _ _ _ _ _) _) => apply lookup_ok : prog.
 
   Theorem readdir_ok : forall lxp bxp ixp dnum ms,
     {< F Fm Fi m0 m dmap ilist frees f,
@@ -376,44 +336,22 @@ Module CacheOneDir.
     >} unlink lxp ixp dnum name ms.
   Proof.
     unfold unlink.
-    hoare.
-
-    destruct (r_); simpl in *. subst. cancel.
-
-    unfold mem_except.
-    eexists; intuition eauto.
-
-
-    destruct (string_dec name0 name); subst.
-    {
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply DcacheDefs.mapsto_add in Hm.
-      subst_cache; eauto.
-    }
-    {
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply Dcache.add_3 in Hm; subst_cache; eauto.
-    }
-
-    destruct (r_); simpl in *. subst. cancel.
-
-    unfold mem_except.
-    eexists; intuition eauto.
-    destruct (string_dec name0 name); subst.
-    {
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply DcacheDefs.mapsto_add in Hm.
-      subst_cache; eauto.
-    }
-    {
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply Dcache.add_3 in Hm; subst_cache; eauto.
-    }
-
+    hoare; msalloc_eq; cbn in *; subst_cache.
+    - cancel.
+    - unfold mem_except; cbn [fst snd].
+      rewrite DcacheDefs.MapFacts.remove_o.
+      denote (Dcache.find) as Hf.
+      repeat destruct string_dec; (congruence || eauto).
+    - cbn in *.
+      rewrite mem_except_none; eauto.
+      denote (Dcache.find) as Hf.
+      erewrite Hf in *; eauto.
+    - intros m' ?.
+      replace m' with dmap in * by (eauto using SDIR.rep_mem_eq).
+      denote (Dcache.find) as Hf.
+      erewrite Hf in *; eauto.
   Unshelve.
-    all: try exact ""%string.
-    all: try exact (Dcache.empty _).
-    all: try exact empty_mem.
+    all: eauto.
   Qed.
 
   Lemma sdir_rep_cache : forall f c m,
@@ -424,6 +362,44 @@ Module CacheOneDir.
   Qed.
 
   Hint Resolve sdir_rep_cache.
+
+  Theorem link'_ok : forall lxp bxp ixp dnum name inum isdir ms,
+    {< F Fm Fi m0 m dmap ilist frees f,
+    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms *
+             [[ notindomain name dmap ]] *
+             [[ goodSize addrlen inum ]]
+    POST:hm' RET:^(ms', r) exists m',
+             [[ MSAlloc ms' = MSAlloc ms ]] *
+           (([[ isError r ]] *
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
+        \/  ([[ r = OK tt ]] *
+             exists dmap' Fd ilist' frees' f',
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
+             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' f' ms' *
+             [[ dmap' = Mem.upd dmap name (inum, isdir) ]] *
+             [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
+             [[ (Fd dmap /\ notindomain name dmap) ]] *
+             [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
+                                 ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
+             [[ BFILE.treeseq_ilist_safe dnum ilist ilist' ]] ))
+    CRASH:hm' LOG.intact lxp F m0 hm'
+    >} link' lxp bxp ixp dnum name inum isdir ms.
+  Proof.
+    unfold link'.
+    hoare.
+
+    msalloc_eq. subst_cache.
+    or_r. cancel; eauto.
+    cbn in *; subst_cache.
+    cbv [fst snd upd].
+    rewrite DcacheDefs.MapFacts.add_o.
+    repeat destruct string_dec; (congruence || eauto).
+  Unshelve.
+    all : eauto.
+  Qed.
+
+  Hint Extern 0 ({{ _ }} Bind (link' _ _ _ _ _ _ _ _) _) => apply link'_ok.
 
   Theorem link_ok : forall lxp bxp ixp dnum name inum isdir ms,
     {< F Fm Fi m0 m dmap ilist frees f,
@@ -448,62 +424,12 @@ Module CacheOneDir.
     >} link lxp bxp ixp dnum name inum isdir ms.
   Proof.
     unfold link.
-    step.
-    step.
-    step.
-    step.
-
-    destruct (r_); simpl in *. subst. cancel.
-
-    or_r; cancel.
-    eauto.
-
-    eexists; intuition eauto.
-    destruct (string_dec name0 name); subst.
-    {
-      try rewrite upd_eq by eauto.
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply DcacheDefs.mapsto_add in Hm.
-      subst_cache; eauto.
-    }
-    {
-      try rewrite upd_ne by eauto.
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply Dcache.add_3 in Hm; subst_cache; eauto.
-    }
-
-    step.
-    step.
-    step.
-
-    destruct (r_); simpl in *. subst. cancel.
-
-    or_r; cancel.
-    eauto.
-
-    eexists; intuition eauto.
-    destruct (string_dec name0 name); subst.
-    {
-      try rewrite upd_eq by eauto.
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply DcacheDefs.mapsto_add in Hm.
-      subst_cache; eauto.
-    }
-    {
-      try rewrite upd_ne by eauto.
-      denote! (Dcache.MapsTo _ _ _) as Hm.
-      eapply Dcache.add_3 in Hm; subst_cache; eauto.
-    }
-
+    hoare.
   Unshelve.
-    all: try exact unit.
     all: eauto.
-    all: try exact (Dcache.empty _).
-    all: try exact tt.
   Qed.
 
 
-  Hint Extern 1 ({{_}} Bind (lookup _ _ _ _ _) _) => apply lookup_ok : prog.
   Hint Extern 1 ({{_}} Bind (unlink _ _ _ _ _) _) => apply unlink_ok : prog.
   Hint Extern 1 ({{_}} Bind (link _ _ _ _ _ _ _ _) _) => apply link_ok : prog.
   Hint Extern 1 ({{_}} Bind (readdir _ _ _ _) _) => apply readdir_ok : prog.

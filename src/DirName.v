@@ -391,6 +391,26 @@ Module SDIR.
     apply dirname_cond_inverse'.
   Qed.
 
+  Lemma wname2sname_sname2wname: forall name,
+    sname_valid name ->
+    wname2sname (sname2wname name) = name.
+  Proof.
+    intros.
+    destruct (dirname_cond_inverse) as [_ H'].
+    cbv [cond_right_inverse cond_inverse] in *.
+    edestruct H'; eauto.
+  Qed.
+
+  Lemma sname2wname_wname2sname: forall name,
+    wname_valid name ->
+    sname2wname (wname2sname name) = name.
+  Proof.
+    intros.
+    destruct (dirname_cond_inverse) as [H' _].
+    cbv [cond_left_inverse cond_inverse] in *.
+    edestruct H'; eauto.
+  Qed.
+
   Local Hint Resolve dirname_cond_inverse.
   Local Hint Resolve dirname_cond_inverse'.
   Local Hint Resolve wname2sname_bijective.
@@ -700,7 +720,7 @@ Module SDIR.
     {< F Fm Fi m0 m dmap ilist frees,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
              rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms
-    POST:hm' RET:^(ms', r) exists m' dmap',
+    POST:hm' RET:^(ms', hint, r) exists m' dmap',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
              rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees ms' *
              [[ dmap' = mem_except dmap name ]] *
@@ -728,13 +748,30 @@ Module SDIR.
     apply notindomain_not_indomain; eauto.
   Qed.
 
+  Lemma link_dir_rep_pimpl_notindomain: forall f dsmap dmap (name : string),
+    is_valid_sname name = true ->
+    notindomain name dsmap ->
+    @mem_atrans _ _ _ _ string_dec wname2sname dmap dsmap wname_valid ->
+    DIR.rep f dmap ->
+    DIR.rep f =p=> notindomain (sname2wname name).
+  Proof.
+    intros. intros m H'.
+    replace m with dmap in * by eauto using DIR.rep_mem_eq.
+    rewrite is_valid_sname_valid in *.
+    eapply sname_valid_wname_valid in H as ?.
+    eapply mem_atrans_inv_notindomain; eauto.
+    eauto using mem_atrans_cond_inv.
+  rewrite wname2sname_sname2wname; auto.
+  Qed.
 
-  Theorem link_ok : forall lxp bxp ixp dnum name inum isdir ms,
+
+  Theorem link_ok : forall lxp bxp ixp dnum name inum isdir ix0 ms,
     {< F Fm Fi m0 m dmap ilist frees,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
              rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms *
+             [[ notindomain name dmap ]] *
              [[ goodSize addrlen inum ]]
-    POST:hm' RET:^(ms', r) exists m',
+    POST:hm' RET:^(ms', ix0', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
            (([[ isError r ]] *
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
@@ -749,10 +786,11 @@ Module SDIR.
                                  ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
              [[ BFILE.treeseq_ilist_safe dnum ilist ilist' ]] ))
     CRASH:hm' LOG.intact lxp F m0 hm'
-    >} link lxp bxp ixp dnum name inum isdir ms.
+    >} link lxp bxp ixp dnum name inum isdir ix0 ms.
   Proof.
     unfold link.
     hoare.
+    eauto using link_dir_rep_pimpl_notindomain.
 
     or_r; resolve_valid_preds; cancel.
     subst; eexists.
@@ -764,16 +802,13 @@ Module SDIR.
     apply indomain_upd_ne in Hx; auto.
 
     eapply mem_ainv_mem_upd; eauto.
-    apply any_sep_star_ptsto.
-    apply upd_eq; auto.
-    unfold any; auto.
-    eapply mem_atrans_inv_notindomain; eauto.
+    apply ptsto_upd_disjoint; auto.
   Qed.
 
 
   Hint Extern 1 ({{_}} Bind (lookup _ _ _ _ _) _) => apply lookup_ok : prog.
   Hint Extern 1 ({{_}} Bind (unlink _ _ _ _ _) _) => apply unlink_ok : prog.
-  Hint Extern 1 ({{_}} Bind (link _ _ _ _ _ _ _ _) _) => apply link_ok : prog.
+  Hint Extern 1 ({{_}} Bind (link _ _ _ _ _ _ _ _ _) _) => apply link_ok : prog.
   Hint Extern 1 ({{_}} Bind (readdir _ _ _ _) _) => apply readdir_ok : prog.
 
   Hint Extern 0 (okToUnify (rep ?f _) (rep ?f _)) => constructor : okToUnify.

@@ -379,7 +379,7 @@ Module DIR.
   Qed.
 
   Lemma listpred_dmatch_mem_upd : forall l i dmap name inum isdir,
-    (forall i, i < length l -> lookup_f name (selN l i dent0) i = false) ->
+    notindomain name dmap ->
     negb (is_valid (selN l i dent0)) = true ->
     listpred dmatch l dmap ->
     i < length l ->
@@ -394,7 +394,7 @@ Module DIR.
     pred_apply.
     setoid_rewrite listpred_isolate with (def := dent0) at 1; eauto.
     unfold dmatch at 2; rewrite H0; cancel.
-    eapply lookup_notindomain; eauto.
+    eauto.
   Qed.
 
   Lemma listpred_dmatch_repeat_dent0 : forall n,
@@ -405,7 +405,7 @@ Module DIR.
   Qed.
 
   Lemma listpred_dmatch_ext_mem_upd : forall l dmap name inum isdir,
-    (forall i, i < length l -> lookup_f name (selN l i dent0) i = false) ->
+    notindomain name dmap ->
     (forall i, i < length l -> negb (is_valid (selN l i dent0)) = false) ->
     listpred dmatch l dmap ->
     goodSize addrlen inum ->
@@ -422,11 +422,40 @@ Module DIR.
     rewrite removeN_app_r, removeN_repeat, listpred_app by auto.
     rewrite listpred_dmatch_repeat_dent0.
     rewrite dmatch_mk_dent by auto.
-    apply ptsto_upd_disjoint.
+    apply ptsto_upd_disjoint; auto.
     pred_apply; cancel.
-    eapply lookup_notindomain; eauto.
   Qed.
 
+  Lemma listpred_dmatch_eq_mem : forall l m m',
+    listpred dmatch l m -> listpred dmatch l m' ->
+    m = m'.
+  Proof.
+    unfold dmatch.
+    induction l; cbn; intros m m' H H'.
+    - apply emp_empty_mem_only in H.
+      apply emp_empty_mem_only in H'.
+      congruence.
+    - destruct bool_dec.
+      apply IHl; pred_apply; cancel.
+      revert H. revert H'.
+      unfold_sep_star.
+      intros. repeat deex.
+      match goal with H1 : (ptsto _ _ ?m), H2 : (ptsto _ _ ?m') |- _ =>
+        assert (m = m') by (eapply ptsto_complete; eauto); subst
+      end.
+      f_equal.
+      eauto.
+  Qed.
+
+  Lemma listpred_dmatch_notindomain: forall delist dmap name x,
+    notindomain name dmap ->
+    listpred dmatch delist (upd dmap name x) ->
+    listpred dmatch delist =p=> notindomain name * name |-> x.
+  Proof.
+    intros. intros m ?.
+    replace m with (upd dmap name x) in * by (eauto using listpred_dmatch_eq_mem).
+    apply ptsto_upd_disjoint; auto.
+  Qed.
 
   (*************  correctness theorems  *)
 
@@ -491,7 +520,7 @@ Module DIR.
     {< F Fm Fi m0 m dmap ilist frees,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
              rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms
-    POST:hm' RET:^(ms', r) exists m' dmap',
+    POST:hm' RET:^(ms', hint, r) exists m' dmap',
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
              rep_macro Fm Fi m' bxp ixp dnum dmap' ilist frees ms' *
              [[ dmap' = mem_except dmap name ]] *
@@ -507,7 +536,7 @@ Module DIR.
     step.
 
     apply Dent.Defs.item0_wellformed.
-    msalloc_eq. cancel.
+    msalloc_eq.
 
     denote (lookup_f) as HH.
     pose proof (lookup_f_ok _ _ _ HH) as [Hx Hy].
@@ -530,13 +559,63 @@ Module DIR.
     all: easy.
   Qed.
 
-
-  Theorem link_ok : forall lxp bxp ixp dnum name inum isdir ms,
+  Theorem link'_ok : forall lxp bxp ixp dnum name inum isdir ms,
     {< F Fm Fi m0 m dmap ilist frees,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
              rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms *
+             [[ notindomain name dmap ]] *
              [[ goodSize addrlen inum ]]
-    POST:hm' RET:^(ms', r) exists m',
+    POST:hm' RET:^(ms', ixhint', r) exists m',
+             [[ MSAlloc ms' = MSAlloc ms ]] *
+           (([[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
+        \/  ([[ r = OK tt ]] *
+             exists dmap' Fd ilist' frees',
+             LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm' *
+             rep_macro Fm Fi m' bxp ixp dnum dmap' ilist' frees' ms' *
+             [[ dmap' = Mem.upd dmap name (inum, isdir) ]] *
+             [[ (Fd * name |-> (inum, isdir))%pred dmap' ]] *
+             [[ (Fd dmap /\ notindomain name dmap) ]] *
+             [[ BFILE.ilist_safe ilist  (BFILE.pick_balloc frees  (MSAlloc ms'))
+                                 ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
+             [[ BFILE.treeseq_ilist_safe dnum ilist ilist' ]] ))
+    CRASH:hm' LOG.intact lxp F m0 hm'
+    >} link' lxp bxp ixp dnum name inum isdir ms.
+  Proof.
+    unfold link', ifind_lookup_f, ifind_invalid, rep_macro, rep.
+    step.
+    step; msalloc_eq.
+
+    (* case 1: use avail entry *)
+    cbv; tauto.
+    step; msalloc_eq.
+    or_r; cancel.
+    eexists; split; eauto.
+    apply listpred_dmatch_mem_upd; auto.
+    eapply ptsto_upd_disjoint; eauto.
+    apply BFILE.ilist_safe_refl.
+    apply BFILE.treeseq_ilist_safe_refl.
+
+    (* case 2: extend new entry *)
+    cbv; tauto.
+
+    step; msalloc_eq.
+    or_r; cancel; eauto.
+    eexists; split; eauto.
+    eapply listpred_dmatch_ext_mem_upd; eauto.
+    eapply ptsto_upd_disjoint; eauto.
+  Unshelve.
+    all: eauto.
+  Qed.
+
+  Hint Extern 1 ({{ _ }} Bind (link' _ _ _ _ _ _ _ _) _) => apply link'_ok : prog.
+
+  Theorem link_ok : forall lxp bxp ixp dnum name inum isdir ixhint ms,
+    {< F Fm Fi m0 m dmap ilist frees,
+    PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms *
+             [[ notindomain name dmap ]] *
+             [[ goodSize addrlen inum ]]
+    POST:hm' RET:^(ms', ixhint', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
            (([[ isError r ]] * LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
         \/  ([[ r = OK tt ]] * 
@@ -550,38 +629,54 @@ Module DIR.
                                  ilist' (BFILE.pick_balloc frees' (MSAlloc ms')) ]] *
              [[ BFILE.treeseq_ilist_safe dnum ilist ilist' ]] ))
     CRASH:hm' LOG.intact lxp F m0 hm'
-    >} link lxp bxp ixp dnum name inum isdir ms.
+    >} link lxp bxp ixp dnum name inum isdir ixhint ms.
   Proof.
-    unfold link, ifind_lookup_f, ifind_invalid, rep_macro, rep.
+    unfold link, rep_macro, rep.
     step.
     step; msalloc_eq.
+
+    (* case 1: try entry hint *)
+    step.
+    erewrite Dent.items_length_ok with (xp := f) (m := (list2nmem (BFILE.BFData f))).
+    unfold Dent.RA.RALen. auto.
+    pred_apply; cancel.
+    destruct is_valid eqn:?.
+    (* working around a 'not found' Coq bug, probably #4202 in simpl *)
+    prestep. unfold rep_macro, rep. norm. cancel.
+    intuition ((pred_apply; cancel) || eauto).
+    step.
+    or_r. cancel.
+    eauto.
+    eapply listpred_dmatch_notindomain; eauto.
     cancel.
 
-    denote lookup_f as Hx; apply lookup_notindomain in Hx as Hy.
+    (* case 2: use hinted entry *)
     step; msalloc_eq.
-
-    (* case 1: use avail entry *)
+    erewrite Dent.items_length_ok with (xp := f) (m := (list2nmem (BFILE.BFData f))).
+    unfold Dent.RA.RALen. auto.
+    pred_apply; cancel.
     cbv; tauto.
-    cancel.
-    step; msalloc_eq.
-    or_r; cancel; eauto.
+    step.
+    or_r; cancel.
     eexists; split; eauto.
     apply listpred_dmatch_mem_upd; auto.
-    eapply ptsto_upd_disjoint; eauto.
-    eapply lookup_notindomain; eauto.
+    rewrite Bool.negb_true_iff; auto.
+    erewrite Dent.items_length_ok with (xp := f) (m := (list2nmem (BFILE.BFData f))).
+    unfold Dent.RA.RALen. auto.
+    pred_apply; cancel.
+    eapply ptsto_upd_disjoint; auto.
+    apply BFILE.ilist_safe_refl.
+    apply BFILE.treeseq_ilist_safe_refl.
 
-    (* case 2: extend new entry *)
-    cbv; tauto.
-    cbv; tauto.
-    cbv; tauto.
+    (* case 3: hint was out of bounds, so ignore it *)
+    (* working around a 'not found' Coq bug, probably #4202 in simpl *)
+    prestep. unfold rep_macro, rep. norm. cancel.
+    intuition ((pred_apply; cancel) || eauto).
+    step.
+    or_r. cancel.
+    eauto.
+    eapply listpred_dmatch_notindomain; eauto.
     cancel.
-
-    step; msalloc_eq.
-    or_r; cancel; eauto.
-    eexists; split; eauto.
-    eapply listpred_dmatch_ext_mem_upd; eauto.
-    eapply ptsto_upd_disjoint; eauto.
-    eapply lookup_notindomain; eauto.
   Unshelve.
     all: eauto.
   Qed.
@@ -589,7 +684,7 @@ Module DIR.
 
   Hint Extern 1 ({{_}} Bind (lookup _ _ _ _ _) _) => apply lookup_ok : prog.
   Hint Extern 1 ({{_}} Bind (unlink _ _ _ _ _) _) => apply unlink_ok : prog.
-  Hint Extern 1 ({{_}} Bind (link _ _ _ _ _ _ _ _) _) => apply link_ok : prog.
+  Hint Extern 1 ({{_}} Bind (link _ _ _ _ _ _ _ _ _) _) => apply link_ok : prog.
   Hint Extern 1 ({{_}} Bind (readdir _ _ _ _) _) => apply readdir_ok : prog.
 
   Hint Extern 0 (okToUnify (rep ?f _) (rep ?f _)) => constructor : okToUnify.
