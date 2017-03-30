@@ -364,10 +364,12 @@ Module TREESEQ.
     repeat match goal with
       | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- tree_names_distinct (TStree ?ts !!) ] => 
         eapply treeseq_in_ds_tree_pred_latest in H as Hpred;
-        eapply rep_tree_names_distinct; eapply Hpred
+        destruct_lift Hpred;
+        eapply rep_tree_names_distinct; eassumption
       | [ H: treeseq_in_ds _ _ _ _ ?ts _ |- tree_names_distinct (TStree (nthd ?n ?ts)) ] => 
         eapply treeseq_in_ds_tree_pred_nth in H as Hpred;
-        eapply rep_tree_names_distinct; eapply Hpred
+        destruct_lift Hpred;
+        eapply rep_tree_names_distinct; eassumption
     end.
 
   Theorem treeseq_file_getattr_ok : forall fsxp inum mscs,
@@ -1740,7 +1742,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     | O => f
     | S off' =>
       let f' := synced_file_alt_helper2 f off' in
-      BFILE.mk_bfile (updN (BFILE.BFData f') off' (fst (selN (BFILE.BFData f') off' ($0, nil)), nil)) (BFILE.BFAttr f') (BFILE.BFCache f)
+      BFILE.mk_bfile (updN (BFILE.BFData f') off' (fst (selN (BFILE.BFData f') off' ($0, nil)), nil)) (BFILE.BFAttr f') (BFILE.BFCache f')
     end.
 
   Lemma synced_file_alt_helper2_oob : forall off f off' v,
@@ -2022,11 +2024,12 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
   Proof.
     intros.
     edestruct d_in_nthd; eauto; subst.
-    eapply NEforall2_d_in in H; try reflexivity; intuition.
-    unfold tree_rep in H3.
-    unfold rep in H3.
-    destruct_lift H3.
-    rewrite subtree_extract in H5 by eauto.
+    unfold treeseq_in_ds in H; intuition.
+    eapply NEforall2_d_in in H3; try reflexivity; intuition.
+    unfold tree_rep in H.
+    unfold rep in H.
+    destruct_lift H.
+    rewrite subtree_extract in H6 by eauto.
     simpl in *.
     eapply BFILE.block_belong_to_file_off_ok; eauto.
     eapply pimpl_apply; [ | exact H ]. cancel.
@@ -2043,11 +2046,12 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
   Proof.
     intros.
     edestruct d_in_nthd; eauto; subst.
-    eapply NEforall2_d_in in H; try reflexivity; intuition.
-    unfold tree_rep in H3.
-    unfold rep in H3.
-    destruct_lift H3.
-    rewrite subtree_extract in H5 by eauto.
+    unfold treeseq_in_ds in H; intuition.
+    eapply NEforall2_d_in in H3; try reflexivity; intuition.
+    unfold tree_rep in H.
+    unfold rep in H.
+    destruct_lift H.
+    rewrite subtree_extract in H6 by eauto.
     simpl in *.
     erewrite list2nmem_sel with (x := f).
     eapply BFILE.block_belong_to_file_bfdata_length; eauto.
@@ -2121,6 +2125,8 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       + (* No more tail remaining; all blocks correspond to file [b] *)
         clear H9.
         rewrite app_nil_r.
+        unfold tree_rep in H3; destruct_lift H3.
+        eexists.
         eapply dirtree_update_safe_pathname_vssync_vecs_file; eauto.
 
         * rewrite firstn_length.
@@ -2155,8 +2161,180 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
             rewrite H15 in H9.
 
             eapply block_is_unused_xor_belong_to_file; eauto.
+            eassign (list2nmem (nthd n ds)). unfold tree_rep; pred_apply; cancel.
             eapply block_belong_to_file_off_ok; eauto.
             eapply nthd_in_ds.
+
+      + unfold tree_rep in H3; destruct_lift H3.
+        rewrite app_assoc. rewrite vssync_vecs_app.
+        unfold vssync.
+        edestruct IHal_tail.
+        shelve. shelve.
+        eexists.
+        eapply dirtree_update_free.
+        eassumption.
+        shelve.
+        Unshelve.
+        intros.
+        specialize (H9 i).
+        rewrite selN_app1 in H9 by omega. apply H9. rewrite app_length. omega.
+
+        rewrite app_length in *; simpl in *; omega.
+
+        shelve.
+
+        edestruct H7 with (off := length (BFILE.BFData b) + length al_tail).
+        eexists. intuition eauto.
+        eapply H1.
+        rewrite app_length in *; simpl in *; omega.
+
+        (* [treeseq_safe_bwd] says that the block is present in the old file.  Should be a contradiction. *)
+        deex.
+        eapply block_belong_to_file_bfdata_length in H14; eauto.
+        rewrite H13 in H6; inversion H6; subst. omega.
+        eapply nthd_in_ds.
+
+        (* [treeseq_safe_bwd] says the block is unused. *)
+        rewrite <- H9 in H12.
+        rewrite selN_last in H12 by omega.
+        eapply H12.
+        rewrite app_length. simpl. omega.
+
+    - (* TreeDir *)
+      assert (length al <= length (BFILE.BFData f)) by omega.
+      clear H0.
+      induction al using rev_ind; simpl; eauto.
+
+      rewrite vssync_vecs_app.
+      unfold vssync.
+      edestruct IHal. shelve. shelve. eexists.
+      eapply dirtree_update_free.
+      eassumption.
+      shelve. Unshelve.
+      intros. specialize (H1 i).
+      rewrite selN_app1 in H1 by omega. apply H1. rewrite app_length. omega.
+      rewrite app_length in *; simpl in *; omega.
+
+      shelve.
+
+      edestruct H7.
+      eexists; intuition eauto.
+      eapply H1 with (i := length al); rewrite app_length; simpl; omega.
+
+      deex; congruence.
+      rewrite selN_last in H10; eauto.
+
+    - (* None *)
+      assert (length al <= length (BFILE.BFData f)) by omega.
+      clear H0.
+      induction al using rev_ind; simpl; eauto.
+
+      rewrite vssync_vecs_app.
+      unfold vssync.
+      edestruct IHal. shelve. shelve. eexists.
+      eapply dirtree_update_free.
+      eassumption.
+      shelve. Unshelve.
+      intros. specialize (H1 i).
+      rewrite selN_app1 in H1 by omega. apply H1. rewrite app_length. omega.
+      rewrite app_length in *; simpl in *; omega.
+
+      shelve.
+
+      edestruct H7.
+      eexists; intuition eauto.
+      eapply H1 with (i := length al); rewrite app_length; simpl; omega.
+
+      deex; congruence.
+      rewrite selN_last in H10; eauto.
+  Qed.
+
+  Lemma tree_rep_latest_file_sync: forall Fm Ftop fsxp mscs ds ts al pathname inum f,
+    find_subtree pathname (TStree ts !!) = Some (TreeFile inum f) ->
+    Datatypes.length al = Datatypes.length (BFILE.BFData f) ->
+    (forall i, i < length al ->
+                BFILE.block_belong_to_file (TSilist ts !!) (selN al i 0) inum i) ->
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds ->
+    tree_rep_latest Fm Ftop fsxp (ts !!) mscs (list2nmem (ds !!)) ->
+    treeseq_pred (treeseq_safe pathname (MSAlloc mscs) ts !!) ts ->
+    tree_rep_latest Fm Ftop fsxp (treeseq_one_file_sync (ts !!) pathname) mscs (list2nmem (vssync_vecs (ds !!) al)).
+  Proof.
+    intros.
+    eapply NEforall_d_in in H4 as H4'; [ | apply latest_in_ds ].
+    unfold treeseq_safe in H4'.
+    unfold treeseq_one_file_sync.
+    intuition.
+    case_eq (find_subtree pathname (TStree (ts !!))); intros.
+    destruct d.
+    - (* a file *)
+      unfold tree_rep; simpl.
+
+      rewrite <- firstn_skipn with (l := al) (n := length (BFILE.BFData b)).
+      remember (skipn (Datatypes.length (BFILE.BFData b)) al) as al_tail.
+
+      assert (forall i, i < length al_tail -> selN al_tail i 0 = selN al (length (BFILE.BFData b) + i) 0).
+      subst; intros.
+      apply skipn_selN.
+
+      assert (length (BFILE.BFData b) + length al_tail <= length al).
+      subst.
+      rewrite <- firstn_skipn with (l := al) (n := (length (BFILE.BFData b))) at 2.
+      rewrite app_length.
+      eapply Plus.plus_le_compat; try omega.
+      rewrite firstn_length.
+      rewrite H0.
+      rewrite min_l; eauto.
+      eapply treeseq_safe_fwd_length; eauto.
+
+      rewrite <- latest_nthd; eauto.
+      rewrite <- latest_nthd; eauto.
+
+      clear Heqal_tail.
+
+      induction al_tail using rev_ind.
+
+      + (* No more tail remaining; all blocks correspond to file [b] *)
+        clear H9.
+        rewrite app_nil_r.
+        unfold tree_rep in H3; destruct_lift H3.
+        eapply dirtree_update_safe_pathname_vssync_vecs_file; eauto.
+
+        * rewrite firstn_length.
+          rewrite Nat.min_l; eauto.
+
+          case_eq (Datatypes.length (BFILE.BFData b)); intros; try omega.
+
+        * intros.
+          rewrite firstn_length in H9.
+          apply PeanoNat.Nat.min_glb_lt_iff in H9.
+          intuition.
+          simpl.
+
+          rewrite selN_firstn by auto.
+          edestruct H7.
+          exists f; intuition eauto.
+
+          **
+            deex.
+            rewrite H6 in H13. inversion H13; subst.
+            eauto.
+
+          **
+            exfalso.
+            edestruct H5; intuition.
+            eexists; intuition eauto.
+            eapply block_belong_to_file_off_ok with (off := i); eauto; try omega.
+            eapply latest_in_ds.
+
+            rewrite H in H14; inversion H14; subst.
+            eapply block_belong_to_file_bn_eq in H15.
+            2: eapply H1; eauto.
+            rewrite H15 in H9.
+
+            eapply block_is_unused_xor_belong_to_file; eauto.
+            eassign (list2nmem (ds !!)). pred_apply. unfold tree_rep, tree_rep_latest. cancel.
+            eapply block_belong_to_file_off_ok; eauto.
+            eapply latest_in_ds.
 
       + rewrite app_assoc. rewrite vssync_vecs_app.
         unfold vssync.
@@ -2169,7 +2347,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
         rewrite app_length in *; simpl in *; omega.
 
         edestruct H7 with (off := length (BFILE.BFData b) + length al_tail).
-        eexists. intuition eauto.
+        exists f. intuition eauto.
         eapply H1.
         rewrite app_length in *; simpl in *; omega.
 
@@ -2177,7 +2355,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
         deex.
         eapply block_belong_to_file_bfdata_length in H13; eauto.
         rewrite H12 in H6; inversion H6; subst. omega.
-        eapply nthd_in_ds.
+        eapply latest_in_ds.
 
         (* [treeseq_safe_bwd] says the block is unused. *)
         rewrite <- H9 in H11.
@@ -2276,7 +2454,8 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     treeseq_one_safe (nthd n ts) ts !! mscs'.
   Proof.
     unfold treeseq_in_ds; intros.
-    eapply NEforall2_d_in in H; intuition.
+    intuition.
+    eapply NEforall2_d_in in H1; intuition.
     unfold treeseq_one_safe.
     rewrite H0.
     eauto.
@@ -2362,7 +2541,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     Datatypes.length al = Datatypes.length (BFILE.BFData f) ->
     (length al = length (BFILE.BFData f) /\ forall i, i < length al ->
                 BFILE.block_belong_to_file (TSilist ts !!) (selN al i 0) inum i) ->
-    BFILE.MSAlloc mscs' = BFILE.MSAlloc mscs ->
+    BFILE.mscs_same_except_log mscs mscs' ->
     treeseq_in_ds Fm Ftop fsxp mscs' (ts_file_sync pathname ts) (dssync_vecs ds al).
   Proof.
     unfold treeseq_in_ds.
@@ -2373,7 +2552,16 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     simpl; intros.
     intuition; subst.
     eapply tree_rep_nth_file_sync; eauto.
+    unfold treeseq_in_ds; intuition eauto.
     eapply tree_safe_file_sync; eauto.
+    unfold treeseq_in_ds; intuition eauto.
+    unfold BFILE.mscs_same_except_log in *; intuition eauto.
+
+    unfold dssync_vecs; rewrite d_map_latest.
+    unfold ts_file_sync; rewrite d_map_latest.
+    eapply mscs_same_except_log_tree_rep_latest; try eassumption.
+    eapply tree_rep_latest_file_sync; eauto.
+    unfold treeseq_in_ds; intuition eauto.
   Qed.
 
   Lemma treeseq_one_file_sync_alternative : forall t pathname,
@@ -2550,7 +2738,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     treeseq_safe pathname (MSAlloc mscs) ts !! (nthd n ts) ->
     tree_names_distinct (TStree ts !!) ->
     tree_inodes_distinct (TStree ts !!) ->
-    tree_rep Fm Ftop fsxp (nthd n ts) mscs (list2nmem (nthd n ds)) ->
+    tree_rep Fm Ftop fsxp (nthd n ts) (list2nmem (nthd n ds)) ->
     treeseq_safe pathname' (MSAlloc mscs) 
       (treeseq_one_file_sync ts !! pathname)
       (treeseq_one_file_sync (nthd n ts) pathname).
@@ -2626,6 +2814,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       unfold treeseq_pred in H3.
       eapply NEforall_d_in with (x := (nthd n ts)) in H3 as H3'.  
       2: eapply nthd_in_ds.
+      unfold tree_rep in H7; destruct_lift H7.
       intuition; simpl.
       + 
         eapply treeseq_safe_fwd_ne; eauto.
@@ -2660,13 +2849,13 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
          [[ ds' = dssync_vecs ds al]] *
          [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
                 BFILE.block_belong_to_file (TSilist ts !!) (selN al i 0) inum i ]] *
-         [[ MSAlloc mscs' = MSAlloc mscs ]] *
+         [[ BFILE.mscs_same_except_log mscs mscs' ]] *
          [[ (Ftree * pathname |-> File inum (BFILE.synced_file f))%pred (dir2flatmem2 (TStree ts' !!)) ]]
     XCRASH:hm'
        LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
        exists ds' ts' mscs' al,
          LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-         [[ MSAlloc mscs' = MSAlloc mscs ]] *
+         [[ BFILE.mscs_same_except_log mscs mscs' ]] *
          [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
           [[ forall pathname',
              treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
@@ -2700,12 +2889,13 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     eapply NEforall_d_in in H6 as H6'; try eassumption.
     eapply d_in_nthd in H9 as H9'; deex.
 
+    rewrite <- mscs_same_except_log_rep in * by eassumption.
     eapply treeseq_sync_safe_sync; eauto.
     distinct_names.
     distinct_inodes.
 
-    unfold treeseq_in_ds in H7.
-    eapply NEforall2_d_in  with (x := (nthd n ts)) in H7 as Hd'; eauto.
+    unfold treeseq_in_ds in H7. intuition.
+    eapply NEforall2_d_in  with (x := (nthd n ts)) in H8 as Hd'; eauto.
     intuition.
 
     unfold ts_file_sync.
@@ -2719,8 +2909,9 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
     xcrash_solve.
     xform_norm. or_l. cancel.
-    xform_norm. or_r. cancel.  repeat (progress xform_norm; cancel).
+    xform_norm. or_r. cancel.  repeat (progress xform_norm; safecancel).
 
+    eassumption.
     eapply treeseq_in_ds_file_sync; eauto.
     eapply dir2flatmem2_find_subtree_ptsto in H4 as H4'; eauto.
     distinct_names'.
@@ -2731,15 +2922,21 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     (* XXX repeat from above factor out *)
     eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
     eapply NEforall_d_in'; intros.
-    apply d_in_d_map in H9; deex; intuition.
+    apply d_in_d_map in H8; deex; intuition.
     eapply NEforall_d_in in H6 as H6'; try eassumption.
-    eapply d_in_nthd in H11 as H11'; deex.
+    eapply d_in_nthd in H9 as H9'; deex.
+    rewrite <- mscs_same_except_log_rep in * by eassumption.
     eapply treeseq_sync_safe_sync; eauto.
     distinct_names.
     distinct_inodes.
     unfold treeseq_in_ds in H7.
-    eapply NEforall2_d_in  with (x := (nthd n ts)) in H7 as Hd'; eauto.
     intuition.
+    eapply NEforall2_d_in  with (x := (nthd n ts)) in H8 as Hd'; eauto.
+    intuition.
+
+    eauto.
+    eauto.
+    eauto.
 
     unfold treeseq_one_file_sync.
     unfold ts_file_sync.

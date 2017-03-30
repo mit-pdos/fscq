@@ -1012,7 +1012,7 @@ Module AFS.
       [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST:hm' RET:^(mscs')
       exists ds' tree' al,
-        [[ MSAlloc mscs' = MSAlloc mscs ]] *
+        [[ BFILE.mscs_same_except_log mscs mscs' ]] *
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
         [[ ds' = dssync_vecs ds al]] *
         [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
@@ -1025,7 +1025,7 @@ Module AFS.
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists ds' tree' al mscs',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-      [[ MSAlloc mscs' = MSAlloc mscs ]] *
+      [[ BFILE.mscs_same_except_log mscs mscs' ]] *
       [[ ds' = dssync_vecs ds al]] *
       [[ length al = length (BFILE.BFData f) /\ forall i, i < length al ->
             BFILE.block_belong_to_file ilist (selN al i 0) inum i ]] *
