@@ -72,6 +72,7 @@ Module BFILE.
     | [ H: MSAllocC _ = MSAllocC _ |- _ ] => rewrite H in *; clear H
     | [ H: MSIAllocC _ = MSIAllocC _ |- _ ] => rewrite H in *; clear H
     | [ H: MSCache _ = MSCache _ |- _ ] => rewrite H in *; clear H
+    | [ H: MSICache _ = MSICache _ |- _ ] => rewrite H in *; clear H
     end.
 
   Definition ms_empty sz := mk_memstate
@@ -713,6 +714,14 @@ Module BFILE.
   Qed.
 
   Local Hint Resolve odd_nonzero.
+
+  Definition mscs_same_except_log mscs1 mscs2 :=
+    (MSAlloc mscs1 = MSAlloc mscs2) /\
+    (MSAllocC mscs1 = MSAllocC mscs2) /\
+    (MSIAllocC mscs1 = MSIAllocC mscs2) /\
+    (MSICache mscs1 = MSICache mscs2) /\
+    (MSCache mscs1 = MSCache mscs2).
+
 
   (**** automation **)
 

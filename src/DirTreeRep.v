@@ -109,5 +109,19 @@ Set Implicit Arguments.
     simpl in H0; destruct_lift H0; auto.
   Qed.
 
+  Theorem mscs_same_except_log_rep' : forall mscs1 mscs2 fsxp F tree ilist frees,
+    BFILE.mscs_same_except_log mscs1 mscs2 ->
+    rep fsxp F tree ilist frees mscs1 =p=> rep fsxp F tree ilist frees mscs2.
+  Proof.
+    unfold BFILE.mscs_same_except_log; unfold rep; intros.
+    intuition msalloc_eq.
+    apply pimpl_refl.
+  Qed.
 
- 
+  Theorem mscs_same_except_log_rep : forall mscs1 mscs2 fsxp F tree ilist frees,
+    BFILE.mscs_same_except_log mscs1 mscs2 ->
+    rep fsxp F tree ilist frees mscs1 <=p=> rep fsxp F tree ilist frees mscs2.
+  Proof.
+    split; eapply mscs_same_except_log_rep'; eauto.
+    unfold BFILE.mscs_same_except_log in *; intuition eauto.
+  Qed.
