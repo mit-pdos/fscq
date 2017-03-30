@@ -660,157 +660,6 @@ Ltac destruct_lifts := try progress match goal with
   | [ H : sep_star _ _  _ |- _ ] => destruct_lift H
 end.
 
-Definition norm_goal (T: Type) (g: T) := True.
-Theorem norm_goal_ok: forall T g, @norm_goal T g. Proof. firstorder. Qed.
-Opaque norm_goal.
-
-Ltac clear_norm_goal :=
-  match goal with
-  | [ H: norm_goal _ |- _ ] => clear H
-  end.
-
-Ltac set_norm_goal :=
-  match goal with
-  | [ |- ?g ] => repeat clear_norm_goal; assert (norm_goal g) by apply norm_goal_ok
-  end.
-
-(* The goal of pimpl_hidden is to prevent "auto with norm_hint_right" from
- * solving things automatically for us, unless we have an explicit hint..
- *)
-Definition pimpl_hidden := @pimpl.
-Infix "=!=>" := pimpl_hidden (at level 90).
-Arguments pimpl_hidden {AT AEQ V} _ _.
-Theorem pimpl_hide: forall AT AEQ V (a b : @pred AT AEQ V), (pimpl_hidden a b) -> (pimpl a b).
-Proof. auto. Qed.
-Theorem pimpl_unhide: forall AT AEQ V (a b : @pred AT AEQ V), (pimpl a b) -> (pimpl_hidden a b).
-Proof. auto. Qed.
-Opaque pimpl_hidden.
-
-(**
- * In-code hints to transform predicates.
- *)
-(*
-Definition xform_fwd {T: Prop} (x: T) := True.
-Definition xform_bwd {T: Prop} (x: T) := True.
-Opaque xform_fwd xform_bwd.
-
-Definition Xform {T} {TFWD TBWD : Prop} (fwd : TFWD) (bwd : TBWD) p : prog T :=
-  p.
-
-Theorem xform_ok : forall T p (TF TB:Prop) (tf:TF) (tb:TB) (rx:prog T), {{p}} rx
-  -> {{p}} Xform tf tb rx.
-Proof.
-  auto.
-Qed.
-
-Ltac clear_xform := repeat match goal with
-  | [ H: xform_fwd _ |- _ ] => clear H
-  | [ H: xform_bwd _ |- _ ] => clear H
-  end.
-
-Ltac remember_xform := try match goal with
-  | [ |- {{_}} Xform ?fwd ?bwd _ ] =>
-    clear_xform;
-    assert (xform_fwd fwd) by constructor;
-    assert (xform_bwd bwd) by constructor;
-    apply xform_ok
-  end.
-
-Ltac apply_xform canceller := match goal with
-  | [ |- _ =p=> ?rhs ] => match goal with
-    | [ H: _ =p=> rhs |- _ ] => match goal with
-      | [ Hx: xform_bwd ?bwd |- _ ] => pimpl_crash;
-        clear_xform;
-        eapply pimpl_trans; [| eapply pimpl_trans;
-        [ apply pimpl_sep_star; [ apply pimpl_refl | apply bwd ] | ] ];
-        [ try canceller .. ]
-        || fail 3
-      | _ => idtac
-      end
-    | _ => match goal with
-      | [ Hx: xform_fwd ?fwd |- _ ] =>
-        clear_xform;
-        eapply pimpl_trans; [| eapply pimpl_trans;
-        [ apply pimpl_sep_star; [ apply pimpl_refl | apply fwd ] | ] ];
-        [ try canceller .. ]
-        || fail 3
-      | _ => idtac
-      end
-    end
-  | _ => idtac
-  end; clear_xform.
-*)
-
-(**
- * Older predicate replacement machinery.
- *)
-
-Theorem replace_left : forall AT AEQ V ps ps' q (p : @pred AT AEQ V) p' F,
-  pick p ps ps' /\ (p =p=> p')
-  -> (stars (p' :: ps') * F =p=> q)
-  -> (stars ps * F =p=> q).
-Proof.
-  intros; destruct H.
-  eapply pimpl_trans; [|apply H0].
-  apply pimpl_sep_star; [|apply pimpl_refl].
-  clear dependent q.
-  induction H; intros.
-  - inversion H; subst.
-    eapply pimpl_trans; [apply stars_prepend|].
-    eapply pimpl_trans; [|apply stars_prepend].
-    eapply pimpl_sep_star; auto.
-  - eapply pimpl_trans; [apply stars_prepend|].
-    eapply pimpl_trans; [|apply stars_prepend].
-    eapply pimpl_trans; [|apply pimpl_sep_star; [apply pimpl_refl|apply stars_prepend] ].
-    eapply pimpl_trans; [|apply sep_star_assoc].
-    eapply pimpl_trans; [|apply pimpl_sep_star; [apply sep_star_comm|apply pimpl_refl] ].
-    eapply pimpl_trans; [|apply sep_star_assoc].
-    eapply pimpl_sep_star; auto.
-    eapply pimpl_trans; [|apply stars_prepend].
-    auto.
-Qed.
-
-Theorem replace_right : forall AT AEQ V ps ps' q (p : @pred AT AEQ V) p',
-  pick p ps ps' /\ (p' =p=> p)
-  -> (q =p=> stars (p' :: ps'))
-  -> (q =p=> stars ps).
-Proof.
-  intros; destruct H.
-  eapply pimpl_trans; [apply H0|].
-  clear dependent q.
-  induction H; intros.
-  - inversion H; subst.
-    eapply pimpl_trans; [|apply stars_prepend].
-    eapply pimpl_trans; [apply stars_prepend|].
-    eapply pimpl_sep_star; auto.
-  - eapply pimpl_trans; [|apply stars_prepend].
-    eapply pimpl_trans; [apply stars_prepend|].
-    eapply pimpl_trans; [apply pimpl_sep_star; [apply pimpl_refl|apply stars_prepend]|].
-    eapply pimpl_trans; [apply sep_star_assoc|].
-    eapply pimpl_trans; [apply pimpl_sep_star; [apply sep_star_comm|apply pimpl_refl]|].
-    eapply pimpl_trans; [apply sep_star_assoc|].
-    eapply pimpl_sep_star; auto.
-    eapply pimpl_trans; [apply stars_prepend|].
-    auto.
-Qed.
-
-Ltac replace_left_one := split; [ apply PickFirst; constructor
-                                | apply pimpl_hide; auto with norm_hint_left ].
-
-Ltac replace_right_one := split; [ apply PickFirst; constructor
-                                 | apply pimpl_hide; auto with norm_hint_right ].
-
-Ltac replace_left := eapply replace_left;
-  [ solve [ repeat ( solve [ replace_left_one ] || apply pick_later_and ) ] | ].
-
-Ltac replace_right := eapply replace_right;
-  [ solve [ repeat ( solve [ replace_right_one ] || apply pick_later_and ) ] | ].
-
-(* XXX ask Adam: should we replace norm_hint_left / norm_hint_write with
- * setoid-based rewriting?  might be too early: setoid rewriting is still
- * a bit buggy in Coq..
- *)
-
 Ltac norm'l := eapply start_normalizing_left; [ flatten | ];
                eapply pimpl_exists_l; intros;
                apply sep_star_lift_l; let Hlift:=fresh in intro Hlift;
@@ -836,14 +685,11 @@ Ltac norml := unfold pair_args_helper;
               * produce at least 2 subgoals.  Also, because [split_or_l] reverses
               * the list of predicates, we run it twice to preserve the order.
               *)
-             repeat ( split_or_l; [ | | .. ]; split_or_l; unfold stars; simpl; norm'l );
-             set_norm_goal;
-             repeat ( replace_left; unfold stars; simpl; set_norm_goal; norm'l ).
+             repeat ( split_or_l; [ | | .. ]; split_or_l; unfold stars; simpl; norm'l ).
 
 Ltac norm := norml;
              solve [ exfalso ; auto with false_precondition_hint ] ||
-             ( norm'r; [ try ( replace_right; unfold stars; simpl; norm ) | .. ] );
-             repeat clear_norm_goal.
+             norm'r.
 
 Ltac inv_option_eq' := repeat match goal with
   | [ H: None = None |- _ ] => clear H
@@ -1082,7 +928,7 @@ Ltac xform_deex_r :=
 
 
 Ltac xform_deex_l :=
-    norml; unfold stars; simpl; clear_norm_goal;
+    norml; unfold stars; simpl;
     try rewrite -> crash_xform_exists_comm;
     try (rewrite sep_star_comm, star_emp_pimpl);
     try match goal with
