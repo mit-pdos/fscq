@@ -1521,7 +1521,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
            treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
        [[ ts' = tsupd ts pathname off (v, vsmerge vs) ]] *
        [[ ds' = dsupd ds bn (v, vsmerge vs) ]] *
-       [[ MSAlloc mscs' = MSAlloc mscs ]] *
+       [[ BFILE.mscs_same_except_log mscs mscs' ]] *
        [[ (Ftree * pathname |-> File inum f')%pred (dir2flatmem2 (TStree ts' !!)) ]] *
        [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
        [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
@@ -1564,13 +1564,14 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
     eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred; eauto.
     eapply NEforall_d_in'; intros.
-    apply d_in_d_map in H6; deex; intuition.
+    apply d_in_d_map in H4; deex; intuition.
     eapply NEforall_d_in in H7 as H7'; try eassumption.
     unfold tsupd; rewrite d_map_latest.
     unfold treeseq_in_ds in H8.
-    eapply d_in_nthd in H9 as H9'; deex.
-    eapply NEforall2_d_in  with (x := (nthd n ts)) in H8 as Hd'; eauto.
+    eapply d_in_nthd in H6 as H6'; deex.
+    eapply NEforall2_d_in  with (x := (nthd n ts)) in H9 as Hd'; eauto.
     intuition.
+    rewrite <- mscs_same_except_log_rep in * by eassumption.
     eapply treeseq_upd_safe_upd; eauto.
 
     distinct_names.
@@ -1596,16 +1597,18 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
     assert( f' = {|
            BFILE.BFData := (BFILE.BFData f) ⟦ off := (v, vsmerge vs) ⟧;
-           BFILE.BFAttr := BFILE.BFAttr f |}).
+           BFILE.BFAttr := BFILE.BFAttr f;
+           BFILE.BFCache := BFILE.BFCache f |}).
     destruct f'.
     f_equal.
-    simpl in H15.
-    eapply list2nmem_array_updN in H15.
-    rewrite H15.
+    simpl in H16.
+    eapply list2nmem_array_updN in H16.
+    rewrite H16.
     subst; eauto.
     eapply list2nmem_ptsto_bound in H5 as H5''; eauto.
     eauto.
-    rewrite H6.
+    eauto.
+    rewrite H4.
     eapply dir2flatmem2_update_subtree; eauto.
     distinct_names'.
     distinct_names'.
@@ -1634,6 +1637,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
     eapply dir2flatmem2_find_subtree_ptsto; eauto.
     distinct_names'.
+    apply BFILE.mscs_same_except_log_refl.
     eassumption.
 
   Grab Existential Variables.

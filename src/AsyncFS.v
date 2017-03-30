@@ -953,6 +953,7 @@ Module AFS.
        [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
        [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
        [[ BFILE.BFAttr f' = BFILE.BFAttr f ]] *
+       [[ BFILE.BFCache f' = BFILE.BFCache f ]] *
        [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
                        ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
     XCRASH:hm'

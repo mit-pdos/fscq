@@ -722,6 +722,19 @@ Module BFILE.
     (MSICache mscs1 = MSICache mscs2) /\
     (MSCache mscs1 = MSCache mscs2).
 
+  Lemma mscs_same_except_log_comm : forall mscs1 mscs2,
+    mscs_same_except_log mscs1 mscs2 ->
+    mscs_same_except_log mscs2 mscs1.
+  Proof.
+    firstorder.
+  Qed.
+
+  Lemma mscs_same_except_log_refl : forall mscs,
+    mscs_same_except_log mscs mscs.
+  Proof.
+    firstorder.
+  Qed.
+
 
   (**** automation **)
 
