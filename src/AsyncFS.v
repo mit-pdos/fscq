@@ -816,17 +816,17 @@ Module AFS.
          [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
   POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-       [[ ok = false ]] *
+      ([[ ok = false ]] *
        (LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-        [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] \/
-      [[ ok = true  ]] * exists d tree' f' ilist',
+        [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]]) \/
+      ([[ ok = true  ]] * exists d tree' f' ilist',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
         [[[ d ::: (Fm * rep fsxp Ftop tree' ilist' frees mscs')]]] *
         [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
         [[ f' = BFILE.mk_bfile (BFILE.BFData f) attr (BFILE.BFCache f) ]] *
         [[ dirtree_safe ilist  (BFILE.pick_balloc frees  (MSAlloc mscs')) tree
                         ilist' (BFILE.pick_balloc frees  (MSAlloc mscs')) tree' ]] *
-        [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]]
+        [[ BFILE.treeseq_ilist_safe inum ilist ilist' ]])
      )
   XCRASH:hm'
     LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
