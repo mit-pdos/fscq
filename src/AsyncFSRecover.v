@@ -37,7 +37,8 @@ Import ListNotations.
 Module AFS_RECOVER.
 
   Import AFS.
-  Import DIRTREE.
+  Import DirTree.
+  Import DirTreeDef.
 
   Parameter cachesize : nat.
   Axiom cachesize_ok : cachesize <> 0.
@@ -50,12 +51,12 @@ Module AFS_RECOVER.
   Theorem file_getattr_recover_ok : forall fsxp inum mscs,
   {X<< ds pathname Fm Ftop tree f ilist frees,
   PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-         [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees) ]]] *
-         [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+         [[[ ds!! ::: (Fm * DirTreeRep.rep fsxp Ftop tree ilist frees mscs) ]]] *
+         [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
   POST:hm' RET:^(mscs',r)
          LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
          [[ r = BFILE.BFAttr f ]]
-  REC:hm' RET:r exists mscs fsxp,
+  REC:vm', hm' RET:r exists mscs fsxp,
          exists d n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm' *
          [[ n <= length (snd ds) ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
@@ -99,13 +100,13 @@ Module AFS_RECOVER.
   Theorem read_fblock_recover_ok : forall fsxp inum off mscs,
     {X<< ds Fm Ftop tree pathname f Fd vs ilist frees,
     PRE:hm LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-           [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)]]] *
-           [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
+           [[[ ds!! ::: (Fm * DirTreeRep.rep fsxp Ftop tree ilist frees mscs)]]] *
+           [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
            [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(mscs', r)
            LOG.rep (FSXPLog fsxp) (SB.rep  fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
            [[ r = fst vs ]]
-    REC:hm' RET:r exists mscs fsxp,
+    REC:vm',hm' RET:r exists mscs fsxp,
          exists d n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm' *
          [[ n <= length (snd ds) ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]
@@ -156,16 +157,16 @@ Module AFS_RECOVER.
     {<< ds Fm Ftop tree pathname f ilist frees,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)]]] *
-      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+      [[[ ds!! ::: (Fm * DirTreeRep.rep fsxp Ftop tree ilist frees mscs)]]] *
+      [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST:hm' RET:^(mscs', r)
       [[ isError r ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
       [[ r = OK tt ]] * exists d tree' f' ilist' frees',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
-        [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees')]]] *
-        [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-        [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]]
-    REC:hm' RET:r exists mscs fsxp,
+        [[[ d ::: (Fm * DirTreeRep.rep fsxp Ftop tree' ilist' frees' mscs')]]] *
+        [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+        [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) (BFILE.BFCache f) ]]
+    REC:vm',hm' RET:r exists mscs fsxp,
       (exists d n, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm' *
          [[ n <= length (snd ds) ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]) \/
@@ -174,9 +175,9 @@ Module AFS_RECOVER.
          [[ n <= length (snd ds') ]] *
          [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds'))) ]]] *
          [[ ds' = pushd dnew ds ]] *
-         [[[ dnew ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees')]]] *
-         [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
-         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) ]])
+         [[[ dnew ::: (Fm * DirTreeRep.rep fsxp Ftop tree' ilist' frees' mscs)]]] *
+         [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
+         [[ f' = BFILE.mk_bfile (setlen (BFILE.BFData f) sz ($0, nil)) (BFILE.BFAttr f) (BFILE.BFCache f) ]])
      >>} file_truncate fsxp inum sz mscs >> recover cachesize.
   Proof.
     unfold forall_helper; intros.
@@ -268,23 +269,23 @@ Module AFS_RECOVER.
     {<< ds Fm Ftop tree pathname f Fd vs frees ilist,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)]]] *
-      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]] *
+      [[[ ds!! ::: (Fm * DirTreeRep.rep fsxp Ftop tree ilist frees mscs)]]] *
+      [[ find_subtree pathname tree = Some (TreeFile inum f) ]] *
       [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(mscs')
       exists tree' f' ds',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
-       [[[ ds'!! ::: (Fm  * DIRTREE.rep fsxp Ftop tree' ilist frees) ]]] *
+       [[[ ds'!! ::: (Fm  * DirTreeRep.rep fsxp Ftop tree' ilist frees) ]]] *
        [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
        [[[ (BFILE.BFData f') ::: (Fd * off |-> (v, vsmerge vs)) ]]] *
        [[ BFILE.BFAttr f' = BFILE.BFAttr f ]]
-    REC:hm' RET:r exists mscs fsxp,
+    REC:vm',hm' RET:r exists mscs fsxp,
       exists d, LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm' *
       ((exists n, 
         [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]] ) \/
        (exists tree' f' v' ilist' frees',
-        [[[ d ::: (crash_xform Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees')]]] *
-        [[ tree' = DIRTREE.update_subtree pathname (DIRTREE.TreeFile inum f') tree ]] *
+        [[[ d ::: (crash_xform Fm * DirTreeRep.rep fsxp Ftop tree' ilist' frees')]]] *
+        [[ tree' = update_subtree pathname (TreeFile inum f') tree ]] *
         [[[ (BFILE.BFData f') ::: (crash_xform Fd * off |=> v') ]]] *
         [[ BFILE.BFAttr f' = BFILE.BFAttr f ]] *
         [[ In v' (v :: vsmerge vs) ]]))
@@ -307,20 +308,20 @@ Module AFS_RECOVER.
     {<< ds Fm Ftop tree pathname f frees ilist,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees)]]] *
-      [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeFile inum f) ]]
+      [[[ ds!! ::: (Fm * DirTreeRep.rep fsxp Ftop tree ilist frees mscs)]]] *
+      [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST:hm' RET:^(mscs')
       exists ds' tree' al,
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
         [[ ds' = dssync_vecs ds al ]] *
-        [[[ ds'!! ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist frees)]]] *
+        [[[ ds'!! ::: (Fm * DirTreeRep.rep fsxp Ftop tree' ilist frees mscs')]]] *
         [[ tree' = update_subtree pathname (TreeFile inum  (BFILE.synced_file f)) tree ]]
-    REC:hm' RET:r exists mscs fsxp,
+    REC:vm',hm' RET:r exists mscs fsxp,
       exists d,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) (MSLL mscs) hm' *
        ((exists n,  [[[ d ::: crash_xform (diskIs (list2nmem (nthd n ds))) ]]]) \/
          exists flist' F',
-         [[[ d ::: (F' * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' ilist frees) ]]] *
+         [[[ d ::: (F' * BFILE.rep (FSXPBlockAlloc fsxp) (FSXPInode fsxp) flist' ilist frees (BFILE.MSAllocC mscs) (BFILE.MSCache mscs) (BFILE.MSICache mscs)) ]]] *
          [[[ flist' ::: (arrayN_ex (@ptsto _ addr_eq_dec _) flist' inum * inum |-> BFILE.synced_file f) ]]]
        )
    >>} file_sync fsxp inum mscs >> recover cachesize.
@@ -335,8 +336,8 @@ Module AFS_RECOVER.
          (LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) v hm
       \/ (exists d tree',
            LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) (d, []) hm *
-           [[[ d ::: v0 ✶ DIRTREE.rep fsxp v1 tree' ]]] *
-           [[ tree' = DIRTREE.update_subtree v3 (DIRTREE.TreeFile inum (BFILE.synced_file v4)) v2 ]])) ]]))%pred).
+           [[[ d ::: v0 ✶ DirTreeRep.rep fsxp v1 tree' ]]] *
+           [[ tree' = update_subtree v3 (TreeFile inum (BFILE.synced_file v4)) v2 ]])) ]]))%pred).
     apply pimpl_refl.
     cancel.
     simpl.
@@ -378,8 +379,8 @@ Module AFS_RECOVER.
       apply (crash_xform_diskIs_pred _ Hy) in Hx.
       apply crash_xform_sep_star_dist in Hx.
 
-      (* unfold DIRTREE.rep in Hx to extract the file list *)
-      unfold DIRTREE.rep in Hx; apply sep_star_comm in Hx.
+      (* unfold DirTreeRep.rep in Hx to extract the file list *)
+      unfold DirTreeRep.rep in Hx; apply sep_star_comm in Hx.
       repeat (rewrite crash_xform_exists_comm in Hx;
         apply pimpl_exists_r_star_r in Hx;
         destruct Hx as [ ? Hx ]).
@@ -409,7 +410,7 @@ Module AFS_RECOVER.
     {<< ds Fm Ftop tree ilist frees,
     PRE:hm
      LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees) ]]] *
+      [[[ ds!! ::: (Fm * DirTreeRep.rep fsxp Ftop tree ilist frees) ]]] *
       [[ DIRTREE.dirtree_inum tree = dnum]] *
       [[ DIRTREE.dirtree_isdir tree = true ]]
     POST:hm' RET:^(mscs',r)
@@ -464,7 +465,7 @@ Module AFS_RECOVER.
     {<< ds pathname Fm Ftop tree tree_elem ilist frees,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees) ]]] *
+      [[[ ds!! ::: (Fm * DirTreeRep.rep fsxp Ftop tree ilist frees) ]]] *
       [[ DIRTREE.find_subtree pathname tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
     POST:hm' RET:^(mscs',r)
        [[ r = None ]] *
@@ -473,8 +474,8 @@ Module AFS_RECOVER.
        [[ r = Some inum ]] * exists d tree' ilist' frees',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (pushd d ds)) (MSLL mscs') hm' *
        [[ tree' = DIRTREE.tree_graft dnum tree_elem pathname name 
-                           (DIRTREE.TreeFile inum BFILE.bfile0) tree ]] *
-       [[[ d ::: (Fm * DIRTREE.rep fsxp Ftop tree' ilist' frees') ]]]
+                           (TreeFile inum BFILE.bfile0) tree ]] *
+       [[[ d ::: (Fm * DirTreeRep.rep fsxp Ftop tree' ilist' frees') ]]]
     REC:hm' RET:^(mscs,fsxp)
       exists d,
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (d, nil)) mscs hm' *
@@ -527,7 +528,7 @@ Module AFS_RECOVER.
     {<< ds Fm Ftop tree cwd tree_elem ilist frees,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
-      [[[ ds!! ::: (Fm * DIRTREE.rep fsxp Ftop tree ilist frees) ]]] *
+      [[[ ds!! ::: (Fm * DirTreeRep.rep fsxp Ftop tree ilist frees) ]]] *
       [[ DIRTREE.find_subtree cwd tree = Some (DIRTREE.TreeDir dnum tree_elem) ]]
     POST:hm' RET:^(mscs',ok)
       [[ ok = false ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
