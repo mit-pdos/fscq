@@ -457,14 +457,14 @@ fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
   (wlen, ()) <- fr $ AsyncFS._AFS__file_get_sz fsxp inum
   len <- return $ fromIntegral $ wordToNat 64 wlen
   endpos <- return $ (fromIntegral offset) + (fromIntegral (BS.length bs))
-  okspc <- if len < endpos then do
+  (okspc, do_log) <- if len < endpos then do
     (ok, _) <- fr $ AsyncFS._AFS__file_truncate fsxp inum ((endpos + 4095) `div` 4096)
-    return ok
+    return (ok, True)
   else
-    return $ Errno.OK ()
+    return $ (Errno.OK (), False)
   case okspc of
     Errno.OK _ -> do
-      r <- foldM (write_piece fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
+      r <- foldM (write_piece do_log fsxp len) (WriteOK 0) (compute_range_pieces offset bs)
       case r of
         WriteOK c -> do
           okspc2 <- if len < endpos then do
@@ -484,8 +484,8 @@ fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
     Errno.Err e -> do
       return $ Left $ errnoToPosix e
   where
-    write_piece _ _ (WriteErr c) _ = return $ WriteErr c
-    write_piece fsxp init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
+    write_piece _ _ _ (WriteErr c) _ = return $ WriteErr c
+    write_piece do_log fsxp init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
       new_bs <- if cnt == blocksize then
           return piece_bs
         else do
@@ -497,8 +497,12 @@ fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
           return $ BS.append (BS.take (fromIntegral off) old_bs)
                  $ BS.append piece_bs
                  $ BS.drop (fromIntegral $ off + cnt) old_bs
-      -- _ <- fr $ AsyncFS._AFS__update_fblock_d fsxp inum blk (WBS new_bs)
-      _ <- fr $ AsyncFS._AFS__update_fblock fsxp inum blk (WBS new_bs)
+      if do_log then do
+        _ <- fr $ AsyncFS._AFS__update_fblock fsxp inum blk (WBS new_bs)
+        return ()
+      else do
+        _ <- fr $ AsyncFS._AFS__update_fblock_d fsxp inum blk (WBS new_bs)
+        return ()
       return $ WriteOK (c + (fromIntegral cnt))
 
 fscqSetFileSize :: FSrunner -> MVar Coq_fs_xparams -> FilePath -> FileOffset -> IO Errno
