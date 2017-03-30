@@ -1200,7 +1200,7 @@ Module BFILE.
   Qed.
 
   Theorem getattrs_ok : forall lxp bxp ixp inum ms,
-    {< F Fm Fi m0 m flist ilist frees f,
+    {< F Fm Fi m0 m flist ilist frees allocc f,
     PRE:hm
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
            [[[ m ::: (Fm * rep bxp ixp flist ilist frees allocc (MSCache ms) (MSICache ms)) ]]] *
