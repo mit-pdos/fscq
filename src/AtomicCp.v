@@ -558,9 +558,9 @@ Qed.
             [[ (Ftree * srcpath |-> File srcinum file * tmppath |-> File tinum (synced_dirfile file) *
                 (dstbase ++ [dstname])%list |-> File dstinum dstfile)%pred (dir2flatmem2 (TStree ts'!!)) ]]))
     XCRASH:hm'
-     exists ds' ts',
+     exists ds' ts' mscs',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-       [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
+       [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
        [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts']]
     >} copy2temp fsxp srcinum tinum mscs.
   Proof.
@@ -570,8 +570,14 @@ Qed.
     destruct a0.
     step.
     specialize (H20 tmppath H8).
-    rewrite H0; eauto.
-    admit.  (* XXX treerep holds too *)
+    msalloc_eq; eauto.
+
+    eapply treeseq_pred_pushd; eauto.
+    unfold tree_rep; intuition.
+    distinct_names.
+    left; unfold tree_with_tmp; simpl.
+    pred_apply. cancel.
+
     instantiate (1 := ($ (0), [])).
     admit. (* XXX need list2nmem_setlen? *)
 
@@ -581,16 +587,16 @@ Qed.
     step.
     step.
 
-    xcrash.
-    erewrite treeseq_in_ds_eq; eauto.
-    eassumption.
+    xcrash; eauto.
 
     step.
-    erewrite treeseq_in_ds_eq; eauto.
 
-    xcrash.
-    erewrite treeseq_in_ds_eq; eauto.
-    eassumption.
+    xcrash; eauto.
+    eapply treeseq_pred_pushd; eauto.
+    unfold tree_rep; intuition.
+    distinct_names.
+    left; unfold tree_with_tmp; simpl.
+    pred_apply. cancel.
   Admitted.
 
   Hint Extern 1 ({{_}} Bind (copy2temp _ _ _ _) _) => apply copy2temp_ok : prog.
