@@ -473,13 +473,23 @@ Module TREESEQ.
 
     rewrite subtree_extract in H3; eauto.
     simpl in H3.
+    destruct_lift H3.
     assert (inum < Datatypes.length dummy0).
-    eapply list2nmem_inbound. pred_apply; cancel.
+    eapply list2nmem_inbound. 
+    pred_apply; cancel.
 
-    erewrite list2nmem_sel with (x := f) (i := inum) (l := dummy0) in H3.
+    replace (DFData f) with (BFILE.BFData {|
+             BFILE.BFData := DFData f;
+             BFILE.BFAttr := DFAttr f;
+             BFILE.BFCache := dummy3 |}) in H1 by reflexivity.
+
+    erewrite list2nmem_sel with (x := {|
+             BFILE.BFData := DFData f;
+             BFILE.BFAttr := DFAttr f;
+             BFILE.BFCache := dummy3 |}) (i := inum) (l := dummy0) in H1.
     2: pred_apply; cancel.
 
-    clear H3.
+    clear H2.
     unfold BFILE.rep in H; destruct_lift H.
     rewrite listmatch_extract in H; eauto.
 
@@ -487,12 +497,12 @@ Module TREESEQ.
     erewrite listmatch_length_pimpl with (a := (BFILE.BFData dummy0 ⟦ inum ⟧)) in H.
     destruct_lift H.
 
-    rewrite H15 in H1.
+    rewrite H16 in H1.
     rewrite map_length in H1.
     eauto.
 
   Grab Existential Variables.
-    eauto.
+    exact BFILE.bfile0.
   Qed.
 
   (* BFILE *)
