@@ -729,7 +729,8 @@ Module SDIR.
              [[ notindomain name dmap' ]] *
              [[ r = OK tt -> indomain name dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
-             [[ MSAllocC ms' = MSAllocC ms ]]
+             [[ MSAllocC ms' = MSAllocC ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} unlink lxp ixp dnum name ms.
   Proof.
@@ -775,6 +776,7 @@ Module SDIR.
              [[ goodSize addrlen inum ]]
     POST:hm' RET:^(ms', ix0', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]] *
            (([[ isError r ]] *
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
         \/  ([[ r = OK tt ]] *

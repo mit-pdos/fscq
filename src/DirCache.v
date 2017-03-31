@@ -333,6 +333,7 @@ Module CacheOneDir.
              [[ r = OK tt -> indomain name dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSAllocC ms' = MSAllocC ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]] *
              [[ True ]]
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} unlink lxp ixp dnum name ms.
@@ -373,6 +374,7 @@ Module CacheOneDir.
              [[ goodSize addrlen inum ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]] *
            (([[ isError r ]] *
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
         \/  ([[ r = OK tt ]] *
@@ -411,6 +413,7 @@ Module CacheOneDir.
              [[ goodSize addrlen inum ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]] *
            (([[ isError r ]] *
              LOG.rep lxp F (LOG.ActiveTxn m0 m') (MSLL ms') hm')
         \/  ([[ r = OK tt ]] *
