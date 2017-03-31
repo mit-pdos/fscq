@@ -144,19 +144,19 @@ Module ATOMICCP.
   Notation MSLL := BFILE.MSLL.
   Notation MSAlloc := BFILE.MSAlloc.
 
-  Definition tree_with_src Ftree (srcpath: list string) tmppath (srcinum:addr) (file:BFILE.bfile) dstbase dstname dstinum dstfile:  @pred _ (list_eq_dec string_dec) _ :=
+  Definition tree_with_src Ftree (srcpath: list string) tmppath (srcinum:addr) (file:dirfile) dstbase dstname dstinum dstfile:  @pred _ (list_eq_dec string_dec) _ :=
         (Ftree * srcpath |-> File srcinum file * tmppath |-> Nothing * 
                 (dstbase ++ [dstname])%list |-> File dstinum dstfile)%pred.
 
-  Definition tree_with_tmp Ftree (srcpath: list string) tmppath (srcinum:addr) (file:BFILE.bfile) tinum tfile dstbase dstname dstinum dstfile:  @pred _ (list_eq_dec string_dec) _ :=
+  Definition tree_with_tmp Ftree (srcpath: list string) tmppath (srcinum:addr) (file:dirfile) tinum tfile dstbase dstname dstinum dstfile:  @pred _ (list_eq_dec string_dec) _ :=
    (Ftree * srcpath |-> File srcinum file * tmppath |-> File tinum tfile *
          (dstbase ++ [dstname])%list |-> File dstinum dstfile)%pred.
 
-  Definition tree_with_dst Ftree (srcpath: list string) tmppath (srcinum:addr) (file:BFILE.bfile) tinum  dstbase dstname :  @pred _ (list_eq_dec string_dec) _ :=
+  Definition tree_with_dst Ftree (srcpath: list string) tmppath (srcinum:addr) (file:dirfile) tinum  dstbase dstname :  @pred _ (list_eq_dec string_dec) _ :=
    (Ftree * srcpath |-> File srcinum file * tmppath |-> Nothing *
-         (dstbase ++ [dstname])%list |-> File tinum (BFILE.synced_file file))%pred.
+         (dstbase ++ [dstname])%list |-> File tinum (synced_dirfile file))%pred.
 
-  Definition tree_rep Ftree (srcpath: list string) tmppath (srcinum:addr) (file:BFILE.bfile) tinum dstbase dstname dstinum dstfile t := 
+  Definition tree_rep Ftree (srcpath: list string) tmppath (srcinum:addr) (file:dirfile) tinum dstbase dstname dstinum dstfile t := 
     (tree_names_distinct (TStree t)) /\
     ((exists tfile', 
       tree_with_tmp Ftree srcpath tmppath srcinum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree t))) \/
@@ -164,9 +164,8 @@ Module ATOMICCP.
 
   Lemma dirents2mem2_treeseq_one_upd_tmp : forall (F: @pred _ (@list_eq_dec string string_dec) _) tree tmppath inum f off v,
     let f' := {|
-             BFILE.BFData := (BFILE.BFData f) ⟦ off := v ⟧;
-             BFILE.BFAttr := BFILE.BFAttr f;
-             BFILE.BFCache := BFILE.BFCache f |} in
+             DFData := (DFData f) ⟦ off := v ⟧;
+             DFAttr := DFAttr f |} in
     tree_names_distinct (TStree tree) ->
     (F * tmppath |-> File inum f)%pred (dir2flatmem2 (TStree tree)) ->
     (F * tmppath |-> File inum f')%pred (dir2flatmem2 (TStree (treeseq_one_upd tree tmppath off v))).
@@ -184,9 +183,8 @@ Module ATOMICCP.
 
   Lemma treeseq_one_upd_tree_rep_tmp: forall tree Ftree srcpath tmppath src_inum file tinum tfile dstbase dstname dstinum dstfile off v,
    let tfile' := {|
-             BFILE.BFData := (BFILE.BFData tfile) ⟦ off := v ⟧;
-             BFILE.BFAttr := BFILE.BFAttr tfile;
-             BFILE.BFCache := BFILE.BFCache tfile |} in
+             DFData := (DFData tfile) ⟦ off := v ⟧;
+             DFAttr := DFAttr tfile |} in
     tree_names_distinct (TStree tree) ->
     tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile dstbase dstname dstinum dstfile (dir2flatmem2 (TStree tree)) ->
     tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree (treeseq_one_upd tree tmppath off v))).
@@ -298,8 +296,8 @@ Qed.
     rewrite H2.
     left.
     eexists {|
-             BFILE.BFData := (BFILE.BFData x1) ⟦ Off0 := (fst v0, vsmerge t0) ⟧;
-             BFILE.BFAttr := BFILE.BFAttr x1|}.
+             DFData := (DFData x1) ⟦ Off0 := (fst v0, vsmerge t0) ⟧;
+             DFAttr := DFAttr x1|}.
     eapply treeseq_one_upd_tree_rep_tmp; eauto.
     right.
     rewrite H2.
@@ -307,7 +305,7 @@ Qed.
   Qed.
 
   Lemma dirents2mem2_treeseq_one_file_sync_tmp : forall (F: @pred _ (@list_eq_dec string string_dec) _) tree tmppath inum f,
-    let f' := BFILE.synced_file f in
+    let f' := synced_dirfile f in
     tree_names_distinct (TStree tree) ->
     (F * tmppath |-> File inum f)%pred (dir2flatmem2 (TStree tree)) ->
     (F * tmppath |-> File inum f')%pred (dir2flatmem2 (TStree (treeseq_one_file_sync tree tmppath))).
@@ -324,7 +322,7 @@ Qed.
   Qed.
 
   Lemma treeseq_one_file_sync_tree_rep_tmp: forall tree Ftree srcpath tmppath src_inum file tinum tfile dstbase dstname dstinum dstfile,
-   let tfile' := BFILE.synced_file tfile in
+   let tfile' := synced_dirfile tfile in
     tree_names_distinct (TStree tree) ->
     tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile dstbase dstname dstinum dstfile (dir2flatmem2 (TStree tree)) ->
     tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree (treeseq_one_file_sync tree tmppath))).
@@ -425,7 +423,7 @@ Qed.
     unfold tree_with_tmp in H3.
     rewrite H2.
     left.
-    eexists (BFILE.synced_file x1).
+    eexists (synced_dirfile x1).
     eapply treeseq_one_file_sync_tree_rep_tmp; eauto.
     right.
     rewrite H2.
