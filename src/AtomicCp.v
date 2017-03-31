@@ -518,21 +518,18 @@ Qed.
     eapply treeseq_upd_tree_rep; eauto.
 
     (* crash during upd *)
-    xcrash.
-    erewrite treeseq_in_ds_eq; eauto.
-    eassumption.
-    erewrite treeseq_in_ds_eq; eauto.
-    rewrite H18.
+    xcrash; eauto.
+    rewrite H19.
     eapply treeseq_upd_tree_rep.
     eassumption.
 
-    xcrash.
-    erewrite treeseq_in_ds_eq; eauto.
-    eassumption.
+    xcrash; eauto.
 
-    xcrash.
-    erewrite treeseq_in_ds_eq; eauto.
-    eassumption.
+    xcrash; eauto.
+
+  Grab Existential Variables.
+    all: eauto.
+    all: intros; exact True.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (copydata _ _ _ _) _) => apply copydata_ok : prog.
