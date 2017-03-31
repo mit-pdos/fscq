@@ -136,6 +136,7 @@ Module CacheOneDir.
   Proof.
     unfold rep; intuition.
     apply SDIR.bfile0_empty.
+    cbn in *. congruence.
   Qed.
 
   Theorem crash_rep : forall f f' m,
@@ -145,12 +146,8 @@ Module CacheOneDir.
   Proof.
     unfold rep; intuition.
     eapply SDIR.crash_rep; eauto.
-    inversion H; intuition subst; simpl.
-    intuition auto.
-    eapply SDIR.crash_rep; eauto.
-    cbv [BFILE.file_crash] in *.
-    repeat deex.
-    intuition auto.
+    inversion H; intuition subst; cbn in *.
+    congruence.
   Qed.
 
   Hint Resolve Dcache.find_2.
@@ -396,6 +393,7 @@ Module CacheOneDir.
     rewrite DcacheDefs.MapFacts.add_o.
     repeat destruct string_dec; (congruence || eauto).
   Unshelve.
+    all : try exact Balloc.BALLOCC.Alloc.freelist0.
     all : eauto.
   Qed.
 
