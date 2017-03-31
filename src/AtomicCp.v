@@ -476,8 +476,8 @@ Qed.
     step.
     pred_apply; cancel.
     step.
-    specialize (H27 tmppath).
-    destruct H27.
+    specialize (H28 tmppath).
+    destruct H28.
     msalloc_eq.
     eassumption.
     unfold treeseq_pred.
@@ -487,14 +487,14 @@ Qed.
     msalloc_eq; eauto.
     step.
 
-    safestep.  (* step picks the wrong ts. *)
-    2: erewrite treeseq_in_ds_eq; eauto.
+    safestep.
+    2: msalloc_eq; reflexivity.
+    2: eauto.
     or_l.
     cancel.
+    2: msalloc_eq; reflexivity.
+    2: eauto.
     or_r.
-    cancel.
-    2: eassumption.
-    pred_apply.
     cancel.
     unfold BFILE.synced_file.
     erewrite ptsto_0_list2nmem_mem_eq with (d := (BFILE.BFData file)) by eauto.
