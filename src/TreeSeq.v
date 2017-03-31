@@ -854,8 +854,7 @@ Module TREESEQ.
      [[ newlen >= Datatypes.length (DFData f) ]]
   POST:hm' RET:^(mscs', ok)
       [[ MSAlloc mscs' = MSAlloc mscs ]] *
-     ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-      [[ treeseq_in_ds Fm Ftop fsxp mscs' ts ds ]] \/
+     ([[ isError ok ]] * LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' \/
       [[ ok = OK tt ]] * exists d ds' ts' ilist' frees' tree' f',
         LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
@@ -1781,7 +1780,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     match off with
     | O => f
     | S off' =>
-      let f' := BFILE.mk_bfile (updN (BFILE.BFData f) off' (fst (selN (BFILE.BFData f) off' ($0, nil)), nil)) (BFILE.BFAttr f) (BFILE.BFCache f) in
+      let f' := mk_dirfile (updN (DFData f) off' (fst (selN (DFData f) off' ($0, nil)), nil)) (DFAttr f) in
       synced_file_alt_helper f' off'
     end.
 
@@ -1790,14 +1789,14 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     | O => f
     | S off' =>
       let f' := synced_file_alt_helper2 f off' in
-      BFILE.mk_bfile (updN (BFILE.BFData f') off' (fst (selN (BFILE.BFData f') off' ($0, nil)), nil)) (BFILE.BFAttr f') (BFILE.BFCache f')
+      mk_dirfile (updN (DFData f') off' (fst (selN (DFData f') off' ($0, nil)), nil)) (DFAttr f')
     end.
 
   Lemma synced_file_alt_helper2_oob : forall off f off' v,
     let f' := synced_file_alt_helper f off in
     off' >= off ->
-    (BFILE.mk_bfile (updN (BFILE.BFData f') off' v) (BFILE.BFAttr f') (BFILE.BFCache f')) =
-    synced_file_alt_helper (BFILE.mk_bfile (updN (BFILE.BFData f) off' v) (BFILE.BFAttr f) (BFILE.BFCache f)) off.
+    (mk_dirfile (updN (DFData f') off' v) (DFAttr f')) =
+    synced_file_alt_helper (mk_dirfile (updN (DFData f) off' v) (DFAttr f)) off.
   Proof.
     induction off; simpl; intros; eauto.
     - rewrite IHoff by omega; simpl.
@@ -1810,8 +1809,8 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
   Lemma synced_file_alt_helper_selN_oob : forall off f off' default,
     off' >= off ->
-    selN (BFILE.BFData (synced_file_alt_helper f off)) off' default =
-    selN (BFILE.BFData f) off' default.
+    selN (DFData (synced_file_alt_helper f off)) off' default =
+    selN (DFData f) off' default.
   Proof.
     induction off; simpl; eauto; intros.
     rewrite IHoff by omega; simpl.
@@ -1833,8 +1832,8 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
   Lemma synced_file_alt_helper2_selN_oob : forall off f off' default,
     off' >= off ->
-    selN (BFILE.BFData (synced_file_alt_helper2 f off)) off' default =
-    selN (BFILE.BFData f) off' default.
+    selN (DFData (synced_file_alt_helper2 f off)) off' default =
+    selN (DFData f) off' default.
   Proof.
     intros.
     rewrite <- synced_file_alt_helper_helper2_equiv.
@@ -1842,7 +1841,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
   Qed.
 
   Lemma synced_file_alt_helper2_length : forall off f,
-    Datatypes.length (BFILE.BFData (synced_file_alt_helper2 f off)) = Datatypes.length (BFILE.BFData f).
+    Datatypes.length (DFData (synced_file_alt_helper2 f off)) = Datatypes.length (DFData f).
   Proof.
     induction off; simpl; intros; auto.
     rewrite length_updN.
@@ -1850,23 +1849,23 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
   Qed.
 
   Definition synced_file_alt f :=
-    synced_file_alt_helper f (Datatypes.length (BFILE.BFData f)).
+    synced_file_alt_helper f (Datatypes.length (DFData f)).
 
   Theorem synced_file_alt_equiv : forall f,
-    BFILE.synced_file f = synced_file_alt f.
+    synced_dirfile f = synced_file_alt f.
   Proof.
-    unfold BFILE.synced_file, synced_file_alt; intros.
+    unfold synced_dirfile, synced_file_alt; intros.
     rewrite synced_list_up_to_n.
-    unfold BFILE.datatype.
-    remember (@Datatypes.length valuset (BFILE.BFData f)) as synclen.
-    assert (synclen <= Datatypes.length (BFILE.BFData f)) by simplen.
+    unfold datatype.
+    remember (@Datatypes.length valuset (DFData f)) as synclen.
+    assert (synclen <= Datatypes.length (DFData f)) by simplen.
     clear Heqsynclen.
     generalize dependent f.
     induction synclen; simpl; intros.
     - destruct f; eauto.
     - rewrite <- IHsynclen; simpl.
       f_equal.
-      destruct (BFILE.BFData f).
+      destruct (DFData f).
       simpl in *; omega.
       eapply cons_synced_up_to_n.
       rewrite length_updN. omega.
@@ -1917,17 +1916,17 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     destruct d; eauto.
     intros.
     rewrite synced_file_alt_equiv. unfold synced_file_alt.
-    remember (@Datatypes.length BFILE.datatype (BFILE.BFData b)) as synclen; intros.
-    assert (synclen <= Datatypes.length (BFILE.BFData b)) by simplen.
+    remember (@Datatypes.length datatype (DFData d)) as synclen; intros.
+    assert (synclen <= Datatypes.length (DFData d)) by simplen.
     clear Heqsynclen.
 
-    remember (map fst (BFILE.BFData b)) as synced_blocks.
+    remember (map fst (DFData d)) as synced_blocks.
     generalize dependent synced_blocks.
     generalize dependent t.
-    generalize dependent b.
+    generalize dependent d.
     induction synclen; intros.
     - simpl.
-      destruct t; destruct b; simpl in *; f_equal.
+      destruct t; destruct d; simpl in *; f_equal.
       eapply update_subtree_same; eauto.
     - simpl.
       erewrite <- IHsynclen.
@@ -1944,7 +1943,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
         unfold treeseq_one_upd. rewrite H0; simpl.
         erewrite selN_map.
         erewrite find_update_subtree; eauto.
-        unfold BFILE.datatype in *; omega.
+        unfold datatype in *; omega.
       + subst; simpl.
         rewrite map_updN; simpl.
         erewrite selN_eq_updN_eq; eauto.
@@ -1983,7 +1982,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     unfold synced_file_alt.
     rewrite synced_file_alt_helper_helper2_equiv.
     rewrite <- H0.
-    assert (Datatypes.length al <= Datatypes.length (BFILE.BFData f)) by omega.
+    assert (Datatypes.length al <= Datatypes.length (DFData f)) by omega.
     clear H0.
 
     induction al using rev_ind; simpl; intros.
@@ -2000,7 +1999,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
       rewrite synced_file_alt_helper2_selN_oob by omega.
       replace (selN (vssync_vecs m al) x ($0, nil)) with
-              (selN (BFILE.BFData f) (Datatypes.length al) ($0, nil)).
+              (selN (DFData f) (Datatypes.length al) ($0, nil)).
 
       reflexivity.
 
@@ -2079,10 +2078,12 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     destruct_lift H.
     rewrite subtree_extract in H6 by eauto.
     simpl in *.
+    destruct_lift H6.
     eapply BFILE.block_belong_to_file_off_ok; eauto.
     eapply pimpl_apply; [ | exact H ]. cancel.
     pred_apply.
     cancel.
+    simpl; eauto.
   Qed.
 
   Lemma block_belong_to_file_bfdata_length : forall Fm Ftop fsxp mscs ts ds inum off t pathname f bn,
@@ -2101,7 +2102,15 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     destruct_lift H.
     rewrite subtree_extract in H6 by eauto.
     simpl in *.
-    erewrite list2nmem_sel with (x := f).
+    destruct_lift H6.
+    replace (DFData f) with (BFILE.BFData {|
+             BFILE.BFData := DFData f;
+             BFILE.BFAttr := DFAttr f;
+             BFILE.BFCache := dummy3 |}) by reflexivity.
+    erewrite list2nmem_sel with (x := {|
+             BFILE.BFData := DFData f;
+             BFILE.BFAttr := DFAttr f;
+             BFILE.BFCache := dummy3 |}).
     eapply BFILE.block_belong_to_file_bfdata_length; eauto.
     eapply pimpl_apply; [ | exact H ]; cancel.
     pred_apply; cancel.
@@ -2115,7 +2124,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     length (DFData b) <= length (DFData f).
   Proof.
     intros.
-    case_eq (length (BFILE.BFData b)); intros; try omega.
+    case_eq (length (DFData b)); intros; try omega.
     edestruct H0; intuition.
     eexists; intuition eauto.
     eapply block_belong_to_file_off_ok with (off := n0); eauto; try omega.
@@ -2149,16 +2158,16 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     - (* a file *)
       unfold tree_rep; simpl.
 
-      rewrite <- firstn_skipn with (l := al) (n := length (BFILE.BFData b)).
-      remember (skipn (Datatypes.length (BFILE.BFData b)) al) as al_tail.
+      rewrite <- firstn_skipn with (l := al) (n := length (DFData d)).
+      remember (skipn (Datatypes.length (DFData d)) al) as al_tail.
 
-      assert (forall i, i < length al_tail -> selN al_tail i 0 = selN al (length (BFILE.BFData b) + i) 0).
+      assert (forall i, i < length al_tail -> selN al_tail i 0 = selN al (length (DFData d) + i) 0).
       subst; intros.
       apply skipn_selN.
 
-      assert (length (BFILE.BFData b) + length al_tail <= length al).
+      assert (length (DFData d) + length al_tail <= length al).
       subst.
-      rewrite <- firstn_skipn with (l := al) (n := (length (BFILE.BFData b))) at 2.
+      rewrite <- firstn_skipn with (l := al) (n := (length (DFData d))) at 2.
       rewrite app_length.
       eapply Plus.plus_le_compat; try omega.
       rewrite firstn_length.
@@ -2180,7 +2189,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
         * rewrite firstn_length.
           rewrite Nat.min_l; eauto.
 
-          case_eq (Datatypes.length (BFILE.BFData b)); intros; try omega.
+          case_eq (Datatypes.length (DFData d)); intros; try omega.
 
         * intros.
           rewrite firstn_length in H9.
@@ -2231,7 +2240,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
         shelve.
 
-        edestruct H7 with (off := length (BFILE.BFData b) + length al_tail).
+        edestruct H7 with (off := length (DFData d) + length al_tail).
         eexists. intuition eauto.
         eapply H1.
         rewrite app_length in *; simpl in *; omega.
@@ -2249,7 +2258,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
         rewrite app_length. simpl. omega.
 
     - (* TreeDir *)
-      assert (length al <= length (BFILE.BFData f)) by omega.
+      assert (length al <= length (DFData f)) by omega.
       clear H0.
       induction al using rev_ind; simpl; eauto.
 
@@ -2273,7 +2282,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       rewrite selN_last in H10; eauto.
 
     - (* None *)
-      assert (length al <= length (BFILE.BFData f)) by omega.
+      assert (length al <= length (DFData f)) by omega.
       clear H0.
       induction al using rev_ind; simpl; eauto.
 
@@ -2317,16 +2326,16 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     - (* a file *)
       unfold tree_rep; simpl.
 
-      rewrite <- firstn_skipn with (l := al) (n := length (BFILE.BFData b)).
-      remember (skipn (Datatypes.length (BFILE.BFData b)) al) as al_tail.
+      rewrite <- firstn_skipn with (l := al) (n := length (DFData d)).
+      remember (skipn (Datatypes.length (DFData d)) al) as al_tail.
 
-      assert (forall i, i < length al_tail -> selN al_tail i 0 = selN al (length (BFILE.BFData b) + i) 0).
+      assert (forall i, i < length al_tail -> selN al_tail i 0 = selN al (length (DFData d) + i) 0).
       subst; intros.
       apply skipn_selN.
 
-      assert (length (BFILE.BFData b) + length al_tail <= length al).
+      assert (length (DFData d) + length al_tail <= length al).
       subst.
-      rewrite <- firstn_skipn with (l := al) (n := (length (BFILE.BFData b))) at 2.
+      rewrite <- firstn_skipn with (l := al) (n := (length (DFData d))) at 2.
       rewrite app_length.
       eapply Plus.plus_le_compat; try omega.
       rewrite firstn_length.
@@ -2350,7 +2359,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
         * rewrite firstn_length.
           rewrite Nat.min_l; eauto.
 
-          case_eq (Datatypes.length (BFILE.BFData b)); intros; try omega.
+          case_eq (Datatypes.length (DFData d)); intros; try omega.
 
         * intros.
           rewrite firstn_length in H9.
@@ -2394,7 +2403,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
         rewrite app_length in *; simpl in *; omega.
 
-        edestruct H7 with (off := length (BFILE.BFData b) + length al_tail).
+        edestruct H7 with (off := length (DFData d) + length al_tail).
         exists f. intuition eauto.
         eapply H1.
         rewrite app_length in *; simpl in *; omega.
@@ -2412,7 +2421,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
         rewrite app_length. simpl. omega.
 
     - (* TreeDir *)
-      assert (length al <= length (BFILE.BFData f)) by omega.
+      assert (length al <= length (DFData f)) by omega.
       clear H0.
       induction al using rev_ind; simpl; eauto.
 
@@ -2432,7 +2441,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       rewrite selN_last in H0; eauto.
 
     - (* None *)
-      assert (length al <= length (BFILE.BFData f)) by omega.
+      assert (length al <= length (DFData f)) by omega.
       clear H0.
       induction al using rev_ind; simpl; eauto.
 
@@ -2464,7 +2473,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     inversion H.
     destruct H2.
     rewrite H2.
-    remember (Datatypes.length (BFILE.BFData x0)) as len; clear Heqlen.
+    remember (Datatypes.length (DFData x0)) as len; clear Heqlen.
     remember (ts !!) as y. rewrite Heqy at 1.
 
     assert (tree_names_distinct (TStree y)) as Hydistinct.
@@ -2522,7 +2531,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     destruct d.
     2: eapply treeseq_in_ds_one_safe; eauto.
 
-    remember (Datatypes.length (BFILE.BFData b)) as len; clear Heqlen.
+    remember (Datatypes.length (DFData d)) as len; clear Heqlen.
     remember (nthd n ts) as y.
     assert (treeseq_one_safe y (nthd n ts) mscs').
     subst; eapply treeseq_one_safe_refl.
@@ -2665,7 +2674,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       specialize (H4 inum0 off bn).
       edestruct H4.
       case_eq (find_subtree pathname (TStree (nthd n ts))); intros.        
-      destruct d.
+      destruct d0.
       rewrite H7 in H5.
       erewrite find_subtree_update_subtree_ne_path in H5; eauto.
       deex. eapply find_subtree_update_subtree_file_not_pathname_prefix_1; eauto.
@@ -2724,7 +2733,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
         specialize (H4 inum0 off bn).
         edestruct H4.      
         case_eq (find_subtree pathname (TStree ts!!)); intros.
-        destruct d.
+        destruct d0.
         rewrite H7 in H5.
         deex; eauto.
         erewrite find_subtree_update_subtree_ne_path in H8; eauto.
@@ -2809,11 +2818,11 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
           inversion H12.
           subst n0; subst f0; clear H12.
           edestruct H2.
-          eexists b.
+          eexists d.
           intuition.
           intuition.
           rewrite H14.
-          exists (BFILE.synced_file x); eauto.
+          exists (synced_dirfile x); eauto.
        -- (* a directory *)
           rewrite H10 in H12; simpl.
           exfalso.
@@ -2837,12 +2846,12 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
           subst n0; subst x.
           clear H13.
           edestruct H4.
-          eexists b.
+          eexists d.
           intuition; eauto.
           deex.
           rewrite H13.
           left.
-          exists (BFILE.synced_file f0).
+          exists (synced_dirfile f0).
           erewrite find_update_subtree; eauto.
           right; eauto.
         -- (* a directory *)
