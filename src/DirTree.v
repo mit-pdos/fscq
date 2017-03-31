@@ -286,7 +286,7 @@ Module DIRTREE.
      * same, and without this lock-up, we end up with several distinct facts
      * about the same memory.
      *)
-  
+
     all: denote! (_ (list2nmem m)) as Hm0; rewrite <- locked_eq in Hm0.
 
     destruct_branch.
@@ -306,7 +306,7 @@ Module DIRTREE.
 
     (* dslookup = Some _: extract subtree before [cancel] *)
     prestep.
-    norml; unfold stars; simpl; clear_norm_goal; inv_option_eq.
+    norml; unfold stars; simpl; inv_option_eq; msalloc_eq.
     destruct a2.
 
     (* subtree is a directory *)
@@ -340,7 +340,6 @@ Module DIRTREE.
     erewrite find_subtree_app. reflexivity.
     erewrite find_subtree_app by eauto. eauto.
     erewrite find_subtree_app by eauto. eauto.
-    congruence. congruence.
     eauto.
 
     (* subtree is a file *)
@@ -377,12 +376,10 @@ Module DIRTREE.
 
     erewrite find_subtree_app by eauto. eauto.
     erewrite find_subtree_app by eauto. eauto.
-    congruence.
-    congruence.
     eauto.
 
     (* dslookup = None *)
-    prestep. norm. cancel. intuition idtac.
+    prestep. norm; msalloc_eq. cancel. intuition idtac.
     all: try solve [ exfalso; congruence ].
     rewrite cons_app. rewrite app_assoc. reflexivity.
     2: pred_apply; cancel.
@@ -395,10 +392,10 @@ Module DIRTREE.
 
     rewrite update_subtree_same by eauto. cancel.
     erewrite <- find_subtree_none; eauto.
-    congruence. congruence. eauto.
+    eauto.
     cancel.
 
-    prestep. norm. cancel. intuition idtac.
+    prestep. norm; msalloc_eq. cancel. intuition idtac.
     rewrite cons_app. rewrite app_assoc. reflexivity.
     all: try solve [ exfalso; congruence ].
     2: pred_apply; cancel.
@@ -420,16 +417,12 @@ Module DIRTREE.
     eapply rep_tree_names_distinct with (m := locked (list2nmem m)).
     pred_apply. unfold rep. cancel.
 
-    step.
+    step; msalloc_eq.
 
     rewrite subtree_absorb.
     rewrite update_subtree_same.
     cancel.
-    eauto.
-    eauto.
-    eauto.
-    eauto.
-    eauto.
+    all: eauto.
 
     right; eexists; intuition.
     denote! (find_subtree (fndone ++ _) _ = _) as Hx.
@@ -441,7 +434,10 @@ Module DIRTREE.
     unfold find_name; rewrite Hx; eauto.
 
     Grab Existential Variables.
-    all: try exact unit; try exact Mem.empty_mem; intros; try exact tt; try exact None; eauto.
+    all: try congruence.
+    all: try exact unit.
+    all: try exact None; eauto.
+    all: intros; try exact tt.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (namei _ _ _ _) _) => apply namei_ok : prog.
