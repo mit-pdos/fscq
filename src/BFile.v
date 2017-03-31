@@ -66,15 +66,6 @@ Module BFILE.
     MSCache : BFcache_type
   }.
 
-  Ltac msalloc_eq :=
-    repeat match goal with
-    | [ H: MSAlloc _ = MSAlloc _ |- _ ] => rewrite H in *; clear H
-    | [ H: MSAllocC _ = MSAllocC _ |- _ ] => rewrite H in *; clear H
-    | [ H: MSIAllocC _ = MSIAllocC _ |- _ ] => rewrite H in *; clear H
-    | [ H: MSCache _ = MSCache _ |- _ ] => rewrite H in *; clear H
-    | [ H: MSICache _ = MSICache _ |- _ ] => rewrite H in *; clear H
-    end.
-
   Definition ms_empty sz := mk_memstate
     true
     (LOG.mk_memstate0 (Cache.BUFCACHE.cache0 sz))
@@ -734,6 +725,22 @@ Module BFILE.
   Proof.
     firstorder.
   Qed.
+
+  Ltac destruct_ands :=
+    repeat match goal with
+    | [ H: _ /\ _ |- _ ] => destruct H
+    end.
+
+  Ltac msalloc_eq :=
+    repeat match goal with
+    | [ H: mscs_same_except_log _ _ |- _ ] =>
+      unfold BFILE.mscs_same_except_log in H; destruct_ands
+    | [ H: MSAlloc _ = MSAlloc _ |- _ ] => rewrite H in *; clear H
+    | [ H: MSAllocC _ = MSAllocC _ |- _ ] => rewrite H in *; clear H
+    | [ H: MSIAllocC _ = MSIAllocC _ |- _ ] => rewrite H in *; clear H
+    | [ H: MSCache _ = MSCache _ |- _ ] => rewrite H in *; clear H
+    | [ H: MSICache _ = MSICache _ |- _ ] => rewrite H in *; clear H
+    end.
 
 
   (**** automation **)

@@ -787,7 +787,8 @@ Module AFS.
            [[[ (BFILE.BFData f) ::: (Fd * off |-> vs) ]]]
     POST:hm' RET:^(mscs', r)
            LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
-           [[ r = fst vs /\ MSAlloc mscs' = MSAlloc mscs ]]
+           [[ r = fst vs /\ MSAlloc mscs' = MSAlloc mscs ]] *
+           [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]]
     CRASH:hm'
            LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} read_fblock fsxp inum off mscs.
@@ -1131,7 +1132,8 @@ Module AFS.
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
       [[ (isError r /\ None = find_name fnlist tree) \/
          (exists v, r = OK v /\ Some v = find_name fnlist tree)%type ]] *
-      [[ MSAlloc mscs' = MSAlloc mscs ]]
+      [[ MSAlloc mscs' = MSAlloc mscs ]] *
+      [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]]
     CRASH:hm'  LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
      >} lookup fsxp dnum fnlist mscs.
   Proof.

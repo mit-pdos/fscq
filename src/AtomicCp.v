@@ -470,24 +470,21 @@ Qed.
     step.
     eapply pimpl_sep_star_split_l; eauto.
     step.
-    erewrite treeseq_in_ds_eq; eauto.
     eapply pimpl_sep_star_split_l; eauto.
     pred_apply.
     cancel.
     step.
-    erewrite treeseq_in_ds_eq; eauto.
+    pred_apply; cancel.
     step.
-    specialize (H24 tmppath).
-    destruct H24.
-    
-    rewrite H17.
-    rewrite H15.
+    specialize (H27 tmppath).
+    destruct H27.
+    msalloc_eq.
     eassumption.
     unfold treeseq_pred.
     unfold NEforall.
     split.
-    rewrite H21; eauto.
-    rewrite H21; eauto.
+    msalloc_eq; eauto.
+    msalloc_eq; eauto.
     step.
 
     safestep.  (* step picks the wrong ts. *)
