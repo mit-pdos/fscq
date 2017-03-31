@@ -102,6 +102,15 @@ Module TREESEQ.
 
   Definition treeseq_pred (p : treeseq_one -> Prop) (ts : treeseq) := NEforall p ts.
 
+  Theorem treeseq_pred_pushd : forall (p : treeseq_one -> Prop) t ts,
+    p t ->
+    treeseq_pred p ts ->
+    treeseq_pred p (pushd t ts).
+  Proof.
+    unfold treeseq_pred, NEforall, pushd; simpl; intros.
+    intuition.
+  Qed.
+
   Theorem treeseq_in_ds_pushd : forall F Ftop fsxp mscs ts ds t mscs' d,
     treeseq_in_ds F Ftop fsxp mscs ts ds ->
     tree_rep_latest F Ftop fsxp t mscs' (list2nmem d) ->

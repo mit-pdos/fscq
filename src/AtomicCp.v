@@ -430,23 +430,18 @@ Qed.
     eapply treeseq_one_file_sync_tree_rep_src; eauto.
   Qed.
 
-  Ltac msalloc :=
-  repeat match goal with
-      | [ H: MSAlloc _ = MSAlloc _ |- dirtree_safe _ _ _ _ _ _ ]
-       => rewrite H in *; clear H
-  end.
-
   Theorem copydata_ok : forall fsxp srcinum tmppath tinum mscs,
-    {< ds ts Fm Ftop Ftree Ftree' srcpath file tfile v0 t0 dstbase dstname dstinum dstfile,
+    {< ds ts Fm Ftop Ftree srcpath file tfile v0 t0 dstbase dstname dstinum dstfile,
     PRE:hm
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs) hm *
       [[ treeseq_in_ds Fm Ftop fsxp mscs ts ds ]] *
       [[ treeseq_pred (treeseq_safe tmppath (MSAlloc mscs) (ts !!)) ts ]] *
       [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ]] *
-      [[ (Ftree' * srcpath |-> File srcinum file * tmppath |-> File tinum tfile)%pred
+      [[ (Ftree * srcpath |-> File srcinum file * tmppath |-> File tinum tfile *
+            (dstbase ++ [dstname])%list |-> File dstinum dstfile)%pred
             (dir2flatmem2 (TStree ts!!)) ]] *
-      [[[ BFILE.BFData file ::: (Off0 |-> v0) ]]] *
-      [[[ BFILE.BFData tfile ::: (Off0 |-> t0) ]]]
+      [[[ DFData file ::: (Off0 |-> v0) ]]] *
+      [[[ DFData tfile ::: (Off0 |-> t0) ]]]
     POST:hm' RET:^(mscs', r)
       exists ds' ts',
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds') (MSLL mscs') hm' *
@@ -454,28 +449,33 @@ Qed.
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
         (([[ r = false ]] *
           exists tfile',
-            [[ (Ftree' * srcpath |-> File srcinum file * tmppath |-> File tinum tfile')%pred (dir2flatmem2 (TStree ts'!!)) ]])
+            [[ (Ftree * srcpath |-> File srcinum file * tmppath |-> File tinum tfile' *
+                (dstbase ++ [dstname])%list |-> File dstinum dstfile)%pred (dir2flatmem2 (TStree ts'!!)) ]])
          \/ ([[ r = true ]] *
-            [[ (Ftree' * srcpath |-> File srcinum file * tmppath |-> File tinum (BFILE.synced_file file))%pred (dir2flatmem2 (TStree ts'!!)) ]]))
+            [[ (Ftree * srcpath |-> File srcinum file * tmppath |-> File tinum (synced_dirfile file) *
+                (dstbase ++ [dstname])%list |-> File dstinum dstfile)%pred (dir2flatmem2 (TStree ts'!!)) ]]))
     XCRASH:hm'
-      exists ds' ts',
+      exists ds' ts' mscs',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-       [[ treeseq_in_ds Fm Ftop fsxp mscs ts' ds' ]] *
+       [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds' ]] *
        [[ treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts']]
       >} copydata fsxp srcinum tinum mscs.
    Proof.
     unfold copydata; intros.
     step.
-    eapply pimpl_sep_star_split_l; eauto.
+    eassign srcpath. cancel.
     step.
-    eapply pimpl_sep_star_split_l; eauto.
+    eassign srcpath. cancel.
     pred_apply.
     cancel.
     step.
+    2: eassign tmppath; cancel.
+    msalloc_eq; eauto.
     pred_apply; cancel.
     step.
-    specialize (H28 tmppath).
-    destruct H28.
+    denote! (forall _, treeseq_pred _ _ -> treeseq_pred _ _) as Ht.
+    specialize (Ht tmppath).
+    destruct Ht.
     msalloc_eq.
     eassumption.
     unfold treeseq_pred.
@@ -494,21 +494,27 @@ Qed.
     2: eauto.
     or_r.
     cancel.
-    unfold BFILE.synced_file.
-    erewrite ptsto_0_list2nmem_mem_eq with (d := (BFILE.BFData file)) by eauto.
-    erewrite ptsto_0_list2nmem_mem_eq with (d := (BFILE.BFData f')) by eauto.
+    unfold synced_dirfile.
+    erewrite ptsto_0_list2nmem_mem_eq with (d := (DFData file)) by eauto.
+    erewrite ptsto_0_list2nmem_mem_eq with (d := (DFData f')) by eauto.
     simpl.
     cancel.
 
     (* crashed during setattr  *)
-    xcrash.
-    erewrite treeseq_in_ds_eq; eauto.
+    xcrash; eauto.
     eapply treeseq_tssync_tree_rep; eauto.
     eapply treeseq_upd_tree_rep; eauto.
 
+    eapply treeseq_pred_pushd.
+    2: eapply treeseq_tssync_tree_rep; eauto.
+    2: eapply treeseq_upd_tree_rep; eauto.
+    unfold tree_rep; intuition.
+    distinct_names.
+    left; unfold tree_with_tmp; simpl.
+    pred_apply. cancel.
+
     (* crash during sync *)
-    xcrash.
-    erewrite treeseq_in_ds_eq; eauto.
+    xcrash; eauto.
     eapply treeseq_upd_tree_rep; eauto.
 
     (* crash during upd *)
