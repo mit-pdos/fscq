@@ -20,7 +20,7 @@ Set Implicit Arguments.
 Inductive flatmem_entry :=
 | Nothing
 | Dir
-| File : forall (inum : addr) (f : BFILE.bfile), flatmem_entry.
+| File : forall (inum : addr) (f : dirfile), flatmem_entry.
 
 Definition dir2flatmem2 (d : dirtree) : @mem _ (list_eq_dec string_dec) _ :=
   fun pn => match find_subtree pn d with

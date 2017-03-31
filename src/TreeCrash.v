@@ -36,7 +36,8 @@ Set Implicit Arguments.
 Module DTCrash.
 
   Inductive tree_crash : dirtree -> dirtree -> Prop :=
-    | TCFile : forall inum f f', BFILE.file_crash f f' ->
+    | TCFile : forall inum f f' c c',
+               BFILE.file_crash (BFILE.mk_bfile (DFData f) (DFAttr f) c) (BFILE.mk_bfile (DFData f') (DFAttr f') c') ->
                tree_crash (TreeFile inum f) (TreeFile inum f')
     | TCDir  : forall inum st st',
                map fst st = map fst st' ->

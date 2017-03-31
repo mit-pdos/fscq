@@ -176,7 +176,7 @@ Set Implicit Arguments.
     (F0 * rep fsxp F tree' ilist freeblocks ms)%pred (list2nmem (updN m bn v)) /\
     (tree' = tree \/
      exists pathname' f', find_subtree pathname' tree = Some (TreeFile inum f') /\
-     let f'new := BFILE.mk_bfile (updN (BFILE.BFData f') off v) (BFILE.BFAttr f') (BFILE.BFCache f') in
+     let f'new := mk_dirfile (updN (DFData f') off v) (DFAttr f') in
      tree' = update_subtree pathname' (TreeFile inum f'new) tree).
   Proof.
     intros; destruct v.
@@ -187,7 +187,7 @@ Set Implicit Arguments.
       edestruct tree_inodes_pathname_exists; eauto; repeat deex.
       eapply rep_tree_names_distinct; eauto.
       eapply rep_tree_inodes_distinct; eauto.
-      destruct (lt_dec off (length (BFILE.BFData f'))).
+      destruct (lt_dec off (length (DFData f'))).
       + (* in-bounds write *)
         erewrite dirtree_update_inode_update_subtree in H4; eauto.
         eexists; split.
@@ -214,7 +214,7 @@ Set Implicit Arguments.
     (F0 * rep fsxp F tree ilist freeblocks ms \/
      exists pathname' f',
      [[ find_subtree pathname' tree = Some (TreeFile inum f') ]] *
-     let f'new := BFILE.mk_bfile (updN (BFILE.BFData f') off v) (BFILE.BFAttr f') (BFILE.BFCache f') in
+     let f'new := mk_dirfile (updN (DFData f') off v) (DFAttr f') in
      let tree' := update_subtree pathname' (TreeFile inum f'new) tree in
      F0 * rep fsxp F tree' ilist freeblocks ms)%pred (list2nmem (updN m bn v)).
   Proof.
@@ -251,15 +251,15 @@ Set Implicit Arguments.
   Qed.
 
 
-  Theorem dirlist_safe_mkfile : forall ilist freeblocks ilist' freeblocks' frees msc ms
+  Theorem dirlist_safe_mkfile : forall ilist freeblocks ilist' freeblocks' frees msc ms icache
                                       dnum tree_elem name inum m flist' bxp ixp F Fm,
-   (Fm * BFILE.rep bxp ixp flist' ilist' frees msc ms)%pred m ->
+   (Fm * BFILE.rep bxp ixp flist' ilist' frees msc ms icache)%pred m ->
    (F * inum |-> BFILE.bfile0 )%pred (list2nmem flist') ->
     BFILE.ilist_safe ilist  freeblocks ilist' freeblocks' ->
     tree_names_distinct (TreeDir dnum tree_elem) ->
     ~ In name (map fst tree_elem) ->
     dirtree_safe ilist  freeblocks (TreeDir dnum tree_elem)
-                 ilist' freeblocks' (TreeDir dnum (tree_elem ++ [(name, TreeFile inum BFILE.bfile0)])).
+                 ilist' freeblocks' (TreeDir dnum (tree_elem ++ [(name, TreeFile inum dirfile0)])).
   Proof.
     unfold dirtree_safe, BFILE.ilist_safe; intuition.
     denote (forall _, _ ) as Hx; denote (BFILE.block_belong_to_file) as Hy.
@@ -478,9 +478,8 @@ Set Implicit Arguments.
     find_subtree p tree = Some (TreeFile inum f) ->
     dirtree_safe old_ilist old_free old_tree ilist freelist
       (update_subtree p (TreeFile inum
-        {| BFILE.BFData := (BFILE.BFData f) ⟦ off := v ⟧;
-           BFILE.BFAttr := BFILE.BFAttr f;
-           BFILE.BFCache := BFILE.BFCache f |}) tree).
+        {| DFData := (DFData f) ⟦ off := v ⟧;
+           DFAttr := DFAttr f |}) tree).
    Proof.
     unfold dirtree_safe; intuition.
     destruct (pathname_decide_prefix pathname p); repeat deex.
