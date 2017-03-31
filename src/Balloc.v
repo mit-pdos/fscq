@@ -236,15 +236,17 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
   Definition word_to_freelist {sz} (b : word sz) (start : addr) : list addr :=
     bits_to_freelist (bits b) start.
 
-  Fixpoint itemlist_to_freelist {sz} (bs : list (word sz)) (start : addr) : list addr :=
+  Fixpoint itemlist_to_freelist' {sz} (bs : list (word sz)) (start : addr) : list addr :=
     match bs with
     | nil => nil
-    | b :: bs' => (word_to_freelist b start) ++ (itemlist_to_freelist bs' (start + sz))
+    | b :: bs' => (word_to_freelist b start) ++ (itemlist_to_freelist' bs' (start + sz))
     end.
+
+  Definition itemlist_to_freelist {sz} bs := @itemlist_to_freelist' sz bs 0.
 
   Definition get_free_blocks lxp xp ms :=
     let^ (ms, r) <- Bmp.read lxp xp (BMPLen xp) ms;
-    Ret ^(ms, itemlist_to_freelist r 0).
+    Ret ^(ms, itemlist_to_freelist r).
 
   Definition steal lxp xp bn ms :=
     let index := (bn / Defs.itemsz) in
@@ -622,6 +624,240 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
       omega.
   Qed.
 
+  Lemma bits_to_freelist_bound: forall l start,
+    let freelist := bits_to_freelist l start in
+    forall x, In x freelist -> start <= x < start + (length l).
+  Proof.
+    split; generalize dependent start;
+      induction l; cbn; intuition.
+    all: repeat match goal with
+    | _ => omega
+    | [H: context [if ?x then _ else _] |- _ ] => destruct x; subst
+    | [H: In _ (_ :: _) |- _] => destruct H; subst
+    | [H: In _ _ |- _] => apply IHl in H
+    end.
+  Qed.
+
+  Lemma bits_to_freelist_nodup : forall l start,
+    NoDup (bits_to_freelist l start).
+  Proof.
+    induction l; cbn; intros.
+    constructor.
+    repeat match goal with
+    |- context [if ?x then _ else _] => destruct x; subst
+    end; auto.
+    constructor; auto.
+    intro.
+    apply bits_to_freelist_bound in H. omega.
+  Qed.
+
+  Lemma bits_to_freelist_no_zero : forall l start,
+    let freelist := bits_to_freelist l start in
+    ~In 0 freelist.
+  Proof.
+    induction l; cbn; intuition.
+    repeat match goal with
+    | _ => omega
+    | [H: context [if ?x then _ else _] |- _ ] => destruct x; subst
+    | [H: In _ (_ :: _) |- _] => destruct H; subst
+    | [H: In _ _ |- _] => apply IHl in H
+    end.
+  Qed.
+
+  Lemma bits_to_freelist_spec : forall l start,
+    let freelist := bits_to_freelist l start in
+    forall i, (start + i <> 0) -> In (start + i) freelist <-> selN l i inuse = avail.
+  Proof.
+    unfold bit in *.
+    induction l; cbn; intuition.
+    cbv in *; congruence.
+    destruct i;
+    repeat match goal with
+    | _ => omega
+    | _ => solve [auto]
+    | [H: context [_ + S _] |- _] => rewrite <- plus_Snm_nSm in H
+    | [H: context [if ?x then _ else _] |- _ ] => destruct x; subst
+    | [H: In _ (_ :: _) |- _] => destruct H; subst
+    | [H: In _ _ |- _] => apply IHl in H
+    end.
+    apply bits_to_freelist_bound in H0. omega.
+    shatter_word a. destruct x; cbv in *; congruence.
+    shatter_word a. destruct x; cbv in *; congruence.
+    destruct i;
+    repeat match goal with
+    | _ => omega
+    | _ => solve [auto | cbv in *; congruence]
+    | _ => rewrite <- plus_Snm_nSm
+    | [|- context [if ?x then _ else _] ] => destruct x; subst
+    | [H: In _ (_ :: _) |- _] => destruct H; subst
+    | [|- In _ _ ] => apply IHl
+    end.
+    autorewrite with core. intuition.
+    right. rewrite IHl; auto. omega.
+  Qed.
+
+  Lemma itemlist_to_freelist'_bound: forall sz (bs : list (word sz)) start,
+    let freelist := itemlist_to_freelist' bs start in
+    forall x, In x freelist -> start <= x < start + length (to_bits bs) /\ x > 0.
+  Proof.
+    induction bs; rewrite ?to_bits_length in *; cbn; intuition.
+    apply in_app_or in H. destruct H.
+    apply bits_to_freelist_bound in H. omega.
+    apply IHbs in H. omega.
+    apply in_app_or in H. destruct H.
+    apply bits_to_freelist_bound in H.
+    rewrite bits_length in *. enough (length bs * sz >= 0). omega.
+    apply Nat.mul_nonneg_nonneg; omega.
+    apply IHbs in H. omega.
+    apply in_app_or in H. destruct H.
+    destruct x; try omega.
+    apply bits_to_freelist_no_zero in H. intuition.
+    apply IHbs in H. omega.
+  Qed.
+
+  Lemma itemlist_to_freelist'_spec: forall sz (bs : list (word sz)) start,
+    let freelist := itemlist_to_freelist' bs start in
+    forall i, (start + i <> 0) -> In (start + i) freelist <-> selN (to_bits bs) i inuse = avail.
+  Proof.
+    induction bs; cbn; intuition.
+    cbv in *; congruence.
+    destruct (in_dec addr_eq_dec (start + i) (word_to_freelist a start)) as [H' | H'].
+    apply bits_to_freelist_bound in H' as ?.
+    apply bits_to_freelist_spec in H'; auto.
+    rewrite selN_app1; auto; omega.
+    apply in_app_or in H0 as Ha. destruct Ha as [Ha | Ha]; intuition.
+    apply itemlist_to_freelist'_bound in Ha as ?.
+    replace (start + i) with ((start + sz) + (i - sz)) in H by omega.
+    apply IHbs in H.
+    rewrite selN_app2; rewrite bits_length.
+    rewrite <- H in *.
+    replace (start + sz + (i - sz)) with (start + i) in * by omega; auto.
+    omega.
+    destruct (lt_dec i (length (bits a))).
+    rewrite selN_app1 in * by omega.
+    rewrite <- bits_to_freelist_spec in *; eauto.
+    eapply in_app_iff. right.
+    rewrite selN_app2 in * by omega.
+    rewrite bits_length in *.
+    replace (start + i) with ((start + sz) + (i - sz)) in * by omega.
+    rewrite IHbs; eauto.
+  Qed.
+(* TODO move this *)
+  Lemma nodup_app: forall T (l1 l2 : list T),
+    NoDup l1 -> NoDup l2 ->
+    (forall x, In x l1 -> ~In x l2) ->
+    (forall x, In x l2 -> ~In x l1) ->
+    NoDup (l1 ++ l2).
+  Proof.
+    induction l1; cbn; intros; auto.
+    inversion H; subst.
+    constructor.
+    rewrite in_app_iff.
+    specialize (H1 a) as ?. intuition.
+    apply IHl1; intuition eauto.
+  Qed.
+
+  Lemma itemlist_to_freelist'_nodup : forall sz (bs : list (word sz)) start,
+    let freelist := itemlist_to_freelist' bs start in
+    NoDup freelist.
+  Proof.
+    induction bs; cbn; intros.
+    constructor.
+    apply nodup_app; intuition eauto using bits_to_freelist_nodup.
+    apply itemlist_to_freelist'_bound in H0.
+    apply bits_to_freelist_bound in H.
+    rewrite bits_length in *. omega.
+    apply itemlist_to_freelist'_bound in H.
+    apply bits_to_freelist_bound in H0.
+    rewrite bits_length in *. omega.
+  Qed.
+
+  Lemma itemlist_to_freelist'_no_zero : forall sz (bs : list (word sz)) start,
+    let freelist := itemlist_to_freelist' bs start in
+    ~In 0 freelist.
+  Proof.
+    induction bs; cbn; intuition.
+    apply in_app_or in H. intuition eauto.
+    eapply bits_to_freelist_no_zero; eauto.
+  Qed.
+
+  Lemma itemlist_to_freelist_bound: forall sz (bs : list (word sz)),
+    let freelist := itemlist_to_freelist bs in
+    forall x, In x freelist -> x < length (to_bits bs).
+  Proof.
+    cbn; unfold itemlist_to_freelist; intros.
+    replace x with (0 + x) in H by omega.
+    eapply itemlist_to_freelist'_bound in H. omega.
+  Qed.
+
+  Lemma itemlist_to_freelist_spec: forall sz (bs : list (word sz)),
+    let freelist := itemlist_to_freelist bs in
+    forall i, i <> 0 -> In i freelist <-> selN (to_bits bs) i inuse = avail.
+  Proof.
+    cbn; unfold itemlist_to_freelist; intros.
+    replace i with (0 + i) in * by omega.
+    auto using itemlist_to_freelist'_spec.
+  Qed.
+
+  Lemma itemlist_to_freelist_nodup: forall sz bs,
+    let freelist := @itemlist_to_freelist sz bs in
+    NoDup freelist.
+  Proof.
+    intros.
+    apply itemlist_to_freelist'_nodup.
+  Qed.
+
+  Lemma itemlist_to_freelist_no_zero: forall sz bs,
+    let freelist := @itemlist_to_freelist sz bs in
+    ~In 0 freelist.
+  Proof.
+    intros.
+    apply itemlist_to_freelist'_no_zero.
+  Qed.
+
+  Lemma freelist_bmap_equiv_itemlist_to_freelist_spec: forall sz (bs : list (word sz)) freelist,
+    NoDup freelist ->
+    freelist_bmap_equiv freelist (to_bits bs) ->
+    permutation addr_eq_dec (itemlist_to_freelist bs) (remove addr_eq_dec 0 freelist).
+  Proof.
+    cbv [permutation freelist_bmap_equiv Avail]; intuition.
+    pose proof (itemlist_to_freelist_nodup bs).
+    rewrite (NoDup_count_occ addr_eq_dec) in *.
+    pose proof count_occ_In as Hc. unfold gt in Hc.
+    repeat match goal with
+    | H: context [count_occ] |- _ => specialize (H x)
+    end.
+    destruct (in_dec addr_eq_dec 0 freelist).
+    - destruct (addr_eq_dec 0 x); subst.
+      rewrite count_occ_remove_eq.
+      apply count_occ_not_In.
+      apply itemlist_to_freelist_no_zero.
+      repeat rewrite count_occ_remove_ne by auto.
+      destruct (zerop (count_occ addr_eq_dec freelist x)) as [Ha | Ha];
+      destruct (zerop (count_occ addr_eq_dec (itemlist_to_freelist bs) x)) as [Hb | Hb]; try omega.
+      all: rewrite <- count_occ_not_In, <- Hc in *.
+      apply itemlist_to_freelist_spec in Hb.
+      rewrite <- H2 in *. congruence.
+      intro; subst.
+      eapply itemlist_to_freelist_no_zero; eauto.
+      destruct (addr_eq_dec x 0); subst; intuition.
+      rewrite H2 in *.
+      rewrite <- itemlist_to_freelist_spec in Ha by auto.
+      intuition.
+    - rewrite remove_not_In by auto.
+      destruct (zerop (count_occ addr_eq_dec freelist x)) as [Ha | Ha];
+      destruct (zerop (count_occ addr_eq_dec (itemlist_to_freelist bs) x)) as [Hb | Hb]; try omega.
+      all: rewrite <- count_occ_not_In, <- Hc in *.
+      apply itemlist_to_freelist_spec in Hb.
+      rewrite <- H2 in *. congruence.
+      intro; subst.
+      eapply itemlist_to_freelist_no_zero; eauto.
+      destruct (addr_eq_dec x 0); subst; intuition.
+      rewrite H2 in *.
+      rewrite <- itemlist_to_freelist_spec in Ha by auto.
+      intuition.
+  Qed.
+
   Hint Extern 0 (okToUnify (listpred ?prd _ ) (listpred ?prd _)) => constructor : okToUnify.
 
   Theorem init_ok : forall V FP lxp xp ms,
@@ -695,6 +931,28 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
     cbv in Hx. congruence.
     Unshelve.
     all: try exact avail; try exact tt.
+  Qed.
+
+  Theorem get_free_blocks_ok : forall V FP lxp xp ms,
+    {<F Fm m0 m freelist freepred,
+    PRE:hm
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm *
+          [[[ m ::: (Fm * @rep V FP xp freelist freepred) ]]]
+    POST:hm' RET:^(ms, r)
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) ms hm' *
+          [[ ~In 0 r ]] * [[ NoDup r ]] *
+          [[ permutation addr_eq_dec r (remove addr_eq_dec 0 freelist) ]]
+    CRASH:hm' LOG.intact lxp F m0 hm'
+    >} get_free_blocks lxp xp ms.
+  Proof.
+    unfold get_free_blocks, rep.
+    step.
+    step.
+    eapply itemlist_to_freelist_no_zero; eauto.
+    rewrite firstn_oob by (erewrite Bmp.items_length_ok; eauto).
+    apply itemlist_to_freelist_nodup.
+    rewrite firstn_oob by (erewrite Bmp.items_length_ok; eauto).
+    apply freelist_bmap_equiv_itemlist_to_freelist_spec; eauto.
   Qed.
 
   Theorem steal_ok : forall V FP lxp xp bn ms,
@@ -849,6 +1107,7 @@ Module BmpWord (Sig : AllocSig) (WBSig : WordBMapSig).
 
   Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_}} Bind (init_nofree _ _ _) _) => apply init_nofree_ok : prog.
+  Hint Extern 1 ({{_}} Bind (get_free_blocks _ _ _) _) => apply get_free_blocks_ok : prog.
   Hint Extern 1 ({{_}} Bind (steal _ _ _ _) _) => apply steal_ok : prog.
   Hint Extern 1 ({{_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
   Hint Extern 1 ({{_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
