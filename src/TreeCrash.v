@@ -160,16 +160,19 @@ Module DTCrash.
       constructor; eauto.
   Qed.
 
-  Lemma flist_crash_xform_freelist : forall (FP : BFILE.bfile -> Prop) xp frees freepred,
+  Lemma flist_crash_xform_freelist : forall (FP : BFILE.bfile -> Prop) xp frees freepred ms,
     (forall f f', BFILE.file_crash f f' -> FP f -> FP f') ->
-    IAlloc.Alloc.rep FP xp frees freepred =p=>
-      IAlloc.Alloc.rep FP xp frees freepred *
+    IAlloc.Alloc.rep FP xp frees freepred ms =p=>
+      IAlloc.Alloc.rep FP xp frees freepred ms *
       [[ flist_crash_xform freepred =p=> freepred ]].
   Proof.
-    unfold IAlloc.Alloc.rep; intros.
+    unfold IAlloc.Alloc.rep, IAlloc.Alloc.Alloc.rep; intros.
     cancel.
-    rewrite H2.
-    clear H2 H3 blist.
+    match goal with H: _ <=p=> _ |- _ => rewrite H end.
+    repeat match goal with
+      Hb: context [BFILE.file_crash],
+      Hother: _ |- _ => clear Hother
+    end.
     induction frees; simpl.
     rewrite flist_crash_xform_emp; auto.
     rewrite flist_crash_xform_sep_star. rewrite flist_crash_xform_exists.
@@ -178,7 +181,6 @@ Module DTCrash.
     rewrite flist_crash_xform_sep_star.
     rewrite flist_crash_xform_lift_empty.
     rewrite flist_crash_xform_ptsto. cancel. eauto.
-    inversion H4; eauto.
   Qed.
 
   Lemma xform_tree_rep : forall xp F t ilist frees ms sz,
