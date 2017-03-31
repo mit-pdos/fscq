@@ -241,6 +241,7 @@ Module AFS_RECOVER.
 
       prestep. norm. cancel.
       or_r. norm. cancel. intuition idtac. 2: eauto. eauto.
+(*
       pred_apply; cancel.
 
       intuition eauto.
@@ -261,6 +262,7 @@ Module AFS_RECOVER.
       unfold pushd; simpl; cancel.
 
       pred_apply; cancel.
+*)
   Grab Existential Variables.
     all: try exact emp.
   Qed.
