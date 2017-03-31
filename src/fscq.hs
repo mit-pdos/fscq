@@ -489,11 +489,13 @@ fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
       new_bs <- if cnt == blocksize then
           return piece_bs
         else do
-          (W w, ()) <- if blk*blocksize < init_len then
-              fr $ AsyncFS._AFS__read_fblock fsxp inum blk
+          old_bs <- if blk*blocksize < init_len then do
+              (block, ()) <- fr $ AsyncFS._AFS__read_fblock fsxp inum blk
+              case block of
+                W w -> i2bs w 4096
+                WBS bs -> return bs
             else
-              return $ (W 0, ())
-          old_bs <- i2bs w 4096
+              return BS.empty
           return $ BS.append (BS.take (fromIntegral off) old_bs)
                  $ BS.append piece_bs
                  $ BS.drop (fromIntegral $ off + cnt) old_bs
