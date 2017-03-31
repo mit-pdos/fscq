@@ -2148,6 +2148,31 @@ Proof.
     destruct (E a0 b); subst; try congruence.
 Qed.
 
+Lemma remove_comm: forall T E x x' (l : list T),
+  remove E x' (remove E x l) = remove E x (remove E x' l).
+Proof.
+  induction l; cbn; intros; auto.
+  repeat (destruct E; cbn); congruence.
+Qed.
+
+Lemma remove_same: forall T E x y (l : list T),
+  x = y ->
+  remove E x (remove E y l) = remove E x l.
+Proof.
+  induction l; cbn; intros; auto.
+  repeat (destruct E; cbn); subst.
+  eauto.
+  congruence.
+  congruence.
+  f_equal; eauto.
+Qed.
+
+Lemma remove_cons: forall T E x (l : list T),
+  remove E x (x :: l) = remove E x l.
+Proof.
+  cbn; intros; destruct E; congruence.
+Qed.
+
 
 Lemma selN_cons_fold : forall A (a : A) l i def,
   match i with | O => a | S n' => selN l n' def end = selN (a :: l) i def.
@@ -3954,6 +3979,14 @@ Proof.
   omega.
 Qed.
 
+Lemma count_occ_remove_eq: forall T E (l : list T) x,
+  count_occ E (remove E x l) x = 0.
+Proof.
+  induction l; cbn; auto; intros.
+  repeat (destruct E; subst; cbn; auto).
+  congruence.
+Qed.
+
 Lemma count_occ_remove_NoDup_eq: forall (T: Type) 
     (E : forall a b : T, {a = b} + {a <> b}) (l: list T) n,
   NoDup l ->
@@ -4046,6 +4079,14 @@ Proof.
   firstorder.
 Qed.
 
+Lemma permutation_cons: forall T E (l l' : list T) x,
+  permutation E l l' ->
+  permutation E (x :: l) (x :: l').
+Proof.
+  unfold permutation. cbn; intros.
+  destruct E; congruence.
+Qed.
+
 Lemma incl_count_app_comm : forall T E (l1 l2 : list T),
   incl_count E (l1 ++ l2) (l2 ++ l1).
 Proof.
@@ -4072,6 +4113,27 @@ Proof.
   specialize (H x).
   specialize (H0 x).
   omega.
+Qed.
+
+Lemma permutation_remove: forall T E (l l' : list T) x,
+  permutation E l l' ->
+  permutation E (remove E x l) (remove E x l').
+Proof.
+  unfold permutation.
+  intros.
+  destruct (E x x0); subst.
+  repeat rewrite count_occ_remove_eq; auto.
+  repeat rewrite count_occ_remove_ne by auto.
+  eauto.
+Qed.
+
+Lemma permutation_in: forall T E (l l' : list T) x,
+  permutation E l l' -> In x l -> In x l'.
+Proof.
+  unfold permutation.
+  intros.
+  rewrite count_occ_In in *.
+  rewrite <- H. eauto.
 Qed.
 
 Lemma incl_count_app_split : forall T E (l1 l1' l2 l2' : list T),
