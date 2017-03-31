@@ -2886,18 +2886,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
          [[ BFILE.mscs_same_except_log mscs mscs' ]] *
          [[ (Ftree * pathname |-> File inum (synced_dirfile f))%pred (dir2flatmem2 (TStree ts' !!)) ]]
     XCRASH:hm'
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-       exists ds' ts' mscs' al,
-         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-         [[ BFILE.mscs_same_except_log mscs mscs' ]] *
-         [[ treeseq_in_ds Fm Ftop fsxp mscs' ts' ds']] *
-          [[ forall pathname',
-             treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts !!)) ts ->
-             treeseq_pred (treeseq_safe pathname' (MSAlloc mscs) (ts' !!)) ts' ]] *
-         [[ ds' = dssync_vecs ds al]] *
-         [[ length al = length (DFData f) /\ forall i, i < length al ->
-                BFILE.block_belong_to_file (TSilist ts !!) (selN al i 0) inum i ]] *
-         [[ (Ftree * pathname |-> File inum (synced_dirfile f))%pred (dir2flatmem2 (TStree ts' !!)) ]]
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
    >} AFS.file_sync fsxp inum mscs.
   Proof.
     intros.
@@ -2940,47 +2929,6 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     eapply dir2flatmem2_update_subtree; eauto.
     distinct_names'.
     distinct_names'.
-
-    xcrash_solve.
-    xform_norm. or_l. cancel.
-    xform_norm. or_r. cancel.  repeat (progress xform_norm; safecancel).
-
-    eassumption.
-    eapply treeseq_in_ds_file_sync; eauto.
-    eapply dir2flatmem2_find_subtree_ptsto in H4 as H4'; eauto.
-    distinct_names'.
-
-    unfold ts_file_sync.
-    rewrite d_map_latest.
-
-    (* XXX repeat from above factor out *)
-    eapply treeseq_in_ds_tree_pred_latest in H7 as Hpred; eauto.
-    eapply NEforall_d_in'; intros.
-    apply d_in_d_map in H8; deex; intuition.
-    eapply NEforall_d_in in H6 as H6'; try eassumption.
-    eapply d_in_nthd in H9 as H9'; deex.
-    rewrite <- mscs_same_except_log_rep in * by eassumption.
-    eapply treeseq_sync_safe_sync; eauto.
-    distinct_names.
-    distinct_inodes.
-    unfold treeseq_in_ds in H7.
-    intuition.
-    eapply NEforall2_d_in  with (x := (nthd n ts)) in H8 as Hd'; eauto.
-    intuition.
-
-    eauto.
-    eauto.
-    eauto.
-
-    unfold treeseq_one_file_sync.
-    unfold ts_file_sync.
-    rewrite d_map_latest.
-    unfold treeseq_one_file_sync.
-    eapply dir2flatmem2_find_subtree_ptsto in H4 as H4'; eauto.
-    rewrite H4'; simpl.
-    eapply dir2flatmem2_update_subtree; eauto.
-    distinct_names'.
-    distinct_names'.
   Qed.
 
   Lemma treeseq_latest: forall (ts : treeseq),
@@ -3000,11 +2948,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
        LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (ds!!, nil)) (MSLL mscs') hm' *
        [[ treeseq_in_ds Fm Ftop fsxp mscs' ((ts !!), nil) (ds!!, nil)]]
     XCRASH:hm'
-       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-       exists ds' ts' mscs',
-         LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-         [[ ds' = (ds!!, nil) ]] *
-         [[ treeseq_in_ds Fm Ftop fsxp mscs' ((ts' !!), nil) ds']]
+       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
    >} AFS.tree_sync fsxp mscs.
   Proof.
     intros.
@@ -3025,23 +2969,6 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     unfold treeseq_in_ds in H5; intuition;
       eapply NEforall2_latest in H0; intuition.
     eapply mscs_parts_eq_tree_rep_latest; eauto.
-    unfold treeseq_in_ds in H5; intuition.
-
-    xcrash_solve.
-    or_l. cancel. xform_normr. cancel.
-    or_r. cancel. repeat (progress xform_norm; cancel).
-
-    (* XXX repetition with earlier part of proof *)
-    unfold treeseq_in_ds.
-    unfold NEforall2.
-    simpl in *.
-    split.
-    split.
-    unfold treeseq_in_ds in H5; intuition;
-      eapply NEforall2_latest in H0; intuition.
-    eassumption.
-    eauto.
-    constructor.
     unfold treeseq_in_ds in H5; intuition.
   Qed.
 
