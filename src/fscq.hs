@@ -487,15 +487,21 @@ fscqWrite fr m_fsxp path inum bs offset = withMVar m_fsxp $ \fsxp -> do
     write_piece _ _ _ (WriteErr c) _ = return $ WriteErr c
     write_piece do_log fsxp init_len (WriteOK c) (BR blk off cnt, piece_bs) = do
       new_bs <- if cnt == blocksize then
+          -- Whole block writes don't need read-modify-write
           return piece_bs
         else do
-          old_bs <- if blk*blocksize < init_len then do
+          old_bs <- if (init_len <= blk*blocksize) || (off == 0 && init_len <= blk*blocksize + cnt) then
+              -- If we are doing a partial block write, we don't need RMW in two cases:
+              -- (1.) The file was smaller than the start of this block.
+              -- (2.) The partial write of this block starts immediately at offset 0
+              --      in this block, and writes all the way up to (and maybe past)
+              --      the original end of the file.
+              return $ BS.replicate (fromIntegral blocksize) 0
+            else do
               (block, ()) <- fr $ AsyncFS._AFS__read_fblock fsxp inum blk
               case block of
                 W w -> i2bs w 4096
-                WBS bs -> return bs
-            else
-              return BS.empty
+                WBS bs' -> return bs'
           return $ BS.append (BS.take (fromIntegral off) old_bs)
                  $ BS.append piece_bs
                  $ BS.drop (fromIntegral $ off + cnt) old_bs
