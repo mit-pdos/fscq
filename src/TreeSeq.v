@@ -293,6 +293,9 @@ Module TREESEQ.
     rewrite listmatch_length_pimpl with (a := BFILE.BFData _) in H.
     destruct_lift H.
     rewrite map_length in *.
+    deex.
+    rewrite e in H15; simpl in *.
+    unfold BFILE.datatype, datatype in *.
     rewrite H15; eauto.
     unfold BFILE.block_belong_to_file in H1.
     intuition.
@@ -473,7 +476,7 @@ Module TREESEQ.
     assert (inum < Datatypes.length dummy0).
     eapply list2nmem_inbound. pred_apply; cancel.
 
-    erewrite list2nmem_sel with (x := f) (i := inum) (l := dummy0) in H1.
+    erewrite list2nmem_sel with (x := f) (i := inum) (l := dummy0) in H3.
     2: pred_apply; cancel.
 
     clear H3.
