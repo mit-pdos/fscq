@@ -1070,13 +1070,21 @@ Module AFS.
       [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs)]]] 
     POST:hm' RET:^(mscs')
       LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn (ds!!, nil)) (MSLL mscs') hm' *
-      [[ MSAlloc mscs' = negb (MSAlloc mscs) ]]
+      [[ MSAlloc mscs' = negb (MSAlloc mscs) ]] *
+      [[ MSCache mscs' = MSCache mscs ]] *
+      [[ MSICache mscs' = MSICache mscs ]] *
+      [[ MSAllocC mscs' = MSAllocC mscs ]] *
+      [[ MSIAllocC mscs' = MSIAllocC mscs ]]
     XCRASH:hm'
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
       exists ds' mscs',
       LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
       [[ ds' = (ds!!, nil) ]] *
-      [[ MSAlloc mscs' = negb (MSAlloc mscs) ]]
+      [[ MSAlloc mscs' = negb (MSAlloc mscs) ]] *
+      [[ MSCache mscs' = MSCache mscs ]] *
+      [[ MSICache mscs' = MSICache mscs ]] *
+      [[ MSAllocC mscs' = MSAllocC mscs ]] *
+      [[ MSIAllocC mscs' = MSIAllocC mscs ]]
    >} tree_sync fsxp mscs.
   Proof.
     unfold tree_sync; intros.

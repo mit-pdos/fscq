@@ -102,23 +102,6 @@ Module TREESEQ.
 
   Definition treeseq_pred (p : treeseq_one -> Prop) (ts : treeseq) := NEforall p ts.
 
-  Lemma treeseq_in_ds_eq: forall Fm Ftop fsxp mscs a ts ds,
-    MSAlloc a = MSAlloc mscs ->
-    treeseq_in_ds Fm Ftop fsxp mscs ts ds <->
-    treeseq_in_ds Fm Ftop fsxp a ts ds.
-  Proof.
-    intros.
-    unfold treeseq_in_ds in *.
-    unfold treeseq_one_safe in *.
-    rewrite H.
-    split.
-    intro.
-    intuition.
-    apply H0.
-    intro.
-    apply H0.
-  Qed.
-
   Theorem treeseq_in_ds_pushd : forall F Ftop fsxp mscs ts ds t mscs' d,
     treeseq_in_ds F Ftop fsxp mscs ts ds ->
     tree_rep_latest F Ftop fsxp t mscs' (list2nmem d) ->
@@ -1142,6 +1125,20 @@ Module TREESEQ.
     cancel.
   Qed.
 
+  Lemma mscs_parts_eq_tree_rep_latest : forall mscs mscs' F Ftop fsxp t,
+    MSCache mscs' = MSCache mscs ->
+    MSICache mscs' = MSICache mscs ->
+    MSAllocC mscs' = MSAllocC mscs ->
+    MSIAllocC mscs' = MSIAllocC mscs ->
+    tree_rep_latest F Ftop fsxp t mscs =p=>
+    tree_rep_latest F Ftop fsxp t mscs'.
+  Proof.
+    unfold tree_rep_latest; intros.
+    unfold rep. unfold Balloc.IAlloc.rep. unfold Balloc.IAlloc.Alloc.rep; simpl.
+    msalloc_eq.
+    apply pimpl_refl.
+  Qed.
+
   Lemma mscs_same_except_log_treeseq_one_safe : forall mscs mscs' t t',
     BFILE.mscs_same_except_log mscs mscs' ->
     treeseq_one_safe t t' mscs ->
@@ -1162,6 +1159,15 @@ Module TREESEQ.
     intuition. intuition. intuition.
     eapply mscs_same_except_log_treeseq_one_safe; eauto.
     eapply mscs_same_except_log_tree_rep_latest; eauto.
+  Qed.
+
+  Lemma treeseq_in_ds_eq: forall Fm Ftop fsxp mscs a ts ds,
+    BFILE.mscs_same_except_log a mscs ->
+    treeseq_in_ds Fm Ftop fsxp mscs ts ds <->
+    treeseq_in_ds Fm Ftop fsxp a ts ds.
+  Proof.
+    split; eapply mscs_same_except_log_rep_treeseq_in_ds; eauto.
+    apply BFILE.mscs_same_except_log_comm; eauto.
   Qed.
 
   Theorem treeseq_in_ds_upd : forall F Ftop fsxp mscs ts ds mscs' pathname bn off v inum f,
@@ -2985,19 +2991,13 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     simpl in *.
     split.
     split.
-    unfold treeseq_in_ds in H5.
-    eapply NEforall2_latest in H5.
-    intuition.
-    simpl.
-    unfold treeseq_in_ds in H5.
-    eapply NEforall2_latest in H5.
-    intuition.
-    unfold treeseq_one_safe in *.
-    simpl in *.
-    rewrite H10; simpl.
-    erewrite treeseq_latest.
-    eapply dirtree_safe_refl.
-    constructor.
+    unfold treeseq_in_ds in H5; intuition;
+      eapply NEforall2_latest in H0; intuition.
+    eapply treeseq_one_safe_refl.
+    unfold treeseq_in_ds in H5; intuition;
+      eapply NEforall2_latest in H0; intuition.
+    eapply mscs_parts_eq_tree_rep_latest; eauto.
+    unfold treeseq_in_ds in H5; intuition.
 
     xcrash_solve.
     or_l. cancel. xform_normr. cancel.
@@ -3009,21 +3009,12 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     simpl in *.
     split.
     split.
-    unfold treeseq_in_ds in H5.
-    eapply NEforall2_latest in H5.
-    intuition.
-    simpl.
+    unfold treeseq_in_ds in H5; intuition;
+      eapply NEforall2_latest in H0; intuition.
     eassumption.
-    unfold treeseq_in_ds in H5.
-    eapply NEforall2_latest in H5.
-    intuition.
-    unfold treeseq_one_safe in *.
-    simpl in *.
-
-    rewrite H6; simpl.
-    erewrite treeseq_latest.
-    eapply dirtree_safe_refl.
+    eauto.
     constructor.
+    unfold treeseq_in_ds in H5; intuition.
   Qed.
 
   Lemma treeseq_safe_rename: forall pathname' mscs cwd dstnum0 dstents 
@@ -3253,7 +3244,12 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     - unfold AFS.rename_rep_inner in *.
       xcrash_solve.
       or_l. cancel. xform_normr. cancel.
-      or_r. cancel. repeat (progress xform_norm; cancel).
+      or_r. cancel. repeat (progress xform_norm; safecancel).
+
+      eassumption.
+      3: reflexivity.
+      4: reflexivity.
+      3: pred_apply; cancel.
 
       + eapply treeseq_in_ds_pushd; eauto.
         unfold treeseq_one_safe; simpl.
@@ -3263,7 +3259,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
       + eapply treeseq_safe_pushd; eauto.
         eapply NEforall_d_in'; intros.
-        eapply NEforall_d_in in H12; eauto.
+        eapply NEforall_d_in in H22; eauto.
         eapply treeseq_safe_trans; eauto.
 
         eapply treeseq_safe_rename; eauto.
@@ -3455,7 +3451,12 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
     - xcrash_solve.
       or_l. cancel. xform_normr. cancel.
-      or_r. cancel. repeat (progress xform_norm; cancel).
+      or_r. cancel. repeat (progress xform_norm; safecancel).
+      eassumption.
+      3: reflexivity.
+      4: reflexivity.
+      4: reflexivity.
+      3: pred_apply; cancel.
       clear H1. clear H2. clear H.
 
       + eapply treeseq_in_ds_pushd; eauto.
