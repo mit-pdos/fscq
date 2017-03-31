@@ -15,6 +15,32 @@
 
 static char name[NAMESIZE];
 static char buf[FILESIZE]; 
+static char *dir;
+
+void printstats(int reset)
+{
+  int fd;
+  int r;
+
+  sprintf(name, "%s/stats", dir);
+  if((fd = open(name, O_RDONLY)) < 0) {
+    return;
+  }
+
+  bzero(buf, FILESIZE);
+
+  if ((r = read(fd, buf, FILESIZE)) < 0) {
+    perror("read");
+    exit(1);
+  }
+
+  if (!reset)
+    fprintf(stdout, "=== FS Stats ===\n%s========\n", buf);
+
+  if ((r = close(fd)) < 0) {
+    perror("close");
+  }
+}
 
 static uint64_t
 usec_now()
@@ -36,11 +62,18 @@ int main(int argc, char *argv[])
   int fd;
   uint64_t start, end;
 
+  if (argc != 2) {
+    printf("Usage: %s basedir\n", argv[0]);
+    exit(-1);
+  }
+  
+  dir = argv[1];
   sprintf(buf, "%s/d", argv[1]);
   if (mkdir(buf,  S_IRWXU) < 0) {
     printf("%s: create %s failed %s\n", argv[0], buf, strerror(errno));
     exit(1);
   }
+  printstats(1);
   start = usec_now();
   for (i = 0; ; i++) {
     sprintf(name, "%s/d/f%d", argv[1], i);
@@ -64,4 +97,6 @@ int main(int argc, char *argv[])
   }
 
   printf("%d files per %ld usec\n", i, end-start);
+
+  printstats(0);
 }
