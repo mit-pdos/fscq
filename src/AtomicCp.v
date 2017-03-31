@@ -122,14 +122,18 @@ Module ATOMICCP.
 
   (* top-level recovery function: call AFS recover and then atomic_cp's recovery *)
   Definition atomic_cp_recover :=
-    let^ (mscs, fsxp) <- AFS.recover cachesize;
-    let^ (mscs, r) <- AFS.lookup fsxp the_dnum [temp_fn] mscs;
-    match r with
-    | Err _ => Ret ^(mscs, fsxp)
-    | OK (src_inum, isdir) =>
-      let^ (mscs, ok) <- AFS.delete fsxp the_dnum temp_fn mscs;
-      let^ (mscs) <- AFS.tree_sync fsxp mscs;
-      Ret ^(mscs, fsxp)
+    recover_res <- AFS.recover cachesize;
+    match recover_res with
+    | Err e => Ret (Err e)
+    | OK (mscs, fsxp) =>
+      let^ (mscs, r) <- AFS.lookup fsxp the_dnum [temp_fn] mscs;
+      match r with
+      | Err _ => Ret (OK (mscs, fsxp))
+      | OK (src_inum, isdir) =>
+        let^ (mscs, ok) <- AFS.delete fsxp the_dnum temp_fn mscs;
+        let^ (mscs) <- AFS.tree_sync fsxp mscs;
+        Ret (OK (mscs, fsxp))
+      end
     end.
 
   (** Specs and proofs **)
@@ -161,7 +165,8 @@ Module ATOMICCP.
   Lemma dirents2mem2_treeseq_one_upd_tmp : forall (F: @pred _ (@list_eq_dec string string_dec) _) tree tmppath inum f off v,
     let f' := {|
              BFILE.BFData := (BFILE.BFData f) ⟦ off := v ⟧;
-             BFILE.BFAttr := BFILE.BFAttr f |} in
+             BFILE.BFAttr := BFILE.BFAttr f;
+             BFILE.BFCache := BFILE.BFCache f |} in
     tree_names_distinct (TStree tree) ->
     (F * tmppath |-> File inum f)%pred (dir2flatmem2 (TStree tree)) ->
     (F * tmppath |-> File inum f')%pred (dir2flatmem2 (TStree (treeseq_one_upd tree tmppath off v))).
@@ -180,7 +185,8 @@ Module ATOMICCP.
   Lemma treeseq_one_upd_tree_rep_tmp: forall tree Ftree srcpath tmppath src_inum file tinum tfile dstbase dstname dstinum dstfile off v,
    let tfile' := {|
              BFILE.BFData := (BFILE.BFData tfile) ⟦ off := v ⟧;
-             BFILE.BFAttr := BFILE.BFAttr tfile|} in
+             BFILE.BFAttr := BFILE.BFAttr tfile;
+             BFILE.BFCache := BFILE.BFCache tfile |} in
     tree_names_distinct (TStree tree) ->
     tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile dstbase dstname dstinum dstfile (dir2flatmem2 (TStree tree)) ->
     tree_with_tmp Ftree srcpath tmppath src_inum file tinum tfile' dstbase dstname dstinum dstfile (dir2flatmem2 (TStree (treeseq_one_upd tree tmppath off v))).
@@ -380,23 +386,23 @@ Qed.
     cancel.
   Qed.
 
-Lemma tree_names_distinct_treeseq_one_file_sync: forall ts t t' Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile,
-    treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ->
-    d_in t ts -> t' = treeseq_one_file_sync t tmppath ->
-    tree_names_distinct (TStree t').
-Proof.
-  intros.
-  unfold treeseq_one_file_sync in H1.
-  + destruct (find_subtree tmppath (TStree t)) eqn:D1.
-    * destruct d eqn:D2.
-      rewrite H1; simpl.
-      eapply tree_names_distinct_update_subtree.
-      eapply tree_names_distinct_d_in; eauto.
-      apply TND_file.
+  Lemma tree_names_distinct_treeseq_one_file_sync: forall ts t t' Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile,
+      treeseq_pred (tree_rep Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile) ts ->
+      d_in t ts -> t' = treeseq_one_file_sync t tmppath ->
+      tree_names_distinct (TStree t').
+  Proof.
+    intros.
+    unfold treeseq_one_file_sync in H1.
+    + destruct (find_subtree tmppath (TStree t)) eqn:D1.
+      * destruct d eqn:D2.
+        rewrite H1; simpl.
+        eapply tree_names_distinct_update_subtree.
+        eapply tree_names_distinct_d_in; eauto.
+        apply TND_file.
+        rewrite H1; eapply tree_names_distinct_d_in; eauto.
+      *
       rewrite H1; eapply tree_names_distinct_d_in; eauto.
-    *
-    rewrite H1; eapply tree_names_distinct_d_in; eauto.
-Qed.
+  Qed.
 
 
   Lemma treeseq_tssync_tree_rep: forall ts Ftree srcpath tmppath srcinum file tinum dstbase dstname dstinum dstfile,
