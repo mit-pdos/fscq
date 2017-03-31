@@ -49,6 +49,8 @@ Theorem hash_list_ok : forall h values,
 Proof.
   unfold hash_list.
   step.
+  rewrite app_nil_l; reflexivity.
+  rewrite app_nil_l; eassumption.
   step; try apply HL_nil; auto.
 
   assert (Hlength: length (rev (firstn (m + 1) values)) = S m).
