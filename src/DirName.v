@@ -625,6 +625,7 @@ Module SDIR.
   Notation MSCache := BFILE.MSCache.
   Notation MSAllocC := BFILE.MSAllocC.
   Notation MSICache := BFILE.MSICache.
+  Notation MSIAllocC := BFILE.MSIAllocC.
 
 
   Theorem lookup_ok : forall lxp bxp ixp dnum name ms,
@@ -704,7 +705,8 @@ Module SDIR.
              [[ listpred readmatch r dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSAllocC ms' = MSAllocC ms ]] *
-             [[ MSCache ms' = MSCache ms ]]
+             [[ MSCache ms' = MSCache ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} readdir lxp ixp dnum ms.

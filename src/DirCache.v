@@ -34,6 +34,7 @@ Module CacheOneDir.
   Notation MSAlloc := BFILE.MSAlloc.
   Notation MSCache := BFILE.MSCache.
   Notation MSAllocC := BFILE.MSAllocC.
+  Notation MSIAllocC := BFILE.MSIAllocC.
 
   Definition empty_cache : Dcache_type := Dcache.empty _.
 
@@ -226,7 +227,8 @@ Module CacheOneDir.
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
            [[ BFILE.BFCache f' = Some cache ]] *
            [[ MSAlloc ms' = MSAlloc ms ]] *
-           [[ MSAllocC ms' = MSAllocC ms ]]
+           [[ MSAllocC ms' = MSAllocC ms ]] *
+           [[ MSIAllocC ms' = MSIAllocC ms ]]
     CRASH:hm'
            LOG.intact lxp F m0 hm'
     >} init_cache lxp ixp dnum ms.
@@ -250,6 +252,7 @@ Module CacheOneDir.
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
+           [[ MSIAllocC ms' = MSIAllocC ms ]] *
            [[ BFILE.BFCache f' = Some cache ]]
     CRASH:hm'
            LOG.intact lxp F m0 hm'
@@ -272,6 +275,7 @@ Module CacheOneDir.
            rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f' ms' *
            [[ MSAlloc ms' = MSAlloc ms ]] *
            [[ MSAllocC ms' = MSAllocC ms ]] *
+           [[ MSIAllocC ms' = MSIAllocC ms ]] *
          ( [[ r = None /\ notindomain name dmap ]] \/
            exists inum isdir Fd,
            [[ r = Some (inum, isdir) /\
@@ -307,6 +311,7 @@ Module CacheOneDir.
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSCache ms' = MSCache ms ]] *
              [[ MSAllocC ms' = MSAllocC ms ]] *
+             [[ MSIAllocC ms' = MSIAllocC ms ]] *
              [[ True ]]
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
