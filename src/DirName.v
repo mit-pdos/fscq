@@ -639,7 +639,7 @@ Module SDIR.
            [[ MSAllocC ms' = MSAllocC ms ]] *
          ( [[ r = None /\ notindomain name dmap ]] \/
            exists inum isdir Fd,
-           [[ r = Some (inum, isdir) /\
+           [[ r = Some (inum, isdir) /\ inum <> 0 /\
                    (Fd * name |-> (inum, isdir))%pred dmap ]])
     CRASH:hm'  exists ms',
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
@@ -773,7 +773,8 @@ Module SDIR.
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
              rep_macro Fm Fi m bxp ixp dnum dmap ilist frees ms *
              [[ notindomain name dmap ]] *
-             [[ goodSize addrlen inum ]]
+             [[ goodSize addrlen inum ]] *
+             [[ inum <> 0 ]]
     POST:hm' RET:^(ms', ix0', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSIAllocC ms' = MSIAllocC ms ]] *
@@ -829,6 +830,17 @@ Module SDIR.
     firstorder.
   Qed.
 
+  Theorem rep_no_0_inum: forall f m, rep f m ->
+    forall name isdir, m name = Some (0, isdir) -> False.
+  Proof.
+    unfold rep. intros. repeat deex.
+    unfold indomain in *.
+    assert (sname_valid name) by eauto.
+    erewrite <- wname2sname_sname2wname with (name := name) in H0 by eauto.
+    rewrite <- H4 in *.
+    eauto using DIR.rep_no_0_inum.
+    eauto using sname_valid_wname_valid.
+  Qed.
 
   Theorem crash_eq : forall f f' m1 m2,
     BFILE.file_crash f f' ->

@@ -278,7 +278,7 @@ Module CacheOneDir.
            [[ MSIAllocC ms' = MSIAllocC ms ]] *
          ( [[ r = None /\ notindomain name dmap ]] \/
            exists inum isdir Fd,
-           [[ r = Some (inum, isdir) /\
+           [[ r = Some (inum, isdir) /\ inum <> 0 /\
                    (Fd * name |-> (inum, isdir))%pred dmap ]]) *
            [[ True ]]
     CRASH:hm'
@@ -288,13 +288,18 @@ Module CacheOneDir.
     unfold lookup.
     hoare.
 
-    repeat ( denote! (SDIR.rep _ _) as Hx; clear Hx ).
     subst_cache.
     denote (Dcache.find) as Hf.
     denote (BFILE.BFCache _ = _) as Hb.
     erewrite Hf in * by eauto.
-    destruct (dmap name) eqn:?; [ or_r | or_l ]; cancel; eauto.
+    destruct (dmap name) eqn:?; [ or_r | or_l ].
+    assert (fst p <> 0).
+      destruct p; cbn in *.
+      intro; subst; eauto using SDIR.rep_no_0_inum.
+    repeat ( denote! (SDIR.rep _ _) as Hx; clear Hx ).
+    cancel.
     eauto using any_sep_star_ptsto.
+    cancel.
   Unshelve.
     all: repeat (solve [eauto] || constructor).
   Qed.
@@ -371,7 +376,8 @@ Module CacheOneDir.
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
              rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms *
              [[ notindomain name dmap ]] *
-             [[ goodSize addrlen inum ]]
+             [[ goodSize addrlen inum ]] *
+             [[ inum <> 0 ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSIAllocC ms' = MSIAllocC ms ]] *
@@ -410,7 +416,8 @@ Module CacheOneDir.
     {< F Fm Fi m0 m dmap ilist frees f,
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
              rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms *
-             [[ goodSize addrlen inum ]]
+             [[ goodSize addrlen inum ]] *
+             [[ inum <> 0 ]]
     POST:hm' RET:^(ms', r) exists m',
              [[ MSAlloc ms' = MSAlloc ms ]] *
              [[ MSIAllocC ms' = MSIAllocC ms ]] *
