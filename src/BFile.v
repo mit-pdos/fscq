@@ -383,36 +383,36 @@ Module BFILE.
     unfold BALLOCC.Alloc.rep in H; destruct_lift H.
     unfold BALLOCC.Alloc.Alloc.rep in H; destruct_lift H.
     destruct flag; simpl in *.
-    - destruct H20 as [H20 _]. rewrite listpred_pick in H20 by eauto.
-      rewrite H20 in H.
-      destruct_lift H.
-      rewrite locked_eq in H3.
-      rewrite <- H3 in H; clear H3.
+    - denote (locked _ = _) as Hl.
+      rewrite locked_eq in Hl.
+      rewrite <- Hl in H; clear Hl.
+      match goal with H: context [ptsto bn ?a], Hl: _ <=p=> _ |- _ =>
+        rewrite Hl, listpred_pick in H by eauto; destruct_lift H
+      end.
       eapply ptsto_conflict_F with (m := m) (a := bn).
       pred_apply.
-      destruct ((BFData files ⟦ inum ⟧) ⟦ off ⟧).
       cancel.
-    - destruct H23 as [H23 _]. rewrite listpred_pick in H23 by eauto.
-      rewrite H23 in H.
-      destruct_lift H.
-      rewrite locked_eq in H3.
-      rewrite <- H3 in H; clear H3.
+      rewrite <- surjective_pairing. cancel.
+    - denote (locked _ = _) as Hl.
+      rewrite locked_eq in Hl.
+      rewrite <- Hl in H; clear Hl.
+      match goal with H: context [ptsto bn ?a], Hl: _ <=p=> _ |- _ =>
+        rewrite Hl, listpred_pick in H by eauto; destruct_lift H
+      end.
       eapply ptsto_conflict_F with (m := m) (a := bn).
       pred_apply.
-      destruct ((BFData files ⟦ inum ⟧) ⟦ off ⟧).
       cancel.
+      rewrite <- surjective_pairing. cancel.
     - erewrite listmatch_length_r; eauto.
       destruct (lt_dec inum (length ilist)); eauto.
-      rewrite selN_oob in H2 by omega.
+      rewrite selN_oob in * by omega.
       unfold INODE.inode0 in H2; simpl in *; omega.
     - destruct (lt_dec inum (length ilist)); eauto.
-      rewrite selN_oob in H2 by omega.
-      unfold INODE.inode0 in H2; simpl in *; omega.
-
-    Grab Existential Variables.
-    exact ($0, nil).
-    exact bfile0.
-    exact 0.
+      rewrite selN_oob in * by omega.
+      unfold INODE.inode0 in *; simpl in *; omega.
+  Grab Existential Variables.
+    all: eauto.
+    all: solve [exact ($0, nil) | exact bfile0].
   Qed.
 
   Definition ilist_safe ilist1 free1 ilist2 free2 :=

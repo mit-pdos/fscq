@@ -1505,8 +1505,10 @@ Module BmapAllocCache (Sig : AllocSig).
     cancel.
     rewrite Alloc.Bmp.xform_rep; cancel.
     assumption.
-    rewrite H4.
+    denote (_ <=p=> _) as Hp. rewrite Hp.
     rewrite xform_listpred_ptsto_fp; auto.
+  Unshelve.
+    all: eauto.
   Qed.
 
   Lemma rep_clear_mscache_ok : forall V FP bxps frees freepred lms cm,
