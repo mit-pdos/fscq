@@ -217,8 +217,8 @@ Theorem rdtsc_ok:
   {< (_: unit),
   PRE:hm    emp
   POST:hm'
-    RET:t     emp * [[ hm' = hm ]]
-  CRASH:hm' emp * [[ hm' = hm ]]
+    RET:t   emp * [[ hm' = hm ]]
+  CRASH:hm' emp * [[ False ]]
   >} Rdtsc.
 Proof.
   unfold corr2; intros.
