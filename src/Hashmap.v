@@ -135,6 +135,18 @@ Proof.
   eapply IHhkl; eauto.
 Qed.
 
+Lemma hashmap_get_fwd_safe_eq: forall hm sz (x : word sz),
+  hash_safe hm (hash_fwd x) x ->
+  hashmap_get (upd_hashmap' hm (hash_fwd x) x) (hash_fwd x) = Some (existT _ _ x).
+Proof.
+  unfold upd_hashmap'. cbn; intuition.
+  repeat destruct weq; try congruence.
+  rewrite e in *.
+  unfold hash_safe in *.
+  rewrite hashmap_get_default in *.
+  intuition congruence.
+Qed.
+
 Theorem hash_list_injective : forall l1 l2 hv hm,
   hash_list_rep l1 hv hm -> hash_list_rep l2 hv hm -> l1 = l2.
 Proof.
