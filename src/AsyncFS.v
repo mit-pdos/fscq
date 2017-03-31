@@ -1022,20 +1022,11 @@ Module AFS.
         [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
                         ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
     XCRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-      exists ds' tree' al mscs',
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-      [[ BFILE.mscs_same_except_log mscs mscs' ]] *
-      [[ ds' = dssync_vecs ds al]] *
-      [[ length al = length (DFData f) /\ forall i, i < length al ->
-            BFILE.block_belong_to_file ilist (selN al i 0) inum i ]] *
-      [[[ ds'!! ::: (Fm * rep fsxp Ftop tree' ilist frees mscs')]]] *
-      [[ tree' = update_subtree pathname (TreeFile inum  (synced_dirfile f)) tree ]] *
-      [[ dirtree_safe ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree
-                      ilist (BFILE.pick_balloc frees (MSAlloc mscs')) tree' ]]
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
    >} file_sync fsxp inum mscs.
   Proof.
     unfold file_sync; intros.
+    step.
     step.
     prestep; norm. cancel. intuition.
     latest_rewrite.
@@ -1043,21 +1034,31 @@ Module AFS.
     eauto.
     step.
     step.
+    step.
+    admit.
 
     - xcrash_solve.
       rewrite <- crash_xform_idem.
       rewrite LOG.crash_xform_intact_dssync_vecs_idempred.
       rewrite SB.crash_xform_rep; auto.
-      xcrash_solve.  xform_norm. or_l. cancel.
+    - xcrash_solve.
+      rewrite <- crash_xform_idem.
+      rewrite LOG.crash_xform_intact_dssync_vecs_idempred.
+      rewrite SB.crash_xform_rep; auto.
     - cancel.
       xcrash_solve.
       rewrite LOG.recover_any_idempred.
       cancel.
-      xcrash_solve.  xform_norm. or_l. cancel.
+    - (* This is [xcrash_solve] spelled out because [eauto] hangs. *)
+      eapply pimpl_trans; [ | eapply H1 ].
+      norm. cancel. intuition idtac. eexists; eassumption.
+
+      rewrite LOG.notxn_intact.
+      rewrite LOG.intact_idempred.
+      cancel.
     - xcrash_solve.
       rewrite LOG.intact_idempred.
       cancel.
-      xcrash_solve.  xform_norm. or_l. cancel.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (file_sync _ _ _) _) => apply file_sync_ok : prog.
@@ -1076,20 +1077,22 @@ Module AFS.
       [[ MSAllocC mscs' = MSAllocC mscs ]] *
       [[ MSIAllocC mscs' = MSIAllocC mscs ]]
     XCRASH:hm'
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm' \/
-      exists ds' mscs',
-      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds' hm' *
-      [[ ds' = (ds!!, nil) ]] *
-      [[ MSAlloc mscs' = negb (MSAlloc mscs) ]] *
-      [[ MSCache mscs' = MSCache mscs ]] *
-      [[ MSICache mscs' = MSICache mscs ]] *
-      [[ MSAllocC mscs' = MSAllocC mscs ]] *
-      [[ MSIAllocC mscs' = MSIAllocC mscs ]]
+      LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
    >} tree_sync fsxp mscs.
   Proof.
     unfold tree_sync; intros.
     step.
     step.
+    step.
+    step.
+    admit.
+    admit.
+    admit.
+
+    (* This is [xcrash_solve] spelled out because [eauto] hangs. *)
+    eapply pimpl_trans; [ | eapply H1 ].
+    norm. cancel. intuition idtac. eexists; eassumption.
+
     xcrash_solve.
     rewrite LOG.recover_any_idempred.
     cancel.
