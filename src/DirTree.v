@@ -466,13 +466,16 @@ Module DIRTREE.
     subst; simpl in *.
     denote tree_dir_names_pred as Hx;
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
+    unfold IAlloc.rep, IAlloc.MSLog in *.
     step.
     eapply IAlloc.ino_valid_goodSize; eauto.
-
     destruct_branch; [ | step ].
-    prestep; norml; inv_option_eq.
+    prestep; norml; inv_option_eq; msalloc_eq.
 
     cancel.
+    match goal with a: IAlloc.Alloc.memstate |- _
+      => destruct a; cbn in *; subst
+    end.
     or_r; cancel.
 
     unfold tree_dir_names_pred at 1. cancel; eauto.
@@ -554,6 +557,7 @@ Module DIRTREE.
     simpl in *.
     denote tree_dir_names_pred as Hx;
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
+    unfold IAlloc.rep, IAlloc.MSLog in *.
     step.
     unfold SDIR.rep_macro.
     eapply IAlloc.ino_valid_goodSize; eauto.
@@ -562,6 +566,9 @@ Module DIRTREE.
     prestep; norml; inv_option_eq.
 
     cancel.
+    match goal with a: IAlloc.Alloc.memstate |- _
+      => destruct a; cbn in *; subst
+    end.
     or_r; cancel.
     eapply dirname_not_in; eauto.
 
@@ -709,15 +716,16 @@ Module DIRTREE.
     cancel.
 
     (* is_file: prepare for free *)
-    prestep. norml.
+    prestep. norml; msalloc_eq.
     denote dirlist_pred as Hx.
     erewrite dirlist_extract with (inum := n) in Hx; eauto.
     destruct_lift Hx.
     destruct dummy4; simpl in *; try congruence; subst.
     denote dirlist_pred_except as Hx; destruct_lift Hx; auto.
-    cancel.
-    unfold IAlloc.rep; cancel.
-    exists (list2nmem flist); eexists; pred_apply; cancel.
+    unfold IAlloc.rep, IAlloc.MSLog in *; cancel.
+    match goal with H: (_ * ptsto ?a _)%pred ?m |- context [ptsto ?a]
+      => exists m; solve [pred_apply; cancel]
+    end.
 
     (* post conditions *)
     step.
@@ -743,16 +751,18 @@ Module DIRTREE.
     intro; subst.
     denote! (In _ _ -> False) as Hq.
     eapply Hq.
-    denote ((name |-> (n, false))%pred) as Hy.
-    eapply find_dirlist_exists in Hy as Hy'.
+    denote ((name |-> (_, false))%pred) as Hy.
+    eapply find_dirlist_exists in Hy as Hy'; eauto.
     deex.
+    denote (dirtree_inum _ = dirtree_inum _ ) as Hd.
+    rewrite Hd.
     eapply find_dirlist_tree_inodes; eauto.
-    eassumption.
 
     cancel.
-    cancel.
-    cancel.
-    cancel.
+    unfold IAlloc.rep, IAlloc.MSLog in *; cancel.
+    match goal with H: (_ * ptsto ?a _)%pred ?m |- context [ptsto ?a]
+      => exists m; solve [pred_apply; cancel]
+    end.
 
     (* case 2: is_dir: check empty *)
     prestep.
