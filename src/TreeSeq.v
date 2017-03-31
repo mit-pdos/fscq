@@ -1446,9 +1446,8 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
       + unfold treeseq_safe_fwd in *; intros; simpl in *.
         erewrite find_update_subtree in *; eauto.
         exists {|
-             BFILE.BFData := (BFILE.BFData f) ⟦ off := v ⟧;
-             BFILE.BFAttr := BFILE.BFAttr f;
-             BFILE.BFCache := BFILE.BFCache f |}.
+             DFData := (DFData f) ⟦ off := v ⟧;
+             DFAttr := DFAttr f; |}.
         specialize (H9 inum0 off0 bn0).
         case_eq (find_subtree pathname (TStree (nthd n ts))); intros.
         destruct d.
@@ -1458,13 +1457,13 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
           intuition.
           inversion H13; subst. clear H13.
           edestruct H9.
-          eexists b.
+          eexists d.
           split; eauto.
           intuition.
           rewrite H0' in H13.
           inversion H13; subst; eauto.
           edestruct H9.
-          eexists b.
+          eexists d.
           intuition.
           inversion H13; subst; eauto.
           intuition.
