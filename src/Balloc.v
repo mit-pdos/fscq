@@ -1205,14 +1205,14 @@ Module BmapAllocCache (Sig : AllocSig).
   Module Alloc := BmapAlloc Sig.
   Module Defs := Alloc.Defs.
 
-  Definition BmapCacheType := list addr.
+  Definition BmapCacheType := option (list addr).
 
   Record memstate := mk_memstate {
     MSLog  : LOG.memstate;
     MSCache   : BmapCacheType; 
   }.
 
-  Definition freelist0 : BmapCacheType := (@nil addr).
+  Definition freelist0 : BmapCacheType := None.
 
   Definition init lxp xp fms : prog memstate :=
     fms <- Alloc.init lxp xp fms;
@@ -1223,34 +1223,116 @@ Module BmapAllocCache (Sig : AllocSig).
     fms <- Alloc.init_nofree lxp xp ms;
     Ret (mk_memstate fms freelist0).
 
-  Definition alloc lxp xp ms :=
-    let^ (fms, freelist) <- match (MSCache ms) with
-    | nil =>
+  Definition get_free_blocks lxp xp ms :=
+    match (MSCache ms) with
+    | Some x => Ret ^(ms, x)
+    | None =>
       let^ (fms, freelist) <- Alloc.get_free_blocks lxp xp (MSLog ms);
-      Ret ^(fms, freelist)
-    | _ =>
-      Ret ^(MSLog ms, MSCache ms)
-    end;
+      Ret ^((mk_memstate fms (Some freelist)), freelist)
+    end.
+
+  Definition cache_free_block a ms :=
+    match (MSCache ms) with
+    | Some x => Some (a :: x)
+    | None => None
+    end.
+
+  Definition alloc lxp xp (ms : memstate) :=
+    let^ (ms, freelist) <- get_free_blocks lxp xp ms;
     match freelist with
     | nil =>
-      Ret ^((mk_memstate fms freelist), None)
+      Ret ^(ms, None)
     | bn :: freelist' =>
       fms <- Alloc.steal lxp xp bn (MSLog ms);
-      Ret ^((mk_memstate fms freelist'), Some bn)
+      Ret ^((mk_memstate fms (Some freelist')), Some bn)
     end.
 
   Definition free lxp xp bn ms :=
-    fms <- Alloc.free lxp xp bn (MSLog ms) ;
-    Ret (mk_memstate fms (bn ::(MSCache ms))).
+    fms <- Alloc.free lxp xp bn (MSLog ms);
+    let cache := cache_free_block bn ms in
+    Ret (mk_memstate fms cache).
 
   Definition steal lxp xp bn (ms:memstate) :=
     fms <- Alloc.steal lxp xp bn (MSLog ms) ;
     Ret (mk_memstate fms freelist0).
 
+  Definition cache_rep (freelist : list addr) cache :=
+    forall cfreelist, cache = Some cfreelist ->
+    ~In 0 cfreelist /\ NoDup cfreelist /\
+    permutation addr_eq_dec (remove addr_eq_dec 0 freelist) cfreelist.
+
   Definition rep V FP xp freelist (freepred : @pred _ addr_eq_dec V) ms :=
     (Alloc.rep FP xp freelist freepred *
-    [[ incl_count addr_eq_dec (MSCache ms) freelist ]] *
-    [[ forall bn, In bn (MSCache ms) -> bn <> 0 ]])%pred.
+    [[ cache_rep freelist (MSCache ms) ]])%pred.
+
+  Fact cache_rep_freelist0: forall freelist, cache_rep freelist freelist0.
+  Proof.
+    cbv. congruence.
+  Qed.
+
+  Hint Resolve cache_rep_freelist0.
+
+  Lemma cache_rep_remove_cons: forall freelist n cache',
+    cache_rep freelist (Some (n :: cache')) ->
+    cache_rep (remove addr_eq_dec n freelist) (Some cache').
+  Proof.
+    unfold cache_rep. intros.
+    inversion H0; subst.
+    specialize (H _ (eq_refl)). intuition.
+    inversion H; auto.
+    destruct (addr_eq_dec 0 n); subst.
+    cbn in *; intuition auto.
+    rewrite remove_comm.
+    erewrite <- remove_not_In with (l := cfreelist) (a := n).
+    erewrite <- remove_cons with (l := cfreelist).
+    apply permutation_remove; auto.
+    inversion H; auto.
+  Qed.
+
+  Lemma cache_rep_add_cons: forall freelist x cache,
+    cache_rep freelist (Some cache) ->
+    x <> 0 -> ~In x cache ->
+    cache_rep (x :: freelist) (Some (x :: cache)).
+  Proof.
+    unfold cache_rep. intros.
+    specialize (H _ eq_refl).
+    inversion H2; subst.
+    intuition.
+    destruct H4; auto.
+    constructor; auto.
+    rewrite remove_cons_neq by auto.
+    auto using permutation_cons.
+  Qed.
+
+  Lemma cache_rep_in: forall bn freelist cache,
+    cache_rep freelist (Some cache) ->
+    bn <> 0 ->
+    In bn freelist <-> In bn cache.
+  Proof.
+    unfold cache_rep. intros.
+    specialize (H _ eq_refl). intuition.
+    rewrite count_occ_In.
+    rewrite <- H3.
+    rewrite count_occ_remove_ne by auto.
+    rewrite <- count_occ_In. auto.
+    rewrite count_occ_In.
+    erewrite <- count_occ_remove_ne by eauto.
+    rewrite H3.
+    rewrite <- count_occ_In. auto.
+  Qed.
+
+  Lemma cache_rep_none: forall freelist,
+    cache_rep freelist None.
+  Proof.
+    cbv [cache_rep]. intros. congruence.
+  Qed.
+
+  Hint Resolve cache_rep_none.
+
+  Ltac apply_cache_rep := match goal with
+    | Hm: MSCache _ = _, H: cache_rep _ _ |- _ =>
+      rewrite ?Hm in *; specialize (H _ eq_refl) as ?; intuition
+    end.
 
   Theorem init_ok : forall V FP lxp xp ms,
     {< F Fm m0 m bl,
@@ -1290,7 +1372,29 @@ Module BmapAllocCache (Sig : AllocSig).
     step.
   Qed.
 
-  Theorem alloc_ok : forall V FP lxp xp (ms:memstate),
+  Theorem get_free_blocks_ok : forall V FP lxp xp (ms:memstate),
+    {< F Fm m0 m freelist freepred,
+    PRE:hm
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
+          [[[ m ::: (Fm * @rep V FP xp freelist freepred ms) ]]]
+    POST:hm' RET:^(ms, r)
+          [[ MSCache ms = Some r ]] *
+          LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm' *
+          [[[ m ::: (Fm * @rep V FP xp freelist freepred ms) ]]]
+    CRASH:hm' LOG.intact lxp F m0 hm'
+    >} get_free_blocks lxp xp ms.
+  Proof.
+    unfold get_free_blocks, rep.
+    hoare.
+    rewrite Heqb. auto.
+    unfold cache_rep.
+    intros ? Hs. inversion Hs; intuition subst; auto.
+    auto using permutation_comm.
+  Qed.
+
+  Hint Extern 0 ({{ _ }} Bind (get_free_blocks _ _ _) _) => apply get_free_blocks_ok.
+
+  Theorem alloc_ok : forall V FP lxp xp ms,
     {< F Fm m0 m freelist freepred,
     PRE:hm
           LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLog ms) hm *
@@ -1306,24 +1410,25 @@ Module BmapAllocCache (Sig : AllocSig).
     CRASH:hm' LOG.intact lxp F m0 hm'
     >} alloc lxp xp ms.
   Proof.
-    unfold alloc, rep; intros.
-    destruct_branch.
+    unfold alloc.
     step.
+    unfold rep in *.
     step.
+    apply_cache_rep.
+    destruct (addr_eq_dec n 0); subst; cbn in *; intuition.
+    rewrite cache_rep_in by eauto.
+    cbn; auto.
     step.
-    eapply In_incl.
-    2: eapply incl_count_incl; eauto.
-    constructor; auto.
-    step.
-    or_r. cancel.
-    apply Alloc.rep_impl_NoDup in H4 as H4'; eauto.
-    apply occ_count_NoDup_impl_NoDup in H9 as H9'; eauto.
-    eapply incl_count_remove_NoDup; eauto.
-    specialize (H8 bn).  apply H8; auto.
-    specialize (H8 n).  apply H8; auto.
+    or_r. cancel; apply_cache_rep.
+    eauto using cache_rep_remove_cons.
+    subst; cbn in *; intuition.
     eapply Alloc.rep_impl_bn_ok with (freelist := freelist); eauto.
-    eapply incl_count_In; eauto.
-    eapply incl_count_In; eauto.
+    eapply remove_still_In.
+    eapply permutation_in; eauto using permutation_comm.
+    cbn; auto.
+    eapply remove_still_In.
+    eapply permutation_in; eauto using permutation_comm.
+    cbn; auto.
   Qed.
 
   Theorem free_ok : forall V FP lxp xp bn ms,
@@ -1342,9 +1447,15 @@ Module BmapAllocCache (Sig : AllocSig).
     >} free lxp xp bn ms.
   Proof.
     unfold free, rep; intros.
+    safestep.
+    eauto.
     step.
-    step.
-    apply incl_count_add; auto.
+    unfold cache_free_block.
+    destruct MSCache eqn:?; auto.
+    eapply cache_rep_add_cons; eauto.
+    assert (NoDup (bn :: freelist)) as Hd by (eauto using Alloc.rep_impl_NoDup).
+    inversion Hd; subst.
+    erewrite <- cache_rep_in by eauto. auto.
   Qed.
 
   Theorem steal_ok : forall V FP lxp xp bn (ms:memstate),
@@ -1361,7 +1472,7 @@ Module BmapAllocCache (Sig : AllocSig).
     >} steal lxp xp bn ms.
   Proof.
     unfold steal, rep; intros.
-    step.
+    safestep.
     step.
   Qed.
 
