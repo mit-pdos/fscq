@@ -561,7 +561,7 @@ Module BUFCACHE.
   Proof.
     unfold writeback, rep; intros.
 
-    prestep; norml; unfold stars; simpl; clear_norm_goal;
+    prestep; norml; unfold stars; simpl;
     denote ptsto_subset as Hx; apply ptsto_subset_valid' in Hx; repeat deex.
 
     (* cached, dirty *)
@@ -658,7 +658,7 @@ Module BUFCACHE.
     step.
     unfold rep, size_valid in *; step.
 
-    prestep; unfold rep; norml; unfold stars; simpl; clear_norm_goal.
+    prestep; unfold rep; norml; unfold stars; simpl.
 
     (* found the victim  *)
     - edestruct addr_valid_ptsto_subset; eauto.
@@ -709,7 +709,7 @@ Module BUFCACHE.
     safestep; eauto.
     unfold rep; cancel.
 
-    prestep; unfold rep; norml; unfold stars; simpl; clear_norm_goal;
+    prestep; unfold rep; norml; unfold stars; simpl;
     edestruct ptsto_subset_valid'; eauto; intuition simpl in *;
     erewrite mem_pred_extract with (a := a) at 1 by eauto;
     unfold cachepred at 2; rewrite Heqo.
@@ -758,7 +758,7 @@ Module BUFCACHE.
     safestep; eauto.
     unfold rep; cancel.
 
-    prestep; unfold rep; norml; unfold stars; simpl; clear_norm_goal.
+    prestep; unfold rep; norml; unfold stars; simpl.
 
     edestruct ptsto_subset_valid'; eauto; intuition simpl in *.
     erewrite mem_pred_extract with (a := a) at 1 by eauto.
@@ -1060,7 +1060,7 @@ Module BUFCACHE.
     unfold end_sync, synrep, synrep'.
     step.
     prestep; unfold mem_pred.
-    norml; unfold stars, mem_pred_one; simpl; clear_norm_goal.
+    norml; unfold stars, mem_pred_one; simpl.
     rewrite sync_xform_sep_star_dist. rewrite sync_xform_and_dist.
     rewrite sep_star_and_distr'. rewrite pimpl_r_and.
     unfold rep, mem_pred, mem_pred_one. 
@@ -1093,11 +1093,11 @@ Module BUFCACHE.
     unfold sync; intros.
     eapply pimpl_ok2; monad_simpl. apply writeback_ok'.
     intros.
-    norml; unfold stars; simpl; clear_norm_goal.
+    norml; unfold stars; simpl.
     denote (_ d) as Hx; apply ptsto_subset_valid' in Hx as Hy; repeat deex.
     denote (_ d0) as Hz; apply ptsto_subset_valid' in Hz as Hy; repeat deex.
     unfold synrep, rep, synrep'.
-    rewrite lift_empty_and_distr_l; norml; unfold stars; simpl; clear_norm_goal.
+    rewrite lift_empty_and_distr_l; norml; unfold stars; simpl.
     rewrite mem_pred_extract with (a := a) (hm := d) by eauto.
     rewrite mem_pred_extract with (a := a) (hm := d0) by eauto.
     unfold cachepred at 2; unfold synpred at 2; simpl in *.
@@ -1114,11 +1114,11 @@ Module BUFCACHE.
       rewrite sep_star_lift_empty.
       setoid_rewrite <- sep_star_assoc at 1 2.
       rewrite lift_empty_and_distr_r.
-      norml; unfold stars; simpl; clear_norm_goal; subst.
+      norml; unfold stars; simpl; subst.
       rewrite sep_star_ptsto_and_eq.
       cancel; subst; eauto.
 
-      prestep; norml; unfold stars; simpl; clear_norm_goal.
+      prestep; norml; unfold stars; simpl.
       2: intuition; repeat deex; congruence.
       inv_option_eq.
       cancel.
@@ -1169,11 +1169,11 @@ Module BUFCACHE.
       rewrite sep_star_lift_empty.
       setoid_rewrite <- sep_star_assoc at 1 2.
       rewrite lift_empty_and_distr_r.
-      norml; unfold stars; simpl; clear_norm_goal; subst.
+      norml; unfold stars; simpl; subst.
       rewrite sep_star_ptsto_and_eq.
       cancel; subst; eauto.
 
-      prestep; norml; unfold stars; simpl; clear_norm_goal;
+      prestep; norml; unfold stars; simpl;
       intuition; repeat deex; try congruence; inv_option_eq.
       cancel.
       2: eapply ptsto_subset_upd with (vs' := nil); eauto; apply incl_refl.
@@ -1211,11 +1211,11 @@ Module BUFCACHE.
       rewrite sep_star_lift_empty.
       setoid_rewrite <- sep_star_assoc at 1 2.
       rewrite lift_empty_and_distr_r.
-      norml; unfold stars; simpl; clear_norm_goal; subst.
+      norml; unfold stars; simpl; subst.
       rewrite sep_star_ptsto_and_eq.
       cancel; subst; eauto.
 
-      prestep; norml; unfold stars; simpl; clear_norm_goal;
+      prestep; norml; unfold stars; simpl;
       intuition; repeat deex; try congruence; inv_option_eq.
       cancel.
       2: eapply ptsto_subset_upd with (vs' := nil); eauto; apply incl_refl.
@@ -1413,7 +1413,7 @@ Module BUFCACHE.
     rewrite IHl by auto.
     xform_norm.
     rewrite xform_cachepred_ptsto.
-    norml; unfold stars; simpl; clear_norm_goal.
+    norml; unfold stars; simpl.
     apply pimpl_exists_r.
     exists (upd m' n (v, nil)).
     rewrite <- mem_pred_absorb.
@@ -1733,7 +1733,7 @@ Module BUFCACHE.
     rewrite IHl by auto.
     xform_norm.
     rewrite sync_xform_cachepred.
-    norml; unfold stars; simpl; clear_norm_goal.
+    norml; unfold stars; simpl.
     apply pimpl_exists_r.
     exists (upd m' n (v, nil)).
     rewrite <- mem_pred_absorb.

@@ -113,8 +113,8 @@ Module DTCrash.
       tree_dir_names_pred xp inum tree_ents'.
   Proof.
     unfold tree_dir_names_pred; intros.
-    rewrite flist_crash_xform_exists. norml; unfold stars; simpl; clear_norm_goal.
-    rewrite flist_crash_xform_exists. norml; unfold stars; simpl; clear_norm_goal.
+    rewrite flist_crash_xform_exists. norml; unfold stars; simpl.
+    rewrite flist_crash_xform_exists. norml; unfold stars; simpl.
     repeat rewrite flist_crash_xform_sep_star.
     repeat rewrite flist_crash_xform_lift_empty.
     rewrite flist_crash_xform_ptsto.
