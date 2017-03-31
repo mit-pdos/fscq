@@ -4,6 +4,7 @@ Require Import Rec Prog BasicProg Hoare RecArrayUtils Log.
 Require Import ProofIrrelevance.
 Require Import Inode BFile MemMatch.
 Require Import Errno.
+Require Import ProgMonad.
 Import ListNotations EqNotations.
 
 Set Implicit Arguments.
@@ -381,12 +382,17 @@ Module FileRecArray (FRA : FileRASig).
     >} init lxp bxp ixp inum ms.
   Proof.
     unfold init, rep.
-    hoare.
+    step.
+    safestep.
+    msalloc_eq. destruct (MSAllocC a); cancel.
+    pred_apply; cancel.
+    step.
 
-    msalloc_eq; cancel.
     subst; rewrite Nat.sub_diag; simpl.
     unfold list2nmem; simpl.
     apply emp_empty_mem.
+
+    cancel.
   Qed.
 
 
@@ -604,7 +610,13 @@ Module FileRecArray (FRA : FileRASig).
     >} ifind_array lxp ixp inum cond ms.
   Proof.
     unfold ifind_array; intros.
-    hoare.
+    repeat monad_simpl_one.
+    eapply pimpl_ok2. eauto with prog.
+    safecancel.
+    repeat monad_simpl_one.
+    eapply pimpl_ok2. eauto with prog.
+    safecancel.
+    cancel.
     or_r; cancel.
     apply list2nmem_ptsto_cancel; auto.
   Qed.
