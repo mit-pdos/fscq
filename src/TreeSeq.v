@@ -787,6 +787,8 @@ Module TREESEQ.
     distinct_names'.
     eassumption.
     step.
+    or_l. cancel.
+    admit. (* AsyncFS must promise a bit more *)
     or_r.
     cancel.
     eapply treeseq_in_ds_pushd; eauto.
