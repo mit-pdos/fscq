@@ -15,6 +15,9 @@ echo "Coq directory: $COQDIR"
 echo "Branch: $BRANCH"
 echo "Build name: $BUILDNAME"
 
+## Print the Coq version
+coqtop </dev/null
+
 cd ~/builder/runs && ( ls | head -n -20 | xargs rm -rf )
 cd $D
 git clone -b $BRANCH git://g.csail.mit.edu/fscq-impl fscq
