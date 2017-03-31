@@ -1699,6 +1699,7 @@ Module PaddedLog.
 
     (* true case *)
     - (* write content *)
+      rewrite <- DescDefs.ipack_nopad_ipack_eq.
       step.
       unfold checksums_match in *; intuition.
       solve_hash_list_rep.
