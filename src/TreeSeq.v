@@ -1000,9 +1000,9 @@ Module TREESEQ.
       erewrite update_subtree_same; eauto.
       unfold tree_rep. pred_apply. cancel.
       eapply rep_tree_names_distinct; eauto.
-      destruct b; eauto.
+      destruct d; simpl in *; eauto.
 
-      destruct (lt_dec off (Datatypes.length (BFILE.BFData b))); try omega.
+      destruct (lt_dec off (Datatypes.length (DFData d))); try omega.
       exfalso.
       edestruct treeseq_block_belong_to_file; eauto.
       eassign (nthd n ds). unfold tree_rep. pred_apply; cancel.
