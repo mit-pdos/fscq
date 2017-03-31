@@ -2246,7 +2246,7 @@ Module IAlloc.
   Hint Extern 1 ({{_}} Bind (init _ _ _) _) => apply init_ok : prog.
   Hint Extern 1 ({{_}} Bind (alloc _ _ _) _) => apply alloc_ok : prog.
   Hint Extern 1 ({{_}} Bind (free _ _ _ _) _) => apply free_ok : prog.
-  Hint Extern 0 (okToUnify (rep ?xp _ _ _) (rep ?xp _ _ _)) => constructor : okToUnify.
+  Hint Extern 0 (okToUnify (rep _ ?xp _ _ _) (rep _ ?xp _ _ _)) => constructor : okToUnify.
 
   Definition xform_rep := Alloc.xform_rep.
 
