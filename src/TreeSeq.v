@@ -1597,7 +1597,7 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     eassumption.
 
 
-    pose proof (list2nmem_array (BFILE.BFData f)).
+    pose proof (list2nmem_array (DFData f)).
     pred_apply.
     erewrite arrayN_except with (i := off).
     cancel.
@@ -1615,12 +1615,12 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
 
     eapply treeseq_in_ds_tree_pred_latest in H8 as Hpred; eauto.
     eapply NEforall_d_in'; intros.
-    apply d_in_d_map in H4; deex; intuition.
+    apply d_in_d_map in H6; deex; intuition.
     eapply NEforall_d_in in H7 as H7'; try eassumption.
     unfold tsupd; rewrite d_map_latest.
     unfold treeseq_in_ds in H8.
-    eapply d_in_nthd in H6 as H6'; deex.
-    eapply NEforall2_d_in  with (x := (nthd n ts)) in H9 as Hd'; eauto.
+    eapply d_in_nthd in H9 as H9'; deex.
+    eapply NEforall2_d_in  with (x := (nthd n ts)) in H10 as Hd'; eauto.
     intuition.
     rewrite <- mscs_same_except_log_rep in * by eassumption.
     eapply treeseq_upd_safe_upd; eauto.
@@ -1647,19 +1647,18 @@ Lemma seq_upd_safe_upd_bwd_ne: forall pathname pathname' inum n ts off v f mscs,
     rewrite <- H5'.
 
     assert( f' = {|
-           BFILE.BFData := (BFILE.BFData f) ⟦ off := (v, vsmerge vs) ⟧;
-           BFILE.BFAttr := BFILE.BFAttr f;
-           BFILE.BFCache := BFILE.BFCache f |}).
+           DFData := (DFData f) ⟦ off := (v, vsmerge vs) ⟧;
+           DFAttr := DFAttr f |}).
     destruct f'.
     f_equal.
-    simpl in H16.
-    eapply list2nmem_array_updN in H16.
-    rewrite H16.
+    simpl in H15.
+    eapply list2nmem_array_updN in H15.
+    rewrite H15.
     subst; eauto.
     eapply list2nmem_ptsto_bound in H5 as H5''; eauto.
     eauto.
     eauto.
-    rewrite H4.
+    rewrite H6.
     eapply dir2flatmem2_update_subtree; eauto.
     distinct_names'.
     distinct_names'.
