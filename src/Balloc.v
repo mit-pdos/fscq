@@ -2311,4 +2311,13 @@ Module IAlloc.
     apply ino_valid_roundtrip'; auto.
   Qed.
 
+  Lemma rep_ignore_mslog_ok: forall V (FP : V -> _) xp freelist freepred log log' cache,
+    rep FP xp freelist freepred (mk_memstate log cache) =
+    rep FP xp freelist freepred (mk_memstate log' cache).
+  Proof.
+    cbv; auto.
+  Qed.
+
+  Hint Extern 0 (okToUnify (rep _ ?xp _ _ (mk_memstate _ ?c)) (rep _ ?xp _ _ (mk_memstate _ ?c)))
+    => apply rep_ignore_mslog_ok : okToUnify.
 End IAlloc.
