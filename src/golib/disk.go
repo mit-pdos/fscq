@@ -50,14 +50,14 @@ func Init_disk(path string) {
 	disk_stats = new(DiskStats)
 }
 
-func DiskWrite(addr Num, buf *Buffer) {
+func DiskWrite(addr Num, buf ImmutableBuffer) {
 	if debug {
 		log.Printf("write(%v)\n", addr)
 	}
 	off := Num_of_i64(4096)
 	off.Multiply(off, addr)
 
-	n_bytes, err := disk_file.WriteAt(*buf, off.Int64())
+	n_bytes, err := disk_file.WriteAt(buf, off.Int64())
 	(&disk_stats.writes).Increment()
 
 	if n_bytes != 4096 {

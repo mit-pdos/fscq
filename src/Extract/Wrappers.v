@@ -1,6 +1,6 @@
-Require Import Cache FSLayout MemLog GroupLog Log BFile.
-Require Import GoSemantics GoHoare GoTactics1.
 Require Import List.
+Require Import Word Cache FSLayout MemLog GroupLog Log BFile.
+Require Import GoSemantics GoHoare GoTactics1.
 
 Import Go.
 Import ListNotations.

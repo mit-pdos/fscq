@@ -25,24 +25,26 @@ Example compile_read : sigT (fun p => source_stmt p /\
     |}
     "cache_read" Cache.BUFCACHE.read env ->
   EXTRACT MLog.read lxp a ms
-  {{ 0 ~>? (MLog.memstate * (valu * unit)) *
+  {{ 0 ~>? (MLog.memstate * (immut_word valulen * unit)) *
      1 ~> lxp *
      2 ~> a *
      3 ~> ms }}
     p
-  {{ fun ret => 0 ~> ret *
+  {{ fun ret  : MLog.memstate * (immut_word valulen * unit) => 0 ~> ret *
      1 ~>? FSLayout.log_xparams *
      2 ~>? nat *
      3 ~>? MLog.memstate }} // env).
 Proof.
   unfold MLog.read, MLog.MSCache, MLog.MSInLog, MLog.mk_memstate, Cache.BUFCACHE.read_array.
   compile_step.
+  change valu with (immut_word valulen) in *.
   compile_step.
   compile_step.
   compile_step.
   compile_step.
   compile_step.
   compile_step.
+  Set Printing All.
   compile_step.
   compile_step.
   compile_step.

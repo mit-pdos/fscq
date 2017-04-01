@@ -31,7 +31,7 @@ Definition eviction_init : eviction_state := tt.
 Definition eviction_update (s : eviction_state) (a : addr) := s.
 Definition eviction_choose (s : eviction_state) : (addr * eviction_state) := (0, s).
 
-Definition cachemap := Map.t (valu * bool).  (* (valu, dirty flag) *)
+Definition cachemap := Map.t (immut_word valulen * bool).  (* (valu, dirty flag) *)
 
 Record cachestate := mk_cs {
   CSMap : cachemap;
@@ -379,7 +379,7 @@ Module BUFCACHE.
     rewrite map_add_dup_cardinal; auto.
     eexists; eapply MapFacts.find_mapsto_iff; eauto.
     rewrite map_add_cardinal. omega.
-    intuition deex.
+    intuition (auto; deex).
     apply MapFacts.find_mapsto_iff in H0; congruence.
   Qed.
 
@@ -1082,6 +1082,7 @@ Module BUFCACHE.
         rewrite mem_pred_pimpl_except.
         2: intros; apply cachepred_add_invariant; eassumption.
         cancel.
+        eauto.
         eapply size_valid_add_in; eauto.
         eapply addr_valid_add; eauto.
       + rewrite pimpl_r_and; unfold synrep'; cancel.

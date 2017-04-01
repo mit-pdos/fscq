@@ -1072,7 +1072,7 @@ Module Go.
         s' = VarMap.add dvar (Val DiskBlock (Here (existT _ _ v))) s ->
         runsto (DiskRead dvar avar) (d, s) (d, s')
     | RunsToDiskWrite : forall avar a vvar v (d : rawdisk) d' s v0 v0s,
-        VarMap.find vvar s = Some (Val DiskBlock (Here (existT _ _ v))) -> (* src variable must have a diskblock *)
+        VarMap.find vvar s = Some (Val ImmutableBuffer (existT _ _ v)) -> (* src variable must have a diskblock *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->
@@ -1142,7 +1142,7 @@ Module Go.
         s' = VarMap.add dvar (Val DiskBlock (Here (existT _ _ v))) s ->
         step (d, s, DiskRead dvar avar) (d, s', Skip)
     | StepDiskWrite : forall avar a vvar v d d' s v0 v0s,
-        VarMap.find vvar s = Some (Val DiskBlock (Here (existT _ _ v))) -> (* src variable must have a diskblock *)
+        VarMap.find vvar s = Some (Val ImmutableBuffer (existT _ _ v)) -> (* src variable must have a diskblock *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->
@@ -1349,7 +1349,7 @@ Module Go.
         s' = VarMap.add dvar (Val DiskBlock (Here (existT _ _ v))) s ->
         runsto_InCall (DiskRead dvar avar) (d, s) (d, s')
     | RunsToICDiskWrite : forall avar a vvar v d d' s v0 v0s,
-        VarMap.find vvar s = Some (Val DiskBlock (Here (existT _ _ v))) -> (* src variable must have a diskblock *)
+        VarMap.find vvar s = Some (Val ImmutableBuffer (existT _ _ v)) -> (* src variable must have a diskblock *)
         VarMap.find avar s = Some (Val Num a) -> (* addr variable must be a num *)
         d a = Some (v0, v0s) ->
         d' = upd d a (v, v0 :: v0s) ->

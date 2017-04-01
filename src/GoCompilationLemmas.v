@@ -935,7 +935,7 @@ Qed.
 Hint Extern 0 (okToCancel (?bvar ~> ?bval) (exists bval0, ?bvar |-> Val Buffer (Here bval0)))%pred =>
   apply okToCancel_bufval.
 
-Lemma CompileWrite : forall env F avar vvar a v,
+Lemma CompileWrite : forall env F avar vvar a (v : immut_word valulen),
   EXTRACT Write a v
   {{ avar ~> a * vvar ~> v * F }}
     DiskWrite avar vvar
@@ -947,8 +947,6 @@ Proof.
     repeat exec_solve_step.
   eval_expr.
   repeat extract_var_val.
-  eval_expr.
-  find_apply_lem_hyp value_inj.
   eval_expr.
   find_apply_lem_hyp inj_pair2.
   eval_expr.

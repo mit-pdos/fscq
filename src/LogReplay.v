@@ -23,8 +23,8 @@ Require Import Prog.
 Import AddrMap.
 Import ListNotations.
 
-Definition valumap := Map.t valu.
-Definition vmap0 := map0 valu.
+Definition valumap := Map.t (immut_word valulen).
+Definition vmap0 := map0 (immut_word valulen).
 Definition diskstate := list valuset.
 
 Lemma map_empty_vmap0 : Map.Empty vmap0.

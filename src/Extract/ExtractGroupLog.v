@@ -24,7 +24,7 @@ Example compile_read : sigT (fun p => source_stmt p /\
     |}
     "mlog_read" MemLog.MLog.read env ->
   EXTRACT GLog.read lxp a ms
-  {{ 0 ~>? (GLog.memstate * (valu * unit)) *
+  {{ 0 ~>? (GLog.memstate * (immut_word valulen * unit)) *
      1 ~> lxp *
      2 ~> a *
      3 ~> ms }}

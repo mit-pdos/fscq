@@ -58,6 +58,7 @@ Ltac add_to_env name P env :=
 Ltac make_instance_step :=
   match goal with
   | [|- word ?x] => apply wzero
+  | [|- immut_word ?x] => apply wzero
   | _ => econstructor
   end.
 

@@ -65,7 +65,7 @@ Example compile_read : sigT (fun p => source_stmt p /\
     |}
     "glog_read" GroupLog.GLog.read env ->
   EXTRACT LOG.read lxp a ms
-  {{ 0 ~>? (LOG.memstate * (valu * unit)) *
+  {{ 0 ~>? (LOG.memstate * (immut_word valulen * unit)) *
      1 ~> lxp *
      2 ~> a *
      3 ~> ms }}
