@@ -64,7 +64,7 @@ Import ListNotations.
     - destruct (addr_eq_dec inum0 inum); congruence.
     - f_equal.
       induction tree_ents; simpl; auto.
-      destruct a0; simpl in *.
+      destruct a; simpl in *.
       inversion H.
       rewrite H4 by eauto.
       rewrite IHtree_ents; eauto.
