@@ -8,41 +8,41 @@ import (
 
 const cachesize = 100000
 
-func do_read(cs Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct_,
-	addr Num) Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct_ {
-	ret := New_Pair_Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct__Pair_Buffer_Struct_()
+func do_read(cs Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct_,
+	addr Num) Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct_ {
+	var ret Pair_Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct__Pair_ImmutableBuffer_Struct_
 	Cache_read(&ret, &addr, &cs)
 	return ret.Fst
 }
 
-func do_write(cs Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct_,
-	addr Num) Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct_ {
-	new_cs := New_Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct_()
-	buf := New_Buffer()
+func do_write(cs Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct_,
+	addr Num) Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct_ {
+	var new_cs Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct_
+	var buf ImmutableBuffer
 	Cache_write(&new_cs, &addr, &buf, &cs)
 	return new_cs
 }
 
-func do_sync(cs Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct_,
-	addr Num) Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct_ {
-	new_cs := New_Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct_()
+func do_sync(cs Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct_,
+	addr Num) Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct_ {
+	var new_cs Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct_
 	Cache_sync(&new_cs, &addr, &cs)
 	return new_cs
 }
 
 func do_log_read(lxp Pair_Pair_Pair_Pair_Pair_Num_Num_Num_Num_Num_Num,
 	addr Num,
-	mscs Pair_Pair_AddrMap_Buffer_Pair_Pair_AddrMap_Buffer_Slice_Slice_Pair_Num_Buffer_AddrMap_Buffer_Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct_) Pair_Pair_AddrMap_Buffer_Pair_Pair_AddrMap_Buffer_Slice_Slice_Pair_Num_Buffer_AddrMap_Buffer_Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct_ {
-	ret := New_Pair_Pair_Pair_AddrMap_Buffer_Pair_Pair_AddrMap_Buffer_Slice_Slice_Pair_Num_Buffer_AddrMap_Buffer_Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct__Pair_Buffer_Struct_()
+	mscs Pair_Pair_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_ImmutableBuffer_Slice_Slice_Pair_Num_Buffer_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct_) Pair_Pair_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_ImmutableBuffer_Slice_Slice_Pair_Num_Buffer_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct_ {
+	var ret Pair_Pair_Pair_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_ImmutableBuffer_Slice_Slice_Pair_Num_Buffer_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct__Pair_ImmutableBuffer_Struct_
 	Log_read(&ret, &lxp, &addr, &mscs)
 	return ret.Fst
 }
 
-func init_ams() Pair_Bool_Pair_Pair_AddrMap_Buffer_Pair_Pair_AddrMap_Buffer_Slice_Slice_Pair_Num_Buffer_AddrMap_Buffer_Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct_ {
-	mscs := New_Pair_Pair_AddrMap_Buffer_Pair_Pair_AddrMap_Buffer_Slice_Slice_Pair_Num_Buffer_AddrMap_Buffer_Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct_()
+func init_ams() Pair_Bool_Pair_Pair_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_ImmutableBuffer_Slice_Slice_Pair_Num_Buffer_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct_ {
+	var mscs Pair_Pair_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_ImmutableBuffer_Slice_Slice_Pair_Num_Buffer_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct_
 	cache_size := Num_of_i64(cachesize)
 	Cache_init(&mscs.Snd, &cache_size)
-	return Pair_Bool_Pair_Pair_AddrMap_Buffer_Pair_Pair_AddrMap_Buffer_Slice_Slice_Pair_Num_Buffer_AddrMap_Buffer_Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct_{true /* from AsyncFS.recover */, mscs}
+	return Pair_Bool_Pair_Pair_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_ImmutableBuffer_Slice_Slice_Pair_Num_Buffer_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct_{true /* from AsyncFS.recover */, mscs}
 }
 
 /* type log_xparams Pair_Pair_Pair_Pair_Pair_Num_Num_Num_Num_Num_Num */
@@ -77,7 +77,7 @@ func compute_xparams(data_bitmaps, inode_bitmaps, log_descr_blocks uint64) Pair_
 	log_data := log_descr + log_descr_blocks
 	log_data_size := log_descr_blocks * PaddedLog_DescSig_items_per_val
 	max_addr := log_data + log_data_size
-	lxp := New_Pair_Pair_Pair_Pair_Pair_Num_Num_Num_Num_Num_Num()
+	var lxp Pair_Pair_Pair_Pair_Pair_Num_Num_Num_Num_Num_Num
 	lxp.Fst.Fst.Fst.Fst.Fst = 1
 	lxp.Fst.Fst.Fst.Fst.Snd = Num(log_hdr)
 	lxp.Fst.Fst.Fst.Snd = Num(log_descr)
@@ -102,7 +102,7 @@ func BenchmarkGetSz(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		var ret Pair_Pair_Bool_Pair_Pair_AddrMap_Buffer_Pair_Pair_AddrMap_Buffer_Slice_Slice_Pair_Num_Buffer_AddrMap_Buffer_Pair_Pair_AddrMap_Pair_Buffer_Bool_Num_Struct__Pair_ImmutableBuffer_Struct_
+		var ret Pair_Pair_Bool_Pair_Pair_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_ImmutableBuffer_Slice_Slice_Pair_Num_Buffer_AddrMap_ImmutableBuffer_Pair_Pair_AddrMap_Pair_ImmutableBuffer_Bool_Num_Struct__Pair_ImmutableBuffer_Struct_
 		inode := Num(2)
 		Asyncfs_file_get_sz(&ret, &fsxp, &inode, &ams)
 		if i == 0 {
