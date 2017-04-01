@@ -193,6 +193,7 @@ Proof.
   compile_step.
   compile_step.
   compile_step.
+  change valu with (immut_word valulen).
   compile_step.
   compile_step.
   compile_step.
@@ -258,7 +259,7 @@ Proof.
   eapply CompileConst with (v := nth_var 20 vars) (Wr := GoWrapper_immut_word 1024).
   (* We need to forget the value in this case of the [if] so that the other case can also satisfy the
      same postcondition *)
-  instantiate (1 := (nth_var 16 vars ~>? valu * _)%pred).
+  instantiate (1 := (nth_var 16 vars ~>? immut_word valulen * _)%pred).
   cancel_go.
   cancel_go.
 
@@ -274,21 +275,8 @@ Proof.
     make_value_exist (a + b)
   end.
 
-  (* Freeze the buffer *)
-  pattern_prog (fst (snd a)).
-  do_declare (immut_word valulen) ltac:(fun var => idtac var).
   eapply hoare_weaken.
-  eapply CompileBindRet with (A := immut_word valulen) (vara := nth_var 25 vars) (a := fst (snd a)).
-  3: cancel_go.
-  3: cancel_go.
-
-  eapply hoare_weaken.
-  apply CompileFreeze with (svar := nth_var 16 vars) (dvar := nth_var 25 vars).
-  divisibility.
-  cancel_go.
-  cancel_go.
-  eapply hoare_weaken.
-  eapply (@CompileMiddle _ _ _ _ env (nth_var 20 vars) (nth_var 25 vars) (nth_var 23 vars) (nth_var 24 vars)).
+  eapply (@CompileMiddle _ _ _ _ env (nth_var 20 vars) (nth_var 16 vars) (nth_var 23 vars) (nth_var 24 vars)).
   divisibility.
   divisibility.
   divisibility.
@@ -297,6 +285,8 @@ Ltac cancel_go ::=
   (idtac "refl failed"; solve [GoSepAuto.cancel_go_fast] ||
    (idtac "fast failed"; unfold var, default_value; GoSepAuto.cancel; try apply pimpl_refl)).
   norm.
+  repeat cancel_one.
+  do 2 delay_one.
   eapply cancel_one.
   eapply PickLater.
   eapply PickFirst.
