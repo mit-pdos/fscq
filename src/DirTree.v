@@ -838,11 +838,18 @@ Module DIRTREE.
     >} read fsxp inum off mscs.
   Proof.
     unfold read, rep.
-    safestep.
+    intros. prestep. norml.
+    rewrite subtree_extract in * by eauto.
+    cbn [tree_pred] in *. destruct_lifts.
+    cancel.
+
     eapply list2nmem_inbound; eauto.
-    rewrite subtree_extract; eauto. cancel.
-    eauto.
-    step.
+    step; msalloc_eq.
+    cancel.
+
+    rewrite <- subtree_fold by eauto.
+    pred_apply. cancel.
+
     cancel; eauto.
   Qed.
 
@@ -873,20 +880,17 @@ Module DIRTREE.
     >} dwrite fsxp inum off v mscs.
   Proof.
     unfold dwrite, rep.
-    step.
+    intros. prestep. norml.
+    rewrite subtree_extract in * by eauto.
+    cbn [tree_pred] in *. destruct_lifts.
+    cancel.
     eapply list2nmem_inbound; eauto.
-    rewrite subtree_extract; eauto. cancel.
-    eauto.
-    safestep.
-    reflexivity.
-    eauto.
-    3: reflexivity.
-    4: reflexivity.
-    destruct (r_); simpl in *. subst. cancel.
+    step; msalloc_eq.
+    cancel.
+
+    rewrite <- subtree_absorb by eauto.
     pred_apply. cancel.
-    rewrite <- subtree_absorb; eauto. cancel.
-    eapply find_subtree_inum_valid; eauto.
-    eassumption.
+
     eapply dirlist_safe_subtree; eauto.
     apply dirtree_safe_file.
   Qed.
@@ -913,15 +917,15 @@ Module DIRTREE.
     >} datasync fsxp inum mscs.
   Proof.
     unfold datasync, rep.
-    safestep.
-    rewrite subtree_extract; eauto. cancel.
-    step.
-    eassign (flist').
-    destruct (r_); simpl in *. subst. cancel.
+    intros. prestep. norml.
+    rewrite subtree_extract in * by eauto.
+    cbn [tree_pred] in *. destruct_lifts.
+    cancel.
+    step; msalloc_eq.
+    cancel.
 
-    rewrite <- subtree_absorb; eauto. 
+    rewrite <- subtree_absorb by eauto.
     pred_apply. cancel.
-    eapply find_subtree_inum_valid; eauto.
 
     eapply dirlist_safe_subtree; eauto.
     apply dirtree_safe_file.
@@ -986,14 +990,14 @@ Module DIRTREE.
     >} truncate fsxp inum nblocks mscs.
   Proof.
     unfold truncate, rep.
-    intros.
-    step.
-    rewrite subtree_extract; eauto. cancel.
-    step.
+    intros. prestep. norml.
+    rewrite subtree_extract in * by eauto.
+    cbn [tree_pred] in *. destruct_lifts.
+    cancel.
+    step; msalloc_eq.
     or_r.
     cancel.
-    rewrite <- subtree_absorb; eauto. cancel.
-    eapply find_subtree_inum_valid; eauto.
+    rewrite <- subtree_absorb by eauto. cancel.
 
     eapply dirlist_safe_subtree; eauto.
     apply dirtree_safe_file_trans; auto.
@@ -1007,6 +1011,7 @@ Module DIRTREE.
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST:hm' RET:^(mscs',r)
            LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn mbase m) (MSLL mscs') hm' *
+           [[ (Fm * rep fsxp Ftop tree ilist frees mscs')%pred (list2nmem m) ]] *
            [[ r = length (DFData f) ]] *
            [[ MSCache mscs' = MSCache mscs ]] *
            [[ MSAlloc mscs' = MSAlloc mscs ]]
@@ -1015,9 +1020,14 @@ Module DIRTREE.
     >} getlen fsxp inum mscs.
   Proof.
     unfold getlen, rep.
-    step.
-    rewrite subtree_extract; eauto. cancel.
-    step.
+    intros. prestep. norml.
+    rewrite subtree_extract in * by eauto.
+    cbn [tree_pred] in *. destruct_lifts.
+    cancel.
+    step; msalloc_eq.
+    cancel.
+    rewrite <- subtree_fold by eauto. pred_apply; cancel.
+    cancel; eauto.
   Qed.
 
   Theorem getattr_ok : forall fsxp inum mscs,
@@ -1027,6 +1037,7 @@ Module DIRTREE.
            [[ find_subtree pathname tree = Some (TreeFile inum f) ]]
     POST:hm' RET:^(mscs',r)
            LOG.rep fsxp.(FSXPLog) F (LOG.ActiveTxn ds d) (MSLL mscs') hm' *
+           [[[ d ::: Fm * rep fsxp Ftop tree ilist frees mscs' ]]] *
            [[ MSCache mscs' = MSCache mscs ]] *
            [[ r = DFAttr f /\ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'
@@ -1034,9 +1045,13 @@ Module DIRTREE.
     >} getattr fsxp inum mscs.
   Proof.
     unfold getattr, rep.
-    safestep.
-    rewrite subtree_extract; eauto. cancel.
-    step.
+    intros. prestep. norml.
+    rewrite subtree_extract in * by eauto.
+    cbn [tree_pred] in *. destruct_lifts.
+    cancel.
+    step; msalloc_eq.
+    cancel.
+    rewrite <- subtree_fold by eauto. pred_apply; cancel.
     cancel; eauto.
   Qed.
 
@@ -1060,19 +1075,16 @@ Module DIRTREE.
     >} setattr fsxp inum attr mscs.
   Proof.
     unfold setattr, rep.
-    step.
-    rewrite subtree_extract; eauto. cancel.
-    safestep.
-    eassign (flist').
-    destruct (r_); simpl in *. subst. cancel.
-    3: reflexivity.
-    2: reflexivity.
-    rewrite <- subtree_absorb; eauto.
+    intros. prestep. norml.
+    rewrite subtree_extract in * by eauto.
+    cbn [tree_pred] in *. destruct_lifts.
+    cancel.
+    step; msalloc_eq.
+    cancel.
+    rewrite <- subtree_absorb by eauto.
     pred_apply; cancel.
-    eapply find_subtree_inum_valid; eauto.
     eapply dirlist_safe_subtree; eauto.
     apply dirtree_safe_file_trans; auto.
-    eauto.
   Qed.
 
 

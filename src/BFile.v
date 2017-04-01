@@ -1238,6 +1238,7 @@ Module BFILE.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
            [[[ m ::: (Fm * rep bxp ixp flist ilist frees allocc (MSCache ms') (MSICache ms')) ]]] *
            [[ r = BFAttr f ]] *
+           [[ MSAllocC ms = MSAllocC ms' ]] *
            [[ MSAlloc ms = MSAlloc ms' ]] *
            [[ MSIAllocC ms = MSIAllocC ms' ]] *
            [[ MSCache ms = MSCache ms' ]]
