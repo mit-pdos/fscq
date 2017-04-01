@@ -526,6 +526,13 @@ Module DIR.
     safestep.
     safestep.
     or_r; cancel.
+    eapply listpred_dmatch_no_0_inum; eauto.
+    eapply ptsto_valid'.
+    denote DEInum as Hd.
+    erewrite selN_inb in Hd by auto.
+    rewrite <- Hd.
+    eapply lookup_ptsto; eauto.
+    eapply lookup_ptsto; eauto.
     or_l; cancel.
     apply lookup_notindomain; auto.
   Unshelve.
