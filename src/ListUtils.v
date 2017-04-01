@@ -670,6 +670,17 @@ Qed.
 
 Hint Rewrite selN_map_seq using ( solve [ auto ] ) : lists.
 
+Lemma map_selN_seq: forall T (l : list T) n d,
+  n = length l ->
+  map (fun i => selN l i d) (seq 0 n) = l.
+Proof.
+  induction l; intros; subst; cbn in *.
+  auto.
+  f_equal.
+  rewrite <- seq_shift.
+  rewrite map_map. auto.
+Qed.
+
 Theorem selN_map : forall T T' l i f (default : T) (default' : T'), i < length l
   -> selN (map f l) i default = f (selN l i default').
 Proof.
@@ -1815,6 +1826,14 @@ Lemma combine_map_fst_snd: forall A B (l: list (A * B)),
 Proof.
   induction l; simpl; auto.
   rewrite IHl; rewrite <- surjective_pairing; auto.
+Qed.
+
+Lemma combine_map: forall T A' B' (l : list T) (f : _ -> A') (g : _ -> B'),
+  map (fun x => (f x, g x)) l = combine (map f l) (map g l).
+Proof.
+  induction l; cbn; intros.
+  auto.
+  f_equal; eauto.
 Qed.
 
 Lemma map_fst_combine: forall A B (a: list A) (b: list B),
@@ -4390,3 +4409,16 @@ Proof.
   intros.
   nodupapp.
 Abort.
+
+Definition selN_each {T} (l : list (list T)) n (def : T) : list T :=
+  map (fun l => selN l n def) l.
+
+Lemma selN_each_S: forall T (l : list (list T)) n def,
+  selN_each l (S n) def = selN_each (map (skipn 1) l) n def.
+Proof.
+  unfold selN_each.
+  induction l; cbn -[skipn]; intros; auto.
+  rewrite skipn_selN.
+  f_equal.
+  eauto.
+Qed.
