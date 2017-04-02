@@ -311,6 +311,7 @@ Module CacheOneDir.
     PRE:hm   LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms) hm *
              rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms
     POST:hm' RET:^(ms', r)
+             rep_macro Fm Fi m bxp ixp dnum dmap ilist frees f ms' *
              LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm' *
              [[ listpred SDIR.readmatch r dmap ]] *
              [[ MSAlloc ms' = MSAlloc ms ]] *
@@ -322,8 +323,12 @@ Module CacheOneDir.
            LOG.rep lxp F (LOG.ActiveTxn m0 m) (MSLL ms') hm'
     >} readdir lxp ixp dnum ms.
   Proof.
-    unfold readdir.
-    hoare.
+    unfold readdir, rep_macro, rep.
+    intros. ProgMonad.monad_simpl_one.
+    eapply pimpl_ok2. eauto with prog.
+    unfold SDIR.rep_macro.
+    cancel; eauto.
+    step.
   Qed.
 
   Theorem unlink_ok : forall lxp bxp ixp dnum name ms,
