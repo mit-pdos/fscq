@@ -466,7 +466,7 @@ Module DIRTREE.
     subst; simpl in *.
     denote tree_dir_names_pred as Hx;
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
-    unfold IAlloc.rep, IAlloc.MSLog in *.
+    unfold IAlloc.MSLog in *.
     step.
     eapply IAlloc.ino_valid_goodSize; eauto.
     destruct_branch; [ | step ].
@@ -545,19 +545,19 @@ Module DIRTREE.
     >} mkfile fsxp dnum name mscs.
   Proof.
     unfold mkfile, rep.
-    step. 
+    step.
     subst; simpl in *.
 
     denote tree_pred as Ht;
     rewrite subtree_extract in Ht; eauto.
     assert (tree_names_distinct (TreeDir dnum tree_elem)).
     eapply rep_tree_names_distinct with (m := list2nmem m).
-    pred_apply; unfold rep, IAlloc.rep; cancel.
+    pred_apply; unfold rep; cancel.
 
     simpl in *.
     denote tree_dir_names_pred as Hx;
     unfold tree_dir_names_pred in Hx; destruct_lift Hx.
-    unfold IAlloc.rep, IAlloc.MSLog in *.
+    unfold IAlloc.MSLog in *.
     step.
     unfold SDIR.rep_macro.
     eapply IAlloc.ino_valid_goodSize; eauto.
@@ -720,9 +720,10 @@ Module DIRTREE.
     denote dirlist_pred as Hx.
     erewrite dirlist_extract with (inum := n) in Hx; eauto.
     destruct_lift Hx.
-    destruct dummy4; simpl in *; try congruence; subst.
     denote dirlist_pred_except as Hx; destruct_lift Hx; auto.
-    unfold IAlloc.rep, IAlloc.MSLog in *; cancel.
+    unfold IAlloc.MSLog in *; cancel.
+    change IAlloc.Alloc.rep with IAlloc.rep.
+    cancel.
     match goal with H: (_ * ptsto ?a _)%pred ?m |- context [ptsto ?a]
       => exists m; solve [pred_apply; cancel]
     end.
@@ -730,6 +731,9 @@ Module DIRTREE.
     (* post conditions *)
     step.
     or_r; safecancel.
+    match goal with |- context [IAlloc.MSCache ?r] =>
+      destruct r; cbn; cancel
+    end.
     denote (pimpl _ freepred') as Hx; rewrite <- Hx.
     rewrite dir_names_delete with (dnum := dnum); eauto.
     rewrite dirlist_pred_except_delete; eauto.
@@ -759,10 +763,10 @@ Module DIRTREE.
     eapply find_dirlist_tree_inodes; eauto.
 
     cancel.
-    unfold IAlloc.rep, IAlloc.MSLog in *; cancel.
-    match goal with H: (_ * ptsto ?a _)%pred ?m |- context [ptsto ?a]
-      => exists m; solve [pred_apply; cancel]
-    end.
+    cancel.
+
+    unfold IAlloc.MSLog in *; cancel.
+    or_l. cancel.
 
     (* case 2: is_dir: check empty *)
     prestep.
@@ -775,14 +779,19 @@ Module DIRTREE.
     step.
     step.
     step.
-    msalloc_eq. cancel.
     step.
-    step.
+    step. msalloc_eq.
+    erewrite IAlloc.rep_ignore_mslog_ok.
+    unfold IAlloc.rep. cancel.
     exists (list2nmem flist'). eexists. pred_apply. cancel.
+    unfold IAlloc.MSLog in *.
     step.
 
     (* post conditions *)
     or_r; cancel.
+    match goal with |- context [IAlloc.MSCache ?r] =>
+      destruct r; cbn; cancel
+    end.
     denote (pimpl _ freepred') as Hx; rewrite <- Hx.
     denote (tree_dir_names_pred' _ _) as Hz.
     erewrite (@dlist_is_nil _ _ _ _ _ Hz); eauto.
@@ -800,10 +809,13 @@ Module DIRTREE.
     eassumption.
 
     (* inum outside the original tree *)
-    eapply H37.
+    denote (selN _ _ _ = selN _ _ _) as Hs.
+    denote (In _ (dirlist_combine _ _)) as Hi.
+    denote (tree_dir_names_pred' tree_elem) as Ht.
+    apply Hs.
     intro; subst.
-    eapply H38.
-    eapply find_dirlist_exists with (inum := a0) in H9 as H9'. 
+    eapply Hi.
+    eapply find_dirlist_exists with (inum := a0) in Ht as Ht'.
     deex.
     eapply find_dirlist_tree_inodes; eauto.
     eassumption.
@@ -815,10 +827,10 @@ Module DIRTREE.
 
     Unshelve.
     all: try match goal with | [ |- DirTreePred.SDIR.rep _ _ ] => eauto end.
-    all: try exact addr_eq_dec.  all: try exact unit.  all: eauto.
-    all: try exact nil.
+    all: try exact unit.
+    all: try solve [repeat constructor].
+    all: eauto.
     all: try exact string_dec.
-    exact (Build_balloc_xparams 0 0, Build_balloc_xparams 0 0).
   Qed.
 
 

@@ -2320,4 +2320,8 @@ Module IAlloc.
 
   Hint Extern 0 (okToUnify (rep _ ?xp _ _ (mk_memstate _ ?c)) (rep _ ?xp _ _ (mk_memstate _ ?c)))
     => apply rep_ignore_mslog_ok : okToUnify.
+
+  Hint Extern 0 (okToUnify (rep _ _ _ _ _) (Alloc.rep _ _ _ _ _)) => change Alloc.rep with rep.
+  Hint Extern 0 (okToUnify (Alloc.rep _ _ _ _ _) (rep _ _ _ _ _)) => change Alloc.rep with rep.
+
 End IAlloc.
