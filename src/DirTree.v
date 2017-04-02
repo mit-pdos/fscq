@@ -1508,7 +1508,7 @@ Module DIRTREE.
     rewrite tree_prune_preserve_isdir; auto.
     eapply dirlist_safe_subtree; eauto.
 
-    denote! (((Fm * BFILE.rep _ _ _ _ _ _ _) * IAlloc.rep _ _ _ _)%pred _) as Hm'.
+    denote! (((Fm * BFILE.rep _ _ _ _ _ _ _ _) * IAlloc.rep _ _ _ _ _)%pred _) as Hm'.
     eapply pimpl_apply in Hm'.
     eapply rep_tree_names_distinct in Hm' as Hnames.
     eapply rep_tree_inodes_distinct in Hm' as Hinodes.
@@ -1554,13 +1554,11 @@ Module DIRTREE.
     intuition congruence.
 
   Grab Existential Variables.
-    all: try exact addr; try exact addr_eq_dec; eauto.
-    all: try exact None.
+    all: try exact unit.
+    all: intros; eauto using BFILE.MSIAlloc.
+    all: try solve [do 5 econstructor].
+    all: try (cbv [Mem.EqDec]; decide equality).
     all: try exact emp.
-    all: try exact Mem.empty_mem.
-    all: try exact (FSXPInode fsxp).
-    all: try exact (FSXPBlockAlloc1 fsxp, FSXPBlockAlloc2 fsxp).
-    all: try exact (BFM.Map.empty _).
     all: intros; try exact True.
   Qed.
 
