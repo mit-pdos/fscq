@@ -2318,6 +2318,14 @@ Module IAlloc.
     cbv; auto.
   Qed.
 
+  Lemma rep_clear_cache: forall V FP xp freelist freepred ms mslog,
+    @rep V FP xp freelist freepred ms =p=>
+    rep FP xp freelist freepred (mk_memstate mslog Alloc.freelist0).
+  Proof.
+    unfold IAlloc.rep, IAlloc.Alloc.rep.
+    cancel.
+  Qed.
+
   Hint Extern 0 (okToUnify (rep _ ?xp _ _ (mk_memstate _ ?c)) (rep _ ?xp _ _ (mk_memstate _ ?c)))
     => apply rep_ignore_mslog_ok : okToUnify.
 

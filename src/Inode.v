@@ -380,6 +380,15 @@ Module INODE.
     all : apply Ind.indrep_bxp_switch; auto.
   Qed.
 
+  Lemma rep_clear_cache: forall bxp xp ilist cache,
+    rep bxp xp ilist cache =p=> rep bxp xp ilist IRec.cache0.
+  Proof.
+    unfold rep.
+    cancel.
+    rewrite IRec.rep_clear_cache.
+    cancel.
+  Qed.
+
   Lemma rep_upd_attrs: forall bxp ir iblocks (attr : iattr),
     Ind.rep bxp ir iblocks <=p=> Ind.rep bxp (ir :=> "attrs" := attr) iblocks.
   Proof.

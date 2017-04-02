@@ -347,6 +347,14 @@ Module BFILE.
     pred_apply; cancel.
   Qed.
 
+  Theorem rep_clear_icache: forall bxps ixp flist ilist frees allocc mscache icache,
+    rep bxps ixp flist ilist frees allocc mscache icache =p=>
+    rep bxps ixp flist ilist frees allocc mscache INODE.IRec.cache0.
+  Proof.
+    unfold BFILE.rep. cancel.
+    apply INODE.rep_clear_cache.
+  Qed.
+
   Definition block_belong_to_file ilist bn inum off :=
     off < length (INODE.IBlocks (selN ilist inum INODE.inode0)) /\
     bn = # (selN (INODE.IBlocks (selN ilist inum INODE.inode0)) off $0).
