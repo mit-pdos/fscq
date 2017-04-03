@@ -252,7 +252,6 @@ Instance pair_default_value A B {Wa : GoWrapper A} {Wb : GoWrapper B}
 Defined.
 
 Instance list_default_value A {W : GoWrapper A} : DefaultValue (list A) := {| zeroval := [] |}. auto. Defined.
-Instance immut_word_default_value nbits : DefaultValue (immut_word nbits) := {| zeroval := $0 |}. auto. Defined.
 
 Class WrapByTransforming T := {
   T' : Type;
