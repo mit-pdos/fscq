@@ -1105,9 +1105,6 @@ Module AFS.
     admit.
     admit.
 
-    (* This is [xcrash_solve] spelled out because [eauto] hangs. *)
-    eapply pimpl_trans; [ | eapply H1 ].
-    norm. cancel. intuition idtac. eexists; eassumption.
 
     xcrash_solve.
     rewrite LOG.recover_any_idempred.
@@ -1158,17 +1155,20 @@ Module AFS.
     unfold lookup; intros.
     step.
     step.
+    (* `step` here is really slow *)
+    prestep. cancel.
     eapply pimpl_ok2; monad_simpl.
     apply LOG.commit_ro_ok.
     cancel.
     step.
+    step.
     subst; pimpl_crash; cancel.
     apply LOG.notxn_idempred.
     step.
-    cancel.
-    apply LOG.notxn_idempred.
-    apply LOG.intact_idempred.
-    apply LOG.notxn_idempred.
+    step.
+    cancel. apply LOG.notxn_idempred.
+    cancel. apply LOG.intact_idempred.
+    cancel. apply LOG.notxn_idempred.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (lookup _ _ _ _) _) => apply lookup_ok : prog.
@@ -1267,26 +1267,22 @@ Module AFS.
     step.
     step.
     step.
+    step.
+    step.
+    step.
     xcrash. or_r. cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
-    xform_norm; cancel.
+    repeat (cancel; progress xform_norm).
     xform_norm; safecancel.
     rewrite LOG.recover_any_idempred.  cancel. 
     2: pred_apply; cancel.
     all: eauto.
     step.
+    step.
     xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
     xcrash. or_l. rewrite LOG.intact_idempred. cancel.
     xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
+  Unshelve.
+    all: constructor.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (rename _ _ _ _ _ _ _) _) => apply rename_ok : prog.
@@ -1332,6 +1328,9 @@ Module AFS.
     step.
     step.
     step.
+    step.
+    step.
+    step.
     xcrash. or_r. cancel.
     xform_norm; cancel.
     xform_norm; cancel.
@@ -1342,9 +1341,12 @@ Module AFS.
     3: pred_apply; cancel.
     all: eauto.
     step.
+    step.
     xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
     xcrash. or_l. rewrite LOG.intact_idempred. cancel.
     xcrash. or_l. rewrite LOG.notxn_idempred. cancel.
+  Unshelve.
+    all: constructor.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (delete _ _ _ _) _) => apply delete_ok : prog.
