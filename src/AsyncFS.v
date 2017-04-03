@@ -688,15 +688,22 @@ Module AFS.
   Proof.
     unfold file_get_attr; intros.
     step.
-    step.
+    safestep.
+    safestep.
+    eassumption.
     eapply pimpl_ok2; monad_simpl.
     apply LOG.commit_ro_ok.
     cancel.
     step.
+    step.
+    cancel.
     subst; pimpl_crash; cancel.
     rewrite LOG.notxn_intact. rewrite LOG.intact_idempred. reflexivity.
-    rewrite LOG.intact_idempred. reflexivity.
+    rewrite LOG.intact_idempred.
+    pimpl_crash; cancel.
+    pimpl_crash. norml. clear H. safecancel.
     rewrite LOG.notxn_intact. rewrite LOG.intact_idempred. reflexivity.
+    Unshelve. all: exact tt.
   Qed.
 
   Hint Extern 1 ({{_}} Bind (file_get_attr _ _ _) _) => apply file_getattr_ok : prog.
@@ -716,6 +723,9 @@ Module AFS.
     unfold file_get_sz; intros.
     step.
     step.
+    step.
+    step.
+    Unshelve. all: exact tt.    
   Qed.
 
   Hint Extern 1 ({{_}} Bind (file_get_sz _ _ _) _) => apply file_get_sz_ok : prog.
@@ -795,16 +805,22 @@ Module AFS.
   Proof.
     unfold read_fblock; intros.
     step.
-    step.
+    safestep.
+    safestep.
+    all: try eassumption.
     eapply pimpl_ok2; monad_simpl.
     apply LOG.commit_ro_ok.
     cancel.
     step.
-    subst; pimpl_crash; cancel.
+    step.
+    pimpl_crash; cancel.
     rewrite LOG.notxn_intact.
     apply LOG.intact_idempred.
+    pimpl_crash; cancel.
     apply LOG.intact_idempred.
+    pimpl_crash. norml. clear H. cancel.
     apply LOG.notxn_idempred.
+    Unshelve. all: exact tt.
   Qed.
 
 
