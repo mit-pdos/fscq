@@ -200,7 +200,7 @@ Example compile_read_array : sigT (fun p => source_stmt p /\  forall env a i cs,
   prog_func_call_lemma {| FArgs := [with_wrapper _ ; with_wrapper _]; FRet := with_wrapper _ |}
     "cache_read" BUFCACHE.read env ->
   EXTRACT BUFCACHE.read_array a i cs
-  {{ 0 ~>? (cachestate * (valu * unit)) * 1 ~> a * 2 ~> i * 3 ~> cs }}
+  {{ 0 ~>? (cachestate * (immut_word valulen * unit)) * 1 ~> a * 2 ~> i * 3 ~> cs }}
     p
   {{ fun ret => 0 ~> ret * 1 ~>? addr * 2 ~>? W * 3 ~>? cachestate }} // env).
 Proof.

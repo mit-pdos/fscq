@@ -16,25 +16,16 @@ Module ExtractLogRecArray (RA : RecArrayUtils.RASig) (XRA : ExtractRASig RA).
   Module LRA := LogRecArray RA.
   Import XRA LRA RA Defs RAExtract.
 
-  Lemma compile_val2block svar dvar : sigT (fun p => source_stmt p /\ forall val env F,
+  Lemma compile_val2block svar dvar : sigT (fun p => source_stmt p /\ forall (val : immut_word _) env F,
     EXTRACT (Ret (val2block val))
     {{ dvar ~>? block * svar ~> val * F }}
       p
-    {{ fun ret => dvar ~> ret * svar ~>? valu * F }} // env).
+    {{ fun ret => dvar ~> ret * svar ~>? immut_word valulen * F }} // env).
   Proof.
     unfold val2block, val2word.
     compile_step.
-    eapply CompileDeclare with (Wr := GoWrapper_immut_word _).
-    intros val_immut.
-    eapply CompileBefore.
-    eapply CompileRet with (H := GoWrapper_immut_word _) (v := val) (var0 := val_immut).
     eapply hoare_weaken.
-    eapply CompileFreeze with (svar := svar) (dvar := val_immut).
-    apply valulen_divide_8.
-    cancel_go.
-    cancel_go.
-    eapply hoare_weaken.
-    eapply compile_of_word with (vsrc := val_immut) (vdst := dvar).
+    eapply compile_of_word with (vsrc := svar) (vdst := dvar).
     apply byte_aligned_item.
     cancel_go.
     cbv [wrap].
@@ -47,15 +38,14 @@ Module ExtractLogRecArray (RA : RecArrayUtils.RASig) (XRA : ExtractRASig RA).
     cancel_go.
     cancel_go.
     Unshelve. all : compile.
-    apply source_stmt_go_of_word.
-    exact 0.
+    intros; apply source_stmt_go_of_word.
   Defined.
 
   Lemma compile_read : sigT (fun p => source_stmt p /\ forall xp a ms env,
     prog_func_call_lemma {| FArgs := [with_wrapper _; with_wrapper _; with_wrapper _ ];
       FRet := with_wrapper _ |} "grouplog_read" GroupLog.GLog.read env ->
     EXTRACT Log.LOG.read xp a ms
-    {{ 0 ~>? (Log.LOG.mstate * Cache.cachestate * (valu * unit))%type * 1 ~> xp * 2 ~> a * 3 ~> ms }}
+    {{ 0 ~>? (Log.LOG.mstate * Cache.cachestate * (immut_word valulen * unit))%type * 1 ~> xp * 2 ~> a * 3 ~> ms }}
     p
     {{ fun ret => 0 ~> ret * 1 ~>? FSLayout.log_xparams * 2 ~>? W * 3 ~>? (Log.LOG.mstate * Cache.cachestate)%type }} // env).
   Proof.
@@ -166,6 +156,8 @@ Module ExtractLogRecArray (RA : RecArrayUtils.RASig) (XRA : ExtractRASig RA).
     compile_step.
     compile_step.
     compile_step.
+    compile_step.
+    change (fst (snd a)) with (@fst (immut_word valulen) unit (@snd (Log.LOG.mstate * Cache.cachestate) (immut_word valulen * unit) a)).
     repeat match goal with
     | [|- EXTRACT (Ret (val2block ?x_)) {{ ?pre }} _ {{ ?post }} // _ ] =>
       let rvar := var_mapping_to_ret in
@@ -184,6 +176,7 @@ Module ExtractLogRecArray (RA : RecArrayUtils.RASig) (XRA : ExtractRASig RA).
       let ivar := var_mapping_to pre i' in
       eapply hoare_weaken; [ eapply (proj2 (projT2 X varx ivar varr)) | cancel_go..]
     end.
+    change (fst a) with (@fst (Log.LOG.mstate * Cache.cachestate) (immut_word valulen * unit) a).
     repeat match goal with
     [ |- EXTRACT (Ret (Some ?b)) {{ ?pre }} _ {{ ?post }} // _ ] =>
       let rvar := var_mapping_to_ret in
