@@ -49,6 +49,7 @@ Module CacheOneDir.
     let^ (ms, files) <- SDIR.readdir lxp ixp dnum ms;
     let ocache := fill_cache files in
     ms <- BFILE.cache_put dnum (ocache, 0) ms;
+    AlertModified;;
     Ret ^(ms, (ocache, 0)).
 
   Definition get_dcache' (lxp:FSLayout.log_xparams) (ixp:Inode.INODE.IRecSig.xparams) dnum ms :=
@@ -66,6 +67,7 @@ Module CacheOneDir.
     match ocache with
     | None =>
       let^ (ms, r0) <- init_cache lxp ixp dnum ms;
+      AlertModified;;
       Ret ^(ms, r0)
     | Some r =>
       Ret ^(ms, r)
@@ -83,6 +85,7 @@ Module CacheOneDir.
     | Some _ =>
       let^ (ms, ix, r) <- SDIR.unlink lxp ixp dnum name ms;
       ms <- BFILE.cache_put dnum (Dcache.remove name (fst cache), ix) ms;
+      AlertModified;;
       Ret ^(ms, r)
     end.
 
