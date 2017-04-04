@@ -978,8 +978,46 @@ Section ConcurrentFS.
     destruct_goal_matches; subst; eauto.
   Qed.
 
-  Definition lookup dnum names :=
-    retry_readonly_syscall (fun mscs => lookup (fsxp P) dnum names mscs).
+  Definition lookup names :=
+    retry_readonly_syscall (fun mscs => lookup (fsxp P) (FSLayout.FSXPRootInum (fsxp P)) names mscs).
+
+  Theorem lookup_ok : forall tid pathname,
+      cprog_spec G tid
+                 (fun '(tree, homedirs, homedir) sigma =>
+                    {| precondition :=
+                         fs_inv(P, sigma, tree, homedirs) /\
+                         local_l tid (Sigma.l sigma) = Unacquired /\
+                         find_subtree (homedirs tid) tree = Some (homedir) /\
+                         dirtree_inum tree = FSLayout.FSXPRootInum (fsxp P) /\
+                         dirtree_isdir tree = true;
+                       postcondition :=
+                         fun sigma' r =>
+                           exists tree',
+                             fs_inv(P, sigma', tree', homedirs) /\
+                             find_subtree (homedirs tid) tree' = Some homedir /\
+                             local_l tid (Sigma.l sigma') = Unacquired /\
+                             match r with
+                             | Done (r, _) => match r with
+                                             | OK v => find_name pathname tree = Some v
+                                             | Err _ => find_name pathname tree = None
+                                             end
+                             | TryAgain => False
+                             | SyscallFailed => True
+                             end |})
+                 (lookup pathname).
+  Proof.
+    unfold lookup; intros.
+    unfold cprog_spec; intros;
+      eapply cprog_ok_weaken;
+      [ monad_simpl; eapply retry_readonly_syscall_ok;
+        eauto using opt_lookup_ok | ];
+      simplify; finish.
+
+    unfold precondition_stable; simplify; simpl in *.
+    admit. (* oops, root inode having correct inode and being a directory is never made stable *)
+
+    step; finish.
+  Abort.
 
   Definition read_fblock inum off :=
     retry_readonly_syscall (fun mscs => OptFS.read_fblock (fsxp P) inum off mscs).

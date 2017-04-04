@@ -231,4 +231,47 @@ Section FsSpecs.
     eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
   Qed.
 
+  Hint Extern 1 {{ OptFS.lookup _ _ _ _ _ _; _ }} => apply OptFS.lookup_ok : prog.
+
+  Theorem opt_lookup_ok : forall G dnum pathname mscs l tid c,
+      cprog_spec G tid
+                 (fs_spec (fun res =>
+                             {| fs_pre :=
+                                  fun homedir tree =>
+                                    find_name pathname tree = res /\
+                                    dirtree_inum tree = dnum /\
+                                    dirtree_isdir tree = true;
+                                fs_post :=
+                                    fun '(r, _) => match r with
+                                                | OK v => res = Some v
+                                                | Err _ => res = None
+                                                end;
+                                fs_dirup :=
+                                  fun _ tree => tree; |}) tid mscs l c)
+                 (OptFS.lookup (fsxp P) dnum pathname mscs l c).
+  Proof using Type.
+    unfold fs_spec; intros.
+    step; simpl in *; safe_intuition.
+    unfold Prog.pair_args_helper in *.
+    match goal with
+    | [ H: fs_rep _ _ _ _ _ |- _ ] =>
+      unfold fs_rep in H; simplify
+    end.
+    destruct frees; finish.
+    SepAuto.pred_apply; SepAuto.cancel; eauto.
+
+    step; finish.
+    destruct_goal_matches; SepAuto.destruct_lifts; finish;
+      simplify;
+      try match goal with
+          | [ H: isError (OK _) |- _ ] => exfalso; solve [ inversion H ]
+          | [ H: OK _ = OK _ |- _ ] =>
+            inversion H; subst; clear H
+          end;
+      try congruence.
+    unfold fs_rep; finish.
+    unfold fs_rep; finish.
+    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
+  Qed.
+
 End FsSpecs.

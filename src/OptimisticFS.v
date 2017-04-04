@@ -199,6 +199,7 @@ Module OptFS.
                      [[ dirtree_isdir tree = true ]]
                        POST:hm' RET:^(mscs', r)
                                 LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
+                            [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] *
                             [[ (isError r /\ None = find_name fnlist tree) \/
                                (exists v, r = OK v /\ Some v = find_name fnlist tree)%type ]] *
                             [[ MSAlloc mscs' = MSAlloc mscs ]]
