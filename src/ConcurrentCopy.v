@@ -81,7 +81,7 @@ Section ConcurrentCopy.
                              | Done r =>
                                match r with
                                | Some inum' =>
-                                 let f' := BFILE.mk_bfile nil (BFILE.BFAttr f) (BFILE.BFCache BFILE.bfile0) in
+                                 let f' := mk_dirfile nil (DFAttr f) in
                                  let homedir' :=
                                      tree_graft dnum dents dpath dstname (TreeFile inum' f') homedir in
                                  find_subtree (homedirs tid) tree' = Some homedir'

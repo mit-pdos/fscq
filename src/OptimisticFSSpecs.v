@@ -75,7 +75,7 @@ Section FsSpecs.
                                   fun homedir tree =>
                                     find_subtree (homedir ++ pathname) tree = Some (TreeFile inum f);
                                 fs_post :=
-                                  fun '(r, _) => r = BFILE.BFAttr f;
+                                  fun '(r, _) => r = DFAttr f;
                                 fs_dirup := fun _ tree => tree |}) tid mscs l c)
                  (OptFS.file_get_attr (fsxp P) inum mscs l c).
   Proof using Type.
@@ -110,7 +110,7 @@ Section FsSpecs.
                                   fun '(b, _) tree =>
                                     match b with
                                     | true =>
-                                      let f' := BFILE.mk_bfile (BFILE.BFData f) attr (BFILE.BFCache f) in
+                                      let f' := mk_dirfile (DFData f) attr in
                                       update_subtree pathname (TreeFile inum f') tree
                                     | false => tree
                                     end; |}) tid mscs l c)
@@ -131,6 +131,8 @@ Section FsSpecs.
     unfold or in *; intuition; SepAuto.destruct_lifts; try discriminate.
     unfold or in *; intuition; SepAuto.destruct_lifts; try discriminate.
     unfold fs_rep; finish.
+    unfold or in *; intuition; SepAuto.destruct_lifts; try discriminate.
+    unfold fs_rep; finish.
     eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
   Qed.
 
@@ -149,7 +151,7 @@ Section FsSpecs.
                                   fun '(r, _) tree =>
                                     match r  with
                                     | OK inum =>
-                                      tree_graft dnum tree_elem pathname name (TreeFile inum BFILE.bfile0) tree
+                                      tree_graft dnum tree_elem pathname name (TreeFile inum dirfile0) tree
                                     | _ => tree
                                     end; |}) tid mscs l c)
                  (OptFS.create (fsxp P) dnum name mscs l c).
@@ -197,7 +199,7 @@ Section FsSpecs.
                                   fun '(r, _) tree =>
                                     match r with
                                     | OK _ =>
-                                      let f' := BFILE.mk_bfile (ListUtils.setlen (BFILE.BFData f) sz ((Word.natToWord _ 0), nil)) (BFILE.BFAttr f) (BFILE.BFCache f) in
+                                      let f' := mk_dirfile (ListUtils.setlen (DFData f) sz (Word.natToWord _ 0, nil)) (DFAttr f) in
                                       update_subtree pathname (TreeFile inum f') tree
                                     | Err _ => tree
                                     end; |}) tid mscs l c)

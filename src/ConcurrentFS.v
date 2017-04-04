@@ -731,7 +731,7 @@ Section ConcurrentFS.
                              find_subtree (homedirs tid) tree' = Some homedir /\
                              local_l tid (Sigma.l sigma') = Unacquired /\
                              match r with
-                             | Done (attr, _) => attr = BFILE.BFAttr f
+                             | Done (attr, _) => attr = DFAttr f
                              | TryAgain => False
                              | SyscallFailed => True
                              end |})
@@ -764,7 +764,7 @@ Section ConcurrentFS.
     eapply alter_homedir_guarantee; eauto.
   Qed.
 
-  Definition dirtree_alter_file inum (up:BFILE.bfile -> BFILE.bfile)
+  Definition dirtree_alter_file inum (up:dirfile -> dirfile)
     : dirtree -> dirtree :=
     alter_inum inum (fun subtree =>
                        match subtree with
@@ -778,7 +778,7 @@ Section ConcurrentFS.
                   (fun '(b, _) tree =>
                      match b with
                      | true => dirtree_alter_file
-                                inum (fun f => BFILE.mk_bfile (BFILE.BFData f) attr (BFILE.BFCache f))
+                                inum (fun f => mk_dirfile (DFData f) attr)
                                 tree
                      | false => tree
                      end).
@@ -804,7 +804,7 @@ Section ConcurrentFS.
                              | Done (b, _) =>
                                match b with
                                | true =>
-                                 let f' := BFILE.mk_bfile (BFILE.BFData f) attr (BFILE.BFCache f) in
+                                 let f' := mk_dirfile (DFData f) attr in
                                  let homedir' := update_subtree pathname (TreeFile inum f') homedir in
                                  find_subtree (homedirs tid) tree' = Some homedir'
                                | false => find_subtree (homedirs tid) tree' = Some homedir
@@ -849,7 +849,7 @@ Section ConcurrentFS.
                   (fun '(r, _) tree =>
                      match r with
                      | OK inum =>
-                       let f := TreeFile inum BFILE.bfile0 in
+                       let f := TreeFile inum dirfile0 in
                        tree_graft_alter dnum name f tree
                      | _ => tree
                      end).
@@ -872,7 +872,7 @@ Section ConcurrentFS.
                              | Done (r, _) =>
                                match r with
                                | OK inum =>
-                                 let f := TreeFile inum BFILE.bfile0 in
+                                 let f := TreeFile inum dirfile0 in
                                  let homedir' := tree_graft dnum tree_elem pathname name f homedir in
                                  find_subtree (homedirs tid) tree' = Some homedir'
                                | _ => find_subtree (homedirs tid) tree' = Some homedir
@@ -918,7 +918,7 @@ Section ConcurrentFS.
                   (fun '(r, _) tree =>
                      match r with
                      | OK _ => dirtree_alter_file
-                                inum (fun f => BFILE.mk_bfile (ListUtils.setlen (BFILE.BFData f) sz ((Word.natToWord _ 0), nil)) (BFILE.BFAttr f) (BFILE.BFCache f))
+                                inum (fun f => mk_dirfile (ListUtils.setlen (DFData f) sz (Word.natToWord _ 0, nil)) (DFAttr f))
                                 tree
                      | Err _ => tree
                      end).
@@ -941,7 +941,7 @@ Section ConcurrentFS.
                              | Done (r, _) =>
                                match r with
                                | OK _ =>
-                                 let f' := BFILE.mk_bfile (ListUtils.setlen (BFILE.BFData f) sz ((Word.natToWord _ 0), nil)) (BFILE.BFAttr f) (BFILE.BFCache f) in
+                                 let f' := mk_dirfile (ListUtils.setlen (DFData f) sz (Word.natToWord _ 0, nil)) (DFAttr f) in
                                  tree'' = update_subtree (homedirs tid ++ pathname) (TreeFile inum f') tree'
                                | Err _ => tree'' = tree'
                                end
