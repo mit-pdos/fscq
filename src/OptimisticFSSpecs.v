@@ -276,4 +276,35 @@ Section FsSpecs.
     eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
   Qed.
 
+  Hint Extern 1 {{ OptFS.read_fblock _ _ _ _ _ _; _ }} => apply OptFS.read_fblock_ok : prog.
+
+  Theorem opt_read_fblock_ok : forall G inum off mscs l tid c,
+      cprog_spec G tid
+                 (fs_spec (fun '(pathname, f, Fd, vs) =>
+                             {| fs_pre :=
+                                  fun homedir tree =>
+                                    find_subtree (homedir ++ pathname) tree = Some (TreeFile inum f) /\
+                                    (Fd * off |-> vs)%pred (GenSepN.list2nmem (DFData f));
+                                fs_post :=
+                                    fun '(r, _) => r = fst vs;
+                                fs_dirup :=
+                                  fun _ tree => tree; |}) tid mscs l c)
+                 (OptFS.read_fblock (fsxp P) inum off mscs l c).
+  Proof using Type.
+    unfold fs_spec; intros.
+    step; simpl in *; safe_intuition.
+    unfold Prog.pair_args_helper in *.
+    match goal with
+    | [ H: fs_rep _ _ _ _ _ |- _ ] =>
+      unfold fs_rep in H; simplify
+    end.
+    destruct frees; finish.
+    SepAuto.pred_apply; SepAuto.cancel; eauto.
+
+    step; finish.
+    destruct_goal_matches; SepAuto.destruct_lifts; finish.
+    unfold fs_rep; finish.
+    eapply fs_rep_hashmap_incr; unfold fs_rep; finish.
+  Qed.
+
 End FsSpecs.

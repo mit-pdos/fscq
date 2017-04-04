@@ -1022,6 +1022,42 @@ Section ConcurrentFS.
   Definition read_fblock inum off :=
     retry_readonly_syscall (fun mscs => OptFS.read_fblock (fsxp P) inum off mscs).
 
+  Theorem read_fblock_ok : forall inum off tid,
+      cprog_spec G tid
+                 (fun '(tree, homedirs, homedir, pathname, f, Fd, vs) sigma =>
+                    {| precondition :=
+                         fs_inv(P, sigma, tree, homedirs) /\
+                         local_l tid (Sigma.l sigma) = Unacquired /\
+                         find_subtree (homedirs tid) tree = Some (homedir) /\
+                         find_subtree pathname homedir = Some (TreeFile inum f) /\
+                         (Fd * off |-> vs)%pred (GenSepN.list2nmem (DFData f));
+                       postcondition :=
+                         fun sigma' r =>
+                           exists tree',
+                             fs_inv(P, sigma', tree', homedirs) /\
+                             find_subtree (homedirs tid) tree' = Some homedir /\
+                             local_l tid (Sigma.l sigma') = Unacquired /\
+                             match r with
+                             | Done (r, _) => r = fst vs
+                             | TryAgain => False
+                             | SyscallFailed => True
+                             end |})
+                 (read_fblock inum off).
+  Proof.
+    unfold read_fblock; intros.
+    unfold cprog_spec; intros;
+      eapply cprog_ok_weaken;
+      [ monad_simpl; eapply retry_readonly_syscall_ok;
+        eauto using opt_read_fblock_ok | ];
+      simplify; finish.
+
+    unfold precondition_stable; simplify; simpl.
+    intuition.
+    eapply homedir_rely_preserves_subtrees; eauto.
+
+    step; finish.
+  Qed.
+
   Definition update_fblock_d inum off b :=
     write_syscall (fun mscs => OptFS.update_fblock_d (fsxp P) inum off b mscs)
                   (fun _ tree => tree).
