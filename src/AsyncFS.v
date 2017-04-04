@@ -798,8 +798,7 @@ Module AFS.
     POST:hm' RET:^(mscs', r)
            LOG.rep (FSXPLog fsxp) (SB.rep fsxp) (LOG.NoTxn ds) (MSLL mscs') hm' *
            [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]] *
-           [[ r = fst vs /\ MSAlloc mscs' = MSAlloc mscs ]] *
-           [[[ ds!! ::: (Fm * rep fsxp Ftop tree ilist frees mscs') ]]]
+           [[ r = fst vs /\ MSAlloc mscs' = MSAlloc mscs ]]
     CRASH:hm'
            LOG.idempred (FSXPLog fsxp) (SB.rep fsxp) ds hm'
     >} read_fblock fsxp inum off mscs.
